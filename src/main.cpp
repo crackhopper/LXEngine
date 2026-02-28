@@ -57,25 +57,9 @@ const float GLOBAL_CONTROL_MSAA_MIN_SAMPLE_SHADING = 0.2f;
 
 const std::string MODEL_PATH = "models/viking_room.obj";
 const std::string TEXTURE_PATH = "textures/viking_room.png";
-// 用来挑选设备的结构体
-struct DeviceScore {
-  VkPhysicalDevice device;
-  VkPhysicalDeviceProperties properties;
-  VkPhysicalDeviceDriverProperties driverProperties;
-  int score = 0;
-  bool suitable = false;
-};
 
-struct QueueFamilyIndices {
-  std::optional<uint32_t> graphicsAndComputeFamily; // 图形和计算队列族索引
-  std::optional<uint32_t> graphicsFamily;           // 图形队列族索引
-  std::optional<uint32_t> presentFamily;            // 呈现队列族索引
 
-  bool isComplete() {
-    return graphicsFamily.has_value() && presentFamily.has_value() &&
-           graphicsAndComputeFamily;
-  }
-};
+#include "graphics/gpu_device.hpp"
 
 struct SwapChainSupportDetails {
   VkSurfaceCapabilitiesKHR capabilities;
@@ -1130,7 +1114,7 @@ private:
   }
 
   void createCommandPool() {
-    QueueFamilyIndices queueFamilyIndices = findQueueFamilies(physicalDevice);
+    LX::QueueFamilyIndices queueFamilyIndices = findQueueFamilies(physicalDevice);
 
     // 创建图形指令的命令池
     VkCommandPoolCreateInfo poolInfo{};
@@ -1892,7 +1876,7 @@ private:
     info.PhysicalDevice = physicalDevice;
     info.Device = device;
 
-    QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+    LX::QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
     info.QueueFamily = indices.graphicsFamily.value();
     info.Queue = graphicsQueue;
 
@@ -2078,7 +2062,7 @@ private:
     createInfo.imageArrayLayers = 1;
     createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
-    QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+    LX::QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
     uint32_t queueFamilyIndices[] = {indices.graphicsFamily.value(),
                                      indices.presentFamily.value()};
 
@@ -2137,7 +2121,7 @@ private:
   }
 
   void createLogicalDevice() {
-    QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+    LX::QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
 
     std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
     std::set<uint32_t> uniqueQueueFamilies = {indices.graphicsFamily.value(),
@@ -2219,7 +2203,7 @@ private:
   }
 
   void pickPhysicalDevice() {
-    std::vector<DeviceScore> scoredDevices;
+    std::vector<LX::DeviceScore> scoredDevices;
 
     // 先获取设备数量
     uint32_t deviceCount = 0;
@@ -2235,7 +2219,7 @@ private:
     // 打印，然后我们手动指定一个来pick
     std::cout << "Available devices Count:" << deviceCount << std::endl;
     for (const auto &device : devices) {
-      DeviceScore ds{};
+      LX::DeviceScore ds{};
       ds.device = device;
 
       // 4a. 获取设备属性和驱动属性
@@ -2270,7 +2254,7 @@ private:
     }
     auto bestDevice =
         std::max_element(scoredDevices.begin(), scoredDevices.end(),
-                         [](const DeviceScore &a, const DeviceScore &b) {
+                         [](const LX::DeviceScore &a, const LX::DeviceScore &b) {
                            return a.score < b.score;
                          });
     // 6. 选择最佳设备
@@ -2378,8 +2362,8 @@ private:
     // return true; // 所有必需扩展都存在
   }
 
-  QueueFamilyIndices findQueueFamilies(VkPhysicalDevice physicalDevice) {
-    QueueFamilyIndices indices;
+  LX::QueueFamilyIndices findQueueFamilies(VkPhysicalDevice physicalDevice) {
+    LX::QueueFamilyIndices indices;
 
     uint32_t queueFamilyCount = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount,

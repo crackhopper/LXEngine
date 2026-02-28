@@ -44,6 +44,14 @@ endif()
 # -------------------------------
 add_subdirectory(external/cmake/imgui)
 
+
+# -------------------------------
+# 渲染器内部模块
+# -------------------------------
+add_subdirectory(src/foundation)
+add_subdirectory(src/graphics)
+
+
 # -------------------------------
 # 主项目
 # -------------------------------
@@ -52,7 +60,7 @@ file(GLOB_RECURSE SOURCES
  "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
 
 add_executable(${PROJECT_NAME} ${SOURCES})
-target_link_libraries(${PROJECT_NAME} PRIVATE Vulkan::Vulkan imgui)
+target_link_libraries(${PROJECT_NAME} PRIVATE Vulkan::Vulkan imgui ${FOUNDATION_LIB} ${GRAPHIC_LIB})
 target_include_directories(${PROJECT_NAME} PRIVATE include)
 # -------------------------------
 # Windows 特殊：定义宏
