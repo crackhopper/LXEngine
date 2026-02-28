@@ -60,98 +60,11 @@ const std::string TEXTURE_PATH = "textures/viking_room.png";
 
 
 #include "graphics/gpu_device.hpp"
+#include "graphics/resources/vertex.hpp"
+#include "graphics/resources/ubo.hpp"
 
-struct SwapChainSupportDetails {
-  VkSurfaceCapabilitiesKHR capabilities;
-  std::vector<VkSurfaceFormatKHR> formats;
-  std::vector<VkPresentModeKHR> presentModes;
-};
+using Vertex = LX::Vertex;
 
-void printCurrentDirectory_cpp17() {
-  try {
-    // std::filesystem::current_path() 返回当前工作目录的路径对象
-    std::filesystem::path currentPath = std::filesystem::current_path();
-
-    std::cout << "Current Working Directory (C++17): " << currentPath.string()
-              << std::endl;
-
-  } catch (const std::filesystem::filesystem_error &e) {
-    std::cerr << "Error getting current path: " << e.what() << std::endl;
-  }
-}
-
-struct Vertex {
-  glm::vec3 pos;
-  glm::vec3 color;
-  glm::vec2 texCoord;
-
-  bool operator==(const Vertex &other) const {
-    return pos == other.pos && color == other.color &&
-           texCoord == other.texCoord;
-  }
-
-  static VkVertexInputBindingDescription getBindingDescription() {
-    VkVertexInputBindingDescription bindingDescription{};
-    bindingDescription.binding = 0;
-    bindingDescription.stride = sizeof(Vertex);
-    bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-    return bindingDescription;
-  }
-
-  static std::array<VkVertexInputAttributeDescription, 3>
-  getAttributeDescriptions() {
-    std::array<VkVertexInputAttributeDescription, 3> attributeDescriptions{};
-    attributeDescriptions[0].binding = 0;
-    attributeDescriptions[0].location = 0;
-    attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-    attributeDescriptions[0].offset = offsetof(Vertex, pos);
-
-    attributeDescriptions[1].binding = 0;
-    attributeDescriptions[1].location = 1;
-    attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-    attributeDescriptions[1].offset = offsetof(Vertex, color);
-
-    attributeDescriptions[2].binding = 0;
-    attributeDescriptions[2].location = 2;
-    attributeDescriptions[2].format = VK_FORMAT_R32G32_SFLOAT;
-    attributeDescriptions[2].offset = offsetof(Vertex, texCoord);
-    return attributeDescriptions;
-  }
-};
-
-// 为了支持 unorder_map 的key需要的trait，我们还需要特化 std::hash<T>
-// ，提供计算hash的方法 下面的计算方法是参照
-// https://en.cppreference.com/w/cpp/utility/hash.html
-// 提供的一个快速便携计算hash的方法
-namespace std {
-template <> struct hash<Vertex> {
-  size_t operator()(Vertex const &vertex) const {
-    return ((hash<glm::vec3>()(vertex.pos) ^
-             (hash<glm::vec3>()(vertex.color) << 1)) >>
-            1) ^
-           (hash<glm::vec2>()(vertex.texCoord) << 1);
-  }
-};
-} // namespace std
-
-// const std::vector<Vertex> vertices = {
-//     {{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
-//     {{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
-//     {{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
-//     {{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}},
-
-//     {{-0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
-//     {{0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
-//     {{0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
-//     {{-0.5f, 0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}}};
-
-// const std::vector<uint16_t> indices = {0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4};
-
-struct UniformBufferObject {
-  alignas(16) glm::mat4 model;
-  alignas(16) glm::mat4 view;
-  alignas(16) glm::mat4 proj;
-};
 
 class HelloTriangleApplication {
 public:
@@ -1114,7 +1027,7 @@ private:
   }
 
   void createCommandPool() {
-    LX::QueueFamilyIndices queueFamilyIndices = findQueueFamilies(physicalDevice);
+    LX::QueryQueueFamilyResult queueFamilyIndices = findQueueFamilies(physicalDevice);
 
     // 创建图形指令的命令池
     VkCommandPoolCreateInfo poolInfo{};
@@ -1299,7 +1212,7 @@ private:
   }
 
   void createGraphicsPipeline() {
-    printCurrentDirectory_cpp17();
+    // printCurrentDirectory_cpp17();
     // 读取编译好的 顶点着色器和片段着色器的 SPIR-V 代码
     auto vertShaderCode = readFile("./build/shaders/shader.vert.spv");
     auto fragShaderCode = readFile("./build/shaders/shader.frag.spv");
@@ -1579,8 +1492,8 @@ private:
     return vkExtensions;
   }
 
-  SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device) {
-    SwapChainSupportDetails details;
+  LX::SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device) {
+    LX::SwapChainSupportDetails details;
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface,
                                               &details.capabilities);
     uint32_t formatCount;
@@ -1876,7 +1789,7 @@ private:
     info.PhysicalDevice = physicalDevice;
     info.Device = device;
 
-    LX::QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+    LX::QueryQueueFamilyResult indices = findQueueFamilies(physicalDevice);
     info.QueueFamily = indices.graphicsFamily.value();
     info.Queue = graphicsQueue;
 
@@ -2037,7 +1950,7 @@ private:
   }
 
   void createSwapChain() {
-    SwapChainSupportDetails swapChainSupport =
+    LX::SwapChainSupportDetails swapChainSupport =
         querySwapChainSupport(physicalDevice);
     VkSurfaceFormatKHR surfaceFormat =
         chooseSwapSurfaceFormat(swapChainSupport.formats);
@@ -2062,7 +1975,7 @@ private:
     createInfo.imageArrayLayers = 1;
     createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
-    LX::QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+    LX::QueryQueueFamilyResult indices = findQueueFamilies(physicalDevice);
     uint32_t queueFamilyIndices[] = {indices.graphicsFamily.value(),
                                      indices.presentFamily.value()};
 
@@ -2121,7 +2034,7 @@ private:
   }
 
   void createLogicalDevice() {
-    LX::QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+    LX::QueryQueueFamilyResult indices = findQueueFamilies(physicalDevice);
 
     std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
     std::set<uint32_t> uniqueQueueFamilies = {indices.graphicsFamily.value(),
@@ -2294,7 +2207,7 @@ private:
     }
 
     bool swapChainAdequate = false;
-    SwapChainSupportDetails swapChainSupport = querySwapChainSupport(device);
+    LX::SwapChainSupportDetails swapChainSupport = querySwapChainSupport(device);
     swapChainAdequate = !swapChainSupport.formats.empty() &&
                         !swapChainSupport.presentModes.empty();
     if (!swapChainAdequate) {
@@ -2362,8 +2275,8 @@ private:
     // return true; // 所有必需扩展都存在
   }
 
-  LX::QueueFamilyIndices findQueueFamilies(VkPhysicalDevice physicalDevice) {
-    LX::QueueFamilyIndices indices;
+  LX::QueryQueueFamilyResult findQueueFamilies(VkPhysicalDevice physicalDevice) {
+    LX::QueryQueueFamilyResult indices;
 
     uint32_t queueFamilyCount = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount,

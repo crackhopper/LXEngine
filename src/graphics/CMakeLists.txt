@@ -2,7 +2,9 @@
 set(GRAPHIC_LIB LX_Graphics CACHE INTERNAL "Graphics library name")
 
 file(GLOB_RECURSE GRAPHIC_SOURCES
- "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
+ "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
+ "${CMAKE_CURRENT_SOURCE_DIR}/*.hpp"
+)
 
 
 add_library(${GRAPHIC_LIB} ${GRAPHIC_SOURCES})

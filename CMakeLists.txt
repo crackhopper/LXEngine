@@ -50,6 +50,7 @@ add_subdirectory(external/cmake/imgui)
 # -------------------------------
 add_subdirectory(src/foundation)
 add_subdirectory(src/graphics)
+add_subdirectory(src/services)
 
 
 # -------------------------------
