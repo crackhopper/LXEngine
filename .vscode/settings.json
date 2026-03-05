@@ -1,8 +1,10 @@
 {
   "cmake.buildDirectory": "${workspaceFolder}/build",
-  "cmake.generator": "Visual Studio 17 2022",
+  "cmake.generator": "Ninja",
   "cmake.configureOnOpen": true,
-  "cmake.configureArgs": [],
+  "cmake.configureArgs": [
+    "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+  ],
   "cmake.buildArgs": [],
   "editor.defaultFormatter": "ms-vscode.cpptools",
   "C_Cpp.clang_format_style": "{ BasedOnStyle: LLVM, BreakBeforeBraces: Attach }",
