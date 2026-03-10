@@ -50,7 +50,7 @@ public:
   VulkanPipelineLayout(VulkanDeviceWeakPtr device);
   ~VulkanPipelineLayout();
 
-  void setDescriptorSetLayout(VkDescriptorSetLayout layout);
+  void addDescriptorSetLayout(VkDescriptorSetLayout layout);
 
   bool build();
 
@@ -59,7 +59,7 @@ public:
 private:
   VulkanDeviceWeakPtr m_device;
 
-  VkDescriptorSetLayout m_descriptorLayout = VK_NULL_HANDLE;
+  std::vector<VkDescriptorSetLayout> m_descriptorLayouts;
 
   VkPipelineLayout m_layout = VK_NULL_HANDLE;
 };

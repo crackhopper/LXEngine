@@ -110,6 +110,36 @@ template <typename T> struct Mat4T {
     return r;
   }
 
+  /**
+   * [ 2/(r-l)      0           0        -(r+l)/(r-l) ]
+   * [ 0           2/(t-b)      0        -(t+b)/(t-b) ]
+   * [ 0            0       -2/(f-n)     -(f+n)/(f-n) ]
+   * [ 0            0           0             1       ]
+   */
+  static Mat4T orthographic(T left, T right, T bottom, T top, T near, T far) {
+    Mat4T<T> result;
+
+    // 初始化为零矩阵
+    for (int i = 0; i < 16; ++i)
+      result.data[i] = static_cast<T>(0);
+
+    // 缩放因子
+    result(0, 0) = static_cast<T>(2) / (right - left);
+    result(1, 1) = static_cast<T>(2) / (top - bottom);
+    result(2, 2) =
+        static_cast<T>(-2) / (far - near); // 注意 Vulkan NDC z [-1,1]
+
+    // 平移
+    result(0, 3) = -(right + left) / (right - left);
+    result(1, 3) = -(top + bottom) / (top - bottom);
+    result(2, 3) = -(far + near) / (far - near);
+
+    // 最后一个元素
+    result(3, 3) = static_cast<T>(1);
+
+    return result;
+  }
+
   // ---------- LookAt 矩阵 ----------
   static Mat4T lookAt(const Vec3T<T> &eye, const Vec3T<T> &target,
                       const Vec3T<T> &up) {
@@ -126,10 +156,13 @@ template <typename T> struct Mat4T {
     // 这个矩阵，
     // - 前三列向量，构成旋转。就是我们算的轴向量。
     //   - 技巧：用单位轴向量，带入被变换的向量，进行测试。
-    //   - 考虑在新矩阵中的向量 (1,0,0) ，那么坐标显然是x轴。（容易测明白这样是正确的）
+    //   - 考虑在新矩阵中的向量 (1,0,0)
+    //   ，那么坐标显然是x轴。（容易测明白这样是正确的）
     // - 最后一列，是平移。考虑原点，带入进去后，应该是eye的位置。
-    //   - eye是相机在世界中的坐标。我们矩阵的约束是把 (0,0,0,1) 带入，得到的应该是原点在当前矩阵的坐标。
-    //   - 因此，是对 -eye 方向的逆变换（E * 原eye向量 = - 原点向量）。于是每个分量计算就是下面了。
+    //   - eye是相机在世界中的坐标。我们矩阵的约束是把 (0,0,0,1)
+    //   带入，得到的应该是原点在当前矩阵的坐标。
+    //   - 因此，是对 -eye 方向的逆变换（E * 原eye向量 = -
+    //   原点向量）。于是每个分量计算就是下面了。
     Mat4T r;
     r.m[0][0] = x.x;
     r.m[0][1] = x.y;

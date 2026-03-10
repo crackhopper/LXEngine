@@ -1,6 +1,9 @@
 #pragma once
 #include "buffer.hpp"
 #include "vertex.hpp"
+#include "material.hpp"
+#include "skeleton.hpp"
+
 #include <memory>
 #include <vector>
 #include <optional>
@@ -23,6 +26,8 @@ public:
 private:
   std::unique_ptr<Buffer> m_vertexBuffer;
   std::unique_ptr<IndexBuffer> m_indexBuffer;
+
+  std::shared_ptr<MaterialBase> m_material;
 };
 
 struct SkinData {
@@ -56,6 +61,8 @@ private:
   // 注意：子网格所用的索引不能重合。这点在添加进来的时候需要处理。
   std::vector<std::unique_ptr<SubMesh>> m_subMeshes;
   std::optional<SkinData> m_skinData; // 可选
+
+  std::shared_ptr<Skeleton> m_skeleton;
 };
 
 using MeshPtr = std::shared_ptr<Mesh>;

@@ -35,6 +35,7 @@ void VulkanRenderer::initialize() {
 
   createDefaultPipeline();
   createCameraResources();
+  createDefaultMaterial();
 }
 
 void VulkanRenderer::shutdown() {
@@ -45,22 +46,17 @@ void VulkanRenderer::shutdown() {
   vkDeviceWaitIdle(device);
 
   m_drawCommands.clear();
+  m_materialMap.clear();
+  m_defaultMaterial.reset();
   m_meshMap.clear();
   m_textureMap.clear();
-
-  for (auto &frame : m_frames) {
-    if (frame.cameraBuffer != VK_NULL_HANDLE) {
-      vkUnmapMemory(device, frame.cameraMemory);
-      vkDestroyBuffer(device, frame.cameraBuffer, nullptr);
-      vkFreeMemory(device, frame.cameraMemory, nullptr);
-      frame.cameraBuffer = VK_NULL_HANDLE;
-    }
-  }
+  m_frames.clear();
 
   m_descriptorAllocator.reset();
   m_graphicsPipeline.reset();
   m_pipelineLayout.reset();
-  m_descriptorSetLayout.reset();
+  m_materialSetLayout.reset();
+  m_cameraSetLayout.reset();
 
   for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
     if (m_imageAvailableSems[i])
@@ -199,14 +195,22 @@ void VulkanRenderer::createSyncObjects() {
 }
 
 void VulkanRenderer::createDefaultPipeline() {
-  m_descriptorSetLayout =
-      std::make_shared<VulkanDescriptorSetLayout>(m_device);
-  m_descriptorSetLayout->addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                                    VK_SHADER_STAGE_VERTEX_BIT);
-  m_descriptorSetLayout->build();
+  // Set 0: camera UBO (per-frame)
+  m_cameraSetLayout = std::make_shared<VulkanDescriptorSetLayout>(m_device);
+  m_cameraSetLayout->addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                                VK_SHADER_STAGE_VERTEX_BIT);
+  m_cameraSetLayout->build();
+
+  // Set 1: material albedo sampler (per-draw)
+  m_materialSetLayout = std::make_shared<VulkanDescriptorSetLayout>(m_device);
+  m_materialSetLayout->addBinding(0,
+                                  VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                                  VK_SHADER_STAGE_FRAGMENT_BIT);
+  m_materialSetLayout->build();
 
   m_pipelineLayout = std::make_shared<VulkanPipelineLayout>(m_device);
-  m_pipelineLayout->setDescriptorSetLayout(m_descriptorSetLayout->layout());
+  m_pipelineLayout->addDescriptorSetLayout(m_cameraSetLayout->layout());
+  m_pipelineLayout->addDescriptorSetLayout(m_materialSetLayout->layout());
   m_pipelineLayout->build();
 
   auto vertShader = std::make_shared<VulkanShaderModule>(m_device);
@@ -221,28 +225,23 @@ void VulkanRenderer::createDefaultPipeline() {
 }
 
 void VulkanRenderer::createCameraResources() {
-  VkDeviceSize bufferSize = sizeof(CameraUBO);
-
   for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-    createVkBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                   VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                       VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                   m_frames[i].cameraBuffer, m_frames[i].cameraMemory);
+    m_frames.emplace_back(m_device);
+    auto &frame = m_frames.back();
 
-    vkMapMemory(m_device->getDevice(), m_frames[i].cameraMemory, 0,
-                bufferSize, 0, &m_frames[i].cameraMapped);
+    frame.cameraUBO.create(sizeof(CameraUBO));
 
-    VkDescriptorSetLayout layout = m_descriptorSetLayout->layout();
-    m_frames[i].descriptorSet = m_descriptorAllocator->allocate(&layout, 1);
+    VkDescriptorSetLayout layout = m_cameraSetLayout->layout();
+    frame.descriptorSet = m_descriptorAllocator->allocate(&layout, 1);
 
     VkDescriptorBufferInfo bufInfo{};
-    bufInfo.buffer = m_frames[i].cameraBuffer;
+    bufInfo.buffer = frame.cameraUBO.getBuffer();
     bufInfo.offset = 0;
     bufInfo.range = sizeof(CameraUBO);
 
     VkWriteDescriptorSet write{};
     write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    write.dstSet = m_frames[i].descriptorSet;
+    write.dstSet = frame.descriptorSet;
     write.dstBinding = 0;
     write.dstArrayElement = 0;
     write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -261,92 +260,8 @@ void VulkanRenderer::uploadMesh(LX_core::MeshPtr mesh) {
   if (m_meshMap.count(mesh.get()))
     return;
 
-  if (mesh->subMeshCount() == 0)
-    return;
-
   auto gpuMesh = std::make_shared<VulkanMesh>(m_device);
-
-  std::vector<uint8_t> vertexData;
-  std::vector<uint8_t> indexData;
-  uint32_t totalIndexCount = 0;
-
-  for (size_t s = 0; s < mesh->subMeshCount(); ++s) {
-    const auto *sub = mesh->subMesh(s);
-
-    const auto *vb = sub->vertexBuffer();
-    auto vbBegin = static_cast<const uint8_t *>(vb->data());
-    vertexData.insert(vertexData.end(), vbBegin, vbBegin + vb->size());
-
-    const auto *ib = sub->indexBuffer();
-    auto ibBegin = static_cast<const uint8_t *>(ib->data());
-    indexData.insert(indexData.end(), ibBegin, ibBegin + ib->size());
-
-    totalIndexCount += static_cast<uint32_t>(ib->indexCount());
-  }
-
-  VkDevice device = m_device->getDevice();
-
-  // Vertex buffer (staging → device-local)
-  {
-    VkDeviceSize sz = vertexData.size();
-    VkBuffer staging;
-    VkDeviceMemory stagingMem;
-    createVkBuffer(sz, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                   VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                       VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                   staging, stagingMem);
-
-    void *mapped;
-    vkMapMemory(device, stagingMem, 0, sz, 0, &mapped);
-    std::memcpy(mapped, vertexData.data(), sz);
-    vkUnmapMemory(device, stagingMem);
-
-    gpuMesh->vertexBuffer = std::make_unique<VulkanBuffer>(m_device);
-    createVkBuffer(sz,
-                   VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-                       VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-                   VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                   gpuMesh->vertexBuffer->buffer,
-                   gpuMesh->vertexBuffer->memory);
-    gpuMesh->vertexBuffer->size = sz;
-
-    copyBuffer(staging, gpuMesh->vertexBuffer->buffer, sz);
-
-    vkDestroyBuffer(device, staging, nullptr);
-    vkFreeMemory(device, stagingMem, nullptr);
-  }
-
-  // Index buffer (staging → device-local)
-  {
-    VkDeviceSize sz = indexData.size();
-    VkBuffer staging;
-    VkDeviceMemory stagingMem;
-    createVkBuffer(sz, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                   VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                       VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                   staging, stagingMem);
-
-    void *mapped;
-    vkMapMemory(device, stagingMem, 0, sz, 0, &mapped);
-    std::memcpy(mapped, indexData.data(), sz);
-    vkUnmapMemory(device, stagingMem);
-
-    gpuMesh->indexBuffer = std::make_unique<VulkanBuffer>(m_device);
-    createVkBuffer(sz,
-                   VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-                       VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-                   VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                   gpuMesh->indexBuffer->buffer,
-                   gpuMesh->indexBuffer->memory);
-    gpuMesh->indexBuffer->size = sz;
-
-    copyBuffer(staging, gpuMesh->indexBuffer->buffer, sz);
-
-    vkDestroyBuffer(device, staging, nullptr);
-    vkFreeMemory(device, stagingMem, nullptr);
-  }
-
-  gpuMesh->indexCount = totalIndexCount;
+  gpuMesh->upload(*mesh);
   m_meshMap[mesh.get()] = gpuMesh;
 }
 
@@ -354,88 +269,50 @@ void VulkanRenderer::uploadTexture(LX_core::TexturePtr texture) {
   if (m_textureMap.count(texture.get()))
     return;
 
-  const auto &desc = texture->desc();
-  VkFormat format = VK_FORMAT_R8G8B8A8_SRGB;
-  if (desc.format == LX_core::TextureFormat::RGB8)
-    format = VK_FORMAT_R8G8B8_SRGB;
-  else if (desc.format == LX_core::TextureFormat::R8)
-    format = VK_FORMAT_R8_SRGB;
-
-  VkDevice device = m_device->getDevice();
   auto gpuTex = std::make_shared<VulkanTexture>(m_device);
-
-  // Staging buffer
-  VkDeviceSize imageSize = texture->size();
-  VkBuffer staging;
-  VkDeviceMemory stagingMem;
-  createVkBuffer(imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                     VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                 staging, stagingMem);
-
-  void *mapped;
-  vkMapMemory(device, stagingMem, 0, imageSize, 0, &mapped);
-  std::memcpy(mapped, texture->data(), imageSize);
-  vkUnmapMemory(device, stagingMem);
-
-  // Image
-  gpuTex->image = std::make_unique<VulkanImage>(m_device);
-  createVkImage(desc.width, desc.height, format,
-                VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-                gpuTex->image->image, gpuTex->image->memory);
-
-  transitionImageLayout(gpuTex->image->image, VK_IMAGE_LAYOUT_UNDEFINED,
-                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-  copyBufferToImage(staging, gpuTex->image->image, desc.width, desc.height);
-  transitionImageLayout(gpuTex->image->image,
-                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-
-  vkDestroyBuffer(device, staging, nullptr);
-  vkFreeMemory(device, stagingMem, nullptr);
-
-  // Image view
-  gpuTex->imageView = std::make_unique<VulkanImageView>(m_device);
-
-  VkImageViewCreateInfo viewInfo{};
-  viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-  viewInfo.image = gpuTex->image->image;
-  viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-  viewInfo.format = format;
-  viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-  viewInfo.subresourceRange.baseMipLevel = 0;
-  viewInfo.subresourceRange.levelCount = 1;
-  viewInfo.subresourceRange.baseArrayLayer = 0;
-  viewInfo.subresourceRange.layerCount = 1;
-
-  if (vkCreateImageView(device, &viewInfo, nullptr,
-                        &gpuTex->imageView->view) != VK_SUCCESS) {
-    throw std::runtime_error("Failed to create texture image view");
-  }
-
-  // Sampler
-  gpuTex->sampler = std::make_unique<VulkanSampler>(m_device);
-
-  VkSamplerCreateInfo samplerInfo{};
-  samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-  samplerInfo.magFilter = VK_FILTER_LINEAR;
-  samplerInfo.minFilter = VK_FILTER_LINEAR;
-  samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-  samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-  samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-  samplerInfo.anisotropyEnable = VK_FALSE;
-  samplerInfo.maxAnisotropy = 1.0f;
-  samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
-  samplerInfo.unnormalizedCoordinates = VK_FALSE;
-  samplerInfo.compareEnable = VK_FALSE;
-  samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-
-  if (vkCreateSampler(device, &samplerInfo, nullptr,
-                      &gpuTex->sampler->sampler) != VK_SUCCESS) {
-    throw std::runtime_error("Failed to create texture sampler");
-  }
-
+  gpuTex->upload(*texture);
   m_textureMap[texture.get()] = gpuTex;
+}
+
+void VulkanRenderer::createDefaultMaterial() {
+  std::vector<uint8_t> whitePixel = {255, 255, 255, 255};
+  LX_core::TextureDesc desc{1, 1, LX_core::TextureFormat::RGBA8};
+  LX_core::Texture whiteTex(desc, std::move(whitePixel));
+
+  auto gpuTex = std::make_shared<VulkanTexture>(m_device);
+  gpuTex->upload(whiteTex);
+
+  m_defaultMaterial =
+      std::make_shared<VulkanMaterial>(m_device, m_descriptorAllocator);
+  m_defaultMaterial->setDescriptorSetLayout(m_materialSetLayout->layout());
+  m_defaultMaterial->bindTexture(0, gpuTex);
+  m_defaultMaterial->buildDescriptorSet();
+}
+
+VulkanMaterialPtr
+VulkanRenderer::getOrCreateMaterial(LX_core::MaterialPtr material) {
+  if (!material || !material->albedoMap.has_value())
+    return m_defaultMaterial;
+
+  auto it = m_materialMap.find(material.get());
+  if (it != m_materialMap.end())
+    return it->second;
+
+  auto &coreTex = material->albedoMap.value();
+  uploadTexture(coreTex);
+
+  auto texIt = m_textureMap.find(coreTex.get());
+  if (texIt == m_textureMap.end())
+    return m_defaultMaterial;
+
+  auto gpuMat =
+      std::make_shared<VulkanMaterial>(m_device, m_descriptorAllocator);
+  gpuMat->setDescriptorSetLayout(m_materialSetLayout->layout());
+  gpuMat->bindTexture(0, texIt->second);
+  gpuMat->buildDescriptorSet();
+
+  m_materialMap[material.get()] = gpuMat;
+  return gpuMat;
 }
 
 // ============================================================
@@ -469,8 +346,7 @@ void VulkanRenderer::flush() {
 
   vkResetFences(device, 1, &m_inFlightFences[m_currentFrame]);
 
-  std::memcpy(m_frames[m_currentFrame].cameraMapped, &m_cameraData,
-              sizeof(CameraUBO));
+  m_frames[m_currentFrame].cameraUBO.update(&m_cameraData, sizeof(CameraUBO));
 
   VkCommandBuffer cmd = m_commandBuffers[m_currentFrame];
   vkResetCommandBuffer(cmd, 0);
@@ -555,13 +431,18 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer cmd,
     vkCmdSetScissor(cmd, 0, 1, &scissor);
 
     for (auto &dc : m_drawCommands) {
-      auto it = m_meshMap.find(dc.mesh.get());
-      if (it == m_meshMap.end())
+      auto meshIt = m_meshMap.find(dc.mesh.get());
+      if (meshIt == m_meshMap.end())
         continue;
 
-      auto &gpuMesh = it->second;
+      auto &gpuMesh = meshIt->second;
       if (!gpuMesh->vertexBuffer || !gpuMesh->indexBuffer)
         continue;
+
+      auto gpuMat = getOrCreateMaterial(dc.material);
+      VkDescriptorSet matSet = gpuMat->descriptorSet();
+      vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 1,
+                              1, &matSet, 0, nullptr);
 
       VkBuffer vertexBuffers[] = {gpuMesh->vertexBuffer->buffer};
       VkDeviceSize offsets[] = {0};
@@ -575,203 +456,6 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer cmd,
 
   vkCmdEndRenderPass(cmd);
   vkEndCommandBuffer(cmd);
-}
-
-// ============================================================
-//  Vulkan helpers
-// ============================================================
-
-uint32_t
-VulkanRenderer::findMemoryType(uint32_t typeFilter,
-                               VkMemoryPropertyFlags properties) {
-  VkPhysicalDeviceMemoryProperties memProps;
-  vkGetPhysicalDeviceMemoryProperties(m_device->getPhysicalDevice(),
-                                      &memProps);
-
-  for (uint32_t i = 0; i < memProps.memoryTypeCount; ++i) {
-    if ((typeFilter & (1 << i)) &&
-        (memProps.memoryTypes[i].propertyFlags & properties) == properties) {
-      return i;
-    }
-  }
-
-  throw std::runtime_error("Failed to find suitable memory type");
-}
-
-void VulkanRenderer::createVkBuffer(VkDeviceSize size,
-                                    VkBufferUsageFlags usage,
-                                    VkMemoryPropertyFlags properties,
-                                    VkBuffer &buffer,
-                                    VkDeviceMemory &memory) {
-  VkDevice device = m_device->getDevice();
-
-  VkBufferCreateInfo bufInfo{};
-  bufInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-  bufInfo.size = size;
-  bufInfo.usage = usage;
-  bufInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-  if (vkCreateBuffer(device, &bufInfo, nullptr, &buffer) != VK_SUCCESS)
-    throw std::runtime_error("Failed to create buffer");
-
-  VkMemoryRequirements memReqs;
-  vkGetBufferMemoryRequirements(device, buffer, &memReqs);
-
-  VkMemoryAllocateInfo allocInfo{};
-  allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-  allocInfo.allocationSize = memReqs.size;
-  allocInfo.memoryTypeIndex =
-      findMemoryType(memReqs.memoryTypeBits, properties);
-
-  if (vkAllocateMemory(device, &allocInfo, nullptr, &memory) != VK_SUCCESS)
-    throw std::runtime_error("Failed to allocate buffer memory");
-
-  vkBindBufferMemory(device, buffer, memory, 0);
-}
-
-void VulkanRenderer::copyBuffer(VkBuffer src, VkBuffer dst,
-                                VkDeviceSize size) {
-  VkCommandBuffer cmd = beginSingleTimeCommands();
-
-  VkBufferCopy region{};
-  region.size = size;
-  vkCmdCopyBuffer(cmd, src, dst, 1, &region);
-
-  endSingleTimeCommands(cmd);
-}
-
-VkCommandBuffer VulkanRenderer::beginSingleTimeCommands() {
-  VkCommandBufferAllocateInfo allocInfo{};
-  allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-  allocInfo.commandPool = m_device->getCommandPool();
-  allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-  allocInfo.commandBufferCount = 1;
-
-  VkCommandBuffer cmd;
-  vkAllocateCommandBuffers(m_device->getDevice(), &allocInfo, &cmd);
-
-  VkCommandBufferBeginInfo beginInfo{};
-  beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-  beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-  vkBeginCommandBuffer(cmd, &beginInfo);
-  return cmd;
-}
-
-void VulkanRenderer::endSingleTimeCommands(VkCommandBuffer cmd) {
-  vkEndCommandBuffer(cmd);
-
-  VkSubmitInfo submitInfo{};
-  submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-  submitInfo.commandBufferCount = 1;
-  submitInfo.pCommandBuffers = &cmd;
-
-  vkQueueSubmit(m_device->getGraphicsQueue(), 1, &submitInfo, VK_NULL_HANDLE);
-  vkQueueWaitIdle(m_device->getGraphicsQueue());
-
-  vkFreeCommandBuffers(m_device->getDevice(), m_device->getCommandPool(), 1,
-                       &cmd);
-}
-
-void VulkanRenderer::createVkImage(uint32_t w, uint32_t h, VkFormat format,
-                                   VkImageUsageFlags usage, VkImage &image,
-                                   VkDeviceMemory &memory) {
-  VkDevice device = m_device->getDevice();
-
-  VkImageCreateInfo imageInfo{};
-  imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-  imageInfo.imageType = VK_IMAGE_TYPE_2D;
-  imageInfo.extent = {w, h, 1};
-  imageInfo.mipLevels = 1;
-  imageInfo.arrayLayers = 1;
-  imageInfo.format = format;
-  imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-  imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-  imageInfo.usage = usage;
-  imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-  imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-  if (vkCreateImage(device, &imageInfo, nullptr, &image) != VK_SUCCESS)
-    throw std::runtime_error("Failed to create image");
-
-  VkMemoryRequirements memReqs;
-  vkGetImageMemoryRequirements(device, image, &memReqs);
-
-  VkMemoryAllocateInfo allocInfo{};
-  allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-  allocInfo.allocationSize = memReqs.size;
-  allocInfo.memoryTypeIndex =
-      findMemoryType(memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-  if (vkAllocateMemory(device, &allocInfo, nullptr, &memory) != VK_SUCCESS)
-    throw std::runtime_error("Failed to allocate image memory");
-
-  vkBindImageMemory(device, image, memory, 0);
-}
-
-void VulkanRenderer::transitionImageLayout(VkImage image,
-                                           VkImageLayout oldLayout,
-                                           VkImageLayout newLayout) {
-  VkCommandBuffer cmd = beginSingleTimeCommands();
-
-  VkImageMemoryBarrier barrier{};
-  barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-  barrier.oldLayout = oldLayout;
-  barrier.newLayout = newLayout;
-  barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barrier.image = image;
-  barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-  barrier.subresourceRange.baseMipLevel = 0;
-  barrier.subresourceRange.levelCount = 1;
-  barrier.subresourceRange.baseArrayLayer = 0;
-  barrier.subresourceRange.layerCount = 1;
-
-  VkPipelineStageFlags srcStage;
-  VkPipelineStageFlags dstStage;
-
-  if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED &&
-      newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
-    barrier.srcAccessMask = 0;
-    barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    srcStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-    dstStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-  } else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL &&
-             newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
-    barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-    srcStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-    dstStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-  } else {
-    srcStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-    dstStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-  }
-
-  vkCmdPipelineBarrier(cmd, srcStage, dstStage, 0, 0, nullptr, 0, nullptr, 1,
-                       &barrier);
-
-  endSingleTimeCommands(cmd);
-}
-
-void VulkanRenderer::copyBufferToImage(VkBuffer buffer, VkImage image,
-                                       uint32_t w, uint32_t h) {
-  VkCommandBuffer cmd = beginSingleTimeCommands();
-
-  VkBufferImageCopy region{};
-  region.bufferOffset = 0;
-  region.bufferRowLength = 0;
-  region.bufferImageHeight = 0;
-  region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-  region.imageSubresource.mipLevel = 0;
-  region.imageSubresource.baseArrayLayer = 0;
-  region.imageSubresource.layerCount = 1;
-  region.imageOffset = {0, 0, 0};
-  region.imageExtent = {w, h, 1};
-
-  vkCmdCopyBufferToImage(cmd, buffer, image,
-                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
-
-  endSingleTimeCommands(cmd);
 }
 
 } // namespace LX_core::graphic_backend

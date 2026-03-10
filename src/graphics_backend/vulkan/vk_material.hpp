@@ -5,19 +5,19 @@
 #include <vulkan/vulkan.h>
 
 #include "vk_device.hpp"
-#include "vk_resources.hpp"
-#include "vk_descriptor_allocator.hpp"
+#include "details/vk_resources.hpp"
+#include "details/vk_descriptor_allocator.hpp"
 
 namespace LX_core::graphic_backend {
 
-class VulkanPipeline;
 
-using VulkanPipelinePtr = std::shared_ptr<VulkanPipeline>;
-using VulkanDeviceWeakPtr = std::weak_ptr<VulkanDevice>;
+
+class VulkanPipeline;
+using VulkanPipelinePtr = std::unique_ptr<VulkanPipeline>;
 
 class VulkanMaterial {
 public:
-  VulkanMaterial(VulkanDeviceWeakPtr device,
+  VulkanMaterial(VulkanDevice& device,
                  std::shared_ptr<VulkanDescriptorAllocator> allocator);
   ~VulkanMaterial();
 

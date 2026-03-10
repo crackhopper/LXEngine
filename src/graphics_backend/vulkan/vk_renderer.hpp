@@ -2,12 +2,13 @@
 
 #include "core/gpu/renderer.hpp"
 #include "core/platform/window.hpp"
-#include "vk_descriptor_allocator.hpp"
 #include "vk_device.hpp"
-#include "vk_framebuffer.hpp"
-#include "vk_pipeline.hpp"
-#include "vk_resources.hpp"
-#include "vk_swapchain.hpp"
+#include "vk_material.hpp"
+
+#include "details/vk_descriptors.hpp"
+#include "details/vk_swapchain.hpp"
+#include "details/vk_pipeline.hpp"
+#include "details/vk_resources.hpp"
 
 #include <array>
 #include <memory>
@@ -55,22 +56,9 @@ private:
   void createSyncObjects();
   void createDefaultPipeline();
   void createCameraResources();
+  void createDefaultMaterial();
 
-  uint32_t findMemoryType(uint32_t typeFilter,
-                          VkMemoryPropertyFlags properties);
-  void createVkBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
-                      VkMemoryPropertyFlags properties, VkBuffer &buffer,
-                      VkDeviceMemory &memory);
-  void copyBuffer(VkBuffer src, VkBuffer dst, VkDeviceSize size);
-  VkCommandBuffer beginSingleTimeCommands();
-  void endSingleTimeCommands(VkCommandBuffer cmd);
-  void createVkImage(uint32_t w, uint32_t h, VkFormat format,
-                     VkImageUsageFlags usage, VkImage &image,
-                     VkDeviceMemory &memory);
-  void transitionImageLayout(VkImage image, VkImageLayout oldLayout,
-                             VkImageLayout newLayout);
-  void copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t w,
-                         uint32_t h);
+  VulkanMaterialPtr getOrCreateMaterial(LX_core::MaterialPtr material);
 
   void recordCommandBuffer(VkCommandBuffer cmd, uint32_t imageIndex);
 
@@ -90,7 +78,8 @@ private:
   std::array<VkFence, MAX_FRAMES_IN_FLIGHT> m_inFlightFences{};
   uint32_t m_currentFrame = 0;
 
-  std::shared_ptr<VulkanDescriptorSetLayout> m_descriptorSetLayout;
+  std::shared_ptr<VulkanDescriptorSetLayout> m_cameraSetLayout;
+  std::shared_ptr<VulkanDescriptorSetLayout> m_materialSetLayout;
   std::shared_ptr<VulkanPipelineLayout> m_pipelineLayout;
   std::shared_ptr<VulkanGraphicsPipeline> m_graphicsPipeline;
 
@@ -98,16 +87,17 @@ private:
 
   CameraUBO m_cameraData;
   struct PerFrameData {
-    VkBuffer cameraBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory cameraMemory = VK_NULL_HANDLE;
-    void *cameraMapped = nullptr;
+    VulkanUniformBuffer cameraUBO;
     VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
+    PerFrameData(VulkanDeviceWeakPtr device) : cameraUBO(device) {}
   };
-  std::array<PerFrameData, MAX_FRAMES_IN_FLIGHT> m_frames;
+  std::vector<PerFrameData> m_frames;
 
-  std::unordered_map<LX_core::Mesh *, std::shared_ptr<VulkanMesh>> m_meshMap;
-  std::unordered_map<LX_core::Texture *, std::shared_ptr<VulkanTexture>>
-      m_textureMap;
+  std::unordered_map<LX_core::Mesh *, VulkanMeshPtr> m_meshMap;
+  std::unordered_map<LX_core::Texture *, VulkanTexturePtr> m_textureMap;
+  std::unordered_map<LX_core::Material *, VulkanMaterialPtr> m_materialMap;
+
+  VulkanMaterialPtr m_defaultMaterial;
 
   std::vector<DrawCommand> m_drawCommands;
 };

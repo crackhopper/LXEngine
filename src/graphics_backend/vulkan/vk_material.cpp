@@ -23,12 +23,18 @@ void VulkanMaterial::setDescriptorSetLayout(VkDescriptorSetLayout layout) {
 }
 
 void VulkanMaterial::bindTexture(uint32_t binding, VulkanTexturePtr texture) {
-
   TextureBinding tb;
   tb.binding = binding;
   tb.texture = texture;
-
   m_textures.push_back(tb);
+}
+
+void VulkanMaterial::bindUniformBuffer(uint32_t binding,
+                                       VulkanUniformBufferPtr ubo) {
+  UniformBinding ub;
+  ub.binding = binding;
+  ub.ubo = ubo;
+  m_uniforms.push_back(ub);
 }
 
 void VulkanMaterial::buildDescriptorSet() {
@@ -70,9 +76,9 @@ void VulkanMaterial::buildDescriptorSet() {
   std::vector<VkDescriptorBufferInfo> bufferInfos;
   for (auto &b : m_uniforms) {
     VkDescriptorBufferInfo bufInfo{};
-    bufInfo.buffer = b.ubo->buffer->buffer;
+    bufInfo.buffer = b.ubo->getBuffer();
     bufInfo.offset = 0;
-    bufInfo.range = b.ubo->buffer->size;
+    bufInfo.range = b.ubo->getSize();
     bufferInfos.push_back(bufInfo);
 
     VkWriteDescriptorSet write{};

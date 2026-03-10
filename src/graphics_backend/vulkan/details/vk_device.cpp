@@ -1,9 +1,39 @@
 #include "vk_device.hpp"
+#include "details/vk_cmdbuffer.hpp"
 #include <iostream>
 #include <set>
 #include <stdexcept>
 
 namespace LX_core::graphic_backend {
+
+VulkanCommandPool::VulkanCommandPool(Token, VkDevice _device,
+                                     uint32_t queueFamilyIndex,
+                                     VkCommandPoolCreateFlags flags)
+    : device(_device) {
+
+  VkCommandPoolCreateInfo poolInfo{};
+  poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+  poolInfo.queueFamilyIndex = queueFamilyIndex;
+  poolInfo.flags = flags;
+
+  if (vkCreateCommandPool(device, &poolInfo, nullptr, &_handle) != VK_SUCCESS) {
+    throw std::runtime_error("failed to create command pool!");
+  }
+}
+
+VulkanCommandPool::~VulkanCommandPool() {
+  if (_handle != VK_NULL_HANDLE) {
+    vkDestroyCommandPool(device, _handle, nullptr);
+    _handle = VK_NULL_HANDLE;
+  }
+}
+
+void VulkanCommandPool::reset(VkCommandPoolResetFlags flags) {
+  // 重置整个池，这会释放或重置该池分配的所有 CommandBuffer
+  if (vkResetCommandPool(device, _handle, flags) != VK_SUCCESS) {
+    throw std::runtime_error("failed to reset command pool!");
+  }
+}
 
 VulkanDevice::~VulkanDevice() { shutdown(); }
 
@@ -40,11 +70,10 @@ void VulkanDevice::createInstance() {
 }
 
 void VulkanDevice::shutdown() {
-  if (commandPool != VK_NULL_HANDLE) {
-    vkDestroyCommandPool(device, commandPool, nullptr);
-    commandPool = VK_NULL_HANDLE;
+  if (device != VK_NULL_HANDLE) {
+    vkDeviceWaitIdle(device); // 关键：确保 GPU 活干完了再拆迁
   }
-
+  mp_graphicsCmdPool = nullptr;
   if (device != VK_NULL_HANDLE) {
     vkDestroyDevice(device, nullptr);
     device = VK_NULL_HANDLE;
@@ -114,15 +143,30 @@ void VulkanDevice::createLogicalDevice() {
 }
 
 void VulkanDevice::createCommandPool() {
-  VkCommandPoolCreateInfo poolInfo{};
-  poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-  poolInfo.queueFamilyIndex = graphicsQueueFamilyIndex;
-  poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+  mp_graphicsCmdPool =
+      VulkanCommandPool::create(device, graphicsQueueFamilyIndex);
+}
 
-  if (vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool) !=
-      VK_SUCCESS) {
-    throw std::runtime_error("Failed to create command pool!");
+uint32_t VulkanDevice::findMemoryTypeIndex(uint32_t typeFilter,
+                                      VkMemoryPropertyFlags properties) {
+  VkPhysicalDeviceMemoryProperties memProps;
+  vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProps);
+
+  for (uint32_t i = 0; i < memProps.memoryTypeCount; ++i) {
+    if ((typeFilter & (1 << i)) &&
+        (memProps.memoryTypes[i].propertyFlags & properties) == properties) {
+      return i;
+    }
   }
+
+  throw std::runtime_error("Failed to find suitable memory type");
+}
+
+VulkanCommandBufferPtr VulkanDevice::newCmdBuffer(
+    VkCommandBufferUsageFlags usage,
+    VkCommandBufferLevel level) {
+  return VulkanCommandBuffer::create(device, mp_graphicsCmdPool->getHandle(),
+                                     usage, level);
 }
 
 } // namespace LX_core::graphic_backend

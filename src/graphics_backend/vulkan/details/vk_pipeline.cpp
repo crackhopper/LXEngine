@@ -100,9 +100,9 @@ VulkanPipelineLayout::~VulkanPipelineLayout() {
     vkDestroyPipelineLayout(dev->getHandle(), m_layout, nullptr);
 }
 
-void VulkanPipelineLayout::setDescriptorSetLayout(
+void VulkanPipelineLayout::addDescriptorSetLayout(
     VkDescriptorSetLayout layout) {
-  m_descriptorLayout = layout;
+  m_descriptorLayouts.push_back(layout);
 }
 
 bool VulkanPipelineLayout::build() {
@@ -113,8 +113,8 @@ bool VulkanPipelineLayout::build() {
 
   VkPipelineLayoutCreateInfo info{};
   info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-  info.setLayoutCount = 1;
-  info.pSetLayouts = &m_descriptorLayout;
+  info.setLayoutCount = static_cast<uint32_t>(m_descriptorLayouts.size());
+  info.pSetLayouts = m_descriptorLayouts.data();
 
   return vkCreatePipelineLayout(dev->getHandle(), &info, nullptr, &m_layout) ==
          VK_SUCCESS;
