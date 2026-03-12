@@ -1,3 +1,4 @@
+
 set(CORE_LIB LX_Core CACHE INTERNAL "Core library name")
 
 file(GLOB_RECURSE CORE_SOURCES

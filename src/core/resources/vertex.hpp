@@ -4,6 +4,7 @@
 #include <functional>
 #include <tuple>
 #include <unordered_map>
+#include <string>
 namespace LX_core {
 // CRTP技术：基类模板使用派生类自身作为模板参数。
 // - 本质上在基类中扩展子类的方法，但是用编译期多态实现。
@@ -55,6 +56,22 @@ struct VertexPosNormalUV : VertexBase<VertexPosNormalUV> {
       : pos(pos), normal(normal), uv(uv) {}
 
   auto as_tuple() const { return std::tie(pos, normal, uv); }
+};
+
+
+// 渲染流程使用的顶点格式
+struct alignas(16) VertexBlinnPhong : VertexBase<VertexBlinnPhong> {
+  Vec3f pos;
+  f32 padding1;
+  Vec3f normal;
+  f32 padding2;
+  Vec2f uv;
+  f32 padding3[2];
+  Vec3f color;
+  f32 padding4;
+  Vec4f tangent;
+  Vec4i boneIDs;
+  Vec4f boneWeights;
 };
 } // namespace LX_core
 

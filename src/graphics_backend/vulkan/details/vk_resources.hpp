@@ -156,6 +156,8 @@ public:
 
   void update(const void *data, VkDeviceSize size);
   VkBuffer getHandle() const { return mBuffer; }
+  VkBuffer getBuffer() const { return mBuffer; }
+  VkDeviceSize getSize() const { return mSize; }
 
 private:
   VkDevice mDevice = VK_NULL_HANDLE;

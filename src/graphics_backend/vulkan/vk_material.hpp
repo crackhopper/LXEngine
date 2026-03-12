@@ -1,67 +1,54 @@
 #pragma once
 
+// TODO: 迁移至 MaterialResourceBinding。
+// VulkanMaterial 当前作为占位，待 MaterialBase 暴露 GPU 资源句柄后，
+// 由 MaterialResourceBinding 统一管理 descriptor set。
+
 #include <memory>
 #include <vector>
 #include <vulkan/vulkan.h>
 
 #include "vk_device.hpp"
 #include "details/vk_resources.hpp"
-#include "details/vk_descriptor_allocator.hpp"
+#include "details/vk_texture.hpp"
 
 namespace LX_core::graphic_backend {
 
-
-
-class VulkanPipeline;
-using VulkanPipelinePtr = std::unique_ptr<VulkanPipeline>;
+class VulkanMaterial;
+using VulkanMaterialPtr = std::unique_ptr<VulkanMaterial>;
 
 class VulkanMaterial {
 public:
-  VulkanMaterial(VulkanDevice& device,
-                 std::shared_ptr<VulkanDescriptorAllocator> allocator);
+  explicit VulkanMaterial(VulkanDevice &device);
   ~VulkanMaterial();
-
-  void setPipeline(VulkanPipelinePtr pipeline);
 
   void setDescriptorSetLayout(VkDescriptorSetLayout layout);
 
-  void bindTexture(uint32_t binding, VulkanTexturePtr texture);
-
-  void bindUniformBuffer(uint32_t binding, VulkanUniformBufferPtr ubo);
+  void bindTexture(uint32_t binding, VulkanTexture &texture);
+  void bindUniformBuffer(uint32_t binding, VulkanUniformBuffer &ubo);
 
   void buildDescriptorSet();
 
   VkDescriptorSet descriptorSet() const { return m_descriptorSet; }
 
-  VulkanPipelinePtr pipeline() const { return m_pipeline; }
-
 private:
-  VulkanDeviceWeakPtr m_device;
-
-  VulkanPipelinePtr m_pipeline;
+  VulkanDevice &m_device;
 
   VkDescriptorSetLayout m_descriptorLayout = VK_NULL_HANDLE;
-
-  std::shared_ptr<VulkanDescriptorAllocator> m_allocator;
-
-
   VkDescriptorSet m_descriptorSet = VK_NULL_HANDLE;
 
   struct TextureBinding {
     uint32_t binding;
-    VulkanTexturePtr texture;
-    // VkDescriptorType type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    VulkanTexture *texture;
   };
 
   struct UniformBinding {
     uint32_t binding;
-    VulkanUniformBufferPtr ubo;
+    VulkanUniformBuffer *ubo;
   };
 
   std::vector<TextureBinding> m_textures;
   std::vector<UniformBinding> m_uniforms;
 };
-
-using VulkanMaterialPtr = std::shared_ptr<VulkanMaterial>;
 
 } // namespace LX_core::graphic_backend

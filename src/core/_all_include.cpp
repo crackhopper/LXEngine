@@ -1,2 +1,3 @@
-#include "math.hpp"
-#include "platform.hpp"
+#include "math/mat.hpp"
+#include "math/quat.hpp"
+#include "math/vec.hpp"

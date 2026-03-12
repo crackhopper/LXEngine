@@ -12,7 +12,6 @@ class VulkanDevice;
 class VulkanCommandPool;
 class VulkanDescriptorAllocator;
 
-// 全局唯一对象仅支持 unique_ptr。
 using VulkanDevicePtr = std::unique_ptr<VulkanDevice>;
 using VulkanCommandPoolPtr = std::unique_ptr<VulkanCommandPool>;
 using VulkanCommandBufferPtr = std::unique_ptr<VulkanCommandBuffer>;
@@ -56,22 +55,23 @@ protected:
   VkCommandPool _handle{VK_NULL_HANDLE};
 };
 
-class VulkanDevice : public std::enable_shared_from_this<VulkanDevice> {
-  void shutdown();
+class VulkanDevice {
   struct Token {};
 
 public:
   VulkanDevice(Token) {}
+  VulkanDevice() = default;
   ~VulkanDevice();
+
   static VulkanDevicePtr create() {
     auto ptr = std::make_unique<VulkanDevice>(Token{});
     ptr->initialize();
     return ptr;
   }
-  // 初始化 Vulkan Instance、Device、Queue、CommandPool
-  void initialize();
 
-  // 获取 Vulkan 核心对象
+  void initialize();
+  void shutdown();
+
   VkDevice getDevice() const { return device; }
   VkPhysicalDevice getPhysicalDevice() const { return physicalDevice; }
   VkQueue getGraphicsQueue() const { return graphicsQueue; }
@@ -82,6 +82,7 @@ public:
 
   VkInstance getInstance() const { return instance; }
   VkDevice getHandle() const { return device; }
+  VkCommandPool getCommandPool() const { return mp_graphicsCmdPool ? mp_graphicsCmdPool->getHandle() : VK_NULL_HANDLE; }
 
   uint32_t findMemoryTypeIndex(uint32_t typeFilter,
                           VkMemoryPropertyFlags properties);

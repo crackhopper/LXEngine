@@ -48,7 +48,6 @@ target_link_libraries(${PROJECT_NAME}
   ${CORE_LIB}
   ${INFRA_LIB}
   ${GRAPHICS_LIB}
-  ${APPLICATION_LIB}
 )
 add_dependencies(${PROJECT_NAME} CompileShaders)
 if (WIN32)

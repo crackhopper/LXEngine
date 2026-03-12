@@ -1,10 +1,11 @@
 #pragma once
-#include "core/resources/material.hpp"
-#include "core/resources/skeleton.hpp"
-#include "core/scene/camera.hpp"
-#include "core/scene/light.hpp"
-#include "vk_device.hpp"
+#include "../vk_device.hpp"
+#include <array>
+#include <cassert>
+#include <exception>
 #include <memory>
+#include <stdexcept>
+#include <string>
 #include <unordered_map>
 #include <vector>
 #include <vulkan/vulkan.h>
@@ -74,8 +75,24 @@
  * 我们这个文件，目前v1.0版本，仅考虑常规的渲染下的资源绑定。
  *
  */
-
 namespace LX_core::graphic_backend {
+
+enum DescriptorSetLayoutIndex {
+  DSLI_Camera = 0,
+  DSLI_Light = 1,
+  DSLI_Material = 2,
+  DSLI_Skeleton = 3,
+
+  DSLI_NUM_LAYOUT = 4,
+};
+
+struct DescriptorSetLayoutCreateInfo {
+  DescriptorSetLayoutIndex index;
+  VkDescriptorSetLayout layout = VK_NULL_HANDLE;
+  VkDescriptorSetLayoutCreateInfo layoutInfo;
+  std::vector<VkDescriptorSetLayoutBinding> bindings;
+  std::vector<VkDescriptorPoolSize> poolSizes;
+};
 
 // 描述符集分配器
 // - 描述符集，需要从描述符池来分配。这里简单做法是，用一个足够大的描述符池。
@@ -88,36 +105,57 @@ using VulkanDescriptorAllocatorPtr = std::unique_ptr<VulkanDescriptorAllocator>;
 class VulkanDescriptorAllocator {
   struct Token {};
 
-  void createPool();
-
 public:
   VulkanDescriptorAllocator(Token, VulkanDevice &device) : device(device) {
-    createPool();
+    // 风险点 1: 硬编码的池大小。
+    // 如果渲染对象极多（如成千上万个材质实例），vkAllocateDescriptorSets
+    // 会失败。 改进建议：实现一个 Pool 链，当当前池满时自动创建新池。
+    std::array<VkDescriptorPoolSize, 3> poolSizes{};
+    poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    poolSizes[0].descriptorCount = uniformCount;
+    poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    poolSizes[1].descriptorCount = samplerCount;
+    poolSizes[2].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    poolSizes[2].descriptorCount = storageCount;
+
+    VkDescriptorPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
+    poolInfo.pPoolSizes = poolSizes.data();
+    poolInfo.maxSets = maxSetCount;
+    // 注意：这里没有设置 VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT
+    // 因为我们目前采用的是手动 freeSets 缓存复用逻辑，而不是真正归还给 Vulkan
+    // 池。
+
+    if (vkCreateDescriptorPool(device.getHandle(), &poolInfo, nullptr,
+                               &hPool) != VK_SUCCESS) {
+      throw std::runtime_error("failed to create descriptor pool!");
+    }
   }
   ~VulkanDescriptorAllocator() {
-    // 确保没有未释放的 descriptor set
     for (auto &[layout, sets] : usedSets) {
       assert(sets.empty());
     }
-    // 释放所有layout
-    for (auto &[name, layout] : layoutMap) {
-      vkDestroyDescriptorSetLayout(device.getHandle(), layout, nullptr);
+    for (auto &[name, info] : layoutInfo) {
+      vkDestroyDescriptorSetLayout(device.getHandle(), info.layout, nullptr);
     }
   }
 
-  // 模板定义在cpp。这两个函数仅可以在cpp中调用。
   template <typename T, typename Data>
   bool allocate(ResourceBindingBase<T, Data> &resourceBinding);
   template <typename T, typename Data>
   void free(ResourceBindingBase<T, Data> &resourceBinding);
 
-  static VulkanDescriptorAllocatorPtr create(VulkanDevice &device);
+  static VulkanDescriptorAllocatorPtr create(VulkanDevice &device) {
+    return std::make_unique<VulkanDescriptorAllocator>(Token{}, device);
+  }
 
 private:
   VulkanDevice &device;
   VkDescriptorPool hPool = VK_NULL_HANDLE;
 
-  std::unordered_map<std::string, VkDescriptorSetLayout> layoutMap;
+  std::unordered_map<DescriptorSetLayoutIndex, DescriptorSetLayoutCreateInfo>
+      layoutInfo;
   // 已分配列表，方便复用
   std::unordered_map<VkDescriptorSetLayout, std::vector<VkDescriptorSet>>
       usedSets;
@@ -129,6 +167,60 @@ private:
   uint32_t uniformCount = 1000;
   uint32_t storageCount = 1000;
 };
+
+template <typename T, typename Data>
+bool VulkanDescriptorAllocator::allocate(
+    ResourceBindingBase<T, Data> &resourceBinding) {
+  assert(hPool != VK_NULL_HANDLE);
+  auto layout = resourceBinding.getLayoutHandle();
+  if (layout != VK_NULL_HANDLE && !freeSets[layout].empty()) {
+    resourceBinding.descriptorSet = freeSets[layout].back();
+    freeSets[layout].pop_back();
+    usedSets[layout].push_back(resourceBinding.descriptorSet);
+    return true;
+  }
+  if (layout == VK_NULL_HANDLE) {
+    auto layoutCreateInfo = resourceBinding.getLayoutCreateInfo();
+    if (layoutInfo.find(layoutCreateInfo.index) != layoutInfo.end()) {
+      layout = layoutInfo[layoutCreateInfo.index].layout;
+    } else {
+      if (vkCreateDescriptorSetLayout(device.getHandle(),
+                                      &layoutCreateInfo.layoutInfo, nullptr,
+                                      &layout) != VK_SUCCESS) {
+        return false;
+      }
+      layoutCreateInfo.layout = layout;
+      layoutInfo[layoutCreateInfo.index] = layoutCreateInfo;
+    }
+    resourceBinding.layout = layout;
+  }
+
+  VkDescriptorSetAllocateInfo allocInfo{};
+  allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+  allocInfo.descriptorPool = hPool;
+  allocInfo.pSetLayouts = &layout;
+  allocInfo.descriptorSetCount = 1;
+
+  VkResult result = vkAllocateDescriptorSets(device.getHandle(), &allocInfo,
+                                             &resourceBinding.descriptorSet);
+  usedSets[layout].push_back(resourceBinding.descriptorSet);
+  return result == VK_SUCCESS;
+}
+
+template <typename T, typename Data>
+void VulkanDescriptorAllocator::free(
+    ResourceBindingBase<T, Data> &resourceBinding) {
+  auto layout = resourceBinding.getLayoutHandle();
+  if (layout == VK_NULL_HANDLE) {
+    return;
+  }
+  auto it = std::find(usedSets[layout].begin(), usedSets[layout].end(),
+                      resourceBinding.descriptorSet);
+  if (it != usedSets[layout].end()) {
+    usedSets[layout].erase(it);
+    freeSets[layout].push_back(resourceBinding.descriptorSet);
+  }
+}
 
 // 描述符集绑定的基类。
 template <typename Derived, typename Data> class ResourceBindingBase {
@@ -151,18 +243,10 @@ public:
   }
   virtual void init();
 
-  struct LayoutCreateInfo {
-    std::string name; // 同一个layout的name，会被用来标识。
-    VkDescriptorSetLayoutCreateInfo layoutInfo;
-    std::vector<VkDescriptorSetLayoutBinding> bindings;
-    std::vector<VkDescriptorPoolSize> poolSizes;
-  };
-
-  virtual LayoutCreateInfo getLayoutCreateInfo() = 0;
+  virtual DescriptorSetLayoutCreateInfo getLayoutCreateInfo() = 0;
 
   // 更新描述符集。
-  virtual void update(VulkanDevice &device,
-                      const Data &data) = 0;
+  virtual void update(VulkanDevice &device, const Data &data) = 0;
 
   VkDescriptorSet getDescriptorSetHandle() const { return descriptorSet; }
   VkDescriptorSetLayout getLayoutHandle() const { return layout; }
@@ -175,103 +259,12 @@ protected:
   friend class VulkanDescriptorAllocator;
 };
 
-class CameraResourceBinding
-    : public ResourceBindingBase<CameraResourceBinding, LX_core::Camera> {
-
-public:
-  CameraResourceBinding(Base::Token, VulkanDevice &device, const LX_core::Camera &camera);
-  ~CameraResourceBinding() = default;
-
-  static Ptr create(VulkanDevice &device, const LX_core::Camera &camera);
-
-  LayoutCreateInfo getLayoutCreateInfo() override;
-  // 更新描述符集。
-  void update(VulkanDevice &device, const LX_core::Camera &data) override;
-};
-
-class MaterialResourceBinding
-    : public ResourceBindingBase<MaterialResourceBinding, LX_core::MaterialBase> {
-  struct Token {};
-
-public:
-  MaterialResourceBinding(Base::Token, VulkanDevice &device, const LX_core::MaterialBase &material);
-  ~MaterialResourceBinding() = default;
-
-  LayoutCreateInfo getLayoutCreateInfo() override;
-  void update(VulkanDevice &device, const LX_core::MaterialBase &data) override;
-};
-
-class SkeletonResourceBinding
-    : public ResourceBindingBase<SkeletonResourceBinding, LX_core::Skeleton> {
-  struct Token {};
-
-public:
-  SkeletonResourceBinding(Base::Token, VulkanDevice &device, const LX_core::Skeleton &skeleton);
-  ~SkeletonResourceBinding() = default;
-
-  LayoutCreateInfo getLayoutCreateInfo() override;
-  void update(VulkanDevice &device, const LX_core::Skeleton &data) override;
-};
-
-// 给 resourceBinding 分配 descriptor set；随后由 resourceBinding
-// 来管理DesciptorSet的生命周期。
-template <typename T, typename Data>
-bool VulkanDescriptorAllocator::allocate(
-    ResourceBindingBase<T, Data> &resourceBinding) {
-  assert(hPool != VK_NULL_HANDLE);
-  auto layout = resourceBinding.getLayoutHandle();
-  if (layout != VK_NULL_HANDLE && !freeSets[layout].empty()) {
-    resourceBinding.descriptorSet = freeSets[layout].back();
-    freeSets[layout].pop_back();
-    usedSets[layout].push_back(resourceBinding.descriptorSet);
-    return true;
-  }
-  if (layout == VK_NULL_HANDLE) {
-    typename ResourceBindingBase<T>::LayoutCreateInfo layoutCreateInfo =
-        resourceBinding.getLayoutCreateInfo();
-    if (layoutMap.find(layoutCreateInfo.name) != layoutMap.end()) {
-      layout = layoutMap[layoutCreateInfo.name];
-    } else {
-      if (vkCreateDescriptorSetLayout(hDevice, &layoutCreateInfo.layoutInfo,
-                                      nullptr, &layout) != VK_SUCCESS) {
-        return false;
-      }
-    }
-    layoutMap[layoutCreateInfo.name] = layout;
-    resourceBinding.layout = layout;
-  }
-
-  VkDescriptorSetAllocateInfo allocInfo{};
-  allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-  allocInfo.descriptorPool = hPool;
-  allocInfo.pSetLayouts = &layout;
-  allocInfo.descriptorSetCount = 1;
-
-  VkResult result = vkAllocateDescriptorSets(device.getHandle(), &allocInfo,
-                                             &resourceBinding.descriptorSet);
-  usedSets[layout].push_back(resourceBinding.descriptorSet);
-  return result == VK_SUCCESS;
-}
-
-template <typename T, typename Data>
-void VulkanDescriptorAllocator::free(ResourceBindingBase<T, Data> &resourceBinding) {
-  auto layout = resourceBinding.getLayoutHandle();
-  if (layout == VK_NULL_HANDLE) {
-    return;
-  }
-  auto it = std::find(usedSets[layout].begin(), usedSets[layout].end(),
-                      resourceBinding.descriptorSet);
-  if (it != usedSets[layout].end()) {
-    usedSets[layout].erase(it);
-    freeSets[layout].push_back(resourceBinding.descriptorSet);
-  }
-}
-
 template <typename Derived, typename Data>
 ResourceBindingBase<Derived, Data>::ResourceBindingBase(
     Token, VulkanDevice &device, VulkanDescriptorAllocator &allocator)
     : hDevice(device.getHandle()), allocator(allocator) {}
-template <typename Derived, typename Data> void ResourceBindingBase<Derived, Data>::init() {
+template <typename Derived, typename Data>
+void ResourceBindingBase<Derived, Data>::init() {
   allocator.allocate(*this);
 }
 
@@ -283,4 +276,5 @@ ResourceBindingBase<Derived, Data>::~ResourceBindingBase() {
     layout = VK_NULL_HANDLE;
   }
 }
+
 } // namespace LX_core::graphic_backend

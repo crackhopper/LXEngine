@@ -16,8 +16,7 @@ VulkanRenderer::~VulkanRenderer() { shutdown(); }
 // ============================================================
 
 void VulkanRenderer::initialize() {
-  m_device = std::make_shared<VulkanDevice>();
-  m_device->initialize();
+  m_device = VulkanDevice::create();
 
   createSurface();
 
@@ -30,12 +29,8 @@ void VulkanRenderer::initialize() {
   createCommandBuffers();
   createSyncObjects();
 
-  m_descriptorAllocator =
-      std::make_shared<VulkanDescriptorAllocator>(m_device);
-
-  createDefaultPipeline();
   createCameraResources();
-  createDefaultMaterial();
+  createDefaultPipeline();
 }
 
 void VulkanRenderer::shutdown() {
@@ -46,17 +41,12 @@ void VulkanRenderer::shutdown() {
   vkDeviceWaitIdle(device);
 
   m_drawCommands.clear();
-  m_materialMap.clear();
-  m_defaultMaterial.reset();
   m_meshMap.clear();
   m_textureMap.clear();
   m_frames.clear();
 
-  m_descriptorAllocator.reset();
   m_graphicsPipeline.reset();
   m_pipelineLayout.reset();
-  m_materialSetLayout.reset();
-  m_cameraSetLayout.reset();
 
   for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
     if (m_imageAvailableSems[i])
@@ -71,7 +61,7 @@ void VulkanRenderer::shutdown() {
   m_inFlightFences = {};
 
   for (auto &fb : m_framebuffers)
-    fb.destroy(m_device);
+    fb.destroy(*m_device);
   m_framebuffers.clear();
 
   if (m_renderPass != VK_NULL_HANDLE) {
@@ -152,7 +142,7 @@ void VulkanRenderer::createFramebuffers() {
 
   for (size_t i = 0; i < imageViews.size(); ++i) {
     VkImageView attachment = imageViews[i];
-    m_framebuffers[i].create(m_device, m_renderPass, &attachment, 1,
+    m_framebuffers[i].create(*m_device, m_renderPass, &attachment, 1,
                              m_swapchain.getExtent());
   }
 }
@@ -195,30 +185,26 @@ void VulkanRenderer::createSyncObjects() {
 }
 
 void VulkanRenderer::createDefaultPipeline() {
-  // Set 0: camera UBO (per-frame)
-  m_cameraSetLayout = std::make_shared<VulkanDescriptorSetLayout>(m_device);
-  m_cameraSetLayout->addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                                VK_SHADER_STAGE_VERTEX_BIT);
-  m_cameraSetLayout->build();
+  auto &dev = *m_device;
 
-  // Set 1: material albedo sampler (per-draw)
-  m_materialSetLayout = std::make_shared<VulkanDescriptorSetLayout>(m_device);
-  m_materialSetLayout->addBinding(0,
-                                  VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                                  VK_SHADER_STAGE_FRAGMENT_BIT);
-  m_materialSetLayout->build();
+  VkDescriptorSetLayout cameraLayout =
+      m_frames[0].cameraBinding->getLayoutHandle();
 
-  m_pipelineLayout = std::make_shared<VulkanPipelineLayout>(m_device);
-  m_pipelineLayout->addDescriptorSetLayout(m_cameraSetLayout->layout());
-  m_pipelineLayout->addDescriptorSetLayout(m_materialSetLayout->layout());
+  LX_core::MaterialBlinnPhong defaultMat;
+  auto tempBinding = MaterialResourceBinding::create(dev, defaultMat);
+  VkDescriptorSetLayout materialLayout = tempBinding->getLayoutHandle();
+
+  m_pipelineLayout = std::make_unique<VulkanPipelineLayout>(dev);
+  m_pipelineLayout->addDescriptorSetLayout(cameraLayout);
+  m_pipelineLayout->addDescriptorSetLayout(materialLayout);
   m_pipelineLayout->build();
 
-  auto vertShader = std::make_shared<VulkanShaderModule>(m_device);
-  auto fragShader = std::make_shared<VulkanShaderModule>(m_device);
+  auto vertShader = std::make_unique<VulkanShaderModule>(dev);
+  auto fragShader = std::make_unique<VulkanShaderModule>(dev);
   vertShader->loadFromFile("shaders/default.vert.spv");
   fragShader->loadFromFile("shaders/default.frag.spv");
 
-  m_graphicsPipeline = std::make_shared<VulkanGraphicsPipeline>(m_device);
+  m_graphicsPipeline = std::make_unique<VulkanGraphicsPipeline>(dev);
   m_graphicsPipeline->build(m_renderPass, m_pipelineLayout->layout(),
                             m_swapchain.getExtent(), vertShader.get(),
                             fragShader.get());
@@ -226,29 +212,10 @@ void VulkanRenderer::createDefaultPipeline() {
 
 void VulkanRenderer::createCameraResources() {
   for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-    m_frames.emplace_back(m_device);
-    auto &frame = m_frames.back();
-
-    frame.cameraUBO.create(sizeof(CameraUBO));
-
-    VkDescriptorSetLayout layout = m_cameraSetLayout->layout();
-    frame.descriptorSet = m_descriptorAllocator->allocate(&layout, 1);
-
-    VkDescriptorBufferInfo bufInfo{};
-    bufInfo.buffer = frame.cameraUBO.getBuffer();
-    bufInfo.offset = 0;
-    bufInfo.range = sizeof(CameraUBO);
-
-    VkWriteDescriptorSet write{};
-    write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    write.dstSet = frame.descriptorSet;
-    write.dstBinding = 0;
-    write.dstArrayElement = 0;
-    write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    write.descriptorCount = 1;
-    write.pBufferInfo = &bufInfo;
-
-    vkUpdateDescriptorSets(m_device->getDevice(), 1, &write, 0, nullptr);
+    PerFrameData frame;
+    frame.cameraBinding =
+        CameraResourceBinding::create(*m_device, m_camera);
+    m_frames.push_back(std::move(frame));
   }
 }
 
@@ -260,59 +227,14 @@ void VulkanRenderer::uploadMesh(LX_core::MeshPtr mesh) {
   if (m_meshMap.count(mesh.get()))
     return;
 
-  auto gpuMesh = std::make_shared<VulkanMesh>(m_device);
-  gpuMesh->upload(*mesh);
-  m_meshMap[mesh.get()] = gpuMesh;
+  m_meshMap[mesh.get()] = VulkanMesh::create(*m_device, *mesh);
 }
 
 void VulkanRenderer::uploadTexture(LX_core::TexturePtr texture) {
   if (m_textureMap.count(texture.get()))
     return;
 
-  auto gpuTex = std::make_shared<VulkanTexture>(m_device);
-  gpuTex->upload(*texture);
-  m_textureMap[texture.get()] = gpuTex;
-}
-
-void VulkanRenderer::createDefaultMaterial() {
-  std::vector<uint8_t> whitePixel = {255, 255, 255, 255};
-  LX_core::TextureDesc desc{1, 1, LX_core::TextureFormat::RGBA8};
-  LX_core::Texture whiteTex(desc, std::move(whitePixel));
-
-  auto gpuTex = std::make_shared<VulkanTexture>(m_device);
-  gpuTex->upload(whiteTex);
-
-  m_defaultMaterial =
-      std::make_shared<VulkanMaterial>(m_device, m_descriptorAllocator);
-  m_defaultMaterial->setDescriptorSetLayout(m_materialSetLayout->layout());
-  m_defaultMaterial->bindTexture(0, gpuTex);
-  m_defaultMaterial->buildDescriptorSet();
-}
-
-VulkanMaterialPtr
-VulkanRenderer::getOrCreateMaterial(LX_core::MaterialPtr material) {
-  if (!material || !material->albedoMap.has_value())
-    return m_defaultMaterial;
-
-  auto it = m_materialMap.find(material.get());
-  if (it != m_materialMap.end())
-    return it->second;
-
-  auto &coreTex = material->albedoMap.value();
-  uploadTexture(coreTex);
-
-  auto texIt = m_textureMap.find(coreTex.get());
-  if (texIt == m_textureMap.end())
-    return m_defaultMaterial;
-
-  auto gpuMat =
-      std::make_shared<VulkanMaterial>(m_device, m_descriptorAllocator);
-  gpuMat->setDescriptorSetLayout(m_materialSetLayout->layout());
-  gpuMat->bindTexture(0, texIt->second);
-  gpuMat->buildDescriptorSet();
-
-  m_materialMap[material.get()] = gpuMat;
-  return gpuMat;
+  m_textureMap[texture.get()] = VulkanTexture::create(*m_device, *texture);
 }
 
 // ============================================================
@@ -321,8 +243,8 @@ VulkanRenderer::getOrCreateMaterial(LX_core::MaterialPtr material) {
 
 void VulkanRenderer::setCamera(const LX_core::Mat4f &view,
                                const LX_core::Mat4f &proj) {
-  m_cameraData.view = view;
-  m_cameraData.proj = proj;
+  m_camera.viewMatrix = view;
+  m_camera.projMatrix = proj;
 }
 
 void VulkanRenderer::drawMesh(LX_core::MeshPtr mesh,
@@ -346,7 +268,20 @@ void VulkanRenderer::flush() {
 
   vkResetFences(device, 1, &m_inFlightFences[m_currentFrame]);
 
-  m_frames[m_currentFrame].cameraUBO.update(&m_cameraData, sizeof(CameraUBO));
+  m_frames[m_currentFrame].cameraBinding->update(*m_device, m_camera);
+
+  auto &matBindings = m_frames[m_currentFrame].materialBindings;
+  for (auto &dc : m_drawCommands) {
+    if (!dc.material)
+      continue;
+    auto *key = dc.material.get();
+    auto it = matBindings.find(key);
+    if (it == matBindings.end()) {
+      matBindings[key] =
+          MaterialResourceBinding::create(*m_device, *dc.material);
+    }
+    matBindings[key]->update(*m_device, *dc.material);
+  }
 
   VkCommandBuffer cmd = m_commandBuffers[m_currentFrame];
   vkResetCommandBuffer(cmd, 0);
@@ -414,9 +349,10 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer cmd,
 
     VkPipelineLayout layout = m_pipelineLayout->layout();
 
+    VkDescriptorSet cameraSet =
+        m_frames[m_currentFrame].cameraBinding->getDescriptorSetHandle();
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1,
-                            &m_frames[m_currentFrame].descriptorSet, 0,
-                            nullptr);
+                            &cameraSet, 0, nullptr);
 
     VkExtent2D extent = m_swapchain.getExtent();
 
@@ -436,21 +372,25 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer cmd,
         continue;
 
       auto &gpuMesh = meshIt->second;
-      if (!gpuMesh->vertexBuffer || !gpuMesh->indexBuffer)
+      if (gpuMesh->getIndexCount() == 0)
         continue;
 
-      auto gpuMat = getOrCreateMaterial(dc.material);
-      VkDescriptorSet matSet = gpuMat->descriptorSet();
-      vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 1,
-                              1, &matSet, 0, nullptr);
+      auto matIt =
+          m_frames[m_currentFrame].materialBindings.find(dc.material.get());
+      if (matIt != m_frames[m_currentFrame].materialBindings.end()) {
+        VkDescriptorSet materialSet =
+            matIt->second->getDescriptorSetHandle();
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout,
+                                1, 1, &materialSet, 0, nullptr);
+      }
 
-      VkBuffer vertexBuffers[] = {gpuMesh->vertexBuffer->buffer};
+      VkBuffer vertexBuffers[] = {gpuMesh->getVertexBuffer().getHandle()};
       VkDeviceSize offsets[] = {0};
       vkCmdBindVertexBuffers(cmd, 0, 1, vertexBuffers, offsets);
-      vkCmdBindIndexBuffer(cmd, gpuMesh->indexBuffer->buffer, 0,
+      vkCmdBindIndexBuffer(cmd, gpuMesh->getIndexBuffer().getHandle(), 0,
                            VK_INDEX_TYPE_UINT32);
 
-      vkCmdDrawIndexed(cmd, gpuMesh->indexCount, 1, 0, 0, 0);
+      vkCmdDrawIndexed(cmd, gpuMesh->getIndexCount(), 1, 0, 0, 0);
     }
   }
 
