@@ -10,6 +10,24 @@
 
 namespace LX_core {
 
+class IRenderable {
+public:
+  virtual ~IRenderable() = default;
+  virtual IRenderResourcePtr getVertexBuffer() const = 0;
+  virtual IRenderResourcePtr getIndexBuffer() const = 0;
+  virtual std::vector<IRenderResourcePtr> getDescriptorResources() const = 0;
+  virtual ShaderPtr getVertexShader() const = 0;
+  virtual ShaderPtr getFragmentShader() const = 0;
+  virtual ResourcePassFlag getPassMask() const = 0;
+  virtual VertexFormat getVertexFormat() const = 0;
+
+  virtual IRenderResourcePtr getPushConstant() const{
+    return nullptr;
+  }  
+};
+
+using IRenderablePtr = std::shared_ptr<IRenderable>;
+
 // push constant
 struct alignas(16) ObjectPC : public IRenderResource {
   ObjectPC(ResourcePassFlag passFlag = ResourcePassFlag::Forward)
@@ -23,10 +41,7 @@ struct alignas(16) ObjectPC : public IRenderResource {
   };
   Param param;
 
-  virtual ResourcePassFlag
-  getPassFlag() const override {
-    return passFlag;
-  }
+  virtual ResourcePassFlag getPassFlag() const override { return passFlag; }
   virtual ResourceType getType() const override {
     return ResourceType::PushConstant;
   }
@@ -39,44 +54,67 @@ private:
 
 using ObjectPCPtr = std::shared_ptr<ObjectPC>;
 
-template <typename VertexType> class RenderableMesh : public IComponent {
+// 渲染子网格，先仅支持1个网格。
+template <typename VType> struct RenderableSubMesh : public IRenderable {
 public:
-  template <typename VType> struct SubObject : public IComponent {
-    MeshPtr<VType> mesh;
-    std::optional<MaterialPtr> material;
-    std::optional<SkeletonPtr> skeleton;
-    virtual std::vector<IRenderResourcePtr> getRenderResources() override {
-      auto &resources = getRenderResources();
-      std::vector<IRenderResourcePtr> ret{resources.begin(), resources.end()};
-      if (material) {
-        auto &resources = getRenderResources();
-        ret.insert(ret.end(), resources.begin(), resouces.end());
-      }
-      if (skeleton) {
-        auto &resources = getRenderResources();
-        ret.insert(ret.end(), resources.begin(), resouces.end());
-      }
-      return ret;
-    }
-  };
-  RenderableMesh() = default;
-  ~RenderableMesh() = default;
+  MeshPtr<VType> mesh;
+  MaterialPtr material;
+  std::optional<SkeletonPtr> skeleton;
+  std::optional<ObjectPCPtr> objectPC;
 
-  virtual std::vector<IRenderResourcePtr> getRenderResources() override {
-    std::vector<IRenderResourcePtr> ret{objectPC->getRenderResources().begin(),
-                                        objectPC->getRenderResources().end()};
-    for (auto &subObject : m_subObjects) {
-      auto &resources = subObject.getRenderResources();
-      ret.insert(ret.end(), resources.begin(), resources.end());
+
+  virtual IRenderResourcePtr getVertexBuffer() const{
+    return mesh->vertexBuffer;
+  }
+  virtual IRenderResourcePtr getIndexBuffer() const{
+    return mesh->indexBuffer;
+  }
+  virtual std::vector<IRenderResourcePtr> getDescriptorResources() const{
+    auto res=material->getDescriptorResources();
+    std::vector<IRenderResourcePtr> ret{res.begin(),
+                                        res.end()};
+    if (skeleton.has_value()) {
+      auto skRes=skeleton.value()->getRenderResources();
+      ret.insert(ret.end(), skRes.begin(),
+                 skRes.end());
     }
     return ret;
   }
-
-private:
-  std::vector<SubObject<VertexType>> m_subObjects;
-  ObjectPCPtr objectPC;
+  virtual ShaderPtr getVertexShader() const{
+    return material->getVertexShader();
+  }
+  virtual ShaderPtr getFragmentShader() const{
+    return material->getFragmentShader();
+  }
+  virtual ResourcePassFlag getPassMask() const{
+    return material->getPassFlag();
+  }
+  virtual VertexFormat getVertexFormat() const{
+    return VType::format();
+  }
 };
 
-template <typename VertexType>
-using RenderableMeshPtr = std::shared_ptr<RenderableMesh<VertexType>>;
+// template <typename VertexType> class RenderableMesh {
+// public:
+//   RenderableMesh() = default;
+//   ~RenderableMesh() = default;
+
+//   virtual std::vector<IRenderResourcePtr> getRenderResources() const override {
+//     std::vector<IRenderResourcePtr> ret{objectPC->getRenderResources().begin(),
+//                                         objectPC->getRenderResources().end()};
+//     for (auto &subObject : m_subObjects) {
+//       auto &resources = subObject.getRenderResources();
+//       ret.insert(ret.end(), resources.begin(), resources.end());
+//     }
+//     return ret;
+//   }
+
+// private:
+//   std::vector<RenderableSubMesh<VertexType>> m_subObjects;
+//   ObjectPCPtr objectPC;
+// };
+
+// template <typename VertexType>
+// using RenderableMeshPtr = std::shared_ptr<RenderableMesh<VertexType>>;
+
 } // namespace LX_core

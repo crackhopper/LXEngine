@@ -23,7 +23,7 @@ struct alignas(16) CameraUBO : public IRenderResource {
     return m_passFlag;
   }
   virtual ResourceType getType() const override {
-    return ResourceType::DescriptorSet;
+    return ResourceType::UniformBuffer;
   }
   virtual const void *getRawData() const override {
     return &param;
@@ -90,7 +90,7 @@ public:
   }
 
   // 获取当前相机UBO数据
-  virtual std::vector<IRenderResourcePtr> getRenderResources() override {
+  virtual std::vector<IRenderResourcePtr> getRenderResources() const override {
     return {
       std::dynamic_pointer_cast<IRenderResource>(ubo)
     };

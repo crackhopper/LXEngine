@@ -6,15 +6,30 @@
 
 namespace LX_core {
 // 资源所属的pass
-enum class ResourcePassFlag : u32 { 
+enum class ResourcePassFlag : u32 {
   Forward = 0x00000001,
   Deferred = 0x00000002,
   Shadow = 0x00000004,
+
 };
+
+constexpr ResourcePassFlag operator|(ResourcePassFlag a, ResourcePassFlag b) {
+  return static_cast<ResourcePassFlag>(static_cast<u32>(a) |
+                                       static_cast<u32>(b));
+}
+
+constexpr ResourcePassFlag operator&(ResourcePassFlag a, ResourcePassFlag b) {
+  return static_cast<ResourcePassFlag>(static_cast<u32>(a) &
+                                       static_cast<u32>(b));
+}
+
+constexpr ResourcePassFlag All = ResourcePassFlag::Forward |
+                                 ResourcePassFlag::Deferred |
+                                 ResourcePassFlag::Shadow;
 
 // 管线槽位id：主要用来绑定到后端pipeline的槽位上。
 enum class PipelineSlotId : u16 {
-  None = 0,   // 非pipeline槽位
+  None = 0,    // 非pipeline槽位
   CameraUBO,   // 相机UBO参数
   MaterialUBO, // 材质UBO参数
   BoneUBO,     // 骨骼UBO参数
@@ -33,11 +48,11 @@ enum class ResourceType : u8 {
   IndexBuffer,
   VertexShader,
   FragmentShader,
-  DescriptorSet,
+  UniformBuffer,
+  CombinedImageSampler,
   Special,
-  Count  
+  Count
 };
-
 
 class IRenderResource {
 public:
@@ -54,8 +69,7 @@ public:
 
   // 资源的唯一标识符，用于在渲染管线中查找资源
   // 直接使用地址作为句柄
-  void* getResourceHandle()const {return (void*)this;}
-  
+  void *getResourceHandle() const { return (void *)this; }
 
   bool isDirty() const { return isDirty_; }
   void setDirty() { isDirty_ = true; }
@@ -66,6 +80,5 @@ private:
 };
 
 using IRenderResourcePtr = std::shared_ptr<IRenderResource>;
-
 
 } // namespace LX_core

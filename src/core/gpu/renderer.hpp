@@ -1,6 +1,6 @@
 #pragma once
 #include "../math/mat.hpp"
-#include "../scene/object.hpp"
+#include "../scene/scene.hpp"
 
 #include <memory>
 #include <vector>
@@ -17,11 +17,11 @@ public:
   // 清理 GPU 资源
   virtual void shutdown() = 0;
 
-  // 添加渲染对象
-  virtual void addRenderObject(RenderableMeshPtr<VertexType> renderableMesh) = 0;
+  // 初始化，根据场景创建后端资源。
+  virtual void initScene(ScenePtr scene) = 0;
 
-  // 同步渲染数据
-  virtual void syncRenderObjects() = 0;
+  // 上传数据
+  virtual void uploadData() = 0;
 
   // 绘制渲染对象：录制命令+提交
   virtual void draw() = 0;

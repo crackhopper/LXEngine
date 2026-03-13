@@ -105,13 +105,13 @@ struct VertexPosNormalUvBone : VertexBase<VertexPosNormalUvBone> {
 
 // 顶点缓冲
 template <typename VType>
-class VertexBuffer : public Buffer, public IRenderResource {
+class VertexBuffer : public IRenderResource {
 public:
   VertexBuffer(std::vector<VType> &&vertices,
-               RenderPassFlag passFlag = RenderPassFlag::Forward)
+               ResourcePassFlag passFlag = ResourcePassFlag::Forward)
       : m_vertices(std::move(vertices)), m_passFlag(passFlag) {}
   VertexBuffer(std::initializer_list<VType> list,
-               RenderPassFlag passFlag = RenderPassFlag::Forward)
+               ResourcePassFlag passFlag = ResourcePassFlag::Forward)
       : m_vertices(list), m_passFlag(passFlag) {}
 
   void update(const std::vector<VType> &vertices) {
@@ -121,7 +121,7 @@ public:
 
   size_t vertexCount() const { return m_vertices.size(); }
 
-  RenderPassFlag getPassFlag() const override {
+  ResourcePassFlag getPassFlag() const override {
     return m_passFlag;
   }
   ResourceType getType() const override {
@@ -130,8 +130,9 @@ public:
   const void *getRawData() const override { return m_vertices.data(); }
   u32 getByteSize() const override { return m_vertices.size() * sizeof(VType); }
 
-  static VertexFormat getVertexFormat() const { return VType::format(); }
+  static VertexFormat getVertexFormat() { return VType::format(); }
 
+  VertexFormat getFormat() const { return VType::format(); }
 private:
   std::vector<VType> m_vertices;
   ResourcePassFlag m_passFlag = ResourcePassFlag::Forward;

@@ -21,6 +21,11 @@ namespace LX_core {
 class MaterialBase : public IComponent {
 public:
   virtual ~MaterialBase() = default;
+
+  virtual ShaderPtr getVertexShader() const = 0;
+  virtual ShaderPtr getFragmentShader() const = 0;
+  virtual ResourcePassFlag getPassFlag() const = 0;
+  virtual std::vector<IRenderResourcePtr> getDescriptorResources()const = 0;
 };
 
 using MaterialPtr = std::shared_ptr<MaterialBase>; // 共享使用
@@ -41,7 +46,7 @@ struct alignas(16) MaterialBlinnPhongUbo : public IRenderResource {
 
   virtual ResourcePassFlag getPassFlag() const override { return m_passFlag; }
   virtual ResourceType getType() const override {
-    return ResourceType::DescriptorSet;
+    return ResourceType::UniformBuffer;
   }
   virtual const void *getRawData() const override { return &params; }
   virtual u32 getByteSize() const override { return sizeof(Param); }
@@ -65,17 +70,30 @@ public:
         createWhiteTexture(), PipelineSlotId::AlbedoTexture, passFlag);
     normalMap = std::make_shared<CombinedTextureSampler>(
         createWhiteTexture(), PipelineSlotId::NormalTexture, passFlag);
-        
+
     vertexShader = std::make_shared<VertexShader>("blinn_phong_0", passFlag);
     fragmentShader =
         std::make_shared<FragmentShader>("blinn_phong_0", passFlag);
   }
 
-  virtual std::vector<IRenderResourcePtr> getRenderResources() override {
+  virtual std::vector<IRenderResourcePtr> getRenderResources() const override {
     return {std::dynamic_pointer_cast<IRenderResource>(params),
             std::dynamic_pointer_cast<IRenderResource>(albedoMap),
-            std::dynamic_pointer_cast<IRenderResource>(normalMap)};
+            std::dynamic_pointer_cast<IRenderResource>(normalMap),
+            std::dynamic_pointer_cast<IRenderResource>(vertexShader),
+            std::dynamic_pointer_cast<IRenderResource>(fragmentShader),
+          };
   }
+  virtual std::vector<IRenderResourcePtr> getDescriptorResources() const override {
+    return {std::dynamic_pointer_cast<IRenderResource>(params),
+            std::dynamic_pointer_cast<IRenderResource>(albedoMap),
+            std::dynamic_pointer_cast<IRenderResource>(normalMap),
+          };
+  }
+
+  virtual ShaderPtr getVertexShader() const override { return vertexShader; }
+  virtual ShaderPtr getFragmentShader() const override { return fragmentShader; }
+  virtual ResourcePassFlag getPassFlag() const override { return m_passFlag; }
 
   MaterialBlinnPhongUboPtr params;
   CombinedTextureSamplerPtr albedoMap;

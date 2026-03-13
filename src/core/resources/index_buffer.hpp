@@ -1,11 +1,10 @@
 #pragma once
-#include "buffer.hpp"
 #include "gpu/render_resource.hpp"
-
+#include <algorithm>
 namespace LX_core {
 
 // 索引缓冲
-class IndexBuffer : public Buffer, public IRenderResource {
+class IndexBuffer : public IRenderResource {
 public:
   IndexBuffer(std::vector<u32> &&indices, ResourcePassFlag passFlag=ResourcePassFlag::Forward)
       : m_indices(std::move(indices)), m_passFlag(passFlag) {

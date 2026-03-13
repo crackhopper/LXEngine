@@ -20,6 +20,8 @@ public:
     return 0;
   }
 
+  std::string getShaderName() const { return m_shaderName; }
+
 private:
   std::string m_shaderName;
   ResourcePassFlag m_passFlag = ResourcePassFlag::Forward;

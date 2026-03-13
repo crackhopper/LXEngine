@@ -65,7 +65,7 @@ struct alignas(16) SkeletonUbo : public IRenderResource {
 
   virtual ResourcePassFlag getPassFlag() const override { return m_passFlag; }
   virtual ResourceType getType() const override {
-    return ResourceType::DescriptorSet;
+    return ResourceType::UniformBuffer;
   }
   virtual const void *getRawData() const override { return m_bones; }
   virtual u32 getByteSize() const override { return MAX_BONE_COUNT * sizeof(Mat4f); }
@@ -98,7 +98,7 @@ struct Skeleton : public IComponent {
 
   void updateUBO() { ubo->updateBy(bones); }
 
-  std::vector<IRenderResourcePtr> getRenderResources() {
+  std::vector<IRenderResourcePtr> getRenderResources() const override {
     return {std::dynamic_pointer_cast<IRenderResource>(ubo)};
   }
 

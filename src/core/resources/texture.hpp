@@ -60,9 +60,11 @@ public:
   }
 
   ResourcePassFlag getPassFlag() const override { return m_passFlag; }
-  ResourceType getType() const override { return ResourceType::DescriptorSet; }
+  ResourceType getType() const override { return ResourceType::CombinedImageSampler; }
   const void *getRawData() const override { return m_texture->data(); }
   u32 getByteSize() const override { return m_texture->size(); }
+
+  PipelineSlotId getPipelineSlotId() const override { return m_slotId; }
 
 private:
   TexturePtr m_texture;

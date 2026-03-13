@@ -13,11 +13,10 @@ class Mesh : public IComponent {
 public:
   Mesh() = default;
 
-private:
   VertexBufferPtr<VType> vertexBuffer;
   IndexBufferPtr indexBuffer;
 
-  virtual std::vector<IRenderResourcePtr> getRenderResources() override {
+  virtual std::vector<IRenderResourcePtr> getRenderResources() const override {
     return {
       std::dynamic_pointer_cast<IRenderResource>(vertexBuffer), 
       std::dynamic_pointer_cast<IRenderResource>(indexBuffer)

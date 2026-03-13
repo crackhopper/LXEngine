@@ -19,7 +19,7 @@ struct alignas(16) DirectionalLightUbo : public IRenderResource {
     return m_passFlag;
   }
   virtual ResourceType getType() const override {
-    return ResourceType::DescriptorSet;
+    return ResourceType::UniformBuffer;
   }
   virtual const void *getRawData() const override {
     return &param;
@@ -38,11 +38,14 @@ using DirectionalLightUboPtr = std::shared_ptr<DirectionalLightUbo>;
 
 class DirectionalLight : public LightBase, public IComponent {
 public:
+  DirectionalLight(ResourcePassFlag passFlag = ResourcePassFlag::Forward)
+    : ubo(std::make_shared<DirectionalLightUbo>(passFlag)) {}
   DirectionalLightUboPtr ubo;
-  virtual std::vector<IRenderResourcePtr> getRenderResources() override {
+  virtual std::vector<IRenderResourcePtr> getRenderResources() const override {
     return {
       std::dynamic_pointer_cast<IRenderResource>(ubo)
     };
   }  
 };
+using DirectionalLightPtr = std::shared_ptr<DirectionalLight>;
 } // namespace LX_core

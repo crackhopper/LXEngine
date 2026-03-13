@@ -7,6 +7,6 @@ namespace LX_core {
   class IComponent {
   public:
     virtual ~IComponent() = default;
-    virtual std::vector<IRenderResourcePtr> getRenderResources()=0;
+    virtual std::vector<IRenderResourcePtr> getRenderResources() const = 0;
   };
 }
