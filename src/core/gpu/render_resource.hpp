@@ -21,7 +21,7 @@ enum class PipelineSlotId : u16 {
   AlbedoTexture,
   NormalTexture,
   MetallicRoughnessTexture,
-  LightBuffer,
+  LightUBO,
   ShadowMap,
   Count
 };

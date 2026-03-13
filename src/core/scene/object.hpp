@@ -76,4 +76,7 @@ private:
   std::vector<SubObject<VertexType>> m_subObjects;
   ObjectPCPtr objectPC;
 };
+
+template <typename VertexType>
+using RenderableMeshPtr = std::shared_ptr<RenderableMesh<VertexType>>;
 } // namespace LX_core
