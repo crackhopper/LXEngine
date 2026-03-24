@@ -22,17 +22,19 @@ struct RenderItem {
 // Scene 层简化示例
 class Scene {
 public:
+  using Ptr = std::shared_ptr<Scene>;
+
   // 暂时只支持一个 RenderableMeshPtr
   IRenderablePtr mesh;
   CameraPtr camera;
   DirectionalLightPtr directionalLight;
 
   Scene(IRenderablePtr mesh) : mesh(mesh) {
-    camera = std::make_shared<Camera>();
-    directionalLight = std::make_shared<DirectionalLight>();
+    camera = std::make_shared<Camera>(ResourcePassFlag::Forward);
+    directionalLight = std::make_shared<DirectionalLight>(ResourcePassFlag::Forward);
   }
 
-  static ScenePtr create(IRenderablePtr mesh) {
+  static auto create(IRenderablePtr mesh) {
     return std::make_shared<Scene>(mesh);
   }
 
@@ -50,5 +52,5 @@ public:
   }
 };
 
-using ScenePtr = std::shared_ptr<Scene>;
+using ScenePtr = Scene::Ptr;
 } // namespace LX_core

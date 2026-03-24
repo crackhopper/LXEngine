@@ -10,25 +10,10 @@
 
 namespace LX_core {
 
-class ObjectPCPtr;
-class IRenderable {
-public:
-  virtual ~IRenderable() = default;
-  virtual IRenderResourcePtr getVertexBuffer() const = 0;
-  virtual IRenderResourcePtr getIndexBuffer() const = 0;
-  virtual std::vector<IRenderResourcePtr> getDescriptorResources() const = 0;
-  virtual ResourcePassFlag getPassMask() const = 0;
-  virtual VertexFormat getVertexFormat() const = 0;
-
-  virtual ShaderPtr getShaderInfo() const = 0;
-  virtual ObjectPCPtr getObjectInfo() const { return nullptr; }
-};
-
-using IRenderablePtr = std::shared_ptr<IRenderable>;
-
-// push constant
-// 修改后的 ObjectPC 类
+// push constant - forward declaration and definition
 struct ObjectPC : public IRenderResource {
+  using Ptr = std::shared_ptr<ObjectPC>;
+
   // 默认提供最大 128 字节的存储空间，确保兼容所有 Pipeline
   alignas(16) uint8_t data[128] = {0};
   uint32_t activeSize = sizeof(PC_Base); // 默认只同步 Model 矩阵
@@ -58,10 +43,22 @@ private:
   ResourcePassFlag passFlag;
 };
 
-using ObjectPCPtr = std::shared_ptr<ObjectPC>;
+using ObjectPCPtr = ObjectPC::Ptr;
 
-template <typename VType>
-using VertexBufferPtr = std::shared_ptr<VertexBuffer<VType>>;
+class IRenderable {
+public:
+  virtual ~IRenderable() = default;
+  virtual IRenderResourcePtr getVertexBuffer() const = 0;
+  virtual IRenderResourcePtr getIndexBuffer() const = 0;
+  virtual std::vector<IRenderResourcePtr> getDescriptorResources() const = 0;
+  virtual ResourcePassFlag getPassMask() const = 0;
+  virtual VertexFormat getVertexFormat() const = 0;
+
+  virtual ShaderPtr getShaderInfo() const = 0;
+  virtual ObjectPCPtr getObjectInfo() const { return nullptr; }
+};
+
+using IRenderablePtr = std::shared_ptr<IRenderable>;
 
 // 渲染子网格，先仅支持1个网格。
 template <typename VType> struct RenderableSubMesh : public IRenderable {
@@ -95,7 +92,7 @@ public:
     return material->getShaderInfo();
   }
   virtual ObjectPCPtr getObjectInfo() const {
-    return material->getFragmentShader();
+    return objectPC;
   }
   virtual ResourcePassFlag getPassMask() const {
     return material->getPassFlag();

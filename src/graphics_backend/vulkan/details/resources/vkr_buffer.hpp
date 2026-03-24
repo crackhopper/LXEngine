@@ -3,7 +3,8 @@
 #include <memory>
 #include <vulkan/vulkan.h>
 
-namespace LX_core::graphic_backend {
+namespace LX_core {
+namespace graphic_backend {
 
 class VulkanDevice;
 class VulkanCommandBuffer;
@@ -19,14 +20,14 @@ class VulkanBuffer {
   struct Token {};
 
 public:
-  VulkanBuffer(Token token, VulkanDevice &_device, VkDeviceSize _size,
-               VkBufferUsageFlags _usage, VkMemoryPropertyFlags properties);
+  VulkanBuffer(Token token, VulkanDevice &device, VkDeviceSize size,
+               VkBufferUsageFlags usage, VkMemoryPropertyFlags properties);
   ~VulkanBuffer();
 
-  static VulkanBufferPtr create(const VulkanDevice &_device, VkDeviceSize size,
+  static VulkanBufferPtr create(VulkanDevice &device, VkDeviceSize size,
                                 VkBufferUsageFlags usage,
                                 VkMemoryPropertyFlags properties) {
-    return std::make_unique<VulkanBuffer>(Token{}, _device, size, usage,
+    return std::make_unique<VulkanBuffer>(Token{}, device, size, usage,
                                           properties);
   }
 
@@ -35,15 +36,19 @@ public:
 
   void uploadData(const void *data, VkDeviceSize dataSize);
 
-  void copyTo(VulkanCommandBuffer &cmdBuffer, VulkanBuffer &dst);
+  void copyTo(VkCommandBuffer cmdBuffer, VulkanBuffer &dst);
 
-  VkBuffer getHandle() const { return buffer; }
+  VkBuffer getHandle() const { return m_buffer; }
+  VkDeviceMemory getMemory() const { return m_memory; }
+  VkDeviceSize getSize() const { return m_size; }
 
 private:
-  VkDevice device = VK_NULL_HANDLE;
-  VkBuffer buffer = VK_NULL_HANDLE;
-  VkDeviceMemory memory = VK_NULL_HANDLE;
-  VkDeviceSize size = 0;
-  VkBufferUsageFlags usage;
+  VkDevice m_device = VK_NULL_HANDLE;
+  VkBuffer m_buffer = VK_NULL_HANDLE;
+  VkDeviceMemory m_memory = VK_NULL_HANDLE;
+  VkDeviceSize m_size = 0;
+  VkBufferUsageFlags m_usage;
+  void *m_mappedPtr = nullptr;
 };
-} // namespace LX_core::graphic_backend
+} // namespace graphic_backend
+} // namespace LX_core

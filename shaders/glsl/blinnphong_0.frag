@@ -26,8 +26,8 @@ layout(set = 2, binding = 0) uniform MaterialUBO {
     int padding;     
 } material;
 
-layout(set = 2, binding = 1) sampler2D albedoMap;
-layout(set = 2, binding = 2) sampler2D normalMap;
+layout(set = 2, binding = 1) uniform sampler2D albedoMap;
+layout(set = 2, binding = 2) uniform sampler2D normalMap;
 
 layout(set = 1, binding = 0) uniform CameraUBO {
     mat4 view;

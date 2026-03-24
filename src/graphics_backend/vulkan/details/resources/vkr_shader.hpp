@@ -1,8 +1,11 @@
 #pragma once
+#include <memory>
 #include <string>
 #include <vector>
+#include <vulkan/vulkan.h>
 
-namespace LX_core::graphic_backend {
+namespace LX_core {
+namespace graphic_backend {
 
 class VulkanDevice;
 class VulkanShader;
@@ -12,24 +15,28 @@ class VulkanShader {
   struct Token {};
 
 public:
-  VulkanShader(Token, const VulkanDevice &_device, const std::string &name,
+  VulkanShader(Token, VulkanDevice &device, const std::string &name,
                VkShaderStageFlagBits stage);
   ~VulkanShader();
 
-  static VulkanShaderPtr create(const VulkanDevice &_device,
+  static VulkanShaderPtr create(VulkanDevice &device,
                                 const std::string &name,
                                 VkShaderStageFlagBits stage) {
-    return std::make_unique<VulkanShader>(Token{}, _device, name, stage);
+    return std::make_unique<VulkanShader>(Token{}, device, name, stage);
   }
 
   VkPipelineShaderStageCreateInfo getStageCreateInfo() const;
-  VkShaderStageFlagBits getStage() const { return stage; }
-  VkShaderModule getHandle() const { return module; }
+  VkShaderStageFlagBits getStage() const { return m_stage; }
+  VkShaderModule getHandle() const { return m_module; }
 
 private:
-  VkDevice device = VK_NULL_HANDLE;
-  VkShaderModule module = VK_NULL_HANDLE;
-  VkShaderStageFlagBits stage;
+  std::vector<char> loadShaderFromFile(const std::string &name) const;
+
+  VkDevice m_device = VK_NULL_HANDLE;
+  VkShaderModule m_module = VK_NULL_HANDLE;
+  VkShaderStageFlagBits m_stage;
+  std::string m_entryPoint = "main";
 };
 
-} // namespace LX_core::graphic_backend
+} // namespace graphic_backend
+} // namespace LX_core

@@ -1,14 +1,8 @@
-
 add_library(imgui STATIC)
-
-
-
 
 set(IMGUI_ROOT
   ${CMAKE_CURRENT_SOURCE_DIR}/../../imgui
 )
-
-message(STATUS ${IMGUI_ROOT})
 
 target_sources(imgui PRIVATE
     ${IMGUI_ROOT}/imgui.cpp

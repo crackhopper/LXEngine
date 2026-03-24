@@ -10,11 +10,13 @@
 #include "core/resources/vertex_buffer.hpp"
 #include "vkp_pipeline_slot.hpp"
 #include <memory>
+#include <array>
 #include <string>
 #include <vector>
 #include <vulkan/vulkan.h>
 
-namespace LX_core::graphic_backend {
+namespace LX_core {
+namespace graphic_backend {
 
 class VulkanDevice;
 
@@ -32,21 +34,10 @@ protected:
 
 public:
   explicit VulkanPipelineBase(Token, VulkanDevice &device, VkExtent2D extent,
-                              const std::string &shaderName_,
-                              PipelineSlotDetails *slots_, uint32_t slotCount_,
-                              const PushConstantDetails &pushConstants_);
-  ~VulkanPipelineBase();
-
-  static VulkanPipelinePtr create(VulkanDevice &device, VkExtent2D extent,
-                                  const std::string &shaderName_,
-                                  PipelineSlotDetails *slots,
-                                  uint32_t slotCount) {
-    auto p = std::make_unique<VulkanPipelineBase>(
-        Token{}, device, extent, shaderName_, slots, slotCount);
-    p->loadShaders();
-    p->createLayout();
-    return p;
-  }
+                             const std::string &shaderName,
+                             PipelineSlotDetails *slots, uint32_t slotCount,
+                             const PushConstantDetails &pushConstants);
+  virtual ~VulkanPipelineBase();
 
   virtual std::string getPipelineId() const = 0;
   virtual std::string getShaderName() const = 0;
@@ -54,46 +45,54 @@ public:
 
   virtual void loadShaders();
   virtual void createLayout();
-
   virtual VkPipelineVertexInputStateCreateInfo getVertexInputStateCreateInfo();
-  virtual VkPipelineInputAssemblyStateCreateInfo
-  getInputAssemblyStateCreateInfo();
+  virtual VkPipelineInputAssemblyStateCreateInfo getInputAssemblyStateCreateInfo();
   virtual VkPipelineShaderStageCreateInfo getVertexShaderStageCreateInfo();
   virtual VkPipelineShaderStageCreateInfo getFragmentShaderStageCreateInfo();
   virtual VkPipelineViewportStateCreateInfo getViewportStateCreateInfo();
   virtual VkPipelineDynamicStateCreateInfo getDynamicStateCreateInfo();
   virtual VkPipelineRasterizationStateCreateInfo getRasterizerStateCreateInfo();
   virtual VkPipelineMultisampleStateCreateInfo getMultisampleStateCreateInfo();
-  virtual VkPipelineDepthStencilStateCreateInfo
-  getDepthStencilStateCreateInfo();
+  virtual VkPipelineDepthStencilStateCreateInfo getDepthStencilStateCreateInfo();
   virtual VkPipelineColorBlendStateCreateInfo getColorBlendStateCreateInfo();
 
   VkPipeline buildGraphicsPpl(VkRenderPass renderPass);
 
-  VkPipeline getPipelineHandle() const { return hPipeline; }
+  VkPipeline getHandle() const { return m_pipeline; }
+  VkPipelineLayout getLayout() const { return m_layout; }
+
+  const std::vector<PipelineSlotDetails> &getSlots() const { return m_slots; }
+  const PushConstantDetails &getPushConstantDetails() const {
+    return m_pushConstants;
+  }
 
 protected:
-  VulkanDevice &device;
-  VkDevice hDevice = VK_NULL_HANDLE;
-  VkPipeline hPipeline = VK_NULL_HANDLE;
-  VkPipelineLayout hLayout = VK_NULL_HANDLE;
+  VulkanDevice *m_device = nullptr;
+  VkDevice m_deviceHandle = VK_NULL_HANDLE;
+  VkPipeline m_pipeline = VK_NULL_HANDLE;
+  VkPipelineLayout m_layout = VK_NULL_HANDLE;
 
-  std::string shaderName;
-  std::vector<PipelineSlotDetails> slots;
-  PushConstantDetails pushConstants;
+  std::string m_shaderName;
+  std::vector<PipelineSlotDetails> m_slots;
+  PushConstantDetails m_pushConstants;
 
-  VkShaderModule hVertShader = VK_NULL_HANDLE;
-  VkShaderModule hFragShader = VK_NULL_HANDLE;
+  VkShaderModule m_vertShader = VK_NULL_HANDLE;
+  VkShaderModule m_fragShader = VK_NULL_HANDLE;
 
-  // 输出区域
-  VkOffset2D offset = {0, 0};
-  VkExtent2D extent = {0, 0};
+  VkOffset2D m_offset = {0, 0};
+  VkExtent2D m_extent = {0, 0};
 
-  // 多重采样
-  VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
+  // Stored to keep pointer members valid during vkCreateGraphicsPipelines.
+  VkViewport m_viewport{};
+  VkRect2D m_scissor{};
+  std::array<VkDynamicState, 2> m_dynamicStates{
+      VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+
+  VkSampleCountFlagBits m_msaaSamples = VK_SAMPLE_COUNT_1_BIT;
 
   std::vector<VkVertexInputBindingDescription> m_viBindingDescriptions;
   std::vector<VkVertexInputAttributeDescription> m_viAttrDescriptions;
 };
 
-} // namespace LX_core::graphic_backend
+} // namespace graphic_backend
+} // namespace LX_core

@@ -1,11 +1,15 @@
 #include "vkd_descriptor_manager.hpp"
 #include "../vk_device.hpp"
 #include "../pipelines/vkp_pipeline_slot.hpp"
+#include <array>
+#include <stdexcept>
+#include <string>
 
-namespace LX_core::graphic_backend {
+namespace LX_core {
+namespace graphic_backend {
 
 // 内部辅助逻辑
-VkShaderStageFlags translateStage(PipelineSlotStage stage) {
+static VkShaderStageFlags translateStage(PipelineSlotStage stage) {
   VkShaderStageFlags flags = 0;
   if ((uint8_t)stage & (uint8_t)PipelineSlotStage::VERTEX)
     flags |= VK_SHADER_STAGE_VERTEX_BIT;
@@ -15,7 +19,7 @@ VkShaderStageFlags translateStage(PipelineSlotStage stage) {
   return flags;
 }
 
-VkDescriptorType translateDescriptorType(ResourceType type) {
+static VkDescriptorType translateDescriptorType(ResourceType type) {
   switch (type) {
   case ResourceType::UniformBuffer:
     return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -56,6 +60,10 @@ DescriptorLayoutHasher::operator()(const DescriptorLayoutKey &key) const {
 }
 
 // --- 析构函数 ---
+DescriptorSet::DescriptorSet(VkDescriptorSet set, VkDescriptorSetLayout layout,
+                              VulkanDescriptorManager &manager)
+    : m_set(set), m_layout(layout), m_manager(manager) {}
+
 DescriptorSet::~DescriptorSet() {
   // 只有当句柄有效时才归还，防止移动构造后的空句柄触发逻辑
   if (m_set != VK_NULL_HANDLE) {
@@ -132,15 +140,16 @@ void DescriptorSet::updateBatch(
                          nullptr);
 }
 
-VulkanDescriptorManager::VulkanDescriptorManager(Token, VulkanDevice &device,
-                                                 uint32_t maxFramesInFlight)
-    : m_device(device), m_maxFramesInFlight(maxFramesInFlight),
-      m_currentFrameIndex(0) {
+VulkanDescriptorManager::VulkanDescriptorManager(Token)
+    : m_currentFrameIndex(0) {
+}
 
-  m_frameContexts.resize(maxFramesInFlight);
+void VulkanDescriptorManager::initialize(VulkanDevice &device) {
+  m_device = &device;
+  m_frameContexts.resize(m_maxFramesInFlight);
 
   // 为每一帧创建一个独立的描述符池
-  for (uint32_t i = 0; i < maxFramesInFlight; ++i) {
+  for (uint32_t i = 0; i < m_maxFramesInFlight; ++i) {
     std::array<VkDescriptorPoolSize, 3> poolSizes{};
 
     // 1. Uniform Buffers (UBO)
@@ -164,7 +173,7 @@ VulkanDescriptorManager::VulkanDescriptorManager(Token, VulkanDevice &device,
     poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
     poolInfo.pPoolSizes = poolSizes.data();
 
-    if (vkCreateDescriptorPool(device.getHandle(), &poolInfo, nullptr,
+    if (vkCreateDescriptorPool(device.getLogicalDevice(), &poolInfo, nullptr,
                                &m_frameContexts[i].pool) != VK_SUCCESS) {
       throw std::runtime_error("failed to create descriptor pool for frame " +
                                std::to_string(i));
@@ -173,14 +182,16 @@ VulkanDescriptorManager::VulkanDescriptorManager(Token, VulkanDevice &device,
 }
 
 VulkanDescriptorManager::~VulkanDescriptorManager() {
+  if (!m_device) return;
+
   // 1. 等待 GPU 空闲，确保没有任何 DescriptorSet 正在被读取
-  vkDeviceWaitIdle(m_device.getHandle());
+  vkDeviceWaitIdle(m_device->getLogicalDevice());
 
   // 2. 销毁全局缓存的 Layouts
   // Layout 是跨帧共享的，只需销毁一次
   for (auto &pair : m_layoutCache) {
     if (pair.second != VK_NULL_HANDLE) {
-      vkDestroyDescriptorSetLayout(m_device.getHandle(), pair.second, nullptr);
+      vkDestroyDescriptorSetLayout(m_device->getLogicalDevice(), pair.second, nullptr);
     }
   }
   m_layoutCache.clear();
@@ -189,7 +200,7 @@ VulkanDescriptorManager::~VulkanDescriptorManager() {
   for (uint32_t i = 0; i < m_maxFramesInFlight; ++i) {
     if (m_frameContexts[i].pool != VK_NULL_HANDLE) {
       // 销毁池会自动释放所有关联的 VkDescriptorSet 句柄
-      vkDestroyDescriptorPool(m_device.getHandle(), m_frameContexts[i].pool,
+      vkDestroyDescriptorPool(m_device->getLogicalDevice(), m_frameContexts[i].pool,
                               nullptr);
     }
 
@@ -197,6 +208,10 @@ VulkanDescriptorManager::~VulkanDescriptorManager() {
     m_frameContexts[i].freeSets.clear();
     m_frameContexts[i].pendingReturn.clear();
   }
+}
+
+VkDevice VulkanDescriptorManager::getDeviceHandle() const {
+  return m_device ? m_device->getLogicalDevice() : VK_NULL_HANDLE;
 }
 
 VkDescriptorSetLayout VulkanDescriptorManager::getOrCreateLayout(
@@ -231,7 +246,7 @@ VkDescriptorSetLayout VulkanDescriptorManager::getOrCreateLayout(
   layoutInfo.pBindings = bindings.data();
 
   VkDescriptorSetLayout layout;
-  if (vkCreateDescriptorSetLayout(m_device.getHandle(), &layoutInfo, nullptr,
+  if (vkCreateDescriptorSetLayout(m_device->getLogicalDevice(), &layoutInfo, nullptr,
                                   &layout) != VK_SUCCESS) {
     throw std::runtime_error("Vulkan: Failed to create descriptor set layout!");
   }
@@ -265,7 +280,7 @@ DescriptorSetPtr VulkanDescriptorManager::allocateSet(
     allocInfo.pSetLayouts = &layout;
 
     VkResult result =
-        vkAllocateDescriptorSets(m_device.getHandle(), &allocInfo, &setHandle);
+        vkAllocateDescriptorSets(m_device->getLogicalDevice(), &allocInfo, &setHandle);
 
     if (result != VK_SUCCESS) {
       // 这里可以扩展：如果池满了，动态创建新池
@@ -311,15 +326,17 @@ void VulkanDescriptorManager::returnSet(VkDescriptorSet set,
 }
 
 void VulkanDescriptorManager::reset() {
+  if (!m_device) return;
+
   // 必须确保 GPU 已经停下，否则重置池会导致正在执行的命令崩溃
-  vkDeviceWaitIdle(m_device.getHandle());
+  vkDeviceWaitIdle(m_device->getLogicalDevice());
 
   for (uint32_t i = 0; i < m_maxFramesInFlight; ++i) {
     auto &context = m_frameContexts[i];
 
     // 1. 重置物理描述符池 (这会使该池分配的所有 VkDescriptorSet 失效)
     if (context.pool != VK_NULL_HANDLE) {
-      vkResetDescriptorPool(m_device.getHandle(), context.pool, 0);
+      vkResetDescriptorPool(m_device->getLogicalDevice(), context.pool, 0);
     }
 
     // 2. 清空所有的逻辑记录
@@ -331,4 +348,5 @@ void VulkanDescriptorManager::reset() {
   // 只要 Pipeline 还在，Layout 就得留着。
 }
 
-} // namespace LX_core::graphic_backend
+} // namespace graphic_backend
+} // namespace LX_core

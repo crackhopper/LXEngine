@@ -1,51 +1,48 @@
-# 添加使用 glslc.exe 编译shader 为 .spv 的目标
+# Compile GLSL shaders to SPIR-V for Vulkan.
+# VulkanShader / VulkanPipelineBase expect:
+#   shaders/glsl/<shaderName>.vert.spv
+#   shaders/glsl/<shaderName>.frag.spv
+
 find_program(GLSLC_EXECUTABLE
-    NAMES glslc
-    HINTS $ENV{VULKAN_SDK}/Bin $ENV{VULKAN_SDK}/x86_64/bin
-    REQUIRED
+  NAMES glslc
+  HINTS $ENV{VULKAN_SDK}/Bin $ENV{VULKAN_SDK}/x86_64/bin
+  REQUIRED
 )
 
-# 定义 shader 目录和输出目录
-set(SHADER_DIR ${CMAKE_CURRENT_SOURCE_DIR})
-set(SHADER_OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR})
-file(MAKE_DIRECTORY ${SHADER_OUTPUT_DIR})
+set(GLSL_INPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/glsl")
+set(SHADER_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/glsl")
+file(MAKE_DIRECTORY "${SHADER_OUTPUT_DIR}")
 
-# 自动查找所有着色器文件
-file(GLOB SHADER_FILES
-    "${SHADER_DIR}/*.vert"
-    "${SHADER_DIR}/*.frag"
-    # ...可以添加更多类型，如.comp, .geom等
-)
+file(GLOB GLSL_VERT_FILES "${GLSL_INPUT_DIR}/*.vert")
+file(GLOB GLSL_FRAG_FILES "${GLSL_INPUT_DIR}/*.frag")
 
-set(SPV_FILES "") # 用于存储所有生成的.spv文件路径
+set(SPV_FILES "")
 
-foreach(SHADER_FILE ${SHADER_FILES})
-    # 获取着色器文件的完整文件名（例如: shader.vert）
-    get_filename_component(BASE_NAME ${SHADER_FILE} NAME) 
-    message(STATUS "Shader file: ${SHADER_FILE}")
-    
-    # 构造输出 .spv 文件的完整路径
-    # 示例: .../shaders/shader.vert.spv
-    set(OUTPUT_SPV "${SHADER_OUTPUT_DIR}/${BASE_NAME}.spv") 
-    message(STATUS "Output SPV file: ${OUTPUT_SPV}")
+foreach(SHADER_FILE ${GLSL_VERT_FILES} ${GLSL_FRAG_FILES})
+  get_filename_component(FILE_NAME "${SHADER_FILE}" NAME) # e.g. blinnphong_0.vert
 
-    # 将生成的 .spv 文件添加到列表中
-    list(APPEND SPV_FILES "${OUTPUT_SPV}")
+  if (FILE_NAME MATCHES "^(.+)\\.vert$")
+    set(SHADER_NAME "${CMAKE_MATCH_1}")
+    set(OUTPUT_SPV "${SHADER_OUTPUT_DIR}/${SHADER_NAME}.vert.spv")
+  elseif (FILE_NAME MATCHES "^(.+)\\.frag$")
+    set(SHADER_NAME "${CMAKE_MATCH_1}")
+    set(OUTPUT_SPV "${SHADER_OUTPUT_DIR}/${SHADER_NAME}.frag.spv")
+  else()
+    message(FATAL_ERROR "Unrecognized shader filename: ${FILE_NAME}")
+  endif()
 
-    # 定义自定义编译命令
-    add_custom_command(
-        OUTPUT "${OUTPUT_SPV}"
-        COMMAND "${GLSLC_EXECUTABLE}"
+  list(APPEND SPV_FILES "${OUTPUT_SPV}")
+
+  add_custom_command(
+    OUTPUT "${OUTPUT_SPV}"
+    COMMAND "${GLSLC_EXECUTABLE}"
             -o "${OUTPUT_SPV}"
             "${SHADER_FILE}"
-        DEPENDS "${SHADER_FILE}"
-        COMMENT "Compiling shader: ${BASE_NAME}"
-        VERBATIM
-    )
+    DEPENDS "${SHADER_FILE}"
+    COMMENT "Compiling shader: ${FILE_NAME} -> ${OUTPUT_SPV}"
+    VERBATIM
+  )
 endforeach()
 
-# 创建目标依赖所有生成的 .spv 文件
-add_custom_target(CompileShaders
-    DEPENDS ${SPV_FILES}
-)
+add_custom_target(CompileShaders DEPENDS ${SPV_FILES})
 

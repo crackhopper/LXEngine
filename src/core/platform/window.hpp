@@ -7,11 +7,14 @@ class Window {
 public:
   static void Initialize(); // 初始化窗口系统
 
-  Window(const char *title, int width, int height);
-  ~Window();
+protected:
+  Window() = default;
+  ~Window() = default;
 
+public:
   virtual int getWidth() const = 0;
   virtual int getHeight() const = 0;
+  virtual void getRequiredExtensions(std::vector<const char *> &extensions) const = 0;
 
   /**
    * @brief 为特定的图形 API 准备渲染表面/句柄

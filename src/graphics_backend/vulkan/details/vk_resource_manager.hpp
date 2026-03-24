@@ -5,21 +5,18 @@
 #include <unordered_set>
 #include <variant>
 #include "core/gpu/render_resource.hpp"
+#include "pipelines/vkp_pipeline.hpp"
 
 #include <vulkan/vulkan.h>
 
 namespace LX_core::graphic_backend {
 
 class VulkanDevice;
+class VulkanCommandBufferManager;
 class VulkanRenderPass;
-class VulkanRenderPipeline;
 class VulkanBuffer;
 class VulkanTexture;
 class VulkanShader;
-
-
-using VulkanRenderPassPtr = std::unique_ptr<VulkanRenderPass>;
-using VulkanRenderPipelinePtr = std::unique_ptr<VulkanRenderPipeline>;
 
 using VulkanBufferPtr = std::unique_ptr<VulkanBuffer>;
 using VulkanTexturePtr = std::unique_ptr<VulkanTexture>;
@@ -53,11 +50,16 @@ public:
   void initializeRenderPassAndPipeline(VkSurfaceFormatKHR surfaceFormat, VkFormat depthFormat);
 
   // 快捷访问接口
-  VulkanBuffer& getBuffer(void *handle);
-  VulkanTexture& getTexture(void *handle);
-  VulkanShader& getShader(void *handle);
-  VulkanRenderPass& getRenderPass();
-  VulkanRenderPipeline& getRenderPipeline();
+  VulkanBuffer* getBuffer(void *handle);
+  VulkanTexture* getTexture(void *handle);
+  VulkanShader* getShader(void *handle);
+  VulkanRenderPass* getRenderPass();
+  VulkanPipelineBase* getRenderPipeline();
+
+  // Needed for GPU-side uploads that require transient command buffers (e.g. textures).
+  void setCommandBufferManager(VulkanCommandBufferManager &mgr) {
+    m_cmdBufferMgr = &mgr;
+  }
 
 private:
   // 内部创建与更新逻辑
@@ -72,8 +74,10 @@ private:
 
   // 管理若干个render pass和pipeline
   // TODO: 暂时仅支持了1个
-  VulkanRenderPassPtr m_renderPass;
-  VulkanRenderPipelinePtr m_pipeline;
+  VulkanRenderPass *m_renderPass = nullptr;
+  VulkanPipelineBase *m_pipeline = nullptr;
+
+  VulkanCommandBufferManager *m_cmdBufferMgr = nullptr;
 };
 
 } // namespace LX_core::graphic_backend

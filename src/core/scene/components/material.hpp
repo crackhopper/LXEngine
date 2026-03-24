@@ -25,6 +25,11 @@ public:
   virtual ShaderPtr getShaderInfo() const = 0;
   virtual ResourcePassFlag getPassFlag() const = 0;
   virtual std::vector<IRenderResourcePtr> getDescriptorResources() const = 0;
+
+  // IComponent contract: render resources that should be uploaded/bound.
+  std::vector<IRenderResourcePtr> getRenderResources() const override {
+    return getDescriptorResources();
+  }
 };
 
 using MaterialPtr = std::shared_ptr<MaterialBase>; // 共享使用
@@ -71,7 +76,8 @@ public:
     normalMap = std::make_shared<CombinedTextureSampler>(
         createWhiteTexture(), PipelineSlotId::NormalTexture, passFlag);
 
-    shaderInfo = std::make_shared<FragmentShader>("blinn_phong_0", passFlag);
+    // Shader filename convention: shaders/glsl/{shaderName}.vert.spv/.frag.spv
+    shaderInfo = std::make_shared<FragmentShader>("blinnphong_0", passFlag);
   }
 
   virtual std::vector<IRenderResourcePtr>

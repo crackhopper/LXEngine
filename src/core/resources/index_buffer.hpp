@@ -1,12 +1,17 @@
 #pragma once
 #include "core/gpu/render_resource.hpp"
 #include <algorithm>
+#include <memory>
+#include <vector>
 namespace LX_core {
 
 // 索引缓冲
 class IndexBuffer : public IRenderResource {
 public:
-  IndexBuffer(std::vector<u32> &&indices, ResourcePassFlag passFlag=ResourcePassFlag::Forward)
+  using Ptr = std::shared_ptr<IndexBuffer>;
+
+  IndexBuffer(std::vector<uint32_t> &&indices,
+              ResourcePassFlag passFlag = ResourcePassFlag::Forward)
       : m_indices(std::move(indices)), m_passFlag(passFlag) {
     if (!m_indices.empty()) {
       auto [minIt, maxIt] =
@@ -18,8 +23,8 @@ public:
     }
   }
 
-  static IndexBufferPtr create(std::vector<u32> &&indices,
-                                ResourcePassFlag passFlag = ResourcePassFlag::Forward) {
+  static Ptr create(std::vector<uint32_t> &&indices,
+                    ResourcePassFlag passFlag = ResourcePassFlag::Forward) {
     return std::make_shared<IndexBuffer>(std::move(indices), passFlag);
   }
 
@@ -56,10 +61,11 @@ public:
   }
 
 private:
-  std::vector<u32> m_indices;
-  u32 m_maxIndex;
-  u32 m_minIndex;
+  std::vector<uint32_t> m_indices;
+  uint32_t m_maxIndex;
+  uint32_t m_minIndex;
   ResourcePassFlag m_passFlag = ResourcePassFlag::Forward;
 };
+
 using IndexBufferPtr = std::shared_ptr<IndexBuffer>;
 }  // namespace LX_core

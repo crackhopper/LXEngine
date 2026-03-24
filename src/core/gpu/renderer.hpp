@@ -13,7 +13,7 @@ public:
   virtual ~Renderer() = default;
 
   // 初始化 GPU 设备 / context
-  virtual void initialize(WindowPtr window) = 0;
+  virtual void initialize(WindowPtr window, const char *appName) = 0;
 
   // 清理 GPU 资源
   virtual void shutdown() = 0;

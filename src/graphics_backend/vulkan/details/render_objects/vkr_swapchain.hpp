@@ -3,7 +3,8 @@
 #include <vector>
 #include <vulkan/vulkan.h>
 
-namespace LX_core::graphic_backend {
+namespace LX_core {
+namespace graphic_backend {
 
 class VulkanDevice;
 class VulkanRenderPass;
@@ -27,87 +28,64 @@ public:
   }
 
   // --- 核心生命周期控制 ---
-
-  /**
-   * @brief 当窗口大小改变或 Swapchain 失效时调用
-   */
+  void initialize(VulkanRenderPass &renderPass);
   void rebuild(VkExtent2D newExtent, VulkanRenderPass &renderPass);
 
-  /**
-   * @brief 获取当前帧可用的信号量（用于同步）
-   */
+  // --- 同步对象获取 ---
   VkSemaphore getImageAvailableSemaphore(uint32_t currentFrameIndex) const;
   VkSemaphore getRenderFinishedSemaphore(uint32_t currentFrameIndex) const;
   VkFence getInFlightFence(uint32_t currentFrameIndex) const;
 
-  /**
-   * @brief 获取下一帧图像索引
-   * 内部使用第 currentFrameIndex 组 ImageAvailableSemaphore
-   */
+  // --- 帧获取与呈现 ---
   VkResult acquireNextImage(uint32_t currentFrameIndex, uint32_t &imageIndex);
-
-  /**
-   * @brief 提交显示
-   * 内部使用第 currentFrameIndex 组 RenderFinishedSemaphore
-   */
   VkResult present(uint32_t currentFrameIndex, uint32_t imageIndex);
 
   // --- 资源访问 ---
-
-  VkSwapchainKHR getHandle() const;
-  VkExtent2D getExtent() const;
+  VkSwapchainKHR getHandle() const { return m_handle; }
+  VkExtent2D getExtent() const { return m_extent; }
   VulkanFrameBuffer &getFramebuffer(uint32_t index);
-  uint32_t getImageCount() const;
+  uint32_t getImageCount() const { return static_cast<uint32_t>(m_images.size()); }
+  VkFormat getImageFormat() const { return m_imageFormat; }
+  VkImageView getDepthImageView() const { return m_depthImageView; }
 
-  void initialize(VulkanRenderPass &renderPass){
-    createInternal(m_extent);
-    createImageViews();
-    createDepthResources();
-    createSyncObjects();
-    setupFramebuffers(renderPass);
-  }
-
+  // --- 辅助函数 ---
+  void waitIdle() const;
 
 private:
-  VulkanDevice &m_device;
-  uint32_t m_maxFramesInFlight;
-  VkSurfaceKHR m_surface;
-
-  VkSwapchainKHR m_handle = VK_NULL_HANDLE;
-  VkFormat m_imageFormat;
-  VkExtent2D m_extent;
-
-  // 原始图像资源
-  std::vector<VkImage> m_images;
-  std::vector<VkImageView> m_imageViews;
-
-  // 深度资源（通常 Swapchain 每个 Image 共享或独立拥有一个深度缓冲）
-  VkImage m_depthImage = VK_NULL_HANDLE;
-  VkDeviceMemory m_depthImageMemory = VK_NULL_HANDLE;
-  VkImageView m_depthImageView = VK_NULL_HANDLE;
-
-  // 绑定的 Framebuffers：生命周期随 Swapchain 重建而重置
-  std::vector<std::unique_ptr<class VulkanFrameBuffer>> m_framebuffers;
-
-  // --- 同步原语组 ---
-  // 每组包含：一个让 CPU 等待 GPU 的 Fence，两个用于 Image 轮转的 Semaphore
-  // 数组大小均为 m_maxFramesInFlight
-  std::vector<VkSemaphore> m_imageAvailableSemaphores;
-  std::vector<VkSemaphore> m_renderFinishedSemaphores;
-  std::vector<VkFence> m_inFlightFences;
-
-
-
-
-  // 辅助初始化函数
   void cleanup();
   void createInternal(VkExtent2D extent);
   void createImageViews();
   void createDepthResources();
   void createSyncObjects();
   void setupFramebuffers(VulkanRenderPass &renderPass);
+
+  VulkanDevice *m_device = nullptr;
+  uint32_t m_maxFramesInFlight = 3;
+  VkSurfaceKHR m_surface = VK_NULL_HANDLE;
+
+  VkSwapchainKHR m_handle = VK_NULL_HANDLE;
+  VkFormat m_imageFormat = VK_FORMAT_UNDEFINED;
+  VkFormat m_depthFormat = VK_FORMAT_UNDEFINED;
+  VkExtent2D m_extent{};
+
+  std::vector<VkImage> m_images;
+  std::vector<VkImageView> m_imageViews;
+
+  // 深度资源
+  VkImage m_depthImage = VK_NULL_HANDLE;
+  VkDeviceMemory m_depthImageMemory = VK_NULL_HANDLE;
+  VkImageView m_depthImageView = VK_NULL_HANDLE;
+
+  // Framebuffers
+  std::vector<std::unique_ptr<VulkanFrameBuffer>> m_framebuffers;
+
+  // 同步对象
+  std::vector<VkSemaphore> m_imageAvailableSemaphores;
+  std::vector<VkSemaphore> m_renderFinishedSemaphores;
+  std::vector<VkFence> m_inFlightFences;
 };
 
 using VulkanSwapchainPtr = std::unique_ptr<VulkanSwapchain>;
 
-} // namespace LX_core::graphic_backend
+} // namespace graphic_backend
+} // namespace LX_core

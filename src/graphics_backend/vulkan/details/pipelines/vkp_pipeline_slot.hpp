@@ -1,7 +1,8 @@
 #pragma once
 #include "core/gpu/render_resource.hpp"
 
-namespace LX_core::graphic_backend {
+namespace LX_core {
+namespace graphic_backend {
 
 enum class PipelineSlotStage : u8 {
   NONE = 0,
@@ -12,8 +13,8 @@ enum class PipelineSlotStage : u8 {
 
 
 struct PipelineSlotDetails {
-  PipelineSlotId id = PipelineSlotId::None;
-  ResourceType type = ResourceType::None;
+  LX_core::PipelineSlotId id = LX_core::PipelineSlotId::None;
+  LX_core::ResourceType type = LX_core::ResourceType::None;
   PipelineSlotStage stage = PipelineSlotStage::NONE;
   u32 setIndex = 0;
   u32 binding = 0;
@@ -22,4 +23,5 @@ struct PipelineSlotDetails {
 
 
 
-}
+} // namespace graphic_backend
+} // namespace LX_core

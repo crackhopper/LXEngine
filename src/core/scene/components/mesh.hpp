@@ -1,4 +1,5 @@
 #pragma once
+#include "core/scene/components/base.hpp"
 #include "core/math/mat.hpp"
 #include "core/resources/index_buffer.hpp"
 #include "core/resources/vertex_buffer.hpp"
@@ -12,16 +13,19 @@ template <typename VType> class Mesh : public IComponent {
   struct Token {};
 
 public:
-  Mesh(Token, VertexBufferPtr<VType> vertexBuffer, IndexBufferPtr indexBuffer)
+  using Ptr = std::shared_ptr<Mesh<VType>>;
+
+  Mesh(Token, std::shared_ptr<VertexBuffer<VType>> vertexBuffer,
+       std::shared_ptr<IndexBuffer> indexBuffer)
       : vertexBuffer(vertexBuffer), indexBuffer(indexBuffer) {}
 
-  static MeshPtr create(VertexBufferPtr<VType> vertexBuffer,
-                        IndexBufferPtr indexBuffer) {
+  static auto create(std::shared_ptr<VertexBuffer<VType>> vertexBuffer,
+                    std::shared_ptr<IndexBuffer> indexBuffer) {
     return std::make_shared<Mesh>(Token(), vertexBuffer, indexBuffer);
   }
 
-  VertexBufferPtr<VType> vertexBuffer;
-  IndexBufferPtr indexBuffer;
+  std::shared_ptr<VertexBuffer<VType>> vertexBuffer;
+  std::shared_ptr<IndexBuffer> indexBuffer;
 
   virtual std::vector<IRenderResourcePtr> getRenderResources() const override {
     return {std::dynamic_pointer_cast<IRenderResource>(vertexBuffer),

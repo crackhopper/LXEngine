@@ -1,6 +1,7 @@
 #include "vkp_blinnphong.hpp"
-#include <stdexcept>
 
-namespace LX_core::graphic_backend {
+namespace LX_core {
+namespace graphic_backend {
 
-} // namespace LX_core::graphic_backend
+} // namespace graphic_backend
+} // namespace LX_core

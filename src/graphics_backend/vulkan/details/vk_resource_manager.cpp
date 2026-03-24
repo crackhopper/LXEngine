@@ -1,15 +1,56 @@
 #include "vk_resource_manager.hpp"
 #include "vk_device.hpp"
+#include "commands/vkc_cmdbuffer_manager.hpp"
+#include "pipelines/vkp_blinnphong.hpp"
+#include "resources/vkr_buffer.hpp"
+#include "resources/vkr_texture.hpp"
+#include "resources/vkr_shader.hpp"
+#include "render_objects/vkr_renderpass.hpp"
+#include "core/resources/shader.hpp"
+#include "core/resources/texture.hpp"
 #include <stdexcept>
 
 namespace LX_core::graphic_backend {
 
-VulkanResourceManager::VulkanResourceManager(VulkanDevice &device)
+namespace {
+VkFormat toVkFormat(TextureFormat format) {
+  switch (format) {
+  case TextureFormat::RGBA8:
+    return VK_FORMAT_R8G8B8A8_UNORM;
+  case TextureFormat::RGB8:
+    return VK_FORMAT_R8G8B8_UNORM;
+  case TextureFormat::R8:
+    return VK_FORMAT_R8_UNORM;
+  default:
+    throw std::runtime_error("Unsupported TextureFormat");
+  }
+}
+} // namespace
+
+VulkanResourceManager::VulkanResourceManager(Token, VulkanDevice &device)
     : m_device(device) {}
+
+VulkanResourceManager::~VulkanResourceManager() {
+  if (m_device.getLogicalDevice() != VK_NULL_HANDLE) {
+    vkDeviceWaitIdle(m_device.getLogicalDevice());
+  }
+
+  // RenderPass/Pipeline are stored as raw pointers in this manager.
+  delete m_pipeline;
+  m_pipeline = nullptr;
+
+  delete m_renderPass;
+  m_renderPass = nullptr;
+}
 
 void VulkanResourceManager::syncResource(const IRenderResourcePtr &cpuRes) {
   if (!cpuRes)
     return;
+
+  // Push constants are written directly into command buffers; no Vulkan object needed.
+  if (cpuRes->getType() == ResourceType::PushConstant) {
+    return;
+  }
 
   void *handle = cpuRes->getResourceHandle();
   m_activeHandles.insert(handle);
@@ -35,13 +76,15 @@ VulkanResourceManager::createGpuResource(const IRenderResourcePtr &cpuRes) {
     return std::make_shared<VulkanAnyResource>(VulkanBuffer::create(
         m_device, cpuRes->getByteSize(),
         VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT));
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
 
   case ResourceType::IndexBuffer:
     return std::make_shared<VulkanAnyResource>(VulkanBuffer::create(
         m_device, cpuRes->getByteSize(),
         VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT));
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
 
   case ResourceType::UniformBuffer:
     return std::make_shared<VulkanAnyResource>(VulkanBuffer::create(
@@ -51,14 +94,27 @@ VulkanResourceManager::createGpuResource(const IRenderResourcePtr &cpuRes) {
 
   case ResourceType::VertexShader:
   case ResourceType::FragmentShader: {
-    auto shaderRes = std::static_pointer_cast<VulkanShader>(cpuRes);
-    // 假设你有一个读取文件转 vector<char> 的工具函数
-    // std::vector<char> code = readFile(shaderRes->getShaderName());
     VkShaderStageFlagBits stage = (type == ResourceType::VertexShader)
                                       ? VK_SHADER_STAGE_VERTEX_BIT
                                       : VK_SHADER_STAGE_FRAGMENT_BIT;
+    auto shaderCpu = std::dynamic_pointer_cast<Shader>(cpuRes);
+    const std::string name =
+        shaderCpu ? shaderCpu->getShaderName() : std::string{};
     return std::make_shared<VulkanAnyResource>(
-        VulkanShader::create(m_device, {}, stage));
+        VulkanShader::create(m_device, name, stage));
+  }
+
+  case ResourceType::CombinedImageSampler: {
+    auto texCpu = std::dynamic_pointer_cast<CombinedTextureSampler>(cpuRes);
+    if (!texCpu || !texCpu->texture()) {
+      throw std::runtime_error("CombinedImageSampler resource missing texture data");
+    }
+    const auto &desc = texCpu->texture()->desc();
+    const VkFormat vkFormat = toVkFormat(desc.format);
+    VkImageUsageFlags usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    return std::make_shared<VulkanAnyResource>(
+        VulkanTexture::create(m_device, desc.width, desc.height, vkFormat,
+                               usage, VK_FILTER_LINEAR));
   }
 
   default:
@@ -78,8 +134,33 @@ void VulkanResourceManager::updateGpuResource(
           // uploadData（内部处理 staging）
           res->uploadData(cpuRes->getRawData(), cpuRes->getByteSize());
         } else if constexpr (std::is_same_v<T, VulkanTexturePtr>) {
-          // 处理纹理上传逻辑...
+          if (!m_cmdBufferMgr) {
+            // Without a command-buffer manager we can't transition/upload.
+            return;
+          }
+
+          const VkDeviceSize imageSize =
+              static_cast<VkDeviceSize>(cpuRes->getByteSize());
+
+          // Staging buffer in host-visible memory.
+          auto staging = VulkanBuffer::create(
+              m_device, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+              VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+          staging->uploadData(cpuRes->getRawData(), imageSize);
+
+          auto cmd = m_cmdBufferMgr->beginSingleTimeCommands();
+
+          // Upload the texture contents.
+          res->transitionLayout(cmd, res->getCurrentLayout(),
+                                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+          res->copyFromBuffer(cmd, *staging);
+          res->transitionLayout(cmd, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+          m_cmdBufferMgr->endSingleTimeCommands(cmd, m_device.getGraphicsQueue());
         }
+        // Shaders are immutable for this initial framework; no updates needed.
       },
       *gpuRes);
 }
@@ -93,6 +174,25 @@ void VulkanResourceManager::collectGarbage() {
     }
   }
   m_activeHandles.clear();
+}
+
+void VulkanResourceManager::initializeRenderPassAndPipeline(
+    VkSurfaceFormatKHR surfaceFormat, VkFormat depthFormat) {
+  if (m_renderPass && m_pipeline) {
+    return;
+  }
+
+  // Render pass depends on the swapchain image format.
+  m_renderPass = VulkanRenderPass::create(m_device, surfaceFormat.format, depthFormat).release();
+
+  // Pipeline viewport/scissor values are overwritten dynamically each frame,
+  // so we can use a small dummy extent here.
+  VkExtent2D dummyExtent{1, 1};
+  m_pipeline = VkPipelineBlinnPhong::create(m_device, dummyExtent).release();
+
+  // Build the actual VkPipeline object (layout/shaders are created above).
+  // This is required before vkCmdBindPipeline can use a valid handle.
+  m_pipeline->buildGraphicsPpl(m_renderPass->getHandle());
 }
 
 // 辅助查找宏，简化代码
@@ -115,6 +215,14 @@ VulkanTexture *VulkanResourceManager::getTexture(void *handle) {
 
 VulkanShader *VulkanResourceManager::getShader(void *handle) {
   GET_RESOURCE_IMPL(VulkanShader *, VulkanShaderPtr);
+}
+
+VulkanRenderPass *VulkanResourceManager::getRenderPass() {
+  return m_renderPass;
+}
+
+VulkanPipelineBase *VulkanResourceManager::getRenderPipeline() {
+  return m_pipeline;
 }
 
 } // namespace LX_core::graphic_backend

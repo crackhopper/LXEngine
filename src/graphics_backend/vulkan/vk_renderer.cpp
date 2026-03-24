@@ -1,6 +1,8 @@
 #include "vk_renderer.hpp"
 #include "details/commands/vkc_cmdbuffer_manager.hpp"
-#include "details/render_objects/vkr_rendercontext.hpp"
+#include "details/descriptors/vkd_descriptor_manager.hpp"
+#include "details/render_objects/vkr_framebuffer.hpp"
+#include "details/render_objects/vkr_renderpass.hpp"
 #include "details/render_objects/vkr_swapchain.hpp"
 #include "details/vk_device.hpp"
 #include "details/vk_resource_manager.hpp"
@@ -9,22 +11,7 @@
 #include <stdexcept>
 namespace {
 // 这种函数通常只需要执行一次，逻辑相对固定
-VkFormat findSupportedFormat(VkPhysicalDevice physicalDevice,
-                             const std::vector<VkFormat> &candidates,
-                             VkImageTiling tiling,
-                             VkFormatFeatureFlags features) {
-  for (VkFormat format : candidates) {
-    VkFormatProperties props;
-    vkGetPhysicalDeviceFormatProperties(physicalDevice, format, &props);
-    if (tiling == VK_IMAGE_TILING_LINEAR &&
-        (props.linearTilingFeatures & features) == features)
-      return format;
-    else if (tiling == VK_IMAGE_TILING_OPTIMAL &&
-             (props.optimalTilingFeatures & features) == features)
-      return format;
-  }
-  throw std::runtime_error("failed to find supported format!");
-}
+
 } // namespace
 
 namespace LX_core::graphic_backend {
@@ -34,58 +21,161 @@ public:
   VulkanRendererImpl() {}
   ~VulkanRendererImpl() override { destroy(); }
 
-  void initialize(WindowPtr _window) override {
-    window = _window;
-    device = std::make_unique<VulkanDevice>();
-    device->initialize();
-    surface = (VkSurfaceKHR)window->createGraphicsHandle(GraphicsAPI::Vulkan,
-                                                         device->getInstance());
-    if (surface == nullptr) {
-      throw std::runtime_error("Failed to create Vulkan surface");
-    }
-    surfaceFormat = findBestSurfaceFormat(device->getPhysicalDevice(), surface);
-    depthFormat = findSupportedFormat(
-        device->getPhysicalDevice(), {VK_FORMAT_D32_SFLOAT_S8_UINT},
-        VK_IMAGE_TILING_OPTIMAL,
-        VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
-
-    VkExtent2D extent = {window->getWidth(), window->getHeight()};
+  void initialize(WindowPtr _window, const char *appName) override {
     const int maxFramesInFlight = 3;
 
-    resourceManager = VulkanResourceManager::create(*device);
-    resourceManager->initializeRenderPassAndPipeline(surfaceFormat,
-                                                     depthFormat);
+    device = VulkanDevice::create();
+    device->initialize(_window, appName);
+    // Window backends return an allocated handle pointer (void*) for Vulkan.
+    VkInstance instance = device->getInstance();
 
-    auto graphicsIdx = device->getGraphicsQueueFamilyIndex(); 
-    auto presentIdx = device->getPresentQueueFamilyIndex(); 
-    swapchain =
-        VulkanSwapchain::create(*device, surface, extent, graphicsIdx, presentIdx, maxFramesInFlight);
-    swapchain->initialize(resourceManager->getRenderPass());
+    resourceManager = VulkanResourceManager::create(*device);
+    resourceManager->initializeRenderPassAndPipeline(device->getSurfaceFormat(),
+                                                     device->getDepthFormat());
+
+    auto graphicsIdx = device->getGraphicsQueueFamilyIndex();
+    auto presentIdx = device->getPresentQueueFamilyIndex();
+    swapchain = VulkanSwapchain::create(*device, device->getSurface(), device->getExtent(), graphicsIdx,
+                                        presentIdx, maxFramesInFlight);
+    swapchain->initialize(*resourceManager->getRenderPass());
 
     cmdBufferMgr = VulkanCommandBufferManager::create(
         *device, maxFramesInFlight, device->getGraphicsQueueFamilyIndex());
+
+    // Needed for GPU-side uploads (textures).
+    resourceManager->setCommandBufferManager(*cmdBufferMgr);
   }
-  void shutdown() override {}
-  void initScene(ScenePtr scene) override {}
+  void shutdown() override { destroy(); }
 
-  void uploadData() override {}
-  void draw() override {}
+  void initScene(ScenePtr _scene) override {
+    scene = _scene;
+    renderItem = scene->buildRenderItem();
 
-  WindowPtr window = nullptr;
-  VkSurfaceKHR surface = nullptr;
-  VkSurfaceFormatKHR surfaceFormat = {};
-  VkFormat depthFormat = {};
+    // Inject camera/light UBOs required by the blinn-phong pipeline.
+    if (scene->camera) {
+      auto camRes = scene->camera->getRenderResources();
+      renderItem.descriptorResources.insert(
+          renderItem.descriptorResources.end(), camRes.begin(), camRes.end());
+    }
+    if (scene->directionalLight) {
+      auto lightRes = scene->directionalLight->getRenderResources();
+      renderItem.descriptorResources.insert(
+          renderItem.descriptorResources.end(), lightRes.begin(),
+          lightRes.end());
+    }
+
+    // Initialize push-constants with sane defaults.
+    if (renderItem.objectInfo) {
+      PC_BlinnPhong pc{};
+      pc.model = Mat4f::identity();
+      pc.enableLighting = 1;
+      pc.enableSkinning = 0;
+      renderItem.objectInfo->update(pc);
+    }
+
+    // Create GPU resources immediately.
+    resourceManager->syncResource(renderItem.vertexBuffer);
+    resourceManager->syncResource(renderItem.indexBuffer);
+    for (auto &cpuRes : renderItem.descriptorResources) {
+      resourceManager->syncResource(cpuRes);
+    }
+    resourceManager->collectGarbage();
+  }
+
+  void uploadData() override {
+    // Sync only dirty resources; the manager handles create/update.
+    resourceManager->syncResource(renderItem.vertexBuffer);
+    resourceManager->syncResource(renderItem.indexBuffer);
+    for (auto &cpuRes : renderItem.descriptorResources) {
+      resourceManager->syncResource(cpuRes);
+    }
+    resourceManager->collectGarbage();
+  }
+
+  void draw() override {
+    const uint32_t maxFramesInFlight = 3;
+    const VkExtent2D extent = swapchain->getExtent();
+
+    const uint32_t currentFrameIndex = frameIndex % maxFramesInFlight;
+    uint32_t imageIndex = 0;
+
+    if (swapchain->acquireNextImage(currentFrameIndex, imageIndex) !=
+        VK_SUCCESS) {
+      return;
+    }
+
+    cmdBufferMgr->beginFrame(currentFrameIndex);
+    device->getDescriptorManager().beginFrame(currentFrameIndex);
+
+    VulkanCommandBuffer cmd = cmdBufferMgr->allocateBuffer();
+    cmd.setResourceManager(*resourceManager);
+
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = 0;
+    beginInfo.pInheritanceInfo = nullptr;
+
+    vkBeginCommandBuffer(cmd.getHandle(), &beginInfo);
+
+    auto *renderPass = resourceManager->getRenderPass();
+    cmd.beginRenderPass(renderPass->getHandle(),
+                        swapchain->getFramebuffer(imageIndex).getHandle(),
+                        extent, renderPass->getClearValues());
+
+    cmd.setViewport(extent.width, extent.height);
+    cmd.setScissor(extent.width, extent.height);
+
+    auto *pipeline = resourceManager->getRenderPipeline();
+    cmd.bindPipeline(*pipeline);
+    cmd.bindResources(*pipeline, renderItem);
+    cmd.drawItem(renderItem);
+
+    cmd.endRenderPass();
+    vkEndCommandBuffer(cmd.getHandle());
+
+    VkSemaphore waitSemaphores[] = {
+        swapchain->getImageAvailableSemaphore(currentFrameIndex)};
+    VkPipelineStageFlags waitStages[] = {
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+    VkSemaphore signalSemaphores[] = {
+        swapchain->getRenderFinishedSemaphore(currentFrameIndex)};
+
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.waitSemaphoreCount = 1;
+    submitInfo.pWaitSemaphores = waitSemaphores;
+    submitInfo.pWaitDstStageMask = waitStages;
+    submitInfo.commandBufferCount = 1;
+    VkCommandBuffer handle = cmd.getHandle();
+    submitInfo.pCommandBuffers = &handle;
+    submitInfo.signalSemaphoreCount = 1;
+    submitInfo.pSignalSemaphores = signalSemaphores;
+
+    VkFence fence = swapchain->getInFlightFence(currentFrameIndex);
+    vkResetFences(device->getLogicalDevice(), 1, &fence);
+    if (vkQueueSubmit(device->getGraphicsQueue(), 1, &submitInfo, fence) !=
+        VK_SUCCESS) {
+      return;
+    }
+
+    swapchain->present(currentFrameIndex, imageIndex);
+    frameIndex++;
+  }
 
   VulkanDevicePtr device = nullptr;
   VulkanResourceManagerPtr resourceManager = nullptr;
   VulkanSwapchainPtr swapchain = nullptr;
   VulkanCommandBufferManagerPtr cmdBufferMgr = nullptr;
 
+  ScenePtr scene = nullptr;
+  RenderItem renderItem{};
+  uint32_t frameIndex = 0;
+
 private:
   void destroy() {
     if (device) {
       // 关键：等 GPU 干完活再删东西
-      vkDeviceWaitIdle(device->getHandle());
+      vkDeviceWaitIdle(device->getLogicalDevice());
     }
     // 1. 销毁 Command Buffer Manager
     cmdBufferMgr.reset();
@@ -93,50 +183,8 @@ private:
     swapchain.reset();
     // 3. 销毁 Resource Manager
     resourceManager.reset();
-    // 4. 销毁 Surface
-    window->destroyGraphicsHandle(GraphicsAPI::Vulkan, device->getInstance(),
-                                  surface);
-    surface = VK_NULL_HANDLE;
-    // 5. 销毁 Device
+    // 4. 销毁 Device
     device.reset();
-  }
-
-  VkSurfaceFormatKHR findBestSurfaceFormat(VkPhysicalDevice physicalDevice,
-                                           VkSurfaceKHR surface) {
-    // 1. 获取硬件支持的所有表面格式
-    uint32_t formatCount;
-    vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount,
-                                         nullptr);
-
-    if (formatCount == 0) {
-      throw std::runtime_error("No surface formats found!");
-    }
-
-    std::vector<VkSurfaceFormatKHR> availableFormats(formatCount);
-    vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount,
-                                         availableFormats.data());
-
-    // 2. 筛选最优格式
-    for (const auto &availableFormat : availableFormats) {
-      // 我们优先寻找 B8G8R8A8 或 R8G8B8A8 的 SRGB 非线性版本
-      // SRGB 可以提供更准确的视觉亮度（Gamma 校正）
-      if (availableFormat.format == VK_FORMAT_B8G8R8A8_SRGB &&
-          availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
-        return availableFormat;
-      }
-    }
-
-    // 3. 兜底方案：如果找不到 SRGB，直接返回第一个支持的格式
-    return availableFormats[0];
-  }
-
-  VkFormat findDepthFormat() {
-    return findSupportedFormat(device->getPhysicalDevice(),
-                               {VK_FORMAT_D32_SFLOAT,
-                                VK_FORMAT_D32_SFLOAT_S8_UINT,
-                                VK_FORMAT_D24_UNORM_S8_UINT},
-                               VK_IMAGE_TILING_OPTIMAL,
-                               VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
   }
 
   VkSurfaceFormatKHR chooseSwapSurfaceFormat(

@@ -1,23 +1,39 @@
 #pragma once
 #include <vulkan/vulkan.h>
 #include <vector>
-namespace LX_core::graphic_backend {
+#include <memory>
+
+namespace LX_core {
+namespace graphic_backend {
+
 class VulkanDevice;
 /**
  * @brief 帧缓冲包装（RAII，随 Swapchain 或 RenderTarget 销毁）
  */
 class VulkanFrameBuffer {
+  struct Token {};
+
 public:
-  VulkanFrameBuffer(VulkanDevice &device, VkRenderPass rp,
+  VulkanFrameBuffer(Token, VulkanDevice &device, VkRenderPass renderPass,
                     const std::vector<VkImageView> &attachments,
                     VkExtent2D extent);
   ~VulkanFrameBuffer();
 
-  VkFramebuffer getHandle() const;
-  VkExtent2D getExtent() const;
+  static std::unique_ptr<VulkanFrameBuffer> create(VulkanDevice &device,
+                                                   VkRenderPass renderPass,
+                                                   const std::vector<VkImageView> &attachments,
+                                                   VkExtent2D extent) {
+    return std::make_unique<VulkanFrameBuffer>(Token{}, device, renderPass, attachments, extent);
+  }
+
+  VkFramebuffer getHandle() const { return m_framebuffer; }
+  VkExtent2D getExtent() const { return m_extent; }
 
 private:
-  VkFramebuffer m_handle;
+  VulkanDevice *m_device = nullptr;
+  VkFramebuffer m_framebuffer = VK_NULL_HANDLE;
+  VkExtent2D m_extent{};
 };
 
-} // namespace LX_core::graphic_backend
+} // namespace graphic_backend
+} // namespace LX_core

@@ -1,65 +1,110 @@
 #pragma once
 #include <map>
 #include <memory>
+#include <unordered_map>
 #include <vector>
 #include <vulkan/vulkan.h>
 
-namespace LX_core::graphic_backend {
+namespace LX_core {
+namespace graphic_backend {
 
+// 前置声明
 class VulkanDevice;
+class DescriptorSet;
+struct PipelineSlotDetails;
+struct DescriptorLayoutKey;
+class DescriptorLayoutHasher;
 
-// 每帧的上下文，封装 Pool 和已经分配出的 Buffer
-struct CommandFrameContext {
-  VkCommandPool pool = VK_NULL_HANDLE;
-  std::vector<VkCommandBuffer> activeBuffers; // 当前帧正在录制的
-  uint32_t nextAvailableBuffer = 0; // 用于复用 Buffer，减少 allocate 次数
+// Descriptor 更新信息 (moved before DescriptorSet to fix forward reference)
+struct DescriptorUpdateInfo {
+  uint32_t binding = 0;
+  VkDescriptorType type = VK_DESCRIPTOR_TYPE_MAX_ENUM;
+  uint32_t descriptorCount = 1;
+  const VkDescriptorBufferInfo *bufferInfo = nullptr;
+  const VkDescriptorImageInfo *imageInfo = nullptr;
 };
 
-class VulkanCommandBufferManager {
-  struct Token {};
+// DescriptorSet 的智能指针
+using DescriptorSetPtr = std::unique_ptr<DescriptorSet>;
 
+// 描述符集合
+class DescriptorSet {
 public:
-  VulkanCommandBufferManager(Token, VulkanDevice &device,
-                             uint32_t maxFramesInFlight,
-                             uint32_t queueFamilyIndex);
-  ~VulkanCommandBufferManager();
+  DescriptorSet(VkDescriptorSet set, VkDescriptorSetLayout layout,
+                class VulkanDescriptorManager &manager);
+  ~DescriptorSet();
 
-  static std::unique_ptr<VulkanCommandBufferManager>
-  create(VulkanDevice &device, uint32_t maxFramesInFlight,
-         uint32_t queueFamilyIndex) {
-    return std::make_unique<VulkanCommandBufferManager>(
-        Token{}, device, maxFramesInFlight, queueFamilyIndex);
-  }
+  VkDescriptorSet getHandle() const { return m_set; }
 
-  // --- 帧生命周期控制 ---
-
-  // 每帧渲染开始前调用，重置当前帧的 Pool
-  void beginFrame(uint32_t currentFrameIndex);
-
-  // 获取一个可用的 CommandBuffer
-  // 内部逻辑：如果 activeBuffers 还有没用的就直接给，没有就申请新的
-  VkCommandBuffer
-  allocateBuffer(VkCommandBufferLevel level = VK_COMMAND_BUFFER_LEVEL_PRIMARY);
-
-  // --- 工具函数 ---
-
-  // 立即执行的命令（用于数据上传等一次性任务）
-  // 这种通常使用一个独立的、带有 VK_COMMAND_POOL_CREATE_TRANSIENT_BIT 的 Pool
-  VkCommandBuffer beginSingleTimeCommands();
-  void endSingleTimeCommands(VkCommandBuffer commandBuffer, VkQueue queue);
+  void updateBuffer(uint32_t binding, VkDescriptorBufferInfo bufferInfo,
+                   VkDescriptorType type);
+  void updateImage(uint32_t binding, VkDescriptorImageInfo imageInfo,
+                   VkDescriptorType type);
+  void updateBatch(const std::vector<DescriptorUpdateInfo> &updates);
 
 private:
-  VulkanDevice &m_device;
-  uint32_t m_currentFrameIndex = 0;
-  uint32_t m_maxFramesInFlight = 0;
-  uint32_t m_queueFamilyIndex = 0;
-
-  std::vector<CommandFrameContext> m_frameContexts;
-
-  // 用于一次性命令的独立 Pool
-  VkCommandPool m_transientPool = VK_NULL_HANDLE;
-
-  void createPool(VkCommandPool &pool, VkCommandPoolCreateFlags flags);
+  VkDescriptorSet m_set = VK_NULL_HANDLE;
+  VkDescriptorSetLayout m_layout = VK_NULL_HANDLE;
+  class VulkanDescriptorManager &m_manager;
 };
 
-} // namespace LX_core::graphic_backend
+// Layout 唯一性键值
+struct DescriptorLayoutKey {
+  std::vector<PipelineSlotDetails> slots;
+  bool operator==(const DescriptorLayoutKey &other) const;
+};
+
+class DescriptorLayoutHasher {
+public:
+  size_t operator()(const DescriptorLayoutKey &key) const;
+};
+
+// 描述符管理器
+class VulkanDescriptorManager {
+public:
+  struct Token {};
+
+  VulkanDescriptorManager(Token);
+  ~VulkanDescriptorManager();
+
+  void initialize(VulkanDevice &device);
+
+  VkDescriptorSetLayout getOrCreateLayout(
+      const std::vector<PipelineSlotDetails> &slots);
+  DescriptorSetPtr allocateSet(const std::vector<PipelineSlotDetails> &slots);
+
+  void beginFrame(uint32_t currentFrameIndex);
+  void returnSet(VkDescriptorSet set, VkDescriptorSetLayout layout);
+  void reset();
+
+  VkDevice getDeviceHandle() const;
+
+private:
+  VulkanDevice *m_device = nullptr;
+  uint32_t m_currentFrameIndex = 0;
+  uint32_t m_maxFramesInFlight = 3;
+
+  struct FrameContext {
+    VkDescriptorPool pool = VK_NULL_HANDLE;
+    std::unordered_map<VkDescriptorSetLayout, std::vector<VkDescriptorSet>>
+        freeSets;
+    std::vector<std::pair<VkDescriptorSet, VkDescriptorSetLayout>> pendingReturn;
+  };
+
+  std::vector<FrameContext> m_frameContexts;
+  std::unordered_map<DescriptorLayoutKey, VkDescriptorSetLayout,
+                     DescriptorLayoutHasher>
+      m_layoutCache;
+
+  struct Config {
+    uint32_t uniformCount = 16;
+    uint32_t samplerCount = 16;
+    uint32_t storageCount = 8;
+    uint32_t maxSets = 64;
+  } m_config;
+};
+
+using VulkanDescriptorManagerPtr = std::unique_ptr<VulkanDescriptorManager>;
+
+} // namespace graphic_backend
+} // namespace LX_core
