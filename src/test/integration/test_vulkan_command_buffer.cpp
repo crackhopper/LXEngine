@@ -3,47 +3,30 @@
 #include "core/resources/vertex_buffer.hpp"
 #include "core/scene/components/material.hpp"
 #include "core/scene/scene.hpp"
+#include "core/utils/filesystem_tools.hpp"
 #include "graphics_backend/vulkan/details/commands/vkc_cmdbuffer_manager.hpp"
 #include "graphics_backend/vulkan/details/render_objects/vkr_framebuffer.hpp"
 #include "graphics_backend/vulkan/details/render_objects/vkr_renderpass.hpp"
 #include "graphics_backend/vulkan/details/resources/vkr_texture.hpp"
 #include "graphics_backend/vulkan/details/vk_device.hpp"
 #include "graphics_backend/vulkan/details/vk_resource_manager.hpp"
+#include "core/utils/env.hpp"
+
 #include "infra/window/window.hpp"
 
 #include <vulkan/vulkan.h>
 
-#include <filesystem>
 #include <iostream>
 #include <vector>
 
-namespace fs = std::filesystem;
-
-static void cdToWhereShadersExist() {
-  fs::path p = fs::current_path();
-  for (int i = 0; i < 8; ++i) {
-    if (fs::exists(p / "shaders" / "glsl" / "blinnphong_0.vert.spv") &&
-        fs::exists(p / "shaders" / "glsl" / "blinnphong_0.frag.spv")) {
-      fs::current_path(p);
-      return;
-    }
-    if (fs::exists(p / "build" / "shaders" / "glsl" /
-                   "blinnphong_0.vert.spv") &&
-        fs::exists(p / "build" / "shaders" / "glsl" /
-                   "blinnphong_0.frag.spv")) {
-      fs::current_path(p / "build");
-      return;
-    }
-    const auto parent = p.parent_path();
-    if (parent == p)
-      break;
-    p = parent;
-  }
-}
-
 int main() {
+  expSetEnvVK();
   try {
-    cdToWhereShadersExist();
+    auto success = cdToWhereShadersExist("blinnphong_0");
+    if (!success) {
+      std::cerr << "Failed to find shader files\n";
+      return 1;
+    }
 
     LX_infra::Window::Initialize();
     auto window =

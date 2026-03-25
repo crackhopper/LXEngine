@@ -1,6 +1,8 @@
+#include "core/utils/filesystem_tools.hpp"
 #include "graphics_backend/vulkan/details/pipelines/vkp_blinnphong.hpp"
 #include "graphics_backend/vulkan/details/render_objects/vkr_renderpass.hpp"
 #include "graphics_backend/vulkan/details/vk_device.hpp"
+#include "core/utils/env.hpp"
 #include "infra/window/window.hpp"
 
 #include <filesystem>
@@ -8,44 +10,23 @@
 
 namespace fs = std::filesystem;
 
-static void cdToWhereShadersExist() {
-  fs::path p = fs::current_path();
-  for (int i = 0; i < 8; ++i) {
-    if (fs::exists(p / "shaders" / "glsl" / "blinnphong_0.vert.spv") &&
-        fs::exists(p / "shaders" / "glsl" / "blinnphong_0.frag.spv")) {
-      fs::current_path(p);
-      return;
-    }
-    if (fs::exists(p / "build" / "shaders" / "glsl" / "blinnphong_0.vert.spv") &&
-        fs::exists(p / "build" / "shaders" / "glsl" / "blinnphong_0.frag.spv")) {
-      fs::current_path(p / "build");
-      return;
-    }
-    const auto parent = p.parent_path();
-    if (parent == p) break;
-    p = parent;
-  }
-}
-
 int main() {
+  expSetEnvVK();
   try {
-    cdToWhereShadersExist();
-
-    const fs::path vertPath = "shaders/glsl/blinnphong_0.vert.spv";
-    const fs::path fragPath = "shaders/glsl/blinnphong_0.frag.spv";
-    if (!fs::exists(vertPath) || !fs::exists(fragPath)) {
-      std::cerr << "Missing SPIR-V files for pipeline test\n";
+    auto success = cdToWhereShadersExist("blinnphong_0");
+    if (!success) {
+      std::cerr << "Failed to find shader files\n";
       return 1;
     }
-
+    
     LX_infra::Window::Initialize();
     auto window = std::make_shared<LX_infra::Window>("Test Vulkan Pipeline", 64, 64);
 
     auto device = LX_core::graphic_backend::VulkanDevice::create();
     device->initialize(window, "TestVulkanPipeline");
 
-    const VkFormat colorFormat = VK_FORMAT_B8G8R8A8_UNORM;
-    const VkFormat depthFormat = VK_FORMAT_D32_SFLOAT_S8_UINT;
+    const VkFormat colorFormat = device->getSurfaceFormat().format;
+    const VkFormat depthFormat = device->getDepthFormat();
     auto renderPass =
         LX_core::graphic_backend::VulkanRenderPass::create(
             *device, colorFormat, depthFormat);

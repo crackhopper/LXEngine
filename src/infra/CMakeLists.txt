@@ -27,8 +27,6 @@ set(INFRA_LIB LX_Infra CACHE INTERNAL "Infra library name")
 
 # Explicitly list source files to avoid picking up example files and unwanted backends
 set(INFRA_SOURCES
-    env/env.cpp
-    fs/file.cpp
     gui/gui_impl_imgui.cpp
     texture_loader/texture_loader.cpp
     mesh_loader/obj/obj.cpp

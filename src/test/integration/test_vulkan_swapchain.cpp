@@ -8,27 +8,6 @@
 #include <iostream>
 #include <vector>
 
-namespace {
-VkSurfaceFormatKHR chooseSurfaceFormat(VkPhysicalDevice phys, VkSurfaceKHR surface) {
-  uint32_t formatCount = 0;
-  vkGetPhysicalDeviceSurfaceFormatsKHR(phys, surface, &formatCount, nullptr);
-  if (formatCount == 0) {
-    throw std::runtime_error("No surface formats found");
-  }
-
-  std::vector<VkSurfaceFormatKHR> formats(formatCount);
-  vkGetPhysicalDeviceSurfaceFormatsKHR(phys, surface, &formatCount, formats.data());
-
-  for (const auto &f : formats) {
-    if (f.format == VK_FORMAT_B8G8R8A8_SRGB &&
-        f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
-      return f;
-    }
-  }
-  return formats[0];
-}
-} // namespace
-
 int main() {
   try {
     LX_infra::Window::Initialize();
@@ -38,18 +17,11 @@ int main() {
     device->initialize(window, "TestVulkanDepth");
 
     VkInstance instance = device->getInstance();
-    LX_core::WindowGraphicsHandle surfaceHandle =
-        window->createGraphicsHandle(GraphicsAPI::Vulkan, instance);
-    if (!surfaceHandle) {
-      std::cerr << "Failed to create Vulkan surface handle\n";
-      return 1;
-    }
-
-    VkSurfaceKHR surface = static_cast<VkSurfaceKHR>(surfaceHandle);
 
     // Keep depth format aligned with VulkanSwapchain::createDepthResources().
-    const VkFormat depthFormat = VK_FORMAT_D24_UNORM_S8_UINT;
-    VkSurfaceFormatKHR surfaceFormat = chooseSurfaceFormat(device->getPhysicalDevice(), surface);
+    auto surface = device->getSurface();
+    const VkFormat depthFormat = device->getDepthFormat();
+    VkSurfaceFormatKHR surfaceFormat = device->getSurfaceFormat();
 
     const VkExtent2D extent{
         static_cast<uint32_t>(window->getWidth()),
@@ -72,9 +44,6 @@ int main() {
       std::cerr << "Swapchain image count is zero\n";
       return 1;
     }
-
-    // Cleanup surface (window impl doesn't destroy it explicitly).
-    vkDestroySurfaceKHR(instance, surface, nullptr);
 
     return 0;
   } catch (const std::exception &e) {

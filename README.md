@@ -136,3 +136,148 @@ cmake --build . --config Debug
 - ⏳ PBR 材质
 - ⏳ 延迟渲染管线
 - ⏳ 阴影映射
+
+
+## 遗留问题
+### 动态pipeline管理、pipeline cache。
+下面都是比较混乱的想法摘要。还没有梳理。
+
+1. 定义pipelineKey， 并在 RenderItem 增加pipelineKey。
+2. 增加 通过 Material，网格，推断pipelineKey的能力。
+3. 增加 Pipeline 工厂，负责根据 PipelineKey 创建对应 Pipeline 实例。
+  - 针对 shader name 和 variant ，最好其实代码里定义动态编译并写入文件夹形成不同的spv文件。这样首先可以从缓存文件夹查找，找不到再编译，然后写入缓存文件夹。
+
+整体对于冬天构建pipeline的思考：
+1. 由mesh格式，导出顶点格式
+2. pipeline其他待设定变量，先简化处理。准备一个类+默认值。（方便未来数据驱动）
+3. 用户自定义UBO或者其他descriptorset。提供一个yaml文件，根据这个我来创建pipeline slot。
+4. shader文件，用户自己保证和ubo一致性。我负责根据 mesh 格式，得到预编译定义，从而得到实际的编译后的path。
+5. 由 1，2，3，4；我可以定义一个hash和==，作为pipeline key。并根据情况，动态创建对应的pipeline，并cache在resource manager中。
+
+
+相关类的设想：
+```cpp
+
+// 现状：硬编码在 VkPipelineBlinnPhong
+// 未来：数据驱动
+
+struct PipelineConfig {
+  // Shader
+  std::string vertShader = "unlit";    // 映射到 shader name
+  std::string fragShader = "unlit";
+  
+  // 图元
+  VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+  
+  // 光栅化（默认值）
+  RasterizerConfig rasterizer{
+    .polygonMode = VK_POLYGON_MODE_FILL,
+    .cullMode = VK_CULL_MODE_BACK_BIT,
+    // ...
+  };
+  
+  // 深度模板（默认值）
+  DepthStencilConfig depthStencil{
+    .depthTest = true,
+    .depthWrite = true,
+    // ...
+  };
+  
+  // 混合（默认值）
+  BlendConfig blend{
+    .blendEnable = false,
+    // ...
+  };
+};
+
+/**
+ * Pipeline 类型枚举 - 标识渲染管线的算法/用途类型
+ * 每个类型对应一套完整的渲染策略（顶点处理、片段处理、材质槽位等）
+ */
+enum class PipelineType : uint8_t {
+  None = 0,
+  BlinnPhong,      // 基础 Blinn-Phong 光照
+  PBR,             // 基于物理的渲染
+  Shadow,          // 阴影图生成
+  Skybox,          // 天空盒
+  PostProcess,    // 后处理
+  // 可扩展...
+};
+/**
+ * Shader 变体标识 - 区分同一 PipelineType 下的不同 Shader 组合
+ * 
+ * 典型场景:
+ *   - 不同骨骼权重数量 (non-skinned vs skinned)
+ *   - 不同光照模型变体
+ *   - 不同顶点格式
+ */
+struct ShaderVariant {
+  std::string baseName;      // e.g., "blinnphong"
+  uint32_t variantId;        // e.g., 0 = non-skinned, 1 = skinned
+  
+  bool operator==(const ShaderVariant& other) const {
+    return baseName == other.baseName && variantId == other.variantId;
+  }
+};
+/**
+ * Pipeline 查找键 - 唯一确定一个 VulkanPipeline
+ * 
+ * 设计原则:
+ *   (PipelineType, ShaderVariant) → 唯一 VulkanPipeline 实例
+ *   同一个 PipelineType 不同 ShaderVariant 会创建不同的 Pipeline 对象
+ */
+struct PipelineKey {
+  PipelineType type;
+  ShaderVariant variant;
+  
+  std::string toString() const {
+    return std::to_string(static_cast<uint8_t>(type)) + "_" 
+           + variant.baseName + "_" + std::to_string(variant.variantId);
+  }
+  
+  bool operator==(const PipelineKey& other) const {
+    return type == other.type && variant == other.variant;
+  }
+};
+
+/**
+ * Pipeline 工厂 - 负责根据 PipelineKey 创建对应 Pipeline 实例
+ * 
+ * 设计原则：
+ *   每种 PipelineType 对应一个 CreateXXX 函数
+ *   新增 Pipeline 类型只需添加新函数并注册到 g_creators 表
+ */
+class PipelineFactory {
+public:
+  using CreatorFunc = std::function<VulkanPipelinePtr(VulkanDevice&, VkExtent2D)>;
+  
+  static PipelineFactory& instance() {
+    static PipelineFactory inst;
+    return inst;
+  }
+  
+  // 注册创建函数
+  void registerCreator(PipelineType type, CreatorFunc creator) {
+    g_creators[static_cast<uint8_t>(type)] = std::move(creator);
+  }
+  
+  // 创建 Pipeline
+  VulkanPipelinePtr create(PipelineType type, VulkanDevice& device, VkExtent2D extent) {
+    auto it = g_creators.find(static_cast<uint8_t>(type));
+    if (it == g_creators.end()) {
+      throw std::runtime_error("Unknown PipelineType: " + std::to_string(static_cast<uint8_t>(type)));
+    }
+    return it->second(device, extent);
+  }
+  
+private:
+  PipelineFactory() {
+    // 注册内置 Pipeline 创建函数
+    g_creators[static_cast<uint8_t>(PipelineType::BlinnPhong)] = 
+        [](VulkanDevice& dev, VkExtent2D ext) { return VkPipelineBlinnPhong::create(dev, ext); };
+    // g_creators[static_cast<uint8_t>(PipelineType::PBR)] = ...
+  }
+  
+  std::unordered_map<uint8_t, CreatorFunc> g_creators;
+};
+```

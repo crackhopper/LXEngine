@@ -1,22 +1,11 @@
 #include "vkp_pipeline.hpp"
 #include "../vk_device.hpp"
 #include "../descriptors/vkd_descriptor_manager.hpp"
+#include "core/utils/filesystem_tools.hpp"
 #include <fstream>
 
 namespace LX_core {
 namespace graphic_backend {
-
-static std::vector<char> readFile(const std::string &filename) {
-  std::ifstream file(filename, std::ios::ate | std::ios::binary);
-  if (!file.is_open())
-    throw std::runtime_error("failed to open file: " + filename);
-  size_t fileSize = (size_t)file.tellg();
-  std::vector<char> buffer(fileSize);
-  file.seekg(0);
-  file.read(buffer.data(), fileSize);
-  file.close();
-  return buffer;
-}
 
 VulkanPipelineBase::VulkanPipelineBase(
     Token, VulkanDevice &device, VkExtent2D extent,
@@ -260,8 +249,8 @@ VkPipeline VulkanPipelineBase::buildGraphicsPpl(VkRenderPass renderPass) {
 }
 
 void VulkanPipelineBase::loadShaders() {
-  auto vertCode = readFile("shaders/glsl/" + m_shaderName + ".vert.spv");
-  auto fragCode = readFile("shaders/glsl/" + m_shaderName + ".frag.spv");
+  auto vertCode = readFile(getShaderPath(m_shaderName + ".vert"));
+  auto fragCode = readFile(getShaderPath(m_shaderName + ".frag"));
 
   auto createModule = [&](const std::vector<char> &code) {
     VkShaderModuleCreateInfo createInfo{};

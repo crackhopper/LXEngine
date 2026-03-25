@@ -1,5 +1,6 @@
 #include "vkr_shader.hpp"
 #include "../vk_device.hpp"
+#include "core/utils/filesystem_tools.hpp"
 #include <fstream>
 #include <stdexcept>
 
@@ -10,8 +11,10 @@ VulkanShader::VulkanShader(Token, VulkanDevice &device, const std::string &name,
                          VkShaderStageFlagBits stage)
     : m_device(device.getLogicalDevice()), m_stage(stage) {
   // Determine shader file path based on stage
-  std::string extension = (stage == VK_SHADER_STAGE_VERTEX_BIT) ? ".vert.spv" : ".frag.spv";
-  std::string shaderPath = "shaders/glsl/" + name + extension;
+  auto shaderPath = getShaderPath(name);
+  if (shaderPath.empty()) {
+    throw std::runtime_error("Failed to find shader file: " + name);
+  }
 
   // Load shader bytecode from file
   std::ifstream file(shaderPath, std::ios::ate | std::ios::binary);

@@ -3,12 +3,15 @@
 #include "graphics_backend/vulkan/details/resources/vkr_texture.hpp"
 #include "graphics_backend/vulkan/details/vk_device.hpp"
 #include "infra/window/window.hpp"
+#include "core/utils/env.hpp"
+
 
 #include <cstdint>
 #include <iostream>
 #include <vector>
 
 int main() {
+  expSetEnvVK();
   try {
     LX_infra::Window::Initialize();
     auto window = std::make_shared<LX_infra::Window>("Test Vulkan Texture", 64, 64);

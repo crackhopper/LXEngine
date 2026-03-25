@@ -11,7 +11,6 @@ target_include_directories(${CORE_LIB}
     ${CMAKE_CURRENT_SOURCE_DIR}/..
 )
 
-
 # target_link_libraries(${CORE_LIB} 
 #   PUBLIC
 #   glm::glm
