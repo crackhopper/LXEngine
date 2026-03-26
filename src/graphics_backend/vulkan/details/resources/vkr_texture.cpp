@@ -1,17 +1,18 @@
 #include "vkr_texture.hpp"
-#include "../vk_device.hpp"
 #include "../commands/vkc_cmdbuffer.hpp"
+#include "../vk_device.hpp"
 #include "vkr_buffer.hpp"
-#include <stdexcept>
 #include <iostream>
+#include <stdexcept>
 
 namespace LX_core {
 namespace graphic_backend {
 
 VulkanTexture::VulkanTexture(Token, VulkanDevice &device, uint32_t width,
-                           uint32_t height, VkFormat format, VkImageUsageFlags usage,
-                           VkFilter filter)
-    : m_device(device.getLogicalDevice()), m_width(width), m_height(height), m_format(format) {
+                             uint32_t height, VkFormat format,
+                             VkImageUsageFlags usage, VkFilter filter)
+    : m_device(device.getLogicalDevice()), m_width(width), m_height(height),
+      m_format(format) {
   // Create image
   VkImageCreateInfo imageInfo{};
   imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -42,7 +43,8 @@ VulkanTexture::VulkanTexture(Token, VulkanDevice &device, uint32_t width,
   allocInfo.memoryTypeIndex = device.findMemoryTypeIndex(
       memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-  if (vkAllocateMemory(m_device, &allocInfo, nullptr, &m_memory) != VK_SUCCESS) {
+  if (vkAllocateMemory(m_device, &allocInfo, nullptr, &m_memory) !=
+      VK_SUCCESS) {
     throw std::runtime_error("Failed to allocate image memory!");
   }
 
@@ -54,9 +56,11 @@ VulkanTexture::VulkanTexture(Token, VulkanDevice &device, uint32_t width,
 }
 
 VulkanTexture::VulkanTexture(Token, VulkanDevice &device, uint32_t width,
-                           uint32_t height, VkFormat format, VkImageUsageFlags usage,
-                           VkImageAspectFlags aspectMask)
-    : m_device(device.getLogicalDevice()), m_width(width), m_height(height), m_format(format) {
+                             uint32_t height, VkFormat format,
+                             VkImageUsageFlags usage,
+                             VkImageAspectFlags aspectMask)
+    : m_device(device.getLogicalDevice()), m_width(width), m_height(height),
+      m_format(format) {
   VkImageCreateInfo imageInfo{};
   imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
   imageInfo.imageType = VK_IMAGE_TYPE_2D;
@@ -85,7 +89,8 @@ VulkanTexture::VulkanTexture(Token, VulkanDevice &device, uint32_t width,
   allocInfo.memoryTypeIndex = device.findMemoryTypeIndex(
       memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-  if (vkAllocateMemory(m_device, &allocInfo, nullptr, &m_memory) != VK_SUCCESS) {
+  if (vkAllocateMemory(m_device, &allocInfo, nullptr, &m_memory) !=
+      VK_SUCCESS) {
     throw std::runtime_error("Failed to allocate image memory!");
   }
 
@@ -127,7 +132,8 @@ void VulkanTexture::createImageView(VkImageAspectFlags aspectMask) {
   viewInfo.subresourceRange.baseArrayLayer = 0;
   viewInfo.subresourceRange.layerCount = 1;
 
-  if (vkCreateImageView(m_device, &viewInfo, nullptr, &m_imageView) != VK_SUCCESS) {
+  if (vkCreateImageView(m_device, &viewInfo, nullptr, &m_imageView) !=
+      VK_SUCCESS) {
     throw std::runtime_error("Failed to create image view!");
   }
 }
@@ -147,14 +153,17 @@ void VulkanTexture::createSampler(VkFilter filter) {
   samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
   samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
 
-  if (vkCreateSampler(m_device, &samplerInfo, nullptr, &m_sampler) != VK_SUCCESS) {
+  if (vkCreateSampler(m_device, &samplerInfo, nullptr, &m_sampler) !=
+      VK_SUCCESS) {
     throw std::runtime_error("Failed to create texture sampler!");
   }
 }
 
-void VulkanTexture::transitionLayout(VulkanCommandBuffer &cmd, VkImageLayout oldLayout,
-                                   VkImageLayout newLayout, VkPipelineStageFlags pipelineStage,
-                                   VkImageAspectFlags aspectMask) {
+void VulkanTexture::transitionLayout(VulkanCommandBuffer &cmd,
+                                     VkImageLayout oldLayout,
+                                     VkImageLayout newLayout,
+                                     VkPipelineStageFlags pipelineStage,
+                                     VkImageAspectFlags aspectMask) {
   VkImageMemoryBarrier barrier{};
   barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
   barrier.oldLayout = oldLayout;
@@ -187,19 +196,28 @@ void VulkanTexture::transitionLayout(VulkanCommandBuffer &cmd, VkImageLayout old
              newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
     barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
     barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-    sourceStage =  VK_PIPELINE_STAGE_TRANSFER_BIT;
+    sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
     destinationStage = pipelineStage;
+  } else if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED &&
+             newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
+    barrier.srcAccessMask = 0;
+    barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+                            VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+
+    sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+    destinationStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
   } else {
     std::cerr << "Warning: Unsupported layout transition!" << std::endl;
   }
 
-  vkCmdPipelineBarrier(cmd.getHandle(), sourceStage, destinationStage,
-                       0, 0, nullptr, 0, nullptr, 1, &barrier);
+  vkCmdPipelineBarrier(cmd.getHandle(), sourceStage, destinationStage, 0, 0,
+                       nullptr, 0, nullptr, 1, &barrier);
 
   m_currentLayout = newLayout;
 }
 
-void VulkanTexture::copyFromBuffer(VulkanCommandBuffer &cmd, VulkanBuffer &buffer) {
+void VulkanTexture::copyFromBuffer(VulkanCommandBuffer &cmd,
+                                   VulkanBuffer &buffer) {
   VkBufferImageCopy region{};
   region.bufferOffset = 0;
   region.bufferRowLength = 0;
@@ -212,15 +230,14 @@ void VulkanTexture::copyFromBuffer(VulkanCommandBuffer &cmd, VulkanBuffer &buffe
   region.imageExtent = {m_width, m_height, 1};
 
   vkCmdCopyBufferToImage(cmd.getHandle(), buffer.getHandle(), m_image,
-                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 }
 
 VulkanTexturePtr VulkanTexture::createForAttachment(
-    VulkanDevice &device, uint32_t width, uint32_t height,
-    VkFormat format, VkImageUsageFlags usage,
-    VkImageAspectFlags aspectMask) {
-  return std::make_unique<VulkanTexture>(Token{}, device, width, height,
-                                          format, usage, aspectMask);
+    VulkanDevice &device, uint32_t width, uint32_t height, VkFormat format,
+    VkImageUsageFlags usage, VkImageAspectFlags aspectMask) {
+  return std::make_unique<VulkanTexture>(Token{}, device, width, height, format,
+                                         usage, aspectMask);
 }
 
 } // namespace graphic_backend

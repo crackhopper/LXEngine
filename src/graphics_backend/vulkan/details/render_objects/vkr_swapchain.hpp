@@ -1,4 +1,5 @@
 #pragma once
+#include "core/platform/window.hpp"
 #include <memory>
 #include <vector>
 #include <vulkan/vulkan.h>
@@ -18,18 +19,17 @@ class VulkanSwapchain {
   struct Token {};
 
 public:
-  VulkanSwapchain(Token, VulkanDevice &device, VkSurfaceKHR surface,
-                  VkExtent2D extent, uint32_t graphicsIdx, uint32_t presentIdx, uint32_t maxFramesInFlight = 3);
+  VulkanSwapchain(Token, VulkanDevice &device, WindowPtr window, uint32_t maxFramesInFlight = 3);
   ~VulkanSwapchain();
 
   static std::unique_ptr<VulkanSwapchain>
-  create(VulkanDevice &device, VkSurfaceKHR surface, VkExtent2D extent, uint32_t graphicsIdx, uint32_t presentIdx, uint32_t maxFramesInFlight = 3) {
-    return std::make_unique<VulkanSwapchain>(Token{}, device, surface, extent, graphicsIdx, presentIdx, maxFramesInFlight);
+  create(VulkanDevice &device, WindowPtr window, uint32_t maxFramesInFlight = 3) {
+    return std::make_unique<VulkanSwapchain>(Token{}, device, window, maxFramesInFlight);
   }
 
   // --- 核心生命周期控制 ---
   void initialize(VulkanRenderPass &renderPass);
-  void rebuild(VkExtent2D newExtent, VulkanRenderPass &renderPass);
+  void rebuild(VulkanRenderPass &renderPass);
 
   // --- 同步对象获取 ---
   VkSemaphore getImageAvailableSemaphore(uint32_t currentFrameIndex) const;
@@ -60,12 +60,15 @@ private:
   void setupFramebuffers(VulkanRenderPass &renderPass);
 
   VulkanDevice &m_device;
+  WindowPtr m_window;
   uint32_t m_maxFramesInFlight = 3;
-  VkSurfaceKHR m_surface = VK_NULL_HANDLE;
 
+  VkSurfaceKHR m_surface = VK_NULL_HANDLE;
   VkSwapchainKHR m_handle = VK_NULL_HANDLE;
-  VkFormat m_imageFormat = VK_FORMAT_UNDEFINED;
+  
+  VkSurfaceFormatKHR m_surfaceFormat = {};
   VkFormat m_depthFormat = VK_FORMAT_UNDEFINED;
+  VkImageAspectFlags m_depthAspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
   VkExtent2D m_extent{};
 
   std::vector<VkImage> m_images;

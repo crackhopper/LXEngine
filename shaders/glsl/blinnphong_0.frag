@@ -81,4 +81,7 @@ void main() {
     }
 
     outColor = vec4(finalColor, 1.0);
+
+    // 测试代码
+    outColor = vec4(1.0, 0.0, 0.0, 1.0);
 }

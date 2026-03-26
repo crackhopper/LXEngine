@@ -19,21 +19,15 @@ int main() {
     VkInstance instance = device->getInstance();
 
     // Keep depth format aligned with VulkanSwapchain::createDepthResources().
-    auto surface = device->getSurface();
     const VkFormat depthFormat = device->getDepthFormat();
     VkSurfaceFormatKHR surfaceFormat = device->getSurfaceFormat();
-
-    const VkExtent2D extent{
-        static_cast<uint32_t>(window->getWidth()),
-        static_cast<uint32_t>(window->getHeight())};
 
     auto renderPass =
         LX_core::graphic_backend::VulkanRenderPass::create(
             *device, surfaceFormat.format, depthFormat);
 
     auto swapchain = LX_core::graphic_backend::VulkanSwapchain::create(
-        *device, surface, extent, device->getGraphicsQueueFamilyIndex(),
-        device->getPresentQueueFamilyIndex(), /*maxFramesInFlight=*/1);
+        *device, window, /*maxFramesInFlight=*/1);
     swapchain->initialize(*renderPass);
 
     if (swapchain->getDepthImageView() == VK_NULL_HANDLE) {

@@ -29,9 +29,6 @@ public:
     // Window backends return an allocated handle pointer (void*) for Vulkan.
     VkInstance instance = device->getInstance();
 
-    auto graphicsIdx = device->getGraphicsQueueFamilyIndex();
-    auto presentIdx = device->getPresentQueueFamilyIndex();
-
     // Create command buffer manager first (needed for resource manager)
     cmdBufferMgr = VulkanCommandBufferManager::create(
         *device, maxFramesInFlight, device->getGraphicsQueueFamilyIndex());
@@ -41,8 +38,7 @@ public:
     resourceManager->initializeRenderPassAndPipeline(device->getSurfaceFormat(),
                                                      device->getDepthFormat());
 
-    swapchain = VulkanSwapchain::create(*device, device->getSurface(), device->getExtent(), graphicsIdx,
-                                        presentIdx, maxFramesInFlight);
+    swapchain = VulkanSwapchain::create(*device, _window, maxFramesInFlight);
     swapchain->initialize(resourceManager->getRenderPass());
   }
   void shutdown() override { destroy(); }
@@ -99,14 +95,16 @@ public:
     const uint32_t currentFrameIndex = frameIndex % maxFramesInFlight;
     uint32_t imageIndex = 0;
 
-    VkResult acquireResult = swapchain->acquireNextImage(currentFrameIndex, imageIndex);
-    if (acquireResult == VK_ERROR_OUT_OF_DATE_KHR || acquireResult == VK_SUBOPTIMAL_KHR) {
+    VkResult acquireResult =
+        swapchain->acquireNextImage(currentFrameIndex, imageIndex);
+    if (acquireResult == VK_ERROR_OUT_OF_DATE_KHR ||
+        acquireResult == VK_SUBOPTIMAL_KHR) {
       // Swapchain 需要重建，跳过这一帧
       // 注意：fence 已经被 vkWaitForFences 消费，需要重置它
       VkFence fence = swapchain->getInFlightFence(currentFrameIndex);
       vkResetFences(device->getLogicalDevice(), 1, &fence);
       swapchain->waitIdle();
-      swapchain->rebuild(extent, resourceManager->getRenderPass());
+      swapchain->rebuild(resourceManager->getRenderPass());
       return;
     }
     if (acquireResult != VK_SUCCESS) {
@@ -116,40 +114,35 @@ public:
       return;
     }
 
+    auto &renderPass = resourceManager->getRenderPass();
+    auto &pipeline = resourceManager->getRenderPipeline();
+
     cmdBufferMgr->beginFrame(currentFrameIndex);
     device->getDescriptorManager().beginFrame(currentFrameIndex);
 
     auto cmd = cmdBufferMgr->allocateBuffer();
-
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    beginInfo.flags = 0;
-    beginInfo.pInheritanceInfo = nullptr;
-
-    vkBeginCommandBuffer(cmd->getHandle(), &beginInfo);
-
-    auto &renderPass = resourceManager->getRenderPass();
+    cmd->begin();
     cmd->beginRenderPass(renderPass.getHandle(),
-                        swapchain->getFramebuffer(imageIndex).getHandle(),
-                        extent, renderPass.getClearValues());
+                         swapchain->getFramebuffer(imageIndex).getHandle(),
+                         extent, renderPass.getClearValues());
+
+    cmd->bindPipeline(pipeline);
 
     cmd->setViewport(extent.width, extent.height);
     cmd->setScissor(extent.width, extent.height);
 
-    auto &pipeline = resourceManager->getRenderPipeline();
-    cmd->bindPipeline(pipeline);
     cmd->bindResources(*resourceManager, pipeline, renderItem);
     cmd->drawItem(renderItem);
 
     cmd->endRenderPass();
-    vkEndCommandBuffer(cmd->getHandle());
+    cmd->end();
 
     VkSemaphore waitSemaphores[] = {
         swapchain->getImageAvailableSemaphore(currentFrameIndex)};
-    VkPipelineStageFlags waitStages[] = {
-        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
     VkSemaphore signalSemaphores[] = {
         swapchain->getRenderFinishedSemaphore(currentFrameIndex)};
+    VkPipelineStageFlags waitStages[] = {
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
 
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -170,10 +163,11 @@ public:
     }
 
     VkResult presentResult = swapchain->present(currentFrameIndex, imageIndex);
-    if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR) {
+    if (presentResult == VK_ERROR_OUT_OF_DATE_KHR ||
+        presentResult == VK_SUBOPTIMAL_KHR) {
       // Swapchain 需要重建，跳过这一帧
       swapchain->waitIdle();
-      swapchain->rebuild(extent, resourceManager->getRenderPass());
+      swapchain->rebuild(resourceManager->getRenderPass());
       return;
     }
 

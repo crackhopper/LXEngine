@@ -29,8 +29,10 @@ struct Window::Impl {
   }
 
   ~Impl() {
-    if (window)
+    if (window){
       SDL_DestroyWindow(window);
+      window = nullptr;
+    }
     SDL_Quit();
   }
 
@@ -65,6 +67,28 @@ struct Window::Impl {
     for (uint32_t i = 0; i < count; ++i) {
       extensions.push_back(sdlExtensions[i]);
     }
+  }
+
+  void updateSize(bool *closed, int *width, int *height) {
+    *width = 0;
+    *height = 0;
+    // 获取窗口像素尺寸
+    SDL_GetWindowSizeInPixels(window, width, height);
+
+    // 如果窗口被最小化，像素尺寸可能为 0，需要等待
+    SDL_Event event;
+    while (*width == 0 || *height == 0) {
+      // 等待事件
+      if (SDL_WaitEvent(&event)) {
+        if (event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) {
+          SDL_GetWindowSizeInPixels(window, width, height);
+        } else if (event.type == SDL_EVENT_QUIT) {
+          *closed = true;
+          return; // 用户关闭窗口
+        }
+      }
+    }
+    *closed = false;
   }
 };
 
@@ -110,6 +134,8 @@ void Window::destroyGraphicsHandle(GraphicsAPI api,
     // Vulkan surfaces are destroyed automatically when the window is destroyed
   }
 }
+
+void Window::updateSize(bool *closed, int *width, int *height) {}
 
 } // namespace LX_infra
 

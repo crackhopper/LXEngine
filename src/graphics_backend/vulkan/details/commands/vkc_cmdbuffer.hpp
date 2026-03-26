@@ -18,6 +18,9 @@ public:
 
   VkCommandBuffer getHandle() const { return m_handle; }
 
+  void begin();
+  void end();
+
   void beginRenderPass(VkRenderPass renderPass, VkFramebuffer framebuffer,
                       VkExtent2D extent, const std::vector<VkClearValue> &clearValues);
   void endRenderPass() { vkCmdEndRenderPass(m_handle); }

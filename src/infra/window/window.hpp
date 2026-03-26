@@ -14,6 +14,7 @@ public:
 
   int getWidth() const override;
   int getHeight() const override;
+  void updateSize(bool* closed, int *width, int *height) override;
   void getRequiredExtensions(std::vector<const char *> &extensions) const override;
 
   WindowGraphicsHandle createGraphicsHandle(GraphicsAPI api, GraphicsInstanceHandle instance) const override;

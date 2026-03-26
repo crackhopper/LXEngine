@@ -12,6 +12,20 @@
 
 namespace LX_core::graphic_backend {
 
+void VulkanCommandBuffer::begin() {
+  VkCommandBufferBeginInfo beginInfo{};
+  beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+  beginInfo.flags = 0;
+  beginInfo.pInheritanceInfo = nullptr;
+  if (vkBeginCommandBuffer(m_handle, &beginInfo) != VK_SUCCESS) {
+    throw std::runtime_error("Failed to begin command buffer");
+  }
+}
+
+void VulkanCommandBuffer::end() {
+  vkEndCommandBuffer(m_handle);
+}
+
 void VulkanCommandBuffer::beginRenderPass(VkRenderPass renderPass, VkFramebuffer framebuffer,
                                         VkExtent2D extent, const std::vector<VkClearValue> &clearValues) {
   VkRenderPassBeginInfo renderPassInfo{};

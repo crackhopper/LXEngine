@@ -16,6 +16,7 @@ protected:
 public:
   virtual int getWidth() const = 0;
   virtual int getHeight() const = 0;
+  virtual void updateSize(bool* closed, int *width, int *height) = 0;
   virtual void getRequiredExtensions(std::vector<const char *> &extensions) const = 0;
 
   /**
