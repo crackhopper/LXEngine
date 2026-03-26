@@ -5,17 +5,9 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
-#include <iostream>
 
 namespace LX_core {
 namespace graphic_backend {
-
-namespace {
-bool envEnabled(const char *name) {
-  const char *value = std::getenv(name);
-  return value != nullptr && std::strcmp(value, "0") != 0;
-}
-} // namespace
 
 VulkanPipelineBase::VulkanPipelineBase(
     Token, VulkanDevice &device, VkExtent2D extent,
@@ -70,7 +62,6 @@ VulkanPipelineBase::getViewportStateCreateInfo() {
   viewportState.viewportCount = 1;
   viewportState.scissorCount = 1;
 
-  // Use members to keep pointers valid until vkCreateGraphicsPipelines returns.
   m_viewport.x = static_cast<float>(m_offset.x);
   m_viewport.y = static_cast<float>(m_offset.y);
   m_viewport.width = static_cast<float>(m_extent.width);
@@ -104,7 +95,7 @@ VulkanPipelineBase::getRasterizerStateCreateInfo() {
   rasterizer.rasterizerDiscardEnable = VK_FALSE;
   rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
   rasterizer.lineWidth = 1.0f;
-  rasterizer.cullMode = VK_CULL_MODE_NONE;    // DEBUG: force no culling
+  rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
   rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
   rasterizer.depthBiasEnable = VK_FALSE;
   return rasterizer;
@@ -123,9 +114,9 @@ VkPipelineDepthStencilStateCreateInfo
 VulkanPipelineBase::getDepthStencilStateCreateInfo() {
   VkPipelineDepthStencilStateCreateInfo depthStencil{};
   depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-  depthStencil.depthTestEnable = VK_FALSE;    // DEBUG: force no depth test
-  depthStencil.depthWriteEnable = VK_FALSE;
-  depthStencil.depthCompareOp = VK_COMPARE_OP_ALWAYS;
+  depthStencil.depthTestEnable = VK_TRUE;
+  depthStencil.depthWriteEnable = VK_TRUE;
+  depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
   depthStencil.depthBoundsTestEnable = VK_FALSE;
   return depthStencil;
 }
@@ -251,31 +242,8 @@ VkPipeline VulkanPipelineBase::buildGraphicsPpl(VkRenderPass renderPass) {
   pipelineInfo.subpass = 0;
   pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
 
-  std::cerr << "[PIPELINE] creating graphics pipeline:"
-            << "\n  vertShader=" << stages[0].module
-            << ", fragShader=" << stages[1].module
-            << "\n  topology=" << inputAssembly.topology
-            << "\n  cullMode=" << rasterizer.cullMode
-            << ", frontFace=" << rasterizer.frontFace
-            << ", rasterizerDiscard=" << rasterizer.rasterizerDiscardEnable
-            << "\n  depthTest=" << depthStencil.depthTestEnable
-            << ", depthWrite=" << depthStencil.depthWriteEnable
-            << ", depthOp=" << depthStencil.depthCompareOp
-            << "\n  colorWriteMask=0x" << std::hex << m_colorBlendAttachment.colorWriteMask << std::dec
-            << ", blendEnable=" << m_colorBlendAttachment.blendEnable
-            << "\n  blendAttachCount=" << colorBlending.attachmentCount
-            << ", pAttachments=" << colorBlending.pAttachments
-            << " (&member=" << &m_colorBlendAttachment << ")"
-            << "\n  dynamicStates=" << dynamicState.dynamicStateCount
-            << "\n  renderPass=" << renderPass
-            << ", layout=" << m_layout
-            << std::endl;
-
-  VkResult pplResult = vkCreateGraphicsPipelines(m_deviceHandle, VK_NULL_HANDLE, 1, &pipelineInfo,
-                                nullptr, &m_pipeline);
-  std::cerr << "[PIPELINE] vkCreateGraphicsPipelines result=" << pplResult
-            << ", handle=" << m_pipeline << std::endl;
-  if (pplResult != VK_SUCCESS) {
+  if (vkCreateGraphicsPipelines(m_deviceHandle, VK_NULL_HANDLE, 1, &pipelineInfo,
+                                nullptr, &m_pipeline) != VK_SUCCESS) {
     throw std::runtime_error("failed to create graphics pipeline!");
   }
   return m_pipeline;
@@ -331,8 +299,6 @@ void VulkanPipelineBase::createLayout() {
   if (vkCreatePipelineLayout(m_deviceHandle, &pipelineLayoutInfo, nullptr, &m_layout) != VK_SUCCESS) {
     throw std::runtime_error("failed to create pipeline layout!");
   }
-  std::cerr << "[PIPELINE] layout created, setLayouts=" << setLayouts.size()
-            << ", pushConstSize=" << m_pushConstants.size << std::endl;
 }
 
 } // namespace graphic_backend

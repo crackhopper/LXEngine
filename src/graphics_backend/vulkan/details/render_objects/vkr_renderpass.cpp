@@ -72,7 +72,7 @@ VulkanRenderPass::VulkanRenderPass(Token, VulkanDevice &device, VkFormat colorFo
   }
 
   // Initialize clear values
-  m_clearValues[0].color = {0.0f, 0.0f, 1.0f, 1.0f}; // DEBUG: blue clear
+  m_clearValues[0].color = {0.0f, 0.0f, 0.0f, 1.0f};
   m_clearValues[1].depthStencil = {1.0f, 0};
 }
 

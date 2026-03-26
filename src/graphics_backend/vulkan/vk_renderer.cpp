@@ -171,26 +171,17 @@ public:
 
     VkResult acquireResult =
         swapchain->acquireNextImage(currentFrameIndex, imageIndex);
-    if (frameIndex < 5) {
-      std::cerr << "[DRAW] frame=" << frameIndex
-                << " acquire=" << vkResultToString(acquireResult)
-                << " imageIdx=" << imageIndex
-                << " extent=" << extent.width << "x" << extent.height
-                << std::endl;
-    }
     if (acquireResult == VK_ERROR_OUT_OF_DATE_KHR ||
         acquireResult == VK_SUBOPTIMAL_KHR) {
       VkFence fence = swapchain->getInFlightFence(currentFrameIndex);
       vkResetFences(device->getLogicalDevice(), 1, &fence);
       swapchain->waitIdle();
       swapchain->rebuild(resourceManager->getRenderPass());
-      std::cerr << "[DRAW] swapchain rebuilt after acquire" << std::endl;
       return;
     }
     if (acquireResult != VK_SUCCESS) {
       VkFence fence = swapchain->getInFlightFence(currentFrameIndex);
       vkResetFences(device->getLogicalDevice(), 1, &fence);
-      std::cerr << "[DRAW] acquire failed, skipping frame" << std::endl;
       return;
     }
 
@@ -201,56 +192,16 @@ public:
     device->getDescriptorManager().beginFrame(currentFrameIndex);
 
     auto cmd = cmdBufferMgr->allocateBuffer();
-    VkCommandBuffer rawCmd = cmd->getHandle();
-
-    if (frameIndex < 3) {
-      std::cerr << "[DRAW] cmdBuf=" << rawCmd
-                << " pipeline=" << pipeline.getHandle()
-                << " layout=" << pipeline.getLayout()
-                << " renderPass=" << renderPass.getHandle()
-                << " fb=" << swapchain->getFramebuffer(imageIndex).getHandle()
-                << std::endl;
-    }
-
     cmd->begin();
     cmd->beginRenderPass(renderPass.getHandle(),
                          swapchain->getFramebuffer(imageIndex).getHandle(),
                          extent, renderPass.getClearValues());
 
-    // ========== DEBUG: minimal draw - bypass all resource binding ==========
-    if (true) {
-      vkCmdBindPipeline(rawCmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                         pipeline.getHandle());
-
-      VkViewport viewport{};
-      viewport.x = 0.0f;
-      viewport.y = 0.0f;
-      viewport.width = static_cast<float>(extent.width);
-      viewport.height = static_cast<float>(extent.height);
-      viewport.minDepth = 0.0f;
-      viewport.maxDepth = 1.0f;
-      vkCmdSetViewport(rawCmd, 0, 1, &viewport);
-
-      VkRect2D scissor{};
-      scissor.offset = {0, 0};
-      scissor.extent = extent;
-      vkCmdSetScissor(rawCmd, 0, 1, &scissor);
-
-      vkCmdDraw(rawCmd, 3, 1, 0, 0);
-
-      if (frameIndex < 3) {
-        std::cerr << "[DRAW] DEBUG vkCmdDraw(3) issued, viewport="
-                  << viewport.width << "x" << viewport.height << std::endl;
-      }
-    } else {
-      // Normal rendering flow (disabled for debugging)
-      cmd->bindPipeline(pipeline);
-      cmd->setViewport(extent.width, extent.height);
-      cmd->setScissor(extent.width, extent.height);
-      cmd->bindResources(*resourceManager, pipeline, renderItem);
-      cmd->drawItem(renderItem);
-    }
-    // ======================================================================
+    cmd->bindPipeline(pipeline);
+    cmd->setViewport(extent.width, extent.height);
+    cmd->setScissor(extent.width, extent.height);
+    cmd->bindResources(*resourceManager, pipeline, renderItem);
+    cmd->drawItem(renderItem);
 
     cmd->endRenderPass();
     cmd->end();
@@ -268,33 +219,23 @@ public:
     submitInfo.pWaitSemaphores = waitSemaphores;
     submitInfo.pWaitDstStageMask = waitStages;
     submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &rawCmd;
+    VkCommandBuffer handle = cmd->getHandle();
+    submitInfo.pCommandBuffers = &handle;
     submitInfo.signalSemaphoreCount = 1;
     submitInfo.pSignalSemaphores = signalSemaphores;
 
     VkFence fence = swapchain->getInFlightFence(currentFrameIndex);
     vkResetFences(device->getLogicalDevice(), 1, &fence);
-    VkResult submitResult =
-        vkQueueSubmit(device->getGraphicsQueue(), 1, &submitInfo, fence);
-    if (frameIndex < 5) {
-      std::cerr << "[DRAW] submit=" << vkResultToString(submitResult)
-                << std::endl;
-    }
-    if (submitResult != VK_SUCCESS) {
-      std::cerr << "[DRAW] vkQueueSubmit FAILED" << std::endl;
+    if (vkQueueSubmit(device->getGraphicsQueue(), 1, &submitInfo, fence) !=
+        VK_SUCCESS) {
       return;
     }
 
     VkResult presentResult = swapchain->present(currentFrameIndex, imageIndex);
-    if (frameIndex < 5) {
-      std::cerr << "[DRAW] present=" << vkResultToString(presentResult)
-                << std::endl;
-    }
     if (presentResult == VK_ERROR_OUT_OF_DATE_KHR ||
         presentResult == VK_SUBOPTIMAL_KHR) {
       swapchain->waitIdle();
       swapchain->rebuild(resourceManager->getRenderPass());
-      std::cerr << "[DRAW] swapchain rebuilt after present" << std::endl;
       return;
     }
 
