@@ -1,7 +1,7 @@
 #include "core/utils/filesystem_tools.hpp"
-#include "graphics_backend/vulkan/details/pipelines/vkp_blinnphong.hpp"
-#include "graphics_backend/vulkan/details/render_objects/vkr_renderpass.hpp"
-#include "graphics_backend/vulkan/details/vk_device.hpp"
+#include "backend/vulkan/details/pipelines/vkp_blinnphong.hpp"
+#include "backend/vulkan/details/render_objects/vkr_renderpass.hpp"
+#include "backend/vulkan/details/vk_device.hpp"
 #include "core/utils/env.hpp"
 #include "infra/window/window.hpp"
 
@@ -22,18 +22,18 @@ int main() {
     LX_infra::Window::Initialize();
     auto window = std::make_shared<LX_infra::Window>("Test Vulkan Pipeline", 64, 64);
 
-    auto device = LX_core::graphic_backend::VulkanDevice::create();
+    auto device = LX_core::backend::VulkanDevice::create();
     device->initialize(window, "TestVulkanPipeline");
 
     const VkFormat colorFormat = device->getSurfaceFormat().format;
     const VkFormat depthFormat = device->getDepthFormat();
     auto renderPass =
-        LX_core::graphic_backend::VulkanRenderPass::create(
+        LX_core::backend::VulkanRenderPass::create(
             *device, colorFormat, depthFormat);
 
     VkExtent2D extent{1, 1};
     auto pipeline =
-        LX_core::graphic_backend::VkPipelineBlinnPhong::create(
+        LX_core::backend::VkPipelineBlinnPhong::create(
             *device, extent);
 
     // Build actual VkPipeline (layout/shader modules are created in create()).

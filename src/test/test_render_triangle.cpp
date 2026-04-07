@@ -5,7 +5,7 @@
 #include "core/resources/vertex_buffer.hpp"
 
 // backend Vulkan 实现
-#include "graphics_backend/vulkan/vk_renderer.hpp"
+#include "backend/vulkan/vk_renderer.hpp"
 
 // 窗口系统
 #include "infra/window/window.hpp"
@@ -38,8 +38,8 @@ int main() {
 
   // 创建 Renderer（Vulkan 后端）
   RendererPtr renderer =
-      std::make_shared<LX_core::graphic_backend::VulkanRenderer>(
-          LX_core::graphic_backend::VulkanRenderer::Token{});
+      std::make_shared<LX_core::backend::VulkanRenderer>(
+          LX_core::backend::VulkanRenderer::Token{});
   renderer->initialize(window, "TestRenderTriangle");
 
   auto vertexBufferPtr = VertexBuffer<VertexPosNormalUvBone>::create({

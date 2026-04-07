@@ -24,7 +24,7 @@ src/
 │       ├── object.hpp      # IRenderable 接口 + PushConstant
 │       └── components/     # 组件（Mesh, Material, Skeleton）
 │
-├── graphics_backend/       # 图形后端实现
+├── backend/       # 图形后端实现
 │   └── vulkan/             # Vulkan 后端
 │       ├── vk_renderer.hpp # VulkanRenderer 封装
 │       └── details/        # 内部实现
@@ -142,7 +142,7 @@ cmake --build . --config Debug
 ### 动态pipeline管理、pipeline cache。
 下面都是比较混乱的想法摘要。还没有梳理。
 
-1. 定义pipelineKey， 并在 RenderItem 增加pipelineKey。
+1. 定义pipelineKey， 并在 RenderingItem 增加pipelineKey。
 2. 增加 通过 Material，网格，推断pipelineKey的能力。
 3. 增加 Pipeline 工厂，负责根据 PipelineKey 创建对应 Pipeline 实例。
   - 针对 shader name 和 variant ，最好其实代码里定义动态编译并写入文件夹形成不同的spv文件。这样首先可以从缓存文件夹查找，找不到再编译，然后写入缓存文件夹。

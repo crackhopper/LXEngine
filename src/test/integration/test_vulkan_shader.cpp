@@ -1,6 +1,6 @@
 #include "core/utils/filesystem_tools.hpp"
-#include "graphics_backend/vulkan/details/resources/vkr_shader.hpp"
-#include "graphics_backend/vulkan/details/vk_device.hpp"
+#include "backend/vulkan/details/resources/vkr_shader.hpp"
+#include "backend/vulkan/details/vk_device.hpp"
 #include "infra/window/window.hpp"
 #include "core/utils/env.hpp"
 
@@ -21,12 +21,12 @@ int main() {
     LX_infra::Window::Initialize();
     auto window = std::make_shared<LX_infra::Window>("Test Vulkan Shader", 64, 64);
 
-    auto device = LX_core::graphic_backend::VulkanDevice::create();
+    auto device = LX_core::backend::VulkanDevice::create();
     device->initialize(window, "TestVulkanShader");
 
-    auto vertShader = LX_core::graphic_backend::VulkanShader::create(
+    auto vertShader = LX_core::backend::VulkanShader::create(
         *device, "blinnphong_0", VK_SHADER_STAGE_VERTEX_BIT);
-    auto fragShader = LX_core::graphic_backend::VulkanShader::create(
+    auto fragShader = LX_core::backend::VulkanShader::create(
         *device, "blinnphong_0", VK_SHADER_STAGE_FRAGMENT_BIT);
 
     if (vertShader->getHandle() == VK_NULL_HANDLE) {

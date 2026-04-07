@@ -143,7 +143,7 @@ public:
 
 ## Relationship to Vulkan Backend
 
-The Vulkan backend (`src/graphics_backend/vulkan/`) follows these guidelines:
+The Vulkan backend (`src/backend/vulkan/`) follows these guidelines:
 - `VulkanDevice` owns resources via `unique_ptr`
 - All other Vulkan objects receive `VulkanDevice&` references (device outlives dependents)
 - Handle types (VkDevice, VkBuffer, etc.) are not subject to this policy (opaque handles)

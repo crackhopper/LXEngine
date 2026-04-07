@@ -1,6 +1,6 @@
 ## Context
 
-The `VulkanResourceManager` class in `src/graphics_backend/vulkan/details/vk_resource_manager.hpp` provides getter functions that return raw pointers to Vulkan objects (buffers, textures, shaders, render passes, pipelines). The C++ style guide mandates using references (`T&`) instead of raw pointers (`T*`) for non-owning object references.
+The `VulkanResourceManager` class in `src/backend/vulkan/details/vk_resource_manager.hpp` provides getter functions that return raw pointers to Vulkan objects (buffers, textures, shaders, render passes, pipelines). The C++ style guide mandates using references (`T&`) instead of raw pointers (`T*`) for non-owning object references.
 
 The style guide rationale: raw pointers obscure ownership semantics, invite dangling pointer bugs, and make lifetime requirements unclear. In this case, the `VulkanResourceManager` owns the objects, so callers receive non-owning references - exactly the use case for `T&`.
 

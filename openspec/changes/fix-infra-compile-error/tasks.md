@@ -56,4 +56,4 @@
 - [x] 8.1 Verify `target_include_directories` for `external/include` covers all external headers
 - [x] 8.2 Verify library linking order is correct (SDL3 before Vulkan)
 - [x] 8.3 Ensure imgui subdirectory cmake is found correctly
-- [x] 8.4 Test compilation with `cmake --build` after all fixes - infra compiles; graphics_backend has pre-existing issues
+- [x] 8.4 Test compilation with `cmake --build` after all fixes - infra compiles; backend has pre-existing issues

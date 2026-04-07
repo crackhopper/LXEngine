@@ -1,6 +1,6 @@
 ## Why
 
-The `graphics_backend` directory defines backend interfaces (Renderer, IRenderResource) and a Vulkan implementation, but most of the implementation is incomplete or missing entirely. Critical components like device management, buffer/texture/shader creation, command buffer management, and pipeline construction have empty implementations. This prevents the entire renderer framework from running.
+The `backend` directory defines backend interfaces (Renderer, IRenderResource) and a Vulkan implementation, but most of the implementation is incomplete or missing entirely. Critical components like device management, buffer/texture/shader creation, command buffer management, and pipeline construction have empty implementations. This prevents the entire renderer framework from running.
 
 ## Project Structure
 
@@ -15,7 +15,7 @@ renderer/                          # Project root
 └── src/
     ├── core/                      # Core interfaces
     ├── infra/                     # Infrastructure (window, etc.)
-    ├── graphics_backend/          # Vulkan backend implementation
+    ├── backend/          # Vulkan backend implementation
     └── test/                      # Integration tests
 ```
 
@@ -39,7 +39,7 @@ renderer/                          # Project root
 
 ## Impact
 
-- `src/graphics_backend/vulkan/details/` - Empty/incomplete implementations to complete:
+- `src/backend/vulkan/details/` - Empty/incomplete implementations to complete:
 
   | File | Current Status | Implementation Needed |
   |------|----------------|----------------------|

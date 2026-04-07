@@ -24,8 +24,8 @@ None - this is an implementation-level refactor that does not change spec-level 
 ## Impact
 
 - **Affected Files**:
-  - `src/graphics_backend/vulkan/details/vk_resource_manager.hpp` (interface definition)
-  - `src/graphics_backend/vulkan/details/vk_resource_manager.cpp` (implementation)
+  - `src/backend/vulkan/details/vk_resource_manager.hpp` (interface definition)
+  - `src/backend/vulkan/details/vk_resource_manager.cpp` (implementation)
   - All files that call these getter functions (likely in tests and other Vulkan backend components)
 - **API Change**: Return types change from pointer to reference - callers must update to use `.` instead of `->`
 - **No Behavioral Change**: The functions return valid objects or throw/reference still cannot be null in this context

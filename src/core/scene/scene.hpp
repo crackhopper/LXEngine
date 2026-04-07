@@ -5,8 +5,8 @@
 
 namespace LX_core {
 
-// 简化 RenderItem
-struct RenderItem {
+// 简化 RenderingItem
+struct RenderingItem {
   ShaderPtr shaderInfo;
 
   ObjectPCPtr objectInfo;
@@ -38,9 +38,9 @@ public:
     return std::make_shared<Scene>(mesh);
   }
 
-  // 构建 RenderItem 的接口
-  RenderItem buildRenderItem() {
-    RenderItem item;
+  // 构建 RenderingItem 的接口
+  RenderingItem buildRenderingItem() {
+    RenderingItem item;
     item.vertexBuffer = mesh->getVertexBuffer();
     item.vertexFormat = mesh->getVertexFormat();
     item.indexBuffer = mesh->getIndexBuffer();

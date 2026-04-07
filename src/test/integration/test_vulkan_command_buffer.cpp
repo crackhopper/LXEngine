@@ -4,12 +4,12 @@
 #include "core/scene/components/material.hpp"
 #include "core/scene/scene.hpp"
 #include "core/utils/filesystem_tools.hpp"
-#include "graphics_backend/vulkan/details/commands/vkc_cmdbuffer_manager.hpp"
-#include "graphics_backend/vulkan/details/render_objects/vkr_framebuffer.hpp"
-#include "graphics_backend/vulkan/details/render_objects/vkr_renderpass.hpp"
-#include "graphics_backend/vulkan/details/resources/vkr_texture.hpp"
-#include "graphics_backend/vulkan/details/vk_device.hpp"
-#include "graphics_backend/vulkan/details/vk_resource_manager.hpp"
+#include "backend/vulkan/details/commands/vkc_cmdbuffer_manager.hpp"
+#include "backend/vulkan/details/render_objects/vkr_framebuffer.hpp"
+#include "backend/vulkan/details/render_objects/vkr_renderpass.hpp"
+#include "backend/vulkan/details/resources/vkr_texture.hpp"
+#include "backend/vulkan/details/vk_device.hpp"
+#include "backend/vulkan/details/vk_resource_manager.hpp"
 #include "core/utils/env.hpp"
 
 #include "infra/window/window.hpp"
@@ -32,7 +32,7 @@ int main() {
     auto window =
         std::make_shared<LX_infra::Window>("Test Vulkan CommandBuffer", 64, 64);
 
-    auto device = LX_core::graphic_backend::VulkanDevice::create();
+    auto device = LX_core::backend::VulkanDevice::create();
     device->initialize(window, "TestVulkanCommandBuffer");
     const uint32_t maxFrameInFlight = 2;
 
@@ -43,10 +43,10 @@ int main() {
 
     // Create command buffer manager first (needed for resource manager)
     auto cmdBufferMgr =
-        LX_core::graphic_backend::VulkanCommandBufferManager::create(
+        LX_core::backend::VulkanCommandBufferManager::create(
             *device, maxFrameInFlight, device->getGraphicsQueueFamilyIndex());
     auto resourceManager =
-        LX_core::graphic_backend::VulkanResourceManager::create(*device);
+        LX_core::backend::VulkanResourceManager::create(*device);
     resourceManager->initializeRenderPassAndPipeline(surfaceFormat,
                                                      depthFormat);
 
@@ -59,16 +59,16 @@ int main() {
 
     // Create minimal framebuffer attachments.
     const VkExtent2D extent{64, 64};
-    auto colorTex = LX_core::graphic_backend::VulkanTexture::createForAttachment(
+    auto colorTex = LX_core::backend::VulkanTexture::createForAttachment(
         *device, extent.width, extent.height, surfaceFormat.format,
         VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
-    auto depthTex = LX_core::graphic_backend::VulkanTexture::createForAttachment(
+    auto depthTex = LX_core::backend::VulkanTexture::createForAttachment(
         *device, extent.width, extent.height, depthFormat,
         VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
         depthAspectMask);
     std::vector<VkImageView> attachments = {
         colorTex->getImageView(), depthTex->getImageView() };
-    auto framebuffer = LX_core::graphic_backend::VulkanFrameBuffer::create(
+    auto framebuffer = LX_core::backend::VulkanFrameBuffer::create(
         *device, renderPass.getHandle(), attachments, extent);
 
     using V = LX_core::VertexPosNormalUvBone;
@@ -114,7 +114,7 @@ int main() {
     scene->camera->up = LX_core::Vec3f{0.0f, 1.0f, 0.0f};
     scene->camera->updateMatrices();
 
-    auto renderItem = scene->buildRenderItem();
+    auto renderItem = scene->buildRenderingItem();
 
     // Match VulkanRenderer::initScene(): inject camera/light UBO resources.
     if (scene->camera) {

@@ -20,5 +20,5 @@ The test_render_triangle.cpp test program fails to render a triangle correctly. 
 ## Impact
 
 - **Affected code**: `src/test/test_render_triangle.cpp`, `core/gpu/renderer.hpp`, `core/gpu/renderer.cpp`
-- **Backend**: Vulkan renderer implementation in `graphics_backend/vulkan/`
+- **Backend**: Vulkan renderer implementation in `backend/vulkan/`
 - **Resources**: Vertex buffer, index buffer, and mesh creation code

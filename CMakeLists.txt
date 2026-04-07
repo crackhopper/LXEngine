@@ -30,7 +30,7 @@ add_definitions(-D_UTF8_SOURCE)
 # -------------------------------
 add_subdirectory(src/core)
 add_subdirectory(src/infra)
-add_subdirectory(src/graphics_backend)
+add_subdirectory(src/backend)
 add_subdirectory(src/test)
 
 

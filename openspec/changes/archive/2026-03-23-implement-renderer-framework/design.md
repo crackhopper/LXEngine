@@ -1,6 +1,6 @@
 ## Context
 
-The `graphics_backend` Vulkan implementation has a well-designed interface structure but incomplete implementations. Based on actual code exploration, 9 out of 12 core files have empty implementations or missing critical methods. This design addresses the implementation approach following the existing architecture without modifying core interfaces (`Renderer`, `IRenderResource`, `RenderItem`, `Scene`).
+The `backend` Vulkan implementation has a well-designed interface structure but incomplete implementations. Based on actual code exploration, 9 out of 12 core files have empty implementations or missing critical methods. This design addresses the implementation approach following the existing architecture without modifying core interfaces (`Renderer`, `IRenderResource`, `RenderingItem`, `Scene`).
 
 ### Project Structure
 
@@ -15,7 +15,7 @@ renderer/                          # Project root
 └── src/
     ├── core/                      # Core interfaces
     ├── infra/                     # Infrastructure (window, etc.)
-    ├── graphics_backend/          # Vulkan backend implementation
+    ├── backend/          # Vulkan backend implementation
     │   └── vulkan/
     │       └── details/
     │           ├── vk_device.cpp  # EMPTY STUB
@@ -46,11 +46,11 @@ renderer/                          # Project root
   - `vk_renderer.cpp`: Core methods (`shutdown`, `initScene`, `uploadData`, `draw`) are empty stubs
   - `vk_resource_manager.cpp`: `initializeRenderPassAndPipeline()` is declared but not implemented
   - `vkr_swapchain.cpp`: `createDepthResources()` is an empty stub
-- **Core interfaces**: Well-defined in `core/gpu/` (Renderer, IRenderResource, RenderItem, Scene)
+- **Core interfaces**: Well-defined in `core/gpu/` (Renderer, IRenderResource, RenderingItem, Scene)
 
 ### Constraints
 - **Must not modify** core interfaces in `src/core/gpu/`
-- **Must not modify** data structures like `RenderItem`, `Scene`, `Mesh`, `Texture`
+- **Must not modify** data structures like `RenderingItem`, `Scene`, `Mesh`, `Texture`
 - **Must follow** the existing Vulkan backend architecture pattern
 
 ## Goals / Non-Goals

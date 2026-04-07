@@ -10,7 +10,7 @@
 
 ### Bug 1: `colorBlendAttachment` 悬空指针（根因）
 
-**文件**: `src/graphics_backend/vulkan/details/pipelines/vkp_pipeline.cpp`
+**文件**: `src/backend/vulkan/details/pipelines/vkp_pipeline.cpp`
 
 ```cpp
 // ❌ 修复前
@@ -32,7 +32,7 @@ VulkanPipelineBase::getColorBlendStateCreateInfo() {
 
 ### Bug 2: `createLayout()` 中 Push Constant Range 悬空指针
 
-**文件**: `src/graphics_backend/vulkan/details/pipelines/vkp_pipeline.cpp`
+**文件**: `src/backend/vulkan/details/pipelines/vkp_pipeline.cpp`
 
 ```cpp
 // ❌ 修复前

@@ -1,7 +1,7 @@
-#include "graphics_backend/vulkan/details/commands/vkc_cmdbuffer_manager.hpp"
-#include "graphics_backend/vulkan/details/resources/vkr_buffer.hpp"
-#include "graphics_backend/vulkan/details/resources/vkr_texture.hpp"
-#include "graphics_backend/vulkan/details/vk_device.hpp"
+#include "backend/vulkan/details/commands/vkc_cmdbuffer_manager.hpp"
+#include "backend/vulkan/details/resources/vkr_buffer.hpp"
+#include "backend/vulkan/details/resources/vkr_texture.hpp"
+#include "backend/vulkan/details/vk_device.hpp"
 #include "infra/window/window.hpp"
 #include "core/utils/env.hpp"
 
@@ -16,10 +16,10 @@ int main() {
     LX_infra::Window::Initialize();
     auto window = std::make_shared<LX_infra::Window>("Test Vulkan Texture", 64, 64);
 
-    auto device = LX_core::graphic_backend::VulkanDevice::create();
+    auto device = LX_core::backend::VulkanDevice::create();
     device->initialize(window, "TestVulkanTexture");
 
-    auto cmdMgr = LX_core::graphic_backend::VulkanCommandBufferManager::create(
+    auto cmdMgr = LX_core::backend::VulkanCommandBufferManager::create(
         *device, /*maxFramesInFlight=*/1,
         device->getGraphicsQueueFamilyIndex());
 
@@ -40,12 +40,12 @@ int main() {
       }
     }
 
-    auto texture = LX_core::graphic_backend::VulkanTexture::create(
+    auto texture = LX_core::backend::VulkanTexture::create(
         *device, width, height, VK_FORMAT_R8G8B8A8_UNORM,
         VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
         VK_FILTER_LINEAR);
 
-    auto staging = LX_core::graphic_backend::VulkanBuffer::create(
+    auto staging = LX_core::backend::VulkanBuffer::create(
         *device, pixelBytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);

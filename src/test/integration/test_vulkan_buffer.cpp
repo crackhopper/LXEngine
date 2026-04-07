@@ -1,5 +1,5 @@
-#include "graphics_backend/vulkan/details/resources/vkr_buffer.hpp"
-#include "graphics_backend/vulkan/details/vk_device.hpp"
+#include "backend/vulkan/details/resources/vkr_buffer.hpp"
+#include "backend/vulkan/details/vk_device.hpp"
 #include "core/utils/env.hpp"
 #include "infra/window/window.hpp"
 #include <vulkan/vulkan.h>
@@ -14,14 +14,14 @@ int main() {
     LX_infra::Window::Initialize();
     auto window = std::make_shared<LX_infra::Window>("Test Vulkan Buffer", 64, 64);
 
-    auto device = LX_core::graphic_backend::VulkanDevice::create();
+    auto device = LX_core::backend::VulkanDevice::create();
     device->initialize(window, "TestVulkanBuffer");
 
     std::vector<uint32_t> indices = {0u, 1u, 2u};
     const VkDeviceSize size =
         static_cast<VkDeviceSize>(indices.size() * sizeof(uint32_t));
 
-    auto buffer = LX_core::graphic_backend::VulkanBuffer::create(
+    auto buffer = LX_core::backend::VulkanBuffer::create(
         *device, size,
         VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
@@ -44,7 +44,7 @@ int main() {
     }
 
     // Also smoke-test an index buffer usage creation.
-    auto indexBuffer = LX_core::graphic_backend::VulkanBuffer::create(
+    auto indexBuffer = LX_core::backend::VulkanBuffer::create(
         *device, size,
         VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |

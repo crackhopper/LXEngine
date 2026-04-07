@@ -87,7 +87,7 @@
 ## 10. Renderer Lifecycle Implementation
 
 - [x] 10.1 Implement `VulkanRenderer::shutdown()` - Destroy all Vulkan resources in reverse creation order
-- [x] 10.2 Implement `VulkanRenderer::initScene()` - Create GPU resources from Scene/RenderItem
+- [x] 10.2 Implement `VulkanRenderer::initScene()` - Create GPU resources from Scene/RenderingItem
 - [x] 10.3 Implement `VulkanRenderer::uploadData()` - Upload dirty resources per frame
 - [x] 10.4 Implement `VulkanRenderer::draw()` - Full render loop (acquire, record, submit, present)
 - [x] 10.5 Create `test_vulkan_renderer.cpp` - Test full triangle render

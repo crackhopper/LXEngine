@@ -23,6 +23,6 @@ The Vulkan backend uses raw pointers to store references to other classes, which
 
 ## Impact
 
-- All classes in `src/graphics_backend/vulkan/details/` that hold raw pointers to `VulkanDevice` or other Vulkan objects will be refactored
+- All classes in `src/backend/vulkan/details/` that hold raw pointers to `VulkanDevice` or other Vulkan objects will be refactored
 - Constructor signatures may change (references instead of pointers)
 - `VulkanResourceManager` will take ownership of render pass, pipeline, and command buffer manager

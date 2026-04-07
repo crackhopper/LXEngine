@@ -1,10 +1,10 @@
 #include "core/resources/index_buffer.hpp"
 #include "core/resources/vertex_buffer.hpp"
 #include "core/utils/filesystem_tools.hpp"
-#include "graphics_backend/vulkan/details/vk_resource_manager.hpp"
-#include "graphics_backend/vulkan/details/vk_device.hpp"
-#include "graphics_backend/vulkan/details/commands/vkc_cmdbuffer_manager.hpp"
-#include "graphics_backend/vulkan/details/resources/vkr_buffer.hpp"
+#include "backend/vulkan/details/vk_resource_manager.hpp"
+#include "backend/vulkan/details/vk_device.hpp"
+#include "backend/vulkan/details/commands/vkc_cmdbuffer_manager.hpp"
+#include "backend/vulkan/details/resources/vkr_buffer.hpp"
 #include "infra/window/window.hpp"
 #include "core/utils/env.hpp"
 
@@ -24,7 +24,7 @@ int main() {
     LX_infra::Window::Initialize();
     auto window = std::make_shared<LX_infra::Window>("Test Vulkan ResourceManager", 64, 64);
 
-    auto device = LX_core::graphic_backend::VulkanDevice::create();
+    auto device = LX_core::backend::VulkanDevice::create();
     device->initialize(window, "TestVulkanResourceManager");
 
     VkSurfaceFormatKHR surfaceFormat = device->getSurfaceFormat();
@@ -32,10 +32,10 @@ int main() {
     const VkFormat depthFormat = device->getDepthFormat();
     auto depthAspectMask = device->getDepthAspectMask();
 
-    auto cmdBufferMgr = LX_core::graphic_backend::VulkanCommandBufferManager::create(
+    auto cmdBufferMgr = LX_core::backend::VulkanCommandBufferManager::create(
         *device, 3, device->getGraphicsQueueFamilyIndex());
     auto resourceManager =
-        LX_core::graphic_backend::VulkanResourceManager::create(*device);
+        LX_core::backend::VulkanResourceManager::create(*device);
     resourceManager->initializeRenderPassAndPipeline(surfaceFormat, depthFormat);
 
     auto &renderPass = resourceManager->getRenderPass();

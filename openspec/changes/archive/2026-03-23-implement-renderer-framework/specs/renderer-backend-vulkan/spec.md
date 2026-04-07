@@ -9,7 +9,7 @@
 ### Directory Structure
 - `renderer/shaders/glsl/` - GLSL shader source files
 - `renderer/shaders/` - CMakeLists.txt for shader compilation
-- `renderer/src/graphics_backend/vulkan/details/` - Vulkan backend implementation
+- `renderer/src/backend/vulkan/details/` - Vulkan backend implementation
 - `renderer/src/test/` - Integration tests
 
 ---
@@ -179,7 +179,7 @@ The VulkanPipeline SHALL support:
 The VulkanRenderer SHALL implement:
 - initialize(WindowPtr): Create device, swapchain, command buffers, and resources
 - shutdown(): Destroy all Vulkan objects in reverse creation order
-- initScene(ScenePtr): Create GPU resources from scene's RenderItem
+- initScene(ScenePtr): Create GPU resources from scene's RenderingItem
 - uploadData(): Upload dirty resources to GPU
 - draw(): Acquire image, record commands, submit, present
 

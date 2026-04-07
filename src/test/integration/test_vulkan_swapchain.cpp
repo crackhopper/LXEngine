@@ -1,6 +1,6 @@
-#include "graphics_backend/vulkan/details/render_objects/vkr_renderpass.hpp"
-#include "graphics_backend/vulkan/details/render_objects/vkr_swapchain.hpp"
-#include "graphics_backend/vulkan/details/vk_device.hpp"
+#include "backend/vulkan/details/render_objects/vkr_renderpass.hpp"
+#include "backend/vulkan/details/render_objects/vkr_swapchain.hpp"
+#include "backend/vulkan/details/vk_device.hpp"
 #include "infra/window/window.hpp"
 
 #include <vulkan/vulkan.h>
@@ -13,7 +13,7 @@ int main() {
     LX_infra::Window::Initialize();
     auto window = std::make_shared<LX_infra::Window>("Test Vulkan Depth", 64, 64);
 
-    auto device = LX_core::graphic_backend::VulkanDevice::create();
+    auto device = LX_core::backend::VulkanDevice::create();
     device->initialize(window, "TestVulkanDepth");
 
     VkInstance instance = device->getInstance();
@@ -23,10 +23,10 @@ int main() {
     VkSurfaceFormatKHR surfaceFormat = device->getSurfaceFormat();
 
     auto renderPass =
-        LX_core::graphic_backend::VulkanRenderPass::create(
+        LX_core::backend::VulkanRenderPass::create(
             *device, surfaceFormat.format, depthFormat);
 
-    auto swapchain = LX_core::graphic_backend::VulkanSwapchain::create(
+    auto swapchain = LX_core::backend::VulkanSwapchain::create(
         *device, window, /*maxFramesInFlight=*/1);
     swapchain->initialize(*renderPass);
 
