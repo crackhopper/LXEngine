@@ -12,10 +12,26 @@ endif()
 # -------------------------------
 # SDL3
 # -------------------------------
-set(SDL3_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/SDL3-3.3.6/cmake)
-find_package(SDL3 REQUIRED)
-if(NOT SDL3_FOUND)
-    message(FATAL_ERROR "SDL3 not found")
+if(WIN32)
+    set(SDL3_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/SDL3-3.3.6/cmake)
+    find_package(SDL3 REQUIRED)
+    if(NOT SDL3_FOUND)
+        message(FATAL_ERROR "SDL3 not found")
+    endif()
+else()
+    find_package(SDL3 QUIET)
+    if(NOT SDL3_FOUND)
+        include(FetchContent)
+        set(SDL_SHARED ON CACHE BOOL "" FORCE)
+        set(SDL_STATIC OFF CACHE BOOL "" FORCE)
+        set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
+        fetchcontent_declare(
+            SDL3
+            URL https://github.com/libsdl-org/SDL/releases/download/prerelease-3.3.6/SDL3-3.3.6.tar.gz
+            DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+        )
+        fetchcontent_makeavailable(SDL3)
+    endif()
 endif()
 
 # -------------------------------
