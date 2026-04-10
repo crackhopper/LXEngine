@@ -68,6 +68,12 @@ Detailed specifications live in `openspec/specs/`. Read the relevant spec before
 | **C++ Style Guide** | `openspec/specs/cpp-style-guide/spec.md` | Ownership, smart pointers, RAII, type safety |
 | **Vulkan Backend** | `openspec/specs/renderer-backend-vulkan/spec.md` | VulkanDevice, Buffer, Texture, Shader, Pipeline, Renderer, CommandBuffer |
 | **String Interning** | `openspec/specs/string-interning/spec.md` | `GlobalStringTable`, `StringID`, thread-safe string-to-int mapping |
+| **Shader Compilation** | `openspec/specs/shader-compilation/spec.md` | Runtime GLSL→SPIR-V via shaderc, variant macros |
+| **Shader Reflection** | `openspec/specs/shader-reflection/spec.md` | SPIR-V reflection via SPIRV-Cross, ShaderResourceBinding |
+| **Window System** | `openspec/specs/window-system/spec.md` | IWindow interface, SDL/GLFW backends |
+| **GUI System** | `openspec/specs/gui-system/spec.md` | ImGui integration |
+| **Texture Loading** | `openspec/specs/texture-loading/spec.md` | Image loading (stb_image) |
+| **Mesh Loading** | `openspec/specs/mesh-loading/spec.md` | OBJ/GLTF mesh loading (tinyobjloader) |
 
 ### Change History
 
