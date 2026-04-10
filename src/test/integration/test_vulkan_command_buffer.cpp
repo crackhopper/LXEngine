@@ -1,7 +1,6 @@
 #include "core/gpu/render_resource.hpp"
 #include "core/resources/index_buffer.hpp"
 #include "core/resources/vertex_buffer.hpp"
-#include "backend/vulkan/details/blinn_phong_material_stub.hpp"
 #include "core/scene/scene.hpp"
 #include "core/utils/filesystem_tools.hpp"
 #include "backend/vulkan/details/commands/vkc_cmdbuffer_manager.hpp"
@@ -11,7 +10,7 @@
 #include "backend/vulkan/details/vk_device.hpp"
 #include "backend/vulkan/details/vk_resource_manager.hpp"
 #include "core/utils/env.hpp"
-
+#include "infra/loaders/blinnphong_draw_material_loader.hpp"
 #include "infra/window/window.hpp"
 
 #include <vulkan/vulkan.h>
@@ -51,11 +50,6 @@ int main() {
                                                      depthFormat);
 
     auto &renderPass = resourceManager->getRenderPass();
-    auto &pipeline = resourceManager->getRenderPipeline();
-    if (pipeline.getHandle() == VK_NULL_HANDLE) {
-      std::cerr << "RenderPass/Pipeline not initialized correctly\n";
-      return 1;
-    }
 
     // Create minimal framebuffer attachments.
     const VkExtent2D extent{64, 64};
@@ -86,8 +80,7 @@ int main() {
     auto indexBufferPtr = LX_core::IndexBuffer::create({0u, 1u, 2u});
     auto meshPtr = LX_core::Mesh::create(vertexBufferPtr, indexBufferPtr);
 
-    auto material = LX_core::backend::MaterialBlinnPhong::create(
-        LX_core::ResourcePassFlag::Forward);
+    auto material = LX_infra::loadBlinnPhongDrawMaterial();
     material->ubo->params.enableNormalMap = 0; // avoid normal texture
     material->ubo->setDirty();
 
@@ -130,7 +123,7 @@ int main() {
 
     // Initialize push constants deterministically.
     if (renderItem.objectInfo) {
-      LX_core::PC_BlinnPhong pc{};
+      LX_core::PC_Draw pc{};
       pc.model = LX_core::Mat4f::identity();
       pc.enableLighting = 1;
       pc.enableSkinning = 0;
@@ -144,6 +137,12 @@ int main() {
       resourceManager->syncResource(*cmdBufferMgr, cpuRes);
     }
     resourceManager->collectGarbage();
+
+    auto &pipeline = resourceManager->getOrCreateRenderPipeline(renderItem);
+    if (pipeline.getHandle() == VK_NULL_HANDLE) {
+      std::cerr << "Pipeline not created correctly\n";
+      return 1;
+    }
 
     cmdBufferMgr->beginFrame(0);
     auto cmd = cmdBufferMgr->allocateBuffer();

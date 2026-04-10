@@ -1,8 +1,12 @@
 #include "vk_resource_manager.hpp"
 #include "commands/vkc_cmdbuffer_manager.hpp"
+#include "core/resources/index_buffer.hpp"
 #include "core/resources/shader.hpp"
 #include "core/resources/texture.hpp"
-#include "pipelines/vkp_blinnphong.hpp"
+#include "core/resources/vertex_buffer.hpp"
+#include "core/scene/scene.hpp"
+#include "pipelines/forward_pipeline_slots.hpp"
+#include "pipelines/vkp_shader_graphics.hpp"
 #include "render_objects/vkr_renderpass.hpp"
 #include "resources/vkr_buffer.hpp"
 #include "resources/vkr_shader.hpp"
@@ -169,22 +173,12 @@ void VulkanResourceManager::collectGarbage() {
 
 void VulkanResourceManager::initializeRenderPassAndPipeline(
     VkSurfaceFormatKHR surfaceFormat, VkFormat depthFormat) {
-  if (m_renderPass && !m_pipelines.empty()) {
+  if (m_renderPass) {
     return;
   }
 
-  // Render pass depends on the swapchain image format.
   m_renderPass =
       VulkanRenderPass::create(m_device, surfaceFormat.format, depthFormat);
-
-  VkExtent2D dummyExtent{1, 1};
-  VulkanPipelinePtr blinnPhong =
-      VkPipelineBlinnPhong::create(m_device, dummyExtent);
-
-  VkRenderPass rp = m_renderPass->getHandle();
-  blinnPhong->buildGraphicsPpl(rp);
-
-  m_pipelines["blinnphong_0"] = std::move(blinnPhong);
 }
 
 // 辅助查找宏，简化代码
@@ -216,18 +210,49 @@ VulkanRenderPass &VulkanResourceManager::getRenderPass() {
   return *m_renderPass;
 }
 
-VulkanPipeline &VulkanResourceManager::getRenderPipeline() {
-  return getRenderPipeline("blinnphong_0");
-}
-
 VulkanPipeline &
-VulkanResourceManager::getRenderPipeline(std::string_view shaderBaseName) {
-  const std::string key(shaderBaseName);
-  auto it = m_pipelines.find(key);
-  if (it == m_pipelines.end()) {
-    throw std::runtime_error("Unknown render pipeline shader: " + key);
+VulkanResourceManager::getOrCreateRenderPipeline(const LX_core::RenderingItem &item) {
+  auto it = m_pipelines.find(item.pipelineKey);
+  if (it != m_pipelines.end()) {
+    return *it->second;
   }
-  return *it->second;
+
+  auto vb = std::dynamic_pointer_cast<LX_core::IVertexBuffer>(item.vertexBuffer);
+  auto ib = std::dynamic_pointer_cast<LX_core::IndexBuffer>(item.indexBuffer);
+  if (!vb || !ib) {
+    throw std::runtime_error(
+        "getOrCreateRenderPipeline: missing vertex or index buffer");
+  }
+  if (!item.shaderInfo) {
+    throw std::runtime_error("getOrCreateRenderPipeline: missing shader (IShader)");
+  }
+
+  const std::string shaderName = item.shaderInfo->getShaderName();
+  if (shaderName.empty()) {
+    throw std::runtime_error(
+        "getOrCreateRenderPipeline: IShader::getShaderName() is empty");
+  }
+
+  std::vector<PipelineSlotDetails> slots;
+  PushConstantDetails pushConstants{};
+  if (shaderName == "blinnphong_0") {
+    slots = blinnPhongForwardSlots();
+    pushConstants = blinnPhongPushConstants();
+  } else {
+    throw std::runtime_error("No pipeline slot table for shader: " + shaderName);
+  }
+
+  VkExtent2D dummyExtent{1, 1};
+  VulkanPipelinePtr pipeline = VulkanShaderGraphicsPipeline::create(
+      m_device, dummyExtent, shaderName, vb->getLayout(), std::move(slots),
+      pushConstants, ib->getTopology());
+  pipeline->loadShaders();
+  pipeline->createLayout();
+  pipeline->buildGraphicsPpl(m_renderPass->getHandle());
+
+  VulkanPipeline *raw = pipeline.get();
+  m_pipelines[item.pipelineKey] = std::move(pipeline);
+  return *raw;
 }
 
 } // namespace LX_core::backend

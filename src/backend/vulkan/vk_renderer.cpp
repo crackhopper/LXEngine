@@ -1,4 +1,5 @@
 #include "vk_renderer.hpp"
+#include "core/gpu/render_resource.hpp"
 #include "details/commands/vkc_cmdbuffer_manager.hpp"
 #include "details/descriptors/vkd_descriptor_manager.hpp"
 #include "details/render_objects/vkr_framebuffer.hpp"
@@ -129,7 +130,7 @@ public:
 
     // Initialize push-constants with sane defaults.
     if (renderItem.objectInfo) {
-      PC_BlinnPhong pc{};
+      PC_Draw pc{};
       pc.model = Mat4f::identity();
       pc.enableLighting = 1;
       pc.enableSkinning = 0;
@@ -186,13 +187,7 @@ public:
     }
 
     auto &renderPass = resourceManager->getRenderPass();
-    std::string pipelineKey =
-        renderItem.shaderInfo ? renderItem.shaderInfo->getShaderName()
-                              : std::string{};
-    if (pipelineKey.empty()) {
-      pipelineKey = "blinnphong_0";
-    }
-    auto &pipeline = resourceManager->getRenderPipeline(pipelineKey);
+    auto &pipeline = resourceManager->getOrCreateRenderPipeline(renderItem);
 
     cmdBufferMgr->beginFrame(currentFrameIndex);
     device->getDescriptorManager().beginFrame(currentFrameIndex);

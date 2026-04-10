@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/gpu/render_resource.hpp"
+#include "core/resources/pipeline_key.hpp"
 #include "pipelines/vkp_pipeline.hpp"
 #include <memory>
 #include <optional>
@@ -10,6 +11,10 @@
 #include <variant>
 
 #include <vulkan/vulkan.h>
+
+namespace LX_core {
+struct RenderingItem;
+}
 
 namespace LX_core::backend {
 
@@ -58,8 +63,7 @@ public:
   std::optional<std::reference_wrapper<VulkanTexture>> getTexture(void *handle);
   std::optional<std::reference_wrapper<VulkanShader>> getShader(void *handle);
   VulkanRenderPass &getRenderPass();
-  VulkanPipeline &getRenderPipeline();
-  VulkanPipeline &getRenderPipeline(std::string_view shaderBaseName);
+  VulkanPipeline &getOrCreateRenderPipeline(const LX_core::RenderingItem &item);
 
 private:
   // 内部创建与更新逻辑
@@ -74,7 +78,9 @@ private:
   std::unordered_set<void *> m_activeHandles;
 
   std::unique_ptr<VulkanRenderPass> m_renderPass;
-  std::unordered_map<std::string, VulkanPipelinePtr> m_pipelines;
+  std::unordered_map<LX_core::PipelineKey, VulkanPipelinePtr,
+                      LX_core::PipelineKey::Hash>
+      m_pipelines;
 };
 
 } // namespace LX_core::backend

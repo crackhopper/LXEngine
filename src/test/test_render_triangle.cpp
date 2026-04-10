@@ -3,14 +3,14 @@
 #include "core/resources/index_buffer.hpp"
 #include "core/resources/texture.hpp"
 #include "core/resources/vertex_buffer.hpp"
+#include "core/utils/filesystem_tools.hpp"
 
 // backend Vulkan 实现
 #include "backend/vulkan/vk_renderer.hpp"
 
 // 窗口系统
 #include "infra/window/window.hpp"
-
-#include "backend/vulkan/details/blinn_phong_material_stub.hpp"
+#include "infra/loaders/blinnphong_draw_material_loader.hpp"
 
 #include <array>
 #include <cstdlib>
@@ -32,6 +32,11 @@ bool testDebugEnabled() {
 } // namespace
 
 int main() {
+  if (!cdToWhereShadersExist("blinnphong_0")) {
+    std::cerr << "Failed to locate shader assets for blinnphong_0\n";
+    return 1;
+  }
+
   LX_infra::Window::Initialize();
   LX_core::WindowPtr window =
       std::make_shared<LX_infra::Window>("Test Renderer", 800, 600);
@@ -59,8 +64,7 @@ int main() {
   auto indexBufferPtr = IndexBuffer::create({0, 1, 2});
   auto meshPtr = Mesh::create(vertexBufferPtr, indexBufferPtr);
 
-  // Build a renderable mesh with a material (Scene expects IRenderable).
-  auto material = LX_core::backend::MaterialBlinnPhong::create();
+  auto material = LX_infra::loadBlinnPhongDrawMaterial();
   material->ubo->params.enableNormalMap =
       0; // avoid needing correct tangents for N mapping
   material->ubo->setDirty();

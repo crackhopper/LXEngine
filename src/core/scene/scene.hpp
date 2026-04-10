@@ -1,4 +1,5 @@
 #pragma once
+#include "core/resources/pipeline_key.hpp"
 #include "core/resources/shader.hpp"
 #include "core/scene/camera.hpp"
 #include "core/scene/light.hpp"
@@ -15,10 +16,11 @@ struct RenderingItem {
   ObjectPCPtr objectInfo;
   IRenderResourcePtr vertexBuffer;
   IRenderResourcePtr indexBuffer;
-  
+
   std::vector<IRenderResourcePtr> descriptorResources; // 材质 + skeleton 等资源
-  
+
   ResourcePassFlag passMask;
+  PipelineKey pipelineKey;
 };
 
 // Scene 层简化示例
@@ -40,17 +42,7 @@ public:
     return std::make_shared<Scene>(mesh);
   }
 
-  // 构建 RenderingItem 的接口
-  RenderingItem buildRenderingItem() {
-    RenderingItem item;
-    item.vertexBuffer = mesh->getVertexBuffer();
-    item.indexBuffer = mesh->getIndexBuffer();
-    item.objectInfo = mesh->getObjectInfo();
-    item.descriptorResources = mesh->getDescriptorResources();
-    item.shaderInfo = mesh->getShaderInfo();
-    item.passMask = mesh->getPassMask();
-    return item;
-  }
+  RenderingItem buildRenderingItem();
 };
 
 using ScenePtr = Scene::Ptr;

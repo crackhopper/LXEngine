@@ -198,6 +198,34 @@ private:
   std::unordered_map<StringID, TexturePtr> m_textures;
 };
 
+/// Std140 layout matching `MaterialUBO` in `shaders/glsl/blinnphong_0.frag`.
+struct alignas(16) BlinnPhongMaterialUBO : public IRenderResource {
+  struct Params {
+    Vec3f baseColor{0.8f, 0.8f, 0.8f};
+    float shininess = 12.0f;
+    float specularIntensity = 1.0f;
+    int32_t enableAlbedo = 0;
+    int32_t enableNormalMap = 0;
+    int32_t padding = 0;
+  } params{};
+
+  explicit BlinnPhongMaterialUBO(ResourcePassFlag passFlag) : m_passFlag(passFlag) {}
+
+  ResourcePassFlag getPassFlag() const override { return m_passFlag; }
+  ResourceType getType() const override { return ResourceType::UniformBuffer; }
+  const void *getRawData() const override { return &params; }
+  static constexpr usize ResourceSize = sizeof(Params);
+  u32 getByteSize() const override { return static_cast<u32>(ResourceSize); }
+  PipelineSlotId getPipelineSlotId() const override {
+    return PipelineSlotId::MaterialUBO;
+  }
+
+private:
+  ResourcePassFlag m_passFlag = ResourcePassFlag::Forward;
+};
+
+using BlinnPhongMaterialUboPtr = std::shared_ptr<BlinnPhongMaterialUBO>;
+
 /// Render-path material: descriptor sources, shader, and pass (no concrete shading model).
 class IMaterial {
 public:
@@ -205,8 +233,39 @@ public:
   virtual std::vector<IRenderResourcePtr> getDescriptorResources() const = 0;
   virtual IShaderPtr getShaderInfo() const = 0;
   virtual ResourcePassFlag getPassFlag() const = 0;
+  virtual ShaderProgramSet getShaderProgramSet() const = 0;
+  virtual RenderState getRenderState() const = 0;
 };
 
 using MaterialPtr = std::shared_ptr<IMaterial>;
+
+/// CPU-side material for file-based shaders (e.g. blinnphong_0) with reflection-backed
+/// `IShader` and explicit `ShaderProgramSet` for pipeline keys.
+class DrawMaterial : public IMaterial {
+public:
+  using Ptr = std::shared_ptr<DrawMaterial>;
+
+  static Ptr create(IShaderPtr shader, ShaderProgramSet programSet,
+                    ResourcePassFlag passFlag = ResourcePassFlag::Forward);
+
+  std::vector<IRenderResourcePtr> getDescriptorResources() const override;
+  IShaderPtr getShaderInfo() const override;
+  ResourcePassFlag getPassFlag() const override;
+  ShaderProgramSet getShaderProgramSet() const override;
+  RenderState getRenderState() const override;
+
+  BlinnPhongMaterialUboPtr ubo;
+  CombinedTextureSamplerPtr albedoSampler;
+  CombinedTextureSamplerPtr normalSampler;
+
+private:
+  DrawMaterial(IShaderPtr shader, ShaderProgramSet programSet, RenderState renderState,
+               ResourcePassFlag passFlag, BlinnPhongMaterialUboPtr ubo);
+
+  IShaderPtr m_shader;
+  ShaderProgramSet m_programSet;
+  RenderState m_renderState;
+  ResourcePassFlag m_passFlag;
+};
 
 } // namespace LX_core

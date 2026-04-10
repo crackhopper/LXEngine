@@ -88,11 +88,11 @@ struct alignas(16) PC_Base {
   Mat4f model = Mat4f::identity();
 };
 
-struct alignas(16) PC_BlinnPhong : public PC_Base {
+/// Push constants for forward draws (e.g. blinnphong_0-style vertex shader).
+struct alignas(16) PC_Draw : public PC_Base {
   int32_t enableLighting = 1;
   int32_t enableSkinning = 0;
-  int32_t padding[2]; // 补齐到 16 字节倍数
+  int32_t padding[2];
 };
-
 
 } // namespace LX_core

@@ -7,7 +7,8 @@ namespace LX_infra {
 class ShaderImpl : public LX_core::IShader {
 public:
   ShaderImpl(std::vector<LX_core::ShaderStageCode> stages,
-             std::vector<LX_core::ShaderResourceBinding> bindings);
+             std::vector<LX_core::ShaderResourceBinding> bindings,
+             std::string logicalName = {});
 
   // --- IShader interface ---
   const std::vector<LX_core::ShaderStageCode> &getAllStages() const override;
@@ -22,6 +23,8 @@ public:
   findBinding(const std::string &name) const override;
 
   size_t getProgramHash() const override;
+
+  std::string getShaderName() const override { return m_logicalName; }
 
   // --- IRenderResource interface ---
   LX_core::ResourcePassFlag getPassFlag() const override {
@@ -43,6 +46,7 @@ private:
   std::unordered_map<std::string, size_t> m_nameIndex;
 
   size_t m_hash = 0;
+  std::string m_logicalName;
 };
 
 } // namespace LX_infra

@@ -4,8 +4,10 @@
 namespace LX_infra {
 
 ShaderImpl::ShaderImpl(std::vector<LX_core::ShaderStageCode> stages,
-                       std::vector<LX_core::ShaderResourceBinding> bindings)
-    : m_stages(std::move(stages)), m_bindings(std::move(bindings)) {
+                       std::vector<LX_core::ShaderResourceBinding> bindings,
+                       std::string logicalName)
+    : m_stages(std::move(stages)), m_bindings(std::move(bindings)),
+      m_logicalName(std::move(logicalName)) {
   buildIndices();
   computeHash();
 }

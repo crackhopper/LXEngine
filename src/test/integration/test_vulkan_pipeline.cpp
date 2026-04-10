@@ -1,14 +1,14 @@
+#include "core/resources/index_buffer.hpp"
+#include "core/resources/vertex_buffer.hpp"
+#include "core/scene/scene.hpp"
 #include "core/utils/filesystem_tools.hpp"
-#include "backend/vulkan/details/pipelines/vkp_blinnphong.hpp"
-#include "backend/vulkan/details/render_objects/vkr_renderpass.hpp"
 #include "backend/vulkan/details/vk_device.hpp"
-#include "core/utils/env.hpp"
+#include "backend/vulkan/details/vk_resource_manager.hpp"
+#include "infra/loaders/blinnphong_draw_material_loader.hpp"
 #include "infra/window/window.hpp"
+#include "core/utils/env.hpp"
 
-#include <filesystem>
 #include <iostream>
-
-namespace fs = std::filesystem;
 
 int main() {
   expSetEnvVK();
@@ -18,28 +18,38 @@ int main() {
       std::cerr << "Failed to find shader files\n";
       return 1;
     }
-    
+
     LX_infra::Window::Initialize();
-    auto window = std::make_shared<LX_infra::Window>("Test Vulkan Pipeline", 64, 64);
+    auto window =
+        std::make_shared<LX_infra::Window>("Test Vulkan Pipeline", 64, 64);
 
     auto device = LX_core::backend::VulkanDevice::create();
     device->initialize(window, "TestVulkanPipeline");
 
-    const VkFormat colorFormat = device->getSurfaceFormat().format;
-    const VkFormat depthFormat = device->getDepthFormat();
-    auto renderPass =
-        LX_core::backend::VulkanRenderPass::create(
-            *device, colorFormat, depthFormat);
+    auto resourceManager = LX_core::backend::VulkanResourceManager::create(*device);
+    resourceManager->initializeRenderPassAndPipeline(device->getSurfaceFormat(),
+                                                     device->getDepthFormat());
 
-    VkExtent2D extent{1, 1};
-    auto pipeline =
-        LX_core::backend::VkPipelineBlinnPhong::create(
-            *device, extent);
+    using V = LX_core::VertexPosNormalUvBone;
+    auto vertexBufferPtr = LX_core::VertexBuffer<V>::create({
+        V({-5.0f, 5.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f},
+          {1.0f, 0.0f, 0.0f, 0.0f}, {0, 0, 0, 0}, {1.0f, 0.0f, 0.0f, 0.0f}),
+        V({5.0f, 5.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f},
+          {1.0f, 0.0f, 0.0f, 0.0f}, {0, 0, 0, 0}, {1.0f, 0.0f, 0.0f, 0.0f}),
+        V({5.0f, -5.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f},
+          {1.0f, 0.0f, 0.0f, 0.0f}, {0, 0, 0, 0}, {1.0f, 0.0f, 0.0f, 0.0f}),
+    });
+    auto indexBufferPtr = LX_core::IndexBuffer::create({0u, 1u, 2u});
+    auto meshPtr = LX_core::Mesh::create(vertexBufferPtr, indexBufferPtr);
+    auto material = LX_infra::loadBlinnPhongDrawMaterial();
+    auto renderable = std::make_shared<LX_core::RenderableSubMesh>(
+        meshPtr, material, LX_core::Skeleton::create({}));
+    auto scene = LX_core::Scene::create(renderable);
+    auto item = scene->buildRenderingItem();
 
-    // Build actual VkPipeline (layout/shader modules are created in create()).
-    pipeline->buildGraphicsPpl(renderPass->getHandle());
+    auto &pipeline = resourceManager->getOrCreateRenderPipeline(item);
 
-    if (pipeline->getHandle() == VK_NULL_HANDLE) {
+    if (pipeline.getHandle() == VK_NULL_HANDLE) {
       std::cerr << "VkPipeline handle is null\n";
       return 1;
     }
@@ -50,4 +60,3 @@ int main() {
     return 0;
   }
 }
-
