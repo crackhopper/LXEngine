@@ -58,7 +58,9 @@ class IRenderResource {
 public:
   virtual ~IRenderResource() = default;
 
-  virtual ResourcePassFlag getPassFlag() const = 0;
+  /// Default for geometry buffers and other resources that do not participate in
+  /// pass scheduling; materials and UBOs override with their pass.
+  virtual ResourcePassFlag getPassFlag() const { return ResourcePassFlag::Forward; }
   virtual ResourceType getType() const = 0;
   virtual const void *getRawData() const = 0;
   virtual u32 getByteSize() const = 0;

@@ -13,6 +13,20 @@ See `AGENTS.md` for full project context, architecture, and coding standards.
 - `openspec/specs/cpp-style-guide/spec.md` — C++ ownership & style rules (MUST follow)
 - `openspec/specs/renderer-backend-vulkan/spec.md` — Vulkan backend requirements
 - `openspec/specs/string-interning/spec.md` — GlobalStringTable / StringID
+- `openspec/specs/shader-compilation/spec.md` — Runtime GLSL→SPIR-V compilation
+- `openspec/specs/shader-reflection/spec.md` — SPIR-V reflection / ShaderResourceBinding
+- `openspec/specs/window-system/spec.md` — IWindow interface (SDL/GLFW)
+- `openspec/specs/gui-system/spec.md` — ImGui integration
+- `openspec/specs/texture-loading/spec.md` — Image loading (stb_image)
+- `openspec/specs/mesh-loading/spec.md` — OBJ/GLTF mesh loading
+- `openspec/specs/resource-pipeline-hash/spec.md` — `getPipelineHash()` / pipeline identity
+- `openspec/specs/skeleton-resource/spec.md` — Skeleton as core resource, no `IComponent`
+
+## Design Docs Index
+
+- `docs/design/GlobalStringTable.md` — String interning: GlobalStringTable + StringID
+- `docs/design/MaterialSystem.md` — Template-Instance material architecture, StringID-keyed properties
+- `docs/design/ShaderSystem.md` — GLSL compilation, SPIR-V reflection, ShaderImpl binding lookup
 
 ## Rules
 

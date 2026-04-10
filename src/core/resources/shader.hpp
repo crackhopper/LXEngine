@@ -107,6 +107,10 @@ public:
 
   virtual size_t getProgramHash() const = 0;
 
+  /// Logical shader basename for file-based pipelines (e.g. `blinnphong_0`).
+  /// Default empty: render path may fall back to a fixed pipeline key.
+  virtual std::string getShaderName() const { return {}; }
+
   ResourceType getType() const override { return ResourceType::Shader; }
 };
 
@@ -138,6 +142,8 @@ struct ShaderProgramSet {
     recomputeHash();
     return m_cachedHash;
   }
+
+  size_t getPipelineHash() const { return getHash(); }
 
   void markDirty() { m_dirty = true; }
 

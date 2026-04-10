@@ -74,6 +74,8 @@ Detailed specifications live in `openspec/specs/`. Read the relevant spec before
 | **GUI System** | `openspec/specs/gui-system/spec.md` | ImGui integration |
 | **Texture Loading** | `openspec/specs/texture-loading/spec.md` | Image loading (stb_image) |
 | **Mesh Loading** | `openspec/specs/mesh-loading/spec.md` | OBJ/GLTF mesh loading (tinyobjloader) |
+| **Resource pipeline hash** | `openspec/specs/resource-pipeline-hash/spec.md` | `getPipelineHash()` on mesh, material state, shaders, skeleton; future `PipelineKey` |
+| **Skeleton resource** | `openspec/specs/skeleton-resource/spec.md` | `Skeleton` in core resources, UBO accessors, removal of `IComponent` |
 
 ### Change History
 
@@ -98,6 +100,16 @@ Completed changes are archived in `openspec/changes/archive/`. Active changes ar
 - `MaterialTemplate` defines passes with shader + render state
 - `MaterialInstance` holds per-instance property overrides keyed by `StringID`
 - Binding cache built from shader reflection data
+
+## Design Documents
+
+Detailed design docs live in `docs/design/`. Read the relevant doc for architecture context:
+
+| Document | Path | Summary |
+|----------|------|---------|
+| **GlobalStringTable** | `docs/design/GlobalStringTable.md` | String interning system — `GlobalStringTable` singleton maps strings to `uint32_t` IDs; `StringID` wraps IDs with implicit string construction |
+| **MaterialSystem** | `docs/design/MaterialSystem.md` | Template-Instance material architecture — `MaterialTemplate` holds render passes and binding cache; `MaterialInstance` stores per-instance properties keyed by `StringID` |
+| **ShaderSystem** | `docs/design/ShaderSystem.md` | End-to-end shader pipeline — GLSL compilation (shaderc), SPIR-V reflection (SPIRV-Cross), `ShaderImpl` with O(1) binding lookup; variant macros for conditional features |
 
 ## Conventions
 

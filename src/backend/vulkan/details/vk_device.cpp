@@ -1,5 +1,6 @@
 #include "vk_device.hpp"
 #include "descriptors/vkd_descriptor_manager.hpp"
+#include <cstring>
 #include <iostream>
 #include <set>
 #include <stdexcept>

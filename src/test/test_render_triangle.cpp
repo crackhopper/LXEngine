@@ -10,7 +10,7 @@
 // 窗口系统
 #include "infra/window/window.hpp"
 
-#include "core/scene/components/material.hpp"
+#include "backend/vulkan/details/blinn_phong_material_stub.hpp"
 
 #include <array>
 #include <cstdlib>
@@ -57,19 +57,18 @@ int main() {
   // With the current Vulkan viewport/cull setup, this winding must stay
   // consistent with the integration test or the triangle is back-face culled.
   auto indexBufferPtr = IndexBuffer::create({0, 1, 2});
-  auto meshPtr =
-      Mesh<VertexPosNormalUvBone>::create(vertexBufferPtr, indexBufferPtr);
+  auto meshPtr = Mesh::create(vertexBufferPtr, indexBufferPtr);
 
   // Build a renderable mesh with a material (Scene expects IRenderable).
-  auto material = MaterialBlinnPhong::create();
+  auto material = LX_core::backend::MaterialBlinnPhong::create();
   material->ubo->params.enableNormalMap =
       0; // avoid needing correct tangents for N mapping
   material->ubo->setDirty();
 
   auto skeletonPtr = Skeleton::create({});
 
-  auto renderable = std::make_shared<RenderableSubMesh<VertexPosNormalUvBone>>(
-      meshPtr, material, skeletonPtr);
+  auto renderable =
+      std::make_shared<RenderableSubMesh>(meshPtr, material, skeletonPtr);
 
   auto scene = Scene::create(renderable);
   renderer->initScene(scene);

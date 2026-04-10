@@ -1,9 +1,10 @@
 #pragma once
+#include "core/gpu/render_resource.hpp"
 #include "core/math/mat.hpp"
-#include "core/scene/components/base.hpp"
-#include "core/scene/components/material.hpp"
-#include "core/scene/components/mesh.hpp"
-#include "core/scene/components/skeleton.hpp"
+#include "core/resources/material.hpp"
+#include "core/resources/mesh.hpp"
+#include "core/resources/skeleton.hpp"
+#include <cstring>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -52,25 +53,24 @@ public:
   virtual IRenderResourcePtr getIndexBuffer() const = 0;
   virtual std::vector<IRenderResourcePtr> getDescriptorResources() const = 0;
   virtual ResourcePassFlag getPassMask() const = 0;
-  virtual VertexFormat getVertexFormat() const = 0;
 
-  virtual ShaderPtr getShaderInfo() const = 0;
+  virtual IShaderPtr getShaderInfo() const = 0;
   virtual ObjectPCPtr getObjectInfo() const { return nullptr; }
 };
 
 using IRenderablePtr = std::shared_ptr<IRenderable>;
 
 // 渲染子网格，先仅支持1个网格。
-template <typename VType> struct RenderableSubMesh : public IRenderable {
+struct RenderableSubMesh : public IRenderable {
 public:
-  MeshPtr<VType> mesh;
+  MeshPtr mesh;
   MaterialPtr material;
   std::optional<SkeletonPtr> skeleton;
   ObjectPCPtr objectPC;
 
-  RenderableSubMesh(MeshPtr<VType> mesh, MaterialPtr material,
+  RenderableSubMesh(MeshPtr mesh_, MaterialPtr material_,
                     SkeletonPtr skeleton_ = nullptr)
-      : mesh(mesh), material(material) {
+      : mesh(std::move(mesh_)), material(std::move(material_)) {
     if (skeleton_) {
       skeleton = skeleton_;
     }
@@ -87,17 +87,16 @@ public:
     auto res = material->getDescriptorResources();
     std::vector<IRenderResourcePtr> ret{res.begin(), res.end()};
     if (skeleton.has_value()) {
-      auto skRes = skeleton.value()->getRenderResources();
-      ret.insert(ret.end(), skRes.begin(), skRes.end());
+      ret.push_back(std::dynamic_pointer_cast<IRenderResource>(
+          skeleton.value()->getUBO()));
     }
     return ret;
   }
-  virtual ShaderPtr getShaderInfo() const { return material->getShaderInfo(); }
+  virtual IShaderPtr getShaderInfo() const { return material->getShaderInfo(); }
   virtual ObjectPCPtr getObjectInfo() const { return objectPC; }
   virtual ResourcePassFlag getPassMask() const {
     return material->getPassFlag();
   }
-  virtual VertexFormat getVertexFormat() const { return VType::format(); }
 };
 
 } // namespace LX_core

@@ -1,16 +1,18 @@
 #pragma once
+#include "core/resources/shader.hpp"
 #include "core/scene/camera.hpp"
 #include "core/scene/light.hpp"
 #include "core/scene/object.hpp"
 
 namespace LX_core {
 
+using ShaderPtr = IShaderPtr;
+
 // 简化 RenderingItem
 struct RenderingItem {
   ShaderPtr shaderInfo;
 
   ObjectPCPtr objectInfo;
-  VertexFormat vertexFormat;
   IRenderResourcePtr vertexBuffer;
   IRenderResourcePtr indexBuffer;
   
@@ -42,7 +44,6 @@ public:
   RenderingItem buildRenderingItem() {
     RenderingItem item;
     item.vertexBuffer = mesh->getVertexBuffer();
-    item.vertexFormat = mesh->getVertexFormat();
     item.indexBuffer = mesh->getIndexBuffer();
     item.objectInfo = mesh->getObjectInfo();
     item.descriptorResources = mesh->getDescriptorResources();

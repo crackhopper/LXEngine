@@ -5,9 +5,35 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <stdexcept>
 
 namespace LX_core {
 namespace backend {
+
+namespace {
+
+VkFormat dataTypeToVkFormat(DataType t) {
+  switch (t) {
+  case DataType::Float1:
+    return VK_FORMAT_R32_SFLOAT;
+  case DataType::Float2:
+    return VK_FORMAT_R32G32_SFLOAT;
+  case DataType::Float3:
+    return VK_FORMAT_R32G32B32_SFLOAT;
+  case DataType::Float4:
+    return VK_FORMAT_R32G32B32A32_SFLOAT;
+  case DataType::Int4:
+    return VK_FORMAT_R32G32B32A32_SINT;
+  }
+  throw std::runtime_error("unhandled DataType for Vulkan vertex input");
+}
+
+VkVertexInputRate inputRateToVk(VertexInputRate r) {
+  return r == VertexInputRate::Instance ? VK_VERTEX_INPUT_RATE_INSTANCE
+                                        : VK_VERTEX_INPUT_RATE_VERTEX;
+}
+
+} // namespace
 
 VulkanPipeline::VulkanPipeline(
     Token, VulkanDevice &device, VkExtent2D extent,
@@ -138,12 +164,13 @@ VulkanPipeline::getColorBlendStateCreateInfo() {
 
 VkPipelineVertexInputStateCreateInfo
 VulkanPipeline::getVertexInputStateCreateInfo() {
-  VertexFormat format = getVertexFormat();
+  const VertexLayout &layout = referenceVertexLayout();
+  const auto &items = layout.getItems();
 
   m_viBindingDescriptions.clear();
   m_viAttrDescriptions.clear();
 
-  if (format == VertexFormat::Custom) {
+  if (items.empty() || layout.getStride() == 0) {
     VkPipelineVertexInputStateCreateInfo empty{};
     empty.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
     return empty;
@@ -151,62 +178,26 @@ VulkanPipeline::getVertexInputStateCreateInfo() {
 
   VkVertexInputBindingDescription binding{};
   binding.binding = 0;
-  binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-  uint32_t stride = 0;
+  binding.stride = layout.getStride();
+  binding.inputRate = inputRateToVk(items.front().inputRate);
+  m_viBindingDescriptions.push_back(binding);
 
-  auto addAttr = [&](uint32_t loc, VkFormat vkFormat, uint32_t offset) {
+  for (const auto &it : items) {
     VkVertexInputAttributeDescription attr{};
     attr.binding = 0;
-    attr.location = loc;
-    attr.format = vkFormat;
-    attr.offset = offset;
+    attr.location = it.location;
+    attr.format = dataTypeToVkFormat(it.type);
+    attr.offset = it.offset;
     m_viAttrDescriptions.push_back(attr);
-  };
-
-  switch (format) {
-  case VertexFormat::Pos:
-    stride = sizeof(VertexPos);
-    addAttr(0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(VertexPos, pos));
-    break;
-  case VertexFormat::PosColor:
-    stride = sizeof(VertexPosColor);
-    addAttr(0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(VertexPosColor, pos));
-    addAttr(1, VK_FORMAT_R32G32B32_SFLOAT, offsetof(VertexPosColor, color));
-    break;
-  case VertexFormat::PosUV:
-    stride = sizeof(VertexPosUV);
-    addAttr(0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(VertexPosUV, pos));
-    addAttr(1, VK_FORMAT_R32G32_SFLOAT, offsetof(VertexPosUV, uv));
-    break;
-  case VertexFormat::NormalTangent:
-    stride = sizeof(VertexNormalTangent);
-    addAttr(0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(VertexNormalTangent, normal));
-    addAttr(1, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(VertexNormalTangent, tangent));
-    break;
-  case VertexFormat::BoneWeight:
-    stride = sizeof(VertexBoneWeightIndex);
-    addAttr(0, VK_FORMAT_R32G32B32A32_SINT, offsetof(VertexBoneWeightIndex, boneIds));
-    addAttr(1, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(VertexBoneWeightIndex, weights));
-    break;
-  case VertexFormat::PosNormalUvBone:
-    stride = sizeof(VertexPosNormalUvBone);
-    addAttr(0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(VertexPosNormalUvBone, pos));
-    addAttr(1, VK_FORMAT_R32G32B32_SFLOAT, offsetof(VertexPosNormalUvBone, normal));
-    addAttr(2, VK_FORMAT_R32G32_SFLOAT, offsetof(VertexPosNormalUvBone, uv));
-    addAttr(3, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(VertexPosNormalUvBone, tangent));
-    addAttr(4, VK_FORMAT_R32G32B32A32_SINT, offsetof(VertexPosNormalUvBone, boneIDs));
-    addAttr(5, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(VertexPosNormalUvBone, boneWeights));
-    break;
   }
-
-  binding.stride = stride;
-  m_viBindingDescriptions.push_back(binding);
 
   VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
   vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-  vertexInputInfo.vertexBindingDescriptionCount = static_cast<uint32_t>(m_viBindingDescriptions.size());
+  vertexInputInfo.vertexBindingDescriptionCount =
+      static_cast<uint32_t>(m_viBindingDescriptions.size());
   vertexInputInfo.pVertexBindingDescriptions = m_viBindingDescriptions.data();
-  vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(m_viAttrDescriptions.size());
+  vertexInputInfo.vertexAttributeDescriptionCount =
+      static_cast<uint32_t>(m_viAttrDescriptions.size());
   vertexInputInfo.pVertexAttributeDescriptions = m_viAttrDescriptions.data();
   return vertexInputInfo;
 }

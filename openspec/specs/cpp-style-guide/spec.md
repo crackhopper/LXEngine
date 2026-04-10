@@ -141,6 +141,42 @@ public:
 - **Code Review**: Reviewers should verify ownership semantics are clear
 - **Architecture Review**: New classes must document ownership of member objects
 
+## Layer Dependency Rules
+
+### Core Layer Isolation
+
+The core layer (`src/core/`) SHALL NOT depend on any external libraries (Vulkan, SDL, GLFW, shaderc, SPIRV-Cross, etc.). Core defines platform-agnostic interfaces, math, resource types, and scene structures using only C++ standard library types.
+
+**Rationale**: Core types are consumed by all layers. External API dependencies would leak platform specifics upward and prevent backend substitution.
+
+#### Allowed Dependencies by Layer
+
+| Layer | Directory | Allowed Dependencies |
+|-------|-----------|---------------------|
+| **core** | `src/core/` | C++ standard library only |
+| **infra** | `src/infra/` | core + external libraries (shaderc, SPIRV-Cross, stb, tinyobj, SDL/GLFW) |
+| **backend** | `src/backend/` | core + graphics API (Vulkan) |
+
+#### When Core Needs a Concept from an External API
+
+If core needs to express a concept that maps to an external type (e.g., image formats, sample counts), it SHALL define its own enum or struct. The backend provides the mapping.
+
+```cpp
+// CORRECT — core defines its own enum
+// src/core/resources/render_target.hpp
+namespace LX_core {
+enum class ImageFormat : uint8_t { RGBA8, BGRA8, D32Float, D24S8 };
+}
+
+// backend maps to Vulkan
+// src/backend/vulkan/...
+VkFormat toVkFormat(LX_core::ImageFormat fmt);
+
+// INCORRECT — core uses Vulkan type
+#include <vulkan/vulkan.h>  // VIOLATION in core layer
+VkFormat getFormat() const;
+```
+
 ## Relationship to Vulkan Backend
 
 The Vulkan backend (`src/backend/vulkan/`) follows these guidelines:

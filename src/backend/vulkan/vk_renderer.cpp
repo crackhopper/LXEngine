@@ -117,15 +117,14 @@ public:
 
     // Inject camera/light UBOs required by the blinn-phong pipeline.
     if (scene->camera) {
-      auto camRes = scene->camera->getRenderResources();
-      renderItem.descriptorResources.insert(
-          renderItem.descriptorResources.end(), camRes.begin(), camRes.end());
+      auto camUbo = scene->camera->getUBO();
+      renderItem.descriptorResources.push_back(
+          std::dynamic_pointer_cast<IRenderResource>(camUbo));
     }
     if (scene->directionalLight) {
-      auto lightRes = scene->directionalLight->getRenderResources();
-      renderItem.descriptorResources.insert(
-          renderItem.descriptorResources.end(), lightRes.begin(),
-          lightRes.end());
+      auto lightUbo = scene->directionalLight->getUBO();
+      renderItem.descriptorResources.push_back(
+          std::dynamic_pointer_cast<IRenderResource>(lightUbo));
     }
 
     // Initialize push-constants with sane defaults.
@@ -187,9 +186,12 @@ public:
     }
 
     auto &renderPass = resourceManager->getRenderPass();
-    const std::string pipelineKey =
+    std::string pipelineKey =
         renderItem.shaderInfo ? renderItem.shaderInfo->getShaderName()
-                              : std::string("blinnphong_0");
+                              : std::string{};
+    if (pipelineKey.empty()) {
+      pipelineKey = "blinnphong_0";
+    }
     auto &pipeline = resourceManager->getRenderPipeline(pipelineKey);
 
     cmdBufferMgr->beginFrame(currentFrameIndex);

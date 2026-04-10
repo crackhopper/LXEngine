@@ -5,11 +5,10 @@
 #include <vector>
 #include <vulkan/vulkan.h>
 
+#include "../blinn_phong_material_stub.hpp"
+#include "core/resources/skeleton.hpp"
 #include "core/scene/camera.hpp"
-#include "core/scene/components/material.hpp"
-#include "core/scene/components/skeleton.hpp"
 #include "core/scene/light.hpp"
-#include "core/scene/object.hpp"
 
 namespace LX_core {
 namespace backend {
@@ -34,8 +33,6 @@ constexpr PipelineSlotDetails VkPipelineBlinnPhongSlotDetails[] = {
 };
 
 class VkPipelineBlinnPhong : public VulkanPipeline {
-  using VertexType = VertexPosNormalUvBone;
-
 public:
   using VulkanPipeline::VulkanPipeline;
 
@@ -56,8 +53,8 @@ public:
     return p;
   }
 
-  VertexFormat getVertexFormat() const override {
-    return VertexFormat::PosNormalUvBone;
+  const VertexLayout &referenceVertexLayout() const override {
+    return VertexPosNormalUvBone::getLayout();
   }
   std::string getShaderName() const override { return m_shaderName; }
   std::string getPipelineId() const override { return m_pipelineId; }

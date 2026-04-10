@@ -41,7 +41,8 @@ public:
 
   virtual std::string getPipelineId() const = 0;
   virtual std::string getShaderName() const = 0;
-  virtual VertexFormat getVertexFormat() const = 0;
+  /// Vertex input for this pipeline; must match bound mesh layouts at draw time.
+  virtual const VertexLayout &referenceVertexLayout() const = 0;
 
   virtual void loadShaders();
   virtual void createLayout();

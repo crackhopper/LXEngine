@@ -1,7 +1,7 @@
 #include "core/gpu/render_resource.hpp"
 #include "core/resources/index_buffer.hpp"
 #include "core/resources/vertex_buffer.hpp"
-#include "core/scene/components/material.hpp"
+#include "backend/vulkan/details/blinn_phong_material_stub.hpp"
 #include "core/scene/scene.hpp"
 #include "core/utils/filesystem_tools.hpp"
 #include "backend/vulkan/details/commands/vkc_cmdbuffer_manager.hpp"
@@ -84,15 +84,15 @@ int main() {
           {1.0f, 0.0f, 0.0f, 0.0f}, {0, 0, 0, 0}, {1.0f, 0.0f, 0.0f, 0.0f}),
     });
     auto indexBufferPtr = LX_core::IndexBuffer::create({0u, 1u, 2u});
-    auto meshPtr = LX_core::Mesh<V>::create(vertexBufferPtr, indexBufferPtr);
+    auto meshPtr = LX_core::Mesh::create(vertexBufferPtr, indexBufferPtr);
 
-    auto material = LX_core::MaterialBlinnPhong::create(
+    auto material = LX_core::backend::MaterialBlinnPhong::create(
         LX_core::ResourcePassFlag::Forward);
     material->ubo->params.enableNormalMap = 0; // avoid normal texture
     material->ubo->setDirty();
 
     auto renderable =
-        std::make_shared<LX_core::RenderableSubMesh<V>>(meshPtr, material);
+        std::make_shared<LX_core::RenderableSubMesh>(meshPtr, material);
     // Pipeline declares a SkeletonUBO slot; attach an (empty) skeleton so the
     // descriptor set binding gets a valid buffer to update.
     renderable->skeleton =
@@ -118,15 +118,14 @@ int main() {
 
     // Match VulkanRenderer::initScene(): inject camera/light UBO resources.
     if (scene->camera) {
-      auto camRes = scene->camera->getRenderResources();
-      renderItem.descriptorResources.insert(
-          renderItem.descriptorResources.end(), camRes.begin(), camRes.end());
+      auto camUbo = scene->camera->getUBO();
+      renderItem.descriptorResources.push_back(
+          std::dynamic_pointer_cast<LX_core::IRenderResource>(camUbo));
     }
     if (scene->directionalLight) {
-      auto lightRes = scene->directionalLight->getRenderResources();
-      renderItem.descriptorResources.insert(
-          renderItem.descriptorResources.end(), lightRes.begin(),
-          lightRes.end());
+      auto lightUbo = scene->directionalLight->getUBO();
+      renderItem.descriptorResources.push_back(
+          std::dynamic_pointer_cast<LX_core::IRenderResource>(lightUbo));
     }
 
     // Initialize push constants deterministically.

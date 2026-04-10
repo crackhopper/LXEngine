@@ -2,7 +2,6 @@
 #include "core/gpu/render_resource.hpp"
 #include "core/math/mat.hpp" // 假设你有 Mat4f 定义
 #include "core/math/vec.hpp" // Vec3f
-#include "components/base.hpp"
 #include <cmath>
 #include <memory>
 #include <optional>
@@ -47,12 +46,14 @@ using CameraUBOPtr = std::shared_ptr<CameraUBO>;
 enum class CameraType { Perspective, Orthographic };
 
 // CPU 层 Camera 基类
-class Camera : public IComponent {
+class Camera {
 public:
   Camera(ResourcePassFlag passFlag) {
     ubo = std::make_shared<CameraUBO>(passFlag);
   }
   virtual ~Camera() = default;
+
+  CameraUBOPtr getUBO() const { return ubo; }
 
   // ========================
   // 相机类型相关属性
@@ -91,13 +92,6 @@ public:
           Mat4f::orthographic(left, right, bottom, top, nearPlane, farPlane);
     }
     ubo->setDirty();
-  }
-
-  // 获取当前相机UBO数据
-  virtual std::vector<IRenderResourcePtr> getRenderResources() const override {
-    return {
-      std::dynamic_pointer_cast<IRenderResource>(ubo)
-    };
   }
 };
 

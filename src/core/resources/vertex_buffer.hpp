@@ -2,6 +2,7 @@
 #include "core/gpu/render_resource.hpp"
 #include "core/math/vec.hpp"
 #include <any>
+#include <cstring>
 #include <array>
 #include <cassert>
 #include <functional>
@@ -10,38 +11,6 @@
 #include <type_traits>
 #include <unordered_map>
 #include <vector>
-
-namespace LX_core {
-
-/*****************************************************************
- * VertexFormat（仅语义标签，不再作为唯一 key）
- *****************************************************************/
-enum class VertexFormat : uint32_t {
-  None = 0,
-  Pos = 1 << 0,
-  Color = 1 << 1,
-  UV = 1 << 2,
-  Normal = 1 << 3,
-  Tangent = 1 << 4,
-  BoneIndex = 1 << 5,
-  BoneWeight = 1 << 6,
-};
-
-inline VertexFormat operator|(VertexFormat a, VertexFormat b) {
-  return static_cast<VertexFormat>(static_cast<uint32_t>(a) |
-                                   static_cast<uint32_t>(b));
-}
-
-} // namespace LX_core
-
-// hash support
-namespace std {
-template <> struct hash<LX_core::VertexFormat> {
-  size_t operator()(LX_core::VertexFormat f) const noexcept {
-    return std::hash<uint32_t>{}(static_cast<uint32_t>(f));
-  }
-};
-} // namespace std
 
 namespace LX_core {
 
@@ -130,15 +99,15 @@ public:
   virtual ~IVertexBuffer() = default;
 
   virtual const VertexLayout &getLayout() const = 0;
-  virtual size_t getLayoutHash() { return getLayout().getHash(); }
+  virtual size_t getLayoutHash() const { return getLayout().getHash(); }
 
   virtual uint32_t getVertexCount() const = 0;
 
-  virtual const void *getRawData() const = 0;
+  const void *getRawData() const override = 0;
   virtual void *getRawDataMutable() = 0;
-  virtual u32 getByteSize() const = 0;
+  u32 getByteSize() const override = 0;
 
-  virtual ResourceType getType() const override {
+  ResourceType getType() const override {
     return ResourceType::VertexBuffer;
   }
 };
@@ -150,6 +119,11 @@ template <typename VType> class VertexBuffer final : public IVertexBuffer {
                 "Vertex must be trivially copyable");
 
 public:
+  static std::shared_ptr<VertexBuffer<VType>>
+  create(std::vector<VType> &&vertices) {
+    return std::make_shared<VertexBuffer<VType>>(std::move(vertices));
+  }
+
   explicit VertexBuffer(std::vector<VType> &&v) : m_vertices(std::move(v)) {}
 
   const VertexLayout &getLayout() const override {
@@ -353,6 +327,69 @@ struct VertexUI : VertexBase<VertexUI> {
          {"inColor", 2, DataType::Float4, sizeof(Vec4f),
           offsetof(VertexUI, color)}},
         sizeof(VertexUI)};
+    return layout;
+  }
+};
+
+struct VertexNormalTangent : VertexBase<VertexNormalTangent> {
+  Vec3f normal;
+  Vec4f tangent;
+
+  static const VertexLayout &getLayout() {
+    static VertexLayout layout = {
+        {{"inNormal", 0, DataType::Float3, sizeof(Vec3f),
+          offsetof(VertexNormalTangent, normal)},
+         {"inTangent", 1, DataType::Float4, sizeof(Vec4f),
+          offsetof(VertexNormalTangent, tangent)}},
+        sizeof(VertexNormalTangent)};
+    return layout;
+  }
+};
+
+struct VertexBoneWeightIndex : VertexBase<VertexBoneWeightIndex> {
+  Vec4i boneIds;
+  Vec4f weights;
+
+  static const VertexLayout &getLayout() {
+    static VertexLayout layout = {
+        {{"inBoneIds", 0, DataType::Int4, sizeof(Vec4i),
+          offsetof(VertexBoneWeightIndex, boneIds)},
+         {"inWeights", 1, DataType::Float4, sizeof(Vec4f),
+          offsetof(VertexBoneWeightIndex, weights)}},
+        sizeof(VertexBoneWeightIndex)};
+    return layout;
+  }
+};
+
+/// Blinn-Phong skinned mesh vertex (`blinnphong_0` / `vkp_pipeline.cpp`).
+struct VertexPosNormalUvBone : VertexBase<VertexPosNormalUvBone> {
+  Vec3f pos;
+  Vec3f normal;
+  Vec2f uv;
+  Vec4f tangent;
+  Vec4i boneIDs;
+  Vec4f boneWeights;
+
+  VertexPosNormalUvBone() = default;
+  VertexPosNormalUvBone(Vec3f p, Vec3f n, Vec2f u, Vec4f t, Vec4i bid,
+                        Vec4f bw)
+      : pos(p), normal(n), uv(u), tangent(t), boneIDs(bid), boneWeights(bw) {}
+
+  static const VertexLayout &getLayout() {
+    static VertexLayout layout = {
+        {{"inPos", 0, DataType::Float3, sizeof(Vec3f),
+          offsetof(VertexPosNormalUvBone, pos)},
+         {"inNormal", 1, DataType::Float3, sizeof(Vec3f),
+          offsetof(VertexPosNormalUvBone, normal)},
+         {"inUV", 2, DataType::Float2, sizeof(Vec2f),
+          offsetof(VertexPosNormalUvBone, uv)},
+         {"inTangent", 3, DataType::Float4, sizeof(Vec4f),
+          offsetof(VertexPosNormalUvBone, tangent)},
+         {"inBoneIds", 4, DataType::Int4, sizeof(Vec4i),
+          offsetof(VertexPosNormalUvBone, boneIDs)},
+         {"inWeights", 5, DataType::Float4, sizeof(Vec4f),
+          offsetof(VertexPosNormalUvBone, boneWeights)}},
+        sizeof(VertexPosNormalUvBone)};
     return layout;
   }
 };

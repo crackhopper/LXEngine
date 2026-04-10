@@ -1,7 +1,6 @@
 #pragma once
 #include "core/gpu/render_resource.hpp"
 #include "core/math/vec.hpp"
-#include "components/base.hpp"
 
 namespace LX_core {
 class LightBase {};
@@ -37,16 +36,13 @@ private:
 };
 using DirectionalLightUboPtr = std::shared_ptr<DirectionalLightUBO>;
 
-class DirectionalLight : public LightBase, public IComponent {
+class DirectionalLight : public LightBase {
 public:
   DirectionalLight(ResourcePassFlag passFlag = ResourcePassFlag::Forward)
     : ubo(std::make_shared<DirectionalLightUBO>(passFlag)) {}
   DirectionalLightUboPtr ubo;
-  virtual std::vector<IRenderResourcePtr> getRenderResources() const override {
-    return {
-      std::dynamic_pointer_cast<IRenderResource>(ubo)
-    };
-  }  
+
+  DirectionalLightUboPtr getUBO() const { return ubo; }
 };
 using DirectionalLightPtr = std::shared_ptr<DirectionalLight>;
 } // namespace LX_core

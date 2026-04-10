@@ -50,6 +50,8 @@ struct RenderState {
     hash_combine(h, static_cast<uint32_t>(dstBlend));
     return h;
   }
+
+  size_t getPipelineHash() const { return getHash(); }
 };
 
 /*****************************************************************
@@ -63,6 +65,12 @@ struct RenderPassEntry {
   size_t getHash() const {
     size_t h = renderState.getHash();
     hash_combine(h, shaderSet.getHash());
+    return h;
+  }
+
+  size_t getPipelineHash() const {
+    size_t h = renderState.getPipelineHash();
+    hash_combine(h, shaderSet.getPipelineHash());
     return h;
   }
 
@@ -118,7 +126,7 @@ public:
     if (!entryOpt)
       return 0;
 
-    size_t h = entryOpt->get().getHash();
+    size_t h = entryOpt->get().getPipelineHash();
     m_passHashCache[passName] = h;
     return h;
   }
@@ -189,5 +197,16 @@ private:
   std::unordered_map<StringID, float> m_floats;
   std::unordered_map<StringID, TexturePtr> m_textures;
 };
+
+/// Render-path material: descriptor sources, shader, and pass (no concrete shading model).
+class IMaterial {
+public:
+  virtual ~IMaterial() = default;
+  virtual std::vector<IRenderResourcePtr> getDescriptorResources() const = 0;
+  virtual IShaderPtr getShaderInfo() const = 0;
+  virtual ResourcePassFlag getPassFlag() const = 0;
+};
+
+using MaterialPtr = std::shared_ptr<IMaterial>;
 
 } // namespace LX_core

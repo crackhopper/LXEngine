@@ -56,32 +56,31 @@ endif()
 option(SPIRV_CROSS_DIR "Path to SPIRV-Cross installation (contains include/ and lib/)" "")
 
 set(SPIRV_CROSS_FOUND FALSE)
+set(_SPIRV_CORE_PATH "")
+set(_SPIRV_GLSL_PATH "")
 
 if(SPIRV_CROSS_DIR)
-  find_library(SPIRV_CROSS_CORE_LIB NAMES spirv-cross-core
+  find_library(_SPIRV_CORE_PATH NAMES spirv-cross-core
     PATHS "${SPIRV_CROSS_DIR}/lib" NO_DEFAULT_PATH)
-  if(SPIRV_CROSS_CORE_LIB)
-    find_library(SPIRV_CROSS_GLSL_LIB NAMES spirv-cross-glsl
+  if(_SPIRV_CORE_PATH)
+    find_library(_SPIRV_GLSL_PATH NAMES spirv-cross-glsl
       PATHS "${SPIRV_CROSS_DIR}/lib" NO_DEFAULT_PATH)
     set(SPIRV_CROSS_INCLUDE_DIR "${SPIRV_CROSS_DIR}/include")
     set(SPIRV_CROSS_FOUND TRUE)
   endif()
 else()
-  find_library(SPIRV_CROSS_CORE_LIB NAMES spirv-cross-core)
-  if(SPIRV_CROSS_CORE_LIB)
-    find_library(SPIRV_CROSS_GLSL_LIB NAMES spirv-cross-glsl)
+  find_library(_SPIRV_CORE_PATH NAMES spirv-cross-core)
+  if(_SPIRV_CORE_PATH)
+    find_library(_SPIRV_GLSL_PATH NAMES spirv-cross-glsl)
     set(SPIRV_CROSS_FOUND TRUE)
-  else()
-    # Try Vulkan SDK path
-    if(DEFINED ENV{VULKAN_SDK})
-      find_library(SPIRV_CROSS_CORE_LIB NAMES spirv-cross-core
+  elseif(DEFINED ENV{VULKAN_SDK})
+    find_library(_SPIRV_CORE_PATH NAMES spirv-cross-core
+      PATHS "$ENV{VULKAN_SDK}/lib" "$ENV{VULKAN_SDK}/Lib")
+    if(_SPIRV_CORE_PATH)
+      find_library(_SPIRV_GLSL_PATH NAMES spirv-cross-glsl
         PATHS "$ENV{VULKAN_SDK}/lib" "$ENV{VULKAN_SDK}/Lib")
-      if(SPIRV_CROSS_CORE_LIB)
-        find_library(SPIRV_CROSS_GLSL_LIB NAMES spirv-cross-glsl
-          PATHS "$ENV{VULKAN_SDK}/lib" "$ENV{VULKAN_SDK}/Lib")
-        set(SPIRV_CROSS_INCLUDE_DIR "$ENV{VULKAN_SDK}/include")
-        set(SPIRV_CROSS_FOUND TRUE)
-      endif()
+      set(SPIRV_CROSS_INCLUDE_DIR "$ENV{VULKAN_SDK}/include")
+      set(SPIRV_CROSS_FOUND TRUE)
     endif()
   endif()
 endif()
@@ -104,14 +103,22 @@ if(NOT SPIRV_CROSS_FOUND)
     GIT_SHALLOW    TRUE
   )
   fetchcontent_makeavailable(spirv-cross)
-  # FetchContent targets: spirv-cross-core, spirv-cross-glsl
-  set(SPIRV_CROSS_CORE_LIB spirv-cross-core CACHE INTERNAL "SPIRV-Cross core library")
-  set(SPIRV_CROSS_GLSL_LIB spirv-cross-glsl CACHE INTERNAL "SPIRV-Cross GLSL library")
-  set(SPIRV_CROSS_INCLUDE_DIR "${spirv-cross_SOURCE_DIR}" CACHE INTERNAL "SPIRV-Cross include dir")
+  set(LX_SPIRV_CROSS_USE_FETCH_TARGETS TRUE CACHE INTERNAL
+      "Link SPIRV-Cross via FetchContent targets" FORCE)
+  set(SPIRV_CROSS_CORE_LIB spirv-cross-core CACHE INTERNAL
+      "SPIRV-Cross core (target name when using FetchContent)" FORCE)
+  set(SPIRV_CROSS_GLSL_LIB spirv-cross-glsl CACHE INTERNAL
+      "SPIRV-Cross glsl (target name when using FetchContent)" FORCE)
+  set(SPIRV_CROSS_INCLUDE_DIR "${spirv-cross_SOURCE_DIR}" CACHE INTERNAL
+      "SPIRV-Cross include dir" FORCE)
 else()
-  set(SPIRV_CROSS_CORE_LIB "${SPIRV_CROSS_CORE_LIB}" CACHE INTERNAL "SPIRV-Cross core library")
-  if(SPIRV_CROSS_GLSL_LIB)
-    set(SPIRV_CROSS_GLSL_LIB "${SPIRV_CROSS_GLSL_LIB}" CACHE INTERNAL "SPIRV-Cross GLSL library")
+  set(LX_SPIRV_CROSS_USE_FETCH_TARGETS FALSE CACHE INTERNAL
+      "Link SPIRV-Cross via FetchContent targets" FORCE)
+  set(SPIRV_CROSS_CORE_LIB "${_SPIRV_CORE_PATH}" CACHE INTERNAL
+      "SPIRV-Cross core library path" FORCE)
+  if(_SPIRV_GLSL_PATH)
+    set(SPIRV_CROSS_GLSL_LIB "${_SPIRV_GLSL_PATH}" CACHE INTERNAL
+        "SPIRV-Cross glsl library path" FORCE)
   endif()
   message(STATUS "SPIRV-Cross core: ${SPIRV_CROSS_CORE_LIB}")
   message(STATUS "SPIRV-Cross glsl: ${SPIRV_CROSS_GLSL_LIB}")
@@ -184,10 +191,17 @@ target_link_libraries(${INFRA_LIB}
   imgui
   ${SHADERC_LIB}
   ${SHADERC_DEPS}
-  ${SPIRV_CROSS_CORE_LIB}
 )
-if(SPIRV_CROSS_GLSL_LIB)
-  target_link_libraries(${INFRA_LIB} PRIVATE ${SPIRV_CROSS_GLSL_LIB})
+
+# SPIRV-Cross: FetchContent → CMake targets (PUBLIC so final exes resolve symbols).
+# System install → full library paths from find_library.
+if(LX_SPIRV_CROSS_USE_FETCH_TARGETS)
+  target_link_libraries(${INFRA_LIB} PUBLIC spirv-cross-core spirv-cross-glsl)
+elseif(SPIRV_CROSS_CORE_LIB)
+  target_link_libraries(${INFRA_LIB} PRIVATE ${SPIRV_CROSS_CORE_LIB})
+  if(SPIRV_CROSS_GLSL_LIB)
+    target_link_libraries(${INFRA_LIB} PRIVATE ${SPIRV_CROSS_GLSL_LIB})
+  endif()
 endif()
 
 target_include_directories(${INFRA_LIB} PRIVATE external/include)

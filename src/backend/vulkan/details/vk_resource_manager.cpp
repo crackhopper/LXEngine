@@ -88,17 +88,12 @@ VulkanResourceManager::createGpuResource(const IRenderResourcePtr &cpuRes) {
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
 
-  case ResourceType::VertexShader:
-  case ResourceType::FragmentShader: {
-    VkShaderStageFlagBits stage = (type == ResourceType::VertexShader)
-                                      ? VK_SHADER_STAGE_VERTEX_BIT
-                                      : VK_SHADER_STAGE_FRAGMENT_BIT;
-    auto shaderCpu = std::dynamic_pointer_cast<Shader>(cpuRes);
-    const std::string name =
-        shaderCpu ? shaderCpu->getShaderName() : std::string{};
-    return std::make_shared<VulkanAnyResource>(
-        VulkanShader::create(m_device, name, stage));
-  }
+  case ResourceType::Shader:
+    // Pipelines load SPIR-V from disk (`VulkanShader`); `IShader` on the CPU
+    // side is for reflection / material binding, not standalone GPU upload here.
+    throw std::runtime_error(
+        "syncResource: ResourceType::Shader (IShader) has no GPU mirror in "
+        "VulkanResourceManager; use pipeline file paths");
 
   case ResourceType::CombinedImageSampler: {
     auto texCpu = std::dynamic_pointer_cast<CombinedTextureSampler>(cpuRes);
