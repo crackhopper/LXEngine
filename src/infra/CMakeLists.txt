@@ -2,6 +2,122 @@ option(USE_SDL "Use SDL2 as the window backend" ON)
 option(USE_GLFW "Use GLFW as the window backend" OFF)
 
 # -------------------------------
+# shaderc (runtime GLSL -> SPIR-V)
+# -------------------------------
+# Windows: set SHADERC_DIR to the directory containing include/ and lib/
+# Linux: auto-detected via find_library, or set SHADERC_DIR to override
+option(SHADERC_DIR "Path to shaderc installation (contains include/ and lib/)" "")
+
+if(SHADERC_DIR)
+  find_library(SHADERC_LIB NAMES shaderc_shared shaderc shaderc_combined
+    PATHS "${SHADERC_DIR}/lib" NO_DEFAULT_PATH)
+  set(SHADERC_INCLUDE_DIR "${SHADERC_DIR}/include")
+else()
+  find_library(SHADERC_LIB NAMES shaderc_shared shaderc shaderc_combined)
+  # Try Vulkan SDK path
+  if(NOT SHADERC_LIB AND DEFINED ENV{VULKAN_SDK})
+    find_library(SHADERC_LIB NAMES shaderc_shared shaderc shaderc_combined
+      PATHS "$ENV{VULKAN_SDK}/lib" "$ENV{VULKAN_SDK}/Lib")
+    set(SHADERC_INCLUDE_DIR "$ENV{VULKAN_SDK}/include")
+  endif()
+endif()
+
+if(NOT SHADERC_LIB)
+  message(FATAL_ERROR "shaderc not found. Set SHADERC_DIR or install libshaderc-dev (Linux) / Vulkan SDK (Windows)")
+endif()
+message(STATUS "shaderc library: ${SHADERC_LIB}")
+
+# shaderc_combined (static) requires SPIRV-Tools and SPIRV-Tools-opt
+if(SHADERC_LIB MATCHES "shaderc_combined")
+  if(SHADERC_DIR)
+    find_library(SPIRV_TOOLS_LIB NAMES SPIRV-Tools PATHS "${SHADERC_DIR}/lib" NO_DEFAULT_PATH)
+    find_library(SPIRV_TOOLS_OPT_LIB NAMES SPIRV-Tools-opt PATHS "${SHADERC_DIR}/lib" NO_DEFAULT_PATH)
+  else()
+    find_library(SPIRV_TOOLS_LIB NAMES SPIRV-Tools)
+    find_library(SPIRV_TOOLS_OPT_LIB NAMES SPIRV-Tools-opt)
+  endif()
+  if(SPIRV_TOOLS_LIB)
+    set(SHADERC_DEPS ${SPIRV_TOOLS_LIB} CACHE INTERNAL "shaderc transitive deps")
+    if(SPIRV_TOOLS_OPT_LIB)
+      set(SHADERC_DEPS ${SPIRV_TOOLS_LIB} ${SPIRV_TOOLS_OPT_LIB} CACHE INTERNAL "shaderc transitive deps")
+    endif()
+    message(STATUS "SPIRV-Tools: ${SPIRV_TOOLS_LIB}")
+  endif()
+else()
+  set(SHADERC_DEPS "" CACHE INTERNAL "shaderc transitive deps")
+endif()
+
+# -------------------------------
+# SPIRV-Cross (reflection)
+# -------------------------------
+# Windows: set SPIRV_CROSS_DIR to the directory containing include/ and lib/
+# Linux: auto-detected via find_library, or set SPIRV_CROSS_DIR to override
+# If not found, falls back to FetchContent to build from source.
+option(SPIRV_CROSS_DIR "Path to SPIRV-Cross installation (contains include/ and lib/)" "")
+
+set(SPIRV_CROSS_FOUND FALSE)
+
+if(SPIRV_CROSS_DIR)
+  find_library(SPIRV_CROSS_CORE_LIB NAMES spirv-cross-core
+    PATHS "${SPIRV_CROSS_DIR}/lib" NO_DEFAULT_PATH)
+  if(SPIRV_CROSS_CORE_LIB)
+    find_library(SPIRV_CROSS_GLSL_LIB NAMES spirv-cross-glsl
+      PATHS "${SPIRV_CROSS_DIR}/lib" NO_DEFAULT_PATH)
+    set(SPIRV_CROSS_INCLUDE_DIR "${SPIRV_CROSS_DIR}/include")
+    set(SPIRV_CROSS_FOUND TRUE)
+  endif()
+else()
+  find_library(SPIRV_CROSS_CORE_LIB NAMES spirv-cross-core)
+  if(SPIRV_CROSS_CORE_LIB)
+    find_library(SPIRV_CROSS_GLSL_LIB NAMES spirv-cross-glsl)
+    set(SPIRV_CROSS_FOUND TRUE)
+  else()
+    # Try Vulkan SDK path
+    if(DEFINED ENV{VULKAN_SDK})
+      find_library(SPIRV_CROSS_CORE_LIB NAMES spirv-cross-core
+        PATHS "$ENV{VULKAN_SDK}/lib" "$ENV{VULKAN_SDK}/Lib")
+      if(SPIRV_CROSS_CORE_LIB)
+        find_library(SPIRV_CROSS_GLSL_LIB NAMES spirv-cross-glsl
+          PATHS "$ENV{VULKAN_SDK}/lib" "$ENV{VULKAN_SDK}/Lib")
+        set(SPIRV_CROSS_INCLUDE_DIR "$ENV{VULKAN_SDK}/include")
+        set(SPIRV_CROSS_FOUND TRUE)
+      endif()
+    endif()
+  endif()
+endif()
+
+if(NOT SPIRV_CROSS_FOUND)
+  message(STATUS "SPIRV-Cross not found locally, fetching from GitHub...")
+  include(FetchContent)
+  set(SPIRV_CROSS_CLI OFF CACHE BOOL "" FORCE)
+  set(SPIRV_CROSS_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
+  set(SPIRV_CROSS_ENABLE_GLSL ON CACHE BOOL "" FORCE)
+  set(SPIRV_CROSS_ENABLE_HLSL OFF CACHE BOOL "" FORCE)
+  set(SPIRV_CROSS_ENABLE_MSL OFF CACHE BOOL "" FORCE)
+  set(SPIRV_CROSS_ENABLE_CPP OFF CACHE BOOL "" FORCE)
+  set(SPIRV_CROSS_ENABLE_REFLECT OFF CACHE BOOL "" FORCE)
+  set(SPIRV_CROSS_ENABLE_UTIL OFF CACHE BOOL "" FORCE)
+  fetchcontent_declare(
+    spirv-cross
+    GIT_REPOSITORY https://github.com/KhronosGroup/SPIRV-Cross.git
+    GIT_TAG        vulkan-sdk-1.3.290.0
+    GIT_SHALLOW    TRUE
+  )
+  fetchcontent_makeavailable(spirv-cross)
+  # FetchContent targets: spirv-cross-core, spirv-cross-glsl
+  set(SPIRV_CROSS_CORE_LIB spirv-cross-core CACHE INTERNAL "SPIRV-Cross core library")
+  set(SPIRV_CROSS_GLSL_LIB spirv-cross-glsl CACHE INTERNAL "SPIRV-Cross GLSL library")
+  set(SPIRV_CROSS_INCLUDE_DIR "${spirv-cross_SOURCE_DIR}" CACHE INTERNAL "SPIRV-Cross include dir")
+else()
+  set(SPIRV_CROSS_CORE_LIB "${SPIRV_CROSS_CORE_LIB}" CACHE INTERNAL "SPIRV-Cross core library")
+  if(SPIRV_CROSS_GLSL_LIB)
+    set(SPIRV_CROSS_GLSL_LIB "${SPIRV_CROSS_GLSL_LIB}" CACHE INTERNAL "SPIRV-Cross GLSL library")
+  endif()
+  message(STATUS "SPIRV-Cross core: ${SPIRV_CROSS_CORE_LIB}")
+  message(STATUS "SPIRV-Cross glsl: ${SPIRV_CROSS_GLSL_LIB}")
+endif()
+
+# -------------------------------
 # Vulkan
 # -------------------------------
 find_package(Vulkan REQUIRED)
@@ -47,6 +163,9 @@ set(INFRA_SOURCES
     texture_loader/texture_loader.cpp
     mesh_loader/obj/obj.cpp
     mesh_loader/gltf/gltf.cpp
+    shader_compiler/shader_compiler.cpp
+    shader_compiler/shader_reflector.cpp
+    shader_compiler/shader_impl.cpp
 )
 
 # Add window implementation based on backend
@@ -63,8 +182,21 @@ target_link_libraries(${INFRA_LIB}
   ${CORE_LIB}
   Vulkan::Vulkan
   imgui
+  ${SHADERC_LIB}
+  ${SHADERC_DEPS}
+  ${SPIRV_CROSS_CORE_LIB}
 )
+if(SPIRV_CROSS_GLSL_LIB)
+  target_link_libraries(${INFRA_LIB} PRIVATE ${SPIRV_CROSS_GLSL_LIB})
+endif()
+
 target_include_directories(${INFRA_LIB} PRIVATE external/include)
+if(SHADERC_INCLUDE_DIR AND NOT "${SHADERC_INCLUDE_DIR}" STREQUAL "")
+  target_include_directories(${INFRA_LIB} PRIVATE ${SHADERC_INCLUDE_DIR})
+endif()
+if(SPIRV_CROSS_INCLUDE_DIR AND NOT "${SPIRV_CROSS_INCLUDE_DIR}" STREQUAL "")
+  target_include_directories(${INFRA_LIB} PRIVATE ${SPIRV_CROSS_INCLUDE_DIR})
+endif()
 target_include_directories(${INFRA_LIB} INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
 if(USE_SDL)

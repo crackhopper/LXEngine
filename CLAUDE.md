@@ -1,0 +1,23 @@
+# Claude Code Project Instructions
+
+See `AGENTS.md` for full project context, architecture, and coding standards.
+
+## Quick Reference
+
+- C++20 Vulkan renderer: `src/core/` (interfaces) → `src/infra/` (implementations) → `src/backend/` (Vulkan)
+- Build: `cmake .. -G Ninja && ninja <target>`
+- **Always read the relevant spec before modifying a subsystem**: `openspec/specs/`
+
+## Specs Index
+
+- `openspec/specs/cpp-style-guide/spec.md` — C++ ownership & style rules (MUST follow)
+- `openspec/specs/renderer-backend-vulkan/spec.md` — Vulkan backend requirements
+- `openspec/specs/string-interning/spec.md` — GlobalStringTable / StringID
+
+## Rules
+
+- No raw pointers for object references (see cpp-style-guide spec)
+- Constructor injection only, no setter DI
+- Cross-platform: Linux (bash) + Windows (PowerShell)
+- Namespaces: `LX_core`, `LX_infra`
+- Integration tests in `src/test/integration/`, one exe per module

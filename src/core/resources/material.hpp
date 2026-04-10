@@ -3,6 +3,7 @@
 #include "core/math/vec.hpp"
 #include "core/resources/shader.hpp"
 #include "core/resources/texture.hpp"
+#include "core/utils/string_table.hpp"
 #include <cassert>
 #include <functional>
 #include <memory>
@@ -129,14 +130,14 @@ public:
     for (auto &[_, entry] : m_passes) {
       auto shader = entry.shaderSet.getShader();
       for (auto &b : shader->getReflectionBindings()) {
-        PropertyID id = MakePropertyID(b.name);
+        StringID id = MakeStringID(b.name);
         m_bindingCache[id] = b;
       }
     }
   }
 
   std::optional<std::reference_wrapper<const ShaderResourceBinding>>
-  findBinding(PropertyID id) const {
+  findBinding(StringID id) const {
     auto it = m_bindingCache.find(id);
     if (it != m_bindingCache.end())
       return it->second;
@@ -149,7 +150,7 @@ private:
   std::unordered_map<std::string, RenderPassEntry> m_passes;
 
   mutable std::unordered_map<std::string, size_t> m_passHashCache;
-  std::unordered_map<PropertyID, ShaderResourceBinding> m_bindingCache;
+  std::unordered_map<StringID, ShaderResourceBinding> m_bindingCache;
 };
 
 /*****************************************************************
@@ -161,19 +162,19 @@ public:
 
   MaterialInstance(MaterialTemplate::Ptr tmpl) : m_template(std::move(tmpl)) {}
 
-  void setVec4(PropertyID id, const Vec4f &value) {
+  void setVec4(StringID id, const Vec4f &value) {
     auto binding = m_template->findBinding(id);
     assert(binding && binding->get().type == ShaderPropertyType::Vec4);
     m_vec4s[id] = value;
   }
 
-  void setFloat(PropertyID id, float value) {
+  void setFloat(StringID id, float value) {
     auto binding = m_template->findBinding(id);
     assert(binding && binding->get().type == ShaderPropertyType::Float);
     m_floats[id] = value;
   }
 
-  void setTexture(PropertyID id, TexturePtr tex) {
+  void setTexture(StringID id, TexturePtr tex) {
     auto binding = m_template->findBinding(id);
     assert(binding && binding->get().type == ShaderPropertyType::Texture2D);
     m_textures[id] = tex;
@@ -184,9 +185,9 @@ public:
 private:
   MaterialTemplate::Ptr m_template;
 
-  std::unordered_map<PropertyID, Vec4f> m_vec4s;
-  std::unordered_map<PropertyID, float> m_floats;
-  std::unordered_map<PropertyID, TexturePtr> m_textures;
+  std::unordered_map<StringID, Vec4f> m_vec4s;
+  std::unordered_map<StringID, float> m_floats;
+  std::unordered_map<StringID, TexturePtr> m_textures;
 };
 
 } // namespace LX_core

@@ -2,6 +2,7 @@
 #include "core/platform/types.hpp" // i32, f32, f64
 #include <cassert>
 #include <cmath>
+#include <functional>
 #include <type_traits>
 
 namespace LX_core {
@@ -185,7 +186,7 @@ template <typename T> struct Vec4 : VecBase<Vec4<T>, T, 4> {
   /**
    * @brief 将 Vec4 转换为 Vec3f
    */
-  Vec3f toVec3() const { return Vec3f(x / w, y / w, z / w); }
+  Vec3<f32> toVec3() const { return Vec3<f32>(x / w, y / w, z / w); }
 };
 
 // ===================== 类型别名 =====================

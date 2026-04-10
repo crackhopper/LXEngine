@@ -107,5 +107,8 @@
   },
   "[cmake]": {
     "editor.defaultFormatter": "KylinIdeTeam.cmake-intellisence"
+  },
+  "[json]": {
+    "editor.defaultFormatter": "vscode.json-language-features"
   }
 }
