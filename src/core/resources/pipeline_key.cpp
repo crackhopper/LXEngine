@@ -1,28 +1,10 @@
 #include "core/resources/pipeline_key.hpp"
+#include <algorithm>
 #include <iomanip>
 
 namespace LX_core {
 
 namespace {
-
-std::string topologyTag(PrimitiveTopology t) {
-  switch (t) {
-  case PrimitiveTopology::PointList:
-    return "point";
-  case PrimitiveTopology::LineList:
-    return "line";
-  case PrimitiveTopology::LineStrip:
-    return "line_strip";
-  case PrimitiveTopology::TriangleList:
-    return "tri";
-  case PrimitiveTopology::TriangleStrip:
-    return "tri_strip";
-  case PrimitiveTopology::TriangleFan:
-    return "tri_fan";
-  default:
-    return "topo";
-  }
-}
 
 std::string variantSegment(const ShaderProgramSet &shaderSet) {
   std::vector<std::string> enabled;
@@ -44,17 +26,15 @@ std::string variantSegment(const ShaderProgramSet &shaderSet) {
 } // namespace
 
 PipelineKey PipelineKey::build(const ShaderProgramSet &shaderSet,
-                               size_t meshPipelineHash,
+                               const Mesh &mesh,
                                const RenderState &renderState,
-                               PrimitiveTopology topology,
-                               bool hasSkeleton) {
+                               const SkeletonPtr &skeleton) {
+  const size_t skeletonHash = skeleton ? skeleton->getPipelineHash() : size_t{0};
   std::ostringstream oss;
   oss << shaderSet.shaderName << '|' << variantSegment(shaderSet) << '|';
-  oss << "vl:0x" << std::hex << meshPipelineHash << std::dec;
+  oss << "ml:0x" << std::hex << mesh.getPipelineHash() << std::dec;
   oss << "|rs:0x" << std::hex << renderState.getPipelineHash() << std::dec;
-  oss << '|' << topologyTag(topology);
-  if (hasSkeleton)
-    oss << "|+skel";
+  oss << "|sk:0x" << std::hex << skeletonHash << std::dec;
   return PipelineKey{StringID(oss.str())};
 }
 

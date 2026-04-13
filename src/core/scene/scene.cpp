@@ -15,9 +15,9 @@ RenderingItem Scene::buildRenderingItem() {
   auto sub = std::dynamic_pointer_cast<RenderableSubMesh>(mesh);
   if (sub && sub->mesh && sub->material) {
     item.pipelineKey = PipelineKey::build(
-        sub->material->getShaderProgramSet(), sub->mesh->getPipelineHash(),
-        sub->material->getRenderState(), sub->mesh->getPrimitiveTopology(),
-        sub->skeleton.has_value());
+        sub->material->getShaderProgramSet(), *sub->mesh,
+        sub->material->getRenderState(),
+        sub->skeleton.value_or(SkeletonPtr{}));
   }
   return item;
 }

@@ -114,12 +114,7 @@ public:
 
   SkeletonUboPtr getUBO() const { return ubo; }
 
-  /// True when this instance participates in skinned draw paths (PipelineKey).
-  bool hasSkeleton() const { return true; }
-
-  size_t getPipelineHash() const {
-    return hasSkeleton() ? kSkeletonPipelineHashTag : size_t{0};
-  }
+  size_t getPipelineHash() const { return kSkeletonPipelineHashTag; }
 
 private:
   std::vector<Bone> bones;

@@ -1,8 +1,10 @@
 #pragma once
 #include "core/math/bounds.hpp"
 #include "core/resources/index_buffer.hpp"
+#include "core/resources/shader.hpp"
 #include "core/resources/vertex_buffer.hpp"
 #include <cassert>
+#include <cstdint>
 #include <memory>
 
 namespace LX_core {
@@ -36,7 +38,11 @@ public:
     return hash;
   }
 
-  size_t getPipelineHash() const { return getLayoutHash(); }
+  size_t getPipelineHash() const {
+    size_t h = getLayoutHash();
+    hash_combine(h, static_cast<uint32_t>(getPrimitiveTopology()));
+    return h;
+  }
 
   const VertexLayout &getVertexLayout() const {
     return vertexBuffer->getLayout();

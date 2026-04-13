@@ -1,8 +1,9 @@
 #pragma once
 
-#include "core/resources/index_buffer.hpp"
 #include "core/resources/material.hpp"
+#include "core/resources/mesh.hpp"
 #include "core/resources/shader.hpp"
+#include "core/resources/skeleton.hpp"
 #include "core/utils/string_table.hpp"
 #include <sstream>
 #include <string>
@@ -21,11 +22,11 @@ struct PipelineKey {
     }
   };
 
-  /// Assemble identity from shader program, mesh pipeline hash (layout + index
-  /// topology), render state, primitive topology, and skinning participation.
-  static PipelineKey build(const ShaderProgramSet &shaderSet,
-                           size_t meshPipelineHash, const RenderState &renderState,
-                           PrimitiveTopology topology, bool hasSkeleton);
+  /// Assemble identity by querying getPipelineHash() on each participating
+  /// resource. `skeleton` may be null (contributes 0 — no skinning).
+  static PipelineKey build(const ShaderProgramSet &shaderSet, const Mesh &mesh,
+                           const RenderState &renderState,
+                           const SkeletonPtr &skeleton);
 };
 
 } // namespace LX_core
