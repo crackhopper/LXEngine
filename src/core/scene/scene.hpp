@@ -54,12 +54,15 @@ public:
     m_renderables.push_back(std::move(r));
   }
 
-  RenderingItem buildRenderingItem(StringID pass);
-
-  /// 为一个具体 renderable 构造 RenderingItem。供 FrameGraph 迭代使用。
-  RenderingItem
-  buildRenderingItemForRenderable(const IRenderablePtr &renderable,
-                                  StringID pass) const;
+  /// 返回场景级 descriptor 资源：camera UBO、directional light UBO。
+  /// 由 RenderQueue::buildFromScene 在构造每个 RenderingItem 时追加合并到
+  /// item.descriptorResources 末尾，替代 VulkanRenderer::initScene 里原来的
+  /// 手工 push_back。顺序：camera 先、light 后，保持 descriptor binding 稳定。
+  ///
+  /// 本版本**无参**：单 camera / 单 light 假设下，所有资源一视同仁地合并到
+  /// 所有 item。REQ-009 会扩展为 getSceneLevelResources(pass, target) 的过滤
+  /// 版本。
+  std::vector<IRenderResourcePtr> getSceneLevelResources() const;
 
 private:
   std::vector<IRenderablePtr> m_renderables;

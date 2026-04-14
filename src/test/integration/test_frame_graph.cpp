@@ -1,3 +1,4 @@
+#include "core/gpu/render_resource.hpp"
 #include "core/resources/index_buffer.hpp"
 #include "core/resources/material.hpp"
 #include "core/resources/mesh.hpp"
@@ -64,16 +65,16 @@ private:
 
 class FakeMaterial : public IMaterial {
 public:
-  FakeMaterial(MaterialTemplate::Ptr tmpl) : m_template(std::move(tmpl)) {}
+  FakeMaterial(MaterialTemplate::Ptr tmpl,
+               ResourcePassFlag passFlag = ResourcePassFlag::Forward)
+      : m_template(std::move(tmpl)), m_passFlag(passFlag) {}
   std::vector<IRenderResourcePtr> getDescriptorResources() const override {
     return {};
   }
   IShaderPtr getShaderInfo() const override {
     return m_template ? m_template->getShader() : nullptr;
   }
-  ResourcePassFlag getPassFlag() const override {
-    return ResourcePassFlag::Forward;
-  }
+  ResourcePassFlag getPassFlag() const override { return m_passFlag; }
   RenderState getRenderState() const override { return {}; }
 
   StringID getRenderSignature(StringID pass) const override {
@@ -85,11 +86,13 @@ public:
 
 private:
   MaterialTemplate::Ptr m_template;
+  ResourcePassFlag m_passFlag;
 };
 
 std::shared_ptr<RenderableSubMesh>
 makeRenderable(const std::string &shaderName = "fake_fg",
-               const std::vector<ShaderVariant> &variants = {}) {
+               const std::vector<ShaderVariant> &variants = {},
+               ResourcePassFlag passFlag = ResourcePassFlag::Forward) {
   auto vb = VertexBuffer<VertexPos>::create(
       std::vector<VertexPos>{{{0, 0, 0}}, {{1, 0, 0}}, {{0, 1, 0}}});
   auto ib = IndexBuffer::create({0, 1, 2});
@@ -105,8 +108,11 @@ makeRenderable(const std::string &shaderName = "fake_fg",
   entry.shaderSet = ps;
   entry.renderState = RenderState{};
   tmpl->setPass(Pass_Forward, std::move(entry));
+  // Shadow pass entries are intentionally omitted — the FakeMaterial's
+  // pass mask (m_passFlag) is what drives supportsPass filtering in
+  // RenderQueue::buildFromScene; pass-template population is orthogonal.
 
-  auto material = std::make_shared<FakeMaterial>(tmpl);
+  auto material = std::make_shared<FakeMaterial>(tmpl, passFlag);
   return std::make_shared<RenderableSubMesh>(mesh, material, nullptr);
 }
 
@@ -178,6 +184,61 @@ void testBuildFromSceneIsIdempotent() {
          "buildFromScene clears previous items on re-entry");
 }
 
+void testPassMaskFilterExcludesNonMatching() {
+  // Renderable A participates in Forward + Shadow; B only in Forward.
+  auto rA = makeRenderable("fake_fg_a", {},
+                           ResourcePassFlag::Forward | ResourcePassFlag::Shadow);
+  auto rB = makeRenderable("fake_fg_b", {}, ResourcePassFlag::Forward);
+  auto scene = Scene::create(rA);
+  scene->addRenderable(rB);
+
+  FrameGraph fg;
+  fg.addPass(FramePass{Pass_Forward, {}, {}});
+  fg.addPass(FramePass{Pass_Shadow, {}, {}});
+  fg.buildFromScene(*scene);
+
+  const auto &passes = fg.getPasses();
+  EXPECT(passes.size() == 2, "two passes configured");
+  EXPECT(passes[0].queue.getItems().size() == 2,
+         "Forward pass: both renderables match");
+  EXPECT(passes[1].queue.getItems().size() == 1,
+         "Shadow pass: only rA (which has Shadow bit)");
+}
+
+void testPassFlagFromStringIDSmoke() {
+  // Smoke test: the helper wired up in REQ-008 R1 returns the right flag.
+  EXPECT(passFlagFromStringID(Pass_Forward) == ResourcePassFlag::Forward,
+         "Pass_Forward → Forward");
+  EXPECT(passFlagFromStringID(Pass_Shadow) == ResourcePassFlag::Shadow,
+         "Pass_Shadow → Shadow");
+  EXPECT(passFlagFromStringID(Pass_Deferred) == ResourcePassFlag::Deferred,
+         "Pass_Deferred → Deferred");
+  // Unknown IDs return zero flag.
+  EXPECT(static_cast<u32>(passFlagFromStringID(
+             GlobalStringTable::get().Intern("UnknownPass"))) == 0u,
+         "unknown pass → 0");
+}
+
+void testMultiPassRebuildIsIdempotent() {
+  auto rA = makeRenderable("fake_fg_a", {},
+                           ResourcePassFlag::Forward | ResourcePassFlag::Shadow);
+  auto rB = makeRenderable("fake_fg_b", {}, ResourcePassFlag::Forward);
+  auto scene = Scene::create(rA);
+  scene->addRenderable(rB);
+
+  FrameGraph fg;
+  fg.addPass(FramePass{Pass_Forward, {}, {}});
+  fg.addPass(FramePass{Pass_Shadow, {}, {}});
+  fg.buildFromScene(*scene);
+  fg.buildFromScene(*scene); // second call must clear + refill, not accumulate.
+
+  const auto &passes = fg.getPasses();
+  EXPECT(passes[0].queue.getItems().size() == 2,
+         "Forward pass still has 2 items after rebuild");
+  EXPECT(passes[1].queue.getItems().size() == 1,
+         "Shadow pass still has 1 item after rebuild");
+}
+
 void testCollectAcrossMultiplePasses() {
   auto r = makeRenderable();
   auto scene = Scene::create(r);
@@ -205,6 +266,9 @@ int main() {
   testFramePassNameIsStringID();
   testBuildFromSceneIsIdempotent();
   testCollectAcrossMultiplePasses();
+  testPassFlagFromStringIDSmoke();
+  testPassMaskFilterExcludesNonMatching();
+  testMultiPassRebuildIsIdempotent();
 
   if (failures > 0) {
     std::cerr << "FAILED: " << failures << " assertion(s)\n";

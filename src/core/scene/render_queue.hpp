@@ -22,6 +22,17 @@ public:
   /// 按 PipelineKey 去重后返回 PipelineBuildInfo 列表。
   std::vector<PipelineBuildInfo> collectUniquePipelineBuildInfos() const;
 
+  /// 从 scene 构建 queue 里所有 RenderingItem。流程：
+  ///   1. clearItems()
+  ///   2. 拉取 scene.getSceneLevelResources() 一次
+  ///   3. 遍历 scene.getRenderables()，跳过 null + !supportsPass(pass)
+  ///   4. 为每个匹配项构造 RenderingItem，末尾追加 scene 级资源
+  ///   5. sort() 按 PipelineKey 稳定排序
+  ///
+  /// RenderingItem 的构造职责本来住在 Scene::buildRenderingItemForRenderable，
+  /// REQ-008 把它迁到这里：Scene 退化为纯数据容器，queue 负责物料聚合。
+  void buildFromScene(const Scene &scene, StringID pass);
+
 private:
   std::vector<RenderingItem> m_items;
 };

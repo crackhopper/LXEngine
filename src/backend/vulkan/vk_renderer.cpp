@@ -114,64 +114,75 @@ public:
   }
   void shutdown() override { destroy(); }
 
+  // REQ-008 placeholder: RenderTarget is not yet consumed for filtering, so a
+  // default-constructed value is sufficient. REQ-009 will replace this with a
+  // VkFormat → ImageFormat derivation (makeSwapchainTarget()).
+  LX_core::RenderTarget defaultForwardTarget() const {
+    return LX_core::RenderTarget{};
+  }
+
   void initScene(ScenePtr _scene) override {
     scene = _scene;
-    renderItem = scene->buildRenderingItem(LX_core::Pass_Forward);
 
-    // Inject camera/light UBOs required by the blinn-phong pipeline.
-    if (scene->camera) {
-      auto camUbo = scene->camera->getUBO();
-      renderItem.descriptorResources.push_back(
-          std::dynamic_pointer_cast<IRenderResource>(camUbo));
-    }
-    if (scene->directionalLight) {
-      auto lightUbo = scene->directionalLight->getUBO();
-      renderItem.descriptorResources.push_back(
-          std::dynamic_pointer_cast<IRenderResource>(lightUbo));
-    }
+    // Configure the FrameGraph. REQ-008 only wires up Pass_Forward; future
+    // changes may add Pass_Shadow / Pass_Deferred with real targets.
+    m_frameGraph = LX_core::FrameGraph{}; // Fresh graph on every initScene.
+    m_frameGraph.addPass(LX_core::FramePass{LX_core::Pass_Forward,
+                                            defaultForwardTarget(), {}});
 
-    // Initialize push-constants with sane defaults.
-    if (renderItem.objectInfo) {
-      PC_Draw pc{};
-      pc.model = Mat4f::identity();
-      pc.enableLighting = 1;
-      pc.enableSkinning = 0;
-      renderItem.objectInfo->update(pc);
-    }
+    // RenderQueue::buildFromScene (invoked per pass below) internally:
+    //   - filters renderables by supportsPass(pass)
+    //   - merges scene.getSceneLevelResources() (camera UBO + light UBO)
+    //   - sorts by PipelineKey
+    // There is no more side-channel camera/light UBO injection here.
+    m_frameGraph.buildFromScene(*scene);
 
-    // Create GPU resources immediately.
-    resourceManager->syncResource(*cmdBufferMgr, renderItem.vertexBuffer);
-    resourceManager->syncResource(*cmdBufferMgr, renderItem.indexBuffer);
-    for (auto &cpuRes : renderItem.descriptorResources) {
-      resourceManager->syncResource(*cmdBufferMgr, cpuRes);
+    // Initial resource sync + push-constant seed for every item across every
+    // pass in the FrameGraph.
+    for (auto &pass : m_frameGraph.getPasses()) {
+      for (auto &item : pass.queue.getItems()) {
+        resourceManager->syncResource(*cmdBufferMgr, item.vertexBuffer);
+        resourceManager->syncResource(*cmdBufferMgr, item.indexBuffer);
+        for (auto &cpuRes : item.descriptorResources) {
+          resourceManager->syncResource(*cmdBufferMgr, cpuRes);
+        }
+        if (item.objectInfo) {
+          PC_Draw pc{};
+          pc.model = Mat4f::identity();
+          pc.enableLighting = 1;
+          pc.enableSkinning = 0;
+          item.objectInfo->update(pc);
+        }
+      }
     }
     resourceManager->collectGarbage();
 
     // Pre-build every pipeline the scene needs. Runtime cache misses still
     // work via getOrCreateRenderPipeline(item) but emit a warning log.
-    {
-      LX_core::FrameGraph frameGraph;
-      frameGraph.addPass(LX_core::FramePass{LX_core::Pass_Forward, {}, {}});
-      frameGraph.buildFromScene(*scene);
-      auto infos = frameGraph.collectAllPipelineBuildInfos();
-      resourceManager->preloadPipelines(infos);
-    }
+    auto infos = m_frameGraph.collectAllPipelineBuildInfos();
+    resourceManager->preloadPipelines(infos);
 
     if (rendererDebugEnabled()) {
-      std::cerr << "[RendererDebug] initScene: vertexBytes="
-                << renderItem.vertexBuffer->getByteSize()
-                << ", indexBytes=" << renderItem.indexBuffer->getByteSize()
-                << ", descriptorCount=" << renderItem.descriptorResources.size()
-                << std::endl;
+      size_t itemCount = 0;
+      for (const auto &pass : m_frameGraph.getPasses()) {
+        itemCount += pass.queue.getItems().size();
+      }
+      std::cerr << "[RendererDebug] initScene: passes="
+                << m_frameGraph.getPasses().size()
+                << ", totalItems=" << itemCount
+                << ", preloadedPipelines=" << infos.size() << std::endl;
     }
   }
 
   void uploadData() override {
-    // Sync only dirty resources; the manager handles create/update.
-    resourceManager->syncResource(*cmdBufferMgr, renderItem.vertexBuffer);
-    resourceManager->syncResource(*cmdBufferMgr, renderItem.indexBuffer);
-    for (auto &cpuRes : renderItem.descriptorResources) {
-      resourceManager->syncResource(*cmdBufferMgr, cpuRes);
+    for (auto &pass : m_frameGraph.getPasses()) {
+      for (auto &item : pass.queue.getItems()) {
+        resourceManager->syncResource(*cmdBufferMgr, item.vertexBuffer);
+        resourceManager->syncResource(*cmdBufferMgr, item.indexBuffer);
+        for (auto &cpuRes : item.descriptorResources) {
+          resourceManager->syncResource(*cmdBufferMgr, cpuRes);
+        }
+      }
     }
     resourceManager->collectGarbage();
   }
@@ -200,7 +211,6 @@ public:
     }
 
     auto &renderPass = resourceManager->getRenderPass();
-    auto &pipeline = resourceManager->getOrCreateRenderPipeline(renderItem);
 
     cmdBufferMgr->beginFrame(currentFrameIndex);
     device->getDescriptorManager().beginFrame(currentFrameIndex);
@@ -211,11 +221,19 @@ public:
                          swapchain->getFramebuffer(imageIndex).getHandle(),
                          extent, renderPass.getClearValues());
 
-    cmd->bindPipeline(pipeline);
     cmd->setViewport(extent.width, extent.height);
     cmd->setScissor(extent.width, extent.height);
-    cmd->bindResources(*resourceManager, pipeline, renderItem);
-    cmd->drawItem(renderItem);
+
+    // Iterate every pass × every item in the FrameGraph. Each item may use a
+    // different pipeline; bindPipeline / bindResources / drawItem per item.
+    for (auto &pass : m_frameGraph.getPasses()) {
+      for (auto &item : pass.queue.getItems()) {
+        auto &pipeline = resourceManager->getOrCreateRenderPipeline(item);
+        cmd->bindPipeline(pipeline);
+        cmd->bindResources(*resourceManager, pipeline, item);
+        cmd->drawItem(item);
+      }
+    }
 
     cmd->endRenderPass();
     cmd->end();
@@ -262,7 +280,7 @@ public:
   VulkanCommandBufferManagerPtr cmdBufferMgr = nullptr;
 
   ScenePtr scene = nullptr;
-  RenderingItem renderItem{};
+  LX_core::FrameGraph m_frameGraph{};
   uint32_t frameIndex = 0;
 
 private:

@@ -1,6 +1,8 @@
 # REQ-007: 结构化 Interning 驱动的 Pipeline Identity
 
 > **Supersedes**：本需求废弃并替换 REQ-001 R6/R7、REQ-002 R3/R4 中由 hash 通道驱动的 pipeline identity 约定。实施本需求时需同步把 `finished/001-...md` 和 `finished/002-...md` 标注为 "Superseded by REQ-007"（见 REQ-007 R11）。
+>
+> **Partial supersede by REQ-008**：本文档 R9 `Scene::buildRenderingItem(StringID pass)` 作为对外入口的约定已被 REQ-008 废弃。`RenderingItem` 的构造职责转移到 `RenderQueue::buildFromScene(scene, pass)` —— `PipelineKey::build(objSig, matSig)` 的计算路径不变，只是 host 从 `Scene` 迁到 `RenderQueue`。R1–R8 / R10 继续有效（`getRenderSignature(pass)` 的结构化 interning 规则没有变化）。归档保留历史上下文；当前实现以 REQ-008 为准。
 
 ## 背景
 

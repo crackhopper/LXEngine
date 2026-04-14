@@ -37,5 +37,5 @@ The system SHALL provide `LX_core::PipelineKey` in core holding a `StringID` tha
 
 #### Scenario: Scene fills pipeline key and pass
 
-- **WHEN** `Scene::buildRenderingItem(Pass_Forward)` constructs a `RenderingItem` from a renderable with valid mesh and material
+- **WHEN** `RenderQueue::buildFromScene(scene, Pass_Forward)` constructs a `RenderingItem` from a renderable with valid mesh and material
 - **THEN** `item.pipelineKey` SHALL be set to `PipelineKey::build(objectSig, materialSig)` for `Pass_Forward` and `item.pass` SHALL equal `Pass_Forward`

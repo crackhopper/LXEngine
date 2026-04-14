@@ -13,6 +13,8 @@
 #include "infra/loaders/blinnphong_material_loader.hpp"
 #include "infra/window/window.hpp"
 
+#include "scene_test_helpers.hpp"
+
 #include <iostream>
 
 int main() {
@@ -51,20 +53,9 @@ int main() {
     auto renderable = std::make_shared<LX_core::RenderableSubMesh>(
         meshPtr, material, LX_core::Skeleton::create({}));
     auto scene = LX_core::Scene::create(renderable);
-    auto item = scene->buildRenderingItem(LX_core::Pass_Forward);
-    // Provide camera & light UBOs so the RenderingItem matches what initScene
-    // would produce; not strictly required for pipeline construction but
-    // matches the real code path.
-    if (scene->camera) {
-      item.descriptorResources.push_back(
-          std::dynamic_pointer_cast<LX_core::IRenderResource>(
-              scene->camera->getUBO()));
-    }
-    if (scene->directionalLight) {
-      item.descriptorResources.push_back(
-          std::dynamic_pointer_cast<LX_core::IRenderResource>(
-              scene->directionalLight->getUBO()));
-    }
+    // RenderQueue::buildFromScene internally merges scene.getSceneLevelResources(),
+    // so the item already carries camera + light UBOs — no side-channel injection.
+    auto item = LX_test::firstItemFromScene(*scene, LX_core::Pass_Forward);
 
     auto info = LX_core::PipelineBuildInfo::fromRenderingItem(item);
 

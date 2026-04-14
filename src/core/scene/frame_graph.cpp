@@ -10,16 +10,10 @@ void FrameGraph::addPass(FramePass pass) {
 }
 
 void FrameGraph::buildFromScene(const Scene &scene) {
+  // 委托给 RenderQueue::buildFromScene —— 它负责 clearItems / supportsPass 过滤
+  /// / scene 级资源合并 / sort。FrameGraph 本身只是 pass 列表的 iteration 入口。
   for (auto &pass : m_passes) {
-    pass.queue.clearItems();
-    for (const auto &renderable : scene.getRenderables()) {
-      if (!renderable)
-        continue;
-      RenderingItem item =
-          scene.buildRenderingItemForRenderable(renderable, pass.name);
-      pass.queue.addItem(std::move(item));
-    }
-    pass.queue.sort();
+    pass.queue.buildFromScene(scene, pass.name);
   }
 }
 

@@ -76,13 +76,19 @@ Every leaf resource participating in pipeline identity SHALL provide a `StringID
 - **WHEN** the same `RenderableSubMesh` is queried before and after `skeleton` is assigned
 - **THEN** the two `StringID` ids differ
 
-### Requirement: Scene::buildRenderingItem accepts a pass parameter
-`Scene::buildRenderingItem` SHALL accept `StringID pass` as its single argument. The resulting `RenderingItem` SHALL contain `pass` as a new member. When the scene's renderable resolves to a `RenderableSubMesh` with both `mesh` and `material`, `item.pipelineKey` SHALL be set to `PipelineKey::build(sub->getRenderSignature(pass), sub->material->getRenderSignature(pass))`.
+### Requirement: passFlagFromStringID helper translates pass identity to pass flag
+The header `src/core/scene/pass.hpp` SHALL declare `LX_core::ResourcePassFlag passFlagFromStringID(StringID pass)` and the implementation SHALL live in a new `src/core/scene/pass.cpp` translation unit. The function SHALL map:
+- `Pass_Forward` → `ResourcePassFlag::Forward`
+- `Pass_Deferred` → `ResourcePassFlag::Deferred`
+- `Pass_Shadow` → `ResourcePassFlag::Shadow`
+- Any other `StringID` → `ResourcePassFlag{0}` (all bits clear)
 
-#### Scenario: Forward and Shadow passes produce different pipeline keys for the same mesh+template
-- **WHEN** a scene whose template has distinct `Pass_Forward` and `Pass_Shadow` entries is built twice, once per pass
-- **THEN** the two resulting `RenderingItem::pipelineKey` values differ
+This helper bridges the scene-layer pass identity (`StringID`) and the resource-layer pass flag (`ResourcePassFlag`). Core-layer code SHALL use this helper rather than hard-coded string comparisons when translating a pass `StringID` to a flag.
 
-#### Scenario: Pass field is carried on RenderingItem
-- **WHEN** `scene.buildRenderingItem(Pass_Forward)` is called
-- **THEN** the returned `RenderingItem::pass` equals `Pass_Forward`
+#### Scenario: Known pass constants map to the matching flag bit
+- **WHEN** `passFlagFromStringID(Pass_Forward)` is called
+- **THEN** the returned `ResourcePassFlag` equals `ResourcePassFlag::Forward`, and similarly for `Pass_Deferred` and `Pass_Shadow`
+
+#### Scenario: Unknown StringID yields zero flag
+- **WHEN** `passFlagFromStringID(Intern("CustomPass"))` is called for a pass identifier that is none of the three known constants
+- **THEN** the returned `ResourcePassFlag` equals `ResourcePassFlag{0}` (no bits set)

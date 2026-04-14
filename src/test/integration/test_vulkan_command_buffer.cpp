@@ -9,6 +9,8 @@
 #include "core/resources/vertex_buffer.hpp"
 #include "core/scene/scene.hpp"
 #include "core/utils/env.hpp"
+
+#include "scene_test_helpers.hpp"
 #include "core/utils/filesystem_tools.hpp"
 #include "infra/loaders/blinnphong_material_loader.hpp"
 #include "infra/window/window.hpp"
@@ -106,19 +108,8 @@ int main() {
     scene->camera->up = LX_core::Vec3f{0.0f, 1.0f, 0.0f};
     scene->camera->updateMatrices();
 
-    auto renderItem = scene->buildRenderingItem(LX_core::Pass_Forward);
-
-    // Match VulkanRenderer::initScene(): inject camera/light UBO resources.
-    if (scene->camera) {
-      auto camUbo = scene->camera->getUBO();
-      renderItem.descriptorResources.push_back(
-          std::dynamic_pointer_cast<LX_core::IRenderResource>(camUbo));
-    }
-    if (scene->directionalLight) {
-      auto lightUbo = scene->directionalLight->getUBO();
-      renderItem.descriptorResources.push_back(
-          std::dynamic_pointer_cast<LX_core::IRenderResource>(lightUbo));
-    }
+    auto renderItem =
+        LX_test::firstItemFromScene(*scene, LX_core::Pass_Forward);
 
     // Initialize push constants deterministically.
     if (renderItem.objectInfo) {

@@ -4,6 +4,8 @@
 #include "core/resources/material.hpp"
 #include "core/resources/mesh.hpp"
 #include "core/resources/skeleton.hpp"
+#include "core/scene/pass.hpp"
+#include <cstdint>
 #include <cstring>
 #include <memory>
 #include <optional>
@@ -61,6 +63,15 @@ public:
   /// Structured object signature used to build PipelineKey via
   /// `compose(TypeTag::ObjectRender, {meshSig, skelSig})`.
   virtual StringID getRenderSignature(StringID pass) const = 0;
+
+  /// 该 renderable 是否参与指定 pass。默认基于 getPassMask() 与
+  /// passFlagFromStringID(pass) 做位与判断。子类可 override 以实现更细粒度的
+  /// 过滤（例如根据 material 是否配置了 Pass_Shadow entry）。
+  virtual bool supportsPass(StringID pass) const {
+    const auto flag = passFlagFromStringID(pass);
+    return (static_cast<std::uint32_t>(getPassMask()) &
+            static_cast<std::uint32_t>(flag)) != 0;
+  }
 };
 
 using IRenderablePtr = std::shared_ptr<IRenderable>;

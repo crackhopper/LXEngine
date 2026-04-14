@@ -456,4 +456,25 @@ TEST_SCENARIO("pass mask filtering excludes non-matching renderables") {
 
 ## 实施状态
 
-未开始。
+已完成并通过 `/finish-req` 验证（2026-04-14）。对应 openspec change `2026-04-14-frame-graph-drives-rendering` 已归档，delta 已 sync 到 `openspec/specs/frame-graph` / `render-signature` / `renderer-backend-vulkan`。
+
+**R1–R8 验证结果**（`/finish-req` 阶段，grep/read 逐条对照代码）：
+- R1: `passFlagFromStringID` 声明 `src/core/scene/pass.hpp:26`，实现 `src/core/scene/pass.cpp:7`；smoke test 在 `test_frame_graph.cpp::testPassFlagFromStringIDSmoke` ✓
+- R2: `IRenderable::supportsPass(pass)` 虚方法声明 `src/core/scene/object.hpp:70`，默认实现基于 `getPassMask() & passFlagFromStringID(pass)` ✓
+- R3: `Scene::getSceneLevelResources()` 声明 `src/core/scene/scene.hpp:65`，实现 `src/core/scene/scene.cpp:6`，顺序 camera→light ✓
+- R4: `RenderQueue::buildFromScene(scene, pass)` 声明 `src/core/scene/render_queue.hpp:34`，实现 `render_queue.cpp:67` — 含文件内 `makeItemFromRenderable` 静态 helper + 场景级资源合并 + `sort()` ✓
+- R5: `Scene::buildRenderingItem*` 已删除，`grep -rn "buildRenderingItem\b" src/` 仅剩 `scene_test_helpers.hpp` 注释中的历史引用 ✓
+- R6: `VulkanRenderer::Impl` 持 `m_frameGraph` (`vk_renderer.cpp:283`)；`initScene` 按 `Pass_Forward + defaultForwardTarget()` 配置并 `buildFromScene`；`uploadData` / `draw` 均通过 `getPasses() × queue.getItems()` 双层循环驱动；side-channel camera/light UBO 注入块已删除 ✓
+- R7: `src/test/integration/scene_test_helpers.hpp` 新文件提供 `firstItemFromScene`；5 个集成测试 (`test_vulkan_command_buffer` / `test_vulkan_resource_manager` / `test_vulkan_pipeline` / `test_pipeline_cache` / `test_pipeline_build_info`) 全部迁移 ✓
+- R8: `test_frame_graph.cpp` 新增 `testPassFlagFromStringIDSmoke` / `testPassMaskFilterExcludesNonMatching` / `testMultiPassRebuildIsIdempotent` 三个场景 — **全部通过** ✓
+- 冲突扫描落实: REQ-007 R9 的 "Partial supersede by REQ-008" banner 已追加 ✓
+
+**`/finish-req` 顺带清理**:
+- `src/core/scene/scene.cpp` 删除 unused `#include "core/resources/mesh.hpp"` —— 仅 `buildRenderingItemForRenderable` 曾依赖该 include，删除后不影响编译。
+
+**回归测试**（全部绿）:
+- `test_frame_graph` — 9 scenarios including 3 new REQ-008 scenarios
+- `test_pipeline_build_info`, `test_string_table`, `test_material_instance`, `test_pipeline_identity` — non-GPU 核心层回归
+- GPU 依赖测试 (`test_vulkan_*`) 在无显示环境下 SKIP cleanly，编译期验证已在 full build 阶段完成。
+
+**下游**: REQ-009 可以开工（`/draft-req` 已完成 → `/opsx:propose 009` 下一步）。

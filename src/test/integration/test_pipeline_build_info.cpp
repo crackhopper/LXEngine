@@ -9,8 +9,11 @@
 #include "core/resources/vertex_buffer.hpp"
 #include "core/scene/object.hpp"
 #include "core/scene/pass.hpp"
+#include "core/scene/render_queue.hpp"
 #include "core/scene/scene.hpp"
 #include "core/utils/string_table.hpp"
+
+#include "scene_test_helpers.hpp"
 
 #include <iostream>
 #include <memory>
@@ -157,7 +160,7 @@ buildItem(PrimitiveTopology topo = PrimitiveTopology::TriangleList) {
 
   auto sub = std::make_shared<RenderableSubMesh>(mesh, material, nullptr);
   auto scene = Scene::create(sub);
-  return scene->buildRenderingItem(Pass_Forward);
+  return LX_test::firstItemFromScene(*scene, Pass_Forward);
 }
 
 // ---------------------------------------------------------------------------

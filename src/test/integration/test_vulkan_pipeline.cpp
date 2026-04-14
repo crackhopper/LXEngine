@@ -8,6 +8,8 @@
 #include "infra/loaders/blinnphong_material_loader.hpp"
 #include "infra/window/window.hpp"
 
+#include "scene_test_helpers.hpp"
+
 #include <iostream>
 
 int main() {
@@ -46,7 +48,7 @@ int main() {
     auto renderable = std::make_shared<LX_core::RenderableSubMesh>(
         meshPtr, material, LX_core::Skeleton::create({}));
     auto scene = LX_core::Scene::create(renderable);
-    auto item = scene->buildRenderingItem(LX_core::Pass_Forward);
+    auto item = LX_test::firstItemFromScene(*scene, LX_core::Pass_Forward);
 
     auto &pipeline = resourceManager->getOrCreateRenderPipeline(item);
 
