@@ -31,3 +31,4 @@ Makefile
 mkdocs.gen.yml
 notes/requirements/
 
+*.pyc
