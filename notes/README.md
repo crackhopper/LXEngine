@@ -53,8 +53,10 @@ Windows：使用 `scripts/build-project.ps1`，它会自动处理 `SHADERC_DIR` 
 | **MaterialInstance** | 唯一的 `IMaterial` 实现；基于 shader 反射自动管理 UBO 字节 buffer | `notes/subsystems/material-system.md` |
 | **IShader / 反射** | `ShaderCompiler` + `ShaderReflector` + `ShaderImpl`，运行期从 GLSL 编出 SPIR-V 再解出 binding layout | `notes/subsystems/shader-system.md` |
 | **Mesh / VertexLayout** | 顶点布局是 pipeline 的身份一部分；`VertexFactory` 管理可复用的顶点类型 | `notes/subsystems/geometry.md` |
-| **Skeleton** | 骨骼动画资源，直接住在 `core/resources/`，不走 `IComponent` 抽象 | `notes/subsystems/skeleton.md` |
-| **FrameGraph / RenderQueue** | 一帧由多个 `FramePass` 组成，每个 pass 有自己的 queue；用于 pipeline 预构建扫描 | `notes/subsystems/frame-graph.md` |
+| **Skeleton** | 骨骼动画资源，和 `Mesh` / `Material` 平级，住在 `core/resources/` | `notes/subsystems/skeleton.md` |
+| **FrameGraph** | 描述一帧的渲染结构，包含若干 `FramePass`；是 pipeline 预构建扫描的入口 | `notes/subsystems/frame-graph.md` |
+| **FramePass** | 一个渲染 pass 的单元，持有 `StringID name` + `RenderTarget target` + `RenderQueue queue` | `notes/subsystems/frame-graph.md` |
+| **RenderQueue** | 单个 pass 内的 `RenderingItem` 队列，支持按 `PipelineKey` 排序和 unique `PipelineBuildInfo` 收集 | `notes/subsystems/frame-graph.md` |
 | **PipelineCache** | Vulkan backend 的 pipeline 存储与 preload 入口，与 `VulkanResourceManager` 解耦 | `notes/subsystems/pipeline-cache.md` |
 | **Vulkan backend** | `VulkanDevice` / `VulkanResourceManager` / `VulkanPipeline` / `VulkanCommandBuffer`，对 core 接口的实现层 | `notes/subsystems/vulkan-backend.md` |
 
@@ -75,7 +77,7 @@ Windows：使用 `scripts/build-project.ps1`，它会自动处理 `SHADERC_DIR` 
 
 | REQ | 主题 | 归档变更 |
 |-----|------|---------|
-| 001 | Skeleton 迁移至 `core/resources/`，去除 `IComponent` | `2026-04-10-migrate-skeleton-to-resources` |
+| 001 | Skeleton 迁移至 `core/resources/`，升级为独立资源管理器 | `2026-04-10-migrate-skeleton-to-resources` |
 | 002 | `PipelineKey` + `RenderingItem.pipelineKey` 字段 | `2026-04-10-pipeline-key-rendering-item` |
 | 003a | `getPipelineHash()` 约定 + 通用 pipeline 类 | （随 001/002 一并） |
 | 003b | Pipeline 预构建：`PipelineBuildInfo` / `PipelineCache` / `FrameGraph` / `ImageFormat` + `RenderTarget` | `2026-04-13-pipeline-prebuilding` |

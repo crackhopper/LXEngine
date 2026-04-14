@@ -1,6 +1,6 @@
 # Skeleton
 
-> 骨骼动画资源，住在 `core/resources/`，直接作为一个资源管理器使用，不走 `IComponent` 抽象。REQ-001 专门把 Skeleton 从 `scene/components/` 迁到资源层，让它和 `Mesh` / `Material` 平级。
+> 骨骼动画资源。作为独立的资源管理器住在 `src/core/resources/`，和 `Mesh` / `Material` 平级 —— 通过 `SkeletonUBO` 暴露 GPU 端的骨骼矩阵数组，通过 `getRenderSignature()` 向 pipeline 身份贡献"启用骨骼"这一维度。
 >
 > 权威 spec: `openspec/specs/skeleton-resource/spec.md`
 
@@ -120,7 +120,6 @@ Scene::buildRenderingItem(pass)
 - **`getBindingName() == "Bones"`**: 这是 `SkeletonUBO` 和 shader 里的 `uniform Bones { ... }` 之间的契约。`VulkanCommandBuffer::bindResources` 通过 `IRenderResource::getBindingName()` 匹配反射 binding name，所以 shader 的 block 必须叫 `Bones`。
 - **`Skeleton::getRenderSignature()` 返回固定 `Intern("Skn1")`**: 不是 0，也不是骨骼数的 hash。"Skn1" 的语义是"启用骨骼"；**无骨骼** 的情况由调用方（`RenderableSubMesh::getRenderSignature`）通过返回 `StringID{}`（id=0）表达，而不是让 `Skeleton` 自己返回 0。这种"存在即表示启用"的设计让 Skeleton 类本身保持语义干净。
 - **空 Skeleton 仍然占一个 pipeline slot**: 如果 pipeline layout 声明了 `set=3, binding=0` 的 SkeletonUBO，即使模型没有骨骼，你也得传一个 `Skeleton::create({})` 让 descriptor set 有东西可绑。`blinnphong_0.vert` 目前就有 `Bones` block，所以 test 都走这个空 skeleton 路径。
-- **已经从 `IComponent` 抽象里剥离**: REQ-001 之前 Skeleton 是 `IComponent` 的唯一实现（`scene/components/`）。REQ-001 把整个 `components/` 目录删掉，Skeleton 升到 `core/resources/` 和 Mesh/Material 平级。
 
 ## 测试
 

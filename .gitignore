@@ -25,3 +25,5 @@ Makefile
 
 *.log
 .env
+.site/
+

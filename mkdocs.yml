@@ -1,0 +1,79 @@
+site_name: Renderer Demo Notes
+site_description: 基于 Vulkan 的 C++20 渲染器示例 — 面向人类阅读者的中文项目速览
+docs_dir: notes
+site_dir: .site
+
+theme:
+  name: material
+  language: zh
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: 切换深色
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: 切换浅色
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.indexes
+    - navigation.tracking
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+    - toc.follow
+
+nav:
+  - 总览: README.md
+  - 架构: architecture.md
+  - 术语表: glossary.md
+  - 子系统:
+      - String Interning:   subsystems/string-interning.md
+      - Shader System:      subsystems/shader-system.md
+      - Material System:    subsystems/material-system.md
+      - Pipeline Identity:  subsystems/pipeline-identity.md
+      - Pipeline Cache:     subsystems/pipeline-cache.md
+      - Frame Graph:        subsystems/frame-graph.md
+      - Scene:              subsystems/scene.md
+      - Geometry:           subsystems/geometry.md
+      - Skeleton:           subsystems/skeleton.md
+      - Vulkan Backend:     subsystems/vulkan-backend.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - footnotes
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - toc:
+      permalink: true
+      toc_depth: 3
+
+exclude_docs: |
+  .sync-meta.json
+  0324-after-implement.md
+
+extra:
+  generator: false
