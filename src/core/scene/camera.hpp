@@ -1,6 +1,6 @@
 #pragma once
-#include "core/gpu/render_resource.hpp"
-#include "core/gpu/render_target.hpp"
+#include "core/rhi/render_resource.hpp"
+#include "core/frame_graph/render_target.hpp"
 #include "core/math/mat.hpp" // 假设你有 Mat4f 定义
 #include "core/math/vec.hpp" // Vec3f
 #include <cmath>

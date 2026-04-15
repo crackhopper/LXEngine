@@ -1,10 +1,10 @@
 #pragma once
-#include "core/gpu/render_resource.hpp"
+#include "core/rhi/render_resource.hpp"
 #include "core/math/mat.hpp"
-#include "core/resources/material.hpp"
-#include "core/resources/mesh.hpp"
-#include "core/resources/skeleton.hpp"
-#include "core/scene/pass.hpp"
+#include "core/asset/material.hpp"
+#include "core/asset/mesh.hpp"
+#include "core/asset/skeleton.hpp"
+#include "core/frame_graph/pass.hpp"
 #include <cstdint>
 #include <cstring>
 #include <memory>

@@ -148,7 +148,7 @@ Example:
 
 **Requirement:** REQ-003b (003b-pipeline-prebuilding.md)
 **Verification:** 7 R's — 6 ✓, 1 ⚠ (fixed)
-**Fixes applied:** 2 (removed stale `getSlots()` accessor; fixed include path in vkc_cmdbuffer.hpp)
+**Fixes applied:** 2 (removed stale `getSlots()` accessor; fixed include path in command_buffer.hpp)
 **Simplifications:** 1 (inlined single-caller helper `buildLayoutKey`)
 **Tests:** test_pipeline_build_info / test_frame_graph / test_material_instance all passed
 **Archived to:** docs/requirements/finished/003b-pipeline-prebuilding.md

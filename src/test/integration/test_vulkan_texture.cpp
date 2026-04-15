@@ -1,7 +1,7 @@
-#include "backend/vulkan/details/commands/vkc_cmdbuffer_manager.hpp"
-#include "backend/vulkan/details/resources/vkr_buffer.hpp"
-#include "backend/vulkan/details/resources/vkr_texture.hpp"
-#include "backend/vulkan/details/vk_device.hpp"
+#include "backend/vulkan/details/commands/command_buffer_manager.hpp"
+#include "backend/vulkan/details/device_resources/buffer.hpp"
+#include "backend/vulkan/details/device_resources/texture.hpp"
+#include "backend/vulkan/details/device.hpp"
 #include "infra/window/window.hpp"
 #include "core/utils/env.hpp"
 

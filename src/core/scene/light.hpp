@@ -1,7 +1,7 @@
 #pragma once
-#include "core/gpu/render_resource.hpp"
+#include "core/rhi/render_resource.hpp"
 #include "core/math/vec.hpp"
-#include "core/scene/pass.hpp"
+#include "core/frame_graph/pass.hpp"
 #include "core/utils/string_table.hpp"
 
 #include <cstdint>

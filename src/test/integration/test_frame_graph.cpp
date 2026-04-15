@@ -1,17 +1,17 @@
-#include "core/gpu/render_resource.hpp"
-#include "core/gpu/render_target.hpp"
-#include "core/resources/index_buffer.hpp"
-#include "core/resources/material.hpp"
-#include "core/resources/mesh.hpp"
-#include "core/resources/pipeline_build_info.hpp"
-#include "core/resources/shader.hpp"
-#include "core/resources/vertex_buffer.hpp"
+#include "core/rhi/render_resource.hpp"
+#include "core/frame_graph/render_target.hpp"
+#include "core/rhi/index_buffer.hpp"
+#include "core/asset/material.hpp"
+#include "core/asset/mesh.hpp"
+#include "core/pipeline/pipeline_build_desc.hpp"
+#include "core/asset/shader.hpp"
+#include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/camera.hpp"
-#include "core/scene/frame_graph.hpp"
+#include "core/frame_graph/frame_graph.hpp"
 #include "core/scene/light.hpp"
 #include "core/scene/object.hpp"
-#include "core/scene/pass.hpp"
-#include "core/scene/render_queue.hpp"
+#include "core/frame_graph/pass.hpp"
+#include "core/frame_graph/render_queue.hpp"
 #include "core/scene/scene.hpp"
 #include "core/utils/string_table.hpp"
 
@@ -148,7 +148,7 @@ void testSingleRenderableSinglePass() {
   fg.addPass(FramePass{Pass_Forward, {}, {}});
   fg.buildFromScene(*scene);
 
-  auto infos = fg.collectAllPipelineBuildInfos();
+  auto infos = fg.collectAllPipelineBuildDescs();
   EXPECT(infos.size() == 1, "single renderable → 1 build info");
   EXPECT(fg.getPasses()[0].queue.getItems().size() == 1,
          "queue has exactly one item");
@@ -165,9 +165,9 @@ void testDuplicateRenderablesDedupe() {
   fg.buildFromScene(*scene);
 
   EXPECT(fg.getPasses()[0].queue.getItems().size() == 2, "two items in queue");
-  auto infos = fg.collectAllPipelineBuildInfos();
+  auto infos = fg.collectAllPipelineBuildDescs();
   EXPECT(infos.size() == 1,
-         "duplicate configs collapse to one PipelineBuildInfo");
+         "duplicate configs collapse to one PipelineBuildDesc");
 }
 
 void testDifferentVariantKeepsTwo() {
@@ -180,9 +180,9 @@ void testDifferentVariantKeepsTwo() {
   fg.addPass(FramePass{Pass_Forward, {}, {}});
   fg.buildFromScene(*scene);
 
-  auto infos = fg.collectAllPipelineBuildInfos();
+  auto infos = fg.collectAllPipelineBuildDescs();
   EXPECT(infos.size() == 2,
-         "different variants keep two distinct PipelineBuildInfo");
+         "different variants keep two distinct PipelineBuildDesc");
 }
 
 void testFramePassNameIsStringID() {
@@ -366,7 +366,7 @@ void testCollectAcrossMultiplePasses() {
   fg.addPass(FramePass{Pass_Forward, {}, {}});
   fg.buildFromScene(*scene);
 
-  auto infos = fg.collectAllPipelineBuildInfos();
+  auto infos = fg.collectAllPipelineBuildDescs();
   EXPECT(infos.size() == 1,
          "same pipeline key across two passes dedupes to 1 info");
 }

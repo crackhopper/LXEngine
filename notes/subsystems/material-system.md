@@ -1,149 +1,59 @@
 # Material System
 
-> 材质系统的唯一真相是 `MaterialInstance`：模板-实例架构，基于 shader 反射自动管理 std140 字节 buffer。通过 `setVec3 / setVec4 / setFloat / setInt / setTexture` 按 `StringID` 写入，类型由反射的 `ShaderResourceBinding::members` 校验。
+> 材质系统的核心不是一堆独立状态，而是一个可写的 `MaterialInstance`。它依赖 shader 反射结果来分配 UBO、校验类型、暴露 descriptor 资源。
 >
 > 权威 spec: `openspec/specs/material-system/spec.md`
-> 深度设计: `docs/design/MaterialSystem.md`
 
-## 核心抽象
+## 它解决什么问题
 
-`src/core/resources/material.hpp`:
+- 把 shader、render state、材质参数组织成稳定的运行期对象。
+- 避免手写 uniform offset 和 descriptor 绑定表。
+- 让材质本身参与 `PipelineKey` 生成。
 
-- **`IMaterial`** (`:157`) — 抽象接口
-  - `getDescriptorResources() → vector<IRenderResourcePtr>`
-  - `getShaderInfo() → IShaderPtr`
-  - `getPassFlag() → ResourcePassFlag`
-  - `getRenderState() → RenderState`
-  - `getRenderSignature(pass) → StringID`
-- **`RenderState`** (`:68`) — 固定管线状态值类型；`getRenderSignature()` 贡献 pipeline 身份
-- **`RenderPassEntry`** (`:114`) — 一个 pass 的配置：`{renderState, shaderSet, bindingCache}`
-- **`MaterialTemplate`** (`:175`) — 材质蓝图
-  - 构造必须传入 `IShaderPtr`（`create(name, shader)` 工厂）
-  - `setPass(StringID pass, RenderPassEntry entry)` — per-pass 配置
-  - `buildBindingCache()` — 从 shader 反射建 `StringID → ShaderResourceBinding` 全局查表
-  - `findBinding(StringID id) → optional<ref<const ShaderResourceBinding>>`
-- **`UboByteBufferResource`** (`:247`) — `IRenderResource` 的一个实现，对 `vector<uint8_t>` 做非拥有包装。`MaterialInstance` 用它把自己的 std140 buffer 暴露给 descriptor sync 路径
-- **`MaterialInstance`** (`:272`) — **唯一**的 `IMaterial` 实现
-  - `create(template, passFlag)` 工厂
-  - **非拷贝非移动**（因为 `m_uboResource` 指向 `m_uboBuffer`，移动会悬垂）
-  - 构造时扫描反射 binding 找 `"MaterialUBO"`，分配 std140 字节 buffer
-  - setter: `setVec4 / setVec3 / setFloat / setInt / setTexture`
-  - `updateUBO()` — 标 dirty 让 backend 同步
+## 核心对象
 
-## 典型用法
+- `MaterialTemplate`：定义某个材质有哪些 pass、每个 pass 用什么 shader 和 render state。
+- `MaterialInstance`：持有运行期参数，是 `IMaterial` 的唯一实现。
+- `RenderPassEntry`：单个 pass 的 shader 配置和 render state。
+- `UboByteBufferResource`：把材质内部的 UBO byte buffer 暴露给 backend。
 
-```cpp
-#include "infra/loaders/blinnphong_material_loader.hpp"
-#include "core/scene/pass.hpp"
+## 典型数据流
 
-using namespace LX_core;
+1. loader 编译 shader 并做反射。
+2. 用反射结果创建 `MaterialTemplate`。
+3. `MaterialInstance` 在构造时找到 `MaterialUBO`，分配 byte buffer。
+4. 运行时通过 `setVec4` / `setVec3` / `setFloat` / `setInt` / `setTexture` 写参数。
+5. `updateUBO()` 把 dirty 状态传给 `m_uboResource`。
+6. `RenderQueue::buildFromScene(...)` 把材质资源并入 `RenderingItem`。
 
-// 一行创建 + 种子默认值
-auto material = LX_infra::loadBlinnPhongMaterial();  // MaterialInstance::Ptr
+## 关键约束
 
-// 运行期修改
-material->setVec3(StringID("baseColor"), Vec3f{1.0f, 0.25f, 0.5f});
-material->setFloat(StringID("shininess"), 32.0f);
-material->setInt(StringID("enableNormal"), 0);
-material->updateUBO();                                // 标 dirty
+- shader 里的材质 UBO 名必须是 `MaterialUBO`。
+- `vec3` 只写 12 字节，不能按 16 字节覆盖相邻 `float`。
+- `MaterialInstance` 非拷贝非移动，因为内部 UBO resource 指向自有 buffer。
+- `setTexture` 绑定的是 `CombinedTextureSampler`，不是裸 texture。
+- `getDescriptorResources()` 的顺序是固定的：先 UBO，再按 `(set << 16 | binding)` 升序排好的纹理资源。
 
-// 绑到 renderable
-auto renderable = std::make_shared<RenderableSubMesh>(mesh, material, skeletonOptional);
-```
+## 当前实现边界
 
-loader 内部（`src/infra/loaders/blinnphong_material_loader.cpp`）:
+- `MaterialTemplate` 同时保留两套“按名字找 binding”的路径：
+  `RenderPassEntry::bindingCache` 以 `std::string` 为 key，
+  `MaterialTemplate::m_bindingCache` 以 `StringID` 为 key。
+  当前 `MaterialInstance` 的 setter 和纹理绑定主路径实际使用的是后者。
+- `RenderPassEntry::shaderSet` 这个过渡结构还在，但当前 `ShaderProgramSet::getShader()` 返回的是 `nullptr`。因此 `entry.buildCache()` 现在基本不会真正填出 per-entry `bindingCache`；运行时依赖的是 template 级别的 `buildBindingCache()`。
+- `MaterialInstance::getRenderState()` 现在仍是过渡实现：它不会按传入 pass 取 entry，而是只尝试读取 `Forward` 对应的 `RenderPassEntry`。
+- `MaterialInstance::getRenderSignature(pass)` 是按 pass 生效的，`getRenderState()` 目前却还是 Forward-only。这两条路径暂时并不完全对称。
+- `MaterialInstance` 构造时只认第一个名字恰好等于 `MaterialUBO` 的 `UniformBuffer` binding；当前还不支持一个材质拥有多个自管 UBO。
+- `loadBlinnPhongMaterial()` 当前只配置了一个 `Pass_Forward` entry，并用反射驱动 setter 写入默认值。
 
-```cpp
-// 1. 编译 + 反射
-auto compiled = ShaderCompiler::compileProgram(vert, frag, {});
-auto bindings = ShaderReflector::reflect(compiled.stages);
-auto shader   = std::make_shared<ShaderImpl>(std::move(compiled.stages),
-                                             bindings, "blinnphong_0");
+## 从哪里改
 
-// 2. 模板
-auto tmpl = MaterialTemplate::create("blinnphong_0", shader);
+- 想加新材质参数：先看 shader 反射和 `MaterialInstance` setter 路径。
+- 想改 pipeline 行为：看 `RenderPassEntry`、`RenderState`、`getRenderSignature(pass)`。
+- 想改默认材质：看 `src/infra/material_loader/`。
 
-// 3. Pass 配置
-RenderPassEntry entry;
-entry.shaderSet   = ShaderProgramSet{"blinnphong_0", {}};
-entry.renderState = RenderState{};
-entry.buildCache();
-tmpl->setPass(Pass_Forward, std::move(entry));
-tmpl->buildBindingCache();
+## 关联文档
 
-// 4. Instance + 种子默认
-auto mat = MaterialInstance::create(tmpl, ResourcePassFlag::Forward);
-mat->setVec3(StringID("baseColor"),         Vec3f{0.8f, 0.8f, 0.8f});
-mat->setFloat(StringID("shininess"),        12.0f);
-mat->setFloat(StringID("specularIntensity"), 1.0f);
-mat->setInt  (StringID("enableAlbedo"),      0);
-mat->setInt  (StringID("enableNormal"),      0);
-mat->updateUBO();
-```
-
-## 反射驱动的 UBO 写入
-
-REQ-004 起 `ShaderReflector` 在 `ShaderResourceBinding.members` 里暴露 std140 member 布局。`MaterialInstance` 把这些信息用于 setter：
-
-```cpp
-void MaterialInstance::setVec3(StringID id, const Vec3f &value) {
-    writeUboMember(id, &value, sizeof(float) * 3, ShaderPropertyType::Vec3);
-}
-
-// writeUboMember 的核心逻辑：
-// - 在 m_uboBinding->members 里线性查 StringID(m.name) == id
-// - 断言 m.type == expected（例如 Vec3）
-// - memcpy(m_uboBuffer.data() + m.offset, src, nbytes)
-// - m_uboDirty = true
-```
-
-**std140 pack 关键点**: `vec3` 写 **12 字节**而不是 16，否则会 clobber 紧邻的 `float` 成员（例如 `vec3 baseColor; float shininess;` 里 shininess 在 offset 12，写 16 会覆盖它）。这是 REQ-005 设计时 `setVec3` 写 12 字节的唯一原因。
-
-## 调用关系
-
-```
-loader (infra)
-  │ 编译 shader + 反射
-  ▼
-ShaderImpl
-  │
-  ▼
-MaterialTemplate::create(name, shader)
-  │
-  │ setPass(Pass_Forward, entry)
-  │ buildBindingCache()
-  ▼
-MaterialInstance::create(tmpl)
-  │ 构造时扫反射找 "MaterialUBO" binding
-  │ 分配 m_uboBuffer
-  │ 构造 m_uboResource（UboByteBufferResource 包装 m_uboBuffer）
-  ▼
-Scene 通过 RenderableSubMesh 持有 MaterialPtr (= MaterialInstance::Ptr)
-  │
-  ▼
-RenderQueue::buildFromScene(scene, pass) 调用:
-  - sub->material->getDescriptorResources() → [m_uboResource, tex1, tex2, ...]
-  - sub->material->getRenderSignature(pass) → StringID
-  │
-  ▼
-RenderingItem
-```
-
-## 注意事项
-
-- **`MaterialUBO` 必须叫这个名字**: `MaterialInstance` 构造时硬编码查找 `binding.name == "MaterialUBO"` 来定位自己的 UBO。shader 里把 material uniform 块命名为其他名字会导致 `m_uboBinding == nullptr`，后续 setter 全部 assert fail。项目里的 scene 级 UBO (`LightUBO` / `CameraUBO` / `Bones`) 是**故意**不叫 MaterialUBO 的，它们属于其他 owner。
-- **非拷贝非移动**: `MaterialInstance` 拥有 `m_uboBuffer`（`vector<uint8_t>`）和 `m_uboResource`（持有指向 `m_uboBuffer` 的原始指针）。移动会让原始指针悬垂，所以类显式 `delete` 了拷贝/移动构造与赋值。`create()` 返回 `shared_ptr`。
-- **Texture 类型**: `setTexture` 接受 **`CombinedTextureSamplerPtr`**，不接受裸 `TexturePtr` —— 因为 `CombinedTextureSampler` 才是 `IRenderResource`。把 texture 和 sampler 成对包装是 backend 描述符写入的前提。
-- **Pass key 类型**: `MaterialTemplate::setPass(Pass_Forward, ...)`。`StringID` 可从 `const char*` 隐式构造（`setPass("Forward", ...)` 效果等价）。
-
-## 测试
-
-- `src/test/integration/test_material_instance.cpp` — 非 GPU 测试：UBO 分配 / vec3 不 clobber shininess / setter 类型校验 / descriptor 资源稳定身份 / loader 端到端
-- `src/test/integration/test_pipeline_identity.cpp` — 覆盖材质对 `PipelineKey` 的贡献
-- `src/test/integration/test_pipeline_build_info.cpp` — `PipelineBuildInfo::fromRenderingItem` 从材质读字段的路径
-
-## 延伸阅读
-
-- `openspec/specs/material-system/spec.md` — 9 条 ADDED requirement（sole impl / shader required / UBO allocation / reflection setters / texture bindings / descriptor order / GPU sync / UboByteBufferResource / loader）
-- `docs/design/MaterialSystem.md` — Template-Instance 架构的设计权衡与 per-pass binding cache
-- 归档: `openspec/changes/archive/2026-04-13-unify-material-system/` — REQ-005 的完整实施记录（9 条 requirement + 32 个 scenario）
+- `openspec/specs/material-system/spec.md`
+- `notes/subsystems/shader-system.md`
+- `notes/subsystems/pipeline-identity.md`

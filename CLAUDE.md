@@ -21,16 +21,24 @@ See `AGENTS.md` for full project context, architecture, and coding standards.
 - `openspec/specs/mesh-loading/spec.md` — OBJ/GLTF mesh loading
 - `openspec/specs/render-signature/spec.md` — `getRenderSignature(pass)` across resources; `Pass_*` constants
 - `openspec/specs/pipeline-key/spec.md` — `PipelineKey::build(objSig, matSig)` structured identity
-- `openspec/specs/pipeline-build-info/spec.md` — `PipelineBuildInfo` aggregation of pipeline construction inputs
+- `openspec/specs/pipeline-build-desc/spec.md` — `PipelineBuildDesc` aggregation of pipeline construction inputs
 - `openspec/specs/frame-graph/spec.md` — `FrameGraph` / `RenderQueue` / `RenderTarget` / `ImageFormat`
 - `openspec/specs/pipeline-cache/spec.md` — Backend pipeline cache: `find` / `getOrCreate` / `preload`
 - `openspec/specs/skeleton-resource/spec.md` — Skeleton as core resource, no `IComponent`
 
 ## Design Docs Index
 
-- `docs/design/GlobalStringTable.md` — String interning: GlobalStringTable + StringID
-- `docs/design/MaterialSystem.md` — Template-Instance material architecture, StringID-keyed properties
-- `docs/design/ShaderSystem.md` — GLSL compilation, SPIR-V reflection, ShaderImpl binding lookup
+- `notes/subsystems/index.md` — Subsystem map and recommended reading order
+- `notes/subsystems/string-interning.md` — String interning, compose/decompose, debug-string flow
+- `notes/subsystems/shader-system.md` — GLSL compilation, SPIR-V reflection, `CompiledShader`
+- `notes/subsystems/material-system.md` — Material template/instance and reflection-driven UBO writes
+- `notes/subsystems/pipeline-identity.md` — `PipelineKey`, `PipelineBuildDesc`, render signatures
+- `notes/subsystems/pipeline-cache.md` — Pipeline preload, lookup, runtime miss behavior
+- `notes/subsystems/frame-graph.md` — Pass graph, queue build, pipeline collection
+- `notes/subsystems/scene.md` — Scene container and `RenderingItem` assembly
+- `notes/subsystems/geometry.md` — Mesh, vertex layout, topology signatures
+- `notes/subsystems/skeleton.md` — Skeleton resource and `SkeletonUBO`
+- `notes/subsystems/vulkan-backend.md` — Vulkan backend object graph and render path
 
 ## Rules
 
@@ -39,3 +47,12 @@ See `AGENTS.md` for full project context, architecture, and coding standards.
 - Cross-platform: Linux (bash) + Windows (PowerShell)
 - Namespaces: `LX_core`, `LX_infra`
 - Integration tests in `src/test/integration/`, one exe per module
+
+## Codex Command Workflow
+
+- Prefer `rg --files` for file discovery and `rg -n` for text search.
+- Prefer `sed -n` for focused file reads and `git status` / `git diff` for worktree inspection.
+- Prefer `mv` for rename-only refactors and `perl -0pi` only for mechanical bulk rewrites after file moves.
+- Use `cmake` and `ninja` for build verification on Linux.
+- Command pre-authorization is controlled by `/home/lx/.codex/rules/default.rules`, not by this file.
+- If a command fails for permission reasons, first try an already approved prefix instead of assuming the tool is unavailable.

@@ -1,16 +1,17 @@
 // game_app.cpp
-#include "core/gpu/renderer.hpp"
-#include "core/resources/index_buffer.hpp"
-#include "core/resources/texture.hpp"
-#include "core/resources/vertex_buffer.hpp"
+#include "core/gpu/engine_loop.hpp"
+#include "core/rhi/renderer.hpp"
+#include "core/rhi/index_buffer.hpp"
+#include "core/asset/texture.hpp"
+#include "core/rhi/vertex_buffer.hpp"
 #include "core/utils/filesystem_tools.hpp"
 
 // backend Vulkan 实现
-#include "backend/vulkan/vk_renderer.hpp"
+#include "backend/vulkan/vulkan_renderer.hpp"
 
 // 窗口系统
 #include "infra/window/window.hpp"
-#include "infra/loaders/blinnphong_material_loader.hpp"
+#include "infra/material_loader/blinn_phong_material_loader.hpp"
 
 #include <array>
 #include <cstdlib>
@@ -41,7 +42,6 @@ int main() {
   LX_core::WindowPtr window =
       std::make_shared<LX_infra::Window>("Test Renderer", 800, 600);
 
-  // 创建 Renderer（Vulkan 后端）
   RendererPtr renderer =
       std::make_shared<LX_core::backend::VulkanRenderer>(
           LX_core::backend::VulkanRenderer::Token{});
@@ -59,13 +59,10 @@ int main() {
                             {0, 0, 0, 0}, {1.0f, 0.0f, 0.0f, 0.0f}),
   });
 
-  // With the current Vulkan viewport/cull setup, this winding must stay
-  // consistent with the integration test or the triangle is back-face culled.
   auto indexBufferPtr = IndexBuffer::create({0, 1, 2});
   auto meshPtr = Mesh::create(vertexBufferPtr, indexBufferPtr);
 
   auto material = LX_infra::loadBlinnPhongMaterial();
-  // Avoid needing correct tangents for normal mapping.
   material->setInt(LX_core::StringID("enableNormal"), 0);
   material->updateUBO();
 
@@ -75,25 +72,17 @@ int main() {
       std::make_shared<RenderableSubMesh>(meshPtr, material, skeletonPtr);
 
   auto scene = Scene::create(renderable);
-  renderer->initScene(scene);
 
-  // REQ-009: the Scene ctor seeds exactly one Camera + one DirectionalLight.
-  // Grab them through the multi-container API for the frame loop below.
   auto camera = scene->getCameras().front();
   auto dirLight =
       std::dynamic_pointer_cast<DirectionalLight>(scene->getLights().front());
 
-  // Provide a default directional light; shader expects LightUBO values.
   if (dirLight && dirLight->ubo) {
     dirLight->ubo->param.dir = Vec4f{0.0f, -1.0f, 0.0f, 0.0f};
     dirLight->ubo->param.color = Vec4f{1.0f, 1.0f, 1.0f, 1.0f};
     dirLight->ubo->setDirty();
   }
 
-  // 渲染循环
-  bool running = true;
-  uint64_t frameCounter = 0;
-  window->onClose([&running]() { running = false; });
   if (testDebugEnabled()) {
     std::cerr << "[TriangleTest] window=" << window->getWidth() << "x"
               << window->getHeight() << ", vertexBytes="
@@ -101,14 +90,13 @@ int main() {
               << indexBufferPtr->getByteSize() << ", indices={0,1,2}"
               << std::endl;
   }
-  while (running) {
-    // 处理窗口事件，防止窗口卡住
-    if (window->shouldClose()) {
-      running = false;
-      break;
-    }
 
-    // 设置摄像机矩阵
+  EngineLoop loop;
+  loop.initialize(window, renderer);
+  loop.startScene(scene);
+
+  uint64_t frameCounter = 0;
+  loop.setUpdateHook([&](Scene &, const Clock &) {
     camera->position = {0.0f, 0.0f, 3.0f};
     camera->target = {0.0f, 0.0f, 0.0f};
     camera->up = Vec3f(0.0f, 1.0f, 0.0f);
@@ -117,11 +105,10 @@ int main() {
     camera->updateMatrices();
     if (testDebugEnabled() && frameCounter < 3) {
       std::cerr << "[TriangleTest] frame=" << frameCounter << ", cameraPos=("
-                << camera->position.x << "," << camera->position.y
-                << "," << camera->position.z << "), target=("
-                << camera->target.x << "," << camera->target.y
-                << "," << camera->target.z << "), aspect="
-                << camera->aspect << std::endl;
+                << camera->position.x << "," << camera->position.y << ","
+                << camera->position.z << "), target=(" << camera->target.x
+                << "," << camera->target.y << "," << camera->target.z
+                << "), aspect=" << camera->aspect << std::endl;
       if (frameCounter == 0) {
         const auto &view = camera->ubo->param.view;
         const auto &proj = camera->ubo->param.proj;
@@ -147,16 +134,14 @@ int main() {
         }
       }
     }
-    renderer->uploadData();
-    renderer->draw();
-    frameCounter++;
+    ++frameCounter;
     if (testDebugEnabled() && frameCounter % 120 == 0) {
       std::cerr << "[TriangleTest] heartbeat frame=" << frameCounter
                 << std::endl;
     }
-  }
+  });
 
-  // 清理
+  loop.run();
   renderer->shutdown();
 
   return 0;

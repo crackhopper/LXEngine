@@ -10,7 +10,7 @@
 
 ## 顶点类型
 
-用 `src/core/resources/vertex_buffer.hpp:420` 定义的 `VertexPosNormalUvBone`：
+用 `src/core/rhi/vertex_buffer.hpp:420` 定义的 `VertexPosNormalUvBone`：
 
 ```cpp
 struct VertexPosNormalUvBone {

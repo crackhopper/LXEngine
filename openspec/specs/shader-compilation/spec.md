@@ -44,11 +44,11 @@ ShaderCompiler SHALL produce a `ShaderStageCode` struct for each compiled stage,
 - **WHEN** both `.vert` and `.frag` sources are compiled successfully
 - **THEN** two `ShaderStageCode` entries are returned: one with `ShaderStage::Vertex` and one with `ShaderStage::Fragment`
 
-### Requirement: ShaderImpl fulfills IShader interface
-`ShaderImpl` SHALL implement `IShader` and MUST be constructible from compiled `ShaderStageCode` entries and reflection bindings. It SHALL provide `getAllStages()`, `getReflectionBindings()`, `findBinding()`, and `getProgramHash()`.
+### Requirement: CompiledShader fulfills IShader interface
+`CompiledShader` SHALL implement `IShader` and MUST be constructible from compiled `ShaderStageCode` entries and reflection bindings. It SHALL provide `getAllStages()`, `getReflectionBindings()`, `findBinding()`, and `getProgramHash()`.
 
 #### Scenario: getAllStages returns compiled stages
-- **WHEN** a ShaderImpl is constructed with vertex + fragment ShaderStageCode
+- **WHEN** a CompiledShader is constructed with vertex + fragment ShaderStageCode
 - **THEN** `getAllStages()` returns both stages with their respective bytecode
 
 #### Scenario: getProgramHash is deterministic

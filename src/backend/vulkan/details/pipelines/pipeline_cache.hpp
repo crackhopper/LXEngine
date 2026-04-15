@@ -1,8 +1,8 @@
 #pragma once
 
-#include "core/resources/pipeline_build_info.hpp"
-#include "core/resources/pipeline_key.hpp"
-#include "vkp_pipeline.hpp"
+#include "core/pipeline/pipeline_build_desc.hpp"
+#include "core/pipeline/pipeline_key.hpp"
+#include "pipeline.hpp"
 #include <vulkan/vulkan.h>
 #include <functional>
 #include <optional>
@@ -26,11 +26,11 @@ public:
 
   /// Miss 则按 buildInfo 新建并缓存。
   /// Preload 阶段以外的 miss 会打印 warn 日志（含 toDebugString）。
-  VulkanPipeline &getOrCreate(const PipelineBuildInfo &info,
+  VulkanPipeline &getOrCreate(const PipelineBuildDesc &info,
                               VkRenderPass renderPass);
 
   /// 批量预构建：抑制 miss 警告，循环调用 getOrCreate。
-  void preload(const std::vector<PipelineBuildInfo> &infos,
+  void preload(const std::vector<PipelineBuildDesc> &infos,
                VkRenderPass renderPass);
 
   size_t size() const { return m_cache.size(); }

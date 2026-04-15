@@ -2,6 +2,8 @@
 
 > 把 shader / material / mesh / scene / renderer 串成一个可运行的程序。参照样板是 `src/test/test_render_triangle.cpp`。
 
+> 更新：在 `REQ-020 EngineLoop` 之后，这一章的推荐心智模型不再是“`main.cpp` 直接手写 while-loop 驱动 renderer”，而是“`main.cpp` 负责组装 scene 与 callback，由 `EngineLoop` 驱动每帧”。下面先展示展开版，再说明它如何收敛到 `EngineLoop`。
+
 ## 目标
 
 - 打开一个 800×600 窗口
@@ -23,17 +25,17 @@ src/test/test_pbr_cube.cpp        ← 本章产出
 
 ```cpp
 // src/test/test_pbr_cube.cpp
-#include "core/gpu/renderer.hpp"
-#include "core/resources/index_buffer.hpp"
-#include "core/resources/mesh.hpp"
-#include "core/resources/vertex_buffer.hpp"
+#include "core/rhi/renderer.hpp"
+#include "core/asset/index_buffer.hpp"
+#include "core/asset/mesh.hpp"
+#include "core/asset/vertex_buffer.hpp"
 #include "core/scene/camera.hpp"
 #include "core/scene/light.hpp"
 #include "core/scene/object.hpp"
 #include "core/scene/scene.hpp"
 #include "core/utils/filesystem_tools.hpp"
 
-#include "backend/vulkan/vk_renderer.hpp"
+#include "backend/vulkan/vulkan_renderer.hpp"
 #include "infra/window/window.hpp"
 #include "infra/loaders/pbr_cube_material_loader.hpp"
 
@@ -192,12 +194,56 @@ int main() {
 }
 ```
 
+## 用 `EngineLoop` 重读这段 main
+
+把上面的展开版压缩成引擎级工作流，其实是：
+
+```cpp
+EngineLoop loop;
+loop.initialize(window, renderer);
+loop.startScene(scene);
+loop.setUpdateHook([&](Scene& scene, const Clock& clock) {
+    camera->position = {0.0f, 0.8f, 2.5f};
+    camera->target   = {0.0f, 0.0f, 0.0f};
+    camera->up       = Vec3f(0.0f, 1.0f, 0.0f);
+    camera->aspect   = 800.0f / 600.0f;
+    camera->fovY     = 45.0f;
+    camera->updateMatrices();
+
+    PC_Draw pc{};
+    pc.model = Mat4f::rotationY(clock.totalTime() * 0.8f);
+    pc.enableLighting = 1;
+    pc.enableSkinning = 0;
+    renderable->objectPC->update(pc);
+});
+loop.run();
+```
+
+这才是长期推荐的接口形状：
+
+- `startScene(scene)` 做一次性场景初始化
+- update hook 让业务层每帧修改 CPU 真值
+- `EngineLoop` 内部负责 `clock.tick()`、`uploadData()`、`draw()`
+
 ## 数据流小结
 
-每一帧的工作量（与 `notes/architecture.md` 一帧的数据流对照阅读）：
+把“场景开始时”和“每帧运行时”分开看会更准确。
+
+### 场景开始时
 
 ```
-[main 循环]
+renderer->initScene(scene)
+  ├─ 计算 swapchain target
+  ├─ 回填 camera target
+  ├─ FrameGraph::buildFromScene(scene)
+  └─ preloadPipelines(...)
+```
+
+### 每帧运行时
+
+```
+[EngineLoop / main loop]
+  clock.tick()
   camera->updateMatrices()     → CameraUBO::setDirty()
   renderable->objectPC->update → ObjectPC.data 内联更新 (PushConstant 不走 dirty)
     │

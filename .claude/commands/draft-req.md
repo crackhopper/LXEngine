@@ -66,7 +66,7 @@ tags: [requirements, planning, discuss]
 ## 现状定位
 
 你描述的问题对应到代码里：
-- src/core/resources/foo.hpp:42 — `class Foo` 的 `bar()` 方法
+- src/core/asset/foo.hpp:42 — `class Foo` 的 `bar()` 方法
 - src/infra/loaders/foo_loader.cpp:15 — 唯一调用方
 - src/test/integration/test_foo.cpp — 相关测试
 

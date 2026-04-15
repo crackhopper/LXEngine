@@ -192,9 +192,9 @@ Recommendation: PROCEED / PROCEED_WITH_CAUTION / BLOCK / SPLIT
 
 **Type**: <type>
 **Files to stage** (<N>):
-  + src/core/resources/material.hpp
-  + src/core/resources/material.cpp
-  + src/infra/loaders/blinnphong_material_loader.cpp
+  + src/core/asset/material.hpp
+  + src/core/asset/material.cpp
+  + src/infra/material_loader/blinn_phong_material_loader.cpp
   ...
 
 **Already staged** (<N>):

@@ -4,7 +4,7 @@
 
 REQ-012 定义了 `IInputState` 接口与 `Window::getInputState()` 入口，但 SDL3 / GLFW 的 `Window` 实现在 REQ-012 中只是返回了 `DummyInputState` 占位。
 
-`src/infra/window/window_impl_sdl.cpp:39-46` 当前的 `Impl::shouldClose` 是这样：
+`src/infra/window/sdl_window.cpp:39-46` 当前的 `Impl::shouldClose` 是这样：
 
 ```cpp
 bool shouldClose() const {
@@ -129,7 +129,7 @@ static LX_core::KeyCode toKeyCode(SDL_Scancode sc) {
 
 ### R3: SDL `Window::Impl` 改造
 
-修改 `src/infra/window/window_impl_sdl.cpp`：
+修改 `src/infra/window/sdl_window.cpp`：
 
 - `Impl` 新增成员 `std::shared_ptr<Sdl3InputState> inputState`，在构造时 `make_shared`
 - 把 `shouldClose` 从 `const` 移除 `const`（要写 inputState），改为：
@@ -213,9 +213,9 @@ TEST(Sdl3InputState, mouse_delta_resets_on_next_frame) {
 |---|---|
 | `src/infra/window/sdl3_input_state.hpp` | 新增 |
 | `src/infra/window/sdl3_input_state.cpp` | 新增 |
-| `src/infra/window/window_impl_sdl.cpp:11-46` | `Impl` 持有 `Sdl3InputState`，`shouldClose` 复用 poll；新增 `nextFrame` |
+| `src/infra/window/sdl_window.cpp:11-46` | `Impl` 持有 `Sdl3InputState`，`shouldClose` 复用 poll；新增 `nextFrame` |
 | `src/infra/window/window.hpp` | 声明 `getInputState() override` 走真实实现，新增 `nextFrame() override` |
-| `src/infra/window/window_impl_glfw.cpp` | stub `nextFrame` no-op + `getInputState` 返回 dummy + TODO 注释 |
+| `src/infra/window/glfw_window.cpp` | stub `nextFrame` no-op + `getInputState` 返回 dummy + TODO 注释 |
 | `src/core/platform/window.hpp` | 新增 `virtual void nextFrame() = 0` |
 | `src/test/integration/test_sdl_input.cpp` | 新增 |
 | `src/test/integration/CMakeLists.txt` | 注册新测试 |

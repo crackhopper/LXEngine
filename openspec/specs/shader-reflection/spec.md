@@ -31,7 +31,7 @@ ShaderReflector SHALL merge bindings from multiple shader stages (vertex + fragm
 - **THEN** the merged binding retains the full `members` vector with every member's `name`, `type`, `offset`, and `size`
 
 ### Requirement: findBinding by set and binding index
-ShaderImpl SHALL support `findBinding(set, binding)` that returns the matching `ShaderResourceBinding` in O(1) or O(log n) time.
+CompiledShader SHALL support `findBinding(set, binding)` that returns the matching `ShaderResourceBinding` in O(1) or O(log n) time.
 
 #### Scenario: Binding found
 - **WHEN** `findBinding(0, 1)` is called and a binding at set=0, binding=1 exists
@@ -42,7 +42,7 @@ ShaderImpl SHALL support `findBinding(set, binding)` that returns the matching `
 - **THEN** `std::nullopt` is returned
 
 ### Requirement: findBinding by name
-ShaderImpl SHALL support `findBinding(name)` that returns the matching `ShaderResourceBinding` by its GLSL variable name.
+CompiledShader SHALL support `findBinding(name)` that returns the matching `ShaderResourceBinding` by its GLSL variable name.
 
 #### Scenario: Find by name
 - **WHEN** `findBinding("CameraUBO")` is called

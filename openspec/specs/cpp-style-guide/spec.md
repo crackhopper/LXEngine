@@ -163,7 +163,7 @@ If core needs to express a concept that maps to an external type (e.g., image fo
 
 ```cpp
 // CORRECT — core defines its own enum
-// src/core/resources/render_target.hpp
+// src/core/frame_graph/render_target.hpp
 namespace LX_core {
 enum class ImageFormat : uint8_t { RGBA8, BGRA8, D32Float, D24S8 };
 }

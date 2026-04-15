@@ -1,10 +1,10 @@
 #pragma once
-#include "core/resources/pipeline_key.hpp"
-#include "core/resources/shader.hpp"
+#include "core/pipeline/pipeline_key.hpp"
+#include "core/asset/shader.hpp"
 #include "core/scene/camera.hpp"
 #include "core/scene/light.hpp"
 #include "core/scene/object.hpp"
-#include "core/scene/pass.hpp"
+#include "core/frame_graph/pass.hpp"
 
 namespace LX_core {
 
@@ -12,7 +12,7 @@ using ShaderPtr = IShaderPtr;
 
 struct RenderingItem {
   ShaderPtr shaderInfo;
-  MaterialPtr material; // 材质句柄 — 用于 PipelineBuildInfo::fromRenderingItem
+  MaterialPtr material; // 材质句柄 — 用于 PipelineBuildDesc::fromRenderingItem
 
   ObjectPCPtr objectInfo;
   IRenderResourcePtr vertexBuffer;

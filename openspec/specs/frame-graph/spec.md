@@ -19,11 +19,11 @@ The system SHALL provide `LX_core::ImageFormat`, a `uint8_t`-backed enum coverin
 - **THEN** their `getHash()` values SHALL differ
 
 ### Requirement: RenderQueue collects and deduplicates pipeline build infos
-`LX_core::RenderQueue` SHALL provide `void addItem(RenderingItem)`, `void sort()` (ordering by `PipelineKey` to reduce pipeline switches), `const std::vector<RenderingItem> &getItems() const`, and `std::vector<PipelineBuildInfo> collectUniquePipelineBuildInfos() const`. Deduplication MUST be performed by `PipelineKey` equality; items with the same key MUST contribute exactly one `PipelineBuildInfo` to the result.
+`LX_core::RenderQueue` SHALL provide `void addItem(RenderingItem)`, `void sort()` (ordering by `PipelineKey` to reduce pipeline switches), `const std::vector<RenderingItem> &getItems() const`, and `std::vector<PipelineBuildDesc> collectUniquePipelineBuildDescs() const`. Deduplication MUST be performed by `PipelineKey` equality; items with the same key MUST contribute exactly one `PipelineBuildDesc` to the result.
 
 #### Scenario: Deduplication on equal keys
 - **WHEN** two `RenderingItem`s with equal `pipelineKey` are added to a queue
-- **THEN** `collectUniquePipelineBuildInfos()` returns exactly one `PipelineBuildInfo`
+- **THEN** `collectUniquePipelineBuildDescs()` returns exactly one `PipelineBuildDesc`
 
 #### Scenario: Sort is stable for equal keys
 - **WHEN** `sort()` is called on a queue that contains interleaved items
@@ -79,15 +79,15 @@ An empty return value is a valid result — some `(pass, target)` combinations l
 The REQ-008 parameterless `getSceneLevelResources()` overload SHALL NOT coexist with this signature.
 
 #### Scenario: Camera UBO filtered by target
-- **WHEN** a scene has two cameras `camA` / `camB` with distinct targets `targetA` / `targetB`, and `scene.getSceneLevelResources(Pass_Forward, targetA)` is called
-- **THEN** the returned vector contains exactly `camA->getUBO()` (camB is excluded, and no light is added because the scene has no lights)
+- **WHEN** a scene has two cameras `camA` / `camB` with distinct targets `targetA` / `targetB`, no light in the scene supports `Pass_Shadow`, and `scene.getSceneLevelResources(Pass_Shadow, targetA)` is called
+- **THEN** the returned vector contains exactly `camA->getUBO()` (camB is excluded, and no light is added because none supports `Pass_Shadow`)
 
 #### Scenario: Light UBO filtered by pass mask
-- **WHEN** a scene has three lights — one with pass mask `Forward` only, one with `Shadow` only, and one with `Forward | Shadow` — plus one camera matching `RenderTarget{}`, and `getSceneLevelResources(Pass_Forward, RenderTarget{})` is called
-- **THEN** the returned vector contains exactly three elements: the camera UBO, the `Forward`-only light's UBO, and the `Forward | Shadow` light's UBO. The `Shadow`-only light is excluded.
+- **WHEN** a scene contains the constructor-seeded default directional light (`Forward | Deferred`), plus three additional lights — one with pass mask `Forward` only, one with `Shadow` only, and one with `Forward | Shadow` — and one camera matching `RenderTarget{}`, and `getSceneLevelResources(Pass_Forward, RenderTarget{})` is called
+- **THEN** the returned vector contains exactly four elements in order: the camera UBO, the default directional light's UBO, the `Forward`-only light's UBO, and the `Forward | Shadow` light's UBO. The `Shadow`-only light is excluded.
 
 #### Scenario: Empty result for no matching resources
-- **WHEN** a scene has one camera with target X, no lights, and `getSceneLevelResources(Pass_Forward, target Y)` is called (where X ≠ Y)
+- **WHEN** a scene has one camera with target X, no light in the scene supports `Pass_Shadow`, and `getSceneLevelResources(Pass_Shadow, target Y)` is called (where X ≠ Y)
 - **THEN** the returned vector is empty
 
 ### Requirement: FrameGraph buildFromScene populates queues per pass
@@ -105,16 +105,16 @@ The REQ-008 parameterless `getSceneLevelResources()` overload SHALL NOT coexist 
 - **WHEN** `FrameGraph::buildFromScene(scene)` is called twice on the same scene
 - **THEN** every pass's queue contains the same items after the second call as after the first (items are not duplicated)
 
-### Requirement: FrameGraph collectAllPipelineBuildInfos deduplicates across passes
-`FrameGraph::collectAllPipelineBuildInfos()` SHALL iterate every pass's `RenderQueue`, concatenate each queue's `collectUniquePipelineBuildInfos()`, and deduplicate the combined set by `PipelineKey`. The returned vector is the input to the backend's pipeline preload step.
+### Requirement: FrameGraph collectAllPipelineBuildDescs deduplicates across passes
+`FrameGraph::collectAllPipelineBuildDescs()` SHALL iterate every pass's `RenderQueue`, concatenate each queue's `collectUniquePipelineBuildDescs()`, and deduplicate the combined set by `PipelineKey`. The returned vector is the input to the backend's pipeline preload step.
 
 #### Scenario: Duplicate across passes collapses to one
 - **WHEN** the same mesh+material appears in two passes whose `PipelineKey` values are identical (e.g., a trivial pass remapping)
-- **THEN** `collectAllPipelineBuildInfos()` returns exactly one `PipelineBuildInfo` for it
+- **THEN** `collectAllPipelineBuildDescs()` returns exactly one `PipelineBuildDesc` for it
 
 #### Scenario: Different passes keep distinct entries
 - **WHEN** the same mesh+material appears under `Pass_Forward` and `Pass_Shadow` with distinct per-pass render state
-- **THEN** `collectAllPipelineBuildInfos()` returns two distinct `PipelineBuildInfo` entries
+- **THEN** `collectAllPipelineBuildDescs()` returns two distinct `PipelineBuildDesc` entries
 
 ### Requirement: Scene exposes a renderable collection
 `LX_core::Scene` SHALL provide `const std::vector<IRenderablePtr> &getRenderables() const` returning every renderable currently part of the scene. The previously single `IRenderablePtr mesh` member SHALL be replaced (or wrapped) by a `std::vector<IRenderablePtr> m_renderables` member so `FrameGraph::buildFromScene` can iterate.

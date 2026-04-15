@@ -5,11 +5,11 @@
 // parameter so the queue's scene-level-resource filter can match the
 // camera's RenderTarget.
 
-#include "core/gpu/render_resource.hpp"
-#include "core/gpu/render_target.hpp"
+#include "core/rhi/render_resource.hpp"
+#include "core/frame_graph/render_target.hpp"
 #include "core/scene/camera.hpp"
-#include "core/scene/pass.hpp"
-#include "core/scene/render_queue.hpp"
+#include "core/frame_graph/pass.hpp"
+#include "core/frame_graph/render_queue.hpp"
 #include "core/scene/scene.hpp"
 
 #include <cassert>

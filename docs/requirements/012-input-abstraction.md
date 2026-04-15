@@ -5,7 +5,7 @@
 当前窗口系统 **完全没有暴露任何输入事件**：
 
 - `src/core/platform/window.hpp:8-37` 的 `Window` 接口只有 `getWidth/Height` / `updateSize` / `shouldClose` / `onClose`，没有任何鼠标 / 键盘相关方法
-- `src/infra/window/window_impl_sdl.cpp:39-46` 的 `Impl::shouldClose` 直接吃掉 `SDL_PollEvent` 的所有事件并丢弃 —— 即使 SDL 已经分发了鼠标 / 键盘事件，上层也无从获取
+- `src/infra/window/sdl_window.cpp:39-46` 的 `Impl::shouldClose` 直接吃掉 `SDL_PollEvent` 的所有事件并丢弃 —— 即使 SDL 已经分发了鼠标 / 键盘事件，上层也无从获取
 - `src/test/test_render_triangle.cpp:104-114` 的循环里相机参数全部硬编码，没有任何交互
 
 为了支持 REQ-015 / REQ-016 的相机控制器和 REQ-017 的 ImGui 输入 forwarding，必须先把"键盘按键状态、鼠标位置、鼠标按键状态、滚轮"这四类基础信号从 SDL 抽象到 `core/` 层。
@@ -178,7 +178,7 @@ public:
 | `src/core/platform/window.hpp` | 新增 `getInputState()` 纯虚方法 |
 | `src/core/CMakeLists.txt` | 把新增 header 加入 install / public include |
 | `src/infra/window/window.hpp` | 同步声明 `getInputState() override` |
-| `src/infra/window/window_impl_sdl.cpp` / `window_impl_glfw.cpp` | **临时** stub 返回 `DummyInputState`（保持编译通过；真实实现见 REQ-013） |
+| `src/infra/window/sdl_window.cpp` / `window_impl_glfw.cpp` | **临时** stub 返回 `DummyInputState`（保持编译通过；真实实现见 REQ-013） |
 | `src/test/integration/test_input_state.cpp` | 新增 |
 | `src/test/integration/CMakeLists.txt` | 注册新测试 |
 

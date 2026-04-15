@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Pass system constants
-The system SHALL provide a header `src/core/scene/pass.hpp` exposing `StringID` constants `Pass_Forward`, `Pass_Deferred`, and `Pass_Shadow` in namespace `LX_core`. These constants MUST be declared `inline const` (not `constexpr`) because `StringID` construction interns the underlying name into `GlobalStringTable`.
+The system SHALL provide a header `src/core/frame_graph/pass.hpp` exposing `StringID` constants `Pass_Forward`, `Pass_Deferred`, and `Pass_Shadow` in namespace `LX_core`. These constants MUST be declared `inline const` (not `constexpr`) because `StringID` construction interns the underlying name into `GlobalStringTable`.
 
 #### Scenario: Pass constants are stable across translation units
 - **WHEN** `Pass_Forward` is referenced from two different translation units in the same process
@@ -77,7 +77,7 @@ Every leaf resource participating in pipeline identity SHALL provide a `StringID
 - **THEN** the two `StringID` ids differ
 
 ### Requirement: passFlagFromStringID helper translates pass identity to pass flag
-The header `src/core/scene/pass.hpp` SHALL declare `LX_core::ResourcePassFlag passFlagFromStringID(StringID pass)` and the implementation SHALL live in a new `src/core/scene/pass.cpp` translation unit. The function SHALL map:
+The header `src/core/frame_graph/pass.hpp` SHALL declare `LX_core::ResourcePassFlag passFlagFromStringID(StringID pass)` and the implementation SHALL live in `src/core/frame_graph/pass.cpp`. The function SHALL map:
 - `Pass_Forward` → `ResourcePassFlag::Forward`
 - `Pass_Deferred` → `ResourcePassFlag::Deferred`
 - `Pass_Shadow` → `ResourcePassFlag::Shadow`

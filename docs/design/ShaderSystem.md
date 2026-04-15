@@ -3,7 +3,7 @@
 Shader 系统覆盖从 GLSL 源码到可用 Shader 对象的完整流程：编译、反射、封装。
 
 > 源码位置：
-> - 接口：`src/core/resources/shader.hpp`（`LX_core`）
+> - 接口：`src/core/asset/shader.hpp`（`LX_core`）
 > - 实现：`src/infra/shader_compiler/`（`LX_infra`）
 
 ## 整体流程
@@ -18,7 +18,7 @@ ShaderCompiler::compileProgram()   ← shaderc
 ShaderReflector::reflect()         ← SPIRV-Cross
     │  → vector<ShaderResourceBinding>
     ▼
-ShaderImpl(stages, bindings)       ← IShader 实现
+CompiledShader(stages, bindings)       ← IShader 实现
     │  构建 (set,binding) 和 name 索引
     ▼
 MaterialTemplate.buildBindingCache()
@@ -99,12 +99,12 @@ static vector<ShaderResourceBinding> reflect(stages);
 - 多阶段合并：相同 `(set, binding)` 的资源合并 `stageFlags`
 - **push_constant 不参与反射**（采用引擎硬编码约定，业界通行做法）
 
-## ShaderImpl（IShader 实现）
+## CompiledShader（IShader 实现）
 
 封装编译+反射结果，提供快速查找：
 
 ```cpp
-class ShaderImpl : public IShader {
+class CompiledShader : public IShader {
   vector<ShaderStageCode>        m_stages;
   vector<ShaderResourceBinding>  m_bindings;
 

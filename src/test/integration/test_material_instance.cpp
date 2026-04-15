@@ -1,10 +1,10 @@
-#include "core/resources/material.hpp"
-#include "core/resources/shader.hpp"
-#include "core/scene/pass.hpp"
+#include "core/asset/material.hpp"
+#include "core/asset/shader.hpp"
+#include "core/frame_graph/pass.hpp"
 #include "core/utils/string_table.hpp"
-#include "infra/loaders/blinnphong_material_loader.hpp"
+#include "infra/material_loader/blinn_phong_material_loader.hpp"
 #include "infra/shader_compiler/shader_compiler.hpp"
-#include "infra/shader_compiler/shader_impl.hpp"
+#include "infra/shader_compiler/compiled_shader.hpp"
 #include "infra/shader_compiler/shader_reflector.hpp"
 
 #include <cstdint>
@@ -60,7 +60,7 @@ buildInstanceFromBlinnPhong(ResourcePassFlag flag = ResourcePassFlag::Forward) {
     return nullptr;
   }
   auto bindings = ShaderReflector::reflect(compile.stages);
-  auto shader = std::make_shared<ShaderImpl>(std::move(compile.stages),
+  auto shader = std::make_shared<CompiledShader>(std::move(compile.stages),
                                              bindings, "blinnphong_0");
 
   auto tmpl = MaterialTemplate::create("blinnphong_0", shader);

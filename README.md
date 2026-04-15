@@ -26,10 +26,10 @@ src/
 │
 ├── backend/       # 图形后端实现
 │   └── vulkan/             # Vulkan 后端
-│       ├── vk_renderer.hpp # VulkanRenderer 封装
+│       ├── vulkan_renderer.hpp # VulkanRenderer 封装
 │       └── details/        # 内部实现
-│           ├── vk_device.hpp
-│           ├── vk_resource_manager.hpp
+│           ├── device.hpp
+│           ├── resource_manager.hpp
 │           ├── commands/   # 命令缓冲管理
 │           ├── descriptors/ # 描述符管理
 │           ├── pipelines/  # 渲染管线（BlinnPhong 等）

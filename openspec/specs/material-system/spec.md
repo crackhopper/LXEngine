@@ -94,7 +94,7 @@ The system SHALL provide exactly one concrete implementation of `IMaterial`, nam
 ### Requirement: Core-layer UBO byte-buffer resource wrapper
 The core layer SHALL provide a `UboByteBufferResource` class that implements `IRenderResource` over a non-owning reference to a `std::vector<uint8_t>`. Its `getRawData()` MUST return a pointer computed from the referenced vector at call time (not a stale copy captured at construction), `getByteSize()` MUST return the byte count passed at construction, `getType()` MUST return `ResourceType::UniformBuffer`, and `setDirty()` MUST mark the resource for upload through the existing `VulkanResourceManager::syncResource()` path. `MaterialInstance` SHALL construct exactly one such wrapper for its `m_uboBuffer` during its own construction.
 
-> Rationale: this wrapper is the same shape as the existing `SkeletonUBO` in `src/core/resources/skeleton.hpp` — both live in core because `IRenderResource` is a core contract and no backend-specific code is required to adapt a raw byte buffer into that contract.
+> Rationale: this wrapper is the same shape as the existing `SkeletonUBO` in `src/core/asset/skeleton.hpp` — both live in core because `IRenderResource` is a core contract and no backend-specific code is required to adapt a raw byte buffer into that contract.
 
 #### Scenario: Wrapper exposes buffer bytes without copy
 - **WHEN** a `UboByteBufferResource` is created over a 48-byte vector

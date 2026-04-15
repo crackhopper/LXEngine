@@ -168,9 +168,9 @@ private:
 
 ### REQ-307 · Shader 热重载
 
-- `ShaderImpl` 记住自己的源文件路径 + 上次 mtime
+- `CompiledShader` 记住自己的源文件路径 + 上次 mtime
 - 一个独立线程或主循环 poll 检查 mtime 变化
-- mtime 变化 → 重新编译 + 反射 → 替换 `ShaderImpl` 内容
+- mtime 变化 → 重新编译 + 反射 → 替换 `CompiledShader` 内容
 - 所有依赖的 pipeline 被标记失效 → `PipelineCache` 重建
 
 **验收**：运行期修改 `pbr_cube.frag` 保存，不重启就能看到新效果（或编译错误日志）。

@@ -6,10 +6,10 @@
 
 短答：**是一个刚刚够格的、教学型的小型渲染引擎**，不是游戏引擎。从"引擎"这个词的标准含义看，它具备的能力：
 
-- **资源抽象层**：`IRenderResource` + dirty 同步通道（`notes/architecture.md` 一帧的数据流）
+- **资源抽象层**：`IRenderResource` + dirty 同步通道（`notes/architecture.md` 场景启动与每帧工作流）
 - **材质系统**：反射驱动的 `MaterialTemplate` / `MaterialInstance`，std140 自动打包（`notes/subsystems/material-system.md`）
-- **Shader 系统**：运行期 GLSL → SPIR-V → 反射 → `ShaderImpl`（`notes/subsystems/shader-system.md`）
-- **管线身份**：`PipelineKey` + `PipelineBuildInfo` + `PipelineCache` 预构建（`notes/subsystems/pipeline-identity.md` / `pipeline-cache.md`）
+- **Shader 系统**：运行期 GLSL → SPIR-V → 反射 → `CompiledShader`（`notes/subsystems/shader-system.md`）
+- **管线身份**：`PipelineKey` + `PipelineBuildDesc` + `PipelineCache` 预构建（`notes/subsystems/pipeline-identity.md` / `pipeline-cache.md`）
 - **Scene / FrameGraph**：多相机 + 多光源 + 多 pass + 按 target/pass 过滤 scene-level 资源（`notes/subsystems/scene.md` / `frame-graph.md`）
 - **Vulkan backend**：device / swapchain / resource manager / command buffer / descriptor manager 一套薄壳（`notes/subsystems/vulkan-backend.md`）
 
@@ -35,16 +35,19 @@
  Scene (1 camera + 1 directional light + 1 cube renderable)
     │
     ▼
+ EngineLoop::startScene
+    │
+    ▼
  FrameGraph (Pass_Forward → swapchain)
     │
     ▼
  RenderQueue::buildFromScene → RenderingItem (with PipelineKey)
     │
     ▼
- PipelineCache preload + runtime bind
+ EngineLoop::tickFrame
     │
     ▼
- VulkanRenderer::draw  每帧旋转 cube 的 push-constant model 矩阵
+ update hook -> upload dirty -> VulkanRenderer::draw
 ```
 
 ---
@@ -64,7 +67,8 @@
 
 ## 预备知识
 
-- 读过 `notes/architecture.md` 的"一帧的数据流"一节
+- 读过 `notes/architecture.md` 的"场景启动与每帧工作流"一节
+- 对 `EngineLoop` 的职责边界有基本印象（`notes/subsystems/engine-loop.md`）
 - 了解 Vulkan 的 descriptor set / pipeline 基本概念（不必会写，能看懂字段名即可）
 - 看过 `src/test/test_render_triangle.cpp` — 教程里的 `main.cpp` 是它的 PBR 变体
 

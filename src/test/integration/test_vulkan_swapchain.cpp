@@ -1,6 +1,6 @@
-#include "backend/vulkan/details/render_objects/vkr_renderpass.hpp"
-#include "backend/vulkan/details/render_objects/vkr_swapchain.hpp"
-#include "backend/vulkan/details/vk_device.hpp"
+#include "backend/vulkan/details/render_objects/render_pass.hpp"
+#include "backend/vulkan/details/render_objects/swapchain.hpp"
+#include "backend/vulkan/details/device.hpp"
 #include "infra/window/window.hpp"
 
 #include <vulkan/vulkan.h>

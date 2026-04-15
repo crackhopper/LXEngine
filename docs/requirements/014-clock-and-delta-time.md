@@ -8,6 +8,7 @@
 - 任何"按时间推进"的逻辑（旋转、动画、物理）目前要么硬编码（"每帧加 0.01 弧度"），要么干脆没有
 - REQ-016 的 FreeFly 相机控制器需要 `position += velocity * deltaTime`，没有 Clock 这件事根本没法做
 - REQ-018 的 DebugPanel 想显示 FPS，也要 deltaTime / smoothed deltaTime
+- REQ-020 的 `EngineLoop` 也需要一个稳定的 `tick()` 时间源来驱动每帧 update hook
 
 [Phase 2 REQ-206](../../notes/roadmaps/phase-2-foundation-layer.md) 规划了完整的 `Clock` 类（含 fixed step accumulator、timeScale、frameCount）。本 REQ 是 Phase 2 REQ-206 的**最小可用前置版本**：只暴露 Phase 1 调试链路真正需要的字段（`tick / deltaTime / totalTime / frameCount`），fixed step / timeScale 等 Phase 2 再加。
 
@@ -84,7 +85,7 @@ private:
 
 ### R2: 与现有循环的接入示例
 
-修改 `src/test/test_render_triangle.cpp`，在主循环里展示用法（**不**新增功能，只是预演 REQ-019 / REQ-016 用法）：
+修改 `src/test/test_render_triangle.cpp`，在主循环里展示用法（**不**新增功能，只是预演 REQ-020 / REQ-019 / REQ-016 的调用顺序）：
 
 ```cpp
 LX_core::Clock clock;
@@ -99,6 +100,8 @@ while (running) {
 ```
 
 不依赖 `clock.deltaTime()` 改变现有渲染行为 —— 这只是接入点示范。
+
+从长期架构看，这段 while-loop 应在 REQ-020 中收敛到 `EngineLoop::tickFrame()` 内部；这里保留展开版，只为锁定 `Clock` 的最小契约。
 
 ### R3: 单元测试
 
@@ -166,7 +169,8 @@ TEST(Clock, smoothed_delta_falls_back_to_delta_when_empty) {
 
 - **REQ-016**：FreeFly 相机的 `position += velocity * deltaTime`
 - **REQ-018**：DebugPanel 显示 `1.0f / smoothedDeltaTime()` 作为 FPS
-- **REQ-019**：demo_scene_viewer 的 game loop 显式 `clock.tick()` + `window->nextFrame()`
+- **REQ-020**：`EngineLoop` 的 `tickFrame()` 需要显式 `clock.tick()`
+- **REQ-019**：demo_scene_viewer 将通过 `EngineLoop` 间接消费 `Clock`
 - **Phase 2 REQ-206**：在本 REQ 上加 fixed step / timeScale
 
 ## 实施状态

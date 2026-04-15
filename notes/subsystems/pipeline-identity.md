@@ -1,151 +1,54 @@
 # Pipeline Identity
 
-> Pipeline 的身份是一棵**结构化 StringID 树**。所有参与 pipeline 唯一性的资源都通过 `getRenderSignature(pass) → StringID` 贡献自己的那一层，最后由 `PipelineKey::build(objSig, materialSig)` 做两级 compose 得到最终身份。可通过 `toDebugString()` 完整还原成人类可读的 pipeline tree。
+> Pipeline 身份不是临时拼出来的字符串，而是结构化的 `StringID` 树。目标是稳定地区分“哪些 draw 可以共用同一条 pipeline”。
 >
-> 权威 spec: `openspec/specs/pipeline-key/spec.md` + `openspec/specs/render-signature/spec.md` + `openspec/specs/pipeline-build-info/spec.md`
+> 权威 spec: `openspec/specs/pipeline-key/spec.md` + `openspec/specs/render-signature/spec.md` + `openspec/specs/pipeline-build-desc/spec.md`
 
-## 核心抽象
+## 它解决什么问题
 
-### `PipelineKey` (`src/core/resources/pipeline_key.hpp:11`)
+- 明确 pipeline cache 的 key 到底由什么组成。
+- 把 backend 需要的构建输入整理成 `PipelineBuildDesc`。
+- 保证相同 draw 条件得到相同 key，不同条件得到不同 key。
 
-```cpp
-struct PipelineKey {
-    StringID id;
+## 核心对象
 
-    bool operator==(const PipelineKey&) const;
-    bool operator!=(const PipelineKey&) const;
+- `PipelineKey`：最终身份，只包一个 `StringID`。
+- `PipelineBuildDesc`：backend 建 pipeline 的完整输入包。
+- `getRenderSignature(...)`：每个资源贡献自己那一层身份。
 
-    struct Hash { size_t operator()(const PipelineKey&) const; };
+## 典型数据流
 
-    static PipelineKey build(StringID objectSig, StringID materialSig);
-};
-```
+1. geometry 产出 object-side signature。
+2. material 产出 material-side signature。
+3. `PipelineKey::build(objectSig, materialSig)`。
+4. `PipelineBuildDesc::fromRenderingItem(item)` 从 `RenderingItem` 派生 backend 输入。
+5. `PipelineCache` 用这个 key 做缓存。
 
-内部就一个 `StringID`。`build()` 做 `compose(TypeTag::PipelineKey, {objectSig, materialSig})`。
+## 关键约束
 
-### `PipelineBuildInfo` (`src/core/resources/pipeline_build_info.hpp:31`)
+- object 和 material 分开 compose，再合成 `PipelineKey`。
+- pass 参数要沿着 render signature 链一路传下去。
+- `RenderableSubMesh` 的 object-side signature 当前由 `mesh->getRenderSignature(pass)` 和可选的 skeleton signature 组成，最终 compose 成 `TypeTag::ObjectRender`。
+- `MaterialInstance::getRenderSignature(pass)` 当前只把 `MaterialTemplate::getRenderPassSignature(pass)` 再包一层 `TypeTag::MaterialRender`。
+- skeleton 的“启用/禁用”是单独的一维身份；当前有 skeleton 时就是固定叶子 `Skn1`，没有 skeleton 时是空 `StringID`。
+- `PipelineBuildDesc` 不重新推导 identity，它直接使用 `item.pipelineKey`。
 
-Backend 构建 Vulkan pipeline 所需的**全部**数据包。Backend-agnostic（不引用 `VkXxx`）。
+## 当前实现边界
 
-```cpp
-struct PipelineBuildInfo {
-    PipelineKey                          key;
-    std::vector<ShaderStageCode>         stages;       // SPIR-V bytecode
-    std::vector<ShaderResourceBinding>   bindings;     // 反射 binding
-    VertexLayout                         vertexLayout;
-    RenderState                          renderState;
-    PrimitiveTopology                    topology;
-    PushConstantRange                    pushConstant;
+- `Mesh::getRenderSignature(pass)` 目前保留 `pass` 参数但并不使用；当前只由 vertex layout signature 和 topology signature 组成。
+- `PipelineBuildDesc::fromRenderingItem(...)` 当前抽取的字段是 `key`、`stages`、`bindings`、`vertexLayout`、`renderState`、`topology`、`pushConstant`。其中 `pushConstant` 不是从 shader 反射出来的，而是固定的 engine-wide 约定。
+- 这条固定约定当前是 `PushConstantRange{ offset = 0, size = 128, stageFlagsMask = Vertex | Fragment }`。
+- `PipelineBuildDesc::fromRenderingItem(...)` 依赖 `item.shaderInfo`、`item.vertexBuffer`、`item.indexBuffer`、`item.material` 都非空；不满足时会触发断言。
+- 文档里提到的 shader variants 排序逻辑只在 `ShaderProgramSet` 这一层仍然存在，但当前 `PipelineKey` 的主路径并不直接从 variants 列表组 key，而是走已经组合好的 render signature。
 
-    static PipelineBuildInfo fromRenderingItem(const RenderingItem &item);
-};
-```
+## 从哪里改
 
-`PushConstantRange` (`:18`) 是 `{stageFlags, offset, size}` 的 core 层值类型。目前由工厂注入引擎约定（128 字节 vertex+fragment），未来可由 shader 声明。
+- 想让新资源影响 pipeline：实现或修改它的 `getRenderSignature(...)`。
+- 想调整 backend 构建输入：看 `PipelineBuildDesc::fromRenderingItem(...)`。
+- 想排查 cache miss：先看 `toDebugString(item.pipelineKey.id)`。
 
-### Per-Resource `getRenderSignature` 贡献方
+## 关联文档
 
-每个参与 pipeline 身份的资源都提供 `StringID getRenderSignature() const`（或 `(pass)` 版本）：
-
-| 资源 | 签名函数 | 输出 |
-|------|---------|------|
-| `VertexLayoutItem` | `getRenderSignature()` | 叶子 Intern: `"0_pos_Float3_Vertex_0"` 等 |
-| `VertexLayout` | `getRenderSignature()` | `compose(VertexLayout, {items..., Intern(stride)})` |
-| `PrimitiveTopology` | `topologySignature(t)` 自由函数 | 叶子 `Intern("tri")` / `Intern("line")` / ... |
-| `Mesh` | `getRenderSignature(pass)` | `compose(MeshRender, {layoutSig, topologySig})` |
-| `Skeleton` | `getRenderSignature()` | `Intern("Skn1")`（无骨骼时调用方返回 `StringID{}`） |
-| `RenderState` | `getRenderSignature()` | `compose(RenderState, {cullTag, depthTags, blendTags, ...})` |
-| `ShaderProgramSet` | `getRenderSignature()` | `compose(ShaderProgram, {Intern(name), Intern(variant1), Intern(variant2), ...})`（variant sorted） |
-| `RenderPassEntry` | `getRenderSignature()` | `compose(RenderPassEntry, {shaderSig, stateSig})` |
-| `MaterialInstance` | `getRenderSignature(pass)` override `IMaterial` | `compose(MaterialRender, {template->getRenderPassSignature(pass)})` |
-| `RenderableSubMesh` | `getRenderSignature(pass)` override `IRenderable` | `compose(ObjectRender, {meshSig, skelSig})` |
-
-## 典型用法
-
-### 构造 PipelineKey
-
-```cpp
-// 不要自己调 compose —— RenderQueue::buildFromScene 会替你做
-RenderQueue q;
-q.buildFromScene(*scene, Pass_Forward);
-auto &item = q.getItems().front();
-// item.pipelineKey 已填充
-
-// 调试还原
-auto &tbl = GlobalStringTable::get();
-std::cout << tbl.toDebugString(item.pipelineKey.id) << '\n';
-// → "PipelineKey(
-//      ObjectRender(
-//        MeshRender(VertexLayout(0_pos_..., 1_norm_..., 24), tri),
-//        Skn1
-//      ),
-//      MaterialRender(
-//        RenderPassEntry(
-//          ShaderProgram(blinnphong_0, HAS_NORMAL_MAP),
-//          RenderState(CullBack, DepthTest, DepthWrite, LessEqual, NoBlend, One, Zero)
-//        )
-//      )
-//    )"
-```
-
-### 从 RenderingItem 推导 PipelineBuildInfo
-
-```cpp
-auto info = PipelineBuildInfo::fromRenderingItem(item);
-// info.key == item.pipelineKey
-// info.bindings == item.shaderInfo->getReflectionBindings()（同序）
-// info.stages   == item.shaderInfo->getAllStages()
-// info.vertexLayout / topology / renderState 从 item 各字段派生
-```
-
-Backend 拿到 `PipelineBuildInfo` 就能构建完整的 `VulkanPipeline`，**不需要任何 shader 名字查表**，也不需要硬编码的 descriptor slot 枚举。
-
-## 调用关系
-
-```
-RenderQueue::buildFromScene(scene, Pass_Forward)
-  │ (per renderable, inside makeItemFromRenderable helper)
-  │
-  ├── sub->getRenderSignature(Pass_Forward)              // objectSig
-  │     ├── mesh->getRenderSignature(pass)
-  │     │     └── compose(MeshRender, {layoutSig, topoSig})
-  │     └── skeleton.value()->getRenderSignature()
-  │           └── Intern("Skn1")
-  │
-  ├── sub->material->getRenderSignature(Pass_Forward)    // materialSig
-  │     └── template->getRenderPassSignature(Pass_Forward)
-  │           └── entry.getRenderSignature()
-  │                 └── compose(RenderPassEntry, {shaderSig, stateSig})
-  │
-  └── PipelineKey::build(objectSig, materialSig)
-        └── compose(TypeTag::PipelineKey, {objectSig, materialSig})
-              ↓
-        item.pipelineKey = { .id = ... }
-              ↓
-    PipelineBuildInfo::fromRenderingItem(item)
-              ↓
-    PipelineCache::preload / getOrCreate(info, renderPass)
-              ↓
-        VulkanPipeline
-```
-
-## 注意事项
-
-- **两级 compose 是故意的**: object + material 两个子身份分开 compose，好处是 debug string 分层清晰，并且未来如果要按 pass 做 pipeline variant（例如 `Pass_Shadow` 的 stripped state），只要在 `MaterialInstance::getRenderSignature(pass)` 里换一个 `RenderPassEntry` 就行，不用改 `PipelineKey::build` 的签名。
-- **Pass 参数统一传**: `getRenderSignature(pass)` 在所有 `IRenderable` / `Mesh` 上都必须接 pass 参数，即便当前实现忽略它（`Mesh` 就是这样，注释里写明了）。签名统一的原因是未来要"同一个 mesh 在不同 pass 剔除属性"时可以扩展而不改接口。
-- **Skeleton 用 `Intern("Skn1")` 而非 compose**: 因为骨骼对 pipeline 的贡献只是一个布尔（"启用骨骼 / 不启用"），叶子字符串就够了。无骨骼的情况由调用方返回 `StringID{}`（id = 0），**不**要让 `Skeleton::getRenderSignature()` 自己返回 0，这样才能保持类本身的语义干净。
-- **Variant 必须 sort**: `ShaderProgramSet::getRenderSignature()` 在 compose 前对 `variants.macroName` 做字典序排序。否则 `{A,B}` 和 `{B,A}` 会算出不同的 key。
-
-## 测试
-
-- `src/test/integration/test_pipeline_identity.cpp` — 覆盖两级 compose + 各 resource 的签名独立性 + `toDebugString` 可读性
-- `src/test/integration/test_pipeline_build_info.cpp` — `fromRenderingItem` 的字段派生 + 跨调用确定性
-
-## 延伸阅读
-
-- `openspec/specs/pipeline-key/spec.md` — `PipelineKey::build(objSig, matSig)` + `toDebugString` 要求
-- `openspec/specs/render-signature/spec.md` — 每类资源的 `getRenderSignature` 签名与语义
-- `openspec/specs/pipeline-build-info/spec.md` — `fromRenderingItem` 工厂与 `bindings` 保序要求
-- 归档: `openspec/changes/archive/2026-04-14-frame-graph-drives-rendering/` — `RenderQueue::buildFromScene` 成为 `RenderingItem` + `pipelineKey` 的唯一构造入口
-- 归档: `openspec/changes/archive/2026-04-13-interning-pipeline-identity/` — 结构化 interning 路径的引入
-- 归档: `openspec/changes/archive/2026-04-13-pipeline-prebuilding/` — `PipelineBuildInfo` 基础设施
+- `notes/subsystems/string-interning.md`
+- `notes/subsystems/pipeline-cache.md`
+- `notes/subsystems/geometry.md`

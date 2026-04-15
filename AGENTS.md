@@ -85,9 +85,9 @@ Completed changes are archived in `openspec/changes/archive/`. Active changes ar
 
 ### Resource System
 
-- `IRenderResource` (base) in `src/core/gpu/render_resource.hpp` — all GPU resources inherit from this
-- `IShader` interface in `src/core/resources/shader.hpp` — shader with reflection bindings
-- `ShaderCompiler` / `ShaderReflector` / `ShaderImpl` in `src/infra/shader_compiler/` — runtime GLSL compilation + SPIR-V reflection
+- `IRenderResource` (base) in `src/core/rhi/render_resource.hpp` — all GPU resources inherit from this
+- `IShader` interface in `src/core/asset/shader.hpp` — shader with reflection bindings
+- `ShaderCompiler` / `ShaderReflector` / `CompiledShader` in `src/infra/shader_compiler/` — runtime GLSL compilation + SPIR-V reflection
 
 ### String Interning
 
@@ -103,13 +103,20 @@ Completed changes are archived in `openspec/changes/archive/`. Active changes ar
 
 ## Design Documents
 
-Detailed design docs live in `docs/design/`. Read the relevant doc for architecture context:
+Current design-oriented docs live in `notes/subsystems/`. Read the relevant doc for architecture context:
 
 | Document | Path | Summary |
 |----------|------|---------|
-| **GlobalStringTable** | `docs/design/GlobalStringTable.md` | String interning system — `GlobalStringTable` singleton maps strings to `uint32_t` IDs; `StringID` wraps IDs with implicit string construction |
-| **MaterialSystem** | `docs/design/MaterialSystem.md` | Template-Instance material architecture — `MaterialTemplate` holds render passes and binding cache; `MaterialInstance` stores per-instance properties keyed by `StringID` |
-| **ShaderSystem** | `docs/design/ShaderSystem.md` | End-to-end shader pipeline — GLSL compilation (shaderc), SPIR-V reflection (SPIRV-Cross), `ShaderImpl` with O(1) binding lookup; variant macros for conditional features |
+| **FrameGraph** | `notes/subsystems/frame-graph.md` | Pass orchestration, queue building, scene-level resource merge, and pipeline preload collection |
+| **Geometry** | `notes/subsystems/geometry.md` | Mesh, vertex layout, index topology, and how geometry contributes to pipeline identity |
+| **MaterialSystem** | `notes/subsystems/material-system.md` | Material template/instance flow, reflection-driven UBO writes, and descriptor resource ownership |
+| **PipelineCache** | `notes/subsystems/pipeline-cache.md` | Backend pipeline cache semantics for preload, lookup, and runtime miss handling |
+| **PipelineIdentity** | `notes/subsystems/pipeline-identity.md` | `PipelineKey`, `PipelineBuildDesc`, render signatures, and structured identity composition |
+| **Scene** | `notes/subsystems/scene.md` | Scene container model, `RenderingItem` assembly path, and scene-level descriptors |
+| **ShaderSystem** | `notes/subsystems/shader-system.md` | Runtime GLSL compile/reflect/package flow and the `CompiledShader` contract |
+| **Skeleton** | `notes/subsystems/skeleton.md` | Skeleton resource, `SkeletonUBO`, and the pipeline signature for skinned rendering |
+| **StringInterning** | `notes/subsystems/string-interning.md` | `GlobalStringTable`, `StringID`, structured compose/decompose, and debug-string reconstruction |
+| **VulkanBackend** | `notes/subsystems/vulkan-backend.md` | Vulkan renderer/device/resource manager/command buffer integration with core abstractions |
 
 ## Conventions
 
@@ -117,3 +124,12 @@ Detailed design docs live in `docs/design/`. Read the relevant doc for architect
 - Header-only for small utilities; `.hpp` + `.cpp` split for modules
 - Shaders in `shaders/glsl/` with `.vert` / `.frag` extensions
 - Integration tests: one executable per module in `src/test/integration/`
+
+## Codex Command Workflow
+
+- Prefer `rg --files` for file discovery and `rg -n` for text search.
+- Prefer `sed -n` for focused file reads and `git status` / `git diff` for worktree inspection.
+- Prefer `mv` for rename-only refactors and `perl -0pi` only for mechanical bulk rewrites after file moves.
+- Use `cmake` and `ninja` for build verification on Linux.
+- Command pre-authorization is controlled by `/home/lx/.codex/rules/default.rules`, not by this file.
+- If a command fails for permission reasons, first try an already approved prefix instead of assuming the tool is unavailable.

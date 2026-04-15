@@ -60,7 +60,7 @@
 提出一个通用的"全屏三角形 pass"模板。
 
 - 新增 `FullscreenPass` 辅助：无顶点 buffer、`gl_VertexIndex` 生成三角形、一个 sampler 输入、一个颜色输出
-- `core/scene/pass.hpp` 增加 `Pass_PostProcess` StringID
+- `core/frame_graph/pass.hpp` 增加 `Pass_PostProcess` StringID
 - 全屏 pass 的 pipeline 绕过 vertex layout（`pipelineKey` 的 meshSig 用 `StringID{}`）
 - 新增 `infra/post_process/tonemap_pass.hpp`：第一个落地的后期 pass，Reinhard + ACES 两种可选
 
@@ -162,7 +162,7 @@ vec3 ambient = (kD * irrd * albedo + prefiltered * (F * brdf.x + brdf.y)) * ao;
 现在的 `Renderer` 基类只有一个 native 实现。要让第二个后端可以平级挂入，必须把它真正当接口用：
 
 - 审计基类虚方法签名是否泄露了第一方后端特有类型
-- 把这类泄露抽到 `core/gpu/` 的中立类型（`ICommandBuffer` / `IGpuImage` / `IGpuBuffer` 等纯接口）
+- 把这类泄露抽到 `core/rhi/` 的中立类型（`ICommandBuffer` / `IGpuImage` / `IGpuBuffer` 等纯接口）
 - 原生后端继续存在，只是从"唯一实现"变成"若干实现之一"
 
 **验收**：通过接口调用原生后端，调用点对"背后跑的是什么"完全无感知。
@@ -197,7 +197,7 @@ vec3 ambient = (kD * irrd * albedo + prefiltered * (F * brdf.x + brdf.y)) * ao;
 
 ### REQ-114 · PipelineCache 适配多后端
 
-- `PipelineBuildInfo` 已经是后端中立的结构（现状），只需要为每个后端新增一条 `from BuildInfo → native pipeline handle` 的实现
+- `PipelineBuildDesc` 已经是后端中立的结构（现状），只需要为每个后端新增一条 `from BuildInfo → native pipeline handle` 的实现
 - 缓存的 key（`PipelineKey`）与后端无关，不同后端共享同一份 key 空间
 - 新后端的预编译流水线和现有 `PipelineCache::preload` 共用入口
 
@@ -312,7 +312,7 @@ vec3 ambient = (kD * irrd * albedo + prefiltered * (F * brdf.x + brdf.y)) * ao;
 ## 与现有架构的契合
 
 - `FrameGraph::addPass` 已经支持任意 `FramePass`。新增 pass 只需要新增 `Pass_*` StringID 并在 backend 创建对应 render pass object。
-- `PipelineCache::preload` 走 `collectAllPipelineBuildInfos()` 路径，新 pass 的 pipeline 同样会被扫描预构建。
+- `PipelineCache::preload` 走 `collectAllPipelineBuildDescs()` 路径，新 pass 的 pipeline 同样会被扫描预构建。
 - `RenderQueue` 的 pass / target 过滤正好适配 shadow pass（只有支持 shadow 的 renderable 才会进 queue）。
 - 反射驱动材质系统让后处理 shader 的 binding 表自动生成，不需要手写。
 - `IRenderResource::getBindingName()` 让环境贴图 / BRDF LUT 这类资源通过命名自动绑定。

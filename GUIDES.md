@@ -15,19 +15,19 @@
 | `openspec/changes/<name>/` | 活动中的 openspec change（proposal / design / specs / tasks） | `/opsx:propose` 创建 |
 | `openspec/changes/archive/YYYY-MM-DD-<name>/` | 已归档的 openspec change | `/opsx:archive` 移入 |
 | `openspec/specs/<capability>/spec.md` | 主 spec，是当前代码的权威契约 | `/opsx:archive` 同步 |
-| `notes/` | 面向人类阅读者的中文项目速览 | `/update-notes` 生成与增量更新 |
-| `docs/design/*.md` | 深度技术设计文档 | 人工编写，`/sync-design-docs` 维护索引 |
+| `notes/` | 面向人类阅读者的中文项目速览 | `/update-notes` 生成与增量更新，`scripts/serve-notes.sh` / `/refresh-notes` 重启本地站点 |
+| `notes/subsystems/*.md` | 当前子系统设计文档 | 人工维护，`/sync-design-docs` 维护 `AGENTS.md` / `CLAUDE.md` 的索引 |
 
 ---
 
 ## 典型流程
 
 ```
-┌────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌────────────┐  ┌───────────────┐  ┌──────────────────┐
-│ /draft-req │→ │/opsx:propose│→ │ /opsx:apply │→ │/opsx:archive│→ │/finish-req │→ │ /update-notes │→ │ /commit-changes  │
-└────────────┘  └─────────────┘  └─────────────┘  └─────────────┘  └────────────┘  └───────────────┘  └──────────────────┘
-  讨论 + 写       生成 change      实施代码         归档 +           校验 +           同步 notes        stage + commit
-  需求文档         四件套          + 跑测试         同步主 spec       归档需求          摘要              到 git
+┌────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌────────────┐  ┌───────────────┐  ┌────────────────┐  ┌──────────────────┐
+│ /draft-req │→ │/opsx:propose│→ │ /opsx:apply │→ │/opsx:archive│→ │/finish-req │→ │ /update-notes │→ │/refresh-notes │→ │ /commit-changes  │
+└────────────┘  └─────────────┘  └─────────────┘  └─────────────┘  └────────────┘  └───────────────┘  └────────────────┘  └──────────────────┘
+  讨论 + 写       生成 change      实施代码         归档 +           校验 +           同步 notes        刷新运行中的       stage + commit
+  需求文档         四件套          + 跑测试         同步主 spec       归档需求          摘要              文档站点           到 git
 ```
 
 每一步都是可中断的检查点。只要当前步骤产出对齐预期，可以停下换别的工作；稍后继续时命令会从当前状态接着走。
@@ -189,14 +189,14 @@
 **做什么**:
 
 **首次运行**:
-- 扫描 `AGENTS.md` / `CLAUDE.md` / `openspec/specs/` / `docs/design/` / `src/` 目录结构
+- 扫描 `AGENTS.md` / `CLAUDE.md` / `openspec/specs/` / `notes/subsystems/` / `src/` 目录结构
 - 生成完整 notes 树：`README.md` / `architecture.md` / `glossary.md` / `subsystems/<name>.md` × N
 - 写入 `notes/.sync-meta.json` 记录本次 commit
 
 **增量运行**:
 - 读 `.sync-meta.json` 拿 `lastSyncedCommit`
 - `git log ${lastSyncedCommit}..HEAD --name-only` 获取变更文件
-- 按内置映射表（`src/core/resources/material.*` → `material-system.md` 等 13 条）投射到受影响的 notes 文件
+- 按内置映射表（`src/core/asset/material.*` → `material-system.md` 等 13 条）投射到受影响的 notes 文件
 - **仅 `openspec/changes/archive/**` 触发更新**——在途 change 被排除
 - 先展示计划再写盘
 
@@ -217,6 +217,29 @@
 - 每次 `/opsx:archive` 后 → `/update-notes` 让摘要跟上最新代码
 - 想单独刷新某一页 → `/update-notes material-system`
 - 想先预览再决定 → `/update-notes --dry-run`
+
+完成 `/update-notes` 或任何手工文档编辑后，直接执行一次 `/refresh-notes` 或 `scripts/serve-notes.sh`，重启本地站点。
+
+---
+
+### `/refresh-notes` — 重启本地 notes 站点
+
+**输入**:
+- `/refresh-notes`
+
+**做什么**:
+
+- 运行 `scripts/refresh-notes.sh`（内部转到 `scripts/serve-notes.sh`）
+- 重生成 `mkdocs.gen.yml`
+- 自动停止占用 notes 端口的旧服务
+- 在后台拉起一个新的 `mkdocs serve`
+- 返回 URL、PID、日志路径
+
+**典型场景**:
+- 手工编辑了 `notes/*.md`，想稳定看到最新结果
+- 新增了 notes 页面或目录，想让导航立即刷新
+- 更新了 `mkdocs.yml`、`docs/requirements/*.md` 或 `notes/tools/*.md`
+- 刚执行完 `/update-notes`，想用最稳妥的方式重启站点
 
 ---
 
@@ -271,14 +294,14 @@
 **输入**: 无参数。
 
 **做什么**:
-- 对比 `AGENTS.md` 的 Design Documents 小节和 `docs/design/` 目录实际文件
+- 对比 `AGENTS.md` / `CLAUDE.md` 的设计索引和 `notes/subsystems/` 目录实际文件
 - 缺失项从源码 / 现有 spec 生成
 - 已有项检查摘要是否过时
 
 **与 `/update-notes` 的区别**:
-- `/sync-design-docs` 维护的是 **AGENTS.md 的索引** + **docs/design/ 的深度文档**
-- `/update-notes` 维护的是 **notes/ 的项目速览**
-- 前者是权威设计文档，后者是面向新人的摘要
+- `/sync-design-docs` 维护的是 **AGENTS.md / CLAUDE.md 的设计索引** + **notes/subsystems/ 的子系统文档映射**
+- `/update-notes` 维护的是 **notes/** 其余导航与总览页
+- 前者偏子系统入口，后者偏站点摘要
 
 ---
 
@@ -444,5 +467,5 @@
 - `AGENTS.md` — 项目架构总览
 - `CLAUDE.md` — 快速索引 + Specs Index + Design Docs Index
 - `openspec/specs/` — 所有能力的权威 spec
-- `docs/design/` — 深度设计文档
+- `notes/subsystems/` — 当前子系统设计文档
 - `docs/requirements/finished/` — 历史需求归档，看项目是如何演化到当前状态的

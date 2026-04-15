@@ -4,7 +4,7 @@
 
 ## 参考样板
 
-直接读一遍 `src/infra/loaders/blinnphong_material_loader.cpp`，这是唯一一个现存 loader。我们的 PBR loader 的结构是**一对一复制** + 改名字 + 改默认值。
+直接读一遍 `src/infra/material_loader/blinn_phong_material_loader.cpp`，这是唯一一个现存 loader。我们的 PBR loader 的结构是**一对一复制** + 改名字 + 改默认值。
 
 ```
 复制 → blinnphong_material_loader.{cpp,hpp}
@@ -25,8 +25,8 @@ src/infra/loaders/pbr_cube_material_loader.cpp
 ```cpp
 // src/infra/loaders/pbr_cube_material_loader.hpp
 #pragma once
-#include "core/resources/material.hpp"
-#include "core/scene/pass.hpp"
+#include "core/asset/material.hpp"
+#include "core/frame_graph/pass.hpp"
 
 namespace LX_infra {
 
@@ -55,9 +55,9 @@ loadPbrCubeMaterial(LX_core::ResourcePassFlag passFlag =
 ```cpp
 // src/infra/loaders/pbr_cube_material_loader.cpp
 #include "infra/loaders/pbr_cube_material_loader.hpp"
-#include "core/scene/pass.hpp"
+#include "core/frame_graph/pass.hpp"
 #include "infra/shader_compiler/shader_compiler.hpp"
-#include "infra/shader_compiler/shader_impl.hpp"
+#include "infra/shader_compiler/compiled_shader.hpp"
 #include "infra/shader_compiler/shader_reflector.hpp"
 
 #include <filesystem>
@@ -104,7 +104,7 @@ loadPbrCubeMaterial(LX_core::ResourcePassFlag passFlag) {
     }
 
     auto bindings = ShaderReflector::reflect(compiled.stages);
-    auto shader   = std::make_shared<ShaderImpl>(
+    auto shader   = std::make_shared<CompiledShader>(
         std::move(compiled.stages), bindings, baseName);
 
     // ── 3. MaterialTemplate ────────────────────────────
@@ -143,8 +143,8 @@ loadPbrCubeMaterial(LX_core::ResourcePassFlag passFlag) {
 |------|------|-----------|
 | GLSL → SPIR-V | `ShaderCompiler` | 运行期编译让我们改 shader 不用重启构建 |
 | SPIR-V → ShaderResourceBinding | `ShaderReflector` | 反射驱动的材质绑定，不用手写 set/binding 表 |
-| `ShaderImpl` 包装 | `src/infra/shader_compiler/shader_impl.hpp` | 把 bytecode + bindings 封成 `IShader` |
-| `MaterialTemplate::create` | `core/resources/material.hpp:175` | 蓝图：一个材质模板可以实例化多次 |
+| `CompiledShader` 包装 | `src/infra/shader_compiler/compiled_shader.hpp` | 把 bytecode + bindings 封成 `IShader` |
+| `MaterialTemplate::create` | `core/asset/material.hpp:175` | 蓝图：一个材质模板可以实例化多次 |
 | `setPass(Pass_Forward, entry)` | 同上 | 某个 pass 下用哪套 shader + render state |
 | `buildBindingCache()` | 同上 | 把反射结果做成 `StringID → ShaderResourceBinding` 查表 |
 | `MaterialInstance::create` | 同上:272 | 真正分配 std140 字节 buffer 的 owner |

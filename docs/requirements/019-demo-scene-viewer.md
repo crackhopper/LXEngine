@@ -15,6 +15,8 @@ REQ-010 至 REQ-018 各自交付了一块基础设施，但没有一个最终的
 - **不是** tutorial 示例（不教学，假设读者已经懂引擎 API）
 - **是** Phase 1 后续每个新 REQ（REQ-101 ~ REQ-110）的**默认开发入口**：新增一个 pass / 新材质 / 新后期效果，第一站就是把它接进 `demo_scene_viewer` 跑通
 
+REQ-020 引入 `EngineLoop` 之后，本 demo 不再把 `Window + Renderer + while(running)` 直接摊在 `main.cpp` 里，而是作为 `EngineLoop` 的首个完整集成入口。
+
 ## 目标
 
 1. 新建 `src/demos/` 顶层目录（与 `src/test/` 平行）
@@ -23,6 +25,10 @@ REQ-010 至 REQ-018 各自交付了一块基础设施，但没有一个最终的
 4. ImGui debug panel 显示 render stats + camera + light，可编辑参数
 5. CMake 注册为独立 target，独立于 ctest
 6. 覆盖 REQ-010 ~ REQ-018 所有交付项的最小整合路径
+
+## 依赖
+
+- **REQ-020**（必需）：提供 `EngineLoop` 作为 demo 的运行骨架
 
 ## 需求
 
@@ -84,7 +90,6 @@ int main() {
   // 6. 场景
   auto scene = Scene::create(helmetRenderable);
   scene->addRenderable(groundRenderable);
-  renderer->initScene(scene);
 
   auto camera = scene->getCameras().front();
   camera->aspect = 1280.0f / 720.0f;
@@ -98,11 +103,15 @@ int main() {
   auto freefly = std::make_shared<FreeFlyCameraController>(Vec3f{0, 1, 4});
   ICameraController* activeCtrl = orbit.get();
 
-  // 8. ImGui callback
-  Clock clock;
+  // 8. EngineLoop
+  EngineLoop loop;
+  loop.initialize(window, renderer);
+  loop.startScene(scene);
+
+  // 9. ImGui callback
   bool showHelp = true;
   renderer->setDrawUiCallback([&]() {
-    debug_ui::renderStatsPanel(clock);
+    debug_ui::renderStatsPanel(loop.getClock());
     debug_ui::cameraPanel("Camera", *camera);
     debug_ui::directionalLightPanel("Sun", *dirLight);
     if (showHelp) {
@@ -117,14 +126,10 @@ int main() {
     }
   });
 
-  // 9. 主循环
-  bool running = true;
+  // 10. 业务 update hook
   bool prevF2 = false;
   bool prevF1 = false;
-  while (running) {
-    clock.tick();
-    if (window->shouldClose()) break;
-
+  loop.setUpdateHook([&](Scene& scene, const Clock& clock) {
     auto& input = *window->getInputState();
 
     // F1 toggle help
@@ -143,18 +148,15 @@ int main() {
 
     activeCtrl->update(*camera, input, clock.deltaTime());
     camera->updateMatrices();
+  });
 
-    renderer->uploadData();
-    renderer->draw();
-    window->nextFrame();
-  }
-
-  renderer->shutdown();
-  return 0;
+  // 11. 运行
+  loop.run();
 }
 ```
 
 边沿检测（F1 / F2 toggle）在 demo 里手写，不依赖 REQ-012 的边沿 API（那是 Phase 2）。
+`main.cpp` 仍然允许保留少量“展开式”逻辑（例如 GLTF glue code），但主循环的编排必须收敛到 `EngineLoop`，不再手写 `while (...) { uploadData(); draw(); }`。
 
 ### R3: `buildMeshFromGltf(loader)` helper
 

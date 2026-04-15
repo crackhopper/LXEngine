@@ -26,8 +26,8 @@
 |------|------|------|
 | Vulkan 设备 / 队列 / 命令缓冲 | ✅ | `src/backend/vulkan/details/` |
 | Swapchain / RenderPass / Framebuffer | ✅ | 同上 |
-| 顶点 / 索引 / UBO / 纹理 buffer | ✅ | `src/core/resources/`, backend |
-| Pipeline 构建 + 缓存 + 预加载 | ✅ | `PipelineCache` / `PipelineBuildInfo` |
+| 顶点 / 索引 / UBO / 纹理 buffer | ✅ | `src/core/asset/`, backend |
+| Pipeline 构建 + 缓存 + 预加载 | ✅ | `PipelineCache` / `PipelineBuildDesc` |
 | Shader 运行期编译（GLSL→SPIR-V） | ✅ | `ShaderCompiler` (shaderc) |
 | SPIR-V 反射（含 UBO member） | ✅ | `ShaderReflector` (SPIRV-Cross) |
 | 模板-实例材质 | ✅ | `MaterialTemplate` / `MaterialInstance` |
@@ -40,8 +40,8 @@
 | Dirty 同步通道 | ✅ | `IRenderResource::setDirty()` |
 | Mesh / OBJ / GLTF 加载 | ✅ | `src/infra/mesh_loader/` |
 | Texture 加载（stb_image） | ✅ | `src/infra/texture_loader/` |
-| Skeleton 资源（骨骼矩阵 UBO） | ✅ | `src/core/resources/skeleton.hpp` |
-| Blinn-Phong 材质 loader | ✅ | `src/infra/loaders/blinnphong_material_loader.cpp` |
+| Skeleton 资源（骨骼矩阵 UBO） | ✅ | `src/core/asset/skeleton.hpp` |
+| Blinn-Phong 材质 loader | ✅ | `src/infra/material_loader/blinn_phong_material_loader.cpp` |
 | ImGui 集成 | ✅ | `src/infra/gui/` |
 | Window (SDL3 / GLFW) | ✅ | `src/infra/window/` |
 
@@ -98,7 +98,7 @@
 
 ### E. 没有动画播放器
 
-骨骼矩阵已经是 GPU 可消费的 `SkeletonUBO` 形态（`core/resources/skeleton.hpp:24`），但**没人往里写动画数据**。没有 `AnimationClip` 资源，没有 `AnimationPlayer` 组件。
+骨骼矩阵已经是 GPU 可消费的 `SkeletonUBO` 形态（`core/asset/skeleton.hpp:24`），但**没人往里写动画数据**。没有 `AnimationClip` 资源，没有 `AnimationPlayer` 组件。
 
 ### F. 没有物理
 

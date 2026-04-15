@@ -1,7 +1,7 @@
-#include "backend/vulkan/details/render_objects/vkr_framebuffer.hpp"
-#include "backend/vulkan/details/render_objects/vkr_renderpass.hpp"
-#include "backend/vulkan/details/resources/vkr_texture.hpp"
-#include "backend/vulkan/details/vk_device.hpp"
+#include "backend/vulkan/details/render_objects/framebuffer.hpp"
+#include "backend/vulkan/details/render_objects/render_pass.hpp"
+#include "backend/vulkan/details/device_resources/texture.hpp"
+#include "backend/vulkan/details/device.hpp"
 #include "infra/window/window.hpp"
 #include "core/utils/env.hpp"
 

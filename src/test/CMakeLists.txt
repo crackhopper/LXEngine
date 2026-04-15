@@ -14,6 +14,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_pipeline_build_info
   test_frame_graph
   test_pipeline_cache
+  test_engine_loop
 
   # test_render_sphere
   # test_render_model
@@ -57,7 +58,7 @@ add_executable(test_shader_compiler
   integration/test_shader_compiler.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../infra/shader_compiler/shader_compiler.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../infra/shader_compiler/shader_reflector.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/../infra/shader_compiler/shader_impl.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../infra/shader_compiler/compiled_shader.cpp
 )
 target_include_directories(test_shader_compiler PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/..       # for infra/

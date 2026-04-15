@@ -29,7 +29,7 @@
 
 - Phase 2：`SceneNode` + `Transform` + `Clock`
 - Phase 3：`AssetHandle<AnimationClip>` 能被 scene 引用
-- 现状：`Skeleton` 资源 (`src/core/resources/skeleton.hpp`) + `SkeletonUBO` 已就位
+- 现状：`Skeleton` 资源 (`src/core/asset/skeleton.hpp`) + `SkeletonUBO` 已就位
 
 ---
 

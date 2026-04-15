@@ -14,6 +14,8 @@ tags: [docs, notes, sync, onboarding]
 - `/update-notes --dry-run` — 只报告会变更的文件，不写盘
 - `/update-notes <subsystem>` — 强制刷新某个子系统文档（例如 `/update-notes material-system`）
 
+写完文档后，如果后台 `scripts/serve-notes.sh` 已经在运行，再执行一次 `/refresh-notes`，让页面在不重启服务的情况下吃到最新生成结果。
+
 **IMPORTANT**: 这个命令的目标是产生**摘要与导航**，不是把 `openspec/specs/` 的内容复制一份。notes 的读者是第一次看这个项目的人，要帮他们快速建立心智模型并指向权威文档。
 
 **当前实现即真相**：notes 永远只描述**此刻代码库里真正存在的东西**。已删除的类、改名的接口、被废弃的设计、"曾经的 X" / "已废弃的 Y" / "历史 banner" —— 一律**物理删除**，不留 tombstone。历史留给 git log / `openspec/changes/archive/`，不留在 notes 里。
@@ -38,9 +40,9 @@ tags: [docs, notes, sync, onboarding]
   "sources": {
     "notes/subsystems/material-system.md": [
       "openspec/specs/material-system/spec.md",
-      "src/core/resources/material.hpp",
-      "src/core/resources/material.cpp",
-      "src/infra/loaders/blinnphong_material_loader.cpp"
+      "src/core/asset/material.hpp",
+      "src/core/asset/material.cpp",
+      "src/infra/material_loader/blinn_phong_material_loader.cpp"
     ]
   }
 }
@@ -70,19 +72,19 @@ git log --name-only --pretty=format:"%H %s" ${lastSyncedCommit}..HEAD
 
 | 变更路径 | 影响的 notes 文件 |
 |---------|------------------|
-| `src/core/resources/material.*` | `notes/subsystems/material-system.md` |
-| `src/core/resources/mesh.*` / `vertex_buffer.*` / `index_buffer.*` | `notes/subsystems/geometry.md` |
-| `src/core/resources/shader.*` / `src/infra/shader_compiler/**` | `notes/subsystems/shader-system.md` |
-| `src/core/resources/skeleton.*` | `notes/subsystems/skeleton.md` |
-| `src/core/resources/pipeline_key.*` / `src/core/resources/pipeline_build_info.*` | `notes/subsystems/pipeline-identity.md` |
+| `src/core/asset/material.*` | `notes/subsystems/material-system.md` |
+| `src/core/asset/mesh.*` / `vertex_buffer.*` / `index_buffer.*` | `notes/subsystems/geometry.md` |
+| `src/core/asset/shader.*` / `src/infra/shader_compiler/**` | `notes/subsystems/shader-system.md` |
+| `src/core/asset/skeleton.*` | `notes/subsystems/skeleton.md` |
+| `src/core/asset/pipeline_key.*` / `src/core/asset/pipeline_build_info.*` | `notes/subsystems/pipeline-identity.md` |
 | `src/core/scene/**` | `notes/subsystems/scene.md` + `notes/architecture.md` |
 | `src/core/utils/string_table.*` | `notes/subsystems/string-interning.md` |
-| `src/core/gpu/**` | `notes/architecture.md`（核心接口层） |
+| `src/core/rhi/**` | `notes/architecture.md`（核心接口层） |
 | `src/infra/**`（非 shader_compiler） | 对应子系统 + `notes/architecture.md` Infra 章节 |
 | `src/backend/vulkan/**` | `notes/subsystems/vulkan-backend.md` |
 | `openspec/specs/**` | 对应子系统文档（名字直接对齐，如 `material-system/` → `material-system.md`） |
 | `openspec/changes/archive/**` | 归档变更涉及的 spec → 对应子系统文档 |
-| `docs/design/**` | 对应子系统文档的"延伸阅读"段 |
+| `notes/subsystems/**` | 对应子系统文档的结构、索引与延伸阅读段 |
 | `AGENTS.md` / `CLAUDE.md` / `README.md` | `notes/README.md` |
 | `openspec/changes/<active>/**` | **不触发更新** — 在途变更还没落地，等 archive 后再同步 |
 
@@ -101,12 +103,12 @@ git log --name-only --pretty=format:"%H %s" ${lastSyncedCommit}..HEAD
 影响到的 notes 文件:
 | 目标 | 原因 |
 |------|------|
-| notes/subsystems/material-system.md | src/core/resources/material.{hpp,cpp} 重写；新归档 2026-04-13-unify-material-system |
+| notes/subsystems/material-system.md | src/core/asset/material.{hpp,cpp} 重写；新归档 2026-04-13-unify-material-system |
 | notes/subsystems/shader-system.md   | shader_reflector.cpp 新增 UBO members 抽取 |
 | notes/architecture.md               | RenderingItem 结构字段调整 |
 
 未分类的变更（不会更新 notes，仅报告）:
-- src/backend/vulkan/details/commands/vkc_cmdbuffer.cpp
+- src/backend/vulkan/details/commands/command_buffer.cpp
 
 是否继续? (yes / --dry-run 只打印 / 子系统名单过滤)
 ```
@@ -119,7 +121,7 @@ git log --name-only --pretty=format:"%H %s" ${lastSyncedCommit}..HEAD
 
 1. `AGENTS.md` + `CLAUDE.md`（项目级规则 + 快速索引）
 2. `openspec/specs/*/spec.md`（所有能力的权威清单）
-3. `docs/design/*.md`（技术深度文档）
+3. `notes/subsystems/*.md`（当前子系统设计文档，主要用于沿用术语和结构）
 4. `src/core/` / `src/infra/` / `src/backend/` 的**目录结构**（`Glob` 配合 `ls -R` 深度 3），记录每个子目录的用途
 5. 关键头文件的顶层声明（用 `Grep "class |struct " src/core/**/*.hpp`）——**只看 public API，不读实现**
 
@@ -144,7 +146,7 @@ git log --name-only --pretty=format:"%H %s" ${lastSyncedCommit}..HEAD
 - `src/backend/vulkan/` — Vulkan 后端
 - `shaders/glsl/` — GLSL shader 源
 - `openspec/` — 需求与变更管理
-- `docs/design/` — 设计文档（深度）
+- `notes/subsystems/` — 子系统设计文档（当前）
 - `notes/` — 本目录（快速上手摘要）
 
 ## 如何构建
@@ -162,7 +164,7 @@ git log --name-only --pretty=format:"%H %s" ${lastSyncedCommit}..HEAD
 ## 找文档
 - 规则文件: `AGENTS.md`
 - 权威 spec: `openspec/specs/`
-- 设计文档: `docs/design/`
+- 子系统文档: `notes/subsystems/`
 - 这里（notes/）: 摘要 + 导航
 ```
 
@@ -190,24 +192,24 @@ Scene::buildRenderingItem(pass) → RenderingItem → VulkanResourceManager::get
 `IRenderResource` 是核心抽象；子类包括 SkeletonUBO / UboByteBufferResource / CombinedTextureSampler 等。setDirty() → syncResource() 的模型。
 
 ## 延伸阅读
-- docs/design/ShaderSystem.md
+- notes/subsystems/shader-system.md
 - openspec/specs/renderer-backend-vulkan/spec.md
 ```
 
 #### `notes/subsystems/<name>.md`
 
-每个 openspec 能力 + 每个主要 `src/core/resources/` 主题各一篇。模板：
+每个 openspec 能力 + 每个主要 `src/core/asset/` 主题各一篇。模板：
 
 ```markdown
 # <Name>
 
 > 一句话描述。
 > 权威 spec: `openspec/specs/<name>/spec.md`
-> 设计文档: `docs/design/<Name>.md`（若存在）
+> 子系统文档: `notes/subsystems/<name>.md`（若存在）
 
 ## 核心抽象
-- `ClassA` (`src/core/resources/foo.hpp:LINE`) — 作用
-- `ClassB` (`src/core/resources/foo.hpp:LINE`) — 作用
+- `ClassA` (`src/core/asset/foo.hpp:LINE`) — 作用
+- `ClassB` (`src/core/asset/foo.hpp:LINE`) — 作用
 
 ## 典型用法
 （最小可工作代码示例，从 loader / 测试里摘）
@@ -230,7 +232,7 @@ Scene::buildRenderingItem(pass) → RenderingItem → VulkanResourceManager::get
 术语表。每个条目一句定义 + 出处（头文件 + line），按字母排序。优先收录：
 
 - StringID / GlobalStringTable / TypeTag
-- PipelineKey / PipelineBuildInfo
+- PipelineKey / PipelineBuildDesc
 - RenderingItem / RenderableSubMesh
 - ResourcePassFlag / ResourceType / PipelineSlotId
 - Pass_Forward / Pass_Shadow 等 pass 常量
@@ -297,7 +299,7 @@ Scene::buildRenderingItem(pass) → RenderingItem → VulkanResourceManager::get
 未动:    notes/README.md, notes/glossary.md
 
 未分类的变更（请考虑扩充映射表）:
-- src/backend/vulkan/details/commands/vkc_cmdbuffer.cpp
+- src/backend/vulkan/details/commands/command_buffer.cpp
 
 元数据已更新: notes/.sync-meta.json
 ```
@@ -306,12 +308,12 @@ Scene::buildRenderingItem(pass) → RenderingItem → VulkanResourceManager::get
 
 ## Guardrails
 
-- **中文写作**：与 `docs/design/` 的项目约定一致。代码符号保留英文原形。
+- **中文写作**：与 `notes/subsystems/` 的项目约定一致。代码符号保留英文原形。
 - **notes 是摘要不是复制**：spec 已经写完的内容不要重复——notes 写"是什么 + 在哪里 + 为什么"，详细"怎么工作"留给 spec 和 design doc 链接。
 - **当前实现即真相（核心守则）**：notes 永远只写**现在真实存在的东西**。发现 notes 里提到已删除的类、改名的接口、被废弃的设计 → **直接删除相关段落**，不留历史横幅、不写"曾经的 X"、不加"已废弃"banner。历史信息归 git log / `openspec/changes/archive/`。
 - **子系统消失时删除 notes 文件**：若某个子系统被整个移除（所有 `src/` 入口都消失），对应 `notes/subsystems/<name>.md` **也应该** `rm` 掉，并从 `notes/README.md` / `notes/.sync-meta.json` / `mkdocs.yml` 里移除引用。summary 段报告为 "删除: ..."，不留 tombstone 文件。
 - **保护手写内容**：`<!-- manual -->` 到 `<!-- manual:end -->` 之间的文本禁止被自动改写。但若手写内容**本身描述的东西已经不存在**（例如一个已删除的类），停下告诉用户，让用户决定删除还是改写 — 不要默认保留。
-- **代码引用带行号**：`src/core/resources/material.hpp:101`（运行 Grep 获取准确行号，不要猜）。
+- **代码引用带行号**：`src/core/asset/material.hpp:101`（运行 Grep 获取准确行号，不要猜）。
 - **不读实现细节**：头文件里的类/接口签名就够了；实现细节留给读代码的人自己看。
 - **尊重同步状态**：如果 `notes/.sync-meta.json` 和 git 对不上（commit 找不到），**停下问用户**，不要自己回退到全量模式。
 - **处理冲突时询问**：若增量模式检测到一个 notes 文件既有自动生成区块又有手写区块，并且两者冲突（例如手写描述了一个已经删掉的类），报告冲突并让用户决定。
@@ -344,4 +346,4 @@ Scene::buildRenderingItem(pass) → RenderingItem → VulkanResourceManager::get
 - `notes/subsystems/vulkan-backend.md`
 - `notes/.sync-meta.json`
 
-如果后续 openspec 新增能力（比如 `frame-graph`、`pipeline-build-info`、`pipeline-cache`），首次没生成的对应 notes 文件在下一次增量运行时自动补齐——映射表识别到 `openspec/specs/<name>/spec.md` 新增，会触发创建。
+如果后续 openspec 新增能力（比如 `frame-graph`、`pipeline-build-desc`、`pipeline-cache`），首次没生成的对应 notes 文件在下一次增量运行时自动补齐——映射表识别到 `openspec/specs/<name>/spec.md` 新增，会触发创建。

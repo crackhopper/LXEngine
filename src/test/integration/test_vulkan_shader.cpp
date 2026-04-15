@@ -1,6 +1,6 @@
 #include "core/utils/filesystem_tools.hpp"
-#include "backend/vulkan/details/resources/vkr_shader.hpp"
-#include "backend/vulkan/details/vk_device.hpp"
+#include "backend/vulkan/details/device_resources/shader.hpp"
+#include "backend/vulkan/details/device.hpp"
 #include "infra/window/window.hpp"
 #include "core/utils/env.hpp"
 

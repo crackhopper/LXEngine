@@ -1,98 +1,36 @@
 # String Interning
 
-> 所有字符串键（binding 名、pass 名、shader 名）都被驻留成唯一的 `uint32_t` ID，比较与哈希都是 O(1) 整数操作。REQ-006 之后还支持**结构化** compose，把若干 `StringID` 组合成一个新的 `StringID`，用于 `PipelineKey` 这类树状身份。
+> 所有字符串键都先变成 `StringID`。项目里不会反复拿原始字符串做比较，pipeline 身份、binding 名、pass 名都走这条路。
 >
 > 权威 spec: `openspec/specs/string-interning/spec.md`
-> 深度设计: `docs/design/GlobalStringTable.md`
 
-## 核心抽象
+## 它解决什么问题
 
-- **`GlobalStringTable`** (`src/core/utils/string_table.hpp:44`) — 线程安全单例
-  - `Intern(string_view) → StringID` — 叶子字符串驻留
-  - `compose(TypeTag tag, span<const StringID> fields) → StringID` — 结构化组合
-  - `decompose(StringID id) → optional<{tag, fields}>` — 反向解构
-  - `toDebugString(StringID id) → string` — 递归展开成人类可读形式
-  - `getName(id) → const string&` — 叶子字符串反查
-- **`StringID`** — `uint32_t` 的强类型包装。从 `const char*` / `std::string` 隐式构造；整数相等对比；`StringID::Hash` 可作 `unordered_map` 的 hasher
-- **`TypeTag`** (`src/core/utils/string_table.hpp:19`) — `uint8_t` 枚举，标记一个 `StringID` 是叶子 (`TypeTag::String`) 还是某类结构化 compose 结果 (`PipelineKey` / `ObjectRender` / `MaterialRender` / `VertexLayout` / ...)
+- 把字符串比较降成整数比较。
+- 给 `PipelineKey` 这类结构化身份提供统一的 compose 能力。
+- 提供 `toDebugString()`，让结构化 ID 还能还原成人能读的树。
 
-## 典型用法
+## 核心对象
 
-### 叶子驻留
+- `GlobalStringTable`：全局表，负责 `Intern`、`compose`、`decompose`。
+- `StringID`：`uint32_t` 包装类型，可直接做 map key。
+- `TypeTag`：标记一个 compose 结果属于哪类结构。
 
-```cpp
-#include "core/utils/string_table.hpp"
+## 典型数据流
 
-using namespace LX_core;
+1. 叶子名字先 `Intern("baseColor")`。
+2. 各资源各自产出 `getRenderSignature(...)`。
+3. `PipelineKey::build(objSig, matSig)` 再做一层 compose。
+4. 调试时用 `toDebugString()` 展开。
 
-StringID id1 = "baseColor";                       // 隐式构造 → Intern
-StringID id2 = GlobalStringTable::get().Intern("baseColor");
-assert(id1 == id2);                               // 同一个 uint32_t
-```
+## 使用规则
 
-### 结构化 compose（pipeline 身份构造）
+- compose 对顺序敏感，需要稳定顺序的输入必须先排序。
+- 叶子概念直接 intern，不要为每个简单枚举硬造新 `TypeTag`。
+- `Pass_Forward` 这类常量是 `inline const StringID`，不是 `constexpr`。
 
-```cpp
-auto &tbl = GlobalStringTable::get();
+## 关联文档
 
-// 叶子
-StringID cullTag  = tbl.Intern("CullBack");
-StringID blendTag = tbl.Intern("NoBlend");
-
-// 一级 compose: RenderState
-StringID renderStateSig = tbl.compose(TypeTag::RenderState, {cullTag, blendTag /*...*/});
-
-// 二级 compose: 组合进 PipelineKey
-StringID pipelineId = tbl.compose(TypeTag::PipelineKey, {objectSig, materialSig});
-
-// 调试可读形式
-std::cout << tbl.toDebugString(pipelineId) << '\n';
-// → "PipelineKey(ObjectRender(MeshRender(VertexLayout(...), tri), Skn1), MaterialRender(...))"
-```
-
-### Scene 层 pass 常量
-
-```cpp
-#include "core/scene/pass.hpp"
-#include "core/scene/render_queue.hpp"
-
-LX_core::RenderQueue q;
-q.buildFromScene(*scene, LX_core::Pass_Forward);
-auto &item = q.getItems().front();
-// Pass_Forward 是 inline const StringID("Forward")
-// item.pipelineKey 已通过结构化 compose 得到
-```
-
-## 调用关系
-
-```
-RenderQueue::buildFromScene(scene, pass)
-  │ (per renderable, inside makeItemFromRenderable helper)
-  │
-  ├── 调用 IRenderable::getRenderSignature(pass)
-  │     └── Mesh::getRenderSignature(pass) → compose(MeshRender, {layoutSig, topologySig})
-  │     └── Skeleton::getRenderSignature()  → Intern("Skn1")（或 StringID{} 表示无骨骼）
-  │
-  ├── 调用 IMaterial::getRenderSignature(pass)
-  │     └── MaterialTemplate::getRenderPassSignature(pass)
-  │           └── RenderPassEntry::getRenderSignature()
-  │                 ├── ShaderProgramSet::getRenderSignature()
-  │                 └── RenderState::getRenderSignature()
-  │
-  └── PipelineKey::build(objSig, matSig) → compose(TypeTag::PipelineKey, {objSig, matSig})
-```
-
-## 注意事项
-
-- **`Pass_Forward` 用 `inline const StringID` 而不是 `constexpr`**: `StringID` 的构造 intern 到全局表，有 side effect，不能 `constexpr`。
-- **Compose 是顺序敏感的**: `compose(tag, [a, b]) ≠ compose(tag, [b, a])`。需要稳定顺序的地方（例如 shader variants）必须先 sort 再 compose。
-- **叶子字符串不走 compose**: 比如 `topologySignature(TriangleList)` 直接返回 `Intern("tri")`，不要错写成 `compose(TypeTag::Topology, {})`（`TypeTag` 枚举里也故意没有 `Topology`）。
-
-## 延伸阅读
-
-- `openspec/specs/string-interning/spec.md` — 所有 compose / decompose / toDebugString 的 normative 要求
-- `openspec/specs/render-signature/spec.md` — `getRenderSignature(pass)` 在每类资源上的签名约定
-- `docs/design/GlobalStringTable.md` — 实现细节（shared_mutex 并发、`m_composedEntries` 内存模型、TypeTag 命名策略）
-- 归档: `openspec/changes/archive/2026-04-09-global-string-table/` — 基础版字符串表
-- 归档: `openspec/changes/archive/2026-04-13-extend-string-table-compose/` — compose/decompose 扩展
-- 归档: `openspec/changes/archive/2026-04-13-interning-pipeline-identity/` — 全面迁移 pipeline 身份到 interning
+- `openspec/specs/string-interning/spec.md`
+- `openspec/specs/render-signature/spec.md`
+- `notes/subsystems/pipeline-identity.md`

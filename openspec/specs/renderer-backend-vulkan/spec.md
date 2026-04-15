@@ -163,7 +163,7 @@ The VulkanCommandBuffer SHALL support:
 
 ### Requirement: VulkanPipeline shall create graphics pipelines with shader stages
 
-The VulkanPipeline SHALL consume a `LX_core::PipelineBuildInfo` (from the `pipeline-build-info` capability) as its single construction input, and SHALL support:
+The VulkanPipeline SHALL consume a `LX_core::PipelineBuildDesc` (from the `pipeline-build-desc` capability) as its single construction input, and SHALL support:
 
 - Creating `VkShaderModule`s from `buildInfo.stages` (bytecode only; no filesystem loads at this layer)
 - Building `VkDescriptorSetLayout`s from `buildInfo.bindings` (reflected `ShaderResourceBinding` list) — one layout per distinct `set` number, each layout populated from the `(binding, type, stageFlags)` of every `ShaderResourceBinding` whose `set` matches
@@ -174,9 +174,9 @@ The VulkanPipeline SHALL consume a `LX_core::PipelineBuildInfo` (from the `pipel
 
 The pipeline class SHALL NOT accept any legacy `PipelineSlotDetails` vector and SHALL NOT key descriptor layout construction on hardcoded slot enums.
 
-#### Scenario: Dynamic graphics pipeline creation from PipelineBuildInfo
+#### Scenario: Dynamic graphics pipeline creation from PipelineBuildDesc
 
-- **WHEN** A caller invokes pipeline creation with a `PipelineBuildInfo` whose `bindings` contains a UBO at set 0 binding 0, a sampler at set 2 binding 1, and whose `vertexLayout` includes position+normal+uv
+- **WHEN** A caller invokes pipeline creation with a `PipelineBuildDesc` whose `bindings` contains a UBO at set 0 binding 0, a sampler at set 2 binding 1, and whose `vertexLayout` includes position+normal+uv
 - **THEN** The constructed `VulkanPipeline` exposes exactly the descriptor set layouts and vertex input attributes described by the build info, with no reference to any shader-name lookup table
 
 ### Requirement: toImageFormat translates VkFormat to core ImageFormat
@@ -213,7 +213,7 @@ The VulkanRenderer SHALL implement:
   - Reset `m_frameGraph` to a fresh instance on each `initScene` call, then call `m_frameGraph.addPass(FramePass{Pass_Forward, swapchainTarget, {}})` (additional passes MAY be added in future changes).
   - Call `m_frameGraph.buildFromScene(*scene)` so every `FramePass::queue` is populated via `RenderQueue::buildFromScene(scene, pass.name, pass.target)`.
   - Iterate `m_frameGraph.getPasses() × pass.queue.getItems()` to sync every item's vertex / index / descriptor resources and initialize `objectInfo` push-constants.
-  - Call `resourceManager->preloadPipelines(m_frameGraph.collectAllPipelineBuildInfos())`.
+  - Call `resourceManager->preloadPipelines(m_frameGraph.collectAllPipelineBuildDescs())`.
   - SHALL NOT side-channel-inject any camera or light UBO into `RenderingItem::descriptorResources`. Scene-level UBOs flow through `Scene::getSceneLevelResources(pass, target)` merged inside `RenderQueue::buildFromScene`.
 - `uploadData()`: Iterate `m_frameGraph.getPasses() × pass.queue.getItems()` and `syncResource` every item's vertex buffer, index buffer, and descriptor resources.
 - `draw()`: Acquire image, record commands, iterate `m_frameGraph.getPasses() × pass.queue.getItems()` binding the pipeline/resources and calling `cmd->drawItem(item)` for each, submit, present.
@@ -244,7 +244,7 @@ The VulkanResourceManager SHALL support:
 - Creating VulkanTexture from IRenderResource with type CombinedImageSampler
 - Maintaining map of IRenderResource* to created Vulkan objects
 - Initializing render pass with correct formats
-- Delegating pipeline caching to a standalone `LX_core::backend::PipelineCache` instance (see the `pipeline-cache` capability). The resource manager SHALL NOT store the pipeline map directly; the legacy `getOrCreateRenderPipeline(item)` helper, if retained, SHALL be a thin forward to `PipelineCache::getOrCreate(PipelineBuildInfo::fromRenderingItem(item), renderPass)`
+- Delegating pipeline caching to a standalone `LX_core::backend::PipelineCache` instance (see the `pipeline-cache` capability). The resource manager SHALL NOT store the pipeline map directly; the legacy `getOrCreateRenderPipeline(item)` helper, if retained, SHALL be a thin forward to `PipelineCache::getOrCreate(PipelineBuildDesc::fromRenderingItem(item), renderPass)`
 
 #### Scenario: Resource mapping for vertex buffer
 - **WHEN** `initScene` iterates `m_frameGraph.getPasses() × pass.queue.getItems()` and encounters a vertex buffer `IRenderResource`

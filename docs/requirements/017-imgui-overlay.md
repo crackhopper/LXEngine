@@ -2,14 +2,14 @@
 
 ## 背景
 
-`src/infra/gui/gui.hpp:7-33` 与 `src/infra/gui/gui_impl_imgui.cpp` 已经把 ImGui Vulkan backend 的初始化 / `beginFrame` / `endFrame` / `shutdown` 写好了，但**当前没有任何代码调用它**：
+`src/infra/gui/gui.hpp:7-33` 与 `src/infra/gui/imgui_gui.cpp` 已经把 ImGui Vulkan backend 的初始化 / `beginFrame` / `endFrame` / `shutdown` 写好了，但**当前没有任何代码调用它**：
 
 - `VulkanRenderer::initialize` 没有创建 `Gui` 实例
 - `VulkanRenderer::draw` 没有调 `gui->beginFrame()` / `gui->endFrame()`
 - SDL3 的事件循环（`window_impl_sdl.cpp:39-46`）没有把事件 forward 给 `ImGui_ImplSDL3_ProcessEvent`
 - `Gui::init` 当前没有调 `ImGui_ImplSDL3_InitForVulkan`，缺一半 backend 初始化
 
-加上 `vk_renderer.cpp:276-283` 的 draw loop 已经在遍历 `m_frameGraph.getPasses()`，理想情况是把 ImGui 作为一个独立的 `Pass_DebugUI` 节点接进去 —— 但这需要：
+加上 `vulkan_renderer.cpp:276-283` 的 draw loop 已经在遍历 `m_frameGraph.getPasses()`，理想情况是把 ImGui 作为一个独立的 `Pass_DebugUI` 节点接进去 —— 但这需要：
 
 1. 让 ImGui 走自己的 VkRenderPass（或继承 swapchain pass，但绑定不同的 pipeline）
 2. 在 `FrameGraph` / `RenderQueue` 里加"非 RenderQueue 驱动的 pass 形态"
@@ -30,7 +30,7 @@
 
 ### R1: `Gui::init` 补齐 SDL backend
 
-修改 `src/infra/gui/gui_impl_imgui.cpp:30-64` 的 `Gui::init`：
+修改 `src/infra/gui/imgui_gui.cpp:30-64` 的 `Gui::init`：
 
 - 当前只调了 `ImGui_ImplVulkan_Init`
 - 需要在前面加 `ImGui::CreateContext()` + `ImGui_ImplSDL3_InitForVulkan(sdlWindow, instance)`
@@ -119,12 +119,12 @@ if (drawData && drawData->TotalVtxCount > 0) {
 
 ### R4: `VulkanRenderer` 接入 Gui
 
-修改 `src/backend/vulkan/vk_renderer.cpp`：
+修改 `src/backend/vulkan/vulkan_renderer.cpp`：
 
 - `Impl` 新增成员 `std::unique_ptr<infra::Gui> gui`
 - `initialize` 末尾创建 `gui = std::make_unique<infra::Gui>()`，调 `gui->init(...)`
   - SDL window 句柄需要从 `Window` 接口暴露 —— 见 R5
-- `draw` loop 改造（在 `vk_renderer.cpp:262-285` 范围）：
+- `draw` loop 改造（在 `vulkan_renderer.cpp:262-285` 范围）：
 
 ```cpp
 cmdBufferMgr->beginFrame(currentFrameIndex);
@@ -195,7 +195,7 @@ GLFW 实现：`return pImpl->window;`（GLFWwindow*）
 
 ### R6: SDL 事件 forward
 
-修改 `src/infra/window/window_impl_sdl.cpp` 的事件循环（与 REQ-013 R3 协调）：
+修改 `src/infra/window/sdl_window.cpp` 的事件循环（与 REQ-013 R3 协调）：
 
 ```cpp
 bool shouldClose() {
@@ -279,9 +279,9 @@ if (input.isUiCapturingMouse()) return;  // 跳过本帧
 | 文件 | 改动 |
 |---|---|
 | `src/infra/gui/gui.hpp` | `InitParams` 加 `sdlWindowHandle` / `renderPass` / `swapchainImageCount`；`endFrame(VkCommandBuffer)` 改签名 |
-| `src/infra/gui/gui_impl_imgui.cpp` | R1+R2+R3 实现 |
+| `src/infra/gui/imgui_gui.cpp` | R1+R2+R3 实现 |
 | `src/infra/gui/CMakeLists.txt` | 添加 `imgui_impl_sdl3.cpp` 到 sources（如未启用） |
-| `src/backend/vulkan/vk_renderer.hpp` / `.cpp:119,237-322` | R4：持有 Gui、draw 接入、`setDrawUiCallback` |
+| `src/backend/vulkan/vulkan_renderer.hpp` / `.cpp:119,237-322` | R4：持有 Gui、draw 接入、`setDrawUiCallback` |
 | `src/core/platform/window.hpp` | R5：`getNativeHandle()` 纯虚 |
 | `src/infra/window/window.hpp` / `window_impl_sdl.cpp` / `window_impl_glfw.cpp` | R5+R6：实现 `getNativeHandle`，SDL 事件 forward |
 | `src/core/input/input_state.hpp` | R7：追加 `isUiCapturingMouse / Keyboard` 默认 false |

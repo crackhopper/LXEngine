@@ -2,7 +2,7 @@
 
 ### Requirement: Skeleton types live under core resources
 
-`Bone`, `SkeletonUBO`, and `Skeleton` SHALL be declared in `src/core/resources/skeleton.hpp` (with implementation in `skeleton.cpp` if non-inline definitions are required). The previous files `src/core/scene/components/skeleton.hpp` and `skeleton.cpp` SHALL be removed after migration.
+`Bone`, `SkeletonUBO`, and `Skeleton` SHALL be declared in `src/core/asset/skeleton.hpp` (with implementation in `skeleton.cpp` if non-inline definitions are required). The previous files `src/core/scene/components/skeleton.hpp` and `skeleton.cpp` SHALL be removed after migration.
 
 #### Scenario: Include path points to resources
 

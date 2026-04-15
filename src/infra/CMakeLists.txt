@@ -166,21 +166,21 @@ set(INFRA_LIB LX_Infra CACHE INTERNAL "Infra library name")
 
 # Explicitly list source files to avoid picking up example files and unwanted backends
 set(INFRA_SOURCES
-    loaders/blinnphong_material_loader.cpp
-    gui/gui_impl_imgui.cpp
+    material_loader/blinn_phong_material_loader.cpp
+    gui/imgui_gui.cpp
     texture_loader/texture_loader.cpp
-    mesh_loader/obj/obj.cpp
-    mesh_loader/gltf/gltf.cpp
+    mesh_loader/obj_mesh_loader.cpp
+    mesh_loader/gltf_mesh_loader.cpp
     shader_compiler/shader_compiler.cpp
     shader_compiler/shader_reflector.cpp
-    shader_compiler/shader_impl.cpp
+    shader_compiler/compiled_shader.cpp
 )
 
 # Add window implementation based on backend
 if(USE_SDL)
-    list(APPEND INFRA_SOURCES window/window_impl_sdl.cpp)
+    list(APPEND INFRA_SOURCES window/sdl_window.cpp)
 elseif(USE_GLFW)
-    list(APPEND INFRA_SOURCES window/window_impl_glfw.cpp)
+    list(APPEND INFRA_SOURCES window/glfw_window.cpp)
 endif()
 
 add_library(${INFRA_LIB} ${INFRA_SOURCES})

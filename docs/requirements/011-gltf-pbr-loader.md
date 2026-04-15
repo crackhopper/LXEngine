@@ -2,7 +2,7 @@
 
 ## 背景
 
-`src/infra/mesh_loader/gltf/gltf.cpp:35-40` 当前的 `GLTFLoader::load` 是一个**纯桩实现**：
+`src/infra/mesh_loader/gltf_mesh_loader.cpp:35-40` 当前的 `GLTFLoader::load` 是一个**纯桩实现**：
 
 ```cpp
 if (magic == 0x46546C67) {
@@ -11,7 +11,7 @@ if (magic == 0x46546C67) {
 throw std::runtime_error("ASCII GLTF (.gltf) not yet supported - use cgltf library");
 ```
 
-`src/infra/mesh_loader/gltf/gltf.hpp:8-23` 的接口也只暴露 positions / normals / texCoords / indices —— **没有 PBR 材质通道、没有 tangent、没有多 mesh、没有节点层级**。这意味着：
+`src/infra/mesh_loader/gltf_mesh_loader.hpp:8-23` 的接口也只暴露 positions / normals / texCoords / indices —— **没有 PBR 材质通道、没有 tangent、没有多 mesh、没有节点层级**。这意味着：
 
 - REQ-010 引入的 DamagedHelmet（PBR 全通道 glTF）目前**完全无法加载**
 - Phase 1 的 PBR / IBL / shadow 调试链路在材质侧没有真实输入数据
@@ -46,7 +46,7 @@ throw std::runtime_error("ASCII GLTF (.gltf) not yet supported - use cgltf libra
 
 ### R2: `GLTFLoader` 接口扩展
 
-替换 `src/infra/mesh_loader/gltf/gltf.hpp` 的接口：
+替换 `src/infra/mesh_loader/gltf_mesh_loader.hpp` 的接口：
 
 ```cpp
 namespace infra {
@@ -113,7 +113,7 @@ private:
 
 ### R4: 命名空间收敛
 
-`gltf.hpp` 当前在 `namespace infra`，与项目其他 infra 用 `namespace LX_infra`（见 `src/infra/loaders/blinnphong_material_loader.hpp`）不一致。本 REQ 顺手把它迁到 `namespace LX_infra`，并更新所有 caller。
+`gltf.hpp` 当前在 `namespace infra`，与项目其他 infra 用 `namespace LX_infra`（见 `src/infra/material_loader/blinn_phong_material_loader.hpp`）不一致。本 REQ 顺手把它迁到 `namespace LX_infra`，并更新所有 caller。
 
 注意：这是**唯一**与本 REQ 主题不直接相关的改动，保留是因为它和 `gltf.hpp` 改动无法分离。
 
@@ -131,8 +131,8 @@ private:
 |---|---|
 | `src/infra/external/include/cgltf/cgltf.h` | 新增（vendored single-header） |
 | `src/infra/external/README.md` | 新增 cgltf 条目 |
-| `src/infra/mesh_loader/gltf/gltf.hpp` | 重写接口（R2） |
-| `src/infra/mesh_loader/gltf/gltf.cpp` | 重写实现（R1+R2+R3） |
+| `src/infra/mesh_loader/gltf_mesh_loader.hpp` | 重写接口（R2） |
+| `src/infra/mesh_loader/gltf_mesh_loader.cpp` | 重写实现（R1+R2+R3） |
 | `src/infra/mesh_loader/gltf/cgltf_impl.cpp` | 新增（CGLTF_IMPLEMENTATION 宿主） |
 | `src/infra/mesh_loader/CMakeLists.txt` | 把 `cgltf_impl.cpp` 加入 sources、添加 `external/include/cgltf` 到 include path |
 | `src/test/integration/test_gltf_loader.cpp` | 新增 |

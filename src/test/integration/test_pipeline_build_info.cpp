@@ -1,15 +1,15 @@
-#include "core/gpu/image_format.hpp"
-#include "core/gpu/render_target.hpp"
-#include "core/resources/index_buffer.hpp"
-#include "core/resources/material.hpp"
-#include "core/resources/mesh.hpp"
-#include "core/resources/pipeline_build_info.hpp"
-#include "core/resources/pipeline_key.hpp"
-#include "core/resources/shader.hpp"
-#include "core/resources/vertex_buffer.hpp"
+#include "core/rhi/image_format.hpp"
+#include "core/frame_graph/render_target.hpp"
+#include "core/rhi/index_buffer.hpp"
+#include "core/asset/material.hpp"
+#include "core/asset/mesh.hpp"
+#include "core/pipeline/pipeline_build_desc.hpp"
+#include "core/pipeline/pipeline_key.hpp"
+#include "core/asset/shader.hpp"
+#include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/object.hpp"
-#include "core/scene/pass.hpp"
-#include "core/scene/render_queue.hpp"
+#include "core/frame_graph/pass.hpp"
+#include "core/frame_graph/render_queue.hpp"
 #include "core/scene/scene.hpp"
 #include "core/utils/string_table.hpp"
 
@@ -169,7 +169,7 @@ buildItem(PrimitiveTopology topo = PrimitiveTopology::TriangleList) {
 
 void testFromRenderingItemPopulatesBindings() {
   auto item = buildItem();
-  auto info = PipelineBuildInfo::fromRenderingItem(item);
+  auto info = PipelineBuildDesc::fromRenderingItem(item);
   EXPECT(info.bindings.size() == 3, "bindings.size()==3");
   if (info.bindings.size() == 3) {
     EXPECT(info.bindings[0].name == "CameraUBO", "binding 0 name");
@@ -180,29 +180,29 @@ void testFromRenderingItemPopulatesBindings() {
 
 void testFromRenderingItemKeyMatches() {
   auto item = buildItem();
-  auto info = PipelineBuildInfo::fromRenderingItem(item);
+  auto info = PipelineBuildDesc::fromRenderingItem(item);
   EXPECT(info.key == item.pipelineKey, "key matches item.pipelineKey");
 }
 
 void testFromRenderingItemStagesPreserved() {
   auto item = buildItem();
-  auto info = PipelineBuildInfo::fromRenderingItem(item);
+  auto info = PipelineBuildDesc::fromRenderingItem(item);
   EXPECT(info.stages.size() == 2, "stages.size()==2");
 }
 
 void testFromRenderingItemTopology() {
   auto item1 = buildItem(PrimitiveTopology::TriangleList);
-  auto info1 = PipelineBuildInfo::fromRenderingItem(item1);
+  auto info1 = PipelineBuildDesc::fromRenderingItem(item1);
   EXPECT(info1.topology == PrimitiveTopology::TriangleList, "topology tri");
 
   auto item2 = buildItem(PrimitiveTopology::LineList);
-  auto info2 = PipelineBuildInfo::fromRenderingItem(item2);
+  auto info2 = PipelineBuildDesc::fromRenderingItem(item2);
   EXPECT(info2.topology == PrimitiveTopology::LineList, "topology line");
 }
 
 void testFromRenderingItemRenderStateFromMaterial() {
   auto item = buildItem();
-  auto info = PipelineBuildInfo::fromRenderingItem(item);
+  auto info = PipelineBuildDesc::fromRenderingItem(item);
   // FakeMaterial returns CullFront + depthTest disabled
   EXPECT(info.renderState.cullMode == CullMode::Front,
          "renderState cull comes from material");
@@ -212,8 +212,8 @@ void testFromRenderingItemRenderStateFromMaterial() {
 
 void testFromRenderingItemIsDeterministic() {
   auto item = buildItem();
-  auto a = PipelineBuildInfo::fromRenderingItem(item);
-  auto b = PipelineBuildInfo::fromRenderingItem(item);
+  auto a = PipelineBuildDesc::fromRenderingItem(item);
+  auto b = PipelineBuildDesc::fromRenderingItem(item);
   EXPECT(a.key == b.key, "deterministic key");
   EXPECT(a.bindings.size() == b.bindings.size(), "deterministic bindings size");
   EXPECT(a.topology == b.topology, "deterministic topology");

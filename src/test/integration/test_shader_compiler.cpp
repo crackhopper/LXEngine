@@ -1,5 +1,5 @@
 #include "infra/shader_compiler/shader_compiler.hpp"
-#include "infra/shader_compiler/shader_impl.hpp"
+#include "infra/shader_compiler/compiled_shader.hpp"
 #include "infra/shader_compiler/shader_reflector.hpp"
 
 #include <cstdlib>
@@ -149,9 +149,9 @@ static bool testVariantCombination(
   auto bindings = ShaderReflector::reflect(compileResult.stages);
   std::cout << "  Reflection found " << bindings.size() << " bindings\n";
 
-  // Create ShaderImpl
+  // Create CompiledShader
   auto shader =
-      std::make_shared<ShaderImpl>(std::move(compileResult.stages), bindings);
+      std::make_shared<CompiledShader>(std::move(compileResult.stages), bindings);
   std::cout << "  Program hash: 0x" << std::hex << shader->getProgramHash()
             << std::dec << "\n";
 

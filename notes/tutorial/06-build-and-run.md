@@ -63,6 +63,9 @@ ninja test_pbr_cube          # 会级联 CompileShaders → infra → test_pbr_c
 
 ## 运行
 
+推荐入口形状是 `EngineLoop`：先 `initialize(window, renderer)`，再 `startScene(scene)`，最后 `setUpdateHook(...)` 后调用 `run()`。如果你仍然手写 while-loop，本章前一节的时序约束需要自己保证。
+
+
 ```bash
 ./test_pbr_cube
 ```
@@ -73,7 +76,7 @@ ninja test_pbr_cube          # 会级联 CompileShaders → infra → test_pbr_c
 LX_RENDER_DEBUG=1 ./test_pbr_cube
 ```
 
-可用调试环境变量（见 `src/backend/vulkan/vk_renderer.cpp`）：
+可用调试环境变量（见 `src/backend/vulkan/vulkan_renderer.cpp`）：
 
 | 变量 | 效果 |
 |------|------|

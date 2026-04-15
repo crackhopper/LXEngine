@@ -1,7 +1,7 @@
 #include "pipeline_cache.hpp"
 #include "core/utils/string_table.hpp"
-#include "../vk_device.hpp"
-#include "vkp_shader_graphics.hpp"
+#include "../device.hpp"
+#include "graphics_shader_program.hpp"
 
 #include <iostream>
 
@@ -17,7 +17,7 @@ PipelineCache::find(const PipelineKey &key) const {
   return std::ref(*it->second);
 }
 
-VulkanPipeline &PipelineCache::getOrCreate(const PipelineBuildInfo &info,
+VulkanPipeline &PipelineCache::getOrCreate(const PipelineBuildDesc &info,
                                            VkRenderPass renderPass) {
   auto it = m_cache.find(info.key);
   if (it != m_cache.end())
@@ -36,7 +36,7 @@ VulkanPipeline &PipelineCache::getOrCreate(const PipelineBuildInfo &info,
   return *raw;
 }
 
-void PipelineCache::preload(const std::vector<PipelineBuildInfo> &infos,
+void PipelineCache::preload(const std::vector<PipelineBuildDesc> &infos,
                             VkRenderPass renderPass) {
   m_suppressMissWarning = true;
   for (const auto &info : infos) {

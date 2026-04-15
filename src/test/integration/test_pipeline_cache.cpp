@@ -1,16 +1,16 @@
 #include "backend/vulkan/details/pipelines/pipeline_cache.hpp"
-#include "backend/vulkan/details/render_objects/vkr_renderpass.hpp"
-#include "backend/vulkan/details/vk_device.hpp"
-#include "backend/vulkan/details/vk_resource_manager.hpp"
-#include "core/resources/index_buffer.hpp"
-#include "core/resources/pipeline_build_info.hpp"
-#include "core/resources/vertex_buffer.hpp"
-#include "core/scene/frame_graph.hpp"
-#include "core/scene/pass.hpp"
+#include "backend/vulkan/details/render_objects/render_pass.hpp"
+#include "backend/vulkan/details/device.hpp"
+#include "backend/vulkan/details/resource_manager.hpp"
+#include "core/rhi/index_buffer.hpp"
+#include "core/pipeline/pipeline_build_desc.hpp"
+#include "core/rhi/vertex_buffer.hpp"
+#include "core/frame_graph/frame_graph.hpp"
+#include "core/frame_graph/pass.hpp"
 #include "core/scene/scene.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/filesystem_tools.hpp"
-#include "infra/loaders/blinnphong_material_loader.hpp"
+#include "infra/material_loader/blinn_phong_material_loader.hpp"
 #include "infra/window/window.hpp"
 
 #include "scene_test_helpers.hpp"
@@ -57,7 +57,7 @@ int main() {
     // so the item already carries camera + light UBOs — no side-channel injection.
     auto item = LX_test::firstItemFromScene(*scene, LX_core::Pass_Forward);
 
-    auto info = LX_core::PipelineBuildInfo::fromRenderingItem(item);
+    auto info = LX_core::PipelineBuildDesc::fromRenderingItem(item);
 
     auto &cache = resourceManager->getPipelineCache();
     auto found0 = cache.find(info.key);
@@ -99,7 +99,7 @@ int main() {
     LX_core::FrameGraph fg;
     fg.addPass(LX_core::FramePass{LX_core::Pass_Forward, {}, {}});
     fg.buildFromScene(*scene);
-    auto infos = fg.collectAllPipelineBuildInfos();
+    auto infos = fg.collectAllPipelineBuildDescs();
     if (infos.size() != 1) {
       std::cerr << "FAIL: frame graph produced " << infos.size()
                 << " infos, expected 1\n";

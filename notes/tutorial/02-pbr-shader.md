@@ -21,7 +21,7 @@ shaders/glsl/pbr_cube.frag        ← 本章产出
 // shaders/glsl/pbr_cube.vert
 #version 450
 
-// 与 PC_Draw (src/core/gpu/render_resource.hpp:83) 一致。
+// 与 PC_Draw (src/core/rhi/render_resource.hpp:83) 一致。
 // 只访问 model；enableLighting/enableSkinning 占位以匹配 C++ 端布局。
 layout(push_constant) uniform ObjectPC {
     mat4 model;
@@ -59,7 +59,7 @@ void main() {
 ```
 
 !!! note "关于顶点输入布局"
-    `VertexPosNormalUvBone` 定义在 `src/core/resources/vertex_buffer.hpp:420`，有 6 个属性 location。顶点着色器**必须声明全部 6 个** `in` 位置才能和管线 layout 匹配，否则 pipeline 创建会在 validation layer 里报 location mismatch。用不到的属性直接声明再忽略即可。
+    `VertexPosNormalUvBone` 定义在 `src/core/rhi/vertex_buffer.hpp:420`，有 6 个属性 location。顶点着色器**必须声明全部 6 个** `in` 位置才能和管线 layout 匹配，否则 pipeline 创建会在 validation layer 里报 location mismatch。用不到的属性直接声明再忽略即可。
 
 ---
 
@@ -199,7 +199,7 @@ std140 规则里，`vec3` 占 12 字节但对齐到 16 字节；紧跟的 `float
 
 - `CameraUBO` — 见 `src/core/scene/camera.hpp:32`，`getBindingName()` 返回 `"CameraUBO"`
 - `LightUBO` — 见 `src/core/scene/light.hpp:58`，`getBindingName()` 返回 `"LightUBO"`
-- `MaterialUBO` — 见 `src/core/resources/material.hpp` 的 `UboByteBufferResource`
+- `MaterialUBO` — 见 `src/core/asset/material.hpp` 的 `UboByteBufferResource`
 
 所以上面那张 set/binding 表里的数字**你可以随便挑**，但名字不能变。
 
