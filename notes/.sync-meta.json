@@ -1,9 +1,8 @@
 {
-  "lastSyncedCommit": "5c532994e54a69744c0e546a3a21ebc00bbf365a",
-  "lastSyncedAt": "2026-04-15T16:37:00Z",
+  "lastSyncedCommit": "81a7abd017079fbb45a679adec9740c9af7a2ba6",
+  "lastSyncedAt": "2026-04-15T08:44:04Z",
   "mode": "incremental",
   "files": [
-    "notes/subsystems/shader-system.md",
     "notes/subsystems/material-system.md",
     "notes/subsystems/scene.md"
   ]

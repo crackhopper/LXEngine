@@ -3,6 +3,7 @@
 #include "core/math/vec.hpp"
 #include "core/asset/shader.hpp"
 #include "core/asset/texture.hpp"
+#include "core/frame_graph/pass.hpp"
 #include "core/utils/string_table.hpp"
 #include <cassert>
 #include <functional>
@@ -161,7 +162,8 @@ public:
   virtual IShaderPtr getShaderInfo() const = 0;
   virtual IShaderPtr getShaderInfo(StringID pass) const { return getShaderInfo(); }
   virtual ResourcePassFlag getPassFlag() const = 0;
-  virtual RenderState getRenderState() const = 0;
+  virtual RenderState getRenderState(StringID pass) const = 0;
+  virtual RenderState getRenderState() const { return getRenderState(Pass_Forward); }
 
   /// Structured per-pass signature used to build PipelineKey via
   /// `GlobalStringTable::compose(TypeTag::MaterialRender, ...)`.
@@ -260,10 +262,13 @@ private:
 class UboByteBufferResource : public IRenderResource {
 public:
   UboByteBufferResource(std::vector<uint8_t> &buffer, uint32_t byteSize,
-                        ResourcePassFlag passFlag)
-      : m_buffer(&buffer), m_byteSize(byteSize), m_passFlag(passFlag) {}
+                        std::function<ResourcePassFlag()> passFlagGetter)
+      : m_buffer(&buffer), m_byteSize(byteSize),
+        m_passFlagGetter(std::move(passFlagGetter)) {}
 
-  ResourcePassFlag getPassFlag() const override { return m_passFlag; }
+  ResourcePassFlag getPassFlag() const override {
+    return m_passFlagGetter ? m_passFlagGetter() : ResourcePassFlag::Forward;
+  }
   ResourceType getType() const override { return ResourceType::UniformBuffer; }
   const void *getRawData() const override { return m_buffer->data(); }
   u32 getByteSize() const override { return m_byteSize; }
@@ -276,7 +281,7 @@ public:
 private:
   std::vector<uint8_t> *m_buffer;
   uint32_t m_byteSize;
-  ResourcePassFlag m_passFlag;
+  std::function<ResourcePassFlag()> m_passFlagGetter;
 };
 
 /*****************************************************************
@@ -308,8 +313,8 @@ public:
   std::vector<IRenderResourcePtr> getDescriptorResources() const override;
   IShaderPtr getShaderInfo() const override;
   IShaderPtr getShaderInfo(StringID pass) const override;
-  ResourcePassFlag getPassFlag() const override { return m_passFlag; }
-  RenderState getRenderState() const override;
+  ResourcePassFlag getPassFlag() const override;
+  RenderState getRenderState(StringID pass) const override;
   StringID getRenderSignature(StringID pass) const override;
 
   // ==== Per-instance UBO setters (StringID-keyed) ====
@@ -340,9 +345,9 @@ private:
   /// Locate a UBO member by StringID, assert type, memcpy value, mark dirty.
   void writeUboMember(StringID id, const void *src, size_t nbytes,
                       ShaderPropertyType expected);
+  bool hasDefinedPass(StringID pass) const;
 
   MaterialTemplate::Ptr m_template;
-  ResourcePassFlag m_passFlag;
 
   // CPU-side std140 byte buffer, sized from shader reflection.
   std::vector<uint8_t> m_uboBuffer;

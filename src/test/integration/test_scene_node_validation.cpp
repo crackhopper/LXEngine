@@ -249,6 +249,81 @@ void testPassEnableStateRebuildsCache() {
          "validated entry restored when pass reenabled");
 }
 
+void testSharedMaterialPassChangesRevalidateAllSceneNodes() {
+  auto material = makeMaterial(false);
+  auto nodeA = SceneNode::create("node_shared_a", makeMeshWithSkinningInputs(),
+                                 material, nullptr);
+  auto nodeB = SceneNode::create("node_shared_b", makeMeshWithSkinningInputs(),
+                                 material, nullptr);
+  auto scene = Scene::create("SharedScene", nodeA);
+  scene->addRenderable(nodeB);
+
+  EXPECT(nodeA->supportsPass(Pass_Forward), "nodeA starts validated");
+  EXPECT(nodeB->supportsPass(Pass_Forward), "nodeB starts validated");
+
+  material->setPassEnabled(Pass_Forward, false);
+  EXPECT(!nodeA->supportsPass(Pass_Forward),
+         "shared material disable propagates to first node");
+  EXPECT(!nodeB->supportsPass(Pass_Forward),
+         "shared material disable propagates to second node");
+
+  material->setPassEnabled(Pass_Forward, true);
+  EXPECT(nodeA->supportsPass(Pass_Forward),
+         "shared material reenable rebuilds first node");
+  EXPECT(nodeB->supportsPass(Pass_Forward),
+         "shared material reenable rebuilds second node");
+}
+
+void testSceneDestructionDetachesSceneNodesFromMaterialListener() {
+  auto material = makeMaterial(false);
+  auto node = SceneNode::create("node_detach", makeMeshWithSkinningInputs(),
+                                material, nullptr);
+
+  {
+    auto scene = Scene::create("TemporaryScene", node);
+    EXPECT(node->supportsPass(Pass_Forward), "scene-owned node starts validated");
+  }
+
+  material->setPassEnabled(Pass_Forward, false);
+  EXPECT(!node->supportsPass(Pass_Forward),
+         "detached node should rebuild locally after scene destruction");
+  EXPECT(!node->getValidatedPassData(Pass_Forward).has_value(),
+         "detached node should clear disabled pass after scene destruction");
+
+  material->setPassEnabled(Pass_Forward, true);
+  EXPECT(node->supportsPass(Pass_Forward),
+         "detached node should revalidate locally after scene destruction");
+}
+
+void testOrdinaryMaterialWritesDoNotChangeValidatedPassState() {
+  auto material = makeMaterial(false);
+  auto nodeA = SceneNode::create("node_non_structural_a",
+                                 makeMeshWithSkinningInputs(), material,
+                                 nullptr);
+  auto nodeB = SceneNode::create("node_non_structural_b",
+                                 makeMeshWithSkinningInputs(), material,
+                                 nullptr);
+  auto scene = Scene::create("NonStructuralScene", nodeA);
+  scene->addRenderable(nodeB);
+
+  auto beforeA = nodeA->getValidatedPassData(Pass_Forward);
+  auto beforeB = nodeB->getValidatedPassData(Pass_Forward);
+  EXPECT(beforeA.has_value(), "nodeA validated before non-structural write");
+  EXPECT(beforeB.has_value(), "nodeB validated before non-structural write");
+
+  material->setFloat(StringID("shininess"), 42.0f);
+  material->updateUBO();
+
+  auto afterA = nodeA->getValidatedPassData(Pass_Forward);
+  auto afterB = nodeB->getValidatedPassData(Pass_Forward);
+  EXPECT(nodeA->supportsPass(Pass_Forward),
+         "nodeA stays supported after ordinary material write");
+  EXPECT(nodeB->supportsPass(Pass_Forward),
+         "nodeB stays supported after ordinary material write");
+  EXPECT(afterA.has_value(), "nodeA validated data survives ordinary write");
+  EXPECT(afterB.has_value(), "nodeB validated data survives ordinary write");
+}
+
 void testSkinningVariantChangesPipelineKeyAndAddsBones() {
   auto mesh = makeMeshWithSkinningInputs();
   auto baseNode =
@@ -402,6 +477,9 @@ int main(int argc, char **argv) {
 
   testIndependentSceneNodeValidation();
   testPassEnableStateRebuildsCache();
+  testSharedMaterialPassChangesRevalidateAllSceneNodes();
+  testSceneDestructionDetachesSceneNodesFromMaterialListener();
+  testOrdinaryMaterialWritesDoNotChangeValidatedPassState();
   testSkinningVariantChangesPipelineKeyAndAddsBones();
   testRenderQueueConsumesValidatedSceneNode();
   testSceneAssignsStableDebugId();

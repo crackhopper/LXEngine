@@ -23,7 +23,7 @@
 
 1. 构造 `SceneNode(nodeName, mesh, material, skeleton?)`。
 2. `SceneNode` 构造时立即扫描 enabled passes，完成结构性校验并建立 `m_validatedPasses`。
-3. `Scene::addRenderable(node)` 检查同一 scene 内 `nodeName` 唯一，并为 `SceneNode` 写入 `sceneName/nodeName` 的调试 `StringID`。
+3. `Scene::addRenderable(node)` 检查同一 scene 内 `nodeName` 唯一，为 `SceneNode` 写入 `sceneName/nodeName` 的调试 `StringID`，并接管 shared `MaterialInstance` 的 pass-state 传播。
 4. `RenderQueue::buildFromScene(scene, pass, target)` 先取一次 `scene.getSceneLevelResources(pass, target)`。
 5. queue 只过滤 `supportsPass(pass)`，然后直接消费 `renderable->getValidatedPassData(pass)`。
 6. queue 把 scene-level 资源追加到 descriptor 列表末尾，生成 `RenderingItem` 并排序。
@@ -32,8 +32,9 @@
 
 - `SceneNode` 可以脱离 `Scene` 独立存在；scene 只额外提供命名空间和 scene-level 资源。
 - `SceneNode` 的结构必填项是 `nodeName`、`mesh`、`materialInstance`；`skeleton` 可选；`objectPC` 继续保留。
-- `setMesh(...)`、`setMaterialInstance(...)`、`setSkeleton(...)` 会同步重建 validated cache；`setFloat` / `setTexture` / model 更新不会。
+- `setMesh(...)`、`setMaterialInstance(...)`、`setSkeleton(...)` 会同步重建 validated cache；`setFloat` / `setTexture` / `updateUBO()` / model 更新不会。
 - `supportsPass(pass)` 现在是缓存查询，不再是简单的 pass-mask 按位判断。
+- 共享 `MaterialInstance` 的 `setPassEnabled(...)` 会由 `Scene::revalidateNodesUsing(materialInstance)` 传播到所有引用该实例的节点；普通参数写入不触发这条结构性重验证。
 - 结构性校验失败统一走 `FATAL + terminate`，错误信息会带 pass、material、shader variants 和 vertex layout。
 - `Scene` 内 `nodeName` 必须唯一；重复插入会直接终止。
 - 对 `blinnphong_0` 的 forward pass，`SceneNode` 现在除了“按反射 contract 检查 location/type”外，还显式承担 variant-to-resource 约束：
@@ -48,7 +49,7 @@
 - `SceneNode::getDescriptorResources()` 和 `getShaderInfo()` 的无参版本仍以 `Pass_Forward` 作为默认读取路径，主要是兼容旧接口。
 - `RenderableSubMesh` 仍能工作，但它的 validated 数据是兼容层即时拼出来的，不具备 `SceneNode` 那套自维护缓存和 fatal 校验模型。
 - `ObjectPC` 仍是 128 字节缓冲，但当前 engine-wide ABI 只要求 `PC_Base` / `PC_Draw` 的 `model` 字段有效。
-- `Scene` 构造时仍会补一个默认 camera 和一个默认 directional light，方便不走完整 renderer 初始化的测试。
+- `Scene` 构造时仍会补一个默认 camera 和一个默认 directional light，方便不走完整 renderer 初始化的测试；节点一旦通过 `addRenderable()` 挂进 scene，也会被写入 `Scene*` 反向指针以支持 shared material 重验证传播。
 - `src/core/scene/object.cpp` 里的 fatal 文本现在会直接带上缺失的 input 名字，例如 `missing vertex input 'inUV' at location 2`，便于把 forward variant 失败定位到具体 mesh contract。
 - `src/test/integration/test_scene_node_validation.cpp` 已经把 `missing inColor / inUV / inNormal / inTangent / inBoneIDs / inBoneWeights / Skeleton` 这些 forward-path 失败都跑成子进程死亡测试。
 
@@ -56,7 +57,7 @@
 
 - 想改结构性校验：看 `src/core/scene/object.cpp` 里的 `rebuildValidatedCache()`。
 - 想改 scene-level 资源筛选：看 `Scene::getSceneLevelResources()`。
-- 想改 node 唯一性或调试标识：看 `Scene::addRenderable()`。
+- 想改 shared material 的结构传播或 node 唯一性/调试标识：看 `Scene::addRenderable()` 和 `Scene::revalidateNodesUsing(...)`。
 
 ## 关联文档
 

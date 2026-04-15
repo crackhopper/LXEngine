@@ -9,6 +9,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <cstdlib>
 #include <filesystem>
 #include <iostream>
 #include <string>
@@ -83,6 +84,12 @@ std::filesystem::path findShaderDir() {
   return {};
 }
 
+int runSelf(const std::filesystem::path &self, const char *mode) {
+  const std::string cmd =
+      "\"" + self.string() + "\" " + mode + " >/dev/null 2>&1";
+  return std::system(cmd.c_str());
+}
+
 MaterialInstance::Ptr
 buildInstanceFromBlinnPhong(ResourcePassFlag flag = ResourcePassFlag::Forward) {
   auto dir = findShaderDir();
@@ -114,6 +121,39 @@ buildInstanceFromBlinnPhong(ResourcePassFlag flag = ResourcePassFlag::Forward) {
   tmpl->buildBindingCache();
 
   return MaterialInstance::create(tmpl, flag);
+}
+
+MaterialTemplate::Ptr buildMultiPassTemplate(const RenderState &forwardState,
+                                             const RenderState &shadowState) {
+  ShaderResourceBinding binding;
+  binding.name = "MaterialUBO";
+  binding.set = 2;
+  binding.binding = 0;
+  binding.type = ShaderPropertyType::UniformBuffer;
+  binding.size = 32;
+
+  auto shader =
+      std::make_shared<FakeShader>(std::vector<ShaderResourceBinding>{binding});
+  auto tmpl = MaterialTemplate::create("multi_pass_fake", shader);
+
+  ShaderProgramSet forwardSet;
+  forwardSet.shaderName = "fake_forward";
+  forwardSet.shader = shader;
+  RenderPassEntry forwardEntry;
+  forwardEntry.shaderSet = forwardSet;
+  forwardEntry.renderState = forwardState;
+  tmpl->setPass(Pass_Forward, std::move(forwardEntry));
+
+  ShaderProgramSet shadowSet;
+  shadowSet.shaderName = "fake_shadow";
+  shadowSet.shader = shader;
+  RenderPassEntry shadowEntry;
+  shadowEntry.shaderSet = shadowSet;
+  shadowEntry.renderState = shadowState;
+  tmpl->setPass(Pass_Shadow, std::move(shadowEntry));
+
+  tmpl->buildBindingCache();
+  return tmpl;
 }
 
 // ---------------------------------------------------------------------------
@@ -254,47 +294,105 @@ void test_loader_produces_valid_instance() {
 
 void test_ubo_layout_comes_from_enabled_pass_shader() {
   std::cout << "\n-- test_ubo_layout_comes_from_enabled_pass_shader --\n";
-
-  ShaderResourceBinding baseBinding;
-  baseBinding.name = "MaterialUBO";
-  baseBinding.set = 2;
-  baseBinding.binding = 0;
-  baseBinding.type = ShaderPropertyType::UniformBuffer;
-  baseBinding.size = 32;
-
-  ShaderResourceBinding shadowBinding = baseBinding;
-  shadowBinding.size = 64;
-
-  auto baseShader =
-      std::make_shared<FakeShader>(std::vector<ShaderResourceBinding>{baseBinding});
-  auto shadowShader = std::make_shared<FakeShader>(
-      std::vector<ShaderResourceBinding>{shadowBinding});
-
-  auto tmpl = MaterialTemplate::create("multi_pass_fake", baseShader);
-
-  ShaderProgramSet forwardSet;
-  forwardSet.shaderName = "fake_forward";
-  forwardSet.shader = baseShader;
-  RenderPassEntry forwardEntry;
-  forwardEntry.shaderSet = forwardSet;
-  tmpl->setPass(Pass_Forward, std::move(forwardEntry));
-
-  ShaderProgramSet shadowSet;
-  shadowSet.shaderName = "fake_shadow";
-  shadowSet.shader = shadowShader;
-  RenderPassEntry shadowEntry;
-  shadowEntry.shaderSet = shadowSet;
-  tmpl->setPass(Pass_Shadow, std::move(shadowEntry));
-
-  auto mat = MaterialInstance::create(tmpl, ResourcePassFlag::Shadow);
+  RenderState forwardState;
+  RenderState shadowState;
+  auto tmpl = buildMultiPassTemplate(forwardState, shadowState);
+  auto mat = MaterialInstance::create(tmpl, ResourcePassFlag::Forward);
   REQUIRE(mat->getUboBinding() != nullptr);
-  REQUIRE(mat->getUboBuffer().size() == 64);
-  std::cout << "  enabled pass shader selected the 64-byte UBO layout\n";
+  REQUIRE(mat->getUboBuffer().size() == 32);
+  std::cout << "  shared UBO layout accepted across all defined passes\n";
+}
+
+void test_instances_default_enable_all_template_passes() {
+  std::cout << "\n-- test_instances_default_enable_all_template_passes --\n";
+  RenderState forwardState;
+  RenderState shadowState;
+  auto tmpl = buildMultiPassTemplate(forwardState, shadowState);
+  auto mat = MaterialInstance::create(tmpl, ResourcePassFlag::Forward);
+
+  REQUIRE(mat->isPassEnabled(Pass_Forward));
+  REQUIRE(mat->isPassEnabled(Pass_Shadow));
+  REQUIRE(mat->getEnabledPasses().size() == 2);
+  REQUIRE(mat->getPassFlag() ==
+          (ResourcePassFlag::Forward | ResourcePassFlag::Shadow));
+  std::cout << "  new instances start with every template-defined pass enabled\n";
+}
+
+void test_getPassFlag_is_derived_from_enabled_passes() {
+  std::cout << "\n-- test_getPassFlag_is_derived_from_enabled_passes --\n";
+  RenderState forwardState;
+  RenderState shadowState;
+  auto tmpl = buildMultiPassTemplate(forwardState, shadowState);
+  auto mat = MaterialInstance::create(tmpl, ResourcePassFlag::Forward);
+
+  mat->setPassEnabled(Pass_Shadow, false);
+  REQUIRE(mat->getPassFlag() == ResourcePassFlag::Forward);
+  mat->setPassEnabled(Pass_Forward, false);
+  REQUIRE(static_cast<uint32_t>(mat->getPassFlag()) == 0);
+  mat->setPassEnabled(Pass_Shadow, true);
+  REQUIRE(mat->getPassFlag() == ResourcePassFlag::Shadow);
+  std::cout << "  pass flag follows the enabled subset only\n";
+}
+
+void test_render_state_is_pass_aware() {
+  std::cout << "\n-- test_render_state_is_pass_aware --\n";
+  RenderState forwardState;
+  forwardState.cullMode = CullMode::Front;
+  RenderState shadowState;
+  shadowState.depthWriteEnable = false;
+  shadowState.blendEnable = true;
+  auto tmpl = buildMultiPassTemplate(forwardState, shadowState);
+  auto mat = MaterialInstance::create(tmpl, ResourcePassFlag::Forward);
+
+  REQUIRE(mat->getRenderState(Pass_Forward) == forwardState);
+  REQUIRE(mat->getRenderState(Pass_Shadow) == shadowState);
+  std::cout << "  render state is resolved from the queried pass entry\n";
+}
+
+void test_non_structural_writes_do_not_notify_pass_listeners() {
+  std::cout << "\n-- test_non_structural_writes_do_not_notify_pass_listeners --\n";
+  auto mat = buildInstanceFromBlinnPhong();
+  if (!mat)
+    return;
+
+  int notifications = 0;
+  const auto listenerId =
+      mat->addPassStateListener([&notifications]() { ++notifications; });
+
+  mat->setFloat(StringID("shininess"), 7.0f);
+  mat->setInt(StringID("enableAlbedo"), 1);
+  mat->updateUBO();
+  REQUIRE(notifications == 0);
+
+  mat->setPassEnabled(Pass_Forward, false);
+  REQUIRE(notifications == 1);
+  mat->removePassStateListener(listenerId);
+  std::cout << "  only structural pass changes notify listeners\n";
+}
+
+int undefinedPassMode() {
+  RenderState forwardState;
+  RenderState shadowState;
+  auto tmpl = buildMultiPassTemplate(forwardState, shadowState);
+  auto mat = MaterialInstance::create(tmpl, ResourcePassFlag::Forward);
+  mat->setPassEnabled(Pass_Deferred, false);
+  return 0;
+}
+
+void test_setPassEnabled_fatals_on_undefined_pass(
+    const std::filesystem::path &self) {
+  std::cout << "\n-- test_setPassEnabled_fatals_on_undefined_pass --\n";
+  const int rc = runSelf(self, "undefined_pass");
+  REQUIRE(rc != 0);
+  std::cout << "  undefined pass toggles terminate as required\n";
 }
 
 } // namespace
 
-int main() {
+int main(int argc, char **argv) {
+  if (argc > 1 && std::string(argv[1]) == "undefined_pass")
+    return undefinedPassMode();
+
   test_ubo_buffer_sized_from_reflection();
   test_setVec3_writes_12_bytes_only();
   test_setFloat_and_setInt_at_reflected_offsets();
@@ -302,6 +400,11 @@ int main() {
   test_descriptor_resources_reflects_buffer_writes();
   test_loader_produces_valid_instance();
   test_ubo_layout_comes_from_enabled_pass_shader();
+  test_instances_default_enable_all_template_passes();
+  test_getPassFlag_is_derived_from_enabled_passes();
+  test_render_state_is_pass_aware();
+  test_non_structural_writes_do_not_notify_pass_listeners();
+  test_setPassEnabled_fatals_on_undefined_pass(argv[0]);
 
   std::cout << "\n========================================\n";
   if (s_failures == 0) {

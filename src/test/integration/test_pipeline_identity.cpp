@@ -74,7 +74,10 @@ public:
   ResourcePassFlag getPassFlag() const override {
     return ResourcePassFlag::Forward;
   }
-  RenderState getRenderState() const override { return {}; }
+  RenderState getRenderState(StringID pass) const override {
+    (void)pass;
+    return {};
+  }
 
   StringID getRenderSignature(StringID pass) const override {
     StringID passSig =

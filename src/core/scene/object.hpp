@@ -17,6 +17,8 @@
 
 namespace LX_core {
 
+class Scene;
+
 struct ObjectPC : public IRenderResource {
   using Ptr = std::shared_ptr<ObjectPC>;
 
@@ -123,11 +125,13 @@ public:
   std::string getNodeName() const override { return m_nodeName; }
   StringID getDebugId() const override { return m_debugId; }
   void setSceneDebugId(StringID debugId) { m_debugId = debugId; }
+  void attachToScene(Scene *scene) { m_scene = scene; }
 
   std::optional<std::reference_wrapper<const ValidatedRenderablePassData>>
   getValidatedPassData(StringID pass) const override;
 
 private:
+  friend class Scene;
   void rebuildValidatedCache();
   void registerMaterialPassListener();
   void unregisterMaterialPassListener();
@@ -141,6 +145,7 @@ private:
   std::unordered_map<StringID, ValidatedRenderablePassData, StringID::Hash>
       m_validatedPasses;
   uint64_t m_materialPassListenerId = 0;
+  Scene *m_scene = nullptr;
 };
 
 struct RenderableSubMesh final : public IRenderable {

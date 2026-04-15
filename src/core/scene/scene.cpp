@@ -2,6 +2,28 @@
 
 namespace LX_core {
 
+Scene::~Scene() {
+  for (const auto &renderable : m_renderables) {
+    auto node = std::dynamic_pointer_cast<SceneNode>(renderable);
+    if (!node)
+      continue;
+    node->attachToScene(nullptr);
+  }
+}
+
+void Scene::revalidateNodesUsing(const MaterialInstance::Ptr &materialInstance) {
+  if (!materialInstance)
+    return;
+  for (const auto &renderable : m_renderables) {
+    auto node = std::dynamic_pointer_cast<SceneNode>(renderable);
+    if (!node)
+      continue;
+    if (node->getMaterialInstance() != materialInstance)
+      continue;
+    node->rebuildValidatedCache();
+  }
+}
+
 std::vector<IRenderResourcePtr>
 Scene::getSceneLevelResources(StringID pass, const RenderTarget &target) const {
   std::vector<IRenderResourcePtr> out;

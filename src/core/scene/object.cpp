@@ -1,4 +1,5 @@
 #include "object.hpp"
+#include "scene.hpp"
 
 #include <algorithm>
 #include <iostream>
@@ -295,8 +296,13 @@ void SceneNode::rebuildValidatedCache() {
 void SceneNode::registerMaterialPassListener() {
   if (!m_materialInstance)
     return;
-  m_materialPassListenerId =
-      m_materialInstance->addPassStateListener([this]() { rebuildValidatedCache(); });
+  m_materialPassListenerId = m_materialInstance->addPassStateListener([this]() {
+    if (m_scene && m_materialInstance) {
+      m_scene->revalidateNodesUsing(m_materialInstance);
+      return;
+    }
+    rebuildValidatedCache();
+  });
 }
 
 void SceneNode::unregisterMaterialPassListener() {

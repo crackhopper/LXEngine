@@ -41,7 +41,7 @@
 - 保存对 template 的引用
 - 保存运行时 UBO 内容
 - 保存贴图绑定
-- 未来负责 instance 级 pass enable/disable
+- 保存 instance 级 pass enable/disable 状态，默认启用 template 中全部已定义 pass
 
 它**不**负责定义 variants，也**不**拥有具体 `Skeleton`。
 
@@ -131,13 +131,14 @@ variants 属于 shader/program 形态，因此归属 `MaterialTemplate`，不归
 - `MaterialTemplate` 已按 pass 保存 `RenderPassEntry`
 - `MaterialInstance` 已是唯一 `IMaterial` 实现
 - 实例参数写入已经走 shader 反射
+- `MaterialInstance::getPassFlag()` 已从“template 已定义且 instance 已启用”的 pass 集合派生
+- `getRenderState(pass)` 已改成 pass-aware 查询
 
 仍处于过渡中的部分有：
 
-- `MaterialInstance` 还没有 instance 级 pass enable/disable
-- `getRenderState()` 仍然偏 Forward-only
 - 旧 `IRenderable` 接口过于贴近底层资源展开
 - vertex input 反射与 SceneNode 级合法性校验还未完整建立
+- `MaterialTemplate` 仍被当作静态蓝图，不支持运行时结构性热修改
 
 ## 推荐阅读顺序
 

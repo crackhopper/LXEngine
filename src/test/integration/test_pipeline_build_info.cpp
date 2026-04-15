@@ -83,7 +83,8 @@ public:
   ResourcePassFlag getPassFlag() const override {
     return ResourcePassFlag::Forward;
   }
-  RenderState getRenderState() const override {
+  RenderState getRenderState(StringID pass) const override {
+    (void)pass;
     RenderState s;
     s.cullMode = CullMode::Front;
     s.depthTestEnable = false;

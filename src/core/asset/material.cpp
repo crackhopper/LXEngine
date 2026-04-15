@@ -3,20 +3,12 @@
 
 #include <algorithm>
 #include <cstring>
+#include <iostream>
 #include <utility>
 
 namespace LX_core {
 
 namespace {
-
-const RenderPassEntry *firstEntry(const MaterialTemplate &tmpl) {
-  // Transitional: old accessors still assume a single Forward-only pass.
-  // REQ-007 will route these through the render-signature pipeline later.
-  auto opt = tmpl.getEntry(StringID("Forward"));
-  if (opt)
-    return &opt->get();
-  return nullptr;
-}
 
 const ShaderResourceBinding *findMaterialUboBinding(const IShaderPtr &shader) {
   if (!shader)
@@ -31,6 +23,14 @@ const ShaderResourceBinding *findMaterialUboBinding(const IShaderPtr &shader) {
   return nullptr;
 }
 
+[[noreturn]] void fatalUndefinedPass(const MaterialTemplate *tmpl, StringID pass) {
+  std::cerr << "FATAL [MaterialInstance] template="
+            << (tmpl ? tmpl->getName() : std::string("<null>"))
+            << " pass=" << GlobalStringTable::get().toDebugString(pass)
+            << " reason=setPassEnabled called for undefined pass" << std::endl;
+  std::terminate();
+}
+
 } // namespace
 
 /*****************************************************************
@@ -39,16 +39,14 @@ const ShaderResourceBinding *findMaterialUboBinding(const IShaderPtr &shader) {
 
 MaterialInstance::MaterialInstance(Token, MaterialTemplate::Ptr tmpl,
                                    ResourcePassFlag passFlag)
-    : m_template(std::move(tmpl)), m_passFlag(passFlag) {
+    : m_template(std::move(tmpl)) {
+  (void)passFlag;
   if (!m_template) {
     return;
   }
 
   for (const auto &[pass, _] : m_template->getPasses()) {
-    const auto flag = passFlagFromStringID(pass);
-    if ((static_cast<uint32_t>(passFlag) & static_cast<uint32_t>(flag)) != 0) {
-      m_enabledPasses.insert(pass);
-    }
+    m_enabledPasses.insert(pass);
   }
 
   // Convention: the per-material UBO block is named `MaterialUBO` in GLSL.
@@ -74,7 +72,8 @@ MaterialInstance::MaterialInstance(Token, MaterialTemplate::Ptr tmpl,
     m_uboBinding = selectedBinding;
     m_uboBuffer.assign(selectedBinding->size, uint8_t{0});
     m_uboResource = std::make_shared<UboByteBufferResource>(
-        m_uboBuffer, selectedBinding->size, m_passFlag);
+        m_uboBuffer, selectedBinding->size,
+        [this]() { return getPassFlag(); });
   }
 }
 
@@ -186,9 +185,23 @@ IShaderPtr MaterialInstance::getShaderInfo(StringID pass) const {
   return m_template->getShader();
 }
 
-RenderState MaterialInstance::getRenderState() const {
-  const auto *entry = m_template ? firstEntry(*m_template) : nullptr;
-  return entry ? entry->renderState : RenderState{};
+ResourcePassFlag MaterialInstance::getPassFlag() const {
+  uint32_t mask = 0;
+  if (!m_template)
+    return ResourcePassFlag::Forward;
+  for (const auto &pass : m_enabledPasses) {
+    if (!hasDefinedPass(pass))
+      continue;
+    mask |= static_cast<uint32_t>(passFlagFromStringID(pass));
+  }
+  return static_cast<ResourcePassFlag>(mask);
+}
+
+RenderState MaterialInstance::getRenderState(StringID pass) const {
+  if (!m_template)
+    return RenderState{};
+  auto entry = m_template->getEntry(pass);
+  return entry ? entry->get().renderState : RenderState{};
 }
 
 StringID MaterialInstance::getRenderSignature(StringID pass) const {
@@ -200,22 +213,23 @@ StringID MaterialInstance::getRenderSignature(StringID pass) const {
 }
 
 bool MaterialInstance::isPassEnabled(StringID pass) const {
-  return m_enabledPasses.find(pass) != m_enabledPasses.end();
+  return hasDefinedPass(pass) &&
+         m_enabledPasses.find(pass) != m_enabledPasses.end();
 }
 
 void MaterialInstance::setPassEnabled(StringID pass, bool enabled) {
+  if (!m_template || !hasDefinedPass(pass)) {
+    fatalUndefinedPass(m_template.get(), pass);
+  }
+
   const bool currentlyEnabled = isPassEnabled(pass);
   if (enabled == currentlyEnabled)
     return;
 
   if (enabled) {
     m_enabledPasses.insert(pass);
-    m_passFlag = m_passFlag | passFlagFromStringID(pass);
   } else {
     m_enabledPasses.erase(pass);
-    uint32_t mask = static_cast<uint32_t>(m_passFlag);
-    mask &= ~static_cast<uint32_t>(passFlagFromStringID(pass));
-    m_passFlag = static_cast<ResourcePassFlag>(mask);
   }
 
   for (const auto &[_, callback] : m_passStateListeners) {
@@ -240,6 +254,10 @@ uint64_t MaterialInstance::addPassStateListener(std::function<void()> callback) 
 
 void MaterialInstance::removePassStateListener(uint64_t listenerId) {
   m_passStateListeners.erase(listenerId);
+}
+
+bool MaterialInstance::hasDefinedPass(StringID pass) const {
+  return m_template && m_template->getEntry(pass).has_value();
 }
 
 } // namespace LX_core

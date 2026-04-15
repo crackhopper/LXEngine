@@ -50,6 +50,7 @@ public:
     m_lights.push_back(
         std::make_shared<DirectionalLight>(ResourcePassFlag::Forward));
   }
+  ~Scene();
 
   static auto create(std::string sceneName, IRenderablePtr mesh = nullptr) {
     return std::make_shared<Scene>(std::move(sceneName), std::move(mesh));
@@ -79,6 +80,7 @@ public:
         }
       }
       if (auto node = std::dynamic_pointer_cast<SceneNode>(r)) {
+        node->attachToScene(this);
         node->setSceneDebugId(
             StringID(m_sceneName + "/" + node->getNodeName()));
       }
@@ -92,6 +94,7 @@ public:
   void addLight(LightBasePtr light) { m_lights.push_back(std::move(light)); }
   const std::vector<LightBasePtr> &getLights() const { return m_lights; }
   const std::string &getSceneName() const { return m_sceneName; }
+  void revalidateNodesUsing(const MaterialInstance::Ptr &materialInstance);
 
   /// REQ-009 two-axis filter form: camera by matchesTarget(target), light by
   /// supportsPass(pass). Returns camera UBOs first, then light UBOs; both in

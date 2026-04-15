@@ -78,7 +78,10 @@ public:
     return m_template ? m_template->getShader() : nullptr;
   }
   ResourcePassFlag getPassFlag() const override { return m_passFlag; }
-  RenderState getRenderState() const override { return {}; }
+  RenderState getRenderState(StringID pass) const override {
+    (void)pass;
+    return {};
+  }
 
   StringID getRenderSignature(StringID pass) const override {
     StringID passSig =
