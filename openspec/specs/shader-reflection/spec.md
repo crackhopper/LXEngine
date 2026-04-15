@@ -1,9 +1,7 @@
 ## Purpose
 
 Define the current shader-reflection contract for extracting descriptor bindings and UBO member layout from SPIR-V.
-
 ## Requirements
-
 ### Requirement: Extract descriptor bindings from SPIR-V
 ShaderReflector SHALL parse SPIR-V bytecode and extract all descriptor resource bindings. Each binding MUST populate `ShaderResourceBinding` fields: `name`, `set`, `binding`, `type`, `descriptorCount`, `size` (for buffers), `stageFlags`, and—for `UniformBuffer` bindings—`members` describing the std140-laid-out contents of the block.
 
@@ -107,3 +105,21 @@ The reflection output MUST be deterministic for identical SPIR-V input and MUST 
 #### Scenario: Variant-specific vertex contract is observable
 - **WHEN** two compiled shader variants differ in whether skinning inputs are enabled
 - **THEN** querying their reflected vertex input contracts shows the skinned variant requiring the additional skinning attributes while the non-skinned variant does not
+
+### Requirement: Reflected vertex input contract matches forward variant-driven declarations
+When `blinnphong_0` is compiled with a specific forward variant subset, `ShaderReflector` SHALL report only the vertex-stage inputs actually declared by that compiled shader variant. Inputs disabled by variant-controlled GLSL declarations MUST NOT appear in the reflected vertex input contract.
+
+This requirement applies at minimum to the forward-family-controlled inputs `inColor`, `inUV`, `inNormal`, `inTangent`, `inBoneIDs`, and `inBoneWeights`.
+
+#### Scenario: UV-disabled variant omits UV input from reflection
+- **WHEN** `blinnphong_0` is compiled with `USE_UV=0`
+- **THEN** the reflected vertex input contract does not contain `inUV`
+
+#### Scenario: Normal-mapped variant reflects tangent input
+- **WHEN** `blinnphong_0` is compiled with `USE_NORMAL_MAP=1`
+- **THEN** the reflected vertex input contract contains `inTangent`
+
+#### Scenario: Non-skinned variant omits skinning inputs
+- **WHEN** `blinnphong_0` is compiled with `USE_SKINNING=0`
+- **THEN** the reflected vertex input contract does not contain `inBoneIDs` or `inBoneWeights`
+

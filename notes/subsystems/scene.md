@@ -2,7 +2,7 @@
 
 > Scene 负责持有 renderables、camera、light，并为 `RenderQueue` 提供 scene-level 资源。真正的 draw item 组装已经从“现场拼装”改成“消费 `SceneNode` 预验证结果”。
 >
-> 相关 spec: `openspec/specs/scene-node-validation/spec.md` + `openspec/specs/frame-graph/spec.md` + `openspec/specs/render-signature/spec.md`
+> 相关 spec: `openspec/specs/scene-node-validation/spec.md` + `openspec/specs/frame-graph/spec.md` + `openspec/specs/render-signature/spec.md` + `openspec/specs/forward-shader-variant-contract/spec.md`
 
 ## 它解决什么问题
 
@@ -36,6 +36,12 @@
 - `supportsPass(pass)` 现在是缓存查询，不再是简单的 pass-mask 按位判断。
 - 结构性校验失败统一走 `FATAL + terminate`，错误信息会带 pass、material、shader variants 和 vertex layout。
 - `Scene` 内 `nodeName` 必须唯一；重复插入会直接终止。
+- 对 `blinnphong_0` 的 forward pass，`SceneNode` 现在除了“按反射 contract 检查 location/type”外，还显式承担 variant-to-resource 约束：
+  - `USE_VERTEX_COLOR` 要求 mesh 提供 `inColor`
+  - `USE_UV` 要求 mesh 提供 `inUV`
+  - `USE_LIGHTING` 要求 mesh 提供 `inNormal`
+  - `USE_NORMAL_MAP` 要求 mesh 同时提供 `inTangent + inUV`
+  - `USE_SKINNING` 要求 mesh 提供 `inBoneIDs + inBoneWeights`，且节点上必须有 `Skeleton/Bones`
 
 ## 当前实现边界
 
@@ -43,6 +49,8 @@
 - `RenderableSubMesh` 仍能工作，但它的 validated 数据是兼容层即时拼出来的，不具备 `SceneNode` 那套自维护缓存和 fatal 校验模型。
 - `ObjectPC` 仍是 128 字节缓冲，但当前 engine-wide ABI 只要求 `PC_Base` / `PC_Draw` 的 `model` 字段有效。
 - `Scene` 构造时仍会补一个默认 camera 和一个默认 directional light，方便不走完整 renderer 初始化的测试。
+- `src/core/scene/object.cpp` 里的 fatal 文本现在会直接带上缺失的 input 名字，例如 `missing vertex input 'inUV' at location 2`，便于把 forward variant 失败定位到具体 mesh contract。
+- `src/test/integration/test_scene_node_validation.cpp` 已经把 `missing inColor / inUV / inNormal / inTangent / inBoneIDs / inBoneWeights / Skeleton` 这些 forward-path 失败都跑成子进程死亡测试。
 
 ## 从哪里改
 

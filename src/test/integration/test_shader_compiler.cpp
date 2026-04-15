@@ -302,42 +302,111 @@ static bool testBlinnPhongVariantVertexInputs(
     const std::filesystem::path &vertPath,
     const std::filesystem::path &fragPath) {
   std::cout << "\n========================================\n";
-  std::cout << "  Test: BlinnPhong variant vertex inputs\n";
+  std::cout << "  Test: BlinnPhong variant contracts\n";
   std::cout << "========================================\n";
 
-  auto baseCompile = ShaderCompiler::compileProgram(
-      vertPath, fragPath,
-      {{"USE_LIGHTING", true}, {"USE_SKINNING", false}});
-  auto skinnedCompile = ShaderCompiler::compileProgram(
-      vertPath, fragPath,
-      {{"USE_LIGHTING", true}, {"USE_SKINNING", true}});
-  if (!baseCompile.success || !skinnedCompile.success) {
-    std::cerr << "  FAIL: compile failed for variant input test\n";
+  const auto compileVariant =
+      [&](std::initializer_list<ShaderVariant> variants) -> CompileResult {
+    return ShaderCompiler::compileProgram(vertPath, fragPath,
+                                          std::vector<ShaderVariant>(variants));
+  };
+  const auto hasInput =
+      [](const std::vector<VertexInputAttribute> &inputs,
+         const std::string &name, uint32_t location, DataType type) {
+        for (const auto &input : inputs) {
+          if (input.name == name && input.location == location &&
+              input.type == type) {
+            return true;
+          }
+        }
+        return false;
+      };
+  const auto hasBinding =
+      [](const std::vector<ShaderResourceBinding> &bindings,
+         const std::string &name) {
+        for (const auto &binding : bindings) {
+          if (binding.name == name)
+            return true;
+        }
+        return false;
+      };
+
+  const auto unlitCompile = compileVariant({});
+  const auto vertexColorCompile =
+      compileVariant({{"USE_VERTEX_COLOR", true}, {"USE_LIGHTING", false}});
+  const auto uvCompile =
+      compileVariant({{"USE_UV", true}, {"USE_LIGHTING", false}});
+  const auto lightingCompile = compileVariant({{"USE_LIGHTING", true}});
+  const auto normalMapCompile =
+      compileVariant({{"USE_UV", true},
+                      {"USE_LIGHTING", true},
+                      {"USE_NORMAL_MAP", true}});
+  const auto skinnedCompile =
+      compileVariant({{"USE_LIGHTING", true}, {"USE_SKINNING", true}});
+
+  if (!unlitCompile.success || !vertexColorCompile.success || !uvCompile.success ||
+      !lightingCompile.success || !normalMapCompile.success ||
+      !skinnedCompile.success) {
+    std::cerr << "  FAIL: compile failed for variant contract test\n";
     return false;
   }
 
-  auto baseInputs = ShaderReflector::reflectVertexInputs(baseCompile.stages);
-  auto skinnedInputs =
+  const auto unlitInputs = ShaderReflector::reflectVertexInputs(unlitCompile.stages);
+  const auto vertexColorInputs =
+      ShaderReflector::reflectVertexInputs(vertexColorCompile.stages);
+  const auto uvInputs = ShaderReflector::reflectVertexInputs(uvCompile.stages);
+  const auto lightingInputs =
+      ShaderReflector::reflectVertexInputs(lightingCompile.stages);
+  const auto normalMapInputs =
+      ShaderReflector::reflectVertexInputs(normalMapCompile.stages);
+  const auto skinnedInputs =
       ShaderReflector::reflectVertexInputs(skinnedCompile.stages);
 
-  if (baseInputs.size() != 4) {
-    std::cerr << "  FAIL: expected 4 base vertex inputs, got "
-              << baseInputs.size() << "\n";
+  if (unlitInputs.size() != 1 ||
+      !hasInput(unlitInputs, "inPosition", 0, DataType::Float3)) {
+    std::cerr << "  FAIL: unlit variant should only require inPosition\n";
     return false;
   }
-  if (skinnedInputs.size() != 6) {
-    std::cerr << "  FAIL: expected 6 skinned vertex inputs, got "
-              << skinnedInputs.size() << "\n";
+  if (vertexColorInputs.size() != 2 ||
+      !hasInput(vertexColorInputs, "inColor", 6, DataType::Float4)) {
+    std::cerr << "  FAIL: vertex-color variant should require inColor@6\n";
+    return false;
+  }
+  if (uvInputs.size() != 2 ||
+      !hasInput(uvInputs, "inUV", 2, DataType::Float2)) {
+    std::cerr << "  FAIL: UV variant should require inUV@2\n";
+    return false;
+  }
+  if (lightingInputs.size() != 2 ||
+      !hasInput(lightingInputs, "inNormal", 1, DataType::Float3)) {
+    std::cerr << "  FAIL: lighting variant should require inNormal@1\n";
+    return false;
+  }
+  if (normalMapInputs.size() != 4 ||
+      !hasInput(normalMapInputs, "inTangent", 3, DataType::Float4) ||
+      !hasInput(normalMapInputs, "inUV", 2, DataType::Float2)) {
+    std::cerr << "  FAIL: normal-map variant should require tangent and uv\n";
+    return false;
+  }
+  if (skinnedInputs.size() != 4 ||
+      !hasInput(skinnedInputs, "inBoneIDs", 4, DataType::Int4) ||
+      !hasInput(skinnedInputs, "inBoneWeights", 5, DataType::Float4)) {
+    std::cerr << "  FAIL: skinned variant should require bone inputs\n";
     return false;
   }
 
-  if (skinnedInputs[4].location != 4 || skinnedInputs[4].type != DataType::Int4 ||
-      skinnedInputs[5].location != 5 || skinnedInputs[5].type != DataType::Float4) {
-    std::cerr << "  FAIL: skinned variant input contract mismatch\n";
+  const auto unlitBindings = ShaderReflector::reflect(unlitCompile.stages);
+  const auto skinnedBindings = ShaderReflector::reflect(skinnedCompile.stages);
+  if (hasBinding(unlitBindings, "Bones")) {
+    std::cerr << "  FAIL: unskinned variant must not reflect Bones UBO\n";
+    return false;
+  }
+  if (!hasBinding(skinnedBindings, "Bones")) {
+    std::cerr << "  FAIL: skinned variant must reflect Bones UBO\n";
     return false;
   }
 
-  std::cout << "  PASS: skinned variant exposes additional vertex inputs\n";
+  std::cout << "  PASS: forward variants expose the expected contracts\n";
   return true;
 }
 
@@ -375,6 +444,33 @@ static bool testBlinnPhongPushConstantAbi(const std::filesystem::path &vertPath,
   }
 
   std::cout << "  PASS: PC ABI is model-only in C++ and GLSL\n";
+  return true;
+}
+
+static bool testBlinnPhongRuntimeFallbacks(const std::filesystem::path &fragPath) {
+  std::cout << "\n========================================\n";
+  std::cout << "  Test: BlinnPhong runtime fallbacks\n";
+  std::cout << "========================================\n";
+
+  const auto fragSource = readTextFile(fragPath);
+
+  if (fragSource.find("if (material.enableAlbedo == 1)") ==
+      std::string::npos) {
+    std::cerr << "  FAIL: albedo sampling is no longer gated by enableAlbedo\n";
+    return false;
+  }
+  if (fragSource.find("if (material.enableNormal == 1)") ==
+      std::string::npos) {
+    std::cerr << "  FAIL: normal-map sampling is no longer gated by enableNormal\n";
+    return false;
+  }
+  if (fragSource.find("vec3 ambient = baseCol * 0.1;") ==
+      std::string::npos) {
+    std::cerr << "  FAIL: ambient fallback term missing from lit path\n";
+    return false;
+  }
+
+  std::cout << "  PASS: runtime texture fallbacks and ambient term preserved\n";
   return true;
 }
 
@@ -432,6 +528,8 @@ int main(int argc, char *argv[]) {
     if (!testBlinnPhongVariantVertexInputs(blinnVert, blinnFrag))
       ++failures;
     if (!testBlinnPhongPushConstantAbi(blinnVert, blinnFrag))
+      ++failures;
+    if (!testBlinnPhongRuntimeFallbacks(blinnFrag))
       ++failures;
   } else {
     std::cerr << "  SKIP: blinnphong_0 shaders not found at " << shaderDir

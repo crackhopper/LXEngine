@@ -1,20 +1,10 @@
 {
-  "lastSyncedCommit": "484861b0bf0eb5d3d32359fe0643337018aae299",
-  "lastSyncedAt": "2026-04-15T07:37:25Z",
-  "mode": "incremental+cleanup",
+  "lastSyncedCommit": "5c532994e54a69744c0e546a3a21ebc00bbf365a",
+  "lastSyncedAt": "2026-04-15T16:37:00Z",
+  "mode": "incremental",
   "files": [
-    "notes/README.md",
-    "notes/architecture.md",
-    "notes/glossary.md",
     "notes/subsystems/shader-system.md",
-    "notes/subsystems/string-interning.md",
     "notes/subsystems/material-system.md",
-    "notes/subsystems/pipeline-identity.md",
-    "notes/subsystems/pipeline-cache.md",
-    "notes/subsystems/frame-graph.md",
-    "notes/subsystems/scene.md",
-    "notes/subsystems/geometry.md",
-    "notes/subsystems/skeleton.md",
-    "notes/subsystems/vulkan-backend.md"
+    "notes/subsystems/scene.md"
   ]
 }

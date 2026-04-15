@@ -16,20 +16,41 @@ layout(set = 3, binding = 0) uniform Bones {
 } skin;
 #endif
 
-// 输入属性
+// Vertex inputs shrink with the enabled forward-shader variants.
 layout(location = 0) in vec3 inPosition;
+#ifdef USE_LIGHTING
 layout(location = 1) in vec3 inNormal;
+#endif
+#ifdef USE_UV
 layout(location = 2) in vec2 inUV;
-layout(location = 3) in vec4 inTangent; // xyz: 切线, w: 手性
+#endif
+#ifdef USE_NORMAL_MAP
+layout(location = 3) in vec4 inTangent;
+#endif
 #ifdef USE_SKINNING
 layout(location = 4) in ivec4 inBoneIDs;
 layout(location = 5) in vec4 inBoneWeights;
 #endif
+#ifdef USE_VERTEX_COLOR
+layout(location = 6) in vec4 inColor;
+#endif
 
-// 输出到 Fragment
+// Fragment varyings shrink with the same variant contract.
+#ifdef USE_LIGHTING
 layout(location = 0) out vec3 vWorldPos;
+#endif
+#ifdef USE_UV
 layout(location = 1) out vec2 vUV;
-layout(location = 2) out mat3 vTBN; // 直接传递整个矩阵
+#endif
+#ifdef USE_VERTEX_COLOR
+layout(location = 2) out vec4 vColor;
+#endif
+#ifdef USE_LIGHTING
+layout(location = 3) out vec3 vWorldNormal;
+#endif
+#ifdef USE_NORMAL_MAP
+layout(location = 4) out mat3 vTBN;
+#endif
 
 void main() {
     mat4 skinMatrix = mat4(1.0);
@@ -43,20 +64,28 @@ void main() {
 
     mat4 finalModel = object.model * skinMatrix;
     vec4 worldPos = finalModel * vec4(inPosition, 1.0);
-    
+
     gl_Position = camera.proj * camera.view * worldPos;
-    // NDC_coord = proj * view * model (skin) * pos
+
+#ifdef USE_LIGHTING
     vWorldPos = worldPos.xyz;
+#endif
+#ifdef USE_UV
     vUV = inUV;
+#endif
+#ifdef USE_VERTEX_COLOR
+    vColor = inColor;
+#endif
 
-    // 2. TBN 矩阵构建 (世界空间)
-    // 使用法线矩阵处理非统一缩放
+#ifdef USE_LIGHTING
     mat3 normalMatrix = mat3(transpose(inverse(finalModel)));
-    
-    vec3 N = normalize(normalMatrix * inNormal);
-    vec3 T = normalize(normalMatrix * inTangent.xyz);
-    // 重建副切线 B
-    vec3 B = normalize(cross(N, T) * inTangent.w);
+    vWorldNormal = normalize(normalMatrix * inNormal);
+#endif
 
+#ifdef USE_NORMAL_MAP
+    vec3 N = vWorldNormal;
+    vec3 T = normalize(normalMatrix * inTangent.xyz);
+    vec3 B = normalize(cross(N, T) * inTangent.w);
     vTBN = mat3(T, B, N);
+#endif
 }

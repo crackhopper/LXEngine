@@ -1,9 +1,7 @@
 ## Purpose
 
 Define the current scene-node validation contract for high-level renderables and their structural pass validation behavior.
-
 ## Requirements
-
 ### Requirement: SceneNode is a self-validating high-level renderable
 The system SHALL provide a high-level `SceneNode` type as the primary `IRenderable` implementation. `SceneNode` construction SHALL require `nodeName`, `MeshPtr mesh`, and `MaterialPtr materialInstance`; `SkeletonPtr` SHALL be optional; and `objectPC` SHALL remain present as a transitional member for the engine-wide model push constant. `SceneNode` SHALL be valid outside of any `Scene` container and SHALL perform structural validation immediately during construction.
 
@@ -65,3 +63,33 @@ Structural validation SHALL cover at minimum:
 #### Scenario: Vertex layout mismatch terminates
 - **WHEN** the reflected vertex-stage inputs required by an enabled pass are not fully provided by the mesh vertex layout
 - **THEN** the system logs a `FATAL` validation failure including the pass and vertex-layout context, and terminates immediately
+
+### Requirement: SceneNode validates forward-shader resource requirements from variants
+For any enabled pass backed by the `blinnphong_0` forward shader family, `SceneNode` SHALL validate mesh and node resources against the active shader variant set before the node is considered structurally valid.
+
+At minimum, the validation rules SHALL be:
+
+- `USE_VERTEX_COLOR => mesh` provides `inColor`
+- `USE_UV => mesh` provides `inUV`
+- `USE_LIGHTING => mesh` provides `inNormal`
+- `USE_NORMAL_MAP => mesh` provides `inTangent` and `inUV`
+- `USE_SKINNING => mesh` provides `inBoneIDs` and `inBoneWeights`, and the node provides `Skeleton/Bones`
+
+Any mismatch between the enabled variant set and the available mesh/skeleton resources MUST be treated as a structural validation failure and handled as `FATAL + terminate`.
+
+#### Scenario: Missing vertex color attribute terminates
+- **WHEN** a pass enables `USE_VERTEX_COLOR` and the mesh vertex layout does not provide `inColor`
+- **THEN** `SceneNode` logs a `FATAL` structural validation failure for that pass and terminates immediately
+
+#### Scenario: Missing UV for textured forward pass terminates
+- **WHEN** a pass enables `USE_UV` and the mesh vertex layout does not provide `inUV`
+- **THEN** `SceneNode` logs a `FATAL` structural validation failure for that pass and terminates immediately
+
+#### Scenario: Missing tangent for normal-mapped pass terminates
+- **WHEN** a pass enables `USE_NORMAL_MAP` and the mesh vertex layout does not provide `inTangent`
+- **THEN** `SceneNode` logs a `FATAL` structural validation failure for that pass and terminates immediately
+
+#### Scenario: Missing skeleton resources for skinned pass terminates
+- **WHEN** a pass enables `USE_SKINNING` and the node lacks a `Skeleton` or `Bones` resource
+- **THEN** `SceneNode` logs a `FATAL` structural validation failure for that pass and terminates immediately
+

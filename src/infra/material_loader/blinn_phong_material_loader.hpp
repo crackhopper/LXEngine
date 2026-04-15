@@ -9,7 +9,10 @@ namespace LX_infra {
 LX_core::MaterialInstance::Ptr loadBlinnPhongMaterial(
     LX_core::ResourcePassFlag passFlag = LX_core::ResourcePassFlag::Forward,
     std::vector<LX_core::ShaderVariant> variants = {
+        LX_core::ShaderVariant{"USE_VERTEX_COLOR", false},
+        LX_core::ShaderVariant{"USE_UV", false},
         LX_core::ShaderVariant{"USE_LIGHTING", true},
+        LX_core::ShaderVariant{"USE_NORMAL_MAP", false},
         LX_core::ShaderVariant{"USE_SKINNING", false},
     });
 

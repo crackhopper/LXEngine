@@ -238,14 +238,14 @@ void SceneNode::rebuildValidatedCache() {
       const auto *layoutItem = findLayoutItem(layout, input.location);
       if (!layoutItem) {
         fatalValidation(*this, pass, *m_materialInstance, entry.shaderSet,
-                        "missing vertex input at location " +
-                            std::to_string(input.location),
+                        "missing vertex input '" + input.name +
+                            "' at location " + std::to_string(input.location),
                         &layout);
       }
       if (layoutItem->type != input.type) {
         fatalValidation(*this, pass, *m_materialInstance, entry.shaderSet,
-                        "vertex input type mismatch at location " +
-                            std::to_string(input.location),
+                        "vertex input type mismatch for '" + input.name +
+                            "' at location " + std::to_string(input.location),
                         &layout);
       }
     }

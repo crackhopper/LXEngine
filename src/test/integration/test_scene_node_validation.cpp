@@ -31,8 +31,89 @@ int failures = 0;
     }                                                                          \
   } while (0)
 
+struct VertexPosOnly {
+  Vec3f pos;
+
+  static const VertexLayout &getLayout() {
+    static VertexLayout layout = {
+        {{"inPosition", 0, DataType::Float3, sizeof(Vec3f),
+          offsetof(VertexPosOnly, pos)}},
+        sizeof(VertexPosOnly)};
+    return layout;
+  }
+};
+
+struct VertexPosColorOnly {
+  Vec3f pos;
+  Vec4f color;
+
+  static const VertexLayout &getLayout() {
+    static VertexLayout layout = {
+        {{"inPosition", 0, DataType::Float3, sizeof(Vec3f),
+          offsetof(VertexPosColorOnly, pos)},
+         {"inColor", 6, DataType::Float4, sizeof(Vec4f),
+          offsetof(VertexPosColorOnly, color)}},
+        sizeof(VertexPosColorOnly)};
+    return layout;
+  }
+};
+
+struct VertexPosUvOnly {
+  Vec3f pos;
+  Vec2f uv;
+
+  static const VertexLayout &getLayout() {
+    static VertexLayout layout = {
+        {{"inPosition", 0, DataType::Float3, sizeof(Vec3f),
+          offsetof(VertexPosUvOnly, pos)},
+         {"inUV", 2, DataType::Float2, sizeof(Vec2f),
+          offsetof(VertexPosUvOnly, uv)}},
+        sizeof(VertexPosUvOnly)};
+    return layout;
+  }
+};
+
+struct VertexPosNormalOnly {
+  Vec3f pos;
+  Vec3f normal;
+
+  static const VertexLayout &getLayout() {
+    static VertexLayout layout = {
+        {{"inPosition", 0, DataType::Float3, sizeof(Vec3f),
+          offsetof(VertexPosNormalOnly, pos)},
+         {"inNormal", 1, DataType::Float3, sizeof(Vec3f),
+          offsetof(VertexPosNormalOnly, normal)}},
+        sizeof(VertexPosNormalOnly)};
+    return layout;
+  }
+};
+
+struct VertexPosNormalUvOnly {
+  Vec3f pos;
+  Vec3f normal;
+  Vec2f uv;
+
+  static const VertexLayout &getLayout() {
+    static VertexLayout layout = {
+        {{"inPosition", 0, DataType::Float3, sizeof(Vec3f),
+          offsetof(VertexPosNormalUvOnly, pos)},
+         {"inNormal", 1, DataType::Float3, sizeof(Vec3f),
+          offsetof(VertexPosNormalUvOnly, normal)},
+         {"inUV", 2, DataType::Float2, sizeof(Vec2f),
+          offsetof(VertexPosNormalUvOnly, uv)}},
+        sizeof(VertexPosNormalUvOnly)};
+    return layout;
+  }
+};
+
+template <typename TVertex> MeshPtr makeMesh(std::vector<TVertex> vertices) {
+  auto vb = VertexBuffer<TVertex>::create(std::move(vertices));
+  auto ib = IndexBuffer::create({0, 1, 2});
+  return Mesh::create(vb, ib);
+}
+
 MeshPtr makeMeshWithSkinningInputs() {
-  auto vb = VertexBuffer<VertexPosNormalUvBone>::create(
+  return makeMesh<VertexPosNormalUvBone>(
       std::vector<VertexPosNormalUvBone>{
           VertexPosNormalUvBone{{0, 0, 0},
                                 {0, 1, 0},
@@ -53,8 +134,6 @@ MeshPtr makeMeshWithSkinningInputs() {
                                 {0, 0, 0, 0},
                                 {1, 0, 0, 0}},
       });
-  auto ib = IndexBuffer::create({0, 1, 2});
-  return Mesh::create(vb, ib);
 }
 
 MeshPtr makeMeshWithoutSkinningInputs() {
@@ -71,9 +150,37 @@ MeshPtr makeMeshWithoutSkinningInputs() {
   vertices[2].normal = {0, 1, 0};
   vertices[2].uv = {0, 1};
   vertices[2].tangent = {1, 0, 0, 1};
-  auto vb = VertexBuffer<VertexPBR>::create(std::move(vertices));
-  auto ib = IndexBuffer::create({0, 1, 2});
-  return Mesh::create(vb, ib);
+  return makeMesh<VertexPBR>(std::move(vertices));
+}
+
+MeshPtr makeMeshPositionOnly() {
+  return makeMesh<VertexPosOnly>({{{0, 0, 0}}, {{1, 0, 0}}, {{0, 1, 0}}});
+}
+
+MeshPtr makeMeshWithVertexColorOnly() {
+  return makeMesh<VertexPosColorOnly>(
+      {{{0, 0, 0}, {1, 0, 0, 1}},
+       {{1, 0, 0}, {0, 1, 0, 1}},
+       {{0, 1, 0}, {0, 0, 1, 1}}});
+}
+
+MeshPtr makeMeshWithUvOnly() {
+  return makeMesh<VertexPosUvOnly>(
+      {{{0, 0, 0}, {0, 0}}, {{1, 0, 0}, {1, 0}}, {{0, 1, 0}, {0, 1}}});
+}
+
+MeshPtr makeMeshWithNormalOnly() {
+  return makeMesh<VertexPosNormalOnly>(
+      {{{0, 0, 0}, {0, 1, 0}},
+       {{1, 0, 0}, {0, 1, 0}},
+       {{0, 1, 0}, {0, 1, 0}}});
+}
+
+MeshPtr makeMeshWithNormalAndUvOnly() {
+  return makeMesh<VertexPosNormalUvOnly>(
+      {{{0, 0, 0}, {0, 1, 0}, {0, 0}},
+       {{1, 0, 0}, {0, 1, 0}, {1, 0}},
+       {{0, 1, 0}, {0, 1, 0}, {0, 1}}});
 }
 
 SkeletonPtr makeSkeleton() {
@@ -84,10 +191,14 @@ SkeletonPtr makeSkeleton() {
 }
 
 MaterialInstance::Ptr makeMaterial(bool skinning) {
-  return loadBlinnPhongMaterial(
-      ResourcePassFlag::Forward,
-      {ShaderVariant{"USE_LIGHTING", true},
-       ShaderVariant{"USE_SKINNING", skinning}});
+  return loadBlinnPhongMaterial(ResourcePassFlag::Forward,
+                                {ShaderVariant{"USE_LIGHTING", true},
+                                 ShaderVariant{"USE_SKINNING", skinning}});
+}
+
+MaterialInstance::Ptr
+makeMaterial(std::vector<ShaderVariant> variants) {
+  return loadBlinnPhongMaterial(ResourcePassFlag::Forward, std::move(variants));
 }
 
 bool hasBinding(const std::vector<IRenderResourcePtr> &resources,
@@ -205,11 +316,67 @@ int invalidSkinningMode() {
   return 0;
 }
 
+int invalidVertexColorMode() {
+  auto node = SceneNode::create(
+      "bad_vertex_color", makeMeshPositionOnly(),
+      makeMaterial({ShaderVariant{"USE_VERTEX_COLOR", true},
+                    ShaderVariant{"USE_LIGHTING", false}}),
+      nullptr);
+  (void)node;
+  return 0;
+}
+
+int invalidUvMode() {
+  auto node = SceneNode::create(
+      "bad_uv", makeMeshPositionOnly(),
+      makeMaterial({ShaderVariant{"USE_UV", true},
+                    ShaderVariant{"USE_LIGHTING", false}}),
+      nullptr);
+  (void)node;
+  return 0;
+}
+
+int invalidLightingMode() {
+  auto node = SceneNode::create("bad_lighting", makeMeshPositionOnly(),
+                                makeMaterial(false), nullptr);
+  (void)node;
+  return 0;
+}
+
+int invalidNormalMapMode() {
+  auto node = SceneNode::create(
+      "bad_normal_map", makeMeshWithNormalAndUvOnly(),
+      makeMaterial({ShaderVariant{"USE_UV", true},
+                    ShaderVariant{"USE_LIGHTING", true},
+                    ShaderVariant{"USE_NORMAL_MAP", true}}),
+      nullptr);
+  (void)node;
+  return 0;
+}
+
+int invalidSkinningSkeletonMode() {
+  auto node = SceneNode::create("bad_skinning_skeleton",
+                                makeMeshWithSkinningInputs(), makeMaterial(true),
+                                nullptr);
+  (void)node;
+  return 0;
+}
+
 void testFatalSubprocesses(const std::filesystem::path &self) {
   EXPECT(runSelf(self, "--duplicate") != 0,
          "duplicate node names must terminate in subprocess");
+  EXPECT(runSelf(self, "--invalid-vertex-color") != 0,
+         "missing vertex color input must terminate in subprocess");
+  EXPECT(runSelf(self, "--invalid-uv") != 0,
+         "missing uv input must terminate in subprocess");
+  EXPECT(runSelf(self, "--invalid-lighting") != 0,
+         "missing normal input must terminate in subprocess");
+  EXPECT(runSelf(self, "--invalid-normal-map") != 0,
+         "missing tangent input must terminate in subprocess");
   EXPECT(runSelf(self, "--invalid-skinning") != 0,
          "missing skinning vertex inputs must terminate in subprocess");
+  EXPECT(runSelf(self, "--invalid-skinning-skeleton") != 0,
+         "missing skeleton for skinned pass must terminate in subprocess");
 }
 
 } // namespace
@@ -219,8 +386,18 @@ int main(int argc, char **argv) {
     const std::string mode = argv[1];
     if (mode == "--duplicate")
       return duplicateMode();
+    if (mode == "--invalid-vertex-color")
+      return invalidVertexColorMode();
+    if (mode == "--invalid-uv")
+      return invalidUvMode();
+    if (mode == "--invalid-lighting")
+      return invalidLightingMode();
+    if (mode == "--invalid-normal-map")
+      return invalidNormalMapMode();
     if (mode == "--invalid-skinning")
       return invalidSkinningMode();
+    if (mode == "--invalid-skinning-skeleton")
+      return invalidSkinningSkeletonMode();
   }
 
   testIndependentSceneNodeValidation();
