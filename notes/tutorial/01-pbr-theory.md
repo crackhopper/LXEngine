@@ -6,25 +6,24 @@
 
 物理渲染的起点是渲染方程：
 
-```
-Lo(p, ωo) = ∫ f(p, ωi, ωo) · Li(p, ωi) · (N·ωi) dωi
-           Ω
-```
+$$
+L_o(p, \omega_o) = \int_{\Omega} f(p, \omega_i, \omega_o)\,L_i(p, \omega_i)\,(N \cdot \omega_i)\,d\omega_i
+$$
 
-`Lo` 是一点 `p` 往出射方向 `ωo` 的辐亮度，`f` 是 BRDF，`Li` 是从入射方向 `ωi` 来的入射辐亮度，`N·ωi` 是几何项（Lambert cosine）。
+$L_o$ 是一点 $p$ 往出射方向 $\omega_o$ 的辐亮度，$f$ 是 BRDF，$L_i$ 是从入射方向 $\omega_i$ 来的入射辐亮度，$N \cdot \omega_i$ 是几何项（Lambert cosine）。
 
 **教程中的简化**：
-- 只考虑一个方向光 → 积分退化成单次求值
-- 没有环境光探针 → 环境项用 `ambient = 0.03 · albedo · ao` 糊一下
-- 不做 shadow map → `Li` 直接等于光的颜色
+- 只考虑一个方向光，积分退化成单次求值
+- 没有环境光探针，环境项用 $ambient = 0.03 \cdot albedo \cdot ao$ 糊一下
+- 不做 shadow map，$L_i$ 直接等于光的颜色
 
 于是实际代码里每个像素算的是：
 
-```
-Lo = BRDF(L, V, N, material) · lightColor · max(N·L, 0)
-```
+$$
+L_o = BRDF(L, V, N, material) \cdot lightColor \cdot \max(N \cdot L, 0)
+$$
 
-`L` 是到光源的方向，`V` 是到相机的方向，`N` 是法线。
+$L$ 是到光源的方向，$V$ 是到相机的方向，$N$ 是法线。
 
 ---
 
@@ -32,44 +31,56 @@ Lo = BRDF(L, V, N, material) · lightColor · max(N·L, 0)
 
 把 BRDF 拆成两项：
 
-```
-f = kD · f_lambert + kS · f_cook_torrance
-```
+$$
+f = k_D \cdot f_{lambert} + k_S \cdot f_{cook\text{-}torrance}
+$$
 
-- **Lambert 漫反射项**：`f_lambert = albedo / π`
-- **Cook–Torrance 镜面项**：`f_cook_torrance = (D · G · F) / (4 · (N·V)(N·L))`
+- **Lambert 漫反射项**：$f_{lambert} = \dfrac{albedo}{\pi}$
+- **Cook–Torrance 镜面项**：$f_{cook\text{-}torrance} = \dfrac{D \cdot G \cdot F}{4 \cdot (N \cdot V)(N \cdot L)}$
 
-`kS` 是 Fresnel（反射比例），`kD = 1 - kS`（能量守恒 → 剩下的是漫反射）。对金属还要额外乘 `(1 - metallic)`，因为纯金属没有漫反射。
+$k_S$ 是 Fresnel（反射比例），$k_D = 1 - k_S$（能量守恒，剩下的是漫反射）。对金属还要额外乘 $1 - metallic$，因为纯金属没有漫反射。
 
 ### 2.1 D — 法线分布函数 (GGX / Trowbridge–Reitz)
 
 描述"微表面法线朝向半向量 `H` 的比例"。粗糙度越大，分布越散。
 
-```
-a = roughness²
-D(H) = a² / (π · ((N·H)² · (a² - 1) + 1)²)
-```
+$$
+a = roughness^2
+$$
+
+$$
+D(H) = \frac{a^2}{\pi \cdot \left((N \cdot H)^2 \cdot (a^2 - 1) + 1\right)^2}
+$$
 
 ### 2.2 G — 几何遮蔽项 (Smith + Schlick-GGX)
 
 描述"微表面互相遮蔽 + 自遮蔽"的概率。用 Smith 方法把入射和出射两端分别算一次再相乘。
 
-```
-k = (roughness + 1)² / 8         // 直接光专用的 remap
-G1(v) = (N·v) / ((N·v)(1 - k) + k)
-G = G1(V) · G1(L)
-```
+$$
+k = \frac{(roughness + 1)^2}{8}
+$$
+
+$$
+G_1(v) = \frac{N \cdot v}{(N \cdot v)(1 - k) + k}
+$$
+
+$$
+G = G_1(V) \cdot G_1(L)
+$$
 
 ### 2.3 F — 菲涅尔 (Schlick 近似)
 
-描述"不同入射角下反射比例"。掠射角时接近 1，正入射时等于 `F0`。
+描述"不同入射角下反射比例"。掠射角时接近 1，正入射时等于 $F_0$。
 
-```
-F(H, V) = F0 + (1 - F0) · (1 - H·V)^5
-F0 = mix(0.04, albedo, metallic)    // 非金属 F0≈4%，金属 F0 就是自己的颜色
-```
+$$
+F(H, V) = F_0 + (1 - F_0) \cdot (1 - H \cdot V)^5
+$$
 
-`0.04` 是大部分电介质（塑料、陶瓷、皮革、木头等）近似的正入射反射比。
+$$
+F_0 = mix(0.04, albedo, metallic)
+$$
+
+$0.04$ 是大部分电介质（塑料、陶瓷、皮革、木头等）近似的正入射反射比。
 
 ---
 
@@ -104,7 +115,7 @@ float NdotL = max(dot(N, L), 0.0);
 vec3 Lo = (kD * albedo / PI + specular) * lightColor * NdotL;
 ```
 
-"`+ 1e-4`"是为了避免 `N·V=0` 时除零（相机掠射到物体边缘）。
+`+ 1e-4` 是为了避免 $N \cdot V = 0$ 时除零（相机掠射到物体边缘）。
 
 ---
 
@@ -126,23 +137,23 @@ color = pow(color, vec3(1.0 / 2.2));
 
 ## 6. 心智模型速查
 
-```
+```text
 对每个片元：
   ├─ N, V, L, H  (几何方向)
   ├─ F0 = mix(0.04, albedo, metallic)
-  ├─ D(GGX)       → 微表面朝向 H 的数量
-  ├─ G(Smith)     → 可见比例
-  ├─ F(Schlick)   → 反射比例
-  ├─ specular = D·G·F / (4·NV·NL)
-  ├─ kD = (1-F) · (1-metallic)
-  ├─ diffuse = kD · albedo / π
-  ├─ Lo = (diffuse + specular) · lightColor · max(N·L, 0)
-  ├─ ambient = 0.03 · albedo · ao
+  ├─ D(GGX)       -> 微表面朝向 H 的数量
+  ├─ G(Smith)     -> 可见比例
+  ├─ F(Schlick)   -> 反射比例
+  ├─ specular = D*G*F / (4*NV*NL)
+  ├─ kD = (1-F) * (1-metallic)
+  ├─ diffuse = kD * albedo / pi
+  ├─ Lo = (diffuse + specular) * lightColor * max(N*L, 0)
+  ├─ ambient = 0.03 * albedo * ao
   ├─ color = ambient + Lo
   ├─ tone map
   └─ gamma
 ```
 
-下一章：把这套理论翻译成 GLSL，对应 `shaders/glsl/pbr_cube.vert` / `pbr_cube.frag`。
+下一章：把这套理论翻译成 GLSL，并对照当前仓库里的 `shaders/glsl/pbr.vert` / `pbr.frag`。
 
 → [02-pbr-shader.md](02-pbr-shader.md)

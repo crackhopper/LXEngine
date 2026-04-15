@@ -4,6 +4,10 @@
 >
 > 相关 spec: `openspec/specs/scene-node-validation/spec.md` + `openspec/specs/frame-graph/spec.md` + `openspec/specs/render-signature/spec.md` + `openspec/specs/forward-shader-variant-contract/spec.md`
 
+## 深入阅读
+
+- [场景对象](../concepts/scene-object.md)：从使用者视角展开 `Scene` / `SceneNode` / `ValidatedRenderablePassData`，解释它们如何服务 `preloadPipeline` 和 `drawcall`
+
 ## 它解决什么问题
 
 - 给 renderer 一个稳定的场景入口。

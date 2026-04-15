@@ -1,9 +1,17 @@
 {
-  "lastSyncedCommit": "81a7abd017079fbb45a679adec9740c9af7a2ba6",
-  "lastSyncedAt": "2026-04-15T08:44:04Z",
+  "lastSyncedCommit": "703dfc24599d5db478f040d7a69c5d096bc3598b",
+  "lastSyncedAt": "2026-04-15T09:20:00Z",
   "mode": "incremental",
   "files": [
-    "notes/subsystems/material-system.md",
-    "notes/subsystems/scene.md"
+    "notes/subsystems/index.md",
+    "notes/subsystems/vulkan-backend.md",
+    "notes/vulkan-backend/index.md",
+    "notes/vulkan-backend/01-overview-and-lifecycle.md",
+    "notes/vulkan-backend/02-device-and-swapchain.md",
+    "notes/vulkan-backend/03-resource-sync.md",
+    "notes/vulkan-backend/04-pipeline-and-descriptors.md",
+    "notes/vulkan-backend/05-command-recording-and-draw.md",
+    "notes/subsystems/scene.md",
+    "notes/场景对象详解.md"
   ]
 }

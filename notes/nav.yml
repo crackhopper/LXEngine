@@ -1,0 +1,54 @@
+nav:
+  - 速览:
+      - README.md
+  - GetStarted:
+      - get-started.md
+  - Tutorial:
+      - tutorial/00-overview.md
+      - tutorial/01-pbr-theory.md
+      - tutorial/02-pbr-shader.md
+      - tutorial/03-material-loader.md
+      - tutorial/04-cube-geometry.md
+      - tutorial/05-app-main.md
+      - tutorial/06-build-and-run.md
+  - 概念:
+      - 网格对象: concepts/mesh-object.md
+      - 材质对象: concepts/material-object.md
+      - 相机对象: concepts/camera-object.md
+      - 光源对象: concepts/light-object.md
+      - 场景对象: concepts/scene-object.md
+      - 引擎循环: concepts/engine-loop.md
+  - 设计:
+      - 架构总览: architecture.md
+      - 术语概念: glossary.md
+      - 项目目录结构: project-layout.md
+      - 子系统:
+          - subsystems/index.md
+          - Engine Loop: subsystems/engine-loop.md
+          - Frame Graph: subsystems/frame-graph.md
+          - Scene: subsystems/scene.md
+          - Pipeline Identity: subsystems/pipeline-identity.md
+          - Pipeline Cache: subsystems/pipeline-cache.md
+          - Shader System: subsystems/shader-system.md
+          - Material System: subsystems/material-system.md
+          - Geometry: subsystems/geometry.md
+          - Skeleton: subsystems/skeleton.md
+          - String Interning: subsystems/string-interning.md
+          - Vulkan Backend: subsystems/vulkan-backend.md
+  - 后端实现:
+      - Vulkan Backend:
+          - vulkan-backend/index.md
+          - Vulkan Backend 总体结构与生命周期: vulkan-backend/01-overview-and-lifecycle.md
+          - Vulkan Backend 模块二：设备、RenderPass 与 Swapchain: vulkan-backend/02-device-and-swapchain.md
+          - Vulkan Backend 模块三：资源同步: vulkan-backend/03-resource-sync.md
+          - Vulkan Backend 模块四：Pipeline 与 Descriptor: vulkan-backend/04-pipeline-and-descriptors.md
+          - Vulkan Backend 模块五：命令录制与提交: vulkan-backend/05-command-recording-and-draw.md
+  - Roadmap:
+      - roadmaps/README.md
+      - "@roadmaps"
+  - 需求（进行中）:
+      - requirements/index.md
+      - "@requirements"
+  - 相关工具:
+      - tools/index.md
+      - Notes 工具链说明: tools/notes-tooling.md

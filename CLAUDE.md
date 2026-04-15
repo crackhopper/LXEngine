@@ -28,6 +28,9 @@ See `AGENTS.md` for full project context, architecture, and coding standards.
 
 ## Design Docs Index
 
+- `notes/architecture.md` — Three-layer architecture, resource lifecycle, and scene-to-draw data flow
+- `notes/glossary.md` — Project terminology and one-line definitions for key engine objects
+- `notes/project-layout.md` — Repository layout, top-level responsibilities, and source-of-truth directories
 - `notes/subsystems/index.md` — Subsystem map and recommended reading order
 - `notes/subsystems/string-interning.md` — String interning, compose/decompose, debug-string flow
 - `notes/subsystems/shader-system.md` — GLSL compilation, SPIR-V reflection, `CompiledShader`
@@ -36,6 +39,7 @@ See `AGENTS.md` for full project context, architecture, and coding standards.
 - `notes/subsystems/pipeline-cache.md` — Pipeline preload, lookup, runtime miss behavior
 - `notes/subsystems/frame-graph.md` — Pass graph, queue build, pipeline collection
 - `notes/subsystems/scene.md` — Scene container and `RenderingItem` assembly
+- `notes/concepts/scene-object.md` — User-facing scene object guide for `Scene`, `SceneNode`, and `ValidatedRenderablePassData`
 - `notes/subsystems/geometry.md` — Mesh, vertex layout, topology signatures
 - `notes/subsystems/skeleton.md` — Skeleton resource and `SkeletonUBO`
 - `notes/subsystems/vulkan-backend.md` — Vulkan backend object graph and render path

@@ -103,16 +103,21 @@ Completed changes are archived in `openspec/changes/archive/`. Active changes ar
 
 ## Design Documents
 
-Current design-oriented docs live in `notes/subsystems/`. Read the relevant doc for architecture context:
+Current design-oriented docs now surface under the `设计` menu in the notes site. The underlying files still live in `notes/` and `notes/subsystems/`. Read the relevant doc for architecture context:
 
 | Document | Path | Summary |
 |----------|------|---------|
+| **Architecture** | `notes/architecture.md` | Three-layer architecture, resource lifecycle, and scene-to-draw data flow |
+| **Glossary** | `notes/glossary.md` | Project terminology and one-line definitions for key engine objects |
+| **ProjectLayout** | `notes/project-layout.md` | Repository layout, source-of-truth directories, and top-level responsibilities |
+| **SubsystemIndex** | `notes/subsystems/index.md` | Subsystem map and recommended reading order |
 | **FrameGraph** | `notes/subsystems/frame-graph.md` | Pass orchestration, queue building, scene-level resource merge, and pipeline preload collection |
 | **Geometry** | `notes/subsystems/geometry.md` | Mesh, vertex layout, index topology, and how geometry contributes to pipeline identity |
 | **MaterialSystem** | `notes/subsystems/material-system.md` | Material template/instance flow, reflection-driven UBO writes, and descriptor resource ownership |
 | **PipelineCache** | `notes/subsystems/pipeline-cache.md` | Backend pipeline cache semantics for preload, lookup, and runtime miss handling |
 | **PipelineIdentity** | `notes/subsystems/pipeline-identity.md` | `PipelineKey`, `PipelineBuildDesc`, render signatures, and structured identity composition |
 | **Scene** | `notes/subsystems/scene.md` | Scene container model, `RenderingItem` assembly path, and scene-level descriptors |
+| **SceneObjectDeepDive** | `notes/concepts/scene-object.md` | User-facing scene object guide covering `Scene`, `SceneNode`, and `ValidatedRenderablePassData` |
 | **ShaderSystem** | `notes/subsystems/shader-system.md` | Runtime GLSL compile/reflect/package flow and the `CompiledShader` contract |
 | **Skeleton** | `notes/subsystems/skeleton.md` | Skeleton resource, `SkeletonUBO`, and the pipeline signature for skinned rendering |
 | **StringInterning** | `notes/subsystems/string-interning.md` | `GlobalStringTable`, `StringID`, structured compose/decompose, and debug-string reconstruction |

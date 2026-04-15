@@ -15,12 +15,12 @@
 
 ```text
 scripts/serve-notes.sh
-scripts/refresh-notes.sh
 scripts/_gen_notes_site.py
 scripts/_notes_hooks.py
 mkdocs.yml
 mkdocs.gen.yml
 notes/assets/javascripts/
+notes/nav.yml
 notes/
 docs/requirements/
 notes/requirements/
@@ -53,14 +53,6 @@ scripts/serve-notes.sh
 2. 自动停止旧的 notes 服务
 3. 在后台重启新的 `mkdocs serve`
 
-如果你还在用旧入口：
-
-```bash
-scripts/refresh-notes.sh
-```
-
-它现在只是一个兼容壳子，内部会直接转发到 `scripts/serve-notes.sh`。
-
 ## 各文件职责
 
 ### `mkdocs.yml`
@@ -90,7 +82,7 @@ scripts/refresh-notes.sh
 
 - 不需要额外安装 `mkdocs-mermaid2-plugin`
 - 不会给 `scripts/_gen_notes_site.py` 生成 `mkdocs.gen.yml` 增加插件依赖
-- `serve-notes.sh` 和 `refresh-notes.sh` 继续保持轻量
+- `serve-notes.sh` 保持轻量
 
 ### 文档里怎么写公式
 
@@ -124,18 +116,61 @@ flowchart TD
 
 ### `scripts/_gen_notes_site.py`
 
-这是生成器。它做五件事：
+这是生成器。它现在做五件事：
 
 1. 扫描 `docs/requirements/*.md`
 2. 在 `notes/requirements/` 下创建对应符号链接
 3. 扫描 `notes/tools/*.md` 并生成 `notes/tools/index.md`
-4. 扫描整个 `notes/` 目录树，按目录结构生成左侧导航
-5. 读取 `mkdocs.yml`，补出动态导航和 watch 配置，写成 `mkdocs.gen.yml`
+4. 读取 `notes/nav.yml` 作为站点导航唯一来源
+5. 读取 `mkdocs.yml`，补出 nav、watch 和 hooks，写成 `mkdocs.gen.yml`
 
-所以它解决的是两个问题：
+所以它现在解决的是两个问题：
 
 - 活跃需求文档不想复制到 `notes/`，但又想在站点里显示
-- `notes/` 新增目录和文档后，希望左侧导航能按目录层级自动出现，而不是手工维护 nav
+- 左侧导航需要手工决定层级、标题和顺序，而不是继续靠目录结构自动推导
+
+### `notes/nav.yml`
+
+这是站点导航配置文件，也是左侧菜单的唯一事实来源。
+
+它负责定义：
+
+- 哪些页面会进入导航
+- 一级 / 二级菜单怎么组织
+- 同一层里各项的显示顺序
+- 菜单标题要显示成什么名字
+
+当前采用的是**严格配置模式**：
+
+- 只有出现在 `notes/nav.yml` 里的页面才会出现在左侧导航
+- `notes/` 里新增了 `.md` 文件，如果没有把它写进 `notes/nav.yml`，站点菜单里就不会显示
+- 这样可以避免“新建一个临时文档，菜单结构被自动改掉”的情况
+
+当前站点一级菜单固定为：
+
+- `速览`
+- `GetStarted`
+- `Tutorial`
+- `概念`
+- `设计`
+- `后端实现`
+- `需求（进行中）`
+- `Roadmap`
+- `相关工具`
+
+其中 `设计` 菜单当前再拆成一层：
+
+- 基础设计页：`架构总览`、`术语概念`、`项目目录结构`
+- `子系统` 子分组：承载 `notes/subsystems/` 下的当前子系统设计文档
+
+`后端实现` 当前作为独立一级菜单，先收纳 `Vulkan Backend` 这组按实现模块拆开的后端专题文档。
+
+不过有两类目录例外，它们仍然允许通过占位符动态展开：
+
+- `@requirements`：展开 `docs/requirements/*.md` 映射到 `notes/requirements/` 的活动需求页
+- `@roadmaps`：展开 `notes/roadmaps/*.md` 中除 `README.md` 之外的页面
+
+这两个占位符仍然要写在 `notes/nav.yml` 里，所以“它们出现在哪个一级菜单、排在什么位置”依旧由配置控制；变化的只是具体页面列表由目录内容自动跟随。
 
 ### `notes/requirements/`
 
@@ -172,10 +207,6 @@ flowchart TD
 
 如果传 `--build`，它会只做静态构建，不启动开发服务器。
 
-### `scripts/refresh-notes.sh`
-
-这是兼容旧调用方式的入口，当前行为是直接转发到 `scripts/serve-notes.sh`。
-
 ## 自动加载是怎么做的
 
 当前推荐流程已经不依赖热加载。
@@ -196,18 +227,18 @@ scripts/serve-notes.sh
 
 目前已经自动化的部分：
 
-- `notes/` 目录树和 requirements 导航自动生成
-- `docs/requirements/*.md` 会自动进入“需求（进行中）”导航
-- `notes/tools/*.md` 会自动进入 `Tools` 导航，并自动生成 `notes/tools/index.md`
-- `notes/` 下的目录会按结构生成一二三级菜单
+- `docs/requirements/*.md` 会自动同步到 `notes/requirements/`
+- `notes/tools/*.md` 会自动生成 `notes/tools/index.md`
 - requirements 页面的相对链接与中文锚点会被 hook 修正
+- `mkdocs.gen.yml` 会自动从基础配置 + 导航配置拼出来
 
 目前仍然是手工维护的部分：
 
-- 顶层菜单名称的个性化命名，如果你不满意默认名字，需要改生成脚本里的映射
-- 哪些文件需要排除，仍然需要在生成脚本里声明
+- `notes/nav.yml` 中的站点结构、标题和排序
+- 新页面接入导航时的分组决策
+- `@requirements` / `@roadmaps` 这两类动态分组之外的新页面，仍需要手工写进导航
 
-这是一个更轻量的方案：配置文件尽量只保留站点行为，导航本身全部从目录结构推导。
+这套方案比目录扫描更偏显式配置：菜单结构稳定、可控，但新增页面时必须顺手更新导航文件。
 
 ## 如果想继续自动化
 
@@ -215,42 +246,28 @@ scripts/serve-notes.sh
 
 ### 现在的生成原则
 
-- 顶层 `.md` 文件按文件名排序生成
-- 目录按文件系统结构生成二级、三级菜单
-- 目录下若存在 `index.md` 或 `README.md`，会被视为该目录的概览页
+- `mkdocs.yml` 只保留站点基础行为，不手写 nav
+- `notes/nav.yml` 明确写出菜单树和排序
+- `scripts/_gen_notes_site.py` 会校验 `notes/nav.yml` 中引用的页面是否真实存在
+- `@requirements` 和 `@roadmaps` 会在生成期展开，避免进行中文档和 roadmap 需要频繁手改导航
+- `docs/requirements/` 和 `notes/tools/` 仍保留自动同步 / 自动索引
 - `requirements/` 在导航里和普通 `notes/` 子目录一样出现，只是内容来源仍然是 `docs/requirements/`
 
 ## 个性化配置例子
 
 下面这些调整，不需要改 MkDocs 本身，只要改 `scripts/_gen_notes_site.py` 或 `mkdocs.yml`。
 
-### 例子一：给目录改一个更短的显示名
+### 例子一：调整一级菜单顺序
 
-如果你觉得 `roadmaps` 显示成 `Roadmap` 不合适，可以改：
+如果你想把 `Roadmap` 提前到 `概念` 前面，不需要改 Python，只要改 `notes/nav.yml` 里条目的顺序。
 
-```python
-DIR_TITLES = {
-    "tools": "Tools",
-    "subsystems": "子系统",
-    "tutorial": "教程",
-    "roadmaps": "路线图",
-    "requirements": "需求 (进行中)",
-}
-```
+### 例子二：新增一个固定页面
 
-这样左侧菜单会显示成你定义的名称。
+如果你新增了一个稳定页面，例如 `notes/concepts/animation-object.md`，除了创建文档本身，还需要把它写进 `notes/nav.yml` 对应分组。
 
-### 例子二：排除某个目录或文件
+### 例子三：动态分组保持自动展开
 
-如果有实验性文档不想出现在菜单里，可以改：
-
-```python
-SKIP_NOTE_FILES = {"0324-after-implement.md", "draft.md"}
-```
-
-如果你确实想跳过整个目录，也可以在扫描目录时增加自己的过滤条件。
-
-### 例子三：让菜单默认全部展开
+如果某类页面会持续增删，例如活动需求或 roadmap，就继续在 `notes/nav.yml` 里保留 `@requirements` 或 `@roadmaps`，不要逐篇手写。
 
 当前菜单默认折叠，是因为 `mkdocs.yml` 没启用 `navigation.expand`，同时也没有启用会把顶层分组直接展开显示的 `navigation.sections`。
 
@@ -319,5 +336,5 @@ python3 scripts/_gen_notes_site.py
 
 - `notes/` 负责人类阅读体验
 - `mkdocs.yml` 负责站点基础行为
-- `_gen_notes_site.py` 负责按目录结构生成导航，并把活跃需求接成和 `notes/` 子目录一致的视图
+- `_gen_notes_site.py` 负责读取 `notes/nav.yml` 生成导航，并把活跃需求接成和 `notes/` 子目录一致的视图
 - `_notes_hooks.py` 负责修正站点运行期的路径和锚点问题

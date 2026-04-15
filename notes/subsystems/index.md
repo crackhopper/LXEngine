@@ -7,6 +7,7 @@
 1. 先看 [Engine Loop](engine-loop.md)、[Frame Graph](frame-graph.md) 和 [Scene](scene.md)，理解“开始场景”与“执行一帧”的边界。
 2. 再看 [Pipeline Identity](pipeline-identity.md) 和 [Pipeline Cache](pipeline-cache.md)，理解 pipeline 如何被识别和复用。
 3. 最后按需深入 [Shader System](shader-system.md)、[Material System](material-system.md)、[Vulkan Backend](vulkan-backend.md)。
+4. 如果要系统理解 Vulkan 后端实现，继续进入 [notes/vulkan-backend/index.md](../vulkan-backend/index.md) 这一组分模块文档。
 
 ## 文档地图
 
@@ -20,7 +21,7 @@
 - [Geometry](geometry.md)：mesh、vertex layout、topology
 - [Skeleton](skeleton.md)：骨骼资源、`SkeletonUBO`
 - [String Interning](string-interning.md)：`GlobalStringTable`、`StringID`、compose
-- [Vulkan Backend](vulkan-backend.md)：renderer、device、resource manager、command buffer
+- [Vulkan Backend](vulkan-backend.md)：后端总览与分模块文档入口
 
 ## 阅读原则
 

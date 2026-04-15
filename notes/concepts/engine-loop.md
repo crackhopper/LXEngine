@@ -10,8 +10,8 @@
 如果你是第一次接触这个概念，建议这样读：
 
 - 先看本文，理解为什么要有 `EngineLoop`，以及它和 `Renderer` / backend 的边界。
-- 再看 [`架构总览`](architecture.md)，把它放回整个渲染数据流里。
-- 最后看 [`EngineLoop 子系统`](subsystems/engine-loop.md)，对应当前代码接口和行为细节。
+- 再看 [`架构总览`](../architecture.md)，把它放回整个渲染数据流里。
+- 最后看 [`EngineLoop 子系统`](../subsystems/engine-loop.md)，对应当前代码接口和行为细节。
 
 如果只想先记一句话，可以先记这个：
 
@@ -294,11 +294,11 @@ loop.requestSceneRebuild();
 
 如果你是第一次进入这个项目，推荐按这个顺序读：
 
-1. 本文：`notes/引擎循环.md`
-2. [架构总览](architecture.md)
-3. [EngineLoop 子系统](subsystems/engine-loop.md)
-4. [FrameGraph 子系统](subsystems/frame-graph.md)
-5. [Vulkan Backend 子系统](subsystems/vulkan-backend.md)
+1. 本文：`notes/concepts/engine-loop.md`
+2. [架构总览](../architecture.md)
+3. [EngineLoop 子系统](../subsystems/engine-loop.md)
+4. [FrameGraph 子系统](../subsystems/frame-graph.md)
+5. [Vulkan Backend 子系统](../subsystems/vulkan-backend.md)
 
 可以这样理解它们的关系：
 
