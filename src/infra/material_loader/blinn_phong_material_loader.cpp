@@ -82,7 +82,7 @@ void validateForwardVariants(const std::vector<LX_core::ShaderVariant> &variants
 
 } // namespace
 
-LX_core::MaterialInstance::Ptr
+LX_core::MaterialInstancePtr
 loadBlinnPhongMaterial(LX_core::ResourcePassFlag passFlag,
                        std::vector<LX_core::ShaderVariant> variants) {
   const std::string baseName = "blinnphong_0";

@@ -101,6 +101,6 @@ private:
   uint64_t m_nextListenerId = 1;
 };
 
-using MaterialPtr = MaterialInstance::Ptr;
+using MaterialInstancePtr = MaterialInstance::Ptr;
 
 } // namespace LX_core

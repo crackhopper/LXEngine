@@ -190,13 +190,13 @@ SkeletonPtr makeSkeleton() {
   return Skeleton::create(bones);
 }
 
-MaterialInstance::Ptr makeMaterial(bool skinning) {
+MaterialInstancePtr makeMaterial(bool skinning) {
   return loadBlinnPhongMaterial(ResourcePassFlag::Forward,
                                 {ShaderVariant{"USE_LIGHTING", true},
                                  ShaderVariant{"USE_SKINNING", skinning}});
 }
 
-MaterialInstance::Ptr
+MaterialInstancePtr
 makeMaterial(std::vector<ShaderVariant> variants) {
   return loadBlinnPhongMaterial(ResourcePassFlag::Forward, std::move(variants));
 }

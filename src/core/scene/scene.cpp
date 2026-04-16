@@ -11,7 +11,7 @@ Scene::~Scene() {
   }
 }
 
-void Scene::revalidateNodesUsing(const MaterialInstance::Ptr &materialInstance) {
+void Scene::revalidateNodesUsing(const MaterialInstancePtr &materialInstance) {
   if (!materialInstance)
     return;
   for (const auto &renderable : m_renderables) {

@@ -49,6 +49,11 @@ Shader 的抽象接口。提供 stage、descriptor reflection、vertex input ref
 当前唯一的材质类型。基于 shader 反射自动分配 std140 字节 buffer，并维护 pass enable 状态与 pass-state listeners。
 → `src/core/asset/material_instance.hpp`
 
+### `MaterialInstancePtr`
+
+`MaterialInstance` 的共享指针别名。当前 scene、queue 和 loader 的公共材质句柄统一使用这个名字，而不是裸写 `MaterialInstance::Ptr`。
+→ `src/core/asset/material_instance.hpp`
+
 ### `MaterialTemplate`
 
 材质蓝图。持有 template shader、每个 pass 的 `MaterialPassDefinition`，以及 template 级 binding cache。

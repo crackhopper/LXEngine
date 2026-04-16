@@ -4,9 +4,9 @@
 namespace LX_infra {
 
 /// Compile `blinnphong_0.{vert,frag}`, reflect bindings, build a single-pass
-/// `MaterialTemplate`, and return a seeded `MaterialInstance::Ptr`.
+/// `MaterialTemplate`, and return a seeded `MaterialInstancePtr`.
 /// Replaces the legacy `loadBlinnPhongDrawMaterial` entry point.
-LX_core::MaterialInstance::Ptr loadBlinnPhongMaterial(
+LX_core::MaterialInstancePtr loadBlinnPhongMaterial(
     LX_core::ResourcePassFlag passFlag = LX_core::ResourcePassFlag::Forward,
     std::vector<LX_core::ShaderVariant> variants = {
         LX_core::ShaderVariant{"USE_VERTEX_COLOR", false},

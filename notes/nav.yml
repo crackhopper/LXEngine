@@ -12,11 +12,13 @@ nav:
       - tutorial/05-app-main.md
       - tutorial/06-build-and-run.md
   - 概念:
-      - 网格对象: concepts/geometry/index.md
-      - 材质对象: concepts/material/index.md
-      - 相机对象: concepts/camera/index.md
-      - 光源对象: concepts/light/index.md
-      - 场景对象: concepts/scene-object.md
+      - 资产系统: concepts/assets/index.md
+      - 几何系统: concepts/geometry/index.md
+      - 场景对象: concepts/scene/index.md
+      - 材质系统: concepts/material/index.md
+      - 相机系统: concepts/camera/index.md
+      - 光源系统: concepts/light/index.md
+      - 渲染管线: concepts/pipeline/index.md
       - 引擎循环: concepts/engine-loop.md
   - 设计:
       - 架构总览: architecture.md

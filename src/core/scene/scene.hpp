@@ -15,7 +15,7 @@ using ShaderPtr = IShaderPtr;
 
 struct RenderingItem {
   ShaderPtr shaderInfo;
-  MaterialInstance::Ptr material; // 材质句柄 — 用于 PipelineBuildDesc::fromRenderingItem
+  MaterialInstancePtr material; // 材质句柄 — 用于 PipelineBuildDesc::fromRenderingItem
 
   ObjectPCPtr objectInfo;
   IRenderResourcePtr vertexBuffer;
@@ -94,7 +94,7 @@ public:
   void addLight(LightBasePtr light) { m_lights.push_back(std::move(light)); }
   const std::vector<LightBasePtr> &getLights() const { return m_lights; }
   const std::string &getSceneName() const { return m_sceneName; }
-  void revalidateNodesUsing(const MaterialInstance::Ptr &materialInstance);
+  void revalidateNodesUsing(const MaterialInstancePtr &materialInstance);
 
   /// REQ-009 two-axis filter form: camera by matchesTarget(target), light by
   /// supportsPass(pass). Returns camera UBOs first, then light UBOs; both in

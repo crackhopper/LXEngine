@@ -1,5 +1,5 @@
 #pragma once
-#include "core/asset/material.hpp"
+#include "core/asset/material_instance.hpp"
 #include "core/asset/mesh.hpp"
 #include "core/asset/skeleton.hpp"
 #include "core/frame_graph/pass.hpp"
@@ -51,7 +51,7 @@ using ObjectPCPtr = ObjectPC::Ptr;
 
 struct ValidatedRenderablePassData {
   StringID pass;
-  MaterialInstance::Ptr material;
+  MaterialInstancePtr material;
   IShaderPtr shaderInfo;
   ObjectPCPtr objectInfo;
   IRenderResourcePtr vertexBuffer;
@@ -87,7 +87,7 @@ class SceneNode final : public IRenderable {
 public:
   using Ptr = std::shared_ptr<SceneNode>;
 
-  SceneNode(std::string nodeName, MeshPtr mesh, MaterialInstance::Ptr material,
+  SceneNode(std::string nodeName, MeshPtr mesh, MaterialInstancePtr material,
             SkeletonPtr skeleton = nullptr);
   ~SceneNode() override;
 
@@ -97,7 +97,7 @@ public:
   SceneNode &operator=(SceneNode &&) = delete;
 
   static Ptr create(std::string nodeName, MeshPtr mesh,
-                    MaterialInstance::Ptr material,
+                    MaterialInstancePtr material,
                     SkeletonPtr skeleton = nullptr) {
     return std::make_shared<SceneNode>(std::move(nodeName), std::move(mesh),
                                        std::move(material),
@@ -105,13 +105,13 @@ public:
   }
 
   const MeshPtr &getMesh() const { return m_mesh; }
-  const MaterialInstance::Ptr &getMaterialInstance() const {
+  const MaterialInstancePtr &getMaterialInstance() const {
     return m_materialInstance;
   }
   const std::optional<SkeletonPtr> &getSkeleton() const { return m_skeleton; }
 
   void setMesh(MeshPtr mesh);
-  void setMaterialInstance(MaterialInstance::Ptr material);
+  void setMaterialInstance(MaterialInstancePtr material);
   void setSkeleton(SkeletonPtr skeleton);
 
   IRenderResourcePtr getVertexBuffer() const override;
@@ -138,7 +138,7 @@ private:
 
   std::string m_nodeName;
   MeshPtr m_mesh;
-  MaterialInstance::Ptr m_materialInstance;
+  MaterialInstancePtr m_materialInstance;
   std::optional<SkeletonPtr> m_skeleton;
   ObjectPCPtr m_objectPC;
   StringID m_debugId;
@@ -151,12 +151,12 @@ private:
 struct RenderableSubMesh final : public IRenderable {
 public:
   MeshPtr mesh;
-  MaterialInstance::Ptr material;
+  MaterialInstancePtr material;
   std::optional<SkeletonPtr> skeleton;
   ObjectPCPtr objectPC;
   std::string nodeName = "RenderableSubMesh";
 
-  RenderableSubMesh(MeshPtr mesh_, MaterialInstance::Ptr material_,
+  RenderableSubMesh(MeshPtr mesh_, MaterialInstancePtr material_,
                     SkeletonPtr skeleton_ = nullptr,
                     std::string nodeName_ = "RenderableSubMesh");
 

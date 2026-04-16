@@ -105,7 +105,7 @@ buildLegacyValidatedData(const RenderableSubMesh &sub, StringID pass) {
 } // namespace
 
 SceneNode::SceneNode(std::string nodeName, MeshPtr mesh,
-                     MaterialInstance::Ptr material, SkeletonPtr skeleton)
+                     MaterialInstancePtr material, SkeletonPtr skeleton)
     : m_nodeName(std::move(nodeName)), m_mesh(std::move(mesh)),
       m_materialInstance(std::move(material)),
       m_objectPC(std::make_shared<ObjectPC>()) {
@@ -123,7 +123,7 @@ void SceneNode::setMesh(MeshPtr mesh) {
   rebuildValidatedCache();
 }
 
-void SceneNode::setMaterialInstance(MaterialInstance::Ptr material) {
+void SceneNode::setMaterialInstance(MaterialInstancePtr material) {
   unregisterMaterialPassListener();
   m_materialInstance = std::move(material);
   registerMaterialPassListener();
@@ -313,7 +313,7 @@ void SceneNode::unregisterMaterialPassListener() {
 }
 
 RenderableSubMesh::RenderableSubMesh(MeshPtr mesh_,
-                                     MaterialInstance::Ptr material_,
+                                     MaterialInstancePtr material_,
                                      SkeletonPtr skeleton_,
                                      std::string nodeName_)
     : mesh(std::move(mesh_)), material(std::move(material_)),

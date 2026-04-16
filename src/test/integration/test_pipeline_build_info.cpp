@@ -1,7 +1,7 @@
 #include "core/rhi/image_format.hpp"
 #include "core/frame_graph/render_target.hpp"
 #include "core/rhi/index_buffer.hpp"
-#include "core/asset/material.hpp"
+#include "core/asset/material_instance.hpp"
 #include "core/asset/mesh.hpp"
 #include "core/pipeline/pipeline_build_desc.hpp"
 #include "core/pipeline/pipeline_key.hpp"

@@ -1,33 +1,35 @@
-# 网格对象
+# 几何系统
 
-这篇文档面向引擎使用者，解释网格对象在场景中的职责、常见使用方式，以及它与材质、场景对象之间的关系。
+这篇文档面向引擎使用者，解释几何资源在场景中的职责、常见使用方式，以及它们如何参与渲染输入和 pipeline 身份。
 
 ## 你会在什么场景接触它
 
-你通常会在把“顶点/索引数据变成可渲染对象”时接触 `Mesh`：
+你通常会在把“顶点/索引数据变成可渲染输入”时接触几何系统：
 
-- 手工创建 demo 几何体时，先建 `VertexBuffer` / `IndexBuffer`，再 `Mesh::create(...)`
-- mesh loader 输出资源时，把解析后的顶点和索引包装成 `Mesh`
-- 创建 `SceneNode` 或 `RenderableSubMesh` 时，把 mesh 作为几何输入传进去
-
-当前项目里，mesh 只是“几何资源”，不是场景节点本身。
+- 手工创建 demo 几何体时，先建 `VertexBuffer` / `IndexBuffer`，再 `Mesh::create(...)`。
+- mesh loader 输出运行时资源时，把解析后的顶点和索引包装成 `Mesh`。
+- 创建 `SceneNode` 时，把 mesh 作为几何输入交进去。
 
 ## 它负责什么
 
-`Mesh` 的职责很集中：
+当前几何系统的核心对象仍然是 `Mesh`。它主要负责：
 
-- 组合一个 `VertexBufferPtr` 和一个 `IndexBuffer`
-- 提供顶点数、索引数、顶点布局、primitive topology 这些查询接口
-- 通过 `getRenderSignature(pass)` 把几何结构贡献给 pipeline identity
-- 可选保存 `BoundingBox`
+- 组合一个 `VertexBufferPtr` 和一个 `IndexBuffer`。
+- 提供顶点数、索引数、顶点布局、primitive topology 这些查询接口。
+- 通过 `getRenderSignature(pass)` 把几何结构贡献给 pipeline identity。
+- 可选保存 `BoundingBox`。
 
 它不负责：
 
-- 材质参数
-- 物体变换
-- 是否参加某个 pass 的最终决定
+- 材质参数，这属于 [材质系统](../material/index.md)。
+- 物体变换和场景挂接，这属于 [场景对象](../scene/index.md)。
+- pipeline 的最终构建与缓存，这属于 [渲染管线](../pipeline/index.md)。
 
-这些分别属于 `MaterialInstance`、`ObjectPC` / scene object、以及 `SceneNode` 的 validated cache。
+## 当前实现状态
+
+- 已实现：`Mesh`、`VertexBuffer`、`IndexBuffer`、`VertexLayout`、primitive topology 这一套运行时几何输入已经稳定存在。
+- 已实现：`SceneNode` 会拿 mesh 的 `VertexLayout` 对照 shader reflection 做结构校验。
+- 部分实现：GLTF/OBJ loader 已经能把磁盘几何转成运行时 mesh，但不同格式的材质桥接与更完整资产语义仍在演进，见 [`REQ-011`](../../requirements/011-gltf-pbr-loader.md)。
 
 ## 常见使用方式
 
@@ -43,16 +45,14 @@
 - `vertexBuffer->getLayout().getRenderSignature()`
 - `indexBuffer->getTopology()`
 
-所以，只要顶点布局或拓扑变化，pipeline identity 就会变化；单纯改顶点数据内容本身，不会改变这个 signature。
+所以，只要顶点布局或拓扑变化，pipeline identity 就会变化；单纯改顶点数据内容本身，不会改变这个 signature。关于这条链路，继续看 [渲染管线](../pipeline/index.md)。
 
 ## 与其他概念的关系
 
-- 和 `VertexBuffer` / `IndexBuffer`：`Mesh` 是它们的轻量组合层。
-- 和 `Material`：material 决定 shader 与 render state，mesh 决定顶点输入布局与拓扑；两者共同参与 pipeline 构建。
-- 和 `SceneNode`：`SceneNode` 会拿 mesh 的 `VertexLayout` 去对照 shader reflection 做顶点输入校验。
-- 和 `RenderQueue` / backend：后续并不会重新读一个“高层 mesh 对象接口”来建 pipeline，而是直接从 `RenderingItem` 里的 vertex/index buffer 取布局和 topology。
-
-如果你关心更底层的几何抽象和 signature 组成，继续看 [`../../subsystems/geometry.md`](../../subsystems/geometry.md)。
+- 和 [资产系统](../assets/index.md)：geometry loader 的输出会落到 `Mesh`。
+- 和 [材质系统](../material/index.md)：material 决定 shader/pass/render state，geometry 决定 vertex input layout 与 topology；两者共同参与 pipeline 身份。
+- 和 [场景对象](../scene/index.md)：`SceneNode` 会把 mesh 组合进 renderable，并做 pass 级结构校验。
+- 和 [渲染管线](../pipeline/index.md)：几何系统提供 object-side render signature，是 `PipelineKey` 的一半来源。
 
 ## 示例代码
 
@@ -68,4 +68,4 @@ auto mesh = Mesh::create(vb, ib);
 auto node = SceneNode::create("triangle", mesh, material, nullptr);
 ```
 
-项目里的真实例子可以看 [test_render_triangle.cpp](/home/lx/proj/renderer-demo/src/test/test_render_triangle.cpp:41) 和 [mesh.hpp](/home/lx/proj/renderer-demo/src/core/asset/mesh.hpp:13)。
+如果你关心更底层的几何抽象和 signature 组成，继续看 [`../../subsystems/geometry.md`](../../subsystems/geometry.md)。

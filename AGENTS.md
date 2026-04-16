@@ -117,7 +117,7 @@ Current design-oriented docs now surface under the `设计` menu in the notes si
 | **PipelineCache** | `notes/subsystems/pipeline-cache.md` | Backend pipeline cache semantics for preload, lookup, and runtime miss handling |
 | **PipelineIdentity** | `notes/subsystems/pipeline-identity.md` | `PipelineKey`, `PipelineBuildDesc`, render signatures, and structured identity composition |
 | **Scene** | `notes/subsystems/scene.md` | Scene container model, `RenderingItem` assembly path, and scene-level descriptors |
-| **SceneObjectDeepDive** | `notes/concepts/scene-object.md` | User-facing scene object guide covering `Scene`, `SceneNode`, and `ValidatedRenderablePassData` |
+| **SceneObjectDeepDive** | `notes/concepts/scene/index.md` | User-facing scene object guide covering `Scene`, `SceneNode`, and `ValidatedRenderablePassData` |
 | **ShaderSystem** | `notes/subsystems/shader-system.md` | Runtime GLSL compile/reflect/package flow and the `CompiledShader` contract |
 | **Skeleton** | `notes/subsystems/skeleton.md` | Skeleton resource, `SkeletonUBO`, and the pipeline signature for skinned rendering |
 | **StringInterning** | `notes/subsystems/string-interning.md` | `GlobalStringTable`, `StringID`, structured compose/decompose, and debug-string reconstruction |

@@ -3,11 +3,11 @@
 Define the current material system contract, including material templates, material instances, reflection-driven UBO access, and descriptor resources.
 ## Requirements
 ### Requirement: MaterialInstance is the sole material type
-The system SHALL provide exactly one concrete material type, named `MaterialInstance`. All `MaterialPtr` values held by scene objects, render queues, and backend code MUST be `MaterialInstance` shared pointers. The legacy `DrawMaterial` class and the legacy `BlinnPhongMaterialUBO` struct MUST NOT exist in the codebase after this change.
+The system SHALL provide exactly one concrete material type, named `MaterialInstance`. All material pointers held by scene objects, render queues, and backend code MUST be `MaterialInstancePtr` values. The legacy `DrawMaterial` class and the legacy `BlinnPhongMaterialUBO` struct MUST NOT exist in the codebase after this change.
 
 #### Scenario: Scene constructs materials via MaterialInstance
 - **WHEN** a loader constructs a material for a `RenderableSubMesh`
-- **THEN** the returned `MaterialPtr` points to a `MaterialInstance` and the concrete type `DrawMaterial` is not referenced anywhere in `src/`
+- **THEN** the returned `MaterialInstancePtr` points to a `MaterialInstance` and the concrete type `DrawMaterial` is not referenced anywhere in `src/`
 
 #### Scenario: MaterialInstance public surface is preserved
 - **WHEN** rendering code calls `getShaderInfo(pass)`, `getPassFlag()`, `getRenderState(pass)`, `getDescriptorResources()`, or `getRenderSignature(pass)` on a `MaterialInstance`
@@ -107,11 +107,11 @@ The core layer SHALL provide a `UboByteBufferResource` class that implements `IR
 - **THEN** the wrapper returns the updated bytes (no stale copy)
 
 ### Requirement: Loader returns MaterialInstance
-The file-shader loader for `blinnphong_0` SHALL be named `loadBlinnPhongMaterial` (or similar, not containing `DrawMaterial`) and SHALL return a `MaterialInstance::Ptr`. It SHALL compile the shader, reflect bindings, create a `MaterialTemplate`, configure at least one `MaterialPassDefinition`, call `buildBindingCache()`, create a `MaterialInstance`, and seed reasonable default uniform values via the reflection-driven setters. The legacy file `blinnphong_draw_material_loader.{hpp,cpp}` MUST be removed or rewritten in place.
+The file-shader loader for `blinnphong_0` SHALL be named `loadBlinnPhongMaterial` (or similar, not containing `DrawMaterial`) and SHALL return a `MaterialInstancePtr`. It SHALL compile the shader, reflect bindings, create a `MaterialTemplate`, configure at least one `MaterialPassDefinition`, call `buildBindingCache()`, create a `MaterialInstance`, and seed reasonable default uniform values via the reflection-driven setters. The legacy file `blinnphong_draw_material_loader.{hpp,cpp}` MUST be removed or rewritten in place.
 
 #### Scenario: Loader produces a ready-to-render MaterialInstance
 - **WHEN** `loadBlinnPhongMaterial()` is called
-- **THEN** the returned `MaterialInstance::Ptr` has a non-empty `m_uboBuffer`, a resolvable `getShaderInfo()`, and default uniform values written via `setVec3` / `setFloat` / `setInt`
+- **THEN** the returned `MaterialInstancePtr` has a non-empty `m_uboBuffer`, a resolvable `getShaderInfo()`, and default uniform values written via `setVec3` / `setFloat` / `setInt`
 
 #### Scenario: No DrawMaterial references remain
 - **WHEN** searching `src/` (excluding `openspec/changes/archive/`) for the symbol `DrawMaterial`

@@ -1,4 +1,4 @@
-#include "core/asset/material.hpp"
+#include "core/asset/material_instance.hpp"
 #include "core/asset/shader.hpp"
 #include "core/frame_graph/pass.hpp"
 #include "core/utils/string_table.hpp"
@@ -90,7 +90,7 @@ int runSelf(const std::filesystem::path &self, const char *mode) {
   return std::system(cmd.c_str());
 }
 
-MaterialInstance::Ptr
+MaterialInstancePtr
 buildInstanceFromBlinnPhong(ResourcePassFlag flag = ResourcePassFlag::Forward) {
   auto dir = findShaderDir();
   if (dir.empty()) {
@@ -262,7 +262,7 @@ void test_loader_produces_valid_instance() {
   // The loader walks the cwd upward for the shader dir, so chdir first.
   auto prev = std::filesystem::current_path();
   std::filesystem::current_path(dir.parent_path().parent_path());
-  MaterialInstance::Ptr mat;
+  MaterialInstancePtr mat;
   try {
     mat = loadBlinnPhongMaterial();
   } catch (const std::exception &e) {

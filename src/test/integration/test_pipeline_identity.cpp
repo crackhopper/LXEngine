@@ -1,5 +1,5 @@
 #include "core/rhi/index_buffer.hpp"
-#include "core/asset/material.hpp"
+#include "core/asset/material_instance.hpp"
 #include "core/asset/mesh.hpp"
 #include "core/pipeline/pipeline_key.hpp"
 #include "core/asset/shader.hpp"
@@ -67,7 +67,7 @@ struct Fixture {
   std::shared_ptr<IndexBuffer> ib;
   MeshPtr mesh;
   MaterialTemplate::Ptr tmpl;
-  MaterialInstance::Ptr material;
+  MaterialInstancePtr material;
 
   static Fixture
   make(const std::string &shaderName = "blinnphong_0",

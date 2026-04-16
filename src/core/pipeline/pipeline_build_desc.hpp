@@ -1,7 +1,7 @@
 #pragma once
 
 #include "core/rhi/index_buffer.hpp"
-#include "core/asset/material.hpp"
+#include "core/asset/material_instance.hpp"
 #include "core/pipeline/pipeline_key.hpp"
 #include "core/asset/shader.hpp"
 #include "core/rhi/vertex_buffer.hpp"
