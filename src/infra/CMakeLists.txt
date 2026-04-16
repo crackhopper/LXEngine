@@ -279,6 +279,11 @@ else()
     endif()
 endif()
 
+if(NOT TARGET LX_SDL3)
+    add_library(LX_SDL3 INTERFACE)
+    target_link_libraries(LX_SDL3 INTERFACE SDL3::SDL3)
+endif()
+
 # -------------------------------
 # imgui - only needed backends
 # -------------------------------
@@ -339,7 +344,7 @@ target_include_directories(${INFRA_LIB} INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/..
 
 if(USE_SDL)
     target_compile_definitions(${INFRA_LIB} PRIVATE USE_SDL=1)
-    target_link_libraries(${INFRA_LIB} PRIVATE SDL3::SDL3)
+    target_link_libraries(${INFRA_LIB} PRIVATE LX_SDL3)
 elseif(USE_GLFW)
     target_compile_definitions(${INFRA_LIB} PRIVATE USE_GLFW=1)
     target_link_libraries(${INFRA_LIB} PRIVATE GLFW::GLFW)

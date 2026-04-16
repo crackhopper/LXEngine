@@ -49,7 +49,7 @@ endforeach()
 # SDL input test needs USE_SDL define and SDL3 headers
 if(USE_SDL AND TARGET test_sdl_input)
   target_compile_definitions(test_sdl_input PRIVATE USE_SDL=1)
-  target_link_libraries(test_sdl_input PRIVATE SDL3::SDL3)
+  target_link_libraries(test_sdl_input PRIVATE LX_SDL3)
 endif()
 
 

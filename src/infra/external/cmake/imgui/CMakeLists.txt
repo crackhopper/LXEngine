@@ -23,7 +23,7 @@ target_include_directories(imgui
 target_link_libraries(imgui
     PRIVATE
         Vulkan::Vulkan
-        SDL3::SDL3
+        LX_SDL3
 )
 
 target_compile_features(imgui PUBLIC cxx_std_17)
