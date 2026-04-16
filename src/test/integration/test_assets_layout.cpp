@@ -44,6 +44,28 @@ void testNonexistent() {
   std::filesystem::current_path(saved);
 }
 
+void testShaderLookupKeepsProjectRoot() {
+  namespace fs = std::filesystem;
+  const auto saved = fs::current_path();
+  fs::path probe = saved / "src" / "test";
+  if (!fs::exists(probe)) {
+    probe = saved / "build" / "src" / "test";
+  }
+  if (!fs::exists(probe)) {
+    EXPECT(false, "expected src/test or build/src/test to exist");
+    return;
+  }
+
+  fs::current_path(probe);
+  const bool ok = cdToWhereResourcesCouldFound("blinnphong_0");
+  EXPECT(ok, "blinnphong_0 shaders must be found");
+  EXPECT(fs::exists(fs::current_path() / "materials" / "blinnphong_default.material"),
+         "shader lookup should leave cwd at a directory that can see materials/");
+  EXPECT(fs::exists(fs::current_path() / "assets"),
+         "resource lookup should leave cwd at a directory that can see assets/");
+  fs::current_path(saved);
+}
+
 } // namespace
 
 int main() {
@@ -51,6 +73,7 @@ int main() {
   testHdrEnvironmentMap();
   testVikingRoom();
   testNonexistent();
+  testShaderLookupKeepsProjectRoot();
 
   if (failures == 0) {
     std::cout << "[PASS] All asset layout tests passed.\n";

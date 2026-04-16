@@ -127,7 +127,7 @@ int main(int argc, char **argv) {
       return invalidNormalWithoutUvMode();
   }
 
-  if (!cdToWhereShadersExist("blinnphong_0")) {
+  if (!cdToWhereResourcesCouldFound("blinnphong_0")) {
     std::cerr << "SKIP: failed to locate shader assets for blinnphong_0\n";
     return 0;
   }

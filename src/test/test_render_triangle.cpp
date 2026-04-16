@@ -70,8 +70,8 @@ void syncOrbitFromCamera(OrbitCameraController &controller, const Camera &camera
 } // namespace
 
 int main() {
-  if (!cdToWhereShadersExist("blinnphong_0")) {
-    std::cerr << "Failed to locate shader assets for blinnphong_0\n";
+  if (!cdToWhereResourcesCouldFound("blinnphong_0")) {
+    std::cerr << "Failed to locate runtime resources for blinnphong_0\n";
     return 1;
   }
 

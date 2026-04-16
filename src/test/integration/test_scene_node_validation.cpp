@@ -528,7 +528,7 @@ void testFatalSubprocesses(const std::filesystem::path &self) {
 
 int main(int argc, char **argv) {
   if (argc > 1) {
-    cdToWhereShadersExist("blinnphong_0");
+    cdToWhereResourcesCouldFound("blinnphong_0");
     const std::string mode = argv[1];
     if (mode == "--duplicate")
       return duplicateMode();
@@ -546,7 +546,7 @@ int main(int argc, char **argv) {
       return invalidSkinningSkeletonMode();
   }
 
-  if (!cdToWhereShadersExist("blinnphong_0")) {
+  if (!cdToWhereResourcesCouldFound("blinnphong_0")) {
     std::cerr << "SKIP: failed to locate shader assets\n";
     return 0;
   }

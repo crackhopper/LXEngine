@@ -12,7 +12,7 @@ namespace fs = std::filesystem;
 int main() {
   expSetEnvVK();
   try {
-    auto success = cdToWhereShadersExist("blinnphong_0");
+    auto success = cdToWhereResourcesCouldFound("blinnphong_0");
     if (!success) {
       std::cerr << "Failed to find shader files\n";
       return 1;
@@ -44,4 +44,3 @@ int main() {
     return 0;
   }
 }
-
