@@ -185,6 +185,7 @@ if(EXISTS "${_YAML_CPP_VENDORED_DIR}/src/node.cpp"
   target_include_directories(yaml-cpp
     PUBLIC "${_YAML_CPP_VENDORED_DIR}/include"
     PRIVATE "${_YAML_CPP_VENDORED_DIR}/src")
+  target_compile_definitions(yaml-cpp PUBLIC YAML_CPP_STATIC_DEFINE)
   if(NOT TARGET yaml-cpp::yaml-cpp)
     add_library(yaml-cpp::yaml-cpp ALIAS yaml-cpp)
   endif()
