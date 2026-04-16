@@ -34,3 +34,8 @@ notes/requirements/
 
 *.pyc
 .tmp
+
+# Vendored/prebuilt third-party binaries under src/infra/external are checked in on purpose.
+!src/infra/external/**/*.dll
+!src/infra/external/**/*.lib
+!src/infra/external/**/*.pdb

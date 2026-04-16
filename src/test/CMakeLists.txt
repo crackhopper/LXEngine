@@ -83,7 +83,7 @@ target_include_directories(test_shader_compiler PRIVATE
 if(SPIRV_CROSS_INCLUDE_DIR AND NOT "${SPIRV_CROSS_INCLUDE_DIR}" STREQUAL "")
   target_include_directories(test_shader_compiler PRIVATE ${SPIRV_CROSS_INCLUDE_DIR})
 endif()
-if(LX_SPIRV_CROSS_USE_FETCH_TARGETS)
+if(LX_SPIRV_CROSS_LINK_TARGETS)
   target_link_libraries(test_shader_compiler PRIVATE spirv-cross-core spirv-cross-glsl)
 elseif(SPIRV_CROSS_CORE_LIB)
   target_link_libraries(test_shader_compiler PRIVATE ${SPIRV_CROSS_CORE_LIB})

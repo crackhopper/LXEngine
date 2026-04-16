@@ -1,6 +1,8 @@
 option(USE_SDL "Use SDL2 as the window backend" ON)
 option(USE_GLFW "Use GLFW as the window backend" OFF)
 
+set(LX_INFRA_EXTERNAL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external")
+
 # -------------------------------
 # shaderc (runtime GLSL -> SPIR-V)
 # -------------------------------
@@ -50,22 +52,78 @@ endif()
 # -------------------------------
 # SPIRV-Cross (reflection)
 # -------------------------------
-# Windows: set SPIRV_CROSS_DIR to the directory containing include/ and lib/
-# Linux: auto-detected via find_library, or set SPIRV_CROSS_DIR to override
-# If not found, falls back to FetchContent to build from source.
+# Windows/Linux: prefer vendored lightweight source checked into
+# src/infra/external/SPIRV-Cross. Falls back to SPIRV_CROSS_DIR or system libs.
+# Runtime downloading is intentionally disabled.
 option(SPIRV_CROSS_DIR "Path to SPIRV-Cross installation (contains include/ and lib/)" "")
 
 set(SPIRV_CROSS_FOUND FALSE)
+set(LX_SPIRV_CROSS_LINK_TARGETS FALSE CACHE INTERNAL
+    "Link SPIRV-Cross via vendored source targets" FORCE)
 set(_SPIRV_CORE_PATH "")
 set(_SPIRV_GLSL_PATH "")
+set(_SPIRV_CROSS_VENDORED_DIR "${LX_INFRA_EXTERNAL_DIR}/SPIRV-Cross")
 
-if(SPIRV_CROSS_DIR)
+if(EXISTS "${_SPIRV_CROSS_VENDORED_DIR}/src/spirv_cross.cpp"
+   AND EXISTS "${_SPIRV_CROSS_VENDORED_DIR}/src/spirv_glsl.cpp")
+  add_library(spirv-cross-core STATIC
+    "${_SPIRV_CROSS_VENDORED_DIR}/src/spirv_cross.cpp"
+    "${_SPIRV_CROSS_VENDORED_DIR}/src/spirv_parser.cpp"
+    "${_SPIRV_CROSS_VENDORED_DIR}/src/spirv_cfg.cpp"
+    "${_SPIRV_CROSS_VENDORED_DIR}/src/spirv_cross_parsed_ir.cpp")
+  target_include_directories(spirv-cross-core
+    PUBLIC
+      "${_SPIRV_CROSS_VENDORED_DIR}/src"
+      "${_SPIRV_CROSS_VENDORED_DIR}/include")
+
+  add_library(spirv-cross-glsl STATIC
+    "${_SPIRV_CROSS_VENDORED_DIR}/src/spirv_glsl.cpp")
+  target_link_libraries(spirv-cross-glsl PUBLIC spirv-cross-core)
+  target_include_directories(spirv-cross-glsl
+    PUBLIC
+      "${_SPIRV_CROSS_VENDORED_DIR}/src"
+      "${_SPIRV_CROSS_VENDORED_DIR}/include")
+
+  set(SPIRV_CROSS_FOUND TRUE)
+  set(LX_SPIRV_CROSS_LINK_TARGETS TRUE CACHE INTERNAL
+      "Link SPIRV-Cross via vendored source targets" FORCE)
+  set(SPIRV_CROSS_INCLUDE_DIR "${_SPIRV_CROSS_VENDORED_DIR}/src")
+  unset(SPIRV_CROSS_CORE_LIB CACHE)
+  unset(SPIRV_CROSS_GLSL_LIB CACHE)
+elseif(SPIRV_CROSS_DIR)
   find_library(_SPIRV_CORE_PATH NAMES spirv-cross-core
     PATHS "${SPIRV_CROSS_DIR}/lib" NO_DEFAULT_PATH)
   if(_SPIRV_CORE_PATH)
     find_library(_SPIRV_GLSL_PATH NAMES spirv-cross-glsl
       PATHS "${SPIRV_CROSS_DIR}/lib" NO_DEFAULT_PATH)
     set(SPIRV_CROSS_INCLUDE_DIR "${SPIRV_CROSS_DIR}/include")
+    set(SPIRV_CROSS_FOUND TRUE)
+  endif()
+elseif(EXISTS "${_SPIRV_CROSS_VENDORED_DIR}")
+  set(_SPIRV_CROSS_LIB_SEARCH_DIRS
+    "${_SPIRV_CROSS_VENDORED_DIR}/lib"
+    "${_SPIRV_CROSS_VENDORED_DIR}/lib/Debug"
+    "${_SPIRV_CROSS_VENDORED_DIR}/lib/Release")
+
+  foreach(_dir IN LISTS _SPIRV_CROSS_LIB_SEARCH_DIRS)
+    if(NOT _SPIRV_CORE_PATH)
+      if(WIN32 AND EXISTS "${_dir}/spirv-cross-core.lib")
+        set(_SPIRV_CORE_PATH "${_dir}/spirv-cross-core.lib")
+      elseif(NOT WIN32 AND EXISTS "${_dir}/libspirv-cross-core.a")
+        set(_SPIRV_CORE_PATH "${_dir}/libspirv-cross-core.a")
+      endif()
+    endif()
+    if(NOT _SPIRV_GLSL_PATH)
+      if(WIN32 AND EXISTS "${_dir}/spirv-cross-glsl.lib")
+        set(_SPIRV_GLSL_PATH "${_dir}/spirv-cross-glsl.lib")
+      elseif(NOT WIN32 AND EXISTS "${_dir}/libspirv-cross-glsl.a")
+        set(_SPIRV_GLSL_PATH "${_dir}/libspirv-cross-glsl.a")
+      endif()
+    endif()
+  endforeach()
+
+  if(_SPIRV_CORE_PATH)
+    set(SPIRV_CROSS_INCLUDE_DIR "${_SPIRV_CROSS_VENDORED_DIR}/include")
     set(SPIRV_CROSS_FOUND TRUE)
   endif()
 else()
@@ -86,58 +144,93 @@ else()
 endif()
 
 if(NOT SPIRV_CROSS_FOUND)
-  message(STATUS "SPIRV-Cross not found locally, fetching from GitHub...")
-  include(FetchContent)
-  set(SPIRV_CROSS_CLI OFF CACHE BOOL "" FORCE)
-  set(SPIRV_CROSS_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
-  set(SPIRV_CROSS_ENABLE_GLSL ON CACHE BOOL "" FORCE)
-  set(SPIRV_CROSS_ENABLE_HLSL OFF CACHE BOOL "" FORCE)
-  set(SPIRV_CROSS_ENABLE_MSL OFF CACHE BOOL "" FORCE)
-  set(SPIRV_CROSS_ENABLE_CPP OFF CACHE BOOL "" FORCE)
-  set(SPIRV_CROSS_ENABLE_REFLECT OFF CACHE BOOL "" FORCE)
-  set(SPIRV_CROSS_ENABLE_UTIL OFF CACHE BOOL "" FORCE)
-  fetchcontent_declare(
-    spirv-cross
-    GIT_REPOSITORY https://github.com/KhronosGroup/SPIRV-Cross.git
-    GIT_TAG        vulkan-sdk-1.3.290.0
-    GIT_SHALLOW    TRUE
-  )
-  fetchcontent_makeavailable(spirv-cross)
-  set(LX_SPIRV_CROSS_USE_FETCH_TARGETS TRUE CACHE INTERNAL
-      "Link SPIRV-Cross via FetchContent targets" FORCE)
-  set(SPIRV_CROSS_CORE_LIB spirv-cross-core CACHE INTERNAL
-      "SPIRV-Cross core (target name when using FetchContent)" FORCE)
-  set(SPIRV_CROSS_GLSL_LIB spirv-cross-glsl CACHE INTERNAL
-      "SPIRV-Cross glsl (target name when using FetchContent)" FORCE)
-  set(SPIRV_CROSS_INCLUDE_DIR "${spirv-cross_SOURCE_DIR}" CACHE INTERNAL
-      "SPIRV-Cross include dir" FORCE)
+  message(FATAL_ERROR
+    "SPIRV-Cross not found.\n"
+    "Offline builds are required, so CMake will not download it.\n"
+    "Provide a lightweight prebuilt package under "
+    "${_SPIRV_CROSS_VENDORED_DIR} (include/ + lib/) "
+    "or set SPIRV_CROSS_DIR.")
 else()
-  set(LX_SPIRV_CROSS_USE_FETCH_TARGETS FALSE CACHE INTERNAL
-      "Link SPIRV-Cross via FetchContent targets" FORCE)
-  set(SPIRV_CROSS_CORE_LIB "${_SPIRV_CORE_PATH}" CACHE INTERNAL
-      "SPIRV-Cross core library path" FORCE)
-  if(_SPIRV_GLSL_PATH)
-    set(SPIRV_CROSS_GLSL_LIB "${_SPIRV_GLSL_PATH}" CACHE INTERNAL
-        "SPIRV-Cross glsl library path" FORCE)
+  if(LX_SPIRV_CROSS_LINK_TARGETS)
+    message(STATUS "SPIRV-Cross: using vendored source build")
+  else()
+    set(SPIRV_CROSS_CORE_LIB "${_SPIRV_CORE_PATH}" CACHE INTERNAL
+        "SPIRV-Cross core library path" FORCE)
+    if(_SPIRV_GLSL_PATH)
+      set(SPIRV_CROSS_GLSL_LIB "${_SPIRV_GLSL_PATH}" CACHE INTERNAL
+          "SPIRV-Cross glsl library path" FORCE)
+    endif()
+    message(STATUS "SPIRV-Cross core: ${SPIRV_CROSS_CORE_LIB}")
+    message(STATUS "SPIRV-Cross glsl: ${SPIRV_CROSS_GLSL_LIB}")
   endif()
-  message(STATUS "SPIRV-Cross core: ${SPIRV_CROSS_CORE_LIB}")
-  message(STATUS "SPIRV-Cross glsl: ${SPIRV_CROSS_GLSL_LIB}")
 endif()
 
 # -------------------------------
 # yaml-cpp (material asset files)
 # -------------------------------
-include(FetchContent)
-set(YAML_CPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(YAML_CPP_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
-set(YAML_CPP_BUILD_CONTRIB OFF CACHE BOOL "" FORCE)
-fetchcontent_declare(
-  yaml-cpp
-  GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
-  GIT_TAG        0.8.0
-  GIT_SHALLOW    TRUE
-)
-fetchcontent_makeavailable(yaml-cpp)
+# Prefer vendored lightweight source checked into src/infra/external/yaml-cpp.
+# Runtime downloading is intentionally disabled.
+option(YAML_CPP_DIR "Path to yaml-cpp installation (contains include/ and lib/)" "")
+
+set(_YAML_CPP_VENDORED_DIR "${LX_INFRA_EXTERNAL_DIR}/yaml-cpp")
+set(_YAML_CPP_INCLUDE_DIR "")
+set(_YAML_CPP_LIB_DIR "")
+set(_YAML_CPP_LIB "")
+
+if(EXISTS "${_YAML_CPP_VENDORED_DIR}/src/node.cpp"
+   AND EXISTS "${_YAML_CPP_VENDORED_DIR}/include/yaml-cpp/yaml.h")
+  file(GLOB YAML_CPP_SOURCES CONFIGURE_DEPENDS
+    "${_YAML_CPP_VENDORED_DIR}/src/*.cpp")
+  add_library(yaml-cpp STATIC ${YAML_CPP_SOURCES})
+  target_include_directories(yaml-cpp
+    PUBLIC "${_YAML_CPP_VENDORED_DIR}/include"
+    PRIVATE "${_YAML_CPP_VENDORED_DIR}/src")
+  if(NOT TARGET yaml-cpp::yaml-cpp)
+    add_library(yaml-cpp::yaml-cpp ALIAS yaml-cpp)
+  endif()
+elseif(YAML_CPP_DIR)
+  set(_YAML_CPP_INCLUDE_DIR "${YAML_CPP_DIR}/include")
+  set(_YAML_CPP_LIB_DIR "${YAML_CPP_DIR}/lib")
+elseif(EXISTS "${_YAML_CPP_VENDORED_DIR}")
+  set(_YAML_CPP_INCLUDE_DIR "${_YAML_CPP_VENDORED_DIR}/include")
+  set(_YAML_CPP_LIB_DIR "${_YAML_CPP_VENDORED_DIR}/lib")
+endif()
+
+if(_YAML_CPP_LIB_DIR)
+  foreach(_dir
+      "${_YAML_CPP_LIB_DIR}"
+      "${_YAML_CPP_LIB_DIR}/Debug"
+      "${_YAML_CPP_LIB_DIR}/Release")
+    if(NOT _YAML_CPP_LIB)
+      if(WIN32 AND EXISTS "${_dir}/yaml-cpp.lib")
+        set(_YAML_CPP_LIB "${_dir}/yaml-cpp.lib")
+      elseif(WIN32 AND EXISTS "${_dir}/yaml-cppd.lib")
+        set(_YAML_CPP_LIB "${_dir}/yaml-cppd.lib")
+      elseif(NOT WIN32 AND EXISTS "${_dir}/libyaml-cpp.a")
+        set(_YAML_CPP_LIB "${_dir}/libyaml-cpp.a")
+      endif()
+    endif()
+  endforeach()
+endif()
+
+if(NOT TARGET yaml-cpp AND
+   (NOT EXISTS "${_YAML_CPP_INCLUDE_DIR}/yaml-cpp/yaml.h" OR NOT _YAML_CPP_LIB))
+  message(FATAL_ERROR
+    "yaml-cpp not found.\n"
+    "Offline builds are required, so CMake will not download it.\n"
+    "Provide a lightweight prebuilt package under "
+    "${_YAML_CPP_VENDORED_DIR} (include/ + lib/) or set YAML_CPP_DIR.")
+endif()
+
+if(NOT TARGET yaml-cpp AND _YAML_CPP_LIB)
+  add_library(yaml-cpp UNKNOWN IMPORTED)
+  set_target_properties(yaml-cpp PROPERTIES
+    IMPORTED_LOCATION "${_YAML_CPP_LIB}"
+    INTERFACE_INCLUDE_DIRECTORIES "${_YAML_CPP_INCLUDE_DIR}")
+endif()
+if(NOT TARGET yaml-cpp::yaml-cpp)
+  add_library(yaml-cpp::yaml-cpp ALIAS yaml-cpp)
+endif()
 
 # -------------------------------
 # Vulkan
@@ -151,24 +244,38 @@ endif()
 # SDL3
 # -------------------------------
 if(WIN32)
-    set(SDL3_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/SDL3-3.3.6/cmake)
-    find_package(SDL3 REQUIRED)
+    set(SDL3_DIR "${LX_INFRA_EXTERNAL_DIR}/SDL3/cmake")
+    find_package(SDL3 REQUIRED CONFIG)
+    if(NOT EXISTS "${LX_INFRA_EXTERNAL_DIR}/SDL3/lib/x64/SDL3.lib"
+       OR NOT EXISTS "${LX_INFRA_EXTERNAL_DIR}/SDL3/lib/x64/SDL3.dll")
+        message(FATAL_ERROR
+            "Vendored SDL3 for Windows is incomplete.\n"
+            "Expected ${LX_INFRA_EXTERNAL_DIR}/SDL3/lib/x64/SDL3.lib and SDL3.dll.")
+    endif()
     if(NOT SDL3_FOUND)
         message(FATAL_ERROR "SDL3 not found")
     endif()
 else()
     find_package(SDL3 QUIET)
-    if(NOT SDL3_FOUND)
-        include(FetchContent)
-        set(SDL_SHARED ON CACHE BOOL "" FORCE)
-        set(SDL_STATIC OFF CACHE BOOL "" FORCE)
-        set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
-        fetchcontent_declare(
-            SDL3
-            URL https://github.com/libsdl-org/SDL/releases/download/prerelease-3.3.6/SDL3-3.3.6.tar.gz
-            DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-        )
-        fetchcontent_makeavailable(SDL3)
+    if(NOT SDL3_FOUND AND EXISTS "${LX_INFRA_EXTERNAL_DIR}/SDL3/lib/libSDL3.so")
+        if(NOT TARGET SDL3::Headers)
+            add_library(SDL3::Headers INTERFACE IMPORTED GLOBAL)
+            set_target_properties(SDL3::Headers PROPERTIES
+                INTERFACE_INCLUDE_DIRECTORIES "${LX_INFRA_EXTERNAL_DIR}/SDL3/include")
+        endif()
+        if(NOT TARGET SDL3::SDL3)
+            add_library(SDL3::SDL3 SHARED IMPORTED GLOBAL)
+            set_target_properties(SDL3::SDL3 PROPERTIES
+                IMPORTED_LOCATION "${LX_INFRA_EXTERNAL_DIR}/SDL3/lib/libSDL3.so"
+                INTERFACE_LINK_LIBRARIES "SDL3::Headers")
+        endif()
+        set(SDL3_FOUND TRUE)
+    elseif(NOT SDL3_FOUND)
+        message(FATAL_ERROR
+            "SDL3 not found.\n"
+            "Offline builds are required, so CMake will not download it.\n"
+            "Install SDL3 locally or vendor a lightweight package under "
+            "${LX_INFRA_EXTERNAL_DIR}/SDL3.")
     endif()
 endif()
 
@@ -211,9 +318,8 @@ target_link_libraries(${INFRA_LIB}
   yaml-cpp::yaml-cpp
 )
 
-# SPIRV-Cross: FetchContent → CMake targets (PUBLIC so final exes resolve symbols).
-# System install → full library paths from find_library.
-if(LX_SPIRV_CROSS_USE_FETCH_TARGETS)
+# SPIRV-Cross is resolved via vendored source or vendored/system library paths.
+if(LX_SPIRV_CROSS_LINK_TARGETS)
   target_link_libraries(${INFRA_LIB} PUBLIC spirv-cross-core spirv-cross-glsl)
 elseif(SPIRV_CROSS_CORE_LIB)
   target_link_libraries(${INFRA_LIB} PRIVATE ${SPIRV_CROSS_CORE_LIB})
