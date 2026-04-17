@@ -126,22 +126,37 @@ CombinedTextureSamplerPtr loadCombinedTexture(
   return std::make_shared<CombinedTextureSampler>(std::move(tex));
 }
 
-// Bridge GLTFPbrMaterial → the existing blinnphong_default.material. Only
-// the base color texture is wired through; other PBR textures surface in the
-// UI panel for future reference but aren't bound to the Blinn-Phong shader.
+// Bridge GLTFPbrMaterial → a Blinn-Phong material. The `.material` variant
+// is chosen so the compiled shader actually exposes the bindings we touch:
+// `blinnphong_textured.material` enables USE_LIGHTING + USE_UV, so
+// `albedoMap` exists; `blinnphong_lit.material` is the no-texture fallback.
+// Loading a variant that #ifdef's a binding out and then calling setTexture
+// on it trips an internal assert in MaterialInstance.
+//
+// Other PBR textures (metallic/roughness, normal, occlusion, emissive) are
+// read from glTF but intentionally unbound — the Blinn-Phong shader doesn't
+// consume them; full PBR is a downstream REQ.
 MaterialInstancePtr makeHelmetMaterial(const infra::GLTFPbrMaterial& pbr,
                                        const std::filesystem::path& gltfDir) {
-  auto mat = LX_infra::loadGenericMaterial("materials/blinnphong_default.material");
+  constexpr const char* kTexturedMaterial =
+      "materials/blinnphong_textured.material";
+  constexpr const char* kFallbackMaterial =
+      "materials/blinnphong_lit.material";
+
+  const bool hasBaseColor = !pbr.baseColorTexture.empty();
+  const char* assetPath = hasBaseColor ? kTexturedMaterial : kFallbackMaterial;
+
+  auto mat = LX_infra::loadGenericMaterial(assetPath);
   if (!mat) {
-    throw std::runtime_error(
-        "[scene_viewer] failed to load materials/blinnphong_default.material");
+    throw std::runtime_error(std::string("[scene_viewer] failed to load ")
+                             + assetPath);
   }
 
   // DamagedHelmet.gltf declares no TANGENT accessor — keep normal mapping off
   // so the placeholder tangent is never sampled.
   mat->setInt(StringID("enableNormal"), 0);
 
-  if (!pbr.baseColorTexture.empty()) {
+  if (hasBaseColor) {
     try {
       auto sampler = loadCombinedTexture(gltfDir / pbr.baseColorTexture);
       mat->setTexture(StringID("albedoMap"), std::move(sampler));
@@ -149,10 +164,10 @@ MaterialInstancePtr makeHelmetMaterial(const infra::GLTFPbrMaterial& pbr,
     } catch (const std::exception& e) {
       std::cerr << "[scene_viewer] baseColor texture load failed ("
                 << e.what() << "); falling back to flat color\n";
+      // The textured variant is already loaded; keep enableAlbedo=0 so the
+      // shader skips the (still-legal) sampler binding.
       mat->setInt(StringID("enableAlbedo"), 0);
     }
-  } else {
-    mat->setInt(StringID("enableAlbedo"), 0);
   }
 
   mat->syncGpuData();
@@ -160,10 +175,10 @@ MaterialInstancePtr makeHelmetMaterial(const infra::GLTFPbrMaterial& pbr,
 }
 
 MaterialInstancePtr makeGroundMaterial() {
-  auto mat = LX_infra::loadGenericMaterial("materials/blinnphong_default.material");
+  auto mat = LX_infra::loadGenericMaterial("materials/blinnphong_lit.material");
   if (!mat) {
     throw std::runtime_error(
-        "[scene_viewer] failed to load materials/blinnphong_default.material");
+        "[scene_viewer] failed to load materials/blinnphong_lit.material");
   }
   mat->setInt(StringID("enableAlbedo"), 0);
   mat->setInt(StringID("enableNormal"), 0);

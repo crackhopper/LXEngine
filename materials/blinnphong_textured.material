@@ -1,0 +1,28 @@
+shader: blinnphong_0
+
+# Demo-facing textured Blinn-Phong: enables USE_LIGHTING + USE_UV so the
+# compiled shader exposes the `albedoMap` binding. Normal mapping stays off
+# at runtime (set enableNormal=0) until tangent-producing assets land.
+variants:
+  USE_LIGHTING: true
+  USE_UV: true
+
+variantRules:
+  - requires: [USE_NORMAL_MAP]
+    depends: [USE_LIGHTING, USE_UV]
+  - requires: [USE_SKINNING]
+    depends: [USE_LIGHTING]
+
+passes:
+  Forward:
+    renderState:
+      cullMode: Back
+      depthTest: true
+      depthWrite: true
+
+parameters:
+  MaterialUBO.baseColor: [1.0, 1.0, 1.0]
+  MaterialUBO.shininess: 32.0
+  MaterialUBO.specularIntensity: 1.0
+  MaterialUBO.enableAlbedo: 1
+  MaterialUBO.enableNormal: 0
