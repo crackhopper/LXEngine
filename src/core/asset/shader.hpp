@@ -1,5 +1,5 @@
 #pragma once
-#include "core/rhi/render_resource.hpp"
+#include "core/rhi/gpu_resource.hpp"
 #include "core/rhi/vertex_buffer.hpp"
 #include "core/utils/hash.hpp"
 #include "core/utils/string_table.hpp"

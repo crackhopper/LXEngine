@@ -91,7 +91,7 @@
 
 - 支持 HDR equirectangular 图片（`.hdr` / `.exr` via stb_image）
 - 离线或启动时把 equirect 转换为 cubemap（6 面 render-to-cube）
-- 新 resource 类型：`CubemapResource : IRenderResource`
+- 新 resource 类型：`CubemapResource : IGpuResource`
 - `getBindingName() == "EnvironmentMap"`
 
 **验收**：天空盒能显示加载的 HDR，方向光方向与环境贴图主亮度方向一致。
@@ -315,7 +315,7 @@ vec3 ambient = (kD * irrd * albedo + prefiltered * (F * brdf.x + brdf.y)) * ao;
 - `PipelineCache::preload` 走 `collectAllPipelineBuildDescs()` 路径，新 pass 的 pipeline 同样会被扫描预构建。
 - `RenderQueue` 的 pass / target 过滤正好适配 shadow pass（只有支持 shadow 的 renderable 才会进 queue）。
 - 反射驱动材质系统让后处理 shader 的 binding 表自动生成，不需要手写。
-- `IRenderResource::getBindingName()` 让环境贴图 / BRDF LUT 这类资源通过命名自动绑定。
+- `IGpuResource::getBindingName()` 让环境贴图 / BRDF LUT 这类资源通过命名自动绑定。
 
 ---
 

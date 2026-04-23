@@ -232,7 +232,7 @@ void test_descriptor_resources_stable_ubo_identity() {
   REQUIRE(a[0].get() == b[0].get());
   REQUIRE(a[0]->getType() == ResourceType::UniformBuffer);
   REQUIRE(a[0]->getByteSize() == 32);
-  std::cout << "  UBO IRenderResource identity stable\n";
+  std::cout << "  UBO IGpuResource identity stable\n";
 }
 
 void test_descriptor_resources_reflects_buffer_writes() {

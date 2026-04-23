@@ -25,21 +25,21 @@ The system SHALL provide exactly one concrete material type, named `MaterialInst
 - **THEN** `m_bindingCache` is declared exactly once and no `m_passHashCache` field exists
 
 ### Requirement: MaterialInstance allocates UBO buffer from reflection
-`MaterialInstance::create(template)` SHALL walk material-owned buffer bindings from enabled passes using `MaterialTemplate::getMaterialBindings(pass)` and `isSystemOwnedBinding()`. For each unique material-owned buffer binding (by name), it SHALL create a `MaterialBufferSlot` with a zero-initialized byte buffer sized to the binding's `size`.
+`MaterialInstance::create(template)` SHALL walk material-owned buffer bindings from enabled passes using `MaterialTemplate::getMaterialBindings(pass)` and `isSystemOwnedBinding()`. For each unique material-owned buffer binding (by name), it SHALL create a `MaterialParameterData` object with a zero-initialized byte buffer sized to the binding's `size`.
 
 Cross-pass consistency for same-name buffer bindings SHALL be verified: if two passes declare the same binding name, the size and member layout MUST match; the system SHALL assert on mismatch.
 
 Shaders without any material-owned buffer binding MUST produce a `MaterialInstance` with an empty slot collection; legacy convenience setter calls on such an instance MUST assert in debug builds.
 
-The `MaterialParameterDataResource` wrapper SHALL accept the binding's resource type at construction (`UniformBuffer` or `StorageBuffer`) and return the corresponding `ResourceType` from `getType()`.
+`MaterialParameterData` SHALL accept the binding's reflected layout and resource type at construction (`UniformBuffer` or `StorageBuffer`) and return the corresponding `ResourceType` from `getType()`.
 
 #### Scenario: Construction creates slots from reflection using ownership query
 - **WHEN** `MaterialInstance::create(tmpl)` is called and the shader declares `SurfaceParams` (UBO, 48 bytes) and `DetailParams` (UBO, 32 bytes)
-- **THEN** two buffer slots are created with sizes 48 and 32, each zero-initialized
+- **THEN** two `MaterialParameterData` slots are created with sizes 48 and 32, each zero-initialized
 
 #### Scenario: MaterialUBO name still works as an ordinary material-owned binding
 - **WHEN** a shader declares `uniform MaterialUBO { vec3 baseColor; float shininess; }` and reflection reports a `UniformBuffer` binding named `MaterialUBO`
-- **THEN** the system creates one buffer slot named `MaterialUBO` and the material instance functions identically to before this change
+- **THEN** the system creates one `MaterialParameterData` slot named `MaterialUBO` and the material instance functions identically to before this change
 
 #### Scenario: Shader without material-owned buffers produces empty slot collection
 - **WHEN** a shader's reflection bindings contain only `Texture2D` entries and system-owned `CameraUBO`
@@ -73,7 +73,7 @@ The `MaterialParameterDataResource` wrapper SHALL accept the binding's resource 
 - **THEN** an assertion fires in debug builds and `m_uboBuffer` is unchanged
 
 ### Requirement: Texture bindings by StringID
-`MaterialInstance::setTexture(StringID id, CombinedTextureSamplerPtr tex)` SHALL look up `id` via `MaterialTemplate::findBinding(id)`, assert that the resulting binding's type is `Texture2D` or `TextureCube`, and store the sampler in `m_textures[id]`. `MaterialInstance` MUST NOT expose a setter that takes a raw `uint32_t` set/binding pair — callers use the shader-declared name only. `CombinedTextureSamplerPtr` (rather than raw `TexturePtr`) is used because the concrete resource passed to the backend descriptor layer must already implement `IRenderResource`, which `CombinedTextureSampler` does and `Texture` does not.
+`MaterialInstance::setTexture(StringID id, CombinedTextureSamplerPtr tex)` SHALL look up `id` via `MaterialTemplate::findBinding(id)`, assert that the resulting binding's type is `Texture2D` or `TextureCube`, and store the sampler in `m_textures[id]`. `MaterialInstance` MUST NOT expose a setter that takes a raw `uint32_t` set/binding pair — callers use the shader-declared name only. `CombinedTextureSamplerPtr` (rather than raw `TexturePtr`) is used because the concrete resource passed to the backend descriptor layer must already implement `IGpuResource`, which `CombinedTextureSampler` does and `Texture` does not.
 
 #### Scenario: Texture bound to a reflected sampler name
 - **WHEN** `setTexture(StringID("albedoMap"), tex)` is called and `findBinding(StringID("albedoMap"))` returns a `Texture2D` binding
@@ -104,8 +104,8 @@ The no-argument `getDescriptorResources()` SHALL be removed. All callers MUST pr
 - **WHEN** a pass reflection includes `albedoMap` but `setTexture` has not been called for it
 - **THEN** that entry is omitted from the result
 
-### Requirement: UBO GPU sync via cached IRenderResource wrapper
-`MaterialInstance` SHALL construct one `MaterialParameterDataResource` per buffer slot during construction. `syncGpuData()` SHALL iterate all buffer slots and call `setDirty()` on each slot's resource that has its dirty flag set.
+### Requirement: UBO GPU sync via cached IGpuResource wrapper
+`MaterialInstance` SHALL construct one `MaterialParameterData` per material-owned buffer binding during construction. `syncGpuData()` SHALL iterate all parameter slots and call `setDirty()` on each slot whose internal dirty flag is set.
 
 #### Scenario: syncGpuData propagates dirty state for all modified slots
 - **WHEN** two buffer slots exist, one is modified via `setParameter`, and `syncGpuData()` is called
@@ -113,12 +113,12 @@ The no-argument `getDescriptorResources()` SHALL be removed. All callers MUST pr
 
 #### Scenario: Buffer resource identity is stable
 - **WHEN** `getDescriptorResources(pass)` is called twice on the same `MaterialInstance`
-- **THEN** both calls return the same `IRenderResource` pointers for buffer entries (address equality)
+- **THEN** both calls return the same `IGpuResource` pointers for buffer entries (address equality)
 
 ### Requirement: Core-layer UBO byte-buffer resource wrapper
-The core layer SHALL provide a `UboByteBufferResource` class that implements `IRenderResource` over a non-owning reference to a `std::vector<uint8_t>`. Its `getRawData()` MUST return a pointer computed from the referenced vector at call time (not a stale copy captured at construction), `getByteSize()` MUST return the byte count passed at construction, `getType()` MUST return `ResourceType::UniformBuffer`, and `setDirty()` MUST mark the resource for upload through the existing `VulkanResourceManager::syncResource()` path. `MaterialInstance` SHALL construct exactly one such wrapper for its `m_uboBuffer` during its own construction.
+The core layer SHALL provide a `UboByteBufferResource` class that implements `IGpuResource` over a non-owning reference to a `std::vector<uint8_t>`. Its `getRawData()` MUST return a pointer computed from the referenced vector at call time (not a stale copy captured at construction), `getByteSize()` MUST return the byte count passed at construction, `getType()` MUST return `ResourceType::UniformBuffer`, and `setDirty()` MUST mark the resource for upload through the existing `VulkanResourceManager::syncResource()` path. `MaterialInstance` SHALL construct exactly one such wrapper for its `m_uboBuffer` during its own construction.
 
-> Rationale: this wrapper is the same shape as the existing `SkeletonUBO` in `src/core/asset/skeleton.hpp` — both live in core because `IRenderResource` is a core contract and no backend-specific code is required to adapt a raw byte buffer into that contract.
+> Rationale: this wrapper is the same shape as the existing `SkeletonUBO` in `src/core/asset/skeleton.hpp` — both live in core because `IGpuResource` is a core contract and no backend-specific code is required to adapt a raw byte buffer into that contract.
 
 #### Scenario: Wrapper exposes buffer bytes without copy
 - **WHEN** a `UboByteBufferResource` is created over a 48-byte vector
@@ -268,7 +268,7 @@ The material system SHALL formally support the following descriptor types for ma
 - `Texture2D`
 - `TextureCube`
 
-For buffer types (`UniformBuffer`, `StorageBuffer`), `MaterialInstance` SHALL create a buffer slot with independent byte buffer, dirty state, and `IRenderResource` wrapper.
+For buffer types (`UniformBuffer`, `StorageBuffer`), `MaterialInstance` SHALL create a buffer slot with independent byte buffer, dirty state, and `IGpuResource` wrapper.
 
 For texture types (`Texture2D`, `TextureCube`), the existing `setTexture(StringID, CombinedTextureSamplerPtr)` mechanism SHALL continue to apply.
 
@@ -291,7 +291,7 @@ If a material-owned binding has a descriptor type not in the supported set (e.g.
 `MaterialInstance` SHALL replace the single `m_uboBuffer` / `m_uboBinding` / `m_uboResource` with a collection of buffer slots, each keyed by binding name. Each slot SHALL have:
 - an independent `std::vector<uint8_t>` byte buffer
 - a non-owning pointer to the `ShaderResourceBinding`
-- an independent `IRenderResourcePtr` wrapper
+- an independent `IGpuResourcePtr` wrapper
 - an independent dirty flag
 
 The slot collection SHALL be built during construction by iterating material-owned buffer bindings from the enabled passes.
@@ -337,4 +337,3 @@ The existing `setFloat(memberName, value)`, `setVec3(memberName, value)`, `setVe
 #### Scenario: Ambiguous member name asserts
 - **WHEN** two buffer slots both contain a member named `opacity` and `setFloat(StringID("opacity"), 0.5f)` is called
 - **THEN** an assertion fires in debug builds with a diagnostic about ambiguous member resolution
-

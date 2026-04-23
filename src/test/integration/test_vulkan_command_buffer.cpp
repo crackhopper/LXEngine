@@ -4,7 +4,7 @@
 #include "backend/vulkan/details/device_resources/texture.hpp"
 #include "backend/vulkan/details/device.hpp"
 #include "backend/vulkan/details/resource_manager.hpp"
-#include "core/rhi/render_resource.hpp"
+#include "core/rhi/gpu_resource.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/scene.hpp"

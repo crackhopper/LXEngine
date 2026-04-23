@@ -60,6 +60,37 @@ const std::vector<uint8_t> kEmptyBuffer;
 } // namespace
 
 /*****************************************************************
+ * MaterialParameterData
+ *****************************************************************/
+
+MaterialParameterData::MaterialParameterData(StringID bindingName,
+                                             const ShaderResourceBinding &binding,
+                                             ResourceType resType)
+    : m_bindingName(bindingName), m_binding(&binding),
+      m_buffer(binding.size, uint8_t{0}), m_resType(resType) {}
+
+void MaterialParameterData::writeMember(StringID memberName, const void *src,
+                                        size_t nbytes,
+                                        ShaderPropertyType expected) {
+  if (!m_binding) {
+    assert(false && "MaterialParameterData has no binding");
+    return;
+  }
+  for (const auto &member : m_binding->members) {
+    if (StringID(member.name) != memberName)
+      continue;
+    assert(member.type == expected &&
+           "MaterialInstance setter type does not match reflected member type");
+    assert(static_cast<size_t>(member.offset) + nbytes <= m_buffer.size() &&
+           "UBO write would overflow the reflected buffer");
+    std::memcpy(m_buffer.data() + member.offset, src, nbytes);
+    m_dirty = true;
+    return;
+  }
+  assert(false && "MaterialInstance setter: member not found in parameter data");
+}
+
+/*****************************************************************
  * MaterialInstance
  *****************************************************************/
 
@@ -101,22 +132,10 @@ MaterialInstance::MaterialInstance(Token, MaterialTemplate::Ptr tmpl)
     }
   }
 
-  // Create buffer slots (two-phase: allocate first, then create resources).
-  // Resources hold non-owning references to the buffer vectors, so we must
-  // ensure the vector of slots doesn't reallocate after resource creation.
   m_bufferSlots.reserve(seenBuffers.size());
   for (const auto &[name, binding] : seenBuffers) {
-    MaterialBufferSlot slot;
-    slot.bindingName = StringID(name);
-    slot.binding = binding;
-    slot.buffer.assign(binding->size, uint8_t{0});
-    m_bufferSlots.push_back(std::move(slot));
-  }
-  // Now that the vector is stable, create resource wrappers.
-  for (auto &slot : m_bufferSlots) {
-    slot.resource = std::make_shared<MaterialParameterDataResource>(
-        slot.buffer, static_cast<uint32_t>(slot.buffer.size()),
-        slot.bindingName, toResourceType(slot.binding->type));
+    m_bufferSlots.push_back(std::make_shared<MaterialParameterData>(
+        StringID(name), *binding, toResourceType(binding->type)));
   }
 }
 
@@ -124,101 +143,39 @@ MaterialInstance::MaterialInstance(Token, MaterialTemplate::Ptr tmpl)
  * Buffer slot lookup helpers
  *****************************************************************/
 
-MaterialBufferSlot *MaterialInstance::findSlot(StringID bindingName) {
+MaterialParameterData *MaterialInstance::findSlot(StringID bindingName) {
   for (auto &slot : m_bufferSlots) {
-    if (slot.bindingName == bindingName)
-      return &slot;
+    if (slot && slot->getBindingName() == bindingName)
+      return slot.get();
   }
   return nullptr;
 }
 
-const MaterialBufferSlot *MaterialInstance::findSlot(StringID bindingName) const {
+const MaterialParameterData *
+MaterialInstance::findSlot(StringID bindingName) const {
   for (const auto &slot : m_bufferSlots) {
-    if (slot.bindingName == bindingName)
-      return &slot;
+    if (slot && slot->getBindingName() == bindingName)
+      return slot.get();
   }
   return nullptr;
 }
 
-MaterialBufferSlot *MaterialInstance::findSlot(StringID pass,
-                                               StringID bindingName) {
-  auto passIt = m_passOverrides.find(pass);
-  if (passIt == m_passOverrides.end())
-    return nullptr;
-  auto it = passIt->second.bufferSlots.find(bindingName);
-  return it != passIt->second.bufferSlots.end() ? &it->second : nullptr;
-}
-
-const MaterialBufferSlot *MaterialInstance::findSlot(StringID pass,
-                                                     StringID bindingName) const {
-  auto passIt = m_passOverrides.find(pass);
-  if (passIt == m_passOverrides.end())
-    return nullptr;
-  auto it = passIt->second.bufferSlots.find(bindingName);
-  return it != passIt->second.bufferSlots.end() ? &it->second : nullptr;
-}
-
-MaterialBufferSlot &
-MaterialInstance::ensurePassOverrideSlot(StringID pass, StringID bindingName) {
-  auto &slot = m_passOverrides[pass].bufferSlots[bindingName];
-  if (slot.binding)
-    return slot;
-
-  const auto *baseSlot = findSlot(bindingName);
-  assert(baseSlot && "pass override requires an existing global buffer slot");
-  if (baseSlot) {
-    slot.bindingName = baseSlot->bindingName;
-    slot.binding = baseSlot->binding;
-    slot.buffer = baseSlot->buffer;
-    slot.resource = std::make_shared<MaterialParameterDataResource>(
-        slot.buffer, static_cast<uint32_t>(slot.buffer.size()),
-        slot.bindingName, toResourceType(slot.binding->type));
-  }
-  return slot;
-}
-
-MaterialBufferSlot *MaterialInstance::findSlotByMember(StringID memberName) {
-  MaterialBufferSlot *found = nullptr;
+MaterialParameterData *MaterialInstance::findSlotByMember(StringID memberName) {
+  MaterialParameterData *found = nullptr;
   for (auto &slot : m_bufferSlots) {
-    if (!slot.binding)
+    if (!slot || !slot->getBinding())
       continue;
-    for (const auto &m : slot.binding->members) {
+    for (const auto &m : slot->getBinding()->members) {
       if (StringID(m.name) == memberName) {
         assert(!found &&
                "Ambiguous member name across multiple buffer slots; "
                "use setParameter(bindingName, memberName, value) instead");
-        found = &slot;
+        found = slot.get();
         break;
       }
     }
   }
   return found;
-}
-
-/*****************************************************************
- * Write helpers
- *****************************************************************/
-
-void MaterialInstance::writeSlotMember(MaterialBufferSlot &slot,
-                                       StringID memberName, const void *src,
-                                       size_t nbytes,
-                                       ShaderPropertyType expected) {
-  if (!slot.binding) {
-    assert(false && "MaterialInstance: buffer slot has no binding");
-    return;
-  }
-  for (const auto &m : slot.binding->members) {
-    if (StringID(m.name) != memberName)
-      continue;
-    assert(m.type == expected &&
-           "MaterialInstance setter type does not match reflected member type");
-    assert(static_cast<size_t>(m.offset) + nbytes <= slot.buffer.size() &&
-           "UBO write would overflow the reflected buffer");
-    std::memcpy(slot.buffer.data() + m.offset, src, nbytes);
-    slot.dirty = true;
-    return;
-  }
-  assert(false && "MaterialInstance setter: member not found in buffer slot");
 }
 
 /*****************************************************************
@@ -230,8 +187,8 @@ void MaterialInstance::setParameter(StringID bindingName, StringID memberName,
   auto *slot = findSlot(bindingName);
   assert(slot && "setParameter: binding name not found in buffer slots");
   if (slot)
-    writeSlotMember(*slot, memberName, &value, sizeof(float),
-                    ShaderPropertyType::Float);
+    slot->writeMember(memberName, &value, sizeof(float),
+                      ShaderPropertyType::Float);
 }
 
 void MaterialInstance::setParameter(StringID bindingName, StringID memberName,
@@ -239,8 +196,8 @@ void MaterialInstance::setParameter(StringID bindingName, StringID memberName,
   auto *slot = findSlot(bindingName);
   assert(slot && "setParameter: binding name not found in buffer slots");
   if (slot)
-    writeSlotMember(*slot, memberName, &value, sizeof(int32_t),
-                    ShaderPropertyType::Int);
+    slot->writeMember(memberName, &value, sizeof(int32_t),
+                      ShaderPropertyType::Int);
 }
 
 void MaterialInstance::setParameter(StringID bindingName, StringID memberName,
@@ -248,8 +205,8 @@ void MaterialInstance::setParameter(StringID bindingName, StringID memberName,
   auto *slot = findSlot(bindingName);
   assert(slot && "setParameter: binding name not found in buffer slots");
   if (slot)
-    writeSlotMember(*slot, memberName, &value, sizeof(float) * 3,
-                    ShaderPropertyType::Vec3);
+    slot->writeMember(memberName, &value, sizeof(float) * 3,
+                      ShaderPropertyType::Vec3);
 }
 
 void MaterialInstance::setParameter(StringID bindingName, StringID memberName,
@@ -257,44 +214,8 @@ void MaterialInstance::setParameter(StringID bindingName, StringID memberName,
   auto *slot = findSlot(bindingName);
   assert(slot && "setParameter: binding name not found in buffer slots");
   if (slot)
-    writeSlotMember(*slot, memberName, &value, sizeof(Vec4f),
-                    ShaderPropertyType::Vec4);
-}
-
-void MaterialInstance::setParameter(StringID pass, StringID bindingName,
-                                    StringID memberName, float value) {
-  auto &slot = ensurePassOverrideSlot(pass, bindingName);
-  assert(slot.binding && "setParameter(pass): binding name not found");
-  if (slot.binding)
-    writeSlotMember(slot, memberName, &value, sizeof(float),
-                    ShaderPropertyType::Float);
-}
-
-void MaterialInstance::setParameter(StringID pass, StringID bindingName,
-                                    StringID memberName, int32_t value) {
-  auto &slot = ensurePassOverrideSlot(pass, bindingName);
-  assert(slot.binding && "setParameter(pass): binding name not found");
-  if (slot.binding)
-    writeSlotMember(slot, memberName, &value, sizeof(int32_t),
-                    ShaderPropertyType::Int);
-}
-
-void MaterialInstance::setParameter(StringID pass, StringID bindingName,
-                                    StringID memberName, const Vec3f &value) {
-  auto &slot = ensurePassOverrideSlot(pass, bindingName);
-  assert(slot.binding && "setParameter(pass): binding name not found");
-  if (slot.binding)
-    writeSlotMember(slot, memberName, &value, sizeof(float) * 3,
-                    ShaderPropertyType::Vec3);
-}
-
-void MaterialInstance::setParameter(StringID pass, StringID bindingName,
-                                    StringID memberName, const Vec4f &value) {
-  auto &slot = ensurePassOverrideSlot(pass, bindingName);
-  assert(slot.binding && "setParameter(pass): binding name not found");
-  if (slot.binding)
-    writeSlotMember(slot, memberName, &value, sizeof(Vec4f),
-                    ShaderPropertyType::Vec4);
+    slot->writeMember(memberName, &value, sizeof(Vec4f),
+                      ShaderPropertyType::Vec4);
 }
 
 /*****************************************************************
@@ -305,31 +226,29 @@ void MaterialInstance::setVec4(StringID id, const Vec4f &value) {
   auto *slot = findSlotByMember(id);
   assert(slot && "setVec4: member not found in any buffer slot");
   if (slot)
-    writeSlotMember(*slot, id, &value, sizeof(Vec4f), ShaderPropertyType::Vec4);
+    slot->writeMember(id, &value, sizeof(Vec4f), ShaderPropertyType::Vec4);
 }
 
 void MaterialInstance::setVec3(StringID id, const Vec3f &value) {
   auto *slot = findSlotByMember(id);
   assert(slot && "setVec3: member not found in any buffer slot");
   if (slot)
-    writeSlotMember(*slot, id, &value, sizeof(float) * 3,
-                    ShaderPropertyType::Vec3);
+    slot->writeMember(id, &value, sizeof(float) * 3,
+                      ShaderPropertyType::Vec3);
 }
 
 void MaterialInstance::setFloat(StringID id, float value) {
   auto *slot = findSlotByMember(id);
   assert(slot && "setFloat: member not found in any buffer slot");
   if (slot)
-    writeSlotMember(*slot, id, &value, sizeof(float),
-                    ShaderPropertyType::Float);
+    slot->writeMember(id, &value, sizeof(float), ShaderPropertyType::Float);
 }
 
 void MaterialInstance::setInt(StringID id, int32_t value) {
   auto *slot = findSlotByMember(id);
   assert(slot && "setInt: member not found in any buffer slot");
   if (slot)
-    writeSlotMember(*slot, id, &value, sizeof(int32_t),
-                    ShaderPropertyType::Int);
+    slot->writeMember(id, &value, sizeof(int32_t), ShaderPropertyType::Int);
 }
 
 void MaterialInstance::setTexture(StringID id, CombinedTextureSamplerPtr tex) {
@@ -343,47 +262,15 @@ void MaterialInstance::setTexture(StringID id, CombinedTextureSamplerPtr tex) {
   m_textures[id] = std::move(tex);
 }
 
-void MaterialInstance::setTexture(StringID pass, StringID id,
-                                  CombinedTextureSamplerPtr tex) {
-  auto entry = m_template ? m_template->getEntry(pass) : std::nullopt;
-  assert(entry && "setTexture(pass): undefined pass");
-  if (!entry)
-    return;
-
-  const auto &bindings = m_template->getMaterialBindings(pass);
-  const auto it = std::find_if(bindings.begin(), bindings.end(),
-                               [&](const ShaderResourceBinding &binding) {
-                                 return StringID(binding.name) == id;
-                               });
-  assert(it != bindings.end() && "setTexture(pass): binding not found");
-  if (it == bindings.end())
-    return;
-
-  const auto type = it->type;
-  assert((type == ShaderPropertyType::Texture2D ||
-          type == ShaderPropertyType::TextureCube) &&
-         "setTexture(pass) target is not a sampled image binding");
-  (void)type;
-  m_passOverrides[pass].textures[id] = std::move(tex);
-}
-
 /*****************************************************************
  * GPU sync
  *****************************************************************/
 
 void MaterialInstance::syncGpuData() {
   for (auto &slot : m_bufferSlots) {
-    if (slot.dirty && slot.resource) {
-      slot.resource->setDirty();
-      slot.dirty = false;
-    }
-  }
-  for (auto &[_, passOverride] : m_passOverrides) {
-    for (auto &[__, slot] : passOverride.bufferSlots) {
-      if (slot.dirty && slot.resource) {
-        slot.resource->setDirty();
-        slot.dirty = false;
-      }
+    if (slot && slot->hasPendingSync()) {
+      slot->setDirty();
+      slot->clearPendingSync();
     }
   }
 }
@@ -392,9 +279,9 @@ void MaterialInstance::syncGpuData() {
  * Pass-aware descriptor resources (REQ-032 R4)
  *****************************************************************/
 
-std::vector<IRenderResourcePtr>
+std::vector<IGpuResourcePtr>
 MaterialInstance::getDescriptorResources(StringID pass) const {
-  std::vector<std::pair<uint32_t, IRenderResourcePtr>> sorted;
+  std::vector<std::pair<uint32_t, IGpuResourcePtr>> sorted;
 
   const auto &matBindings = m_template->getMaterialBindings(pass);
   for (const auto &binding : matBindings) {
@@ -402,37 +289,22 @@ MaterialInstance::getDescriptorResources(StringID pass) const {
     const StringID bindingId(binding.name);
 
     if (isBufferType(binding.type)) {
-      if (const auto *overrideSlot = findSlot(pass, bindingId);
-          overrideSlot && overrideSlot->resource &&
-          !overrideSlot->buffer.empty()) {
-        sorted.emplace_back(key, overrideSlot->resource);
-      } else {
-        for (const auto &slot : m_bufferSlots) {
-          if (slot.bindingName == bindingId && slot.resource &&
-              !slot.buffer.empty()) {
-            sorted.emplace_back(key, slot.resource);
-            break;
-          }
+      for (const auto &slot : m_bufferSlots) {
+        if (slot && slot->getBindingName() == bindingId &&
+            !slot->getBuffer().empty()) {
+          sorted.emplace_back(key, std::static_pointer_cast<IGpuResource>(slot));
+          break;
         }
       }
     } else if (binding.type == ShaderPropertyType::Texture2D ||
                binding.type == ShaderPropertyType::TextureCube) {
       CombinedTextureSamplerPtr tex;
-      auto passIt = m_passOverrides.find(pass);
-      if (passIt != m_passOverrides.end()) {
-        auto overrideIt = passIt->second.textures.find(bindingId);
-        if (overrideIt != passIt->second.textures.end())
-          tex = overrideIt->second;
-      }
-      if (!tex) {
-        auto it = m_textures.find(bindingId);
-        if (it != m_textures.end())
-          tex = it->second;
-      }
+      auto it = m_textures.find(bindingId);
+      if (it != m_textures.end())
+        tex = it->second;
       if (tex) {
         tex->setBindingName(bindingId);
-        sorted.emplace_back(
-            key, std::static_pointer_cast<IRenderResource>(tex));
+        sorted.emplace_back(key, std::static_pointer_cast<IGpuResource>(tex));
       }
     }
   }
@@ -440,7 +312,7 @@ MaterialInstance::getDescriptorResources(StringID pass) const {
   std::sort(sorted.begin(), sorted.end(),
             [](const auto &a, const auto &b) { return a.first < b.first; });
 
-  std::vector<IRenderResourcePtr> out;
+  std::vector<IGpuResourcePtr> out;
   out.reserve(sorted.size());
   for (auto &[_, r] : sorted) {
     out.push_back(std::move(r));
@@ -455,28 +327,14 @@ MaterialInstance::getDescriptorResources(StringID pass) const {
 const std::vector<uint8_t> &
 MaterialInstance::getParameterBuffer(StringID bindingName) const {
   if (const auto *slot = findSlot(bindingName))
-    return slot->buffer;
+    return slot->getBuffer();
   return kEmptyBuffer;
-}
-
-const std::vector<uint8_t> &
-MaterialInstance::getParameterBuffer(StringID pass, StringID bindingName) const {
-  if (const auto *slot = findSlot(pass, bindingName))
-    return slot->buffer;
-  return getParameterBuffer(bindingName);
-}
-
-const ShaderResourceBinding *
-MaterialInstance::getParameterBinding(StringID pass, StringID bindingName) const {
-  if (const auto *slot = findSlot(pass, bindingName))
-    return slot->binding;
-  return getParameterBinding(bindingName);
 }
 
 const ShaderResourceBinding *
 MaterialInstance::getParameterBinding(StringID bindingName) const {
   if (const auto *slot = findSlot(bindingName))
-    return slot->binding;
+    return slot->getBinding();
   return nullptr;
 }
 
@@ -488,14 +346,14 @@ const std::vector<uint8_t> &MaterialInstance::getParameterBuffer() const {
     static const std::vector<uint8_t> kEmpty;
     return kEmpty;
   }
-  return m_bufferSlots[0].buffer;
+  return m_bufferSlots[0]->getBuffer();
 }
 
 const ShaderResourceBinding *MaterialInstance::getParameterBinding() const {
   assert(m_bufferSlots.size() <= 1 &&
          "getParameterBinding(): multiple buffer slots; use "
          "getParameterBinding(bindingName) instead");
-  return m_bufferSlots.empty() ? nullptr : m_bufferSlots[0].binding;
+  return m_bufferSlots.empty() ? nullptr : m_bufferSlots[0]->getBinding();
 }
 
 IShaderPtr MaterialInstance::getShaderInfo(StringID pass) const {

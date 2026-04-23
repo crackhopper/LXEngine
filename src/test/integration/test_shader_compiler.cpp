@@ -1,7 +1,7 @@
 #include "infra/shader_compiler/shader_compiler.hpp"
 #include "infra/shader_compiler/compiled_shader.hpp"
 #include "infra/shader_compiler/shader_reflector.hpp"
-#include "core/rhi/render_resource.hpp"
+#include "core/rhi/gpu_resource.hpp"
 
 #include <cstdlib>
 #include <filesystem>

@@ -1,0 +1,6 @@
+- [x] 1. Update the material-system spec delta and design docs to define the canonical shared-parameter model, remove pass-specific setter semantics, and require fail-fast cross-pass binding compatibility.
+- [x] 2. Refactor `src/core/asset/material_instance.{hpp,cpp}` to remove `PassMaterialOverride`, `m_passOverrides`, pass-specific setter overloads, and any override-based descriptor resolution; keep only canonical slot/texture storage and pass-filtered reads.
+- [x] 3. Refactor `src/core/asset/material_template.hpp` to make cross-pass same-name binding validation fail fast while preserving per-pass material binding usage lists.
+- [x] 4. Update call sites and tests to the new API contract: no `setParameter(pass, ...)` / `setTexture(pass, ...)`, and descriptor resources resolve from canonical instance data.
+- [x] 5. Update notes, source-analysis pages, and code comments so the documented material model matches the new canonical shared-parameter design.
+- [x] 6. Verify the refactor with a full build plus focused material / shader / frame-graph tests, then mark completed tasks.

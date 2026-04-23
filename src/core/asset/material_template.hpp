@@ -103,6 +103,18 @@ public:
   }
 
 private:
+  [[noreturn]] void fatalBindingConflict(const std::string &bindingName,
+                                         StringID firstPass,
+                                         StringID secondPass,
+                                         const std::string &reason) const {
+    std::cerr << "FATAL [MaterialTemplate] binding='"
+              << bindingName << "' passA="
+              << GlobalStringTable::get().toDebugString(firstPass)
+              << " passB=" << GlobalStringTable::get().toDebugString(secondPass)
+              << " reason=" << reason << std::endl;
+    std::terminate();
+  }
+
   void checkCrossPassBindingConsistency() const {
     // Collect first-seen binding per name across all passes.
     std::unordered_map<std::string, std::pair<StringID, const ShaderResourceBinding *>>
@@ -116,15 +128,14 @@ private:
         }
         const auto *first = it->second.second;
         if (first->type != binding.type) {
-          std::cerr << "WARN [MaterialTemplate] cross-pass binding '"
-                    << binding.name << "' type mismatch between passes\n";
+          fatalBindingConflict(binding.name, it->second.first, pass,
+                               "type mismatch");
         } else if (first->size != binding.size) {
-          std::cerr << "WARN [MaterialTemplate] cross-pass binding '"
-                    << binding.name << "' size mismatch: " << first->size
-                    << " vs " << binding.size << "\n";
+          fatalBindingConflict(binding.name, it->second.first, pass,
+                               "size mismatch");
         } else if (first->members != binding.members) {
-          std::cerr << "WARN [MaterialTemplate] cross-pass binding '"
-                    << binding.name << "' member layout mismatch\n";
+          fatalBindingConflict(binding.name, it->second.first, pass,
+                               "member layout mismatch");
         }
       }
     }

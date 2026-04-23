@@ -1,5 +1,5 @@
 #pragma once
-#include "core/rhi/render_resource.hpp"
+#include "core/rhi/gpu_resource.hpp"
 #include "core/frame_graph/render_target.hpp"
 #include "core/math/mat.hpp" // 假设你有 Mat4f 定义
 #include "core/math/vec.hpp" // Vec3f
@@ -9,7 +9,9 @@
 
 namespace LX_core {
 
-struct alignas(16) CameraData : public IRenderResource {
+// CameraData is the GPU-facing UBO view of a Camera. The Camera object owns
+// high-level parameters; this struct owns the packed bytes the backend uploads.
+struct alignas(16) CameraData : public IGpuResource {
   struct Param {
     Mat4f view = Mat4f::identity();
     Mat4f proj = Mat4f::identity();

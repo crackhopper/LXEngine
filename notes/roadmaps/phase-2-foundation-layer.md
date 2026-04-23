@@ -266,7 +266,7 @@ public:
 };
 ```
 
-`Transform`、`SceneNode`、`Camera`、`LightBase`、`IRenderable`、`MaterialInstance`、`IShader`、`IRenderResource` 全部实现它。大部分实现只需要反射 + 一个 `nlohmann/json` 往外写的模板。
+`Transform`、`SceneNode`、`Camera`、`LightBase`、`IRenderable`、`MaterialInstance`、`IShader`、`IGpuResource` 全部实现它。大部分实现只需要反射 + 一个 `nlohmann/json` 往外写的模板。
 
 **验收**：对任意一个 `SceneNode` 调 `describe("json")` 能得到可 `json::parse` 的字符串。
 

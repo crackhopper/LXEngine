@@ -61,7 +61,7 @@ VulkanResourceManager::~VulkanResourceManager() {
 
 void VulkanResourceManager::syncResource(
     VulkanCommandBufferManager &cmdBufferManager,
-    const IRenderResourcePtr &cpuRes) {
+    const IGpuResourcePtr &cpuRes) {
   if (!cpuRes)
     return;
 
@@ -81,7 +81,7 @@ void VulkanResourceManager::syncResource(
 }
 
 std::shared_ptr<VulkanAnyResource>
-VulkanResourceManager::createGpuResource(const IRenderResourcePtr &cpuRes) {
+VulkanResourceManager::createGpuResource(const IGpuResourcePtr &cpuRes) {
   ResourceType type = cpuRes->getType();
 
   switch (type) {
@@ -126,7 +126,7 @@ VulkanResourceManager::createGpuResource(const IRenderResourcePtr &cpuRes) {
 
 void VulkanResourceManager::updateGpuResource(
     std::shared_ptr<VulkanAnyResource> &gpuRes,
-    const IRenderResourcePtr &cpuRes,
+    const IGpuResourcePtr &cpuRes,
     VulkanCommandBufferManager &cmdBufferManager) {
   std::visit(
       [&](auto &&res) {

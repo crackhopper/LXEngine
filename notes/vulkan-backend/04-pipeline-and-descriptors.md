@@ -48,7 +48,7 @@ pipeline 相关逻辑分成三层：
 
 `VulkanCommandBuffer::bindResources(...)` 先从 `item.descriptorResources` 构建一张：
 
-- `binding name -> IRenderResource`
+- `binding name -> IGpuResource`
 
 然后遍历 pipeline 的反射绑定列表，用 `ShaderResourceBinding.name` 去匹配资源上的 `getBindingName()`。
 

@@ -124,6 +124,7 @@ flowchart TD
 | [10](phase-10-ai-agent-mcp.md)    | MCP + Agent + CLI      | 引擎自带 Agent，暴露 MCP tools，CLI 交互模式 | Phase 2, 3, 6, 9 |
 | [11](phase-11-ai-asset-generation.md) | AI 资产生成        | 贴图 / 模型 / 动画 / NeRF / 3DGS 生成管线 | Phase 3, 10 |
 | [12](phase-12-release.md)         | 打包 / 发布            | Win / Linux / WASM 三目标 | 全部 |
+| [技术预研 (research/)](research/) | 技术预研留档 | 未列入阶段、仅记录未来可能引入的技术方向 | — |
 
 ---
 

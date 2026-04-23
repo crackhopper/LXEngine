@@ -211,7 +211,7 @@ EngineLoop::startScene(scene)
     │
 renderer->uploadData()
   ├─ 扫描 FrameGraph 的所有 pass/item
-  ├─ 对 dirty 的 IRenderResource 做 staging copy 到 GPU
+  ├─ 对 dirty 的 IGpuResource 做 staging copy 到 GPU
   └─ collectGarbage()
     │
 renderer->draw()

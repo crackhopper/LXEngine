@@ -1,5 +1,5 @@
 #pragma once
-#include "core/rhi/render_resource.hpp"
+#include "core/rhi/gpu_resource.hpp"
 #include "core/math/vec.hpp"
 #include "core/frame_graph/pass.hpp"
 #include "core/utils/string_table.hpp"
@@ -23,8 +23,8 @@ public:
 
   /// The light's GPU-side data resource, or nullptr if the light contributes no
   /// per-frame descriptor data. Binding name is owned by the resource itself
-  /// via IRenderResource::getBindingName().
-  virtual IRenderResourcePtr getUBO() const = 0;
+  /// via IGpuResource::getBindingName().
+  virtual IGpuResourcePtr getUBO() const = 0;
 
   /// Whether this light participates in the given pass.
   virtual bool supportsPass(StringID pass) const = 0;
@@ -32,7 +32,7 @@ public:
 
 using LightBasePtr = std::shared_ptr<LightBase>;
 
-struct alignas(16) DirectionalLightData : public IRenderResource {
+struct alignas(16) DirectionalLightData : public IGpuResource {
   explicit DirectionalLightData(StringID bindingName = StringID("LightUBO"))
       : m_bindingName(bindingName) {}
   struct Param {
@@ -70,7 +70,7 @@ public:
   /// `ubo->param` directly; new callers go through LightBase::getUBO()).
   DirectionalLightDataPtr ubo;
 
-  IRenderResourcePtr getUBO() const override { return ubo; }
+  IGpuResourcePtr getUBO() const override { return ubo; }
   bool supportsPass(StringID pass) const override {
     return m_supportedPasses.find(pass) != m_supportedPasses.end();
   }

@@ -1,5 +1,5 @@
 #include "vulkan_renderer.hpp"
-#include "core/rhi/render_resource.hpp"
+#include "core/rhi/gpu_resource.hpp"
 #include "core/frame_graph/frame_graph.hpp"
 #include "core/frame_graph/pass.hpp"
 #include "infra/gui/gui.hpp"

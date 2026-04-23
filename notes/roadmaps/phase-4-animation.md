@@ -60,7 +60,7 @@ public:
 };
 ```
 
-- 是一个 `IRenderResource`？**不是**，它不直接上 GPU。只是 CPU 侧 asset。
+- 是一个 `IGpuResource`？**不是**，它不直接上 GPU。只是 CPU 侧 asset。
 - 可序列化、可按 GUID 引用
 
 **验收**：`test_animation_clip.cpp`：构造一个 2 秒 clip，在 t=0.5 / 1.0 / 1.5 秒查询 pose。
@@ -234,7 +234,7 @@ public:
 ## 与现有架构的契合
 
 - `SkeletonUBO` 已经是 GPU dirty-sync 路径上的 resource，本阶段只需要提供"每帧写入新的骨骼矩阵"的 CPU 侧 driver。
-- `IRenderResource` 的 dirty 通道天然适配"每帧动画采样后标 dirty"。
+- `IGpuResource` 的 dirty 通道天然适配"每帧动画采样后标 dirty"。
 - `StringID` 给骨骼名、动画名、transition 名提供统一 intern。
 - `AssetHandle<AnimationClip>` 走 Phase 3 的资产系统，支持热重载（策划调完动画不重启即刻生效）。
 

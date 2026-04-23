@@ -18,10 +18,10 @@ struct RenderingItem {
   MaterialInstancePtr material; // 材质句柄 — 用于 PipelineBuildDesc::fromRenderingItem
 
   PerDrawDataPtr drawData;
-  IRenderResourcePtr vertexBuffer;
-  IRenderResourcePtr indexBuffer;
+  IGpuResourcePtr vertexBuffer;
+  IGpuResourcePtr indexBuffer;
 
-  std::vector<IRenderResourcePtr> descriptorResources; // 材质 + skeleton 等资源
+  std::vector<IGpuResourcePtr> descriptorResources; // 材质 + skeleton 等资源
 
   StringID pass;
   PipelineKey pipelineKey;
@@ -98,7 +98,7 @@ public:
   /// supportsPass(pass). Returns camera data resources first, then light data
   /// resources; both in their respective container insertion order. Empty
   /// return is valid.
-  std::vector<IRenderResourcePtr>
+  std::vector<IGpuResourcePtr>
   getSceneLevelResources(StringID pass, const RenderTarget &target) const;
 
 private:

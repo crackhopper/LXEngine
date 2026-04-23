@@ -36,8 +36,8 @@
 | 多相机 / 多光源 Scene | ✅ | `scene.hpp` (REQ-009) |
 | `FrameGraph` + 多 `FramePass` | ✅ | `frame_graph.hpp` |
 | `RenderQueue` + pass/target 过滤 | ✅ | `render_queue.hpp` |
-| Push constant (`PC_Draw`) | ✅ | `render_resource.hpp` |
-| Dirty 同步通道 | ✅ | `IRenderResource::setDirty()` |
+| Push constant (`PC_Draw`) | ✅ | `gpu_resource.hpp` |
+| Dirty 同步通道 | ✅ | `IGpuResource::setDirty()` |
 | Mesh / OBJ / GLTF 加载 | ✅ | `src/infra/mesh_loader/` |
 | Texture 加载（stb_image） | ✅ | `src/infra/texture_loader/` |
 | Skeleton 资源（骨骼矩阵 UBO） | ✅ | `src/core/asset/skeleton.hpp` |

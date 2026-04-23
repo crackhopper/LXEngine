@@ -141,17 +141,17 @@ void SceneNode::setSkeleton(SkeletonPtr skeleton) {
   rebuildValidatedCache();
 }
 
-IRenderResourcePtr SceneNode::getVertexBuffer() const {
-  return m_mesh ? std::static_pointer_cast<IRenderResource>(m_mesh->vertexBuffer)
+IGpuResourcePtr SceneNode::getVertexBuffer() const {
+  return m_mesh ? std::static_pointer_cast<IGpuResource>(m_mesh->vertexBuffer)
                 : nullptr;
 }
 
-IRenderResourcePtr SceneNode::getIndexBuffer() const {
-  return m_mesh ? std::static_pointer_cast<IRenderResource>(m_mesh->indexBuffer)
+IGpuResourcePtr SceneNode::getIndexBuffer() const {
+  return m_mesh ? std::static_pointer_cast<IGpuResource>(m_mesh->indexBuffer)
                 : nullptr;
 }
 
-std::vector<IRenderResourcePtr>
+std::vector<IGpuResourcePtr>
 SceneNode::getDescriptorResources(StringID pass) const {
   auto data = getValidatedPassData(pass);
   if (data)
@@ -272,7 +272,7 @@ void SceneNode::rebuildValidatedCache() {
           fatalValidation(*this, pass, *m_materialInstance, entry.shaderSet,
                           "missing Bones resource", &layout);
         }
-        descriptorResources.push_back(std::static_pointer_cast<IRenderResource>(
+        descriptorResources.push_back(std::static_pointer_cast<IGpuResource>(
             m_skeleton.value()->getUBO()));
         continue;
       }
@@ -343,26 +343,26 @@ RenderableSubMesh::RenderableSubMesh(MeshPtr mesh_,
   perDrawData = std::make_shared<PerDrawData>();
 }
 
-IRenderResourcePtr RenderableSubMesh::getVertexBuffer() const {
-  return mesh ? std::static_pointer_cast<IRenderResource>(mesh->vertexBuffer)
+IGpuResourcePtr RenderableSubMesh::getVertexBuffer() const {
+  return mesh ? std::static_pointer_cast<IGpuResource>(mesh->vertexBuffer)
               : nullptr;
 }
 
-IRenderResourcePtr RenderableSubMesh::getIndexBuffer() const {
-  return mesh ? std::static_pointer_cast<IRenderResource>(mesh->indexBuffer)
+IGpuResourcePtr RenderableSubMesh::getIndexBuffer() const {
+  return mesh ? std::static_pointer_cast<IGpuResource>(mesh->indexBuffer)
               : nullptr;
 }
 
-std::vector<IRenderResourcePtr>
+std::vector<IGpuResourcePtr>
 RenderableSubMesh::getDescriptorResources(StringID pass) const {
-  std::vector<IRenderResourcePtr> ret;
+  std::vector<IGpuResourcePtr> ret;
   if (!material)
     return ret;
   auto res = material->getDescriptorResources(pass);
   ret.insert(ret.end(), res.begin(), res.end());
   if (skeleton.has_value()) {
     ret.push_back(
-        std::static_pointer_cast<IRenderResource>(skeleton.value()->getUBO()));
+        std::static_pointer_cast<IGpuResource>(skeleton.value()->getUBO()));
   }
   return ret;
 }

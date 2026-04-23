@@ -252,7 +252,7 @@ makeMaterial(std::vector<ShaderVariant> variants) {
   return makeMaterialFromYaml(yaml);
 }
 
-bool hasBinding(const std::vector<IRenderResourcePtr> &resources,
+bool hasBinding(const std::vector<IGpuResourcePtr> &resources,
                 const char *bindingName) {
   const StringID id(bindingName);
   for (const auto &resource : resources) {

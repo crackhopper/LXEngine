@@ -22,12 +22,12 @@
 
 ## 资源生命周期
 
-所有 GPU 可消费资源都收敛到 `IRenderResource`。CPU 侧对象修改数据后调用 `setDirty()`，backend 的 `syncResource(...)` 在合适的帧阶段把字节内容推到 GPU，然后 `clearDirty()`。
+所有 GPU 可消费资源都收敛到 `IGpuResource`。CPU 侧对象修改数据后调用 `setDirty()`，backend 的 `syncResource(...)` 在合适的帧阶段把字节内容推到 GPU，然后 `clearDirty()`。
 
 典型资源包括：
 
 - `SkeletonData`
-- `MaterialParameterDataResource`
+- `MaterialParameterData`
 - `CombinedTextureSampler`
 - `CameraData` / `DirectionalLightData`
 - `PerDrawData`
@@ -82,6 +82,6 @@
 可以把当前架构压缩成四条规则：
 
 - 分层规则：`core` 定义抽象，`infra` 接实现，`backend` 做 Vulkan 落地。
-- 资源规则：所有 GPU 资源走 `IRenderResource + dirty + syncResource()`。
+- 资源规则：所有 GPU 资源走 `IGpuResource + dirty + syncResource()`。
 - 绘制规则：所有 draw 必须走 `Scene -> FrameGraph -> RenderQueue -> RenderingItem`。
 - 身份规则：pipeline 身份来自 object/material render signatures，skinning 差异由 material-side variants 表达。

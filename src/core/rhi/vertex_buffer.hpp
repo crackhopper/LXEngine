@@ -1,5 +1,5 @@
 #pragma once
-#include "core/rhi/render_resource.hpp"
+#include "core/rhi/gpu_resource.hpp"
 #include "core/math/vec.hpp"
 #include "core/utils/hash.hpp"
 #include "core/utils/string_table.hpp"
@@ -146,7 +146,10 @@ namespace LX_core {
 /*****************************************************************
  * VertexBuffer
  *****************************************************************/
-class IVertexBuffer : public IRenderResource {
+// IVertexBuffer extends the generic GPU resource contract with vertex-layout
+// metadata. Backend upload only needs IGpuResource; pipeline creation also
+// needs the layout/hash carried here.
+class IVertexBuffer : public IGpuResource {
 public:
   virtual ~IVertexBuffer() = default;
 

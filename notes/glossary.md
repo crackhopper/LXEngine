@@ -11,7 +11,7 @@ Camera 的 GPU 端数据（view/proj 矩阵 + eye 位置）。由 `Camera::getUB
 
 ### `CombinedTextureSampler`
 
-纹理 + sampler 的成对包装，**同时** 是一个 `IRenderResource`。material 的 descriptor 路径只接受 `CombinedTextureSamplerPtr`，不接受裸 `TexturePtr`。
+纹理 + sampler 的成对包装，**同时** 是一个 `IGpuResource`。material 的 descriptor 路径只接受 `CombinedTextureSamplerPtr`，不接受裸 `TexturePtr`。
 → `src/core/asset/texture.hpp:49`
 
 ### `FrameGraph`
@@ -34,10 +34,10 @@ Camera 的 GPU 端数据（view/proj 矩阵 + eye 位置）。由 `Camera::getUB
 场景对象的抽象接口。除了 buffer / descriptor / signature 访问，还提供 `supportsPass(pass)` 和 `getValidatedPassData(pass)`。
 → `src/core/scene/object.hpp:58`
 
-### `IRenderResource`
+### `IGpuResource`
 
 所有 GPU 端可消费资源的基类。提供 `getType() / getRawData() / getByteSize() / getBindingName() / setDirty() / clearDirty()`。
-→ `src/core/rhi/render_resource.hpp:39`
+→ `src/core/rhi/gpu_resource.hpp`
 
 ### `IShader`
 
@@ -72,7 +72,7 @@ renderable 自带的每 draw 数据包装。底层缓冲 128 字节，但当前 
 ### `PerDrawLayoutBase` / `PerDrawLayout`
 
 engine-wide draw payload ABI。`PerDrawLayout` 现在只是 `PerDrawLayoutBase` 的别名，两者都只包含 `model`。
-→ `src/core/rhi/render_resource.hpp:69`
+→ `src/core/rhi/gpu_resource.hpp`
 
 ### `PipelineBuildDesc`
 
@@ -129,9 +129,9 @@ SPIR-V 反射出的 descriptor binding 描述，包含名字、set/binding、类
 `uint32_t` 的强类型封装。可从 `const char*` / `std::string` 隐式构造（构造即 intern）。
 → `src/core/utils/string_table.hpp`
 
-### `MaterialParameterDataResource`
+### `MaterialParameterData`
 
-`IRenderResource` 的一个实现，对 `std::vector<uint8_t>` 做非拥有包装，供 `MaterialInstance` 暴露参数缓冲数据。
+`IGpuResource` 的一个实现，对 `std::vector<uint8_t>` 做非拥有包装，供 `MaterialInstance` 暴露参数缓冲数据。
 → `src/core/asset/material_instance.hpp`
 
 ### `ValidatedRenderablePassData`

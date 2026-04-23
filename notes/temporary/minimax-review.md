@@ -17,7 +17,7 @@ src/
 │   ├── math/       # Vec3f、Mat4f、Quatf、Bounds、Rect
 │   ├── pipeline/   # PipelineKey、PipelineBuildDesc
 │   ├── platform/   # Window 接口、类型
-│   ├── rhi/        # IRenderResource、VertexBuffer、IndexBuffer、ImageFormat、UniformBuffer
+│   ├── rhi/        # IGpuResource、VertexBuffer、IndexBuffer、ImageFormat、UniformBuffer
 │   ├── scene/      # Scene、SceneNode、Camera、Light、IRenderable
 │   ├── time/       # Clock
 │   └── utils/      # StringTable、Hash、FilesystemTools、Env
@@ -54,7 +54,7 @@ src/
 
 | 模块 | 状态 | 说明 |
 |------|------|------|
-| **RHI** | ✅ 完整 | VertexBuffer、IndexBuffer、UniformBuffer、ImageFormat、IRenderResource |
+| **RHI** | ✅ 完整 | VertexBuffer、IndexBuffer、UniformBuffer、ImageFormat、IGpuResource |
 | **Shader/Material** | ✅ 完整 | MaterialTemplate + MaterialInstance，StringID 驱动属性映射 |
 | **StringTable** | ✅ 完整 | GlobalStringTable + StringID，线程安全（shared_mutex） |
 | **Scene** | ✅ 完整 | Scene、SceneNode、Camera、Light、IRenderable |

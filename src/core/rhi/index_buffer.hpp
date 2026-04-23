@@ -1,5 +1,5 @@
 #pragma once
-#include "core/rhi/render_resource.hpp"
+#include "core/rhi/gpu_resource.hpp"
 #include "core/utils/hash.hpp"
 #include "core/utils/string_table.hpp"
 #include <algorithm>
@@ -48,7 +48,7 @@ inline StringID topologySignature(PrimitiveTopology t) {
  */
 enum class IndexType : uint32_t { Uint16 = 0, Uint32 = 1 };
 
-class IndexBuffer : public IRenderResource {
+class IndexBuffer : public IGpuResource {
 public:
   using Ptr = std::shared_ptr<IndexBuffer>;
 

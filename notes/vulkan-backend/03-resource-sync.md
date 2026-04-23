@@ -4,7 +4,7 @@
 
 `VulkanResourceManager` 维护一张 CPU 资源句柄到 GPU 资源对象的映射：
 
-- key：`IRenderResource::getResourceHandle()`
+- key：`IGpuResource::getResourceHandle()`
 - value：`VulkanAnyResource`
 
 `VulkanAnyResource` 目前是三类对象的变体：

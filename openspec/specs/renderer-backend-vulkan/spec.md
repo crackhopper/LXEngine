@@ -150,7 +150,7 @@ The VulkanCommandBuffer SHALL support:
 - Setting scissor to framebuffer dimensions
 - Binding graphics pipeline
 - Binding vertex and index buffers
-- Binding descriptor sets by matching each descriptor binding from the pipeline's reflected `ShaderResourceBinding` list against the `RenderingItem::descriptorResources` via `IRenderResource::getBindingName()`. The matching SHALL NOT use `PipelineSlotId`; that enum SHALL not exist.
+- Binding descriptor sets by matching each descriptor binding from the pipeline's reflected `ShaderResourceBinding` list against the `RenderingItem::descriptorResources` via `IGpuResource::getBindingName()`. The matching SHALL NOT use `PipelineSlotId`; that enum SHALL not exist.
 - Drawing indexed primitives with push constants
 
 #### Scenario: Recording triangle draw commands
@@ -237,17 +237,17 @@ The `VulkanRenderer::Impl` class SHALL hold the `FrameGraph` as a member whose l
 - **WHEN** `initScene(scene)` is called on a scene with one camera (nullopt target, backfilled by initScene) and one directional light whose pass mask includes Forward
 - **THEN** each resulting `RenderingItem` in `m_frameGraph.getPasses()[0].queue` carries the camera UBO and the light UBO in its `descriptorResources`, produced entirely by `RenderQueue::buildFromScene` via `Scene::getSceneLevelResources(Pass_Forward, swapchainTarget)`. No code inside `VulkanRenderer::Impl::initScene` manually pushes UBOs into any item.
 
-### Requirement: VulkanResourceManager shall map IRenderResource to Vulkan objects
+### Requirement: VulkanResourceManager shall map IGpuResource to Vulkan objects
 
 The VulkanResourceManager SHALL support:
-- Creating VulkanBuffer from IRenderResource with type VertexBuffer or IndexBuffer
-- Creating VulkanTexture from IRenderResource with type CombinedImageSampler
-- Maintaining map of IRenderResource* to created Vulkan objects
+- Creating VulkanBuffer from IGpuResource with type VertexBuffer or IndexBuffer
+- Creating VulkanTexture from IGpuResource with type CombinedImageSampler
+- Maintaining map of IGpuResource* to created Vulkan objects
 - Initializing render pass with correct formats
 - Delegating pipeline caching to a standalone `LX_core::backend::PipelineCache` instance (see the `pipeline-cache` capability). The resource manager SHALL NOT store the pipeline map directly; the legacy `getOrCreateRenderPipeline(item)` helper, if retained, SHALL be a thin forward to `PipelineCache::getOrCreate(PipelineBuildDesc::fromRenderingItem(item), renderPass)`
 
 #### Scenario: Resource mapping for vertex buffer
-- **WHEN** `initScene` iterates `m_frameGraph.getPasses() × pass.queue.getItems()` and encounters a vertex buffer `IRenderResource`
+- **WHEN** `initScene` iterates `m_frameGraph.getPasses() × pass.queue.getItems()` and encounters a vertex buffer `IGpuResource`
 - **THEN** VulkanResourceManager SHALL store the mapping and return a valid VulkanBuffer
 
 #### Scenario: Pipeline lookup delegates to PipelineCache

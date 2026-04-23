@@ -24,9 +24,9 @@ void Scene::revalidateNodesUsing(const MaterialInstancePtr &materialInstance) {
   }
 }
 
-std::vector<IRenderResourcePtr>
+std::vector<IGpuResourcePtr>
 Scene::getSceneLevelResources(StringID pass, const RenderTarget &target) const {
-  std::vector<IRenderResourcePtr> out;
+  std::vector<IGpuResourcePtr> out;
 
   // Cameras filter by target only. A camera draws to one target; whether a
   // pass draws to that target is orthogonal to the camera's identity.
@@ -36,7 +36,7 @@ Scene::getSceneLevelResources(StringID pass, const RenderTarget &target) const {
     if (!cam->matchesTarget(target))
       continue;
     if (auto camUbo = cam->getUBO()) {
-      out.push_back(std::dynamic_pointer_cast<IRenderResource>(camUbo));
+      out.push_back(std::dynamic_pointer_cast<IGpuResource>(camUbo));
     }
   }
 

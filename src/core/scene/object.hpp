@@ -5,7 +5,7 @@
 #include "core/frame_graph/pass.hpp"
 #include "core/math/mat.hpp"
 #include "core/pipeline/pipeline_key.hpp"
-#include "core/rhi/render_resource.hpp"
+#include "core/rhi/gpu_resource.hpp"
 #include <cstdint>
 #include <cstring>
 #include <functional>
@@ -48,9 +48,9 @@ struct ValidatedRenderablePassData {
   MaterialInstancePtr material;
   IShaderPtr shaderInfo;
   PerDrawDataPtr drawData;
-  IRenderResourcePtr vertexBuffer;
-  IRenderResourcePtr indexBuffer;
-  std::vector<IRenderResourcePtr> descriptorResources;
+  IGpuResourcePtr vertexBuffer;
+  IGpuResourcePtr indexBuffer;
+  std::vector<IGpuResourcePtr> descriptorResources;
   StringID objectSignature;
   PipelineKey pipelineKey;
 };
@@ -59,9 +59,9 @@ class IRenderable {
 public:
   virtual ~IRenderable() = default;
 
-  virtual IRenderResourcePtr getVertexBuffer() const = 0;
-  virtual IRenderResourcePtr getIndexBuffer() const = 0;
-  virtual std::vector<IRenderResourcePtr>
+  virtual IGpuResourcePtr getVertexBuffer() const = 0;
+  virtual IGpuResourcePtr getIndexBuffer() const = 0;
+  virtual std::vector<IGpuResourcePtr>
   getDescriptorResources(StringID pass) const = 0;
   virtual IShaderPtr getShaderInfo() const = 0;
   virtual PerDrawDataPtr getPerDrawData() const { return nullptr; }
@@ -107,9 +107,9 @@ public:
   void setMaterialInstance(MaterialInstancePtr material);
   void setSkeleton(SkeletonPtr skeleton);
 
-  IRenderResourcePtr getVertexBuffer() const override;
-  IRenderResourcePtr getIndexBuffer() const override;
-  std::vector<IRenderResourcePtr>
+  IGpuResourcePtr getVertexBuffer() const override;
+  IGpuResourcePtr getIndexBuffer() const override;
+  std::vector<IGpuResourcePtr>
   getDescriptorResources(StringID pass) const override;
   IShaderPtr getShaderInfo() const override;
   PerDrawDataPtr getPerDrawData() const override { return m_perDrawData; }
@@ -153,9 +153,9 @@ public:
                     SkeletonPtr skeleton_ = nullptr,
                     std::string nodeName_ = "RenderableSubMesh");
 
-  IRenderResourcePtr getVertexBuffer() const override;
-  IRenderResourcePtr getIndexBuffer() const override;
-  std::vector<IRenderResourcePtr>
+  IGpuResourcePtr getVertexBuffer() const override;
+  IGpuResourcePtr getIndexBuffer() const override;
+  std::vector<IGpuResourcePtr>
   getDescriptorResources(StringID pass) const override;
   IShaderPtr getShaderInfo() const override;
   PerDrawDataPtr getPerDrawData() const override { return perDrawData; }

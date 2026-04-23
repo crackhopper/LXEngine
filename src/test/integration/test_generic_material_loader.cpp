@@ -132,8 +132,8 @@ void test_per_pass_shader_override() {
   std::cout << "  per-pass shader override works\n";
 }
 
-void test_per_pass_parameter_overrides() {
-  std::cout << "\n-- test_per_pass_parameter_overrides --\n";
+void test_canonical_parameters_shared_across_passes() {
+  std::cout << "\n-- test_canonical_parameters_shared_across_passes --\n";
   auto root = findProjectRoot();
   if (root.empty()) {
     std::cerr << "  SETUP: project root not found; skipping\n";
@@ -144,15 +144,20 @@ void test_per_pass_parameter_overrides() {
   {
     std::ofstream out(matPath);
     out << "shader: blinnphong_0\n\n"
+           "variants:\n"
+           "  USE_LIGHTING: true\n\n"
            "parameters:\n"
-           "  MaterialUBO.shininess: 4.0\n\n"
+           "  MaterialUBO.shininess: 4.0\n"
+           "  MaterialUBO.specularIntensity: 1.0\n"
+           "  MaterialUBO.enableAlbedo: 0\n"
+           "  MaterialUBO.enableNormal: 0\n\n"
            "passes:\n"
            "  Forward:\n"
-           "    parameters:\n"
-           "      MaterialUBO.shininess: 8.0\n"
+           "    renderState:\n"
+           "      depthTest: true\n"
            "  Shadow:\n"
-           "    parameters:\n"
-           "      MaterialUBO.shininess: 16.0\n";
+           "    renderState:\n"
+           "      depthTest: true\n";
   }
 
   auto prev = fs::current_path();
@@ -164,22 +169,11 @@ void test_per_pass_parameter_overrides() {
   REQUIRE(mat != nullptr);
 
   const auto &globalBuf = mat->getParameterBuffer(StringID("MaterialUBO"));
-  const auto &forwardBuf =
-      mat->getParameterBuffer(Pass_Forward, StringID("MaterialUBO"));
-  const auto &shadowBuf =
-      mat->getParameterBuffer(Pass_Shadow, StringID("MaterialUBO"));
   REQUIRE(globalBuf.size() >= 16);
-  REQUIRE(forwardBuf.size() >= 16);
-  REQUIRE(shadowBuf.size() >= 16);
 
-  float globalShiny = 0, forwardShiny = 0, shadowShiny = 0;
+  float globalShiny = 0;
   std::memcpy(&globalShiny, globalBuf.data() + 12, sizeof(float));
-  std::memcpy(&forwardShiny, forwardBuf.data() + 12, sizeof(float));
-  std::memcpy(&shadowShiny, shadowBuf.data() + 12, sizeof(float));
-
   REQUIRE(globalShiny == 4.0f);
-  REQUIRE(forwardShiny == 8.0f);
-  REQUIRE(shadowShiny == 16.0f);
 
   auto fwdRes = mat->getDescriptorResources(Pass_Forward);
   auto shadRes = mat->getDescriptorResources(Pass_Shadow);
@@ -187,9 +181,9 @@ void test_per_pass_parameter_overrides() {
   REQUIRE(!shadRes.empty());
   REQUIRE(fwdRes[0]->getBindingName() == StringID("MaterialUBO"));
   REQUIRE(shadRes[0]->getBindingName() == StringID("MaterialUBO"));
-  REQUIRE(fwdRes[0].get() != shadRes[0].get());
+  REQUIRE(fwdRes[0].get() == shadRes[0].get());
 
-  std::cout << "  per-pass parameter overrides preserved\n";
+  std::cout << "  canonical parameters shared across passes\n";
 }
 
 void test_placeholder_textures() {
@@ -227,7 +221,7 @@ int main() {
   test_placeholder_textures();
   test_generic_loader_produces_valid_instance();
   test_per_pass_shader_override();
-  test_per_pass_parameter_overrides();
+  test_canonical_parameters_shared_across_passes();
 
   std::cout << "\n========================================\n";
   if (s_failures == 0) {

@@ -188,7 +188,7 @@ VulkanRenderer::~VulkanRenderer() { delete p_impl; }  // cpp:425
 1. **地址复用**：如果 CPU 资源析构后，下次分配命中同地址，旧 GPU 条目若未被 `collectGarbage` 清掉会错误匹配。当前 `collectGarbage` 每次 sync 完都清理，这暂时保护了一致性，但这个安全带与 active-set 机制耦合很紧。
 2. **跨帧颠簸**：`collectGarbage()` 只要 CPU 资源没被本轮 sync 引用就销毁 GPU 条目，条件 draw / 暂时切关的 item 每帧销毁-重建。
 
-**建议**：把 cache key 改为 `std::weak_ptr<IRenderResource>` 或给 `IRenderResource` 分配一个稳定的 64-bit ID（interning 层已有，可以复用）。同时考虑"保留 N 帧"的 GC 窗口。
+**建议**：把 cache key 改为 `std::weak_ptr<IGpuResource>` 或给 `IGpuResource` 分配一个稳定的 64-bit ID（interning 层已有，可以复用）。同时考虑"保留 N 帧"的 GC 窗口。
 
 ### M-4 · `VulkanRendererImpl` 设计怪
 

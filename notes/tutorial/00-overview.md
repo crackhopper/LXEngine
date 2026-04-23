@@ -6,7 +6,7 @@
 
 短答：**是一个刚刚够格的、教学型的小型渲染引擎**，不是游戏引擎。从"引擎"这个词的标准含义看，它具备的能力：
 
-- **资源抽象层**：`IRenderResource` + dirty 同步通道（`notes/architecture.md` 场景启动与每帧工作流）
+- **资源抽象层**：`IGpuResource` + dirty 同步通道（`notes/architecture.md` 场景启动与每帧工作流）
 - **材质系统**：反射驱动的 `MaterialTemplate` / `MaterialInstance`，std140 自动打包（`notes/subsystems/material-system.md`）
 - **Shader 系统**：运行期 GLSL → SPIR-V → 反射 → `CompiledShader`（`notes/subsystems/shader-system.md`）
 - **管线身份**：`PipelineKey` + `PipelineBuildDesc` + `PipelineCache` 预构建（`notes/subsystems/pipeline-identity.md` / `pipeline-cache.md`）

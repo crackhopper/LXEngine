@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/rhi/render_resource.hpp"
+#include "core/rhi/gpu_resource.hpp"
 #include "core/pipeline/pipeline_build_desc.hpp"
 #include "core/pipeline/pipeline_key.hpp"
 #include "pipelines/pipeline_cache.hpp"
@@ -50,7 +50,7 @@ public:
   VulkanResourceManager &operator=(const VulkanResourceManager &) = delete;
 
   void syncResource(VulkanCommandBufferManager &cmdBufferManager,
-                    const IRenderResourcePtr &cpuRes);
+                    const IGpuResourcePtr &cpuRes);
   void collectGarbage();
 
   void initializeRenderPassAndPipeline(VkSurfaceFormatKHR surfaceFormat,
@@ -72,9 +72,9 @@ public:
 
 private:
   std::shared_ptr<VulkanAnyResource>
-  createGpuResource(const IRenderResourcePtr &cpuRes);
+  createGpuResource(const IGpuResourcePtr &cpuRes);
   void updateGpuResource(std::shared_ptr<VulkanAnyResource> &gpuRes,
-                         const IRenderResourcePtr &cpuRes,
+                         const IGpuResourcePtr &cpuRes,
                          VulkanCommandBufferManager &cmdBufferManager);
 
   VulkanDevice &m_device;

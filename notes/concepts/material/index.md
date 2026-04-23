@@ -12,7 +12,7 @@
 |------|------|------|
 | `MaterialTemplate` | 定义有哪些 pass，每个 pass 的 shader、variants、render state | 菜谱 |
 | `MaterialPassDefinition` | 单个 pass 的完整配置（shader + render state + 反射 binding 缓存） | 菜谱里的一个步骤 |
-| `MaterialInstance` | 运行时参数值、纹理资源、per-pass 覆写、pass 开关 | 上桌的菜 |
+| `MaterialInstance` | 运行时参数值、纹理资源、pass 开关 | 上桌的菜 |
 | `ShaderProgramSet` | 把 shader 名、variants 和编译后的 shader 打包成一个值对象 | 步骤里标注的"用哪把刀、什么火候" |
 
 另外三个支撑组件：

@@ -6,6 +6,10 @@ if(CMAKE_VERSION VERSION_GREATER_EQUAL "4.0")
   set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 endif()
 
+# Windows: allow plain terminals to bootstrap the MSVC toolchain
+# before CMake compiler detection runs in project().
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/windows_msvc_env.cmake")
+
 # 项目名称
 project(Renderer LANGUAGES C CXX)
 
@@ -86,7 +90,6 @@ if (WIN32)
 # -------------------------------
   target_compile_definitions(${PROJECT_NAME} PRIVATE "_CRT_SECURE_NO_WARNINGS")
 endif()
-
 
 
 

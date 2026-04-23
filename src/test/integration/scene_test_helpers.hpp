@@ -5,7 +5,7 @@
 // parameter so the queue's scene-level-resource filter can match the
 // camera's RenderTarget.
 
-#include "core/rhi/render_resource.hpp"
+#include "core/rhi/gpu_resource.hpp"
 #include "core/frame_graph/render_target.hpp"
 #include "core/scene/camera.hpp"
 #include "core/frame_graph/pass.hpp"

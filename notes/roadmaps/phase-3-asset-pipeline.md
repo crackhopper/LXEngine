@@ -288,7 +288,7 @@ registerMigration(type="Scene", from_version=3, to_version=4, fn)
 ## 与现有架构的契合
 
 - 已有的材质 loader 是典型的 factory function，可以被包成注册表的 loader 而不需要大改。
-- `IRenderResource` 的 dirty 通道和 GPU sync 路径完全不受影响——资产系统是它**上面**的一层管理。
+- `IGpuResource` 的 dirty 通道和 GPU sync 路径完全不受影响——资产系统是它**上面**的一层管理。
 - `StringID` 等 intern 系统和稳定资产 ID 是两套东西：`StringID` 是"引擎进程内的 uniquename"，资产 ID 是"跨进程、跨会话的身份"。两者正交共存。
 - Shader 热重载触发的 `PipelineCache` 重建路径已经存在（cache miss 会重建），只需要外部显式 invalidate 一次。
 

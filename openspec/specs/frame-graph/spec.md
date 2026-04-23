@@ -77,7 +77,7 @@ Other `IRenderable` implementations MAY provide equivalent semantics, but they M
 - **THEN** `supportsPass(Pass_Forward)` returns `true`
 
 ### Requirement: Scene exposes scene-level descriptor resources
-`LX_core::Scene` SHALL provide `std::vector<IRenderResourcePtr> getSceneLevelResources(StringID pass, const RenderTarget &target) const`. The method SHALL:
+`LX_core::Scene` SHALL provide `std::vector<IGpuResourcePtr> getSceneLevelResources(StringID pass, const RenderTarget &target) const`. The method SHALL:
 1. Iterate `m_cameras` and push each camera's UBO (via `cam->getUBO()`) into the output IF `cam->matchesTarget(target)` returns `true` and the UBO is non-null. Ordering within the camera section follows insertion order.
 2. After all cameras, iterate `m_lights` and push each light's UBO (via `light->getUBO()`) into the output IF `light->supportsPass(pass)` returns `true` and the UBO is non-null. Ordering within the light section follows insertion order.
 3. Camera UBOs SHALL appear before light UBOs in the returned vector.
@@ -135,7 +135,7 @@ The REQ-008 parameterless `getSceneLevelResources()` overload SHALL NOT coexist 
 `LX_core::LightBase` SHALL be an abstract interface declaring at least:
 - `virtual ~LightBase() = default;`
 - `virtual ResourcePassFlag getPassMask() const = 0;`
-- `virtual IRenderResourcePtr getUBO() const = 0;` (returning `nullptr` is allowed for lights that do not need a UBO)
+- `virtual IGpuResourcePtr getUBO() const = 0;` (returning `nullptr` is allowed for lights that do not need a UBO)
 - `virtual bool supportsPass(StringID pass) const;` with a default implementation that returns `(getPassMask() & passFlagFromStringID(pass)) != 0`.
 
 A `using LightBasePtr = std::shared_ptr<LightBase>;` alias SHALL be provided in the same header.

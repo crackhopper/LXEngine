@@ -170,8 +170,7 @@ void validateResourcesAgainstReflection(
  *****************************************************************/
 
 void applyParameters(LX_core::MaterialInstance &mat,
-                     const YAML::Node &paramsNode,
-                     std::optional<LX_core::StringID> pass = std::nullopt) {
+                     const YAML::Node &paramsNode) {
   if (!paramsNode || !paramsNode.IsMap())
     return;
 
@@ -184,8 +183,7 @@ void applyParameters(LX_core::MaterialInstance &mat,
     const auto memberId = LX_core::StringID(memberName);
 
     // Find member type from binding.
-    auto *binding = pass ? mat.getParameterBinding(*pass, bindingId)
-                         : mat.getParameterBinding(bindingId);
+    auto *binding = mat.getParameterBinding(bindingId);
     if (!binding)
       fatalLoader("parameter binding '" + bindingName + "' has no buffer slot");
 
@@ -204,26 +202,17 @@ void applyParameters(LX_core::MaterialInstance &mat,
 
     switch (memberType) {
     case LX_core::ShaderPropertyType::Float:
-      if (pass)
-        mat.setParameter(*pass, bindingId, memberId, val.as<float>());
-      else
-        mat.setParameter(bindingId, memberId, val.as<float>());
+      mat.setParameter(bindingId, memberId, val.as<float>());
       break;
     case LX_core::ShaderPropertyType::Int:
-      if (pass)
-        mat.setParameter(*pass, bindingId, memberId, val.as<int32_t>());
-      else
-        mat.setParameter(bindingId, memberId, val.as<int32_t>());
+      mat.setParameter(bindingId, memberId, val.as<int32_t>());
       break;
     case LX_core::ShaderPropertyType::Vec3: {
       auto seq = val.as<std::vector<float>>();
       if (seq.size() != 3)
         fatalLoader("Vec3 parameter '" + key + "' requires 3 values");
       LX_core::Vec3f v3{seq[0], seq[1], seq[2]};
-      if (pass)
-        mat.setParameter(*pass, bindingId, memberId, v3);
-      else
-        mat.setParameter(bindingId, memberId, v3);
+      mat.setParameter(bindingId, memberId, v3);
       break;
     }
     case LX_core::ShaderPropertyType::Vec4: {
@@ -231,10 +220,7 @@ void applyParameters(LX_core::MaterialInstance &mat,
       if (seq.size() != 4)
         fatalLoader("Vec4 parameter '" + key + "' requires 4 values");
       LX_core::Vec4f v4{seq[0], seq[1], seq[2], seq[3]};
-      if (pass)
-        mat.setParameter(*pass, bindingId, memberId, v4);
-      else
-        mat.setParameter(bindingId, memberId, v4);
+      mat.setParameter(bindingId, memberId, v4);
       break;
     }
     default:
@@ -249,8 +235,7 @@ void applyParameters(LX_core::MaterialInstance &mat,
 
 void applyResources(LX_core::MaterialInstance &mat,
                     const YAML::Node &resourcesNode,
-                    const fs::path &baseDir,
-                    std::optional<LX_core::StringID> pass = std::nullopt) {
+                    const fs::path &baseDir) {
   if (!resourcesNode || !resourcesNode.IsMap())
     return;
 
@@ -261,10 +246,7 @@ void applyResources(LX_core::MaterialInstance &mat,
 
     auto placeholder = resolvePlaceholder(value);
     if (placeholder) {
-      if (pass)
-        mat.setTexture(*pass, bindingId, std::move(placeholder));
-      else
-        mat.setTexture(bindingId, std::move(placeholder));
+      mat.setTexture(bindingId, std::move(placeholder));
       continue;
     }
 
@@ -286,10 +268,7 @@ void applyResources(LX_core::MaterialInstance &mat,
     auto tex = std::make_shared<LX_core::Texture>(desc, std::move(texData));
     auto sampler =
         std::make_shared<LX_core::CombinedTextureSampler>(std::move(tex));
-    if (pass)
-      mat.setTexture(*pass, bindingId, std::move(sampler));
-    else
-      mat.setTexture(bindingId, std::move(sampler));
+    mat.setTexture(bindingId, std::move(sampler));
   }
 }
 
@@ -531,20 +510,16 @@ loadGenericMaterial(const fs::path &materialPath) {
                                        materialPath.string());
 
   for (const auto &cp : compiledPasses) {
-    if (!cp.parameters.IsDefined() && !cp.resources.IsDefined())
-      continue;
-    std::vector<LX_core::ShaderResourceBinding> passMatBindings;
-    for (const auto &binding : cp.shader->getReflectionBindings()) {
-      if (!LX_core::isSystemOwnedBinding(binding.name))
-        passMatBindings.push_back(binding);
+    if (cp.parameters && cp.parameters.IsMap()) {
+      fatalLoader(materialPath.string() + " pass=" + cp.shaderName +
+                  ": pass-scoped parameters are no longer supported; "
+                  "MaterialInstance stores one canonical parameter set");
     }
-    const auto passCtx = materialPath.string() + " pass=" + cp.shaderName;
-    if (cp.parameters.IsDefined())
-      validateParametersAgainstReflection(cp.parameters, passMatBindings,
-                                           passCtx);
-    if (cp.resources.IsDefined())
-      validateResourcesAgainstReflection(cp.resources, passMatBindings,
-                                          passCtx);
+    if (cp.resources && cp.resources.IsMap()) {
+      fatalLoader(materialPath.string() + " pass=" + cp.shaderName +
+                  ": pass-scoped resources are no longer supported; "
+                  "MaterialInstance stores one canonical resource set");
+    }
   }
 
   // 5. Build MaterialTemplate.
@@ -574,14 +549,6 @@ loadGenericMaterial(const fs::path &materialPath) {
     applyParameters(*mat, globalParamsNode);
   if (globalResourcesNode.IsMap())
     applyResources(*mat, globalResourcesNode, materialDir);
-
-  // 8. Apply per-pass overrides.
-  for (const auto &cp : compiledPasses) {
-    if (cp.parameters.IsDefined())
-      applyParameters(*mat, cp.parameters, cp.passId);
-    if (cp.resources.IsDefined())
-      applyResources(*mat, cp.resources, materialDir, cp.passId);
-  }
 
   mat->syncGpuData();
   return mat;

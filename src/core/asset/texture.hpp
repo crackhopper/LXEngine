@@ -1,5 +1,5 @@
 #pragma once
-#include "core/rhi/render_resource.hpp"
+#include "core/rhi/gpu_resource.hpp"
 #include "core/platform/types.hpp"
 #include <memory>
 #include <string>
@@ -45,8 +45,10 @@ static TexturePtr createWhiteTexture(u32 width = 1, u32 height = 1) {
 }
 
 // 组合纹理采样器，包含纹理指针和采样器信息。
+// 它直接实现 IGpuResource，因为 material/backend 绑定阶段需要拿到的
+// 是“可上传、可按 binding name 路由”的资源，而不是纯 Texture 数据对象。
 // TODO: 暂时空余采样器信息。
-class CombinedTextureSampler : public IRenderResource {
+class CombinedTextureSampler : public IGpuResource {
 public:
   explicit CombinedTextureSampler(TexturePtr texture) : m_texture(texture) {}
 

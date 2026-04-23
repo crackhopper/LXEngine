@@ -26,7 +26,7 @@ shaders/glsl/pbr.frag
 
 这几点分别对应：
 
-- `src/core/rhi/render_resource.hpp` 中的 `PerDrawLayout = PerDrawLayoutBase`
+- `src/core/rhi/gpu_resource.hpp` 中的 `PerDrawLayout = PerDrawLayoutBase`
 - `src/core/scene/camera.hpp` 中 `CameraData::getBindingName()`
 - `src/core/asset/material_instance.cpp` / `material_instance.hpp` 中 `MaterialUBO` 约定
 - `src/core/scene/light.hpp` 中 `DirectionalLightData::getBindingName()`

@@ -1,5 +1,5 @@
 #pragma once
-#include "core/rhi/render_resource.hpp"
+#include "core/rhi/gpu_resource.hpp"
 #include "core/math/mat.hpp"
 #include "core/math/quat.hpp"
 #include "core/math/vec.hpp"
@@ -21,7 +21,9 @@ struct Bone {
   Vec3f scale = Vec3f(1, 1, 1);
 };
 
-struct alignas(16) SkeletonData : public IRenderResource {
+// SkeletonData is the GPU-facing bone palette buffer. Skeleton remains the
+// CPU-side asset/container and updates this UBO-shaped view when animation changes.
+struct alignas(16) SkeletonData : public IGpuResource {
   explicit SkeletonData(const std::vector<Bone> &bones) {}
 
   void updateBy(const std::vector<Bone> &bones) {

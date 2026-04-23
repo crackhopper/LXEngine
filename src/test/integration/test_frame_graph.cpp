@@ -1,4 +1,4 @@
-#include "core/rhi/render_resource.hpp"
+#include "core/rhi/gpu_resource.hpp"
 #include "core/frame_graph/render_target.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/asset/material_instance.hpp"
@@ -229,7 +229,7 @@ void testMultiCameraTargetFilter() {
   // Cross-check camera UBO identity: camA's UBO should be in resA but not resB.
   if (resA.size() == 2 && resB.size() == 2) {
     const auto camAUbo =
-        std::dynamic_pointer_cast<IRenderResource>(camA->getUBO());
+        std::dynamic_pointer_cast<IGpuResource>(camA->getUBO());
     EXPECT(resA[0] == camAUbo, "resA[0] is camA's UBO");
     EXPECT(resB[0] != camAUbo, "resB[0] is NOT camA's UBO");
   }

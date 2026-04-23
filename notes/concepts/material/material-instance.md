@@ -7,19 +7,18 @@
 | 字段 | 职责 |
 |------|------|
 | `m_template` | 指向所属的菜谱 |
-| `m_bufferSlots` | 材质参数的 byte buffer（每个 material-owned UBO/SSBO 一个 slot） |
-| `m_textures` | 全局默认纹理资源 |
-| `m_passOverrides` | per-pass 的参数和纹理覆写 |
+| `m_bufferSlots` | `MaterialParameterData` 集合；每个 material-owned UBO/SSBO 一个 canonical 参数槽位 |
+| `m_textures` | canonical 纹理资源 |
 | `m_enabledPasses` | 当前启用的 pass 子集 |
 | `m_passStateListeners` | pass 开关变化时通知 scene 的回调 |
 
-## Buffer Slot 是怎样构造出来的
+## 参数槽位是怎样构造出来的
 
 Instance 构造时，从 enabled pass 的 shader 反射里收集所有 material-owned buffer binding：
 
 1. 遍历每个 enabled pass 的 `getMaterialBindings(pass)`
-2. 对 `UniformBuffer` 和 `StorageBuffer` 类型的 binding 创建一个 `MaterialBufferSlot`
-3. 每个 slot 有自己的 byte buffer（零初始化）、dirty 标记和 `IRenderResource` 包装器
+2. 对 `UniformBuffer` 和 `StorageBuffer` 类型的 binding 创建一个 `MaterialParameterData`
+3. 每个参数槽位自己持有 byte buffer（零初始化）、dirty 状态，以及 `IGpuResource` 行为
 4. 同名 buffer binding 跨 pass 必须布局一致，否则 assert
 
 不支持的 descriptor 类型（如 standalone `Sampler`）会直接 FATAL。
@@ -38,7 +37,7 @@ mat->setParameter(StringID("MaterialUBO"), StringID("roughness"), 0.5f);
 mat->setFloat(StringID("roughness"), 0.5f);
 ```
 
-底层都走同一条路径：定位 buffer slot → 查反射 member → 验证类型 → `memcpy` 到 offset。
+底层都走同一条路径：定位参数槽位 → 查反射 member → 验证类型 → `memcpy` 到 offset。
 
 纹理绑定：
 
@@ -46,28 +45,18 @@ mat->setFloat(StringID("roughness"), 0.5f);
 mat->setTexture(StringID("albedoMap"), textureSampler);
 ```
 
-## Per-Pass 参数覆写
+## 为什么没有 Per-Pass 写接口
 
-有时候同一个参数在不同 pass 下需要不同的值。比如 Forward pass 开启法线贴图但 Shadow pass 关闭。
+现在 `MaterialInstance` 明确只保存一份 canonical 参数/资源集合。
 
-```cpp
-mat->setParameter(Pass_Forward, StringID("MaterialUBO"), StringID("enableNormal"), 1);
-mat->setParameter(Pass_Shadow, StringID("MaterialUBO"), StringID("enableNormal"), 0);
-```
+- `setParameter(...)` 永远修改这份 canonical 数据
+- `setTexture(...)` 永远修改这份 canonical 数据
+- pass 只声明“我使用哪些 binding”，不会再持有自己的参数副本
 
-per-pass 覆写会复制一份全局 buffer slot 到 `m_passOverrides[pass]`，之后对该 pass 使用独立的 buffer。
+如果确实需要不同 pass 下出现不同值，这不再通过 override 实现，而应该：
 
-在 YAML 里对应 `passes.<pass>.parameters`：
-
-```yaml
-parameters:                          # 全局默认
-  MaterialUBO.enableNormal: 0
-
-passes:
-  Forward:
-    parameters:                      # Forward pass 覆写
-      MaterialUBO.enableNormal: 1
-```
+- 使用不同 binding 名
+- 或拆成不同 `MaterialInstance`
 
 ## Pass 开关：为什么是结构变化
 
@@ -88,16 +77,16 @@ pass 开关和普通参数写入不同——它影响的不只是 draw 值，而
 `getDescriptorResources(pass)` 按目标 pass 的反射 bindings 收集材质资源：
 
 1. 枚举该 pass 的 material-owned bindings
-2. buffer binding → 优先取 pass override slot，没有则取全局 slot
-3. 纹理 binding → 优先取 pass override texture，没有则取全局纹理
+2. buffer binding → 从 canonical 参数槽位里按 binding 名取资源
+3. 纹理 binding → 从 canonical 纹理表里按 binding 名取资源
 4. 按 `(set << 16 | binding)` 排序输出
 
-这保证了不同 pass 可以看到不同的参数默认值，而不会被"最后一次写入"互相覆盖。
+这意味着不同 pass 看到的是“同一份实例数据的不同使用子集”，而不是各自持有一份独立运行时状态。
 
 ## 和 YAML 的对应
 
 ```yaml
-parameters:                          # → 全局 buffer slot 默认值
+parameters:                          # → 全局参数槽位默认值
   MaterialUBO.baseColor: [0.8, 0.8, 0.8]
   MaterialUBO.shininess: 12.0
 
@@ -106,10 +95,8 @@ resources:                           # → 全局默认纹理
 
 passes:
   Forward:
-    parameters:                      # → m_passOverrides[Forward].bufferSlots
-      MaterialUBO.enableNormal: 1
-    resources:                       # → m_passOverrides[Forward].textures
-      normalMap: "textures/brick_normal.png"
+    renderState:
+      depthTest: true
 ```
 
 ## 继续阅读
