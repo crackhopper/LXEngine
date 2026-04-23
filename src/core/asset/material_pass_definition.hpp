@@ -57,6 +57,20 @@ inline const char *toString(BlendFactor f) {
   return "BlendUnknown";
 }
 
+/*
+@source_analysis.section RenderState：pass 级固定功能状态的可签名快照
+`RenderState` 只描述一个 pass 在固定功能阶段上的结构性选择：
+剔除、深度测试/写入、比较函数和混合模式。它不关心材质参数值，
+也不关心 shader 内部逻辑；它回答的问题是“同一份几何和 shader，
+在这一步要用怎样的 raster/depth/blend 规则去提交 pipeline”。
+
+这里同时保留 `getHash()` 和 `getRenderSignature()` 两条导出路径：
+
+- `getHash()` 面向 C++ 侧缓存键，追求便于组合和快速比较
+- `getRenderSignature()` 面向 `StringID` 组合签名，追求结构可追踪性
+
+也就是说，这个类型不是运行时开关集合，而是 pass 身份的一部分。
+*/
 struct RenderState {
   CullMode cullMode = CullMode::Back;
   bool depthTestEnable = true;
@@ -100,6 +114,19 @@ struct RenderState {
   }
 };
 
+/*
+@source_analysis.section MaterialPassDefinition：把“单个 pass 的结构”收拢成一个对象
+`MaterialPassDefinition` 是 `MaterialTemplate` 里的最小结构单元。它把一个 pass
+需要稳定共享的三类信息绑在一起：
+
+- `renderState`：固定功能状态
+- `shaderSet`：shader 名称、variant 组合和编译结果
+- `bindingCache`：从 shader 反射得到的 binding 名称索引
+
+这个类型的重点不是“保存很多字段”，而是给 template 一个明确的 pass 边界。
+只要 `MaterialTemplate` 按 pass 持有它，外层代码就能把“Forward/Shadow/... 的结构差异”
+收敛成统一接口，而不用分别管理 render state、shader 和反射缓存。
+*/
 struct MaterialPassDefinition {
   RenderState renderState;
   ShaderProgramSet shaderSet;
@@ -128,6 +155,16 @@ struct MaterialPassDefinition {
     return std::nullopt;
   }
 
+/*
+@source_analysis.section buildCache：把 shader 反射结果变成按名字可查的 pass 本地索引
+`buildCache()` 的角色很窄：它不筛选 ownership，也不做跨 pass 合并；
+它只是把当前 pass 的 shader 反射 binding 复制进一个名字索引表，
+让调用方可以用 `findBinding(name)` 快速回答“这个 pass 自己声明过什么资源”。
+
+因为 `bindingCache` 是 pass 本地视图，所以这里保留 system-owned 和
+material-owned 两类 binding；真正决定“哪些资源归材质实例管理”的步骤，
+在更外层的 `MaterialTemplate::buildBindingCache()` 里完成。
+*/
   void buildCache() {
     bindingCache.clear();
     auto shader = shaderSet.getShader();

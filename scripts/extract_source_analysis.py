@@ -74,6 +74,41 @@ TARGETS = [
             """
         ).strip(),
     ),
+    SourceAnalysisTarget(
+        source="src/core/asset/material_pass_definition.hpp",
+        output="notes/source_analysis/src/core/asset/material_pass_definition.md",
+        title="MaterialPassDefinition：单个材质 pass 的结构边界",
+        intro=textwrap.dedent(
+            """\
+            这一页从
+            [src/core/asset/material_pass_definition.hpp](../../../../../src/core/asset/material_pass_definition.hpp)
+            出发，解释材质系统为什么要先把“单个 pass 的结构”收拢成一个轻量对象，
+            再由 `MaterialTemplate` 去组织多个 pass。
+
+            可以先带着一个问题阅读：为什么这里不直接让 `MaterialTemplate` 平铺保存
+            render state、shader 和 binding 相关字段？答案是，pass 本身就是材质结构的
+            一级边界；只有先把这个边界固定下来，后续的模板共享、签名生成和反射缓存
+            才不会彼此缠在一起。
+            """
+        ).strip(),
+    ),
+    SourceAnalysisTarget(
+        source="src/core/asset/material_template.hpp",
+        output="notes/source_analysis/src/core/asset/material_template.md",
+        title="MaterialTemplate：多 pass 蓝图如何收束成统一契约",
+        intro=textwrap.dedent(
+            """\
+            这一页从
+            [src/core/asset/material_template.hpp](../../../../../src/core/asset/material_template.hpp)
+            出发，关注的不是 API 清单，而是这个类型如何把多个 pass 的 shader、
+            render state 和 material-owned binding 收束成一份可共享的蓝图。
+
+            可以先带着一个问题阅读：为什么 `MaterialTemplate` 既要保留 per-pass 定义，
+            又要额外构建一份 `m_passMaterialBindings` 缓存？答案是，前者回答“这个材质
+            在结构上有哪些 pass”，后者回答“每个 pass 里哪些资源真正归材质实例填写”。
+            """
+        ).strip(),
+    ),
 ]
 
 

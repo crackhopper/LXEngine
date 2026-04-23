@@ -52,6 +52,8 @@ nav:
       - source_analysis/index.md
       - IGpuResource：core 层的 GPU 资源统一契约: source_analysis/src/core/rhi/gpu_resource.md
       - MaterialInstance：从模板到运行时账本: source_analysis/src/core/asset/material_instance.md
+      - MaterialPassDefinition：单个材质 pass 的结构边界: source_analysis/src/core/asset/material_pass_definition.md
+      - MaterialTemplate：多 pass 蓝图如何收束成统一契约: source_analysis/src/core/asset/material_template.md
   - 后端实现:
       - Vulkan Backend:
           - vulkan-backend/index.md
