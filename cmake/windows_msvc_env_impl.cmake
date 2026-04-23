@@ -54,42 +54,6 @@ function(lx_windows_msvc_probe_program program_label)
   unset(_lx_probe_result CACHE)
 endfunction()
 
-function(lx_windows_msvc_merge_env_value var_name child_value original_value output_var)
-  string(FIND "${child_value}" ";" _lx_child_has_list)
-  string(FIND "${original_value}" ";" _lx_original_has_list)
-
-  if(_lx_child_has_list GREATER -1 OR _lx_original_has_list GREATER -1)
-    set(_lx_items "")
-    if(NOT "${child_value}" STREQUAL "")
-      string(REPLACE ";" "\\;" _lx_child_escaped "${child_value}")
-      set(_lx_child_list "${_lx_child_escaped}")
-      list(APPEND _lx_items ${_lx_child_list})
-    endif()
-    if(NOT "${original_value}" STREQUAL "")
-      string(REPLACE ";" "\\;" _lx_original_escaped "${original_value}")
-      set(_lx_original_list "${_lx_original_escaped}")
-      list(APPEND _lx_items ${_lx_original_list})
-    endif()
-
-    set(_lx_merged "")
-    foreach(_lx_item IN LISTS _lx_items)
-      if(_lx_item STREQUAL "")
-        continue()
-      endif()
-      list(FIND _lx_merged "${_lx_item}" _lx_existing_index)
-      if(_lx_existing_index EQUAL -1)
-        list(APPEND _lx_merged "${_lx_item}")
-      endif()
-    endforeach()
-
-    string(JOIN ";" _lx_joined ${_lx_merged})
-    set(${output_var} "${_lx_joined}" PARENT_SCOPE)
-    return()
-  endif()
-
-  set(${output_var} "${child_value}" PARENT_SCOPE)
-endfunction()
-
 function(lx_windows_msvc_check_existing_env out_ready)
   lx_windows_msvc_log_detail("checking current environment")
   lx_windows_msvc_log_detail("PATH=$ENV{PATH}")
@@ -215,8 +179,12 @@ function(lx_windows_msvc_import_env install_root bootstrap_script)
   lx_windows_msvc_log_result("Using VsDevCmd: ${bootstrap_script}")
 
   set(_lx_cmd_script "${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/lx_windows_msvc_env_bootstrap.cmd")
+  set(_lx_gen_cmake "${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/lx_windows_msvc_env.gen.cmake")
+  set(_lx_log_file "${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/lx_windows_msvc_env.log")
   get_filename_component(_lx_cmd_dir "${_lx_cmd_script}" DIRECTORY)
   lx_windows_msvc_normalize_path("${install_root}" _lx_bootstrap_cwd)
+  set(_lx_env_begin_marker "__LX_ENV_SNAPSHOT_BEGIN__")
+  set(_lx_env_end_marker "__LX_ENV_SNAPSHOT_END__")
 
   file(MAKE_DIRECTORY "${_lx_cmd_dir}")
 
@@ -233,27 +201,53 @@ function(lx_windows_msvc_import_env install_root bootstrap_script)
     "${_lx_debug_line}"
     "call \"${bootstrap_script}\"\r\n"
     "if errorlevel 1 exit /b %errorlevel%\r\n"
-    "set\r\n")
+    "echo ${_lx_env_begin_marker}\r\n"
+    "set\r\n"
+    "echo ${_lx_env_end_marker}\r\n")
+
+  find_program(_lx_python_executable NAMES python3 python)
+  if(NOT _lx_python_executable)
+    file(REMOVE "${_lx_cmd_script}")
+    message(FATAL_ERROR
+      "[windows_msvc_env] Python was not found, but it is required to import the "
+      "Visual Studio environment snapshot.")
+  endif()
 
   execute_process(
-    COMMAND cmd /d /c "${_lx_cmd_script}"
-    OUTPUT_VARIABLE _lx_env_dump
-    ERROR_VARIABLE _lx_env_error
-    RESULT_VARIABLE _lx_env_result
+    COMMAND
+      "${_lx_python_executable}"
+      "${CMAKE_CURRENT_LIST_DIR}/windows_msvc_env_dump.py"
+      --cmd-script "${_lx_cmd_script}"
+      --output-cmake "${_lx_gen_cmake}"
+      --output-log "${_lx_log_file}"
+      --env-begin-marker "${_lx_env_begin_marker}"
+      --env-end-marker "${_lx_env_end_marker}"
+    OUTPUT_VARIABLE _lx_python_output
+    ERROR_VARIABLE _lx_python_error
+    RESULT_VARIABLE _lx_python_result
   )
   file(REMOVE "${_lx_cmd_script}")
 
-  if(NOT _lx_env_result EQUAL 0 OR NOT _lx_env_dump)
-    if(NOT _lx_env_error)
-      set(_lx_env_error "bootstrap failed with code ${_lx_env_result}")
+  if(NOT _lx_python_result EQUAL 0 OR NOT EXISTS "${_lx_gen_cmake}")
+    if(_lx_python_error)
+      set(_lx_import_error "${_lx_python_error}")
+    elseif(_lx_python_output)
+      set(_lx_import_error "${_lx_python_output}")
+    else()
+      set(_lx_import_error "bootstrap generator failed with code ${_lx_python_result}")
     endif()
     message(FATAL_ERROR
-      "[windows_msvc_env] Failed to execute VsDevCmd.bat: ${_lx_env_error}")
+      "[windows_msvc_env] Failed to generate imported Visual Studio environment: "
+      "${_lx_import_error}")
   endif()
 
-  if(LX_CMAKE_DEBUG_WINDOWS_MSVC_ENV)
-    string(REPLACE "\r\n" "\n" _lx_log_dump "${_lx_env_dump}")
+  include("${_lx_gen_cmake}")
+
+  if(LX_CMAKE_DEBUG_WINDOWS_MSVC_ENV AND EXISTS "${_lx_log_file}")
+    file(READ "${_lx_log_file}" _lx_log_dump)
+    string(REPLACE "\r\n" "\n" _lx_log_dump "${_lx_log_dump}")
     string(REPLACE "\r" "\n" _lx_log_dump "${_lx_log_dump}")
+    string(REPLACE ";" "\\;" _lx_log_dump "${_lx_log_dump}")
     string(REPLACE "\n" ";" _lx_log_lines "${_lx_log_dump}")
     lx_windows_msvc_log_result("VsDevCmd output follows:")
     foreach(_lx_log_line IN LISTS _lx_log_lines)
@@ -261,34 +255,14 @@ function(lx_windows_msvc_import_env install_root bootstrap_script)
     endforeach()
   endif()
 
-  set(_lx_original_path "$ENV{PATH}")
-  string(REPLACE "\r\n" "\n" _lx_env_dump "${_lx_env_dump}")
-  string(REPLACE "\r" "\n" _lx_env_dump "${_lx_env_dump}")
-  string(REPLACE ";" "\\;" _lx_env_dump "${_lx_env_dump}")
-  string(REPLACE "\n" ";" _lx_env_lines "${_lx_env_dump}")
-
-  foreach(_lx_line IN LISTS _lx_env_lines)
-    if(NOT _lx_line MATCHES "^([^=]+)=(.*)$")
-      continue()
-    endif()
-
-    set(_lx_name "${CMAKE_MATCH_1}")
-    set(_lx_child_value "${CMAKE_MATCH_2}")
-    if(_lx_name MATCHES "^=")
-      continue()
-    endif()
-
-    string(TOUPPER "${_lx_name}" _lx_env_key)
-    set(_lx_original_value "$ENV{${_lx_env_key}}")
-    lx_windows_msvc_merge_env_value(
-      "${_lx_env_key}" "${_lx_child_value}" "${_lx_original_value}" _lx_merged_value)
-    set(ENV{${_lx_env_key}} "${_lx_merged_value}")
-  endforeach()
-
-  if(_lx_original_path AND DEFINED ENV{PATH})
-    lx_windows_msvc_log_result("Original PATH before import=${_lx_original_path}")
-    lx_windows_msvc_log_result("Merged PATH after import=$ENV{PATH}")
-  endif()
+  lx_windows_msvc_log_result("Imported PATH=$ENV{PATH}")
+  lx_windows_msvc_log_result("Imported LIB=$ENV{LIB}")
+  lx_windows_msvc_log_result("Imported INCLUDE=$ENV{INCLUDE}")
+  lx_windows_msvc_log_result("Imported LIBPATH=$ENV{LIBPATH}")
+  lx_windows_msvc_log_result("Imported VCINSTALLDIR=$ENV{VCINSTALLDIR}")
+  lx_windows_msvc_log_result("Imported VCTOOLSINSTALLDIR=$ENV{VCTOOLSINSTALLDIR}")
+  lx_windows_msvc_log_result("Imported WINDOWSSDKDIR=$ENV{WINDOWSSDKDIR}")
+  lx_windows_msvc_log_result("Imported WINDOWSSDKVERSION=$ENV{WINDOWSSDKVERSION}")
 
   if(LX_CMAKE_DEBUG_WINDOWS_MSVC_ENV)
     lx_windows_msvc_probe_program("cl")
