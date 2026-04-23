@@ -106,6 +106,16 @@ function(_lx_read_cmd_env env_name out_value)
   endif()
 endfunction()
 
+function(_lx_normalize_path input_path output_var)
+  if(NOT input_path)
+    set(${output_var} "" PARENT_SCOPE)
+    return()
+  endif()
+
+  file(TO_CMAKE_PATH "${input_path}" _lx_normalized_path)
+  set(${output_var} "${_lx_normalized_path}" PARENT_SCOPE)
+endfunction()
+
 function(_lx_map_visual_studio_version input output_var)
   if("${input}" MATCHES "^17(\\.|$)")
     set(${output_var} "2022" PARENT_SCOPE)
@@ -146,7 +156,8 @@ function(_lx_append_vs_candidate list_var install_root reason)
     return()
   endif()
 
-  get_filename_component(_lx_candidate_root "${install_root}" ABSOLUTE)
+  _lx_normalize_path("${install_root}" _lx_install_root_normalized)
+  get_filename_component(_lx_candidate_root "${_lx_install_root_normalized}" ABSOLUTE)
   if(NOT EXISTS "${_lx_candidate_root}")
     return()
   endif()
@@ -211,14 +222,23 @@ endfunction()
 function(_lx_collect_vs_install_roots base_dir out_install_roots)
   set(_lx_install_roots "")
 
-  if(NOT base_dir OR NOT EXISTS "${base_dir}/Microsoft Visual Studio")
+  _lx_normalize_path("${base_dir}" _lx_base_dir)
+  if(NOT _lx_base_dir OR NOT EXISTS "${_lx_base_dir}/Microsoft Visual Studio")
     set(${out_install_roots} "" PARENT_SCOPE)
     return()
   endif()
 
+  foreach(_lx_sku IN ITEMS Community Professional Enterprise BuildTools Preview)
+    set(_lx_known_2022_root "${_lx_base_dir}/Microsoft Visual Studio/2022/${_lx_sku}")
+    if(EXISTS "${_lx_known_2022_root}/Common7/Tools/VsDevCmd.bat"
+       OR EXISTS "${_lx_known_2022_root}/VC/Auxiliary/Build/vcvarsall.bat")
+      list(APPEND _lx_install_roots "${_lx_known_2022_root}")
+    endif()
+  endforeach()
+
   file(GLOB _lx_candidate_roots
     LIST_DIRECTORIES true
-    "${base_dir}/Microsoft Visual Studio/*/*")
+    "${_lx_base_dir}/Microsoft Visual Studio/*/*")
   list(SORT _lx_candidate_roots)
   list(REVERSE _lx_candidate_roots)
 
