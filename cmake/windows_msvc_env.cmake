@@ -68,13 +68,23 @@ function(_lx_try_query_vswhere vswhere_path out_install_path out_reason)
 endfunction()
 
 function(_lx_try_import_env_dump bootstrap_script bootstrap_args out_result out_error)
-  set(_lx_cmd "call \"${bootstrap_script}\" ${bootstrap_args} >nul && set")
+  set(_lx_cmd_script "${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/lx_msvc_env_bootstrap.cmd")
+  get_filename_component(_lx_cmd_script_dir "${_lx_cmd_script}" DIRECTORY)
+  file(MAKE_DIRECTORY "${_lx_cmd_script_dir}")
+  file(WRITE "${_lx_cmd_script}"
+    "@echo off\r\n"
+    "call \"${bootstrap_script}\" ${bootstrap_args} >nul\r\n"
+    "if errorlevel 1 exit /b %errorlevel%\r\n"
+    "set\r\n")
+
   execute_process(
-    COMMAND cmd /d /c "${_lx_cmd}"
+    COMMAND cmd /d /c "${_lx_cmd_script}"
     OUTPUT_VARIABLE _lx_env_dump
     ERROR_VARIABLE _lx_env_error
     RESULT_VARIABLE _lx_env_result
   )
+
+  file(REMOVE "${_lx_cmd_script}")
 
   if(NOT _lx_env_result EQUAL 0)
     string(STRIP "${_lx_env_error}" _lx_env_error)
@@ -432,12 +442,15 @@ foreach(_lx_vs_candidate IN LISTS _lx_vs_candidates)
   set(_lx_vsdevcmd_bat "${_lx_vs_install_path}/Common7/Tools/VsDevCmd.bat")
   set(_lx_vcvarsall_bat "${_lx_vs_install_path}/VC/Auxiliary/Build/vcvarsall.bat")
   set(_lx_vcvars64_bat "${_lx_vs_install_path}/VC/Auxiliary/Build/vcvars64.bat")
+  set(_lx_candidate_has_bootstrap FALSE)
 
   if(EXISTS "${_lx_vsdevcmd_bat}")
+    set(_lx_candidate_has_bootstrap TRUE)
     list(APPEND _lx_bootstrap_attempts
       "${_lx_vsdevcmd_bat}|-no_logo -arch=${_lx_target_arch} -host_arch=${_lx_host_arch}|${_lx_vs_source} -> VsDevCmd")
   endif()
   if(EXISTS "${_lx_vcvarsall_bat}")
+    set(_lx_candidate_has_bootstrap TRUE)
     list(APPEND _lx_bootstrap_attempts
       "${_lx_vcvarsall_bat}|${_lx_target_arch}|${_lx_vs_source} -> vcvarsall(${_lx_target_arch})")
     if(NOT _lx_target_arch STREQUAL _lx_host_arch)
@@ -446,8 +459,13 @@ foreach(_lx_vs_candidate IN LISTS _lx_vs_candidates)
     endif()
   endif()
   if(_lx_target_arch STREQUAL "amd64" AND EXISTS "${_lx_vcvars64_bat}")
+    set(_lx_candidate_has_bootstrap TRUE)
     list(APPEND _lx_bootstrap_attempts
       "${_lx_vcvars64_bat}||${_lx_vs_source} -> vcvars64")
+  endif()
+  if(NOT _lx_candidate_has_bootstrap)
+    list(APPEND _lx_scan_notes
+      "Candidate ${_lx_vs_install_path} was found, but no bootstrap scripts were present under Common7/Tools or VC/Auxiliary/Build")
   endif()
 endforeach()
 
@@ -459,6 +477,11 @@ find_program(_lx_cl_from_path cl)
 if(_lx_cl_from_path)
   list(APPEND _lx_bootstrap_attempts
     "__PATH_CL__||cl.exe already in PATH")
+endif()
+
+if(NOT _lx_bootstrap_attempts)
+  list(APPEND _lx_scan_notes
+    "No Visual Studio bootstrap attempts were generated from discovered candidates")
 endif()
 
 set(_lx_env_dump "")
