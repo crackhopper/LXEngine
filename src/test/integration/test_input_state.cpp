@@ -2,6 +2,7 @@
 #include "core/input/key_code.hpp"
 #include "core/input/mock_input_state.hpp"
 #include "core/input/mouse_button.hpp"
+#include "core/utils/env.hpp"
 
 #include <iostream>
 
@@ -81,6 +82,7 @@ void testMockInputStateGuardsSentinels() {
 } // namespace
 
 int main() {
+  expSetEnvVK();
   testDummyKeyDown();
   testDummyMouseButton();
   testDummyMousePosition();

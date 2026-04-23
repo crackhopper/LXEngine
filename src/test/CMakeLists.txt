@@ -85,6 +85,7 @@ endforeach()
 # Compile shader_compiler sources directly to avoid depending on full LX_Infra/LX_Core libs
 add_executable(test_shader_compiler
   integration/test_shader_compiler.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../core/utils/env.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../infra/shader_compiler/shader_compiler.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../infra/shader_compiler/shader_reflector.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../infra/shader_compiler/compiled_shader.cpp

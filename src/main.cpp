@@ -1,1 +1,6 @@
-int main() { return 0; }
+#include "core/utils/env.hpp"
+
+int main() {
+  expSetEnvVK();
+  return 0;
+}

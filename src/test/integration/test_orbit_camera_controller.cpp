@@ -1,5 +1,6 @@
 #include "core/input/mock_input_state.hpp"
 #include "core/scene/orbit_camera_controller.hpp"
+#include "core/utils/env.hpp"
 
 #include <cmath>
 #include <iostream>
@@ -139,6 +140,7 @@ void testNextFrameClearsDelta() {
 } // namespace
 
 int main() {
+  expSetEnvVK();
   testDefaultPositionInFrontOfTarget();
   testLeftDragRotatesCamera();
   testPitchIsClamped();

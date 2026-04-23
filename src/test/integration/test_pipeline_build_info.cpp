@@ -11,6 +11,7 @@
 #include "core/frame_graph/pass.hpp"
 #include "core/frame_graph/render_queue.hpp"
 #include "core/scene/scene.hpp"
+#include "core/utils/env.hpp"
 #include "core/utils/string_table.hpp"
 
 #include "scene_test_helpers.hpp"
@@ -199,6 +200,7 @@ void testRenderTargetHashStability() {
 } // namespace
 
 int main() {
+  expSetEnvVK();
   VertexFactory::registerType<VertexPos>();
 
   testFromRenderingItemPopulatesBindings();

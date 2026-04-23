@@ -1,6 +1,7 @@
 #include "backend/vulkan/details/render_objects/render_pass.hpp"
 #include "backend/vulkan/details/render_objects/swapchain.hpp"
 #include "backend/vulkan/details/device.hpp"
+#include "core/utils/env.hpp"
 #include "infra/window/window.hpp"
 
 #include <vulkan/vulkan.h>
@@ -9,6 +10,7 @@
 #include <vector>
 
 int main() {
+  expSetEnvVK();
   try {
     LX_infra::Window::Initialize();
     auto window = std::make_shared<LX_infra::Window>("Test Vulkan Depth", 64, 64);
@@ -45,4 +47,3 @@ int main() {
     return 0;
   }
 }
-

@@ -1,5 +1,6 @@
 #include "core/input/mock_input_state.hpp"
 #include "core/scene/freefly_camera_controller.hpp"
+#include "core/utils/env.hpp"
 
 #include <cmath>
 #include <iostream>
@@ -146,6 +147,7 @@ void testPitchIsClamped() {
 } // namespace
 
 int main() {
+  expSetEnvVK();
   testWKeyMovesForward();
   testDefaultYawFacesTowardOrigin();
   testMouseLookOnlyWithRightButton();

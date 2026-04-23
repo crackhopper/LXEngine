@@ -1,4 +1,5 @@
 #include "core/time/clock.hpp"
+#include "core/utils/env.hpp"
 
 #include <cmath>
 #include <iostream>
@@ -79,6 +80,7 @@ void testSmoothedDeltaAveragesRecentSamples() {
 } // namespace
 
 int main() {
+  expSetEnvVK();
   testFirstTickHasZeroDelta();
   testSecondTickHasNonzeroDelta();
   testTotalTimeMonotonicallyIncreases();

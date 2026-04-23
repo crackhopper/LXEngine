@@ -1,3 +1,4 @@
+#include "core/utils/env.hpp"
 #ifdef USE_SDL
 #include "infra/window/sdl3_input_state.hpp"
 #include "core/input/key_code.hpp"
@@ -139,6 +140,7 @@ void testUnknownScancodeIgnored() {
 } // namespace
 
 int main() {
+  expSetEnvVK();
   testKeyDownUp();
   testMouseButtonDownUp();
   testMousePosition();
@@ -160,6 +162,7 @@ int main() {
 #else
 #include <iostream>
 int main() {
+  expSetEnvVK();
   std::cout << "[SKIP] SDL input tests skipped (USE_SDL not defined).\n";
   return 0;
 }

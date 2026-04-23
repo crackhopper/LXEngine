@@ -14,6 +14,7 @@
 #include "infra/material_loader/generic_material_loader.hpp"
 #include "core/scene/orbit_camera_controller.hpp"
 #include "core/scene/freefly_camera_controller.hpp"
+#include "core/utils/env.hpp"
 #include "core/utils/filesystem_tools.hpp"
 
 #include <array>
@@ -70,6 +71,7 @@ void syncOrbitFromCamera(OrbitCameraController &controller, const Camera &camera
 } // namespace
 
 int main() {
+  expSetEnvVK();
   if (!cdToWhereResourcesCouldFound("blinnphong_0")) {
     std::cerr << "Failed to locate runtime resources for blinnphong_0\n";
     return 1;

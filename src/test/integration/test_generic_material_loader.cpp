@@ -1,5 +1,6 @@
 #include "core/asset/material_instance.hpp"
 #include "core/frame_graph/pass.hpp"
+#include "core/utils/env.hpp"
 #include "core/utils/string_table.hpp"
 #include "infra/material_loader/generic_material_loader.hpp"
 #include "infra/texture_loader/placeholder_textures.hpp"
@@ -218,6 +219,7 @@ void test_placeholder_textures() {
 } // namespace
 
 int main() {
+  expSetEnvVK();
   test_placeholder_textures();
   test_generic_loader_produces_valid_instance();
   test_per_pass_shader_override();

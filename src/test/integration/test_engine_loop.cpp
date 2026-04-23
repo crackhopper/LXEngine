@@ -1,5 +1,6 @@
 #include "core/gpu/engine_loop.hpp"
 #include "core/input/dummy_input_state.hpp"
+#include "core/utils/env.hpp"
 
 #include <iostream>
 #include <memory>
@@ -211,6 +212,7 @@ void testRunStopsOnWindowClose() {
 } // namespace
 
 int main() {
+  expSetEnvVK();
   testStartSceneNotPerFrame();
   testUpdateHookRunsBeforeUploadAndDraw();
   testRequestSceneRebuildIsExplicit();

@@ -8,6 +8,7 @@
 #include "core/scene/object.hpp"
 #include "core/frame_graph/pass.hpp"
 #include "core/scene/scene.hpp"
+#include "core/utils/env.hpp"
 #include "core/utils/string_table.hpp"
 
 #include <iostream>
@@ -184,6 +185,7 @@ void testToDebugStringSmoke() {
 } // namespace
 
 int main() {
+  expSetEnvVK();
   // Register the vertex type with the factory (same pattern used elsewhere).
   VertexFactory::registerType<VertexPos>();
 

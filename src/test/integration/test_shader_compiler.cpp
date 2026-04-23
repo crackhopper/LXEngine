@@ -1,3 +1,4 @@
+#include "core/utils/env.hpp"
 #include "infra/shader_compiler/shader_compiler.hpp"
 #include "infra/shader_compiler/compiled_shader.hpp"
 #include "infra/shader_compiler/shader_reflector.hpp"
@@ -476,6 +477,7 @@ static bool testBlinnPhongRuntimeFallbacks(const std::filesystem::path &fragPath
 }
 
 int main(int argc, char *argv[]) {
+  expSetEnvVK();
   // Determine shader directory
   std::filesystem::path shaderDir;
   if (argc > 1) {

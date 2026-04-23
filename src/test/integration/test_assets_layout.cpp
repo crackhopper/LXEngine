@@ -1,4 +1,5 @@
 #include "core/utils/filesystem_tools.hpp"
+#include "core/utils/env.hpp"
 
 #include <filesystem>
 #include <iostream>
@@ -69,6 +70,7 @@ void testShaderLookupKeepsProjectRoot() {
 } // namespace
 
 int main() {
+  expSetEnvVK();
   testDamagedHelmet();
   testHdrEnvironmentMap();
   testVikingRoom();

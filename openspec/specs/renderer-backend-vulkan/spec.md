@@ -3,6 +3,18 @@
 ## Purpose
 TBD - created by archiving change implement-renderer-framework. Update Purpose after archive.
 ## Requirements
+### Requirement: Vulkan-capable executables shall disable implicit loader layers before initialization
+
+Any executable that may initialize the Vulkan backend, create an SDL/GLFW window for Vulkan, or otherwise trigger Vulkan loader startup SHALL call `LX_core::expSetEnvVK()` as the first meaningful action in `main()` (or equivalent process entrypoint), before creating windows, renderer objects, or Vulkan instances.
+
+This requirement exists to suppress unwanted `.log` files emitted when implicit validation layers are auto-loaded by the Vulkan loader on developer machines. The environment guard SHALL be applied consistently in applications, demos, and integration-test executables so startup behavior stays deterministic across local runs and CI.
+
+#### Scenario: Vulkan executable starts on a developer machine with implicit validation layers installed
+- **WHEN** a renderer demo or Vulkan integration test starts
+- **AND** the machine has implicit validation layers enabled by the loader
+- **THEN** the executable calls `expSetEnvVK()` before any Vulkan-related initialization
+- **AND** the process does not emit the extra loader `.log` files associated with those implicit layers
+
 ### Requirement: VulkanDevice shall initialize Vulkan instance and enumerate physical devices
 
 The VulkanDevice SHALL initialize the Vulkan subsystem with:
@@ -339,4 +351,3 @@ void setDrawUiCallback(std::function<void()> cb);
 **Reason**: Factory pattern enforcement via private Token struct.
 
 **Migration**: Use `VulkanDevice::create()` factory method instead of direct construction.
-

@@ -1,3 +1,4 @@
+#include "core/utils/env.hpp"
 #include "core/utils/string_table.hpp"
 
 #include <array>
@@ -166,6 +167,7 @@ void testConcurrentCompose() {
 } // namespace
 
 int main() {
+  expSetEnvVK();
   testLeafDedup();
   testComposeDedup();
   testComposeOrderSensitive();

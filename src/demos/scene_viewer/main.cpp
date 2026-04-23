@@ -9,6 +9,7 @@
 #include "backend/vulkan/vulkan_renderer.hpp"
 #include "core/gpu/engine_loop.hpp"
 #include "core/scene/scene.hpp"
+#include "core/utils/env.hpp"
 #include "core/utils/filesystem_tools.hpp"
 #include "infra/window/window.hpp"
 
@@ -36,6 +37,7 @@ constexpr int kWindowHeight = 720;
 } // namespace
 
 int main() {
+  expSetEnvVK();
   // REQ-010: centralise the working directory on the assets root so relative
   // paths in material files, glTF buffers, and textures all resolve.
   if (!cdToWhereAssetsExist("models/damaged_helmet/DamagedHelmet.gltf")) {

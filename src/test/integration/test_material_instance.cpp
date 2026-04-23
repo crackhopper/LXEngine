@@ -2,6 +2,7 @@
 #include "core/asset/shader.hpp"
 #include "core/asset/shader_binding_ownership.hpp"
 #include "core/frame_graph/pass.hpp"
+#include "core/utils/env.hpp"
 #include "core/utils/string_table.hpp"
 #include "infra/material_loader/generic_material_loader.hpp"
 #include "infra/shader_compiler/shader_compiler.hpp"
@@ -585,6 +586,7 @@ void test_pass_aware_descriptor_resources() {
 } // namespace
 
 int main(int argc, char **argv) {
+  expSetEnvVK();
   if (argc > 1 && std::string(argv[1]) == "undefined_pass")
     return undefinedPassMode();
 

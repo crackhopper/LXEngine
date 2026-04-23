@@ -1,5 +1,6 @@
 #include "core/input/dummy_input_state.hpp"
 #include "core/input/mock_input_state.hpp"
+#include "core/utils/env.hpp"
 
 #include <cstdlib>
 #include <iostream>
@@ -160,6 +161,7 @@ void test_draw_with_ui_callback_does_not_crash() {
 } // namespace
 
 int main() {
+  expSetEnvVK();
   test_ui_capture_flags_default_to_false_without_imgui();
   test_gui_init_succeeds_after_renderer_initialize();
   test_draw_with_ui_callback_does_not_crash();

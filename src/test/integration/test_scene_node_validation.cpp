@@ -6,6 +6,7 @@
 #include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/object.hpp"
 #include "core/scene/scene.hpp"
+#include "core/utils/env.hpp"
 #include "core/utils/filesystem_tools.hpp"
 #include "infra/material_loader/generic_material_loader.hpp"
 
@@ -527,6 +528,7 @@ void testFatalSubprocesses(const std::filesystem::path &self) {
 } // namespace
 
 int main(int argc, char **argv) {
+  expSetEnvVK();
   if (argc > 1) {
     cdToWhereResourcesCouldFound("blinnphong_0");
     const std::string mode = argv[1];

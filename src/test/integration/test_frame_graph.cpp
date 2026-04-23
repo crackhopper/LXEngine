@@ -13,6 +13,7 @@
 #include "core/frame_graph/pass.hpp"
 #include "core/frame_graph/render_queue.hpp"
 #include "core/scene/scene.hpp"
+#include "core/utils/env.hpp"
 #include "core/utils/string_table.hpp"
 
 #include <iostream>
@@ -333,6 +334,7 @@ void testCollectAcrossMultiplePasses() {
 } // namespace
 
 int main() {
+  expSetEnvVK();
   VertexFactory::registerType<VertexPos>();
 
   testSingleRenderableSinglePass();

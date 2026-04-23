@@ -15,6 +15,7 @@
 #include "core/scene/camera.hpp"
 #include "core/scene/light.hpp"
 #include "core/time/clock.hpp"
+#include "core/utils/env.hpp"
 #include "core/utils/string_table.hpp"
 
 #include <imgui.h>
@@ -172,6 +173,7 @@ void test_cpu_only_imgui_smoke() {
 } // namespace
 
 int main() {
+  expSetEnvVK();
   test_link_level_symbols_reachable();
   test_cpu_only_imgui_smoke();
 

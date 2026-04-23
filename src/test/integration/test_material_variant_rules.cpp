@@ -1,3 +1,4 @@
+#include "core/utils/env.hpp"
 #include "core/utils/filesystem_tools.hpp"
 #include "infra/material_loader/generic_material_loader.hpp"
 
@@ -119,6 +120,7 @@ void testValidVariantCombination() {
 } // namespace
 
 int main(int argc, char **argv) {
+  expSetEnvVK();
   if (argc > 1) {
     const std::string mode = argv[1];
     if (mode == "--invalid-normal-without-lighting")

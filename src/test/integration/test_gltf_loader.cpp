@@ -1,4 +1,5 @@
 #include "infra/mesh_loader/gltf_mesh_loader.hpp"
+#include "core/utils/env.hpp"
 #include "core/utils/filesystem_tools.hpp"
 
 #include <iostream>
@@ -104,6 +105,7 @@ void test_throws_on_corrupt_file() {
 } // namespace
 
 int main() {
+  expSetEnvVK();
   test_loads_damaged_helmet();
   test_throws_on_missing_file();
   test_throws_on_corrupt_file();
