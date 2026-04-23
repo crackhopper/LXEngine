@@ -174,7 +174,10 @@ function(_lx_append_vs_candidate list_var install_root reason)
     return()
   endif()
 
-  _lx_append_list_entry(${list_var} "${_lx_candidate_root}|${reason}")
+  set(_lx_items "${${list_var}}")
+  list(APPEND _lx_items "${_lx_candidate_root}|${reason}")
+  list(REMOVE_DUPLICATES _lx_items)
+  set(${list_var} "${_lx_items}" PARENT_SCOPE)
 endfunction()
 
 function(_lx_collect_vswhere_install_paths vswhere_path out_install_paths out_failures)
