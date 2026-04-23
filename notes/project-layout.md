@@ -155,6 +155,7 @@ notes/
 - `scripts/serve-notes.sh` 会先生成 `mkdocs.gen.yml`，再用 MkDocs 预览这个目录。
 - `notes/subsystems/` 是当前系统设计说明的主入口。
 - `notes/requirements/` 不是手写目录，而是由 `scripts/_gen_notes_site.py` 从 `docs/requirements/` 自动同步出来的链接目录。
+- `notes/roadmaps/` 现在以子目录组织路线图；导航由生成脚本按目录自动展开。
 
 ### docs/
 

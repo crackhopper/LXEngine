@@ -11,7 +11,7 @@
 - [src/core/gpu/engine_loop.cpp](../../src/core/gpu/engine_loop.cpp) 也还没有“输入帧推进”的统一时序
 - `REQ-015` / `REQ-016` 的相机控制器、`REQ-017` 的 ImGui 输入协调都需要一个稳定的 `core` 层输入入口
 
-[Phase 2 REQ-203](../../notes/roadmaps/phase-2-foundation-layer.md) 规划了更完整的输入系统（含边沿检测、状态推进、扩展设备）。本 REQ 只做它的最小前置版本：先把 `core/` 层的只读输入快照接口立住，让后续 SDL3 实现和相机控制器有共同依赖。
+[Phase 2 REQ-203](../../notes/roadmaps/main-roadmap/phase-2-foundation-layer.md) 规划了更完整的输入系统（含边沿检测、状态推进、扩展设备）。本 REQ 只做它的最小前置版本：先把 `core/` 层的只读输入快照接口立住，让后续 SDL3 实现和相机控制器有共同依赖。
 
 本需求只定义接口、枚举和 dummy/testing helper；不实现 SDL/GLFW 的真实事件读取，不重构主循环。
 

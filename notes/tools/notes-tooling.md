@@ -168,7 +168,7 @@ flowchart TD
 不过有两类目录例外，它们仍然允许通过占位符动态展开：
 
 - `@requirements`：展开 `docs/requirements/*.md` 映射到 `notes/requirements/` 的活动需求页
-- `@roadmaps`：展开 `notes/roadmaps/*.md` 中除 `README.md` 之外的页面
+- `@roadmaps`：展开 `notes/roadmaps/` 下的子目录，并递归生成 roadmap 分组导航
 
 这两个占位符仍然要写在 `notes/nav.yml` 里，所以“它们出现在哪个一级菜单、排在什么位置”依旧由配置控制；变化的只是具体页面列表由目录内容自动跟随。
 
@@ -236,7 +236,7 @@ scripts/serve-notes.sh
 
 - `notes/nav.yml` 中的站点结构、标题和排序
 - 新页面接入导航时的分组决策
-- `@requirements` / `@roadmaps` 这两类动态分组之外的新页面，仍需要手工写进导航
+- `@requirements` 之外的新页面，仍需要手工写进导航；`@roadmaps` 会自动按子目录递归展开
 
 这套方案比目录扫描更偏显式配置：菜单结构稳定、可控，但新增页面时必须顺手更新导航文件。
 
@@ -249,7 +249,7 @@ scripts/serve-notes.sh
 - `mkdocs.yml` 只保留站点基础行为，不手写 nav
 - `notes/nav.yml` 明确写出菜单树和排序
 - `scripts/_gen_notes_site.py` 会校验 `notes/nav.yml` 中引用的页面是否真实存在
-- `@requirements` 和 `@roadmaps` 会在生成期展开，避免进行中文档和 roadmap 需要频繁手改导航
+- `@requirements` 会在生成期展开；`@roadmaps` 会按子目录递归展开，避免 roadmap 目录整理时频繁手改导航
 - `docs/requirements/` 和 `notes/tools/` 仍保留自动同步 / 自动索引
 - `requirements/` 在导航里和普通 `notes/` 子目录一样出现，只是内容来源仍然是 `docs/requirements/`
 
@@ -267,7 +267,7 @@ scripts/serve-notes.sh
 
 ### 例子三：动态分组保持自动展开
 
-如果某类页面会持续增删，例如活动需求或 roadmap，就继续在 `notes/nav.yml` 里保留 `@requirements` 或 `@roadmaps`，不要逐篇手写。
+如果某类页面会持续增删，例如活动需求或 roadmap，就继续在 `notes/nav.yml` 里保留 `@requirements` 或 `@roadmaps`，不要逐篇手写。对于 roadmap，新增内容应优先进入某个子目录。
 
 当前菜单默认折叠，是因为 `mkdocs.yml` 没启用 `navigation.expand`，同时也没有启用会把顶层分组直接展开显示的 `navigation.sections`。
 

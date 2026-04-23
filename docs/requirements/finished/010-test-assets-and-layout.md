@@ -2,7 +2,7 @@
 
 ## 背景
 
-为了支持 [Phase 1 渲染深度](../../notes/roadmaps/phase-1-rendering-depth.md)（PBR / shadow / IBL / bloom / FXAA），仓库需要一套可被 demo、集成测试和后续 loader 共同消费的测试资产基线。
+为了支持 [Phase 1 渲染深度](../../notes/roadmaps/main-roadmap/phase-1-rendering-depth.md)（PBR / shadow / IBL / bloom / FXAA），仓库需要一套可被 demo、集成测试和后续 loader 共同消费的测试资产基线。
 
 2026-04-16 按当前代码核查，仓库现状仍然是：
 

@@ -19,7 +19,7 @@
 - 但 `REQ-018` 的调试统计面板还缺一个更稳定的 FPS 输入
 - 当前 `Clock` 的行为也缺少单独测试保护
 
-[Phase 2 REQ-206](../../notes/roadmaps/phase-2-foundation-layer.md) 规划了更完整的时间系统（fixed step accumulator、timeScale、pause 等）。本 REQ 只做当前 `Clock` 的收尾：补平滑 deltaTime 和测试，不扩展到 Phase 2 的完整时间管理能力。
+[Phase 2 REQ-206](../../notes/roadmaps/main-roadmap/phase-2-foundation-layer.md) 规划了更完整的时间系统（fixed step accumulator、timeScale、pause 等）。本 REQ 只做当前 `Clock` 的收尾：补平滑 deltaTime 和测试，不扩展到 Phase 2 的完整时间管理能力。
 
 ## 目标
 

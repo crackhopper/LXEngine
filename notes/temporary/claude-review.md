@@ -259,7 +259,7 @@ REQ-034 R2 指的正是这一项。`SceneNode` 走完整的 `rebuildValidatedCac
 
 ### 5.2 roadmap 位置
 
-`notes/roadmaps/00-gap-analysis.md` 把项目距离"小型 AI-Native 游戏引擎"的差距切成 A–M（传统）和 N–U（AI 原生）。当前位置：**Phase 1 渲染深度 + Web 后端** 尚未启动，现在做的是 Phase 0 的收尾工作（demo / 材质 / 多光源合同）。
+`notes/roadmaps/main-roadmap/00-gap-analysis.md` 把项目距离"小型 AI-Native 游戏引擎"的差距切成 A–M（传统）和 N–U（AI 原生）。当前位置：**Phase 1 渲染深度 + Web 后端** 尚未启动，现在做的是 Phase 0 的收尾工作（demo / 材质 / 多光源合同）。
 
 ---
 

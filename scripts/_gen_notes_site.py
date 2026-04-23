@@ -34,6 +34,20 @@ NAV_SECTION_TITLE = "需求（进行中）"
 TOOLS_SECTION_TITLE = "相关工具"
 TEMPORARY_SECTION_TITLE = "临时笔记"
 HEADING_RE = re.compile(r"^#\s+(.+?)\s*$")
+NATURAL_TOKEN_RE = re.compile(r"(\d+)")
+
+
+def natural_name_key(name: str) -> list[tuple[int, object]]:
+    parts = NATURAL_TOKEN_RE.split(name.lower())
+    key: list[tuple[int, object]] = []
+    for part in parts:
+        if not part:
+            continue
+        if part.isdigit():
+            key.append((0, int(part)))
+        else:
+            key.append((1, part))
+    return key
 
 
 def discover_requirements() -> list[Path]:
@@ -43,7 +57,7 @@ def discover_requirements() -> list[Path]:
         p for p in REQ_SRC_DIR.iterdir()
         if p.is_file() and p.suffix == ".md" and p.name != "index.md"
     ]
-    files.sort(key=lambda p: p.name)
+    files.sort(key=lambda p: natural_name_key(p.name))
     return files
 
 
@@ -54,19 +68,31 @@ def discover_tools() -> list[Path]:
         p for p in TOOLS_DIR.iterdir()
         if p.is_file() and p.suffix == ".md" and p.name != "index.md"
     ]
-    files.sort(key=lambda p: p.name)
+    files.sort(key=lambda p: natural_name_key(p.name))
+    return files
+
+
+def discover_roadmap_dirs(parent: Path) -> list[Path]:
+    if not parent.is_dir():
+        return []
+    dirs = [p for p in parent.iterdir() if p.is_dir()]
+    dirs.sort(key=lambda p: natural_name_key(p.name))
+    return dirs
+
+
+def discover_roadmap_files(parent: Path) -> list[Path]:
+    if not parent.is_dir():
+        return []
+    files = [
+        p for p in parent.iterdir()
+        if p.is_file() and p.suffix == ".md" and p.name != "README.md"
+    ]
+    files.sort(key=lambda p: natural_name_key(p.name))
     return files
 
 
 def discover_roadmaps() -> list[Path]:
-    if not ROADMAPS_DIR.is_dir():
-        return []
-    files = [
-        p for p in ROADMAPS_DIR.iterdir()
-        if p.is_file() and p.suffix == ".md" and p.name != "README.md"
-    ]
-    files.sort(key=lambda p: p.name)
-    return files
+    return discover_roadmap_dirs(ROADMAPS_DIR)
 
 
 def discover_temporary() -> list[Path]:
@@ -83,7 +109,7 @@ def discover_temporary() -> list[Path]:
         p for p in TEMPORARY_DIR.iterdir()
         if p.is_file() and p.suffix == ".md" and p.name != "index.md"
     ]
-    files.sort(key=lambda p: p.name)
+    files.sort(key=lambda p: natural_name_key(p.name))
     return files
 
 
@@ -204,10 +230,27 @@ def build_generated_nav_item(md_path: Path, nav_path: str | None = None) -> dict
     return {extract_title(md_path, md_path.stem): path_str}
 
 
+def build_roadmap_dir_nav(dir_path: Path) -> dict:
+    readme = dir_path / "README.md"
+    title = extract_title(readme, dir_path.name) if readme.is_file() else dir_path.name
+
+    children: list[object] = []
+    if readme.is_file():
+        children.append(rel_note_path(readme))
+
+    for child_dir in discover_roadmap_dirs(dir_path):
+        children.append(build_roadmap_dir_nav(child_dir))
+
+    for md_path in discover_roadmap_files(dir_path):
+        children.append(build_generated_nav_item(md_path))
+
+    return {title: children}
+
+
 def expand_nav_token(
     token: str,
     req_files: list[Path],
-    roadmap_files: list[Path],
+    roadmap_dirs: list[Path],
     temporary_files: list[Path],
 ) -> list[dict]:
     if token == "@requirements":
@@ -216,7 +259,7 @@ def expand_nav_token(
             for p in req_files
         ]
     if token == "@roadmaps":
-        return [build_generated_nav_item(p) for p in roadmap_files]
+        return [build_roadmap_dir_nav(p) for p in roadmap_dirs]
     if token == "@temporary":
         return [build_generated_nav_item(p) for p in temporary_files]
     raise ValueError(f"unsupported nav token '{token}'")
@@ -226,7 +269,7 @@ def normalize_nav_list(
     entries: list[object],
     context: str,
     req_files: list[Path],
-    roadmap_files: list[Path],
+    roadmap_dirs: list[Path],
     temporary_files: list[Path],
 ) -> list:
     normalized: list = []
@@ -234,13 +277,11 @@ def normalize_nav_list(
         entry_context = f"{context}[{index}]"
         if isinstance(entry, str) and entry.startswith("@"):
             normalized.extend(
-                expand_nav_token(entry, req_files, roadmap_files, temporary_files)
+                expand_nav_token(entry, req_files, roadmap_dirs, temporary_files)
             )
             continue
         normalized.append(
-            normalize_nav_entry(
-                entry, entry_context, req_files, roadmap_files, temporary_files
-            )
+            normalize_nav_entry(entry, entry_context, req_files, roadmap_dirs, temporary_files)
         )
     return normalized
 
@@ -249,7 +290,7 @@ def normalize_nav_entry(
     entry: object,
     context: str,
     req_files: list[Path],
-    roadmap_files: list[Path],
+    roadmap_dirs: list[Path],
     temporary_files: list[Path],
 ) -> object:
     if isinstance(entry, str):
@@ -269,7 +310,7 @@ def normalize_nav_entry(
         if isinstance(value, list):
             return {
                 title: normalize_nav_list(
-                    value, child_context, req_files, roadmap_files, temporary_files
+                    value, child_context, req_files, roadmap_dirs, temporary_files
                 )
             }
 
@@ -280,7 +321,7 @@ def normalize_nav_entry(
 
 def load_nav_config(
     req_files: list[Path],
-    roadmap_files: list[Path],
+    roadmap_dirs: list[Path],
     temporary_files: list[Path],
 ) -> list:
     if not NAV_CONFIG.is_file():
@@ -293,7 +334,7 @@ def load_nav_config(
     if not isinstance(nav, list) or not nav:
         raise ValueError("notes/nav.yml must define a non-empty 'nav' list")
 
-    return normalize_nav_list(nav, "nav", req_files, roadmap_files, temporary_files)
+    return normalize_nav_list(nav, "nav", req_files, roadmap_dirs, temporary_files)
 
 
 def inject_into_mkdocs(req_files: list[Path], tool_files: list[Path], nav: list) -> None:
@@ -339,12 +380,12 @@ def main() -> int:
 
     req_files = discover_requirements()
     tool_files = discover_tools()
-    roadmap_files = discover_roadmaps()
+    roadmap_dirs = discover_roadmaps()
     temporary_files = discover_temporary()
     sync_symlinks(req_files)
     write_tools_index(tool_files)
     write_temporary_index(temporary_files)
-    nav = load_nav_config(req_files, roadmap_files, temporary_files)
+    nav = load_nav_config(req_files, roadmap_dirs, temporary_files)
     inject_into_mkdocs(req_files, tool_files, nav)
 
     print(f">> Generated {MKDOCS_GEN.relative_to(REPO_ROOT)}")
@@ -355,9 +396,9 @@ def main() -> int:
     print(f"   {NAV_SECTION_TITLE}: {len(req_files)} 篇")
     for p in req_files:
         print(f"     - {p.name}")
-    print(f"   Roadmap: {len(roadmap_files)} 篇")
-    for p in roadmap_files:
-        print(f"     - {p.name}")
+    print(f"   Roadmap 分组: {len(roadmap_dirs)} 组")
+    for p in roadmap_dirs:
+        print(f"     - {p.relative_to(ROADMAPS_DIR).as_posix()}/")
     print(f"   {TEMPORARY_SECTION_TITLE}: {len(temporary_files)} 篇")
     for p in temporary_files:
         print(f"     - {p.name}")

@@ -54,7 +54,7 @@
 ## 依赖
 
 - 已有的 `RenderTarget` / multi-camera 过滤基础
-- `notes/roadmaps/phase-5-physics.md` 中已有 layer mask 的相关长期方向
+- `notes/roadmaps/main-roadmap/phase-5-physics.md` 中已有 layer mask 的相关长期方向
 
 ## 实施状态
 

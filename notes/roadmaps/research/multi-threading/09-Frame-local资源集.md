@@ -254,7 +254,7 @@ swapchain images = 通常 = maxFramesInFlight，某些场景设成 +1
 | Swapchain image | A 类 | **由 swapchain 独立管**，和 frame slot 数可能不等 |
 | 大纹理的 mip 级 streaming | A 类 | **C 类**，按 mip 粒度版本化 |
 | Bindless descriptor set 整体 | A 类 | **B 类**，set 本身一份；slot 是独立生命周期 |
-| Pipeline cache（见 `../pipeline-cache/`）| A 类 | **B 类**，持续累积的查表，不按帧复制 |
+| Pipeline cache（见 `../pipeline-cache/README.md`）| A 类 | **B 类**，持续累积的查表，不按帧复制 |
 
 ## 9.10 和 bindless / pipeline-cache 的呼应
 
@@ -262,8 +262,8 @@ swapchain images = 通常 = maxFramesInFlight，某些场景设成 +1
 
 | Research | 资源类型 | 复用策略 |
 |---------|---------|--------|
-| [bindless-texture](../bindless-texture/) | Bindless descriptor set 的 slot | append-only + RetirePoint 回收（等效 C 类） |
-| [pipeline-cache](../pipeline-cache/) | VulkanPipeline 对象 | B 类（长期持有，按 key 查表） |
+| [bindless-texture](../bindless-texture/README.md) | Bindless descriptor set 的 slot | append-only + RetirePoint 回收（等效 C 类） |
+| [pipeline-cache](../pipeline-cache/README.md) | VulkanPipeline 对象 | B 类（长期持有，按 key 查表） |
 | [multi-threading](README.md) | Frame-local 资源 | A 类（per-frame ×N） |
 | 所有 | 资源版本化场景 | C 类（versioning） |
 

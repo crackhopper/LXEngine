@@ -31,7 +31,7 @@ Bindless 是现代 GPU 驱动渲染的基石之一。这组文档面向 **没用
 | 代码到底怎么写？ | [02](02-实现细节.md) |
 | 更新会不会竞态？ | [02 §2.7 同步与更新策略](02-实现细节.md#27-同步与更新策略) |
 | 为什么 shader 要写 `nonuniformEXT`？ | [03](03-nonuniform与warp执行模型.md) |
-| 什么是 warp / wave？ | [03 §3.1](03-nonuniform与warp执行模型.md#31-gpu-怎么执行-shader) |
+| 什么是 warp / wave？ | [03 §3.1](03-nonuniform与warp执行模型.md) |
 | bindless 能让 PSO 数量下降吗？ | [04](04-Pipeline与Shader策略.md) |
 | 自动生成 pipeline layout 和 bindless 到底是什么关系？ | [04A](04a-Shader反射与Layout约束.md) |
 | 为什么同一个 binding 能被不同 shader 当成 2D / 3D 用？ | [04A §4A.4](04a-Shader反射与Layout约束.md#4a4-pipelinelayout-到底会不会限制-2d--3d) |

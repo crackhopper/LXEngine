@@ -14,9 +14,9 @@
 
 | 主题 | 文件 | 简述 | 调研日期 |
 |------|------|------|---------|
-| Bindless Texture | [bindless-texture/](bindless-texture/) | bindless 资源绑定在现代引擎的采用情况、对 pipeline 数量的影响、ubershader/permutation 策略、nonuniform 深入、业界对比、LX 演进路径（6 篇 + 入口索引） | 2026-04-23 |
-| Pipeline Cache | [pipeline-cache/](pipeline-cache/) | 应用层对象缓存 vs 驱动层 `VkPipelineCache` 两层关系、LX 当前实现、若接入底层机制的演进路径 | 2026-04-23 |
-| Multi-threading | [multi-threading/](multi-threading/) | task-based vs fiber-based 选型、enkiTS + pinned task 异步 I/O 模式、LX 当前单线程现状、分阶段演进路径 | 2026-04-23 |
+| Bindless Texture | [bindless-texture/README.md](bindless-texture/README.md) | bindless 资源绑定在现代引擎的采用情况、对 pipeline 数量的影响、ubershader/permutation 策略、nonuniform 深入、业界对比、LX 演进路径（6 篇 + 入口索引） | 2026-04-23 |
+| Pipeline Cache | [pipeline-cache/README.md](pipeline-cache/README.md) | 应用层对象缓存 vs 驱动层 `VkPipelineCache` 两层关系、LX 当前实现、若接入底层机制的演进路径 | 2026-04-23 |
+| Multi-threading | [multi-threading/README.md](multi-threading/README.md) | task-based vs fiber-based 选型、enkiTS + pinned task 异步 I/O 模式、LX 当前单线程现状、分阶段演进路径 | 2026-04-23 |
 
 ## 写入规范
 
