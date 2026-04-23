@@ -112,7 +112,9 @@ function(_lx_normalize_path input_path output_var)
     return()
   endif()
 
-  file(TO_CMAKE_PATH "${input_path}" _lx_normalized_path)
+  set(_lx_normalized_path "${input_path}")
+  string(REPLACE "\\" "/" _lx_normalized_path "${_lx_normalized_path}")
+  string(REGEX REPLACE "/+$" "" _lx_normalized_path "${_lx_normalized_path}")
   set(${output_var} "${_lx_normalized_path}" PARENT_SCOPE)
 endfunction()
 
@@ -391,9 +393,14 @@ list(REMOVE_DUPLICATES _lx_default_scan_roots)
 
 foreach(_lx_scan_root IN LISTS _lx_default_scan_roots)
   _lx_collect_vs_install_roots("${_lx_scan_root}" _lx_scanned_candidates)
+  if(NOT _lx_scanned_candidates)
+    list(APPEND _lx_scan_notes
+      "No Visual Studio installations found under ${_lx_scan_root}/Microsoft Visual Studio")
+  endif()
   foreach(_lx_candidate IN LISTS _lx_scanned_candidates)
     _lx_append_vs_candidate(_lx_vs_candidates "${_lx_candidate}"
       "filesystem scan (${_lx_scan_root})")
+    list(APPEND _lx_scan_notes "Found Visual Studio candidate: ${_lx_candidate}")
   endforeach()
 endforeach()
 
