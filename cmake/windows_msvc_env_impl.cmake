@@ -205,7 +205,10 @@ function(lx_windows_msvc_import_env install_root bootstrap_script)
     "set\r\n"
     "echo ${_lx_env_end_marker}\r\n")
 
-  find_program(_lx_python_executable NAMES python3 python)
+  find_program(_lx_python_executable NAMES python)
+  if(NOT _lx_python_executable)
+    find_program(_lx_python_executable NAMES python3)
+  endif()
   if(NOT _lx_python_executable)
     file(REMOVE "${_lx_cmd_script}")
     message(FATAL_ERROR
