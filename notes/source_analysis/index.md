@@ -25,9 +25,8 @@
 当前入口：
 
 - [IGpuResource：core 层的 GPU 资源统一契约](src/core/rhi/gpu_resource.md)
-- [MaterialInstance：从模板到运行时账本](src/core/asset/material_instance.md)
-- [MaterialPassDefinition：单个材质 pass 的结构边界](src/core/asset/material_pass_definition.md)
 - [MaterialTemplate：多 pass 蓝图如何收束成统一契约](src/core/asset/material_template.md)
+- [MaterialInstance：从模板到运行时账本](src/core/asset/material_instance.md)
 
 配套阅读：
 
@@ -39,7 +38,7 @@
 2. 运行 `python3 scripts/extract_source_analysis.py`
 3. 如有需要，再补 `<!-- SOURCE_ANALYSIS:EXTRA -->` 后面的扩展内容
 
-当前脚本只会生成 `TARGETS` 里显式列出的页面，不会对整个 `src/` 自动扫全量分析页。这一层配置就是“只分析部分源码”的开关。
+当前脚本只会生成 `TARGETS` 里显式列出的页面，不会对整个 `src/` 自动扫全量分析页。这一层配置就是“只分析部分源码”的开关。源码分析导航顺序也由 target 元数据控制，而不是在 `notes/nav.yml` 里逐页手写。
 
 ## 继续阅读
 

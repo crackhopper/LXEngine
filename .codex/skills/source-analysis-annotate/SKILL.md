@@ -11,6 +11,7 @@ Add high-signal source-attached analysis comments that can later be extracted in
 - Refreshing stale source-analysis comments after a refactor
 - Preparing code for `source-analysis-docs`
 - Small dependency-slice analysis where one file's meaning depends on a few nearby files
+- Cases where the main file cannot be explained honestly without annotating nearby helper types in other files
 
 This skill is about comment design, not generic code commenting.
 
@@ -69,7 +70,8 @@ The body should:
 4. Add or revise `@source_analysis.section` blocks near the code they explain.
 5. Keep each block locally truthful; avoid mixing distant concepts into one block.
 6. If the file cannot support a coherent analysis alone, annotate the closely related peer file too rather than forcing one giant comment.
-7. After patching, run `python3 scripts/extract_source_analysis.py` if the target is already registered, or hand off to `source-analysis-docs` to finish the page setup.
+7. Prefer explaining one reader journey across a tight file cluster over creating isolated comments that only make sense when cross-referenced manually.
+8. After patching, run `python3 scripts/extract_source_analysis.py` if the target is already registered, or hand off to `source-analysis-docs` to finish the page setup.
 
 ## Heuristics For Good Sections
 
@@ -86,6 +88,7 @@ Keep the analysis narrow:
 - start from the requested file
 - pull in only direct collaborators needed to explain meaning
 - avoid wandering into full subsystem documentation
+- if a helper type is required to explain a cache / descriptor / ownership / layout concept, annotate that helper type in place instead of faking completeness in the main file's comments
 
 If the user really wants broad design exploration, use `openspec-explore` instead of turning source comments into a subsystem essay.
 

@@ -14,7 +14,7 @@
 “backend 侧 upload/bind 输入”拆成更多层？答案是，这里故意只保留
 backend 真正需要的最小公共契约，避免每条资源路径都发明一套专用接口。
 
-源码入口：[gpu_resource.hpp](../../../../../src/core/rhi/gpu_resource.hpp)
+源码入口：[gpu_resource.hpp](../../../../src/core/rhi/gpu_resource.hpp)
 
 ## IGpuResource：core 层定义的“可被 GPU 消费”的统一契约
 

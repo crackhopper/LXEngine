@@ -22,11 +22,11 @@ Treat `generate_source_analysis` as covering two concrete modes:
 
 ### 1. New Page
 
-Use when the target source file does not yet have a corresponding page under `notes/source_analysis/`.
+Use when the target source file or source cluster does not yet have a corresponding page under `notes/source_analysis/`.
 
 Expected outcomes:
 
-- source-attached `@source_analysis.section` comments exist where needed
+- source-attached `@source_analysis.section` comments exist where needed, including nearby dependency files when the concept crosses file boundaries
 - a new target is registered in `scripts/extract_source_analysis.py`
 - a new generated page exists under the mirrored `notes/source_analysis/...` path
 - the page has a sensible manual `SOURCE_ANALYSIS:EXTRA` section
@@ -45,7 +45,7 @@ Expected outcomes:
 
 - Source comments live close to code in `/* ... */` blocks beginning with `@source_analysis.section Title`.
 - Extraction is performed by `python3 scripts/extract_source_analysis.py`.
-- Generated pages mirror source-relative paths under `notes/source_analysis/`.
+- Generated pages mirror a primary source path under `notes/source_analysis/`, but one page may aggregate multiple tightly related source files.
 - Manual synthesis lives after `<!-- SOURCE_ANALYSIS:EXTRA -->` and is preserved by the extractor.
 - Extraction targets are explicitly listed in `scripts/extract_source_analysis.py`.
 
@@ -58,7 +58,7 @@ Read these first:
 
 ## Workflow
 
-1. Identify the target source file or tightly related file group.
+1. Identify the target source file and the minimum tightly related file group required to explain it correctly.
 2. Determine mode:
    - new page
    - update existing page
@@ -66,9 +66,11 @@ Read these first:
 4. If comments are insufficient, stale, trivial, or too low-level:
    - use the helper skill `source-analysis-annotate`
    - improve only the comments that clarify concept boundaries, lifecycle, invariants, data flow, or tradeoffs
+   - annotate nearby dependency types when the requested concept cannot be understood honestly without them
 5. If this is a new page:
    - add a target entry to `scripts/extract_source_analysis.py`
-   - mirror the source-relative path under `notes/source_analysis/`
+   - choose one primary source path to mirror under `notes/source_analysis/`
+   - register any additional source files that should be extracted into the same page
    - write a short intro that frames the reading angle
 6. If this is an existing page:
    - read the current generated page
@@ -76,28 +78,31 @@ Read these first:
    - remove stale claims, old names, and outdated comparisons
 7. Run `python3 scripts/extract_source_analysis.py`.
 8. Refine the `SOURCE_ANALYSIS:EXTRA` section for cross-section synthesis, comparisons, reading guidance, and broader context.
-9. Update related nav or nearby notes only when clearly necessary.
+9. If source-analysis navigation ordering is affected, update the ordering metadata and generated nav integration rather than only editing a one-off page list.
+10. Update related nav or nearby notes only when clearly necessary.
 
 ## New Page Rules
 
 When creating a brand-new source-analysis page:
 
-- choose the output path by mirroring the source path under `notes/source_analysis/`
+- choose the output path by mirroring the primary source path under `notes/source_analysis/`
 - keep the page focused on one source file or one very tight file cluster
 - write an intro that answers:
-  - why this file is worth reading
+  - why this file or cluster is worth reading
   - what reader question should frame the page
   - what nearby concepts it connects to
 - do not add a target for a file that still has no meaningful analysis comments unless you are also fixing that in the same run
+- prefer one concept entry page over multiple thin pages when a reader would otherwise bounce between helper types just to understand the main file
 
 ### Adding A Target
 
 When updating `scripts/extract_source_analysis.py`:
 
 - add one explicit `SourceAnalysisTarget`
-- keep `source`, `output`, `title`, and `intro` all concrete
+- keep the primary source, output, title, intro, and any additional related sources all concrete
 - do not turn the script into a repo-wide auto-discovery system unless the user explicitly asks for that design change
 - keep the output path stable once introduced, unless a source file move genuinely requires changing it
+- if one page aggregates multiple files, keep the aggregation narrow and intentional; do not turn a page into a whole-subsystem dump
 
 Title guidance:
 
@@ -174,15 +179,18 @@ Use this quick decision rule:
 - if the page exists and the source comments are still structurally good, update
 - if the page exists but the source comments no longer explain the current design, annotate then update
 - if the page does not exist, annotate if needed, register target, then generate
+- if the target concept depends on helper types in nearby files, annotate those files too and aggregate them into one page instead of creating fragmented single-file pages by default
 - if the request is really about broad architecture rather than source-attached reading, do not force it into this workflow
 
 ## Validation
 
 - run `python3 scripts/extract_source_analysis.py`
 - verify the generated page renders the intended sections in order
+- verify aggregated pages clearly show which source file each extracted section came from
 - confirm the `SOURCE_ANALYSIS:EXTRA` tail was preserved
 - for new pages, verify the target path and intro are correct
 - for updated pages, verify stale statements were actually removed
+- if nav ordering metadata changed, verify the generated notes nav reflects the new order
 - if semantics changed while annotating, run the smallest relevant build/test command when feasible
 
 ## Escalation Rules

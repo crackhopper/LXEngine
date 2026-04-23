@@ -13,7 +13,7 @@
 为什么还需要一个 `MaterialInstance`？答案是，template 负责“结构是什么”，
 instance 负责“这一帧真正要喂给 backend 的实例数据是什么”。
 
-源码入口：[material_instance.hpp](../../../../../src/core/asset/material_instance.hpp)
+源码入口：[material_instance.hpp](../../../../src/core/asset/material_instance.hpp)
 
 ## MaterialParameterData：一个完整的材质参数槽位
 

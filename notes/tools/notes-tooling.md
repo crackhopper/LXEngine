@@ -165,12 +165,13 @@ flowchart TD
 
 `后端实现` 当前作为独立一级菜单，先收纳 `Vulkan Backend` 这组按实现模块拆开的后端专题文档。
 
-不过有两类目录例外，它们仍然允许通过占位符动态展开：
+不过有三类目录例外，它们仍然允许通过占位符动态展开：
 
 - `@requirements`：展开 `docs/requirements/*.md` 映射到 `notes/requirements/` 的活动需求页
 - `@roadmaps`：展开 `notes/roadmaps/` 下的子目录，并递归生成 roadmap 分组导航
+- `@source_analysis`：展开 `scripts/extract_source_analysis.py` 里注册的源码分析目标，并按 target 元数据排序
 
-这两个占位符仍然要写在 `notes/nav.yml` 里，所以“它们出现在哪个一级菜单、排在什么位置”依旧由配置控制；变化的只是具体页面列表由目录内容自动跟随。
+这三个占位符仍然要写在 `notes/nav.yml` 里，所以“它们出现在哪个一级菜单、排在什么位置”依旧由配置控制；变化的只是具体页面列表由目录内容自动跟随。
 
 ### `notes/requirements/`
 

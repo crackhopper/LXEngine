@@ -15,6 +15,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 
 import yaml
@@ -29,6 +30,7 @@ TEMPORARY_DIR = NOTES_DIR / "temporary"
 MKDOCS_SRC = REPO_ROOT / "mkdocs.yml"
 MKDOCS_GEN = REPO_ROOT / "mkdocs.gen.yml"
 NAV_CONFIG = NOTES_DIR / "nav.yml"
+SOURCE_ANALYSIS_SCRIPT = REPO_ROOT / "scripts" / "extract_source_analysis.py"
 
 NAV_SECTION_TITLE = "需求（进行中）"
 TOOLS_SECTION_TITLE = "相关工具"
@@ -111,6 +113,26 @@ def discover_temporary() -> list[Path]:
     ]
     files.sort(key=lambda p: natural_name_key(p.name))
     return files
+
+
+def load_source_analysis_targets() -> list[object]:
+    if not SOURCE_ANALYSIS_SCRIPT.is_file():
+        return []
+
+    spec = spec_from_file_location("extract_source_analysis", SOURCE_ANALYSIS_SCRIPT)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"failed to load {SOURCE_ANALYSIS_SCRIPT}")
+
+    module = module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    if not hasattr(module, "load_targets"):
+        raise RuntimeError("extract_source_analysis.py missing load_targets()")
+
+    targets = list(module.load_targets())
+    targets.sort(key=lambda target: (target.nav_order, target.title))
+    return targets
 
 
 def extract_title(md_path: Path, fallback: str) -> str:
@@ -252,6 +274,7 @@ def expand_nav_token(
     req_files: list[Path],
     roadmap_dirs: list[Path],
     temporary_files: list[Path],
+    source_analysis_targets: list[object],
 ) -> list[dict]:
     if token == "@requirements":
         return [
@@ -262,6 +285,8 @@ def expand_nav_token(
         return [build_roadmap_dir_nav(p) for p in roadmap_dirs]
     if token == "@temporary":
         return [build_generated_nav_item(p) for p in temporary_files]
+    if token == "@source_analysis":
+        return [{target.title: target.output.removeprefix("notes/")} for target in source_analysis_targets]
     raise ValueError(f"unsupported nav token '{token}'")
 
 
@@ -271,17 +296,31 @@ def normalize_nav_list(
     req_files: list[Path],
     roadmap_dirs: list[Path],
     temporary_files: list[Path],
+    source_analysis_targets: list[object],
 ) -> list:
     normalized: list = []
     for index, entry in enumerate(entries):
         entry_context = f"{context}[{index}]"
         if isinstance(entry, str) and entry.startswith("@"):
             normalized.extend(
-                expand_nav_token(entry, req_files, roadmap_dirs, temporary_files)
+                expand_nav_token(
+                    entry,
+                    req_files,
+                    roadmap_dirs,
+                    temporary_files,
+                    source_analysis_targets,
+                )
             )
             continue
         normalized.append(
-            normalize_nav_entry(entry, entry_context, req_files, roadmap_dirs, temporary_files)
+            normalize_nav_entry(
+                entry,
+                entry_context,
+                req_files,
+                roadmap_dirs,
+                temporary_files,
+                source_analysis_targets,
+            )
         )
     return normalized
 
@@ -292,6 +331,7 @@ def normalize_nav_entry(
     req_files: list[Path],
     roadmap_dirs: list[Path],
     temporary_files: list[Path],
+    source_analysis_targets: list[object],
 ) -> object:
     if isinstance(entry, str):
         return validate_note_path(entry, context)
@@ -310,7 +350,12 @@ def normalize_nav_entry(
         if isinstance(value, list):
             return {
                 title: normalize_nav_list(
-                    value, child_context, req_files, roadmap_dirs, temporary_files
+                    value,
+                    child_context,
+                    req_files,
+                    roadmap_dirs,
+                    temporary_files,
+                    source_analysis_targets,
                 )
             }
 
@@ -323,6 +368,7 @@ def load_nav_config(
     req_files: list[Path],
     roadmap_dirs: list[Path],
     temporary_files: list[Path],
+    source_analysis_targets: list[object],
 ) -> list:
     if not NAV_CONFIG.is_file():
         raise FileNotFoundError(f"{NAV_CONFIG} not found")
@@ -334,7 +380,14 @@ def load_nav_config(
     if not isinstance(nav, list) or not nav:
         raise ValueError("notes/nav.yml must define a non-empty 'nav' list")
 
-    return normalize_nav_list(nav, "nav", req_files, roadmap_dirs, temporary_files)
+    return normalize_nav_list(
+        nav,
+        "nav",
+        req_files,
+        roadmap_dirs,
+        temporary_files,
+        source_analysis_targets,
+    )
 
 
 def inject_into_mkdocs(req_files: list[Path], tool_files: list[Path], nav: list) -> None:
@@ -382,10 +435,11 @@ def main() -> int:
     tool_files = discover_tools()
     roadmap_dirs = discover_roadmaps()
     temporary_files = discover_temporary()
+    source_analysis_targets = load_source_analysis_targets()
     sync_symlinks(req_files)
     write_tools_index(tool_files)
     write_temporary_index(temporary_files)
-    nav = load_nav_config(req_files, roadmap_dirs, temporary_files)
+    nav = load_nav_config(req_files, roadmap_dirs, temporary_files, source_analysis_targets)
     inject_into_mkdocs(req_files, tool_files, nav)
 
     print(f">> Generated {MKDOCS_GEN.relative_to(REPO_ROOT)}")

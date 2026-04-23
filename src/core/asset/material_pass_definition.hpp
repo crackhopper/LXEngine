@@ -121,7 +121,7 @@ struct RenderState {
 
 - `renderState`：固定功能状态
 - `shaderSet`：shader 名称、variant 组合和编译结果
-- `bindingCache`：从 shader 反射得到的 binding 名称索引
+- `bindingCache`：从 shader 反射得到的 `ShaderResourceBinding` 名称索引
 
 这个类型的重点不是“保存很多字段”，而是给 template 一个明确的 pass 边界。
 只要 `MaterialTemplate` 按 pass 持有它，外层代码就能把“Forward/Shadow/... 的结构差异”
@@ -163,7 +163,9 @@ struct MaterialPassDefinition {
 
 因为 `bindingCache` 是 pass 本地视图，所以这里保留 system-owned 和
 material-owned 两类 binding；真正决定“哪些资源归材质实例管理”的步骤，
-在更外层的 `MaterialTemplate::buildBindingCache()` 里完成。
+在更外层的 `MaterialTemplate::buildBindingCache()` 里完成。这里的 cache
+不是新的抽象层，而是把 `ShaderResourceBinding` 这份反射描述改造成
+按名字可查的 pass 本地索引。
 */
   void buildCache() {
     bindingCache.clear();

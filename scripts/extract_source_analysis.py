@@ -34,6 +34,12 @@ class SourceAnalysisTarget:
     output: str
     title: str
     intro: str
+    related_sources: tuple[str, ...] = ()
+    nav_order: int = 1000
+
+    @property
+    def all_sources(self) -> tuple[str, ...]:
+        return (self.source, *self.related_sources)
 
 
 TARGETS = [
@@ -55,6 +61,7 @@ TARGETS = [
             backend 真正需要的最小公共契约，避免每条资源路径都发明一套专用接口。
             """
         ).strip(),
+        nav_order=100,
     ),
     SourceAnalysisTarget(
         source="src/core/asset/material_instance.hpp",
@@ -73,24 +80,7 @@ TARGETS = [
             instance 负责“这一帧真正要喂给 backend 的实例数据是什么”。
             """
         ).strip(),
-    ),
-    SourceAnalysisTarget(
-        source="src/core/asset/material_pass_definition.hpp",
-        output="notes/source_analysis/src/core/asset/material_pass_definition.md",
-        title="MaterialPassDefinition：单个材质 pass 的结构边界",
-        intro=textwrap.dedent(
-            """\
-            这一页从
-            [src/core/asset/material_pass_definition.hpp](../../../../../src/core/asset/material_pass_definition.hpp)
-            出发，解释材质系统为什么要先把“单个 pass 的结构”收拢成一个轻量对象，
-            再由 `MaterialTemplate` 去组织多个 pass。
-
-            可以先带着一个问题阅读：为什么这里不直接让 `MaterialTemplate` 平铺保存
-            render state、shader 和 binding 相关字段？答案是，pass 本身就是材质结构的
-            一级边界；只有先把这个边界固定下来，后续的模板共享、签名生成和反射缓存
-            才不会彼此缠在一起。
-            """
-        ).strip(),
+        nav_order=310,
     ),
     SourceAnalysisTarget(
         source="src/core/asset/material_template.hpp",
@@ -108,6 +98,11 @@ TARGETS = [
             在结构上有哪些 pass”，后者回答“每个 pass 里哪些资源真正归材质实例填写”。
             """
         ).strip(),
+        related_sources=(
+            "src/core/asset/material_pass_definition.hpp",
+            "src/core/asset/shader.hpp",
+        ),
+        nav_order=300,
     ),
 ]
 
@@ -139,11 +134,22 @@ def load_extra_section(output_path: Path) -> str:
     return text.split(EXTRA_MARKER, 1)[1].lstrip("\n")
 
 
+def format_source_link(source: str) -> str:
+    source_path = Path(source)
+    depth = len(Path(source).parts) - 1
+    rel_prefix = "../" * (depth + 1)
+    return f"[{source_path.name}]({rel_prefix}{source})"
+
+
+def load_targets() -> list[SourceAnalysisTarget]:
+    return list(TARGETS)
+
+
 def render_target(target: SourceAnalysisTarget) -> str:
-    source_path = REPO_ROOT / target.source
+    primary_source_path = REPO_ROOT / target.source
     output_path = REPO_ROOT / target.output
-    sections = extract_sections(source_path.read_text(encoding="utf-8"))
     extra = load_extra_section(output_path).rstrip()
+    all_sources = target.all_sources
 
     lines = [
         f"# {target.title}",
@@ -153,15 +159,34 @@ def render_target(target: SourceAnalysisTarget) -> str:
         "",
         target.intro,
         "",
-        f"源码入口：[{source_path.name}](../../../../../{target.source})",
+        f"源码入口：{format_source_link(target.source)}",
         "",
     ]
 
-    for section_title, body in sections:
-        lines.append(f"## {section_title}")
+    if len(all_sources) > 1:
+        lines.append("关联源码：")
         lines.append("")
-        lines.append(body)
+        for source in target.related_sources:
+            lines.append(f"- {format_source_link(source)}")
         lines.append("")
+
+    for source in all_sources:
+        source_path = REPO_ROOT / source
+        sections = extract_sections(source_path.read_text(encoding="utf-8"))
+        if not sections:
+            continue
+        if len(all_sources) > 1:
+            lines.append(f"## {Path(source).name}")
+            lines.append("")
+            lines.append(f"源码位置：{format_source_link(source)}")
+            lines.append("")
+
+        for section_title, body in sections:
+            heading = "###" if len(all_sources) > 1 else "##"
+            lines.append(f"{heading} {section_title}")
+            lines.append("")
+            lines.append(body)
+            lines.append("")
 
     lines.extend(
         [
@@ -179,7 +204,7 @@ def render_target(target: SourceAnalysisTarget) -> str:
 
 
 def main() -> None:
-    for target in TARGETS:
+    for target in load_targets():
         output_path = REPO_ROOT / target.output
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(render_target(target), encoding="utf-8")

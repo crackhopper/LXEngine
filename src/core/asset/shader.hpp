@@ -32,9 +32,19 @@ enum class ShaderPropertyType {
   Sampler
 };
 
-/*****************************************************************
- * StructMemberInfo — std140 layout of a single UBO struct member
- *****************************************************************/
+/*
+@source_analysis.section StructMemberInfo：把 UBO 成员布局显式带出 shader 反射边界
+`StructMemberInfo` 描述的不是“材质参数当前值”，而是 shader 反射出来的
+结构布局事实：成员名、类型、偏移和声明尺寸。它存在的意义是让
+`ShaderResourceBinding` 不只知道“这是一个 UniformBuffer”，还知道
+这个 block 里面有哪些顶层成员、每个成员落在什么偏移。
+
+这一层信息会继续影响材质系统：
+
+- `MaterialPassDefinition::bindingCache` 保存的是完整 `ShaderResourceBinding`
+- `MaterialTemplate` 做跨 pass 一致性检查时，会比较 `members`
+- `MaterialInstance` 写参数时，会按成员偏移把值写进 canonical buffer
+*/
 struct StructMemberInfo {
   std::string name;        // GLSL member name (e.g. "baseColor")
   ShaderPropertyType type; // Float / Int / Vec2 / Vec3 / Vec4 / Mat4
@@ -65,9 +75,22 @@ inline ShaderStage operator|(ShaderStage a, ShaderStage b) {
                                   static_cast<uint32_t>(b));
 }
 
-/*****************************************************************
- * Reflection Binding
- *****************************************************************/
+/*
+@source_analysis.section ShaderResourceBinding：shader 反射结果在引擎里的统一描述
+`ShaderResourceBinding` 是 shader 反射穿过 core/asset 边界之后的统一载体。
+它把一个 descriptor binding 需要的结构性信息放到同一个对象里：
+
+- 名字、set、binding：让上层能按语义名或 descriptor 槽位定位资源
+- `type` / `descriptorCount`：让上层知道这是什么资源形状
+- `size` / `members`：让 buffer 类 binding 保留布局事实，而不是只剩一个名字
+- `stageFlags`：保留这个 binding 被哪些 stage 使用
+
+因此，材质系统里提到的“binding cache”并不是另一种独立格式，
+本质上就是把这些 `ShaderResourceBinding` 对象按不同视角重新索引：
+
+- `MaterialPassDefinition` 做 pass 本地按名字索引
+- `MaterialTemplate` 做 per-pass material-owned 过滤和跨 pass 一致性检查
+*/
 struct ShaderResourceBinding {
   std::string name;
 
@@ -112,9 +135,16 @@ struct VertexInputAttribute {
   }
 };
 
-/*****************************************************************
- * IShader
- *****************************************************************/
+/*
+@source_analysis.section IShader：把编译产物和反射视图一起交给上层
+对材质系统来说，`IShader` 重要的不只是字节码，还包括
+`getReflectionBindings()` 这条读路径。`MaterialPassDefinition::buildCache()`
+和 `MaterialTemplate::buildBindingCache()` 都依赖它，把 shader 的反射结果
+转成材质侧可查询、可校验的 binding 视图。
+
+也就是说，材质模板并不自己理解 GLSL 或 SPIR-V；它只消费 `IShader`
+已经整理好的反射结果，并在更高一层决定 ownership、缓存视角和一致性约束。
+*/
 class IShader {
 public:
   virtual ~IShader() = default;
@@ -164,9 +194,16 @@ struct ShaderVariant {
   }
 };
 
-/*****************************************************************
- * Shader Program Set
- *****************************************************************/
+/*
+@source_analysis.section ShaderProgramSet：把“哪份 shader 变体参与这个 pass”收束成一项配置
+`ShaderProgramSet` 既保存逻辑层的 shader 标识（`shaderName` + variants），
+也保存已经解析好的 `IShaderPtr`。这样 `MaterialPassDefinition` 就可以同时回答：
+
+- 这个 pass 的结构签名应该由哪份 shader 名称和哪些 variant 组成
+- 运行时如果需要反射 binding，该去拿哪一个 `IShader`
+
+因此它是 pass 结构的一部分，而不是单纯的运行时缓存句柄。
+*/
 struct ShaderProgramSet {
   std::string shaderName;
   std::vector<ShaderVariant> variants;
