@@ -288,19 +288,14 @@ function(_lx_configure_bootstrap_toolchain)
       "MSVC CXX compiler imported from Visual Studio developer environment" FORCE)
 
   if(CMAKE_GENERATOR STREQUAL "Ninja" AND NOT CMAKE_MAKE_PROGRAM)
-    set(_lx_ninja_hints "")
-    get_filename_component(_lx_cmake_bin_dir "${CMAKE_COMMAND}" DIRECTORY)
-    if(_lx_cmake_bin_dir)
-      list(APPEND _lx_ninja_hints "${_lx_cmake_bin_dir}")
-    endif()
-
     find_program(_lx_ninja_program
-      NAMES ninja.exe ninja ninja-build.exe ninja-build
-      HINTS ${_lx_ninja_hints})
+      NAMES ninja.exe ninja ninja-build.exe ninja-build)
+
     if(NOT _lx_ninja_program)
       message(FATAL_ERROR
         "Imported the Visual Studio developer environment, but Ninja was not found. "
-        "Install Ninja or use a Visual Studio generator.")
+        "It should be available through PATH after environment merge. "
+        "Install Ninja, fix PATH, or use a Visual Studio generator.")
     endif()
 
     set(CMAKE_MAKE_PROGRAM "${_lx_ninja_program}" CACHE FILEPATH
@@ -561,6 +556,7 @@ endif()
 set(_lx_env_dump "")
 set(_lx_import_source "")
 set(_lx_failures "")
+set(_lx_original_path "$ENV{PATH}")
 
 foreach(_lx_attempt IN LISTS _lx_bootstrap_attempts)
   string(REPLACE "|" ";" _lx_attempt_fields "${_lx_attempt}")
@@ -604,6 +600,9 @@ if(_lx_env_dump)
       set(_lx_name "${CMAKE_MATCH_1}")
       set(_lx_value "${CMAKE_MATCH_2}")
       if(NOT _lx_name MATCHES "^=")
+        if(_lx_name STREQUAL "PATH" AND _lx_original_path)
+          set(_lx_value "${_lx_value};${_lx_original_path}")
+        endif()
         set(ENV{${_lx_name}} "${_lx_value}")
         if(_lx_name MATCHES "^(PATH|INCLUDE|LIB|LIBPATH|VCToolsInstallDir|VCINSTALLDIR|VSINSTALLDIR|WindowsSdkDir|WindowsSdkVersion|UCRTVersion|UniversalCRTSdkDir)$")
           list(APPEND _lx_imported_keys "${_lx_name}")
@@ -619,6 +618,9 @@ if(_lx_env_dump)
     "${_lx_import_source}")
   if(_lx_imported_summary)
     message(STATUS "Imported environment keys: ${_lx_imported_summary}")
+  endif()
+  if(_lx_original_path)
+    message(STATUS "Merged original PATH entries after Visual Studio environment import")
   endif()
   _lx_configure_bootstrap_toolchain()
   return()
