@@ -38,5 +38,4 @@ if(_lx_existing_env_ready)
   return()
 endif()
 
-lx_windows_msvc_find_install(_lx_vs_root _lx_bootstrap_script)
-lx_windows_msvc_import_env("${_lx_vs_root}" "${_lx_bootstrap_script}")
+lx_windows_msvc_import_env()

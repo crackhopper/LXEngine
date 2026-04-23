@@ -5,6 +5,7 @@ import argparse
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -21,20 +22,24 @@ def normalize_name(name: str) -> str:
     return name.upper()
 
 
+def normalize_path(value: str) -> str:
+    return value.replace("\\", "/").rstrip("/")
+
+
 def merge_value(child: str, original: str) -> str:
     if ";" in child or ";" in original:
-      merged: list[str] = []
-      seen: set[str] = set()
-      for raw in (child.split(";") + original.split(";")):
-          item = raw.strip()
-          if not item:
-              continue
-          dedupe_key = item.lower()
-          if dedupe_key in seen:
-              continue
-          seen.add(dedupe_key)
-          merged.append(item)
-      return ";".join(merged)
+        merged: list[str] = []
+        seen: set[str] = set()
+        for raw in (child.split(";") + original.split(";")):
+            item = raw.strip()
+            if not item:
+                continue
+            dedupe_key = item.lower()
+            if dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
+            merged.append(item)
+        return ";".join(merged)
     return child
 
 
@@ -63,27 +68,123 @@ def write_cmake(output_cmake: Path, merged_env: dict[str, str], log_path: Path) 
     output_cmake.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def find_vsdevcmd(explicit_root: str) -> tuple[Path, Path]:
+    candidates: list[tuple[Path, Path]] = []
+
+    if explicit_root:
+        root = Path(explicit_root)
+        direct = root / "Common7" / "Tools" / "VsDevCmd.bat"
+        if direct.exists():
+            return root, direct
+        if root.exists():
+            for year_dir in sorted(root.iterdir(), reverse=True):
+                if not year_dir.is_dir() or not year_dir.name.isdigit():
+                    continue
+                if int(year_dir.name) < 2022:
+                    continue
+                for sku in ("Community", "Professional", "Enterprise", "BuildTools", "Preview"):
+                    candidate_root = year_dir / sku
+                    candidate_script = candidate_root / "Common7" / "Tools" / "VsDevCmd.bat"
+                    if candidate_script.exists():
+                        return candidate_root, candidate_script
+        raise FileNotFoundError(
+            f"Explicit LX_WINDOWS_VS_INSTALLATION_PATH does not contain a usable VsDevCmd.bat: {explicit_root}"
+        )
+
+    roots: list[Path] = []
+    for env_name in ("ProgramFiles", "ProgramFiles(x86)"):
+        env_value = os.environ.get(env_name)
+        if env_value:
+            roots.append(Path(env_value) / "Microsoft Visual Studio")
+
+    seen_roots: set[str] = set()
+    for root in roots:
+        root_key = str(root).lower()
+        if root_key in seen_roots or not root.exists():
+            continue
+        seen_roots.add(root_key)
+        for year_dir in sorted(root.iterdir(), reverse=True):
+            if not year_dir.is_dir() or not year_dir.name.isdigit():
+                continue
+            if int(year_dir.name) < 2022:
+                continue
+            for sku in ("Community", "Professional", "Enterprise", "BuildTools", "Preview"):
+                candidate_root = year_dir / sku
+                candidate_script = candidate_root / "Common7" / "Tools" / "VsDevCmd.bat"
+                if candidate_script.exists():
+                    candidates.append((candidate_root, candidate_script))
+
+    if not candidates:
+        raise FileNotFoundError("Unable to find VsDevCmd.bat under a supported Visual Studio 2022+ installation.")
+
+    return candidates[0]
+
+
+def build_cmd_script(vs_root: Path, vsdevcmd: Path, debug_enabled: bool, begin_marker: str, end_marker: str) -> str:
+    lines = [
+        "@echo off",
+        f'cd /d "{vs_root}"',
+        "set VSCMD_SKIP_SENDTELEMETRY=1",
+    ]
+    if debug_enabled:
+        lines.append("set VSCMD_DEBUG=3")
+    lines.extend(
+        [
+            f'call "{vsdevcmd}"',
+            "if errorlevel 1 exit /b %errorlevel%",
+            f"echo {begin_marker}",
+            "set",
+            f"echo {end_marker}",
+        ]
+    )
+    return "\r\n".join(lines) + "\r\n"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--cmd-script", required=True)
     parser.add_argument("--output-cmake", required=True)
     parser.add_argument("--output-log", required=True)
     parser.add_argument("--env-begin-marker", required=True)
     parser.add_argument("--env-end-marker", required=True)
+    parser.add_argument("--explicit-vs-root", default="")
+    parser.add_argument("--debug-enabled", choices=("0", "1"), default="0")
     args = parser.parse_args()
 
-    cmd_script = Path(args.cmd_script)
     output_cmake = Path(args.output_cmake)
     output_log = Path(args.output_log)
     output_cmake.parent.mkdir(parents=True, exist_ok=True)
     output_log.parent.mkdir(parents=True, exist_ok=True)
 
-    proc = subprocess.run(
-        ["cmd", "/d", "/c", str(cmd_script)],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        check=False,
+    try:
+        vs_root, vsdevcmd = find_vsdevcmd(args.explicit_vs_root)
+    except FileNotFoundError as exc:
+        sys.stderr.write(str(exc) + "\n")
+        return 3
+
+    script_text = build_cmd_script(
+        vs_root=vs_root,
+        vsdevcmd=vsdevcmd,
+        debug_enabled=args.debug_enabled == "1",
+        begin_marker=args.env_begin_marker,
+        end_marker=args.env_end_marker,
     )
+
+    with tempfile.NamedTemporaryFile("w", suffix=".cmd", delete=False, encoding="utf-8", newline="") as handle:
+        handle.write(script_text)
+        cmd_script = Path(handle.name)
+
+    try:
+        proc = subprocess.run(
+            ["cmd", "/d", "/c", str(cmd_script)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+    finally:
+        try:
+            cmd_script.unlink(missing_ok=True)
+        except OSError:
+            pass
 
     full_output = decode_output(proc.stdout).replace("\r\n", "\n").replace("\r", "\n")
     output_log.write_text(full_output, encoding="utf-8")
@@ -120,6 +221,9 @@ def main() -> int:
     for name, child_value in child_env.items():
         original_value = merged_env.get(name, "")
         merged_env[name] = merge_value(child_value, original_value)
+
+    merged_env["LX_WINDOWS_MSVC_VS_ROOT"] = normalize_path(str(vs_root))
+    merged_env["LX_WINDOWS_MSVC_VSDEVCMD"] = normalize_path(str(vsdevcmd))
 
     write_cmake(output_cmake, merged_env, output_log)
     return 0
