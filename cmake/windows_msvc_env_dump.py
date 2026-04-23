@@ -13,6 +13,16 @@ def normalize_name(name: str) -> str:
     return name.upper()
 
 
+def is_cmake_safe_env_name(name: str) -> bool:
+    if not name:
+        return False
+    for ch in name:
+        if ch.isalnum() or ch == "_":
+            continue
+        return False
+    return True
+
+
 def normalize_path(value: str) -> str:
     return value.replace("\\", "/").rstrip("/")
 
@@ -50,6 +60,8 @@ def write_cmake(output_cmake: Path, merged_env: dict[str, str], log_path: Path) 
         f"set(LX_WINDOWS_MSVC_ENV_LOG_PATH [=[{log_path.as_posix()}]=])",
     ]
     for name in sorted(merged_env):
+        if not is_cmake_safe_env_name(name):
+            continue
         value = merged_env[name]
         open_delim, close_delim = choose_bracket(value)
         if open_delim == '"':
