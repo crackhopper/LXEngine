@@ -280,9 +280,18 @@ else()
     endif()
 endif()
 
+if(TARGET SDL3::SDL3)
+    set(LX_SDL3_TARGET SDL3::SDL3)
+elseif(TARGET SDL3::SDL3-shared)
+    set(LX_SDL3_TARGET SDL3::SDL3-shared)
+else()
+    message(FATAL_ERROR
+        "SDL3 was found, but neither SDL3::SDL3 nor SDL3::SDL3-shared is available.")
+endif()
+
 if(NOT TARGET LX_SDL3)
     add_library(LX_SDL3 INTERFACE)
-    target_link_libraries(LX_SDL3 INTERFACE SDL3::SDL3)
+    target_link_libraries(LX_SDL3 INTERFACE ${LX_SDL3_TARGET})
 endif()
 
 # -------------------------------
