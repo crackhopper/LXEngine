@@ -250,11 +250,14 @@ function(lx_windows_msvc_import_env install_root bootstrap_script bootstrap_kind
 
   set(_lx_cmd_script "${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/lx_windows_msvc_env_bootstrap.cmd")
   get_filename_component(_lx_cmd_dir "${_lx_cmd_script}" DIRECTORY)
+  lx_windows_msvc_normalize_path("${install_root}" _lx_bootstrap_cwd)
 
   lx_windows_msvc_log_action("create bootstrap command script at ${_lx_cmd_script}")
+  lx_windows_msvc_log_result("Bootstrap working directory=${_lx_bootstrap_cwd}")
   file(MAKE_DIRECTORY "${_lx_cmd_dir}")
   file(WRITE "${_lx_cmd_script}"
     "@echo off\r\n"
+    "cd /d \"${_lx_bootstrap_cwd}\"\r\n"
     "call \"${bootstrap_script}\" ${_lx_bootstrap_args} >nul\r\n"
     "if errorlevel 1 exit /b %errorlevel%\r\n"
     "set\r\n")
