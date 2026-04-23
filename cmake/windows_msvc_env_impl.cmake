@@ -27,15 +27,18 @@ function(lx_windows_msvc_log_env_snapshot env_dump)
     LIB
     LIBPATH
     VCINSTALLDIR
-    VCToolsInstallDir
+    VCTOOLSINSTALLDIR
     VSINSTALLDIR
-    WindowsSdkDir
-    WindowsSdkVersion
-    UniversalCRTSdkDir
-    UCRTVersion)
+    WINDOWSSDKDIR
+    WINDOWSSDKVERSION
+    UNIVERSALCRTSDKDIR
+    UCRTVERSION)
 
   string(REPLACE "\r\n" "\n" _lx_dump "${env_dump}")
   string(REPLACE "\r" "\n" _lx_dump "${_lx_dump}")
+  # Escape semicolons so multi-path values (PATH/INCLUDE/LIB/LIBPATH) are not
+  # split mid-value when the string is later iterated as a CMake list.
+  string(REPLACE ";" "\\;" _lx_dump "${_lx_dump}")
   string(REPLACE "\n" ";" _lx_lines "${_lx_dump}")
 
   foreach(_lx_line IN LISTS _lx_lines)
@@ -56,12 +59,17 @@ endfunction()
 
 function(lx_windows_msvc_probe_program program_label)
   lx_windows_msvc_log_action("probe ${program_label} in current PATH")
-  find_program(_lx_program_path NAMES "${program_label}.exe" "${program_label}")
-  if(_lx_program_path)
-    lx_windows_msvc_log_result("${program_label} probe result=${_lx_program_path}")
+  # Use a label-specific cache variable and clear it before+after so that
+  # consecutive probes do not alias each other's cached result.
+  set(_lx_probe_var "_lx_probe_result_${program_label}")
+  unset(${_lx_probe_var} CACHE)
+  find_program(${_lx_probe_var} NAMES "${program_label}.exe" "${program_label}")
+  if(${_lx_probe_var})
+    lx_windows_msvc_log_result("${program_label} probe result=${${_lx_probe_var}}")
   else()
     lx_windows_msvc_log_result("${program_label} probe result=NOT FOUND")
   endif()
+  unset(${_lx_probe_var} CACHE)
 endfunction()
 
 function(lx_windows_msvc_normalize_path input_path output_var)
@@ -328,20 +336,25 @@ function(lx_windows_msvc_import_env install_root bootstrap_script bootstrap_kind
   lx_windows_msvc_log_env_snapshot("${_lx_env_dump}")
   string(REPLACE "\r\n" "\n" _lx_env_dump "${_lx_env_dump}")
   string(REPLACE "\r" "\n" _lx_env_dump "${_lx_env_dump}")
+  # Escape semicolons inside values before splitting lines into a CMake list,
+  # otherwise multi-path values (PATH/INCLUDE/LIB/LIBPATH) are truncated to
+  # their first path segment on import.
+  string(REPLACE ";" "\\;" _lx_env_dump "${_lx_env_dump}")
   string(REPLACE "\n" ";" _lx_env_lines "${_lx_env_dump}")
 
+  # Entries must be uppercase: we match against TOUPPER(name) with case-sensitive list(FIND).
   set(_lx_allowed_vars
     PATH
     INCLUDE
     LIB
     LIBPATH
     VCINSTALLDIR
-    VCToolsInstallDir
+    VCTOOLSINSTALLDIR
     VSINSTALLDIR
-    WindowsSdkDir
-    WindowsSdkVersion
-    UCRTVersion
-    UniversalCRTSdkDir)
+    WINDOWSSDKDIR
+    WINDOWSSDKVERSION
+    UCRTVERSION
+    UNIVERSALCRTSDKDIR)
   set(_lx_imported_vars "")
   set(_lx_seen_allowed_vars "")
   set(_lx_bootstrap_path_value "")
