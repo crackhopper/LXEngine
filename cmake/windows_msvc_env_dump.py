@@ -129,7 +129,7 @@ def build_cmd_script(
         lines.append("set VSCMD_DEBUG=3")
     lines.extend(
         [
-            f'call "{vsdevcmd}"',
+            f'call "{vsdevcmd}" -host_arch=x64 -arch=x64',
             "if errorlevel 1 exit /b %errorlevel%",
             f'"{python_exe}" "{script_path}"'
             f' --dump-current-env'
