@@ -16,6 +16,44 @@ function(lx_windows_msvc_log_result result_text)
   message(STATUS "[windows_msvc_env] ${result_text}")
 endfunction()
 
+function(lx_windows_msvc_log_env_snapshot env_dump)
+  if(NOT LX_CMAKE_DEBUG_WINDOWS_MSVC_ENV)
+    return()
+  endif()
+
+  set(_lx_keys_of_interest
+    PATH
+    INCLUDE
+    LIB
+    LIBPATH
+    VCINSTALLDIR
+    VCToolsInstallDir
+    VSINSTALLDIR
+    WindowsSdkDir
+    WindowsSdkVersion
+    UniversalCRTSdkDir
+    UCRTVersion)
+
+  string(REPLACE "\r\n" "\n" _lx_dump "${env_dump}")
+  string(REPLACE "\r" "\n" _lx_dump "${_lx_dump}")
+  string(REPLACE "\n" ";" _lx_lines "${_lx_dump}")
+
+  foreach(_lx_line IN LISTS _lx_lines)
+    if(_lx_line MATCHES "^([^=]+)=(.*)$")
+      set(_lx_name "${CMAKE_MATCH_1}")
+      set(_lx_value "${CMAKE_MATCH_2}")
+      if(_lx_name MATCHES "^=")
+        continue()
+      endif()
+      string(TOUPPER "${_lx_name}" _lx_name_upper)
+      list(FIND _lx_keys_of_interest "${_lx_name_upper}" _lx_key_index)
+      if(_lx_key_index GREATER -1)
+        lx_windows_msvc_log_result("Bootstrap snapshot ${_lx_name}=${_lx_value}")
+      endif()
+    endif()
+  endforeach()
+endfunction()
+
 function(lx_windows_msvc_probe_program program_label)
   lx_windows_msvc_log_action("probe ${program_label} in current PATH")
   find_program(_lx_program_path NAMES "${program_label}.exe" "${program_label}")
@@ -287,6 +325,7 @@ function(lx_windows_msvc_import_env install_root bootstrap_script bootstrap_kind
   endif()
 
   lx_windows_msvc_log_action("parse bootstrap environment snapshot")
+  lx_windows_msvc_log_env_snapshot("${_lx_env_dump}")
   string(REPLACE "\r\n" "\n" _lx_env_dump "${_lx_env_dump}")
   string(REPLACE "\r" "\n" _lx_env_dump "${_lx_env_dump}")
   string(REPLACE "\n" ";" _lx_env_lines "${_lx_env_dump}")
@@ -356,6 +395,9 @@ function(lx_windows_msvc_import_env install_root bootstrap_script bootstrap_kind
     lx_windows_msvc_log_result("Original PATH before import=${_lx_original_path}")
   endif()
   lx_windows_msvc_log_detail("Imported PATH=$ENV{PATH}")
+  lx_windows_msvc_probe_program("link")
+  lx_windows_msvc_probe_program("rc")
+  lx_windows_msvc_probe_program("mt")
   lx_windows_msvc_probe_program("ninja")
 endfunction()
 
@@ -374,6 +416,9 @@ function(lx_windows_msvc_finalize_compiler)
       "MSVC C compiler imported from Visual Studio developer environment" FORCE)
   set(CMAKE_CXX_COMPILER "${_lx_cl_compiler}" CACHE FILEPATH
       "MSVC CXX compiler imported from Visual Studio developer environment" FORCE)
+  lx_windows_msvc_probe_program("link")
+  lx_windows_msvc_probe_program("rc")
+  lx_windows_msvc_probe_program("mt")
   lx_windows_msvc_probe_program("ninja")
   if(DEFINED CMAKE_MAKE_PROGRAM AND CMAKE_MAKE_PROGRAM)
     lx_windows_msvc_log_result("CMAKE_MAKE_PROGRAM preset=${CMAKE_MAKE_PROGRAM}")
