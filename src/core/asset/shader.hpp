@@ -41,7 +41,7 @@ enum class ShaderPropertyType {
 
 这一层信息会继续影响材质系统：
 
-- `MaterialPassDefinition::bindingCache` 保存的是完整 `ShaderResourceBinding`
+- `MaterialTemplate` 会把它们收束进 canonical material binding 表
 - `MaterialTemplate` 做跨 pass 一致性检查时，会比较 `members`
 - `MaterialInstance` 写参数时，会按成员偏移把值写进 canonical buffer
 */
@@ -85,11 +85,11 @@ inline ShaderStage operator|(ShaderStage a, ShaderStage b) {
 - `size` / `members`：让 buffer 类 binding 保留布局事实，而不是只剩一个名字
 - `stageFlags`：保留这个 binding 被哪些 stage 使用
 
-因此，材质系统里提到的“binding cache”并不是另一种独立格式，
+因此，材质系统里提到的“material binding interface”并不是另一种独立格式，
 本质上就是把这些 `ShaderResourceBinding` 对象按不同视角重新索引：
 
-- `MaterialPassDefinition` 做 pass 本地按名字索引
-- `MaterialTemplate` 做 per-pass material-owned 过滤和跨 pass 一致性检查
+- `MaterialTemplate` 做 material-owned 过滤、canonical 化和跨 pass 一致性检查
+- `MaterialInstance` 再按 canonical binding id 组织运行时资源
 */
 struct ShaderResourceBinding {
   std::string name;
@@ -138,8 +138,8 @@ struct VertexInputAttribute {
 /*
 @source_analysis.section IShader：把编译产物和反射视图一起交给上层
 对材质系统来说，`IShader` 重要的不只是字节码，还包括
-`getReflectionBindings()` 这条读路径。`MaterialPassDefinition::buildCache()`
-和 `MaterialTemplate::buildBindingCache()` 都依赖它，把 shader 的反射结果
+`getReflectionBindings()` 这条读路径。`MaterialTemplate::rebuildMaterialInterface()`
+依赖它，把 shader 的反射结果
 转成材质侧可查询、可校验的 binding 视图。
 
 也就是说，材质模板并不自己理解 GLSL 或 SPIR-V；它只消费 `IShader`

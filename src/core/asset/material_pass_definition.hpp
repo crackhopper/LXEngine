@@ -120,62 +120,29 @@ struct RenderState {
 需要稳定共享的三类信息绑在一起：
 
 - `renderState`：固定功能状态
-- `shaderSet`：shader 名称、variant 组合和编译结果
-- `bindingCache`：从 shader 反射得到的 `ShaderResourceBinding` 名称索引
+- `shaderProgram`：shader 名称、variant 组合和编译结果
 
 这个类型的重点不是“保存很多字段”，而是给 template 一个明确的 pass 边界。
 只要 `MaterialTemplate` 按 pass 持有它，外层代码就能把“Forward/Shadow/... 的结构差异”
-收敛成统一接口，而不用分别管理 render state、shader 和反射缓存。
+收敛成统一接口，而不用分别管理 render state 和 shader 程序选择。
 */
 struct MaterialPassDefinition {
   RenderState renderState;
-  ShaderProgramSet shaderSet;
-  std::unordered_map<std::string, ShaderResourceBinding> bindingCache;
+  ShaderProgramSet shaderProgram;
 
   size_t getHash() const {
     size_t h = renderState.getHash();
-    hash_combine(h, shaderSet.getHash());
+    hash_combine(h, shaderProgram.getHash());
     return h;
   }
 
   StringID getRenderSignature() const {
     StringID fields[] = {
-        shaderSet.getRenderSignature(),
+        shaderProgram.getRenderSignature(),
         renderState.getRenderSignature(),
     };
     return GlobalStringTable::get().compose(TypeTag::MaterialPassDefinition,
                                             fields);
-  }
-
-  std::optional<std::reference_wrapper<const ShaderResourceBinding>>
-  findBinding(const std::string &name) const {
-    auto it = bindingCache.find(name);
-    if (it != bindingCache.end())
-      return it->second;
-    return std::nullopt;
-  }
-
-/*
-@source_analysis.section buildCache：把 shader 反射结果变成按名字可查的 pass 本地索引
-`buildCache()` 的角色很窄：它不筛选 ownership，也不做跨 pass 合并；
-它只是把当前 pass 的 shader 反射 binding 复制进一个名字索引表，
-让调用方可以用 `findBinding(name)` 快速回答“这个 pass 自己声明过什么资源”。
-
-因为 `bindingCache` 是 pass 本地视图，所以这里保留 system-owned 和
-material-owned 两类 binding；真正决定“哪些资源归材质实例管理”的步骤，
-在更外层的 `MaterialTemplate::buildBindingCache()` 里完成。这里的 cache
-不是新的抽象层，而是把 `ShaderResourceBinding` 这份反射描述改造成
-按名字可查的 pass 本地索引。
-*/
-  void buildCache() {
-    bindingCache.clear();
-    auto shader = shaderSet.getShader();
-    if (!shader)
-      return;
-
-    for (const auto &binding : shader->getReflectionBindings()) {
-      bindingCache[binding.name] = binding;
-    }
   }
 };
 

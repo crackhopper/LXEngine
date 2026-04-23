@@ -3,11 +3,11 @@
 #include "core/asset/material_pass_definition.hpp"
 #include "core/asset/shader_binding_ownership.hpp"
 
-#include <functional>
 #include <iostream>
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -40,148 +40,162 @@ public:
 
   const std::string &getName() const { return m_name; }
 
-  void setPass(StringID pass, MaterialPassDefinition definition) {
-    m_passes[pass] = std::move(definition);
+  void setPassDefinition(StringID pass, MaterialPassDefinition definition) {
+    m_passDefinitions[pass] = std::move(definition);
   }
 
   std::optional<std::reference_wrapper<const MaterialPassDefinition>>
-  getEntry(StringID pass) const {
-    auto it = m_passes.find(pass);
-    if (it != m_passes.end())
+  getPassDefinition(StringID pass) const {
+    auto it = m_passDefinitions.find(pass);
+    if (it != m_passDefinitions.end())
       return it->second;
     return std::nullopt;
   }
 
-  StringID getRenderPassSignature(StringID pass) const {
-    auto it = m_passes.find(pass);
-    if (it == m_passes.end())
+  StringID getPassDefinitionSignature(StringID pass) const {
+    auto passDefinition = getPassDefinition(pass);
+    if (!passDefinition)
       return StringID{};
-    return it->second.getRenderSignature();
+    return passDefinition->get().getRenderSignature();
   }
 
 /*
-@source_analysis.section buildBindingCache：把每个 pass 的反射结果筛成材质可写视图
-这个步骤顺着 `m_passes` 遍历每个 `MaterialPassDefinition` 的 shader 反射结果，
-但不会把所有 binding 都原样抄下来。它会先用 `isSystemOwnedBinding()` 过滤掉
-`CameraUBO` / `LightUBO` / `Bones` 这类由引擎负责供给的 binding，
-只把真正归材质实例写入的资源保留在 `m_passMaterialBindings`。
+@source_analysis.section rebuildMaterialInterface：先 canonical 化材质接口，再派生 pass 视图
+这个步骤不再把每个 pass 直接存成 `vector<ShaderResourceBinding>` 副本，
+而是先建立 template 级的 canonical material binding 表：
 
-结果仍然按 pass 分组存储。这样 `MaterialInstance` 后续读取时拿到的是
-“这个 pass 需要哪些材质侧资源”的局部视图，而不是一个已经抹平作用域的全局表。
+- key 是 `StringID(binding.name)`
+- value 是该名字对应的唯一 `ShaderResourceBinding` 结构事实
+
+然后每个 pass 只保存“本 pass 用到哪些 canonical binding”的 `StringID` 列表。
+这样 template 才真正成为材质结构真值来源：同名 binding 的跨 pass 一致性、
+descriptor 类型支持范围、以及运行时实例需要面对的 binding 集合，都在这里一次收束。
 */
-  void buildBindingCache() {
-    m_passMaterialBindings.clear();
+  void rebuildMaterialInterface() {
+    m_canonicalMaterialBindings.clear();
+    m_materialBindingIdsByPass.clear();
 
-    for (const auto &[pass, definition] : m_passes) {
-      auto shader = definition.shaderSet.getShader();
+    for (const auto &[pass, definition] : m_passDefinitions) {
+      auto shader = definition.shaderProgram.getShader();
       if (!shader)
         continue;
-      auto &matBindings = m_passMaterialBindings[pass];
+      auto &bindingIds = m_materialBindingIdsByPass[pass];
       for (const auto &binding : shader->getReflectionBindings()) {
         if (isSystemOwnedBinding(binding.name))
           continue;
-        matBindings.push_back(binding);
-      }
-    }
 
-    checkCrossPassBindingConsistency();
-  }
+        validateSupportedMaterialBindingType(binding, pass);
 
-  const std::vector<ShaderResourceBinding> &
-  getMaterialBindings(StringID pass) const {
-    static const std::vector<ShaderResourceBinding> kEmpty;
-    auto it = m_passMaterialBindings.find(pass);
-    return it != m_passMaterialBindings.end() ? it->second : kEmpty;
-  }
-
-  /// Search all passes for a material-owned binding by name.
-  /// Returns the first match. Asserts if the same name appears with
-  /// conflicting types across passes.
-  std::optional<std::reference_wrapper<const ShaderResourceBinding>>
-  findMaterialBinding(StringID id) const {
-    const ShaderResourceBinding *found = nullptr;
-    for (const auto &[_, bindings] : m_passMaterialBindings) {
-      for (const auto &binding : bindings) {
-        if (StringID(binding.name) != id)
-          continue;
-        if (!found) {
-          found = &binding;
+        const StringID bindingId(binding.name);
+        auto it = m_canonicalMaterialBindings.find(bindingId);
+        if (it == m_canonicalMaterialBindings.end()) {
+          m_canonicalMaterialBindings.emplace(bindingId, binding);
         } else {
-          assert(found->type == binding.type &&
-                 "findMaterialBinding: same name with different types across "
-                 "passes");
+          validateCanonicalBindingCompatibility(it->second, binding, pass);
         }
-        break;
+
+        bindingIds.push_back(bindingId);
       }
     }
-    if (found)
-      return *found;
+  }
+
+  const std::vector<StringID> &getPassMaterialBindingIds(StringID pass) const {
+    static const std::vector<StringID> kEmpty;
+    auto it = m_materialBindingIdsByPass.find(pass);
+    return it != m_materialBindingIdsByPass.end() ? it->second : kEmpty;
+  }
+
+  std::optional<std::reference_wrapper<const ShaderResourceBinding>>
+  findCanonicalMaterialBinding(StringID id) const {
+    auto it = m_canonicalMaterialBindings.find(id);
+    if (it != m_canonicalMaterialBindings.end())
+      return it->second;
     return std::nullopt;
   }
 
+  const ShaderResourceBinding *getCanonicalMaterialBinding(StringID id) const {
+    auto it = m_canonicalMaterialBindings.find(id);
+    return it != m_canonicalMaterialBindings.end() ? &it->second : nullptr;
+  }
+
+  const std::unordered_map<StringID, ShaderResourceBinding, StringID::Hash> &
+  getCanonicalMaterialBindings() const {
+    return m_canonicalMaterialBindings;
+  }
+
   const std::unordered_map<StringID, MaterialPassDefinition, StringID::Hash> &
-  getPasses() const {
-    return m_passes;
+  getAllPassDefinitions() const {
+    return m_passDefinitions;
   }
 
 private:
-  [[noreturn]] void fatalBindingConflict(const std::string &bindingName,
-                                         StringID firstPass,
-                                         StringID secondPass,
-                                         const std::string &reason) const {
+  [[noreturn]] void fatalBindingConflict(std::string_view bindingName,
+                                         StringID pass,
+                                         std::string_view reason) const {
     std::cerr << "FATAL [MaterialTemplate] binding='"
-              << bindingName << "' passA="
-              << GlobalStringTable::get().toDebugString(firstPass)
-              << " passB=" << GlobalStringTable::get().toDebugString(secondPass)
+              << bindingName << "' pass="
+              << GlobalStringTable::get().toDebugString(pass)
               << " reason=" << reason << std::endl;
     std::terminate();
   }
 
 /*
-@source_analysis.section Cross-pass consistency：同名 material binding 必须表达同一份结构契约
-template 允许不同 pass 使用不同 shader，但不允许“同名且归材质所有”的 binding
-在不同 pass 里偷偷变成不同布局。否则 `MaterialInstance` 就无法继续坚持
-“单一 canonical 参数槽位 / 纹理表，被多个 pass 只读复用”这条设计。
+@source_analysis.section Cross-pass consistency：同名 binding 必须收敛成同一个 canonical 契约
+一旦 `MaterialTemplate` 选择“全局 canonical binding 表 + pass 内 StringID 索引”这条路，
+它就隐含要求：同名 material-owned binding 在所有 pass 中都必须指向同一份结构契约。
 
-因此这里按 binding 名跨 pass 收集首个定义，并在后续出现同名项时做 fail-fast：
+否则每个 pass 只保存 `StringID` 就不够了，因为 runtime 将无法知道：
 
-- descriptor 类型必须一致
-- UBO 大小必须一致
-- 反射出的成员布局必须一致
+- 这个名字到底对应哪种 descriptor 类型
+- 它的 set/binding 槽位是否稳定
+- buffer 的大小和成员布局是否一致
 
-只要任一项冲突，就直接终止，而不是让更晚的参数写入或 descriptor 组装阶段
-再出现难以定位的歧义。
+所以现在的校验点不再是“给 instance 的补救检查”，而是 template 在构造自身结构时
+就直接 fail-fast。只要 canonical 表建立成功，`MaterialInstance` 就可以放心地
+按 bindingName 存 runtime 数据，而不必再重复做结构归并。
 */
-  void checkCrossPassBindingConsistency() const {
-    // Collect first-seen binding per name across all passes.
-    std::unordered_map<std::string, std::pair<StringID, const ShaderResourceBinding *>>
-        seen; // name -> (first pass, first binding)
-    for (const auto &[pass, bindings] : m_passMaterialBindings) {
-      for (const auto &binding : bindings) {
-        auto it = seen.find(binding.name);
-        if (it == seen.end()) {
-          seen[binding.name] = {pass, &binding};
-          continue;
-        }
-        const auto *first = it->second.second;
-        if (first->type != binding.type) {
-          fatalBindingConflict(binding.name, it->second.first, pass,
-                               "type mismatch");
-        } else if (first->size != binding.size) {
-          fatalBindingConflict(binding.name, it->second.first, pass,
-                               "size mismatch");
-        } else if (first->members != binding.members) {
-          fatalBindingConflict(binding.name, it->second.first, pass,
-                               "member layout mismatch");
-        }
-      }
+  void validateSupportedMaterialBindingType(const ShaderResourceBinding &binding,
+                                           StringID pass) const {
+    switch (binding.type) {
+    case ShaderPropertyType::UniformBuffer:
+    case ShaderPropertyType::StorageBuffer:
+    case ShaderPropertyType::Texture2D:
+    case ShaderPropertyType::TextureCube:
+      return;
+    default:
+      fatalBindingConflict(binding.name, pass,
+                           "unsupported material-owned descriptor type");
+    }
+  }
+
+  void validateCanonicalBindingCompatibility(
+      const ShaderResourceBinding &canonical,
+      const ShaderResourceBinding &candidate,
+      StringID candidatePass) const {
+    if (canonical.type != candidate.type) {
+      fatalBindingConflict(candidate.name, candidatePass, "type mismatch");
+    } else if (canonical.descriptorCount != candidate.descriptorCount) {
+      fatalBindingConflict(candidate.name, candidatePass,
+                           "descriptorCount mismatch");
+    } else if (canonical.set != candidate.set) {
+      fatalBindingConflict(candidate.name, candidatePass, "set mismatch");
+    } else if (canonical.binding != candidate.binding) {
+      fatalBindingConflict(candidate.name, candidatePass, "binding mismatch");
+    } else if (canonical.size != candidate.size) {
+      fatalBindingConflict(candidate.name, candidatePass, "size mismatch");
+    } else if (canonical.members != candidate.members) {
+      fatalBindingConflict(candidate.name, candidatePass,
+                           "member layout mismatch");
     }
   }
 
   std::string m_name;
-  std::unordered_map<StringID, MaterialPassDefinition, StringID::Hash> m_passes;
-  std::unordered_map<StringID, std::vector<ShaderResourceBinding>, StringID::Hash>
-      m_passMaterialBindings;
+  std::unordered_map<StringID, MaterialPassDefinition, StringID::Hash>
+      m_passDefinitions;
+  std::unordered_map<StringID, ShaderResourceBinding, StringID::Hash>
+      m_canonicalMaterialBindings;
+  std::unordered_map<StringID, std::vector<StringID>, StringID::Hash>
+      m_materialBindingIdsByPass;
 };
 
 } // namespace LX_core

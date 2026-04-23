@@ -363,7 +363,7 @@ void testOrdinaryMaterialWritesDoNotChangeValidatedPassState() {
   EXPECT(beforeA.has_value(), "nodeA validated before non-structural write");
   EXPECT(beforeB.has_value(), "nodeB validated before non-structural write");
 
-  material->setFloat(StringID("shininess"), 42.0f);
+  material->setParameter(StringID("MaterialUBO"), StringID("shininess"), 42.0f);
   material->syncGpuData();
 
   auto afterA = nodeA->getValidatedPassData(Pass_Forward);

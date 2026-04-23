@@ -113,11 +113,11 @@ buildItem(PrimitiveTopology topo = PrimitiveTopology::TriangleList) {
   ShaderProgramSet set;
   set.shaderName = "fake_shader";
   MaterialPassDefinition entry;
-  entry.shaderSet = set;
+  entry.shaderProgram = set;
   entry.renderState = RenderState{};
   entry.renderState.cullMode = CullMode::Front;
   entry.renderState.depthTestEnable = false;
-  tmpl->setPass(Pass_Forward, std::move(entry));
+  tmpl->setPassDefinition(Pass_Forward, std::move(entry));
   auto material = MaterialInstance::create(tmpl);
 
   // Minimal vertex + index buffers.

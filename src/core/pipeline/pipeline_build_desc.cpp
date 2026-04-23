@@ -34,7 +34,7 @@ PipelineBuildDesc::fromRenderingItem(const RenderingItem &item) {
       "PipelineBuildDesc::fromRenderingItem: index buffer is not IndexBuffer");
   info.topology = ib->getTopology();
 
-  info.renderState = item.material->getRenderState(item.pass);
+  info.renderState = item.material->getPassRenderState(item.pass);
 
   // Engine-wide push constant convention until shader-declared ranges arrive.
   info.pushConstant = PushConstantRange{};

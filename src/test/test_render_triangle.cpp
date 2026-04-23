@@ -102,7 +102,8 @@ int main() {
   auto meshPtr = Mesh::create(vertexBufferPtr, indexBufferPtr);
 
   auto material = LX_infra::loadGenericMaterial("materials/blinnphong_default.material");
-  material->setInt(LX_core::StringID("enableNormal"), 0);
+  material->setParameter(LX_core::StringID("MaterialUBO"),
+                         LX_core::StringID("enableNormal"), 0);
   material->syncGpuData();
 
   auto skeletonPtr = Skeleton::create({});

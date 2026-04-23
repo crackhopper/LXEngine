@@ -20,9 +20,9 @@
 ## 典型数据流
 
 1. loader 为每个 pass 决定 shader variants，并编译得到对应 `CompiledShader`。
-2. `MaterialTemplate` 持有 pass entries，并把 pass shader 的反射结果并入 template 级 binding cache。
-3. `MaterialInstance` 构造时默认启用 template 中全部已定义 pass，通过 ownership contract（`isSystemOwnedBinding()`）从 per-pass material-owned binding 列表中收集非系统保留的 buffer bindings（UniformBuffer / StorageBuffer），为每个唯一 binding 名创建一个 canonical `MaterialParameterData`。
-4. 运行时通过 `setParameter(bindingName, memberName, value)` 写 canonical 参数（推荐），也可通过 `setFloat` / `setVec3` / `setVec4` / `setInt` 等旧便利 setter 写参数（单 buffer 时自动定位，多 buffer 时 assert）。`setTexture` 仍按 binding 名绑定 canonical 纹理。
+2. `MaterialTemplate` 持有 pass definition，并在 `rebuildMaterialInterface()` 里把各 pass shader 的反射结果收束成 template 级 canonical material binding 表，再为每个 pass 建立 ordered binding-id 视图。
+3. `MaterialInstance` 构造时默认启用 template 中全部已定义 pass，并直接按这张 canonical material binding 表创建运行期资源：buffer 类型生成 `MaterialParameterData`，texture 类型留给 `setTexture()` 按 binding 名填充。
+4. 运行时统一通过 `setParameter(bindingName, memberName, value)` 写 canonical 参数；旧的 member-only 便利 setter 已移除。`setTexture` 仍按 binding 名绑定 canonical 纹理。
 5. `setPassEnabled(pass, enabled)` 只改变 instance 的 enabled subset；对未定义 pass 调用会直接 `FATAL + terminate`。
 6. `syncGpuData()` 遍历所有参数槽位，把待同步状态传给对应的 `IGpuResource`。
 
@@ -35,17 +35,17 @@
 - 首版支持的 material-owned descriptor 类型：`UniformBuffer`、`StorageBuffer`、`Texture2D`、`TextureCube`。不支持的类型在构造期 FATAL。
 - `setTexture` 绑定的是 `CombinedTextureSampler`，不是裸 texture。
 - `getDescriptorResources(pass)` 是 pass-aware 的：按目标 pass 的反射 bindings 收集材质资源，按 `(set << 16 | binding)` 升序排列。
-- `getRenderState(pass)` 必须按调用方给的 pass 返回对应 entry 的 render state；pipeline 构建不再偷读默认 Forward entry。
+- `getPassRenderState(pass)` 必须按调用方给的 pass 返回对应 pass definition 的 render state；pipeline 构建不再偷读默认 Forward entry。
 - 当前 engine-wide draw push constant ABI 只有 `model`，lighting / skinning 不再通过 push constant 切接口。
 - `blinnphong_0` 的 variant 依赖规则（如 `USE_NORMAL_MAP` 需要 `USE_LIGHTING + USE_UV`）现在通过 `.material` 文件中的 `variantRules` 声明，由通用 loader 在编译前校验。不合法的 variant 组合直接 `FATAL + terminate`。
 - 当前 `blinnphong_0` 仍保留 `MaterialUBO.enableAlbedo` / `enableNormal` 两个运行时开关。它们不参与 pipeline identity，但会控制“已声明 sampler 是否真的参与采样”，从而保留“没绑贴图时回退到 `baseColor` / 顶点法线”的旧语义。
 
 ## 当前实现边界
 
-- `MaterialTemplate` 维护 per-pass material-owned binding 列表（`getMaterialBindings(pass)`），跨 pass 按 `findMaterialBinding(id)` 查找。跨 pass 同名 binding 不一致时会直接 FATAL。
+- `MaterialTemplate` 是材质结构真值来源：它维护 canonical material binding 表（`findCanonicalMaterialBinding(id)` / `getCanonicalMaterialBindings()`）和 per-pass ordered binding-id 列表（`getPassMaterialBindingIds(pass)`）。跨 pass 同名 binding 不一致时会直接 FATAL。
 - 旧的 `MaterialInstance::create(template, passFlag)` 入参现在只保留兼容外形；当前实现不会用它裁剪初始 enabled pass 集，真正的 truth 是 template 定义 + 后续 `setPassEnabled(...)` 结果。
 - variant 依赖校验由通用 loader 根据 `.material` 文件中的 `variantRules` 在编译前执行。不提前看 mesh/skeleton；资源层匹配交给 `SceneNode` 在结构校验阶段处理。
-- 共享 `MaterialInstance` 的 pass enable 改动属于结构性变化；`Scene` 会调用 `revalidateNodesUsing(materialInstance)` 传播到所有引用它的 `SceneNode`。普通 `setFloat` / `setTexture` / `syncGpuData` 不会走这条传播链。
+- 共享 `MaterialInstance` 的 pass enable 改动属于结构性变化；`Scene` 会调用 `revalidateNodesUsing(materialInstance)` 传播到所有引用它的 `SceneNode`。普通 `setParameter` / `setTexture` / `syncGpuData` 不会走这条传播链。
 
 ## 通用材质资产 (Generic Material Asset)
 

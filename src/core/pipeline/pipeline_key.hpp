@@ -22,7 +22,7 @@ struct PipelineKey {
 
   /// 两级 compose：object signature + material signature。调用方通过
   /// `IRenderable::getRenderSignature(pass)` 与
-  /// `MaterialInstance::getRenderSignature(pass)` 先各自组装结构化签名，再传入本函数。
+  /// `MaterialInstance::getMaterialSignature(pass)` 先各自组装结构化签名，再传入本函数。
   static PipelineKey build(StringID objectSig, StringID materialSig);
 };
 

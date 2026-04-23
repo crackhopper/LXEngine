@@ -6,6 +6,7 @@
 #include "core/rhi/gpu_resource.hpp"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
@@ -33,7 +34,7 @@ material-owned buffer binding 运行时对象：
 - `getDescriptorResources(pass)` 直接返回这个对象本身
 - `syncGpuData()` 直接把这个对象标记为 backend dirty
 
-相比“slot 持有 buffer，wrapper 再引用 slot.buffer”的旧设计，
+相比“旧参数容器再间接引用原始 buffer”的设计，
 这里去掉了中间层，也去掉了 non-owning buffer 指针带来的生命周期约束。
 */
 class MaterialParameterData : public IGpuResource {
@@ -48,18 +49,18 @@ public:
   }
   StringID getBindingName() const override { return m_bindingName; }
 
-  const ShaderResourceBinding *getBinding() const { return m_binding; }
+  const ShaderResourceBinding &getBinding() const { return m_binding.get(); }
   const std::vector<uint8_t> &getBuffer() const { return m_buffer; }
 
   bool hasPendingSync() const { return m_dirty; }
   void clearPendingSync() { m_dirty = false; }
 
-  void writeMember(StringID memberName, const void *src, size_t nbytes,
-                   ShaderPropertyType expected);
+  void writeParameterMember(StringID memberName, const void *src, size_t nbytes,
+                            ShaderPropertyType expected);
 
 private:
   StringID m_bindingName;
-  const ShaderResourceBinding *m_binding;
+  std::reference_wrapper<const ShaderResourceBinding> m_binding;
   std::vector<uint8_t> m_buffer;
   ResourceType m_resType;
   bool m_dirty = false;
@@ -73,8 +74,8 @@ private:
 
 这个类里最容易看懂的主线有三条：
 
-1. 构造期：从 template 的 per-pass material bindings 收集 slot
-2. 写入期：按 binding/member 把值写进 slot buffer，并标记 dirty
+1. 构造期：按 template 的 canonical material bindings 建立运行时数据表
+2. 写入期：按 binding/member 把值写进 parameter data，并标记 dirty
 3. 读取期：按 pass 视角从 canonical 资源集合里筛选 descriptor resources
 
 所以它本质上是 template 和 backend 之间的一层“实例态翻译层”。
@@ -97,9 +98,9 @@ public:
   MaterialInstance &operator=(MaterialInstance &&) = delete;
 
   std::vector<IGpuResourcePtr> getDescriptorResources(StringID pass) const;
-  IShaderPtr getShaderInfo(StringID pass) const;
-  RenderState getRenderState(StringID pass) const;
-  StringID getRenderSignature(StringID pass) const;
+  IShaderPtr getPassShader(StringID pass) const;
+  RenderState getPassRenderState(StringID pass) const;
+  StringID getMaterialSignature(StringID pass) const;
 
   // Primary API: write buffer parameter by binding name + member name.
   void setParameter(StringID bindingName, StringID memberName, float value);
@@ -109,24 +110,19 @@ public:
   void setParameter(StringID bindingName, StringID memberName,
                     const Vec4f &value);
 
-  // Legacy convenience setters: search across all buffer slots by member name.
-  // Assert if ambiguous (multiple slots contain the same member name).
-  void setVec4(StringID id, const Vec4f &value);
-  void setVec3(StringID id, const Vec3f &value);
-  void setFloat(StringID id, float value);
-  void setInt(StringID id, int32_t value);
-
-  void setTexture(StringID id, CombinedTextureSamplerPtr tex);
+  void setTexture(StringID bindingName, CombinedTextureSamplerPtr tex);
 
   void syncGpuData();
 
   MaterialTemplate::Ptr getTemplate() const { return m_template; }
 
   // Multi-buffer accessors.
-  size_t getBufferSlotCount() const { return m_bufferSlots.size(); }
+  size_t getParameterBindingCount() const {
+    return m_parameterDataByBinding.size();
+  }
   const std::vector<uint8_t> &getParameterBuffer(StringID bindingName) const;
   const ShaderResourceBinding *getParameterBinding(StringID bindingName) const;
-  // Single-slot shortcuts (assert if multiple slots exist).
+  // Single-binding shortcuts (assert if multiple parameter bindings exist).
   const std::vector<uint8_t> &getParameterBuffer() const;
   const ShaderResourceBinding *getParameterBinding() const;
 
@@ -137,18 +133,19 @@ public:
   void removePassStateListener(uint64_t listenerId);
 
 private:
-  MaterialParameterData *findSlotByMember(StringID memberName);
-  MaterialParameterData *findSlot(StringID bindingName);
-  const MaterialParameterData *findSlot(StringID bindingName) const;
+  MaterialParameterData *findParameterDataByBinding(StringID bindingName);
+  const MaterialParameterData *
+  findParameterDataByBinding(StringID bindingName) const;
   bool hasDefinedPass(StringID pass) const;
 
   MaterialTemplate::Ptr m_template;
-  // Instance-wide default parameter slots, one per unique material-owned
-  // buffer binding name across enabled passes.
-  std::vector<std::shared_ptr<MaterialParameterData>> m_bufferSlots;
+  // Canonical per-binding runtime buffer data, keyed by the template's
+  // canonical material-owned binding ids.
+  std::unordered_map<StringID, std::shared_ptr<MaterialParameterData>, StringID::Hash>
+      m_parameterDataByBinding;
 
   // Canonical textures keyed by shader-declared binding name.
-  std::unordered_map<StringID, CombinedTextureSamplerPtr> m_textures;
+  std::unordered_map<StringID, CombinedTextureSamplerPtr> m_textureBindings;
   // Structural pass participation state. This changes scene validation,
   // unlike ordinary parameter writes.
   std::unordered_set<StringID, StringID::Hash> m_enabledPasses;

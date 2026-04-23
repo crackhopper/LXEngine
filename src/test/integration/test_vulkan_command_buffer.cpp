@@ -82,8 +82,9 @@ int main() {
     auto meshPtr = LX_core::Mesh::create(vertexBufferPtr, indexBufferPtr);
 
     auto material = LX_infra::loadGenericMaterial("materials/blinnphong_default.material");
-    material->setInt(LX_core::StringID("enableNormal"),
-                     0); // avoid normal texture
+    material->setParameter(LX_core::StringID("MaterialUBO"),
+                           LX_core::StringID("enableNormal"),
+                           0); // avoid normal texture
     material->syncGpuData();
 
     auto renderable = std::make_shared<LX_core::RenderableSubMesh>(meshPtr, material);

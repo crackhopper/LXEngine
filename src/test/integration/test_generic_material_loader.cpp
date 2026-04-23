@@ -64,7 +64,7 @@ void test_generic_loader_produces_valid_instance() {
   fs::current_path(prev);
 
   REQUIRE(mat != nullptr);
-  REQUIRE(mat->getBufferSlotCount() >= 1);
+  REQUIRE(mat->getParameterBindingCount() >= 1);
   REQUIRE(mat->getParameterBinding() != nullptr);
 
   const auto &buf = mat->getParameterBuffer();
@@ -127,8 +127,8 @@ void test_per_pass_shader_override() {
   REQUIRE(mat->isPassEnabled(Pass_Shadow));
 
   // Both passes should have shader info.
-  REQUIRE(mat->getShaderInfo(Pass_Forward) != nullptr);
-  REQUIRE(mat->getShaderInfo(Pass_Shadow) != nullptr);
+  REQUIRE(mat->getPassShader(Pass_Forward) != nullptr);
+  REQUIRE(mat->getPassShader(Pass_Shadow) != nullptr);
 
   std::cout << "  per-pass shader override works\n";
 }

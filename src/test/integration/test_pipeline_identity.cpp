@@ -86,9 +86,9 @@ struct Fixture {
     ps.variants = variants;
 
     MaterialPassDefinition entry;
-    entry.shaderSet = ps;
+    entry.shaderProgram = ps;
     entry.renderState = state;
-    f.tmpl->setPass(Pass_Forward, std::move(entry));
+    f.tmpl->setPassDefinition(Pass_Forward, std::move(entry));
     f.material = MaterialInstance::create(f.tmpl);
     return f;
   }
@@ -98,7 +98,7 @@ PipelineKey buildKey(const Fixture &f, StringID pass,
                      const SkeletonPtr &skel = nullptr) {
   auto sub = std::make_shared<RenderableSubMesh>(f.mesh, f.material, skel);
   StringID objSig = sub->getRenderSignature(pass);
-  StringID matSig = f.material->getRenderSignature(pass);
+  StringID matSig = f.material->getMaterialSignature(pass);
   return PipelineKey::build(objSig, matSig);
 }
 
@@ -154,14 +154,14 @@ void testDifferentPassProducesDifferentKey() {
   shadowState.cullMode = CullMode::Front; // flip to make signature differ
 
   MaterialPassDefinition shadowEntry;
-  shadowEntry.shaderSet = ps;
+  shadowEntry.shaderProgram = ps;
   shadowEntry.renderState = shadowState;
-  f.tmpl->setPass(Pass_Shadow, std::move(shadowEntry));
+  f.tmpl->setPassDefinition(Pass_Shadow, std::move(shadowEntry));
 
   auto sub = std::make_shared<RenderableSubMesh>(f.mesh, f.material, nullptr);
   StringID objSig = sub->getRenderSignature(Pass_Forward);
-  StringID fwdMat = f.material->getRenderSignature(Pass_Forward);
-  StringID shMat = f.material->getRenderSignature(Pass_Shadow);
+  StringID fwdMat = f.material->getMaterialSignature(Pass_Forward);
+  StringID shMat = f.material->getMaterialSignature(Pass_Shadow);
   PipelineKey kFwd = PipelineKey::build(objSig, fwdMat);
   PipelineKey kSh = PipelineKey::build(objSig, shMat);
 

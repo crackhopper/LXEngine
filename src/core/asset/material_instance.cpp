@@ -9,18 +9,6 @@ namespace LX_core {
 
 namespace {
 
-bool isSupportedMaterialDescriptorType(ShaderPropertyType type) {
-  switch (type) {
-  case ShaderPropertyType::UniformBuffer:
-  case ShaderPropertyType::StorageBuffer:
-  case ShaderPropertyType::Texture2D:
-  case ShaderPropertyType::TextureCube:
-    return true;
-  default:
-    return false;
-  }
-}
-
 bool isBufferType(ShaderPropertyType type) {
   return type == ShaderPropertyType::UniformBuffer ||
          type == ShaderPropertyType::StorageBuffer;
@@ -49,14 +37,6 @@ const std::vector<uint8_t> kEmptyBuffer;
   std::terminate();
 }
 
-[[noreturn]] void fatalUnsupportedDescriptorType(const std::string &name,
-                                                  ShaderPropertyType type) {
-  std::cerr << "FATAL [MaterialInstance] binding='" << name
-            << "' has unsupported material-owned descriptor type ("
-            << static_cast<int>(type) << ")" << std::endl;
-  std::terminate();
-}
-
 } // namespace
 
 /*****************************************************************
@@ -66,17 +46,14 @@ const std::vector<uint8_t> kEmptyBuffer;
 MaterialParameterData::MaterialParameterData(StringID bindingName,
                                              const ShaderResourceBinding &binding,
                                              ResourceType resType)
-    : m_bindingName(bindingName), m_binding(&binding),
+    : m_bindingName(bindingName), m_binding(binding),
       m_buffer(binding.size, uint8_t{0}), m_resType(resType) {}
 
-void MaterialParameterData::writeMember(StringID memberName, const void *src,
-                                        size_t nbytes,
-                                        ShaderPropertyType expected) {
-  if (!m_binding) {
-    assert(false && "MaterialParameterData has no binding");
-    return;
-  }
-  for (const auto &member : m_binding->members) {
+void MaterialParameterData::writeParameterMember(StringID memberName,
+                                                 const void *src,
+                                                 size_t nbytes,
+                                                 ShaderPropertyType expected) {
+  for (const auto &member : m_binding.get().members) {
     if (StringID(member.name) != memberName)
       continue;
     assert(member.type == expected &&
@@ -87,7 +64,8 @@ void MaterialParameterData::writeMember(StringID memberName, const void *src,
     m_dirty = true;
     return;
   }
-  assert(false && "MaterialInstance setter: member not found in parameter data");
+  assert(false &&
+         "MaterialInstance setter: member not found in parameter data");
 }
 
 /*****************************************************************
@@ -100,82 +78,38 @@ MaterialInstance::MaterialInstance(Token, MaterialTemplate::Ptr tmpl)
     return;
   }
 
-  for (const auto &[pass, _] : m_template->getPasses()) {
+  for (const auto &[pass, _] : m_template->getAllPassDefinitions()) {
     m_enabledPasses.insert(pass);
   }
 
-  // Collect material-owned buffer bindings across enabled passes.
-  // Use the per-pass material interface from the template (REQ-032).
-  std::unordered_map<std::string, const ShaderResourceBinding *> seenBuffers;
+  m_parameterDataByBinding.reserve(
+      m_template->getCanonicalMaterialBindings().size());
+  for (const auto &[bindingId, binding] :
+       m_template->getCanonicalMaterialBindings()) {
+    if (!isBufferType(binding.type))
+      continue;
 
-  for (const auto &pass : getEnabledPasses()) {
-    for (const auto &binding : m_template->getMaterialBindings(pass)) {
-      // Fail fast on unsupported descriptor types.
-      if (!isSupportedMaterialDescriptorType(binding.type)) {
-        fatalUnsupportedDescriptorType(binding.name, binding.type);
-      }
-
-      if (!isBufferType(binding.type))
-        continue;
-
-      auto it = seenBuffers.find(binding.name);
-      if (it != seenBuffers.end()) {
-        // Cross-pass consistency check.
-        const auto *first = it->second;
-        assert(first->type == binding.type &&
-               first->size == binding.size &&
-               first->members == binding.members &&
-               "MaterialInstance: cross-pass buffer binding layout mismatch");
-        continue;
-      }
-      seenBuffers[binding.name] = &binding;
-    }
-  }
-
-  m_bufferSlots.reserve(seenBuffers.size());
-  for (const auto &[name, binding] : seenBuffers) {
-    m_bufferSlots.push_back(std::make_shared<MaterialParameterData>(
-        StringID(name), *binding, toResourceType(binding->type)));
+    m_parameterDataByBinding.emplace(
+        bindingId,
+        std::make_shared<MaterialParameterData>(bindingId, binding,
+                                                toResourceType(binding.type)));
   }
 }
 
 /*****************************************************************
- * Buffer slot lookup helpers
+ * Parameter-data lookup helpers
  *****************************************************************/
 
-MaterialParameterData *MaterialInstance::findSlot(StringID bindingName) {
-  for (auto &slot : m_bufferSlots) {
-    if (slot && slot->getBindingName() == bindingName)
-      return slot.get();
-  }
-  return nullptr;
+MaterialParameterData *
+MaterialInstance::findParameterDataByBinding(StringID bindingName) {
+  auto it = m_parameterDataByBinding.find(bindingName);
+  return it != m_parameterDataByBinding.end() ? it->second.get() : nullptr;
 }
 
 const MaterialParameterData *
-MaterialInstance::findSlot(StringID bindingName) const {
-  for (const auto &slot : m_bufferSlots) {
-    if (slot && slot->getBindingName() == bindingName)
-      return slot.get();
-  }
-  return nullptr;
-}
-
-MaterialParameterData *MaterialInstance::findSlotByMember(StringID memberName) {
-  MaterialParameterData *found = nullptr;
-  for (auto &slot : m_bufferSlots) {
-    if (!slot || !slot->getBinding())
-      continue;
-    for (const auto &m : slot->getBinding()->members) {
-      if (StringID(m.name) == memberName) {
-        assert(!found &&
-               "Ambiguous member name across multiple buffer slots; "
-               "use setParameter(bindingName, memberName, value) instead");
-        found = slot.get();
-        break;
-      }
-    }
-  }
-  return found;
+MaterialInstance::findParameterDataByBinding(StringID bindingName) const {
+  auto it = m_parameterDataByBinding.find(bindingName);
+  return it != m_parameterDataByBinding.end() ? it->second.get() : nullptr;
 }
 
 /*****************************************************************
@@ -184,82 +118,55 @@ MaterialParameterData *MaterialInstance::findSlotByMember(StringID memberName) {
 
 void MaterialInstance::setParameter(StringID bindingName, StringID memberName,
                                     float value) {
-  auto *slot = findSlot(bindingName);
-  assert(slot && "setParameter: binding name not found in buffer slots");
-  if (slot)
-    slot->writeMember(memberName, &value, sizeof(float),
-                      ShaderPropertyType::Float);
+  auto *parameterData = findParameterDataByBinding(bindingName);
+  assert(parameterData &&
+         "setParameter: binding name not found in canonical parameter data");
+  if (parameterData)
+    parameterData->writeParameterMember(memberName, &value, sizeof(float),
+                                        ShaderPropertyType::Float);
 }
 
 void MaterialInstance::setParameter(StringID bindingName, StringID memberName,
                                     int32_t value) {
-  auto *slot = findSlot(bindingName);
-  assert(slot && "setParameter: binding name not found in buffer slots");
-  if (slot)
-    slot->writeMember(memberName, &value, sizeof(int32_t),
-                      ShaderPropertyType::Int);
+  auto *parameterData = findParameterDataByBinding(bindingName);
+  assert(parameterData &&
+         "setParameter: binding name not found in canonical parameter data");
+  if (parameterData)
+    parameterData->writeParameterMember(memberName, &value, sizeof(int32_t),
+                                        ShaderPropertyType::Int);
 }
 
 void MaterialInstance::setParameter(StringID bindingName, StringID memberName,
                                     const Vec3f &value) {
-  auto *slot = findSlot(bindingName);
-  assert(slot && "setParameter: binding name not found in buffer slots");
-  if (slot)
-    slot->writeMember(memberName, &value, sizeof(float) * 3,
-                      ShaderPropertyType::Vec3);
+  auto *parameterData = findParameterDataByBinding(bindingName);
+  assert(parameterData &&
+         "setParameter: binding name not found in canonical parameter data");
+  if (parameterData)
+    parameterData->writeParameterMember(memberName, &value, sizeof(float) * 3,
+                                        ShaderPropertyType::Vec3);
 }
 
 void MaterialInstance::setParameter(StringID bindingName, StringID memberName,
                                     const Vec4f &value) {
-  auto *slot = findSlot(bindingName);
-  assert(slot && "setParameter: binding name not found in buffer slots");
-  if (slot)
-    slot->writeMember(memberName, &value, sizeof(Vec4f),
-                      ShaderPropertyType::Vec4);
+  auto *parameterData = findParameterDataByBinding(bindingName);
+  assert(parameterData &&
+         "setParameter: binding name not found in canonical parameter data");
+  if (parameterData)
+    parameterData->writeParameterMember(memberName, &value, sizeof(Vec4f),
+                                        ShaderPropertyType::Vec4);
 }
 
-/*****************************************************************
- * Legacy convenience setters
- *****************************************************************/
-
-void MaterialInstance::setVec4(StringID id, const Vec4f &value) {
-  auto *slot = findSlotByMember(id);
-  assert(slot && "setVec4: member not found in any buffer slot");
-  if (slot)
-    slot->writeMember(id, &value, sizeof(Vec4f), ShaderPropertyType::Vec4);
-}
-
-void MaterialInstance::setVec3(StringID id, const Vec3f &value) {
-  auto *slot = findSlotByMember(id);
-  assert(slot && "setVec3: member not found in any buffer slot");
-  if (slot)
-    slot->writeMember(id, &value, sizeof(float) * 3,
-                      ShaderPropertyType::Vec3);
-}
-
-void MaterialInstance::setFloat(StringID id, float value) {
-  auto *slot = findSlotByMember(id);
-  assert(slot && "setFloat: member not found in any buffer slot");
-  if (slot)
-    slot->writeMember(id, &value, sizeof(float), ShaderPropertyType::Float);
-}
-
-void MaterialInstance::setInt(StringID id, int32_t value) {
-  auto *slot = findSlotByMember(id);
-  assert(slot && "setInt: member not found in any buffer slot");
-  if (slot)
-    slot->writeMember(id, &value, sizeof(int32_t), ShaderPropertyType::Int);
-}
-
-void MaterialInstance::setTexture(StringID id, CombinedTextureSamplerPtr tex) {
-  auto bindingOpt = m_template->findMaterialBinding(id);
-  assert(bindingOpt && "texture binding not found in material-owned bindings");
+void MaterialInstance::setTexture(StringID bindingName,
+                                  CombinedTextureSamplerPtr tex) {
+  auto bindingOpt = m_template->findCanonicalMaterialBinding(bindingName);
+  assert(bindingOpt &&
+         "texture binding not found in canonical material interface");
   const auto type = bindingOpt->get().type;
   assert((type == ShaderPropertyType::Texture2D ||
           type == ShaderPropertyType::TextureCube) &&
          "setTexture target is not a sampled image binding");
   (void)type;
-  m_textures[id] = std::move(tex);
+  m_textureBindings[bindingName] = std::move(tex);
 }
 
 /*****************************************************************
@@ -267,10 +174,10 @@ void MaterialInstance::setTexture(StringID id, CombinedTextureSamplerPtr tex) {
  *****************************************************************/
 
 void MaterialInstance::syncGpuData() {
-  for (auto &slot : m_bufferSlots) {
-    if (slot && slot->hasPendingSync()) {
-      slot->setDirty();
-      slot->clearPendingSync();
+  for (auto &[_, parameterData] : m_parameterDataByBinding) {
+    if (parameterData && parameterData->hasPendingSync()) {
+      parameterData->setDirty();
+      parameterData->clearPendingSync();
     }
   }
 }
@@ -283,24 +190,25 @@ std::vector<IGpuResourcePtr>
 MaterialInstance::getDescriptorResources(StringID pass) const {
   std::vector<std::pair<uint32_t, IGpuResourcePtr>> sorted;
 
-  const auto &matBindings = m_template->getMaterialBindings(pass);
-  for (const auto &binding : matBindings) {
-    const uint32_t key = (binding.set << 16) | binding.binding;
-    const StringID bindingId(binding.name);
+  const auto &bindingIds = m_template->getPassMaterialBindingIds(pass);
+  for (const auto &bindingId : bindingIds) {
+    const auto *binding = m_template->getCanonicalMaterialBinding(bindingId);
+    if (!binding)
+      continue;
+    const uint32_t key = (binding->set << 16) | binding->binding;
 
-    if (isBufferType(binding.type)) {
-      for (const auto &slot : m_bufferSlots) {
-        if (slot && slot->getBindingName() == bindingId &&
-            !slot->getBuffer().empty()) {
-          sorted.emplace_back(key, std::static_pointer_cast<IGpuResource>(slot));
-          break;
-        }
+    if (isBufferType(binding->type)) {
+      auto it = m_parameterDataByBinding.find(bindingId);
+      if (it != m_parameterDataByBinding.end() && it->second &&
+          !it->second->getBuffer().empty()) {
+        sorted.emplace_back(
+            key, std::static_pointer_cast<IGpuResource>(it->second));
       }
-    } else if (binding.type == ShaderPropertyType::Texture2D ||
-               binding.type == ShaderPropertyType::TextureCube) {
+    } else if (binding->type == ShaderPropertyType::Texture2D ||
+               binding->type == ShaderPropertyType::TextureCube) {
       CombinedTextureSamplerPtr tex;
-      auto it = m_textures.find(bindingId);
-      if (it != m_textures.end())
+      auto it = m_textureBindings.find(bindingId);
+      if (it != m_textureBindings.end())
         tex = it->second;
       if (tex) {
         tex->setBindingName(bindingId);
@@ -326,56 +234,58 @@ MaterialInstance::getDescriptorResources(StringID pass) const {
 
 const std::vector<uint8_t> &
 MaterialInstance::getParameterBuffer(StringID bindingName) const {
-  if (const auto *slot = findSlot(bindingName))
-    return slot->getBuffer();
+  if (const auto *parameterData = findParameterDataByBinding(bindingName))
+    return parameterData->getBuffer();
   return kEmptyBuffer;
 }
 
 const ShaderResourceBinding *
 MaterialInstance::getParameterBinding(StringID bindingName) const {
-  if (const auto *slot = findSlot(bindingName))
-    return slot->getBinding();
+  if (const auto *parameterData = findParameterDataByBinding(bindingName))
+    return &parameterData->getBinding();
   return nullptr;
 }
 
 const std::vector<uint8_t> &MaterialInstance::getParameterBuffer() const {
-  assert(m_bufferSlots.size() <= 1 &&
-         "getParameterBuffer(): multiple buffer slots; use "
+  assert(m_parameterDataByBinding.size() <= 1 &&
+         "getParameterBuffer(): multiple parameter bindings; use "
          "getParameterBuffer(bindingName) instead");
-  if (m_bufferSlots.empty()) {
+  if (m_parameterDataByBinding.empty()) {
     static const std::vector<uint8_t> kEmpty;
     return kEmpty;
   }
-  return m_bufferSlots[0]->getBuffer();
+  return m_parameterDataByBinding.begin()->second->getBuffer();
 }
 
 const ShaderResourceBinding *MaterialInstance::getParameterBinding() const {
-  assert(m_bufferSlots.size() <= 1 &&
-         "getParameterBinding(): multiple buffer slots; use "
+  assert(m_parameterDataByBinding.size() <= 1 &&
+         "getParameterBinding(): multiple parameter bindings; use "
          "getParameterBinding(bindingName) instead");
-  return m_bufferSlots.empty() ? nullptr : m_bufferSlots[0]->getBinding();
+  return m_parameterDataByBinding.empty()
+             ? nullptr
+             : &m_parameterDataByBinding.begin()->second->getBinding();
 }
 
-IShaderPtr MaterialInstance::getShaderInfo(StringID pass) const {
+IShaderPtr MaterialInstance::getPassShader(StringID pass) const {
   if (!m_template)
     return nullptr;
-  auto entry = m_template->getEntry(pass);
-  if (!entry)
+  auto passDefinition = m_template->getPassDefinition(pass);
+  if (!passDefinition)
     return nullptr;
-  return entry->get().shaderSet.getShader();
+  return passDefinition->get().shaderProgram.getShader();
 }
 
-RenderState MaterialInstance::getRenderState(StringID pass) const {
+RenderState MaterialInstance::getPassRenderState(StringID pass) const {
   if (!m_template)
     return RenderState{};
-  auto entry = m_template->getEntry(pass);
-  return entry ? entry->get().renderState : RenderState{};
+  auto passDefinition = m_template->getPassDefinition(pass);
+  return passDefinition ? passDefinition->get().renderState : RenderState{};
 }
 
-StringID MaterialInstance::getRenderSignature(StringID pass) const {
+StringID MaterialInstance::getMaterialSignature(StringID pass) const {
   if (!m_template)
     return StringID{};
-  StringID passSig = m_template->getRenderPassSignature(pass);
+  StringID passSig = m_template->getPassDefinitionSignature(pass);
   StringID fields[] = {passSig};
   return GlobalStringTable::get().compose(TypeTag::MaterialRender, fields);
 }
@@ -426,7 +336,7 @@ void MaterialInstance::removePassStateListener(uint64_t listenerId) {
 }
 
 bool MaterialInstance::hasDefinedPass(StringID pass) const {
-  return m_template && m_template->getEntry(pass).has_value();
+  return m_template && m_template->getPassDefinition(pass).has_value();
 }
 
 } // namespace LX_core

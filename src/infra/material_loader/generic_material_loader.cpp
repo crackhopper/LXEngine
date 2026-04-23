@@ -184,8 +184,10 @@ void applyParameters(LX_core::MaterialInstance &mat,
 
     // Find member type from binding.
     auto *binding = mat.getParameterBinding(bindingId);
-    if (!binding)
-      fatalLoader("parameter binding '" + bindingName + "' has no buffer slot");
+    if (!binding) {
+      fatalLoader("parameter binding '" + bindingName +
+                  "' has no canonical parameter data");
+    }
 
     LX_core::ShaderPropertyType memberType = LX_core::ShaderPropertyType::Float;
     bool found = false;
@@ -534,12 +536,11 @@ loadGenericMaterial(const fs::path &materialPath) {
     programSet.shader = cp.shader;
 
     LX_core::MaterialPassDefinition entry;
-    entry.shaderSet = programSet;
+    entry.shaderProgram = programSet;
     entry.renderState = cp.renderState;
-    entry.buildCache();
-    tmpl->setPass(cp.passId, std::move(entry));
+    tmpl->setPassDefinition(cp.passId, std::move(entry));
   }
-  tmpl->buildBindingCache();
+  tmpl->rebuildMaterialInterface();
 
   // 6. Create MaterialInstance.
   auto mat = LX_core::MaterialInstance::create(tmpl);

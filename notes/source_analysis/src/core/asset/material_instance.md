@@ -35,7 +35,7 @@ material-owned buffer binding 运行时对象：
 - `getDescriptorResources(pass)` 直接返回这个对象本身
 - `syncGpuData()` 直接把这个对象标记为 backend dirty
 
-相比“slot 持有 buffer，wrapper 再引用 slot.buffer”的旧设计，
+相比“旧参数容器再间接引用原始 buffer”的设计，
 这里去掉了中间层，也去掉了 non-owning buffer 指针带来的生命周期约束。
 
 ## MaterialInstance：模板的运行时账本，而不是第二份模板
@@ -46,8 +46,8 @@ material-owned buffer binding 运行时对象：
 
 这个类里最容易看懂的主线有三条：
 
-1. 构造期：从 template 的 per-pass material bindings 收集 slot
-2. 写入期：按 binding/member 把值写进 slot buffer，并标记 dirty
+1. 构造期：按 template 的 canonical material bindings 建立运行时数据表
+2. 写入期：按 binding/member 把值写进 parameter data，并标记 dirty
 3. 读取期：按 pass 视角从 canonical 资源集合里筛选 descriptor resources
 
 所以它本质上是 template 和 backend 之间的一层“实例态翻译层”。
@@ -70,13 +70,13 @@ material-owned buffer binding 运行时对象：
 构造路径可以概括成三步：
 
 1. 先把 template 里定义的 pass 全部放进 `m_enabledPasses`
-2. 遍历每个 enabled pass 的 `getMaterialBindings(pass)`，只收 material-owned binding
-3. 对每个“跨 pass 同名且布局一致”的 buffer binding 直接创建一个 `MaterialParameterData`
+2. 遍历 template 的 canonical material binding 表，只收 buffer 类型 binding
+3. 对每个 canonical buffer binding 直接创建一个 `MaterialParameterData`
 
 这也是这次收敛的关键：构造期不再需要“两阶段先分配 slot、再创建 wrapper”的技巧，
 因为参数字节本体和资源接口已经合并在同一个对象里了。
 
-## 写参数为什么先找 slot，再找 member
+## 写参数为什么先找 binding，再找 member
 
 这个类没有把 `baseColor`、`roughness` 之类的字段硬编码成成员，而是坚持走：
 
@@ -87,18 +87,17 @@ material-owned buffer binding 运行时对象：
 - 参数布局由 shader 反射决定，C++ 侧不用再手写 offset
 - 同一个 `MaterialInstance` 可以支持多个 material-owned buffer，而不是默认只有一个 `MaterialUBO`
 
-对应地，API 被拆成了两层：
+对应地，运行时写路径只保留一层：
 
-- 推荐路径：`setParameter(bindingName, memberName, value)`，显式指定参数槽位
-- 兼容路径：`setFloat(id)` / `setVec4(id)` 这类旧接口，靠成员名全局搜索；如果重名就 assert
+- `setParameter(bindingName, memberName, value)`，显式指定 canonical binding
 
-这也是为什么 `findSlotByMember()` 会在“同名成员出现在多个 slot”时直接报歧义。
+这样 `MaterialInstance` 就不再需要“按成员名全局搜索”的歧义兼容逻辑。
 
 ## 为什么现在没有 Per-Pass Override
 
 这次收敛最核心的变化，是把 `MaterialInstance` 明确成“唯一真值来源”：
 
-- `setParameter(...)` 永远写 canonical 参数槽位
+- `setParameter(...)` 永远写 canonical 参数绑定
 - `setTexture(...)` 永远写 canonical 纹理表
 - pass 只声明“我使用哪些 binding”，不再持有自己的运行时副本
 
@@ -114,8 +113,8 @@ material-owned buffer binding 运行时对象：
 
 它做的不是“把当前所有资源直接返回”，而是“站在某个 pass 的反射视角重新组装一遍 descriptor 列表”：
 
-1. 读取 `m_template->getMaterialBindings(pass)`
-2. buffer 类型按 binding 名去 canonical 参数槽位里找
+1. 读取 `m_template->getPassMaterialBindingIds(pass)`
+2. buffer 类型按 binding id 去 canonical 参数绑定里找
 3. texture 类型按 binding 名去 canonical 纹理表里找
 4. 最后按 `(set << 16 | binding)` 排序
 

@@ -80,13 +80,13 @@ makeRenderable(const std::string &shaderName = "fake_fg",
   ps.shaderName = shaderName;
   ps.variants = variants;
   MaterialPassDefinition entry;
-  entry.shaderSet = ps;
+  entry.shaderProgram = ps;
   entry.renderState = RenderState{};
-  tmpl->setPass(Pass_Forward, std::move(entry));
+  tmpl->setPassDefinition(Pass_Forward, std::move(entry));
   MaterialPassDefinition shadowEntry;
-  shadowEntry.shaderSet = ps;
+  shadowEntry.shaderProgram = ps;
   shadowEntry.renderState = RenderState{};
-  tmpl->setPass(Pass_Shadow, std::move(shadowEntry));
+  tmpl->setPassDefinition(Pass_Shadow, std::move(shadowEntry));
 
   auto material = MaterialInstance::create(tmpl);
   if (!enableShadow) {

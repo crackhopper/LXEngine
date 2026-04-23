@@ -91,15 +91,15 @@ buildLegacyValidatedData(const RenderableSubMesh &sub, StringID pass) {
   ValidatedRenderablePassData data;
   data.pass = pass;
   data.material = sub.material;
-  data.shaderInfo = sub.material ? sub.material->getShaderInfo(pass) : nullptr;
+  data.shaderInfo = sub.material ? sub.material->getPassShader(pass) : nullptr;
   data.drawData = sub.perDrawData;
   data.vertexBuffer = sub.getVertexBuffer();
   data.indexBuffer = sub.getIndexBuffer();
   data.descriptorResources = sub.getDescriptorResources(pass);
   data.objectSignature = sub.getRenderSignature(pass);
   if (sub.material) {
-    data.pipelineKey = PipelineKey::build(data.objectSignature,
-                                          sub.material->getRenderSignature(pass));
+    data.pipelineKey = PipelineKey::build(
+        data.objectSignature, sub.material->getMaterialSignature(pass));
   }
   return data;
 }
@@ -163,7 +163,7 @@ IShaderPtr SceneNode::getShaderInfo() const {
   auto data = getValidatedPassData(Pass_Forward);
   if (data)
     return data->get().shaderInfo;
-  return m_materialInstance ? m_materialInstance->getShaderInfo(Pass_Forward)
+  return m_materialInstance ? m_materialInstance->getPassShader(Pass_Forward)
                             : nullptr;
 }
 
@@ -205,45 +205,45 @@ void SceneNode::rebuildValidatedCache() {
   const auto enabledPasses = m_materialInstance->getEnabledPasses();
 
   for (const auto &pass : enabledPasses) {
-    auto entryOpt = m_materialInstance->getTemplate()->getEntry(pass);
+    auto entryOpt = m_materialInstance->getTemplate()->getPassDefinition(pass);
     if (!entryOpt) {
       continue;
     }
 
     const auto &entry = entryOpt->get();
-    auto shader = entry.shaderSet.getShader();
+    auto shader = entry.shaderProgram.getShader();
     if (!shader) {
-      shader = m_materialInstance->getShaderInfo(pass);
+      shader = m_materialInstance->getPassShader(pass);
     }
     if (!shader) {
-      fatalValidation(*this, pass, *m_materialInstance, entry.shaderSet,
+      fatalValidation(*this, pass, *m_materialInstance, entry.shaderProgram,
                       "missing shader for enabled pass", &layout);
     }
 
     const bool usesSkinning =
-        entry.shaderSet.hasEnabledVariant("USE_SKINNING");
+        entry.shaderProgram.hasEnabledVariant("USE_SKINNING");
     const bool hasBonesBinding =
         shader->findBinding("Bones").has_value();
 
     if (usesSkinning != hasBonesBinding) {
-      fatalValidation(*this, pass, *m_materialInstance, entry.shaderSet,
+      fatalValidation(*this, pass, *m_materialInstance, entry.shaderProgram,
                       "shader variant / Bones binding mismatch", &layout);
     }
     if (usesSkinning && (!m_skeleton.has_value() || !m_skeleton.value())) {
-      fatalValidation(*this, pass, *m_materialInstance, entry.shaderSet,
+      fatalValidation(*this, pass, *m_materialInstance, entry.shaderProgram,
                       "skinning pass requires skeleton", &layout);
     }
 
     for (const auto &input : shader->getVertexInputs()) {
       const auto *layoutItem = findLayoutItem(layout, input.location);
       if (!layoutItem) {
-        fatalValidation(*this, pass, *m_materialInstance, entry.shaderSet,
+        fatalValidation(*this, pass, *m_materialInstance, entry.shaderProgram,
                         "missing vertex input '" + input.name +
                             "' at location " + std::to_string(input.location),
                         &layout);
       }
       if (layoutItem->type != input.type) {
-        fatalValidation(*this, pass, *m_materialInstance, entry.shaderSet,
+        fatalValidation(*this, pass, *m_materialInstance, entry.shaderProgram,
                         "vertex input type mismatch for '" + input.name +
                             "' at location " + std::to_string(input.location),
                         &layout);
@@ -258,7 +258,7 @@ void SceneNode::rebuildValidatedCache() {
       auto expectedType = getExpectedTypeForSystemBinding(binding.name);
       if (expectedType && binding.type != *expectedType) {
         fatalValidation(
-            *this, pass, *m_materialInstance, entry.shaderSet,
+            *this, pass, *m_materialInstance, entry.shaderProgram,
             "reserved binding '" + binding.name +
                 "' has wrong descriptor type (shader authoring error)",
             &layout);
@@ -269,7 +269,7 @@ void SceneNode::rebuildValidatedCache() {
 
       if (binding.name == "Bones") {
         if (!m_skeleton.has_value() || !m_skeleton.value()) {
-          fatalValidation(*this, pass, *m_materialInstance, entry.shaderSet,
+          fatalValidation(*this, pass, *m_materialInstance, entry.shaderProgram,
                           "missing Bones resource", &layout);
         }
         descriptorResources.push_back(std::static_pointer_cast<IGpuResource>(
@@ -287,7 +287,7 @@ void SceneNode::rebuildValidatedCache() {
         }
       }
       if (!found) {
-        fatalValidation(*this, pass, *m_materialInstance, entry.shaderSet,
+        fatalValidation(*this, pass, *m_materialInstance, entry.shaderProgram,
                         "missing material-owned resource '" + binding.name +
                             "'",
                         &layout);
@@ -304,7 +304,7 @@ void SceneNode::rebuildValidatedCache() {
     data.descriptorResources = std::move(descriptorResources);
     data.objectSignature = getRenderSignature(pass);
     data.pipelineKey = PipelineKey::build(
-        data.objectSignature, m_materialInstance->getRenderSignature(pass));
+        data.objectSignature, m_materialInstance->getMaterialSignature(pass));
     m_validatedPasses[pass] = std::move(data);
   }
 }
@@ -368,7 +368,7 @@ RenderableSubMesh::getDescriptorResources(StringID pass) const {
 }
 
 IShaderPtr RenderableSubMesh::getShaderInfo() const {
-  return material ? material->getShaderInfo(Pass_Forward) : nullptr;
+  return material ? material->getPassShader(Pass_Forward) : nullptr;
 }
 
 StringID RenderableSubMesh::getRenderSignature(StringID pass) const {
@@ -382,7 +382,7 @@ StringID RenderableSubMesh::getRenderSignature(StringID pass) const {
 bool RenderableSubMesh::supportsPass(StringID pass) const {
   return material && material->isPassEnabled(pass) &&
          material->getTemplate() &&
-         material->getTemplate()->getEntry(pass).has_value();
+         material->getTemplate()->getPassDefinition(pass).has_value();
 }
 
 std::optional<std::reference_wrapper<const ValidatedRenderablePassData>>

@@ -113,11 +113,10 @@ MaterialInstancePtr buildInstanceFromBlinnPhong() {
   set.shaderName = "blinnphong_0";
   set.shader = shader;
   MaterialPassDefinition entry;
-  entry.shaderSet = set;
+  entry.shaderProgram = set;
   entry.renderState = RenderState{};
-  entry.buildCache();
-  tmpl->setPass(Pass_Forward, std::move(entry));
-  tmpl->buildBindingCache();
+  tmpl->setPassDefinition(Pass_Forward, std::move(entry));
+  tmpl->rebuildMaterialInterface();
 
   return MaterialInstance::create(tmpl);
 }
@@ -139,19 +138,19 @@ MaterialTemplate::Ptr buildMultiPassTemplate(const RenderState &forwardState,
   forwardSet.shaderName = "fake_forward";
   forwardSet.shader = shader;
   MaterialPassDefinition forwardEntry;
-  forwardEntry.shaderSet = forwardSet;
+  forwardEntry.shaderProgram = forwardSet;
   forwardEntry.renderState = forwardState;
-  tmpl->setPass(Pass_Forward, std::move(forwardEntry));
+  tmpl->setPassDefinition(Pass_Forward, std::move(forwardEntry));
 
   ShaderProgramSet shadowSet;
   shadowSet.shaderName = "fake_shadow";
   shadowSet.shader = shader;
   MaterialPassDefinition shadowEntry;
-  shadowEntry.shaderSet = shadowSet;
+  shadowEntry.shaderProgram = shadowSet;
   shadowEntry.renderState = shadowState;
-  tmpl->setPass(Pass_Shadow, std::move(shadowEntry));
+  tmpl->setPassDefinition(Pass_Shadow, std::move(shadowEntry));
 
-  tmpl->buildBindingCache();
+  tmpl->rebuildMaterialInterface();
   return tmpl;
 }
 
@@ -178,13 +177,14 @@ void test_setVec3_writes_12_bytes_only() {
   if (!mat)
     return;
   // Seed shininess first so we can verify setVec3 does not clobber it.
-  mat->setFloat(StringID("shininess"), 99.0f);
+  mat->setParameter(StringID("MaterialUBO"), StringID("shininess"), 99.0f);
   const auto &buf = mat->getParameterBuffer();
   float shiny = 0.0f;
   std::memcpy(&shiny, buf.data() + 12, sizeof(float));
   REQUIRE(shiny == 99.0f);
 
-  mat->setVec3(StringID("baseColor"), Vec3f{1.0f, 0.25f, 0.5f});
+  mat->setParameter(StringID("MaterialUBO"), StringID("baseColor"),
+                    Vec3f{1.0f, 0.25f, 0.5f});
   float v0 = 0, v1 = 0, v2 = 0;
   std::memcpy(&v0, buf.data() + 0, sizeof(float));
   std::memcpy(&v1, buf.data() + 4, sizeof(float));
@@ -205,9 +205,10 @@ void test_setFloat_and_setInt_at_reflected_offsets() {
   if (!mat)
     return;
 
-  mat->setFloat(StringID("specularIntensity"), 2.5f);
-  mat->setInt(StringID("enableAlbedo"), 1);
-  mat->setInt(StringID("enableNormal"), 0);
+  mat->setParameter(StringID("MaterialUBO"), StringID("specularIntensity"),
+                    2.5f);
+  mat->setParameter(StringID("MaterialUBO"), StringID("enableAlbedo"), 1);
+  mat->setParameter(StringID("MaterialUBO"), StringID("enableNormal"), 0);
 
   const auto &buf = mat->getParameterBuffer();
   float spec = 0.0f;
@@ -241,7 +242,7 @@ void test_descriptor_resources_reflects_buffer_writes() {
   auto mat = buildInstanceFromBlinnPhong();
   if (!mat)
     return;
-  mat->setFloat(StringID("shininess"), 7.0f);
+  mat->setParameter(StringID("MaterialUBO"), StringID("shininess"), 7.0f);
   auto resources = mat->getDescriptorResources(Pass_Forward);
   REQUIRE(!resources.empty());
   auto *raw = reinterpret_cast<const uint8_t *>(resources[0]->getRawData());
@@ -273,7 +274,7 @@ void test_loader_produces_valid_instance() {
   std::filesystem::current_path(prev);
   REQUIRE(mat != nullptr);
   REQUIRE(!mat->getParameterBuffer().empty());
-  REQUIRE(mat->getShaderInfo(Pass_Forward) != nullptr);
+  REQUIRE(mat->getPassShader(Pass_Forward) != nullptr);
 
   // Seeded defaults: baseColor == {0.8, 0.8, 0.8}
   const auto &buf = mat->getParameterBuffer();
@@ -344,8 +345,8 @@ void test_render_state_is_pass_aware() {
   auto tmpl = buildMultiPassTemplate(forwardState, shadowState);
   auto mat = MaterialInstance::create(tmpl);
 
-  REQUIRE(mat->getRenderState(Pass_Forward) == forwardState);
-  REQUIRE(mat->getRenderState(Pass_Shadow) == shadowState);
+  REQUIRE(mat->getPassRenderState(Pass_Forward) == forwardState);
+  REQUIRE(mat->getPassRenderState(Pass_Shadow) == shadowState);
   std::cout << "  render state is resolved from the queried pass entry\n";
 }
 
@@ -359,8 +360,8 @@ void test_non_structural_writes_do_not_notify_pass_listeners() {
   const auto listenerId =
       mat->addPassStateListener([&notifications]() { ++notifications; });
 
-  mat->setFloat(StringID("shininess"), 7.0f);
-  mat->setInt(StringID("enableAlbedo"), 1);
+  mat->setParameter(StringID("MaterialUBO"), StringID("shininess"), 7.0f);
+  mat->setParameter(StringID("MaterialUBO"), StringID("enableAlbedo"), 1);
   mat->syncGpuData();
   REQUIRE(notifications == 0);
 
@@ -428,11 +429,10 @@ void test_material_instance_with_non_MaterialUBO_name() {
   set.shaderName = "surface_test";
   set.shader = shader;
   MaterialPassDefinition entry;
-  entry.shaderSet = set;
+  entry.shaderProgram = set;
   entry.renderState = RenderState{};
-  entry.buildCache();
-  tmpl->setPass(Pass_Forward, std::move(entry));
-  tmpl->buildBindingCache();
+  tmpl->setPassDefinition(Pass_Forward, std::move(entry));
+  tmpl->rebuildMaterialInterface();
 
   auto mat = MaterialInstance::create(tmpl);
 
@@ -441,8 +441,9 @@ void test_material_instance_with_non_MaterialUBO_name() {
   REQUIRE(mat->getParameterBuffer().size() == 16);
 
   // Setters should work by member name.
-  mat->setVec3(StringID("baseColor"), Vec3f{0.5f, 0.6f, 0.7f});
-  mat->setFloat(StringID("roughness"), 0.3f);
+  mat->setParameter(StringID("SurfaceParams"), StringID("baseColor"),
+                    Vec3f{0.5f, 0.6f, 0.7f});
+  mat->setParameter(StringID("SurfaceParams"), StringID("roughness"), 0.3f);
 
   const auto &buf = mat->getParameterBuffer();
   float r = 0, g = 0, b = 0, rough = 0;
@@ -495,14 +496,13 @@ void test_multi_buffer_setParameter() {
   set.shaderName = "multi_buffer";
   set.shader = shader;
   MaterialPassDefinition entry;
-  entry.shaderSet = set;
+  entry.shaderProgram = set;
   entry.renderState = RenderState{};
-  entry.buildCache();
-  tmpl->setPass(Pass_Forward, std::move(entry));
-  tmpl->buildBindingCache();
+  tmpl->setPassDefinition(Pass_Forward, std::move(entry));
+  tmpl->rebuildMaterialInterface();
 
   auto mat = MaterialInstance::create(tmpl);
-  REQUIRE(mat->getBufferSlotCount() == 2);
+  REQUIRE(mat->getParameterBindingCount() == 2);
 
   // Write via setParameter (primary API).
   mat->setParameter(StringID("SurfaceParams"), StringID("roughness"), 0.8f);
@@ -554,21 +554,19 @@ void test_pass_aware_descriptor_resources() {
   fwdSet.shaderName = "forward";
   fwdSet.shader = forwardShader;
   MaterialPassDefinition fwdEntry;
-  fwdEntry.shaderSet = fwdSet;
+  fwdEntry.shaderProgram = fwdSet;
   fwdEntry.renderState = RenderState{};
-  fwdEntry.buildCache();
-  tmpl->setPass(Pass_Forward, std::move(fwdEntry));
+  tmpl->setPassDefinition(Pass_Forward, std::move(fwdEntry));
 
   ShaderProgramSet shadSet;
   shadSet.shaderName = "shadow";
   shadSet.shader = shadowShader;
   MaterialPassDefinition shadEntry;
-  shadEntry.shaderSet = shadSet;
+  shadEntry.shaderProgram = shadSet;
   shadEntry.renderState = RenderState{};
-  shadEntry.buildCache();
-  tmpl->setPass(Pass_Shadow, std::move(shadEntry));
+  tmpl->setPassDefinition(Pass_Shadow, std::move(shadEntry));
 
-  tmpl->buildBindingCache();
+  tmpl->rebuildMaterialInterface();
 
   auto mat = MaterialInstance::create(tmpl);
   // Don't bind a texture — forward should return only UBO, shadow too.
