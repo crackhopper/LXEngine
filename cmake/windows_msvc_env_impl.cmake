@@ -114,7 +114,6 @@ function(lx_windows_msvc_choose_candidate base_dir output_root output_script out
   lx_windows_msvc_log_action("check Visual Studio root ${_lx_base_dir}")
 
   if(NOT _lx_base_dir OR NOT EXISTS "${_lx_base_dir}")
-    lx_windows_msvc_log_detail("root missing: ${_lx_base_dir}")
     set(${output_root} "" PARENT_SCOPE)
     set(${output_script} "" PARENT_SCOPE)
     set(${output_kind} "" PARENT_SCOPE)
@@ -134,11 +133,9 @@ function(lx_windows_msvc_choose_candidate base_dir output_root output_script out
     lx_windows_msvc_log_action("check version directory ${_lx_year_name}")
 
     if(NOT _lx_year_name MATCHES "^[0-9]+$")
-      lx_windows_msvc_log_detail("skip non-version directory ${_lx_year_name}")
       continue()
     endif()
     if(_lx_year_name LESS 2022)
-      lx_windows_msvc_log_detail("skip unsupported version ${_lx_year_name}")
       continue()
     endif()
 
@@ -146,7 +143,6 @@ function(lx_windows_msvc_choose_candidate base_dir output_root output_script out
       set(_lx_candidate_root "${_lx_year_dir}/${_lx_sku}")
       lx_windows_msvc_log_action("check candidate ${_lx_candidate_root}")
       if(NOT IS_DIRECTORY "${_lx_candidate_root}")
-        lx_windows_msvc_log_detail("candidate missing: ${_lx_candidate_root}")
         continue()
       endif()
 
@@ -294,6 +290,7 @@ function(lx_windows_msvc_import_env install_root bootstrap_script bootstrap_kind
     UCRTVersion
     UniversalCRTSdkDir)
   set(_lx_imported_vars "")
+  set(_lx_seen_allowed_vars "")
 
   foreach(_lx_line IN LISTS _lx_env_lines)
     if(_lx_line MATCHES "^([^=]+)=(.*)$")
@@ -303,17 +300,24 @@ function(lx_windows_msvc_import_env install_root bootstrap_script bootstrap_kind
         continue()
       endif()
 
-      list(FIND _lx_allowed_vars "${_lx_name}" _lx_allowed_index)
+      string(TOUPPER "${_lx_name}" _lx_name_upper)
+      list(FIND _lx_allowed_vars "${_lx_name_upper}" _lx_allowed_index)
       if(_lx_allowed_index GREATER -1)
         lx_windows_msvc_log_action("write environment variable ${_lx_name}")
         set(ENV{${_lx_name}} "${_lx_value}")
-        list(APPEND _lx_imported_vars "${_lx_name}")
+        list(APPEND _lx_seen_allowed_vars "${_lx_name}")
+        list(APPEND _lx_imported_vars "${_lx_name_upper}")
       endif()
     endif()
   endforeach()
 
+  list(REMOVE_DUPLICATES _lx_seen_allowed_vars)
   list(REMOVE_DUPLICATES _lx_imported_vars)
+  string(JOIN ", " _lx_seen_allowed_summary ${_lx_seen_allowed_vars})
   string(JOIN ", " _lx_imported_summary ${_lx_imported_vars})
+  if(_lx_seen_allowed_summary)
+    lx_windows_msvc_log_result("Captured bootstrap variable names: ${_lx_seen_allowed_summary}")
+  endif()
   lx_windows_msvc_log_result("Imported environment variables: ${_lx_imported_summary}")
   lx_windows_msvc_log_detail("Imported PATH=$ENV{PATH}")
 endfunction()
