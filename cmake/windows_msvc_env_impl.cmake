@@ -53,8 +53,6 @@ endfunction()
 function(lx_windows_msvc_import_env)
   set(_lx_gen_cmake "${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/lx_windows_msvc_env.gen.cmake")
   set(_lx_log_file "${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/lx_windows_msvc_env.log")
-  set(_lx_env_begin_marker "__LX_ENV_SNAPSHOT_BEGIN__")
-  set(_lx_env_end_marker "__LX_ENV_SNAPSHOT_END__")
   set(_lx_debug_enabled 0)
   if(LX_CMAKE_DEBUG_WINDOWS_MSVC_ENV)
     set(_lx_debug_enabled 1)
@@ -77,8 +75,6 @@ function(lx_windows_msvc_import_env)
       "${CMAKE_CURRENT_LIST_DIR}/windows_msvc_env_dump.py"
       --output-cmake "${_lx_gen_cmake}"
       --output-log "${_lx_log_file}"
-      --env-begin-marker "${_lx_env_begin_marker}"
-      --env-end-marker "${_lx_env_end_marker}"
       --explicit-vs-root "${LX_WINDOWS_VS_INSTALLATION_PATH}"
       --debug-enabled "${_lx_debug_enabled}"
     OUTPUT_VARIABLE _lx_python_output

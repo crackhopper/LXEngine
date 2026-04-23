@@ -9,15 +9,6 @@ import tempfile
 from pathlib import Path
 
 
-def decode_output(data: bytes) -> str:
-    for encoding in ("utf-8", "mbcs", sys.getdefaultencoding()):
-        try:
-            return data.decode(encoding)
-        except UnicodeDecodeError:
-            continue
-    return data.decode("utf-8", errors="replace")
-
-
 def normalize_name(name: str) -> str:
     return name.upper()
 
@@ -120,7 +111,15 @@ def find_vsdevcmd(explicit_root: str) -> tuple[Path, Path]:
     return candidates[0]
 
 
-def build_cmd_script(vs_root: Path, vsdevcmd: Path, debug_enabled: bool, begin_marker: str, end_marker: str) -> str:
+def build_cmd_script(
+    vs_root: Path,
+    vsdevcmd: Path,
+    python_exe: Path,
+    script_path: Path,
+    output_cmake: Path,
+    output_log: Path,
+    debug_enabled: bool,
+) -> str:
     lines = [
         "@echo off",
         f'cd /d "{vs_root}"',
@@ -132,9 +131,13 @@ def build_cmd_script(vs_root: Path, vsdevcmd: Path, debug_enabled: bool, begin_m
         [
             f'call "{vsdevcmd}"',
             "if errorlevel 1 exit /b %errorlevel%",
-            f"echo {begin_marker}",
-            "set",
-            f"echo {end_marker}",
+            f'"{python_exe}" "{script_path}"'
+            f' --dump-current-env'
+            f' --output-cmake "{output_cmake}"'
+            f' --output-log "{output_log}"'
+            f' --vs-root "{vs_root}"'
+            f' --vsdevcmd "{vsdevcmd}"',
+            "exit /b %errorlevel%",
         ]
     )
     return "\r\n".join(lines) + "\r\n"
@@ -142,10 +145,11 @@ def build_cmd_script(vs_root: Path, vsdevcmd: Path, debug_enabled: bool, begin_m
 
 def main() -> int:
     parser = argparse.ArgumentParser()
+    parser.add_argument("--dump-current-env", action="store_true")
     parser.add_argument("--output-cmake", required=True)
     parser.add_argument("--output-log", required=True)
-    parser.add_argument("--env-begin-marker", required=True)
-    parser.add_argument("--env-end-marker", required=True)
+    parser.add_argument("--vs-root", default="")
+    parser.add_argument("--vsdevcmd", default="")
     parser.add_argument("--explicit-vs-root", default="")
     parser.add_argument("--debug-enabled", choices=("0", "1"), default="0")
     args = parser.parse_args()
@@ -155,18 +159,31 @@ def main() -> int:
     output_cmake.parent.mkdir(parents=True, exist_ok=True)
     output_log.parent.mkdir(parents=True, exist_ok=True)
 
+    if args.dump_current_env:
+        merged_env = {normalize_name(k): v for k, v in os.environ.items()}
+        if args.vs_root:
+            merged_env["LX_WINDOWS_MSVC_VS_ROOT"] = normalize_path(args.vs_root)
+        if args.vsdevcmd:
+            merged_env["LX_WINDOWS_MSVC_VSDEVCMD"] = normalize_path(args.vsdevcmd)
+        write_cmake(output_cmake, merged_env, output_log)
+        return 0
+
     try:
         vs_root, vsdevcmd = find_vsdevcmd(args.explicit_vs_root)
     except FileNotFoundError as exc:
         sys.stderr.write(str(exc) + "\n")
         return 3
 
+    python_exe = Path(sys.executable)
+    script_path = Path(__file__).resolve()
     script_text = build_cmd_script(
         vs_root=vs_root,
         vsdevcmd=vsdevcmd,
+        python_exe=python_exe,
+        script_path=script_path,
+        output_cmake=output_cmake,
+        output_log=output_log,
         debug_enabled=args.debug_enabled == "1",
-        begin_marker=args.env_begin_marker,
-        end_marker=args.env_end_marker,
     )
 
     with tempfile.NamedTemporaryFile("w", suffix=".cmd", delete=False, encoding="utf-8", newline="") as handle:
@@ -186,46 +203,15 @@ def main() -> int:
         except OSError:
             pass
 
-    full_output = decode_output(proc.stdout).replace("\r\n", "\n").replace("\r", "\n")
+    full_output = proc.stdout.decode(errors="replace").replace("\r\n", "\n").replace("\r", "\n")
     output_log.write_text(full_output, encoding="utf-8")
 
-    if proc.returncode != 0:
+    if proc.returncode != 0 or not output_cmake.exists():
         sys.stderr.write(
             f"VsDevCmd bootstrap failed with code {proc.returncode}. "
             f"See {output_log}\n"
         )
         return proc.returncode
-
-    begin_token = args.env_begin_marker + "\n"
-    end_token = "\n" + args.env_end_marker
-    begin = full_output.find(begin_token)
-    end = full_output.find(end_token, begin + len(begin_token) if begin != -1 else 0)
-    if begin == -1 or end == -1 or end <= begin:
-        sys.stderr.write(
-            f"Failed to isolate final environment snapshot from bootstrap output. "
-            f"See {output_log}\n"
-        )
-        return 2
-
-    snapshot = full_output[begin + len(begin_token):end]
-
-    original_env = {normalize_name(k): v for k, v in os.environ.items()}
-    child_env: dict[str, str] = {}
-    for line in snapshot.split("\n"):
-        if not line or "=" not in line or line.startswith("="):
-            continue
-        name, value = line.split("=", 1)
-        child_env[normalize_name(name)] = value
-
-    merged_env = dict(original_env)
-    for name, child_value in child_env.items():
-        original_value = merged_env.get(name, "")
-        merged_env[name] = merge_value(child_value, original_value)
-
-    merged_env["LX_WINDOWS_MSVC_VS_ROOT"] = normalize_path(str(vs_root))
-    merged_env["LX_WINDOWS_MSVC_VSDEVCMD"] = normalize_path(str(vsdevcmd))
-
-    write_cmake(output_cmake, merged_env, output_log)
     return 0
 
 
