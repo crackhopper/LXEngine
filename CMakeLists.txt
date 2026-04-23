@@ -6,6 +6,9 @@ if(CMAKE_VERSION VERSION_GREATER_EQUAL "4.0")
   set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 endif()
 
+set(LX_CMAKE_DEBUG_WINDOWS_MSVC_ENV ON CACHE BOOL
+    "Enable detailed Windows MSVC bootstrap logging")
+
 # Windows: allow plain terminals to bootstrap the MSVC toolchain
 # before CMake compiler detection runs in project().
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/windows_msvc_env.cmake")
@@ -90,7 +93,6 @@ if (WIN32)
 # -------------------------------
   target_compile_definitions(${PROJECT_NAME} PRIVATE "_CRT_SECURE_NO_WARNINGS")
 endif()
-
 
 
 
