@@ -272,6 +272,42 @@ function(_lx_collect_vs_install_roots base_dir out_install_roots)
   set(${out_install_roots} "${_lx_install_roots}" PARENT_SCOPE)
 endfunction()
 
+function(_lx_configure_bootstrap_toolchain)
+  find_program(_lx_cl_compiler cl.exe)
+  if(NOT _lx_cl_compiler)
+    find_program(_lx_cl_compiler cl)
+  endif()
+  if(NOT _lx_cl_compiler)
+    message(FATAL_ERROR
+      "Imported the Visual Studio developer environment, but cl.exe was not found in PATH.")
+  endif()
+
+  set(CMAKE_C_COMPILER "${_lx_cl_compiler}" CACHE FILEPATH
+      "MSVC C compiler imported from Visual Studio developer environment" FORCE)
+  set(CMAKE_CXX_COMPILER "${_lx_cl_compiler}" CACHE FILEPATH
+      "MSVC CXX compiler imported from Visual Studio developer environment" FORCE)
+
+  if(CMAKE_GENERATOR STREQUAL "Ninja" AND NOT CMAKE_MAKE_PROGRAM)
+    set(_lx_ninja_hints "")
+    get_filename_component(_lx_cmake_bin_dir "${CMAKE_COMMAND}" DIRECTORY)
+    if(_lx_cmake_bin_dir)
+      list(APPEND _lx_ninja_hints "${_lx_cmake_bin_dir}")
+    endif()
+
+    find_program(_lx_ninja_program
+      NAMES ninja.exe ninja ninja-build.exe ninja-build
+      HINTS ${_lx_ninja_hints})
+    if(NOT _lx_ninja_program)
+      message(FATAL_ERROR
+        "Imported the Visual Studio developer environment, but Ninja was not found. "
+        "Install Ninja or use a Visual Studio generator.")
+    endif()
+
+    set(CMAKE_MAKE_PROGRAM "${_lx_ninja_program}" CACHE FILEPATH
+        "Build program for the Ninja generator" FORCE)
+  endif()
+endfunction()
+
 set(_lx_existing_env_ready FALSE)
 if(DEFINED ENV{VSCMD_VER} AND DEFINED ENV{VCToolsInstallDir})
   if(EXISTS "$ENV{VCToolsInstallDir}")
@@ -312,6 +348,7 @@ if(_lx_existing_env_ready)
   message(STATUS
     "Using existing Visual Studio developer environment: "
     "$ENV{VCToolsInstallDir}$ENV{VCINSTALLDIR}")
+  _lx_configure_bootstrap_toolchain()
   return()
 endif()
 
@@ -583,12 +620,14 @@ if(_lx_env_dump)
   if(_lx_imported_summary)
     message(STATUS "Imported environment keys: ${_lx_imported_summary}")
   endif()
+  _lx_configure_bootstrap_toolchain()
   return()
 endif()
 
 if(_lx_import_source)
   message(STATUS
     "Using existing compiler environment via ${_lx_import_source}")
+  _lx_configure_bootstrap_toolchain()
   return()
 endif()
 
