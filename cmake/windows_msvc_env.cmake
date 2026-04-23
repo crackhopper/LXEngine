@@ -88,6 +88,22 @@ function(_lx_try_import_env_dump bootstrap_script bootstrap_args out_result out_
   set(${out_error} "" PARENT_SCOPE)
 endfunction()
 
+function(_lx_read_cmd_env env_name out_value)
+  execute_process(
+    COMMAND cmd /d /c "echo %${env_name}%"
+    OUTPUT_VARIABLE _lx_env_value
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    RESULT_VARIABLE _lx_env_result
+    ERROR_QUIET
+  )
+
+  if(_lx_env_result EQUAL 0 AND NOT _lx_env_value STREQUAL "%${env_name}%")
+    set(${out_value} "${_lx_env_value}" PARENT_SCOPE)
+  else()
+    set(${out_value} "" PARENT_SCOPE)
+  endif()
+endfunction()
+
 set(_lx_existing_env_ready FALSE)
 if(DEFINED ENV{VSCMD_VER} AND DEFINED ENV{VCToolsInstallDir})
   if(EXISTS "$ENV{VCToolsInstallDir}")
@@ -146,7 +162,7 @@ set(_lx_vswhere_candidates "")
 if(LX_WINDOWS_VSWHERE_PATH)
   list(APPEND _lx_vswhere_candidates "${LX_WINDOWS_VSWHERE_PATH}")
 endif()
-set(_lx_program_files_x86 "$ENV{ProgramFiles(x86)}")
+_lx_read_cmd_env("ProgramFiles(x86)" _lx_program_files_x86)
 if(_lx_program_files_x86)
   list(APPEND _lx_vswhere_candidates
     "${_lx_program_files_x86}/Microsoft Visual Studio/Installer/vswhere.exe")
