@@ -8,6 +8,8 @@ set(LX_WINDOWS_VSWHERE_PATH "" CACHE FILEPATH
     "Optional path to vswhere.exe used to locate Visual Studio")
 set(LX_WINDOWS_VS_INSTALLATION_PATH "" CACHE PATH
     "Optional Visual Studio installation root used for MSVC environment bootstrap")
+set(LX_WINDOWS_REQUIRED_VS_MAJOR "2022" CACHE STRING
+    "Required Visual Studio major version on Windows. This project supports Visual Studio 2022 only.")
 
 if(NOT LX_WINDOWS_AUTO_IMPORT_MSVC_ENV)
   message(STATUS "Windows MSVC environment auto import disabled")
@@ -104,6 +106,137 @@ function(_lx_read_cmd_env env_name out_value)
   endif()
 endfunction()
 
+function(_lx_map_visual_studio_version input output_var)
+  if("${input}" MATCHES "^17(\\.|$)")
+    set(${output_var} "2022" PARENT_SCOPE)
+  elseif("${input}" MATCHES "^16(\\.|$)")
+    set(${output_var} "2019" PARENT_SCOPE)
+  elseif("${input}" MATCHES "^15(\\.|$)")
+    set(${output_var} "2017" PARENT_SCOPE)
+  else()
+    set(${output_var} "${input}" PARENT_SCOPE)
+  endif()
+endfunction()
+
+function(_lx_detect_vs_major_from_install_root install_root output_var)
+  if("${install_root}" MATCHES [[/Microsoft Visual Studio/([0-9]+)/[^/]+/?$]])
+    set(${output_var} "${CMAKE_MATCH_1}" PARENT_SCOPE)
+  else()
+    set(${output_var} "" PARENT_SCOPE)
+  endif()
+endfunction()
+
+function(_lx_is_supported_vs_major vs_major output_var)
+  if("${vs_major}" STREQUAL "2022")
+    set(${output_var} TRUE PARENT_SCOPE)
+  else()
+    set(${output_var} FALSE PARENT_SCOPE)
+  endif()
+endfunction()
+
+function(_lx_append_list_entry list_var entry)
+  set(_lx_items "${${list_var}}")
+  list(APPEND _lx_items "${entry}")
+  list(REMOVE_DUPLICATES _lx_items)
+  set(${list_var} "${_lx_items}" PARENT_SCOPE)
+endfunction()
+
+function(_lx_append_vs_candidate list_var install_root reason)
+  if(NOT install_root)
+    return()
+  endif()
+
+  get_filename_component(_lx_candidate_root "${install_root}" ABSOLUTE)
+  if(NOT EXISTS "${_lx_candidate_root}")
+    return()
+  endif()
+
+  _lx_append_list_entry(${list_var} "${_lx_candidate_root}|${reason}")
+endfunction()
+
+function(_lx_collect_vswhere_install_paths vswhere_path out_install_paths out_failures)
+  set(_lx_install_paths "")
+  set(_lx_failures "")
+
+  if(NOT EXISTS "${vswhere_path}")
+    set(${out_install_paths} "" PARENT_SCOPE)
+    set(${out_failures} "vswhere not found: ${vswhere_path}" PARENT_SCOPE)
+    return()
+  endif()
+
+  set(_lx_vswhere_queries
+    "-all;-products;*;-requires;Microsoft.VisualStudio.Component.VC.Tools.x86.x64;-property;installationPath"
+    "-all;-products;*;-requiresAny;-requires;Microsoft.VisualStudio.Component.VC.Tools.x86.x64;Microsoft.VisualStudio.Workload.VCTools;-property;installationPath"
+    "-all;-products;*;-property;installationPath")
+
+  foreach(_lx_query IN LISTS _lx_vswhere_queries)
+    execute_process(
+      COMMAND "${vswhere_path}" ${_lx_query}
+      OUTPUT_VARIABLE _lx_vswhere_output
+      ERROR_VARIABLE _lx_vswhere_error
+      RESULT_VARIABLE _lx_vswhere_result
+      OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+
+    if(NOT _lx_vswhere_result EQUAL 0)
+      string(STRIP "${_lx_vswhere_error}" _lx_vswhere_error)
+      if(_lx_vswhere_error)
+        list(APPEND _lx_failures "${vswhere_path}: ${_lx_vswhere_error}")
+      endif()
+      continue()
+    endif()
+
+    if(NOT _lx_vswhere_output)
+      continue()
+    endif()
+
+    string(REPLACE "\r\n" "\n" _lx_vswhere_output "${_lx_vswhere_output}")
+    string(REPLACE "\r" "\n" _lx_vswhere_output "${_lx_vswhere_output}")
+    string(REPLACE "\n" ";" _lx_vswhere_lines "${_lx_vswhere_output}")
+
+    foreach(_lx_line IN LISTS _lx_vswhere_lines)
+      string(STRIP "${_lx_line}" _lx_line)
+      if(_lx_line AND EXISTS "${_lx_line}")
+        list(APPEND _lx_install_paths "${_lx_line}")
+      endif()
+    endforeach()
+  endforeach()
+
+  list(REMOVE_DUPLICATES _lx_install_paths)
+  list(REMOVE_DUPLICATES _lx_failures)
+  set(${out_install_paths} "${_lx_install_paths}" PARENT_SCOPE)
+  set(${out_failures} "${_lx_failures}" PARENT_SCOPE)
+endfunction()
+
+function(_lx_collect_vs_install_roots base_dir out_install_roots)
+  set(_lx_install_roots "")
+
+  if(NOT base_dir OR NOT EXISTS "${base_dir}/Microsoft Visual Studio")
+    set(${out_install_roots} "" PARENT_SCOPE)
+    return()
+  endif()
+
+  file(GLOB _lx_candidate_roots
+    LIST_DIRECTORIES true
+    "${base_dir}/Microsoft Visual Studio/*/*")
+  list(SORT _lx_candidate_roots)
+  list(REVERSE _lx_candidate_roots)
+
+  foreach(_lx_candidate IN LISTS _lx_candidate_roots)
+    if(NOT IS_DIRECTORY "${_lx_candidate}")
+      continue()
+    endif()
+
+    if(EXISTS "${_lx_candidate}/Common7/Tools/VsDevCmd.bat"
+       OR EXISTS "${_lx_candidate}/VC/Auxiliary/Build/vcvarsall.bat")
+      list(APPEND _lx_install_roots "${_lx_candidate}")
+    endif()
+  endforeach()
+
+  list(REMOVE_DUPLICATES _lx_install_roots)
+  set(${out_install_roots} "${_lx_install_roots}" PARENT_SCOPE)
+endfunction()
+
 set(_lx_existing_env_ready FALSE)
 if(DEFINED ENV{VSCMD_VER} AND DEFINED ENV{VCToolsInstallDir})
   if(EXISTS "$ENV{VCToolsInstallDir}")
@@ -116,6 +249,31 @@ if(NOT _lx_existing_env_ready AND DEFINED ENV{VCINSTALLDIR})
   endif()
 endif()
 if(_lx_existing_env_ready)
+  set(_lx_existing_vs_major "")
+  if(DEFINED ENV{VisualStudioVersion})
+    _lx_map_visual_studio_version("$ENV{VisualStudioVersion}" _lx_existing_vs_major)
+  elseif(DEFINED ENV{VSINSTALLDIR})
+    _lx_detect_vs_major_from_install_root("$ENV{VSINSTALLDIR}" _lx_existing_vs_major)
+  endif()
+
+  if(LX_WINDOWS_REQUIRED_VS_MAJOR
+     AND _lx_existing_vs_major
+     AND NOT _lx_existing_vs_major STREQUAL LX_WINDOWS_REQUIRED_VS_MAJOR)
+    message(FATAL_ERROR
+      "Detected an existing Visual Studio developer environment for Visual Studio "
+      "${_lx_existing_vs_major}, but this project requires Visual Studio "
+      "${LX_WINDOWS_REQUIRED_VS_MAJOR}.")
+  endif()
+
+  if(_lx_existing_vs_major)
+    _lx_is_supported_vs_major("${_lx_existing_vs_major}" _lx_existing_vs_supported)
+    if(NOT _lx_existing_vs_supported)
+      message(FATAL_ERROR
+        "Detected an existing Visual Studio developer environment for Visual Studio "
+        "${_lx_existing_vs_major}, but this project supports Visual Studio 2022 only.")
+    endif()
+  endif()
+
   message(STATUS
     "Using existing Visual Studio developer environment: "
     "$ENV{VCToolsInstallDir}$ENV{VCINSTALLDIR}")
@@ -135,26 +293,22 @@ endif()
 _lx_map_vs_arch("${_lx_requested_arch}" _lx_target_arch)
 _lx_map_vs_arch("${CMAKE_HOST_SYSTEM_PROCESSOR}" _lx_host_arch)
 
-set(_lx_vs_install_path "")
-set(_lx_vs_source "")
+set(_lx_vs_candidates "")
+set(_lx_scan_notes "")
 
 if(LX_WINDOWS_VS_INSTALLATION_PATH AND EXISTS "${LX_WINDOWS_VS_INSTALLATION_PATH}")
-  set(_lx_vs_install_path "${LX_WINDOWS_VS_INSTALLATION_PATH}")
-  set(_lx_vs_source "LX_WINDOWS_VS_INSTALLATION_PATH")
+  _lx_append_vs_candidate(_lx_vs_candidates "${LX_WINDOWS_VS_INSTALLATION_PATH}"
+    "LX_WINDOWS_VS_INSTALLATION_PATH")
 endif()
 
-if(NOT _lx_vs_install_path AND DEFINED ENV{VSINSTALLDIR})
-  if(EXISTS "$ENV{VSINSTALLDIR}")
-    set(_lx_vs_install_path "$ENV{VSINSTALLDIR}")
-    set(_lx_vs_source "VSINSTALLDIR")
-  endif()
+if(DEFINED ENV{VSINSTALLDIR} AND EXISTS "$ENV{VSINSTALLDIR}")
+  _lx_append_vs_candidate(_lx_vs_candidates "$ENV{VSINSTALLDIR}" "VSINSTALLDIR")
 endif()
 
-if(NOT _lx_vs_install_path AND DEFINED ENV{VCINSTALLDIR})
+if(DEFINED ENV{VCINSTALLDIR})
   get_filename_component(_lx_vs_from_vc "$ENV{VCINSTALLDIR}/../.." ABSOLUTE)
   if(EXISTS "${_lx_vs_from_vc}")
-    set(_lx_vs_install_path "${_lx_vs_from_vc}")
-    set(_lx_vs_source "VCINSTALLDIR")
+    _lx_append_vs_candidate(_lx_vs_candidates "${_lx_vs_from_vc}" "VCINSTALLDIR")
   endif()
 endif()
 
@@ -163,6 +317,7 @@ if(LX_WINDOWS_VSWHERE_PATH)
   list(APPEND _lx_vswhere_candidates "${LX_WINDOWS_VSWHERE_PATH}")
 endif()
 _lx_read_cmd_env("ProgramFiles(x86)" _lx_program_files_x86)
+_lx_read_cmd_env("ProgramW6432" _lx_program_w6432)
 if(_lx_program_files_x86)
   list(APPEND _lx_vswhere_candidates
     "${_lx_program_files_x86}/Microsoft Visual Studio/Installer/vswhere.exe")
@@ -172,63 +327,81 @@ if(_lx_program_files)
   list(APPEND _lx_vswhere_candidates
     "${_lx_program_files}/Microsoft Visual Studio/Installer/vswhere.exe")
 endif()
+if(_lx_program_w6432)
+  list(APPEND _lx_vswhere_candidates
+    "${_lx_program_w6432}/Microsoft Visual Studio/Installer/vswhere.exe")
+endif()
 list(REMOVE_DUPLICATES _lx_vswhere_candidates)
 
-if(NOT _lx_vs_install_path)
-  foreach(_lx_vswhere IN LISTS _lx_vswhere_candidates)
-    _lx_try_query_vswhere("${_lx_vswhere}" _lx_found_install _lx_found_reason)
-    if(_lx_found_install)
-      set(_lx_vs_install_path "${_lx_found_install}")
-      set(_lx_vs_source "${_lx_found_reason}")
-      break()
-    endif()
+foreach(_lx_vswhere IN LISTS _lx_vswhere_candidates)
+  _lx_collect_vswhere_install_paths("${_lx_vswhere}" _lx_found_installs _lx_vswhere_failures)
+  foreach(_lx_found_install IN LISTS _lx_found_installs)
+    _lx_append_vs_candidate(_lx_vs_candidates "${_lx_found_install}"
+      "vswhere (${_lx_vswhere})")
   endforeach()
-endif()
-
-if(NOT _lx_vs_install_path)
-  foreach(_lx_comntools_env
-      VS170COMNTOOLS
-      VS160COMNTOOLS
-      VS150COMNTOOLS
-      VS140COMNTOOLS)
-    if(DEFINED ENV{${_lx_comntools_env}})
-      get_filename_component(_lx_comntools_root "$ENV{${_lx_comntools_env}}/../.." ABSOLUTE)
-      if(EXISTS "${_lx_comntools_root}")
-        set(_lx_vs_install_path "${_lx_comntools_root}")
-        set(_lx_vs_source "${_lx_comntools_env}")
-        break()
-      endif()
-    endif()
+  foreach(_lx_vswhere_failure IN LISTS _lx_vswhere_failures)
+    list(APPEND _lx_scan_notes "${_lx_vswhere_failure}")
   endforeach()
-endif()
+endforeach()
 
-if(NOT _lx_vs_install_path)
-  set(_lx_default_vs_roots "")
-  if(_lx_program_files_x86)
-    list(APPEND _lx_default_vs_roots
-      "${_lx_program_files_x86}/Microsoft Visual Studio/2022/BuildTools"
-      "${_lx_program_files_x86}/Microsoft Visual Studio/2022/Community"
-      "${_lx_program_files_x86}/Microsoft Visual Studio/2022/Professional"
-      "${_lx_program_files_x86}/Microsoft Visual Studio/2022/Enterprise"
-      "${_lx_program_files_x86}/Microsoft Visual Studio/2019/BuildTools"
-      "${_lx_program_files_x86}/Microsoft Visual Studio/2019/Community"
-      "${_lx_program_files_x86}/Microsoft Visual Studio/2019/Professional"
-      "${_lx_program_files_x86}/Microsoft Visual Studio/2019/Enterprise")
+foreach(_lx_comntools_env
+    VS170COMNTOOLS
+    VS160COMNTOOLS
+    VS150COMNTOOLS
+    VS140COMNTOOLS)
+  if(DEFINED ENV{${_lx_comntools_env}})
+    get_filename_component(_lx_comntools_root "$ENV{${_lx_comntools_env}}/../.." ABSOLUTE)
+    if(EXISTS "${_lx_comntools_root}")
+      _lx_append_vs_candidate(_lx_vs_candidates "${_lx_comntools_root}" "${_lx_comntools_env}")
+    endif()
   endif()
-  foreach(_lx_candidate IN LISTS _lx_default_vs_roots)
-    if(EXISTS "${_lx_candidate}/VC/Auxiliary/Build/vcvarsall.bat"
-       OR EXISTS "${_lx_candidate}/Common7/Tools/VsDevCmd.bat")
-      set(_lx_vs_install_path "${_lx_candidate}")
-      set(_lx_vs_source "default install path scan")
-      break()
-    endif()
-  endforeach()
+endforeach()
+
+set(_lx_default_scan_roots "")
+if(_lx_program_files_x86)
+  list(APPEND _lx_default_scan_roots "${_lx_program_files_x86}")
 endif()
+if(_lx_program_files)
+  list(APPEND _lx_default_scan_roots "${_lx_program_files}")
+endif()
+if(_lx_program_w6432)
+  list(APPEND _lx_default_scan_roots "${_lx_program_w6432}")
+endif()
+list(REMOVE_DUPLICATES _lx_default_scan_roots)
+
+foreach(_lx_scan_root IN LISTS _lx_default_scan_roots)
+  _lx_collect_vs_install_roots("${_lx_scan_root}" _lx_scanned_candidates)
+  foreach(_lx_candidate IN LISTS _lx_scanned_candidates)
+    _lx_append_vs_candidate(_lx_vs_candidates "${_lx_candidate}"
+      "filesystem scan (${_lx_scan_root})")
+  endforeach()
+endforeach()
 
 set(_lx_bootstrap_attempts "")
 set(_lx_bootstrap_reason "")
 
-if(_lx_vs_install_path)
+foreach(_lx_vs_candidate IN LISTS _lx_vs_candidates)
+  string(REPLACE "|" ";" _lx_vs_candidate_fields "${_lx_vs_candidate}")
+  list(GET _lx_vs_candidate_fields 0 _lx_vs_install_path)
+  list(GET _lx_vs_candidate_fields 1 _lx_vs_source)
+
+  _lx_detect_vs_major_from_install_root("${_lx_vs_install_path}" _lx_vs_major)
+  if(_lx_vs_major)
+    _lx_is_supported_vs_major("${_lx_vs_major}" _lx_vs_supported)
+    if(NOT _lx_vs_supported)
+      list(APPEND _lx_scan_notes
+        "Skipping ${_lx_vs_install_path}: Visual Studio ${_lx_vs_major} is installed but unsupported; this project requires Visual Studio 2022")
+      continue()
+    endif()
+  endif()
+  if(LX_WINDOWS_REQUIRED_VS_MAJOR
+     AND _lx_vs_major
+     AND NOT _lx_vs_major STREQUAL LX_WINDOWS_REQUIRED_VS_MAJOR)
+    list(APPEND _lx_scan_notes
+      "Skipping ${_lx_vs_install_path}: Visual Studio ${_lx_vs_major} does not match required ${LX_WINDOWS_REQUIRED_VS_MAJOR}")
+    continue()
+  endif()
+
   set(_lx_vsdevcmd_bat "${_lx_vs_install_path}/Common7/Tools/VsDevCmd.bat")
   set(_lx_vcvarsall_bat "${_lx_vs_install_path}/VC/Auxiliary/Build/vcvarsall.bat")
   set(_lx_vcvars64_bat "${_lx_vs_install_path}/VC/Auxiliary/Build/vcvars64.bat")
@@ -249,7 +422,10 @@ if(_lx_vs_install_path)
     list(APPEND _lx_bootstrap_attempts
       "${_lx_vcvars64_bat}||${_lx_vs_source} -> vcvars64")
   endif()
-endif()
+endforeach()
+
+list(REMOVE_DUPLICATES _lx_bootstrap_attempts)
+list(REMOVE_DUPLICATES _lx_scan_notes)
 
 set(_lx_cl_from_path "")
 find_program(_lx_cl_from_path cl)
@@ -334,8 +510,15 @@ if(_lx_failure_summary)
   set(_lx_failure_summary "Tried:\n  - ${_lx_failure_summary}\n")
 endif()
 
+string(JOIN "\n  - " _lx_scan_summary ${_lx_scan_notes})
+if(_lx_scan_summary)
+  set(_lx_scan_summary "Discovery notes:\n  - ${_lx_scan_summary}\n")
+endif()
+
 message(FATAL_ERROR
   "Unable to locate or import a usable Visual Studio C++ build environment.\n"
+  "Required Visual Studio major version: ${LX_WINDOWS_REQUIRED_VS_MAJOR}\n"
+  "${_lx_scan_summary}"
   "${_lx_failure_summary}"
   "Install the Desktop development with C++ workload, launch from a VS developer "
   "shell, or set LX_WINDOWS_VS_INSTALLATION_PATH / LX_WINDOWS_VSWHERE_PATH.")
