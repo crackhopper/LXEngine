@@ -39,3 +39,5 @@ notes/requirements/
 !src/infra/external/**/*.dll
 !src/infra/external/**/*.lib
 !src/infra/external/**/*.pdb
+
+examples/
