@@ -64,6 +64,29 @@ TARGETS = [
         nav_order=100,
     ),
     SourceAnalysisTarget(
+        source="src/core/asset/mesh.hpp",
+        output="notes/source_analysis/src/core/asset/mesh.md",
+        title="Mesh：几何接口形状如何进入渲染签名",
+        intro=textwrap.dedent(
+            """\
+            这一页从
+            [src/core/asset/mesh.hpp](../../../../../src/core/asset/mesh.hpp)
+            出发，但真正想回答的问题不是“Mesh 里有哪些字段”，而是：
+            为什么项目把几何对象做得这么薄，却仍然能让 pipeline、scene 校验和 backend
+            都拿到自己需要的结构事实。
+
+            可以先带着一个问题阅读：`Mesh` 为什么没有直接保存材质、draw state，
+            却还能参与 `PipelineKey`？答案是，这里真正进入渲染签名的不是“几何内容本身”，
+            而是顶点输入布局和图元拓扑这两类几何接口形状。
+            """
+        ).strip(),
+        related_sources=(
+            "src/core/rhi/vertex_buffer.hpp",
+            "src/core/rhi/index_buffer.hpp",
+        ),
+        nav_order=200,
+    ),
+    SourceAnalysisTarget(
         source="src/core/asset/material_instance.hpp",
         output="notes/source_analysis/src/core/asset/material_instance.md",
         title="MaterialInstance：从模板到运行时账本",

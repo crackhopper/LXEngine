@@ -25,6 +25,7 @@
 当前入口：
 
 - [IGpuResource：core 层的 GPU 资源统一契约](src/core/rhi/gpu_resource.md)
+- [Mesh：几何接口形状如何进入渲染签名](src/core/asset/mesh.md)
 - [MaterialTemplate：多 pass 蓝图如何收束成统一契约](src/core/asset/material_template.md)
 - [MaterialInstance：从模板到运行时账本](src/core/asset/material_instance.md)
 

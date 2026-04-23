@@ -89,6 +89,19 @@ struct VertexLayoutItem {
   }
 };
 
+/*
+@source_analysis.section VertexLayout：把 shader 关心的顶点输入契约显式带出来
+`VertexLayout` 不是单纯给 backend 上传用的元数据；它承担的是“mesh 如何向 shader
+暴露顶点输入接口”的结构契约。这里明确记录：
+
+- attribute 名字和 location
+- 数据类型
+- stride / offset
+- vertex 还是 instance 频率
+
+后面的 `Mesh::getRenderSignature()`、`PipelineBuildDesc`、`SceneNode` 校验都会消费它，
+因为这些流程真正关心的是顶点输入形状，而不是 `VertexPosUv` 这类 C++ 顶点类型名。
+*/
 class VertexLayout {
 public:
   VertexLayout() = default;
@@ -149,6 +162,14 @@ namespace LX_core {
 // IVertexBuffer extends the generic GPU resource contract with vertex-layout
 // metadata. Backend upload only needs IGpuResource; pipeline creation also
 // needs the layout/hash carried here.
+/*
+@source_analysis.section IVertexBuffer：上传契约之外，再补一层“布局可见性”
+`IGpuResource` 已经足够表达“这是一块要上传到 GPU 的字节”，但对 vertex buffer 来说
+还差一件关键事实：shader 该如何解释这些字节。
+
+所以 `IVertexBuffer` 在通用资源契约之上补了 `getLayout()` / `getLayoutHash()`。
+这让同一份顶点数据既能走统一的资源上传路径，又能在 pipeline 构建时把顶点输入布局带出来。
+*/
 class IVertexBuffer : public IGpuResource {
 public:
   virtual ~IVertexBuffer() = default;
@@ -205,6 +226,15 @@ private:
  *****************************************************************/
 using VertexBufferPtr = std::shared_ptr<IVertexBuffer>;
 
+/*
+@source_analysis.section VertexFactory：按布局而不是按模板参数恢复 type-erased 顶点数据
+工程里很多边界只想持有 `VertexBufferPtr`，不想把具体 `VertexPos` / `VertexPosUv` 模板类型
+一路往外传。`VertexFactory` 的作用，就是在需要“从原始顶点数组重新构造具体 buffer”时，
+按 `VertexLayout` 的 hash 找回对应的具体 `VType` 创建逻辑。
+
+也就是说，这里把“顶点类型识别”从编译期模板名，转成了运行时的布局契约。只要布局一致，
+外层系统就能继续用 type-erased 的 `IVertexBuffer` 工作。
+*/
 class VertexFactory {
 public:
   using Creator = std::function<VertexBufferPtr(std::any &&rawData)>;
