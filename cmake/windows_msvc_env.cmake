@@ -288,8 +288,32 @@ function(_lx_configure_bootstrap_toolchain)
       "MSVC CXX compiler imported from Visual Studio developer environment" FORCE)
 
   if(CMAKE_GENERATOR STREQUAL "Ninja" AND NOT CMAKE_MAKE_PROGRAM)
-    find_program(_lx_ninja_program
-      NAMES ninja.exe ninja ninja-build.exe ninja-build)
+    execute_process(
+      COMMAND where.exe ninja
+      OUTPUT_VARIABLE _lx_where_ninja_output
+      ERROR_VARIABLE _lx_where_ninja_error
+      RESULT_VARIABLE _lx_where_ninja_result
+      OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+
+    set(_lx_ninja_program "")
+    if(_lx_where_ninja_result EQUAL 0 AND _lx_where_ninja_output)
+      string(REPLACE "\r\n" "\n" _lx_where_ninja_output "${_lx_where_ninja_output}")
+      string(REPLACE "\r" "\n" _lx_where_ninja_output "${_lx_where_ninja_output}")
+      string(REPLACE "\n" ";" _lx_where_ninja_lines "${_lx_where_ninja_output}")
+      foreach(_lx_where_ninja_line IN LISTS _lx_where_ninja_lines)
+        string(STRIP "${_lx_where_ninja_line}" _lx_where_ninja_line)
+        if(_lx_where_ninja_line AND EXISTS "${_lx_where_ninja_line}")
+          set(_lx_ninja_program "${_lx_where_ninja_line}")
+          break()
+        endif()
+      endforeach()
+    endif()
+
+    if(NOT _lx_ninja_program)
+      find_program(_lx_ninja_program
+        NAMES ninja.exe ninja ninja-build.exe ninja-build)
+    endif()
 
     if(NOT _lx_ninja_program)
       message(FATAL_ERROR
