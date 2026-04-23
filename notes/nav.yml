@@ -43,10 +43,15 @@ nav:
           - Pipeline Cache: subsystems/pipeline-cache.md
           - Shader System: subsystems/shader-system.md
           - Material System: subsystems/material-system.md
+          - Resource Upload: subsystems/resource-upload.md
           - Geometry: subsystems/geometry.md
           - Skeleton: subsystems/skeleton.md
           - String Interning: subsystems/string-interning.md
           - Vulkan Backend: subsystems/vulkan-backend.md
+  - 源码分析:
+      - source_analysis/index.md
+      - IGpuResource：core 层的 GPU 资源统一契约: source_analysis/src/core/rhi/gpu_resource.md
+      - MaterialInstance：从模板到运行时账本: source_analysis/src/core/asset/material_instance.md
   - 后端实现:
       - Vulkan Backend:
           - vulkan-backend/index.md
