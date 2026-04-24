@@ -87,12 +87,10 @@ int main() {
                            0); // avoid normal texture
     material->syncGpuData();
 
-    auto renderable = std::make_shared<LX_core::RenderableSubMesh>(meshPtr, material);
-    // Pipeline declares a skeleton data slot; attach an (empty) skeleton so the
-    // descriptor set binding gets a valid buffer to update.
-    renderable->skeleton =
-        LX_core::Skeleton::create(std::vector<LX_core::Bone>{});
-    auto scene = LX_core::Scene::create(renderable);
+    auto node = LX_core::SceneNode::create(
+        "vulkan_command_node", meshPtr, material,
+        LX_core::Skeleton::create(std::vector<LX_core::Bone>{}));
+    auto scene = LX_core::Scene::create(node);
 
     // REQ-009: reach the scene's default camera + directional light via the
     // multi-container API (Scene::Scene seeds exactly one of each).

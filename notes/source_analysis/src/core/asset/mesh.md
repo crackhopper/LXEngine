@@ -40,7 +40,7 @@
 
 ### 几何签名：mesh 只输出 pipeline 真正关心的结构信息
 
-`getLayoutHash()` 和 `getRenderSignature()` 都只组合两类东西：
+`getRenderSignature()` 只组合两类东西：
 
 - 顶点输入布局
 - 索引拓扑
@@ -72,17 +72,8 @@
 `IGpuResource` 已经足够表达“这是一块要上传到 GPU 的字节”，但对 vertex buffer 来说
 还差一件关键事实：shader 该如何解释这些字节。
 
-所以 `IVertexBuffer` 在通用资源契约之上补了 `getLayout()` / `getLayoutHash()`。
+所以 `IVertexBuffer` 在通用资源契约之上补了 `getLayout()`。
 这让同一份顶点数据既能走统一的资源上传路径，又能在 pipeline 构建时把顶点输入布局带出来。
-
-### VertexFactory：按布局而不是按模板参数恢复 type-erased 顶点数据
-
-工程里很多边界只想持有 `VertexBufferSharedPtr`，不想把具体 `VertexPos` / `VertexPosUv` 模板类型
-一路往外传。`VertexFactory` 的作用，就是在需要“从原始顶点数组重新构造具体 buffer”时，
-按 `VertexLayout` 的 hash 找回对应的具体 `VType` 创建逻辑。
-
-也就是说，这里把“顶点类型识别”从编译期模板名，转成了运行时的布局契约。只要布局一致，
-外层系统就能继续用 type-erased 的 `IVertexBuffer` 工作。
 
 ## index_buffer.hpp
 
@@ -94,7 +85,7 @@
 组装成图元。因此 `PrimitiveTopology` 被放在 `IndexBuffer` 一侧，而不是藏进 draw call 临时参数：
 
 - 它和索引数据一起定义了“几何如何被解释”
-- 它直接参与 `Mesh` 的 render signature / layout hash
+- 它直接参与 `Mesh` 的 render signature
 - 改拓扑会改变 pipeline 需求，即使索引字节完全不变
 
 ### topologySignature：把拓扑收束成可组合的结构叶子
@@ -107,10 +98,10 @@
 `IndexBuffer` 在这里承担两类职责：
 
 - 作为 `IGpuResource` 暴露原始索引字节，供 backend 上传和绑定
-- 作为几何结构的一部分，暴露 topology / indexType / layout hash
+- 作为几何结构的一部分，暴露 topology
 
 所以它不是“纯数据容器”。只要 topology 变化，即使索引值没变，pipeline 侧看到的几何接口
-也已经变了，这正是 `getLayoutHash()` 把 topology 编进去的原因。
+也已经变了。
 
 <!-- SOURCE_ANALYSIS:EXTRA -->
 

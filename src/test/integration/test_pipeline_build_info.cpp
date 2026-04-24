@@ -81,7 +81,7 @@ buildItem(PrimitiveTopology topo = PrimitiveTopology::TriangleList) {
                             0,
                             ShaderStage::Vertex,
                             {}},
-      ShaderResourceBinding{"MaterialUBO",
+      ShaderResourceBinding{"SurfaceParams",
                             1,
                             0,
                             ShaderPropertyType::UniformBuffer,
@@ -120,7 +120,11 @@ buildItem(PrimitiveTopology topo = PrimitiveTopology::TriangleList) {
   entry.renderState.cullMode = CullMode::Front;
   entry.renderState.depthTestEnable = false;
   tmpl->setPassDefinition(Pass_Forward, std::move(entry));
+  tmpl->rebuildMaterialInterface();
   auto material = MaterialInstance::create(tmpl);
+  material->setTexture(
+      StringID("albedoTex"),
+      std::make_shared<CombinedTextureSampler>(createWhiteTexture()));
 
   // Minimal vertex + index buffers.
   auto vb = VertexBuffer<VertexPos>::create(
@@ -128,8 +132,8 @@ buildItem(PrimitiveTopology topo = PrimitiveTopology::TriangleList) {
   auto ib = IndexBuffer::create({0, 1, 2}, topo);
   auto mesh = Mesh::create(vb, ib);
 
-  auto sub = std::make_shared<RenderableSubMesh>(mesh, material, nullptr);
-  auto scene = Scene::create(sub);
+  auto node = SceneNode::create("pipeline_build_info_node", mesh, material);
+  auto scene = Scene::create(node);
   return LX_test::firstItemFromScene(*scene, Pass_Forward);
 }
 
@@ -143,7 +147,7 @@ void testFromRenderingItemPopulatesBindings() {
   EXPECT(info.bindings.size() == 3, "bindings.size()==3");
   if (info.bindings.size() == 3) {
     EXPECT(info.bindings[0].name == "CameraUBO", "binding 0 name");
-    EXPECT(info.bindings[1].name == "MaterialUBO", "binding 1 name");
+    EXPECT(info.bindings[1].name == "SurfaceParams", "binding 1 name");
     EXPECT(info.bindings[2].name == "albedoTex", "binding 2 name");
   }
 }
@@ -203,7 +207,6 @@ void testRenderTargetHashStability() {
 
 int main() {
   expSetEnvVK();
-  VertexFactory::registerType<VertexPos>();
 
   testFromRenderingItemPopulatesBindings();
   testFromRenderingItemKeyMatches();

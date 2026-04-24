@@ -108,10 +108,9 @@ int main() {
 
   auto skeletonPtr = Skeleton::create({});
 
-  auto renderable =
-      std::make_shared<RenderableSubMesh>(meshPtr, material, skeletonPtr);
+  auto node = SceneNode::create("triangle", meshPtr, material, skeletonPtr);
 
-  auto scene = Scene::create(renderable);
+  auto scene = Scene::create(node);
 
   auto camera = scene->getCameras().front();
   auto dirLight =

@@ -1,7 +1,7 @@
-# Claude Review — 项目现状与下一步规划
+# Claude Review — 项目现状与下一步规划（2026-04-24 复核版）
 
-日期：2026-04-19
-作者：Claude（基于 main 分支 `fb69a10` 的代码快照）
+日期：2026-04-24
+作者：Codex（基于 `HEAD=82267d3` 与当前 dirty worktree 复核；原稿作者：Claude）
 适用范围：`src/core`、`src/infra`、`src/backend`、`src/test`、`src/demos`、`openspec/`、`notes/`
 
 ---
@@ -13,13 +13,13 @@
 - 三层分层（core / infra / backend）边界清晰；
 - Scene → FrameGraph → RenderQueue → PipelineBuildDesc → PipelineCache 的渲染管线身份链路基本打通；
 - demo `scene_viewer` 把 window / renderer / engine loop / input / camera / UI overlay 串起来可以运行；
-- `openspec/specs/` 下有 35 份 spec、`notes/subsystems/` 有 12 份设计文档，工程流程规范。
+- `openspec/specs/` 下当前有 34 份 spec、`notes/subsystems/` 有 13 份设计文档，工程流程规范。
 
-但是**存在若干高优先级缺陷**至今未修，其中一部分是 2026-04-17 的 `notes/ai-scanned/` 报告里点过名、当前代码里仍原样存在的硬错误：四元数乘法公式写反、浮点向量哈希走 UB、SDL 窗口 `updateSize` 空壳、GLFW Surface 句柄泄漏与契约漂移、`VulkanRenderer` 的 pImpl 仍是裸 `new/delete`。
+但是**仍存在若干高优先级缺陷**至今未修，其中一部分是 2026-04-17 的 `notes/ai-scanned/` 报告里点过名、当前代码里仍原样存在的硬错误：四元数乘法公式写反、浮点向量哈希走 UB、SDL 窗口 `updateSize` 空壳、GLFW Surface 句柄泄漏与契约漂移、`VulkanRenderer` 的 pImpl 仍是裸 `new/delete`、`isDeviceSuitable()` 仍把集显排除在外。
 
-另外，测试框架弱（没有 CTest 注册、没有单元测试框架、数学层零覆盖），`openspec` 与 `notes/requirements/REQ-034` 里积累的 R2–R10 长期未动。
+另外，测试框架仍然薄弱（没有 CTest 注册、没有单元测试框架、数学层零覆盖）。不过原稿里“REQ-034 的 R2–R10 长期未动”这句已经过时：`shader binding ownership` 已经进入当前主规格与代码，材质系统也正在通过活跃 change `openspec/changes/canonical-material-parameters/` 继续收敛，不能再按“完全没启动”来判断。
 
-**下一步建议**分成 4 条并行线：（1）先把仍在的硬错误修掉并补最小单元测试框架；（2）继续推进 REQ-034 里的 R2 清理 legacy、R4–R7 光照与可见性；（3）渲染深度（阴影 / IBL / frustum culling）按 roadmap Phase 1 推进；（4）长期债：GPU 资源句柄契约、`VulkanRendererImpl` 封装、裸指针 pImpl 统一迁到 `std::unique_ptr`。
+**下一步建议**分成 4 条线：（1）先把仍在的硬错误修掉并补最小测试闭环；（2）继续推进 REQ-034 里的 R2 与 R4–R7；（3）把正在进行中的 canonical material parameter change 收口并归档；（4）长期债继续聚焦 GPU 资源句柄契约、`VulkanRendererImpl` 封装、裸指针 pImpl 统一迁到 `std::unique_ptr`。
 
 ---
 
@@ -33,7 +33,7 @@
 | infra | `src/infra/` | 2424 | window / gui / mesh loader / texture loader / shader compiler + reflector |
 | backend | `src/backend/vulkan/` | 3235 | Vulkan 设备、资源、descriptor、pipeline、command buffer、swapchain |
 | demos | `src/demos/` | 534 | `scene_viewer`：helmet + 地面 + orbit/freefly 相机 + ImGui overlay |
-| tests | `src/test/` | 5496 | 28 个集成测试 + 1 个 app-style `test_render_triangle` |
+| tests | `src/test/` | 5496 | 当前有 29 个 `test_*.cpp`，其中大部分是 integration test，另有 app-style `test_render_triangle` |
 
 ### 1.2 主渲染路径
 
@@ -68,7 +68,7 @@ VulkanRenderer::draw()
 
 ## 2. 高优先级问题（block 发布或正确性）
 
-这一节里的问题大部分已在 2026-04-17 的 `notes/ai-scanned/` 三份报告里点名，**但截至 `fb69a10` 仍未修复**。复述它们，不是因为新发现，而是因为它们应该在下一轮就被清掉。
+这一节里的问题大部分已在 2026-04-17 的 `notes/ai-scanned/` 三份报告里点名，**截至 2026-04-24 复核仍未修复**。复述它们，不是因为新发现，而是因为它们应该在下一轮就被清掉。
 
 ### P0-1 · 四元数乘法公式错误 · `src/core/math/quat.hpp:117-129`
 
@@ -144,13 +144,9 @@ VulkanRenderer::~VulkanRenderer() { delete p_impl; }  // cpp:425
 
 **建议**：把"是否可用"（队列族 / 扩展 / swapchain 可用性）和"偏好排序"（独显优先）拆成两个步骤；`isDeviceSuitable` 只负责前者。
 
-### P0-7 · `ImGui_ImplVulkan_InitInfo.DescriptorPool = VK_NULL_HANDLE` 且 `DescriptorPoolSize = 0`
+### 已从旧清单移除 · ImGui descriptor pool 初始化错误已修
 
-`src/infra/gui/imgui_gui.cpp` 初始化参数同时把两者置空。ImGui Vulkan backend 要求两者二选一必须有一个有效。`Gui::init` 如果被真实触发会在 ImGui 侧 assert。
-
-**当前救命稻草**：`vulkan_renderer.cpp` 里传给 `Gui::init()` 的 `guiParams` 走的是 renderer 这条独立填充链路（见 `vulkan_renderer.cpp:132-144`），demo 应当没踩到 assert。但 `imgui_gui.cpp` 原始 init 参数模版的确会坏，值得确认当前路径是不是依赖了某个"恰好覆盖"的分支。
-
-**建议**：一次性补齐 descriptor pool / size 默认值；在 infra 层加个单元测试覆盖 `Gui::init` 的参数最小集。
+原稿的 P0-7 已经过时。当前 `src/infra/gui/imgui_gui.cpp` 会在 `Gui::init()` 中显式创建 ImGui 自己的 `VkDescriptorPool`，并把 `initInfo.DescriptorPool` 设为该 pool；`DescriptorPoolSize = 0` 在这一模式下是合法的。这个问题不应再继续算作未修 P0。
 
 ---
 
@@ -201,10 +197,9 @@ VulkanRenderer::~VulkanRenderer() { delete p_impl; }  // cpp:425
 
 ### M-5 · `src/main.cpp` 空文件、`src/core/resources/` 空目录
 
-`src/main.cpp` 内容是 `int main() { return 0; }`，根 `CMakeLists.txt:79` 还把它构建成 `Renderer` 可执行。真正能跑的是 `demos/scene_viewer` 和 `test/test_render_triangle`。
+原稿这里也已部分过时。当前 `src/main.cpp` 不再是纯空壳，而是一个只做 `expSetEnvVK()` 的极薄入口；`src/core/resources/` 目录也已经不存在。真正的问题现在变成：根 `CMakeLists.txt` 仍把这个极薄入口构建成 `Renderer` 可执行，但它依然不是项目的正式 demo / app 入口，和 `scene_viewer` 的角色关系仍不清晰。
 
-**建议**：要么让 `Renderer` 直接是 scene_viewer 的软链/别名，要么从根 CMake 拿掉顶层 executable。
-`src/core/resources/` 空目录一并清理。
+**建议**：要么明确把 `Renderer` 定义成一个 bootstrap / env-probe 可执行并补文档，要么让顶层入口直接对齐 `scene_viewer`；不要继续保持"能构建、但不是实际产品入口"的暧昧状态。
 
 ### M-6 · Dead / 半接线代码
 
@@ -236,7 +231,9 @@ REQ-034 R2 指的正是这一项。`SceneNode` 走完整的 `rebuildValidatedCac
 
 ### D-5 · 材质系统的合同升级（REQ-034 R8–R10）
 
-`pass-aware material binding interface`、`global shader binding ownership`、`generic material asset` 三组合同目前只有 spec，没落代码。它们之间有依赖链（R8 → R9 → R10），动一个就要一起推。
+原稿这里已经过时。`global shader binding ownership` 已经进入当前规格与代码（`shader_binding_ownership.hpp`、`material_template.hpp` / `material_instance.cpp` 都已在用）；同时当前还有一个活跃 change `openspec/changes/canonical-material-parameters/`，其任务已经全部勾选，目标是把材质实例进一步收敛到单一 canonical 参数模型。
+
+**更准确的判断**：R8 不再是“未开始”；R9 / R10 也不是“只有 spec 完全没落地”，而是正处于收口和归档前阶段。真正的风险在于这批改动仍停留在 dirty worktree，没有形成稳定提交与归档闭环。
 
 ---
 
@@ -253,9 +250,9 @@ REQ-034 R2 指的正是这一项。`SceneNode` 走完整的 `rebuildValidatedCac
 | R5 | SpotLight | 未开始 |
 | R6 | IBL scene-level 资源 | 未开始 |
 | R7 | Multi-light GPU 合同 | 未开始 |
-| R8 | 全局 shader binding ownership 合同 | 未开始 |
-| R9 | Pass-aware material binding interface | 未开始 |
-| R10 | 通用 material asset 格式 | 未开始 |
+| R8 | 全局 shader binding ownership 合同 | 已在主规格/代码中落地，不应再按“未开始”统计 |
+| R9 | Pass-aware material binding interface | 已有前序实现，当前正被 canonical material parameter change 继续收敛 |
+| R10 | 通用 material asset 格式 | 仍未形成稳定闭环，但前置材质合同已不再是零进展 |
 
 ### 5.2 roadmap 位置
 
@@ -269,7 +266,7 @@ REQ-034 R2 指的正是这一项。`SceneNode` 走完整的 `rebuildValidatedCac
 
 ### 6.1 Sprint A — 正确性与测试基建（1 周内）
 
-目标：把 §2 的 P0 问题清零，补最小测试闭环。
+目标：把 §2 的仍然成立的 P0 问题清零，补最小测试闭环。
 
 1. 修四元数 `multiply_inplace` / `left_multiply_inplace` 公式（P0-1）
 2. `std::bit_cast` 替换 `reinterpret_cast<const long long*>`（P0-2）
@@ -284,21 +281,20 @@ REQ-034 R2 指的正是这一项。`SceneNode` 走完整的 `rebuildValidatedCac
 
 ### 6.2 Sprint B — REQ-034 收尾 + 小清理（1–2 周）
 
-目标：把活跃需求从 10 个降到 3–5 个。
+目标：把仍然真正活跃的需求数量继续往下收敛，并把材质系统当前 dirty worktree 收成可归档结果。
 
 1. **R2** 删除 `RenderableSubMesh`，迁移测试与 demo 到 `SceneNode`
 2. **R1** 在有显示环境的机器上跑 REQ-019 人工验收，归档
-3. 清理 `src/main.cpp` / `src/core/resources/` / 未接线 helper（M-5、M-6）
+3. 明确顶层 `Renderer` 入口定位并清理未接线 helper（M-5、M-6）
 4. `std::terminate` → `std::logic_error` 统一替换（M-1）
 5. 把 7 份 pImpl 从裸指针改成 `std::unique_ptr`（P0-5 的后续 5 处）
 
 ### 6.3 Sprint C — 光照 / 材质系统升级（2–3 周）
 
-依赖链：R8 → R9 → R10；R5 → R7；R4 与 R6 相对独立。
+依赖链现在应改写为：`R8` 已经基本具备，当前重点是把 `R9/R10` 对应的 canonical parameter change 正式收口；`R5 → R7` 仍成立；`R4` 与 `R6` 相对独立。
 
-- **R8 全局 shader binding ownership 合同**先落：它是 R9 / R10 的地基
-- **R9 pass-aware material binding** 紧跟 R8
-- **R10 generic material asset** 在 R8/R9 稳定后做
+- 先把 `openspec/changes/canonical-material-parameters/` 对应实现整理成稳定提交，并更新相关 notes/spec
+- 在 canonical 参数模型稳定后，再判断 `generic material asset` 还缺哪些真正未落地的部分
 - **R4 visibility mask** + **R5 SpotLight**（可并行给一个开发者做）
 - **R7 multi-light GPU 合同** 依赖 R5（至少两种光源）
 
@@ -321,7 +317,7 @@ REQ-034 R2 指的正是这一项。`SceneNode` 走完整的 `rebuildValidatedCac
 
 ## 7. 作业建议
 
-- §2 全部 P0 每个都适合开一个 openspec change（`2026-04-1x-fix-xxx`）跟踪，修完即归档。
-- Sprint A 先，Sprint B 的 R2 可以并行启动（删除动作不依赖修 bug）。
-- 在做 Sprint B 之前，先跑一次 `ctest`（待 Sprint A 加上 add_test 后）+ ASan 跑 `test_render_triangle`，作为回归基线。
+- §2 里仍未修的每个 P0 都适合开一个独立 openspec change（`2026-04-2x-fix-xxx`）跟踪，修完即归档。
+- Sprint A 先；并行方向优先给 `R2` 和材质系统 canonical change 收口，而不是再新开更多材质合同分支。
+- 在补上 `enable_testing()` / `add_test()` 之后，先跑一次 `ctest --output-on-failure`；若要抓 UB，优先给数学层与 `test_render_triangle` 加 sanitizer 构建。
 - 建议把本文件和 `notes/ai-scanned/*.md` 一起作为下一轮计划的输入；两份视角互补，本文更偏向"做什么、按什么顺序"，扫描报告更偏向"哪里坏了"。

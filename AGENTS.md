@@ -47,6 +47,13 @@ ninja BuildTest              # all integration tests
 ninja Renderer               # main application
 ```
 
+### Linux Vulkan Test Notes
+
+- Windowed Vulkan tests require the SDL3 runtime library (`libSDL3.so.0`).
+- In a headless Linux shell, these tests often skip with `No available video device` unless run under a real desktop session or a virtual X server.
+- Prefer `xvfb-run -a ./src/test/<test-binary>` for Vulkan/SDL smoke tests in non-desktop environments. This is sufficient; a full desktop environment is not required.
+- Read `openspec/specs/renderer-backend-vulkan/spec.md` before changing or diagnosing Vulkan integration tests on Linux.
+
 ## C++ Coding Standards
 
 **CRITICAL**: Read and follow `openspec/specs/cpp-style-guide/spec.md` before writing C++ code.
@@ -67,7 +74,7 @@ Detailed specifications live in `openspec/specs/`. Read the relevant spec before
 |------|------|--------|
 | **C++ Style Guide** | `openspec/specs/cpp-style-guide/spec.md` | Ownership, smart pointers, RAII, type safety |
 | **Notes Writing Style** | `openspec/specs/notes-writing-style/spec.md` | Voice, structure, and concept/tutorial writing style for `notes/` |
-| **Vulkan Backend** | `openspec/specs/renderer-backend-vulkan/spec.md` | VulkanDevice, Buffer, Texture, Shader, Pipeline, Renderer, CommandBuffer |
+| **Vulkan Backend** | `openspec/specs/renderer-backend-vulkan/spec.md` | VulkanDevice, Buffer, Texture, Shader, Pipeline, Renderer, CommandBuffer, Linux/Xvfb test preconditions |
 | **String Interning** | `openspec/specs/string-interning/spec.md` | `GlobalStringTable`, `StringID`, thread-safe string-to-int mapping |
 | **Shader Compilation** | `openspec/specs/shader-compilation/spec.md` | Runtime GLSL→SPIR-V via shaderc, variant macros |
 | **Shader Reflection** | `openspec/specs/shader-reflection/spec.md` | SPIR-V reflection via SPIRV-Cross, ShaderResourceBinding |

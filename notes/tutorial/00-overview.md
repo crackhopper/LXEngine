@@ -24,7 +24,7 @@
 **最终目标**：一个窗口里，一个带金属度和粗糙度参数的立方体，在一盏方向光下自转，画面没有纹理依赖、能量守恒、支持 tone mapping + gamma。
 
 **当前代码状态**：
-- 引擎封装已经有：`EngineLoop`、`Scene`、`RenderableSubMesh`、`MaterialTemplate/MaterialInstance`、`VulkanRenderer`
+- 引擎封装已经有：`EngineLoop`、`Scene`、`SceneNode`、`MaterialTemplate/MaterialInstance`、`VulkanRenderer`
 - 已有可运行入口：`src/test/test_render_triangle.cpp`
 - 已有材质 loader：`src/infra/material_loader/blinn_phong_material_loader.cpp`
 - 已有 PBR shader 原型：`shaders/glsl/pbr.vert`、`shaders/glsl/pbr.frag`

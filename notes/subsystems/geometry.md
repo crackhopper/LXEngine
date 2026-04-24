@@ -15,14 +15,14 @@
 - `Mesh`：组合 vertex buffer 和 index buffer。
 - `VertexLayoutItem`：单个顶点属性描述。
 - `VertexLayout`：完整布局和 stride。
+- `IVertexBuffer` / `VertexBuffer<V>`：携带顶点字节和布局契约。
 - `IndexBuffer`：索引数据和 primitive topology。
-- `VertexFactory`：按 layout hash 注册/创建 type-erased `VertexBufferSharedPtr` 的辅助工厂。
 
 ## 典型数据流
 
 1. loader 创建 `VertexBuffer<V>` 和 `IndexBuffer`。
 2. `Mesh::create(vb, ib)`。
-3. `RenderableSubMesh` 持有 mesh。
+3. `SceneNode`（或兼容层 `IRenderable` 实现）持有 mesh。
 4. `mesh->getRenderSignature(pass)` 贡献 object-side signature。
 5. `PipelineBuildDesc::fromRenderingItem(item)` 读回 layout 和 topology。
 
@@ -38,9 +38,8 @@
 
 - `Mesh::getRenderSignature(pass)` 当前只由 `vertexBuffer->getLayout().getRenderSignature()` 和 `topologySignature(indexBuffer->getTopology())` 组成，最终 compose 成 `TypeTag::MeshRender`。
 - `PipelineBuildDesc::fromRenderingItem(...)` 实际读取 layout 的方式不是通过 `Mesh`，而是把 `item.vertexBuffer` 动态转成 `IVertexBuffer`，把 `item.indexBuffer` 动态转成 `IndexBuffer` 后直接取 `getLayout()` 和 `getTopology()`。
-- `IndexBuffer` 现在虽然保留了 `IndexType` 枚举，但内部存储固定是 `std::vector<uint32_t>`，`getIndexType()` 也固定返回 `Uint32`。
-- `IndexBuffer::getLayoutHash()` 当前把 topology 和 index type 都混进 hash；其中 index type 目前是常量维度。
-- 常用顶点类型目前直接定义在 `vertex_buffer.hpp`，例如 `VertexPos`、`VertexPosColor`、`VertexPosUV`、`VertexPBR`。
+- `IndexBuffer` 现在直接承担两件事：暴露索引字节，以及暴露 topology 供 pipeline 装配使用。
+- 常用顶点类型目前直接定义在 `vertex_buffer.hpp`，例如 `VertexPos`、`VertexPBR`、`VertexPosNormalUvBone`。
 
 ## 从哪里改
 

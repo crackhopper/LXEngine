@@ -6,7 +6,7 @@ Define the current material system contract, including material templates, mater
 The system SHALL provide exactly one concrete material type, named `MaterialInstance`. All material pointers held by scene objects, render queues, and backend code MUST be `MaterialInstanceSharedPtr` values. The legacy `DrawMaterial` class and the legacy `BlinnPhongMaterialUBO` struct MUST NOT exist in the codebase after this change.
 
 #### Scenario: Scene constructs materials via MaterialInstance
-- **WHEN** a loader constructs a material for a `RenderableSubMesh`
+- **WHEN** a loader constructs a material for a `SceneNode` (or another `IRenderable` implementation)
 - **THEN** the returned `MaterialInstanceSharedPtr` points to a `MaterialInstance` and the concrete type `DrawMaterial` is not referenced anywhere in `src/`
 
 #### Scenario: MaterialInstance public surface is preserved

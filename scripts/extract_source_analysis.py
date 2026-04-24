@@ -154,6 +154,25 @@ TARGETS = [
         ),
         nav_order=300,
     ),
+    SourceAnalysisTarget(
+        source="src/core/asset/texture.hpp",
+        output="notes/source_analysis/src/core/asset/texture.md",
+        title="Texture 与 CombinedTextureSampler：CPU 图像如何进入 GPU 资源路径",
+        intro=textwrap.dedent(
+            """\
+            这一页从
+            [src/core/asset/texture.hpp](../../../../../src/core/asset/texture.hpp)
+            出发，关注的问题不是“怎么加载一张图”，而是：为什么项目要把纹理拆成
+            `Texture`（CPU 数据）和 `CombinedTextureSampler`（`IGpuResource` 适配层）
+            两个类型，以及这种切分如何让同一份像素数据在多个材质里安全复用。
+
+            可以先带着一个问题阅读：`Texture` 明明已经持有图像字节，为什么不让它
+            直接实现 `IGpuResource`？答案是，纯 CPU 图像属于资源加载侧，而 binding
+            name 和 dirty 追踪属于材质实例侧，两者生命周期不同，合并会让共享变难。
+            """
+        ).strip(),
+        nav_order=400,
+    ),
 ]
 
 

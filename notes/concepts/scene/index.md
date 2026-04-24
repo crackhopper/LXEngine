@@ -52,7 +52,7 @@
 
 这些都已经接起来了。
 
-目前仍然保留的旧兼容层是 `RenderableSubMesh`，但它已经不是推荐的对象模型。这个问题挂在 [`REQ-024`](../../requirements/024-remove-renderable-submesh-legacy-abstraction.md)。
+当前推荐的对象模型是 `SceneNode`。旧的 `RenderableSubMesh` 兼容层已移除，相关历史背景只保留在归档需求与评审记录中。
 
 ## 这套系统怎样和其他系统汇合
 

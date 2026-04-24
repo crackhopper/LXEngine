@@ -65,7 +65,7 @@ private:
   std::vector<ShaderResourceBinding> m_bindings;
 };
 
-std::shared_ptr<RenderableSubMesh>
+std::shared_ptr<SceneNode>
 makeRenderable(const std::string &shaderName = "fake_fg",
                const std::vector<ShaderVariant> &variants = {},
                bool enableShadow = false) {
@@ -94,7 +94,9 @@ makeRenderable(const std::string &shaderName = "fake_fg",
   if (!enableShadow) {
     material->setPassEnabled(Pass_Shadow, false);
   }
-  return std::make_shared<RenderableSubMesh>(mesh, material, nullptr);
+  static int nodeCounter = 0;
+  return SceneNode::create("fg_node_" + std::to_string(++nodeCounter), mesh,
+                           material, nullptr);
 }
 
 // Helpers for REQ-009 scenarios.
@@ -337,7 +339,6 @@ void testCollectAcrossMultiplePasses() {
 
 int main() {
   expSetEnvVK();
-  VertexFactory::registerType<VertexPos>();
 
   testSingleRenderableSinglePass();
   testDuplicateRenderablesDedupe();

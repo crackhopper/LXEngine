@@ -11,11 +11,6 @@ namespace LX_core {
 
 namespace {
 
-uint64_t nextLegacyRenderableId() {
-  static uint64_t counter = 0;
-  return ++counter;
-}
-
 std::string vertexLayoutDebugString(const VertexLayout &layout) {
   std::ostringstream oss;
   oss << "stride=" << layout.getStride() << " [";
@@ -84,24 +79,6 @@ bool requiresRenderableOwnedResource(const ShaderResourceBinding &binding) {
   // intentionally left unset and gated by shader parameters.
   return binding.type == ShaderPropertyType::UniformBuffer ||
          binding.type == ShaderPropertyType::StorageBuffer;
-}
-
-ValidatedRenderablePassData
-buildLegacyValidatedData(const RenderableSubMesh &sub, StringID pass) {
-  ValidatedRenderablePassData data;
-  data.pass = pass;
-  data.material = sub.material;
-  data.shaderInfo = sub.material ? sub.material->getPassShader(pass) : nullptr;
-  data.drawData = sub.perDrawData;
-  data.vertexBuffer = sub.getVertexBuffer();
-  data.indexBuffer = sub.getIndexBuffer();
-  data.descriptorResources = sub.getDescriptorResources(pass);
-  data.objectSignature = sub.getRenderSignature(pass);
-  if (sub.material) {
-    data.pipelineKey = PipelineKey::build(
-        data.objectSignature, sub.material->getMaterialSignature(pass));
-  }
-  return data;
 }
 
 } // namespace
@@ -326,71 +303,6 @@ void SceneNode::unregisterMaterialPassListener() {
     m_materialInstance->removePassStateListener(m_materialPassListenerId);
     m_materialPassListenerId = 0;
   }
-}
-
-RenderableSubMesh::RenderableSubMesh(MeshSharedPtr mesh_,
-                                     MaterialInstanceSharedPtr material_,
-                                     SkeletonSharedPtr skeleton_,
-                                     std::string nodeName_)
-    : mesh(std::move(mesh_)), material(std::move(material_)),
-      nodeName(std::move(nodeName_)) {
-  if (nodeName == "RenderableSubMesh") {
-    nodeName += "_" + std::to_string(nextLegacyRenderableId());
-  }
-  if (skeleton_) {
-    skeleton = skeleton_;
-  }
-  perDrawData = std::make_shared<PerDrawData>();
-}
-
-IGpuResourceSharedPtr RenderableSubMesh::getVertexBuffer() const {
-  return mesh ? std::static_pointer_cast<IGpuResource>(mesh->vertexBuffer)
-              : nullptr;
-}
-
-IGpuResourceSharedPtr RenderableSubMesh::getIndexBuffer() const {
-  return mesh ? std::static_pointer_cast<IGpuResource>(mesh->indexBuffer)
-              : nullptr;
-}
-
-std::vector<IGpuResourceSharedPtr>
-RenderableSubMesh::getDescriptorResources(StringID pass) const {
-  std::vector<IGpuResourceSharedPtr> ret;
-  if (!material)
-    return ret;
-  auto res = material->getDescriptorResources(pass);
-  ret.insert(ret.end(), res.begin(), res.end());
-  if (skeleton.has_value()) {
-    ret.push_back(
-        std::static_pointer_cast<IGpuResource>(skeleton.value()->getUBO()));
-  }
-  return ret;
-}
-
-IShaderSharedPtr RenderableSubMesh::getShaderInfo() const {
-  return material ? material->getPassShader(Pass_Forward) : nullptr;
-}
-
-StringID RenderableSubMesh::getRenderSignature(StringID pass) const {
-  if (!mesh)
-    return StringID{};
-  StringID meshSig = mesh->getRenderSignature(pass);
-  StringID fields[] = {meshSig};
-  return GlobalStringTable::get().compose(TypeTag::ObjectRender, fields);
-}
-
-bool RenderableSubMesh::supportsPass(StringID pass) const {
-  return material && material->isPassEnabled(pass) &&
-         material->getTemplate() &&
-         material->getTemplate()->getPassDefinition(pass).has_value();
-}
-
-std::optional<std::reference_wrapper<const ValidatedRenderablePassData>>
-RenderableSubMesh::getValidatedPassData(StringID pass) const {
-  if (!supportsPass(pass) || !mesh || !material)
-    return std::nullopt;
-  m_lastValidatedData = buildLegacyValidatedData(*this, pass);
-  return std::cref(m_lastValidatedData.value());
 }
 
 } // namespace LX_core

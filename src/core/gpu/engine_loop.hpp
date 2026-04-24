@@ -21,7 +21,6 @@ public:
   void stop();
 
   const Clock &getClock() const { return m_clock; }
-  SceneSharedPtr getScene() const { return m_scene; }
 
 private:
   void rebuildSceneIfRequested();

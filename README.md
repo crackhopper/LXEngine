@@ -63,10 +63,7 @@ IRenderResource (抽象基类)
 
 支持多种顶点格式（通过模板）:
 - `VertexPos` - 仅位置
-- `VertexPosColor` - 位置 + 颜色
-- `VertexPosUV` - 位置 + UV
-- `VertexNormalTangent` - 法线 + 切线
-- `VertexBoneWeight` - 骨骼权重
+- `VertexPBR` - 位置 + 法线 + UV + 切线
 - `VertexPosNormalUvBone` - 完整格式（位置 + 法线 + UV + 切线 + 骨骼）
 
 ### 场景图
@@ -78,11 +75,11 @@ Scene
 └── directionalLight         # 方向光
 
 IRenderable (接口)
-└── RenderableSubMesh<VType> # 具体实现
-    ├── mesh: MeshPtr<VType> # 网格数据
+└── SceneNode             # 当前主路径实现
+    ├── mesh: MeshPtr     # 网格数据
     ├── material: MaterialPtr # 材质
     ├── skeleton: SkeletonPtr # 骨骼（可选）
-    └── objectPC: ObjectPCPtr # Push Constant
+    └── perDrawData       # Push Constant / per-draw 数据
 ```
 
 ### 材质系统

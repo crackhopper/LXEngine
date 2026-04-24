@@ -73,7 +73,7 @@ struct Fixture {
        const RenderState &state = {},
        PrimitiveTopology topo = PrimitiveTopology::TriangleList) {
     Fixture f;
-    f.vb = VertexFactory::create(
+    f.vb = VertexBuffer<VertexPos>::create(
         std::vector<VertexPos>{{{0, 0, 0}}, {{1, 0, 0}}, {{0, 1, 0}}});
     f.ib = IndexBuffer::create({0, 1, 2}, topo);
     f.mesh = Mesh::create(f.vb, f.ib);
@@ -84,6 +84,7 @@ struct Fixture {
     ShaderProgramSet ps;
     ps.shaderName = shaderName;
     ps.variants = variants;
+    ps.shader = shader;
 
     MaterialPassDefinition entry;
     entry.shaderProgram = ps;
@@ -96,8 +97,8 @@ struct Fixture {
 
 PipelineKey buildKey(const Fixture &f, StringID pass,
                      const SkeletonSharedPtr &skel = nullptr) {
-  auto sub = std::make_shared<RenderableSubMesh>(f.mesh, f.material, skel);
-  StringID objSig = sub->getRenderSignature(pass);
+  auto node = SceneNode::create("pipeline_identity_node", f.mesh, f.material, skel);
+  StringID objSig = node->getRenderSignature(pass);
   StringID matSig = f.material->getMaterialSignature(pass);
   return PipelineKey::build(objSig, matSig);
 }
@@ -158,8 +159,9 @@ void testDifferentPassProducesDifferentKey() {
   shadowEntry.renderState = shadowState;
   f.tmpl->setPassDefinition(Pass_Shadow, std::move(shadowEntry));
 
-  auto sub = std::make_shared<RenderableSubMesh>(f.mesh, f.material, nullptr);
-  StringID objSig = sub->getRenderSignature(Pass_Forward);
+  auto node =
+      SceneNode::create("pipeline_identity_pass_node", f.mesh, f.material, nullptr);
+  StringID objSig = node->getRenderSignature(Pass_Forward);
   StringID fwdMat = f.material->getMaterialSignature(Pass_Forward);
   StringID shMat = f.material->getMaterialSignature(Pass_Shadow);
   PipelineKey kFwd = PipelineKey::build(objSig, fwdMat);
@@ -186,8 +188,6 @@ void testToDebugStringSmoke() {
 
 int main() {
   expSetEnvVK();
-  // Register the vertex type with the factory (same pattern used elsewhere).
-  VertexFactory::registerType<VertexPos>();
 
   testEqualConfigsProduceSameKey();
   testVariantChangeProducesDifferentKey();

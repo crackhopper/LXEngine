@@ -50,7 +50,6 @@ public:
   void stop();
 
   const Clock &getClock() const;
-  SceneSharedPtr getScene() const;
 };
 ```
 

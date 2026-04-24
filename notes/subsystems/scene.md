@@ -21,7 +21,6 @@
 - `SceneNode`：当前主路径实现，聚合 `nodeName`、`MeshSharedPtr`、`MaterialInstanceSharedPtr`、可选 `SkeletonSharedPtr` 与 `PerDrawDataSharedPtr`。
 - `ValidatedRenderablePassData`：`pass -> validated entry` 缓存项，保存 queue 需要的稳定结构结果。
 - `RenderingItem`：一次 draw 的完整上下文，字段仍是 `shaderInfo`、`material`、`drawData`、`vertexBuffer`、`indexBuffer`、`descriptorResources`、`pass`、`pipelineKey`。
-- `RenderableSubMesh`：仍保留的兼容实现，但不再是推荐的场景主模型。
 
 ## 典型数据流
 
@@ -56,7 +55,6 @@
 ## 当前实现边界
 
 - `IRenderable::getDescriptorResources(...)` 已经是显式带 pass 的接口；`getShaderInfo()` 的无参版本仍主要作为 Forward 默认读取路径保留。
-- `RenderableSubMesh` 仍能工作，但它的 validated 数据是兼容层即时拼出来的，不具备 `SceneNode` 那套自维护缓存和 fatal 校验模型。
 - `PerDrawData` 仍是 128 字节缓冲，但当前 engine-wide ABI 只要求 `PerDrawLayoutBase` / `PerDrawLayout` 的 `model` 字段有效。
 - `Scene` 构造时仍会补一个默认 camera 和一个默认 directional light，方便不走完整 renderer 初始化的测试；节点一旦通过 `addRenderable()` 挂进 scene，也会被写入 `Scene*` 反向指针以支持 shared material 重验证传播。
 - `src/core/scene/object.cpp` 里的 fatal 文本现在会直接带上缺失的 input 名字，例如 `missing vertex input 'inUV' at location 2`，便于把 forward variant 失败定位到具体 mesh contract。

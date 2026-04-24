@@ -141,35 +141,6 @@ private:
   Scene *m_scene = nullptr;
 };
 
-struct RenderableSubMesh final : public IRenderable {
-public:
-  MeshSharedPtr mesh;
-  MaterialInstanceSharedPtr material;
-  std::optional<SkeletonSharedPtr> skeleton;
-  PerDrawDataSharedPtr perDrawData;
-  std::string nodeName = "RenderableSubMesh";
-
-  RenderableSubMesh(MeshSharedPtr mesh_, MaterialInstanceSharedPtr material_,
-                    SkeletonSharedPtr skeleton_ = nullptr,
-                    std::string nodeName_ = "RenderableSubMesh");
-
-  IGpuResourceSharedPtr getVertexBuffer() const override;
-  IGpuResourceSharedPtr getIndexBuffer() const override;
-  std::vector<IGpuResourceSharedPtr>
-  getDescriptorResources(StringID pass) const override;
-  IShaderSharedPtr getShaderInfo() const override;
-  PerDrawDataSharedPtr getPerDrawData() const override { return perDrawData; }
-  StringID getRenderSignature(StringID pass) const override;
-  bool supportsPass(StringID pass) const override;
-  std::string getNodeName() const override { return nodeName; }
-  StringID getDebugId() const override { return StringID(nodeName); }
-  std::optional<std::reference_wrapper<const ValidatedRenderablePassData>>
-  getValidatedPassData(StringID pass) const override;
-
-private:
-  mutable std::optional<ValidatedRenderablePassData> m_lastValidatedData;
-};
-
 using SceneNodeSharedPtr = SceneNode::SharedPtr;
 
 } // namespace LX_core

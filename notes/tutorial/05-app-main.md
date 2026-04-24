@@ -143,7 +143,7 @@ int main() {
 
     auto skeleton = Skeleton::create({});
     auto renderable =
-        std::make_shared<RenderableSubMesh>(mesh, material, skeleton);
+        SceneNode::create("tutorial-node", mesh, material, skeleton);
 
     auto scene = Scene::create(renderable);
 

@@ -234,7 +234,7 @@ The VulkanRenderer SHALL implement:
 The `VulkanRenderer::Impl` class SHALL hold the `FrameGraph` as a member whose lifetime matches the scene binding. The `Impl` class SHALL NOT hold a cached single `RenderingItem` member.
 
 #### Scenario: Triangle rendering loop
-- **WHEN** Renderer has initialized with a scene containing one `RenderableSubMesh` and one `Camera` whose target is `nullopt`
+- **WHEN** Renderer has initialized with a scene containing one `SceneNode` and one `Camera` whose target is `nullopt`
 - **THEN** `initScene` derives the swapchain target, backfills the camera's target to it, builds the frame graph with one pass whose target equals the backfilled camera target, and `draw()` iterates the one pass × one item path calling `acquireNextImage` / `beginCommandBuffer` / `beginRenderPass` / `bindPipeline` / `bindResources` / `drawItem` / `endRenderPass` / `endCommandBuffer` / `queueSubmit` / `present`
 
 #### Scenario: Backfill happens before buildFromScene
@@ -242,7 +242,7 @@ The `VulkanRenderer::Impl` class SHALL hold the `FrameGraph` as a member whose l
 - **THEN** by the time `m_frameGraph.buildFromScene(*scene)` runs, the camera's target equals the swapchain target, so `getSceneLevelResources` includes the camera's UBO for the forward pass
 
 #### Scenario: Multi-renderable scene produces multi-item queue
-- **WHEN** a scene has two `RenderableSubMesh` instances both supporting `Pass_Forward`, and `initScene(scene)` is called followed by `draw()`
+- **WHEN** a scene has two `SceneNode` instances both supporting `Pass_Forward`, and `initScene(scene)` is called followed by `draw()`
 - **THEN** the `draw()` loop iterates the one pass's queue and calls `cmd->drawItem(item)` exactly twice in PipelineKey-sorted order
 
 #### Scenario: No side-channel UBO injection
@@ -280,6 +280,29 @@ The test suite SHALL include:
 - test_vulkan_command_buffer: Test command recording
 - test_vulkan_pipeline: Test pipeline creation
 - test_vulkan_renderer: Test full render loop with triangle
+
+### Requirement: Linux Vulkan windowed tests shall support headless execution guidance
+
+On Linux, any integration test or demo executable that creates an SDL/GLFW window, initializes `VulkanRenderer`, creates a swapchain, or otherwise depends on an available video device SHALL document its runtime preconditions:
+
+- The SDL3 runtime library (`libSDL3.so.0`) must be installed.
+- A video device must be available via either:
+  - a real desktop session (`DISPLAY` / `WAYLAND_DISPLAY`), or
+  - a virtual X server such as `Xvfb`.
+
+For headless Linux sessions without a desktop, the recommended execution form SHALL be `xvfb-run -a <test-binary>`. The project SHALL treat `Xvfb` as a valid local test environment for windowed Vulkan smoke tests; a full desktop environment is not required.
+
+Tests that cannot obtain a video device in the current environment MAY report a clear skip result instead of failing, but they SHALL surface the reason in stdout/stderr (for example, `No available video device`) so operators can distinguish environment issues from renderer regressions.
+
+#### Scenario: Headless Linux shell runs a Vulkan windowed test via Xvfb
+- **WHEN** a developer runs `xvfb-run -a ./src/test/test_pipeline_cache` (or an equivalent windowed Vulkan test binary) on a Linux machine without an interactive desktop session
+- **THEN** SDL discovers a usable video device through the virtual X server
+- **AND** the test proceeds to real Vulkan / swapchain initialization instead of skipping with `No available video device`
+
+#### Scenario: Linux shell lacks a video device and Xvfb is not used
+- **WHEN** a developer runs a windowed Vulkan integration test in a headless Linux shell with SDL3 installed but without `DISPLAY`, `WAYLAND_DISPLAY`, or `xvfb-run`
+- **THEN** the test may skip
+- **AND** the emitted message clearly indicates the missing video device condition rather than appearing as a renderer assertion failure
 
 #### Scenario: Device test passes
 - **WHEN** test_vulkan_device runs successfully

@@ -3,15 +3,9 @@
 #include "core/math/vec.hpp"
 #include "core/utils/hash.hpp"
 #include "core/utils/string_table.hpp"
-#include <any>
-#include <array>
-#include <cassert>
 #include <cstring>
-#include <functional>
 #include <string>
-#include <tuple>
 #include <type_traits>
-#include <unordered_map>
 #include <vector>
 
 namespace LX_core {
@@ -113,7 +107,6 @@ public:
 
   const std::vector<VertexLayoutItem> &getItems() const { return m_items; }
   VertexStride32 getStride() const { return m_stride; }
-  size_t getHash() const { return m_hash; }
 
   StringID getRenderSignature() const {
     auto &tbl = GlobalStringTable::get();
@@ -145,15 +138,6 @@ private:
 
 } // namespace LX_core
 
-namespace std {
-template <>
-struct hash<LX_core::VertexLayout> {
-  size_t operator()(const LX_core::VertexLayout &l) const {
-    return l.getHash();
-  }
-};
-} // namespace std
-
 namespace LX_core {
 
 /*****************************************************************
@@ -161,13 +145,13 @@ namespace LX_core {
  *****************************************************************/
 // IVertexBuffer extends the generic GPU resource contract with vertex-layout
 // metadata. Backend upload only needs IGpuResource; pipeline creation also
-// needs the layout/hash carried here.
+// needs the layout carried here.
 /*
 @source_analysis.section IVertexBuffer：上传契约之外，再补一层“布局可见性”
 `IGpuResource` 已经足够表达“这是一块要上传到 GPU 的字节”，但对 vertex buffer 来说
 还差一件关键事实：shader 该如何解释这些字节。
 
-所以 `IVertexBuffer` 在通用资源契约之上补了 `getLayout()` / `getLayoutHash()`。
+所以 `IVertexBuffer` 在通用资源契约之上补了 `getLayout()`。
 这让同一份顶点数据既能走统一的资源上传路径，又能在 pipeline 构建时把顶点输入布局带出来。
 */
 class IVertexBuffer : public IGpuResource {
@@ -175,12 +159,10 @@ public:
   virtual ~IVertexBuffer() = default;
 
   virtual const VertexLayout &getLayout() const = 0;
-  virtual size_t getLayoutHash() const { return getLayout().getHash(); }
 
   virtual VertexCount getVertexCount() const = 0;
 
   const void *getRawData() const override = 0;
-  virtual void *getRawDataMutable() = 0;
   ResourceByteSize32 getByteSize() const override = 0;
 
   ResourceType getType() const override { return ResourceType::VertexBuffer; }
@@ -211,7 +193,6 @@ public:
   }
 
   const void *getRawData() const override { return m_vertices.data(); }
-  void *getRawDataMutable() override { return m_vertices.data(); }
 
   ResourceByteSize32 getByteSize() const override {
     return static_cast<ResourceByteSize32>(m_vertices.size() * sizeof(VType));
@@ -221,80 +202,7 @@ private:
   std::vector<VType> m_vertices;
 };
 
-/*****************************************************************
- * Factory
- *****************************************************************/
 using VertexBufferSharedPtr = std::shared_ptr<IVertexBuffer>;
-
-/*
-@source_analysis.section VertexFactory：按布局而不是按模板参数恢复 type-erased 顶点数据
-工程里很多边界只想持有 `VertexBufferSharedPtr`，不想把具体 `VertexPos` / `VertexPosUv` 模板类型
-一路往外传。`VertexFactory` 的作用，就是在需要“从原始顶点数组重新构造具体 buffer”时，
-按 `VertexLayout` 的 hash 找回对应的具体 `VType` 创建逻辑。
-
-也就是说，这里把“顶点类型识别”从编译期模板名，转成了运行时的布局契约。只要布局一致，
-外层系统就能继续用 type-erased 的 `IVertexBuffer` 工作。
-*/
-class VertexFactory {
-public:
-  using Creator = std::function<VertexBufferSharedPtr(std::any &&rawData)>;
-
-  template <typename VType>
-  static void registerType() {
-    const auto &layout = VType::getLayout();
-    size_t key = layout.getHash();
-
-    getMap()[key] = {
-        layout, sizeof(VType),
-        [](std::any &&rawData) -> VertexBufferSharedPtr {
-          // 核心：通过 any_cast 还原 vector 并利用移动构造函数
-          // 此时数据的所有权被从 any 转移到了 v 中，实现零拷贝
-          try {
-            auto v = std::any_cast<std::vector<VType>>(std::move(rawData));
-            return std::make_shared<VertexBuffer<VType>>(std::move(v));
-          } catch (const std::bad_any_cast &) {
-            // 这里通常不会发生，除非 Factory 逻辑出错
-            assert(false && "VertexFactory: Type mismatch in any_cast");
-            return nullptr;
-          }
-        }};
-  }
-
-  /**
-   * @brief 零拷贝创建方法
-   * 接收右值引用，强制所有权转移
-   */
-  template <typename VType>
-  static VertexBufferSharedPtr create(std::vector<VType> &&v) {
-    auto &m = getMap();
-    size_t key = VType::getLayout().getHash();
-
-    auto it = m.find(key);
-    if (it != m.end()) {
-      // 将 vector 包装进 any 并移动进去
-      return it->second.creator(
-          std::make_any<std::vector<VType>>(std::move(v)));
-    }
-
-    // 如果没找到，尝试动态注册（可选）
-    // registerType<VType>();
-    // return create(std::move(v));
-
-    return nullptr;
-  }
-
-private:
-  struct Entry {
-    VertexLayout layout;
-    size_t stride;
-    Creator creator;
-  };
-
-  static std::unordered_map<size_t, Entry> &getMap() {
-    static std::unordered_map<size_t, Entry> m;
-    return m;
-  }
-};
 
 /*****************************************************************
  * Vertex定义
@@ -321,40 +229,6 @@ struct VertexPos {
   }
 };
 
-struct VertexPosColor {
-  Vec3f pos;
-  Vec4f color;
-
-  static const VertexLayout &getLayout() {
-    static VertexLayout layout = {
-        {
-            {"inPos", 0, DataType::Float3, sizeof(Vec3f),
-             offsetof(VertexPosColor, pos)},
-            {"inColor", 1, DataType::Float4, sizeof(Vec4f),
-             offsetof(VertexPosColor, color)},
-        },
-        sizeof(VertexPosColor)};
-    return layout;
-  }
-};
-
-struct VertexPosUV {
-  Vec3f pos;
-  Vec2f uv;
-
-  static const VertexLayout &getLayout() {
-    static VertexLayout layout = {
-        {
-            {"inPos", 0, DataType::Float3, sizeof(Vec3f),
-             offsetof(VertexPosUV, pos)},
-            {"inUV", 1, DataType::Float2, sizeof(Vec2f),
-             offsetof(VertexPosUV, uv)},
-        },
-        sizeof(VertexPosUV)};
-    return layout;
-  }
-};
-
 // PBR 顶点 (Pos + Normal + UV + Tangent)
 struct VertexPBR : VertexBase<VertexPBR> {
   Vec3f pos;
@@ -372,78 +246,6 @@ struct VertexPBR : VertexBase<VertexPBR> {
          {"inTangent", 3, DataType::Float4, sizeof(Vec4f),
           offsetof(VertexPBR, tangent)}},
         sizeof(VertexPBR)};
-    return layout;
-  }
-};
-
-// 骨骼动画顶点 (Pos + Normal + UV + BoneIDs + Weights)
-struct VertexSkinned : VertexBase<VertexSkinned> {
-  Vec3f pos;
-  Vec3f normal;
-  Vec2f uv;
-  Vec4i boneIds; // 4个骨骼索引
-  Vec4f weights; // 4个权重
-
-  static const VertexLayout &getLayout() {
-    static VertexLayout layout = {
-        {{"inPos", 0, DataType::Float3, sizeof(Vec3f),
-          offsetof(VertexSkinned, pos)},
-         {"inNormal", 1, DataType::Float3, sizeof(Vec3f),
-          offsetof(VertexSkinned, normal)},
-         {"inUV", 2, DataType::Float2, sizeof(Vec2f),
-          offsetof(VertexSkinned, uv)},
-         {"inBoneIds", 3, DataType::Int4, sizeof(Vec4i),
-          offsetof(VertexSkinned, boneIds)},
-         {"inWeights", 4, DataType::Float4, sizeof(Vec4f),
-          offsetof(VertexSkinned, weights)}},
-        sizeof(VertexSkinned)};
-    return layout;
-  }
-};
-
-// UI/2D 顶点 (Pos + UV + Color)
-struct VertexUI : VertexBase<VertexUI> {
-  Vec2f pos;
-  Vec2f uv;
-  Vec4f color; // 带有透明度的 UI 颜色
-
-  static const VertexLayout &getLayout() {
-    static VertexLayout layout = {
-        {{"inPos", 0, DataType::Float2, sizeof(Vec2f), offsetof(VertexUI, pos)},
-         {"inUV", 1, DataType::Float2, sizeof(Vec2f), offsetof(VertexUI, uv)},
-         {"inColor", 2, DataType::Float4, sizeof(Vec4f),
-          offsetof(VertexUI, color)}},
-        sizeof(VertexUI)};
-    return layout;
-  }
-};
-
-struct VertexNormalTangent : VertexBase<VertexNormalTangent> {
-  Vec3f normal;
-  Vec4f tangent;
-
-  static const VertexLayout &getLayout() {
-    static VertexLayout layout = {
-        {{"inNormal", 0, DataType::Float3, sizeof(Vec3f),
-          offsetof(VertexNormalTangent, normal)},
-         {"inTangent", 1, DataType::Float4, sizeof(Vec4f),
-          offsetof(VertexNormalTangent, tangent)}},
-        sizeof(VertexNormalTangent)};
-    return layout;
-  }
-};
-
-struct VertexBoneWeightIndex : VertexBase<VertexBoneWeightIndex> {
-  Vec4i boneIds;
-  Vec4f weights;
-
-  static const VertexLayout &getLayout() {
-    static VertexLayout layout = {
-        {{"inBoneIds", 0, DataType::Int4, sizeof(Vec4i),
-          offsetof(VertexBoneWeightIndex, boneIds)},
-         {"inWeights", 1, DataType::Float4, sizeof(Vec4f),
-          offsetof(VertexBoneWeightIndex, weights)}},
-        sizeof(VertexBoneWeightIndex)};
     return layout;
   }
 };

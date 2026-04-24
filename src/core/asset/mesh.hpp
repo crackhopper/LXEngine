@@ -3,7 +3,6 @@
 #include "core/rhi/index_buffer.hpp"
 #include "core/asset/shader.hpp"
 #include "core/rhi/vertex_buffer.hpp"
-#include "core/utils/hash.hpp"
 #include <cassert>
 #include <cstdint>
 #include <memory>
@@ -38,12 +37,9 @@ public:
     return SharedPtr(new Mesh(Token{}, std::move(vb), std::move(ib)));
   }
 
-  VertexCount getVertexCount() const { return vertexBuffer->getVertexCount(); }
-  IndexCount getIndexCount() const { return indexBuffer->indexCount(); }
-
 /*
 @source_analysis.section 几何签名：mesh 只输出 pipeline 真正关心的结构信息
-`getLayoutHash()` 和 `getRenderSignature()` 都只组合两类东西：
+`getRenderSignature()` 只组合两类东西：
 
 - 顶点输入布局
 - 索引拓扑
@@ -53,11 +49,6 @@ public:
 
 因此 `MeshRender` 更像“几何接口形状”，不是几何数据内容的内容哈希。
 */
-  size_t getLayoutHash() const {
-    size_t hash = vertexBuffer->getLayoutHash();
-    hash_combine(hash, indexBuffer->getLayoutHash());
-    return hash;
-  }
 
   /// Pass 参数保留以统一接口，当前实现忽略。
   /// 未来可用于"同一 mesh 在不同 pass 剔除属性"。
@@ -72,18 +63,10 @@ public:
   const VertexLayout &getVertexLayout() const {
     return vertexBuffer->getLayout();
   }
-  PrimitiveTopology getPrimitiveTopology() const {
-    return indexBuffer->getTopology();
-  }
-
-  void setBounds(const BoundingBox &box) { m_bounds = box; }
-  const BoundingBox &getBounds() const { return m_bounds; }
 
 private:
   Mesh(Token, VertexBufferSharedPtr vb, IndexBufferSharedPtr ib)
       : vertexBuffer(std::move(vb)), indexBuffer(std::move(ib)) {}
-
-  BoundingBox m_bounds;
 };
 
 using MeshSharedPtr = std::shared_ptr<Mesh>;

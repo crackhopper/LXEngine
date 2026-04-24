@@ -29,6 +29,7 @@
 - [IShader & ShaderResourceBinding：反射结果如何落地到材质系统](src/core/asset/shader.md)
 - [MaterialTemplate：多 pass 蓝图如何收束成统一契约](src/core/asset/material_template.md)
 - [MaterialInstance：从模板到运行时账本](src/core/asset/material_instance.md)
+- [Texture 与 CombinedTextureSampler：CPU 图像如何进入 GPU 资源路径](src/core/asset/texture.md)
 
 配套阅读：
 

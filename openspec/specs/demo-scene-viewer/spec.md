@@ -99,7 +99,7 @@ The demo SHALL NOT load `Sponza` in the first release; Sponza is a downstream ex
 
 ### Requirement: Renderable path uses SceneNode
 
-The demo SHALL express helmet, ground, and any additional renderables as `LX_core::SceneNode` instances attached to the `Scene`. The demo SHALL NOT use `RenderableSubMesh` as the long-term renderable abstraction; any temporary use SHALL be documented in `README.md` as a known limitation and SHALL be removed as soon as `SceneNode` supports the required operations.
+The demo SHALL express helmet, ground, and any additional renderables as `LX_core::SceneNode` instances attached to the `Scene`.
 
 #### Scenario: Helmet and ground are SceneNode instances
 

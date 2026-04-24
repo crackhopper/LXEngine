@@ -46,9 +46,9 @@ int main() {
     auto indexBufferPtr = LX_core::IndexBuffer::create({0u, 1u, 2u});
     auto meshPtr = LX_core::Mesh::create(vertexBufferPtr, indexBufferPtr);
     auto material = LX_infra::loadGenericMaterial("materials/blinnphong_default.material");
-    auto renderable = std::make_shared<LX_core::RenderableSubMesh>(
-        meshPtr, material, LX_core::Skeleton::create({}));
-    auto scene = LX_core::Scene::create(renderable);
+    auto node = LX_core::SceneNode::create(
+        "vulkan_pipeline_node", meshPtr, material, LX_core::Skeleton::create({}));
+    auto scene = LX_core::Scene::create(node);
     auto item = LX_test::firstItemFromScene(*scene, LX_core::Pass_Forward);
 
     auto &pipeline = resourceManager->getOrCreateRenderPipeline(item);
