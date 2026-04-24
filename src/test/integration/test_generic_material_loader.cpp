@@ -65,7 +65,7 @@ void test_generic_loader_produces_valid_instance() {
 
   REQUIRE(mat != nullptr);
   REQUIRE(mat->getParameterBufferCount() >= 1);
-  REQUIRE(mat->getParameterBufferLayout() != nullptr);
+  REQUIRE(mat->getParameterBufferLayout().has_value());
 
   const auto &buf = mat->getParameterBufferBytes();
   REQUIRE(!buf.empty());

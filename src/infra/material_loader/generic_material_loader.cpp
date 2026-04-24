@@ -165,7 +165,7 @@ void applyParameters(LX_core::MaterialInstance &mat,
     const auto memberId = LX_core::StringID(memberName);
 
     // Find member type from binding.
-    auto *binding = mat.getParameterBufferLayout(bindingId);
+    auto binding = mat.getParameterBufferLayout(bindingId);
     if (!binding) {
       fatalLoader("parameter binding '" + bindingName +
                   "' has no canonical parameter data");
@@ -173,7 +173,7 @@ void applyParameters(LX_core::MaterialInstance &mat,
 
     LX_core::ShaderPropertyType memberType = LX_core::ShaderPropertyType::Float;
     bool found = false;
-    for (const auto &m : binding->members) {
+    for (const auto &m : binding->get().members) {
       if (m.name == memberName) {
         memberType = m.type;
         found = true;

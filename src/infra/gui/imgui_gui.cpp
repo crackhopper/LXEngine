@@ -2,6 +2,8 @@
 #include <backends/imgui_impl_vulkan.h>
 #include <imgui.h>
 #include <array>
+#include <functional>
+#include <optional>
 #include <stdexcept>
 
 #ifdef USE_SDL
@@ -140,11 +142,15 @@ void Gui::beginFrame() {
 void Gui::endFrame(VkCommandBuffer cmd) {
   if (!pImpl->initialized) return;
   ImGui::Render();
-  ImDrawData* drawData = ImGui::GetDrawData();
-  if (!drawData || drawData->TotalVtxCount == 0) {
+  const auto drawData =
+      ImGui::GetDrawData()
+          ? std::optional<std::reference_wrapper<ImDrawData>>(
+                std::ref(*ImGui::GetDrawData()))
+          : std::nullopt;
+  if (!drawData || drawData->get().TotalVtxCount == 0) {
     return;
   }
-  ImGui_ImplVulkan_RenderDrawData(drawData, cmd, VK_NULL_HANDLE);
+  ImGui_ImplVulkan_RenderDrawData(&drawData->get(), cmd, VK_NULL_HANDLE);
 }
 
 void Gui::updateSwapchainImageCount(usize imageCount) {

@@ -13,8 +13,10 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -276,14 +278,15 @@ const PerDrawLayoutBase &readPerDrawLayout(const PerDrawDataSharedPtr &drawData)
   return *reinterpret_cast<const PerDrawLayoutBase *>(drawData->rawData());
 }
 
-const RenderingItem *findItemByDrawData(const RenderQueue &queue,
-                                        const PerDrawDataSharedPtr &drawData) {
+std::optional<std::reference_wrapper<const RenderingItem>>
+findItemByDrawData(const RenderQueue &queue,
+                   const PerDrawDataSharedPtr &drawData) {
   for (const auto &item : queue.getItems()) {
     if (item.drawData == drawData) {
-      return &item;
+      return std::cref(item);
     }
   }
-  return nullptr;
+  return std::nullopt;
 }
 
 void testIndependentSceneNodeValidation() {
@@ -528,11 +531,11 @@ void testRenderQueueUsesHierarchyDerivedWorldTransform() {
 
   EXPECT(queue.getItems().size() == 2,
          "queue should include both parent and child renderables");
-  const auto *childItem = findItemByDrawData(queue, child->getPerDrawData());
-  EXPECT(childItem != nullptr,
+  auto childItem = findItemByDrawData(queue, child->getPerDrawData());
+  EXPECT(childItem.has_value(),
          "queue should carry the child per-draw data pointer");
   if (childItem) {
-    const auto &layout = readPerDrawLayout(childItem->drawData);
+    const auto &layout = readPerDrawLayout(childItem->get().drawData);
     EXPECT(nearlyEqualVec3(transformPoint(layout.model), Vec3f{4.0f, 2.0f, 0.0f}),
            "queue draw data should use hierarchy-derived child world transform");
   }

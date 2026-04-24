@@ -48,15 +48,15 @@ CameraRig::CameraRig()
     : m_orbit(LX_core::Vec3f{0.0f, 0.0f, 0.0f}, 3.0f, 0.0f, 0.0f),
       m_freefly(LX_core::Vec3f{0.0f, 0.0f, 3.0f}, 180.0f, 0.0f) {}
 
-void CameraRig::attach(LX_core::Camera* camera) { m_camera = camera; }
+void CameraRig::attach(LX_core::Camera& camera) { m_camera = std::ref(camera); }
 
 void CameraRig::switchMode() {
   if (!m_camera) return;
   if (m_mode == Mode::Orbit) {
-    syncFreeFlyFromCamera(m_freefly, *m_camera);
+    syncFreeFlyFromCamera(m_freefly, m_camera->get());
     m_mode = Mode::FreeFly;
   } else {
-    syncOrbitFromCamera(m_orbit, *m_camera);
+    syncOrbitFromCamera(m_orbit, m_camera->get());
     m_mode = Mode::Orbit;
   }
   std::cerr << "[scene_viewer] camera mode -> "
@@ -76,11 +76,11 @@ void CameraRig::update(LX_core::IInputState& input, float dt) {
   m_prevF2Down = f2Down;
 
   if (m_mode == Mode::Orbit) {
-    m_orbit.update(*m_camera, input, dt);
+    m_orbit.update(m_camera->get(), input, dt);
   } else {
-    m_freefly.update(*m_camera, input, dt);
+    m_freefly.update(m_camera->get(), input, dt);
   }
-  m_camera->updateMatrices();
+  m_camera->get().updateMatrices();
 }
 
 } // namespace LX_demo::scene_viewer

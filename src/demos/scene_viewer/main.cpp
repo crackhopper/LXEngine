@@ -20,9 +20,11 @@
 #include <cstdio>
 #include <exception>
 #include <filesystem>
+#include <functional>
 #include <imgui.h>
 #include <iostream>
 #include <memory>
+#include <optional>
 
 using LX_core::backend::VulkanRenderer;
 using LX_core::gpu::EngineLoop;
@@ -83,10 +85,13 @@ int main() {
     }
 
     demo::CameraRig rig;
-    rig.attach(camera.get());
+    rig.attach(*camera);
 
     demo::UiOverlay ui;
-    ui.attach(/*clock*/ nullptr, camera.get(), dirLight.get(), &rig);
+    if (!dirLight) {
+      throw std::runtime_error("[scene_viewer] expected directional light");
+    }
+    ui.attach(*camera, *dirLight, rig);
 
     // Hand the UI callback to the concrete VulkanRenderer. Per REQ-017 the
     // callback is intentionally not on the gpu::Renderer base.
@@ -97,15 +102,19 @@ int main() {
     loop.startScene(scene);
 
     // Late-bind the clock now that EngineLoop owns one.
-    ui.attach(&loop.getClock(), camera.get(), dirLight.get(), &rig);
+    ui.attachClock(loop.getClock());
 
     auto input = window->getInputState();
 
     loop.setUpdateHook([&](LX_core::Scene&, const LX_core::Clock& clock) {
       const bool imguiReady = ImGui::GetCurrentContext() != nullptr;
-      const ImGuiIO* io = imguiReady ? &ImGui::GetIO() : nullptr;
-      const bool wantsKeyboard = io && io->WantCaptureKeyboard;
-      const bool wantsMouse = io && io->WantCaptureMouse;
+      const auto io =
+          imguiReady
+              ? std::optional<std::reference_wrapper<const ImGuiIO>>(
+                    std::cref(ImGui::GetIO()))
+              : std::nullopt;
+      const bool wantsKeyboard = io && io->get().WantCaptureKeyboard;
+      const bool wantsMouse = io && io->get().WantCaptureMouse;
 
       if (!wantsKeyboard) {
         ui.handleHotkeys(*input);

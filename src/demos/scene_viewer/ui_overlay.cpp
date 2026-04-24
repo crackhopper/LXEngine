@@ -11,14 +11,16 @@ namespace LX_demo::scene_viewer {
 
 namespace dui = LX_infra::debug_ui;
 
-void UiOverlay::attach(const LX_core::Clock* clock,
-                       LX_core::Camera* camera,
-                       LX_core::DirectionalLight* light,
-                       CameraRig* rig) {
-  m_clock = clock;
-  m_camera = camera;
-  m_light = light;
-  m_rig = rig;
+void UiOverlay::attach(LX_core::Camera& camera,
+                       LX_core::DirectionalLight& light,
+                       CameraRig& rig) {
+  m_camera = std::ref(camera);
+  m_light = std::ref(light);
+  m_rig = std::ref(rig);
+}
+
+void UiOverlay::attachClock(const LX_core::Clock& clock) {
+  m_clock = std::cref(clock);
 }
 
 void UiOverlay::handleHotkeys(LX_core::IInputState& input) {
@@ -32,10 +34,10 @@ void UiOverlay::handleHotkeys(LX_core::IInputState& input) {
 void UiOverlay::drawFrame() {
   if (dui::beginPanel("Stats")) {
     if (m_clock) {
-      dui::renderStatsPanel(*m_clock);
+      dui::renderStatsPanel(m_clock->get());
     }
     if (m_rig) {
-      const bool orbit = m_rig->currentMode() == CameraRig::Mode::Orbit;
+      const bool orbit = m_rig->get().currentMode() == CameraRig::Mode::Orbit;
       dui::labelText("camera mode", orbit ? "Orbit" : "FreeFly");
     }
   }
@@ -43,7 +45,7 @@ void UiOverlay::drawFrame() {
 
   if (dui::beginPanel("Camera")) {
     if (m_camera) {
-      dui::cameraPanel("Camera", *m_camera);
+      dui::cameraPanel("Camera", m_camera->get());
       // The rig calls updateMatrices() every frame; UI edits land naturally.
     }
   }
@@ -51,7 +53,7 @@ void UiOverlay::drawFrame() {
 
   if (dui::beginPanel("Directional Light")) {
     if (m_light) {
-      dui::directionalLightPanel("Sun", *m_light);
+      dui::directionalLightPanel("Sun", m_light->get());
     }
   }
   dui::endPanel();

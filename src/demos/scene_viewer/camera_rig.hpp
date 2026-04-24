@@ -9,6 +9,9 @@
 #include "core/scene/freefly_camera_controller.hpp"
 #include "core/scene/orbit_camera_controller.hpp"
 
+#include <functional>
+#include <optional>
+
 namespace LX_demo::scene_viewer {
 
 class CameraRig {
@@ -18,7 +21,7 @@ public:
   CameraRig();
 
   // Bind the rig to the camera it will drive. Must be called before update().
-  void attach(LX_core::Camera* camera);
+  void attach(LX_core::Camera& camera);
 
   // Per-frame update: F2 edge detection -> controller update -> matrix refresh.
   void update(LX_core::IInputState& input, float dt);
@@ -28,7 +31,7 @@ public:
 private:
   void switchMode();
 
-  LX_core::Camera* m_camera = nullptr;
+  std::optional<std::reference_wrapper<LX_core::Camera>> m_camera;
   LX_core::OrbitCameraController m_orbit;
   LX_core::FreeFlyCameraController m_freefly;
   Mode m_mode = Mode::Orbit;
