@@ -50,11 +50,11 @@ public:
   getDescriptorResources(StringID pass) const;
   IShaderSharedPtr getPassShader(StringID pass) const;
   RenderState getPassRenderState(StringID pass) const;
-  StringID getMaterialSignature(StringID pass) const;
+  StringID getPipelineSignature(StringID pass) const;
 
   // Primary API: write buffer parameter by binding name + member name.
   void setParameter(StringID bindingName, StringID memberName, float value);
-  void setParameter(StringID bindingName, StringID memberName, int32_t value);
+  void setParameter(StringID bindingName, StringID memberName, i32 value);
   void setParameter(StringID bindingName, StringID memberName,
                     const Vec3f &value);
   void setParameter(StringID bindingName, StringID memberName,
@@ -70,19 +70,19 @@ public:
   usize getParameterBufferCount() const {
     return m_parameterBuffersByName.size();
   }
-  const std::vector<uint8_t> &
+  const std::vector<u8> &
   getParameterBufferBytes(StringID bindingName) const;
   const ShaderResourceBinding *
   getParameterBufferLayout(StringID bindingName) const;
   // Single-binding shortcuts (assert if multiple buffer bindings exist).
-  const std::vector<uint8_t> &getParameterBufferBytes() const;
+  const std::vector<u8> &getParameterBufferBytes() const;
   const ShaderResourceBinding *getParameterBufferLayout() const;
 
   bool isPassEnabled(StringID pass) const;
   void setPassEnabled(StringID pass, bool enabled);
   std::vector<StringID> getEnabledPasses() const;
-  uint64_t addPassStateListener(std::function<void()> callback);
-  void removePassStateListener(uint64_t listenerId);
+  u64 addPassStateListener(std::function<void()> callback);
+  void removePassStateListener(u64 listenerId);
 
 private:
   ParameterBuffer *findParameterBuffer(StringID bindingName);
@@ -102,8 +102,8 @@ private:
   // Structural pass participation state. This changes scene validation,
   // unlike ordinary parameter writes.
   std::unordered_set<StringID, StringID::Hash> m_enabledPasses;
-  std::unordered_map<uint64_t, std::function<void()>> m_passStateListeners;
-  uint64_t m_nextListenerId = 1;
+  std::unordered_map<u64, std::function<void()>> m_passStateListeners;
+  u64 m_nextListenerId = 1;
 };
 
 using MaterialInstanceSharedPtr = MaterialInstance::SharedPtr;

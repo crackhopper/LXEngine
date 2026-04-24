@@ -52,7 +52,7 @@ public:
   findBinding(const std::string &) const override {
     return std::nullopt;
   }
-  size_t getProgramHash() const override { return 0; }
+  usize getProgramHash() const override { return 0; }
 
 private:
   std::vector<ShaderStageCode> m_stages;
@@ -98,8 +98,8 @@ struct Fixture {
 PipelineKey buildKey(const Fixture &f, StringID pass,
                      const SkeletonSharedPtr &skel = nullptr) {
   auto node = SceneNode::create("pipeline_identity_node", f.mesh, f.material, skel);
-  StringID objSig = node->getRenderSignature(pass);
-  StringID matSig = f.material->getMaterialSignature(pass);
+  StringID objSig = node->getPipelineSignature(pass);
+  StringID matSig = f.material->getPipelineSignature(pass);
   return PipelineKey::build(objSig, matSig);
 }
 
@@ -161,9 +161,9 @@ void testDifferentPassProducesDifferentKey() {
 
   auto node =
       SceneNode::create("pipeline_identity_pass_node", f.mesh, f.material, nullptr);
-  StringID objSig = node->getRenderSignature(Pass_Forward);
-  StringID fwdMat = f.material->getMaterialSignature(Pass_Forward);
-  StringID shMat = f.material->getMaterialSignature(Pass_Shadow);
+  StringID objSig = node->getPipelineSignature(Pass_Forward);
+  StringID fwdMat = f.material->getPipelineSignature(Pass_Forward);
+  StringID shMat = f.material->getPipelineSignature(Pass_Shadow);
   PipelineKey kFwd = PipelineKey::build(objSig, fwdMat);
   PipelineKey kSh = PipelineKey::build(objSig, shMat);
 

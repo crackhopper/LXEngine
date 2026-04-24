@@ -11,9 +11,9 @@
 
 namespace LX_core {
 
-enum class CullMode : uint8_t { None, Front, Back };
-enum class CompareOp : uint8_t { Less, LessEqual, Greater, Equal, Always };
-enum class BlendFactor : uint8_t { Zero, One, SrcAlpha, OneMinusSrcAlpha };
+enum class CullMode : u8 { None, Front, Back };
+enum class CompareOp : u8 { Less, LessEqual, Greater, Equal, Always };
+enum class BlendFactor : u8 { Zero, One, SrcAlpha, OneMinusSrcAlpha };
 
 inline const char *toString(CullMode m) {
   switch (m) {
@@ -64,10 +64,10 @@ inline const char *toString(BlendFactor f) {
 也不关心 shader 内部逻辑；它回答的问题是“同一份几何和 shader，
 在这一步要用怎样的 raster/depth/blend 规则去提交 pipeline”。
 
-这里同时保留 `getHash()` 和 `getRenderSignature()` 两条导出路径：
+这里同时保留 `getHash()` 和 `getPipelineSignature()` 两条导出路径：
 
 - `getHash()` 面向 C++ 侧缓存键，追求便于组合和快速比较
-- `getRenderSignature()` 面向 `StringID` 组合签名，追求结构可追踪性
+- `getPipelineSignature()` 面向 `StringID` 组合签名，追求结构可追踪性
 
 也就是说，这个类型不是运行时开关集合，而是 pass 身份的一部分。
 */
@@ -87,8 +87,8 @@ struct RenderState {
            dstBlend == rhs.dstBlend;
   }
 
-  size_t getHash() const {
-    size_t h = 0;
+  usize getHash() const {
+    usize h = 0;
     hash_combine(h, static_cast<u32>(cullMode));
     hash_combine(h, depthTestEnable);
     hash_combine(h, depthWriteEnable);
@@ -99,7 +99,7 @@ struct RenderState {
     return h;
   }
 
-  StringID getRenderSignature() const {
+  StringID getPipelineSignature() const {
     auto &tbl = GlobalStringTable::get();
     StringID fields[] = {
         tbl.Intern(toString(cullMode)),
@@ -130,16 +130,16 @@ struct MaterialPassDefinition {
   RenderState renderState;
   ShaderProgramSet shaderProgram;
 
-  size_t getHash() const {
-    size_t h = renderState.getHash();
+  usize getHash() const {
+    usize h = renderState.getHash();
     hash_combine(h, shaderProgram.getHash());
     return h;
   }
 
-  StringID getRenderSignature() const {
+  StringID getPipelineSignature() const {
     StringID fields[] = {
-        shaderProgram.getRenderSignature(),
-        renderState.getRenderSignature(),
+        shaderProgram.getPipelineSignature(),
+        renderState.getPipelineSignature(),
     };
     return GlobalStringTable::get().compose(TypeTag::MaterialPassDefinition,
                                             fields);

@@ -10,17 +10,17 @@
 
 这些任何一项变化，`PipelineKey` 就可能变化，引擎就需要一条不同的 pipeline。
 
-## Render Signature 链路
+## Pipeline Signature 链路
 
 影响通过 signature 链条传递：
 
 ```
-MaterialPassDefinition.getRenderSignature()
-  = compose(shaderSet.getRenderSignature(), renderState.getRenderSignature())
+MaterialPassDefinition.getPipelineSignature()
+  = compose(shaderSet.getPipelineSignature(), renderState.getPipelineSignature())
         ↓
-MaterialTemplate.getRenderPassSignature(pass)
+MaterialTemplate.getPipelinePassSignature(pass)
         ↓
-MaterialInstance.getRenderSignature(pass)
+MaterialInstance.getPipelineSignature(pass)
         ↓
 PipelineKey.build(objectSignature, materialSignature)
 ```
@@ -44,8 +44,8 @@ PipelineKey.build(objectSignature, materialSignature)
 
 `SceneNode` 为每个 enabled pass 重建 validated 数据时，会同时取：
 
-- mesh 的 `getRenderSignature(pass)` — object 侧
-- material 的 `getRenderSignature(pass)` — 材质侧
+- mesh 的 `getPipelineSignature(pass)` — object 侧
+- material 的 `getPipelineSignature(pass)` — 材质侧
 
 然后调用 `PipelineKey::build(...)` 得到这个 pass 下的 pipeline identity。
 

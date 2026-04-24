@@ -15,14 +15,14 @@ struct PipelineKey {
   bool operator!=(const PipelineKey &rhs) const { return id != rhs.id; }
 
   struct Hash {
-    size_t operator()(const PipelineKey &k) const {
+    usize operator()(const PipelineKey &k) const {
       return StringID::Hash{}(k.id);
     }
   };
 
   /// 两级 compose：object signature + material signature。调用方通过
-  /// `IRenderable::getRenderSignature(pass)` 与
-  /// `MaterialInstance::getMaterialSignature(pass)` 先各自组装结构化签名，再传入本函数。
+  /// `IRenderable::getPipelineSignature(pass)` 与
+  /// `MaterialInstance::getPipelineSignature(pass)` 先各自组装结构化签名，再传入本函数。
   static PipelineKey build(StringID objectSig, StringID materialSig);
 };
 

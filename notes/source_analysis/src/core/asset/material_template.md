@@ -73,10 +73,10 @@ descriptor 类型支持范围、以及运行时实例需要面对的 binding 集
 也不关心 shader 内部逻辑；它回答的问题是“同一份几何和 shader，
 在这一步要用怎样的 raster/depth/blend 规则去提交 pipeline”。
 
-这里同时保留 `getHash()` 和 `getRenderSignature()` 两条导出路径：
+这里同时保留 `getHash()` 和 `getPipelineSignature()` 两条导出路径：
 
 - `getHash()` 面向 C++ 侧缓存键，追求便于组合和快速比较
-- `getRenderSignature()` 面向 `StringID` 组合签名，追求结构可追踪性
+- `getPipelineSignature()` 面向 `StringID` 组合签名，追求结构可追踪性
 
 也就是说，这个类型不是运行时开关集合，而是 pass 身份的一部分。
 

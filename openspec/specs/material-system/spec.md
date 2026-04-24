@@ -10,7 +10,7 @@ The system SHALL provide exactly one concrete material type, named `MaterialInst
 - **THEN** the returned `MaterialInstanceSharedPtr` points to a `MaterialInstance` and the concrete type `DrawMaterial` is not referenced anywhere in `src/`
 
 #### Scenario: MaterialInstance public surface is preserved
-- **WHEN** rendering code calls `getPassShader(pass)`, `getPassRenderState(pass)`, `getDescriptorResources(pass)`, or `getMaterialSignature(pass)` on a `MaterialInstance`
+- **WHEN** rendering code calls `getPassShader(pass)`, `getPassRenderState(pass)`, `getDescriptorResources(pass)`, or `getPipelineSignature(pass)` on a `MaterialInstance`
 - **THEN** each call returns a value consistent with the `MaterialTemplate`'s configuration and the instance's per-object state
 
 ### Requirement: MaterialTemplate canonicalizes the material interface

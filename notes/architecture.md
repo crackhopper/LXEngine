@@ -84,4 +84,4 @@
 - 分层规则：`core` 定义抽象，`infra` 接实现，`backend` 做 Vulkan 落地。
 - 资源规则：所有 GPU 资源走 `IGpuResource + dirty + syncResource()`。
 - 绘制规则：所有 draw 必须走 `Scene -> FrameGraph -> RenderQueue -> RenderingItem`。
-- 身份规则：pipeline 身份来自 object/material render signatures，skinning 差异由 material-side variants 表达。
+- 身份规则：pipeline 身份来自 object/material pipeline signatures，skinning 差异由 material-side variants 表达。

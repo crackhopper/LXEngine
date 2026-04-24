@@ -15,7 +15,7 @@
 - [Engine Loop](engine-loop.md)：场景生命周期、每帧 update hook、run/stop/rebuild
 - [Frame Graph](frame-graph.md)：pass 组织、queue 构建、pipeline 预收集
 - [Scene](scene.md)：scene 容器、renderable、scene-level 资源
-- [Pipeline Identity](pipeline-identity.md)：`PipelineKey`、`PipelineBuildDesc`、render signature
+- [Pipeline Identity](pipeline-identity.md)：`PipelineKey`、`PipelineBuildDesc`、pipeline signature
 - [Pipeline Cache](pipeline-cache.md)：预构建、查找、运行时 miss
 - [Shader System](shader-system.md)：GLSL 编译、SPIR-V 反射、`CompiledShader`
 - [Material System](material-system.md)：材质模板、材质实例、反射驱动 UBO

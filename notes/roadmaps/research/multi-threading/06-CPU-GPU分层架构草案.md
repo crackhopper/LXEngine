@@ -319,7 +319,7 @@ for (auto& [texHandle, uploadHandle] : completedTextures) {
 | `frame-graph/spec.md` | FrameGraph 成为 GpuJob 的生产者，compile 阶段产出 `std::vector<GpuJob>` |
 | `pipeline-cache/spec.md` | 不变，仍然 preload + getOrCreate；阶段 2 的并行创建是调用模式变化，接口不改 |
 | `pipeline-key/spec.md` | 不变 |
-| `render-signature/spec.md` | 不变 |
+| `pipeline-signature/spec.md` | 不变 |
 | `renderer-backend-vulkan/spec.md` | 会扩展：新增 `VulkanGpuJobOrchestrator` 章节 |
 | 新增 spec | `openspec/specs/task-scheduler/spec.md`、`openspec/specs/gpu-job/spec.md` |
 

@@ -121,7 +121,7 @@ Doom Eternal 的 ~100 shader / ~350 PSO 的结构大致是：
 
 - `pipeline-key/spec.md` —— `PipelineKey::build(objSig, matSig)` 结构化 pipeline 身份
 - `pipeline-build-desc/spec.md` —— pipeline 构造输入聚合
-- `render-signature/spec.md` —— `getRenderSignature(pass)`
+- `pipeline-signature/spec.md` —— `getPipelineSignature(pass)`
 
 这些 spec 已经把 pipeline identity 结构化了，是未来演进的良好基础。具体结合 bindless 的做法见 [06 · LX Engine 演进路径](06-LXEngine演进路径.md)。
 

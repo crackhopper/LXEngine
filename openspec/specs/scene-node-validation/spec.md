@@ -16,7 +16,7 @@ Structural setter operations (`setMesh(...)`, `setMaterialInstance(...)`, `setSk
 - **THEN** the node re-runs structural validation for all enabled passes and refreshes its pass cache before the call returns
 
 ### Requirement: SceneNode maintains pass-level validated-entry cache
-`SceneNode` SHALL maintain a lightweight `pass -> validated entry` structural cache. Each validated entry MUST represent the most recent successful structural validation result for that pass and MUST retain the stable structural information required to build a `RenderingItem`, including at minimum the pass-qualified object render signature, the material/pass structural result, the structural descriptor-resource conclusion, and the stable resource handles for mesh/material/object push constant consumption.
+`SceneNode` SHALL maintain a lightweight `pass -> validated entry` structural cache. Each validated entry MUST represent the most recent successful structural validation result for that pass and MUST retain the stable structural information required to build a `RenderingItem`, including at minimum the pass-qualified object pipeline signature, the material/pass structural result, the structural descriptor-resource conclusion, and the stable resource handles for mesh/material/object push constant consumption.
 
 The cache SHALL be invalidated and immediately rebuilt on:
 - `SceneNode` construction

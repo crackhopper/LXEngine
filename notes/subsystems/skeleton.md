@@ -28,7 +28,7 @@
 
 - `MAX_BONE_COUNT` 目前固定为 128。
 - shader 里的 block 名必须叫 `Bones`。
-- `Skeleton` 不再暴露 `getRenderSignature()` 或 `getPipelineHash()`。
+- `Skeleton` 不再暴露 `getPipelineSignature()` 或 `getPipelineHash()`。
 - 是否切 pipeline 不看 skeleton 对象本身，而看 material pass 的 shader variants。
 
 ## 当前实现边界

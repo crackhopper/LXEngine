@@ -39,7 +39,7 @@ public:
 
 /*
 @source_analysis.section 几何签名：mesh 只输出 pipeline 真正关心的结构信息
-`getRenderSignature()` 只组合两类东西：
+`getPipelineSignature()` 只组合两类东西：
 
 - 顶点输入布局
 - 索引拓扑
@@ -52,10 +52,10 @@ public:
 
   /// Pass 参数保留以统一接口，当前实现忽略。
   /// 未来可用于"同一 mesh 在不同 pass 剔除属性"。
-  StringID getRenderSignature(StringID /*pass*/) const {
+  StringID getPipelineSignature(StringID /*pass*/) const {
     StringID fields[] = {
-        vertexBuffer->getLayout().getRenderSignature(),
-        topologySignature(indexBuffer->getTopology()),
+        vertexBuffer->getPipelineSignature(),
+        indexBuffer->getPipelineSignature(),
     };
     return GlobalStringTable::get().compose(TypeTag::MeshRender, fields);
   }

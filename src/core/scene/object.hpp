@@ -23,7 +23,7 @@ class Scene;
 struct PerDrawData {
   using SharedPtr = std::shared_ptr<PerDrawData>;
 
-  alignas(16) uint8_t data[128] = {0};
+  alignas(16) u8 data[128] = {0};
   u32 activeSize = sizeof(PerDrawLayoutBase);
 
   PerDrawData() {
@@ -73,7 +73,7 @@ public:
   getDescriptorResources(StringID pass) const = 0;
   virtual IShaderSharedPtr getShaderInfo() const = 0;
   virtual PerDrawDataSharedPtr getPerDrawData() const { return nullptr; }
-  virtual StringID getRenderSignature(StringID pass) const = 0;
+  virtual StringID getPipelineSignature(StringID pass) const = 0;
   virtual bool supportsPass(StringID pass) const = 0;
   virtual VisibilityLayerMask getVisibilityLayerMask() const = 0;
   virtual std::string getNodeName() const = 0;
@@ -129,7 +129,7 @@ public:
   getDescriptorResources(StringID pass) const override;
   IShaderSharedPtr getShaderInfo() const override;
   PerDrawDataSharedPtr getPerDrawData() const override;
-  StringID getRenderSignature(StringID pass) const override;
+  StringID getPipelineSignature(StringID pass) const override;
   bool supportsPass(StringID pass) const override;
   std::string getNodeName() const override { return m_nodeName; }
   StringID getDebugId() const override { return m_debugId; }
@@ -166,7 +166,7 @@ private:
   StringID m_debugId;
   std::unordered_map<StringID, ValidatedRenderablePassData, StringID::Hash>
       m_validatedPasses;
-  uint64_t m_materialPassListenerId = 0;
+  u64 m_materialPassListenerId = 0;
   std::weak_ptr<Scene> m_scene;
   std::weak_ptr<SceneNode> m_parent;
   std::vector<std::weak_ptr<SceneNode>> m_children;

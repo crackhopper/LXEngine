@@ -50,8 +50,8 @@ struct VertexLayoutItem {
   u32 offset = 0;
   VertexInputRate inputRate = VertexInputRate::Vertex;
 
-  size_t hash() const {
-    size_t h = 0;
+  usize hash() const {
+    usize h = 0;
     hash_combine(h, name);
     hash_combine(h, location);
     hash_combine(h, static_cast<u32>(type));
@@ -62,7 +62,7 @@ struct VertexLayoutItem {
   }
 
   /// "{location}_{name}_{type}_{inputRate}_{offset}" 格式的叶子 StringID
-  StringID getRenderSignature() const {
+  StringID getPipelineSignature() const {
     std::string tag;
     tag.reserve(name.size() + 32);
     tag += std::to_string(location);
@@ -93,7 +93,7 @@ struct VertexLayoutItem {
 - stride / offset
 - vertex 还是 instance 频率
 
-后面的 `Mesh::getRenderSignature()`、`PipelineBuildDesc`、`SceneNode` 校验都会消费它，
+后面的 `Mesh::getPipelineSignature()`、`PipelineBuildDesc`、`SceneNode` 校验都会消费它，
 因为这些流程真正关心的是顶点输入形状，而不是 `VertexPosUv` 这类 C++ 顶点类型名。
 */
 class VertexLayout {
@@ -108,12 +108,12 @@ public:
   const std::vector<VertexLayoutItem> &getItems() const { return m_items; }
   u32 getStride() const { return m_stride; }
 
-  StringID getRenderSignature() const {
+  StringID getPipelineSignature() const {
     auto &tbl = GlobalStringTable::get();
     std::vector<StringID> parts;
     parts.reserve(m_items.size() + 1);
     for (const auto &item : m_items)
-      parts.push_back(item.getRenderSignature());
+      parts.push_back(item.getPipelineSignature());
     parts.push_back(tbl.Intern(std::to_string(m_stride)));
     return tbl.compose(TypeTag::VertexLayout, parts);
   }
@@ -133,7 +133,7 @@ private:
 private:
   std::vector<VertexLayoutItem> m_items;
   u32 m_stride = 0;
-  size_t m_hash = 0;
+  usize m_hash = 0;
 };
 
 } // namespace LX_core
@@ -159,6 +159,9 @@ public:
   virtual ~IVertexBuffer() = default;
 
   virtual const VertexLayout &getLayout() const = 0;
+  virtual StringID getPipelineSignature() const {
+    return getLayout().getPipelineSignature();
+  }
 
   virtual usize getVertexCount() const = 0;
 

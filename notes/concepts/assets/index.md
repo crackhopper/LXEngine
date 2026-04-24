@@ -42,7 +42,7 @@
 
 - 组合 `VertexBuffer` 和 `IndexBuffer`
 - 提供顶点布局、索引数、拓扑等查询接口
-- 通过 `getRenderSignature(pass)` 把几何结构贡献给 pipeline identity
+- 通过 `getPipelineSignature(pass)` 把几何结构贡献给 pipeline identity
 
 最直接的使用方式是：
 

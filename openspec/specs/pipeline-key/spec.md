@@ -1,6 +1,6 @@
 ## Purpose
 
-Define `PipelineKey` as the core-layer identity for Vulkan (or other) graphics pipelines, built from structured render signatures composed through `GlobalStringTable`, and carried on `RenderingItem` for cache lookup.
+Define `PipelineKey` as the core-layer identity for Vulkan (or other) graphics pipelines, built from structured pipeline signatures composed through `GlobalStringTable`, and carried on `RenderingItem` for cache lookup.
 
 ## Requirements
 
@@ -19,7 +19,7 @@ The system SHALL provide `LX_core::PipelineKey` in core holding a `StringID` tha
 
 ### Requirement: PipelineKey build composes object and material signatures
 
-`PipelineKey::build` SHALL accept exactly two arguments, `StringID objectSig` and `StringID materialSig`, and SHALL produce a `PipelineKey` whose `id` equals `GlobalStringTable::get().compose(TypeTag::PipelineKey, {objectSig, materialSig})`. Callers assembling pipeline identity SHALL first resolve `objectSig` via `IRenderable::getRenderSignature(pass)` and `materialSig` via `MaterialInstance::getRenderSignature(pass)`.
+`PipelineKey::build` SHALL accept exactly two arguments, `StringID objectSig` and `StringID materialSig`, and SHALL produce a `PipelineKey` whose `id` equals `GlobalStringTable::get().compose(TypeTag::PipelineKey, {objectSig, materialSig})`. Callers assembling pipeline identity SHALL first resolve `objectSig` via `IRenderable::getPipelineSignature(pass)` and `materialSig` via `MaterialInstance::getPipelineSignature(pass)`.
 
 #### Scenario: Different material signatures yield different keys
 
