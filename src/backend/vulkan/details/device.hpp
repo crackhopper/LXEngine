@@ -51,10 +51,10 @@ public:
   // 队列一定存在，否则创建实例的时候就会扔出异常。
   VkQueue getGraphicsQueue() const { return m_graphicsQueue; }
   VkQueue getPresentQueue() const { return m_presentQueue; }
-  QueueFamilyIndex32 getGraphicsQueueFamilyIndex() const {
+  u32 getGraphicsQueueFamilyIndex() const {
     return m_queueIndices.graphicsFamily.value_or(0);
   }
-  QueueFamilyIndex32 getPresentQueueFamilyIndex() const {
+  u32 getPresentQueueFamilyIndex() const {
     return m_queueIndices.presentFamily.value_or(0);
   }
 
@@ -64,8 +64,7 @@ public:
   }
 
   // --- 实用工具 ---
-  MemoryTypeIndex32
-  findMemoryTypeIndex(u32 typeFilter, VkMemoryPropertyFlags properties) const;
+  u32 findMemoryTypeIndex(u32 typeFilter, VkMemoryPropertyFlags properties) const;
   void waitIdle() const { vkDeviceWaitIdle(m_device); }
 
   /**
@@ -102,8 +101,8 @@ private:
 
   struct QueueFamilyIndices {
     // std::optional 表示这个索引可能存在，也可能不存在（初始为 null）
-    std::optional<QueueFamilyIndex32> graphicsFamily; // 图形渲染队列
-    std::optional<QueueFamilyIndex32> presentFamily;  // 屏幕显示队列（Surface）
+    std::optional<u32> graphicsFamily; // 图形渲染队列
+    std::optional<u32> presentFamily;  // 屏幕显示队列（Surface）
 
     // 辅助函数：判断我们需要的队列是否都找齐了
     bool isComplete() const {

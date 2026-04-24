@@ -12,15 +12,15 @@ public:
     VkInstance instance;
     VkPhysicalDevice physicalDevice;
     VkDevice device;
-    QueueFamilyIndex32 graphicsQueueFamilyIndex;
-    QueueFamilyIndex32 presentQueueFamilyIndex;
+    u32 graphicsQueueFamilyIndex;
+    u32 presentQueueFamilyIndex;
     VkQueue graphicsQueue;
     VkQueue presentQueue;
     VkSurfaceKHR surface;
     // SDL path: must be an SDL_Window*. GLFW path: GLFWwindow*.
     void* nativeWindowHandle;
     VkRenderPass renderPass;
-    ImageCount swapchainImageCount;
+    usize swapchainImageCount;
   };
 
   Gui();
@@ -29,7 +29,7 @@ public:
   void init(const InitParams& params);
   void beginFrame();
   void endFrame(VkCommandBuffer cmd);
-  void updateSwapchainImageCount(ImageCount imageCount);
+  void updateSwapchainImageCount(usize imageCount);
   void shutdown();
 
   bool isInitialized() const;

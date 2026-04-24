@@ -15,9 +15,9 @@ struct DescriptorLayoutKey;
 class DescriptorLayoutHasher;
 
 struct DescriptorUpdateInfo {
-  DescriptorBindingIndex32 binding = 0;
+  u32 binding = 0;
   VkDescriptorType type = VK_DESCRIPTOR_TYPE_MAX_ENUM;
-  DescriptorCount descriptorCount = 1;
+  u32 descriptorCount = 1;
   const VkDescriptorBufferInfo *bufferInfo = nullptr;
   const VkDescriptorImageInfo *imageInfo = nullptr;
 };
@@ -32,10 +32,10 @@ public:
 
   VkDescriptorSet getHandle() const { return m_set; }
 
-  void updateBuffer(DescriptorBindingIndex32 binding,
+  void updateBuffer(u32 binding,
                     VkDescriptorBufferInfo bufferInfo,
                     VkDescriptorType type);
-  void updateImage(DescriptorBindingIndex32 binding,
+  void updateImage(u32 binding,
                    VkDescriptorImageInfo imageInfo,
                    VkDescriptorType type);
   void updateBatch(const std::vector<DescriptorUpdateInfo> &updates);
@@ -82,7 +82,7 @@ public:
   DescriptorSetUniquePtr
   allocateSet(const std::vector<LX_core::ShaderResourceBinding> &bindings);
 
-  void beginFrame(FrameIndex32 currentFrameIndex);
+  void beginFrame(u32 currentFrameIndex);
   void returnSet(VkDescriptorSet set, VkDescriptorSetLayout layout);
   void reset();
 
@@ -90,8 +90,8 @@ public:
 
 private:
   VulkanDevice &m_device;
-  FrameIndex32 m_currentFrameIndex = 0;
-  FrameIndex32 m_maxFramesInFlight = 3;
+  u32 m_currentFrameIndex = 0;
+  u32 m_maxFramesInFlight = 3;
 
   struct FrameContext {
     VkDescriptorPool pool = VK_NULL_HANDLE;
@@ -107,10 +107,10 @@ private:
       m_layoutCache;
 
   struct Config {
-    DescriptorPoolCount32 uniformCount = 16;
-    DescriptorPoolCount32 samplerCount = 16;
-    DescriptorPoolCount32 storageCount = 8;
-    DescriptorPoolCount32 maxSets = 64;
+    u32 uniformCount = 16;
+    u32 samplerCount = 16;
+    u32 storageCount = 8;
+    u32 maxSets = 64;
   } m_config;
 };
 

@@ -26,8 +26,8 @@ public:
                        const std::vector<VkClearValue> &clearValues);
   void endRenderPass() { vkCmdEndRenderPass(m_handle); }
 
-  void setViewport(ImageDimension32 width, ImageDimension32 height);
-  void setScissor(ImageDimension32 width, ImageDimension32 height);
+  void setViewport(u32 width, u32 height);
+  void setScissor(u32 width, u32 height);
 
   void bindPipeline(VulkanPipeline &pipeline);
 
@@ -45,8 +45,7 @@ public:
     vkCmdCopyBuffer(m_handle, src, dst, 1, &copyRegion);
   }
 
-  void copyBufferToImage(VkBuffer src, VkImage dst, ImageDimension32 width,
-                         ImageDimension32 height) {
+  void copyBufferToImage(VkBuffer src, VkImage dst, u32 width, u32 height) {
     VkBufferImageCopy region{};
     region.bufferOffset = 0;
     region.bufferRowLength = 0;
@@ -75,8 +74,8 @@ private:
   // vertex+fragment stages by default); populated in `bindPipeline`.
   struct PushConstantSnapshot {
     VkShaderStageFlags stageFlags = 0;
-    ByteOffset32 offset = 0;
-    ByteSize32 size = 0;
+    u32 offset = 0;
+    u32 size = 0;
   };
 
   VkCommandBuffer m_handle = VK_NULL_HANDLE;

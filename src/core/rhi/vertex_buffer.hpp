@@ -44,10 +44,10 @@ inline const char *toString(VertexInputRate r) {
 
 struct VertexLayoutItem {
   std::string name;
-  VertexAttributeLocation32 location = 0;
+  u32 location = 0;
   DataType type;
-  VertexAttributeSize32 size = 0;
-  ByteOffset32 offset = 0;
+  u32 size = 0;
+  u32 offset = 0;
   VertexInputRate inputRate = VertexInputRate::Vertex;
 
   size_t hash() const {
@@ -100,13 +100,13 @@ class VertexLayout {
 public:
   VertexLayout() = default;
 
-  VertexLayout(std::vector<VertexLayoutItem> items, VertexStride32 stride)
+  VertexLayout(std::vector<VertexLayoutItem> items, u32 stride)
       : m_items(std::move(items)), m_stride(stride) {
     updateHash();
   }
 
   const std::vector<VertexLayoutItem> &getItems() const { return m_items; }
-  VertexStride32 getStride() const { return m_stride; }
+  u32 getStride() const { return m_stride; }
 
   StringID getRenderSignature() const {
     auto &tbl = GlobalStringTable::get();
@@ -132,7 +132,7 @@ private:
 
 private:
   std::vector<VertexLayoutItem> m_items;
-  VertexStride32 m_stride = 0;
+  u32 m_stride = 0;
   size_t m_hash = 0;
 };
 
@@ -160,10 +160,10 @@ public:
 
   virtual const VertexLayout &getLayout() const = 0;
 
-  virtual VertexCount getVertexCount() const = 0;
+  virtual usize getVertexCount() const = 0;
 
   const void *getRawData() const override = 0;
-  ResourceByteSize32 getByteSize() const override = 0;
+  u32 getByteSize() const override = 0;
 
   ResourceType getType() const override { return ResourceType::VertexBuffer; }
 };
@@ -188,14 +188,14 @@ public:
     return layout;
   }
 
-  VertexCount getVertexCount() const override {
+  usize getVertexCount() const override {
     return m_vertices.size();
   }
 
   const void *getRawData() const override { return m_vertices.data(); }
 
-  ResourceByteSize32 getByteSize() const override {
-    return static_cast<ResourceByteSize32>(m_vertices.size() * sizeof(VType));
+  u32 getByteSize() const override {
+    return static_cast<u32>(m_vertices.size() * sizeof(VType));
   }
 
 private:

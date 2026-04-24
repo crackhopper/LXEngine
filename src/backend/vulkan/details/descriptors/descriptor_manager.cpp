@@ -57,7 +57,7 @@ DescriptorSet::~DescriptorSet() {
 }
 
 // --- 更新 Buffer 资源 ---
-void DescriptorSet::updateBuffer(DescriptorBindingIndex32 binding,
+void DescriptorSet::updateBuffer(u32 binding,
                                  VkDescriptorBufferInfo bufferInfo,
                                  VkDescriptorType type) {
   VkWriteDescriptorSet descriptorWrite{};
@@ -75,7 +75,7 @@ void DescriptorSet::updateBuffer(DescriptorBindingIndex32 binding,
 }
 
 // --- 更新 Image/Sampler 资源 ---
-void DescriptorSet::updateImage(DescriptorBindingIndex32 binding,
+void DescriptorSet::updateImage(u32 binding,
                                 VkDescriptorImageInfo imageInfo,
                                 VkDescriptorType type) {
   VkWriteDescriptorSet descriptorWrite{};
@@ -130,7 +130,7 @@ VulkanDescriptorManager::VulkanDescriptorManager(Token, VulkanDevice &device)
   m_frameContexts.resize(m_maxFramesInFlight);
 
   // 为每一帧创建一个独立的描述符池
-  for (FrameIndex32 i = 0; i < m_maxFramesInFlight; ++i) {
+  for (u32 i = 0; i < m_maxFramesInFlight; ++i) {
     std::array<VkDescriptorPoolSize, 3> poolSizes{};
 
     // 1. Uniform Buffers (UBO)
@@ -182,7 +182,7 @@ VulkanDescriptorManager::~VulkanDescriptorManager() {
   m_layoutCache.clear();
 
   // 3. 销毁每一帧的资源
-  for (FrameIndex32 i = 0; i < m_maxFramesInFlight; ++i) {
+  for (u32 i = 0; i < m_maxFramesInFlight; ++i) {
     if (m_frameContexts[i].pool != VK_NULL_HANDLE) {
       // 销毁池会自动释放所有关联的 VkDescriptorSet 句柄
       vkDestroyDescriptorPool(m_device.getLogicalDevice(),
@@ -273,7 +273,7 @@ DescriptorSetUniquePtr VulkanDescriptorManager::allocateSet(
   return std::make_unique<DescriptorSet>(setHandle, layout, *this);
 }
 
-void VulkanDescriptorManager::beginFrame(FrameIndex32 currentFrameIndex) {
+void VulkanDescriptorManager::beginFrame(u32 currentFrameIndex) {
   // 1. 更新当前帧索引
   m_currentFrameIndex = currentFrameIndex;
 
@@ -308,7 +308,7 @@ void VulkanDescriptorManager::reset() {
   // 必须确保 GPU 已经停下，否则重置池会导致正在执行的命令崩溃
   vkDeviceWaitIdle(m_device.getLogicalDevice());
 
-  for (FrameIndex32 i = 0; i < m_maxFramesInFlight; ++i) {
+  for (u32 i = 0; i < m_maxFramesInFlight; ++i) {
     auto &context = m_frameContexts[i];
 
     // 1. 重置物理描述符池 (这会使该池分配的所有 VkDescriptorSet 失效)

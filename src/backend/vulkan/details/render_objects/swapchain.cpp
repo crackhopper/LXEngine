@@ -12,7 +12,7 @@ namespace backend {
 
 VulkanSwapchain::VulkanSwapchain(Token, VulkanDevice &device,
                                  WindowSharedPtr window,
-                                 FrameIndex32 maxFramesInFlight)
+                                 u32 maxFramesInFlight)
     : m_device(device), m_window(std::move(window)),
       m_maxFramesInFlight(maxFramesInFlight) {
   if (!m_window) {
@@ -116,7 +116,7 @@ void VulkanSwapchain::createInternal(VkExtent2D extent) {
 
   m_extent = actualExtent;
 
-  SwapchainImageIndex32 imageCount = capabilities.minImageCount + 1;
+  u32 imageCount = capabilities.minImageCount + 1;
   if (capabilities.maxImageCount > 0 &&
       imageCount > capabilities.maxImageCount) {
     imageCount = capabilities.maxImageCount;
@@ -132,9 +132,9 @@ void VulkanSwapchain::createInternal(VkExtent2D extent) {
   createInfo.imageArrayLayers = 1;
   createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
-  QueueFamilyIndex32 graphicsIdx = m_device.getGraphicsQueueFamilyIndex();
-  QueueFamilyIndex32 presentIdx = m_device.getPresentQueueFamilyIndex();
-  QueueFamilyIndex32 queueFamilyIndices[] = {graphicsIdx, presentIdx};
+  u32 graphicsIdx = m_device.getGraphicsQueueFamilyIndex();
+  u32 presentIdx = m_device.getPresentQueueFamilyIndex();
+  u32 queueFamilyIndices[] = {graphicsIdx, presentIdx};
 
   if (graphicsIdx != presentIdx) {
     createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
@@ -310,8 +310,8 @@ void VulkanSwapchain::rebuild(VulkanRenderPass &renderPass) {
   setupFramebuffers(renderPass);
 }
 
-VkResult VulkanSwapchain::acquireNextImage(FrameIndex32 currentFrameIndex,
-                                           SwapchainImageIndex32 &imageIndex) {
+VkResult VulkanSwapchain::acquireNextImage(u32 currentFrameIndex,
+                                           u32 &imageIndex) {
   vkWaitForFences(m_device.getLogicalDevice(), 1,
                   &m_inFlightFences[currentFrameIndex], VK_TRUE, UINT64_MAX);
 
@@ -321,8 +321,7 @@ VkResult VulkanSwapchain::acquireNextImage(FrameIndex32 currentFrameIndex,
                                VK_NULL_HANDLE, &imageIndex);
 }
 
-VkResult VulkanSwapchain::present(FrameIndex32 currentFrameIndex,
-                                  SwapchainImageIndex32 imageIndex) {
+VkResult VulkanSwapchain::present(u32 currentFrameIndex, u32 imageIndex) {
   VkPresentInfoKHR presentInfo{};
   presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
   presentInfo.waitSemaphoreCount = 1;
@@ -336,17 +335,17 @@ VkResult VulkanSwapchain::present(FrameIndex32 currentFrameIndex,
   return vkQueuePresentKHR(m_device.getPresentQueue(), &presentInfo);
 }
 
-VkSemaphore VulkanSwapchain::getImageAvailableSemaphore(FrameIndex32 i) const {
+VkSemaphore VulkanSwapchain::getImageAvailableSemaphore(u32 i) const {
   return m_imageAvailableSemaphores[i];
 }
-VkSemaphore VulkanSwapchain::getRenderFinishedSemaphore(FrameIndex32 i) const {
+VkSemaphore VulkanSwapchain::getRenderFinishedSemaphore(u32 i) const {
   return m_renderFinishedSemaphores[i];
 }
-VkFence VulkanSwapchain::getInFlightFence(FrameIndex32 i) const {
+VkFence VulkanSwapchain::getInFlightFence(u32 i) const {
   return m_inFlightFences[i];
 }
 
-VulkanFrameBuffer &VulkanSwapchain::getFramebuffer(SwapchainImageIndex32 index) {
+VulkanFrameBuffer &VulkanSwapchain::getFramebuffer(u32 index) {
   return *m_framebuffers[index];
 }
 

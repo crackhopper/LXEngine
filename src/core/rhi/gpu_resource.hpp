@@ -50,7 +50,7 @@ public:
   virtual ~IGpuResource() = default;
   virtual ResourceType getType() const = 0;
   virtual const void *getRawData() const = 0;
-  virtual ResourceByteSize32 getByteSize() const = 0;
+  virtual u32 getByteSize() const = 0;
 
   /// Shader-side binding name this resource fills (e.g.,
   /// StringID("CameraUBO")). Empty StringID means "unnamed" — such resources

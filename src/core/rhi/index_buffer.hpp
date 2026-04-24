@@ -52,12 +52,12 @@ class IndexBuffer : public IGpuResource {
 public:
   using SharedPtr = std::shared_ptr<IndexBuffer>;
 
-  IndexBuffer(std::vector<MeshIndex32> &&indices,
+  IndexBuffer(std::vector<u32> &&indices,
               PrimitiveTopology topology = PrimitiveTopology::TriangleList)
       : m_indices(std::move(indices)), m_topology(topology) {}
 
   static SharedPtr
-  create(std::vector<MeshIndex32> &&indices,
+  create(std::vector<u32> &&indices,
          PrimitiveTopology topology = PrimitiveTopology::TriangleList) {
     return std::make_shared<IndexBuffer>(std::move(indices), topology);
   }
@@ -78,21 +78,20 @@ public:
 
   // --- 数据操作 ---
 
-  void update(const std::vector<MeshIndex32> &indices) {
+  void update(const std::vector<u32> &indices) {
     m_indices = indices;
     setDirty();
   }
 
-  IndexCount indexCount() const { return m_indices.size(); }
+  usize indexCount() const { return m_indices.size(); }
   ResourceType getType() const override { return ResourceType::IndexBuffer; }
   const void *getRawData() const override { return m_indices.data(); }
-  ResourceByteSize32 getByteSize() const override {
-    return static_cast<ResourceByteSize32>(m_indices.size() *
-                                           sizeof(MeshIndex32));
+  u32 getByteSize() const override {
+    return static_cast<u32>(m_indices.size() * sizeof(u32));
   }
 
 private:
-  std::vector<MeshIndex32> m_indices;
+  std::vector<u32> m_indices;
   PrimitiveTopology m_topology;
 };
 

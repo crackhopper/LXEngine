@@ -158,16 +158,16 @@ void MaterialInstance::syncGpuData() {
 
 std::vector<IGpuResourceSharedPtr>
 MaterialInstance::getDescriptorResources(StringID pass) const {
-  std::vector<std::pair<DescriptorSortKey32, IGpuResourceSharedPtr>> sorted;
+  std::vector<std::pair<u32, IGpuResourceSharedPtr>> sorted;
 
   const auto &bindingIds = m_template->getPassMaterialBindingIds(pass);
   for (const auto &bindingId : bindingIds) {
     const auto *binding = m_template->getCanonicalMaterialBinding(bindingId);
     if (!binding)
       continue;
-    const DescriptorLookupKey32 lookupKey =
+    const u32 lookupKey =
         (binding->set << 16) | binding->binding;
-    const DescriptorSortKey32 key = lookupKey;
+    const u32 key = lookupKey;
 
     if (isBufferType(binding->type)) {
       auto it = m_parameterBuffersByName.find(bindingId);

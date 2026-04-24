@@ -22,15 +22,15 @@ int main() {
         device->getGraphicsQueueFamilyIndex());
 
     // Create a small RGBA8 texture and a host-visible staging buffer.
-    constexpr ImageDimension32 width = 4;
-    constexpr ImageDimension32 height = 4;
+    constexpr u32 width = 4;
+    constexpr u32 height = 4;
     constexpr VkDeviceSize pixelBytes = width * height * 4;
 
     std::vector<uint8_t> pixels(pixelBytes, 255);
-    for (ImageDimension32 y = 0; y < height; ++y) {
-      for (ImageDimension32 x = 0; x < width; ++x) {
+    for (u32 y = 0; y < height; ++y) {
+      for (u32 x = 0; x < width; ++x) {
         // Simple gradient pattern.
-        const ByteOffset32 idx = (y * width + x) * 4;
+        const u32 idx = (y * width + x) * 4;
         pixels[idx + 0] = static_cast<uint8_t>(x * 20);  // R
         pixels[idx + 1] = static_cast<uint8_t>(y * 20);  // G
         pixels[idx + 2] = 0;                               // B

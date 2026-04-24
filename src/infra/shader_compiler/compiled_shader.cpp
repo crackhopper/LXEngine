@@ -30,9 +30,8 @@ CompiledShader::getVertexInputs() const {
 }
 
 std::optional<std::reference_wrapper<const LX_core::ShaderResourceBinding>>
-CompiledShader::findBinding(DescriptorSetIndex32 set,
-                            DescriptorBindingIndex32 binding) const {
-  const DescriptorLookupKey32 key = (set << 16) | binding;
+CompiledShader::findBinding(u32 set, u32 binding) const {
+  const u32 key = (set << 16) | binding;
   auto it = m_setBindingIndex.find(key);
   if (it != m_setBindingIndex.end()) {
     return std::cref(m_bindings[it->second]);
@@ -50,7 +49,7 @@ CompiledShader::findBinding(const std::string &name) const {
 }
 
 std::optional<std::reference_wrapper<const LX_core::VertexInputAttribute>>
-CompiledShader::findVertexInput(VertexAttributeLocation32 location) const {
+CompiledShader::findVertexInput(u32 location) const {
   auto it = m_vertexInputIndex.find(location);
   if (it != m_vertexInputIndex.end()) {
     return std::cref(m_vertexInputs[it->second]);
@@ -63,7 +62,7 @@ size_t CompiledShader::getProgramHash() const { return m_hash; }
 void CompiledShader::buildIndices() {
   for (size_t i = 0; i < m_bindings.size(); ++i) {
     const auto &b = m_bindings[i];
-    const DescriptorLookupKey32 key = (b.set << 16) | b.binding;
+    const u32 key = (b.set << 16) | b.binding;
     m_setBindingIndex[key] = i;
     if (!b.name.empty()) {
       m_nameIndex[b.name] = i;

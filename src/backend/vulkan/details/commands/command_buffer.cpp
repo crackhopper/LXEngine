@@ -39,8 +39,7 @@ void VulkanCommandBuffer::beginRenderPass(
   vkCmdBeginRenderPass(m_handle, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 }
 
-void VulkanCommandBuffer::setViewport(ImageDimension32 width,
-                                      ImageDimension32 height) {
+void VulkanCommandBuffer::setViewport(u32 width, u32 height) {
   VkViewport viewport{};
   viewport.x = 0.0f;
   viewport.width = static_cast<float>(width);
@@ -56,8 +55,7 @@ void VulkanCommandBuffer::setViewport(ImageDimension32 width,
   vkCmdSetViewport(m_handle, 0, 1, &viewport);
 }
 
-void VulkanCommandBuffer::setScissor(ImageDimension32 width,
-                                     ImageDimension32 height) {
+void VulkanCommandBuffer::setScissor(u32 width, u32 height) {
   VkRect2D scissor{};
   scissor.offset = {0, 0};
   scissor.extent = {width, height};
@@ -109,8 +107,7 @@ void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
   }
 
   // Group reflection bindings by descriptor set index.
-  std::unordered_map<DescriptorSetIndex32,
-                     std::vector<LX_core::ShaderResourceBinding>>
+  std::unordered_map<u32, std::vector<LX_core::ShaderResourceBinding>>
       setGroups;
   for (const auto &b : pipeline.getBindings()) {
     setGroups[b.set].push_back(b);
@@ -120,7 +117,7 @@ void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
   allocatedSets.reserve(setGroups.size());
 
   for (auto &kv : setGroups) {
-    const DescriptorSetIndex32 setIndex = kv.first;
+    const u32 setIndex = kv.first;
     const auto &bindings = kv.second;
 
     auto setPtr = descriptorMgr.allocateSet(bindings);
@@ -204,8 +201,7 @@ void VulkanCommandBuffer::drawItem(const RenderingItem &item) {
   }
 
   // Indexed draw.
-  const IndexCount indexCount =
-      item.indexBuffer->getByteSize() / sizeof(MeshIndex32);
+  const usize indexCount = item.indexBuffer->getByteSize() / sizeof(u32);
   if (indexCount == 0) {
     return;
   }

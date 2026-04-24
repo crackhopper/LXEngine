@@ -339,7 +339,7 @@ VulkanDevice::findQueueFamilies(VkPhysicalDevice device) {
   vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount,
                                            queueFamilies.data());
 
-  QueueFamilyIndex32 i = 0;
+  u32 i = 0;
   for (const auto &queueFamily : queueFamilies) {
     // 检查是否支持图形渲染 (Graphics)
     if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
@@ -465,7 +465,7 @@ void VulkanDevice::createLogicalDevice() {
   }
 
   // Use a set to ensure unique queue families
-  std::set<QueueFamilyIndex32> uniqueQueueFamilies = {
+  std::set<u32> uniqueQueueFamilies = {
       getGraphicsQueueFamilyIndex(),
       getPresentQueueFamilyIndex(),
   };
@@ -473,7 +473,7 @@ void VulkanDevice::createLogicalDevice() {
   std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
   float queuePriority = 1.0f;
 
-  for (QueueFamilyIndex32 queueFamily : uniqueQueueFamilies) {
+  for (u32 queueFamily : uniqueQueueFamilies) {
     VkDeviceQueueCreateInfo queueCreateInfo{};
     queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
     queueCreateInfo.queueFamilyIndex = queueFamily;
@@ -519,13 +519,12 @@ void VulkanDevice::createLogicalDevice() {
   m_descriptorManager = VulkanDescriptorManager::create(*this);
 }
 
-MemoryTypeIndex32
-VulkanDevice::findMemoryTypeIndex(u32 typeFilter,
-                                  VkMemoryPropertyFlags properties) const {
+u32 VulkanDevice::findMemoryTypeIndex(u32 typeFilter,
+                                      VkMemoryPropertyFlags properties) const {
   VkPhysicalDeviceMemoryProperties memProperties;
   vkGetPhysicalDeviceMemoryProperties(m_physicalDevice, &memProperties);
 
-  for (MemoryTypeIndex32 i = 0; i < memProperties.memoryTypeCount; i++) {
+  for (u32 i = 0; i < memProperties.memoryTypeCount; i++) {
     if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags &
                                     properties) == properties) {
       return i;

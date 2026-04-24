@@ -17,7 +17,7 @@ public:
   const std::vector<LX_core::Vec3f> &getPositions() const;
   const std::vector<LX_core::Vec3f> &getNormals() const;
   const std::vector<LX_core::Vec2f> &getTexCoords() const;
-  const std::vector<MeshIndex32> &getIndices() const;
+  const std::vector<u32> &getIndices() const;
 
 private:
   struct Impl;

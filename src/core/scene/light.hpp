@@ -40,13 +40,13 @@ struct alignas(16) DirectionalLightData : public IGpuResource {
     Vec4f color;
   };
   Param param;
-  static constexpr ResourceByteSize32 ResourceSize = sizeof(Param);
+  static constexpr u32 ResourceSize = sizeof(Param);
 
   virtual ResourceType getType() const override {
     return ResourceType::UniformBuffer;
   }
   virtual const void *getRawData() const override { return &param; }
-  virtual ResourceByteSize32 getByteSize() const override {
+  virtual u32 getByteSize() const override {
     return ResourceSize;
   }
 
