@@ -99,7 +99,7 @@ flowchart TD
 3. 读 `notes/nav.yml` 作为站点导航唯一来源
 4. 读 `mkdocs.yml`，补上 nav / watch / hooks 写出 `mkdocs.gen.yml`
 
-历史上这个脚本还把 `docs/requirements/*.md` 符号链接到 `notes/requirements/`；合并后两边已是同一目录，保留的 `sync_symlinks` 逻辑在 src==link 时 no-op。
+当前实现直接扫描 `notes/requirements/*.md`；不再依赖旧的 `docs/requirements/` 或符号链接同步逻辑。
 
 ### `notes/nav.yml`
 
@@ -134,7 +134,7 @@ flowchart TD
 
 ### `notes/requirements/`
 
-唯一事实来源（原 `docs/requirements/` 合并而来）。
+唯一事实来源。
 
 目录内容：
 

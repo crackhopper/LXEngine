@@ -199,18 +199,18 @@ If a user asks to commit current work, either use normal git workflow or follow 
 
 - Source directory: `notes/`
 - Navigation source: `notes/nav.yml`
-- Site config generation: `scripts/_gen_notes_site.py`
-- Local preview / restart: `scripts/serve-notes.sh`
+- Site config generation: `scripts/notes/generate_site_config.py`
+- Local preview / restart: `scripts/notes/serve_site.sh`
 
 Common commands:
 
 ```bash
-scripts/serve-notes.sh
-scripts/serve-notes.sh --foreground
-scripts/serve-notes.sh --build
+scripts/notes/serve_site.sh
+scripts/notes/serve_site.sh --foreground
+scripts/notes/serve_site.sh --build
 ```
 
-Do not reference `scripts/refresh-notes.sh`. It is not the current script.
+Do not reference `scripts/serve-notes.sh` or `scripts/refresh-notes.sh`. They are not current scripts.
 
 ## Search And Editing Preferences
 

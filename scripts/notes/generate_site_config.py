@@ -8,10 +8,6 @@
 #   4. 读取 notes/nav.yml 作为站点导航唯一来源
 #   5. 读取 mkdocs.yml -> 注入 nav / watch / hooks -> 写出 mkdocs.gen.yml
 #
-# 需求文档曾经物理上住在 docs/requirements/ 并由本脚本在 notes/requirements/
-# 建符号链接。现已合并为 notes/requirements/ 单一事实来源；符号链接同步
-# 逻辑保留兼容路径 (src == link 时 no-op)。
-#
 # 由 scripts/notes/serve_site.sh 调用。
 
 from __future__ import annotations
@@ -25,9 +21,8 @@ from pathlib import Path
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-REQ_SRC_DIR = REPO_ROOT / "docs" / "requirements"
 NOTES_DIR = REPO_ROOT / "notes"
-REQ_LINK_DIR = NOTES_DIR / "requirements"
+REQ_DIR = NOTES_DIR / "requirements"
 TOOLS_DIR = NOTES_DIR / "tools"
 ROADMAPS_DIR = NOTES_DIR / "roadmaps"
 TEMPORARY_DIR = NOTES_DIR / "temporary"
@@ -59,10 +54,10 @@ def natural_name_key(name: str) -> list[tuple[int, object]]:
 
 
 def discover_requirements() -> list[Path]:
-    if not REQ_SRC_DIR.is_dir():
+    if not REQ_DIR.is_dir():
         return []
     files = [
-        p for p in REQ_SRC_DIR.iterdir()
+        p for p in REQ_DIR.iterdir()
         if p.is_file() and p.suffix == ".md" and p.name != "index.md"
     ]
     files.sort(key=lambda p: natural_name_key(p.name))
@@ -153,46 +148,11 @@ def extract_title(md_path: Path, fallback: str) -> str:
     return fallback
 
 
-def sync_symlinks(req_files: list[Path]) -> None:
-    REQ_LINK_DIR.mkdir(parents=True, exist_ok=True)
-
-    wanted = {p.name for p in req_files}
-
-    for entry in REQ_LINK_DIR.iterdir():
-        if entry.is_symlink() or entry.is_file():
-            if entry.name not in wanted or entry.name == "index.md":
-                if entry.name != "index.md":
-                    entry.unlink()
-
-    for src in req_files:
-        link = REQ_LINK_DIR / src.name
-        target = os.path.relpath(src, REQ_LINK_DIR)
-        if link.is_symlink() or link.exists():
-            try:
-                if link.is_symlink() and os.readlink(link) == target:
-                    continue
-            except OSError:
-                pass
-            link.unlink()
-        link.symlink_to(target)
-
-    write_index(req_files)
-
-
 def write_index(req_files: list[Path]) -> None:
-    index_path = REQ_LINK_DIR / "index.md"
-    source_index = REQ_SRC_DIR / "index.md"
+    REQ_DIR.mkdir(parents=True, exist_ok=True)
+    index_path = REQ_DIR / "index.md"
 
-    if source_index.is_file():
-        target = os.path.relpath(source_index, REQ_LINK_DIR)
-        if index_path.is_symlink() or index_path.exists():
-            try:
-                if index_path.is_symlink() and os.readlink(index_path) == target:
-                    return
-            except OSError:
-                pass
-            index_path.unlink()
-        index_path.symlink_to(target)
+    if index_path.is_file():
         return
 
     lines = [
@@ -403,7 +363,7 @@ def inject_into_mkdocs(req_files: list[Path], tool_files: list[Path], nav: list)
     cfg["nav"] = nav
 
     watch = cfg.get("watch") or []
-    rel_req = os.path.relpath(REQ_SRC_DIR, REPO_ROOT)
+    rel_req = os.path.relpath(REQ_DIR, REPO_ROOT)
     if rel_req not in watch:
         watch.append(rel_req)
     rel_notes = os.path.relpath(NOTES_DIR, REPO_ROOT)
@@ -442,7 +402,7 @@ def main() -> int:
     roadmap_dirs = discover_roadmaps()
     temporary_files = discover_temporary()
     source_analysis_targets = load_source_analysis_targets()
-    sync_symlinks(req_files)
+    write_index(req_files)
     write_tools_index(tool_files)
     write_temporary_index(temporary_files)
     nav = load_nav_config(req_files, roadmap_dirs, temporary_files, source_analysis_targets)

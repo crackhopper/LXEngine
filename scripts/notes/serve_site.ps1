@@ -43,11 +43,31 @@ if (-not (Test-Path "mkdocs.yml")) {
     exit 1
 }
 
+if (-not (Get-Command python -ErrorAction SilentlyContinue) -and
+    -not (Get-Command python3 -ErrorAction SilentlyContinue)) {
+    Write-Error "python/python3 not found in PATH"
+    exit 1
+}
+
+function Invoke-GenerateSiteConfig {
+    if (Get-Command python3 -ErrorAction SilentlyContinue) {
+        python3 scripts/notes/generate_site_config.py
+    } else {
+        python scripts/notes/generate_site_config.py
+    }
+
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "generate_site_config.py failed"
+        exit $LASTEXITCODE
+    }
+}
+
 # ---------- --Build 模式 ----------
 
 if ($Build) {
+    Invoke-GenerateSiteConfig
     Write-Host ">> Building static site to .site\ ..." -ForegroundColor Cyan
-    mkdocs build --clean
+    mkdocs build --clean -f mkdocs.gen.yml
     if ($LASTEXITCODE -ne 0) {
         Write-Error "mkdocs build failed"
         exit $LASTEXITCODE
@@ -177,11 +197,13 @@ function Invoke-PortCheckOrPrompt {
 # ---------- 启动 serve ----------
 
 $PortValue = [int]($Addr.Split(":")[-1])
+Invoke-GenerateSiteConfig
 Invoke-PortCheckOrPrompt -Port $PortValue
 
 Write-Host ">> Starting mkdocs serve on http://$Addr" -ForegroundColor Cyan
 Write-Host "   docs_dir: notes\"
+Write-Host "   config:   mkdocs.gen.yml"
 Write-Host "   stop:     Ctrl-C"
 Write-Host ""
-mkdocs serve --dev-addr $Addr
+mkdocs serve --dev-addr $Addr -f mkdocs.gen.yml
 exit $LASTEXITCODE
