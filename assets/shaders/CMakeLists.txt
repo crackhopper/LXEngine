@@ -1,7 +1,9 @@
 # Compile GLSL shaders to SPIR-V for Vulkan.
-# VulkanShader / VulkanPipelineBase expect:
-#   shaders/glsl/<shaderName>.vert.spv
-#   shaders/glsl/<shaderName>.frag.spv
+# Runtime asset layout:
+#   assets/shaders/glsl/<shaderName>.vert
+#   assets/shaders/glsl/<shaderName>.frag
+#   <build>/assets/shaders/glsl/<shaderName>.vert.spv
+#   <build>/assets/shaders/glsl/<shaderName>.frag.spv
 
 find_program(GLSLC_EXECUTABLE
   NAMES glslc
@@ -10,7 +12,7 @@ find_program(GLSLC_EXECUTABLE
 )
 
 set(GLSL_INPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/glsl")
-set(SHADER_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/glsl")
+set(SHADER_OUTPUT_DIR "${CMAKE_BINARY_DIR}/assets/shaders/glsl")
 file(MAKE_DIRECTORY "${SHADER_OUTPUT_DIR}")
 file(COPY "${GLSL_INPUT_DIR}/" DESTINATION "${SHADER_OUTPUT_DIR}")
 
@@ -20,12 +22,12 @@ file(GLOB GLSL_FRAG_FILES "${GLSL_INPUT_DIR}/*.frag")
 set(SPV_FILES "")
 
 foreach(SHADER_FILE ${GLSL_VERT_FILES} ${GLSL_FRAG_FILES})
-  get_filename_component(FILE_NAME "${SHADER_FILE}" NAME) # e.g. blinnphong_0.vert
+  get_filename_component(FILE_NAME "${SHADER_FILE}" NAME)
 
-  if (FILE_NAME MATCHES "^(.+)\\.vert$")
+  if(FILE_NAME MATCHES "^(.+)\\.vert$")
     set(SHADER_NAME "${CMAKE_MATCH_1}")
     set(OUTPUT_SPV "${SHADER_OUTPUT_DIR}/${SHADER_NAME}.vert.spv")
-  elseif (FILE_NAME MATCHES "^(.+)\\.frag$")
+  elseif(FILE_NAME MATCHES "^(.+)\\.frag$")
     set(SHADER_NAME "${CMAKE_MATCH_1}")
     set(OUTPUT_SPV "${SHADER_OUTPUT_DIR}/${SHADER_NAME}.frag.spv")
   else()

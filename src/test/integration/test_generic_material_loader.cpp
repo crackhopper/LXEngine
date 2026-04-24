@@ -32,7 +32,7 @@ namespace fs = std::filesystem;
 fs::path findProjectRoot() {
   fs::path cwd = fs::current_path();
   for (int i = 0; i < 5; ++i) {
-    if (fs::exists(cwd / "shaders" / "glsl" / "blinnphong_0.vert"))
+    if (fs::exists(cwd / "assets" / "shaders" / "glsl" / "blinnphong_0.vert"))
       return cwd;
     auto parent = cwd.parent_path();
     if (parent == cwd)
@@ -53,7 +53,7 @@ void test_generic_loader_produces_valid_instance() {
   auto prev = fs::current_path();
   fs::current_path(root);
 
-  auto matPath = root / "materials" / "blinnphong_lit.material";
+  auto matPath = root / "assets" / "materials" / "blinnphong_lit.material";
   if (!fs::exists(matPath)) {
     std::cerr << "  SETUP: material not found at " << matPath << "; skipping\n";
     fs::current_path(prev);
@@ -94,7 +94,7 @@ void test_pbr_example_material_loads() {
   auto prev = fs::current_path();
   fs::current_path(root);
 
-  auto matPath = root / "materials" / "pbr_gold.material";
+  auto matPath = root / "assets" / "materials" / "pbr_gold.material";
   if (!fs::exists(matPath)) {
     std::cerr << "  SETUP: material not found at " << matPath << "; skipping\n";
     fs::current_path(prev);
@@ -148,7 +148,7 @@ void test_per_pass_shader_override() {
   // simulating the common case where shadow uses a stripped-down shader.
   // (We use the same shader family since we only have blinnphong_0 in the
   // repo, but the per-pass shader field is exercised.)
-  auto matPath = root / "materials" / "test_per_pass_shader.material";
+  auto matPath = root / "assets" / "materials" / "test_per_pass_shader.material";
   {
     std::ofstream out(matPath);
     out << "shader: blinnphong_0\n\n"
@@ -194,7 +194,7 @@ void test_canonical_parameters_shared_across_passes() {
     return;
   }
 
-  auto matPath = root / "materials" / "test_pass_override.material";
+  auto matPath = root / "assets" / "materials" / "test_pass_override.material";
   {
     std::ofstream out(matPath);
     out << "shader: blinnphong_0\n\n"

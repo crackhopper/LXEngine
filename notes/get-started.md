@@ -92,7 +92,7 @@ cmake .. -G Ninja -DUSE_SDL=ON -DUSE_GLFW=OFF
 ### 构建时你会看到什么
 
 - `src/` 下的 `core / infra / backend / test` 会被分别加入构建。
-- `shaders/CMakeLists.txt` 会创建 `CompileShaders` target，把 `shaders/glsl/*.vert` 和 `*.frag` 编译成 SPIR-V。
+- `assets/shaders/CMakeLists.txt` 会创建 `CompileShaders` target，把 `assets/shaders/glsl/*.vert` 和 `*.frag` 编译成 SPIR-V。
 - 顶层 `Renderer` target 会被生成，但它当前只是 bootstrap / env-probe；真正的交互 demo 是 `demo_scene_viewer`。
 
 ## 第一步：先跑无 GPU 的验证
@@ -183,10 +183,10 @@ cmake .. -G Ninja -DSPIRV_CROSS_DIR=/path/to/spirv-cross
 当前主路径已经优先走“显式 runtime root”约定，而不是启动时猜 cwd。默认开发态 runtime root 需要能看到：
 
 - `assets/`
-- `materials/`
-- `shaders/glsl/`
+- `assets/materials/`
+- `assets/shaders/glsl/`
 
-仓库内通常是 repo root；`build/` 目录也会通过 CMake 同步 `assets/`、`materials/` 和 shader 源码/产物，方便直接从 build root 跑测试。
+仓库内通常是 repo root；`build/` 目录也会通过 CMake 创建自己的 `assets/` 树：非 shader 资产会被同步进去，shader 源码和 `.spv` 会落在 `build/assets/shaders/glsl/`，方便直接从 build root 跑测试。
 
 ## 建议的阅读顺序
 

@@ -1,15 +1,15 @@
 # 02 · PBR Shader
 
-> 把 [01 章](01-pbr-theory.md) 的公式翻译成 GLSL，并先和当前仓库里已经存在的 `shaders/glsl/pbr.vert` / `pbr.frag` 对齐。这里的重点不是“凭空设计一套接口”，而是确认它如何接到现在这套引擎封装上。
+> 把 [01 章](01-pbr-theory.md) 的公式翻译成 GLSL，并先和当前仓库里已经存在的 `assets/shaders/glsl/pbr.vert` / `pbr.frag` 对齐。这里的重点不是“凭空设计一套接口”，而是确认它如何接到现在这套引擎封装上。
 
 ## 文件位置
 
 ```text
-shaders/glsl/pbr.vert
-shaders/glsl/pbr.frag
+assets/shaders/glsl/pbr.vert
+assets/shaders/glsl/pbr.frag
 ```
 
-`shaders/CMakeLists.txt` 已经 `file(GLOB ...)` 匹配 `*.vert` / `*.frag`，所以 shader 文件本身已经会被 `CompileShaders` 编进 SPIR-V。当前缺的不是 shader 编译链路，而是 PBR shader 对应的 loader 和示例入口。
+`assets/shaders/CMakeLists.txt` 已经 `file(GLOB ...)` 匹配 `*.vert` / `*.frag`，所以 shader 文件本身已经会被 `CompileShaders` 编进 SPIR-V。当前缺的不是 shader 编译链路，而是 PBR shader 对应的 loader 和示例入口。
 
 ---
 
@@ -38,7 +38,7 @@ shaders/glsl/pbr.frag
 当前仓库里的 `pbr.vert` 核心长这样：
 
 ```glsl
-// shaders/glsl/pbr.vert
+// assets/shaders/glsl/pbr.vert
 #version 450
 
 layout(push_constant) uniform ObjectPC {
@@ -93,7 +93,7 @@ void main() {
 ## 3. 片元着色器
 
 ```glsl
-// shaders/glsl/pbr.frag
+// assets/shaders/glsl/pbr.frag
 #version 450
 
 layout(location = 0) in vec3 vWorldPos;

@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 EXTRA_MARKER = "<!-- SOURCE_ANALYSIS:EXTRA -->"
 SECTION_RE = re.compile(
     r"/\*\s*\n@source_analysis\.section[ \t]+(?P<title>[^\n]+)\n(?P<body>.*?)\*/",
@@ -223,7 +223,7 @@ def render_target(target: SourceAnalysisTarget) -> str:
     lines = [
         f"# {target.title}",
         "",
-        "本页的主体内容由 `scripts/extract_source_analysis.py` 从源码中的",
+        "本页的主体内容由 `scripts/source_analysis/extract_sections.py` 从源码中的",
         "`@source_analysis.section` 注释块生成，用来把讲解锚定在真实代码结构上。",
         "",
         target.intro,

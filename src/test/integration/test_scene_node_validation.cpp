@@ -196,14 +196,14 @@ SkeletonSharedPtr makeSkeleton() {
 std::filesystem::path findProjectMaterialsDir() {
   auto p = std::filesystem::current_path();
   for (int i = 0; i < 5; ++i) {
-    if (std::filesystem::exists(p / "materials"))
-      return p / "materials";
+    if (std::filesystem::exists(p / "assets" / "materials"))
+      return p / "assets" / "materials";
     auto parent = p.parent_path();
     if (parent == p)
       break;
     p = parent;
   }
-  return std::filesystem::current_path() / "materials";
+  return std::filesystem::current_path() / "assets" / "materials";
 }
 
 MaterialInstanceSharedPtr makeMaterialFromYaml(const std::string &yamlContent) {

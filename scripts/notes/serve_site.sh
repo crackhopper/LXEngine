@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# serve-notes.sh — 重启本地 MkDocs 开发服务器预览 notes/
+# serve_site.sh — 重启本地 MkDocs 开发服务器预览 notes/
 #
 # 用法:
-#   scripts/serve-notes.sh                 # 默认后台重启 0.0.0.0:8110
-#   scripts/serve-notes.sh 0.0.0.0:8110    # 指定绑定地址:端口
-#   scripts/serve-notes.sh --foreground    # 前台运行（便于调试）
-#   scripts/serve-notes.sh --build         # 只 build 静态站到 .site/ 不启动服务
+#   scripts/notes/serve_site.sh                 # 默认后台重启 0.0.0.0:8110
+#   scripts/notes/serve_site.sh 0.0.0.0:8110    # 指定绑定地址:端口
+#   scripts/notes/serve_site.sh --foreground    # 前台运行（便于调试）
+#   scripts/notes/serve_site.sh --build         # 只 build 静态站到 .site/ 不启动服务
 #
 # 行为:
 #   - 每次执行都重新生成 mkdocs.gen.yml
@@ -15,7 +15,7 @@
 
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 
 LOG_DIR=".tmp"
 LOG_FILE="${LOG_DIR}/notes-serve.log"
@@ -40,7 +40,7 @@ if ! command -v python3 >/dev/null 2>&1; then
 fi
 
 regen_site_config() {
-    python3 scripts/_gen_notes_site.py
+    python3 scripts/notes/generate_site_config.py
 }
 
 extract_port() {

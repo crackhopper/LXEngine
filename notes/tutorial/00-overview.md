@@ -27,7 +27,7 @@
 - 引擎封装已经有：`EngineLoop`、`Scene`、`SceneNode`、`MaterialTemplate/MaterialInstance`、`VulkanRenderer`
 - 已有可运行入口：`src/test/test_render_triangle.cpp`
 - 已有材质 loader：`src/infra/material_loader/blinn_phong_material_loader.cpp`
-- 已有 PBR shader 原型：`shaders/glsl/pbr.vert`、`shaders/glsl/pbr.frag`
+- 已有 PBR shader 原型：`assets/shaders/glsl/pbr.vert`、`assets/shaders/glsl/pbr.frag`
 - 还没有完整落地的 PBR loader / PBR 示例程序 / `test_pbr_cube`
 
 **不会用到**的部分（为了聚焦 PBR 本身）：

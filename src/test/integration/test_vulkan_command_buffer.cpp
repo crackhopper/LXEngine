@@ -81,7 +81,7 @@ int main() {
     auto indexBufferPtr = LX_core::IndexBuffer::create({0u, 1u, 2u});
     auto meshPtr = LX_core::Mesh::create(vertexBufferPtr, indexBufferPtr);
 
-    auto material = LX_infra::loadGenericMaterial("materials/blinnphong_default.material");
+    auto material = LX_infra::loadGenericMaterial("assets/materials/blinnphong_default.material");
     material->setParameter(LX_core::StringID("MaterialUBO"),
                            LX_core::StringID("enableNormal"),
                            0); // avoid normal texture

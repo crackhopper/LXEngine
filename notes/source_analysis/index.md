@@ -7,7 +7,7 @@
 | 部分 | 放在哪里 | 作用 |
 |------|-----------|------|
 | 结构性讲解 | 源码里的 `@source_analysis.section` 注释块 | 让讲解直接附着在类型和实现边界上 |
-| 自动抽取 | `scripts/extract_source_analysis.py` | 把源码中的分析块整理成 Markdown |
+| 自动抽取 | `scripts/source_analysis/extract_sections.py` | 把源码中的分析块整理成 Markdown |
 | 扩展说明 | `notes/source_analysis/*.md` 的 `SOURCE_ANALYSIS:EXTRA` 之后 | 补充源码之外的上下文、示意图、对比说明 |
 
 这样做的目的不是替代普通注释，而是把两类信息分开：
@@ -38,7 +38,7 @@
 ## 更新方式
 
 1. 修改源码里的 `@source_analysis.section` 注释块
-2. 运行 `python3 scripts/extract_source_analysis.py`
+2. 运行 `python3 scripts/source_analysis/extract_sections.py`
 3. 如有需要，再补 `<!-- SOURCE_ANALYSIS:EXTRA -->` 后面的扩展内容
 
 当前脚本只会生成 `TARGETS` 里显式列出的页面，不会对整个 `src/` 自动扫全量分析页。这一层配置就是“只分析部分源码”的开关。源码分析导航顺序也由 target 元数据控制，而不是在 `notes/nav.yml` 里逐页手写。

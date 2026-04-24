@@ -424,7 +424,7 @@ loadGenericMaterial(const fs::path &materialPath) {
   const fs::path materialDir = resolvedMaterialPath.parent_path();
   const fs::path shaderDir = getRuntimeShaderSourceDir();
   if (shaderDir.empty())
-    fatalLoader("shader directory not found (expected .../shaders/glsl/)");
+    fatalLoader("shader directory not found (expected .../assets/shaders/glsl/)");
 
   // 3. Parse variant rules and compile each pass.
   const auto variantRules = parseVariantRules(variantRulesNode);

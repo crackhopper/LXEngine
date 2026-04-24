@@ -27,7 +27,7 @@ This project is cross-platform (Windows + Linux).
 - **CMake** (minimum 3.16), C++20
 - Build generator: **Ninja** (Linux) / Visual Studio or Ninja (Windows)
 - External dependencies managed via `find_library` with fallback to `FetchContent`
-- Shader compilation: `shaders/CMakeLists.txt` compiles GLSL to SPIR-V via `glslc`
+- Shader compilation: `assets/shaders/CMakeLists.txt` compiles GLSL to SPIR-V via `glslc`
 
 ### Key CMake Variables
 
@@ -144,7 +144,7 @@ When editing `notes/`, follow `openspec/specs/notes-writing-style/spec.md` for n
 
 - Namespace: `LX_core` (core layer), `LX_infra` (infra layer)
 - Header-only for small utilities; `.hpp` + `.cpp` split for modules
-- Shaders in `shaders/glsl/` with `.vert` / `.frag` extensions
+- Shaders in `assets/shaders/glsl/` with `.vert` / `.frag` extensions
 - Integration tests: one executable per module in `src/test/integration/`
 
 ## Codex Command Workflow

@@ -7,7 +7,7 @@
 - [Roadmap · 走向 AI-Native 小型游戏引擎](main-roadmap/README.md)
 - [技术预研 (research/)](research/README.md)
 
-站点导航会由 `scripts/_gen_notes_site.py` 自动按子目录展开：
+站点导航会由 `scripts/notes/generate_site_config.py` 自动按子目录展开：
 
 - `Roadmap` 下的二级菜单显示各个子目录
 - 每个子目录内部按文件名顺序显示页面
