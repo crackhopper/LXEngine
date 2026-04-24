@@ -33,7 +33,7 @@ renderer-demo/
 - `openspec/specs/` 能力级规范，修改子系统前先看对应 spec
 - `notes/` 所有人类可读文档的唯一根（需求 / 设计 / 子系统 / 教程 / 路线图 / 评审）
 - `notes/subsystems/` 子系统设计文档入口
-- `notes/requirements/` 活跃需求 + 历史归档（原 `docs/requirements/` 已并入）
+- `notes/requirements/` 活跃需求 + 历史归档
 
 ## src/ 分层
 
@@ -129,7 +129,7 @@ notes/
 ├── nav.yml
 ├── subsystems/               # 子系统设计（material / pipeline / scene / vulkan-backend / ...）
 ├── concepts/                 # 使用者视角概念文档（material / scene / camera / light / ...）
-├── requirements/             # 活跃需求 + finished/ 归档（原 docs/requirements/ 并入）
+├── requirements/             # 活跃需求 + finished/ 归档
 ├── design/                   # 早期设计草稿（原 docs/design/ 并入）
 ├── review/                   # 代码评审记录（原 docs/review/ 并入）
 ├── roadmaps/                 # 路线图（main-roadmap + research）
@@ -145,7 +145,7 @@ notes/
 子目录说明：
 
 - `subsystems/` 面向维护者；`concepts/` 面向使用者
-- `requirements/` 原 `docs/requirements/` 已合并到此目录；不再存在独立的 `docs/` 根
+- `requirements/` 是当前需求文档目录；不再存在独立的 `docs/` 根
 - `design/` / `review/` 从 `docs/design/` / `docs/review/` 合并进来
 - `source_analysis/` 由 `scripts/source_analysis/extract_sections.py` 产出，不要手改
 - `ai-scanned/` / `temporary/` 是历史快照 / 临时稿，不是当前事实来源
