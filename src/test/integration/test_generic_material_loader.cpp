@@ -83,6 +83,59 @@ void test_generic_loader_produces_valid_instance() {
   std::cout << "  generic loader produced valid instance with correct defaults\n";
 }
 
+void test_pbr_example_material_loads() {
+  std::cout << "\n-- test_pbr_example_material_loads --\n";
+  auto root = findProjectRoot();
+  if (root.empty()) {
+    std::cerr << "  SETUP: project root not found; skipping\n";
+    return;
+  }
+
+  auto prev = fs::current_path();
+  fs::current_path(root);
+
+  auto matPath = root / "materials" / "pbr_gold.material";
+  if (!fs::exists(matPath)) {
+    std::cerr << "  SETUP: material not found at " << matPath << "; skipping\n";
+    fs::current_path(prev);
+    return;
+  }
+
+  auto mat = loadGenericMaterial(matPath);
+  fs::current_path(prev);
+
+  REQUIRE(mat != nullptr);
+  REQUIRE(mat->isPassEnabled(Pass_Forward));
+  REQUIRE(mat->getPassShader(Pass_Forward) != nullptr);
+
+  const auto &buf = mat->getParameterBufferBytes(StringID("MaterialUBO"));
+  REQUIRE(buf.size() >= 28);
+
+  float baseColor[4] = {};
+  float metallic = 0.0f;
+  float roughness = 0.0f;
+  float ao = 0.0f;
+  std::memcpy(baseColor, buf.data(), sizeof(baseColor));
+  std::memcpy(&metallic, buf.data() + 16, sizeof(float));
+  std::memcpy(&roughness, buf.data() + 20, sizeof(float));
+  std::memcpy(&ao, buf.data() + 24, sizeof(float));
+
+  REQUIRE(baseColor[0] == 1.0f);
+  REQUIRE(baseColor[1] == 0.766f);
+  REQUIRE(baseColor[2] == 0.336f);
+  REQUIRE(baseColor[3] == 1.0f);
+  REQUIRE(metallic == 1.0f);
+  REQUIRE(roughness == 0.25f);
+  REQUIRE(ao == 1.0f);
+
+  auto resources = mat->getDescriptorResources(Pass_Forward);
+  REQUIRE(resources.size() == 2);
+  REQUIRE(resources[0]->getBindingName() == StringID("MaterialUBO"));
+  REQUIRE(resources[1]->getBindingName() == StringID("albedoMap"));
+
+  std::cout << "  pbr_gold.material loads through the formal asset path\n";
+}
+
 void test_per_pass_shader_override() {
   std::cout << "\n-- test_per_pass_shader_override --\n";
   auto root = findProjectRoot();
@@ -222,6 +275,7 @@ int main() {
   expSetEnvVK();
   test_placeholder_textures();
   test_generic_loader_produces_valid_instance();
+  test_pbr_example_material_loads();
   test_per_pass_shader_override();
   test_canonical_parameters_shared_across_passes();
 

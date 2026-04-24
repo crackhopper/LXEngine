@@ -33,6 +33,7 @@
 - `FrameGraph::buildFromScene(...)` 自己不构造 item，只把 `pass.name` 和 `pass.target` 透传给 `pass.queue.buildFromScene(scene, pass.name, pass.target)`。
 - `RenderQueue::buildFromScene(...)` 只消费 renderable 的 validated entry，不做首次 mesh/material/skeleton 结构校验。
 - scene-level 资源在 queue 层统一合并：先取一次 `scene.getSceneLevelResources(pass, target)`，再追加到每个 item 的 `descriptorResources` 末尾。
+- `RenderQueue::buildFromScene(...)` 会把当前 `target` 下所有匹配 camera 的 `cullingMask` 做 OR，然后只保留 `visibilityMask` 与之有交集的 renderable。
 - `buildFromScene` 是幂等的，重复调用不会累加旧 item。
 - queue 内按 `PipelineKey` 去重一次，frame graph 层再跨 pass 按 `PipelineKey` 去重一次。
 - `RenderQueue::sort()` 使用 `std::stable_sort`，按 `pipelineKey.id.id` 升序排，让相同 pipeline 的项相邻。
@@ -40,7 +41,7 @@
 ## 当前实现边界
 
 - `FrameGraph` 支持多个 `FramePass`，但当前 `VulkanRenderer::initScene()` 仍主要接入 `Pass_Forward`。
-- `target` 当前只影响 scene-level 资源筛选，不影响 renderable 自身是否参与 queue。
+- `target` 现在既影响 scene-level 资源筛选，也决定当前参与可见性判断的 camera 集合；同 target 多 camera 采用 `cullingMask` 按位 OR 语义。
 - 如果某个 `IRenderable` 没有对应 pass 的 validated 数据，queue 会直接跳过它，而不是在这里补救。
 - `collectAllPipelineBuildDescs()` 直接汇总各个 queue 的 `collectUniquePipelineBuildDescs()` 结果，不会重新扫描 scene。
 

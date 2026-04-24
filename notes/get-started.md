@@ -10,12 +10,13 @@
 
 ## 先建立正确预期
 
-当前仓库虽然顶层 target 名叫 `Renderer`，但 `src/main.cpp` 现在只是一个空 `main`。对新人来说，真正更有价值的入口不是它，而是：
+当前仓库虽然顶层 target 名叫 `Renderer`，但 `src/main.cpp` 现在只是一个 bootstrap / env-probe 入口。对新人来说，真正更有价值的入口不是它，而是：
 
 - `src/test/integration/test_shader_compiler.cpp`
 - `src/test/test_render_triangle.cpp`
+- `src/demos/scene_viewer/main.cpp`
 
-前者验证“shader 源码读取 -> `shaderc` 编译 -> SPIR-V 反射”这条链路；后者验证“窗口 -> renderer -> scene -> engine loop -> draw”这条最小可运行路径。
+前者验证“shader 源码读取 -> `shaderc` 编译 -> SPIR-V 反射”这条链路；`test_render_triangle` 验证“窗口 -> renderer -> scene -> engine loop -> draw”这条最小可运行路径；`demo_scene_viewer` 则是当前正式的交互 demo 入口。
 
 ## 环境准备
 
@@ -92,7 +93,7 @@ cmake .. -G Ninja -DUSE_SDL=ON -DUSE_GLFW=OFF
 
 - `src/` 下的 `core / infra / backend / test` 会被分别加入构建。
 - `shaders/CMakeLists.txt` 会创建 `CompileShaders` target，把 `shaders/glsl/*.vert` 和 `*.frag` 编译成 SPIR-V。
-- 顶层 `Renderer` target 会被生成，但它当前不是主要使用入口。
+- 顶层 `Renderer` target 会被生成，但它当前只是 bootstrap / env-probe；真正的交互 demo 是 `demo_scene_viewer`。
 
 ## 第一步：先跑无 GPU 的验证
 
@@ -179,7 +180,13 @@ cmake .. -G Ninja -DSPIRV_CROSS_DIR=/path/to/spirv-cross
 - 是否在图形环境下运行，而不是纯 headless shell
 - `test_render_triangle` 的运行目录是否正常找到 shader 资源
 
-这个示例在启动时会尝试自动切到能找到 shader 的目录，但如果你的本地环境比较特殊，仍然值得先确认 `shaders/glsl/` 和构建产物存在。
+当前主路径已经优先走“显式 runtime root”约定，而不是启动时猜 cwd。默认开发态 runtime root 需要能看到：
+
+- `assets/`
+- `materials/`
+- `shaders/glsl/`
+
+仓库内通常是 repo root；`build/` 目录也会通过 CMake 同步 `assets/`、`materials/` 和 shader 源码/产物，方便直接从 build root 跑测试。
 
 ## 建议的阅读顺序
 

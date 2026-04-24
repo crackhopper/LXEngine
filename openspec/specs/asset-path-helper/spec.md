@@ -62,3 +62,10 @@ Even if the CMake build-time sync fails or is not run, `cdToWhereAssetsExist()` 
 #### Scenario: No symlink, helper still works
 - **WHEN** `${CMAKE_BINARY_DIR}/assets` does not exist and the test runs from `${CMAKE_BINARY_DIR}`
 - **THEN** `cdToWhereAssetsExist("models/viking_room/viking_room.obj")` SHALL return `true` by finding the source-tree `assets/`
+
+### Requirement: Legacy cwd-changing helpers are compatibility fallbacks
+`cdToWhereAssetsExist()` and `cdToWhereResourcesCouldFound()` SHALL remain compatibility helpers, but they MUST NOT be the primary runtime asset-root discovery contract for maintained startup paths.
+
+#### Scenario: maintained startup path uses explicit runtime root
+- **WHEN** a maintained executable or test initializes runtime asset lookup
+- **THEN** it uses the explicit runtime root helper contract first, and only relies on cwd-changing helpers as fallback compatibility behavior

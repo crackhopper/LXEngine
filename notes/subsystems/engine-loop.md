@@ -137,6 +137,7 @@ App / Demo
 
 已经完成的接入：
 
+- `src/demos/scene_viewer/main.cpp` 以 `EngineLoop::run()` 为正式入口
 - `src/test/test_render_triangle.cpp` 已从手写 while-loop 改为 `EngineLoop`
 - `src/test/integration/test_engine_loop.cpp` 锁定了以下行为：
   - `startScene()` 不是 per-frame
@@ -144,11 +145,6 @@ App / Demo
   - `requestSceneRebuild()` 触发显式重建
   - `run()` 能被 `stop()` 或 window close 终止
   - `initialize()` 会重置旧的 runtime state
-
-尚未接入但已对齐方向：
-
-- `REQ-019 demo_scene_viewer`
-- tutorial 示例的“推荐形状”
 
 ## 关联文档
 

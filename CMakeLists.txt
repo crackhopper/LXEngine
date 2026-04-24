@@ -18,9 +18,27 @@ project(Renderer LANGUAGES C CXX)
 
 # set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+enable_testing()
+
 # 设定 C++ 20
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+option(LX_ENABLE_SANITIZERS "Enable ASan+UBSan for supported toolchains" OFF)
+if(LX_ENABLE_SANITIZERS)
+  if(MSVC)
+    message(FATAL_ERROR "LX_ENABLE_SANITIZERS currently supports GCC/Clang only")
+  endif()
+
+  if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    message(FATAL_ERROR
+      "LX_ENABLE_SANITIZERS requires GCC or Clang compatible toolchains")
+  endif()
+
+  add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer)
+  add_link_options(-fsanitize=address,undefined -fno-omit-frame-pointer)
+  message(STATUS "LX_ENABLE_SANITIZERS=ON: enabling AddressSanitizer and UndefinedBehaviorSanitizer")
+endif()
 
 # 设置编译器编码选项
 if(MSVC)
@@ -56,26 +74,33 @@ endif()
 
 
 # -------------------------------
-# 构建期资产同步：symlink 优先，copy 兜底
+# 构建期 runtime-root 同步：symlink 优先，copy 兜底
 # -------------------------------
-if(NOT EXISTS "${CMAKE_BINARY_DIR}/assets")
-  file(CREATE_LINK
-    "${CMAKE_SOURCE_DIR}/assets"
-    "${CMAKE_BINARY_DIR}/assets"
-    SYMBOLIC
-    RESULT _assets_link_result
-  )
-  if(NOT _assets_link_result EQUAL 0)
-    message(STATUS "Symlink failed (${_assets_link_result}), copying assets to build dir")
-    file(COPY "${CMAKE_SOURCE_DIR}/assets" DESTINATION "${CMAKE_BINARY_DIR}")
+function(lx_sync_runtime_dir dir_name)
+  if(NOT EXISTS "${CMAKE_BINARY_DIR}/${dir_name}")
+    file(CREATE_LINK
+      "${CMAKE_SOURCE_DIR}/${dir_name}"
+      "${CMAKE_BINARY_DIR}/${dir_name}"
+      SYMBOLIC
+      RESULT _lx_link_result
+    )
+    if(NOT _lx_link_result EQUAL 0)
+      message(STATUS "Symlink failed for ${dir_name} (${_lx_link_result}), copying to build dir")
+      file(COPY "${CMAKE_SOURCE_DIR}/${dir_name}" DESTINATION "${CMAKE_BINARY_DIR}")
+    endif()
   endif()
-endif()
+endfunction()
+
+lx_sync_runtime_dir("assets")
+lx_sync_runtime_dir("materials")
 
 # 引入shader编译的target
 add_subdirectory(shaders)
 
 # -------------------------------
-# 主项目
+# Bootstrap / env-probe executable
+# Not the primary demo entrypoint. The user-facing integration demo lives at
+# src/demos/scene_viewer/ as demo_scene_viewer.
 # -------------------------------
 add_executable(${PROJECT_NAME} "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp")
 target_link_libraries(${PROJECT_NAME} 
@@ -93,6 +118,3 @@ if (WIN32)
 # -------------------------------
   target_compile_definitions(${PROJECT_NAME} PRIVATE "_CRT_SECURE_NO_WARNINGS")
 endif()
-
-
-

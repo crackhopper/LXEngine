@@ -57,11 +57,15 @@ void RenderQueue::buildFromScene(const Scene &scene, StringID pass,
 
   // REQ-009: target-filtered scene-level resources.
   auto sceneResources = scene.getSceneLevelResources(pass, target);
+  const VisibilityLayerMask visibleMask =
+      scene.getCombinedCameraCullingMask(target);
 
   for (const auto &renderable : scene.getRenderables()) {
     if (!renderable)
       continue;
     if (!renderable->supportsPass(pass))
+      continue;
+    if ((renderable->getVisibilityLayerMask() & visibleMask) == 0)
       continue;
     auto validated = renderable->getValidatedPassData(pass);
     if (!validated)

@@ -1,6 +1,7 @@
 #include "generic_material_loader.hpp"
 #include "core/asset/shader_binding_ownership.hpp"
 #include "core/frame_graph/pass.hpp"
+#include "core/utils/filesystem_tools.hpp"
 #include "infra/shader_compiler/compiled_shader.hpp"
 #include "infra/shader_compiler/shader_compiler.hpp"
 #include "infra/shader_compiler/shader_reflector.hpp"
@@ -12,6 +13,7 @@
 #include <filesystem>
 #include <iostream>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -24,27 +26,7 @@ namespace fs = std::filesystem;
 namespace {
 
 [[noreturn]] void fatalLoader(const std::string &reason) {
-  std::cerr << "FATAL [GenericMaterialLoader] " << reason << std::endl;
-  std::terminate();
-}
-
-/*****************************************************************
- * Shader discovery
- *****************************************************************/
-
-fs::path findShaderDir(const fs::path &startDir) {
-  fs::path cwd =
-      startDir.empty() ? fs::current_path() : fs::absolute(startDir);
-  for (int i = 0; i < 5; ++i) {
-    auto candidate = cwd / "shaders" / "glsl";
-    if (fs::exists(candidate))
-      return candidate;
-    auto parent = cwd.parent_path();
-    if (parent == cwd)
-      break;
-    cwd = parent;
-  }
-  return {};
+  throw std::logic_error("GenericMaterialLoader " + reason);
 }
 
 /*****************************************************************
@@ -391,12 +373,15 @@ CompiledPass compilePassShader(const LX_core::StringID &passId,
 
 LX_core::MaterialInstanceSharedPtr
 loadGenericMaterial(const fs::path &materialPath) {
-  if (!fs::exists(materialPath))
+  const fs::path resolvedMaterialPath = materialPath.is_absolute()
+                                            ? materialPath
+                                            : resolveRuntimePath(materialPath);
+  if (!fs::exists(resolvedMaterialPath))
     fatalLoader("material file not found: " + materialPath.string());
 
   YAML::Node root;
   try {
-    root = YAML::LoadFile(materialPath.string());
+    root = YAML::LoadFile(resolvedMaterialPath.string());
   } catch (const YAML::Exception &e) {
     fatalLoader("failed to parse material file: " + std::string(e.what()));
   }
@@ -406,7 +391,7 @@ loadGenericMaterial(const fs::path &materialPath) {
   //    accessed again after this block (avoids yaml-cpp aliasing issues).
   if (!root.IsMap())
     fatalLoader("material file root is not a YAML map: " +
-                materialPath.string());
+                resolvedMaterialPath.string());
 
   std::string globalShaderName;
   YAML::Node globalVariantsNode;
@@ -433,11 +418,11 @@ loadGenericMaterial(const fs::path &materialPath) {
 
   if (globalShaderName.empty())
     fatalLoader("missing required 'shader' field in " +
-                materialPath.string());
+                resolvedMaterialPath.string());
 
   // 2. Find shader directory.
-  const fs::path materialDir = materialPath.parent_path();
-  const fs::path shaderDir = findShaderDir(materialDir);
+  const fs::path materialDir = resolvedMaterialPath.parent_path();
+  const fs::path shaderDir = getRuntimeShaderSourceDir();
   if (shaderDir.empty())
     fatalLoader("shader directory not found (expected .../shaders/glsl/)");
 
@@ -506,19 +491,19 @@ loadGenericMaterial(const fs::path &materialPath) {
 
   if (globalParamsNode.IsMap())
     validateParametersAgainstReflection(globalParamsNode, allMatBindings,
-                                        materialPath.string());
+                                        resolvedMaterialPath.string());
   if (globalResourcesNode.IsMap())
     validateResourcesAgainstReflection(globalResourcesNode, allMatBindings,
-                                       materialPath.string());
+                                       resolvedMaterialPath.string());
 
   for (const auto &cp : compiledPasses) {
     if (cp.parameters && cp.parameters.IsMap()) {
-      fatalLoader(materialPath.string() + " pass=" + cp.shaderName +
+      fatalLoader(resolvedMaterialPath.string() + " pass=" + cp.shaderName +
                   ": pass-scoped parameters are no longer supported; "
                   "MaterialInstance stores one canonical parameter set");
     }
     if (cp.resources && cp.resources.IsMap()) {
-      fatalLoader(materialPath.string() + " pass=" + cp.shaderName +
+      fatalLoader(resolvedMaterialPath.string() + " pass=" + cp.shaderName +
                   ": pass-scoped resources are no longer supported; "
                   "MaterialInstance stores one canonical resource set");
     }

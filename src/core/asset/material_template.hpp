@@ -6,6 +6,7 @@
 #include <iostream>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -132,11 +133,10 @@ private:
   [[noreturn]] void fatalBindingConflict(std::string_view bindingName,
                                          StringID pass,
                                          std::string_view reason) const {
-    std::cerr << "FATAL [MaterialTemplate] binding='"
-              << bindingName << "' pass="
-              << GlobalStringTable::get().toDebugString(pass)
-              << " reason=" << reason << std::endl;
-    std::terminate();
+    throw std::logic_error("MaterialTemplate binding='" +
+                           std::string(bindingName) + "' pass=" +
+                           GlobalStringTable::get().toDebugString(pass) +
+                           " reason=" + std::string(reason));
   }
 
 /*

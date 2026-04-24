@@ -1,6 +1,7 @@
 #pragma once
 #include "core/platform/types.hpp"
 #include "core/math/vec.hpp"
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -47,7 +48,7 @@ public:
 
 private:
   struct Impl;
-  Impl *pImpl;
+  std::unique_ptr<Impl> pImpl;
 };
 
 } // namespace infra

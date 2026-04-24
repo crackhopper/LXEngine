@@ -7,9 +7,18 @@
 #include "core/frame_graph/pass.hpp"
 #include <exception>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 
 namespace LX_core {
+
+namespace detail {
+
+[[noreturn]] inline void throwProgrammerLogicError(const std::string &message) {
+  throw std::logic_error(message);
+}
+
+} // namespace detail
 
 using ShaderPtr = IShaderSharedPtr;
 
@@ -27,17 +36,14 @@ struct RenderingItem {
   PipelineKey pipelineKey;
 };
 
-class Scene {
+class Scene : public std::enable_shared_from_this<Scene> {
 public:
   using SharedPtr = std::shared_ptr<Scene>;
 
-  Scene(std::string sceneName, IRenderableSharedPtr mesh = nullptr)
-      : m_sceneName(std::move(sceneName)) {
+  explicit Scene(std::string sceneName) : m_sceneName(std::move(sceneName)) {
     if (m_sceneName.empty()) {
       m_sceneName = "Scene";
     }
-    if (mesh)
-      addRenderable(std::move(mesh));
     // REQ-009: the ctor seeds a default Camera + DirectionalLight into the
     // multi-container fields. The seeded camera is created with a default
     // RenderTarget{} so tests that don't run through VulkanRenderer::initScene
@@ -51,15 +57,23 @@ public:
   ~Scene();
 
   static auto create(std::string sceneName, IRenderableSharedPtr mesh = nullptr) {
-    return std::make_shared<Scene>(std::move(sceneName), std::move(mesh));
+    auto scene = std::make_shared<Scene>(std::move(sceneName));
+    if (mesh) {
+      scene->addRenderable(std::move(mesh));
+    }
+    return scene;
   }
 
   static auto create(IRenderableSharedPtr mesh) {
-    return std::make_shared<Scene>("Scene", std::move(mesh));
+    auto scene = std::make_shared<Scene>("Scene");
+    if (mesh) {
+      scene->addRenderable(std::move(mesh));
+    }
+    return scene;
   }
 
   static auto create(std::nullptr_t) {
-    return std::make_shared<Scene>("Scene", nullptr);
+    return std::make_shared<Scene>("Scene");
   }
 
   const std::vector<IRenderableSharedPtr> &getRenderables() const {
@@ -72,13 +86,13 @@ public:
         if (!existing)
           continue;
         if (existing->getNodeName() == r->getNodeName()) {
-          std::cerr << "FATAL [Scene] duplicate nodeName in scene '"
-                    << m_sceneName << "': " << r->getNodeName() << std::endl;
-          std::terminate();
+          detail::throwProgrammerLogicError("Scene duplicate nodeName in scene '" +
+                                            m_sceneName + "': " +
+                                            r->getNodeName());
         }
       }
       if (auto node = std::dynamic_pointer_cast<SceneNode>(r)) {
-        node->attachToScene(this);
+        node->attachToScene(weak_from_this());
         node->setSceneDebugId(
             StringID(m_sceneName + "/" + node->getNodeName()));
       }
@@ -100,6 +114,8 @@ public:
   /// return is valid.
   std::vector<IGpuResourceSharedPtr>
   getSceneLevelResources(StringID pass, const RenderTarget &target) const;
+  VisibilityLayerMask getCombinedCameraCullingMask(
+      const RenderTarget &target) const;
 
 private:
   std::string m_sceneName;

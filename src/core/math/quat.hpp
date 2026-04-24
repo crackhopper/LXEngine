@@ -118,14 +118,14 @@ template <typename T> struct QuatT {
     auto oldW = w;
     auto oldV = v;
     w = oldW * o.w - oldV.dot(o.v);
-    v = oldV.cross(o.v) + o.v * w + oldV * o.w;
+    v = oldV.cross(o.v) + o.v * oldW + oldV * o.w;
     return *this;
   }
   QuatT &left_multiply_inplace(const QuatT &o) {
     auto oldW = w;
     auto oldV = v;
     w = oldW * o.w - oldV.dot(o.v);
-    v = o.v.cross(oldV) + o.v * w + oldV * o.w;
+    v = o.v.cross(oldV) + o.v * oldW + oldV * o.w;
     return *this;
   }
 

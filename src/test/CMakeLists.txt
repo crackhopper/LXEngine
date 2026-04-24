@@ -1,4 +1,3 @@
-
 set(TEST_INTEGRATION_EXE_LIST
   test_vulkan_buffer
   test_vulkan_command_buffer
@@ -8,6 +7,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_vulkan_texture
   test_vulkan_shader
   test_vulkan_resource_manager
+  test_vulkan_device_selection
   test_string_table
   test_material_instance
   test_pipeline_identity
@@ -21,6 +21,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_assets_layout
   test_input_state
   test_clock
+  test_math
   test_sdl_input
   test_orbit_camera_controller
   test_freefly_camera_controller
@@ -31,6 +32,35 @@ set(TEST_INTEGRATION_EXE_LIST
   # test_render_sphere
   # test_render_model
 )
+
+set(TEST_VIDEO_DEVICE_EXE_LIST
+  test_vulkan_buffer
+  test_vulkan_command_buffer
+  test_vulkan_swapchain
+  test_vulkan_framebuffer
+  test_vulkan_pipeline
+  test_vulkan_texture
+  test_vulkan_shader
+  test_vulkan_resource_manager
+  test_pipeline_cache
+  test_imgui_overlay
+)
+
+function(lx_register_ctest test_name)
+  add_test(NAME ${test_name} COMMAND $<TARGET_FILE:${test_name}>)
+
+  set(test_labels "auto")
+  if(${test_name} IN_LIST TEST_VIDEO_DEVICE_EXE_LIST)
+    list(APPEND test_labels "requires_video_device")
+  else()
+    list(APPEND test_labels "headless_ok")
+  endif()
+
+  set_tests_properties(${test_name} PROPERTIES
+    WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+    LABELS "${test_labels}"
+  )
+endfunction()
 
 add_custom_target(BuildTest)
 foreach(TEST_EXE ${TEST_INTEGRATION_EXE_LIST})
@@ -43,6 +73,7 @@ foreach(TEST_EXE ${TEST_INTEGRATION_EXE_LIST})
   )
 
   add_dependencies(BuildTest ${TEST_EXE})
+  lx_register_ctest(${TEST_EXE})
 
   # set_target_properties(${TEST_EXE} PROPERTIES
   #   RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/test/"
@@ -108,6 +139,12 @@ elseif(SPIRV_CROSS_CORE_LIB)
 endif()
 target_link_libraries(test_shader_compiler PRIVATE ${SHADERC_LIB} ${SHADERC_DEPS})
 add_dependencies(BuildTest test_shader_compiler)
+add_test(NAME test_shader_compiler
+  COMMAND $<TARGET_FILE:test_shader_compiler> "${CMAKE_SOURCE_DIR}/shaders/glsl")
+set_tests_properties(test_shader_compiler PROPERTIES
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+  LABELS "auto;headless_ok"
+)
 
 # Ensure shader SPIR-V is built before any shader-dependent tests run.
 add_dependencies(BuildTest CompileShaders)

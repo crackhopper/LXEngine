@@ -250,7 +250,8 @@ struct VertexPBR : VertexBase<VertexPBR> {
   }
 };
 
-/// Blinn-Phong skinned mesh vertex (`blinnphong_0` / `pipeline.cpp`).
+/// Skinned mesh vertex: position / normal / UV / tangent + 4-bone skinning.
+/// Consumed by shaders declared via `.material` YAML assets.
 struct VertexPosNormalUvBone : VertexBase<VertexPosNormalUvBone> {
   Vec3f pos;
   Vec3f normal;

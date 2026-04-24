@@ -197,9 +197,9 @@ using CgltfDataPtr = std::unique_ptr<cgltf_data, CgltfDeleter>;
 
 } // namespace
 
-GLTFLoader::GLTFLoader() : pImpl(new Impl) {}
+GLTFLoader::GLTFLoader() : pImpl(std::make_unique<Impl>()) {}
 
-GLTFLoader::~GLTFLoader() { delete pImpl; }
+GLTFLoader::~GLTFLoader() = default;
 
 void GLTFLoader::load(const std::string &filename) {
   // Reset any previous load so repeated use on the same instance is safe.

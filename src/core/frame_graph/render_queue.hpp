@@ -22,10 +22,10 @@ public:
   /// 按 PipelineKey 去重后返回 PipelineBuildDesc 列表。
   std::vector<PipelineBuildDesc> collectUniquePipelineBuildDescs() const;
 
-  /// REQ-009 form: forwards target to Scene::getSceneLevelResources for
-  /// per-target camera filtering. Renderable filtering is unchanged (still
-  /// by pass alone via IRenderable::supportsPass) — target only affects the
-  /// scene-level resource merge step.
+  /// The queue uses target in two ways: it forwards target to
+  /// Scene::getSceneLevelResources for per-target camera resources, and it
+  /// filters renderables by intersection between their visibility mask and the
+  /// OR-combined culling mask of cameras that match the same target.
   void buildFromScene(const Scene &scene, StringID pass,
                       const RenderTarget &target);
 

@@ -44,7 +44,15 @@ mkdir build && cd build
 cmake .. -G Ninja
 ninja test_shader_compiler   # shader compiler test (no GPU needed)
 ninja BuildTest              # all integration tests
+ctest --output-on-failure -L auto -LE requires_video_device
+xvfb-run -a ctest --output-on-failure -L requires_video_device
 ninja Renderer               # main application
+```
+
+Sanitizer build:
+
+```bash
+cmake .. -G Ninja -DLX_ENABLE_SANITIZERS=ON
 ```
 
 ### Linux Vulkan Test Notes

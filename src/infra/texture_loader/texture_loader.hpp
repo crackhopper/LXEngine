@@ -1,4 +1,5 @@
 #pragma once
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -18,7 +19,7 @@ public:
 
 private:
   struct Impl;
-  Impl* pImpl;
+  std::unique_ptr<Impl> pImpl;
 };
 
 } // namespace infra

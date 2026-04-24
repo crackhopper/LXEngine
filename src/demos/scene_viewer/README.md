@@ -51,7 +51,7 @@ export LD_LIBRARY_PATH=build/_deps/sdl3-build:$LD_LIBRARY_PATH
 ./build/src/demos/scene_viewer/demo_scene_viewer
 ```
 
-The demo locates its assets via `cdToWhereAssetsExist(...)` and fails fast
+The demo now initializes an explicit runtime asset root and fails fast
 with a non-zero exit code if the `assets/` tree cannot be found.
 
 ## Controls

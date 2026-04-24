@@ -123,6 +123,38 @@ VkSurfaceFormatKHR findBestSurfaceFormat(VkPhysicalDevice physicalDevice,
   return availableFormats[0];
 }
 
+const char *deviceTypeToString(VkPhysicalDeviceType type) {
+  switch (type) {
+  case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU:
+    return "integrated";
+  case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU:
+    return "discrete";
+  case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU:
+    return "virtual";
+  case VK_PHYSICAL_DEVICE_TYPE_CPU:
+    return "cpu";
+  case VK_PHYSICAL_DEVICE_TYPE_OTHER:
+  default:
+    return "other";
+  }
+}
+
+int physicalDevicePreferenceScore(VkPhysicalDeviceType type) {
+  switch (type) {
+  case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU:
+    return 4;
+  case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU:
+    return 3;
+  case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU:
+    return 2;
+  case VK_PHYSICAL_DEVICE_TYPE_CPU:
+    return 1;
+  case VK_PHYSICAL_DEVICE_TYPE_OTHER:
+  default:
+    return 0;
+  }
+}
+
 } // anonymous namespace
 
 VkFormat
@@ -154,6 +186,11 @@ VkImageAspectFlags VulkanDevice::getDepthAspectMask() const {
   default:
     throw std::runtime_error("Unsupported depth format!");
   }
+}
+
+int VulkanDevice::getPhysicalDevicePreferenceScoreForTesting(
+    VkPhysicalDeviceType type) {
+  return physicalDevicePreferenceScore(type);
 }
 
 VulkanDevice::VulkanDevice(Token) {}
@@ -222,7 +259,6 @@ void VulkanDevice::shutdown() {
     m_device = VK_NULL_HANDLE;
   }
   if (m_surface != VK_NULL_HANDLE) {
-    vkDestroySurfaceKHR(m_instance, m_surface, nullptr);
     m_window->destroyGraphicsHandle(GraphicsAPI::Vulkan, getInstance(),
                                     m_surface);
     m_window = nullptr;
@@ -354,9 +390,6 @@ bool VulkanDevice::checkDeviceExtensionSupport(
 
 bool VulkanDevice::isDeviceSuitable(
     VkPhysicalDevice device, std::vector<const char *> extensionsRequired) {
-  VkPhysicalDeviceProperties properties;
-  vkGetPhysicalDeviceProperties(device, &properties);
-
   // 1. 检查队列族（是否有图形队列）
   QueueFamilyIndices queueIndices = findQueueFamilies(device);
 
@@ -364,9 +397,8 @@ bool VulkanDevice::isDeviceSuitable(
   bool extensionsSupported =
       checkDeviceExtensionSupport(device, extensionsRequired);
 
-  // 3. 只有功能完备，且是独显，才是最优选
-  return queueIndices.isComplete() && extensionsSupported &&
-         (properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU);
+  // 3. 适用性只由功能完备性决定，设备类型只影响偏好排序
+  return queueIndices.isComplete() && extensionsSupported;
 }
 
 void VulkanDevice::pickPhysicalDevice() {
@@ -380,21 +412,19 @@ void VulkanDevice::pickPhysicalDevice() {
   std::vector<VkPhysicalDevice> devices(deviceCount);
   vkEnumeratePhysicalDevices(m_instance, &deviceCount, devices.data());
 
-  // Find the best discrete GPU, or fall back to the first available
+  int bestScore = -1;
   for (const auto &device : devices) {
-    // 只有当显卡【功能完备】时，才考虑它
-    if (isDeviceSuitable(device, m_deviceExtensions)) {
-      VkPhysicalDeviceProperties props;
-      vkGetPhysicalDeviceProperties(device, &props);
+    if (!isDeviceSuitable(device, m_deviceExtensions)) {
+      continue;
+    }
 
+    VkPhysicalDeviceProperties props;
+    vkGetPhysicalDeviceProperties(device, &props);
+    const int score = physicalDevicePreferenceScore(props.deviceType);
+
+    if (score > bestScore) {
+      bestScore = score;
       m_physicalDevice = device;
-
-      // 如果是独显，那是完美选择，直接退出循环
-      if (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
-        std::cout << "Selected discrete GPU: " << props.deviceName << "\n";
-        break;
-      }
-      // 如果是集成显卡，先记下来，继续看看后面有没有独显
     }
   }
 
@@ -408,6 +438,13 @@ void VulkanDevice::pickPhysicalDevice() {
   }
   VkPhysicalDeviceProperties properties;
   vkGetPhysicalDeviceProperties(m_physicalDevice, &properties);
+  std::cout << "Selected " << deviceTypeToString(properties.deviceType)
+            << " GPU: " << properties.deviceName << std::endl;
+  if (properties.deviceType != VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
+    std::cout << "  Falling back to non-discrete GPU because it satisfies the "
+                 "required Vulkan queues/extensions/surface support"
+              << std::endl;
+  }
   std::cout << "  Driver version: " << properties.driverVersion << std::endl;
   std::cout << "  Vulkan API: " << VK_VERSION_MAJOR(properties.apiVersion)
             << "." << VK_VERSION_MINOR(properties.apiVersion) << "."

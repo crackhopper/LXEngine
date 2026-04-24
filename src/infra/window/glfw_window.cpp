@@ -64,9 +64,9 @@ struct Window::Impl {
 void Window::Initialize() {}
 
 Window::Window(const char *title, int width, int height)
-    : pImpl(new Impl(title, width, height)) {}
+    : pImpl(std::make_unique<Impl>(title, width, height)) {}
 
-Window::~Window() { delete pImpl; }
+Window::~Window() = default;
 // Live-query to survive window resizes: swapchain rebuild asks getWidth/Height
 // to pick up the new framebuffer extent.
 int Window::getWidth() const {
@@ -109,7 +109,7 @@ void* Window::getNativeHandle() const {
 void *Window::createGraphicsHandle(GraphicsAPI api,
                                    void *graphicsInstance) const {
   if (api == GraphicsAPI::Vulkan) {
-    return new VkSurfaceKHR(getVulkanSurface(*(VkInstance *)graphicsInstance));
+    return (WindowGraphicsHandle)getVulkanSurface((VkInstance)graphicsInstance);
   }
   return nullptr;
 }
@@ -117,6 +117,8 @@ void *Window::createGraphicsHandle(GraphicsAPI api,
 void Window::destroyGraphicsHandle(GraphicsAPI api, void *graphicsInstance,
                                    void *handle) const {
   if (api == GraphicsAPI::Vulkan && handle) {
+    vkDestroySurfaceKHR((VkInstance)graphicsInstance, (VkSurfaceKHR)handle,
+                        nullptr);
   }
 }
 

@@ -175,7 +175,8 @@ public:
 
   virtual size_t getProgramHash() const = 0;
 
-  /// Logical shader basename for file-based pipelines (e.g. `blinnphong_0`).
+  /// Logical shader basename for file-based pipelines (matches the shader
+  /// family name declared in a `.material` YAML asset).
   /// Default empty: render path may fall back to a fixed pipeline key.
   virtual std::string getShaderName() const { return {}; }
 };

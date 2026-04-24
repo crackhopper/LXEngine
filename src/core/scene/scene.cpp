@@ -7,7 +7,7 @@ Scene::~Scene() {
     auto node = std::dynamic_pointer_cast<SceneNode>(renderable);
     if (!node)
       continue;
-    node->attachToScene(nullptr);
+    node->detachFromScene();
   }
 }
 
@@ -53,6 +53,19 @@ Scene::getSceneLevelResources(StringID pass, const RenderTarget &target) const {
   }
 
   return out;
+}
+
+VisibilityLayerMask
+Scene::getCombinedCameraCullingMask(const RenderTarget &target) const {
+  VisibilityLayerMask mask = 0;
+  for (const auto &cam : m_cameras) {
+    if (!cam)
+      continue;
+    if (!cam->matchesTarget(target))
+      continue;
+    mask |= cam->getCullingMask();
+  }
+  return mask;
 }
 
 } // namespace LX_core

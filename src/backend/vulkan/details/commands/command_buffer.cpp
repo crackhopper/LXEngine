@@ -5,20 +5,12 @@
 #include "../device_resources/texture.hpp"
 #include "../device.hpp"
 #include "../resource_manager.hpp"
+#include "core/utils/env.hpp"
 #include <array>
-#include <cstdlib>
-#include <cstring>
 #include <stdexcept>
 #include <unordered_map>
 
 namespace LX_core::backend {
-
-namespace {
-bool envEnabled(const char *name) {
-  const char *value = std::getenv(name);
-  return value != nullptr && std::strcmp(value, "0") != 0;
-}
-} // namespace
 
 void VulkanCommandBuffer::begin() {
   VkCommandBufferBeginInfo beginInfo{};
@@ -52,7 +44,7 @@ void VulkanCommandBuffer::setViewport(ImageDimension32 width,
   VkViewport viewport{};
   viewport.x = 0.0f;
   viewport.width = static_cast<float>(width);
-  if (envEnabled("LX_RENDER_FLIP_VIEWPORT_Y")) {
+  if (expEnvEnabled("LX_RENDER_FLIP_VIEWPORT_Y")) {
     viewport.y = static_cast<float>(height);
     viewport.height = -static_cast<float>(height);
   } else {
@@ -143,7 +135,8 @@ void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
 
       if (b.type == LX_core::ShaderPropertyType::UniformBuffer ||
           b.type == LX_core::ShaderPropertyType::StorageBuffer) {
-        auto bufferOpt = resourceManager.getBuffer(cpuRes->getResourceHandle());
+        auto bufferOpt =
+            resourceManager.getBuffer(cpuRes->getBackendCacheIdentity());
         if (!bufferOpt)
           continue;
         auto &buffer = bufferOpt->get();
@@ -161,7 +154,7 @@ void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
       } else if (b.type == LX_core::ShaderPropertyType::Texture2D ||
                  b.type == LX_core::ShaderPropertyType::TextureCube) {
         auto textureOpt =
-            resourceManager.getTexture(cpuRes->getResourceHandle());
+            resourceManager.getTexture(cpuRes->getBackendCacheIdentity());
         if (!textureOpt)
           continue;
         auto &texture = textureOpt->get();
@@ -181,7 +174,7 @@ void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
 
   if (item.vertexBuffer) {
     auto vbOpt =
-        resourceManager.getBuffer(item.vertexBuffer->getResourceHandle());
+        resourceManager.getBuffer(item.vertexBuffer->getBackendCacheIdentity());
     if (vbOpt) {
       VkBuffer vbHandle = vbOpt->get().getHandle();
       VkDeviceSize offsets[] = {0};
@@ -191,7 +184,7 @@ void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
 
   if (item.indexBuffer) {
     auto ibOpt =
-        resourceManager.getBuffer(item.indexBuffer->getResourceHandle());
+        resourceManager.getBuffer(item.indexBuffer->getBackendCacheIdentity());
     if (ibOpt) {
       vkCmdBindIndexBuffer(m_handle, ibOpt->get().getHandle(), 0,
                            VK_INDEX_TYPE_UINT32);

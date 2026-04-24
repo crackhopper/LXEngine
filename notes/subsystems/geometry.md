@@ -22,7 +22,7 @@
 
 1. loader 创建 `VertexBuffer<V>` 和 `IndexBuffer`。
 2. `Mesh::create(vb, ib)`。
-3. `SceneNode`（或兼容层 `IRenderable` 实现）持有 mesh。
+3. `SceneNode` 持有 mesh（`IRenderable` 当前唯一具体实现）。
 4. `mesh->getRenderSignature(pass)` 贡献 object-side signature。
 5. `PipelineBuildDesc::fromRenderingItem(item)` 读回 layout 和 topology。
 

@@ -2,6 +2,7 @@
 #include "core/asset/shader_binding_ownership.hpp"
 #include <algorithm>
 #include <iostream>
+#include <stdexcept>
 #include <utility>
 
 namespace LX_core {
@@ -29,11 +30,11 @@ const std::vector<uint8_t> kEmptyBuffer;
 
 [[noreturn]] void fatalUndefinedPass(const MaterialTemplate *tmpl,
                                      StringID pass) {
-  std::cerr << "FATAL [MaterialInstance] template="
-            << (tmpl ? tmpl->getName() : std::string("<null>"))
-            << " pass=" << GlobalStringTable::get().toDebugString(pass)
-            << " reason=setPassEnabled called for undefined pass" << std::endl;
-  std::terminate();
+  throw std::logic_error("MaterialInstance template=" +
+                         (tmpl ? tmpl->getName() : std::string("<null>")) +
+                         " pass=" +
+                         GlobalStringTable::get().toDebugString(pass) +
+                         " reason=setPassEnabled called for undefined pass");
 }
 
 } // namespace

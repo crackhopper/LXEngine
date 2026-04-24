@@ -10,8 +10,10 @@ namespace backend {
 VulkanShader::VulkanShader(Token, VulkanDevice &device, const std::string &name,
                          VkShaderStageFlagBits stage)
     : m_device(device.getLogicalDevice()), m_stage(stage) {
+  const std::string stageSuffix =
+      stage == VK_SHADER_STAGE_VERTEX_BIT ? "vert.spv" : "frag.spv";
   // Determine shader file path based on stage
-  auto shaderPath = getShaderPath(name);
+  auto shaderPath = getShaderPath(name, stageSuffix);
   if (shaderPath.empty()) {
     throw std::runtime_error("Failed to find shader file: " + name);
   }

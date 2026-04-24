@@ -37,6 +37,10 @@ class VulkanResourceManager;
 using VulkanResourceManagerUniquePtr = std::unique_ptr<VulkanResourceManager>;
 class VulkanResourceManager {
   struct Token {};
+  struct CachedGpuResource {
+    std::shared_ptr<VulkanAnyResource> resource;
+    ResourceCacheIdentity lastSeenFrame = 0;
+  };
 
 public:
   explicit VulkanResourceManager(Token token, VulkanDevice &device);
@@ -57,8 +61,10 @@ public:
   void initializeRenderPassAndPipeline(VkSurfaceFormatKHR surfaceFormat,
                                        VkFormat depthFormat);
 
-  std::optional<std::reference_wrapper<VulkanBuffer>> getBuffer(void *handle);
-  std::optional<std::reference_wrapper<VulkanTexture>> getTexture(void *handle);
+  std::optional<std::reference_wrapper<VulkanBuffer>>
+  getBuffer(ResourceCacheIdentity identity);
+  std::optional<std::reference_wrapper<VulkanTexture>>
+  getTexture(ResourceCacheIdentity identity);
   VulkanRenderPass &getRenderPass();
 
   /// Delegates to the embedded PipelineCache. Kept for backward compatibility
@@ -70,6 +76,7 @@ public:
   void preloadPipelines(const std::vector<LX_core::PipelineBuildDesc> &infos);
 
   PipelineCache &getPipelineCache() { return *m_pipelineCache; }
+  size_t getCachedResourceCount() const { return m_gpuResources.size(); }
 
 private:
   std::shared_ptr<VulkanAnyResource>
@@ -79,8 +86,9 @@ private:
                          VulkanCommandBufferManager &cmdBufferManager);
 
   VulkanDevice &m_device;
-  std::unordered_map<void *, std::shared_ptr<VulkanAnyResource>> m_gpuResources;
-  std::unordered_set<void *> m_activeHandles;
+  std::unordered_map<ResourceCacheIdentity, CachedGpuResource> m_gpuResources;
+  std::unordered_set<ResourceCacheIdentity> m_activeResourceIds;
+  ResourceCacheIdentity m_frameSerial = 0;
 
   std::unique_ptr<VulkanRenderPass> m_renderPass;
   std::unique_ptr<PipelineCache> m_pipelineCache;

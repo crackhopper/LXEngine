@@ -77,7 +77,10 @@ variantRules:
 - YAML 不参与 ownership 判定（归属由 `shader_binding_ownership.hpp` 决定）
 - YAML 中没列出的合法参数仍然存在，只是零初始化，运行时可以 `setParameter`
 
-参考示例：[`materials/blinnphong_lit.material`](../../../materials/blinnphong_lit.material)
+参考示例：
+
+- [`materials/pbr_gold.material`](../../../materials/pbr_gold.material)
+- [`materials/blinnphong_lit.material`](../../../materials/blinnphong_lit.material)
 
 ## C++ 路径
 
@@ -112,7 +115,7 @@ instance->setParameter(StringID("MyUBO"), StringID("roughness"), 0.5f);
 instance->syncGpuData();
 ```
 
-C++ 路径的完整样板可参考 `materials/blinnphong_default.material` 的 YAML 等价逻辑。
+C++ 路径的完整样板可参考 `materials/pbr_gold.material` 或 `materials/blinnphong_default.material` 的 YAML 等价逻辑。
 
 ## 继续阅读
 

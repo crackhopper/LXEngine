@@ -33,7 +33,7 @@ A dedicated demo tree SHALL live under `src/demos/`. The first demo SHALL be `sc
 
 `src/demos/scene_viewer/main.cpp` SHALL drive the frame pump through `LX_core::gpu::EngineLoop::run()` rather than any bespoke `while (running) { uploadData(); draw(); }` loop. The startup sequence SHALL perform, in order:
 
-1. `cdToWhereAssetsExist("models/damaged_helmet/DamagedHelmet.gltf")` and fail-fast (non-zero exit) on false
+1. Initialize the explicit runtime asset root and fail-fast (non-zero exit) on false
 2. Construct `LX_infra::Window`
 3. Construct `LX_core::backend::VulkanRenderer` via its factory
 4. `renderer->initialize(window, "demo_scene_viewer")`
@@ -54,7 +54,7 @@ Per-frame timing SHALL be read from the `Clock` passed into the update hook (or 
 
 #### Scenario: Startup fails fast when assets are missing
 
-- **WHEN** `cdToWhereAssetsExist("models/damaged_helmet/DamagedHelmet.gltf")` returns `false`
+- **WHEN** runtime asset-root initialization fails
 - **THEN** the demo SHALL exit with a non-zero status code and SHALL NOT construct the Vulkan renderer
 
 ### Requirement: Default scene contains helmet, ground, light, camera

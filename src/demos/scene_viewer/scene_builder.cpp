@@ -154,19 +154,19 @@ MaterialInstanceSharedPtr makeHelmetMaterial(const infra::GLTFPbrMaterial& pbr,
 
   // DamagedHelmet.gltf declares no TANGENT accessor — keep normal mapping off
   // so the placeholder tangent is never sampled.
-  mat->setInt(StringID("enableNormal"), 0);
+  mat->setParameter(StringID("MaterialUBO"), StringID("enableNormal"), 0);
 
   if (hasBaseColor) {
     try {
       auto sampler = loadCombinedTexture(gltfDir / pbr.baseColorTexture);
       mat->setTexture(StringID("albedoMap"), std::move(sampler));
-      mat->setInt(StringID("enableAlbedo"), 1);
+      mat->setParameter(StringID("MaterialUBO"), StringID("enableAlbedo"), 1);
     } catch (const std::exception& e) {
       std::cerr << "[scene_viewer] baseColor texture load failed ("
                 << e.what() << "); falling back to flat color\n";
       // The textured variant is already loaded; keep enableAlbedo=0 so the
       // shader skips the (still-legal) sampler binding.
-      mat->setInt(StringID("enableAlbedo"), 0);
+      mat->setParameter(StringID("MaterialUBO"), StringID("enableAlbedo"), 0);
     }
   }
 
@@ -180,9 +180,10 @@ MaterialInstanceSharedPtr makeGroundMaterial() {
     throw std::runtime_error(
         "[scene_viewer] failed to load materials/blinnphong_lit.material");
   }
-  mat->setInt(StringID("enableAlbedo"), 0);
-  mat->setInt(StringID("enableNormal"), 0);
-  mat->setVec3(StringID("baseColor"), Vec3f{0.4f, 0.4f, 0.45f});
+  mat->setParameter(StringID("MaterialUBO"), StringID("enableAlbedo"), 0);
+  mat->setParameter(StringID("MaterialUBO"), StringID("enableNormal"), 0);
+  mat->setParameter(StringID("MaterialUBO"), StringID("baseColor"),
+                    Vec3f{0.4f, 0.4f, 0.45f});
   mat->syncGpuData();
   return mat;
 }

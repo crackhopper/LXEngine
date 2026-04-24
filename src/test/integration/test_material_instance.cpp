@@ -85,12 +85,6 @@ std::filesystem::path findShaderDir() {
   return {};
 }
 
-int runSelf(const std::filesystem::path &self, const char *mode) {
-  const std::string cmd =
-      "\"" + self.string() + "\" " + mode + " >/dev/null 2>&1";
-  return std::system(cmd.c_str());
-}
-
 MaterialInstanceSharedPtr buildInstanceFromBlinnPhong() {
   auto dir = findShaderDir();
   if (dir.empty()) {
@@ -372,21 +366,20 @@ void test_non_structural_writes_do_not_notify_pass_listeners() {
   std::cout << "  only structural pass changes notify listeners\n";
 }
 
-int undefinedPassMode() {
+void test_setPassEnabled_throws_on_undefined_pass() {
+  std::cout << "\n-- test_setPassEnabled_throws_on_undefined_pass --\n";
   RenderState forwardState;
   RenderState shadowState;
   auto tmpl = buildMultiPassTemplate(forwardState, shadowState);
   auto mat = MaterialInstance::create(tmpl);
-  mat->setPassEnabled(Pass_Deferred, false);
-  return 0;
-}
-
-void test_setPassEnabled_fatals_on_undefined_pass(
-    const std::filesystem::path &self) {
-  std::cout << "\n-- test_setPassEnabled_fatals_on_undefined_pass --\n";
-  const int rc = runSelf(self, "undefined_pass");
-  REQUIRE(rc != 0);
-  std::cout << "  undefined pass toggles terminate as required\n";
+  bool threw = false;
+  try {
+    mat->setPassEnabled(Pass_Deferred, false);
+  } catch (const std::logic_error &) {
+    threw = true;
+  }
+  REQUIRE(threw);
+  std::cout << "  undefined pass throws logic_error\n";
 }
 
 void test_isSystemOwnedBinding_classification() {
@@ -586,9 +579,6 @@ void test_pass_aware_descriptor_resources() {
 
 int main(int argc, char **argv) {
   expSetEnvVK();
-  if (argc > 1 && std::string(argv[1]) == "undefined_pass")
-    return undefinedPassMode();
-
   test_ubo_buffer_sized_from_reflection();
   test_setVec3_writes_12_bytes_only();
   test_setFloat_and_setInt_at_reflected_offsets();
@@ -604,7 +594,7 @@ int main(int argc, char **argv) {
   test_material_instance_with_non_MaterialUBO_name();
   test_multi_buffer_setParameter();
   test_pass_aware_descriptor_resources();
-  test_setPassEnabled_fatals_on_undefined_pass(argv[0]);
+  test_setPassEnabled_throws_on_undefined_pass();
 
   std::cout << "\n========================================\n";
   if (s_failures == 0) {

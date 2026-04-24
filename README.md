@@ -109,6 +109,16 @@ cmake ..
 cmake --build . --config Debug
 ```
 
+### 入口说明
+
+- 根 target `Renderer` 是一个 bootstrap / env-probe 可执行，只负责早期环境设置与入口提示。
+- 默认的交互式演示入口是 `demo_scene_viewer`。
+
+```bash
+cmake --build build --target demo_scene_viewer
+./build/src/demos/scene_viewer/demo_scene_viewer
+```
+
 ### 运行测试
 
 ```bash

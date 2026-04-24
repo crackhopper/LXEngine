@@ -19,22 +19,54 @@ This requirement exists to suppress unwanted `.log` files emitted when implicit 
 
 The VulkanDevice SHALL initialize the Vulkan subsystem with:
 - VK_INSTANCE with required global extensions (Vulkan surface for window integration)
-- Enumerate physical devices and select the first discrete GPU if available, otherwise the first available device
+- Enumerate physical devices, keep any device that satisfies queue/extension/surface requirements, and prefer a discrete GPU when multiple suitable devices exist
 - Log device properties (name, type, driver version) for debugging
 - Factory pattern: VulkanDevice objects MUST be created via `VulkanDevice::create()` with Token
 - Initialization requires `WindowSharedPtr` and application name parameters
 
 #### Scenario: Device initialization succeeds with valid GPU
-- **WHEN** VulkanDriver is installed and system has a discrete GPU
+- **WHEN** VulkanDriver is installed and system has a suitable Vulkan-capable GPU
 - **WHEN** `VulkanDevice::create()` is called and `initialize(window, "AppName")` is invoked
 - **THEN** `m_physicalDevice` SHALL be valid and Vulkan instance created successfully
 - **THEN** Graphics and present queues SHALL be available
 - **THEN** `getInstance()` SHALL return valid VkInstance
 
+#### Scenario: Integrated GPU remains eligible
+- **WHEN** the system has no discrete GPU but has an integrated or virtual GPU that satisfies queue, extension, and surface requirements
+- **THEN** device initialization succeeds using that suitable non-discrete adapter instead of rejecting it by device type
+
 #### Scenario: Device initialization fails gracefully on no GPU
 - **WHEN** System has no Vulkan-capable GPU
 - **THEN** `initialize()` SHALL throw `std::runtime_error` with appropriate error message
 - **AND** No Vulkan resources SHALL be leaked
+
+### Requirement: Vulkan surface lifetime follows window graphics-handle contract
+`VulkanDevice` SHALL obtain and release the presentation surface only through the window graphics-handle contract. The backend MUST NOT depend on SDL-specific versus GLFW-specific surface wrapper semantics, and shutdown MUST pair `createGraphicsHandle` with `destroyGraphicsHandle`.
+
+#### Scenario: device shutdown releases surface through window contract
+- **WHEN** `VulkanDevice` shuts down after creating a presentation surface
+- **THEN** it releases that surface through `Window::destroyGraphicsHandle(...)` instead of assuming backend-specific destruction rules
+
+### Requirement: Vulkan device initialization consumes a uniform window surface contract
+The Vulkan backend SHALL consume window-provided graphics handles through one backend-independent contract. Device creation and teardown MUST NOT depend on SDL-specific versus GLFW-specific handle interpretation.
+
+#### Scenario: backend-specific surface wrappers are unnecessary
+- **WHEN** Vulkan device creation receives a window graphics handle
+- **THEN** it treats the handle as one consistent contract regardless of which window backend produced it
+
+### Requirement: Physical-device suitability is capability-based
+The Vulkan backend SHALL determine physical-device suitability from required queue families, required device extensions, and swapchain viability. GPU type alone MUST NOT make an otherwise suitable device ineligible.
+
+#### Scenario: integrated GPU can be selected
+- **WHEN** a non-discrete adapter satisfies all required Vulkan runtime checks
+- **THEN** the backend treats it as suitable rather than rejecting it only because of device type
+
+### Requirement: Physical-device preference remains separate from suitability
+If multiple suitable Vulkan devices exist, the backend SHALL apply preference ranking after suitability checks and MAY prefer discrete GPUs ahead of equally suitable integrated adapters.
+
+#### Scenario: discrete GPU remains preferred but not mandatory
+- **WHEN** both a discrete GPU and an integrated GPU satisfy suitability requirements
+- **THEN** the backend may rank the discrete GPU first without making discrete type a hard requirement
 
 ### Requirement: VulkanDevice shall create logical device with graphics and present queues
 

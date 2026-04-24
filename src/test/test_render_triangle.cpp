@@ -72,7 +72,7 @@ void syncOrbitFromCamera(OrbitCameraController &controller, const Camera &camera
 
 int main() {
   expSetEnvVK();
-  if (!cdToWhereResourcesCouldFound("blinnphong_0")) {
+  if (!initializeRuntimeAssetRoot()) {
     std::cerr << "Failed to locate runtime resources for blinnphong_0\n";
     return 1;
   }

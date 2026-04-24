@@ -1,7 +1,8 @@
 #pragma once
 #include "core/platform/types.hpp"
-#include <vulkan/vulkan.h>
 #include <functional>
+#include <memory>
+#include <vulkan/vulkan.h>
 
 namespace infra {
 
@@ -35,7 +36,7 @@ public:
 
 private:
   struct Impl;
-  Impl* pImpl;
+  std::unique_ptr<Impl> pImpl;
 };
 
 } // namespace infra

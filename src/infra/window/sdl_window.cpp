@@ -108,9 +108,9 @@ struct Window::Impl {
 void Window::Initialize() {}
 
 Window::Window(const char *title, int width, int height)
-    : pImpl(new Impl(title, width, height)) {}
+    : pImpl(std::make_unique<Impl>(title, width, height)) {}
 
-Window::~Window() { delete pImpl; }
+Window::~Window() = default;
 // getWidth/getHeight query SDL for the live pixel size each call so swapchain
 // rebuild after a resize sees the new extent, not the construction-time value.
 // SDL_GetWindowSizeInPixels is a cheap local lookup; the per-frame cost is
@@ -145,7 +145,7 @@ void Window::getRequiredExtensions(
 }
 
 VkSurfaceKHR Window::getVulkanSurface(VkInstance instance) const {
-  return const_cast<Impl *>(pImpl)->getVulkanSurface(instance);
+  return const_cast<Impl *>(pImpl.get())->getVulkanSurface(instance);
 }
 void Window::onClose(std::function<void()> cb) { pImpl->closeCallback = cb; }
 
@@ -170,11 +170,18 @@ void Window::destroyGraphicsHandle(GraphicsAPI api,
                                    GraphicsInstanceHandle instance,
                                    WindowGraphicsHandle handle) const {
   if (api == GraphicsAPI::Vulkan && handle) {
-    // Vulkan surfaces are destroyed automatically when the window is destroyed
+    VkInstance vkInstance = (VkInstance)instance;
+    VkSurfaceKHR surface = (VkSurfaceKHR)handle;
+    vkDestroySurfaceKHR(vkInstance, surface, nullptr);
+    if (pImpl->vkSurface == surface) {
+      pImpl->vkSurface = VK_NULL_HANDLE;
+    }
   }
 }
 
-void Window::updateSize(bool *closed, int *width, int *height) {}
+void Window::updateSize(bool *closed, int *width, int *height) {
+  pImpl->updateSize(closed, width, height);
+}
 
 } // namespace LX_infra
 

@@ -1,9 +1,17 @@
 #include "env.hpp"
+#include <cstring>
 #ifdef _WIN32
 #include <windows.h>
 #else
 #include <stdlib.h>
 #endif
+
+bool expEnvEnabled(const char *name) {
+  const char *value = std::getenv(name);
+  return value != nullptr && std::strcmp(value, "0") != 0;
+}
+
+bool expRendererDebugEnabled() { return expEnvEnabled("LX_RENDER_DEBUG"); }
 
 void expSetEnvVK() {
 #ifdef _WIN32

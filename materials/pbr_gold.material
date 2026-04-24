@@ -1,0 +1,17 @@
+shader: pbr
+
+passes:
+  Forward:
+    renderState:
+      cullMode: Back
+      depthTest: true
+      depthWrite: true
+
+parameters:
+  MaterialUBO.baseColorFactor: [1.0, 0.766, 0.336, 1.0]
+  MaterialUBO.metallicFactor: 1.0
+  MaterialUBO.roughnessFactor: 0.25
+  MaterialUBO.ao: 1.0
+
+resources:
+  albedoMap: white

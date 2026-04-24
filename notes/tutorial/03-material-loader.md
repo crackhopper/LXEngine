@@ -1,10 +1,10 @@
 # 03 · PBR Material Loader
 
-> 当前仓库**还没有** PBR loader。这里的任务不是复述一份过时接口，而是基于现在真实存在的 `loadBlinnPhongMaterial()`，说明 PBR loader 应该怎样接进现有材质系统。
+> 当前仓库已经不需要单独的 `loadPbrMaterial()`。PBR 材质现在直接走统一的 `.material` 资产路径，仓库内的最小示例是 [`materials/pbr_gold.material`](../../materials/pbr_gold.material)。
 
 ## 参考样板
 
-先读 `src/infra/material_loader/blinn_phong_material_loader.cpp`。它是当前唯一一个完整接进引擎的材质 loader，也是 PBR 版本应该直接复用的样板。
+先读 [`materials/pbr_gold.material`](../../materials/pbr_gold.material) 和 `src/infra/material_loader/generic_material_loader.cpp`。当前 PBR 路径已经通过通用 loader 接进引擎，不再需要一份单独的 material-type-specific loader。
 
 PBR 版最少要完成四件事：
 

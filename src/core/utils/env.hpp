@@ -1,3 +1,5 @@
 #pragma once
-void expSetEnvVK();
 
+bool expEnvEnabled(const char *name);
+bool expRendererDebugEnabled();
+void expSetEnvVK();

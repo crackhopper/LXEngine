@@ -88,6 +88,8 @@ public:
                                VkFormatFeatureFlags features);
 
   VkImageAspectFlags getDepthAspectMask() const;
+
+  static int getPhysicalDevicePreferenceScoreForTesting(VkPhysicalDeviceType type);
 private:
   // 内部初始化流程
   void createInstance(const char *appName, ApiVersion32 appVersion,

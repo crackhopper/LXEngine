@@ -13,9 +13,9 @@ struct ObjLoader::Impl {
   std::vector<MeshIndex32> indices;
 };
 
-ObjLoader::ObjLoader() : pImpl(new Impl) {}
+ObjLoader::ObjLoader() : pImpl(std::make_unique<Impl>()) {}
 
-ObjLoader::~ObjLoader() { delete pImpl; }
+ObjLoader::~ObjLoader() = default;
 
 static uint64_t makeKey(int a, int b, int c) {
   return (static_cast<uint64_t>(a + 0x7FFFFFFF) << 42) |

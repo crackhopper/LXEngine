@@ -22,6 +22,17 @@ The window system SHALL allow querying the current width and height of the windo
 - **WHEN** `getWidth()` or `getHeight()` is called on a `Window` instance
 - **THEN** the current pixel dimensions of the window SHALL be returned
 
+### Requirement: Public resize/update contract is backend-consistent
+All active window backends SHALL implement `updateSize(bool* closed, int* width, int* height)` as the public resize/minimize query path. A backend MUST NOT keep working resize logic only inside a private helper while exposing an empty public method.
+
+#### Scenario: SDL forwards updateSize publicly
+- **WHEN** `updateSize` is called on an SDL-backed window
+- **THEN** the call updates the output width/height/closed state through the same public contract shape used by GLFW
+
+#### Scenario: SDL and GLFW both update public size state
+- **WHEN** the engine polls `updateSize` on either backend
+- **THEN** the caller receives current close, width, and height state through the same public contract
+
 ### Requirement: Vulkan surface creation
 The window system SHALL expose the ability to create a Vulkan `VkSurfaceKHR` from the window for rendering.
 
@@ -32,6 +43,17 @@ The window system SHALL expose the ability to create a Vulkan `VkSurfaceKHR` fro
 #### Scenario: Vulkan surface creation failure
 - **WHEN** `SDL_Vulkan_CreateSurface` fails
 - **THEN** a `std::runtime_error` SHALL be thrown with an appropriate message
+
+### Requirement: Graphics handle ownership is backend-independent
+All window backends SHALL use the same ownership model for `createGraphicsHandle` and `destroyGraphicsHandle`. A Vulkan graphics handle MUST represent the actual `VkSurfaceKHR` value, not a heap-allocated wrapper around that value.
+
+#### Scenario: SDL and GLFW return equivalent Vulkan surface handles
+- **WHEN** the renderer requests a Vulkan graphics handle from either SDL or GLFW
+- **THEN** the returned `WindowGraphicsHandle` represents the actual `VkSurfaceKHR` value and is destroyed through `destroyGraphicsHandle`
+
+#### Scenario: createGraphicsHandle has backend-independent meaning
+- **WHEN** the renderer requests a Vulkan graphics handle from SDL or GLFW
+- **THEN** both backends return equivalent handle semantics and support matching destruction behavior
 
 ### Requirement: Window close detection
 

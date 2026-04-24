@@ -1,6 +1,7 @@
 #pragma once
 #include "core/platform/types.hpp" // i32, f32, f64
 #include "core/utils/hash.hpp"
+#include <bit>
 #include <cassert>
 #include <cmath>
 #include <functional>
@@ -99,8 +100,14 @@ template <typename Derived, typename T, int N> struct VecBase {
       for (int i = 0; i < N; ++i) {
         std::size_t hi;
         if constexpr (std::is_floating_point<T>::value) {
-          hi = std::hash<long long>()(
-              *reinterpret_cast<const long long *>(&v[i]));
+          if constexpr (std::is_same_v<T, f32>) {
+            hi = std::hash<u32>()(std::bit_cast<u32>(v[i]));
+          } else if constexpr (std::is_same_v<T, f64>) {
+            hi = std::hash<u64>()(std::bit_cast<u64>(v[i]));
+          } else {
+            static_assert(std::is_same_v<T, f32> || std::is_same_v<T, f64>,
+                          "unsupported floating point type");
+          }
         } else {
           hi = std::hash<T>()(v[i]);
         }
@@ -189,6 +196,12 @@ template <typename T> struct Vec4 : VecBase<Vec4<T>, T, 4> {
    */
   Vec3<f32> toVec3() const { return Vec3<f32>(x / w, y / w, z / w); }
 };
+
+template <typename S, typename Derived, typename T, int N>
+std::enable_if_t<std::is_arithmetic_v<S> && std::is_convertible_v<S, T>, Derived>
+operator*(S s, const VecBase<Derived, T, N> &v) {
+  return static_cast<const Derived &>(v) * static_cast<T>(s);
+}
 
 // ===================== 类型别名 =====================
 using Vec2i = Vec2<i32>;

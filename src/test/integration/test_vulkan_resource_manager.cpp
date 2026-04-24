@@ -15,12 +15,38 @@
 
 #include <vulkan/vulkan.h>
 
+#include <new>
 #include <iostream>
+#include <type_traits>
+
+namespace {
+
+struct TestUniformResource final : public LX_core::IGpuResource {
+  explicit TestUniformResource(uint32_t value) : value(value) {}
+
+  LX_core::ResourceType getType() const override {
+    return LX_core::ResourceType::UniformBuffer;
+  }
+  const void *getRawData() const override { return &value; }
+  ResourceByteSize32 getByteSize() const override {
+    return sizeof(value);
+  }
+
+  uint32_t value = 0;
+};
+
+template <typename T, typename... Args>
+std::shared_ptr<T> makePlacementShared(void *storage, Args &&...args) {
+  auto *ptr = new (storage) T(std::forward<Args>(args)...);
+  return std::shared_ptr<T>(ptr, [](T *p) { p->~T(); });
+}
+
+} // namespace
 
 int main() {
   expSetEnvVK();
   try {
-    auto success = cdToWhereResourcesCouldFound("blinnphong_0");
+    auto success = initializeRuntimeAssetRoot();
     if (!success) {
       std::cerr << "Failed to find shader files\n";
       return 1;
@@ -72,9 +98,9 @@ int main() {
     }
 
     auto vkVertexOpt =
-        resourceManager->getBuffer(vertexBufferPtr->getResourceHandle());
+        resourceManager->getBuffer(vertexBufferPtr->getBackendCacheIdentity());
     auto vkIndexOpt =
-        resourceManager->getBuffer(indexBufferPtr->getResourceHandle());
+        resourceManager->getBuffer(indexBufferPtr->getBackendCacheIdentity());
     if (!vkVertexOpt || !vkIndexOpt) {
       std::cerr << "Expected Vulkan buffers were not created\n";
       return 1;
@@ -85,6 +111,74 @@ int main() {
     if (vkVertex.getHandle() == VK_NULL_HANDLE ||
         vkIndex.getHandle() == VK_NULL_HANDLE) {
       std::cerr << "Vulkan buffer handles are null\n";
+      return 1;
+    }
+
+    auto tempResource = std::make_shared<TestUniformResource>(7u);
+    const auto tempIdentity = tempResource->getBackendCacheIdentity();
+    resourceManager->syncResource(*cmdBufferMgr, tempResource);
+    resourceManager->collectGarbage();
+    auto tempBuffer0 = resourceManager->getBuffer(tempIdentity);
+    if (!tempBuffer0) {
+      std::cerr << "Expected temp uniform GPU buffer after initial sync\n";
+      return 1;
+    }
+    const auto tempHandle0 = tempBuffer0->get().getHandle();
+
+    resourceManager->collectGarbage();
+    auto tempBuffer1 = resourceManager->getBuffer(tempIdentity);
+    if (!tempBuffer1 || tempBuffer1->get().getHandle() != tempHandle0) {
+      std::cerr << "Temporarily unused resource was not retained across grace frame\n";
+      return 1;
+    }
+
+    resourceManager->syncResource(*cmdBufferMgr, tempResource);
+    resourceManager->collectGarbage();
+    auto tempBuffer2 = resourceManager->getBuffer(tempIdentity);
+    if (!tempBuffer2 || tempBuffer2->get().getHandle() != tempHandle0) {
+      std::cerr << "Resync after one inactive frame should reuse same GPU buffer\n";
+      return 1;
+    }
+
+    resourceManager->collectGarbage();
+    resourceManager->collectGarbage();
+    if (resourceManager->getBuffer(tempIdentity)) {
+      std::cerr << "Temp resource should be evicted after inactivity grace period\n";
+      return 1;
+    }
+
+    using ReusedStorage =
+        std::aligned_storage_t<sizeof(TestUniformResource),
+                               alignof(TestUniformResource)>;
+    ReusedStorage reusedStorage;
+
+    auto reusedA = makePlacementShared<TestUniformResource>(&reusedStorage, 11u);
+    const auto reusedIdentityA = reusedA->getBackendCacheIdentity();
+    resourceManager->syncResource(*cmdBufferMgr, reusedA);
+    resourceManager->collectGarbage();
+    auto reusedBufferA = resourceManager->getBuffer(reusedIdentityA);
+    if (!reusedBufferA) {
+      std::cerr << "Expected first placement resource GPU buffer\n";
+      return 1;
+    }
+
+    auto firstAddress = reusedA.get();
+    reusedA.reset();
+
+    auto reusedB = makePlacementShared<TestUniformResource>(&reusedStorage, 22u);
+    const auto reusedIdentityB = reusedB->getBackendCacheIdentity();
+    if (reusedB.get() != firstAddress) {
+      std::cerr << "Placement test did not reuse the same CPU address\n";
+      return 1;
+    }
+    if (reusedIdentityA == reusedIdentityB) {
+      std::cerr << "Stable backend identity unexpectedly reused across objects\n";
+      return 1;
+    }
+
+    resourceManager->syncResource(*cmdBufferMgr, reusedB);
+    if (resourceManager->getCachedResourceCount() < 2) {
+      std::cerr << "Address-reused CPU resource aliased old GPU cache entry\n";
       return 1;
     }
 

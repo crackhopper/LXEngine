@@ -6,6 +6,7 @@
 #include "core/math/mat.hpp"
 #include "core/pipeline/pipeline_key.hpp"
 #include "core/rhi/gpu_resource.hpp"
+#include "core/scene/camera.hpp"
 #include <cstdint>
 #include <cstring>
 #include <functional>
@@ -35,6 +36,13 @@ struct PerDrawData {
     static_assert(sizeof(T) <= 128, "PushConstant block too large!");
     std::memcpy(data, &params, sizeof(T));
     activeSize = sizeof(T);
+  }
+
+  void updateModelMatrix(const Mat4f &model) {
+    std::memcpy(data, &model, sizeof(model));
+    if (activeSize < sizeof(PerDrawLayoutBase)) {
+      activeSize = sizeof(PerDrawLayoutBase);
+    }
   }
 
   const void *rawData() const { return data; }
@@ -67,6 +75,7 @@ public:
   virtual PerDrawDataSharedPtr getPerDrawData() const { return nullptr; }
   virtual StringID getRenderSignature(StringID pass) const = 0;
   virtual bool supportsPass(StringID pass) const = 0;
+  virtual VisibilityLayerMask getVisibilityLayerMask() const = 0;
   virtual std::string getNodeName() const = 0;
   virtual StringID getDebugId() const { return StringID{}; }
 
@@ -76,7 +85,8 @@ public:
 
 using IRenderableSharedPtr = std::shared_ptr<IRenderable>;
 
-class SceneNode final : public IRenderable {
+class SceneNode final : public IRenderable,
+                        public std::enable_shared_from_this<SceneNode> {
 public:
   using SharedPtr = std::shared_ptr<SceneNode>;
 
@@ -106,25 +116,44 @@ public:
   void setMesh(MeshSharedPtr mesh);
   void setMaterialInstance(MaterialInstanceSharedPtr material);
   void setSkeleton(SkeletonSharedPtr skeleton);
+  void setLocalTransform(const Mat4f &transform);
+  const Mat4f &getLocalTransform() const { return m_localTransform; }
+  const Mat4f &getWorldTransform() const;
+  void setParent(const SharedPtr &parent);
+  void clearParent();
+  SharedPtr getParent() const { return m_parent.lock(); }
 
   IGpuResourceSharedPtr getVertexBuffer() const override;
   IGpuResourceSharedPtr getIndexBuffer() const override;
   std::vector<IGpuResourceSharedPtr>
   getDescriptorResources(StringID pass) const override;
   IShaderSharedPtr getShaderInfo() const override;
-  PerDrawDataSharedPtr getPerDrawData() const override { return m_perDrawData; }
+  PerDrawDataSharedPtr getPerDrawData() const override;
   StringID getRenderSignature(StringID pass) const override;
   bool supportsPass(StringID pass) const override;
   std::string getNodeName() const override { return m_nodeName; }
   StringID getDebugId() const override { return m_debugId; }
   void setSceneDebugId(StringID debugId) { m_debugId = debugId; }
-  void attachToScene(Scene *scene) { m_scene = scene; }
+  void attachToScene(const std::weak_ptr<Scene> &scene) { m_scene = scene; }
+  void detachFromScene() { m_scene.reset(); }
+  std::shared_ptr<Scene> getAttachedScene() const { return m_scene.lock(); }
+  VisibilityLayerMask getVisibilityLayerMask() const override {
+    return m_visibilityLayerMask;
+  }
+  void setVisibilityLayerMask(VisibilityLayerMask mask) {
+    m_visibilityLayerMask = mask;
+  }
 
   std::optional<std::reference_wrapper<const ValidatedRenderablePassData>>
   getValidatedPassData(StringID pass) const override;
 
 private:
   friend class Scene;
+  void markWorldTransformDirty();
+  void updateWorldTransformIfNeeded() const;
+  void syncPerDrawModelMatrix() const;
+  void removeFromParentChildrenList();
+  void pruneExpiredChildren();
   void rebuildValidatedCache();
   void registerMaterialPassListener();
   void unregisterMaterialPassListener();
@@ -138,7 +167,14 @@ private:
   std::unordered_map<StringID, ValidatedRenderablePassData, StringID::Hash>
       m_validatedPasses;
   uint64_t m_materialPassListenerId = 0;
-  Scene *m_scene = nullptr;
+  std::weak_ptr<Scene> m_scene;
+  std::weak_ptr<SceneNode> m_parent;
+  std::vector<std::weak_ptr<SceneNode>> m_children;
+  Mat4f m_localTransform = Mat4f::identity();
+  mutable Mat4f m_worldTransform = Mat4f::identity();
+  mutable bool m_worldTransformDirty = false;
+  mutable bool m_worldTransformHasParent = false;
+  VisibilityLayerMask m_visibilityLayerMask = VisibilityMask_All;
 };
 
 using SceneNodeSharedPtr = SceneNode::SharedPtr;

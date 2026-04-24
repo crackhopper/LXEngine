@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <iostream>
 #include <sstream>
+#include <stdexcept>
 #include <utility>
 
 namespace LX_core {
@@ -45,19 +46,19 @@ std::string variantsDebugString(const ShaderProgramSet &programSet) {
                                   const ShaderProgramSet &programSet,
                                   const std::string &reason,
                                   const VertexLayout *layout = nullptr) {
-  std::cerr << "FATAL [SceneNodeValidation] node=" << node.getNodeName()
-            << " pass=" << GlobalStringTable::get().toDebugString(pass)
-            << " material="
-            << (material.getTemplate() ? material.getTemplate()->getName()
-                                       : std::string("<null>"))
-            << " shader=" << programSet.shaderName
-            << " variants=" << variantsDebugString(programSet)
-            << " reason=" << reason;
+  std::ostringstream oss;
+  oss << "SceneNodeValidation node=" << node.getNodeName()
+      << " pass=" << GlobalStringTable::get().toDebugString(pass)
+      << " material="
+      << (material.getTemplate() ? material.getTemplate()->getName()
+                                 : std::string("<null>"))
+      << " shader=" << programSet.shaderName
+      << " variants=" << variantsDebugString(programSet)
+      << " reason=" << reason;
   if (layout) {
-    std::cerr << " vertexLayout=" << vertexLayoutDebugString(*layout);
+    oss << " vertexLayout=" << vertexLayoutDebugString(*layout);
   }
-  std::cerr << std::endl;
-  std::terminate();
+  throw std::logic_error(oss.str());
 }
 
 const VertexLayoutItem *findLayoutItem(const VertexLayout &layout,
@@ -92,10 +93,14 @@ SceneNode::SceneNode(std::string nodeName, MeshSharedPtr mesh,
     m_skeleton = std::move(skeleton);
   }
   registerMaterialPassListener();
+  syncPerDrawModelMatrix();
   rebuildValidatedCache();
 }
 
-SceneNode::~SceneNode() { unregisterMaterialPassListener(); }
+SceneNode::~SceneNode() {
+  clearParent();
+  unregisterMaterialPassListener();
+}
 
 void SceneNode::setMesh(MeshSharedPtr mesh) {
   m_mesh = std::move(mesh);
@@ -116,6 +121,60 @@ void SceneNode::setSkeleton(SkeletonSharedPtr skeleton) {
     m_skeleton.reset();
   }
   rebuildValidatedCache();
+}
+
+void SceneNode::setLocalTransform(const Mat4f &transform) {
+  m_localTransform = transform;
+  markWorldTransformDirty();
+}
+
+const Mat4f &SceneNode::getWorldTransform() const {
+  updateWorldTransformIfNeeded();
+  return m_worldTransform;
+}
+
+void SceneNode::setParent(const SharedPtr &parent) {
+  if (parent.get() == this) {
+    throw std::logic_error("SceneNodeHierarchy node=" + m_nodeName +
+                           " cannot parent itself");
+  }
+
+  for (auto current = parent; current; current = current->getParent()) {
+    if (current.get() == this) {
+      throw std::logic_error("SceneNodeHierarchy node=" + m_nodeName +
+                             " would create a parent cycle");
+    }
+  }
+
+  auto currentParent = m_parent.lock();
+  if (currentParent == parent) {
+    return;
+  }
+
+  removeFromParentChildrenList();
+  m_parent.reset();
+
+  if (parent) {
+    parent->pruneExpiredChildren();
+    parent->m_children.push_back(weak_from_this());
+    m_parent = parent;
+  }
+
+  markWorldTransformDirty();
+}
+
+void SceneNode::clearParent() {
+  if (m_parent.expired()) {
+    m_parent.reset();
+    if (m_worldTransformHasParent) {
+      markWorldTransformDirty();
+    }
+    return;
+  }
+
+  removeFromParentChildrenList();
+  m_parent.reset();
+  markWorldTransformDirty();
 }
 
 IGpuResourceSharedPtr SceneNode::getVertexBuffer() const {
@@ -144,6 +203,11 @@ IShaderSharedPtr SceneNode::getShaderInfo() const {
                             : nullptr;
 }
 
+PerDrawDataSharedPtr SceneNode::getPerDrawData() const {
+  updateWorldTransformIfNeeded();
+  return m_perDrawData;
+}
+
 StringID SceneNode::getRenderSignature(StringID pass) const {
   if (!m_mesh)
     return StringID{};
@@ -159,23 +223,81 @@ bool SceneNode::supportsPass(StringID pass) const {
 
 std::optional<std::reference_wrapper<const ValidatedRenderablePassData>>
 SceneNode::getValidatedPassData(StringID pass) const {
+  updateWorldTransformIfNeeded();
   auto it = m_validatedPasses.find(pass);
   if (it == m_validatedPasses.end())
     return std::nullopt;
   return std::cref(it->second);
 }
 
+void SceneNode::markWorldTransformDirty() {
+  m_worldTransformDirty = true;
+  pruneExpiredChildren();
+  for (auto &childWeak : m_children) {
+    if (auto child = childWeak.lock()) {
+      child->markWorldTransformDirty();
+    }
+  }
+}
+
+void SceneNode::updateWorldTransformIfNeeded() const {
+  if (!m_worldTransformDirty &&
+      !(m_worldTransformHasParent && m_parent.expired())) {
+    return;
+  }
+
+  Mat4f world = m_localTransform;
+  const auto parent = m_parent.lock();
+  if (parent) {
+    world = parent->getWorldTransform() * m_localTransform;
+  }
+
+  m_worldTransform = world;
+  m_worldTransformHasParent = static_cast<bool>(parent);
+  syncPerDrawModelMatrix();
+  m_worldTransformDirty = false;
+}
+
+void SceneNode::syncPerDrawModelMatrix() const {
+  if (m_perDrawData) {
+    m_perDrawData->updateModelMatrix(m_worldTransform);
+  }
+}
+
+void SceneNode::removeFromParentChildrenList() {
+  auto parent = m_parent.lock();
+  if (!parent) {
+    return;
+  }
+
+  auto &siblings = parent->m_children;
+  siblings.erase(
+      std::remove_if(siblings.begin(), siblings.end(),
+                     [this](const std::weak_ptr<SceneNode> &candidate) {
+                       auto child = candidate.lock();
+                       return !child || child.get() == this;
+                     }),
+      siblings.end());
+}
+
+void SceneNode::pruneExpiredChildren() {
+  m_children.erase(
+      std::remove_if(m_children.begin(), m_children.end(),
+                     [](const std::weak_ptr<SceneNode> &candidate) {
+                       return candidate.expired();
+                     }),
+      m_children.end());
+}
+
 void SceneNode::rebuildValidatedCache() {
   m_validatedPasses.clear();
 
   if (m_nodeName.empty()) {
-    std::cerr << "FATAL [SceneNodeValidation] empty nodeName" << std::endl;
-    std::terminate();
+    throw std::logic_error("SceneNodeValidation empty nodeName");
   }
   if (!m_mesh || !m_materialInstance || !m_materialInstance->getTemplate()) {
-    std::cerr << "FATAL [SceneNodeValidation] node=" << m_nodeName
-              << " missing mesh/material template" << std::endl;
-    std::terminate();
+    throw std::logic_error("SceneNodeValidation node=" + m_nodeName +
+                           " missing mesh/material template");
   }
 
   const auto &layout = m_mesh->getVertexLayout();
@@ -290,8 +412,8 @@ void SceneNode::registerMaterialPassListener() {
   if (!m_materialInstance)
     return;
   m_materialPassListenerId = m_materialInstance->addPassStateListener([this]() {
-    if (m_scene && m_materialInstance) {
-      m_scene->revalidateNodesUsing(m_materialInstance);
+    if (auto scene = m_scene.lock(); scene && m_materialInstance) {
+      scene->revalidateNodesUsing(m_materialInstance);
       return;
     }
     rebuildValidatedCache();

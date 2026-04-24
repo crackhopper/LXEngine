@@ -99,10 +99,25 @@ makeRenderable(const std::string &shaderName = "fake_fg",
                            material, nullptr);
 }
 
+std::shared_ptr<SceneNode>
+makeRenderableWithMask(VisibilityLayerMask mask,
+                       const std::string &shaderName = "fake_fg") {
+  auto node = makeRenderable(shaderName);
+  node->setVisibilityLayerMask(mask);
+  return node;
+}
+
 // Helpers for REQ-009 scenarios.
 CameraSharedPtr makeCameraWithTarget(const RenderTarget &target) {
   auto cam = std::make_shared<Camera>();
   cam->setTarget(target);
+  return cam;
+}
+
+CameraSharedPtr makeCameraWithTargetAndMask(const RenderTarget &target,
+                                            VisibilityLayerMask mask) {
+  auto cam = makeCameraWithTarget(target);
+  cam->setCullingMask(mask);
   return cam;
 }
 
@@ -335,6 +350,71 @@ void testCollectAcrossMultiplePasses() {
          "same pipeline key across two passes dedupes to 1 info");
 }
 
+void testVisibilityMaskFiltersRenderables() {
+  const RenderTarget target{ImageFormat::BGRA8, ImageFormat::D32Float, 2};
+
+  auto visible = makeRenderableWithMask(0x1u, "visible_fg");
+  auto hidden = makeRenderableWithMask(0x2u, "hidden_fg");
+  auto scene = Scene::create(visible);
+  scene->addRenderable(hidden);
+  scene->addCamera(makeCameraWithTargetAndMask(target, 0x1u));
+
+  FrameGraph fg;
+  fg.addPass(FramePass{Pass_Forward, target, {}});
+  fg.buildFromScene(*scene);
+
+  const auto &items = fg.getPasses()[0].queue.getItems();
+  EXPECT(items.size() == 1, "only mask-visible renderable enters queue");
+  if (items.size() == 1) {
+    EXPECT(items[0].pipelineKey ==
+               visible->getValidatedPassData(Pass_Forward)->get().pipelineKey,
+           "visible renderable survives mask culling");
+  }
+}
+
+void testVisibilityMaskOrsMatchingCameraMasks() {
+  const RenderTarget target{ImageFormat::BGRA8, ImageFormat::D32Float, 3};
+
+  auto layer1 = makeRenderableWithMask(0x1u, "mask_or_a");
+  auto layer2 = makeRenderableWithMask(0x2u, "mask_or_b");
+  auto scene = Scene::create(layer1);
+  scene->addRenderable(layer2);
+  scene->addCamera(makeCameraWithTargetAndMask(target, 0x1u));
+  scene->addCamera(makeCameraWithTargetAndMask(target, 0x2u));
+
+  FrameGraph fg;
+  fg.addPass(FramePass{Pass_Forward, target, {}});
+  fg.buildFromScene(*scene);
+
+  EXPECT(fg.getPasses()[0].queue.getItems().size() == 2,
+         "matching cameras OR culling masks before renderable filtering");
+}
+
+void testVisibilityFilteringKeepsSceneResources() {
+  const RenderTarget target{ImageFormat::BGRA8, ImageFormat::D32Float, 5};
+
+  auto visible = makeRenderableWithMask(0x1u, "resource_visible");
+  auto hidden = makeRenderableWithMask(0x2u, "resource_hidden");
+  auto scene = Scene::create(visible);
+  scene->addRenderable(hidden);
+  scene->addCamera(makeCameraWithTargetAndMask(target, 0x1u));
+
+  const auto sceneResources = scene->getSceneLevelResources(Pass_Forward, target);
+  EXPECT(sceneResources.size() == 2,
+         "camera resources remain target-driven even when one renderable is hidden");
+
+  FrameGraph fg;
+  fg.addPass(FramePass{Pass_Forward, target, {}});
+  fg.buildFromScene(*scene);
+
+  const auto &items = fg.getPasses()[0].queue.getItems();
+  EXPECT(items.size() == 1, "hidden renderable stays filtered");
+  if (items.size() == 1) {
+    EXPECT(items[0].descriptorResources.size() == sceneResources.size(),
+           "visible item still receives full scene-level resources");
+  }
+}
+
 } // namespace
 
 int main() {
@@ -351,6 +431,9 @@ int main() {
   testMultiCameraTargetFilter();
   testMultiLightPassFilter();
   testNullOptCameraBeforeAndAfterFill();
+  testVisibilityMaskFiltersRenderables();
+  testVisibilityMaskOrsMatchingCameraMasks();
+  testVisibilityFilteringKeepsSceneResources();
 
   if (failures > 0) {
     std::cerr << "FAILED: " << failures << " assertion(s)\n";

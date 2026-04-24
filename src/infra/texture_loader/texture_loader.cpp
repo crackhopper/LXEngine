@@ -18,11 +18,9 @@ struct TextureLoader::Impl {
   }
 };
 
-TextureLoader::TextureLoader() : pImpl(new Impl) {}
+TextureLoader::TextureLoader() : pImpl(std::make_unique<Impl>()) {}
 
-TextureLoader::~TextureLoader() {
-  delete pImpl;
-}
+TextureLoader::~TextureLoader() = default;
 
 void TextureLoader::load(const std::string& filename) {
   int width, height, channels;

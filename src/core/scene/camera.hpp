@@ -4,10 +4,14 @@
 #include "core/math/mat.hpp" // 假设你有 Mat4f 定义
 #include "core/math/vec.hpp" // Vec3f
 #include <cmath>
+#include <cstdint>
 #include <memory>
 #include <optional>
 
 namespace LX_core {
+
+using VisibilityLayerMask = uint32_t;
+inline constexpr VisibilityLayerMask VisibilityMask_All = 0xffffffffu;
 
 // CameraData is the GPU-facing UBO view of a Camera. The Camera object owns
 // high-level parameters; this struct owns the packed bytes the backend uploads.
@@ -82,6 +86,8 @@ public:
   const std::optional<RenderTarget> &getTarget() const { return m_target; }
   void setTarget(RenderTarget target) { m_target = std::move(target); }
   void clearTarget() { m_target.reset(); }
+  VisibilityLayerMask getCullingMask() const { return m_cullingMask; }
+  void setCullingMask(VisibilityLayerMask mask) { m_cullingMask = mask; }
 
   /// True iff m_target has a value AND equals `target` field-by-field.
   /// nullopt cameras always return false — the backfill contract is on
@@ -92,6 +98,7 @@ public:
 
 private:
   std::optional<RenderTarget> m_target;
+  VisibilityLayerMask m_cullingMask = VisibilityMask_All;
 
 public:
   // 更新矩阵（在渲染前调用）

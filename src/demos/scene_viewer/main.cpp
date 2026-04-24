@@ -38,11 +38,8 @@ constexpr int kWindowHeight = 720;
 
 int main() {
   expSetEnvVK();
-  // REQ-010: centralise the working directory on the assets root so relative
-  // paths in material files, glTF buffers, and textures all resolve.
-  if (!cdToWhereAssetsExist("models/damaged_helmet/DamagedHelmet.gltf")) {
-    std::cerr << "[scene_viewer] failed to locate assets via "
-                 "cdToWhereAssetsExist\n";
+  if (!initializeRuntimeAssetRoot()) {
+    std::cerr << "[scene_viewer] failed to initialize runtime asset root\n";
     return 1;
   }
 
@@ -61,9 +58,10 @@ int main() {
     // Build the scene. Helmet is the initial renderable passed to Scene;
     // ground is added afterwards via addRenderable().
     const std::filesystem::path gltfPath =
-        "assets/models/damaged_helmet/DamagedHelmet.gltf";
+        resolveRuntimePath("assets/models/damaged_helmet/DamagedHelmet.gltf");
     auto helmet = demo::buildHelmetNode(gltfPath);
     auto ground = demo::buildGroundNode();
+    helmet->setParent(ground);
 
     auto scene = LX_core::Scene::create("scene_viewer", helmet);
     scene->addRenderable(ground);

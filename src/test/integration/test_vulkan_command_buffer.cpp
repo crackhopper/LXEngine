@@ -24,7 +24,7 @@
 int main() {
   expSetEnvVK();
   try {
-    auto success = cdToWhereResourcesCouldFound("blinnphong_0");
+    auto success = initializeRuntimeAssetRoot();
     if (!success) {
       std::cerr << "Failed to find shader files\n";
       return 1;

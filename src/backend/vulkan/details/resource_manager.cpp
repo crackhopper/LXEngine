@@ -17,6 +17,8 @@
 namespace LX_core::backend {
 
 namespace {
+constexpr ResourceCacheIdentity kInactiveFrameGracePeriod = 2;
+
 VkFormat toVkFormat(TextureFormat format) {
   switch (format) {
   case TextureFormat::RGBA8:
@@ -65,17 +67,26 @@ void VulkanResourceManager::syncResource(
   if (!cpuRes)
     return;
 
-  void *handle = cpuRes->getResourceHandle();
-  m_activeHandles.insert(handle);
+  const ResourceCacheIdentity identity = cpuRes->getBackendCacheIdentity();
+  m_activeResourceIds.insert(identity);
 
-  auto it = m_gpuResources.find(handle);
+  auto it = m_gpuResources.find(identity);
   if (it == m_gpuResources.end()) {
-    m_gpuResources[handle] = createGpuResource(cpuRes);
+    CachedGpuResource entry;
+    entry.resource = createGpuResource(cpuRes);
+    entry.lastSeenFrame = m_frameSerial;
+    auto [insertedIt, inserted] =
+        m_gpuResources.emplace(identity, std::move(entry));
+    (void)inserted;
     // 新创建的资源强制更新一次数据
-    updateGpuResource(m_gpuResources[handle], cpuRes, cmdBufferManager);
+    updateGpuResource(insertedIt->second.resource, cpuRes, cmdBufferManager);
     cpuRes->clearDirty();
-  } else if (cpuRes->isDirty()) {
-    updateGpuResource(it->second, cpuRes, cmdBufferManager);
+    return;
+  }
+
+  it->second.lastSeenFrame = m_frameSerial;
+  if (cpuRes->isDirty()) {
+    updateGpuResource(it->second.resource, cpuRes, cmdBufferManager);
     cpuRes->clearDirty();
   }
 }
@@ -168,13 +179,16 @@ void VulkanResourceManager::updateGpuResource(
 
 void VulkanResourceManager::collectGarbage() {
   for (auto it = m_gpuResources.begin(); it != m_gpuResources.end();) {
-    if (m_activeHandles.find(it->first) == m_activeHandles.end()) {
+    if (m_activeResourceIds.find(it->first) == m_activeResourceIds.end() &&
+        (m_frameSerial - it->second.lastSeenFrame) >=
+            kInactiveFrameGracePeriod) {
       it = m_gpuResources.erase(it);
     } else {
       ++it;
     }
   }
-  m_activeHandles.clear();
+  m_activeResourceIds.clear();
+  ++m_frameSerial;
 }
 
 void VulkanResourceManager::initializeRenderPassAndPipeline(
@@ -191,19 +205,19 @@ void VulkanResourceManager::initializeRenderPassAndPipeline(
 #define GET_RESOURCE_IMPL(ReturnType, VariantType)                             \
   auto it = m_gpuResources.find(handle);                                       \
   if (it != m_gpuResources.end()) {                                            \
-    if (auto resPtr = std::get_if<VariantType>(&(*(it->second)))) {            \
+    if (auto resPtr = std::get_if<VariantType>(&(*(it->second.resource)))) {   \
       return std::ref(*(resPtr->get()));                                       \
     }                                                                          \
   }                                                                            \
   return std::nullopt;
 
 std::optional<std::reference_wrapper<VulkanBuffer>>
-VulkanResourceManager::getBuffer(void *handle) {
+VulkanResourceManager::getBuffer(ResourceCacheIdentity handle) {
   GET_RESOURCE_IMPL(VulkanBuffer, VulkanBufferUniquePtr);
 }
 
 std::optional<std::reference_wrapper<VulkanTexture>>
-VulkanResourceManager::getTexture(void *handle) {
+VulkanResourceManager::getTexture(ResourceCacheIdentity handle) {
   GET_RESOURCE_IMPL(VulkanTexture, VulkanTextureUniquePtr);
 }
 

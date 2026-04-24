@@ -55,7 +55,7 @@
 - YAML 中的参数/资源名必须在 shader 反射中存在，否则 FATAL。YAML 不参与 ownership 判定。
 - Loader 会对全局 YAML 中声明的参数名、member 名、资源 binding 名逐一校验是否存在于材质可见的 shader 反射中，不匹配则 FATAL。
 - `passes.<pass>.parameters` 和 `passes.<pass>.resources` 不再支持；材质实例只保存一份 canonical 运行时数据。
-- 参考示例：`materials/blinnphong_lit.material`。
+- 参考示例：`materials/pbr_gold.material`（非 `blinnphong_0` 的最小 PBR 示例）以及 `materials/blinnphong_lit.material`。
 ## 从哪里改
 
 - 想加新材质类型：写一个 `.material` 并调用 `loadGenericMaterial()`，不需要新的 C++ loader。

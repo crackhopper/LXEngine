@@ -263,10 +263,27 @@ bool hasBinding(const std::vector<IGpuResourceSharedPtr> &resources,
   return false;
 }
 
-int runSelf(const std::filesystem::path &self, const char *mode) {
-  const std::string cmd =
-      "\"" + self.string() + "\" " + mode + " >/dev/null 2>&1";
-  return std::system(cmd.c_str());
+bool nearlyEqualVec3(const Vec3f &a, const Vec3f &b) {
+  return std::abs(a.x - b.x) < 1e-5f && std::abs(a.y - b.y) < 1e-5f &&
+         std::abs(a.z - b.z) < 1e-5f;
+}
+
+Vec3f transformPoint(const Mat4f &transform, const Vec3f &point = Vec3f{}) {
+  return (transform * Vec4f{point.x, point.y, point.z, 1.0f}).toVec3();
+}
+
+const PerDrawLayoutBase &readPerDrawLayout(const PerDrawDataSharedPtr &drawData) {
+  return *reinterpret_cast<const PerDrawLayoutBase *>(drawData->rawData());
+}
+
+const RenderingItem *findItemByDrawData(const RenderQueue &queue,
+                                        const PerDrawDataSharedPtr &drawData) {
+  for (const auto &item : queue.getItems()) {
+    if (item.drawData == drawData) {
+      return &item;
+    }
+  }
+  return nullptr;
 }
 
 void testIndependentSceneNodeValidation() {
@@ -326,6 +343,23 @@ void testSharedMaterialPassChangesRevalidateAllSceneNodes() {
          "shared material reenable rebuilds second node");
 }
 
+void testSceneNodeBackrefUsesWeakOwnershipContract() {
+  auto material = makeMaterial(false);
+  auto node = SceneNode::create("node_backref", makeMeshWithSkinningInputs(),
+                                material, nullptr);
+  EXPECT(!node->getAttachedScene(),
+         "fresh node should not report an attached scene");
+
+  auto scene = Scene::create("BackrefScene", node);
+  auto attachedScene = node->getAttachedScene();
+  EXPECT(attachedScene != nullptr,
+         "adding node to scene should establish back-reference");
+  if (attachedScene) {
+    EXPECT(attachedScene->getSceneName() == "BackrefScene",
+           "back-reference should lock the owning scene");
+  }
+}
+
 void testSceneDestructionDetachesSceneNodesFromMaterialListener() {
   auto material = makeMaterial(false);
   auto node = SceneNode::create("node_detach", makeMeshWithSkinningInputs(),
@@ -334,7 +368,12 @@ void testSceneDestructionDetachesSceneNodesFromMaterialListener() {
   {
     auto scene = Scene::create("TemporaryScene", node);
     EXPECT(node->supportsPass(Pass_Forward), "scene-owned node starts validated");
+    EXPECT(node->getAttachedScene() != nullptr,
+           "scene-owned node reports attached scene before destruction");
   }
+
+  EXPECT(!node->getAttachedScene(),
+         "scene destruction should clear weak back-reference");
 
   material->setPassEnabled(Pass_Forward, false);
   EXPECT(!node->supportsPass(Pass_Forward),
@@ -345,6 +384,44 @@ void testSceneDestructionDetachesSceneNodesFromMaterialListener() {
   material->setPassEnabled(Pass_Forward, true);
   EXPECT(node->supportsPass(Pass_Forward),
          "detached node should revalidate locally after scene destruction");
+}
+
+void testSceneNodeHierarchyPropagatesWorldTransform() {
+  auto parent = SceneNode::create("node_parent", makeMeshWithSkinningInputs(),
+                                  makeMaterial(false), nullptr);
+  auto child = SceneNode::create("node_child", makeMeshWithSkinningInputs(),
+                                 makeMaterial(false), nullptr);
+
+  parent->setLocalTransform(Mat4f::translate(Vec3f{2.0f, 0.0f, -1.0f}));
+  child->setLocalTransform(Mat4f::translate(Vec3f{0.0f, 3.0f, 4.0f}));
+  child->setParent(parent);
+
+  EXPECT(nearlyEqualVec3(transformPoint(parent->getWorldTransform()),
+                         Vec3f{2.0f, 0.0f, -1.0f}),
+         "parent world transform should match parent local transform");
+  EXPECT(nearlyEqualVec3(transformPoint(child->getWorldTransform()),
+                         Vec3f{2.0f, 3.0f, 3.0f}),
+         "child world transform should compose parent and local transforms");
+}
+
+void testHierarchyChangesDirtyChildPerDrawModel() {
+  auto parent = SceneNode::create("node_parent_dirty",
+                                  makeMeshWithSkinningInputs(),
+                                  makeMaterial(false), nullptr);
+  auto child = SceneNode::create("node_child_dirty", makeMeshWithSkinningInputs(),
+                                 makeMaterial(false), nullptr);
+  child->setParent(parent);
+  child->setLocalTransform(Mat4f::translate(Vec3f{0.0f, 1.0f, 0.0f}));
+
+  parent->setLocalTransform(Mat4f::translate(Vec3f{1.0f, 0.0f, 0.0f}));
+  const auto &before = readPerDrawLayout(child->getPerDrawData());
+  EXPECT(nearlyEqualVec3(transformPoint(before.model), Vec3f{1.0f, 1.0f, 0.0f}),
+         "child per-draw model should reflect initial parent transform");
+
+  parent->setLocalTransform(Mat4f::translate(Vec3f{5.0f, -2.0f, 0.0f}));
+  const auto &after = readPerDrawLayout(child->getPerDrawData());
+  EXPECT(nearlyEqualVec3(transformPoint(after.model), Vec3f{5.0f, -1.0f, 0.0f}),
+         "changing parent transform should dirty and refresh child per-draw model");
 }
 
 void testOrdinaryMaterialWritesDoNotChangeValidatedPassState() {
@@ -433,6 +510,34 @@ void testRenderQueueConsumesValidatedSceneNode() {
   }
 }
 
+void testRenderQueueUsesHierarchyDerivedWorldTransform() {
+  auto parent = SceneNode::create("node_queue_parent",
+                                  makeMeshWithSkinningInputs(),
+                                  makeMaterial(false), nullptr);
+  auto child = SceneNode::create("node_queue_child", makeMeshWithSkinningInputs(),
+                                 makeMaterial(false), nullptr);
+  parent->setLocalTransform(Mat4f::translate(Vec3f{4.0f, 0.5f, 0.0f}));
+  child->setLocalTransform(Mat4f::translate(Vec3f{0.0f, 1.5f, 0.0f}));
+  child->setParent(parent);
+
+  auto scene = Scene::create("SceneQueueHierarchy", parent);
+  scene->addRenderable(child);
+
+  RenderQueue queue;
+  queue.buildFromScene(*scene, Pass_Forward, RenderTarget{});
+
+  EXPECT(queue.getItems().size() == 2,
+         "queue should include both parent and child renderables");
+  const auto *childItem = findItemByDrawData(queue, child->getPerDrawData());
+  EXPECT(childItem != nullptr,
+         "queue should carry the child per-draw data pointer");
+  if (childItem) {
+    const auto &layout = readPerDrawLayout(childItem->drawData);
+    EXPECT(nearlyEqualVec3(transformPoint(layout.model), Vec3f{4.0f, 2.0f, 0.0f}),
+           "queue draw data should use hierarchy-derived child world transform");
+  }
+}
+
 void testSceneAssignsStableDebugId() {
   auto node = SceneNode::create("node_debug", makeMeshWithSkinningInputs(),
                                 makeMaterial(false), nullptr);
@@ -444,111 +549,99 @@ void testSceneAssignsStableDebugId() {
          "scene attachment should assign stable scene/node debug id");
 }
 
-int duplicateMode() {
-  auto material = makeMaterial(false);
-  auto nodeA =
-      SceneNode::create("dup_node", makeMeshWithSkinningInputs(), material);
-  auto nodeB =
-      SceneNode::create("dup_node", makeMeshWithSkinningInputs(), material);
-  auto scene = Scene::create("DuplicateScene", nodeA);
-  scene->addRenderable(nodeB);
-  return 0;
-}
+void testProgrammerErrorsThrowLogicError() {
+  bool threw = false;
+  try {
+    auto material = makeMaterial(false);
+    auto nodeA =
+        SceneNode::create("dup_node", makeMeshWithSkinningInputs(), material);
+    auto nodeB =
+        SceneNode::create("dup_node", makeMeshWithSkinningInputs(), material);
+    auto scene = Scene::create("DuplicateScene", nodeA);
+    scene->addRenderable(nodeB);
+  } catch (const std::logic_error &) {
+    threw = true;
+  }
+  EXPECT(threw, "duplicate node names must throw logic_error");
 
-int invalidSkinningMode() {
-  auto node = SceneNode::create("bad_skinning", makeMeshWithoutSkinningInputs(),
-                                makeMaterial(true), makeSkeleton());
-  (void)node;
-  return 0;
-}
+  threw = false;
+  try {
+    auto node = SceneNode::create(
+        "bad_vertex_color", makeMeshPositionOnly(),
+        makeMaterial({ShaderVariant{"USE_VERTEX_COLOR", true},
+                      ShaderVariant{"USE_LIGHTING", false}}),
+        nullptr);
+    (void)node;
+  } catch (const std::logic_error &) {
+    threw = true;
+  }
+  EXPECT(threw, "missing vertex color input must throw logic_error");
 
-int invalidVertexColorMode() {
-  auto node = SceneNode::create(
-      "bad_vertex_color", makeMeshPositionOnly(),
-      makeMaterial({ShaderVariant{"USE_VERTEX_COLOR", true},
-                    ShaderVariant{"USE_LIGHTING", false}}),
-      nullptr);
-  (void)node;
-  return 0;
-}
+  threw = false;
+  try {
+    auto node = SceneNode::create(
+        "bad_uv", makeMeshPositionOnly(),
+        makeMaterial({ShaderVariant{"USE_UV", true},
+                      ShaderVariant{"USE_LIGHTING", false}}),
+        nullptr);
+    (void)node;
+  } catch (const std::logic_error &) {
+    threw = true;
+  }
+  EXPECT(threw, "missing uv input must throw logic_error");
 
-int invalidUvMode() {
-  auto node = SceneNode::create(
-      "bad_uv", makeMeshPositionOnly(),
-      makeMaterial({ShaderVariant{"USE_UV", true},
-                    ShaderVariant{"USE_LIGHTING", false}}),
-      nullptr);
-  (void)node;
-  return 0;
-}
+  threw = false;
+  try {
+    auto node = SceneNode::create("bad_lighting", makeMeshPositionOnly(),
+                                  makeMaterial(false), nullptr);
+    (void)node;
+  } catch (const std::logic_error &) {
+    threw = true;
+  }
+  EXPECT(threw, "missing normal input must throw logic_error");
 
-int invalidLightingMode() {
-  auto node = SceneNode::create("bad_lighting", makeMeshPositionOnly(),
-                                makeMaterial(false), nullptr);
-  (void)node;
-  return 0;
-}
+  threw = false;
+  try {
+    auto node = SceneNode::create(
+        "bad_normal_map", makeMeshWithNormalAndUvOnly(),
+        makeMaterial({ShaderVariant{"USE_UV", true},
+                      ShaderVariant{"USE_LIGHTING", true},
+                      ShaderVariant{"USE_NORMAL_MAP", true}}),
+        nullptr);
+    (void)node;
+  } catch (const std::logic_error &) {
+    threw = true;
+  }
+  EXPECT(threw, "missing tangent input must throw logic_error");
 
-int invalidNormalMapMode() {
-  auto node = SceneNode::create(
-      "bad_normal_map", makeMeshWithNormalAndUvOnly(),
-      makeMaterial({ShaderVariant{"USE_UV", true},
-                    ShaderVariant{"USE_LIGHTING", true},
-                    ShaderVariant{"USE_NORMAL_MAP", true}}),
-      nullptr);
-  (void)node;
-  return 0;
-}
+  threw = false;
+  try {
+    auto node = SceneNode::create("bad_skinning",
+                                  makeMeshWithoutSkinningInputs(),
+                                  makeMaterial(true), makeSkeleton());
+    (void)node;
+  } catch (const std::logic_error &) {
+    threw = true;
+  }
+  EXPECT(threw, "missing skinning vertex inputs must throw logic_error");
 
-int invalidSkinningSkeletonMode() {
-  auto node = SceneNode::create("bad_skinning_skeleton",
-                                makeMeshWithSkinningInputs(), makeMaterial(true),
-                                nullptr);
-  (void)node;
-  return 0;
-}
-
-void testFatalSubprocesses(const std::filesystem::path &self) {
-  EXPECT(runSelf(self, "--duplicate") != 0,
-         "duplicate node names must terminate in subprocess");
-  EXPECT(runSelf(self, "--invalid-vertex-color") != 0,
-         "missing vertex color input must terminate in subprocess");
-  EXPECT(runSelf(self, "--invalid-uv") != 0,
-         "missing uv input must terminate in subprocess");
-  EXPECT(runSelf(self, "--invalid-lighting") != 0,
-         "missing normal input must terminate in subprocess");
-  EXPECT(runSelf(self, "--invalid-normal-map") != 0,
-         "missing tangent input must terminate in subprocess");
-  EXPECT(runSelf(self, "--invalid-skinning") != 0,
-         "missing skinning vertex inputs must terminate in subprocess");
-  EXPECT(runSelf(self, "--invalid-skinning-skeleton") != 0,
-         "missing skeleton for skinned pass must terminate in subprocess");
+  threw = false;
+  try {
+    auto node = SceneNode::create("bad_skinning_skeleton",
+                                  makeMeshWithSkinningInputs(),
+                                  makeMaterial(true), nullptr);
+    (void)node;
+  } catch (const std::logic_error &) {
+    threw = true;
+  }
+  EXPECT(threw, "missing skeleton for skinned pass must throw logic_error");
 }
 
 } // namespace
 
 int main(int argc, char **argv) {
   expSetEnvVK();
-  if (argc > 1) {
-    cdToWhereResourcesCouldFound("blinnphong_0");
-    const std::string mode = argv[1];
-    if (mode == "--duplicate")
-      return duplicateMode();
-    if (mode == "--invalid-vertex-color")
-      return invalidVertexColorMode();
-    if (mode == "--invalid-uv")
-      return invalidUvMode();
-    if (mode == "--invalid-lighting")
-      return invalidLightingMode();
-    if (mode == "--invalid-normal-map")
-      return invalidNormalMapMode();
-    if (mode == "--invalid-skinning")
-      return invalidSkinningMode();
-    if (mode == "--invalid-skinning-skeleton")
-      return invalidSkinningSkeletonMode();
-  }
-
-  if (!cdToWhereResourcesCouldFound("blinnphong_0")) {
+  if (!initializeRuntimeAssetRoot()) {
     std::cerr << "SKIP: failed to locate shader assets\n";
     return 0;
   }
@@ -556,13 +649,17 @@ int main(int argc, char **argv) {
   testIndependentSceneNodeValidation();
   testPassEnableStateRebuildsCache();
   testSharedMaterialPassChangesRevalidateAllSceneNodes();
+  testSceneNodeBackrefUsesWeakOwnershipContract();
   testSceneDestructionDetachesSceneNodesFromMaterialListener();
+  testSceneNodeHierarchyPropagatesWorldTransform();
+  testHierarchyChangesDirtyChildPerDrawModel();
   testOrdinaryMaterialWritesDoNotChangeValidatedPassState();
   testOptionalSampledResourcesDoNotBlockValidation();
   testSkinningVariantChangesPipelineKeyAndAddsBones();
   testRenderQueueConsumesValidatedSceneNode();
+  testRenderQueueUsesHierarchyDerivedWorldTransform();
   testSceneAssignsStableDebugId();
-  testFatalSubprocesses(std::filesystem::absolute(argv[0]));
+  testProgrammerErrorsThrowLogicError();
 
   if (failures > 0) {
     std::cerr << "FAILED: " << failures << " assertion(s)\n";

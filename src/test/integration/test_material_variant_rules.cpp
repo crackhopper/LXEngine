@@ -26,12 +26,6 @@ int failures = 0;
 
 namespace fs = std::filesystem;
 
-int runSelf(const fs::path &self, const char *mode) {
-  const std::string cmd =
-      "\"" + self.string() + "\" " + mode + " >/dev/null 2>&1";
-  return std::system(cmd.c_str());
-}
-
 fs::path findMaterialsDir() {
   auto p = fs::current_path();
   for (int i = 0; i < 5; ++i) {
@@ -50,7 +44,7 @@ void writeTempMaterial(const fs::path &path, const std::string &content) {
   out << content;
 }
 
-int invalidNormalWithoutLightingMode() {
+void invalidNormalWithoutLightingMode() {
   auto tmpPath = findMaterialsDir() / "test_invalid_normal_no_light.material";
   writeTempMaterial(tmpPath,
       "shader: blinnphong_0\n"
@@ -67,10 +61,9 @@ int invalidNormalWithoutLightingMode() {
       "      depthTest: true\n");
   loadGenericMaterial(tmpPath);
   fs::remove(tmpPath);
-  return 0;
 }
 
-int invalidNormalWithoutUvMode() {
+void invalidNormalWithoutUvMode() {
   auto tmpPath = findMaterialsDir() / "test_invalid_normal_no_uv.material";
   writeTempMaterial(tmpPath,
       "shader: blinnphong_0\n"
@@ -87,14 +80,24 @@ int invalidNormalWithoutUvMode() {
       "      depthTest: true\n");
   loadGenericMaterial(tmpPath);
   fs::remove(tmpPath);
-  return 0;
 }
 
-void testVariantRuleFatalSubprocesses(const fs::path &self) {
-  EXPECT(runSelf(self, "--invalid-normal-without-lighting") != 0,
-         "normal map without lighting must terminate");
-  EXPECT(runSelf(self, "--invalid-normal-without-uv") != 0,
-         "normal map without uv must terminate");
+void testVariantRuleThrowsLogicError() {
+  bool threw = false;
+  try {
+    invalidNormalWithoutLightingMode();
+  } catch (const std::logic_error &) {
+    threw = true;
+  }
+  EXPECT(threw, "normal map without lighting must throw logic_error");
+
+  threw = false;
+  try {
+    invalidNormalWithoutUvMode();
+  } catch (const std::logic_error &) {
+    threw = true;
+  }
+  EXPECT(threw, "normal map without uv must throw logic_error");
 }
 
 void testValidVariantCombination() {
@@ -121,13 +124,6 @@ void testValidVariantCombination() {
 
 int main(int argc, char **argv) {
   expSetEnvVK();
-  if (argc > 1) {
-    const std::string mode = argv[1];
-    if (mode == "--invalid-normal-without-lighting")
-      return invalidNormalWithoutLightingMode();
-    if (mode == "--invalid-normal-without-uv")
-      return invalidNormalWithoutUvMode();
-  }
 
   if (!cdToWhereResourcesCouldFound("blinnphong_0")) {
     std::cerr << "SKIP: failed to locate shader assets for blinnphong_0\n";
@@ -135,7 +131,7 @@ int main(int argc, char **argv) {
   }
 
   testValidVariantCombination();
-  testVariantRuleFatalSubprocesses(fs::absolute(argv[0]));
+  testVariantRuleThrowsLogicError();
 
   if (failures > 0) {
     std::cerr << "FAILED: " << failures << " assertion(s)\n";

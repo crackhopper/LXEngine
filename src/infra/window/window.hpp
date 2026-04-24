@@ -1,5 +1,6 @@
 #pragma once
 #include <functional>
+#include <memory>
 #include <vulkan/vulkan.h>
 #include "core/platform/window.hpp"
 namespace LX_infra {
@@ -33,6 +34,6 @@ public:
 
 private:
   struct Impl; // PImpl 隐藏 SDL/GLFW
-  Impl *pImpl;
+  std::unique_ptr<Impl> pImpl;
 };
 } // namespace LX_infra

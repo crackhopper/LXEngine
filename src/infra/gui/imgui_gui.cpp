@@ -21,13 +21,12 @@ struct Gui::Impl {
   ImageCount swapchainImageCount = 0;
 };
 
-Gui::Gui() : pImpl(new Impl) {}
+Gui::Gui() : pImpl(std::make_unique<Impl>()) {}
 
 Gui::~Gui() {
   if (pImpl->initialized) {
     shutdown();
   }
-  delete pImpl;
 }
 
 namespace {

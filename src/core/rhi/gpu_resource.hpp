@@ -3,6 +3,8 @@
 #include "core/math/vec.hpp"
 #include "core/platform/types.hpp"
 #include "core/utils/string_table.hpp"
+#include <atomic>
+#include <cstdint>
 #include <memory>
 #include <vector>
 
@@ -18,6 +20,8 @@ enum class ResourceType : u8 {
   Special,
   Count
 };
+
+using ResourceCacheIdentity = uint64_t;
 
 /*
 @source_analysis.section IGpuResource：core 层定义的“可被 GPU 消费”的统一契约
@@ -42,6 +46,7 @@ backend 就可以沿同一条同步和绑定路径处理它。
 */
 class IGpuResource {
 public:
+  IGpuResource() = default;
   virtual ~IGpuResource() = default;
   virtual ResourceType getType() const = 0;
   virtual const void *getRawData() const = 0;
@@ -53,8 +58,16 @@ public:
   /// (vertex/index buffers).
   virtual StringID getBindingName() const { return StringID{}; }
 
-  // 资源的唯一标识符，用于在渲染管线中查找资源
-  // 直接使用地址作为句柄
+  /// Stable identity used by backend GPU-resource caches. This is assigned once
+  /// per CPU resource object and is not derived from the current memory
+  /// address, so a later allocation at the same address does not alias the
+  /// old GPU cache entry.
+  ResourceCacheIdentity getBackendCacheIdentity() const {
+    return m_backendCacheIdentity;
+  }
+
+  // Legacy debug handle. Backend cache lookup should use
+  // getBackendCacheIdentity() instead of the raw address.
   void *getResourceHandle() const { return (void *)this; }
 
   bool isDirty() const { return isDirty_; }
@@ -62,7 +75,14 @@ public:
   void clearDirty() { isDirty_ = false; }
 
 private:
+  static ResourceCacheIdentity nextBackendCacheIdentity() {
+    static std::atomic<ResourceCacheIdentity> nextIdentity{1};
+    return nextIdentity.fetch_add(1, std::memory_order_relaxed);
+  }
+
   bool isDirty_ = false;
+  const ResourceCacheIdentity m_backendCacheIdentity =
+      nextBackendCacheIdentity();
 };
 
 using IGpuResourceSharedPtr = std::shared_ptr<IGpuResource>;
