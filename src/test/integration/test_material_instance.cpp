@@ -159,7 +159,7 @@ void test_ubo_buffer_sized_from_reflection() {
     return;
   const auto &buf = mat->getParameterBufferBytes();
   REQUIRE(!buf.empty());
-  REQUIRE(mat->getParameterBufferLayout() != nullptr);
+  REQUIRE(mat->getParameterBufferLayout().has_value());
   // blinnphong_0 MaterialUBO: vec3(12) + float(4) + float(4) + 3*int(12) = 32
   REQUIRE(buf.size() == 32);
   std::cout << "  buffer size = " << buf.size() << "\n";
@@ -292,7 +292,7 @@ void test_ubo_layout_comes_from_enabled_pass_shader() {
   RenderState shadowState;
   auto tmpl = buildMultiPassTemplate(forwardState, shadowState);
   auto mat = MaterialInstance::create(tmpl);
-  REQUIRE(mat->getParameterBufferLayout() != nullptr);
+  REQUIRE(mat->getParameterBufferLayout().has_value());
   REQUIRE(mat->getParameterBufferBytes().size() == 32);
   std::cout << "  shared UBO layout accepted across all defined passes\n";
 }
@@ -430,7 +430,7 @@ void test_material_instance_with_non_MaterialUBO_name() {
   auto mat = MaterialInstance::create(tmpl);
 
   // Buffer should be sized from SurfaceParams, not empty.
-  REQUIRE(mat->getParameterBufferLayout() != nullptr);
+  REQUIRE(mat->getParameterBufferLayout().has_value());
   REQUIRE(mat->getParameterBufferBytes().size() == 16);
 
   // Setters should work by member name.

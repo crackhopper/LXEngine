@@ -6,9 +6,9 @@
 #include "core/math/vec.hpp"
 #include "core/rhi/gpu_resource.hpp"
 
-#include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -72,11 +72,12 @@ public:
   }
   const std::vector<u8> &
   getParameterBufferBytes(StringID bindingName) const;
-  const ShaderResourceBinding *
+  std::optional<std::reference_wrapper<const ShaderResourceBinding>>
   getParameterBufferLayout(StringID bindingName) const;
   // Single-binding shortcuts (assert if multiple buffer bindings exist).
   const std::vector<u8> &getParameterBufferBytes() const;
-  const ShaderResourceBinding *getParameterBufferLayout() const;
+  std::optional<std::reference_wrapper<const ShaderResourceBinding>>
+  getParameterBufferLayout() const;
 
   bool isPassEnabled(StringID pass) const;
   void setPassEnabled(StringID pass, bool enabled);
@@ -85,8 +86,10 @@ public:
   void removePassStateListener(u64 listenerId);
 
 private:
-  ParameterBuffer *findParameterBuffer(StringID bindingName);
-  const ParameterBuffer *findParameterBuffer(StringID bindingName) const;
+  std::optional<std::reference_wrapper<ParameterBuffer>>
+  findParameterBuffer(StringID bindingName);
+  std::optional<std::reference_wrapper<const ParameterBuffer>>
+  findParameterBuffer(StringID bindingName) const;
   bool hasDefinedPass(StringID pass) const;
 
   MaterialTemplateSharedPtr m_template;

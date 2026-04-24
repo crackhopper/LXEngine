@@ -7,7 +7,9 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iostream>
+#include <optional>
 #include <sstream>
 #include <string>
 
@@ -212,12 +214,13 @@ static bool testBlinnPhongMaterialUboMembers(const std::filesystem::path &vertPa
   }
   auto bindings = ShaderReflector::reflect(compileResult.stages);
 
-  const ShaderResourceBinding *materialBinding = nullptr;
+  std::optional<std::reference_wrapper<const ShaderResourceBinding>>
+      materialBinding;
   for (const auto &b : bindings) {
     if (b.name == "MaterialUBO" ||
         (b.set == 2 && b.binding == 0 &&
          b.type == ShaderPropertyType::UniformBuffer)) {
-      materialBinding = &b;
+      materialBinding = std::cref(b);
       break;
     }
   }
@@ -227,25 +230,25 @@ static bool testBlinnPhongMaterialUboMembers(const std::filesystem::path &vertPa
   }
 
   // 4.2 basic shape
-  if (materialBinding->type != ShaderPropertyType::UniformBuffer) {
+  if (materialBinding->get().type != ShaderPropertyType::UniformBuffer) {
     std::cerr << "  FAIL: MaterialUBO is not UniformBuffer type\n";
     return false;
   }
-  if (materialBinding->members.size() < 5) {
+  if (materialBinding->get().members.size() < 5) {
     std::cerr << "  FAIL: expected >= 5 members, got "
-              << materialBinding->members.size() << "\n";
+              << materialBinding->get().members.size() << "\n";
     return false;
   }
-  std::cout << "  MaterialUBO has " << materialBinding->members.size()
+  std::cout << "  MaterialUBO has " << materialBinding->get().members.size()
             << " members\n";
-  for (const auto &m : materialBinding->members) {
+  for (const auto &m : materialBinding->get().members) {
     std::cout << "    - " << m.name
               << "  type=" << shaderPropertyTypeName(m.type)
               << "  offset=" << m.offset << "  size=" << m.size << "\n";
   }
 
   // 4.3 baseColor: Vec3 at offset 0
-  const auto *baseColor = findMember(*materialBinding, "baseColor");
+  const auto *baseColor = findMember(materialBinding->get(), "baseColor");
   if (!baseColor) {
     std::cerr << "  FAIL: baseColor member missing\n";
     return false;
@@ -258,7 +261,7 @@ static bool testBlinnPhongMaterialUboMembers(const std::filesystem::path &vertPa
   }
 
   // 4.4 shininess: Float, std140 packs it right after vec3 at offset 12
-  const auto *shininess = findMember(*materialBinding, "shininess");
+  const auto *shininess = findMember(materialBinding->get(), "shininess");
   if (!shininess) {
     std::cerr << "  FAIL: shininess member missing\n";
     return false;
@@ -275,7 +278,7 @@ static bool testBlinnPhongMaterialUboMembers(const std::filesystem::path &vertPa
   }
 
   // 4.5 enableAlbedo: Int
-  const auto *enableAlbedo = findMember(*materialBinding, "enableAlbedo");
+  const auto *enableAlbedo = findMember(materialBinding->get(), "enableAlbedo");
   if (!enableAlbedo) {
     std::cerr << "  FAIL: enableAlbedo member missing\n";
     return false;

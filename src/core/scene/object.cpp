@@ -45,7 +45,9 @@ std::string variantsDebugString(const ShaderProgramSet &programSet) {
                                   const MaterialInstance &material,
                                   const ShaderProgramSet &programSet,
                                   const std::string &reason,
-                                  const VertexLayout *layout = nullptr) {
+                                  std::optional<std::reference_wrapper<
+                                      const VertexLayout>> layout =
+                                      std::nullopt) {
   std::ostringstream oss;
   oss << "SceneNodeValidation node=" << node.getNodeName()
       << " pass=" << GlobalStringTable::get().toDebugString(pass)
@@ -56,18 +58,18 @@ std::string variantsDebugString(const ShaderProgramSet &programSet) {
       << " variants=" << variantsDebugString(programSet)
       << " reason=" << reason;
   if (layout) {
-    oss << " vertexLayout=" << vertexLayoutDebugString(*layout);
+    oss << " vertexLayout=" << vertexLayoutDebugString(layout->get());
   }
   throw std::logic_error(oss.str());
 }
 
-const VertexLayoutItem *findLayoutItem(const VertexLayout &layout,
-                                       u32 location) {
+std::optional<std::reference_wrapper<const VertexLayoutItem>>
+findLayoutItem(const VertexLayout &layout, u32 location) {
   for (const auto &item : layout.getItems()) {
     if (item.location == location)
-      return &item;
+      return std::cref(item);
   }
-  return nullptr;
+  return std::nullopt;
 }
 
 bool requiresRenderableOwnedResource(const ShaderResourceBinding &binding) {
@@ -316,7 +318,7 @@ void SceneNode::rebuildValidatedCache() {
     }
     if (!shader) {
       fatalValidation(*this, pass, *m_materialInstance, entry.shaderProgram,
-                      "missing shader for enabled pass", &layout);
+                      "missing shader for enabled pass", std::cref(layout));
     }
 
     const bool usesSkinning =
@@ -326,26 +328,27 @@ void SceneNode::rebuildValidatedCache() {
 
     if (usesSkinning != hasBonesBinding) {
       fatalValidation(*this, pass, *m_materialInstance, entry.shaderProgram,
-                      "shader variant / Bones binding mismatch", &layout);
+                      "shader variant / Bones binding mismatch",
+                      std::cref(layout));
     }
     if (usesSkinning && (!m_skeleton.has_value() || !m_skeleton.value())) {
       fatalValidation(*this, pass, *m_materialInstance, entry.shaderProgram,
-                      "skinning pass requires skeleton", &layout);
+                      "skinning pass requires skeleton", std::cref(layout));
     }
 
     for (const auto &input : shader->getVertexInputs()) {
-      const auto *layoutItem = findLayoutItem(layout, input.location);
+      auto layoutItem = findLayoutItem(layout, input.location);
       if (!layoutItem) {
         fatalValidation(*this, pass, *m_materialInstance, entry.shaderProgram,
                         "missing vertex input '" + input.name +
                             "' at location " + std::to_string(input.location),
-                        &layout);
+                        std::cref(layout));
       }
-      if (layoutItem->type != input.type) {
+      if (layoutItem->get().type != input.type) {
         fatalValidation(*this, pass, *m_materialInstance, entry.shaderProgram,
                         "vertex input type mismatch for '" + input.name +
                             "' at location " + std::to_string(input.location),
-                        &layout);
+                        std::cref(layout));
       }
     }
 
@@ -360,7 +363,7 @@ void SceneNode::rebuildValidatedCache() {
             *this, pass, *m_materialInstance, entry.shaderProgram,
             "reserved binding '" + binding.name +
                 "' has wrong descriptor type (shader authoring error)",
-            &layout);
+            std::cref(layout));
       }
 
       if (!requiresRenderableOwnedResource(binding))
@@ -369,7 +372,7 @@ void SceneNode::rebuildValidatedCache() {
       if (binding.name == "Bones") {
         if (!m_skeleton.has_value() || !m_skeleton.value()) {
           fatalValidation(*this, pass, *m_materialInstance, entry.shaderProgram,
-                          "missing Bones resource", &layout);
+                          "missing Bones resource", std::cref(layout));
         }
         descriptorResources.push_back(std::static_pointer_cast<IGpuResource>(
             m_skeleton.value()->getUBO()));
@@ -389,7 +392,7 @@ void SceneNode::rebuildValidatedCache() {
         fatalValidation(*this, pass, *m_materialInstance, entry.shaderProgram,
                         "missing material-owned resource '" + binding.name +
                             "'",
-                        &layout);
+                        std::cref(layout));
       }
     }
 

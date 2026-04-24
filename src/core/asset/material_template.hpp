@@ -3,6 +3,7 @@
 #include "core/asset/material_pass_definition.hpp"
 #include "core/asset/shader_binding_ownership.hpp"
 
+#include <functional>
 #include <iostream>
 #include <memory>
 #include <optional>
@@ -112,11 +113,6 @@ descriptor 类型支持范围、以及运行时实例需要面对的 binding 集
     if (it != m_canonicalMaterialBindings.end())
       return it->second;
     return std::nullopt;
-  }
-
-  const ShaderResourceBinding *getCanonicalMaterialBinding(StringID id) const {
-    auto it = m_canonicalMaterialBindings.find(id);
-    return it != m_canonicalMaterialBindings.end() ? &it->second : nullptr;
   }
 
   const std::unordered_map<StringID, ShaderResourceBinding, StringID::Hash> &
