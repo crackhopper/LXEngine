@@ -62,8 +62,9 @@ void testShaderLookupKeepsProjectRoot() {
   fs::current_path(probe);
   const bool ok = cdToWhereResourcesCouldFound("blinnphong_0");
   EXPECT(ok, "blinnphong_0 shaders must be found");
-  EXPECT(fs::exists(fs::current_path() / "materials" / "blinnphong_default.material"),
-         "shader lookup should leave cwd at a directory that can see materials/");
+  EXPECT(fs::exists(fs::current_path() / "assets" / "materials" /
+                    "blinnphong_default.material"),
+         "shader lookup should leave cwd at a directory that can see assets/materials/");
   EXPECT(fs::exists(fs::current_path() / "assets"),
          "resource lookup should leave cwd at a directory that can see assets/");
   fs::current_path(saved);
@@ -84,8 +85,8 @@ void testInitializeRuntimeAssetRootFromBuildDir() {
     const fs::path root = getRuntimeAssetRoot();
     EXPECT(fs::exists(root / "assets"),
            "runtime root should expose assets/");
-    EXPECT(fs::exists(root / "materials"),
-           "runtime root should expose materials/");
+    EXPECT(fs::exists(root / "assets" / "materials"),
+           "runtime root should expose assets/materials/");
     EXPECT(fs::exists(getRuntimeShaderSourceDir() / "blinnphong_0.vert"),
            "runtime root should expose GLSL sources");
   }
@@ -99,25 +100,27 @@ void testPackagedStyleRuntimeRootFromEnv() {
   const fs::path tmpRoot = fs::temp_directory_path() / "lxengine_packaged_root";
   std::error_code ec;
   fs::remove_all(tmpRoot, ec);
-  fs::create_directories(tmpRoot / "assets");
-  fs::create_directories(tmpRoot / "materials");
-  fs::create_directories(tmpRoot / "shaders" / "glsl");
+  fs::create_directories(tmpRoot / "assets" / "models");
+  fs::create_directories(tmpRoot / "assets" / "materials");
+  fs::create_directories(tmpRoot / "assets" / "shaders" / "glsl");
 
   fs::copy_file(repoRoot / "assets" / "models" / "damaged_helmet" /
                     "DamagedHelmet.gltf",
-                tmpRoot / "assets" / "DamagedHelmet.gltf",
+                tmpRoot / "assets" / "models" / "DamagedHelmet.gltf",
                 fs::copy_options::overwrite_existing);
-  fs::copy_file(repoRoot / "materials" / "blinnphong_default.material",
-                tmpRoot / "materials" / "blinnphong_default.material",
+  fs::copy_file(repoRoot / "assets" / "materials" / "blinnphong_default.material",
+                tmpRoot / "assets" / "materials" / "blinnphong_default.material",
                 fs::copy_options::overwrite_existing);
-  fs::copy_file(repoRoot / "shaders" / "glsl" / "blinnphong_0.vert",
-                tmpRoot / "shaders" / "glsl" / "blinnphong_0.vert",
+  fs::copy_file(repoRoot / "assets" / "shaders" / "glsl" / "blinnphong_0.vert",
+                tmpRoot / "assets" / "shaders" / "glsl" / "blinnphong_0.vert",
                 fs::copy_options::overwrite_existing);
-  fs::copy_file(repoRoot / "shaders" / "glsl" / "blinnphong_0.frag",
-                tmpRoot / "shaders" / "glsl" / "blinnphong_0.frag",
+  fs::copy_file(repoRoot / "assets" / "shaders" / "glsl" / "blinnphong_0.frag",
+                tmpRoot / "assets" / "shaders" / "glsl" / "blinnphong_0.frag",
                 fs::copy_options::overwrite_existing);
-  std::ofstream(tmpRoot / "shaders" / "glsl" / "blinnphong_0.vert.spv").put('\0');
-  std::ofstream(tmpRoot / "shaders" / "glsl" / "blinnphong_0.frag.spv").put('\0');
+  std::ofstream(tmpRoot / "assets" / "shaders" / "glsl" / "blinnphong_0.vert.spv")
+      .put('\0');
+  std::ofstream(tmpRoot / "assets" / "shaders" / "glsl" / "blinnphong_0.frag.spv")
+      .put('\0');
 
   setenv("LX_RUNTIME_ROOT", tmpRoot.string().c_str(), 1);
   const bool ok = initializeRuntimeAssetRoot(tmpRoot / "nested");
@@ -125,12 +128,12 @@ void testPackagedStyleRuntimeRootFromEnv() {
   if (ok) {
     EXPECT(getRuntimeAssetRoot() == fs::absolute(tmpRoot),
            "LX_RUNTIME_ROOT should become authoritative runtime root");
-    EXPECT(resolveRuntimePath("materials/blinnphong_default.material") ==
-               fs::absolute(tmpRoot / "materials" /
+    EXPECT(resolveRuntimePath("assets/materials/blinnphong_default.material") ==
+               fs::absolute(tmpRoot / "assets" / "materials" /
                             "blinnphong_default.material"),
            "relative runtime path should resolve inside packaged root");
     EXPECT(getShaderPath("blinnphong_0", "vert.spv") ==
-               fs::absolute(tmpRoot / "shaders" / "glsl" /
+               fs::absolute(tmpRoot / "assets" / "shaders" / "glsl" /
                             "blinnphong_0.vert.spv")
                    .string(),
            "shader binary path should resolve inside packaged root");

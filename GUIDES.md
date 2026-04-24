@@ -39,11 +39,11 @@
 | `openspec/changes/<name>/` | 活动中的 OpenSpec change | `/opsx:propose` 创建，`/opsx:apply` / `/opsx:archive` 推进 |
 | `openspec/changes/archive/YYYY-MM-DD-<name>/` | 已归档的 OpenSpec change | `/opsx:archive` 移入 |
 | `openspec/specs/<capability>/spec.md` | 当前权威行为契约 | 修改子系统前先读对应 spec |
-| `notes/` | 面向人类阅读者的中文 notes 站点源 | `/update-notes` 更新，`scripts/serve-notes.sh` 预览/重启 |
+| `notes/` | 面向人类阅读者的中文 notes 站点源 | `/update-notes` 更新，`scripts/notes/serve_site.sh` 预览/重启 |
 | `notes/subsystems/*.md` | 当前子系统设计说明 | `notes/subsystems/index.md` 汇总 |
 | `notes/concepts/*.md` | 面向使用者的概念文档 | `notes/nav.yml` 导航 |
 | `notes/vulkan-backend/*.md` | Vulkan backend 的分模块实现说明 | `notes/vulkan-backend/index.md` 入口 |
-| `notes/nav.yml` | notes 站点导航事实来源 | `_gen_notes_site.py` 读取 |
+| `notes/nav.yml` | notes 站点导航事实来源 | `generate_site_config.py` 读取 |
 
 ## 推荐流程
 
@@ -57,7 +57,7 @@
   -> /opsx:archive        归档 change 并同步主 spec
   -> /finish-req          校验并归档需求文档
   -> /update-notes        更新 notes
-  -> /refresh-notes       或 scripts/serve-notes.sh 刷新本地站点
+  -> /refresh-notes       或 scripts/notes/serve_site.sh 刷新本地站点
   -> git commit           手工提交，或让 agent 按 curate-and-commit 处理
 ```
 
@@ -167,7 +167,7 @@
 
 当前真实行为：
 
-- 直接调用 `scripts/serve-notes.sh`
+- 直接调用 `scripts/notes/serve_site.sh`
 - 重新生成 `mkdocs.gen.yml`
 - 停掉旧的 notes 服务
 - 重启后台 `mkdocs serve`
@@ -192,8 +192,8 @@
 
 - 站点源目录是 `notes/`
 - 导航由 `notes/nav.yml` 定义
-- `scripts/_gen_notes_site.py` 负责生成 `mkdocs.gen.yml`
-- `scripts/serve-notes.sh` 会自动：
+- `scripts/notes/generate_site_config.py` 负责生成 `mkdocs.gen.yml`
+- `scripts/notes/serve_site.sh` 会自动：
   - 重新生成站点配置
   - 停掉旧服务
   - 启动新的 `mkdocs serve`
@@ -201,9 +201,9 @@
 常用命令：
 
 ```bash
-scripts/serve-notes.sh
-scripts/serve-notes.sh --foreground
-scripts/serve-notes.sh --build
+scripts/notes/serve_site.sh
+scripts/notes/serve_site.sh --foreground
+scripts/notes/serve_site.sh --build
 ```
 
 ## 当前文档入口

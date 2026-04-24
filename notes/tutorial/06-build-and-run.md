@@ -8,8 +8,8 @@
 
 | 文件 | 章节 |
 |------|------|
-| `shaders/glsl/pbr.vert` | 02 |
-| `shaders/glsl/pbr.frag` | 02 |
+| `assets/shaders/glsl/pbr.vert` | 02 |
+| `assets/shaders/glsl/pbr.frag` | 02 |
 | `src/infra/material_loader/pbr_material_loader.hpp` | 03 |
 | `src/infra/material_loader/pbr_material_loader.cpp` | 03 |
 | `src/test/test_pbr_cube.cpp` | 05 |
@@ -18,7 +18,7 @@
 
 ### 1. Shaders
 
-`shaders/CMakeLists.txt` 里 `file(GLOB ...)` 会自动抓到新的 `.vert` / `.frag`。当前仓库已经有 `pbr.vert` / `pbr.frag`，所以如果你只是改内容，通常直接 build 就行；如果你新增了别的 shader 文件名，还是要重新 configure 一次。
+`assets/shaders/CMakeLists.txt` 里 `file(GLOB ...)` 会自动抓到新的 `.vert` / `.frag`。当前仓库已经有 `pbr.vert` / `pbr.frag`，所以如果你只是改内容，通常直接 build 就行；如果你新增了别的 shader 文件名，还是要重新 configure 一次。
 
 ```bash
 cd build
@@ -105,7 +105,7 @@ LX_RENDER_DEBUG=1 ./test_pbr_cube
 
 ### 窗口出来了，但画面全是清屏色
 
-- 检查 shader SPIR-V 是不是真的编出来了：`ls build/shaders/glsl/pbr.*.spv`
+- 检查 shader SPIR-V 是不是真的编出来了：`ls build/assets/shaders/glsl/pbr.*.spv`
 - 重新跑一次 `cmake ..` 让 shader glob 刷新
 - `LX_RENDER_DEBUG=1` 看 initScene 里 `totalItems` 是否为 1、`preloadedPipelines` 是否 ≥ 1。0 说明 scene 里没有 renderable 或者 pipeline key 构造失败
 

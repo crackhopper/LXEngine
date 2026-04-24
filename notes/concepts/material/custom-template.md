@@ -41,7 +41,7 @@ resources:
 
 | 字段 | 必填 | 说明 |
 |------|------|------|
-| `shader` | 是 | 全局默认 shader 名（对应 `shaders/glsl/<name>.vert/.frag`） |
+| `shader` | 是 | 全局默认 shader 名（对应 `assets/shaders/glsl/<name>.vert/.frag`） |
 | `variants` | 否 | 全局 shader variants（`NAME: true/false`） |
 | `parameters` | 否 | 全局默认参数，格式 `bindingName.memberName: value` |
 | `resources` | 否 | 全局默认纹理，值为文件路径或占位名 |
@@ -79,8 +79,8 @@ variantRules:
 
 参考示例：
 
-- [`materials/pbr_gold.material`](../../../materials/pbr_gold.material)
-- [`materials/blinnphong_lit.material`](../../../materials/blinnphong_lit.material)
+- [`assets/materials/pbr_gold.material`](../../../assets/materials/pbr_gold.material)
+- [`assets/materials/blinnphong_lit.material`](../../../assets/materials/blinnphong_lit.material)
 
 ## C++ 路径
 
@@ -115,7 +115,7 @@ instance->setParameter(StringID("MyUBO"), StringID("roughness"), 0.5f);
 instance->syncGpuData();
 ```
 
-C++ 路径的完整样板可参考 `materials/pbr_gold.material` 或 `materials/blinnphong_default.material` 的 YAML 等价逻辑。
+C++ 路径的完整样板可参考 `assets/materials/pbr_gold.material` 或 `assets/materials/blinnphong_default.material` 的 YAML 等价逻辑。
 
 ## 继续阅读
 

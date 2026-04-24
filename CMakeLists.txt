@@ -74,28 +74,38 @@ endif()
 
 
 # -------------------------------
-# 构建期 runtime-root 同步：symlink 优先，copy 兜底
+# 构建期 runtime-root 同步：build/assets 作为统一资产根。
+# 非 shader 资产做 symlink/copy；shader source+spv 由 assets/shaders 维护。
 # -------------------------------
-function(lx_sync_runtime_dir dir_name)
-  if(NOT EXISTS "${CMAKE_BINARY_DIR}/${dir_name}")
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/assets")
+
+function(lx_sync_asset_subdir subdir_name)
+  set(_src "${CMAKE_SOURCE_DIR}/assets/${subdir_name}")
+  set(_dst "${CMAKE_BINARY_DIR}/assets/${subdir_name}")
+  if(NOT EXISTS "${_src}")
+    return()
+  endif()
+  if(NOT EXISTS "${_dst}")
     file(CREATE_LINK
-      "${CMAKE_SOURCE_DIR}/${dir_name}"
-      "${CMAKE_BINARY_DIR}/${dir_name}"
+      "${_src}"
+      "${_dst}"
       SYMBOLIC
       RESULT _lx_link_result
     )
     if(NOT _lx_link_result EQUAL 0)
-      message(STATUS "Symlink failed for ${dir_name} (${_lx_link_result}), copying to build dir")
-      file(COPY "${CMAKE_SOURCE_DIR}/${dir_name}" DESTINATION "${CMAKE_BINARY_DIR}")
+      message(STATUS "Symlink failed for assets/${subdir_name} (${_lx_link_result}), copying to build dir")
+      file(COPY "${_src}" DESTINATION "${CMAKE_BINARY_DIR}/assets")
     endif()
   endif()
 endfunction()
 
-lx_sync_runtime_dir("assets")
-lx_sync_runtime_dir("materials")
+lx_sync_asset_subdir("env")
+lx_sync_asset_subdir("models")
+lx_sync_asset_subdir("textures")
+lx_sync_asset_subdir("materials")
 
-# 引入shader编译的target
-add_subdirectory(shaders)
+# 引入 shader 编译 target
+add_subdirectory(assets/shaders)
 
 # -------------------------------
 # Bootstrap / env-probe executable

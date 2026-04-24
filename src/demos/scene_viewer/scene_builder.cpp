@@ -139,9 +139,9 @@ CombinedTextureSamplerSharedPtr loadCombinedTexture(
 MaterialInstanceSharedPtr makeHelmetMaterial(const infra::GLTFPbrMaterial& pbr,
                                        const std::filesystem::path& gltfDir) {
   constexpr const char* kTexturedMaterial =
-      "materials/blinnphong_textured.material";
+      "assets/materials/blinnphong_textured.material";
   constexpr const char* kFallbackMaterial =
-      "materials/blinnphong_lit.material";
+      "assets/materials/blinnphong_lit.material";
 
   const bool hasBaseColor = !pbr.baseColorTexture.empty();
   const char* assetPath = hasBaseColor ? kTexturedMaterial : kFallbackMaterial;
@@ -175,10 +175,10 @@ MaterialInstanceSharedPtr makeHelmetMaterial(const infra::GLTFPbrMaterial& pbr,
 }
 
 MaterialInstanceSharedPtr makeGroundMaterial() {
-  auto mat = LX_infra::loadGenericMaterial("materials/blinnphong_lit.material");
+  auto mat = LX_infra::loadGenericMaterial("assets/materials/blinnphong_lit.material");
   if (!mat) {
     throw std::runtime_error(
-        "[scene_viewer] failed to load materials/blinnphong_lit.material");
+        "[scene_viewer] failed to load assets/materials/blinnphong_lit.material");
   }
   mat->setParameter(StringID("MaterialUBO"), StringID("enableAlbedo"), 0);
   mat->setParameter(StringID("MaterialUBO"), StringID("enableNormal"), 0);

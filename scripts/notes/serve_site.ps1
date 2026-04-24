@@ -1,10 +1,10 @@
-# serve-notes.ps1 — 启动本地 MkDocs 开发服务器预览 notes/
+# serve_site.ps1 — 启动本地 MkDocs 开发服务器预览 notes/
 #
 # 用法:
-#   .\scripts\serve-notes.ps1                         # 默认 0.0.0.0:8110（LAN 可访问）
-#   .\scripts\serve-notes.ps1 -Addr 127.0.0.1:8110    # 绑定指定地址:端口
-#   .\scripts\serve-notes.ps1 -Build                  # 只 build 静态站到 .site\ 不启动服务
-#   .\scripts\serve-notes.ps1 -ForceKill              # 检测到端口占用时自动 kill，不交互询问
+#   .\scripts\notes\serve_site.ps1                         # 默认 0.0.0.0:8110（LAN 可访问）
+#   .\scripts\notes\serve_site.ps1 -Addr 127.0.0.1:8110    # 绑定指定地址:端口
+#   .\scripts\notes\serve_site.ps1 -Build                  # 只 build 静态站到 .site\ 不启动服务
+#   .\scripts\notes\serve_site.ps1 -ForceKill              # 检测到端口占用时自动 kill，不交互询问
 #
 # 特性:
 #   - 启动前检测目标端口，若被占用显示占用进程并交互式询问是否 kill
@@ -23,7 +23,7 @@ $ErrorActionPreference = "Stop"
 
 # 切到项目根，无论从哪里调用
 $ScriptDir   = Split-Path -Parent $MyInvocation.MyCommand.Path
-$ProjectRoot = Split-Path -Parent $ScriptDir
+$ProjectRoot = Split-Path -Parent (Split-Path -Parent $ScriptDir)
 Set-Location $ProjectRoot
 
 # ---------- 基础检查 ----------

@@ -259,7 +259,7 @@ void test_loader_produces_valid_instance() {
   std::filesystem::current_path(dir.parent_path().parent_path());
   MaterialInstanceSharedPtr mat;
   try {
-    mat = loadGenericMaterial("materials/blinnphong_default.material");
+    mat = loadGenericMaterial("assets/materials/blinnphong_default.material");
   } catch (const std::exception &e) {
     std::cerr << "  FAIL: loader threw: " << e.what() << "\n";
     ++s_failures;

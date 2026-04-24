@@ -13,36 +13,30 @@ constexpr int kMaxSearchDepth = 8;
 std::optional<fs::path> g_runtimeRoot;
 
 bool hasRuntimeAssetDirs(const fs::path &root) {
-  return fs::exists(root / "materials") && fs::exists(root / "assets") &&
-         fs::exists(root / "shaders" / "glsl");
+  return fs::exists(root / "assets" / "materials") &&
+         fs::exists(root / "assets" / "shaders" / "glsl");
 }
 
 bool hasShaderOutputsAtRoot(const fs::path& root, const std::string& shaderName) {
-  return fs::exists(root / "shaders" / "glsl" / (shaderName + ".vert.spv")) &&
-         fs::exists(root / "shaders" / "glsl" / (shaderName + ".frag.spv"));
-}
-
-bool hasShaderOutputsAtBuildDir(const fs::path& root, const std::string& shaderName) {
-  return fs::exists(root / "build" / "shaders" / "glsl" /
+  return fs::exists(root / "assets" / "shaders" / "glsl" /
                         (shaderName + ".vert.spv")) &&
-         fs::exists(root / "build" / "shaders" / "glsl" /
+         fs::exists(root / "assets" / "shaders" / "glsl" /
                         (shaderName + ".frag.spv"));
 }
 
 bool hasRuntimeResourceLayout(const fs::path& root, const std::string& shaderName) {
-  return hasRuntimeAssetDirs(root) &&
-         (hasShaderOutputsAtRoot(root, shaderName) ||
-          hasShaderOutputsAtBuildDir(root, shaderName));
+  return hasRuntimeAssetDirs(root) && hasShaderOutputsAtRoot(root, shaderName);
 }
 
 std::string describeRuntimeResourceLayout(const fs::path& root,
                                           const std::string& shaderName) {
   std::ostringstream oss;
-  oss << "materials=" << (fs::exists(root / "materials") ? "yes" : "no")
-      << ", assets=" << (fs::exists(root / "assets") ? "yes" : "no")
-      << ", shaders/glsl=" << (hasShaderOutputsAtRoot(root, shaderName) ? "yes" : "no")
-      << ", build/shaders/glsl="
-      << (hasShaderOutputsAtBuildDir(root, shaderName) ? "yes" : "no");
+  oss << "assets/materials="
+      << (fs::exists(root / "assets" / "materials") ? "yes" : "no")
+      << ", assets/shaders/glsl="
+      << (fs::exists(root / "assets" / "shaders" / "glsl") ? "yes" : "no")
+      << ", shader-spv="
+      << (hasShaderOutputsAtRoot(root, shaderName) ? "yes" : "no");
   return oss.str();
 }
 
@@ -90,8 +84,8 @@ fs::path requireRuntimeRoot() {
     return *g_runtimeRoot;
   }
   throw std::runtime_error(
-      "runtime asset root not initialized; expected root containing assets/, "
-      "materials/, and shaders/glsl/ (or set LX_RUNTIME_ROOT)");
+      "runtime asset root not initialized; expected root containing "
+      "assets/materials/ and assets/shaders/glsl/ (or set LX_RUNTIME_ROOT)");
 }
 } // namespace
 
@@ -116,16 +110,11 @@ fs::path resolveRuntimePath(const fs::path &relativePath) {
 }
 
 fs::path getRuntimeShaderSourceDir() {
-  return requireRuntimeRoot() / "shaders" / "glsl";
+  return requireRuntimeRoot() / "assets" / "shaders" / "glsl";
 }
 
 fs::path getRuntimeShaderBinaryDir() {
-  const fs::path root = requireRuntimeRoot();
-  const fs::path packagedDir = root / "shaders" / "glsl";
-  const fs::path devDir = root / "build" / "shaders" / "glsl";
-  if (fs::exists(packagedDir))
-    return packagedDir;
-  return devDir;
+  return requireRuntimeRoot() / "assets" / "shaders" / "glsl";
 }
 
 bool cdToWhereResourcesCouldFound(const std::string& shaderName) {
@@ -187,11 +176,6 @@ std::string getShaderPath(const std::string& shaderName,
   auto path1 = getRuntimeShaderBinaryDir() / (shaderName + "." + stageSuffix);
   if (fs::exists(path1)) {
     return path1.string();
-  }
-  auto path2 = getRuntimeAssetRoot() / "build" / "shaders" / "glsl" /
-               (shaderName + "." + stageSuffix);
-  if (fs::exists(path2)) {
-    return path2.string();
   }
   return "";
 }

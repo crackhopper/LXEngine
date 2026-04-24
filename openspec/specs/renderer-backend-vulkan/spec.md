@@ -120,15 +120,15 @@ The VulkanShader SHALL support:
 - Creating VkShaderModule for both vertex and fragment shaders
 - Providing VkPipelineShaderStageCreateInfo for pipeline construction
 - Caching loaded shader modules to avoid redundant file reads
-- Loading from path pattern: `shaders/glsl/{shaderName}.vert.spv` and `shaders/glsl/{shaderName}.frag.spv`
+- Loading from path pattern: `assets/shaders/glsl/{shaderName}.vert.spv` and `assets/shaders/glsl/{shaderName}.frag.spv`
 
 #### Scenario: Vertex shader module creation
 - **WHEN** Loading vertex shader for "blinnphong_0" shader
-- **THEN** VulkanShader SHALL load `shaders/glsl/blinnphong_0.vert.spv` and create valid VkShaderModule with VK_SHADER_STAGE_VERTEX_BIT
+- **THEN** VulkanShader SHALL load `assets/shaders/glsl/blinnphong_0.vert.spv` and create valid VkShaderModule with VK_SHADER_STAGE_VERTEX_BIT
 
 #### Scenario: Fragment shader module creation
 - **WHEN** Loading fragment shader for "blinnphong_0" shader
-- **THEN** VulkanShader SHALL load `shaders/glsl/blinnphong_0.frag.spv` and create valid VkShaderModule with VK_SHADER_STAGE_FRAGMENT_BIT
+- **THEN** VulkanShader SHALL load `assets/shaders/glsl/blinnphong_0.frag.spv` and create valid VkShaderModule with VK_SHADER_STAGE_FRAGMENT_BIT
 
 #### Scenario: Shader files built by CMake
 - **WHEN** Building the project with CMake

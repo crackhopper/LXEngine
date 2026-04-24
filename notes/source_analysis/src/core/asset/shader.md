@@ -1,6 +1,6 @@
 # IShader & ShaderResourceBinding：反射结果如何落地到材质系统
 
-本页的主体内容由 `scripts/extract_source_analysis.py` 从源码中的
+本页的主体内容由 `scripts/source_analysis/extract_sections.py` 从源码中的
 `@source_analysis.section` 注释块生成，用来把讲解锚定在真实代码结构上。
 
 这一页把反射层当作一条独立的读路径来读，入口是

@@ -1,14 +1,14 @@
 # 03 · PBR Material Loader
 
-> 当前仓库已经不需要单独的 `loadPbrMaterial()`。PBR 材质现在直接走统一的 `.material` 资产路径，仓库内的最小示例是 [`materials/pbr_gold.material`](../../materials/pbr_gold.material)。
+> 当前仓库已经不需要单独的 `loadPbrMaterial()`。PBR 材质现在直接走统一的 `.material` 资产路径，仓库内的最小示例是 [`assets/materials/pbr_gold.material`](../../assets/materials/pbr_gold.material)。
 
 ## 参考样板
 
-先读 [`materials/pbr_gold.material`](../../materials/pbr_gold.material) 和 `src/infra/material_loader/generic_material_loader.cpp`。当前 PBR 路径已经通过通用 loader 接进引擎，不再需要一份单独的 material-type-specific loader。
+先读 [`assets/materials/pbr_gold.material`](../../assets/materials/pbr_gold.material) 和 `src/infra/material_loader/generic_material_loader.cpp`。当前 PBR 路径已经通过通用 loader 接进引擎，不再需要一份单独的 material-type-specific loader。
 
 PBR 版最少要完成四件事：
 
-1. 定位 `shaders/glsl/pbr.vert` / `pbr.frag`
+1. 定位 `assets/shaders/glsl/pbr.vert` / `pbr.frag`
 2. 调 `ShaderCompiler::compileProgram(...)` + `ShaderReflector`
 3. 构造 `MaterialTemplate` / `MaterialPassDefinition` / `MaterialInstance`
 4. 给 `MaterialUBO` 和纹理绑定种子默认值
@@ -77,7 +77,7 @@ loadPbrMaterial(LX_core::ResourcePassFlag passFlag) {
     }
     if (glslDir.empty()) {
         throw std::runtime_error(
-            "pbr GLSL sources not found (expected .../shaders/glsl/)");
+            "pbr GLSL sources not found (expected .../assets/shaders/glsl/)");
     }
 
     const fs::path vert = glslDir / (baseName + ".vert");

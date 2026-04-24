@@ -140,7 +140,7 @@ endif()
 target_link_libraries(test_shader_compiler PRIVATE ${SHADERC_LIB} ${SHADERC_DEPS})
 add_dependencies(BuildTest test_shader_compiler)
 add_test(NAME test_shader_compiler
-  COMMAND $<TARGET_FILE:test_shader_compiler> "${CMAKE_SOURCE_DIR}/shaders/glsl")
+  COMMAND $<TARGET_FILE:test_shader_compiler> "${CMAKE_SOURCE_DIR}/assets/shaders/glsl")
 set_tests_properties(test_shader_compiler PROPERTIES
   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
   LABELS "auto;headless_ok"

@@ -485,11 +485,11 @@ int main(int argc, char *argv[]) {
     shaderDir = argv[1];
   } else {
     // Default: relative to executable, try common locations
-    shaderDir = std::filesystem::current_path() / "shaders" / "glsl";
+    shaderDir = std::filesystem::current_path() / "assets" / "shaders" / "glsl";
     if (!std::filesystem::exists(shaderDir)) {
       // Try source tree location
       shaderDir = std::filesystem::path(__FILE__).parent_path().parent_path()
-                      .parent_path().parent_path() / "shaders" / "glsl";
+                      .parent_path().parent_path() / "assets" / "shaders" / "glsl";
     }
   }
 

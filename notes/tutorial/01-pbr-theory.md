@@ -154,6 +154,6 @@ color = pow(color, vec3(1.0 / 2.2));
   └─ gamma
 ```
 
-下一章：把这套理论翻译成 GLSL，并对照当前仓库里的 `shaders/glsl/pbr.vert` / `pbr.frag`。
+下一章：把这套理论翻译成 GLSL，并对照当前仓库里的 `assets/shaders/glsl/pbr.vert` / `pbr.frag`。
 
 → [02-pbr-shader.md](02-pbr-shader.md)
