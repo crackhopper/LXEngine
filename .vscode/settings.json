@@ -112,9 +112,12 @@
     "editor.defaultFormatter": "vscode.json-language-features"
   },
   "files.exclude": {
-    "**/.*/": true,
-    "**/.vscode/": false,
-    "**/.claude/": false,
-    "**/.codex/": false
+    "**/.git": true,
+    "**/.cursor": true,
+    "**/.opencode": true,
+    "**/.site": true,
+    "**/.tmp": true,
+    "**/.trae": true,
+    "**/.cache": true
   }
 }
