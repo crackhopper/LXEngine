@@ -11,60 +11,12 @@
 #include "details/render_objects/swapchain.hpp"
 #include "details/device.hpp"
 #include "details/resource_manager.hpp"
-#include <cstdlib>
-#include <cstring>
+#include "core/utils/env.hpp"
 #include <functional>
 #include <iostream>
 #include <stdexcept>
 #include <string>
 namespace {
-bool rendererDebugEnabled() {
-  static const bool enabled = [] {
-    const char *value = std::getenv("LX_RENDER_DEBUG");
-    return value != nullptr && std::strcmp(value, "0") != 0;
-  }();
-  return enabled;
-}
-
-bool envEnabled(const char *name) {
-  const char *value = std::getenv(name);
-  return value != nullptr && std::strcmp(value, "0") != 0;
-}
-
-const char *vkResultToString(VkResult result) {
-  switch (result) {
-  case VK_SUCCESS:
-    return "VK_SUCCESS";
-  case VK_NOT_READY:
-    return "VK_NOT_READY";
-  case VK_TIMEOUT:
-    return "VK_TIMEOUT";
-  case VK_EVENT_SET:
-    return "VK_EVENT_SET";
-  case VK_EVENT_RESET:
-    return "VK_EVENT_RESET";
-  case VK_INCOMPLETE:
-    return "VK_INCOMPLETE";
-  case VK_ERROR_OUT_OF_DATE_KHR:
-    return "VK_ERROR_OUT_OF_DATE_KHR";
-  case VK_SUBOPTIMAL_KHR:
-    return "VK_SUBOPTIMAL_KHR";
-  case VK_ERROR_DEVICE_LOST:
-    return "VK_ERROR_DEVICE_LOST";
-  case VK_ERROR_SURFACE_LOST_KHR:
-    return "VK_ERROR_SURFACE_LOST_KHR";
-  default:
-    return "VK_RESULT_UNKNOWN";
-  }
-}
-
-void debugLog(const char *message) {
-  if (!rendererDebugEnabled()) {
-    return;
-  }
-  std::cerr << "[RendererDebug] " << message << std::endl;
-}
-
 /// REQ-009: reverse of resource_manager.cpp's toVkFormat(ImageFormat).
 /// Only covers the swapchain-relevant VkFormats. Unknown inputs fall back to
 /// RGBA8 and log a debug warning rather than throwing — initScene must be
@@ -86,7 +38,7 @@ LX_core::ImageFormat toImageFormat(VkFormat format) {
   case VK_FORMAT_D32_SFLOAT_S8_UINT:
     return LX_core::ImageFormat::D32FloatS8;
   default:
-    if (rendererDebugEnabled()) {
+    if (expRendererDebugEnabled()) {
       std::cerr << "[RendererDebug] toImageFormat: unknown VkFormat "
                 << static_cast<int>(format) << ", falling back to RGBA8"
                 << std::endl;
@@ -98,71 +50,75 @@ LX_core::ImageFormat toImageFormat(VkFormat format) {
 
 namespace LX_core::backend {
 
-class VulkanRendererImpl : public gpu::Renderer {
+namespace {
+
+constexpr FrameIndex32 kMaxFramesInFlight = 3;
+
+} // namespace
+
+class VulkanRendererImpl {
 public:
-  VulkanRendererImpl() {}
-  ~VulkanRendererImpl() override { destroy(); }
+  VulkanRendererImpl() = default;
+  ~VulkanRendererImpl() { destroy(); }
 
-  void initialize(WindowSharedPtr _window, const char *appName) override {
-    const int maxFramesInFlight = 3;
-
+  void initialize(WindowSharedPtr _window, const char *appName) {
     m_window = _window;
 
-    device = VulkanDevice::create();
-    device->initialize(_window, appName);
+    m_device = VulkanDevice::create();
+    m_device->initialize(_window, appName);
     // Window backends return an allocated handle pointer (void*) for Vulkan.
-    VkInstance instance = device->getInstance();
 
     // Create command buffer manager first (needed for resource manager)
-    cmdBufferMgr = VulkanCommandBufferManager::create(
-        *device, maxFramesInFlight, device->getGraphicsQueueFamilyIndex());
+    m_cmdBufferMgr = VulkanCommandBufferManager::create(
+        *m_device, kMaxFramesInFlight, m_device->getGraphicsQueueFamilyIndex());
 
     // Create resource manager
-    resourceManager = VulkanResourceManager::create(*device);
-    resourceManager->initializeRenderPassAndPipeline(device->getSurfaceFormat(),
-                                                     device->getDepthFormat());
-    if (envEnabled("LX_RENDER_DEBUG_CLEAR")) {
-      resourceManager->getRenderPass().setClearColor(0.0f, 0.0f, 1.0f, 1.0f);
+    m_resourceManager = VulkanResourceManager::create(*m_device);
+    m_resourceManager->initializeRenderPassAndPipeline(
+        m_device->getSurfaceFormat(), m_device->getDepthFormat());
+    if (expEnvEnabled("LX_RENDER_DEBUG_CLEAR")) {
+      m_resourceManager->getRenderPass().setClearColor(0.0f, 0.0f, 1.0f, 1.0f);
     }
 
-    swapchain = VulkanSwapchain::create(*device, _window, maxFramesInFlight);
-    swapchain->initialize(resourceManager->getRenderPass());
+    m_swapchain =
+        VulkanSwapchain::create(*m_device, _window, kMaxFramesInFlight);
+    m_swapchain->initialize(m_resourceManager->getRenderPass());
 
     // REQ-017: bring up ImGui overlay inside the swapchain render pass.
     infra::Gui::InitParams guiParams{};
-    guiParams.instance = device->getInstance();
-    guiParams.physicalDevice = device->getPhysicalDevice();
-    guiParams.device = device->getLogicalDevice();
-    guiParams.graphicsQueueFamilyIndex = device->getGraphicsQueueFamilyIndex();
-    guiParams.presentQueueFamilyIndex = device->getPresentQueueFamilyIndex();
-    guiParams.graphicsQueue = device->getGraphicsQueue();
-    guiParams.presentQueue = device->getPresentQueue();
-    guiParams.surface = device->getSurface();
+    guiParams.instance = m_device->getInstance();
+    guiParams.physicalDevice = m_device->getPhysicalDevice();
+    guiParams.device = m_device->getLogicalDevice();
+    guiParams.graphicsQueueFamilyIndex = m_device->getGraphicsQueueFamilyIndex();
+    guiParams.presentQueueFamilyIndex = m_device->getPresentQueueFamilyIndex();
+    guiParams.graphicsQueue = m_device->getGraphicsQueue();
+    guiParams.presentQueue = m_device->getPresentQueue();
+    guiParams.surface = m_device->getSurface();
     guiParams.nativeWindowHandle = _window->getNativeHandle();
-    guiParams.renderPass = resourceManager->getRenderPass().getHandle();
-    guiParams.swapchainImageCount = swapchain->getImageCount();
+    guiParams.renderPass = m_resourceManager->getRenderPass().getHandle();
+    guiParams.swapchainImageCount = m_swapchain->getImageCount();
     m_gui.init(guiParams);
 
-    if (rendererDebugEnabled()) {
-      const VkExtent2D extent = swapchain->getExtent();
+    if (expRendererDebugEnabled()) {
+      const VkExtent2D extent = m_swapchain->getExtent();
       std::cerr << "[RendererDebug] initialize: extent=" << extent.width << "x"
-                << extent.height << ", maxFramesInFlight=" << maxFramesInFlight
+                << extent.height << ", maxFramesInFlight=" << kMaxFramesInFlight
                 << std::endl;
-      if (envEnabled("LX_RENDER_DEBUG_CLEAR")) {
+      if (expEnvEnabled("LX_RENDER_DEBUG_CLEAR")) {
         std::cerr << "[RendererDebug] debug clear color enabled" << std::endl;
       }
-      if (envEnabled("LX_RENDER_DISABLE_CULL")) {
+      if (expEnvEnabled("LX_RENDER_DISABLE_CULL")) {
         std::cerr << "[RendererDebug] cull disabled" << std::endl;
       }
-      if (envEnabled("LX_RENDER_DISABLE_DEPTH")) {
+      if (expEnvEnabled("LX_RENDER_DISABLE_DEPTH")) {
         std::cerr << "[RendererDebug] depth disabled" << std::endl;
       }
-      if (envEnabled("LX_RENDER_FLIP_VIEWPORT_Y")) {
+      if (expEnvEnabled("LX_RENDER_FLIP_VIEWPORT_Y")) {
         std::cerr << "[RendererDebug] viewport Y flipped" << std::endl;
       }
     }
   }
-  void shutdown() override { destroy(); }
+  void shutdown() { destroy(); }
 
   /// REQ-009: derive the real swapchain RenderTarget from the Vulkan device's
   /// chosen surface format + depth format. This is the value that gets plugged
@@ -170,21 +126,21 @@ public:
   /// is nullopt at initScene time.
   LX_core::RenderTarget makeSwapchainTarget() const {
     LX_core::RenderTarget t{};
-    t.colorFormat = toImageFormat(device->getSurfaceFormat().format);
-    t.depthFormat = toImageFormat(device->getDepthFormat());
+    t.colorFormat = toImageFormat(m_device->getSurfaceFormat().format);
+    t.depthFormat = toImageFormat(m_device->getDepthFormat());
     t.sampleCount = 1;
     return t;
   }
 
-  void initScene(SceneSharedPtr _scene) override {
-    scene = _scene;
+  void initScene(SceneSharedPtr _scene) {
+    m_scene = _scene;
 
     // REQ-009: compute the swapchain target once, use it for both:
     //   1. Backfilling any nullopt camera's m_target (before buildFromScene).
     //   2. Wiring up FramePass.target so getSceneLevelResources(pass, target)
     //      can match the camera on the filter side.
     const LX_core::RenderTarget swapchainTarget = makeSwapchainTarget();
-    for (const auto &cam : scene->getCameras()) {
+    for (const auto &cam : m_scene->getCameras()) {
       if (cam && !cam->getTarget().has_value()) {
         cam->setTarget(swapchainTarget);
       }
@@ -202,16 +158,16 @@ public:
     //     target, light UBO filtered by pass mask)
     //   - sorts by PipelineKey
     // There is no more side-channel camera/light UBO injection here.
-    m_frameGraph.buildFromScene(*scene);
+    m_frameGraph.buildFromScene(*m_scene);
 
     // Initial resource sync + per-draw payload seed for every item across
     // every pass in the FrameGraph.
     for (auto &pass : m_frameGraph.getPasses()) {
       for (auto &item : pass.queue.getItems()) {
-        resourceManager->syncResource(*cmdBufferMgr, item.vertexBuffer);
-        resourceManager->syncResource(*cmdBufferMgr, item.indexBuffer);
+        m_resourceManager->syncResource(*m_cmdBufferMgr, item.vertexBuffer);
+        m_resourceManager->syncResource(*m_cmdBufferMgr, item.indexBuffer);
         for (auto &cpuRes : item.descriptorResources) {
-          resourceManager->syncResource(*cmdBufferMgr, cpuRes);
+          m_resourceManager->syncResource(*m_cmdBufferMgr, cpuRes);
         }
         if (item.drawData) {
           PerDrawLayoutBase pc{};
@@ -220,14 +176,14 @@ public:
         }
       }
     }
-    resourceManager->collectGarbage();
+    m_resourceManager->collectGarbage();
 
     // Pre-build every pipeline the scene needs. Runtime cache misses still
     // work via getOrCreateRenderPipeline(item) but emit a warning log.
     auto infos = m_frameGraph.collectAllPipelineBuildDescs();
-    resourceManager->preloadPipelines(infos);
+    m_resourceManager->preloadPipelines(infos);
 
-    if (rendererDebugEnabled()) {
+    if (expRendererDebugEnabled()) {
       size_t itemCount = 0;
       for (const auto &pass : m_frameGraph.getPasses()) {
         itemCount += pass.queue.getItems().size();
@@ -239,22 +195,20 @@ public:
     }
   }
 
-  void uploadData() override {
+  void uploadData() {
     for (auto &pass : m_frameGraph.getPasses()) {
       for (auto &item : pass.queue.getItems()) {
-        resourceManager->syncResource(*cmdBufferMgr, item.vertexBuffer);
-        resourceManager->syncResource(*cmdBufferMgr, item.indexBuffer);
+        m_resourceManager->syncResource(*m_cmdBufferMgr, item.vertexBuffer);
+        m_resourceManager->syncResource(*m_cmdBufferMgr, item.indexBuffer);
         for (auto &cpuRes : item.descriptorResources) {
-          resourceManager->syncResource(*cmdBufferMgr, cpuRes);
+          m_resourceManager->syncResource(*m_cmdBufferMgr, cpuRes);
         }
       }
     }
-    resourceManager->collectGarbage();
+    m_resourceManager->collectGarbage();
   }
 
-  void draw() override {
-    const FrameIndex32 maxFramesInFlight = 3;
-
+  void draw() {
     // If the window has zero client area (minimized or in the middle of a
     // drag-resize on Windows), rebuilding or acquiring would either fail or
     // produce an invalid swapchain. Skip this frame cleanly; the next call
@@ -263,13 +217,14 @@ public:
       return;
     }
 
-    const VkExtent2D extent = swapchain->getExtent();
+    const VkExtent2D extent = m_swapchain->getExtent();
 
-    const FrameIndex32 currentFrameIndex = frameIndex % maxFramesInFlight;
+    const FrameIndex32 currentFrameIndex =
+        m_frameIndex % kMaxFramesInFlight;
     SwapchainImageIndex32 imageIndex = 0;
 
     VkResult acquireResult =
-        swapchain->acquireNextImage(currentFrameIndex, imageIndex);
+        m_swapchain->acquireNextImage(currentFrameIndex, imageIndex);
     if (acquireResult == VK_ERROR_OUT_OF_DATE_KHR ||
         acquireResult == VK_SUBOPTIMAL_KHR) {
       // No queue submission will happen on this path, so keep the frame fence
@@ -282,15 +237,15 @@ public:
       return;
     }
 
-    auto &renderPass = resourceManager->getRenderPass();
+    auto &renderPass = m_resourceManager->getRenderPass();
 
-    cmdBufferMgr->beginFrame(currentFrameIndex);
-    device->getDescriptorManager().beginFrame(currentFrameIndex);
+    m_cmdBufferMgr->beginFrame(currentFrameIndex);
+    m_device->getDescriptorManager().beginFrame(currentFrameIndex);
 
-    auto cmd = cmdBufferMgr->allocateBuffer();
+    auto cmd = m_cmdBufferMgr->allocateBuffer();
     cmd->begin();
     cmd->beginRenderPass(renderPass.getHandle(),
-                         swapchain->getFramebuffer(imageIndex).getHandle(),
+                         m_swapchain->getFramebuffer(imageIndex).getHandle(),
                          extent, renderPass.getClearValues());
 
     cmd->setViewport(extent.width, extent.height);
@@ -309,9 +264,9 @@ public:
     // different pipeline; bindPipeline / bindResources / drawItem per item.
     for (auto &pass : m_frameGraph.getPasses()) {
       for (auto &item : pass.queue.getItems()) {
-        auto &pipeline = resourceManager->getOrCreateRenderPipeline(item);
+        auto &pipeline = m_resourceManager->getOrCreateRenderPipeline(item);
         cmd->bindPipeline(pipeline);
-        cmd->bindResources(*resourceManager, pipeline, item);
+        cmd->bindResources(*m_resourceManager, pipeline, item);
         cmd->drawItem(item);
       }
     }
@@ -322,9 +277,9 @@ public:
     cmd->end();
 
     VkSemaphore waitSemaphores[] = {
-        swapchain->getImageAvailableSemaphore(currentFrameIndex)};
+        m_swapchain->getImageAvailableSemaphore(currentFrameIndex)};
     VkSemaphore signalSemaphores[] = {
-        swapchain->getRenderFinishedSemaphore(currentFrameIndex)};
+        m_swapchain->getRenderFinishedSemaphore(currentFrameIndex)};
     VkPipelineStageFlags waitStages[] = {
         VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
 
@@ -339,39 +294,27 @@ public:
     submitInfo.signalSemaphoreCount = 1;
     submitInfo.pSignalSemaphores = signalSemaphores;
 
-    VkFence fence = swapchain->getInFlightFence(currentFrameIndex);
-    vkResetFences(device->getLogicalDevice(), 1, &fence);
-    if (vkQueueSubmit(device->getGraphicsQueue(), 1, &submitInfo, fence) !=
+    VkFence fence = m_swapchain->getInFlightFence(currentFrameIndex);
+    vkResetFences(m_device->getLogicalDevice(), 1, &fence);
+    if (vkQueueSubmit(m_device->getGraphicsQueue(), 1, &submitInfo, fence) !=
         VK_SUCCESS) {
       return;
     }
 
-    VkResult presentResult = swapchain->present(currentFrameIndex, imageIndex);
+    VkResult presentResult =
+        m_swapchain->present(currentFrameIndex, imageIndex);
     if (presentResult == VK_ERROR_OUT_OF_DATE_KHR ||
         presentResult == VK_SUBOPTIMAL_KHR) {
       rebuildSwapchain();
       return;
     }
 
-    frameIndex++;
+    m_frameIndex++;
   }
 
   void setDrawUiCallback(std::function<void()> cb) {
     m_drawUiCallback = std::move(cb);
   }
-
-  WindowSharedPtr m_window;
-  VulkanDeviceUniquePtr device = nullptr;
-  VulkanResourceManagerUniquePtr resourceManager = nullptr;
-  VulkanSwapchainUniquePtr swapchain = nullptr;
-  VulkanCommandBufferManagerUniquePtr cmdBufferMgr = nullptr;
-
-  SceneSharedPtr scene = nullptr;
-  LX_core::FrameGraph m_frameGraph{};
-  FrameIndex32 frameIndex = 0;
-
-  infra::Gui m_gui{};
-  std::function<void()> m_drawUiCallback{};
 
 private:
   void rebuildSwapchain() {
@@ -380,15 +323,15 @@ private:
     if (m_window && (m_window->getWidth() <= 0 || m_window->getHeight() <= 0)) {
       return;
     }
-    swapchain->waitIdle();
-    swapchain->rebuild(resourceManager->getRenderPass());
-    m_gui.updateSwapchainImageCount(swapchain->getImageCount());
+    m_swapchain->waitIdle();
+    m_swapchain->rebuild(m_resourceManager->getRenderPass());
+    m_gui.updateSwapchainImageCount(m_swapchain->getImageCount());
   }
 
   void destroy() {
-    if (device) {
+    if (m_device) {
       // 关键：等 GPU 干完活再删东西
-      vkDeviceWaitIdle(device->getLogicalDevice());
+      vkDeviceWaitIdle(m_device->getLogicalDevice());
     }
     // REQ-017: tear down ImGui before releasing Vulkan device so that
     // ImGui's descriptor pool / backend objects still see a live VkDevice.
@@ -396,33 +339,31 @@ private:
       m_gui.shutdown();
     }
     // 1. 销毁 Command Buffer Manager
-    cmdBufferMgr.reset();
+    m_cmdBufferMgr.reset();
     // 2. 销毁 Swapchain
-    swapchain.reset();
+    m_swapchain.reset();
     // 3. 销毁 Resource Manager
-    resourceManager.reset();
+    m_resourceManager.reset();
     // 4. 销毁 Device
-    device.reset();
+    m_device.reset();
   }
 
-  VkSurfaceFormatKHR chooseSwapSurfaceFormat(
-      const std::vector<VkSurfaceFormatKHR> &availableFormats) {
-    // 优先选择 SRGB 非线性格式
-    for (const auto &availableFormat : availableFormats) {
-      if (availableFormat.format == VK_FORMAT_B8G8R8A8_SRGB &&
-          availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
-        return availableFormat;
-      }
-    }
-    return availableFormats[0];
-  }
+  WindowSharedPtr m_window;
+  VulkanDeviceUniquePtr m_device = nullptr;
+  VulkanResourceManagerUniquePtr m_resourceManager = nullptr;
+  VulkanSwapchainUniquePtr m_swapchain = nullptr;
+  VulkanCommandBufferManagerUniquePtr m_cmdBufferMgr = nullptr;
+  SceneSharedPtr m_scene = nullptr;
+  LX_core::FrameGraph m_frameGraph{};
+  FrameIndex32 m_frameIndex = 0;
+  infra::Gui m_gui{};
+  std::function<void()> m_drawUiCallback{};
 };
 
-VulkanRenderer::VulkanRenderer(Token token) : p_impl(nullptr) {
-  p_impl = new VulkanRendererImpl();
-}
+VulkanRenderer::VulkanRenderer(Token)
+    : p_impl(std::make_unique<VulkanRendererImpl>()) {}
 
-VulkanRenderer::~VulkanRenderer() { delete p_impl; }
+VulkanRenderer::~VulkanRenderer() = default;
 
 void VulkanRenderer::initialize(WindowSharedPtr window, const char *appName) {
   p_impl->initialize(window, appName);

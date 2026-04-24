@@ -23,6 +23,7 @@
 - `VulkanSwapchain` 负责 swapchain image、depth、framebuffer、同步对象
 - `VulkanResourceManager` 负责 CPU 资源镜像与 pipeline cache
 - `VulkanCommandBuffer` 在 draw 阶段汇合 pipeline、descriptor、vertex/index buffer 和 push constants
+- `VulkanRendererImpl` 现在只是 `VulkanRenderer` 的私有实现对象，不再作为第二层 renderer 继承边界存在
 
 ## 当前实现最重要的约束
 
@@ -31,10 +32,14 @@
 - Linux 下的窗口化 Vulkan/SDL 测试还要求 `libSDL3.so.0` 可用，并且必须有视频设备来源：真实桌面会话，或者 `Xvfb`
 - 在 headless Linux shell 里，优先用 `xvfb-run -a ./src/test/<test-binary>`；这就足够让 SDL 拿到 video device，不需要额外装完整桌面
 - 如果没跑在桌面或 `Xvfb` 下，这类测试通常会以 `No available video device` 明确 skip；先排环境，再排 renderer 逻辑
+- 物理设备选择现在按“先判定功能是否满足，再按设备类型偏好排序”处理；独显优先，但集显/虚拟 GPU 只要满足队列、扩展和 surface 要求也允许启动
 - descriptor 路由按 binding name，不按硬编码 slot 枚举
 - scene-level UBO 已经在 queue 构建阶段合并好，backend 不再补注入
 - `VulkanResourceManager` 不直接持有旧式 pipeline map，而是委托给 `PipelineCache`
+- `VulkanResourceManager` 现在按 `IGpuResource::getBackendCacheIdentity()` 做 cache key，不再把 CPU 对象地址当成资源身份
+- GPU 资源缓存带短暂闲置宽限期：资源漏同步一帧不会立刻销毁重建，但长期不用仍会被 `collectGarbage()` 回收
 - `FrameGraph` 当前只接了 `Pass_Forward`，但 renderer 的遍历方式已经是按多 pass 组织
+- `kMaxFramesInFlight` 在 `VulkanRenderer` 内部只有一个定义，初始化路径和 draw 路径共用同一来源
 
 ## 从哪里进入源码
 

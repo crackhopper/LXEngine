@@ -1,6 +1,7 @@
 #pragma once
 #include "core/rhi/renderer.hpp"
 #include <functional>
+#include <memory>
 #include <vector>
 
 namespace LX_core::backend {
@@ -29,7 +30,7 @@ public:
   void setDrawUiCallback(std::function<void()> cb);
 
 private:
-  VulkanRendererImpl* p_impl = nullptr;
+  std::unique_ptr<VulkanRendererImpl> p_impl;
 };
 
 } // namespace LX_core::backend
