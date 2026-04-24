@@ -80,6 +80,8 @@ function(lx_windows_msvc_import_env)
 
   include("${_lx_gen_cmake}")
 
+  lx_windows_msvc_inject_toolchain_paths()
+
   lx_windows_msvc_log_result("Using Visual Studio root=$ENV{LX_WINDOWS_MSVC_VS_ROOT}")
   lx_windows_msvc_log_result("Using VsDevCmd=$ENV{LX_WINDOWS_MSVC_VSDEVCMD}")
 
@@ -90,4 +92,31 @@ function(lx_windows_msvc_import_env)
     lx_windows_msvc_probe_program("mt")
     lx_windows_msvc_probe_program("ninja")
   endif()
+endfunction()
+
+# .gen.cmake's `set(ENV{...})` only lives inside the configure process. ninja
+# later spawns cl.exe / link.exe in fresh processes with empty env. Rather
+# than re-applying env via a launcher at build time, bake the toolchain
+# system paths directly into every compile / link command line:
+#   INCLUDE -> CMAKE_<LANG>_STANDARD_INCLUDE_DIRECTORIES  (emits /I flags)
+#   LIB     -> link_directories()                          (emits /LIBPATH:)
+# This makes build.ninja self-contained and env-independent.
+function(lx_windows_msvc_inject_toolchain_paths)
+  # Windows env vars are ";"-separated, which is identical to CMake list syntax.
+  set(_lx_inc "$ENV{INCLUDE}")
+  set(_lx_lib "$ENV{LIB}")
+
+  foreach(_lx_lang IN ITEMS C CXX)
+    set(CMAKE_${_lx_lang}_STANDARD_INCLUDE_DIRECTORIES "${_lx_inc}"
+        CACHE STRING "VS toolchain system include dirs, inlined as /I flags" FORCE)
+  endforeach()
+
+  if(NOT "${_lx_lib}" STREQUAL "")
+    link_directories(${_lx_lib})
+  endif()
+
+  list(LENGTH _lx_inc _lx_inc_count)
+  list(LENGTH _lx_lib _lx_lib_count)
+  lx_windows_msvc_log_result("Inlined ${_lx_inc_count} INCLUDE path(s) via CMAKE_<LANG>_STANDARD_INCLUDE_DIRECTORIES")
+  lx_windows_msvc_log_result("Injected ${_lx_lib_count} LIB path(s) via link_directories()")
 endfunction()
