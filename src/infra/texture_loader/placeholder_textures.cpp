@@ -4,7 +4,7 @@ namespace LX_infra {
 
 namespace {
 
-LX_core::CombinedTextureSamplerPtr makePlaceholder(uint8_t r, uint8_t g,
+LX_core::CombinedTextureSamplerSharedPtr makePlaceholder(uint8_t r, uint8_t g,
                                                     uint8_t b, uint8_t a) {
   std::vector<u8> data = {r, g, b, a};
   auto tex = std::make_shared<LX_core::Texture>(
@@ -15,22 +15,22 @@ LX_core::CombinedTextureSamplerPtr makePlaceholder(uint8_t r, uint8_t g,
 
 } // namespace
 
-LX_core::CombinedTextureSamplerPtr getPlaceholderWhite() {
+LX_core::CombinedTextureSamplerSharedPtr getPlaceholderWhite() {
   static auto tex = makePlaceholder(255, 255, 255, 255);
   return tex;
 }
 
-LX_core::CombinedTextureSamplerPtr getPlaceholderBlack() {
+LX_core::CombinedTextureSamplerSharedPtr getPlaceholderBlack() {
   static auto tex = makePlaceholder(0, 0, 0, 255);
   return tex;
 }
 
-LX_core::CombinedTextureSamplerPtr getPlaceholderNormal() {
+LX_core::CombinedTextureSamplerSharedPtr getPlaceholderNormal() {
   static auto tex = makePlaceholder(128, 128, 255, 255);
   return tex;
 }
 
-LX_core::CombinedTextureSamplerPtr
+LX_core::CombinedTextureSamplerSharedPtr
 resolvePlaceholder(const std::string &name) {
   if (name == "white")
     return getPlaceholderWhite();

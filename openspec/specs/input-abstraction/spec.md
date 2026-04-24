@@ -28,7 +28,7 @@
 - `float getMouseWheelDelta() const`
 - `void nextFrame()`
 
-The class SHALL have a virtual destructor. A type alias `InputStatePtr = std::shared_ptr<IInputState>` SHALL be provided.
+The class SHALL have a virtual destructor. A type alias `InputStateSharedPtr = std::shared_ptr<IInputState>` SHALL be provided.
 
 #### Scenario: IInputState is abstract
 - **WHEN** attempting to instantiate `IInputState` directly

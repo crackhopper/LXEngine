@@ -64,9 +64,9 @@ The system MUST NOT expose pass-scoped setter overloads that write a different v
 - **THEN** an assertion fires in debug builds and the canonical slot buffer is unchanged
 
 ### Requirement: Texture bindings by StringID
-`MaterialInstance::setTexture(StringID id, CombinedTextureSamplerPtr tex)` SHALL look up `id` via the template's material binding metadata, assert that the resulting binding's type is `Texture2D` or `TextureCube`, and store the sampler in the instance's canonical texture map under that binding name.
+`MaterialInstance::setTexture(StringID id, CombinedTextureSamplerSharedPtr tex)` SHALL look up `id` via the template's material binding metadata, assert that the resulting binding's type is `Texture2D` or `TextureCube`, and store the sampler in the instance's canonical texture map under that binding name.
 
-`MaterialInstance` MUST NOT expose a setter that takes a pass argument or a raw `uint32_t` set/binding pair — callers use the shader-declared binding name only. `CombinedTextureSamplerPtr` (rather than raw `TexturePtr`) is used because the concrete resource passed to the backend descriptor layer must already implement `IGpuResource`, which `CombinedTextureSampler` does and `Texture` does not.
+`MaterialInstance` MUST NOT expose a setter that takes a pass argument or a raw `uint32_t` set/binding pair — callers use the shader-declared binding name only. `CombinedTextureSamplerSharedPtr` (rather than raw `TextureSharedPtr`) is used because the concrete resource passed to the backend descriptor layer must already implement `IGpuResource`, which `CombinedTextureSampler` does and `Texture` does not.
 
 #### Scenario: Texture bound to a reflected sampler name updates canonical storage
 - **WHEN** `setTexture(StringID("albedoMap"), tex)` is called and the template metadata classifies `albedoMap` as a `Texture2D` binding

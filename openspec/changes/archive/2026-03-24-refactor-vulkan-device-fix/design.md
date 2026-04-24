@@ -2,7 +2,7 @@
 
 The VulkanDevice class was refactored to:
 1. Enforce factory pattern via private `Token` struct
-2. Change `initialize()` to require `WindowPtr` and `appName` parameters
+2. Change `initialize()` to require `WindowSharedPtr` and `appName` parameters
 3. Manage `VulkanDescriptorManager` as a member (initialized after logical device creation)
 
 The tests currently call `device->initialize()` with no arguments, which is now invalid. The spec document also describes the old boolean-return interface.
@@ -23,7 +23,7 @@ The tests currently call `device->initialize()` with no arguments, which is now 
 
 2. **Spec update scope**: Only update the `renderer-backend-vulkan/spec.md` section on VulkanDevice initialization to reflect:
    - Factory pattern requirement
-   - New `initialize(WindowPtr, appName, ...)` signature
+   - New `initialize(WindowSharedPtr, appName, ...)` signature
    - Exception-based error handling
 
 ## Risks / Trade-offs

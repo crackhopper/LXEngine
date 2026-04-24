@@ -102,7 +102,7 @@ void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
 
   // Build a name→resource map from the item's descriptorResources so backend
   // routing can match reflected binding names without any slot enum.
-  std::unordered_map<LX_core::StringID, LX_core::IGpuResourcePtr,
+  std::unordered_map<LX_core::StringID, LX_core::IGpuResourceSharedPtr,
                      LX_core::StringID::Hash>
       resourceByName;
   for (const auto &cpuRes : item.descriptorResources) {
@@ -121,7 +121,7 @@ void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
     setGroups[b.set].push_back(b);
   }
 
-  std::vector<DescriptorSetPtr> allocatedSets;
+  std::vector<DescriptorSetUniquePtr> allocatedSets;
   allocatedSets.reserve(setGroups.size());
 
   for (auto &kv : setGroups) {

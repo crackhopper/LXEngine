@@ -30,7 +30,7 @@ public:
   }
 
   // --- 生命周期 ---
-  void initialize(WindowPtr window, const char *appName,
+  void initialize(WindowSharedPtr window, const char *appName,
                   uint32_t appVersion = VK_MAKE_VERSION(1, 0, 0),
                   const char *engineName = "LX",
                   uint32_t engineVersion = VK_MAKE_VERSION(1, 0, 0),
@@ -123,7 +123,7 @@ private:
   std::vector<const char *> m_instanceExtensions;
   std::vector<const char *> m_validationLayers;
 
-  WindowPtr m_window = nullptr;
+  WindowSharedPtr m_window = nullptr;
   VkSurfaceKHR m_surface = VK_NULL_HANDLE;
   VkSurfaceFormatKHR m_surfaceFormat = {};
   VkFormat m_depthFormat = VK_FORMAT_UNDEFINED;
@@ -142,7 +142,7 @@ private:
   VkDebugUtilsMessengerEXT m_debugMessenger = VK_NULL_HANDLE;
 };
 
-using VulkanDevicePtr = std::unique_ptr<VulkanDevice>;
+using VulkanDeviceUniquePtr = std::unique_ptr<VulkanDevice>;
 
 } // namespace backend
 } // namespace LX_core

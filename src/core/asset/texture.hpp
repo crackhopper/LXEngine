@@ -36,9 +36,9 @@ private:
   std::vector<u8> m_data; // CPU 内存图像数据
 };
 
-using TexturePtr = std::shared_ptr<Texture>; // 共享使用
+using TextureSharedPtr = std::shared_ptr<Texture>; // 共享使用
 
-static TexturePtr createWhiteTexture(u32 width = 1, u32 height = 1) {
+static TextureSharedPtr createWhiteTexture(u32 width = 1, u32 height = 1) {
   return std::make_shared<Texture>(
       TextureDesc{width, height, TextureFormat::RGBA8},
       std::vector<u8>(width * height * 4, 255));
@@ -50,9 +50,10 @@ static TexturePtr createWhiteTexture(u32 width = 1, u32 height = 1) {
 // TODO: 暂时空余采样器信息。
 class CombinedTextureSampler : public IGpuResource {
 public:
-  explicit CombinedTextureSampler(TexturePtr texture) : m_texture(texture) {}
+  explicit CombinedTextureSampler(TextureSharedPtr texture)
+      : m_texture(texture) {}
 
-  TexturePtr texture() const { return m_texture; }
+  TextureSharedPtr texture() const { return m_texture; }
 
   void update(const std::vector<u8> &data) {
     m_texture->update(data);
@@ -73,9 +74,10 @@ public:
   StringID getBindingName() const override { return m_bindingName; }
 
 private:
-  TexturePtr m_texture;
+  TextureSharedPtr m_texture;
   StringID m_bindingName;
 };
 
-using CombinedTextureSamplerPtr = std::shared_ptr<CombinedTextureSampler>;
+using CombinedTextureSamplerSharedPtr =
+    std::shared_ptr<CombinedTextureSampler>;
 } // namespace LX_core

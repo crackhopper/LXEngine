@@ -3,11 +3,11 @@
 Define the current material system contract, including material templates, material instances, reflection-driven UBO access, and descriptor resources.
 ## Requirements
 ### Requirement: MaterialInstance is the sole material type
-The system SHALL provide exactly one concrete material type, named `MaterialInstance`. All material pointers held by scene objects, render queues, and backend code MUST be `MaterialInstancePtr` values. The legacy `DrawMaterial` class and the legacy `BlinnPhongMaterialUBO` struct MUST NOT exist in the codebase after this change.
+The system SHALL provide exactly one concrete material type, named `MaterialInstance`. All material pointers held by scene objects, render queues, and backend code MUST be `MaterialInstanceSharedPtr` values. The legacy `DrawMaterial` class and the legacy `BlinnPhongMaterialUBO` struct MUST NOT exist in the codebase after this change.
 
 #### Scenario: Scene constructs materials via MaterialInstance
 - **WHEN** a loader constructs a material for a `RenderableSubMesh`
-- **THEN** the returned `MaterialInstancePtr` points to a `MaterialInstance` and the concrete type `DrawMaterial` is not referenced anywhere in `src/`
+- **THEN** the returned `MaterialInstanceSharedPtr` points to a `MaterialInstance` and the concrete type `DrawMaterial` is not referenced anywhere in `src/`
 
 #### Scenario: MaterialInstance public surface is preserved
 - **WHEN** rendering code calls `getPassShader(pass)`, `getPassRenderState(pass)`, `getDescriptorResources(pass)`, or `getMaterialSignature(pass)` on a `MaterialInstance`
@@ -32,21 +32,21 @@ The template SHALL be the sole owner of cross-pass structural validation for mat
 - **THEN** it exposes one canonical material binding table plus one per-pass binding-id map, and no duplicate flattened cache fields exist
 
 ### Requirement: MaterialInstance allocates canonical parameter data from the template
-`MaterialInstance::create(template)` SHALL walk the template's canonical material binding table. For each canonical material-owned buffer binding, it SHALL create a `MaterialParameterData` object with a zero-initialized byte buffer sized to the binding's `size`.
+`MaterialInstance::create(template)` SHALL walk the template's canonical material binding table. For each canonical material-owned buffer binding, it SHALL create a `ParameterBuffer` object with a zero-initialized byte buffer sized to the binding's `size`.
 
 Cross-pass consistency for same-name bindings SHALL be verified during `MaterialTemplate::rebuildMaterialInterface()`: if two passes declare the same material-owned binding name, descriptor type, descriptor count, set/binding location, buffer size, and reflected member layout MUST match. Structural mismatch SHALL be treated as a fatal authoring error.
 
 Shaders without any material-owned buffer binding MUST produce a `MaterialInstance` with an empty canonical parameter-data collection.
 
-`MaterialParameterData` SHALL accept the binding's reflected layout and resource type at construction (`UniformBuffer` or `StorageBuffer`) and return the corresponding `ResourceType` from `getType()`.
+`ParameterBuffer` SHALL accept the binding's reflected layout and resource type at construction (`UniformBuffer` or `StorageBuffer`) and return the corresponding `ResourceType` from `getType()`.
 
 #### Scenario: Construction creates slots from reflection using ownership query
 - **WHEN** `MaterialInstance::create(tmpl)` is called and the shader declares `SurfaceParams` (UBO, 48 bytes) and `DetailParams` (UBO, 32 bytes)
-- **THEN** two `MaterialParameterData` objects are created with sizes 48 and 32, each zero-initialized
+- **THEN** two `ParameterBuffer` objects are created with sizes 48 and 32, each zero-initialized
 
 #### Scenario: MaterialUBO name still works as an ordinary material-owned binding
 - **WHEN** a shader declares `uniform MaterialUBO { vec3 baseColor; float shininess; }` and reflection reports a `UniformBuffer` binding named `MaterialUBO`
-- **THEN** the system creates one canonical `MaterialParameterData` object named `MaterialUBO` and the material instance functions identically to before this change
+- **THEN** the system creates one canonical `ParameterBuffer` object named `MaterialUBO` and the material instance functions identically to before this change
 
 #### Scenario: Shader without material-owned buffers produces empty canonical parameter data
 - **WHEN** a shader's reflection bindings contain only `Texture2D` entries and system-owned `CameraUBO`
@@ -64,7 +64,7 @@ Shaders without any material-owned buffer binding MUST produce a `MaterialInstan
 - `setParameter(StringID bindingName, StringID memberName, const Vec3f&)`
 - `setParameter(StringID bindingName, StringID memberName, const Vec4f&)`
 
-Each overload SHALL locate the canonical `MaterialParameterData` object by `bindingName`, find the reflected member in that binding, verify the member type, and write into the byte buffer at the reflected offset. `MaterialParameterData::writeParameterMember(...)` SHALL encapsulate the lookup + type check + memcpy logic.
+Each overload SHALL locate the canonical `ParameterBuffer` object by `bindingName`, find the reflected member in that binding, verify the member type, and write into the byte buffer at the reflected offset. `ParameterBuffer::writeBindingMember(...)` SHALL encapsulate the lookup + type check + memcpy logic.
 
 #### Scenario: setParameter writes Vec4 at the reflected offset
 - **WHEN** `setParameter(StringID("MaterialUBO"), StringID("customColor"), Vec4f{1,0,0,1})` is called and reflection reports `customColor` at offset 16 with type `Vec4`
@@ -87,15 +87,15 @@ Each overload SHALL locate the canonical `MaterialParameterData` object by `bind
 - **THEN** an assertion fires in debug builds and the parameter buffer is unchanged
 
 ### Requirement: Texture bindings by StringID
-`MaterialInstance::setTexture(StringID id, CombinedTextureSamplerPtr tex)` SHALL look up `id` via `MaterialTemplate::findCanonicalMaterialBinding(id)`, assert that the resulting binding's type is `Texture2D` or `TextureCube`, and store the sampler in `m_textureBindings[id]`. `MaterialInstance` MUST NOT expose a setter that takes a raw `uint32_t` set/binding pair — callers use the shader-declared name only. `CombinedTextureSamplerPtr` (rather than raw `TexturePtr`) is used because the concrete resource passed to the backend descriptor layer must already implement `IGpuResource`, which `CombinedTextureSampler` does and `Texture` does not.
+`MaterialInstance::setTexture(StringID id, CombinedTextureSamplerSharedPtr tex)` SHALL look up `id` via `MaterialTemplate::findCanonicalMaterialBinding(id)`, assert that the resulting binding's type is `Texture2D` or `TextureCube`, and store the sampler in `m_textureBindingsByName[id]`. `MaterialInstance` MUST NOT expose a setter that takes a raw `uint32_t` set/binding pair — callers use the shader-declared name only. `CombinedTextureSamplerSharedPtr` (rather than raw `TextureSharedPtr`) is used because the concrete resource passed to the backend descriptor layer must already implement `IGpuResource`, which `CombinedTextureSampler` does and `Texture` does not.
 
 #### Scenario: Texture bound to a reflected sampler name
 - **WHEN** `setTexture(StringID("albedoMap"), tex)` is called and `findCanonicalMaterialBinding(StringID("albedoMap"))` returns a `Texture2D` binding
-- **THEN** the texture is stored under that `StringID` in `m_textureBindings`
+- **THEN** the texture is stored under that `StringID` in `m_textureBindingsByName`
 
 #### Scenario: Texture bound to a non-sampler name asserts
 - **WHEN** `setTexture(StringID("baseColor"), tex)` is called and `baseColor` is a UBO scalar member
-- **THEN** an assertion fires in debug builds and `m_textureBindings` is unchanged
+- **THEN** an assertion fires in debug builds and `m_textureBindingsByName` is unchanged
 
 ### Requirement: getDescriptorResources returns UBO + textures in deterministic order
 `MaterialInstance::getDescriptorResources(StringID pass)` SHALL return a vector of material-owned descriptor resources scoped to the target pass. The resolution SHALL:
@@ -120,7 +120,7 @@ The no-argument `getDescriptorResources()` SHALL be removed. All callers MUST pr
 - **THEN** that entry is omitted from the result
 
 ### Requirement: UBO GPU sync via cached IGpuResource wrapper
-`MaterialInstance` SHALL construct one `MaterialParameterData` per canonical material-owned buffer binding during construction. `syncGpuData()` SHALL iterate all parameter-data objects and call `setDirty()` on each object whose internal dirty flag is set.
+`MaterialInstance` SHALL construct one `ParameterBuffer` per canonical material-owned buffer binding during construction. `syncGpuData()` SHALL iterate all buffer-binding objects and call `setDirty()` on each object whose internal dirty flag is set.
 
 #### Scenario: syncGpuData propagates dirty state for all modified slots
 - **WHEN** two canonical parameter bindings exist, one is modified via `setParameter`, and `syncGpuData()` is called
@@ -144,11 +144,11 @@ The core layer SHALL provide a `UboByteBufferResource` class that implements `IG
 - **THEN** the wrapper returns the updated bytes (no stale copy)
 
 ### Requirement: Loader returns MaterialInstance
-The file-shader loader for `blinnphong_0` SHALL be named `loadBlinnPhongMaterial` (or similar, not containing `DrawMaterial`) and SHALL return a `MaterialInstancePtr`. It SHALL compile the shader, reflect bindings, create a `MaterialTemplate`, configure at least one `MaterialPassDefinition`, call `rebuildMaterialInterface()`, create a `MaterialInstance`, and seed reasonable default uniform values via `setParameter(bindingName, memberName, value)`. The legacy file `blinnphong_draw_material_loader.{hpp,cpp}` MUST be removed or rewritten in place.
+The file-shader loader for `blinnphong_0` SHALL be named `loadBlinnPhongMaterial` (or similar, not containing `DrawMaterial`) and SHALL return a `MaterialInstanceSharedPtr`. It SHALL compile the shader, reflect bindings, create a `MaterialTemplate`, configure at least one `MaterialPassDefinition`, call `rebuildMaterialInterface()`, create a `MaterialInstance`, and seed reasonable default uniform values via `setParameter(bindingName, memberName, value)`. The legacy file `blinnphong_draw_material_loader.{hpp,cpp}` MUST be removed or rewritten in place.
 
 #### Scenario: Loader produces a ready-to-render MaterialInstance
 - **WHEN** `loadBlinnPhongMaterial()` is called
-- **THEN** the returned `MaterialInstancePtr` has non-empty canonical parameter data, a resolvable `getPassShader()`, and default uniform values written via `setParameter(...)`
+- **THEN** the returned `MaterialInstanceSharedPtr` has non-empty canonical parameter data, a resolvable `getPassShader()`, and default uniform values written via `setParameter(...)`
 
 #### Scenario: No DrawMaterial references remain
 - **WHEN** searching `src/` (excluding `openspec/changes/archive/`) for the symbol `DrawMaterial`
@@ -287,7 +287,7 @@ The material system SHALL formally support the following descriptor types for ma
 
 For buffer types (`UniformBuffer`, `StorageBuffer`), `MaterialInstance` SHALL create canonical parameter data with independent byte buffer, dirty state, and `IGpuResource` behavior.
 
-For texture types (`Texture2D`, `TextureCube`), the existing `setTexture(StringID, CombinedTextureSamplerPtr)` mechanism SHALL continue to apply.
+For texture types (`Texture2D`, `TextureCube`), the existing `setTexture(StringID, CombinedTextureSamplerSharedPtr)` mechanism SHALL continue to apply.
 
 #### Scenario: StorageBuffer binding creates canonical parameter data
 - **WHEN** a shader declares a non-system-owned `StorageBuffer` binding named `ParticleData` with size 256
@@ -308,7 +308,7 @@ If a material-owned binding has a descriptor type not in the supported set (e.g.
 `MaterialInstance` SHALL replace the single `m_uboBuffer` / `m_uboBinding` / `m_uboResource` with a collection of canonical parameter bindings, each keyed by binding name. Each entry SHALL have:
 - an independent `std::vector<uint8_t>` byte buffer
 - a non-owning pointer to the `ShaderResourceBinding`
-- `IGpuResource` behavior through `MaterialParameterData`
+- `IGpuResource` behavior through `ParameterBuffer`
 - an independent dirty flag
 
 The parameter-data collection SHALL be built during construction by iterating canonical material-owned buffer bindings from the template.

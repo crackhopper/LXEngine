@@ -5,7 +5,7 @@
 
 ## 2. Placeholder Textures
 
-- [x] 2.1 Create `src/infra/texture_loader/placeholder_textures.hpp` with `getWhite()`, `getBlack()`, `getNormal()` returning `CombinedTextureSamplerPtr`
+- [x] 2.1 Create `src/infra/texture_loader/placeholder_textures.hpp` with `getWhite()`, `getBlack()`, `getNormal()` returning `CombinedTextureSamplerSharedPtr`
 - [x] 2.2 Create `src/infra/texture_loader/placeholder_textures.cpp` with lazy singleton implementation
 - [x] 2.3 Add source to CMakeLists.txt INFRA_SOURCES
 

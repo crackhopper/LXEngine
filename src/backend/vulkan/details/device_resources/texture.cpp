@@ -233,7 +233,7 @@ void VulkanTexture::copyFromBuffer(VulkanCommandBuffer &cmd,
                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 }
 
-VulkanTexturePtr VulkanTexture::createForAttachment(
+VulkanTextureUniquePtr VulkanTexture::createForAttachment(
     VulkanDevice &device, uint32_t width, uint32_t height, VkFormat format,
     VkImageUsageFlags usage, VkImageAspectFlags aspectMask) {
   return std::make_unique<VulkanTexture>(Token{}, device, width, height, format,

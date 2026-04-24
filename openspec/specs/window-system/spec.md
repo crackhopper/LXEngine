@@ -103,14 +103,14 @@ The window system SHALL compile and work identically when `USE_GLFW` is enabled 
 The `Window` interface (`src/core/platform/window.hpp`) SHALL declare a pure virtual method:
 
 ```cpp
-virtual InputStatePtr getInputState() const = 0;
+virtual InputStateSharedPtr getInputState() const = 0;
 ```
 
 The same `Window` instance SHALL return the same shared input state object on every call. `LX_infra::Window` SHALL override this method. The SDL implementation SHALL return a `Sdl3InputState`; the GLFW implementation SHALL return a `DummyInputState`.
 
 #### Scenario: getInputState returns non-null
 - **WHEN** calling `getInputState()` on any `Window` implementation
-- **THEN** the returned `InputStatePtr` SHALL NOT be null
+- **THEN** the returned `InputStateSharedPtr` SHALL NOT be null
 
 #### Scenario: getInputState returns same object
 - **WHEN** calling `getInputState()` twice on the same `Window` instance

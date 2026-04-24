@@ -31,7 +31,7 @@ src/infra/material_loader/pbr_material_loader.cpp
 
 namespace LX_infra {
 
-LX_core::MaterialInstancePtr
+LX_core::MaterialInstanceSharedPtr
 loadPbrMaterial(LX_core::ResourcePassFlag passFlag =
                     LX_core::ResourcePassFlag::Forward);
 
@@ -58,7 +58,7 @@ namespace LX_infra {
 
 namespace fs = std::filesystem;
 
-LX_core::MaterialInstancePtr
+LX_core::MaterialInstanceSharedPtr
 loadPbrMaterial(LX_core::ResourcePassFlag passFlag) {
     const std::string baseName = "pbr";
 

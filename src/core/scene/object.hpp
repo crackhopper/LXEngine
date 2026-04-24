@@ -20,7 +20,7 @@ namespace LX_core {
 class Scene;
 
 struct PerDrawData {
-  using Ptr = std::shared_ptr<PerDrawData>;
+  using SharedPtr = std::shared_ptr<PerDrawData>;
 
   alignas(16) uint8_t data[128] = {0};
   uint32_t activeSize = sizeof(PerDrawLayoutBase);
@@ -41,16 +41,16 @@ struct PerDrawData {
   u32 byteSize() const { return activeSize; }
 };
 
-using PerDrawDataPtr = PerDrawData::Ptr;
+using PerDrawDataSharedPtr = PerDrawData::SharedPtr;
 
 struct ValidatedRenderablePassData {
   StringID pass;
-  MaterialInstancePtr material;
-  IShaderPtr shaderInfo;
-  PerDrawDataPtr drawData;
-  IGpuResourcePtr vertexBuffer;
-  IGpuResourcePtr indexBuffer;
-  std::vector<IGpuResourcePtr> descriptorResources;
+  MaterialInstanceSharedPtr material;
+  IShaderSharedPtr shaderInfo;
+  PerDrawDataSharedPtr drawData;
+  IGpuResourceSharedPtr vertexBuffer;
+  IGpuResourceSharedPtr indexBuffer;
+  std::vector<IGpuResourceSharedPtr> descriptorResources;
   StringID objectSignature;
   PipelineKey pipelineKey;
 };
@@ -59,12 +59,12 @@ class IRenderable {
 public:
   virtual ~IRenderable() = default;
 
-  virtual IGpuResourcePtr getVertexBuffer() const = 0;
-  virtual IGpuResourcePtr getIndexBuffer() const = 0;
-  virtual std::vector<IGpuResourcePtr>
+  virtual IGpuResourceSharedPtr getVertexBuffer() const = 0;
+  virtual IGpuResourceSharedPtr getIndexBuffer() const = 0;
+  virtual std::vector<IGpuResourceSharedPtr>
   getDescriptorResources(StringID pass) const = 0;
-  virtual IShaderPtr getShaderInfo() const = 0;
-  virtual PerDrawDataPtr getPerDrawData() const { return nullptr; }
+  virtual IShaderSharedPtr getShaderInfo() const = 0;
+  virtual PerDrawDataSharedPtr getPerDrawData() const { return nullptr; }
   virtual StringID getRenderSignature(StringID pass) const = 0;
   virtual bool supportsPass(StringID pass) const = 0;
   virtual std::string getNodeName() const = 0;
@@ -74,14 +74,14 @@ public:
   getValidatedPassData(StringID pass) const = 0;
 };
 
-using IRenderablePtr = std::shared_ptr<IRenderable>;
+using IRenderableSharedPtr = std::shared_ptr<IRenderable>;
 
 class SceneNode final : public IRenderable {
 public:
-  using Ptr = std::shared_ptr<SceneNode>;
+  using SharedPtr = std::shared_ptr<SceneNode>;
 
-  SceneNode(std::string nodeName, MeshPtr mesh, MaterialInstancePtr material,
-            SkeletonPtr skeleton = nullptr);
+  SceneNode(std::string nodeName, MeshSharedPtr mesh, MaterialInstanceSharedPtr material,
+            SkeletonSharedPtr skeleton = nullptr);
   ~SceneNode() override;
 
   SceneNode(const SceneNode &) = delete;
@@ -89,30 +89,30 @@ public:
   SceneNode(SceneNode &&) = delete;
   SceneNode &operator=(SceneNode &&) = delete;
 
-  static Ptr create(std::string nodeName, MeshPtr mesh,
-                    MaterialInstancePtr material,
-                    SkeletonPtr skeleton = nullptr) {
+  static SharedPtr create(std::string nodeName, MeshSharedPtr mesh,
+                          MaterialInstanceSharedPtr material,
+                          SkeletonSharedPtr skeleton = nullptr) {
     return std::make_shared<SceneNode>(std::move(nodeName), std::move(mesh),
                                        std::move(material),
                                        std::move(skeleton));
   }
 
-  const MeshPtr &getMesh() const { return m_mesh; }
-  const MaterialInstancePtr &getMaterialInstance() const {
+  const MeshSharedPtr &getMesh() const { return m_mesh; }
+  const MaterialInstanceSharedPtr &getMaterialInstance() const {
     return m_materialInstance;
   }
-  const std::optional<SkeletonPtr> &getSkeleton() const { return m_skeleton; }
+  const std::optional<SkeletonSharedPtr> &getSkeleton() const { return m_skeleton; }
 
-  void setMesh(MeshPtr mesh);
-  void setMaterialInstance(MaterialInstancePtr material);
-  void setSkeleton(SkeletonPtr skeleton);
+  void setMesh(MeshSharedPtr mesh);
+  void setMaterialInstance(MaterialInstanceSharedPtr material);
+  void setSkeleton(SkeletonSharedPtr skeleton);
 
-  IGpuResourcePtr getVertexBuffer() const override;
-  IGpuResourcePtr getIndexBuffer() const override;
-  std::vector<IGpuResourcePtr>
+  IGpuResourceSharedPtr getVertexBuffer() const override;
+  IGpuResourceSharedPtr getIndexBuffer() const override;
+  std::vector<IGpuResourceSharedPtr>
   getDescriptorResources(StringID pass) const override;
-  IShaderPtr getShaderInfo() const override;
-  PerDrawDataPtr getPerDrawData() const override { return m_perDrawData; }
+  IShaderSharedPtr getShaderInfo() const override;
+  PerDrawDataSharedPtr getPerDrawData() const override { return m_perDrawData; }
   StringID getRenderSignature(StringID pass) const override;
   bool supportsPass(StringID pass) const override;
   std::string getNodeName() const override { return m_nodeName; }
@@ -130,10 +130,10 @@ private:
   void unregisterMaterialPassListener();
 
   std::string m_nodeName;
-  MeshPtr m_mesh;
-  MaterialInstancePtr m_materialInstance;
-  std::optional<SkeletonPtr> m_skeleton;
-  PerDrawDataPtr m_perDrawData;
+  MeshSharedPtr m_mesh;
+  MaterialInstanceSharedPtr m_materialInstance;
+  std::optional<SkeletonSharedPtr> m_skeleton;
+  PerDrawDataSharedPtr m_perDrawData;
   StringID m_debugId;
   std::unordered_map<StringID, ValidatedRenderablePassData, StringID::Hash>
       m_validatedPasses;
@@ -143,22 +143,22 @@ private:
 
 struct RenderableSubMesh final : public IRenderable {
 public:
-  MeshPtr mesh;
-  MaterialInstancePtr material;
-  std::optional<SkeletonPtr> skeleton;
-  PerDrawDataPtr perDrawData;
+  MeshSharedPtr mesh;
+  MaterialInstanceSharedPtr material;
+  std::optional<SkeletonSharedPtr> skeleton;
+  PerDrawDataSharedPtr perDrawData;
   std::string nodeName = "RenderableSubMesh";
 
-  RenderableSubMesh(MeshPtr mesh_, MaterialInstancePtr material_,
-                    SkeletonPtr skeleton_ = nullptr,
+  RenderableSubMesh(MeshSharedPtr mesh_, MaterialInstanceSharedPtr material_,
+                    SkeletonSharedPtr skeleton_ = nullptr,
                     std::string nodeName_ = "RenderableSubMesh");
 
-  IGpuResourcePtr getVertexBuffer() const override;
-  IGpuResourcePtr getIndexBuffer() const override;
-  std::vector<IGpuResourcePtr>
+  IGpuResourceSharedPtr getVertexBuffer() const override;
+  IGpuResourceSharedPtr getIndexBuffer() const override;
+  std::vector<IGpuResourceSharedPtr>
   getDescriptorResources(StringID pass) const override;
-  IShaderPtr getShaderInfo() const override;
-  PerDrawDataPtr getPerDrawData() const override { return perDrawData; }
+  IShaderSharedPtr getShaderInfo() const override;
+  PerDrawDataSharedPtr getPerDrawData() const override { return perDrawData; }
   StringID getRenderSignature(StringID pass) const override;
   bool supportsPass(StringID pass) const override;
   std::string getNodeName() const override { return nodeName; }
@@ -170,6 +170,6 @@ private:
   mutable std::optional<ValidatedRenderablePassData> m_lastValidatedData;
 };
 
-using SceneNodePtr = SceneNode::Ptr;
+using SceneNodeSharedPtr = SceneNode::SharedPtr;
 
 } // namespace LX_core

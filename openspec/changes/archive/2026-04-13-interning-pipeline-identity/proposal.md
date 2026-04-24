@@ -1,6 +1,6 @@
 ## Why
 
-现有 `PipelineKey::build(ShaderProgramSet, Mesh, RenderState, SkeletonPtr)` 把每个资源的 `getPipelineHash() → size_t` 混成一个 `blinnphong_0||ml:0x3a2f1b7c|rs:0x7c1de4a0|sk:0x0` 格式的字符串，再喂给 `StringID`。这套方案解决了"有稳定 key 可用"的问题但留下三个短板：
+现有 `PipelineKey::build(ShaderProgramSet, Mesh, RenderState, SkeletonSharedPtr)` 把每个资源的 `getPipelineHash() → size_t` 混成一个 `blinnphong_0||ml:0x3a2f1b7c|rs:0x7c1de4a0|sk:0x0` 格式的字符串，再喂给 `StringID`。这套方案解决了"有稳定 key 可用"的问题但留下三个短板：
 
 1. **调试只能看 16 进制 hash**，看不到 layout、variants、state 具体是什么
 2. **`Mesh::getPipelineHash()` 把 layout + topology 粗粒度混在一起**，任何子项变化都重建整张 pipeline，无法做局部命中分析
@@ -22,7 +22,7 @@ REQ-006 已经为 `GlobalStringTable` 加上了结构化 `compose`/`decompose`/`
   - `Skeleton::getPipelineHash()` 和 `kSkeletonPipelineHashTag`
   - `RenderState::getPipelineHash()`、`RenderPassEntry::getPipelineHash()`、`ShaderProgramSet::getPipelineHash()`
   - `pipeline_key.cpp` 中 `variantSegment()` 辅助函数
-  - 旧 `PipelineKey::build(ShaderProgramSet, Mesh, RenderState, SkeletonPtr)` 重载
+  - 旧 `PipelineKey::build(ShaderProgramSet, Mesh, RenderState, SkeletonSharedPtr)` 重载
 - **归档文档打 Superseded banner**：`docs/requirements/finished/001-skeleton-to-resources.md` 和 `.../002-pipeline-key.md` 顶部加一行 "Superseded by REQ-007"；**不改正文**
 - **调用点迁移**：`blinnphong_material_loader`、`test_material_instance` 的 `setPass("Forward", ...)` 改用 `setPass(Pass_Forward, ...)`；`vk_renderer.cpp` 与三个 `test_vulkan_*.cpp` 的 `scene->buildRenderingItem()` 改为传 `Pass_Forward`
 

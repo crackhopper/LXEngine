@@ -3,7 +3,7 @@
 Define the current scene-node validation contract for high-level renderables and their structural pass validation behavior.
 ## Requirements
 ### Requirement: SceneNode is a self-validating high-level renderable
-The system SHALL provide a high-level `SceneNode` type as the primary `IRenderable` implementation. `SceneNode` construction SHALL require `nodeName`, `MeshPtr mesh`, and `MaterialInstancePtr materialInstance`; `SkeletonPtr` SHALL be optional; and `objectPC` SHALL remain present as a transitional member for the engine-wide model push constant. `SceneNode` SHALL be valid outside of any `Scene` container and SHALL perform structural validation immediately during construction.
+The system SHALL provide a high-level `SceneNode` type as the primary `IRenderable` implementation. `SceneNode` construction SHALL require `nodeName`, `MeshSharedPtr mesh`, and `MaterialInstanceSharedPtr materialInstance`; `SkeletonSharedPtr` SHALL be optional; and `objectPC` SHALL remain present as a transitional member for the engine-wide model push constant. `SceneNode` SHALL be valid outside of any `Scene` container and SHALL perform structural validation immediately during construction.
 
 Structural setter operations (`setMesh(...)`, `setMaterialInstance(...)`, `setSkeleton(...)`, and `setSkeleton(nullptr)`) SHALL trigger immediate re-validation of every currently enabled pass before the setter call completes.
 

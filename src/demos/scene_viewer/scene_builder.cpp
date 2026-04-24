@@ -20,17 +20,17 @@ namespace LX_demo::scene_viewer {
 namespace {
 
 using LX_core::CombinedTextureSampler;
-using LX_core::CombinedTextureSamplerPtr;
+using LX_core::CombinedTextureSamplerSharedPtr;
 using LX_core::IndexBuffer;
-using LX_core::MaterialInstancePtr;
+using LX_core::MaterialInstanceSharedPtr;
 using LX_core::Mesh;
-using LX_core::MeshPtr;
+using LX_core::MeshSharedPtr;
 using LX_core::SceneNode;
 using LX_core::StringID;
 using LX_core::Texture;
 using LX_core::TextureDesc;
 using LX_core::TextureFormat;
-using LX_core::TexturePtr;
+using LX_core::TextureSharedPtr;
 using LX_core::Vec2f;
 using LX_core::Vec3f;
 using LX_core::Vec4f;
@@ -51,7 +51,7 @@ void warnOnce(bool& flag, const char* msg) {
 // forbids MikkTSpace-style generation, and the blinnphong path we target
 // stays on enableNormal=0 when tangents are unavailable so the placeholder is
 // never sampled.
-MeshPtr buildMeshFromGltf(const infra::GLTFLoader& loader) {
+MeshSharedPtr buildMeshFromGltf(const infra::GLTFLoader& loader) {
   const auto& positions = loader.getPositions();
   const auto& normals = loader.getNormals();
   const auto& uvs = loader.getTexCoords();
@@ -106,7 +106,7 @@ MeshPtr buildMeshFromGltf(const infra::GLTFLoader& loader) {
 // Load an image file and wrap it in a CombinedTextureSampler the material
 // system understands. Uses RGBA8 (stb_image always delivers 4 channels via
 // STBI_rgb_alpha, which is what TextureLoader requests internally).
-CombinedTextureSamplerPtr loadCombinedTexture(
+CombinedTextureSamplerSharedPtr loadCombinedTexture(
     const std::filesystem::path& path) {
   infra::TextureLoader loader;
   loader.load(path.string());
@@ -136,7 +136,7 @@ CombinedTextureSamplerPtr loadCombinedTexture(
 // Other PBR textures (metallic/roughness, normal, occlusion, emissive) are
 // read from glTF but intentionally unbound — the Blinn-Phong shader doesn't
 // consume them; full PBR is a downstream REQ.
-MaterialInstancePtr makeHelmetMaterial(const infra::GLTFPbrMaterial& pbr,
+MaterialInstanceSharedPtr makeHelmetMaterial(const infra::GLTFPbrMaterial& pbr,
                                        const std::filesystem::path& gltfDir) {
   constexpr const char* kTexturedMaterial =
       "materials/blinnphong_textured.material";
@@ -174,7 +174,7 @@ MaterialInstancePtr makeHelmetMaterial(const infra::GLTFPbrMaterial& pbr,
   return mat;
 }
 
-MaterialInstancePtr makeGroundMaterial() {
+MaterialInstanceSharedPtr makeGroundMaterial() {
   auto mat = LX_infra::loadGenericMaterial("materials/blinnphong_lit.material");
   if (!mat) {
     throw std::runtime_error(
@@ -187,7 +187,7 @@ MaterialInstancePtr makeGroundMaterial() {
   return mat;
 }
 
-MeshPtr buildGroundMesh() {
+MeshSharedPtr buildGroundMesh() {
   const float half = 20.0f; // 40m x 40m — wide enough to give visual context
   // Ground drops below the helmet's local origin so the helmet sits clearly
   // above the plane. DamagedHelmet is roughly 2m tall centered near y=0 in
@@ -218,7 +218,7 @@ MeshPtr buildGroundMesh() {
 
 } // namespace
 
-LX_core::SceneNodePtr buildHelmetNode(const std::filesystem::path& gltfPath) {
+LX_core::SceneNodeSharedPtr buildHelmetNode(const std::filesystem::path& gltfPath) {
   infra::GLTFLoader loader;
   loader.load(gltfPath.string());
 
@@ -229,7 +229,7 @@ LX_core::SceneNodePtr buildHelmetNode(const std::filesystem::path& gltfPath) {
   return SceneNode::create("helmet", std::move(mesh), std::move(material));
 }
 
-LX_core::SceneNodePtr buildGroundNode() {
+LX_core::SceneNodeSharedPtr buildGroundNode() {
   auto mesh = buildGroundMesh();
   auto material = makeGroundMaterial();
   return SceneNode::create("ground", std::move(mesh), std::move(material));

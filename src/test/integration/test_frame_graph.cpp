@@ -96,13 +96,13 @@ makeRenderable(const std::string &shaderName = "fake_fg",
 }
 
 // Helpers for REQ-009 scenarios.
-CameraPtr makeCameraWithTarget(const RenderTarget &target) {
+CameraSharedPtr makeCameraWithTarget(const RenderTarget &target) {
   auto cam = std::make_shared<Camera>();
   cam->setTarget(target);
   return cam;
 }
 
-CameraPtr makeCameraNoTarget() {
+CameraSharedPtr makeCameraNoTarget() {
   return std::make_shared<Camera>();
 }
 

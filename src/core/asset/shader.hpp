@@ -180,7 +180,7 @@ public:
   virtual std::string getShaderName() const { return {}; }
 };
 
-using IShaderPtr = std::shared_ptr<IShader>;
+using IShaderSharedPtr = std::shared_ptr<IShader>;
 
 /*****************************************************************
  * Shader Variant
@@ -197,7 +197,7 @@ struct ShaderVariant {
 /*
 @source_analysis.section ShaderProgramSet：把“哪份 shader 变体参与这个 pass”收束成一项配置
 `ShaderProgramSet` 既保存逻辑层的 shader 标识（`shaderName` + variants），
-也保存已经解析好的 `IShaderPtr`。这样 `MaterialPassDefinition` 就可以同时回答：
+也保存已经解析好的 `IShaderSharedPtr`。这样 `MaterialPassDefinition` 就可以同时回答：
 
 - 这个 pass 的结构签名应该由哪份 shader 名称和哪些 variant 组成
 - 运行时如果需要反射 binding，该去拿哪一个 `IShader`
@@ -207,7 +207,7 @@ struct ShaderVariant {
 struct ShaderProgramSet {
   std::string shaderName;
   std::vector<ShaderVariant> variants;
-  IShaderPtr shader;
+  IShaderSharedPtr shader;
 
   size_t getHash() const {
     if (!m_dirty)
@@ -242,7 +242,7 @@ struct ShaderProgramSet {
     return getHash() == rhs.getHash();
   }
 
-  IShaderPtr getShader() const { return shader; }
+  IShaderSharedPtr getShader() const { return shader; }
 
   bool hasEnabledVariant(const std::string &macroName) const {
     for (const auto &variant : variants) {

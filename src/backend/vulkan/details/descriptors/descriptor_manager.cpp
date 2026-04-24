@@ -162,7 +162,7 @@ VulkanDescriptorManager::VulkanDescriptorManager(Token, VulkanDevice &device)
   }
 }
 
-VulkanDescriptorManagerPtr
+VulkanDescriptorManagerUniquePtr
 VulkanDescriptorManager::create(VulkanDevice &device) {
   return std::make_unique<VulkanDescriptorManager>(Token{}, device);
 }
@@ -236,7 +236,7 @@ VkDescriptorSetLayout VulkanDescriptorManager::getOrCreateLayout(
   return layout;
 }
 
-DescriptorSetPtr VulkanDescriptorManager::allocateSet(
+DescriptorSetUniquePtr VulkanDescriptorManager::allocateSet(
     const std::vector<LX_core::ShaderResourceBinding> &bindingsIn) {
   VkDescriptorSetLayout layout = getOrCreateLayout(bindingsIn);
 

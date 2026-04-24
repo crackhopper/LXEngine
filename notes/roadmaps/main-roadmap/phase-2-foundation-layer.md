@@ -81,15 +81,15 @@ public:
     std::weak_ptr<SceneNode> parent;
 
     // 可选挂载
-    IRenderablePtr  renderable;
-    CameraPtr       camera;
-    LightBasePtr    light;
+    IRenderableSharedPtr  renderable;
+    CameraSharedPtr       camera;
+    LightBaseSharedPtr    light;
     // 后续阶段新增：AnimationPlayerPtr, RigidBodyPtr, ScriptPtr ...
 };
 
 class Scene {
-    SceneNodePtr m_root;
-    // 废弃旧的 vector<IRenderablePtr>，改成 traversal
+    SceneNodeSharedPtr m_root;
+    // 废弃旧的 vector<IRenderableSharedPtr>，改成 traversal
 };
 ```
 

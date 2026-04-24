@@ -109,13 +109,13 @@ struct VertexPosNormalUvOnly {
   }
 };
 
-template <typename TVertex> MeshPtr makeMesh(std::vector<TVertex> vertices) {
+template <typename TVertex> MeshSharedPtr makeMesh(std::vector<TVertex> vertices) {
   auto vb = VertexBuffer<TVertex>::create(std::move(vertices));
   auto ib = IndexBuffer::create({0, 1, 2});
   return Mesh::create(vb, ib);
 }
 
-MeshPtr makeMeshWithSkinningInputs() {
+MeshSharedPtr makeMeshWithSkinningInputs() {
   return makeMesh<VertexPosNormalUvBone>(
       std::vector<VertexPosNormalUvBone>{
           VertexPosNormalUvBone{{0, 0, 0},
@@ -139,7 +139,7 @@ MeshPtr makeMeshWithSkinningInputs() {
       });
 }
 
-MeshPtr makeMeshWithoutSkinningInputs() {
+MeshSharedPtr makeMeshWithoutSkinningInputs() {
   std::vector<VertexPBR> vertices(3);
   vertices[0].pos = {0, 0, 0};
   vertices[0].normal = {0, 1, 0};
@@ -156,37 +156,37 @@ MeshPtr makeMeshWithoutSkinningInputs() {
   return makeMesh<VertexPBR>(std::move(vertices));
 }
 
-MeshPtr makeMeshPositionOnly() {
+MeshSharedPtr makeMeshPositionOnly() {
   return makeMesh<VertexPosOnly>({{{0, 0, 0}}, {{1, 0, 0}}, {{0, 1, 0}}});
 }
 
-MeshPtr makeMeshWithVertexColorOnly() {
+MeshSharedPtr makeMeshWithVertexColorOnly() {
   return makeMesh<VertexPosColorOnly>(
       {{{0, 0, 0}, {1, 0, 0, 1}},
        {{1, 0, 0}, {0, 1, 0, 1}},
        {{0, 1, 0}, {0, 0, 1, 1}}});
 }
 
-MeshPtr makeMeshWithUvOnly() {
+MeshSharedPtr makeMeshWithUvOnly() {
   return makeMesh<VertexPosUvOnly>(
       {{{0, 0, 0}, {0, 0}}, {{1, 0, 0}, {1, 0}}, {{0, 1, 0}, {0, 1}}});
 }
 
-MeshPtr makeMeshWithNormalOnly() {
+MeshSharedPtr makeMeshWithNormalOnly() {
   return makeMesh<VertexPosNormalOnly>(
       {{{0, 0, 0}, {0, 1, 0}},
        {{1, 0, 0}, {0, 1, 0}},
        {{0, 1, 0}, {0, 1, 0}}});
 }
 
-MeshPtr makeMeshWithNormalAndUvOnly() {
+MeshSharedPtr makeMeshWithNormalAndUvOnly() {
   return makeMesh<VertexPosNormalUvOnly>(
       {{{0, 0, 0}, {0, 1, 0}, {0, 0}},
        {{1, 0, 0}, {0, 1, 0}, {1, 0}},
        {{0, 1, 0}, {0, 1, 0}, {0, 1}}});
 }
 
-SkeletonPtr makeSkeleton() {
+SkeletonSharedPtr makeSkeleton() {
   std::vector<Bone> bones = {
       Bone{"root", -1, Vec3f{0, 0, 0}, Quatf{}, Vec3f{1, 1, 1}},
   };
@@ -206,7 +206,7 @@ std::filesystem::path findProjectMaterialsDir() {
   return std::filesystem::current_path() / "materials";
 }
 
-MaterialInstancePtr makeMaterialFromYaml(const std::string &yamlContent) {
+MaterialInstanceSharedPtr makeMaterialFromYaml(const std::string &yamlContent) {
   auto tmpPath = findProjectMaterialsDir() / "test_node_val.material";
   {
     std::ofstream out(tmpPath);
@@ -217,7 +217,7 @@ MaterialInstancePtr makeMaterialFromYaml(const std::string &yamlContent) {
   return mat;
 }
 
-MaterialInstancePtr makeMaterial(bool skinning) {
+MaterialInstanceSharedPtr makeMaterial(bool skinning) {
   std::string yaml =
       "shader: blinnphong_0\n"
       "variants:\n"
@@ -233,7 +233,7 @@ MaterialInstancePtr makeMaterial(bool skinning) {
   return makeMaterialFromYaml(yaml);
 }
 
-MaterialInstancePtr
+MaterialInstanceSharedPtr
 makeMaterial(std::vector<ShaderVariant> variants) {
   std::string yaml =
       "shader: blinnphong_0\n"
@@ -253,7 +253,7 @@ makeMaterial(std::vector<ShaderVariant> variants) {
   return makeMaterialFromYaml(yaml);
 }
 
-bool hasBinding(const std::vector<IGpuResourcePtr> &resources,
+bool hasBinding(const std::vector<IGpuResourceSharedPtr> &resources,
                 const char *bindingName) {
   const StringID id(bindingName);
   for (const auto &resource : resources) {

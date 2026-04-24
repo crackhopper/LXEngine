@@ -72,7 +72,7 @@
 
 ### A. 场景层缺乏 transform 层级
 
-现在 `Scene` 只持有一个扁平的 `std::vector<IRenderablePtr>`。物体的"世界矩阵"是**外部代码每帧往 `PC_Draw.model` 里塞的**，没有父子关系、没有本地 / 世界坐标概念、没有层级脏标记。
+现在 `Scene` 只持有一个扁平的 `std::vector<IRenderableSharedPtr>`。物体的"世界矩阵"是**外部代码每帧往 `PC_Draw.model` 里塞的**，没有父子关系、没有本地 / 世界坐标概念、没有层级脏标记。
 
 **后果**：不能写"枪挂在人手上"、"摄像机跟着玩家"这类基本游戏逻辑。
 

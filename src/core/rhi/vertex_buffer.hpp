@@ -224,11 +224,11 @@ private:
 /*****************************************************************
  * Factory
  *****************************************************************/
-using VertexBufferPtr = std::shared_ptr<IVertexBuffer>;
+using VertexBufferSharedPtr = std::shared_ptr<IVertexBuffer>;
 
 /*
 @source_analysis.section VertexFactory：按布局而不是按模板参数恢复 type-erased 顶点数据
-工程里很多边界只想持有 `VertexBufferPtr`，不想把具体 `VertexPos` / `VertexPosUv` 模板类型
+工程里很多边界只想持有 `VertexBufferSharedPtr`，不想把具体 `VertexPos` / `VertexPosUv` 模板类型
 一路往外传。`VertexFactory` 的作用，就是在需要“从原始顶点数组重新构造具体 buffer”时，
 按 `VertexLayout` 的 hash 找回对应的具体 `VType` 创建逻辑。
 
@@ -237,7 +237,7 @@ using VertexBufferPtr = std::shared_ptr<IVertexBuffer>;
 */
 class VertexFactory {
 public:
-  using Creator = std::function<VertexBufferPtr(std::any &&rawData)>;
+  using Creator = std::function<VertexBufferSharedPtr(std::any &&rawData)>;
 
   template <typename VType>
   static void registerType() {
@@ -245,7 +245,8 @@ public:
     size_t key = layout.getHash();
 
     getMap()[key] = {
-        layout, sizeof(VType), [](std::any &&rawData) -> VertexBufferPtr {
+        layout, sizeof(VType),
+        [](std::any &&rawData) -> VertexBufferSharedPtr {
           // 核心：通过 any_cast 还原 vector 并利用移动构造函数
           // 此时数据的所有权被从 any 转移到了 v 中，实现零拷贝
           try {
@@ -264,7 +265,7 @@ public:
    * 接收右值引用，强制所有权转移
    */
   template <typename VType>
-  static VertexBufferPtr create(std::vector<VType> &&v) {
+  static VertexBufferSharedPtr create(std::vector<VType> &&v) {
     auto &m = getMap();
     size_t key = VType::getLayout().getHash();
 

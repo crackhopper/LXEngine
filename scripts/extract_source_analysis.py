@@ -52,7 +52,7 @@ TARGETS = [
             这一页从
             [src/core/rhi/gpu_resource.hpp](../../../../../src/core/rhi/gpu_resource.hpp)
             出发，解释为什么引擎需要一个极薄的 `IGpuResource` 接口，
-            以及为什么 `CameraData`、`SkeletonData`、`MaterialParameterData`、
+            以及为什么 `CameraData`、`SkeletonData`、`ParameterBuffer`、
             `CombinedTextureSampler`、`VertexBuffer` / `IndexBuffer`
             这些看起来语义不同的类型会在这里汇合。
 
@@ -87,6 +87,28 @@ TARGETS = [
         nav_order=200,
     ),
     SourceAnalysisTarget(
+        source="src/core/asset/shader.hpp",
+        output="notes/source_analysis/src/core/asset/shader.md",
+        title="IShader & ShaderResourceBinding：反射结果如何落地到材质系统",
+        intro=textwrap.dedent(
+            """\
+            这一页把反射层当作一条独立的读路径来读，入口是
+            [src/core/asset/shader.hpp](../../../../../src/core/asset/shader.hpp)。
+            关注的问题是：shader 反射出来的 binding 列表，是怎么被切开成
+            “引擎全局数据”和“材质自己管理的资源”这两部分，交给材质系统的。
+
+            顺着 `ShaderResourceBinding` → `IShader::getReflectionBindings()` →
+            `shader_binding_ownership.hpp` 这条线读，可以回答：为什么材质系统不是
+            直接按 shader 反射结果分配 buffer，而是先经过一道按名字分流的 ownership
+            过滤，才开始构造 canonical material binding 表。
+            """
+        ).strip(),
+        related_sources=(
+            "src/core/asset/shader_binding_ownership.hpp",
+        ),
+        nav_order=250,
+    ),
+    SourceAnalysisTarget(
         source="src/core/asset/material_instance.hpp",
         output="notes/source_analysis/src/core/asset/material_instance.md",
         title="MaterialInstance：从模板到运行时账本",
@@ -94,15 +116,20 @@ TARGETS = [
             """\
             这一页不是重新抄一遍 API，而是顺着
             [src/core/asset/material_instance.hpp](../../../../../src/core/asset/material_instance.hpp)
-            的类型定义来看：这个类为什么要拆成 `MaterialParameterData`
+            和
+            [src/core/asset/parameter_buffer.hpp](../../../../../src/core/asset/parameter_buffer.hpp)
+            的类型定义来看：这个类为什么要拆成 `ParameterBuffer`
             和 `MaterialInstance` 两层，以及为什么它现在坚持
-            “单一 canonical 参数集 + pass 级只读筛选”这条主线。
+            “按 canonical material bindings 分组的运行时资源表 + pass 级只读筛选”这条主线。
 
             可以先带着一个问题阅读：`MaterialTemplate` 已经定义了 pass 和 shader，
             为什么还需要一个 `MaterialInstance`？答案是，template 负责“结构是什么”，
             instance 负责“这一帧真正要喂给 backend 的实例数据是什么”。
             """
         ).strip(),
+        related_sources=(
+            "src/core/asset/parameter_buffer.hpp",
+        ),
         nav_order=310,
     ),
     SourceAnalysisTarget(
@@ -117,8 +144,8 @@ TARGETS = [
             render state 和 material-owned binding 收束成一份可共享的蓝图。
 
             可以先带着一个问题阅读：为什么 `MaterialTemplate` 既要保留 per-pass 定义，
-            又要额外构建一份 `m_passMaterialBindings` 缓存？答案是，前者回答“这个材质
-            在结构上有哪些 pass”，后者回答“每个 pass 里哪些资源真正归材质实例填写”。
+            又要额外构建 canonical material binding 表？答案是，前者回答“这个材质
+            在结构上有哪些 pass”，后者回答“这些 pass 共同引用的是哪一组稳定 binding 契约”。
             """
         ).strip(),
         related_sources=(

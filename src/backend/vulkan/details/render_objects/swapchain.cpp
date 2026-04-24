@@ -10,7 +10,7 @@
 namespace LX_core {
 namespace backend {
 
-VulkanSwapchain::VulkanSwapchain(Token, VulkanDevice &device, WindowPtr window,
+VulkanSwapchain::VulkanSwapchain(Token, VulkanDevice &device, WindowSharedPtr window,
                                  uint32_t maxFramesInFlight)
     : m_device(device), m_window(std::move(window)),
       m_maxFramesInFlight(maxFramesInFlight) {

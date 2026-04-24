@@ -34,7 +34,7 @@ struct alignas(16) CameraData : public IGpuResource {
 
 };
 
-using CameraDataPtr = std::shared_ptr<CameraData>;
+using CameraDataSharedPtr = std::shared_ptr<CameraData>;
 
 // Camera 类型枚举
 enum class CameraType { Perspective, Orthographic };
@@ -45,7 +45,7 @@ public:
   Camera() { ubo = std::make_shared<CameraData>(); }
   virtual ~Camera() = default;
 
-  CameraDataPtr getUBO() const { return ubo; }
+  CameraDataSharedPtr getUBO() const { return ubo; }
 
   // ========================
   // 相机类型相关属性
@@ -69,7 +69,7 @@ public:
   float bottom = -1.0f;
   float top = 1.0f;
 
-  CameraDataPtr ubo;
+  CameraDataSharedPtr ubo;
 
   /// REQ-009: the RenderTarget this camera draws to. `nullopt` means
   /// "defaults to the swapchain" — `VulkanRenderer::initScene` is responsible
@@ -108,6 +108,6 @@ public:
   }
 };
 
-using CameraPtr = std::shared_ptr<Camera>;
+using CameraSharedPtr = std::shared_ptr<Camera>;
 
 } // namespace LX_core

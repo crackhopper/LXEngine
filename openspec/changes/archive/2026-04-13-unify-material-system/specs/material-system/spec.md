@@ -12,10 +12,10 @@ The system SHALL provide exactly one concrete implementation of `IMaterial`, nam
 - **THEN** each call returns a value consistent with the `MaterialTemplate`'s configuration and the instance's per-object state
 
 ### Requirement: MaterialTemplate requires a shader at construction
-`MaterialTemplate::create(name, IShaderPtr shader)` SHALL require a non-null compiled shader. A template MUST expose `getShader()` so `MaterialInstance` can read reflection bindings during initialization. `MaterialTemplate` SHALL hold exactly one name-keyed binding cache (`std::unordered_map<StringID, ShaderResourceBinding>`) populated by `buildBindingCache()`, and MUST NOT carry a separate per-pass hash cache.
+`MaterialTemplate::create(name, IShaderSharedPtr shader)` SHALL require a non-null compiled shader. A template MUST expose `getShader()` so `MaterialInstance` can read reflection bindings during initialization. `MaterialTemplate` SHALL hold exactly one name-keyed binding cache (`std::unordered_map<StringID, ShaderResourceBinding>`) populated by `buildBindingCache()`, and MUST NOT carry a separate per-pass hash cache.
 
 #### Scenario: Template construction requires a shader
-- **WHEN** `MaterialTemplate::create("blinnphong_0", shader)` is called with a valid compiled `IShaderPtr`
+- **WHEN** `MaterialTemplate::create("blinnphong_0", shader)` is called with a valid compiled `IShaderSharedPtr`
 - **THEN** the returned template's `getShader()` returns that shader and `findBinding(StringID("baseColor"))` returns the reflection binding for the `MaterialUBO`'s `baseColor` member after `buildBindingCache()` is called
 
 #### Scenario: Template has no duplicate cache fields
@@ -59,7 +59,7 @@ The system SHALL provide exactly one concrete implementation of `IMaterial`, nam
 - **THEN** an assertion fires in debug builds and `m_uboBuffer` is unchanged
 
 ### Requirement: Texture bindings by StringID
-`MaterialInstance::setTexture(StringID id, CombinedTextureSamplerPtr tex)` SHALL look up `id` via `MaterialTemplate::findBinding(id)`, assert that the resulting binding's type is `Texture2D` or `TextureCube`, and store the sampler in `m_textures[id]`. `MaterialInstance` MUST NOT expose a setter that takes a raw `uint32_t` set/binding pair — callers use the shader-declared name only. `CombinedTextureSamplerPtr` (rather than raw `TexturePtr`) is used because the concrete resource passed to the backend descriptor layer must already implement `IRenderResource`, which `CombinedTextureSampler` does and `Texture` does not.
+`MaterialInstance::setTexture(StringID id, CombinedTextureSamplerSharedPtr tex)` SHALL look up `id` via `MaterialTemplate::findBinding(id)`, assert that the resulting binding's type is `Texture2D` or `TextureCube`, and store the sampler in `m_textures[id]`. `MaterialInstance` MUST NOT expose a setter that takes a raw `uint32_t` set/binding pair — callers use the shader-declared name only. `CombinedTextureSamplerSharedPtr` (rather than raw `TextureSharedPtr`) is used because the concrete resource passed to the backend descriptor layer must already implement `IRenderResource`, which `CombinedTextureSampler` does and `Texture` does not.
 
 #### Scenario: Texture bound to a reflected sampler name
 - **WHEN** `setTexture(StringID("albedoMap"), tex)` is called and `findBinding(StringID("albedoMap"))` returns a `Texture2D` binding
@@ -105,11 +105,11 @@ The core layer SHALL provide a `UboByteBufferResource` class that implements `IR
 - **THEN** the wrapper returns the updated bytes (no stale copy)
 
 ### Requirement: Loader returns MaterialInstance
-The file-shader loader for `blinnphong_0` SHALL be named `loadBlinnPhongMaterial` (or similar, not containing `DrawMaterial`) and SHALL return a `MaterialInstance::Ptr`. It SHALL compile the shader, reflect bindings, create a `MaterialTemplate`, configure at least one `RenderPassEntry`, call `buildBindingCache()`, create a `MaterialInstance`, and seed reasonable default uniform values via the reflection-driven setters. The legacy file `blinnphong_draw_material_loader.{hpp,cpp}` MUST be removed or rewritten in place.
+The file-shader loader for `blinnphong_0` SHALL be named `loadBlinnPhongMaterial` (or similar, not containing `DrawMaterial`) and SHALL return a `MaterialInstance::SharedPtr`. It SHALL compile the shader, reflect bindings, create a `MaterialTemplate`, configure at least one `RenderPassEntry`, call `buildBindingCache()`, create a `MaterialInstance`, and seed reasonable default uniform values via the reflection-driven setters. The legacy file `blinnphong_draw_material_loader.{hpp,cpp}` MUST be removed or rewritten in place.
 
 #### Scenario: Loader produces a ready-to-render MaterialInstance
 - **WHEN** `loadBlinnPhongMaterial()` is called
-- **THEN** the returned `MaterialInstance::Ptr` has a non-empty `m_uboBuffer`, a resolvable `getShaderInfo()`, and default uniform values written via `setVec3` / `setFloat` / `setInt`
+- **THEN** the returned `MaterialInstance::SharedPtr` has a non-empty `m_uboBuffer`, a resolvable `getShaderInfo()`, and default uniform values written via `setVec3` / `setFloat` / `setInt`
 
 #### Scenario: No DrawMaterial references remain
 - **WHEN** searching `src/` (excluding `openspec/changes/archive/`) for the symbol `DrawMaterial`

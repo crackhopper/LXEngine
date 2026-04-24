@@ -23,7 +23,7 @@ REQ-007（`interning-pipeline-identity`）刚刚把 `PipelineKey` / `getRenderSi
 - `FrameGraph::buildFromScene(Scene &)` 遍历所有 renderable × pass 填充各 pass 的 `RenderQueue`
 - `FrameGraph::collectAllPipelineBuildInfos()` 按 `PipelineKey` 去重后返回
 - `FramePass::name` 使用 `StringID` 而非 `std::string`，和 REQ-007 的 `Pass_Forward / Pass_Shadow` 常量对齐
-- `Scene` 新增 `const std::vector<IRenderablePtr> &getRenderables() const`；内部存储从 `IRenderablePtr mesh` 升级为 `std::vector<IRenderablePtr> m_renderables`
+- `Scene` 新增 `const std::vector<IRenderableSharedPtr> &getRenderables() const`；内部存储从 `IRenderableSharedPtr mesh` 升级为 `std::vector<IRenderableSharedPtr> m_renderables`
 
 **阶段 3 — 破坏性替换**
 - 新增 `LX_core::backend::PipelineCache` 独立类：`find` / `getOrCreate` / `preload` / 从 `VulkanResourceManager::m_pipelines` 中抽出缓存

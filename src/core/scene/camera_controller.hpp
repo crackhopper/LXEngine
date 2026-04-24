@@ -14,6 +14,6 @@ public:
   virtual void update(Camera &camera, const IInputState &input, float dt) = 0;
 };
 
-using CameraControllerPtr = std::shared_ptr<ICameraController>;
+using CameraControllerSharedPtr = std::shared_ptr<ICameraController>;
 
 } // namespace LX_core

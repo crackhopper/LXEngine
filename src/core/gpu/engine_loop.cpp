@@ -5,7 +5,7 @@
 
 namespace LX_core::gpu {
 
-void EngineLoop::initialize(WindowPtr window, RendererPtr renderer) {
+void EngineLoop::initialize(WindowSharedPtr window, RendererSharedPtr renderer) {
   m_window = std::move(window);
   m_renderer = std::move(renderer);
   m_scene.reset();
@@ -15,7 +15,7 @@ void EngineLoop::initialize(WindowPtr window, RendererPtr renderer) {
   m_rebuildRequested = false;
 }
 
-void EngineLoop::startScene(ScenePtr scene) {
+void EngineLoop::startScene(SceneSharedPtr scene) {
   validateInitialized();
   m_scene = std::move(scene);
   if (!m_scene) {

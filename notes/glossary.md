@@ -11,7 +11,7 @@ Camera 的 GPU 端数据（view/proj 矩阵 + eye 位置）。由 `Camera::getUB
 
 ### `CombinedTextureSampler`
 
-纹理 + sampler 的成对包装，**同时** 是一个 `IGpuResource`。material 的 descriptor 路径只接受 `CombinedTextureSamplerPtr`，不接受裸 `TexturePtr`。
+纹理 + sampler 的成对包装，**同时** 是一个 `IGpuResource`。material 的 descriptor 路径只接受 `CombinedTextureSamplerSharedPtr`，不接受裸 `TextureSharedPtr`。
 → `src/core/asset/texture.hpp:49`
 
 ### `FrameGraph`
@@ -49,9 +49,9 @@ Shader 的抽象接口。提供 stage、descriptor reflection、vertex input ref
 当前唯一的材质类型。基于 shader 反射自动分配 std140 字节 buffer，并维护 pass enable 状态与 pass-state listeners。
 → `src/core/asset/material_instance.hpp`
 
-### `MaterialInstancePtr`
+### `MaterialInstanceSharedPtr`
 
-`MaterialInstance` 的共享指针别名。当前 scene、queue 和 loader 的公共材质句柄统一使用这个名字，而不是裸写 `MaterialInstance::Ptr`。
+`MaterialInstance` 的共享指针别名。当前 scene、queue 和 loader 的公共材质句柄统一使用这个名字，而不是裸写 `MaterialInstance::SharedPtr`。
 → `src/core/asset/material_instance.hpp`
 
 ### `MaterialTemplate`
@@ -129,7 +129,7 @@ SPIR-V 反射出的 descriptor binding 描述，包含名字、set/binding、类
 `uint32_t` 的强类型封装。可从 `const char*` / `std::string` 隐式构造（构造即 intern）。
 → `src/core/utils/string_table.hpp`
 
-### `MaterialParameterData`
+### `ParameterBuffer`
 
 `IGpuResource` 的一个实现，对 `std::vector<uint8_t>` 做非拥有包装，供 `MaterialInstance` 暴露参数缓冲数据。
 → `src/core/asset/material_instance.hpp`

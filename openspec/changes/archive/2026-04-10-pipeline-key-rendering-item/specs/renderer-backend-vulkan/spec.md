@@ -17,9 +17,9 @@ The VulkanPipeline SHALL support:
 ### Requirement: VulkanRenderer shall implement complete render lifecycle
 
 The VulkanRenderer SHALL implement:
-- initialize(WindowPtr): Create device, swapchain, command buffers, and resources
+- initialize(WindowSharedPtr): Create device, swapchain, command buffers, and resources
 - shutdown(): Destroy all Vulkan objects in reverse creation order
-- initScene(ScenePtr): Create GPU resources from scene's RenderingItem
+- initScene(SceneSharedPtr): Create GPU resources from scene's RenderingItem
 - uploadData(): Upload dirty resources to GPU
 - draw(): Acquire image, record commands, submit, present
 - Resolving the bound graphics pipeline using `RenderingItem::pipelineKey` and the resource manager pipeline cache on each draw that uses a built `RenderingItem`

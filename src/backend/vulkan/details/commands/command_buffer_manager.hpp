@@ -34,10 +34,10 @@ public:
   }
 
   void beginFrame(uint32_t currentFrameIndex);
-  VulkanCommandBufferPtr allocateBuffer(VkCommandBufferLevel level = VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+  VulkanCommandBufferUniquePtr allocateBuffer(VkCommandBufferLevel level = VK_COMMAND_BUFFER_LEVEL_PRIMARY);
 
-  VulkanCommandBufferPtr beginSingleTimeCommands();
-  void endSingleTimeCommands(VulkanCommandBufferPtr commandBuffer, VkQueue queue);
+  VulkanCommandBufferUniquePtr beginSingleTimeCommands();
+  void endSingleTimeCommands(VulkanCommandBufferUniquePtr commandBuffer, VkQueue queue);
 
 private:
   void createPool(VkCommandPool &pool, VkCommandPoolCreateFlags flags);
@@ -51,7 +51,7 @@ private:
   VkCommandPool m_transientPool = VK_NULL_HANDLE;
 };
 
-using VulkanCommandBufferManagerPtr = std::unique_ptr<VulkanCommandBufferManager>;
+using VulkanCommandBufferManagerUniquePtr = std::unique_ptr<VulkanCommandBufferManager>;
 
 } // namespace backend
 } // namespace LX_core

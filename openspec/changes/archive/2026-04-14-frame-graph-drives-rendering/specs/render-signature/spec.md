@@ -20,7 +20,7 @@ This helper bridges the scene-layer pass identity (`StringID`) and the resource-
 ## REMOVED Requirements
 
 ### Requirement: Scene::buildRenderingItem accepts a pass parameter
-**Reason**: `Scene::buildRenderingItem(StringID pass)` and its per-renderable sibling `Scene::buildRenderingItemForRenderable(const IRenderablePtr &, StringID pass)` are deleted. `RenderingItem` construction — including the `PipelineKey::build(sub->getRenderSignature(pass), sub->material->getRenderSignature(pass))` computation — moves into `RenderQueue::buildFromScene(scene, pass)` (see the `frame-graph` capability delta in this change). The pipeline-identity invariant is preserved; only the host of the construction code changes.
+**Reason**: `Scene::buildRenderingItem(StringID pass)` and its per-renderable sibling `Scene::buildRenderingItemForRenderable(const IRenderableSharedPtr &, StringID pass)` are deleted. `RenderingItem` construction — including the `PipelineKey::build(sub->getRenderSignature(pass), sub->material->getRenderSignature(pass))` computation — moves into `RenderQueue::buildFromScene(scene, pass)` (see the `frame-graph` capability delta in this change). The pipeline-identity invariant is preserved; only the host of the construction code changes.
 
 **Migration**: Callers that previously wrote `auto item = scene->buildRenderingItem(Pass_Forward);` SHALL now go through `RenderQueue`:
 

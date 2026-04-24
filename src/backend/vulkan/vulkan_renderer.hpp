@@ -6,19 +6,19 @@
 namespace LX_core::backend {
 class VulkanRendererImpl;
 class VulkanRenderer;
-using VulkanRendererPtr = std::unique_ptr<VulkanRenderer>;
+using VulkanRendererUniquePtr = std::unique_ptr<VulkanRenderer>;
 class VulkanRenderer : public gpu::Renderer {
 public:
   struct Token {};
   explicit VulkanRenderer(Token token);
   ~VulkanRenderer() override;
-  static VulkanRendererPtr create(Token token){
+  static VulkanRendererUniquePtr create(Token token) {
     return std::make_unique<VulkanRenderer>(token);
   }
 
-  void initialize(WindowPtr window, const char *appName) override;
+  void initialize(WindowSharedPtr window, const char *appName) override;
   void shutdown() override;
-  void initScene(ScenePtr scene) override;
+  void initScene(SceneSharedPtr scene) override;
 
   void uploadData() override;
   void draw() override;

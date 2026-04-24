@@ -37,7 +37,7 @@ public:
 
 private:
   VulkanDevice &m_device;
-  std::unordered_map<PipelineKey, VulkanPipelinePtr, PipelineKey::Hash> m_cache;
+  std::unordered_map<PipelineKey, VulkanPipelineUniquePtr, PipelineKey::Hash> m_cache;
   bool m_suppressMissWarning = false;
 };
 

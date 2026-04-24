@@ -7,8 +7,8 @@
 - Make `MaterialInstance` a concrete `IMaterial` implementation that owns a std140 byte buffer initialized from shader reflection (`ShaderResourceBinding::members`).
 - Add reflection-driven setters: `setVec4` / `setVec3` / `setFloat` / `setInt` / `setTexture` — all keyed by `StringID` member name, dispatched through a shared `writeUboMember` helper for offset lookup + type check + `memcpy`.
 - **BREAKING**: remove `DrawMaterial` and `BlinnPhongMaterialUBO` from `material.hpp`. All `MaterialPtr` values now point to `MaterialInstance`.
-- Require `MaterialTemplate::create(name, IShaderPtr)` to take a shader up-front; drop `m_passHashCache` (dead after REQ-007) and keep a single `m_bindingCache` keyed by `StringID`.
-- Rename / rewrite `blinnphong_draw_material_loader` → `blinnphong_material_loader`, returning `MaterialInstance::Ptr` and seeding default uniforms via the new setters.
+- Require `MaterialTemplate::create(name, IShaderSharedPtr)` to take a shader up-front; drop `m_passHashCache` (dead after REQ-007) and keep a single `m_bindingCache` keyed by `StringID`.
+- Rename / rewrite `blinnphong_draw_material_loader` → `blinnphong_material_loader`, returning `MaterialInstance::SharedPtr` and seeding default uniforms via the new setters.
 - Introduce an infra-layer `wrapAsUboResource(buffer, binding, passFlag)` helper that lifts the byte buffer into an `IRenderResource` implementing `getRawData()` / `getByteSize()` / `setDirty()`, following the `SkeletonUBO` pattern.
 - Migrate every test and call site that constructed `DrawMaterial` to use `loadBlinnPhongMaterial()` or an equivalent `MaterialInstance` construction.
 

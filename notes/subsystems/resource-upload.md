@@ -126,7 +126,7 @@ texture 路径比 buffer 多了一层 staging，流程是：
 - `VertexBuffer` / `IndexBuffer`：CPU 侧几何数据更新时直接 `setDirty()`
 - `CombinedTextureSampler`：`update(...)` 时 `setDirty()`
 - `CameraData` / `SkeletonData`：更新 packed UBO 数据后 `setDirty()`
-- `MaterialParameterData`：先记录内部 pending-sync，`MaterialInstance::syncGpuData()` 再统一转成 `IGpuResource::setDirty()`
+- `ParameterBuffer`：先记录内部 pending-sync，`MaterialInstance::syncGpuData()` 再统一转成 `IGpuResource::setDirty()`
 
 这说明 dirty 协议在项目里是统一的，但并不要求每种资源都用完全相同的写入时机。
 
@@ -135,7 +135,7 @@ texture 路径比 buffer 多了一层 staging，流程是：
 拿“材质参数被修改”举例：
 
 1. 调用 `MaterialInstance::setParameter(...)`
-2. 对应的 `MaterialParameterData::buffer` 被写入，并记内部 dirty
+2. 对应的 `ParameterBuffer::buffer` 被写入，并记内部 dirty
 3. `MaterialInstance::syncGpuData()` 把这些槽位转成 `IGpuResource::setDirty()`
 4. 该资源通过 `SceneNode` / `RenderingItem` 进入 `descriptorResources`
 5. `VulkanRenderer::uploadData()` 遍历到它，并调用 `resourceManager->syncResource(...)`

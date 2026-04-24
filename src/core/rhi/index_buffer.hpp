@@ -58,7 +58,7 @@ enum class IndexType : uint32_t { Uint16 = 0, Uint32 = 1 };
 
 class IndexBuffer : public IGpuResource {
 public:
-  using Ptr = std::shared_ptr<IndexBuffer>;
+  using SharedPtr = std::shared_ptr<IndexBuffer>;
 
   IndexBuffer(std::vector<uint32_t> &&indices,
               PrimitiveTopology topology = PrimitiveTopology::TriangleList)
@@ -66,7 +66,7 @@ public:
     calculateRange();
   }
 
-  static Ptr
+  static SharedPtr
   create(std::vector<uint32_t> &&indices,
          PrimitiveTopology topology = PrimitiveTopology::TriangleList) {
     return std::make_shared<IndexBuffer>(std::move(indices), topology);
@@ -165,6 +165,6 @@ private:
   uint32_t m_minIndex;
 };
 
-using IndexBufferPtr = std::shared_ptr<IndexBuffer>;
+using IndexBufferSharedPtr = std::shared_ptr<IndexBuffer>;
 
 } // namespace LX_core

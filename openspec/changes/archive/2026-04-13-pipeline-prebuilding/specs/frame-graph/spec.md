@@ -55,7 +55,7 @@ The system SHALL provide `LX_core::ImageFormat`, a `uint8_t`-backed enum coverin
 - **THEN** `collectAllPipelineBuildInfos()` returns two distinct `PipelineBuildInfo` entries
 
 ### Requirement: Scene exposes a renderable collection
-`LX_core::Scene` SHALL provide `const std::vector<IRenderablePtr> &getRenderables() const` returning every renderable currently part of the scene. The previously single `IRenderablePtr mesh` member SHALL be replaced (or wrapped) by a `std::vector<IRenderablePtr> m_renderables` member so `FrameGraph::buildFromScene` can iterate.
+`LX_core::Scene` SHALL provide `const std::vector<IRenderableSharedPtr> &getRenderables() const` returning every renderable currently part of the scene. The previously single `IRenderableSharedPtr mesh` member SHALL be replaced (or wrapped) by a `std::vector<IRenderableSharedPtr> m_renderables` member so `FrameGraph::buildFromScene` can iterate.
 
 #### Scenario: Single renderable scene
 - **WHEN** a scene is constructed with one renderable (matching today's tests)

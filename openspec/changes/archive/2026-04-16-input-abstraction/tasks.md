@@ -2,12 +2,12 @@
 
 - [x] 1.1 创建 `src/core/input/key_code.hpp`（`KeyCode` 枚举，A-Z / Num0-9 / 控制键 / 方向键 / F1-F4 / Count）
 - [x] 1.2 创建 `src/core/input/mouse_button.hpp`（`MouseButton` 枚举，Left/Right/Middle/Count）
-- [x] 1.3 创建 `src/core/input/input_state.hpp`（`IInputState` 纯虚接口 + `InputStatePtr` 别名）
+- [x] 1.3 创建 `src/core/input/input_state.hpp`（`IInputState` 纯虚接口 + `InputStateSharedPtr` 别名）
 - [x] 1.4 创建 `src/core/input/dummy_input_state.hpp`（`DummyInputState` 全零内联实现）
 
 ## 2. Window 接口扩展
 
-- [x] 2.1 在 `src/core/platform/window.hpp` 新增 `virtual InputStatePtr getInputState() const = 0`
+- [x] 2.1 在 `src/core/platform/window.hpp` 新增 `virtual InputStateSharedPtr getInputState() const = 0`
 - [x] 2.2 在 `src/infra/window/window.hpp` 新增 `getInputState() const override` 声明
 - [x] 2.3 在 `src/infra/window/sdl_window.cpp` 持有 `DummyInputState` 并实现 `getInputState()`
 - [x] 2.4 在 `src/infra/window/glfw_window.cpp` 持有 `DummyInputState` 并实现 `getInputState()`

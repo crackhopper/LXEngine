@@ -23,7 +23,7 @@ public:
   // 暴露 Vulkan surface
   VkSurfaceKHR getVulkanSurface(VkInstance instance) const;
 
-  LX_core::InputStatePtr getInputState() const override;
+  LX_core::InputStateSharedPtr getInputState() const override;
 
   void* getNativeHandle() const override;
 

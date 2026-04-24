@@ -3,9 +3,9 @@
 ### Requirement: VulkanRenderer shall implement complete render lifecycle
 
 The VulkanRenderer SHALL implement:
-- `initialize(WindowPtr)`: Create device, swapchain, command buffers, and resources
+- `initialize(WindowSharedPtr)`: Create device, swapchain, command buffers, and resources
 - `shutdown()`: Destroy all Vulkan objects in reverse creation order
-- `initScene(ScenePtr)`:
+- `initScene(SceneSharedPtr)`:
   - Store the scene pointer
   - Configure the owned `FrameGraph m_frameGraph` member by calling `m_frameGraph.addPass(FramePass{Pass_Forward, /*target*/, {}})` (additional passes MAY be added in future changes)
   - Call `m_frameGraph.buildFromScene(*scene)` so every `FramePass::queue` is populated via `RenderQueue::buildFromScene(scene, pass.name)`

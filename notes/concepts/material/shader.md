@@ -16,7 +16,7 @@
 |------|---|------|
 | `IShader` | core 接口 | 暴露 stages、reflection bindings、vertex inputs、binding 查询 |
 | `CompiledShader` | infra 实现 | 承接 `ShaderCompiler` 编译和 `ShaderReflector` 反射的结果 |
-| `ShaderProgramSet` | 材质值对象 | 把 shader 名、enabled variants 和 `IShaderPtr` 打包，嵌入 `MaterialPassDefinition` |
+| `ShaderProgramSet` | 材质值对象 | 把 shader 名、enabled variants 和 `IShaderSharedPtr` 打包，嵌入 `MaterialPassDefinition` |
 
 `ShaderProgramSet` 是材质系统真正和 pass 绑定的入口。它一头连着 loader 的编译结果，一头连着 render signature。
 

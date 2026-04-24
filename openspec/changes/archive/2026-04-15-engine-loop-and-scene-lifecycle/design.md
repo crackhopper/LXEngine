@@ -34,10 +34,10 @@ This is a cross-cutting change because it touches architecture boundaries, futur
 
 `EngineLoop` is a new runtime abstraction that owns or coordinates:
 
-- `WindowPtr`
-- `RendererPtr`
+- `WindowSharedPtr`
+- `RendererSharedPtr`
 - `Clock`
-- current `ScenePtr`
+- current `SceneSharedPtr`
 - running/stopped state
 - optional per-frame update callback
 
@@ -46,8 +46,8 @@ Representative API:
 ```cpp
 class EngineLoop {
 public:
-  void initialize(WindowPtr window, gpu::RendererPtr renderer);
-  void startScene(ScenePtr scene);
+  void initialize(WindowSharedPtr window, gpu::RendererSharedPtr renderer);
+  void startScene(SceneSharedPtr scene);
   void setUpdateHook(std::function<void(Scene &, const Clock &)> hook);
   void tickFrame();
   void run();

@@ -12,7 +12,7 @@ The VulkanDevice SHALL initialize the Vulkan subsystem with:
 - Enumerate physical devices and select the first discrete GPU if available, otherwise the first available device
 - Log device properties (name, type, driver version) for debugging
 - Factory pattern: VulkanDevice objects MUST be created via `VulkanDevice::create()` with Token
-- Initialization requires `WindowPtr` and application name parameters
+- Initialization requires `WindowSharedPtr` and application name parameters
 
 #### Scenario: Device initialization succeeds with valid GPU
 - **WHEN** VulkanDriver is installed and system has a discrete GPU

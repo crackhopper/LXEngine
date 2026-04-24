@@ -5,7 +5,7 @@
 The codebase currently has two parallel item-construction paths and a `VulkanRenderer` that uses neither correctly:
 
 1. **`Scene::buildRenderingItem(StringID pass)`** — a single-item shortcut that treats the scene as if it has exactly one renderable (`m_renderables[0]`). Used directly by `VulkanRenderer::initScene` and by every integration test that needs "a valid `RenderingItem`".
-2. **`Scene::buildRenderingItemForRenderable(const IRenderablePtr &, StringID pass)`** — the per-renderable factory, called from `FrameGraph::buildFromScene` as it iterates the scene's renderables × passes.
+2. **`Scene::buildRenderingItemForRenderable(const IRenderableSharedPtr &, StringID pass)`** — the per-renderable factory, called from `FrameGraph::buildFromScene` as it iterates the scene's renderables × passes.
 
 `FrameGraph` is constructed in `VulkanRenderer::initScene` only for the purpose of enumerating `PipelineBuildInfo`s for cache preload — the resulting `FrameGraph` is immediately dropped. The actual draw loop uses a cached `RenderingItem renderItem{}` member, side-channel-injected with camera and light UBOs by hand. The side-channel injection is replicated across five integration tests with comments like `"Match VulkanRenderer::initScene(): inject camera/light UBO resources"`, which is the bright-red test smell that first pointed at this architectural hole.
 

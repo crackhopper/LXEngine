@@ -1,6 +1,6 @@
 ## Context
 
-Pipeline identity today flows through `PipelineKey::build(const ShaderProgramSet &, const Mesh &, const RenderState &, const SkeletonPtr &)` in `src/core/resources/pipeline_key.cpp`. It produces a string of the form `"blinnphong_0|HAS_NORMAL_MAP|ml:0x3a2f1b7c|rs:0x7c1de4a0|sk:0x0"` by mixing `getPipelineHash()` from each resource. `StringID` wraps that string, and `Scene::buildRenderingItem()` sets it on the `RenderingItem` that's fed to `vk_resource_manager::getOrCreateRenderPipeline`.
+Pipeline identity today flows through `PipelineKey::build(const ShaderProgramSet &, const Mesh &, const RenderState &, const SkeletonSharedPtr &)` in `src/core/resources/pipeline_key.cpp`. It produces a string of the form `"blinnphong_0|HAS_NORMAL_MAP|ml:0x3a2f1b7c|rs:0x7c1de4a0|sk:0x0"` by mixing `getPipelineHash()` from each resource. `StringID` wraps that string, and `Scene::buildRenderingItem()` sets it on the `RenderingItem` that's fed to `vk_resource_manager::getOrCreateRenderPipeline`.
 
 Three concrete pain points the current scheme has:
 

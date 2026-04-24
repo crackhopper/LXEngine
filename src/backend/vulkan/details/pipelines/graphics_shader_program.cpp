@@ -9,10 +9,10 @@ VulkanShaderGraphicsPipeline::VulkanShaderGraphicsPipeline(
     : VulkanPipeline(t, device, buildInfo),
       m_shaderName(std::move(shaderName)) {}
 
-VulkanPipelinePtr VulkanShaderGraphicsPipeline::create(
+VulkanPipelineUniquePtr VulkanShaderGraphicsPipeline::create(
     VulkanDevice &device, const PipelineBuildDesc &buildInfo,
     VkRenderPass renderPass, std::string shaderName) {
-  auto pipeline = VulkanPipelinePtr(new VulkanShaderGraphicsPipeline(
+  auto pipeline = VulkanPipelineUniquePtr(new VulkanShaderGraphicsPipeline(
       Token{}, device, buildInfo, std::move(shaderName)));
   pipeline->loadShaders();
   pipeline->createLayout();

@@ -27,9 +27,9 @@ For any other input `VkFormat`, the function MAY return a default (`ImageFormat:
 ### Requirement: VulkanRenderer shall implement complete render lifecycle
 
 The VulkanRenderer SHALL implement:
-- `initialize(WindowPtr)`: Create device, swapchain, command buffers, and resources
+- `initialize(WindowSharedPtr)`: Create device, swapchain, command buffers, and resources
 - `shutdown()`: Destroy all Vulkan objects in reverse creation order
-- `initScene(ScenePtr)`:
+- `initScene(SceneSharedPtr)`:
   - Store the scene pointer
   - Derive the swapchain `RenderTarget` via a backend helper `makeSwapchainTarget()` that reads `device->getSurfaceFormat()` and `device->getDepthFormat()` and converts via `toImageFormat(VkFormat)`. The resulting `RenderTarget` SHALL have a real non-default `colorFormat` and `depthFormat`.
   - Before building the frame graph, iterate `scene->getCameras()` and call `cam->setTarget(swapchainTarget)` on every camera whose `getTarget().has_value() == false`. This backfill SHALL happen before `m_frameGraph.buildFromScene(*scene)`.

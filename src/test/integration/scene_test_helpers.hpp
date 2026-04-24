@@ -19,7 +19,7 @@ namespace LX_test {
 /// Build a local RenderQueue from `scene` for `pass` + `target` and return
 /// the first RenderingItem. Asserts the queue is non-empty. Default
 /// `RenderTarget{}` matches the default camera target the Scene constructor
-/// sets up (see Scene::Scene(IRenderablePtr)).
+/// sets up (see Scene::Scene(IRenderableSharedPtr)).
 inline LX_core::RenderingItem
 firstItemFromScene(LX_core::Scene &scene, LX_core::StringID pass,
                    const LX_core::RenderTarget &target = {}) {
@@ -33,7 +33,7 @@ firstItemFromScene(LX_core::Scene &scene, LX_core::StringID pass,
 /// Construct a default Camera whose m_target is explicitly set
 /// to a default-constructed RenderTarget. Use this in test setup after the
 /// legacy Scene ctor's auto-camera stops being created (task 7).
-inline LX_core::CameraPtr makeDefaultCameraWithTarget() {
+inline LX_core::CameraSharedPtr makeDefaultCameraWithTarget() {
   auto cam = std::make_shared<LX_core::Camera>();
   cam->setTarget(LX_core::RenderTarget{});
   return cam;

@@ -30,7 +30,7 @@
 
 - [x] 5.1 Replace `RenderingItem renderItem{};` member in `src/backend/vulkan/vk_renderer.cpp` `Impl` with `FrameGraph m_frameGraph;`
 - [x] 5.2 Add a `defaultForwardTarget()` helper on `Impl` returning a default-constructed `RenderTarget{}` (REQ-009 will replace the body with a `VkFormat → ImageFormat` derivation). Document inline that this is a placeholder for REQ-008 scope.
-- [x] 5.3 Rewrite `Impl::initScene(ScenePtr)`:
+- [x] 5.3 Rewrite `Impl::initScene(SceneSharedPtr)`:
   - Store `scene = _scene`
   - `m_frameGraph.addPass(FramePass{Pass_Forward, defaultForwardTarget(), {}})`
   - `m_frameGraph.buildFromScene(*scene)`
@@ -58,7 +58,7 @@
 ## 7. Delete legacy Scene factory methods
 
 - [x] 7.1 Remove `RenderingItem buildRenderingItem(StringID pass);` declaration from `src/core/scene/scene.hpp`
-- [x] 7.2 Remove `RenderingItem buildRenderingItemForRenderable(const IRenderablePtr&, StringID pass) const;` declaration from `src/core/scene/scene.hpp`
+- [x] 7.2 Remove `RenderingItem buildRenderingItemForRenderable(const IRenderableSharedPtr&, StringID pass) const;` declaration from `src/core/scene/scene.hpp`
 - [x] 7.3 Remove the implementations of both methods from `src/core/scene/scene.cpp`
 - [x] 7.4 Verify with `grep -rn "buildRenderingItem\b" src/` that the result is empty
 - [x] 7.5 Build the full project — any remaining caller triggers a hard failure

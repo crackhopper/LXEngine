@@ -7,7 +7,7 @@
 | 字段 | 职责 |
 |------|------|
 | `m_template` | 指向所属的菜谱 |
-| `m_bufferSlots` | `MaterialParameterData` 集合；每个 material-owned UBO/SSBO 一个 canonical 参数槽位 |
+| `m_bufferSlots` | `ParameterBuffer` 集合；每个 material-owned UBO/SSBO 一个 canonical buffer binding |
 | `m_textures` | canonical 纹理资源 |
 | `m_enabledPasses` | 当前启用的 pass 子集 |
 | `m_passStateListeners` | pass 开关变化时通知 scene 的回调 |
@@ -17,7 +17,7 @@
 Instance 构造时，从 enabled pass 的 shader 反射里收集所有 material-owned buffer binding：
 
 1. 遍历每个 enabled pass 的 `getMaterialBindings(pass)`
-2. 对 `UniformBuffer` 和 `StorageBuffer` 类型的 binding 创建一个 `MaterialParameterData`
+2. 对 `UniformBuffer` 和 `StorageBuffer` 类型的 binding 创建一个 `ParameterBuffer`
 3. 每个参数槽位自己持有 byte buffer（零初始化）、dirty 状态，以及 `IGpuResource` 行为
 4. 同名 buffer binding 跨 pass 必须布局一致，否则 assert
 

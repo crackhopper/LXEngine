@@ -27,7 +27,7 @@
 ## 5. main.cpp
 
 - [x] 5.1 新建 `src/demos/scene_viewer/main.cpp`：按 spec 启动顺序；`cdToWhereAssetsExist` 失败 `return 1`；其他 fatal 走 `try/catch` `return 2`
-- [x] 5.2 `make_shared<VulkanRenderer>` 保留 concrete handle 做 `setDrawUiCallback`，同时 upcast 为 `RendererPtr` 喂给 `EngineLoop::initialize`
+- [x] 5.2 `make_shared<VulkanRenderer>` 保留 concrete handle 做 `setDrawUiCallback`，同时 upcast 为 `RendererSharedPtr` 喂给 `EngineLoop::initialize`
 - [x] 5.3 `setUpdateHook`：`ui.handleHotkeys(*input)` → 更新 aspect → `rig.update(*input, clock.deltaTime())` → `input->nextFrame()`
 - [x] 5.4 `loop.run()` 返回后 `renderer->shutdown()` + `return 0`
 - [x] 5.5 必要 include 全部到位（engine_loop、vulkan_renderer、window、scene、filesystem_tools、demo-local 三个文件）

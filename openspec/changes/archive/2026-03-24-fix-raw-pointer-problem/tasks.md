@@ -21,8 +21,8 @@
 
 - [x] 3.1 Update all constructors that take `VulkanDevice*` to take `VulkanDevice&`
 - [x] 3.2 Update `VulkanDescriptorManager::create()` factory method (moved to .cpp to avoid circular include)
-- [x] 3.3 Update `VulkanCommandBufferManager::allocateBuffer()` to return `VulkanCommandBufferPtr` (unique_ptr)
-- [x] 3.4 Update `VulkanCommandBufferManager::beginSingleTimeCommands()` to return `VulkanCommandBufferPtr` (unique_ptr)
+- [x] 3.3 Update `VulkanCommandBufferManager::allocateBuffer()` to return `VulkanCommandBufferUniquePtr` (unique_ptr)
+- [x] 3.4 Update `VulkanCommandBufferManager::beginSingleTimeCommands()` to return `VulkanCommandBufferUniquePtr` (unique_ptr)
 - [x] 3.5 Update `VulkanResourceManager` construction in `VulkanRenderer` (vk_renderer.cpp)
 - [x] 3.6 Update `VulkanDevice` to create `VulkanDescriptorManager` after `createLogicalDevice()`
 

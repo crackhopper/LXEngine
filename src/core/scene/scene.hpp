@@ -11,17 +11,17 @@
 
 namespace LX_core {
 
-using ShaderPtr = IShaderPtr;
+using ShaderPtr = IShaderSharedPtr;
 
 struct RenderingItem {
   ShaderPtr shaderInfo;
-  MaterialInstancePtr material; // 材质句柄 — 用于 PipelineBuildDesc::fromRenderingItem
+  MaterialInstanceSharedPtr material; // 材质句柄 — 用于 PipelineBuildDesc::fromRenderingItem
 
-  PerDrawDataPtr drawData;
-  IGpuResourcePtr vertexBuffer;
-  IGpuResourcePtr indexBuffer;
+  PerDrawDataSharedPtr drawData;
+  IGpuResourceSharedPtr vertexBuffer;
+  IGpuResourceSharedPtr indexBuffer;
 
-  std::vector<IGpuResourcePtr> descriptorResources; // 材质 + skeleton 等资源
+  std::vector<IGpuResourceSharedPtr> descriptorResources; // 材质 + skeleton 等资源
 
   StringID pass;
   PipelineKey pipelineKey;
@@ -29,9 +29,9 @@ struct RenderingItem {
 
 class Scene {
 public:
-  using Ptr = std::shared_ptr<Scene>;
+  using SharedPtr = std::shared_ptr<Scene>;
 
-  Scene(std::string sceneName, IRenderablePtr mesh = nullptr)
+  Scene(std::string sceneName, IRenderableSharedPtr mesh = nullptr)
       : m_sceneName(std::move(sceneName)) {
     if (m_sceneName.empty()) {
       m_sceneName = "Scene";
@@ -50,11 +50,11 @@ public:
   }
   ~Scene();
 
-  static auto create(std::string sceneName, IRenderablePtr mesh = nullptr) {
+  static auto create(std::string sceneName, IRenderableSharedPtr mesh = nullptr) {
     return std::make_shared<Scene>(std::move(sceneName), std::move(mesh));
   }
 
-  static auto create(IRenderablePtr mesh) {
+  static auto create(IRenderableSharedPtr mesh) {
     return std::make_shared<Scene>("Scene", std::move(mesh));
   }
 
@@ -62,11 +62,11 @@ public:
     return std::make_shared<Scene>("Scene", nullptr);
   }
 
-  const std::vector<IRenderablePtr> &getRenderables() const {
+  const std::vector<IRenderableSharedPtr> &getRenderables() const {
     return m_renderables;
   }
 
-  void addRenderable(IRenderablePtr r) {
+  void addRenderable(IRenderableSharedPtr r) {
     if (r) {
       for (const auto &existing : m_renderables) {
         if (!existing)
@@ -86,27 +86,27 @@ public:
     m_renderables.push_back(std::move(r));
   }
 
-  void addCamera(CameraPtr cam) { m_cameras.push_back(std::move(cam)); }
-  const std::vector<CameraPtr> &getCameras() const { return m_cameras; }
+  void addCamera(CameraSharedPtr cam) { m_cameras.push_back(std::move(cam)); }
+  const std::vector<CameraSharedPtr> &getCameras() const { return m_cameras; }
 
-  void addLight(LightBasePtr light) { m_lights.push_back(std::move(light)); }
-  const std::vector<LightBasePtr> &getLights() const { return m_lights; }
+  void addLight(LightBaseSharedPtr light) { m_lights.push_back(std::move(light)); }
+  const std::vector<LightBaseSharedPtr> &getLights() const { return m_lights; }
   const std::string &getSceneName() const { return m_sceneName; }
-  void revalidateNodesUsing(const MaterialInstancePtr &materialInstance);
+  void revalidateNodesUsing(const MaterialInstanceSharedPtr &materialInstance);
 
   /// REQ-009 two-axis filter form: camera by matchesTarget(target), light by
   /// supportsPass(pass). Returns camera data resources first, then light data
   /// resources; both in their respective container insertion order. Empty
   /// return is valid.
-  std::vector<IGpuResourcePtr>
+  std::vector<IGpuResourceSharedPtr>
   getSceneLevelResources(StringID pass, const RenderTarget &target) const;
 
 private:
   std::string m_sceneName;
-  std::vector<IRenderablePtr> m_renderables;
-  std::vector<CameraPtr> m_cameras;
-  std::vector<LightBasePtr> m_lights;
+  std::vector<IRenderableSharedPtr> m_renderables;
+  std::vector<CameraSharedPtr> m_cameras;
+  std::vector<LightBaseSharedPtr> m_lights;
 };
 
-using ScenePtr = Scene::Ptr;
+using SceneSharedPtr = Scene::SharedPtr;
 } // namespace LX_core

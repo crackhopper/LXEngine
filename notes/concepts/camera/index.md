@@ -87,7 +87,7 @@ camera->updateMatrices();
 从底层看，这条链路很直接：
 
 - `Camera` 维护自己的矩阵和 `CameraData`
-- `Scene` 持有 `std::vector<CameraPtr>`
+- `Scene` 持有 `std::vector<CameraSharedPtr>`
 - queue 构建前，scene 会按 `matchesTarget(target)` 收集命中的 camera 资源
 - shader 如果声明了 `CameraUBO`，后续 descriptor 装配就会把这份 `CameraData` 接进去
 

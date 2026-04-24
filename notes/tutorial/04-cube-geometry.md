@@ -127,7 +127,7 @@ auto ib = IndexBuffer::create(std::move(cubeIndices));
 auto mesh = Mesh::create(vb, ib);
 ```
 
-`Mesh::create` 返回 `MeshPtr`，就是 `RenderableSubMesh` 构造所需的第一个参数。
+`Mesh::create` 返回 `MeshSharedPtr`，就是 `RenderableSubMesh` 构造所需的第一个参数。
 
 ---
 

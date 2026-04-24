@@ -46,13 +46,13 @@ The system SHALL provide a `loadGenericMaterial(materialPath)` function that:
 6. Applies global default parameters via `setParameter` or legacy setters
 7. Applies per-pass parameter overrides (overwriting global defaults in shared buffer slots)
 8. Loads and binds default resources (textures from file paths or placeholders)
-9. Returns the `MaterialInstancePtr`
+9. Returns the `MaterialInstanceSharedPtr`
 
 The generic loader SHALL NOT require material-type-specific C++ code. Any shader that follows the engine's binding conventions SHALL be loadable via this path.
 
 #### Scenario: Generic loader produces a ready-to-render instance
 - **WHEN** `loadGenericMaterial("materials/blinnphong_lit.mat.yaml")` is called with a valid yaml
-- **THEN** the returned `MaterialInstancePtr` has populated buffer slots, bound textures, and valid pass configuration
+- **THEN** the returned `MaterialInstanceSharedPtr` has populated buffer slots, bound textures, and valid pass configuration
 
 #### Scenario: Generic loader rejects invalid shader
 - **WHEN** the yaml references a shader that cannot be found or compiled

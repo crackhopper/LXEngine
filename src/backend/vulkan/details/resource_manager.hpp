@@ -27,13 +27,14 @@ class VulkanBuffer;
 class VulkanTexture;
 class VulkanShader;
 
-using VulkanBufferPtr = std::unique_ptr<VulkanBuffer>;
-using VulkanTexturePtr = std::unique_ptr<VulkanTexture>;
+using VulkanBufferUniquePtr = std::unique_ptr<VulkanBuffer>;
+using VulkanTextureUniquePtr = std::unique_ptr<VulkanTexture>;
 
-using VulkanAnyResource = std::variant<VulkanBufferPtr, VulkanTexturePtr>;
+using VulkanAnyResource =
+    std::variant<VulkanBufferUniquePtr, VulkanTextureUniquePtr>;
 
 class VulkanResourceManager;
-using VulkanResourceManagerPtr = std::unique_ptr<VulkanResourceManager>;
+using VulkanResourceManagerUniquePtr = std::unique_ptr<VulkanResourceManager>;
 class VulkanResourceManager {
   struct Token {};
 
@@ -41,7 +42,7 @@ public:
   explicit VulkanResourceManager(Token token, VulkanDevice &device);
   ~VulkanResourceManager();
 
-  static VulkanResourceManagerPtr create(VulkanDevice &device) {
+  static VulkanResourceManagerUniquePtr create(VulkanDevice &device) {
     auto p = std::make_unique<VulkanResourceManager>(Token{}, device);
     return p;
   }
@@ -50,7 +51,7 @@ public:
   VulkanResourceManager &operator=(const VulkanResourceManager &) = delete;
 
   void syncResource(VulkanCommandBufferManager &cmdBufferManager,
-                    const IGpuResourcePtr &cpuRes);
+                    const IGpuResourceSharedPtr &cpuRes);
   void collectGarbage();
 
   void initializeRenderPassAndPipeline(VkSurfaceFormatKHR surfaceFormat,
@@ -72,9 +73,9 @@ public:
 
 private:
   std::shared_ptr<VulkanAnyResource>
-  createGpuResource(const IGpuResourcePtr &cpuRes);
+  createGpuResource(const IGpuResourceSharedPtr &cpuRes);
   void updateGpuResource(std::shared_ptr<VulkanAnyResource> &gpuRes,
-                         const IGpuResourcePtr &cpuRes,
+                         const IGpuResourceSharedPtr &cpuRes,
                          VulkanCommandBufferManager &cmdBufferManager);
 
   VulkanDevice &m_device;

@@ -1,6 +1,6 @@
 ## 1. Additive foundation (no breakage)
 
-- [x] 1.1 Rewrite `src/core/scene/light.hpp` — `LightBase` becomes an abstract interface with `virtual ~LightBase() = default;`, pure virtuals `getPassMask()`, `getUBO()`, and a non-pure `virtual bool supportsPass(StringID pass) const` with default `(getPassMask() & passFlagFromStringID(pass)) != 0`. Add `LightBasePtr` alias. Include `core/scene/pass.hpp` + `core/gpu/render_resource.hpp`.
+- [x] 1.1 Rewrite `src/core/scene/light.hpp` — `LightBase` becomes an abstract interface with `virtual ~LightBase() = default;`, pure virtuals `getPassMask()`, `getUBO()`, and a non-pure `virtual bool supportsPass(StringID pass) const` with default `(getPassMask() & passFlagFromStringID(pass)) != 0`. Add `LightBaseSharedPtr` alias. Include `core/scene/pass.hpp` + `core/gpu/render_resource.hpp`.
 - [x] 1.2 `DirectionalLight` in `src/core/scene/light.hpp` (or split into `.cpp`) inherits from `LightBase`. Add `m_passMask` member (default `ResourcePassFlag::Forward | ResourcePassFlag::Deferred`), `setPassMask` / `getPassMask` methods. Implement `getUBO()` override returning `std::dynamic_pointer_cast<IRenderResource>(ubo)`.
 - [x] 1.3 Add `std::optional<RenderTarget> m_target` member to `Camera` in `src/core/scene/camera.hpp` (include `core/gpu/render_target.hpp` + `<optional>`). Add `getTarget()` / `setTarget(RenderTarget)` / `clearTarget()` / `matchesTarget(const RenderTarget&)` — `matchesTarget` returns `m_target.has_value() && *m_target == target`.
 - [x] 1.4 Add `bool operator==(const RenderTarget &) const` and `operator!=` to `src/core/gpu/render_target.hpp` (field-by-field compare `colorFormat` / `depthFormat` / `sampleCount`).
@@ -8,7 +8,7 @@
 
 ## 2. Scene multi-container API
 
-- [x] 2.1 In `src/core/scene/scene.hpp`, add `std::vector<CameraPtr> m_cameras;` and `std::vector<LightBasePtr> m_lights;` as private members. Add public `addCamera(CameraPtr)` / `addLight(LightBasePtr)` / `getCameras()` / `getLights()` methods. Do NOT yet remove the legacy `CameraPtr camera;` / `DirectionalLightPtr directionalLight;` public fields — they stay until task 7 to keep intermediate steps compiling.
+- [x] 2.1 In `src/core/scene/scene.hpp`, add `std::vector<CameraSharedPtr> m_cameras;` and `std::vector<LightBaseSharedPtr> m_lights;` as private members. Add public `addCamera(CameraSharedPtr)` / `addLight(LightBaseSharedPtr)` / `getCameras()` / `getLights()` methods. Do NOT yet remove the legacy `CameraSharedPtr camera;` / `DirectionalLightSharedPtr directionalLight;` public fields — they stay until task 7 to keep intermediate steps compiling.
 - [x] 2.2 Add the new `std::vector<IRenderResourcePtr> getSceneLevelResources(StringID pass, const RenderTarget &target) const;` **overload** declaration. Leave the REQ-008 parameterless `getSceneLevelResources()` in place for now.
 - [x] 2.3 Implement the new overload in `src/core/scene/scene.cpp`: iterate `m_cameras` and push `cam->getUBO()` (as `IRenderResource`) when `cam->matchesTarget(target)`; then iterate `m_lights` and push `light->getUBO()` when `light->supportsPass(pass)`. Preserve camera-first / light-second ordering.
 - [x] 2.4 Build the core target.
@@ -37,7 +37,7 @@
 ## 6. Test migration
 
 - [x] 6.1 Upgrade `firstItemFromScene` in `src/test/integration/scene_test_helpers.hpp` to take `const LX_core::RenderTarget &target = {}` as a third defaulted parameter. Internally call `q.buildFromScene(scene, pass, target)`.
-- [x] 6.2 Add `inline LX_core::CameraPtr makeDefaultCameraWithTarget()` helper to the same file — constructs a default Camera (matching the one Scene ctor used to create), calls `setTarget(RenderTarget{})`, returns it.
+- [x] 6.2 Add `inline LX_core::CameraSharedPtr makeDefaultCameraWithTarget()` helper to the same file — constructs a default Camera (matching the one Scene ctor used to create), calls `setTarget(RenderTarget{})`, returns it.
 - [x] 6.3 Migrate `src/test/integration/test_vulkan_command_buffer.cpp`: replace `scene->camera = ...` / `scene->directionalLight = ...` with `scene->addCamera(...)` / `scene->addLight(...)`. For each added camera, explicitly call `cam->setTarget(RenderTarget{})`. Any loader that previously produced a camera without a target needs the explicit call.
 - [x] 6.4 Migrate `src/test/integration/test_vulkan_resource_manager.cpp` the same way.
 - [x] 6.5 Migrate `src/test/integration/test_vulkan_pipeline.cpp` the same way.
@@ -47,17 +47,17 @@
 
 ## 7. Break: delete legacy surfaces
 
-- [x] 7.1 Remove `CameraPtr camera;` public field from `Scene` in `src/core/scene/scene.hpp`.
-- [x] 7.2 Remove `DirectionalLightPtr directionalLight;` public field from `Scene`.
+- [x] 7.1 Remove `CameraSharedPtr camera;` public field from `Scene` in `src/core/scene/scene.hpp`.
+- [x] 7.2 Remove `DirectionalLightSharedPtr directionalLight;` public field from `Scene`.
 - [x] 7.3 Remove REQ-008's parameterless `std::vector<IRenderResourcePtr> getSceneLevelResources() const;` declaration and implementation from `Scene`.
 - [x] 7.4 Remove REQ-008's `void buildFromScene(const Scene &scene, StringID pass);` 2-argument overload declaration and implementation from `RenderQueue`.
-- [x] 7.5 Update the `Scene::Scene(IRenderablePtr)` constructor so it no longer creates a default `Camera` / `DirectionalLight` on the deleted fields. Production code and tests must explicitly `addCamera` / `addLight` going forward.
+- [x] 7.5 Update the `Scene::Scene(IRenderableSharedPtr)` constructor so it no longer creates a default `Camera` / `DirectionalLight` on the deleted fields. Production code and tests must explicitly `addCamera` / `addLight` going forward.
 - [x] 7.6 Scan for survivors: `grep -rn "scene->camera\b\|scene\.camera\b\|scene->directionalLight\b\|scene\.directionalLight\b\|getSceneLevelResources()[^(]" src/` should return zero hits.
 - [x] 7.7 Build the full project. Any remaining caller triggers a hard compile failure.
 
 ## 8. New test scenarios (test_frame_graph.cpp)
 
-- [x] 8.1 Study `src/test/integration/test_frame_graph.cpp` — note the mock helpers (`makeRenderable`, `FakeShader`, `FakeMaterial`). Add a `makeMockCameraWithTarget(const RenderTarget &)` and `makeMockCameraNoTarget()` helper in the anonymous namespace. Add a `makeMockLight(ResourcePassFlag)` helper that returns a `LightBasePtr` pointing to a minimal subclass with a settable pass mask and a non-null UBO.
+- [x] 8.1 Study `src/test/integration/test_frame_graph.cpp` — note the mock helpers (`makeRenderable`, `FakeShader`, `FakeMaterial`). Add a `makeMockCameraWithTarget(const RenderTarget &)` and `makeMockCameraNoTarget()` helper in the anonymous namespace. Add a `makeMockLight(ResourcePassFlag)` helper that returns a `LightBaseSharedPtr` pointing to a minimal subclass with a settable pass mask and a non-null UBO.
 - [x] 8.2 Add `testMultiCameraTargetFilter`: create `targetA` / `targetB` (distinct sampleCount or depthFormat), two cameras each bound to one, build a scene with a renderable, add both cameras. Call `scene->getSceneLevelResources(Pass_Forward, targetA)`. Assert returned size == 1 and the element is camA's UBO. Repeat for targetB → camB.
 - [x] 8.3 Add `testMultiLightPassMaskFilter`: three lights (Forward-only, Shadow-only, Forward|Shadow), one camera with `RenderTarget{}`, assert `getSceneLevelResources(Pass_Forward, RenderTarget{}).size() == 3` (1 camera + 2 lights — Forward-only + Forward|Shadow); assert `Pass_Shadow` variant returns 3 as well (1 camera + 2 lights — Shadow-only + Forward|Shadow).
 - [x] 8.4 Add `testNullOptCameraBeforeAndAfterFill`: create a mock camera without calling setTarget. Assert `scene->getSceneLevelResources(Pass_Forward, RenderTarget{}).size() == 0`. Call `cam->setTarget(RenderTarget{})`. Assert `scene->getSceneLevelResources(Pass_Forward, RenderTarget{}).size() == 1`.

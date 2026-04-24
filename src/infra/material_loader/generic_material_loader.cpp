@@ -183,7 +183,7 @@ void applyParameters(LX_core::MaterialInstance &mat,
     const auto memberId = LX_core::StringID(memberName);
 
     // Find member type from binding.
-    auto *binding = mat.getParameterBinding(bindingId);
+    auto *binding = mat.getParameterBufferLayout(bindingId);
     if (!binding) {
       fatalLoader("parameter binding '" + bindingName +
                   "' has no canonical parameter data");
@@ -389,7 +389,7 @@ CompiledPass compilePassShader(const LX_core::StringID &passId,
  * Public API
  *****************************************************************/
 
-LX_core::MaterialInstancePtr
+LX_core::MaterialInstanceSharedPtr
 loadGenericMaterial(const fs::path &materialPath) {
   if (!fs::exists(materialPath))
     fatalLoader("material file not found: " + materialPath.string());

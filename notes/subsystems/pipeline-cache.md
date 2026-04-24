@@ -15,7 +15,7 @@
 - `find(key)`：只查，不建。
 - `getOrCreate(desc, renderPass)`：查不到就建，并打 warning。
 - `preload(descs, renderPass)`：批量预构建，不打 warning。
-- `m_cache`：`std::unordered_map<PipelineKey, VulkanPipelinePtr, PipelineKey::Hash>`，由 cache 自己拥有 pipeline 生命周期。
+- `m_cache`：`std::unordered_map<PipelineKey, VulkanPipelineUniquePtr, PipelineKey::Hash>`，由 cache 自己拥有 pipeline 生命周期。
 
 ## 典型数据流
 

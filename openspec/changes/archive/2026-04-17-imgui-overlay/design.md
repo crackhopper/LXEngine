@@ -83,7 +83,7 @@ virtual bool isUiCapturingKeyboard() const { return false; }
 
 **替代方案**：新增独立接口 `IUiCapture` → 控制器需要同时持有两个指针，接口分裂。
 
-**理由**：相机控制器只拿一个 `InputStatePtr`，把 UI capture 放在同一接口上最简单；默认 false 不打扰既有调用方。
+**理由**：相机控制器只拿一个 `InputStateSharedPtr`，把 UI capture 放在同一接口上最简单；默认 false 不打扰既有调用方。
 
 ### D7: `VulkanRenderer::setDrawUiCallback` 不下沉到 `Renderer` 基类
 

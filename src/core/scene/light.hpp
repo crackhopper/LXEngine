@@ -24,13 +24,13 @@ public:
   /// The light's GPU-side data resource, or nullptr if the light contributes no
   /// per-frame descriptor data. Binding name is owned by the resource itself
   /// via IGpuResource::getBindingName().
-  virtual IGpuResourcePtr getUBO() const = 0;
+  virtual IGpuResourceSharedPtr getUBO() const = 0;
 
   /// Whether this light participates in the given pass.
   virtual bool supportsPass(StringID pass) const = 0;
 };
 
-using LightBasePtr = std::shared_ptr<LightBase>;
+using LightBaseSharedPtr = std::shared_ptr<LightBase>;
 
 struct alignas(16) DirectionalLightData : public IGpuResource {
   explicit DirectionalLightData(StringID bindingName = StringID("LightUBO"))
@@ -55,7 +55,7 @@ struct alignas(16) DirectionalLightData : public IGpuResource {
 private:
   StringID m_bindingName;
 };
-using DirectionalLightDataPtr = std::shared_ptr<DirectionalLightData>;
+using DirectionalLightDataSharedPtr = std::shared_ptr<DirectionalLightData>;
 
 class DirectionalLight : public LightBase {
 public:
@@ -68,9 +68,9 @@ public:
 
   /// Direct access to the strongly-typed light data (legacy callers mutate
   /// `ubo->param` directly; new callers go through LightBase::getUBO()).
-  DirectionalLightDataPtr ubo;
+  DirectionalLightDataSharedPtr ubo;
 
-  IGpuResourcePtr getUBO() const override { return ubo; }
+  IGpuResourceSharedPtr getUBO() const override { return ubo; }
   bool supportsPass(StringID pass) const override {
     return m_supportedPasses.find(pass) != m_supportedPasses.end();
   }
@@ -84,6 +84,6 @@ public:
 private:
   std::unordered_set<StringID, StringID::Hash> m_supportedPasses;
 };
-using DirectionalLightPtr = std::shared_ptr<DirectionalLight>;
+using DirectionalLightSharedPtr = std::shared_ptr<DirectionalLight>;
 
 } // namespace LX_core

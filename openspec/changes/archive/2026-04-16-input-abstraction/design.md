@@ -46,7 +46,7 @@
 
 **替代方案**：返回引用 —— 生命周期管理更复杂。返回 `unique_ptr` —— 不适合共享语义���
 
-**理由**：与项目现有 `WindowPtr = shared_ptr<Window>` 风格一致。
+**理由**：与项目现有 `WindowSharedPtr = shared_ptr<Window>` 风格一致。
 
 ### D5: KeyCode 范围限定在 Phase 1 最小集
 

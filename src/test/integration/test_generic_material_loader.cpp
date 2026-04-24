@@ -64,10 +64,10 @@ void test_generic_loader_produces_valid_instance() {
   fs::current_path(prev);
 
   REQUIRE(mat != nullptr);
-  REQUIRE(mat->getParameterBindingCount() >= 1);
-  REQUIRE(mat->getParameterBinding() != nullptr);
+  REQUIRE(mat->getParameterBufferCount() >= 1);
+  REQUIRE(mat->getParameterBufferLayout() != nullptr);
 
-  const auto &buf = mat->getParameterBuffer();
+  const auto &buf = mat->getParameterBufferBytes();
   REQUIRE(!buf.empty());
 
   float r = 0, g = 0, b = 0, shiny = 0;
@@ -169,7 +169,7 @@ void test_canonical_parameters_shared_across_passes() {
 
   REQUIRE(mat != nullptr);
 
-  const auto &globalBuf = mat->getParameterBuffer(StringID("MaterialUBO"));
+  const auto &globalBuf = mat->getParameterBufferBytes(StringID("MaterialUBO"));
   REQUIRE(globalBuf.size() >= 16);
 
   float globalShiny = 0;

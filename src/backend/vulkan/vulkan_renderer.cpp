@@ -103,7 +103,7 @@ public:
   VulkanRendererImpl() {}
   ~VulkanRendererImpl() override { destroy(); }
 
-  void initialize(WindowPtr _window, const char *appName) override {
+  void initialize(WindowSharedPtr _window, const char *appName) override {
     const int maxFramesInFlight = 3;
 
     m_window = _window;
@@ -176,7 +176,7 @@ public:
     return t;
   }
 
-  void initScene(ScenePtr _scene) override {
+  void initScene(SceneSharedPtr _scene) override {
     scene = _scene;
 
     // REQ-009: compute the swapchain target once, use it for both:
@@ -360,13 +360,13 @@ public:
     m_drawUiCallback = std::move(cb);
   }
 
-  WindowPtr m_window;
-  VulkanDevicePtr device = nullptr;
-  VulkanResourceManagerPtr resourceManager = nullptr;
-  VulkanSwapchainPtr swapchain = nullptr;
-  VulkanCommandBufferManagerPtr cmdBufferMgr = nullptr;
+  WindowSharedPtr m_window;
+  VulkanDeviceUniquePtr device = nullptr;
+  VulkanResourceManagerUniquePtr resourceManager = nullptr;
+  VulkanSwapchainUniquePtr swapchain = nullptr;
+  VulkanCommandBufferManagerUniquePtr cmdBufferMgr = nullptr;
 
-  ScenePtr scene = nullptr;
+  SceneSharedPtr scene = nullptr;
   LX_core::FrameGraph m_frameGraph{};
   uint32_t frameIndex = 0;
 
@@ -424,13 +424,13 @@ VulkanRenderer::VulkanRenderer(Token token) : p_impl(nullptr) {
 
 VulkanRenderer::~VulkanRenderer() { delete p_impl; }
 
-void VulkanRenderer::initialize(WindowPtr window, const char *appName) {
+void VulkanRenderer::initialize(WindowSharedPtr window, const char *appName) {
   p_impl->initialize(window, appName);
 }
 
 void VulkanRenderer::shutdown() { p_impl->shutdown(); }
 
-void VulkanRenderer::initScene(ScenePtr scene) { p_impl->initScene(scene); }
+void VulkanRenderer::initScene(SceneSharedPtr scene) { p_impl->initScene(scene); }
 
 void VulkanRenderer::uploadData() { p_impl->uploadData(); }
 

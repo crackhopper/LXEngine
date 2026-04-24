@@ -4,7 +4,7 @@
 
 ## 2. ICameraController 抽象
 
-- [x] 2.1 Create `src/core/scene/camera_controller.hpp` — ICameraController 纯虚基类 with `update(Camera&, const IInputState&, float dt)` and CameraControllerPtr alias
+- [x] 2.1 Create `src/core/scene/camera_controller.hpp` — ICameraController 纯虚基类 with `update(Camera&, const IInputState&, float dt)` and CameraControllerSharedPtr alias
 
 ## 3. OrbitCameraController 实现
 

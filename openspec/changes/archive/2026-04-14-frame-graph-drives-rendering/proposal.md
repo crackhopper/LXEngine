@@ -6,7 +6,7 @@
 
 ## What Changes
 
-- **BREAKING** Delete `Scene::buildRenderingItem(StringID pass)` and `Scene::buildRenderingItemForRenderable(const IRenderablePtr&, StringID pass) const`. The `RenderingItem` factory job moves to `RenderQueue`.
+- **BREAKING** Delete `Scene::buildRenderingItem(StringID pass)` and `Scene::buildRenderingItemForRenderable(const IRenderableSharedPtr&, StringID pass) const`. The `RenderingItem` factory job moves to `RenderQueue`.
 - Add `RenderQueue::buildFromScene(const Scene &scene, StringID pass)` as the single entry point for turning scene data into `RenderingItem`s. It internally filters by `IRenderable::supportsPass(pass)` and merges `Scene::getSceneLevelResources()` into each item's `descriptorResources`.
 - Add `IRenderable::supportsPass(StringID pass)` as a virtual method with a default implementation based on `getPassMask()` and a new helper `passFlagFromStringID(StringID)` living in `src/core/scene/pass.{hpp,cpp}`.
 - Add `Scene::getSceneLevelResources()` (parameterless) returning the interleaved camera UBO + directional light UBO vector. REQ-009 will later replace this with a `(pass, target)`-aware version; this change keeps the single-camera / single-light assumption.

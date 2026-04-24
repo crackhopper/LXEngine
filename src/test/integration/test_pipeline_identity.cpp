@@ -61,11 +61,11 @@ private:
 
 // Reusable vertex + index + shader builders.
 struct Fixture {
-  VertexBufferPtr vb;
+  VertexBufferSharedPtr vb;
   std::shared_ptr<IndexBuffer> ib;
-  MeshPtr mesh;
-  MaterialTemplate::Ptr tmpl;
-  MaterialInstancePtr material;
+  MeshSharedPtr mesh;
+  MaterialTemplate::SharedPtr tmpl;
+  MaterialInstanceSharedPtr material;
 
   static Fixture
   make(const std::string &shaderName = "blinnphong_0",
@@ -95,7 +95,7 @@ struct Fixture {
 };
 
 PipelineKey buildKey(const Fixture &f, StringID pass,
-                     const SkeletonPtr &skel = nullptr) {
+                     const SkeletonSharedPtr &skel = nullptr) {
   auto sub = std::make_shared<RenderableSubMesh>(f.mesh, f.material, skel);
   StringID objSig = sub->getRenderSignature(pass);
   StringID matSig = f.material->getMaterialSignature(pass);

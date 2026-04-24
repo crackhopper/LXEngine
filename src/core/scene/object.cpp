@@ -106,8 +106,8 @@ buildLegacyValidatedData(const RenderableSubMesh &sub, StringID pass) {
 
 } // namespace
 
-SceneNode::SceneNode(std::string nodeName, MeshPtr mesh,
-                     MaterialInstancePtr material, SkeletonPtr skeleton)
+SceneNode::SceneNode(std::string nodeName, MeshSharedPtr mesh,
+                     MaterialInstanceSharedPtr material, SkeletonSharedPtr skeleton)
     : m_nodeName(std::move(nodeName)), m_mesh(std::move(mesh)),
       m_materialInstance(std::move(material)),
       m_perDrawData(std::make_shared<PerDrawData>()) {
@@ -120,19 +120,19 @@ SceneNode::SceneNode(std::string nodeName, MeshPtr mesh,
 
 SceneNode::~SceneNode() { unregisterMaterialPassListener(); }
 
-void SceneNode::setMesh(MeshPtr mesh) {
+void SceneNode::setMesh(MeshSharedPtr mesh) {
   m_mesh = std::move(mesh);
   rebuildValidatedCache();
 }
 
-void SceneNode::setMaterialInstance(MaterialInstancePtr material) {
+void SceneNode::setMaterialInstance(MaterialInstanceSharedPtr material) {
   unregisterMaterialPassListener();
   m_materialInstance = std::move(material);
   registerMaterialPassListener();
   rebuildValidatedCache();
 }
 
-void SceneNode::setSkeleton(SkeletonPtr skeleton) {
+void SceneNode::setSkeleton(SkeletonSharedPtr skeleton) {
   if (skeleton) {
     m_skeleton = std::move(skeleton);
   } else {
@@ -141,17 +141,17 @@ void SceneNode::setSkeleton(SkeletonPtr skeleton) {
   rebuildValidatedCache();
 }
 
-IGpuResourcePtr SceneNode::getVertexBuffer() const {
+IGpuResourceSharedPtr SceneNode::getVertexBuffer() const {
   return m_mesh ? std::static_pointer_cast<IGpuResource>(m_mesh->vertexBuffer)
                 : nullptr;
 }
 
-IGpuResourcePtr SceneNode::getIndexBuffer() const {
+IGpuResourceSharedPtr SceneNode::getIndexBuffer() const {
   return m_mesh ? std::static_pointer_cast<IGpuResource>(m_mesh->indexBuffer)
                 : nullptr;
 }
 
-std::vector<IGpuResourcePtr>
+std::vector<IGpuResourceSharedPtr>
 SceneNode::getDescriptorResources(StringID pass) const {
   auto data = getValidatedPassData(pass);
   if (data)
@@ -159,7 +159,7 @@ SceneNode::getDescriptorResources(StringID pass) const {
   return {};
 }
 
-IShaderPtr SceneNode::getShaderInfo() const {
+IShaderSharedPtr SceneNode::getShaderInfo() const {
   auto data = getValidatedPassData(Pass_Forward);
   if (data)
     return data->get().shaderInfo;
@@ -328,9 +328,9 @@ void SceneNode::unregisterMaterialPassListener() {
   }
 }
 
-RenderableSubMesh::RenderableSubMesh(MeshPtr mesh_,
-                                     MaterialInstancePtr material_,
-                                     SkeletonPtr skeleton_,
+RenderableSubMesh::RenderableSubMesh(MeshSharedPtr mesh_,
+                                     MaterialInstanceSharedPtr material_,
+                                     SkeletonSharedPtr skeleton_,
                                      std::string nodeName_)
     : mesh(std::move(mesh_)), material(std::move(material_)),
       nodeName(std::move(nodeName_)) {
@@ -343,19 +343,19 @@ RenderableSubMesh::RenderableSubMesh(MeshPtr mesh_,
   perDrawData = std::make_shared<PerDrawData>();
 }
 
-IGpuResourcePtr RenderableSubMesh::getVertexBuffer() const {
+IGpuResourceSharedPtr RenderableSubMesh::getVertexBuffer() const {
   return mesh ? std::static_pointer_cast<IGpuResource>(mesh->vertexBuffer)
               : nullptr;
 }
 
-IGpuResourcePtr RenderableSubMesh::getIndexBuffer() const {
+IGpuResourceSharedPtr RenderableSubMesh::getIndexBuffer() const {
   return mesh ? std::static_pointer_cast<IGpuResource>(mesh->indexBuffer)
               : nullptr;
 }
 
-std::vector<IGpuResourcePtr>
+std::vector<IGpuResourceSharedPtr>
 RenderableSubMesh::getDescriptorResources(StringID pass) const {
-  std::vector<IGpuResourcePtr> ret;
+  std::vector<IGpuResourceSharedPtr> ret;
   if (!material)
     return ret;
   auto res = material->getDescriptorResources(pass);
@@ -367,7 +367,7 @@ RenderableSubMesh::getDescriptorResources(StringID pass) const {
   return ret;
 }
 
-IShaderPtr RenderableSubMesh::getShaderInfo() const {
+IShaderSharedPtr RenderableSubMesh::getShaderInfo() const {
   return material ? material->getPassShader(Pass_Forward) : nullptr;
 }
 

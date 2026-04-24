@@ -5,7 +5,7 @@ The Vulkan backend SHALL provide `LX_core::backend::PipelineCache` as a dedicate
 
 #### Scenario: ResourceManager delegates to cache
 - **WHEN** `VulkanResourceManager::getOrCreateRenderPipeline(item)` is invoked
-- **THEN** the call resolves via `PipelineCache::getOrCreate(...)` and no `std::unordered_map<PipelineKey, VulkanPipelinePtr>` lives on the resource manager itself
+- **THEN** the call resolves via `PipelineCache::getOrCreate(...)` and no `std::unordered_map<PipelineKey, VulkanPipelineUniquePtr>` lives on the resource manager itself
 
 ### Requirement: PipelineCache::find returns a reference without constructing
 `PipelineCache::find(const PipelineKey &)` SHALL return `std::optional<std::reference_wrapper<VulkanPipeline>>`. On miss the method MUST NOT allocate or construct a pipeline; it returns `std::nullopt`. Callers that expect a built pipeline SHALL use `getOrCreate` explicitly.

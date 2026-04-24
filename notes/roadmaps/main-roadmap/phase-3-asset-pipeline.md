@@ -118,7 +118,7 @@ private:
 
 - `Mesh`、`Texture`、`MaterialInstance`、`CubemapResource` 等资源类都加 `m_guid` 字段
 - 现有 loader（`blinnphong_material_loader.cpp` / `pbr_cube_material_loader.cpp`）要在构造时从 registry 读 GUID，而不是每次都生成新的
-- `RenderableSubMesh` 持有 `MeshHandle` + `MaterialHandle`，而不是裸 `MeshPtr` / `MaterialInstancePtr`
+- `RenderableSubMesh` 持有 `MeshHandle` + `MaterialHandle`，而不是裸 `MeshSharedPtr` / `MaterialInstanceSharedPtr`
 
 **验收**：同一个 `.obj` 被加载 5 次只有一份 GPU buffer。
 

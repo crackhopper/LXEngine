@@ -2,7 +2,7 @@
 
 `src/core/resources/material.hpp` currently holds two unrelated material designs side by side:
 
-1. **Used**: `IMaterial` (virtual interface) ← `DrawMaterial` (concrete, holds `BlinnPhongMaterialUBO ubo; CombinedTextureSamplerPtr albedoSampler; CombinedTextureSamplerPtr normalSampler;`). Every render path in the project constructs `DrawMaterial` and pushes typed UBO fields directly into the struct.
+1. **Used**: `IMaterial` (virtual interface) ← `DrawMaterial` (concrete, holds `BlinnPhongMaterialUBO ubo; CombinedTextureSamplerSharedPtr albedoSampler; CombinedTextureSamplerSharedPtr normalSampler;`). Every render path in the project constructs `DrawMaterial` and pushes typed UBO fields directly into the struct.
 2. **Unused**: `MaterialTemplate` + `MaterialInstance`. Designed as a template/instance pair where templates carry shader + pass configs and instances carry per-object uniform values. Exists in the header but has no callers.
 
 The used path hard-codes the shader's UBO shape in C++. Adding a parameter to `MaterialUBO` in GLSL requires rebuilding `BlinnPhongMaterialUBO`, its loader, and every callsite that writes to it. REQ-004 extended `ShaderReflector` so `ShaderResourceBinding::members` now carries std140 offsets for every UBO top-level field; the machinery is there, but `MaterialInstance` doesn't consume it yet.
@@ -16,7 +16,7 @@ Additionally, the inherited `MaterialInstance` draft stored per-uniform `std::un
 - Zero hand-written std140 structs for any material UBO — `MaterialInstance` builds its byte buffer from reflection at construction time.
 - `MaterialTemplate` becomes a thin carrier for "name + shader + pass entries + name-keyed binding cache", with no stale hash cache and no duplicate fields.
 - Preserve the existing `IMaterial` virtual surface (`getDescriptorResources / getShaderInfo / getPassFlag / getShaderProgramSet / getRenderState`) so `Scene::buildRenderingItem` and the backend pipeline cache keep working without touching render-graph code.
-- Loader API migrates from `DrawMaterial::Ptr` return to `MaterialInstance::Ptr` return with the same shape (one factory per shader file).
+- Loader API migrates from `DrawMaterial::SharedPtr` return to `MaterialInstance::SharedPtr` return with the same shape (one factory per shader file).
 
 **Non-Goals:**
 - `IMaterial::getRenderSignature(pass)` / pass-aware material identity — that is REQ-007's job and would conflate two large refactors.

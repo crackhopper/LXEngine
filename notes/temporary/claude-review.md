@@ -194,7 +194,7 @@ VulkanRenderer::~VulkanRenderer() { delete p_impl; }  // cpp:425
 
 - `VulkanRendererImpl : public gpu::Renderer` —— 但外层 `VulkanRenderer` 也继承 `gpu::Renderer`，两层虚继承其实只是外层重复一次转发。
 - `VulkanRendererImpl` 的成员 `device` / `swapchain` / `resourceManager` / `scene` / `m_gui` 全部是 `public:`。
-- `setDrawUiCallback` 只挂在 `VulkanRenderer`（具体类）上，demo 要同时持有 `RendererPtr` 和 `shared_ptr<VulkanRenderer>`。
+- `setDrawUiCallback` 只挂在 `VulkanRenderer`（具体类）上，demo 要同时持有 `RendererSharedPtr` 和 `shared_ptr<VulkanRenderer>`。
 - `maxFramesInFlight = 3` 在 `initialize()` 和 `draw()` 两处重复写。
 
 **建议**：把 `VulkanRendererImpl` 改成纯实现类（不继承 `gpu::Renderer`），成员全部 private；`maxFramesInFlight` 抽成成员常量或 `constexpr`；`setDrawUiCallback` 考虑提到 `gpu::Renderer` 基类（现在规模支持得起）。
@@ -228,7 +228,7 @@ REQ-034 R2 指的正是这一项。`SceneNode` 走完整的 `rebuildValidatedCac
 
 ### D-3 · Transform / 层级缺失
 
-`00-gap-analysis.md` 的 A 项。`Scene` 只有扁平 `vector<IRenderablePtr>`，PC_Draw.model 靠外部代码每帧塞。不能写"枪挂在手上"类逻辑。任何 gameplay 扩展都得先解这个。
+`00-gap-analysis.md` 的 A 项。`Scene` 只有扁平 `vector<IRenderableSharedPtr>`，PC_Draw.model 靠外部代码每帧塞。不能写"枪挂在手上"类逻辑。任何 gameplay 扩展都得先解这个。
 
 ### D-4 · 资产管线 & 发布
 

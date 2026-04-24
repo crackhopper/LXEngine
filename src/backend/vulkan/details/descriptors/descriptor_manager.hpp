@@ -22,7 +22,7 @@ struct DescriptorUpdateInfo {
   const VkDescriptorImageInfo *imageInfo = nullptr;
 };
 
-using DescriptorSetPtr = std::unique_ptr<DescriptorSet>;
+using DescriptorSetUniquePtr = std::unique_ptr<DescriptorSet>;
 
 class DescriptorSet {
 public:
@@ -59,7 +59,7 @@ public:
 };
 
 class VulkanDescriptorManager;
-using VulkanDescriptorManagerPtr = std::unique_ptr<VulkanDescriptorManager>;
+using VulkanDescriptorManagerUniquePtr = std::unique_ptr<VulkanDescriptorManager>;
 
 class VulkanDescriptorManager {
 public:
@@ -68,7 +68,7 @@ public:
   VulkanDescriptorManager(Token, VulkanDevice &device);
   ~VulkanDescriptorManager();
 
-  static VulkanDescriptorManagerPtr create(VulkanDevice &device);
+  static VulkanDescriptorManagerUniquePtr create(VulkanDevice &device);
 
   /// Build (or fetch from the cache) a VkDescriptorSetLayout for the given
   /// reflection bindings. Caller is responsible for ensuring all bindings
@@ -77,7 +77,7 @@ public:
       const std::vector<LX_core::ShaderResourceBinding> &bindings);
 
   /// Allocate a descriptor set with the layout derived from the given bindings.
-  DescriptorSetPtr
+  DescriptorSetUniquePtr
   allocateSet(const std::vector<LX_core::ShaderResourceBinding> &bindings);
 
   void beginFrame(uint32_t currentFrameIndex);

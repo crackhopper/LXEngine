@@ -13,7 +13,7 @@ public:
 
   /// Build a fully-constructed pipeline: shader modules, descriptor set
   /// layouts, pipeline layout, and VkPipeline all in one call.
-  static VulkanPipelinePtr create(VulkanDevice &device,
+  static VulkanPipelineUniquePtr create(VulkanDevice &device,
                                   const PipelineBuildDesc &buildInfo,
                                   VkRenderPass renderPass,
                                   std::string shaderName = {});

@@ -9,8 +9,8 @@
 render state 和 material-owned binding 收束成一份可共享的蓝图。
 
 可以先带着一个问题阅读：为什么 `MaterialTemplate` 既要保留 per-pass 定义，
-又要额外构建一份 `m_passMaterialBindings` 缓存？答案是，前者回答“这个材质
-在结构上有哪些 pass”，后者回答“每个 pass 里哪些资源真正归材质实例填写”。
+又要额外构建 canonical material binding 表？答案是，前者回答“这个材质
+在结构上有哪些 pass”，后者回答“这些 pass 共同引用的是哪一组稳定 binding 契约”。
 
 源码入口：[material_template.hpp](../../../../src/core/asset/material_template.hpp)
 
@@ -138,7 +138,7 @@ descriptor 类型支持范围、以及运行时实例需要面对的 binding 集
 ### ShaderProgramSet：把“哪份 shader 变体参与这个 pass”收束成一项配置
 
 `ShaderProgramSet` 既保存逻辑层的 shader 标识（`shaderName` + variants），
-也保存已经解析好的 `IShaderPtr`。这样 `MaterialPassDefinition` 就可以同时回答：
+也保存已经解析好的 `IShaderSharedPtr`。这样 `MaterialPassDefinition` 就可以同时回答：
 
 - 这个 pass 的结构签名应该由哪份 shader 名称和哪些 variant 组成
 - 运行时如果需要反射 binding，该去拿哪一个 `IShader`

@@ -18,7 +18,7 @@ Findings recorded during apply:
 
 ## 3. Core: MaterialTemplate tightening
 
-- [x] 3.1 Add `MaterialTemplate::create(std::string name, IShaderPtr shader)` static factory that stores the shader and returns a `shared_ptr<MaterialTemplate>`
+- [x] 3.1 Add `MaterialTemplate::create(std::string name, IShaderSharedPtr shader)` static factory that stores the shader and returns a `shared_ptr<MaterialTemplate>`
 - [x] 3.2 Delete `m_passHashCache` field, `getPipelineHash(passName)` method, and all references
 - [x] 3.3 Ensure only a single `m_bindingCache` (keyed by `StringID`) exists; remove any duplicate declaration
 - [x] 3.4 Verify `buildBindingCache()` populates `m_bindingCache` from `m_shader->getReflectionBindings()` with `StringID(b.name)` as the key
@@ -27,10 +27,10 @@ Findings recorded during apply:
 ## 4. Core: MaterialInstance as IMaterial
 
 - [x] 4.1 Make `MaterialInstance` publicly inherit from `IMaterial`
-- [x] 4.2 Add private data members: `ResourcePassFlag m_passFlag`, `std::vector<uint8_t> m_uboBuffer`, `const ShaderResourceBinding* m_uboBinding = nullptr`, `IRenderResourcePtr m_uboResource`, `bool m_uboDirty = false`, `std::unordered_map<StringID, CombinedTextureSamplerPtr> m_textures` (note: `CombinedTextureSamplerPtr`, not `TexturePtr` — see below)
+- [x] 4.2 Add private data members: `ResourcePassFlag m_passFlag`, `std::vector<uint8_t> m_uboBuffer`, `const ShaderResourceBinding* m_uboBinding = nullptr`, `IRenderResourcePtr m_uboResource`, `bool m_uboDirty = false`, `std::unordered_map<StringID, CombinedTextureSamplerSharedPtr> m_textures` (note: `CombinedTextureSamplerSharedPtr`, not `TextureSharedPtr` — see below)
 - [x] 4.3 Remove the legacy `m_vec4s` / `m_floats` maps (values live in `m_uboBuffer`)
 - [x] 4.4 Implement constructor: look up the `"MaterialUBO"` binding in reflection (not "first UBO" — scene UBOs like `LightUBO`/`CameraUBO`/`Bones` share the list), size buffer to `binding.size`, zero-fill, build `m_uboResource` via inline `UboByteBufferResource`
-- [x] 4.5 Add `static Ptr create(MaterialTemplate::Ptr tmpl, ResourcePassFlag passFlag = ResourcePassFlag::Forward)`
+- [x] 4.5 Add `static Ptr create(MaterialTemplate::SharedPtr tmpl, ResourcePassFlag passFlag = ResourcePassFlag::Forward)`
 - [x] 4.6 Disable copy + move (raw reference into `m_uboBuffer` inside `m_uboResource` must not dangle)
 
 ## 5. Core: MaterialInstance setters
@@ -40,7 +40,7 @@ Findings recorded during apply:
 - [x] 5.3 Implement `setVec3(StringID, const Vec3f&)` → `writeUboMember(id, &v, 12, Vec3)` (only 12 bytes, never 16)
 - [x] 5.4 Implement `setFloat(StringID, float)` → `writeUboMember(id, &v, 4, Float)`
 - [x] 5.5 Implement `setInt(StringID, int32_t)` → `writeUboMember(id, &v, 4, Int)`
-- [x] 5.6 Implement `setTexture(StringID, CombinedTextureSamplerPtr)` — use `m_template->findBinding(id)`, assert type is `Texture2D`/`TextureCube`, store in `m_textures[id]`. Type changed from `TexturePtr` to `CombinedTextureSamplerPtr` because `Texture` itself does NOT inherit from `IRenderResource` in this codebase — the existing backend-facing resource is `CombinedTextureSampler`. Spec delta updated accordingly.
+- [x] 5.6 Implement `setTexture(StringID, CombinedTextureSamplerSharedPtr)` — use `m_template->findBinding(id)`, assert type is `Texture2D`/`TextureCube`, store in `m_textures[id]`. Type changed from `TextureSharedPtr` to `CombinedTextureSamplerSharedPtr` because `Texture` itself does NOT inherit from `IRenderResource` in this codebase — the existing backend-facing resource is `CombinedTextureSampler`. Spec delta updated accordingly.
 - [x] 5.7 Only a `StringID`-keyed `setTexture` overload exists; no `uint32_t binding` overload.
 
 ## 6. Core: MaterialInstance IMaterial implementations
@@ -57,7 +57,7 @@ Findings recorded during apply:
 - [x] 7.1 Delete `src/infra/loaders/blinnphong_draw_material_loader.hpp`
 - [x] 7.2 Delete `src/infra/loaders/blinnphong_draw_material_loader.cpp`
 - [x] 7.3 Create `blinnphong_material_loader.{hpp,cpp}` with a factory that compiles shader, reflects bindings, constructs `ShaderImpl`, `MaterialTemplate::create("blinnphong_0", shader)`, builds `RenderPassEntry{shaderSet, renderState}`, `entry.buildCache()`, `tmpl->setPass("Forward", …)`, `tmpl->buildBindingCache()`, `MaterialInstance::create(tmpl)`, seeds `setVec3("baseColor", …)` / `setFloat("shininess", …)` / `setFloat("specularIntensity", …)` / `setInt("enableAlbedo", …)` / `setInt("enableNormal", …)` (member names match the GLSL declaration in `blinnphong_0.frag`)
-- [x] 7.4 Return type is `MaterialInstance::Ptr`
+- [x] 7.4 Return type is `MaterialInstance::SharedPtr`
 - [x] 7.5 Updated `src/infra/CMakeLists.txt` to reference `loaders/blinnphong_material_loader.cpp`
 
 ## 8. Removal — DrawMaterial and BlinnPhongMaterialUBO

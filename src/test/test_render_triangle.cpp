@@ -78,10 +78,10 @@ int main() {
   }
 
   LX_infra::Window::Initialize();
-  LX_core::WindowPtr window =
+  LX_core::WindowSharedPtr window =
       std::make_shared<LX_infra::Window>("Test Renderer", 800, 600);
 
-  RendererPtr renderer =
+  RendererSharedPtr renderer =
       std::make_shared<LX_core::backend::VulkanRenderer>(
           LX_core::backend::VulkanRenderer::Token{});
   renderer->initialize(window, "TestRenderTriangle");

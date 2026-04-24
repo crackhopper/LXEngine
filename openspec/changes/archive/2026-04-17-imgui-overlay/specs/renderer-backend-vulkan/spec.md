@@ -2,7 +2,7 @@
 
 ### Requirement: VulkanRenderer drives an ImGui overlay
 
-`LX_core::backend::VulkanRenderer` SHALL 持有一个 `infra::Gui` 成员（可通过 PImpl 间接持有）。`initialize(WindowPtr window, const char* appName)` SHALL 在 Vulkan device / swapchain / swapchain render pass 均建立之后构造 `Gui::InitParams` 并调用 `gui.init(params)`；`InitParams::nativeWindowHandle` SHALL 为 `window->getNativeHandle()`；`InitParams::renderPass` 与 `InitParams::swapchainImageCount` SHALL 与 renderer 自身 swapchain 一致。
+`LX_core::backend::VulkanRenderer` SHALL 持有一个 `infra::Gui` 成员（可通过 PImpl 间接持有）。`initialize(WindowSharedPtr window, const char* appName)` SHALL 在 Vulkan device / swapchain / swapchain render pass 均建立之后构造 `Gui::InitParams` 并调用 `gui.init(params)`；`InitParams::nativeWindowHandle` SHALL 为 `window->getNativeHandle()`；`InitParams::renderPass` 与 `InitParams::swapchainImageCount` SHALL 与 renderer 自身 swapchain 一致。
 
 `shutdown()` SHALL 在释放 Vulkan device 之前对称调用 `gui.shutdown()`。
 

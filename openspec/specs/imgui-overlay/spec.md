@@ -8,7 +8,7 @@ Define how the Vulkan backend drives an in-process Dear ImGui overlay that share
 
 ### Requirement: VulkanRenderer owns the Gui instance
 
-`LX_core::backend::VulkanRenderer`（PImpl 内部）SHALL 持有一个 `infra::Gui` 成员，并在 `initialize()` 完成 Vulkan device / swapchain / swapchain render pass / swapchain image view 创建之后，对其调用 `init()`。`Gui::InitParams` 中的 `renderPass` 字段 SHALL 为 `VulkanRenderer` 自身的 swapchain render pass；`swapchainImageCount` SHALL 为当前 swapchain image 数量；`nativeWindowHandle` SHALL 来自 `WindowPtr->getNativeHandle()`。
+`LX_core::backend::VulkanRenderer`（PImpl 内部）SHALL 持有一个 `infra::Gui` 成员，并在 `initialize()` 完成 Vulkan device / swapchain / swapchain render pass / swapchain image view 创建之后，对其调用 `init()`。`Gui::InitParams` 中的 `renderPass` 字段 SHALL 为 `VulkanRenderer` 自身的 swapchain render pass；`swapchainImageCount` SHALL 为当前 swapchain image 数量；`nativeWindowHandle` SHALL 来自 `WindowSharedPtr->getNativeHandle()`。
 
 #### Scenario: Gui 在 initialize 末尾被 init
 

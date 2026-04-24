@@ -82,7 +82,7 @@ Key rules:
 ### D3: Generic loader flow
 
 ```
-loadGenericMaterial(yamlPath) → MaterialInstancePtr
+loadGenericMaterial(yamlPath) → MaterialInstanceSharedPtr
   1. Parse YAML
   2. Resolve shader path from shader name
   3. For each pass: merge global + per-pass variants
@@ -105,7 +105,7 @@ A `PlaceholderTextures` utility provides:
 - `getBlack()` → 1x1 RGBA (0,0,0,255)
 - `getNormal()` → 1x1 RGBA (128,128,255,255) — flat normal in tangent space
 
-These are lazily created `CombinedTextureSamplerPtr` singletons. The generic loader resolves placeholder names before falling back to file path loading.
+These are lazily created `CombinedTextureSamplerSharedPtr` singletons. The generic loader resolves placeholder names before falling back to file path loading.
 
 ### D5: Validation
 

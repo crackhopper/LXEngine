@@ -13,13 +13,13 @@ public:
   virtual ~Renderer() = default;
 
   // 初始化 GPU 设备 / context
-  virtual void initialize(WindowPtr window, const char *appName) = 0;
+  virtual void initialize(WindowSharedPtr window, const char *appName) = 0;
 
   // 清理 GPU 资源
   virtual void shutdown() = 0;
 
   // 初始化，根据场景创建后端资源。
-  virtual void initScene(ScenePtr scene) = 0;
+  virtual void initScene(SceneSharedPtr scene) = 0;
 
   // --- 每帧的动作
   // 逻辑计算（力学模拟，通常比较简单，刚体力学为主） + 上传数据
@@ -29,6 +29,6 @@ public:
   
 };
 
-using RendererPtr = std::shared_ptr<Renderer>;
+using RendererSharedPtr = std::shared_ptr<Renderer>;
 
 } // namespace LX_core::gpu

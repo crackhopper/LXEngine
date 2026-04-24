@@ -15,23 +15,23 @@
 - `MaterialTemplate`：定义某个材质有哪些 pass、每个 pass 用什么 shader、variants 和 render state。
 - `MaterialInstance`：持有运行期参数，是当前唯一的材质类型。
 - `MaterialPassDefinition`：单个 pass 的 shader 配置和 render state。
-- `MaterialParameterData`：一个完整的材质参数槽位，持有反射布局、CPU 字节和 `IGpuResource` 行为。
+- `ParameterBuffer`：一个完整的材质 buffer binding 运行时对象，持有反射布局、CPU 字节和 `IGpuResource` 行为。
 
 ## 典型数据流
 
 1. loader 为每个 pass 决定 shader variants，并编译得到对应 `CompiledShader`。
 2. `MaterialTemplate` 持有 pass definition，并在 `rebuildMaterialInterface()` 里把各 pass shader 的反射结果收束成 template 级 canonical material binding 表，再为每个 pass 建立 ordered binding-id 视图。
-3. `MaterialInstance` 构造时默认启用 template 中全部已定义 pass，并直接按这张 canonical material binding 表创建运行期资源：buffer 类型生成 `MaterialParameterData`，texture 类型留给 `setTexture()` 按 binding 名填充。
+3. `MaterialInstance` 构造时默认启用 template 中全部已定义 pass，并直接按这张 canonical material binding 表创建运行期资源：buffer 类型生成 `ParameterBuffer`，texture 类型留给 `setTexture()` 按 binding 名填充。
 4. 运行时统一通过 `setParameter(bindingName, memberName, value)` 写 canonical 参数；旧的 member-only 便利 setter 已移除。`setTexture` 仍按 binding 名绑定 canonical 纹理。
 5. `setPassEnabled(pass, enabled)` 只改变 instance 的 enabled subset；对未定义 pass 调用会直接 `FATAL + terminate`。
-6. `syncGpuData()` 遍历所有参数槽位，把待同步状态传给对应的 `IGpuResource`。
+6. `syncGpuData()` 遍历所有 buffer bindings，把待同步状态传给对应的 `IGpuResource`。
 
 ## 关键约束
 
 - 引擎保留的 system-owned binding 名字集：`CameraUBO`、`LightUBO`、`Bones`（定义在 `shader_binding_ownership.hpp`）。非保留名字的 descriptor binding 默认归材质所有。
 - 材质 UBO 的名字不再限定为 `MaterialUBO`；任何非系统保留的 `UniformBuffer` binding 都会被自动识别为材质参数缓冲。`MaterialUBO` 仍可用，但不再是特例。
 - shader variants 属于 template/pass，不属于 instance；运行时改 UBO 或 texture 不会产生新的 pipeline identity。
-- `MaterialInstance` 支持多个 material-owned 参数槽位（UniformBuffer / StorageBuffer）。跨 pass 同名 binding 被视为同一个 canonical binding，布局必须一致，否则 FATAL。
+- `MaterialInstance` 支持多个 material-owned buffer bindings（UniformBuffer / StorageBuffer）。跨 pass 同名 binding 被视为同一个 canonical binding，布局必须一致，否则 FATAL。
 - 首版支持的 material-owned descriptor 类型：`UniformBuffer`、`StorageBuffer`、`Texture2D`、`TextureCube`。不支持的类型在构造期 FATAL。
 - `setTexture` 绑定的是 `CombinedTextureSampler`，不是裸 texture。
 - `getDescriptorResources(pass)` 是 pass-aware 的：按目标 pass 的反射 bindings 收集材质资源，按 `(set << 16 | binding)` 升序排列。

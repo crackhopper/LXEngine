@@ -61,7 +61,7 @@ VulkanResourceManager::~VulkanResourceManager() {
 
 void VulkanResourceManager::syncResource(
     VulkanCommandBufferManager &cmdBufferManager,
-    const IGpuResourcePtr &cpuRes) {
+    const IGpuResourceSharedPtr &cpuRes) {
   if (!cpuRes)
     return;
 
@@ -81,7 +81,7 @@ void VulkanResourceManager::syncResource(
 }
 
 std::shared_ptr<VulkanAnyResource>
-VulkanResourceManager::createGpuResource(const IGpuResourcePtr &cpuRes) {
+VulkanResourceManager::createGpuResource(const IGpuResourceSharedPtr &cpuRes) {
   ResourceType type = cpuRes->getType();
 
   switch (type) {
@@ -126,17 +126,17 @@ VulkanResourceManager::createGpuResource(const IGpuResourcePtr &cpuRes) {
 
 void VulkanResourceManager::updateGpuResource(
     std::shared_ptr<VulkanAnyResource> &gpuRes,
-    const IGpuResourcePtr &cpuRes,
+    const IGpuResourceSharedPtr &cpuRes,
     VulkanCommandBufferManager &cmdBufferManager) {
   std::visit(
       [&](auto &&res) {
         using T = std::decay_t<decltype(res)>;
-        if constexpr (std::is_same_v<T, VulkanBufferPtr>) {
+        if constexpr (std::is_same_v<T, VulkanBufferUniquePtr>) {
           // 如果是 Host Visible (Uniform)，直接 map/memcpy
           // 如果是 Device Local (Vertex/Index)，初级架构建议直接
           // uploadData（内部处理 staging）
           res->uploadData(cpuRes->getRawData(), cpuRes->getByteSize());
-        } else if constexpr (std::is_same_v<T, VulkanTexturePtr>) {
+        } else if constexpr (std::is_same_v<T, VulkanTextureUniquePtr>) {
           const VkDeviceSize imageSize =
               static_cast<VkDeviceSize>(cpuRes->getByteSize());
 
@@ -199,12 +199,12 @@ void VulkanResourceManager::initializeRenderPassAndPipeline(
 
 std::optional<std::reference_wrapper<VulkanBuffer>>
 VulkanResourceManager::getBuffer(void *handle) {
-  GET_RESOURCE_IMPL(VulkanBuffer, VulkanBufferPtr);
+  GET_RESOURCE_IMPL(VulkanBuffer, VulkanBufferUniquePtr);
 }
 
 std::optional<std::reference_wrapper<VulkanTexture>>
 VulkanResourceManager::getTexture(void *handle) {
-  GET_RESOURCE_IMPL(VulkanTexture, VulkanTexturePtr);
+  GET_RESOURCE_IMPL(VulkanTexture, VulkanTextureUniquePtr);
 }
 
 VulkanRenderPass &VulkanResourceManager::getRenderPass() {

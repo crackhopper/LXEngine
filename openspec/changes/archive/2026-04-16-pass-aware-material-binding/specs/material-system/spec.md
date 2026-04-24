@@ -38,7 +38,7 @@ The material system SHALL formally support the following descriptor types for ma
 
 For buffer types (`UniformBuffer`, `StorageBuffer`), `MaterialInstance` SHALL create a buffer slot with independent byte buffer, dirty state, and `IRenderResource` wrapper.
 
-For texture types (`Texture2D`, `TextureCube`), the existing `setTexture(StringID, CombinedTextureSamplerPtr)` mechanism SHALL continue to apply.
+For texture types (`Texture2D`, `TextureCube`), the existing `setTexture(StringID, CombinedTextureSamplerSharedPtr)` mechanism SHALL continue to apply.
 
 #### Scenario: StorageBuffer binding creates a buffer slot
 - **WHEN** a shader declares a non-system-owned `StorageBuffer` binding named `ParticleData` with size 256

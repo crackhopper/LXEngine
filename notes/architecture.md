@@ -27,7 +27,7 @@
 典型资源包括：
 
 - `SkeletonData`
-- `MaterialParameterData`
+- `ParameterBuffer`
 - `CombinedTextureSampler`
 - `CameraData` / `DirectionalLightData`
 - `PerDrawData`

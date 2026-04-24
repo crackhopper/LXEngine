@@ -4,7 +4,7 @@
 `LX_core::RenderQueue` SHALL provide `void buildFromScene(const Scene &scene, StringID pass)`. This method SHALL:
 1. Call `clearItems()` to reset the queue.
 2. Retrieve `scene.getSceneLevelResources()` once before iteration.
-3. For each `IRenderablePtr` in `scene.getRenderables()`, skip null pointers and skip renderables for which `renderable->supportsPass(pass)` returns `false`.
+3. For each `IRenderableSharedPtr` in `scene.getRenderables()`, skip null pointers and skip renderables for which `renderable->supportsPass(pass)` returns `false`.
 4. For each matching renderable, construct a `RenderingItem` populated with the renderable's `vertexBuffer`, `indexBuffer`, `objectInfo`, `descriptorResources`, `shaderInfo`, `passMask`, and `pass`. When the renderable resolves to a `RenderableSubMesh` with non-null `mesh` and `material`, the item's `material` and `pipelineKey = PipelineKey::build(sub->getRenderSignature(pass), sub->material->getRenderSignature(pass))` SHALL be set.
 5. Append the scene-level resources from step 2 to the item's `descriptorResources` (after the renderable's own resources, preserving descriptor binding order).
 6. Push each item into the queue and call `sort()` at the end.

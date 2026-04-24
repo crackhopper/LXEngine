@@ -133,6 +133,6 @@ Implement `VulkanDevice` first - it is the foundation that all other components 
 
 ## Open Questions
 
-1. **Window/GLFW initialization**: Confirm expected initialization sequence in `initialize(WindowPtr)`
+1. **Window/GLFW initialization**: Confirm expected initialization sequence in `initialize(WindowSharedPtr)`
 2. **Error handling strategy**: Vulkan errors are typically fatal - confirm expected behavior (throw? log+continue?)
 3. **Shader build**: Shader files exist at `shaders/glsl/`, but CMakeLists.txt build has not been verified

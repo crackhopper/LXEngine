@@ -11,7 +11,7 @@ class VulkanDevice;
 
 
 class VulkanTexture;
-using VulkanTexturePtr = std::unique_ptr<VulkanTexture>;
+using VulkanTextureUniquePtr = std::unique_ptr<VulkanTexture>;
 
 class VulkanTexture {
   struct Token {};
@@ -25,15 +25,15 @@ public:
                 VkImageAspectFlags aspectMask);
   ~VulkanTexture();
 
-  static VulkanTexturePtr create(VulkanDevice &device, uint32_t width,
-                                 uint32_t height, VkFormat format,
-                                 VkImageUsageFlags usage,
-                                 VkFilter filter = VK_FILTER_LINEAR) {
+  static VulkanTextureUniquePtr create(VulkanDevice &device, uint32_t width,
+                                       uint32_t height, VkFormat format,
+                                       VkImageUsageFlags usage,
+                                       VkFilter filter = VK_FILTER_LINEAR) {
     return std::make_unique<VulkanTexture>(Token{}, device, width, height,
                                            format, usage, filter);
   }
 
-  static VulkanTexturePtr createForAttachment(
+  static VulkanTextureUniquePtr createForAttachment(
       VulkanDevice &device, uint32_t width, uint32_t height,
       VkFormat format, VkImageUsageFlags usage,
       VkImageAspectFlags aspectMask);

@@ -15,7 +15,7 @@ The system SHALL provide `LX_core::PipelineKey` in core holding a `StringID` tha
 
 ### Requirement: PipelineKey build composes object and material signatures
 
-`PipelineKey::build` SHALL accept exactly two arguments, `StringID objectSig` and `StringID materialSig`, and SHALL produce a `PipelineKey` whose `id` equals `GlobalStringTable::get().compose(TypeTag::PipelineKey, {objectSig, materialSig})`. The previous overload that accepted `ShaderProgramSet`, `Mesh`, `RenderState`, and `SkeletonPtr` SHALL be removed. Callers assembling pipeline identity SHALL first resolve `objectSig` via `IRenderable::getRenderSignature(pass)` and `materialSig` via `IMaterial::getRenderSignature(pass)`.
+`PipelineKey::build` SHALL accept exactly two arguments, `StringID objectSig` and `StringID materialSig`, and SHALL produce a `PipelineKey` whose `id` equals `GlobalStringTable::get().compose(TypeTag::PipelineKey, {objectSig, materialSig})`. The previous overload that accepted `ShaderProgramSet`, `Mesh`, `RenderState`, and `SkeletonSharedPtr` SHALL be removed. Callers assembling pipeline identity SHALL first resolve `objectSig` via `IRenderable::getRenderSignature(pass)` and `materialSig` via `IMaterial::getRenderSignature(pass)`.
 
 #### Scenario: Different material signatures yield different keys
 

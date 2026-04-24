@@ -33,7 +33,7 @@ public:
   virtual void destroyGraphicsHandle(GraphicsAPI api, GraphicsInstanceHandle instance,
                                      WindowGraphicsHandle handle) const = 0;
 
-  virtual InputStatePtr getInputState() const = 0;
+  virtual InputStateSharedPtr getInputState() const = 0;
 
   /**
    * @brief Returns the underlying native window handle as an opaque pointer.
@@ -48,5 +48,5 @@ public:
   virtual void onClose(std::function<void()> cb) = 0;
   virtual bool shouldClose() = 0;
 };
-using WindowPtr = std::shared_ptr<Window>;
+using WindowSharedPtr = std::shared_ptr<Window>;
 } // namespace LX_core

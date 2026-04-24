@@ -61,7 +61,7 @@ VertexPosNormalUvBone v(float x, float y, float z,
         {0.0f, 0.0f, 0.0f, 0.0f});
 }
 
-MeshPtr makeCubeMesh() {
+MeshSharedPtr makeCubeMesh() {
     std::vector<VertexPosNormalUvBone> vertices = {
         // 复制 04 章的 24 顶点数组
         v( 0.5f, -0.5f, -0.5f,  1, 0, 0),
@@ -124,10 +124,10 @@ int main() {
     }
 
     LX_infra::Window::Initialize();
-    WindowPtr window =
+    WindowSharedPtr window =
         std::make_shared<LX_infra::Window>("PBR Cube", 800, 600);
 
-    RendererPtr renderer =
+    RendererSharedPtr renderer =
         std::make_shared<backend::VulkanRenderer>(
             backend::VulkanRenderer::Token{});
     renderer->initialize(window, "PbrCubeApp");

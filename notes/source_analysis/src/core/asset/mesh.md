@@ -77,7 +77,7 @@
 
 ### VertexFactory：按布局而不是按模板参数恢复 type-erased 顶点数据
 
-工程里很多边界只想持有 `VertexBufferPtr`，不想把具体 `VertexPos` / `VertexPosUv` 模板类型
+工程里很多边界只想持有 `VertexBufferSharedPtr`，不想把具体 `VertexPos` / `VertexPosUv` 模板类型
 一路往外传。`VertexFactory` 的作用，就是在需要“从原始顶点数组重新构造具体 buffer”时，
 按 `VertexLayout` 的 hash 找回对应的具体 `VType` 创建逻辑。
 

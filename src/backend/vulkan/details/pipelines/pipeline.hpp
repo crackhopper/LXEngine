@@ -24,7 +24,7 @@ namespace backend {
 class VulkanDevice;
 
 class VulkanPipeline;
-using VulkanPipelinePtr = std::unique_ptr<VulkanPipeline>;
+using VulkanPipelineUniquePtr = std::unique_ptr<VulkanPipeline>;
 
 class VulkanPipeline {
 protected:

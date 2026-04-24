@@ -74,7 +74,7 @@ dirLight->ubo->setDirty();
 
 从实现上看，链路是这样的：
 
-- `Scene` 持有 `std::vector<LightBasePtr>`
+- `Scene` 持有 `std::vector<LightBaseSharedPtr>`
 - queue 构建时，scene 会把命中当前 pass 的 light UBO 收集出来
 - shader 如果声明了 `LightUBO`，这份资源就会在 descriptor 组装时被接进去
 

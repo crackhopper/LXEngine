@@ -36,6 +36,6 @@ public:
   virtual bool isUiCapturingKeyboard() const { return false; }
 };
 
-using InputStatePtr = std::shared_ptr<IInputState>;
+using InputStateSharedPtr = std::shared_ptr<IInputState>;
 
 } // namespace LX_core

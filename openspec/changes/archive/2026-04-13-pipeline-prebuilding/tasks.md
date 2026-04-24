@@ -17,10 +17,10 @@
 
 - [x] 2.1 新建 `src/core/scene/render_queue.hpp` + `.cpp`：`class RenderQueue { addItem, sort, getItems, collectUniquePipelineBuildInfos }`；`sort()` 按 `pipelineKey.id` 稳定排序；去重用 `unordered_set<PipelineKey, PipelineKey::Hash>`
 - [x] 2.2 新建 `src/core/scene/frame_graph.hpp` + `.cpp`：`struct FramePass { StringID name; RenderTarget target; RenderQueue queue; }`；`class FrameGraph { addPass, buildFromScene, collectAllPipelineBuildInfos, getPasses }`
-- [x] 2.3 `Scene::m_renderables` 由 `IRenderablePtr mesh`（公有字段）迁移到 `std::vector<IRenderablePtr> m_renderables`（私有 + getter）；构造函数 `Scene(IRenderablePtr mesh)` 填入 `m_renderables.push_back(std::move(mesh))`
-- [x] 2.4 新增 `const std::vector<IRenderablePtr> &Scene::getRenderables() const`
-- [x] 2.5 保留向后兼容的 `IRenderablePtr Scene::mesh;` 公有字段？—— **决定不保留**，在所有调用点迁移到 `scene->getRenderables().front()`
-- [x] 2.6 新增 `RenderingItem Scene::buildRenderingItemForRenderable(const IRenderablePtr &r, StringID pass) const`，把 `buildRenderingItem(pass)` 的逻辑搬进去（用 `r` 代替 `mesh`）
+- [x] 2.3 `Scene::m_renderables` 由 `IRenderableSharedPtr mesh`（公有字段）迁移到 `std::vector<IRenderableSharedPtr> m_renderables`（私有 + getter）；构造函数 `Scene(IRenderableSharedPtr mesh)` 填入 `m_renderables.push_back(std::move(mesh))`
+- [x] 2.4 新增 `const std::vector<IRenderableSharedPtr> &Scene::getRenderables() const`
+- [x] 2.5 保留向后兼容的 `IRenderableSharedPtr Scene::mesh;` 公有字段？—— **决定不保留**，在所有调用点迁移到 `scene->getRenderables().front()`
+- [x] 2.6 新增 `RenderingItem Scene::buildRenderingItemForRenderable(const IRenderableSharedPtr &r, StringID pass) const`，把 `buildRenderingItem(pass)` 的逻辑搬进去（用 `r` 代替 `mesh`）
 - [x] 2.7 `Scene::buildRenderingItem(StringID pass)` 改为调用 `buildRenderingItemForRenderable(m_renderables.front(), pass)`，保持旧 API 不变
 - [x] 2.8 实现 `FrameGraph::buildFromScene(const Scene &)`：对每个 `FramePass`，清空 `queue`，遍历 `scene.getRenderables()`，调用 `scene.buildRenderingItemForRenderable(r, pass.name)` 加入 queue，最后 `pass.queue.sort()`；如果 `renderable->getPassMask()` 与 pass 不匹配则 skip
 - [x] 2.9 实现 `FrameGraph::collectAllPipelineBuildInfos()`：拼接每个 pass 的 `collectUniquePipelineBuildInfos()`，总结果按 `PipelineKey` 再去重一次
@@ -61,7 +61,7 @@
 - [x] 5.1 `src/backend/vulkan/details/descriptors/vkd_descriptor_manager.hpp`：`DescriptorLayoutKey` 改为 `struct { std::vector<LX_core::ShaderResourceBinding> bindings; bool operator==(...) const; }`
 - [x] 5.2 `DescriptorLayoutHasher::operator()` 按 `(set, binding, type, stageFlags, descriptorCount)` 五元组 `hash_combine`；**不要**把 `name` 放进 hash
 - [x] 5.3 `getOrCreateLayout` 签名改为 `VkDescriptorSetLayout getOrCreateLayout(const std::vector<LX_core::ShaderResourceBinding> &bindings)`；按 binding 的 `set` 字段过滤（调用方保证传入单 set 的 binding 子集）
-- [x] 5.4 `allocateSet` 签名同步改为 `DescriptorSetPtr allocateSet(const std::vector<LX_core::ShaderResourceBinding> &bindings)`
+- [x] 5.4 `allocateSet` 签名同步改为 `DescriptorSetUniquePtr allocateSet(const std::vector<LX_core::ShaderResourceBinding> &bindings)`
 - [x] 5.5 `getOrCreateLayout` 内部构造 `VkDescriptorSetLayoutBinding` 时从 `ShaderResourceBinding` 字段转换：`b.binding`、`toVkDescriptorType(type)`、`b.descriptorCount`、`toVkStageFlags(stageFlags)`
 - [x] 5.6 迁移 `vkp_pipeline.cpp::createLayout()` 的调用点以新签名调用
 
@@ -90,7 +90,7 @@
 - [x] 8.3 `preload(infos, renderPass)` 翻转 `m_suppressMissWarning = true`，循环 `getOrCreate`，结束后复位
 - [x] 8.4 `VulkanResourceManager` 持有 `std::unique_ptr<PipelineCache> m_pipelineCache`；构造函数（或 `initializeRenderPassAndPipeline`）初始化
 - [x] 8.5 `VulkanResourceManager::getOrCreateRenderPipeline(item)` 改为：`return m_pipelineCache->getOrCreate(PipelineBuildInfo::fromRenderingItem(item), m_renderPass->getHandle());`
-- [x] 8.6 从 `VulkanResourceManager` 删除 `std::unordered_map<PipelineKey, VulkanPipelinePtr, PipelineKey::Hash> m_pipelines`
+- [x] 8.6 从 `VulkanResourceManager` 删除 `std::unordered_map<PipelineKey, VulkanPipelineUniquePtr, PipelineKey::Hash> m_pipelines`
 - [x] 8.7 新建 `VulkanResourceManager::preloadPipelines(const std::vector<PipelineBuildInfo> &infos)` 转发到 `m_pipelineCache->preload(infos, m_renderPass->getHandle())`
 - [x] 8.8 `src/backend/vulkan/vk_renderer.cpp::initScene`：在 syncResource 循环之后，构造 `FrameGraph`，`addPass(FramePass{ Pass_Forward, {}, {} })`，`buildFromScene(*scene)`，`auto infos = frameGraph.collectAllPipelineBuildInfos()`，`resourceManager->preloadPipelines(infos)`
 - [x] 8.9 新建 `src/test/integration/test_pipeline_cache.cpp`（GPU 路径，参照 `test_vulkan_pipeline.cpp` 的 device 初始化样式）：初始化 device → 构造 renderPass → 构造 PipelineBuildInfo（由 blinnphong_material_loader 驱动）→ PipelineCache → find 返回 nullopt → getOrCreate 返回有效 pipeline + cache size == 1 → find 返回非空 → preload 额外 infos 无 warn

@@ -1,7 +1,6 @@
 #include "material_instance.hpp"
 #include "core/asset/shader_binding_ownership.hpp"
 #include <algorithm>
-#include <cstring>
 #include <iostream>
 #include <utility>
 
@@ -40,39 +39,10 @@ const std::vector<uint8_t> kEmptyBuffer;
 } // namespace
 
 /*****************************************************************
- * MaterialParameterData
- *****************************************************************/
-
-MaterialParameterData::MaterialParameterData(StringID bindingName,
-                                             const ShaderResourceBinding &binding,
-                                             ResourceType resType)
-    : m_bindingName(bindingName), m_binding(binding),
-      m_buffer(binding.size, uint8_t{0}), m_resType(resType) {}
-
-void MaterialParameterData::writeParameterMember(StringID memberName,
-                                                 const void *src,
-                                                 size_t nbytes,
-                                                 ShaderPropertyType expected) {
-  for (const auto &member : m_binding.get().members) {
-    if (StringID(member.name) != memberName)
-      continue;
-    assert(member.type == expected &&
-           "MaterialInstance setter type does not match reflected member type");
-    assert(static_cast<size_t>(member.offset) + nbytes <= m_buffer.size() &&
-           "UBO write would overflow the reflected buffer");
-    std::memcpy(m_buffer.data() + member.offset, src, nbytes);
-    m_dirty = true;
-    return;
-  }
-  assert(false &&
-         "MaterialInstance setter: member not found in parameter data");
-}
-
-/*****************************************************************
  * MaterialInstance
  *****************************************************************/
 
-MaterialInstance::MaterialInstance(Token, MaterialTemplate::Ptr tmpl)
+MaterialInstance::MaterialInstance(Token, MaterialTemplateSharedPtr tmpl)
     : m_template(std::move(tmpl)) {
   if (!m_template) {
     return;
@@ -82,34 +52,33 @@ MaterialInstance::MaterialInstance(Token, MaterialTemplate::Ptr tmpl)
     m_enabledPasses.insert(pass);
   }
 
-  m_parameterDataByBinding.reserve(
+  m_parameterBuffersByName.reserve(
       m_template->getCanonicalMaterialBindings().size());
   for (const auto &[bindingId, binding] :
        m_template->getCanonicalMaterialBindings()) {
     if (!isBufferType(binding.type))
       continue;
 
-    m_parameterDataByBinding.emplace(
-        bindingId,
-        std::make_shared<MaterialParameterData>(bindingId, binding,
-                                                toResourceType(binding.type)));
+    m_parameterBuffersByName.emplace(bindingId,
+                                     std::make_shared<ParameterBuffer>(
+                                         bindingId, binding,
+                                         toResourceType(binding.type)));
   }
 }
 
 /*****************************************************************
- * Parameter-data lookup helpers
+ * Buffer-binding lookup helpers
  *****************************************************************/
 
-MaterialParameterData *
-MaterialInstance::findParameterDataByBinding(StringID bindingName) {
-  auto it = m_parameterDataByBinding.find(bindingName);
-  return it != m_parameterDataByBinding.end() ? it->second.get() : nullptr;
+ParameterBuffer *MaterialInstance::findParameterBuffer(StringID bindingName) {
+  auto it = m_parameterBuffersByName.find(bindingName);
+  return it != m_parameterBuffersByName.end() ? it->second.get() : nullptr;
 }
 
-const MaterialParameterData *
-MaterialInstance::findParameterDataByBinding(StringID bindingName) const {
-  auto it = m_parameterDataByBinding.find(bindingName);
-  return it != m_parameterDataByBinding.end() ? it->second.get() : nullptr;
+const ParameterBuffer *
+MaterialInstance::findParameterBuffer(StringID bindingName) const {
+  auto it = m_parameterBuffersByName.find(bindingName);
+  return it != m_parameterBuffersByName.end() ? it->second.get() : nullptr;
 }
 
 /*****************************************************************
@@ -118,46 +87,46 @@ MaterialInstance::findParameterDataByBinding(StringID bindingName) const {
 
 void MaterialInstance::setParameter(StringID bindingName, StringID memberName,
                                     float value) {
-  auto *parameterData = findParameterDataByBinding(bindingName);
-  assert(parameterData &&
-         "setParameter: binding name not found in canonical parameter data");
-  if (parameterData)
-    parameterData->writeParameterMember(memberName, &value, sizeof(float),
+  auto *parameterBuffer = findParameterBuffer(bindingName);
+  assert(parameterBuffer &&
+         "setParameter: binding name not found in canonical buffer bindings");
+  if (parameterBuffer)
+    parameterBuffer->writeBindingMember(memberName, &value, sizeof(float),
                                         ShaderPropertyType::Float);
 }
 
 void MaterialInstance::setParameter(StringID bindingName, StringID memberName,
                                     int32_t value) {
-  auto *parameterData = findParameterDataByBinding(bindingName);
-  assert(parameterData &&
-         "setParameter: binding name not found in canonical parameter data");
-  if (parameterData)
-    parameterData->writeParameterMember(memberName, &value, sizeof(int32_t),
+  auto *parameterBuffer = findParameterBuffer(bindingName);
+  assert(parameterBuffer &&
+         "setParameter: binding name not found in canonical buffer bindings");
+  if (parameterBuffer)
+    parameterBuffer->writeBindingMember(memberName, &value, sizeof(int32_t),
                                         ShaderPropertyType::Int);
 }
 
 void MaterialInstance::setParameter(StringID bindingName, StringID memberName,
                                     const Vec3f &value) {
-  auto *parameterData = findParameterDataByBinding(bindingName);
-  assert(parameterData &&
-         "setParameter: binding name not found in canonical parameter data");
-  if (parameterData)
-    parameterData->writeParameterMember(memberName, &value, sizeof(float) * 3,
+  auto *parameterBuffer = findParameterBuffer(bindingName);
+  assert(parameterBuffer &&
+         "setParameter: binding name not found in canonical buffer bindings");
+  if (parameterBuffer)
+    parameterBuffer->writeBindingMember(memberName, &value, sizeof(float) * 3,
                                         ShaderPropertyType::Vec3);
 }
 
 void MaterialInstance::setParameter(StringID bindingName, StringID memberName,
                                     const Vec4f &value) {
-  auto *parameterData = findParameterDataByBinding(bindingName);
-  assert(parameterData &&
-         "setParameter: binding name not found in canonical parameter data");
-  if (parameterData)
-    parameterData->writeParameterMember(memberName, &value, sizeof(Vec4f),
+  auto *parameterBuffer = findParameterBuffer(bindingName);
+  assert(parameterBuffer &&
+         "setParameter: binding name not found in canonical buffer bindings");
+  if (parameterBuffer)
+    parameterBuffer->writeBindingMember(memberName, &value, sizeof(Vec4f),
                                         ShaderPropertyType::Vec4);
 }
 
 void MaterialInstance::setTexture(StringID bindingName,
-                                  CombinedTextureSamplerPtr tex) {
+                                  CombinedTextureSamplerSharedPtr tex) {
   auto bindingOpt = m_template->findCanonicalMaterialBinding(bindingName);
   assert(bindingOpt &&
          "texture binding not found in canonical material interface");
@@ -166,7 +135,7 @@ void MaterialInstance::setTexture(StringID bindingName,
           type == ShaderPropertyType::TextureCube) &&
          "setTexture target is not a sampled image binding");
   (void)type;
-  m_textureBindings[bindingName] = std::move(tex);
+  m_textureBindingsByName[bindingName] = std::move(tex);
 }
 
 /*****************************************************************
@@ -174,10 +143,10 @@ void MaterialInstance::setTexture(StringID bindingName,
  *****************************************************************/
 
 void MaterialInstance::syncGpuData() {
-  for (auto &[_, parameterData] : m_parameterDataByBinding) {
-    if (parameterData && parameterData->hasPendingSync()) {
-      parameterData->setDirty();
-      parameterData->clearPendingSync();
+  for (auto &[_, parameterBuffer] : m_parameterBuffersByName) {
+    if (parameterBuffer && parameterBuffer->hasPendingSync()) {
+      parameterBuffer->setDirty();
+      parameterBuffer->clearPendingSync();
     }
   }
 }
@@ -186,9 +155,9 @@ void MaterialInstance::syncGpuData() {
  * Pass-aware descriptor resources (REQ-032 R4)
  *****************************************************************/
 
-std::vector<IGpuResourcePtr>
+std::vector<IGpuResourceSharedPtr>
 MaterialInstance::getDescriptorResources(StringID pass) const {
-  std::vector<std::pair<uint32_t, IGpuResourcePtr>> sorted;
+  std::vector<std::pair<uint32_t, IGpuResourceSharedPtr>> sorted;
 
   const auto &bindingIds = m_template->getPassMaterialBindingIds(pass);
   for (const auto &bindingId : bindingIds) {
@@ -198,17 +167,17 @@ MaterialInstance::getDescriptorResources(StringID pass) const {
     const uint32_t key = (binding->set << 16) | binding->binding;
 
     if (isBufferType(binding->type)) {
-      auto it = m_parameterDataByBinding.find(bindingId);
-      if (it != m_parameterDataByBinding.end() && it->second &&
+      auto it = m_parameterBuffersByName.find(bindingId);
+      if (it != m_parameterBuffersByName.end() && it->second &&
           !it->second->getBuffer().empty()) {
         sorted.emplace_back(
             key, std::static_pointer_cast<IGpuResource>(it->second));
       }
     } else if (binding->type == ShaderPropertyType::Texture2D ||
                binding->type == ShaderPropertyType::TextureCube) {
-      CombinedTextureSamplerPtr tex;
-      auto it = m_textureBindings.find(bindingId);
-      if (it != m_textureBindings.end())
+      CombinedTextureSamplerSharedPtr tex;
+      auto it = m_textureBindingsByName.find(bindingId);
+      if (it != m_textureBindingsByName.end())
         tex = it->second;
       if (tex) {
         tex->setBindingName(bindingId);
@@ -220,7 +189,7 @@ MaterialInstance::getDescriptorResources(StringID pass) const {
   std::sort(sorted.begin(), sorted.end(),
             [](const auto &a, const auto &b) { return a.first < b.first; });
 
-  std::vector<IGpuResourcePtr> out;
+  std::vector<IGpuResourceSharedPtr> out;
   out.reserve(sorted.size());
   for (auto &[_, r] : sorted) {
     out.push_back(std::move(r));
@@ -233,40 +202,40 @@ MaterialInstance::getDescriptorResources(StringID pass) const {
  *****************************************************************/
 
 const std::vector<uint8_t> &
-MaterialInstance::getParameterBuffer(StringID bindingName) const {
-  if (const auto *parameterData = findParameterDataByBinding(bindingName))
-    return parameterData->getBuffer();
+MaterialInstance::getParameterBufferBytes(StringID bindingName) const {
+  if (const auto *parameterBuffer = findParameterBuffer(bindingName))
+    return parameterBuffer->getBuffer();
   return kEmptyBuffer;
 }
 
 const ShaderResourceBinding *
-MaterialInstance::getParameterBinding(StringID bindingName) const {
-  if (const auto *parameterData = findParameterDataByBinding(bindingName))
-    return &parameterData->getBinding();
+MaterialInstance::getParameterBufferLayout(StringID bindingName) const {
+  if (const auto *parameterBuffer = findParameterBuffer(bindingName))
+    return &parameterBuffer->getBinding();
   return nullptr;
 }
 
-const std::vector<uint8_t> &MaterialInstance::getParameterBuffer() const {
-  assert(m_parameterDataByBinding.size() <= 1 &&
-         "getParameterBuffer(): multiple parameter bindings; use "
-         "getParameterBuffer(bindingName) instead");
-  if (m_parameterDataByBinding.empty()) {
+const std::vector<uint8_t> &MaterialInstance::getParameterBufferBytes() const {
+  assert(m_parameterBuffersByName.size() <= 1 &&
+         "getParameterBufferBytes(): multiple parameter buffers; use "
+         "getParameterBufferBytes(bindingName) instead");
+  if (m_parameterBuffersByName.empty()) {
     static const std::vector<uint8_t> kEmpty;
     return kEmpty;
   }
-  return m_parameterDataByBinding.begin()->second->getBuffer();
+  return m_parameterBuffersByName.begin()->second->getBuffer();
 }
 
-const ShaderResourceBinding *MaterialInstance::getParameterBinding() const {
-  assert(m_parameterDataByBinding.size() <= 1 &&
-         "getParameterBinding(): multiple parameter bindings; use "
-         "getParameterBinding(bindingName) instead");
-  return m_parameterDataByBinding.empty()
+const ShaderResourceBinding *MaterialInstance::getParameterBufferLayout() const {
+  assert(m_parameterBuffersByName.size() <= 1 &&
+         "getParameterBufferLayout(): multiple parameter buffers; use "
+         "getParameterBufferLayout(bindingName) instead");
+  return m_parameterBuffersByName.empty()
              ? nullptr
-             : &m_parameterDataByBinding.begin()->second->getBinding();
+             : &m_parameterBuffersByName.begin()->second->getBinding();
 }
 
-IShaderPtr MaterialInstance::getPassShader(StringID pass) const {
+IShaderSharedPtr MaterialInstance::getPassShader(StringID pass) const {
   if (!m_template)
     return nullptr;
   auto passDefinition = m_template->getPassDefinition(pass);

@@ -51,11 +51,11 @@ int main() {
     auto window = std::make_shared<LX_infra::Window>(
         "demo_scene_viewer", kWindowWidth, kWindowHeight);
 
-    // Keep the concrete VulkanRenderer alongside the base RendererPtr: the
+    // Keep the concrete VulkanRenderer alongside the base RendererSharedPtr: the
     // base handle feeds EngineLoop, the concrete handle reaches
     // setDrawUiCallback (per REQ-017 that callback is not on the base class).
     auto vulkanRenderer = std::make_shared<VulkanRenderer>(VulkanRenderer::Token{});
-    LX_core::gpu::RendererPtr renderer = vulkanRenderer;
+    LX_core::gpu::RendererSharedPtr renderer = vulkanRenderer;
     renderer->initialize(window, "demo_scene_viewer");
 
     // Build the scene. Helmet is the initial renderable passed to Scene;

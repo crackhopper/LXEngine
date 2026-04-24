@@ -33,7 +33,7 @@
 
 ## 5. PipelineKey 重写
 
-- [x] 5.1 `pipeline_key.hpp`：`build(ShaderProgramSet, Mesh, RenderState, SkeletonPtr)` 签名替换为 `static PipelineKey build(StringID objectSig, StringID materialSig)`
+- [x] 5.1 `pipeline_key.hpp`：`build(ShaderProgramSet, Mesh, RenderState, SkeletonSharedPtr)` 签名替换为 `static PipelineKey build(StringID objectSig, StringID materialSig)`
 - [x] 5.2 删除 `pipeline_key.hpp` 对 `mesh.hpp` / `skeleton.hpp` / `material.hpp` 的依赖 include，只保留 `string_table.hpp`
 - [x] 5.3 `pipeline_key.cpp`：新 `build` 实现为一行 `compose(TypeTag::PipelineKey, {objectSig, materialSig})`
 - [x] 5.4 删除 `pipeline_key.cpp` 匿名 namespace 下的 `variantSegment()`；移除 `<iomanip>`、`<sstream>` 相关 include（如果不再使用）

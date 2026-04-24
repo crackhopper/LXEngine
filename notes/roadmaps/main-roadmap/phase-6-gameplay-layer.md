@@ -91,7 +91,7 @@ using ComponentPtr = std::shared_ptr<Component>;
 
 ### REQ-602 · System 调度
 
-简单方案：`Engine` 维护一个 `std::vector<SceneNodePtr>`，每帧遍历所有节点调所有组件的 `onUpdate`。
+简单方案：`Engine` 维护一个 `std::vector<SceneNodeSharedPtr>`，每帧遍历所有节点调所有组件的 `onUpdate`。
 
 更干净的方案：按组件类型分 bucket：
 

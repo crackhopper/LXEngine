@@ -3,7 +3,7 @@
 ## Context
 
 REQ-008 shipped the data-flow fix but deliberately froze two shortcuts:
-1. `Scene` keeps single `CameraPtr camera` / `DirectionalLightPtr directionalLight` fields.
+1. `Scene` keeps single `CameraSharedPtr camera` / `DirectionalLightSharedPtr directionalLight` fields.
 2. `Scene::getSceneLevelResources()` is parameterless — every scene-level UBO is appended to every `RenderingItem` regardless of which pass or target.
 
 Both shortcuts were acceptable for the current single-`Pass_Forward`-to-swapchain scenario because there is exactly one camera and one light. But every non-trivial feature queued after REQ-008 — shadow map, deferred G-buffer, overlay UI pass, reflection probe, multiple directional lights — immediately breaks against these shortcuts. This change replaces them with two filter axes (camera-by-target, light-by-pass) so `RenderQueue::buildFromScene` can produce the correct per-pass resource set from a general `Scene`.
@@ -57,7 +57,7 @@ A second thread pulled along is `FramePass.target`: REQ-008's `defaultForwardTar
 **Decision**: `VulkanRenderer::Impl::initScene` performs the nullopt-camera backfill between `addPass` and `buildFromScene`:
 
 ```cpp
-void initScene(ScenePtr _scene) override {
+void initScene(SceneSharedPtr _scene) override {
     scene = _scene;
     RenderTarget swapchain = makeSwapchainTarget();
     for (auto &cam : scene->getCameras()) {

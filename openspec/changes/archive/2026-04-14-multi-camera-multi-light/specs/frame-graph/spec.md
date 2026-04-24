@@ -7,7 +7,7 @@
 - `virtual IRenderResourcePtr getUBO() const = 0;` (returning `nullptr` is allowed for lights that do not need a UBO)
 - `virtual bool supportsPass(StringID pass) const;` with a default implementation that returns `(getPassMask() & passFlagFromStringID(pass)) != 0`.
 
-A `using LightBasePtr = std::shared_ptr<LightBase>;` alias SHALL be provided in the same header.
+A `using LightBaseSharedPtr = std::shared_ptr<LightBase>;` alias SHALL be provided in the same header.
 
 #### Scenario: Default supportsPass honors the pass mask
 - **WHEN** a `LightBase` subclass returns `getPassMask() == ResourcePassFlag::Forward | ResourcePassFlag::Deferred` and `light->supportsPass(Pass_Shadow)` is called
@@ -47,26 +47,26 @@ The initial value of `m_target` SHALL be `std::nullopt`.
 
 ### Requirement: Scene multi-camera / multi-light container
 `LX_core::Scene` SHALL hold:
-- `std::vector<IRenderablePtr> m_renderables` (unchanged from REQ-008)
-- `std::vector<CameraPtr> m_cameras` (NEW — replaces the single `CameraPtr camera` field)
-- `std::vector<LightBasePtr> m_lights` (NEW — replaces the single `DirectionalLightPtr directionalLight` field)
+- `std::vector<IRenderableSharedPtr> m_renderables` (unchanged from REQ-008)
+- `std::vector<CameraSharedPtr> m_cameras` (NEW — replaces the single `CameraSharedPtr camera` field)
+- `std::vector<LightBaseSharedPtr> m_lights` (NEW — replaces the single `DirectionalLightSharedPtr directionalLight` field)
 
 Scene SHALL provide:
-- `void addRenderable(IRenderablePtr)` (unchanged)
-- `const std::vector<IRenderablePtr> &getRenderables() const` (unchanged)
-- `void addCamera(CameraPtr camera)`
-- `const std::vector<CameraPtr> &getCameras() const`
-- `void addLight(LightBasePtr light)`
-- `const std::vector<LightBasePtr> &getLights() const`
+- `void addRenderable(IRenderableSharedPtr)` (unchanged)
+- `const std::vector<IRenderableSharedPtr> &getRenderables() const` (unchanged)
+- `void addCamera(CameraSharedPtr camera)`
+- `const std::vector<CameraSharedPtr> &getCameras() const`
+- `void addLight(LightBaseSharedPtr light)`
+- `const std::vector<LightBaseSharedPtr> &getLights() const`
 
-The public `CameraPtr camera` and `DirectionalLightPtr directionalLight` fields SHALL be removed.
+The public `CameraSharedPtr camera` and `DirectionalLightSharedPtr directionalLight` fields SHALL be removed.
 
 #### Scenario: Scene holds multiple cameras
 - **WHEN** `scene.addCamera(camA)` then `scene.addCamera(camB)` is called
 - **THEN** `scene.getCameras()` returns a vector with exactly two elements in insertion order
 
 #### Scenario: Scene holds multiple lights
-- **WHEN** two `LightBasePtr` instances are added via `addLight`
+- **WHEN** two `LightBaseSharedPtr` instances are added via `addLight`
 - **THEN** `scene.getLights()` returns a vector with exactly two elements in insertion order
 
 ## MODIFIED Requirements
@@ -97,7 +97,7 @@ The REQ-008 parameterless `getSceneLevelResources()` overload SHALL NOT coexist 
 `LX_core::RenderQueue::buildFromScene(const Scene &scene, StringID pass, const RenderTarget &target)` SHALL construct the queue's `RenderingItem` set from the scene. The method SHALL:
 1. Call `clearItems()`.
 2. Retrieve `scene.getSceneLevelResources(pass, target)` once before iterating renderables.
-3. For each `IRenderablePtr` in `scene.getRenderables()`, skip null pointers and skip renderables for which `renderable->supportsPass(pass)` returns `false`.
+3. For each `IRenderableSharedPtr` in `scene.getRenderables()`, skip null pointers and skip renderables for which `renderable->supportsPass(pass)` returns `false`.
 4. Construct a `RenderingItem` for each matching renderable (`vertexBuffer`, `indexBuffer`, `objectInfo`, `descriptorResources`, `shaderInfo`, `passMask`, `pass`, and — for `RenderableSubMesh` with non-null `mesh` and `material` — `material` and `pipelineKey = PipelineKey::build(sub->getRenderSignature(pass), sub->material->getRenderSignature(pass))`).
 5. Append the scene-level resources from step 2 to each item's `descriptorResources`, after the renderable's own resources.
 6. Push each item into `m_items` and call `sort()` at the end.

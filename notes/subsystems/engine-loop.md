@@ -41,8 +41,8 @@ class EngineLoop {
 public:
   using UpdateHook = std::function<void(Scene &, const Clock &)>;
 
-  void initialize(WindowPtr window, RendererPtr renderer);
-  void startScene(ScenePtr scene);
+  void initialize(WindowSharedPtr window, RendererSharedPtr renderer);
+  void startScene(SceneSharedPtr scene);
   void setUpdateHook(UpdateHook hook);
   void requestSceneRebuild();
   void tickFrame();
@@ -50,15 +50,15 @@ public:
   void stop();
 
   const Clock &getClock() const;
-  ScenePtr getScene() const;
+  SceneSharedPtr getScene() const;
 };
 ```
 
 它持有或协调：
 
-- `WindowPtr`
-- `RendererPtr`
-- `ScenePtr`
+- `WindowSharedPtr`
+- `RendererSharedPtr`
+- `SceneSharedPtr`
 - `Clock`
 - 当前 frame 的 update hook
 - `running` / `rebuildRequested` 状态

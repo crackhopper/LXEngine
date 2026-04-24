@@ -80,10 +80,10 @@ private:
   Mat4f m_bones[MAX_BONE_COUNT];
 };
 
-using SkeletonDataPtr = std::shared_ptr<SkeletonData>;
+using SkeletonDataSharedPtr = std::shared_ptr<SkeletonData>;
 
 class Skeleton;
-using SkeletonPtr = std::shared_ptr<Skeleton>;
+using SkeletonSharedPtr = std::shared_ptr<Skeleton>;
 
 class Skeleton {
   class Token {};
@@ -92,7 +92,7 @@ public:
   Skeleton(Token token, const std::vector<Bone> &bones)
       : bones(bones), ubo(std::make_shared<SkeletonData>(bones)) {}
 
-  static SkeletonPtr create(const std::vector<Bone> &bones) {
+  static SkeletonSharedPtr create(const std::vector<Bone> &bones) {
     Token token;
     return std::make_shared<Skeleton>(token, bones);
   }
@@ -108,10 +108,10 @@ public:
 
   void syncGpuData() { ubo->updateBy(bones); }
 
-  SkeletonDataPtr getUBO() const { return ubo; }
+  SkeletonDataSharedPtr getUBO() const { return ubo; }
 private:
   std::vector<Bone> bones;
-  SkeletonDataPtr ubo;
+  SkeletonDataSharedPtr ubo;
 };
 
 } // namespace LX_core

@@ -4,7 +4,7 @@
 `src/core/scene/camera_controller.hpp` SHALL define an abstract class `ICameraController` in namespace `LX_core` with:
 - A virtual destructor
 - A pure virtual method `void update(Camera& camera, const IInputState& input, float dt)`
-- A type alias `CameraControllerPtr = std::shared_ptr<ICameraController>`
+- A type alias `CameraControllerSharedPtr = std::shared_ptr<ICameraController>`
 
 The `update()` method SHALL NOT call `camera.updateMatrices()`.
 

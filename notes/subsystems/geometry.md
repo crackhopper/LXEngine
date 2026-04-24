@@ -16,7 +16,7 @@
 - `VertexLayoutItem`：单个顶点属性描述。
 - `VertexLayout`：完整布局和 stride。
 - `IndexBuffer`：索引数据和 primitive topology。
-- `VertexFactory`：按 layout hash 注册/创建 type-erased `VertexBufferPtr` 的辅助工厂。
+- `VertexFactory`：按 layout hash 注册/创建 type-erased `VertexBufferSharedPtr` 的辅助工厂。
 
 ## 典型数据流
 

@@ -15,7 +15,7 @@ class VulkanCommandBuffer;
 // - 索引数据
 // - Uniform 数据
 class VulkanBuffer;
-using VulkanBufferPtr = std::unique_ptr<VulkanBuffer>;
+using VulkanBufferUniquePtr = std::unique_ptr<VulkanBuffer>;
 class VulkanBuffer {
   struct Token {};
 
@@ -24,7 +24,7 @@ public:
                VkBufferUsageFlags usage, VkMemoryPropertyFlags properties);
   ~VulkanBuffer();
 
-  static VulkanBufferPtr create(VulkanDevice &device, VkDeviceSize size,
+  static VulkanBufferUniquePtr create(VulkanDevice &device, VkDeviceSize size,
                                 VkBufferUsageFlags usage,
                                 VkMemoryPropertyFlags properties) {
     return std::make_unique<VulkanBuffer>(Token{}, device, size, usage,

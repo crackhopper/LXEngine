@@ -7,7 +7,7 @@
 
 ## 2. Vulkan backend: cache and draw path
 
-- [x] 2.1 Replace `std::unordered_map<std::string, VulkanPipelinePtr>` (or equivalent) with `std::unordered_map<PipelineKey, VulkanPipelinePtr, PipelineKey::Hash>` in `VulkanResourceManager`
+- [x] 2.1 Replace `std::unordered_map<std::string, VulkanPipelineUniquePtr>` (or equivalent) with `std::unordered_map<PipelineKey, VulkanPipelineUniquePtr, PipelineKey::Hash>` in `VulkanResourceManager`
 - [x] 2.2 Implement get-or-create pipeline creation on cache miss using `RenderingItem` fields (shader, vertex layout, render state, topology), reusing the generic `VulkanPipeline` construction path
 - [x] 2.3 Update `vk_renderer.cpp` to resolve pipelines via `renderItem.pipelineKey` and remove hard-coded `blinnphong_0` / string fallbacks
 - [x] 2.4 Update `VulkanCommandBuffer` bind/draw paths if signatures or assumptions referenced Blinn-Phong-only types

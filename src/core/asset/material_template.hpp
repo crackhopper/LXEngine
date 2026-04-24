@@ -29,12 +29,12 @@ class MaterialTemplate : public std::enable_shared_from_this<MaterialTemplate> {
   struct Token {};
 
 public:
-  using Ptr = std::shared_ptr<MaterialTemplate>;
+  using SharedPtr = std::shared_ptr<MaterialTemplate>;
 
   MaterialTemplate(Token, std::string name)
       : m_name(std::move(name)) {}
 
-  static Ptr create(std::string name) {
+  static SharedPtr create(std::string name) {
     return std::make_shared<MaterialTemplate>(Token{}, std::move(name));
   }
 
@@ -197,5 +197,7 @@ private:
   std::unordered_map<StringID, std::vector<StringID>, StringID::Hash>
       m_materialBindingIdsByPass;
 };
+
+using MaterialTemplateSharedPtr = MaterialTemplate::SharedPtr;
 
 } // namespace LX_core

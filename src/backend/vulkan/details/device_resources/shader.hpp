@@ -9,7 +9,7 @@ namespace backend {
 
 class VulkanDevice;
 class VulkanShader;
-using VulkanShaderPtr = std::unique_ptr<VulkanShader>;
+using VulkanShaderUniquePtr = std::unique_ptr<VulkanShader>;
 
 class VulkanShader {
   struct Token {};
@@ -19,7 +19,7 @@ public:
                VkShaderStageFlagBits stage);
   ~VulkanShader();
 
-  static VulkanShaderPtr create(VulkanDevice &device,
+  static VulkanShaderUniquePtr create(VulkanDevice &device,
                                 const std::string &name,
                                 VkShaderStageFlagBits stage) {
     return std::make_unique<VulkanShader>(Token{}, device, name, stage);

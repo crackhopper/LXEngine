@@ -28,7 +28,7 @@ backend 就可以沿同一条同步和绑定路径处理它。
 这也是为什么项目里很多业务类型会直接实现它：
 
 - `VertexBuffer` / `IndexBuffer`：把几何数据暴露给 upload 路径
-- `CameraData` / `SkeletonData` / `MaterialParameterData`：把 CPU 侧 UBO 字节暴露给 descriptor 路径
+- `CameraData` / `SkeletonData` / `ParameterBuffer`：把 CPU 侧 buffer 字节暴露给 descriptor 路径
 - `CombinedTextureSampler`：把纹理像素和 shader binding 名暴露给采样器绑定路径
 
 接口刻意保持得很薄，只表达 backend 真正需要的最小信息：
@@ -65,7 +65,7 @@ private:
   bool isDirty_ = false;
 };
 
-using IGpuResourcePtr = std::shared_ptr<IGpuResource>;
+using IGpuResourceSharedPtr = std::shared_ptr<IGpuResource>;
 
 // Push-constant payload shared by the current render path. Keep this layout
 // stable with the shader-side ABI unless the entire draw contract is migrated.

@@ -149,7 +149,7 @@ VkSurfaceKHR Window::getVulkanSurface(VkInstance instance) const {
 }
 void Window::onClose(std::function<void()> cb) { pImpl->closeCallback = cb; }
 
-LX_core::InputStatePtr Window::getInputState() const {
+LX_core::InputStateSharedPtr Window::getInputState() const {
   return pImpl->inputState;
 }
 

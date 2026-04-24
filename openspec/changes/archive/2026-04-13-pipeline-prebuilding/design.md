@@ -5,7 +5,7 @@ Post-REQ-007, pipeline identity is a structured `StringID` produced by `compose(
 1. `VulkanResourceManager::getOrCreateRenderPipeline(item)` hard-switches on `item.shaderInfo->getShaderName() == "blinnphong_0"` and calls `blinnPhongForwardSlots()` to pull a hand-authored `std::vector<PipelineSlotDetails>`. Any new shader means editing `vk_resource_manager.cpp`.
 2. `VulkanPipeline` stores that slot vector directly as `m_slots` and uses it to build `VkDescriptorSetLayout` via `VulkanDescriptorManager::getOrCreateLayout(slots)`. The layout key itself is `DescriptorLayoutKey{ std::vector<PipelineSlotDetails> }`.
 3. `VulkanCommandBuffer::bindResources` closes the loop by iterating `pipeline.getSlots()` and calling `findBySlotId(slot.id)` to match a `PipelineSlotId` (enum value like `CameraUBO`) against `item.descriptorResources` via `IRenderResource::getPipelineSlotId()`. Every resource class — `Camera`, `Light`, `Skeleton`, `UboByteBufferResource`, `CombinedTextureSampler` — overrides this virtual.
-4. There is no frame graph abstraction. `Scene::mesh` is a single `IRenderablePtr`. `buildRenderingItem(Pass_Forward)` returns one `RenderingItem` at a time. The concept of "all pipelines the scene needs" doesn't exist, so neither does preloading.
+4. There is no frame graph abstraction. `Scene::mesh` is a single `IRenderableSharedPtr`. `buildRenderingItem(Pass_Forward)` returns one `RenderingItem` at a time. The concept of "all pipelines the scene needs" doesn't exist, so neither does preloading.
 
 What we **already have** post REQ-004/005/007:
 
@@ -23,7 +23,7 @@ So the shape of the work is: wrap the reflection-driven data we already produce 
 - `PipelineBuildInfo` as the single core-layer packet for pipeline construction; `fromRenderingItem` factory pulls everything from shader reflection
 - Backend `VulkanPipeline` / descriptor manager / command buffer paths are reflection-driven end-to-end; `PipelineSlotId`, `PipelineSlotDetails`, and `blinnPhongForwardSlots()` **deleted**
 - Independent `PipelineCache` class: `find` / `getOrCreate` / `preload`; `VulkanResourceManager` stops owning the pipeline map
-- `FrameGraph` + `RenderQueue` + `RenderTarget` + `ImageFormat` as a minimal frame structure; `Scene::getRenderables()` + a `std::vector<IRenderablePtr>` container internally
+- `FrameGraph` + `RenderQueue` + `RenderTarget` + `ImageFormat` as a minimal frame structure; `Scene::getRenderables()` + a `std::vector<IRenderableSharedPtr>` container internally
 - Load-time preloading: `VulkanRenderer::initScene(scene)` builds a `FrameGraph`, collects pipeline build infos, and primes the cache; runtime misses still work but emit warnings
 - `test_render_triangle` continues to render a triangle; new focused tests exercise `PipelineBuildInfo`, `FrameGraph`, and `PipelineCache` without requiring an actual GPU (using fakes where possible)
 
@@ -55,7 +55,7 @@ So the shape of the work is: wrap the reflection-driven data we already produce 
 - (a) Keep `PipelineSlotId` but auto-populate it from a reflection pass. Rejected — the enum is a fixed set; it can't represent a new shader's new binding.
 - (b) Match by `(set, binding)` tuple instead of by name. Rejected — that's what the shader layout says anyway, but routing "this camera UBO to set X binding Y" at the binding layer would require each resource to know its set/binding numerically, which ties core to shader layout choices.
 
-**Warning for CombinedTextureSampler**: `m_slotId` currently distinguishes `AlbedoTexture` / `NormalTexture` *per instance*. The `MaterialInstance::m_textures` map is already `unordered_map<StringID, CombinedTextureSamplerPtr>` — the texture's own `getBindingName()` is redundant when routed through the material path, so we delete `m_slotId` from `CombinedTextureSampler` and return `StringID{}` (or derive it lazily). `MaterialInstance::getDescriptorResources()` already orders textures by `(set, binding)`; that sort stays.
+**Warning for CombinedTextureSampler**: `m_slotId` currently distinguishes `AlbedoTexture` / `NormalTexture` *per instance*. The `MaterialInstance::m_textures` map is already `unordered_map<StringID, CombinedTextureSamplerSharedPtr>` — the texture's own `getBindingName()` is redundant when routed through the material path, so we delete `m_slotId` from `CombinedTextureSampler` and return `StringID{}` (or derive it lazily). `MaterialInstance::getDescriptorResources()` already orders textures by `(set, binding)`; that sort stays.
 
 ### Decision 2: `VulkanPipeline` stores `std::vector<ShaderResourceBinding>` instead of `PipelineSlotDetails`
 
@@ -106,24 +106,24 @@ public:
 
 private:
   VulkanDevice &m_device;
-  std::unordered_map<PipelineKey, VulkanPipelinePtr, PipelineKey::Hash> m_cache;
+  std::unordered_map<PipelineKey, VulkanPipelineUniquePtr, PipelineKey::Hash> m_cache;
   bool m_suppressMissWarning = false;  // toggled during preload
 };
 ```
 
 `preload` flips `m_suppressMissWarning` so the "cold miss is fine" case doesn't spam logs. Runtime misses outside preload emit a warning naming the key via `GlobalStringTable::toDebugString(key.id)`.
 
-### Decision 5: `Scene` from single `IRenderablePtr mesh` to `std::vector<IRenderablePtr> m_renderables`
+### Decision 5: `Scene` from single `IRenderableSharedPtr mesh` to `std::vector<IRenderableSharedPtr> m_renderables`
 
 The project's one test scene today constructs `Scene::create(renderablePtr)`. The factory stays for backward compat but stores the arg in `m_renderables[0]`. `Scene::mesh` as a public field is replaced by `getRenderables()`. Any remaining direct `scene->mesh->...` access sites need migrating. (Spot-checked: `scene.cpp:buildRenderingItem` accesses `mesh` directly; will migrate to iterate — but keep the "one item" path for now.)
 
 ### Decision 6: `FrameGraph::buildFromScene` needs a per-renderable rendering-item hook
 
-The current `Scene::buildRenderingItem(pass)` assumes "the scene has one renderable." With `std::vector<IRenderablePtr>`, `FrameGraph::buildFromScene` needs to produce one `RenderingItem` per (renderable × pass) combination. We add a helper:
+The current `Scene::buildRenderingItem(pass)` assumes "the scene has one renderable." With `std::vector<IRenderableSharedPtr>`, `FrameGraph::buildFromScene` needs to produce one `RenderingItem` per (renderable × pass) combination. We add a helper:
 
 ```cpp
 // scene.hpp
-RenderingItem Scene::buildRenderingItemForRenderable(const IRenderablePtr &r,
+RenderingItem Scene::buildRenderingItemForRenderable(const IRenderableSharedPtr &r,
                                                      StringID pass) const;
 ```
 

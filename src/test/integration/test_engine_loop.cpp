@@ -49,7 +49,7 @@ public:
   }
   void destroyGraphicsHandle(GraphicsAPI, GraphicsInstanceHandle,
                              WindowGraphicsHandle) const override {}
-  InputStatePtr getInputState() const override {
+  InputStateSharedPtr getInputState() const override {
     static auto dummy = std::make_shared<DummyInputState>();
     return dummy;
   }
@@ -78,9 +78,9 @@ private:
 
 class FakeRenderer final : public Renderer {
 public:
-  void initialize(WindowPtr, const char *) override {}
+  void initialize(WindowSharedPtr, const char *) override {}
   void shutdown() override {}
-  void initScene(ScenePtr scene) override {
+  void initScene(SceneSharedPtr scene) override {
     ++initSceneCalls;
     lastScene = std::move(scene);
     events.push_back("init");
@@ -97,11 +97,11 @@ public:
   int initSceneCalls = 0;
   int uploadCalls = 0;
   int drawCalls = 0;
-  ScenePtr lastScene;
+  SceneSharedPtr lastScene;
   std::vector<std::string> events;
 };
 
-ScenePtr makeScene() { return Scene::create(nullptr); }
+SceneSharedPtr makeScene() { return Scene::create(nullptr); }
 
 void testStartSceneNotPerFrame() {
   auto window = std::make_shared<FakeWindow>();

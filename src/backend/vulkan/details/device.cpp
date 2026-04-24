@@ -184,7 +184,7 @@ void VulkanDevice::findSurfaceDepthFormat() {
   );
 }
 
-void VulkanDevice::initialize(WindowPtr window, const char *appName,
+void VulkanDevice::initialize(WindowSharedPtr window, const char *appName,
                               uint32_t appVersion, const char *engineName,
                               uint32_t engineVersion, uint32_t apiVersion,
                               std::vector<const char *> validationLayers) {

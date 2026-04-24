@@ -87,6 +87,6 @@ private:
   PushConstantSnapshot m_pushConstants{};
 };
 
-using VulkanCommandBufferPtr = std::unique_ptr<VulkanCommandBuffer>;
+using VulkanCommandBufferUniquePtr = std::unique_ptr<VulkanCommandBuffer>;
 
 } // namespace LX_core::backend

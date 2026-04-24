@@ -28,14 +28,14 @@ class Mesh {
   struct Token {};
 
 public:
-  using Ptr = std::shared_ptr<Mesh>;
+  using SharedPtr = std::shared_ptr<Mesh>;
 
-  VertexBufferPtr vertexBuffer;
-  std::shared_ptr<IndexBuffer> indexBuffer;
+  VertexBufferSharedPtr vertexBuffer;
+  IndexBufferSharedPtr indexBuffer;
 
-  static Ptr create(VertexBufferPtr vb, std::shared_ptr<IndexBuffer> ib) {
+  static SharedPtr create(VertexBufferSharedPtr vb, IndexBufferSharedPtr ib) {
     assert(vb && ib);
-    return Ptr(new Mesh(Token{}, std::move(vb), std::move(ib)));
+    return SharedPtr(new Mesh(Token{}, std::move(vb), std::move(ib)));
   }
 
   uint32_t getVertexCount() const { return vertexBuffer->getVertexCount(); }
@@ -82,12 +82,12 @@ public:
   const BoundingBox &getBounds() const { return m_bounds; }
 
 private:
-  Mesh(Token, VertexBufferPtr vb, std::shared_ptr<IndexBuffer> ib)
+  Mesh(Token, VertexBufferSharedPtr vb, IndexBufferSharedPtr ib)
       : vertexBuffer(std::move(vb)), indexBuffer(std::move(ib)) {}
 
   BoundingBox m_bounds;
 };
 
-using MeshPtr = std::shared_ptr<Mesh>;
+using MeshSharedPtr = std::shared_ptr<Mesh>;
 
 } // namespace LX_core

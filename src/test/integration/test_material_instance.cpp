@@ -90,7 +90,7 @@ int runSelf(const std::filesystem::path &self, const char *mode) {
   return std::system(cmd.c_str());
 }
 
-MaterialInstancePtr buildInstanceFromBlinnPhong() {
+MaterialInstanceSharedPtr buildInstanceFromBlinnPhong() {
   auto dir = findShaderDir();
   if (dir.empty()) {
     std::cerr << "  SETUP: blinnphong_0 shaders not found; skipping test\n";
@@ -121,7 +121,7 @@ MaterialInstancePtr buildInstanceFromBlinnPhong() {
   return MaterialInstance::create(tmpl);
 }
 
-MaterialTemplate::Ptr buildMultiPassTemplate(const RenderState &forwardState,
+MaterialTemplate::SharedPtr buildMultiPassTemplate(const RenderState &forwardState,
                                              const RenderState &shadowState) {
   ShaderResourceBinding binding;
   binding.name = "MaterialUBO";
@@ -163,9 +163,9 @@ void test_ubo_buffer_sized_from_reflection() {
   auto mat = buildInstanceFromBlinnPhong();
   if (!mat)
     return;
-  const auto &buf = mat->getParameterBuffer();
+  const auto &buf = mat->getParameterBufferBytes();
   REQUIRE(!buf.empty());
-  REQUIRE(mat->getParameterBinding() != nullptr);
+  REQUIRE(mat->getParameterBufferLayout() != nullptr);
   // blinnphong_0 MaterialUBO: vec3(12) + float(4) + float(4) + 3*int(12) = 32
   REQUIRE(buf.size() == 32);
   std::cout << "  buffer size = " << buf.size() << "\n";
@@ -178,7 +178,7 @@ void test_setVec3_writes_12_bytes_only() {
     return;
   // Seed shininess first so we can verify setVec3 does not clobber it.
   mat->setParameter(StringID("MaterialUBO"), StringID("shininess"), 99.0f);
-  const auto &buf = mat->getParameterBuffer();
+  const auto &buf = mat->getParameterBufferBytes();
   float shiny = 0.0f;
   std::memcpy(&shiny, buf.data() + 12, sizeof(float));
   REQUIRE(shiny == 99.0f);
@@ -210,7 +210,7 @@ void test_setFloat_and_setInt_at_reflected_offsets() {
   mat->setParameter(StringID("MaterialUBO"), StringID("enableAlbedo"), 1);
   mat->setParameter(StringID("MaterialUBO"), StringID("enableNormal"), 0);
 
-  const auto &buf = mat->getParameterBuffer();
+  const auto &buf = mat->getParameterBufferBytes();
   float spec = 0.0f;
   int32_t ea = -1, en = -1;
   std::memcpy(&spec, buf.data() + 16, sizeof(float));
@@ -262,7 +262,7 @@ void test_loader_produces_valid_instance() {
   // The loader walks the cwd upward for the shader dir, so chdir first.
   auto prev = std::filesystem::current_path();
   std::filesystem::current_path(dir.parent_path().parent_path());
-  MaterialInstancePtr mat;
+  MaterialInstanceSharedPtr mat;
   try {
     mat = loadGenericMaterial("materials/blinnphong_default.material");
   } catch (const std::exception &e) {
@@ -273,11 +273,11 @@ void test_loader_produces_valid_instance() {
   }
   std::filesystem::current_path(prev);
   REQUIRE(mat != nullptr);
-  REQUIRE(!mat->getParameterBuffer().empty());
+  REQUIRE(!mat->getParameterBufferBytes().empty());
   REQUIRE(mat->getPassShader(Pass_Forward) != nullptr);
 
   // Seeded defaults: baseColor == {0.8, 0.8, 0.8}
-  const auto &buf = mat->getParameterBuffer();
+  const auto &buf = mat->getParameterBufferBytes();
   float r = 0, g = 0, b = 0;
   std::memcpy(&r, buf.data() + 0, sizeof(float));
   std::memcpy(&g, buf.data() + 4, sizeof(float));
@@ -298,8 +298,8 @@ void test_ubo_layout_comes_from_enabled_pass_shader() {
   RenderState shadowState;
   auto tmpl = buildMultiPassTemplate(forwardState, shadowState);
   auto mat = MaterialInstance::create(tmpl);
-  REQUIRE(mat->getParameterBinding() != nullptr);
-  REQUIRE(mat->getParameterBuffer().size() == 32);
+  REQUIRE(mat->getParameterBufferLayout() != nullptr);
+  REQUIRE(mat->getParameterBufferBytes().size() == 32);
   std::cout << "  shared UBO layout accepted across all defined passes\n";
 }
 
@@ -437,15 +437,15 @@ void test_material_instance_with_non_MaterialUBO_name() {
   auto mat = MaterialInstance::create(tmpl);
 
   // Buffer should be sized from SurfaceParams, not empty.
-  REQUIRE(mat->getParameterBinding() != nullptr);
-  REQUIRE(mat->getParameterBuffer().size() == 16);
+  REQUIRE(mat->getParameterBufferLayout() != nullptr);
+  REQUIRE(mat->getParameterBufferBytes().size() == 16);
 
   // Setters should work by member name.
   mat->setParameter(StringID("SurfaceParams"), StringID("baseColor"),
                     Vec3f{0.5f, 0.6f, 0.7f});
   mat->setParameter(StringID("SurfaceParams"), StringID("roughness"), 0.3f);
 
-  const auto &buf = mat->getParameterBuffer();
+  const auto &buf = mat->getParameterBufferBytes();
   float r = 0, g = 0, b = 0, rough = 0;
   std::memcpy(&r, buf.data() + 0, sizeof(float));
   std::memcpy(&g, buf.data() + 4, sizeof(float));
@@ -502,14 +502,14 @@ void test_multi_buffer_setParameter() {
   tmpl->rebuildMaterialInterface();
 
   auto mat = MaterialInstance::create(tmpl);
-  REQUIRE(mat->getParameterBindingCount() == 2);
+  REQUIRE(mat->getParameterBufferCount() == 2);
 
   // Write via setParameter (primary API).
   mat->setParameter(StringID("SurfaceParams"), StringID("roughness"), 0.8f);
   mat->setParameter(StringID("DetailParams"), StringID("detailScale"), 2.0f);
 
-  const auto &surfBuf = mat->getParameterBuffer(StringID("SurfaceParams"));
-  const auto &detBuf = mat->getParameterBuffer(StringID("DetailParams"));
+  const auto &surfBuf = mat->getParameterBufferBytes(StringID("SurfaceParams"));
+  const auto &detBuf = mat->getParameterBufferBytes(StringID("DetailParams"));
   REQUIRE(surfBuf.size() == 16);
   REQUIRE(detBuf.size() == 8);
 

@@ -19,11 +19,11 @@ class VulkanSwapchain {
   struct Token {};
 
 public:
-  VulkanSwapchain(Token, VulkanDevice &device, WindowPtr window, uint32_t maxFramesInFlight = 3);
+  VulkanSwapchain(Token, VulkanDevice &device, WindowSharedPtr window, uint32_t maxFramesInFlight = 3);
   ~VulkanSwapchain();
 
   static std::unique_ptr<VulkanSwapchain>
-  create(VulkanDevice &device, WindowPtr window, uint32_t maxFramesInFlight = 3) {
+  create(VulkanDevice &device, WindowSharedPtr window, uint32_t maxFramesInFlight = 3) {
     return std::make_unique<VulkanSwapchain>(Token{}, device, window, maxFramesInFlight);
   }
 
@@ -60,7 +60,7 @@ private:
   void setupFramebuffers(VulkanRenderPass &renderPass);
 
   VulkanDevice &m_device;
-  WindowPtr m_window;
+  WindowSharedPtr m_window;
   uint32_t m_maxFramesInFlight = 3;
 
   VkSurfaceKHR m_surface = VK_NULL_HANDLE;
@@ -88,7 +88,7 @@ private:
   std::vector<VkFence> m_inFlightFences;
 };
 
-using VulkanSwapchainPtr = std::unique_ptr<VulkanSwapchain>;
+using VulkanSwapchainUniquePtr = std::unique_ptr<VulkanSwapchain>;
 
 } // namespace backend
 } // namespace LX_core

@@ -18,7 +18,7 @@
 
 - `Scene`：持有 renderables、camera 列表、light 列表，要求显式 `sceneName`。
 - `IRenderable`：renderable 抽象接口，新增 `getValidatedPassData(pass)` 只读出口。
-- `SceneNode`：当前主路径实现，聚合 `nodeName`、`MeshPtr`、`MaterialInstancePtr`、可选 `SkeletonPtr` 与 `PerDrawDataPtr`。
+- `SceneNode`：当前主路径实现，聚合 `nodeName`、`MeshSharedPtr`、`MaterialInstanceSharedPtr`、可选 `SkeletonSharedPtr` 与 `PerDrawDataSharedPtr`。
 - `ValidatedRenderablePassData`：`pass -> validated entry` 缓存项，保存 queue 需要的稳定结构结果。
 - `RenderingItem`：一次 draw 的完整上下文，字段仍是 `shaderInfo`、`material`、`drawData`、`vertexBuffer`、`indexBuffer`、`descriptorResources`、`pass`、`pipelineKey`。
 - `RenderableSubMesh`：仍保留的兼容实现，但不再是推荐的场景主模型。

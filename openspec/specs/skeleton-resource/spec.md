@@ -24,7 +24,7 @@ Define the current skeleton resource contract, including core-layer types, UBO e
 
 ### Requirement: Skeleton public factory and bone API
 
-`Skeleton` SHALL provide `static SkeletonPtr create(const std::vector<Bone>& bones, ResourcePassFlag passFlag)`, `bool addBone(const Bone& bone)`, and `void updateUBO()` with behavior equivalent to the pre-migration implementation.
+`Skeleton` SHALL provide `static SkeletonSharedPtr create(const std::vector<Bone>& bones, ResourcePassFlag passFlag)`, `bool addBone(const Bone& bone)`, and `void updateUBO()` with behavior equivalent to the pre-migration implementation.
 
 #### Scenario: Create and mutate bones
 

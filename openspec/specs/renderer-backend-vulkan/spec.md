@@ -22,7 +22,7 @@ The VulkanDevice SHALL initialize the Vulkan subsystem with:
 - Enumerate physical devices and select the first discrete GPU if available, otherwise the first available device
 - Log device properties (name, type, driver version) for debugging
 - Factory pattern: VulkanDevice objects MUST be created via `VulkanDevice::create()` with Token
-- Initialization requires `WindowPtr` and application name parameters
+- Initialization requires `WindowSharedPtr` and application name parameters
 
 #### Scenario: Device initialization succeeds with valid GPU
 - **WHEN** VulkanDriver is installed and system has a discrete GPU
@@ -216,9 +216,9 @@ For any other input `VkFormat`, the function MAY return a default (`ImageFormat:
 ### Requirement: VulkanRenderer shall implement complete render lifecycle
 
 The VulkanRenderer SHALL implement:
-- `initialize(WindowPtr)`: Create device, swapchain, command buffers, and resources
+- `initialize(WindowSharedPtr)`: Create device, swapchain, command buffers, and resources
 - `shutdown()`: Destroy all Vulkan objects in reverse creation order
-- `initScene(ScenePtr)`:
+- `initScene(SceneSharedPtr)`:
   - Store the scene pointer
   - Derive the swapchain `RenderTarget` via a backend helper `makeSwapchainTarget()` that reads `device->getSurfaceFormat()` and `device->getDepthFormat()` and converts via `toImageFormat(VkFormat)`. The resulting `RenderTarget` SHALL have a real non-default `colorFormat` and `depthFormat`.
   - Before building the frame graph, iterate `scene->getCameras()` and call `cam->setTarget(swapchainTarget)` on every camera whose `getTarget().has_value() == false`. This backfill SHALL happen before `m_frameGraph.buildFromScene(*scene)`.
@@ -291,7 +291,7 @@ The test suite SHALL include:
 
 ### Requirement: VulkanRenderer drives an ImGui overlay
 
-`LX_core::backend::VulkanRenderer` SHALL 持有一个 `infra::Gui` 成员（可通过 PImpl 间接持有）。`initialize(WindowPtr window, const char* appName)` SHALL 在 Vulkan device / swapchain / swapchain render pass 均建立之后构造 `Gui::InitParams` 并调用 `gui.init(params)`；`InitParams::nativeWindowHandle` SHALL 为 `window->getNativeHandle()`；`InitParams::renderPass` 与 `InitParams::swapchainImageCount` SHALL 与 renderer 自身 swapchain 一致。
+`LX_core::backend::VulkanRenderer` SHALL 持有一个 `infra::Gui` 成员（可通过 PImpl 间接持有）。`initialize(WindowSharedPtr window, const char* appName)` SHALL 在 Vulkan device / swapchain / swapchain render pass 均建立之后构造 `Gui::InitParams` 并调用 `gui.init(params)`；`InitParams::nativeWindowHandle` SHALL 为 `window->getNativeHandle()`；`InitParams::renderPass` 与 `InitParams::swapchainImageCount` SHALL 与 renderer 自身 swapchain 一致。
 
 `shutdown()` SHALL 在释放 Vulkan device 之前对称调用 `gui.shutdown()`。
 
