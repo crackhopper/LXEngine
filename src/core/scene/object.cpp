@@ -208,10 +208,10 @@ PerDrawDataSharedPtr SceneNode::getPerDrawData() const {
   return m_perDrawData;
 }
 
-StringID SceneNode::getRenderSignature(StringID pass) const {
+StringID SceneNode::getPipelineSignature(StringID pass) const {
   if (!m_mesh)
     return StringID{};
-  StringID meshSig = m_mesh->getRenderSignature(pass);
+  StringID meshSig = m_mesh->getPipelineSignature(pass);
   StringID fields[] = {meshSig};
   return GlobalStringTable::get().compose(TypeTag::ObjectRender, fields);
 }
@@ -401,9 +401,9 @@ void SceneNode::rebuildValidatedCache() {
     data.vertexBuffer = getVertexBuffer();
     data.indexBuffer = getIndexBuffer();
     data.descriptorResources = std::move(descriptorResources);
-    data.objectSignature = getRenderSignature(pass);
+    data.objectSignature = getPipelineSignature(pass);
     data.pipelineKey = PipelineKey::build(
-        data.objectSignature, m_materialInstance->getMaterialSignature(pass));
+        data.objectSignature, m_materialInstance->getPipelineSignature(pass));
     m_validatedPasses[pass] = std::move(data);
   }
 }

@@ -120,7 +120,7 @@ Core specs commonly needed by agents:
 - `openspec/specs/pipeline-key/spec.md`
 - `openspec/specs/pipeline-build-desc/spec.md`
 - `openspec/specs/pipeline-cache/spec.md`
-- `openspec/specs/render-signature/spec.md`
+- `openspec/specs/pipeline-signature/spec.md`
 - `openspec/specs/string-interning/spec.md`
 - `openspec/specs/skeleton-resource/spec.md`
 - `openspec/specs/window-system/spec.md`

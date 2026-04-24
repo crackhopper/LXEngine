@@ -1,4 +1,4 @@
-# Mesh：几何接口形状如何进入渲染签名
+# Mesh：几何接口形状如何进入 Pipeline Signature
 
 本页的主体内容由 `scripts/source_analysis/extract_sections.py` 从源码中的
 `@source_analysis.section` 注释块生成，用来把讲解锚定在真实代码结构上。
@@ -10,7 +10,7 @@
 都拿到自己需要的结构事实。
 
 可以先带着一个问题阅读：`Mesh` 为什么没有直接保存材质、draw state，
-却还能参与 `PipelineKey`？答案是，这里真正进入渲染签名的不是“几何内容本身”，
+却还能参与 `PipelineKey`？答案是，这里真正进入 pipeline signature 的不是“几何内容本身”，
 而是顶点输入布局和图元拓扑这两类几何接口形状。
 
 源码入口：[mesh.hpp](../../../../src/core/asset/mesh.hpp)
@@ -40,7 +40,7 @@
 
 ### 几何签名：mesh 只输出 pipeline 真正关心的结构信息
 
-`getRenderSignature()` 只组合两类东西：
+`getPipelineSignature()` 只组合两类东西：
 
 - 顶点输入布局
 - 索引拓扑
@@ -64,7 +64,7 @@
 - stride / offset
 - vertex 还是 instance 频率
 
-后面的 `Mesh::getRenderSignature()`、`PipelineBuildDesc`、`SceneNode` 校验都会消费它，
+后面的 `Mesh::getPipelineSignature()`、`PipelineBuildDesc`、`SceneNode` 校验都会消费它，
 因为这些流程真正关心的是顶点输入形状，而不是 `VertexPosUv` 这类 C++ 顶点类型名。
 
 ### IVertexBuffer：上传契约之外，再补一层“布局可见性”
@@ -85,13 +85,13 @@
 组装成图元。因此 `PrimitiveTopology` 被放在 `IndexBuffer` 一侧，而不是藏进 draw call 临时参数：
 
 - 它和索引数据一起定义了“几何如何被解释”
-- 它直接参与 `Mesh` 的 render signature
+- 它直接参与 `Mesh` 的 pipeline signature
 - 改拓扑会改变 pipeline 需求，即使索引字节完全不变
 
-### topologySignature：把拓扑收束成可组合的结构叶子
+### topologyPipelineSignature：把拓扑收束成可组合的结构叶子
 
-`Mesh::getRenderSignature()` 需要把“顶点布局 + 图元拓扑”一起收束进 `StringID` 组合树。
-`topologySignature()` 的角色就是把枚举值变成稳定的叶子签名，让更外层不用关心底层 enum 编码。
+`Mesh::getPipelineSignature()` 需要把“顶点布局 + 图元拓扑”一起收束进 `StringID` 组合树。
+`topologyPipelineSignature()` 的角色就是把枚举值变成稳定的叶子签名，让更外层不用关心底层 enum 编码。
 
 ### IndexBuffer：索引数据与 pipeline 装配约束的共同载体
 
@@ -113,7 +113,7 @@
 2. 再看 `VertexLayout` / `IVertexBuffer`，理解顶点输入契约如何从字节数据里被显式带出来
 3. 最后看 `PrimitiveTopology` / `IndexBuffer`，补齐图元装配这一半的结构事实
 
-按这个顺序读，会更容易看清 `MeshRender` 真正在表达什么：不是一份网格内容摘要，而是一份几何接口签名。
+按这个顺序读，会更容易看清 `MeshRender` 真正在表达什么：不是一份网格内容摘要，而是一份几何 pipeline signature。
 
 ## 它和子系统文档的关系
 

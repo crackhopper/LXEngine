@@ -1,6 +1,6 @@
 ## Purpose
 
-Define the current skeleton resource contract, including core-layer types, UBO exposure, and render-signature behavior.
+Define the current skeleton resource contract, including core-layer types, UBO exposure, and pipeline-signature behavior.
 
 ## Requirements
 
@@ -34,10 +34,10 @@ Define the current skeleton resource contract, including core-layer types, UBO e
 - **THEN** the new bone SHALL be stored and reflected in the UBO as before
 
 ### Requirement: Skeleton exposes skinning presence for pipeline identity
-`Skeleton` SHALL NOT contribute a render-signature leaf or any other direct pipeline-identity token. The previous `StringID getRenderSignature() const`, `size_t getPipelineHash() const`, and `kSkeletonPipelineHashTag` constant SHALL NOT exist. `Skeleton` remains a runtime resource provider through its Bones UBO and a legality dependency for passes whose material variants require skinning.
+`Skeleton` SHALL NOT contribute a pipeline-signature leaf or any other direct pipeline-identity token. The previous `StringID getPipelineSignature() const`, `size_t getPipelineHash() const`, and `kSkeletonPipelineHashTag` constant SHALL NOT exist. `Skeleton` remains a runtime resource provider through its Bones UBO and a legality dependency for passes whose material variants require skinning.
 
 #### Scenario: Skeleton no longer exposes identity helpers
-- **WHEN** a caller attempts to invoke `skeleton->getRenderSignature()` or `skeleton->getPipelineHash()`
+- **WHEN** a caller attempts to invoke `skeleton->getPipelineSignature()` or `skeleton->getPipelineHash()`
 - **THEN** the call SHALL fail to compile because those identity helpers no longer exist
 
 #### Scenario: Skeleton still provides runtime UBO data

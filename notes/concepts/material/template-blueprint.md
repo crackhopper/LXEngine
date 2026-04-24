@@ -85,7 +85,7 @@ Template 决定**能力上限**，instance 决定**运行时实际状态**：
 | `buildBindingCache()` | 构建 per-pass material-owned binding 列表 |
 | `getMaterialBindings(pass)` | 取某个 pass 的 material-owned bindings |
 | `findMaterialBinding(id)` | 跨 pass 按名字查找 binding |
-| `getRenderPassSignature(pass)` | 导出某个 pass 的结构签名（用于 pipeline identity） |
+| `getPipelinePassSignature(pass)` | 导出某个 pass 的结构签名（用于 pipeline identity） |
 
 ## 继续阅读
 

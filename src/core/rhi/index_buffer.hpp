@@ -12,7 +12,7 @@ namespace LX_core {
 组装成图元。因此 `PrimitiveTopology` 被放在 `IndexBuffer` 一侧，而不是藏进 draw call 临时参数：
 
 - 它和索引数据一起定义了“几何如何被解释”
-- 它直接参与 `Mesh` 的 render signature
+- 它直接参与 `Mesh` 的 pipeline signature
 - 改拓扑会改变 pipeline 需求，即使索引字节完全不变
 */
 enum class PrimitiveTopology : u32 {
@@ -25,11 +25,11 @@ enum class PrimitiveTopology : u32 {
 };
 
 /*
-@source_analysis.section topologySignature：把拓扑收束成可组合的结构叶子
-`Mesh::getRenderSignature()` 需要把“顶点布局 + 图元拓扑”一起收束进 `StringID` 组合树。
-`topologySignature()` 的角色就是把枚举值变成稳定的叶子签名，让更外层不用关心底层 enum 编码。
+@source_analysis.section topologyPipelineSignature：把拓扑收束成可组合的结构叶子
+`Mesh::getPipelineSignature()` 需要把“顶点布局 + 图元拓扑”一起收束进 `StringID` 组合树。
+`topologyPipelineSignature()` 的角色就是把枚举值变成稳定的叶子签名，让更外层不用关心底层 enum 编码。
 */
-inline StringID topologySignature(PrimitiveTopology t) {
+inline StringID topologyPipelineSignature(PrimitiveTopology t) {
   auto &tbl = GlobalStringTable::get();
   switch (t) {
   case PrimitiveTopology::PointList:
@@ -75,6 +75,9 @@ public:
   // --- PSO 关键属性 ---
 
   PrimitiveTopology getTopology() const { return m_topology; }
+  StringID getPipelineSignature() const {
+    return topologyPipelineSignature(m_topology);
+  }
 
   // --- 数据操作 ---
 

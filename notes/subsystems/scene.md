@@ -2,7 +2,7 @@
 
 > Scene 负责持有 renderables、camera、light，并为 `RenderQueue` 提供 scene-level 资源。真正的 draw item 组装已经从“现场拼装”改成“消费 `SceneNode` 预验证结果”。
 >
-> 相关 spec: `openspec/specs/scene-node-validation/spec.md` + `openspec/specs/frame-graph/spec.md` + `openspec/specs/render-signature/spec.md` + `openspec/specs/forward-shader-variant-contract/spec.md`
+> 相关 spec: `openspec/specs/scene-node-validation/spec.md` + `openspec/specs/frame-graph/spec.md` + `openspec/specs/pipeline-signature/spec.md` + `openspec/specs/forward-shader-variant-contract/spec.md`
 
 ## 深入阅读
 

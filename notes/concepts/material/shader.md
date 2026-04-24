@@ -6,7 +6,7 @@
 
 - **反射 bindings** 告诉系统这个 shader 需要哪些 descriptor 资源（UBO、纹理等）
 - **vertex inputs** 告诉系统这个 shader 需要 mesh 提供哪些顶点属性
-- **shader name + variants** 参与 pipeline identity 和 render signature
+- **shader name + variants** 参与 pipeline identity 和 pipeline signature
 
 所以材质系统关心的不是"一个 .spv 文件"，而是"名字 + variants + 编译结果 + 反射信息"的整体。
 
@@ -18,7 +18,7 @@
 | `CompiledShader` | infra 实现 | 承接 `ShaderCompiler` 编译和 `ShaderReflector` 反射的结果 |
 | `ShaderProgramSet` | 材质值对象 | 把 shader 名、enabled variants 和 `IShaderSharedPtr` 打包，嵌入 `MaterialPassDefinition` |
 
-`ShaderProgramSet` 是材质系统真正和 pass 绑定的入口。它一头连着 loader 的编译结果，一头连着 render signature。
+`ShaderProgramSet` 是材质系统真正和 pass 绑定的入口。它一头连着 loader 的编译结果，一头连着 pipeline signature。
 
 ## 反射 binding 与归属合同
 

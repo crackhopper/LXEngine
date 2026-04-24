@@ -18,7 +18,7 @@ LX Engine **目前不采用 bindless**。渲染后端仍是传统的 descriptor 
 
 - `openspec/specs/pipeline-key/spec.md` —— `PipelineKey::build(objSig, matSig)` 已经把 pipeline 身份结构化
 - `openspec/specs/pipeline-build-desc/spec.md` —— pipeline 构造输入聚合成独立对象
-- `openspec/specs/render-signature/spec.md` —— signature 机制让资源可以声明参与哪些 pass
+- `openspec/specs/pipeline-signature/spec.md` —— signature 机制让资源可以声明参与哪些 pass
 - `openspec/specs/pipeline-cache/spec.md` —— `find` / `getOrCreate` / `preload` 已是缓存模型
 
 这些都是演进到 bindless 时有用的基础设施。

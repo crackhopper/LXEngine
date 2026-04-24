@@ -26,7 +26,7 @@ ResourceType toResourceType(ShaderPropertyType type) {
   }
 }
 
-const std::vector<uint8_t> kEmptyBuffer;
+const std::vector<u8> kEmptyBuffer;
 
 [[noreturn]] void fatalUndefinedPass(const MaterialTemplate *tmpl,
                                      StringID pass) {
@@ -97,12 +97,12 @@ void MaterialInstance::setParameter(StringID bindingName, StringID memberName,
 }
 
 void MaterialInstance::setParameter(StringID bindingName, StringID memberName,
-                                    int32_t value) {
+                                    i32 value) {
   auto *parameterBuffer = findParameterBuffer(bindingName);
   assert(parameterBuffer &&
          "setParameter: binding name not found in canonical buffer bindings");
   if (parameterBuffer)
-    parameterBuffer->writeBindingMember(memberName, &value, sizeof(int32_t),
+    parameterBuffer->writeBindingMember(memberName, &value, sizeof(i32),
                                         ShaderPropertyType::Int);
 }
 
@@ -204,7 +204,7 @@ MaterialInstance::getDescriptorResources(StringID pass) const {
  * Accessors
  *****************************************************************/
 
-const std::vector<uint8_t> &
+const std::vector<u8> &
 MaterialInstance::getParameterBufferBytes(StringID bindingName) const {
   if (const auto *parameterBuffer = findParameterBuffer(bindingName))
     return parameterBuffer->getBuffer();
@@ -218,12 +218,12 @@ MaterialInstance::getParameterBufferLayout(StringID bindingName) const {
   return nullptr;
 }
 
-const std::vector<uint8_t> &MaterialInstance::getParameterBufferBytes() const {
+const std::vector<u8> &MaterialInstance::getParameterBufferBytes() const {
   assert(m_parameterBuffersByName.size() <= 1 &&
          "getParameterBufferBytes(): multiple parameter buffers; use "
          "getParameterBufferBytes(bindingName) instead");
   if (m_parameterBuffersByName.empty()) {
-    static const std::vector<uint8_t> kEmpty;
+    static const std::vector<u8> kEmpty;
     return kEmpty;
   }
   return m_parameterBuffersByName.begin()->second->getBuffer();
@@ -254,10 +254,10 @@ RenderState MaterialInstance::getPassRenderState(StringID pass) const {
   return passDefinition ? passDefinition->get().renderState : RenderState{};
 }
 
-StringID MaterialInstance::getMaterialSignature(StringID pass) const {
+StringID MaterialInstance::getPipelineSignature(StringID pass) const {
   if (!m_template)
     return StringID{};
-  StringID passSig = m_template->getPassDefinitionSignature(pass);
+  StringID passSig = m_template->getPipelinePassSignature(pass);
   StringID fields[] = {passSig};
   return GlobalStringTable::get().compose(TypeTag::MaterialRender, fields);
 }
@@ -296,14 +296,14 @@ std::vector<StringID> MaterialInstance::getEnabledPasses() const {
   return out;
 }
 
-uint64_t
+u64
 MaterialInstance::addPassStateListener(std::function<void()> callback) {
-  const uint64_t id = m_nextListenerId++;
+  const u64 id = m_nextListenerId++;
   m_passStateListeners.emplace(id, std::move(callback));
   return id;
 }
 
-void MaterialInstance::removePassStateListener(uint64_t listenerId) {
+void MaterialInstance::removePassStateListener(u64 listenerId) {
   m_passStateListeners.erase(listenerId);
 }
 

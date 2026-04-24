@@ -172,7 +172,7 @@ public:
     return std::nullopt;
   }
 
-  virtual size_t getProgramHash() const = 0;
+  virtual usize getProgramHash() const = 0;
 
   /// Logical shader basename for file-based pipelines (matches the shader
   /// family name declared in a `.material` YAML asset).
@@ -209,7 +209,7 @@ struct ShaderProgramSet {
   std::vector<ShaderVariant> variants;
   IShaderSharedPtr shader;
 
-  size_t getHash() const {
+  usize getHash() const {
     if (!m_dirty)
       return m_cachedHash;
 
@@ -217,7 +217,7 @@ struct ShaderProgramSet {
     return m_cachedHash;
   }
 
-  StringID getRenderSignature() const {
+  StringID getPipelineSignature() const {
     auto &tbl = GlobalStringTable::get();
     std::vector<std::string> enabled;
     enabled.reserve(variants.size());
@@ -254,7 +254,7 @@ struct ShaderProgramSet {
 
 private:
   void recomputeHash() const {
-    size_t h = 0;
+    usize h = 0;
     hash_combine(h, shaderName);
 
     // 收集 enabled
@@ -274,7 +274,7 @@ private:
     m_cachedHash = h;
     m_dirty = false;
   }
-  mutable size_t m_cachedHash = 0;
+  mutable usize m_cachedHash = 0;
   mutable bool m_dirty = true;
 };
 
@@ -283,8 +283,8 @@ private:
 namespace std {
 template <>
 struct hash<LX_core::ShaderResourceBinding> {
-  size_t operator()(const LX_core::ShaderResourceBinding &b) const {
-    size_t h = 0;
+  usize operator()(const LX_core::ShaderResourceBinding &b) const {
+    usize h = 0;
     LX_core::hash_combine(h, b.set);
     LX_core::hash_combine(h, b.binding);
     LX_core::hash_combine(h, static_cast<u32>(b.type));

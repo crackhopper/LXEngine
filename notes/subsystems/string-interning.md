@@ -19,7 +19,7 @@
 ## 典型数据流
 
 1. 叶子名字先 `Intern("baseColor")`。
-2. 各资源各自产出 `getRenderSignature(...)`。
+2. 各资源各自产出 `getPipelineSignature(...)`。
 3. `PipelineKey::build(objSig, matSig)` 再做一层 compose。
 4. 调试时用 `toDebugString()` 展开。
 
@@ -32,5 +32,5 @@
 ## 关联文档
 
 - `openspec/specs/string-interning/spec.md`
-- `openspec/specs/render-signature/spec.md`
+- `openspec/specs/pipeline-signature/spec.md`
 - `notes/subsystems/pipeline-identity.md`
