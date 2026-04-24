@@ -15,8 +15,8 @@ enum class TextureFormat {
 };
 
 struct TextureDesc {
-  ImageDimension32 width = 0;
-  ImageDimension32 height = 0;
+  u32 width = 0;
+  u32 height = 0;
   TextureFormat format = TextureFormat::RGBA8;
 };
 
@@ -41,7 +41,7 @@ public:
 
   const TextureDesc &desc() const { return m_desc; }
   const void *data() const { return m_data.data(); }
-  ByteCount size() const { return m_data.size(); }
+  usize size() const { return m_data.size(); }
 
   void update(const std::vector<u8> &data) { m_data = data; }
 
@@ -63,8 +63,7 @@ using TextureSharedPtr = std::shared_ptr<Texture>; // 共享使用
 
 也就是说，它的角色不是“图像内容”，而是“缺省 binding 的占位形状”。
 */
-static TextureSharedPtr createWhiteTexture(ImageDimension32 width = 1,
-                                           ImageDimension32 height = 1) {
+static TextureSharedPtr createWhiteTexture(u32 width = 1, u32 height = 1) {
   return std::make_shared<Texture>(
       TextureDesc{width, height, TextureFormat::RGBA8},
       std::vector<u8>(width * height * 4, 255));
@@ -111,8 +110,8 @@ public:
     return ResourceType::CombinedImageSampler;
   }
   const void *getRawData() const override { return m_texture->data(); }
-  ResourceByteSize32 getByteSize() const override {
-    return static_cast<ResourceByteSize32>(m_texture->size());
+  u32 getByteSize() const override {
+    return static_cast<u32>(m_texture->size());
   }
 
   StringID getBindingName() const override { return m_bindingName; }

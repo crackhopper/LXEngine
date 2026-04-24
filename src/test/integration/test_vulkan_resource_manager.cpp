@@ -28,7 +28,7 @@ struct TestUniformResource final : public LX_core::IGpuResource {
     return LX_core::ResourceType::UniformBuffer;
   }
   const void *getRawData() const override { return &value; }
-  ResourceByteSize32 getByteSize() const override {
+  u32 getByteSize() const override {
     return sizeof(value);
   }
 

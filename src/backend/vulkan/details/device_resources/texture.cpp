@@ -9,7 +9,7 @@ namespace LX_core {
 namespace backend {
 
 VulkanTexture::VulkanTexture(Token, VulkanDevice &device,
-                             ImageDimension32 width, ImageDimension32 height,
+                             u32 width, u32 height,
                              VkFormat format,
                              VkImageUsageFlags usage, VkFilter filter)
     : m_device(device.getLogicalDevice()), m_width(width), m_height(height),
@@ -57,7 +57,7 @@ VulkanTexture::VulkanTexture(Token, VulkanDevice &device,
 }
 
 VulkanTexture::VulkanTexture(Token, VulkanDevice &device,
-                             ImageDimension32 width, ImageDimension32 height,
+                             u32 width, u32 height,
                              VkFormat format,
                              VkImageUsageFlags usage,
                              VkImageAspectFlags aspectMask)
@@ -238,7 +238,7 @@ void VulkanTexture::copyFromBuffer(VulkanCommandBuffer &cmd,
 }
 
 VulkanTextureUniquePtr VulkanTexture::createForAttachment(
-    VulkanDevice &device, ImageDimension32 width, ImageDimension32 height,
+    VulkanDevice &device, u32 width, u32 height,
     VkFormat format,
     VkImageUsageFlags usage, VkImageAspectFlags aspectMask) {
   return std::make_unique<VulkanTexture>(Token{}, device, width, height, format,

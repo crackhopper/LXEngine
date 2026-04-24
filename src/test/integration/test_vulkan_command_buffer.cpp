@@ -36,7 +36,7 @@ int main() {
 
     auto device = LX_core::backend::VulkanDevice::create();
     device->initialize(window, "TestVulkanCommandBuffer");
-    const FrameIndex32 maxFrameInFlight = 2;
+    const u32 maxFrameInFlight = 2;
 
     // Render pass / pipeline formats.
     VkFormat depthFormat = device->getDepthFormat();

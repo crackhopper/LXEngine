@@ -17,9 +17,9 @@ int main() {
     auto device = LX_core::backend::VulkanDevice::create();
     device->initialize(window, "TestVulkanBuffer");
 
-    std::vector<MeshIndex32> indices = {0u, 1u, 2u};
+    std::vector<u32> indices = {0u, 1u, 2u};
     const VkDeviceSize size =
-        static_cast<VkDeviceSize>(indices.size() * sizeof(MeshIndex32));
+        static_cast<VkDeviceSize>(indices.size() * sizeof(u32));
 
     auto buffer = LX_core::backend::VulkanBuffer::create(
         *device, size,
@@ -29,7 +29,7 @@ int main() {
 
     buffer->uploadData(indices.data(), size);
 
-    auto *mapped = static_cast<MeshIndex32 *>(buffer->map());
+    auto *mapped = static_cast<u32 *>(buffer->map());
     if (mapped == nullptr) {
       std::cerr << "Buffer map returned null\n";
       return 1;

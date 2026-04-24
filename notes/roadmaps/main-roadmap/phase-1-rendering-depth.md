@@ -17,7 +17,7 @@
 | 多 pass 骨架（`FrameGraph` / `RenderQueue` / `PipelineCache`） | ✅ | `src/core/frame_graph/*` + `src/backend/vulkan/details/pipelines/pipeline_cache.*` |
 | Pass 常量 `Pass_Forward` / `Pass_Deferred` / `Pass_Shadow` | ✅ | `src/core/frame_graph/pass.hpp`（`Forward` 活跃；`Shadow` 预留） |
 | Camera visibility layer / culling mask | ✅ | `Camera::cullingMask` + `SceneNode::visibilityLayerMask`，`RenderQueue::buildFromScene` 交集过滤 |
-| 语义标量类型规范化（byte size / count） | ✅ | `src/core/platform/types.hpp` |
+| 基础 scalar table 收口（默认 `usize` / `u32`，少量协议 alias 保留） | ✅ | `src/core/platform/types.hpp` |
 | 通用 `.material` YAML loader + 非 BlinnPhong 示例 | ✅ | `loadGenericMaterial` + `assets/materials/pbr_gold.material` + `assets/shaders/glsl/pbr.{vert,frag}` |
 | HDR scene color target / tone map pass | ❌ | REQ-101 / REQ-102 |
 | PBR 完整管线（IBL ambient + shadow 接收 + 多光源循环 + 可选贴图齐全） | ⚠️ 最小版已存在 | REQ-118；`assets/shaders/glsl/pbr.{vert,frag}` + `assets/materials/pbr_gold.material` |

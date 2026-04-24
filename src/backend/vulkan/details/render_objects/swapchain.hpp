@@ -20,12 +20,12 @@ class VulkanSwapchain {
 
 public:
   VulkanSwapchain(Token, VulkanDevice &device, WindowSharedPtr window,
-                  FrameIndex32 maxFramesInFlight = 3);
+                  u32 maxFramesInFlight = 3);
   ~VulkanSwapchain();
 
   static std::unique_ptr<VulkanSwapchain>
   create(VulkanDevice &device, WindowSharedPtr window,
-         FrameIndex32 maxFramesInFlight = 3) {
+         u32 maxFramesInFlight = 3) {
     return std::make_unique<VulkanSwapchain>(Token{}, device, window,
                                              maxFramesInFlight);
   }
@@ -35,21 +35,19 @@ public:
   void rebuild(VulkanRenderPass &renderPass);
 
   // --- 同步对象获取 ---
-  VkSemaphore getImageAvailableSemaphore(FrameIndex32 currentFrameIndex) const;
-  VkSemaphore getRenderFinishedSemaphore(FrameIndex32 currentFrameIndex) const;
-  VkFence getInFlightFence(FrameIndex32 currentFrameIndex) const;
+  VkSemaphore getImageAvailableSemaphore(u32 currentFrameIndex) const;
+  VkSemaphore getRenderFinishedSemaphore(u32 currentFrameIndex) const;
+  VkFence getInFlightFence(u32 currentFrameIndex) const;
 
   // --- 帧获取与呈现 ---
-  VkResult acquireNextImage(FrameIndex32 currentFrameIndex,
-                            SwapchainImageIndex32 &imageIndex);
-  VkResult present(FrameIndex32 currentFrameIndex,
-                   SwapchainImageIndex32 imageIndex);
+  VkResult acquireNextImage(u32 currentFrameIndex, u32 &imageIndex);
+  VkResult present(u32 currentFrameIndex, u32 imageIndex);
 
   // --- 资源访问 ---
   VkSwapchainKHR getHandle() const { return m_handle; }
   VkExtent2D getExtent() const { return m_extent; }
-  VulkanFrameBuffer &getFramebuffer(SwapchainImageIndex32 index);
-  ImageCount getImageCount() const { return m_images.size(); }
+  VulkanFrameBuffer &getFramebuffer(u32 index);
+  usize getImageCount() const { return m_images.size(); }
   VkFormat getImageFormat() const;
   VkImageView getDepthImageView() const { return m_depthImageView; }
 
@@ -66,7 +64,7 @@ private:
 
   VulkanDevice &m_device;
   WindowSharedPtr m_window;
-  FrameIndex32 m_maxFramesInFlight = 3;
+  u32 m_maxFramesInFlight = 3;
 
   VkSurfaceKHR m_surface = VK_NULL_HANDLE;
   VkSwapchainKHR m_handle = VK_NULL_HANDLE;

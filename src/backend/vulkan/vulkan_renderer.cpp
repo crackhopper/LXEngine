@@ -52,7 +52,7 @@ namespace LX_core::backend {
 
 namespace {
 
-constexpr FrameIndex32 kMaxFramesInFlight = 3;
+constexpr u32 kMaxFramesInFlight = 3;
 
 } // namespace
 
@@ -219,9 +219,8 @@ public:
 
     const VkExtent2D extent = m_swapchain->getExtent();
 
-    const FrameIndex32 currentFrameIndex =
-        m_frameIndex % kMaxFramesInFlight;
-    SwapchainImageIndex32 imageIndex = 0;
+    const u32 currentFrameIndex = m_frameIndex % kMaxFramesInFlight;
+    u32 imageIndex = 0;
 
     VkResult acquireResult =
         m_swapchain->acquireNextImage(currentFrameIndex, imageIndex);
@@ -355,7 +354,7 @@ private:
   VulkanCommandBufferManagerUniquePtr m_cmdBufferMgr = nullptr;
   SceneSharedPtr m_scene = nullptr;
   LX_core::FrameGraph m_frameGraph{};
-  FrameIndex32 m_frameIndex = 0;
+  u32 m_frameIndex = 0;
   infra::Gui m_gui{};
   std::function<void()> m_drawUiCallback{};
 };

@@ -18,19 +18,17 @@ class VulkanTexture {
   struct Token {};
 
 public:
-  VulkanTexture(Token, VulkanDevice &device, ImageDimension32 width,
-                ImageDimension32 height, VkFormat format,
+  VulkanTexture(Token, VulkanDevice &device, u32 width, u32 height,
+                VkFormat format,
                 VkImageUsageFlags usage,
                 VkFilter filter);
-  VulkanTexture(Token, VulkanDevice &device, ImageDimension32 width,
-                ImageDimension32 height, VkFormat format,
+  VulkanTexture(Token, VulkanDevice &device, u32 width, u32 height, VkFormat format,
                 VkImageUsageFlags usage,
                 VkImageAspectFlags aspectMask);
   ~VulkanTexture();
 
   static VulkanTextureUniquePtr create(VulkanDevice &device,
-                                       ImageDimension32 width,
-                                       ImageDimension32 height, VkFormat format,
+                                       u32 width, u32 height, VkFormat format,
                                        VkImageUsageFlags usage,
                                        VkFilter filter = VK_FILTER_LINEAR) {
     return std::make_unique<VulkanTexture>(Token{}, device, width, height,
@@ -38,7 +36,7 @@ public:
   }
 
   static VulkanTextureUniquePtr createForAttachment(
-      VulkanDevice &device, ImageDimension32 width, ImageDimension32 height,
+      VulkanDevice &device, u32 width, u32 height,
       VkFormat format, VkImageUsageFlags usage,
       VkImageAspectFlags aspectMask);
 
@@ -57,8 +55,8 @@ public:
   void copyFromBuffer(VulkanCommandBuffer &cmd, class VulkanBuffer &buffer);
 
   VkFormat getFormat() const { return m_format; }
-  ImageDimension32 getWidth() const { return m_width; }
-  ImageDimension32 getHeight() const { return m_height; }
+  u32 getWidth() const { return m_width; }
+  u32 getHeight() const { return m_height; }
   VkDeviceMemory getMemory() const { return m_memory; }
 
 private:
@@ -71,8 +69,8 @@ private:
   VkImageView m_imageView = VK_NULL_HANDLE;
   VkSampler m_sampler = VK_NULL_HANDLE;
   VkFormat m_format = VK_FORMAT_UNDEFINED;
-  ImageDimension32 m_width = 0;
-  ImageDimension32 m_height = 0;
+  u32 m_width = 0;
+  u32 m_height = 0;
   VkImageLayout m_currentLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 };
 

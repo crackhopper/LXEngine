@@ -12,7 +12,7 @@ namespace LX_core {
 struct RenderTarget {
   ImageFormat colorFormat = ImageFormat::BGRA8;
   ImageFormat depthFormat = ImageFormat::D32Float;
-  SampleCount8 sampleCount = 1;
+  u8 sampleCount = 1;
 
   size_t getHash() const;
 

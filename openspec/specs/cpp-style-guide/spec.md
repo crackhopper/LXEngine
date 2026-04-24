@@ -112,79 +112,83 @@ Modern C++ language features SHALL be used consistently where they clarify inten
 - **WHEN** a derived class overrides a virtual function
 - **THEN** the overriding declaration SHALL include `override`
 
-### Requirement: Semantic scalar types come from the shared type table
+### Requirement: Scalar types default to primitives, with rare alias exceptions
 
-Project code SHALL prefer semantic aliases from `src/core/platform/types.hpp`
-over anonymous primitive scalars when a value has a stable domain meaning such
-as count, size, offset, index, stage mask, or API version.
+Project code SHALL prefer the shared primitive table in
+`src/core/platform/types.hpp` over stacks of semantic typedef aliases.
 
-**Rationale**: A name like `VertexCount` or `DescriptorBindingIndex32` carries
-domain meaning that plain `size_t`, `u32`, or `uint32_t` does not. Centralizing
-these aliases in one table also makes it possible to tighten type policy later
-without touching every call site.
+**Rationale**: Plain aliases such as `VertexCount`, `ImageCount`, or
+`DescriptorBindingIndex32` do not create type safety. They are still `usize` or
+`u32` to the compiler, while increasing naming surface and refactor cost. The
+default policy is therefore:
+
+- ordinary counts and sizes use `usize`
+- ordinary 32-bit indices, offsets, bindings, and dimensions use `u32`
+- only a small number of protocol-heavy concepts keep dedicated aliases, such
+  as `ShaderStageMask32` and `ApiVersion32`
+
+If future work needs true misuse protection, it SHALL use wrapper structs or
+strong types instead of adding more typedef aliases.
 
 #### Required Usage Rules
 
-1. **Use the shared table first**: If a scalar's meaning already exists in
-   `src/core/platform/types.hpp`, code SHALL use that alias instead of raw
-   `size_t`, `u32`, or `uint32_t`.
+1. **Counts and generic sizes use `usize`**: Collection sizes, element counts,
+   cache sizes, and other host-side quantities SHALL use `usize` unless an
+   external protocol or binary format requires a narrower width.
 
-2. **Counts use variable-width aliases**: Quantities such as element counts,
-   resource counts, and collection sizes SHOULD use the `usize`-backed semantic
-   aliases from the shared table (for example `VertexCount`, `IndexCount`,
-   `ImageCount`, `BindingCount`).
+2. **Ordinary 32-bit scalar fields use `u32`**: Descriptor set numbers,
+   bindings, locations, image dimensions, queue-family indices, offsets, and
+   similar fixed-width numeric fields SHALL use `u32` unless they are one of
+   the explicitly preserved aliases.
 
-3. **Layout and protocol fields use fixed-width aliases**: Shader layout,
-   descriptor layout, byte offset/size, stage mask, API version, and other
-   externally constrained 32-bit fields SHALL use the matching `u32`-backed
-   semantic aliases from the shared table (for example `ByteOffset32`,
-   `DescriptorBindingIndex32`, `ShaderStageMask32`, `ApiVersion32`).
+3. **Dedicated aliases stay rare**: Only stable, high-signal concepts whose
+   name materially improves readability across subsystem boundaries SHOULD keep
+   a dedicated alias. Current examples include `ShaderStageMask32` and
+   `ApiVersion32`.
 
-4. **Prefer semantic names over generic widths**: New members and public
-   function parameters SHALL NOT introduce bare names like `u32 count`,
-   `uint32_t index`, or `size_t size` when a domain-specific alias would make
-   the contract clearer.
+4. **Do not add semantic typedef layers for routine meanings**: New typedefs
+   like `FooCount`, `BarIndex32`, or `BazSize32` SHALL NOT be introduced for
+   ordinary scalar usage. Prefer variable names such as `bindingIndex`,
+   `imageCount`, or `bufferSize` on top of `u32` / `usize`.
 
-5. **Add missing stable meanings to the shared table**: If a scalar meaning is
-   used repeatedly across subsystem boundaries and no alias exists yet, the
-   alias SHOULD be added to `src/core/platform/types.hpp` before further
-   spreading the raw primitive type.
+5. **Convert at external API boundaries**: When Vulkan, SDL, GLFW, ImGui,
+   shaderc, SPIRV-Cross, or similar APIs require exact scalar widths, project
+   code SHOULD keep `u32` / `usize` internally and cast at the boundary.
 
 #### Allowed Exceptions
 
-1. **External API boundaries**: Code that directly calls Vulkan, SDL, GLFW,
-   ImGui, shaderc, SPIRV-Cross, or other third-party APIs MAY keep the exact
-   scalar types those APIs require. Prefer converting at the boundary rather
-   than leaking the external type choice deeper into project code.
+1. **Protocol-heavy aliases**: A dedicated alias MAY be kept when the code is
+   primarily about a protocol-specific meaning rather than a routine scalar
+   slot, and that meaning is shared across multiple subsystems.
 
-2. **Opaque ID/storage internals**: Low-level systems whose storage contract is
-   fundamentally defined by a primitive width (for example atomics, packed bit
-   representations, or third-party binary formats) MAY keep the primitive type
-   if introducing a semantic alias would not improve clarity.
+2. **Strongly width-defined storage**: Packed bitfields, atomics, binary file
+   layouts, and other storage contracts that are fundamentally width-defined
+   MAY use the exact primitive width directly without wrapping it in another
+   semantic alias.
 
-#### Scenario: Count semantics use project aliases
+#### Scenario: Counts and indices use primitives
 
 ```cpp
 // CORRECT
-VertexCount getVertexCount() const;
-ImageCount getImageCount() const;
-BindingCount getParameterBufferCount() const;
+usize getVertexCount() const;
+usize getImageCount() const;
+u32 bindingIndex = 0;
 
 // INCORRECT
-size_t getVertexCount() const;     // VIOLATION when VertexCount exists
-uint32_t getImageCount() const;    // VIOLATION when ImageCount exists
-u32 getParameterBufferCount() const; // VIOLATION when BindingCount exists
+VertexCount getVertexCount() const;     // VIOLATION: routine count alias
+ImageCount getImageCount() const;       // VIOLATION: routine count alias
+DescriptorBindingIndex32 bindingIndex;  // VIOLATION: routine index alias
 ```
 
 #### Scenario: External API conversion stays at the boundary
 
 ```cpp
 // CORRECT
-ImageCount imageCount = swapchain->getImageCount();
-initInfo.ImageCount = static_cast<u32>(imageCount); // Vulkan/ImGui boundary
+usize imageCount = swapchain->getImageCount();
+initInfo.ImageCount = static_cast<u32>(imageCount);
 
-// INCORRECT
-uint32_t imageCount = swapchain->getImageCount(); // leaks API width inward
+// ALSO CORRECT
+ShaderStageMask32 mask = static_cast<ShaderStageMask32>(ShaderStage::Vertex);
 ```
 
 ### Requirement: Ownership and dependency patterns follow the style guide

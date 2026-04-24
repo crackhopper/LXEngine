@@ -18,7 +18,7 @@ struct Gui::Impl {
   bool initialized = false;
   VkDevice device = VK_NULL_HANDLE;
   VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
-  ImageCount swapchainImageCount = 0;
+  usize swapchainImageCount = 0;
 };
 
 Gui::Gui() : pImpl(std::make_unique<Impl>()) {}
@@ -32,7 +32,7 @@ Gui::~Gui() {
 namespace {
 
 VkDescriptorPool createImGuiDescriptorPool(VkDevice device) {
-  constexpr DescriptorPoolCount32 kPoolSize = 1000;
+  constexpr u32 kPoolSize = 1000;
   const std::array<VkDescriptorPoolSize, 11> poolSizes = {{
       {VK_DESCRIPTOR_TYPE_SAMPLER, kPoolSize},
       {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, kPoolSize},
@@ -50,7 +50,7 @@ VkDescriptorPool createImGuiDescriptorPool(VkDevice device) {
   VkDescriptorPoolCreateInfo info{};
   info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
   info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-  info.maxSets = kPoolSize * static_cast<DescriptorPoolCount32>(poolSizes.size());
+  info.maxSets = kPoolSize * static_cast<u32>(poolSizes.size());
   info.poolSizeCount = static_cast<u32>(poolSizes.size());
   info.pPoolSizes = poolSizes.data();
 
@@ -147,7 +147,7 @@ void Gui::endFrame(VkCommandBuffer cmd) {
   ImGui_ImplVulkan_RenderDrawData(drawData, cmd, VK_NULL_HANDLE);
 }
 
-void Gui::updateSwapchainImageCount(ImageCount imageCount) {
+void Gui::updateSwapchainImageCount(usize imageCount) {
   if (!pImpl->initialized || imageCount == 0 ||
       imageCount == pImpl->swapchainImageCount) {
     return;

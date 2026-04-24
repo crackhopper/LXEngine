@@ -14,7 +14,7 @@ namespace backend {
 struct CommandFrameContext {
   VkCommandPool pool = VK_NULL_HANDLE;
   std::vector<VkCommandBuffer> activeBuffers;
-  FrameIndex32 nextAvailableBuffer = 0;
+  u32 nextAvailableBuffer = 0;
 };
 
 class VulkanCommandBufferManager {
@@ -22,18 +22,16 @@ class VulkanCommandBufferManager {
 
 public:
   VulkanCommandBufferManager(Token, VulkanDevice &device,
-                             FrameIndex32 maxFramesInFlight,
-                             QueueFamilyIndex32 queueFamilyIndex);
+                             u32 maxFramesInFlight, u32 queueFamilyIndex);
   ~VulkanCommandBufferManager();
 
   static std::unique_ptr<VulkanCommandBufferManager>
-  create(VulkanDevice &device, FrameIndex32 maxFramesInFlight,
-         QueueFamilyIndex32 queueFamilyIndex) {
+  create(VulkanDevice &device, u32 maxFramesInFlight, u32 queueFamilyIndex) {
     return std::make_unique<VulkanCommandBufferManager>(
         Token{}, device, maxFramesInFlight, queueFamilyIndex);
   }
 
-  void beginFrame(FrameIndex32 currentFrameIndex);
+  void beginFrame(u32 currentFrameIndex);
   VulkanCommandBufferUniquePtr allocateBuffer(VkCommandBufferLevel level = VK_COMMAND_BUFFER_LEVEL_PRIMARY);
 
   VulkanCommandBufferUniquePtr beginSingleTimeCommands();
@@ -43,9 +41,9 @@ private:
   void createPool(VkCommandPool &pool, VkCommandPoolCreateFlags flags);
 
   VulkanDevice &m_device;
-  FrameIndex32 m_currentFrameIndex = 0;
-  FrameIndex32 m_maxFramesInFlight = 0;
-  QueueFamilyIndex32 m_queueFamilyIndex = 0;
+  u32 m_currentFrameIndex = 0;
+  u32 m_maxFramesInFlight = 0;
+  u32 m_queueFamilyIndex = 0;
 
   std::vector<CommandFrameContext> m_frameContexts;
   VkCommandPool m_transientPool = VK_NULL_HANDLE;

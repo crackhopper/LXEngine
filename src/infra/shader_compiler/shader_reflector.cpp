@@ -68,10 +68,10 @@ static void extractStructMembers(const spirv_cross::Compiler &compiler,
                                  const spirv_cross::SPIRType &type,
                                  std::vector<LX_core::StructMemberInfo> &out) {
   using BT = spirv_cross::SPIRType::BaseType;
-  const MemberCount count = type.member_types.size();
+  const usize count = type.member_types.size();
   out.clear();
   out.reserve(count);
-  for (MemberCount i = 0; i < count; ++i) {
+  for (usize i = 0; i < count; ++i) {
     const auto &memberType = compiler.get_type(type.member_types[i]);
 
     // Reject unsupported shapes: nested struct or any array member.
@@ -91,7 +91,7 @@ static void extractStructMembers(const spirv_cross::Compiler &compiler,
     info.type = mapMemberType(memberType);
     info.offset = compiler.get_member_decoration(type.self, i,
                                                  spv::DecorationOffset);
-    info.size = static_cast<ByteSize32>(
+    info.size = static_cast<u32>(
         compiler.get_declared_struct_member_size(type, i));
     out.push_back(std::move(info));
   }
@@ -136,19 +136,19 @@ mapSpvType(const spirv_cross::Compiler &compiler,
   return LX_core::ShaderPropertyType::Float;
 }
 
-static ByteSize32 computeBufferSize(const spirv_cross::Compiler &compiler,
-                                    const spirv_cross::Resource &res) {
+static u32 computeBufferSize(const spirv_cross::Compiler &compiler,
+                             const spirv_cross::Resource &res) {
   auto &type = compiler.get_type(res.base_type_id);
   if (type.basetype == spirv_cross::SPIRType::Struct) {
-    return static_cast<ByteSize32>(compiler.get_declared_struct_size(type));
+    return static_cast<u32>(compiler.get_declared_struct_size(type));
   }
   return 0;
 }
 
 // Key for merging: (set, binding)
 struct SetBindingKey {
-  DescriptorSetIndex32 set;
-  DescriptorBindingIndex32 binding;
+  u32 set;
+  u32 binding;
   bool operator==(const SetBindingKey &rhs) const {
     return set == rhs.set && binding == rhs.binding;
   }

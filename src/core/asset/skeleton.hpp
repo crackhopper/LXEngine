@@ -11,7 +11,7 @@
 
 namespace LX_core {
 
-constexpr BoneCount MAX_BONE_COUNT = 128;
+constexpr usize MAX_BONE_COUNT = 128;
 
 struct Bone {
   std::string name;
@@ -68,10 +68,10 @@ struct alignas(16) SkeletonData : public IGpuResource {
   }
 
   ResourceType getType() const override { return ResourceType::UniformBuffer; }
-  static constexpr ResourceByteSize32 ResourceSize =
-      static_cast<ResourceByteSize32>(MAX_BONE_COUNT * sizeof(Mat4f));
+  static constexpr u32 ResourceSize =
+      static_cast<u32>(MAX_BONE_COUNT * sizeof(Mat4f));
   const void *getRawData() const override { return m_bones; }
-  ResourceByteSize32 getByteSize() const override { return ResourceSize; }
+  u32 getByteSize() const override { return ResourceSize; }
   StringID getBindingName() const override {
     static const StringID kName("Bones");
     return kName;

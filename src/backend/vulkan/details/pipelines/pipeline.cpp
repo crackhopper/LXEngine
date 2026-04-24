@@ -399,14 +399,13 @@ void VulkanPipeline::loadShaders() {
 void VulkanPipeline::createLayout() {
   auto &descriptorMgr = m_device.getDescriptorManager();
 
-  std::unordered_map<DescriptorSetIndex32,
-                     std::vector<LX_core::ShaderResourceBinding>>
+  std::unordered_map<u32, std::vector<LX_core::ShaderResourceBinding>>
       setGroups;
   for (const auto &b : m_bindings) {
     setGroups[b.set].push_back(b);
   }
 
-  DescriptorSetIndex32 maxSet = 0;
+  u32 maxSet = 0;
   for (const auto &kv : setGroups)
     maxSet = std::max(maxSet, kv.first);
 
