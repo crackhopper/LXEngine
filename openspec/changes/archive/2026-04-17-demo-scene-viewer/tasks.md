@@ -8,7 +8,7 @@
 
 - [x] 2.1 新建 `src/demos/scene_viewer/scene_builder.hpp`：声明 `buildHelmetNode(path)` / `buildGroundNode()`；内部 glue 放匿名 namespace
 - [x] 2.2 新建 `src/demos/scene_viewer/scene_builder.cpp` 实现 `buildMeshFromGltf(loader)`：按 `VertexPosNormalUvBone` 拼顶点，TANGENT 缺失时占位 `{1,0,0,1}` + 一次性 warning
-- [x] 2.3 实现 `makeHelmetMaterial(pbrMat, gltfDir)`：`loadGenericMaterial("materials/blinnphong_default.material")` → `setInt("enableNormal", 0)` → baseColor 贴图成功加载时 `setTexture("albedoMap", sampler)` + `setInt("enableAlbedo", 1)`，失败时回退 flat color；`syncGpuData()`
+- [x] 2.3 实现 `makeHelmetMaterial(pbrMat, gltfDir)`：`loadGenericMaterial("assets/assets/materials/blinnphong_default.material")` → `setInt("enableNormal", 0)` → baseColor 贴图成功加载时 `setTexture("albedoMap", sampler)` + `setInt("enableAlbedo", 1)`，失败时回退 flat color；`syncGpuData()`
 - [x] 2.4 实现 `buildHelmetNode(gltfPath)`：`GLTFLoader` + Mesh + Material → `SceneNode::create("helmet", mesh, material)`
 - [x] 2.5 实现 `buildGroundNode()`：4 顶点 2 三角形 XZ 平面（±10m, y=0）+ `blinnphong_default.material` with `enableAlbedo=0` / `setVec3("baseColor", {0.4, 0.4, 0.45})` → `SceneNode::create("ground", ...)`
 

@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: PBR shader with conditional compilation macros
-A PBR shader pair (`pbr.vert` / `pbr.frag`) SHALL be provided in `shaders/glsl/`. The fragment shader MUST use `#ifdef` guards for at least `HAS_NORMAL_MAP` and `HAS_METALLIC_ROUGHNESS`, each enabling additional texture sampling and computation paths.
+A PBR shader pair (`pbr.vert` / `pbr.frag`) SHALL be provided in `assets/shaders/glsl/`. The fragment shader MUST use `#ifdef` guards for at least `HAS_NORMAL_MAP` and `HAS_METALLIC_ROUGHNESS`, each enabling additional texture sampling and computation paths.
 
 #### Scenario: Base PBR shader compiles without macros
 - **WHEN** `pbr.vert` and `pbr.frag` are compiled with no variant macros defined

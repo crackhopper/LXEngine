@@ -37,7 +37,7 @@ renderer/                          # Project root
 
 - **Main CMakeLists.txt** (line 40): `add_subdirectory(shaders)` includes shader build
 - **Shader CMakeLists.txt**: Uses `glslc` (from Vulkan SDK) to compile `.vert`/`.frag` → `.spv`
-- **Shader naming convention**: Code references shader name `blinnphong_0` (→ `shaders/glsl/blinnphong_0.vert.spv`)
+- **Shader naming convention**: Code references shader name `blinnphong_0` (→ `assets/shaders/glsl/blinnphong_0.vert.spv`)
 - **Build target**: `CompileShaders` is a dependency of the main executable
 
 ### Current State (from exploration)
@@ -103,9 +103,9 @@ Use `IRenderResource*` (address) as the key for resource mapping.
 
 ### Decision 4: SPIR-V Shader Loading
 
-Use filesystem-based shader loading with naming convention `shaders/glsl/{shaderName}.vert.spv` and `shaders/glsl/{shaderName}.frag.spv`.
+Use filesystem-based shader loading with naming convention `assets/shaders/glsl/{shaderName}.vert.spv` and `assets/shaders/glsl/{shaderName}.frag.spv`.
 
-**Rationale**: Matches existing shader files at `shaders/glsl/` and `Shader::getShaderName()` pattern in codebase. The `CompileShaders` CMake target produces .spv files from .vert/.frag sources.
+**Rationale**: Matches existing shader files at `assets/shaders/glsl/` and `Shader::getShaderName()` pattern in codebase. The `CompileShaders` CMake target produces .spv files from .vert/.frag sources.
 
 **Alternatives considered**:
 - Embedded shaders: Increases binary size, harder to iterate
@@ -135,4 +135,4 @@ Implement `VulkanDevice` first - it is the foundation that all other components 
 
 1. **Window/GLFW initialization**: Confirm expected initialization sequence in `initialize(WindowSharedPtr)`
 2. **Error handling strategy**: Vulkan errors are typically fatal - confirm expected behavior (throw? log+continue?)
-3. **Shader build**: Shader files exist at `shaders/glsl/`, but CMakeLists.txt build has not been verified
+3. **Shader build**: Shader files exist at `assets/shaders/glsl/`, but CMakeLists.txt build has not been verified

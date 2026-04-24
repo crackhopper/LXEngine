@@ -1,44 +1,5 @@
-See `AGENTS.md` for full project context, architecture, and coding standards.
+Load `AGENTS.md` first.
 
-## Quick Reference
+`AGENTS.md` is the only maintained coding-agent memory file in this repository. This file is only an index to the canonical entry:
 
-- C++20 Vulkan renderer: `src/core/` (interfaces) → `src/infra/` (implementations) → `src/backend/` (Vulkan)
-- Build: `cmake .. -G Ninja && ninja <target>`
-- **Always read the relevant spec before modifying a subsystem**: `openspec/specs/`
-
-## Specs Index
-
-- `openspec/specs/cpp-style-guide/spec.md` — C++ ownership & style rules (MUST follow)
-- `openspec/specs/renderer-backend-vulkan/spec.md` — Vulkan backend requirements
-- `openspec/specs/string-interning/spec.md` — GlobalStringTable / StringID
-- `openspec/specs/shader-compilation/spec.md` — Runtime GLSL→SPIR-V compilation
-- `openspec/specs/shader-reflection/spec.md` — SPIR-V reflection / ShaderResourceBinding
-- `openspec/specs/window-system/spec.md` — IWindow interface (SDL/GLFW)
-- `openspec/specs/gui-system/spec.md` — ImGui integration
-- `openspec/specs/texture-loading/spec.md` — Image loading (stb_image)
-- `openspec/specs/mesh-loading/spec.md` — OBJ/GLTF mesh loading
-- `openspec/specs/resource-pipeline-hash/spec.md` — `getPipelineHash()` / pipeline identity
-- `openspec/specs/skeleton-resource/spec.md` — Skeleton as core resource, no `IComponent`
-
-## Design Docs Index
-
-- `notes/subsystems/index.md` — Subsystem map and recommended reading order
-- `notes/subsystems/string-interning.md` — String interning, compose/decompose, debug-string flow
-- `notes/subsystems/shader-system.md` — GLSL compilation, SPIR-V reflection, `CompiledShader`
-- `notes/subsystems/material-system.md` — Material template/instance and reflection-driven UBO writes
-- `notes/subsystems/pipeline-identity.md` — `PipelineKey`, `PipelineBuildDesc`, render signatures
-- `notes/subsystems/pipeline-cache.md` — Pipeline preload, lookup, runtime miss behavior
-- `notes/subsystems/frame-graph.md` — Pass graph, queue build, pipeline collection
-- `notes/subsystems/scene.md` — Scene container and `RenderingItem` assembly
-- `notes/场景对象详解.md` — Core-layer scene flow, `SceneNode` validation cache, and `ValidatedRenderablePassData`
-- `notes/subsystems/geometry.md` — Mesh, vertex layout, topology signatures
-- `notes/subsystems/skeleton.md` — Skeleton resource and `SkeletonUBO`
-- `notes/subsystems/vulkan-backend.md` — Vulkan backend object graph and render path
-
-## Rules
-
-- No raw pointers for object references (see cpp-style-guide spec)
-- Constructor injection only, no setter DI
-- Cross-platform: Linux (bash) + Windows (PowerShell, see `.cursor/rules/powershell-shell-guidance.md`)
-- Namespaces: `LX_core`, `LX_infra`
-- Integration tests in `src/test/integration/`, one exe per module
+- `AGENTS.md`

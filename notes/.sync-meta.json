@@ -1,15 +1,24 @@
 {
-  "lastSyncedCommit": "693e0887deff7d0f387a42161477be00087f8179",
-  "lastSyncedAt": "2026-04-16T06:15:18Z",
+  "lastSyncedCommit": "a5ecca2c8c917f728fa90874a2999a913ed7c153",
+  "lastSyncedAt": "2026-04-24T07:45:00Z",
   "mode": "incremental",
   "files": [
-    "notes/concepts/material/index.md",
-    "notes/concepts/material/material-instance.md",
-    "notes/concepts/material/shader.md",
-    "notes/concepts/material/template-blueprint.md",
-    "notes/subsystems/material-system.md",
-    "notes/subsystems/scene.md",
-    "notes/tutorial/02-pbr-shader.md",
-    "notes/tutorial/03-material-loader.md"
+    "notes/subsystems/geometry.md",
+    "notes/subsystems/engine-loop.md",
+    "notes/roadmaps/main-roadmap/README.md",
+    "notes/roadmaps/main-roadmap/principles.md",
+    "notes/roadmaps/main-roadmap/00-gap-analysis.md",
+    "notes/roadmaps/main-roadmap/phase-1-rendering-depth.md",
+    "notes/roadmaps/main-roadmap/phase-2-foundation-layer.md",
+    "notes/roadmaps/main-roadmap/phase-3-asset-pipeline.md",
+    "notes/roadmaps/main-roadmap/phase-4-animation.md",
+    "notes/roadmaps/main-roadmap/phase-5-physics.md",
+    "notes/roadmaps/main-roadmap/phase-6-gameplay-layer.md",
+    "notes/roadmaps/main-roadmap/phase-7-audio.md",
+    "notes/roadmaps/main-roadmap/phase-8-web-ui.md",
+    "notes/roadmaps/main-roadmap/phase-9-web-editor.md",
+    "notes/roadmaps/main-roadmap/phase-10-ai-agent-mcp.md",
+    "notes/roadmaps/main-roadmap/phase-11-ai-asset-generation.md",
+    "notes/roadmaps/main-roadmap/phase-12-release.md"
   ]
 }

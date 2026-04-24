@@ -77,7 +77,7 @@ The demo SHALL NOT load `Sponza` in the first release; Sponza is a downstream ex
 `scene_builder.{hpp,cpp}` SHALL contain all glTF → current-material bridging logic. It SHALL NOT be lowered into `src/infra/`. Responsibilities:
 
 - `buildMeshFromGltf(loader)` SHALL produce a `Mesh` using the existing `VertexPosNormalUvBone` layout, copying POSITION / NORMAL / TEXCOORD_0 / TANGENT (when present) from the `GLTFLoader` outputs; when `TANGENT` is absent, it SHALL use a controlled placeholder (e.g. `Vec4f{1, 0, 0, 1}`) and log a one-shot warning, and SHALL NOT generate tangents via MikkTSpace or any equivalent algorithm
-- `makeHelmetMaterial(pbrMat, gltfDir)` SHALL start from `LX_infra::loadGenericMaterial("materials/blinnphong_default.material")`, bridge `pbrMat.baseColorTexture` (when non-empty) into the material's albedo texture binding, set `enableAlbedo=1`, set `enableNormal=0` (DamagedHelmet.gltf declares no TANGENT), and finally call `syncGpuData()`
+- `makeHelmetMaterial(pbrMat, gltfDir)` SHALL start from `LX_infra::loadGenericMaterial("assets/assets/materials/blinnphong_default.material")`, bridge `pbrMat.baseColorTexture` (when non-empty) into the material's albedo texture binding, set `enableAlbedo=1`, set `enableNormal=0` (DamagedHelmet.gltf declares no TANGENT), and finally call `syncGpuData()`
 - Other glTF PBR textures (`metallicRoughnessTexture`, `normalTexture`, `occlusionTexture`, `emissiveTexture`) SHALL NOT be auto-bridged in this change; they MAY be surfaced as read-only labels in the UI for future reference
 - `buildGroundNode()` SHALL produce a ground `SceneNode` using the same vertex layout and the same `blinnphong_default.material` with `enableAlbedo=0` and a neutral `baseColor`
 

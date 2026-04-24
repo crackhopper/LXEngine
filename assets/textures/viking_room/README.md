@@ -4,8 +4,15 @@ viking_room 模型的纹理资源。
 
 ## 来源
 
-- 与 viking_room 模型同源
-- **License**: Creative Commons Attribution 4.0 (CC BY 4.0)
+- `viking_room.png`
+  - 与 `assets/models/viking_room/viking_room.obj` 同源
+  - **URL**: https://sketchfab.com/3d-models/viking-room-a49f1b8e4f5c4ecf9e1fe7d81915ad38
+  - **License**: Creative Commons Attribution 4.0 (CC BY 4.0)
+  - **原始作者**: nigelgoh (Sketchfab)
+- `texture.jpg`
+  - **URL**: https://pixabay.com/photos/statue-sculpture-figure-1275469/
+  - **来源平台**: Pixabay
+  - **License**: Pixabay free use / 站点许可条款
 
 ## 用途
 

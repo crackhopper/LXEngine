@@ -4,7 +4,7 @@
 >
 > 如果你刚接触这个概念，先看 [`../concepts/engine-loop.md`](../concepts/engine-loop.md)。本文档更偏当前实现和接口行为。
 >
-> 对应需求归档：`docs/requirements/finished/020-engine-loop-and-scene-lifecycle.md`
+> 对应需求归档：`notes/requirements/finished/020-engine-loop-and-scene-lifecycle.md`
 
 ## 它解决什么问题
 
@@ -151,4 +151,4 @@ App / Demo
 - `notes/architecture.md`
 - `notes/subsystems/vulkan-backend.md`
 - `notes/tutorial/05-app-main.md`
-- `docs/requirements/finished/020-engine-loop-and-scene-lifecycle.md`
+- `notes/requirements/finished/020-engine-loop-and-scene-lifecycle.md`

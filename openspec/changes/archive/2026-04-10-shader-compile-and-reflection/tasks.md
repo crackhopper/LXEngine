@@ -20,8 +20,8 @@
 
 ## 5. PBR Shader 编写
 
-- [x] 5.1 编写 `shaders/glsl/pbr.vert`：包含 camera UBO、model push constant，支持法线和切线属性传递
-- [x] 5.2 编写 `shaders/glsl/pbr.frag`：包含 material UBO、albedo texture，通过 `#ifdef HAS_NORMAL_MAP` 和 `#ifdef HAS_METALLIC_ROUGHNESS` 条件编译额外纹理采样
+- [x] 5.1 编写 `assets/shaders/glsl/pbr.vert`：包含 camera UBO、model push constant，支持法线和切线属性传递
+- [x] 5.2 编写 `assets/shaders/glsl/pbr.frag`：包含 material UBO、albedo texture，通过 `#ifdef HAS_NORMAL_MAP` 和 `#ifdef HAS_METALLIC_ROUGHNESS` 条件编译额外纹理采样
 
 ## 6. 集成测试
 

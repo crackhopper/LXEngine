@@ -7,7 +7,7 @@
 - 新增 infra 层 shader 编译器实现（`src/infra/shader_compiler/`），基于 **shaderc** 进行运行时 GLSL→SPIR-V 编译，支持通过 `ShaderVariant` 注入预定义宏
 - 新增 infra 层 SPIR-V reflection 解析（基于 **SPIRV-Cross** 或 **spirv-reflect**），从编译产物中提取 `ShaderResourceBinding` 列表
 - 新增 `IShader` 的具体实现类，满足 core 层接口约定（`getAllStages`、`getReflectionBindings`、`findBinding`、`getProgramHash`）
-- 新增一套 PBR shader（`shaders/glsl/pbr.vert` / `pbr.frag`），包含条件编译宏（如 `HAS_NORMAL_MAP`、`HAS_METALLIC_ROUGHNESS`）
+- 新增一套 PBR shader（`assets/shaders/glsl/pbr.vert` / `pbr.frag`），包含条件编译宏（如 `HAS_NORMAL_MAP`、`HAS_METALLIC_ROUGHNESS`）
 - 新增集成测试：加载 PBR shader → 编译 → 提取 reflection → 打印 binding 信息 → 演示如何据此创建 `VkDescriptorSetLayout`
 
 ## Capabilities
@@ -25,4 +25,4 @@
 - **新增依赖**：shaderc（运行时编译）、SPIRV-Cross 或 spirv-reflect（reflection 解析）——均可通过 Vulkan SDK 获取
 - **构建系统**：需修改 `src/infra/CMakeLists.txt` 链接新库，新增 `src/test/` 下的集成测试 target
 - **代码影响**：仅新增文件，不修改已有 core 接口；`ShaderProgramSet::getShader()` 可在后续对接编译器实现
-- **Shaders 目录**：新增 `shaders/glsl/pbr.vert` 和 `pbr.frag`
+- **Shaders 目录**：新增 `assets/shaders/glsl/pbr.vert` 和 `pbr.frag`

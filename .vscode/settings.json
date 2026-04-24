@@ -110,5 +110,11 @@
   },
   "[json]": {
     "editor.defaultFormatter": "vscode.json-language-features"
+  },
+  "files.exclude": {
+    "**/.*/": true,
+    "**/.vscode/": false,
+    "**/.claude/": false,
+    "**/.codex/": false
   }
 }
