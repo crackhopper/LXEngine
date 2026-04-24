@@ -64,10 +64,7 @@ inline const char *toString(BlendFactor f) {
 也不关心 shader 内部逻辑；它回答的问题是“同一份几何和 shader，
 在这一步要用怎样的 raster/depth/blend 规则去提交 pipeline”。
 
-这里同时保留 `getHash()` 和 `getPipelineSignature()` 两条导出路径：
-
-- `getHash()` 面向 C++ 侧缓存键，追求便于组合和快速比较
-- `getPipelineSignature()` 面向 `StringID` 组合签名，追求结构可追踪性
+这里导出 `getPipelineSignature()`，面向 `StringID` 组合签名，追求结构可追踪性。
 
 也就是说，这个类型不是运行时开关集合，而是 pass 身份的一部分。
 */
@@ -85,18 +82,6 @@ struct RenderState {
            depthWriteEnable == rhs.depthWriteEnable && depthOp == rhs.depthOp &&
            blendEnable == rhs.blendEnable && srcBlend == rhs.srcBlend &&
            dstBlend == rhs.dstBlend;
-  }
-
-  usize getHash() const {
-    usize h = 0;
-    hash_combine(h, static_cast<u32>(cullMode));
-    hash_combine(h, depthTestEnable);
-    hash_combine(h, depthWriteEnable);
-    hash_combine(h, static_cast<u32>(depthOp));
-    hash_combine(h, blendEnable);
-    hash_combine(h, static_cast<u32>(srcBlend));
-    hash_combine(h, static_cast<u32>(dstBlend));
-    return h;
   }
 
   StringID getPipelineSignature() const {
@@ -129,12 +114,6 @@ struct RenderState {
 struct MaterialPassDefinition {
   RenderState renderState;
   ShaderProgramSet shaderProgram;
-
-  usize getHash() const {
-    usize h = renderState.getHash();
-    hash_combine(h, shaderProgram.getHash());
-    return h;
-  }
 
   StringID getPipelineSignature() const {
     StringID fields[] = {

@@ -209,14 +209,6 @@ struct ShaderProgramSet {
   std::vector<ShaderVariant> variants;
   IShaderSharedPtr shader;
 
-  usize getHash() const {
-    if (!m_dirty)
-      return m_cachedHash;
-
-    recomputeHash();
-    return m_cachedHash;
-  }
-
   StringID getPipelineSignature() const {
     auto &tbl = GlobalStringTable::get();
     std::vector<std::string> enabled;
@@ -236,12 +228,6 @@ struct ShaderProgramSet {
     return tbl.compose(TypeTag::ShaderProgram, parts);
   }
 
-  void markDirty() { m_dirty = true; }
-
-  bool operator==(const ShaderProgramSet &rhs) const {
-    return getHash() == rhs.getHash();
-  }
-
   IShaderSharedPtr getShader() const { return shader; }
 
   bool hasEnabledVariant(const std::string &macroName) const {
@@ -251,31 +237,6 @@ struct ShaderProgramSet {
     }
     return false;
   }
-
-private:
-  void recomputeHash() const {
-    usize h = 0;
-    hash_combine(h, shaderName);
-
-    // 收集 enabled
-    std::vector<std::string> enabled;
-    enabled.reserve(variants.size());
-
-    for (const auto &v : variants) {
-      if (v.enabled)
-        enabled.push_back(v.macroName);
-    }
-
-    std::sort(enabled.begin(), enabled.end());
-
-    for (const auto &m : enabled)
-      hash_combine(h, m);
-
-    m_cachedHash = h;
-    m_dirty = false;
-  }
-  mutable usize m_cachedHash = 0;
-  mutable bool m_dirty = true;
 };
 
 } // namespace LX_core

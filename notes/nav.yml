@@ -51,14 +51,9 @@ nav:
   - 源码分析:
       - source_analysis/index.md
       - "@source_analysis"
-  - 后端实现:
-      - Vulkan Backend:
-          - vulkan-backend/index.md
-          - Vulkan Backend 总体结构与生命周期: vulkan-backend/01-overview-and-lifecycle.md
-          - Vulkan Backend 模块二：设备、RenderPass 与 Swapchain: vulkan-backend/02-device-and-swapchain.md
-          - Vulkan Backend 模块三：资源同步: vulkan-backend/03-resource-sync.md
-          - Vulkan Backend 模块四：Pipeline 与 Descriptor: vulkan-backend/04-pipeline-and-descriptors.md
-          - Vulkan Backend 模块五：命令录制与提交: vulkan-backend/05-command-recording-and-draw.md
+  - 实现技巧:
+      - impl_tricks/index.md
+      - 类型擦除接口 + 类型标签校验 (ParameterBuffer): impl_tricks/01-tagged-type-erased-write.md
   - Roadmap:
       - 总览: roadmaps/README.md
       - "@roadmaps"
