@@ -42,7 +42,7 @@
 - [设计 / 术语概念](glossary.md)：项目自造词与关键对象的一句话定义。
 - [设计 / 项目目录结构](project-layout.md)：仓库分层、主目录职责、事实来源。
 - [设计 / 子系统](subsystems/index.md)：逐个模块看 shader、material、frame graph、scene、backend。
-- [后端实现 / Vulkan Backend](vulkan-backend/index.md)：按模块阅读 Vulkan 后端的具体实现路径。
+- [实现技巧](impl_tricks/index.md)：从现有代码里抽取出来的通用 trick / 手法 / 小范式。
 - [Roadmap](roadmaps/README.md)：从当前基座走向 AI Native 小型游戏引擎的阶段规划。
 - [相关工具](tools/index.md)：`notes` 站点如何生成、如何索引、如何本地预览。
 

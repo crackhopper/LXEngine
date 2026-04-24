@@ -127,7 +127,7 @@ struct ShaderProgramSet {
   std::string shaderName;
   std::vector<ShaderVariant> variants;
 
-  size_t getHash() const;  // 缓存哈希，按 enabled macros 排序后计算
+  StringID getPipelineSignature() const;  // 按 enabled macros 排序后组合稳定 signature
 };
 ```
 
