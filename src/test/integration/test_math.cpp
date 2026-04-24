@@ -43,16 +43,16 @@ Quatf hamiltonProduct(const Quatf &lhs, const Quatf &rhs) {
                lhs.v.cross(rhs.v) + rhs.v * lhs.w + lhs.v * rhs.w);
 }
 
-std::size_t expectedHash(const Vec3f &v) {
-  std::size_t h = 0;
+usize expectedHash(const Vec3f &v) {
+  usize h = 0;
   for (int i = 0; i < 3; ++i) {
     hash_combine(h, std::hash<u32>()(std::bit_cast<u32>(v[i])));
   }
   return h;
 }
 
-std::size_t expectedHash(const Vec2d &v) {
-  std::size_t h = 0;
+usize expectedHash(const Vec2d &v) {
+  usize h = 0;
   for (int i = 0; i < 2; ++i) {
     hash_combine(h, std::hash<u64>()(std::bit_cast<u64>(v[i])));
   }
@@ -109,8 +109,8 @@ void testQuaternionRotateVector() {
 
 void testVecFloatHashUsesBitCastReference() {
   const Vec3f v{1.25f, -0.0f, std::numeric_limits<f32>::infinity()};
-  const std::size_t actual = Vec3f::Hash{}(v);
-  const std::size_t expected = expectedHash(v);
+  const usize actual = Vec3f::Hash{}(v);
+  const usize expected = expectedHash(v);
 
   EXPECT(actual == expected, "Vec3f::Hash must use bit_cast-based float hash");
   EXPECT(actual == Vec3f::Hash{}(v), "Vec3f::Hash must be deterministic");
@@ -118,8 +118,8 @@ void testVecFloatHashUsesBitCastReference() {
 
 void testVecDoubleHashUsesBitCastReference() {
   const Vec2d v{1.0 / 3.0, -0.0};
-  const std::size_t actual = Vec2d::Hash{}(v);
-  const std::size_t expected = expectedHash(v);
+  const usize actual = Vec2d::Hash{}(v);
+  const usize expected = expectedHash(v);
 
   EXPECT(actual == expected, "Vec2d::Hash must use bit_cast-based double hash");
   EXPECT(actual == Vec2d::Hash{}(v), "Vec2d::Hash must be deterministic");

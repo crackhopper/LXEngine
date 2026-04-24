@@ -42,7 +42,7 @@ SDL_Event makeMouseMotionEvent(float x, float y, float xrel, float yrel) {
   return e;
 }
 
-SDL_Event makeMouseButtonEvent(SDL_EventType type, uint8_t button, bool down) {
+SDL_Event makeMouseButtonEvent(SDL_EventType type, u8 button, bool down) {
   SDL_Event e{};
   e.type = type;
   e.button.button = button;

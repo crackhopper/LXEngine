@@ -22,7 +22,7 @@
 namespace {
 
 struct TestUniformResource final : public LX_core::IGpuResource {
-  explicit TestUniformResource(uint32_t value) : value(value) {}
+  explicit TestUniformResource(u32 value) : value(value) {}
 
   LX_core::ResourceType getType() const override {
     return LX_core::ResourceType::UniformBuffer;
@@ -32,7 +32,7 @@ struct TestUniformResource final : public LX_core::IGpuResource {
     return sizeof(value);
   }
 
-  uint32_t value = 0;
+  u32 value = 0;
 };
 
 template <typename T, typename... Args>

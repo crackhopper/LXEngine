@@ -48,18 +48,18 @@ Every leaf resource participating in pipeline identity SHALL provide a `StringID
 - **THEN** both return the same `StringID` id under the current implementation
 
 ### Requirement: MaterialTemplate stores passes by StringID and composes per-pass signature
-`MaterialTemplate` SHALL store pass entries in `std::unordered_map<StringID, MaterialPassDefinition, StringID::Hash>`. Its `setPass` and `getEntry` methods SHALL accept `StringID` pass keys. It SHALL provide `StringID getPipelinePassSignature(StringID pass) const` that looks up the entry for `pass` and returns `entry.getPipelineSignature()` if present. If `pass` is not configured, the method MUST return `StringID{}` (the default / id-0 sentinel).
+`MaterialTemplate` SHALL store pass entries in `std::unordered_map<StringID, MaterialPassDefinition, StringID::Hash>`. Its `setPass` and `getEntry` methods SHALL accept `StringID` pass keys. It SHALL provide `StringID getPipelineSignature(StringID pass) const` that looks up the entry for `pass` and returns `entry.getPipelineSignature()` if present. If `pass` is not configured, the method MUST return `StringID{}` (the default / id-0 sentinel).
 
 #### Scenario: Pass lookup by StringID returns the configured entry
-- **WHEN** `tmpl->setPass(Pass_Forward, entry)` is called, then `tmpl->getPipelinePassSignature(Pass_Forward)` is queried
+- **WHEN** `tmpl->setPass(Pass_Forward, entry)` is called, then `tmpl->getPipelineSignature(Pass_Forward)` is queried
 - **THEN** the returned `StringID` equals `entry.getPipelineSignature()`
 
 #### Scenario: Missing pass returns default StringID
-- **WHEN** `tmpl->getPipelinePassSignature(Pass_Shadow)` is called but `Pass_Shadow` was never set
+- **WHEN** `tmpl->getPipelineSignature(Pass_Shadow)` is called but `Pass_Shadow` was never set
 - **THEN** the returned `StringID.id` equals `0`
 
 ### Requirement: MaterialInstance exposes pass-aware getPipelineSignature
-`MaterialInstance` SHALL provide `StringID getPipelineSignature(StringID pass) const`, returning `compose(TypeTag::MaterialRender, {templatePassSig})` where `templatePassSig` is `m_template->getPipelinePassSignature(pass)`.
+`MaterialInstance` SHALL provide `StringID getPipelineSignature(StringID pass) const`, returning `compose(TypeTag::MaterialRender, {templatePassSig})` where `templatePassSig` is `m_template->getPipelineSignature(pass)`.
 
 #### Scenario: Two MaterialInstances sharing the same template and pass produce the same signature
 - **WHEN** two `MaterialInstance` objects built from the same `MaterialTemplate` are queried with `getPipelineSignature(Pass_Forward)`

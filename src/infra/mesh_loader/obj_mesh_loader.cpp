@@ -17,10 +17,10 @@ ObjLoader::ObjLoader() : pImpl(std::make_unique<Impl>()) {}
 
 ObjLoader::~ObjLoader() = default;
 
-static uint64_t makeKey(int a, int b, int c) {
-  return (static_cast<uint64_t>(a + 0x7FFFFFFF) << 42) |
-         (static_cast<uint64_t>(b + 0x7FFFFFFF) << 21) |
-         static_cast<uint64_t>(c + 0x7FFFFFFF);
+static u64 makeKey(int a, int b, int c) {
+  return (static_cast<u64>(a + 0x7FFFFFFF) << 42) |
+         (static_cast<u64>(b + 0x7FFFFFFF) << 21) |
+         static_cast<u64>(c + 0x7FFFFFFF);
 }
 
 void ObjLoader::load(const std::string &filename) {
@@ -40,11 +40,11 @@ void ObjLoader::load(const std::string &filename) {
   pImpl->texCoords.clear();
   pImpl->indices.clear();
 
-  std::unordered_map<uint64_t, u32> vertexMap;
+  std::unordered_map<u64, u32> vertexMap;
 
   for (const auto &shape : shapes) {
     for (const auto &index : shape.mesh.indices) {
-      uint64_t key =
+      u64 key =
           makeKey(index.vertex_index, index.normal_index, index.texcoord_index);
 
       if (vertexMap.find(key) == vertexMap.end()) {

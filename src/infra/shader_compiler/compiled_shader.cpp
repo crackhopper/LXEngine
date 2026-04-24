@@ -57,10 +57,10 @@ CompiledShader::findVertexInput(u32 location) const {
   return std::nullopt;
 }
 
-size_t CompiledShader::getProgramHash() const { return m_hash; }
+usize CompiledShader::getProgramHash() const { return m_hash; }
 
 void CompiledShader::buildIndices() {
-  for (size_t i = 0; i < m_bindings.size(); ++i) {
+  for (usize i = 0; i < m_bindings.size(); ++i) {
     const auto &b = m_bindings[i];
     const u32 key = (b.set << 16) | b.binding;
     m_setBindingIndex[key] = i;
@@ -68,13 +68,13 @@ void CompiledShader::buildIndices() {
       m_nameIndex[b.name] = i;
     }
   }
-  for (size_t i = 0; i < m_vertexInputs.size(); ++i) {
+  for (usize i = 0; i < m_vertexInputs.size(); ++i) {
     m_vertexInputIndex[m_vertexInputs[i].location] = i;
   }
 }
 
 void CompiledShader::computeHash() {
-  size_t h = 0;
+  usize h = 0;
   for (const auto &stage : m_stages) {
     for (auto word : stage.bytecode) {
       LX_core::hash_combine(h, word);

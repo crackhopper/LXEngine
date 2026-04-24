@@ -62,7 +62,7 @@ public:
     }
     return std::nullopt;
   }
-  size_t getProgramHash() const override { return 0; }
+  usize getProgramHash() const override { return 0; }
 
 private:
   std::vector<ShaderStageCode> m_stages;
@@ -206,10 +206,10 @@ void test_setFloat_and_setInt_at_reflected_offsets() {
 
   const auto &buf = mat->getParameterBufferBytes();
   float spec = 0.0f;
-  int32_t ea = -1, en = -1;
+  i32 ea = -1, en = -1;
   std::memcpy(&spec, buf.data() + 16, sizeof(float));
-  std::memcpy(&ea, buf.data() + 20, sizeof(int32_t));
-  std::memcpy(&en, buf.data() + 24, sizeof(int32_t));
+  std::memcpy(&ea, buf.data() + 20, sizeof(i32));
+  std::memcpy(&en, buf.data() + 24, sizeof(i32));
   REQUIRE(spec == 2.5f);
   REQUIRE(ea == 1);
   REQUIRE(en == 0);
@@ -239,7 +239,7 @@ void test_descriptor_resources_reflects_buffer_writes() {
   mat->setParameter(StringID("MaterialUBO"), StringID("shininess"), 7.0f);
   auto resources = mat->getDescriptorResources(Pass_Forward);
   REQUIRE(!resources.empty());
-  auto *raw = reinterpret_cast<const uint8_t *>(resources[0]->getRawData());
+  auto *raw = reinterpret_cast<const u8 *>(resources[0]->getRawData());
   float shiny = 0.0f;
   std::memcpy(&shiny, raw + 12, sizeof(float));
   REQUIRE(shiny == 7.0f);

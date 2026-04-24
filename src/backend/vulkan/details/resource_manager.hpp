@@ -76,7 +76,7 @@ public:
   void preloadPipelines(const std::vector<LX_core::PipelineBuildDesc> &infos);
 
   PipelineCache &getPipelineCache() { return *m_pipelineCache; }
-  size_t getCachedResourceCount() const { return m_gpuResources.size(); }
+  usize getCachedResourceCount() const { return m_gpuResources.size(); }
 
 private:
   std::shared_ptr<VulkanAnyResource>

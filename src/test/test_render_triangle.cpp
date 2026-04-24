@@ -140,7 +140,7 @@ int main() {
   loop.initialize(window, renderer);
   loop.startScene(scene);
 
-  uint64_t frameCounter = 0;
+  u64 frameCounter = 0;
   loop.setUpdateHook([&](Scene &, const Clock &clock) {
     // Tab key edge detection: toggle on press
     bool tabDown = input->isKeyDown(KeyCode::Tab);
@@ -180,7 +180,7 @@ int main() {
             Vec4f{1.0f, 1.0f, 0.0f, 1.0f},
             Vec4f{1.0f, -1.0f, 0.0f, 1.0f},
         };
-        for (size_t i = 0; i < debugPositions.size(); ++i) {
+        for (usize i = 0; i < debugPositions.size(); ++i) {
           const Vec4f viewPos = view * debugPositions[i];
           const Vec4f clipPos = proj * viewPos;
           std::cerr << "[TriangleTest] vertex" << i << " view=(" << viewPos.x

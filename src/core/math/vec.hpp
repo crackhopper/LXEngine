@@ -95,10 +95,10 @@ template <typename Derived, typename T, int N> struct VecBase {
 
   // ---------- hash 支持；方便顶点去重 ----------
   struct Hash {
-    std::size_t operator()(const Derived &v) const {
-      std::size_t h = 0;
+    usize operator()(const Derived &v) const {
+      usize h = 0;
       for (int i = 0; i < N; ++i) {
-        std::size_t hi;
+        usize hi;
         if constexpr (std::is_floating_point<T>::value) {
           if constexpr (std::is_same_v<T, f32>) {
             hi = std::hash<u32>()(std::bit_cast<u32>(v[i]));

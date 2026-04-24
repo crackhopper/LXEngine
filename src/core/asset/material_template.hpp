@@ -53,7 +53,7 @@ public:
     return std::nullopt;
   }
 
-  StringID getPipelinePassSignature(StringID pass) const {
+  StringID getPipelineSignature(StringID pass) const {
     auto passDefinition = getPassDefinition(pass);
     if (!passDefinition)
       return StringID{};

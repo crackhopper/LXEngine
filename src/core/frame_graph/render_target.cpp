@@ -4,8 +4,8 @@
 
 namespace LX_core {
 
-size_t RenderTarget::getHash() const {
-  size_t h = 0;
+usize RenderTarget::getHash() const {
+  usize h = 0;
   hash_combine(h, static_cast<u32>(colorFormat));
   hash_combine(h, static_cast<u32>(depthFormat));
   hash_combine(h, static_cast<u32>(sampleCount));

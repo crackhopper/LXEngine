@@ -8,10 +8,10 @@ ParameterBuffer::ParameterBuffer(StringID bindingName,
                                  const ShaderResourceBinding &binding,
                                  ResourceType resType)
     : m_bindingName(bindingName), m_binding(binding),
-      m_buffer(binding.size, uint8_t{0}), m_resType(resType) {}
+      m_buffer(binding.size, u8{0}), m_resType(resType) {}
 
 void ParameterBuffer::writeBindingMember(StringID memberName, const void *src,
-                                         size_t nbytes,
+                                         usize nbytes,
                                          ShaderPropertyType expected) {
   for (const auto &member : m_binding.get().members) {
     if (StringID(member.name) != memberName) {
@@ -19,7 +19,7 @@ void ParameterBuffer::writeBindingMember(StringID memberName, const void *src,
     }
     assert(member.type == expected &&
            "MaterialInstance setter type does not match reflected member type");
-    assert(static_cast<size_t>(member.offset) + nbytes <= m_buffer.size() &&
+    assert(static_cast<usize>(member.offset) + nbytes <= m_buffer.size() &&
            "UBO write would overflow the reflected buffer");
     std::memcpy(m_buffer.data() + member.offset, src, nbytes);
     m_dirty = true;

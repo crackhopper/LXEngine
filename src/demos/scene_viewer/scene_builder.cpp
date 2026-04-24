@@ -91,7 +91,7 @@ MeshSharedPtr buildMeshFromGltf(const infra::GLTFLoader& loader) {
   const Vec4i zeroBones{0, 0, 0, 0};
   const Vec4f zeroWeights{0.0f, 0.0f, 0.0f, 0.0f};
 
-  for (size_t i = 0; i < positions.size(); ++i) {
+  for (usize i = 0; i < positions.size(); ++i) {
     const Vec3f n = i < normals.size() ? normals[i] : fallbackNormal;
     const Vec2f uv = i < uvs.size() ? uvs[i] : fallbackUv;
     const Vec4f t = i < tangents.size() ? tangents[i] : fallbackTangent;
@@ -99,7 +99,7 @@ MeshSharedPtr buildMeshFromGltf(const infra::GLTFLoader& loader) {
   }
 
   auto vb = VertexBuffer<VertexPosNormalUvBone>::create(std::move(verts));
-  auto ib = IndexBuffer::create(std::vector<uint32_t>(indices));
+  auto ib = IndexBuffer::create(std::vector<u32>(indices));
   return Mesh::create(vb, ib);
 }
 
@@ -117,10 +117,10 @@ CombinedTextureSamplerSharedPtr loadCombinedTexture(
                              + path.string());
   }
 
-  const size_t byteCount = static_cast<size_t>(w) * static_cast<size_t>(h) * 4;
-  std::vector<uint8_t> pixels(loader.getData(), loader.getData() + byteCount);
+  const usize byteCount = static_cast<usize>(w) * static_cast<usize>(h) * 4;
+  std::vector<u8> pixels(loader.getData(), loader.getData() + byteCount);
 
-  TextureDesc desc{static_cast<uint32_t>(w), static_cast<uint32_t>(h),
+  TextureDesc desc{static_cast<u32>(w), static_cast<u32>(h),
                    TextureFormat::RGBA8};
   auto tex = std::make_shared<Texture>(desc, std::move(pixels));
   return std::make_shared<CombinedTextureSampler>(std::move(tex));
@@ -213,7 +213,7 @@ MeshSharedPtr buildGroundMesh() {
 
   auto vb = VertexBuffer<VertexPosNormalUvBone>::create(std::move(verts));
   auto ib = IndexBuffer::create(
-      std::vector<uint32_t>{0, 1, 2, 0, 2, 3});
+      std::vector<u32>{0, 1, 2, 0, 2, 3});
   return Mesh::create(vb, ib);
 }
 

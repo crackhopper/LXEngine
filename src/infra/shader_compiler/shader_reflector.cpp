@@ -155,8 +155,8 @@ struct SetBindingKey {
 };
 
 struct SetBindingHash {
-  size_t operator()(const SetBindingKey &k) const {
-    return std::hash<uint64_t>{}((uint64_t(k.set) << 32) | k.binding);
+  usize operator()(const SetBindingKey &k) const {
+    return std::hash<u64>{}((u64(k.set) << 32) | k.binding);
   }
 };
 
@@ -258,7 +258,7 @@ ShaderReflector::reflect(const std::vector<LX_core::ShaderStageCode> &stages) {
         } else if (!it->second.members.empty() && !b.members.empty()) {
           assert(it->second.members.size() == b.members.size() &&
                  "ShaderReflector: UBO member count mismatch across stages");
-          for (size_t i = 0; i < it->second.members.size(); ++i) {
+          for (usize i = 0; i < it->second.members.size(); ++i) {
             const auto &a = it->second.members[i];
             const auto &c = b.members[i];
             (void)a;

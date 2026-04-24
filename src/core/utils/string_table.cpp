@@ -46,7 +46,7 @@ GlobalStringTable::GlobalStringTable() : m_nextID(1) {
   m_idToString.reserve(1024);
 }
 
-uint32_t GlobalStringTable::getOrCreateID(const std::string &name) {
+u32 GlobalStringTable::getOrCreateID(const std::string &name) {
   {
     std::shared_lock<std::shared_mutex> lock(m_mutex);
     auto it = m_stringToId.find(name);
@@ -58,12 +58,12 @@ uint32_t GlobalStringTable::getOrCreateID(const std::string &name) {
   return getOrCreateIDLocked(name);
 }
 
-uint32_t GlobalStringTable::getOrCreateIDLocked(const std::string &name) {
+u32 GlobalStringTable::getOrCreateIDLocked(const std::string &name) {
   auto it = m_stringToId.find(name);
   if (it != m_stringToId.end())
     return it->second;
 
-  uint32_t newID = m_nextID++;
+  u32 newID = m_nextID++;
   m_stringToId[name] = newID;
 
   if (newID >= m_idToString.size())
@@ -73,7 +73,7 @@ uint32_t GlobalStringTable::getOrCreateIDLocked(const std::string &name) {
   return newID;
 }
 
-const std::string &GlobalStringTable::getName(uint32_t id) const {
+const std::string &GlobalStringTable::getName(u32 id) const {
   std::shared_lock<std::shared_mutex> lock(m_mutex);
   if (id < m_idToString.size() && !m_idToString[id].empty())
     return m_idToString[id];
@@ -91,7 +91,7 @@ StringID GlobalStringTable::compose(TypeTag tag,
   key.reserve(tagName(tag).size() + 2 + fields.size() * 6);
   key.append(tagName(tag));
   key.push_back('(');
-  for (size_t i = 0; i < fields.size(); ++i) {
+  for (usize i = 0; i < fields.size(); ++i) {
     if (i > 0)
       key.push_back(',');
     key.append(std::to_string(fields[i].id));
@@ -110,7 +110,7 @@ StringID GlobalStringTable::compose(TypeTag tag,
   if (existing != m_stringToId.end())
     return StringID{existing->second};
 
-  uint32_t newID = getOrCreateIDLocked(key);
+  u32 newID = getOrCreateIDLocked(key);
   ComposedEntry entry;
   entry.tag = tag;
   entry.fields.assign(fields.begin(), fields.end());
@@ -141,7 +141,7 @@ std::string GlobalStringTable::toDebugString(StringID id) const {
   return toDebugStringImpl(id.id, 0);
 }
 
-std::string GlobalStringTable::toDebugStringImpl(uint32_t id, int depth) const {
+std::string GlobalStringTable::toDebugStringImpl(u32 id, int depth) const {
   if (depth > kMaxDebugDepth)
     return "<...>";
 
@@ -156,7 +156,7 @@ std::string GlobalStringTable::toDebugStringImpl(uint32_t id, int depth) const {
     std::string out;
     out.append(tagName(tag));
     out.push_back('(');
-    for (size_t i = 0; i < fields.size(); ++i) {
+    for (usize i = 0; i < fields.size(); ++i) {
       if (i > 0)
         out.append(", ");
       out.append(toDebugStringImpl(fields[i].id, depth + 1));

@@ -57,7 +57,7 @@ struct DescriptorLayoutKey {
 
 class DescriptorLayoutHasher {
 public:
-  size_t operator()(const DescriptorLayoutKey &key) const;
+  usize operator()(const DescriptorLayoutKey &key) const;
 };
 
 class VulkanDescriptorManager;
