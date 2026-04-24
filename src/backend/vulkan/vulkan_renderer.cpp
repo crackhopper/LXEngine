@@ -184,7 +184,7 @@ public:
     m_resourceManager->preloadPipelines(infos);
 
     if (expRendererDebugEnabled()) {
-      size_t itemCount = 0;
+      usize itemCount = 0;
       for (const auto &pass : m_frameGraph.getPasses()) {
         itemCount += pass.queue.getItems().size();
       }

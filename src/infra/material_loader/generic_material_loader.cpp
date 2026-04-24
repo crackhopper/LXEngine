@@ -189,7 +189,7 @@ void applyParameters(LX_core::MaterialInstance &mat,
       mat.setParameter(bindingId, memberId, val.as<float>());
       break;
     case LX_core::ShaderPropertyType::Int:
-      mat.setParameter(bindingId, memberId, val.as<int32_t>());
+      mat.setParameter(bindingId, memberId, val.as<i32>());
       break;
     case LX_core::ShaderPropertyType::Vec3: {
       auto seq = val.as<std::vector<float>>();
@@ -246,7 +246,7 @@ void applyResources(LX_core::MaterialInstance &mat,
     desc.width = static_cast<u32>(loader.getWidth());
     desc.height = static_cast<u32>(loader.getHeight());
     desc.format = LX_core::TextureFormat::RGBA8;
-    auto *rawData = static_cast<const uint8_t *>(loader.getData());
+    auto *rawData = static_cast<const u8 *>(loader.getData());
     std::vector<u8> texData(rawData,
                             rawData + desc.width * desc.height * 4);
     auto tex = std::make_shared<LX_core::Texture>(desc, std::move(texData));

@@ -69,7 +69,7 @@ static KeyCode mapSdlScancode(SDL_Scancode sc) {
   }
 }
 
-static MouseButton mapSdlMouseButton(uint8_t btn) {
+static MouseButton mapSdlMouseButton(u8 btn) {
   switch (btn) {
   case SDL_BUTTON_LEFT:   return MouseButton::Left;
   case SDL_BUTTON_RIGHT:  return MouseButton::Right;
@@ -79,13 +79,13 @@ static MouseButton mapSdlMouseButton(uint8_t btn) {
 }
 
 bool Sdl3InputState::isKeyDown(KeyCode code) const {
-  auto idx = static_cast<size_t>(code);
+  auto idx = static_cast<usize>(code);
   if (idx >= m_keyDown.size()) return false;
   return m_keyDown[idx];
 }
 
 bool Sdl3InputState::isMouseButtonDown(MouseButton button) const {
-  auto idx = static_cast<size_t>(button);
+  auto idx = static_cast<usize>(button);
   if (idx >= m_mouseButtonDown.size()) return false;
   return m_mouseButtonDown[idx];
 }
@@ -113,7 +113,7 @@ bool Sdl3InputState::handleSdlEvent(const SDL_Event& event) {
   case SDL_EVENT_KEY_UP: {
     auto kc = mapSdlScancode(event.key.scancode);
     if (kc != KeyCode::Unknown) {
-      m_keyDown[static_cast<size_t>(kc)] = event.key.down;
+      m_keyDown[static_cast<usize>(kc)] = event.key.down;
     }
     break;
   }
@@ -126,7 +126,7 @@ bool Sdl3InputState::handleSdlEvent(const SDL_Event& event) {
   case SDL_EVENT_MOUSE_BUTTON_UP: {
     auto mb = mapSdlMouseButton(event.button.button);
     if (mb != MouseButton::Count) {
-      m_mouseButtonDown[static_cast<size_t>(mb)] = event.button.down;
+      m_mouseButtonDown[static_cast<usize>(mb)] = event.button.down;
     }
     break;
   }

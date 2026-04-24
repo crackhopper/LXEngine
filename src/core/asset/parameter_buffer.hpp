@@ -34,18 +34,18 @@ public:
   StringID getBindingName() const override { return m_bindingName; }
 
   const ShaderResourceBinding &getBinding() const { return m_binding.get(); }
-  const std::vector<uint8_t> &getBuffer() const { return m_buffer; }
+  const std::vector<u8> &getBuffer() const { return m_buffer; }
 
   bool hasPendingSync() const { return m_dirty; }
   void clearPendingSync() { m_dirty = false; }
 
-  void writeBindingMember(StringID memberName, const void *src, size_t nbytes,
+  void writeBindingMember(StringID memberName, const void *src, usize nbytes,
                           ShaderPropertyType expected);
 
 private:
   StringID m_bindingName;
   std::reference_wrapper<const ShaderResourceBinding> m_binding;
-  std::vector<uint8_t> m_buffer;
+  std::vector<u8> m_buffer;
   ResourceType m_resType;
   bool m_dirty = false;
 };

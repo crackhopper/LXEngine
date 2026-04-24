@@ -281,7 +281,7 @@ void GLTFLoader::load(const std::string &filename) {
     // Non-indexed primitive: synthesize a sequential index buffer so the
     // caller can always rely on indices.size() % 3 == 0.
     pImpl->indices.resize(pImpl->positions.size());
-    for (size_t i = 0; i < pImpl->positions.size(); ++i) {
+    for (usize i = 0; i < pImpl->positions.size(); ++i) {
       pImpl->indices[i] = static_cast<u32>(i);
     }
   }

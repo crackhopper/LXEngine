@@ -4,8 +4,8 @@ namespace LX_infra {
 
 namespace {
 
-LX_core::CombinedTextureSamplerSharedPtr makePlaceholder(uint8_t r, uint8_t g,
-                                                    uint8_t b, uint8_t a) {
+LX_core::CombinedTextureSamplerSharedPtr makePlaceholder(u8 r, u8 g, u8 b,
+                                                         u8 a) {
   std::vector<u8> data = {r, g, b, a};
   auto tex = std::make_shared<LX_core::Texture>(
       LX_core::TextureDesc{1, 1, LX_core::TextureFormat::RGBA8},

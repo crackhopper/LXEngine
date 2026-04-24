@@ -19,7 +19,7 @@ VkShaderStageFlags toVkShaderStageFlags(LX_core::ShaderStage mask);
 bool DescriptorLayoutKey::operator==(const DescriptorLayoutKey &other) const {
   if (bindings.size() != other.bindings.size())
     return false;
-  for (size_t i = 0; i < bindings.size(); ++i) {
+  for (usize i = 0; i < bindings.size(); ++i) {
     const auto &a = bindings[i];
     const auto &b = other.bindings[i];
     if (a.set != b.set || a.binding != b.binding || a.type != b.type ||
@@ -29,11 +29,11 @@ bool DescriptorLayoutKey::operator==(const DescriptorLayoutKey &other) const {
   return true;
 }
 
-size_t
+usize
 DescriptorLayoutHasher::operator()(const DescriptorLayoutKey &key) const {
-  size_t res = 0;
+  usize res = 0;
   for (const auto &b : key.bindings) {
-    size_t bindingHash = 0;
+    usize bindingHash = 0;
     LX_core::hash_combine(bindingHash, b.set);
     LX_core::hash_combine(bindingHash, b.binding);
     LX_core::hash_combine(bindingHash, static_cast<u32>(b.type));

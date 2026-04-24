@@ -10,7 +10,7 @@
 
 namespace LX_core {
 
-using VisibilityLayerMask = uint32_t;
+using VisibilityLayerMask = u32;
 inline constexpr VisibilityLayerMask VisibilityMask_All = 0xffffffffu;
 
 // CameraData is the GPU-facing UBO view of a Camera. The Camera object owns

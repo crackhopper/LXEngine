@@ -95,7 +95,7 @@ void test_link_level_symbols_reachable() {
       reinterpret_cast<void*>(pDirectionalLightPanel),
   };
 
-  for (size_t i = 0; i < symbols.size(); ++i) {
+  for (usize i = 0; i < symbols.size(); ++i) {
     EXPECT(symbols[i] != nullptr,
            "debug_ui symbol at index " << i << " resolved to null");
   }

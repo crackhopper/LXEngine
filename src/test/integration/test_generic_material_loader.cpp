@@ -251,13 +251,13 @@ void test_placeholder_textures() {
   REQUIRE(black != nullptr);
   REQUIRE(normal != nullptr);
 
-  auto *wd = static_cast<const uint8_t *>(white->getRawData());
+  auto *wd = static_cast<const u8 *>(white->getRawData());
   REQUIRE(wd[0] == 255 && wd[1] == 255 && wd[2] == 255 && wd[3] == 255);
 
-  auto *bd = static_cast<const uint8_t *>(black->getRawData());
+  auto *bd = static_cast<const u8 *>(black->getRawData());
   REQUIRE(bd[0] == 0 && bd[1] == 0 && bd[2] == 0 && bd[3] == 255);
 
-  auto *nd = static_cast<const uint8_t *>(normal->getRawData());
+  auto *nd = static_cast<const u8 *>(normal->getRawData());
   REQUIRE(nd[0] == 128 && nd[1] == 128 && nd[2] == 255 && nd[3] == 255);
 
   REQUIRE(getPlaceholderWhite().get() == white.get());

@@ -11,7 +11,7 @@ VulkanCommandBufferManager::VulkanCommandBufferManager(
       m_queueFamilyIndex(queueFamilyIndex) {
   m_frameContexts.resize(maxFramesInFlight);
 
-  for (size_t i = 0; i < maxFramesInFlight; ++i) {
+  for (usize i = 0; i < maxFramesInFlight; ++i) {
     createPool(m_frameContexts[i].pool, 0);
   }
   createPool(m_transientPool, VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
@@ -20,7 +20,7 @@ VulkanCommandBufferManager::VulkanCommandBufferManager(
 VulkanCommandBufferManager::~VulkanCommandBufferManager() {
   VkDevice device = m_device.getLogicalDevice();
 
-  for (size_t i = 0; i < m_frameContexts.size(); ++i) {
+  for (usize i = 0; i < m_frameContexts.size(); ++i) {
     if (m_frameContexts[i].pool != VK_NULL_HANDLE) {
       vkDestroyCommandPool(device, m_frameContexts[i].pool, nullptr);
       m_frameContexts[i].pool = VK_NULL_HANDLE;

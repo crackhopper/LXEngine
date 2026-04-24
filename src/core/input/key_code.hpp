@@ -1,9 +1,9 @@
 #pragma once
-#include <cstdint>
+#include "core/platform/types.hpp"
 
 namespace LX_core {
 
-enum class KeyCode : uint16_t {
+enum class KeyCode : u16 {
   Unknown = 0,
 
   // 字母

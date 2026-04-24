@@ -1,4 +1,5 @@
 #include "filesystem_tools.hpp"
+#include "core/platform/types.hpp"
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -187,7 +188,7 @@ std::vector<char> readFile(const std::string &filename) {
     throw std::runtime_error("failed to open file!");
   }
 
-  size_t fileSize = (size_t)file.tellg();
+  usize fileSize = static_cast<usize>(file.tellg());
   std::vector<char> buffer(fileSize);
   file.seekg(0);
   file.read(buffer.data(), fileSize);

@@ -14,7 +14,7 @@ struct RenderTarget {
   ImageFormat depthFormat = ImageFormat::D32Float;
   u8 sampleCount = 1;
 
-  size_t getHash() const;
+  usize getHash() const;
 
   /// Field-by-field equality. REQ-009 uses this for Camera::matchesTarget.
   /// Note: if RenderTarget gains new fields (e.g., attachment handles), this

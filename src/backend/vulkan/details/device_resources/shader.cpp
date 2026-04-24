@@ -24,7 +24,7 @@ VulkanShader::VulkanShader(Token, VulkanDevice &device, const std::string &name,
     throw std::runtime_error("Failed to open shader file: " + shaderPath);
   }
 
-  size_t fileSize = static_cast<size_t>(file.tellg());
+  usize fileSize = static_cast<usize>(file.tellg());
   std::vector<char> buffer(fileSize);
 
   file.seekg(0);
@@ -35,7 +35,7 @@ VulkanShader::VulkanShader(Token, VulkanDevice &device, const std::string &name,
   VkShaderModuleCreateInfo moduleInfo{};
   moduleInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
   moduleInfo.codeSize = buffer.size();
-  moduleInfo.pCode = reinterpret_cast<const uint32_t*>(buffer.data());
+  moduleInfo.pCode = reinterpret_cast<const u32 *>(buffer.data());
 
   if (vkCreateShaderModule(m_device, &moduleInfo, nullptr, &m_module) != VK_SUCCESS) {
     throw std::runtime_error("Failed to create shader module: " + name);

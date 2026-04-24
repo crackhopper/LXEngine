@@ -31,7 +31,7 @@ struct alignas(16) SkeletonData : public IGpuResource {
     if (bones.empty()) {
       return;
     }
-    for (size_t i = 0; i < bones.size(); i++) {
+    for (usize i = 0; i < bones.size(); i++) {
       writeToUbo(bones[i], m_bones[i]);
     }
     setDirty();

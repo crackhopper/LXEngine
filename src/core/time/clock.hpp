@@ -1,8 +1,8 @@
 #pragma once
 
+#include "core/platform/types.hpp"
 #include <array>
 #include <chrono>
-#include <cstdint>
 
 namespace LX_core {
 
@@ -15,7 +15,7 @@ public:
   float deltaTime() const { return m_deltaTime; }
   float smoothedDeltaTime() const;
   double totalTime() const { return m_totalTime; }
-  uint64_t frameCount() const { return m_frameCount; }
+  u64 frameCount() const { return m_frameCount; }
 
 private:
   using Clk = std::chrono::steady_clock;
@@ -25,7 +25,7 @@ private:
   bool m_firstTick = true;
   float m_deltaTime = 0.0f;
   double m_totalTime = 0.0;
-  uint64_t m_frameCount = 0;
+  u64 m_frameCount = 0;
 
   static constexpr int kSmoothWindow = 60;
   std::array<float, kSmoothWindow> m_recentDeltas{};

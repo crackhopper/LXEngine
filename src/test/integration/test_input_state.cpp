@@ -62,9 +62,9 @@ void testDummyNextFrame() {
 }
 
 void testEnumBoundaries() {
-  EXPECT(static_cast<uint8_t>(MouseButton::Count) == 3, "MouseButton::Count must be 3");
-  EXPECT(static_cast<uint16_t>(KeyCode::Count) > 0, "KeyCode::Count must be positive");
-  EXPECT(static_cast<uint16_t>(KeyCode::Unknown) == 0, "KeyCode::Unknown must be 0");
+  EXPECT(static_cast<u8>(MouseButton::Count) == 3, "MouseButton::Count must be 3");
+  EXPECT(static_cast<u16>(KeyCode::Count) > 0, "KeyCode::Count must be positive");
+  EXPECT(static_cast<u16>(KeyCode::Unknown) == 0, "KeyCode::Unknown must be 0");
 }
 
 void testMockInputStateGuardsSentinels() {

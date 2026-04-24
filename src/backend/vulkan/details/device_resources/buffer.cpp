@@ -68,7 +68,7 @@ void VulkanBuffer::unmap() {
 void VulkanBuffer::uploadData(const void *data, VkDeviceSize dataSize) {
   // For HOST_VISIBLE memory, we can map and copy directly
   void *mapped = map();
-  std::memcpy(mapped, data, static_cast<size_t>(dataSize));
+  std::memcpy(mapped, data, static_cast<usize>(dataSize));
   unmap();
 }
 

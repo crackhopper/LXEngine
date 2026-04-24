@@ -48,7 +48,7 @@ void VulkanSwapchain::cleanup() {
 
   m_framebuffers.clear();
 
-  for (size_t i = 0; i < m_maxFramesInFlight; i++) {
+  for (usize i = 0; i < m_maxFramesInFlight; i++) {
     if (m_imageAvailableSemaphores[i] != VK_NULL_HANDLE)
       vkDestroySemaphore(logicalDevice, m_imageAvailableSemaphores[i], nullptr);
     if (m_renderFinishedSemaphores[i] != VK_NULL_HANDLE)
@@ -174,7 +174,7 @@ void VulkanSwapchain::createInternal(VkExtent2D extent) {
 
 void VulkanSwapchain::createImageViews() {
   m_imageViews.resize(m_images.size());
-  for (size_t i = 0; i < m_images.size(); i++) {
+  for (usize i = 0; i < m_images.size(); i++) {
     VkImageViewCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     createInfo.image = m_images[i];
@@ -274,7 +274,7 @@ void VulkanSwapchain::createSyncObjects() {
   fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
   fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
-  for (size_t i = 0; i < m_maxFramesInFlight; i++) {
+  for (usize i = 0; i < m_maxFramesInFlight; i++) {
     vkCreateSemaphore(m_device.getLogicalDevice(), &semaphoreInfo, nullptr,
                       &m_imageAvailableSemaphores[i]);
     vkCreateSemaphore(m_device.getLogicalDevice(), &semaphoreInfo, nullptr,

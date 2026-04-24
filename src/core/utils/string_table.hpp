@@ -1,6 +1,6 @@
 #pragma once
+#include "core/platform/types.hpp"
 #include <atomic>
-#include <cstdint>
 #include <optional>
 #include <shared_mutex>
 #include <span>
@@ -16,7 +16,7 @@ struct StringID;
 /// TypeTag 标注一条 StringID 是叶子字符串还是某类结构化 compose 结果。
 /// 叶子字符串（Intern / getOrCreateID）走 TypeTag::String；
 /// 结构化 ID（compose）按具体类别标注。
-enum class TypeTag : uint8_t {
+enum class TypeTag : u8 {
   String = 0,
   ShaderProgram,
   RenderState,
@@ -45,8 +45,8 @@ class GlobalStringTable {
 public:
   static GlobalStringTable &get();
 
-  uint32_t getOrCreateID(const std::string &name);
-  const std::string &getName(uint32_t id) const;
+  u32 getOrCreateID(const std::string &name);
+  const std::string &getName(u32 id) const;
 
   StringID Intern(std::string_view sv);
 
@@ -70,19 +70,19 @@ private:
     std::vector<StringID> fields;
   };
 
-  std::string toDebugStringImpl(uint32_t id, int depth) const;
+  std::string toDebugStringImpl(u32 id, int depth) const;
 
-  uint32_t getOrCreateIDLocked(const std::string &name);
+  u32 getOrCreateIDLocked(const std::string &name);
 
   mutable std::shared_mutex m_mutex;
-  std::unordered_map<std::string, uint32_t> m_stringToId;
+  std::unordered_map<std::string, u32> m_stringToId;
   std::vector<std::string> m_idToString;
-  std::unordered_map<uint32_t, ComposedEntry> m_composedEntries;
-  std::atomic<uint32_t> m_nextID;
+  std::unordered_map<u32, ComposedEntry> m_composedEntries;
+  std::atomic<u32> m_nextID;
 };
 
 struct StringID {
-  uint32_t id = 0;
+  u32 id = 0;
 
   StringID() = default;
 
@@ -92,14 +92,14 @@ struct StringID {
   StringID(const std::string &name)
       : id(GlobalStringTable::get().getOrCreateID(name)) {}
 
-  explicit StringID(uint32_t val) : id(val) {}
+  explicit StringID(u32 val) : id(val) {}
 
   bool operator==(const StringID &rhs) const { return id == rhs.id; }
   bool operator!=(const StringID &rhs) const { return id != rhs.id; }
 
   struct Hash {
-    size_t operator()(const StringID &p) const {
-      return static_cast<size_t>(p.id);
+    usize operator()(const StringID &p) const {
+      return static_cast<usize>(p.id);
     }
   };
 };
@@ -111,8 +111,8 @@ inline StringID MakeStringID(const std::string &name) { return StringID(name); }
 namespace std {
 template <>
 struct hash<LX_core::StringID> {
-  size_t operator()(const LX_core::StringID &p) const {
-    return static_cast<size_t>(p.id);
+  usize operator()(const LX_core::StringID &p) const {
+    return static_cast<usize>(p.id);
   }
 };
 } // namespace std

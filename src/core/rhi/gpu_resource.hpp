@@ -21,7 +21,7 @@ enum class ResourceType : u8 {
   Count
 };
 
-using ResourceCacheIdentity = uint64_t;
+using ResourceCacheIdentity = u64;
 
 /*
 @source_analysis.section IGpuResource：core 层定义的“可被 GPU 消费”的统一契约

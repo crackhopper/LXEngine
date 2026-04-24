@@ -257,7 +257,7 @@ RenderState MaterialInstance::getPassRenderState(StringID pass) const {
 StringID MaterialInstance::getPipelineSignature(StringID pass) const {
   if (!m_template)
     return StringID{};
-  StringID passSig = m_template->getPipelinePassSignature(pass);
+  StringID passSig = m_template->getPipelineSignature(pass);
   StringID fields[] = {passSig};
   return GlobalStringTable::get().compose(TypeTag::MaterialRender, fields);
 }

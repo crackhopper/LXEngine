@@ -1,12 +1,12 @@
 #pragma once
-#include <cstdint>
+#include "core/platform/types.hpp"
 
 namespace LX_core {
 
 /// Core-layer texel format enum. Backends SHALL provide a translation to their
 /// native format type (e.g., `VkFormat toVkFormat(ImageFormat)` in the Vulkan
 /// backend). Core code MUST NOT reference backend-specific format types.
-enum class ImageFormat : uint8_t {
+enum class ImageFormat : u8 {
   RGBA8,
   BGRA8,
   R8,

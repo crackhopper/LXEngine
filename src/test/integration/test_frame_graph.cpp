@@ -56,7 +56,7 @@ public:
   findBinding(const std::string &) const override {
     return std::nullopt;
   }
-  size_t getProgramHash() const override { return 0; }
+  usize getProgramHash() const override { return 0; }
   std::string getShaderName() const override { return "fake_fg"; }
 
 private:

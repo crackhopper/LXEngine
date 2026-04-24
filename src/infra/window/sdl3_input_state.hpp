@@ -21,8 +21,8 @@ public:
   bool handleSdlEvent(const SDL_Event& event);
 
 private:
-  std::array<bool, static_cast<size_t>(LX_core::KeyCode::Count)> m_keyDown{};
-  std::array<bool, static_cast<size_t>(LX_core::MouseButton::Count)> m_mouseButtonDown{};
+  std::array<bool, static_cast<usize>(LX_core::KeyCode::Count)> m_keyDown{};
+  std::array<bool, static_cast<usize>(LX_core::MouseButton::Count)> m_mouseButtonDown{};
   LX_core::Vec2f m_mousePos{0.0f, 0.0f};
   LX_core::Vec2f m_mouseDeltaAccum{0.0f, 0.0f};
   float m_wheelDeltaAccum = 0.0f;

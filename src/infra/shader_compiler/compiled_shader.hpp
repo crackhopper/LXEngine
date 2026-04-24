@@ -29,7 +29,7 @@ public:
   std::optional<std::reference_wrapper<const LX_core::VertexInputAttribute>>
   findVertexInput(u32 location) const override;
 
-  size_t getProgramHash() const override;
+  usize getProgramHash() const override;
 
   std::string getShaderName() const override { return m_logicalName; }
 
@@ -42,13 +42,13 @@ private:
   std::vector<LX_core::VertexInputAttribute> m_vertexInputs;
 
   // Fast lookup: packed (set << 16 | binding) -> index in m_bindings
-  std::unordered_map<u32, size_t> m_setBindingIndex;
+  std::unordered_map<u32, usize> m_setBindingIndex;
   // Fast lookup: name -> index in m_bindings
-  std::unordered_map<std::string, size_t> m_nameIndex;
+  std::unordered_map<std::string, usize> m_nameIndex;
   // Fast lookup: location -> index in m_vertexInputs
-  std::unordered_map<u32, size_t> m_vertexInputIndex;
+  std::unordered_map<u32, usize> m_vertexInputIndex;
 
-  size_t m_hash = 0;
+  usize m_hash = 0;
   std::string m_logicalName;
 };
 
