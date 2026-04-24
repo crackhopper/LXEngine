@@ -89,13 +89,13 @@ struct RenderState {
 
   size_t getHash() const {
     size_t h = 0;
-    hash_combine(h, static_cast<uint32_t>(cullMode));
+    hash_combine(h, static_cast<u32>(cullMode));
     hash_combine(h, depthTestEnable);
     hash_combine(h, depthWriteEnable);
-    hash_combine(h, static_cast<uint32_t>(depthOp));
+    hash_combine(h, static_cast<u32>(depthOp));
     hash_combine(h, blendEnable);
-    hash_combine(h, static_cast<uint32_t>(srcBlend));
-    hash_combine(h, static_cast<uint32_t>(dstBlend));
+    hash_combine(h, static_cast<u32>(srcBlend));
+    hash_combine(h, static_cast<u32>(dstBlend));
     return h;
   }
 

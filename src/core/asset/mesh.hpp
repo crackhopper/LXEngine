@@ -38,10 +38,8 @@ public:
     return SharedPtr(new Mesh(Token{}, std::move(vb), std::move(ib)));
   }
 
-  uint32_t getVertexCount() const { return vertexBuffer->getVertexCount(); }
-  uint32_t getIndexCount() const {
-    return static_cast<uint32_t>(indexBuffer->indexCount());
-  }
+  VertexCount getVertexCount() const { return vertexBuffer->getVertexCount(); }
+  IndexCount getIndexCount() const { return indexBuffer->indexCount(); }
 
 /*
 @source_analysis.section 几何签名：mesh 只输出 pipeline 真正关心的结构信息

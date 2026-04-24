@@ -67,7 +67,7 @@ public:
   MaterialTemplateSharedPtr getTemplate() const { return m_template; }
 
   // Multi-buffer accessors.
-  size_t getParameterBufferCount() const {
+  BindingCount getParameterBufferCount() const {
     return m_parameterBuffersByName.size();
   }
   const std::vector<uint8_t> &

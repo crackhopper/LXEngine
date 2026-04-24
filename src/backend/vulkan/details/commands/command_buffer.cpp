@@ -41,13 +41,14 @@ void VulkanCommandBuffer::beginRenderPass(
   renderPassInfo.framebuffer = framebuffer;
   renderPassInfo.renderArea.offset = {0, 0};
   renderPassInfo.renderArea.extent = extent;
-  renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
+  renderPassInfo.clearValueCount = static_cast<u32>(clearValues.size());
   renderPassInfo.pClearValues = clearValues.data();
 
   vkCmdBeginRenderPass(m_handle, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 }
 
-void VulkanCommandBuffer::setViewport(uint32_t width, uint32_t height) {
+void VulkanCommandBuffer::setViewport(ImageDimension32 width,
+                                      ImageDimension32 height) {
   VkViewport viewport{};
   viewport.x = 0.0f;
   viewport.width = static_cast<float>(width);
@@ -63,7 +64,8 @@ void VulkanCommandBuffer::setViewport(uint32_t width, uint32_t height) {
   vkCmdSetViewport(m_handle, 0, 1, &viewport);
 }
 
-void VulkanCommandBuffer::setScissor(uint32_t width, uint32_t height) {
+void VulkanCommandBuffer::setScissor(ImageDimension32 width,
+                                     ImageDimension32 height) {
   VkRect2D scissor{};
   scissor.offset = {0, 0};
   scissor.extent = {width, height};
@@ -71,15 +73,15 @@ void VulkanCommandBuffer::setScissor(uint32_t width, uint32_t height) {
 }
 
 namespace {
-VkShaderStageFlags pushConstantStageMaskToVk(uint32_t mask) {
+VkShaderStageFlags pushConstantStageMaskToVk(ShaderStageMask32 mask) {
   VkShaderStageFlags out = 0;
-  if (mask & static_cast<uint32_t>(LX_core::ShaderStage::Vertex))
+  if (mask & static_cast<ShaderStageMask32>(LX_core::ShaderStage::Vertex))
     out |= VK_SHADER_STAGE_VERTEX_BIT;
-  if (mask & static_cast<uint32_t>(LX_core::ShaderStage::Fragment))
+  if (mask & static_cast<ShaderStageMask32>(LX_core::ShaderStage::Fragment))
     out |= VK_SHADER_STAGE_FRAGMENT_BIT;
-  if (mask & static_cast<uint32_t>(LX_core::ShaderStage::Compute))
+  if (mask & static_cast<ShaderStageMask32>(LX_core::ShaderStage::Compute))
     out |= VK_SHADER_STAGE_COMPUTE_BIT;
-  if (mask & static_cast<uint32_t>(LX_core::ShaderStage::Geometry))
+  if (mask & static_cast<ShaderStageMask32>(LX_core::ShaderStage::Geometry))
     out |= VK_SHADER_STAGE_GEOMETRY_BIT;
   return out;
 }
@@ -115,7 +117,8 @@ void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
   }
 
   // Group reflection bindings by descriptor set index.
-  std::unordered_map<uint32_t, std::vector<LX_core::ShaderResourceBinding>>
+  std::unordered_map<DescriptorSetIndex32,
+                     std::vector<LX_core::ShaderResourceBinding>>
       setGroups;
   for (const auto &b : pipeline.getBindings()) {
     setGroups[b.set].push_back(b);
@@ -125,7 +128,7 @@ void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
   allocatedSets.reserve(setGroups.size());
 
   for (auto &kv : setGroups) {
-    const uint32_t setIndex = kv.first;
+    const DescriptorSetIndex32 setIndex = kv.first;
     const auto &bindings = kv.second;
 
     auto setPtr = descriptorMgr.allocateSet(bindings);
@@ -208,12 +211,12 @@ void VulkanCommandBuffer::drawItem(const RenderingItem &item) {
   }
 
   // Indexed draw.
-  const uint32_t indexCount =
-      static_cast<uint32_t>(item.indexBuffer->getByteSize() / sizeof(uint32_t));
+  const IndexCount indexCount =
+      item.indexBuffer->getByteSize() / sizeof(MeshIndex32);
   if (indexCount == 0) {
     return;
   }
-  vkCmdDrawIndexed(m_handle, indexCount, 1, 0, 0, 0);
+  vkCmdDrawIndexed(m_handle, static_cast<u32>(indexCount), 1, 0, 0, 0);
 }
 
 } // namespace LX_core::backend

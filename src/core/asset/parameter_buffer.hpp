@@ -28,8 +28,8 @@ public:
 
   ResourceType getType() const override { return m_resType; }
   const void *getRawData() const override { return m_buffer.data(); }
-  u32 getByteSize() const override {
-    return static_cast<u32>(m_buffer.size());
+  ResourceByteSize32 getByteSize() const override {
+    return static_cast<ResourceByteSize32>(m_buffer.size());
   }
   StringID getBindingName() const override { return m_bindingName; }
 

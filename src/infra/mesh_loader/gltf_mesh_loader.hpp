@@ -1,4 +1,5 @@
 #pragma once
+#include "core/platform/types.hpp"
 #include "core/math/vec.hpp"
 #include <string>
 #include <vector>
@@ -34,7 +35,7 @@ public:
   const std::vector<LX_core::Vec3f> &getPositions() const;
   const std::vector<LX_core::Vec3f> &getNormals() const;
   const std::vector<LX_core::Vec2f> &getTexCoords() const;
-  const std::vector<uint32_t> &getIndices() const;
+  const std::vector<MeshIndex32> &getIndices() const;
 
   // REQ-011: empty when the glTF file does not declare a TANGENT accessor for
   // the consumed primitive — no tangent generation fallback is performed.

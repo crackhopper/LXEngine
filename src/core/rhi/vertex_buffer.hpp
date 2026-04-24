@@ -50,20 +50,20 @@ inline const char *toString(VertexInputRate r) {
 
 struct VertexLayoutItem {
   std::string name;
-  uint32_t location = 0;
+  VertexAttributeLocation32 location = 0;
   DataType type;
-  uint32_t size;
-  uint32_t offset;
+  VertexAttributeSize32 size = 0;
+  ByteOffset32 offset = 0;
   VertexInputRate inputRate = VertexInputRate::Vertex;
 
   size_t hash() const {
     size_t h = 0;
     hash_combine(h, name);
     hash_combine(h, location);
-    hash_combine(h, static_cast<uint32_t>(type));
+    hash_combine(h, static_cast<u32>(type));
     hash_combine(h, offset);
     // 必须包含这个，否则 PSO 缓存会把实例化布局和普通布局混淆
-    hash_combine(h, static_cast<uint32_t>(inputRate));
+    hash_combine(h, static_cast<u32>(inputRate));
     return h;
   }
 
@@ -106,13 +106,13 @@ class VertexLayout {
 public:
   VertexLayout() = default;
 
-  VertexLayout(std::vector<VertexLayoutItem> items, uint32_t stride)
+  VertexLayout(std::vector<VertexLayoutItem> items, VertexStride32 stride)
       : m_items(std::move(items)), m_stride(stride) {
     updateHash();
   }
 
   const std::vector<VertexLayoutItem> &getItems() const { return m_items; }
-  uint32_t getStride() const { return m_stride; }
+  VertexStride32 getStride() const { return m_stride; }
   size_t getHash() const { return m_hash; }
 
   StringID getRenderSignature() const {
@@ -139,7 +139,7 @@ private:
 
 private:
   std::vector<VertexLayoutItem> m_items;
-  uint32_t m_stride = 0;
+  VertexStride32 m_stride = 0;
   size_t m_hash = 0;
 };
 
@@ -177,11 +177,11 @@ public:
   virtual const VertexLayout &getLayout() const = 0;
   virtual size_t getLayoutHash() const { return getLayout().getHash(); }
 
-  virtual uint32_t getVertexCount() const = 0;
+  virtual VertexCount getVertexCount() const = 0;
 
   const void *getRawData() const override = 0;
   virtual void *getRawDataMutable() = 0;
-  u32 getByteSize() const override = 0;
+  ResourceByteSize32 getByteSize() const override = 0;
 
   ResourceType getType() const override { return ResourceType::VertexBuffer; }
 };
@@ -206,15 +206,15 @@ public:
     return layout;
   }
 
-  uint32_t getVertexCount() const override {
-    return static_cast<uint32_t>(m_vertices.size());
+  VertexCount getVertexCount() const override {
+    return m_vertices.size();
   }
 
   const void *getRawData() const override { return m_vertices.data(); }
   void *getRawDataMutable() override { return m_vertices.data(); }
 
-  u32 getByteSize() const override {
-    return (u32)(m_vertices.size() * sizeof(VType));
+  ResourceByteSize32 getByteSize() const override {
+    return static_cast<ResourceByteSize32>(m_vertices.size() * sizeof(VType));
   }
 
 private:

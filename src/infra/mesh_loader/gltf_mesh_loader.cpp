@@ -17,7 +17,7 @@ struct GLTFLoader::Impl {
   std::vector<LX_core::Vec3f> normals;
   std::vector<LX_core::Vec2f> texCoords;
   std::vector<LX_core::Vec4f> tangents;
-  std::vector<uint32_t> indices;
+  std::vector<MeshIndex32> indices;
   GLTFPbrMaterial material;
 };
 
@@ -143,7 +143,7 @@ void readVec4Attribute(const std::string &file, const cgltf_accessor &acc,
 }
 
 void readIndices(const std::string &file, const cgltf_accessor &acc,
-                 std::vector<uint32_t> &out) {
+                 std::vector<MeshIndex32> &out) {
   if (acc.component_type != cgltf_component_type_r_8u
       && acc.component_type != cgltf_component_type_r_16u
       && acc.component_type != cgltf_component_type_r_32u) {
@@ -152,7 +152,7 @@ void readIndices(const std::string &file, const cgltf_accessor &acc,
   out.resize(acc.count);
   for (cgltf_size i = 0; i < acc.count; ++i) {
     cgltf_size idx = cgltf_accessor_read_index(&acc, i);
-    out[i] = static_cast<uint32_t>(idx);
+    out[i] = static_cast<MeshIndex32>(idx);
   }
 }
 
@@ -282,7 +282,7 @@ void GLTFLoader::load(const std::string &filename) {
     // caller can always rely on indices.size() % 3 == 0.
     pImpl->indices.resize(pImpl->positions.size());
     for (size_t i = 0; i < pImpl->positions.size(); ++i) {
-      pImpl->indices[i] = static_cast<uint32_t>(i);
+      pImpl->indices[i] = static_cast<MeshIndex32>(i);
     }
   }
 
@@ -301,7 +301,7 @@ const std::vector<LX_core::Vec2f> &GLTFLoader::getTexCoords() const {
   return pImpl->texCoords;
 }
 
-const std::vector<uint32_t> &GLTFLoader::getIndices() const {
+const std::vector<MeshIndex32> &GLTFLoader::getIndices() const {
   return pImpl->indices;
 }
 

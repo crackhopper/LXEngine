@@ -19,12 +19,15 @@ class VulkanSwapchain {
   struct Token {};
 
 public:
-  VulkanSwapchain(Token, VulkanDevice &device, WindowSharedPtr window, uint32_t maxFramesInFlight = 3);
+  VulkanSwapchain(Token, VulkanDevice &device, WindowSharedPtr window,
+                  FrameIndex32 maxFramesInFlight = 3);
   ~VulkanSwapchain();
 
   static std::unique_ptr<VulkanSwapchain>
-  create(VulkanDevice &device, WindowSharedPtr window, uint32_t maxFramesInFlight = 3) {
-    return std::make_unique<VulkanSwapchain>(Token{}, device, window, maxFramesInFlight);
+  create(VulkanDevice &device, WindowSharedPtr window,
+         FrameIndex32 maxFramesInFlight = 3) {
+    return std::make_unique<VulkanSwapchain>(Token{}, device, window,
+                                             maxFramesInFlight);
   }
 
   // --- 核心生命周期控制 ---
@@ -32,19 +35,21 @@ public:
   void rebuild(VulkanRenderPass &renderPass);
 
   // --- 同步对象获取 ---
-  VkSemaphore getImageAvailableSemaphore(uint32_t currentFrameIndex) const;
-  VkSemaphore getRenderFinishedSemaphore(uint32_t currentFrameIndex) const;
-  VkFence getInFlightFence(uint32_t currentFrameIndex) const;
+  VkSemaphore getImageAvailableSemaphore(FrameIndex32 currentFrameIndex) const;
+  VkSemaphore getRenderFinishedSemaphore(FrameIndex32 currentFrameIndex) const;
+  VkFence getInFlightFence(FrameIndex32 currentFrameIndex) const;
 
   // --- 帧获取与呈现 ---
-  VkResult acquireNextImage(uint32_t currentFrameIndex, uint32_t &imageIndex);
-  VkResult present(uint32_t currentFrameIndex, uint32_t imageIndex);
+  VkResult acquireNextImage(FrameIndex32 currentFrameIndex,
+                            SwapchainImageIndex32 &imageIndex);
+  VkResult present(FrameIndex32 currentFrameIndex,
+                   SwapchainImageIndex32 imageIndex);
 
   // --- 资源访问 ---
   VkSwapchainKHR getHandle() const { return m_handle; }
   VkExtent2D getExtent() const { return m_extent; }
-  VulkanFrameBuffer &getFramebuffer(uint32_t index);
-  uint32_t getImageCount() const { return static_cast<uint32_t>(m_images.size()); }
+  VulkanFrameBuffer &getFramebuffer(SwapchainImageIndex32 index);
+  ImageCount getImageCount() const { return m_images.size(); }
   VkFormat getImageFormat() const;
   VkImageView getDepthImageView() const { return m_depthImageView; }
 
@@ -61,7 +66,7 @@ private:
 
   VulkanDevice &m_device;
   WindowSharedPtr m_window;
-  uint32_t m_maxFramesInFlight = 3;
+  FrameIndex32 m_maxFramesInFlight = 3;
 
   VkSurfaceKHR m_surface = VK_NULL_HANDLE;
   VkSwapchainKHR m_handle = VK_NULL_HANDLE;

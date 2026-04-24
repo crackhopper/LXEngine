@@ -45,7 +45,7 @@ public:
     return m_bindings;
   }
   std::optional<std::reference_wrapper<const ShaderResourceBinding>>
-  findBinding(uint32_t, uint32_t) const override {
+  findBinding(DescriptorSetIndex32, DescriptorBindingIndex32) const override {
     return std::nullopt;
   }
   std::optional<std::reference_wrapper<const ShaderResourceBinding>>

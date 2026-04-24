@@ -18,7 +18,7 @@ namespace LX_core {
 - 它直接参与 `Mesh` 的 render signature / layout hash
 - 改拓扑会改变 pipeline 需求，即使索引字节完全不变
 */
-enum class PrimitiveTopology : uint32_t {
+enum class PrimitiveTopology : u32 {
   PointList = 0,
   LineList = 1,
   LineStrip = 2,
@@ -54,20 +54,20 @@ inline StringID topologySignature(PrimitiveTopology t) {
 /**
  * @brief 索引数据位宽
  */
-enum class IndexType : uint32_t { Uint16 = 0, Uint32 = 1 };
+enum class IndexType : u32 { Uint16 = 0, Uint32 = 1 };
 
 class IndexBuffer : public IGpuResource {
 public:
   using SharedPtr = std::shared_ptr<IndexBuffer>;
 
-  IndexBuffer(std::vector<uint32_t> &&indices,
+  IndexBuffer(std::vector<MeshIndex32> &&indices,
               PrimitiveTopology topology = PrimitiveTopology::TriangleList)
       : m_indices(std::move(indices)), m_topology(topology) {
     calculateRange();
   }
 
   static SharedPtr
-  create(std::vector<uint32_t> &&indices,
+  create(std::vector<MeshIndex32> &&indices,
          PrimitiveTopology topology = PrimitiveTopology::TriangleList) {
     return std::make_shared<IndexBuffer>(std::move(indices), topology);
   }
@@ -96,33 +96,34 @@ public:
    */
   size_t getLayoutHash() const {
     size_t h = 0;
-    hash_combine(h, static_cast<uint32_t>(m_topology));
-    hash_combine(h, static_cast<uint32_t>(getIndexType()));
+    hash_combine(h, static_cast<u32>(m_topology));
+    hash_combine(h, static_cast<u32>(getIndexType()));
     return h;
   }
 
   // --- 数据操作 ---
 
-  void update(const std::vector<uint32_t> &indices) {
+  void update(const std::vector<MeshIndex32> &indices) {
     m_indices = indices;
     calculateRange();
     setDirty();
   }
 
-  size_t indexCount() const { return m_indices.size(); }
+  IndexCount indexCount() const { return m_indices.size(); }
   ResourceType getType() const override { return ResourceType::IndexBuffer; }
   const void *getRawData() const override { return m_indices.data(); }
-  u32 getByteSize() const override {
-    return static_cast<u32>(m_indices.size() * sizeof(uint32_t));
+  ResourceByteSize32 getByteSize() const override {
+    return static_cast<ResourceByteSize32>(m_indices.size() *
+                                           sizeof(MeshIndex32));
   }
 
-  u32 maxIndex() const { return m_maxIndex; }
-  u32 minIndex() const { return m_minIndex; }
+  MeshIndex32 maxIndex() const { return m_maxIndex; }
+  MeshIndex32 minIndex() const { return m_minIndex; }
 
   /**
    * @brief 偏移所有索引值 (常见于多 Mesh 合并或 Batching)
    */
-  void offset(uint32_t offsetValue) {
+  void offset(MeshIndex32 offsetValue) {
     for (auto &index : m_indices) {
       index += offsetValue;
     }
@@ -137,7 +138,7 @@ public:
   void resetOffset() {
     if (m_indices.empty())
       return;
-    uint32_t currentMin = m_minIndex;
+    MeshIndex32 currentMin = m_minIndex;
     for (auto &index : m_indices) {
       index -= currentMin;
     }
@@ -159,10 +160,10 @@ private:
   }
 
 private:
-  std::vector<uint32_t> m_indices;
+  std::vector<MeshIndex32> m_indices;
   PrimitiveTopology m_topology;
-  uint32_t m_maxIndex;
-  uint32_t m_minIndex;
+  MeshIndex32 m_maxIndex = 0;
+  MeshIndex32 m_minIndex = 0;
 };
 
 using IndexBufferSharedPtr = std::shared_ptr<IndexBuffer>;

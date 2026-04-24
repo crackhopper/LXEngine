@@ -64,7 +64,7 @@ bool checkValidationLayerSupport(
 #endif
 
   auto toCheck = validationLayers;
-  uint32_t layerCount;
+  u32 layerCount = 0;
   vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
   std::vector<VkLayerProperties> availableLayers(layerCount);
   vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
@@ -94,7 +94,7 @@ bool checkValidationLayerSupport(
 VkSurfaceFormatKHR findBestSurfaceFormat(VkPhysicalDevice physicalDevice,
                                          VkSurfaceKHR surface) {
   // 1. 获取硬件支持的所有表面格式
-  uint32_t formatCount;
+  u32 formatCount = 0;
   vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount,
                                        nullptr);
 
@@ -185,14 +185,16 @@ void VulkanDevice::findSurfaceDepthFormat() {
 }
 
 void VulkanDevice::initialize(WindowSharedPtr window, const char *appName,
-                              uint32_t appVersion, const char *engineName,
-                              uint32_t engineVersion, uint32_t apiVersion,
+                              ApiVersion32 appVersion,
+                              const char *engineName,
+                              ApiVersion32 engineVersion,
+                              ApiVersion32 apiVersion,
                               std::vector<const char *> validationLayers) {
   m_window = window;
   m_validationLayers = validationLayers;
   m_instanceExtensions = {};
-  m_extent = {static_cast<uint32_t>(window->getWidth()),
-              static_cast<uint32_t>(window->getHeight())};
+  m_extent = {static_cast<u32>(window->getWidth()),
+              static_cast<u32>(window->getHeight())};
   m_window->getRequiredExtensions(m_instanceExtensions);
 
   createInstance(appName, appVersion, engineName, engineVersion, apiVersion);
@@ -240,9 +242,10 @@ void VulkanDevice::shutdown() {
   }
 }
 
-void VulkanDevice::createInstance(const char *appName, uint32_t appVersion,
+void VulkanDevice::createInstance(const char *appName, ApiVersion32 appVersion,
                                   const char *engineName,
-                                  uint32_t engineVersion, uint32_t apiVersion) {
+                                  ApiVersion32 engineVersion,
+                                  ApiVersion32 apiVersion) {
   VkApplicationInfo appInfo{};
   appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
   appInfo.pApplicationName = appName;
@@ -262,8 +265,7 @@ void VulkanDevice::createInstance(const char *appName, uint32_t appVersion,
   if (supported) {
     m_instanceExtensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
     createInfo.ppEnabledLayerNames = m_validationLayers.data();
-    createInfo.enabledLayerCount =
-        static_cast<uint32_t>(m_validationLayers.size());
+    createInfo.enabledLayerCount = static_cast<u32>(m_validationLayers.size());
 
     // 让 Instance 在创建和销毁时也能输出调试信息
     populateDebugMessengerCreateInfo(debugCreateInfo);
@@ -274,7 +276,7 @@ void VulkanDevice::createInstance(const char *appName, uint32_t appVersion,
   }
 
   createInfo.enabledExtensionCount =
-      static_cast<uint32_t>(m_instanceExtensions.size());
+      static_cast<u32>(m_instanceExtensions.size());
   createInfo.ppEnabledExtensionNames = m_instanceExtensions.data();
 
   if (vkCreateInstance(&createInfo, nullptr, &m_instance) != VK_SUCCESS) {
@@ -293,7 +295,7 @@ VulkanDevice::QueueFamilyIndices
 VulkanDevice::findQueueFamilies(VkPhysicalDevice device) {
 
   // 1. 获取该显卡支持的所有队列族数量
-  uint32_t queueFamilyCount = 0;
+  u32 queueFamilyCount = 0;
   vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
 
   // 2. 获取具体的队列族属性
@@ -301,7 +303,7 @@ VulkanDevice::findQueueFamilies(VkPhysicalDevice device) {
   vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount,
                                            queueFamilies.data());
 
-  int i = 0;
+  QueueFamilyIndex32 i = 0;
   for (const auto &queueFamily : queueFamilies) {
     // 检查是否支持图形渲染 (Graphics)
     if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
@@ -328,7 +330,7 @@ VulkanDevice::findQueueFamilies(VkPhysicalDevice device) {
 bool VulkanDevice::checkDeviceExtensionSupport(
     VkPhysicalDevice device, std::vector<const char *> extensionsRequired) {
   // 1. 获取该物理设备支持的所有扩展数量
-  uint32_t extensionCount;
+  u32 extensionCount = 0;
   vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount,
                                        nullptr);
 
@@ -368,7 +370,7 @@ bool VulkanDevice::isDeviceSuitable(
 }
 
 void VulkanDevice::pickPhysicalDevice() {
-  uint32_t deviceCount = 0;
+  u32 deviceCount = 0;
   vkEnumeratePhysicalDevices(m_instance, &deviceCount, nullptr);
 
   if (deviceCount == 0) {
@@ -414,7 +416,7 @@ void VulkanDevice::pickPhysicalDevice() {
 
 void VulkanDevice::createLogicalDevice() {
   // Get queue family properties
-  uint32_t queueFamilyCount = 0;
+  u32 queueFamilyCount = 0;
   vkGetPhysicalDeviceQueueFamilyProperties(m_physicalDevice, &queueFamilyCount,
                                            nullptr);
   std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
@@ -426,7 +428,7 @@ void VulkanDevice::createLogicalDevice() {
   }
 
   // Use a set to ensure unique queue families
-  std::set<uint32_t> uniqueQueueFamilies = {
+  std::set<QueueFamilyIndex32> uniqueQueueFamilies = {
       getGraphicsQueueFamilyIndex(),
       getPresentQueueFamilyIndex(),
   };
@@ -434,7 +436,7 @@ void VulkanDevice::createLogicalDevice() {
   std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
   float queuePriority = 1.0f;
 
-  for (uint32_t queueFamily : uniqueQueueFamilies) {
+  for (QueueFamilyIndex32 queueFamily : uniqueQueueFamilies) {
     VkDeviceQueueCreateInfo queueCreateInfo{};
     queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
     queueCreateInfo.queueFamilyIndex = queueFamily;
@@ -450,19 +452,19 @@ void VulkanDevice::createLogicalDevice() {
   VkDeviceCreateInfo deviceCreateInfo{};
   deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
   deviceCreateInfo.queueCreateInfoCount =
-      static_cast<uint32_t>(queueCreateInfos.size());
+      static_cast<u32>(queueCreateInfos.size());
   deviceCreateInfo.pQueueCreateInfos = queueCreateInfos.data();
   deviceCreateInfo.pEnabledFeatures = &deviceFeatures;
 
   deviceCreateInfo.enabledExtensionCount =
-      static_cast<uint32_t>(m_deviceExtensions.size());
+      static_cast<u32>(m_deviceExtensions.size());
   deviceCreateInfo.ppEnabledExtensionNames = m_deviceExtensions.data();
 
 #ifdef NDEBUG
   deviceCreateInfo.enabledLayerCount = 0;
 #else
   deviceCreateInfo.enabledLayerCount =
-      static_cast<uint32_t>(m_validationLayers.size());
+      static_cast<u32>(m_validationLayers.size());
   deviceCreateInfo.ppEnabledLayerNames = m_validationLayers.data();
 #endif
 
@@ -480,13 +482,13 @@ void VulkanDevice::createLogicalDevice() {
   m_descriptorManager = VulkanDescriptorManager::create(*this);
 }
 
-uint32_t
-VulkanDevice::findMemoryTypeIndex(uint32_t typeFilter,
+MemoryTypeIndex32
+VulkanDevice::findMemoryTypeIndex(u32 typeFilter,
                                   VkMemoryPropertyFlags properties) const {
   VkPhysicalDeviceMemoryProperties memProperties;
   vkGetPhysicalDeviceMemoryProperties(m_physicalDevice, &memProperties);
 
-  for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
+  for (MemoryTypeIndex32 i = 0; i < memProperties.memoryTypeCount; i++) {
     if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags &
                                     properties) == properties) {
       return i;

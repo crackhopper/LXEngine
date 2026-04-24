@@ -10,7 +10,7 @@ struct ObjLoader::Impl {
   std::vector<LX_core::Vec3f> positions;
   std::vector<LX_core::Vec3f> normals;
   std::vector<LX_core::Vec2f> texCoords;
-  std::vector<uint32_t> indices;
+  std::vector<MeshIndex32> indices;
 };
 
 ObjLoader::ObjLoader() : pImpl(new Impl) {}
@@ -40,7 +40,7 @@ void ObjLoader::load(const std::string &filename) {
   pImpl->texCoords.clear();
   pImpl->indices.clear();
 
-  std::unordered_map<uint64_t, uint32_t> vertexMap;
+  std::unordered_map<uint64_t, MeshIndex32> vertexMap;
 
   for (const auto &shape : shapes) {
     for (const auto &index : shape.mesh.indices) {
@@ -48,7 +48,7 @@ void ObjLoader::load(const std::string &filename) {
           makeKey(index.vertex_index, index.normal_index, index.texcoord_index);
 
       if (vertexMap.find(key) == vertexMap.end()) {
-        uint32_t newIndex = static_cast<uint32_t>(pImpl->positions.size());
+        MeshIndex32 newIndex = static_cast<MeshIndex32>(pImpl->positions.size());
         vertexMap[key] = newIndex;
 
         if (index.vertex_index >= 0) {
@@ -89,7 +89,7 @@ const std::vector<LX_core::Vec2f> &ObjLoader::getTexCoords() const {
   return pImpl->texCoords;
 }
 
-const std::vector<uint32_t> &ObjLoader::getIndices() const {
+const std::vector<MeshIndex32> &ObjLoader::getIndices() const {
   return pImpl->indices;
 }
 

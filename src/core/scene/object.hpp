@@ -23,7 +23,7 @@ struct PerDrawData {
   using SharedPtr = std::shared_ptr<PerDrawData>;
 
   alignas(16) uint8_t data[128] = {0};
-  uint32_t activeSize = sizeof(PerDrawLayoutBase);
+  PerDrawByteSize32 activeSize = sizeof(PerDrawLayoutBase);
 
   PerDrawData() {
     PerDrawLayoutBase base;
@@ -38,7 +38,7 @@ struct PerDrawData {
   }
 
   const void *rawData() const { return data; }
-  u32 byteSize() const { return activeSize; }
+  PerDrawByteSize32 byteSize() const { return activeSize; }
 };
 
 using PerDrawDataSharedPtr = PerDrawData::SharedPtr;

@@ -24,8 +24,10 @@ struct alignas(16) CameraData : public IGpuResource {
     return ResourceType::UniformBuffer;
   }
   virtual const void *getRawData() const override { return &param; }
-  static constexpr usize ResourceSize = sizeof(Param);
-  virtual u32 getByteSize() const override { return ResourceSize; }
+  static constexpr ResourceByteSize32 ResourceSize = sizeof(Param);
+  virtual ResourceByteSize32 getByteSize() const override {
+    return ResourceSize;
+  }
 
   StringID getBindingName() const override {
     static const StringID kName("CameraUBO");

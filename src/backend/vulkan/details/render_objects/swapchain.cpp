@@ -10,8 +10,9 @@
 namespace LX_core {
 namespace backend {
 
-VulkanSwapchain::VulkanSwapchain(Token, VulkanDevice &device, WindowSharedPtr window,
-                                 uint32_t maxFramesInFlight)
+VulkanSwapchain::VulkanSwapchain(Token, VulkanDevice &device,
+                                 WindowSharedPtr window,
+                                 FrameIndex32 maxFramesInFlight)
     : m_device(device), m_window(std::move(window)),
       m_maxFramesInFlight(maxFramesInFlight) {
   if (!m_window) {
@@ -21,8 +22,8 @@ VulkanSwapchain::VulkanSwapchain(Token, VulkanDevice &device, WindowSharedPtr wi
   m_surface = m_device.getSurface();
   // Raw extent from the current window size; createInternal() will
   // clamp it using VkSurfaceCapabilitiesKHR.
-  m_extent = {static_cast<uint32_t>(m_window->getWidth()),
-              static_cast<uint32_t>(m_window->getHeight())};
+  m_extent = {static_cast<u32>(m_window->getWidth()),
+              static_cast<u32>(m_window->getHeight())};
 }
 
 VulkanSwapchain::~VulkanSwapchain() { cleanup(); }
@@ -97,8 +98,7 @@ void VulkanSwapchain::createInternal(VkExtent2D extent) {
   }
 
   VkExtent2D actualExtent{};
-  if (capabilities.currentExtent.width !=
-      std::numeric_limits<uint32_t>::max()) {
+  if (capabilities.currentExtent.width != std::numeric_limits<u32>::max()) {
     actualExtent = capabilities.currentExtent;
   } else {
     actualExtent = extent;
@@ -116,7 +116,7 @@ void VulkanSwapchain::createInternal(VkExtent2D extent) {
 
   m_extent = actualExtent;
 
-  uint32_t imageCount = capabilities.minImageCount + 1;
+  SwapchainImageIndex32 imageCount = capabilities.minImageCount + 1;
   if (capabilities.maxImageCount > 0 &&
       imageCount > capabilities.maxImageCount) {
     imageCount = capabilities.maxImageCount;
@@ -132,9 +132,9 @@ void VulkanSwapchain::createInternal(VkExtent2D extent) {
   createInfo.imageArrayLayers = 1;
   createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
-  uint32_t graphicsIdx = m_device.getGraphicsQueueFamilyIndex();
-  uint32_t presentIdx = m_device.getPresentQueueFamilyIndex();
-  uint32_t queueFamilyIndices[] = {graphicsIdx, presentIdx};
+  QueueFamilyIndex32 graphicsIdx = m_device.getGraphicsQueueFamilyIndex();
+  QueueFamilyIndex32 presentIdx = m_device.getPresentQueueFamilyIndex();
+  QueueFamilyIndex32 queueFamilyIndices[] = {graphicsIdx, presentIdx};
 
   if (graphicsIdx != presentIdx) {
     createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
@@ -300,8 +300,8 @@ void VulkanSwapchain::rebuild(VulkanRenderPass &renderPass) {
   cleanup();
 
   VkExtent2D rawExtent{
-      static_cast<uint32_t>(m_window->getWidth()),
-      static_cast<uint32_t>(m_window->getHeight())};
+      static_cast<u32>(m_window->getWidth()),
+      static_cast<u32>(m_window->getHeight())};
   createInternal(rawExtent);
   createImageViews();
   m_depthFormat = m_device.getDepthFormat();
@@ -310,8 +310,8 @@ void VulkanSwapchain::rebuild(VulkanRenderPass &renderPass) {
   setupFramebuffers(renderPass);
 }
 
-VkResult VulkanSwapchain::acquireNextImage(uint32_t currentFrameIndex,
-                                           uint32_t &imageIndex) {
+VkResult VulkanSwapchain::acquireNextImage(FrameIndex32 currentFrameIndex,
+                                           SwapchainImageIndex32 &imageIndex) {
   vkWaitForFences(m_device.getLogicalDevice(), 1,
                   &m_inFlightFences[currentFrameIndex], VK_TRUE, UINT64_MAX);
 
@@ -321,8 +321,8 @@ VkResult VulkanSwapchain::acquireNextImage(uint32_t currentFrameIndex,
                                VK_NULL_HANDLE, &imageIndex);
 }
 
-VkResult VulkanSwapchain::present(uint32_t currentFrameIndex,
-                                  uint32_t imageIndex) {
+VkResult VulkanSwapchain::present(FrameIndex32 currentFrameIndex,
+                                  SwapchainImageIndex32 imageIndex) {
   VkPresentInfoKHR presentInfo{};
   presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
   presentInfo.waitSemaphoreCount = 1;
@@ -336,17 +336,17 @@ VkResult VulkanSwapchain::present(uint32_t currentFrameIndex,
   return vkQueuePresentKHR(m_device.getPresentQueue(), &presentInfo);
 }
 
-VkSemaphore VulkanSwapchain::getImageAvailableSemaphore(uint32_t i) const {
+VkSemaphore VulkanSwapchain::getImageAvailableSemaphore(FrameIndex32 i) const {
   return m_imageAvailableSemaphores[i];
 }
-VkSemaphore VulkanSwapchain::getRenderFinishedSemaphore(uint32_t i) const {
+VkSemaphore VulkanSwapchain::getRenderFinishedSemaphore(FrameIndex32 i) const {
   return m_renderFinishedSemaphores[i];
 }
-VkFence VulkanSwapchain::getInFlightFence(uint32_t i) const {
+VkFence VulkanSwapchain::getInFlightFence(FrameIndex32 i) const {
   return m_inFlightFences[i];
 }
 
-VulkanFrameBuffer &VulkanSwapchain::getFramebuffer(uint32_t index) {
+VulkanFrameBuffer &VulkanSwapchain::getFramebuffer(SwapchainImageIndex32 index) {
   return *m_framebuffers[index];
 }
 

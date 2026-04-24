@@ -66,7 +66,7 @@ std::string variantsDebugString(const ShaderProgramSet &programSet) {
 }
 
 const VertexLayoutItem *findLayoutItem(const VertexLayout &layout,
-                                       uint32_t location) {
+                                       VertexAttributeLocation32 location) {
   for (const auto &item : layout.getItems()) {
     if (item.location == location)
       return &item;

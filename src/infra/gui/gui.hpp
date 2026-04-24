@@ -1,6 +1,6 @@
 #pragma once
+#include "core/platform/types.hpp"
 #include <vulkan/vulkan.h>
-#include <cstdint>
 #include <functional>
 
 namespace infra {
@@ -11,15 +11,15 @@ public:
     VkInstance instance;
     VkPhysicalDevice physicalDevice;
     VkDevice device;
-    uint32_t graphicsQueueFamilyIndex;
-    uint32_t presentQueueFamilyIndex;
+    QueueFamilyIndex32 graphicsQueueFamilyIndex;
+    QueueFamilyIndex32 presentQueueFamilyIndex;
     VkQueue graphicsQueue;
     VkQueue presentQueue;
     VkSurfaceKHR surface;
     // SDL path: must be an SDL_Window*. GLFW path: GLFWwindow*.
     void* nativeWindowHandle;
     VkRenderPass renderPass;
-    uint32_t swapchainImageCount;
+    ImageCount swapchainImageCount;
   };
 
   Gui();
@@ -28,7 +28,7 @@ public:
   void init(const InitParams& params);
   void beginFrame();
   void endFrame(VkCommandBuffer cmd);
-  void updateSwapchainImageCount(uint32_t imageCount);
+  void updateSwapchainImageCount(ImageCount imageCount);
   void shutdown();
 
   bool isInitialized() const;

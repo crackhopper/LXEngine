@@ -68,7 +68,7 @@ struct Window::Impl {
   }
 
   void getRequiredExtensions(std::vector<const char *> &extensions) const {
-    uint32_t count = 0;
+    u32 count = 0;
     // 第一次调用：获取扩展数量
     const char *const *sdlExtensions = SDL_Vulkan_GetInstanceExtensions(&count);
 
@@ -77,7 +77,7 @@ struct Window::Impl {
     }
 
     // 将获取到的扩展名放入传入的 vector 中
-    for (uint32_t i = 0; i < count; ++i) {
+    for (u32 i = 0; i < count; ++i) {
       extensions.push_back(sdlExtensions[i]);
     }
   }

@@ -33,7 +33,7 @@ public:
   void preload(const std::vector<PipelineBuildDesc> &infos,
                VkRenderPass renderPass);
 
-  size_t size() const { return m_cache.size(); }
+  CacheEntryCount size() const { return m_cache.size(); }
 
 private:
   VulkanDevice &m_device;

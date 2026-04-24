@@ -21,13 +21,14 @@ public:
   getVertexInputs() const override;
 
   std::optional<std::reference_wrapper<const LX_core::ShaderResourceBinding>>
-  findBinding(uint32_t set, uint32_t binding) const override;
+  findBinding(DescriptorSetIndex32 set,
+              DescriptorBindingIndex32 binding) const override;
 
   std::optional<std::reference_wrapper<const LX_core::ShaderResourceBinding>>
   findBinding(const std::string &name) const override;
 
   std::optional<std::reference_wrapper<const LX_core::VertexInputAttribute>>
-  findVertexInput(uint32_t location) const override;
+  findVertexInput(VertexAttributeLocation32 location) const override;
 
   size_t getProgramHash() const override;
 
@@ -41,12 +42,12 @@ private:
   std::vector<LX_core::ShaderResourceBinding> m_bindings;
   std::vector<LX_core::VertexInputAttribute> m_vertexInputs;
 
-  // Fast lookup: (set << 16 | binding) -> index in m_bindings
-  std::unordered_map<uint32_t, size_t> m_setBindingIndex;
+  // Fast lookup: packed (set << 16 | binding) -> index in m_bindings
+  std::unordered_map<DescriptorLookupKey32, size_t> m_setBindingIndex;
   // Fast lookup: name -> index in m_bindings
   std::unordered_map<std::string, size_t> m_nameIndex;
   // Fast lookup: location -> index in m_vertexInputs
-  std::unordered_map<uint32_t, size_t> m_vertexInputIndex;
+  std::unordered_map<VertexAttributeLocation32, size_t> m_vertexInputIndex;
 
   size_t m_hash = 0;
   std::string m_logicalName;

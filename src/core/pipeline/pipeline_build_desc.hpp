@@ -16,12 +16,13 @@ struct RenderingItem; // forward decl
 /// a 128-byte range visible to vertex + fragment stages; future shader-declared
 /// ranges can extend this struct without touching backend-neutral code.
 struct PushConstantRange {
-  uint32_t offset = 0;
-  uint32_t size = 128;
+  ByteOffset32 offset = 0;
+  ByteSize32 size = 128;
   /// Bitmask of ShaderStage values that need access. Default: Vertex |
   /// Fragment.
-  uint32_t stageFlagsMask = static_cast<uint32_t>(ShaderStage::Vertex) |
-                            static_cast<uint32_t>(ShaderStage::Fragment);
+  ShaderStageMask32 stageFlagsMask =
+      static_cast<ShaderStageMask32>(ShaderStage::Vertex) |
+      static_cast<ShaderStageMask32>(ShaderStage::Fragment);
 };
 
 /// Aggregates every input a backend needs to construct a graphics pipeline.

@@ -49,7 +49,8 @@ public:
     return m_bindings;
   }
   std::optional<std::reference_wrapper<const ShaderResourceBinding>>
-  findBinding(uint32_t, uint32_t) const override {
+  findBinding(DescriptorSetIndex32,
+              DescriptorBindingIndex32) const override {
     return std::nullopt;
   }
   std::optional<std::reference_wrapper<const ShaderResourceBinding>>
@@ -79,6 +80,7 @@ makeRenderable(const std::string &shaderName = "fake_fg",
   ShaderProgramSet ps;
   ps.shaderName = shaderName;
   ps.variants = variants;
+  ps.shader = shader;
   MaterialPassDefinition entry;
   entry.shaderProgram = ps;
   entry.renderState = RenderState{};

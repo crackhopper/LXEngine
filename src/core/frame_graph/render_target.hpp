@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/rhi/image_format.hpp"
+#include "core/platform/types.hpp"
 #include <cstddef>
 #include <cstdint>
 
@@ -11,7 +12,7 @@ namespace LX_core {
 struct RenderTarget {
   ImageFormat colorFormat = ImageFormat::BGRA8;
   ImageFormat depthFormat = ImageFormat::D32Float;
-  uint8_t sampleCount = 1;
+  SampleCount8 sampleCount = 1;
 
   size_t getHash() const;
 

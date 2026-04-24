@@ -253,7 +253,7 @@ public:
   }
 
   void draw() override {
-    const uint32_t maxFramesInFlight = 3;
+    const FrameIndex32 maxFramesInFlight = 3;
 
     // If the window has zero client area (minimized or in the middle of a
     // drag-resize on Windows), rebuilding or acquiring would either fail or
@@ -265,8 +265,8 @@ public:
 
     const VkExtent2D extent = swapchain->getExtent();
 
-    const uint32_t currentFrameIndex = frameIndex % maxFramesInFlight;
-    uint32_t imageIndex = 0;
+    const FrameIndex32 currentFrameIndex = frameIndex % maxFramesInFlight;
+    SwapchainImageIndex32 imageIndex = 0;
 
     VkResult acquireResult =
         swapchain->acquireNextImage(currentFrameIndex, imageIndex);
@@ -368,7 +368,7 @@ public:
 
   SceneSharedPtr scene = nullptr;
   LX_core::FrameGraph m_frameGraph{};
-  uint32_t frameIndex = 0;
+  FrameIndex32 frameIndex = 0;
 
   infra::Gui m_gui{};
   std::function<void()> m_drawUiCallback{};

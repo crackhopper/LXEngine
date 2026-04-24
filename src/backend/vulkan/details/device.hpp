@@ -31,10 +31,10 @@ public:
 
   // --- 生命周期 ---
   void initialize(WindowSharedPtr window, const char *appName,
-                  uint32_t appVersion = VK_MAKE_VERSION(1, 0, 0),
+                  ApiVersion32 appVersion = VK_MAKE_VERSION(1, 0, 0),
                   const char *engineName = "LX",
-                  uint32_t engineVersion = VK_MAKE_VERSION(1, 0, 0),
-                  uint32_t apiVersion = VK_API_VERSION_1_3,
+                  ApiVersion32 engineVersion = VK_MAKE_VERSION(1, 0, 0),
+                  ApiVersion32 apiVersion = VK_API_VERSION_1_3,
                   std::vector<const char *> validationLayers = {
                       "VK_LAYER_KHRONOS_validation"});
   void shutdown();
@@ -51,10 +51,10 @@ public:
   // 队列一定存在，否则创建实例的时候就会扔出异常。
   VkQueue getGraphicsQueue() const { return m_graphicsQueue; }
   VkQueue getPresentQueue() const { return m_presentQueue; }
-  uint32_t getGraphicsQueueFamilyIndex() const {
+  QueueFamilyIndex32 getGraphicsQueueFamilyIndex() const {
     return m_queueIndices.graphicsFamily.value_or(0);
   }
-  uint32_t getPresentQueueFamilyIndex() const {
+  QueueFamilyIndex32 getPresentQueueFamilyIndex() const {
     return m_queueIndices.presentFamily.value_or(0);
   }
 
@@ -64,8 +64,8 @@ public:
   }
 
   // --- 实用工具 ---
-  uint32_t findMemoryTypeIndex(uint32_t typeFilter,
-                               VkMemoryPropertyFlags properties) const;
+  MemoryTypeIndex32
+  findMemoryTypeIndex(u32 typeFilter, VkMemoryPropertyFlags properties) const;
   void waitIdle() const { vkDeviceWaitIdle(m_device); }
 
   /**
@@ -90,9 +90,9 @@ public:
   VkImageAspectFlags getDepthAspectMask() const;
 private:
   // 内部初始化流程
-  void createInstance(const char *appName, uint32_t appVersion,
-                      const char *engineName, uint32_t engineVersion,
-                      uint32_t apiVersion);
+  void createInstance(const char *appName, ApiVersion32 appVersion,
+                      const char *engineName, ApiVersion32 engineVersion,
+                      ApiVersion32 apiVersion);
   void createSurface();
   void pickPhysicalDevice();
   void findSurfaceDepthFormat();
@@ -100,8 +100,8 @@ private:
 
   struct QueueFamilyIndices {
     // std::optional 表示这个索引可能存在，也可能不存在（初始为 null）
-    std::optional<uint32_t> graphicsFamily; // 图形渲染队列
-    std::optional<uint32_t> presentFamily;  // 屏幕显示队列（Surface）
+    std::optional<QueueFamilyIndex32> graphicsFamily; // 图形渲染队列
+    std::optional<QueueFamilyIndex32> presentFamily;  // 屏幕显示队列（Surface）
 
     // 辅助函数：判断我们需要的队列是否都找齐了
     bool isComplete() const {

@@ -8,8 +8,9 @@
 namespace LX_core {
 namespace backend {
 
-VulkanTexture::VulkanTexture(Token, VulkanDevice &device, uint32_t width,
-                             uint32_t height, VkFormat format,
+VulkanTexture::VulkanTexture(Token, VulkanDevice &device,
+                             ImageDimension32 width, ImageDimension32 height,
+                             VkFormat format,
                              VkImageUsageFlags usage, VkFilter filter)
     : m_device(device.getLogicalDevice()), m_width(width), m_height(height),
       m_format(format) {
@@ -55,8 +56,9 @@ VulkanTexture::VulkanTexture(Token, VulkanDevice &device, uint32_t width,
   createSampler(filter);
 }
 
-VulkanTexture::VulkanTexture(Token, VulkanDevice &device, uint32_t width,
-                             uint32_t height, VkFormat format,
+VulkanTexture::VulkanTexture(Token, VulkanDevice &device,
+                             ImageDimension32 width, ImageDimension32 height,
+                             VkFormat format,
                              VkImageUsageFlags usage,
                              VkImageAspectFlags aspectMask)
     : m_device(device.getLogicalDevice()), m_width(width), m_height(height),
@@ -227,14 +229,17 @@ void VulkanTexture::copyFromBuffer(VulkanCommandBuffer &cmd,
   region.imageSubresource.baseArrayLayer = 0;
   region.imageSubresource.layerCount = 1;
   region.imageOffset = {0, 0, 0};
-  region.imageExtent = {m_width, m_height, 1};
+  region.imageExtent.width = m_width;
+  region.imageExtent.height = m_height;
+  region.imageExtent.depth = 1;
 
   vkCmdCopyBufferToImage(cmd.getHandle(), buffer.getHandle(), m_image,
                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 }
 
 VulkanTextureUniquePtr VulkanTexture::createForAttachment(
-    VulkanDevice &device, uint32_t width, uint32_t height, VkFormat format,
+    VulkanDevice &device, ImageDimension32 width, ImageDimension32 height,
+    VkFormat format,
     VkImageUsageFlags usage, VkImageAspectFlags aspectMask) {
   return std::make_unique<VulkanTexture>(Token{}, device, width, height, format,
                                          usage, aspectMask);

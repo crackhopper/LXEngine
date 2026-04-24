@@ -112,6 +112,81 @@ Modern C++ language features SHALL be used consistently where they clarify inten
 - **WHEN** a derived class overrides a virtual function
 - **THEN** the overriding declaration SHALL include `override`
 
+### Requirement: Semantic scalar types come from the shared type table
+
+Project code SHALL prefer semantic aliases from `src/core/platform/types.hpp`
+over anonymous primitive scalars when a value has a stable domain meaning such
+as count, size, offset, index, stage mask, or API version.
+
+**Rationale**: A name like `VertexCount` or `DescriptorBindingIndex32` carries
+domain meaning that plain `size_t`, `u32`, or `uint32_t` does not. Centralizing
+these aliases in one table also makes it possible to tighten type policy later
+without touching every call site.
+
+#### Required Usage Rules
+
+1. **Use the shared table first**: If a scalar's meaning already exists in
+   `src/core/platform/types.hpp`, code SHALL use that alias instead of raw
+   `size_t`, `u32`, or `uint32_t`.
+
+2. **Counts use variable-width aliases**: Quantities such as element counts,
+   resource counts, and collection sizes SHOULD use the `usize`-backed semantic
+   aliases from the shared table (for example `VertexCount`, `IndexCount`,
+   `ImageCount`, `BindingCount`).
+
+3. **Layout and protocol fields use fixed-width aliases**: Shader layout,
+   descriptor layout, byte offset/size, stage mask, API version, and other
+   externally constrained 32-bit fields SHALL use the matching `u32`-backed
+   semantic aliases from the shared table (for example `ByteOffset32`,
+   `DescriptorBindingIndex32`, `ShaderStageMask32`, `ApiVersion32`).
+
+4. **Prefer semantic names over generic widths**: New members and public
+   function parameters SHALL NOT introduce bare names like `u32 count`,
+   `uint32_t index`, or `size_t size` when a domain-specific alias would make
+   the contract clearer.
+
+5. **Add missing stable meanings to the shared table**: If a scalar meaning is
+   used repeatedly across subsystem boundaries and no alias exists yet, the
+   alias SHOULD be added to `src/core/platform/types.hpp` before further
+   spreading the raw primitive type.
+
+#### Allowed Exceptions
+
+1. **External API boundaries**: Code that directly calls Vulkan, SDL, GLFW,
+   ImGui, shaderc, SPIRV-Cross, or other third-party APIs MAY keep the exact
+   scalar types those APIs require. Prefer converting at the boundary rather
+   than leaking the external type choice deeper into project code.
+
+2. **Opaque ID/storage internals**: Low-level systems whose storage contract is
+   fundamentally defined by a primitive width (for example atomics, packed bit
+   representations, or third-party binary formats) MAY keep the primitive type
+   if introducing a semantic alias would not improve clarity.
+
+#### Scenario: Count semantics use project aliases
+
+```cpp
+// CORRECT
+VertexCount getVertexCount() const;
+ImageCount getImageCount() const;
+BindingCount getParameterBufferCount() const;
+
+// INCORRECT
+size_t getVertexCount() const;     // VIOLATION when VertexCount exists
+uint32_t getImageCount() const;    // VIOLATION when ImageCount exists
+u32 getParameterBufferCount() const; // VIOLATION when BindingCount exists
+```
+
+#### Scenario: External API conversion stays at the boundary
+
+```cpp
+// CORRECT
+ImageCount imageCount = swapchain->getImageCount();
+initInfo.ImageCount = static_cast<u32>(imageCount); // Vulkan/ImGui boundary
+
+// INCORRECT
+uint32_t imageCount = swapchain->getImageCount(); // leaks API width inward
+```
+
 ### Requirement: Ownership and dependency patterns follow the style guide
 
 Ownership and dependency patterns SHALL follow the approved examples below.

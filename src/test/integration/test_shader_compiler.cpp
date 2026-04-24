@@ -64,14 +64,14 @@ static const char *vkDescriptorTypeName(ShaderPropertyType t) {
 
 static std::string stageFlagsToString(ShaderStage flags) {
   std::string result;
-  auto f = static_cast<uint32_t>(flags);
-  if (f & static_cast<uint32_t>(ShaderStage::Vertex))
+  auto f = static_cast<ShaderStageMask32>(flags);
+  if (f & static_cast<ShaderStageMask32>(ShaderStage::Vertex))
     result += "VERTEX ";
-  if (f & static_cast<uint32_t>(ShaderStage::Fragment))
+  if (f & static_cast<ShaderStageMask32>(ShaderStage::Fragment))
     result += "FRAGMENT ";
-  if (f & static_cast<uint32_t>(ShaderStage::Compute))
+  if (f & static_cast<ShaderStageMask32>(ShaderStage::Compute))
     result += "COMPUTE ";
-  if (f & static_cast<uint32_t>(ShaderStage::Geometry))
+  if (f & static_cast<ShaderStageMask32>(ShaderStage::Geometry))
     result += "GEOMETRY ";
   if (result.empty())
     result = "NONE";
@@ -95,7 +95,7 @@ printDescriptorSetLayoutMapping(const std::vector<ShaderResourceBinding> &bindin
   std::cout << "\n  === VkDescriptorSetLayoutBinding mapping ===\n";
 
   // Group by set
-  uint32_t currentSet = UINT32_MAX;
+  DescriptorSetIndex32 currentSet = u32_max;
   for (const auto &b : bindings) {
     if (b.set != currentSet) {
       currentSet = b.set;
@@ -313,7 +313,8 @@ static bool testBlinnPhongVariantVertexInputs(
   };
   const auto hasInput =
       [](const std::vector<VertexInputAttribute> &inputs,
-         const std::string &name, uint32_t location, DataType type) {
+         const std::string &name, VertexAttributeLocation32 location,
+         DataType type) {
         for (const auto &input : inputs) {
           if (input.name == name && input.location == location &&
               input.type == type) {

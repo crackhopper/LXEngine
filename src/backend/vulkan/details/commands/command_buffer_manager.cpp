@@ -5,9 +5,9 @@
 namespace LX_core {
 namespace backend {
 
-VulkanCommandBufferManager::VulkanCommandBufferManager(Token, VulkanDevice &device,
-                                                      uint32_t maxFramesInFlight,
-                                                      uint32_t queueFamilyIndex)
+VulkanCommandBufferManager::VulkanCommandBufferManager(
+    Token, VulkanDevice &device, FrameIndex32 maxFramesInFlight,
+    QueueFamilyIndex32 queueFamilyIndex)
     : m_device(device), m_maxFramesInFlight(maxFramesInFlight),
       m_queueFamilyIndex(queueFamilyIndex) {
   m_frameContexts.resize(maxFramesInFlight);
@@ -45,7 +45,7 @@ void VulkanCommandBufferManager::createPool(VkCommandPool &pool, VkCommandPoolCr
   }
 }
 
-void VulkanCommandBufferManager::beginFrame(uint32_t currentFrameIndex) {
+void VulkanCommandBufferManager::beginFrame(FrameIndex32 currentFrameIndex) {
   m_currentFrameIndex = currentFrameIndex;
 
   CommandFrameContext &frame = m_frameContexts[currentFrameIndex];

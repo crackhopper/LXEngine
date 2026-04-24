@@ -18,7 +18,7 @@ struct Gui::Impl {
   bool initialized = false;
   VkDevice device = VK_NULL_HANDLE;
   VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
-  uint32_t swapchainImageCount = 0;
+  ImageCount swapchainImageCount = 0;
 };
 
 Gui::Gui() : pImpl(new Impl) {}
@@ -33,7 +33,7 @@ Gui::~Gui() {
 namespace {
 
 VkDescriptorPool createImGuiDescriptorPool(VkDevice device) {
-  constexpr uint32_t kPoolSize = 1000;
+  constexpr DescriptorPoolCount32 kPoolSize = 1000;
   const std::array<VkDescriptorPoolSize, 11> poolSizes = {{
       {VK_DESCRIPTOR_TYPE_SAMPLER, kPoolSize},
       {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, kPoolSize},
@@ -51,8 +51,8 @@ VkDescriptorPool createImGuiDescriptorPool(VkDevice device) {
   VkDescriptorPoolCreateInfo info{};
   info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
   info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-  info.maxSets = kPoolSize * static_cast<uint32_t>(poolSizes.size());
-  info.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
+  info.maxSets = kPoolSize * static_cast<DescriptorPoolCount32>(poolSizes.size());
+  info.poolSizeCount = static_cast<u32>(poolSizes.size());
   info.pPoolSizes = poolSizes.data();
 
   VkDescriptorPool pool = VK_NULL_HANDLE;
@@ -99,13 +99,13 @@ void Gui::init(const InitParams& params) {
   initInfo.Instance = params.instance;
   initInfo.PhysicalDevice = params.physicalDevice;
   initInfo.Device = params.device;
-  initInfo.QueueFamily = params.graphicsQueueFamilyIndex;
+  initInfo.QueueFamily = static_cast<u32>(params.graphicsQueueFamilyIndex);
   initInfo.Queue = params.graphicsQueue;
   initInfo.PipelineCache = VK_NULL_HANDLE;
   initInfo.DescriptorPool = pImpl->descriptorPool;
   initInfo.DescriptorPoolSize = 0;
-  initInfo.MinImageCount = params.swapchainImageCount;
-  initInfo.ImageCount = params.swapchainImageCount;
+  initInfo.MinImageCount = static_cast<u32>(params.swapchainImageCount);
+  initInfo.ImageCount = static_cast<u32>(params.swapchainImageCount);
   initInfo.PipelineInfoMain.RenderPass = params.renderPass;
   initInfo.PipelineInfoMain.Subpass = 0;
   initInfo.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
@@ -148,12 +148,12 @@ void Gui::endFrame(VkCommandBuffer cmd) {
   ImGui_ImplVulkan_RenderDrawData(drawData, cmd, VK_NULL_HANDLE);
 }
 
-void Gui::updateSwapchainImageCount(uint32_t imageCount) {
+void Gui::updateSwapchainImageCount(ImageCount imageCount) {
   if (!pImpl->initialized || imageCount == 0 ||
       imageCount == pImpl->swapchainImageCount) {
     return;
   }
-  ImGui_ImplVulkan_SetMinImageCount(imageCount);
+  ImGui_ImplVulkan_SetMinImageCount(static_cast<u32>(imageCount));
   pImpl->swapchainImageCount = imageCount;
 }
 

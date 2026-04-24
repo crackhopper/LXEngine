@@ -47,7 +47,8 @@ public:
     return m_bindings;
   }
   std::optional<std::reference_wrapper<const ShaderResourceBinding>>
-  findBinding(uint32_t set, uint32_t binding) const override {
+  findBinding(DescriptorSetIndex32 set,
+              DescriptorBindingIndex32 binding) const override {
     for (const auto &item : m_bindings) {
       if (item.set == set && item.binding == binding)
         return std::cref(item);

@@ -53,7 +53,8 @@ public:
     return m_bindings;
   }
   std::optional<std::reference_wrapper<const ShaderResourceBinding>>
-  findBinding(uint32_t, uint32_t) const override {
+  findBinding(DescriptorSetIndex32,
+              DescriptorBindingIndex32) const override {
     return std::nullopt;
   }
   std::optional<std::reference_wrapper<const ShaderResourceBinding>>
@@ -101,9 +102,9 @@ buildItem(PrimitiveTopology topo = PrimitiveTopology::TriangleList) {
   };
   std::vector<ShaderStageCode> stages = {
       ShaderStageCode{ShaderStage::Vertex,
-                      std::vector<uint32_t>{0x07230203, 0, 0}},
+                      std::vector<u32>{0x07230203, 0, 0}},
       ShaderStageCode{ShaderStage::Fragment,
-                      std::vector<uint32_t>{0x07230203, 1, 0}},
+                      std::vector<u32>{0x07230203, 1, 0}},
   };
 
   auto shader =
@@ -112,6 +113,7 @@ buildItem(PrimitiveTopology topo = PrimitiveTopology::TriangleList) {
 
   ShaderProgramSet set;
   set.shaderName = "fake_shader";
+  set.shader = shader;
   MaterialPassDefinition entry;
   entry.shaderProgram = set;
   entry.renderState = RenderState{};

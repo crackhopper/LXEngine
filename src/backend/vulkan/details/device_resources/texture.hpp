@@ -1,4 +1,5 @@
 #pragma once
+#include "core/platform/types.hpp"
 #include <memory>
 #include <vulkan/vulkan.h>
 
@@ -17,16 +18,19 @@ class VulkanTexture {
   struct Token {};
 
 public:
-  VulkanTexture(Token, VulkanDevice &device, uint32_t width,
-                uint32_t height, VkFormat format, VkImageUsageFlags usage,
+  VulkanTexture(Token, VulkanDevice &device, ImageDimension32 width,
+                ImageDimension32 height, VkFormat format,
+                VkImageUsageFlags usage,
                 VkFilter filter);
-  VulkanTexture(Token, VulkanDevice &device, uint32_t width,
-                uint32_t height, VkFormat format, VkImageUsageFlags usage,
+  VulkanTexture(Token, VulkanDevice &device, ImageDimension32 width,
+                ImageDimension32 height, VkFormat format,
+                VkImageUsageFlags usage,
                 VkImageAspectFlags aspectMask);
   ~VulkanTexture();
 
-  static VulkanTextureUniquePtr create(VulkanDevice &device, uint32_t width,
-                                       uint32_t height, VkFormat format,
+  static VulkanTextureUniquePtr create(VulkanDevice &device,
+                                       ImageDimension32 width,
+                                       ImageDimension32 height, VkFormat format,
                                        VkImageUsageFlags usage,
                                        VkFilter filter = VK_FILTER_LINEAR) {
     return std::make_unique<VulkanTexture>(Token{}, device, width, height,
@@ -34,7 +38,7 @@ public:
   }
 
   static VulkanTextureUniquePtr createForAttachment(
-      VulkanDevice &device, uint32_t width, uint32_t height,
+      VulkanDevice &device, ImageDimension32 width, ImageDimension32 height,
       VkFormat format, VkImageUsageFlags usage,
       VkImageAspectFlags aspectMask);
 
@@ -53,8 +57,8 @@ public:
   void copyFromBuffer(VulkanCommandBuffer &cmd, class VulkanBuffer &buffer);
 
   VkFormat getFormat() const { return m_format; }
-  uint32_t getWidth() const { return m_width; }
-  uint32_t getHeight() const { return m_height; }
+  ImageDimension32 getWidth() const { return m_width; }
+  ImageDimension32 getHeight() const { return m_height; }
   VkDeviceMemory getMemory() const { return m_memory; }
 
 private:
@@ -67,8 +71,8 @@ private:
   VkImageView m_imageView = VK_NULL_HANDLE;
   VkSampler m_sampler = VK_NULL_HANDLE;
   VkFormat m_format = VK_FORMAT_UNDEFINED;
-  uint32_t m_width = 0;
-  uint32_t m_height = 0;
+  ImageDimension32 m_width = 0;
+  ImageDimension32 m_height = 0;
   VkImageLayout m_currentLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 };
 

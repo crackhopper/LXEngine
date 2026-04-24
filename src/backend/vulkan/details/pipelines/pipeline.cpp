@@ -94,23 +94,23 @@ VkBlendFactor blendFactorToVk(BlendFactor f) {
 
 VkShaderStageFlags shaderStageMaskToVk(ShaderStage mask) {
   VkShaderStageFlags out = 0;
-  const auto m = static_cast<uint32_t>(mask);
-  if (m & static_cast<uint32_t>(ShaderStage::Vertex))
+  const auto m = static_cast<ShaderStageMask32>(mask);
+  if (m & static_cast<ShaderStageMask32>(ShaderStage::Vertex))
     out |= VK_SHADER_STAGE_VERTEX_BIT;
-  if (m & static_cast<uint32_t>(ShaderStage::Fragment))
+  if (m & static_cast<ShaderStageMask32>(ShaderStage::Fragment))
     out |= VK_SHADER_STAGE_FRAGMENT_BIT;
-  if (m & static_cast<uint32_t>(ShaderStage::Compute))
+  if (m & static_cast<ShaderStageMask32>(ShaderStage::Compute))
     out |= VK_SHADER_STAGE_COMPUTE_BIT;
-  if (m & static_cast<uint32_t>(ShaderStage::Geometry))
+  if (m & static_cast<ShaderStageMask32>(ShaderStage::Geometry))
     out |= VK_SHADER_STAGE_GEOMETRY_BIT;
-  if (m & static_cast<uint32_t>(ShaderStage::TessControl))
+  if (m & static_cast<ShaderStageMask32>(ShaderStage::TessControl))
     out |= VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
-  if (m & static_cast<uint32_t>(ShaderStage::TessEval))
+  if (m & static_cast<ShaderStageMask32>(ShaderStage::TessEval))
     out |= VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
   return out;
 }
 
-VkShaderStageFlags pushConstantStageMaskToVk(uint32_t mask) {
+VkShaderStageFlags pushConstantStageMaskToVk(ShaderStageMask32 mask) {
   return shaderStageMaskToVk(static_cast<ShaderStage>(mask));
 }
 
@@ -215,8 +215,7 @@ VkPipelineViewportStateCreateInfo VulkanPipeline::getViewportStateCreateInfo() {
 VkPipelineDynamicStateCreateInfo VulkanPipeline::getDynamicStateCreateInfo() {
   VkPipelineDynamicStateCreateInfo dynamicState{};
   dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-  dynamicState.dynamicStateCount =
-      static_cast<uint32_t>(m_dynamicStates.size());
+  dynamicState.dynamicStateCount = static_cast<u32>(m_dynamicStates.size());
   dynamicState.pDynamicStates = m_dynamicStates.data();
   return dynamicState;
 }
@@ -320,10 +319,10 @@ VulkanPipeline::getVertexInputStateCreateInfo() {
   vertexInputInfo.sType =
       VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
   vertexInputInfo.vertexBindingDescriptionCount =
-      static_cast<uint32_t>(m_viBindingDescriptions.size());
+      static_cast<u32>(m_viBindingDescriptions.size());
   vertexInputInfo.pVertexBindingDescriptions = m_viBindingDescriptions.data();
   vertexInputInfo.vertexAttributeDescriptionCount =
-      static_cast<uint32_t>(m_viAttrDescriptions.size());
+      static_cast<u32>(m_viAttrDescriptions.size());
   vertexInputInfo.pVertexAttributeDescriptions = m_viAttrDescriptions.data();
   return vertexInputInfo;
 }
@@ -375,10 +374,10 @@ VkPipeline VulkanPipeline::buildGraphicsPpl(VkRenderPass renderPass) {
 }
 
 void VulkanPipeline::loadShaders() {
-  auto createModule = [&](const std::vector<uint32_t> &bytecode) {
+  auto createModule = [&](const std::vector<u32> &bytecode) {
     VkShaderModuleCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    createInfo.codeSize = bytecode.size() * sizeof(uint32_t);
+    createInfo.codeSize = bytecode.size() * sizeof(u32);
     createInfo.pCode = bytecode.data();
     VkShaderModule module;
     if (vkCreateShaderModule(m_deviceHandle, &createInfo, nullptr, &module) !=
@@ -400,13 +399,14 @@ void VulkanPipeline::loadShaders() {
 void VulkanPipeline::createLayout() {
   auto &descriptorMgr = m_device.getDescriptorManager();
 
-  std::unordered_map<uint32_t, std::vector<LX_core::ShaderResourceBinding>>
+  std::unordered_map<DescriptorSetIndex32,
+                     std::vector<LX_core::ShaderResourceBinding>>
       setGroups;
   for (const auto &b : m_bindings) {
     setGroups[b.set].push_back(b);
   }
 
-  uint32_t maxSet = 0;
+  DescriptorSetIndex32 maxSet = 0;
   for (const auto &kv : setGroups)
     maxSet = std::max(maxSet, kv.first);
 
@@ -428,7 +428,7 @@ void VulkanPipeline::createLayout() {
 
   VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
   pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-  pipelineLayoutInfo.setLayoutCount = static_cast<uint32_t>(setLayouts.size());
+  pipelineLayoutInfo.setLayoutCount = static_cast<u32>(setLayouts.size());
   pipelineLayoutInfo.pSetLayouts = setLayouts.data();
 
   VkPushConstantRange range{};

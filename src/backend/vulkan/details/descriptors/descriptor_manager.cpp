@@ -36,8 +36,8 @@ DescriptorLayoutHasher::operator()(const DescriptorLayoutKey &key) const {
     size_t bindingHash = 0;
     LX_core::hash_combine(bindingHash, b.set);
     LX_core::hash_combine(bindingHash, b.binding);
-    LX_core::hash_combine(bindingHash, static_cast<uint32_t>(b.type));
-    LX_core::hash_combine(bindingHash, static_cast<uint32_t>(b.stageFlags));
+    LX_core::hash_combine(bindingHash, static_cast<u32>(b.type));
+    LX_core::hash_combine(bindingHash, static_cast<u32>(b.stageFlags));
     LX_core::hash_combine(bindingHash, b.descriptorCount);
     LX_core::hash_combine(res, bindingHash);
   }
@@ -57,7 +57,7 @@ DescriptorSet::~DescriptorSet() {
 }
 
 // --- 更新 Buffer 资源 ---
-void DescriptorSet::updateBuffer(uint32_t binding,
+void DescriptorSet::updateBuffer(DescriptorBindingIndex32 binding,
                                  VkDescriptorBufferInfo bufferInfo,
                                  VkDescriptorType type) {
   VkWriteDescriptorSet descriptorWrite{};
@@ -75,7 +75,7 @@ void DescriptorSet::updateBuffer(uint32_t binding,
 }
 
 // --- 更新 Image/Sampler 资源 ---
-void DescriptorSet::updateImage(uint32_t binding,
+void DescriptorSet::updateImage(DescriptorBindingIndex32 binding,
                                 VkDescriptorImageInfo imageInfo,
                                 VkDescriptorType type) {
   VkWriteDescriptorSet descriptorWrite{};
@@ -121,7 +121,7 @@ void DescriptorSet::updateBatch(
 
   // 一次性提交给驱动，比多次调用单个更新效率更高
   vkUpdateDescriptorSets(m_manager.getDeviceHandle(),
-                         static_cast<uint32_t>(writes.size()), writes.data(), 0,
+                         static_cast<u32>(writes.size()), writes.data(), 0,
                          nullptr);
 }
 
@@ -130,7 +130,7 @@ VulkanDescriptorManager::VulkanDescriptorManager(Token, VulkanDevice &device)
   m_frameContexts.resize(m_maxFramesInFlight);
 
   // 为每一帧创建一个独立的描述符池
-  for (uint32_t i = 0; i < m_maxFramesInFlight; ++i) {
+  for (FrameIndex32 i = 0; i < m_maxFramesInFlight; ++i) {
     std::array<VkDescriptorPoolSize, 3> poolSizes{};
 
     // 1. Uniform Buffers (UBO)
@@ -151,7 +151,7 @@ VulkanDescriptorManager::VulkanDescriptorManager(Token, VulkanDevice &device)
         0; // 我们不使用
            // VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT，靠重置池或逻辑复用
     poolInfo.maxSets = m_config.maxSets;
-    poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
+    poolInfo.poolSizeCount = static_cast<u32>(poolSizes.size());
     poolInfo.pPoolSizes = poolSizes.data();
 
     if (vkCreateDescriptorPool(m_device.getLogicalDevice(), &poolInfo, nullptr,
@@ -182,7 +182,7 @@ VulkanDescriptorManager::~VulkanDescriptorManager() {
   m_layoutCache.clear();
 
   // 3. 销毁每一帧的资源
-  for (uint32_t i = 0; i < m_maxFramesInFlight; ++i) {
+  for (FrameIndex32 i = 0; i < m_maxFramesInFlight; ++i) {
     if (m_frameContexts[i].pool != VK_NULL_HANDLE) {
       // 销毁池会自动释放所有关联的 VkDescriptorSet 句柄
       vkDestroyDescriptorPool(m_device.getLogicalDevice(),
@@ -223,7 +223,7 @@ VkDescriptorSetLayout VulkanDescriptorManager::getOrCreateLayout(
 
   VkDescriptorSetLayoutCreateInfo layoutInfo{
       VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
-  layoutInfo.bindingCount = static_cast<uint32_t>(vkBindings.size());
+  layoutInfo.bindingCount = static_cast<u32>(vkBindings.size());
   layoutInfo.pBindings = vkBindings.data();
 
   VkDescriptorSetLayout layout;
@@ -273,7 +273,7 @@ DescriptorSetUniquePtr VulkanDescriptorManager::allocateSet(
   return std::make_unique<DescriptorSet>(setHandle, layout, *this);
 }
 
-void VulkanDescriptorManager::beginFrame(uint32_t currentFrameIndex) {
+void VulkanDescriptorManager::beginFrame(FrameIndex32 currentFrameIndex) {
   // 1. 更新当前帧索引
   m_currentFrameIndex = currentFrameIndex;
 
@@ -308,7 +308,7 @@ void VulkanDescriptorManager::reset() {
   // 必须确保 GPU 已经停下，否则重置池会导致正在执行的命令崩溃
   vkDeviceWaitIdle(m_device.getLogicalDevice());
 
-  for (uint32_t i = 0; i < m_maxFramesInFlight; ++i) {
+  for (FrameIndex32 i = 0; i < m_maxFramesInFlight; ++i) {
     auto &context = m_frameContexts[i];
 
     // 1. 重置物理描述符池 (这会使该池分配的所有 VkDescriptorSet 失效)

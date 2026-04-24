@@ -48,8 +48,8 @@ enum class ShaderPropertyType {
 struct StructMemberInfo {
   std::string name;        // GLSL member name (e.g. "baseColor")
   ShaderPropertyType type; // Float / Int / Vec2 / Vec3 / Vec4 / Mat4
-  uint32_t offset = 0;     // std140 byte offset within the block
-  uint32_t size = 0;       // std140 declared byte size of this member
+  ByteOffset32 offset = 0; // std140 byte offset within the block
+  ByteSize32 size = 0;     // std140 declared byte size of this member
 
   bool operator==(const StructMemberInfo &rhs) const {
     return name == rhs.name && type == rhs.type && offset == rhs.offset &&
@@ -60,7 +60,7 @@ struct StructMemberInfo {
 /*****************************************************************
  * ShaderStage（改为 bitmask）
  *****************************************************************/
-enum class ShaderStage : uint32_t {
+enum class ShaderStage : u32 {
   None = 0,
   Vertex = 1 << 0,
   Fragment = 1 << 1,
@@ -71,8 +71,7 @@ enum class ShaderStage : uint32_t {
 };
 
 inline ShaderStage operator|(ShaderStage a, ShaderStage b) {
-  return static_cast<ShaderStage>(static_cast<uint32_t>(a) |
-                                  static_cast<uint32_t>(b));
+  return static_cast<ShaderStage>(static_cast<u32>(a) | static_cast<u32>(b));
 }
 
 /*
@@ -94,14 +93,14 @@ inline ShaderStage operator|(ShaderStage a, ShaderStage b) {
 struct ShaderResourceBinding {
   std::string name;
 
-  uint32_t set = 0;
-  uint32_t binding = 0;
+  DescriptorSetIndex32 set = 0;
+  DescriptorBindingIndex32 binding = 0;
 
   ShaderPropertyType type;
 
-  uint32_t descriptorCount = 1;
-  uint32_t size = 0;
-  uint32_t offset = 0;
+  DescriptorCount descriptorCount = 1;
+  ByteSize32 size = 0;
+  ByteOffset32 offset = 0;
 
   ShaderStage stageFlags = ShaderStage::None;
 
@@ -122,12 +121,12 @@ struct ShaderResourceBinding {
  *****************************************************************/
 struct ShaderStageCode {
   ShaderStage stage;
-  std::vector<uint32_t> bytecode;
+  std::vector<u32> bytecode;
 };
 
 struct VertexInputAttribute {
   std::string name;
-  uint32_t location = 0;
+  VertexAttributeLocation32 location = 0;
   DataType type = DataType::Float1;
 
   bool operator==(const VertexInputAttribute &rhs) const {
@@ -161,14 +160,15 @@ public:
 
   /// ⭐ 快速查找（推荐）
   virtual std::optional<std::reference_wrapper<const ShaderResourceBinding>>
-  findBinding(uint32_t set, uint32_t binding) const = 0;
+  findBinding(DescriptorSetIndex32 set,
+              DescriptorBindingIndex32 binding) const = 0;
 
   /// fallback
   virtual std::optional<std::reference_wrapper<const ShaderResourceBinding>>
   findBinding(const std::string &name) const = 0;
 
   virtual std::optional<std::reference_wrapper<const VertexInputAttribute>>
-  findVertexInput(uint32_t location) const {
+  findVertexInput(VertexAttributeLocation32 location) const {
     (void)location;
     return std::nullopt;
   }
@@ -287,7 +287,7 @@ struct hash<LX_core::ShaderResourceBinding> {
     size_t h = 0;
     LX_core::hash_combine(h, b.set);
     LX_core::hash_combine(h, b.binding);
-    LX_core::hash_combine(h, static_cast<uint32_t>(b.type));
+    LX_core::hash_combine(h, static_cast<u32>(b.type));
     LX_core::hash_combine(h, b.descriptorCount);
     return h;
   }

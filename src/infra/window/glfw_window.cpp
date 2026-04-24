@@ -43,7 +43,7 @@ struct Window::Impl {
   }
 
   void getRequiredExtensions(std::vector<const char *> &extensions) const {
-    uint32_t glfwExtensionCount = 0;
+    u32 glfwExtensionCount = 0;
     const char **glfwExtensions;
 
     // 获取 GLFW 运行 Vulkan 所需的扩展列表（如 VK_KHR_surface 等）
@@ -55,7 +55,7 @@ struct Window::Impl {
     }
 
     // 将这些扩展添加到传入的 vector 中
-    for (uint32_t i = 0; i < glfwExtensionCount; i++) {
+    for (u32 i = 0; i < glfwExtensionCount; i++) {
       extensions.push_back(glfwExtensions[i]);
     }
   }

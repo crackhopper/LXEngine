@@ -13,7 +13,7 @@ VulkanFrameBuffer::VulkanFrameBuffer(Token, VulkanDevice &device,
   VkFramebufferCreateInfo framebufferInfo{};
   framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
   framebufferInfo.renderPass = renderPass;
-  framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+  framebufferInfo.attachmentCount = static_cast<u32>(attachments.size());
   framebufferInfo.pAttachments = attachments.data();
   framebufferInfo.width = extent.width;
   framebufferInfo.height = extent.height;
