@@ -4,3 +4,5 @@ approval_policy = "never"
 sandbox_mode = "danger-full-access"
 trust_level = "trusted"
 
+[features]
+codex_hooks = true

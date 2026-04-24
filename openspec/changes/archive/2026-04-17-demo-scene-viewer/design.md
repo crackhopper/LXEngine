@@ -91,7 +91,7 @@ indices 直接复制。
 ### D4: 材质桥：`blinnphong_default.material` + `enableAlbedo=1` + albedoMap 绑定
 
 **选择**：`makeHelmetMaterial(pbrMat, gltfDir)`：
-1. `auto mat = LX_infra::loadGenericMaterial("materials/blinnphong_default.material");`
+1. `auto mat = LX_infra::loadGenericMaterial("assets/assets/materials/blinnphong_default.material");`
 2. `mat->setInt(StringID("enableAlbedo"), 1);`
 3. `mat->setInt(StringID("enableNormal"), 0);`（DamagedHelmet 无 TANGENT，normal map 分支不启用）
 4. 若 `pbrMat.baseColorTexture` 非空：`auto tex = 加载 gltfDir / pbrMat.baseColorTexture` → `mat->setTexture(StringID("albedoMap"), combinedSampler);`

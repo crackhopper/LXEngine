@@ -41,7 +41,7 @@ The system SHALL provide a `loadGenericMaterial(yamlPath)` function that:
 The generic loader SHALL NOT require material-type-specific C++ code. Any shader that follows the engine's binding conventions SHALL be loadable via this path.
 
 #### Scenario: Generic loader produces a ready-to-render instance
-- **WHEN** `loadGenericMaterial("materials/blinnphong_lit.mat.yaml")` is called with a valid yaml
+- **WHEN** `loadGenericMaterial("assets/materials/blinnphong_lit.mat.yaml")` is called with a valid yaml
 - **THEN** the returned `MaterialInstanceSharedPtr` has populated buffer slots, bound textures, and valid pass configuration
 
 #### Scenario: Generic loader rejects invalid shader

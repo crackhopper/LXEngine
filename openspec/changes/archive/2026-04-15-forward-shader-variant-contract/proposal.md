@@ -23,6 +23,6 @@
 
 ## Impact
 
-- 影响 `shaders/glsl/blinnphong_0.vert`、`shaders/glsl/blinnphong_0.frag`、`src/infra/material_loader/blinn_phong_material_loader.cpp`、`src/infra/shader_compiler/shader_reflector.cpp` 以及 `SceneNode` 结构性校验路径。
+- 影响 `assets/shaders/glsl/blinnphong_0.vert`、`assets/shaders/glsl/blinnphong_0.frag`、`src/infra/material_loader/blinn_phong_material_loader.cpp`、`src/infra/shader_compiler/shader_reflector.cpp` 以及 `SceneNode` 结构性校验路径。
 - 影响 forward material 的编译和装配方式、mesh vertex layout 校验行为，以及 fatal 失败的诊断覆盖。
 - 需要新增或调整以 shader 编译/反射、loader、`SceneNode` 校验为主的非 GPU 测试。

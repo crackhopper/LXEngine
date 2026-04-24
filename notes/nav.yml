@@ -71,3 +71,5 @@ nav:
   - 相关工具:
       - tools/index.md
       - Notes 工具链说明: tools/notes-tooling.md
+  - FAQ:
+      - faq/README.md

@@ -1,67 +1,7 @@
 # Claude Code Project Instructions
 
-See `AGENTS.md` for full project context, architecture, and coding standards.
+Load `AGENTS.md` first.
 
-## Quick Reference
+`AGENTS.md` is the only maintained coding-agent memory file in this repository. Do not rely on duplicated summaries here. Use this file only as an index to the canonical entry:
 
-- C++20 Vulkan renderer: `src/core/` (interfaces) → `src/infra/` (implementations) → `src/backend/` (Vulkan)
-- Build: `cmake .. -G Ninja && ninja <target>`
-- **Always read the relevant spec before modifying a subsystem**: `openspec/specs/`
-
-## Specs Index
-
-- `openspec/specs/cpp-style-guide/spec.md` — C++ ownership & style rules (MUST follow)
-- `openspec/specs/renderer-backend-vulkan/spec.md` — Vulkan backend requirements
-- `openspec/specs/string-interning/spec.md` — GlobalStringTable / StringID
-- `openspec/specs/shader-compilation/spec.md` — Runtime GLSL→SPIR-V compilation
-- `openspec/specs/shader-reflection/spec.md` — SPIR-V reflection / ShaderResourceBinding
-- `openspec/specs/window-system/spec.md` — IWindow interface (SDL/GLFW)
-- `openspec/specs/gui-system/spec.md` — ImGui integration
-- `openspec/specs/texture-loading/spec.md` — Image loading (stb_image)
-- `openspec/specs/mesh-loading/spec.md` — OBJ/GLTF mesh loading
-- `openspec/specs/render-signature/spec.md` — `getRenderSignature(pass)` across resources; `Pass_*` constants
-- `openspec/specs/pipeline-key/spec.md` — `PipelineKey::build(objSig, matSig)` structured identity
-- `openspec/specs/pipeline-build-desc/spec.md` — `PipelineBuildDesc` aggregation of pipeline construction inputs
-- `openspec/specs/frame-graph/spec.md` — `FrameGraph` / `RenderQueue` / `RenderTarget` / `ImageFormat`
-- `openspec/specs/pipeline-cache/spec.md` — Backend pipeline cache: `find` / `getOrCreate` / `preload`
-- `openspec/specs/skeleton-resource/spec.md` — Skeleton as core resource, no `IComponent`
-- `openspec/specs/asset-directory-convention/spec.md` — `assets/` directory structure, budget, and README conventions
-- `openspec/specs/asset-path-helper/spec.md` — `cdToWhereAssetsExist()` helper and CMake sync
-- `openspec/specs/input-abstraction/spec.md` — `KeyCode`, `MouseButton`, `IInputState`, `DummyInputState`
-- `openspec/specs/clock-time-system/spec.md` — Clock contract: tick, deltaTime, smoothedDeltaTime
-- `openspec/specs/sdl-input-state/spec.md` — Sdl3InputState: SDL3 event-driven input implementation
-
-## Design Docs Index
-
-- `notes/architecture.md` — Three-layer architecture, resource lifecycle, and scene-to-draw data flow
-- `notes/glossary.md` — Project terminology and one-line definitions for key engine objects
-- `notes/project-layout.md` — Repository layout, top-level responsibilities, and source-of-truth directories
-- `notes/subsystems/index.md` — Subsystem map and recommended reading order
-- `notes/subsystems/string-interning.md` — String interning, compose/decompose, debug-string flow
-- `notes/subsystems/shader-system.md` — GLSL compilation, SPIR-V reflection, `CompiledShader`
-- `notes/subsystems/material-system.md` — Material template/instance and reflection-driven UBO writes
-- `notes/subsystems/pipeline-identity.md` — `PipelineKey`, `PipelineBuildDesc`, render signatures
-- `notes/subsystems/pipeline-cache.md` — Pipeline preload, lookup, runtime miss behavior
-- `notes/subsystems/frame-graph.md` — Pass graph, queue build, pipeline collection
-- `notes/subsystems/scene.md` — Scene container and `RenderingItem` assembly
-- `notes/concepts/scene-object.md` — User-facing scene object guide for `Scene`, `SceneNode`, and `ValidatedRenderablePassData`
-- `notes/subsystems/geometry.md` — Mesh, vertex layout, topology signatures
-- `notes/subsystems/skeleton.md` — Skeleton resource and `SkeletonUBO`
-- `notes/subsystems/vulkan-backend.md` — Vulkan backend object graph and render path
-
-## Rules
-
-- No raw pointers for object references (see cpp-style-guide spec)
-- Constructor injection only, no setter DI
-- Cross-platform: Linux (bash) + Windows (PowerShell)
-- Namespaces: `LX_core`, `LX_infra`
-- Integration tests in `src/test/integration/`, one exe per module
-
-## Codex Command Workflow
-
-- Prefer `rg --files` for file discovery and `rg -n` for text search.
-- Prefer `sed -n` for focused file reads and `git status` / `git diff` for worktree inspection.
-- Prefer `mv` for rename-only refactors and `perl -0pi` only for mechanical bulk rewrites after file moves.
-- Use `cmake` and `ninja` for build verification on Linux.
-- Command pre-authorization is controlled by `/home/lx/.codex/rules/default.rules`, not by this file.
-- If a command fails for permission reasons, first try an already approved prefix instead of assuming the tool is unavailable.
+- `AGENTS.md`

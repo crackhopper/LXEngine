@@ -9,8 +9,8 @@
 细节约束看：
 
 - `openspec/specs/material-system/spec.md`
-- `docs/requirements/021-renderable-variants-and-push-constant-cleanup.md`
-- `docs/requirements/022-material-pass-selection.md`
+- `notes/requirements/finished/021-renderable-variants-and-push-constant-cleanup.md`
+- `notes/requirements/finished/022-material-pass-selection.md`
 
 ## 一句话模型
 

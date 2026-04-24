@@ -1,157 +1,231 @@
-# Agent Guidance — Renderer Demo
+# Agent Guidance
 
-This document provides context and rules for AI coding assistants working on this project.
+This file is the single source of truth for coding agents in this repository.
 
-## Project Overview
+If you are a coding agent, load this file first. Other agent entry files such as `CLAUDE.md` and `.cursorrules` must only point here and must not maintain their own duplicated project memory.
 
-A Vulkan-based 3D renderer written in C++20, structured in three layers:
+## Mission
+
+Work from current repository facts only. Prefer actual code, `openspec/specs/`, and current `notes/` over stale summaries.
+
+## Project Snapshot
+
+LXEngine is a Vulkan-based 3D renderer written in C++20 with three layers:
 
 | Layer | Directory | Role |
-|-------|-----------|------|
-| **core** | `src/core/` | Platform-agnostic interfaces, math, resource types, scene graph |
-| **infra** | `src/infra/` | Infrastructure implementations (window, mesh/texture loaders, shader compiler) |
-| **backend** | `src/backend/` | Vulkan rendering backend |
+|---|---|---|
+| `core` | `src/core/` | Platform-agnostic interfaces, math, resource types, scene graph |
+| `infra` | `src/infra/` | Windowing, mesh/texture loaders, shader compiler, other infrastructure |
+| `backend` | `src/backend/` | Vulkan backend |
 
-Tests are in `src/test/` (integration tests per module, no unit test framework).
+Important executable areas:
 
-## Shell Environment
+- `src/demos/scene_viewer/`: main interactive demo
+- `src/test/`: integration tests
+- `assets/`: runtime assets and test assets
 
-This project is cross-platform (Windows + Linux).
+## Read Order
 
-- **Linux**: Use standard bash commands
-- **Windows**: Use PowerShell syntax (see `.cursor/rules/powershell-shell-guidance.md`)
-- Detect the platform from context before generating shell commands
+Before modifying code:
 
-## Build System
+1. Read this file.
+2. Read `openspec/specs/cpp-style-guide/spec.md`.
+3. Read the relevant subsystem spec in `openspec/specs/<capability>/spec.md`.
+4. Read the matching design note in `notes/` when architecture context matters.
 
-- **CMake** (minimum 3.16), C++20
-- Build generator: **Ninja** (Linux) / Visual Studio or Ninja (Windows)
-- External dependencies managed via `find_library` with fallback to `FetchContent`
-- Shader compilation: `assets/shaders/CMakeLists.txt` compiles GLSL to SPIR-V via `glslc`
+Before modifying docs:
 
-### Key CMake Variables
+1. Read this file.
+2. Read `openspec/specs/notes-writing-style/spec.md`.
+3. Read the current target note in `notes/`.
 
-| Variable | Description |
-|----------|-------------|
-| `SHADERC_DIR` | Custom path to shaderc (Windows) |
-| `SPIRV_CROSS_DIR` | Custom path to SPIRV-Cross (Windows) |
-| `USE_SDL` / `USE_GLFW` | Window backend selection |
+## Shell And Platform
 
-### Build Commands (Linux)
+This repo is cross-platform.
+
+- Linux: use bash commands
+- Windows: use PowerShell syntax
+- PowerShell guidance: `.cursor/rules/powershell-shell-guidance.md`
+
+Detect platform from context before proposing commands.
+
+## Build And Test
+
+Build system facts:
+
+- CMake 3.16+
+- C++20
+- Ninja on Linux, Visual Studio or Ninja on Windows
+- Shader compilation from `assets/shaders/` via `glslc`
+
+Key CMake variables:
+
+| Variable | Meaning |
+|---|---|
+| `SHADERC_DIR` | custom shaderc path on Windows |
+| `SPIRV_CROSS_DIR` | custom SPIRV-Cross path on Windows |
+| `USE_SDL` / `USE_GLFW` | window backend selection |
+
+Linux build:
 
 ```bash
 mkdir build && cd build
 cmake .. -G Ninja
-ninja test_shader_compiler   # shader compiler test (no GPU needed)
-ninja BuildTest              # all integration tests
-ctest --output-on-failure -L auto -LE requires_video_device
-xvfb-run -a ctest --output-on-failure -L requires_video_device
-ninja Renderer               # main application
+ninja demo_scene_viewer
 ```
 
-Sanitizer build:
+Linux test:
 
 ```bash
-cmake .. -G Ninja -DLX_ENABLE_SANITIZERS=ON
+ninja test_shader_compiler
+ninja BuildTest
+ctest --output-on-failure -L auto -LE requires_video_device
+xvfb-run -a ctest --output-on-failure -L requires_video_device
 ```
 
-### Linux Vulkan Test Notes
+Linux Vulkan notes:
 
-- Windowed Vulkan tests require the SDL3 runtime library (`libSDL3.so.0`).
-- In a headless Linux shell, these tests often skip with `No available video device` unless run under a real desktop session or a virtual X server.
-- Prefer `xvfb-run -a ./src/test/<test-binary>` for Vulkan/SDL smoke tests in non-desktop environments. This is sufficient; a full desktop environment is not required.
-- Read `openspec/specs/renderer-backend-vulkan/spec.md` before changing or diagnosing Vulkan integration tests on Linux.
+- Windowed Vulkan tests need `libSDL3.so.0`.
+- Headless Linux often reports `No available video device` without X11.
+- Prefer `xvfb-run -a ./src/test/<test-binary>` for Vulkan and SDL smoke tests.
+- Read `openspec/specs/renderer-backend-vulkan/spec.md` before changing Vulkan integration tests.
 
-## C++ Coding Standards
+## Hard Rules
 
-**CRITICAL**: Read and follow `openspec/specs/cpp-style-guide/spec.md` before writing C++ code.
+C++ rules:
 
-Key rules:
+- No raw pointers for object ownership or object references. Use `std::unique_ptr`, `std::shared_ptr`, or references.
+- Constructor injection only. No setter-based dependency injection.
+- GPU objects should come from factories as `std::unique_ptr<T>`.
+- RAII everywhere.
+- Prefer `enum class` and `std::optional`.
 
-1. **No raw pointers** for object references — use `std::unique_ptr`, `std::shared_ptr`, or `T&`
-2. **Constructor injection only** — no setter-based dependency injection
-3. **GPU objects** returned via `std::unique_ptr<T>` from factory functions
-4. **RAII everywhere** — no manual `new`/`delete`
-5. **`enum class`** over unscoped enums, `std::optional` over sentinel values
+Repository rules:
 
-## Architecture Specifications
+- Use current repository facts only.
+- Do not preserve dead commands, dead directories, or compatibility notes for removed workflows.
+- If documentation and code disagree, trust code and current specs first, then repair docs.
 
-Detailed specifications live in `openspec/specs/`. Read the relevant spec before modifying a subsystem:
+## Specs Index
 
-| Spec | Path | Covers |
-|------|------|--------|
-| **C++ Style Guide** | `openspec/specs/cpp-style-guide/spec.md` | Ownership, smart pointers, RAII, type safety |
-| **Notes Writing Style** | `openspec/specs/notes-writing-style/spec.md` | Voice, structure, and concept/tutorial writing style for `notes/` |
-| **Vulkan Backend** | `openspec/specs/renderer-backend-vulkan/spec.md` | VulkanDevice, Buffer, Texture, Shader, Pipeline, Renderer, CommandBuffer, Linux/Xvfb test preconditions |
-| **String Interning** | `openspec/specs/string-interning/spec.md` | `GlobalStringTable`, `StringID`, thread-safe string-to-int mapping |
-| **Shader Compilation** | `openspec/specs/shader-compilation/spec.md` | Runtime GLSL→SPIR-V via shaderc, variant macros |
-| **Shader Reflection** | `openspec/specs/shader-reflection/spec.md` | SPIR-V reflection via SPIRV-Cross, ShaderResourceBinding |
-| **Window System** | `openspec/specs/window-system/spec.md` | IWindow interface, SDL/GLFW backends |
-| **GUI System** | `openspec/specs/gui-system/spec.md` | ImGui integration |
-| **Texture Loading** | `openspec/specs/texture-loading/spec.md` | Image loading (stb_image) |
-| **Mesh Loading** | `openspec/specs/mesh-loading/spec.md` | OBJ/GLTF mesh loading (tinyobjloader) |
-| **Resource pipeline hash** | `openspec/specs/resource-pipeline-hash/spec.md` | `getPipelineHash()` on mesh, material state, shaders, skeleton; future `PipelineKey` |
-| **Skeleton resource** | `openspec/specs/skeleton-resource/spec.md` | `Skeleton` in core resources, UBO accessors, removal of `IComponent` |
+Core specs commonly needed by agents:
 
-### Change History
+- `openspec/specs/cpp-style-guide/spec.md`
+- `openspec/specs/renderer-backend-vulkan/spec.md`
+- `openspec/specs/shader-compilation/spec.md`
+- `openspec/specs/shader-reflection/spec.md`
+- `openspec/specs/material-system/spec.md`
+- `openspec/specs/material-asset-loader/spec.md`
+- `openspec/specs/frame-graph/spec.md`
+- `openspec/specs/pipeline-key/spec.md`
+- `openspec/specs/pipeline-build-desc/spec.md`
+- `openspec/specs/pipeline-cache/spec.md`
+- `openspec/specs/render-signature/spec.md`
+- `openspec/specs/string-interning/spec.md`
+- `openspec/specs/skeleton-resource/spec.md`
+- `openspec/specs/window-system/spec.md`
+- `openspec/specs/gui-system/spec.md`
+- `openspec/specs/mesh-loading/spec.md`
+- `openspec/specs/texture-loading/spec.md`
+- `openspec/specs/asset-directory-convention/spec.md`
+- `openspec/specs/asset-path-helper/spec.md`
+- `openspec/specs/test-build-execution/spec.md`
+- `openspec/specs/notes-writing-style/spec.md`
 
-Completed changes are archived in `openspec/changes/archive/`. Active changes are in `openspec/changes/`.
+Active implementation proposals live in `openspec/changes/`. Archived history lives in `openspec/changes/archive/`.
 
-## Key Design Patterns
+## Design And Notes Entry Points
 
-### Resource System
+Use these when you need architecture context:
 
-- `IRenderResource` (base) in `src/core/rhi/render_resource.hpp` — all GPU resources inherit from this
-- `IShader` interface in `src/core/asset/shader.hpp` — shader with reflection bindings
-- `ShaderCompiler` / `ShaderReflector` / `CompiledShader` in `src/infra/shader_compiler/` — runtime GLSL compilation + SPIR-V reflection
+- `notes/README.md`
+- `notes/get-started.md`
+- `notes/architecture.md`
+- `notes/project-layout.md`
+- `notes/subsystems/index.md`
+- `notes/subsystems/material-system.md`
+- `notes/subsystems/pipeline-identity.md`
+- `notes/subsystems/pipeline-cache.md`
+- `notes/subsystems/frame-graph.md`
+- `notes/subsystems/scene.md`
+- `notes/subsystems/shader-system.md`
+- `notes/subsystems/string-interning.md`
+- `notes/subsystems/skeleton.md`
+- `notes/subsystems/vulkan-backend.md`
+- `notes/concepts/scene/index.md`
 
-### String Interning
+## Current Command Workflow
 
-- `GlobalStringTable` + `StringID` in `src/core/utils/string_table.hpp`
-- `StringID` replaces `std::string` as key in material property maps
-- Supports implicit construction from `const char*` / `std::string`
+Current command definitions live in:
 
-### Material System
+- `.codex/commands/`
+- `.codex/commands/opsx/`
 
-- `MaterialTemplate` defines passes with shader + render state
-- `MaterialInstance` holds per-instance property overrides keyed by `StringID`
-- Binding cache built from shader reflection data
+Current common commands:
 
-## Design Documents
+- `/draft-req`
+- `/opsx:explore`
+- `/opsx:propose`
+- `/opsx:apply`
+- `/opsx:archive`
+- `/finish-req`
+- `/update-notes`
+- `/refresh-notes`
+- `/sync-design-docs`
 
-Current design-oriented docs now surface under the `设计` menu in the notes site. The underlying files still live in `notes/` and `notes/subsystems/`. Read the relevant doc for architecture context:
-When editing `notes/`, follow `openspec/specs/notes-writing-style/spec.md` for narrative voice, section organization, and concept-page tone.
+Typical path:
 
-| Document | Path | Summary |
-|----------|------|---------|
-| **Architecture** | `notes/architecture.md` | Three-layer architecture, resource lifecycle, and scene-to-draw data flow |
-| **Glossary** | `notes/glossary.md` | Project terminology and one-line definitions for key engine objects |
-| **ProjectLayout** | `notes/project-layout.md` | Repository layout, source-of-truth directories, and top-level responsibilities |
-| **SubsystemIndex** | `notes/subsystems/index.md` | Subsystem map and recommended reading order |
-| **FrameGraph** | `notes/subsystems/frame-graph.md` | Pass orchestration, queue building, scene-level resource merge, and pipeline preload collection |
-| **Geometry** | `notes/subsystems/geometry.md` | Mesh, vertex layout, index topology, and how geometry contributes to pipeline identity |
-| **MaterialSystem** | `notes/subsystems/material-system.md` | Material template/instance flow, reflection-driven UBO writes, and descriptor resource ownership |
-| **PipelineCache** | `notes/subsystems/pipeline-cache.md` | Backend pipeline cache semantics for preload, lookup, and runtime miss handling |
-| **PipelineIdentity** | `notes/subsystems/pipeline-identity.md` | `PipelineKey`, `PipelineBuildDesc`, render signatures, and structured identity composition |
-| **Scene** | `notes/subsystems/scene.md` | Scene container model, `RenderingItem` assembly path, and scene-level descriptors |
-| **SceneObjectDeepDive** | `notes/concepts/scene/index.md` | User-facing scene object guide covering `Scene`, `SceneNode`, and `ValidatedRenderablePassData` |
-| **ShaderSystem** | `notes/subsystems/shader-system.md` | Runtime GLSL compile/reflect/package flow and the `CompiledShader` contract |
-| **Skeleton** | `notes/subsystems/skeleton.md` | Skeleton resource, `SkeletonUBO`, and the pipeline signature for skinned rendering |
-| **StringInterning** | `notes/subsystems/string-interning.md` | `GlobalStringTable`, `StringID`, structured compose/decompose, and debug-string reconstruction |
-| **VulkanBackend** | `notes/subsystems/vulkan-backend.md` | Vulkan renderer/device/resource manager/command buffer integration with core abstractions |
+```text
+idea / problem
+  -> /draft-req      optional
+  -> /opsx:propose
+  -> /opsx:apply
+  -> /opsx:archive
+  -> /finish-req
+  -> /update-notes
+  -> /refresh-notes
+  -> git commit
+```
 
-## Conventions
+Not every task needs the whole chain:
 
-- Namespace: `LX_core` (core layer), `LX_infra` (infra layer)
-- Header-only for small utilities; `.hpp` + `.cpp` split for modules
-- Shaders in `assets/shaders/glsl/` with `.vert` / `.frag` extensions
-- Integration tests: one executable per module in `src/test/integration/`
+- discussion only: `/opsx:explore`
+- notes only: `/update-notes`
+- design index only: `/sync-design-docs`
 
-## Codex Command Workflow
+If a user asks to commit current work, either use normal git workflow or follow `.codex/skills/curate-and-commit/`.
 
-- Prefer `rg --files` for file discovery and `rg -n` for text search.
-- Prefer `sed -n` for focused file reads and `git status` / `git diff` for worktree inspection.
-- Prefer `mv` for rename-only refactors and `perl -0pi` only for mechanical bulk rewrites after file moves.
-- Use `cmake` and `ninja` for build verification on Linux.
-- Command pre-authorization is controlled by `/home/lx/.codex/rules/default.rules`, not by this file.
-- If a command fails for permission reasons, first try an already approved prefix instead of assuming the tool is unavailable.
+## Notes Site Facts
+
+- Source directory: `notes/`
+- Navigation source: `notes/nav.yml`
+- Site config generation: `scripts/_gen_notes_site.py`
+- Local preview / restart: `scripts/serve-notes.sh`
+
+Common commands:
+
+```bash
+scripts/serve-notes.sh
+scripts/serve-notes.sh --foreground
+scripts/serve-notes.sh --build
+```
+
+Do not reference `scripts/refresh-notes.sh`. It is not the current script.
+
+## Search And Editing Preferences
+
+- Prefer `rg --files` for discovery.
+- Prefer `rg -n` for text search.
+- Prefer `sed -n` for focused reads.
+- Prefer `git status` and `git diff` for workspace inspection.
+- Prefer `mv` for rename-only refactors.
+- Use `cmake` and `ninja` for Linux verification.
+
+## Entry File Contract
+
+Agent-facing entry files must follow this contract:
+
+- `AGENTS.md` is the only maintained memory file.
+- `CLAUDE.md` is a pointer to `AGENTS.md`.
+- `.cursorrules` is a pointer to `AGENTS.md`.
+- New agent-specific entry files should also point here instead of copying repository memory.

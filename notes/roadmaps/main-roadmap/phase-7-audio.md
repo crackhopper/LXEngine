@@ -1,191 +1,95 @@
 # Phase 7 · 音频
 
-> **目标**：给游戏加上声音 —— 2D/3D 音效、背景音乐、混音总线。
+> **目标**：给游戏加上声音 — 2D / 3D 音效、背景音乐、混音总线。
 >
-> **依赖**：Phase 2（Time）、Phase 3（资产）、Phase 6（组件）。
+> **依赖**：Phase 2（`Clock` + 命令层）+ Phase 3（音频资产加载）。与 Phase 4 / 5 / 6 独立。
 >
-> **可交付**：`demo_first_game` 里的脚步声 / 射击音效 / 循环背景音乐。
+> **可交付**：
+> - `demo_audio` — 相机移动时 3D 音源距离衰减 + 背景音乐 loop
+> - 音频由 TS 脚本（Phase 6）驱动 play / stop
 
-> 注：在 AI-Native 版本的 roadmap 中，原 Phase 7（"音频 + UI"）被拆分为本阶段（纯音频）和 [Phase 8 · Vue UI 容器](phase-8-web-ui.md)。UI 是一个足够大的独立话题，值得单独一个阶段。
+## 当前实施状态（2026-04-24）
+
+**未开工**。无任何音频基础设施。
+
+| 条目 | 状态 |
+|------|------|
+| 音频引擎接入 | ❌ REQ-701 |
+| 2D / 3D 音源 | ❌ REQ-702 |
+| 混音总线 | ❌ REQ-703 |
+| 音频热重载 | ❌ REQ-704 |
 
 ## 范围与边界
 
-**做**：
-- 音频播放（2D + 3D 空间化）
-- 音频资产（wav / ogg / mp3）
-- 音效池（一次多个并发）
-- 音乐流式加载
-- 音频总线（bus / group / mixer）
-- `playOneShot` 快捷通道
+**做**：音频引擎（miniaudio 等） / 2D + 3D 音源组件（距离 / 方向衰减） / 混音总线（master / music / sfx / voice） / 音频资产热重载。
 
-**不做**：
-- DSP 效果链（reverb / filter / EQ） — 中等规模才需要
-- 音频烘焙 / 流式资源包 — Phase 12 处理
-- 自研音频引擎 — 用 miniaudio
-
----
+**不做**：DSP 自实现（reverb / EQ / pitch shift） / 声音物理（echo / occlusion 首版不做） / 长音乐流式解码（Phase 12 前再评估）。
 
 ## 前置条件
 
-- Phase 3：`AudioClip` 是 asset
-- Phase 6：`AudioSource` 是 Component
-
----
+- Phase 2 `Clock` + 命令层
+- Phase 3 音频 asset（`.wav` / `.ogg`）加载
 
 ## 工作分解
 
-### REQ-701 · 音频设备抽象 + 第三方库接入
+### REQ-701 · 音频引擎接入
 
-- `src/core/audio/audio_device.hpp` 定义 `IAudioDevice` 接口
-- `src/infra/audio/<vendor>_device.cpp` 是具体实现，基于一个**跨平台音频库**
-- 设备初始化 + 关闭 + 主音量
+选型参考（可替换）：
 
-**选型参考**：优先挑选**单文件 / 零依赖 / 覆盖桌面+移动+Web 全平台**的库。评估标准包含 License、编解码支持、延迟、跨平台覆盖面。
+- **[miniaudio](https://miniaud.io/)**：单头文件 / MIT / 跨平台 / Web 可编译；首版默认
+- FMOD / wwise：商业级，不适合 MIT 项目
 
-**验收**：启动设备，播放一段正弦波一秒。
+抽象 `IAudioEngine` + `IAudioSource`，实现放 `src/infra/audio/`。
 
-### REQ-702 · AudioClip 资源
+**验收**：加载 `.wav` 并 play，能听到声音。
 
-```cpp
-class AudioClip {
-public:
-    StringID name;
-    int      channels;
-    int      sampleRate;
-    int      frameCount;
-    std::vector<float> pcm;     // 或延迟解码的压缩数据
-    bool     streaming = false; // 大文件流式加载
-};
-```
+### REQ-702 · 2D / 3D 音源组件
 
-- wav / ogg / mp3 的 decode 由底层音频库完成
-- 短音效：完整 decode 到内存
-- 长音频（BGM）：`streaming = true`，按 chunk 解码
-- 走 Phase 3 的 asset registry，有 GUID
+- `AudioSource` 组件挂在 `SceneNode` 上
+- 2D：全景相等
+- 3D：按 `Transform::worldPosition` 与监听者（通常是相机）计算距离 / 方向衰减
 
-**验收**：加载 wav 和 ogg，PCM 数据正确。
+**验收**：相机靠近音源时音量增大，绕过时左右声道切换。
 
-### REQ-703 · AudioSource 组件
+### REQ-703 · 混音总线
 
-```cpp
-class AudioSource : public Component {
-    LX_COMPONENT(AudioSource)
-    LX_FIELD(AudioClipHandle, clip, {})
-    LX_FIELD(float, volume, 1.0f)
-    LX_FIELD(float, pitch,  1.0f)
-    LX_FIELD(bool,  loop,   false)
-    LX_FIELD(bool,  playOnStart, false)
-    LX_FIELD(bool,  is3D,   false)
-    LX_FIELD(StringID, bus, "sfx")
+- Master / Music / SFX / Voice 四条默认总线
+- 每条 bus 独立 volume / mute / solo
+- 暴露给 TS 脚本 + debug 面板
 
-    void play();
-    void stop();
-    void pause();
-};
-```
+**验收**：暂停时 SFX 静音，Music 不受影响。
 
-- 2D 模式：直接混音到指定 bus
-- 3D 模式：使用 `Transform` 位置 + `AudioListener`（挂在相机上）计算距离衰减 + pan
+### REQ-704 · 音频热重载
 
-**验收**：场景里一个 3D AudioSource，相机绕它走时立体声左右变化。
+- `.wav` / `.ogg` 改动 → 重新加载 → 正在播放音源按需重 decode
 
-### REQ-704 · 音频混音器
-
-```cpp
-class AudioMixer {
-public:
-    struct Bus {
-        StringID name;
-        float volume = 1.0f;
-        bool  muted = false;
-        std::optional<StringID> parent;
-    };
-
-    Bus& getBus(StringID name);
-    void setBusVolume(StringID name, float v);
-};
-```
-
-- 默认 bus：`master` → `music` / `sfx` / `voice`
-- 每个 AudioSource 属于某个 bus
-- 层级 bus：子 bus 的最终音量 = 自身 × 所有父 bus
-
-**验收**：`setBusVolume("music", 0)` 后音乐静音、sfx 不受影响。
-
-### REQ-705 · 一次性播放
-
-```cpp
-// 不想为每次播放都创建一个 AudioSource 时用
-engine->audio().playOneShot(clipHandle, position, volume);
-```
-
-- 内部维护一个 `std::vector<ActiveVoice>`，播完自动回收
-- 上限 32 个并发 voice，超出时按优先级抢占
-
-**验收**：连续触发 100 次脚步声，voice pool 不增长。
-
-### REQ-706 · 引擎侧内省
-
-和 Phase 2 的文本内省契合：
-
-```cpp
-std::string dumpAudio(std::string_view format = "json");
-// 输出：当前活跃 voice / 每个 bus 的 volume / 加载中的 streaming clips
-```
-
-让 AI agent 通过 MCP 可以问 "现在在播什么声音 / 音量怎么样"。
-
-**验收**：`engine-cli dump audio` 输出结构化音频状态。
-
----
+**验收**：改 `.wav` 保存，正在循环播放的背景音下一 loop 切到新版本。
 
 ## 里程碑
 
-### M7.1 · 音效能响
-
-- REQ-701 + REQ-702 + REQ-703 完成
-- demo：角色跳跃播放音效
-
-### M7.2 · 音乐 + 混音
-
-- REQ-704 + REQ-705 完成
-- demo：背景音乐 + 按键调音量
-
-### M7.3 · Agent 可查询音频状态
-
-- REQ-706 完成
-- demo：Phase 10 的 agent 能通过 MCP tool 查当前音频状态
-
----
+| M | 条件 | demo |
+|---|------|------|
+| M7.1 · 引擎接入 | REQ-701 | `.wav` 能播放 |
+| M7.2 · 3D 音源 | REQ-702 | 距离衰减正确 |
+| M7.3 · 混音总线 | REQ-703 | 分 bus 调音量 |
+| M7.4 · 热重载 | REQ-704 | 音频改动即刻生效 |
 
 ## 风险 / 未知
 
-- **音频库延迟调优**：默认 buffer 大小通常偏大（几十毫秒），对节奏游戏敏感。调小会吃 CPU 抖动风险。
-- **Web 后端下的自动播放限制**：浏览器要求用户交互后才允许播放音频。第一次播放必须在用户事件回调里触发。引擎提供一个 "audio unlock" hook。
-- **压缩格式的跨平台支持**：部分编解码器在 WASM 构建下表现不同，需要按目标平台选择。
+- **跨平台设备枚举**：Web / Linux / Windows 音频设备 API 各异，miniaudio 已封装。
+- **延迟**：Web 上 AudioContext 需用户手势解锁；需显式 prompt。
+- **音频与物理同步**：事件触发的 SFX 应走事件总线（Phase 6 REQ-604），避免脚本轮询。
 
----
+## 与 AI-Native 原则契合
 
-## 与现有架构的契合
+- [P-16 多模态](principles.md#p-16-文本优先--文本唯一)：`audio.dump_active_voices()` 让 agent 看到“谁在发声”。
+- [P-19 命令总线](principles.md#p-19-双向命令总线)：play / stop / setVolume 是命令，可被 agent / 脚本 / 编辑器共用。
 
-- AudioSource / AudioListener 都是 `Component` 子类（Phase 6），没有特殊路径。
-- AudioClip 是 asset（Phase 3），走标准资源路径 + provenance 元数据。
-- 混音器的 bus 状态暴露到 Phase 2 文本内省 API。
-- 所选音频库应覆盖桌面 + 移动 + Web 全平台，无缝适配 Phase 12 的 WASM 目标。
+## 与现有架构契合
 
----
-
-## 与 AI-Native 原则的契合
-
-| 原则 | 本阶段如何落实 |
-|------|--------------|
-| [P-7 多分辨率观察](principles.md#p-7-多分辨率观察--渐进披露) | REQ-706 提供 summary/outline/full 三档音频状态 dump |
-| [P-16 多模态](principles.md#p-16-文本优先--文本唯一) | 音频本身是独立感官通道，dump 格式是文本 |
-| [P-19 命令总线](principles.md#p-19-bi-directional-命令总线) | `audio.play` / `audio.setBusVolume` 走命令层 |
-| [P-20 渲染/模拟可分](principles.md#p-20-渲染与模拟的可分离) | 音频可 headless，eval 不需要声卡 |
-
----
+- `SceneNode` + `Transform`（Phase 2）提供 3D 音源位置源。
+- `EngineLoop::setUpdateHook`（已落地）驱动 audio listener 位置更新。
 
 ## 下一步
 
-[Phase 8 · Vue UI 容器](phase-8-web-ui.md) —— 游戏内的 UI 怎么做。
+[Phase 10 MCP + Agent](phase-10-ai-agent-mcp.md)：`audio.play` 等命令自动暴露为 MCP tool。

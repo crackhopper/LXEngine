@@ -55,7 +55,7 @@ src/infra/shader_compiler/
 ### 5. 集成测试策略
 
 测试不依赖 GPU 上下文——shaderc 编译和 SPIRV-Cross reflection 均为纯 CPU 操作。测试将：
-1. 从 `shaders/glsl/` 加载 PBR shader
+1. 从 `assets/shaders/glsl/` 加载 PBR shader
 2. 分别启用/禁用 variant 宏进行编译
 3. 提取并打印 `ShaderResourceBinding`
 4. 演示如何将 binding 信息映射为 `VkDescriptorSetLayoutBinding`（仅打印，不调用 Vulkan API）

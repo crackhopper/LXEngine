@@ -31,8 +31,8 @@
 
 - [x] 4.1 Implement `VulkanShader` constructor - Load SPIR-V bytecode from filesystem
 - [x] 4.2 Implement `VulkanShader::getStageCreateInfo()` - Return VkPipelineShaderStageCreateInfo for pipeline
-- [x] 4.3 Use shader path convention: `shaders/glsl/{shaderName}.vert.spv` and `shaders/glsl/{shaderName}.frag.spv`
-- [x] 4.4 Verify `shaders/glsl/blinnphong_0.vert.spv` and `blinnphong_0.frag.spv` exist (built by CompileShaders target)
+- [x] 4.3 Use shader path convention: `assets/shaders/glsl/{shaderName}.vert.spv` and `assets/shaders/glsl/{shaderName}.frag.spv`
+- [x] 4.4 Verify `assets/shaders/glsl/blinnphong_0.vert.spv` and `blinnphong_0.frag.spv` exist (built by CompileShaders target)
 - [x] 4.5 Create `test_vulkan_shader.cpp` - Test shader module loading
 - [x] 4.6 Verify shader test passes
 
