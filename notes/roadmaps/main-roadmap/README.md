@@ -30,11 +30,11 @@
 
 其他阶段（Phase 2–9 / Phase 12）按 roadmap 原依赖顺序协同推进。
 
-## 当前实施进度快照（2026-04-24）
+## 当前实施进度快照（2026-04-27）
 
 | Phase | 状态 | 已落地关键能力 | 主要缺口 |
 |-------|------|----------------|----------|
-| [Phase 1](phase-1-rendering-depth.md) 渲染深度 + Web 后端 | 部分开工 | `FrameGraph` / `RenderQueue` / `PipelineCache` / 多 pass 骨架；`Camera::cullingMask` + `SceneNode::visibilityLayerMask` 交集过滤；通用 `.material` YAML loader + `pbr_gold.material` 示例；ImGui overlay；SDL3 路径 | Shadow / CSM / Bloom / FXAA / IBL / PointLight + SpotLight / 多光源 GPU 合同 / 视锥剔除 / WebGPU / WebGL2 / Headless |
+| [Phase 1](phase-1-rendering-depth.md) 渲染深度 + Web 后端 | 部分开工 | `FrameGraph` / `RenderQueue` / `PipelineCache` / 多 pass 骨架；`Camera::cullingMask` + `SceneNode::visibilityLayerMask` 交集过滤；通用 `.material` YAML loader + `pbr_gold.material` 示例；ImGui overlay；SDL3 路径 | Shadow / CSM / Bloom / FXAA / IBL / PointLight + SpotLight / 多光源 GPU 合同 / 视锥剔除 / WebGPU / WebGL2 / Headless；**Frame Graph 演进** —— 当前 `FrameGraph` 仅为最初阶骨架（无资源依赖 / barrier / aliasing），见 [REQ-034](../../requirements/034-render-target-desc-and-target.md) + [research/frame-graph](../research/frame-graph/README.md)；**Async Compute** —— LX 完全无 compute 路径，见 [research/async-compute](../research/async-compute/README.md)（候选 REQ-A..F，强触发条件主要在 Phase 5 物理走 GPU）；**GPU-Driven + Clustered Lighting** —— REQ-119 G-Buffer / REQ-109 多光源 / REQ-110 Frustum Culling 的实施细节，见 [research/gpu-driven-rendering](../research/gpu-driven-rendering/README.md)（候选 REQ-A..H，是上面三个调研的消费方）；**Shadows + Sparse Resources** —— REQ-103 / REQ-104 / REQ-109 256 光源阴影 + Vulkan sparse residency，见 [research/shadows](../research/shadows/README.md)（候选 REQ-A..G，最下游消费方）；**VRS + Specialization Constants**（后期优化，**优先级低**）—— Phase 1 主路径完成后的性能 tuning，见 [research/variable-rate-shading](../research/variable-rate-shading/README.md)（轻量 4 篇 + 入口索引）；**Temporal 子系统（Volumetric Fog + TAA）** —— 现代渲染管线的 temporal 范式，LX 完全空白，见 [research/temporal-techniques](../research/temporal-techniques/README.md)（候选 REQ-A..F，最下游消费方，依赖 frame-graph / multi-threading/08 / clustered lighting / cubemap shadow / async-compute 全部就位）；**Ray Tracing 子系统（Ch12-15 全）** —— 硬件 RT 整套能力（AS / SBT / ray query + RT shadow / DDGI / RT reflection + SVGF），LX 完全空白，见 [research/ray-tracing](../research/ray-tracing/README.md)（候选 REQ-A..H，**desktop-only 加分项 / 跟 WebGPU 路径冲突，必须双路径 fallback**；最大复杂度调研，依赖前面 7 个调研全部就位） |
 | [Phase 2](phase-2-foundation-layer.md) 基础层 + 文本内省 | 部分开工 | `Clock`（`src/core/time/clock.*`）；`EngineLoop`（`src/core/gpu/engine_loop.*`）；`IInputState` / `Sdl3InputState` / `DummyInputState` / `MockInputState`；Orbit + FreeFly 控制器；ImGui + debug panel helper | Transform 层级 / Action mapping / Gamepad / `dumpScene` / AABB + 空间索引 |
 | [Phase 3](phase-3-asset-pipeline.md) 资产管线 | 未开工 | 资产目录 + `cdToWhereAssetsExist` | GUID / 序列化 / 热重载 |
 | [Phase 4](phase-4-animation.md) 动画 | 未开工 | `Skeleton` / `SkeletonUBO`（`src/core/asset/skeleton.*`） | 动画 clip / 播放器 / 状态机 / 混合 |
@@ -47,7 +47,12 @@
 | [Phase 11](phase-11-ai-asset-generation.md) AI 资产生成 | 未开工 | — | 全部 |
 | [Phase 12](phase-12-release.md) 打包 / 发布 | 未开工 | — | 全部 |
 
-唯一活跃的 `notes/requirements/` 条目：[`REQ-019` demo_scene_viewer](../../requirements/019-demo-scene-viewer.md)（仅剩显示环境下的人工验收）。其他历史 REQ 均已归档或下沉到本 roadmap 的对应 phase。
+活跃的 `notes/requirements/` 条目：
+
+- [`REQ-019` demo_scene_viewer](../../requirements/019-demo-scene-viewer.md)（仅剩显示环境下的人工验收）
+- [`REQ-034` RenderTarget 拆分为 descriptor 与 binding](../../requirements/034-render-target-desc-and-target.md)（草稿，文档先于代码 / 待立项前置 R9 cleanup PR；详见 [research/frame-graph](../research/frame-graph/README.md) 的 frame graph 演进路径）
+
+其他历史 REQ 均已归档或下沉到本 roadmap 的对应 phase。
 
 ## 阶段依赖图
 

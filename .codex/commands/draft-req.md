@@ -1,11 +1,11 @@
 ---
 name: "Draft Requirement"
-description: Interactive discussion to form a new requirement doc and save it to docs/requirements/
+description: Interactive discussion to form a new requirement doc and save it to notes/requirements/
 category: Requirements
 tags: [requirements, planning, discuss]
 ---
 
-和用户进行**交互式讨论**，把一个改动想法打磨成正式的需求文档，最终写入 `docs/requirements/`。命名、编号、段落结构都对齐已有的 `finished/*.md`。
+和用户进行**交互式讨论**，把一个改动想法打磨成正式的需求文档，最终写入 `notes/requirements/`。命名、编号、段落结构都对齐已有的 `finished/*.md`。
 
 **Input**: 可选一句话 brief
 - `/draft-req` — 完全交互，从零开始问
@@ -21,8 +21,8 @@ tags: [requirements, planning, discuss]
 
 先建立上下文：
 
-- `Glob docs/requirements/*.md` — 活动中的需求
-- `Glob docs/requirements/finished/*.md` — 已归档的需求
+- `Glob notes/requirements/*.md` — 活动中的需求
+- `Glob notes/requirements/finished/*.md` — 已归档的需求
 
 对每个文件，读头部 + "实施状态" 段，提取：
 - 编号（`NNN` 或 `NNNa/b/c`）
@@ -115,8 +115,8 @@ R3: <具体交付项>
 
 写文件前主动扫描：
 
-- `docs/requirements/finished/*.md` — 是否有归档项重叠（风险: 重复实现或重复废弃）
-- 活动中的 `docs/requirements/*.md` — 是否有当前进行中的需求与本需求冲突
+- `notes/requirements/finished/*.md` — 是否有归档项重叠（风险: 重复实现或重复废弃）
+- 活动中的 `notes/requirements/*.md` — 是否有当前进行中的需求与本需求冲突
 - `openspec/changes/**`（含 archive）— 是否有变更已经覆盖了本需求的一部分范围
 
 报告发现，示例：
@@ -147,7 +147,7 @@ R3: <具体交付项>
 
 ### 10. 按模板起草文件
 
-严格遵循现有 `docs/requirements/finished/` 的结构：
+严格遵循现有 `notes/requirements/finished/` 的结构：
 
 ```markdown
 # REQ-<NNN>: <Title>
@@ -215,7 +215,7 @@ R3: <具体交付项>
 ```
 ## 草稿就绪
 
-文件: docs/requirements/<NNN>-<title>.md
+文件: notes/requirements/<NNN>-<title>.md
 
 [完整内容]
 
@@ -228,14 +228,14 @@ R3: <具体交付项>
 
 ### 12. 写入 + 总结
 
-`Write docs/requirements/<NNN>-<title>.md`
+`Write notes/requirements/<NNN>-<title>.md`
 
 报告：
 
 ```
 ## draft-req 完成
 
-已创建: docs/requirements/<NNN>-<title>.md
+已创建: notes/requirements/<NNN>-<title>.md
 - 编号: REQ-<NNN>
 - 标题: <title>
 - 需求项: R1..R<N>
@@ -253,8 +253,8 @@ R3: <具体交付项>
 
 - **讨论价值在前半段**: Phase 1-5 是这个命令的核心，不要为了快把它压缩成"你要什么我就写什么"。用户如果想直接跳到生成，让他用 `/opsx:propose`。
 - **代码引用必须真实**: 每次写 `src/... :LINE` 之前必须用 Grep 确认过行号，禁止编造。
-- **中文为主**: 匹配现有 `docs/requirements/` 风格。代码符号 / 类名 / 文件名保留英文原形。
-- **只落在顶层**: 新需求永远写到 `docs/requirements/`，不写 `finished/`。只有 `/finish-req` 有权移入 `finished/`。
+- **中文为主**: 匹配现有 `notes/requirements/` 风格。代码符号 / 类名 / 文件名保留英文原形。
+- **只落在顶层**: 新需求永远写到 `notes/requirements/`，不写 `finished/`。只有 `/finish-req` 有权移入 `finished/`。
 - **不改已有需求**: 发现冲突时报告 + 建议，但**禁止修改**现存的 `*.md` 文件 — 让用户决定是否人工介入。
 - **一次只写一份**: 发现讨论范围过大覆盖了两个独立话题，停下建议拆分成两次 `/draft-req`。
 - **不代用户做权衡**: Phase 5 的"明确不做"必须由用户点头，不要自己默默砍范围。

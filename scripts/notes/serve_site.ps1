@@ -3,12 +3,17 @@
 # 用法:
 #   .\scripts\notes\serve_site.ps1                         # 默认 0.0.0.0:8110（LAN 可访问）
 #   .\scripts\notes\serve_site.ps1 -Addr 127.0.0.1:8110    # 绑定指定地址:端口
+#   .\scripts\notes\serve_site.ps1 -Chat                   # 同时启动只读文档 Chat 服务
+#   .\scripts\notes\serve_site.ps1 -NoChat                 # 临时关闭 mkdocs.yml 中启用的 Chat
+#   .\scripts\notes\serve_site.ps1 -Chat -ChatHost 192.168.1.10
 #   .\scripts\notes\serve_site.ps1 -Build                  # 只 build 静态站到 .site\ 不启动服务
 #   .\scripts\notes\serve_site.ps1 -ForceKill              # 检测到端口占用时自动 kill，不交互询问
 #
 # 特性:
 #   - 启动前检测目标端口，若被占用显示占用进程并交互式询问是否 kill
 #   - kill 后等待端口真正释放，失败则中止
+#   - serve 模式同时启动 notes watcher，自动重建 mkdocs.gen.yml
+#   - 指定 -Chat 时启动本机只读 Chat 服务（默认 Claude）
 #
 # 依赖: mkdocs + mkdocs-material（pipx install mkdocs-material）
 
@@ -16,7 +21,13 @@
 param(
     [string]$Addr = "0.0.0.0:8110",
     [switch]$Build,
-    [switch]$ForceKill
+    [switch]$ForceKill,
+    [switch]$Chat,
+    [switch]$NoChat,
+    [string]$ChatHost = $(if ($env:NOTES_CHAT_HOST) { $env:NOTES_CHAT_HOST } else { "" }),
+    [ValidateSet("claude", "acp")]
+    [string]$ChatAgent = $(if ($env:NOTES_CHAT_AGENT) { $env:NOTES_CHAT_AGENT } else { "claude" }),
+    [string]$ChatAgentCommand = $(if ($env:NOTES_CHAT_AGENT_COMMAND) { $env:NOTES_CHAT_AGENT_COMMAND } else { "" })
 )
 
 $ErrorActionPreference = "Stop"
@@ -50,16 +61,115 @@ if (-not (Get-Command python -ErrorAction SilentlyContinue) -and
 }
 
 function Invoke-GenerateSiteConfig {
-    if (Get-Command python3 -ErrorAction SilentlyContinue) {
-        python3 scripts/notes/generate_site_config.py
-    } else {
-        python scripts/notes/generate_site_config.py
+    $oldChatEnabled = $env:NOTES_CHAT_ENABLED
+    try {
+        if ((Resolve-ChatEnabled) -and -not $Build) {
+            $env:NOTES_CHAT_ENABLED = "1"
+        } else {
+            $env:NOTES_CHAT_ENABLED = "0"
+        }
+
+        if (Get-Command python3 -ErrorAction SilentlyContinue) {
+            python3 scripts/notes/generate_site_config.py
+        } else {
+            python scripts/notes/generate_site_config.py
+        }
+    } finally {
+        if ($null -eq $oldChatEnabled) {
+            Remove-Item Env:NOTES_CHAT_ENABLED -ErrorAction SilentlyContinue
+        } else {
+            $env:NOTES_CHAT_ENABLED = $oldChatEnabled
+        }
     }
 
     if ($LASTEXITCODE -ne 0) {
         Write-Error "generate_site_config.py failed"
         exit $LASTEXITCODE
     }
+}
+
+function Get-PythonCommand {
+    if (Get-Command python3 -ErrorAction SilentlyContinue) {
+        return "python3"
+    }
+    return "python"
+}
+
+function Get-ConfiguredChatHost {
+    param([string]$PythonCmd)
+
+    if ($ChatHost) {
+        return $ChatHost
+    }
+
+    $code = @'
+from pathlib import Path
+
+try:
+    import yaml
+
+    cfg = yaml.safe_load(Path("mkdocs.yml").read_text(encoding="utf-8")) or {}
+    extra = cfg.get("extra") or {}
+    notes_chat = extra.get("notes_chat") or {}
+    host = notes_chat.get("host") or ""
+    print(host if isinstance(host, str) else "")
+except Exception:
+    print("")
+'@
+    $value = & $PythonCmd -c $code
+    if ($LASTEXITCODE -eq 0 -and $value) {
+        return "$value".Trim()
+    }
+    return "127.0.0.1"
+}
+
+function Get-ConfiguredChatEnabled {
+    param([string]$PythonCmd)
+
+    if ($env:NOTES_CHAT_ENABLED) {
+        if ($env:NOTES_CHAT_ENABLED -match '^(1|true|yes|on)$') {
+            return $true
+        }
+        return $false
+    }
+
+    $code = @'
+from pathlib import Path
+
+try:
+    import yaml
+
+    cfg = yaml.safe_load(Path("mkdocs.yml").read_text(encoding="utf-8")) or {}
+    extra = cfg.get("extra") or {}
+    notes_chat = extra.get("notes_chat") or {}
+    enabled = notes_chat.get("enabled")
+    if isinstance(enabled, bool):
+        print("1" if enabled else "0")
+    elif isinstance(enabled, str):
+        print("1" if enabled.lower() in {"1", "true", "yes", "on"} else "0")
+    else:
+        print("")
+except Exception:
+    print("")
+'@
+    $value = & $PythonCmd -c $code
+    return ($LASTEXITCODE -eq 0 -and "$value".Trim() -eq "1")
+}
+
+function Resolve-ChatEnabled {
+    if ($Build) {
+        return $false
+    }
+    if ($NoChat) {
+        return $false
+    }
+    if ($Chat) {
+        return $true
+    }
+    if (-not $script:PythonCmdForConfig) {
+        $script:PythonCmdForConfig = Get-PythonCommand
+    }
+    return Get-ConfiguredChatEnabled -PythonCmd $script:PythonCmdForConfig
 }
 
 # ---------- --Build 模式 ----------
@@ -196,14 +306,70 @@ function Invoke-PortCheckOrPrompt {
 
 # ---------- 启动 serve ----------
 
+$script:PythonCmdForConfig = Get-PythonCommand
+$ChatEnabled = Resolve-ChatEnabled
 $PortValue = [int]($Addr.Split(":")[-1])
+$ReloadPort = $PortValue + 1
+$ChatPort = $PortValue + 2
 Invoke-GenerateSiteConfig
 Invoke-PortCheckOrPrompt -Port $PortValue
+Invoke-PortCheckOrPrompt -Port $ReloadPort
+if ($ChatEnabled) {
+    Invoke-PortCheckOrPrompt -Port $ChatPort
+}
 
-Write-Host ">> Starting mkdocs serve on http://$Addr" -ForegroundColor Cyan
+$PythonCmd = $script:PythonCmdForConfig
+$ResolvedChatHost = Get-ConfiguredChatHost -PythonCmd $PythonCmd
+
+New-Item -ItemType Directory -Force -Path ".tmp" | Out-Null
+Set-Content -Path ".tmp\notes-serve.log" -Value "" -NoNewline
+Set-Content -Path ".tmp\notes-watch.log" -Value "" -NoNewline
+Set-Content -Path ".tmp\notes-chat.log" -Value "" -NoNewline
+
+$WatcherArgs = @(
+    "scripts/notes/watch_site_inputs.py",
+    "--addr", $Addr,
+    "--mkdocs-log", ".tmp/notes-serve.log",
+    "--mkdocs-pid-file", ".tmp/notes-serve.pid",
+    "--reload-port", "$ReloadPort"
+)
+if ($ChatEnabled) {
+    $WatcherArgs += @(
+        "--chat-host", $ResolvedChatHost,
+        "--chat-port", "$ChatPort",
+        "--chat-log", ".tmp/notes-chat.log",
+        "--chat-pid-file", ".tmp/notes-chat.pid",
+        "--chat-agent", $ChatAgent
+    )
+    if ($ChatAgentCommand) {
+        $WatcherArgs += @("--chat-agent-command", $ChatAgentCommand)
+    }
+}
+
+Write-Host ">> Starting notes supervisor on http://$Addr" -ForegroundColor Cyan
 Write-Host "   docs_dir: notes\"
 Write-Host "   config:   mkdocs.gen.yml"
+Write-Host "   mkdocs log: .tmp\notes-serve.log"
+Write-Host "   reload:  http://127.0.0.1:$ReloadPort/version"
+if ($ChatEnabled) {
+    Write-Host "   chat:    http://$ResolvedChatHost`:$ChatPort/health ($ChatAgent)"
+    Write-Host "   chat log: .tmp\notes-chat.log"
+}
 Write-Host "   stop:     Ctrl-C"
 Write-Host ""
-mkdocs serve --dev-addr $Addr -f mkdocs.gen.yml
+$oldChatEnabled = $env:NOTES_CHAT_ENABLED
+try {
+    if ($ChatEnabled) {
+        $env:NOTES_CHAT_ENABLED = "1"
+    } else {
+        $env:NOTES_CHAT_ENABLED = "0"
+    }
+    & $PythonCmd @WatcherArgs
+} finally {
+    if ($null -eq $oldChatEnabled) {
+        Remove-Item Env:NOTES_CHAT_ENABLED -ErrorAction SilentlyContinue
+    } else {
+        $env:NOTES_CHAT_ENABLED = $oldChatEnabled
+    }
+}
 exit $LASTEXITCODE

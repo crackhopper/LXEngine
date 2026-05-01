@@ -14,7 +14,7 @@ tags: [docs, notes, sync, onboarding]
 - `/update-notes --dry-run` — 只报告会变更的文件，不写盘
 - `/update-notes <subsystem>` — 强制刷新某个子系统文档（例如 `/update-notes material-system`）
 
-写完文档后，如果后台 `scripts/serve-notes.sh` 已经在运行，再执行一次 `/refresh-notes`，让页面在不重启服务的情况下吃到最新生成结果。
+写完文档后，如果后台 `scripts/notes/serve_site.sh` 已经在运行，通常不需要手动刷新；若 watcher 异常，再执行 `/refresh-notes` 重启本地预览服务。
 
 **IMPORTANT**: 这个命令的目标是产生**摘要与导航**，不是把 `openspec/specs/` 的内容复制一份。notes 的读者是第一次看这个项目的人，要帮他们快速建立心智模型并指向权威文档。
 

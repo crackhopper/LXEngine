@@ -91,6 +91,6 @@ Synchronize the design-document indexes in `AGENTS.md` and `CLAUDE.md` with `not
 - Subsystem docs are written in Chinese (project convention)
 - Summaries in `AGENTS.md` and `CLAUDE.md` are in English
 - `notes/subsystems/` is the current truth for design-oriented docs
-- Do not create new files under `docs/design/` as part of this command
+- Do not create legacy `docs/design/` files; use `notes/subsystems/` as the design-doc home
 - If source code for a missing subsystem doc cannot be found, skip it and report a warning
 - Keep summaries concise: 1-2 sentences max in the AGENTS.md table

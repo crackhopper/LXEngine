@@ -30,6 +30,10 @@
 - [MaterialTemplate：多 pass 蓝图如何收束成统一契约](src/core/asset/material_template.md)
 - [MaterialInstance：从模板到运行时账本](src/core/asset/material_instance.md)
 - [Texture 与 CombinedTextureSampler：CPU 图像如何进入 GPU 资源路径](src/core/asset/texture.md)
+- [Scene：场景容器与 scene-level 资源筛选](src/core/scene/scene.md)
+- [RenderTarget：attachment 形状如何成为 REQ-009 的匹配键](src/core/frame_graph/render_target.md)
+- [RenderQueue：把 scene × pass 收口成可消费的 draw 列表](src/core/frame_graph/render_queue.md)
+- [FrameGraph：把 scene 翻译成按 pass 组织的 RenderingItem 列表](src/core/frame_graph/frame_graph.md)
 
 配套阅读：
 

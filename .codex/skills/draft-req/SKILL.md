@@ -1,9 +1,9 @@
 ---
 name: draft-req
-description: Turn an idea into a formal requirement doc under docs/requirements/ through interactive discovery. Use when the user wants to draft a new requirement without implementing code yet.
+description: Turn an idea into a formal requirement doc under notes/requirements/ through interactive discovery. Use when the user wants to draft a new requirement without implementing code yet.
 ---
 
-Draft a new requirement document under `docs/requirements/`. This skill produces documentation only.
+Draft a new requirement document under `notes/requirements/`. This skill produces documentation only.
 
 ## Core Rules
 
@@ -15,8 +15,8 @@ Draft a new requirement document under `docs/requirements/`. This skill produces
 ## Workflow
 
 1. Scan:
-   - `docs/requirements/*.md`
-   - `docs/requirements/finished/*.md`
+   - `notes/requirements/*.md`
+   - `notes/requirements/finished/*.md`
 2. If the user gave no brief, ask for the topic first.
 3. Discuss:
    - current pain

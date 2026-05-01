@@ -1,10 +1,9 @@
 """mkdocs hooks — 由 mkdocs.gen.yml 引用。
 
 两件事:
-    1. 历史上 requirements/*.md 物理上在 docs/requirements/，经
-       scripts/notes/generate_site_config.py 以符号链接挂到 notes/requirements/ 后，
-       mkdocs 以 notes/ 为 docs_dir 解析路径，相对链接会指向仓库外。
-       合并后两侧已是同一目录，这条重写仅作为兼容路径保留。
+    1. 历史上 requirements/*.md 可能从 notes/ 外部目录挂进站点，
+       文档里会留下 ../../notes/xxx.md 这类相对链接。
+       现在 requirements 已并入 notes/requirements/，这条重写仅作为兼容路径保留。
        `on_page_markdown` 仅对 requirements/ 下的页面重写 ../../notes/ → ../。
 
     2. 默认 toc 扩展的 slugify 会剥掉全部非 ASCII 字符，导致含中文的标题

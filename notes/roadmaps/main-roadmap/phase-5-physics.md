@@ -26,6 +26,8 @@
 
 **不做**：流体 / 软体 / 布料 / 载具 / GPU 加速物理。
 
+> **关于 GPU 加速物理**：v1 选 CPU 物理是显式决策。如果未来要把布料 / 粒子 / 流体放到 GPU（GPU 物理是 async compute 的强触发场景），必须先具备 async compute 基础设施。前置技术储备见 [notes/roadmaps/research/async-compute/](../research/async-compute/README.md) — 该调研明确把 *Phase 5 物理走 GPU* 列为 REQ-A 立项的强触发条件。
+
 ## 前置条件
 
 - Phase 2 `Transform` + `Clock` fixedUpdate
