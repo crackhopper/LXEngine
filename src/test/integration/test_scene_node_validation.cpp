@@ -395,8 +395,8 @@ void testSceneNodeHierarchyPropagatesWorldTransform() {
   auto child = SceneNode::create("node_child", makeMeshWithSkinningInputs(),
                                  makeMaterial(false), nullptr);
 
-  parent->setLocalTransform(Mat4f::translate(Vec3f{2.0f, 0.0f, -1.0f}));
-  child->setLocalTransform(Mat4f::translate(Vec3f{0.0f, 3.0f, 4.0f}));
+  parent->setTranslation(Vec3f{2.0f, 0.0f, -1.0f});
+  child->setTranslation(Vec3f{0.0f, 3.0f, 4.0f});
   child->setParent(parent);
 
   EXPECT(nearlyEqualVec3(transformPoint(parent->getWorldTransform()),
@@ -414,14 +414,14 @@ void testHierarchyChangesDirtyChildPerDrawModel() {
   auto child = SceneNode::create("node_child_dirty", makeMeshWithSkinningInputs(),
                                  makeMaterial(false), nullptr);
   child->setParent(parent);
-  child->setLocalTransform(Mat4f::translate(Vec3f{0.0f, 1.0f, 0.0f}));
+  child->setTranslation(Vec3f{0.0f, 1.0f, 0.0f});
 
-  parent->setLocalTransform(Mat4f::translate(Vec3f{1.0f, 0.0f, 0.0f}));
+  parent->setTranslation(Vec3f{1.0f, 0.0f, 0.0f});
   const auto &before = readPerDrawLayout(child->getPerDrawData());
   EXPECT(nearlyEqualVec3(transformPoint(before.model), Vec3f{1.0f, 1.0f, 0.0f}),
          "child per-draw model should reflect initial parent transform");
 
-  parent->setLocalTransform(Mat4f::translate(Vec3f{5.0f, -2.0f, 0.0f}));
+  parent->setTranslation(Vec3f{5.0f, -2.0f, 0.0f});
   const auto &after = readPerDrawLayout(child->getPerDrawData());
   EXPECT(nearlyEqualVec3(transformPoint(after.model), Vec3f{5.0f, -1.0f, 0.0f}),
          "changing parent transform should dirty and refresh child per-draw model");
@@ -519,8 +519,8 @@ void testRenderQueueUsesHierarchyDerivedWorldTransform() {
                                   makeMaterial(false), nullptr);
   auto child = SceneNode::create("node_queue_child", makeMeshWithSkinningInputs(),
                                  makeMaterial(false), nullptr);
-  parent->setLocalTransform(Mat4f::translate(Vec3f{4.0f, 0.5f, 0.0f}));
-  child->setLocalTransform(Mat4f::translate(Vec3f{0.0f, 1.5f, 0.0f}));
+  parent->setTranslation(Vec3f{4.0f, 0.5f, 0.0f});
+  child->setTranslation(Vec3f{0.0f, 1.5f, 0.0f});
   child->setParent(parent);
 
   auto scene = Scene::create("SceneQueueHierarchy", parent);

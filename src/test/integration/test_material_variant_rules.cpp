@@ -27,8 +27,14 @@ int failures = 0;
 namespace fs = std::filesystem;
 
 fs::path findMaterialsDir() {
+  if (initializeRuntimeAssetRoot()) {
+    return getRuntimeAssetRoot() / "assets" / "materials";
+  }
+
   auto p = fs::current_path();
   for (int i = 0; i < 5; ++i) {
+    if (fs::exists(p / "assets" / "materials"))
+      return p / "assets" / "materials";
     if (fs::exists(p / "materials"))
       return p / "materials";
     auto parent = p.parent_path();
@@ -36,7 +42,7 @@ fs::path findMaterialsDir() {
       break;
     p = parent;
   }
-  return p / "materials";
+  return p / "assets" / "materials";
 }
 
 void writeTempMaterial(const fs::path &path, const std::string &content) {

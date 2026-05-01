@@ -18,8 +18,8 @@ namespace LX_core {
 `Scene::getSceneLevelResources`、`RenderQueue::buildFromScene` 都已经在依赖它做
 REQ-009 的"target 轴"筛选。也就是说：契约入口已经摆好，但契约本身还没发育完整。
 
-详细的设计走向、字段缺口、与 PipelineKey 的接入方式由 REQ-034 收口，
-正在用文档先于代码的方式拍板。本类型在 REQ-034 落地后会拆为
+详细的设计走向、字段缺口、与 PipelineKey 的接入方式由 REQ-042 收口，
+正在用文档先于代码的方式拍板。本类型在 REQ-042 落地后会拆为
 `RenderTargetDesc`（intern-friendly 形状，参与 PipelineKey 三级 compose）和
 `RenderTarget`（持有 desc + IGpuResource 句柄 + extent）两个类型。
 */
@@ -27,8 +27,6 @@ struct RenderTarget {
   ImageFormat colorFormat = ImageFormat::BGRA8;
   ImageFormat depthFormat = ImageFormat::D32Float;
   u8 sampleCount = 1;
-
-  usize getHash() const;
 
   bool operator==(const RenderTarget &other) const {
     return colorFormat == other.colorFormat &&
@@ -48,7 +46,7 @@ struct RenderTarget {
 永远返回 true，没有真实筛选发生。这不是设计成果，是因为 RenderTarget 还没长出
 足够字段（MRT、layer、自定义 extent、load/store ops 都缺）来产生真实差异。
 
-REQ-034 落地后，这个 `==` 会被 `RenderTargetDesc::operator==` 取代，进入真实
+REQ-042 落地后，这个 `==` 会被 `RenderTargetDesc::operator==` 取代，进入真实
 工作状态。届时字段扩展时同步更新 `==` 与 `getPipelineSignature` 是必须项。
 */
 

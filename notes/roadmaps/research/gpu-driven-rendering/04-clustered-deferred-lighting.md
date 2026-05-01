@@ -168,7 +168,7 @@ RT2 RGBA8: emissive
 | 灵活性 | 低（attachment 集合固定） | 高（每帧可变） |
 | 代码复杂度 | 高 | 低 |
 
-LX 启示：[REQ-034](../../../requirements/034-render-target-desc-and-target.md) 的 RenderTarget 拆分后，binding 端可以直接用 dynamic rendering 实现，省掉 framebuffer 对象池。
+LX 启示：[REQ-042](../../../requirements/042-render-target-desc-and-target.md) 的 RenderTarget 拆分后，binding 端可以直接用 dynamic rendering 实现，省掉 framebuffer 对象池。
 
 ## 4.5 Octahedral Normal Encoding
 

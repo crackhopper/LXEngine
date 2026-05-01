@@ -2,7 +2,7 @@
 # generate_site_config.py — 为 mkdocs 预览生成导航与动态索引页
 #
 # 行为:
-#   1. 扫描 notes/requirements/*.md (不含 finished/ 子目录)
+#   1. 扫描 notes/requirements/*.md (不含 index.md / README.md / finished/)，按文件名编号展示实施队列
 #   2. 确保 notes/requirements/index.md 存在 (否则生成一份默认索引)
 #   3. 扫描 notes/tools/*.md 并生成 tools/index.md
 #   4. 读取 notes/nav.yml 作为站点导航唯一来源
@@ -60,7 +60,11 @@ def discover_requirements() -> list[Path]:
         return []
     files = [
         p for p in REQ_DIR.iterdir()
-        if p.is_file() and p.suffix == ".md" and p.name != "index.md"
+        if (
+            p.is_file()
+            and p.suffix == ".md"
+            and p.name not in {"index.md", "README.md"}
+        )
     ]
     files.sort(key=lambda p: natural_name_key(p.name))
     return files
@@ -188,7 +192,7 @@ def write_index(req_files: list[Path]) -> None:
     lines = [
         "# 需求（进行中）",
         "",
-        "本目录由 `scripts/notes/generate_site_config.py` 自动生成，列出 `notes/requirements/` 下尚未归档的需求文档。",
+        "本目录由 `scripts/notes/generate_site_config.py` 自动生成，列出 `notes/requirements/` 下尚未归档的需求文档；文件名编号即建议实施顺序，一个 REQ 文件只覆盖一个连续实施周期。",
         "",
     ]
     for p in req_files:

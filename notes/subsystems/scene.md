@@ -12,14 +12,15 @@
 
 - 给 renderer 一个稳定的场景入口。
 - 把“对象是否合法”前移到 `SceneNode` 自身，而不是在 queue 里临时检查。
-- 在 scene 级统一管理 camera/light 资源和 node 命名空间。
+- 在 scene 级统一管理 camera/light 资源、`nodeName` 调试命名空间，以及 editor/command 用的路径命名空间。
 
 ## 核心对象
 
 - `Scene`：持有 renderables、camera 列表、light 列表，要求显式 `sceneName`。
 - `IRenderable`：renderable 抽象接口，新增 `getValidatedPassData(pass)` 只读出口。
-- `SceneNode`：当前主路径实现，聚合 `nodeName`、`MeshSharedPtr`、`MaterialInstanceSharedPtr`、可选 `SkeletonSharedPtr` 与 `PerDrawDataSharedPtr`。
-- `transform hierarchy`：`SceneNode` 额外维护 `localTransform`、派生 `worldTransform`、可选 parent 和 child 关系；scene 仍然平铺持有 renderable，hierarchy 只负责空间组合。
+- `SceneNode`：当前主路径实现，聚合 `nodeName`、独立 `name/path`、`MeshSharedPtr`、`MaterialInstanceSharedPtr`、可选 `SkeletonSharedPtr` 与 `PerDrawDataSharedPtr`。
+- `transform hierarchy`：`SceneNode` 额外维护 `Transform` 形式的 `localTransform`、派生 `Mat4f worldTransform`、可选 parent 和 child 关系；scene 仍然平铺持有 renderable，hierarchy 只负责空间组合。
+- `path root`：`Scene` 内部持有一个只用于路径寻址的 synthetic root；`findByPath("/")` 返回它，真实 top-level 节点路径形如 `/world`。
 - `ValidatedRenderablePassData`：`pass -> validated entry` 缓存项，保存 queue 需要的稳定结构结果。
 - `RenderingItem`：一次 draw 的完整上下文，字段仍是 `shaderInfo`、`material`、`drawData`、`vertexBuffer`、`indexBuffer`、`descriptorResources`、`pass`、`pipelineKey`。
 - `visibility mask`：`SceneNode` 自身携带的 layer bitmask；camera 持有独立 `cullingMask`，queue 构建时做交集判断。
@@ -29,25 +30,30 @@
 1. 构造 `SceneNode(nodeName, mesh, material, skeleton?)`。
 2. `SceneNode` 构造时立即扫描 enabled passes，完成结构性校验并建立 `m_validatedPasses`。
 3. `Scene::addRenderable(node)` 检查同一 scene 内 `nodeName` 唯一，为 `SceneNode` 写入 `sceneName/nodeName` 的调试 `StringID`，并接管 shared `MaterialInstance` 的 pass-state 传播。
-4. 如果节点挂在 parent 下，`SceneNode` 会按 `parent.world * local` 懒更新自身 `worldTransform`，并把结果写回 `PerDrawData.model`。
-5. `RenderQueue::buildFromScene(scene, pass, target)` 先取一次 `scene.getSceneLevelResources(pass, target)`。
-6. queue 先收集当前 `target` 下所有匹配 camera 的 `cullingMask` 并做按位 OR；renderable 只有在 `visibilityMask & combinedCameraMask != 0` 时才继续参与当前 queue。
-7. queue 把 scene-level 资源追加到 descriptor 列表末尾，生成 `RenderingItem` 并排序。
+4. 编辑器/命令路径走 `SceneNode::setName/getPath` 和 `Scene::findByPath/dumpTree`；这条路径名字与 `nodeName` 解耦，不参与渲染身份。
+5. 如果节点挂在 parent 下，`SceneNode` 会按 `parent.world * local.toMat4()` 懒更新自身 `worldTransform`，并把结果写回 `PerDrawData.model`。
+6. `RenderQueue::buildFromScene(scene, pass, target)` 先取一次 `scene.getSceneLevelResources(pass, target)`。
+7. queue 先收集当前 `target` 下所有匹配 camera 的 `cullingMask` 并做按位 OR；renderable 只有在 `visibilityMask & combinedCameraMask != 0` 时才继续参与当前 queue。
+8. queue 把 scene-level 资源追加到 descriptor 列表末尾，生成 `RenderingItem` 并排序。
 
 ## 关键约束
 
 - `SceneNode` 可以脱离 `Scene` 独立存在；scene 只额外提供命名空间和 scene-level 资源。
-- `SceneNode` 的 hierarchy 也是可选的；没设 parent 时，`worldTransform == localTransform`。
+- `SceneNode` 的 hierarchy 也是可选的；没设 parent 时，`worldTransform == localTransform.toMat4()`。
+- `SceneNode::name` 允许为空；空名祖先在 `getPath()` / `dumpTree()` 中会显示成 `<unnamed-node-0xADDR>` 占位，便于排错。
+- `Scene::findByPath()` 既接受绝对路径 `/world/player`，也接受 root-relative 简写 `world/player`；重复 `/` 产生的空段会保留为空名段，不做静默折叠。
+- 同一 parent 下允许重名；`findByPath()` 固定返回 child 插入顺序中的首个匹配，且仅对显式命名的重复 sibling 输出 `WARN`。
+- `Scene::dumpTree()` 只导出结构和路径段，不导出 transform / material；导出的每一条路径都应该能再喂回 `findByPath()`。
 - `SceneNode` 回指 parent scene 现在走 `weak_ptr` 语义：挂进 scene 后可锁回 parent，scene 销毁后会自动失效，不再依赖裸指针悬挂状态。
 - `SceneNode` 的结构必填项是 `nodeName`、`mesh`、`materialInstance`；`skeleton` 可选；`perDrawData` 继续保留。
 - `setMesh(...)`、`setMaterialInstance(...)`、`setSkeleton(...)` 会同步重建 validated cache；`setFloat` / `setTexture` / `syncGpuData()` / model 更新不会。
-- `setLocalTransform(...)`、`setParent(...)`、`clearParent()` 只触发 world/per-draw dirty 传播，不会重建 validated cache，因为 pipeline 和 descriptor 结构没变。
+- `setLocalTransform(...)`、`setTranslation(...)`、`setRotation(...)`、`setScale(...)`、`setParent(...)`、`clearParent()` 只触发 world/per-draw dirty 传播，不会重建 validated cache，因为 pipeline 和 descriptor 结构没变。
 - `supportsPass(pass)` 现在是缓存查询，不再是简单的 pass-mask 按位判断。
 - `SceneNode` 默认 `visibilityMask = 0xffffffff`，`Camera` 默认 `cullingMask = 0xffffffff`，所以旧场景在不显式设置 mask 时行为不变。
 - camera 的 mask 只决定“哪些 renderable 进入 queue”；`Scene::getSceneLevelResources(pass, target)` 仍只按 `target` 选 camera、按 `pass` 选 light，不会因为某个 renderable 被裁掉就撤掉 camera UBO。
 - 共享 `MaterialInstance` 的 `setPassEnabled(...)` 会由 `Scene::revalidateNodesUsing(materialInstance)` 传播到所有引用该实例的节点；普通参数写入不触发这条结构性重验证。
 - 结构性校验失败统一抛 `logic_error`，错误信息会带 pass、material、shader variants 和 vertex layout。
-- `Scene` 内 `nodeName` 必须唯一；重复插入会直接终止。
+- `Scene` 内 `nodeName` 仍必须唯一；重复插入会直接终止。这个约束只服务渲染调试身份，不等于路径 `name` 唯一。
 - 对 `blinnphong_0` 的 forward pass，`SceneNode` 现在除了“按反射 contract 检查 location/type”外，还显式承担 variant-to-resource 约束：
   - `USE_VERTEX_COLOR` 要求 mesh 提供 `inColor`
   - `USE_UV` 要求 mesh 提供 `inUV`
@@ -74,7 +80,7 @@
 - 想改结构性校验：看 `src/core/scene/object.cpp` 里的 `rebuildValidatedCache()`。
 - 想改 scene-level 资源筛选：看 `Scene::getSceneLevelResources()`。
 - 想改 camera/renderable 可见性过滤：看 `Scene::getCombinedCameraCullingMask()` 和 `RenderQueue::buildFromScene()`。
-- 想改 shared material 的结构传播或 node 唯一性/调试标识：看 `Scene::addRenderable()` 和 `Scene::revalidateNodesUsing(...)`。
+- 想改 shared material 的结构传播、nodeName 唯一性、路径 root / `findByPath()` / `dumpTree()`：看 `Scene::addRenderable()`、`Scene::findByPath()`、`Scene::dumpTree()` 和 `Scene::revalidateNodesUsing(...)`。
 
 ## 关联文档
 

@@ -1,4 +1,5 @@
 #include "core/math/quat.hpp"
+#include "core/math/transform.hpp"
 #include "core/math/vec.hpp"
 #include "core/platform/types.hpp"
 
@@ -7,6 +8,7 @@
 #include <functional>
 #include <iostream>
 #include <limits>
+#include <sstream>
 
 using namespace LX_core;
 
@@ -38,6 +40,10 @@ bool approxQuat(const Quatf &a, const Quatf &b, f32 eps = kEps) {
   return approx(a.w, b.w, eps) && approxVec3(a.v, b.v, eps);
 }
 
+bool approxQuatOrientation(const Quatf &a, const Quatf &b, f32 eps = kEps) {
+  return std::fabs(a.normalized().dot(b.normalized())) >= 1.0f - eps;
+}
+
 Quatf hamiltonProduct(const Quatf &lhs, const Quatf &rhs) {
   return Quatf(lhs.w * rhs.w - lhs.v.dot(rhs.v),
                lhs.v.cross(rhs.v) + rhs.v * lhs.w + lhs.v * rhs.w);
@@ -57,6 +63,14 @@ usize expectedHash(const Vec2d &v) {
     hash_combine(h, std::hash<u64>()(std::bit_cast<u64>(v[i])));
   }
   return h;
+}
+
+std::string captureStderr(const std::function<void()> &fn) {
+  std::ostringstream capture;
+  auto *original = std::cerr.rdbuf(capture.rdbuf());
+  fn();
+  std::cerr.rdbuf(original);
+  return capture.str();
 }
 
 void testQuaternionMultiplyInplaceUsesOriginalScalar() {
@@ -107,6 +121,67 @@ void testQuaternionRotateVector() {
          "90-degree Z rotation must map +X to +Y");
 }
 
+void testTransformIdentityToMat4() {
+  const Transform t = Transform::identity();
+  const Mat4f m = t.toMat4();
+  EXPECT(approx(m(0, 0), 1.0f) && approx(m(1, 1), 1.0f) &&
+             approx(m(2, 2), 1.0f) && approx(m(3, 3), 1.0f),
+         "identity transform must produce identity matrix");
+  EXPECT(approx(m(0, 3), 0.0f) && approx(m(1, 3), 0.0f) &&
+             approx(m(2, 3), 0.0f),
+         "identity transform must have zero translation");
+}
+
+void testTransformFromMat4TranslationOnly() {
+  const Transform t =
+      Transform::fromMat4(Mat4f::translate(Vec3f{1.0f, 2.0f, 3.0f}));
+  EXPECT(approxVec3(t.translation, Vec3f{1.0f, 2.0f, 3.0f}),
+         "translation-only matrix must preserve translation");
+  EXPECT(approxQuatOrientation(t.rotation, Quatf{}),
+         "translation-only matrix must preserve identity rotation");
+  EXPECT(approxVec3(t.scale, Vec3f{1.0f, 1.0f, 1.0f}),
+         "translation-only matrix must preserve unit scale");
+}
+
+void testTransformStrictTrsRoundTrip() {
+  Transform original;
+  original.translation = Vec3f{1.0f, -2.0f, 0.5f};
+  original.rotation =
+      Quatf::fromAxisAngle(Vec3f{0.0f, 1.0f, 0.0f}, 0.75f).normalized();
+  original.scale = Vec3f{2.0f, 3.0f, 4.0f};
+
+  const Transform actual = Transform::fromMat4(original.toMat4());
+  EXPECT(approxVec3(actual.translation, original.translation),
+         "strict TRS round-trip must preserve translation");
+  EXPECT(approxQuatOrientation(actual.rotation, original.rotation),
+         "strict TRS round-trip must preserve rotation orientation");
+  EXPECT(approxVec3(actual.scale, original.scale),
+         "strict TRS round-trip must preserve scale");
+}
+
+void testTransformWarnsOnShearInput() {
+  Mat4f sheared = Mat4f::identity();
+  sheared(0, 1) = 0.5f;
+  const std::string warning = captureStderr([&]() {
+    (void)Transform::fromMat4(sheared);
+  });
+  EXPECT(warning.find("[WARN] Transform::fromMat4") != std::string::npos,
+         "sheared matrix must emit warning");
+}
+
+void testTransformWarnsOnNegativeScaleRepair() {
+  const Mat4f reflected = Mat4f::scale(Vec3f{1.0f, -2.0f, 3.0f});
+  Transform actual;
+  const std::string warning = captureStderr([&]() {
+    actual = Transform::fromMat4(reflected);
+  });
+  EXPECT(warning.find("[WARN] Transform::fromMat4") != std::string::npos,
+         "negative-scale repair must emit warning");
+  EXPECT(actual.scale.x < 0.0f, "negative-scale repair keeps X negative");
+  EXPECT(actual.scale.y > 0.0f && actual.scale.z > 0.0f,
+         "negative-scale repair flips Y/Z positive");
+}
+
 void testVecFloatHashUsesBitCastReference() {
   const Vec3f v{1.25f, -0.0f, std::numeric_limits<f32>::infinity()};
   const usize actual = Vec3f::Hash{}(v);
@@ -132,6 +207,11 @@ int main() {
   testQuaternionLeftMultiplyUsesOriginalScalar();
   testQuaternionConjugateProducesIdentityWhenMultiplied();
   testQuaternionRotateVector();
+  testTransformIdentityToMat4();
+  testTransformFromMat4TranslationOnly();
+  testTransformStrictTrsRoundTrip();
+  testTransformWarnsOnShearInput();
+  testTransformWarnsOnNegativeScaleRepair();
   testVecFloatHashUsesBitCastReference();
   testVecDoubleHashUsesBitCastReference();
 

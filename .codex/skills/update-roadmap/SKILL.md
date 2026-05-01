@@ -42,7 +42,7 @@ If the directory only has `README.md` (empty roadmap), ask the user what the fir
 For each file read the header + 实施状态 section. Build an index:
 
 ```
-REQ-NNN | title | status (未开始 / 进行中 / 已完成) | location (active or finished)
+REQ-NNN or REQ-NNN-a | title | status (未开始 / 进行中 / 已完成) | location (active or finished)
 ```
 
 ### 3. Cross-check for drift
@@ -104,7 +104,7 @@ File conventions:
 - filename: `phase-NN-<kebab-case-theme>.md`
 - top heading: `# Phase NN: <theme>`
 - sections: 目标 / 范围 / 里程碑 / 关联需求 / 完成判据
-- mark done items with `- [x]` and keep `REQ-NNN` back-references
+- mark done items with `- [x]` and keep `REQ-NNN` / `REQ-NNN-a` back-references
 
 ### 7. nav.yml is auto-managed
 
@@ -118,7 +118,7 @@ After writing, summarise the edits applied, plus any open items the user still n
 
 - Always present a change plan before editing, and wait for the user's yes.
 - Never edit `notes/requirements/*.md`, source code, or files outside `notes/roadmaps/`.
-- Roadmap references to requirements must use `REQ-NNN`, not vague prose.
+- Roadmap references to requirements must use `REQ-NNN` or `REQ-NNN-a`, not vague prose.
 - Do not keep tombstones for dropped items — delete them; history belongs in `git log`.
 - When a fact from `notes/requirements/` contradicts the current roadmap, report it to the user rather than amending the requirement.
 - Chinese-first prose, English identifiers — match `notes/roadmaps/README.md` style.

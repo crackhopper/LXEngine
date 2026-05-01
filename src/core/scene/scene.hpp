@@ -7,6 +7,7 @@
 #include "core/frame_graph/pass.hpp"
 #include <exception>
 #include <iostream>
+#include <memory>
 #include <stdexcept>
 #include <string>
 
@@ -71,7 +72,8 @@ class Scene : public std::enable_shared_from_this<Scene> {
 public:
   using SharedPtr = std::shared_ptr<Scene>;
 
-  explicit Scene(std::string sceneName) : m_sceneName(std::move(sceneName)) {
+  explicit Scene(std::string sceneName)
+      : m_sceneName(std::move(sceneName)), m_pathRoot(SceneNode::createPathRoot()) {
     if (m_sceneName.empty()) {
       m_sceneName = "Scene";
     }
@@ -141,6 +143,7 @@ public:
         node->attachToScene(weak_from_this());
         node->setSceneDebugId(
             StringID(m_sceneName + "/" + node->getNodeName()));
+        node->warnIfSiblingNameIsDuplicated();
       }
     }
     m_renderables.push_back(std::move(r));
@@ -152,6 +155,8 @@ public:
   void addLight(LightBaseSharedPtr light) { m_lights.push_back(std::move(light)); }
   const std::vector<LightBaseSharedPtr> &getLights() const { return m_lights; }
   const std::string &getSceneName() const { return m_sceneName; }
+  SceneNode *findByPath(const std::string &path) const;
+  std::string dumpTree() const;
   void revalidateNodesUsing(const MaterialInstanceSharedPtr &materialInstance);
 
   /// REQ-009 two-axis filter form: camera by matchesTarget(target), light by
@@ -164,7 +169,14 @@ public:
       const RenderTarget &target) const;
 
 private:
+  [[nodiscard]] std::vector<SceneNodeSharedPtr> getRootNodes() const;
+  static std::vector<std::string> splitPathSegments(const std::string &path);
+  static bool matchesPathSegment(const SceneNode &node,
+                                 const std::string &pathSegment);
+  static void appendTreeLines(const SceneNode &node, std::string prefix,
+                              bool isLast, std::string &out);
   std::string m_sceneName;
+  SceneNodeSharedPtr m_pathRoot;
   std::vector<IRenderableSharedPtr> m_renderables;
   std::vector<CameraSharedPtr> m_cameras;
   std::vector<LightBaseSharedPtr> m_lights;

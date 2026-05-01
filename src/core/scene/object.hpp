@@ -4,6 +4,7 @@
 #include "core/asset/skeleton.hpp"
 #include "core/frame_graph/pass.hpp"
 #include "core/math/mat.hpp"
+#include "core/math/transform.hpp"
 #include "core/pipeline/pipeline_key.hpp"
 #include "core/rhi/gpu_resource.hpp"
 #include "core/scene/camera.hpp"
@@ -116,8 +117,17 @@ public:
   void setMesh(MeshSharedPtr mesh);
   void setMaterialInstance(MaterialInstanceSharedPtr material);
   void setSkeleton(SkeletonSharedPtr skeleton);
-  void setLocalTransform(const Mat4f &transform);
-  const Mat4f &getLocalTransform() const { return m_localTransform; }
+  void setLocalTransform(const Transform &transform);
+  const Transform &getLocalTransform() const { return m_localTransform; }
+  void setTranslation(const Vec3f &translation);
+  void setRotation(const Quatf &rotation);
+  void setScale(const Vec3f &scale);
+  void setName(std::string name);
+  const std::string &getName() const { return m_name; }
+  std::string getPath() const;
+  Vec3f getTranslation() const { return m_localTransform.translation; }
+  Quatf getRotation() const { return m_localTransform.rotation; }
+  Vec3f getScale() const { return m_localTransform.scale; }
   const Mat4f &getWorldTransform() const;
   void setParent(const SharedPtr &parent);
   void clearParent();
@@ -149,6 +159,9 @@ public:
 
 private:
   friend class Scene;
+  struct PathRootTag {};
+  explicit SceneNode(PathRootTag);
+  [[nodiscard]] static SharedPtr createPathRoot();
   void markWorldTransformDirty();
   void updateWorldTransformIfNeeded() const;
   void syncPerDrawModelMatrix() const;
@@ -157,8 +170,12 @@ private:
   void rebuildValidatedCache();
   void registerMaterialPassListener();
   void unregisterMaterialPassListener();
+  void warnIfSiblingNameIsDuplicated() const;
+  [[nodiscard]] std::string getPathSegment() const;
+  [[nodiscard]] static std::string sanitizeName(std::string name);
 
   std::string m_nodeName;
+  std::string m_name;
   MeshSharedPtr m_mesh;
   MaterialInstanceSharedPtr m_materialInstance;
   std::optional<SkeletonSharedPtr> m_skeleton;
@@ -170,11 +187,12 @@ private:
   std::weak_ptr<Scene> m_scene;
   std::weak_ptr<SceneNode> m_parent;
   std::vector<std::weak_ptr<SceneNode>> m_children;
-  Mat4f m_localTransform = Mat4f::identity();
+  Transform m_localTransform = Transform::identity();
   mutable Mat4f m_worldTransform = Mat4f::identity();
   mutable bool m_worldTransformDirty = false;
   mutable bool m_worldTransformHasParent = false;
   VisibilityLayerMask m_visibilityLayerMask = VisibilityMask_All;
+  bool m_isPathRoot = false;
 };
 
 using SceneNodeSharedPtr = SceneNode::SharedPtr;

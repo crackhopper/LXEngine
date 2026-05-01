@@ -94,12 +94,12 @@ flowchart TD
 
 生成器，做四件事：
 
-1. 扫描 `notes/requirements/*.md`（不含 `finished/`）作为活跃需求列表
+1. 扫描 `notes/requirements/*.md`（不含 `index.md`、`README.md` 和 `finished/`）作为活跃需求列表；文件名编号按实施顺序排序
 2. 扫描 `notes/tools/*.md` 并生成 `tools/index.md`
 3. 读 `notes/nav.yml` 作为站点导航唯一来源
 4. 读 `mkdocs.yml`，补上 nav / watch / hooks 写出 `mkdocs.gen.yml`
 
-当前实现直接扫描 `notes/requirements/*.md`；不再依赖旧的 `docs/requirements/` 或符号链接同步逻辑。
+当前实现直接扫描 `notes/requirements/*.md`；不再依赖旧的 `docs/requirements/` 或符号链接同步逻辑。活跃需求的编号应当就是实施队列，一个 REQ 文件只覆盖一个连续实施周期；若新需求让旧需求的一部分后置，应先通过 `/draft-req` 拆分旧需求，并优先用 `NNN-a` / `NNN-b` 后缀族吸收局部插入，避免后续编号连锁变化。
 
 ### `notes/nav.yml`
 
@@ -139,8 +139,14 @@ flowchart TD
 目录内容：
 
 - `index.md` — 需求索引
-- `019-demo-scene-viewer.md` — 当前唯一活跃需求
+- `NNN-*.md` — 当前活跃需求，按编号顺序实施；局部拆分用 `NNN-a-*.md`
 - `finished/` — 历史归档
+
+维护约定：
+
+- `REQ 文件号 = 实施顺序`，用户应能从小到大直接推进
+- `一个 REQ 文件 = 一个连续实施周期`
+- 如果新需求插入后导致旧需求的一部分要后置，先拆旧需求，再优先使用 `NNN-a` / `NNN-b` 后缀族
 
 ### `scripts/notes/mkdocs_hooks.py`
 

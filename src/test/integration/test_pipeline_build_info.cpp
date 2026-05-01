@@ -192,16 +192,6 @@ void testFromRenderingItemIsDeterministic() {
   EXPECT(a.topology == b.topology, "deterministic topology");
 }
 
-void testRenderTargetHashStability() {
-  RenderTarget a;
-  RenderTarget b;
-  EXPECT(a.getHash() == b.getHash(), "default RenderTarget hashes equal");
-
-  RenderTarget c;
-  c.sampleCount = 4;
-  EXPECT(c.getHash() != a.getHash(), "different sampleCount → different hash");
-}
-
 } // namespace
 
 int main() {
@@ -213,7 +203,6 @@ int main() {
   testFromRenderingItemTopology();
   testFromRenderingItemRenderStateFromMaterial();
   testFromRenderingItemIsDeterministic();
-  testRenderTargetHashStability();
 
   if (failures > 0) {
     std::cerr << "FAILED: " << failures << " assertion(s)\n";

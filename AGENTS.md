@@ -187,6 +187,8 @@ idea / problem
   -> git commit
 ```
 
+Requirements live under `notes/requirements/` and the filename prefix is the implementation order. One REQ file should cover one continuous implementation cycle; if a new requirement pushes part of an existing active REQ later, split that active REQ and prefer `NNN-a` / `NNN-b` suffixes before implementing instead of shifting every later active REQ.
+
 Not every task needs the whole chain:
 
 - discussion only: `/opsx:explore`
