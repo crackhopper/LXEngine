@@ -1,33 +1,32 @@
 ---
 name: "Refresh Notes"
-description: Restart the local notes server after regenerating site inputs
+description: Restart the local notes server and watcher when automatic reload is not enough
 category: Documentation
 tags: [docs, notes, mkdocs, refresh]
 ---
 
-Restart the local notes site after editing documentation. This command regenerates site inputs, stops the old server on the notes port, and starts a fresh background `mkdocs serve`.
+Restart the local notes site and watcher. Normal documentation edits should hot reload automatically; use this only when the watcher failed, dependencies changed, or the local preview process is stale.
 
-**Input**: No arguments required. Run `/refresh-notes` after any doc change that should appear in the notes site.
+**Input**: No arguments required.
 
-This command runs `scripts/serve-notes.sh`, which regenerates `mkdocs.gen.yml`, stops the old listener on the notes port, and starts a fresh background `mkdocs serve`.
+This command runs `scripts/notes/serve_site.sh`, which regenerates `mkdocs.gen.yml`, stops the old listener and old supervisor, then starts a fresh `watch_site_inputs.py` supervisor that manages MkDocs.
 
 ## When To Use
 
-- After editing `notes/**/*.md`
-- After editing `docs/requirements/*.md`
-- After editing `mkdocs.yml`
-- After adding a new `notes/` page, a new `notes/` subdirectory, or a new `notes/tools/*.md`
-- After any docs task where you want the browser page to reflect the latest nav/content immediately
+- The browser stops updating after edits.
+- `.tmp/notes-watch.log` shows repeated errors after you have fixed the input files.
+- Python, MkDocs, theme, or script dependencies changed.
+- You need to move the preview server to a different port.
 
 ## Steps
 
 1. Run:
 
 ```bash
-scripts/serve-notes.sh
+scripts/notes/serve_site.sh
 ```
 
-The script is idempotent — if an old `mkdocs serve` is already bound to the
+The script is idempotent: if an old `mkdocs serve` is already bound to the
 notes port, it is stopped first before the new one starts. No separate
 `refresh-notes.sh` helper exists; do not invent one.
 
@@ -35,13 +34,14 @@ notes port, it is stopped first before the new one starts. No separate
 
 - `mkdocs.gen.yml` was regenerated
 - any old listener on the notes port was stopped
-- a fresh `mkdocs serve` process was started in the background
-- the command reports URL, PID, and log path
+- any old notes watcher was stopped
+- a fresh `watch_site_inputs.py` supervisor was started and MkDocs came back up
+- the command reports URL, PID, and log paths
 
 3. Report a concise summary:
 
 - refreshed successfully
-- any generated files changed
+- MkDocs and watcher PID/log paths
 - any missing prerequisite such as `python3`
 
 ## Expected Result

@@ -10,6 +10,16 @@ namespace LX_core {
 
 namespace {
 
+/*
+@source_analysis.section makeItemFromValidatedData：把 validated 数据原样翻译成 RenderingItem
+这是一个 anonymous-namespace 内的纯字段拷贝函数，存在的理由是把"翻译"这件事
+和"过滤 + 入队"分开：`buildFromScene` 只关心条件判断和 sceneResources 追加，
+逐字段拷贝从这里走。
+
+不做合并、不做校验，因为 `ValidatedRenderablePassData` 的命名已经承诺了
+"pass-level validation 已经完成"。这里把它视作只读事实，原样转成 backend 消费的
+`RenderingItem`，连字段顺序都保持一一对应，方便审阅。
+*/
 RenderingItem makeItemFromValidatedData(const ValidatedRenderablePassData &data) {
   RenderingItem item;
   item.vertexBuffer = data.vertexBuffer;

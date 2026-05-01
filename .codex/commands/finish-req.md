@@ -5,14 +5,14 @@ category: Requirements
 tags: [requirements, review, simplify, archive]
 ---
 
-Take a file under `docs/requirements/`, verify the current code actually delivers what it claims, review that code for simplification opportunities and defects, fix what's found, and archive the requirement to `docs/requirements/finished/`.
+Take a file under `notes/requirements/`, verify the current code actually delivers what it claims, review that code for simplification opportunities and defects, fix what's found, and archive the requirement to `notes/requirements/finished/`.
 
 **Input**: A path to a requirement file. Accepts any of these forms:
-- `/finish-req docs/requirements/003b-pipeline-prebuilding.md`
+- `/finish-req notes/requirements/003b-pipeline-prebuilding.md`
 - `/finish-req 003b-pipeline-prebuilding.md`
-- `/finish-req 003b` (prefix match against files under `docs/requirements/`)
+- `/finish-req 003b` (prefix match against files under `notes/requirements/`)
 
-**IMPORTANT**: If no argument provided, list `docs/requirements/*.md` (excluding `finished/`) and use **AskUserQuestion** to let the user pick one. Never guess.
+**IMPORTANT**: If no argument provided, list `notes/requirements/*.md` (excluding `finished/`) and use **AskUserQuestion** to let the user pick one. Never guess.
 
 ---
 
@@ -20,13 +20,13 @@ Take a file under `docs/requirements/`, verify the current code actually deliver
 
 ### 1. Resolve the requirement file
 
-- Normalize the argument to an absolute path under `docs/requirements/`
-- If the user passed a bare prefix (e.g. `003b`), use `Glob docs/requirements/<prefix>*.md` to find a single match
+- Normalize the argument to an absolute path under `notes/requirements/`
+- If the user passed a bare prefix (e.g. `003b`), use `Glob notes/requirements/<prefix>*.md` to find a single match
 - If 0 matches: fail and list available files
 - If >1 matches: use **AskUserQuestion** to disambiguate
-- Confirm the file exists; if it's already under `docs/requirements/finished/`, report that and stop
+- Confirm the file exists; if it's already under `notes/requirements/finished/`, report that and stop
 
-Announce: "Verifying: `docs/requirements/<filename>`"
+Announce: "Verifying: `notes/requirements/<filename>`"
 
 ### 2. Read and parse the requirement
 
@@ -42,7 +42,7 @@ Read the full file. Identify:
 ### 3. Upstream dependency check
 
 For each dependency named in the doc:
-- If it references another REQ file, check whether it lives under `docs/requirements/finished/`
+- If it references another REQ file, check whether it lives under `notes/requirements/finished/`
 - If a dependency is **not** finished, stop and ask the user whether to proceed anyway or finish the upstream first. This is a blocker unless the user explicitly waives it.
 
 ### 4. Verify each Rn against actual code
@@ -122,12 +122,12 @@ Before moving the file, update its `## 实施状态` section (or create one at t
 - Tests run and their outcome
 - Any residual TODOs (rare — ideally none)
 
-Use the style of existing archived requirements under `docs/requirements/finished/` as a template.
+Use the style of existing archived requirements under `notes/requirements/finished/` as a template.
 
 ### 9. Archive the file
 
 ```bash
-mv docs/requirements/<filename>.md docs/requirements/finished/
+mv notes/requirements/<filename>.md notes/requirements/finished/
 ```
 
 If a file with the same name already exists under `finished/`, stop and ask the user (likely a mis-archive from a prior session).
@@ -151,7 +151,7 @@ Example:
 **Fixes applied:** 2 (removed stale `getSlots()` accessor; fixed include path in command_buffer.hpp)
 **Simplifications:** 1 (inlined single-caller helper `buildLayoutKey`)
 **Tests:** test_pipeline_build_info / test_frame_graph / test_material_instance all passed
-**Archived to:** docs/requirements/finished/003b-pipeline-prebuilding.md
+**Archived to:** notes/requirements/finished/003b-pipeline-prebuilding.md
 ```
 
 ---
@@ -165,4 +165,4 @@ Example:
 - **Do not touch other requirements** during this flow. If you discover a latent problem in REQ-X while working on REQ-Y, note it in the summary and move on — don't expand scope.
 - **Always ask before a large code rewrite**: "simplification" and "fix defects" have a narrow budget. Anything beyond ~50 changed lines should prompt the user with options.
 - **Prefer code is truth**: stale wording in the requirement doc is cheaper to fix than rewriting working code to match a hypothetical contract.
-- **If you move the file, do it as the last action**. Everything up to and including doc updates happens with the file still in `docs/requirements/`.
+- **If you move the file, do it as the last action**. Everything up to and including doc updates happens with the file still in `notes/requirements/`.

@@ -1,4 +1,4 @@
-# Mesh：几何接口形状如何进入 Pipeline Signature
+# Mesh：几何接口形状如何进入渲染签名
 
 本页的主体内容由 `scripts/source_analysis/extract_sections.py` 从源码中的
 `@source_analysis.section` 注释块生成，用来把讲解锚定在真实代码结构上。
@@ -10,7 +10,7 @@
 都拿到自己需要的结构事实。
 
 可以先带着一个问题阅读：`Mesh` 为什么没有直接保存材质、draw state，
-却还能参与 `PipelineKey`？答案是，这里真正进入 pipeline signature 的不是“几何内容本身”，
+却还能参与 `PipelineKey`？答案是，这里真正进入渲染签名的不是“几何内容本身”，
 而是顶点输入布局和图元拓扑这两类几何接口形状。
 
 源码入口：[mesh.hpp](../../../../src/core/asset/mesh.hpp)

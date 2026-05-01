@@ -1,6 +1,6 @@
 ---
 name: finish-req
-description: Verify a requirement doc against the current code, fix small drift or defects, update implementation status, and archive it to docs/requirements/finished. Use when the user wants to close out an active requirement.
+description: Verify a requirement doc against the current code, fix small drift or defects, update implementation status, and archive it to notes/requirements/finished. Use when the user wants to close out an active requirement.
 ---
 
 Finish a requirement by verifying it against the current code and archiving it only after verification succeeds.
@@ -14,7 +14,7 @@ Finish a requirement by verifying it against the current code and archiving it o
 
 ## Workflow
 
-1. Resolve the target file under `docs/requirements/`.
+1. Resolve the target file under `notes/requirements/`.
 2. Read the full requirement and extract:
    - requirement id
    - goals
@@ -34,7 +34,7 @@ Finish a requirement by verifying it against the current code and archiving it o
 7. Fix accepted drift or missing pieces, keeping the scope tight.
 8. Run relevant builds or tests before archiving.
 9. Update the requirement's implementation-status section with what was verified and tested.
-10. Move the file to `docs/requirements/finished/` only after all checks pass.
+10. Move the file to `notes/requirements/finished/` only after all checks pass.
 
 ## Final Report
 

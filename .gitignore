@@ -30,7 +30,6 @@ Makefile
 
 # mkdocs notes 预览生成物（由 scripts/_gen_notes_site.py 产生）
 mkdocs.gen.yml
-notes/requirements/
 
 *.pyc
 .tmp
@@ -41,3 +40,8 @@ notes/requirements/
 !src/infra/external/**/*.pdb
 
 examples/
+# notes-scaffold (auto-managed — adjust as needed)
+.tmp/
+__pycache__/
+notes/tools/index.md
+notes/temporary/index.md

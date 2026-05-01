@@ -155,6 +155,108 @@ TARGETS = [
         nav_order=300,
     ),
     SourceAnalysisTarget(
+        source="src/core/scene/scene.hpp",
+        output="notes/source_analysis/src/core/scene/scene.md",
+        title="Scene：场景容器与 scene-level 资源筛选",
+        intro=textwrap.dedent(
+            """\
+            这一页从
+            [src/core/scene/scene.hpp](../../../../../src/core/scene/scene.hpp)
+            和它的实现
+            [src/core/scene/scene.cpp](../../../../../src/core/scene/scene.cpp)
+            出发，关注的不是 API 列表，而是 `Scene` 为什么是一层薄壳：
+            把结构验证下放给 `SceneNode`、把 draw 组装下放给 `RenderQueue`，
+            自己只保留 nodeName 唯一性、shared material 重验证传播、
+            以及 scene-level 资源的两轴筛选这三件无法下放的事情。
+
+            可以先带着一个问题阅读：为什么 `Scene` 的容器是平铺的、构造时还要硬塞
+            一个默认 Camera 和 DirectionalLight？答案是 REQ-009 — 让那些不走完整
+            `VulkanRenderer::initScene` 的纯 core/test 路径仍然能拿到非空的
+            scene-level 资源，同时把 hierarchy/可见性等可选维度整体下推给 SceneNode。
+            """
+        ).strip(),
+        related_sources=(
+            "src/core/scene/scene.cpp",
+        ),
+        nav_order=500,
+    ),
+    SourceAnalysisTarget(
+        source="src/core/frame_graph/render_target.hpp",
+        output="notes/source_analysis/src/core/frame_graph/render_target.md",
+        title="RenderTarget：attachment 形状如何成为 REQ-009 的匹配键",
+        intro=textwrap.dedent(
+            """\
+            这一页从
+            [src/core/frame_graph/render_target.hpp](../../../../../src/core/frame_graph/render_target.hpp)
+            和它的实现
+            [src/core/frame_graph/render_target.cpp](../../../../../src/core/frame_graph/render_target.cpp)
+            出发，关注的不是"它有哪几个字段"，而是：为什么 `RenderTarget` 被刻意做成
+            一个不持有句柄、不参与 PipelineKey 的薄 POD，以及它怎么作为 REQ-009 两轴
+            筛选里的 *target 轴* 在 Scene、Camera、RenderQueue 之间穿过。
+
+            可以先带着一个问题阅读：既然 backend 最终要的是 attachment 句柄，为什么
+            `RenderTarget` 不直接持有句柄？答案是，句柄随 swapchain 重建抖动，而
+            "camera 匹配哪个 target" 是配置层的事实 — 把这两件事捏在一起会让 REQ-009
+            的匹配判断跟着 backend 状态一起抖。
+            """
+        ).strip(),
+        related_sources=(
+            "src/core/frame_graph/render_target.cpp",
+        ),
+        nav_order=550,
+    ),
+    SourceAnalysisTarget(
+        source="src/core/frame_graph/render_queue.hpp",
+        output="notes/source_analysis/src/core/frame_graph/render_queue.md",
+        title="RenderQueue：把 scene × pass 收口成可消费的 draw 列表",
+        intro=textwrap.dedent(
+            """\
+            这一页从
+            [src/core/frame_graph/render_queue.hpp](../../../../../src/core/frame_graph/render_queue.hpp)
+            和它的实现
+            [src/core/frame_graph/render_queue.cpp](../../../../../src/core/frame_graph/render_queue.cpp)
+            出发，关注的不是"队列里有哪些 API"，而是 `RenderQueue` 在数据流里的位置：
+            它是 per-pass 的 RenderingItem 收口点，把 `Scene` 的扁平容器视角翻译成
+            backend 能直接消费的 draw 列表。
+
+            可以先带着一个问题阅读：为什么 `RenderQueue` 不是一个全局队列？答案是，
+            同一个 renderable 在不同 pass 下的 RenderingItem 本就不同（不同 shader、
+            不同 binding、不同 pipelineKey），合并会让"按 pipelineKey 聚合"的语义崩塌；
+            这里只在单个 pass 内部完成 REQ-009 两轴筛选、稳定排序、和 pipeline 去重。
+            """
+        ).strip(),
+        related_sources=(
+            "src/core/frame_graph/render_queue.cpp",
+        ),
+        nav_order=600,
+    ),
+    SourceAnalysisTarget(
+        source="src/core/frame_graph/frame_graph.hpp",
+        output="notes/source_analysis/src/core/frame_graph/frame_graph.md",
+        title="FrameGraph：把 scene 翻译成按 pass 组织的 RenderingItem 列表",
+        intro=textwrap.dedent(
+            """\
+            这一页从
+            [src/core/frame_graph/frame_graph.hpp](../../../../../src/core/frame_graph/frame_graph.hpp)
+            和它的实现
+            [src/core/frame_graph/frame_graph.cpp](../../../../../src/core/frame_graph/frame_graph.cpp)
+            出发，关注的不是"FrameGraph 有哪些方法"，而是它在 frame_graph 子系统里的
+            位置：FramePass 把 (name, target, queue) 三件强绑定的字段打包成一条 pass 的
+            完整描述，FrameGraph 在加载期把每条 pass 上的 RenderQueue 各自填好，再做一次
+            跨 pass 的 PipelineKey 全局去重。
+
+            可以先带着一个问题阅读：为什么 core 层的 FrameGraph 不做 pass reorder、不做
+            attachment 复用、不做依赖分析？答案是这些都属于 backend 渲染图的职责；
+            core 层这层"frame graph"只承担"per-pass per-scene 预构建"的薄壳角色，
+            把语义留给 RenderQueue 和 backend。
+            """
+        ).strip(),
+        related_sources=(
+            "src/core/frame_graph/frame_graph.cpp",
+        ),
+        nav_order=650,
+    ),
+    SourceAnalysisTarget(
         source="src/core/asset/texture.hpp",
         output="notes/source_analysis/src/core/asset/texture.md",
         title="Texture 与 CombinedTextureSampler：CPU 图像如何进入 GPU 资源路径",

@@ -439,3 +439,4 @@ class VulkanTimeline : public IGpuTimeline {
 - 哪些资源要 ×N / 哪些单份 / 哪些版本化 → [09 · Frame-local 资源集](09-Frame-local资源集.md)
 - 回到分层架构看接口如何落地 → [06 · CPU-GPU 分层架构草案](06-CPU-GPU分层架构草案.md)
 - 回到整体演进路径 → [04 · 演进路径](04-演进路径.md)
+- `computeTimeline` 在 async compute 路径上的具体使用 → [async-compute 调研](../async-compute/README.md)（多 queue 机制、跨 queue ownership transfer、与 frame graph 的耦合时序）
