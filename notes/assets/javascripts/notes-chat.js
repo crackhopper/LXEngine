@@ -147,7 +147,7 @@
             ".session:hover,.session.active{background:#eaf0fb}",
             ".session strong{display:block;font-size:12px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
             ".session span{display:block;font-size:11px;line-height:15px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
-            ".msgs{padding:14px;overflow:auto;background:#ffffff;min-width:0}",
+            ".msgs{padding:14px;overflow:auto;background:#ffffff;min-width:0;overscroll-behavior:contain}",
             ".msg{margin:0 0 12px;display:flex}",
             ".bubble{max-width:100%;border-radius:8px;padding:9px 10px;font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word}",
             ".user{justify-content:flex-end}",
@@ -221,6 +221,7 @@
         var messages = document.createElement("div");
         messages.className = "msgs";
         layout.appendChild(messages);
+        var autoFollowMessages = true;
 
         var form = document.createElement("form");
         form.className = "composer";
@@ -278,7 +279,26 @@
             send.disabled = value;
         }
 
-        function addMessage(kind, text) {
+        function isNearMessagesBottom() {
+            return messages.scrollHeight - messages.scrollTop - messages.clientHeight <= 32;
+        }
+
+        function shouldFollowMessages() {
+            return autoFollowMessages || isNearMessagesBottom();
+        }
+
+        function scrollMessagesToBottom() {
+            messages.scrollTop = messages.scrollHeight;
+            autoFollowMessages = true;
+        }
+
+        function restoreMessagesScroll(scrollTop) {
+            var maxScroll = Math.max(0, messages.scrollHeight - messages.clientHeight);
+            messages.scrollTop = Math.min(scrollTop, maxScroll);
+            autoFollowMessages = isNearMessagesBottom();
+        }
+
+        function appendMessage(kind, text) {
             var row = document.createElement("div");
             row.className = "msg " + kind;
             var bubble = document.createElement("div");
@@ -286,23 +306,43 @@
             bubble.textContent = text;
             row.appendChild(bubble);
             messages.appendChild(row);
-            messages.scrollTop = messages.scrollHeight;
             return bubble;
         }
 
-        function renderMessages() {
+        function addMessage(kind, text, options) {
+            var forceScroll = options && options.forceScroll;
+            var follow = forceScroll || shouldFollowMessages();
+            var bubble = appendMessage(kind, text);
+            if (follow) {
+                scrollMessagesToBottom();
+            }
+            return bubble;
+        }
+
+        function renderMessages(options) {
+            options = options || {};
+            var previousScrollTop = messages.scrollTop;
+            var follow = options.forceScroll || shouldFollowMessages();
             messages.textContent = "";
             if (!state.messages.length) {
                 var empty = document.createElement("div");
                 empty.className = "empty";
                 empty.textContent = state.activeSessionId ? "这个会话还没有消息" : "发送第一条消息后会创建新会话";
                 messages.appendChild(empty);
+                if (follow) {
+                    scrollMessagesToBottom();
+                }
                 return;
             }
             state.messages.forEach(function (message) {
                 var role = message.role === "assistant" ? "agent" : message.role;
-                addMessage(role, message.text || "");
+                appendMessage(role, message.text || "");
             });
+            if (follow) {
+                scrollMessagesToBottom();
+            } else if (options.preserveScroll) {
+                restoreMessagesScroll(previousScrollTop);
+            }
         }
 
         function renderSessions() {
@@ -369,7 +409,7 @@
             localStorage.removeItem(storagePrefix + "activeSessionId");
             state.activeSession = null;
             state.messages = [];
-            renderMessages();
+            renderMessages({ forceScroll: true });
             updateTitle();
             renderSessions();
         }
@@ -385,7 +425,7 @@
                 localStorage.setItem(storagePrefix + "activeSessionId", session.id);
                 state.activeSession = session;
                 state.messages = [];
-                renderMessages();
+                renderMessages({ forceScroll: true });
                 updateTitle();
                 return loadSessions();
             });
@@ -400,14 +440,14 @@
             return createSession();
         }
 
-        function loadSession(sessionId) {
+        function loadSession(sessionId, options) {
             return api("/sessions/" + encodeURIComponent(sessionId), { cache: "no-store" }).then(function (payload) {
                 var session = payload.session;
                 state.activeSessionId = session.id;
                 localStorage.setItem(storagePrefix + "activeSessionId", session.id);
                 state.activeSession = session;
                 state.messages = session.messages || [];
-                renderMessages();
+                renderMessages(options || { forceScroll: true });
                 updateTitle();
                 renderSessions();
             });
@@ -422,7 +462,7 @@
                 localStorage.removeItem(storagePrefix + "activeSessionId");
                 state.activeSession = null;
                 state.messages = [];
-                renderMessages();
+                renderMessages({ forceScroll: true });
                 updateTitle();
                 return loadSessions();
             }).then(function () {
@@ -466,8 +506,11 @@
                 return;
             }
             if (item.event === "delta") {
+                var follow = shouldFollowMessages();
                 pendingBubble.textContent += item.payload.text || "";
-                messages.scrollTop = messages.scrollHeight;
+                if (follow) {
+                    scrollMessagesToBottom();
+                }
                 return;
             }
             if (item.event === "done") {
@@ -547,6 +590,9 @@
             }
         });
         deleteButton.addEventListener("click", deleteCurrentSession);
+        messages.addEventListener("scroll", function () {
+            autoFollowMessages = isNearMessagesBottom();
+        }, { passive: true });
 
         input.addEventListener("keydown", function (event) {
             if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
@@ -566,11 +612,12 @@
                 if (messages.querySelector(".empty")) {
                     messages.textContent = "";
                 }
-                addMessage("user", message);
-                var pending = addMessage("agent", "");
+                autoFollowMessages = true;
+                addMessage("user", message, { forceScroll: true });
+                var pending = addMessage("agent", "", { forceScroll: true });
                 return streamChat(message, pending);
             }).then(function () {
-                return loadSession(state.activeSessionId);
+                return loadSession(state.activeSessionId, { preserveScroll: true });
             }).catch(function (error) {
                 addMessage("sys", error.message || String(error));
             }).finally(function () {
@@ -580,7 +627,7 @@
         });
 
         setOpen(state.open);
-        renderMessages();
+        renderMessages({ forceScroll: true });
 
         fetch(endpoint + "/health", { cache: "no-store" }).then(function (response) {
             if (!response.ok) {

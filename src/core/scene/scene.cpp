@@ -1,5 +1,8 @@
 #include "scene.hpp"
 
+#include <sstream>
+#include <utility>
+
 namespace LX_core {
 
 /*
@@ -17,6 +20,48 @@ Scene::~Scene() {
       continue;
     node->detachFromScene();
   }
+}
+
+SceneNode *Scene::findByPath(const std::string &path) const {
+  const auto segments = splitPathSegments(path);
+  if (segments.empty()) {
+    return m_pathRoot.get();
+  }
+
+  SceneNode *current = m_pathRoot.get();
+  std::vector<SceneNodeSharedPtr> candidates = getRootNodes();
+  for (const auto &segment : segments) {
+    SceneNode *next = nullptr;
+    for (const auto &candidate : candidates) {
+      if (!candidate || !matchesPathSegment(*candidate, segment)) {
+        continue;
+      }
+      next = candidate.get();
+      break;
+    }
+    if (!next) {
+      return nullptr;
+    }
+
+    current = next;
+    candidates.clear();
+    for (const auto &childWeak : current->m_children) {
+      if (const auto child = childWeak.lock()) {
+        candidates.push_back(child);
+      }
+    }
+  }
+
+  return current;
+}
+
+std::string Scene::dumpTree() const {
+  std::string out = "/\n";
+  const auto rootNodes = getRootNodes();
+  for (usize i = 0; i < rootNodes.size(); ++i) {
+    appendTreeLines(*rootNodes[i], "", i + 1 == rootNodes.size(), out);
+  }
+  return out;
 }
 
 /*
@@ -117,6 +162,69 @@ Scene::getCombinedCameraCullingMask(const RenderTarget &target) const {
     mask |= cam->getCullingMask();
   }
   return mask;
+}
+
+std::vector<SceneNodeSharedPtr> Scene::getRootNodes() const {
+  std::vector<SceneNodeSharedPtr> roots;
+  for (const auto &renderable : m_renderables) {
+    const auto node = std::dynamic_pointer_cast<SceneNode>(renderable);
+    if (!node || node->getParent()) {
+      continue;
+    }
+    roots.push_back(node);
+  }
+  return roots;
+}
+
+std::vector<std::string> Scene::splitPathSegments(const std::string &path) {
+  std::string normalized = path;
+  if (normalized.empty()) {
+    normalized = "/";
+  } else if (normalized.front() != '/') {
+    normalized.insert(normalized.begin(), '/');
+  }
+
+  std::vector<std::string> segments;
+  std::string current;
+  for (usize i = 1; i < normalized.size(); ++i) {
+    const char c = normalized[i];
+    if (c == '/') {
+      segments.push_back(current);
+      current.clear();
+      continue;
+    }
+    current.push_back(c);
+  }
+  if (normalized.size() > 1) {
+    segments.push_back(current);
+  }
+  return segments;
+}
+
+bool Scene::matchesPathSegment(const SceneNode &node,
+                               const std::string &pathSegment) {
+  return node.getName() == pathSegment || node.getPathSegment() == pathSegment;
+}
+
+void Scene::appendTreeLines(const SceneNode &node, std::string prefix,
+                            bool isLast, std::string &out) {
+  out += prefix;
+  out += isLast ? "└── " : "├── ";
+  out += node.getPathSegment();
+  out += "\n";
+
+  std::vector<SceneNodeSharedPtr> children;
+  for (const auto &childWeak : node.m_children) {
+    if (const auto child = childWeak.lock()) {
+      children.push_back(child);
+    }
+  }
+
+  const std::string childPrefix =
+      std::move(prefix) + (isLast ? "    " : "│   ");
+  for (usize i = 0; i < children.size(); ++i) {
+    appendTreeLines(*children[i], childPrefix, i + 1 == children.size(), out);
+  }
 }
 
 } // namespace LX_core

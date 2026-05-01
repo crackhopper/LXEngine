@@ -3,6 +3,8 @@
 #include "core/asset/shader_binding_ownership.hpp"
 
 #include <algorithm>
+#include <cassert>
+#include <cctype>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
@@ -86,6 +88,10 @@ bool requiresRenderableOwnedResource(const ShaderResourceBinding &binding) {
 
 } // namespace
 
+SceneNode::SceneNode(PathRootTag)
+    : m_nodeName("__scene_root__"), m_perDrawData(std::make_shared<PerDrawData>()),
+      m_isPathRoot(true) {}
+
 SceneNode::SceneNode(std::string nodeName, MeshSharedPtr mesh,
                      MaterialInstanceSharedPtr material, SkeletonSharedPtr skeleton)
     : m_nodeName(std::move(nodeName)), m_mesh(std::move(mesh)),
@@ -102,6 +108,10 @@ SceneNode::SceneNode(std::string nodeName, MeshSharedPtr mesh,
 SceneNode::~SceneNode() {
   clearParent();
   unregisterMaterialPassListener();
+}
+
+SceneNode::SharedPtr SceneNode::createPathRoot() {
+  return SharedPtr(new SceneNode(PathRootTag{}));
 }
 
 void SceneNode::setMesh(MeshSharedPtr mesh) {
@@ -125,9 +135,47 @@ void SceneNode::setSkeleton(SkeletonSharedPtr skeleton) {
   rebuildValidatedCache();
 }
 
-void SceneNode::setLocalTransform(const Mat4f &transform) {
-  m_localTransform = transform;
+void SceneNode::setLocalTransform(const Transform &transform) {
+  m_localTransform = transform.normalized();
   markWorldTransformDirty();
+}
+
+void SceneNode::setTranslation(const Vec3f &translation) {
+  m_localTransform.translation = translation;
+  markWorldTransformDirty();
+}
+
+void SceneNode::setRotation(const Quatf &rotation) {
+  m_localTransform.rotation = rotation.normalized();
+  markWorldTransformDirty();
+}
+
+void SceneNode::setScale(const Vec3f &scale) {
+  m_localTransform.scale = scale;
+  markWorldTransformDirty();
+}
+
+void SceneNode::setName(std::string name) {
+  m_name = sanitizeName(std::move(name));
+  warnIfSiblingNameIsDuplicated();
+}
+
+std::string SceneNode::getPath() const {
+  if (m_isPathRoot) {
+    return "/";
+  }
+
+  const auto pathSegment = getPathSegment();
+  const auto parent = m_parent.lock();
+  if (!parent) {
+    return "/" + pathSegment;
+  }
+
+  const auto parentPath = parent->getPath();
+  if (parentPath == "/") {
+    return parentPath + pathSegment;
+  }
+  return parentPath + "/" + pathSegment;
 }
 
 const Mat4f &SceneNode::getWorldTransform() const {
@@ -162,6 +210,7 @@ void SceneNode::setParent(const SharedPtr &parent) {
     m_parent = parent;
   }
 
+  warnIfSiblingNameIsDuplicated();
   markWorldTransformDirty();
 }
 
@@ -248,10 +297,10 @@ void SceneNode::updateWorldTransformIfNeeded() const {
     return;
   }
 
-  Mat4f world = m_localTransform;
+  Mat4f world = m_localTransform.toMat4();
   const auto parent = m_parent.lock();
   if (parent) {
-    world = parent->getWorldTransform() * m_localTransform;
+    world = parent->getWorldTransform() * world;
   }
 
   m_worldTransform = world;
@@ -428,6 +477,77 @@ void SceneNode::unregisterMaterialPassListener() {
     m_materialInstance->removePassStateListener(m_materialPassListenerId);
     m_materialPassListenerId = 0;
   }
+}
+
+void SceneNode::warnIfSiblingNameIsDuplicated() const {
+  if (m_isPathRoot || m_name.empty()) {
+    return;
+  }
+
+  auto parent = m_parent.lock();
+  if (parent) {
+    for (const auto &siblingWeak : parent->m_children) {
+      const auto sibling = siblingWeak.lock();
+      if (!sibling || sibling.get() == this) {
+        continue;
+      }
+      if (sibling->getName() != m_name) {
+        continue;
+      }
+      std::cerr << "[WARN] Scene duplicate sibling name at parent "
+                << parent->getPath() << ": '" << m_name
+                << "' resolves to first inserted child\n";
+      return;
+    }
+    return;
+  }
+
+  const auto scene = m_scene.lock();
+  if (!scene) {
+    return;
+  }
+
+  for (const auto &renderable : scene->getRenderables()) {
+    const auto sibling = std::dynamic_pointer_cast<SceneNode>(renderable);
+    if (!sibling || sibling.get() == this) {
+      continue;
+    }
+    if (sibling->getParent()) {
+      continue;
+    }
+    if (sibling->getName() != m_name) {
+      continue;
+    }
+    std::cerr << "[WARN] Scene duplicate root node name in scene '"
+              << scene->getSceneName() << "': '" << m_name
+              << "' resolves to first inserted child\n";
+    return;
+  }
+}
+
+std::string SceneNode::getPathSegment() const {
+  if (!m_name.empty()) {
+    return m_name;
+  }
+
+  std::ostringstream oss;
+  oss << "<unnamed-node-0x" << std::hex
+      << reinterpret_cast<std::uintptr_t>(this) << ">";
+  return oss.str();
+}
+
+std::string SceneNode::sanitizeName(std::string name) {
+  bool mutated = false;
+  for (char &c : name) {
+    const unsigned char uc = static_cast<unsigned char>(c);
+    const bool allowed = std::isalnum(uc) != 0 || c == '_' || c == '-';
+    if (!allowed) {
+      c = '_';
+      mutated = true;
+    }
+  }
+  assert(!mutated && "SceneNode::setName sanitized illegal characters");
+  return name;
 }
 
 } // namespace LX_core

@@ -99,6 +99,8 @@ xvfb-run -a ctest --output-on-failure -L requires_video_device
   -> git commit
 ```
 
+需求文件位于 `notes/requirements/`，按 `NNN-*.md` 编号顺序实施。一个 REQ 文件只覆盖一个连续实施周期；如果新需求让旧需求的一部分后置，先用 `/draft-req` 拆分旧需求，并优先改成 `NNN-a` / `NNN-b` 后缀族，避免后续编号连锁变化。
+
 常见短链路：
 
 - 只讨论方案：`/opsx:explore`

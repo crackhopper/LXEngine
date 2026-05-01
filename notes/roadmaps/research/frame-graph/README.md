@@ -34,14 +34,14 @@ LX 当前的 `FrameGraph` 名字与业界 *frame graph* 重叠，但它实际上
 | 03 | [实现层数据结构](03-实现层数据结构.md) | `FrameGraphResource` / `FrameGraphNode` 字段拆解 + Builder 模式 + 四步生命周期 |
 | 04 | [compile 阶段](04-compile-阶段.md) | 构边 / 拓扑排序（DFS + 三态 visited）/ resource aliasing（ref_count + free_list） |
 | 05 | [LX 当前状态对照](05-LX当前状态对照.md) | 字段级 / 能力级 gap 分析；REQ-009 target 轴的占位现状 |
-| 06 | [演进路径](06-演进路径.md) | REQ-035..041 切分；风险点与可独立交付的中间里程碑 |
+| 06 | [演进路径](06-演进路径.md) | REQ-A..G 切分；风险点与可独立交付的中间里程碑 |
 
 ## TL;DR
 
 - **完整 frame graph** = 数据驱动声明（JSON）+ 自动 DAG（构边 + 拓扑排序）+ 自动 backend 资源构造（renderpass / framebuffer）+ 自动 barrier 推导 + attachment aliasing
 - **LX 现状**：只有 `vector<FramePass>` + 按调用顺序执行 + 跨 pass `PipelineKey` 去重；其它能力全缺
-- **REQ-034 的位置**：把 `RenderTarget` 拆为 `RenderTargetDesc` + `RenderTarget`，是后续 frame graph 演进的 *字段层前置* —— attachment 形状要先变得可比、可哈希、能进 PipelineKey，才有资格作为资源边的载体
-- **推进路径**：REQ-035（FrameGraphResource 数据结构）→ REQ-036（构边 + 拓扑 + cycle）→ REQ-037（自动 renderpass / framebuffer）→ REQ-038（barrier 自动推导，**风险点**）→ REQ-039（JSON parser）→ REQ-040（aliasing，**风险点**）→ REQ-041（runtime register_pass）
+- **REQ-042 的位置**：把 `RenderTarget` 拆为 `RenderTargetDesc` + `RenderTarget`，是后续 frame graph 演进的 *字段层前置* —— attachment 形状要先变得可比、可哈希、能进 PipelineKey，才有资格作为资源边的载体
+- **推进路径**：REQ-A（FrameGraphResource 数据结构）→ REQ-B（构边 + 拓扑 + cycle）→ REQ-C（自动 renderpass / framebuffer）→ REQ-D（barrier 自动推导，**风险点**）→ REQ-E（JSON parser）→ REQ-F（aliasing，**风险点**）→ REQ-G（runtime register_pass）
 - **不紧迫**：当前 forward-only + 单 attachment 路径下，没有 frame graph 也能跑；真正需要它是在引入 deferred / multi-pass post-process / shadow + GBuffer 共用 attachment 之后
 
 ## 业界形态速查
@@ -64,6 +64,6 @@ LX 离教科书形态还有 6 个 REQ 的距离；离工业级再加几个量级
 
 - *Mastering Graphics Programming with Vulkan* · Chapter 4 · "Implementing a Frame Graph"
 - LX 当前源码导读：`notes/source_analysis/src/core/frame_graph/`（`frame_graph.md` / `render_queue.md` / `render_target.md`）
-- LX REQ-034 草稿：[`notes/requirements/034-render-target-desc-and-target.md`](../../../requirements/034-render-target-desc-and-target.md)
+- LX REQ-042 草稿：[`notes/requirements/042-render-target-desc-and-target.md`](../../../requirements/042-render-target-desc-and-target.md)
 - Frostbite GDC 2017 talk: "FrameGraph: Extensible Rendering Architecture in Frostbite"
 - Unreal Engine RDG（Render Dependency Graph）官方文档

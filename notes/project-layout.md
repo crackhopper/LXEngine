@@ -191,7 +191,7 @@ scripts/
 2. `openspec/specs/`
 3. `notes/subsystems/*.md`
 4. `notes/concepts/*.md`
-5. `notes/requirements/` 未 finished 的文档（当前只剩 `REQ-019`）
+5. `notes/requirements/` 未 finished 的文档（按编号顺序就是实施队列）
 6. `notes/roadmaps/main-roadmap/`
 
 ## 推荐阅读顺序（新加入）

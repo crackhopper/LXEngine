@@ -122,7 +122,7 @@ shader_stage_info.pSpecializationInfo = &specialization_info;
 
 **重要**：specialization values 不同的 pipeline 是 *不同 pipeline*，cache 应该按值区分。
 
-LX 的 `PipelineKey` 当前由 `(objectSig, materialSig)` 组成（REQ-034 后变成三级 compose）。引入 specialization constants 后，可能需要：
+LX 的 `PipelineKey` 当前由 `(objectSig, materialSig)` 组成（REQ-042 后变成三级 compose）。引入 specialization constants 后，可能需要：
 
 - 把 spec values 进 PipelineKey 的某一级 compose
 - 或者把 spec values 单独作为 cache 维度（pipeline = (PipelineKey, specValues)）

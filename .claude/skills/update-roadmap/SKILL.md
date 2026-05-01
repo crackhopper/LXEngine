@@ -42,7 +42,7 @@ If the directory only has `README.md` (empty roadmap), ask the user what the fir
 For each file read the header + "实施状态" (implementation status) block. Build an index:
 
 ```
-REQ-NNN | title | status (未开始 / 进行中 / 已完成) | location (active or finished)
+REQ-NNN or REQ-NNN-a | title | status (未开始 / 进行中 / 已完成) | location (active or finished)
 ```
 
 ### 3. Cross-check for drift
@@ -131,7 +131,7 @@ After writing, summarise:
 - **直接改文件**，但**改之前必须先出 plan 让用户点头**（step 4）
 - **不改需求文档**：发现 `notes/requirements/*.md` 里的事实和 roadmap 冲突，报告给用户，不要自作主张改 REQ
 - **不改代码**
-- **引用带编号**：roadmap 里提到某件事来自哪里时，写 `REQ-NNN`，不要写"上次那个改动"
+- **引用带编号**：roadmap 里提到某件事来自哪里时，写 `REQ-NNN` 或 `REQ-NNN-a`，不要写"上次那个改动"
 - **不要保留 tombstone**：被取消的 item 直接删掉（历史留给 git log），不要写"~~已取消~~"
 - **找不到匹配时停下问**：别假设没匹配到的 item 可以默默删掉，也别假设 orphan REQ 属于某个阶段
 - **中文为主**：和 `notes/roadmaps/README.md`、`notes/requirements/` 保持一致

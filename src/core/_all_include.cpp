@@ -1,4 +1,5 @@
 #include "math/mat.hpp"
 #include "math/quat.hpp"
 #include "math/rect.hpp"
+#include "math/transform.hpp"
 #include "math/vec.hpp"
