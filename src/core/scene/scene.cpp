@@ -1,4 +1,6 @@
 #include "scene.hpp"
+#include "core/scene/components/camera_component.hpp"
+#include "core/scene/components/material_component.hpp"
 
 #include <sstream>
 #include <utility>
@@ -82,7 +84,9 @@ void Scene::revalidateNodesUsing(const MaterialInstanceSharedPtr &materialInstan
     auto node = std::dynamic_pointer_cast<SceneNode>(renderable);
     if (!node)
       continue;
-    if (node->getMaterialInstance() != materialInstance)
+    const auto materialComponent = node->getComponent<MaterialComponent>();
+    if (!materialComponent ||
+        materialComponent->get().getMaterialInstance() != materialInstance)
       continue;
     node->rebuildValidatedCache();
   }
@@ -113,9 +117,12 @@ Scene::getSceneLevelResources(StringID pass, const RenderTarget &target) const {
   for (const auto &cam : m_cameras) {
     if (!cam)
       continue;
-    if (!cam->matchesTarget(target))
+    const auto cameraComponent = cam->getComponent<CameraComponent>();
+    if (!cameraComponent || !cameraComponent->get().isActive())
       continue;
-    if (auto camUbo = cam->getUBO()) {
+    if (!cameraComponent->get().matchesTarget(target))
+      continue;
+    if (auto camUbo = cameraComponent->get().getUBO()) {
       out.push_back(std::dynamic_pointer_cast<IGpuResource>(camUbo));
     }
   }
@@ -157,11 +164,43 @@ Scene::getCombinedCameraCullingMask(const RenderTarget &target) const {
   for (const auto &cam : m_cameras) {
     if (!cam)
       continue;
-    if (!cam->matchesTarget(target))
+    const auto cameraComponent = cam->getComponent<CameraComponent>();
+    if (!cameraComponent || !cameraComponent->get().isActive())
       continue;
-    mask |= cam->getCullingMask();
+    if (!cameraComponent->get().matchesTarget(target))
+      continue;
+    mask |= cameraComponent->get().getCullingMask();
   }
   return mask;
+}
+
+std::optional<Scene::PickHit>
+Scene::pick(const Ray &ray, VisibilityLayerMask layerMask) const {
+  std::optional<PickHit> bestHit;
+  for (const auto &renderable : m_renderables) {
+    const auto node = std::dynamic_pointer_cast<SceneNode>(renderable);
+    if (!node) {
+      continue;
+    }
+    if ((node->getVisibilityLayerMask() & layerMask) == 0) {
+      continue;
+    }
+
+    const BoundingBox worldBounds = node->getWorldBounds();
+    if (!worldBounds.isValid()) {
+      continue;
+    }
+
+    const auto hitDistance = intersectRayBox(ray, worldBounds);
+    if (!hitDistance.has_value()) {
+      continue;
+    }
+
+    if (!bestHit.has_value() || *hitDistance < bestHit->distance) {
+      bestHit = PickHit{node, *hitDistance};
+    }
+  }
+  return bestHit;
 }
 
 std::vector<SceneNodeSharedPtr> Scene::getRootNodes() const {
@@ -225,6 +264,69 @@ void Scene::appendTreeLines(const SceneNode &node, std::string prefix,
   for (usize i = 0; i < children.size(); ++i) {
     appendTreeLines(*children[i], childPrefix, i + 1 == children.size(), out);
   }
+}
+
+void Scene::addCamera(const SceneNodeSharedPtr &cameraNode) {
+  if (!cameraNode) {
+    return;
+  }
+
+  if (!cameraNode->getComponent<CameraComponent>().has_value()) {
+    detail::throwProgrammerLogicError(
+        "Scene::addCamera requires a SceneNode with CameraComponent");
+  }
+
+  const auto exists = std::find_if(
+      m_cameras.begin(), m_cameras.end(),
+      [&cameraNode](const SceneNodeSharedPtr &candidate) {
+        return candidate.get() == cameraNode.get();
+      });
+  if (exists != m_cameras.end()) {
+    return;
+  }
+
+  const auto renderableExists = std::find_if(
+      m_renderables.begin(), m_renderables.end(),
+      [&cameraNode](const IRenderableSharedPtr &candidate) {
+        return candidate.get() == cameraNode.get();
+      });
+  if (renderableExists == m_renderables.end()) {
+    addRenderable(cameraNode);
+  }
+
+  m_cameras.push_back(cameraNode);
+}
+
+void Scene::removeCamera(const SceneNodeSharedPtr &cameraNode) {
+  if (!cameraNode) {
+    return;
+  }
+
+  m_cameras.erase(
+      std::remove_if(m_cameras.begin(), m_cameras.end(),
+                     [&cameraNode](const SceneNodeSharedPtr &candidate) {
+                       return candidate.get() == cameraNode.get();
+                     }),
+      m_cameras.end());
+
+  if (cameraNode->getParent()) {
+    return;
+  }
+
+  const auto renderableIt =
+      std::find_if(m_renderables.begin(), m_renderables.end(),
+                   [&cameraNode](const IRenderableSharedPtr &candidate) {
+                     return candidate.get() == cameraNode.get();
+                   });
+  if (renderableIt == m_renderables.end()) {
+    return;
+  }
+
+  if (auto node = std::dynamic_pointer_cast<SceneNode>(*renderableIt)) {
+    node->detachFromScene();
+    node->setSceneDebugId(StringID{});
+  }
+  m_renderables.erase(renderableIt);
 }
 
 } // namespace LX_core

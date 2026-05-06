@@ -5,7 +5,7 @@
 // (F1 toggles help) is done locally.
 
 #include "core/input/input_state.hpp"
-#include "core/scene/camera.hpp"
+#include "core/scene/components/camera_component.hpp"
 #include "core/scene/light.hpp"
 #include "core/time/clock.hpp"
 
@@ -18,7 +18,7 @@ class CameraRig;
 
 class UiOverlay {
 public:
-  void attach(LX_core::Camera& camera, LX_core::DirectionalLight& light,
+  void attach(LX_core::CameraComponent& camera, LX_core::DirectionalLight& light,
               CameraRig& rig);
   void attachClock(const LX_core::Clock& clock);
 
@@ -30,7 +30,7 @@ public:
 
 private:
   std::optional<std::reference_wrapper<const LX_core::Clock>> m_clock;
-  std::optional<std::reference_wrapper<LX_core::Camera>> m_camera;
+  std::optional<std::reference_wrapper<LX_core::CameraComponent>> m_camera;
   std::optional<std::reference_wrapper<LX_core::DirectionalLight>> m_light;
   std::optional<std::reference_wrapper<CameraRig>> m_rig;
   bool m_prevF1Down = false;

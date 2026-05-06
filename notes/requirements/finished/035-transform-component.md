@@ -10,7 +10,7 @@
 2. **没有 quaternion 表示**：旋转用矩阵存储，gizmo 旋转交互（拖拽 ImGuizmo 旋转环）会产生欧拉积累误差；TRS 命令（如 `rotate <node> 0 90 0`）也无法稳定地表达"绕 Y 轴 90°"。
 3. **对接命令总线不友好**：编辑器命令 `move <node> 1 0 0` / `rotate <node> 0 90 0` / `scale <node> 2 2 2` 都希望直接读写独立的 t / r / s 三段，而不是把 mat4 拆开。
 
-[REQ-041 ImGui Editor MVP](../041-imgui-editor-mvp.md) 与 [REQ-040 Editor 命令总线](../040-editor-command-bus.md) 都依赖一个稳定可分解的 transform 值类型。
+[REQ-041 ImGui Editor MVP](../041-a-imgui-editor-mvp.md) 与 [REQ-040 Editor 命令总线](../040-a-editor-command-bus.md) 都依赖一个稳定可分解的 transform 值类型。
 
 ## 目标
 
@@ -138,7 +138,7 @@ class SceneNode {
 
 - 本 REQ **不**改变 dirty 传播机制；仅替换 local 表达
 - 本 REQ **不**引入 quaternion SLERP / Squad / Catmull-Rom（动画用，留 Phase 4）
-- 本 REQ **不**引入 transform 钩子 / 监听器（编辑器命令直接调 setter；监听由 [REQ-040 命令总线](040-editor-command-bus.md) 在命令层处理）
+- 本 REQ **不**引入 transform 钩子 / 监听器（编辑器命令直接调 setter；监听由 [REQ-040 命令总线](040-a-editor-command-bus.md) 在命令层处理）
 - 本 REQ **不**引入"分离 transform / TRS 模式"开关；统一用 `Transform`，需要历史矩阵迁移时由调用方显式写 `Transform::fromMat4(...)`
 - world transform 缓存仍是 `Mat4f`，不是 `Transform` —— 世界级 TRS 分解涉及非交换 scale 与 shear，不安全；编辑器 inspector 显示的总是 local TRS
 
@@ -152,8 +152,8 @@ class SceneNode {
 
 - [REQ-036 场景节点路径查询](036-scene-node-path-lookup.md) — 路径解析时复用 SceneNode 的 transform setter
 - [REQ-037 Camera 作为 SceneNode](../037-camera-as-scene-node.md) — Camera 直接消费 `SceneNode::getLocalTransform()`
-- [REQ-040 Editor 命令总线](../040-editor-command-bus.md) — `move / rotate / scale` 命令直接调 R4 三个 setter
-- [REQ-041 ImGui Editor MVP](../041-imgui-editor-mvp.md) — inspector 把 `Transform` 渲染成 3 行 drag float
+- [REQ-040 Editor 命令总线](../040-a-editor-command-bus.md) — `move / rotate / scale` 命令直接调 R4 三个 setter
+- [REQ-041 ImGui Editor MVP](../041-a-imgui-editor-mvp.md) — inspector 把 `Transform` 渲染成 3 行 drag float
 
 ## 实施状态
 

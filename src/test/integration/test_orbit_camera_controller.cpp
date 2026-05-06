@@ -1,4 +1,6 @@
 #include "core/input/mock_input_state.hpp"
+#include "core/scene/components/camera_component.hpp"
+#include "core/scene/object.hpp"
 #include "core/scene/orbit_camera_controller.hpp"
 #include "core/utils/env.hpp"
 
@@ -24,25 +26,36 @@ constexpr float kEps = 1e-3f;
 
 bool approx(float a, float b) { return std::abs(a - b) < kEps; }
 
+std::reference_wrapper<CameraComponent> makeCameraComponent(SceneNode::SharedPtr &node) {
+  node = SceneNode::create("orbit_camera");
+  auto camera = node->addComponent<CameraComponent>();
+  EXPECT(camera.has_value(), "camera component should attach");
+  return camera->get();
+}
+
 void testDefaultPositionInFrontOfTarget() {
   OrbitCameraController ctrl({0, 0, 0}, 5.0f, 0.0f, 0.0f);
-  Camera cam;
+  SceneNode::SharedPtr node;
+  auto cam = makeCameraComponent(node);
   MockInputState input;
 
   ctrl.update(cam, input, 0.016f);
 
   // yaw=0, pitch=0 → camera at (0, 0, 5)
-  EXPECT(approx(cam.position.x, 0.0f), "cam.position.x should be ~0");
-  EXPECT(approx(cam.position.y, 0.0f), "cam.position.y should be ~0");
-  EXPECT(approx(cam.position.z, 5.0f), "cam.position.z should be ~5");
-  EXPECT(approx(cam.target.x, 0.0f), "cam.target should be origin");
-  EXPECT(approx(cam.target.y, 0.0f), "cam.target should be origin");
-  EXPECT(approx(cam.target.z, 0.0f), "cam.target should be origin");
+  const auto eye = cam.get().getEyePosition();
+  const auto target = cam.get().getLookTarget(5.0f);
+  EXPECT(approx(eye.x, 0.0f), "cam.position.x should be ~0");
+  EXPECT(approx(eye.y, 0.0f), "cam.position.y should be ~0");
+  EXPECT(approx(eye.z, 5.0f), "cam.position.z should be ~5");
+  EXPECT(approx(target.x, 0.0f), "cam.target should be origin");
+  EXPECT(approx(target.y, 0.0f), "cam.target should be origin");
+  EXPECT(approx(target.z, 0.0f), "cam.target should be origin");
 }
 
 void testLeftDragRotatesCamera() {
   OrbitCameraController ctrl({0, 0, 0}, 5.0f, 0.0f, 0.0f);
-  Camera cam;
+  SceneNode::SharedPtr node;
+  auto cam = makeCameraComponent(node);
   MockInputState input;
 
   input.setMouseButtonDown(MouseButton::Left, true);
@@ -56,13 +69,14 @@ void testLeftDragRotatesCamera() {
   EXPECT(approx(ctrl.getPitchDeg(), 0.0f), "pitch should not change");
 
   // Camera should have moved off the Z axis
-  EXPECT(std::abs(cam.position.x) > 0.01f,
+  EXPECT(std::abs(cam.get().getEyePosition().x) > 0.01f,
          "camera x should be non-zero after yaw rotation");
 }
 
 void testPitchIsClamped() {
   OrbitCameraController ctrl({0, 0, 0}, 5.0f, 0.0f, 80.0f);
-  Camera cam;
+  SceneNode::SharedPtr node;
+  auto cam = makeCameraComponent(node);
   MockInputState input;
 
   input.setMouseButtonDown(MouseButton::Left, true);
@@ -84,7 +98,8 @@ void testPitchIsClamped() {
 
 void testWheelClampsDistance() {
   OrbitCameraController ctrl({0, 0, 0}, 5.0f, 0.0f, 0.0f);
-  Camera cam;
+  SceneNode::SharedPtr node;
+  auto cam = makeCameraComponent(node);
   MockInputState input;
 
   // Zoom in heavily
@@ -105,7 +120,8 @@ void testWheelClampsDistance() {
 
 void testRightDragPansTarget() {
   OrbitCameraController ctrl({0, 0, 0}, 5.0f, 0.0f, 0.0f);
-  Camera cam;
+  SceneNode::SharedPtr node;
+  auto cam = makeCameraComponent(node);
   MockInputState input;
 
   Vec3f origTarget = ctrl.getTarget();

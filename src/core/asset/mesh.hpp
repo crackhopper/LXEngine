@@ -31,10 +31,13 @@ public:
 
   VertexBufferSharedPtr vertexBuffer;
   IndexBufferSharedPtr indexBuffer;
+  BoundingBox bounds;
 
-  static SharedPtr create(VertexBufferSharedPtr vb, IndexBufferSharedPtr ib) {
+  static SharedPtr create(VertexBufferSharedPtr vb, IndexBufferSharedPtr ib,
+                          BoundingBox bounds = {}) {
     assert(vb && ib);
-    return SharedPtr(new Mesh(Token{}, std::move(vb), std::move(ib)));
+    return SharedPtr(
+        new Mesh(Token{}, std::move(vb), std::move(ib), std::move(bounds)));
   }
 
 /*
@@ -65,8 +68,10 @@ public:
   }
 
 private:
-  Mesh(Token, VertexBufferSharedPtr vb, IndexBufferSharedPtr ib)
-      : vertexBuffer(std::move(vb)), indexBuffer(std::move(ib)) {}
+  Mesh(Token, VertexBufferSharedPtr vb, IndexBufferSharedPtr ib,
+       BoundingBox meshBounds)
+      : vertexBuffer(std::move(vb)), indexBuffer(std::move(ib)),
+        bounds(std::move(meshBounds)) {}
 };
 
 using MeshSharedPtr = std::shared_ptr<Mesh>;

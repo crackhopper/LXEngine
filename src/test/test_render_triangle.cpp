@@ -14,8 +14,13 @@
 #include "infra/material_loader/generic_material_loader.hpp"
 #include "core/scene/orbit_camera_controller.hpp"
 #include "core/scene/freefly_camera_controller.hpp"
+#include "core/scene/components/camera_component.hpp"
+#include "core/scene/components/material_component.hpp"
+#include "core/scene/components/mesh_component.hpp"
+#include "core/scene/components/skeleton_component.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/filesystem_tools.hpp"
+#include "integration/scene_test_helpers.hpp"
 
 #include <array>
 #include <cmath>
@@ -47,19 +52,21 @@ float clampUnit(float value) {
 }
 
 void syncFreeFlyFromCamera(FreeFlyCameraController &controller,
-                           const Camera &camera) {
-  const Vec3f forward = (camera.target - camera.position).normalized();
-  controller.setPosition(camera.position);
+                           const CameraComponent &camera) {
+  const Vec3f forward = camera.getForwardVector();
+  controller.setPosition(camera.getEyePosition());
   controller.setYawDeg(std::atan2(forward.x, forward.z) * 180.0f /
                        3.14159265358979323846f);
   controller.setPitchDeg(std::asin(clampUnit(forward.y)) * 180.0f /
                          3.14159265358979323846f);
 }
 
-void syncOrbitFromCamera(OrbitCameraController &controller, const Camera &camera) {
-  const Vec3f offset = camera.position - camera.target;
+void syncOrbitFromCamera(OrbitCameraController &controller,
+                         const CameraComponent &camera) {
+  const Vec3f target = camera.getLookTarget();
+  const Vec3f offset = camera.getEyePosition() - target;
   const float distance = offset.length();
-  controller.setTarget(camera.target);
+  controller.setTarget(target);
   if (distance > 1e-6f) {
     controller.setDistance(distance);
     controller.setYawDeg(std::atan2(offset.x, offset.z) * 180.0f /
@@ -99,7 +106,9 @@ int main() {
   });
 
   auto indexBufferPtr = IndexBuffer::create({0, 1, 2});
-  auto meshPtr = Mesh::create(vertexBufferPtr, indexBufferPtr);
+  auto meshPtr = Mesh::create(vertexBufferPtr, indexBufferPtr,
+                              BoundingBox{{-1.0f, -1.0f, 0.0f},
+                                          {1.0f, 1.0f, 0.0f}});
 
   auto material = LX_infra::loadGenericMaterial("assets/materials/blinnphong_default.material");
   material->setParameter(LX_core::StringID("MaterialUBO"),
@@ -108,11 +117,15 @@ int main() {
 
   auto skeletonPtr = Skeleton::create({});
 
-  auto node = SceneNode::create("triangle", meshPtr, material, skeletonPtr);
+  auto node = SceneNode::create("triangle");
+  node->addComponent<MeshComponent>(meshPtr);
+  node->addComponent<MaterialComponent>(material);
+  node->addComponent<SkeletonComponent>(skeletonPtr);
 
   auto scene = Scene::create(node);
-
-  auto camera = scene->getCameras().front();
+  auto cameraNode = LX_test::makeDefaultCameraNodeWithTarget();
+  scene->addCamera(cameraNode);
+  auto camera = cameraNode->getComponent<CameraComponent>();
   auto dirLight =
       std::dynamic_pointer_cast<DirectionalLight>(scene->getLights().front());
 
@@ -146,9 +159,9 @@ int main() {
     bool tabDown = input->isKeyDown(KeyCode::Tab);
     if (tabDown && !tabWasDown) {
       if (useOrbit) {
-        syncFreeFlyFromCamera(freeflyCtrl, *camera);
+        syncFreeFlyFromCamera(freeflyCtrl, camera->get());
       } else {
-        syncOrbitFromCamera(orbitCtrl, *camera);
+        syncOrbitFromCamera(orbitCtrl, camera->get());
       }
       useOrbit = !useOrbit;
       if (testDebugEnabled()) {
@@ -158,23 +171,26 @@ int main() {
     }
     tabWasDown = tabDown;
 
-    camera->aspect = 800.0f / 600.0f;
+    camera->get().aspect = 800.0f / 600.0f;
     if (useOrbit) {
-      orbitCtrl.update(*camera, *input, clock.deltaTime());
+      orbitCtrl.update(camera->get(), *input, clock.deltaTime());
     } else {
-      freeflyCtrl.update(*camera, *input, clock.deltaTime());
+      freeflyCtrl.update(camera->get(), *input, clock.deltaTime());
     }
-    camera->updateMatrices();
+    camera->get().updateMatrices();
     input->nextFrame();
     if (testDebugEnabled() && frameCounter < 3) {
       std::cerr << "[TriangleTest] frame=" << frameCounter << ", cameraPos=("
-                << camera->position.x << "," << camera->position.y << ","
-                << camera->position.z << "), target=(" << camera->target.x
-                << "," << camera->target.y << "," << camera->target.z
-                << "), aspect=" << camera->aspect << std::endl;
+                << camera->get().getEyePosition().x << ","
+                << camera->get().getEyePosition().y << ","
+                << camera->get().getEyePosition().z << "), target=("
+                << camera->get().getLookTarget().x << ","
+                << camera->get().getLookTarget().y << ","
+                << camera->get().getLookTarget().z
+                << "), aspect=" << camera->get().aspect << std::endl;
       if (frameCounter == 0) {
-        const auto &view = camera->ubo->param.view;
-        const auto &proj = camera->ubo->param.proj;
+        const auto &view = camera->get().getUBO()->param.view;
+        const auto &proj = camera->get().getUBO()->param.proj;
         const std::array<Vec4f, 3> debugPositions = {
             Vec4f{-1.0f, 1.0f, 0.0f, 1.0f},
             Vec4f{1.0f, 1.0f, 0.0f, 1.0f},

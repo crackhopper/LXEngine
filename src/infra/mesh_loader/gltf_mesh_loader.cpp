@@ -18,6 +18,7 @@ struct GLTFLoader::Impl {
   std::vector<LX_core::Vec2f> texCoords;
   std::vector<LX_core::Vec4f> tangents;
   std::vector<u32> indices;
+  LX_core::BoundingBox bounds;
   GLTFPbrMaterial material;
 };
 
@@ -208,6 +209,7 @@ void GLTFLoader::load(const std::string &filename) {
   pImpl->texCoords.clear();
   pImpl->tangents.clear();
   pImpl->indices.clear();
+  pImpl->bounds = LX_core::BoundingBox{};
   pImpl->material = GLTFPbrMaterial{};
 
   cgltf_options options{};
@@ -252,6 +254,9 @@ void GLTFLoader::load(const std::string &filename) {
     fail(filename, "primitives[0] is missing POSITION attribute");
   }
   readVec3Attribute(filename, *posAttr->data, pImpl->positions, "POSITION");
+  for (const auto &position : pImpl->positions) {
+    pImpl->bounds.merge(position);
+  }
 
   if (const cgltf_attribute *normAttr =
           findAttribute(prim, cgltf_attribute_type_normal, 0)) {
@@ -303,6 +308,10 @@ const std::vector<LX_core::Vec2f> &GLTFLoader::getTexCoords() const {
 
 const std::vector<u32> &GLTFLoader::getIndices() const {
   return pImpl->indices;
+}
+
+const LX_core::BoundingBox &GLTFLoader::getBounds() const {
+  return pImpl->bounds;
 }
 
 const std::vector<LX_core::Vec4f> &GLTFLoader::getTangents() const {

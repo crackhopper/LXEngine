@@ -4,6 +4,9 @@
 #include "core/frame_graph/pass.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
+#include "core/scene/components/camera_component.hpp"
+#include "core/scene/components/material_component.hpp"
+#include "core/scene/components/mesh_component.hpp"
 #include "core/scene/object.hpp"
 #include "core/scene/scene.hpp"
 
@@ -63,7 +66,7 @@ std::shared_ptr<SceneNode> makeNode(const std::string &nodeName) {
   auto vb = VertexBuffer<VertexPos>::create(
       std::vector<VertexPos>{{{0, 0, 0}}, {{1, 0, 0}}, {{0, 1, 0}}});
   auto ib = IndexBuffer::create({0, 1, 2});
-  auto mesh = Mesh::create(vb, ib);
+  auto mesh = Mesh::create(vb, ib, BoundingBox{{0, 0, 0}, {1, 1, 0}});
 
   auto shader = std::make_shared<FakeShader>();
   auto tmpl = MaterialTemplate::create("scene_path_lookup");
@@ -78,7 +81,10 @@ std::shared_ptr<SceneNode> makeNode(const std::string &nodeName) {
   tmpl->setPassDefinition(Pass_Forward, std::move(passDef));
 
   auto material = MaterialInstance::create(tmpl);
-  return SceneNode::create(nodeName, mesh, material, nullptr);
+  auto node = SceneNode::create(nodeName);
+  node->addComponent<MeshComponent>(mesh);
+  node->addComponent<MaterialComponent>(material);
+  return node;
 }
 
 std::string captureStderr(const std::function<void()> &fn) {
@@ -237,6 +243,48 @@ void testDumpTreePathsAreReversible() {
   }
 }
 
+void testRegisteredCameraNodeIsPathAddressable() {
+  auto scene = Scene::create(nullptr);
+  auto cameraNode = SceneNode::create("editor_camera");
+  cameraNode->setName("editor_cam");
+
+  auto camera = cameraNode->addComponent<CameraComponent>();
+  EXPECT(camera.has_value(), "camera component should attach to node");
+  if (!camera.has_value()) {
+    return;
+  }
+
+  camera->get().setTarget(RenderTarget{});
+  camera->get().updateMatrices();
+  scene->addCamera(cameraNode);
+
+  EXPECT(scene->findByPath("/editor_cam") == cameraNode.get(),
+         "registered camera node resolves through scene path lookup");
+  EXPECT(cameraNode->getPath() == "/editor_cam",
+         "registered camera node receives rooted scene path");
+}
+
+void testRemoveCameraDetachesTopLevelCameraNode() {
+  auto scene = Scene::create(nullptr);
+  auto cameraNode = SceneNode::create("editor_camera_remove");
+  cameraNode->setName("editor_cam_remove");
+
+  auto camera = cameraNode->addComponent<CameraComponent>();
+  EXPECT(camera.has_value(), "camera component should attach to removable node");
+  if (!camera.has_value()) {
+    return;
+  }
+
+  camera->get().setTarget(RenderTarget{});
+  scene->addCamera(cameraNode);
+  scene->removeCamera(cameraNode);
+
+  EXPECT(scene->getCameras().empty(),
+         "removeCamera should erase the top-level camera from the registry");
+  EXPECT(scene->findByPath("/editor_cam_remove") == nullptr,
+         "removeCamera should detach a top-level camera node from scene path lookup");
+}
+
 void testNameSanitizationPreservesPathUsability() {
 #ifdef NDEBUG
   auto scene = Scene::create(nullptr);
@@ -261,6 +309,8 @@ int main() {
   testGetPathReflectsReparentingImmediately();
   testDuplicateSiblingNamesWarnAndResolveFirst();
   testDumpTreePathsAreReversible();
+  testRegisteredCameraNodeIsPathAddressable();
+  testRemoveCameraDetachesTopLevelCameraNode();
   testNameSanitizationPreservesPathUsability();
 
   if (failures != 0) {

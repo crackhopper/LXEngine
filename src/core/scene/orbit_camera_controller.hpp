@@ -8,7 +8,7 @@ public:
   OrbitCameraController(Vec3f target = {0, 0, 0}, float distance = 5.0f,
                         float yawDeg = 0.0f, float pitchDeg = 20.0f);
 
-  void update(Camera &camera, const IInputState &input, float dt) override;
+  void update(CameraComponent &camera, const IInputState &input, float dt) override;
 
   Vec3f getTarget() const { return m_target; }
   void setTarget(Vec3f t) { m_target = t; }

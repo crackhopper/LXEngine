@@ -10,7 +10,7 @@ FreeFlyCameraController::FreeFlyCameraController(Vec3f startPos, float yawDeg,
                                                  float pitchDeg)
     : m_position(startPos), m_yawDeg(yawDeg), m_pitchDeg(pitchDeg) {}
 
-void FreeFlyCameraController::update(Camera &camera, const IInputState &input,
+void FreeFlyCameraController::update(CameraComponent &camera, const IInputState &input,
                                      float dt) {
   // Mouse look — only when right button is held
   if (input.isMouseButtonDown(MouseButton::Right)) {
@@ -61,9 +61,7 @@ void FreeFlyCameraController::update(Camera &camera, const IInputState &input,
   }
 
   // Write back to camera
-  camera.position = m_position;
-  camera.target = m_position + forward;
-  camera.up = worldUp;
+  camera.lookAt(m_position, m_position + forward, worldUp);
 }
 
 } // namespace LX_core

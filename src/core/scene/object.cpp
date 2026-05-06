@@ -1,6 +1,9 @@
 #include "object.hpp"
 #include "scene.hpp"
 #include "core/asset/shader_binding_ownership.hpp"
+#include "core/scene/components/material_component.hpp"
+#include "core/scene/components/mesh_component.hpp"
+#include "core/scene/components/skeleton_component.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -86,53 +89,41 @@ bool requiresRenderableOwnedResource(const ShaderResourceBinding &binding) {
          binding.type == ShaderPropertyType::StorageBuffer;
 }
 
+std::optional<std::reference_wrapper<const MeshComponent>>
+getMeshComponent(const SceneNode &node) {
+  return node.getComponent<MeshComponent>();
+}
+
+std::optional<std::reference_wrapper<const MaterialComponent>>
+getMaterialComponent(const SceneNode &node) {
+  return node.getComponent<MaterialComponent>();
+}
+
+std::optional<std::reference_wrapper<const SkeletonComponent>>
+getSkeletonComponent(const SceneNode &node) {
+  return node.getComponent<SkeletonComponent>();
+}
+
 } // namespace
 
 SceneNode::SceneNode(PathRootTag)
     : m_nodeName("__scene_root__"), m_perDrawData(std::make_shared<PerDrawData>()),
       m_isPathRoot(true) {}
 
-SceneNode::SceneNode(std::string nodeName, MeshSharedPtr mesh,
-                     MaterialInstanceSharedPtr material, SkeletonSharedPtr skeleton)
-    : m_nodeName(std::move(nodeName)), m_mesh(std::move(mesh)),
-      m_materialInstance(std::move(material)),
+SceneNode::SceneNode(std::string nodeName)
+    : m_nodeName(std::move(nodeName)),
       m_perDrawData(std::make_shared<PerDrawData>()) {
-  if (skeleton) {
-    m_skeleton = std::move(skeleton);
-  }
-  registerMaterialPassListener();
   syncPerDrawModelMatrix();
   rebuildValidatedCache();
 }
 
 SceneNode::~SceneNode() {
   clearParent();
-  unregisterMaterialPassListener();
+  clearComponents();
 }
 
 SceneNode::SharedPtr SceneNode::createPathRoot() {
   return SharedPtr(new SceneNode(PathRootTag{}));
-}
-
-void SceneNode::setMesh(MeshSharedPtr mesh) {
-  m_mesh = std::move(mesh);
-  rebuildValidatedCache();
-}
-
-void SceneNode::setMaterialInstance(MaterialInstanceSharedPtr material) {
-  unregisterMaterialPassListener();
-  m_materialInstance = std::move(material);
-  registerMaterialPassListener();
-  rebuildValidatedCache();
-}
-
-void SceneNode::setSkeleton(SkeletonSharedPtr skeleton) {
-  if (skeleton) {
-    m_skeleton = std::move(skeleton);
-  } else {
-    m_skeleton.reset();
-  }
-  rebuildValidatedCache();
 }
 
 void SceneNode::setLocalTransform(const Transform &transform) {
@@ -183,6 +174,22 @@ const Mat4f &SceneNode::getWorldTransform() const {
   return m_worldTransform;
 }
 
+BoundingBox SceneNode::getLocalBounds() const {
+  const auto meshComponent = getMeshComponent(*this);
+  if (!meshComponent || !meshComponent->get().getMesh()) {
+    return {};
+  }
+  return meshComponent->get().getMesh()->bounds;
+}
+
+BoundingBox SceneNode::getWorldBounds() const {
+  const BoundingBox localBounds = getLocalBounds();
+  if (!localBounds.isValid()) {
+    return localBounds;
+  }
+  return localBounds.transformed(getWorldTransform());
+}
+
 void SceneNode::setParent(const SharedPtr &parent) {
   if (parent.get() == this) {
     throw std::logic_error("SceneNodeHierarchy node=" + m_nodeName +
@@ -229,13 +236,21 @@ void SceneNode::clearParent() {
 }
 
 IGpuResourceSharedPtr SceneNode::getVertexBuffer() const {
-  return m_mesh ? std::static_pointer_cast<IGpuResource>(m_mesh->vertexBuffer)
-                : nullptr;
+  const auto meshComponent = getMeshComponent(*this);
+  if (!meshComponent || !meshComponent->get().getMesh()) {
+    return nullptr;
+  }
+  return std::static_pointer_cast<IGpuResource>(
+      meshComponent->get().getMesh()->vertexBuffer);
 }
 
 IGpuResourceSharedPtr SceneNode::getIndexBuffer() const {
-  return m_mesh ? std::static_pointer_cast<IGpuResource>(m_mesh->indexBuffer)
-                : nullptr;
+  const auto meshComponent = getMeshComponent(*this);
+  if (!meshComponent || !meshComponent->get().getMesh()) {
+    return nullptr;
+  }
+  return std::static_pointer_cast<IGpuResource>(
+      meshComponent->get().getMesh()->indexBuffer);
 }
 
 std::vector<IGpuResourceSharedPtr>
@@ -250,8 +265,12 @@ IShaderSharedPtr SceneNode::getShaderInfo() const {
   auto data = getValidatedPassData(Pass_Forward);
   if (data)
     return data->get().shaderInfo;
-  return m_materialInstance ? m_materialInstance->getPassShader(Pass_Forward)
-                            : nullptr;
+  const auto materialComponent = getMaterialComponent(*this);
+  if (!materialComponent || !materialComponent->get().getMaterialInstance()) {
+    return nullptr;
+  }
+  return materialComponent->get().getMaterialInstance()->getPassShader(
+      Pass_Forward);
 }
 
 PerDrawDataSharedPtr SceneNode::getPerDrawData() const {
@@ -260,15 +279,19 @@ PerDrawDataSharedPtr SceneNode::getPerDrawData() const {
 }
 
 StringID SceneNode::getPipelineSignature(StringID pass) const {
-  if (!m_mesh)
+  const auto meshComponent = getMeshComponent(*this);
+  if (!meshComponent || !meshComponent->get().getMesh())
     return StringID{};
-  StringID meshSig = m_mesh->getPipelineSignature(pass);
+  StringID meshSig = meshComponent->get().getMesh()->getPipelineSignature(pass);
   StringID fields[] = {meshSig};
   return GlobalStringTable::get().compose(TypeTag::ObjectRender, fields);
 }
 
 bool SceneNode::supportsPass(StringID pass) const {
-  return m_materialInstance && m_materialInstance->isPassEnabled(pass) &&
+  const auto materialComponent = getMaterialComponent(*this);
+  return materialComponent &&
+         materialComponent->get().getMaterialInstance() &&
+         materialComponent->get().getMaterialInstance()->isPassEnabled(pass) &&
          m_validatedPasses.find(pass) != m_validatedPasses.end();
 }
 
@@ -340,22 +363,55 @@ void SceneNode::pruneExpiredChildren() {
       m_children.end());
 }
 
+std::vector<std::reference_wrapper<IComponent>> SceneNode::listComponents() {
+  std::vector<std::reference_wrapper<IComponent>> out;
+  out.reserve(m_components.size());
+  for (auto &component : m_components) {
+    out.push_back(*component);
+  }
+  return out;
+}
+
+std::vector<std::reference_wrapper<const IComponent>>
+SceneNode::listComponents() const {
+  std::vector<std::reference_wrapper<const IComponent>> out;
+  out.reserve(m_components.size());
+  for (const auto &component : m_components) {
+    out.push_back(*component);
+  }
+  return out;
+}
+
 void SceneNode::rebuildValidatedCache() {
   m_validatedPasses.clear();
 
   if (m_nodeName.empty()) {
     throw std::logic_error("SceneNodeValidation empty nodeName");
   }
-  if (!m_mesh || !m_materialInstance || !m_materialInstance->getTemplate()) {
+
+  const auto meshComponent = getMeshComponent(*this);
+  const auto materialComponent = getMaterialComponent(*this);
+  if (!meshComponent || !materialComponent) {
+    return;
+  }
+
+  const MeshSharedPtr mesh = meshComponent->get().getMesh();
+  const MaterialInstanceSharedPtr material =
+      materialComponent->get().getMaterialInstance();
+  if (!mesh || !material || !material->getTemplate()) {
     throw std::logic_error("SceneNodeValidation node=" + m_nodeName +
                            " missing mesh/material template");
   }
 
-  const auto &layout = m_mesh->getVertexLayout();
-  const auto enabledPasses = m_materialInstance->getEnabledPasses();
+  const auto skeletonComponent = getSkeletonComponent(*this);
+  const SkeletonSharedPtr skeleton =
+      skeletonComponent ? skeletonComponent->get().getSkeleton()
+                        : SkeletonSharedPtr{};
+  const auto &layout = mesh->getVertexLayout();
+  const auto enabledPasses = material->getEnabledPasses();
 
   for (const auto &pass : enabledPasses) {
-    auto entryOpt = m_materialInstance->getTemplate()->getPassDefinition(pass);
+    auto entryOpt = material->getTemplate()->getPassDefinition(pass);
     if (!entryOpt) {
       continue;
     }
@@ -363,10 +419,10 @@ void SceneNode::rebuildValidatedCache() {
     const auto &entry = entryOpt->get();
     auto shader = entry.shaderProgram.getShader();
     if (!shader) {
-      shader = m_materialInstance->getPassShader(pass);
+      shader = material->getPassShader(pass);
     }
     if (!shader) {
-      fatalValidation(*this, pass, *m_materialInstance, entry.shaderProgram,
+      fatalValidation(*this, pass, *material, entry.shaderProgram,
                       "missing shader for enabled pass", std::cref(layout));
     }
 
@@ -376,32 +432,32 @@ void SceneNode::rebuildValidatedCache() {
         shader->findBinding("Bones").has_value();
 
     if (usesSkinning != hasBonesBinding) {
-      fatalValidation(*this, pass, *m_materialInstance, entry.shaderProgram,
+      fatalValidation(*this, pass, *material, entry.shaderProgram,
                       "shader variant / Bones binding mismatch",
                       std::cref(layout));
     }
-    if (usesSkinning && (!m_skeleton.has_value() || !m_skeleton.value())) {
-      fatalValidation(*this, pass, *m_materialInstance, entry.shaderProgram,
+    if (usesSkinning && !skeleton) {
+      fatalValidation(*this, pass, *material, entry.shaderProgram,
                       "skinning pass requires skeleton", std::cref(layout));
     }
 
     for (const auto &input : shader->getVertexInputs()) {
       auto layoutItem = findLayoutItem(layout, input.location);
       if (!layoutItem) {
-        fatalValidation(*this, pass, *m_materialInstance, entry.shaderProgram,
+        fatalValidation(*this, pass, *material, entry.shaderProgram,
                         "missing vertex input '" + input.name +
                             "' at location " + std::to_string(input.location),
                         std::cref(layout));
       }
       if (layoutItem->get().type != input.type) {
-        fatalValidation(*this, pass, *m_materialInstance, entry.shaderProgram,
+        fatalValidation(*this, pass, *material, entry.shaderProgram,
                         "vertex input type mismatch for '" + input.name +
                             "' at location " + std::to_string(input.location),
                         std::cref(layout));
       }
     }
 
-    auto descriptorResources = m_materialInstance->getDescriptorResources(pass);
+    auto descriptorResources = material->getDescriptorResources(pass);
 
     // Validate reserved-name type contract and renderable-owned resources.
     for (const auto &binding : shader->getReflectionBindings()) {
@@ -409,7 +465,7 @@ void SceneNode::rebuildValidatedCache() {
       auto expectedType = getExpectedTypeForSystemBinding(binding.name);
       if (expectedType && binding.type != *expectedType) {
         fatalValidation(
-            *this, pass, *m_materialInstance, entry.shaderProgram,
+            *this, pass, *material, entry.shaderProgram,
             "reserved binding '" + binding.name +
                 "' has wrong descriptor type (shader authoring error)",
             std::cref(layout));
@@ -419,12 +475,12 @@ void SceneNode::rebuildValidatedCache() {
         continue;
 
       if (binding.name == "Bones") {
-        if (!m_skeleton.has_value() || !m_skeleton.value()) {
-          fatalValidation(*this, pass, *m_materialInstance, entry.shaderProgram,
+        if (!skeleton) {
+          fatalValidation(*this, pass, *material, entry.shaderProgram,
                           "missing Bones resource", std::cref(layout));
         }
         descriptorResources.push_back(std::static_pointer_cast<IGpuResource>(
-            m_skeleton.value()->getUBO()));
+            skeleton->getUBO()));
         continue;
       }
 
@@ -438,7 +494,7 @@ void SceneNode::rebuildValidatedCache() {
         }
       }
       if (!found) {
-        fatalValidation(*this, pass, *m_materialInstance, entry.shaderProgram,
+        fatalValidation(*this, pass, *material, entry.shaderProgram,
                         "missing material-owned resource '" + binding.name +
                             "'",
                         std::cref(layout));
@@ -447,7 +503,7 @@ void SceneNode::rebuildValidatedCache() {
 
     ValidatedRenderablePassData data;
     data.pass = pass;
-    data.material = m_materialInstance;
+    data.material = material;
     data.shaderInfo = shader;
     data.drawData = m_perDrawData;
     data.vertexBuffer = getVertexBuffer();
@@ -455,28 +511,16 @@ void SceneNode::rebuildValidatedCache() {
     data.descriptorResources = std::move(descriptorResources);
     data.objectSignature = getPipelineSignature(pass);
     data.pipelineKey = PipelineKey::build(
-        data.objectSignature, m_materialInstance->getPipelineSignature(pass));
+        data.objectSignature, material->getPipelineSignature(pass));
     m_validatedPasses[pass] = std::move(data);
   }
 }
 
-void SceneNode::registerMaterialPassListener() {
-  if (!m_materialInstance)
-    return;
-  m_materialPassListenerId = m_materialInstance->addPassStateListener([this]() {
-    if (auto scene = m_scene.lock(); scene && m_materialInstance) {
-      scene->revalidateNodesUsing(m_materialInstance);
-      return;
-    }
-    rebuildValidatedCache();
-  });
-}
-
-void SceneNode::unregisterMaterialPassListener() {
-  if (m_materialInstance && m_materialPassListenerId != 0) {
-    m_materialInstance->removePassStateListener(m_materialPassListenerId);
-    m_materialPassListenerId = 0;
+void SceneNode::clearComponents() {
+  for (auto &component : m_components) {
+    component->detachFromOwner();
   }
+  m_components.clear();
 }
 
 void SceneNode::warnIfSiblingNameIsDuplicated() const {

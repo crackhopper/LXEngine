@@ -11,6 +11,7 @@ struct ObjLoader::Impl {
   std::vector<LX_core::Vec3f> normals;
   std::vector<LX_core::Vec2f> texCoords;
   std::vector<u32> indices;
+  LX_core::BoundingBox bounds;
 };
 
 ObjLoader::ObjLoader() : pImpl(std::make_unique<Impl>()) {}
@@ -39,6 +40,7 @@ void ObjLoader::load(const std::string &filename) {
   pImpl->normals.clear();
   pImpl->texCoords.clear();
   pImpl->indices.clear();
+  pImpl->bounds = LX_core::BoundingBox{};
 
   std::unordered_map<u64, u32> vertexMap;
 
@@ -52,10 +54,12 @@ void ObjLoader::load(const std::string &filename) {
         vertexMap[key] = newIndex;
 
         if (index.vertex_index >= 0) {
-          pImpl->positions.emplace_back(
+          const LX_core::Vec3f position(
               attrib.vertices[3 * index.vertex_index + 0],
               attrib.vertices[3 * index.vertex_index + 1],
               attrib.vertices[3 * index.vertex_index + 2]);
+          pImpl->positions.emplace_back(position);
+          pImpl->bounds.merge(position);
         }
 
         if (index.normal_index >= 0) {
@@ -91,6 +95,10 @@ const std::vector<LX_core::Vec2f> &ObjLoader::getTexCoords() const {
 
 const std::vector<u32> &ObjLoader::getIndices() const {
   return pImpl->indices;
+}
+
+const LX_core::BoundingBox &ObjLoader::getBounds() const {
+  return pImpl->bounds;
 }
 
 } // namespace infra

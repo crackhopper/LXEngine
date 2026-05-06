@@ -8,6 +8,7 @@
 
 #include "backend/vulkan/vulkan_renderer.hpp"
 #include "core/gpu/engine_loop.hpp"
+#include "core/scene/components/camera_component.hpp"
 #include "core/scene/scene.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/filesystem_tools.hpp"
@@ -68,13 +69,20 @@ int main() {
     auto scene = LX_core::Scene::create("scene_viewer", helmet);
     scene->addRenderable(ground);
 
-    auto camera = scene->getCameras().front();
-    camera->position = LX_core::Vec3f{2.5f, 1.5f, 3.0f};
-    camera->target = LX_core::Vec3f{0.0f, 0.0f, 0.0f};
-    camera->up = LX_core::Vec3f{0.0f, 1.0f, 0.0f};
-    camera->aspect = static_cast<float>(kWindowWidth)
-                     / static_cast<float>(kWindowHeight);
-    camera->updateMatrices();
+    auto cameraNode = LX_core::SceneNode::create("editor_camera");
+    cameraNode->setName("editor_cam");
+    auto camera = cameraNode->addComponent<LX_core::CameraComponent>();
+    if (!camera.has_value()) {
+      throw std::runtime_error("[scene_viewer] failed to create camera component");
+    }
+    camera->get().aspect = static_cast<float>(kWindowWidth)
+                           / static_cast<float>(kWindowHeight);
+    camera->get().setTarget(LX_core::RenderTarget{});
+    camera->get().lookAt(LX_core::Vec3f{2.5f, 1.5f, 3.0f},
+                         LX_core::Vec3f{0.0f, 0.0f, 0.0f},
+                         LX_core::Vec3f{0.0f, 1.0f, 0.0f});
+    camera->get().updateMatrices();
+    scene->addCamera(cameraNode);
 
     auto dirLight = std::dynamic_pointer_cast<LX_core::DirectionalLight>(
         scene->getLights().front());
@@ -85,13 +93,13 @@ int main() {
     }
 
     demo::CameraRig rig;
-    rig.attach(*camera);
+    rig.attach(camera->get());
 
     demo::UiOverlay ui;
     if (!dirLight) {
       throw std::runtime_error("[scene_viewer] expected directional light");
     }
-    ui.attach(*camera, *dirLight, rig);
+    ui.attach(camera->get(), *dirLight, rig);
 
     // Hand the UI callback to the concrete VulkanRenderer. Per REQ-017 the
     // callback is intentionally not on the gpu::Renderer base.
@@ -119,12 +127,12 @@ int main() {
       if (!wantsKeyboard) {
         ui.handleHotkeys(*input);
       }
-      camera->aspect = static_cast<float>(window->getWidth())
-                       / static_cast<float>(window->getHeight());
+      camera->get().aspect = static_cast<float>(window->getWidth())
+                             / static_cast<float>(window->getHeight());
       if (!wantsKeyboard && !wantsMouse) {
         rig.update(*input, clock.deltaTime());
       } else {
-        camera->updateMatrices();
+        camera->get().updateMatrices();
       }
       input->nextFrame();
     });

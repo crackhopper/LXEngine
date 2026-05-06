@@ -21,10 +21,12 @@ float clampUnit(float v) {
 // Reconstruct orbit state (target + distance + yaw/pitch) from a free camera
 // pose so flipping to orbit mode keeps the viewed point stable.
 void syncOrbitFromCamera(LX_core::OrbitCameraController& ctrl,
-                         const LX_core::Camera& cam) {
-  const LX_core::Vec3f offset = cam.position - cam.target;
+                         const LX_core::CameraComponent& cam) {
+  const LX_core::Vec3f eye = cam.getEyePosition();
+  const LX_core::Vec3f target = cam.getLookTarget();
+  const LX_core::Vec3f offset = eye - target;
   const float distance = offset.length();
-  ctrl.setTarget(cam.target);
+  ctrl.setTarget(target);
   if (distance > 1e-6f) {
     ctrl.setDistance(distance);
     ctrl.setYawDeg(std::atan2(offset.x, offset.z) * 180.0f / kPi);
@@ -35,9 +37,9 @@ void syncOrbitFromCamera(LX_core::OrbitCameraController& ctrl,
 // Reconstruct freefly state (position + yaw/pitch) from the current camera
 // pose so the switch keeps the framing intact.
 void syncFreeFlyFromCamera(LX_core::FreeFlyCameraController& ctrl,
-                           const LX_core::Camera& cam) {
-  const LX_core::Vec3f forward = (cam.target - cam.position).normalized();
-  ctrl.setPosition(cam.position);
+                           const LX_core::CameraComponent& cam) {
+  const LX_core::Vec3f forward = cam.getForwardVector();
+  ctrl.setPosition(cam.getEyePosition());
   ctrl.setYawDeg(std::atan2(forward.x, forward.z) * 180.0f / kPi);
   ctrl.setPitchDeg(std::asin(clampUnit(forward.y)) * 180.0f / kPi);
 }
@@ -48,7 +50,7 @@ CameraRig::CameraRig()
     : m_orbit(LX_core::Vec3f{0.0f, 0.0f, 0.0f}, 3.0f, 0.0f, 0.0f),
       m_freefly(LX_core::Vec3f{0.0f, 0.0f, 3.0f}, 180.0f, 0.0f) {}
 
-void CameraRig::attach(LX_core::Camera& camera) { m_camera = std::ref(camera); }
+void CameraRig::attach(LX_core::CameraComponent& camera) { m_camera = std::ref(camera); }
 
 void CameraRig::switchMode() {
   if (!m_camera) return;

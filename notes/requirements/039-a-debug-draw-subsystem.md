@@ -1,6 +1,8 @@
-# REQ-039: DebugDraw 子系统 — 一行调用画世界空间线 / 球 / 视锥 / 锥 / 箭头 / 坐标轴
+# REQ-039-a: DebugDraw 子系统 — 一行调用画世界空间线 / 球 / 视锥 / 锥 / 箭头 / 坐标轴
 
 > 本 REQ 是 [Phase 1.5 ImGui Editor MVP + 命令总线](../roadmaps/main-roadmap/phase-1.5-imgui-editor-mvp.md) 的第 5 步。在 roadmap 中以"REQ-150 DebugDraw 子系统"前向声明。
+>
+> 2026-05-06 拆分：原 `039-debug-draw-subsystem.md` 即本档（v1，每帧瞬时 draw + 几何原语 only）。v2（persistent draw + mesh-as-debug 整 mesh 线框）移到 [REQ-039-b DebugDraw v2](041-i-debug-draw-persistent-and-mesh.md)。
 
 ## 背景
 
@@ -11,7 +13,7 @@ LX 当前**完全没有**高层"画一根世界空间线"的 API。底层 `Primi
 3. 每帧自己更新 vertex buffer
 4. 整套接进 PipelineCache
 
-这套门槛让"加一行调用画一根线"在业务代码里完全不可用，严重拖累 [REQ-041 ImGui Editor MVP](041-imgui-editor-mvp.md) 的 frustum / 光源箭头 / 选中线框 / picking ray 等可视化需求 —— 而且未来 RTR 章节实验里的 BVH 调试线、shadow cascade 边界、AS 命中点等也依赖这个能力。
+这套门槛让"加一行调用画一根线"在业务代码里完全不可用，严重拖累 [REQ-041 ImGui Editor MVP](041-a-imgui-editor-mvp.md) 的 frustum / 光源箭头 / 选中线框 / picking ray 等可视化需求 —— 而且未来 RTR 章节实验里的 BVH 调试线、shadow cascade 边界、AS 命中点等也依赖这个能力。
 
 用户在 Phase 1.5 设计讨论中明确："**易用性硬指标：用户在任意业务代码中一行调用即可画一根世界空间线。**"
 
@@ -169,8 +171,8 @@ void main() { o_color = v_color; }
 - v1 **不**做线宽（line width 在 Vulkan 是 device feature，需要 `wideLines` extension；先用 1 像素）
 - v1 **不**做线条 anti-aliasing
 - v1 **不**做 screen-space 字体（"draw text at world position"）
-- v1 **不**做 persistent draw（每个 draw 命令仅活在当前帧）；persistent 留 v2
-- v1 **不**做 mesh-as-debug（"画整个 mesh 的线框"）；用户可手动遍历 triangle 调 `drawTriangle`
+- v1 **不**做 persistent draw（每个 draw 命令仅活在当前帧）；移到 [REQ-039-b](041-i-debug-draw-persistent-and-mesh.md)
+- v1 **不**做 mesh-as-debug（"画整个 mesh 的线框"）；用户可手动遍历 triangle 调 `drawTriangle`；统一接口移到 [REQ-039-b](041-i-debug-draw-persistent-and-mesh.md)
 - 单一 pipeline，不支持 user 自定义 shader
 
 ### REQ-042 兼容预留
@@ -182,14 +184,15 @@ void main() { o_color = v_color; }
 - 现有 `PrimitiveTopology::LineList`（`src/core/scene/index_buffer.hpp:18-25`）
 - 现有 PipelineCache + ShaderCompiler
 - 现有 FrameGraph
-- [REQ-038](038-ray-aabb-picking-min.md) `AABB` 类型 — `wireBox(AABB)` 重载用
+- [REQ-038-a](finished/038-a-ray-aabb-picking-min.md) — `wireBox(BoundingBox)` 重载用（注：037+038 评审后统一术语，使用 `BoundingBox` 而非 `AABB`）
 
 ## 后续工作
 
-- [REQ-041 ImGui Editor MVP](041-imgui-editor-mvp.md) — frustum / directional light arrow / 选中节点 wire box / picking ray 全部用 DebugDraw
+- [REQ-041 ImGui Editor MVP](041-a-imgui-editor-mvp.md) — frustum / directional light arrow / 选中节点 wire box / picking ray 全部用 DebugDraw
+- [REQ-039-b DebugDraw v2](041-i-debug-draw-persistent-and-mesh.md) — persistent draw（命中线、AS 调试线跨帧停留）+ `wireMesh(Mesh)` 一行画整 mesh 线框
 - 未来 [REQ-109 PointLight + SpotLight](../roadmaps/main-roadmap/phase-1-rendering-depth.md#req-109--pointlight--spotlight--统一多光源合同) 落地后，point light 衰减球用 `wireSphere`、spot light 锥用 `cone`，一行调用接通
 - BVH / shadow cascade 边界 / AS 命中点等未来调试可视化都消费同一套 API
 
 ## 实施状态
 
-待实施。Phase 1.5 第 5 步。在 [REQ-038 AABB](038-ray-aabb-picking-min.md) 落地后开工（`wireBox(AABB)` 重载需要它）。
+待实施。Phase 1.5 第 5 步。在 [REQ-038-a](finished/038-a-ray-aabb-picking-min.md) 落地后开工（`wireBox(BoundingBox)` 重载需要它）。

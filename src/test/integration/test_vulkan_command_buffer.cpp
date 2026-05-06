@@ -7,6 +7,10 @@
 #include "core/rhi/gpu_resource.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
+#include "core/scene/components/material_component.hpp"
+#include "core/scene/components/camera_component.hpp"
+#include "core/scene/components/mesh_component.hpp"
+#include "core/scene/components/skeleton_component.hpp"
 #include "core/scene/scene.hpp"
 #include "core/utils/env.hpp"
 
@@ -79,7 +83,9 @@ int main() {
           {1.0f, 0.0f, 0.0f, 0.0f}, {0, 0, 0, 0}, {1.0f, 0.0f, 0.0f, 0.0f}),
     });
     auto indexBufferPtr = LX_core::IndexBuffer::create({0u, 1u, 2u});
-    auto meshPtr = LX_core::Mesh::create(vertexBufferPtr, indexBufferPtr);
+    auto meshPtr = LX_core::Mesh::create(
+        vertexBufferPtr, indexBufferPtr,
+        LX_core::BoundingBox{{-5.0f, -5.0f, 0.0f}, {5.0f, 5.0f, 0.0f}});
 
     auto material = LX_infra::loadGenericMaterial("assets/materials/blinnphong_default.material");
     material->setParameter(LX_core::StringID("MaterialUBO"),
@@ -87,14 +93,16 @@ int main() {
                            0); // avoid normal texture
     material->syncGpuData();
 
-    auto node = LX_core::SceneNode::create(
-        "vulkan_command_node", meshPtr, material,
+    auto node = LX_core::SceneNode::create("vulkan_command_node");
+    node->addComponent<LX_core::MeshComponent>(meshPtr);
+    node->addComponent<LX_core::MaterialComponent>(material);
+    node->addComponent<LX_core::SkeletonComponent>(
         LX_core::Skeleton::create(std::vector<LX_core::Bone>{}));
     auto scene = LX_core::Scene::create(node);
+    auto cameraNode = LX_test::makeDefaultCameraNodeWithTarget();
+    scene->addCamera(cameraNode);
 
-    // REQ-009: reach the scene's default camera + directional light via the
-    // multi-container API (Scene::Scene seeds exactly one of each).
-    auto camera = scene->getCameras().front();
+    auto camera = cameraNode->getComponent<LX_core::CameraComponent>();
     auto dirLight = std::dynamic_pointer_cast<LX_core::DirectionalLight>(
         scene->getLights().front());
 
@@ -106,10 +114,9 @@ int main() {
     }
 
     // Camera matrices needed for camera data uploads.
-    camera->position = {0.0f, 0.0f, 3.0f};
-    camera->target = {0.0f, 0.0f, 0.0f};
-    camera->up = LX_core::Vec3f{0.0f, 1.0f, 0.0f};
-    camera->updateMatrices();
+    camera->get().lookAt({0.0f, 0.0f, 3.0f}, {0.0f, 0.0f, 0.0f},
+                         LX_core::Vec3f{0.0f, 1.0f, 0.0f});
+    camera->get().updateMatrices();
 
     auto renderItem =
         LX_test::firstItemFromScene(*scene, LX_core::Pass_Forward);

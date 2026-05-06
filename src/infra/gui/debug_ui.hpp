@@ -6,7 +6,7 @@
 // raw ImGui calls with these helpers.
 
 #include "core/math/vec.hpp"
-#include "core/scene/camera.hpp"
+#include "core/scene/components/camera_component.hpp"
 #include "core/scene/light.hpp"
 #include "core/time/clock.hpp"
 #include "core/utils/string_table.hpp"
@@ -49,7 +49,7 @@ void separatorText(const char* label);
 // ---- Composite panels ---------------------------------------------------
 
 void renderStatsPanel(const LX_core::Clock& clock);
-void cameraPanel(const char* title, LX_core::Camera& camera);
+void cameraPanel(const char* title, LX_core::CameraComponent& camera);
 void directionalLightPanel(const char* title,
                            LX_core::DirectionalLight& light);
 

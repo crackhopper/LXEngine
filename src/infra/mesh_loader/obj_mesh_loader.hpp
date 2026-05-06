@@ -1,4 +1,5 @@
 #pragma once
+#include "core/math/bounds.hpp"
 #include "core/platform/types.hpp"
 #include "core/math/vec.hpp"
 #include <memory>
@@ -18,6 +19,7 @@ public:
   const std::vector<LX_core::Vec3f> &getNormals() const;
   const std::vector<LX_core::Vec2f> &getTexCoords() const;
   const std::vector<u32> &getIndices() const;
+  const LX_core::BoundingBox &getBounds() const;
 
 private:
   struct Impl;

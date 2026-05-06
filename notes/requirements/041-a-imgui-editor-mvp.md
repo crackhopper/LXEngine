@@ -1,6 +1,8 @@
-# REQ-041: ImGui Editor MVP — 场景树 / inspector / TRS gizmo / 视口 overlay / F 键预览
+# REQ-041-a: ImGui Editor MVP — 场景树 / inspector / TRS gizmo / 视口 overlay / F 键预览
 
 > 本 REQ 是 [Phase 1.5 ImGui Editor MVP + 命令总线](../roadmaps/main-roadmap/phase-1.5-imgui-editor-mvp.md) 的第 7 步（收口）。在 roadmap 中以"REQ-152 ImGui Editor MVP"前向声明。
+>
+> 2026-05-06 拆分：原 `041-imgui-editor-mvp.md` 即本档（v1，单选 + 4 面板 + F 键预览）。v2 拆成多个独立子 REQ，按 041-* 后缀族归档：[REQ-041-b 命令总线 v2](041-b-command-bus-v2.md) / [REQ-041-c 多选·框选](041-c-editor-multi-select.md) / [REQ-041-d undo·redo UI](041-d-editor-undo-redo-ui.md) / [REQ-041-e 节点 Rename·Duplicate](041-e-editor-node-rename-duplicate.md) / [REQ-041-f 菜单栏·工具栏·主题](041-f-editor-toolbar-menubar-theme.md)。其他子系统 v2 也并入 041-* 家族：[041-g 组件 v2](041-g-component-v2-multi-and-enable.md) / [041-h mesh 三角面级 picking](041-h-mesh-level-triangle-picking.md) / [041-i DebugDraw v2](041-i-debug-draw-persistent-and-mesh.md) / [041-j 组件依赖声明](041-j-component-dependency-declaration.md)。
 
 ## 背景
 
@@ -33,7 +35,7 @@
 - 顶部输入框：path 直接跳转（输入 `/world/player` + 回车 → 选中并展开）
 - 主体：递归渲染 scene root → leaves，每节点一行 `▸ name`（展开 chevron + 名字）
 - 节点点击 → 发 `select <path>` 命令
-- 右键节点弹菜单：Rename / Duplicate / Remove（v1 仅 Remove；其他 v2）
+- 右键节点弹菜单：Rename / Duplicate / Remove（v1 仅 Remove；Rename / Duplicate 移到 [REQ-041-e](041-e-editor-node-rename-duplicate.md)）
 - 当前选中节点用高亮背景色显示
 - 用 `Scene::dumpTree()` 作为渲染数据源是合理的，但 v1 直接遍历 `Scene` 节点更直接（避免文本反 parse）
 
@@ -54,7 +56,7 @@
 
 ### R4: Console 面板
 
-复用 [REQ-040](040-editor-command-bus.md) R5 的 `ConsolePanel`；本 REQ 仅在 main 里实例化并加进 ImGui frame loop。
+复用 [REQ-040](040-a-editor-command-bus.md) R5 的 `ConsolePanel`；本 REQ 仅在 main 里实例化并加进 ImGui frame loop。
 
 ### R5: Viewport overlay（gizmo + 选中线框 + visualizer）
 
@@ -106,7 +108,7 @@ void renderOverlay(ImDrawList* dl, const Camera &editorCam, const Scene &scene, 
 | `R` | gizmo SCALE |
 | `F` | preview 切换 |
 | `Delete` | 选中节点 → 发 `remove <path>` |
-| `Ctrl+D` | 选中节点 → 发 `add ... <name>.copy`（v2 实现，本 REQ 占位） |
+| `Ctrl+D` | 选中节点 → 发 `duplicate <path>`（移到 [REQ-041-e](041-e-editor-node-rename-duplicate.md)；本 REQ 不占位快捷键，避免误触发空命令） |
 | `Esc` | deselect |
 
 ### R9: 所有交互最终走命令总线
@@ -119,7 +121,7 @@ void renderOverlay(ImDrawList* dl, const Camera &editorCam, const Scene &scene, 
 - 快捷键删除 → `bus.dispatch("remove <path>")`
 - inspector 字段改 → `bus.dispatch("set <path>.<field> <value>")`
 
-理由：所有 history / undo / agent-replay 都依赖单点入口。绝**不**给 UI 提供"绕过 CommandBus 直接改 scene"的捷径，否则 [REQ-040](040-editor-command-bus.md) 的 P-19 价值消失。
+理由：所有 history / undo / agent-replay 都依赖单点入口。绝**不**给 UI 提供"绕过 CommandBus 直接改 scene"的捷径，否则 [REQ-040](040-a-editor-command-bus.md) 的 P-19 价值消失。
 
 ## 测试
 
@@ -158,10 +160,10 @@ void renderOverlay(ImDrawList* dl, const Camera &editorCam, const Scene &scene, 
 
 - v1 **不**做 picture-in-picture 预览（依赖 [REQ-042 R1-R8](042-render-target-desc-and-target.md) RenderTarget 重写；R6 选择 `Camera::m_active` 方案绕开此依赖）
 - v1 **不**做文件对话框 asset browser（用命令 `add mesh <path>` 替代）
-- v1 **不**做多选 / 框选（单选 only）
-- v1 **不**做 undo / redo（history 字段已存，逻辑 v2 加）
-- v1 **不**做工具栏 / 菜单栏（只 4 个 dock 面板 + 视口 overlay）
-- v1 **不**做 dark/light theme 切换（用 ImGui 默认 dark）
+- v1 **不**做多选 / 框选（单选 only）；移到 [REQ-041-c](041-c-editor-multi-select.md)
+- v1 **不**做 undo / redo UI（命令总线 history 字段已存）；逻辑挂在 [REQ-041-b](041-b-command-bus-v2.md)，UI 接入在 [REQ-041-d](041-d-editor-undo-redo-ui.md)
+- v1 **不**做工具栏 / 菜单栏（只 4 个 dock 面板 + 视口 overlay）；移到 [REQ-041-f](041-f-editor-toolbar-menubar-theme.md)
+- v1 **不**做 dark/light theme 切换（用 ImGui 默认 dark）；移到 [REQ-041-f](041-f-editor-toolbar-menubar-theme.md)
 - ImGuizmo 是 MIT；本 REQ 引入它**不**改变项目 license 边界
 - gizmo 视觉风格保持 ImGuizmo 默认；不做主题定制
 
@@ -173,20 +175,21 @@ R6 引入的 `Camera::m_active` 与 [REQ-042 R6](042-render-target-desc-and-targ
 
 - [REQ-035 Transform 组件](finished/035-transform-component.md) — gizmo 拖拽生成的命令最终落到 `setTranslation/setRotation/setScale`
 - [REQ-036 路径查询](finished/036-scene-node-path-lookup.md) — scene tree 用 path 作稳定句柄
-- [REQ-037-a IComponent 基础](037-a-component-model-foundation.md) + [REQ-037-b Camera 作为 component](037-b-camera-as-component.md) — gizmo 也能作用于 camera 节点；inspector 按 component 列表渲染
-- [REQ-038 picking](038-ray-aabb-picking-min.md) — 视口点击
-- [REQ-039 DebugDraw](039-debug-draw-subsystem.md) — frustum / arrow / wireBox 可视化
-- [REQ-040 命令总线](040-editor-command-bus.md) — 所有交互的统一入口
+- [REQ-037-a IComponent 基础](finished/037-a-component-model-foundation.md) + [REQ-037-b Camera 作为 component](finished/037-b-camera-as-component.md) — gizmo 也能作用于 camera 节点；inspector 按 component 列表渲染
+- [REQ-038 picking](finished/038-a-ray-aabb-picking-min.md) — 视口点击
+- [REQ-039 DebugDraw](039-a-debug-draw-subsystem.md) — frustum / arrow / wireBox 可视化
+- [REQ-040 命令总线](040-a-editor-command-bus.md) — 所有交互的统一入口
 - [REQ-017](finished/017-imgui-overlay.md) ImGui + SDL3 + Vulkan 基础设施
 - [REQ-018](finished/018-debug-panel-helper.md) 现有 debug panel helper（可选复用）
 
 ## 后续工作
 
-- **Phase 1.6 MCP shim**：基于本 REQ + REQ-040 的命令总线起一个 stdio MCP server。外部 AI 控制编辑器 = MCP 客户端 dispatch_command 工具
-- **REQ-042 RenderTarget 重写**完成后：把 F 键全屏预览升级为 picture-in-picture 视口（同帧并排渲染编辑器相机 + 游戏相机）
+- 编辑器 v2 polish 一族（041-b ~ 041-f）— 命令总线 v2、多选 / 框选、undo·redo UI、节点 Rename / Duplicate、菜单栏 / 工具栏 / 主题；详见上方 split 头注
+- **Phase 1.6 MCP shim**：基于本 REQ + [REQ-040-a](040-a-editor-command-bus.md) 的命令总线起一个 stdio MCP server。外部 AI 控制编辑器 = MCP 客户端 dispatch_command 工具
+- **[REQ-042](042-render-target-desc-and-target.md) RenderTarget 重写**完成后：把 F 键全屏预览升级为 picture-in-picture 视口（同帧并排渲染编辑器相机 + 游戏相机）
 - **REQ-109 PointLight + SpotLight** 落地后：在 viewport_overlay 加几行调用 `DebugDraw::wireSphere` / `cone`，point/spot 影响范围一次性接通
 - **Phase 9 Web 编辑器**：本 REQ 的 4 面板 + 命令总线接口直接搬到浏览器；UI 重写为 Vue，命令空间完全复用
 
 ## 实施状态
 
-待实施。Phase 1.5 第 7 步（收口）。前 6 个 REQ（035-040）必须全部就位后开工。
+待实施。Phase 1.5 第 7 步（收口）。前 6 个 REQ（035 / 036 / 037-a / 037-b / 038-a / 039-a / 040-a）必须全部就位后开工；其中 037-a / 037-b 已完成。

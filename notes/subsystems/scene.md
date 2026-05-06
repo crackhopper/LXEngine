@@ -18,7 +18,7 @@
 
 - `Scene`：持有 renderables、camera 列表、light 列表，要求显式 `sceneName`。
 - `IRenderable`：renderable 抽象接口，新增 `getValidatedPassData(pass)` 只读出口。
-- `SceneNode`：当前主路径实现，聚合 `nodeName`、独立 `name/path`、`MeshSharedPtr`、`MaterialInstanceSharedPtr`、可选 `SkeletonSharedPtr` 与 `PerDrawDataSharedPtr`。
+- `SceneNode`：当前主路径实现，聚合 `nodeName`、独立 `name/path`、`std::vector<std::unique_ptr<IComponent>>`、`PerDrawDataSharedPtr` 与 transform hierarchy。
 - `transform hierarchy`：`SceneNode` 额外维护 `Transform` 形式的 `localTransform`、派生 `Mat4f worldTransform`、可选 parent 和 child 关系；scene 仍然平铺持有 renderable，hierarchy 只负责空间组合。
 - `path root`：`Scene` 内部持有一个只用于路径寻址的 synthetic root；`findByPath("/")` 返回它，真实 top-level 节点路径形如 `/world`。
 - `ValidatedRenderablePassData`：`pass -> validated entry` 缓存项，保存 queue 需要的稳定结构结果。
@@ -27,8 +27,8 @@
 
 ## 典型数据流
 
-1. 构造 `SceneNode(nodeName, mesh, material, skeleton?)`。
-2. `SceneNode` 构造时立即扫描 enabled passes，完成结构性校验并建立 `m_validatedPasses`。
+1. 构造 `SceneNode(nodeName)`，再按需 `addComponent<MeshComponent>(...)`、`addComponent<MaterialComponent>(...)`、`addComponent<SkeletonComponent>(...)`。
+2. `SceneNode` 在可渲染 component 集合变化时扫描 enabled passes，完成结构性校验并建立 `m_validatedPasses`。
 3. `Scene::addRenderable(node)` 检查同一 scene 内 `nodeName` 唯一，为 `SceneNode` 写入 `sceneName/nodeName` 的调试 `StringID`，并接管 shared `MaterialInstance` 的 pass-state 传播。
 4. 编辑器/命令路径走 `SceneNode::setName/getPath` 和 `Scene::findByPath/dumpTree`；这条路径名字与 `nodeName` 解耦，不参与渲染身份。
 5. 如果节点挂在 parent 下，`SceneNode` 会按 `parent.world * local.toMat4()` 懒更新自身 `worldTransform`，并把结果写回 `PerDrawData.model`。
@@ -45,8 +45,8 @@
 - 同一 parent 下允许重名；`findByPath()` 固定返回 child 插入顺序中的首个匹配，且仅对显式命名的重复 sibling 输出 `WARN`。
 - `Scene::dumpTree()` 只导出结构和路径段，不导出 transform / material；导出的每一条路径都应该能再喂回 `findByPath()`。
 - `SceneNode` 回指 parent scene 现在走 `weak_ptr` 语义：挂进 scene 后可锁回 parent，scene 销毁后会自动失效，不再依赖裸指针悬挂状态。
-- `SceneNode` 的结构必填项是 `nodeName`、`mesh`、`materialInstance`；`skeleton` 可选；`perDrawData` 继续保留。
-- `setMesh(...)`、`setMaterialInstance(...)`、`setSkeleton(...)` 会同步重建 validated cache；`setFloat` / `setTexture` / `syncGpuData()` / model 更新不会。
+- `SceneNode` 的结构必填项是 `nodeName`；可渲染能力来自 `MeshComponent` + `MaterialComponent`，`SkeletonComponent` 按需可选；`perDrawData` 继续保留。
+- `MeshComponent::setMesh(...)`、`MaterialComponent::setMaterialInstance(...)`、`SkeletonComponent::setSkeleton(...)`，以及相关 component 的 add/remove，会同步重建 validated cache；`setFloat` / `setTexture` / `syncGpuData()` / model 更新不会。
 - `setLocalTransform(...)`、`setTranslation(...)`、`setRotation(...)`、`setScale(...)`、`setParent(...)`、`clearParent()` 只触发 world/per-draw dirty 传播，不会重建 validated cache，因为 pipeline 和 descriptor 结构没变。
 - `supportsPass(pass)` 现在是缓存查询，不再是简单的 pass-mask 按位判断。
 - `SceneNode` 默认 `visibilityMask = 0xffffffff`，`Camera` 默认 `cullingMask = 0xffffffff`，所以旧场景在不显式设置 mask 时行为不变。
@@ -80,7 +80,7 @@
 - 想改结构性校验：看 `src/core/scene/object.cpp` 里的 `rebuildValidatedCache()`。
 - 想改 scene-level 资源筛选：看 `Scene::getSceneLevelResources()`。
 - 想改 camera/renderable 可见性过滤：看 `Scene::getCombinedCameraCullingMask()` 和 `RenderQueue::buildFromScene()`。
-- 想改 shared material 的结构传播、nodeName 唯一性、路径 root / `findByPath()` / `dumpTree()`：看 `Scene::addRenderable()`、`Scene::findByPath()`、`Scene::dumpTree()` 和 `Scene::revalidateNodesUsing(...)`。
+- 想改 shared material 的结构传播、nodeName 唯一性、路径 root / `findByPath()` / `dumpTree()`：看 `Scene::addRenderable()`、`Scene::findByPath()`、`Scene::dumpTree()`、`Scene::revalidateNodesUsing(...)`，以及 `src/core/scene/components/material_component.cpp`。
 
 ## 关联文档
 

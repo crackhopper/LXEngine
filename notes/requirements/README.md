@@ -47,25 +47,46 @@
 - 重排发生频率低（每次大型规划重排一次，~月级）
 - 后缀族用于吸收局部拆分，避免一次需求讨论扩展就牵动后续所有编号
 
-## 当前 pending REQ（实施顺序快照，2026-05-01）
+## 当前 pending REQ（实施顺序快照，2026-05-06）
+
+### Phase 1.5 v1（编辑器 MVP）
 
 | 文件号 | 主题 | 时机 | 说明 |
 |--------|------|------|------|
-| [037-a](037-a-component-model-foundation.md) | IComponent 基础设施 + Mesh / Material / Skeleton 转 component | Phase 1.5 第 3a 步 | 原 REQ-037 拆分出的 component 模型 |
-| [037-b](037-b-camera-as-component.md) | Camera 作为 component 接入 SceneNode | Phase 1.5 第 3b 步 | 原 REQ-037 拆分出的 Camera 接入 |
-| [038](038-ray-aabb-picking-min.md) | ray-AABB picking 暴力版 | Phase 1.5 第 4 步 | AABB + ray slab |
-| [039](039-debug-draw-subsystem.md) | DebugDraw 子系统 | Phase 1.5 第 5 步 | drawLine/wireSphere/frustum/cone/arrow/axis |
-| [040](040-editor-command-bus.md) | Editor 命令总线 | Phase 1.5 第 6 步 | 文本协议 + 控制台 |
-| [041](041-imgui-editor-mvp.md) | ImGui Editor MVP | Phase 1.5 第 7 步 | ImGuizmo + 4 面板 |
+| [038-a](finished/038-a-ray-aabb-picking-min.md) | ray-AABB picking 暴力版 | 已完成 | AABB + ray slab |
+| [039-a](039-a-debug-draw-subsystem.md) | DebugDraw 子系统 | Phase 1.5 第 5 步 | drawLine/wireSphere/frustum/cone/arrow/axis |
+| [040-a](040-a-editor-command-bus.md) | Editor 命令总线 | Phase 1.5 第 6 步 | 文本协议 + 控制台 + 单选 |
+| [041-a](041-a-imgui-editor-mvp.md) | ImGui Editor MVP | Phase 1.5 第 7 步 | ImGuizmo + 4 面板 + F 键预览 |
 | [042](042-render-target-desc-and-target.md) | RenderTarget 拆 desc + binding | Phase 1.5 完工后 / Phase 1 REQ-103 之前 | 跨 pass 资源前置 |
 
-后续 Phase 1 渲染深度（多光源 / Shadow / PBR / IBL / G-Buffer）的 REQ 取号将从 043 起，按重排后的优先路径排号。
+### Phase 1.5 v2（编辑器 polish 等 — 全部归到 041-* 后缀族，不阻塞 Phase 1 / Phase 2 主线）
+
+按 README 第 5 条"后缀顺序 = 实施顺序"，v2 一族全部排在 041-a 之后、042 之前。立项窗口写在每个 REQ 自身。
+
+| 文件号 | 主题 | 立项窗口 |
+|--------|------|----------|
+| [041-b](041-b-command-bus-v2.md) | 命令总线 v2（参数补全 + undo·redo + 多选 EditorState） | 040-a / 041-a 落地 + 实战暴露痛点后；最大杠杆 |
+| [041-c](041-c-editor-multi-select.md) | 编辑器多选 / 框选 | 041-b 落地后 |
+| [041-d](041-d-editor-undo-redo-ui.md) | undo·redo UI 接入（工具栏按钮 + 状态栏 + Ctrl+Z 路由） | 041-b 落地后；与 041-c 并行 |
+| [041-e](041-e-editor-node-rename-duplicate.md) | 节点 Rename / Duplicate / Ctrl+D | 041-b 落地后；与 041-c / 041-d 并行 |
+| [041-f](041-f-editor-toolbar-menubar-theme.md) | 编辑器 chrome（菜单栏 + 工具栏其余按钮 + 主题切换） | 041-d 落地后（在它建立的工具栏 / 状态栏外壳上扩展） |
+| [041-g](041-g-component-v2-multi-and-enable.md) | Component 模型 v2（同节点多份 + enable·disable） | 037-a 已落地；Phase 1 出现 multi-mesh 真实需求后 |
+| [041-h](041-h-mesh-level-triangle-picking.md) | mesh 三角面级 picking（hit point / normal + CPU mesh 数据） | Phase 2 REQ-209 空间索引落地后 |
+| [041-i](041-i-debug-draw-persistent-and-mesh.md) | DebugDraw v2（persistent draw + `wireMesh` 一行画整 mesh） | 041-h 落地后 |
+| [041-j](041-j-component-dependency-declaration.md) | Component 依赖声明（`ComponentTraits` Requires / Before / After） | Phase 5 物理立项 + 真实 require 链时 |
+
+后续 Phase 1 渲染深度（多光源 / Shadow / PBR / IBL / G-Buffer）的 REQ 取号将从 043 起，按重排后的优先路径排号。Phase 1.5 v2 一族全部归到 041-* 后缀族下，不占用 043+ 编号，避免与 Phase 1 主线冲突。
 
 ## 历史
 
+- 2026-05-06（晚整理）：把所有 v2 REQ 重排到 041-* 后缀族下（实施顺序 = 文件号顺序，所以 v2 必须排在 041-a 之后才正确）。同时把"命令总线 v2"和"编辑器 polish v2"两个原本打包的 REQ 进一步拆细：041-b 命令总线 v2 / 041-c 多选·框选 / 041-d undo·redo UI / 041-e Rename·Duplicate / 041-f chrome / 041-g 组件 v2 multi+enable / 041-h mesh triangle picking / 041-i DebugDraw v2 / 041-j 组件依赖声明（ComponentTraits）。每个 REQ 一个连续实施周期。
+- 2026-05-06：把原 `038 / 039 / 040 / 041` 四个 Phase 1.5 v1 REQ 全部按后缀族重命名为 `038-a / 039-a / 040-a / 041-a`，并把它们各自显式延后的 v2 工作整理到新的 `037-c / 038-b / 039-b / 040-b / 041-b` 文件中（这些 v2 文件随后被 2026-05-06 晚整理重排到 041-* 家族）。同步更新所有 cross-ref 路径与 roadmap。
 - 2026-05-01：补充 `NNN-a` / `NNN-b` 后缀族约定。需求讨论扩展导致局部拆分时，优先把原 `020` 改成 `020-a`、新增 `020-b`，不再默认整体后移后续编号。
 - 2026-05-01：原 REQ-037 (Camera 接入 SceneNode) 在评审中决定改用 component 模型方案，规模升级为架构级重构，拆为 `037-a-component-model-foundation.md`（IComponent 基础设施 + mesh/material/skeleton 转 component）+ `037-b-camera-as-component.md`（Camera 作为 component 接入），是上一条后缀族约定的首个应用。
 - 2026-05-01：`REQ-034` 删除 `RenderTarget::getHash` dead code 已完成并归档到 `finished/034-remove-render-target-get-hash.md`，pending 队列从 `REQ-035` 开始。
+- 2026-05-06：`REQ-037-b` Camera component 接入已完成并归档到 `finished/037-b-camera-as-component.md`。
+- 2026-05-06：`REQ-038-a` ray-AABB picking 最小子集已完成并归档到 `finished/038-a-ray-aabb-picking-min.md`，pending 队列从 `REQ-039-a` 开始。
+- 2026-05-06：`REQ-037-a` component 模型基础已完成并归档到 `finished/037-a-component-model-foundation.md`，pending 队列从 `REQ-037-b` 开始。
 - 2026-05-01：`REQ-036` 场景节点路径查询已完成并归档到 `finished/036-scene-node-path-lookup.md`，pending 队列从 `REQ-037-a` 开始。
 - 2026-05-01：`REQ-035` Transform 组件已完成并归档到 `finished/035-transform-component.md`，pending 队列从 `REQ-036` 开始。
 - 2026-05-01：建立"REQ 文件号 = 实施顺序"约定。同时把原 REQ-034 (RenderTarget 重写) 与原 REQ-042 (getHash cleanup) 编号 swap，让 cleanup 取最小号 034。研究文档 `frame-graph/` 中原 speculative "REQ-035..041" 改为字母 `REQ-A..G` 避免与实际落地的 035-041 (Phase 1.5) 冲突。

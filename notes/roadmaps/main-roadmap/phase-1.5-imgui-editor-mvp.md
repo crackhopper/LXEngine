@@ -8,7 +8,7 @@
 
 ## 当前实施状态
 
-部分开工。`REQ-035` Transform 组件与 `REQ-036` 路径查询已完成；后续从 `REQ-037-a` 开始继续推进。设计已收口在工作机的临时计划文件 `~/.claude/plans/robust-mapping-flame.md`（不在仓库内），本 phase 文档是其落地索引。
+部分开工。`REQ-035` Transform 组件、`REQ-036` 路径查询、`REQ-037-a` component 模型基础、`REQ-037-b` camera component 接入、`REQ-038-a` ray-AABB picking 已完成；后续从 `REQ-039-a` 开始继续推进。设计已收口在工作机的临时计划文件 `~/.claude/plans/robust-mapping-flame.md`（不在仓库内），本 phase 文档是其落地索引。
 
 ## 范围与边界
 
@@ -42,30 +42,57 @@
 |-----|------|----------|
 | [REQ-035](../../requirements/finished/035-transform-component.md) | Transform 组件 | 把现有 `SceneNode::m_localTransform` (Mat4) 重构为 `Transform { Vec3 t, Quat r, Vec3 s }`；保留 lazy world + dirty 传播 |
 | [REQ-036](../../requirements/finished/036-scene-node-path-lookup.md) | 场景节点路径查询 | 新增 `Scene::findByPath("/world/player/arm")` |
-| [REQ-037-a](../../requirements/037-a-component-model-foundation.md) | IComponent 基础设施 + Mesh / Material / Skeleton 转 component | 抽出 `IComponent` 基类；mesh / material / skeleton 都改写成 component；`SceneNode` 改为持有 component 集合；删除 `node->getMesh()` 等专属 getter，调用点全量迁移 |
-| [REQ-037-b](../../requirements/037-b-camera-as-component.md) | Camera 作为 component 接入 SceneNode | `Camera` 类彻底改写为 `CameraComponent`，挂在 `SceneNode` 上；位置 / 朝向由 owner SceneNode 的 transform chain 驱动；硬依赖 037-a |
-| [REQ-038](../../requirements/038-ray-aabb-picking-min.md) | ray-AABB picking 暴力版 | 无空间索引；遍历可见节点 + 每 mesh 加载时算一次本地 AABB；选中最近命中 |
+| [REQ-037-a](../../requirements/finished/037-a-component-model-foundation.md) | IComponent 基础设施 + Mesh / Material / Skeleton 转 component | 已完成：`IComponent` 基类、Mesh/Material/Skeleton component、`SceneNode` component 集合、调用点迁移 |
+| [REQ-037-b](../../requirements/finished/037-b-camera-as-component.md) | Camera 作为 component 接入 SceneNode | 已完成：`Camera` 类重构为 `CameraComponent`，挂在 `SceneNode` 上；位置 / 朝向由 owner SceneNode 的 transform chain 驱动 |
+| [REQ-038-a](../../requirements/finished/038-a-ray-aabb-picking-min.md) | ray-AABB picking 暴力版 | 无空间索引；遍历可见节点 + 每 mesh 加载时算一次本地 AABB；选中最近命中 |
 
-### 本 phase 新增
+### 本 phase 新增（v1）
 
 | REQ | 标题 | 主要工作 |
 |-----|------|----------|
-| [REQ-039](../../requirements/039-debug-draw-subsystem.md) | DebugDraw 子系统 | 公开 API：`drawLine / wireSphere / frustum / cone / arrow / axis`；累积每帧 line 顶点；line topology pipeline；`Layer_EditorOverlay` mask；FrameGraph 后置一个 debug overlay pass。**易用性硬指标：业务代码一行调用画一根世界空间线。** |
-| [REQ-040](../../requirements/040-editor-command-bus.md) | Editor 命令总线 | `verb arg1 arg2` 文本协议；handler 注册表；返回 `{ ok, message, payload }`；初版命令集：`select / deselect / move / rotate / scale / add / remove / list / set / get / cam / preview`；预留 history（为后续 undo / MCP 服务） |
-| [REQ-041](../../requirements/041-imgui-editor-mvp.md) | ImGui Editor MVP | 接入 ImGuizmo；scene tree / inspector / console / viewport overlay 四个面板；F 键全屏切换游戏相机；视锥与 directional light 用 DebugDraw 画出 |
+| [REQ-039-a](../../requirements/039-a-debug-draw-subsystem.md) | DebugDraw 子系统 | 公开 API：`drawLine / wireSphere / frustum / cone / arrow / axis`；累积每帧 line 顶点；line topology pipeline；`Layer_EditorOverlay` mask；FrameGraph 后置一个 debug overlay pass。**易用性硬指标：业务代码一行调用画一根世界空间线。** |
+| [REQ-040-a](../../requirements/040-a-editor-command-bus.md) | Editor 命令总线 | `verb arg1 arg2` 文本协议；handler 注册表；返回 `{ ok, message, payload }`；初版命令集：`select / deselect / move / rotate / scale / add / remove / list / set / get / cam / preview`；预留 history（为后续 undo / MCP 服务） |
+| [REQ-041-a](../../requirements/041-a-imgui-editor-mvp.md) | ImGui Editor MVP | 接入 ImGuizmo；scene tree / inspector / console / viewport overlay 四个面板；F 键全屏切换游戏相机；视锥与 directional light 用 DebugDraw 画出 |
+
+### Phase 1.5 v2（编辑器 polish 等 — 全部归到 041-* 后缀族，不阻塞 Phase 1 / Phase 2 主线）
+
+2026-05-06 整理：v2 工作全部归到 `041-*` 后缀族下（按 README "后缀顺序 = 实施顺序" 约定，v2 必须排在 041-a 之后才正确）。同时把"命令总线 v2"和"编辑器 polish v2"两块大题进一步拆细，每个 REQ 一个连续实施周期。立项窗口写在每个 REQ 自身。
+
+| REQ | 标题 | 立项窗口 |
+|-----|------|----------|
+| [REQ-041-b](../../requirements/041-b-command-bus-v2.md) | 命令总线 v2（参数补全 + undo·redo + 多选 EditorState） | 040-a / 041-a 落地 + 实战暴露痛点后；最大杠杆 |
+| [REQ-041-c](../../requirements/041-c-editor-multi-select.md) | 编辑器多选 / 框选 | 041-b 落地后 |
+| [REQ-041-d](../../requirements/041-d-editor-undo-redo-ui.md) | undo·redo UI 接入（工具栏按钮 + 状态栏 + Ctrl+Z 路由） | 041-b 落地后；与 041-c 并行 |
+| [REQ-041-e](../../requirements/041-e-editor-node-rename-duplicate.md) | 节点 Rename / Duplicate / Ctrl+D | 041-b 落地后；与 041-c / 041-d 并行 |
+| [REQ-041-f](../../requirements/041-f-editor-toolbar-menubar-theme.md) | 编辑器 chrome（菜单栏 + 工具栏其余按钮 + 主题切换） | 041-d 落地后 |
+| [REQ-041-g](../../requirements/041-g-component-v2-multi-and-enable.md) | Component 模型 v2（同节点多份 + enable·disable） | 037-a 已落地；Phase 1 出现 multi-mesh 真实需求后 |
+| [REQ-041-h](../../requirements/041-h-mesh-level-triangle-picking.md) | mesh 三角面级 picking（hit point / normal + CPU mesh 数据） | [Phase 2 REQ-209](phase-2-foundation-layer.md#req-209--aabb--空间索引) 空间索引落地后 |
+| [REQ-041-i](../../requirements/041-i-debug-draw-persistent-and-mesh.md) | DebugDraw v2（persistent draw + `wireMesh` 一行画整 mesh） | 041-h 落地后 |
+| [REQ-041-j](../../requirements/041-j-component-dependency-declaration.md) | Component 依赖声明（`ComponentTraits` Requires / Before / After） | Phase 5 物理立项 + 真实 require 链时 |
 
 ## 推进顺序
 
 ```
-Step 0  roadmap 文档更新（README + phase-1 + 本 phase）  ← 文档先行（已完成）
-Step 1   REQ-035    Transform 组件                                 ← 基础（已完成）
-Step 2   REQ-036    路径查询                                       ← 基础（已完成）
-Step 3a  REQ-037-a  IComponent 基础 + mesh/material/skeleton       ← 架构级重构，单独 commit
-Step 3b  REQ-037-b  Camera 作为 component                          ← 第一个非 mesh 应用，单独 commit
-Step 4   REQ-038    ray-AABB picking + mesh bounds                 ← 选择交互前置
-Step 5  REQ-039 DebugDraw 子系统                        ← 可视化基础
-Step 6  REQ-040 命令总线 + 控制台面板                   ← 控制层基础
-Step 7  REQ-041 ImGui Editor MVP                        ← 收口
+Step 0   roadmap 文档更新（README + phase-1 + 本 phase）          ← 文档先行（已完成）
+Step 1   REQ-035       Transform 组件                              ← 基础（已完成）
+Step 2   REQ-036       路径查询                                    ← 基础（已完成）
+Step 3a  REQ-037-a     IComponent 基础 + mesh/material/skeleton    ← 已完成
+Step 3b  REQ-037-b     Camera 作为 component                       ← 已完成
+Step 4   REQ-038-a     ray-AABB picking + mesh bounds              ← 选择交互前置
+Step 5   REQ-039-a     DebugDraw 子系统                             ← 可视化基础
+Step 6   REQ-040-a     命令总线 + 控制台面板                        ← 控制层基础
+Step 7   REQ-041-a     ImGui Editor MVP                             ← v1 收口
+─────────────────────────────────────────────────────────────────
+v2 一族（041-b ~ 041-j；按各自立项窗口推进，可与 Phase 1 / Phase 2 主线并行）：
+         REQ-041-b     命令总线 v2                    ← 最大杠杆，开 3 条 UI 后续
+         REQ-041-c     编辑器多选 / 框选              ← 依赖 041-b
+         REQ-041-d     undo·redo UI                   ← 依赖 041-b（与 041-c 并行）
+         REQ-041-e     节点 Rename / Duplicate        ← 依赖 041-b（与 041-c / d 并行）
+         REQ-041-f     编辑器 chrome                  ← 依赖 041-d
+         REQ-041-g     Component v2 multi+enable
+         REQ-041-h     mesh 三角面级 picking          ← 依赖 Phase 2 REQ-209
+         REQ-041-i     DebugDraw v2                   ← 依赖 041-h
+         REQ-041-j     Component 依赖声明             ← 等 Phase 5 物理立项
 ```
 
 每个 step 完成时 `demo_scene_viewer` 都应仍能正常运行，不破坏已有可视效果。
@@ -97,11 +124,11 @@ Step 7  REQ-041 ImGui Editor MVP                        ← 收口
 
 ## 风险
 
-- **ImGuizmo 与 LX 数学类型适配**：薄薄一层 adapter（约 50 LOC）。立项 [REQ-041](../../requirements/041-imgui-editor-mvp.md) 前先 spike 一次。
-- **Component 模型重构（[REQ-037-a](../../requirements/037-a-component-model-foundation.md)）的扇出面**：删除 `SceneNode::getMesh / getMaterialInstance / getSkeleton` 后，`src/` 下所有读这三个字段的位置（`object.cpp` 内的 renderable 路径、demo / loader / test setup）一次性硬迁移。建议作为 Phase 1.5 第一笔架构 commit 单独落地，再开 037-b。
-- **Camera-as-component（[REQ-037-b](../../requirements/037-b-camera-as-component.md)）的迁移面**：所有 scene_viewer 构造 camera + Orbit / FreeFly 控制器接口的位置都要改（`Camera*` → `CameraComponent*`）。在 037-a 落地后单独 commit 完成。
+- **ImGuizmo 与 LX 数学类型适配**：薄薄一层 adapter（约 50 LOC）。立项 [REQ-041](../../requirements/041-a-imgui-editor-mvp.md) 前先 spike 一次。
+- **Component 模型重构（[REQ-037-a](../../requirements/finished/037-a-component-model-foundation.md)）的扇出面**：已完成。`SceneNode::getMesh / getMaterialInstance / getSkeleton` 已删除，主路径迁移到 component lookup；后续 work 以此为前提。
+- **Camera-as-component（[REQ-037-b](../../requirements/finished/037-b-camera-as-component.md)）的迁移面**：已完成。scene_viewer 构造 camera + Orbit / FreeFly 控制器接口已从 `Camera*` 迁到 `CameraComponent*`。
 - **Mesh 包围盒**：当前 mesh loader 未必计算 bounds。需在 GLTF / OBJ 加载流程加一遍 min/max。
-- **多 camera 同 swapchain 渲染语义**：`Camera::matchesTarget(nullopt)` 默认绑定 swapchain，多 camera 同 nullopt 会都渲染。F 键切换在 [REQ-041](../../requirements/041-imgui-editor-mvp.md) R6 中已选定方案 A：每个 `Camera` 加 `m_active` 布尔。
+- **多 camera 同 swapchain 渲染语义**：`Camera::matchesTarget(nullopt)` 默认绑定 swapchain，多 camera 同 nullopt 会都渲染。F 键切换在 [REQ-041](../../requirements/041-a-imgui-editor-mvp.md) R6 中已选定方案 A：每个 `Camera` 加 `m_active` 布尔。
 
 ## 下一步
 

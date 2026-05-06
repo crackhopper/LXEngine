@@ -1,4 +1,6 @@
 #include "core/input/mock_input_state.hpp"
+#include "core/scene/components/camera_component.hpp"
+#include "core/scene/object.hpp"
 #include "core/scene/freefly_camera_controller.hpp"
 #include "core/utils/env.hpp"
 
@@ -24,10 +26,18 @@ constexpr float kEps = 1e-2f;
 
 bool approx(float a, float b) { return std::abs(a - b) < kEps; }
 
+std::reference_wrapper<CameraComponent> makeCameraComponent(SceneNode::SharedPtr &node) {
+  node = SceneNode::create("freefly_camera");
+  auto camera = node->addComponent<CameraComponent>();
+  EXPECT(camera.has_value(), "camera component should attach");
+  return camera->get();
+}
+
 void testWKeyMovesForward() {
   // yaw=180, pitch=0 → forward is (0, 0, -1)
   FreeFlyCameraController ctrl({0, 0, 0}, 180.0f, 0.0f);
-  Camera cam;
+  SceneNode::SharedPtr node;
+  auto cam = makeCameraComponent(node);
   MockInputState input;
 
   input.setKeyDown(KeyCode::W, true);
@@ -43,25 +53,29 @@ void testWKeyMovesForward() {
 
 void testDefaultYawFacesTowardOrigin() {
   FreeFlyCameraController ctrl;
-  Camera cam;
+  SceneNode::SharedPtr node;
+  auto cam = makeCameraComponent(node);
   MockInputState input;
 
   ctrl.update(cam, input, 0.016f);
 
-  EXPECT(approx(cam.position.x, 0.0f), "default x should be ~0");
-  EXPECT(approx(cam.position.y, 0.0f), "default y should be ~0");
-  EXPECT(approx(cam.position.z, 5.0f), "default z should be ~5");
-  EXPECT(approx(cam.target.x, 0.0f), "default target.x should be ~0");
-  EXPECT(approx(cam.target.y, 0.0f), "default target.y should be ~0");
-  EXPECT(cam.target.z < cam.position.z,
+  const auto eye = cam.get().getEyePosition();
+  const auto target = cam.get().getLookTarget();
+  EXPECT(approx(eye.x, 0.0f), "default x should be ~0");
+  EXPECT(approx(eye.y, 0.0f), "default y should be ~0");
+  EXPECT(approx(eye.z, 5.0f), "default z should be ~5");
+  EXPECT(approx(target.x, 0.0f), "default target.x should be ~0");
+  EXPECT(approx(target.y, 0.0f), "default target.y should be ~0");
+  EXPECT(target.z < eye.z,
          "default target should point toward negative Z");
-  EXPECT(approx(cam.target.z, 4.0f),
+  EXPECT(approx(target.z, 4.0f),
          "default target should be one unit forward along -Z");
 }
 
 void testMouseLookOnlyWithRightButton() {
   FreeFlyCameraController ctrl({0, 0, 0}, 0.0f, 0.0f);
-  Camera cam;
+  SceneNode::SharedPtr node;
+  auto cam = makeCameraComponent(node);
   MockInputState input;
 
   // Without right button — mouse delta should NOT affect yaw/pitch
@@ -84,7 +98,8 @@ void testMouseLookOnlyWithRightButton() {
 
 void testDiagonalMovementNormalized() {
   FreeFlyCameraController ctrl({0, 0, 0}, 0.0f, 0.0f);
-  Camera cam;
+  SceneNode::SharedPtr node;
+  auto cam = makeCameraComponent(node);
   MockInputState input;
 
   // Single axis: W only
@@ -111,7 +126,8 @@ void testDiagonalMovementNormalized() {
 
 void testBoostMultipliesSpeed() {
   FreeFlyCameraController ctrl({0, 0, 0}, 0.0f, 0.0f);
-  Camera cam;
+  SceneNode::SharedPtr node;
+  auto cam = makeCameraComponent(node);
   MockInputState input;
 
   input.setKeyDown(KeyCode::W, true);
@@ -125,7 +141,8 @@ void testBoostMultipliesSpeed() {
 
 void testPitchIsClamped() {
   FreeFlyCameraController ctrl({0, 0, 0}, 180.0f, 80.0f);
-  Camera cam;
+  SceneNode::SharedPtr node;
+  auto cam = makeCameraComponent(node);
   MockInputState input;
 
   input.setMouseButtonDown(MouseButton::Right, true);

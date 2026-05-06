@@ -23,6 +23,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_input_state
   test_clock
   test_math
+  test_picking
   test_sdl_input
   test_orbit_camera_controller
   test_freefly_camera_controller

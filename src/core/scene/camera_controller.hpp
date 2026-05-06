@@ -1,6 +1,6 @@
 #pragma once
 #include "core/input/input_state.hpp"
-#include "core/scene/camera.hpp"
+#include "core/scene/components/camera_component.hpp"
 #include <memory>
 
 namespace LX_core {
@@ -11,7 +11,7 @@ public:
 
   /// Update camera spatial parameters based on input.
   /// Does NOT call camera.updateMatrices(); the caller decides when to update matrices.
-  virtual void update(Camera &camera, const IInputState &input, float dt) = 0;
+  virtual void update(CameraComponent &camera, const IInputState &input, float dt) = 0;
 };
 
 using CameraControllerSharedPtr = std::shared_ptr<ICameraController>;

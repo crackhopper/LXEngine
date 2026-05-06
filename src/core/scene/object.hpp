@@ -7,7 +7,9 @@
 #include "core/math/transform.hpp"
 #include "core/pipeline/pipeline_key.hpp"
 #include "core/rhi/gpu_resource.hpp"
+#include "core/scene/component.hpp"
 #include "core/scene/camera.hpp"
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <functional>
@@ -15,6 +17,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace LX_core {
@@ -91,8 +94,7 @@ class SceneNode final : public IRenderable,
 public:
   using SharedPtr = std::shared_ptr<SceneNode>;
 
-  SceneNode(std::string nodeName, MeshSharedPtr mesh, MaterialInstanceSharedPtr material,
-            SkeletonSharedPtr skeleton = nullptr);
+  explicit SceneNode(std::string nodeName);
   ~SceneNode() override;
 
   SceneNode(const SceneNode &) = delete;
@@ -100,23 +102,82 @@ public:
   SceneNode(SceneNode &&) = delete;
   SceneNode &operator=(SceneNode &&) = delete;
 
-  static SharedPtr create(std::string nodeName, MeshSharedPtr mesh,
-                          MaterialInstanceSharedPtr material,
-                          SkeletonSharedPtr skeleton = nullptr) {
-    return std::make_shared<SceneNode>(std::move(nodeName), std::move(mesh),
-                                       std::move(material),
-                                       std::move(skeleton));
+  static SharedPtr create(std::string nodeName) {
+    return std::make_shared<SceneNode>(std::move(nodeName));
   }
 
-  const MeshSharedPtr &getMesh() const { return m_mesh; }
-  const MaterialInstanceSharedPtr &getMaterialInstance() const {
-    return m_materialInstance;
-  }
-  const std::optional<SkeletonSharedPtr> &getSkeleton() const { return m_skeleton; }
+  template <typename T, typename... Args>
+  std::optional<std::reference_wrapper<T>> addComponent(Args &&...args) {
+    const ComponentTypeId typeId = componentTypeId<T>();
+    const auto exists =
+        std::find_if(m_components.begin(), m_components.end(),
+                     [typeId](const std::unique_ptr<IComponent> &component) {
+                       return component->getTypeId() == typeId;
+                     });
+    assert(exists == m_components.end() &&
+           "SceneNode duplicate component type is not allowed");
+    if (exists != m_components.end()) {
+      return std::nullopt;
+    }
 
-  void setMesh(MeshSharedPtr mesh);
-  void setMaterialInstance(MaterialInstanceSharedPtr material);
-  void setSkeleton(SkeletonSharedPtr skeleton);
+    auto component = std::make_unique<T>(std::forward<Args>(args)...);
+    auto &componentRef = *component;
+    const bool affectsRenderableStructure =
+        componentRef.affectsRenderableStructure();
+    componentRef.attachTo(*this);
+    m_components.push_back(std::move(component));
+    if (affectsRenderableStructure) {
+      rebuildValidatedCache();
+    }
+    return std::ref(componentRef);
+  }
+
+  template <typename T>
+  std::optional<std::reference_wrapper<T>> getComponent() {
+    const ComponentTypeId typeId = componentTypeId<T>();
+    for (auto &component : m_components) {
+      if (component->getTypeId() == typeId) {
+        return std::ref(static_cast<T &>(*component));
+      }
+    }
+    return std::nullopt;
+  }
+
+  template <typename T>
+  std::optional<std::reference_wrapper<const T>> getComponent() const {
+    const ComponentTypeId typeId = componentTypeId<T>();
+    for (const auto &component : m_components) {
+      if (component->getTypeId() == typeId) {
+        return std::cref(static_cast<const T &>(*component));
+      }
+    }
+    return std::nullopt;
+  }
+
+  template <typename T>
+  bool removeComponent() {
+    const ComponentTypeId typeId = componentTypeId<T>();
+    const auto it =
+        std::find_if(m_components.begin(), m_components.end(),
+                     [typeId](const std::unique_ptr<IComponent> &component) {
+                       return component->getTypeId() == typeId;
+                     });
+    if (it == m_components.end()) {
+      return false;
+    }
+
+    const bool affectsRenderableStructure = (*it)->affectsRenderableStructure();
+    (*it)->detachFromOwner();
+    m_components.erase(it);
+    if (affectsRenderableStructure) {
+      rebuildValidatedCache();
+    }
+    return true;
+  }
+
+  std::vector<std::reference_wrapper<IComponent>> listComponents();
+  std::vector<std::reference_wrapper<const IComponent>> listComponents() const;
+
   void setLocalTransform(const Transform &transform);
   const Transform &getLocalTransform() const { return m_localTransform; }
   void setTranslation(const Vec3f &translation);
@@ -129,6 +190,8 @@ public:
   Quatf getRotation() const { return m_localTransform.rotation; }
   Vec3f getScale() const { return m_localTransform.scale; }
   const Mat4f &getWorldTransform() const;
+  BoundingBox getLocalBounds() const;
+  BoundingBox getWorldBounds() const;
   void setParent(const SharedPtr &parent);
   void clearParent();
   SharedPtr getParent() const { return m_parent.lock(); }
@@ -159,6 +222,7 @@ public:
 
 private:
   friend class Scene;
+  friend class IComponent;
   struct PathRootTag {};
   explicit SceneNode(PathRootTag);
   [[nodiscard]] static SharedPtr createPathRoot();
@@ -168,22 +232,18 @@ private:
   void removeFromParentChildrenList();
   void pruneExpiredChildren();
   void rebuildValidatedCache();
-  void registerMaterialPassListener();
-  void unregisterMaterialPassListener();
+  void clearComponents();
   void warnIfSiblingNameIsDuplicated() const;
   [[nodiscard]] std::string getPathSegment() const;
   [[nodiscard]] static std::string sanitizeName(std::string name);
 
   std::string m_nodeName;
   std::string m_name;
-  MeshSharedPtr m_mesh;
-  MaterialInstanceSharedPtr m_materialInstance;
-  std::optional<SkeletonSharedPtr> m_skeleton;
+  std::vector<std::unique_ptr<IComponent>> m_components;
   PerDrawDataSharedPtr m_perDrawData;
   StringID m_debugId;
   std::unordered_map<StringID, ValidatedRenderablePassData, StringID::Hash>
       m_validatedPasses;
-  u64 m_materialPassListenerId = 0;
   std::weak_ptr<Scene> m_scene;
   std::weak_ptr<SceneNode> m_parent;
   std::vector<std::weak_ptr<SceneNode>> m_children;

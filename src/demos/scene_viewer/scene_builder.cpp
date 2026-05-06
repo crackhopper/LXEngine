@@ -5,6 +5,8 @@
 #include "core/asset/texture.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
+#include "core/scene/components/material_component.hpp"
+#include "core/scene/components/mesh_component.hpp"
 #include "core/utils/string_table.hpp"
 #include "infra/material_loader/generic_material_loader.hpp"
 #include "infra/mesh_loader/gltf_mesh_loader.hpp"
@@ -100,7 +102,7 @@ MeshSharedPtr buildMeshFromGltf(const infra::GLTFLoader& loader) {
 
   auto vb = VertexBuffer<VertexPosNormalUvBone>::create(std::move(verts));
   auto ib = IndexBuffer::create(std::vector<u32>(indices));
-  return Mesh::create(vb, ib);
+  return Mesh::create(vb, ib, loader.getBounds());
 }
 
 // Load an image file and wrap it in a CombinedTextureSampler the material
@@ -214,7 +216,18 @@ MeshSharedPtr buildGroundMesh() {
   auto vb = VertexBuffer<VertexPosNormalUvBone>::create(std::move(verts));
   auto ib = IndexBuffer::create(
       std::vector<u32>{0, 1, 2, 0, 2, 3});
-  return Mesh::create(vb, ib);
+  return Mesh::create(vb, ib,
+                      LX_core::BoundingBox{Vec3f{-half, groundY, -half},
+                                           Vec3f{half, groundY, half}});
+}
+
+LX_core::SceneNodeSharedPtr makeRenderableNode(const char *nodeName,
+                                               MeshSharedPtr mesh,
+                                               MaterialInstanceSharedPtr material) {
+  auto node = SceneNode::create(nodeName);
+  node->addComponent<LX_core::MeshComponent>(std::move(mesh));
+  node->addComponent<LX_core::MaterialComponent>(std::move(material));
+  return node;
 }
 
 } // namespace
@@ -227,13 +240,13 @@ LX_core::SceneNodeSharedPtr buildHelmetNode(const std::filesystem::path& gltfPat
   auto material =
       makeHelmetMaterial(loader.getMaterial(), gltfPath.parent_path());
 
-  return SceneNode::create("helmet", std::move(mesh), std::move(material));
+  return makeRenderableNode("helmet", std::move(mesh), std::move(material));
 }
 
 LX_core::SceneNodeSharedPtr buildGroundNode() {
   auto mesh = buildGroundMesh();
   auto material = makeGroundMaterial();
-  return SceneNode::create("ground", std::move(mesh), std::move(material));
+  return makeRenderableNode("ground", std::move(mesh), std::move(material));
 }
 
 } // namespace LX_demo::scene_viewer

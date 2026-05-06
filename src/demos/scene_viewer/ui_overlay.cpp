@@ -11,7 +11,7 @@ namespace LX_demo::scene_viewer {
 
 namespace dui = LX_infra::debug_ui;
 
-void UiOverlay::attach(LX_core::Camera& camera,
+void UiOverlay::attach(LX_core::CameraComponent& camera,
                        LX_core::DirectionalLight& light,
                        CameraRig& rig) {
   m_camera = std::ref(camera);

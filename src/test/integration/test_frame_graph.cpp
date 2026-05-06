@@ -6,15 +6,18 @@
 #include "core/pipeline/pipeline_build_desc.hpp"
 #include "core/asset/shader.hpp"
 #include "core/rhi/vertex_buffer.hpp"
-#include "core/scene/camera.hpp"
 #include "core/frame_graph/frame_graph.hpp"
 #include "core/scene/light.hpp"
+#include "core/scene/components/camera_component.hpp"
+#include "core/scene/components/material_component.hpp"
+#include "core/scene/components/mesh_component.hpp"
 #include "core/scene/object.hpp"
 #include "core/frame_graph/pass.hpp"
 #include "core/frame_graph/render_queue.hpp"
 #include "core/scene/scene.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/string_table.hpp"
+#include "scene_test_helpers.hpp"
 
 #include <iostream>
 #include <memory>
@@ -71,7 +74,7 @@ makeRenderable(const std::string &shaderName = "fake_fg",
   auto vb = VertexBuffer<VertexPos>::create(
       std::vector<VertexPos>{{{0, 0, 0}}, {{1, 0, 0}}, {{0, 1, 0}}});
   auto ib = IndexBuffer::create({0, 1, 2});
-  auto mesh = Mesh::create(vb, ib);
+  auto mesh = Mesh::create(vb, ib, BoundingBox{{0, 0, 0}, {1, 1, 0}});
 
   auto shader = std::make_shared<FakeShader>();
   auto tmpl = MaterialTemplate::create(shaderName);
@@ -94,8 +97,10 @@ makeRenderable(const std::string &shaderName = "fake_fg",
     material->setPassEnabled(Pass_Shadow, false);
   }
   static int nodeCounter = 0;
-  return SceneNode::create("fg_node_" + std::to_string(++nodeCounter), mesh,
-                           material, nullptr);
+  auto node = SceneNode::create("fg_node_" + std::to_string(++nodeCounter));
+  node->addComponent<MeshComponent>(mesh);
+  node->addComponent<MaterialComponent>(material);
+  return node;
 }
 
 std::shared_ptr<SceneNode>
@@ -107,21 +112,29 @@ makeRenderableWithMask(VisibilityLayerMask mask,
 }
 
 // Helpers for REQ-009 scenarios.
-CameraSharedPtr makeCameraWithTarget(const RenderTarget &target) {
-  auto cam = std::make_shared<Camera>();
-  cam->setTarget(target);
-  return cam;
+SceneNodeSharedPtr makeCameraWithTarget(const RenderTarget &target) {
+  static int cameraCounter = 0;
+  auto node = SceneNode::create("fg_camera_target_" +
+                                std::to_string(++cameraCounter));
+  auto camera = node->addComponent<CameraComponent>();
+  camera->get().setTarget(target);
+  camera->get().updateMatrices();
+  return node;
 }
 
-CameraSharedPtr makeCameraWithTargetAndMask(const RenderTarget &target,
-                                            VisibilityLayerMask mask) {
-  auto cam = makeCameraWithTarget(target);
-  cam->setCullingMask(mask);
-  return cam;
+SceneNodeSharedPtr makeCameraWithTargetAndMask(const RenderTarget &target,
+                                               VisibilityLayerMask mask) {
+  auto node = makeCameraWithTarget(target);
+  node->getComponent<CameraComponent>()->get().setCullingMask(mask);
+  return node;
 }
 
-CameraSharedPtr makeCameraNoTarget() {
-  return std::make_shared<Camera>();
+SceneNodeSharedPtr makeCameraNoTarget() {
+  static int cameraCounter = 0;
+  auto node = SceneNode::create("fg_camera_no_target_" +
+                                std::to_string(++cameraCounter));
+  node->addComponent<CameraComponent>();
+  return node;
 }
 
 std::shared_ptr<DirectionalLight>
@@ -131,13 +144,19 @@ makeLightWithPasses(std::initializer_list<StringID> passes) {
   return light;
 }
 
+SceneSharedPtr makeSceneWithDefaultCamera(const SceneNodeSharedPtr &root = nullptr) {
+  auto scene = Scene::create(root);
+  scene->addCamera(LX_test::makeDefaultCameraNodeWithTarget());
+  return scene;
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
 void testSingleRenderableSinglePass() {
   auto r = makeRenderable();
-  auto scene = Scene::create(r);
+  auto scene = makeSceneWithDefaultCamera(r);
 
   FrameGraph fg;
   fg.addPass(FramePass{Pass_Forward, {}, {}});
@@ -152,7 +171,7 @@ void testSingleRenderableSinglePass() {
 void testDuplicateRenderablesDedupe() {
   auto r1 = makeRenderable();
   auto r2 = makeRenderable(); // same config
-  auto scene = Scene::create(r1);
+  auto scene = makeSceneWithDefaultCamera(r1);
   scene->addRenderable(r2);
 
   FrameGraph fg;
@@ -168,7 +187,7 @@ void testDuplicateRenderablesDedupe() {
 void testDifferentVariantKeepsTwo() {
   auto r1 = makeRenderable("fake_fg", {});
   auto r2 = makeRenderable("fake_fg", {ShaderVariant{"HAS_NORMAL_MAP", true}});
-  auto scene = Scene::create(r1);
+  auto scene = makeSceneWithDefaultCamera(r1);
   scene->addRenderable(r2);
 
   FrameGraph fg;
@@ -187,7 +206,7 @@ void testFramePassNameIsStringID() {
 
 void testBuildFromSceneIsIdempotent() {
   auto r = makeRenderable();
-  auto scene = Scene::create(r);
+  auto scene = makeSceneWithDefaultCamera(r);
   FrameGraph fg;
   fg.addPass(FramePass{Pass_Forward, {}, {}});
 
@@ -203,7 +222,7 @@ void testPassFilterExcludesNonMatching() {
   // Renderable A participates in Forward + Shadow; B only in Forward.
   auto rA = makeRenderable("fake_fg_a", {}, true);
   auto rB = makeRenderable("fake_fg_b");
-  auto scene = Scene::create(rA);
+  auto scene = makeSceneWithDefaultCamera(rA);
   scene->addRenderable(rB);
 
   FrameGraph fg;
@@ -221,9 +240,6 @@ void testPassFilterExcludesNonMatching() {
 
 void testMultiCameraTargetFilter() {
   // REQ-009: camera filtered by target in getSceneLevelResources.
-  // Scene::Scene auto-adds a default camera at RenderTarget{} (sampleCount=1)
-  // and a default DirectionalLight with Forward/Deferred support. We pick
-  // targetA/B with distinct sampleCount so the auto camera does NOT match.
   const RenderTarget targetA{ImageFormat::BGRA8, ImageFormat::D32Float, 2};
   const RenderTarget targetB{ImageFormat::BGRA8, ImageFormat::D32Float, 4};
 
@@ -234,8 +250,6 @@ void testMultiCameraTargetFilter() {
   scene->addCamera(camA);
   scene->addCamera(camB);
 
-  // For targetA: camA matches, camB doesn't, default camera doesn't (sc=1≠2).
-  // Default DirectionalLight matches Pass_Forward.
   auto resA = scene->getSceneLevelResources(Pass_Forward, targetA);
   EXPECT(resA.size() == 2,
          "Forward×targetA: camA UBO + default light UBO (2 entries)");
@@ -247,36 +261,29 @@ void testMultiCameraTargetFilter() {
 
   // Cross-check camera UBO identity: camA's UBO should be in resA but not resB.
   if (resA.size() == 2 && resB.size() == 2) {
-    const auto camAUbo =
-        std::dynamic_pointer_cast<IGpuResource>(camA->getUBO());
+    const auto camAUbo = std::dynamic_pointer_cast<IGpuResource>(
+        camA->getComponent<CameraComponent>()->get().getUBO());
     EXPECT(resA[0] == camAUbo, "resA[0] is camA's UBO");
     EXPECT(resB[0] != camAUbo, "resB[0] is NOT camA's UBO");
   }
 }
 
 void testMultiLightPassFilter() {
-  // REQ-009: light filtered by supportsPass. Scene::Scene auto-adds one
-  // DirectionalLight (Forward + Deferred) which counts toward both
-  // Forward and Deferred but not Shadow.
+  // REQ-009: light filtered by supportsPass.
   auto lightForward = makeLightWithPasses({Pass_Forward});
   auto lightShadow = makeLightWithPasses({Pass_Shadow});
   auto lightBoth = makeLightWithPasses({Pass_Forward, Pass_Shadow});
 
   auto scene = Scene::create(makeRenderable());
+  scene->addCamera(LX_test::makeDefaultCameraNodeWithTarget());
   scene->addLight(lightForward);
   scene->addLight(lightShadow);
   scene->addLight(lightBoth);
 
-  // Pass_Forward: default camera (sc=1) matches default target, default light
-  // matches Forward, lightForward matches, lightShadow does NOT, lightBoth
-  // matches. Total = 1 cam + 3 lights = 4.
   auto resForward = scene->getSceneLevelResources(Pass_Forward, RenderTarget{});
   EXPECT(resForward.size() == 4,
          "Pass_Forward: 1 cam + default light + lightForward + lightBoth = 4");
 
-  // Pass_Shadow: default camera matches, default light does NOT support
-  // Shadow, lightShadow matches, lightBoth matches, lightForward does NOT.
-  // Total = 1 cam + 2 lights = 3.
   auto resShadow = scene->getSceneLevelResources(Pass_Shadow, RenderTarget{});
   EXPECT(resShadow.size() == 3,
          "Pass_Shadow: 1 cam + lightShadow + lightBoth = 3");
@@ -284,40 +291,33 @@ void testMultiLightPassFilter() {
 
 void testNullOptCameraBeforeAndAfterFill() {
   // REQ-009: a camera with nullopt target never matches. After setTarget it
-  // matches exactly that target. Use a non-default target (sc=3) so we're
-  // isolated from the auto-added camera at sc=1.
+  // matches exactly that target.
   const RenderTarget customTarget{ImageFormat::BGRA8, ImageFormat::D32Float, 3};
 
-  auto testCam = makeCameraNoTarget(); // m_target == nullopt
+  auto testCam = makeCameraNoTarget();
   auto scene = Scene::create(makeRenderable());
   scene->addCamera(testCam);
 
-  // Before setTarget: no camera matches customTarget (auto cam is sc=1,
-  // testCam is nullopt). Default DirectionalLight still matches Pass_Forward
-  // regardless of target. So result should be 0 cameras + 1 light = 1.
   auto resBefore =
       scene->getSceneLevelResources(Pass_Forward, customTarget);
   EXPECT(resBefore.size() == 1,
          "nullopt camera does not match customTarget (1 default-light only)");
 
-  // Fill the target on testCam.
-  testCam->setTarget(customTarget);
+  testCam->getComponent<CameraComponent>()->get().setTarget(customTarget);
 
-  // After setTarget: testCam matches customTarget → 1 camera + 1 light = 2.
   auto resAfter =
       scene->getSceneLevelResources(Pass_Forward, customTarget);
   EXPECT(resAfter.size() == 2,
          "after setTarget(customTarget): testCam UBO + default light = 2");
 
-  // And sanity check: matchesTarget agrees.
-  EXPECT(testCam->matchesTarget(customTarget),
+  EXPECT(testCam->getComponent<CameraComponent>()->get().matchesTarget(customTarget),
          "testCam->matchesTarget(customTarget) after setTarget");
 }
 
 void testMultiPassRebuildIsIdempotent() {
   auto rA = makeRenderable("fake_fg_a", {}, true);
   auto rB = makeRenderable("fake_fg_b");
-  auto scene = Scene::create(rA);
+  auto scene = makeSceneWithDefaultCamera(rA);
   scene->addRenderable(rB);
 
   FrameGraph fg;
@@ -335,7 +335,7 @@ void testMultiPassRebuildIsIdempotent() {
 
 void testCollectAcrossMultiplePasses() {
   auto r = makeRenderable();
-  auto scene = Scene::create(r);
+  auto scene = makeSceneWithDefaultCamera(r);
 
   FrameGraph fg;
   fg.addPass(FramePass{Pass_Forward, {}, {}});
@@ -414,6 +414,36 @@ void testVisibilityFilteringKeepsSceneResources() {
   }
 }
 
+void testInactiveCameraIsIgnoredForResourcesAndMasks() {
+  const RenderTarget target{ImageFormat::BGRA8, ImageFormat::D32Float, 7};
+
+  auto visible = makeRenderableWithMask(0x1u, "active_visible");
+  auto hidden = makeRenderableWithMask(0x2u, "inactive_hidden");
+  auto scene = Scene::create(visible);
+  scene->addRenderable(hidden);
+
+  auto activeCamera = makeCameraWithTargetAndMask(target, 0x1u);
+  auto inactiveCamera = makeCameraWithTargetAndMask(target, 0x2u);
+  inactiveCamera->getComponent<CameraComponent>()->get().setActive(false);
+  scene->addCamera(activeCamera);
+  scene->addCamera(inactiveCamera);
+
+  const auto resources = scene->getSceneLevelResources(Pass_Forward, target);
+  EXPECT(resources.size() == 2,
+         "inactive camera should be excluded from scene-level resource collection");
+
+  EXPECT(scene->getCombinedCameraCullingMask(target) == 0x1u,
+         "inactive camera mask should not contribute to combined culling mask");
+
+  FrameGraph fg;
+  fg.addPass(FramePass{Pass_Forward, target, {}});
+  fg.buildFromScene(*scene);
+
+  const auto &items = fg.getPasses()[0].queue.getItems();
+  EXPECT(items.size() == 1,
+         "inactive camera should not widen renderable visibility filtering");
+}
+
 } // namespace
 
 int main() {
@@ -433,6 +463,7 @@ int main() {
   testVisibilityMaskFiltersRenderables();
   testVisibilityMaskOrsMatchingCameraMasks();
   testVisibilityFilteringKeepsSceneResources();
+  testInactiveCameraIsIgnoredForResourcesAndMasks();
 
   if (failures > 0) {
     std::cerr << "FAILED: " << failures << " assertion(s)\n";

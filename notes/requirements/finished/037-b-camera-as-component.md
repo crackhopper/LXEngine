@@ -1,13 +1,13 @@
 # REQ-037-b: Camera 作为 component 接入 SceneNode — 让相机由 transform chain 驱动
 
-> 本 REQ 是 [Phase 1.5 ImGui Editor MVP + 命令总线](../roadmaps/main-roadmap/phase-1.5-imgui-editor-mvp.md) 的第 3b 步。原 REQ-037 在 2026-05-01 立项后被拆为两段：[REQ-037-a](037-a-component-model-foundation.md) 是 component 基础设施，本文是其上的第一个非 mesh-bearing 应用。
+> 本 REQ 是 [Phase 1.5 ImGui Editor MVP + 命令总线](../../roadmaps/main-roadmap/phase-1.5-imgui-editor-mvp.md) 的第 3b 步。原 REQ-037 在 2026-05-01 立项后被拆为两段：[REQ-037-a](037-a-component-model-foundation.md) 是 component 基础设施，本文是其上的第一个非 mesh-bearing 应用。
 
 ## 背景
 
 `src/core/scene/camera.hpp:49-118` 中 `Camera` 当前**不是** `SceneNode`，位置 / 朝向以独立字段（`position` / `target` / `up`）持有，并独立于 scene 层级管理（`Scene::m_cameras` 是平铺 vector）。这套现状对编辑器有三个问题：
 
 1. **不能 attach 到节点**：常见编辑器需求"相机挂在 player 节点下" / "相机跟随骨骼 socket"在当前 API 下做不到
-2. **gizmo 不能直接用**：[REQ-041 ImGui Editor MVP](041-imgui-editor-mvp.md) 选中相机时希望出 TRS gizmo 拖拽，但 gizmo 期望节点是 `SceneNode`
+2. **gizmo 不能直接用**：[REQ-041 ImGui Editor MVP](../041-a-imgui-editor-mvp.md) 选中相机时希望出 TRS gizmo 拖拽，但 gizmo 期望节点是 `SceneNode`
 3. **命令总线不一致**：`move <node>` 命令希望同样适用于 mesh 节点和 camera；当前 camera 不在 SceneNode 协议下，要走专门的 `cam` 子命令路径
 
 把 Camera 重构为 `CameraComponent` 挂在 `SceneNode` 上，能让 mesh / camera / light（未来）共用同一套 transform / picking / 命令路径，所有"位置/朝向"由 transform chain 决定。
@@ -49,7 +49,7 @@ class CameraComponent final : public IComponent {
 
  private:
   CameraData::Param m_data;       // fov / near / far / projection / cullingMask / target
-  bool m_active = true;           // [REQ-041 R6](041-imgui-editor-mvp.md) 方案 A 的字段
+  bool m_active = true;           // [REQ-041 R6](../041-a-imgui-editor-mvp.md) 方案 A 的字段
 };
 ```
 
@@ -91,7 +91,7 @@ class CameraComponent final : public IComponent {
 ### R7: 控制器仍写 owner SceneNode 的 local transform
 
 - `OrbitCameraController::update(cameraComp, input, dt)` 内部计算 eye/target/up 后调 `cameraComp.lookAt(...)` —— R3 实现已经把这一步写回 owner 的 SceneNode
-- 这保证 [REQ-015](finished/015-orbit-camera-controller.md) / [REQ-016](finished/016-freefly-camera-controller.md) 完成的控制器代码 *逻辑* 无需改动，仅参数类型从 `Camera*` 改为 `CameraComponent*`
+- 这保证 [REQ-015](015-orbit-camera-controller.md) / [REQ-016](016-freefly-camera-controller.md) 完成的控制器代码 *逻辑* 无需改动，仅参数类型从 `Camera*` 改为 `CameraComponent*`
 
 ## 测试
 
@@ -124,21 +124,45 @@ class CameraComponent final : public IComponent {
 
 ### REQ-042 兼容预留
 
-本 REQ **完全不动** `CameraComponent::m_data.target` 字段与 `matchesTarget` 接口签名。[REQ-042 R6](042-render-target-desc-and-target.md) 后置到 Phase 1.5 完工后、Phase 1 REQ-103 之前实施时，会把 `m_data.target` 类型从 `std::optional<RenderTarget>` 升级为 `std::optional<RenderTargetDesc>`、把 `matchesTarget` 改为比 desc 形状兼容。本 REQ 的"camera-as-component"接入与 m_target 升级在数据模型上正交（一个管"位置/朝向 + 数据归属"，一个管"渲染到哪个 attachment 形状"），无字段冲突，无 ABI 变化的迁移负担。
+本 REQ **完全不动** `CameraComponent::m_data.target` 字段与 `matchesTarget` 接口签名。[REQ-042 R6](../042-render-target-desc-and-target.md) 后置到 Phase 1.5 完工后、Phase 1 REQ-103 之前实施时，会把 `m_data.target` 类型从 `std::optional<RenderTarget>` 升级为 `std::optional<RenderTargetDesc>`、把 `matchesTarget` 改为比 desc 形状兼容。本 REQ 的"camera-as-component"接入与 m_target 升级在数据模型上正交（一个管"位置/朝向 + 数据归属"，一个管"渲染到哪个 attachment 形状"），无字段冲突，无 ABI 变化的迁移负担。
 
 ## 依赖
 
 - [REQ-037-a IComponent 基础设施](037-a-component-model-foundation.md) — `CameraComponent` 是其第一个非 mesh-bearing 应用，**硬前置**
-- [REQ-035 Transform 组件](finished/035-transform-component.md) — Camera 通过 owner SceneNode 间接消费
-- [REQ-036 路径查询](finished/036-scene-node-path-lookup.md) — `Scene::findByPath("/editor_cam")` 命中 camera 节点
-- 现有 [REQ-026 Camera visibility layer mask](finished/026-camera-visibility-layer-mask.md) — culling mask 字段不变
+- [REQ-035 Transform 组件](035-transform-component.md) — Camera 通过 owner SceneNode 间接消费
+- [REQ-036 路径查询](036-scene-node-path-lookup.md) — `Scene::findByPath("/editor_cam")` 命中 camera 节点
+- 现有 [REQ-026 Camera visibility layer mask](026-camera-visibility-layer-mask.md) — culling mask 字段不变
 
 ## 后续工作
 
-- [REQ-040 Editor 命令总线](040-editor-command-bus.md) — `move camera_main 1 0 0` 直接生效（走 SceneNode transform setter），不需要"camera"专门命令路径
-- [REQ-041 ImGui Editor MVP](041-imgui-editor-mvp.md) — 选中 camera 出 TRS gizmo；camera frustum visualizer 从 owner.worldTransform 取 view 矩阵
+- [REQ-040 Editor 命令总线](../040-a-editor-command-bus.md) — `move camera_main 1 0 0` 直接生效（走 SceneNode transform setter），不需要"camera"专门命令路径
+- [REQ-041 ImGui Editor MVP](../041-a-imgui-editor-mvp.md) — 选中 camera 出 TRS gizmo；camera frustum visualizer 从 owner.worldTransform 取 view 矩阵
 - 未来 `LightComponent` 走同样的"持有 SceneNode + 注册表登记"模式（`Scene::addLight(node)` 同形态）
 
 ## 实施状态
 
-待实施。Phase 1.5 第 3b 步。在 [REQ-037-a](037-a-component-model-foundation.md) 落地后开工（硬前置），与 [REQ-035](finished/035-transform-component.md) / [REQ-036](finished/036-scene-node-path-lookup.md) 一起为后续 picking / DebugDraw / 命令总线提供"camera 也是 SceneNode"的统一假设。
+已实施并验证完成。2026-05-06 归档前复核结果：
+
+- `R1`：已实现。`CameraComponent` 已落到 `src/core/scene/components/`，旧 `Camera` 类已删除，仅保留 GPU-facing `CameraData` / `CameraType` 等共享类型。
+- `R2`：已实现。view 由 owner `SceneNode` world transform 推导，节点 scale 被显式剥离；`testParentedCameraFollowsHierarchyTranslation` 与 `testCameraScaleDoesNotAffectViewMatrix` 已覆盖。
+- `R3`：已实现。控制器通过 `CameraComponent::lookAt()` / `setPosition()` 写回 owner transform；旧 `position / target / up` 字段未保留兼容层。
+- `R4`：已实现，但 API 相比草稿有两处已接受漂移：`Scene::addCamera/removeCamera` 使用 `SceneNodeSharedPtr` 而不是裸指针；scene 内部通过 renderable/path-root 现有语义让 camera 节点参与路径查询，而不是额外引入单独 root attach 对象模型。
+- `R5`：已实现。`target` / `cullingMask` / `matchesTarget()` 语义保持不变，inactive camera 会被 scene-level 资源与 mask 聚合忽略。
+- `R6`：已实现。`scene_viewer` 已改为显式创建 `editor_cam` 节点并挂 `CameraComponent`。
+- `R7`：已实现。Orbit / FreeFly 控制器逻辑保持原样，只把接口类型迁到 `CameraComponent&`。
+
+文档对实现的主要漂移：
+
+- 草稿里的 `CameraData::Param m_data` 最终落成“`CameraData` UBO + component 上的公开投影字段”模型；行为等价，但更贴近现有 renderer/UBO 边界。
+- `notes/source_analysis/src/core/scene/camera.md` 没有单独生成；实际更新点收口在 `notes/source_analysis/src/core/scene/scene.md`，那里记录了 component camera 的 scene 注册与筛选语义。
+
+归档前测试：
+
+- `cmake --build build --target test_scene_path_lookup test_scene_node_validation test_frame_graph test_orbit_camera_controller test_freefly_camera_controller -j4`
+- `./src/test/test_scene_path_lookup`
+- `./src/test/test_scene_node_validation`
+- `./src/test/test_frame_graph`
+- `./src/test/test_orbit_camera_controller`
+- `./src/test/test_freefly_camera_controller`
+
+全部通过。Phase 1.5 第 3b 步完成；pending 队列顺延到 `REQ-038-a`。

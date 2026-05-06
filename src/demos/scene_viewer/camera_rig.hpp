@@ -5,7 +5,7 @@
 // level state, so the rig remembers the previous frame's F2 down flag.
 
 #include "core/input/input_state.hpp"
-#include "core/scene/camera.hpp"
+#include "core/scene/components/camera_component.hpp"
 #include "core/scene/freefly_camera_controller.hpp"
 #include "core/scene/orbit_camera_controller.hpp"
 
@@ -21,7 +21,7 @@ public:
   CameraRig();
 
   // Bind the rig to the camera it will drive. Must be called before update().
-  void attach(LX_core::Camera& camera);
+  void attach(LX_core::CameraComponent& camera);
 
   // Per-frame update: F2 edge detection -> controller update -> matrix refresh.
   void update(LX_core::IInputState& input, float dt);
@@ -31,7 +31,7 @@ public:
 private:
   void switchMode();
 
-  std::optional<std::reference_wrapper<LX_core::Camera>> m_camera;
+  std::optional<std::reference_wrapper<LX_core::CameraComponent>> m_camera;
   LX_core::OrbitCameraController m_orbit;
   LX_core::FreeFlyCameraController m_freefly;
   Mode m_mode = Mode::Orbit;

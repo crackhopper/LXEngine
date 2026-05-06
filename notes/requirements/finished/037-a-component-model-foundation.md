@@ -1,6 +1,6 @@
 # REQ-037-a: IComponent 基础设施 + Mesh / Material / Skeleton 转 component
 
-> 本 REQ 是 [Phase 1.5 ImGui Editor MVP + 命令总线](../roadmaps/main-roadmap/phase-1.5-imgui-editor-mvp.md) 的第 3a 步。原 REQ-037 在 2026-05-01 立项后被拆为两段：本文是架构层（component 模型），[REQ-037-b](037-b-camera-as-component.md) 是 Camera 接入。
+> 本 REQ 是 [Phase 1.5 ImGui Editor MVP + 命令总线](../../roadmaps/main-roadmap/phase-1.5-imgui-editor-mvp.md) 的第 3a 步。原 REQ-037 在 2026-05-01 立项后被拆为两段：本文是架构层（component 模型），[REQ-037-b](037-b-camera-as-component.md) 是 Camera 接入。
 
 ## 背景
 
@@ -16,7 +16,7 @@ std::optional<SkeletonSharedPtr> m_skeleton;
 
 1. **结构上是双轨制**：`SceneNode` 的"携带数据"只能是 mesh + material + skeleton 三种；想让 Camera / Light / future（particle emitter / collider 等）也接入 SceneNode 必须给每种类型新增一组字段或一组旁路接口，没有统一形态。[REQ-037-b](037-b-camera-as-component.md) 让 Camera 走 SceneNode 路径时立刻撞上这个边界。
 2. **调用面僵化**：`object.cpp` 内 `getRenderingDataForPass / supportsPass / collectAllBuildInfos` 都直接消费 `m_mesh` / `m_materialInstance` / `m_skeleton`；新增"挂载对象"必须改这段。
-3. **编辑器 inspector 不易统一**：[REQ-041 ImGui Editor MVP](041-imgui-editor-mvp.md) 的 inspector 想"显示当前节点上挂的所有 component"，没有统一 component 列表就只能枚举专属字段。
+3. **编辑器 inspector 不易统一**：[REQ-041 ImGui Editor MVP](../041-a-imgui-editor-mvp.md) 的 inspector 想"显示当前节点上挂的所有 component"，没有统一 component 列表就只能枚举专属字段。
 
 把"SceneNode 持有的可渲染数据"重构为 component 集合，能让 mesh / material / skeleton / camera / light（未来）共用同一接口、同一调用面、同一 inspector 渲染逻辑。
 
@@ -31,7 +31,7 @@ std::optional<SkeletonSharedPtr> m_skeleton;
 ## 非目标
 
 - 本 REQ **不**把 Camera / Light 转成 component（Camera 在 [REQ-037-b](037-b-camera-as-component.md)；Light 留后续）
-- 本 REQ **不**把 `Transform` 转成 component（Transform 在 [REQ-035](finished/035-transform-component.md) 已收口为 SceneNode 上的内置字段；保持原样）
+- 本 REQ **不**把 `Transform` 转成 component（Transform 在 [REQ-035](035-transform-component.md) 已收口为 SceneNode 上的内置字段；保持原样）
 - 本 REQ **不**引入 ECS（archetypes / systems / queries）；本质是把 SceneNode 的"专属字段"重构为"按类型查表的 component 集合"
 - 本 REQ **不**引入 component 间事件 / 订阅 / 信号
 - 本 REQ **不**引入 component 序列化 / 反射框架（落地仍是手写 setter / getter）
@@ -50,34 +50,30 @@ using ComponentTypeId = std::size_t;
 class IComponent {
  public:
   virtual ~IComponent() = default;
-
-  // 类型 id：编译期常量，用于 getComponent<T> 查表
   virtual ComponentTypeId getTypeId() const = 0;
+  virtual bool affectsRenderableStructure() const { return false; }
 
-  // owning node 反向指针，组件方法需要时可以访问其他 component / SceneNode 状态
-  void attachTo(SceneNode *owner) { m_owner = owner; }
-  SceneNode *owner() const { return m_owner; }
+  void attachTo(SceneNode &owner);
+  void detachFromOwner();
 
-  IComponent(const IComponent &) = delete;
-  IComponent &operator=(const IComponent &) = delete;
+  std::optional<std::reference_wrapper<SceneNode>> owner();
+  std::optional<std::reference_wrapper<const SceneNode>> owner() const;
 
  protected:
   IComponent() = default;
-
- private:
-  SceneNode *m_owner = nullptr;
+  void notifyOwnerStructuralChange() const;
 };
 
 template <typename T>
 ComponentTypeId componentTypeId() {
-  static const ComponentTypeId id = nextComponentTypeId();   // monotonic atomic 计数
+  static const ComponentTypeId id = nextComponentTypeId();
   return id;
 }
 ```
 
 - `ComponentTypeId` 用 monotonic 计数器（线程安全的 `std::atomic<size_t>` 自增）。**不**用 `typeid(T).hash_code()`，避免跨平台 hash 不稳定
 - 组件不可拷贝、不可移动；编辑器 / 命令总线只通过 `SceneNode` 接口操作，不复制
-- 组件方法可以通过 `owner()->getComponent<...>()` 访问同节点其他组件（如 `MaterialComponent` 在 pipeline 信息里需要 `MeshComponent` 的 vertex layout）
+- 组件方法通过 `owner()` 取 `std::optional<std::reference_wrapper<SceneNode>>` 访问宿主；需要时可继续 `owner()->get().getComponent<...>()` 访问同节点其他组件
 
 ### R2: 三个一等 component
 
@@ -138,25 +134,28 @@ class SkeletonComponent final : public IComponent {
 class SceneNode {
  public:
   template <typename T, typename... Args>
-  T *addComponent(Args &&...args);              // 同类型已存在 → assert（v1）
+  std::optional<std::reference_wrapper<T>> addComponent(Args &&...args);
 
   template <typename T>
-  T *getComponent() const;                       // 不命中返回 nullptr
+  std::optional<std::reference_wrapper<T>> getComponent();
 
   template <typename T>
-  bool removeComponent();                        // 不命中返回 false
+  std::optional<std::reference_wrapper<const T>> getComponent() const;
 
-  // 编辑器 inspector 用：列出本节点所有 component
-  std::vector<IComponent *> listComponents() const;
+  template <typename T>
+  bool removeComponent();
+
+  std::vector<std::reference_wrapper<IComponent>> listComponents();
+  std::vector<std::reference_wrapper<const IComponent>> listComponents() const;
 
  private:
   std::vector<std::unique_ptr<IComponent>> m_components;
 };
 ```
 
-- v1 约定：**一个 SceneNode 同类型 component 仅 1 份**（多 mesh / multi-material 留 v2）；`addComponent<T>` 在已存在时 assert
+- v1 约定：**一个 SceneNode 同类型 component 仅 1 份**（多 mesh / multi-material 移到 [REQ-037-c component v2](../041-g-component-v2-multi-and-enable.md)）；`addComponent<T>` 在已存在时 assert
 - 内部存储用 `std::vector` + 线性扫描查找，不用 unordered_map：v1 单节点 component 数 < 10，线性查找比 hash 更快
-- `addComponent<T>` 内部对新建 component 调 `attachTo(this)`
+- `addComponent<T>` 内部对新建 component 调 `attachTo(*this)`
 - `removeComponent<T>` 析构 component（释放 listener / GPU 资源句柄等）
 
 ### R4: 删除旧字段 + getter / setter
@@ -211,26 +210,47 @@ class SceneNode {
 
 ## 边界与约束
 
-- v1 **不**允许同类型 component 多份（`MeshComponent` 仅 1 份 / 节点）；多 mesh 留 v2
-- v1 **不**引入 component 之间的依赖声明（如"MaterialComponent 必须在 MeshComponent 之后 add"）；调用方负责正确顺序
-- v1 **不**引入 component enable / disable（要禁用就 remove）
-- v1 **不**做 component 序列化 / 反射；编辑器 inspector 在 [REQ-041](041-imgui-editor-mvp.md) 内手写每个 component 的 UI
-- v1 **不**做 `getComponent<T>()` 性能优化（线性扫描 < 10 项足够；BVH / hash 留 v2）
+- v1 **不**允许同类型 component 多份（`MeshComponent` 仅 1 份 / 节点）；多 mesh 移到 [REQ-037-c](../041-g-component-v2-multi-and-enable.md)
+- v1 **不**引入 component 之间的依赖声明（如"MaterialComponent 必须在 MeshComponent 之后 add"）；调用方负责正确顺序；声明式 require / before / after 移到 [REQ-037-c](../041-g-component-v2-multi-and-enable.md)
+- v1 **不**引入 component enable / disable（要禁用就 remove）；移到 [REQ-037-c](../041-g-component-v2-multi-and-enable.md)
+- v1 **不**做 component 序列化 / 反射；编辑器 inspector 在 [REQ-041-a](../041-a-imgui-editor-mvp.md) 内手写每个 component 的 UI；统一序列化在 [Phase 3 资产管线](../../roadmaps/main-roadmap/phase-3-asset-pipeline.md) 引入 reflection 后再立项
+- v1 **不**做 `getComponent<T>()` 性能优化（线性扫描 < 10 项足够）；BVH / hash 仅在 v2 真出现 component 数失控时立项，不预先做
 - 跨 DLL 的 `componentTypeId<T>()` 一致性：本仓库目前是单 binary，v1 不考虑跨动态库 type id 同步；未来如有需要切换为 `StringID` 即可
 
 ## 依赖
 
 - 现有 `SceneNode` parent / child / dirty 传播（`src/core/scene/object.hpp:122-176`）— 不变
-- 现有 `Transform` 字段（[REQ-035](finished/035-transform-component.md) 已落地）— 留在 `SceneNode` 上不动
+- 现有 `Transform` 字段（[REQ-035](035-transform-component.md) 已落地）— 留在 `SceneNode` 上不动
 - 现有 `Mesh` / `MaterialInstance` / `Skeleton` 内部 API — 不变（仅持有方从 SceneNode 改为 Component）
 
 ## 后续工作
 
 - [REQ-037-b Camera 作为 component](037-b-camera-as-component.md) — 第一个非 mesh-bearing component 应用，验证基础设施
+- [REQ-037-c component v2](../041-g-component-v2-multi-and-enable.md) — 同节点同类型多 component（multi-mesh / multi-material）+ enable / disable + 显式 require / before / after 声明
 - 未来 `LightComponent`（DirectionalLight / PointLight / SpotLight 走同模型）
-- 未来 `ColliderComponent` / `RigidBodyComponent`（[Phase 5 物理](../roadmaps/main-roadmap/phase-5-physics.md)）
-- v2：同节点同类型多 component；component 间订阅；component 序列化
+- 未来 `ColliderComponent` / `RigidBodyComponent`（[Phase 5 物理](../../roadmaps/main-roadmap/phase-5-physics.md)）
+- 未来 component 序列化 / 反射 / asset round-trip：等 [Phase 3 资产管线](../../roadmaps/main-roadmap/phase-3-asset-pipeline.md) 引入统一反射后再立项
 
 ## 实施状态
 
-待实施。Phase 1.5 第 3a 步。在 [REQ-035](finished/035-transform-component.md) / [REQ-036](finished/036-scene-node-path-lookup.md) 落地后开工，是 [REQ-037-b](037-b-camera-as-component.md) 的硬前置。
+已实施并验证完成。Phase 1.5 第 3a 步，现为 [REQ-037-b](037-b-camera-as-component.md) 与后续 editor/picking 工作的已完成前置。
+
+核验摘要：
+
+- R1：完成。`IComponent` 基类落地于 `src/core/scene/component.{hpp,cpp}`；type id 走进程内 monotonic atomic 计数；owner 回指实现为 `std::optional<std::reference_wrapper<SceneNode>>`
+- R2：完成。`MeshComponent` / `MaterialComponent` / `SkeletonComponent` 已在 `src/core/scene/components/` 落地；`MaterialComponent` 接管 pass listener 生命周期
+- R3：完成。`SceneNode` 现在持有 `std::vector<std::unique_ptr<IComponent>>`，并提供 `addComponent / getComponent / removeComponent / listComponents`
+- R4：完成。旧 `m_mesh / m_materialInstance / m_skeleton` 与对应 getter/setter 已删除，不保留兼容层
+- R5：完成。renderable 验证与 pipeline 装配主路径已改为从 component 取 mesh/material/skeleton
+- R6：完成。`SceneNode` 继续实现 `IRenderable`；无 mesh/material component 的节点保持不可渲染
+- R7：完成。`test_scene_node_validation` 新增 component attach/remove/listener/duplicate-attach 覆盖；`test_scene_path_lookup` 回归通过
+
+实现漂移说明：
+
+- REQ 草案中的原始签名使用裸指针返回；当前实现统一收敛为 `std::optional<std::reference_wrapper<T>>` / `const T` 变体，更符合仓库的无裸指针约束，行为等价
+
+验证：
+
+- `ninja test_scene_node_validation test_scene_path_lookup`
+- `./src/test/test_scene_node_validation`
+- `./src/test/test_scene_path_lookup`

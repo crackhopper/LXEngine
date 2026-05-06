@@ -4,7 +4,7 @@
 
 ## 背景
 
-`SceneNode` 已支持 parent/child 层级（`src/core/scene/object.hpp:88-178`），但 `Scene` 没有任何"按名字 / 路径定位节点"的能力。命令总线（[REQ-040](040-editor-command-bus.md)）需要把 `move <node-name> 1 0 0` 中的 `<node-name>` 解析成 `SceneNode*`；ImGui 编辑器（[REQ-041](041-imgui-editor-mvp.md)）的 scene tree 也需要"路径 → 节点"的稳定句柄方便选中状态在跨帧/跨命令间一致。
+`SceneNode` 已支持 parent/child 层级（`src/core/scene/object.hpp:88-178`），但 `Scene` 没有任何"按名字 / 路径定位节点"的能力。命令总线（[REQ-040](040-a-editor-command-bus.md)）需要把 `move <node-name> 1 0 0` 中的 `<node-name>` 解析成 `SceneNode*`；ImGui 编辑器（[REQ-041](041-a-imgui-editor-mvp.md)）的 scene tree 也需要"路径 → 节点"的稳定句柄方便选中状态在跨帧/跨命令间一致。
 
 文件系统风格的路径（`/world/player/arm`）是最容易被人类与 agent 同时使用的格式：跟操作系统路径、glob 习惯都对齐。
 
@@ -47,7 +47,7 @@
 - 同一 parent 下允许 ≥ 2 个子节点同名（不强制唯一性）
 - `findByPath` 命中第一个匹配（按 child 列表插入顺序）
 - 若 root 注册时检测到同 parent 下重名，仅 `LOG_WARN`，不阻止注册
-- 编辑器命令 `add` 在 R4 重名场景下自动追加序号（`arm` → `arm.001` → `arm.002`），由 [REQ-040](040-editor-command-bus.md) 的命令实现负责，不在本 REQ 强制
+- 编辑器命令 `add` 在 R4 重名场景下自动追加序号（`arm` → `arm.001` → `arm.002`），由 [REQ-040](040-a-editor-command-bus.md) 的命令实现负责，不在本 REQ 强制
 
 ### R5: `SceneNode` parent 改变时的 path 缓存
 
@@ -56,7 +56,7 @@
 
 ### R6: `Scene::dumpTree() const -> std::string`
 
-为 [REQ-040](040-editor-command-bus.md) 中 `list nodes` 命令准备一个文本树渲染：
+为 [REQ-040](040-a-editor-command-bus.md) 中 `list nodes` 命令准备一个文本树渲染：
 
 ```
 /
@@ -104,8 +104,8 @@
 
 ## 后续工作
 
-- [REQ-040 Editor 命令总线](040-editor-command-bus.md) — `select / move / rotate / scale / set / get` 命令的 `<node>` 参数都通过 `findByPath` 解析
-- [REQ-041 ImGui Editor MVP](041-imgui-editor-mvp.md) — scene tree 面板用 path 作为选中节点的稳定句柄；inspector 显示当前 path
+- [REQ-040 Editor 命令总线](040-a-editor-command-bus.md) — `select / move / rotate / scale / set / get` 命令的 `<node>` 参数都通过 `findByPath` 解析
+- [REQ-041 ImGui Editor MVP](041-a-imgui-editor-mvp.md) — scene tree 面板用 path 作为选中节点的稳定句柄；inspector 显示当前 path
 - 未来 Phase 2 `dumpScene` (roadmap REQ-207) 可基于 `dumpTree` + 节点 transform / 组件信息扩展
 - v2 wildcard / regex / `[index]` 语法（如有真实需要再加）
 

@@ -45,13 +45,12 @@ Define the current skeleton resource contract, including core-layer types, UBO e
 - **THEN** the render path obtains that data from the skeleton's UBO resource rather than from any pipeline-identity API
 
 ### Requirement: IComponent and base header are removed
+The legacy scene-component base contract at `src/core/scene/components/base.hpp` SHALL remain removed. However, the codebase MAY introduce new scene-component infrastructure under current paths such as `src/core/scene/component.hpp` and `src/core/scene/components/` for node-local composition, provided that this infrastructure does not move `Skeleton` out of `src/core/asset/` and does not make `Skeleton` inherit `IComponent`.
 
-The type `IComponent` and the file `src/core/scene/components/base.hpp` SHALL be deleted. The directory `src/core/scene/components/` SHALL be removed if it contains no remaining translation units.
+#### Scenario: scene-component infrastructure returns without changing skeleton ownership
 
-#### Scenario: No remaining IComponent symbols
-
-- **WHEN** the codebase is built after the change
-- **THEN** no type SHALL inherit `IComponent` and no translation unit SHALL include `components/base.hpp`
+- **WHEN** the codebase introduces new node-local component files
+- **THEN** `Skeleton` still lives under `src/core/asset/skeleton.hpp` and does not inherit `IComponent`
 
 ### Requirement: Camera and DirectionalLight expose UBOs without IComponent
 

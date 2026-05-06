@@ -7,19 +7,18 @@
 
 #include "core/rhi/gpu_resource.hpp"
 #include "core/frame_graph/render_target.hpp"
-#include "core/scene/camera.hpp"
+#include "core/scene/components/camera_component.hpp"
 #include "core/frame_graph/pass.hpp"
 #include "core/frame_graph/render_queue.hpp"
 #include "core/scene/scene.hpp"
 
 #include <cassert>
+#include <string>
 
 namespace LX_test {
 
 /// Build a local RenderQueue from `scene` for `pass` + `target` and return
 /// the first RenderingItem. Asserts the queue is non-empty. Default
-/// `RenderTarget{}` matches the default camera target the Scene constructor
-/// sets up (see Scene::Scene(IRenderableSharedPtr)).
 inline LX_core::RenderingItem
 firstItemFromScene(LX_core::Scene &scene, LX_core::StringID pass,
                    const LX_core::RenderTarget &target = {}) {
@@ -30,13 +29,15 @@ firstItemFromScene(LX_core::Scene &scene, LX_core::StringID pass,
   return q.getItems().front();
 }
 
-/// Construct a default Camera whose m_target is explicitly set
-/// to a default-constructed RenderTarget. Use this in test setup after the
-/// legacy Scene ctor's auto-camera stops being created (task 7).
-inline LX_core::CameraSharedPtr makeDefaultCameraWithTarget() {
-  auto cam = std::make_shared<LX_core::Camera>();
-  cam->setTarget(LX_core::RenderTarget{});
-  return cam;
+inline LX_core::SceneNodeSharedPtr makeDefaultCameraNodeWithTarget() {
+  static int cameraCounter = 0;
+  auto node = LX_core::SceneNode::create(
+      "test_camera_" + std::to_string(++cameraCounter));
+  auto camera = node->addComponent<LX_core::CameraComponent>();
+  assert(camera.has_value() && "camera component must attach");
+  camera->get().setTarget(LX_core::RenderTarget{});
+  camera->get().updateMatrices();
+  return node;
 }
 
 } // namespace LX_test

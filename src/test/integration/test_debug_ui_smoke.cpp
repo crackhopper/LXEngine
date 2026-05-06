@@ -12,8 +12,9 @@
 
 #include "infra/gui/debug_ui.hpp"
 
-#include "core/scene/camera.hpp"
+#include "core/scene/components/camera_component.hpp"
 #include "core/scene/light.hpp"
+#include "core/scene/object.hpp"
 #include "core/time/clock.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/string_table.hpp"
@@ -69,7 +70,7 @@ void test_link_level_symbols_reachable() {
   void (*pSeparatorText)(const char*) = &dui::separatorText;
 
   void (*pRenderStatsPanel)(const LX_core::Clock&) = &dui::renderStatsPanel;
-  void (*pCameraPanel)(const char*, LX_core::Camera&) = &dui::cameraPanel;
+  void (*pCameraPanel)(const char*, LX_core::CameraComponent&) = &dui::cameraPanel;
   void (*pDirectionalLightPanel)(const char*, LX_core::DirectionalLight&) =
       &dui::directionalLightPanel;
 
@@ -137,7 +138,9 @@ void test_cpu_only_imgui_smoke() {
   float scalar = 0.5f;
   LX_core::StringID sid("forward");
   LX_core::Clock clock;
-  LX_core::Camera camera;
+  auto cameraNode = LX_core::SceneNode::create("debug_ui_camera");
+  auto camera = cameraNode->addComponent<LX_core::CameraComponent>();
+  EXPECT(camera.has_value(), "debug_ui smoke camera component should attach");
   LX_core::DirectionalLight light;
 
   try {
@@ -158,7 +161,7 @@ void test_cpu_only_imgui_smoke() {
       }
       dui::endSection();
       dui::renderStatsPanel(clock);
-      dui::cameraPanel("camera", camera);
+      dui::cameraPanel("camera", camera->get());
       dui::directionalLightPanel("sun", light);
     }
     dui::endPanel();

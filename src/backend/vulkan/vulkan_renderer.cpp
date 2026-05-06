@@ -12,6 +12,7 @@
 #include "details/device.hpp"
 #include "details/resource_manager.hpp"
 #include "core/utils/env.hpp"
+#include "core/scene/components/camera_component.hpp"
 #include <functional>
 #include <iostream>
 #include <stdexcept>
@@ -140,9 +141,14 @@ public:
     //   2. Wiring up FramePass.target so getSceneLevelResources(pass, target)
     //      can match the camera on the filter side.
     const LX_core::RenderTarget swapchainTarget = makeSwapchainTarget();
-    for (const auto &cam : m_scene->getCameras()) {
-      if (cam && !cam->getTarget().has_value()) {
-        cam->setTarget(swapchainTarget);
+    for (const auto &cameraNode : m_scene->getCameras()) {
+      if (!cameraNode) {
+        continue;
+      }
+      const auto cameraComponent =
+          cameraNode->getComponent<LX_core::CameraComponent>();
+      if (cameraComponent && !cameraComponent->get().getTarget().has_value()) {
+        cameraComponent->get().setTarget(swapchainTarget);
       }
     }
 

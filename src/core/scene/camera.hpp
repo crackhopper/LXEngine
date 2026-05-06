@@ -1,10 +1,9 @@
 #pragma once
 #include "core/rhi/gpu_resource.hpp"
 #include "core/frame_graph/render_target.hpp"
-#include "core/math/mat.hpp" // 假设你有 Mat4f 定义
-#include "core/math/vec.hpp" // Vec3f
-#include <cmath>
-#include <cstdint>
+#include "core/math/mat.hpp"
+#include "core/math/vec.hpp"
+
 #include <memory>
 #include <optional>
 
@@ -44,79 +43,5 @@ using CameraDataSharedPtr = std::shared_ptr<CameraData>;
 
 // Camera 类型枚举
 enum class CameraType { Perspective, Orthographic };
-
-// CPU 层 Camera 基类
-class Camera {
-public:
-  Camera() { ubo = std::make_shared<CameraData>(); }
-  virtual ~Camera() = default;
-
-  CameraDataSharedPtr getUBO() const { return ubo; }
-
-  // ========================
-  // 相机类型相关属性
-  // ========================
-  CameraType type = CameraType::Perspective;
-
-  // 位置与方向
-  Vec3f position = Vec3f(0.0f, 0.0f, 0.0f);
-  Vec3f target = Vec3f(0.0f, 0.0f, -1.0f); // LookAt
-  Vec3f up = Vec3f(0.0f, 1.0f, 0.0f);
-
-  // 透视相机参数
-  float fovY = 45.0f; // 垂直视角，单位：度
-  float aspect = 16.0f / 9.0f;
-  float nearPlane = 0.1f;
-  float farPlane = 1000.0f;
-
-  // 正交相机参数
-  float left = -1.0f;
-  float right = 1.0f;
-  float bottom = -1.0f;
-  float top = 1.0f;
-
-  CameraDataSharedPtr ubo;
-
-  /// REQ-009: the RenderTarget this camera draws to. `nullopt` means
-  /// "defaults to the swapchain" — `VulkanRenderer::initScene` is responsible
-  /// for backfilling nullopt cameras with the real swapchain target before
-  /// FrameGraph::buildFromScene runs. A nullopt camera does NOT match any
-  /// concrete target (see matchesTarget), so tests that rely on filter hits
-  /// must setTarget explicitly.
-  const std::optional<RenderTarget> &getTarget() const { return m_target; }
-  void setTarget(RenderTarget target) { m_target = std::move(target); }
-  void clearTarget() { m_target.reset(); }
-  VisibilityLayerMask getCullingMask() const { return m_cullingMask; }
-  void setCullingMask(VisibilityLayerMask mask) { m_cullingMask = mask; }
-
-  /// True iff m_target has a value AND equals `target` field-by-field.
-  /// nullopt cameras always return false — the backfill contract is on
-  /// VulkanRenderer::initScene, not on this method.
-  bool matchesTarget(const RenderTarget &target) const {
-    return m_target.has_value() && *m_target == target;
-  }
-
-private:
-  std::optional<RenderTarget> m_target;
-  VisibilityLayerMask m_cullingMask = VisibilityMask_All;
-
-public:
-  // 更新矩阵（在渲染前调用）
-  virtual void updateMatrices() {
-    ubo->param.eyePos = position;
-    ubo->param.view = Mat4f::lookAt(position, target, up);
-    if (type == CameraType::Perspective) {
-      const float fovYRad = fovY * (3.14159265358979323846f / 180.0f);
-      ubo->param.proj =
-          Mat4f::perspective(fovYRad, aspect, nearPlane, farPlane);
-    } else {
-      ubo->param.proj =
-          Mat4f::orthographic(left, right, bottom, top, nearPlane, farPlane);
-    }
-    ubo->setDirty();
-  }
-};
-
-using CameraSharedPtr = std::shared_ptr<Camera>;
 
 } // namespace LX_core

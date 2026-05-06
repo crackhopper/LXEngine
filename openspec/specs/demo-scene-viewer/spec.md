@@ -64,7 +64,7 @@ The default scene SHALL contain, at minimum:
 1. One `LX_core::SceneNode` rendering `DamagedHelmet.gltf`, loaded via the existing `infra::GLTFLoader`
 2. One `LX_core::SceneNode` rendering a ground plane (static 20m × 20m XZ quad at `y = 0`)
 3. One default `LX_core::DirectionalLight`
-4. One controllable camera (the default camera produced by `Scene` is sufficient)
+4. One controllable camera implemented as a `SceneNode` carrying `CameraComponent`
 
 The demo SHALL NOT load `Sponza` in the first release; Sponza is a downstream extension target.
 
@@ -108,9 +108,9 @@ The demo SHALL express helmet, ground, and any additional renderables as `LX_cor
 
 ### Requirement: Camera controllers with F2 edge-triggered switching
 
-The demo SHALL register both `OrbitCameraController` and `FreeFlyCameraController`. Orbit SHALL be the default mode. Pressing the `F2` key SHALL switch between modes on a rising-edge transition; holding `F2` SHALL NOT cause repeated toggles. At every frame's update hook, the active controller SHALL be updated with the input state and the frame's delta time, followed by a call to `camera.updateMatrices()`. Edge detection MAY be implemented locally inside the demo using a `bool m_prevF2Down` comparison, since `Sdl3InputState` only exposes level state.
+The demo SHALL register both `OrbitCameraController` and `FreeFlyCameraController`. Orbit SHALL be the default mode. Pressing the `F2` key SHALL switch between modes on a rising-edge transition; holding `F2` SHALL NOT cause repeated toggles. At every frame's update hook, the active controller SHALL be updated with the input state and the frame's delta time, followed by explicit refresh of the active `CameraComponent`'s GPU-facing matrices/resources from the current viewport state.
 
-When switching modes, the newly-activated controller SHALL be seeded from the current camera state (position, target / yaw-pitch, distance) so that the view remains continuous across the switch.
+When switching modes, the newly-activated controller SHALL be seeded from the current camera-node pose so that the view remains continuous across the switch.
 
 Control mappings SHALL include:
 
@@ -132,7 +132,7 @@ Control mappings SHALL include:
 The demo SHALL register its UI drawing function through `LX_core::backend::VulkanRenderer::setDrawUiCallback(std::function<void()>)`. It SHALL NOT assume that `gpu::Renderer` exposes a UI callback API. The registered callback SHALL render, at minimum:
 
 1. A **Render Stats** panel showing frame count, delta time (ms), and smoothed FPS — using `LX_infra::debug_ui::renderStatsPanel(clock)` when available
-2. A **Camera** panel editing `position`, `target`, `up`, `fovY`, `aspect`, `nearPlane`, `farPlane` — using `LX_infra::debug_ui::cameraPanel(...)` when available
+2. A **Camera** panel editing the active camera node’s transform and camera-component properties needed for projection / target binding / culling configuration
 3. A **Directional Light** panel editing `ubo->param.dir` and `ubo->param.color` — using `LX_infra::debug_ui::directionalLightPanel(...)` when available; the helper SHALL be responsible for calling `setDirty()` on user edits
 4. A **Help** panel (demo-local) listing `F1`, `F2`, Orbit controls, FreeFly controls; toggled on `F1` rising edge
 

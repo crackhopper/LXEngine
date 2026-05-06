@@ -4,11 +4,16 @@
 #include "core/frame_graph/render_queue.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
+#include "core/scene/components/camera_component.hpp"
+#include "core/scene/components/material_component.hpp"
+#include "core/scene/components/mesh_component.hpp"
+#include "core/scene/components/skeleton_component.hpp"
 #include "core/scene/object.hpp"
 #include "core/scene/scene.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/filesystem_tools.hpp"
 #include "infra/material_loader/generic_material_loader.hpp"
+#include "scene_test_helpers.hpp"
 
 #include <cstdlib>
 #include <filesystem>
@@ -112,9 +117,13 @@ struct VertexPosNormalUvOnly {
 };
 
 template <typename TVertex> MeshSharedPtr makeMesh(std::vector<TVertex> vertices) {
+  BoundingBox bounds;
+  for (const auto &vertex : vertices) {
+    bounds.merge(vertex.pos);
+  }
   auto vb = VertexBuffer<TVertex>::create(std::move(vertices));
   auto ib = IndexBuffer::create({0, 1, 2});
-  return Mesh::create(vb, ib);
+  return Mesh::create(vb, ib, bounds);
 }
 
 MeshSharedPtr makeMeshWithSkinningInputs() {
@@ -265,9 +274,36 @@ bool hasBinding(const std::vector<IGpuResourceSharedPtr> &resources,
   return false;
 }
 
+bool commandExitedSuccessfully(int code) {
+  return code == 0;
+}
+
+SceneNodeSharedPtr makeNode(const std::string &nodeName, MeshSharedPtr mesh,
+                            MaterialInstanceSharedPtr material,
+                            SkeletonSharedPtr skeleton = nullptr) {
+  auto node = SceneNode::create(nodeName);
+  node->addComponent<MeshComponent>(std::move(mesh));
+  if (skeleton) {
+    node->addComponent<SkeletonComponent>(std::move(skeleton));
+  }
+  node->addComponent<MaterialComponent>(std::move(material));
+  return node;
+}
+
 bool nearlyEqualVec3(const Vec3f &a, const Vec3f &b) {
   return std::abs(a.x - b.x) < 1e-5f && std::abs(a.y - b.y) < 1e-5f &&
          std::abs(a.z - b.z) < 1e-5f;
+}
+
+bool nearlyEqualMat4(const Mat4f &a, const Mat4f &b) {
+  for (int row = 0; row < 4; ++row) {
+    for (int col = 0; col < 4; ++col) {
+      if (std::abs(a(row, col) - b(row, col)) >= 1e-5f) {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
 Vec3f transformPoint(const Mat4f &transform, const Vec3f &point = Vec3f{}) {
@@ -289,9 +325,97 @@ findItemByDrawData(const RenderQueue &queue,
   return std::nullopt;
 }
 
+void triggerDuplicateMeshComponentAssert() {
+  auto node =
+      makeNode("dup_component", makeMeshWithSkinningInputs(), makeMaterial(false));
+  node->addComponent<MeshComponent>(makeMeshWithSkinningInputs());
+}
+
+void testComponentAttachRemoveAndListOrder() {
+  auto node = SceneNode::create("node_components");
+  auto mesh = makeMeshWithSkinningInputs();
+  auto material = makeMaterial(false);
+  auto skeleton = makeSkeleton();
+
+  EXPECT(node->addComponent<MeshComponent>(mesh).has_value(),
+         "mesh component should attach");
+  EXPECT(node->addComponent<MaterialComponent>(material).has_value(),
+         "material component should attach");
+  EXPECT(node->addComponent<SkeletonComponent>(skeleton).has_value(),
+         "skeleton component should attach");
+
+  auto meshComponent = node->getComponent<MeshComponent>();
+  auto materialComponent = node->getComponent<MaterialComponent>();
+  auto skeletonComponent = node->getComponent<SkeletonComponent>();
+  EXPECT(meshComponent.has_value(), "mesh component lookup should succeed");
+  EXPECT(materialComponent.has_value(),
+         "material component lookup should succeed");
+  EXPECT(skeletonComponent.has_value(),
+         "skeleton component lookup should succeed");
+  if (meshComponent) {
+    EXPECT(meshComponent->get().getMesh() == mesh,
+           "mesh component should preserve mesh handle");
+  }
+  if (materialComponent) {
+    EXPECT(materialComponent->get().getMaterialInstance() == material,
+           "material component should preserve material handle");
+  }
+  if (skeletonComponent) {
+    EXPECT(skeletonComponent->get().getSkeleton() == skeleton,
+           "skeleton component should preserve skeleton handle");
+  }
+
+  auto components = node->listComponents();
+  EXPECT(components.size() == 3, "listComponents should expose all components");
+  if (components.size() == 3) {
+    EXPECT(components[0].get().getTypeId() == componentTypeId<MeshComponent>(),
+           "mesh component should keep insertion order");
+    EXPECT(components[1].get().getTypeId() ==
+               componentTypeId<MaterialComponent>(),
+           "material component should keep insertion order");
+    EXPECT(components[2].get().getTypeId() ==
+               componentTypeId<SkeletonComponent>(),
+           "skeleton component should keep insertion order");
+  }
+
+  EXPECT(node->removeComponent<MeshComponent>(),
+         "removeComponent should remove mesh component");
+  EXPECT(!node->getComponent<MeshComponent>().has_value(),
+         "removed mesh component should no longer be visible");
+  EXPECT(!node->removeComponent<MeshComponent>(),
+         "removing absent component should return false");
+}
+
+void testRemovingMaterialComponentDetachesPassListener() {
+  auto material = makeMaterial(false);
+  auto node = makeNode("node_remove_material", makeMeshWithSkinningInputs(),
+                       material);
+  EXPECT(node->supportsPass(Pass_Forward),
+         "node should start valid before removing material component");
+
+  EXPECT(node->removeComponent<MaterialComponent>(),
+         "material component should be removable");
+  EXPECT(!node->getComponent<MaterialComponent>().has_value(),
+         "material component should be gone after removal");
+  EXPECT(!node->supportsPass(Pass_Forward),
+         "node without material component should not support forward pass");
+
+  material->setPassEnabled(Pass_Forward, false);
+  EXPECT(!node->getValidatedPassData(Pass_Forward).has_value(),
+         "removed material listener should leave cache empty after pass change");
+}
+
+void testDuplicateComponentTypeTriggersProgrammerError(const char *argv0) {
+  const std::string command =
+      std::string(argv0) + " --duplicate-component-assert >/dev/null 2>&1";
+  const int exitCode = std::system(command.c_str());
+  EXPECT(!commandExitedSuccessfully(exitCode),
+         "duplicate component attachment should fail in child process");
+}
+
 void testIndependentSceneNodeValidation() {
-  auto node = SceneNode::create("node_base", makeMeshWithSkinningInputs(),
-                                makeMaterial(false), nullptr);
+  auto node =
+      makeNode("node_base", makeMeshWithSkinningInputs(), makeMaterial(false));
   EXPECT(node->supportsPass(Pass_Forward),
          "independent SceneNode should validate without Scene");
   auto validated = node->getValidatedPassData(Pass_Forward);
@@ -304,8 +428,7 @@ void testIndependentSceneNodeValidation() {
 
 void testPassEnableStateRebuildsCache() {
   auto material = makeMaterial(false);
-  auto node = SceneNode::create("node_toggle", makeMeshWithSkinningInputs(),
-                                material, nullptr);
+  auto node = makeNode("node_toggle", makeMeshWithSkinningInputs(), material);
   EXPECT(node->supportsPass(Pass_Forward), "forward pass starts enabled");
 
   material->setPassEnabled(Pass_Forward, false);
@@ -323,10 +446,10 @@ void testPassEnableStateRebuildsCache() {
 
 void testSharedMaterialPassChangesRevalidateAllSceneNodes() {
   auto material = makeMaterial(false);
-  auto nodeA = SceneNode::create("node_shared_a", makeMeshWithSkinningInputs(),
-                                 material, nullptr);
-  auto nodeB = SceneNode::create("node_shared_b", makeMeshWithSkinningInputs(),
-                                 material, nullptr);
+  auto nodeA =
+      makeNode("node_shared_a", makeMeshWithSkinningInputs(), material);
+  auto nodeB =
+      makeNode("node_shared_b", makeMeshWithSkinningInputs(), material);
   auto scene = Scene::create("SharedScene", nodeA);
   scene->addRenderable(nodeB);
 
@@ -348,8 +471,7 @@ void testSharedMaterialPassChangesRevalidateAllSceneNodes() {
 
 void testSceneNodeBackrefUsesWeakOwnershipContract() {
   auto material = makeMaterial(false);
-  auto node = SceneNode::create("node_backref", makeMeshWithSkinningInputs(),
-                                material, nullptr);
+  auto node = makeNode("node_backref", makeMeshWithSkinningInputs(), material);
   EXPECT(!node->getAttachedScene(),
          "fresh node should not report an attached scene");
 
@@ -365,8 +487,7 @@ void testSceneNodeBackrefUsesWeakOwnershipContract() {
 
 void testSceneDestructionDetachesSceneNodesFromMaterialListener() {
   auto material = makeMaterial(false);
-  auto node = SceneNode::create("node_detach", makeMeshWithSkinningInputs(),
-                                material, nullptr);
+  auto node = makeNode("node_detach", makeMeshWithSkinningInputs(), material);
 
   {
     auto scene = Scene::create("TemporaryScene", node);
@@ -390,10 +511,10 @@ void testSceneDestructionDetachesSceneNodesFromMaterialListener() {
 }
 
 void testSceneNodeHierarchyPropagatesWorldTransform() {
-  auto parent = SceneNode::create("node_parent", makeMeshWithSkinningInputs(),
-                                  makeMaterial(false), nullptr);
-  auto child = SceneNode::create("node_child", makeMeshWithSkinningInputs(),
-                                 makeMaterial(false), nullptr);
+  auto parent =
+      makeNode("node_parent", makeMeshWithSkinningInputs(), makeMaterial(false));
+  auto child =
+      makeNode("node_child", makeMeshWithSkinningInputs(), makeMaterial(false));
 
   parent->setTranslation(Vec3f{2.0f, 0.0f, -1.0f});
   child->setTranslation(Vec3f{0.0f, 3.0f, 4.0f});
@@ -408,11 +529,10 @@ void testSceneNodeHierarchyPropagatesWorldTransform() {
 }
 
 void testHierarchyChangesDirtyChildPerDrawModel() {
-  auto parent = SceneNode::create("node_parent_dirty",
-                                  makeMeshWithSkinningInputs(),
-                                  makeMaterial(false), nullptr);
-  auto child = SceneNode::create("node_child_dirty", makeMeshWithSkinningInputs(),
-                                 makeMaterial(false), nullptr);
+  auto parent = makeNode("node_parent_dirty", makeMeshWithSkinningInputs(),
+                         makeMaterial(false));
+  auto child = makeNode("node_child_dirty", makeMeshWithSkinningInputs(),
+                        makeMaterial(false));
   child->setParent(parent);
   child->setTranslation(Vec3f{0.0f, 1.0f, 0.0f});
 
@@ -427,14 +547,60 @@ void testHierarchyChangesDirtyChildPerDrawModel() {
          "changing parent transform should dirty and refresh child per-draw model");
 }
 
+void testParentedCameraFollowsHierarchyTranslation() {
+  auto parent = SceneNode::create("camera_parent");
+  parent->setTranslation(Vec3f{1.0f, 2.0f, 3.0f});
+
+  auto cameraNode = SceneNode::create("camera_child");
+  cameraNode->setParent(parent);
+
+  auto camera = cameraNode->addComponent<CameraComponent>();
+  EXPECT(camera.has_value(), "camera component should attach to node");
+  if (!camera.has_value()) {
+    return;
+  }
+
+  camera->get().lookAt(Vec3f{5.0f, 6.0f, 7.0f}, Vec3f{5.0f, 6.0f, 6.0f},
+                       Vec3f{0.0f, 1.0f, 0.0f});
+
+  const Vec3f eyeBefore = camera->get().getEyePosition();
+  const Vec3f targetBefore = camera->get().getLookTarget();
+
+  parent->setTranslation(Vec3f{4.0f, -1.0f, 8.0f});
+
+  const Vec3f expectedDelta{3.0f, -3.0f, 5.0f};
+  EXPECT(nearlyEqualVec3(camera->get().getEyePosition(), eyeBefore + expectedDelta),
+         "camera eye should follow parent world translation");
+  EXPECT(nearlyEqualVec3(camera->get().getLookTarget(), targetBefore + expectedDelta),
+         "camera look target should follow parent world translation");
+}
+
+void testCameraScaleDoesNotAffectViewMatrix() {
+  auto cameraNode = SceneNode::create("scaled_camera");
+  auto camera = cameraNode->addComponent<CameraComponent>();
+  EXPECT(camera.has_value(), "camera component should attach to node");
+  if (!camera.has_value()) {
+    return;
+  }
+
+  camera->get().lookAt(Vec3f{3.0f, 4.0f, 5.0f}, Vec3f{0.0f, 1.0f, 0.0f},
+                       Vec3f{0.0f, 1.0f, 0.0f});
+  const Mat4f baselineView = camera->get().getViewMatrix();
+
+  auto local = cameraNode->getLocalTransform();
+  local.scale = Vec3f{2.0f, 3.0f, 4.0f};
+  cameraNode->setLocalTransform(local);
+
+  EXPECT(nearlyEqualMat4(camera->get().getViewMatrix(), baselineView),
+         "camera view matrix should ignore owner scale");
+}
+
 void testOrdinaryMaterialWritesDoNotChangeValidatedPassState() {
   auto material = makeMaterial(false);
-  auto nodeA = SceneNode::create("node_non_structural_a",
-                                 makeMeshWithSkinningInputs(), material,
-                                 nullptr);
-  auto nodeB = SceneNode::create("node_non_structural_b",
-                                 makeMeshWithSkinningInputs(), material,
-                                 nullptr);
+  auto nodeA =
+      makeNode("node_non_structural_a", makeMeshWithSkinningInputs(), material);
+  auto nodeB =
+      makeNode("node_non_structural_b", makeMeshWithSkinningInputs(), material);
   auto scene = Scene::create("NonStructuralScene", nodeA);
   scene->addRenderable(nodeB);
 
@@ -459,8 +625,7 @@ void testOrdinaryMaterialWritesDoNotChangeValidatedPassState() {
 void testOptionalSampledResourcesDoNotBlockValidation() {
   auto material = makeMaterial({ShaderVariant{"USE_UV", true},
                                 ShaderVariant{"USE_LIGHTING", false}});
-  auto node = SceneNode::create("node_optional_textures", makeMeshWithUvOnly(),
-                                material, nullptr);
+  auto node = makeNode("node_optional_textures", makeMeshWithUvOnly(), material);
 
   EXPECT(node->supportsPass(Pass_Forward),
          "optional sampled resources should not be required structurally");
@@ -477,10 +642,9 @@ void testOptionalSampledResourcesDoNotBlockValidation() {
 
 void testSkinningVariantChangesPipelineKeyAndAddsBones() {
   auto mesh = makeMeshWithSkinningInputs();
-  auto baseNode =
-      SceneNode::create("node_unskinned", mesh, makeMaterial(false), nullptr);
+  auto baseNode = makeNode("node_unskinned", mesh, makeMaterial(false));
   auto skinnedNode =
-      SceneNode::create("node_skinned", mesh, makeMaterial(true), makeSkeleton());
+      makeNode("node_skinned", mesh, makeMaterial(true), makeSkeleton());
 
   auto baseData = baseNode->getValidatedPassData(Pass_Forward);
   auto skinnedData = skinnedNode->getValidatedPassData(Pass_Forward);
@@ -495,9 +659,10 @@ void testSkinningVariantChangesPipelineKeyAndAddsBones() {
 }
 
 void testRenderQueueConsumesValidatedSceneNode() {
-  auto node = SceneNode::create("node_queue", makeMeshWithSkinningInputs(),
-                                makeMaterial(false), nullptr);
+  auto node =
+      makeNode("node_queue", makeMeshWithSkinningInputs(), makeMaterial(false));
   auto scene = Scene::create("SceneQueue", node);
+  scene->addCamera(LX_test::makeDefaultCameraNodeWithTarget());
   RenderQueue queue;
   queue.buildFromScene(*scene, Pass_Forward, RenderTarget{});
 
@@ -514,17 +679,17 @@ void testRenderQueueConsumesValidatedSceneNode() {
 }
 
 void testRenderQueueUsesHierarchyDerivedWorldTransform() {
-  auto parent = SceneNode::create("node_queue_parent",
-                                  makeMeshWithSkinningInputs(),
-                                  makeMaterial(false), nullptr);
-  auto child = SceneNode::create("node_queue_child", makeMeshWithSkinningInputs(),
-                                 makeMaterial(false), nullptr);
+  auto parent = makeNode("node_queue_parent", makeMeshWithSkinningInputs(),
+                         makeMaterial(false));
+  auto child = makeNode("node_queue_child", makeMeshWithSkinningInputs(),
+                        makeMaterial(false));
   parent->setTranslation(Vec3f{4.0f, 0.5f, 0.0f});
   child->setTranslation(Vec3f{0.0f, 1.5f, 0.0f});
   child->setParent(parent);
 
   auto scene = Scene::create("SceneQueueHierarchy", parent);
   scene->addRenderable(child);
+  scene->addCamera(LX_test::makeDefaultCameraNodeWithTarget());
 
   RenderQueue queue;
   queue.buildFromScene(*scene, Pass_Forward, RenderTarget{});
@@ -542,8 +707,8 @@ void testRenderQueueUsesHierarchyDerivedWorldTransform() {
 }
 
 void testSceneAssignsStableDebugId() {
-  auto node = SceneNode::create("node_debug", makeMeshWithSkinningInputs(),
-                                makeMaterial(false), nullptr);
+  auto node =
+      makeNode("node_debug", makeMeshWithSkinningInputs(), makeMaterial(false));
   EXPECT(node->getDebugId() == StringID{},
          "detached SceneNode should not have a scene debug id yet");
   auto scene = Scene::create("SceneDebug", node);
@@ -556,10 +721,8 @@ void testProgrammerErrorsThrowLogicError() {
   bool threw = false;
   try {
     auto material = makeMaterial(false);
-    auto nodeA =
-        SceneNode::create("dup_node", makeMeshWithSkinningInputs(), material);
-    auto nodeB =
-        SceneNode::create("dup_node", makeMeshWithSkinningInputs(), material);
+    auto nodeA = makeNode("dup_node", makeMeshWithSkinningInputs(), material);
+    auto nodeB = makeNode("dup_node", makeMeshWithSkinningInputs(), material);
     auto scene = Scene::create("DuplicateScene", nodeA);
     scene->addRenderable(nodeB);
   } catch (const std::logic_error &) {
@@ -569,11 +732,9 @@ void testProgrammerErrorsThrowLogicError() {
 
   threw = false;
   try {
-    auto node = SceneNode::create(
-        "bad_vertex_color", makeMeshPositionOnly(),
-        makeMaterial({ShaderVariant{"USE_VERTEX_COLOR", true},
-                      ShaderVariant{"USE_LIGHTING", false}}),
-        nullptr);
+    auto node = makeNode("bad_vertex_color", makeMeshPositionOnly(),
+                         makeMaterial({ShaderVariant{"USE_VERTEX_COLOR", true},
+                                       ShaderVariant{"USE_LIGHTING", false}}));
     (void)node;
   } catch (const std::logic_error &) {
     threw = true;
@@ -582,11 +743,9 @@ void testProgrammerErrorsThrowLogicError() {
 
   threw = false;
   try {
-    auto node = SceneNode::create(
-        "bad_uv", makeMeshPositionOnly(),
-        makeMaterial({ShaderVariant{"USE_UV", true},
-                      ShaderVariant{"USE_LIGHTING", false}}),
-        nullptr);
+    auto node = makeNode("bad_uv", makeMeshPositionOnly(),
+                         makeMaterial({ShaderVariant{"USE_UV", true},
+                                       ShaderVariant{"USE_LIGHTING", false}}));
     (void)node;
   } catch (const std::logic_error &) {
     threw = true;
@@ -595,8 +754,8 @@ void testProgrammerErrorsThrowLogicError() {
 
   threw = false;
   try {
-    auto node = SceneNode::create("bad_lighting", makeMeshPositionOnly(),
-                                  makeMaterial(false), nullptr);
+    auto node = makeNode("bad_lighting", makeMeshPositionOnly(),
+                         makeMaterial(false));
     (void)node;
   } catch (const std::logic_error &) {
     threw = true;
@@ -605,12 +764,11 @@ void testProgrammerErrorsThrowLogicError() {
 
   threw = false;
   try {
-    auto node = SceneNode::create(
+    auto node = makeNode(
         "bad_normal_map", makeMeshWithNormalAndUvOnly(),
         makeMaterial({ShaderVariant{"USE_UV", true},
                       ShaderVariant{"USE_LIGHTING", true},
-                      ShaderVariant{"USE_NORMAL_MAP", true}}),
-        nullptr);
+                      ShaderVariant{"USE_NORMAL_MAP", true}}));
     (void)node;
   } catch (const std::logic_error &) {
     threw = true;
@@ -619,9 +777,8 @@ void testProgrammerErrorsThrowLogicError() {
 
   threw = false;
   try {
-    auto node = SceneNode::create("bad_skinning",
-                                  makeMeshWithoutSkinningInputs(),
-                                  makeMaterial(true), makeSkeleton());
+    auto node = makeNode("bad_skinning", makeMeshWithoutSkinningInputs(),
+                         makeMaterial(true), makeSkeleton());
     (void)node;
   } catch (const std::logic_error &) {
     threw = true;
@@ -630,9 +787,8 @@ void testProgrammerErrorsThrowLogicError() {
 
   threw = false;
   try {
-    auto node = SceneNode::create("bad_skinning_skeleton",
-                                  makeMeshWithSkinningInputs(),
-                                  makeMaterial(true), nullptr);
+    auto node = makeNode("bad_skinning_skeleton", makeMeshWithSkinningInputs(),
+                         makeMaterial(true));
     (void)node;
   } catch (const std::logic_error &) {
     threw = true;
@@ -643,12 +799,20 @@ void testProgrammerErrorsThrowLogicError() {
 } // namespace
 
 int main(int argc, char **argv) {
+  if (argc > 1 && std::string(argv[1]) == "--duplicate-component-assert") {
+    triggerDuplicateMeshComponentAssert();
+    return 0;
+  }
+
   expSetEnvVK();
   if (!initializeRuntimeAssetRoot()) {
     std::cerr << "SKIP: failed to locate shader assets\n";
     return 0;
   }
 
+  testComponentAttachRemoveAndListOrder();
+  testRemovingMaterialComponentDetachesPassListener();
+  testDuplicateComponentTypeTriggersProgrammerError(argv[0]);
   testIndependentSceneNodeValidation();
   testPassEnableStateRebuildsCache();
   testSharedMaterialPassChangesRevalidateAllSceneNodes();
@@ -656,6 +820,8 @@ int main(int argc, char **argv) {
   testSceneDestructionDetachesSceneNodesFromMaterialListener();
   testSceneNodeHierarchyPropagatesWorldTransform();
   testHierarchyChangesDirtyChildPerDrawModel();
+  testParentedCameraFollowsHierarchyTranslation();
+  testCameraScaleDoesNotAffectViewMatrix();
   testOrdinaryMaterialWritesDoNotChangeValidatedPassState();
   testOptionalSampledResourcesDoNotBlockValidation();
   testSkinningVariantChangesPipelineKeyAndAddsBones();

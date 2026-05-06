@@ -15,7 +15,7 @@ void OrbitCameraController::setDistance(float d) {
   m_distance = std::clamp(d, minDistance, maxDistance);
 }
 
-void OrbitCameraController::update(Camera &camera, const IInputState &input,
+void OrbitCameraController::update(CameraComponent &camera, const IInputState &input,
                                    float /*dt*/) {
   const auto mouseDelta = input.getMouseDelta();
   const float wheel = input.getMouseWheelDelta();
@@ -59,9 +59,7 @@ void OrbitCameraController::update(Camera &camera, const IInputState &input,
   eye.y = m_target.y + m_distance * std::sin(pitchRad);
   eye.z = m_target.z + m_distance * std::cos(pitchRad) * std::cos(yawRad);
 
-  camera.position = eye;
-  camera.target = m_target;
-  camera.up = Vec3f(0.0f, 1.0f, 0.0f);
+  camera.lookAt(eye, m_target, Vec3f(0.0f, 1.0f, 0.0f));
 }
 
 } // namespace LX_core

@@ -9,7 +9,7 @@ public:
                                    float yawDeg = 180.0f,
                                    float pitchDeg = 0.0f);
 
-  void update(Camera &camera, const IInputState &input, float dt) override;
+  void update(CameraComponent &camera, const IInputState &input, float dt) override;
 
   Vec3f getPosition() const { return m_position; }
   float getYawDeg() const { return m_yawDeg; }

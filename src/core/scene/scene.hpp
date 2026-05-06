@@ -1,7 +1,8 @@
 #pragma once
 #include "core/pipeline/pipeline_key.hpp"
 #include "core/asset/shader.hpp"
-#include "core/scene/camera.hpp"
+#include "core/math/ray.hpp"
+#include "core/scene/components/camera_component.hpp"
 #include "core/scene/light.hpp"
 #include "core/scene/object.hpp"
 #include "core/frame_graph/pass.hpp"
@@ -60,10 +61,8 @@ Scene 是一层薄壳：三个平铺 vector（renderables / cameras / lights）+
 render state。这种扁平 ownership 让"哪些对象属于这一帧"是可枚举的事实，而不是
 需要遍历某种隐式树才能复原的状态。
 
-构造时强制 seed 一个 Camera + DirectionalLight，是 REQ-009 的兜底：那些不走完整
-`VulkanRenderer::initScene` 的 core/test 路径，仍然能拿到非空的 scene-level 资源。
-seed 出来的 Camera 已经 `setTarget(RenderTarget{})`，否则 `matchesTarget` 永远 false，
-`getSceneLevelResources` 永远返回空 — 这条隐含约束容易在写测试时被忘掉。
+构造时仍然 seed 一个 DirectionalLight，方便那些不走完整 renderer 初始化的测试路径。
+camera 不再单独 seed；测试和 demo 需要显式注册 camera-bearing SceneNode。
 
 `enable_shared_from_this` 的存在是为了在 `addRenderable` 里给挂进来的 SceneNode 写
 弱反向引用 `weak_from_this()`，让 shared material 重验证传播能从 node 找回 scene。
@@ -77,14 +76,6 @@ public:
     if (m_sceneName.empty()) {
       m_sceneName = "Scene";
     }
-    // REQ-009: the ctor seeds a default Camera + DirectionalLight into the
-    // multi-container fields. The seeded camera is created with a default
-    // RenderTarget{} so tests that don't run through VulkanRenderer::initScene
-    // still see a non-empty scene-level resource list.
-    auto cam = std::make_shared<Camera>();
-    cam->setTarget(RenderTarget{});
-    m_cameras.push_back(std::move(cam));
-
     m_lights.push_back(std::make_shared<DirectionalLight>());
   }
   ~Scene();
@@ -149,12 +140,17 @@ public:
     m_renderables.push_back(std::move(r));
   }
 
-  void addCamera(CameraSharedPtr cam) { m_cameras.push_back(std::move(cam)); }
-  const std::vector<CameraSharedPtr> &getCameras() const { return m_cameras; }
+  void addCamera(const SceneNodeSharedPtr &cameraNode);
+  void removeCamera(const SceneNodeSharedPtr &cameraNode);
+  const std::vector<SceneNodeSharedPtr> &getCameras() const { return m_cameras; }
 
   void addLight(LightBaseSharedPtr light) { m_lights.push_back(std::move(light)); }
   const std::vector<LightBaseSharedPtr> &getLights() const { return m_lights; }
   const std::string &getSceneName() const { return m_sceneName; }
+  struct PickHit {
+    SceneNodeSharedPtr node;
+    float distance = 0.0f;
+  };
   SceneNode *findByPath(const std::string &path) const;
   std::string dumpTree() const;
   void revalidateNodesUsing(const MaterialInstanceSharedPtr &materialInstance);
@@ -167,6 +163,9 @@ public:
   getSceneLevelResources(StringID pass, const RenderTarget &target) const;
   VisibilityLayerMask getCombinedCameraCullingMask(
       const RenderTarget &target) const;
+  std::optional<PickHit> pick(
+      const Ray &ray,
+      VisibilityLayerMask layerMask = VisibilityMask_All) const;
 
 private:
   [[nodiscard]] std::vector<SceneNodeSharedPtr> getRootNodes() const;
@@ -178,7 +177,7 @@ private:
   std::string m_sceneName;
   SceneNodeSharedPtr m_pathRoot;
   std::vector<IRenderableSharedPtr> m_renderables;
-  std::vector<CameraSharedPtr> m_cameras;
+  std::vector<SceneNodeSharedPtr> m_cameras;
   std::vector<LightBaseSharedPtr> m_lights;
 };
 

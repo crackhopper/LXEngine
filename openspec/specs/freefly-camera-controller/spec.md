@@ -1,4 +1,4 @@
-## ADDED Requirements
+## Requirements
 
 ### Requirement: FreeFlyCameraController class
 `src/core/scene/freefly_camera_controller.hpp` and `.cpp` SHALL define a class `FreeFlyCameraController` in namespace `LX_core` that inherits `ICameraController`.
@@ -69,16 +69,16 @@ When `input.isKeyDown(KeyCode::LCtrl)` is true, the effective move speed SHALL b
 - **THEN** displacement SHALL be approximately `moveSpeedPerSecond * boostMultiplier`
 
 ### Requirement: Camera writeback
-After processing input, the controller SHALL set:
-- `camera.position = m_position`
-- `camera.target = m_position + forward`
-- `camera.up = {0, 1, 0}`
+After processing input, the controller SHALL write camera pose through `CameraComponent` so that:
+- the owning camera node’s translation matches the controller’s internal position
+- the owning camera node faces `position + forward`
+- the camera-up convention remains `{0, 1, 0}`
 
-The controller SHALL NOT call `camera.updateMatrices()`.
+The controller SHALL NOT directly upload matrices or perform render-side synchronization.
 
 #### Scenario: Camera reflects controller state
 - **WHEN** update completes
-- **THEN** camera.position SHALL equal the controller's internal position and camera.target SHALL be position + forward direction
+- **THEN** the camera node pose SHALL reflect the controller's internal position and forward direction
 
 ### Requirement: Integration test for FreeFlyCameraController
 `src/test/integration/test_freefly_camera_controller.cpp` SHALL verify:
@@ -88,7 +88,7 @@ The controller SHALL NOT call `camera.updateMatrices()`.
 - Boost multiplies speed
 - Pitch is clamped
 
-All tests SHALL use `MockInputState` and SHALL NOT depend on SDL.
+All tests SHALL use `MockInputState`, SHALL NOT depend on SDL, and SHALL exercise the controller through a `CameraComponent` attached to a `SceneNode`.
 
 #### Scenario: All freefly controller tests pass
 - **WHEN** running `test_freefly_camera_controller`

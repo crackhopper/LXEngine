@@ -5,6 +5,9 @@
 #include "core/asset/shader.hpp"
 #include "core/asset/skeleton.hpp"
 #include "core/rhi/vertex_buffer.hpp"
+#include "core/scene/components/material_component.hpp"
+#include "core/scene/components/mesh_component.hpp"
+#include "core/scene/components/skeleton_component.hpp"
 #include "core/scene/object.hpp"
 #include "core/frame_graph/pass.hpp"
 #include "core/scene/scene.hpp"
@@ -76,7 +79,7 @@ struct Fixture {
     f.vb = VertexBuffer<VertexPos>::create(
         std::vector<VertexPos>{{{0, 0, 0}}, {{1, 0, 0}}, {{0, 1, 0}}});
     f.ib = IndexBuffer::create({0, 1, 2}, topo);
-    f.mesh = Mesh::create(f.vb, f.ib);
+    f.mesh = Mesh::create(f.vb, f.ib, BoundingBox{{0, 0, 0}, {1, 1, 0}});
 
     auto shader = std::make_shared<FakeShader>();
     f.tmpl = MaterialTemplate::create(shaderName);
@@ -97,7 +100,12 @@ struct Fixture {
 
 PipelineKey buildKey(const Fixture &f, StringID pass,
                      const SkeletonSharedPtr &skel = nullptr) {
-  auto node = SceneNode::create("pipeline_identity_node", f.mesh, f.material, skel);
+  auto node = SceneNode::create("pipeline_identity_node");
+  node->addComponent<MeshComponent>(f.mesh);
+  if (skel) {
+    node->addComponent<SkeletonComponent>(skel);
+  }
+  node->addComponent<MaterialComponent>(f.material);
   StringID objSig = node->getPipelineSignature(pass);
   StringID matSig = f.material->getPipelineSignature(pass);
   return PipelineKey::build(objSig, matSig);
@@ -159,8 +167,9 @@ void testDifferentPassProducesDifferentKey() {
   shadowEntry.renderState = shadowState;
   f.tmpl->setPassDefinition(Pass_Shadow, std::move(shadowEntry));
 
-  auto node =
-      SceneNode::create("pipeline_identity_pass_node", f.mesh, f.material, nullptr);
+  auto node = SceneNode::create("pipeline_identity_pass_node");
+  node->addComponent<MeshComponent>(f.mesh);
+  node->addComponent<MaterialComponent>(f.material);
   StringID objSig = node->getPipelineSignature(Pass_Forward);
   StringID fwdMat = f.material->getPipelineSignature(Pass_Forward);
   StringID shMat = f.material->getPipelineSignature(Pass_Shadow);

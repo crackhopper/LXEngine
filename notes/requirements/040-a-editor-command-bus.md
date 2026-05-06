@@ -1,6 +1,8 @@
-# REQ-040: Editor 命令总线 — 文本协议 + 注册表 + 历史 + 控制台后端
+# REQ-040-a: Editor 命令总线 — 文本协议 + 注册表 + 历史 + 控制台后端
 
 > 本 REQ 是 [Phase 1.5 ImGui Editor MVP + 命令总线](../roadmaps/main-roadmap/phase-1.5-imgui-editor-mvp.md) 的第 6 步。在 roadmap 中以"REQ-151 Editor 命令总线"前向声明。
+>
+> 2026-05-06 拆分：原 `040-editor-command-bus.md` 即本档（v1，dispatch + history + verb 补全 + 单选 EditorState）。v2（参数补全 / undo·redo / EditorState 多选）移到 [REQ-040-b 命令总线 v2](041-b-command-bus-v2.md)。命令权限、throttling、MCP tool schema 自动生成等更后置项在 040-b 的"后续工作"段记账。
 
 ## 背景
 
@@ -123,7 +125,7 @@ class CommandBus {
 - 上半 area：滚动输出区，列出 history 中每条 `< line` + `> result.message`
 - 下半 area：input text + 回车提交
 - 上下方向键浏览历史（命令）
-- Tab 触发自动补全（基于 `CommandBus::listVerbs()`）—— v1 仅 verb 补全，参数补全 v2
+- Tab 触发自动补全（基于 `CommandBus::listVerbs()`）—— v1 仅 verb 补全；参数补全见 [REQ-040-b](041-b-command-bus-v2.md)
 - 右上角"clear"按钮清空显示但不清 history（history 用于 undo / agent 训练）
 
 ### R6: `EditorState` 选中状态
@@ -141,7 +143,7 @@ class EditorState {
 
 - `select` 命令调用本接口
 - gizmo 与 inspector 都查这里
-- v1 单选；多选留 v2
+- v1 单选；多选移到 [REQ-040-b](041-b-command-bus-v2.md)（含 EditorState API 升级）
 
 ### R7: 命令脚本入口（agent 友好）
 
@@ -186,10 +188,10 @@ class CommandBus {
 ## 边界与约束
 
 - 协议**简单 verb arg**，**不**用 lisp / s-expr / json-rpc 输入（输出可 json，输入保持人类友好）
-- v1 **不**做参数补全（只 verb 补全）
-- v1 **不**做命令权限 / 角色（每个命令都可被任何 caller 调）；权限留 Phase 6+ 收口
-- v1 **不**做 undo / redo（history 字段已预留，逻辑 v2 实现）
-- v1 **不**做命令 throttling / rate limit
+- v1 **不**做参数补全（只 verb 补全）；参数补全在 [REQ-040-b](041-b-command-bus-v2.md)
+- v1 **不**做命令权限 / 角色（每个命令都可被任何 caller 调）；权限留 Phase 6+ 收口（在 040-b 后续工作段记账）
+- v1 **不**做 undo / redo（history 字段已预留）；逻辑在 [REQ-040-b](041-b-command-bus-v2.md)
+- v1 **不**做命令 throttling / rate limit（在 040-b 后续工作段记账）
 - v1 **不**做 MCP 暴露（推到 Phase 1.6，本 REQ 接口形态对齐 MCP 即可）
 - 命令实现可能依赖具体子系统（scene / camera / debug_draw），但 `CommandBus` 本身保持纯
 - 命令返回 `structured` 是 best-effort，不保证 schema 稳定性（agent 应基于 message 兜底）
@@ -198,17 +200,17 @@ class CommandBus {
 
 - [REQ-035 Transform 组件](finished/035-transform-component.md) — `move/rotate/scale` 直接调 setter
 - [REQ-036 路径查询](finished/036-scene-node-path-lookup.md) — 所有 `<path>` 参数靠 `findByPath`
-- [REQ-037-b Camera 作为 component](037-b-camera-as-component.md) — `move camera_main` / `cam ...` 命令统一接口
-- [REQ-038 picking](038-ray-aabb-picking-min.md) — 视口点击 → 内部生成 `select <path>` 命令
+- [REQ-037-b Camera 作为 component](finished/037-b-camera-as-component.md) — `move camera_main` / `cam ...` 命令统一接口
+- [REQ-038 picking](finished/038-a-ray-aabb-picking-min.md) — 视口点击 → 内部生成 `select <path>` 命令
 - [REQ-017](finished/017-imgui-overlay.md) ImGui overlay — 控制台面板的渲染
 
 ## 后续工作
 
-- [REQ-041 ImGui Editor MVP](041-imgui-editor-mvp.md) — 接入控制台面板；gizmo 拖拽结束后发 `move/rotate/scale` 命令
+- [REQ-041-a ImGui Editor MVP](041-a-imgui-editor-mvp.md) — 接入控制台面板；gizmo 拖拽结束后发 `move/rotate/scale` 命令
 - **Phase 1.6 MCP shim**：起一个 stdio JSON-RPC server，暴露 `dispatch_command(line: string) -> { ok, message, structured }` 工具；server 内部就是调 `bus.dispatch(line)`，~50 LOC
-- v2：参数补全 / undo redo / 命令权限 / MCP tool schema 自动从 brief 生成
-- v3：脚本文件加载（`source <file>`）+ 命令脚本作为 asset 类型登记进 [Phase 3 资产管线](../roadmaps/main-roadmap/phase-3-asset-pipeline.md)
+- [REQ-040-b 命令总线 v2](041-b-command-bus-v2.md)：参数补全 + undo / redo + EditorState 多选；命令权限、throttling、MCP tool schema 自动从 brief 生成 在该 REQ 的"后续工作"中记账
+- 脚本文件加载（`source <file>`）+ 命令脚本作为 asset 类型登记进 [Phase 3 资产管线](../roadmaps/main-roadmap/phase-3-asset-pipeline.md)（040-b 落地后再立项）
 
 ## 实施状态
 
-待实施。Phase 1.5 第 6 步。在 [REQ-035](finished/035-transform-component.md) / [REQ-036](finished/036-scene-node-path-lookup.md) / [REQ-037-a](037-a-component-model-foundation.md) / [REQ-037-b](037-b-camera-as-component.md) / [REQ-038](038-ray-aabb-picking-min.md) 落地后开工（每个内置命令依赖其中至少一个）。
+待实施。Phase 1.5 第 6 步。在 [REQ-035](finished/035-transform-component.md) / [REQ-036](finished/036-scene-node-path-lookup.md) / [REQ-037-a](finished/037-a-component-model-foundation.md) / [REQ-037-b](finished/037-b-camera-as-component.md) / [REQ-038](finished/038-a-ray-aabb-picking-min.md) 落地后开工（每个内置命令依赖其中至少一个）。

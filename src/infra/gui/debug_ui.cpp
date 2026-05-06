@@ -112,18 +112,24 @@ void renderStatsPanel(const LX_core::Clock& clock) {
   labelFloat("fps", fps);
 }
 
-void cameraPanel(const char* title, LX_core::Camera& camera) {
+void cameraPanel(const char* title, LX_core::CameraComponent& camera) {
   separatorText(title);
-  dragVec3("position", camera.position, 0.05f);
-  dragVec3("target", camera.target, 0.05f);
-  dragVec3("up", camera.up, 0.01f);
+  auto eye = camera.getEyePosition();
+  auto target = camera.getLookTarget();
+  auto up = camera.getUpVector();
+
+  bool poseChanged = false;
+  poseChanged |= dragVec3("position", eye, 0.05f);
+  poseChanged |= dragVec3("target", target, 0.05f);
+  poseChanged |= dragVec3("up", up, 0.01f);
+  if (poseChanged) {
+    camera.lookAt(eye, target, up);
+  }
+
   sliderFloat("fovY", camera.fovY, 1.0f, 179.0f);
   sliderFloat("aspect", camera.aspect, 0.1f, 4.0f);
   sliderFloat("near", camera.nearPlane, 0.001f, 10.0f);
   sliderFloat("far", camera.farPlane, 1.0f, 10000.0f);
-  // NOTE: intentionally does not call camera.updateMatrices(); the caller
-  // decides when (and whether) to refresh view/projection matrices for the
-  // current frame — see REQ-018 R4.
 }
 
 void directionalLightPanel(const char* title,

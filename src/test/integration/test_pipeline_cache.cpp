@@ -8,6 +8,9 @@
 #include "core/frame_graph/frame_graph.hpp"
 #include "core/frame_graph/pass.hpp"
 #include "core/scene/scene.hpp"
+#include "core/scene/components/material_component.hpp"
+#include "core/scene/components/mesh_component.hpp"
+#include "core/scene/components/skeleton_component.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/filesystem_tools.hpp"
 #include "infra/material_loader/generic_material_loader.hpp"
@@ -49,11 +52,17 @@ int main() {
           {1.0f, 0.0f, 0.0f, 0.0f}, {0, 0, 0, 0}, {1.0f, 0.0f, 0.0f, 0.0f}),
     });
     auto indexBufferPtr = LX_core::IndexBuffer::create({0u, 1u, 2u});
-    auto meshPtr = LX_core::Mesh::create(vertexBufferPtr, indexBufferPtr);
+    auto meshPtr = LX_core::Mesh::create(
+        vertexBufferPtr, indexBufferPtr,
+        LX_core::BoundingBox{{-5.0f, -5.0f, 0.0f}, {5.0f, 5.0f, 0.0f}});
     auto material = LX_infra::loadGenericMaterial("assets/materials/blinnphong_default.material");
-    auto node = LX_core::SceneNode::create(
-        "pipeline_cache_node", meshPtr, material, LX_core::Skeleton::create({}));
+    auto node = LX_core::SceneNode::create("pipeline_cache_node");
+    node->addComponent<LX_core::MeshComponent>(meshPtr);
+    node->addComponent<LX_core::MaterialComponent>(material);
+    node->addComponent<LX_core::SkeletonComponent>(
+        LX_core::Skeleton::create({}));
     auto scene = LX_core::Scene::create(node);
+    scene->addCamera(LX_test::makeDefaultCameraNodeWithTarget());
     // RenderQueue::buildFromScene internally merges scene.getSceneLevelResources(pass, target),
     // so the item already carries camera + light UBOs — no side-channel injection.
     auto item = LX_test::firstItemFromScene(*scene, LX_core::Pass_Forward);

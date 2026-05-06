@@ -7,6 +7,8 @@
 #include "core/pipeline/pipeline_key.hpp"
 #include "core/asset/shader.hpp"
 #include "core/rhi/vertex_buffer.hpp"
+#include "core/scene/components/material_component.hpp"
+#include "core/scene/components/mesh_component.hpp"
 #include "core/scene/object.hpp"
 #include "core/frame_graph/pass.hpp"
 #include "core/frame_graph/render_queue.hpp"
@@ -129,10 +131,13 @@ buildItem(PrimitiveTopology topo = PrimitiveTopology::TriangleList) {
   auto vb = VertexBuffer<VertexPos>::create(
       std::vector<VertexPos>{{{0, 0, 0}}, {{1, 0, 0}}, {{0, 1, 0}}});
   auto ib = IndexBuffer::create({0, 1, 2}, topo);
-  auto mesh = Mesh::create(vb, ib);
+  auto mesh = Mesh::create(vb, ib, BoundingBox{{0, 0, 0}, {1, 1, 0}});
 
-  auto node = SceneNode::create("pipeline_build_info_node", mesh, material);
+  auto node = SceneNode::create("pipeline_build_info_node");
+  node->addComponent<MeshComponent>(mesh);
+  node->addComponent<MaterialComponent>(material);
   auto scene = Scene::create(node);
+  scene->addCamera(LX_test::makeDefaultCameraNodeWithTarget());
   return LX_test::firstItemFromScene(*scene, Pass_Forward);
 }
 
