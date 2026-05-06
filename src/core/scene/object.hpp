@@ -9,6 +9,7 @@
 #include "core/rhi/gpu_resource.hpp"
 #include "core/scene/component.hpp"
 #include "core/scene/camera.hpp"
+#include "core/scene/visibility_mask.hpp"
 #include <algorithm>
 #include <cstdint>
 #include <cstring>

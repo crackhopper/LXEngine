@@ -62,7 +62,7 @@ private:
 
   CameraDataSharedPtr m_ubo = std::make_shared<CameraData>();
   std::optional<RenderTarget> m_target;
-  VisibilityLayerMask m_cullingMask = VisibilityMask_All;
+  VisibilityLayerMask m_cullingMask = Layer_All & ~Layer_EditorOverlay;
   bool m_active = true;
 };
 
