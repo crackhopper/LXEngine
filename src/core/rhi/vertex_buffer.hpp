@@ -201,6 +201,11 @@ public:
     return static_cast<u32>(m_vertices.size() * sizeof(VType));
   }
 
+  void update(std::vector<VType> vertices) {
+    m_vertices = std::move(vertices);
+    setDirty();
+  }
+
 private:
   std::vector<VType> m_vertices;
 };

@@ -157,6 +157,8 @@ public:
     m_frameGraph = LX_core::FrameGraph{}; // Fresh graph on every initScene.
     m_frameGraph.addPass(
         LX_core::FramePass{LX_core::Pass_Forward, swapchainTarget, {}});
+    m_frameGraph.addPass(
+        LX_core::FramePass{LX_core::Pass_DebugOverlay, swapchainTarget, {}});
 
     // RenderQueue::buildFromScene (invoked per pass below) internally:
     //   - filters renderables by supportsPass(pass)

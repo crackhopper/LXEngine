@@ -10,5 +10,6 @@ namespace LX_core {
 inline const StringID Pass_Forward = StringID("Forward");
 inline const StringID Pass_Deferred = StringID("Deferred");
 inline const StringID Pass_Shadow = StringID("Shadow");
+inline const StringID Pass_DebugOverlay = StringID("DebugOverlay");
 
 } // namespace LX_core

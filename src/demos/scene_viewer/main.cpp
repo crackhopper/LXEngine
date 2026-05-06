@@ -10,6 +10,7 @@
 #include "core/gpu/engine_loop.hpp"
 #include "core/scene/components/camera_component.hpp"
 #include "core/scene/scene.hpp"
+#include "core/scene/visibility_mask.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/filesystem_tools.hpp"
 #include "infra/window/window.hpp"
@@ -78,6 +79,7 @@ int main() {
     camera->get().aspect = static_cast<float>(kWindowWidth)
                            / static_cast<float>(kWindowHeight);
     camera->get().setTarget(LX_core::RenderTarget{});
+    camera->get().setCullingMask(LX_core::Layer_All);
     camera->get().lookAt(LX_core::Vec3f{2.5f, 1.5f, 3.0f},
                          LX_core::Vec3f{0.0f, 0.0f, 0.0f},
                          LX_core::Vec3f{0.0f, 1.0f, 0.0f});

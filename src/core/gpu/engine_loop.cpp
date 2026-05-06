@@ -1,4 +1,5 @@
 #include "core/gpu/engine_loop.hpp"
+#include "core/debug_draw/debug_draw.hpp"
 
 #include <stdexcept>
 #include <utility>
@@ -13,6 +14,7 @@ void EngineLoop::initialize(WindowSharedPtr window, RendererSharedPtr renderer) 
   m_updateHook = {};
   m_running = false;
   m_rebuildRequested = false;
+  DebugDraw::reset();
 }
 
 void EngineLoop::startScene(SceneSharedPtr scene) {
@@ -21,6 +23,7 @@ void EngineLoop::startScene(SceneSharedPtr scene) {
   if (!m_scene) {
     throw std::runtime_error("EngineLoop::startScene requires a valid scene");
   }
+  DebugDraw::attachScene(m_scene);
   m_renderer->initScene(m_scene);
   m_rebuildRequested = false;
 }
@@ -44,8 +47,12 @@ void EngineLoop::tickFrame() {
 
   rebuildSceneIfRequested();
   m_clock.tick();
+  DebugDraw::beginFrame();
   if (m_updateHook) {
     m_updateHook(*m_scene, m_clock);
+  }
+  if (DebugDraw::endFrame()) {
+    m_renderer->initScene(m_scene);
   }
   m_renderer->uploadData();
   m_renderer->draw();

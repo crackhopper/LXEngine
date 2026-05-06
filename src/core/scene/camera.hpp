@@ -3,14 +3,12 @@
 #include "core/frame_graph/render_target.hpp"
 #include "core/math/mat.hpp"
 #include "core/math/vec.hpp"
+#include "core/scene/visibility_mask.hpp"
 
 #include <memory>
 #include <optional>
 
 namespace LX_core {
-
-using VisibilityLayerMask = u32;
-inline constexpr VisibilityLayerMask VisibilityMask_All = 0xffffffffu;
 
 // CameraData is the GPU-facing UBO view of a Camera. The Camera object owns
 // high-level parameters; this struct owns the packed bytes the backend uploads.
@@ -36,7 +34,6 @@ struct alignas(16) CameraData : public IGpuResource {
     static const StringID kName("CameraUBO");
     return kName;
   }
-
 };
 
 using CameraDataSharedPtr = std::shared_ptr<CameraData>;
