@@ -86,6 +86,9 @@ void VulkanResourceManager::syncResource(
 
   it->second.lastSeenFrame = m_frameSerial;
   if (cpuRes->isDirty()) {
+    if (cachedResourceNeedsRecreation(*it->second.resource, cpuRes)) {
+      it->second.resource = createGpuResource(cpuRes);
+    }
     updateGpuResource(it->second.resource, cpuRes, cmdBufferManager);
     cpuRes->clearDirty();
   }
@@ -175,6 +178,16 @@ void VulkanResourceManager::updateGpuResource(
         // Shaders are immutable for this initial framework; no updates needed.
       },
       *gpuRes);
+}
+
+bool VulkanResourceManager::cachedResourceNeedsRecreation(
+    const VulkanAnyResource &gpuRes,
+    const IGpuResourceSharedPtr &cpuRes) const {
+  if (const auto *buffer = std::get_if<VulkanBufferUniquePtr>(&gpuRes)) {
+    return static_cast<VkDeviceSize>(cpuRes->getByteSize()) >
+           (*buffer)->getSize();
+  }
+  return false;
 }
 
 void VulkanResourceManager::collectGarbage() {

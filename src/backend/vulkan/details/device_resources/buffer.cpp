@@ -66,6 +66,13 @@ void VulkanBuffer::unmap() {
 }
 
 void VulkanBuffer::uploadData(const void *data, VkDeviceSize dataSize) {
+  if (dataSize > m_size) {
+    throw std::runtime_error("VulkanBuffer::uploadData exceeds allocation size");
+  }
+  if (dataSize == 0) {
+    return;
+  }
+
   // For HOST_VISIBLE memory, we can map and copy directly
   void *mapped = map();
   std::memcpy(mapped, data, static_cast<usize>(dataSize));

@@ -81,6 +81,9 @@ public:
 private:
   std::shared_ptr<VulkanAnyResource>
   createGpuResource(const IGpuResourceSharedPtr &cpuRes);
+  bool cachedResourceNeedsRecreation(
+      const VulkanAnyResource &gpuRes,
+      const IGpuResourceSharedPtr &cpuRes) const;
   void updateGpuResource(std::shared_ptr<VulkanAnyResource> &gpuRes,
                          const IGpuResourceSharedPtr &cpuRes,
                          VulkanCommandBufferManager &cmdBufferManager);

@@ -122,6 +122,44 @@ int main() {
       std::cerr << "Vulkan buffer handles are null\n";
       return 1;
     }
+    if (vkVertex.getSize() != vertexBufferPtr->getByteSize() ||
+        vkIndex.getSize() != indexBufferPtr->getByteSize()) {
+      std::cerr << "Initial Vulkan buffer sizes do not match CPU resource sizes\n";
+      return 1;
+    }
+
+    vertexBufferPtr->update({
+        V({-5.0f, 5.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f},
+          {1.0f, 0.0f, 0.0f, 0.0f}, {0, 0, 0, 0}, {1.0f, 0.0f, 0.0f, 0.0f}),
+        V({5.0f, 5.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f},
+          {1.0f, 0.0f, 0.0f, 0.0f}, {0, 0, 0, 0}, {1.0f, 0.0f, 0.0f, 0.0f}),
+        V({5.0f, -5.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f},
+          {1.0f, 0.0f, 0.0f, 0.0f}, {0, 0, 0, 0}, {1.0f, 0.0f, 0.0f, 0.0f}),
+        V({-5.0f, -5.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f},
+          {1.0f, 0.0f, 0.0f, 0.0f}, {0, 0, 0, 0}, {1.0f, 0.0f, 0.0f, 0.0f}),
+    });
+    indexBufferPtr->update({0u, 1u, 2u, 0u, 2u, 3u});
+
+    resourceManager->syncResource(*cmdBufferMgr, vertexBufferPtr);
+    resourceManager->syncResource(*cmdBufferMgr, indexBufferPtr);
+    resourceManager->collectGarbage();
+
+    auto grownVertexOpt =
+        resourceManager->getBuffer(vertexBufferPtr->getBackendCacheIdentity());
+    auto grownIndexOpt =
+        resourceManager->getBuffer(indexBufferPtr->getBackendCacheIdentity());
+    if (!grownVertexOpt || !grownIndexOpt) {
+      std::cerr << "Expected Vulkan buffers after growth sync\n";
+      return 1;
+    }
+    if (grownVertexOpt->get().getSize() != vertexBufferPtr->getByteSize()) {
+      std::cerr << "Vertex buffer growth did not recreate to the new byte size\n";
+      return 1;
+    }
+    if (grownIndexOpt->get().getSize() != indexBufferPtr->getByteSize()) {
+      std::cerr << "Index buffer growth did not recreate to the new byte size\n";
+      return 1;
+    }
 
     auto tempResource = std::make_shared<TestUniformResource>(7u);
     const auto tempIdentity = tempResource->getBackendCacheIdentity();
