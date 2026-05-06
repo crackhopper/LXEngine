@@ -27,6 +27,22 @@ The system SHALL expose explicit `beginFrame()` and `endFrame()` lifecycle hooks
 - **WHEN** one frame accumulates debug lines, calls `endFrame()`, then the next frame calls `beginFrame()` before any new draws
 - **THEN** the next frame starts with an empty accumulation buffer
 
+### Requirement: DebugDraw prewarms the default overlay path during scene startup
+Attaching `DebugDraw` to a scene SHALL eagerly create the default editor-overlay render bucket so the renderer's initial `initScene()` pass can preload the debug-line pipeline before the first user-visible `drawLine(...)` call. The prewarmed bucket SHALL be structurally valid for queue/pipeline discovery but SHALL NOT emit visible pixels until real debug geometry is flushed.
+
+#### Scenario: First default draw does not require runtime scene rebuild
+- **WHEN** `attachScene(scene)` runs before the renderer's startup `initScene(scene)` and the first frame later emits a default-layer `drawLine(...)`
+- **THEN** `endFrame()` reuses the prewarmed editor-overlay bucket instead of adding a new renderable
+- **AND** the first default debug line does not require a frame-internal scene rebuild just to discover the debug overlay pipeline
+
+### Requirement: DebugDraw accepts concurrent line submissions safely
+The system SHALL serialize shared frame-state mutation for draw submission and flush operations, and the layer override used by `LayerScope` SHALL be per-thread rather than process-global. Concurrent callers MAY race on which frame captures a submission if they do not coordinate around `beginFrame()` / `endFrame()`, but concurrent `drawLine(...)`-family calls SHALL NOT data-race or corrupt the accumulated geometry.
+
+#### Scenario: Concurrent line submissions are retained without state corruption
+- **WHEN** multiple threads call `DebugDraw::drawLine(...)` during the same active frame
+- **THEN** the subsystem accumulates all accepted lines into the current frame buffer without data races
+- **AND** one thread's `LayerScope` override does not leak into another thread's default-layer submissions
+
 ### Requirement: DebugDraw enforces a per-frame line limit
 The system SHALL enforce a default maximum of 100000 accepted lines per frame. Once that limit is reached, additional line submissions for the same frame SHALL be dropped and the system SHALL emit at most one warning for that frame.
 

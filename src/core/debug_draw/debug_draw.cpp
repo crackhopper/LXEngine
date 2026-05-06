@@ -14,6 +14,7 @@
 #include <cstring>
 #include <iostream>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -121,7 +122,6 @@ struct BucketState {
 
 struct State {
   SceneSharedPtr scene;
-  VisibilityLayerMask currentMask = Layer_EditorOverlay;
   std::unordered_map<VisibilityLayerMask, std::vector<DebugLineVertex>>
       queuedVertices;
   std::unordered_map<VisibilityLayerMask, BucketState> buckets;
@@ -135,6 +135,16 @@ struct State {
 State &state() {
   static State s;
   return s;
+}
+
+std::recursive_mutex &stateMutex() {
+  static std::recursive_mutex mutex;
+  return mutex;
+}
+
+VisibilityLayerMask &threadCurrentMask() {
+  thread_local VisibilityLayerMask mask = Layer_EditorOverlay;
+  return mask;
 }
 
 Vec3f transformPoint(const Mat4f &matrix, const Vec3f &point) {
@@ -156,6 +166,12 @@ BoundingBox computeBounds(const std::vector<DebugLineVertex> &vertices) {
     bounds.merge(vertex.position);
   }
   return bounds;
+}
+
+std::vector<DebugLineVertex> makeStartupPlaceholderVertices() {
+  const Vec4f invisible{0.0f, 0.0f, 0.0f, 0.0f};
+  return {{Vec3f{0.0f, 0.0f, 0.0f}, invisible},
+          {Vec3f{0.0f, 0.0f, 0.0f}, invisible}};
 }
 
 std::vector<ShaderStageCode> loadDebugLineStages() {
@@ -222,10 +238,13 @@ BucketState &ensureBucket(VisibilityLayerMask mask) {
 
   BucketState bucket;
   bucket.mask = mask;
-  bucket.vertexBuffer = VertexBuffer<DebugLineVertex>::create({});
+  bucket.vertexBuffer =
+      VertexBuffer<DebugLineVertex>::create(makeStartupPlaceholderVertices());
   bucket.indexBuffer =
-      IndexBuffer::create({}, PrimitiveTopology::LineList);
+      IndexBuffer::create({0u, 1u}, PrimitiveTopology::LineList);
   bucket.mesh = Mesh::create(bucket.vertexBuffer, bucket.indexBuffer);
+  bucket.mesh->bounds =
+      computeBounds(makeStartupPlaceholderVertices());
   bucket.node = SceneNode::create(
       "debug_draw_" + std::to_string(static_cast<u32>(mask)));
   bucket.node->setVisibilityLayerMask(mask);
@@ -262,7 +281,7 @@ void pushLine(Vec3f a, Vec3f b, Vec4f color) {
     return;
   }
 
-  auto &bucket = s.queuedVertices[s.currentMask];
+  auto &bucket = s.queuedVertices[threadCurrentMask()];
   bucket.push_back(DebugLineVertex{a, color});
   bucket.push_back(DebugLineVertex{b, color});
   ++s.acceptedLines;
@@ -357,33 +376,44 @@ Vec4f Color::blue() { return {0.0f, 0.0f, 1.0f, 1.0f}; }
 Vec4f Color::yellow() { return {1.0f, 1.0f, 0.0f, 1.0f}; }
 
 LayerScope::LayerScope(VisibilityLayerMask mask) {
-  auto &s = state();
-  m_previousMask = s.currentMask;
-  s.currentMask = mask;
+  m_previousMask = threadCurrentMask();
+  threadCurrentMask() = mask;
 }
 
-LayerScope::~LayerScope() { state().currentMask = m_previousMask; }
+LayerScope::~LayerScope() { threadCurrentMask() = m_previousMask; }
 
-void reset() { state() = State{}; }
+void reset() {
+  std::scoped_lock lock(stateMutex());
+  state() = State{};
+  threadCurrentMask() = Layer_EditorOverlay;
+}
 
 void attachScene(SceneSharedPtr scene) {
+  std::scoped_lock lock(stateMutex());
   auto &s = state();
   if (s.scene == scene) {
     return;
   }
   s = State{};
   s.scene = std::move(scene);
+  if (s.scene) {
+    ensureBucket(Layer_EditorOverlay);
+    s.sceneStructureDirty = false;
+  }
+  threadCurrentMask() = Layer_EditorOverlay;
 }
 
 void beginFrame() {
+  std::scoped_lock lock(stateMutex());
   auto &s = state();
   s.queuedVertices.clear();
   s.acceptedLines = 0;
   s.warnedThisFrame = false;
-  s.currentMask = Layer_EditorOverlay;
+  threadCurrentMask() = Layer_EditorOverlay;
 }
 
 bool endFrame() {
+  std::scoped_lock lock(stateMutex());
   auto &s = state();
   if (!s.scene) {
     return false;
@@ -405,9 +435,13 @@ bool endFrame() {
   return dirty;
 }
 
-void drawLine(Vec3f a, Vec3f b, Vec4f color) { pushLine(a, b, color); }
+void drawLine(Vec3f a, Vec3f b, Vec4f color) {
+  std::scoped_lock lock(stateMutex());
+  pushLine(a, b, color);
+}
 
 void drawTriangle(Vec3f a, Vec3f b, Vec3f c, Vec4f color) {
+  std::scoped_lock lock(stateMutex());
   drawLine(a, b, color);
   drawLine(b, c, color);
   drawLine(c, a, color);
@@ -415,6 +449,7 @@ void drawTriangle(Vec3f a, Vec3f b, Vec3f c, Vec4f color) {
 
 void wireCircle(Vec3f center, Vec3f normal, float radius, Vec4f color,
                 int segments) {
+  std::scoped_lock lock(stateMutex());
   if (radius <= 0.0f || segments < 3) {
     return;
   }
@@ -440,12 +475,14 @@ void wireCircle(Vec3f center, Vec3f normal, float radius, Vec4f color,
 }
 
 void wireSphere(Vec3f center, float radius, Vec4f color, int segments) {
+  std::scoped_lock lock(stateMutex());
   wireCircle(center, Vec3f{1.0f, 0.0f, 0.0f}, radius, color, segments);
   wireCircle(center, Vec3f{0.0f, 1.0f, 0.0f}, radius, color, segments);
   wireCircle(center, Vec3f{0.0f, 0.0f, 1.0f}, radius, color, segments);
 }
 
 void wireBox(const BoundingBox &bounds, Vec4f color) {
+  std::scoped_lock lock(stateMutex());
   if (!bounds.isValid()) {
     return;
   }
@@ -478,6 +515,7 @@ void wireBox(const BoundingBox &bounds, Vec4f color) {
 }
 
 void wireBox(Vec3f center, Vec3f extent, Quatf rotation, Vec4f color) {
+  std::scoped_lock lock(stateMutex());
   const Vec3f corners[8] = {
       {-extent.x, -extent.y, -extent.z},
       {-extent.x, -extent.y, extent.z},
@@ -510,6 +548,7 @@ void wireBox(Vec3f center, Vec3f extent, Quatf rotation, Vec4f color) {
 
 void cone(Vec3f apex, Vec3f direction, float length, float halfAngleRad,
           Vec4f color, int segments) {
+  std::scoped_lock lock(stateMutex());
   if (length <= 0.0f || segments < 3 || direction.length2() == 0.0f) {
     return;
   }
@@ -540,6 +579,7 @@ void cone(Vec3f apex, Vec3f direction, float length, float halfAngleRad,
 }
 
 void arrow(Vec3f from, Vec3f to, Vec4f color, float headSize) {
+  std::scoped_lock lock(stateMutex());
   drawLine(from, to, color);
   const Vec3f dir = to - from;
   const float length = dir.length();
@@ -561,6 +601,7 @@ void arrow(Vec3f from, Vec3f to, Vec4f color, float headSize) {
 }
 
 void axis(const Mat4f &transform, float length) {
+  std::scoped_lock lock(stateMutex());
   const Vec3f origin = transformPoint(transform, Vec3f{0.0f, 0.0f, 0.0f});
   arrow(origin, transformPoint(transform, Vec3f{length, 0.0f, 0.0f}),
         Color::red());
@@ -571,6 +612,7 @@ void axis(const Mat4f &transform, float length) {
 }
 
 void frustum(const Mat4f &viewProj, Vec4f color) {
+  std::scoped_lock lock(stateMutex());
   const Mat4f invViewProj = invertMatrix(viewProj);
   const Vec4f clipCorners[8] = {
       {-1.0f, -1.0f, 0.0f, 1.0f}, {1.0f, -1.0f, 0.0f, 1.0f},
@@ -598,14 +640,19 @@ void frustum(const Mat4f &viewProj, Vec4f color) {
   drawLine(corners[3], corners[7], color);
 }
 
-usize testing::queuedLineCount() { return state().acceptedLines; }
+usize testing::queuedLineCount() {
+  std::scoped_lock lock(stateMutex());
+  return state().acceptedLines;
+}
 
 usize testing::flushedVertexCount(VisibilityLayerMask mask) {
+  std::scoped_lock lock(stateMutex());
   auto it = state().buckets.find(mask);
   return it == state().buckets.end() ? 0 : it->second.flushedVertexCount;
 }
 
 bool testing::hasRenderable(VisibilityLayerMask mask) {
+  std::scoped_lock lock(stateMutex());
   return state().buckets.find(mask) != state().buckets.end();
 }
 

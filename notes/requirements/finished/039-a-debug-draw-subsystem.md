@@ -201,7 +201,8 @@ void main() { o_color = v_color; }
 
 - `R1` / `R2` / `R3` / `R4` / `R5` / `R6` / `R8` 与当前代码一致：DebugDraw API、颜色常量、分帧累积与 flush、`Layer_EditorOverlay`、`LayerScope`、overlay pass、逐帧 100k 限额和单次告警都已落地。
 - `R7` 存在一处已接受的实现漂移：`debug_line.vert` 复用现有 `CameraData` UBO，实际读取 `view` 与 `proj` 两个矩阵再相乘，而不是单独定义 `mat4 viewProj`。渲染语义与本 REQ 目标一致，因此以代码事实为准记录。
-- 调用线程安全条目按本 REQ 的 v1 约束落地为显式 `beginFrame()` / `endFrame()` 生命周期和立即返回的 CPU-side 收集路径；当前实现仍是假定调用发生在引擎主线程控制的帧边界内，没有引入额外后台渲染线程专用队列。
+- 2026-05-06 review-fix：`attachScene()` 现在会预热默认 editor-overlay bucket，使场景启动期 `initScene()` 就能发现并 preload DebugDraw overlay pipeline；首次默认层 `drawLine(...)` 不再触发帧内 `initScene()`。
+- 2026-05-06 review-fix：共享帧状态已加锁，`LayerScope` 改为 thread-local mask。v1 现在支持跨线程调用 `drawLine(...)` 家族 API 而不发生数据竞争；仍保留显式 `beginFrame()` / `endFrame()` 帧边界，由调用方决定提交落在哪一帧。
 
 本次验证运行：
 

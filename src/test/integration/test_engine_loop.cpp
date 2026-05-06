@@ -1,3 +1,4 @@
+#include "core/debug_draw/debug_draw.hpp"
 #include "core/gpu/engine_loop.hpp"
 #include "core/input/dummy_input_state.hpp"
 #include "core/utils/env.hpp"
@@ -152,6 +153,23 @@ void testRequestSceneRebuildIsExplicit() {
          "requestSceneRebuild should trigger exactly one extra initScene");
 }
 
+void testFirstDebugDrawDoesNotReinitScene() {
+  auto window = std::make_shared<FakeWindow>();
+  auto renderer = std::make_shared<FakeRenderer>();
+  EngineLoop loop;
+  loop.initialize(window, renderer);
+  loop.startScene(makeScene());
+
+  loop.setUpdateHook([&](Scene &, const Clock &) {
+    DebugDraw::drawLine({0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f});
+  });
+
+  loop.tickFrame();
+
+  EXPECT(renderer->initSceneCalls == 1,
+         "first default DebugDraw usage should not force runtime initScene");
+}
+
 void testInitializeResetsRuntimeState() {
   auto windowA = std::make_shared<FakeWindow>();
   auto windowB = std::make_shared<FakeWindow>();
@@ -216,6 +234,7 @@ int main() {
   testStartSceneNotPerFrame();
   testUpdateHookRunsBeforeUploadAndDraw();
   testRequestSceneRebuildIsExplicit();
+  testFirstDebugDrawDoesNotReinitScene();
   testInitializeResetsRuntimeState();
   testRunStopsAfterStopCalled();
   testRunStopsOnWindowClose();

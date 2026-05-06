@@ -8,6 +8,8 @@
 
 #include <iostream>
 #include <memory>
+#include <thread>
+#include <vector>
 
 using namespace LX_core;
 
@@ -57,10 +59,21 @@ void testDrawLineFlushesSixVertices() {
   DebugDraw::drawLine({0, 0, 0}, {0, 0, 1});
   const bool sceneChanged = DebugDraw::endFrame();
 
-  EXPECT(sceneChanged, "first debug bucket should request scene rebuild");
+  EXPECT(!sceneChanged,
+         "prewarmed overlay bucket should avoid first-frame scene rebuild");
   EXPECT(DebugDraw::testing::queuedLineCount() == 3, "three lines queued");
   EXPECT(DebugDraw::testing::flushedVertexCount(Layer_EditorOverlay) == 6,
          "three lines flush six vertices");
+}
+
+void testAttachScenePrewarmsOverlayBucket() {
+  auto scene = makeSceneWithCamera(Layer_All);
+  resetForScene(scene);
+
+  EXPECT(DebugDraw::testing::hasRenderable(Layer_EditorOverlay),
+         "attachScene should prewarm the default overlay bucket");
+  EXPECT(buildOverlayQueueItemCount(*scene) == 1,
+         "prewarmed overlay bucket should participate in debug-overlay queue build");
 }
 
 void testWireSphereSegmentsMatchThreeGreatCircles() {
@@ -147,12 +160,46 @@ void testLineLimitClipsNewestLines() {
          "line limit should flush exactly 200000 vertices");
 }
 
+void testConcurrentDrawLineAccumulatesSafely() {
+  auto scene = makeSceneWithCamera(Layer_All);
+  resetForScene(scene);
+
+  constexpr int kThreadCount = 4;
+  constexpr int kLinesPerThread = 25;
+
+  DebugDraw::beginFrame();
+  std::vector<std::thread> workers;
+  workers.reserve(kThreadCount);
+  for (int threadIndex = 0; threadIndex < kThreadCount; ++threadIndex) {
+    workers.emplace_back([threadIndex]() {
+      for (int lineIndex = 0; lineIndex < kLinesPerThread; ++lineIndex) {
+        const float x = static_cast<float>(threadIndex);
+        const float y = static_cast<float>(lineIndex);
+        DebugDraw::drawLine({x, y, 0.0f}, {x, y, 1.0f});
+      }
+    });
+  }
+  for (auto &worker : workers) {
+    worker.join();
+  }
+  const bool sceneChanged = DebugDraw::endFrame();
+
+  EXPECT(!sceneChanged, "concurrent writes should reuse the prewarmed bucket");
+  EXPECT(DebugDraw::testing::queuedLineCount() ==
+             static_cast<usize>(kThreadCount * kLinesPerThread),
+         "concurrent line submissions should all be retained");
+  EXPECT(DebugDraw::testing::flushedVertexCount(Layer_EditorOverlay) ==
+             static_cast<usize>(kThreadCount * kLinesPerThread * 2),
+         "concurrent line submissions should flush expected vertex count");
+}
+
 } // namespace
 
 int main() {
   expSetEnvVK();
   initializeRuntimeAssetRoot();
 
+  testAttachScenePrewarmsOverlayBucket();
   testDrawLineFlushesSixVertices();
   testWireSphereSegmentsMatchThreeGreatCircles();
   testFrustumProducesTwelveLines();
@@ -160,6 +207,7 @@ int main() {
   testOverlayVisibleToEditorCameraMask();
   testBeginFrameClearsPreviousGeometry();
   testLineLimitClipsNewestLines();
+  testConcurrentDrawLineAccumulatesSafely();
 
   if (failures > 0) {
     std::cerr << "FAILED: " << failures << " assertion(s)\n";
