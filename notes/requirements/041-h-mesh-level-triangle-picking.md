@@ -125,7 +125,7 @@ Scene::pick(const Ray &ray,
 - [REQ-038-a ray-AABB picking 最小子集](finished/038-a-ray-aabb-picking-min.md) — `BoundingBox` / `Ray` / `intersectRayBox` / 候选遍历框架已就位
 - [Phase 2 REQ-209 AABB + 空间索引](../roadmaps/main-roadmap/phase-2-foundation-layer.md#req-209--aabb--空间索引) — **硬前置**。没有空间索引把候选集缩小，三角面级扫描在 1k+ 节点场景必爆 CPU
 - [REQ-037-a 组件模型基础](finished/037-a-component-model-foundation.md) — 通过 `MeshComponent` 取 mesh 数据
-- [REQ-039-a DebugDraw](039-a-debug-draw-subsystem.md) — `axis` API 用于可视化命中点
+- [REQ-039-a DebugDraw](finished/039-a-debug-draw-subsystem.md) — `axis` API 用于可视化命中点
 - [REQ-041-a 编辑器 MVP](041-a-imgui-editor-mvp.md) — 编辑器视口承接 hit visualizer
 
 ## 后续工作

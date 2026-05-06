@@ -1,24 +1,20 @@
 {
-  "lastSyncedCommit": "a5ecca2c8c917f728fa90874a2999a913ed7c153",
-  "lastSyncedAt": "2026-04-24T07:45:00Z",
+  "lastSyncedCommit": "48974b5bfdccf7712fc9529b55b755224937de4c",
+  "lastSyncedAt": "2026-05-06T00:00:00Z",
   "mode": "incremental",
   "files": [
-    "notes/subsystems/geometry.md",
-    "notes/subsystems/engine-loop.md",
+    "notes/requirements/README.md",
+    "notes/requirements/finished/039-a-debug-draw-subsystem.md",
+    "notes/requirements/index.md",
     "notes/roadmaps/main-roadmap/README.md",
-    "notes/roadmaps/main-roadmap/principles.md",
-    "notes/roadmaps/main-roadmap/00-gap-analysis.md",
-    "notes/roadmaps/main-roadmap/phase-1-rendering-depth.md",
-    "notes/roadmaps/main-roadmap/phase-2-foundation-layer.md",
-    "notes/roadmaps/main-roadmap/phase-3-asset-pipeline.md",
-    "notes/roadmaps/main-roadmap/phase-4-animation.md",
-    "notes/roadmaps/main-roadmap/phase-5-physics.md",
-    "notes/roadmaps/main-roadmap/phase-6-gameplay-layer.md",
-    "notes/roadmaps/main-roadmap/phase-7-audio.md",
-    "notes/roadmaps/main-roadmap/phase-8-web-ui.md",
-    "notes/roadmaps/main-roadmap/phase-9-web-editor.md",
-    "notes/roadmaps/main-roadmap/phase-10-ai-agent-mcp.md",
-    "notes/roadmaps/main-roadmap/phase-11-ai-asset-generation.md",
-    "notes/roadmaps/main-roadmap/phase-12-release.md"
+    "notes/roadmaps/main-roadmap/phase-1.5-imgui-editor-mvp.md",
+    "notes/subsystems/scene.md",
+    "notes/subsystems/vulkan-backend.md",
+    "notes/requirements/041-a-imgui-editor-mvp.md",
+    "notes/requirements/041-c-editor-multi-select.md",
+    "notes/requirements/041-h-mesh-level-triangle-picking.md",
+    "notes/requirements/041-i-debug-draw-persistent-and-mesh.md",
+    "notes/requirements/042-render-target-desc-and-target.md",
+    "mkdocs.gen.yml"
   ]
 }

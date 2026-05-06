@@ -38,7 +38,7 @@
 - `VulkanResourceManager` 不直接持有旧式 pipeline map，而是委托给 `PipelineCache`
 - `VulkanResourceManager` 现在按 `IGpuResource::getBackendCacheIdentity()` 做 cache key，不再把 CPU 对象地址当成资源身份
 - GPU 资源缓存带短暂闲置宽限期：资源漏同步一帧不会立刻销毁重建，但长期不用仍会被 `collectGarbage()` 回收
-- `FrameGraph` 当前只接了 `Pass_Forward`，但 renderer 的遍历方式已经是按多 pass 组织
+- `FrameGraph` 现在接了 `Pass_Forward` + `Pass_DebugOverlay`；renderer 继续按 pass 顺序统一遍历，所以 debug 线画在 forward 之后、ImGui 之前
 - `kMaxFramesInFlight` 在 `VulkanRenderer` 内部只有一个定义，初始化路径和 draw 路径共用同一来源
 
 ## 从哪里进入源码

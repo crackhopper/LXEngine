@@ -64,7 +64,7 @@
 
 1. **Phase 1.5 不强触发本 REQ**：7 个 REQ 都不要求 RenderTarget 持有真 GPU 句柄。[REQ-041 编辑器 MVP](041-a-imgui-editor-mvp.md) R6 显式选择"加 `Camera::m_active` 布尔"路径切换 game/editor 相机，避开 picture-in-picture 视口（picture-in-picture 才是本 REQ 的真触发点）。
 2. **REQ-103 强触发本 REQ**：shadow map 是典型跨 pass 资源（depth-only pass 写 → forward pass 采样）。没有真 GPU 资源 + attachment format 进 PipelineKey，REQ-103 在数据结构上无法干净落地。
-3. **Phase 1.5 与本 REQ 的兼容预留**：[REQ-037-b Camera 作为 component](finished/037-b-camera-as-component.md) 完全不动 `CameraComponent::m_data.target` / `matchesTarget`；[REQ-039 DebugDraw](039-a-debug-draw-subsystem.md) 注册 `Pass_DebugOverlay` 时按当时 RenderTarget API 写，未来本 REQ 改 `FramePass` 字段时一并更新即可；[REQ-041](041-a-imgui-editor-mvp.md) 的 `m_active` 与 `m_target` 解耦，互不干扰。三者已在自身边界段落标注 *REQ-042 兼容预留*。
+3. **Phase 1.5 与本 REQ 的兼容预留**：[REQ-037-b Camera 作为 component](finished/037-b-camera-as-component.md) 完全不动 `CameraComponent::m_data.target` / `matchesTarget`；[REQ-039 DebugDraw](finished/039-a-debug-draw-subsystem.md) 注册 `Pass_DebugOverlay` 时按当时 RenderTarget API 写，未来本 REQ 改 `FramePass` 字段时一并更新即可；[REQ-041](041-a-imgui-editor-mvp.md) 的 `m_active` 与 `m_target` 解耦，互不干扰。三者已在自身边界段落标注 *REQ-042 兼容预留*。
 4. **R9 已拆出且已完成**：原 R9 删 `getHash` cleanup 由独立的 [REQ-034](finished/034-remove-render-target-get-hash.md) 承担，已归档完成。本 REQ 可直接假设该 cleanup 已存在。
 
 ## 目标

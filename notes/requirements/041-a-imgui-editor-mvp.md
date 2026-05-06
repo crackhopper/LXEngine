@@ -177,7 +177,7 @@ R6 引入的 `Camera::m_active` 与 [REQ-042 R6](042-render-target-desc-and-targ
 - [REQ-036 路径查询](finished/036-scene-node-path-lookup.md) — scene tree 用 path 作稳定句柄
 - [REQ-037-a IComponent 基础](finished/037-a-component-model-foundation.md) + [REQ-037-b Camera 作为 component](finished/037-b-camera-as-component.md) — gizmo 也能作用于 camera 节点；inspector 按 component 列表渲染
 - [REQ-038 picking](finished/038-a-ray-aabb-picking-min.md) — 视口点击
-- [REQ-039 DebugDraw](039-a-debug-draw-subsystem.md) — frustum / arrow / wireBox 可视化
+- [REQ-039 DebugDraw](finished/039-a-debug-draw-subsystem.md) — frustum / arrow / wireBox 可视化
 - [REQ-040 命令总线](040-a-editor-command-bus.md) — 所有交互的统一入口
 - [REQ-017](finished/017-imgui-overlay.md) ImGui + SDL3 + Vulkan 基础设施
 - [REQ-018](finished/018-debug-panel-helper.md) 现有 debug panel helper（可选复用）

@@ -1,10 +1,10 @@
 # REQ-041-i: DebugDraw v2 — persistent draw + 整 mesh 线框一行调用
 
-> 拆分自 2026-05-06 整理：原 [REQ-039-a](039-a-debug-draw-subsystem.md) v1 取"每帧瞬时 draw + 几何原语 only"最小子集，把 persistent draw 与 `wireMesh` 显式留给 v2。本 REQ 收口 v2 路径。
+> 拆分自 2026-05-06 整理：原 [REQ-039-a](finished/039-a-debug-draw-subsystem.md) v1 取"每帧瞬时 draw + 几何原语 only"最小子集，把 persistent draw 与 `wireMesh` 显式留给 v2。本 REQ 收口 v2 路径。
 
 ## 背景
 
-[REQ-039-a](039-a-debug-draw-subsystem.md) 的 DebugDraw v1 把 `drawLine / wireSphere / wireBox / frustum / cone / arrow / axis` 一行调用做出来了，但所有 draw 命令都只活当前帧。两类常见编辑器 / 调试场景这个语义不够：
+[REQ-039-a](finished/039-a-debug-draw-subsystem.md) 的 DebugDraw v1 把 `drawLine / wireSphere / wireBox / frustum / cone / arrow / axis` 一行调用做出来了，但所有 draw 命令都只活当前帧。两类常见编辑器 / 调试场景这个语义不够：
 
 1. **跨帧停留的命中线**：picking 命中 ray、AS（[Phase 5 物理](../roadmaps/main-roadmap/phase-5-physics.md)）射线、shadow cascade 边界 / BVH 调试线，常希望"画一次然后在场景里停 5 秒 / 永久 / 直到下一次清屏"，方便调相机绕一圈观察
 2. **整 mesh 线框**：debug 选中物体或者比对 culling 错误时希望一行 `DebugDraw::wireMesh(node)` 把整个 mesh 的三角面线框画出来；v1 文档建议"用户手动遍历三角面调 `drawTriangle`"，但 [REQ-038-b](041-h-mesh-level-triangle-picking.md) 落地后 mesh 已带 CPU vertex / index，封装一行就是顺手事
@@ -98,7 +98,7 @@ class DebugDraw {
 
 ## 依赖
 
-- [REQ-039-a DebugDraw 子系统](039-a-debug-draw-subsystem.md) — line topology pipeline + 帧 begin/end 框架已就位
+- [REQ-039-a DebugDraw 子系统](finished/039-a-debug-draw-subsystem.md) — line topology pipeline + 帧 begin/end 框架已就位
 - [REQ-038-b mesh 三角面级 picking](041-h-mesh-level-triangle-picking.md) — `wireMesh` 需要 `Mesh::cpuPositions / cpuIndices`（038-b R1）
 - [REQ-040-a 编辑器命令总线](040-a-editor-command-bus.md) — `debug clear` 命令注册路径
 - [REQ-014 Clock + deltaTime](finished/014-clock-and-delta-time.md) — duration 扣秒

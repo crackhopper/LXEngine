@@ -54,7 +54,6 @@
 | 文件号 | 主题 | 时机 | 说明 |
 |--------|------|------|------|
 | [038-a](finished/038-a-ray-aabb-picking-min.md) | ray-AABB picking 暴力版 | 已完成 | AABB + ray slab |
-| [039-a](039-a-debug-draw-subsystem.md) | DebugDraw 子系统 | Phase 1.5 第 5 步 | drawLine/wireSphere/frustum/cone/arrow/axis |
 | [040-a](040-a-editor-command-bus.md) | Editor 命令总线 | Phase 1.5 第 6 步 | 文本协议 + 控制台 + 单选 |
 | [041-a](041-a-imgui-editor-mvp.md) | ImGui Editor MVP | Phase 1.5 第 7 步 | ImGuizmo + 4 面板 + F 键预览 |
 | [042](042-render-target-desc-and-target.md) | RenderTarget 拆 desc + binding | Phase 1.5 完工后 / Phase 1 REQ-103 之前 | 跨 pass 资源前置 |
@@ -85,6 +84,7 @@
 - 2026-05-01：原 REQ-037 (Camera 接入 SceneNode) 在评审中决定改用 component 模型方案，规模升级为架构级重构，拆为 `037-a-component-model-foundation.md`（IComponent 基础设施 + mesh/material/skeleton 转 component）+ `037-b-camera-as-component.md`（Camera 作为 component 接入），是上一条后缀族约定的首个应用。
 - 2026-05-01：`REQ-034` 删除 `RenderTarget::getHash` dead code 已完成并归档到 `finished/034-remove-render-target-get-hash.md`，pending 队列从 `REQ-035` 开始。
 - 2026-05-06：`REQ-037-b` Camera component 接入已完成并归档到 `finished/037-b-camera-as-component.md`。
+- 2026-05-06：`REQ-039-a` DebugDraw 子系统已完成并归档到 `finished/039-a-debug-draw-subsystem.md`，pending 队列从 `REQ-040-a` 开始。
 - 2026-05-06：`REQ-038-a` ray-AABB picking 最小子集已完成并归档到 `finished/038-a-ray-aabb-picking-min.md`，pending 队列从 `REQ-039-a` 开始。
 - 2026-05-06：`REQ-037-a` component 模型基础已完成并归档到 `finished/037-a-component-model-foundation.md`，pending 队列从 `REQ-037-b` 开始。
 - 2026-05-01：`REQ-036` 场景节点路径查询已完成并归档到 `finished/036-scene-node-path-lookup.md`，pending 队列从 `REQ-037-a` 开始。

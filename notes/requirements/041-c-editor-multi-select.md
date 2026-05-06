@@ -72,7 +72,7 @@
 
 - [REQ-041-a ImGui Editor MVP](041-a-imgui-editor-mvp.md) — 4 面板 + viewport overlay 框架
 - [REQ-041-b 命令总线 v2](041-b-command-bus-v2.md) — `EditorState` 多选 API + `select <p1> <p2> ...` 多 path 协议
-- [REQ-039-a DebugDraw](039-a-debug-draw-subsystem.md) — `wireBox` 多 selected 视觉化
+- [REQ-039-a DebugDraw](finished/039-a-debug-draw-subsystem.md) — `wireBox` 多 selected 视觉化
 
 ## 后续工作
 

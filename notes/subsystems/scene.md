@@ -24,6 +24,7 @@
 - `ValidatedRenderablePassData`：`pass -> validated entry` 缓存项，保存 queue 需要的稳定结构结果。
 - `RenderingItem`：一次 draw 的完整上下文，字段仍是 `shaderInfo`、`material`、`drawData`、`vertexBuffer`、`indexBuffer`、`descriptorResources`、`pass`、`pipelineKey`。
 - `visibility mask`：`SceneNode` 自身携带的 layer bitmask；camera 持有独立 `cullingMask`，queue 构建时做交集判断。
+- `DebugDraw`：以静态 facade 收集每帧世界空间线段，flush 后产出挂在 `Layer_EditorOverlay` 的 overlay renderable，和普通 scene item 走同一条 queue/pipeline 路径。
 
 ## 典型数据流
 
