@@ -44,6 +44,7 @@ struct CommandFixture {
   SceneNodeSharedPtr world = SceneNode::create("node_world");
   SceneNodeSharedPtr cube = SceneNode::create("node_cube");
   SceneNodeSharedPtr cameraNode = SceneNode::create("node_camera");
+  SceneNodeSharedPtr lightNode = SceneNode::create("node_light");
   CameraComponent *camera = nullptr;
 
   CommandFixture() {
@@ -59,6 +60,9 @@ struct CommandFixture {
     camera = &cameraComponent->get();
     camera->fovY = 60.0f;
     scene->addCamera(cameraNode);
+
+    lightNode->setName("dir_light");
+    scene->addRenderable(lightNode);
 
     registerBuiltinCommands(bus, editorState, *scene);
   }
@@ -356,6 +360,57 @@ void testBuiltinAddRemoveSetCommands() {
              nearlyEqual(fixture.cube->getTranslation().y, 5.0f) &&
              nearlyEqual(fixture.cube->getTranslation().z, 6.0f),
          "set translation updates node transform");
+
+  const CommandResult setVisibility =
+      fixture.bus.dispatch("set /world/cube.visibilityMask 255");
+  EXPECT(setVisibility.ok, "set visibilityMask succeeds");
+  EXPECT(fixture.cube->getVisibilityLayerMask() == 255u,
+         "set visibilityMask updates node visibility");
+
+  const CommandResult setNear = fixture.bus.dispatch("set /camera_main.near 0.5");
+  EXPECT(setNear.ok, "set near succeeds");
+  EXPECT(nearlyEqual(fixture.camera->nearPlane, 0.5f),
+         "set near updates camera");
+
+  const CommandResult setFar = fixture.bus.dispatch("set /camera_main.far 250");
+  EXPECT(setFar.ok, "set far succeeds");
+  EXPECT(nearlyEqual(fixture.camera->farPlane, 250.0f),
+         "set far updates camera");
+
+  const CommandResult setProjection =
+      fixture.bus.dispatch("set /camera_main.projection orthographic");
+  EXPECT(setProjection.ok, "set projection succeeds");
+  EXPECT(fixture.camera->type == CameraType::Orthographic,
+         "set projection updates camera type");
+
+  const CommandResult setCulling =
+      fixture.bus.dispatch("set /camera_main.cullingMask 15");
+  EXPECT(setCulling.ok, "set cullingMask succeeds");
+  EXPECT(fixture.camera->getCullingMask() == 15u,
+         "set cullingMask updates camera");
+
+  const CommandResult setLightDirection =
+      fixture.bus.dispatch("set /dir_light.direction 0 -1 0");
+  EXPECT(setLightDirection.ok, "set light direction succeeds");
+
+  const CommandResult setLightColor =
+      fixture.bus.dispatch("set /dir_light.color 0.2 0.4 0.6");
+  EXPECT(setLightColor.ok, "set light color succeeds");
+
+  const CommandResult setLightIntensity =
+      fixture.bus.dispatch("set /dir_light.intensity 3.5");
+  EXPECT(setLightIntensity.ok, "set light intensity succeeds");
+  const auto dirLight = std::dynamic_pointer_cast<DirectionalLight>(
+      fixture.scene->getLights().front());
+  EXPECT(nearlyEqual(dirLight->ubo->param.dir.x, 0.0f) &&
+             nearlyEqual(dirLight->ubo->param.dir.y, -1.0f) &&
+             nearlyEqual(dirLight->ubo->param.dir.z, 0.0f),
+         "set direction updates scene light");
+  EXPECT(nearlyEqual(dirLight->ubo->param.color.x, 0.2f) &&
+             nearlyEqual(dirLight->ubo->param.color.y, 0.4f) &&
+             nearlyEqual(dirLight->ubo->param.color.z, 0.6f) &&
+             nearlyEqual(dirLight->ubo->param.color.w, 3.5f),
+         "set color/intensity updates scene light");
 
   const CommandResult removeProbe = fixture.bus.dispatch("remove /world/cube/probe");
   EXPECT(removeProbe.ok, "remove child node succeeds");

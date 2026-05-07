@@ -5,7 +5,9 @@
 #include "core/scene/components/material_component.hpp"
 #include "core/scene/components/mesh_component.hpp"
 #include "core/scene/components/skeleton_component.hpp"
+#include "core/scene/light.hpp"
 #include "core/scene/object.hpp"
+#include "core/scene/scene.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -66,6 +68,39 @@ constexpr float kRadToDeg = 180.0f / kPi;
   std::ostringstream oss;
   oss << std::fixed << std::setprecision(3) << value;
   return oss.str();
+}
+
+[[nodiscard]] std::string formatUnsigned(const u32 value) {
+  return std::to_string(value);
+}
+
+[[nodiscard]] std::string lowerCopy(std::string text) {
+  std::transform(text.begin(), text.end(), text.begin(),
+                 [](const unsigned char c) {
+                   return static_cast<char>(std::tolower(c));
+                 });
+  return text;
+}
+
+[[nodiscard]] std::shared_ptr<DirectionalLight>
+findDirectionalLightForNode(const SceneNode &node) {
+  const auto scene = node.getAttachedScene();
+  if (!scene) {
+    return nullptr;
+  }
+
+  const std::string tag = lowerCopy(node.getName() + " " + node.getPath());
+  if (tag.find("light") == std::string::npos) {
+    return nullptr;
+  }
+
+  for (const auto &light : scene->getLights()) {
+    const auto directionalLight = std::dynamic_pointer_cast<DirectionalLight>(light);
+    if (directionalLight && directionalLight->ubo) {
+      return directionalLight;
+    }
+  }
+  return nullptr;
 }
 
 [[nodiscard]] Vec3f quatToEulerDegrees(const Quatf &quat) {
@@ -131,7 +166,22 @@ InspectorPanel::Snapshot InspectorPanel::makeSnapshot() const {
   snapshot.translation = selected->getTranslation();
   snapshot.rotationEulerDegrees = quatToEulerDegrees(selected->getRotation());
   snapshot.scale = selected->getScale();
+  snapshot.visibilityMask = selected->getVisibilityLayerMask();
   snapshot.hasCamera = selected->getComponent<CameraComponent>().has_value();
+  if (snapshot.hasCamera) {
+    const auto camera = selected->getComponent<CameraComponent>();
+    snapshot.cameraFov = camera->get().fovY;
+    snapshot.cameraNear = camera->get().nearPlane;
+    snapshot.cameraFar = camera->get().farPlane;
+    snapshot.cameraPerspective = camera->get().type == CameraType::Perspective;
+    snapshot.cameraCullingMask = camera->get().getCullingMask();
+  }
+  if (const auto light = findDirectionalLightForNode(*selected)) {
+    snapshot.hasLight = true;
+    snapshot.lightDirection = Vec3f{light->ubo->param.dir.x, light->ubo->param.dir.y, light->ubo->param.dir.z};
+    snapshot.lightColor = Vec3f{light->ubo->param.color.x, light->ubo->param.color.y, light->ubo->param.color.z};
+    snapshot.lightIntensity = light->ubo->param.color.w;
+  }
   snapshot.hasMesh = selected->getComponent<MeshComponent>().has_value();
   snapshot.hasMaterial = selected->getComponent<MaterialComponent>().has_value();
   snapshot.hasSkeleton = selected->getComponent<SkeletonComponent>().has_value();
@@ -155,28 +205,53 @@ CommandResult InspectorPanel::dispatchRename(std::string_view path,
                                quoteToken(trimmed));
 }
 
+CommandResult InspectorPanel::dispatchSetVec3(std::string_view path,
+                                              std::string_view field,
+                                              const Vec3f &value) {
+  return m_commandBus.dispatch("set " +
+                               quoteToken(std::string(path) + "." + std::string(field)) + " " +
+                               formatFloat(value.x) + " " +
+                               formatFloat(value.y) + " " +
+                               formatFloat(value.z));
+}
+
+CommandResult InspectorPanel::dispatchSetFloat(std::string_view path,
+                                               std::string_view field,
+                                               const float value) {
+  return m_commandBus.dispatch("set " +
+                               quoteToken(std::string(path) + "." + std::string(field)) + " " +
+                               formatFloat(value));
+}
+
+CommandResult InspectorPanel::dispatchSetUnsigned(std::string_view path,
+                                                  std::string_view field,
+                                                  const u32 value) {
+  return m_commandBus.dispatch("set " +
+                               quoteToken(std::string(path) + "." + std::string(field)) + " " +
+                               formatUnsigned(value));
+}
+
+CommandResult InspectorPanel::dispatchSetToken(std::string_view path,
+                                               std::string_view field,
+                                               std::string_view value) {
+  return m_commandBus.dispatch("set " +
+                               quoteToken(std::string(path) + "." + std::string(field)) + " " +
+                               quoteToken(value));
+}
+
 CommandResult InspectorPanel::dispatchMove(std::string_view path,
                                            const Vec3f &translation) {
-  return m_commandBus.dispatch("move " + quoteToken(path) + " " +
-                               formatFloat(translation.x) + " " +
-                               formatFloat(translation.y) + " " +
-                               formatFloat(translation.z));
+  return dispatchSetVec3(path, "translation", translation);
 }
 
 CommandResult InspectorPanel::dispatchRotate(std::string_view path,
                                              const Vec3f &rotationEulerDegrees) {
-  return m_commandBus.dispatch("rotate " + quoteToken(path) + " " +
-                               formatFloat(rotationEulerDegrees.x) + " " +
-                               formatFloat(rotationEulerDegrees.y) + " " +
-                               formatFloat(rotationEulerDegrees.z));
+  return dispatchSetVec3(path, "rotation", rotationEulerDegrees);
 }
 
 CommandResult InspectorPanel::dispatchScale(std::string_view path,
                                             const Vec3f &scale) {
-  return m_commandBus.dispatch("scale " + quoteToken(path) + " " +
-                               formatFloat(scale.x) + " " +
-                               formatFloat(scale.y) + " " +
-                               formatFloat(scale.z));
+  return dispatchSetVec3(path, "scale", scale);
 }
 
 void InspectorPanel::syncDraftFromSnapshot(const Snapshot &snapshot) {
@@ -189,35 +264,81 @@ void InspectorPanel::syncDraftFromSnapshot(const Snapshot &snapshot) {
   m_translationDraft = snapshot.translation;
   m_rotationDraft = snapshot.rotationEulerDegrees;
   m_scaleDraft = snapshot.scale;
+  m_visibilityMaskDraft = snapshot.visibilityMask;
+  m_cameraFovDraft = snapshot.cameraFov;
+  m_cameraNearDraft = snapshot.cameraNear;
+  m_cameraFarDraft = snapshot.cameraFar;
+  m_cameraProjectionDraft = snapshot.cameraPerspective ? 0 : 1;
+  m_cameraCullingMaskDraft = snapshot.cameraCullingMask;
+  m_lightDirectionDraft = snapshot.lightDirection;
+  m_lightColorDraft = snapshot.lightColor;
+  m_lightIntensityDraft = snapshot.lightIntensity;
 }
 
 void InspectorPanel::drawSelection(const Snapshot &snapshot) {
-  ImGui::TextUnformatted(snapshot.path.c_str());
+  auto refreshDrafts = [this]() {
+    const Snapshot refreshed = makeSnapshot();
+    if (refreshed.hasSelection) {
+      syncDraftFromSnapshot(refreshed);
+    }
+  };
+  auto drawMaskEditor = [&](const char *label, u32 &draft,
+                            auto &&dispatchFn) {
+    ImGui::Text("%s: 0x%08X", label, draft);
+    ImGui::PushID(label);
+    bool changed = false;
+    for (int bit = 0; bit < 32; ++bit) {
+      bool enabled = (draft & (1u << bit)) != 0;
+      ImGui::PushID(bit);
+      if (ImGui::Checkbox("##bit", &enabled)) {
+        if (enabled) {
+          draft |= (1u << bit);
+        } else {
+          draft &= ~(1u << bit);
+        }
+        changed = true;
+      }
+      ImGui::SameLine();
+      ImGui::Text("%02d", bit);
+      if ((bit % 4) != 3) {
+        ImGui::SameLine();
+      }
+      ImGui::PopID();
+    }
+    if (changed) {
+      const CommandResult result = dispatchFn(draft);
+      if (result.ok) {
+        refreshDrafts();
+      }
+    }
+    ImGui::PopID();
+  };
+
+  ImGui::Text("Path: %s", snapshot.path.c_str());
   ImGui::Separator();
 
   ImGui::InputText("Name", m_nameBuffer.data(), m_nameBuffer.size());
   if (ImGui::IsItemDeactivatedAfterEdit()) {
     const CommandResult result = dispatchRename(snapshot.path, m_nameBuffer.data());
     if (result.ok) {
-      const Snapshot refreshed = makeSnapshot();
-      if (refreshed.hasSelection) {
-        syncDraftFromSnapshot(refreshed);
-      }
+      refreshDrafts();
     }
   }
 
   ImGui::Text("Camera: %s", snapshot.hasCamera ? "yes" : "no");
+  ImGui::SameLine();
+  ImGui::Text("Light: %s", snapshot.hasLight ? "yes" : "no");
+  ImGui::Text("Visibility mask: 0x%08X", snapshot.visibilityMask);
   ImGui::Text("Mesh: %s", snapshot.hasMesh ? "yes" : "no");
   ImGui::Text("Material: %s", snapshot.hasMaterial ? "yes" : "no");
   ImGui::Text("Skeleton: %s", snapshot.hasSkeleton ? "yes" : "no");
-  ImGui::TextUnformatted("Light: scene-level only (no SceneNode component in v1)");
   ImGui::Separator();
 
   ImGui::DragFloat3("Translation", m_translationDraft.data, 0.1f);
   if (ImGui::IsItemDeactivatedAfterEdit()) {
     const CommandResult result = dispatchMove(snapshot.path, m_translationDraft);
     if (result.ok) {
-      m_translationDraft = makeSnapshot().translation;
+      refreshDrafts();
     }
   }
 
@@ -225,7 +346,7 @@ void InspectorPanel::drawSelection(const Snapshot &snapshot) {
   if (ImGui::IsItemDeactivatedAfterEdit()) {
     const CommandResult result = dispatchRotate(snapshot.path, m_rotationDraft);
     if (result.ok) {
-      m_rotationDraft = makeSnapshot().rotationEulerDegrees;
+      refreshDrafts();
     }
   }
 
@@ -233,7 +354,93 @@ void InspectorPanel::drawSelection(const Snapshot &snapshot) {
   if (ImGui::IsItemDeactivatedAfterEdit()) {
     const CommandResult result = dispatchScale(snapshot.path, m_scaleDraft);
     if (result.ok) {
-      m_scaleDraft = makeSnapshot().scale;
+      refreshDrafts();
+    }
+  }
+
+  drawMaskEditor("Visibility bits", m_visibilityMaskDraft,
+                 [&](const u32 value) {
+                   return dispatchSetUnsigned(snapshot.path, "visibilityMask", value);
+                 });
+
+  if (snapshot.hasCamera) {
+    ImGui::Separator();
+    ImGui::TextUnformatted("Camera");
+
+    ImGui::DragFloat("FOV", &m_cameraFovDraft, 0.25f, 1.0f, 179.0f);
+    if (ImGui::IsItemDeactivatedAfterEdit()) {
+      const CommandResult result =
+          dispatchSetFloat(snapshot.path, "fov", m_cameraFovDraft);
+      if (result.ok) {
+        refreshDrafts();
+      }
+    }
+
+    ImGui::DragFloat("Near", &m_cameraNearDraft, 0.01f, 0.001f, 1000.0f);
+    if (ImGui::IsItemDeactivatedAfterEdit()) {
+      const CommandResult result =
+          dispatchSetFloat(snapshot.path, "near", m_cameraNearDraft);
+      if (result.ok) {
+        refreshDrafts();
+      }
+    }
+
+    ImGui::DragFloat("Far", &m_cameraFarDraft, 1.0f, 0.01f, 10000.0f);
+    if (ImGui::IsItemDeactivatedAfterEdit()) {
+      const CommandResult result =
+          dispatchSetFloat(snapshot.path, "far", m_cameraFarDraft);
+      if (result.ok) {
+        refreshDrafts();
+      }
+    }
+
+    const char *projectionItems[] = {"Perspective", "Orthographic"};
+    if (ImGui::Combo("Projection", &m_cameraProjectionDraft, projectionItems,
+                     IM_ARRAYSIZE(projectionItems))) {
+      const CommandResult result = dispatchSetToken(
+          snapshot.path, "projection",
+          m_cameraProjectionDraft == 0 ? "perspective" : "orthographic");
+      if (result.ok) {
+        refreshDrafts();
+      }
+    }
+
+    drawMaskEditor("Camera culling bits", m_cameraCullingMaskDraft,
+                   [&](const u32 value) {
+                     return dispatchSetUnsigned(snapshot.path, "cullingMask",
+                                                value);
+                   });
+  }
+
+  if (snapshot.hasLight) {
+    ImGui::Separator();
+    ImGui::TextUnformatted("Directional Light");
+
+    ImGui::DragFloat3("Direction", m_lightDirectionDraft.data, 0.05f);
+    if (ImGui::IsItemDeactivatedAfterEdit()) {
+      const CommandResult result =
+          dispatchSetVec3(snapshot.path, "direction", m_lightDirectionDraft);
+      if (result.ok) {
+        refreshDrafts();
+      }
+    }
+
+    ImGui::ColorEdit3("Color", m_lightColorDraft.data);
+    if (ImGui::IsItemDeactivatedAfterEdit()) {
+      const CommandResult result =
+          dispatchSetVec3(snapshot.path, "color", m_lightColorDraft);
+      if (result.ok) {
+        refreshDrafts();
+      }
+    }
+
+    ImGui::DragFloat("Intensity", &m_lightIntensityDraft, 0.05f, 0.0f, 100.0f);
+    if (ImGui::IsItemDeactivatedAfterEdit()) {
+      const CommandResult result =
+          dispatchSetFloat(snapshot.path, "intensity", m_lightIntensityDraft);
+      if (result.ok) {
+        refreshDrafts();
+      }
     }
   }
 }

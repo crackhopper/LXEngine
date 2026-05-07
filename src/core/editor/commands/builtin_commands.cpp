@@ -12,6 +12,7 @@
 #include <optional>
 #include <sstream>
 #include <stdexcept>
+#include <string_view>
 
 namespace LX_core {
 namespace {
@@ -69,6 +70,19 @@ constexpr float kDegToRad = 3.14159265358979323846f / 180.0f;
       return std::nullopt;
     }
     return value;
+  } catch (...) {
+    return std::nullopt;
+  }
+}
+
+[[nodiscard]] std::optional<u32> parseUnsigned(const std::string &text) {
+  try {
+    size_t index = 0;
+    const unsigned long value = std::stoul(text, &index, 0);
+    if (index != text.size() || value > std::numeric_limits<u32>::max()) {
+      return std::nullopt;
+    }
+    return static_cast<u32>(value);
   } catch (...) {
     return std::nullopt;
   }
@@ -170,6 +184,39 @@ constexpr float kDegToRad = 3.14159265358979323846f / 180.0f;
   return oss.str();
 }
 
+[[nodiscard]] std::string makeUnsignedJson(const u32 value) {
+  return "{\"value\":" + std::to_string(value) + "}";
+}
+
+[[nodiscard]] std::string lowerCopy(std::string text) {
+  std::transform(text.begin(), text.end(), text.begin(),
+                 [](const unsigned char c) {
+                   return static_cast<char>(std::tolower(c));
+                 });
+  return text;
+}
+
+[[nodiscard]] std::shared_ptr<DirectionalLight>
+resolveDirectionalLight(SceneNode &node) {
+  const auto scene = node.getAttachedScene();
+  if (!scene) {
+    return nullptr;
+  }
+
+  const std::string tag = lowerCopy(node.getName() + " " + node.getPath());
+  if (tag.find("light") == std::string::npos) {
+    return nullptr;
+  }
+
+  for (const auto &light : scene->getLights()) {
+    const auto directionalLight = std::dynamic_pointer_cast<DirectionalLight>(light);
+    if (directionalLight && directionalLight->ubo) {
+      return directionalLight;
+    }
+  }
+  return nullptr;
+}
+
 [[nodiscard]] std::optional<std::pair<std::string, std::string>>
 splitFieldPath(const std::string &text) {
   const usize dot = text.find_last_of('.');
@@ -234,6 +281,76 @@ findActiveCamera(Scene &scene, EditorState &editorState) {
     }
     const float value = camera->get().fovY;
     return makeOk("fov = " + formatFloat(value),
+                  "{\"value\":" + formatFloat(value) + "}");
+  }
+  if (field == "visibilityMask") {
+    const u32 value = node.getVisibilityLayerMask();
+    return makeOk("visibilityMask = " + std::to_string(value),
+                  makeUnsignedJson(value));
+  }
+  if (field == "near") {
+    const auto camera = node.getComponent<CameraComponent>();
+    if (!camera.has_value()) {
+      return makeError("field not available on node: near");
+    }
+    return makeOk("near = " + formatFloat(camera->get().nearPlane),
+                  "{\"value\":" + formatFloat(camera->get().nearPlane) + "}");
+  }
+  if (field == "far") {
+    const auto camera = node.getComponent<CameraComponent>();
+    if (!camera.has_value()) {
+      return makeError("field not available on node: far");
+    }
+    return makeOk("far = " + formatFloat(camera->get().farPlane),
+                  "{\"value\":" + formatFloat(camera->get().farPlane) + "}");
+  }
+  if (field == "projection") {
+    const auto camera = node.getComponent<CameraComponent>();
+    if (!camera.has_value()) {
+      return makeError("field not available on node: projection");
+    }
+    const std::string value =
+        camera->get().type == CameraType::Perspective ? "perspective"
+                                                      : "orthographic";
+    return makeOk("projection = " + value,
+                  "{\"value\":\"" + jsonEscape(value) + "\"}");
+  }
+  if (field == "cullingMask") {
+    const auto camera = node.getComponent<CameraComponent>();
+    if (!camera.has_value()) {
+      return makeError("field not available on node: cullingMask");
+    }
+    const u32 value = camera->get().getCullingMask();
+    return makeOk("cullingMask = " + std::to_string(value),
+                  makeUnsignedJson(value));
+  }
+  if (field == "direction") {
+    const auto light = resolveDirectionalLight(node);
+    if (!light) {
+      return makeError("field not available on node: direction");
+    }
+    const Vec3f value = Vec3f{light->ubo->param.dir.x, light->ubo->param.dir.y, light->ubo->param.dir.z};
+    return makeOk("direction = (" + formatFloat(value.x) + ", " +
+                      formatFloat(value.y) + ", " + formatFloat(value.z) + ")",
+                  "{\"value\":" + makeVec3Json(value) + "}");
+  }
+  if (field == "color") {
+    const auto light = resolveDirectionalLight(node);
+    if (!light) {
+      return makeError("field not available on node: color");
+    }
+    const Vec3f value = Vec3f{light->ubo->param.color.x, light->ubo->param.color.y, light->ubo->param.color.z};
+    return makeOk("color = (" + formatFloat(value.x) + ", " +
+                      formatFloat(value.y) + ", " + formatFloat(value.z) + ")",
+                  "{\"value\":" + makeVec3Json(value) + "}");
+  }
+  if (field == "intensity") {
+    const auto light = resolveDirectionalLight(node);
+    if (!light) {
+      return makeError("field not available on node: intensity");
+    }
+    const float value = light->ubo->param.color.w;
+    return makeOk("intensity = " + formatFloat(value),
                   "{\"value\":" + formatFloat(value) + "}");
   }
   if (field == "name") {
@@ -306,6 +423,133 @@ findActiveCamera(Scene &scene, EditorState &editorState) {
     camera->get().fovY = *value;
     camera->get().updateMatrices();
     return makeOk("fov updated", "{\"value\":" + formatFloat(*value) + "}");
+  }
+  if (field == "visibilityMask") {
+    if (args.size() != valueStartIndex + 1) {
+      return makeError("usage: set <path>.visibilityMask <u32>");
+    }
+    const auto value = parseUnsigned(args[valueStartIndex]);
+    if (!value) {
+      return makeError("invalid unsigned for set visibilityMask");
+    }
+    node.setVisibilityLayerMask(*value);
+    return makeOk("visibilityMask updated", makeUnsignedJson(*value));
+  }
+  if (field == "near") {
+    if (args.size() != valueStartIndex + 1) {
+      return makeError("usage: set <path>.near <value>");
+    }
+    const auto camera = node.getComponent<CameraComponent>();
+    if (!camera.has_value()) {
+      return makeError("field not available on node: near");
+    }
+    const auto value = parseFloat(args[valueStartIndex]);
+    if (!value) {
+      return makeError("invalid float for set near");
+    }
+    camera->get().nearPlane = *value;
+    camera->get().updateMatrices();
+    return makeOk("near updated", "{\"value\":" + formatFloat(*value) + "}");
+  }
+  if (field == "far") {
+    if (args.size() != valueStartIndex + 1) {
+      return makeError("usage: set <path>.far <value>");
+    }
+    const auto camera = node.getComponent<CameraComponent>();
+    if (!camera.has_value()) {
+      return makeError("field not available on node: far");
+    }
+    const auto value = parseFloat(args[valueStartIndex]);
+    if (!value) {
+      return makeError("invalid float for set far");
+    }
+    camera->get().farPlane = *value;
+    camera->get().updateMatrices();
+    return makeOk("far updated", "{\"value\":" + formatFloat(*value) + "}");
+  }
+  if (field == "projection") {
+    if (args.size() != valueStartIndex + 1) {
+      return makeError("usage: set <path>.projection <perspective|orthographic>");
+    }
+    const auto camera = node.getComponent<CameraComponent>();
+    if (!camera.has_value()) {
+      return makeError("field not available on node: projection");
+    }
+    const std::string value = lowerCopy(args[valueStartIndex]);
+    if (value == "perspective") {
+      camera->get().type = CameraType::Perspective;
+    } else if (value == "orthographic") {
+      camera->get().type = CameraType::Orthographic;
+    } else {
+      return makeError("invalid projection for set projection");
+    }
+    camera->get().updateMatrices();
+    return makeOk("projection updated",
+                  "{\"value\":\"" + jsonEscape(value) + "\"}");
+  }
+  if (field == "cullingMask") {
+    if (args.size() != valueStartIndex + 1) {
+      return makeError("usage: set <path>.cullingMask <u32>");
+    }
+    const auto camera = node.getComponent<CameraComponent>();
+    if (!camera.has_value()) {
+      return makeError("field not available on node: cullingMask");
+    }
+    const auto value = parseUnsigned(args[valueStartIndex]);
+    if (!value) {
+      return makeError("invalid unsigned for set cullingMask");
+    }
+    camera->get().setCullingMask(*value);
+    return makeOk("cullingMask updated", makeUnsignedJson(*value));
+  }
+  if (field == "direction") {
+    if (args.size() != valueStartIndex + 3) {
+      return makeError("usage: set <path>.direction <x> <y> <z>");
+    }
+    const auto light = resolveDirectionalLight(node);
+    if (!light) {
+      return makeError("field not available on node: direction");
+    }
+    const auto value = parseVec3(args, valueStartIndex);
+    if (!value) {
+      return makeError("invalid float for set direction");
+    }
+    light->ubo->param.dir = Vec4f{value->x, value->y, value->z, 0.0f};
+    light->ubo->setDirty();
+    return makeOk("direction updated", "{\"value\":" + makeVec3Json(*value) + "}");
+  }
+  if (field == "color") {
+    if (args.size() != valueStartIndex + 3) {
+      return makeError("usage: set <path>.color <r> <g> <b>");
+    }
+    const auto light = resolveDirectionalLight(node);
+    if (!light) {
+      return makeError("field not available on node: color");
+    }
+    const auto value = parseVec3(args, valueStartIndex);
+    if (!value) {
+      return makeError("invalid float for set color");
+    }
+    light->ubo->param.color =
+        Vec4f{value->x, value->y, value->z, light->ubo->param.color.w};
+    light->ubo->setDirty();
+    return makeOk("color updated", "{\"value\":" + makeVec3Json(*value) + "}");
+  }
+  if (field == "intensity") {
+    if (args.size() != valueStartIndex + 1) {
+      return makeError("usage: set <path>.intensity <value>");
+    }
+    const auto light = resolveDirectionalLight(node);
+    if (!light) {
+      return makeError("field not available on node: intensity");
+    }
+    const auto value = parseFloat(args[valueStartIndex]);
+    if (!value) {
+      return makeError("invalid float for set intensity");
+    }
+    light->ubo->param.color.w = *value;
+    light->ubo->setDirty();
+    return makeOk("intensity updated", "{\"value\":" + formatFloat(*value) + "}");
   }
   if (field == "name") {
     if (args.size() != valueStartIndex + 1) {

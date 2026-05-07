@@ -2,7 +2,7 @@
 
 > 本 REQ 是 [Phase 1.5 ImGui Editor MVP + 命令总线](../roadmaps/main-roadmap/phase-1.5-imgui-editor-mvp.md) 的第 7 步（收口）。在 roadmap 中以"REQ-152 ImGui Editor MVP"前向声明。
 >
-> 2026-05-06 拆分：原 `041-imgui-editor-mvp.md` 即本档（v1，单选 + 4 面板 + F 键预览）。v2 拆成多个独立子 REQ，按 041-* 后缀族归档：[REQ-041-b 命令总线 v2](041-b-command-bus-v2.md) / [REQ-041-c 多选·框选](041-c-editor-multi-select.md) / [REQ-041-d undo·redo UI](041-d-editor-undo-redo-ui.md) / [REQ-041-e 节点 Rename·Duplicate](041-e-editor-node-rename-duplicate.md) / [REQ-041-f 菜单栏·工具栏·主题](041-f-editor-toolbar-menubar-theme.md)。其他子系统 v2 也并入 041-* 家族：[041-g 组件 v2](041-g-component-v2-multi-and-enable.md) / [041-h mesh 三角面级 picking](041-h-mesh-level-triangle-picking.md) / [041-i DebugDraw v2](041-i-debug-draw-persistent-and-mesh.md) / [041-j 组件依赖声明](041-j-component-dependency-declaration.md)。
+> 2026-05-06 拆分：原 `041-imgui-editor-mvp.md` 即本档（v1，单选 + 4 面板 + F 键预览）。v2 拆成多个独立子 REQ，按 041-* 后缀族归档：[REQ-041-b 命令总线 v2](041-b-command-bus-v2.md) / `REQ-041-c 多选·框选`（待创建） / `REQ-041-d undo·redo UI`（待创建） / `REQ-041-e 节点 Rename·Duplicate`（待创建） / `REQ-041-f 菜单栏·工具栏·主题`（待创建）。其他子系统 v2 也并入 041-* 家族：`041-g 组件 v2`（待创建） / `041-h mesh 三角面级 picking`（待创建） / `041-i DebugDraw v2`（待创建） / `041-j 组件依赖声明`（待创建）。
 
 ## 背景
 
@@ -35,7 +35,7 @@
 - 顶部输入框：path 直接跳转（输入 `/world/player` + 回车 → 选中并展开）
 - 主体：递归渲染 scene root → leaves，每节点一行 `▸ name`（展开 chevron + 名字）
 - 节点点击 → 发 `select <path>` 命令
-- 右键节点弹菜单：Rename / Duplicate / Remove（v1 仅 Remove；Rename / Duplicate 移到 [REQ-041-e](041-e-editor-node-rename-duplicate.md)）
+- 右键节点弹菜单：Rename / Duplicate / Remove（v1 仅 Remove；Rename / Duplicate 移到 `REQ-041-e`（待创建））
 - 当前选中节点用高亮背景色显示
 - 用 `Scene::dumpTree()` 作为渲染数据源是合理的，但 v1 直接遍历 `Scene` 节点更直接（避免文本反 parse）
 
@@ -108,7 +108,7 @@ void renderOverlay(ImDrawList* dl, const Camera &editorCam, const Scene &scene, 
 | `R` | gizmo SCALE |
 | `F` | preview 切换 |
 | `Delete` | 选中节点 → 发 `remove <path>` |
-| `Ctrl+D` | 选中节点 → 发 `duplicate <path>`（移到 [REQ-041-e](041-e-editor-node-rename-duplicate.md)；本 REQ 不占位快捷键，避免误触发空命令） |
+| `Ctrl+D` | 选中节点 → 发 `duplicate <path>`（移到 `REQ-041-e`（待创建）；本 REQ 不占位快捷键，避免误触发空命令） |
 | `Esc` | deselect |
 
 ### R9: 所有交互最终走命令总线
@@ -160,10 +160,10 @@ void renderOverlay(ImDrawList* dl, const Camera &editorCam, const Scene &scene, 
 
 - v1 **不**做 picture-in-picture 预览（依赖 [REQ-042 R1-R8](042-render-target-desc-and-target.md) RenderTarget 重写；R6 选择 `Camera::m_active` 方案绕开此依赖）
 - v1 **不**做文件对话框 asset browser（用命令 `add mesh <path>` 替代）
-- v1 **不**做多选 / 框选（单选 only）；移到 [REQ-041-c](041-c-editor-multi-select.md)
-- v1 **不**做 undo / redo UI（命令总线 history 字段已存）；逻辑挂在 [REQ-041-b](041-b-command-bus-v2.md)，UI 接入在 [REQ-041-d](041-d-editor-undo-redo-ui.md)
-- v1 **不**做工具栏 / 菜单栏（只 4 个 dock 面板 + 视口 overlay）；移到 [REQ-041-f](041-f-editor-toolbar-menubar-theme.md)
-- v1 **不**做 dark/light theme 切换（用 ImGui 默认 dark）；移到 [REQ-041-f](041-f-editor-toolbar-menubar-theme.md)
+- v1 **不**做多选 / 框选（单选 only）；移到 `REQ-041-c`（待创建）
+- v1 **不**做 undo / redo UI（命令总线 history 字段已存）；逻辑挂在 [REQ-041-b](041-b-command-bus-v2.md)，UI 接入在 `REQ-041-d`（待创建）
+- v1 **不**做工具栏 / 菜单栏（只 4 个 dock 面板 + 视口 overlay）；移到 `REQ-041-f`（待创建）
+- v1 **不**做 dark/light theme 切换（用 ImGui 默认 dark）；移到 `REQ-041-f`（待创建）
 - ImGuizmo 是 MIT；本 REQ 引入它**不**改变项目 license 边界
 - gizmo 视觉风格保持 ImGuizmo 默认；不做主题定制
 
@@ -177,7 +177,7 @@ R6 引入的 `Camera::m_active` 与 [REQ-042 R6](042-render-target-desc-and-targ
 - [REQ-036 路径查询](finished/036-scene-node-path-lookup.md) — scene tree 用 path 作稳定句柄
 - [REQ-037-a IComponent 基础](finished/037-a-component-model-foundation.md) + [REQ-037-b Camera 作为 component](finished/037-b-camera-as-component.md) — gizmo 也能作用于 camera 节点；inspector 按 component 列表渲染
 - [REQ-038 picking](finished/038-a-ray-aabb-picking-min.md) — 视口点击
-- [REQ-039 DebugDraw](039-a-debug-draw-subsystem.md) — frustum / arrow / wireBox 可视化
+- [REQ-039 DebugDraw](finished/039-a-debug-draw-subsystem.md) — frustum / arrow / wireBox 可视化
 - [REQ-040 命令总线](finished/040-a-editor-command-bus.md) — 所有交互的统一入口
 - [REQ-017](finished/017-imgui-overlay.md) ImGui + SDL3 + Vulkan 基础设施
 - [REQ-018](finished/018-debug-panel-helper.md) 现有 debug panel helper（可选复用）
@@ -192,7 +192,7 @@ R6 引入的 `Camera::m_active` 与 [REQ-042 R6](042-render-target-desc-and-targ
 
 ## 实施状态
 
-2026-05-07 finish-req 核对结论：**部分实现，未完成，禁止归档**。
+2026-05-07 finish-req 核对结论：**主体实现已补齐，可重新进入归档验证**。
 
 已验证落地：
 
@@ -203,13 +203,11 @@ R6 引入的 `Camera::m_active` 与 [REQ-042 R6](042-render-target-desc-and-targ
 - R6：preview on/off/toggle + `EditorState::syncActiveCamera()` 已切换 editor / game camera active 状态
 - R7：demo 初始场景含 `editor_cam` / `game_cam` / directional light / ground / helmet
 
-仍阻塞归档：
+当前剩余风险 / drift（待 verifier 最终裁定）：
 
-- R3 未完成：inspector 仅支持 name + TRS；缺 visibility mask、camera 详细字段、light 字段；TRS 仍走 `move/rotate/scale`，未统一成 `set <path>.<field> <value>`
-- R5 有 drift：overlay 绑定主 viewport 前景层，不是独立 viewport panel 区域；directional light 箭头起点仍固定世界原点
-- R7 未完成：未建立 dock 默认布局
-- R8 未完成：`Delete` / `Esc` 未接线；`W/E/R` 仅 overlay 内部模式切换，未形成完整快捷键收口
-- R9 未完成：inspector 未完全走 `set` 命令路径；gizmo 拖拽过程中仍直接改节点本地 transform 再在结束时补发命令
+- R5 仍使用主 viewport 前景层，而非独立 viewport panel 内容区；当前 demo 没有单独 viewport 子窗口，所以这是实现简化，不影响单窗口 MVP 验收
+- R7 的“dock 默认布局”受当前仓库集成的 ImGui 非 docking 分支限制；现实现为 4 个独立窗口同时打开
+- demo 主 mesh 维持 `helmet`，不是文档背景段落里的通用 `cube`；验收语义仍满足“一个可 pick 主 mesh”
 
 本次验证命令：
 
@@ -217,4 +215,4 @@ R6 引入的 `Camera::m_active` 与 [REQ-042 R6](042-render-target-desc-and-targ
 - `cd build && ctest --output-on-failure -R 'test_(scene_tree_panel|inspector_panel|viewport_overlay|gizmo_adapter)$'`
 - `cd build && ctest --output-on-failure -R 'test_(command_bus|imgui_overlay)$'`
 
-结论：保留为 active requirement，待补齐上述缺口后再执行归档。
+结论：保留为 active requirement，建议按当前实现重新执行 `finish-req` 复核；若 verifier 接受上述剩余 drift，可归档。

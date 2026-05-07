@@ -15,6 +15,23 @@
 namespace LX_demo::scene_viewer {
 
 namespace dui = LX_infra::debug_ui;
+namespace {
+
+[[nodiscard]] std::string quoteToken(std::string_view text) {
+  std::string out;
+  out.reserve(text.size() + 2);
+  out.push_back('"');
+  for (const char c : text) {
+    if (c == '"' || c == '\\') {
+      out.push_back('\\');
+    }
+    out.push_back(c);
+  }
+  out.push_back('"');
+  return out;
+}
+
+} // namespace
 
 void UiOverlay::attach(CameraRig& rig, LX_core::CommandBus& commandBus,
                        LX_core::SceneTreePanel& sceneTreePanel,
@@ -43,6 +60,39 @@ void UiOverlay::handleHotkeys(LX_core::IInputState& input) {
     (void)m_viewportOverlay->get().dispatchPreviewToggle();
   }
   m_prevFDown = fDown;
+
+  const bool wDown = input.isKeyDown(LX_core::KeyCode::W);
+  if (wDown && !m_prevWDown && m_viewportOverlay) {
+    (void)m_viewportOverlay->get().handleGizmoHotkeys('W');
+  }
+  m_prevWDown = wDown;
+
+  const bool eDown = input.isKeyDown(LX_core::KeyCode::E);
+  if (eDown && !m_prevEDown && m_viewportOverlay) {
+    (void)m_viewportOverlay->get().handleGizmoHotkeys('E');
+  }
+  m_prevEDown = eDown;
+
+  const bool rDown = input.isKeyDown(LX_core::KeyCode::R);
+  if (rDown && !m_prevRDown && m_viewportOverlay) {
+    (void)m_viewportOverlay->get().handleGizmoHotkeys('R');
+  }
+  m_prevRDown = rDown;
+
+  const bool escapeDown = input.isKeyDown(LX_core::KeyCode::Escape);
+  if (escapeDown && !m_prevEscapeDown && m_commandBus) {
+    (void)m_commandBus->get().dispatch("deselect");
+  }
+  m_prevEscapeDown = escapeDown;
+
+  const bool deleteDown = input.isKeyDown(LX_core::KeyCode::Delete);
+  if (deleteDown && !m_prevDeleteDown && m_commandBus && m_viewportOverlay) {
+    const auto snapshot = m_viewportOverlay->get().makeSnapshot();
+    if (!snapshot.selectedPath.empty()) {
+      (void)m_commandBus->get().dispatch("remove " + quoteToken(snapshot.selectedPath));
+    }
+  }
+  m_prevDeleteDown = deleteDown;
 }
 
 void UiOverlay::drawFrame() {
@@ -75,8 +125,9 @@ void UiOverlay::drawFrame() {
       ImGui::TextUnformatted("F1  toggle this help panel");
       ImGui::TextUnformatted("F   preview toggle (same command path as console)");
       ImGui::TextUnformatted("F2  switch Orbit / FreeFly");
+      ImGui::TextUnformatted("W/E/R gizmo mode | Esc deselect | Delete remove");
       ImGui::TextUnformatted("Scene Tree / Inspector / Console share one EditorState");
-      ImGui::TextUnformatted("Gizmo/TRS manipulator still placeholder in this build");
+      ImGui::TextUnformatted("Inspector fields commit through command bus");
     }
     dui::endPanel();
   }

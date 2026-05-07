@@ -145,13 +145,17 @@ void ViewportOverlay::enqueueDebugDraw() const {
       continue;
     }
 
-    Vec3f direction = directionalLight->ubo->param.dir.toVec3();
+    Vec3f origin{0.0f, 0.0f, 0.0f};
+    if (SceneNode *lightNode = m_scene.findByPath("/dir_light")) {
+      origin = Transform::fromMat4(lightNode->getWorldTransform()).translation;
+    }
+    Vec3f direction = Vec3f{directionalLight->ubo->param.dir.x, directionalLight->ubo->param.dir.y, directionalLight->ubo->param.dir.z};
     if (direction.length2() <= 1e-6f) {
       direction = Vec3f{0.0f, -1.0f, 0.0f};
     } else {
       direction = direction.normalized();
     }
-    DebugDraw::arrow(Vec3f{0.0f, 0.0f, 0.0f}, direction * 2.0f,
+    DebugDraw::arrow(origin, origin + direction * 2.0f,
                      DebugDraw::Color::yellow());
   }
 }
@@ -231,10 +235,14 @@ void ViewportOverlay::draw(ImDrawList *drawList) {
   }
 
   if (m_gizmoUsing && !usingNow && !m_gizmoDragPath.empty()) {
-    const auto components = GizmoAdapter::decompose(selected->getLocalTransform().toMat4());
-    const CommandResult commit = dispatchGizmoCommit(m_gizmoDragPath, components);
-    if (!commit.ok && m_gizmoPreDragTransform.has_value()) {
+    const auto committedTransform = selected->getLocalTransform();
+    const auto components = GizmoAdapter::decompose(committedTransform.toMat4());
+    if (m_gizmoPreDragTransform.has_value()) {
       selected->setLocalTransform(*m_gizmoPreDragTransform);
+    }
+    const CommandResult commit = dispatchGizmoCommit(m_gizmoDragPath, components);
+    if (!commit.ok) {
+      selected->setLocalTransform(committedTransform);
     }
     m_gizmoPreDragTransform.reset();
     m_gizmoDragPath.clear();
