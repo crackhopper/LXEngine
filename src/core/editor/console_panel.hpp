@@ -22,6 +22,8 @@ public:
   void browseHistoryOlder();
   void browseHistoryNewer();
   void autocompleteInput();
+  void dispatchUndo();
+  void dispatchRedo();
 
   void setInputText(std::string_view text);
   [[nodiscard]] std::string getInputText() const;
@@ -32,6 +34,7 @@ public:
 
 private:
   void setInputFromHistoryIndex(usize historyIndex);
+  void markCommandDispatched();
   [[nodiscard]] static std::string trim(std::string_view text);
   [[nodiscard]] static std::string commonPrefix(const std::string &a,
                                                 const std::string &b);

@@ -601,6 +601,52 @@ completeScenePaths(const Scene &scene, const CompletionContext &context) {
   return matches;
 }
 
+[[nodiscard]] std::vector<std::string> listEditableFields(SceneNode &node) {
+  std::vector<std::string> fields = {"name", "rotation", "scale", "translation",
+                                     "visibilityMask"};
+  if (node.getComponent<CameraComponent>().has_value()) {
+    fields.push_back("cullingMask");
+    fields.push_back("far");
+    fields.push_back("fov");
+    fields.push_back("near");
+    fields.push_back("projection");
+  }
+  if (resolveDirectionalLight(node)) {
+    fields.push_back("color");
+    fields.push_back("direction");
+    fields.push_back("intensity");
+  }
+  std::sort(fields.begin(), fields.end());
+  return fields;
+}
+
+[[nodiscard]] std::vector<std::string>
+completeSetTarget(const Scene &scene, const CompletionContext &context) {
+  const usize dot = context.partialToken.find_last_of('.');
+  if (dot == std::string::npos) {
+    return completeScenePaths(scene, context);
+  }
+
+  const std::string pathPrefix = context.partialToken.substr(0, dot);
+  const std::string fieldPrefix = context.partialToken.substr(dot + 1);
+  if (pathPrefix.empty()) {
+    return {};
+  }
+
+  SceneNode *node = scene.findByPath(pathPrefix);
+  if (!node) {
+    return {};
+  }
+
+  std::vector<std::string> matches;
+  for (const auto &field : listEditableFields(*node)) {
+    if (field.rfind(fieldPrefix, 0) == 0) {
+      matches.push_back(pathPrefix + "." + field);
+    }
+  }
+  return matches;
+}
+
 [[nodiscard]] CommandResult setField(SceneNode &node, const std::string &field,
                                      const std::vector<std::string> &args,
                                      const usize valueStartIndex) {
@@ -1179,7 +1225,8 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
       });
 
   bus.registerHandler(
-      "cam", "cam (look-at|reset|fov ...)",
+      "cam", CommandMetadata{"cam (look-at|reset|fov ...)", inverseFromMetadata(),
+                              true},
       [&scene, &editorState](std::vector<std::string> args) {
         if (args.empty()) {
           return makeError("usage: cam (look-at|reset|fov ...)");
@@ -1203,10 +1250,15 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
           if (!value) {
             return makeError("invalid float for cam fov");
           }
+          CommandResult result;
+          result.metadata["inverse.line"] =
+              "cam fov " + formatFloat(camera->get().fovY);
           camera->get().fovY = *value;
           camera->get().updateMatrices();
-          return makeOk("camera fov = " + formatFloat(*value),
-                        "{\"value\":" + formatFloat(*value) + "}");
+          result.ok = true;
+          result.message = "camera fov = " + formatFloat(*value);
+          result.structured = "{\"value\":" + formatFloat(*value) + "}";
+          return result;
         }
         if (args[0] == "look-at") {
           if (args.size() != 7) {
@@ -1229,11 +1281,13 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
       });
 
   bus.registerHandler(
-      "preview", "preview (on|off|toggle)",
+      "preview",
+      CommandMetadata{"preview (on|off|toggle)", inverseFromMetadata(), true},
       [&editorState, &scene](std::vector<std::string> args) {
         if (args.size() != 1) {
           return makeError("usage: preview (on|off|toggle)");
         }
+        const bool previewWasEnabled = editorState.isPreviewEnabled();
         if (args[0] == "on") {
           editorState.setPreviewEnabled(true);
         } else if (args[0] == "off") {
@@ -1244,13 +1298,17 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
           return makeError("unknown preview action: " + args[0]);
         }
         const SceneNodeSharedPtr activeCamera = editorState.syncActiveCamera(scene);
-        return makeOk(std::string("preview ") +
-                          (editorState.isPreviewEnabled() ? "on" : "off"),
-                      std::string("{\"enabled\":") +
-                          (editorState.isPreviewEnabled() ? "true" : "false") +
-                          ",\"activePath\":\"" +
-                          jsonEscape(activeCamera ? activeCamera->getPath() : std::string{}) +
-                          "\"}");
+        CommandResult result =
+            makeOk(std::string("preview ") +
+                       (editorState.isPreviewEnabled() ? "on" : "off"),
+                   std::string("{\"enabled\":") +
+                       (editorState.isPreviewEnabled() ? "true" : "false") +
+                       ",\"activePath\":\"" +
+                       jsonEscape(activeCamera ? activeCamera->getPath() : std::string{}) +
+                       "\"}");
+        result.metadata["inverse.line"] =
+            std::string("preview ") + (previewWasEnabled ? "on" : "off");
+        return result;
       });
 
   bus.registerHandler(
@@ -1279,6 +1337,10 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
           });
     }
   }
+  bus.registerCompleter(
+      "set", 0, [&scene](const CompletionContext &context) {
+        return completeSetTarget(scene, context);
+      });
 }
 
 } // namespace LX_core

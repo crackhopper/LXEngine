@@ -75,6 +75,13 @@ void testCompleterReturnsScenePathCandidates() {
          "completion should include /world root path");
   EXPECT(completion.commonPrefix == "/world",
          "common prefix should collapse to /world for sibling nodes");
+
+  const CompletionResult setPathCompletion = fixture.bus.complete("set /world/a.t");
+  EXPECT(setPathCompletion.candidates.size() == 1 &&
+             setPathCompletion.candidates[0] == "/world/a.translation",
+         "set completer should expand editable field suffixes");
+  EXPECT(setPathCompletion.commonPrefix == "/world/a.translation",
+         "set field completer should return full common prefix");
 }
 
 void testUndoRedoThroughBusRestoresMoveAndSet() {
@@ -163,6 +170,32 @@ void testMultiTargetMoveAppliesDeltaAndUndoRestoresEachNode() {
          "redo should reapply batch delta");
 }
 
+void testPreviewAndCamFovGainUndoCoverage() {
+  Fixture fixture;
+  auto camera = fixture.cameraNode->getComponent<CameraComponent>();
+  camera->get().fovY = 60.0f;
+
+  const CommandResult previewOn = fixture.bus.dispatch("preview on");
+  EXPECT(previewOn.ok, "preview on should succeed");
+  EXPECT(fixture.editorState.isPreviewEnabled(),
+         "preview on should enable preview mode");
+
+  const CommandResult undoPreview = fixture.bus.dispatch("undo");
+  EXPECT(undoPreview.ok, "undo should restore preview state");
+  EXPECT(!fixture.editorState.isPreviewEnabled(),
+         "undo should restore previous preview-disabled state");
+
+  const CommandResult camFov = fixture.bus.dispatch("cam fov 75");
+  EXPECT(camFov.ok, "cam fov should succeed");
+  EXPECT(nearlyEqual(camera->get().fovY, 75.0f),
+         "cam fov should update active camera fov");
+
+  const CommandResult undoFov = fixture.bus.dispatch("undo");
+  EXPECT(undoFov.ok, "undo should restore previous camera fov");
+  EXPECT(nearlyEqual(camera->get().fovY, 60.0f),
+         "undo should restore camera fov");
+}
+
 } // namespace
 
 int main() {
@@ -170,6 +203,7 @@ int main() {
   testUndoRedoThroughBusRestoresMoveAndSet();
   testMultiSelectKeepsPrimarySelectionOrder();
   testMultiTargetMoveAppliesDeltaAndUndoRestoresEachNode();
+  testPreviewAndCamFovGainUndoCoverage();
 
   if (failures != 0) {
     std::cerr << "test_command_bus_v2 failed with " << failures << " failure(s)\n";

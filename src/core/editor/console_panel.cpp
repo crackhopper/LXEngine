@@ -45,6 +45,7 @@ void ConsolePanel::draw() {
   ImGui::PopItemWidth();
 
   if (ImGui::IsItemActive()) {
+    const ImGuiIO &io = ImGui::GetIO();
     if (ImGui::IsKeyPressed(ImGuiKey_UpArrow, false)) {
       browseHistoryOlder();
     }
@@ -53,6 +54,12 @@ void ConsolePanel::draw() {
     }
     if (ImGui::IsKeyPressed(ImGuiKey_Tab, false)) {
       autocompleteInput();
+    }
+    if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Z, false)) {
+      dispatchUndo();
+    }
+    if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Y, false)) {
+      dispatchRedo();
     }
   }
 
@@ -74,9 +81,7 @@ void ConsolePanel::submitLine(std::string_view line) {
 
   const CommandResult result = m_commandBus.dispatch(trimmed);
   (void)result;
-  setInputText({});
-  m_historyBrowseIndex.reset();
-  m_scrollToBottom = true;
+  markCommandDispatched();
 }
 
 void ConsolePanel::submitCurrentInput() { submitLine(getInputText()); }
@@ -141,6 +146,16 @@ void ConsolePanel::autocompleteInput() {
   setInputText(completedText);
 }
 
+void ConsolePanel::dispatchUndo() {
+  (void)m_commandBus.dispatch("undo");
+  markCommandDispatched();
+}
+
+void ConsolePanel::dispatchRedo() {
+  (void)m_commandBus.dispatch("redo");
+  markCommandDispatched();
+}
+
 void ConsolePanel::setInputText(std::string_view text) {
   const usize copyLength = std::min(text.size(), m_inputBuffer.size() - 1);
   std::fill(m_inputBuffer.begin(), m_inputBuffer.end(), '\0');
@@ -172,6 +187,12 @@ void ConsolePanel::setInputFromHistoryIndex(const usize historyIndex) {
     return;
   }
   setInputText(history[historyIndex].line);
+}
+
+void ConsolePanel::markCommandDispatched() {
+  setInputText({});
+  m_historyBrowseIndex.reset();
+  m_scrollToBottom = true;
 }
 
 std::string ConsolePanel::trim(std::string_view text) {

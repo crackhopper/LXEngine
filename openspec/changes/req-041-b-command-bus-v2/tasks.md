@@ -12,5 +12,5 @@
 
 ## 3. UI Wiring And Full Verification
 
-- [ ] 3.1 Update console/viewport/editor panels to consume command-bus v2 completion, shortcuts, and batch selection behavior.
-- [ ] 3.2 Run required configure/build/ctest matrix, then commit `Implement REQ-041-b: command-bus-v2`.
+- [x] 3.1 Update console/viewport/editor panels to consume command-bus v2 completion, shortcuts, and batch selection behavior.
+- [x] 3.2 Run required configure/build/ctest matrix, then commit `Implement REQ-041-b: command-bus-v2`.

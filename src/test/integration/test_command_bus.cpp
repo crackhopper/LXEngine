@@ -551,6 +551,39 @@ void testConsolePanelBrowseAndAutocomplete() {
   panel.autocompleteInput();
   EXPECT(panel.getInputText() == "select ",
          "autocomplete completes unique builtin verb and appends space");
+
+  panel.setInputText("set /world/c");
+  panel.autocompleteInput();
+  EXPECT(panel.getInputText() == "set /world/cube ",
+         "autocomplete completes set target path through bus completer");
+
+  panel.setInputText("set /world/cube.t");
+  panel.autocompleteInput();
+  EXPECT(panel.getInputText() == "set /world/cube.translation ",
+         "autocomplete completes set field suffix through bus completer");
+}
+
+void testConsolePanelUndoRedoShortcutsUseCommandBus() {
+  CommandFixture fixture;
+  ConsolePanel panel(fixture.bus);
+
+  panel.submitLine("move /world/cube 1 0 0");
+  EXPECT(nearlyEqual(fixture.cube->getTranslation().x, 1.0f),
+         "setup move should update translation");
+
+  panel.dispatchUndo();
+  EXPECT(nearlyEqual(fixture.cube->getTranslation().x, 0.0f),
+         "dispatchUndo should route through command bus undo");
+  EXPECT(!fixture.bus.history().empty() &&
+             fixture.bus.history().back().line == "undo",
+         "dispatchUndo should record undo command in history");
+
+  panel.dispatchRedo();
+  EXPECT(nearlyEqual(fixture.cube->getTranslation().x, 1.0f),
+         "dispatchRedo should route through command bus redo");
+  EXPECT(!fixture.bus.history().empty() &&
+             fixture.bus.history().back().line == "redo",
+         "dispatchRedo should record redo command in history");
 }
 
 } // namespace
@@ -572,6 +605,7 @@ int main() {
   testBuiltinRemainingCommandErrors();
   testConsolePanelSubmitsAndClearsDisplay();
   testConsolePanelBrowseAndAutocomplete();
+  testConsolePanelUndoRedoShortcutsUseCommandBus();
 
   if (failures != 0) {
     std::cerr << "test_command_bus failed with " << failures << " failure(s)\n";
