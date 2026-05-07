@@ -30,6 +30,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_freefly_camera_controller
   test_imgui_overlay
   test_command_bus
+  test_command_bus_v2
   test_debug_ui_smoke
   test_scene_tree_panel
   test_inspector_panel

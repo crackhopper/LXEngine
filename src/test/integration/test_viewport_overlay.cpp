@@ -96,7 +96,7 @@ void testEditorStateSyncsActiveCameraAcrossPreviewToggle() {
 
 void testViewportOverlaySnapshotAndCommandEntry() {
   Fixture fixture;
-  fixture.editorState.select(fixture.cube);
+  fixture.editorState.select({fixture.cube});
   LX_core::ViewportOverlay overlay(fixture.bus, fixture.editorState, *fixture.scene);
 
   const auto snapshot = overlay.makeSnapshot();
@@ -118,7 +118,7 @@ void testViewportOverlaySnapshotAndCommandEntry() {
 
 void testViewportOverlayEnqueueDebugDrawTracksPreviewVisibility() {
   Fixture fixture;
-  fixture.editorState.select(fixture.cube);
+  fixture.editorState.select({fixture.cube});
   LX_core::ViewportOverlay overlay(fixture.bus, fixture.editorState, *fixture.scene);
 
   LX_core::DebugDraw::reset();
@@ -170,7 +170,7 @@ void testViewportOverlayDrawSmoke() {
   }
 
   Fixture fixture;
-  fixture.editorState.select(fixture.cube);
+  fixture.editorState.select({fixture.cube});
   LX_core::ViewportOverlay overlay(fixture.bus, fixture.editorState, *fixture.scene);
 
   try {

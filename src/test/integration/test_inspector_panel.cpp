@@ -93,7 +93,7 @@ void testSnapshotWithoutSelection() {
 void testSnapshotForRegularNode() {
   Fixture fixture;
   LX_core::InspectorPanel panel(fixture.bus, fixture.editorState);
-  fixture.editorState.select(fixture.cube);
+  fixture.editorState.select({fixture.cube});
 
   const auto snapshot = panel.makeSnapshot();
   EXPECT(snapshot.hasSelection, "regular node snapshot should have selection");
@@ -111,7 +111,7 @@ void testSnapshotForRegularNode() {
 void testSnapshotForCameraNode() {
   Fixture fixture;
   LX_core::InspectorPanel panel(fixture.bus, fixture.editorState);
-  fixture.editorState.select(fixture.cameraNode);
+  fixture.editorState.select({fixture.cameraNode});
 
   const auto snapshot = panel.makeSnapshot();
   EXPECT(snapshot.hasSelection, "camera node snapshot should have selection");
@@ -128,7 +128,7 @@ void testSnapshotForCameraNode() {
 void testSnapshotForLightNode() {
   Fixture fixture;
   LX_core::InspectorPanel panel(fixture.bus, fixture.editorState);
-  fixture.editorState.select(fixture.lightNode);
+  fixture.editorState.select({fixture.lightNode});
 
   const auto snapshot = panel.makeSnapshot();
   EXPECT(snapshot.hasSelection, "light node snapshot should have selection");
@@ -193,7 +193,7 @@ void testDrawFrameSurvivesCpuOnlyImGui() {
 
   Fixture fixture;
   LX_core::InspectorPanel panel(fixture.bus, fixture.editorState);
-  fixture.editorState.select(fixture.cube);
+  fixture.editorState.select({fixture.cube});
 
   try {
     ImGui::NewFrame();

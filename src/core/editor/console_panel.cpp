@@ -118,30 +118,27 @@ void ConsolePanel::browseHistoryNewer() {
 
 void ConsolePanel::autocompleteInput() {
   const std::string input = trim(getInputText());
-  if (input.empty() || input.find_first_of(" \t") != std::string::npos) {
+  if (input.empty()) {
     return;
   }
 
-  const std::vector<std::string> verbs = m_commandBus.listVerbs();
-  std::vector<std::string> matches;
-  for (const auto &verb : verbs) {
-    if (verb.rfind(input, 0) == 0) {
-      matches.push_back(verb);
-    }
-  }
-  if (matches.empty()) {
+  const CompletionResult completion = m_commandBus.complete(input);
+  if (completion.candidates.empty() || completion.commonPrefix.empty()) {
     return;
   }
 
-  std::string completion = matches.front();
-  for (usize i = 1; i < matches.size(); ++i) {
-    completion = commonPrefix(completion, matches[i]);
+  std::string completedText;
+  const usize lastWhitespace = input.find_last_of(" \t");
+  if (lastWhitespace == std::string::npos) {
+    completedText = completion.commonPrefix;
+  } else {
+    completedText = input.substr(0, lastWhitespace + 1) + completion.commonPrefix;
   }
 
-  if (matches.size() == 1) {
-    completion.push_back(' ');
+  if (completion.candidates.size() == 1) {
+    completedText.push_back(' ');
   }
-  setInputText(completion);
+  setInputText(completedText);
 }
 
 void ConsolePanel::setInputText(std::string_view text) {

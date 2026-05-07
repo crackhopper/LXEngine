@@ -28,8 +28,8 @@ ViewportOverlay::Snapshot ViewportOverlay::makeSnapshot() const {
   if (const auto previewCamera = m_editorState.getPreviewCamera()) {
     snapshot.previewCameraPath = previewCamera->getPath();
   }
-  if (const auto selected = m_editorState.getSelected()) {
-    snapshot.selectedPath = selected->getPath();
+  if (const auto selected = m_editorState.getPrimarySelected()) {
+    snapshot.selectedPath = selected->get().getPath();
   }
 
   snapshot.gizmoOperation = m_gizmoOperation;
@@ -123,8 +123,10 @@ void ViewportOverlay::enqueueDebugDraw() const {
     return;
   }
 
-  const auto selected = m_editorState.getSelected();
-  if (selected) {
+  for (const auto &selected : m_editorState.getSelected()) {
+    if (!selected) {
+      continue;
+    }
     const auto bounds = selected->getWorldBounds();
     if (bounds.isValid()) {
       DebugDraw::wireBox(bounds, DebugDraw::Color::yellow());
@@ -221,9 +223,9 @@ void ViewportOverlay::draw() {
                       selectedText.c_str());
   }
 
-  const auto selected = m_editorState.getSelected();
+  const auto selected = m_editorState.getPrimarySelected();
   const auto editorCameraNode = m_editorState.getEditorCamera();
-  if (!selected || !editorCameraNode) {
+  if (!selected.has_value() || !editorCameraNode) {
     drawList->PopClipRect();
     ImGui::End();
     return;
@@ -245,7 +247,7 @@ void ViewportOverlay::draw() {
   float objectMatrix[16] = {};
   GizmoAdapter::toFloat16(editorCamera->get().getViewMatrix(), view);
   GizmoAdapter::toFloat16(editorCamera->get().getProjMatrix(), projection);
-  GizmoAdapter::toFloat16(selected->getLocalTransform().toMat4(), objectMatrix);
+  GizmoAdapter::toFloat16(selected->get().getLocalTransform().toMat4(), objectMatrix);
 
   const bool changed = ImGuizmo::Manipulate(
       view, projection, toImGuizmoOperation(m_gizmoOperation), ImGuizmo::LOCAL,
@@ -254,23 +256,23 @@ void ViewportOverlay::draw() {
   const bool usingNow = ImGuizmo::IsUsing();
 
   if (!m_gizmoUsing && usingNow) {
-    m_gizmoPreDragTransform = selected->getLocalTransform();
-    m_gizmoDragPath = selected->getPath();
+    m_gizmoPreDragTransform = selected->get().getLocalTransform();
+    m_gizmoDragPath = selected->get().getPath();
   }
 
   if (changed) {
-    selected->setLocalTransform(Transform::fromMat4(GizmoAdapter::fromFloat16(objectMatrix)));
+    selected->get().setLocalTransform(Transform::fromMat4(GizmoAdapter::fromFloat16(objectMatrix)));
   }
 
   if (m_gizmoUsing && !usingNow && !m_gizmoDragPath.empty()) {
-    const auto committedTransform = selected->getLocalTransform();
+    const auto committedTransform = selected->get().getLocalTransform();
     const auto components = GizmoAdapter::decompose(committedTransform.toMat4());
     if (m_gizmoPreDragTransform.has_value()) {
-      selected->setLocalTransform(*m_gizmoPreDragTransform);
+      selected->get().setLocalTransform(*m_gizmoPreDragTransform);
     }
     const CommandResult commit = dispatchGizmoCommit(m_gizmoDragPath, components);
     if (!commit.ok) {
-      selected->setLocalTransform(committedTransform);
+      selected->get().setLocalTransform(committedTransform);
     }
     m_gizmoPreDragTransform.reset();
     m_gizmoDragPath.clear();

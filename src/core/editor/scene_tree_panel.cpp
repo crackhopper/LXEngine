@@ -130,9 +130,11 @@ void SceneTreePanel::drawNode(SceneNode &node) {
   if (!hasLiveChildren(node)) {
     flags |= ImGuiTreeNodeFlags_Leaf;
   }
-  if (const auto selected = m_editorState.getSelected();
-      selected && selected.get() == &node) {
-    flags |= ImGuiTreeNodeFlags_Selected;
+  for (const auto &selected : m_editorState.getSelected()) {
+    if (selected && selected.get() == &node) {
+      flags |= ImGuiTreeNodeFlags_Selected;
+      break;
+    }
   }
 
   const std::string label = node.getName().empty() ? node.getNodeName() : node.getName();
