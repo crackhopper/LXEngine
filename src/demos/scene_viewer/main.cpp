@@ -7,6 +7,10 @@
 // All per-frame logic lives in the update hook registered with EngineLoop.
 
 #include "backend/vulkan/vulkan_renderer.hpp"
+#include "core/editor/command_bus.hpp"
+#include "core/editor/commands/builtin_commands.hpp"
+#include "core/editor/console_panel.hpp"
+#include "core/editor/editor_state.hpp"
 #include "core/gpu/engine_loop.hpp"
 #include "core/scene/components/camera_component.hpp"
 #include "core/scene/scene.hpp"
@@ -65,13 +69,15 @@ int main() {
         resolveRuntimePath("assets/models/damaged_helmet/DamagedHelmet.gltf");
     auto helmet = demo::buildHelmetNode(gltfPath);
     auto ground = demo::buildGroundNode();
+    helmet->setName("helmet");
+    ground->setName("ground");
     helmet->setParent(ground);
 
     auto scene = LX_core::Scene::create("scene_viewer", helmet);
     scene->addRenderable(ground);
 
     auto cameraNode = LX_core::SceneNode::create("editor_camera");
-    cameraNode->setName("editor_cam");
+    cameraNode->setName("camera_main");
     auto camera = cameraNode->addComponent<LX_core::CameraComponent>();
     if (!camera.has_value()) {
       throw std::runtime_error("[scene_viewer] failed to create camera component");
@@ -97,11 +103,17 @@ int main() {
     demo::CameraRig rig;
     rig.attach(camera->get());
 
+    LX_core::EditorState editorState;
+    LX_core::CommandBus commandBus;
+    LX_core::registerBuiltinCommands(commandBus, editorState, *scene);
+    LX_core::ConsolePanel consolePanel(commandBus);
+
     demo::UiOverlay ui;
     if (!dirLight) {
       throw std::runtime_error("[scene_viewer] expected directional light");
     }
     ui.attach(camera->get(), *dirLight, rig);
+    ui.attachConsolePanel(consolePanel);
 
     // Hand the UI callback to the concrete VulkanRenderer. Per REQ-017 the
     // callback is intentionally not on the gpu::Renderer base.

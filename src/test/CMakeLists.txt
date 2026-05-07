@@ -29,6 +29,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_orbit_camera_controller
   test_freefly_camera_controller
   test_imgui_overlay
+  test_command_bus
   test_debug_ui_smoke
   test_gltf_loader
 
@@ -47,6 +48,7 @@ set(TEST_VIDEO_DEVICE_EXE_LIST
   test_vulkan_resource_manager
   test_pipeline_cache
   test_imgui_overlay
+  test_command_bus
 )
 
 function(lx_register_ctest test_name)
@@ -93,6 +95,10 @@ endif()
 if(USE_SDL AND TARGET test_imgui_overlay)
   target_compile_definitions(test_imgui_overlay PRIVATE USE_SDL=1)
   target_link_libraries(test_imgui_overlay PRIVATE imgui)
+endif()
+
+if(TARGET test_command_bus)
+  target_link_libraries(test_command_bus PRIVATE imgui)
 endif()
 
 # debug_ui smoke test needs access to the imgui header

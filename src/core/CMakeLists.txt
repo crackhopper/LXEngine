@@ -15,3 +15,7 @@ target_include_directories(${CORE_LIB}
 #   PUBLIC
 #   glm::glm
 # )
+
+if(TARGET imgui)
+  target_link_libraries(${CORE_LIB} PRIVATE imgui)
+endif()

@@ -9,6 +9,10 @@
 #include "core/scene/light.hpp"
 #include "core/time/clock.hpp"
 
+namespace LX_core {
+class ConsolePanel;
+}
+
 #include <functional>
 #include <optional>
 
@@ -21,6 +25,7 @@ public:
   void attach(LX_core::CameraComponent& camera, LX_core::DirectionalLight& light,
               CameraRig& rig);
   void attachClock(const LX_core::Clock& clock);
+  void attachConsolePanel(LX_core::ConsolePanel& consolePanel);
 
   // Called from the VulkanRenderer UI callback each frame.
   void drawFrame();
@@ -33,6 +38,7 @@ private:
   std::optional<std::reference_wrapper<LX_core::CameraComponent>> m_camera;
   std::optional<std::reference_wrapper<LX_core::DirectionalLight>> m_light;
   std::optional<std::reference_wrapper<CameraRig>> m_rig;
+  std::optional<std::reference_wrapper<LX_core::ConsolePanel>> m_consolePanel;
   bool m_prevF1Down = false;
   bool m_helpVisible = true;
 };
