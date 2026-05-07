@@ -21,6 +21,10 @@ class Scene;
 class ViewportOverlay final {
 public:
   enum class GizmoOperation { Translate, Rotate, Scale };
+  struct PanelRect final {
+    Vec2f origin{0.0f, 0.0f};
+    Vec2f size{1.0f, 1.0f};
+  };
 
   struct Snapshot {
     bool previewEnabled = false;
@@ -44,16 +48,12 @@ public:
                                                   const GizmoTransformComponents &components);
   [[nodiscard]] CommandResult dispatchPickingClick(const Vec2f &screenPixel,
                                                    const Vec2f &viewportSize);
+  [[nodiscard]] PanelRect getPanelRect() const;
   void enqueueDebugDraw() const;
-  void draw(ImDrawList *drawList);
+  void draw();
 
 private:
-  struct ViewportRect final {
-    Vec2f origin{0.0f, 0.0f};
-    Vec2f size{1.0f, 1.0f};
-  };
-
-  [[nodiscard]] ViewportRect computeViewportRect() const;
+  [[nodiscard]] PanelRect computeViewportRect() const;
   [[nodiscard]] static const char *modeLabel(GizmoOperation operation);
   [[nodiscard]] static ImGuizmo::OPERATION toImGuizmoOperation(GizmoOperation operation);
 
@@ -61,6 +61,7 @@ private:
   EditorState &m_editorState;
   Scene &m_scene;
   GizmoOperation m_gizmoOperation = GizmoOperation::Translate;
+  PanelRect m_lastPanelRect{};
   bool m_gizmoHovered = false;
   bool m_gizmoUsing = false;
   std::string m_gizmoDragPath;

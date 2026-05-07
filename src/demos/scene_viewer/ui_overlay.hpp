@@ -31,6 +31,8 @@ public:
   void handleHotkeys(LX_core::IInputState& input);
 
 private:
+  void applyDefaultLayout();
+
   std::optional<std::reference_wrapper<const LX_core::Clock>> m_clock;
   std::optional<std::reference_wrapper<CameraRig>> m_rig;
   std::optional<std::reference_wrapper<LX_core::CommandBus>> m_commandBus;
@@ -46,6 +48,7 @@ private:
   bool m_prevEscapeDown = false;
   bool m_prevDeleteDown = false;
   bool m_helpVisible = true;
+  bool m_defaultLayoutApplied = false;
 };
 
 } // namespace LX_demo::scene_viewer

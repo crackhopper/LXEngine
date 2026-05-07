@@ -48,6 +48,47 @@ void UiOverlay::attach(CameraRig& rig, LX_core::CommandBus& commandBus,
 
 void UiOverlay::attachClock(const LX_core::Clock& clock) { m_clock = std::cref(clock); }
 
+void UiOverlay::applyDefaultLayout() {
+  if (m_defaultLayoutApplied) {
+    return;
+  }
+
+  const ImVec2 display = ImGui::GetIO().DisplaySize;
+  const float leftWidth = 260.0f;
+  const float rightWidth = 340.0f;
+  const float bottomHeight = 220.0f;
+  const float topInset = 72.0f;
+  const float centerWidth = display.x - leftWidth - rightWidth;
+  const float centerHeight = display.y - bottomHeight;
+
+  ImGui::SetNextWindowPos(ImVec2(0.0f, topInset), ImGuiCond_Always);
+  ImGui::SetNextWindowSize(
+      ImVec2(leftWidth, centerHeight - topInset), ImGuiCond_Always);
+  if (m_sceneTreePanel) {
+    m_sceneTreePanel->get().draw();
+  }
+
+  ImGui::SetNextWindowPos(ImVec2(display.x - rightWidth, 0.0f), ImGuiCond_Always);
+  ImGui::SetNextWindowSize(ImVec2(rightWidth, centerHeight), ImGuiCond_Always);
+  if (m_inspectorPanel) {
+    m_inspectorPanel->get().draw();
+  }
+
+  ImGui::SetNextWindowPos(ImVec2(leftWidth, centerHeight), ImGuiCond_Always);
+  ImGui::SetNextWindowSize(ImVec2(centerWidth, bottomHeight), ImGuiCond_Always);
+  if (m_consolePanel) {
+    m_consolePanel->get().draw();
+  }
+
+  ImGui::SetNextWindowPos(ImVec2(leftWidth, 0.0f), ImGuiCond_Always);
+  ImGui::SetNextWindowSize(ImVec2(centerWidth, centerHeight), ImGuiCond_Always);
+  if (m_viewportOverlay) {
+    m_viewportOverlay->get().draw();
+  }
+
+  m_defaultLayoutApplied = true;
+}
+
 void UiOverlay::handleHotkeys(LX_core::IInputState& input) {
   const bool f1Down = input.isKeyDown(LX_core::KeyCode::F1);
   if (f1Down && !m_prevF1Down) {
@@ -107,18 +148,7 @@ void UiOverlay::drawFrame() {
   }
   dui::endPanel();
 
-  if (m_sceneTreePanel) {
-    m_sceneTreePanel->get().draw();
-  }
-  if (m_inspectorPanel) {
-    m_inspectorPanel->get().draw();
-  }
-  if (m_consolePanel) {
-    m_consolePanel->get().draw();
-  }
-  if (m_viewportOverlay) {
-    m_viewportOverlay->get().draw(ImGui::GetForegroundDrawList());
-  }
+  applyDefaultLayout();
 
   if (m_helpVisible) {
     if (dui::beginPanel("Help")) {

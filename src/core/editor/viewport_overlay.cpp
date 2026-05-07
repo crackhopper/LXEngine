@@ -114,6 +114,10 @@ CommandResult ViewportOverlay::dispatchPickingClick(const Vec2f &screenPixel,
   return m_commandBus.dispatch("deselect");
 }
 
+ViewportOverlay::PanelRect ViewportOverlay::getPanelRect() const {
+  return m_lastPanelRect;
+}
+
 void ViewportOverlay::enqueueDebugDraw() const {
   if (!shouldRenderEditorOverlay()) {
     return;
@@ -160,34 +164,54 @@ void ViewportOverlay::enqueueDebugDraw() const {
   }
 }
 
-ViewportOverlay::ViewportRect ViewportOverlay::computeViewportRect() const {
-  ViewportRect rect;
-  if (ImGuiViewport *viewport = ImGui::GetMainViewport()) {
-    rect.origin = Vec2f{viewport->WorkPos.x, viewport->WorkPos.y};
-    rect.size = Vec2f{viewport->WorkSize.x > 0.0f ? viewport->WorkSize.x : 1.0f,
-                      viewport->WorkSize.y > 0.0f ? viewport->WorkSize.y : 1.0f};
-  } else {
-    const ImGuiIO &io = ImGui::GetIO();
-    rect.size = Vec2f{io.DisplaySize.x > 0.0f ? io.DisplaySize.x : 1.0f,
-                      io.DisplaySize.y > 0.0f ? io.DisplaySize.y : 1.0f};
+ViewportOverlay::PanelRect ViewportOverlay::computeViewportRect() const {
+  if (m_lastPanelRect.size.x > 1.0f && m_lastPanelRect.size.y > 1.0f) {
+    return m_lastPanelRect;
   }
+
+  PanelRect rect;
+  const ImGuiIO &io = ImGui::GetIO();
+  rect.size = Vec2f{io.DisplaySize.x > 0.0f ? io.DisplaySize.x : 1.0f,
+                    io.DisplaySize.y > 0.0f ? io.DisplaySize.y : 1.0f};
   return rect;
 }
 
-void ViewportOverlay::draw(ImDrawList *drawList) {
-  if (!drawList) {
+void ViewportOverlay::draw() {
+  if (!ImGui::Begin("Viewport")) {
+    ImGui::End();
     return;
   }
+
+  ImDrawList *drawList = ImGui::GetWindowDrawList();
+  ImVec2 canvasMin = ImGui::GetCursorScreenPos();
+  ImVec2 canvasSize = ImGui::GetContentRegionAvail();
+  if (canvasSize.x < 1.0f) {
+    canvasSize.x = 1.0f;
+  }
+  if (canvasSize.y < 1.0f) {
+    canvasSize.y = 1.0f;
+  }
+  ImGui::InvisibleButton("##viewport_canvas", canvasSize,
+                         ImGuiButtonFlags_MouseButtonLeft |
+                             ImGuiButtonFlags_MouseButtonRight);
+  const bool viewportHovered = ImGui::IsItemHovered();
+  m_lastPanelRect.origin = Vec2f{canvasMin.x, canvasMin.y};
+  m_lastPanelRect.size = Vec2f{canvasSize.x, canvasSize.y};
 
   m_gizmoHovered = false;
   const Snapshot snapshot = makeSnapshot();
   if (!shouldRenderEditorOverlay()) {
     m_gizmoUsing = false;
+    ImGui::End();
     return;
   }
 
-  const ViewportRect rect = computeViewportRect();
+  const PanelRect rect = computeViewportRect();
   const char *modeText = modeLabel(snapshot.gizmoOperation);
+  drawList->PushClipRect(ImVec2(rect.origin.x, rect.origin.y),
+                         ImVec2(rect.origin.x + rect.size.x,
+                                rect.origin.y + rect.size.y),
+                         true);
   drawList->AddText(ImVec2(rect.origin.x + 16.0f, rect.origin.y + 16.0f), IM_COL32(255, 255, 0, 255),
                     snapshot.hintText.c_str());
   drawList->AddText(ImVec2(rect.origin.x + 16.0f, rect.origin.y + 56.0f), IM_COL32(120, 255, 120, 255), modeText);
@@ -200,10 +224,14 @@ void ViewportOverlay::draw(ImDrawList *drawList) {
   const auto selected = m_editorState.getSelected();
   const auto editorCameraNode = m_editorState.getEditorCamera();
   if (!selected || !editorCameraNode) {
+    drawList->PopClipRect();
+    ImGui::End();
     return;
   }
   auto editorCamera = editorCameraNode->getComponent<CameraComponent>();
   if (!editorCamera.has_value()) {
+    drawList->PopClipRect();
+    ImGui::End();
     return;
   }
 
@@ -251,10 +279,13 @@ void ViewportOverlay::draw(ImDrawList *drawList) {
 
   const bool mouseInsideViewport = io.MousePos.x >= rect.origin.x && io.MousePos.x <= rect.origin.x + rect.size.x &&
                                   io.MousePos.y >= rect.origin.y && io.MousePos.y <= rect.origin.y + rect.size.y;
-  if (!m_gizmoHovered && !m_gizmoUsing && io.MouseClicked[0] && !io.WantCaptureMouse && mouseInsideViewport) {
+  if (!m_gizmoHovered && !m_gizmoUsing && io.MouseClicked[0] && viewportHovered &&
+      mouseInsideViewport) {
     (void)dispatchPickingClick(Vec2f{io.MousePos.x - rect.origin.x, io.MousePos.y - rect.origin.y},
                                rect.size);
   }
+  drawList->PopClipRect();
+  ImGui::End();
 }
 
 const char *ViewportOverlay::modeLabel(const GizmoOperation operation) {

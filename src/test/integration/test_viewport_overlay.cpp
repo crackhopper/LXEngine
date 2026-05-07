@@ -8,6 +8,7 @@
 #include "core/utils/env.hpp"
 
 #include <imgui.h>
+#include <imgui_internal.h>
 
 #include <iostream>
 
@@ -174,7 +175,17 @@ void testViewportOverlayDrawSmoke() {
 
   try {
     ImGui::NewFrame();
-    overlay.draw(ImGui::GetForegroundDrawList());
+    overlay.draw();
+    const auto panelRect = overlay.getPanelRect();
+    ImGuiWindow *viewportWindow = ImGui::FindWindowByName("Viewport");
+    EXPECT(viewportWindow != nullptr, "viewport draw should create a Viewport window");
+    EXPECT(panelRect.size.x > 0.0f && panelRect.size.y > 0.0f,
+           "viewport draw should record a non-empty panel rect");
+    EXPECT(panelRect.origin.x >= viewportWindow->InnerRect.Min.x - 1.0f &&
+               panelRect.origin.y >= viewportWindow->InnerRect.Min.y - 1.0f &&
+               panelRect.origin.x + panelRect.size.x <= viewportWindow->InnerRect.Max.x + 1.0f &&
+               panelRect.origin.y + panelRect.size.y <= viewportWindow->InnerRect.Max.y + 1.0f,
+           "panel rect should stay inside viewport content rect");
     ImGui::EndFrame();
   } catch (...) {
     EXPECT(false, "ViewportOverlay draw should not throw in CPU-only ImGui frame");
