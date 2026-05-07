@@ -40,6 +40,11 @@ private:
   std::optional<std::reference_wrapper<LX_core::ViewportOverlay>> m_viewportOverlay;
   bool m_prevF1Down = false;
   bool m_prevFDown = false;
+  bool m_prevWDown = false;
+  bool m_prevEDown = false;
+  bool m_prevRDown = false;
+  bool m_prevEscapeDown = false;
+  bool m_prevDeleteDown = false;
   bool m_helpVisible = true;
 };
 

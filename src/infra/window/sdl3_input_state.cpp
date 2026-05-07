@@ -48,6 +48,7 @@ static KeyCode mapSdlScancode(SDL_Scancode sc) {
   case SDL_SCANCODE_8: return KeyCode::Num8;
   case SDL_SCANCODE_9: return KeyCode::Num9;
   case SDL_SCANCODE_ESCAPE: return KeyCode::Escape;
+  case SDL_SCANCODE_DELETE: return KeyCode::Delete;
   case SDL_SCANCODE_SPACE:  return KeyCode::Space;
   case SDL_SCANCODE_LSHIFT: return KeyCode::LShift;
   case SDL_SCANCODE_RSHIFT: return KeyCode::RShift;

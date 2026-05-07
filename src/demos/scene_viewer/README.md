@@ -2,8 +2,9 @@
 
 The default playground demo. Loads `DamagedHelmet.gltf`, renders it through
 the project's Vulkan backend with the existing Blinn-Phong material, adds a
-ground plane, a directional light, and a minimal ImGui overlay with
-Orbit / FreeFly camera modes.
+ground plane, a directional light, and an ImGui editor MVP overlay with
+scene tree / inspector / console / viewport overlay plus Orbit / FreeFly
+camera modes.
 
 ## Purpose
 
@@ -11,8 +12,8 @@ Orbit / FreeFly camera modes.
   single executable
 - Provide the default integration target for future scene features (Sponza,
   shadows, IBL, post-processing)
-- Keep a human-friendly UI surface so camera / light tweaks are observable
-  without editing source
+- Keep a human-friendly UI surface so selection / camera / light / transform
+  tweaks are observable without editing source
 
 This demo is **not** a tutorial and **not** a CI test.
 
@@ -28,7 +29,8 @@ This demo is **not** a tutorial and **not** a CI test.
 | REQ-015 | `OrbitCameraController` |
 | REQ-016 | `FreeFlyCameraController` |
 | REQ-017 | ImGui overlay on `VulkanRenderer::setDrawUiCallback` |
-| REQ-018 | `LX_infra::debug_ui` helpers (Stats/Camera/Light panels) |
+| REQ-018 | `LX_infra::debug_ui` helpers (Stats/Help shell panels) |
+| REQ-041-a | ImGui editor MVP panels / gizmo / preview flow |
 | REQ-020 | `EngineLoop` driving the frame pump |
 
 ## Build & run
@@ -60,6 +62,10 @@ with a non-zero exit code if the `assets/` tree cannot be found.
 |-------------|--------|
 | `F1` | Toggle the Help panel |
 | `F2` | Switch between Orbit and FreeFly camera modes |
+| `F` | Toggle preview camera |
+| `W` / `E` / `R` | Gizmo Translate / Rotate / Scale mode |
+| `Esc` | Deselect current node |
+| `Delete` | Remove selected node |
 
 ### Orbit mode (default)
 
@@ -105,9 +111,9 @@ registered with CTest.
 3. Orbit mode allows left-drag rotate, right-drag pan, and wheel zoom.
 4. Pressing `F2` switches to FreeFly; `W`/`A`/`S`/`D`/`Space`/`LShift`/`LCtrl`
    all move the camera as described above.
-5. The Stats, Camera, Directional Light, and Help panels are visible and
-   interactive.
-6. Dragging values in the Camera or Directional Light panels produces
-   visible changes in the next rendered frame.
+5. The Stats, Scene Tree, Inspector, Console, and Help panels are visible
+   and interactive.
+6. Inspector edits, gizmo commits, and console commands all mutate the same
+   scene state through the command bus.
 7. Closing the window exits the process cleanly (no crash, no hanging
    validation errors in the console).

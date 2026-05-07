@@ -14,7 +14,7 @@ enum class KeyCode : u16 {
   Num0, Num1, Num2, Num3, Num4, Num5, Num6, Num7, Num8, Num9,
 
   // 控制键
-  Escape, Space, LShift, RShift, LCtrl, RCtrl, LAlt, RAlt, Enter, Tab,
+  Escape, Delete, Space, LShift, RShift, LCtrl, RCtrl, LAlt, RAlt, Enter, Tab,
 
   // 方向
   Left, Right, Up, Down,
