@@ -266,6 +266,31 @@ void Scene::appendTreeLines(const SceneNode &node, std::string prefix,
   }
 }
 
+
+void Scene::removeRenderable(const SceneNodeSharedPtr &node) {
+  if (!node) {
+    return;
+  }
+
+  m_cameras.erase(
+      std::remove_if(m_cameras.begin(), m_cameras.end(),
+                     [&node](const SceneNodeSharedPtr &candidate) {
+                       return candidate.get() == node.get();
+                     }),
+      m_cameras.end());
+
+  node->clearParent();
+  node->detachFromScene();
+  node->setSceneDebugId(StringID{});
+
+  m_renderables.erase(
+      std::remove_if(m_renderables.begin(), m_renderables.end(),
+                     [&node](const IRenderableSharedPtr &candidate) {
+                       return candidate.get() == node.get();
+                     }),
+      m_renderables.end());
+}
+
 void Scene::addCamera(const SceneNodeSharedPtr &cameraNode) {
   if (!cameraNode) {
     return;

@@ -140,6 +140,8 @@ public:
     m_renderables.push_back(std::move(r));
   }
 
+  void removeRenderable(const SceneNodeSharedPtr &node);
+
   void addCamera(const SceneNodeSharedPtr &cameraNode);
   void removeCamera(const SceneNodeSharedPtr &cameraNode);
   const std::vector<SceneNodeSharedPtr> &getCameras() const { return m_cameras; }

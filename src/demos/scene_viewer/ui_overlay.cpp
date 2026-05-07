@@ -2,6 +2,7 @@
 
 #include "camera_rig.hpp"
 
+#include "core/editor/console_panel.hpp"
 #include "core/input/key_code.hpp"
 #include "infra/gui/debug_ui.hpp"
 
@@ -21,6 +22,10 @@ void UiOverlay::attach(LX_core::CameraComponent& camera,
 
 void UiOverlay::attachClock(const LX_core::Clock& clock) {
   m_clock = std::cref(clock);
+}
+
+void UiOverlay::attachConsolePanel(LX_core::ConsolePanel& consolePanel) {
+  m_consolePanel = std::ref(consolePanel);
 }
 
 void UiOverlay::handleHotkeys(LX_core::IInputState& input) {
@@ -58,9 +63,14 @@ void UiOverlay::drawFrame() {
   }
   dui::endPanel();
 
+  if (m_consolePanel) {
+    m_consolePanel->get().draw();
+  }
+
   if (m_helpVisible) {
     if (dui::beginPanel("Help")) {
       ImGui::TextUnformatted("F1  toggle this help panel");
+      ImGui::TextUnformatted("Command Console  execute builtin text commands");
       ImGui::TextUnformatted("F2  switch Orbit / FreeFly");
       ImGui::Separator();
       ImGui::TextUnformatted("Orbit:");

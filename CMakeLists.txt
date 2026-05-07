@@ -62,6 +62,11 @@ add_definitions(-D_UTF8_SOURCE)
 add_subdirectory(src/core)
 add_subdirectory(src/infra)
 add_subdirectory(src/backend)
+
+if(TARGET imgui)
+  target_link_libraries(${CORE_LIB} PRIVATE imgui)
+endif()
+
 add_subdirectory(src/test)
 
 # REQ-019: demo executables (default ON). Not registered with CTest.
