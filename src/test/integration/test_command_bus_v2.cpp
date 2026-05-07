@@ -68,6 +68,13 @@ struct Fixture {
 void testCompleterReturnsScenePathCandidates() {
   Fixture fixture;
 
+  const CompletionResult addCompletion = fixture.bus.complete("add c");
+  EXPECT(addCompletion.candidates.size() == 1 &&
+             addCompletion.candidates[0] == "camera",
+         "add completer should suggest supported component type names");
+  EXPECT(addCompletion.commonPrefix == "camera",
+         "component type completer should collapse to full match");
+
   const CompletionResult completion = fixture.bus.complete("move /w");
   EXPECT(completion.candidates.size() >= 4,
          "move path completer should list matching scene paths");
@@ -82,6 +89,11 @@ void testCompleterReturnsScenePathCandidates() {
          "set completer should expand editable field suffixes");
   EXPECT(setPathCompletion.commonPrefix == "/world/a.translation",
          "set field completer should return full common prefix");
+
+  const CompletionResult getPathCompletion = fixture.bus.complete("get /camera_main.p");
+  EXPECT(getPathCompletion.candidates.size() == 1 &&
+             getPathCompletion.candidates[0] == "/camera_main.projection",
+         "get completer should share editable field path completion");
 }
 
 void testUndoRedoThroughBusRestoresMoveAndSet() {
@@ -196,6 +208,52 @@ void testPreviewAndCamFovGainUndoCoverage() {
          "undo should restore camera fov");
 }
 
+void testAddRemoveSupportUndoRedo() {
+  Fixture fixture;
+
+  const CommandResult selectParent = fixture.bus.dispatch("select /world");
+  EXPECT(selectParent.ok, "selecting add parent should succeed");
+
+  const CommandResult addCamera = fixture.bus.dispatch("add camera debug_cam");
+  EXPECT(addCamera.ok, "add camera should succeed");
+  EXPECT(fixture.scene->findByPath("/world/debug_cam") != nullptr,
+         "added camera path should resolve");
+
+  const CommandResult undoAdd = fixture.bus.dispatch("undo");
+  EXPECT(undoAdd.ok, "undo should remove newly added camera");
+  EXPECT(fixture.scene->findByPath("/world/debug_cam") == nullptr,
+         "undo add should remove created camera node");
+
+  const CommandResult redoAdd = fixture.bus.dispatch("redo");
+  EXPECT(redoAdd.ok, "redo should restore add camera");
+  auto *restoredCameraNode = fixture.scene->findByPath("/world/debug_cam");
+  EXPECT(restoredCameraNode != nullptr, "redo add should recreate camera node");
+
+  const CommandResult setCameraFov =
+      fixture.bus.dispatch("set /world/debug_cam.fov 75");
+  EXPECT(setCameraFov.ok, "set camera field before remove should succeed");
+
+  const CommandResult removeCamera =
+      fixture.bus.dispatch("remove /world/debug_cam");
+  EXPECT(removeCamera.ok, "remove camera should succeed");
+  EXPECT(fixture.scene->findByPath("/world/debug_cam") == nullptr,
+         "removed camera path should disappear");
+
+  const CommandResult undoRemove = fixture.bus.dispatch("undo");
+  EXPECT(undoRemove.ok, "undo should restore removed camera");
+  restoredCameraNode = fixture.scene->findByPath("/world/debug_cam");
+  EXPECT(restoredCameraNode != nullptr, "undo remove should restore camera path");
+  auto restoredCamera = restoredCameraNode->getComponent<CameraComponent>();
+  EXPECT(restoredCamera.has_value() &&
+             nearlyEqual(restoredCamera->get().fovY, 75.0f),
+         "undo remove should restore camera component state");
+
+  const CommandResult redoRemove = fixture.bus.dispatch("redo");
+  EXPECT(redoRemove.ok, "redo should remove restored camera again");
+  EXPECT(fixture.scene->findByPath("/world/debug_cam") == nullptr,
+         "redo remove should remove camera again");
+}
+
 } // namespace
 
 int main() {
@@ -204,6 +262,7 @@ int main() {
   testMultiSelectKeepsPrimarySelectionOrder();
   testMultiTargetMoveAppliesDeltaAndUndoRestoresEachNode();
   testPreviewAndCamFovGainUndoCoverage();
+  testAddRemoveSupportUndoRedo();
 
   if (failures != 0) {
     std::cerr << "test_command_bus_v2 failed with " << failures << " failure(s)\n";

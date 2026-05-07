@@ -169,7 +169,7 @@ CommandResult CommandBus::undo() {
   }
 
   m_redoStack.push_back(entry);
-  return CommandResult{true, "undid: " + entry.executeLine, {}, {}};
+  return CommandResult{true, "undid: " + entry.redoLine, {}, {}};
 }
 
 CommandResult CommandBus::redo() {
@@ -180,7 +180,7 @@ CommandResult CommandBus::redo() {
   const UndoEntry entry = m_redoStack.back();
   m_redoStack.pop_back();
   const std::vector<CommandResult> results =
-      dispatchScriptInternal(entry.executeLine,
+      dispatchScriptInternal(entry.redoLine,
                              DispatchOptions{false, false, false});
   if (results.empty()) {
     m_redoStack.push_back(entry);
@@ -194,7 +194,7 @@ CommandResult CommandBus::redo() {
   }
 
   m_undoStack.push_back(entry);
-  return CommandResult{true, "redid: " + entry.executeLine, {}, {}};
+  return CommandResult{true, "redid: " + entry.redoLine, {}, {}};
 }
 
 bool CommandBus::canUndo() const { return !m_undoStack.empty(); }
@@ -350,7 +350,12 @@ CommandResult CommandBus::dispatchInternal(const std::string &line,
         const std::optional<std::string> inverseLine =
             handlerIt->second.metadata.inverse(parsed, result);
         if (inverseLine.has_value() && !inverseLine->empty()) {
-          m_undoStack.push_back(UndoEntry{parsed.line, *inverseLine});
+          std::string redoLine = parsed.line;
+          const auto redoIt = result.metadata.find("redo.line");
+          if (redoIt != result.metadata.end() && !redoIt->second.empty()) {
+            redoLine = redoIt->second;
+          }
+          m_undoStack.push_back(UndoEntry{std::move(redoLine), *inverseLine});
         }
       }
     }

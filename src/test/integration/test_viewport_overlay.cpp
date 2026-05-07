@@ -46,6 +46,7 @@ struct Fixture {
   LX_core::SceneNodeSharedPtr editorCameraNode = LX_core::SceneNode::create("editor_cam_node");
   LX_core::SceneNodeSharedPtr gameCameraNode = LX_core::SceneNode::create("game_cam_node");
   LX_core::SceneNodeSharedPtr cube = LX_core::SceneNode::create("cube");
+  LX_core::SceneNodeSharedPtr sphere = LX_core::SceneNode::create("sphere");
   LX_core::CameraComponent *editorCamera = nullptr;
   LX_core::CameraComponent *gameCamera = nullptr;
 
@@ -53,8 +54,11 @@ struct Fixture {
     world->setName("world");
     cube->setName("cube");
     cube->setParent(world);
+    sphere->setName("sphere");
+    sphere->setParent(world);
     scene->addRenderable(world);
     scene->addRenderable(cube);
+    scene->addRenderable(sphere);
 
     editorCameraNode->setName("editor_cam");
     auto editorCamRef = editorCameraNode->addComponent<LX_core::CameraComponent>();
@@ -162,6 +166,33 @@ void testViewportOverlayGizmoModeHotkeysAndCommitPath() {
          "translate commit records move command");
 }
 
+void testViewportOverlayMultiSelectionCommitAppliesSharedDelta() {
+  Fixture fixture;
+  fixture.cube->setTranslation({2.0f, 0.0f, 0.0f});
+  fixture.sphere->setTranslation({5.0f, 1.0f, 0.0f});
+  fixture.editorState.select({fixture.cube, fixture.sphere});
+  LX_core::ViewportOverlay overlay(fixture.bus, fixture.editorState, *fixture.scene);
+
+  std::vector<LX_core::Transform> before = {
+      fixture.cube->getLocalTransform(), fixture.sphere->getLocalTransform()};
+  std::vector<LX_core::Transform> after = before;
+  after[0].translation = {3.0f, 2.0f, 0.0f};
+  after[1].translation = {6.0f, 3.0f, 0.0f};
+
+  const auto commit = overlay.dispatchGizmoSelectionCommit(
+      {"/world/cube", "/world/sphere"}, before, after);
+  EXPECT(commit.ok, "multi-selection gizmo commit should succeed");
+  EXPECT(fixture.bus.history().back().line ==
+             "move \"/world/cube\" \"/world/sphere\" 1 2 0",
+         "multi-selection translate should commit one multi-target move delta");
+
+  const auto undo = fixture.bus.dispatch("undo");
+  EXPECT(undo.ok, "undo after gizmo selection commit should succeed");
+  EXPECT(fixture.cube->getTranslation().x == 2.0f &&
+             fixture.sphere->getTranslation().x == 5.0f,
+         "undo should restore both selected node transforms");
+}
+
 void testViewportOverlayDrawSmoke() {
   if (!setupMinimalImGui()) {
     std::cout << "[SKIP] viewport_overlay draw smoke (font atlas unavailable)\n";
@@ -201,6 +232,7 @@ int main() {
   testEditorStateSyncsActiveCameraAcrossPreviewToggle();
   testViewportOverlaySnapshotAndCommandEntry();
   testViewportOverlayGizmoModeHotkeysAndCommitPath();
+  testViewportOverlayMultiSelectionCommitAppliesSharedDelta();
   testViewportOverlayEnqueueDebugDrawTracksPreviewVisibility();
   testViewportOverlayDrawSmoke();
 

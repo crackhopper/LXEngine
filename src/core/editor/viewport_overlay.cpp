@@ -2,6 +2,7 @@
 
 #include "core/debug_draw/debug_draw.hpp"
 #include "core/editor/editor_state.hpp"
+#include "core/math/quat.hpp"
 #include "core/scene/components/camera_component.hpp"
 #include "core/scene/object.hpp"
 #include "core/scene/scene.hpp"
@@ -9,7 +10,107 @@
 #include <imgui.h>
 #include <ImGuizmo.h>
 
+#include <sstream>
+
 namespace LX_core {
+namespace {
+
+constexpr float kDegToRad = 3.14159265358979323846f / 180.0f;
+
+[[nodiscard]] std::string quoteToken(std::string_view text) {
+  std::string out;
+  out.reserve(text.size() + 2);
+  out.push_back('"');
+  for (const char c : text) {
+    if (c == '"' || c == '\\') {
+      out.push_back('\\');
+    }
+    out.push_back(c);
+  }
+  out.push_back('"');
+  return out;
+}
+
+[[nodiscard]] std::string joinLines(const std::vector<std::string> &lines) {
+  std::ostringstream oss;
+  for (usize i = 0; i < lines.size(); ++i) {
+    if (i != 0) {
+      oss << '\n';
+    }
+    oss << lines[i];
+  }
+  return oss.str();
+}
+
+[[nodiscard]] Vec3f safeScaleRatio(const Vec3f &before, const Vec3f &after) {
+  const auto ratio = [](const float oldValue, const float newValue) {
+    return std::abs(oldValue) <= 1e-6f ? 1.0f : newValue / oldValue;
+  };
+  return Vec3f{ratio(before.x, after.x), ratio(before.y, after.y),
+               ratio(before.z, after.z)};
+}
+
+[[nodiscard]] Transform applyTransformDelta(
+    const ViewportOverlay::GizmoOperation operation, const Transform &nodeBefore,
+    const Transform &primaryBefore, const Transform &primaryAfter) {
+  Transform updated = nodeBefore;
+  switch (operation) {
+  case ViewportOverlay::GizmoOperation::Translate:
+    updated.translation =
+        nodeBefore.translation + (primaryAfter.translation - primaryBefore.translation);
+    break;
+  case ViewportOverlay::GizmoOperation::Rotate: {
+    const Quatf delta =
+        (primaryAfter.rotation * primaryBefore.rotation.conjugate()).normalized();
+    updated.rotation = (delta * nodeBefore.rotation).normalized();
+    break;
+  }
+  case ViewportOverlay::GizmoOperation::Scale: {
+    const Vec3f ratio = safeScaleRatio(primaryBefore.scale, primaryAfter.scale);
+    updated.scale = Vec3f{nodeBefore.scale.x * ratio.x, nodeBefore.scale.y * ratio.y,
+                          nodeBefore.scale.z * ratio.z};
+    break;
+  }
+  }
+  return updated;
+}
+
+[[nodiscard]] Quatf eulerDegreesToQuat(const Vec3f &degrees) {
+  const Quatf qx =
+      Quatf::fromAxisAngle(Vec3f{1.0f, 0.0f, 0.0f}, degrees.x * kDegToRad);
+  const Quatf qy =
+      Quatf::fromAxisAngle(Vec3f{0.0f, 1.0f, 0.0f}, degrees.y * kDegToRad);
+  const Quatf qz =
+      Quatf::fromAxisAngle(Vec3f{0.0f, 0.0f, 1.0f}, degrees.z * kDegToRad);
+  return (qz * qy * qx).normalized();
+}
+
+[[nodiscard]] std::string buildSingleGizmoLine(
+    const ViewportOverlay::GizmoOperation operation, std::string_view path,
+    const Transform &targetTransform) {
+  const GizmoTransformComponents components =
+      GizmoAdapter::decompose(targetTransform.toMat4());
+  switch (operation) {
+  case ViewportOverlay::GizmoOperation::Translate:
+    return "move " + quoteToken(path) + " " +
+           std::to_string(components.translation.x) + " " +
+           std::to_string(components.translation.y) + " " +
+           std::to_string(components.translation.z);
+  case ViewportOverlay::GizmoOperation::Rotate:
+    return "rotate " + quoteToken(path) + " " +
+           std::to_string(components.rotationEulerDegrees.x) + " " +
+           std::to_string(components.rotationEulerDegrees.y) + " " +
+           std::to_string(components.rotationEulerDegrees.z);
+  case ViewportOverlay::GizmoOperation::Scale:
+    return "scale " + quoteToken(path) + " " +
+           std::to_string(components.scale.x) + " " +
+           std::to_string(components.scale.y) + " " +
+           std::to_string(components.scale.z);
+  }
+  return {};
+}
+
+} // namespace
 
 ViewportOverlay::ViewportOverlay(CommandBus &commandBus, EditorState &editorState,
                                  Scene &scene)
@@ -75,24 +176,54 @@ CommandResult ViewportOverlay::dispatchPreviewToggle() {
 
 CommandResult ViewportOverlay::dispatchGizmoCommit(
     std::string_view path, const GizmoTransformComponents &components) {
-  switch (m_gizmoOperation) {
-  case GizmoOperation::Translate:
-    return m_commandBus.dispatch("move \"" + std::string(path) + "\" " +
-                                 std::to_string(components.translation.x) + " " +
-                                 std::to_string(components.translation.y) + " " +
-                                 std::to_string(components.translation.z));
-  case GizmoOperation::Rotate:
-    return m_commandBus.dispatch("rotate \"" + std::string(path) + "\" " +
-                                 std::to_string(components.rotationEulerDegrees.x) + " " +
-                                 std::to_string(components.rotationEulerDegrees.y) + " " +
-                                 std::to_string(components.rotationEulerDegrees.z));
-  case GizmoOperation::Scale:
-    return m_commandBus.dispatch("scale \"" + std::string(path) + "\" " +
-                                 std::to_string(components.scale.x) + " " +
-                                 std::to_string(components.scale.y) + " " +
-                                 std::to_string(components.scale.z));
+  Transform target;
+  target.translation = components.translation;
+  target.rotation = eulerDegreesToQuat(components.rotationEulerDegrees);
+  target.scale = components.scale;
+  return m_commandBus.dispatch(buildSingleGizmoLine(m_gizmoOperation, path, target));
+}
+
+CommandResult ViewportOverlay::dispatchGizmoSelectionCommit(
+    const std::vector<std::string> &paths,
+    const std::vector<Transform> &beforeTransforms,
+    const std::vector<Transform> &afterTransforms) {
+  if (paths.empty() || paths.size() != beforeTransforms.size() ||
+      paths.size() != afterTransforms.size()) {
+    return CommandResult{false, "invalid gizmo selection commit state", {}};
   }
-  return CommandResult{false, "unknown gizmo operation", {}};
+
+  if (paths.size() == 1) {
+    return m_commandBus.dispatch(
+        buildSingleGizmoLine(m_gizmoOperation, paths.front(), afterTransforms.front()));
+  }
+
+  if (m_gizmoOperation == GizmoOperation::Translate) {
+    const Vec3f delta =
+        afterTransforms.front().translation - beforeTransforms.front().translation;
+    std::ostringstream oss;
+    oss << "move";
+    for (const auto &path : paths) {
+      oss << ' ' << quoteToken(path);
+    }
+    oss << ' ' << delta.x << ' ' << delta.y << ' ' << delta.z;
+    return m_commandBus.dispatch(oss.str());
+  }
+
+  std::vector<std::string> lines;
+  lines.reserve(paths.size());
+  for (usize i = 0; i < paths.size(); ++i) {
+    lines.push_back(buildSingleGizmoLine(m_gizmoOperation, paths[i], afterTransforms[i]));
+  }
+  const std::vector<CommandResult> results = m_commandBus.dispatchScript(joinLines(lines));
+  if (results.empty()) {
+    return CommandResult{false, "empty gizmo commit script", {}};
+  }
+  for (const auto &result : results) {
+    if (!result.ok) {
+      return result;
+    }
+  }
+  return CommandResult{true, "committed gizmo selection delta", {}};
 }
 
 CommandResult ViewportOverlay::dispatchPickingClick(const Vec2f &screenPixel,
@@ -256,26 +387,57 @@ void ViewportOverlay::draw() {
   const bool usingNow = ImGuizmo::IsUsing();
 
   if (!m_gizmoUsing && usingNow) {
-    m_gizmoPreDragTransform = selected->get().getLocalTransform();
-    m_gizmoDragPath = selected->get().getPath();
-  }
-
-  if (changed) {
-    selected->get().setLocalTransform(Transform::fromMat4(GizmoAdapter::fromFloat16(objectMatrix)));
-  }
-
-  if (m_gizmoUsing && !usingNow && !m_gizmoDragPath.empty()) {
-    const auto committedTransform = selected->get().getLocalTransform();
-    const auto components = GizmoAdapter::decompose(committedTransform.toMat4());
-    if (m_gizmoPreDragTransform.has_value()) {
-      selected->get().setLocalTransform(*m_gizmoPreDragTransform);
+    m_gizmoDragPaths.clear();
+    m_gizmoPreDragTransforms.clear();
+    for (const auto &selectedNode : m_editorState.getSelected()) {
+      if (!selectedNode) {
+        continue;
+      }
+      m_gizmoDragPaths.push_back(selectedNode->getPath());
+      m_gizmoPreDragTransforms.push_back(selectedNode->getLocalTransform());
     }
-    const CommandResult commit = dispatchGizmoCommit(m_gizmoDragPath, components);
+  }
+
+  if (changed && !m_gizmoPreDragTransforms.empty()) {
+    const Transform primaryCommitted =
+        Transform::fromMat4(GizmoAdapter::fromFloat16(objectMatrix));
+    const Transform primaryBefore = m_gizmoPreDragTransforms.back();
+    const auto selectedNodes = m_editorState.getSelected();
+    for (usize i = 0; i < selectedNodes.size() && i < m_gizmoPreDragTransforms.size(); ++i) {
+      if (!selectedNodes[i]) {
+        continue;
+      }
+      selectedNodes[i]->setLocalTransform(applyTransformDelta(
+          m_gizmoOperation, m_gizmoPreDragTransforms[i], primaryBefore, primaryCommitted));
+    }
+  }
+
+  if (m_gizmoUsing && !usingNow && !m_gizmoDragPaths.empty()) {
+    std::vector<Transform> committedTransforms;
+    committedTransforms.reserve(m_gizmoDragPaths.size());
+    for (const auto &path : m_gizmoDragPaths) {
+      if (SceneNode *node = m_scene.findByPath(path)) {
+        committedTransforms.push_back(node->getLocalTransform());
+      }
+    }
+
+    for (usize i = 0; i < m_gizmoDragPaths.size() && i < m_gizmoPreDragTransforms.size(); ++i) {
+      if (SceneNode *node = m_scene.findByPath(m_gizmoDragPaths[i])) {
+        node->setLocalTransform(m_gizmoPreDragTransforms[i]);
+      }
+    }
+
+    const CommandResult commit = dispatchGizmoSelectionCommit(
+        m_gizmoDragPaths, m_gizmoPreDragTransforms, committedTransforms);
     if (!commit.ok) {
-      selected->get().setLocalTransform(committedTransform);
+      for (usize i = 0; i < m_gizmoDragPaths.size() && i < committedTransforms.size(); ++i) {
+        if (SceneNode *node = m_scene.findByPath(m_gizmoDragPaths[i])) {
+          node->setLocalTransform(committedTransforms[i]);
+        }
+      }
     }
-    m_gizmoPreDragTransform.reset();
-    m_gizmoDragPath.clear();
+    m_gizmoPreDragTransforms.clear();
+    m_gizmoDragPaths.clear();
   }
   m_gizmoUsing = usingNow;
 

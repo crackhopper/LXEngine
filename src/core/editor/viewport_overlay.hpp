@@ -10,6 +10,7 @@
 
 #include <optional>
 #include <string>
+#include <vector>
 
 struct ImDrawList;
 
@@ -46,6 +47,10 @@ public:
   [[nodiscard]] CommandResult dispatchPreviewToggle();
   [[nodiscard]] CommandResult dispatchGizmoCommit(std::string_view path,
                                                   const GizmoTransformComponents &components);
+  [[nodiscard]] CommandResult
+  dispatchGizmoSelectionCommit(const std::vector<std::string> &paths,
+                               const std::vector<Transform> &beforeTransforms,
+                               const std::vector<Transform> &afterTransforms);
   [[nodiscard]] CommandResult dispatchPickingClick(const Vec2f &screenPixel,
                                                    const Vec2f &viewportSize);
   [[nodiscard]] PanelRect getPanelRect() const;
@@ -64,8 +69,8 @@ private:
   PanelRect m_lastPanelRect{};
   bool m_gizmoHovered = false;
   bool m_gizmoUsing = false;
-  std::string m_gizmoDragPath;
-  std::optional<Transform> m_gizmoPreDragTransform;
+  std::vector<std::string> m_gizmoDragPaths;
+  std::vector<Transform> m_gizmoPreDragTransforms;
 };
 
 } // namespace LX_core

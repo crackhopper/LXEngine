@@ -122,8 +122,8 @@ void ConsolePanel::browseHistoryNewer() {
 }
 
 void ConsolePanel::autocompleteInput() {
-  const std::string input = trim(getInputText());
-  if (input.empty()) {
+  const std::string input = getInputText();
+  if (trim(input).empty()) {
     return;
   }
 

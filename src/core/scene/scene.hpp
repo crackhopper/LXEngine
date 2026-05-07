@@ -147,6 +147,7 @@ public:
   const std::vector<SceneNodeSharedPtr> &getCameras() const { return m_cameras; }
 
   void addLight(LightBaseSharedPtr light) { m_lights.push_back(std::move(light)); }
+  void removeLight(const LightBaseSharedPtr &light);
   const std::vector<LightBaseSharedPtr> &getLights() const { return m_lights; }
   const std::string &getSceneName() const { return m_sceneName; }
   struct PickHit {
