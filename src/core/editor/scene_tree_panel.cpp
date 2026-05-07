@@ -33,6 +33,23 @@ namespace {
   return !node.getChildren().empty();
 }
 
+[[nodiscard]] bool isAncestorOrSelf(std::string_view ancestor,
+                                    std::string_view candidate) {
+  if (ancestor.empty() || candidate.empty()) {
+    return false;
+  }
+  if (ancestor == candidate) {
+    return true;
+  }
+  if (ancestor.size() >= candidate.size()) {
+    return false;
+  }
+  if (candidate.compare(0, ancestor.size(), ancestor) != 0) {
+    return false;
+  }
+  return candidate[ancestor.size()] == '/';
+}
+
 } // namespace
 
 SceneTreePanel::SceneTreePanel(CommandBus &commandBus, EditorState &editorState,
@@ -89,6 +106,7 @@ CommandResult SceneTreePanel::submitPathJump() {
   const CommandResult result = dispatchSelectPath(path);
   if (result.ok) {
     setPathInputText(path);
+    m_revealPath = path;
   }
   return result;
 }
@@ -102,6 +120,10 @@ CommandResult SceneTreePanel::dispatchRemovePath(std::string_view path) {
 }
 
 void SceneTreePanel::drawNode(SceneNode &node) {
+  if (!m_revealPath.empty() && isAncestorOrSelf(node.getPath(), m_revealPath)) {
+    ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+  }
+
   ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow |
                              ImGuiTreeNodeFlags_OpenOnDoubleClick |
                              ImGuiTreeNodeFlags_SpanAvailWidth;
@@ -134,6 +156,10 @@ void SceneTreePanel::drawNode(SceneNode &node) {
       }
     }
     ImGui::TreePop();
+  }
+
+  if (!m_revealPath.empty() && node.getPath() == m_revealPath) {
+    m_revealPath.clear();
   }
 }
 

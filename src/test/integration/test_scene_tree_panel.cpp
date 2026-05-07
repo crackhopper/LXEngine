@@ -6,6 +6,7 @@
 #include "core/utils/env.hpp"
 
 #include <imgui.h>
+#include <imgui_internal.h>
 
 #include <iostream>
 
@@ -108,6 +109,35 @@ void testDrawFrameSurvivesCpuOnlyImGui() {
   ImGui::DestroyContext();
 }
 
+void testPathJumpExpandsAncestorChainOnNextDraw() {
+  if (!setupMinimalImGui()) {
+    std::cout << "[SKIP] scene_tree_panel expansion test (font atlas unavailable)\n";
+    ImGui::DestroyContext();
+    return;
+  }
+
+  Fixture fixture;
+  LX_core::SceneTreePanel panel(fixture.bus, fixture.editorState, *fixture.scene);
+  panel.setPathInputText("/world/cube");
+  const LX_core::CommandResult result = panel.submitPathJump();
+  EXPECT(result.ok, "path jump should succeed before expansion draw");
+
+  ImGui::NewFrame();
+  panel.draw();
+  ImGui::EndFrame();
+
+  ImGuiWindow *window = ImGui::FindWindowByName("Scene Tree");
+  EXPECT(window != nullptr, "scene tree window should exist after draw");
+  if (window != nullptr) {
+    const ImGuiID worldId = window->GetID(static_cast<void *>(fixture.world.get()));
+    ImGuiStorage *storage = window->DC.StateStorage;
+    EXPECT(storage != nullptr && storage->GetInt(worldId, 0) != 0,
+           "path jump should expand ancestor chain for selected node");
+  }
+
+  ImGui::DestroyContext();
+}
+
 } // namespace
 
 int main() {
@@ -115,6 +145,7 @@ int main() {
   testPathJumpDispatchesSelect();
   testDispatchSelectPathUsesCommandBus();
   testDrawFrameSurvivesCpuOnlyImGui();
+  testPathJumpExpandsAncestorChainOnNextDraw();
 
   if (failures == 0) {
     std::cout << "[PASS] scene_tree_panel tests passed.\n";

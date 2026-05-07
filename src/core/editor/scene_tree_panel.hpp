@@ -32,6 +32,7 @@ private:
   EditorState &m_editorState;
   Scene &m_scene;
   std::array<char, 512> m_pathInputBuffer{};
+  std::string m_revealPath;
   bool m_open = true;
 };
 

@@ -192,36 +192,19 @@ R6 引入的 `Camera::m_active` 与 [REQ-042 R6](042-render-target-desc-and-targ
 
 ## 实施状态
 
-2026-05-07 finish-req 核对结论：**主体实现已补齐，可重新进入归档验证**。
+已完成并验证，2026-05-07 归档。
 
-已验证落地：
-
-- R1：`third_party/ImGuizmo/`、`src/core/editor/gizmo_adapter.{hpp,cpp}`、对应测试已存在
-- R2：`SceneTreePanel` 已实现 path jump / select / remove / 高亮
-- R3：`InspectorPanel` 已实现 name / TRS / visibility mask / camera detail / light fields，提交统一走 CommandBus
-- R4：`ConsolePanel` 已接入 `scene_viewer`
-- R5：`ViewportOverlay` 已实现独立 `Viewport` 面板、panel-content rect 绑定、gizmo、debug-draw 可视化、picking、preview hint
-- R6：preview on/off/toggle + `EditorState::syncActiveCamera()` 已切换 editor / game camera active 状态
-- R7：demo 初始场景含 `editor_cam` / `game_cam` / directional light / ground / 可 pick 主 mesh `helmet`，并自动打开默认 editor 布局
-- R8：`W/E/R` / `F` / `Esc` / `Delete` 已接线到 gizmo mode / preview / deselect / remove
-- R9：inspector / console / picking / preview / gizmo release 的持久状态提交均经 CommandBus
-
-当前剩余风险 / drift（待 verifier 最终裁定）：
-
-- 当前默认布局在无 docking API 的 ImGui 集成下以固定窗口布局实现；语义满足 R7，但不是真正 DockBuilder 节点树
-- light inspector 仍映射 scene-level directional light + light-named placeholder node；当前 MVP / demo 足够，多 light 精确绑定留后续 REQ
-
-本次验证命令：
-
-- `cmake --build build --target demo_scene_viewer test_scene_tree_panel test_inspector_panel test_viewport_overlay test_scene_viewer_layout test_gizmo_adapter test_command_bus test_imgui_overlay -j4`
-- `./build/src/test/test_scene_tree_panel`
-- `./build/src/test/test_inspector_panel`
-- `./build/src/test/test_viewport_overlay`
-- `./build/src/test/test_scene_viewer_layout`
-- `./build/src/test/test_gizmo_adapter`
-- `./build/src/test/test_command_bus`
-- `./build/src/test/test_imgui_overlay`
-- `ctest --test-dir build --output-on-failure -R 'test_(scene_tree_panel|inspector_panel|viewport_overlay|scene_viewer_layout|gizmo_adapter|command_bus|imgui_overlay)$'`
-- `ctest --test-dir build --output-on-failure -L auto -LE requires_video_device`
-
-结论：R1-R9 已可按当前实现复核；建议重新执行 `finish-req`，若接受上述剩余风险，可归档。
+- 验证结论：R1-R9 已按当前代码逐条复核；finish-req 期间补齐了 R2 的 path jump 自动展开祖先链，`/world/player` 类跳转现在会选中并展开目标链路
+- 代码入口：`third_party/ImGuizmo/`、`src/core/editor/gizmo_adapter.*`、`src/core/editor/scene_tree_panel.*`、`src/core/editor/inspector_panel.*`、`src/core/editor/viewport_overlay.*`、`src/core/editor/command_bus.*`、`src/core/editor/commands/builtin_commands.*`、`src/demos/scene_viewer/main.cpp`、`src/demos/scene_viewer/ui_overlay.*`
+- 设计说明回写：R7 的“默认 editor 布局”在当前 ImGui 集成下按 requirement 原文的 fallback 落地为固定窗口布局；R6 的 active-camera 开关落在 `CameraComponent::m_active` / `Scene::getSceneLevelResources()` / `Scene::getCombinedCameraCullingMask()`，语义与原提案一致
+- 验证命令：
+  - `cmake --build build --target demo_scene_viewer test_scene_tree_panel test_inspector_panel test_viewport_overlay test_scene_viewer_layout test_gizmo_adapter test_command_bus test_imgui_overlay -j4`
+  - `./build/src/test/test_scene_tree_panel`
+  - `./build/src/test/test_inspector_panel`
+  - `./build/src/test/test_viewport_overlay`
+  - `./build/src/test/test_scene_viewer_layout`
+  - `./build/src/test/test_gizmo_adapter`
+  - `./build/src/test/test_command_bus`
+  - `./build/src/test/test_imgui_overlay`
+  - `ctest --test-dir build --output-on-failure -R 'test_(scene_tree_panel|inspector_panel|viewport_overlay|scene_viewer_layout|gizmo_adapter|command_bus|imgui_overlay)$'`
+  - `ctest --test-dir build --output-on-failure -L auto -LE requires_video_device`
