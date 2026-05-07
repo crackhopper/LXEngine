@@ -188,6 +188,13 @@ findActiveCamera(Scene &scene, EditorState &editorState) {
     }
   }
 
+  if (const auto activeNode = editorState.resolveActiveCamera(scene)) {
+    auto activeCamera = activeNode->getComponent<CameraComponent>();
+    if (activeCamera.has_value()) {
+      return std::ref(activeCamera->get());
+    }
+  }
+
   for (const auto &cameraNode : scene.getCameras()) {
     if (!cameraNode) {
       continue;
@@ -617,7 +624,7 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
 
   bus.registerHandler(
       "preview", "preview (on|off|toggle)",
-      [&editorState](std::vector<std::string> args) {
+      [&editorState, &scene](std::vector<std::string> args) {
         if (args.size() != 1) {
           return makeError("usage: preview (on|off|toggle)");
         }
@@ -630,10 +637,14 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
         } else {
           return makeError("unknown preview action: " + args[0]);
         }
+        const SceneNodeSharedPtr activeCamera = editorState.syncActiveCamera(scene);
         return makeOk(std::string("preview ") +
                           (editorState.isPreviewEnabled() ? "on" : "off"),
                       std::string("{\"enabled\":") +
-                          (editorState.isPreviewEnabled() ? "true}" : "false}"));
+                          (editorState.isPreviewEnabled() ? "true" : "false") +
+                          ",\"activePath\":\"" +
+                          jsonEscape(activeCamera ? activeCamera->getPath() : std::string{}) +
+                          "\"}");
       });
 }
 

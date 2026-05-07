@@ -196,6 +196,7 @@ public:
   void setParent(const SharedPtr &parent);
   void clearParent();
   SharedPtr getParent() const { return m_parent.lock(); }
+  [[nodiscard]] std::vector<SharedPtr> getChildren() const;
 
   IGpuResourceSharedPtr getVertexBuffer() const override;
   IGpuResourceSharedPtr getIndexBuffer() const override;

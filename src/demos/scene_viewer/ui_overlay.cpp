@@ -2,7 +2,11 @@
 
 #include "camera_rig.hpp"
 
+#include "core/editor/command_bus.hpp"
 #include "core/editor/console_panel.hpp"
+#include "core/editor/inspector_panel.hpp"
+#include "core/editor/scene_tree_panel.hpp"
+#include "core/editor/viewport_overlay.hpp"
 #include "core/input/key_code.hpp"
 #include "infra/gui/debug_ui.hpp"
 
@@ -12,21 +16,20 @@ namespace LX_demo::scene_viewer {
 
 namespace dui = LX_infra::debug_ui;
 
-void UiOverlay::attach(LX_core::CameraComponent& camera,
-                       LX_core::DirectionalLight& light,
-                       CameraRig& rig) {
-  m_camera = std::ref(camera);
-  m_light = std::ref(light);
+void UiOverlay::attach(CameraRig& rig, LX_core::CommandBus& commandBus,
+                       LX_core::SceneTreePanel& sceneTreePanel,
+                       LX_core::InspectorPanel& inspectorPanel,
+                       LX_core::ConsolePanel& consolePanel,
+                       LX_core::ViewportOverlay& viewportOverlay) {
   m_rig = std::ref(rig);
-}
-
-void UiOverlay::attachClock(const LX_core::Clock& clock) {
-  m_clock = std::cref(clock);
-}
-
-void UiOverlay::attachConsolePanel(LX_core::ConsolePanel& consolePanel) {
+  m_commandBus = std::ref(commandBus);
+  m_sceneTreePanel = std::ref(sceneTreePanel);
+  m_inspectorPanel = std::ref(inspectorPanel);
   m_consolePanel = std::ref(consolePanel);
+  m_viewportOverlay = std::ref(viewportOverlay);
 }
+
+void UiOverlay::attachClock(const LX_core::Clock& clock) { m_clock = std::cref(clock); }
 
 void UiOverlay::handleHotkeys(LX_core::IInputState& input) {
   const bool f1Down = input.isKeyDown(LX_core::KeyCode::F1);
@@ -34,6 +37,12 @@ void UiOverlay::handleHotkeys(LX_core::IInputState& input) {
     m_helpVisible = !m_helpVisible;
   }
   m_prevF1Down = f1Down;
+
+  const bool fDown = input.isKeyDown(LX_core::KeyCode::F);
+  if (fDown && !m_prevFDown && m_viewportOverlay) {
+    (void)m_viewportOverlay->get().dispatchPreviewToggle();
+  }
+  m_prevFDown = fDown;
 }
 
 void UiOverlay::drawFrame() {
@@ -48,42 +57,26 @@ void UiOverlay::drawFrame() {
   }
   dui::endPanel();
 
-  if (dui::beginPanel("Camera")) {
-    if (m_camera) {
-      dui::cameraPanel("Camera", m_camera->get());
-      // The rig calls updateMatrices() every frame; UI edits land naturally.
-    }
+  if (m_sceneTreePanel) {
+    m_sceneTreePanel->get().draw();
   }
-  dui::endPanel();
-
-  if (dui::beginPanel("Directional Light")) {
-    if (m_light) {
-      dui::directionalLightPanel("Sun", m_light->get());
-    }
+  if (m_inspectorPanel) {
+    m_inspectorPanel->get().draw();
   }
-  dui::endPanel();
-
   if (m_consolePanel) {
     m_consolePanel->get().draw();
+  }
+  if (m_viewportOverlay) {
+    m_viewportOverlay->get().draw(ImGui::GetForegroundDrawList());
   }
 
   if (m_helpVisible) {
     if (dui::beginPanel("Help")) {
       ImGui::TextUnformatted("F1  toggle this help panel");
-      ImGui::TextUnformatted("Command Console  execute builtin text commands");
+      ImGui::TextUnformatted("F   preview toggle (same command path as console)");
       ImGui::TextUnformatted("F2  switch Orbit / FreeFly");
-      ImGui::Separator();
-      ImGui::TextUnformatted("Orbit:");
-      ImGui::BulletText("left-drag   rotate");
-      ImGui::BulletText("right-drag  pan target");
-      ImGui::BulletText("wheel       zoom");
-      ImGui::Separator();
-      ImGui::TextUnformatted("FreeFly:");
-      ImGui::BulletText("right-hold  look around");
-      ImGui::BulletText("W/A/S/D     translate");
-      ImGui::BulletText("Space       ascend");
-      ImGui::BulletText("LShift      descend");
-      ImGui::BulletText("LCtrl       accelerate");
+      ImGui::TextUnformatted("Scene Tree / Inspector / Console share one EditorState");
+      ImGui::TextUnformatted("Gizmo/TRS manipulator still placeholder in this build");
     }
     dui::endPanel();
   }

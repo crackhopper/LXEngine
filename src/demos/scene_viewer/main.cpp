@@ -1,16 +1,17 @@
 // REQ-019: default integration demo.
 //
 // Wires:
-//   cdToWhereAssetsExist -> Window -> VulkanRenderer -> Scene (helmet + ground
-//   + default camera/light) -> EngineLoop -> setDrawUiCallback -> run().
-//
-// All per-frame logic lives in the update hook registered with EngineLoop.
+//   cdToWhereAssetsExist -> Window -> VulkanRenderer -> Scene -> EngineLoop
+//   -> ImGui editor panels / overlay -> run().
 
 #include "backend/vulkan/vulkan_renderer.hpp"
 #include "core/editor/command_bus.hpp"
 #include "core/editor/commands/builtin_commands.hpp"
 #include "core/editor/console_panel.hpp"
 #include "core/editor/editor_state.hpp"
+#include "core/editor/inspector_panel.hpp"
+#include "core/editor/scene_tree_panel.hpp"
+#include "core/editor/viewport_overlay.hpp"
 #include "core/gpu/engine_loop.hpp"
 #include "core/scene/components/camera_component.hpp"
 #include "core/scene/scene.hpp"
@@ -56,15 +57,10 @@ int main() {
     auto window = std::make_shared<LX_infra::Window>(
         "demo_scene_viewer", kWindowWidth, kWindowHeight);
 
-    // Keep the concrete VulkanRenderer alongside the base RendererSharedPtr: the
-    // base handle feeds EngineLoop, the concrete handle reaches
-    // setDrawUiCallback (per REQ-017 that callback is not on the base class).
     auto vulkanRenderer = std::make_shared<VulkanRenderer>(VulkanRenderer::Token{});
     LX_core::gpu::RendererSharedPtr renderer = vulkanRenderer;
     renderer->initialize(window, "demo_scene_viewer");
 
-    // Build the scene. Helmet is the initial renderable passed to Scene;
-    // ground is added afterwards via addRenderable().
     const std::filesystem::path gltfPath =
         resolveRuntimePath("assets/models/damaged_helmet/DamagedHelmet.gltf");
     auto helmet = demo::buildHelmetNode(gltfPath);
@@ -76,21 +72,41 @@ int main() {
     auto scene = LX_core::Scene::create("scene_viewer", helmet);
     scene->addRenderable(ground);
 
-    auto cameraNode = LX_core::SceneNode::create("editor_camera");
-    cameraNode->setName("camera_main");
-    auto camera = cameraNode->addComponent<LX_core::CameraComponent>();
-    if (!camera.has_value()) {
-      throw std::runtime_error("[scene_viewer] failed to create camera component");
+    auto lightNode = LX_core::SceneNode::create("dir_light_node");
+    lightNode->setName("dir_light");
+    scene->addRenderable(lightNode);
+
+    auto editorCameraNode = LX_core::SceneNode::create("editor_camera");
+    editorCameraNode->setName("editor_cam");
+    auto editorCamera = editorCameraNode->addComponent<LX_core::CameraComponent>();
+    if (!editorCamera.has_value()) {
+      throw std::runtime_error("[scene_viewer] failed to create editor camera component");
     }
-    camera->get().aspect = static_cast<float>(kWindowWidth)
-                           / static_cast<float>(kWindowHeight);
-    camera->get().setTarget(LX_core::RenderTarget{});
-    camera->get().setCullingMask(LX_core::Layer_All);
-    camera->get().lookAt(LX_core::Vec3f{2.5f, 1.5f, 3.0f},
-                         LX_core::Vec3f{0.0f, 0.0f, 0.0f},
-                         LX_core::Vec3f{0.0f, 1.0f, 0.0f});
-    camera->get().updateMatrices();
-    scene->addCamera(cameraNode);
+    editorCamera->get().aspect = static_cast<float>(kWindowWidth)
+                                 / static_cast<float>(kWindowHeight);
+    editorCamera->get().setTarget(LX_core::RenderTarget{});
+    editorCamera->get().setCullingMask(LX_core::Layer_All);
+    editorCamera->get().lookAt(LX_core::Vec3f{2.5f, 1.5f, 3.0f},
+                               LX_core::Vec3f{0.0f, 0.0f, 0.0f},
+                               LX_core::Vec3f{0.0f, 1.0f, 0.0f});
+    editorCamera->get().updateMatrices();
+    scene->addCamera(editorCameraNode);
+
+    auto gameCameraNode = LX_core::SceneNode::create("game_camera");
+    gameCameraNode->setName("game_cam");
+    auto gameCamera = gameCameraNode->addComponent<LX_core::CameraComponent>();
+    if (!gameCamera.has_value()) {
+      throw std::runtime_error("[scene_viewer] failed to create game camera component");
+    }
+    gameCamera->get().aspect = static_cast<float>(kWindowWidth)
+                               / static_cast<float>(kWindowHeight);
+    gameCamera->get().setTarget(LX_core::RenderTarget{});
+    gameCamera->get().setCullingMask(LX_core::Layer_All & ~LX_core::Layer_EditorOverlay);
+    gameCamera->get().lookAt(LX_core::Vec3f{0.0f, 2.0f, 6.0f},
+                             LX_core::Vec3f{0.0f, 0.0f, 0.0f},
+                             LX_core::Vec3f{0.0f, 1.0f, 0.0f});
+    gameCamera->get().updateMatrices();
+    scene->addCamera(gameCameraNode);
 
     auto dirLight = std::dynamic_pointer_cast<LX_core::DirectionalLight>(
         scene->getLights().front());
@@ -101,29 +117,31 @@ int main() {
     }
 
     demo::CameraRig rig;
-    rig.attach(camera->get());
+    rig.attach(editorCamera->get());
 
     LX_core::EditorState editorState;
+    editorState.setEditorCamera(editorCameraNode);
+    editorState.setPreviewCamera(gameCameraNode);
+    editorState.setPreviewEnabled(false);
+    (void)editorState.syncActiveCamera(*scene);
+
     LX_core::CommandBus commandBus;
     LX_core::registerBuiltinCommands(commandBus, editorState, *scene);
     LX_core::ConsolePanel consolePanel(commandBus);
+    LX_core::SceneTreePanel sceneTreePanel(commandBus, editorState, *scene);
+    LX_core::InspectorPanel inspectorPanel(commandBus, editorState);
+    LX_core::ViewportOverlay viewportOverlay(commandBus, editorState, *scene);
 
     demo::UiOverlay ui;
-    if (!dirLight) {
-      throw std::runtime_error("[scene_viewer] expected directional light");
-    }
-    ui.attach(camera->get(), *dirLight, rig);
-    ui.attachConsolePanel(consolePanel);
+    ui.attach(rig, commandBus, sceneTreePanel, inspectorPanel, consolePanel,
+              viewportOverlay);
 
-    // Hand the UI callback to the concrete VulkanRenderer. Per REQ-017 the
-    // callback is intentionally not on the gpu::Renderer base.
     vulkanRenderer->setDrawUiCallback([&] { ui.drawFrame(); });
 
     EngineLoop loop;
     loop.initialize(window, renderer);
     loop.startScene(scene);
 
-    // Late-bind the clock now that EngineLoop owns one.
     ui.attachClock(loop.getClock());
 
     auto input = window->getInputState();
@@ -141,12 +159,19 @@ int main() {
       if (!wantsKeyboard) {
         ui.handleHotkeys(*input);
       }
-      camera->get().aspect = static_cast<float>(window->getWidth())
-                             / static_cast<float>(window->getHeight());
+
+      viewportOverlay.enqueueDebugDraw();
+
+      editorCamera->get().aspect = static_cast<float>(window->getWidth())
+                                   / static_cast<float>(window->getHeight());
+      gameCamera->get().aspect = static_cast<float>(window->getWidth())
+                                 / static_cast<float>(window->getHeight());
+      gameCamera->get().updateMatrices();
+
       if (!wantsKeyboard && !wantsMouse) {
         rig.update(*input, clock.deltaTime());
       } else {
-        camera->get().updateMatrices();
+        editorCamera->get().updateMatrices();
       }
       input->nextFrame();
     });

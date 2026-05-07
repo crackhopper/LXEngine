@@ -235,6 +235,17 @@ void SceneNode::clearParent() {
   markWorldTransformDirty();
 }
 
+std::vector<SceneNode::SharedPtr> SceneNode::getChildren() const {
+  std::vector<SceneNode::SharedPtr> children;
+  children.reserve(m_children.size());
+  for (const auto &childWeak : m_children) {
+    if (auto child = childWeak.lock()) {
+      children.push_back(std::move(child));
+    }
+  }
+  return children;
+}
+
 IGpuResourceSharedPtr SceneNode::getVertexBuffer() const {
   const auto meshComponent = getMeshComponent(*this);
   if (!meshComponent || !meshComponent->get().getMesh()) {
