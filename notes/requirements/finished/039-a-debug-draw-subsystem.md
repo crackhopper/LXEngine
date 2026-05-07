@@ -195,4 +195,21 @@ void main() { o_color = v_color; }
 
 ## 实施状态
 
-待实施。Phase 1.5 第 5 步。在 [REQ-038-a](finished/038-a-ray-aabb-picking-min.md) 落地后开工（`wireBox(BoundingBox)` 重载需要它）。
+已实现，2026-05-07 归档前复核通过。
+
+- **R1 / R2**：`src/core/debug_draw/debug_draw.hpp` / `.cpp` 已提供 `drawLine`、`drawTriangle`、`wireSphere`、`wireCircle`、`wireBox`（`BoundingBox` + OBB）、`cone`、`arrow`、`axis`、`frustum`，以及 `Color::white/red/green/blue/yellow` 常量。
+- **R3 / R5 / R8**：DebugDraw 维护按 visibility mask 分桶的 per-frame `DebugLineVertex` 队列，`beginFrame()` 清空、`endFrame()` flush 到 line-list mesh；`LayerScope` 已实现；单帧上限为 `100000` 条线，超限时每帧只告警一次并裁剪最新提交。
+- **R4 / R6**：`Layer_EditorOverlay` 已加入 `src/core/scene/visibility_mask.hpp`；`Pass_DebugOverlay` 已加入 `src/core/frame_graph/pass.hpp`；`EngineLoop` 每帧调用 `beginFrame()` / `endFrame()`；Vulkan renderer 在 `Pass_Forward` 后注册并绘制 `Pass_DebugOverlay`，ImGui overlay 仍在 render pass 结束前最后提交。
+- **R7**：`assets/shaders/glsl/debug_line.vert/frag` 已落地；材质 render state 为 depth test on / depth write off / alpha blend on。shader 沿用仓库现有 camera UBO（`view` + `proj`）合同，而不是另起一个单独 `viewProj` block。
+
+归档前验证：
+
+- `cmake --build build --target test_debug_draw -j4`
+- `./build/src/test/test_debug_draw`
+- `cmake --build build --target test_engine_loop -j4`
+- `./build/src/test/test_engine_loop`
+
+实现与原文的小幅差异（已按代码事实接受）：
+
+- flush 后的 debug renderable 采用**按 layer mask 持久复用的 bucket node**，而不是每帧新建一次临时 `SceneNode`；语义仍是每帧瞬时几何，空帧会把 bucket 顶点清空。
+- 上传路径通过现有 `VertexBuffer<DebugLineVertex>` / `IndexBuffer` / `Mesh` 包装接入渲染队列，而不是在公共 API 层直接暴露 `IGpuBuffer` 细节。
