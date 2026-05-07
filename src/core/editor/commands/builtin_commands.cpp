@@ -102,6 +102,30 @@ constexpr float kDegToRad = 3.14159265358979323846f / 180.0f;
   return Vec3f{*x, *y, *z};
 }
 
+[[nodiscard]] std::string quoteToken(std::string_view text) {
+  std::string out;
+  out.reserve(text.size() + 2);
+  out.push_back('"');
+  for (const char c : text) {
+    switch (c) {
+    case '\\':
+      out += "\\\\";
+      break;
+    case '"':
+      out += "\\\"";
+      break;
+    case '\n':
+      out += "\\n";
+      break;
+    default:
+      out.push_back(c);
+      break;
+    }
+  }
+  out.push_back('"');
+  return out;
+}
+
 [[nodiscard]] CommandResult requireNode(Scene &scene, const std::string &path,
                                         SceneNode *&outNode) {
   SceneNode *node = scene.findByPath(path);
@@ -112,8 +136,121 @@ constexpr float kDegToRad = 3.14159265358979323846f / 180.0f;
   return CommandResult{true, {}, {}};
 }
 
+[[nodiscard]] std::string joinLines(const std::vector<std::string> &lines) {
+  std::ostringstream oss;
+  for (usize i = 0; i < lines.size(); ++i) {
+    if (i != 0) {
+      oss << '\n';
+    }
+    oss << lines[i];
+  }
+  return oss.str();
+}
+
+[[nodiscard]] std::string buildSelectionCommand(
+    const std::vector<SceneNodeSharedPtr> &selection) {
+  if (selection.empty()) {
+    return "deselect";
+  }
+
+  std::ostringstream oss;
+  oss << "select";
+  for (const auto &node : selection) {
+    if (node) {
+      oss << ' ' << quoteToken(node->getPath());
+    }
+  }
+  return oss.str();
+}
+
+[[nodiscard]] std::optional<std::vector<SceneNodeSharedPtr>>
+resolveNodePaths(Scene &scene, const std::vector<std::string> &paths,
+                 CommandResult &error) {
+  std::vector<SceneNodeSharedPtr> nodes;
+  nodes.reserve(paths.size());
+  for (const auto &path : paths) {
+    SceneNode *node = nullptr;
+    const CommandResult found = requireNode(scene, path, node);
+    if (!found.ok) {
+      error = found;
+      return std::nullopt;
+    }
+    nodes.push_back(node->shared_from_this());
+  }
+  return nodes;
+}
+
+[[nodiscard]] std::optional<std::vector<std::string>>
+extractTargetPathsAndVec3Args(const std::vector<std::string> &args,
+                              CommandResult &error,
+                              const std::string &usageText,
+                              const std::string &invalidFloatText) {
+  if (args.size() < 4) {
+    error = makeError(usageText);
+    return std::nullopt;
+  }
+
+  const auto value = parseVec3(args, args.size() - 3);
+  if (!value) {
+    error = makeError(invalidFloatText);
+    return std::nullopt;
+  }
+
+  std::vector<std::string> paths;
+  for (usize i = 0; i + 3 < args.size(); ++i) {
+    paths.push_back(args[i]);
+  }
+  if (paths.empty()) {
+    error = makeError(usageText);
+    return std::nullopt;
+  }
+  return paths;
+}
+
+[[nodiscard]] std::optional<std::vector<std::string>>
+extractTargetPathsAndScaleArgs(const std::vector<std::string> &args,
+                               CommandResult &error) {
+  if (args.size() < 2) {
+    error = makeError("usage: scale <path> <s> | scale <path> <sx> <sy> <sz>");
+    return std::nullopt;
+  }
+
+  usize numericCount = 0;
+  if (args.size() >= 4 && parseVec3(args, args.size() - 3).has_value()) {
+    numericCount = 3;
+  } else if (parseFloat(args.back()).has_value()) {
+    numericCount = 1;
+  } else {
+    error = makeError("invalid float for scale");
+    return std::nullopt;
+  }
+
+  if (args.size() <= numericCount) {
+    error = makeError("usage: scale <path> <s> | scale <path> <sx> <sy> <sz>");
+    return std::nullopt;
+  }
+
+  std::vector<std::string> paths;
+  for (usize i = 0; i + numericCount < args.size(); ++i) {
+    paths.push_back(args[i]);
+  }
+  if (numericCount == 1 && paths.size() != 1) {
+    error = makeError("usage: scale <path> <s> | scale <path> <sx> <sy> <sz>");
+    return std::nullopt;
+  }
+  if (paths.empty()) {
+    error = makeError("usage: scale <path> <s> | scale <path> <sx> <sy> <sz>");
+    return std::nullopt;
+  }
+  return paths;
+}
+
 [[nodiscard]] SceneNodeSharedPtr chooseCommandParent(EditorState &editorState) {
-  return editorState.getSelected();
+  const auto selected = editorState.getSelected();
+  if (selected.empty()) {
+    return {};
+  }
+  return selected.back();
 }
 
 [[nodiscard]] std::string buildHelpMessage(CommandBus &bus,
@@ -168,6 +305,26 @@ constexpr float kDegToRad = 3.14159265358979323846f / 180.0f;
   const Quatf qz =
       Quatf::fromAxisAngle(Vec3f{0.0f, 0.0f, 1.0f}, rzDeg * kDegToRad);
   return (qz * qy * qx).normalized();
+}
+
+[[nodiscard]] Vec3f quatToEulerDegrees(const Quatf &quat) {
+  const Quatf q = quat.normalized();
+
+  const float sinrCosp = 2.0f * (q.w * q.v.x + q.v.y * q.v.z);
+  const float cosrCosp = 1.0f - 2.0f * (q.v.x * q.v.x + q.v.y * q.v.y);
+  const float roll = std::atan2(sinrCosp, cosrCosp);
+
+  const float sinp = 2.0f * (q.w * q.v.y - q.v.z * q.v.x);
+  const float pitch = std::abs(sinp) >= 1.0f
+                          ? std::copysign(0.5f * 3.14159265358979323846f, sinp)
+                          : std::asin(sinp);
+
+  const float sinyCosp = 2.0f * (q.w * q.v.z + q.v.x * q.v.y);
+  const float cosyCosp = 1.0f - 2.0f * (q.v.y * q.v.y + q.v.z * q.v.z);
+  const float yaw = std::atan2(sinyCosp, cosyCosp);
+
+  constexpr float kRadToDeg = 180.0f / 3.14159265358979323846f;
+  return Vec3f{roll * kRadToDeg, pitch * kRadToDeg, yaw * kRadToDeg};
 }
 
 [[nodiscard]] std::string makeVec3Json(const Vec3f &value) {
@@ -228,8 +385,8 @@ splitFieldPath(const std::string &text) {
 
 [[nodiscard]] std::optional<std::reference_wrapper<CameraComponent>>
 findActiveCamera(Scene &scene, EditorState &editorState) {
-  if (const auto selected = editorState.getSelected()) {
-    auto selectedCamera = selected->getComponent<CameraComponent>();
+  if (const auto selected = editorState.getPrimarySelected()) {
+    auto selectedCamera = selected->get().getComponent<CameraComponent>();
     if (selectedCamera.has_value()) {
       return std::ref(selectedCamera->get());
     }
@@ -360,6 +517,134 @@ findActiveCamera(Scene &scene, EditorState &editorState) {
   }
 
   return makeError("unknown field: " + field);
+}
+
+[[nodiscard]] std::string buildSetInverseCommand(SceneNode &node,
+                                                 const std::string &field) {
+  const std::string path = node.getPath();
+  if (field == "translation") {
+    const Vec3f value = node.getTranslation();
+    return "set " + quoteToken(path + ".translation") + " " + formatFloat(value.x) +
+           " " + formatFloat(value.y) + " " + formatFloat(value.z);
+  }
+  if (field == "scale") {
+    const Vec3f value = node.getScale();
+    return "set " + quoteToken(path + ".scale") + " " + formatFloat(value.x) + " " +
+           formatFloat(value.y) + " " + formatFloat(value.z);
+  }
+  if (field == "rotation") {
+    const Vec3f value = quatToEulerDegrees(node.getRotation());
+    return "set " + quoteToken(path + ".rotation") + " " + formatFloat(value.x) +
+           " " + formatFloat(value.y) + " " + formatFloat(value.z);
+  }
+  if (field == "visibilityMask") {
+    return "set " + quoteToken(path + ".visibilityMask") + " " +
+           std::to_string(node.getVisibilityLayerMask());
+  }
+  if (field == "name") {
+    return "set " + quoteToken(path + ".name") + " " + quoteToken(node.getName());
+  }
+
+  const auto camera = node.getComponent<CameraComponent>();
+  if (field == "fov" && camera.has_value()) {
+    return "set " + quoteToken(path + ".fov") + " " +
+           formatFloat(camera->get().fovY);
+  }
+  if (field == "near" && camera.has_value()) {
+    return "set " + quoteToken(path + ".near") + " " +
+           formatFloat(camera->get().nearPlane);
+  }
+  if (field == "far" && camera.has_value()) {
+    return "set " + quoteToken(path + ".far") + " " +
+           formatFloat(camera->get().farPlane);
+  }
+  if (field == "projection" && camera.has_value()) {
+    const std::string projection =
+        camera->get().type == CameraType::Perspective ? "perspective"
+                                                      : "orthographic";
+    return "set " + quoteToken(path + ".projection") + " " + projection;
+  }
+  if (field == "cullingMask" && camera.has_value()) {
+    return "set " + quoteToken(path + ".cullingMask") + " " +
+           std::to_string(camera->get().getCullingMask());
+  }
+
+  const auto light = resolveDirectionalLight(node);
+  if (field == "direction" && light) {
+    return "set " + quoteToken(path + ".direction") + " " +
+           formatFloat(light->ubo->param.dir.x) + " " +
+           formatFloat(light->ubo->param.dir.y) + " " +
+           formatFloat(light->ubo->param.dir.z);
+  }
+  if (field == "color" && light) {
+    return "set " + quoteToken(path + ".color") + " " +
+           formatFloat(light->ubo->param.color.x) + " " +
+           formatFloat(light->ubo->param.color.y) + " " +
+           formatFloat(light->ubo->param.color.z);
+  }
+  if (field == "intensity" && light) {
+    return "set " + quoteToken(path + ".intensity") + " " +
+           formatFloat(light->ubo->param.color.w);
+  }
+
+  return {};
+}
+
+[[nodiscard]] std::vector<std::string>
+completeScenePaths(const Scene &scene, const CompletionContext &context) {
+  std::vector<std::string> matches;
+  for (const auto &path : scene.listAllPaths()) {
+    if (path.rfind(context.partialToken, 0) == 0) {
+      matches.push_back(path);
+    }
+  }
+  return matches;
+}
+
+[[nodiscard]] std::vector<std::string> listEditableFields(SceneNode &node) {
+  std::vector<std::string> fields = {"name", "rotation", "scale", "translation",
+                                     "visibilityMask"};
+  if (node.getComponent<CameraComponent>().has_value()) {
+    fields.push_back("cullingMask");
+    fields.push_back("far");
+    fields.push_back("fov");
+    fields.push_back("near");
+    fields.push_back("projection");
+  }
+  if (resolveDirectionalLight(node)) {
+    fields.push_back("color");
+    fields.push_back("direction");
+    fields.push_back("intensity");
+  }
+  std::sort(fields.begin(), fields.end());
+  return fields;
+}
+
+[[nodiscard]] std::vector<std::string>
+completeSetTarget(const Scene &scene, const CompletionContext &context) {
+  const usize dot = context.partialToken.find_last_of('.');
+  if (dot == std::string::npos) {
+    return completeScenePaths(scene, context);
+  }
+
+  const std::string pathPrefix = context.partialToken.substr(0, dot);
+  const std::string fieldPrefix = context.partialToken.substr(dot + 1);
+  if (pathPrefix.empty()) {
+    return {};
+  }
+
+  SceneNode *node = scene.findByPath(pathPrefix);
+  if (!node) {
+    return {};
+  }
+
+  std::vector<std::string> matches;
+  for (const auto &field : listEditableFields(*node)) {
+    if (field.rfind(fieldPrefix, 0) == 0) {
+      matches.push_back(pathPrefix + "." + field);
+    }
+  }
+  return matches;
 }
 
 [[nodiscard]] CommandResult setField(SceneNode &node, const std::string &field,
@@ -563,6 +848,17 @@ findActiveCamera(Scene &scene, EditorState &editorState) {
   return makeError("unknown field: " + field);
 }
 
+[[nodiscard]] InverseFn inverseFromMetadata() {
+  return [](const ParsedCommand &, const CommandResult &result)
+             -> std::optional<std::string> {
+    const auto it = result.metadata.find("inverse.line");
+    if (it == result.metadata.end() || it->second.empty()) {
+      return std::nullopt;
+    }
+    return it->second;
+  };
+}
+
 } // namespace
 
 void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
@@ -581,102 +877,206 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
       });
 
   bus.registerHandler(
-      "select", "select <path>",
+      "select",
+      CommandMetadata{"select <path> [path...]", inverseFromMetadata(), true},
       [&editorState, &scene](std::vector<std::string> args) {
-        if (args.size() != 1) {
-          return makeError("usage: select <path>");
+        CommandResult result;
+        result.metadata["inverse.line"] =
+            buildSelectionCommand(editorState.getSelected());
+
+        if (args.empty()) {
+          editorState.deselect();
+          result.ok = true;
+          result.message = "selection cleared";
+          result.structured = "{\"selected\":null}";
+          return result;
         }
-        SceneNode *node = nullptr;
-        const CommandResult found = requireNode(scene, args[0], node);
-        if (!found.ok) {
-          return found;
+
+        const auto nodes = resolveNodePaths(scene, args, result);
+        if (!nodes.has_value()) {
+          return result;
         }
-        editorState.select(node->shared_from_this());
-        return makeOk("selected " + node->getPath(),
-                      "{\"path\":\"" + jsonEscape(node->getPath()) + "\"}");
+        editorState.select(*nodes);
+
+        std::ostringstream structured;
+        structured << "{\"paths\":[";
+        for (usize i = 0; i < nodes->size(); ++i) {
+          if (i != 0) {
+            structured << ',';
+          }
+          structured << '"' << jsonEscape((*nodes)[i]->getPath()) << '"';
+        }
+        structured << "]}";
+
+        result.ok = true;
+        result.message = "selected " + std::to_string(nodes->size()) + " node(s)";
+        result.structured = structured.str();
+        return result;
       });
 
   bus.registerHandler(
-      "deselect", "deselect",
+      "deselect",
+      CommandMetadata{"deselect", inverseFromMetadata(), true},
       [&editorState](std::vector<std::string> args) {
         if (!args.empty()) {
           return makeError("usage: deselect");
         }
+        CommandResult result = makeOk("selection cleared", "{\"selected\":null}");
+        result.metadata["inverse.line"] =
+            buildSelectionCommand(editorState.getSelected());
         editorState.deselect();
-        return makeOk("selection cleared", "{\"selected\":null}");
+        return result;
       });
 
   bus.registerHandler(
-      "move", "move <path> <x> <y> <z>",
+      "move",
+      CommandMetadata{"move <path> <x> <y> <z> | move <path...> <dx> <dy> <dz>",
+                      inverseFromMetadata(), true},
       [&scene](std::vector<std::string> args) {
-        if (args.size() != 4) {
-          return makeError("usage: move <path> <x> <y> <z>");
+        CommandResult error;
+        const auto paths = extractTargetPathsAndVec3Args(
+            args, error, "usage: move <path> <x> <y> <z> | move <path...> <dx> <dy> <dz>",
+            "invalid float for move");
+        if (!paths.has_value()) {
+          return error;
         }
-        SceneNode *node = nullptr;
-        const CommandResult found = requireNode(scene, args[0], node);
-        if (!found.ok) {
-          return found;
+        const auto nodes = resolveNodePaths(scene, *paths, error);
+        if (!nodes.has_value()) {
+          return error;
         }
-        const auto value = parseVec3(args, 1);
+
+        const auto value = parseVec3(args, args.size() - 3);
         if (!value) {
           return makeError("invalid float for move");
         }
-        node->setTranslation(*value);
-        return makeOk("moved " + node->getPath() + " to (" + formatFloat(value->x) +
-                          ", " + formatFloat(value->y) + ", " +
-                          formatFloat(value->z) + ")",
-                      makeVec3Json(*value));
+
+        std::vector<std::string> inverseLines;
+        inverseLines.reserve(nodes->size());
+        for (const auto &node : *nodes) {
+          const Vec3f before = node->getTranslation();
+          inverseLines.push_back("move " + quoteToken(node->getPath()) + " " +
+                                 formatFloat(before.x) + " " +
+                                 formatFloat(before.y) + " " +
+                                 formatFloat(before.z));
+        }
+
+        if (nodes->size() == 1) {
+          (*nodes)[0]->setTranslation(*value);
+          CommandResult result =
+              makeOk("moved " + (*nodes)[0]->getPath() + " to (" +
+                         formatFloat(value->x) + ", " + formatFloat(value->y) + ", " +
+                         formatFloat(value->z) + ")",
+                     makeVec3Json(*value));
+          result.metadata["inverse.line"] = inverseLines.front();
+          return result;
+        }
+
+        for (const auto &node : *nodes) {
+          node->setTranslation(node->getTranslation() + *value);
+        }
+
+        CommandResult result =
+            makeOk("moved " + std::to_string(nodes->size()) + " node(s) by delta (" +
+                       formatFloat(value->x) + ", " + formatFloat(value->y) + ", " +
+                       formatFloat(value->z) + ")",
+                   makeVec3Json(*value));
+        result.metadata["inverse.line"] = joinLines(inverseLines);
+        return result;
       });
 
   bus.registerHandler(
-      "rotate", "rotate <path> <rx-deg> <ry-deg> <rz-deg>",
+      "rotate",
+      CommandMetadata{"rotate <path> <rx-deg> <ry-deg> <rz-deg> | rotate <path...> <rx-deg> <ry-deg> <rz-deg>",
+                      inverseFromMetadata(), true},
       [&scene](std::vector<std::string> args) {
-        if (args.size() != 4) {
-          return makeError("usage: rotate <path> <rx-deg> <ry-deg> <rz-deg>");
+        CommandResult error;
+        const auto paths = extractTargetPathsAndVec3Args(
+            args, error,
+            "usage: rotate <path> <rx-deg> <ry-deg> <rz-deg> | rotate <path...> <rx-deg> <ry-deg> <rz-deg>",
+            "invalid float for rotate");
+        if (!paths.has_value()) {
+          return error;
         }
-        SceneNode *node = nullptr;
-        const CommandResult found = requireNode(scene, args[0], node);
-        if (!found.ok) {
-          return found;
+        const auto nodes = resolveNodePaths(scene, *paths, error);
+        if (!nodes.has_value()) {
+          return error;
         }
-        const auto value = parseVec3(args, 1);
+
+        const auto value = parseVec3(args, args.size() - 3);
         if (!value) {
           return makeError("invalid float for rotate");
         }
         const Quatf rotation = eulerDegreesToQuat(value->x, value->y, value->z);
-        node->setRotation(rotation);
-        return makeOk("rotated " + node->getPath(), makeQuatJson(rotation));
+
+        std::vector<std::string> inverseLines;
+        inverseLines.reserve(nodes->size());
+        for (const auto &node : *nodes) {
+          const Vec3f before = quatToEulerDegrees(node->getRotation());
+          inverseLines.push_back("rotate " + quoteToken(node->getPath()) + " " +
+                                 formatFloat(before.x) + " " +
+                                 formatFloat(before.y) + " " +
+                                 formatFloat(before.z));
+          node->setRotation(rotation);
+        }
+
+        CommandResult result = makeOk(
+            nodes->size() == 1 ? "rotated " + (*nodes)[0]->getPath()
+                               : "rotated " + std::to_string(nodes->size()) + " node(s)",
+            makeQuatJson(rotation));
+        result.metadata["inverse.line"] =
+            nodes->size() == 1 ? inverseLines.front() : joinLines(inverseLines);
+        return result;
       });
 
   bus.registerHandler(
-      "scale", "scale <path> <sx> <sy> <sz>",
+      "scale",
+      CommandMetadata{"scale <path> <s> | scale <path> <sx> <sy> <sz>",
+                      inverseFromMetadata(), true},
       [&scene](std::vector<std::string> args) {
-        if (args.size() != 2 && args.size() != 4) {
-          return makeError("usage: scale <path> <s> | scale <path> <sx> <sy> <sz>");
+        CommandResult error;
+        const auto paths = extractTargetPathsAndScaleArgs(args, error);
+        if (!paths.has_value()) {
+          return error;
         }
-        SceneNode *node = nullptr;
-        const CommandResult found = requireNode(scene, args[0], node);
-        if (!found.ok) {
-          return found;
+        const auto nodes = resolveNodePaths(scene, *paths, error);
+        if (!nodes.has_value()) {
+          return error;
         }
 
         Vec3f scale{};
-        if (args.size() == 2) {
-          const auto s = parseFloat(args[1]);
+        const usize valueStartIndex = paths->size();
+        if (args.size() == valueStartIndex + 1) {
+          const auto s = parseFloat(args[valueStartIndex]);
           if (!s) {
             return makeError("invalid float for scale");
           }
           scale = Vec3f{*s, *s, *s};
         } else {
-          const auto parsed = parseVec3(args, 1);
+          const auto parsed = parseVec3(args, valueStartIndex);
           if (!parsed) {
             return makeError("invalid float for scale");
           }
           scale = *parsed;
         }
 
-        node->setScale(scale);
-        return makeOk("scaled " + node->getPath(), makeVec3Json(scale));
+        std::vector<std::string> inverseLines;
+        inverseLines.reserve(nodes->size());
+        for (const auto &node : *nodes) {
+          const Vec3f before = node->getScale();
+          inverseLines.push_back("scale " + quoteToken(node->getPath()) + " " +
+                                 formatFloat(before.x) + " " +
+                                 formatFloat(before.y) + " " +
+                                 formatFloat(before.z));
+          node->setScale(scale);
+        }
+
+        CommandResult result = makeOk(
+            nodes->size() == 1 ? "scaled " + (*nodes)[0]->getPath()
+                               : "scaled " + std::to_string(nodes->size()) + " node(s)",
+            makeVec3Json(scale));
+        result.metadata["inverse.line"] =
+            nodes->size() == 1 ? inverseLines.front() : joinLines(inverseLines);
+        return result;
       });
 
   bus.registerHandler(
@@ -735,10 +1135,7 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
         }
         const auto removed = node->shared_from_this();
         scene.removeRenderable(removed);
-        if (const auto selected = editorState.getSelected();
-            selected && selected.get() == removed.get()) {
-          editorState.deselect();
-        }
+        editorState.selectRemove(removed);
         return makeOk("removed " + args[0],
                       "{\"path\":\"" + jsonEscape(args[0]) + "\"}");
       });
@@ -799,7 +1196,8 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
       });
 
   bus.registerHandler(
-      "set", "set <path>.<field> <value>",
+      "set", CommandMetadata{"set <path>.<field> <value>", inverseFromMetadata(),
+                              true},
       [&scene](std::vector<std::string> args) {
         if (args.size() < 2) {
           return makeError("usage: set <path>.<field> <value>");
@@ -813,11 +1211,22 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
         if (!found.ok) {
           return found;
         }
-        return setField(*node, split->second, args, 1);
+        const std::string oldName = node->getName();
+        const std::string inverseLine = buildSetInverseCommand(*node, split->second);
+        CommandResult result = setField(*node, split->second, args, 1);
+        if (result.ok && split->second == "name") {
+          result.metadata["inverse.line"] =
+              "set " + quoteToken(node->getPath() + ".name") + " " +
+              quoteToken(oldName);
+        } else if (result.ok && !inverseLine.empty()) {
+          result.metadata["inverse.line"] = inverseLine;
+        }
+        return result;
       });
 
   bus.registerHandler(
-      "cam", "cam (look-at|reset|fov ...)",
+      "cam", CommandMetadata{"cam (look-at|reset|fov ...)", inverseFromMetadata(),
+                              true},
       [&scene, &editorState](std::vector<std::string> args) {
         if (args.empty()) {
           return makeError("usage: cam (look-at|reset|fov ...)");
@@ -841,10 +1250,15 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
           if (!value) {
             return makeError("invalid float for cam fov");
           }
+          CommandResult result;
+          result.metadata["inverse.line"] =
+              "cam fov " + formatFloat(camera->get().fovY);
           camera->get().fovY = *value;
           camera->get().updateMatrices();
-          return makeOk("camera fov = " + formatFloat(*value),
-                        "{\"value\":" + formatFloat(*value) + "}");
+          result.ok = true;
+          result.message = "camera fov = " + formatFloat(*value);
+          result.structured = "{\"value\":" + formatFloat(*value) + "}";
+          return result;
         }
         if (args[0] == "look-at") {
           if (args.size() != 7) {
@@ -867,11 +1281,13 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
       });
 
   bus.registerHandler(
-      "preview", "preview (on|off|toggle)",
+      "preview",
+      CommandMetadata{"preview (on|off|toggle)", inverseFromMetadata(), true},
       [&editorState, &scene](std::vector<std::string> args) {
         if (args.size() != 1) {
           return makeError("usage: preview (on|off|toggle)");
         }
+        const bool previewWasEnabled = editorState.isPreviewEnabled();
         if (args[0] == "on") {
           editorState.setPreviewEnabled(true);
         } else if (args[0] == "off") {
@@ -882,13 +1298,48 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
           return makeError("unknown preview action: " + args[0]);
         }
         const SceneNodeSharedPtr activeCamera = editorState.syncActiveCamera(scene);
-        return makeOk(std::string("preview ") +
-                          (editorState.isPreviewEnabled() ? "on" : "off"),
-                      std::string("{\"enabled\":") +
-                          (editorState.isPreviewEnabled() ? "true" : "false") +
-                          ",\"activePath\":\"" +
-                          jsonEscape(activeCamera ? activeCamera->getPath() : std::string{}) +
-                          "\"}");
+        CommandResult result =
+            makeOk(std::string("preview ") +
+                       (editorState.isPreviewEnabled() ? "on" : "off"),
+                   std::string("{\"enabled\":") +
+                       (editorState.isPreviewEnabled() ? "true" : "false") +
+                       ",\"activePath\":\"" +
+                       jsonEscape(activeCamera ? activeCamera->getPath() : std::string{}) +
+                       "\"}");
+        result.metadata["inverse.line"] =
+            std::string("preview ") + (previewWasEnabled ? "on" : "off");
+        return result;
+      });
+
+  bus.registerHandler(
+      "undo", "undo",
+      [&bus](std::vector<std::string> args) {
+        if (!args.empty()) {
+          return makeError("usage: undo");
+        }
+        return bus.undo();
+      });
+
+  bus.registerHandler(
+      "redo", "redo",
+      [&bus](std::vector<std::string> args) {
+        if (!args.empty()) {
+          return makeError("usage: redo");
+        }
+        return bus.redo();
+      });
+
+  for (const std::string &verb : {"select", "move", "rotate", "scale"}) {
+    for (usize argIndex = 0; argIndex < 8; ++argIndex) {
+      bus.registerCompleter(
+          verb, argIndex, [&scene](const CompletionContext &context) {
+            return completeScenePaths(scene, context);
+          });
+    }
+  }
+  bus.registerCompleter(
+      "set", 0, [&scene](const CompletionContext &context) {
+        return completeSetTarget(scene, context);
       });
 }
 

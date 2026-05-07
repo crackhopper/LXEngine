@@ -184,14 +184,31 @@ void testEditorStateUsesWeakSelection() {
   EditorState state;
   auto node = SceneNode::create("selected_node");
 
-  state.select(node);
-  EXPECT(state.getSelected() == node, "selected node resolves while alive");
+  state.select({node});
+  EXPECT(state.getSelected().size() == 1 && state.getSelected()[0] == node,
+         "selected node resolves while alive");
+  EXPECT(state.getPrimarySelected().has_value() &&
+             &state.getPrimarySelected()->get() == node.get(),
+         "primary selection tracks most recent node");
+
+  const auto second = SceneNode::create("second_node");
+  state.selectAdd(second);
+  EXPECT(state.getSelected().size() == 2, "selectAdd appends live selection");
+  EXPECT(state.getPrimarySelected().has_value() &&
+             &state.getPrimarySelected()->get() == second.get(),
+         "primary selection becomes last added node");
+
+  state.selectRemove(second);
+  EXPECT(state.getSelected().size() == 1 && state.getSelected()[0] == node,
+         "selectRemove erases requested node only");
 
   node.reset();
-  EXPECT(!state.getSelected(), "expired selected node clears naturally");
+  EXPECT(state.getSelected().empty(), "expired selected nodes drop from live snapshot");
+  EXPECT(!state.getPrimarySelected().has_value(),
+         "expired selected nodes clear primary selection view");
 
   state.deselect();
-  EXPECT(!state.getSelected(), "deselect keeps state empty");
+  EXPECT(state.getSelected().empty(), "deselect keeps state empty");
 
   EXPECT(!state.isPreviewEnabled(), "preview defaults to off");
   state.setPreviewEnabled(true);
@@ -217,12 +234,12 @@ void testBuiltinHelpSelectAndDeselect() {
 
   const CommandResult select = fixture.bus.dispatch("select /world/cube");
   EXPECT(select.ok, "select succeeds for existing path");
-  EXPECT(fixture.editorState.getSelected() == fixture.cube,
+  EXPECT(fixture.editorState.getSelected().size() == 1 && fixture.editorState.getSelected()[0] == fixture.cube,
          "select updates EditorState");
 
   const CommandResult deselect = fixture.bus.dispatch("deselect");
   EXPECT(deselect.ok, "deselect succeeds");
-  EXPECT(!fixture.editorState.getSelected(), "deselect clears EditorState");
+  EXPECT(fixture.editorState.getSelected().empty(), "deselect clears EditorState");
 }
 
 void testBuiltinTransformCommandsAndGet() {
@@ -490,7 +507,7 @@ void testConsolePanelSubmitsAndClearsDisplay() {
   ConsolePanel panel(fixture.bus);
 
   panel.submitLine("select /world/cube");
-  EXPECT(fixture.editorState.getSelected() == fixture.cube,
+  EXPECT(fixture.editorState.getSelected().size() == 1 && fixture.editorState.getSelected()[0] == fixture.cube,
          "panel submit routes through builtin command bus");
   EXPECT(panel.displayedEntries().size() == 1,
          "panel display shows newly executed command");
@@ -534,6 +551,39 @@ void testConsolePanelBrowseAndAutocomplete() {
   panel.autocompleteInput();
   EXPECT(panel.getInputText() == "select ",
          "autocomplete completes unique builtin verb and appends space");
+
+  panel.setInputText("set /world/c");
+  panel.autocompleteInput();
+  EXPECT(panel.getInputText() == "set /world/cube ",
+         "autocomplete completes set target path through bus completer");
+
+  panel.setInputText("set /world/cube.t");
+  panel.autocompleteInput();
+  EXPECT(panel.getInputText() == "set /world/cube.translation ",
+         "autocomplete completes set field suffix through bus completer");
+}
+
+void testConsolePanelUndoRedoShortcutsUseCommandBus() {
+  CommandFixture fixture;
+  ConsolePanel panel(fixture.bus);
+
+  panel.submitLine("move /world/cube 1 0 0");
+  EXPECT(nearlyEqual(fixture.cube->getTranslation().x, 1.0f),
+         "setup move should update translation");
+
+  panel.dispatchUndo();
+  EXPECT(nearlyEqual(fixture.cube->getTranslation().x, 0.0f),
+         "dispatchUndo should route through command bus undo");
+  EXPECT(!fixture.bus.history().empty() &&
+             fixture.bus.history().back().line == "undo",
+         "dispatchUndo should record undo command in history");
+
+  panel.dispatchRedo();
+  EXPECT(nearlyEqual(fixture.cube->getTranslation().x, 1.0f),
+         "dispatchRedo should route through command bus redo");
+  EXPECT(!fixture.bus.history().empty() &&
+             fixture.bus.history().back().line == "redo",
+         "dispatchRedo should record redo command in history");
 }
 
 } // namespace
@@ -555,6 +605,7 @@ int main() {
   testBuiltinRemainingCommandErrors();
   testConsolePanelSubmitsAndClearsDisplay();
   testConsolePanelBrowseAndAutocomplete();
+  testConsolePanelUndoRedoShortcutsUseCommandBus();
 
   if (failures != 0) {
     std::cerr << "test_command_bus failed with " << failures << " failure(s)\n";

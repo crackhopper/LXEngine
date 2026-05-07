@@ -45,6 +45,7 @@ void ConsolePanel::draw() {
   ImGui::PopItemWidth();
 
   if (ImGui::IsItemActive()) {
+    const ImGuiIO &io = ImGui::GetIO();
     if (ImGui::IsKeyPressed(ImGuiKey_UpArrow, false)) {
       browseHistoryOlder();
     }
@@ -53,6 +54,12 @@ void ConsolePanel::draw() {
     }
     if (ImGui::IsKeyPressed(ImGuiKey_Tab, false)) {
       autocompleteInput();
+    }
+    if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Z, false)) {
+      dispatchUndo();
+    }
+    if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Y, false)) {
+      dispatchRedo();
     }
   }
 
@@ -74,9 +81,7 @@ void ConsolePanel::submitLine(std::string_view line) {
 
   const CommandResult result = m_commandBus.dispatch(trimmed);
   (void)result;
-  setInputText({});
-  m_historyBrowseIndex.reset();
-  m_scrollToBottom = true;
+  markCommandDispatched();
 }
 
 void ConsolePanel::submitCurrentInput() { submitLine(getInputText()); }
@@ -118,30 +123,37 @@ void ConsolePanel::browseHistoryNewer() {
 
 void ConsolePanel::autocompleteInput() {
   const std::string input = trim(getInputText());
-  if (input.empty() || input.find_first_of(" \t") != std::string::npos) {
+  if (input.empty()) {
     return;
   }
 
-  const std::vector<std::string> verbs = m_commandBus.listVerbs();
-  std::vector<std::string> matches;
-  for (const auto &verb : verbs) {
-    if (verb.rfind(input, 0) == 0) {
-      matches.push_back(verb);
-    }
-  }
-  if (matches.empty()) {
+  const CompletionResult completion = m_commandBus.complete(input);
+  if (completion.candidates.empty() || completion.commonPrefix.empty()) {
     return;
   }
 
-  std::string completion = matches.front();
-  for (usize i = 1; i < matches.size(); ++i) {
-    completion = commonPrefix(completion, matches[i]);
+  std::string completedText;
+  const usize lastWhitespace = input.find_last_of(" \t");
+  if (lastWhitespace == std::string::npos) {
+    completedText = completion.commonPrefix;
+  } else {
+    completedText = input.substr(0, lastWhitespace + 1) + completion.commonPrefix;
   }
 
-  if (matches.size() == 1) {
-    completion.push_back(' ');
+  if (completion.candidates.size() == 1) {
+    completedText.push_back(' ');
   }
-  setInputText(completion);
+  setInputText(completedText);
+}
+
+void ConsolePanel::dispatchUndo() {
+  (void)m_commandBus.dispatch("undo");
+  markCommandDispatched();
+}
+
+void ConsolePanel::dispatchRedo() {
+  (void)m_commandBus.dispatch("redo");
+  markCommandDispatched();
 }
 
 void ConsolePanel::setInputText(std::string_view text) {
@@ -175,6 +187,12 @@ void ConsolePanel::setInputFromHistoryIndex(const usize historyIndex) {
     return;
   }
   setInputText(history[historyIndex].line);
+}
+
+void ConsolePanel::markCommandDispatched() {
+  setInputText({});
+  m_historyBrowseIndex.reset();
+  m_scrollToBottom = true;
 }
 
 std::string ConsolePanel::trim(std::string_view text) {

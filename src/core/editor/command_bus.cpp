@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <chrono>
 #include <exception>
-#include <sstream>
 #include <stdexcept>
 
 namespace LX_core {
@@ -99,9 +98,19 @@ struct TokenizeResult {
   return result;
 }
 
+[[nodiscard]] bool endsWithWhitespace(std::string_view text) {
+  return !text.empty() && isWhitespace(text.back());
+}
+
 } // namespace
 
 void CommandBus::registerHandler(std::string verb, std::string brief,
+                                 CommandHandler handler) {
+  registerHandler(std::move(verb), CommandMetadata{std::move(brief), {}, false},
+                  std::move(handler));
+}
+
+void CommandBus::registerHandler(std::string verb, CommandMetadata metadata,
                                  CommandHandler handler) {
   if (verb.empty()) {
     throw std::invalid_argument("CommandBus verb must not be empty");
@@ -110,56 +119,153 @@ void CommandBus::registerHandler(std::string verb, std::string brief,
     throw std::invalid_argument("CommandBus handler must not be empty");
   }
 
-  m_handlers[verb] = std::move(handler);
-  m_briefs[verb] = std::move(brief);
+  m_commands[verb] = RegisteredCommand{std::move(handler), std::move(metadata)};
+}
+
+void CommandBus::registerCompleter(std::string verb, const usize argIndex,
+                                   CompletionProvider provider) {
+  if (verb.empty()) {
+    throw std::invalid_argument("CommandBus completer verb must not be empty");
+  }
+  if (!provider) {
+    throw std::invalid_argument("CommandBus completer must not be empty");
+  }
+  m_completers[std::move(verb)][argIndex] = std::move(provider);
 }
 
 void CommandBus::unregisterHandler(const std::string &verb) {
-  m_handlers.erase(verb);
-  m_briefs.erase(verb);
+  m_commands.erase(verb);
+  m_completers.erase(verb);
 }
 
 CommandResult CommandBus::dispatch(const std::string &line) {
-  const TokenizeResult tokenized = tokenizeCommandLine(line);
-  CommandResult result;
-  if (!tokenized.ok) {
-    result = makeParseError(tokenized.errorMessage);
-  } else {
-    result = dispatchTokens(tokenized.tokens, m_handlers);
-  }
-
-  m_history.push_back(HistoryEntry{line, result, currentTimestampMs()});
-  return result;
+  return dispatchInternal(line, DispatchOptions{});
 }
 
 std::vector<CommandResult>
 CommandBus::dispatchScript(std::string_view multiLineText) {
-  std::vector<CommandResult> results;
-  usize lineStart = 0;
+  return dispatchScriptInternal(multiLineText, DispatchOptions{});
+}
 
-  while (lineStart <= multiLineText.size()) {
-    const usize lineEnd = multiLineText.find('\n', lineStart);
-    const usize rawEnd =
-        lineEnd == std::string_view::npos ? multiLineText.size() : lineEnd;
-    const std::string line = trim(multiLineText.substr(lineStart, rawEnd - lineStart));
-
-    if (!line.empty() && line.front() != '#') {
-      results.push_back(dispatch(line));
-    }
-
-    if (lineEnd == std::string_view::npos) {
-      break;
-    }
-    lineStart = lineEnd + 1;
+CommandResult CommandBus::undo() {
+  if (m_undoStack.empty()) {
+    return CommandResult{false, "nothing to undo", {}, {}};
   }
 
-  return results;
+  const UndoEntry entry = m_undoStack.back();
+  m_undoStack.pop_back();
+  const std::vector<CommandResult> results =
+      dispatchScriptInternal(entry.inverseLine,
+                             DispatchOptions{false, false, false});
+  if (results.empty()) {
+    m_undoStack.push_back(entry);
+    return CommandResult{false, "undo failed: empty inverse command", {}, {}};
+  }
+  for (const auto &result : results) {
+    if (!result.ok) {
+      m_undoStack.push_back(entry);
+      return result;
+    }
+  }
+
+  m_redoStack.push_back(entry);
+  return CommandResult{true, "undid: " + entry.executeLine, {}, {}};
+}
+
+CommandResult CommandBus::redo() {
+  if (m_redoStack.empty()) {
+    return CommandResult{false, "nothing to redo", {}, {}};
+  }
+
+  const UndoEntry entry = m_redoStack.back();
+  m_redoStack.pop_back();
+  const std::vector<CommandResult> results =
+      dispatchScriptInternal(entry.executeLine,
+                             DispatchOptions{false, false, false});
+  if (results.empty()) {
+    m_redoStack.push_back(entry);
+    return CommandResult{false, "redo failed: empty forward command", {}, {}};
+  }
+  for (const auto &result : results) {
+    if (!result.ok) {
+      m_redoStack.push_back(entry);
+      return result;
+    }
+  }
+
+  m_undoStack.push_back(entry);
+  return CommandResult{true, "redid: " + entry.executeLine, {}, {}};
+}
+
+bool CommandBus::canUndo() const { return !m_undoStack.empty(); }
+
+bool CommandBus::canRedo() const { return !m_redoStack.empty(); }
+
+CompletionResult CommandBus::complete(std::string_view line) const {
+  CompletionResult result;
+  const std::string text(line);
+  const TokenizeResult tokenized = tokenizeCommandLine(text);
+  if (!tokenized.ok) {
+    return result;
+  }
+
+  const bool trailingWhitespace = endsWithWhitespace(line);
+  if (tokenized.tokens.empty()) {
+    result.candidates = listVerbs();
+    result.commonPrefix = commonPrefix(result.candidates);
+    return result;
+  }
+
+  if (tokenized.tokens.size() == 1 && !trailingWhitespace) {
+    const std::string &partialVerb = tokenized.tokens.front();
+    for (const auto &verb : listVerbs()) {
+      if (verb.rfind(partialVerb, 0) == 0) {
+        result.candidates.push_back(verb);
+      }
+    }
+    result.commonPrefix = commonPrefix(result.candidates);
+    return result;
+  }
+
+  const std::string &verb = tokenized.tokens.front();
+  const auto completerIt = m_completers.find(verb);
+  if (completerIt == m_completers.end()) {
+    return result;
+  }
+
+  CompletionContext context;
+  usize argIndex = 0;
+  if (trailingWhitespace) {
+    argIndex = tokenized.tokens.size() - 1;
+    for (usize i = 1; i < tokenized.tokens.size(); ++i) {
+      context.precedingArgs.push_back(tokenized.tokens[i]);
+    }
+  } else {
+    argIndex = tokenized.tokens.size() - 2;
+    context.partialToken = tokenized.tokens.back();
+    for (usize i = 1; i + 1 < tokenized.tokens.size(); ++i) {
+      context.precedingArgs.push_back(tokenized.tokens[i]);
+    }
+  }
+
+  const auto providerIt = completerIt->second.find(argIndex);
+  if (providerIt == completerIt->second.end()) {
+    return result;
+  }
+
+  result.candidates = providerIt->second(context);
+  std::sort(result.candidates.begin(), result.candidates.end());
+  result.candidates.erase(
+      std::unique(result.candidates.begin(), result.candidates.end()),
+      result.candidates.end());
+  result.commonPrefix = commonPrefix(result.candidates);
+  return result;
 }
 
 std::vector<std::string> CommandBus::listVerbs() const {
   std::vector<std::string> verbs;
-  verbs.reserve(m_handlers.size());
-  for (const auto &entry : m_handlers) {
+  verbs.reserve(m_commands.size());
+  for (const auto &entry : m_commands) {
     verbs.push_back(entry.first);
   }
   std::sort(verbs.begin(), verbs.end());
@@ -167,11 +273,11 @@ std::vector<std::string> CommandBus::listVerbs() const {
 }
 
 std::string CommandBus::brief(const std::string &verb) const {
-  const auto it = m_briefs.find(verb);
-  if (it == m_briefs.end()) {
+  const auto it = m_commands.find(verb);
+  if (it == m_commands.end()) {
     return {};
   }
-  return it->second;
+  return it->second.metadata.brief;
 }
 
 const std::vector<CommandBus::HistoryEntry> &CommandBus::history() const {
@@ -185,34 +291,100 @@ u64 CommandBus::currentTimestampMs() {
 }
 
 CommandResult CommandBus::makeParseError(std::string message) {
-  return CommandResult{false, std::move(message), {}};
+  return CommandResult{false, std::move(message), {}, {}};
 }
 
-CommandResult CommandBus::dispatchTokens(
-    const std::vector<std::string> &tokens,
-    const std::unordered_map<std::string, CommandHandler> &handlers) {
-  if (tokens.empty()) {
-    return CommandResult{false, "empty command", {}};
+std::string CommandBus::commonPrefix(const std::vector<std::string> &values) {
+  if (values.empty()) {
+    return {};
   }
 
-  const auto handlerIt = handlers.find(tokens.front());
-  if (handlerIt == handlers.end()) {
-    return CommandResult{false, "unknown command: " + tokens.front(), {}};
+  std::string prefix = values.front();
+  for (usize i = 1; i < values.size(); ++i) {
+    const usize limit = std::min(prefix.size(), values[i].size());
+    usize j = 0;
+    while (j < limit && prefix[j] == values[i][j]) {
+      ++j;
+    }
+    prefix.resize(j);
+    if (prefix.empty()) {
+      break;
+    }
+  }
+  return prefix;
+}
+
+CommandResult CommandBus::dispatchInternal(const std::string &line,
+                                          const DispatchOptions &options) {
+  const TokenizeResult tokenized = tokenizeCommandLine(line);
+  CommandResult result;
+  if (!tokenized.ok) {
+    result = makeParseError(tokenized.errorMessage);
+  } else if (tokenized.tokens.empty()) {
+    result = CommandResult{false, "empty command", {}, {}};
+  } else {
+    ParsedCommand parsed;
+    parsed.verb = tokenized.tokens.front();
+    parsed.line = line;
+    for (usize i = 1; i < tokenized.tokens.size(); ++i) {
+      parsed.args.push_back(tokenized.tokens[i]);
+    }
+
+    const auto handlerIt = m_commands.find(parsed.verb);
+    if (handlerIt == m_commands.end()) {
+      result = CommandResult{false, "unknown command: " + parsed.verb, {}, {}};
+    } else {
+      try {
+        result = handlerIt->second.handler(parsed.args);
+      } catch (const std::exception &e) {
+        result = CommandResult{false, std::string("exception: ") + e.what(), {}, {}};
+      } catch (...) {
+        result = CommandResult{false, "exception: unknown", {}, {}};
+      }
+
+      if (result.ok && handlerIt->second.metadata.mutatesState &&
+          options.clearRedoOnSuccess) {
+        m_redoStack.clear();
+      }
+      if (result.ok && options.trackUndo && handlerIt->second.metadata.inverse) {
+        const std::optional<std::string> inverseLine =
+            handlerIt->second.metadata.inverse(parsed, result);
+        if (inverseLine.has_value() && !inverseLine->empty()) {
+          m_undoStack.push_back(UndoEntry{parsed.line, *inverseLine});
+        }
+      }
+    }
   }
 
-  std::vector<std::string> args;
-  args.reserve(tokens.size() > 0 ? tokens.size() - 1 : 0);
-  for (usize i = 1; i < tokens.size(); ++i) {
-    args.push_back(tokens[i]);
+  if (options.recordHistory) {
+    m_history.push_back(HistoryEntry{line, result, currentTimestampMs()});
+  }
+  return result;
+}
+
+std::vector<CommandResult>
+CommandBus::dispatchScriptInternal(std::string_view multiLineText,
+                                   const DispatchOptions &options) {
+  std::vector<CommandResult> results;
+  usize lineStart = 0;
+
+  while (lineStart <= multiLineText.size()) {
+    const usize lineEnd = multiLineText.find('\n', lineStart);
+    const usize rawEnd =
+        lineEnd == std::string_view::npos ? multiLineText.size() : lineEnd;
+    const std::string line = trim(multiLineText.substr(lineStart, rawEnd - lineStart));
+
+    if (!line.empty() && line.front() != '#') {
+      results.push_back(dispatchInternal(line, options));
+    }
+
+    if (lineEnd == std::string_view::npos) {
+      break;
+    }
+    lineStart = lineEnd + 1;
   }
 
-  try {
-    return handlerIt->second(std::move(args));
-  } catch (const std::exception &e) {
-    return CommandResult{false, std::string("exception: ") + e.what(), {}};
-  } catch (...) {
-    return CommandResult{false, "exception: unknown", {}};
-  }
+  return results;
 }
 
 } // namespace LX_core

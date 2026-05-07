@@ -155,36 +155,37 @@ void InspectorPanel::draw() {
 
 InspectorPanel::Snapshot InspectorPanel::makeSnapshot() const {
   Snapshot snapshot;
-  const auto selected = m_editorState.getSelected();
-  if (!selected) {
+  const auto selected = m_editorState.getPrimarySelected();
+  if (!selected.has_value()) {
     return snapshot;
   }
 
+  SceneNode &node = selected->get();
   snapshot.hasSelection = true;
-  snapshot.path = selected->getPath();
-  snapshot.name = selected->getName();
-  snapshot.translation = selected->getTranslation();
-  snapshot.rotationEulerDegrees = quatToEulerDegrees(selected->getRotation());
-  snapshot.scale = selected->getScale();
-  snapshot.visibilityMask = selected->getVisibilityLayerMask();
-  snapshot.hasCamera = selected->getComponent<CameraComponent>().has_value();
+  snapshot.path = node.getPath();
+  snapshot.name = node.getName();
+  snapshot.translation = node.getTranslation();
+  snapshot.rotationEulerDegrees = quatToEulerDegrees(node.getRotation());
+  snapshot.scale = node.getScale();
+  snapshot.visibilityMask = node.getVisibilityLayerMask();
+  snapshot.hasCamera = node.getComponent<CameraComponent>().has_value();
   if (snapshot.hasCamera) {
-    const auto camera = selected->getComponent<CameraComponent>();
+    const auto camera = node.getComponent<CameraComponent>();
     snapshot.cameraFov = camera->get().fovY;
     snapshot.cameraNear = camera->get().nearPlane;
     snapshot.cameraFar = camera->get().farPlane;
     snapshot.cameraPerspective = camera->get().type == CameraType::Perspective;
     snapshot.cameraCullingMask = camera->get().getCullingMask();
   }
-  if (const auto light = findDirectionalLightForNode(*selected)) {
+  if (const auto light = findDirectionalLightForNode(node)) {
     snapshot.hasLight = true;
     snapshot.lightDirection = Vec3f{light->ubo->param.dir.x, light->ubo->param.dir.y, light->ubo->param.dir.z};
     snapshot.lightColor = Vec3f{light->ubo->param.color.x, light->ubo->param.color.y, light->ubo->param.color.z};
     snapshot.lightIntensity = light->ubo->param.color.w;
   }
-  snapshot.hasMesh = selected->getComponent<MeshComponent>().has_value();
-  snapshot.hasMaterial = selected->getComponent<MaterialComponent>().has_value();
-  snapshot.hasSkeleton = selected->getComponent<SkeletonComponent>().has_value();
+  snapshot.hasMesh = node.getComponent<MeshComponent>().has_value();
+  snapshot.hasMaterial = node.getComponent<MaterialComponent>().has_value();
+  snapshot.hasSkeleton = node.getComponent<SkeletonComponent>().has_value();
   return snapshot;
 }
 

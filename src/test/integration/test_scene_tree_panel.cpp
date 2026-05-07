@@ -67,7 +67,8 @@ void testPathJumpDispatchesSelect() {
   const LX_core::CommandResult result = panel.submitPathJump();
 
   EXPECT(result.ok, "path jump should succeed for existing node");
-  EXPECT(fixture.editorState.getSelected() == fixture.cube,
+  EXPECT(fixture.editorState.getSelected().size() == 1 &&
+             fixture.editorState.getSelected()[0] == fixture.cube,
          "path jump should select cube");
   EXPECT(!fixture.bus.history().empty(), "path jump should dispatch command");
   EXPECT(fixture.bus.history().back().line == "select /world/cube",
@@ -81,7 +82,8 @@ void testDispatchSelectPathUsesCommandBus() {
   const LX_core::CommandResult result = panel.dispatchSelectPath("/world/sun");
 
   EXPECT(result.ok, "dispatchSelectPath should succeed");
-  EXPECT(fixture.editorState.getSelected() == fixture.light,
+  EXPECT(fixture.editorState.getSelected().size() == 1 &&
+             fixture.editorState.getSelected()[0] == fixture.light,
          "dispatchSelectPath should update selected node via builtin command");
   EXPECT(fixture.bus.history().back().line == "select /world/sun",
          "dispatchSelectPath should go through command bus history");

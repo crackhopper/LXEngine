@@ -154,6 +154,7 @@ public:
     float distance = 0.0f;
   };
   SceneNode *findByPath(const std::string &path) const;
+  [[nodiscard]] std::vector<std::string> listAllPaths() const;
   std::string dumpTree() const;
   void revalidateNodesUsing(const MaterialInstanceSharedPtr &materialInstance);
 
@@ -174,6 +175,7 @@ private:
   static std::vector<std::string> splitPathSegments(const std::string &path);
   static bool matchesPathSegment(const SceneNode &node,
                                  const std::string &pathSegment);
+  static void appendPaths(const SceneNode &node, std::vector<std::string> &out);
   static void appendTreeLines(const SceneNode &node, std::string prefix,
                               bool isLast, std::string &out);
   std::string m_sceneName;

@@ -2,6 +2,7 @@
 #include "core/scene/components/camera_component.hpp"
 #include "core/scene/components/material_component.hpp"
 
+#include <algorithm>
 #include <sstream>
 #include <utility>
 
@@ -55,6 +56,17 @@ SceneNode *Scene::findByPath(const std::string &path) const {
   }
 
   return current;
+}
+
+std::vector<std::string> Scene::listAllPaths() const {
+  std::vector<std::string> out;
+  for (const auto &rootNode : getRootNodes()) {
+    if (rootNode) {
+      appendPaths(*rootNode, out);
+    }
+  }
+  std::sort(out.begin(), out.end());
+  return out;
 }
 
 std::string Scene::dumpTree() const {
@@ -201,6 +213,15 @@ Scene::pick(const Ray &ray, VisibilityLayerMask layerMask) const {
     }
   }
   return bestHit;
+}
+
+void Scene::appendPaths(const SceneNode &node, std::vector<std::string> &out) {
+  out.push_back(node.getPath());
+  for (const auto &child : node.getChildren()) {
+    if (child) {
+      appendPaths(*child, out);
+    }
+  }
 }
 
 std::vector<SceneNodeSharedPtr> Scene::getRootNodes() const {
