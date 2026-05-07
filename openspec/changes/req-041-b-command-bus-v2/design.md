@@ -23,4 +23,4 @@ The change will keep verb names and single-target call forms stable. New parsing
 
 ## Increment Scope
 
-This first increment creates the OpenSpec change and lands the `EditorState` multi-selection core plus direct caller/test migrations needed to preserve current behavior. Command-bus completion, undo/redo, and multi-target command parsing follow in later increments.
+Change fully landed. `EditorState` multi-selection, command-bus arg completion / undo / redo, add-remove inverse recovery, and viewport gizmo multi-selection delta commit are all implemented and covered by regression tests.

@@ -9,10 +9,12 @@
 
 #include <cmath>
 #include <iomanip>
+#include <memory>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string_view>
+#include <unordered_map>
 
 namespace LX_core {
 namespace {
@@ -374,6 +376,21 @@ resolveDirectionalLight(SceneNode &node) {
   return nullptr;
 }
 
+[[nodiscard]] std::vector<std::string> listComponentTypes() {
+  return {"camera", "light", "mesh"};
+}
+
+[[nodiscard]] std::vector<std::string>
+completeComponentTypes(const CompletionContext &context) {
+  std::vector<std::string> matches;
+  for (const auto &type : listComponentTypes()) {
+    if (type.rfind(context.partialToken, 0) == 0) {
+      matches.push_back(type);
+    }
+  }
+  return matches;
+}
+
 [[nodiscard]] std::optional<std::pair<std::string, std::string>>
 splitFieldPath(const std::string &text) {
   const usize dot = text.find_last_of('.');
@@ -647,6 +664,83 @@ completeSetTarget(const Scene &scene, const CompletionContext &context) {
   return matches;
 }
 
+struct CommandNodeStashEntry {
+  SceneNodeSharedPtr node;
+  SceneNodeSharedPtr parent;
+  LightBaseSharedPtr light;
+};
+
+struct BuiltinCommandState {
+  u64 nextStashId = 1;
+  std::unordered_map<std::string, CommandNodeStashEntry> stash;
+  std::unordered_map<const SceneNode *, LightBaseSharedPtr> attachedLights;
+};
+
+[[nodiscard]] std::string allocateStashId(BuiltinCommandState &state) {
+  return std::to_string(state.nextStashId++);
+}
+
+[[nodiscard]] CommandResult removeNodeToStash(Scene &scene, EditorState &editorState,
+                                              BuiltinCommandState &state,
+                                              const std::string &path,
+                                              const std::string &stashId) {
+  SceneNode *node = nullptr;
+  const CommandResult found = requireNode(scene, path, node);
+  if (!found.ok) {
+    return found;
+  }
+
+  const auto removed = node->shared_from_this();
+  CommandNodeStashEntry entry;
+  entry.node = removed;
+  entry.parent = removed->getParent();
+
+  const auto lightIt = state.attachedLights.find(removed.get());
+  if (lightIt != state.attachedLights.end()) {
+    entry.light = lightIt->second;
+    scene.removeLight(lightIt->second);
+    state.attachedLights.erase(lightIt);
+  }
+
+  scene.removeRenderable(removed);
+  editorState.selectRemove(removed);
+  state.stash[stashId] = std::move(entry);
+  return makeOk("removed " + path,
+                "{\"path\":\"" + jsonEscape(path) + "\",\"stash\":\"" +
+                    jsonEscape(stashId) + "\"}");
+}
+
+[[nodiscard]] CommandResult restoreNodeFromStash(Scene &scene,
+                                                 BuiltinCommandState &state,
+                                                 const std::string &stashId) {
+  const auto stashIt = state.stash.find(stashId);
+  if (stashIt == state.stash.end() || !stashIt->second.node) {
+    return makeError("stash entry not found: " + stashId);
+  }
+
+  CommandNodeStashEntry &entry = stashIt->second;
+  if (entry.parent) {
+    entry.node->setParent(entry.parent);
+  } else {
+    entry.node->clearParent();
+  }
+
+  if (entry.node->getComponent<CameraComponent>().has_value()) {
+    scene.addCamera(entry.node);
+  } else {
+    scene.addRenderable(entry.node);
+  }
+
+  if (entry.light) {
+    scene.addLight(entry.light);
+    state.attachedLights[entry.node.get()] = entry.light;
+  }
+
+  return makeOk("restored " + entry.node->getPath(),
+                "{\"path\":\"" + jsonEscape(entry.node->getPath()) +
+                    "\",\"stash\":\"" + jsonEscape(stashId) + "\"}");
+}
+
 [[nodiscard]] CommandResult setField(SceneNode &node, const std::string &field,
                                      const std::vector<std::string> &args,
                                      const usize valueStartIndex) {
@@ -863,6 +957,8 @@ completeSetTarget(const Scene &scene, const CompletionContext &context) {
 
 void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
                              Scene &scene) {
+  const auto state = std::make_shared<BuiltinCommandState>();
+
   bus.registerHandler(
       "help", "help [verb]",
       [&bus](std::vector<std::string> args) {
@@ -874,6 +970,24 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
           return makeError(message);
         }
         return makeOk(message, makeVerbListJson(bus.listVerbs()));
+      });
+
+  bus.registerHandler(
+      "__remove_to_stash", "__remove_to_stash <path> <stash-id>",
+      [&scene, &editorState, state](std::vector<std::string> args) {
+        if (args.size() != 2) {
+          return makeError("usage: __remove_to_stash <path> <stash-id>");
+        }
+        return removeNodeToStash(scene, editorState, *state, args[0], args[1]);
+      });
+
+  bus.registerHandler(
+      "__restore_from_stash", "__restore_from_stash <stash-id>",
+      [&scene, state](std::vector<std::string> args) {
+        if (args.size() != 1) {
+          return makeError("usage: __restore_from_stash <stash-id>");
+        }
+        return restoreNodeFromStash(scene, *state, args[0]);
       });
 
   bus.registerHandler(
@@ -1016,12 +1130,17 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
                                  formatFloat(before.x) + " " +
                                  formatFloat(before.y) + " " +
                                  formatFloat(before.z));
-          node->setRotation(rotation);
+          if (nodes->size() == 1) {
+            node->setRotation(rotation);
+          } else {
+            node->setRotation((rotation * node->getRotation()).normalized());
+          }
         }
 
         CommandResult result = makeOk(
             nodes->size() == 1 ? "rotated " + (*nodes)[0]->getPath()
-                               : "rotated " + std::to_string(nodes->size()) + " node(s)",
+                               : "rotated " + std::to_string(nodes->size()) +
+                                     " node(s) by delta",
             makeQuatJson(rotation));
         result.metadata["inverse.line"] =
             nodes->size() == 1 ? inverseLines.front() : joinLines(inverseLines);
@@ -1067,12 +1186,18 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
                                  formatFloat(before.x) + " " +
                                  formatFloat(before.y) + " " +
                                  formatFloat(before.z));
-          node->setScale(scale);
+          if (nodes->size() == 1) {
+            node->setScale(scale);
+          } else {
+            node->setScale(Vec3f{before.x * scale.x, before.y * scale.y,
+                                 before.z * scale.z});
+          }
         }
 
         CommandResult result = makeOk(
             nodes->size() == 1 ? "scaled " + (*nodes)[0]->getPath()
-                               : "scaled " + std::to_string(nodes->size()) + " node(s)",
+                               : "scaled " + std::to_string(nodes->size()) +
+                                     " node(s) by ratio",
             makeVec3Json(scale));
         result.metadata["inverse.line"] =
             nodes->size() == 1 ? inverseLines.front() : joinLines(inverseLines);
@@ -1080,25 +1205,43 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
       });
 
   bus.registerHandler(
-      "add", "add (mesh|light|camera) <name>",
-      [&scene, &editorState](std::vector<std::string> args) {
-        if (args.size() != 2) {
-          return makeError("usage: add (mesh|light|camera) <name>");
+      "add", CommandMetadata{"add (mesh|light|camera) <name> [parentPath]",
+                              inverseFromMetadata(), true},
+      [&scene, &editorState, state](std::vector<std::string> args) {
+        if (args.size() != 2 && args.size() != 3) {
+          return makeError("usage: add (mesh|light|camera) <name> [parentPath]");
         }
 
         const std::string &kind = args[0];
         const std::string &name = args[1];
         auto node = SceneNode::create(kind + "_node");
         node->setName(name);
-        if (const auto parent = chooseCommandParent(editorState)) {
+        SceneNodeSharedPtr parent;
+        if (args.size() == 3) {
+          SceneNode *parentNode = nullptr;
+          const CommandResult found = requireNode(scene, args[2], parentNode);
+          if (!found.ok) {
+            return found;
+          }
+          parent = parentNode->shared_from_this();
+        } else {
+          parent = chooseCommandParent(editorState);
+        }
+        if (parent) {
           node->setParent(parent);
         }
+        const std::string stashId = allocateStashId(*state);
 
         if (kind == "mesh") {
           scene.addRenderable(node);
-          return makeOk("added mesh node " + node->getPath(),
-                        "{\"path\":\"" + jsonEscape(node->getPath()) +
-                            "\",\"kind\":\"mesh\"}");
+          CommandResult result = makeOk(
+              "added mesh node " + node->getPath(),
+              "{\"path\":\"" + jsonEscape(node->getPath()) + "\",\"kind\":\"mesh\"}");
+          result.metadata["inverse.line"] =
+              "__remove_to_stash " + quoteToken(node->getPath()) + " " + quoteToken(stashId);
+          result.metadata["redo.line"] =
+              "__restore_from_stash " + quoteToken(stashId);
+          return result;
         }
         if (kind == "camera") {
           const auto camera = node->addComponent<CameraComponent>();
@@ -1107,37 +1250,52 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
           }
           camera->get().updateMatrices();
           scene.addCamera(node);
-          return makeOk("added camera " + node->getPath(),
-                        "{\"path\":\"" + jsonEscape(node->getPath()) +
-                            "\",\"kind\":\"camera\"}");
+          CommandResult result = makeOk(
+              "added camera " + node->getPath(),
+              "{\"path\":\"" + jsonEscape(node->getPath()) + "\",\"kind\":\"camera\"}");
+          result.metadata["inverse.line"] =
+              "__remove_to_stash " + quoteToken(node->getPath()) + " " + quoteToken(stashId);
+          result.metadata["redo.line"] =
+              "__restore_from_stash " + quoteToken(stashId);
+          return result;
         }
         if (kind == "light") {
           scene.addRenderable(node);
-          scene.addLight(std::make_shared<DirectionalLight>());
-          return makeOk("added light placeholder " + node->getPath(),
-                        "{\"path\":\"" + jsonEscape(node->getPath()) +
-                            "\",\"kind\":\"light\"}");
+          const auto light = std::make_shared<DirectionalLight>();
+          scene.addLight(light);
+          state->attachedLights[node.get()] = light;
+          CommandResult result =
+              makeOk("added light placeholder " + node->getPath(),
+                     "{\"path\":\"" + jsonEscape(node->getPath()) + "\",\"kind\":\"light\"}");
+          result.metadata["inverse.line"] =
+              "__remove_to_stash " + quoteToken(node->getPath()) + " " + quoteToken(stashId);
+          result.metadata["redo.line"] =
+              "__restore_from_stash " + quoteToken(stashId);
+          return result;
         }
 
         return makeError("unknown add target: " + kind);
       });
 
   bus.registerHandler(
-      "remove", "remove <path>",
-      [&scene, &editorState](std::vector<std::string> args) {
+      "remove", CommandMetadata{"remove <path>", inverseFromMetadata(), true},
+      [&scene, &editorState, state](std::vector<std::string> args) {
         if (args.size() != 1) {
           return makeError("usage: remove <path>");
         }
-        SceneNode *node = nullptr;
-        const CommandResult found = requireNode(scene, args[0], node);
-        if (!found.ok) {
-          return found;
+        const auto selectionBeforeRemove = editorState.getSelected();
+        const std::string stashId = allocateStashId(*state);
+        CommandResult result =
+            removeNodeToStash(scene, editorState, *state, args[0], stashId);
+        if (!result.ok) {
+          return result;
         }
-        const auto removed = node->shared_from_this();
-        scene.removeRenderable(removed);
-        editorState.selectRemove(removed);
-        return makeOk("removed " + args[0],
-                      "{\"path\":\"" + jsonEscape(args[0]) + "\"}");
+        result.metadata["inverse.line"] =
+            "__restore_from_stash " + quoteToken(stashId) + "\n" +
+            buildSelectionCommand(selectionBeforeRemove);
+        result.metadata["redo.line"] =
+            "__remove_to_stash " + quoteToken(args[0]) + " " + quoteToken(stashId);
+        return result;
       });
 
   bus.registerHandler(
@@ -1340,6 +1498,14 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
   bus.registerCompleter(
       "set", 0, [&scene](const CompletionContext &context) {
         return completeSetTarget(scene, context);
+      });
+  bus.registerCompleter(
+      "get", 0, [&scene](const CompletionContext &context) {
+        return completeSetTarget(scene, context);
+      });
+  bus.registerCompleter(
+      "add", 0, [](const CompletionContext &context) {
+        return completeComponentTypes(context);
       });
 }
 

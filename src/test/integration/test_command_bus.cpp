@@ -557,6 +557,11 @@ void testConsolePanelBrowseAndAutocomplete() {
   EXPECT(panel.getInputText() == "set /world/cube ",
          "autocomplete completes set target path through bus completer");
 
+  panel.setInputText("move ");
+  panel.autocompleteInput();
+  EXPECT(panel.getInputText() == "move /",
+         "autocomplete keeps trailing space so first-arg completion can start");
+
   panel.setInputText("set /world/cube.t");
   panel.autocompleteInput();
   EXPECT(panel.getInputText() == "set /world/cube.translation ",

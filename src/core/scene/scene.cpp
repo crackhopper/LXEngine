@@ -375,4 +375,17 @@ void Scene::removeCamera(const SceneNodeSharedPtr &cameraNode) {
   m_renderables.erase(renderableIt);
 }
 
+void Scene::removeLight(const LightBaseSharedPtr &light) {
+  if (!light) {
+    return;
+  }
+
+  m_lights.erase(
+      std::remove_if(m_lights.begin(), m_lights.end(),
+                     [&light](const LightBaseSharedPtr &candidate) {
+                       return candidate == light;
+                     }),
+      m_lights.end());
+}
+
 } // namespace LX_core

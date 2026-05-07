@@ -81,7 +81,7 @@ private:
   };
 
   struct UndoEntry {
-    std::string executeLine;
+    std::string redoLine;
     std::string inverseLine;
   };
 

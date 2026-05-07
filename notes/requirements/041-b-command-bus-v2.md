@@ -137,4 +137,14 @@ class EditorState {
 
 ## 实施状态
 
-待实施。立项窗口：[REQ-040-a](finished/040-a-editor-command-bus.md) + [REQ-041-a](041-a-imgui-editor-mvp.md) 落地、且 Phase 1.5 编辑器至少跑过一段实战（暴露真实 undo / 多选 / 补全的痛点）后开工。与 [REQ-041-b](041-c-editor-multi-select.md) 协同推进（前者提供能力，后者提供 UI 表达）。
+2026-05-07 收口完成：
+
+- 依赖已满足：`REQ-040-a`、`REQ-041-a`、`REQ-036`、`REQ-035` 均已落地
+- 已实现：
+  - `CommandBus` 已支持参数补全注册、`complete()`、`undo()` / `redo()`、undo/redo 栈
+  - `EditorState` 已升级为多选集合，`getPrimarySelected()` 已提供主选锚点
+  - `select` / `move` / `rotate` / `scale` / `set` / `cam fov` / `preview` / `undo` / `redo` / `add` / `remove` 已接入 v2 语义
+  - `add` 已补 `<componentType>` completer；`get` / `set` 已共享字段路径补全
+  - `ViewportOverlay` gizmo 在多选拖拽时以 primary selection 为锚点，把同一 delta 应用到全部 selected，并以 multi-target / script 形式统一提交命令总线
+  - `src/test/integration/test_command_bus_v2.cpp` 与 `src/test/integration/test_viewport_overlay.cpp` 已覆盖路径/组件补全、add/remove undo·redo、多选 gizmo delta 提交
+- 结论：REQ-041-b 已满足归档前验证条件，可继续执行 finish-req / archive。
