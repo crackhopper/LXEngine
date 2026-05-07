@@ -135,7 +135,7 @@ class CameraComponent final : public IComponent {
 
 ## 后续工作
 
-- [REQ-040 Editor 命令总线](../040-a-editor-command-bus.md) — `move camera_main 1 0 0` 直接生效（走 SceneNode transform setter），不需要"camera"专门命令路径
+- [REQ-040 Editor 命令总线](040-a-editor-command-bus.md) — `move camera_main 1 0 0` 直接生效（走 SceneNode transform setter），不需要"camera"专门命令路径
 - [REQ-041 ImGui Editor MVP](../041-a-imgui-editor-mvp.md) — 选中 camera 出 TRS gizmo；camera frustum visualizer 从 owner.worldTransform 取 view 矩阵
 - 未来 `LightComponent` 走同样的"持有 SceneNode + 注册表登记"模式（`Scene::addLight(node)` 同形态）
 

@@ -1,8 +1,8 @@
 # REQ-040-a: Editor 命令总线 — 文本协议 + 注册表 + 历史 + 控制台后端
 
-> 本 REQ 是 [Phase 1.5 ImGui Editor MVP + 命令总线](../roadmaps/main-roadmap/phase-1.5-imgui-editor-mvp.md) 的第 6 步。在 roadmap 中以"REQ-151 Editor 命令总线"前向声明。
+> 本 REQ 是 [Phase 1.5 ImGui Editor MVP + 命令总线](../../roadmaps/main-roadmap/phase-1.5-imgui-editor-mvp.md) 的第 6 步。在 roadmap 中以"REQ-151 Editor 命令总线"前向声明。
 >
-> 2026-05-06 拆分：原 `040-editor-command-bus.md` 即本档（v1，dispatch + history + verb 补全 + 单选 EditorState）。v2（参数补全 / undo·redo / EditorState 多选）移到 [REQ-040-b 命令总线 v2](041-b-command-bus-v2.md)。命令权限、throttling、MCP tool schema 自动生成等更后置项在 040-b 的"后续工作"段记账。
+> 2026-05-06 拆分：原 `040-editor-command-bus.md` 即本档（v1，dispatch + history + verb 补全 + 单选 EditorState）。v2（参数补全 / undo·redo / EditorState 多选）移到 [REQ-041-b 命令总线 v2](../041-b-command-bus-v2.md)。命令权限、throttling、MCP tool schema 自动生成等更后置项在 041-b 的"后续工作"段记账。
 
 ## 背景
 
@@ -98,7 +98,7 @@ class CommandBus {
 | `cam` | `cam (look-at \| reset \| fov ...)` | 编辑器相机控制 |
 | `preview` | `preview (on \| off \| toggle)` | F 键全屏切换游戏相机预览 |
 
-- 内置命令的实现按主题拆分：`src/core/editor/commands/transform_cmds.cpp` / `scene_cmds.cpp` / `camera_cmds.cpp` / `light_cmds.cpp` / `view_cmds.cpp`
+- 内置命令统一由 `src/core/editor/commands/builtin_commands.cpp` / `.hpp` 注册；当前实现保留按主题分组的内部 helper，但不强制拆成多个翻译单元
 - 启动时统一注册：`registerBuiltinCommands(CommandBus&, EditorState&, Scene&)`
 
 ### R4: `CommandResult.structured` JSON
@@ -125,7 +125,7 @@ class CommandBus {
 - 上半 area：滚动输出区，列出 history 中每条 `< line` + `> result.message`
 - 下半 area：input text + 回车提交
 - 上下方向键浏览历史（命令）
-- Tab 触发自动补全（基于 `CommandBus::listVerbs()`）—— v1 仅 verb 补全；参数补全见 [REQ-040-b](041-b-command-bus-v2.md)
+- Tab 触发自动补全（基于 `CommandBus::listVerbs()`）—— v1 仅 verb 补全；参数补全见 [REQ-041-b](041-b-command-bus-v2.md)
 - 右上角"clear"按钮清空显示但不清 history（history 用于 undo / agent 训练）
 
 ### R6: `EditorState` 选中状态
@@ -135,15 +135,16 @@ class CommandBus {
 ```cpp
 class EditorState {
  public:
-  void select(SceneNode* node);
+  void select(const SceneNodeSharedPtr& node);
   void deselect();
-  SceneNode* getSelected() const;
+  SceneNodeSharedPtr getSelected() const;
 };
 ```
 
+- 仓库 style guide 禁止把原始指针当长期对象引用；实现使用 `std::weak_ptr<SceneNode>` 持有 non-owning 选中态，并在 `getSelected()` 时返回 `SceneNodeSharedPtr`
 - `select` 命令调用本接口
 - gizmo 与 inspector 都查这里
-- v1 单选；多选移到 [REQ-040-b](041-b-command-bus-v2.md)（含 EditorState API 升级）
+- v1 单选；多选移到 [REQ-041-b](041-b-command-bus-v2.md)（含 EditorState API 升级）
 
 ### R7: 命令脚本入口（agent 友好）
 
@@ -161,7 +162,7 @@ class CommandBus {
 ### R8: 安全约束
 
 - 命令不直接执行任意文件系统 I/O（`add mesh /etc/passwd` 不能读 root）
-- `add mesh <path>` 的 path 必须经过 `assets/` 目录策略校验（沿用 [REQ-010](finished/010-test-assets-and-layout.md) / [REQ-011](finished/011-gltf-pbr-loader.md) 的 asset 路径解析）
+- `add mesh <path>` 的 path 必须经过 `assets/` 目录策略校验（沿用 [REQ-010](010-test-assets-and-layout.md) / [REQ-011](011-gltf-pbr-loader.md) 的 asset 路径解析）
 - 不引入 `exec` / `eval` / shell 命令
 - 命令不直接 `assert` 退出进程；非法输入仅返回 `{ ok: false }`
 
@@ -181,16 +182,16 @@ class CommandBus {
 - `src/core/editor/command_bus.hpp` / `.cpp`（新）
 - `src/core/editor/editor_state.hpp` / `.cpp`（新）
 - `src/core/editor/console_panel.hpp` / `.cpp`（新；依赖 ImGui）
-- `src/core/editor/commands/`（新目录，按主题拆 5 个 .cpp）
+- `src/core/editor/commands/builtin_commands.hpp` / `.cpp`（新；内置命令统一注册）
 - `src/demos/scene_viewer/main.cpp`（启动时构造 bus + 注册 builtins + 加载 console panel）
 - `src/test/integration/test_command_bus.cpp`（新）
 
 ## 边界与约束
 
 - 协议**简单 verb arg**，**不**用 lisp / s-expr / json-rpc 输入（输出可 json，输入保持人类友好）
-- v1 **不**做参数补全（只 verb 补全）；参数补全在 [REQ-040-b](041-b-command-bus-v2.md)
+- v1 **不**做参数补全（只 verb 补全）；参数补全在 [REQ-041-b](041-b-command-bus-v2.md)
 - v1 **不**做命令权限 / 角色（每个命令都可被任何 caller 调）；权限留 Phase 6+ 收口（在 040-b 后续工作段记账）
-- v1 **不**做 undo / redo（history 字段已预留）；逻辑在 [REQ-040-b](041-b-command-bus-v2.md)
+- v1 **不**做 undo / redo（history 字段已预留）；逻辑在 [REQ-041-b](041-b-command-bus-v2.md)
 - v1 **不**做命令 throttling / rate limit（在 040-b 后续工作段记账）
 - v1 **不**做 MCP 暴露（推到 Phase 1.6，本 REQ 接口形态对齐 MCP 即可）
 - 命令实现可能依赖具体子系统（scene / camera / debug_draw），但 `CommandBus` 本身保持纯
@@ -198,19 +199,24 @@ class CommandBus {
 
 ## 依赖
 
-- [REQ-035 Transform 组件](finished/035-transform-component.md) — `move/rotate/scale` 直接调 setter
-- [REQ-036 路径查询](finished/036-scene-node-path-lookup.md) — 所有 `<path>` 参数靠 `findByPath`
-- [REQ-037-b Camera 作为 component](finished/037-b-camera-as-component.md) — `move camera_main` / `cam ...` 命令统一接口
-- [REQ-038 picking](finished/038-a-ray-aabb-picking-min.md) — 视口点击 → 内部生成 `select <path>` 命令
-- [REQ-017](finished/017-imgui-overlay.md) ImGui overlay — 控制台面板的渲染
+- [REQ-035 Transform 组件](035-transform-component.md) — `move/rotate/scale` 直接调 setter
+- [REQ-036 路径查询](036-scene-node-path-lookup.md) — 所有 `<path>` 参数靠 `findByPath`
+- [REQ-037-b Camera 作为 component](037-b-camera-as-component.md) — `move camera_main` / `cam ...` 命令统一接口
+- [REQ-038 picking](038-a-ray-aabb-picking-min.md) — 视口点击 → 内部生成 `select <path>` 命令
+- [REQ-017](017-imgui-overlay.md) ImGui overlay — 控制台面板的渲染
 
 ## 后续工作
 
-- [REQ-041-a ImGui Editor MVP](041-a-imgui-editor-mvp.md) — 接入控制台面板；gizmo 拖拽结束后发 `move/rotate/scale` 命令
+- [REQ-041-a ImGui Editor MVP](../041-a-imgui-editor-mvp.md) — 接入控制台面板；gizmo 拖拽结束后发 `move/rotate/scale` 命令
 - **Phase 1.6 MCP shim**：起一个 stdio JSON-RPC server，暴露 `dispatch_command(line: string) -> { ok, message, structured }` 工具；server 内部就是调 `bus.dispatch(line)`，~50 LOC
-- [REQ-040-b 命令总线 v2](041-b-command-bus-v2.md)：参数补全 + undo / redo + EditorState 多选；命令权限、throttling、MCP tool schema 自动从 brief 生成 在该 REQ 的"后续工作"中记账
-- 脚本文件加载（`source <file>`）+ 命令脚本作为 asset 类型登记进 [Phase 3 资产管线](../roadmaps/main-roadmap/phase-3-asset-pipeline.md)（040-b 落地后再立项）
+- [REQ-041-b 命令总线 v2](../041-b-command-bus-v2.md)：参数补全 + undo / redo + EditorState 多选；命令权限、throttling、MCP tool schema 自动从 brief 生成 在该 REQ 的"后续工作"中记账
+- 脚本文件加载（`source <file>`）+ 命令脚本作为 asset 类型登记进 [Phase 3 资产管线](../../roadmaps/main-roadmap/phase-3-asset-pipeline.md)（041-b 落地后再立项）
 
 ## 实施状态
 
-待实施。Phase 1.5 第 6 步。在 [REQ-035](finished/035-transform-component.md) / [REQ-036](finished/036-scene-node-path-lookup.md) / [REQ-037-a](finished/037-a-component-model-foundation.md) / [REQ-037-b](finished/037-b-camera-as-component.md) / [REQ-038](finished/038-a-ray-aabb-picking-min.md) 落地后开工（每个内置命令依赖其中至少一个）。
+已完成并验证，2026-05-07 归档。
+
+- 验证结论：R1-R8 已对照当前代码逐条核实；其中 R3 的“按主题拆 5 个 .cpp”落地为统一的 `builtin_commands.cpp` / `.hpp` 注册入口，R6 的选中态接口按 style guide 调整为 `weak_ptr` + `SceneNodeSharedPtr`，两者均已按代码事实回写本文
+- 代码入口：`src/core/editor/command_bus.*`、`src/core/editor/editor_state.*`、`src/core/editor/console_panel.*`、`src/core/editor/commands/builtin_commands.*`
+- demo 接入：`src/demos/scene_viewer/main.cpp` 构造 `CommandBus` / `EditorState` / `ConsolePanel` 并接入 overlay
+- 测试：`ninja -C build test_command_bus demo_scene_viewer`、`xvfb-run -a ./build/src/test/test_command_bus`、`xvfb-run -a ctest --output-on-failure -R test_command_bus`

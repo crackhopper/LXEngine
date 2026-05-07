@@ -54,7 +54,6 @@
 | 文件号 | 主题 | 时机 | 说明 |
 |--------|------|------|------|
 | [038-a](finished/038-a-ray-aabb-picking-min.md) | ray-AABB picking 暴力版 | 已完成 | AABB + ray slab |
-| [040-a](040-a-editor-command-bus.md) | Editor 命令总线 | Phase 1.5 第 6 步 | 文本协议 + 控制台 + 单选 |
 | [041-a](041-a-imgui-editor-mvp.md) | ImGui Editor MVP | Phase 1.5 第 7 步 | ImGuizmo + 4 面板 + F 键预览 |
 | [042](042-render-target-desc-and-target.md) | RenderTarget 拆 desc + binding | Phase 1.5 完工后 / Phase 1 REQ-103 之前 | 跨 pass 资源前置 |
 
@@ -78,7 +77,7 @@
 
 ## 历史
 
-- 2026-05-07：`REQ-039-a` DebugDraw 子系统完成验证并归档到 `finished/039-a-debug-draw-subsystem.md`，pending 队列从 `REQ-040-a` 开始。
+- 2026-05-07：`REQ-039-a` DebugDraw 子系统完成验证并归档到 `finished/039-a-debug-draw-subsystem.md`，pending 队列从 `REQ-041-a` 开始。
 - 2026-05-06（晚整理）：把所有 v2 REQ 重排到 041-* 后缀族下（实施顺序 = 文件号顺序，所以 v2 必须排在 041-a 之后才正确）。同时把"命令总线 v2"和"编辑器 polish v2"两个原本打包的 REQ 进一步拆细：041-b 命令总线 v2 / 041-c 多选·框选 / 041-d undo·redo UI / 041-e Rename·Duplicate / 041-f chrome / 041-g 组件 v2 multi+enable / 041-h mesh triangle picking / 041-i DebugDraw v2 / 041-j 组件依赖声明（ComponentTraits）。每个 REQ 一个连续实施周期。
 - 2026-05-06：把原 `038 / 039 / 040 / 041` 四个 Phase 1.5 v1 REQ 全部按后缀族重命名为 `038-a / 039-a / 040-a / 041-a`，并把它们各自显式延后的 v2 工作整理到新的 `037-c / 038-b / 039-b / 040-b / 041-b` 文件中（这些 v2 文件随后被 2026-05-06 晚整理重排到 041-* 家族）。同步更新所有 cross-ref 路径与 roadmap。
 - 2026-05-01：补充 `NNN-a` / `NNN-b` 后缀族约定。需求讨论扩展导致局部拆分时，优先把原 `020` 改成 `020-a`、新增 `020-b`，不再默认整体后移后续编号。
@@ -97,3 +96,5 @@
 - `finished/`：归档需求（按时间快照不重排）
 - `.codex/skills/draft-req/SKILL.md`：起草新 REQ 的工作流，对接本约定
 - `notes/roadmaps/`：跨 REQ 的优先路径与阶段编排
+
+- 2026-05-07：`REQ-040-a` Editor 命令总线完成验证并归档到 `finished/040-a-editor-command-bus.md`，pending 队列从 `REQ-041-a` 开始。

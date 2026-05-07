@@ -1,10 +1,10 @@
 # REQ-041-b: 编辑器命令总线 v2 — 参数补全 + undo·redo + 多选 EditorState
 
-> 拆分自 2026-05-06 整理：原 [REQ-040-a](040-a-editor-command-bus.md) v1 把"参数补全 / undo·redo / 多选"显式留给 v2，本 REQ 收口这条 v2 路径。命令权限、throttling、MCP tool schema 自动从 brief 生成等更后置项见"后续工作"段。
+> 拆分自 2026-05-06 整理：原 [REQ-040-a](finished/040-a-editor-command-bus.md) v1 把"参数补全 / undo·redo / 多选"显式留给 v2，本 REQ 收口这条 v2 路径。命令权限、throttling、MCP tool schema 自动从 brief 生成等更后置项见"后续工作"段。
 
 ## 背景
 
-[REQ-040-a 命令总线](040-a-editor-command-bus.md) 已落地：`verb arg1 arg2` 文本协议、handler 注册表、`{ ok, message, structured }` 返回、history 队列、verb 级 Tab 补全、ImGui 控制台面板、`EditorState` 单选。这些把"键盘 / 控制台 / gizmo 三种输入路径全部走命令总线"做出来了。
+[REQ-040-a 命令总线](finished/040-a-editor-command-bus.md) 已落地：`verb arg1 arg2` 文本协议、handler 注册表、`{ ok, message, structured }` 返回、history 队列、verb 级 Tab 补全、ImGui 控制台面板、`EditorState` 单选。这些把"键盘 / 控制台 / gizmo 三种输入路径全部走命令总线"做出来了。
 
 进入实战使用后会马上撞到三个 v1 显式延后的能力：
 
@@ -89,7 +89,7 @@ class EditorState {
 
 - v1 `getSelected() -> SceneNode &` 升级为返集合；调用方迁移：编辑器 inspector 仍只显示 `getPrimarySelected()`；gizmo 在 `getPrimarySelected()` 的 transform 上挂，但拖拽时把 delta 应用到所有 selected
 - 命令总线 `select <p1> <p2> ...` 支持任意数量 path；`select` 不传参 = `deselect()`
-- 控制台 `move /a /b 1 0 0` 解析：从尾部贪心吃 numeric token 作 args，剩下 leading token 作多 path（启发式 — v2 显式约定）；如不便 LLM 解析，提供等价的 `select /a /b ; move 1 0 0` 串行式语法（`;` 分号在 [REQ-040-a R7](040-a-editor-command-bus.md) `dispatchScript` 已天然支持）
+- 控制台 `move /a /b 1 0 0` 解析：从尾部贪心吃 numeric token 作 args，剩下 leading token 作多 path（启发式 — v2 显式约定）；如不便 LLM 解析，提供等价的 `select /a /b ; move 1 0 0` 串行式语法（`;` 分号在 [REQ-040-a R7](finished/040-a-editor-command-bus.md) `dispatchScript` 已天然支持）
 
 ### R4: 测试覆盖
 
@@ -122,7 +122,7 @@ class EditorState {
 
 ## 依赖
 
-- [REQ-040-a 编辑器命令总线](040-a-editor-command-bus.md) — dispatch / history / `CommandBrief` 协议已就位
+- [REQ-040-a 编辑器命令总线](finished/040-a-editor-command-bus.md) — dispatch / history / `CommandBrief` 协议已就位
 - [REQ-041-a ImGui Editor MVP](041-a-imgui-editor-mvp.md) — 控制台 Tab 补全 / 快捷键路由
 - [REQ-036 路径查询](finished/036-scene-node-path-lookup.md) — path completer 用 `Scene::listAllPaths()`
 - [REQ-035 Transform 组件](finished/035-transform-component.md) — undo 反向 transform 命令依赖 setter
@@ -137,4 +137,4 @@ class EditorState {
 
 ## 实施状态
 
-待实施。立项窗口：[REQ-040-a](040-a-editor-command-bus.md) + [REQ-041-a](041-a-imgui-editor-mvp.md) 落地、且 Phase 1.5 编辑器至少跑过一段实战（暴露真实 undo / 多选 / 补全的痛点）后开工。与 [REQ-041-b](041-c-editor-multi-select.md) 协同推进（前者提供能力，后者提供 UI 表达）。
+待实施。立项窗口：[REQ-040-a](finished/040-a-editor-command-bus.md) + [REQ-041-a](041-a-imgui-editor-mvp.md) 落地、且 Phase 1.5 编辑器至少跑过一段实战（暴露真实 undo / 多选 / 补全的痛点）后开工。与 [REQ-041-b](041-c-editor-multi-select.md) 协同推进（前者提供能力，后者提供 UI 表达）。

@@ -8,7 +8,7 @@
 
 ## 当前实施状态
 
-部分开工。`REQ-035` Transform 组件、`REQ-036` 路径查询、`REQ-037-a` component 模型基础、`REQ-037-b` camera component 接入、`REQ-038-a` ray-AABB picking 已完成；后续从 `REQ-039-a` 开始继续推进。设计已收口在工作机的临时计划文件 `~/.claude/plans/robust-mapping-flame.md`（不在仓库内），本 phase 文档是其落地索引。
+部分开工。`REQ-035` Transform 组件、`REQ-036` 路径查询、`REQ-037-a` component 模型基础、`REQ-037-b` camera component 接入、`REQ-038-a` ray-AABB picking 已完成；后续从 `REQ-041-a` 开始继续推进。设计已收口在工作机的临时计划文件 `~/.claude/plans/robust-mapping-flame.md`（不在仓库内），本 phase 文档是其落地索引。
 
 ## 范围与边界
 
@@ -50,8 +50,8 @@
 
 | REQ | 标题 | 主要工作 |
 |-----|------|----------|
-| [REQ-039-a](../../requirements/039-a-debug-draw-subsystem.md) | DebugDraw 子系统 | 公开 API：`drawLine / wireSphere / frustum / cone / arrow / axis`；累积每帧 line 顶点；line topology pipeline；`Layer_EditorOverlay` mask；FrameGraph 后置一个 debug overlay pass。**易用性硬指标：业务代码一行调用画一根世界空间线。** |
-| [REQ-040-a](../../requirements/040-a-editor-command-bus.md) | Editor 命令总线 | `verb arg1 arg2` 文本协议；handler 注册表；返回 `{ ok, message, payload }`；初版命令集：`select / deselect / move / rotate / scale / add / remove / list / set / get / cam / preview`；预留 history（为后续 undo / MCP 服务） |
+| [REQ-039-a](../../requirements/finished/039-a-debug-draw-subsystem.md) | DebugDraw 子系统 | 公开 API：`drawLine / wireSphere / frustum / cone / arrow / axis`；累积每帧 line 顶点；line topology pipeline；`Layer_EditorOverlay` mask；FrameGraph 后置一个 debug overlay pass。**易用性硬指标：业务代码一行调用画一根世界空间线。** |
+| [REQ-040-a](../../requirements/finished/040-a-editor-command-bus.md) | Editor 命令总线 | `verb arg1 arg2` 文本协议；handler 注册表；返回 `{ ok, message, payload }`；初版命令集：`select / deselect / move / rotate / scale / add / remove / list / set / get / cam / preview`；预留 history（为后续 undo / MCP 服务） |
 | [REQ-041-a](../../requirements/041-a-imgui-editor-mvp.md) | ImGui Editor MVP | 接入 ImGuizmo；scene tree / inspector / console / viewport overlay 四个面板；F 键全屏切换游戏相机；视锥与 directional light 用 DebugDraw 画出 |
 
 ### Phase 1.5 v2（编辑器 polish 等 — 全部归到 041-* 后缀族，不阻塞 Phase 1 / Phase 2 主线）

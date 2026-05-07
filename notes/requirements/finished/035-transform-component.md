@@ -10,7 +10,7 @@
 2. **没有 quaternion 表示**：旋转用矩阵存储，gizmo 旋转交互（拖拽 ImGuizmo 旋转环）会产生欧拉积累误差；TRS 命令（如 `rotate <node> 0 90 0`）也无法稳定地表达"绕 Y 轴 90°"。
 3. **对接命令总线不友好**：编辑器命令 `move <node> 1 0 0` / `rotate <node> 0 90 0` / `scale <node> 2 2 2` 都希望直接读写独立的 t / r / s 三段，而不是把 mat4 拆开。
 
-[REQ-041 ImGui Editor MVP](../041-a-imgui-editor-mvp.md) 与 [REQ-040 Editor 命令总线](../040-a-editor-command-bus.md) 都依赖一个稳定可分解的 transform 值类型。
+[REQ-041 ImGui Editor MVP](../041-a-imgui-editor-mvp.md) 与 [REQ-040 Editor 命令总线](040-a-editor-command-bus.md) 都依赖一个稳定可分解的 transform 值类型。
 
 ## 目标
 
@@ -152,7 +152,7 @@ class SceneNode {
 
 - [REQ-036 场景节点路径查询](036-scene-node-path-lookup.md) — 路径解析时复用 SceneNode 的 transform setter
 - [REQ-037 Camera 作为 SceneNode](../037-camera-as-scene-node.md) — Camera 直接消费 `SceneNode::getLocalTransform()`
-- [REQ-040 Editor 命令总线](../040-a-editor-command-bus.md) — `move / rotate / scale` 命令直接调 R4 三个 setter
+- [REQ-040 Editor 命令总线](040-a-editor-command-bus.md) — `move / rotate / scale` 命令直接调 R4 三个 setter
 - [REQ-041 ImGui Editor MVP](../041-a-imgui-editor-mvp.md) — inspector 把 `Transform` 渲染成 3 行 drag float
 
 ## 实施状态

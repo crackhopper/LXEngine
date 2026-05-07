@@ -56,7 +56,7 @@
 
 ### R4: Console 面板
 
-复用 [REQ-040](040-a-editor-command-bus.md) R5 的 `ConsolePanel`；本 REQ 仅在 main 里实例化并加进 ImGui frame loop。
+复用 [REQ-040](finished/040-a-editor-command-bus.md) R5 的 `ConsolePanel`；本 REQ 仅在 main 里实例化并加进 ImGui frame loop。
 
 ### R5: Viewport overlay（gizmo + 选中线框 + visualizer）
 
@@ -121,7 +121,7 @@ void renderOverlay(ImDrawList* dl, const Camera &editorCam, const Scene &scene, 
 - 快捷键删除 → `bus.dispatch("remove <path>")`
 - inspector 字段改 → `bus.dispatch("set <path>.<field> <value>")`
 
-理由：所有 history / undo / agent-replay 都依赖单点入口。绝**不**给 UI 提供"绕过 CommandBus 直接改 scene"的捷径，否则 [REQ-040](040-a-editor-command-bus.md) 的 P-19 价值消失。
+理由：所有 history / undo / agent-replay 都依赖单点入口。绝**不**给 UI 提供"绕过 CommandBus 直接改 scene"的捷径，否则 [REQ-040](finished/040-a-editor-command-bus.md) 的 P-19 价值消失。
 
 ## 测试
 
@@ -178,14 +178,14 @@ R6 引入的 `Camera::m_active` 与 [REQ-042 R6](042-render-target-desc-and-targ
 - [REQ-037-a IComponent 基础](finished/037-a-component-model-foundation.md) + [REQ-037-b Camera 作为 component](finished/037-b-camera-as-component.md) — gizmo 也能作用于 camera 节点；inspector 按 component 列表渲染
 - [REQ-038 picking](finished/038-a-ray-aabb-picking-min.md) — 视口点击
 - [REQ-039 DebugDraw](039-a-debug-draw-subsystem.md) — frustum / arrow / wireBox 可视化
-- [REQ-040 命令总线](040-a-editor-command-bus.md) — 所有交互的统一入口
+- [REQ-040 命令总线](finished/040-a-editor-command-bus.md) — 所有交互的统一入口
 - [REQ-017](finished/017-imgui-overlay.md) ImGui + SDL3 + Vulkan 基础设施
 - [REQ-018](finished/018-debug-panel-helper.md) 现有 debug panel helper（可选复用）
 
 ## 后续工作
 
 - 编辑器 v2 polish 一族（041-b ~ 041-f）— 命令总线 v2、多选 / 框选、undo·redo UI、节点 Rename / Duplicate、菜单栏 / 工具栏 / 主题；详见上方 split 头注
-- **Phase 1.6 MCP shim**：基于本 REQ + [REQ-040-a](040-a-editor-command-bus.md) 的命令总线起一个 stdio MCP server。外部 AI 控制编辑器 = MCP 客户端 dispatch_command 工具
+- **Phase 1.6 MCP shim**：基于本 REQ + [REQ-040-a](finished/040-a-editor-command-bus.md) 的命令总线起一个 stdio MCP server。外部 AI 控制编辑器 = MCP 客户端 dispatch_command 工具
 - **[REQ-042](042-render-target-desc-and-target.md) RenderTarget 重写**完成后：把 F 键全屏预览升级为 picture-in-picture 视口（同帧并排渲染编辑器相机 + 游戏相机）
 - **REQ-109 PointLight + SpotLight** 落地后：在 viewport_overlay 加几行调用 `DebugDraw::wireSphere` / `cone`，point/spot 影响范围一次性接通
 - **Phase 9 Web 编辑器**：本 REQ 的 4 面板 + 命令总线接口直接搬到浏览器；UI 重写为 Vue，命令空间完全复用
