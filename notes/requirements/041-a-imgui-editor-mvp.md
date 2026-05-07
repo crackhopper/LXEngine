@@ -77,7 +77,7 @@ void renderOverlay(ImDrawList* dl, const Camera &editorCam, const Scene &scene, 
 3. **选中线框**：`DebugDraw::wireBox(selected.getWorldAABB(), Color::yellow())`
 4. **相机视锥可视化**：遍历 `Scene::m_cameras`（除编辑器自己），对每个 camera 调 `DebugDraw::frustum(cam.viewProj(), Color::white())`
 5. **方向光箭头**：遍历 `Scene::getLights()`，对每个 directional light 调 `DebugDraw::arrow(origin, origin + dir * len, Color::yellow())`；point/spot 等待 [REQ-109](../roadmaps/main-roadmap/phase-1-rendering-depth.md#req-109--pointlight--spotlight--统一多光源合同) 落地后追加（DebugDraw API 已为它们准备好）
-6. **picking**：监听视口区域鼠标点击；命中时 → `editorCam.pickRay(...)` → `scene.pick(ray, Layer_All)` → 发 `select <path>` 命令
+6. **picking**：监听 `Viewport` 面板内容区域鼠标点击；命中时 → `editorCam.pickRay(...)` → `scene.pick(ray, Layer_All)` → 发 `select <path>` 命令
 7. ImGuizmo 的鼠标 hover 优先于视口点击（避免拖 gizmo 时误中点击 picking）
 
 ### R6: F 键预览切换
@@ -96,8 +96,8 @@ void renderOverlay(ImDrawList* dl, const Camera &editorCam, const Scene &scene, 
 - 编辑器 camera 默认 attach 到 root，名字 `editor_cam`，cullingMask 含 `Layer_EditorOverlay`
 - 一个示例 game camera attach 到 root，名字 `game_cam`，cullingMask 不含 `Layer_EditorOverlay`
 - 一个 directional light（与现有 demo 一致）
-- 一个 ground plane + 一个 cube（保留现有 demo 视觉，让 picking 有目标）
-- 启动时打开 4 个面板，按 ImGui dock 默认布局
+- 一个 ground plane + 一个可 pick 主 mesh（当前 demo 使用 `DamagedHelmet`，保留现有视觉并满足 picking 目标）
+- 启动时打开 4 个面板，按默认 editor 布局；若当前 ImGui 集成未启用 docking API，则退化为固定窗口布局，语义等同
 
 ### R8: 关键操作的快捷键
 
@@ -128,15 +128,15 @@ void renderOverlay(ImDrawList* dl, const Camera &editorCam, const Scene &scene, 
 启动 `demo_scene_viewer` 后人工跑：
 
 1. 场景树面板列出 root + 所有子节点
-2. 点击 cube → cube 被选中（高亮 + inspector 显示其 transform）
-3. 拖拽 gizmo 三种模式（W / E / R 切换）→ world matrix 实时更新；放开后控制台出现 `move / rotate / scale` 命令记录
+2. 点击主 mesh → 节点被选中（高亮 + inspector 显示其 transform）
+3. 拖拽 gizmo 三种模式（W / E / R 切换）→ 视口内实时预览；放开后控制台出现 `move / rotate / scale` 命令记录
 4. 视锥框（线框）从编辑器视角看到 game_cam 的 frustum
 5. directional light 显示为线框箭头
-6. 控制台输入 `move /cube 5 0 0` → cube 平移；inspector 同步刷新
+6. 控制台输入 `move <main-mesh-path> 5 0 0` → 主 mesh 平移；inspector 同步刷新
 7. 控制台输入 `list nodes` → 输出场景树文本快照；structured 含 JSON
 8. 按 F → 全屏切到 game_cam；gizmo / 视锥 / 光源箭头自动消失
 9. 再按 F → 回到编辑器视图
-10. 视口空白处点击 → deselect；命中 cube 再点 → select cube
+10. 视口空白处点击 → deselect；命中主 mesh 再点 → select 对应节点
 
 自动化（非阻塞）：
 
@@ -198,21 +198,30 @@ R6 引入的 `Camera::m_active` 与 [REQ-042 R6](042-render-target-desc-and-targ
 
 - R1：`third_party/ImGuizmo/`、`src/core/editor/gizmo_adapter.{hpp,cpp}`、对应测试已存在
 - R2：`SceneTreePanel` 已实现 path jump / select / remove / 高亮
+- R3：`InspectorPanel` 已实现 name / TRS / visibility mask / camera detail / light fields，提交统一走 CommandBus
 - R4：`ConsolePanel` 已接入 `scene_viewer`
-- R5：`ViewportOverlay` 已实现 gizmo、debug-draw 可视化、picking、preview hint
+- R5：`ViewportOverlay` 已实现独立 `Viewport` 面板、panel-content rect 绑定、gizmo、debug-draw 可视化、picking、preview hint
 - R6：preview on/off/toggle + `EditorState::syncActiveCamera()` 已切换 editor / game camera active 状态
-- R7：demo 初始场景含 `editor_cam` / `game_cam` / directional light / ground / helmet
+- R7：demo 初始场景含 `editor_cam` / `game_cam` / directional light / ground / 可 pick 主 mesh `helmet`，并自动打开默认 editor 布局
+- R8：`W/E/R` / `F` / `Esc` / `Delete` 已接线到 gizmo mode / preview / deselect / remove
+- R9：inspector / console / picking / preview / gizmo release 的持久状态提交均经 CommandBus
 
 当前剩余风险 / drift（待 verifier 最终裁定）：
 
-- R5 仍使用主 viewport 前景层，而非独立 viewport panel 内容区；当前 demo 没有单独 viewport 子窗口，所以这是实现简化，不影响单窗口 MVP 验收
-- R7 的“dock 默认布局”受当前仓库集成的 ImGui 非 docking 分支限制；现实现为 4 个独立窗口同时打开
-- demo 主 mesh 维持 `helmet`，不是文档背景段落里的通用 `cube`；验收语义仍满足“一个可 pick 主 mesh”
+- 当前默认布局在无 docking API 的 ImGui 集成下以固定窗口布局实现；语义满足 R7，但不是真正 DockBuilder 节点树
+- light inspector 仍映射 scene-level directional light + light-named placeholder node；当前 MVP / demo 足够，多 light 精确绑定留后续 REQ
 
 本次验证命令：
 
-- `cmake --build build --target test_scene_tree_panel test_inspector_panel test_viewport_overlay test_gizmo_adapter demo_scene_viewer -j4`
-- `cd build && ctest --output-on-failure -R 'test_(scene_tree_panel|inspector_panel|viewport_overlay|gizmo_adapter)$'`
-- `cd build && ctest --output-on-failure -R 'test_(command_bus|imgui_overlay)$'`
+- `cmake --build build --target demo_scene_viewer test_scene_tree_panel test_inspector_panel test_viewport_overlay test_scene_viewer_layout test_gizmo_adapter test_command_bus test_imgui_overlay -j4`
+- `./build/src/test/test_scene_tree_panel`
+- `./build/src/test/test_inspector_panel`
+- `./build/src/test/test_viewport_overlay`
+- `./build/src/test/test_scene_viewer_layout`
+- `./build/src/test/test_gizmo_adapter`
+- `./build/src/test/test_command_bus`
+- `./build/src/test/test_imgui_overlay`
+- `ctest --test-dir build --output-on-failure -R 'test_(scene_tree_panel|inspector_panel|viewport_overlay|scene_viewer_layout|gizmo_adapter|command_bus|imgui_overlay)$'`
+- `ctest --test-dir build --output-on-failure -L auto -LE requires_video_device`
 
-结论：保留为 active requirement，建议按当前实现重新执行 `finish-req` 复核；若 verifier 接受上述剩余 drift，可归档。
+结论：R1-R9 已可按当前实现复核；建议重新执行 `finish-req`，若接受上述剩余风险，可归档。

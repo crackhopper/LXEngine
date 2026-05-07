@@ -35,6 +35,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_inspector_panel
   test_viewport_overlay
   test_gizmo_adapter
+  test_scene_viewer_layout
   test_gltf_loader
 
   # test_render_sphere
@@ -124,6 +125,17 @@ endif()
 
 if(TARGET test_gizmo_adapter)
   target_link_libraries(test_gizmo_adapter PRIVATE imgui)
+endif()
+
+if(TARGET test_scene_viewer_layout)
+  target_sources(test_scene_viewer_layout PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/scene_viewer/ui_overlay.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/scene_viewer/camera_rig.cpp
+  )
+  target_include_directories(test_scene_viewer_layout PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/..
+  )
+  target_link_libraries(test_scene_viewer_layout PRIVATE imgui)
 endif()
 
 set(TEST_APP_EXE_LIST
