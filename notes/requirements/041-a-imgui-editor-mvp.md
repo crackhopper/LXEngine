@@ -192,4 +192,29 @@ R6 引入的 `Camera::m_active` 与 [REQ-042 R6](042-render-target-desc-and-targ
 
 ## 实施状态
 
-待实施。Phase 1.5 第 7 步（收口）。前 6 个 REQ（035 / 036 / 037-a / 037-b / 038-a / 039-a / 040-a）必须全部就位后开工；其中 037-a / 037-b 已完成。
+2026-05-07 finish-req 核对结论：**部分实现，未完成，禁止归档**。
+
+已验证落地：
+
+- R1：`third_party/ImGuizmo/`、`src/core/editor/gizmo_adapter.{hpp,cpp}`、对应测试已存在
+- R2：`SceneTreePanel` 已实现 path jump / select / remove / 高亮
+- R4：`ConsolePanel` 已接入 `scene_viewer`
+- R5：`ViewportOverlay` 已实现 gizmo、debug-draw 可视化、picking、preview hint
+- R6：preview on/off/toggle + `EditorState::syncActiveCamera()` 已切换 editor / game camera active 状态
+- R7：demo 初始场景含 `editor_cam` / `game_cam` / directional light / ground / helmet
+
+仍阻塞归档：
+
+- R3 未完成：inspector 仅支持 name + TRS；缺 visibility mask、camera 详细字段、light 字段；TRS 仍走 `move/rotate/scale`，未统一成 `set <path>.<field> <value>`
+- R5 有 drift：overlay 绑定主 viewport 前景层，不是独立 viewport panel 区域；directional light 箭头起点仍固定世界原点
+- R7 未完成：未建立 dock 默认布局
+- R8 未完成：`Delete` / `Esc` 未接线；`W/E/R` 仅 overlay 内部模式切换，未形成完整快捷键收口
+- R9 未完成：inspector 未完全走 `set` 命令路径；gizmo 拖拽过程中仍直接改节点本地 transform 再在结束时补发命令
+
+本次验证命令：
+
+- `cmake --build build --target test_scene_tree_panel test_inspector_panel test_viewport_overlay test_gizmo_adapter demo_scene_viewer -j4`
+- `cd build && ctest --output-on-failure -R 'test_(scene_tree_panel|inspector_panel|viewport_overlay|gizmo_adapter)$'`
+- `cd build && ctest --output-on-failure -R 'test_(command_bus|imgui_overlay)$'`
+
+结论：保留为 active requirement，待补齐上述缺口后再执行归档。
