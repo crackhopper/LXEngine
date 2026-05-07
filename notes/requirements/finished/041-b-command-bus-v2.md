@@ -1,10 +1,10 @@
 # REQ-041-b: 编辑器命令总线 v2 — 参数补全 + undo·redo + 多选 EditorState
 
-> 拆分自 2026-05-06 整理：原 [REQ-040-a](finished/040-a-editor-command-bus.md) v1 把"参数补全 / undo·redo / 多选"显式留给 v2，本 REQ 收口这条 v2 路径。命令权限、throttling、MCP tool schema 自动从 brief 生成等更后置项见"后续工作"段。
+> 拆分自 2026-05-06 整理：原 [REQ-040-a](040-a-editor-command-bus.md) v1 把"参数补全 / undo·redo / 多选"显式留给 v2，本 REQ 收口这条 v2 路径。命令权限、throttling、MCP tool schema 自动从 brief 生成等更后置项见"后续工作"段。
 
 ## 背景
 
-[REQ-040-a 命令总线](finished/040-a-editor-command-bus.md) 已落地：`verb arg1 arg2` 文本协议、handler 注册表、`{ ok, message, structured }` 返回、history 队列、verb 级 Tab 补全、ImGui 控制台面板、`EditorState` 单选。这些把"键盘 / 控制台 / gizmo 三种输入路径全部走命令总线"做出来了。
+[REQ-040-a 命令总线](040-a-editor-command-bus.md) 已落地：`verb arg1 arg2` 文本协议、handler 注册表、`{ ok, message, structured }` 返回、history 队列、verb 级 Tab 补全、ImGui 控制台面板、`EditorState` 单选。这些把"键盘 / 控制台 / gizmo 三种输入路径全部走命令总线"做出来了。
 
 进入实战使用后会马上撞到三个 v1 显式延后的能力：
 
@@ -89,7 +89,7 @@ class EditorState {
 
 - v1 `getSelected() -> SceneNode &` 升级为返集合；调用方迁移：编辑器 inspector 仍只显示 `getPrimarySelected()`；gizmo 在 `getPrimarySelected()` 的 transform 上挂，但拖拽时把 delta 应用到所有 selected
 - 命令总线 `select <p1> <p2> ...` 支持任意数量 path；`select` 不传参 = `deselect()`
-- 控制台 `move /a /b 1 0 0` 解析：从尾部贪心吃 numeric token 作 args，剩下 leading token 作多 path（启发式 — v2 显式约定）；如不便 LLM 解析，提供等价的 `select /a /b ; move 1 0 0` 串行式语法（`;` 分号在 [REQ-040-a R7](finished/040-a-editor-command-bus.md) `dispatchScript` 已天然支持）
+- 控制台 `move /a /b 1 0 0` 解析：从尾部贪心吃 numeric token 作 args，剩下 leading token 作多 path（启发式 — v2 显式约定）；如不便 LLM 解析，提供等价的 `select /a /b ; move 1 0 0` 串行式语法（`;` 分号在 [REQ-040-a R7](040-a-editor-command-bus.md) `dispatchScript` 已天然支持）
 
 ### R4: 测试覆盖
 
@@ -113,38 +113,37 @@ class EditorState {
 
 ## 边界与约束
 
-- v2 **不**做命令权限 / 角色（每个命令仍可被任何 caller 调）；权限留 [Phase 6 gameplay](../roadmaps/main-roadmap/phase-6-gameplay-layer.md) 引入脚本边界后再立项
+- v2 **不**做命令权限 / 角色（每个命令仍可被任何 caller 调）；权限留 [Phase 6 gameplay](../../roadmaps/main-roadmap/phase-6-gameplay-layer.md) 引入脚本边界后再立项
 - v2 **不**做命令 throttling / rate limit；MCP server 自身做 caller 端速率控制即可，命令总线层保持纯
 - v2 **不**做 MCP tool schema 自动从 brief 生成；Phase 1.6 MCP shim 仍手写 tool 注册（命令数 < 30，写得起）；自动从 brief 生成留到 brief 字段稳定后再立项
-- v2 **不**做命令脚本文件加载（`source <file>`）；脚本作为 asset 类型登记需要 [Phase 3 资产管线](../roadmaps/main-roadmap/phase-3-asset-pipeline.md)，那时再立项
+- v2 **不**做命令脚本文件加载（`source <file>`）；脚本作为 asset 类型登记需要 [Phase 3 资产管线](../../roadmaps/main-roadmap/phase-3-asset-pipeline.md)，那时再立项
 - inverse 命令的"等效性"：本 REQ 选 *字符串等价*（执行 inverse 后状态 == 执行前；不要求 inverse 与原命令在内部数据流上一一对称）
 - undo 不跨 scene 切换：scene reload / 切换时 history / undoStack / redoStack 全部清空（避免上一场景命令在新场景执行）
 
 ## 依赖
 
-- [REQ-040-a 编辑器命令总线](finished/040-a-editor-command-bus.md) — dispatch / history / `CommandBrief` 协议已就位
+- [REQ-040-a 编辑器命令总线](040-a-editor-command-bus.md) — dispatch / history / `CommandBrief` 协议已就位
 - [REQ-041-a ImGui Editor MVP](041-a-imgui-editor-mvp.md) — 控制台 Tab 补全 / 快捷键路由
-- [REQ-036 路径查询](finished/036-scene-node-path-lookup.md) — path completer 用 `Scene::listAllPaths()`
-- [REQ-035 Transform 组件](finished/035-transform-component.md) — undo 反向 transform 命令依赖 setter
+- [REQ-036 路径查询](036-scene-node-path-lookup.md) — path completer 用 `Scene::listAllPaths()`
+- [REQ-035 Transform 组件](035-transform-component.md) — undo 反向 transform 命令依赖 setter
 
 ## 后续工作
 
-- [REQ-041-b 编辑器 v2 polish](041-c-editor-multi-select.md) — 把 undo / redo 接到 ImGui 工具栏 + 状态栏；多选的视觉化（高亮多个节点 + gizmo 锚点提示）由 041-b 接管
-- 命令权限 / 角色：[Phase 6 gameplay](../roadmaps/main-roadmap/phase-6-gameplay-layer.md) 引入脚本边界后立项
+- [REQ-041-b 编辑器 v2 polish](../041-c-editor-multi-select.md) — 把 undo / redo 接到 ImGui 工具栏 + 状态栏；多选的视觉化（高亮多个节点 + gizmo 锚点提示）由 041-b 接管
+- 命令权限 / 角色：[Phase 6 gameplay](../../roadmaps/main-roadmap/phase-6-gameplay-layer.md) 引入脚本边界后立项
 - 命令 throttling / rate limit：等真出现 agent 风暴时再立项；命令总线本身保持纯
 - MCP tool schema 自动从 brief 生成：等 Phase 1.6 MCP shim 落地一段时间，确认 brief 字段够稳后立项
-- 命令脚本文件加载（`source <file>`） + 脚本作为 asset 类型：等 [Phase 3 资产管线](../roadmaps/main-roadmap/phase-3-asset-pipeline.md) 落地后立项
+- 命令脚本文件加载（`source <file>`） + 脚本作为 asset 类型：等 [Phase 3 资产管线](../../roadmaps/main-roadmap/phase-3-asset-pipeline.md) 落地后立项
 
 ## 实施状态
 
-2026-05-07 收口完成：
+已完成并验证，2026-05-07 归档。
 
-- 依赖已满足：`REQ-040-a`、`REQ-041-a`、`REQ-036`、`REQ-035` 均已落地
-- 已实现：
-  - `CommandBus` 已支持参数补全注册、`complete()`、`undo()` / `redo()`、undo/redo 栈
-  - `EditorState` 已升级为多选集合，`getPrimarySelected()` 已提供主选锚点
-  - `select` / `move` / `rotate` / `scale` / `set` / `cam fov` / `preview` / `undo` / `redo` / `add` / `remove` 已接入 v2 语义
-  - `add` 已补 `<componentType>` completer；`get` / `set` 已共享字段路径补全
-  - `ViewportOverlay` gizmo 在多选拖拽时以 primary selection 为锚点，把同一 delta 应用到全部 selected，并以 multi-target / script 形式统一提交命令总线
-  - `src/test/integration/test_command_bus_v2.cpp` 与 `src/test/integration/test_viewport_overlay.cpp` 已覆盖路径/组件补全、add/remove undo·redo、多选 gizmo delta 提交
-- 结论：REQ-041-b 已满足归档前验证条件，可继续执行 finish-req / archive。
+- 验证结论：
+  - R1 已按代码复核：`src/core/editor/command_bus.hpp` / `.cpp` 提供 `CompletionContext`、`CompletionProvider`、`registerCompleter()`、`complete()`；`src/core/editor/commands/builtin_commands.cpp` 已为 scene path、`get/set` 字段路径、`add` 组件类型注册 completer；`src/core/editor/console_panel.cpp` 的 Tab 已统一走 `CommandBus::complete()`
+  - R2 已按代码复核：`CommandMetadata`/`InverseFn`、`m_undoStack`/`m_redoStack`、`CommandBus::undo()` / `redo()`、`undo` / `redo` 控制台命令、Ctrl+Z / Ctrl+Y 路由均已落地；`move` / `rotate` / `scale` / `set` / `add` / `remove` / `cam fov` / `preview` / `select` / `deselect` 已补可逆语义
+  - R3 已按代码复核：`EditorState` 已升级为多选集合，`getPrimarySelected()` 返回最后加入项；`select <p1> <p2> ...`、`move <path...> <dx> <dy> <dz>` 与 `ViewportOverlay` 多选 gizmo 提交已统一走命令总线
+  - R4 已按代码复核：`src/test/integration/test_command_bus_v2.cpp` 覆盖路径/字段/组件补全、undo/redo、多选、multi-target move、`cam fov` / `preview` / `add` / `remove`；`src/test/integration/test_viewport_overlay.cpp` 覆盖多选 gizmo delta 提交；既有 `src/test/integration/test_command_bus.cpp` 继续覆盖 v1 单目标/控制台回归
+- 验证命令：
+  - `ninja test_command_bus test_command_bus_v2 test_viewport_overlay`
+  - `ctest --output-on-failure -R 'test_command_bus$|test_command_bus_v2$|test_viewport_overlay$'`
