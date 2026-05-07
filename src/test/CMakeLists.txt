@@ -31,6 +31,10 @@ set(TEST_INTEGRATION_EXE_LIST
   test_imgui_overlay
   test_command_bus
   test_debug_ui_smoke
+  test_scene_tree_panel
+  test_inspector_panel
+  test_viewport_overlay
+  test_gizmo_adapter
   test_gltf_loader
 
   # test_render_sphere
@@ -106,6 +110,21 @@ if(TARGET test_debug_ui_smoke)
   target_link_libraries(test_debug_ui_smoke PRIVATE imgui)
 endif()
 
+if(TARGET test_scene_tree_panel)
+  target_link_libraries(test_scene_tree_panel PRIVATE imgui)
+endif()
+
+if(TARGET test_inspector_panel)
+  target_link_libraries(test_inspector_panel PRIVATE imgui)
+endif()
+
+if(TARGET test_viewport_overlay)
+  target_link_libraries(test_viewport_overlay PRIVATE imgui)
+endif()
+
+if(TARGET test_gizmo_adapter)
+  target_link_libraries(test_gizmo_adapter PRIVATE imgui)
+endif()
 
 set(TEST_APP_EXE_LIST
   test_render_triangle

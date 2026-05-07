@@ -168,9 +168,9 @@ public:
   std::optional<PickHit> pick(
       const Ray &ray,
       VisibilityLayerMask layerMask = VisibilityMask_All) const;
+  [[nodiscard]] std::vector<SceneNodeSharedPtr> getRootNodes() const;
 
 private:
-  [[nodiscard]] std::vector<SceneNodeSharedPtr> getRootNodes() const;
   static std::vector<std::string> splitPathSegments(const std::string &path);
   static bool matchesPathSegment(const SceneNode &node,
                                  const std::string &pathSegment);
