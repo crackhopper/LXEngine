@@ -1,40 +1,20 @@
-// REQ-DIAG-MIN-DELTA2: continued single-variable bisection from
-// frozen baseline.
+// REQ-DIAG-MIN-DELTA2-ONLY: single-variable isolation. delta 2 + 3 +
+// 4 + 5 stacked produced resize black-screen on the user's hardware
+// (NVIDIA RTX 3070 Ti Laptop, dGPU). The user's machine is a laptop
+// with an Intel iGPU + NVIDIA dGPU; baseline (first-suitable) almost
+// certainly selected the Intel iGPU, while delta 2 (score-based pick)
+// switched to the NVIDIA dGPU — a path known to have driver / loader
+// issues with Vulkan WSI resize on Optimus laptops.
 //
-// Previous result:
-//   delta 1 (baseline + 3 unused VkDescriptorPool) — clean.
-// So descriptor pool footprint is NOT the trigger.
+// This iteration: keep ONLY delta 2 (score-based pick), revert
+// deltas 1/3/4/5 back to the frozen-baseline behaviour. If this demo
+// still black-screens, the trigger is unambiguously the GPU selection
+// (i.e. running on the dGPU vs the iGPU). If it stops, one of the
+// other deltas is involved together with delta 2.
 //
-// This iteration adds the remaining VulkanDevice differences from
-// baseline, all at once, with code shaped as close to VulkanDevice's
-// real implementation as possible:
-//
-//   delta 2  pickPhysicalDevice picks the device with the highest
-//            type-preference score (DISCRETE > INTEGRATED > VIRTUAL >
-//            CPU > OTHER), not the first suitable one. Also prints
-//            "Selected <type> GPU: <name>".
-//   delta 3  chooseSwapSurfaceFormat accepts both B8G8R8A8_SRGB and
-//            R8G8B8A8_SRGB with SRGB_NONLINEAR (baseline accepted only
-//            B8G8R8A8_SRGB).
-//   delta 4  isDeviceSuitable drops the
-//            "swapChainAdequate (formats!=empty && presentModes!=empty)"
-//            check (baseline kept it; VulkanDevice does not).
-//   delta 5  createSurface goes through
-//            Window::createGraphicsHandle(GraphicsAPI::Vulkan, instance)
-//            instead of Window::getVulkanSurface(instance). Both call
-//            SDL_Vulkan_CreateSurface internally, but the dispatch
-//            path differs.
-//   delta 1 retained: 3 unused VkDescriptorPool with VulkanDescriptorManager
-//            default config.
-//
-// Together these are ALL non-trivial behavioural differences between
-// baseline and VulkanDevice (excluding the already-fixed empty-layer
-// debug-utils side effect).
-//
-// If THIS demo black-screens but baseline stays clean: the trigger is
-// in deltas 2/3/4/5 — next iteration will bisect.
-// If both stay clean: VulkanDevice itself is fine; the bug enters
-// later (e.g. when VulkanRenderPass / VulkanSwapchain / etc. fold in).
+// Also enumerates and prints every available physical device so we
+// can confirm what GPUs the machine exposes and which one each
+// strategy ends up picking.
 
 #include "core/platform/types.hpp"
 #include "core/utils/env.hpp"
@@ -63,13 +43,6 @@ namespace {
 constexpr int kWindowWidth = 1280;
 constexpr int kWindowHeight = 720;
 constexpr int kMaxFramesInFlight = 2;
-
-// Mirror VulkanDescriptorManager's default config (descriptor_manager.hpp).
-constexpr u32 kDescriptorPoolCount = 3;
-constexpr u32 kDescUniformCount = 16;
-constexpr u32 kDescSamplerCount = 16;
-constexpr u32 kDescStorageCount = 8;
-constexpr u32 kDescMaxSets = 64;
 
 struct Vertex {
   float pos[3];
@@ -131,7 +104,6 @@ struct SwapChainSupportDetails {
   std::vector<VkPresentModeKHR> presentModes;
 };
 
-// === DELTA 2: VulkanDevice's physical-device scoring ===
 const char *deviceTypeToString(VkPhysicalDeviceType type) {
   switch (type) {
   case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU:
@@ -190,10 +162,8 @@ public:
   }
 
 private:
-  // === Window ===
   std::shared_ptr<LX_infra::Window> m_window;
 
-  // === Vulkan core ===
   VkInstance m_instance = VK_NULL_HANDLE;
   VkSurfaceKHR m_surface = VK_NULL_HANDLE;
   VkPhysicalDevice m_physicalDevice = VK_NULL_HANDLE;
@@ -204,7 +174,6 @@ private:
   u32 m_presentFamily = 0;
   VkFormat m_depthFormat = VK_FORMAT_UNDEFINED;
 
-  // === Swapchain ===
   VkSwapchainKHR m_swapChain = VK_NULL_HANDLE;
   std::vector<VkImage> m_swapChainImages;
   VkFormat m_swapChainImageFormat = VK_FORMAT_UNDEFINED;
@@ -212,38 +181,27 @@ private:
   std::vector<VkImageView> m_swapChainImageViews;
   std::vector<VkFramebuffer> m_swapChainFramebuffers;
 
-  // === Render pass / pipeline ===
   VkRenderPass m_renderPass = VK_NULL_HANDLE;
   VkPipelineLayout m_pipelineLayout = VK_NULL_HANDLE;
   VkPipeline m_graphicsPipeline = VK_NULL_HANDLE;
 
-  // === Commands ===
   VkCommandPool m_commandPool = VK_NULL_HANDLE;
   std::vector<VkCommandBuffer> m_commandBuffers;
 
-  // === Depth ===
   VkImage m_depthImage = VK_NULL_HANDLE;
   VkDeviceMemory m_depthImageMemory = VK_NULL_HANDLE;
   VkImageView m_depthImageView = VK_NULL_HANDLE;
 
-  // === Vertex / Index buffers ===
   VkBuffer m_vertexBuffer = VK_NULL_HANDLE;
   VkDeviceMemory m_vertexBufferMemory = VK_NULL_HANDLE;
   VkBuffer m_indexBuffer = VK_NULL_HANDLE;
   VkDeviceMemory m_indexBufferMemory = VK_NULL_HANDLE;
 
-  // === Sync ===
   std::vector<VkSemaphore> m_imageAvailableSemaphores;
   std::vector<VkSemaphore> m_renderFinishedSemaphores;
   std::vector<VkFence> m_inFlightFences;
   u32 m_currentFrame = 0;
 
-  // === DELTA 1: descriptor pools, never used ===
-  std::vector<VkDescriptorPool> m_unusedDescriptorPools;
-
-  // ===========================================================
-  // Setup
-  // ===========================================================
   void initWindow() {
     LX_infra::Window::Initialize();
     m_window = std::make_shared<LX_infra::Window>(
@@ -266,7 +224,6 @@ private:
     createIndexBuffer();
     createCommandBuffers();
     createSyncObjects();
-    createUnusedDescriptorPools(); // DELTA 1
   }
 
   void mainLoop() {
@@ -303,19 +260,10 @@ private:
     }
   }
 
-  // === DELTA 5: route surface creation through createGraphicsHandle,
-  //              matching VulkanDevice::createSurface (device.cpp:205) ===
-  void createSurface() {
-    m_surface = (VkSurfaceKHR)m_window->createGraphicsHandle(
-        GraphicsAPI::Vulkan, m_instance);
-    if (m_surface == VK_NULL_HANDLE) {
-      throw std::runtime_error("Failed to create Vulkan surface handle");
-    }
-  }
+  // Reverted to baseline: getVulkanSurface (delta 5 dropped).
+  void createSurface() { m_surface = m_window->getVulkanSurface(m_instance); }
 
-  // === DELTA 2 + DELTA 4: score-based pick + drop swapChainAdequate
-  //              check, matching VulkanDevice::pickPhysicalDevice
-  //              (device.cpp:391-452) ===
+  // === DELTA 2 (the only delta kept this round): score-based pick ===
   void pickPhysicalDevice() {
     u32 deviceCount = 0;
     vkEnumeratePhysicalDevices(m_instance, &deviceCount, nullptr);
@@ -324,6 +272,20 @@ private:
     }
     std::vector<VkPhysicalDevice> devices(deviceCount);
     vkEnumeratePhysicalDevices(m_instance, &deviceCount, devices.data());
+
+    // Diagnostic: enumerate every device the loader returned.
+    std::cout << "[minimal_resize] Available physical devices ("
+              << deviceCount << "):\n";
+    for (u32 i = 0; i < deviceCount; ++i) {
+      VkPhysicalDeviceProperties props;
+      vkGetPhysicalDeviceProperties(devices[i], &props);
+      const bool suitable = isDeviceSuitable(devices[i]);
+      std::cout << "  [" << i << "] " << deviceTypeToString(props.deviceType)
+                << " — " << props.deviceName
+                << "  (suitable=" << (suitable ? "yes" : "no")
+                << ", score=" << physicalDevicePreferenceScore(props.deviceType)
+                << ")\n";
+    }
 
     int bestScore = -1;
     for (const auto &device : devices) {
@@ -341,10 +303,8 @@ private:
     if (m_physicalDevice == VK_NULL_HANDLE) {
       throw std::runtime_error("No suitable physical device");
     }
-
     m_depthFormat = findDepthFormat();
 
-    // GPU info, mirroring VulkanDevice's stdout.
     VkPhysicalDeviceProperties properties;
     vkGetPhysicalDeviceProperties(m_physicalDevice, &properties);
     std::cout << "Selected " << deviceTypeToString(properties.deviceType)
@@ -355,13 +315,17 @@ private:
               << VK_VERSION_PATCH(properties.apiVersion) << std::endl;
   }
 
-  // DELTA 4: VulkanDevice's isDeviceSuitable does NOT verify that
-  // surface formats / present modes are non-empty; it only checks the
-  // queue families and the swapchain extension. Match that here.
+  // Reverted to baseline: keep swapChainAdequate check (delta 4 dropped).
   bool isDeviceSuitable(VkPhysicalDevice device) {
     QueueFamilyIndices indices = findQueueFamilies(device);
     bool extensionsSupported = checkDeviceExtensionSupport(device);
-    return indices.isComplete() && extensionsSupported;
+    bool swapChainAdequate = false;
+    if (extensionsSupported) {
+      SwapChainSupportDetails support = querySwapChainSupport(device);
+      swapChainAdequate =
+          !support.formats.empty() && !support.presentModes.empty();
+    }
+    return indices.isComplete() && extensionsSupported && swapChainAdequate;
   }
 
   QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device) const {
@@ -477,13 +441,11 @@ private:
     vkGetDeviceQueue(m_device, m_presentFamily, 0, &m_presentQueue);
   }
 
-  // === DELTA 3: accept B8G8R8A8_SRGB OR R8G8B8A8_SRGB, matching
-  //              VulkanDevice's findBestSurfaceFormat (device.cpp:94-124) ===
+  // Reverted to baseline: only B8G8R8A8_SRGB (delta 3 dropped).
   VkSurfaceFormatKHR chooseSwapSurfaceFormat(
       const std::vector<VkSurfaceFormatKHR> &available) const {
     for (const auto &f : available) {
-      if ((f.format == VK_FORMAT_B8G8R8A8_SRGB ||
-           f.format == VK_FORMAT_R8G8B8A8_SRGB) &&
+      if (f.format == VK_FORMAT_B8G8R8A8_SRGB &&
           f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
         return f;
       }
@@ -946,35 +908,6 @@ private:
     }
   }
 
-  // === DELTA 1 ===
-  void createUnusedDescriptorPools() {
-    std::array<VkDescriptorPoolSize, 3> poolSizes{};
-    poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    poolSizes[0].descriptorCount = kDescUniformCount;
-    poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    poolSizes[1].descriptorCount = kDescSamplerCount;
-    poolSizes[2].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    poolSizes[2].descriptorCount = kDescStorageCount;
-
-    m_unusedDescriptorPools.resize(kDescriptorPoolCount, VK_NULL_HANDLE);
-    for (u32 i = 0; i < kDescriptorPoolCount; ++i) {
-      VkDescriptorPoolCreateInfo poolInfo{};
-      poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-      poolInfo.flags = 0;
-      poolInfo.maxSets = kDescMaxSets;
-      poolInfo.poolSizeCount = static_cast<u32>(poolSizes.size());
-      poolInfo.pPoolSizes = poolSizes.data();
-      if (vkCreateDescriptorPool(m_device, &poolInfo, nullptr,
-                                 &m_unusedDescriptorPools[i]) != VK_SUCCESS) {
-        throw std::runtime_error(
-            "Failed to create unused descriptor pool (delta probe)");
-      }
-    }
-  }
-
-  // ===========================================================
-  // Per-frame
-  // ===========================================================
   void recordCommandBuffer(VkCommandBuffer cmd, u32 imageIndex) {
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -1130,13 +1063,6 @@ private:
   void cleanup() {
     cleanupSwapChain();
 
-    for (auto pool : m_unusedDescriptorPools) {
-      if (pool != VK_NULL_HANDLE) {
-        vkDestroyDescriptorPool(m_device, pool, nullptr);
-      }
-    }
-    m_unusedDescriptorPools.clear();
-
     if (m_graphicsPipeline != VK_NULL_HANDLE) {
       vkDestroyPipeline(m_device, m_graphicsPipeline, nullptr);
     }
@@ -1174,8 +1100,7 @@ private:
       vkDestroyDevice(m_device, nullptr);
     }
     if (m_surface != VK_NULL_HANDLE) {
-      m_window->destroyGraphicsHandle(GraphicsAPI::Vulkan, m_instance,
-                                      m_surface);
+      vkDestroySurfaceKHR(m_instance, m_surface, nullptr);
     }
     if (m_instance != VK_NULL_HANDLE) {
       vkDestroyInstance(m_instance, nullptr);
