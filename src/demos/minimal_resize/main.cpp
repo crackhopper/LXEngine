@@ -1420,8 +1420,38 @@ int main() {
               << std::endl;
   }
 
+  // Log cwd so we can debug "console closed before I could read the
+  // error" cases (e.g. NSight admin launch where the cwd is something
+  // else, so the asset-root resolution fails).
+  try {
+    std::cout << "[minimal_resize] cwd: "
+              << std::filesystem::current_path().string() << std::endl;
+  } catch (...) {}
+
+  // Helper that mirrors a fatal message to a file next to the exe so
+  // that if the console gets closed immediately (admin launch / NSight
+  // host that hides stdout) we still have a record of what went wrong.
+  // Also blocks waiting for Enter so the user has a chance to read the
+  // console if it's actually visible.
+  const auto reportFatalAndWait = [](const std::string &msg) {
+    std::cerr << "[minimal_resize] fatal: " << msg << "\n";
+    try {
+      std::ofstream fatal("demo_minimal_resize_fatal.log", std::ios::app);
+      fatal << "[minimal_resize] fatal: " << msg << "\n";
+      try {
+        fatal << "[minimal_resize] cwd at fatal: "
+              << std::filesystem::current_path().string() << "\n";
+      } catch (...) {}
+    } catch (...) {}
+    std::cerr << "[minimal_resize] press Enter to close..." << std::endl;
+    std::cin.get();
+  };
+
   if (!initializeRuntimeAssetRoot()) {
-    std::cerr << "[minimal_resize] failed to initialize runtime asset root\n";
+    reportFatalAndWait("failed to initialize runtime asset root "
+                       "(check the working directory contains the "
+                       "shader/asset tree, esp. when launched from "
+                       "NSight / admin shells)");
     return 1;
   }
 
@@ -1430,7 +1460,7 @@ int main() {
     app.run();
     return 0;
   } catch (const std::exception &e) {
-    std::cerr << "[minimal_resize] fatal: " << e.what() << "\n";
+    reportFatalAndWait(e.what());
     return 2;
   }
 }
