@@ -266,11 +266,6 @@ public:
       // These buffers are single shared allocations, not per-frame slices.
       // Wait until every in-flight frame that could still read them has
       // completed before overwriting their contents from the CPU.
-      if (expRendererDebugEnabled()) {
-        std::cerr << "[RendererDebug] uploadData: waiting for all in-flight "
-                     "frames before shared buffer upload"
-                  << " frameSlot=" << currentFrameIndex << std::endl;
-      }
       m_swapchain->waitForAllFrames();
     }
 

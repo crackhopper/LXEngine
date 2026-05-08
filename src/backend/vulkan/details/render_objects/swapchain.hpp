@@ -51,7 +51,9 @@ public:
   VulkanFrameBuffer &getFramebuffer(u32 index);
   usize getImageCount() const { return m_images.size(); }
   VkFormat getImageFormat() const;
-  VkImageView getDepthImageView() const { return m_depthImageView; }
+  VkImageView getDepthImageView(u32 index) const {
+    return m_depthImageViews[index];
+  }
 
   // --- 辅助函数 ---
   void waitIdle() const;
@@ -79,10 +81,10 @@ private:
   std::vector<VkImage> m_images;
   std::vector<VkImageView> m_imageViews;
 
-  // 深度资源
-  VkImage m_depthImage = VK_NULL_HANDLE;
-  VkDeviceMemory m_depthImageMemory = VK_NULL_HANDLE;
-  VkImageView m_depthImageView = VK_NULL_HANDLE;
+  // 深度资源（每张 swapchain image 一份，避免多 in-flight 帧共享 depth attachment）
+  std::vector<VkImage> m_depthImages;
+  std::vector<VkDeviceMemory> m_depthImageMemories;
+  std::vector<VkImageView> m_depthImageViews;
 
   // Framebuffers
   std::vector<std::unique_ptr<VulkanFrameBuffer>> m_framebuffers;
