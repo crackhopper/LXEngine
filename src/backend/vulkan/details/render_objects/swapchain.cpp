@@ -66,6 +66,7 @@ void VulkanSwapchain::cleanup() {
   m_imageAvailableSemaphores.clear();
   m_renderFinishedSemaphores.clear();
   m_inFlightFences.clear();
+  m_imagesInFlight.clear();
 
   for (VkImageView view : m_depthImageViews) {
     if (view != VK_NULL_HANDLE) {
@@ -287,6 +288,7 @@ void VulkanSwapchain::createSyncObjects() {
   m_imageAvailableSemaphores.resize(m_maxFramesInFlight);
   m_renderFinishedSemaphores.resize(m_maxFramesInFlight);
   m_inFlightFences.resize(m_maxFramesInFlight);
+  m_imagesInFlight.assign(m_images.size(), VK_NULL_HANDLE);
 
   VkSemaphoreCreateInfo semaphoreInfo{};
   semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
@@ -336,10 +338,23 @@ VkResult VulkanSwapchain::acquireNextImage(u32 currentFrameIndex,
                                            u32 &imageIndex) {
   waitForFrame(currentFrameIndex);
 
-  return vkAcquireNextImageKHR(m_device.getLogicalDevice(), m_handle,
-                               UINT64_MAX,
-                               m_imageAvailableSemaphores[currentFrameIndex],
-                               VK_NULL_HANDLE, &imageIndex);
+  VkResult result =
+      vkAcquireNextImageKHR(m_device.getLogicalDevice(), m_handle, UINT64_MAX,
+                            m_imageAvailableSemaphores[currentFrameIndex],
+                            VK_NULL_HANDLE, &imageIndex);
+  if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+    return result;
+  }
+
+  if (imageIndex < m_imagesInFlight.size() &&
+      m_imagesInFlight[imageIndex] != VK_NULL_HANDLE) {
+    vkWaitForFences(m_device.getLogicalDevice(), 1,
+                    &m_imagesInFlight[imageIndex], VK_TRUE, UINT64_MAX);
+  }
+  if (imageIndex < m_imagesInFlight.size()) {
+    m_imagesInFlight[imageIndex] = m_inFlightFences[currentFrameIndex];
+  }
+  return result;
 }
 
 void VulkanSwapchain::waitForFrame(u32 currentFrameIndex) const {
