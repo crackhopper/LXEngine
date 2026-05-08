@@ -25,6 +25,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstring>
 #include <exception>
 #include <filesystem>
@@ -36,6 +37,7 @@
 #include <set>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -207,6 +209,23 @@ private:
   std::vector<VkSemaphore> m_imageAvailableSemaphores;
   std::vector<VkSemaphore> m_renderFinishedSemaphores;
   std::vector<VkFence> m_inFlightFences;
+
+  // C: sticky-flag pattern. Once we observe OUT_OF_DATE on either acquire
+  // or present, we mark the swapchain invalid and skip work until the
+  // next drawFrame which will rebuild. Avoids the race where rebuilding
+  // mid-frame leaves submitted work using semaphores about to be destroyed.
+  bool m_swapchainValid = false;
+
+  // D: optional sleep after rebuild so the user can probe whether the dGPU
+  // race is "driver hasn't finished transitioning yet" vs something else.
+  // 0 = no sleep (default).
+  u32 m_resizeSleepMs = 0;
+
+  // Diagnostics. Used by the post-rebuild burst log so we can see what the
+  // first few frames look like immediately after each rebuild.
+  u64 m_rebuildCount = 0;
+  u32 m_postRebuildBurstRemaining = 0;
+  u32 m_swapchainImageCount = 0;
   u32 m_currentFrame = 0;
 
   void initWindow() {
@@ -216,6 +235,17 @@ private:
   }
 
   void initVulkan() {
+    // Read tunables once at startup. m_resizeSleepMs (D) is the only
+    // current tunable that needs runtime caching; LX_VK_PRESENT_MODE /
+    // LX_VK_PREFER_GPU are read at the point of use and don't need it.
+    if (const char *sleepMs = std::getenv("LX_VK_RESIZE_SLEEP_MS")) {
+      try {
+        m_resizeSleepMs = static_cast<u32>(std::stoul(sleepMs));
+      } catch (...) {
+        m_resizeSleepMs = 0;
+      }
+    }
+
     createInstance();
     createSurface();
     pickPhysicalDevice();
@@ -489,6 +519,22 @@ private:
                 << std::endl;
       return VK_PRESENT_MODE_FIFO_KHR;
     }
+    if (pref == "fifo_relaxed") {
+      // FIFO_RELAXED stays strict-vsync most of the time and only allows
+      // tearing when a frame is late and the queue was empty at vblank —
+      // narrower race window than MAILBOX (which always queues + drops),
+      // but more forgiving than FIFO.
+      if (has(VK_PRESENT_MODE_FIFO_RELAXED_KHR)) {
+        std::cout << "[minimal_resize] present mode: "
+                     "VK_PRESENT_MODE_FIFO_RELAXED_KHR"
+                     " (LX_VK_PRESENT_MODE=fifo_relaxed)"
+                  << std::endl;
+        return VK_PRESENT_MODE_FIFO_RELAXED_KHR;
+      }
+      std::cout << "[minimal_resize] LX_VK_PRESENT_MODE=fifo_relaxed but "
+                   "driver doesn't expose it; falling back to MAILBOX/FIFO"
+                << std::endl;
+    }
     if (pref == "immediate") {
       if (has(VK_PRESENT_MODE_IMMEDIATE_KHR)) {
         std::cout << "[minimal_resize] present mode: "
@@ -533,11 +579,21 @@ private:
     VkPresentModeKHR presentMode = chooseSwapPresentMode(support.presentModes);
     VkExtent2D extent = chooseSwapExtent(support.capabilities);
 
-    u32 imageCount = support.capabilities.minImageCount + 1;
+    // B: was minImageCount + 1 (=triple buffer typically). Bump to +2 so
+    // the driver has one more slot to absorb cross-GPU PRIME copy latency
+    // on Optimus dGPU. Capped against maxImageCount.
+    u32 requestedImageCount = support.capabilities.minImageCount + 2;
+    u32 imageCount = requestedImageCount;
     if (support.capabilities.maxImageCount > 0 &&
         imageCount > support.capabilities.maxImageCount) {
       imageCount = support.capabilities.maxImageCount;
     }
+    std::cout << "[minimal_resize] swapchain create:"
+              << " extent=" << extent.width << "x" << extent.height
+              << " minImageCount=" << support.capabilities.minImageCount
+              << " maxImageCount=" << support.capabilities.maxImageCount
+              << " requested=" << requestedImageCount
+              << " capped=" << imageCount << std::endl;
 
     VkSwapchainCreateInfoKHR createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
@@ -575,6 +631,11 @@ private:
                             m_swapChainImages.data());
     m_swapChainImageFormat = surfaceFormat.format;
     m_swapChainExtent = extent;
+    m_swapchainImageCount = imageCount;
+    std::cout << "[minimal_resize] swapchain create: actualImageCount="
+              << imageCount << std::endl;
+    // C: swapchain freshly created — mark valid so drawFrame can proceed.
+    m_swapchainValid = true;
   }
 
   VkImageView createImageView(VkImage image, VkFormat format,
@@ -1047,15 +1108,50 @@ private:
         return;
       }
     }
+    const VkExtent2D oldExtent = m_swapChainExtent;
+    std::cout << "[minimal_resize] swapchain rebuild #" << m_rebuildCount
+              << ": oldExtent=" << oldExtent.width << "x" << oldExtent.height
+              << " newWindow=" << m_window->getWidth() << "x"
+              << m_window->getHeight() << std::endl;
+
     vkDeviceWaitIdle(m_device);
     cleanupSwapChain();
     createSwapChain();
     createImageViews();
     createDepthResources();
     createFramebuffers();
+
+    // D: optional post-rebuild sleep, lets the user probe whether the
+    // dGPU/Optimus race is "driver hasn't finished transitioning" by
+    // forcing a wider settle window. 0 = default (no sleep).
+    if (m_resizeSleepMs > 0) {
+      std::cout << "[minimal_resize] LX_VK_RESIZE_SLEEP_MS=" << m_resizeSleepMs
+                << "; sleeping after rebuild" << std::endl;
+      std::this_thread::sleep_for(std::chrono::milliseconds(m_resizeSleepMs));
+    }
+
+    ++m_rebuildCount;
+    m_postRebuildBurstRemaining = 5;
+    std::cout << "[minimal_resize] swapchain rebuild #" << (m_rebuildCount - 1)
+              << " done: extent=" << m_swapChainExtent.width << "x"
+              << m_swapChainExtent.height
+              << " imageCount=" << m_swapchainImageCount << std::endl;
   }
 
   void drawFrame() {
+    // C: sticky-flag pattern. If a previous frame saw OUT_OF_DATE on
+    // present, do the rebuild here on the next drawFrame instead of mid-
+    // frame so all in-flight work finishes draining first.
+    if (!m_swapchainValid) {
+      std::cout << "[minimal_resize] drawFrame: swapchain invalid, rebuilding"
+                << std::endl;
+      recreateSwapChain();
+      // Either rebuild succeeded (m_swapchainValid=true) or window is
+      // still zero-sized (recreateSwapChain returned without rebuilding);
+      // skip this frame either way.
+      return;
+    }
+
     vkWaitForFences(m_device, 1, &m_inFlightFences[m_currentFrame], VK_TRUE,
                     UINT64_MAX);
 
@@ -1065,11 +1161,30 @@ private:
         m_imageAvailableSemaphores[m_currentFrame], VK_NULL_HANDLE,
         &imageIndex);
     if (result == VK_ERROR_OUT_OF_DATE_KHR) {
-      recreateSwapChain();
+      std::cout << "[minimal_resize] acquire: VK_ERROR_OUT_OF_DATE_KHR"
+                << std::endl;
+      m_swapchainValid = false;
       return;
     }
     if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
       throw std::runtime_error("Failed to acquire swapchain image");
+    }
+    if (result == VK_SUBOPTIMAL_KHR) {
+      std::cout << "[minimal_resize] acquire: VK_SUBOPTIMAL_KHR (continuing)"
+                << std::endl;
+    }
+
+    // Diagnostic: print the first few frames after each rebuild so we can
+    // see what comes back when the supposed flicker / black-screen race
+    // actually fires.
+    if (m_postRebuildBurstRemaining > 0) {
+      std::cout << "[minimal_resize] post-rebuild frame #"
+                << (5 - m_postRebuildBurstRemaining)
+                << ": frameSlot=" << m_currentFrame
+                << " imageIndex=" << imageIndex
+                << " extent=" << m_swapChainExtent.width << "x"
+                << m_swapChainExtent.height << std::endl;
+      --m_postRebuildBurstRemaining;
     }
 
     vkResetFences(m_device, 1, &m_inFlightFences[m_currentFrame]);
@@ -1108,7 +1223,13 @@ private:
     result = vkQueuePresentKHR(m_presentQueue, &presentInfo);
     if (result == VK_ERROR_OUT_OF_DATE_KHR ||
         result == VK_SUBOPTIMAL_KHR) {
-      recreateSwapChain();
+      std::cout << "[minimal_resize] present: "
+                << (result == VK_ERROR_OUT_OF_DATE_KHR
+                        ? "VK_ERROR_OUT_OF_DATE_KHR"
+                        : "VK_SUBOPTIMAL_KHR")
+                << ", marking swapchain invalid (will rebuild next frame)"
+                << std::endl;
+      m_swapchainValid = false;
     } else if (result != VK_SUCCESS) {
       throw std::runtime_error("Failed to present");
     }
@@ -1181,6 +1302,13 @@ int main() {
     std::cout << "[minimal_resize] LX_VK_PRESENT_MODE=" << pmode << std::endl;
   } else {
     std::cout << "[minimal_resize] LX_VK_PRESENT_MODE=(unset → mailbox-first)"
+              << std::endl;
+  }
+  if (const char *sleepMs = std::getenv("LX_VK_RESIZE_SLEEP_MS")) {
+    std::cout << "[minimal_resize] LX_VK_RESIZE_SLEEP_MS=" << sleepMs
+              << std::endl;
+  } else {
+    std::cout << "[minimal_resize] LX_VK_RESIZE_SLEEP_MS=(unset → 0)"
               << std::endl;
   }
 
