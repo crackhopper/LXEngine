@@ -618,7 +618,17 @@ private:
     createInfo.imageColorSpace = surfaceFormat.colorSpace;
     createInfo.imageExtent = extent;
     createInfo.imageArrayLayers = 1;
+    // RenderDoc's capture layer always adds VK_IMAGE_USAGE_TRANSFER_SRC_BIT
+    // to swapchain images so it can copy them out for capture. User
+    // observation: bug disappears whenever RenderDoc is attached. One
+    // hypothesis is that this extra usage bit forces the driver off the
+    // optimized PRIME-copy path on Optimus laptops onto a more
+    // conservative path that doesn't race. LX_VK_SWAPCHAIN_USAGE_TRANSFER_SRC=1
+    // toggles this on without RenderDoc, so we can isolate that variable.
     createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    if (expEnvEnabled("LX_VK_SWAPCHAIN_USAGE_TRANSFER_SRC")) {
+      createInfo.imageUsage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    }
 
     u32 queueFamilyIndices[] = {m_graphicsFamily, m_presentFamily};
     if (m_graphicsFamily != m_presentFamily) {
@@ -1355,6 +1365,25 @@ int main() {
               << std::endl;
   } else {
     std::cout << "[minimal_resize] LX_VK_FULL_SERIAL=(unset → off)"
+              << std::endl;
+  }
+  if (expEnvEnabled("LX_VK_SWAPCHAIN_USAGE_TRANSFER_SRC")) {
+    std::cout << "[minimal_resize] LX_VK_SWAPCHAIN_USAGE_TRANSFER_SRC=1 "
+                 "(adds TRANSFER_SRC_BIT to swapchain image usage — "
+                 "mimics what RenderDoc does)"
+              << std::endl;
+  } else {
+    std::cout << "[minimal_resize] LX_VK_SWAPCHAIN_USAGE_TRANSFER_SRC=(unset → off)"
+              << std::endl;
+  }
+  if (expEnvEnabled("LX_RENDERDOC") ||
+      expEnvEnabled("LX_ALLOW_RENDERDOC_IMPLICIT_LAYER")) {
+    std::cout << "[minimal_resize] RenderDoc capture layer ENABLED "
+                 "(VK_LAYER_RENDERDOC_Capture allowed via implicit layer)"
+              << std::endl;
+  } else {
+    std::cout << "[minimal_resize] RenderDoc capture layer disabled "
+                 "(set LX_RENDERDOC=1 to enable)"
               << std::endl;
   }
 

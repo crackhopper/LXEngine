@@ -50,8 +50,11 @@ void expSetEnvVK() {
     return;
   }
 
+  // Short alias: LX_RENDERDOC=1 implies LX_ALLOW_RENDERDOC_IMPLICIT_LAYER=1.
+  // Either env var unblocks the RenderDoc capture implicit layer.
   const bool allowRenderDocImplicitLayer =
-      expEnvEnabled("LX_ALLOW_RENDERDOC_IMPLICIT_LAYER");
+      expEnvEnabled("LX_ALLOW_RENDERDOC_IMPLICIT_LAYER") ||
+      expEnvEnabled("LX_RENDERDOC");
 
 #ifdef _WIN32
   // SetEnvironmentVariableW(
