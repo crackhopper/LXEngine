@@ -51,11 +51,17 @@ void expSetEnvVK() {
     return;
   }
 
-  // Short alias: LX_RENDERDOC=1 implies LX_ALLOW_RENDERDOC_IMPLICIT_LAYER=1.
-  // Either env var unblocks the RenderDoc capture implicit layer.
+  // Aliases that all unblock VK_LAYER_RENDERDOC_Capture in the loader
+  // search path:
+  //   LX_ALLOW_RENDERDOC_IMPLICIT_LAYER  (legacy)
+  //   LX_RENDERDOC                       (short alias)
+  //   LX_VK_FORCE_RENDERDOC_LAYER        (also implies allow — if app
+  //                                       wants to force-enable, it
+  //                                       must also be allowed)
   const bool allowRenderDocImplicitLayer =
       expEnvEnabled("LX_ALLOW_RENDERDOC_IMPLICIT_LAYER") ||
-      expEnvEnabled("LX_RENDERDOC");
+      expEnvEnabled("LX_RENDERDOC") ||
+      expEnvEnabled("LX_VK_FORCE_RENDERDOC_LAYER");
 
 #ifdef _WIN32
   // SetEnvironmentVariableW(

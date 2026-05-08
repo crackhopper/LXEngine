@@ -300,15 +300,38 @@ private:
     std::vector<const char *> extensions;
     m_window->getRequiredExtensions(extensions);
 
+    // LX_VK_FORCE_RENDERDOC_LAYER=1: explicitly request the RenderDoc
+    // capture layer in enabledLayerNames. The Vulkan loader honors this
+    // even when LX_VK_LOADER_LAYERS_DISABLE has implicit layers off,
+    // because explicit enabledLayerNames is the application's direct
+    // request. This is the only way to reproduce the RenderDoc-attached
+    // behavior without launching from RenderDoc UI — proving (or
+    // disproving) that the bug-suppressing behavior is something the
+    // application can replicate via the layer mechanism alone.
+    std::vector<const char *> enabledLayers;
+    if (expEnvEnabled("LX_VK_FORCE_RENDERDOC_LAYER")) {
+      enabledLayers.push_back("VK_LAYER_RENDERDOC_Capture");
+      std::cout << "[minimal_resize] LX_VK_FORCE_RENDERDOC_LAYER=1: "
+                   "explicitly enabling VK_LAYER_RENDERDOC_Capture in "
+                   "VkInstanceCreateInfo.enabledLayerNames"
+                << std::endl;
+    }
+
     VkInstanceCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
     createInfo.pApplicationInfo = &appInfo;
     createInfo.enabledExtensionCount = static_cast<u32>(extensions.size());
     createInfo.ppEnabledExtensionNames = extensions.data();
-    createInfo.enabledLayerCount = 0;
+    createInfo.enabledLayerCount = static_cast<u32>(enabledLayers.size());
+    createInfo.ppEnabledLayerNames =
+        enabledLayers.empty() ? nullptr : enabledLayers.data();
 
     if (vkCreateInstance(&createInfo, nullptr, &m_instance) != VK_SUCCESS) {
-      throw std::runtime_error("Failed to create Vulkan instance");
+      throw std::runtime_error("Failed to create Vulkan instance "
+                               "(if LX_VK_FORCE_RENDERDOC_LAYER=1 is set, "
+                               "VK_LAYER_RENDERDOC_Capture might not be "
+                               "registered on this system — install "
+                               "RenderDoc, or unset the env var)");
     }
   }
 
@@ -1378,12 +1401,22 @@ int main() {
   }
   if (expEnvEnabled("LX_RENDERDOC") ||
       expEnvEnabled("LX_ALLOW_RENDERDOC_IMPLICIT_LAYER")) {
-    std::cout << "[minimal_resize] RenderDoc capture layer ENABLED "
-                 "(VK_LAYER_RENDERDOC_Capture allowed via implicit layer)"
+    std::cout << "[minimal_resize] RenderDoc capture layer ALLOWED "
+                 "(VK_LAYER_RENDERDOC_Capture allowed via implicit layer "
+                 "— still requires RenderDoc UI / API to actually inject)"
               << std::endl;
   } else {
     std::cout << "[minimal_resize] RenderDoc capture layer disabled "
-                 "(set LX_RENDERDOC=1 to enable)"
+                 "(set LX_RENDERDOC=1 to allow implicit injection)"
+              << std::endl;
+  }
+  if (expEnvEnabled("LX_VK_FORCE_RENDERDOC_LAYER")) {
+    std::cout << "[minimal_resize] LX_VK_FORCE_RENDERDOC_LAYER=1: app will "
+                 "EXPLICITLY enable VK_LAYER_RENDERDOC_Capture in "
+                 "VkInstanceCreateInfo.enabledLayerNames"
+              << std::endl;
+  } else {
+    std::cout << "[minimal_resize] LX_VK_FORCE_RENDERDOC_LAYER=(unset → off)"
               << std::endl;
   }
 
