@@ -3,3 +3,4 @@
 
 add_subdirectory(scene_viewer)
 add_subdirectory(minimal_resize)
+add_subdirectory(minimal_resize_baseline)
