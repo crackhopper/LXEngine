@@ -55,10 +55,7 @@ namespace LX_core::backend {
 
 namespace {
 
-// DIAGNOSTIC: temporarily forced to 1 to verify whether resize-triggered
-// scene flicker depends on the in-flight frame count. Restore to 3 once the
-// experiment concludes.
-constexpr u32 kMaxFramesInFlight = 1;
+constexpr u32 kMaxFramesInFlight = 3;
 constexpr int kDebugBurstFrames = 3;
 
 bool isSharedHostBufferResource(const IGpuResourceSharedPtr &resource) {

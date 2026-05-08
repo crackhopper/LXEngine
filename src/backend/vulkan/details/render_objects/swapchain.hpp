@@ -51,7 +51,9 @@ public:
   VulkanFrameBuffer &getFramebuffer(u32 index);
   usize getImageCount() const { return m_images.size(); }
   VkFormat getImageFormat() const;
-  VkImageView getDepthImageView() const { return m_depthImageView; }
+  VkImageView getDepthImageView(u32 index) const {
+    return m_depthImageViews[index];
+  }
 
   // --- 辅助函数 ---
   void waitIdle() const;
@@ -66,9 +68,10 @@ private:
                       VkSwapchainKHR oldSwapchain = VK_NULL_HANDLE);
   void createImageViews();
   void createDepthResources();
-  // Drives the depth image through a deterministic UNDEFINED -> OPTIMAL
-  // transition right after creation, before the first render pass touches it.
-  void transitionDepthImageToOptimal();
+  // Drives every per-image depth attachment through a deterministic
+  // UNDEFINED -> OPTIMAL transition right after creation, before the
+  // first render pass touches them.
+  void transitionDepthImagesToOptimal();
   void createSyncObjects();
   void setupFramebuffers(VulkanRenderPass &renderPass);
 
@@ -87,10 +90,10 @@ private:
   std::vector<VkImage> m_images;
   std::vector<VkImageView> m_imageViews;
 
-  // 深度资源（共享单一 depth image，所有 framebuffer 复用同一份）
-  VkImage m_depthImage = VK_NULL_HANDLE;
-  VkDeviceMemory m_depthImageMemory = VK_NULL_HANDLE;
-  VkImageView m_depthImageView = VK_NULL_HANDLE;
+  // 深度资源（每张 swapchain image 一份，避免多 in-flight 帧共享 depth attachment）
+  std::vector<VkImage> m_depthImages;
+  std::vector<VkDeviceMemory> m_depthImageMemories;
+  std::vector<VkImageView> m_depthImageViews;
 
   // Framebuffers
   std::vector<std::unique_ptr<VulkanFrameBuffer>> m_framebuffers;

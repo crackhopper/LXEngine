@@ -66,5 +66,8 @@ nav:
   - 相关工具:
       - tools/index.md
       - Notes 工具链说明: tools/notes-tooling.md
+  - Debug 复盘:
+      - 总览: debug/index.md
+      - 2026-05 resize 偶发黑屏 / 闪烁: debug/2026-05-resize-blackscreen.md
   - FAQ:
       - faq/README.md

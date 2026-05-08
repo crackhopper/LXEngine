@@ -454,7 +454,24 @@ private:
   }
 
   VkPresentModeKHR chooseSwapPresentMode(
-      const std::vector<VkPresentModeKHR> & /*available*/) const {
+      const std::vector<VkPresentModeKHR> &available) const {
+    // MAILBOX-first fallback. On NVIDIA Optimus laptops the dGPU
+    // present path goes through a cross-GPU PRIME copy; FIFO's
+    // strict 1-frame-per-vsync cadence makes that copy's timing
+    // window very tight and is one of the suspected triggers of
+    // the resize black-screen. MAILBOX lets the driver queue and
+    // drop frames internally, giving the PRIME link more slack.
+    // dxvk / vkd3d-proton use the same fallback on Optimus.
+    for (auto mode : available) {
+      if (mode == VK_PRESENT_MODE_MAILBOX_KHR) {
+        std::cout << "[minimal_resize] present mode: VK_PRESENT_MODE_MAILBOX_KHR"
+                  << std::endl;
+        return mode;
+      }
+    }
+    std::cout << "[minimal_resize] present mode: VK_PRESENT_MODE_FIFO_KHR"
+                 " (MAILBOX not advertised by driver)"
+              << std::endl;
     return VK_PRESENT_MODE_FIFO_KHR;
   }
 
