@@ -63,6 +63,13 @@ private:
   void createInternal(VkExtent2D extent);
   void createImageViews();
   void createDepthResources();
+  // Drives every depth image through a deterministic UNDEFINED -> OPTIMAL
+  // transition right after creation, so all depth images share the same
+  // driver-side cache mode (HiZ / tile compression) before the first render
+  // pass touches them. Without this, drivers may pick different internal
+  // configurations per image, producing per-image rendering differences that
+  // surface as flicker after rebuild.
+  void transitionDepthImagesToOptimal();
   void createSyncObjects();
   void setupFramebuffers(VulkanRenderPass &renderPass);
 

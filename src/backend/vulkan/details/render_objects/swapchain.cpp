@@ -282,6 +282,95 @@ void VulkanSwapchain::createDepthResources() {
       throw std::runtime_error("Failed to create depth image view!");
     }
   }
+
+  transitionDepthImagesToOptimal();
+}
+
+void VulkanSwapchain::transitionDepthImagesToOptimal() {
+  if (m_depthImages.empty()) {
+    return;
+  }
+
+  VkDevice logicalDevice = m_device.getLogicalDevice();
+
+  VkCommandPoolCreateInfo poolInfo{};
+  poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+  poolInfo.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
+  poolInfo.queueFamilyIndex = m_device.getGraphicsQueueFamilyIndex();
+
+  VkCommandPool transientPool = VK_NULL_HANDLE;
+  if (vkCreateCommandPool(logicalDevice, &poolInfo, nullptr, &transientPool) !=
+      VK_SUCCESS) {
+    throw std::runtime_error(
+        "VulkanSwapchain: failed to create transient command pool for depth "
+        "layout init");
+  }
+
+  VkCommandBufferAllocateInfo allocInfo{};
+  allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+  allocInfo.commandPool = transientPool;
+  allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+  allocInfo.commandBufferCount = 1;
+
+  VkCommandBuffer cmd = VK_NULL_HANDLE;
+  if (vkAllocateCommandBuffers(logicalDevice, &allocInfo, &cmd) != VK_SUCCESS) {
+    vkDestroyCommandPool(logicalDevice, transientPool, nullptr);
+    throw std::runtime_error(
+        "VulkanSwapchain: failed to allocate transient command buffer for "
+        "depth layout init");
+  }
+
+  VkCommandBufferBeginInfo beginInfo{};
+  beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+  beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+  vkBeginCommandBuffer(cmd, &beginInfo);
+
+  VkImageAspectFlags aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+  if (m_depthFormat == VK_FORMAT_D32_SFLOAT_S8_UINT ||
+      m_depthFormat == VK_FORMAT_D24_UNORM_S8_UINT) {
+    aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+  }
+
+  std::vector<VkImageMemoryBarrier> barriers;
+  barriers.reserve(m_depthImages.size());
+  for (VkImage image : m_depthImages) {
+    VkImageMemoryBarrier barrier{};
+    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    barrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = image;
+    barrier.subresourceRange.aspectMask = aspectMask;
+    barrier.subresourceRange.baseMipLevel = 0;
+    barrier.subresourceRange.levelCount = 1;
+    barrier.subresourceRange.baseArrayLayer = 0;
+    barrier.subresourceRange.layerCount = 1;
+    barrier.srcAccessMask = 0;
+    barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+                            VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    barriers.push_back(barrier);
+  }
+
+  vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                       VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+                           VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+                       0, 0, nullptr, 0, nullptr,
+                       static_cast<u32>(barriers.size()), barriers.data());
+
+  vkEndCommandBuffer(cmd);
+
+  VkSubmitInfo submitInfo{};
+  submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+  submitInfo.commandBufferCount = 1;
+  submitInfo.pCommandBuffers = &cmd;
+
+  VkQueue queue = m_device.getGraphicsQueue();
+  vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE);
+  vkQueueWaitIdle(queue);
+
+  vkFreeCommandBuffers(logicalDevice, transientPool, 1, &cmd);
+  vkDestroyCommandPool(logicalDevice, transientPool, nullptr);
 }
 
 void VulkanSwapchain::createSyncObjects() {
