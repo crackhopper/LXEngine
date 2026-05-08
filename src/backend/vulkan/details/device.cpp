@@ -63,6 +63,18 @@ bool checkValidationLayerSupport(
   return false;
 #endif
 
+  // Caller opted out of validation entirely — do NOT enable
+  // VK_EXT_DEBUG_UTILS / debug messenger either. Without this short
+  // circuit, an empty list trivially satisfies the loop below
+  // (foundLayers.size() == toCheck.size() == 0) and returns true,
+  // which makes createInstance enable the debug-utils extension and
+  // chain a debug messenger pNext — observably altering the instance
+  // dispatch path and triggering driver-specific resize/swapchain
+  // races that the bare baseline does not.
+  if (validationLayers.empty()) {
+    return false;
+  }
+
   auto toCheck = validationLayers;
   u32 layerCount = 0;
   vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
