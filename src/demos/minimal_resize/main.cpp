@@ -347,6 +347,15 @@ private:
                    "VkInstanceCreateInfo.enabledLayerNames"
                 << std::endl;
     }
+    if (expEnvEnabled("LX_VK_VALIDATION")) {
+      enabledLayers.push_back("VK_LAYER_KHRONOS_validation");
+      std::cout << "[minimal_resize] LX_VK_VALIDATION=1: explicitly enabling "
+                   "VK_LAYER_KHRONOS_validation in "
+                   "VkInstanceCreateInfo.enabledLayerNames "
+                   "(layer overhead similar to RenderDoc / NSight but "
+                   "completely different code path — useful as a control)"
+                << std::endl;
+    }
 
     VkInstanceCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -1469,6 +1478,14 @@ int main() {
               << std::endl;
   } else {
     std::cout << "[minimal_resize] LX_VK_FORCE_RENDERDOC_LAYER=(unset → off)"
+              << std::endl;
+  }
+  if (expEnvEnabled("LX_VK_VALIDATION")) {
+    std::cout << "[minimal_resize] LX_VK_VALIDATION=1: app will EXPLICITLY "
+                 "enable VK_LAYER_KHRONOS_validation"
+              << std::endl;
+  } else {
+    std::cout << "[minimal_resize] LX_VK_VALIDATION=(unset → off)"
               << std::endl;
   }
 
