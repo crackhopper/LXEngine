@@ -1,19 +1,22 @@
-// REQ-DIAG-MIN-V2: textbook-style raw-Vulkan resize-bug isolation demo.
-// Does NOT use any LX_core::backend class. The only project code reused is
-// LX_infra::Window (SDL wrapper, OS-layer only). All Vulkan calls below are
-// hand-written and follow the canonical pattern from vulkan-tutorial.com,
-// which is proven to handle resize correctly across thousands of users on
-// every major desktop driver.
+// REQ-DIAG-MIN-STEP1: iteration playground. Starts from the
+// known-good textbook raw-Vulkan baseline (kept frozen as
+// demo_minimal_resize_baseline) and folds engine wrappers back in step
+// by step. Every other demo run alongside this one cross-checks against
+// the baseline.
 //
-// Goal: a known-good baseline. If THIS demo also flickers / black-screens
-// on the user's hardware after resize, the bug lives below user-space code
-// (driver, compositor, SDL3) and no application change can fix it cleanly.
-// If it does NOT, every other demo in this repo can be diff'd against it.
+// Step 1 (this commit): replace the lowest-suspicion wrappers
+//   - LX_core::backend::VulkanDevice  -> instance + surface +
+//     physical-device pick + logical device + queue + surface format +
+//     depth format
+//   - LX_core::backend::VulkanRenderPass -> render pass + clear values
 //
-// Renders two NDC-space quads at z = 0.3 (green, front) and z = 0.7 (red,
-// back) with depth test enabled (LESS) so depth-attachment correctness is
-// directly visible.
+// Still raw: swapchain, image views, framebuffers, depth resources,
+// graphics pipeline, command pool/buffers, vertex/index buffers, sync
+// objects, draw frame, swapchain rebuild. These get folded in next
+// steps.
 
+#include "backend/vulkan/details/device.hpp"
+#include "backend/vulkan/details/render_objects/render_pass.hpp"
 #include "core/platform/types.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/filesystem_tools.hpp"
@@ -30,8 +33,6 @@
 #include <iostream>
 #include <limits>
 #include <memory>
-#include <optional>
-#include <set>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -81,20 +82,7 @@ const std::vector<Vertex> kVertices = {
 };
 
 const std::vector<u32> kIndices = {
-    0, 1, 2, 2, 3, 0, // green front quad
-    4, 5, 6, 6, 7, 4, // red back quad
-};
-
-const std::vector<const char *> kDeviceExtensions = {
-    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-};
-
-struct QueueFamilyIndices {
-  std::optional<u32> graphicsFamily;
-  std::optional<u32> presentFamily;
-  bool isComplete() const {
-    return graphicsFamily.has_value() && presentFamily.has_value();
-  }
+    0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4,
 };
 
 struct SwapChainSupportDetails {
@@ -132,7 +120,13 @@ private:
   // === Window ===
   std::shared_ptr<LX_infra::Window> m_window;
 
-  // === Vulkan core ===
+  // === Engine wrappers (Step 1) ===
+  LX_core::backend::VulkanDeviceUniquePtr m_vkDevice;
+  std::unique_ptr<LX_core::backend::VulkanRenderPass> m_vkRenderPass;
+
+  // === Cached raw handles, populated from m_vkDevice / m_vkRenderPass.
+  //     Kept so the rest of the demo's raw-vk code does not need to
+  //     change. As more wrappers fold in, these will go away. ===
   VkInstance m_instance = VK_NULL_HANDLE;
   VkSurfaceKHR m_surface = VK_NULL_HANDLE;
   VkPhysicalDevice m_physicalDevice = VK_NULL_HANDLE;
@@ -142,8 +136,9 @@ private:
   u32 m_graphicsFamily = 0;
   u32 m_presentFamily = 0;
   VkFormat m_depthFormat = VK_FORMAT_UNDEFINED;
+  VkRenderPass m_renderPass = VK_NULL_HANDLE;
 
-  // === Swapchain ===
+  // === Swapchain (still raw) ===
   VkSwapchainKHR m_swapChain = VK_NULL_HANDLE;
   std::vector<VkImage> m_swapChainImages;
   VkFormat m_swapChainImageFormat = VK_FORMAT_UNDEFINED;
@@ -151,27 +146,26 @@ private:
   std::vector<VkImageView> m_swapChainImageViews;
   std::vector<VkFramebuffer> m_swapChainFramebuffers;
 
-  // === Render pass / pipeline ===
-  VkRenderPass m_renderPass = VK_NULL_HANDLE;
+  // === Pipeline (still raw) ===
   VkPipelineLayout m_pipelineLayout = VK_NULL_HANDLE;
   VkPipeline m_graphicsPipeline = VK_NULL_HANDLE;
 
-  // === Commands ===
+  // === Commands (still raw) ===
   VkCommandPool m_commandPool = VK_NULL_HANDLE;
   std::vector<VkCommandBuffer> m_commandBuffers;
 
-  // === Depth (single, shared, textbook style — re-allocated each rebuild) ===
+  // === Depth (still raw, single shared, textbook style) ===
   VkImage m_depthImage = VK_NULL_HANDLE;
   VkDeviceMemory m_depthImageMemory = VK_NULL_HANDLE;
   VkImageView m_depthImageView = VK_NULL_HANDLE;
 
-  // === Vertex / Index buffers ===
+  // === Vertex / Index buffers (still raw) ===
   VkBuffer m_vertexBuffer = VK_NULL_HANDLE;
   VkDeviceMemory m_vertexBufferMemory = VK_NULL_HANDLE;
   VkBuffer m_indexBuffer = VK_NULL_HANDLE;
   VkDeviceMemory m_indexBufferMemory = VK_NULL_HANDLE;
 
-  // === Sync objects ===
+  // === Sync (still raw) ===
   std::vector<VkSemaphore> m_imageAvailableSemaphores;
   std::vector<VkSemaphore> m_renderFinishedSemaphores;
   std::vector<VkFence> m_inFlightFences;
@@ -187,13 +181,39 @@ private:
   }
 
   void initVulkan() {
-    createInstance();
-    createSurface();
-    pickPhysicalDevice();
-    createLogicalDevice();
+    // --- Step 1: VulkanDevice replaces instance + surface + physical
+    // device pick + logical device + queues + surface format + depth
+    // format. Pass an empty validationLayers list to keep behaviour as
+    // close as possible to the baseline (which has no validation) and
+    // avoid introducing extra behaviour differences. ---
+    m_vkDevice = LX_core::backend::VulkanDevice::create();
+    m_vkDevice->initialize(m_window, "demo_minimal_resize",
+                           VK_MAKE_VERSION(1, 0, 0), "LX",
+                           VK_MAKE_VERSION(1, 0, 0), VK_API_VERSION_1_2,
+                           /*validationLayers=*/{});
+    m_instance = m_vkDevice->getInstance();
+    m_surface = m_vkDevice->getSurface();
+    m_physicalDevice = m_vkDevice->getPhysicalDevice();
+    m_device = m_vkDevice->getLogicalDevice();
+    m_graphicsQueue = m_vkDevice->getGraphicsQueue();
+    m_presentQueue = m_vkDevice->getPresentQueue();
+    m_graphicsFamily = m_vkDevice->getGraphicsQueueFamilyIndex();
+    m_presentFamily = m_vkDevice->getPresentQueueFamilyIndex();
+    m_depthFormat = m_vkDevice->getDepthFormat();
+
+    // --- Step 1: VulkanRenderPass replaces createRenderPass(). The
+    // wrapper's attachment description and subpass dependency match the
+    // textbook baseline (CLEAR/STORE color, CLEAR/DONT_CARE depth,
+    // EXTERNAL→0 dep covering COLOR_OUTPUT|EARLY|LATE fragment tests).
+    // ---
+    const auto surfaceFormat = m_vkDevice->getSurfaceFormat();
+    m_vkRenderPass = LX_core::backend::VulkanRenderPass::create(
+        *m_vkDevice, surfaceFormat.format, m_depthFormat);
+    m_renderPass = m_vkRenderPass->getHandle();
+
+    // Everything below here is still raw vk, identical to the baseline.
     createSwapChain();
     createImageViews();
-    createRenderPass();
     createGraphicsPipeline();
     createCommandPool();
     createDepthResources();
@@ -204,187 +224,31 @@ private:
     createSyncObjects();
   }
 
-  void createInstance() {
-    VkApplicationInfo appInfo{};
-    appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-    appInfo.pApplicationName = "demo_minimal_resize";
-    appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
-    appInfo.pEngineName = "No Engine";
-    appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-    appInfo.apiVersion = VK_API_VERSION_1_2;
-
-    std::vector<const char *> extensions;
-    m_window->getRequiredExtensions(extensions);
-
-    VkInstanceCreateInfo createInfo{};
-    createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-    createInfo.pApplicationInfo = &appInfo;
-    createInfo.enabledExtensionCount = static_cast<u32>(extensions.size());
-    createInfo.ppEnabledExtensionNames = extensions.data();
-    createInfo.enabledLayerCount = 0;
-
-    if (vkCreateInstance(&createInfo, nullptr, &m_instance) != VK_SUCCESS) {
-      throw std::runtime_error("Failed to create Vulkan instance");
-    }
-  }
-
-  void createSurface() { m_surface = m_window->getVulkanSurface(m_instance); }
-
-  void pickPhysicalDevice() {
-    u32 deviceCount = 0;
-    vkEnumeratePhysicalDevices(m_instance, &deviceCount, nullptr);
-    if (deviceCount == 0) {
-      throw std::runtime_error("No Vulkan-capable physical device");
-    }
-    std::vector<VkPhysicalDevice> devices(deviceCount);
-    vkEnumeratePhysicalDevices(m_instance, &deviceCount, devices.data());
-
-    for (const auto &device : devices) {
-      if (isDeviceSuitable(device)) {
-        m_physicalDevice = device;
-        m_depthFormat = findDepthFormat();
-        break;
-      }
-    }
-    if (m_physicalDevice == VK_NULL_HANDLE) {
-      throw std::runtime_error("No suitable physical device");
-    }
-  }
-
-  bool isDeviceSuitable(VkPhysicalDevice device) {
-    QueueFamilyIndices indices = findQueueFamilies(device);
-    bool extensionsSupported = checkDeviceExtensionSupport(device);
-    bool swapChainAdequate = false;
-    if (extensionsSupported) {
-      SwapChainSupportDetails support = querySwapChainSupport(device);
-      swapChainAdequate =
-          !support.formats.empty() && !support.presentModes.empty();
-    }
-    return indices.isComplete() && extensionsSupported && swapChainAdequate;
-  }
-
-  QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device) const {
-    QueueFamilyIndices indices;
-    u32 count = 0;
-    vkGetPhysicalDeviceQueueFamilyProperties(device, &count, nullptr);
-    std::vector<VkQueueFamilyProperties> families(count);
-    vkGetPhysicalDeviceQueueFamilyProperties(device, &count, families.data());
-    for (u32 i = 0; i < count; ++i) {
-      if (families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-        indices.graphicsFamily = i;
-      }
-      VkBool32 presentSupport = VK_FALSE;
-      vkGetPhysicalDeviceSurfaceSupportKHR(device, i, m_surface,
-                                           &presentSupport);
-      if (presentSupport == VK_TRUE) {
-        indices.presentFamily = i;
-      }
-      if (indices.isComplete()) {
-        break;
-      }
-    }
-    return indices;
-  }
-
-  bool checkDeviceExtensionSupport(VkPhysicalDevice device) const {
-    u32 count = 0;
-    vkEnumerateDeviceExtensionProperties(device, nullptr, &count, nullptr);
-    std::vector<VkExtensionProperties> available(count);
-    vkEnumerateDeviceExtensionProperties(device, nullptr, &count,
-                                         available.data());
-    std::set<std::string> required(kDeviceExtensions.begin(),
-                                   kDeviceExtensions.end());
-    for (const auto &ext : available) {
-      required.erase(ext.extensionName);
-    }
-    return required.empty();
-  }
-
-  SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device) const {
+  // --- Swapchain creation needs raw surface caps queries. VulkanDevice
+  // already owns the surface; we just query through it. ---
+  SwapChainSupportDetails querySwapChainSupport() const {
     SwapChainSupportDetails details;
-    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, m_surface,
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(m_physicalDevice, m_surface,
                                               &details.capabilities);
     u32 formatCount = 0;
-    vkGetPhysicalDeviceSurfaceFormatsKHR(device, m_surface, &formatCount,
-                                         nullptr);
+    vkGetPhysicalDeviceSurfaceFormatsKHR(m_physicalDevice, m_surface,
+                                         &formatCount, nullptr);
     if (formatCount > 0) {
       details.formats.resize(formatCount);
-      vkGetPhysicalDeviceSurfaceFormatsKHR(device, m_surface, &formatCount,
+      vkGetPhysicalDeviceSurfaceFormatsKHR(m_physicalDevice, m_surface,
+                                           &formatCount,
                                            details.formats.data());
     }
     u32 modeCount = 0;
-    vkGetPhysicalDeviceSurfacePresentModesKHR(device, m_surface, &modeCount,
-                                              nullptr);
+    vkGetPhysicalDeviceSurfacePresentModesKHR(m_physicalDevice, m_surface,
+                                              &modeCount, nullptr);
     if (modeCount > 0) {
       details.presentModes.resize(modeCount);
-      vkGetPhysicalDeviceSurfacePresentModesKHR(device, m_surface, &modeCount,
+      vkGetPhysicalDeviceSurfacePresentModesKHR(m_physicalDevice, m_surface,
+                                                &modeCount,
                                                 details.presentModes.data());
     }
     return details;
-  }
-
-  VkFormat findDepthFormat() const {
-    std::array<VkFormat, 3> candidates = {
-        VK_FORMAT_D32_SFLOAT,
-        VK_FORMAT_D32_SFLOAT_S8_UINT,
-        VK_FORMAT_D24_UNORM_S8_UINT,
-    };
-    for (VkFormat f : candidates) {
-      VkFormatProperties props;
-      vkGetPhysicalDeviceFormatProperties(m_physicalDevice, f, &props);
-      if (props.optimalTilingFeatures &
-          VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) {
-        return f;
-      }
-    }
-    throw std::runtime_error("No supported depth format");
-  }
-
-  void createLogicalDevice() {
-    QueueFamilyIndices indices = findQueueFamilies(m_physicalDevice);
-    m_graphicsFamily = *indices.graphicsFamily;
-    m_presentFamily = *indices.presentFamily;
-
-    std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
-    std::set<u32> uniqueFamilies = {m_graphicsFamily, m_presentFamily};
-    float priority = 1.0f;
-    for (u32 family : uniqueFamilies) {
-      VkDeviceQueueCreateInfo q{};
-      q.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-      q.queueFamilyIndex = family;
-      q.queueCount = 1;
-      q.pQueuePriorities = &priority;
-      queueCreateInfos.push_back(q);
-    }
-
-    VkPhysicalDeviceFeatures features{};
-    VkDeviceCreateInfo createInfo{};
-    createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-    createInfo.queueCreateInfoCount =
-        static_cast<u32>(queueCreateInfos.size());
-    createInfo.pQueueCreateInfos = queueCreateInfos.data();
-    createInfo.pEnabledFeatures = &features;
-    createInfo.enabledExtensionCount =
-        static_cast<u32>(kDeviceExtensions.size());
-    createInfo.ppEnabledExtensionNames = kDeviceExtensions.data();
-
-    if (vkCreateDevice(m_physicalDevice, &createInfo, nullptr, &m_device) !=
-        VK_SUCCESS) {
-      throw std::runtime_error("Failed to create logical device");
-    }
-    vkGetDeviceQueue(m_device, m_graphicsFamily, 0, &m_graphicsQueue);
-    vkGetDeviceQueue(m_device, m_presentFamily, 0, &m_presentQueue);
-  }
-
-  VkSurfaceFormatKHR chooseSwapSurfaceFormat(
-      const std::vector<VkSurfaceFormatKHR> &available) const {
-    for (const auto &f : available) {
-      if (f.format == VK_FORMAT_B8G8R8A8_SRGB &&
-          f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
-        return f;
-      }
-    }
-    return available[0];
   }
 
   VkPresentModeKHR chooseSwapPresentMode(
@@ -406,8 +270,9 @@ private:
   }
 
   void createSwapChain() {
-    SwapChainSupportDetails support = querySwapChainSupport(m_physicalDevice);
-    VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(support.formats);
+    SwapChainSupportDetails support = querySwapChainSupport();
+    // VulkanDevice already picked the surface format; reuse it.
+    VkSurfaceFormatKHR surfaceFormat = m_vkDevice->getSurfaceFormat();
     VkPresentModeKHR presentMode = chooseSwapPresentMode(support.presentModes);
     VkExtent2D extent = chooseSwapExtent(support.capabilities);
 
@@ -483,71 +348,6 @@ private:
     }
   }
 
-  void createRenderPass() {
-    VkAttachmentDescription colorAttachment{};
-    colorAttachment.format = m_swapChainImageFormat;
-    colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
-    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-
-    VkAttachmentDescription depthAttachment{};
-    depthAttachment.format = m_depthFormat;
-    depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
-    depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    depthAttachment.finalLayout =
-        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-
-    VkAttachmentReference colorRef{};
-    colorRef.attachment = 0;
-    colorRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    VkAttachmentReference depthRef{};
-    depthRef.attachment = 1;
-    depthRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-
-    VkSubpassDescription subpass{};
-    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-    subpass.colorAttachmentCount = 1;
-    subpass.pColorAttachments = &colorRef;
-    subpass.pDepthStencilAttachment = &depthRef;
-
-    VkSubpassDependency dep{};
-    dep.srcSubpass = VK_SUBPASS_EXTERNAL;
-    dep.dstSubpass = 0;
-    dep.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
-                       VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
-                       VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-    dep.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
-                        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-    dep.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
-                       VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-    dep.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
-                        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-
-    std::array<VkAttachmentDescription, 2> attachments = {colorAttachment,
-                                                          depthAttachment};
-    VkRenderPassCreateInfo info{};
-    info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    info.attachmentCount = static_cast<u32>(attachments.size());
-    info.pAttachments = attachments.data();
-    info.subpassCount = 1;
-    info.pSubpasses = &subpass;
-    info.dependencyCount = 1;
-    info.pDependencies = &dep;
-
-    if (vkCreateRenderPass(m_device, &info, nullptr, &m_renderPass) !=
-        VK_SUCCESS) {
-      throw std::runtime_error("Failed to create render pass");
-    }
-  }
-
   VkShaderModule createShaderModule(const std::vector<u32> &code) {
     VkShaderModuleCreateInfo info{};
     info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
@@ -618,8 +418,6 @@ private:
     depthStencil.depthTestEnable = VK_TRUE;
     depthStencil.depthWriteEnable = VK_TRUE;
     depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
-    depthStencil.depthBoundsTestEnable = VK_FALSE;
-    depthStencil.stencilTestEnable = VK_FALSE;
 
     VkPipelineColorBlendAttachmentState colorBlendAttachment{};
     colorBlendAttachment.colorWriteMask =
@@ -684,15 +482,8 @@ private:
   }
 
   u32 findMemoryType(u32 typeFilter, VkMemoryPropertyFlags properties) const {
-    VkPhysicalDeviceMemoryProperties memProps;
-    vkGetPhysicalDeviceMemoryProperties(m_physicalDevice, &memProps);
-    for (u32 i = 0; i < memProps.memoryTypeCount; ++i) {
-      if ((typeFilter & (1 << i)) &&
-          (memProps.memoryTypes[i].propertyFlags & properties) == properties) {
-        return i;
-      }
-    }
-    throw std::runtime_error("Failed to find memory type");
+    // VulkanDevice exposes findMemoryTypeIndex; reuse it.
+    return m_vkDevice->findMemoryTypeIndex(typeFilter, properties);
   }
 
   void createImage(u32 w, u32 h, VkFormat format, VkImageTiling tiling,
@@ -854,9 +645,9 @@ private:
       throw std::runtime_error("Failed to begin command buffer");
     }
 
-    std::array<VkClearValue, 2> clearValues{};
-    clearValues[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
-    clearValues[1].depthStencil = {1.0f, 0};
+    // Pull clear values from the wrapper to keep the demo fully tied to
+    // VulkanRenderPass behaviour.
+    const auto &clearValues = m_vkRenderPass->getClearValues();
 
     VkRenderPassBeginInfo rpInfo{};
     rpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -925,7 +716,6 @@ private:
   }
 
   void recreateSwapChain() {
-    // Wait while the window has zero client area (minimized / mid-resize).
     while (m_window->getWidth() <= 0 || m_window->getHeight() <= 0) {
       if (m_window->shouldClose()) {
         return;
@@ -1019,9 +809,6 @@ private:
     if (m_pipelineLayout != VK_NULL_HANDLE) {
       vkDestroyPipelineLayout(m_device, m_pipelineLayout, nullptr);
     }
-    if (m_renderPass != VK_NULL_HANDLE) {
-      vkDestroyRenderPass(m_device, m_renderPass, nullptr);
-    }
     if (m_indexBuffer != VK_NULL_HANDLE) {
       vkDestroyBuffer(m_device, m_indexBuffer, nullptr);
     }
@@ -1046,16 +833,12 @@ private:
     if (m_commandPool != VK_NULL_HANDLE) {
       vkDestroyCommandPool(m_device, m_commandPool, nullptr);
     }
-    if (m_device != VK_NULL_HANDLE) {
-      vkDestroyDevice(m_device, nullptr);
-    }
-    if (m_surface != VK_NULL_HANDLE) {
-      m_window->destroyGraphicsHandle(GraphicsAPI::Vulkan, m_instance,
-                                      m_surface);
-    }
-    if (m_instance != VK_NULL_HANDLE) {
-      vkDestroyInstance(m_instance, nullptr);
-    }
+
+    // Now release the wrappers — they own the render pass + device +
+    // surface + instance. RenderPass first (it references the device),
+    // then the device (destroys logical device + surface + instance).
+    m_vkRenderPass.reset();
+    m_vkDevice.reset();
   }
 };
 
