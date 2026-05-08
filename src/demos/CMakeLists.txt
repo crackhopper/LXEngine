@@ -2,3 +2,4 @@
 # subdirectory. Demos are not registered with CTest.
 
 add_subdirectory(scene_viewer)
+add_subdirectory(minimal_resize)
