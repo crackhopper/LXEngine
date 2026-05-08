@@ -1,6 +1,7 @@
 #include "pipeline.hpp"
 #include "../descriptors/descriptor_manager.hpp"
 #include "../device.hpp"
+#include "core/utils/env.hpp"
 #include <algorithm>
 #include <cstring>
 #include <stdexcept>
@@ -228,7 +229,9 @@ VulkanPipeline::getRasterizerStateCreateInfo() {
   rasterizer.rasterizerDiscardEnable = VK_FALSE;
   rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
   rasterizer.lineWidth = 1.0f;
-  rasterizer.cullMode = cullToVk(m_renderState.cullMode);
+  rasterizer.cullMode = expEnvEnabled("LX_RENDER_DISABLE_CULL")
+                            ? VK_CULL_MODE_NONE
+                            : cullToVk(m_renderState.cullMode);
   rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
   rasterizer.depthBiasEnable = VK_FALSE;
   return rasterizer;
@@ -249,11 +252,13 @@ VulkanPipeline::getDepthStencilStateCreateInfo() {
   VkPipelineDepthStencilStateCreateInfo depthStencil{};
   depthStencil.sType =
       VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+  const bool disableDepth = expEnvEnabled("LX_RENDER_DISABLE_DEPTH");
   depthStencil.depthTestEnable =
-      m_renderState.depthTestEnable ? VK_TRUE : VK_FALSE;
+      !disableDepth && m_renderState.depthTestEnable ? VK_TRUE : VK_FALSE;
   depthStencil.depthWriteEnable =
-      m_renderState.depthWriteEnable ? VK_TRUE : VK_FALSE;
-  depthStencil.depthCompareOp = compareOpToVk(m_renderState.depthOp);
+      !disableDepth && m_renderState.depthWriteEnable ? VK_TRUE : VK_FALSE;
+  depthStencil.depthCompareOp =
+      disableDepth ? VK_COMPARE_OP_ALWAYS : compareOpToVk(m_renderState.depthOp);
   depthStencil.depthBoundsTestEnable = VK_FALSE;
   return depthStencil;
 }
