@@ -129,6 +129,17 @@ VulkanResourceManager::~VulkanResourceManager() {
   }
 }
 
+void VulkanResourceManager::setFramesInFlight(u32 framesInFlight) {
+  m_framesInFlight = std::max<u32>(1, framesInFlight);
+}
+
+void VulkanResourceManager::beginFrame(u32 currentFrameIndex) {
+  if (m_framesInFlight == 0) {
+    m_framesInFlight = 1;
+  }
+  m_currentFrameIndex = currentFrameIndex % m_framesInFlight;
+}
+
 void VulkanResourceManager::syncResource(
     VulkanCommandBufferManager &cmdBufferManager,
     const IGpuResourceSharedPtr &cpuRes) {
@@ -141,22 +152,49 @@ void VulkanResourceManager::syncResource(
   auto it = m_gpuResources.find(identity);
   if (it == m_gpuResources.end()) {
     CachedGpuResource entry;
-    entry.resource = createGpuResource(cpuRes);
+    if (usesFrameLocalCopy(cpuRes->getType())) {
+      entry.frameResources.resize(m_framesInFlight);
+      entry.frameContentHashes.resize(m_framesInFlight, 0);
+      for (u32 i = 0; i < m_framesInFlight; ++i) {
+        entry.frameResources[i] = createGpuResource(cpuRes);
+      }
+    } else {
+      entry.resource = createGpuResource(cpuRes);
+    }
     entry.lastSeenFrame = m_frameSerial;
     auto [insertedIt, inserted] =
         m_gpuResources.emplace(identity, std::move(entry));
     (void)inserted;
-    // 新创建的资源强制更新一次数据
-    updateGpuResource(insertedIt->second.resource, cpuRes, cmdBufferManager);
-    logCameraUploadIfChanged("create", cpuRes, insertedIt->second.resource);
+    auto &activeGpuRes = getMutableActiveGpuResource(insertedIt->second);
+    updateGpuResource(activeGpuRes, cpuRes, cmdBufferManager);
+    if (insertedIt->second.usesFrameLocalCopies()) {
+      const usize currentHash =
+          hashBytes(cpuRes->getRawData(), cpuRes->getByteSize());
+      insertedIt->second.frameContentHashes[m_currentFrameIndex] = currentHash;
+    }
+    logCameraUploadIfChanged("create", cpuRes, activeGpuRes);
     cpuRes->clearDirty();
     return;
   }
 
   it->second.lastSeenFrame = m_frameSerial;
+  auto &entry = it->second;
+  auto &activeGpuRes = getMutableActiveGpuResource(entry);
+  if (entry.usesFrameLocalCopies()) {
+    const usize currentHash =
+        hashBytes(cpuRes->getRawData(), cpuRes->getByteSize());
+    if (entry.frameContentHashes[m_currentFrameIndex] != currentHash) {
+      updateGpuResource(activeGpuRes, cpuRes, cmdBufferManager);
+      entry.frameContentHashes[m_currentFrameIndex] = currentHash;
+      logCameraUploadIfChanged("update", cpuRes, activeGpuRes);
+    }
+    cpuRes->clearDirty();
+    return;
+  }
+
   if (cpuRes->isDirty()) {
-    updateGpuResource(it->second.resource, cpuRes, cmdBufferManager);
-    logCameraUploadIfChanged("update", cpuRes, it->second.resource);
+    updateGpuResource(activeGpuRes, cpuRes, cmdBufferManager);
+    logCameraUploadIfChanged("update", cpuRes, activeGpuRes);
     cpuRes->clearDirty();
   }
 }
@@ -271,11 +309,40 @@ void VulkanResourceManager::initializeRenderPassAndPipeline(
       VulkanRenderPass::create(m_device, surfaceFormat.format, depthFormat);
 }
 
+std::shared_ptr<VulkanAnyResource> &
+VulkanResourceManager::getMutableActiveGpuResource(CachedGpuResource &entry) {
+  if (entry.usesFrameLocalCopies()) {
+    return entry.frameResources[m_currentFrameIndex];
+  }
+  return entry.resource;
+}
+
+const std::shared_ptr<VulkanAnyResource> &
+VulkanResourceManager::getActiveGpuResource(const CachedGpuResource &entry) const {
+  if (entry.usesFrameLocalCopies()) {
+    return entry.frameResources[m_currentFrameIndex];
+  }
+  return entry.resource;
+}
+
+bool VulkanResourceManager::usesFrameLocalCopy(ResourceType type) const {
+  switch (type) {
+  case ResourceType::VertexBuffer:
+  case ResourceType::IndexBuffer:
+  case ResourceType::UniformBuffer:
+  case ResourceType::StorageBuffer:
+    return true;
+  default:
+    return false;
+  }
+}
+
 // 辅助查找宏，简化代码
 #define GET_RESOURCE_IMPL(ReturnType, VariantType)                             \
   auto it = m_gpuResources.find(handle);                                       \
   if (it != m_gpuResources.end()) {                                            \
-    if (auto resPtr = std::get_if<VariantType>(&(*(it->second.resource)))) {   \
+    const auto &activeResource = getActiveGpuResource(it->second);             \
+    if (auto resPtr = std::get_if<VariantType>(&(*activeResource))) {          \
       return std::ref(*(resPtr->get()));                                       \
     }                                                                          \
   }                                                                            \

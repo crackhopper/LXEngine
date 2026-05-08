@@ -94,6 +94,7 @@ public:
 
     // Create resource manager
     m_resourceManager = VulkanResourceManager::create(*m_device);
+    m_resourceManager->setFramesInFlight(kMaxFramesInFlight);
     m_resourceManager->initializeRenderPassAndPipeline(
         m_device->getSurfaceFormat(), m_device->getDepthFormat());
     if (expEnvEnabled("LX_RENDER_DEBUG_CLEAR")) {
@@ -223,6 +224,9 @@ public:
   }
 
   void uploadData() {
+    const u32 currentFrameIndex = m_frameIndex % kMaxFramesInFlight;
+    m_swapchain->waitForFrame(currentFrameIndex);
+    m_resourceManager->beginFrame(currentFrameIndex);
     for (auto &pass : m_frameGraph.getPasses()) {
       for (auto &item : pass.queue.getItems()) {
         m_resourceManager->syncResource(*m_cmdBufferMgr, item.vertexBuffer);
@@ -286,6 +290,7 @@ public:
 
     m_cmdBufferMgr->beginFrame(currentFrameIndex);
     m_device->getDescriptorManager().beginFrame(currentFrameIndex);
+    m_resourceManager->beginFrame(currentFrameIndex);
 
     auto cmd = m_cmdBufferMgr->allocateBuffer();
     cmd->begin();

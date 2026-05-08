@@ -319,13 +319,17 @@ void VulkanSwapchain::rebuild(VulkanRenderPass &renderPass) {
 
 VkResult VulkanSwapchain::acquireNextImage(u32 currentFrameIndex,
                                            u32 &imageIndex) {
-  vkWaitForFences(m_device.getLogicalDevice(), 1,
-                  &m_inFlightFences[currentFrameIndex], VK_TRUE, UINT64_MAX);
+  waitForFrame(currentFrameIndex);
 
   return vkAcquireNextImageKHR(m_device.getLogicalDevice(), m_handle,
                                UINT64_MAX,
                                m_imageAvailableSemaphores[currentFrameIndex],
                                VK_NULL_HANDLE, &imageIndex);
+}
+
+void VulkanSwapchain::waitForFrame(u32 currentFrameIndex) const {
+  vkWaitForFences(m_device.getLogicalDevice(), 1,
+                  &m_inFlightFences[currentFrameIndex], VK_TRUE, UINT64_MAX);
 }
 
 VkResult VulkanSwapchain::present(u32 currentFrameIndex, u32 imageIndex) {

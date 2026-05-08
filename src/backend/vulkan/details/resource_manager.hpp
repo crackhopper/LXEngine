@@ -39,7 +39,11 @@ class VulkanResourceManager {
   struct Token {};
   struct CachedGpuResource {
     std::shared_ptr<VulkanAnyResource> resource;
+    std::vector<std::shared_ptr<VulkanAnyResource>> frameResources;
+    std::vector<usize> frameContentHashes;
     ResourceCacheIdentity lastSeenFrame = 0;
+
+    bool usesFrameLocalCopies() const { return !frameResources.empty(); }
   };
 
 public:
@@ -56,6 +60,8 @@ public:
 
   void syncResource(VulkanCommandBufferManager &cmdBufferManager,
                     const IGpuResourceSharedPtr &cpuRes);
+  void setFramesInFlight(u32 framesInFlight);
+  void beginFrame(u32 currentFrameIndex);
   void collectGarbage();
 
   void initializeRenderPassAndPipeline(VkSurfaceFormatKHR surfaceFormat,
@@ -81,6 +87,11 @@ public:
 private:
   std::shared_ptr<VulkanAnyResource>
   createGpuResource(const IGpuResourceSharedPtr &cpuRes);
+  std::shared_ptr<VulkanAnyResource> &
+  getMutableActiveGpuResource(CachedGpuResource &entry);
+  const std::shared_ptr<VulkanAnyResource> &
+  getActiveGpuResource(const CachedGpuResource &entry) const;
+  bool usesFrameLocalCopy(ResourceType type) const;
   void updateGpuResource(std::shared_ptr<VulkanAnyResource> &gpuRes,
                          const IGpuResourceSharedPtr &cpuRes,
                          VulkanCommandBufferManager &cmdBufferManager);
@@ -89,6 +100,8 @@ private:
   std::unordered_map<ResourceCacheIdentity, CachedGpuResource> m_gpuResources;
   std::unordered_set<ResourceCacheIdentity> m_activeResourceIds;
   ResourceCacheIdentity m_frameSerial = 0;
+  u32 m_framesInFlight = 1;
+  u32 m_currentFrameIndex = 0;
 
   std::unique_ptr<VulkanRenderPass> m_renderPass;
   std::unique_ptr<PipelineCache> m_pipelineCache;
