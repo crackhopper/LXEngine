@@ -35,6 +35,7 @@
 #include <memory>
 #include <optional>
 #include <set>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -142,6 +143,36 @@ int physicalDevicePreferenceScore(VkPhysicalDeviceType type) {
   case VK_PHYSICAL_DEVICE_TYPE_OTHER:
   default:
     return 0;
+  }
+}
+
+// Decode a VkResult to a short human-readable name. Limited to the
+// codes most likely to appear in our error paths — falls back to the
+// numeric value otherwise.
+const char *vkResultString(VkResult r) {
+  switch (r) {
+  case VK_SUCCESS: return "VK_SUCCESS";
+  case VK_NOT_READY: return "VK_NOT_READY";
+  case VK_TIMEOUT: return "VK_TIMEOUT";
+  case VK_INCOMPLETE: return "VK_INCOMPLETE";
+  case VK_ERROR_OUT_OF_HOST_MEMORY: return "VK_ERROR_OUT_OF_HOST_MEMORY";
+  case VK_ERROR_OUT_OF_DEVICE_MEMORY: return "VK_ERROR_OUT_OF_DEVICE_MEMORY";
+  case VK_ERROR_INITIALIZATION_FAILED: return "VK_ERROR_INITIALIZATION_FAILED";
+  case VK_ERROR_DEVICE_LOST: return "VK_ERROR_DEVICE_LOST";
+  case VK_ERROR_LAYER_NOT_PRESENT: return "VK_ERROR_LAYER_NOT_PRESENT";
+  case VK_ERROR_EXTENSION_NOT_PRESENT: return "VK_ERROR_EXTENSION_NOT_PRESENT";
+  case VK_ERROR_FEATURE_NOT_PRESENT: return "VK_ERROR_FEATURE_NOT_PRESENT";
+  case VK_ERROR_INCOMPATIBLE_DRIVER: return "VK_ERROR_INCOMPATIBLE_DRIVER";
+  case VK_ERROR_TOO_MANY_OBJECTS: return "VK_ERROR_TOO_MANY_OBJECTS";
+  case VK_ERROR_FORMAT_NOT_SUPPORTED: return "VK_ERROR_FORMAT_NOT_SUPPORTED";
+  case VK_ERROR_FRAGMENTED_POOL: return "VK_ERROR_FRAGMENTED_POOL";
+  case VK_ERROR_SURFACE_LOST_KHR: return "VK_ERROR_SURFACE_LOST_KHR";
+  case VK_ERROR_NATIVE_WINDOW_IN_USE_KHR: return "VK_ERROR_NATIVE_WINDOW_IN_USE_KHR";
+  case VK_ERROR_OUT_OF_DATE_KHR: return "VK_ERROR_OUT_OF_DATE_KHR";
+  case VK_ERROR_INCOMPATIBLE_DISPLAY_KHR: return "VK_ERROR_INCOMPATIBLE_DISPLAY_KHR";
+  case VK_ERROR_VALIDATION_FAILED_EXT: return "VK_ERROR_VALIDATION_FAILED_EXT";
+  case VK_SUBOPTIMAL_KHR: return "VK_SUBOPTIMAL_KHR";
+  default: return "VK_<unknown>";
   }
 }
 
@@ -326,12 +357,21 @@ private:
     createInfo.ppEnabledLayerNames =
         enabledLayers.empty() ? nullptr : enabledLayers.data();
 
-    if (vkCreateInstance(&createInfo, nullptr, &m_instance) != VK_SUCCESS) {
-      throw std::runtime_error("Failed to create Vulkan instance "
-                               "(if LX_VK_FORCE_RENDERDOC_LAYER=1 is set, "
-                               "VK_LAYER_RENDERDOC_Capture might not be "
-                               "registered on this system — install "
-                               "RenderDoc, or unset the env var)");
+    {
+      VkResult r = vkCreateInstance(&createInfo, nullptr, &m_instance);
+      if (r != VK_SUCCESS) {
+        std::ostringstream oss;
+        oss << "vkCreateInstance failed: " << vkResultString(r) << " ("
+            << static_cast<int>(r) << ")"
+            << " — enabledLayerCount=" << createInfo.enabledLayerCount;
+        for (u32 i = 0; i < createInfo.enabledLayerCount; ++i) {
+          oss << "\n  layer[" << i << "]="
+              << createInfo.ppEnabledLayerNames[i];
+        }
+        oss << "\n  (if LX_VK_FORCE_RENDERDOC_LAYER=1, "
+               "VK_LAYER_RENDERDOC_Capture might not be registered)";
+        throw std::runtime_error(oss.str());
+      }
     }
   }
 
@@ -508,9 +548,21 @@ private:
         static_cast<u32>(kDeviceExtensions.size());
     createInfo.ppEnabledExtensionNames = kDeviceExtensions.data();
 
-    if (vkCreateDevice(m_physicalDevice, &createInfo, nullptr, &m_device) !=
-        VK_SUCCESS) {
-      throw std::runtime_error("Failed to create logical device");
+    {
+      VkResult r =
+          vkCreateDevice(m_physicalDevice, &createInfo, nullptr, &m_device);
+      if (r != VK_SUCCESS) {
+        std::ostringstream oss;
+        oss << "vkCreateDevice failed: " << vkResultString(r) << " ("
+            << static_cast<int>(r) << ")"
+            << " — enabledExtensionCount=" << createInfo.enabledExtensionCount
+            << " queueCount=" << createInfo.queueCreateInfoCount;
+        for (u32 i = 0; i < createInfo.enabledExtensionCount; ++i) {
+          oss << "\n  ext[" << i << "]="
+              << createInfo.ppEnabledExtensionNames[i];
+        }
+        throw std::runtime_error(oss.str());
+      }
     }
     vkGetDeviceQueue(m_device, m_graphicsFamily, 0, &m_graphicsQueue);
     vkGetDeviceQueue(m_device, m_presentFamily, 0, &m_presentQueue);
