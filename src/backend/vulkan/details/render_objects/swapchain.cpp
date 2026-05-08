@@ -332,6 +332,15 @@ void VulkanSwapchain::waitForFrame(u32 currentFrameIndex) const {
                   &m_inFlightFences[currentFrameIndex], VK_TRUE, UINT64_MAX);
 }
 
+void VulkanSwapchain::waitForAllFrames() const {
+  if (m_inFlightFences.empty()) {
+    return;
+  }
+  vkWaitForFences(m_device.getLogicalDevice(),
+                  static_cast<u32>(m_inFlightFences.size()),
+                  m_inFlightFences.data(), VK_TRUE, UINT64_MAX);
+}
+
 VkResult VulkanSwapchain::present(u32 currentFrameIndex, u32 imageIndex) {
   VkPresentInfoKHR presentInfo{};
   presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;

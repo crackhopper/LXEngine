@@ -39,6 +39,7 @@ public:
   VkSemaphore getRenderFinishedSemaphore(u32 currentFrameIndex) const;
   VkFence getInFlightFence(u32 currentFrameIndex) const;
   void waitForFrame(u32 currentFrameIndex) const;
+  void waitForAllFrames() const;
 
   // --- 帧获取与呈现 ---
   VkResult acquireNextImage(u32 currentFrameIndex, u32 &imageIndex);

@@ -58,6 +58,22 @@ namespace {
 constexpr u32 kMaxFramesInFlight = 3;
 constexpr int kDebugBurstFrames = 3;
 
+bool isSharedHostBufferResource(const IGpuResourceSharedPtr &resource) {
+  if (!resource || !resource->isDirty()) {
+    return false;
+  }
+
+  switch (resource->getType()) {
+  case ResourceType::VertexBuffer:
+  case ResourceType::IndexBuffer:
+  case ResourceType::UniformBuffer:
+  case ResourceType::StorageBuffer:
+    return true;
+  default:
+    return false;
+  }
+}
+
 struct DrawFrameStats {
   VkExtent2D extent{0, 0};
   usize passCount = 0;
@@ -226,6 +242,38 @@ public:
   void uploadData() {
     const u32 currentFrameIndex = m_frameIndex % kMaxFramesInFlight;
     m_resourceManager->beginFrame(currentFrameIndex);
+    bool requiresSharedBufferSync = false;
+    for (auto &pass : m_frameGraph.getPasses()) {
+      for (auto &item : pass.queue.getItems()) {
+        requiresSharedBufferSync =
+            requiresSharedBufferSync ||
+            isSharedHostBufferResource(item.vertexBuffer) ||
+            isSharedHostBufferResource(item.indexBuffer);
+        for (auto &cpuRes : item.descriptorResources) {
+          requiresSharedBufferSync =
+              requiresSharedBufferSync || isSharedHostBufferResource(cpuRes);
+        }
+        if (requiresSharedBufferSync) {
+          break;
+        }
+      }
+      if (requiresSharedBufferSync) {
+        break;
+      }
+    }
+
+    if (requiresSharedBufferSync) {
+      // These buffers are single shared allocations, not per-frame slices.
+      // Wait until every in-flight frame that could still read them has
+      // completed before overwriting their contents from the CPU.
+      if (expRendererDebugEnabled()) {
+        std::cerr << "[RendererDebug] uploadData: waiting for all in-flight "
+                     "frames before shared buffer upload"
+                  << " frameSlot=" << currentFrameIndex << std::endl;
+      }
+      m_swapchain->waitForAllFrames();
+    }
+
     for (auto &pass : m_frameGraph.getPasses()) {
       for (auto &item : pass.queue.getItems()) {
         m_resourceManager->syncResource(*m_cmdBufferMgr, item.vertexBuffer);
