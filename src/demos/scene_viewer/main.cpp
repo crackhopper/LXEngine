@@ -49,9 +49,27 @@ void logCameraAspectState(const char *label, int width, int height, float aspect
     return;
   }
 
+  struct CameraLogState {
+    int width = -1;
+    int height = -1;
+    bool finiteAspect = true;
+  };
+  static CameraLogState editorState{};
+  static CameraLogState gameState{};
+  CameraLogState &state =
+      std::string_view(label) == "editor" ? editorState : gameState;
+  const bool finiteAspect = std::isfinite(aspect);
+  if (state.width == width && state.height == height &&
+      state.finiteAspect == finiteAspect) {
+    return;
+  }
+  state.width = width;
+  state.height = height;
+  state.finiteAspect = finiteAspect;
+
   std::cerr << "[scene_viewer][camera] " << label << " size=" << width << "x"
             << height << " aspect=" << aspect
-            << " finiteAspect=" << std::isfinite(aspect)
+            << " finiteAspect=" << finiteAspect
             << " eye=(" << camera.getEyePosition().x << ", "
             << camera.getEyePosition().y << ", " << camera.getEyePosition().z
             << ")" << std::endl;
@@ -178,11 +196,15 @@ int main() {
 
       const int windowWidth = window->getWidth();
       const int windowHeight = window->getHeight();
-      if (expSceneViewerDebugEnabled() && windowHeight <= 0) {
+      static bool reportedZeroHeight = false;
+      if (expSceneViewerDebugEnabled() && windowHeight <= 0 && !reportedZeroHeight) {
         std::cerr << "[scene_viewer][resize] zero-height frame size="
                   << windowWidth << "x" << windowHeight
                   << " previewEnabled=" << editorState.isPreviewEnabled()
                   << std::endl;
+        reportedZeroHeight = true;
+      } else if (windowHeight > 0) {
+        reportedZeroHeight = false;
       }
       const bool hasValidExtent = windowWidth > 0 && windowHeight > 0;
       const float aspect =
