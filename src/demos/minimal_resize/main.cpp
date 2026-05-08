@@ -222,10 +222,14 @@ private:
   u32 m_resizeSleepMs = 0;
 
   // Diagnostics. Used by the post-rebuild burst log so we can see what the
-  // first few frames look like immediately after each rebuild.
+  // first frame after each rebuild looks like.
   u64 m_rebuildCount = 0;
   u32 m_postRebuildBurstRemaining = 0;
   u32 m_swapchainImageCount = 0;
+  // Edge-trigger flag for acquire SUBOPTIMAL_KHR — log only on state
+  // transitions (entered / left) so a sustained suboptimal state doesn't
+  // emit one line per frame.
+  bool m_acquireSuboptimal = false;
   u32 m_currentFrame = 0;
 
   void initWindow() {
@@ -1131,7 +1135,10 @@ private:
     }
 
     ++m_rebuildCount;
-    m_postRebuildBurstRemaining = 5;
+    // Only log the very first frame after each rebuild — that's the
+    // most diagnostic point ("did the first post-rebuild frame come back
+    // black?"). Subsequent frames generally don't add information.
+    m_postRebuildBurstRemaining = 1;
     std::cout << "[minimal_resize] swapchain rebuild #" << (m_rebuildCount - 1)
               << " done: extent=" << m_swapChainExtent.width << "x"
               << m_swapChainExtent.height
@@ -1169,18 +1176,29 @@ private:
     if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
       throw std::runtime_error("Failed to acquire swapchain image");
     }
-    if (result == VK_SUBOPTIMAL_KHR) {
-      std::cout << "[minimal_resize] acquire: VK_SUBOPTIMAL_KHR (continuing)"
-                << std::endl;
+    // Edge-triggered SUBOPTIMAL log: only print on transition into/out of
+    // the suboptimal state. Avoids one line per frame when SUBOPTIMAL
+    // persists across a slow resize drag.
+    {
+      const bool nowSuboptimal = (result == VK_SUBOPTIMAL_KHR);
+      if (nowSuboptimal && !m_acquireSuboptimal) {
+        std::cout << "[minimal_resize] acquire: SUBOPTIMAL_KHR begun"
+                  << " (subsequent SUBOPTIMAL frames will not be logged)"
+                  << std::endl;
+      } else if (!nowSuboptimal && m_acquireSuboptimal) {
+        std::cout << "[minimal_resize] acquire: SUBOPTIMAL_KHR ended"
+                  << std::endl;
+      }
+      m_acquireSuboptimal = nowSuboptimal;
     }
 
-    // Diagnostic: print the first few frames after each rebuild so we can
-    // see what comes back when the supposed flicker / black-screen race
-    // actually fires.
+    // Diagnostic: print only the first frame after each rebuild — the most
+    // informative single sample ("did the first post-rebuild frame come
+    // back black?"). Skips the firehose for frequent resize drags.
     if (m_postRebuildBurstRemaining > 0) {
-      std::cout << "[minimal_resize] post-rebuild frame #"
-                << (5 - m_postRebuildBurstRemaining)
-                << ": frameSlot=" << m_currentFrame
+      std::cout << "[minimal_resize] post-rebuild first frame:"
+                << " rebuildIdx=" << (m_rebuildCount - 1)
+                << " frameSlot=" << m_currentFrame
                 << " imageIndex=" << imageIndex
                 << " extent=" << m_swapChainExtent.width << "x"
                 << m_swapChainExtent.height << std::endl;
