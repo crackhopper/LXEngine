@@ -33,6 +33,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_command_bus_v2
   test_debug_ui_smoke
   test_scene_tree_panel
+  test_editor_multi_select
   test_inspector_panel
   test_viewport_overlay
   test_gizmo_adapter
@@ -114,6 +115,10 @@ endif()
 
 if(TARGET test_scene_tree_panel)
   target_link_libraries(test_scene_tree_panel PRIVATE imgui)
+endif()
+
+if(TARGET test_editor_multi_select)
+  target_link_libraries(test_editor_multi_select PRIVATE imgui)
 endif()
 
 if(TARGET test_inspector_panel)

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/editor/command_bus.hpp"
+#include "core/editor/editor_config.hpp"
 #include "core/editor/gizmo_adapter.hpp"
 #include "core/math/vec.hpp"
 #include "core/math/transform.hpp"
@@ -26,6 +27,10 @@ public:
     Vec2f origin{0.0f, 0.0f};
     Vec2f size{1.0f, 1.0f};
   };
+  struct SelectionRect final {
+    Vec2f min{0.0f, 0.0f};
+    Vec2f max{0.0f, 0.0f};
+  };
 
   struct Snapshot {
     bool previewEnabled = false;
@@ -37,7 +42,8 @@ public:
     GizmoOperation gizmoOperation = GizmoOperation::Translate;
   };
 
-  ViewportOverlay(CommandBus &commandBus, EditorState &editorState, Scene &scene);
+  ViewportOverlay(CommandBus &commandBus, EditorState &editorState, Scene &scene,
+                  EditorConfig config = {});
 
   [[nodiscard]] Snapshot makeSnapshot() const;
   [[nodiscard]] GizmoOperation getGizmoOperation() const;
@@ -53,11 +59,39 @@ public:
                                const std::vector<Transform> &afterTransforms);
   [[nodiscard]] CommandResult dispatchPickingClick(const Vec2f &screenPixel,
                                                    const Vec2f &viewportSize);
+  [[nodiscard]] CommandResult dispatchBoxSelection(const Vec2f &dragStart,
+                                                   const Vec2f &dragEnd,
+                                                   const Vec2f &viewportSize,
+                                                   bool ctrlHeld,
+                                                   bool shiftHeld);
+  [[nodiscard]] std::vector<std::string>
+  gatherBoxSelectionPaths(const Vec2f &dragStart, const Vec2f &dragEnd,
+                          const Vec2f &viewportSize) const;
+  [[nodiscard]] bool hasPendingBoxSelectionConfirmation() const;
+  [[nodiscard]] CommandResult resolvePendingBoxSelection(bool confirm);
   [[nodiscard]] PanelRect getPanelRect() const;
   void enqueueDebugDraw() const;
   void draw();
 
 private:
+  struct PendingBoxSelection final {
+    std::vector<std::string> paths;
+    bool appendMode = false;
+    usize hitCount = 0;
+  };
+
+  [[nodiscard]] static SelectionRect makeSelectionRect(const Vec2f &a,
+                                                       const Vec2f &b,
+                                                       const Vec2f &viewportSize);
+  [[nodiscard]] static float selectionRectArea(const SelectionRect &rect);
+  [[nodiscard]] static bool selectionRectIsDrag(const SelectionRect &rect);
+  [[nodiscard]] static bool selectionRectsIntersect(const SelectionRect &lhs,
+                                                    const SelectionRect &rhs);
+  [[nodiscard]] static bool appendSelectionMode(bool ctrlHeld, bool shiftHeld);
+  [[nodiscard]] CommandResult dispatchSelectionPaths(const std::vector<std::string> &paths);
+  void drawBoxSelectionRect(ImDrawList &drawList, const SelectionRect &rect,
+                            const PanelRect &panelRect) const;
+  void drawBoxSelectionConfirmModal();
   [[nodiscard]] PanelRect computeViewportRect() const;
   [[nodiscard]] static const char *modeLabel(GizmoOperation operation);
   [[nodiscard]] static ImGuizmo::OPERATION toImGuizmoOperation(GizmoOperation operation);
@@ -65,10 +99,19 @@ private:
   CommandBus &m_commandBus;
   EditorState &m_editorState;
   Scene &m_scene;
+  EditorConfig m_config;
   GizmoOperation m_gizmoOperation = GizmoOperation::Translate;
   PanelRect m_lastPanelRect{};
   bool m_gizmoHovered = false;
   bool m_gizmoUsing = false;
+  bool m_boxSelectTracking = false;
+  bool m_boxSelectActive = false;
+  bool m_boxSelectPopupRequested = false;
+  Vec2f m_boxSelectStart{0.0f, 0.0f};
+  SelectionRect m_boxSelectRect{};
+  bool m_boxSelectCtrlHeld = false;
+  bool m_boxSelectShiftHeld = false;
+  std::optional<PendingBoxSelection> m_pendingBoxSelection;
   std::vector<std::string> m_gizmoDragPaths;
   std::vector<Transform> m_gizmoPreDragTransforms;
 };

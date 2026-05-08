@@ -1,6 +1,7 @@
 #include "core/editor/viewport_overlay.hpp"
 
 #include "core/debug_draw/debug_draw.hpp"
+#include "core/editor/editor_config.hpp"
 #include "core/editor/editor_state.hpp"
 #include "core/math/quat.hpp"
 #include "core/scene/components/camera_component.hpp"
@@ -10,6 +11,8 @@
 #include <imgui.h>
 #include <ImGuizmo.h>
 
+#include <algorithm>
+#include <cmath>
 #include <sstream>
 
 namespace LX_core {
@@ -110,11 +113,89 @@ constexpr float kDegToRad = 3.14159265358979323846f / 180.0f;
   return {};
 }
 
+void appendUniquePath(std::vector<std::string> &paths, std::string_view path) {
+  const auto it = std::find(paths.begin(), paths.end(), path);
+  if (it != paths.end()) {
+    paths.erase(it);
+  }
+  paths.emplace_back(path);
+}
+
+[[nodiscard]] Vec2f clampPointToViewport(const Vec2f &point,
+                                         const Vec2f &viewportSize) {
+  return Vec2f{std::clamp(point.x, 0.0f, viewportSize.x),
+               std::clamp(point.y, 0.0f, viewportSize.y)};
+}
+
+[[nodiscard]] std::optional<Vec2f>
+projectWorldPointToViewport(const Vec3f &worldPoint, const Mat4f &viewProj,
+                            const Vec2f &viewportSize) {
+  const Vec4f clip = viewProj * Vec4f{worldPoint.x, worldPoint.y, worldPoint.z, 1.0f};
+  if (std::abs(clip.w) <= 1e-6f || clip.w <= 0.0f) {
+    return std::nullopt;
+  }
+
+  const Vec3f ndc = clip.toVec3();
+  const float screenX = (ndc.x * 0.5f + 0.5f) * viewportSize.x;
+  const float screenY = (1.0f - (ndc.y * 0.5f + 0.5f)) * viewportSize.y;
+  return Vec2f{screenX, screenY};
+}
+
+[[nodiscard]] std::optional<ViewportOverlay::SelectionRect>
+projectBoundsToViewportRect(const BoundingBox &bounds, const Mat4f &viewProj,
+                            const Vec2f &viewportSize) {
+  if (!bounds.isValid()) {
+    return std::nullopt;
+  }
+
+  const Vec3f corners[8] = {
+      {bounds.min.x, bounds.min.y, bounds.min.z},
+      {bounds.max.x, bounds.min.y, bounds.min.z},
+      {bounds.min.x, bounds.max.y, bounds.min.z},
+      {bounds.max.x, bounds.max.y, bounds.min.z},
+      {bounds.min.x, bounds.min.y, bounds.max.z},
+      {bounds.max.x, bounds.min.y, bounds.max.z},
+      {bounds.min.x, bounds.max.y, bounds.max.z},
+      {bounds.max.x, bounds.max.y, bounds.max.z},
+  };
+
+  bool hasProjectedPoint = false;
+  ViewportOverlay::SelectionRect rect{
+      Vec2f{viewportSize.x, viewportSize.y}, Vec2f{0.0f, 0.0f}};
+  for (const Vec3f &corner : corners) {
+    const auto projected =
+        projectWorldPointToViewport(corner, viewProj, viewportSize);
+    if (!projected.has_value()) {
+      continue;
+    }
+    const Vec2f clamped = clampPointToViewport(*projected, viewportSize);
+    rect.min.x = std::min(rect.min.x, clamped.x);
+    rect.min.y = std::min(rect.min.y, clamped.y);
+    rect.max.x = std::max(rect.max.x, clamped.x);
+    rect.max.y = std::max(rect.max.y, clamped.y);
+    hasProjectedPoint = true;
+  }
+
+  if (!hasProjectedPoint) {
+    return std::nullopt;
+  }
+  return rect;
+}
+
+[[nodiscard]] BoundingBox expandedBounds(const BoundingBox &bounds, const float padding) {
+  if (!bounds.isValid()) {
+    return bounds;
+  }
+  return BoundingBox{bounds.min - Vec3f{padding, padding, padding},
+                     bounds.max + Vec3f{padding, padding, padding}};
+}
+
 } // namespace
 
 ViewportOverlay::ViewportOverlay(CommandBus &commandBus, EditorState &editorState,
-                                 Scene &scene)
-    : m_commandBus(commandBus), m_editorState(editorState), m_scene(scene) {}
+                                 Scene &scene, EditorConfig config)
+    : m_commandBus(commandBus), m_editorState(editorState), m_scene(scene),
+      m_config(config) {}
 
 ViewportOverlay::Snapshot ViewportOverlay::makeSnapshot() const {
   Snapshot snapshot;
@@ -245,6 +326,147 @@ CommandResult ViewportOverlay::dispatchPickingClick(const Vec2f &screenPixel,
   return m_commandBus.dispatch("deselect");
 }
 
+ViewportOverlay::SelectionRect
+ViewportOverlay::makeSelectionRect(const Vec2f &a, const Vec2f &b,
+                                   const Vec2f &viewportSize) {
+  const Vec2f clampedA = clampPointToViewport(a, viewportSize);
+  const Vec2f clampedB = clampPointToViewport(b, viewportSize);
+  return SelectionRect{
+      Vec2f{std::min(clampedA.x, clampedB.x), std::min(clampedA.y, clampedB.y)},
+      Vec2f{std::max(clampedA.x, clampedB.x), std::max(clampedA.y, clampedB.y)}};
+}
+
+float ViewportOverlay::selectionRectArea(const SelectionRect &rect) {
+  return std::max(0.0f, rect.max.x - rect.min.x) *
+         std::max(0.0f, rect.max.y - rect.min.y);
+}
+
+bool ViewportOverlay::selectionRectIsDrag(const SelectionRect &rect) {
+  return (rect.max.x - rect.min.x) > 0.0f && (rect.max.y - rect.min.y) > 0.0f;
+}
+
+bool ViewportOverlay::selectionRectsIntersect(const SelectionRect &lhs,
+                                              const SelectionRect &rhs) {
+  return lhs.min.x <= rhs.max.x && lhs.max.x >= rhs.min.x &&
+         lhs.min.y <= rhs.max.y && lhs.max.y >= rhs.min.y;
+}
+
+bool ViewportOverlay::appendSelectionMode(const bool ctrlHeld,
+                                          const bool shiftHeld) {
+  return ctrlHeld || shiftHeld;
+}
+
+CommandResult
+ViewportOverlay::dispatchSelectionPaths(const std::vector<std::string> &paths) {
+  if (paths.empty()) {
+    return m_commandBus.dispatch("deselect");
+  }
+
+  std::ostringstream oss;
+  oss << "select";
+  for (const auto &path : paths) {
+    oss << ' ' << quoteToken(path);
+  }
+  return m_commandBus.dispatch(oss.str());
+}
+
+std::vector<std::string>
+ViewportOverlay::gatherBoxSelectionPaths(const Vec2f &dragStart, const Vec2f &dragEnd,
+                                         const Vec2f &viewportSize) const {
+  const auto editorCameraNode = m_editorState.getEditorCamera();
+  if (!editorCameraNode) {
+    return {};
+  }
+  const auto editorCamera = editorCameraNode->getComponent<CameraComponent>();
+  if (!editorCamera.has_value()) {
+    return {};
+  }
+
+  const SelectionRect selectionRect =
+      makeSelectionRect(dragStart, dragEnd, viewportSize);
+  if (!selectionRectIsDrag(selectionRect)) {
+    return {};
+  }
+
+  const Mat4f viewProj =
+      editorCamera->get().getProjMatrix() * editorCamera->get().getViewMatrix();
+  std::vector<std::string> paths;
+  for (const auto &renderable : m_scene.getRenderables()) {
+    const auto node = std::dynamic_pointer_cast<SceneNode>(renderable);
+    if (!node) {
+      continue;
+    }
+    const BoundingBox bounds = node->getWorldBounds();
+    if (!bounds.isValid()) {
+      continue;
+    }
+
+    const auto projectedRect =
+        projectBoundsToViewportRect(bounds, viewProj, viewportSize);
+    if (!projectedRect.has_value()) {
+      continue;
+    }
+    if (selectionRectsIntersect(selectionRect, *projectedRect)) {
+      appendUniquePath(paths, node->getPath());
+    }
+  }
+  return paths;
+}
+
+CommandResult ViewportOverlay::dispatchBoxSelection(const Vec2f &dragStart,
+                                                    const Vec2f &dragEnd,
+                                                    const Vec2f &viewportSize,
+                                                    const bool ctrlHeld,
+                                                    const bool shiftHeld) {
+  const SelectionRect selectionRect =
+      makeSelectionRect(dragStart, dragEnd, viewportSize);
+  if (!selectionRectIsDrag(selectionRect)) {
+    return CommandResult{false, "box selection requires drag area", {}};
+  }
+
+  std::vector<std::string> hits = gatherBoxSelectionPaths(dragStart, dragEnd, viewportSize);
+  std::vector<std::string> paths;
+  const bool appendMode = appendSelectionMode(ctrlHeld, shiftHeld);
+  if (appendMode) {
+    for (const auto &selected : m_editorState.getSelected()) {
+      if (selected) {
+        appendUniquePath(paths, selected->getPath());
+      }
+    }
+  }
+  for (const auto &path : hits) {
+    appendUniquePath(paths, path);
+  }
+
+  const float viewportArea = std::max(1.0f, viewportSize.x * viewportSize.y);
+  const float thresholdArea = viewportArea * m_config.boxSelectConfirmThreshold;
+  const float selectionArea = selectionRectArea(selectionRect);
+  if (selectionArea > thresholdArea) {
+    m_pendingBoxSelection = PendingBoxSelection{paths, appendMode, paths.size()};
+    m_boxSelectPopupRequested = true;
+    return CommandResult{true, "box selection pending confirmation", {}};
+  }
+
+  return dispatchSelectionPaths(paths);
+}
+
+bool ViewportOverlay::hasPendingBoxSelectionConfirmation() const {
+  return m_pendingBoxSelection.has_value();
+}
+
+CommandResult ViewportOverlay::resolvePendingBoxSelection(const bool confirm) {
+  if (!m_pendingBoxSelection.has_value()) {
+    return CommandResult{false, "no pending box selection confirmation", {}};
+  }
+
+  PendingBoxSelection pending = *m_pendingBoxSelection;
+  m_pendingBoxSelection.reset();
+  if (!confirm) {
+    return CommandResult{true, "box selection cancelled", {}};
+  }
+  return dispatchSelectionPaths(pending.paths);
+}
+
 ViewportOverlay::PanelRect ViewportOverlay::getPanelRect() const {
   return m_lastPanelRect;
 }
@@ -254,13 +476,22 @@ void ViewportOverlay::enqueueDebugDraw() const {
     return;
   }
 
+  const auto primarySelected = m_editorState.getPrimarySelected();
   for (const auto &selected : m_editorState.getSelected()) {
     if (!selected) {
       continue;
     }
-    const auto bounds = selected->getWorldBounds();
+    const BoundingBox bounds = selected->getWorldBounds();
     if (bounds.isValid()) {
-      DebugDraw::wireBox(bounds, DebugDraw::Color::yellow());
+      const bool primary = primarySelected.has_value() &&
+                           &primarySelected->get() == selected.get();
+      if (primary) {
+        DebugDraw::wireBox(bounds, Vec4f{0.2f, 1.0f, 1.0f, 1.0f});
+        DebugDraw::wireBox(expandedBounds(bounds, 0.02f),
+                           Vec4f{0.2f, 1.0f, 1.0f, 1.0f});
+      } else {
+        DebugDraw::wireBox(bounds, DebugDraw::Color::yellow());
+      }
     }
   }
 
@@ -307,6 +538,42 @@ ViewportOverlay::PanelRect ViewportOverlay::computeViewportRect() const {
   rect.size = Vec2f{io.DisplaySize.x > 0.0f ? io.DisplaySize.x : 1.0f,
                     io.DisplaySize.y > 0.0f ? io.DisplaySize.y : 1.0f};
   return rect;
+}
+
+void ViewportOverlay::drawBoxSelectionRect(ImDrawList &drawList,
+                                           const SelectionRect &rect,
+                                           const PanelRect &panelRect) const {
+  const ImVec2 min{panelRect.origin.x + rect.min.x, panelRect.origin.y + rect.min.y};
+  const ImVec2 max{panelRect.origin.x + rect.max.x, panelRect.origin.y + rect.max.y};
+  drawList.AddRectFilled(min, max, IM_COL32(80, 180, 255, 48));
+  drawList.AddRect(min, max, IM_COL32(120, 220, 255, 220), 0.0f, ImDrawFlags_None,
+                   1.5f);
+}
+
+void ViewportOverlay::drawBoxSelectionConfirmModal() {
+  if (m_boxSelectPopupRequested) {
+    ImGui::OpenPopup("Confirm Large Box Select");
+    m_boxSelectPopupRequested = false;
+  }
+
+  if (!m_pendingBoxSelection.has_value()) {
+    return;
+  }
+
+  if (ImGui::BeginPopupModal("Confirm Large Box Select", nullptr,
+                             ImGuiWindowFlags_AlwaysAutoResize)) {
+    ImGui::Text("框选了 %zu 个节点，确认全选?", m_pendingBoxSelection->hitCount);
+    if (ImGui::Button("Confirm")) {
+      (void)resolvePendingBoxSelection(true);
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel")) {
+      (void)resolvePendingBoxSelection(false);
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
+  }
 }
 
 void ViewportOverlay::draw() {
@@ -356,14 +623,16 @@ void ViewportOverlay::draw() {
 
   const auto selected = m_editorState.getPrimarySelected();
   const auto editorCameraNode = m_editorState.getEditorCamera();
-  if (!selected.has_value() || !editorCameraNode) {
+  if (!editorCameraNode) {
     drawList->PopClipRect();
+    drawBoxSelectionConfirmModal();
     ImGui::End();
     return;
   }
   auto editorCamera = editorCameraNode->getComponent<CameraComponent>();
   if (!editorCamera.has_value()) {
     drawList->PopClipRect();
+    drawBoxSelectionConfirmModal();
     ImGui::End();
     return;
   }
@@ -375,80 +644,122 @@ void ViewportOverlay::draw() {
 
   float view[16] = {};
   float projection[16] = {};
-  float objectMatrix[16] = {};
   GizmoAdapter::toFloat16(editorCamera->get().getViewMatrix(), view);
   GizmoAdapter::toFloat16(editorCamera->get().getProjMatrix(), projection);
-  GizmoAdapter::toFloat16(selected->get().getLocalTransform().toMat4(), objectMatrix);
 
-  const bool changed = ImGuizmo::Manipulate(
-      view, projection, toImGuizmoOperation(m_gizmoOperation), ImGuizmo::LOCAL,
-      objectMatrix, nullptr, nullptr, nullptr, nullptr);
-  m_gizmoHovered = ImGuizmo::IsOver();
-  const bool usingNow = ImGuizmo::IsUsing();
+  bool changed = false;
+  bool usingNow = false;
+  if (selected.has_value()) {
+    float objectMatrix[16] = {};
+    GizmoAdapter::toFloat16(selected->get().getLocalTransform().toMat4(), objectMatrix);
+    changed = ImGuizmo::Manipulate(
+        view, projection, toImGuizmoOperation(m_gizmoOperation), ImGuizmo::LOCAL,
+        objectMatrix, nullptr, nullptr, nullptr, nullptr);
+    m_gizmoHovered = ImGuizmo::IsOver();
+    usingNow = ImGuizmo::IsUsing();
 
-  if (!m_gizmoUsing && usingNow) {
-    m_gizmoDragPaths.clear();
-    m_gizmoPreDragTransforms.clear();
-    for (const auto &selectedNode : m_editorState.getSelected()) {
-      if (!selectedNode) {
-        continue;
-      }
-      m_gizmoDragPaths.push_back(selectedNode->getPath());
-      m_gizmoPreDragTransforms.push_back(selectedNode->getLocalTransform());
-    }
-  }
-
-  if (changed && !m_gizmoPreDragTransforms.empty()) {
-    const Transform primaryCommitted =
-        Transform::fromMat4(GizmoAdapter::fromFloat16(objectMatrix));
-    const Transform primaryBefore = m_gizmoPreDragTransforms.back();
-    const auto selectedNodes = m_editorState.getSelected();
-    for (usize i = 0; i < selectedNodes.size() && i < m_gizmoPreDragTransforms.size(); ++i) {
-      if (!selectedNodes[i]) {
-        continue;
-      }
-      selectedNodes[i]->setLocalTransform(applyTransformDelta(
-          m_gizmoOperation, m_gizmoPreDragTransforms[i], primaryBefore, primaryCommitted));
-    }
-  }
-
-  if (m_gizmoUsing && !usingNow && !m_gizmoDragPaths.empty()) {
-    std::vector<Transform> committedTransforms;
-    committedTransforms.reserve(m_gizmoDragPaths.size());
-    for (const auto &path : m_gizmoDragPaths) {
-      if (SceneNode *node = m_scene.findByPath(path)) {
-        committedTransforms.push_back(node->getLocalTransform());
+    if (!m_gizmoUsing && usingNow) {
+      m_gizmoDragPaths.clear();
+      m_gizmoPreDragTransforms.clear();
+      for (const auto &selectedNode : m_editorState.getSelected()) {
+        if (!selectedNode) {
+          continue;
+        }
+        m_gizmoDragPaths.push_back(selectedNode->getPath());
+        m_gizmoPreDragTransforms.push_back(selectedNode->getLocalTransform());
       }
     }
 
-    for (usize i = 0; i < m_gizmoDragPaths.size() && i < m_gizmoPreDragTransforms.size(); ++i) {
-      if (SceneNode *node = m_scene.findByPath(m_gizmoDragPaths[i])) {
-        node->setLocalTransform(m_gizmoPreDragTransforms[i]);
+    if (changed && !m_gizmoPreDragTransforms.empty()) {
+      const Transform primaryCommitted =
+          Transform::fromMat4(GizmoAdapter::fromFloat16(objectMatrix));
+      const Transform primaryBefore = m_gizmoPreDragTransforms.back();
+      const auto selectedNodes = m_editorState.getSelected();
+      for (usize i = 0; i < selectedNodes.size() && i < m_gizmoPreDragTransforms.size();
+           ++i) {
+        if (!selectedNodes[i]) {
+          continue;
+        }
+        selectedNodes[i]->setLocalTransform(applyTransformDelta(
+            m_gizmoOperation, m_gizmoPreDragTransforms[i], primaryBefore,
+            primaryCommitted));
       }
     }
 
-    const CommandResult commit = dispatchGizmoSelectionCommit(
-        m_gizmoDragPaths, m_gizmoPreDragTransforms, committedTransforms);
-    if (!commit.ok) {
-      for (usize i = 0; i < m_gizmoDragPaths.size() && i < committedTransforms.size(); ++i) {
-        if (SceneNode *node = m_scene.findByPath(m_gizmoDragPaths[i])) {
-          node->setLocalTransform(committedTransforms[i]);
+    if (m_gizmoUsing && !usingNow && !m_gizmoDragPaths.empty()) {
+      std::vector<Transform> committedTransforms;
+      committedTransforms.reserve(m_gizmoDragPaths.size());
+      for (const auto &path : m_gizmoDragPaths) {
+        if (SceneNode *node = m_scene.findByPath(path)) {
+          committedTransforms.push_back(node->getLocalTransform());
         }
       }
+
+      for (usize i = 0; i < m_gizmoDragPaths.size() &&
+                       i < m_gizmoPreDragTransforms.size();
+           ++i) {
+        if (SceneNode *node = m_scene.findByPath(m_gizmoDragPaths[i])) {
+          node->setLocalTransform(m_gizmoPreDragTransforms[i]);
+        }
+      }
+
+      const CommandResult commit = dispatchGizmoSelectionCommit(
+          m_gizmoDragPaths, m_gizmoPreDragTransforms, committedTransforms);
+      if (!commit.ok) {
+        for (usize i = 0; i < m_gizmoDragPaths.size() && i < committedTransforms.size();
+             ++i) {
+          if (SceneNode *node = m_scene.findByPath(m_gizmoDragPaths[i])) {
+            node->setLocalTransform(committedTransforms[i]);
+          }
+        }
+      }
+      m_gizmoPreDragTransforms.clear();
+      m_gizmoDragPaths.clear();
     }
-    m_gizmoPreDragTransforms.clear();
-    m_gizmoDragPaths.clear();
   }
   m_gizmoUsing = usingNow;
 
-  const bool mouseInsideViewport = io.MousePos.x >= rect.origin.x && io.MousePos.x <= rect.origin.x + rect.size.x &&
-                                  io.MousePos.y >= rect.origin.y && io.MousePos.y <= rect.origin.y + rect.size.y;
+  const bool mouseInsideViewport = io.MousePos.x >= rect.origin.x &&
+                                   io.MousePos.x <= rect.origin.x + rect.size.x &&
+                                   io.MousePos.y >= rect.origin.y &&
+                                   io.MousePos.y <= rect.origin.y + rect.size.y;
+  const Vec2f localMouse{io.MousePos.x - rect.origin.x, io.MousePos.y - rect.origin.y};
   if (!m_gizmoHovered && !m_gizmoUsing && io.MouseClicked[0] && viewportHovered &&
       mouseInsideViewport) {
-    (void)dispatchPickingClick(Vec2f{io.MousePos.x - rect.origin.x, io.MousePos.y - rect.origin.y},
-                               rect.size);
+    m_boxSelectTracking = true;
+    m_boxSelectActive = false;
+    m_boxSelectStart = localMouse;
+    m_boxSelectRect = makeSelectionRect(localMouse, localMouse, rect.size);
+    m_boxSelectCtrlHeld = io.KeyCtrl;
+    m_boxSelectShiftHeld = io.KeyShift;
+  }
+
+  if (m_boxSelectTracking) {
+    m_boxSelectRect = makeSelectionRect(m_boxSelectStart, localMouse, rect.size);
+    const float width = m_boxSelectRect.max.x - m_boxSelectRect.min.x;
+    const float height = m_boxSelectRect.max.y - m_boxSelectRect.min.y;
+    if (width >= m_config.boxSelectDragThresholdPixels &&
+        height >= m_config.boxSelectDragThresholdPixels) {
+      m_boxSelectActive = true;
+    }
+  }
+
+  if (m_boxSelectActive) {
+    drawBoxSelectionRect(*drawList, m_boxSelectRect, rect);
+  }
+
+  if (m_boxSelectTracking && io.MouseReleased[0]) {
+    if (m_boxSelectActive) {
+      (void)dispatchBoxSelection(m_boxSelectStart, localMouse, rect.size,
+                                 m_boxSelectCtrlHeld, m_boxSelectShiftHeld);
+    } else if (mouseInsideViewport) {
+      (void)dispatchPickingClick(localMouse, rect.size);
+    }
+    m_boxSelectTracking = false;
+    m_boxSelectActive = false;
   }
   drawList->PopClipRect();
+  drawBoxSelectionConfirmModal();
   ImGui::End();
 }
 
