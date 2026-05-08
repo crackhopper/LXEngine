@@ -50,6 +50,24 @@ namespace {
   return candidate[ancestor.size()] == '/';
 }
 
+void appendUniquePath(std::vector<std::string> &paths, std::string_view path) {
+  const auto it = std::find(paths.begin(), paths.end(), path);
+  if (it != paths.end()) {
+    paths.erase(it);
+  }
+  paths.emplace_back(path);
+}
+
+[[nodiscard]] bool shareSelectionParent(const SceneNode &lhs,
+                                        const SceneNode &rhs) {
+  const auto lhsParent = lhs.getParent();
+  const auto rhsParent = rhs.getParent();
+  if (!lhsParent || !rhsParent) {
+    return !lhsParent && !rhsParent;
+  }
+  return lhsParent.get() == rhsParent.get();
+}
+
 } // namespace
 
 SceneTreePanel::SceneTreePanel(CommandBus &commandBus, EditorState &editorState,
@@ -119,6 +137,93 @@ CommandResult SceneTreePanel::dispatchRemovePath(std::string_view path) {
   return m_commandBus.dispatch("remove " + std::string(path));
 }
 
+CommandResult SceneTreePanel::handleNodeClick(SceneNode &node, const bool ctrlHeld,
+                                              const bool shiftHeld) {
+  if (shiftHeld) {
+    return dispatchSelectionPaths(buildSiblingRangeSelectionPaths(node));
+  }
+  if (ctrlHeld) {
+    return dispatchSelectionPaths(buildAdditiveSelectionPaths(node));
+  }
+  return dispatchSelectPath(node.getPath());
+}
+
+CommandResult
+SceneTreePanel::dispatchSelectionPaths(const std::vector<std::string> &paths) {
+  if (paths.empty()) {
+    return m_commandBus.dispatch("deselect");
+  }
+
+  std::string command = "select";
+  for (const auto &path : paths) {
+    command += " " + path;
+  }
+  return m_commandBus.dispatch(command);
+}
+
+std::vector<std::string>
+SceneTreePanel::buildAdditiveSelectionPaths(const SceneNode &node) const {
+  std::vector<std::string> paths;
+  for (const auto &selected : m_editorState.getSelected()) {
+    if (selected) {
+      appendUniquePath(paths, selected->getPath());
+    }
+  }
+  appendUniquePath(paths, node.getPath());
+  return paths;
+}
+
+std::vector<std::string>
+SceneTreePanel::buildSiblingRangeSelectionPaths(const SceneNode &node) const {
+  const auto primarySelected = m_editorState.getPrimarySelected();
+  if (!primarySelected.has_value()) {
+    return {node.getPath()};
+  }
+
+  SceneNode &anchor = primarySelected->get();
+  if (!shareSelectionParent(anchor, node)) {
+    return {node.getPath()};
+  }
+
+  const auto parent = node.getParent();
+  const std::vector<SceneNodeSharedPtr> siblings =
+      parent ? parent->getChildren() : m_scene.getRootNodes();
+
+  usize anchorIndex = siblings.size();
+  usize targetIndex = siblings.size();
+  for (usize i = 0; i < siblings.size(); ++i) {
+    if (!siblings[i]) {
+      continue;
+    }
+    if (siblings[i].get() == &anchor) {
+      anchorIndex = i;
+    }
+    if (siblings[i].get() == &node) {
+      targetIndex = i;
+    }
+  }
+
+  if (anchorIndex >= siblings.size() || targetIndex >= siblings.size()) {
+    return {node.getPath()};
+  }
+
+  std::vector<std::string> paths;
+  for (const auto &selected : m_editorState.getSelected()) {
+    if (selected) {
+      appendUniquePath(paths, selected->getPath());
+    }
+  }
+
+  const usize begin = std::min(anchorIndex, targetIndex);
+  const usize end = std::max(anchorIndex, targetIndex);
+  for (usize i = begin; i <= end; ++i) {
+    if (siblings[i]) {
+      appendUniquePath(paths, siblings[i]->getPath());
+    }
+  }
+  return paths;
+}
+
 void SceneTreePanel::drawNode(SceneNode &node) {
   if (!m_revealPath.empty() && isAncestorOrSelf(node.getPath(), m_revealPath)) {
     ImGui::SetNextItemOpen(true, ImGuiCond_Always);
@@ -141,7 +246,8 @@ void SceneTreePanel::drawNode(SceneNode &node) {
   const bool open = ImGui::TreeNodeEx(static_cast<void *>(&node), flags, "%s", label.c_str());
 
   if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen()) {
-    (void)dispatchSelectPath(node.getPath());
+    const ImGuiIO &io = ImGui::GetIO();
+    (void)handleNodeClick(node, io.KeyCtrl, io.KeyShift);
   }
 
   if (ImGui::BeginPopupContextItem()) {

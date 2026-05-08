@@ -5,6 +5,7 @@
 #include <array>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace LX_core {
 
@@ -24,8 +25,16 @@ public:
   [[nodiscard]] CommandResult submitPathJump();
   [[nodiscard]] CommandResult dispatchSelectPath(std::string_view path);
   [[nodiscard]] CommandResult dispatchRemovePath(std::string_view path);
+  [[nodiscard]] CommandResult handleNodeClick(SceneNode &node, bool ctrlHeld,
+                                              bool shiftHeld);
 
 private:
+  [[nodiscard]] CommandResult
+  dispatchSelectionPaths(const std::vector<std::string> &paths);
+  [[nodiscard]] std::vector<std::string>
+  buildAdditiveSelectionPaths(const SceneNode &node) const;
+  [[nodiscard]] std::vector<std::string>
+  buildSiblingRangeSelectionPaths(const SceneNode &node) const;
   void drawNode(SceneNode &node);
 
   CommandBus &m_commandBus;

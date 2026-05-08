@@ -82,4 +82,17 @@
 
 ## 实施状态
 
-待实施。立项窗口：[REQ-041-b 命令总线 v2](041-b-command-bus-v2.md) 落地后开工（多选 EditorState / 多 path 协议都来自它）。
+已实现，待归档（2026-05-08）。
+
+- R1：scene tree 已支持普通 Click 替换、Ctrl+Click 加选、Shift+Click 同级区间选
+- R2：viewport 已支持拖拽框选、AABB 投影命中、普通 replace / Ctrl+Shift append 选区
+- R3：多选线框已区分 primary / non-primary；gizmo 继续挂 primary，批量变换沿用 041-b 多目标命令
+- R4：大面积框选已接入 `EditorConfig::boxSelectConfirmThreshold` 与确认 modal
+- R5：`test_editor_multi_select` / `test_viewport_overlay` / 相关 editor focused 回归已覆盖核心路径
+
+本轮验证：
+
+- `cmake --build build --target demo_scene_viewer`
+- `cmake --build build --target BuildTest`
+- `ctest --test-dir build --output-on-failure -L auto -LE requires_video_device`
+- `ctest --test-dir build --output-on-failure -R 'test_(scene_tree_panel|editor_multi_select|viewport_overlay|inspector_panel|gizmo_adapter|scene_viewer_layout|command_bus|command_bus_v2|debug_ui_smoke)$'`

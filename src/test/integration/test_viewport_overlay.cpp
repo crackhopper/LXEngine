@@ -1,7 +1,12 @@
 #include "core/editor/commands/builtin_commands.hpp"
+#include "core/editor/editor_config.hpp"
 #include "core/editor/editor_state.hpp"
 #include "core/debug_draw/debug_draw.hpp"
 #include "core/editor/viewport_overlay.hpp"
+#include "core/asset/mesh.hpp"
+#include "core/rhi/index_buffer.hpp"
+#include "core/rhi/vertex_buffer.hpp"
+#include "core/scene/components/mesh_component.hpp"
 #include "core/scene/components/camera_component.hpp"
 #include "core/scene/object.hpp"
 #include "core/scene/scene.hpp"
@@ -38,6 +43,13 @@ bool setupMinimalImGui() {
   return pixels != nullptr && w > 0 && h > 0;
 }
 
+LX_core::MeshSharedPtr makeUnitSquareMesh() {
+  auto vb = LX_core::VertexBuffer<LX_core::VertexPos>::create(
+      std::vector<LX_core::VertexPos>{{{0, 0, 0}}, {{1, 0, 0}}, {{0, 1, 0}}});
+  auto ib = LX_core::IndexBuffer::create({0, 1, 2});
+  return LX_core::Mesh::create(vb, ib, LX_core::BoundingBox{{0, 0, 0}, {1, 1, 0}});
+}
+
 struct Fixture {
   LX_core::EditorState editorState;
   LX_core::CommandBus bus;
@@ -47,6 +59,7 @@ struct Fixture {
   LX_core::SceneNodeSharedPtr gameCameraNode = LX_core::SceneNode::create("game_cam_node");
   LX_core::SceneNodeSharedPtr cube = LX_core::SceneNode::create("cube");
   LX_core::SceneNodeSharedPtr sphere = LX_core::SceneNode::create("sphere");
+  LX_core::SceneNodeSharedPtr cone = LX_core::SceneNode::create("cone");
   LX_core::CameraComponent *editorCamera = nullptr;
   LX_core::CameraComponent *gameCamera = nullptr;
 
@@ -56,13 +69,23 @@ struct Fixture {
     cube->setParent(world);
     sphere->setName("sphere");
     sphere->setParent(world);
+    cone->setName("cone");
+    cone->setParent(world);
+    cube->addComponent<LX_core::MeshComponent>(makeUnitSquareMesh());
+    sphere->addComponent<LX_core::MeshComponent>(makeUnitSquareMesh());
+    cone->addComponent<LX_core::MeshComponent>(makeUnitSquareMesh());
+    cube->setTranslation({-1.5f, -0.5f, -5.0f});
+    sphere->setTranslation({0.0f, -0.5f, -5.0f});
+    cone->setTranslation({1.5f, -0.5f, -5.0f});
     scene->addRenderable(world);
     scene->addRenderable(cube);
     scene->addRenderable(sphere);
+    scene->addRenderable(cone);
 
     editorCameraNode->setName("editor_cam");
     auto editorCamRef = editorCameraNode->addComponent<LX_core::CameraComponent>();
     editorCamera = &editorCamRef->get();
+    editorCamera->aspect = 1.0f;
     scene->addCamera(editorCameraNode);
 
     gameCameraNode->setName("game_cam");
@@ -119,7 +142,6 @@ void testViewportOverlaySnapshotAndCommandEntry() {
          "overlay dispatch records command bus line");
 }
 
-
 void testViewportOverlayEnqueueDebugDrawTracksPreviewVisibility() {
   Fixture fixture;
   fixture.editorState.select({fixture.cube});
@@ -140,6 +162,64 @@ void testViewportOverlayEnqueueDebugDrawTracksPreviewVisibility() {
   LX_core::DebugDraw::endFrame();
   EXPECT(LX_core::DebugDraw::testing::queuedLineCount() == 0,
          "overlay debug draw should be hidden while preview is on");
+}
+
+void testViewportOverlayBoxSelectionReplaceSelectsIntersectingMeshes() {
+  Fixture fixture;
+  LX_core::ViewportOverlay overlay(fixture.bus, fixture.editorState, *fixture.scene);
+
+  const auto result = overlay.dispatchBoxSelection({100.0f, 100.0f}, {700.0f, 500.0f},
+                                                   {800.0f, 600.0f}, false, false);
+  EXPECT(result.ok, "box selection replace should succeed");
+
+  const auto selected = fixture.editorState.getSelected();
+  EXPECT(selected.size() == 3, "box selection should select all three projected meshes");
+  EXPECT(selected[0] == fixture.cube && selected[1] == fixture.sphere &&
+             selected[2] == fixture.cone,
+         "box selection should preserve projected node order");
+}
+
+void testViewportOverlayBoxSelectionCtrlAppendKeepsExistingSelection() {
+  Fixture fixture;
+  EXPECT(fixture.bus.dispatch("select /world/cube").ok, "initial select should succeed");
+  LX_core::ViewportOverlay overlay(fixture.bus, fixture.editorState, *fixture.scene);
+
+  const auto result = overlay.dispatchBoxSelection({300.0f, 180.0f}, {520.0f, 420.0f},
+                                                   {800.0f, 600.0f}, true, false);
+  EXPECT(result.ok, "ctrl box selection append should succeed");
+
+  const auto selected = fixture.editorState.getSelected();
+  EXPECT(selected.size() == 2, "ctrl box selection should append hit node");
+  EXPECT(selected[0] == fixture.cube && selected[1] == fixture.sphere,
+         "ctrl box selection should preserve previous selection then append new hit");
+  EXPECT(fixture.editorState.getPrimarySelected().has_value() &&
+             &fixture.editorState.getPrimarySelected()->get() == fixture.sphere.get(),
+         "ctrl box selection should make appended node primary");
+}
+
+void testViewportOverlayLargeSelectionRequiresConfirmation() {
+  Fixture fixture;
+  EXPECT(fixture.bus.dispatch("select /world/cube").ok, "initial select should succeed");
+  LX_core::EditorConfig config;
+  config.boxSelectConfirmThreshold = 0.2f;
+  LX_core::ViewportOverlay overlay(fixture.bus, fixture.editorState, *fixture.scene, config);
+
+  const auto pending = overlay.dispatchBoxSelection({0.0f, 0.0f}, {799.0f, 599.0f},
+                                                    {800.0f, 600.0f}, false, false);
+  EXPECT(pending.ok, "large box selection should produce pending confirmation state");
+  EXPECT(overlay.hasPendingBoxSelectionConfirmation(),
+         "large selection should require confirmation");
+  EXPECT(fixture.editorState.getSelected().size() == 1 &&
+             fixture.editorState.getSelected()[0] == fixture.cube,
+         "pending confirmation should not mutate selection before resolve");
+
+  const auto cancel = overlay.resolvePendingBoxSelection(false);
+  EXPECT(cancel.ok, "cancel pending selection should succeed");
+  EXPECT(!overlay.hasPendingBoxSelectionConfirmation(),
+         "cancel should clear confirmation state");
+  EXPECT(fixture.editorState.getSelected().size() == 1 &&
+             fixture.editorState.getSelected()[0] == fixture.cube,
+         "cancel should preserve previous selection");
 }
 
 void testViewportOverlayGizmoModeHotkeysAndCommitPath() {
@@ -234,6 +314,9 @@ int main() {
   testViewportOverlayGizmoModeHotkeysAndCommitPath();
   testViewportOverlayMultiSelectionCommitAppliesSharedDelta();
   testViewportOverlayEnqueueDebugDrawTracksPreviewVisibility();
+  testViewportOverlayBoxSelectionReplaceSelectsIntersectingMeshes();
+  testViewportOverlayBoxSelectionCtrlAppendKeepsExistingSelection();
+  testViewportOverlayLargeSelectionRequiresConfirmation();
   testViewportOverlayDrawSmoke();
 
   if (failures == 0) {
