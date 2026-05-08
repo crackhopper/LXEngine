@@ -45,6 +45,7 @@ namespace {
 
 constexpr int kWindowWidth = 1280;
 constexpr int kWindowHeight = 720;
+constexpr int kDebugBurstFrames = 3;
 
 usize hashBytes(const void *data, usize size) {
   constexpr usize kFnvOffset = static_cast<usize>(1469598103934665603ull);
@@ -56,6 +57,20 @@ usize hashBytes(const void *data, usize size) {
     hash *= kFnvPrime;
   }
   return hash;
+}
+
+template <typename T>
+bool shouldLogBurst(const T &next, T &state, int &remainingFrames) {
+  if (!(next == state)) {
+    state = next;
+    remainingFrames = kDebugBurstFrames;
+    return true;
+  }
+  if (remainingFrames > 0) {
+    --remainingFrames;
+    return true;
+  }
+  return false;
 }
 
 void logCameraAspectState(const char *label, int width, int height, float aspect,
@@ -77,35 +92,30 @@ void logCameraAspectState(const char *label, int width, int height, float aspect
     float forwardY = 0.0f;
     float forwardZ = 0.0f;
     usize uboHash = 0;
+
+    bool operator==(const CameraLogState &other) const = default;
   };
   static CameraLogState editorState{};
   static CameraLogState gameState{};
+  static int editorBurstRemaining = 0;
+  static int gameBurstRemaining = 0;
   CameraLogState &state =
       std::string_view(label) == "editor" ? editorState : gameState;
+  int &burstRemaining = std::string_view(label) == "editor"
+                            ? editorBurstRemaining
+                            : gameBurstRemaining;
   const bool finiteAspect = std::isfinite(aspect);
   const LX_core::Vec3f eye = camera.getEyePosition();
   const LX_core::Vec3f forward = camera.getForwardVector();
   const auto ubo = camera.getUBO();
   const usize uboHash =
       ubo ? hashBytes(ubo->getRawData(), ubo->getByteSize()) : 0;
-  if (state.width == width && state.height == height &&
-      state.finiteAspect == finiteAspect && state.active == active &&
-      state.eyeX == eye.x && state.eyeY == eye.y && state.eyeZ == eye.z &&
-      state.forwardX == forward.x && state.forwardY == forward.y &&
-      state.forwardZ == forward.z && state.uboHash == uboHash) {
+  const CameraLogState next{width,      height,      finiteAspect, active,
+                            eye.x,      eye.y,       eye.z,        forward.x,
+                            forward.y,  forward.z,   uboHash};
+  if (!shouldLogBurst(next, state, burstRemaining)) {
     return;
   }
-  state.width = width;
-  state.height = height;
-  state.finiteAspect = finiteAspect;
-  state.active = active;
-  state.eyeX = eye.x;
-  state.eyeY = eye.y;
-  state.eyeZ = eye.z;
-  state.forwardX = forward.x;
-  state.forwardY = forward.y;
-  state.forwardZ = forward.z;
-  state.uboHash = uboHash;
 
   std::cerr << "[scene_viewer][camera] " << label << " size=" << width << "x"
             << height << " aspect=" << aspect
@@ -129,14 +139,19 @@ void logActiveCameraState(bool previewEnabled,
     return;
   }
 
-  static bool lastPreviewEnabled = false;
-  static std::string lastActivePath;
+  struct ActiveCameraLogState {
+    bool previewEnabled = false;
+    std::string activePath;
+
+    bool operator==(const ActiveCameraLogState &other) const = default;
+  };
+  static ActiveCameraLogState state{};
+  static int burstRemaining = 0;
   const std::string activePath = activeCamera ? activeCamera->getPath() : "";
-  if (lastPreviewEnabled == previewEnabled && lastActivePath == activePath) {
+  const ActiveCameraLogState next{previewEnabled, activePath};
+  if (!shouldLogBurst(next, state, burstRemaining)) {
     return;
   }
-  lastPreviewEnabled = previewEnabled;
-  lastActivePath = activePath;
   std::cerr << "[scene_viewer][active-camera] previewEnabled="
             << previewEnabled << " activePath="
             << (activePath.empty() ? "<none>" : activePath) << std::endl;

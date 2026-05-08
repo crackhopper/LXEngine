@@ -24,6 +24,7 @@ namespace LX_core::backend {
 
 namespace {
 constexpr ResourceCacheIdentity kInactiveFrameGracePeriod = 2;
+constexpr int kDebugBurstFrames = 3;
 
 VkFormat toVkFormat(TextureFormat format) {
   switch (format) {
@@ -68,6 +69,20 @@ usize hashBytes(const void *data, usize size) {
   return hash;
 }
 
+template <typename T>
+bool shouldLogBurst(const T &next, T &state, int &remainingFrames) {
+  if (!(next == state)) {
+    state = next;
+    remainingFrames = kDebugBurstFrames;
+    return true;
+  }
+  if (remainingFrames > 0) {
+    --remainingFrames;
+    return true;
+  }
+  return false;
+}
+
 std::optional<usize>
 bufferHandleToken(const std::shared_ptr<VulkanAnyResource> &gpuRes) {
   if (!gpuRes) {
@@ -83,7 +98,7 @@ bufferHandleToken(const std::shared_ptr<VulkanAnyResource> &gpuRes) {
 
 void logCameraUploadIfChanged(
     std::string_view reason, const IGpuResourceSharedPtr &cpuRes,
-    const std::shared_ptr<VulkanAnyResource> &gpuRes) {
+    const std::shared_ptr<VulkanAnyResource> &gpuRes, u32 currentFrameIndex) {
   if (!expRendererDebugEnabled() || !cpuRes) {
     return;
   }
@@ -97,20 +112,26 @@ void logCameraUploadIfChanged(
   struct UploadLogState {
     usize dataHash = 0;
     usize handleToken = 0;
+
+    bool operator==(const UploadLogState &other) const = default;
   };
-  static std::unordered_map<ResourceCacheIdentity, UploadLogState> logged;
+  struct UploadLogEntry {
+    UploadLogState state{};
+    int remainingFrames = 0;
+  };
+  static std::unordered_map<ResourceCacheIdentity, UploadLogEntry> logged;
 
   const usize dataHash =
       hashBytes(cpuRes->getRawData(), cpuRes->getByteSize());
   const usize handleToken = bufferHandleToken(gpuRes).value_or(0);
-  auto &state = logged[cpuRes->getBackendCacheIdentity()];
-  if (state.dataHash == dataHash && state.handleToken == handleToken) {
+  const UploadLogState next{dataHash, handleToken};
+  auto &entry = logged[cpuRes->getBackendCacheIdentity()];
+  if (!shouldLogBurst(next, entry.state, entry.remainingFrames)) {
     return;
   }
-  state.dataHash = dataHash;
-  state.handleToken = handleToken;
 
   std::cerr << "[RendererDebug] syncResource: " << reason
+            << " frameSlot=" << currentFrameIndex
             << " name=" << name
             << " identity=" << cpuRes->getBackendCacheIdentity()
             << " byteSize=" << cpuRes->getByteSize()
@@ -129,15 +150,8 @@ VulkanResourceManager::~VulkanResourceManager() {
   }
 }
 
-void VulkanResourceManager::setFramesInFlight(u32 framesInFlight) {
-  m_framesInFlight = std::max<u32>(1, framesInFlight);
-}
-
 void VulkanResourceManager::beginFrame(u32 currentFrameIndex) {
-  if (m_framesInFlight == 0) {
-    m_framesInFlight = 1;
-  }
-  m_currentFrameIndex = currentFrameIndex % m_framesInFlight;
+  m_currentFrameIndex = currentFrameIndex;
 }
 
 void VulkanResourceManager::syncResource(
@@ -152,49 +166,24 @@ void VulkanResourceManager::syncResource(
   auto it = m_gpuResources.find(identity);
   if (it == m_gpuResources.end()) {
     CachedGpuResource entry;
-    if (usesFrameLocalCopy(cpuRes->getType())) {
-      entry.frameResources.resize(m_framesInFlight);
-      entry.frameContentHashes.resize(m_framesInFlight, 0);
-      for (u32 i = 0; i < m_framesInFlight; ++i) {
-        entry.frameResources[i] = createGpuResource(cpuRes);
-      }
-    } else {
-      entry.resource = createGpuResource(cpuRes);
-    }
+    entry.resource = createGpuResource(cpuRes);
     entry.lastSeenFrame = m_frameSerial;
     auto [insertedIt, inserted] =
         m_gpuResources.emplace(identity, std::move(entry));
     (void)inserted;
-    auto &activeGpuRes = getMutableActiveGpuResource(insertedIt->second);
-    updateGpuResource(activeGpuRes, cpuRes, cmdBufferManager);
-    if (insertedIt->second.usesFrameLocalCopies()) {
-      const usize currentHash =
-          hashBytes(cpuRes->getRawData(), cpuRes->getByteSize());
-      insertedIt->second.frameContentHashes[m_currentFrameIndex] = currentHash;
-    }
-    logCameraUploadIfChanged("create", cpuRes, activeGpuRes);
+    updateGpuResource(insertedIt->second.resource, cpuRes, cmdBufferManager);
+    logCameraUploadIfChanged("create", cpuRes, insertedIt->second.resource,
+                             m_currentFrameIndex);
     cpuRes->clearDirty();
     return;
   }
 
   it->second.lastSeenFrame = m_frameSerial;
-  auto &entry = it->second;
-  auto &activeGpuRes = getMutableActiveGpuResource(entry);
-  if (entry.usesFrameLocalCopies()) {
-    const usize currentHash =
-        hashBytes(cpuRes->getRawData(), cpuRes->getByteSize());
-    if (entry.frameContentHashes[m_currentFrameIndex] != currentHash) {
-      updateGpuResource(activeGpuRes, cpuRes, cmdBufferManager);
-      entry.frameContentHashes[m_currentFrameIndex] = currentHash;
-      logCameraUploadIfChanged("update", cpuRes, activeGpuRes);
-    }
-    cpuRes->clearDirty();
-    return;
-  }
 
   if (cpuRes->isDirty()) {
-    updateGpuResource(activeGpuRes, cpuRes, cmdBufferManager);
-    logCameraUploadIfChanged("update", cpuRes, activeGpuRes);
+    updateGpuResource(it->second.resource, cpuRes, cmdBufferManager);
+    logCameraUploadIfChanged("update", cpuRes, it->second.resource,
+                             m_currentFrameIndex);
     cpuRes->clearDirty();
   }
 }
@@ -309,40 +298,11 @@ void VulkanResourceManager::initializeRenderPassAndPipeline(
       VulkanRenderPass::create(m_device, surfaceFormat.format, depthFormat);
 }
 
-std::shared_ptr<VulkanAnyResource> &
-VulkanResourceManager::getMutableActiveGpuResource(CachedGpuResource &entry) {
-  if (entry.usesFrameLocalCopies()) {
-    return entry.frameResources[m_currentFrameIndex];
-  }
-  return entry.resource;
-}
-
-const std::shared_ptr<VulkanAnyResource> &
-VulkanResourceManager::getActiveGpuResource(const CachedGpuResource &entry) const {
-  if (entry.usesFrameLocalCopies()) {
-    return entry.frameResources[m_currentFrameIndex];
-  }
-  return entry.resource;
-}
-
-bool VulkanResourceManager::usesFrameLocalCopy(ResourceType type) const {
-  switch (type) {
-  case ResourceType::VertexBuffer:
-  case ResourceType::IndexBuffer:
-  case ResourceType::UniformBuffer:
-  case ResourceType::StorageBuffer:
-    return true;
-  default:
-    return false;
-  }
-}
-
 // 辅助查找宏，简化代码
 #define GET_RESOURCE_IMPL(ReturnType, VariantType)                             \
   auto it = m_gpuResources.find(handle);                                       \
   if (it != m_gpuResources.end()) {                                            \
-    const auto &activeResource = getActiveGpuResource(it->second);             \
-    if (auto resPtr = std::get_if<VariantType>(&(*activeResource))) {          \
+    if (auto resPtr = std::get_if<VariantType>(&(*(it->second.resource)))) {   \
       return std::ref(*(resPtr->get()));                                       \
     }                                                                          \
   }                                                                            \

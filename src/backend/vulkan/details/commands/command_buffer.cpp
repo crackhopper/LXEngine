@@ -67,6 +67,8 @@ void VulkanCommandBuffer::setScissor(u32 width, u32 height) {
 }
 
 namespace {
+constexpr int kDebugBurstFrames = 3;
+
 VkShaderStageFlags pushConstantStageMaskToVk(ShaderStageMask32 mask) {
   VkShaderStageFlags out = 0;
   if (mask & static_cast<ShaderStageMask32>(LX_core::ShaderStage::Vertex))
@@ -78,6 +80,20 @@ VkShaderStageFlags pushConstantStageMaskToVk(ShaderStageMask32 mask) {
   if (mask & static_cast<ShaderStageMask32>(LX_core::ShaderStage::Geometry))
     out |= VK_SHADER_STAGE_GEOMETRY_BIT;
   return out;
+}
+
+template <typename T>
+bool shouldLogBurst(const T &next, T &state, int &remainingFrames) {
+  if (!(next == state)) {
+    state = next;
+    remainingFrames = kDebugBurstFrames;
+    return true;
+  }
+  if (remainingFrames > 0) {
+    --remainingFrames;
+    return true;
+  }
+  return false;
 }
 
 void logMissingDescriptorBindingOnce(const RenderingItem &item,
@@ -115,8 +131,14 @@ void logDescriptorBufferBindingIfChanged(
     ResourceCacheIdentity identity = 0;
     usize bufferToken = 0;
     VkDeviceSize range = 0;
+
+    bool operator==(const BindingLogState &other) const = default;
   };
-  static std::unordered_map<std::string, BindingLogState> logged;
+  struct BindingLogEntry {
+    BindingLogState state{};
+    int remainingFrames = 0;
+  };
+  static std::unordered_map<std::string, BindingLogEntry> logged;
 
   std::ostringstream keyBuilder;
   keyBuilder << item.pipelineKey.id.id << "|" << item.pass.id << "|"
@@ -128,12 +150,10 @@ void logDescriptorBufferBindingIfChanged(
   next.bufferToken = std::hash<VkBuffer>{}(bufferInfo.buffer);
   next.range = bufferInfo.range;
 
-  auto &state = logged[key];
-  if (state.identity == next.identity && state.bufferToken == next.bufferToken &&
-      state.range == next.range) {
+  auto &entry = logged[key];
+  if (!shouldLogBurst(next, entry.state, entry.remainingFrames)) {
     return;
   }
-  state = next;
 
   std::cerr << "[RendererDebug] bindResources: buffer name=" << binding.name
             << " set=" << binding.set << " binding=" << binding.binding
@@ -158,8 +178,14 @@ void logDescriptorImageBindingIfChanged(
     usize imageViewToken = 0;
     usize samplerToken = 0;
     VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+    bool operator==(const BindingLogState &other) const = default;
   };
-  static std::unordered_map<std::string, BindingLogState> logged;
+  struct BindingLogEntry {
+    BindingLogState state{};
+    int remainingFrames = 0;
+  };
+  static std::unordered_map<std::string, BindingLogEntry> logged;
 
   std::ostringstream keyBuilder;
   keyBuilder << item.pipelineKey.id.id << "|" << item.pass.id << "|"
@@ -172,13 +198,10 @@ void logDescriptorImageBindingIfChanged(
   next.samplerToken = std::hash<VkSampler>{}(imageInfo.sampler);
   next.layout = imageInfo.imageLayout;
 
-  auto &state = logged[key];
-  if (state.identity == next.identity &&
-      state.imageViewToken == next.imageViewToken &&
-      state.samplerToken == next.samplerToken && state.layout == next.layout) {
+  auto &entry = logged[key];
+  if (!shouldLogBurst(next, entry.state, entry.remainingFrames)) {
     return;
   }
-  state = next;
 
   std::cerr << "[RendererDebug] bindResources: image name=" << binding.name
             << " set=" << binding.set << " binding=" << binding.binding

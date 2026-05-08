@@ -213,6 +213,22 @@ usize countFreeDescriptorSets(
   }
   return count;
 }
+
+constexpr int kDebugBurstFrames = 3;
+
+template <typename T>
+bool shouldLogBurst(const T &next, T &state, int &remainingFrames) {
+  if (!(next == state)) {
+    state = next;
+    remainingFrames = kDebugBurstFrames;
+    return true;
+  }
+  if (remainingFrames > 0) {
+    --remainingFrames;
+    return true;
+  }
+  return false;
+}
 } // namespace
 
 VkDescriptorSetLayout VulkanDescriptorManager::getOrCreateLayout(
@@ -314,14 +330,17 @@ void VulkanDescriptorManager::beginFrame(u32 currentFrameIndex) {
       usize pendingBefore = 0;
       usize freeBefore = 0;
       usize freeAfter = 0;
+
+      bool operator==(const DescriptorFrameLogState &other) const = default;
     };
-    static std::unordered_map<u32, DescriptorFrameLogState> logged;
+    struct DescriptorFrameLogEntry {
+      DescriptorFrameLogState state{};
+      int remainingFrames = 0;
+    };
+    static std::unordered_map<u32, DescriptorFrameLogEntry> logged;
     DescriptorFrameLogState next{pendingBefore, freeBefore, freeAfter};
-    auto &state = logged[m_currentFrameIndex];
-    if (state.pendingBefore != next.pendingBefore ||
-        state.freeBefore != next.freeBefore ||
-        state.freeAfter != next.freeAfter) {
-      state = next;
+    auto &entry = logged[m_currentFrameIndex];
+    if (shouldLogBurst(next, entry.state, entry.remainingFrames)) {
       std::cerr << "[RendererDebug] descriptors: beginFrame frame="
                 << m_currentFrameIndex << " pendingBefore=" << pendingBefore
                 << " freeBefore=" << freeBefore

@@ -56,6 +56,7 @@ namespace LX_core::backend {
 namespace {
 
 constexpr u32 kMaxFramesInFlight = 3;
+constexpr int kDebugBurstFrames = 3;
 
 struct DrawFrameStats {
   VkExtent2D extent{0, 0};
@@ -94,7 +95,6 @@ public:
 
     // Create resource manager
     m_resourceManager = VulkanResourceManager::create(*m_device);
-    m_resourceManager->setFramesInFlight(kMaxFramesInFlight);
     m_resourceManager->initializeRenderPassAndPipeline(
         m_device->getSurfaceFormat(), m_device->getDepthFormat());
     if (expEnvEnabled("LX_RENDER_DEBUG_CLEAR")) {
@@ -225,7 +225,6 @@ public:
 
   void uploadData() {
     const u32 currentFrameIndex = m_frameIndex % kMaxFramesInFlight;
-    m_swapchain->waitForFrame(currentFrameIndex);
     m_resourceManager->beginFrame(currentFrameIndex);
     for (auto &pass : m_frameGraph.getPasses()) {
       for (auto &item : pass.queue.getItems()) {
@@ -333,15 +332,15 @@ public:
     }
     frameStats.perPass = perPass.str();
 
-    if (expRendererDebugEnabled() &&
-        (frameStats != m_lastLoggedDrawStats || frameStats.totalDrawCalls == 0)) {
+    if (expRendererDebugEnabled() && shouldLogDrawFrame(frameStats)) {
       std::cerr << "[RendererDebug] draw: extent=" << frameStats.extent.width
                 << "x" << frameStats.extent.height
+                << " frameSlot=" << currentFrameIndex
+                << " imageIndex=" << imageIndex
                 << " passes=" << frameStats.passCount
                 << " totalItems=" << frameStats.totalItems
                 << " totalDrawCalls=" << frameStats.totalDrawCalls
                 << " perPass={" << frameStats.perPass << "}" << std::endl;
-      m_lastLoggedDrawStats = frameStats;
     }
 
     m_gui.endFrame(cmd->getHandle());
@@ -422,6 +421,9 @@ private:
     m_swapchain->waitIdle();
     m_swapchain->rebuild(m_resourceManager->getRenderPass());
     m_gui.updateSwapchainImageCount(m_swapchain->getImageCount());
+    if (m_drawLogBurstRemaining < kDebugBurstFrames) {
+      m_drawLogBurstRemaining = kDebugBurstFrames;
+    }
     if (expRendererDebugEnabled()) {
       const VkExtent2D newExtent = m_swapchain->getExtent();
       std::cerr << "[RendererDebug] rebuildSwapchain: newExtent="
@@ -461,6 +463,23 @@ private:
   infra::Gui m_gui{};
   std::function<void()> m_drawUiCallback{};
   DrawFrameStats m_lastLoggedDrawStats{};
+  int m_drawLogBurstRemaining = 0;
+
+  bool shouldLogDrawFrame(const DrawFrameStats &frameStats) {
+    if (frameStats.totalDrawCalls == 0) {
+      return true;
+    }
+    if (frameStats != m_lastLoggedDrawStats) {
+      m_lastLoggedDrawStats = frameStats;
+      m_drawLogBurstRemaining = kDebugBurstFrames;
+      return true;
+    }
+    if (m_drawLogBurstRemaining > 0) {
+      --m_drawLogBurstRemaining;
+      return true;
+    }
+    return false;
+  }
 };
 
 VulkanRenderer::VulkanRenderer(Token)
