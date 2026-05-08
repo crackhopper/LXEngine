@@ -378,6 +378,48 @@ public:
     }
     frameStats.perPass = perPass.str();
 
+    if (expRendererDebugEnabled()) {
+      struct FrameInfoLogState {
+        u32 frameIndex = 0;
+        u32 slot = 0;
+        u32 imageIndex = 0;
+        u32 imageCount = 0;
+        u32 extentW = 0;
+        u32 extentH = 0;
+
+        bool operator==(const FrameInfoLogState &other) const = default;
+      };
+      struct FrameInfoLogEntry {
+        FrameInfoLogState state{};
+        int remainingFrames = 0;
+      };
+      static FrameInfoLogEntry entry{};
+      const FrameInfoLogState next{
+          m_frameIndex, currentFrameIndex, imageIndex,
+          static_cast<u32>(m_swapchain->getImageCount()), extent.width,
+          extent.height};
+      const auto shouldLog = [&]() {
+        if (!(next == entry.state)) {
+          entry.state = next;
+          entry.remainingFrames = kDebugBurstFrames;
+          return true;
+        }
+        if (entry.remainingFrames > 0) {
+          --entry.remainingFrames;
+          return true;
+        }
+        return false;
+      };
+      if (shouldLog()) {
+        std::cerr << "[RendererDebug] frame: m_frameIndex=" << m_frameIndex
+                  << " slot=" << currentFrameIndex
+                  << " imageIndex=" << imageIndex
+                  << " swapchainImageCount=" << m_swapchain->getImageCount()
+                  << " extent=" << extent.width << "x" << extent.height
+                  << std::endl;
+      }
+    }
+
     if (expRendererDebugEnabled() && shouldLogDrawFrame(frameStats)) {
       std::cerr << "[RendererDebug] draw: extent=" << frameStats.extent.width
                 << "x" << frameStats.extent.height

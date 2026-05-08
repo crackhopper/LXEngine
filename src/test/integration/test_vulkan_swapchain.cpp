@@ -32,7 +32,7 @@ int main() {
         *device, window, /*maxFramesInFlight=*/1);
     swapchain->initialize(*renderPass);
 
-    if (swapchain->getDepthImageView(0) == VK_NULL_HANDLE) {
+    if (swapchain->getDepthImageView() == VK_NULL_HANDLE) {
       std::cerr << "Depth image view is null\n";
       return 1;
     }
