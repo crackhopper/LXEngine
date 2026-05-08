@@ -7,6 +7,7 @@
 #include "core/scene/components/camera_component.hpp"
 #include "core/scene/object.hpp"
 #include "core/scene/scene.hpp"
+#include "core/utils/env.hpp"
 
 #include <imgui.h>
 #include <ImGuizmo.h>
@@ -577,7 +578,18 @@ void ViewportOverlay::drawBoxSelectionConfirmModal() {
 }
 
 void ViewportOverlay::draw() {
-  if (!ImGui::Begin("Viewport")) {
+  const bool transparentViewportBg =
+      expEnvEnabled("LX_SCENE_VIEWER_VIEWPORT_NO_BG");
+  if (transparentViewportBg) {
+    ImGui::SetNextWindowBgAlpha(0.0f);
+  }
+
+  ImGuiWindowFlags viewportFlags = 0;
+  if (transparentViewportBg) {
+    viewportFlags |= ImGuiWindowFlags_NoBackground;
+  }
+
+  if (!ImGui::Begin("Viewport", nullptr, viewportFlags)) {
     ImGui::End();
     return;
   }
