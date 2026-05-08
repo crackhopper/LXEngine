@@ -221,6 +221,16 @@ private:
   // 0 = no sleep (default).
   u32 m_resizeSleepMs = 0;
 
+  // Full-serial mode: vkDeviceWaitIdle at the end of every drawFrame.
+  // Brute-force serialization — the strongest application-layer tool to
+  // eliminate any potential race between application-submitted work and
+  // the driver's internal present / cross-GPU copy queues. If this still
+  // produces black frames on dGPU, the race is provably below the Vulkan
+  // WSI API surface (driver-internal). If it eliminates black frames,
+  // application-layer mitigations exist and we can search for the minimum
+  // sufficient one.
+  bool m_fullSerial = false;
+
   // Diagnostics. Used by the post-rebuild burst log so we can see what the
   // first frame after each rebuild looks like.
   u64 m_rebuildCount = 0;
@@ -249,6 +259,7 @@ private:
         m_resizeSleepMs = 0;
       }
     }
+    m_fullSerial = expEnvEnabled("LX_VK_FULL_SERIAL");
 
     createInstance();
     createSurface();
@@ -1253,6 +1264,15 @@ private:
     }
 
     m_currentFrame = (m_currentFrame + 1) % kMaxFramesInFlight;
+
+    // LX_VK_FULL_SERIAL: drain every queue on the device before the next
+    // drawFrame can begin. This is the strongest serialization the Vulkan
+    // WSI surface exposes — if the dGPU race survives this, it lives in
+    // driver-internal present/PRIME-copy queues that the application
+    // simply cannot reach.
+    if (m_fullSerial) {
+      vkDeviceWaitIdle(m_device);
+    }
   }
 
   void cleanup() {
@@ -1327,6 +1347,14 @@ int main() {
               << std::endl;
   } else {
     std::cout << "[minimal_resize] LX_VK_RESIZE_SLEEP_MS=(unset → 0)"
+              << std::endl;
+  }
+  if (expEnvEnabled("LX_VK_FULL_SERIAL")) {
+    std::cout << "[minimal_resize] LX_VK_FULL_SERIAL=1 (vkDeviceWaitIdle "
+                 "after every drawFrame — brute force serial)"
+              << std::endl;
+  } else {
+    std::cout << "[minimal_resize] LX_VK_FULL_SERIAL=(unset → off)"
               << std::endl;
   }
 
