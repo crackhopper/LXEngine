@@ -6,9 +6,12 @@
 #include "../device.hpp"
 #include "../resource_manager.hpp"
 #include "core/utils/env.hpp"
+#include "core/utils/string_table.hpp"
 #include <array>
+#include <sstream>
 #include <stdexcept>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace LX_core::backend {
 
@@ -75,6 +78,29 @@ VkShaderStageFlags pushConstantStageMaskToVk(ShaderStageMask32 mask) {
     out |= VK_SHADER_STAGE_GEOMETRY_BIT;
   return out;
 }
+
+void logMissingDescriptorBindingOnce(const RenderingItem &item,
+                                     const ShaderResourceBinding &binding) {
+  if (!expRendererDebugEnabled()) {
+    return;
+  }
+
+  static std::unordered_set<std::string> loggedKeys;
+  std::ostringstream oss;
+  oss << item.pipelineKey.id.id << "|" << item.pass.id << "|" << binding.set
+      << "|" << binding.binding << "|" << binding.name;
+  const std::string key = oss.str();
+  if (!loggedKeys.insert(key).second) {
+    return;
+  }
+
+  std::cerr << "[RendererDebug] bindResources: missing binding name="
+            << binding.name << " set=" << binding.set
+            << " binding=" << binding.binding
+            << " pass="
+            << LX_core::GlobalStringTable::get().getName(item.pass.id)
+            << " pipelineKey=" << item.pipelineKey.id.id << std::endl;
+}
 } // namespace
 
 void VulkanCommandBuffer::bindPipeline(VulkanPipeline &pipeline) {
@@ -124,9 +150,11 @@ void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
 
     for (const auto &b : bindings) {
       auto it = resourceByName.find(LX_core::StringID(b.name));
-      if (it == resourceByName.end())
+      if (it == resourceByName.end()) {
+        logMissingDescriptorBindingOnce(item, b);
         continue; // Leave descriptor uninitialized (shader should not access
                   // it).
+      }
 
       const auto &cpuRes = it->second;
 

@@ -12,9 +12,11 @@
 #include "details/device.hpp"
 #include "details/resource_manager.hpp"
 #include "core/utils/env.hpp"
+#include "core/utils/string_table.hpp"
 #include "core/scene/components/camera_component.hpp"
 #include <functional>
 #include <iostream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 namespace {
@@ -54,6 +56,23 @@ namespace LX_core::backend {
 namespace {
 
 constexpr u32 kMaxFramesInFlight = 3;
+
+struct DrawFrameStats {
+  VkExtent2D extent{0, 0};
+  usize passCount = 0;
+  usize totalItems = 0;
+  usize totalDrawCalls = 0;
+  std::string perPass;
+
+  bool operator==(const DrawFrameStats &other) const {
+    return extent.width == other.extent.width &&
+           extent.height == other.extent.height && passCount == other.passCount &&
+           totalItems == other.totalItems &&
+           totalDrawCalls == other.totalDrawCalls && perPass == other.perPass;
+  }
+
+  bool operator!=(const DrawFrameStats &other) const { return !(*this == other); }
+};
 
 } // namespace
 
@@ -261,6 +280,9 @@ public:
     }
 
     auto &renderPass = m_resourceManager->getRenderPass();
+    DrawFrameStats frameStats{};
+    frameStats.extent = extent;
+    frameStats.passCount = m_frameGraph.getPasses().size();
 
     m_cmdBufferMgr->beginFrame(currentFrameIndex);
     m_device->getDescriptorManager().beginFrame(currentFrameIndex);
@@ -285,13 +307,36 @@ public:
 
     // Iterate every pass × every item in the FrameGraph. Each item may use a
     // different pipeline; bindPipeline / bindResources / drawItem per item.
+    std::ostringstream perPass;
+    bool firstPass = true;
     for (auto &pass : m_frameGraph.getPasses()) {
+      const usize passItems = pass.queue.getItems().size();
+      frameStats.totalItems += passItems;
+      if (!firstPass) {
+        perPass << ", ";
+      }
+      firstPass = false;
+      perPass << LX_core::GlobalStringTable::get().getName(pass.name.id)
+              << "=" << passItems;
       for (auto &item : pass.queue.getItems()) {
         auto &pipeline = m_resourceManager->getOrCreateRenderPipeline(item);
         cmd->bindPipeline(pipeline);
         cmd->bindResources(*m_resourceManager, pipeline, item);
         cmd->drawItem(item);
+        frameStats.totalDrawCalls++;
       }
+    }
+    frameStats.perPass = perPass.str();
+
+    if (expRendererDebugEnabled() &&
+        (frameStats != m_lastLoggedDrawStats || frameStats.totalDrawCalls == 0)) {
+      std::cerr << "[RendererDebug] draw: extent=" << frameStats.extent.width
+                << "x" << frameStats.extent.height
+                << " passes=" << frameStats.passCount
+                << " totalItems=" << frameStats.totalItems
+                << " totalDrawCalls=" << frameStats.totalDrawCalls
+                << " perPass={" << frameStats.perPass << "}" << std::endl;
+      m_lastLoggedDrawStats = frameStats;
     }
 
     m_gui.endFrame(cmd->getHandle());
@@ -410,6 +455,7 @@ private:
   u32 m_frameIndex = 0;
   infra::Gui m_gui{};
   std::function<void()> m_drawUiCallback{};
+  DrawFrameStats m_lastLoggedDrawStats{};
 };
 
 VulkanRenderer::VulkanRenderer(Token)
