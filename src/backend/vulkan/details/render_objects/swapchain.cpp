@@ -48,13 +48,20 @@ void VulkanSwapchain::cleanup() {
 
   m_framebuffers.clear();
 
-  for (usize i = 0; i < m_maxFramesInFlight; i++) {
-    if (m_imageAvailableSemaphores[i] != VK_NULL_HANDLE)
-      vkDestroySemaphore(logicalDevice, m_imageAvailableSemaphores[i], nullptr);
-    if (m_renderFinishedSemaphores[i] != VK_NULL_HANDLE)
-      vkDestroySemaphore(logicalDevice, m_renderFinishedSemaphores[i], nullptr);
-    if (m_inFlightFences[i] != VK_NULL_HANDLE)
-      vkDestroyFence(logicalDevice, m_inFlightFences[i], nullptr);
+  for (VkSemaphore semaphore : m_imageAvailableSemaphores) {
+    if (semaphore != VK_NULL_HANDLE) {
+      vkDestroySemaphore(logicalDevice, semaphore, nullptr);
+    }
+  }
+  for (VkSemaphore semaphore : m_renderFinishedSemaphores) {
+    if (semaphore != VK_NULL_HANDLE) {
+      vkDestroySemaphore(logicalDevice, semaphore, nullptr);
+    }
+  }
+  for (VkFence fence : m_inFlightFences) {
+    if (fence != VK_NULL_HANDLE) {
+      vkDestroyFence(logicalDevice, fence, nullptr);
+    }
   }
   m_imageAvailableSemaphores.clear();
   m_renderFinishedSemaphores.clear();
