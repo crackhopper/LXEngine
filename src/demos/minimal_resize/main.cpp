@@ -120,12 +120,19 @@ const char *deviceTypeToString(VkPhysicalDeviceType type) {
   }
 }
 
+// LX_VK_PREFER_GPU env override:
+//   unset / "discrete"  → discrete GPU wins on dual-GPU laptops (default).
+//   "integrated"        → integrated GPU outranks discrete.
+// Used to A/B test the same demo binary on iGPU vs dGPU without rebuilding.
 int physicalDevicePreferenceScore(VkPhysicalDeviceType type) {
+  const char *pref = std::getenv("LX_VK_PREFER_GPU");
+  const bool preferIntegrated = pref && std::string(pref) == "integrated";
+
   switch (type) {
   case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU:
-    return 4;
+    return preferIntegrated ? 3 : 4;
   case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU:
-    return 3;
+    return preferIntegrated ? 4 : 3;
   case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU:
     return 2;
   case VK_PHYSICAL_DEVICE_TYPE_CPU:
@@ -1129,6 +1136,16 @@ private:
 
 int main() {
   expSetEnvVK();
+
+  // Surface the GPU preference so it's obvious from stdout which physical
+  // device pickPhysicalDevice() will pick.
+  if (const char *pref = std::getenv("LX_VK_PREFER_GPU")) {
+    std::cout << "[minimal_resize] LX_VK_PREFER_GPU=" << pref << std::endl;
+  } else {
+    std::cout << "[minimal_resize] LX_VK_PREFER_GPU=(unset → discrete-first)"
+              << std::endl;
+  }
+
   if (!initializeRuntimeAssetRoot()) {
     std::cerr << "[minimal_resize] failed to initialize runtime asset root\n";
     return 1;
