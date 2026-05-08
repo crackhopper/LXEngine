@@ -209,6 +209,28 @@ imgui pipeline 默认 `depthTestEnable = FALSE`，UI fragment 完全不读 depth
 
 注意：fix B 实测对 dGPU + Optimus 路径**改善有限**——cross-GPU PRIME 时序问题主要在 driver 内部，oldSwapchain 只是个 hint。但这是 vk spec 上推荐的写法，无害且对其它环境（如 NVIDIA 桌面单卡 / AMD）有正面效果，保留。
 
+### Fix C（**真正解决 dGPU 路径**）：`VulkanSwapchain` 默认 MAILBOX-first present mode
+
+`src/backend/vulkan/details/render_objects/swapchain.cpp`：
+
+- anonymous namespace 新增 `chooseSwapPresentMode(VkPhysicalDevice, VkSurfaceKHR)`：查询 surface 支持的 present modes，**MAILBOX 优先**，fallback FIFO
+- `createInternal` 改用它，删掉硬编码 `VK_PRESENT_MODE_FIFO_KHR`
+- 启动打印一次实际选了哪个 mode
+
+为什么有效：FIFO 强制 1 frame ↔ 1 vsync 的硬节拍，cross-GPU PRIME copy 必须在每个 vsync 间隔内完成；MAILBOX 让 driver 在内部排队多帧、按需丢，PRIME 链路有时序 slack。dxvk / vkd3d-proton 在 Optimus 上正是这个 fallback。
+
+实测结果：dGPU + Optimus 路径下 MAILBOX **解决了 resize 黑屏**。`demo_minimal_resize` 在 NVIDIA RTX 3070 Ti Laptop GPU 上跑稳定。
+
+### Fix D：`VulkanDevice` 默认 GPU 偏好改回 `Discrete`
+
+因为 fix C 让 dGPU 路径稳定了，fix A 临时把默认压回 integrated 的 workaround 不再需要——把默认改回 `Discrete`，恢复"高性能优先"语义。`LX_VK_PREFER_GPU` 环境变量保留：
+
+- 默认（不设置）：Discrete
+- `LX_VK_PREFER_GPU=integrated`：仍可显式压回 iGPU（给 MAILBOX 不可用或仍 flaky 的极端环境留口子）
+- `LX_VK_PREFER_GPU=discrete`：显式 Discrete
+
+`physicalDevicePreferenceScore`、`getPhysicalDevicePreferenceScoreForTesting` 完全不动 → `test_vulkan_device_selection.cpp` 不破坏。
+
 ### 顺带修复（详见上节）
 
 - `checkValidationLayerSupport({})` 短路返回 false
@@ -218,16 +240,24 @@ imgui pipeline 默认 `depthTestEnable = FALSE`，UI fragment 完全不读 depth
 
 ## 仍开放的问题
 
-### dGPU + Optimus 路径上的偶发黑屏
+### ✅ dGPU + Optimus 路径上的偶发黑屏 —— **已被 fix C (MAILBOX) 解决**
 
-应用层无法完全消除。需要走 driver 层 workaround。给最终用户/部署的建议：
+最初这一节是"应用层无法完全消除，需要走 driver 层 workaround"。但 fix C 把默认 present mode 切到 MAILBOX 后，用户实测在 NVIDIA RTX 3070 Ti Laptop 上 dGPU 路径完全稳定，所以**默认配置（Discrete + MAILBOX）已经是稳的**。
 
-1. **NVIDIA 控制面板**：3D 设置 → 程序设置 → 添加 demo_scene_viewer.exe → 选 "集成图形" 或 "高性能 NVIDIA" 看哪条稳。零代码 workaround，但需要文档化。
-2. **`LX_VK_PREFER_GPU=integrated`**：默认行为，对 Optimus 笔记本最稳。
-3. **`LX_VK_PREFER_GPU=discrete`**：愿意承担风险走 dGPU 时使用。
-4. **升级 NVIDIA driver 到最新**：用户测试时驱动是 ~553.X 系列，555+ 在 Vulkan WSI / Optimus 路径上有数轮稳定性修复。
-5. **MAILBOX present mode 实验**：在 `demo_minimal_resize` 上加了 MAILBOX-first fallback（`chooseSwapPresentMode`），用作对照。dxvk / vkd3d-proton 在 Optimus 上确实靠这个改善。已编译，由用户测试。
-6. **更激进的 surface rebuild**：每次 resize 重建 `VkSurfaceKHR` 而不只是 swapchain。代码改动较大，作为长期 TODO，目前不实施。
+下面这些 workaround 现在只用于**MAILBOX 不可用或仍 flaky 的极端环境**作为备用：
+
+1. **`LX_VK_PREFER_GPU=integrated`**：把渲染压回 iGPU，绕开 PRIME 路径。完全跳过这条不稳定链。
+2. **NVIDIA 控制面板**：3D 设置 → 程序设置 → 把可执行文件绑到 "集成图形" 或 "高性能 NVIDIA"。零代码 workaround。
+3. **升级 NVIDIA driver 到最新**：旧驱动版本在 Vulkan WSI / Optimus 路径上有数轮稳定性修复。
+4. **更激进的 surface rebuild**（长期 TODO，目前不实施）：每次 resize 重建 `VkSurfaceKHR` 而不只是 swapchain。代码改动较大，目前不需要。
+
+### MAILBOX vs FIFO 取舍记录
+
+切到 MAILBOX-first 默认带来的副作用：
+
+- **耗电略增**：MAILBOX 允许 GPU 持续渲染、超出 vsync 上限，driver 内部丢旧帧。FIFO 严格 vsync 节拍下 GPU 等待显示间隔。编辑器/UI 类应用 GPU 工作量小，差距不显著
+- **轻微输入延迟降低**：MAILBOX 显示总是最新到达的帧
+- 需要 MAILBOX 不可用（极少数环境）时 fallback 到 FIFO，行为不变
 
 ### `NvOptimusEnablement` 导出
 
@@ -277,3 +307,5 @@ NVIDIA 推荐应用导出 `__declspec(dllexport) DWORD NvOptimusEnablement = 1`�
 - `9ae296e` Add demo_minimal_resize_baseline as a frozen known-good reference
 - `6819f17` demo_minimal_resize delta 2 only: GPU pick is the prime suspect
 - `b9c73c8` Pin GPU pick to integrated by default and pass oldSwapchain on rebuild
+- `b01667d` Restore per-image depth + in-flight=3, add MAILBOX probe and debug postmortem
+- `<本次>` Default to MAILBOX-first present mode and revert default GPU preference back to Discrete

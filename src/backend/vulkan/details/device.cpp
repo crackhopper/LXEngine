@@ -176,21 +176,21 @@ int physicalDevicePreferenceScore(VkPhysicalDeviceType type) {
 // runtime choice can be steered by the user / environment without breaking
 // the testing contract on physicalDevicePreferenceScore.
 //
-// On NVIDIA Optimus laptops (Intel iGPU + discrete dGPU) the discrete path
-// goes through a cross-GPU PRIME copy on every present, and that path is
-// observably unstable on swapchain rebuild — see the demo_minimal_resize
-// bisection notes. The iGPU path is single-GPU and rebuild-stable, so it
-// is the safer default for laptops; users who actually want the dGPU set
-// LX_VK_PREFER_GPU=discrete explicitly.
+// Default is Discrete now that VulkanSwapchain selects MAILBOX present mode
+// when available. MAILBOX gives the cross-GPU PRIME copy on NVIDIA Optimus
+// laptops enough timing slack to be stable across swapchain rebuild, so the
+// previous "force iGPU on laptops" workaround is no longer needed by default.
+// Users / setups where MAILBOX is unavailable or still flaky can pin to the
+// integrated GPU explicitly with LX_VK_PREFER_GPU=integrated.
 enum class GpuPreference {
-  Integrated, // default — safer on Optimus laptops
-  Discrete,   // explicit override
+  Discrete,   // default — high-performance GPU, stable thanks to MAILBOX
+  Integrated, // explicit fallback for environments where dGPU + WSI is flaky
 };
 
 GpuPreference readGpuPreferenceFromEnv() {
   const char *raw = std::getenv("LX_VK_PREFER_GPU");
   if (raw == nullptr || *raw == '\0') {
-    return GpuPreference::Integrated;
+    return GpuPreference::Discrete;
   }
   std::string value(raw);
   for (char &c : value) {
@@ -204,9 +204,9 @@ GpuPreference readGpuPreferenceFromEnv() {
   }
   std::cerr << "[VulkanDevice] LX_VK_PREFER_GPU=\"" << raw
             << "\" is not recognized (expected 'integrated' or 'discrete'); "
-               "falling back to 'integrated'."
+               "falling back to 'discrete'."
             << std::endl;
-  return GpuPreference::Integrated;
+  return GpuPreference::Discrete;
 }
 
 const char *gpuPreferenceName(GpuPreference pref) {

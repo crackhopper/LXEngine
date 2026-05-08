@@ -3,12 +3,55 @@
 #include "framebuffer.hpp"
 #include "render_pass.hpp"
 #include <algorithm>
+#include <iostream>
 #include <limits>
 #include <utility>
 #include <stdexcept>
+#include <vector>
 
 namespace LX_core {
 namespace backend {
+
+namespace {
+
+// MAILBOX-first fallback. On NVIDIA Optimus laptops the dGPU present
+// path goes through a cross-GPU PRIME copy; FIFO's strict 1-frame-per-
+// vsync cadence makes that copy's timing window very tight and
+// reproducibly black-screens on resize. MAILBOX lets the driver queue
+// and drop frames internally, giving the PRIME link enough slack to
+// stay stable. dxvk / vkd3d-proton use the same fallback on Optimus.
+//
+// Trade-off: MAILBOX may render and discard frames the user never
+// sees, so power consumption is slightly higher than FIFO. On editor /
+// UI workloads the GPU is rarely the bottleneck, so this is an
+// acceptable default. Apps that prefer FIFO can hardcode it on the
+// VkSwapchainCreateInfoKHR they hand to a future "advanced" path.
+VkPresentModeKHR chooseSwapPresentMode(VkPhysicalDevice physicalDevice,
+                                       VkSurfaceKHR surface) {
+  u32 modeCount = 0;
+  vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface,
+                                            &modeCount, nullptr);
+  std::vector<VkPresentModeKHR> modes(modeCount);
+  if (modeCount > 0) {
+    vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface,
+                                              &modeCount, modes.data());
+  }
+  for (VkPresentModeKHR m : modes) {
+    if (m == VK_PRESENT_MODE_MAILBOX_KHR) {
+      std::cout
+          << "[VulkanSwapchain] present mode: VK_PRESENT_MODE_MAILBOX_KHR"
+          << std::endl;
+      return m;
+    }
+  }
+  std::cout
+      << "[VulkanSwapchain] present mode: VK_PRESENT_MODE_FIFO_KHR"
+         " (MAILBOX not advertised by driver)"
+      << std::endl;
+  return VK_PRESENT_MODE_FIFO_KHR;
+}
+
+} // namespace
 
 VulkanSwapchain::VulkanSwapchain(Token, VulkanDevice &device,
                                  WindowSharedPtr window,
@@ -161,8 +204,7 @@ void VulkanSwapchain::createInternal(VkExtent2D extent,
 
   createInfo.preTransform = capabilities.currentTransform;
   createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-  createInfo.presentMode =
-      VK_PRESENT_MODE_FIFO_KHR; // TODO : 应该有 chooseSwapPresentMode 方法。
+  createInfo.presentMode = chooseSwapPresentMode(physDevice, m_surface);
 
   // 重构前旧代码标注：（不要删除）
   //     LX_graphics::SwapChainSupportDetails swapChainSupport =
