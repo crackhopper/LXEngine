@@ -462,19 +462,51 @@ private:
 
   VkPresentModeKHR chooseSwapPresentMode(
       const std::vector<VkPresentModeKHR> &available) const {
-    // MAILBOX-first fallback. On NVIDIA Optimus laptops the dGPU
-    // present path goes through a cross-GPU PRIME copy; FIFO's
-    // strict 1-frame-per-vsync cadence makes that copy's timing
-    // window very tight and is one of the suspected triggers of
-    // the resize black-screen. MAILBOX lets the driver queue and
-    // drop frames internally, giving the PRIME link more slack.
-    // dxvk / vkd3d-proton use the same fallback on Optimus.
-    for (auto mode : available) {
-      if (mode == VK_PRESENT_MODE_MAILBOX_KHR) {
-        std::cout << "[minimal_resize] present mode: VK_PRESENT_MODE_MAILBOX_KHR"
-                  << std::endl;
-        return mode;
+    // LX_VK_PRESENT_MODE env override:
+    //   "fifo"      → force VK_PRESENT_MODE_FIFO_KHR
+    //   "immediate" → force VK_PRESENT_MODE_IMMEDIATE_KHR (falls back if absent)
+    //   unset / "mailbox" → MAILBOX-first, FIFO fallback (default)
+    //
+    // MAILBOX-first is the default because on NVIDIA Optimus laptops the
+    // dGPU present path goes through a cross-GPU PRIME copy; FIFO's strict
+    // 1-frame-per-vsync cadence makes that copy's timing window very tight
+    // and is one of the suspected triggers of the resize black-screen.
+    // MAILBOX lets the driver queue and drop frames, giving the PRIME link
+    // more slack. dxvk / vkd3d-proton use the same fallback on Optimus.
+    const char *modeOverride = std::getenv("LX_VK_PRESENT_MODE");
+    const std::string pref = modeOverride ? modeOverride : "mailbox";
+
+    auto has = [&](VkPresentModeKHR m) {
+      for (auto mode : available) {
+        if (mode == m) return true;
       }
+      return false;
+    };
+
+    if (pref == "fifo") {
+      std::cout << "[minimal_resize] present mode: VK_PRESENT_MODE_FIFO_KHR"
+                   " (LX_VK_PRESENT_MODE=fifo)"
+                << std::endl;
+      return VK_PRESENT_MODE_FIFO_KHR;
+    }
+    if (pref == "immediate") {
+      if (has(VK_PRESENT_MODE_IMMEDIATE_KHR)) {
+        std::cout << "[minimal_resize] present mode: "
+                     "VK_PRESENT_MODE_IMMEDIATE_KHR"
+                     " (LX_VK_PRESENT_MODE=immediate)"
+                  << std::endl;
+        return VK_PRESENT_MODE_IMMEDIATE_KHR;
+      }
+      std::cout << "[minimal_resize] LX_VK_PRESENT_MODE=immediate but driver "
+                   "doesn't expose it; falling back to MAILBOX/FIFO"
+                << std::endl;
+    }
+
+    // Default ("mailbox" or unrecognized override): MAILBOX-first.
+    if (has(VK_PRESENT_MODE_MAILBOX_KHR)) {
+      std::cout << "[minimal_resize] present mode: VK_PRESENT_MODE_MAILBOX_KHR"
+                << std::endl;
+      return VK_PRESENT_MODE_MAILBOX_KHR;
     }
     std::cout << "[minimal_resize] present mode: VK_PRESENT_MODE_FIFO_KHR"
                  " (MAILBOX not advertised by driver)"
@@ -1137,12 +1169,18 @@ private:
 int main() {
   expSetEnvVK();
 
-  // Surface the GPU preference so it's obvious from stdout which physical
-  // device pickPhysicalDevice() will pick.
+  // Surface the GPU preference and present mode so the resolved choice
+  // is obvious from stdout.
   if (const char *pref = std::getenv("LX_VK_PREFER_GPU")) {
     std::cout << "[minimal_resize] LX_VK_PREFER_GPU=" << pref << std::endl;
   } else {
     std::cout << "[minimal_resize] LX_VK_PREFER_GPU=(unset → discrete-first)"
+              << std::endl;
+  }
+  if (const char *pmode = std::getenv("LX_VK_PRESENT_MODE")) {
+    std::cout << "[minimal_resize] LX_VK_PRESENT_MODE=" << pmode << std::endl;
+  } else {
+    std::cout << "[minimal_resize] LX_VK_PRESENT_MODE=(unset → mailbox-first)"
               << std::endl;
   }
 
