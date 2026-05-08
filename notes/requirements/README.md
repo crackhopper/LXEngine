@@ -54,7 +54,7 @@
 | 文件号 | 主题 | 时机 | 说明 |
 |--------|------|------|------|
 | [038-a](finished/038-a-ray-aabb-picking-min.md) | ray-AABB picking 暴力版 | 已完成 | AABB + ray slab |
-| [041-a](041-a-imgui-editor-mvp.md) | ImGui Editor MVP | Phase 1.5 第 7 步 | ImGuizmo + 4 面板 + F 键预览 |
+| [041-a](finished/041-a-imgui-editor-mvp.md) | ImGui Editor MVP | Phase 1.5 第 7 步 | ImGuizmo + 4 面板 + F 键预览 |
 | [042](042-render-target-desc-and-target.md) | RenderTarget 拆 desc + binding | Phase 1.5 完工后 / Phase 1 REQ-103 之前 | 跨 pass 资源前置 |
 
 ### Phase 1.5 v2（编辑器 polish 等 — 全部归到 041-* 后缀族，不阻塞 Phase 1 / Phase 2 主线）
@@ -63,8 +63,8 @@
 
 | 文件号 | 主题 | 立项窗口 |
 |--------|------|----------|
-| [041-b](041-b-command-bus-v2.md) | 命令总线 v2（参数补全 + undo·redo + 多选 EditorState） | 040-a / 041-a 落地 + 实战暴露痛点后；最大杠杆 |
-| [041-c](041-c-editor-multi-select.md) | 编辑器多选 / 框选 | 041-b 落地后 |
+| [041-b](finished/041-b-command-bus-v2.md) | 命令总线 v2（参数补全 + undo·redo + 多选 EditorState） | 040-a / 041-a 落地 + 实战暴露痛点后；最大杠杆 |
+| [041-c](finished/041-c-editor-multi-select.md) | 编辑器多选 / 框选 | 041-b 落地后 |
 | [041-d](041-d-editor-undo-redo-ui.md) | undo·redo UI 接入（工具栏按钮 + 状态栏 + Ctrl+Z 路由） | 041-b 落地后；与 041-c 并行 |
 | [041-e](041-e-editor-node-rename-duplicate.md) | 节点 Rename / Duplicate / Ctrl+D | 041-b 落地后；与 041-c / 041-d 并行 |
 | [041-f](041-f-editor-toolbar-menubar-theme.md) | 编辑器 chrome（菜单栏 + 工具栏其余按钮 + 主题切换） | 041-d 落地后（在它建立的工具栏 / 状态栏外壳上扩展） |
@@ -78,6 +78,7 @@
 ## 历史
 
 - 2026-05-07：`REQ-039-a` DebugDraw 子系统完成验证并归档到 `finished/039-a-debug-draw-subsystem.md`，pending 队列从 `REQ-041-a` 开始。
+- 2026-05-08：`REQ-041-c` 编辑器多选 / 框选完成验证并归档到 `finished/041-c-editor-multi-select.md`。
 - 2026-05-06（晚整理）：把所有 v2 REQ 重排到 041-* 后缀族下（实施顺序 = 文件号顺序，所以 v2 必须排在 041-a 之后才正确）。同时把"命令总线 v2"和"编辑器 polish v2"两个原本打包的 REQ 进一步拆细：041-b 命令总线 v2 / 041-c 多选·框选 / 041-d undo·redo UI / 041-e Rename·Duplicate / 041-f chrome / 041-g 组件 v2 multi+enable / 041-h mesh triangle picking / 041-i DebugDraw v2 / 041-j 组件依赖声明（ComponentTraits）。每个 REQ 一个连续实施周期。
 - 2026-05-06：把原 `038 / 039 / 040 / 041` 四个 Phase 1.5 v1 REQ 全部按后缀族重命名为 `038-a / 039-a / 040-a / 041-a`，并把它们各自显式延后的 v2 工作整理到新的 `037-c / 038-b / 039-b / 040-b / 041-b` 文件中（这些 v2 文件随后被 2026-05-06 晚整理重排到 041-* 家族）。同步更新所有 cross-ref 路径与 roadmap。
 - 2026-05-01：补充 `NNN-a` / `NNN-b` 后缀族约定。需求讨论扩展导致局部拆分时，优先把原 `020` 改成 `020-a`、新增 `020-b`，不再默认整体后移后续编号。

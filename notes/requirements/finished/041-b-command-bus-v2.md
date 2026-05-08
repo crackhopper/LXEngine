@@ -129,7 +129,7 @@ class EditorState {
 
 ## 后续工作
 
-- [REQ-041-b 编辑器 v2 polish](../041-c-editor-multi-select.md) — 把 undo / redo 接到 ImGui 工具栏 + 状态栏；多选的视觉化（高亮多个节点 + gizmo 锚点提示）由 041-b 接管
+- [REQ-041-c 编辑器多选 / 框选](041-c-editor-multi-select.md) — scene tree 多选、视口框选与多选可视化
 - 命令权限 / 角色：[Phase 6 gameplay](../../roadmaps/main-roadmap/phase-6-gameplay-layer.md) 引入脚本边界后立项
 - 命令 throttling / rate limit：等真出现 agent 风暴时再立项；命令总线本身保持纯
 - MCP tool schema 自动从 brief 生成：等 Phase 1.6 MCP shim 落地一段时间，确认 brief 字段够稳后立项

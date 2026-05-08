@@ -2,7 +2,7 @@
 
 > 本 REQ 是 [Phase 1.5 ImGui Editor MVP + 命令总线](../roadmaps/main-roadmap/phase-1.5-imgui-editor-mvp.md) 的第 7 步（收口）。在 roadmap 中以"REQ-152 ImGui Editor MVP"前向声明。
 >
-> 2026-05-06 拆分：原 `041-imgui-editor-mvp.md` 即本档（v1，单选 + 4 面板 + F 键预览）。v2 拆成多个独立子 REQ，按 041-* 后缀族归档：[REQ-041-b 命令总线 v2](041-b-command-bus-v2.md) / `REQ-041-c 多选·框选`（待创建） / `REQ-041-d undo·redo UI`（待创建） / `REQ-041-e 节点 Rename·Duplicate`（待创建） / `REQ-041-f 菜单栏·工具栏·主题`（待创建）。其他子系统 v2 也并入 041-* 家族：`041-g 组件 v2`（待创建） / `041-h mesh 三角面级 picking`（待创建） / `041-i DebugDraw v2`（待创建） / `041-j 组件依赖声明`（待创建）。
+> 2026-05-06 拆分：原 `041-imgui-editor-mvp.md` 即本档（v1，单选 + 4 面板 + F 键预览）。v2 拆成多个独立子 REQ，按 041-* 后缀族归档：[REQ-041-b 命令总线 v2](041-b-command-bus-v2.md) / [REQ-041-c 多选·框选](041-c-editor-multi-select.md) / [REQ-041-d undo·redo UI](../041-d-editor-undo-redo-ui.md) / [REQ-041-e 节点 Rename·Duplicate](../041-e-editor-node-rename-duplicate.md) / [REQ-041-f 菜单栏·工具栏·主题](../041-f-editor-toolbar-menubar-theme.md)。其他子系统 v2 也并入 041-* 家族：`041-g 组件 v2` / [REQ-041-h mesh 三角面级 picking](../041-h-mesh-level-triangle-picking.md) / `041-i DebugDraw v2` / `041-j 组件依赖声明`。
 
 ## 背景
 
@@ -160,7 +160,7 @@ void renderOverlay(ImDrawList* dl, const Camera &editorCam, const Scene &scene, 
 
 - v1 **不**做 picture-in-picture 预览（依赖 [REQ-042 R1-R8](042-render-target-desc-and-target.md) RenderTarget 重写；R6 选择 `Camera::m_active` 方案绕开此依赖）
 - v1 **不**做文件对话框 asset browser（用命令 `add mesh <path>` 替代）
-- v1 **不**做多选 / 框选（单选 only）；移到 `REQ-041-c`（待创建）
+- v1 **不**做多选 / 框选（单选 only）；移到 [REQ-041-c](041-c-editor-multi-select.md)
 - v1 **不**做 undo / redo UI（命令总线 history 字段已存）；逻辑挂在 [REQ-041-b](041-b-command-bus-v2.md)，UI 接入在 `REQ-041-d`（待创建）
 - v1 **不**做工具栏 / 菜单栏（只 4 个 dock 面板 + 视口 overlay）；移到 `REQ-041-f`（待创建）
 - v1 **不**做 dark/light theme 切换（用 ImGui 默认 dark）；移到 `REQ-041-f`（待创建）

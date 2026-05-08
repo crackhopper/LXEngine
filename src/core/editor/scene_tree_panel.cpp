@@ -11,6 +11,8 @@
 namespace LX_core {
 namespace {
 
+constexpr ImU32 kPrimarySelectionOutlineColor = IM_COL32(80, 220, 255, 255);
+
 [[nodiscard]] std::string trim(std::string_view text) {
   usize begin = 0;
   while (begin < text.size() &&
@@ -66,6 +68,12 @@ void appendUniquePath(std::vector<std::string> &paths, std::string_view path) {
     return !lhsParent && !rhsParent;
   }
   return lhsParent.get() == rhsParent.get();
+}
+
+[[nodiscard]] bool isPrimarySelected(const EditorState &editorState,
+                                     const SceneNode &node) {
+  const auto primarySelected = editorState.getPrimarySelected();
+  return primarySelected.has_value() && &primarySelected->get() == &node;
 }
 
 } // namespace
@@ -244,6 +252,16 @@ void SceneTreePanel::drawNode(SceneNode &node) {
 
   const std::string label = node.getName().empty() ? node.getNodeName() : node.getName();
   const bool open = ImGui::TreeNodeEx(static_cast<void *>(&node), flags, "%s", label.c_str());
+  if (isPrimarySelected(m_editorState, node)) {
+    constexpr float outlinePadding = 2.0f;
+    constexpr float outlineThickness = 2.0f;
+    const ImVec2 min = ImGui::GetItemRectMin();
+    const ImVec2 max = ImGui::GetItemRectMax();
+    ImGui::GetWindowDrawList()->AddRect(
+        ImVec2(min.x - outlinePadding, min.y - outlinePadding),
+        ImVec2(max.x + outlinePadding, max.y + outlinePadding),
+        kPrimarySelectionOutlineColor, 0.0f, ImDrawFlags_None, outlineThickness);
+  }
 
   if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen()) {
     const ImGuiIO &io = ImGui::GetIO();

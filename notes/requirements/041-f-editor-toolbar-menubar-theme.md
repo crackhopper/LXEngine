@@ -115,4 +115,4 @@ File  Edit  View  Help
 
 ## 实施状态
 
-待实施。立项窗口：[REQ-041-d](041-d-editor-undo-redo-ui.md) 落地后开工（本 REQ 在它建立的工具栏 / 状态栏外壳上加按钮 / 字段）。本 REQ 与 [REQ-041-c](041-c-editor-multi-select.md) / [REQ-041-e](041-e-editor-node-rename-duplicate.md) 正交，可独立推进。
+待实施。立项窗口：[REQ-041-d](041-d-editor-undo-redo-ui.md) 落地后开工（本 REQ 在它建立的工具栏 / 状态栏外壳上加按钮 / 字段）。本 REQ 与 [REQ-041-c](finished/041-c-editor-multi-select.md) / [REQ-041-e](041-e-editor-node-rename-duplicate.md) 正交，可独立推进。

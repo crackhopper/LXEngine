@@ -6,7 +6,7 @@
 
 [REQ-041-b 命令总线 v2](041-b-command-bus-v2.md) 已经把 `bus.undo()` / `bus.redo()` 实现 + 在每个可逆命令上挂 inverse handler。但 v1 编辑器（[REQ-041-a](041-a-imgui-editor-mvp.md)）只有 4 个 dock 面板 + 视口 overlay，没有工具栏 / 状态栏；undo / redo 入口只有控制台命令与全局快捷键，对人不直观——多次拖拽 gizmo 后用户看不到"已积累了几步可撤销 / 当前会撤销什么"。
 
-本 REQ 把 UI 这层接通。**不**重写命令总线 inverse 协议；**不**碰多选 / 框选（[REQ-041-c](041-c-editor-multi-select.md)）；**不**碰工具栏的其他按钮（gizmo mode 切换 / theme toggle 等在 [REQ-041-f](041-f-editor-toolbar-menubar-theme.md) 里）。本 REQ 仅落地 undo / redo 这一对 UI 控件。
+本 REQ 把 UI 这层接通。**不**重写命令总线 inverse 协议；**不**碰多选 / 框选（[REQ-041-c](finished/041-c-editor-multi-select.md)）；**不**碰工具栏的其他按钮（gizmo mode 切换 / theme toggle 等在 [REQ-041-f](041-f-editor-toolbar-menubar-theme.md) 里）。本 REQ 仅落地 undo / redo 这一对 UI 控件。
 
 ## 目标
 
@@ -84,4 +84,4 @@
 
 ## 实施状态
 
-待实施。立项窗口：[REQ-041-b 命令总线 v2](041-b-command-bus-v2.md) 落地后开工。本 REQ 与 [REQ-041-c 多选 / 框选](041-c-editor-multi-select.md) 互不依赖，可并行推进。
+待实施。立项窗口：[REQ-041-b 命令总线 v2](finished/041-b-command-bus-v2.md) 落地后开工。本 REQ 与 [REQ-041-c 多选 / 框选](finished/041-c-editor-multi-select.md) 互不依赖，可并行推进。

@@ -114,4 +114,4 @@ return clone;
 
 ## 实施状态
 
-待实施。立项窗口：[REQ-041-b 命令总线 v2](041-b-command-bus-v2.md) 落地后开工。本 REQ 与 [REQ-041-c](041-c-editor-multi-select.md) / [REQ-041-d](041-d-editor-undo-redo-ui.md) 互不依赖，可并行推进。
+待实施。立项窗口：[REQ-041-b 命令总线 v2](finished/041-b-command-bus-v2.md) 落地后开工。本 REQ 与 [REQ-041-c](finished/041-c-editor-multi-select.md) / [REQ-041-d](041-d-editor-undo-redo-ui.md) 互不依赖，可并行推进。

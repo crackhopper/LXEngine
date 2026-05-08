@@ -140,6 +140,40 @@ void testPathJumpExpandsAncestorChainOnNextDraw() {
   ImGui::DestroyContext();
 }
 
+void testPrimarySelectionDrawsOutline() {
+  if (!setupMinimalImGui()) {
+    std::cout << "[SKIP] scene_tree_panel primary outline test (font atlas unavailable)\n";
+    ImGui::DestroyContext();
+    return;
+  }
+
+  Fixture fixture;
+  LX_core::SceneTreePanel panel(fixture.bus, fixture.editorState, *fixture.scene);
+
+  ImGui::NewFrame();
+  panel.draw();
+  ImGui::EndFrame();
+
+  ImGuiWindow *window = ImGui::FindWindowByName("Scene Tree");
+  EXPECT(window != nullptr, "scene tree window should exist after baseline draw");
+  const int baselineVertexCount =
+      window != nullptr ? window->DrawList->VtxBuffer.Size : 0;
+
+  fixture.editorState.select({fixture.cube, fixture.light});
+  ImGui::NewFrame();
+  panel.draw();
+  ImGui::EndFrame();
+
+  window = ImGui::FindWindowByName("Scene Tree");
+  EXPECT(window != nullptr, "scene tree window should exist after selected draw");
+  if (window != nullptr) {
+    EXPECT(window->DrawList->VtxBuffer.Size > baselineVertexCount,
+           "primary selection should append extra outline geometry");
+  }
+
+  ImGui::DestroyContext();
+}
+
 } // namespace
 
 int main() {
@@ -148,6 +182,7 @@ int main() {
   testDispatchSelectPathUsesCommandBus();
   testDrawFrameSurvivesCpuOnlyImGui();
   testPathJumpExpandsAncestorChainOnNextDraw();
+  testPrimarySelectionDrawsOutline();
 
   if (failures == 0) {
     std::cout << "[PASS] scene_tree_panel tests passed.\n";
