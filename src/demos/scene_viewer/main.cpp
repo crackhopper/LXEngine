@@ -25,6 +25,7 @@
 #include "ui_overlay.hpp"
 
 #include <cstdio>
+#include <cstdint>
 #include <exception>
 #include <filesystem>
 #include <functional>
@@ -32,6 +33,8 @@
 #include <iostream>
 #include <memory>
 #include <optional>
+#include <string>
+#include <string_view>
 
 using LX_core::backend::VulkanRenderer;
 using LX_core::gpu::EngineLoop;
@@ -43,8 +46,21 @@ namespace {
 constexpr int kWindowWidth = 1280;
 constexpr int kWindowHeight = 720;
 
+usize hashBytes(const void *data, usize size) {
+  constexpr usize kFnvOffset = static_cast<usize>(1469598103934665603ull);
+  constexpr usize kFnvPrime = static_cast<usize>(1099511628211ull);
+  usize hash = kFnvOffset;
+  const auto *bytes = static_cast<const std::uint8_t *>(data);
+  for (usize i = 0; i < size; ++i) {
+    hash ^= static_cast<usize>(bytes[i]);
+    hash *= kFnvPrime;
+  }
+  return hash;
+}
+
 void logCameraAspectState(const char *label, int width, int height, float aspect,
-                          const LX_core::CameraComponent &camera) {
+                          const LX_core::CameraComponent &camera,
+                          bool active) {
   if (!expSceneViewerDebugEnabled()) {
     return;
   }
@@ -53,26 +69,77 @@ void logCameraAspectState(const char *label, int width, int height, float aspect
     int width = -1;
     int height = -1;
     bool finiteAspect = true;
+    bool active = false;
+    float eyeX = 0.0f;
+    float eyeY = 0.0f;
+    float eyeZ = 0.0f;
+    float forwardX = 0.0f;
+    float forwardY = 0.0f;
+    float forwardZ = 0.0f;
+    usize uboHash = 0;
   };
   static CameraLogState editorState{};
   static CameraLogState gameState{};
   CameraLogState &state =
       std::string_view(label) == "editor" ? editorState : gameState;
   const bool finiteAspect = std::isfinite(aspect);
+  const LX_core::Vec3f eye = camera.getEyePosition();
+  const LX_core::Vec3f forward = camera.getForwardVector();
+  const auto ubo = camera.getUBO();
+  const usize uboHash =
+      ubo ? hashBytes(ubo->getRawData(), ubo->getByteSize()) : 0;
   if (state.width == width && state.height == height &&
-      state.finiteAspect == finiteAspect) {
+      state.finiteAspect == finiteAspect && state.active == active &&
+      state.eyeX == eye.x && state.eyeY == eye.y && state.eyeZ == eye.z &&
+      state.forwardX == forward.x && state.forwardY == forward.y &&
+      state.forwardZ == forward.z && state.uboHash == uboHash) {
     return;
   }
   state.width = width;
   state.height = height;
   state.finiteAspect = finiteAspect;
+  state.active = active;
+  state.eyeX = eye.x;
+  state.eyeY = eye.y;
+  state.eyeZ = eye.z;
+  state.forwardX = forward.x;
+  state.forwardY = forward.y;
+  state.forwardZ = forward.z;
+  state.uboHash = uboHash;
 
   std::cerr << "[scene_viewer][camera] " << label << " size=" << width << "x"
             << height << " aspect=" << aspect
             << " finiteAspect=" << finiteAspect
-            << " eye=(" << camera.getEyePosition().x << ", "
-            << camera.getEyePosition().y << ", " << camera.getEyePosition().z
-            << ")" << std::endl;
+            << " active=" << active << " eye=(" << eye.x << ", " << eye.y
+            << ", " << eye.z << ") forward=(" << forward.x << ", "
+            << forward.y << ", " << forward.z << ") uboHash=" << uboHash;
+  if (ubo) {
+    const auto &p = ubo->param;
+    std::cerr << " proj00=" << p.proj(0, 0) << " proj11=" << p.proj(1, 1)
+              << " view03=" << p.view(0, 3)
+              << " view13=" << p.view(1, 3)
+              << " view23=" << p.view(2, 3);
+  }
+  std::cerr << std::endl;
+}
+
+void logActiveCameraState(bool previewEnabled,
+                          const LX_core::SceneNodeSharedPtr &activeCamera) {
+  if (!expSceneViewerDebugEnabled()) {
+    return;
+  }
+
+  static bool lastPreviewEnabled = false;
+  static std::string lastActivePath;
+  const std::string activePath = activeCamera ? activeCamera->getPath() : "";
+  if (lastPreviewEnabled == previewEnabled && lastActivePath == activePath) {
+    return;
+  }
+  lastPreviewEnabled = previewEnabled;
+  lastActivePath = activePath;
+  std::cerr << "[scene_viewer][active-camera] previewEnabled="
+            << previewEnabled << " activePath="
+            << (activePath.empty() ? "<none>" : activePath) << std::endl;
 }
 
 } // namespace
@@ -156,6 +223,8 @@ int main() {
     editorState.setPreviewCamera(gameCameraNode);
     editorState.setPreviewEnabled(false);
     (void)editorState.syncActiveCamera(*scene);
+    logActiveCameraState(editorState.isPreviewEnabled(),
+                         editorState.resolveActiveCamera(*scene));
 
     LX_core::CommandBus commandBus;
     LX_core::registerBuiltinCommands(commandBus, editorState, *scene);
@@ -178,7 +247,7 @@ int main() {
 
     auto input = window->getInputState();
 
-    loop.setUpdateHook([&](LX_core::Scene&, const LX_core::Clock& clock) {
+    loop.setUpdateHook([&](LX_core::Scene& sceneRef, const LX_core::Clock& clock) {
       const bool imguiReady = ImGui::GetCurrentContext() != nullptr;
       const auto io =
           imguiReady
@@ -216,8 +285,10 @@ int main() {
         gameCamera->get().aspect = aspect;
       }
       gameCamera->get().updateMatrices();
+      logActiveCameraState(editorState.isPreviewEnabled(),
+                           editorState.resolveActiveCamera(sceneRef));
       logCameraAspectState("game", windowWidth, windowHeight, aspect,
-                           gameCamera->get());
+                           gameCamera->get(), gameCamera->get().isActive());
 
       if (!wantsKeyboard && !wantsMouse) {
         rig.update(*input, clock.deltaTime());
@@ -225,7 +296,7 @@ int main() {
         editorCamera->get().updateMatrices();
       }
       logCameraAspectState("editor", windowWidth, windowHeight, aspect,
-                           editorCamera->get());
+                           editorCamera->get(), editorCamera->get().isActive());
       input->nextFrame();
     });
 

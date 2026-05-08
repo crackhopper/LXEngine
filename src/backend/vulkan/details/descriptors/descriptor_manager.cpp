@@ -1,9 +1,12 @@
 #include "descriptor_manager.hpp"
 #include "../device.hpp"
 #include "core/utils/hash.hpp"
+#include "core/utils/env.hpp"
 #include <array>
+#include <iostream>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 
 namespace LX_core {
 namespace backend {
@@ -199,6 +202,19 @@ VkDevice VulkanDescriptorManager::getDeviceHandle() const {
   return m_device.getLogicalDevice();
 }
 
+namespace {
+usize countFreeDescriptorSets(
+    const std::unordered_map<VkDescriptorSetLayout, std::vector<VkDescriptorSet>>
+        &freeSets) {
+  usize count = 0;
+  for (const auto &[layout, sets] : freeSets) {
+    (void)layout;
+    count += sets.size();
+  }
+  return count;
+}
+} // namespace
+
 VkDescriptorSetLayout VulkanDescriptorManager::getOrCreateLayout(
     const std::vector<LX_core::ShaderResourceBinding> &bindingsIn) {
   DescriptorLayoutKey key{bindingsIn};
@@ -279,6 +295,8 @@ void VulkanDescriptorManager::beginFrame(u32 currentFrameIndex) {
 
   // 2. 获取当前帧的上下文
   auto &context = m_frameContexts[m_currentFrameIndex];
+  const usize pendingBefore = context.pendingReturn.size();
+  const usize freeBefore = countFreeDescriptorSets(context.freeSets);
 
   // 3. 处理延迟回收 (Pending Return -> Free Sets)
   // 既然我们现在回到了这个 frameIndex，说明 GPU 已经至少跑完了一圈
@@ -289,6 +307,27 @@ void VulkanDescriptorManager::beginFrame(u32 currentFrameIndex) {
 
   // 4. 清空待处理队列，准备记录本帧即将产生的销毁任务
   context.pendingReturn.clear();
+  const usize freeAfter = countFreeDescriptorSets(context.freeSets);
+
+  if (expRendererDebugEnabled()) {
+    struct DescriptorFrameLogState {
+      usize pendingBefore = 0;
+      usize freeBefore = 0;
+      usize freeAfter = 0;
+    };
+    static std::unordered_map<u32, DescriptorFrameLogState> logged;
+    DescriptorFrameLogState next{pendingBefore, freeBefore, freeAfter};
+    auto &state = logged[m_currentFrameIndex];
+    if (state.pendingBefore != next.pendingBefore ||
+        state.freeBefore != next.freeBefore ||
+        state.freeAfter != next.freeAfter) {
+      state = next;
+      std::cerr << "[RendererDebug] descriptors: beginFrame frame="
+                << m_currentFrameIndex << " pendingBefore=" << pendingBefore
+                << " freeBefore=" << freeBefore
+                << " freeAfter=" << freeAfter << std::endl;
+    }
+  }
 }
 
 void VulkanDescriptorManager::returnSet(VkDescriptorSet set,

@@ -8,6 +8,7 @@
 #include "core/utils/env.hpp"
 #include "core/utils/string_table.hpp"
 #include <array>
+#include <functional>
 #include <sstream>
 #include <stdexcept>
 #include <unordered_map>
@@ -101,6 +102,94 @@ void logMissingDescriptorBindingOnce(const RenderingItem &item,
             << LX_core::GlobalStringTable::get().getName(item.pass.id)
             << " pipelineKey=" << item.pipelineKey.id.id << std::endl;
 }
+
+void logDescriptorBufferBindingIfChanged(
+    const RenderingItem &item, const ShaderResourceBinding &binding,
+    const IGpuResourceSharedPtr &cpuRes,
+    const VkDescriptorBufferInfo &bufferInfo) {
+  if (!expRendererDebugEnabled() || !cpuRes) {
+    return;
+  }
+
+  struct BindingLogState {
+    ResourceCacheIdentity identity = 0;
+    usize bufferToken = 0;
+    VkDeviceSize range = 0;
+  };
+  static std::unordered_map<std::string, BindingLogState> logged;
+
+  std::ostringstream keyBuilder;
+  keyBuilder << item.pipelineKey.id.id << "|" << item.pass.id << "|"
+             << binding.set << "|" << binding.binding << "|" << binding.name;
+  const std::string key = keyBuilder.str();
+
+  BindingLogState next{};
+  next.identity = cpuRes->getBackendCacheIdentity();
+  next.bufferToken = std::hash<VkBuffer>{}(bufferInfo.buffer);
+  next.range = bufferInfo.range;
+
+  auto &state = logged[key];
+  if (state.identity == next.identity && state.bufferToken == next.bufferToken &&
+      state.range == next.range) {
+    return;
+  }
+  state = next;
+
+  std::cerr << "[RendererDebug] bindResources: buffer name=" << binding.name
+            << " set=" << binding.set << " binding=" << binding.binding
+            << " pass="
+            << LX_core::GlobalStringTable::get().getName(item.pass.id)
+            << " pipelineKey=" << item.pipelineKey.id.id
+            << " identity=" << next.identity
+            << " bufferToken=" << next.bufferToken
+            << " range=" << next.range << std::endl;
+}
+
+void logDescriptorImageBindingIfChanged(
+    const RenderingItem &item, const ShaderResourceBinding &binding,
+    const IGpuResourceSharedPtr &cpuRes,
+    const VkDescriptorImageInfo &imageInfo) {
+  if (!expRendererDebugEnabled() || !cpuRes) {
+    return;
+  }
+
+  struct BindingLogState {
+    ResourceCacheIdentity identity = 0;
+    usize imageViewToken = 0;
+    usize samplerToken = 0;
+    VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
+  };
+  static std::unordered_map<std::string, BindingLogState> logged;
+
+  std::ostringstream keyBuilder;
+  keyBuilder << item.pipelineKey.id.id << "|" << item.pass.id << "|"
+             << binding.set << "|" << binding.binding << "|" << binding.name;
+  const std::string key = keyBuilder.str();
+
+  BindingLogState next{};
+  next.identity = cpuRes->getBackendCacheIdentity();
+  next.imageViewToken = std::hash<VkImageView>{}(imageInfo.imageView);
+  next.samplerToken = std::hash<VkSampler>{}(imageInfo.sampler);
+  next.layout = imageInfo.imageLayout;
+
+  auto &state = logged[key];
+  if (state.identity == next.identity &&
+      state.imageViewToken == next.imageViewToken &&
+      state.samplerToken == next.samplerToken && state.layout == next.layout) {
+    return;
+  }
+  state = next;
+
+  std::cerr << "[RendererDebug] bindResources: image name=" << binding.name
+            << " set=" << binding.set << " binding=" << binding.binding
+            << " pass="
+            << LX_core::GlobalStringTable::get().getName(item.pass.id)
+            << " pipelineKey=" << item.pipelineKey.id.id
+            << " identity=" << next.identity
+            << " imageViewToken=" << next.imageViewToken
+            << " samplerToken=" << next.samplerToken
+            << " layout=" << static_cast<int>(next.layout) << std::endl;
+}
 } // namespace
 
 void VulkanCommandBuffer::bindPipeline(VulkanPipeline &pipeline) {
@@ -171,6 +260,7 @@ void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
         bufferInfo.offset = 0;
         bufferInfo.range = buffer.getSize();
 
+        logDescriptorBufferBindingIfChanged(item, b, cpuRes, bufferInfo);
         setPtr->updateBuffer(b.binding, bufferInfo,
                              b.type ==
                                      LX_core::ShaderPropertyType::UniformBuffer
@@ -185,6 +275,7 @@ void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
         auto &texture = textureOpt->get();
 
         VkDescriptorImageInfo imageInfo = texture.getDescriptorInfo();
+        logDescriptorImageBindingIfChanged(item, b, cpuRes, imageInfo);
         setPtr->updateImage(b.binding, imageInfo,
                             VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
       }

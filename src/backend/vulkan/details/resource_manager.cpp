@@ -12,7 +12,13 @@
 #include "device_resources/buffer.hpp"
 #include "device_resources/texture.hpp"
 #include "device.hpp"
+#include "core/utils/env.hpp"
+#include "core/utils/string_table.hpp"
+#include <cstdint>
+#include <functional>
+#include <iostream>
 #include <stdexcept>
+#include <unordered_map>
 
 namespace LX_core::backend {
 
@@ -49,6 +55,68 @@ VkFormat toVkFormat(LX_core::ImageFormat format) {
   }
   throw std::runtime_error("Unsupported ImageFormat");
 }
+
+usize hashBytes(const void *data, usize size) {
+  constexpr usize kFnvOffset = static_cast<usize>(1469598103934665603ull);
+  constexpr usize kFnvPrime = static_cast<usize>(1099511628211ull);
+  usize hash = kFnvOffset;
+  const auto *bytes = static_cast<const std::uint8_t *>(data);
+  for (usize i = 0; i < size; ++i) {
+    hash ^= static_cast<usize>(bytes[i]);
+    hash *= kFnvPrime;
+  }
+  return hash;
+}
+
+std::optional<usize>
+bufferHandleToken(const std::shared_ptr<VulkanAnyResource> &gpuRes) {
+  if (!gpuRes) {
+    return std::nullopt;
+  }
+  if (const auto bufferPtr = std::get_if<VulkanBufferUniquePtr>(gpuRes.get())) {
+    if (*bufferPtr) {
+      return std::hash<VkBuffer>{}((*bufferPtr)->getHandle());
+    }
+  }
+  return std::nullopt;
+}
+
+void logCameraUploadIfChanged(
+    std::string_view reason, const IGpuResourceSharedPtr &cpuRes,
+    const std::shared_ptr<VulkanAnyResource> &gpuRes) {
+  if (!expRendererDebugEnabled() || !cpuRes) {
+    return;
+  }
+
+  const StringID bindingName = cpuRes->getBindingName();
+  const std::string &name = GlobalStringTable::get().getName(bindingName.id);
+  if (name != "CameraUBO") {
+    return;
+  }
+
+  struct UploadLogState {
+    usize dataHash = 0;
+    usize handleToken = 0;
+  };
+  static std::unordered_map<ResourceCacheIdentity, UploadLogState> logged;
+
+  const usize dataHash =
+      hashBytes(cpuRes->getRawData(), cpuRes->getByteSize());
+  const usize handleToken = bufferHandleToken(gpuRes).value_or(0);
+  auto &state = logged[cpuRes->getBackendCacheIdentity()];
+  if (state.dataHash == dataHash && state.handleToken == handleToken) {
+    return;
+  }
+  state.dataHash = dataHash;
+  state.handleToken = handleToken;
+
+  std::cerr << "[RendererDebug] syncResource: " << reason
+            << " name=" << name
+            << " identity=" << cpuRes->getBackendCacheIdentity()
+            << " byteSize=" << cpuRes->getByteSize()
+            << " dataHash=" << dataHash
+            << " bufferToken=" << handleToken << std::endl;
+}
 } // namespace
 
 VulkanResourceManager::VulkanResourceManager(Token, VulkanDevice &device)
@@ -80,6 +148,7 @@ void VulkanResourceManager::syncResource(
     (void)inserted;
     // 新创建的资源强制更新一次数据
     updateGpuResource(insertedIt->second.resource, cpuRes, cmdBufferManager);
+    logCameraUploadIfChanged("create", cpuRes, insertedIt->second.resource);
     cpuRes->clearDirty();
     return;
   }
@@ -87,6 +156,7 @@ void VulkanResourceManager::syncResource(
   it->second.lastSeenFrame = m_frameSerial;
   if (cpuRes->isDirty()) {
     updateGpuResource(it->second.resource, cpuRes, cmdBufferManager);
+    logCameraUploadIfChanged("update", cpuRes, it->second.resource);
     cpuRes->clearDirty();
   }
 }
