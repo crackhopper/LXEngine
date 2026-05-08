@@ -1,22 +1,21 @@
-// REQ-DIAG-MIN-STEP1: iteration playground. Starts from the
-// known-good textbook raw-Vulkan baseline (kept frozen as
-// demo_minimal_resize_baseline) and folds engine wrappers back in step
-// by step. Every other demo run alongside this one cross-checks against
-// the baseline.
+// REQ-DIAG-MIN-STEP1A: iteration playground. Step 1 (VulkanDevice +
+// VulkanRenderPass) reproduced the resize black-screen bug, so step 1
+// is being bisected into two halves to localize.
 //
-// Step 1 (this commit): replace the lowest-suspicion wrappers
-//   - LX_core::backend::VulkanDevice  -> instance + surface +
-//     physical-device pick + logical device + queue + surface format +
-//     depth format
-//   - LX_core::backend::VulkanRenderPass -> render pass + clear values
+// Step 1a (this commit): only LX_core::backend::VulkanDevice is in.
+// Render pass is back to raw-vk inline construction (identical to the
+// frozen baseline). VulkanRenderPass requires a VulkanDevice& argument,
+// so we cannot test the opposite split without first proving
+// VulkanDevice is innocent — that's what this build verifies.
 //
-// Still raw: swapchain, image views, framebuffers, depth resources,
-// graphics pipeline, command pool/buffers, vertex/index buffers, sync
-// objects, draw frame, swapchain rebuild. These get folded in next
-// steps.
+// If this demo runs cleanly: VulkanRenderPass is the offender (next
+// step will fold it back in alone, with raw device).
+// If this demo still flickers/black-screens: VulkanDevice is the
+// offender (and the next step will keep it out, fold in
+// VulkanRenderPass via a tiny VulkanDevice shim, or audit
+// VulkanDevice's instance/device/surface code).
 
 #include "backend/vulkan/details/device.hpp"
-#include "backend/vulkan/details/render_objects/render_pass.hpp"
 #include "core/platform/types.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/filesystem_tools.hpp"
@@ -120,13 +119,10 @@ private:
   // === Window ===
   std::shared_ptr<LX_infra::Window> m_window;
 
-  // === Engine wrappers (Step 1) ===
+  // === Engine wrapper (Step 1a — VulkanDevice only) ===
   LX_core::backend::VulkanDeviceUniquePtr m_vkDevice;
-  std::unique_ptr<LX_core::backend::VulkanRenderPass> m_vkRenderPass;
 
-  // === Cached raw handles, populated from m_vkDevice / m_vkRenderPass.
-  //     Kept so the rest of the demo's raw-vk code does not need to
-  //     change. As more wrappers fold in, these will go away. ===
+  // === Cached raw handles, populated from m_vkDevice ===
   VkInstance m_instance = VK_NULL_HANDLE;
   VkSurfaceKHR m_surface = VK_NULL_HANDLE;
   VkPhysicalDevice m_physicalDevice = VK_NULL_HANDLE;
@@ -136,6 +132,8 @@ private:
   u32 m_graphicsFamily = 0;
   u32 m_presentFamily = 0;
   VkFormat m_depthFormat = VK_FORMAT_UNDEFINED;
+
+  // === Render pass (back to raw, identical to baseline) ===
   VkRenderPass m_renderPass = VK_NULL_HANDLE;
 
   // === Swapchain (still raw) ===
@@ -181,11 +179,9 @@ private:
   }
 
   void initVulkan() {
-    // --- Step 1: VulkanDevice replaces instance + surface + physical
-    // device pick + logical device + queues + surface format + depth
-    // format. Pass an empty validationLayers list to keep behaviour as
-    // close as possible to the baseline (which has no validation) and
-    // avoid introducing extra behaviour differences. ---
+    // Step 1a: VulkanDevice replaces instance + surface + physical device
+    // pick + logical device + queues + surface format + depth format.
+    // Empty validationLayers + apiVersion 1.2 to mirror the baseline.
     m_vkDevice = LX_core::backend::VulkanDevice::create();
     m_vkDevice->initialize(m_window, "demo_minimal_resize",
                            VK_MAKE_VERSION(1, 0, 0), "LX",
@@ -201,19 +197,9 @@ private:
     m_presentFamily = m_vkDevice->getPresentQueueFamilyIndex();
     m_depthFormat = m_vkDevice->getDepthFormat();
 
-    // --- Step 1: VulkanRenderPass replaces createRenderPass(). The
-    // wrapper's attachment description and subpass dependency match the
-    // textbook baseline (CLEAR/STORE color, CLEAR/DONT_CARE depth,
-    // EXTERNAL→0 dep covering COLOR_OUTPUT|EARLY|LATE fragment tests).
-    // ---
-    const auto surfaceFormat = m_vkDevice->getSurfaceFormat();
-    m_vkRenderPass = LX_core::backend::VulkanRenderPass::create(
-        *m_vkDevice, surfaceFormat.format, m_depthFormat);
-    m_renderPass = m_vkRenderPass->getHandle();
-
-    // Everything below here is still raw vk, identical to the baseline.
     createSwapChain();
     createImageViews();
+    createRenderPass(); // raw, identical to baseline
     createGraphicsPipeline();
     createCommandPool();
     createDepthResources();
@@ -271,7 +257,6 @@ private:
 
   void createSwapChain() {
     SwapChainSupportDetails support = querySwapChainSupport();
-    // VulkanDevice already picked the surface format; reuse it.
     VkSurfaceFormatKHR surfaceFormat = m_vkDevice->getSurfaceFormat();
     VkPresentModeKHR presentMode = chooseSwapPresentMode(support.presentModes);
     VkExtent2D extent = chooseSwapExtent(support.capabilities);
@@ -345,6 +330,72 @@ private:
       m_swapChainImageViews[i] = createImageView(
           m_swapChainImages[i], m_swapChainImageFormat,
           VK_IMAGE_ASPECT_COLOR_BIT);
+    }
+  }
+
+  // Identical to the baseline. Standard textbook attachment + dependency.
+  void createRenderPass() {
+    VkAttachmentDescription colorAttachment{};
+    colorAttachment.format = m_swapChainImageFormat;
+    colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+    VkAttachmentDescription depthAttachment{};
+    depthAttachment.format = m_depthFormat;
+    depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    depthAttachment.finalLayout =
+        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+    VkAttachmentReference colorRef{};
+    colorRef.attachment = 0;
+    colorRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    VkAttachmentReference depthRef{};
+    depthRef.attachment = 1;
+    depthRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+    VkSubpassDescription subpass{};
+    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpass.colorAttachmentCount = 1;
+    subpass.pColorAttachments = &colorRef;
+    subpass.pDepthStencilAttachment = &depthRef;
+
+    VkSubpassDependency dep{};
+    dep.srcSubpass = VK_SUBPASS_EXTERNAL;
+    dep.dstSubpass = 0;
+    dep.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+                       VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+                       VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+    dep.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+                        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    dep.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+                       VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+    dep.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+                        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+
+    std::array<VkAttachmentDescription, 2> attachments = {colorAttachment,
+                                                          depthAttachment};
+    VkRenderPassCreateInfo info{};
+    info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    info.attachmentCount = static_cast<u32>(attachments.size());
+    info.pAttachments = attachments.data();
+    info.subpassCount = 1;
+    info.pSubpasses = &subpass;
+    info.dependencyCount = 1;
+    info.pDependencies = &dep;
+
+    if (vkCreateRenderPass(m_device, &info, nullptr, &m_renderPass) !=
+        VK_SUCCESS) {
+      throw std::runtime_error("Failed to create render pass");
     }
   }
 
@@ -482,7 +533,6 @@ private:
   }
 
   u32 findMemoryType(u32 typeFilter, VkMemoryPropertyFlags properties) const {
-    // VulkanDevice exposes findMemoryTypeIndex; reuse it.
     return m_vkDevice->findMemoryTypeIndex(typeFilter, properties);
   }
 
@@ -645,9 +695,9 @@ private:
       throw std::runtime_error("Failed to begin command buffer");
     }
 
-    // Pull clear values from the wrapper to keep the demo fully tied to
-    // VulkanRenderPass behaviour.
-    const auto &clearValues = m_vkRenderPass->getClearValues();
+    std::array<VkClearValue, 2> clearValues{};
+    clearValues[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
+    clearValues[1].depthStencil = {1.0f, 0};
 
     VkRenderPassBeginInfo rpInfo{};
     rpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -809,6 +859,9 @@ private:
     if (m_pipelineLayout != VK_NULL_HANDLE) {
       vkDestroyPipelineLayout(m_device, m_pipelineLayout, nullptr);
     }
+    if (m_renderPass != VK_NULL_HANDLE) {
+      vkDestroyRenderPass(m_device, m_renderPass, nullptr);
+    }
     if (m_indexBuffer != VK_NULL_HANDLE) {
       vkDestroyBuffer(m_device, m_indexBuffer, nullptr);
     }
@@ -834,10 +887,8 @@ private:
       vkDestroyCommandPool(m_device, m_commandPool, nullptr);
     }
 
-    // Now release the wrappers — they own the render pass + device +
-    // surface + instance. RenderPass first (it references the device),
-    // then the device (destroys logical device + surface + instance).
-    m_vkRenderPass.reset();
+    // Now release the wrapper — VulkanDevice owns logical device + surface
+    // + instance, so this destroys all three in the correct order.
     m_vkDevice.reset();
   }
 };
