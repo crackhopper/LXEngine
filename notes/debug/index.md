@@ -6,7 +6,13 @@
 
 ## 已收录条目
 
+### 调试事件复盘
+
 - [2026-05 — demo_scene_viewer resize 偶发黑屏 / 闪烁（NVIDIA Optimus + dGPU）](2026-05-resize-blackscreen.md)
+
+### 从复盘衍生的技术解释
+
+- [Vulkan Present Mode：FIFO vs MAILBOX，以及为何 FIFO 在 NVIDIA Optimus 上 resize 黑屏](fifo-vs-mailbox.md)
 
 ## 写作约定
 
