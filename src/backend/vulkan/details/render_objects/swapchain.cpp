@@ -92,7 +92,8 @@ void VulkanSwapchain::cleanup() {
   }
 }
 
-void VulkanSwapchain::createInternal(VkExtent2D extent) {
+void VulkanSwapchain::createInternal(VkExtent2D extent,
+                                     VkSwapchainKHR oldSwapchain) {
   // Vulkan spec: currentExtent == UINT32_MAX means it's not fixed by the
   // surface; otherwise it is the exact value we must use.
   VkPhysicalDevice physDevice = m_device.getPhysicalDevice();
@@ -166,7 +167,7 @@ void VulkanSwapchain::createInternal(VkExtent2D extent) {
   //         chooseSwapPresentMode(swapChainSupport.presentModes);
 
   createInfo.clipped = VK_TRUE;
-  createInfo.oldSwapchain = VK_NULL_HANDLE; // TODO: 这个可以优化resize问题。
+  createInfo.oldSwapchain = oldSwapchain;
 
   if (vkCreateSwapchainKHR(m_device.getLogicalDevice(), &createInfo, nullptr,
                            &m_handle) != VK_SUCCESS) {
@@ -389,17 +390,32 @@ void VulkanSwapchain::setupFramebuffers(VulkanRenderPass &renderPass) {
 
 void VulkanSwapchain::rebuild(VulkanRenderPass &renderPass) {
   waitIdle();
+
+  // Keep the old swapchain alive across cleanup so we can hand it to the
+  // driver as VkSwapchainCreateInfoKHR::oldSwapchain — the driver is
+  // allowed to reuse the underlying allocation chain that way, which
+  // observably stabilizes rebuild on Optimus / cross-GPU PRIME paths.
+  VkSwapchainKHR oldHandle = m_handle;
+  m_handle = VK_NULL_HANDLE; // hide it from cleanup() so it isn't destroyed yet
+
   cleanup();
 
   VkExtent2D rawExtent{
       static_cast<u32>(m_window->getWidth()),
       static_cast<u32>(m_window->getHeight())};
-  createInternal(rawExtent);
+  createInternal(rawExtent, oldHandle);
   createImageViews();
   m_depthFormat = m_device.getDepthFormat();
   createDepthResources();
   createSyncObjects(); // 重新创建 semaphores 和 fences
   setupFramebuffers(renderPass);
+
+  // Spec requires oldSwapchain to be destroyed by the application after the
+  // new swapchain is in use. We've already finished creating the new one and
+  // its image views / framebuffers, so it's safe to retire the old handle now.
+  if (oldHandle != VK_NULL_HANDLE) {
+    vkDestroySwapchainKHR(m_device.getLogicalDevice(), oldHandle, nullptr);
+  }
 }
 
 VkResult VulkanSwapchain::acquireNextImage(u32 currentFrameIndex,

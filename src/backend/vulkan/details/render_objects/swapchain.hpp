@@ -58,7 +58,12 @@ public:
 
 private:
   void cleanup();
-  void createInternal(VkExtent2D extent);
+  // oldSwapchain is passed straight through to VkSwapchainCreateInfoKHR;
+  // pass the previous handle on rebuild so the driver can reuse the
+  // underlying surface / image memory chain (matters on cross-GPU PRIME
+  // paths, e.g. NVIDIA Optimus laptops).
+  void createInternal(VkExtent2D extent,
+                      VkSwapchainKHR oldSwapchain = VK_NULL_HANDLE);
   void createImageViews();
   void createDepthResources();
   // Drives the depth image through a deterministic UNDEFINED -> OPTIMAL

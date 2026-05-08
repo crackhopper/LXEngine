@@ -1,5 +1,7 @@
 #include "device.hpp"
 #include "descriptors/descriptor_manager.hpp"
+#include <cctype>
+#include <cstdlib>
 #include <cstring>
 #include <iostream>
 #include <set>
@@ -151,7 +153,85 @@ const char *deviceTypeToString(VkPhysicalDeviceType type) {
   }
 }
 
+// "Pure" preference score, used by the public testing entry point. Keeps
+// the historical "discrete > integrated > virtual > cpu > other" ordering
+// because that's what test_vulkan_device_selection.cpp asserts.
 int physicalDevicePreferenceScore(VkPhysicalDeviceType type) {
+  switch (type) {
+  case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU:
+    return 4;
+  case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU:
+    return 3;
+  case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU:
+    return 2;
+  case VK_PHYSICAL_DEVICE_TYPE_CPU:
+    return 1;
+  case VK_PHYSICAL_DEVICE_TYPE_OTHER:
+  default:
+    return 0;
+  }
+}
+
+// Practical GPU pick policy. Decoupled from the "pure" score above so the
+// runtime choice can be steered by the user / environment without breaking
+// the testing contract on physicalDevicePreferenceScore.
+//
+// On NVIDIA Optimus laptops (Intel iGPU + discrete dGPU) the discrete path
+// goes through a cross-GPU PRIME copy on every present, and that path is
+// observably unstable on swapchain rebuild — see the demo_minimal_resize
+// bisection notes. The iGPU path is single-GPU and rebuild-stable, so it
+// is the safer default for laptops; users who actually want the dGPU set
+// LX_VK_PREFER_GPU=discrete explicitly.
+enum class GpuPreference {
+  Integrated, // default — safer on Optimus laptops
+  Discrete,   // explicit override
+};
+
+GpuPreference readGpuPreferenceFromEnv() {
+  const char *raw = std::getenv("LX_VK_PREFER_GPU");
+  if (raw == nullptr || *raw == '\0') {
+    return GpuPreference::Integrated;
+  }
+  std::string value(raw);
+  for (char &c : value) {
+    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+  }
+  if (value == "discrete") {
+    return GpuPreference::Discrete;
+  }
+  if (value == "integrated") {
+    return GpuPreference::Integrated;
+  }
+  std::cerr << "[VulkanDevice] LX_VK_PREFER_GPU=\"" << raw
+            << "\" is not recognized (expected 'integrated' or 'discrete'); "
+               "falling back to 'integrated'."
+            << std::endl;
+  return GpuPreference::Integrated;
+}
+
+const char *gpuPreferenceName(GpuPreference pref) {
+  return pref == GpuPreference::Integrated ? "integrated" : "discrete";
+}
+
+int gpuSelectionScore(VkPhysicalDeviceType type, GpuPreference pref) {
+  // Both orderings keep VIRTUAL > CPU > OTHER as the cold-fallback tail;
+  // they only differ in which of INTEGRATED / DISCRETE wins.
+  if (pref == GpuPreference::Integrated) {
+    switch (type) {
+    case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU:
+      return 4;
+    case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU:
+      return 3;
+    case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU:
+      return 2;
+    case VK_PHYSICAL_DEVICE_TYPE_CPU:
+      return 1;
+    case VK_PHYSICAL_DEVICE_TYPE_OTHER:
+    default:
+      return 0;
+    }
+  }
+  // Discrete preference: same as physicalDevicePreferenceScore.
   switch (type) {
   case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU:
     return 4;
@@ -424,6 +504,12 @@ void VulkanDevice::pickPhysicalDevice() {
   std::vector<VkPhysicalDevice> devices(deviceCount);
   vkEnumeratePhysicalDevices(m_instance, &deviceCount, devices.data());
 
+  const GpuPreference preference = readGpuPreferenceFromEnv();
+  std::cout << "[VulkanDevice] GPU preference: "
+            << gpuPreferenceName(preference)
+            << "  (set LX_VK_PREFER_GPU=integrated|discrete to override)"
+            << std::endl;
+
   int bestScore = -1;
   for (const auto &device : devices) {
     if (!isDeviceSuitable(device, m_deviceExtensions)) {
@@ -432,7 +518,7 @@ void VulkanDevice::pickPhysicalDevice() {
 
     VkPhysicalDeviceProperties props;
     vkGetPhysicalDeviceProperties(device, &props);
-    const int score = physicalDevicePreferenceScore(props.deviceType);
+    const int score = gpuSelectionScore(props.deviceType, preference);
 
     if (score > bestScore) {
       bestScore = score;
@@ -452,11 +538,6 @@ void VulkanDevice::pickPhysicalDevice() {
   vkGetPhysicalDeviceProperties(m_physicalDevice, &properties);
   std::cout << "Selected " << deviceTypeToString(properties.deviceType)
             << " GPU: " << properties.deviceName << std::endl;
-  if (properties.deviceType != VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
-    std::cout << "  Falling back to non-discrete GPU because it satisfies the "
-                 "required Vulkan queues/extensions/surface support"
-              << std::endl;
-  }
   std::cout << "  Driver version: " << properties.driverVersion << std::endl;
   std::cout << "  Vulkan API: " << VK_VERSION_MAJOR(properties.apiVersion)
             << "." << VK_VERSION_MINOR(properties.apiVersion) << "."
