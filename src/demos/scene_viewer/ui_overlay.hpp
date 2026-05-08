@@ -12,6 +12,7 @@ class ViewportOverlay;
 }
 
 #include <functional>
+#include <imgui.h>
 #include <optional>
 
 namespace LX_demo::scene_viewer {
@@ -49,6 +50,7 @@ private:
   bool m_prevDeleteDown = false;
   bool m_helpVisible = true;
   bool m_defaultLayoutApplied = false;
+  ImVec2 m_lastDisplaySize{0.0f, 0.0f};
 };
 
 } // namespace LX_demo::scene_viewer

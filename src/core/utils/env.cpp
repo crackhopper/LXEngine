@@ -13,6 +13,10 @@ bool expEnvEnabled(const char *name) {
 
 bool expRendererDebugEnabled() { return expEnvEnabled("LX_RENDER_DEBUG"); }
 
+bool expSceneViewerDebugEnabled() {
+  return expEnvEnabled("LX_SCENE_VIEWER_DEBUG");
+}
+
 void expSetEnvVK() {
 #ifdef _WIN32
   // SetEnvironmentVariableW(

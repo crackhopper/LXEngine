@@ -49,17 +49,20 @@ void UiOverlay::attach(CameraRig& rig, LX_core::CommandBus& commandBus,
 void UiOverlay::attachClock(const LX_core::Clock& clock) { m_clock = std::cref(clock); }
 
 void UiOverlay::applyDefaultLayout() {
-  if (m_defaultLayoutApplied) {
+  const ImVec2 display = ImGui::GetIO().DisplaySize;
+  const bool displayChanged = !m_defaultLayoutApplied ||
+                              display.x != m_lastDisplaySize.x ||
+                              display.y != m_lastDisplaySize.y;
+  if (!displayChanged) {
     return;
   }
 
-  const ImVec2 display = ImGui::GetIO().DisplaySize;
   const float leftWidth = 260.0f;
   const float rightWidth = 340.0f;
   const float bottomHeight = 220.0f;
   const float topInset = 72.0f;
-  const float centerWidth = display.x - leftWidth - rightWidth;
-  const float centerHeight = display.y - bottomHeight;
+  const float centerWidth = std::max(1.0f, display.x - leftWidth - rightWidth);
+  const float centerHeight = std::max(1.0f, display.y - bottomHeight);
 
   ImGui::SetNextWindowPos(ImVec2(0.0f, topInset), ImGuiCond_Always);
   ImGui::SetNextWindowSize(
@@ -87,6 +90,7 @@ void UiOverlay::applyDefaultLayout() {
   }
 
   m_defaultLayoutApplied = true;
+  m_lastDisplaySize = display;
 }
 
 void UiOverlay::handleHotkeys(LX_core::IInputState& input) {

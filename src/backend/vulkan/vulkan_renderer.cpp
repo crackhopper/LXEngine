@@ -222,6 +222,11 @@ public:
     // produce an invalid swapchain. Skip this frame cleanly; the next call
     // will retry once the window has non-zero size again.
     if (m_window && (m_window->getWidth() <= 0 || m_window->getHeight() <= 0)) {
+      if (expRendererDebugEnabled()) {
+        std::cerr << "[RendererDebug] draw: skip zero-sized window "
+                  << m_window->getWidth() << "x" << m_window->getHeight()
+                  << std::endl;
+      }
       return;
     }
 
@@ -234,6 +239,13 @@ public:
         m_swapchain->acquireNextImage(currentFrameIndex, imageIndex);
     if (acquireResult == VK_ERROR_OUT_OF_DATE_KHR ||
         acquireResult == VK_SUBOPTIMAL_KHR) {
+      if (expRendererDebugEnabled()) {
+        std::cerr << "[RendererDebug] draw: acquire returned "
+                  << (acquireResult == VK_ERROR_OUT_OF_DATE_KHR
+                          ? "VK_ERROR_OUT_OF_DATE_KHR"
+                          : "VK_SUBOPTIMAL_KHR")
+                  << ", rebuilding swapchain" << std::endl;
+      }
       // No queue submission will happen on this path, so keep the frame fence
       // signaled. Resetting it here would leave the next acquire blocked if
       // swapchain rebuild is deferred while the window is zero-sized.
@@ -241,6 +253,10 @@ public:
       return;
     }
     if (acquireResult != VK_SUCCESS) {
+      if (expRendererDebugEnabled()) {
+        std::cerr << "[RendererDebug] draw: acquire failed with VkResult="
+                  << static_cast<int>(acquireResult) << std::endl;
+      }
       return;
     }
 
@@ -312,8 +328,19 @@ public:
         m_swapchain->present(currentFrameIndex, imageIndex);
     if (presentResult == VK_ERROR_OUT_OF_DATE_KHR ||
         presentResult == VK_SUBOPTIMAL_KHR) {
+      if (expRendererDebugEnabled()) {
+        std::cerr << "[RendererDebug] draw: present returned "
+                  << (presentResult == VK_ERROR_OUT_OF_DATE_KHR
+                          ? "VK_ERROR_OUT_OF_DATE_KHR"
+                          : "VK_SUBOPTIMAL_KHR")
+                  << ", rebuilding swapchain" << std::endl;
+      }
       rebuildSwapchain();
       return;
+    }
+    if (presentResult != VK_SUCCESS && expRendererDebugEnabled()) {
+      std::cerr << "[RendererDebug] draw: present failed with VkResult="
+                << static_cast<int>(presentResult) << std::endl;
     }
 
     m_frameIndex++;
@@ -328,11 +355,29 @@ private:
     // A zero-sized window (minimized, or mid-drag) produces an invalid
     // swapchain. Let draw() retry later when the window has real size.
     if (m_window && (m_window->getWidth() <= 0 || m_window->getHeight() <= 0)) {
+      if (expRendererDebugEnabled()) {
+        std::cerr << "[RendererDebug] rebuildSwapchain: deferred for zero-sized "
+                  << "window " << m_window->getWidth() << "x"
+                  << m_window->getHeight() << std::endl;
+      }
       return;
+    }
+    if (expRendererDebugEnabled()) {
+      const VkExtent2D oldExtent = m_swapchain->getExtent();
+      std::cerr << "[RendererDebug] rebuildSwapchain: oldExtent="
+                << oldExtent.width << "x" << oldExtent.height
+                << " window=" << m_window->getWidth() << "x"
+                << m_window->getHeight() << std::endl;
     }
     m_swapchain->waitIdle();
     m_swapchain->rebuild(m_resourceManager->getRenderPass());
     m_gui.updateSwapchainImageCount(m_swapchain->getImageCount());
+    if (expRendererDebugEnabled()) {
+      const VkExtent2D newExtent = m_swapchain->getExtent();
+      std::cerr << "[RendererDebug] rebuildSwapchain: newExtent="
+                << newExtent.width << "x" << newExtent.height
+                << " imageCount=" << m_swapchain->getImageCount() << std::endl;
+    }
   }
 
   void destroy() {

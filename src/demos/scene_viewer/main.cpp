@@ -43,6 +43,20 @@ namespace {
 constexpr int kWindowWidth = 1280;
 constexpr int kWindowHeight = 720;
 
+void logCameraAspectState(const char *label, int width, int height, float aspect,
+                          const LX_core::CameraComponent &camera) {
+  if (!expSceneViewerDebugEnabled()) {
+    return;
+  }
+
+  std::cerr << "[scene_viewer][camera] " << label << " size=" << width << "x"
+            << height << " aspect=" << aspect
+            << " finiteAspect=" << std::isfinite(aspect)
+            << " eye=(" << camera.getEyePosition().x << ", "
+            << camera.getEyePosition().y << ", " << camera.getEyePosition().z
+            << ")" << std::endl;
+}
+
 } // namespace
 
 int main() {
@@ -162,17 +176,34 @@ int main() {
 
       viewportOverlay.enqueueDebugDraw();
 
-      editorCamera->get().aspect = static_cast<float>(window->getWidth())
-                                   / static_cast<float>(window->getHeight());
-      gameCamera->get().aspect = static_cast<float>(window->getWidth())
-                                 / static_cast<float>(window->getHeight());
+      const int windowWidth = window->getWidth();
+      const int windowHeight = window->getHeight();
+      if (expSceneViewerDebugEnabled() && windowHeight <= 0) {
+        std::cerr << "[scene_viewer][resize] zero-height frame size="
+                  << windowWidth << "x" << windowHeight
+                  << " previewEnabled=" << editorState.isPreviewEnabled()
+                  << std::endl;
+      }
+      const bool hasValidExtent = windowWidth > 0 && windowHeight > 0;
+      const float aspect =
+          hasValidExtent
+              ? static_cast<float>(windowWidth) / static_cast<float>(windowHeight)
+              : editorCamera->get().aspect;
+      if (hasValidExtent) {
+        editorCamera->get().aspect = aspect;
+        gameCamera->get().aspect = aspect;
+      }
       gameCamera->get().updateMatrices();
+      logCameraAspectState("game", windowWidth, windowHeight, aspect,
+                           gameCamera->get());
 
       if (!wantsKeyboard && !wantsMouse) {
         rig.update(*input, clock.deltaTime());
       } else {
         editorCamera->get().updateMatrices();
       }
+      logCameraAspectState("editor", windowWidth, windowHeight, aspect,
+                           editorCamera->get());
       input->nextFrame();
     });
 

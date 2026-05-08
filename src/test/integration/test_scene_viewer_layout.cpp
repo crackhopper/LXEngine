@@ -101,11 +101,76 @@ void testDefaultLayoutPlacesViewportBetweenPanels() {
   ImGui::DestroyContext();
 }
 
+void testDefaultLayoutReflowsAfterResize() {
+  if (!setupMinimalImGui()) {
+    std::cout << "[SKIP] scene_viewer resize layout test (font atlas unavailable)\n";
+    ImGui::DestroyContext();
+    return;
+  }
+
+  LX_core::EditorState editorState;
+  LX_core::CommandBus bus;
+  auto scene = LX_core::Scene::create("layout_scene");
+  auto editorCameraNode = LX_core::SceneNode::create("editor_camera");
+  editorCameraNode->setName("editor_cam");
+  auto editorCamera = editorCameraNode->addComponent<LX_core::CameraComponent>();
+  scene->addCamera(editorCameraNode);
+  editorState.setEditorCamera(editorCameraNode);
+  editorState.setPreviewCamera(editorCameraNode);
+  (void)editorState.syncActiveCamera(*scene);
+  LX_core::registerBuiltinCommands(bus, editorState, *scene);
+
+  LX_demo::scene_viewer::CameraRig rig;
+  rig.attach(editorCamera->get());
+  LX_core::SceneTreePanel sceneTreePanel(bus, editorState, *scene);
+  LX_core::InspectorPanel inspectorPanel(bus, editorState);
+  LX_core::ConsolePanel consolePanel(bus);
+  LX_core::ViewportOverlay viewportOverlay(bus, editorState, *scene);
+  LX_demo::scene_viewer::UiOverlay ui;
+  ui.attach(rig, bus, sceneTreePanel, inspectorPanel, consolePanel,
+            viewportOverlay);
+
+  ImGuiIO &io = ImGui::GetIO();
+
+  ImGui::NewFrame();
+  ui.drawFrame();
+  ImGui::EndFrame();
+
+  io.DisplaySize = ImVec2(1600.0f, 900.0f);
+  ImGui::NewFrame();
+  ui.drawFrame();
+
+  ImGuiWindow *sceneTree = ImGui::FindWindowByName("Scene Tree");
+  ImGuiWindow *inspector = ImGui::FindWindowByName("Inspector");
+  ImGuiWindow *console = ImGui::FindWindowByName("Command Console");
+  ImGuiWindow *viewport = ImGui::FindWindowByName("Viewport");
+
+  EXPECT(sceneTree != nullptr, "scene tree window should exist after resize");
+  EXPECT(inspector != nullptr, "inspector window should exist after resize");
+  EXPECT(console != nullptr, "console window should exist after resize");
+  EXPECT(viewport != nullptr, "viewport window should exist after resize");
+
+  if (sceneTree && inspector && console && viewport) {
+    EXPECT(viewport->Size.x > 900.0f,
+           "viewport width should grow with display resize");
+    EXPECT(viewport->Size.y > 600.0f,
+           "viewport height should grow with display resize");
+    EXPECT(inspector->Pos.x + inspector->Size.x <= io.DisplaySize.x + 1.0f,
+           "inspector should stay within resized display bounds");
+    EXPECT(console->Pos.y + console->Size.y <= io.DisplaySize.y + 1.0f,
+           "console should stay within resized display bounds");
+  }
+
+  ImGui::EndFrame();
+  ImGui::DestroyContext();
+}
+
 } // namespace
 
 int main() {
   expSetEnvVK();
   testDefaultLayoutPlacesViewportBetweenPanels();
+  testDefaultLayoutReflowsAfterResize();
 
   if (failures == 0) {
     std::cout << "[PASS] scene_viewer layout tests passed.\n";
