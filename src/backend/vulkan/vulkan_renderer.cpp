@@ -16,7 +16,6 @@
 #include "core/scene/components/camera_component.hpp"
 #include <functional>
 #include <iostream>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 namespace {
@@ -56,7 +55,6 @@ namespace LX_core::backend {
 namespace {
 
 constexpr u32 kMaxFramesInFlight = 3;
-constexpr int kDebugBurstFrames = 3;
 
 bool isSharedHostBufferResource(const IGpuResourceSharedPtr &resource) {
   if (!resource || !resource->isDirty()) {
@@ -73,23 +71,6 @@ bool isSharedHostBufferResource(const IGpuResourceSharedPtr &resource) {
     return false;
   }
 }
-
-struct DrawFrameStats {
-  VkExtent2D extent{0, 0};
-  usize passCount = 0;
-  usize totalItems = 0;
-  usize totalDrawCalls = 0;
-  std::string perPass;
-
-  bool operator==(const DrawFrameStats &other) const {
-    return extent.width == other.extent.width &&
-           extent.height == other.extent.height && passCount == other.passCount &&
-           totalItems == other.totalItems &&
-           totalDrawCalls == other.totalDrawCalls && perPass == other.perPass;
-  }
-
-  bool operator!=(const DrawFrameStats &other) const { return !(*this == other); }
-};
 
 } // namespace
 
@@ -135,25 +116,6 @@ public:
     guiParams.renderPass = m_resourceManager->getRenderPass().getHandle();
     guiParams.swapchainImageCount = m_swapchain->getImageCount();
     m_gui.init(guiParams);
-
-    if (expRendererDebugEnabled()) {
-      const VkExtent2D extent = m_swapchain->getExtent();
-      std::cerr << "[RendererDebug] initialize: extent=" << extent.width << "x"
-                << extent.height << ", maxFramesInFlight=" << kMaxFramesInFlight
-                << std::endl;
-      if (expEnvEnabled("LX_RENDER_DEBUG_CLEAR")) {
-        std::cerr << "[RendererDebug] debug clear color enabled" << std::endl;
-      }
-      if (expEnvEnabled("LX_RENDER_DISABLE_CULL")) {
-        std::cerr << "[RendererDebug] cull disabled" << std::endl;
-      }
-      if (expEnvEnabled("LX_RENDER_DISABLE_DEPTH")) {
-        std::cerr << "[RendererDebug] depth disabled" << std::endl;
-      }
-      if (expEnvEnabled("LX_RENDER_FLIP_VIEWPORT_Y")) {
-        std::cerr << "[RendererDebug] viewport Y flipped" << std::endl;
-      }
-    }
   }
   void shutdown() { destroy(); }
 
@@ -226,17 +188,6 @@ public:
     // work via getOrCreateRenderPipeline(item) but emit a warning log.
     auto infos = m_frameGraph.collectAllPipelineBuildDescs();
     m_resourceManager->preloadPipelines(infos);
-
-    if (expRendererDebugEnabled()) {
-      usize itemCount = 0;
-      for (const auto &pass : m_frameGraph.getPasses()) {
-        itemCount += pass.queue.getItems().size();
-      }
-      std::cerr << "[RendererDebug] initScene: passes="
-                << m_frameGraph.getPasses().size()
-                << ", totalItems=" << itemCount
-                << ", preloadedPipelines=" << infos.size() << std::endl;
-    }
   }
 
   void uploadData() {
@@ -287,11 +238,6 @@ public:
     // produce an invalid swapchain. Skip this frame cleanly; the next call
     // will retry once the window has non-zero size again.
     if (m_window && (m_window->getWidth() <= 0 || m_window->getHeight() <= 0)) {
-      if (expRendererDebugEnabled()) {
-        std::cerr << "[RendererDebug] draw: skip zero-sized window "
-                  << m_window->getWidth() << "x" << m_window->getHeight()
-                  << std::endl;
-      }
       return;
     }
 
@@ -304,13 +250,6 @@ public:
         m_swapchain->acquireNextImage(currentFrameIndex, imageIndex);
     if (acquireResult == VK_ERROR_OUT_OF_DATE_KHR ||
         acquireResult == VK_SUBOPTIMAL_KHR) {
-      if (expRendererDebugEnabled()) {
-        std::cerr << "[RendererDebug] draw: acquire returned "
-                  << (acquireResult == VK_ERROR_OUT_OF_DATE_KHR
-                          ? "VK_ERROR_OUT_OF_DATE_KHR"
-                          : "VK_SUBOPTIMAL_KHR")
-                  << ", rebuilding swapchain" << std::endl;
-      }
       // No queue submission will happen on this path, so keep the frame fence
       // signaled. Resetting it here would leave the next acquire blocked if
       // swapchain rebuild is deferred while the window is zero-sized.
@@ -318,17 +257,12 @@ public:
       return;
     }
     if (acquireResult != VK_SUCCESS) {
-      if (expRendererDebugEnabled()) {
-        std::cerr << "[RendererDebug] draw: acquire failed with VkResult="
-                  << static_cast<int>(acquireResult) << std::endl;
-      }
+      std::cerr << "[VulkanRenderer] vkAcquireNextImageKHR failed with VkResult="
+                << static_cast<int>(acquireResult) << std::endl;
       return;
     }
 
     auto &renderPass = m_resourceManager->getRenderPass();
-    DrawFrameStats frameStats{};
-    frameStats.extent = extent;
-    frameStats.passCount = m_frameGraph.getPasses().size();
 
     m_cmdBufferMgr->beginFrame(currentFrameIndex);
     m_device->getDescriptorManager().beginFrame(currentFrameIndex);
@@ -354,36 +288,13 @@ public:
 
     // Iterate every pass × every item in the FrameGraph. Each item may use a
     // different pipeline; bindPipeline / bindResources / drawItem per item.
-    std::ostringstream perPass;
-    bool firstPass = true;
     for (auto &pass : m_frameGraph.getPasses()) {
-      const usize passItems = pass.queue.getItems().size();
-      frameStats.totalItems += passItems;
-      if (!firstPass) {
-        perPass << ", ";
-      }
-      firstPass = false;
-      perPass << LX_core::GlobalStringTable::get().getName(pass.name.id)
-              << "=" << passItems;
       for (auto &item : pass.queue.getItems()) {
         auto &pipeline = m_resourceManager->getOrCreateRenderPipeline(item);
         cmd->bindPipeline(pipeline);
         cmd->bindResources(*m_resourceManager, pipeline, item);
         cmd->drawItem(item);
-        frameStats.totalDrawCalls++;
       }
-    }
-    frameStats.perPass = perPass.str();
-
-    if (expRendererDebugEnabled() && shouldLogDrawFrame(frameStats)) {
-      std::cerr << "[RendererDebug] draw: extent=" << frameStats.extent.width
-                << "x" << frameStats.extent.height
-                << " frameSlot=" << currentFrameIndex
-                << " imageIndex=" << imageIndex
-                << " passes=" << frameStats.passCount
-                << " totalItems=" << frameStats.totalItems
-                << " totalDrawCalls=" << frameStats.totalDrawCalls
-                << " perPass={" << frameStats.perPass << "}" << std::endl;
     }
 
     m_gui.endFrame(cmd->getHandle());
@@ -422,18 +333,11 @@ public:
         m_swapchain->present(currentFrameIndex, imageIndex);
     if (presentResult == VK_ERROR_OUT_OF_DATE_KHR ||
         presentResult == VK_SUBOPTIMAL_KHR) {
-      if (expRendererDebugEnabled()) {
-        std::cerr << "[RendererDebug] draw: present returned "
-                  << (presentResult == VK_ERROR_OUT_OF_DATE_KHR
-                          ? "VK_ERROR_OUT_OF_DATE_KHR"
-                          : "VK_SUBOPTIMAL_KHR")
-                  << ", rebuilding swapchain" << std::endl;
-      }
       rebuildSwapchain();
       return;
     }
-    if (presentResult != VK_SUCCESS && expRendererDebugEnabled()) {
-      std::cerr << "[RendererDebug] draw: present failed with VkResult="
+    if (presentResult != VK_SUCCESS) {
+      std::cerr << "[VulkanRenderer] vkQueuePresentKHR failed with VkResult="
                 << static_cast<int>(presentResult) << std::endl;
     }
 
@@ -449,32 +353,11 @@ private:
     // A zero-sized window (minimized, or mid-drag) produces an invalid
     // swapchain. Let draw() retry later when the window has real size.
     if (m_window && (m_window->getWidth() <= 0 || m_window->getHeight() <= 0)) {
-      if (expRendererDebugEnabled()) {
-        std::cerr << "[RendererDebug] rebuildSwapchain: deferred for zero-sized "
-                  << "window " << m_window->getWidth() << "x"
-                  << m_window->getHeight() << std::endl;
-      }
       return;
-    }
-    if (expRendererDebugEnabled()) {
-      const VkExtent2D oldExtent = m_swapchain->getExtent();
-      std::cerr << "[RendererDebug] rebuildSwapchain: oldExtent="
-                << oldExtent.width << "x" << oldExtent.height
-                << " window=" << m_window->getWidth() << "x"
-                << m_window->getHeight() << std::endl;
     }
     m_swapchain->waitIdle();
     m_swapchain->rebuild(m_resourceManager->getRenderPass());
     m_gui.updateSwapchainImageCount(m_swapchain->getImageCount());
-    if (m_drawLogBurstRemaining < kDebugBurstFrames) {
-      m_drawLogBurstRemaining = kDebugBurstFrames;
-    }
-    if (expRendererDebugEnabled()) {
-      const VkExtent2D newExtent = m_swapchain->getExtent();
-      std::cerr << "[RendererDebug] rebuildSwapchain: newExtent="
-                << newExtent.width << "x" << newExtent.height
-                << " imageCount=" << m_swapchain->getImageCount() << std::endl;
-    }
   }
 
   void destroy() {
@@ -507,21 +390,6 @@ private:
   u32 m_frameIndex = 0;
   infra::Gui m_gui{};
   std::function<void()> m_drawUiCallback{};
-  DrawFrameStats m_lastLoggedDrawStats{};
-  int m_drawLogBurstRemaining = 0;
-
-  bool shouldLogDrawFrame(const DrawFrameStats &frameStats) {
-    if (frameStats != m_lastLoggedDrawStats) {
-      m_lastLoggedDrawStats = frameStats;
-      m_drawLogBurstRemaining = kDebugBurstFrames;
-      return true;
-    }
-    if (m_drawLogBurstRemaining > 0) {
-      --m_drawLogBurstRemaining;
-      return true;
-    }
-    return false;
-  }
 };
 
 VulkanRenderer::VulkanRenderer(Token)

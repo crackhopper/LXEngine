@@ -25,7 +25,6 @@
 #include "ui_overlay.hpp"
 
 #include <cstdio>
-#include <cstdint>
 #include <exception>
 #include <filesystem>
 #include <functional>
@@ -34,7 +33,6 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 
 using LX_core::backend::VulkanRenderer;
 using LX_core::gpu::EngineLoop;
@@ -45,117 +43,6 @@ namespace {
 
 constexpr int kWindowWidth = 1280;
 constexpr int kWindowHeight = 720;
-constexpr int kDebugBurstFrames = 3;
-
-usize hashBytes(const void *data, usize size) {
-  constexpr usize kFnvOffset = static_cast<usize>(1469598103934665603ull);
-  constexpr usize kFnvPrime = static_cast<usize>(1099511628211ull);
-  usize hash = kFnvOffset;
-  const auto *bytes = static_cast<const std::uint8_t *>(data);
-  for (usize i = 0; i < size; ++i) {
-    hash ^= static_cast<usize>(bytes[i]);
-    hash *= kFnvPrime;
-  }
-  return hash;
-}
-
-template <typename T>
-bool shouldLogBurst(const T &next, T &state, int &remainingFrames) {
-  if (!(next == state)) {
-    state = next;
-    remainingFrames = kDebugBurstFrames;
-    return true;
-  }
-  if (remainingFrames > 0) {
-    --remainingFrames;
-    return true;
-  }
-  return false;
-}
-
-void logCameraAspectState(const char *label, int width, int height, float aspect,
-                          const LX_core::CameraComponent &camera,
-                          bool active) {
-  if (!expSceneViewerDebugEnabled()) {
-    return;
-  }
-
-  struct CameraLogState {
-    int width = -1;
-    int height = -1;
-    bool finiteAspect = true;
-    bool active = false;
-    float eyeX = 0.0f;
-    float eyeY = 0.0f;
-    float eyeZ = 0.0f;
-    float forwardX = 0.0f;
-    float forwardY = 0.0f;
-    float forwardZ = 0.0f;
-    usize uboHash = 0;
-
-    bool operator==(const CameraLogState &other) const = default;
-  };
-  static CameraLogState editorState{};
-  static CameraLogState gameState{};
-  static int editorBurstRemaining = 0;
-  static int gameBurstRemaining = 0;
-  CameraLogState &state =
-      std::string_view(label) == "editor" ? editorState : gameState;
-  int &burstRemaining = std::string_view(label) == "editor"
-                            ? editorBurstRemaining
-                            : gameBurstRemaining;
-  const bool finiteAspect = std::isfinite(aspect);
-  const LX_core::Vec3f eye = camera.getEyePosition();
-  const LX_core::Vec3f forward = camera.getForwardVector();
-  const auto ubo = camera.getUBO();
-  const usize uboHash =
-      ubo ? hashBytes(ubo->getRawData(), ubo->getByteSize()) : 0;
-  const CameraLogState next{width,      height,      finiteAspect, active,
-                            eye.x,      eye.y,       eye.z,        forward.x,
-                            forward.y,  forward.z,   uboHash};
-  if (!shouldLogBurst(next, state, burstRemaining)) {
-    return;
-  }
-
-  std::cerr << "[scene_viewer][camera] " << label << " size=" << width << "x"
-            << height << " aspect=" << aspect
-            << " finiteAspect=" << finiteAspect
-            << " active=" << active << " eye=(" << eye.x << ", " << eye.y
-            << ", " << eye.z << ") forward=(" << forward.x << ", "
-            << forward.y << ", " << forward.z << ") uboHash=" << uboHash;
-  if (ubo) {
-    const auto &p = ubo->param;
-    std::cerr << " proj00=" << p.proj(0, 0) << " proj11=" << p.proj(1, 1)
-              << " view03=" << p.view(0, 3)
-              << " view13=" << p.view(1, 3)
-              << " view23=" << p.view(2, 3);
-  }
-  std::cerr << std::endl;
-}
-
-void logActiveCameraState(bool previewEnabled,
-                          const LX_core::SceneNodeSharedPtr &activeCamera) {
-  if (!expSceneViewerDebugEnabled()) {
-    return;
-  }
-
-  struct ActiveCameraLogState {
-    bool previewEnabled = false;
-    std::string activePath;
-
-    bool operator==(const ActiveCameraLogState &other) const = default;
-  };
-  static ActiveCameraLogState state{};
-  static int burstRemaining = 0;
-  const std::string activePath = activeCamera ? activeCamera->getPath() : "";
-  const ActiveCameraLogState next{previewEnabled, activePath};
-  if (!shouldLogBurst(next, state, burstRemaining)) {
-    return;
-  }
-  std::cerr << "[scene_viewer][active-camera] previewEnabled="
-            << previewEnabled << " activePath="
-            << (activePath.empty() ? "<none>" : activePath) << std::endl;
-}
 
 } // namespace
 
@@ -238,8 +125,6 @@ int main() {
     editorState.setPreviewCamera(gameCameraNode);
     editorState.setPreviewEnabled(false);
     (void)editorState.syncActiveCamera(*scene);
-    logActiveCameraState(editorState.isPreviewEnabled(),
-                         editorState.resolveActiveCamera(*scene));
 
     LX_core::CommandBus commandBus;
     LX_core::registerBuiltinCommands(commandBus, editorState, *scene);
@@ -280,16 +165,6 @@ int main() {
 
       const int windowWidth = window->getWidth();
       const int windowHeight = window->getHeight();
-      static bool reportedZeroHeight = false;
-      if (expSceneViewerDebugEnabled() && windowHeight <= 0 && !reportedZeroHeight) {
-        std::cerr << "[scene_viewer][resize] zero-height frame size="
-                  << windowWidth << "x" << windowHeight
-                  << " previewEnabled=" << editorState.isPreviewEnabled()
-                  << std::endl;
-        reportedZeroHeight = true;
-      } else if (windowHeight > 0) {
-        reportedZeroHeight = false;
-      }
       const bool hasValidExtent = windowWidth > 0 && windowHeight > 0;
       const float aspect =
           hasValidExtent
@@ -300,18 +175,12 @@ int main() {
         gameCamera->get().aspect = aspect;
       }
       gameCamera->get().updateMatrices();
-      logActiveCameraState(editorState.isPreviewEnabled(),
-                           editorState.resolveActiveCamera(sceneRef));
-      logCameraAspectState("game", windowWidth, windowHeight, aspect,
-                           gameCamera->get(), gameCamera->get().isActive());
 
       if (!wantsKeyboard && !wantsMouse) {
         rig.update(*input, clock.deltaTime());
       } else {
         editorCamera->get().updateMatrices();
       }
-      logCameraAspectState("editor", windowWidth, windowHeight, aspect,
-                           editorCamera->get(), editorCamera->get().isActive());
       input->nextFrame();
     });
 
