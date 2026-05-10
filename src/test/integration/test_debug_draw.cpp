@@ -130,6 +130,76 @@ void testBeginFrameClearsPreviousGeometry() {
          "empty second frame should clear previous vertices");
 }
 
+void testBucketCapacityGrowsForLargerLaterFrame() {
+  auto scene = makeSceneWithCamera(Layer_All);
+  resetForScene(scene);
+
+  DebugDraw::beginFrame();
+  DebugDraw::drawLine({0, 0, 0}, {1, 0, 0});
+  DebugDraw::endFrame();
+  const usize initialCapacity =
+      DebugDraw::testing::reservedVertexCapacity(Layer_EditorOverlay);
+
+  DebugDraw::beginFrame();
+  for (int i = 0; i < 128; ++i) {
+    DebugDraw::drawLine({0.0f, 0.0f, 0.0f},
+                        {static_cast<float>(i), 1.0f, 0.0f});
+  }
+  DebugDraw::endFrame();
+
+  const usize grownCapacity =
+      DebugDraw::testing::reservedVertexCapacity(Layer_EditorOverlay);
+  EXPECT(grownCapacity > initialCapacity,
+         "later larger frame should grow reserved capacity");
+  EXPECT(grownCapacity >= 256,
+         "capacity should grow to cover the larger frame");
+}
+
+void testBucketCapacityDoesNotShrinkAfterSmallerFrame() {
+  auto scene = makeSceneWithCamera(Layer_All);
+  resetForScene(scene);
+
+  DebugDraw::beginFrame();
+  for (int i = 0; i < 128; ++i) {
+    DebugDraw::drawLine({0.0f, 0.0f, 0.0f},
+                        {static_cast<float>(i), 1.0f, 0.0f});
+  }
+  DebugDraw::endFrame();
+  const usize largeCapacity =
+      DebugDraw::testing::reservedVertexCapacity(Layer_EditorOverlay);
+
+  DebugDraw::beginFrame();
+  DebugDraw::drawLine({0, 0, 0}, {1, 0, 0});
+  DebugDraw::endFrame();
+
+  EXPECT(DebugDraw::testing::reservedVertexCapacity(Layer_EditorOverlay) ==
+             largeCapacity,
+         "smaller later frame should not shrink reserved capacity");
+}
+
+void testEmptyFrameClearsGeometryWithoutShrinkingCapacity() {
+  auto scene = makeSceneWithCamera(Layer_All);
+  resetForScene(scene);
+
+  DebugDraw::beginFrame();
+  for (int i = 0; i < 64; ++i) {
+    DebugDraw::drawLine({0.0f, 0.0f, 0.0f},
+                        {static_cast<float>(i), 1.0f, 0.0f});
+  }
+  DebugDraw::endFrame();
+  const usize retainedCapacity =
+      DebugDraw::testing::reservedVertexCapacity(Layer_EditorOverlay);
+
+  DebugDraw::beginFrame();
+  DebugDraw::endFrame();
+
+  EXPECT(DebugDraw::testing::flushedVertexCount(Layer_EditorOverlay) == 0,
+         "empty frame should clear visible geometry");
+  EXPECT(DebugDraw::testing::reservedVertexCapacity(Layer_EditorOverlay) ==
+             retainedCapacity,
+         "empty frame should retain grown capacity");
+}
+
 void testLineLimitClipsNewestLines() {
   auto scene = makeSceneWithCamera(Layer_All);
   resetForScene(scene);
@@ -159,6 +229,9 @@ int main() {
   testOverlayHiddenFromGameCameraMask();
   testOverlayVisibleToEditorCameraMask();
   testBeginFrameClearsPreviousGeometry();
+  testBucketCapacityGrowsForLargerLaterFrame();
+  testBucketCapacityDoesNotShrinkAfterSmallerFrame();
+  testEmptyFrameClearsGeometryWithoutShrinkingCapacity();
   testLineLimitClipsNewestLines();
 
   if (failures > 0) {

@@ -117,6 +117,8 @@ struct BucketState {
   IndexBufferSharedPtr indexBuffer;
   MeshSharedPtr mesh;
   usize flushedVertexCount = 0;
+  usize reservedVertexCount = 0;
+  usize reservedIndexCount = 0;
 };
 
 struct State {
@@ -249,6 +251,8 @@ void updateBucket(BucketState &bucket,
   bucket.indexBuffer->update(makeSequentialIndices(vertices.size()));
   bucket.mesh->bounds = computeBounds(vertices);
   bucket.flushedVertexCount = vertices.size();
+  bucket.reservedVertexCount = vertices.size();
+  bucket.reservedIndexCount = vertices.size();
 }
 
 void pushLine(Vec3f a, Vec3f b, Vec4f color) {
@@ -603,6 +607,16 @@ usize testing::queuedLineCount() { return state().acceptedLines; }
 usize testing::flushedVertexCount(VisibilityLayerMask mask) {
   auto it = state().buckets.find(mask);
   return it == state().buckets.end() ? 0 : it->second.flushedVertexCount;
+}
+
+usize testing::reservedVertexCapacity(VisibilityLayerMask mask) {
+  auto it = state().buckets.find(mask);
+  return it == state().buckets.end() ? 0 : it->second.reservedVertexCount;
+}
+
+usize testing::reservedIndexCapacity(VisibilityLayerMask mask) {
+  auto it = state().buckets.find(mask);
+  return it == state().buckets.end() ? 0 : it->second.reservedIndexCount;
 }
 
 bool testing::hasRenderable(VisibilityLayerMask mask) {
