@@ -136,23 +136,93 @@ void testBucketCapacityGrowsForLargerLaterFrame() {
 
   DebugDraw::beginFrame();
   DebugDraw::drawLine({0, 0, 0}, {1, 0, 0});
-  DebugDraw::endFrame();
-  const usize initialAllocation =
-      DebugDraw::testing::trackedVertexAllocationCount(Layer_EditorOverlay);
+  const bool firstFrameChanged = DebugDraw::endFrame();
+  const usize initialCapacity =
+      DebugDraw::testing::reservedVertexCapacity(Layer_EditorOverlay);
+  const auto initialVertexIdentity =
+      DebugDraw::testing::vertexBufferIdentity(Layer_EditorOverlay);
+  const auto initialIndexIdentity =
+      DebugDraw::testing::indexBufferIdentity(Layer_EditorOverlay);
 
   DebugDraw::beginFrame();
-  for (int i = 0; i < 128; ++i) {
+  for (int i = 0; i < 129; ++i) {
+    DebugDraw::drawLine({0.0f, 0.0f, 0.0f},
+                        {static_cast<float>(i), 1.0f, 0.0f});
+  }
+  const bool growthFrameChanged = DebugDraw::endFrame();
+
+  const usize grownCapacity =
+      DebugDraw::testing::reservedVertexCapacity(Layer_EditorOverlay);
+  const usize grownIndexCapacity =
+      DebugDraw::testing::reservedIndexCapacity(Layer_EditorOverlay);
+  const usize bufferedVertexCapacity =
+      DebugDraw::testing::bufferedVertexCapacity(Layer_EditorOverlay);
+  const usize bufferedIndexCapacity =
+      DebugDraw::testing::bufferedIndexCapacity(Layer_EditorOverlay);
+  const auto grownVertexIdentity =
+      DebugDraw::testing::vertexBufferIdentity(Layer_EditorOverlay);
+  const auto grownIndexIdentity =
+      DebugDraw::testing::indexBufferIdentity(Layer_EditorOverlay);
+  EXPECT(firstFrameChanged, "first debug bucket should request scene rebuild");
+  EXPECT(growthFrameChanged,
+         "capacity growth on an existing bucket should request scene rebuild");
+  EXPECT(grownCapacity > initialCapacity,
+         "later larger frame should grow reserved capacity");
+  EXPECT(grownCapacity >= 258,
+         "capacity should grow to cover the larger frame");
+  EXPECT(grownIndexCapacity == grownCapacity,
+         "line bucket should retain matching vertex/index capacity");
+  EXPECT(bufferedVertexCapacity == grownCapacity,
+         "vertex buffer payload should match retained capacity");
+  EXPECT(bufferedIndexCapacity == grownIndexCapacity,
+         "index buffer payload should match retained capacity");
+  EXPECT(grownVertexIdentity != initialVertexIdentity,
+         "growth should replace vertex buffer identity");
+  EXPECT(grownIndexIdentity != initialIndexIdentity,
+         "growth should replace index buffer identity");
+}
+
+void testLaterWithinCapacityFrameDoesNotRequestAnotherRebuild() {
+  auto scene = makeSceneWithCamera(Layer_All);
+  resetForScene(scene);
+
+  DebugDraw::beginFrame();
+  for (int i = 0; i < 129; ++i) {
     DebugDraw::drawLine({0.0f, 0.0f, 0.0f},
                         {static_cast<float>(i), 1.0f, 0.0f});
   }
   DebugDraw::endFrame();
+  const usize retainedCapacity =
+      DebugDraw::testing::reservedVertexCapacity(Layer_EditorOverlay);
+  const auto retainedVertexIdentity =
+      DebugDraw::testing::vertexBufferIdentity(Layer_EditorOverlay);
+  const auto retainedIndexIdentity =
+      DebugDraw::testing::indexBufferIdentity(Layer_EditorOverlay);
 
-  const usize grownAllocation =
-      DebugDraw::testing::trackedVertexAllocationCount(Layer_EditorOverlay);
-  EXPECT(grownAllocation > initialAllocation,
-         "later larger frame should grow tracked allocation");
-  EXPECT(grownAllocation == 256,
-         "current implementation tracks exact larger-frame allocation");
+  DebugDraw::beginFrame();
+  for (int i = 0; i < 200; ++i) {
+    DebugDraw::drawLine({0.0f, 0.0f, 0.0f},
+                        {static_cast<float>(i), 2.0f, 0.0f});
+  }
+  const bool sceneChanged = DebugDraw::endFrame();
+
+  EXPECT(!sceneChanged,
+         "later within-capacity frame should not request another rebuild");
+  EXPECT(DebugDraw::testing::reservedVertexCapacity(Layer_EditorOverlay) ==
+             retainedCapacity,
+         "within-capacity frame should retain reserved capacity");
+  EXPECT(DebugDraw::testing::bufferedVertexCapacity(Layer_EditorOverlay) ==
+             retainedCapacity,
+         "within-capacity frame should retain padded vertex payload");
+  EXPECT(DebugDraw::testing::bufferedIndexCapacity(Layer_EditorOverlay) ==
+             retainedCapacity,
+         "within-capacity frame should retain padded index payload");
+  EXPECT(DebugDraw::testing::vertexBufferIdentity(Layer_EditorOverlay) ==
+             retainedVertexIdentity,
+         "within-capacity frame should keep vertex buffer identity");
+  EXPECT(DebugDraw::testing::indexBufferIdentity(Layer_EditorOverlay) ==
+             retainedIndexIdentity,
+         "within-capacity frame should keep index buffer identity");
 }
 
 void testBucketCapacityDoesNotShrinkAfterSmallerFrame() {
@@ -160,21 +230,26 @@ void testBucketCapacityDoesNotShrinkAfterSmallerFrame() {
   resetForScene(scene);
 
   DebugDraw::beginFrame();
-  for (int i = 0; i < 128; ++i) {
+  for (int i = 0; i < 129; ++i) {
     DebugDraw::drawLine({0.0f, 0.0f, 0.0f},
                         {static_cast<float>(i), 1.0f, 0.0f});
   }
   DebugDraw::endFrame();
-  const usize largeAllocation =
-      DebugDraw::testing::trackedVertexAllocationCount(Layer_EditorOverlay);
+  const usize largeCapacity =
+      DebugDraw::testing::reservedVertexCapacity(Layer_EditorOverlay);
 
   DebugDraw::beginFrame();
   DebugDraw::drawLine({0, 0, 0}, {1, 0, 0});
-  DebugDraw::endFrame();
+  const bool sceneChanged = DebugDraw::endFrame();
 
-  EXPECT(DebugDraw::testing::trackedVertexAllocationCount(Layer_EditorOverlay) ==
-             largeAllocation,
-         "smaller later frame should not shrink tracked allocation");
+  EXPECT(!sceneChanged,
+         "smaller later frame should not request another rebuild");
+  EXPECT(DebugDraw::testing::reservedVertexCapacity(Layer_EditorOverlay) ==
+             largeCapacity,
+         "smaller later frame should not shrink reserved capacity");
+  EXPECT(DebugDraw::testing::bufferedVertexCapacity(Layer_EditorOverlay) ==
+             largeCapacity,
+         "smaller later frame should retain padded vertex payload");
 }
 
 void testEmptyFrameClearsGeometryWithoutShrinkingCapacity() {
@@ -182,22 +257,40 @@ void testEmptyFrameClearsGeometryWithoutShrinkingCapacity() {
   resetForScene(scene);
 
   DebugDraw::beginFrame();
-  for (int i = 0; i < 64; ++i) {
+  for (int i = 0; i < 129; ++i) {
     DebugDraw::drawLine({0.0f, 0.0f, 0.0f},
                         {static_cast<float>(i), 1.0f, 0.0f});
   }
   DebugDraw::endFrame();
-  const usize retainedAllocation =
-      DebugDraw::testing::trackedVertexAllocationCount(Layer_EditorOverlay);
+  const usize retainedCapacity =
+      DebugDraw::testing::reservedVertexCapacity(Layer_EditorOverlay);
+  const auto retainedVertexIdentity =
+      DebugDraw::testing::vertexBufferIdentity(Layer_EditorOverlay);
+  const auto retainedIndexIdentity =
+      DebugDraw::testing::indexBufferIdentity(Layer_EditorOverlay);
 
   DebugDraw::beginFrame();
-  DebugDraw::endFrame();
+  const bool sceneChanged = DebugDraw::endFrame();
 
+  EXPECT(!sceneChanged,
+         "empty frame within retained capacity should not request rebuild");
   EXPECT(DebugDraw::testing::flushedVertexCount(Layer_EditorOverlay) == 0,
          "empty frame should clear visible geometry");
-  EXPECT(DebugDraw::testing::trackedVertexAllocationCount(Layer_EditorOverlay) ==
-             retainedAllocation,
-         "empty frame should retain tracked allocation");
+  EXPECT(DebugDraw::testing::reservedVertexCapacity(Layer_EditorOverlay) ==
+             retainedCapacity,
+         "empty frame should retain reserved capacity");
+  EXPECT(DebugDraw::testing::bufferedVertexCapacity(Layer_EditorOverlay) ==
+             retainedCapacity,
+         "empty frame should retain padded vertex payload");
+  EXPECT(DebugDraw::testing::bufferedIndexCapacity(Layer_EditorOverlay) ==
+             retainedCapacity,
+         "empty frame should retain padded index payload");
+  EXPECT(DebugDraw::testing::vertexBufferIdentity(Layer_EditorOverlay) ==
+             retainedVertexIdentity,
+         "empty frame should keep vertex buffer identity");
+  EXPECT(DebugDraw::testing::indexBufferIdentity(Layer_EditorOverlay) ==
+             retainedIndexIdentity,
+         "empty frame should keep index buffer identity");
 }
 
 void testLineLimitClipsNewestLines() {
@@ -230,6 +323,7 @@ int main() {
   testOverlayVisibleToEditorCameraMask();
   testBeginFrameClearsPreviousGeometry();
   testBucketCapacityGrowsForLargerLaterFrame();
+  testLaterWithinCapacityFrameDoesNotRequestAnotherRebuild();
   testBucketCapacityDoesNotShrinkAfterSmallerFrame();
   testEmptyFrameClearsGeometryWithoutShrinkingCapacity();
   testLineLimitClipsNewestLines();

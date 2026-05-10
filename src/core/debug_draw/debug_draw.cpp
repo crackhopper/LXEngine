@@ -26,6 +26,9 @@ namespace LX_core::DebugDraw {
 namespace {
 
 constexpr usize kMaxLinesPerFrame = 100000;
+constexpr usize kMinBucketCapacity = 256;
+constexpr usize kMaxVerticesPerFrame = kMaxLinesPerFrame * 2;
+constexpr usize kMaxIndicesPerFrame = kMaxLinesPerFrame * 2;
 constexpr const char *kDebugLineShaderName = "debug_line";
 constexpr float kPi = 3.14159265358979323846f;
 
@@ -117,7 +120,8 @@ struct BucketState {
   IndexBufferSharedPtr indexBuffer;
   MeshSharedPtr mesh;
   usize flushedVertexCount = 0;
-  usize trackedVertexAllocationCount = 0;
+  usize reservedVertexCount = 0;
+  usize reservedIndexCount = 0;
 };
 
 struct State {
@@ -147,6 +151,66 @@ std::vector<u32> makeSequentialIndices(usize vertexCount) {
   indices.reserve(vertexCount);
   for (usize i = 0; i < vertexCount; ++i) {
     indices.push_back(static_cast<u32>(i));
+  }
+  return indices;
+}
+
+usize nextDebugCapacity(const usize currentCapacity,
+                        const usize requiredCapacity,
+                        const usize maxCapacity) {
+  if (requiredCapacity == 0) {
+    return currentCapacity;
+  }
+
+  usize capacity = std::max(currentCapacity, kMinBucketCapacity);
+  while (capacity < requiredCapacity && capacity < maxCapacity) {
+    capacity = std::min(capacity * 2, maxCapacity);
+  }
+
+  if (capacity < requiredCapacity) {
+    throw std::runtime_error("DebugDraw required capacity exceeds hard frame limit");
+  }
+
+  return capacity;
+}
+
+std::vector<DebugLineVertex>
+padVerticesToCapacity(const std::vector<DebugLineVertex> &vertices,
+                      const usize reservedVertexCount) {
+  // DebugDraw retains CPU-side payload size at reserved capacity so a fresh
+  // backend resource identity allocates large enough GPU buffers on first sync.
+  std::vector<DebugLineVertex> padded = vertices;
+  padded.reserve(reservedVertexCount);
+
+  const DebugLineVertex filler = vertices.empty()
+                                     ? DebugLineVertex{{0.0f, 0.0f, 0.0f},
+                                                       {0.0f, 0.0f, 0.0f, 0.0f}}
+                                     : vertices.back();
+  while (padded.size() < reservedVertexCount) {
+    padded.push_back(filler);
+  }
+  return padded;
+}
+
+std::vector<u32> makeDegenerateLineIndices(const usize visibleVertexCount,
+                                           const usize reservedVertexCount,
+                                           const usize reservedIndexCount) {
+  std::vector<u32> indices = makeSequentialIndices(visibleVertexCount);
+  indices.reserve(reservedIndexCount);
+
+  if (indices.size() >= reservedIndexCount) {
+    return indices;
+  }
+
+  const u32 fillerIndex = reservedVertexCount == 0
+                              ? 0
+                              : static_cast<u32>(std::min(
+                                    visibleVertexCount, reservedVertexCount) -
+                                    (visibleVertexCount == 0 ? 0 : 1));
+  // Extra line-list indices intentionally collapse to zero-length segments so
+  // retained capacity does not change visible geometry or bounds.
+  while (indices.size() < reservedIndexCount) {
+    indices.push_back(fillerIndex);
   }
   return indices;
 }
@@ -244,13 +308,56 @@ BucketState &ensureBucket(VisibilityLayerMask mask) {
   return insertedIt->second;
 }
 
+void rebuildBucketCapacity(BucketState &bucket,
+                           const usize reservedVertexCount,
+                           const usize reservedIndexCount) {
+  auto &s = state();
+  const bool replacingExistingResources =
+      bucket.vertexBuffer || bucket.indexBuffer || bucket.mesh;
+  bucket.vertexBuffer = VertexBuffer<DebugLineVertex>::create({});
+  bucket.indexBuffer = IndexBuffer::create({}, PrimitiveTopology::LineList);
+  bucket.mesh = Mesh::create(bucket.vertexBuffer, bucket.indexBuffer);
+  bucket.mesh->bounds = BoundingBox{};
+
+  const auto meshComponent = bucket.node->getComponent<MeshComponent>();
+  if (!meshComponent.has_value()) {
+    throw std::runtime_error("DebugDraw bucket missing MeshComponent");
+  }
+  meshComponent->get().setMesh(bucket.mesh);
+
+  bucket.reservedVertexCount = reservedVertexCount;
+  bucket.reservedIndexCount = reservedIndexCount;
+  if (replacingExistingResources) {
+    s.sceneStructureDirty = true;
+  }
+}
+
 void updateBucket(BucketState &bucket,
                   const std::vector<DebugLineVertex> &vertices) {
-  bucket.vertexBuffer->update(vertices);
-  bucket.indexBuffer->update(makeSequentialIndices(vertices.size()));
+  const usize requiredVertexCount = vertices.size();
+  const usize requiredIndexCount = requiredVertexCount;
+  if (requiredVertexCount > kMaxVerticesPerFrame ||
+      requiredIndexCount > kMaxIndicesPerFrame) {
+    throw std::runtime_error("DebugDraw frame exceeded maximum buffered geometry");
+  }
+
+  if (requiredVertexCount > bucket.reservedVertexCount ||
+      requiredIndexCount > bucket.reservedIndexCount) {
+    const usize reservedVertexCount =
+        nextDebugCapacity(bucket.reservedVertexCount, requiredVertexCount,
+                          kMaxVerticesPerFrame);
+    const usize reservedIndexCount =
+        nextDebugCapacity(bucket.reservedIndexCount, requiredIndexCount,
+                          kMaxIndicesPerFrame);
+    rebuildBucketCapacity(bucket, reservedVertexCount, reservedIndexCount);
+  }
+
+  bucket.vertexBuffer->update(
+      padVerticesToCapacity(vertices, bucket.reservedVertexCount));
+  bucket.indexBuffer->update(makeDegenerateLineIndices(
+      requiredIndexCount, bucket.reservedVertexCount, bucket.reservedIndexCount));
   bucket.mesh->bounds = computeBounds(vertices);
-  bucket.flushedVertexCount = vertices.size();
-  bucket.trackedVertexAllocationCount = vertices.size();
+  bucket.flushedVertexCount = requiredVertexCount;
 }
 
 void pushLine(Vec3f a, Vec3f b, Vec4f color) {
@@ -607,10 +714,46 @@ usize testing::flushedVertexCount(VisibilityLayerMask mask) {
   return it == state().buckets.end() ? 0 : it->second.flushedVertexCount;
 }
 
-usize testing::trackedVertexAllocationCount(VisibilityLayerMask mask) {
+usize testing::reservedVertexCapacity(VisibilityLayerMask mask) {
   auto it = state().buckets.find(mask);
-  return it == state().buckets.end() ? 0
-                                     : it->second.trackedVertexAllocationCount;
+  return it == state().buckets.end() ? 0 : it->second.reservedVertexCount;
+}
+
+usize testing::reservedIndexCapacity(VisibilityLayerMask mask) {
+  auto it = state().buckets.find(mask);
+  return it == state().buckets.end() ? 0 : it->second.reservedIndexCount;
+}
+
+usize testing::bufferedVertexCapacity(VisibilityLayerMask mask) {
+  auto it = state().buckets.find(mask);
+  if (it == state().buckets.end() || !it->second.vertexBuffer) {
+    return 0;
+  }
+  return it->second.vertexBuffer->getVertexCount();
+}
+
+usize testing::bufferedIndexCapacity(VisibilityLayerMask mask) {
+  auto it = state().buckets.find(mask);
+  if (it == state().buckets.end() || !it->second.indexBuffer) {
+    return 0;
+  }
+  return it->second.indexBuffer->indexCount();
+}
+
+ResourceCacheIdentity testing::vertexBufferIdentity(VisibilityLayerMask mask) {
+  auto it = state().buckets.find(mask);
+  if (it == state().buckets.end() || !it->second.vertexBuffer) {
+    return 0;
+  }
+  return it->second.vertexBuffer->getBackendCacheIdentity();
+}
+
+ResourceCacheIdentity testing::indexBufferIdentity(VisibilityLayerMask mask) {
+  auto it = state().buckets.find(mask);
+  if (it == state().buckets.end() || !it->second.indexBuffer) {
+    return 0;
+  }
+  return it->second.indexBuffer->getBackendCacheIdentity();
 }
 
 bool testing::hasRenderable(VisibilityLayerMask mask) {
