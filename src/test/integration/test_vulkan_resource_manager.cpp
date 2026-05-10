@@ -2,6 +2,7 @@
 #include "backend/vulkan/details/device_resources/buffer.hpp"
 #include "backend/vulkan/details/device.hpp"
 #include "backend/vulkan/details/resource_manager.hpp"
+#include "core/debug_draw/debug_draw.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/components/material_component.hpp"
@@ -42,6 +43,147 @@ template <typename T, typename... Args>
 std::shared_ptr<T> makePlacementShared(void *storage, Args &&...args) {
   auto *ptr = new (storage) T(std::forward<Args>(args)...);
   return std::shared_ptr<T>(ptr, [](T *p) { p->~T(); });
+}
+
+LX_core::SceneSharedPtr makeOverlayScene() {
+  auto scene = LX_core::Scene::create("vulkan_debugdraw_growth");
+  auto cameraNode = LX_test::makeDefaultCameraNodeWithTarget();
+  const auto camera = cameraNode->getComponent<LX_core::CameraComponent>();
+  if (!camera.has_value()) {
+    throw std::runtime_error("DebugDraw test camera component missing");
+  }
+  camera->get().setCullingMask(LX_core::Layer_All);
+  camera->get().updateMatrices();
+  scene->addCamera(cameraNode);
+  LX_core::DebugDraw::reset();
+  LX_core::DebugDraw::attachScene(scene);
+  return scene;
+}
+
+LX_core::RenderingItem syncDebugOverlayItem(
+    LX_core::backend::VulkanResourceManager &resourceManager,
+    LX_core::backend::VulkanCommandBufferManager &cmdBufferMgr,
+    LX_core::Scene &scene) {
+  auto item =
+      LX_test::firstItemFromScene(scene, LX_core::Pass_DebugOverlay);
+  resourceManager.syncResource(cmdBufferMgr, item.vertexBuffer);
+  resourceManager.syncResource(cmdBufferMgr, item.indexBuffer);
+  resourceManager.collectGarbage();
+  return item;
+}
+
+bool verifyDebugDrawGrowthSync(
+    LX_core::backend::VulkanResourceManager &resourceManager,
+    LX_core::backend::VulkanCommandBufferManager &cmdBufferMgr) {
+  auto scene = makeOverlayScene();
+
+  LX_core::DebugDraw::beginFrame();
+  LX_core::DebugDraw::drawLine({0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f});
+  LX_core::DebugDraw::endFrame();
+
+  auto smallItem = syncDebugOverlayItem(resourceManager, cmdBufferMgr, *scene);
+  auto &smallPipeline = resourceManager.getOrCreateRenderPipeline(smallItem);
+  if (smallPipeline.getHandle() == VK_NULL_HANDLE) {
+    std::cerr << "DebugDraw overlay pipeline was not created\n";
+    return false;
+  }
+
+  const auto smallVertexIdentity =
+      LX_core::DebugDraw::testing::vertexBufferIdentity(
+          LX_core::Layer_EditorOverlay);
+  const auto smallIndexIdentity =
+      LX_core::DebugDraw::testing::indexBufferIdentity(
+          LX_core::Layer_EditorOverlay);
+  auto smallVkVertex = resourceManager.getBuffer(smallVertexIdentity);
+  auto smallVkIndex = resourceManager.getBuffer(smallIndexIdentity);
+  if (!smallVkVertex || !smallVkIndex) {
+    std::cerr << "Initial DebugDraw Vulkan buffers were not created\n";
+    return false;
+  }
+  if (smallVkVertex->get().getSize() != smallItem.vertexBuffer->getByteSize() ||
+      smallVkIndex->get().getSize() != smallItem.indexBuffer->getByteSize()) {
+    std::cerr << "Initial DebugDraw GPU buffer sizes do not match CPU resources\n";
+    return false;
+  }
+  const auto smallVertexHandle = smallVkVertex->get().getHandle();
+  const auto smallIndexHandle = smallVkIndex->get().getHandle();
+
+  LX_core::DebugDraw::beginFrame();
+  for (int i = 0; i < 129; ++i) {
+    LX_core::DebugDraw::drawLine({0.0f, 0.0f, 0.0f},
+                                 {static_cast<float>(i), 1.0f, 0.0f});
+  }
+  LX_core::DebugDraw::endFrame();
+
+  const auto grownVertexIdentity =
+      LX_core::DebugDraw::testing::vertexBufferIdentity(
+          LX_core::Layer_EditorOverlay);
+  const auto grownIndexIdentity =
+      LX_core::DebugDraw::testing::indexBufferIdentity(
+          LX_core::Layer_EditorOverlay);
+  if (grownVertexIdentity == smallVertexIdentity ||
+      grownIndexIdentity == smallIndexIdentity) {
+    std::cerr << "DebugDraw growth did not replace CPU buffer identities\n";
+    return false;
+  }
+
+  auto grownItem = syncDebugOverlayItem(resourceManager, cmdBufferMgr, *scene);
+  auto grownVkVertex = resourceManager.getBuffer(grownVertexIdentity);
+  auto grownVkIndex = resourceManager.getBuffer(grownIndexIdentity);
+  if (!grownVkVertex || !grownVkIndex) {
+    std::cerr << "Grown DebugDraw Vulkan buffers were not created\n";
+    return false;
+  }
+  if (grownVkVertex->get().getSize() != grownItem.vertexBuffer->getByteSize() ||
+      grownVkIndex->get().getSize() != grownItem.indexBuffer->getByteSize()) {
+    std::cerr << "Grown DebugDraw GPU buffer sizes do not match CPU resources\n";
+    return false;
+  }
+  if (grownVkVertex->get().getHandle() == smallVertexHandle ||
+      grownVkIndex->get().getHandle() == smallIndexHandle) {
+    std::cerr << "Grown DebugDraw buffers reused stale undersized Vulkan handles\n";
+    return false;
+  }
+
+  LX_core::DebugDraw::beginFrame();
+  for (int i = 0; i < 200; ++i) {
+    LX_core::DebugDraw::drawLine({0.0f, 0.0f, 0.0f},
+                                 {static_cast<float>(i), 2.0f, 0.0f});
+  }
+  LX_core::DebugDraw::endFrame();
+
+  const auto retainedVertexIdentity =
+      LX_core::DebugDraw::testing::vertexBufferIdentity(
+          LX_core::Layer_EditorOverlay);
+  const auto retainedIndexIdentity =
+      LX_core::DebugDraw::testing::indexBufferIdentity(
+          LX_core::Layer_EditorOverlay);
+  if (retainedVertexIdentity != grownVertexIdentity ||
+      retainedIndexIdentity != grownIndexIdentity) {
+    std::cerr << "Within-capacity DebugDraw frame unexpectedly replaced CPU identities\n";
+    return false;
+  }
+
+  auto retainedItem = syncDebugOverlayItem(resourceManager, cmdBufferMgr, *scene);
+  auto retainedVkVertex = resourceManager.getBuffer(retainedVertexIdentity);
+  auto retainedVkIndex = resourceManager.getBuffer(retainedIndexIdentity);
+  if (!retainedVkVertex || !retainedVkIndex) {
+    std::cerr << "Retained DebugDraw Vulkan buffers were not found\n";
+    return false;
+  }
+  if (retainedVkVertex->get().getSize() != retainedItem.vertexBuffer->getByteSize() ||
+      retainedVkIndex->get().getSize() != retainedItem.indexBuffer->getByteSize()) {
+    std::cerr << "Within-capacity DebugDraw GPU sizes no longer match retained CPU capacity\n";
+    return false;
+  }
+  if (retainedVkVertex->get().getHandle() != grownVkVertex->get().getHandle() ||
+      retainedVkIndex->get().getHandle() != grownVkIndex->get().getHandle()) {
+    std::cerr << "Within-capacity DebugDraw frame should reuse grown Vulkan buffers\n";
+    return false;
+  }
+
+  LX_core::DebugDraw::reset();
+  return true;
 }
 
 } // namespace
@@ -188,6 +330,10 @@ int main() {
     resourceManager->syncResource(*cmdBufferMgr, reusedB);
     if (resourceManager->getCachedResourceCount() < 2) {
       std::cerr << "Address-reused CPU resource aliased old GPU cache entry\n";
+      return 1;
+    }
+
+    if (!verifyDebugDrawGrowthSync(*resourceManager, *cmdBufferMgr)) {
       return 1;
     }
 
