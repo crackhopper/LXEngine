@@ -1,6 +1,9 @@
 #include "backend/vulkan/details/commands/command_buffer_manager.hpp"
+#include "backend/vulkan/details/device_resources/texture.hpp"
 #include "backend/vulkan/details/device_resources/buffer.hpp"
 #include "backend/vulkan/details/device.hpp"
+#include "backend/vulkan/details/render_objects/framebuffer.hpp"
+#include "backend/vulkan/details/render_objects/render_pass.hpp"
 #include "backend/vulkan/details/resource_manager.hpp"
 #include "core/debug_draw/debug_draw.hpp"
 #include "core/rhi/index_buffer.hpp"
@@ -19,6 +22,7 @@
 
 #include <vulkan/vulkan.h>
 
+#include <algorithm>
 #include <new>
 #include <iostream>
 #include <type_traits>
@@ -60,33 +64,90 @@ LX_core::SceneSharedPtr makeOverlayScene() {
   return scene;
 }
 
+void syncRenderingItemResources(
+    LX_core::backend::VulkanResourceManager &resourceManager,
+    LX_core::backend::VulkanCommandBufferManager &cmdBufferMgr,
+    const LX_core::RenderingItem &item) {
+  resourceManager.syncResource(cmdBufferMgr, item.vertexBuffer);
+  resourceManager.syncResource(cmdBufferMgr, item.indexBuffer);
+  for (const auto &cpuRes : item.descriptorResources) {
+    resourceManager.syncResource(cmdBufferMgr, cpuRes);
+  }
+  resourceManager.collectGarbage();
+}
+
 LX_core::RenderingItem syncDebugOverlayItem(
     LX_core::backend::VulkanResourceManager &resourceManager,
     LX_core::backend::VulkanCommandBufferManager &cmdBufferMgr,
     LX_core::Scene &scene) {
-  auto item =
-      LX_test::firstItemFromScene(scene, LX_core::Pass_DebugOverlay);
-  resourceManager.syncResource(cmdBufferMgr, item.vertexBuffer);
-  resourceManager.syncResource(cmdBufferMgr, item.indexBuffer);
-  resourceManager.collectGarbage();
+  auto item = LX_test::firstItemFromScene(scene, LX_core::Pass_DebugOverlay);
+  syncRenderingItemResources(resourceManager, cmdBufferMgr, item);
   return item;
 }
 
+bool drawDebugOverlayItem(
+    LX_core::backend::VulkanDevice &device,
+    LX_core::backend::VulkanResourceManager &resourceManager,
+    LX_core::backend::VulkanCommandBufferManager &cmdBufferMgr,
+    const LX_core::RenderingItem &item) {
+  auto &renderPass = resourceManager.getRenderPass();
+  auto &pipeline = resourceManager.getOrCreateRenderPipeline(item);
+  if (pipeline.getHandle() == VK_NULL_HANDLE) {
+    std::cerr << "DebugDraw overlay pipeline was not created\n";
+    return false;
+  }
+
+  const VkExtent2D extent{64, 64};
+  auto colorTex = LX_core::backend::VulkanTexture::createForAttachment(
+      device, extent.width, extent.height, device.getSurfaceFormat().format,
+      VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
+  auto depthTex = LX_core::backend::VulkanTexture::createForAttachment(
+      device, extent.width, extent.height, device.getDepthFormat(),
+      VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+      device.getDepthAspectMask());
+  std::vector<VkImageView> attachments = {colorTex->getImageView(),
+                                          depthTex->getImageView()};
+  auto framebuffer = LX_core::backend::VulkanFrameBuffer::create(
+      device, renderPass.getHandle(), attachments, extent);
+
+  cmdBufferMgr.beginFrame(0);
+  auto cmd = cmdBufferMgr.allocateBuffer();
+
+  VkCommandBufferBeginInfo beginInfo{};
+  beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+  if (vkBeginCommandBuffer(cmd->getHandle(), &beginInfo) != VK_SUCCESS) {
+    std::cerr << "Failed to begin DebugDraw command buffer\n";
+    return false;
+  }
+
+  cmd->beginRenderPass(renderPass.getHandle(), framebuffer->getHandle(), extent,
+                       renderPass.getClearValues());
+  cmd->setViewport(extent.width, extent.height);
+  cmd->setScissor(extent.width, extent.height);
+  cmd->bindPipeline(pipeline);
+  cmd->bindResources(resourceManager, pipeline, item);
+  cmd->drawItem(item);
+  cmd->endRenderPass();
+
+  if (vkEndCommandBuffer(cmd->getHandle()) != VK_SUCCESS) {
+    std::cerr << "Failed to end DebugDraw command buffer\n";
+    return false;
+  }
+
+  return true;
+}
+
 bool verifyDebugDrawGrowthSync(
+    LX_core::backend::VulkanDevice &device,
     LX_core::backend::VulkanResourceManager &resourceManager,
     LX_core::backend::VulkanCommandBufferManager &cmdBufferMgr) {
   auto scene = makeOverlayScene();
 
   LX_core::DebugDraw::beginFrame();
   LX_core::DebugDraw::drawLine({0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f});
-  LX_core::DebugDraw::endFrame();
+  const bool initialSceneDirty = LX_core::DebugDraw::endFrame();
 
   auto smallItem = syncDebugOverlayItem(resourceManager, cmdBufferMgr, *scene);
-  auto &smallPipeline = resourceManager.getOrCreateRenderPipeline(smallItem);
-  if (smallPipeline.getHandle() == VK_NULL_HANDLE) {
-    std::cerr << "DebugDraw overlay pipeline was not created\n";
-    return false;
-  }
 
   const auto smallVertexIdentity =
       LX_core::DebugDraw::testing::vertexBufferIdentity(
@@ -105,15 +166,26 @@ bool verifyDebugDrawGrowthSync(
     std::cerr << "Initial DebugDraw GPU buffer sizes do not match CPU resources\n";
     return false;
   }
+  if (!initialSceneDirty) {
+    std::cerr << "Initial DebugDraw frame should mark scene dirty\n";
+    return false;
+  }
+  if (!drawDebugOverlayItem(device, resourceManager, cmdBufferMgr, smallItem)) {
+    return false;
+  }
   const auto smallVertexHandle = smallVkVertex->get().getHandle();
   const auto smallIndexHandle = smallVkIndex->get().getHandle();
+  const auto initialReservedVertexCapacity =
+      LX_core::DebugDraw::testing::reservedVertexCapacity(
+          LX_core::Layer_EditorOverlay);
+  const usize growthLineCount = (initialReservedVertexCapacity / 2) + 1;
 
   LX_core::DebugDraw::beginFrame();
-  for (int i = 0; i < 129; ++i) {
+  for (usize i = 0; i < growthLineCount; ++i) {
     LX_core::DebugDraw::drawLine({0.0f, 0.0f, 0.0f},
                                  {static_cast<float>(i), 1.0f, 0.0f});
   }
-  LX_core::DebugDraw::endFrame();
+  const bool growthSceneDirty = LX_core::DebugDraw::endFrame();
 
   const auto grownVertexIdentity =
       LX_core::DebugDraw::testing::vertexBufferIdentity(
@@ -121,6 +193,10 @@ bool verifyDebugDrawGrowthSync(
   const auto grownIndexIdentity =
       LX_core::DebugDraw::testing::indexBufferIdentity(
           LX_core::Layer_EditorOverlay);
+  if (!growthSceneDirty) {
+    std::cerr << "Growth DebugDraw frame should mark scene dirty\n";
+    return false;
+  }
   if (grownVertexIdentity == smallVertexIdentity ||
       grownIndexIdentity == smallIndexIdentity) {
     std::cerr << "DebugDraw growth did not replace CPU buffer identities\n";
@@ -144,13 +220,20 @@ bool verifyDebugDrawGrowthSync(
     std::cerr << "Grown DebugDraw buffers reused stale undersized Vulkan handles\n";
     return false;
   }
+  if (!drawDebugOverlayItem(device, resourceManager, cmdBufferMgr, grownItem)) {
+    return false;
+  }
+  const auto grownReservedVertexCapacity =
+      LX_core::DebugDraw::testing::reservedVertexCapacity(
+          LX_core::Layer_EditorOverlay);
+  const usize retainedLineCount = std::max<usize>(1, (grownReservedVertexCapacity / 2) - 1);
 
   LX_core::DebugDraw::beginFrame();
-  for (int i = 0; i < 200; ++i) {
+  for (usize i = 0; i < retainedLineCount; ++i) {
     LX_core::DebugDraw::drawLine({0.0f, 0.0f, 0.0f},
                                  {static_cast<float>(i), 2.0f, 0.0f});
   }
-  LX_core::DebugDraw::endFrame();
+  const bool retainedSceneDirty = LX_core::DebugDraw::endFrame();
 
   const auto retainedVertexIdentity =
       LX_core::DebugDraw::testing::vertexBufferIdentity(
@@ -163,22 +246,29 @@ bool verifyDebugDrawGrowthSync(
     std::cerr << "Within-capacity DebugDraw frame unexpectedly replaced CPU identities\n";
     return false;
   }
+  if (retainedSceneDirty) {
+    std::cerr << "Within-capacity DebugDraw frame should not mark scene dirty\n";
+    return false;
+  }
 
-  auto retainedItem = syncDebugOverlayItem(resourceManager, cmdBufferMgr, *scene);
+  syncRenderingItemResources(resourceManager, cmdBufferMgr, grownItem);
   auto retainedVkVertex = resourceManager.getBuffer(retainedVertexIdentity);
   auto retainedVkIndex = resourceManager.getBuffer(retainedIndexIdentity);
   if (!retainedVkVertex || !retainedVkIndex) {
     std::cerr << "Retained DebugDraw Vulkan buffers were not found\n";
     return false;
   }
-  if (retainedVkVertex->get().getSize() != retainedItem.vertexBuffer->getByteSize() ||
-      retainedVkIndex->get().getSize() != retainedItem.indexBuffer->getByteSize()) {
+  if (retainedVkVertex->get().getSize() != grownItem.vertexBuffer->getByteSize() ||
+      retainedVkIndex->get().getSize() != grownItem.indexBuffer->getByteSize()) {
     std::cerr << "Within-capacity DebugDraw GPU sizes no longer match retained CPU capacity\n";
     return false;
   }
   if (retainedVkVertex->get().getHandle() != grownVkVertex->get().getHandle() ||
       retainedVkIndex->get().getHandle() != grownVkIndex->get().getHandle()) {
     std::cerr << "Within-capacity DebugDraw frame should reuse grown Vulkan buffers\n";
+    return false;
+  }
+  if (!drawDebugOverlayItem(device, resourceManager, cmdBufferMgr, grownItem)) {
     return false;
   }
 
@@ -333,7 +423,7 @@ int main() {
       return 1;
     }
 
-    if (!verifyDebugDrawGrowthSync(*resourceManager, *cmdBufferMgr)) {
+    if (!verifyDebugDrawGrowthSync(*device, *resourceManager, *cmdBufferMgr)) {
       return 1;
     }
 
