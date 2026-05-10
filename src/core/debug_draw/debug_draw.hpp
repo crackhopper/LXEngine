@@ -57,8 +57,7 @@ namespace testing {
 
 usize queuedLineCount();
 usize flushedVertexCount(VisibilityLayerMask mask);
-usize reservedVertexCapacity(VisibilityLayerMask mask);
-usize reservedIndexCapacity(VisibilityLayerMask mask);
+usize trackedVertexAllocationCount(VisibilityLayerMask mask);
 bool hasRenderable(VisibilityLayerMask mask);
 
 } // namespace testing

@@ -137,8 +137,8 @@ void testBucketCapacityGrowsForLargerLaterFrame() {
   DebugDraw::beginFrame();
   DebugDraw::drawLine({0, 0, 0}, {1, 0, 0});
   DebugDraw::endFrame();
-  const usize initialCapacity =
-      DebugDraw::testing::reservedVertexCapacity(Layer_EditorOverlay);
+  const usize initialAllocation =
+      DebugDraw::testing::trackedVertexAllocationCount(Layer_EditorOverlay);
 
   DebugDraw::beginFrame();
   for (int i = 0; i < 128; ++i) {
@@ -147,12 +147,12 @@ void testBucketCapacityGrowsForLargerLaterFrame() {
   }
   DebugDraw::endFrame();
 
-  const usize grownCapacity =
-      DebugDraw::testing::reservedVertexCapacity(Layer_EditorOverlay);
-  EXPECT(grownCapacity > initialCapacity,
-         "later larger frame should grow reserved capacity");
-  EXPECT(grownCapacity >= 256,
-         "capacity should grow to cover the larger frame");
+  const usize grownAllocation =
+      DebugDraw::testing::trackedVertexAllocationCount(Layer_EditorOverlay);
+  EXPECT(grownAllocation > initialAllocation,
+         "later larger frame should grow tracked allocation");
+  EXPECT(grownAllocation == 256,
+         "current implementation tracks exact larger-frame allocation");
 }
 
 void testBucketCapacityDoesNotShrinkAfterSmallerFrame() {
@@ -165,16 +165,16 @@ void testBucketCapacityDoesNotShrinkAfterSmallerFrame() {
                         {static_cast<float>(i), 1.0f, 0.0f});
   }
   DebugDraw::endFrame();
-  const usize largeCapacity =
-      DebugDraw::testing::reservedVertexCapacity(Layer_EditorOverlay);
+  const usize largeAllocation =
+      DebugDraw::testing::trackedVertexAllocationCount(Layer_EditorOverlay);
 
   DebugDraw::beginFrame();
   DebugDraw::drawLine({0, 0, 0}, {1, 0, 0});
   DebugDraw::endFrame();
 
-  EXPECT(DebugDraw::testing::reservedVertexCapacity(Layer_EditorOverlay) ==
-             largeCapacity,
-         "smaller later frame should not shrink reserved capacity");
+  EXPECT(DebugDraw::testing::trackedVertexAllocationCount(Layer_EditorOverlay) ==
+             largeAllocation,
+         "smaller later frame should not shrink tracked allocation");
 }
 
 void testEmptyFrameClearsGeometryWithoutShrinkingCapacity() {
@@ -187,17 +187,17 @@ void testEmptyFrameClearsGeometryWithoutShrinkingCapacity() {
                         {static_cast<float>(i), 1.0f, 0.0f});
   }
   DebugDraw::endFrame();
-  const usize retainedCapacity =
-      DebugDraw::testing::reservedVertexCapacity(Layer_EditorOverlay);
+  const usize retainedAllocation =
+      DebugDraw::testing::trackedVertexAllocationCount(Layer_EditorOverlay);
 
   DebugDraw::beginFrame();
   DebugDraw::endFrame();
 
   EXPECT(DebugDraw::testing::flushedVertexCount(Layer_EditorOverlay) == 0,
          "empty frame should clear visible geometry");
-  EXPECT(DebugDraw::testing::reservedVertexCapacity(Layer_EditorOverlay) ==
-             retainedCapacity,
-         "empty frame should retain grown capacity");
+  EXPECT(DebugDraw::testing::trackedVertexAllocationCount(Layer_EditorOverlay) ==
+             retainedAllocation,
+         "empty frame should retain tracked allocation");
 }
 
 void testLineLimitClipsNewestLines() {
