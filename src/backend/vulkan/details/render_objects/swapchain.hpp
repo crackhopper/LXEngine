@@ -36,14 +36,17 @@ public:
 
   // --- 同步对象获取 ---
   VkSemaphore getImageAvailableSemaphore(u32 currentFrameIndex) const;
-  VkSemaphore getRenderFinishedSemaphore(u32 currentFrameIndex) const;
+  VkSemaphore getRenderFinishedSemaphore(u32 imageIndex) const;
   VkFence getInFlightFence(u32 currentFrameIndex) const;
+  usize getRenderFinishedSemaphoreCount() const {
+    return m_renderFinishedSemaphores.size();
+  }
   void waitForFrame(u32 currentFrameIndex) const;
   void waitForAllFrames() const;
 
   // --- 帧获取与呈现 ---
   VkResult acquireNextImage(u32 currentFrameIndex, u32 &imageIndex);
-  VkResult present(u32 currentFrameIndex, u32 imageIndex);
+  VkResult present(u32 imageIndex);
 
   // --- 资源访问 ---
   VkSwapchainKHR getHandle() const { return m_handle; }

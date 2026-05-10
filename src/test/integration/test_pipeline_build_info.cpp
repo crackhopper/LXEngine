@@ -44,8 +44,10 @@ int failures = 0;
 class FakeShader : public IShader {
 public:
   FakeShader(std::vector<ShaderResourceBinding> bindings,
-             std::vector<ShaderStageCode> stages)
-      : m_bindings(std::move(bindings)), m_stages(std::move(stages)) {}
+             std::vector<ShaderStageCode> stages,
+             std::vector<VertexInputAttribute> vertexInputs = {})
+      : m_bindings(std::move(bindings)), m_stages(std::move(stages)),
+        m_vertexInputs(std::move(vertexInputs)) {}
 
   const std::vector<ShaderStageCode> &getAllStages() const override {
     return m_stages;
@@ -53,6 +55,9 @@ public:
   const std::vector<ShaderResourceBinding> &
   getReflectionBindings() const override {
     return m_bindings;
+  }
+  const std::vector<VertexInputAttribute> &getVertexInputs() const override {
+    return m_vertexInputs;
   }
   std::optional<std::reference_wrapper<const ShaderResourceBinding>>
   findBinding(u32, u32) const override {
@@ -68,10 +73,12 @@ public:
 private:
   std::vector<ShaderResourceBinding> m_bindings;
   std::vector<ShaderStageCode> m_stages;
+  std::vector<VertexInputAttribute> m_vertexInputs;
 };
 
 RenderingItem
-buildItem(PrimitiveTopology topo = PrimitiveTopology::TriangleList) {
+buildItem(PrimitiveTopology topo = PrimitiveTopology::TriangleList,
+          std::vector<VertexInputAttribute> vertexInputs = {}) {
   std::vector<ShaderResourceBinding> bindings = {
       ShaderResourceBinding{"CameraUBO",
                             0,
@@ -108,8 +115,9 @@ buildItem(PrimitiveTopology topo = PrimitiveTopology::TriangleList) {
                       std::vector<u32>{0x07230203, 1, 0}},
   };
 
-  auto shader =
-      std::make_shared<FakeShader>(std::move(bindings), std::move(stages));
+  auto shader = std::make_shared<FakeShader>(std::move(bindings),
+                                             std::move(stages),
+                                             std::move(vertexInputs));
   auto tmpl = MaterialTemplate::create("fake_shader");
 
   ShaderProgramSet set;
@@ -197,6 +205,64 @@ void testFromRenderingItemIsDeterministic() {
   EXPECT(a.topology == b.topology, "deterministic topology");
 }
 
+void testFromRenderingItemFiltersVertexLayoutToShaderInputs() {
+  using V = VertexPosNormalUvBone;
+  auto vb = VertexBuffer<V>::create({
+      V({0.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f},
+        {1.0f, 0.0f, 0.0f, 1.0f}, {0, 0, 0, 0}, {1.0f, 0.0f, 0.0f, 0.0f}),
+      V({1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f},
+        {1.0f, 0.0f, 0.0f, 1.0f}, {0, 0, 0, 0}, {1.0f, 0.0f, 0.0f, 0.0f}),
+      V({0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f},
+        {1.0f, 0.0f, 0.0f, 1.0f}, {0, 0, 0, 0}, {1.0f, 0.0f, 0.0f, 0.0f}),
+  });
+  auto ib = IndexBuffer::create({0u, 1u, 2u});
+  auto mesh = Mesh::create(vb, ib, BoundingBox{{0, 0, 0}, {1, 1, 0}});
+
+  std::vector<ShaderResourceBinding> bindings = {
+      ShaderResourceBinding{"CameraUBO", 0, 0,
+                            ShaderPropertyType::UniformBuffer, 1, 192, 0,
+                            ShaderStage::Vertex, {}},
+  };
+  std::vector<ShaderStageCode> stages = {
+      ShaderStageCode{ShaderStage::Vertex,
+                      std::vector<u32>{0x07230203, 0, 0}},
+  };
+  std::vector<VertexInputAttribute> shaderInputs = {
+      {"inPos", 0, DataType::Float3},
+      {"inNormal", 1, DataType::Float3},
+  };
+
+  auto shader = std::make_shared<FakeShader>(std::move(bindings),
+                                             std::move(stages),
+                                             std::move(shaderInputs));
+  auto tmpl = MaterialTemplate::create("filtered_layout_shader");
+  ShaderProgramSet set;
+  set.shaderName = "filtered_layout_shader";
+  set.shader = shader;
+  MaterialPassDefinition entry;
+  entry.shaderProgram = set;
+  tmpl->setPassDefinition(Pass_Forward, std::move(entry));
+  tmpl->rebuildMaterialInterface();
+
+  auto material = MaterialInstance::create(tmpl);
+  auto node = SceneNode::create("filtered_layout_node");
+  node->addComponent<MeshComponent>(mesh);
+  node->addComponent<MaterialComponent>(material);
+  auto scene = Scene::create(node);
+  scene->addCamera(LX_test::makeDefaultCameraNodeWithTarget());
+
+  auto item = LX_test::firstItemFromScene(*scene, Pass_Forward);
+  auto info = PipelineBuildDesc::fromRenderingItem(item);
+  const auto &items = info.vertexLayout.getItems();
+  EXPECT(items.size() == 2, "vertex layout should drop unused attributes");
+  if (items.size() == 2) {
+    EXPECT(items[0].location == 0, "filtered location 0 preserved");
+    EXPECT(items[1].location == 1, "filtered location 1 preserved");
+  }
+  EXPECT(info.vertexLayout.getStride() == sizeof(V),
+         "filtered layout keeps original stride");
+}
+
 } // namespace
 
 int main() {
@@ -208,6 +274,7 @@ int main() {
   testFromRenderingItemTopology();
   testFromRenderingItemRenderStateFromMaterial();
   testFromRenderingItemIsDeterministic();
+  testFromRenderingItemFiltersVertexLayoutToShaderInputs();
 
   if (failures > 0) {
     std::cerr << "FAILED: " << failures << " assertion(s)\n";

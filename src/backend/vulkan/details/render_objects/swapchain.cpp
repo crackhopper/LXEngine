@@ -418,7 +418,7 @@ void VulkanSwapchain::transitionDepthImagesToOptimal() {
 
 void VulkanSwapchain::createSyncObjects() {
   m_imageAvailableSemaphores.resize(m_maxFramesInFlight);
-  m_renderFinishedSemaphores.resize(m_maxFramesInFlight);
+  m_renderFinishedSemaphores.resize(m_images.size());
   m_inFlightFences.resize(m_maxFramesInFlight);
   m_imagesInFlight.assign(m_images.size(), VK_NULL_HANDLE);
 
@@ -432,10 +432,12 @@ void VulkanSwapchain::createSyncObjects() {
   for (usize i = 0; i < m_maxFramesInFlight; i++) {
     vkCreateSemaphore(m_device.getLogicalDevice(), &semaphoreInfo, nullptr,
                       &m_imageAvailableSemaphores[i]);
-    vkCreateSemaphore(m_device.getLogicalDevice(), &semaphoreInfo, nullptr,
-                      &m_renderFinishedSemaphores[i]);
     vkCreateFence(m_device.getLogicalDevice(), &fenceInfo, nullptr,
                   &m_inFlightFences[i]);
+  }
+  for (usize i = 0; i < m_renderFinishedSemaphores.size(); ++i) {
+    vkCreateSemaphore(m_device.getLogicalDevice(), &semaphoreInfo, nullptr,
+                      &m_renderFinishedSemaphores[i]);
   }
 }
 
@@ -518,11 +520,11 @@ void VulkanSwapchain::waitForAllFrames() const {
                   m_inFlightFences.data(), VK_TRUE, UINT64_MAX);
 }
 
-VkResult VulkanSwapchain::present(u32 currentFrameIndex, u32 imageIndex) {
+VkResult VulkanSwapchain::present(u32 imageIndex) {
   VkPresentInfoKHR presentInfo{};
   presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
   presentInfo.waitSemaphoreCount = 1;
-  presentInfo.pWaitSemaphores = &m_renderFinishedSemaphores[currentFrameIndex];
+  presentInfo.pWaitSemaphores = &m_renderFinishedSemaphores[imageIndex];
 
   VkSwapchainKHR swapChains[] = {m_handle};
   presentInfo.swapchainCount = 1;

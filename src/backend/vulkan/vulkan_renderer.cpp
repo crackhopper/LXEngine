@@ -305,7 +305,7 @@ public:
     VkSemaphore waitSemaphores[] = {
         m_swapchain->getImageAvailableSemaphore(currentFrameIndex)};
     VkSemaphore signalSemaphores[] = {
-        m_swapchain->getRenderFinishedSemaphore(currentFrameIndex)};
+        m_swapchain->getRenderFinishedSemaphore(imageIndex)};
     VkPipelineStageFlags waitStages[] = {
         VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
         VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
@@ -329,8 +329,7 @@ public:
       return;
     }
 
-    VkResult presentResult =
-        m_swapchain->present(currentFrameIndex, imageIndex);
+    VkResult presentResult = m_swapchain->present(imageIndex);
     if (presentResult == VK_ERROR_OUT_OF_DATE_KHR ||
         presentResult == VK_SUBOPTIMAL_KHR) {
       rebuildSwapchain();

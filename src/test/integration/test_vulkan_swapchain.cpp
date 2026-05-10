@@ -40,6 +40,12 @@ int main() {
       std::cerr << "Swapchain image count is zero\n";
       return 1;
     }
+    if (swapchain->getRenderFinishedSemaphoreCount() !=
+        swapchain->getImageCount()) {
+      std::cerr << "Render-finished semaphores must be allocated per "
+                   "swapchain image to avoid present reuse hazards\n";
+      return 1;
+    }
 
     return 0;
   } catch (const std::exception &e) {
