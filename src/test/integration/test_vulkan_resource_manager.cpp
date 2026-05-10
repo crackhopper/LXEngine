@@ -226,7 +226,8 @@ bool verifyDebugDrawGrowthSync(
   const auto grownReservedVertexCapacity =
       LX_core::DebugDraw::testing::reservedVertexCapacity(
           LX_core::Layer_EditorOverlay);
-  const usize retainedLineCount = std::max<usize>(1, (grownReservedVertexCapacity / 2) - 1);
+  const usize retainedLineCount =
+      std::max<usize>(1, (grownReservedVertexCapacity / 2) - 1);
 
   LX_core::DebugDraw::beginFrame();
   for (usize i = 0; i < retainedLineCount; ++i) {
