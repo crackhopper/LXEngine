@@ -165,12 +165,68 @@ void testDefaultLayoutReflowsAfterResize() {
   ImGui::DestroyContext();
 }
 
+void testDefaultLayoutKeepsEditorPanelsVisibleAcrossFrames() {
+  if (!setupMinimalImGui()) {
+    std::cout << "[SKIP] scene_viewer persistent layout test (font atlas unavailable)\n";
+    ImGui::DestroyContext();
+    return;
+  }
+
+  LX_core::EditorState editorState;
+  LX_core::CommandBus bus;
+  auto scene = LX_core::Scene::create("layout_scene");
+  auto editorCameraNode = LX_core::SceneNode::create("editor_camera");
+  editorCameraNode->setName("editor_cam");
+  auto editorCamera = editorCameraNode->addComponent<LX_core::CameraComponent>();
+  scene->addCamera(editorCameraNode);
+  editorState.setEditorCamera(editorCameraNode);
+  editorState.setPreviewCamera(editorCameraNode);
+  (void)editorState.syncActiveCamera(*scene);
+  LX_core::registerBuiltinCommands(bus, editorState, *scene);
+
+  LX_demo::scene_viewer::CameraRig rig;
+  rig.attach(editorCamera->get());
+  LX_core::SceneTreePanel sceneTreePanel(bus, editorState, *scene);
+  LX_core::InspectorPanel inspectorPanel(bus, editorState);
+  LX_core::ConsolePanel consolePanel(bus);
+  LX_core::ViewportOverlay viewportOverlay(bus, editorState, *scene);
+  LX_demo::scene_viewer::UiOverlay ui;
+  ui.attach(rig, bus, sceneTreePanel, inspectorPanel, consolePanel,
+            viewportOverlay);
+
+  ImGui::NewFrame();
+  ui.drawFrame();
+  ImGui::EndFrame();
+
+  ImGui::NewFrame();
+  ui.drawFrame();
+
+  const int currentFrame = ImGui::GetFrameCount();
+  ImGuiWindow *sceneTree = ImGui::FindWindowByName("Scene Tree");
+  ImGuiWindow *inspector = ImGui::FindWindowByName("Inspector");
+  ImGuiWindow *console = ImGui::FindWindowByName("Command Console");
+  ImGuiWindow *viewport = ImGui::FindWindowByName("Viewport");
+
+  EXPECT(sceneTree != nullptr && sceneTree->LastFrameActive == currentFrame,
+         "scene tree window should still be drawn on frame 2");
+  EXPECT(inspector != nullptr && inspector->LastFrameActive == currentFrame,
+         "inspector window should still be drawn on frame 2");
+  EXPECT(console != nullptr && console->LastFrameActive == currentFrame,
+         "console window should still be drawn on frame 2");
+  EXPECT(viewport != nullptr && viewport->LastFrameActive == currentFrame,
+         "viewport window should still be drawn on frame 2");
+
+  ImGui::EndFrame();
+  ImGui::DestroyContext();
+}
+
 } // namespace
 
 int main() {
   expSetEnvVK();
   testDefaultLayoutPlacesViewportBetweenPanels();
   testDefaultLayoutReflowsAfterResize();
+  testDefaultLayoutKeepsEditorPanelsVisibleAcrossFrames();
 
   if (failures == 0) {
     std::cout << "[PASS] scene_viewer layout tests passed.\n";
