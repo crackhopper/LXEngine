@@ -232,8 +232,24 @@ private:
 
   [[nodiscard]] LX_core::CommandResult listScenes() {
     refreshCatalog();
-    std::string structured = "{\"entries\":[";
+    std::string message =
+        "listed " + std::to_string(m_catalog.entries().size()) + " scene(s)";
     const auto& entries = m_catalog.entries();
+    if (!entries.empty()) {
+      message += ":\n";
+      for (size_t i = 0; i < entries.size(); ++i) {
+        if (i != 0) {
+          message += '\n';
+        }
+        message += "- [";
+        message += sceneSourceKindName(entries[i].kind);
+        message += "] ";
+        message += entries[i].id;
+        message += " -> ";
+        message += entries[i].path.string();
+      }
+    }
+    std::string structured = "{\"entries\":[";
     for (size_t i = 0; i < entries.size(); ++i) {
       if (i != 0) {
         structured += ",";
@@ -243,8 +259,7 @@ private:
                     jsonEscape(entries[i].path.string()) + "\"}";
     }
     structured += "]}";
-    return makeCommandOk("listed " + std::to_string(entries.size()) + " scene(s)",
-                         std::move(structured));
+    return makeCommandOk(std::move(message), std::move(structured));
   }
 
   [[nodiscard]] LX_core::CommandResult

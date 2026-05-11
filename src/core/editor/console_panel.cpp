@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <cfloat>
 
 #include <imgui.h>
 
@@ -25,11 +26,13 @@ void ConsolePanel::draw() {
 
   const float inputHeight = ImGui::GetFrameHeightWithSpacing() * 2.0f;
   if (ImGui::BeginChild("console_output", ImVec2(0.0f, -inputHeight), true)) {
-    for (const auto &entry : displayedEntries()) {
-      ImGui::TextWrapped("< %s", entry.line.c_str());
-      ImGui::TextWrapped("> %s", entry.result.message.c_str());
-      ImGui::Separator();
-    }
+    std::string output = displayedText();
+    output.push_back('\0');
+    ImGui::PushItemWidth(-FLT_MIN);
+    ImGui::InputTextMultiline("##console_output_text", output.data(),
+                              output.size(), ImVec2(-FLT_MIN, -FLT_MIN),
+                              ImGuiInputTextFlags_ReadOnly);
+    ImGui::PopItemWidth();
 
     if (m_scrollToBottom) {
       ImGui::SetScrollHereY(1.0f);
@@ -175,6 +178,22 @@ std::vector<CommandBus::HistoryEntry> ConsolePanel::displayedEntries() const {
   }
   return std::vector<CommandBus::HistoryEntry>(history.begin() + m_displayStartIndex,
                                                history.end());
+}
+
+std::string ConsolePanel::displayedText() const {
+  std::string output;
+  const auto entries = displayedEntries();
+  for (usize i = 0; i < entries.size(); ++i) {
+    output += "< ";
+    output += entries[i].line;
+    output += '\n';
+    output += "> ";
+    output += entries[i].result.message;
+    if (i + 1 < entries.size()) {
+      output += "\n\n";
+    }
+  }
+  return output;
 }
 
 bool ConsolePanel::isOpen() const { return m_open; }

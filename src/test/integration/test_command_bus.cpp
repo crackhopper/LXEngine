@@ -718,6 +718,11 @@ void testConsolePanelSubmitsAndClearsDisplay() {
          "panel submit routes through builtin command bus");
   EXPECT(panel.displayedEntries().size() == 1,
          "panel display shows newly executed command");
+  EXPECT(panel.displayedText().find("< select /world/cube") != std::string::npos,
+         "displayedText should include visible command text");
+  EXPECT(panel.displayedText().find(fixture.bus.history().back().result.message) !=
+             std::string::npos,
+         "displayedText should include visible result text");
   EXPECT(fixture.bus.history().size() == 1,
          "panel submit contributes to command history");
 
@@ -730,6 +735,11 @@ void testConsolePanelSubmitsAndClearsDisplay() {
   panel.submitLine("list nodes");
   EXPECT(panel.displayedEntries().size() == 1,
          "new entries appear after clearDisplay checkpoint");
+  EXPECT(panel.displayedText().find("< list nodes") != std::string::npos,
+         "displayedText should include subsequent command text");
+  EXPECT(panel.displayedText().find(fixture.bus.history().back().result.message) !=
+             std::string::npos,
+         "displayedText should include multiline command output");
   EXPECT(fixture.bus.history().size() == 2,
          "history keeps full record after clearDisplay");
 }

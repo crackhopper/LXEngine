@@ -72,6 +72,8 @@ void Gui::init(const InitParams& params) {
 
   IMGUI_CHECKVERSION();
   ImGui::CreateContext();
+  ImGui::GetIO().IniFilename = nullptr;
+  ImGui::GetIO().ConfigWindowsMoveFromTitleBarOnly = true;
   ImGui::StyleColorsDark();
 
 #if defined(USE_SDL)

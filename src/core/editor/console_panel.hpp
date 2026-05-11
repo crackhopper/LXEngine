@@ -28,6 +28,7 @@ public:
   void setInputText(std::string_view text);
   [[nodiscard]] std::string getInputText() const;
   [[nodiscard]] std::vector<CommandBus::HistoryEntry> displayedEntries() const;
+  [[nodiscard]] std::string displayedText() const;
 
   [[nodiscard]] bool isOpen() const;
   void setOpen(bool open);
