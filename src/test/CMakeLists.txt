@@ -155,6 +155,7 @@ if(TARGET test_scene_document)
     ${CMAKE_CURRENT_SOURCE_DIR}/..
     ${CMAKE_CURRENT_SOURCE_DIR}/../infra/external/yaml-cpp/include
   )
+  target_link_libraries(test_scene_document PRIVATE yaml-cpp::yaml-cpp)
 endif()
 
 if(TARGET test_scene_runtime)
@@ -168,6 +169,7 @@ if(TARGET test_scene_runtime)
     ${CMAKE_CURRENT_SOURCE_DIR}/..
     ${CMAKE_CURRENT_SOURCE_DIR}/../infra/external/yaml-cpp/include
   )
+  target_link_libraries(test_scene_runtime PRIVATE yaml-cpp::yaml-cpp)
 endif()
 
 set(TEST_APP_EXE_LIST
