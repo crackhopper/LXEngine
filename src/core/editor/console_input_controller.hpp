@@ -23,6 +23,7 @@ public:
   void dispatchUndo();
   void dispatchRedo();
   void setPersistedHistory(std::vector<std::string> historyLines);
+  void recordPersistedHistoryLine(std::string line);
   [[nodiscard]] std::vector<std::string> persistedHistory() const;
   [[nodiscard]] bool consumePersistedHistoryDirty();
 

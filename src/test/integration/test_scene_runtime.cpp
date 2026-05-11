@@ -1,7 +1,7 @@
 #include "core/scene/components/camera_component.hpp"
-#include "demos/scene_viewer/editor_camera_state.hpp"
-#include "demos/scene_viewer/scene_document.hpp"
-#include "demos/scene_viewer/scene_runtime.hpp"
+#include "demos/lxe_editor/editor_camera_state.hpp"
+#include "demos/lxe_editor/scene_document.hpp"
+#include "demos/lxe_editor/scene_runtime.hpp"
 
 #include <cmath>
 #include <filesystem>
@@ -9,7 +9,7 @@
 #include <iostream>
 #include <type_traits>
 
-namespace demo = LX_demo::scene_viewer;
+namespace demo = LX_demo::lxe_editor;
 
 namespace {
 
@@ -129,9 +129,9 @@ void testRuntimeLoadsFullSceneDocument() {
                  "            scale: [1.0, 1.0, 1.0]\n"
                  "          visibilityMask: 4294967295\n"
                  "          mesh:\n"
-                 "            uri: builtin://scene_viewer/ground_mesh\n"
+                 "            uri: builtin://lxe_editor/ground_mesh\n"
                  "          material:\n"
-                 "            uri: builtin://scene_viewer/ground_material\n"
+                 "            uri: builtin://lxe_editor/ground_material\n"
                  "        - nodeName: dir_light_node\n"
                  "          name: dir_light\n"
                  "          transform:\n"

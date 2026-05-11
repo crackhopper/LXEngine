@@ -116,7 +116,7 @@ add_subdirectory(assets/shaders)
 # -------------------------------
 # Bootstrap / env-probe executable
 # Not the primary demo entrypoint. The user-facing integration demo lives at
-# src/demos/scene_viewer/ as demo_scene_viewer.
+# src/demos/lxe_editor/ as lxe_editor.
 # -------------------------------
 add_executable(${PROJECT_NAME} "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp")
 target_link_libraries(${PROJECT_NAME} 

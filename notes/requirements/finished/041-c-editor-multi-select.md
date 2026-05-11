@@ -1,6 +1,6 @@
 # REQ-041-c: 编辑器多选 / 框选 — scene tree 多选 + 视口拖拽框选
 
-> 拆分自 2026-05-06：原 `041-b-editor-polish-v2.md` 早期版本（kitchen-sink "v2 polish"）含 5 件不相关的事；评审后按 README "一个 REQ = 一个连续实施周期" 拆开。本档只留多选 / 框选；undo·redo UI 移到 [REQ-041-d](../041-d-editor-undo-redo-ui.md)；Rename / Duplicate 移到 [REQ-041-e](../041-e-editor-node-rename-duplicate.md)；工具栏 / 菜单栏 / 主题切换移到 [REQ-041-f](../041-f-editor-toolbar-menubar-theme.md)。
+> 拆分自 2026-05-06：原 `041-b-editor-polish-v2.md` 早期版本（kitchen-sink "v2 polish"）含 5 件不相关的事；评审后按 README “一个 REQ = 一个连续实施周期”拆开。本档只留多选 / 框选。2026-05-11 再次重整后，相关后续工作收敛为 [REQ-041-d 工具栏拖拽创建](../041-d-scene-authoring-toolbar-palette.md) / [REQ-041-f Rename / Duplicate](../041-f-scene-authoring-node-rename-duplicate.md) 等测试场景作者需求。
 
 ## 背景
 
@@ -30,7 +30,7 @@
 - 释放时：遍历 scene 中所有 mesh-bearing SceneNode，把其 world AABB 投影到视口屏幕区，与矩形相交即计入命中
 - 命中集合非空 → dispatch `select <p1> <p2> ...`；为空 → dispatch `deselect`
 - ImGuizmo 鼠标 hover 优先于框选（避免拖 gizmo 时误开框选）—— 与 v1 R5 picking 优先级约定一致
-- 蒙皮 mesh 用 bind pose AABB（与 [REQ-041-h](../041-h-mesh-level-triangle-picking.md) 边界一致）
+- 蒙皮 mesh 用 bind pose AABB；更高精度的 mesh 级 picking 当前不在 active 队列中
 
 ### R3: 多 selected 视觉化
 
@@ -65,7 +65,7 @@
 
 - 框选**不**做"模式切换"（Add / Subtract / Intersect）；v2 只做 Replace，模式切换留 v3 等真实需求
 - **不**做"框选时按住 Alt 反选"；同上理由
-- 框选**不**穿透墙：仅看 world AABB 投影面是否与矩形相交；命中三角面级精度需要 [REQ-041-h](../041-h-mesh-level-triangle-picking.md) 的 mesh 数据 + 投影裁剪，留后续
+- 框选**不**穿透墙：仅看 world AABB 投影面是否与矩形相交；命中三角面级精度留后续，当前不在 active 队列中
 - 命令最终走总线（与 v1 R9 硬约束一致）；UI 不绕过 dispatch
 
 ## 依赖
@@ -76,9 +76,9 @@
 
 ## 后续工作
 
-- [REQ-041-d undo/redo UI](../041-d-editor-undo-redo-ui.md) — 撤销批量 select / 框选操作
+- [REQ-041-f Rename / Duplicate](../041-f-scene-authoring-node-rename-duplicate.md) — 当前保留的场景作者编辑增强
 - 框选模式（Add / Subtract / Intersect）：等多选 v1 跑过实战再立项
-- 命中三角面级框选：等 [REQ-041-h](../041-h-mesh-level-triangle-picking.md) 落地后再考虑
+- 命中三角面级框选：后续若重新立项 mesh 级 picking 再考虑
 
 ## 实施状态
 

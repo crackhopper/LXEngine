@@ -42,7 +42,7 @@ src/
 ├── core/              # 与具体图形后端解耦的接口、纯数据、算法
 ├── infra/             # 对 core 接口的通用基础设施实现
 ├── backend/vulkan/    # Vulkan 后端实现
-├── demos/             # 正式交互 demo（demo_scene_viewer 等）
+├── demos/             # 正式交互程序（lxe_editor 等）
 └── test/integration/  # 集成测试
 ```
 
@@ -97,7 +97,7 @@ src/backend/vulkan/
 
 ```text
 src/demos/
-└── scene_viewer/     # demo_scene_viewer：当前正式交互 demo 入口
+└── lxe_editor/       # lxe_editor：当前正式交互编辑器入口
 ```
 
 ### src/test/integration/

@@ -4,3 +4,6 @@ approval_policy = "never"
 sandbox_mode = "danger-full-access"
 trust_level = "trusted"
 
+[mcp_servers.lxe_editor]
+command = "python3"
+args = [".codex/scripts/lxe_editor_mcp_bridge.py"]

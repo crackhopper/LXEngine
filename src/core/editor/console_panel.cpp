@@ -106,6 +106,10 @@ void ConsolePanel::setPersistedHistory(std::vector<std::string> historyLines) {
   m_inputController.setPersistedHistory(std::move(historyLines));
 }
 
+void ConsolePanel::recordPersistedHistoryLine(std::string_view line) {
+  m_inputController.recordPersistedHistoryLine(std::string(line));
+}
+
 std::vector<std::string> ConsolePanel::persistedHistory() const {
   return m_inputController.persistedHistory();
 }

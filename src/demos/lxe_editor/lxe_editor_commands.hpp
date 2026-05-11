@@ -1,0 +1,47 @@
+#pragma once
+
+#include "core/editor/command_bus.hpp"
+
+#include <functional>
+#include <optional>
+#include <string>
+
+namespace LX_core {
+class EditorState;
+class Scene;
+}
+
+namespace LX_demo::lxe_editor {
+
+class SceneInteractionController;
+struct SceneViewRect;
+
+struct LxeEditorCommandContext final {
+  using SceneViewRectFn = std::function<SceneViewRect()>;
+  using DirtyFn = std::function<bool()>;
+  using GetEditModeFn = std::function<int()>;
+  using SetEditModeFn = std::function<void(int)>;
+  using PermissionFn = std::function<std::string()>;
+  using CurrentDocumentPathFn =
+      std::function<std::optional<std::string>()>;
+  using CurrentSourceKindFn = std::function<std::optional<std::string>()>;
+  using PersistedHistoryFn = std::function<std::vector<std::string>()>;
+
+  LX_core::EditorState& editorState;
+  LX_core::Scene& scene;
+  SceneInteractionController& interaction;
+  GetEditModeFn getEditMode;
+  SetEditModeFn setEditMode;
+  SceneViewRectFn sceneViewRect;
+  DirtyFn dirty;
+  PermissionFn permission;
+  CurrentDocumentPathFn currentDocumentPath;
+  CurrentSourceKindFn currentSourceKind;
+  PersistedHistoryFn persistedHistory;
+};
+
+void registerLxeEditorCommands(
+    LX_core::CommandBus& bus,
+    const LxeEditorCommandContext& context);
+
+} // namespace LX_demo::lxe_editor

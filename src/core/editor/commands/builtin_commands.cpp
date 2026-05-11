@@ -1483,11 +1483,11 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
       });
 
   bus.registerHandler(
-      "cam", CommandMetadata{"cam (look-at|reset|fov ...)", inverseFromMetadata(),
+      "cam", CommandMetadata{"cam (look-at|reset|reset-editor-to-game|fov ...)", inverseFromMetadata(),
                               true},
       [&scene, &editorState](std::vector<std::string> args) {
         if (args.empty()) {
-          return makeError("usage: cam (look-at|reset|fov ...)");
+          return makeError("usage: cam (look-at|reset|reset-editor-to-game|fov ...)");
         }
         auto camera = findActiveCamera(scene, editorState);
         if (!camera.has_value()) {
@@ -1499,6 +1499,27 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
                                Vec3f{0.0f, 1.0f, 0.0f});
           camera->get().updateMatrices();
           return makeOk("camera reset", "{\"mode\":\"reset\"}");
+        }
+        if (args[0] == "reset-editor-to-game") {
+          const SceneNodeSharedPtr editorNode = editorState.getEditorCamera();
+          const SceneNodeSharedPtr gameNode = editorState.getPreviewCamera();
+          if (!editorNode || !gameNode) {
+            return makeError("editor or game camera is not configured");
+          }
+          auto editorCamera = editorNode->getComponent<CameraComponent>();
+          auto gameCamera = gameNode->getComponent<CameraComponent>();
+          if (!editorCamera.has_value() || !gameCamera.has_value()) {
+            return makeError("editor or game camera is missing a camera component");
+          }
+          editorCamera->get().lookAt(gameCamera->get().getEyePosition(),
+                                     gameCamera->get().getLookTarget(),
+                                     gameCamera->get().getUpVector());
+          editorCamera->get().updateMatrices();
+          CommandResult result =
+              makeOk("editor camera reset from game camera",
+                     "{\"mode\":\"reset-editor-to-game\"}");
+          result.metadata["editor_camera.resync"] = "true";
+          return result;
         }
         if (args[0] == "fov") {
           if (args.size() != 2) {

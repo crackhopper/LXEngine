@@ -2,7 +2,7 @@
 
 > 本 REQ 是 [Phase 1.5 ImGui Editor MVP + 命令总线](../roadmaps/main-roadmap/phase-1.5-imgui-editor-mvp.md) 的第 5 步。在 roadmap 中以"REQ-150 DebugDraw 子系统"前向声明。
 >
-> 2026-05-06 拆分：原 `039-debug-draw-subsystem.md` 即本档（v1，每帧瞬时 draw + 几何原语 only）。v2（persistent draw + mesh-as-debug 整 mesh 线框）移到 [REQ-039-b DebugDraw v2](041-i-debug-draw-persistent-and-mesh.md)。
+> 2026-05-06 拆分：原 `039-debug-draw-subsystem.md` 即本档（v1，每帧瞬时 draw + 几何原语 only）。persistent draw / 整 mesh 线框等 v2 方向曾被讨论，但 2026-05-11 起已不在 active 队列中。
 
 ## 背景
 
@@ -171,8 +171,8 @@ void main() { o_color = v_color; }
 - v1 **不**做线宽（line width 在 Vulkan 是 device feature，需要 `wideLines` extension；先用 1 像素）
 - v1 **不**做线条 anti-aliasing
 - v1 **不**做 screen-space 字体（"draw text at world position"）
-- v1 **不**做 persistent draw（每个 draw 命令仅活在当前帧）；移到 [REQ-039-b](041-i-debug-draw-persistent-and-mesh.md)
-- v1 **不**做 mesh-as-debug（"画整个 mesh 的线框"）；用户可手动遍历 triangle 调 `drawTriangle`；统一接口移到 [REQ-039-b](041-i-debug-draw-persistent-and-mesh.md)
+- v1 **不**做 persistent draw（每个 draw 命令仅活在当前帧）
+- v1 **不**做 mesh-as-debug（“画整个 mesh 的线框”）；用户可手动遍历 triangle 调 `drawTriangle`
 - 单一 pipeline，不支持 user 自定义 shader
 
 ### REQ-042 兼容预留
@@ -189,7 +189,7 @@ void main() { o_color = v_color; }
 ## 后续工作
 
 - [REQ-041 ImGui Editor MVP](041-a-imgui-editor-mvp.md) — frustum / directional light arrow / 选中节点 wire box / picking ray 全部用 DebugDraw
-- [REQ-039-b DebugDraw v2](041-i-debug-draw-persistent-and-mesh.md) — persistent draw（命中线、AS 调试线跨帧停留）+ `wireMesh(Mesh)` 一行画整 mesh 线框
+- 若后续重新立项 DebugDraw v2，再补 persistent draw（命中线、AS 调试线跨帧停留）与 `wireMesh(Mesh)`
 - 未来 [REQ-109 PointLight + SpotLight](../roadmaps/main-roadmap/phase-1-rendering-depth.md#req-109--pointlight--spotlight--统一多光源合同) 落地后，point light 衰减球用 `wireSphere`、spot light 锥用 `cone`，一行调用接通
 - BVH / shadow cascade 边界 / AS 命中点等未来调试可视化都消费同一套 API
 

@@ -1,12 +1,20 @@
+#include "core/asset/mesh.hpp"
 #include "core/editor/command_bus.hpp"
 #include "core/editor/commands/builtin_commands.hpp"
 #include "core/editor/console_input_controller.hpp"
 #include "core/editor/console_panel.hpp"
 #include "core/editor/editor_state.hpp"
 #include "core/math/quat.hpp"
+#include "core/rhi/index_buffer.hpp"
+#include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/components/camera_component.hpp"
+#include "core/scene/components/mesh_component.hpp"
 #include "core/scene/object.hpp"
 #include "core/scene/scene.hpp"
+#include "demos/lxe_editor/scene_interaction_controller.hpp"
+#include "demos/lxe_editor/scene_view_rect.hpp"
+#include "demos/lxe_editor/lxe_editor_commands.hpp"
+#include "demos/lxe_editor/ui_overlay.hpp"
 
 #include <imgui.h>
 
@@ -40,6 +48,14 @@ int failures = 0;
   return std::fabs(a - b) <= eps;
 }
 
+LX_core::MeshSharedPtr makeUnitSquareMesh() {
+  auto vb = LX_core::VertexBuffer<LX_core::VertexPos>::create(
+      std::vector<LX_core::VertexPos>{{{0, 0, 0}}, {{1, 0, 0}}, {{0, 1, 0}}});
+  auto ib = LX_core::IndexBuffer::create({0, 1, 2});
+  return LX_core::Mesh::create(vb, ib,
+                               LX_core::BoundingBox{{0, 0, 0}, {1, 1, 0}});
+}
+
 struct CommandFixture {
   SceneSharedPtr scene = Scene::create(nullptr);
   EditorState editorState;
@@ -55,6 +71,8 @@ struct CommandFixture {
     scene->addRenderable(world);
 
     cube->setName("cube");
+    cube->addComponent<LX_core::MeshComponent>(makeUnitSquareMesh());
+    cube->setTranslation({-0.5f, -0.5f, -5.0f});
     cube->setParent(world);
     scene->addRenderable(cube);
 
@@ -68,6 +86,90 @@ struct CommandFixture {
     scene->addRenderable(lightNode);
 
     registerBuiltinCommands(bus, editorState, *scene);
+  }
+};
+
+struct SceneViewerCommandFixture {
+  CommandFixture base;
+  LX_demo::lxe_editor::SceneInteractionController interaction{
+      base.bus, base.editorState, *base.scene};
+  bool dirty = false;
+  int editMode = static_cast<int>(LX_demo::lxe_editor::UiOverlay::EditMode::Orbit);
+  std::optional<std::string> documentPath = std::string("data/scenes/test.scene.yaml");
+  std::optional<std::string> sourceKind = std::string("local");
+  LX_demo::lxe_editor::SceneViewRect rect{
+      .x = 0.0f, .y = 0.0f, .width = 800.0f, .height = 600.0f};
+
+  SceneViewerCommandFixture() {
+    base.editorState.setEditorCamera(base.cameraNode);
+    LX_demo::lxe_editor::registerLxeEditorCommands(
+        base.bus,
+        LX_demo::lxe_editor::LxeEditorCommandContext{
+            .editorState = base.editorState,
+            .scene = *base.scene,
+            .interaction = interaction,
+            .getEditMode = [this]() { return editMode; },
+            .setEditMode = [this](const int modeCode) { editMode = modeCode; },
+            .sceneViewRect = [this]() { return rect; },
+            .dirty = [this]() { return dirty; },
+            .permission = []() { return std::string("user"); },
+            .currentDocumentPath = [this]() { return documentPath; },
+            .currentSourceKind = [this]() { return sourceKind; },
+            .persistedHistory = []() { return std::vector<std::string>{}; },
+        });
+  }
+};
+
+struct SceneViewerPickFixture {
+  LX_core::EditorState editorState;
+  LX_core::CommandBus bus;
+  LX_core::SceneSharedPtr scene = LX_core::Scene::create(nullptr);
+  LX_core::SceneNodeSharedPtr editorCameraNode =
+      LX_core::SceneNode::create("editor_cam_node");
+  LX_core::SceneNodeSharedPtr gameCameraNode =
+      LX_core::SceneNode::create("game_cam_node");
+  LX_core::SceneNodeSharedPtr targetNode = LX_core::SceneNode::create("cube");
+  LX_demo::lxe_editor::SceneInteractionController interaction{
+      bus, editorState, *scene};
+  int editMode = static_cast<int>(LX_demo::lxe_editor::UiOverlay::EditMode::Selection);
+  LX_demo::lxe_editor::SceneViewRect rect{
+      .x = 0.0f, .y = 0.0f, .width = 800.0f, .height = 600.0f};
+
+  SceneViewerPickFixture() {
+    targetNode->setName("cube");
+    targetNode->addComponent<LX_core::MeshComponent>(makeUnitSquareMesh());
+    targetNode->setTranslation({-0.5f, -0.5f, -5.0f});
+    scene->addRenderable(targetNode);
+
+    editorCameraNode->setName("editor_cam");
+    auto editorCamera =
+        editorCameraNode->addComponent<LX_core::CameraComponent>();
+    editorCamera->get().aspect = 1.0f;
+    scene->addCamera(editorCameraNode);
+
+    gameCameraNode->setName("game_cam");
+    gameCameraNode->addComponent<LX_core::CameraComponent>();
+    scene->addCamera(gameCameraNode);
+
+    editorState.setEditorCamera(editorCameraNode);
+    editorState.setPreviewCamera(gameCameraNode);
+    (void)editorState.syncActiveCamera(*scene);
+    LX_core::registerBuiltinCommands(bus, editorState, *scene);
+    LX_demo::lxe_editor::registerLxeEditorCommands(
+        bus,
+        LX_demo::lxe_editor::LxeEditorCommandContext{
+            .editorState = editorState,
+            .scene = *scene,
+            .interaction = interaction,
+            .getEditMode = [this]() { return editMode; },
+            .setEditMode = [this](const int modeCode) { editMode = modeCode; },
+            .sceneViewRect = [this]() { return rect; },
+            .dirty = []() { return false; },
+            .permission = []() { return std::string("user"); },
+            .currentDocumentPath = []() { return std::optional<std::string>{}; },
+            .currentSourceKind = []() { return std::optional<std::string>{}; },
+            .persistedHistory = []() { return std::vector<std::string>{}; },
+        });
   }
 };
 
@@ -472,6 +574,34 @@ void testBuiltinCamAndPreviewCommands() {
   EXPECT(nearlyEqual(fixture.camera->getEyePosition().z, 3.0f),
          "cam reset restores default eye distance");
 
+  const SceneNodeSharedPtr editorCameraNode = SceneNode::create("node_editor_camera");
+  editorCameraNode->setName("editor_cam");
+  auto editorCamera = editorCameraNode->addComponent<CameraComponent>();
+  editorCameraNode->setTranslation({1.0f, 2.0f, 3.0f});
+  fixture.scene->addCamera(editorCameraNode);
+
+  const SceneNodeSharedPtr gameCameraNode = SceneNode::create("node_game_camera");
+  gameCameraNode->setName("game_cam");
+  auto gameCamera = gameCameraNode->addComponent<CameraComponent>();
+  gameCameraNode->setTranslation({7.0f, 8.0f, 9.0f});
+  fixture.scene->addCamera(gameCameraNode);
+
+  fixture.editorState.setEditorCamera(editorCameraNode);
+  fixture.editorState.setPreviewCamera(gameCameraNode);
+  editorCamera->get().updateMatrices();
+  gameCamera->get().updateMatrices();
+  const CommandResult camResetToGame =
+      fixture.bus.dispatch("cam reset-editor-to-game");
+  EXPECT(camResetToGame.ok, "cam reset-editor-to-game succeeds");
+  EXPECT(nearlyEqual(editorCamera->get().getEyePosition().x, 7.0f) &&
+             nearlyEqual(editorCamera->get().getEyePosition().y, 8.0f) &&
+             nearlyEqual(editorCamera->get().getEyePosition().z, 9.0f),
+         "cam reset-editor-to-game copies the preview camera pose onto the editor camera");
+  EXPECT(camResetToGame.metadata.find("editor_camera.resync") !=
+             camResetToGame.metadata.end() &&
+             camResetToGame.metadata.at("editor_camera.resync") == "true",
+         "cam reset-editor-to-game requests camera rig state resync");
+
   const CommandResult previewOn = fixture.bus.dispatch("preview on");
   EXPECT(previewOn.ok, "preview on succeeds");
   EXPECT(fixture.editorState.isPreviewEnabled(),
@@ -726,6 +856,77 @@ void testSceneSavePreservesRedoHistory() {
          "successful scene save should preserve redo history");
 }
 
+void testSceneViewerModeAndStateCommands() {
+  SceneViewerCommandFixture fixture;
+
+  const CommandResult modeResult = fixture.base.bus.dispatch("mode freefly");
+  EXPECT(modeResult.ok, "mode freefly should succeed");
+  EXPECT(modeResult.structured.find("\"mode\":\"freefly\"") !=
+             std::string::npos,
+         "mode command should return structured mode payload");
+
+  const CommandResult selectResult = fixture.base.bus.dispatch("select /world/cube");
+  EXPECT(selectResult.ok, "select setup for state summary should succeed");
+  const CommandResult summaryResult = fixture.base.bus.dispatch("state summary");
+  EXPECT(summaryResult.ok, "state summary should succeed");
+  EXPECT(summaryResult.structured.find("\"sceneName\"") != std::string::npos,
+         "state summary should include scene name");
+  EXPECT(summaryResult.structured.find("\"selectionCount\":1") !=
+             std::string::npos,
+         "state summary should include selection count");
+  EXPECT(summaryResult.structured.find("\"sourceKind\":\"local\"") !=
+             std::string::npos,
+         "state summary should include source kind");
+  EXPECT(summaryResult.structured.find("\"permission\":\"user\"") !=
+             std::string::npos,
+         "state summary should include permission");
+
+  const CommandResult selectionResult =
+      fixture.base.bus.dispatch("state selection");
+  EXPECT(selectionResult.ok, "state selection should succeed");
+  EXPECT(selectionResult.structured.find("/world/cube") != std::string::npos,
+         "state selection should include selected path");
+
+  const CommandResult camerasResult = fixture.base.bus.dispatch("state cameras");
+  EXPECT(camerasResult.ok, "state cameras should succeed");
+  EXPECT(camerasResult.structured.find("\"editor\"") != std::string::npos,
+         "state cameras should include editor camera payload");
+
+  const CommandResult sceneResult = fixture.base.bus.dispatch("state scene");
+  EXPECT(sceneResult.ok, "state scene should succeed");
+  EXPECT(sceneResult.structured.find("\"nodeCount\"") != std::string::npos,
+         "state scene should include scene counts");
+  EXPECT(sceneResult.structured.find("\"permission\":\"user\"") !=
+             std::string::npos,
+         "state scene should include permission");
+
+  const CommandResult toolbarResult = fixture.base.bus.dispatch("state toolbar");
+  EXPECT(toolbarResult.ok, "state toolbar should succeed");
+  EXPECT(toolbarResult.structured.find("\"mode\":\"freefly\"") !=
+             std::string::npos,
+         "state toolbar should reflect current edit mode");
+
+  const CommandResult modeStatus = fixture.base.bus.dispatch("mode status");
+  EXPECT(modeStatus.ok, "mode status should succeed");
+  EXPECT(modeStatus.structured.find("\"mode\":\"freefly\"") !=
+             std::string::npos,
+         "mode status should report current mode");
+}
+
+void testSceneViewerPickCommandUsesInteractionController() {
+  SceneViewerPickFixture fixture;
+  const CommandResult result = fixture.bus.dispatch("pick 400 300");
+  EXPECT(result.ok, "pick command should succeed for centered cube");
+  EXPECT(!fixture.editorState.getSelected().empty(),
+         "pick command should update selection through interaction controller");
+  EXPECT(result.structured.find("\"lastHitPoint\"") != std::string::npos,
+         "pick command should surface hit point through selection payload");
+
+  fixture.editorState.setPreviewEnabled(true);
+  const CommandResult previewBlocked = fixture.bus.dispatch("pick 400 300");
+  EXPECT(!previewBlocked.ok, "pick should reject preview mode");
+}
+
 void testConsolePanelSubmitsAndClearsDisplay() {
   CommandFixture fixture;
   ConsolePanel panel(fixture.bus);
@@ -912,7 +1113,7 @@ void testConsolePanelUndoRedoShortcutsUseCommandBus() {
          "setup move should update translation");
 
   panel.dispatchUndo();
-  EXPECT(nearlyEqual(fixture.cube->getTranslation().x, 0.0f),
+  EXPECT(nearlyEqual(fixture.cube->getTranslation().x, -0.5f),
          "dispatchUndo should route through command bus undo");
   EXPECT(!fixture.bus.history().empty() &&
              fixture.bus.history().back().line == "undo",
@@ -949,6 +1150,8 @@ int main() {
   testAdminCommandsUseRegisteredCallbacks();
   testSceneLoadClearsRedoHistory();
   testSceneSavePreservesRedoHistory();
+  testSceneViewerModeAndStateCommands();
+  testSceneViewerPickCommandUsesInteractionController();
   testConsolePanelSubmitsAndClearsDisplay();
   testConsolePanelBrowseAndAutocomplete();
   testConsolePanelUndoRedoShortcutsUseCommandBus();

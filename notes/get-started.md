@@ -14,9 +14,9 @@
 
 - `src/test/integration/test_shader_compiler.cpp`
 - `src/test/test_render_triangle.cpp`
-- `src/demos/scene_viewer/main.cpp`
+- `src/demos/lxe_editor/main.cpp`
 
-前者验证“shader 源码读取 -> `shaderc` 编译 -> SPIR-V 反射”这条链路；`test_render_triangle` 验证“窗口 -> renderer -> scene -> engine loop -> draw”这条最小可运行路径；`demo_scene_viewer` 则是当前正式的交互 demo 入口。
+前者验证“shader 源码读取 -> `shaderc` 编译 -> SPIR-V 反射”这条链路；`test_render_triangle` 验证“窗口 -> renderer -> scene -> engine loop -> draw”这条最小可运行路径；`lxe_editor` 则是当前正式的交互编辑器入口。
 
 ## 环境准备
 
@@ -93,7 +93,7 @@ cmake .. -G Ninja -DUSE_SDL=ON -DUSE_GLFW=OFF
 
 - `src/` 下的 `core / infra / backend / test` 会被分别加入构建。
 - `assets/shaders/CMakeLists.txt` 会创建 `CompileShaders` target，把 `assets/shaders/glsl/*.vert` 和 `*.frag` 编译成 SPIR-V。
-- 顶层 `Renderer` target 会被生成，但它当前只是 bootstrap / env-probe；真正的交互 demo 是 `demo_scene_viewer`。
+- 顶层 `Renderer` target 会被生成，但它当前只是 bootstrap / env-probe；真正的交互入口是 `lxe_editor`。
 
 ## 第一步：先跑无 GPU 的验证
 
@@ -204,6 +204,61 @@ cmake .. -G Ninja -DSPIRV_CROSS_DIR=/path/to/spirv-cross
 如果你的目标不是读源码，而是尽快做出一个自己的例子，下一站更应该看：
 
 - [Tutorial](tutorial/00-overview.md)
+
+## RTR 第五章实验入口
+
+如果目标是学习并验证 Real-Time Rendering 第五章里的光源和 Gooch shading，这个仓库里最适合的入口是 `lxe_editor`，而不是 `test_render_triangle`。前者能承载“创建测试场景 -> 切换材质 -> 保存场景 -> 重新加载验证”的工作流。
+
+当前已经存在的底层能力：
+
+| 能力 | 当前状态 |
+|---|---|
+| Shader / material 资产 | `.material` 能声明 shader、passes、parameters、resources，并由 `GenericMaterialLoader` 通过反射校验 |
+| Shader 编译 | `assets/shaders/glsl/*.vert` / `*.frag` 会进入 `CompileShaders` |
+| 场景文件 | `lxe_editor` 已有 `.scene.yaml` 的 load / save 路径 |
+| 光源 runtime | core 层已有 `LightBase` 与 `DirectionalLight`，scene 可以持有 light 列表 |
+| 实验编辑器 | `lxe_editor` 已有 Scene Tree、Inspector、CommandBus、Undo / Redo 基础 |
+
+目前 active requirements 正在补齐实验所需的作者底座：
+
+| REQ | 作用 |
+|---|---|
+| [REQ-041-d](requirements/041-d-scene-authoring-toolbar-palette.md) | 从工具栏快速拖拽创建 primitive、camera、directional light |
+| [REQ-041-e](requirements/041-e-scene-authoring-inspector-material-and-visibility.md) | 在 Inspector 里切换材质、编辑节点级颜色覆盖、简化 visibility |
+| [REQ-041-f](requirements/041-f-scene-authoring-node-rename-duplicate.md) | 让测试节点能 rename、copy、paste，并保持 scene file 语义 |
+| [REQ-041-g](requirements/041-g-rtr-light-experiment-foundation.md) | 补齐 Directional / Point / Spot Light 的可保存、可编辑、可绑定底座 |
+| [REQ-041-h](requirements/041-h-rtr-material-experiment-foundation.md) | 补齐实验材质接入、材质候选列表、节点级通用参数覆盖 |
+
+在这些需求落地前，新增实验材质的最小手动路径是：
+
+```bash
+# 1. 新增或复制一个材质 YAML
+cp assets/materials/blinnphong_lit.material assets/materials/rtr_experiment_local.material
+
+# 2. 新增对应 shader 源，命名要和 material 里的 shader 字段一致
+#    例如 assets/shaders/glsl/rtr_experiment_local.vert
+#    以及 assets/shaders/glsl/rtr_experiment_local.frag
+
+# 3. 重新构建 shader 编译验证
+cd build
+ninja test_shader_compiler
+./src/test/test_shader_compiler
+
+# 4. 运行交互场景查看效果
+ninja lxe_editor
+./src/demos/lxe_editor/lxe_editor
+```
+
+`041-d` 到 `041-h` 完成后，推荐实验循环会变成：
+
+1. 在 `lxe_editor` 里用工具栏拖入一个 primitive。
+2. 从 Inspector 把节点切到 `assets/materials/rtr_*.material` 实验材质。
+3. 拖入 Directional / Point / Spot Light，调整光源参数。
+4. 在 Inspector 修改节点级材质参数覆盖；默认只影响当前节点。
+5. 保存 `.scene.yaml`，重新加载同一场景验证参数和光源是否 round-trip。
+6. 迭代 shader / material 文件，重新构建后用同一场景验证视觉结果。
+
+这里的关键边界是：需求只负责让实验环境能够快速搭建和保存；Gooch shading 公式、多光源着色公式、衰减模型等学习内容不由这些底座需求替我们实现。
 
 ## 一句话版本
 

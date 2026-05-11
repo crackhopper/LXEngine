@@ -2,7 +2,7 @@
 
 > 本 REQ 是 [Phase 1.5 ImGui Editor MVP + 命令总线](../roadmaps/main-roadmap/phase-1.5-imgui-editor-mvp.md) 的第 4 步。在 roadmap 中以"REQ-209 AABB + 空间索引（最小子集）"前向声明 —— 完整 spatial index 推到 Phase 2 REQ-209 全量。
 >
-> 2026-05-06 拆分：原 `038-ray-aabb-picking-min.md` 即本档（v1，AABB 命中级粒度）。v2（mesh 三角面级 picking + hit point / hit normal + CPU 端 mesh 数据保留）移到 [REQ-038-b mesh 三角面级 picking](041-h-mesh-level-triangle-picking.md)。
+> 2026-05-06 拆分：原 `038-ray-aabb-picking-min.md` 即本档（v1，AABB 命中级粒度）。更高精度的 mesh 三角面级 picking 曾被讨论，但 2026-05-11 起已不在 active 队列中。
 
 ## 背景
 
@@ -143,9 +143,9 @@ class CameraComponent {
 ## 边界与约束
 
 - **不**做 BVH / octree / loose octree（Phase 2 REQ-209 全量）
-- **不**做 mesh-level triangle picking（移到 [REQ-038-b](041-h-mesh-level-triangle-picking.md)，那里也带 CPU 端 vertex / index 保留）
+- **不**做 mesh-level triangle picking
 - **不**做 frustum vs box（Phase 1 REQ-110 视锥剔除做这个）
-- **不**做 hit point / hit normal 反推（移到 [REQ-038-b](041-h-mesh-level-triangle-picking.md)）
+- **不**做 hit point / hit normal 反推
 - **不**新增 `AABB` 类型，**不**新增 `src/core/math/aabb.hpp`：复用 `BoundingBox`
 - `BoundingBox::transformed` 用 8 角点法（现有实现），**不**改写为 Arvo 优化方法
 - 大规模场景（>10k 节点）线性扫描可能变慢；上 BVH 留 Phase 2
@@ -163,7 +163,7 @@ class CameraComponent {
 - [REQ-040 Editor 命令总线](040-a-editor-command-bus.md) — `select <path>` 命令直接调 `findByPath`；视口点击 `select` 调 `Scene::pick`
 - [REQ-041 ImGui Editor MVP](041-a-imgui-editor-mvp.md) — 视口点击事件 → `camera->getComponent<CameraComponent>()->pickRay(screen)` → `scene.pick(ray, layerMask)` → 选中节点
 - Phase 2 REQ-209 全量：BVH / octree / 增量更新；本 REQ 的 `Scene::pick` API 保持不变，内部加速
-- [REQ-038-b mesh 三角面级 picking](041-h-mesh-level-triangle-picking.md) — 把命中粒度从 AABB 收窄到三角面，并补 hit point + hit normal；硬依赖 REQ-209 已落地的空间索引（候选集已小，三角扫描才不爆 CPU）
+- 若后续重新立项 mesh 三角面级 picking，再把命中粒度从 AABB 收窄到三角面，并补 hit point + hit normal
 
 ## 实施状态
 

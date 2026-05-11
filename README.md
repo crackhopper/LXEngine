@@ -6,7 +6,7 @@
 - `src/infra/` — 窗口、资源加载、shader 编译、GUI 等基础设施实现
 - `src/backend/vulkan/` — Vulkan 渲染后端
 
-交互式 demo 入口：`src/demos/scene_viewer/`。集成测试：`src/test/integration/`。
+交互式编辑器入口：`src/demos/lxe_editor/`。集成测试：`src/test/integration/`。
 
 ## 文档在哪里
 
@@ -68,7 +68,7 @@ Windows 上用 `scripts/notes/serve_site.ps1`。
 ```bash
 mkdir -p build && cd build
 cmake .. -G Ninja
-ninja demo_scene_viewer
+ninja lxe_editor
 ```
 
 ### Linux 测试
@@ -80,7 +80,7 @@ xvfb-run -a ctest --output-on-failure -L requires_video_device
 ```
 
 - `Renderer` target 是 bootstrap / env-probe 可执行，不是主要交互入口
-- 主 demo target 是 `demo_scene_viewer`
+- 主交互 target 是 `lxe_editor`
 - 无桌面的 Linux 环境里，窗口类 Vulkan 测试通常需要 `xvfb-run`
 
 ## 常用工作流
@@ -119,7 +119,7 @@ xvfb-run -a ctest --output-on-failure -L requires_video_device
 | `openspec/changes/archive/` | 已归档变更（历史记录，非当前事实源） |
 | `scripts/notes/` | notes 站点工具（`serve_site.sh` / `generate_site_config.py` / `mkdocs_hooks.py`） |
 | `scripts/source_analysis/` | 源码注释抽取工具 |
-| `src/demos/scene_viewer/` | 主 demo |
+| `src/demos/lxe_editor/` | 主交互编辑器 |
 
 ## 开发原则
 

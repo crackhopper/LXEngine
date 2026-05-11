@@ -1,10 +1,10 @@
-#include "demos/scene_viewer/scene_catalog.hpp"
+#include "demos/lxe_editor/scene_catalog.hpp"
 
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 
-namespace demo = LX_demo::scene_viewer;
+namespace demo = LX_demo::lxe_editor;
 
 namespace {
 

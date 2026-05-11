@@ -2,7 +2,7 @@
 
 > 本 REQ 是 [Phase 1.5 ImGui Editor MVP + 命令总线](../roadmaps/main-roadmap/phase-1.5-imgui-editor-mvp.md) 的第 7 步（收口）。在 roadmap 中以"REQ-152 ImGui Editor MVP"前向声明。
 >
-> 2026-05-06 拆分：原 `041-imgui-editor-mvp.md` 即本档（v1，单选 + 4 面板 + F 键预览）。v2 拆成多个独立子 REQ，按 041-* 后缀族归档：[REQ-041-b 命令总线 v2](041-b-command-bus-v2.md) / [REQ-041-c 多选·框选](041-c-editor-multi-select.md) / [REQ-041-d undo·redo UI](../041-d-editor-undo-redo-ui.md) / [REQ-041-e 节点 Rename·Duplicate](../041-e-editor-node-rename-duplicate.md) / [REQ-041-f 菜单栏·工具栏·主题](../041-f-editor-toolbar-menubar-theme.md)。其他子系统 v2 也并入 041-* 家族：`041-g 组件 v2` / [REQ-041-h mesh 三角面级 picking](../041-h-mesh-level-triangle-picking.md) / `041-i DebugDraw v2` / `041-j 组件依赖声明`。
+> 2026-05-06 拆分：原 `041-imgui-editor-mvp.md` 即本档（v1，单选 + 4 面板 + F 键预览）。后续 active 工作已经在 2026-05-11 重整为面向测试场景作者链路的 3 份 REQ：[REQ-041-d 工具栏几何体 / 光源 / 相机拖拽创建](../041-d-scene-authoring-toolbar-palette.md) / [REQ-041-e Inspector 的材质 / 颜色 / 可见性收敛](../041-e-scene-authoring-inspector-material-and-visibility.md) / [REQ-041-f Rename / Duplicate 对齐 scene document](../041-f-scene-authoring-node-rename-duplicate.md)。
 
 ## 背景
 

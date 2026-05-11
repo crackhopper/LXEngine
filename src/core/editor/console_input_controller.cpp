@@ -148,6 +148,10 @@ void ConsoleInputController::setPersistedHistory(
   m_persistedHistoryDirty = false;
 }
 
+void ConsoleInputController::recordPersistedHistoryLine(std::string line) {
+  appendPersistedHistoryLine(std::move(line));
+}
+
 std::vector<std::string> ConsoleInputController::persistedHistory() const {
   return m_persistedHistory;
 }

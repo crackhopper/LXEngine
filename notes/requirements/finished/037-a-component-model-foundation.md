@@ -153,7 +153,7 @@ class SceneNode {
 };
 ```
 
-- v1 约定：**一个 SceneNode 同类型 component 仅 1 份**（多 mesh / multi-material 移到 [REQ-037-c component v2](../041-g-component-v2-multi-and-enable.md)）；`addComponent<T>` 在已存在时 assert
+- v1 约定：**一个 SceneNode 同类型 component 仅 1 份**；多 mesh / multi-material 如需重启立项，应基于新的作者需求再评估
 - 内部存储用 `std::vector` + 线性扫描查找，不用 unordered_map：v1 单节点 component 数 < 10，线性查找比 hash 更快
 - `addComponent<T>` 内部对新建 component 调 `attachTo(*this)`
 - `removeComponent<T>` 析构 component（释放 listener / GPU 资源句柄等）
@@ -210,9 +210,9 @@ class SceneNode {
 
 ## 边界与约束
 
-- v1 **不**允许同类型 component 多份（`MeshComponent` 仅 1 份 / 节点）；多 mesh 移到 [REQ-037-c](../041-g-component-v2-multi-and-enable.md)
-- v1 **不**引入 component 之间的依赖声明（如"MaterialComponent 必须在 MeshComponent 之后 add"）；调用方负责正确顺序；声明式 require / before / after 移到 [REQ-037-c](../041-g-component-v2-multi-and-enable.md)
-- v1 **不**引入 component enable / disable（要禁用就 remove）；移到 [REQ-037-c](../041-g-component-v2-multi-and-enable.md)
+- v1 **不**允许同类型 component 多份（`MeshComponent` 仅 1 份 / 节点）
+- v1 **不**引入 component 之间的依赖声明（如“MaterialComponent 必须在 MeshComponent 之后 add”）；调用方负责正确顺序
+- v1 **不**引入 component enable / disable（要禁用就 remove）
 - v1 **不**做 component 序列化 / 反射；编辑器 inspector 在 [REQ-041-a](../041-a-imgui-editor-mvp.md) 内手写每个 component 的 UI；统一序列化在 [Phase 3 资产管线](../../roadmaps/main-roadmap/phase-3-asset-pipeline.md) 引入 reflection 后再立项
 - v1 **不**做 `getComponent<T>()` 性能优化（线性扫描 < 10 项足够）；BVH / hash 仅在 v2 真出现 component 数失控时立项，不预先做
 - 跨 DLL 的 `componentTypeId<T>()` 一致性：本仓库目前是单 binary，v1 不考虑跨动态库 type id 同步；未来如有需要切换为 `StringID` 即可
@@ -226,7 +226,7 @@ class SceneNode {
 ## 后续工作
 
 - [REQ-037-b Camera 作为 component](037-b-camera-as-component.md) — 第一个非 mesh-bearing component 应用，验证基础设施
-- [REQ-037-c component v2](../041-g-component-v2-multi-and-enable.md) — 同节点同类型多 component（multi-mesh / multi-material）+ enable / disable + 显式 require / before / after 声明
+- 若后续重新立项 component v2，再讨论同节点多 component、enable / disable 与依赖声明
 - 未来 `LightComponent`（DirectionalLight / PointLight / SpotLight 走同模型）
 - 未来 `ColliderComponent` / `RigidBodyComponent`（[Phase 5 物理](../../roadmaps/main-roadmap/phase-5-physics.md)）
 - 未来 component 序列化 / 反射 / asset round-trip：等 [Phase 3 资产管线](../../roadmaps/main-roadmap/phase-3-asset-pipeline.md) 引入统一反射后再立项

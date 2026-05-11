@@ -1,11 +1,11 @@
-#include "demos/scene_viewer/scene_document.hpp"
+#include "demos/lxe_editor/scene_document.hpp"
 
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <string_view>
 
-namespace demo = LX_demo::scene_viewer;
+namespace demo = LX_demo::lxe_editor;
 
 namespace {
 
@@ -58,7 +58,7 @@ void testLoadExplicitRootSceneDocumentReadsGameAndEditorCamera() {
 
   std::ofstream out(path);
   out << "scene:\n"
-         "  name: scene_viewer\n"
+         "  name: lxe_editor\n"
          "  gameplayCameraPath: /world/game_cam\n"
          "root:\n"
          "  nodeName: scene_root\n"
@@ -106,9 +106,9 @@ void testLoadExplicitRootSceneDocumentReadsGameAndEditorCamera() {
          "            scale: [1.0, 1.0, 1.0]\n"
          "          visibilityMask: 4294967295\n"
          "          mesh:\n"
-         "            uri: builtin://scene_viewer/ground_mesh\n"
+         "            uri: builtin://lxe_editor/ground_mesh\n"
          "          material:\n"
-         "            uri: builtin://scene_viewer/ground_material\n"
+         "            uri: builtin://lxe_editor/ground_material\n"
          "        - nodeName: dir_light_node\n"
          "          name: dir_light\n"
          "          transform:\n"
@@ -130,7 +130,7 @@ void testLoadExplicitRootSceneDocumentReadsGameAndEditorCamera() {
   out.close();
 
   const demo::SceneDocument doc = demo::loadSceneDocument(path);
-  EXPECT(doc.sceneName() == "scene_viewer", "scene name should load");
+  EXPECT(doc.sceneName() == "lxe_editor", "scene name should load");
   EXPECT(doc.gameplayCameraPath() == "/world/game_cam",
          "gameplay camera path should load");
   EXPECT(doc.rootNode().nodeName == "scene_root",
@@ -156,7 +156,7 @@ void testLoadExplicitRootSceneDocumentReadsGameAndEditorCamera() {
     return;
   }
   EXPECT(ground->meshUri.has_value(), "mesh uri should load");
-  EXPECT(*ground->meshUri == "builtin://scene_viewer/ground_mesh",
+  EXPECT(*ground->meshUri == "builtin://lxe_editor/ground_mesh",
          "mesh uri should survive load");
   const demo::SceneNodeDocument* light = findChildByName(*world, "dir_light_node");
   EXPECT(light != nullptr, "directional light child should load");
@@ -184,7 +184,7 @@ void testLoadLegacySceneDocumentNormalizesUnderExplicitRoot() {
 
   std::ofstream out(path);
   out << "scene:\n"
-         "  name: scene_viewer\n"
+         "  name: lxe_editor\n"
          "  gameplayCameraPath: /world/game_cam\n"
          "nodes:\n"
          "  - nodeName: world_root\n"
@@ -238,7 +238,7 @@ void testLoadLegacySceneDocumentNormalizesNodeNameBasedParentPaths() {
 
   std::ofstream out(path);
   out << "scene:\n"
-         "  name: scene_viewer\n"
+         "  name: lxe_editor\n"
          "  gameplayCameraPath: /node_world/game_camera\n"
          "nodes:\n"
          "  - nodeName: node_world\n"
@@ -291,7 +291,7 @@ void testLoadMalformedExplicitRootDocumentFailsClearly() {
 
   std::ofstream out(path);
   out << "scene:\n"
-         "  name: scene_viewer\n"
+         "  name: lxe_editor\n"
          "  gameplayCameraPath: /game_cam\n"
          "root: []\n";
   out.close();
@@ -312,13 +312,13 @@ void testLoadExplicitRootDocumentRejectsUnsupportedRootPayload() {
 
   std::ofstream out(path);
   out << "scene:\n"
-         "  name: scene_viewer\n"
+         "  name: lxe_editor\n"
          "  gameplayCameraPath: /game_cam\n"
          "root:\n"
          "  nodeName: scene_root\n"
          "  name: ''\n"
          "  mesh:\n"
-         "    uri: builtin://scene_viewer/ground_mesh\n";
+         "    uri: builtin://lxe_editor/ground_mesh\n";
   out.close();
 
   bool threw = false;
@@ -340,7 +340,7 @@ void testLoadExplicitRootDocumentRejectsNonCanonicalRootIdentity() {
 
   std::ofstream out(path);
   out << "scene:\n"
-         "  name: scene_viewer\n"
+         "  name: lxe_editor\n"
          "  gameplayCameraPath: /game_cam\n"
          "root:\n"
          "  nodeName: custom_root\n"
@@ -362,7 +362,7 @@ void testLoadExplicitRootDocumentRejectsNonCanonicalRootIdentity() {
 
 void testSaveSceneDocumentWritesExplicitRootCanonicalFormat() {
   demo::SceneDocument doc;
-  doc.setSceneName("scene_viewer");
+  doc.setSceneName("lxe_editor");
   doc.setGameplayCameraPath("/world/game_cam");
   auto& root = doc.mutableRootNode();
   root.nodeName = "scene_root";
@@ -426,7 +426,7 @@ void testSaveSceneDocumentWritesExplicitRootCanonicalFormat() {
          "canonical save should not write legacy flat nodes");
 
   const demo::SceneDocument loaded = demo::loadSceneDocument(path);
-  EXPECT(loaded.sceneName() == "scene_viewer",
+  EXPECT(loaded.sceneName() == "lxe_editor",
          "scene name should survive round trip");
   EXPECT(loaded.gameplayCameraPath() == "/world/game_cam",
          "gameplay camera path should survive round trip");
@@ -491,10 +491,10 @@ void testSaveSceneDocumentWritesExplicitRootCanonicalFormat() {
 
 void testSaveSceneDocumentRejectsUnsupportedRootPayload() {
   demo::SceneDocument doc;
-  doc.setSceneName("scene_viewer");
+  doc.setSceneName("lxe_editor");
   auto& root = doc.mutableRootNode();
   root.nodeName = "scene_root";
-  root.meshUri = std::string("builtin://scene_viewer/ground_mesh");
+  root.meshUri = std::string("builtin://lxe_editor/ground_mesh");
 
   const std::filesystem::path path =
       makeTempPath("lx_scene_document_bad_save_payload.yaml");
@@ -514,7 +514,7 @@ void testSaveSceneDocumentRejectsUnsupportedRootPayload() {
 
 void testSaveSceneDocumentRejectsNonCanonicalRootIdentity() {
   demo::SceneDocument doc;
-  doc.setSceneName("scene_viewer");
+  doc.setSceneName("lxe_editor");
   auto& root = doc.mutableRootNode();
   root.nodeName = "custom_root";
   root.name = "root";

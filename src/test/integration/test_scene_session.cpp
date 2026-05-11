@@ -1,9 +1,9 @@
-#include "demos/scene_viewer/scene_session.hpp"
+#include "demos/lxe_editor/scene_session.hpp"
 
 #include <filesystem>
 #include <iostream>
 
-namespace demo = LX_demo::scene_viewer;
+namespace demo = LX_demo::lxe_editor;
 
 namespace {
 

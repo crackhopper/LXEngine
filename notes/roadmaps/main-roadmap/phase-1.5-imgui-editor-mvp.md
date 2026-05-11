@@ -62,13 +62,9 @@
 |-----|------|----------|
 | [REQ-041-b](../../requirements/041-b-command-bus-v2.md) | 命令总线 v2（参数补全 + undo·redo + 多选 EditorState） | 040-a / 041-a 落地 + 实战暴露痛点后；最大杠杆 |
 | [REQ-041-c](../../requirements/041-c-editor-multi-select.md) | 编辑器多选 / 框选 | 041-b 落地后 |
-| [REQ-041-d](../../requirements/041-d-editor-undo-redo-ui.md) | undo·redo UI 接入（工具栏按钮 + 状态栏 + Ctrl+Z 路由） | 041-b 落地后；与 041-c 并行 |
-| [REQ-041-e](../../requirements/041-e-editor-node-rename-duplicate.md) | 节点 Rename / Duplicate / Ctrl+D | 041-b 落地后；与 041-c / 041-d 并行 |
-| [REQ-041-f](../../requirements/041-f-editor-toolbar-menubar-theme.md) | 编辑器 chrome（菜单栏 + 工具栏其余按钮 + 主题切换） | 041-d 落地后 |
-| [REQ-041-g](../../requirements/041-g-component-v2-multi-and-enable.md) | Component 模型 v2（同节点多份 + enable·disable） | 037-a 已落地；Phase 1 出现 multi-mesh 真实需求后 |
-| [REQ-041-h](../../requirements/041-h-mesh-level-triangle-picking.md) | mesh 三角面级 picking（hit point / normal + CPU mesh 数据） | [Phase 2 REQ-209](phase-2-foundation-layer.md#req-209--aabb--空间索引) 空间索引落地后 |
-| [REQ-041-i](../../requirements/041-i-debug-draw-persistent-and-mesh.md) | DebugDraw v2（persistent draw + `wireMesh` 一行画整 mesh） | 041-h 落地后 |
-| [REQ-041-j](../../requirements/041-j-component-dependency-declaration.md) | Component 依赖声明（`ComponentTraits` Requires / Before / After） | Phase 5 物理立项 + 真实 require 链时 |
+| [REQ-041-d](../../requirements/041-d-scene-authoring-toolbar-palette.md) | 工具栏几何体 / 光源 / 相机拖拽创建 | 当前优先，直接服务测试场景搭建 |
+| [REQ-041-e](../../requirements/041-e-scene-authoring-inspector-material-and-visibility.md) | Inspector 的材质 / 颜色 / 可见性收敛 | 041-d 之后立即跟进 |
+| [REQ-041-f](../../requirements/041-f-scene-authoring-node-rename-duplicate.md) | Rename / Duplicate 对齐 scene document | 041-d / 041-e 之后 |
 
 ## 推进顺序
 
