@@ -108,6 +108,7 @@ lx_sync_asset_subdir("env")
 lx_sync_asset_subdir("models")
 lx_sync_asset_subdir("textures")
 lx_sync_asset_subdir("materials")
+lx_sync_asset_subdir("scenes")
 
 # 引入 shader 编译 target
 add_subdirectory(assets/shaders)

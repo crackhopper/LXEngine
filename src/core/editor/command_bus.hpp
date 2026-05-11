@@ -11,6 +11,11 @@
 
 namespace LX_core {
 
+inline constexpr std::string_view kCommandResultClearRedoOnSuccessMetadataKey =
+    "clearRedoOnSuccess";
+inline constexpr std::string_view kCommandResultClearUndoOnSuccessMetadataKey =
+    "clearUndoOnSuccess";
+
 struct CommandResult {
   bool ok = false;
   std::string message;
@@ -88,6 +93,7 @@ private:
   struct DispatchOptions {
     bool recordHistory = true;
     bool trackUndo = true;
+    bool clearUndoOnSuccess = true;
     bool clearRedoOnSuccess = true;
   };
 

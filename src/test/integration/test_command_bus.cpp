@@ -502,6 +502,151 @@ void testBuiltinRemainingCommandErrors() {
          "preview unknown action returns stable error");
 }
 
+void testSceneCommandsRequireRegisteredSceneIoCallbacks() {
+  CommandFixture fixture;
+
+  const CommandResult loadResult = fixture.bus.dispatch("scene load assets/example_scene.yaml");
+  EXPECT(!loadResult.ok, "scene load should fail before scene io is wired");
+  EXPECT(loadResult.message.find("unknown command: scene") == std::string::npos,
+         "scene load should fail through a scene command handler, not unknown-command dispatch");
+
+  const CommandResult saveResult = fixture.bus.dispatch("scene save");
+  EXPECT(!saveResult.ok, "scene save should fail before scene io is wired");
+  EXPECT(saveResult.message.find("unknown command: scene") == std::string::npos,
+         "scene save should fail through a scene command handler, not unknown-command dispatch");
+
+  const CommandResult saveAsResult =
+      fixture.bus.dispatch("scene save assets/example_scene.yaml");
+  EXPECT(!saveAsResult.ok, "scene save <path> should fail before scene io is wired");
+  EXPECT(saveAsResult.message.find("unknown command: scene") == std::string::npos,
+         "scene save <path> should fail through a scene command handler");
+}
+
+void testSceneCommandsUseRegisteredSceneIoCallbacks() {
+  SceneSharedPtr scene = Scene::create(nullptr);
+  EditorState editorState;
+  CommandBus bus;
+
+  std::vector<std::string> loadPaths;
+  std::vector<std::string> savePaths;
+  SceneIoContext sceneIo{
+      .load = [&](const std::string &path) {
+        loadPaths.push_back(path);
+        return CommandResult{true, "loaded " + path, "{\"path\":\"" + path + "\"}"};
+      },
+      .save = [&](const std::optional<std::string> &path) {
+        savePaths.push_back(path.value_or(std::string{}));
+        if (path.has_value()) {
+          return CommandResult{true, "saved " + *path,
+                               "{\"path\":\"" + *path + "\"}"};
+        }
+        return CommandResult{true, "saved current scene", "{\"path\":null}"};
+      }};
+  registerBuiltinCommands(bus, editorState, *scene, sceneIo);
+
+  const CommandResult loadResult = bus.dispatch("scene load assets/one.yaml");
+  EXPECT(loadResult.ok, "scene load should call registered callback");
+  EXPECT(loadPaths.size() == 1 && loadPaths[0] == "assets/one.yaml",
+         "scene load passes the requested path to callback");
+
+  const CommandResult saveResult = bus.dispatch("scene save");
+  EXPECT(saveResult.ok, "scene save should call registered callback");
+  EXPECT(savePaths.size() == 1 && savePaths[0].empty(),
+         "scene save without path should pass nullopt semantics to callback");
+
+  const CommandResult saveAsResult = bus.dispatch("scene save assets/two.yaml");
+  EXPECT(saveAsResult.ok, "scene save <path> should call registered callback");
+  EXPECT(savePaths.size() == 2 && savePaths[1] == "assets/two.yaml",
+         "scene save <path> passes explicit path to callback");
+}
+
+void testSceneLoadClearsRedoHistory() {
+  CommandFixture undoFixture;
+
+  SceneIoContext sceneIo{
+      .load = [](const std::string &path) {
+        return CommandResult{true, "loaded " + path, "{\"path\":\"" + path + "\"}"};
+      }};
+  registerBuiltinCommands(undoFixture.bus, undoFixture.editorState,
+                          *undoFixture.scene, sceneIo);
+
+  const CommandResult moveResult =
+      undoFixture.bus.dispatch("move /world/cube 1 0 0");
+  EXPECT(moveResult.ok, "setup move should succeed");
+  EXPECT(undoFixture.bus.canUndo(),
+         "mutating command should leave undo history before scene load");
+
+  const CommandResult loadUndoResult =
+      undoFixture.bus.dispatch("scene load assets/reloaded.yaml");
+  EXPECT(loadUndoResult.ok, "scene load should succeed through callback");
+  EXPECT(!undoFixture.bus.canUndo(),
+         "successful scene load should invalidate stale undo history");
+
+  CommandFixture redoFixture;
+  registerBuiltinCommands(redoFixture.bus, redoFixture.editorState,
+                          *redoFixture.scene, sceneIo);
+
+  const CommandResult redoMoveResult =
+      redoFixture.bus.dispatch("move /world/cube 1 0 0");
+  EXPECT(redoMoveResult.ok, "redo setup move should succeed");
+
+  const CommandResult undoResult = redoFixture.bus.undo();
+  EXPECT(undoResult.ok, "undo should succeed before scene load");
+  EXPECT(redoFixture.bus.canRedo(), "undoable command should leave redo history");
+
+  const CommandResult loadRedoResult =
+      redoFixture.bus.dispatch("scene load assets/reloaded.yaml");
+  EXPECT(loadRedoResult.ok, "scene load should succeed with redo history present");
+  EXPECT(!redoFixture.bus.canRedo(),
+         "successful scene load should clear stale redo history");
+}
+
+void testSceneSavePreservesRedoHistory() {
+  CommandFixture undoFixture;
+
+  SceneIoContext sceneIo{
+      .save = [](const std::optional<std::string> &path) {
+        if (path.has_value()) {
+          return CommandResult{true, "saved " + *path,
+                               "{\"path\":\"" + *path + "\"}"};
+        }
+        return CommandResult{true, "saved current scene", "{\"path\":null}"};
+      }};
+  registerBuiltinCommands(undoFixture.bus, undoFixture.editorState,
+                          *undoFixture.scene, sceneIo);
+
+  const CommandResult moveResult =
+      undoFixture.bus.dispatch("move /world/cube 1 0 0");
+  EXPECT(moveResult.ok, "setup move should succeed");
+  EXPECT(undoFixture.bus.canUndo(),
+         "mutating command should leave undo history before scene save");
+
+  const CommandResult saveUndoResult =
+      undoFixture.bus.dispatch("scene save assets/snapshot.yaml");
+  EXPECT(saveUndoResult.ok, "scene save should succeed through callback");
+  EXPECT(undoFixture.bus.canUndo(),
+         "successful scene save should preserve undo history");
+
+  CommandFixture redoFixture;
+  registerBuiltinCommands(redoFixture.bus, redoFixture.editorState,
+                          *redoFixture.scene, sceneIo);
+
+  const CommandResult redoMoveResult =
+      redoFixture.bus.dispatch("move /world/cube 1 0 0");
+  EXPECT(redoMoveResult.ok, "redo setup move should succeed");
+
+  const CommandResult undoResult = redoFixture.bus.undo();
+  EXPECT(undoResult.ok, "undo should succeed before scene save");
+  EXPECT(redoFixture.bus.canRedo(),
+         "undoable command should leave redo history");
+
+  const CommandResult saveRedoResult =
+      redoFixture.bus.dispatch("scene save assets/snapshot.yaml");
+  EXPECT(saveRedoResult.ok, "scene save should succeed with redo history present");
+  EXPECT(redoFixture.bus.canRedo(),
+         "successful scene save should preserve redo history");
+}
+
 void testConsolePanelSubmitsAndClearsDisplay() {
   CommandFixture fixture;
   ConsolePanel panel(fixture.bus);
@@ -608,6 +753,10 @@ int main() {
   testBuiltinAddRemoveSetCommands();
   testBuiltinCamAndPreviewCommands();
   testBuiltinRemainingCommandErrors();
+  testSceneCommandsRequireRegisteredSceneIoCallbacks();
+  testSceneCommandsUseRegisteredSceneIoCallbacks();
+  testSceneLoadClearsRedoHistory();
+  testSceneSavePreservesRedoHistory();
   testConsolePanelSubmitsAndClearsDisplay();
   testConsolePanelBrowseAndAutocomplete();
   testConsolePanelUndoRedoShortcutsUseCommandBus();

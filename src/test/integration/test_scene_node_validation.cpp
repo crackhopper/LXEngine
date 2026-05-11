@@ -595,6 +595,24 @@ void testCameraScaleDoesNotAffectViewMatrix() {
          "camera view matrix should ignore owner scale");
 }
 
+void testCameraLookAtPreservesExactTargetDistance() {
+  auto cameraNode = SceneNode::create("target_distance_camera");
+  auto camera = cameraNode->addComponent<CameraComponent>();
+  EXPECT(camera.has_value(), "camera component should attach to node");
+  if (!camera.has_value()) {
+    return;
+  }
+
+  const Vec3f eye{7.0f, 8.0f, 9.0f};
+  const Vec3f target{7.0f, 8.0f, 2.0f};
+  camera->get().lookAt(eye, target, Vec3f{0.0f, 1.0f, 0.0f});
+
+  EXPECT(nearlyEqualVec3(camera->get().getEyePosition(), eye),
+         "camera eye should match lookAt eye");
+  EXPECT(nearlyEqualVec3(camera->get().getLookTarget(), target),
+         "camera look target should preserve exact lookAt target");
+}
+
 void testOrdinaryMaterialWritesDoNotChangeValidatedPassState() {
   auto material = makeMaterial(false);
   auto nodeA =
@@ -822,6 +840,7 @@ int main(int argc, char **argv) {
   testHierarchyChangesDirtyChildPerDrawModel();
   testParentedCameraFollowsHierarchyTranslation();
   testCameraScaleDoesNotAffectViewMatrix();
+  testCameraLookAtPreservesExactTargetDistance();
   testOrdinaryMaterialWritesDoNotChangeValidatedPassState();
   testOptionalSampledResourcesDoNotBlockValidation();
   testSkinningVariantChangesPipelineKeyAndAddsBones();

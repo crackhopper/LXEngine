@@ -4,13 +4,17 @@
 
 add_executable(demo_scene_viewer
   main.cpp
-  scene_builder.cpp
   camera_rig.cpp
+  editor_camera_state.cpp
+  scene_builder.cpp
+  scene_document.cpp
+  scene_runtime.cpp
   ui_overlay.cpp
 )
 
 target_include_directories(demo_scene_viewer PRIVATE
   ${CMAKE_SOURCE_DIR}/src
+  ${CMAKE_SOURCE_DIR}/src/infra/external/yaml-cpp/include
 )
 
 target_link_libraries(demo_scene_viewer PRIVATE
@@ -18,6 +22,7 @@ target_link_libraries(demo_scene_viewer PRIVATE
   ${INFRA_LIB}
   ${GRAPHICS_LIB}
   imgui
+  yaml-cpp::yaml-cpp
 )
 
 # Ensure shaders are compiled before the demo runs so the runtime pipeline

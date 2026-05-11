@@ -99,7 +99,9 @@ Vec3f CameraComponent::getUpVector() const {
 }
 
 Vec3f CameraComponent::getLookTarget(float distance) const {
-  return getEyePosition() + getForwardVector() * distance;
+  const float resolvedDistance =
+      m_lookDistance.has_value() ? *m_lookDistance : distance;
+  return getEyePosition() + getForwardVector() * resolvedDistance;
 }
 
 Mat4f CameraComponent::getViewMatrix() const {
@@ -194,6 +196,13 @@ void CameraComponent::lookAt(const Vec3f &eye, const Vec3f &target,
   Transform local = toLocalFromWorld(node, makeWorldLookAt(eye, target, up));
   local.scale = node.getLocalTransform().scale;
   node.setLocalTransform(local);
+
+  const float distance = (target - eye).length();
+  if (distance > std::numeric_limits<float>::epsilon()) {
+    m_lookDistance = distance;
+  } else {
+    m_lookDistance.reset();
+  }
 }
 
 } // namespace LX_core

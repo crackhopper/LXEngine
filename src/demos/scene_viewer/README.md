@@ -1,17 +1,17 @@
 # demo_scene_viewer
 
-The default playground demo. Loads `DamagedHelmet.gltf`, renders it through
-the project's Vulkan backend with the existing Blinn-Phong material, adds a
-ground plane, a directional light, and an ImGui editor MVP overlay with
-scene tree / inspector / console / viewport overlay plus Orbit / FreeFly
-camera modes.
+The default playground demo. Loads the authored scene document at
+`assets/scenes/scene_viewer.scene.yaml`, builds the DamagedHelmet + ground +
+directional-light preview scene through the project's Vulkan backend, and adds
+an ImGui editor MVP overlay with scene tree / inspector / console / viewport
+overlay plus Orbit / FreeFly camera modes.
 
 ## Purpose
 
 - Collapse the "does the engine actually run end-to-end?" question into a
   single executable
-- Provide the default integration target for future scene features (Sponza,
-  shadows, IBL, post-processing)
+- Provide the default integration target for scene-document loading/saving plus
+  future scene features (Sponza, shadows, IBL, post-processing)
 - Keep a human-friendly UI surface so selection / camera / light / transform
   tweaks are observable without editing source
 
@@ -56,13 +56,39 @@ export LD_LIBRARY_PATH=build/_deps/sdl3-build:$LD_LIBRARY_PATH
 The demo now initializes an explicit runtime asset root and fails fast
 with a non-zero exit code if the `assets/` tree cannot be found.
 
+## Scene document behavior
+
+- The default startup document is `assets/scenes/scene_viewer.scene.yaml`.
+- `game_cam` is the authored gameplay camera serialized under `gameCamera`.
+- `editor_cam` is editor-only state. It is restored from `editor.editorCamera`
+  metadata when present and otherwise falls back to the gameplay camera pose.
+- Current scene-document I/O only persists the metadata that `scene_viewer`
+  owns today: the scene name, `gameCamera`, and editor-only
+  `editor.editorCamera` state.
+- The Helmet / ground / directional-light content is still rebuilt from code
+  when a document is loaded; it is not serialized from the runtime scene graph.
+- `scene load <path>` queues a new document and applies it on the next update
+  tick rather than swapping the active scene immediately from the console call.
+- `scene save` writes the current owned document metadata back to the currently
+  loaded document path.
+- `scene save <path>` writes that same owned document metadata to a new path
+  and updates the current runtime document path to that saved location.
+
+## Console commands
+
+| Command | Effect |
+|---------|--------|
+| `scene load <path>` | Queue a document-metadata reload for the next update tick, then rebuild the authored scene content from code |
+| `scene save` | Save the current owned document metadata back to the current document |
+| `scene save <path>` | Save the current owned document metadata to a new path and make that path the current document |
+
 ## Controls
 
 | Key / Mouse | Effect |
 |-------------|--------|
 | `F1` | Toggle the Help panel |
 | `F2` | Switch between Orbit and FreeFly camera modes |
-| `F` | Toggle preview camera |
+| `F` | Toggle preview between the editor and gameplay camera paths |
 | `W` / `E` / `R` | Gizmo Translate / Rotate / Scale mode |
 | `Esc` | Deselect current node |
 | `Delete` | Remove selected node |

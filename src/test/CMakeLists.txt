@@ -31,6 +31,8 @@ set(TEST_INTEGRATION_EXE_LIST
   test_imgui_overlay
   test_command_bus
   test_command_bus_v2
+  test_scene_document
+  test_scene_runtime
   test_debug_ui_smoke
   test_scene_tree_panel
   test_editor_multi_select
@@ -142,6 +144,30 @@ if(TARGET test_scene_viewer_layout)
     ${CMAKE_CURRENT_SOURCE_DIR}/..
   )
   target_link_libraries(test_scene_viewer_layout PRIVATE imgui)
+endif()
+
+if(TARGET test_scene_document)
+  target_sources(test_scene_document PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/scene_viewer/editor_camera_state.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/scene_viewer/scene_document.cpp
+  )
+  target_include_directories(test_scene_document PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/..
+    ${CMAKE_CURRENT_SOURCE_DIR}/../infra/external/yaml-cpp/include
+  )
+endif()
+
+if(TARGET test_scene_runtime)
+  target_sources(test_scene_runtime PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/scene_viewer/scene_builder.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/scene_viewer/editor_camera_state.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/scene_viewer/scene_document.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/scene_viewer/scene_runtime.cpp
+  )
+  target_include_directories(test_scene_runtime PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/..
+    ${CMAKE_CURRENT_SOURCE_DIR}/../infra/external/yaml-cpp/include
+  )
 endif()
 
 set(TEST_APP_EXE_LIST

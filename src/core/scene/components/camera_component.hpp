@@ -61,6 +61,7 @@ private:
   Transform getOwnerWorldTransform() const;
 
   CameraDataSharedPtr m_ubo = std::make_shared<CameraData>();
+  std::optional<float> m_lookDistance;
   std::optional<RenderTarget> m_target;
   VisibilityLayerMask m_cullingMask = Layer_All & ~Layer_EditorOverlay;
   bool m_active = true;

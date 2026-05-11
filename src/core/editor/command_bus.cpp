@@ -102,6 +102,16 @@ struct TokenizeResult {
   return !text.empty() && isWhitespace(text.back());
 }
 
+[[nodiscard]] bool parseMetadataBool(const std::string &value, bool fallback) {
+  if (value == "true") {
+    return true;
+  }
+  if (value == "false") {
+    return false;
+  }
+  return fallback;
+}
+
 } // namespace
 
 void CommandBus::registerHandler(std::string verb, std::string brief,
@@ -156,7 +166,7 @@ CommandResult CommandBus::undo() {
   m_undoStack.pop_back();
   const std::vector<CommandResult> results =
       dispatchScriptInternal(entry.inverseLine,
-                             DispatchOptions{false, false, false});
+                             DispatchOptions{false, false, false, false});
   if (results.empty()) {
     m_undoStack.push_back(entry);
     return CommandResult{false, "undo failed: empty inverse command", {}, {}};
@@ -181,7 +191,7 @@ CommandResult CommandBus::redo() {
   m_redoStack.pop_back();
   const std::vector<CommandResult> results =
       dispatchScriptInternal(entry.redoLine,
-                             DispatchOptions{false, false, false});
+                             DispatchOptions{false, false, false, false});
   if (results.empty()) {
     m_redoStack.push_back(entry);
     return CommandResult{false, "redo failed: empty forward command", {}, {}};
@@ -342,8 +352,25 @@ CommandResult CommandBus::dispatchInternal(const std::string &line,
         result = CommandResult{false, "exception: unknown", {}, {}};
       }
 
-      if (result.ok && handlerIt->second.metadata.mutatesState &&
-          options.clearRedoOnSuccess) {
+      bool clearUndoOnSuccess = false;
+      const auto clearUndoIt =
+          result.metadata.find(std::string(kCommandResultClearUndoOnSuccessMetadataKey));
+      if (clearUndoIt != result.metadata.end()) {
+        clearUndoOnSuccess = parseMetadataBool(clearUndoIt->second, false);
+      }
+
+      bool clearRedoOnSuccess = handlerIt->second.metadata.mutatesState;
+      const auto clearRedoIt =
+          result.metadata.find(std::string(kCommandResultClearRedoOnSuccessMetadataKey));
+      if (clearRedoIt != result.metadata.end()) {
+        clearRedoOnSuccess =
+            parseMetadataBool(clearRedoIt->second, clearRedoOnSuccess);
+      }
+
+      if (result.ok && clearUndoOnSuccess && options.clearUndoOnSuccess) {
+        m_undoStack.clear();
+      }
+      if (result.ok && clearRedoOnSuccess && options.clearRedoOnSuccess) {
         m_redoStack.clear();
       }
       if (result.ok && options.trackUndo && handlerIt->second.metadata.inverse) {

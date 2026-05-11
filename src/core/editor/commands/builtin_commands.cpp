@@ -64,6 +64,21 @@ constexpr float kDegToRad = 3.14159265358979323846f / 180.0f;
   return CommandResult{true, std::move(message), std::move(structured)};
 }
 
+[[nodiscard]] CommandResult makeSceneIoUnavailable(const std::string &action) {
+  return makeError("scene I/O unavailable: scene " + action +
+                   " callback is not registered");
+}
+
+[[nodiscard]] CommandResult markClearsHistoryOnSuccess(CommandResult result) {
+  if (result.ok) {
+    result.metadata[std::string(kCommandResultClearUndoOnSuccessMetadataKey)] =
+        "true";
+    result.metadata[std::string(kCommandResultClearRedoOnSuccessMetadataKey)] =
+        "true";
+  }
+  return result;
+}
+
 [[nodiscard]] std::optional<float> parseFloat(const std::string &text) {
   try {
     size_t index = 0;
@@ -956,8 +971,11 @@ struct BuiltinCommandState {
 } // namespace
 
 void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
-                             Scene &scene) {
+                             Scene &scene,
+                             const SceneIoContext &sceneIoContext) {
   const auto state = std::make_shared<BuiltinCommandState>();
+  const auto sceneLoad = sceneIoContext.load;
+  const auto sceneSave = sceneIoContext.save;
 
   bus.registerHandler(
       "help", "help [verb]",
@@ -970,6 +988,40 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
           return makeError(message);
         }
         return makeOk(message, makeVerbListJson(bus.listVerbs()));
+      });
+
+  bus.registerHandler(
+      "scene", "scene load <path> | scene save [path]",
+      [sceneLoad, sceneSave](std::vector<std::string> args) {
+        if (args.empty()) {
+          return makeError("usage: scene load <path> | scene save [path]");
+        }
+
+        const std::string &action = args[0];
+        if (action == "load") {
+          if (args.size() != 2) {
+            return makeError("usage: scene load <path>");
+          }
+          if (!sceneLoad) {
+            return makeSceneIoUnavailable("load");
+          }
+          return markClearsHistoryOnSuccess(sceneLoad(args[1]));
+        }
+
+        if (action == "save") {
+          if (args.size() > 2) {
+            return makeError("usage: scene save [path]");
+          }
+          if (!sceneSave) {
+            return makeSceneIoUnavailable("save");
+          }
+          if (args.size() == 2) {
+            return sceneSave(args[1]);
+          }
+          return sceneSave(std::nullopt);
+        }
+
+        return makeError("unknown scene action: " + action);
       });
 
   bus.registerHandler(

@@ -50,7 +50,11 @@ CameraRig::CameraRig()
     : m_orbit(LX_core::Vec3f{0.0f, 0.0f, 0.0f}, 3.0f, 0.0f, 0.0f),
       m_freefly(LX_core::Vec3f{0.0f, 0.0f, 3.0f}, 180.0f, 0.0f) {}
 
-void CameraRig::attach(LX_core::CameraComponent& camera) { m_camera = std::ref(camera); }
+void CameraRig::attach(LX_core::CameraComponent& camera) {
+  m_camera = std::ref(camera);
+  syncOrbitFromCamera(m_orbit, camera);
+  syncFreeFlyFromCamera(m_freefly, camera);
+}
 
 void CameraRig::switchMode() {
   if (!m_camera) return;
