@@ -2,6 +2,7 @@
 
 #include "yaml-cpp/yaml.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -12,11 +13,21 @@
 namespace LX_demo::scene_viewer {
 namespace {
 
+constexpr const char* kDefaultRootNodeName = "scene_root";
+
+[[nodiscard]] SceneNodeDocument makeDefaultRootNode() {
+  SceneNodeDocument rootNode;
+  rootNode.nodeName = kDefaultRootNodeName;
+  return rootNode;
+}
+
 struct SceneDocumentData final {
   std::string sceneName = "Scene";
   std::string gameplayCameraPath = "/game_cam";
-  std::vector<SceneNodeDocument> nodes;
+  SceneNodeDocument rootNode;
   std::optional<EditorCameraState> editorCamera;
+
+  SceneDocumentData() : rootNode(makeDefaultRootNode()) {}
 };
 
 [[nodiscard]] LX_core::Vec3f loadVec3(const YAML::Node& node,
@@ -152,7 +163,11 @@ void saveEditorCamera(YAML::Emitter& out, const EditorCameraState& state) {
 
 [[nodiscard]] SceneNodeDocument loadNodeDocument(const YAML::Node& node) {
   SceneNodeDocument entry;
-  entry.nodeName = node["nodeName"].as<std::string>();
+  entry.nodeName =
+      node["nodeName"] ? node["nodeName"].as<std::string>() : std::string{};
+  if (entry.nodeName.empty()) {
+    throw std::runtime_error("scene document node is missing nodeName");
+  }
   entry.name = node["name"] ? node["name"].as<std::string>() : std::string{};
   entry.parentPath =
       node["parentPath"] ? node["parentPath"].as<std::string>() : std::string{};
@@ -180,16 +195,39 @@ void saveEditorCamera(YAML::Emitter& out, const EditorCameraState& state) {
   if (const auto lightNode = node["directionalLight"]; lightNode) {
     entry.directionalLight = loadDirectionalLightState(lightNode);
   }
+  if (const auto childrenNode = node["children"];
+      childrenNode) {
+    if (!childrenNode.IsSequence()) {
+      throw std::runtime_error("scene document children must be a sequence");
+    }
+    entry.children.reserve(childrenNode.size());
+    for (const auto& childNode : childrenNode) {
+      entry.children.push_back(loadNodeDocument(childNode));
+    }
+  }
   return entry;
+}
+
+void validateExplicitRootNode(const SceneNodeDocument& rootNode) {
+  if (rootNode.nodeName != kDefaultRootNodeName) {
+    throw std::runtime_error(
+        "scene document root identity must use canonical nodeName 'scene_root'");
+  }
+  if (!rootNode.name.empty() || !rootNode.parentPath.empty()) {
+    throw std::runtime_error(
+        "scene document root identity must use empty name and no parentPath");
+  }
+  if (rootNode.meshUri.has_value() || rootNode.materialUri.has_value() ||
+      rootNode.camera.has_value() || rootNode.directionalLight.has_value()) {
+    throw std::runtime_error(
+        "scene document root payload is unsupported");
+  }
 }
 
 void saveNodeDocument(YAML::Emitter& out, const SceneNodeDocument& node) {
   out << YAML::BeginMap;
   out << YAML::Key << "nodeName" << YAML::Value << node.nodeName;
   out << YAML::Key << "name" << YAML::Value << node.name;
-  if (!node.parentPath.empty()) {
-    out << YAML::Key << "parentPath" << YAML::Value << node.parentPath;
-  }
   out << YAML::Key << "transform" << YAML::Value << YAML::BeginMap;
   out << YAML::Key << "translation" << YAML::Value;
   saveVec3(out, node.transform.translation);
@@ -215,7 +253,115 @@ void saveNodeDocument(YAML::Emitter& out, const SceneNodeDocument& node) {
   if (node.directionalLight.has_value()) {
     saveDirectionalLightState(out, *node.directionalLight);
   }
+  if (!node.children.empty()) {
+    out << YAML::Key << "children" << YAML::Value << YAML::BeginSeq;
+    for (const auto& child : node.children) {
+      saveNodeDocument(out, child);
+    }
+    out << YAML::EndSeq;
+  }
   out << YAML::EndMap;
+}
+
+[[nodiscard]] std::vector<std::string> splitPathSegments(std::string path) {
+  if (path.empty()) {
+    path = "/";
+  } else if (path.front() != '/') {
+    path.insert(path.begin(), '/');
+  }
+
+  std::vector<std::string> segments;
+  std::string current;
+  for (usize i = 1; i < path.size(); ++i) {
+    if (path[i] == '/') {
+      segments.push_back(current);
+      current.clear();
+      continue;
+    }
+    current.push_back(path[i]);
+  }
+  if (path.size() > 1) {
+    segments.push_back(current);
+  }
+  return segments;
+}
+
+[[nodiscard]] SceneNodeDocument* findNodeByPath(SceneNodeDocument& rootNode,
+                                                const std::string& path) {
+  const auto segments = splitPathSegments(path);
+  SceneNodeDocument* current = &rootNode;
+  for (const auto& segment : segments) {
+    auto childIt = std::find_if(
+        current->children.begin(), current->children.end(),
+        [&segment](const SceneNodeDocument& child) {
+          return child.name == segment || child.nodeName == segment;
+        });
+    if (childIt == current->children.end()) {
+      return nullptr;
+    }
+    current = &*childIt;
+  }
+  return current;
+}
+
+[[nodiscard]] std::string canonicalPathSegment(const SceneNodeDocument& node) {
+  return node.name.empty() ? node.nodeName : node.name;
+}
+
+[[nodiscard]] std::string canonicalizePath(const SceneNodeDocument& rootNode,
+                                           const std::string& path) {
+  const auto segments = splitPathSegments(path);
+  if (segments.empty()) {
+    return "/";
+  }
+
+  const SceneNodeDocument* current = &rootNode;
+  std::string canonicalPath;
+  for (const auto& segment : segments) {
+    const auto childIt = std::find_if(
+        current->children.begin(), current->children.end(),
+        [&segment](const SceneNodeDocument& child) {
+          return child.name == segment || child.nodeName == segment;
+        });
+    if (childIt == current->children.end()) {
+      return path;
+    }
+
+    canonicalPath += "/";
+    canonicalPath += canonicalPathSegment(*childIt);
+    current = &*childIt;
+  }
+
+  return canonicalPath;
+}
+
+[[nodiscard]] SceneNodeDocument
+normalizeLegacyNodes(std::vector<SceneNodeDocument> flatNodes) {
+  SceneNodeDocument rootNode = makeDefaultRootNode();
+
+  while (!flatNodes.empty()) {
+    bool attachedAny = false;
+    for (auto it = flatNodes.begin(); it != flatNodes.end();) {
+      const std::string normalizedParentPath =
+          it->parentPath.empty() ? "/" : it->parentPath;
+      SceneNodeDocument* parent = findNodeByPath(rootNode, normalizedParentPath);
+      if (parent == nullptr) {
+        ++it;
+        continue;
+      }
+
+      it->parentPath.clear();
+      parent->children.push_back(std::move(*it));
+      it = flatNodes.erase(it);
+      attachedAny = true;
+    }
+    if (!attachedAny) {
+      throw std::runtime_error(
+          "scene document parent path not found during legacy normalization");
+    }
+  }
+
+  return rootNode;
 }
 
 } // namespace
@@ -275,19 +421,19 @@ const std::string& SceneDocument::gameplayCameraPath() const {
       ->gameplayCameraPath;
 }
 
-std::vector<SceneNodeDocument>& SceneDocument::mutableNodes() {
+SceneNodeDocument& SceneDocument::mutableRootNode() {
   if (!m_impl) {
     m_impl = std::make_shared<SceneDocumentData>();
   }
-  return std::static_pointer_cast<SceneDocumentData>(m_impl)->nodes;
+  return std::static_pointer_cast<SceneDocumentData>(m_impl)->rootNode;
 }
 
-const std::vector<SceneNodeDocument>& SceneDocument::nodes() const {
-  static const std::vector<SceneNodeDocument> kEmptyNodes;
+const SceneNodeDocument& SceneDocument::rootNode() const {
+  static const SceneNodeDocument kDefaultRootNode = makeDefaultRootNode();
   if (!m_impl) {
-    return kEmptyNodes;
+    return kDefaultRootNode;
   }
-  return std::static_pointer_cast<const SceneDocumentData>(m_impl)->nodes;
+  return std::static_pointer_cast<const SceneDocumentData>(m_impl)->rootNode;
 }
 
 bool SceneDocument::hasEditorCamera() const {
@@ -330,13 +476,23 @@ SceneDocument loadSceneDocument(const std::filesystem::path& path) {
     }
   }
 
-  if (const YAML::Node nodesNode = root["nodes"]; nodesNode && nodesNode.IsSequence()) {
-    auto& nodes = document.mutableNodes();
-    nodes.clear();
-    nodes.reserve(nodesNode.size());
-    for (const auto& node : nodesNode) {
-      nodes.push_back(loadNodeDocument(node));
+  if (const YAML::Node rootNode = root["root"]; rootNode.IsDefined()) {
+    if (!rootNode.IsMap()) {
+      throw std::runtime_error("scene document root must be a map");
     }
+    auto parsedRoot = loadNodeDocument(rootNode);
+    validateExplicitRootNode(parsedRoot);
+    document.mutableRootNode() = std::move(parsedRoot);
+  } else if (const YAML::Node nodesNode = root["nodes"];
+             nodesNode && nodesNode.IsSequence()) {
+    std::vector<SceneNodeDocument> flatNodes;
+    flatNodes.reserve(nodesNode.size());
+    for (const auto& node : nodesNode) {
+      flatNodes.push_back(loadNodeDocument(node));
+    }
+    document.mutableRootNode() = normalizeLegacyNodes(std::move(flatNodes));
+    document.setGameplayCameraPath(
+        canonicalizePath(document.rootNode(), document.gameplayCameraPath()));
   }
 
   if (const YAML::Node editorNode = root["editor"]; editorNode) {
@@ -351,6 +507,8 @@ SceneDocument loadSceneDocument(const std::filesystem::path& path) {
 
 void saveSceneDocument(const std::filesystem::path& path,
                        const SceneDocument& document) {
+  validateExplicitRootNode(document.rootNode());
+
   if (const auto parentPath = path.parent_path(); !parentPath.empty()) {
     std::filesystem::create_directories(parentPath);
   }
@@ -364,11 +522,8 @@ void saveSceneDocument(const std::filesystem::path& path,
       << document.gameplayCameraPath();
   out << YAML::EndMap;
 
-  out << YAML::Key << "nodes" << YAML::Value << YAML::BeginSeq;
-  for (const auto& node : document.nodes()) {
-    saveNodeDocument(out, node);
-  }
-  out << YAML::EndSeq;
+  out << YAML::Key << "root" << YAML::Value;
+  saveNodeDocument(out, document.rootNode());
 
   if (document.hasEditorCamera()) {
     saveEditorCamera(out, document.editorCamera());

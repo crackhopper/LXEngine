@@ -101,10 +101,7 @@ void SceneTreePanel::draw() {
 
   ImGui::Separator();
 
-  for (const auto &root : m_scene.getRootNodes()) {
-    if (!root) {
-      continue;
-    }
+  if (const auto& root = m_scene.getRootNode(); root) {
     drawNode(*root);
   }
 
@@ -240,6 +237,10 @@ void SceneTreePanel::drawNode(SceneNode &node) {
   ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow |
                              ImGuiTreeNodeFlags_OpenOnDoubleClick |
                              ImGuiTreeNodeFlags_SpanAvailWidth;
+  if (node.isSceneRoot()) {
+    flags |= ImGuiTreeNodeFlags_DefaultOpen |
+             ImGuiTreeNodeFlags_NoTreePushOnOpen;
+  }
   if (!hasLiveChildren(node)) {
     flags |= ImGuiTreeNodeFlags_Leaf;
   }
@@ -250,7 +251,10 @@ void SceneTreePanel::drawNode(SceneNode &node) {
     }
   }
 
-  const std::string label = node.getName().empty() ? node.getNodeName() : node.getName();
+  const std::string label = node.isSceneRoot()
+                                ? std::string("root")
+                                : (node.getName().empty() ? node.getNodeName()
+                                                          : node.getName());
   const bool open = ImGui::TreeNodeEx(static_cast<void *>(&node), flags, "%s", label.c_str());
   if (isPrimarySelected(m_editorState, node)) {
     constexpr float outlinePadding = 2.0f;
@@ -268,7 +272,7 @@ void SceneTreePanel::drawNode(SceneNode &node) {
     (void)handleNodeClick(node, io.KeyCtrl, io.KeyShift);
   }
 
-  if (ImGui::BeginPopupContextItem()) {
+  if (!node.isSceneRoot() && ImGui::BeginPopupContextItem()) {
     if (ImGui::MenuItem("Remove")) {
       (void)dispatchRemovePath(node.getPath());
     }
@@ -276,12 +280,19 @@ void SceneTreePanel::drawNode(SceneNode &node) {
   }
 
   if (open) {
+    if (node.isSceneRoot()) {
+      ImGui::Indent();
+    }
     for (const auto &child : node.getChildren()) {
       if (child) {
         drawNode(*child);
       }
     }
-    ImGui::TreePop();
+    if (node.isSceneRoot()) {
+      ImGui::Unindent();
+    } else {
+      ImGui::TreePop();
+    }
   }
 
   if (!m_revealPath.empty() && node.getPath() == m_revealPath) {

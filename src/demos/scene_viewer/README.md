@@ -61,6 +61,11 @@ with a non-zero exit code if the `assets/` tree cannot be found.
 - Built-in scenes live under `assets/scenes/` and are listed as `asset`.
 - User scenes and autosaved copies live under `data/scenes/` and are listed as
   `local`.
+- Editor chrome persists locally under `data/scene_viewer/`:
+  `layout.ini` stores ImGui window layout/collapsed state and
+  `window_state.ini` stores the native window position/size/maximized state.
+  These files do not store the current scene path, selection, preview mode, or
+  other session state.
 - `game_cam` is the authored gameplay camera serialized in the scene document.
 - `editor_cam` is editor-only state. It is restored from
   `editor.editorCamera` when present and otherwise falls back to the gameplay
@@ -156,3 +161,5 @@ registered with CTest.
    `data/scenes/` instead of overwriting the asset.
 10. Closing a dirty scene shows a save/discard/cancel prompt and exits cleanly
     after `Save` or `Discard`.
+11. Moving/resizing the main window or rearranging/collapsing editor panels is
+    restored on the next launch from `data/scene_viewer/`.

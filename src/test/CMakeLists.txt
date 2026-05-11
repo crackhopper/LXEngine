@@ -141,6 +141,7 @@ if(TARGET test_scene_viewer_layout)
   target_sources(test_scene_viewer_layout PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/scene_viewer/ui_overlay.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/scene_viewer/camera_rig.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/scene_viewer/window_layout_state.cpp
   )
   target_include_directories(test_scene_viewer_layout PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/..

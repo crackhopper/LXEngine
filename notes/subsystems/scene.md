@@ -20,7 +20,7 @@
 - `IRenderable`：renderable 抽象接口，新增 `getValidatedPassData(pass)` 只读出口。
 - `SceneNode`：当前主路径实现，聚合 `nodeName`、独立 `name/path`、`std::vector<std::unique_ptr<IComponent>>`、`PerDrawDataSharedPtr` 与 transform hierarchy。
 - `transform hierarchy`：`SceneNode` 额外维护 `Transform` 形式的 `localTransform`、派生 `Mat4f worldTransform`、可选 parent 和 child 关系；scene 仍然平铺持有 renderable，hierarchy 只负责空间组合。
-- `path root`：`Scene` 内部持有一个只用于路径寻址的 synthetic root；`findByPath("/")` 返回它，真实 top-level 节点路径形如 `/world`。
+- `scene root`：`Scene` 内部持有一个真实的显式 root 节点；`findByPath("/")` 返回它，真实 top-level 节点作为 root 的 children，路径仍然形如 `/world`。
 - `ValidatedRenderablePassData`：`pass -> validated entry` 缓存项，保存 queue 需要的稳定结构结果。
 - `RenderingItem`：一次 draw 的完整上下文，字段仍是 `shaderInfo`、`material`、`drawData`、`vertexBuffer`、`indexBuffer`、`descriptorResources`、`pass`、`pipelineKey`。
 - `visibility mask`：`SceneNode` 自身携带的 layer bitmask；camera 持有独立 `cullingMask`，queue 构建时做交集判断。
@@ -71,7 +71,7 @@
 - `IRenderable::getDescriptorResources(...)` 已经是显式带 pass 的接口；`getShaderInfo()` 的无参版本仍主要作为 Forward 默认读取路径保留。
 - `PerDrawData` 仍是 128 字节缓冲，但当前 engine-wide ABI 只要求 `PerDrawLayoutBase` / `PerDrawLayout` 的 `model` 字段有效。
 - 第一版 hierarchy 只支持 renderable-to-renderable 关系；没有单独的 transform-only scene node，也不会改变 `Scene` 对 renderable 的平铺 ownership，所以 child 仍然需要显式加入 `Scene`。
-- `Scene` 构造时仍会补一个默认 camera 和一个默认 directional light，方便不走完整 renderer 初始化的测试；节点一旦通过 `addRenderable()` 挂进 scene，也会拿到一个弱 back-reference，用来支持 shared material 重验证传播。
+- `Scene` 构造时仍会补一个默认 directional light；camera 由调用方显式创建并挂到 scene root 下。节点一旦通过 `addRenderable()` / `addCamera()` 挂进 scene，也会拿到一个弱 back-reference，用来支持 shared material 重验证传播。
 - `src/core/scene/object.cpp` 里的 fatal 文本现在会直接带上缺失的 input 名字，例如 `missing vertex input 'inUV' at location 2`，便于把 forward variant 失败定位到具体 mesh contract。
 - `src/test/integration/test_scene_node_validation.cpp` 已经把 `missing inColor / inUV / inNormal / inTangent / inBoneIDs / inBoneWeights / Skeleton` 这些 forward-path 失败都跑成子进程死亡测试，同时覆盖了“可选 sampler 缺失不阻塞校验”的回归用例。
 
@@ -88,6 +88,10 @@
 - `scene save <path>` 支持显式另存；如果显式路径仍指向受保护的 `asset` 区域且权限不是 `admin`，也会被重定向到 `local`。
 - `admin on` / `admin off` / `admin status` 控制当前编辑会话的最小两级权限。
 - 关闭 dirty 场景时会弹出 `Save / Discard / Cancel`；`Save` 走的就是同一条 `scene save` 决策路径，不会在 `user` 模式下静默覆盖内置 asset。
+- `scene_viewer` 的编辑器窗口布局和主窗口几何保存在 `data/scene_viewer/`：
+  - `layout.ini` 保存 ImGui 窗口位置、大小和折叠状态
+  - `window_state.ini` 保存主窗口位置、大小和最大化状态
+  这些本地文件不参与 scene asset 序列化，也不进入版本库。
 
 ## 从哪里改
 

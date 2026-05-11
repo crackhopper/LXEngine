@@ -174,6 +174,69 @@ void testPrimarySelectionDrawsOutline() {
   ImGui::DestroyContext();
 }
 
+void testRootRowRendersAndRemainsUserCollapsible() {
+  if (!setupMinimalImGui()) {
+    std::cout << "[SKIP] scene_tree_panel root row test (font atlas unavailable)\n";
+    ImGui::DestroyContext();
+    return;
+  }
+
+  Fixture fixture;
+  LX_core::SceneTreePanel panel(fixture.bus, fixture.editorState, *fixture.scene);
+
+  ImGui::NewFrame();
+  panel.draw();
+  ImGui::EndFrame();
+
+  ImGuiWindow *window = ImGui::FindWindowByName("Scene Tree");
+  EXPECT(window != nullptr, "scene tree window should exist after root draw");
+  if (window == nullptr) {
+    ImGui::DestroyContext();
+    return;
+  }
+
+  const ImGuiID rootId =
+      window->GetID(static_cast<void *>(fixture.scene->getRootNode().get()));
+  ImGuiStorage *storage = window->DC.StateStorage;
+  EXPECT(storage != nullptr, "scene tree should keep state storage for root row");
+  if (storage != nullptr) {
+    storage->SetInt(rootId, 1);
+  }
+
+  ImGui::NewFrame();
+  panel.draw();
+  ImGui::EndFrame();
+
+  window = ImGui::FindWindowByName("Scene Tree");
+  EXPECT(window != nullptr, "scene tree window should exist after forced-open draw");
+  if (window == nullptr) {
+    ImGui::DestroyContext();
+    return;
+  }
+
+  const int openVertexCount = window->DrawList->VtxBuffer.Size;
+  storage = window->DC.StateStorage;
+  if (storage != nullptr) {
+    storage->SetInt(rootId, 0);
+  }
+
+  ImGui::NewFrame();
+  panel.draw();
+  ImGui::EndFrame();
+
+  window = ImGui::FindWindowByName("Scene Tree");
+  EXPECT(window != nullptr, "scene tree window should still exist after collapse draw");
+  if (window != nullptr) {
+    storage = window->DC.StateStorage;
+    EXPECT(window->DrawList->VtxBuffer.Size < openVertexCount,
+           "scene tree root row should collapse descendant rendering when closed");
+    EXPECT(storage != nullptr && storage->GetInt(rootId, 1) == 0,
+           "scene tree root should remain collapsible after user closes it");
+  }
+
+  ImGui::DestroyContext();
+}
+
 } // namespace
 
 int main() {
@@ -183,6 +246,7 @@ int main() {
   testDrawFrameSurvivesCpuOnlyImGui();
   testPathJumpExpandsAncestorChainOnNextDraw();
   testPrimarySelectionDrawsOutline();
+  testRootRowRendersAndRemainsUserCollapsible();
 
   if (failures == 0) {
     std::cout << "[PASS] scene_tree_panel tests passed.\n";

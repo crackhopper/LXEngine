@@ -45,3 +45,6 @@ examples/
 __pycache__/
 notes/tools/index.md
 notes/temporary/index.md
+
+# scene_viewer local persistence state
+data/scene_viewer/

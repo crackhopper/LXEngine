@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <string_view>
 
 namespace demo = LX_demo::scene_viewer;
 
@@ -23,9 +24,163 @@ int failures = 0;
   return std::filesystem::temp_directory_path() / filename;
 }
 
-void testLoadSceneDocumentReadsGameAndEditorCamera() {
+[[nodiscard]] const demo::SceneNodeDocument*
+findChildByName(const demo::SceneNodeDocument& parent,
+                std::string_view nodeName) {
+  for (const auto& child : parent.children) {
+    if (child.nodeName == nodeName) {
+      return &child;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] const demo::SceneNodeDocument*
+findChildByNodeName(const demo::SceneNodeDocument& parent,
+                    std::string_view nodeName) {
+  for (const auto& child : parent.children) {
+    if (child.nodeName == nodeName) {
+      return &child;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] std::string readFile(const std::filesystem::path& path) {
+  std::ifstream in(path);
+  return std::string(std::istreambuf_iterator<char>(in),
+                     std::istreambuf_iterator<char>());
+}
+
+void testLoadExplicitRootSceneDocumentReadsGameAndEditorCamera() {
   const std::filesystem::path path =
       makeTempPath("lx_scene_document_load.yaml");
+
+  std::ofstream out(path);
+  out << "scene:\n"
+         "  name: scene_viewer\n"
+         "  gameplayCameraPath: /world/game_cam\n"
+         "root:\n"
+         "  nodeName: scene_root\n"
+         "  name: ''\n"
+         "  transform:\n"
+         "    translation: [0.0, 0.0, 0.0]\n"
+         "    rotation: [1.0, 0.0, 0.0, 0.0]\n"
+         "    scale: [1.0, 1.0, 1.0]\n"
+         "  visibilityMask: 4294967295\n"
+         "  children:\n"
+         "    - nodeName: world_root\n"
+         "      name: world\n"
+         "      transform:\n"
+         "        translation: [0.0, 0.0, 0.0]\n"
+         "        rotation: [1.0, 0.0, 0.0, 0.0]\n"
+         "        scale: [1.0, 1.0, 1.0]\n"
+         "      visibilityMask: 4294967295\n"
+         "      children:\n"
+         "        - nodeName: game_camera\n"
+         "          name: game_cam\n"
+         "          transform:\n"
+         "            translation: [0.0, 2.0, 6.0]\n"
+         "            rotation: [1.0, 0.0, 0.0, 0.0]\n"
+         "            scale: [1.0, 1.0, 1.0]\n"
+         "          visibilityMask: 4294967295\n"
+         "          camera:\n"
+         "            eye: [0.0, 2.0, 6.0]\n"
+         "            target: [0.0, 0.0, 0.0]\n"
+         "            up: [0.0, 1.0, 0.0]\n"
+         "            type: perspective\n"
+         "            fovY: 45.0\n"
+         "            aspect: 1.7777778\n"
+         "            nearPlane: 0.1\n"
+         "            farPlane: 1000.0\n"
+         "            left: -1.0\n"
+         "            right: 1.0\n"
+         "            bottom: -1.0\n"
+         "            top: 1.0\n"
+         "            cullingMask: 4294967295\n"
+         "        - nodeName: ground\n"
+         "          name: ground\n"
+         "          transform:\n"
+         "            translation: [0.0, -1.5, 0.0]\n"
+         "            rotation: [1.0, 0.0, 0.0, 0.0]\n"
+         "            scale: [1.0, 1.0, 1.0]\n"
+         "          visibilityMask: 4294967295\n"
+         "          mesh:\n"
+         "            uri: builtin://scene_viewer/ground_mesh\n"
+         "          material:\n"
+         "            uri: builtin://scene_viewer/ground_material\n"
+         "        - nodeName: dir_light_node\n"
+         "          name: dir_light\n"
+         "          transform:\n"
+         "            translation: [0.0, 0.0, 0.0]\n"
+         "            rotation: [1.0, 0.0, 0.0, 0.0]\n"
+         "            scale: [1.0, 1.0, 1.0]\n"
+         "          visibilityMask: 4294967295\n"
+         "          directionalLight:\n"
+         "            direction: [-0.3, -1.0, -0.5]\n"
+         "            color: [1.0, 0.98, 0.9]\n"
+         "            intensity: 1.0\n"
+         "editor:\n"
+         "  editorCamera:\n"
+         "    position: [5.0, 6.0, 7.0]\n"
+         "    rotationEulerDeg: [0.0, 90.0, 0.0]\n"
+         "    fovY: 35.0\n"
+         "    nearPlane: 0.2\n"
+         "    farPlane: 400.0\n";
+  out.close();
+
+  const demo::SceneDocument doc = demo::loadSceneDocument(path);
+  EXPECT(doc.sceneName() == "scene_viewer", "scene name should load");
+  EXPECT(doc.gameplayCameraPath() == "/world/game_cam",
+         "gameplay camera path should load");
+  EXPECT(doc.rootNode().nodeName == "scene_root",
+         "explicit root node should load");
+  EXPECT(doc.rootNode().children.size() == 1,
+         "explicit root should own top-level nodes");
+  const demo::SceneNodeDocument* world = findChildByName(doc.rootNode(), "world_root");
+  EXPECT(world != nullptr, "world should exist under root");
+  if (world == nullptr) {
+    return;
+  }
+  EXPECT(world->children.size() == 3, "world children should load");
+  const demo::SceneNodeDocument* gameCamera = findChildByName(*world, "game_camera");
+  EXPECT(gameCamera != nullptr, "camera child should load");
+  if (gameCamera == nullptr) {
+    return;
+  }
+  EXPECT(gameCamera->camera.has_value(), "camera node should load");
+  EXPECT(gameCamera->camera->eye.y == 2.0f, "camera eye should load");
+  const demo::SceneNodeDocument* ground = findChildByName(*world, "ground");
+  EXPECT(ground != nullptr, "ground child should load");
+  if (ground == nullptr) {
+    return;
+  }
+  EXPECT(ground->meshUri.has_value(), "mesh uri should load");
+  EXPECT(*ground->meshUri == "builtin://scene_viewer/ground_mesh",
+         "mesh uri should survive load");
+  const demo::SceneNodeDocument* light = findChildByName(*world, "dir_light_node");
+  EXPECT(light != nullptr, "directional light child should load");
+  if (light == nullptr) {
+    return;
+  }
+  EXPECT(light->directionalLight.has_value(),
+         "directional light should load");
+  EXPECT(light->directionalLight->color.y == 0.98f,
+         "directional light color should load");
+  EXPECT(doc.hasEditorCamera(), "editor camera metadata should load");
+  EXPECT(doc.editorCamera().position.x == 5.0f, "editor camera x should load");
+  EXPECT(doc.editorCamera().rotationEulerDeg.y == 90.0f,
+         "editor camera yaw should load");
+  EXPECT(doc.editorCamera().fovY == 35.0f, "editor camera fov should load");
+  EXPECT(doc.editorCamera().nearPlane == 0.2f,
+         "editor camera near plane should load");
+  EXPECT(doc.editorCamera().farPlane == 400.0f,
+         "editor camera far plane should load");
+}
+
+void testLoadLegacySceneDocumentNormalizesUnderExplicitRoot() {
+  const std::filesystem::path path =
+      makeTempPath("lx_scene_document_legacy.yaml");
 
   std::ofstream out(path);
   out << "scene:\n"
@@ -60,78 +215,165 @@ void testLoadSceneDocumentReadsGameAndEditorCamera() {
          "      right: 1.0\n"
          "      bottom: -1.0\n"
          "      top: 1.0\n"
-         "      cullingMask: 4294967295\n"
-         "  - nodeName: ground\n"
-         "    name: ground\n"
-         "    parentPath: /world\n"
-         "    transform:\n"
-         "      translation: [0.0, -1.5, 0.0]\n"
-         "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
-         "      scale: [1.0, 1.0, 1.0]\n"
-         "    visibilityMask: 4294967295\n"
-         "    mesh:\n"
-         "      uri: builtin://scene_viewer/ground_mesh\n"
-         "    material:\n"
-         "      uri: builtin://scene_viewer/ground_material\n"
-         "  - nodeName: dir_light_node\n"
-         "    name: dir_light\n"
-         "    parentPath: /world\n"
+         "      cullingMask: 4294967295\n";
+  out.close();
+
+  const demo::SceneDocument doc = demo::loadSceneDocument(path);
+  EXPECT(doc.rootNode().children.size() == 1,
+         "legacy load should normalize top-level nodes under explicit root");
+  const demo::SceneNodeDocument* world = findChildByName(doc.rootNode(), "world_root");
+  EXPECT(world != nullptr, "legacy world should normalize under root");
+  if (world == nullptr) {
+    return;
+  }
+  EXPECT(world->children.size() == 1,
+         "legacy child links should normalize recursively");
+  const demo::SceneNodeDocument* gameCamera = findChildByName(*world, "game_camera");
+  EXPECT(gameCamera != nullptr, "legacy camera should normalize under world");
+}
+
+void testLoadLegacySceneDocumentNormalizesNodeNameBasedParentPaths() {
+  const std::filesystem::path path =
+      makeTempPath("lx_scene_document_legacy_node_name.yaml");
+
+  std::ofstream out(path);
+  out << "scene:\n"
+         "  name: scene_viewer\n"
+         "  gameplayCameraPath: /node_world/game_camera\n"
+         "nodes:\n"
+         "  - nodeName: node_world\n"
+         "    name: world\n"
          "    transform:\n"
          "      translation: [0.0, 0.0, 0.0]\n"
          "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
          "      scale: [1.0, 1.0, 1.0]\n"
          "    visibilityMask: 4294967295\n"
-         "    directionalLight:\n"
-         "      direction: [-0.3, -1.0, -0.5]\n"
-         "      color: [1.0, 0.98, 0.9]\n"
-         "      intensity: 1.0\n"
-         "editor:\n"
-         "  editorCamera:\n"
-         "    position: [5.0, 6.0, 7.0]\n"
-         "    rotationEulerDeg: [0.0, 90.0, 0.0]\n"
-         "    fovY: 35.0\n"
-         "    nearPlane: 0.2\n"
-         "    farPlane: 400.0\n";
+         "  - nodeName: game_camera\n"
+         "    name: game_cam\n"
+         "    parentPath: /node_world\n"
+         "    transform:\n"
+         "      translation: [0.0, 2.0, 6.0]\n"
+         "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+         "      scale: [1.0, 1.0, 1.0]\n"
+         "    visibilityMask: 4294967295\n"
+         "    camera:\n"
+         "      eye: [0.0, 2.0, 6.0]\n"
+         "      target: [0.0, 0.0, 0.0]\n"
+         "      up: [0.0, 1.0, 0.0]\n"
+         "      type: perspective\n"
+         "      fovY: 45.0\n"
+         "      aspect: 1.7777778\n"
+         "      nearPlane: 0.1\n"
+         "      farPlane: 1000.0\n"
+         "      left: -1.0\n"
+         "      right: 1.0\n"
+         "      bottom: -1.0\n"
+         "      top: 1.0\n"
+         "      cullingMask: 4294967295\n";
   out.close();
 
   const demo::SceneDocument doc = demo::loadSceneDocument(path);
-  EXPECT(doc.sceneName() == "scene_viewer", "scene name should load");
-  EXPECT(doc.gameplayCameraPath() == "/world/game_cam",
-         "gameplay camera path should load");
-  EXPECT(doc.nodes().size() == 4, "scene nodes should load");
-  EXPECT(doc.nodes()[1].camera.has_value(), "camera node should load");
-  EXPECT(doc.nodes()[1].camera->eye.y == 2.0f, "camera eye should load");
-  EXPECT(doc.nodes()[2].meshUri.has_value(), "mesh uri should load");
-  EXPECT(*doc.nodes()[2].meshUri == "builtin://scene_viewer/ground_mesh",
-         "mesh uri should survive load");
-  EXPECT(doc.nodes()[3].directionalLight.has_value(),
-         "directional light should load");
-  EXPECT(doc.nodes()[3].directionalLight->color.y == 0.98f,
-         "directional light color should load");
-  EXPECT(doc.hasEditorCamera(), "editor camera metadata should load");
-  EXPECT(doc.editorCamera().position.x == 5.0f, "editor camera x should load");
-  EXPECT(doc.editorCamera().rotationEulerDeg.y == 90.0f,
-         "editor camera yaw should load");
-  EXPECT(doc.editorCamera().fovY == 35.0f, "editor camera fov should load");
-  EXPECT(doc.editorCamera().nearPlane == 0.2f,
-         "editor camera near plane should load");
-  EXPECT(doc.editorCamera().farPlane == 400.0f,
-         "editor camera far plane should load");
+  const demo::SceneNodeDocument* world =
+      findChildByNodeName(doc.rootNode(), "node_world");
+  EXPECT(world != nullptr, "legacy nodeName path should resolve top-level parent");
+  if (world == nullptr) {
+    return;
+  }
+  const demo::SceneNodeDocument* gameCamera =
+      findChildByNodeName(*world, "game_camera");
+  EXPECT(gameCamera != nullptr,
+         "legacy nodeName-based parent path should normalize under explicit root");
 }
 
-void testSaveSceneDocumentRoundTripsEditorMetadata() {
+void testLoadMalformedExplicitRootDocumentFailsClearly() {
+  const std::filesystem::path path =
+      makeTempPath("lx_scene_document_bad_root.yaml");
+
+  std::ofstream out(path);
+  out << "scene:\n"
+         "  name: scene_viewer\n"
+         "  gameplayCameraPath: /game_cam\n"
+         "root: []\n";
+  out.close();
+
+  bool threw = false;
+  try {
+    (void)demo::loadSceneDocument(path);
+  } catch (const std::runtime_error& error) {
+    threw = std::string_view(error.what()).find("root") != std::string_view::npos;
+  }
+
+  EXPECT(threw, "malformed explicit-root documents should fail with root-specific error");
+}
+
+void testLoadExplicitRootDocumentRejectsUnsupportedRootPayload() {
+  const std::filesystem::path path =
+      makeTempPath("lx_scene_document_root_payload.yaml");
+
+  std::ofstream out(path);
+  out << "scene:\n"
+         "  name: scene_viewer\n"
+         "  gameplayCameraPath: /game_cam\n"
+         "root:\n"
+         "  nodeName: scene_root\n"
+         "  name: ''\n"
+         "  mesh:\n"
+         "    uri: builtin://scene_viewer/ground_mesh\n";
+  out.close();
+
+  bool threw = false;
+  try {
+    (void)demo::loadSceneDocument(path);
+  } catch (const std::runtime_error& error) {
+    const std::string_view message(error.what());
+    threw = message.find("root") != std::string_view::npos &&
+            message.find("payload") != std::string_view::npos;
+  }
+
+  EXPECT(threw,
+         "explicit-root documents should reject unsupported root payload fields");
+}
+
+void testLoadExplicitRootDocumentRejectsNonCanonicalRootIdentity() {
+  const std::filesystem::path path =
+      makeTempPath("lx_scene_document_root_identity.yaml");
+
+  std::ofstream out(path);
+  out << "scene:\n"
+         "  name: scene_viewer\n"
+         "  gameplayCameraPath: /game_cam\n"
+         "root:\n"
+         "  nodeName: custom_root\n"
+         "  name: root\n";
+  out.close();
+
+  bool threw = false;
+  try {
+    (void)demo::loadSceneDocument(path);
+  } catch (const std::runtime_error& error) {
+    const std::string_view message(error.what());
+    threw = message.find("root") != std::string_view::npos &&
+            message.find("identity") != std::string_view::npos;
+  }
+
+  EXPECT(threw,
+         "explicit-root documents should reject non-canonical root identity");
+}
+
+void testSaveSceneDocumentWritesExplicitRootCanonicalFormat() {
   demo::SceneDocument doc;
   doc.setSceneName("scene_viewer");
   doc.setGameplayCameraPath("/world/game_cam");
-  auto& nodes = doc.mutableNodes();
-  nodes.push_back(demo::SceneNodeDocument{
+  auto& root = doc.mutableRootNode();
+  root.nodeName = "scene_root";
+
+  demo::SceneNodeDocument world{
       .nodeName = "world_root",
       .name = "world",
-  });
-  nodes.push_back(demo::SceneNodeDocument{
+  };
+  world.children.push_back(demo::SceneNodeDocument{
       .nodeName = "game_camera",
       .name = "game_cam",
-      .parentPath = "/world",
       .transform = {
           .translation = {1.0f, 2.0f, 3.0f},
           .rotation = LX_core::Quatf{1.0f, 0.0f, 0.0f, 0.0f},
@@ -148,17 +390,15 @@ void testSaveSceneDocumentRoundTripsEditorMetadata() {
               .farPlane = 250.0f,
           },
   });
-  nodes.push_back(demo::SceneNodeDocument{
+  world.children.push_back(demo::SceneNodeDocument{
       .nodeName = "helmet",
       .name = "helmet",
-      .parentPath = "/world",
       .meshUri = std::string("assets/models/damaged_helmet/DamagedHelmet.gltf"),
       .materialUri = std::string("assets/materials/blinnphong_textured.material"),
   });
-  nodes.push_back(demo::SceneNodeDocument{
+  world.children.push_back(demo::SceneNodeDocument{
       .nodeName = "dir_light_node",
       .name = "dir_light",
-      .parentPath = "/world",
       .directionalLight =
           demo::DirectionalLightNodeState{
               .direction = {-0.3f, -1.0f, -0.5f},
@@ -166,6 +406,7 @@ void testSaveSceneDocumentRoundTripsEditorMetadata() {
               .intensity = 2.0f,
           },
   });
+  root.children.push_back(std::move(world));
   doc.setEditorCamera(demo::EditorCameraState{
       .position = {7.0f, 8.0f, 9.0f},
       .rotationEulerDeg = {10.0f, 20.0f, 30.0f},
@@ -178,28 +419,61 @@ void testSaveSceneDocumentRoundTripsEditorMetadata() {
       makeTempPath("lx_scene_document_roundtrip.yaml");
   demo::saveSceneDocument(path, doc);
 
+  const std::string savedText = readFile(path);
+  EXPECT(savedText.find("\nroot:\n") != std::string::npos,
+         "canonical save should write explicit root");
+  EXPECT(savedText.find("\nnodes:\n") == std::string::npos,
+         "canonical save should not write legacy flat nodes");
+
   const demo::SceneDocument loaded = demo::loadSceneDocument(path);
   EXPECT(loaded.sceneName() == "scene_viewer",
          "scene name should survive round trip");
   EXPECT(loaded.gameplayCameraPath() == "/world/game_cam",
          "gameplay camera path should survive round trip");
-  EXPECT(loaded.nodes().size() == 4, "nodes should survive round trip");
-  EXPECT(loaded.nodes()[1].camera.has_value(),
-         "camera node should survive round trip");
-  EXPECT(loaded.nodes()[1].camera->eye.x == 1.0f,
+  EXPECT(loaded.rootNode().children.size() == 1,
+         "explicit root should survive round trip");
+  const demo::SceneNodeDocument* loadedWorld =
+      findChildByName(loaded.rootNode(), "world_root");
+  EXPECT(loadedWorld != nullptr, "world should survive round trip");
+  if (loadedWorld == nullptr) {
+    return;
+  }
+  EXPECT(loadedWorld->children.size() == 3,
+         "world children should survive round trip");
+  const demo::SceneNodeDocument* loadedCamera =
+      findChildByName(*loadedWorld, "game_camera");
+  EXPECT(loadedCamera != nullptr, "camera node should survive round trip");
+  if (loadedCamera == nullptr) {
+    return;
+  }
+  EXPECT(loadedCamera->camera.has_value(),
+         "camera payload should survive round trip");
+  EXPECT(loadedCamera->camera->eye.x == 1.0f,
          "camera eye should survive round trip");
-  EXPECT(loaded.nodes()[1].camera->nearPlane == 0.5f,
+  EXPECT(loadedCamera->camera->nearPlane == 0.5f,
          "camera near plane should survive round trip");
-  EXPECT(loaded.nodes()[2].meshUri.has_value(),
+  const demo::SceneNodeDocument* loadedHelmet =
+      findChildByName(*loadedWorld, "helmet");
+  EXPECT(loadedHelmet != nullptr, "helmet should survive round trip");
+  if (loadedHelmet == nullptr) {
+    return;
+  }
+  EXPECT(loadedHelmet->meshUri.has_value(),
          "mesh uri should survive round trip");
-  EXPECT(*loaded.nodes()[2].meshUri ==
+  EXPECT(*loadedHelmet->meshUri ==
              "assets/models/damaged_helmet/DamagedHelmet.gltf",
          "mesh uri should round trip");
-  EXPECT(loaded.nodes()[2].materialUri.has_value(),
+  EXPECT(loadedHelmet->materialUri.has_value(),
          "material uri should survive round trip");
-  EXPECT(loaded.nodes()[3].directionalLight.has_value(),
+  const demo::SceneNodeDocument* loadedLight =
+      findChildByName(*loadedWorld, "dir_light_node");
+  EXPECT(loadedLight != nullptr, "light should survive round trip");
+  if (loadedLight == nullptr) {
+    return;
+  }
+  EXPECT(loadedLight->directionalLight.has_value(),
          "directional light should survive round trip");
-  EXPECT(loaded.nodes()[3].directionalLight->intensity == 2.0f,
+  EXPECT(loadedLight->directionalLight->intensity == 2.0f,
          "directional light intensity should survive round trip");
   EXPECT(loaded.hasEditorCamera(),
          "editor camera metadata should survive round trip");
@@ -215,11 +489,64 @@ void testSaveSceneDocumentRoundTripsEditorMetadata() {
          "editor camera far plane should survive round trip");
 }
 
+void testSaveSceneDocumentRejectsUnsupportedRootPayload() {
+  demo::SceneDocument doc;
+  doc.setSceneName("scene_viewer");
+  auto& root = doc.mutableRootNode();
+  root.nodeName = "scene_root";
+  root.meshUri = std::string("builtin://scene_viewer/ground_mesh");
+
+  const std::filesystem::path path =
+      makeTempPath("lx_scene_document_bad_save_payload.yaml");
+
+  bool threw = false;
+  try {
+    demo::saveSceneDocument(path, doc);
+  } catch (const std::runtime_error& error) {
+    const std::string_view message(error.what());
+    threw = message.find("root") != std::string_view::npos &&
+            message.find("payload") != std::string_view::npos;
+  }
+
+  EXPECT(threw,
+         "save should reject unsupported payload fields on the explicit root");
+}
+
+void testSaveSceneDocumentRejectsNonCanonicalRootIdentity() {
+  demo::SceneDocument doc;
+  doc.setSceneName("scene_viewer");
+  auto& root = doc.mutableRootNode();
+  root.nodeName = "custom_root";
+  root.name = "root";
+
+  const std::filesystem::path path =
+      makeTempPath("lx_scene_document_bad_save_identity.yaml");
+
+  bool threw = false;
+  try {
+    demo::saveSceneDocument(path, doc);
+  } catch (const std::runtime_error& error) {
+    const std::string_view message(error.what());
+    threw = message.find("root") != std::string_view::npos &&
+            message.find("identity") != std::string_view::npos;
+  }
+
+  EXPECT(threw,
+         "save should reject non-canonical explicit-root identity");
+}
+
 } // namespace
 
 int main() {
-  testLoadSceneDocumentReadsGameAndEditorCamera();
-  testSaveSceneDocumentRoundTripsEditorMetadata();
+  testLoadExplicitRootSceneDocumentReadsGameAndEditorCamera();
+  testLoadLegacySceneDocumentNormalizesUnderExplicitRoot();
+  testLoadLegacySceneDocumentNormalizesNodeNameBasedParentPaths();
+  testLoadMalformedExplicitRootDocumentFailsClearly();
+  testLoadExplicitRootDocumentRejectsUnsupportedRootPayload();
+  testLoadExplicitRootDocumentRejectsNonCanonicalRootIdentity();
+  testSaveSceneDocumentWritesExplicitRootCanonicalFormat();
+  testSaveSceneDocumentRejectsUnsupportedRootPayload();
+  testSaveSceneDocumentRejectsNonCanonicalRootIdentity();
 
   if (failures != 0) {
     std::cerr << "test_scene_document failed with " << failures

@@ -712,7 +712,7 @@ gui.init({
 });
 ```
 
-This ensures panel layout, collapsed state, and docking restore through ImGui itself.
+This ensures panel layout and collapsed state restore through ImGui itself.
 
 - [ ] **Step 3: Save window state on clean shutdown**
 

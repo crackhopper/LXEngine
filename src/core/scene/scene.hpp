@@ -72,7 +72,7 @@ public:
   using SharedPtr = std::shared_ptr<Scene>;
 
   explicit Scene(std::string sceneName)
-      : m_sceneName(std::move(sceneName)), m_pathRoot(SceneNode::createPathRoot()) {
+      : m_sceneName(std::move(sceneName)), m_rootNode(SceneNode::createPathRoot()) {
     if (m_sceneName.empty()) {
       m_sceneName = "Scene";
     }
@@ -132,6 +132,9 @@ public:
       }
       if (auto node = std::dynamic_pointer_cast<SceneNode>(r)) {
         node->attachToScene(weak_from_this());
+        if (!node->getParent()) {
+          node->setParent(m_rootNode);
+        }
         node->setSceneDebugId(
             StringID(m_sceneName + "/" + node->getNodeName()));
         node->warnIfSiblingNameIsDuplicated();
@@ -170,6 +173,7 @@ public:
   std::optional<PickHit> pick(
       const Ray &ray,
       VisibilityLayerMask layerMask = VisibilityMask_All) const;
+  [[nodiscard]] const SceneNodeSharedPtr &getRootNode() const { return m_rootNode; }
   [[nodiscard]] std::vector<SceneNodeSharedPtr> getRootNodes() const;
 
 private:
@@ -180,7 +184,7 @@ private:
   static void appendTreeLines(const SceneNode &node, std::string prefix,
                               bool isLast, std::string &out);
   std::string m_sceneName;
-  SceneNodeSharedPtr m_pathRoot;
+  SceneNodeSharedPtr m_rootNode;
   std::vector<IRenderableSharedPtr> m_renderables;
   std::vector<SceneNodeSharedPtr> m_cameras;
   std::vector<LightBaseSharedPtr> m_lights;

@@ -709,6 +709,9 @@ struct BuiltinCommandState {
   if (!found.ok) {
     return found;
   }
+  if (node->isSceneRoot()) {
+    return makeError("cannot remove scene root");
+  }
 
   const auto removed = node->shared_from_this();
   CommandNodeStashEntry entry;

@@ -3,9 +3,33 @@
 #include "core/input/dummy_input_state.hpp"
 #include <GLFW/glfw3.h>
 #include <functional>
+#include <limits>
+#include <optional>
 #include <stdexcept>
 
 namespace LX_infra {
+
+namespace {
+
+[[nodiscard]] long long squaredDistanceToRect(const int rectX, const int rectY,
+                                              const int rectWidth,
+                                              const int rectHeight,
+                                              const long long x,
+                                              const long long y) {
+  const long long rectMinX = static_cast<long long>(rectX);
+  const long long rectMinY = static_cast<long long>(rectY);
+  const long long rectMaxX =
+      rectMinX + static_cast<long long>(rectWidth) - 1LL;
+  const long long rectMaxY =
+      rectMinY + static_cast<long long>(rectHeight) - 1LL;
+  const long long clampedX = std::clamp(x, rectMinX, rectMaxX);
+  const long long clampedY = std::clamp(y, rectMinY, rectMaxY);
+  const long long dx = x - clampedX;
+  const long long dy = y - clampedY;
+  return dx * dx + dy * dy;
+}
+
+} // namespace
 
 struct Window::Impl {
   int width;
@@ -14,13 +38,20 @@ struct Window::Impl {
   GLFWwindow *window = nullptr;
   std::function<bool()> closeCallback;
 
-  Impl(const char *t, int w, int h) : width(w), height(h), title(t) {
+  Impl(const char *t, int w, int h,
+       const std::optional<LX_core::WindowPlacement>& initialPlacement)
+      : width(w), height(h), title(t) {
     if (!glfwInit())
       throw std::runtime_error("GLFW init failed");
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
     window = glfwCreateWindow(width, height, title, nullptr, nullptr);
     if (!window)
       throw std::runtime_error("GLFW create window failed");
+    if (initialPlacement.has_value()) {
+      applyPlacement(*initialPlacement);
+    }
+    glfwShowWindow(window);
   }
 
   ~Impl() {
@@ -59,12 +90,126 @@ struct Window::Impl {
       extensions.push_back(glfwExtensions[i]);
     }
   }
+
+  [[nodiscard]] LX_core::WindowPlacement getPlacement() const {
+    LX_core::WindowPlacement placement{};
+    glfwGetWindowPos(window, &placement.x, &placement.y);
+    glfwGetWindowSize(window, &placement.width, &placement.height);
+    placement.maximized = glfwGetWindowAttrib(window, GLFW_MAXIMIZED) == GLFW_TRUE;
+    return placement;
+  }
+
+  [[nodiscard]] LX_core::WindowUsableBounds getUsableBounds() const {
+    int monitorCount = 0;
+    GLFWmonitor** monitors = glfwGetMonitors(&monitorCount);
+    GLFWmonitor* monitor =
+        glfwGetWindowMonitor(window) ? glfwGetWindowMonitor(window)
+                                     : glfwGetPrimaryMonitor();
+    if (monitor == nullptr && monitorCount > 0) {
+      monitor = monitors[0];
+    }
+
+    if (monitor != nullptr) {
+      int x = 0;
+      int y = 0;
+      int widthPx = 0;
+      int heightPx = 0;
+      glfwGetMonitorWorkarea(monitor, &x, &y, &widthPx, &heightPx);
+      if (widthPx > 0 && heightPx > 0) {
+        return LX_core::WindowUsableBounds{
+            .x = x,
+            .y = y,
+            .width = widthPx,
+            .height = heightPx,
+        };
+      }
+    }
+
+    return LX_core::WindowUsableBounds{
+        .x = 0,
+        .y = 0,
+        .width = width > 0 ? width : 1280,
+        .height = height > 0 ? height : 720,
+    };
+  }
+
+  [[nodiscard]] LX_core::WindowUsableBounds
+  getUsableBoundsForPlacement(const LX_core::WindowPlacement& placement) const {
+    int monitorCount = 0;
+    GLFWmonitor** monitors = glfwGetMonitors(&monitorCount);
+    const long long anchorX = LX_core::windowPlacementCenterX(placement);
+    const long long anchorY = LX_core::windowPlacementCenterY(placement);
+
+    if (monitors != nullptr && monitorCount > 0) {
+      GLFWmonitor* bestMonitor = monitors[0];
+      long long bestDistance = std::numeric_limits<long long>::max();
+
+      for (int i = 0; i < monitorCount; ++i) {
+        int x = 0;
+        int y = 0;
+        int widthPx = 0;
+        int heightPx = 0;
+        glfwGetMonitorWorkarea(monitors[i], &x, &y, &widthPx, &heightPx);
+        if (widthPx <= 0 || heightPx <= 0) {
+          continue;
+        }
+
+        const long long distance =
+            squaredDistanceToRect(x, y, widthPx, heightPx, anchorX, anchorY);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          bestMonitor = monitors[i];
+          if (distance == 0) {
+            break;
+          }
+        }
+      }
+
+      int x = 0;
+      int y = 0;
+      int widthPx = 0;
+      int heightPx = 0;
+      glfwGetMonitorWorkarea(bestMonitor, &x, &y, &widthPx, &heightPx);
+      if (widthPx > 0 && heightPx > 0) {
+        return LX_core::WindowUsableBounds{
+            .x = x,
+            .y = y,
+            .width = widthPx,
+            .height = heightPx,
+        };
+      }
+    }
+
+    return getUsableBounds();
+  }
+
+  void applyPlacement(const LX_core::WindowPlacement& placement) {
+    const auto sanitized =
+        LX_core::sanitizeWindowPlacement(placement,
+                                         getUsableBoundsForPlacement(placement));
+    if (!sanitized.has_value()) {
+      return;
+    }
+
+    glfwRestoreWindow(window);
+    if (sanitized->width > 0 && sanitized->height > 0) {
+      glfwSetWindowSize(window, sanitized->width, sanitized->height);
+      width = sanitized->width;
+      height = sanitized->height;
+    }
+    glfwSetWindowPos(window, sanitized->x, sanitized->y);
+    if (sanitized->maximized) {
+      glfwMaximizeWindow(window);
+    }
+  }
 };
 
 void Window::Initialize() {}
 
-Window::Window(const char *title, int width, int height)
-    : pImpl(std::make_unique<Impl>(title, width, height)) {}
+Window::Window(const char *title, int width, int height,
+               std::optional<LX_core::WindowPlacement> initialPlacement)
+    : pImpl(
+          std::make_unique<Impl>(title, width, height, initialPlacement)) {}
 
 Window::~Window() = default;
 // Live-query to survive window resizes: swapchain rebuild asks getWidth/Height
@@ -103,6 +248,24 @@ void Window::onClose(std::function<bool()> cb) { pImpl->closeCallback = cb; }
 LX_core::InputStateSharedPtr Window::getInputState() const {
   static auto dummy = std::make_shared<LX_core::DummyInputState>();
   return dummy;
+}
+
+LX_core::WindowPlacement Window::getPlacement() const {
+  return pImpl->getPlacement();
+}
+
+LX_core::WindowUsableBounds Window::getUsableBounds() const {
+  return pImpl->getUsableBounds();
+}
+
+LX_core::WindowUsableBounds
+Window::getUsableBoundsForPlacement(
+    const LX_core::WindowPlacement& placement) const {
+  return pImpl->getUsableBoundsForPlacement(placement);
+}
+
+void Window::applyPlacement(const LX_core::WindowPlacement& placement) {
+  pImpl->applyPlacement(placement);
 }
 
 void* Window::getNativeHandle() const {

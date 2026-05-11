@@ -23,6 +23,7 @@
 #include "scene_runtime.hpp"
 #include "scene_session.hpp"
 #include "ui_overlay.hpp"
+#include "window_layout_state.hpp"
 
 #include <chrono>
 #include <cstdio>
@@ -437,8 +438,10 @@ int main() {
 
   try {
     LX_infra::Window::Initialize();
+    demo::WindowLayoutState layoutState(resolveRuntimePath("data/scene_viewer"));
+    const auto initialPlacement = layoutState.loadNativeWindowPlacement();
     auto window = std::make_shared<LX_infra::Window>(
-        "demo_scene_viewer", kWindowWidth, kWindowHeight);
+        "demo_scene_viewer", kWindowWidth, kWindowHeight, initialPlacement);
 
     auto vulkanRenderer =
         std::make_shared<VulkanRenderer>(VulkanRenderer::Token{});
@@ -450,11 +453,15 @@ int main() {
     demo::UiOverlay ui;
     SceneViewerSession session(rig, ui, editorState);
     session.initialize();
+    const bool restoredImGuiLayout = layoutState.restoreImGuiLayout();
+    ui.setDefaultLayoutEnabled(
+        !(restoredImGuiLayout && layoutState.hasAuthoritativeSceneViewerLayout()));
     ClosePromptState closePrompt;
 
     vulkanRenderer->setDrawUiCallback([&] {
       ui.drawFrame();
       drawClosePrompt(closePrompt, session);
+      layoutState.maybeSaveImGuiLayout();
     });
 
     EngineLoop loop;
@@ -520,6 +527,8 @@ int main() {
     });
 
     loop.run();
+    layoutState.saveImGuiLayout();
+    layoutState.captureNativeWindowPlacement(*window);
     renderer->shutdown();
     return 0;
   } catch (const std::exception& e) {

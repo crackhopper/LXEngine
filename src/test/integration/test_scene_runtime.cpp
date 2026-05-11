@@ -33,6 +33,12 @@ int failures = 0;
   return std::filesystem::temp_directory_path() / filename;
 }
 
+[[nodiscard]] std::string readFile(const std::filesystem::path& path) {
+  std::ifstream in(path);
+  return std::string(std::istreambuf_iterator<char>(in),
+                     std::istreambuf_iterator<char>());
+}
+
 void writeSceneFile(const std::filesystem::path& path,
                     const std::string& body) {
   std::ofstream out(path);
@@ -53,10 +59,16 @@ void testRuntimeCreatesEmptyScene() {
   runtime.createEmptyScene();
 
   EXPECT(runtime.scene(), "empty runtime should create a scene");
+  EXPECT(runtime.scene()->findByPath("/") == runtime.scene()->getRootNode().get(),
+         "empty runtime should expose the explicit scene root at slash");
   EXPECT(!runtime.documentPath().has_value(),
          "empty runtime should not have a document path");
   EXPECT(runtime.gameCameraNode(), "empty runtime should have a gameplay camera");
   EXPECT(runtime.editorCameraNode(), "empty runtime should have an editor camera");
+  EXPECT(runtime.gameCameraNode()->getParent() == runtime.scene()->getRootNode(),
+         "gameplay camera should attach under the scene root");
+  EXPECT(runtime.editorCameraNode()->getParent() == runtime.scene()->getRootNode(),
+         "editor camera should attach under the scene root");
   EXPECT(runtime.scene()->findByPath("/helmet") == nullptr,
          "empty runtime should not create a helmet node");
   EXPECT(runtime.scene()->findByPath("/ground") == nullptr,
@@ -71,8 +83,106 @@ void testRuntimeLoadsFullSceneDocument() {
                  "scene:\n"
                  "  name: sample_scene\n"
                  "  gameplayCameraPath: /world/game_cam\n"
+                 "root:\n"
+                 "  nodeName: scene_root\n"
+                 "  name: ''\n"
+                 "  transform:\n"
+                 "    translation: [0.0, 0.0, 0.0]\n"
+                 "    rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                 "    scale: [1.0, 1.0, 1.0]\n"
+                 "  visibilityMask: 4294967295\n"
+                 "  children:\n"
+                 "    - nodeName: world_root\n"
+                 "      name: world\n"
+                 "      transform:\n"
+                 "        translation: [0.0, 0.0, 0.0]\n"
+                 "        rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                 "        scale: [1.0, 1.0, 1.0]\n"
+                 "      visibilityMask: 4294967295\n"
+                 "      children:\n"
+                 "        - nodeName: game_camera\n"
+                 "          name: game_cam\n"
+                 "          transform:\n"
+                 "            translation: [0.0, 2.0, 6.0]\n"
+                 "            rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                 "            scale: [1.0, 1.0, 1.0]\n"
+                 "          visibilityMask: 4294967295\n"
+                 "          camera:\n"
+                 "            eye: [0.0, 2.0, 6.0]\n"
+                 "            target: [0.0, 0.0, 0.0]\n"
+                 "            up: [0.0, 1.0, 0.0]\n"
+                 "            type: perspective\n"
+                 "            fovY: 45.0\n"
+                 "            aspect: 1.7777778\n"
+                 "            nearPlane: 0.1\n"
+                 "            farPlane: 1000.0\n"
+                 "            left: -1.0\n"
+                 "            right: 1.0\n"
+                 "            bottom: -1.0\n"
+                 "            top: 1.0\n"
+                 "            cullingMask: 4294967295\n"
+                 "        - nodeName: ground\n"
+                 "          name: ground\n"
+                 "          transform:\n"
+                 "            translation: [0.0, 0.0, 0.0]\n"
+                 "            rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                 "            scale: [1.0, 1.0, 1.0]\n"
+                 "          visibilityMask: 4294967295\n"
+                 "          mesh:\n"
+                 "            uri: builtin://scene_viewer/ground_mesh\n"
+                 "          material:\n"
+                 "            uri: builtin://scene_viewer/ground_material\n"
+                 "        - nodeName: dir_light_node\n"
+                 "          name: dir_light\n"
+                 "          transform:\n"
+                 "            translation: [0.0, 0.0, 0.0]\n"
+                 "            rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                 "            scale: [1.0, 1.0, 1.0]\n"
+                 "          visibilityMask: 4294967295\n"
+                 "          directionalLight:\n"
+                 "            direction: [-0.3, -1.0, -0.5]\n"
+                 "            color: [1.0, 0.98, 0.9]\n"
+                 "            intensity: 1.0\n"
+                 "editor:\n"
+                 "  editorCamera:\n"
+                 "    position: [5.0, 6.0, 7.0]\n"
+                 "    rotationEulerDeg: [0.0, 90.0, 0.0]\n"
+                 "    fovY: 35.0\n"
+                 "    nearPlane: 0.2\n"
+                 "    farPlane: 400.0\n");
+
+  demo::SceneRuntime runtime;
+  runtime.loadFromDocumentPath(path);
+
+  EXPECT(runtime.scene(), "scene should exist after load");
+  EXPECT(runtime.documentPath().has_value(), "loaded runtime should track path");
+  EXPECT(runtime.scene()->findByPath("/") == runtime.scene()->getRootNode().get(),
+         "loaded runtime should resolve slash to explicit root");
+  EXPECT(runtime.scene()->findByPath("/world") != nullptr,
+         "scene should load the root node");
+  EXPECT(runtime.scene()->findByPath("/world")->getParent().get() ==
+             runtime.scene()->getRootNode().get(),
+         "top-level world node should be parented to the explicit root");
+  EXPECT(runtime.scene()->findByPath("/world/ground") != nullptr,
+         "scene should load renderable nodes");
+  EXPECT(runtime.scene()->findByPath("/world/dir_light") != nullptr,
+         "scene should load light placeholder nodes");
+  EXPECT(runtime.scene()->findByPath("/world/game_cam") ==
+             runtime.gameCameraNode().get(),
+         "gameplay camera path should resolve to runtime gameplay camera");
+  EXPECT(runtime.editorCameraNode()->getLocalTransform().translation.x == 5.0f,
+         "editor metadata should restore editor camera x");
+}
+
+void testRuntimeLoadsLegacyFlatSceneDocumentWithExplicitRootNormalization() {
+  const std::filesystem::path path =
+      makeTempPath("lx_scene_runtime_legacy.yaml");
+  writeSceneFile(path,
+                 "scene:\n"
+                 "  name: legacy_scene\n"
+                 "  gameplayCameraPath: /node_world/game_camera\n"
                  "nodes:\n"
-                 "  - nodeName: world_root\n"
+                 "  - nodeName: node_world\n"
                  "    name: world\n"
                  "    transform:\n"
                  "      translation: [0.0, 0.0, 0.0]\n"
@@ -100,55 +210,18 @@ void testRuntimeLoadsFullSceneDocument() {
                  "      right: 1.0\n"
                  "      bottom: -1.0\n"
                  "      top: 1.0\n"
-                 "      cullingMask: 4294967295\n"
-                 "  - nodeName: ground\n"
-                 "    name: ground\n"
-                 "    parentPath: /world\n"
-                 "    transform:\n"
-                 "      translation: [0.0, 0.0, 0.0]\n"
-                 "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
-                 "      scale: [1.0, 1.0, 1.0]\n"
-                 "    visibilityMask: 4294967295\n"
-                 "    mesh:\n"
-                 "      uri: builtin://scene_viewer/ground_mesh\n"
-                 "    material:\n"
-                 "      uri: builtin://scene_viewer/ground_material\n"
-                 "  - nodeName: dir_light_node\n"
-                 "    name: dir_light\n"
-                 "    parentPath: /world\n"
-                 "    transform:\n"
-                 "      translation: [0.0, 0.0, 0.0]\n"
-                 "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
-                 "      scale: [1.0, 1.0, 1.0]\n"
-                 "    visibilityMask: 4294967295\n"
-                 "    directionalLight:\n"
-                 "      direction: [-0.3, -1.0, -0.5]\n"
-                 "      color: [1.0, 0.98, 0.9]\n"
-                 "      intensity: 1.0\n"
-                 "editor:\n"
-                 "  editorCamera:\n"
-                 "    position: [5.0, 6.0, 7.0]\n"
-                 "    rotationEulerDeg: [0.0, 90.0, 0.0]\n"
-                 "    fovY: 35.0\n"
-                 "    nearPlane: 0.2\n"
-                 "    farPlane: 400.0\n");
+                 "      cullingMask: 4294967295\n");
 
   demo::SceneRuntime runtime;
   runtime.loadFromDocumentPath(path);
 
-  EXPECT(runtime.scene(), "scene should exist after load");
-  EXPECT(runtime.documentPath().has_value(), "loaded runtime should track path");
+  EXPECT(runtime.scene()->findByPath("/") == runtime.scene()->getRootNode().get(),
+         "legacy runtime should still expose explicit root");
   EXPECT(runtime.scene()->findByPath("/world") != nullptr,
-         "scene should load the root node");
-  EXPECT(runtime.scene()->findByPath("/world/ground") != nullptr,
-         "scene should load renderable nodes");
-  EXPECT(runtime.scene()->findByPath("/world/dir_light") != nullptr,
-         "scene should load light placeholder nodes");
+         "legacy world should still load");
   EXPECT(runtime.scene()->findByPath("/world/game_cam") ==
              runtime.gameCameraNode().get(),
-         "gameplay camera path should resolve to runtime gameplay camera");
-  EXPECT(runtime.editorCameraNode()->getLocalTransform().translation.x == 5.0f,
-         "editor metadata should restore editor camera x");
+         "legacy nodeName-based gameplay camera path should still resolve");
 }
 
 void testRuntimeSaveRoundTripsExpandedSceneDocument() {
@@ -214,6 +287,12 @@ void testRuntimeSaveRoundTripsExpandedSceneDocument() {
 
   runtime.saveToDocumentPath(savePath);
 
+  const std::string savedText = readFile(savePath);
+  EXPECT(savedText.find("\nroot:\n") != std::string::npos,
+         "save should write canonical explicit-root format");
+  EXPECT(savedText.find("\nnodes:\n") == std::string::npos,
+         "save should stop writing legacy flat nodes");
+
   const demo::SceneDocument saved = demo::loadSceneDocument(savePath);
   EXPECT(saved.sceneName() == "sample_scene",
          "save should persist scene name");
@@ -221,13 +300,13 @@ void testRuntimeSaveRoundTripsExpandedSceneDocument() {
          "save should persist gameplay camera path");
   EXPECT(saved.hasEditorCamera(),
          "save should persist editor camera metadata");
-  EXPECT(saved.nodes().size() == 1,
-         "save should persist serializable nodes");
-  EXPECT(saved.nodes()[0].camera.has_value(),
+  EXPECT(saved.rootNode().children.size() == 1,
+         "save should persist root child hierarchy");
+  EXPECT(saved.rootNode().children[0].camera.has_value(),
          "save should persist runtime gameplay camera state");
-  expectNear(saved.nodes()[0].camera->eye.x, 7.0f,
+  expectNear(saved.rootNode().children[0].camera->eye.x, 7.0f,
              "save should persist camera eye x");
-  expectNear(saved.nodes()[0].camera->target.z, 2.0f,
+  expectNear(saved.rootNode().children[0].camera->target.z, 2.0f,
              "save should persist exact camera target z");
   expectNear(saved.editorCamera().position.x, 4.0f,
              "save should persist editor camera x");
@@ -238,6 +317,7 @@ void testRuntimeSaveRoundTripsExpandedSceneDocument() {
 int main() {
   testRuntimeCreatesEmptyScene();
   testRuntimeLoadsFullSceneDocument();
+  testRuntimeLoadsLegacyFlatSceneDocumentWithExplicitRootNormalization();
   testRuntimeSaveRoundTripsExpandedSceneDocument();
 
   if (failures != 0) {

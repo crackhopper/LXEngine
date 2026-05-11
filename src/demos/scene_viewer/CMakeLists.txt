@@ -12,6 +12,7 @@ add_executable(demo_scene_viewer
   scene_runtime.cpp
   scene_session.cpp
   ui_overlay.cpp
+  window_layout_state.cpp
 )
 
 target_include_directories(demo_scene_viewer PRIVATE

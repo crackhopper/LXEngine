@@ -141,7 +141,6 @@ The restored state includes:
 - ImGui window positions
 - ImGui window sizes
 - ImGui collapsed state
-- ImGui docking layout
 
 The restored state does not include:
 
@@ -178,6 +177,8 @@ Requirements:
 - startup loads existing local ImGui layout if present
 - shutdown saves current ImGui layout back to the same local file
 - absence of the file is not an error; the editor falls back to default layout
+- this change does not require true ImGui docking support; local persistence is
+  defined in terms of ordinary ImGui window placement, size, and collapsed state
 
 ### Native Window Persistence
 

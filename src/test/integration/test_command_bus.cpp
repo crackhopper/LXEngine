@@ -442,6 +442,13 @@ void testBuiltinAddRemoveSetCommands() {
   EXPECT(removeCamera.ok, "remove child camera succeeds");
   EXPECT(fixture.scene->findByPath("/world/cube/debug_cam") == nullptr,
          "removed camera path no longer resolves");
+
+  const CommandResult removeRoot = fixture.bus.dispatch("remove /");
+  EXPECT(!removeRoot.ok, "remove root should fail");
+  EXPECT(removeRoot.message == "cannot remove scene root",
+         "remove root should report explicit root-role restriction");
+  EXPECT(fixture.scene->findByPath("/") == fixture.scene->getRootNode().get(),
+         "remove root failure should leave scene root intact");
 }
 
 void testBuiltinCamAndPreviewCommands() {

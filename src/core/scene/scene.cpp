@@ -28,10 +28,10 @@ Scene::~Scene() {
 SceneNode *Scene::findByPath(const std::string &path) const {
   const auto segments = splitPathSegments(path);
   if (segments.empty()) {
-    return m_pathRoot.get();
+    return m_rootNode.get();
   }
 
-  SceneNode *current = m_pathRoot.get();
+  SceneNode *current = m_rootNode.get();
   std::vector<SceneNodeSharedPtr> candidates = getRootNodes();
   for (const auto &segment : segments) {
     SceneNode *next = nullptr;
@@ -225,15 +225,8 @@ void Scene::appendPaths(const SceneNode &node, std::vector<std::string> &out) {
 }
 
 std::vector<SceneNodeSharedPtr> Scene::getRootNodes() const {
-  std::vector<SceneNodeSharedPtr> roots;
-  for (const auto &renderable : m_renderables) {
-    const auto node = std::dynamic_pointer_cast<SceneNode>(renderable);
-    if (!node || node->getParent()) {
-      continue;
-    }
-    roots.push_back(node);
-  }
-  return roots;
+  return m_rootNode ? m_rootNode->getChildren()
+                    : std::vector<SceneNodeSharedPtr>{};
 }
 
 std::vector<std::string> Scene::splitPathSegments(const std::string &path) {
@@ -355,7 +348,8 @@ void Scene::removeCamera(const SceneNodeSharedPtr &cameraNode) {
                      }),
       m_cameras.end());
 
-  if (cameraNode->getParent()) {
+  const auto parent = cameraNode->getParent();
+  if (parent && parent.get() != m_rootNode.get()) {
     return;
   }
 
@@ -369,6 +363,7 @@ void Scene::removeCamera(const SceneNodeSharedPtr &cameraNode) {
   }
 
   if (auto node = std::dynamic_pointer_cast<SceneNode>(*renderableIt)) {
+    node->clearParent();
     node->detachFromScene();
     node->setSceneDebugId(StringID{});
   }

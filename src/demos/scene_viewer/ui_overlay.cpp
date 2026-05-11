@@ -48,47 +48,72 @@ void UiOverlay::attach(CameraRig& rig, LX_core::CommandBus& commandBus,
 
 void UiOverlay::attachClock(const LX_core::Clock& clock) { m_clock = std::cref(clock); }
 
+void UiOverlay::setDefaultLayoutEnabled(const bool enabled) {
+  m_defaultLayoutEnabled = enabled;
+  if (enabled) {
+    m_defaultLayoutApplied = false;
+  }
+}
+
 void UiOverlay::applyDefaultLayout() {
-  const ImVec2 display = ImGui::GetIO().DisplaySize;
-  const bool displayChanged = !m_defaultLayoutApplied ||
-                              display.x != m_lastDisplaySize.x ||
-                              display.y != m_lastDisplaySize.y;
-  const float leftWidth = 260.0f;
-  const float rightWidth = 340.0f;
-  const float bottomHeight = 220.0f;
-  const float topInset = 72.0f;
-  const float centerWidth = std::max(1.0f, display.x - leftWidth - rightWidth);
-  const float centerHeight = std::max(1.0f, display.y - bottomHeight);
+  if (m_defaultLayoutEnabled) {
+    const ImVec2 display = ImGui::GetIO().DisplaySize;
+    const bool displayChanged = !m_defaultLayoutApplied ||
+                                display.x != m_lastDisplaySize.x ||
+                                display.y != m_lastDisplaySize.y;
+    const float leftWidth = 260.0f;
+    const float rightWidth = 340.0f;
+    const float bottomHeight = 220.0f;
+    const float topInset = 72.0f;
+    const float centerWidth =
+        std::max(1.0f, display.x - leftWidth - rightWidth);
+    const float centerHeight = std::max(1.0f, display.y - bottomHeight);
 
-  const ImGuiCond layoutCond = displayChanged ? ImGuiCond_Always : ImGuiCond_Once;
+    const ImGuiCond layoutCond =
+        displayChanged ? ImGuiCond_Always : ImGuiCond_Once;
 
-  ImGui::SetNextWindowPos(ImVec2(0.0f, topInset), layoutCond);
-  ImGui::SetNextWindowSize(ImVec2(leftWidth, centerHeight - topInset),
-                           layoutCond);
+    ImGui::SetNextWindowPos(ImVec2(0.0f, topInset), layoutCond);
+    ImGui::SetNextWindowSize(ImVec2(leftWidth, centerHeight - topInset),
+                             layoutCond);
+    if (m_sceneTreePanel) {
+      m_sceneTreePanel->get().draw();
+    }
+
+    ImGui::SetNextWindowPos(ImVec2(display.x - rightWidth, 0.0f), layoutCond);
+    ImGui::SetNextWindowSize(ImVec2(rightWidth, centerHeight), layoutCond);
+    if (m_inspectorPanel) {
+      m_inspectorPanel->get().draw();
+    }
+
+    ImGui::SetNextWindowPos(ImVec2(leftWidth, centerHeight), layoutCond);
+    ImGui::SetNextWindowSize(ImVec2(centerWidth, bottomHeight), layoutCond);
+    if (m_consolePanel) {
+      m_consolePanel->get().draw();
+    }
+
+    ImGui::SetNextWindowPos(ImVec2(leftWidth, 0.0f), layoutCond);
+    ImGui::SetNextWindowSize(ImVec2(centerWidth, centerHeight), layoutCond);
+    if (m_viewportOverlay) {
+      m_viewportOverlay->get().draw();
+    }
+
+    m_defaultLayoutApplied = true;
+    m_lastDisplaySize = display;
+    return;
+  }
+
   if (m_sceneTreePanel) {
     m_sceneTreePanel->get().draw();
   }
-
-  ImGui::SetNextWindowPos(ImVec2(display.x - rightWidth, 0.0f), layoutCond);
-  ImGui::SetNextWindowSize(ImVec2(rightWidth, centerHeight), layoutCond);
   if (m_inspectorPanel) {
     m_inspectorPanel->get().draw();
   }
-
-  ImGui::SetNextWindowPos(ImVec2(leftWidth, centerHeight), layoutCond);
-  ImGui::SetNextWindowSize(ImVec2(centerWidth, bottomHeight), layoutCond);
   if (m_consolePanel) {
     m_consolePanel->get().draw();
   }
-
-  ImGui::SetNextWindowPos(ImVec2(leftWidth, 0.0f), layoutCond);
-  ImGui::SetNextWindowSize(ImVec2(centerWidth, centerHeight), layoutCond);
   if (m_viewportOverlay) {
     m_viewportOverlay->get().draw();
   }
-
-  m_defaultLayoutApplied = true;
-  m_lastDisplaySize = display;
 }
 
 void UiOverlay::handleHotkeys(LX_core::IInputState& input) {

@@ -27,6 +27,7 @@ public:
               LX_core::ConsolePanel& consolePanel,
               LX_core::ViewportOverlay& viewportOverlay);
   void attachClock(const LX_core::Clock& clock);
+  void setDefaultLayoutEnabled(bool enabled);
 
   void drawFrame();
   void handleHotkeys(LX_core::IInputState& input);
@@ -49,6 +50,7 @@ private:
   bool m_prevEscapeDown = false;
   bool m_prevDeleteDown = false;
   bool m_helpVisible = true;
+  bool m_defaultLayoutEnabled = true;
   bool m_defaultLayoutApplied = false;
   ImVec2 m_lastDisplaySize{0.0f, 0.0f};
 };

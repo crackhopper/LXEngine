@@ -15,7 +15,6 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
 
 namespace LX_demo::scene_viewer {
@@ -84,7 +83,7 @@ cameraPathToDisplayName(const std::string& path, const std::string& fallback) {
   document.setSceneName("Scene");
   document.setGameplayCameraPath("/game_cam");
 
-  auto& nodes = document.mutableNodes();
+  auto& rootNode = document.mutableRootNode();
   SceneNodeDocument gameCameraNode;
   gameCameraNode.nodeName = "game_camera";
   gameCameraNode.name = "game_cam";
@@ -103,7 +102,7 @@ cameraPathToDisplayName(const std::string& path, const std::string& fallback) {
       .top = 1.0f,
       .cullingMask = LX_core::Layer_All & ~LX_core::Layer_EditorOverlay,
   };
-  nodes.push_back(std::move(gameCameraNode));
+  rootNode.children.push_back(std::move(gameCameraNode));
   return document;
 }
 
@@ -165,6 +164,47 @@ void configureDirectionalLight(LX_core::DirectionalLight& light,
   light.ubo->setDirty();
 }
 
+void buildSceneNodesRecursive(
+    const SceneNodeDocument& nodeDocument, const LX_core::SceneNodeSharedPtr& parent,
+    const std::shared_ptr<SceneRuntimeData>& runtime,
+    std::unordered_map<std::string, LX_core::SceneNodeSharedPtr>& nodesByPath) {
+  LX_core::SceneNodeSharedPtr node;
+  if (nodeDocument.camera.has_value()) {
+    node = makeCameraNode(
+        nodeDocument.nodeName,
+        nodeDocument.name.empty() ? nodeDocument.nodeName : nodeDocument.name,
+        nodeDocument.camera->cullingMask);
+  } else {
+    node = buildRenderableNodeFromDocument(nodeDocument);
+  }
+
+  applyNodeIdentityAndTransform(*node, nodeDocument);
+  if (parent) {
+    node->setParent(parent);
+  }
+
+  if (nodeDocument.camera.has_value()) {
+    auto& camera = requireCameraComponent(node, nodeDocument.nodeName.c_str()).get();
+    applyCameraState(*node, camera, *nodeDocument.camera);
+    runtime->scene->addCamera(node);
+  } else {
+    runtime->scene->addRenderable(node);
+  }
+
+  nodesByPath[node->getPath()] = node;
+
+  if (nodeDocument.directionalLight.has_value()) {
+    auto light = std::make_shared<LX_core::DirectionalLight>();
+    configureDirectionalLight(*light, *nodeDocument.directionalLight);
+    runtime->scene->addLight(light);
+    runtime->directionalLightsByNode[node.get()] = light;
+  }
+
+  for (const auto& childDocument : nodeDocument.children) {
+    buildSceneNodesRecursive(childDocument, node, runtime, nodesByPath);
+  }
+}
+
 [[nodiscard]] std::shared_ptr<SceneRuntimeData>
 buildRuntimeFromDocument(const SceneDocument& document,
                          const std::optional<std::filesystem::path>& path,
@@ -180,54 +220,10 @@ buildRuntimeFromDocument(const SceneDocument& document,
   }
 
   std::unordered_map<std::string, LX_core::SceneNodeSharedPtr> nodesByPath;
-  std::vector<std::pair<LX_core::SceneNodeSharedPtr, std::string>> parentLinks;
-  std::vector<std::pair<LX_core::SceneNodeSharedPtr, DirectionalLightNodeState>>
-      lightNodes;
-
-  for (const auto& nodeDocument : document.nodes()) {
-    LX_core::SceneNodeSharedPtr node;
-    if (nodeDocument.camera.has_value()) {
-      node = makeCameraNode(
-          nodeDocument.nodeName,
-          nodeDocument.name.empty() ? nodeDocument.nodeName : nodeDocument.name,
-          nodeDocument.camera->cullingMask);
-      auto& camera = requireCameraComponent(node, nodeDocument.nodeName.c_str()).get();
-      applyCameraState(*node, camera, *nodeDocument.camera);
-      runtime->scene->addCamera(node);
-    } else {
-      node = buildRenderableNodeFromDocument(nodeDocument);
-      applyNodeIdentityAndTransform(*node, nodeDocument);
-      runtime->scene->addRenderable(node);
-    }
-
-    applyNodeIdentityAndTransform(*node, nodeDocument);
-    const std::string nodePath =
-        nodeDocument.parentPath.empty()
-            ? ("/" + nodeDocument.name)
-            : (nodeDocument.parentPath + "/" + nodeDocument.name);
-    nodesByPath[nodePath] = node;
-
-    if (!nodeDocument.parentPath.empty()) {
-      parentLinks.emplace_back(node, nodeDocument.parentPath);
-    }
-    if (nodeDocument.directionalLight.has_value()) {
-      lightNodes.emplace_back(node, *nodeDocument.directionalLight);
-    }
-  }
-
-  for (const auto& [node, parentPath] : parentLinks) {
-    const auto it = nodesByPath.find(parentPath);
-    if (it == nodesByPath.end()) {
-      throw std::runtime_error("scene document parent path not found: " + parentPath);
-    }
-    node->setParent(it->second);
-  }
-
-  for (const auto& [node, lightState] : lightNodes) {
-    auto light = std::make_shared<LX_core::DirectionalLight>();
-    configureDirectionalLight(*light, lightState);
-    runtime->scene->addLight(light);
-    runtime->directionalLightsByNode[node.get()] = light;
+  auto rootNode = runtime->scene->getRootNode();
+  applyNodeIdentityAndTransform(*rootNode, document.rootNode());
+  for (const auto& childDocument : document.rootNode().children) {
+    buildSceneNodesRecursive(childDocument, rootNode, runtime, nodesByPath);
   }
 
   const std::string gameplayPath = document.gameplayCameraPath();
@@ -274,38 +270,17 @@ requireRuntimeData(const std::shared_ptr<void>& impl) {
   return std::static_pointer_cast<SceneRuntimeData>(impl);
 }
 
-[[nodiscard]] std::vector<LX_core::SceneNodeSharedPtr>
-collectSerializableNodes(const std::shared_ptr<SceneRuntimeData>& runtime) {
-  std::vector<LX_core::SceneNodeSharedPtr> nodes;
-  std::unordered_set<const LX_core::SceneNode*> seen;
-  for (const auto& renderable : runtime->scene->getRenderables()) {
-    const auto node = std::dynamic_pointer_cast<LX_core::SceneNode>(renderable);
-    if (node == runtime->editorCameraNode) {
-      continue;
-    }
-    if (node && seen.insert(node.get()).second) {
-      nodes.push_back(node);
+[[nodiscard]] const SceneNodeDocument*
+findDocumentNodeByName(const SceneNodeDocument& node, const std::string& nodeName) {
+  if (node.nodeName == nodeName) {
+    return &node;
+  }
+  for (const auto& child : node.children) {
+    if (const auto* match = findDocumentNodeByName(child, nodeName)) {
+      return match;
     }
   }
-  for (const auto& camera : runtime->scene->getCameras()) {
-    if (camera == runtime->editorCameraNode) {
-      continue;
-    }
-    if (camera && seen.insert(camera.get()).second) {
-      nodes.push_back(camera);
-    }
-  }
-  return nodes;
-}
-
-[[nodiscard]] std::optional<SceneNodeDocument>
-findDocumentNodeByName(const SceneDocument& document, const std::string& nodeName) {
-  for (const auto& node : document.nodes()) {
-    if (node.nodeName == nodeName) {
-      return node;
-    }
-  }
-  return std::nullopt;
+  return nullptr;
 }
 
 [[nodiscard]] CameraNodeState
@@ -344,19 +319,18 @@ captureSceneDocument(const std::shared_ptr<SceneRuntimeData>& runtime) {
                                      ? runtime->gameCameraNode->getPath()
                                      : "/game_cam");
 
-  auto& nodes = document.mutableNodes();
-  for (const auto& node : collectSerializableNodes(runtime)) {
+  auto captureNode = [&](const auto& self,
+                         const LX_core::SceneNodeSharedPtr& node)
+      -> SceneNodeDocument {
     SceneNodeDocument entry;
     entry.nodeName = node->getNodeName();
     entry.name = node->getName();
-    if (const auto parent = node->getParent()) {
-      entry.parentPath = parent->getPath();
-    }
     entry.transform = node->getLocalTransform();
     entry.visibilityMask = node->getVisibilityLayerMask();
 
-    if (const auto existing = findDocumentNodeByName(runtime->document, node->getNodeName());
-        existing.has_value()) {
+    if (const auto* existing =
+            findDocumentNodeByName(runtime->document.rootNode(),
+                                   node->getNodeName())) {
       entry.meshUri = existing->meshUri;
       entry.materialUri = existing->materialUri;
     } else if (node->getName() == "helmet") {
@@ -377,7 +351,36 @@ captureSceneDocument(const std::shared_ptr<SceneRuntimeData>& runtime) {
           captureDirectionalLightState(*lightIt->second);
     }
 
-    nodes.push_back(std::move(entry));
+    for (const auto& child : node->getChildren()) {
+      if (!child || child == runtime->editorCameraNode) {
+        continue;
+      }
+      entry.children.push_back(self(self, child));
+    }
+
+    return entry;
+  };
+
+  auto& rootEntry = document.mutableRootNode();
+  if (runtime->scene && runtime->scene->getRootNode()) {
+    const auto& rootNode = runtime->scene->getRootNode();
+    rootEntry.nodeName = rootNode->getNodeName();
+    rootEntry.name = rootNode->getName();
+    rootEntry.parentPath.clear();
+    rootEntry.transform = rootNode->getLocalTransform();
+    rootEntry.visibilityMask = rootNode->getVisibilityLayerMask();
+    rootEntry.meshUri.reset();
+    rootEntry.materialUri.reset();
+    rootEntry.camera.reset();
+    rootEntry.directionalLight.reset();
+    rootEntry.children.clear();
+
+    for (const auto& child : rootNode->getChildren()) {
+      if (!child || child == runtime->editorCameraNode) {
+        continue;
+      }
+      rootEntry.children.push_back(captureNode(captureNode, child));
+    }
   }
 
   auto& editorCamera =

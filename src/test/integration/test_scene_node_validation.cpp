@@ -528,6 +528,42 @@ void testSceneNodeHierarchyPropagatesWorldTransform() {
          "child world transform should compose parent and local transforms");
 }
 
+void testSceneUsesExplicitRootForTopLevelNodes() {
+  auto world =
+      makeNode("node_world", makeMeshWithSkinningInputs(), makeMaterial(false));
+  world->setName("world");
+
+  auto scene = Scene::create("ExplicitRootScene", world);
+  auto root = scene->getRootNode();
+
+  EXPECT(root != nullptr, "scene should own an explicit root node");
+  EXPECT(scene->findByPath("/") == root.get(),
+         "slash lookup should resolve the explicit root node");
+  EXPECT(world->getParent() == root,
+         "top-level renderables should attach under the explicit root");
+  EXPECT(world->getPath() == "/world",
+         "root-attached child paths should stay anchored at slash");
+
+  auto cameraNode = SceneNode::create("scene_camera");
+  cameraNode->setName("camera");
+  auto camera = cameraNode->addComponent<CameraComponent>();
+  EXPECT(camera.has_value(), "camera component should attach");
+  if (!camera.has_value()) {
+    return;
+  }
+
+  scene->addCamera(cameraNode);
+  EXPECT(cameraNode->getParent() == root,
+         "top-level cameras should attach under the explicit root");
+  EXPECT(scene->findByPath("/camera") == cameraNode.get(),
+         "root-attached camera path should stay slash-anchored");
+
+  const std::string tree = scene->dumpTree();
+  EXPECT(tree.find("/\n") == 0, "tree dump should still start at slash root");
+  EXPECT(tree.find("world") != std::string::npos,
+         "tree dump should include root children");
+}
+
 void testHierarchyChangesDirtyChildPerDrawModel() {
   auto parent = makeNode("node_parent_dirty", makeMeshWithSkinningInputs(),
                          makeMaterial(false));
@@ -837,6 +873,7 @@ int main(int argc, char **argv) {
   testSceneNodeBackrefUsesWeakOwnershipContract();
   testSceneDestructionDetachesSceneNodesFromMaterialListener();
   testSceneNodeHierarchyPropagatesWorldTransform();
+  testSceneUsesExplicitRootForTopLevelNodes();
   testHierarchyChangesDirtyChildPerDrawModel();
   testParentedCameraFollowsHierarchyTranslation();
   testCameraScaleDoesNotAffectViewMatrix();

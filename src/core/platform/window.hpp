@@ -1,11 +1,62 @@
 #pragma once
 #include "core/input/input_state.hpp"
 #include "core/platform/types.hpp"
+#include <algorithm>
 #include <functional>
+#include <limits>
 #include <memory>
+#include <optional>
+#include <vector>
 namespace LX_core {
 using WindowGraphicsHandle = void *;
 using GraphicsInstanceHandle = void *;  
+
+struct WindowPlacement final {
+  int x = 0;
+  int y = 0;
+  int width = 0;
+  int height = 0;
+  bool maximized = false;
+};
+
+struct WindowUsableBounds final {
+  int x = 0;
+  int y = 0;
+  int width = 0;
+  int height = 0;
+};
+
+[[nodiscard]] inline long long
+windowPlacementCenterX(const WindowPlacement& placement) {
+  return static_cast<long long>(placement.x) +
+         static_cast<long long>(placement.width) / 2LL;
+}
+
+[[nodiscard]] inline long long
+windowPlacementCenterY(const WindowPlacement& placement) {
+  return static_cast<long long>(placement.y) +
+         static_cast<long long>(placement.height) / 2LL;
+}
+
+[[nodiscard]] inline std::optional<WindowPlacement>
+sanitizeWindowPlacement(const WindowPlacement& placement,
+                        const WindowUsableBounds& bounds) {
+  if (placement.width <= 0 || placement.height <= 0 || bounds.width <= 0 ||
+      bounds.height <= 0) {
+    return std::nullopt;
+  }
+
+  WindowPlacement sanitized = placement;
+  sanitized.width = std::min(placement.width, bounds.width);
+  sanitized.height = std::min(placement.height, bounds.height);
+
+  const int maxX = bounds.x + bounds.width - sanitized.width;
+  const int maxY = bounds.y + bounds.height - sanitized.height;
+  sanitized.x = std::clamp(placement.x, bounds.x, maxX);
+  sanitized.y = std::clamp(placement.y, bounds.y, maxY);
+  return sanitized;
+}
+
 class Window {
 public:
   static void Initialize(); // 初始化窗口系统
@@ -34,6 +85,15 @@ public:
                                      WindowGraphicsHandle handle) const = 0;
 
   virtual InputStateSharedPtr getInputState() const = 0;
+
+  virtual WindowPlacement getPlacement() const = 0;
+  virtual WindowUsableBounds getUsableBounds() const = 0;
+  virtual WindowUsableBounds
+  getUsableBoundsForPlacement(const WindowPlacement& placement) const {
+    (void)placement;
+    return getUsableBounds();
+  }
+  virtual void applyPlacement(const WindowPlacement& placement) = 0;
 
   /**
    * @brief Returns the underlying native window handle as an opaque pointer.

@@ -47,6 +47,7 @@ struct SceneNodeDocument final {
   std::optional<std::string> materialUri;
   std::optional<CameraNodeState> camera;
   std::optional<DirectionalLightNodeState> directionalLight;
+  std::vector<SceneNodeDocument> children;
 };
 
 class SceneDocument final {
@@ -62,8 +63,8 @@ public:
   void setSceneName(std::string sceneName);
   void setGameplayCameraPath(std::string path);
   const std::string& gameplayCameraPath() const;
-  std::vector<SceneNodeDocument>& mutableNodes();
-  const std::vector<SceneNodeDocument>& nodes() const;
+  SceneNodeDocument& mutableRootNode();
+  const SceneNodeDocument& rootNode() const;
   bool hasEditorCamera() const;
   const EditorCameraState& editorCamera() const;
   void setEditorCamera(const EditorCameraState& state);

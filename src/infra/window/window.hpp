@@ -1,4 +1,5 @@
 #pragma once
+#include <optional>
 #include <functional>
 #include <memory>
 #include <vulkan/vulkan.h>
@@ -10,7 +11,8 @@ class Window: public LX_core::Window {
 public:
   static void Initialize(); // 初始化窗口系统
 
-  Window(const char *title, int width, int height);
+  Window(const char *title, int width, int height,
+         std::optional<LX_core::WindowPlacement> initialPlacement = std::nullopt);
   ~Window();
 
   int getWidth() const override;
@@ -25,6 +27,12 @@ public:
   VkSurfaceKHR getVulkanSurface(VkInstance instance) const;
 
   LX_core::InputStateSharedPtr getInputState() const override;
+  LX_core::WindowPlacement getPlacement() const override;
+  LX_core::WindowUsableBounds getUsableBounds() const override;
+  LX_core::WindowUsableBounds
+  getUsableBoundsForPlacement(
+      const LX_core::WindowPlacement& placement) const override;
+  void applyPlacement(const LX_core::WindowPlacement& placement) override;
 
   void* getNativeHandle() const override;
 

@@ -197,6 +197,7 @@ public:
   void clearParent();
   SharedPtr getParent() const { return m_parent.lock(); }
   [[nodiscard]] std::vector<SharedPtr> getChildren() const;
+  [[nodiscard]] bool isSceneRoot() const { return m_isPathRoot; }
 
   IGpuResourceSharedPtr getVertexBuffer() const override;
   IGpuResourceSharedPtr getIndexBuffer() const override;

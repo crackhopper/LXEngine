@@ -107,7 +107,7 @@ getSkeletonComponent(const SceneNode &node) {
 } // namespace
 
 SceneNode::SceneNode(PathRootTag)
-    : m_nodeName("__scene_root__"), m_perDrawData(std::make_shared<PerDrawData>()),
+    : m_nodeName("scene_root"), m_perDrawData(std::make_shared<PerDrawData>()),
       m_isPathRoot(true) {}
 
 SceneNode::SceneNode(std::string nodeName)
@@ -162,10 +162,11 @@ std::string SceneNode::getPath() const {
     return "/" + pathSegment;
   }
 
-  const auto parentPath = parent->getPath();
-  if (parentPath == "/") {
-    return parentPath + pathSegment;
+  if (parent->m_isPathRoot) {
+    return "/" + pathSegment;
   }
+
+  const auto parentPath = parent->getPath();
   return parentPath + "/" + pathSegment;
 }
 
