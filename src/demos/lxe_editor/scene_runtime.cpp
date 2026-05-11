@@ -27,8 +27,6 @@ struct SceneRuntimeData final {
   LX_core::SceneSharedPtr scene;
   LX_core::SceneNodeSharedPtr editorCameraNode;
   LX_core::SceneNodeSharedPtr gameCameraNode;
-  std::unordered_map<const LX_core::SceneNode*, LX_core::DirectionalLightSharedPtr>
-      directionalLightsByNode;
 };
 
 [[nodiscard]] std::filesystem::path normalizeDocumentPath(
@@ -196,8 +194,7 @@ void buildSceneNodesRecursive(
   if (nodeDocument.directionalLight.has_value()) {
     auto light = std::make_shared<LX_core::DirectionalLight>();
     configureDirectionalLight(*light, *nodeDocument.directionalLight);
-    runtime->scene->addLight(light);
-    runtime->directionalLightsByNode[node.get()] = light;
+    runtime->scene->attachLight(node, light);
   }
 
   for (const auto& childDocument : nodeDocument.children) {
@@ -345,10 +342,8 @@ captureSceneDocument(const std::shared_ptr<SceneRuntimeData>& runtime) {
       entry.camera = captureCameraState(camera->get());
     }
 
-    const auto lightIt = runtime->directionalLightsByNode.find(node.get());
-    if (lightIt != runtime->directionalLightsByNode.end() && lightIt->second) {
-      entry.directionalLight =
-          captureDirectionalLightState(*lightIt->second);
+    if (const auto light = runtime->scene->getDirectionalLight(*node)) {
+      entry.directionalLight = captureDirectionalLightState(*light);
     }
 
     for (const auto& child : node->getChildren()) {

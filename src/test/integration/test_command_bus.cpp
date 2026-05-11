@@ -84,6 +84,9 @@ struct CommandFixture {
 
     lightNode->setName("dir_light");
     scene->addRenderable(lightNode);
+    scene->attachLight(
+        lightNode,
+        std::dynamic_pointer_cast<DirectionalLight>(scene->getLights().front()));
 
     registerBuiltinCommands(bus, editorState, *scene);
   }
@@ -446,6 +449,9 @@ void testBuiltinCommandErrors() {
 
 void testBuiltinAddRemoveSetCommands() {
   CommandFixture fixture;
+  std::vector<LX_core::SceneEvent> runtimeEvents;
+  auto subscription = fixture.scene->events().subscribe(
+      [&](const LX_core::SceneEvent &event) { runtimeEvents.push_back(event); });
 
   const CommandResult selectResult = fixture.bus.dispatch("select /world/cube");
   EXPECT(selectResult.ok, "select before add commands succeeds");
@@ -470,10 +476,18 @@ void testBuiltinAddRemoveSetCommands() {
   EXPECT(fixture.scene->getLights().size() == lightCountBefore + 1,
          "add light appends a scene light resource");
 
+  runtimeEvents.clear();
   const CommandResult setFov = fixture.bus.dispatch("set /camera_main.fov 75");
   EXPECT(setFov.ok, "set fov succeeds");
   EXPECT(nearlyEqual(fixture.camera->fovY, 75.0f),
          "set fov updates camera component");
+  EXPECT(!runtimeEvents.empty(), "set fov should emit a runtime event");
+  EXPECT(runtimeEvents.back().type == LX_core::SceneEventType::SceneNodeChanged &&
+             runtimeEvents.back().path == "/camera_main" &&
+             runtimeEvents.back().aspects.size() == 1 &&
+             runtimeEvents.back().aspects.front() ==
+                 LX_core::SceneNodeAspect::CameraProperties,
+         "set fov should emit a camera-properties scene node change");
 
   const CommandResult setTranslation =
       fixture.bus.dispatch("set /world/cube.translation 4 5 6");
@@ -533,6 +547,32 @@ void testBuiltinAddRemoveSetCommands() {
              nearlyEqual(dirLight->ubo->param.color.z, 0.6f) &&
              nearlyEqual(dirLight->ubo->param.color.w, 3.5f),
          "set color/intensity updates scene light");
+
+  fixture.lightNode->setName("sun");
+  auto fillNode = SceneNode::create("fill_light_node");
+  fillNode->setName("fill");
+  fillNode->setParent(fixture.world);
+  fixture.scene->addRenderable(fillNode);
+  auto fillLight = std::make_shared<DirectionalLight>();
+  fillLight->ubo->param.color.w = 1.25f;
+  fixture.scene->attachLight(fillNode, fillLight);
+
+  runtimeEvents.clear();
+  const CommandResult setSunIntensity =
+      fixture.bus.dispatch("set /sun.intensity 4.5");
+  EXPECT(setSunIntensity.ok,
+         "set light intensity should work for renamed light nodes");
+  EXPECT(nearlyEqual(dirLight->ubo->param.color.w, 4.5f),
+         "renamed light node should still target its attached light");
+  EXPECT(nearlyEqual(fillLight->ubo->param.color.w, 1.25f),
+         "renamed light command should not mutate other scene lights");
+  EXPECT(!runtimeEvents.empty(), "set intensity should emit a runtime event");
+  EXPECT(runtimeEvents.back().type == LX_core::SceneEventType::SceneNodeChanged &&
+             runtimeEvents.back().path == "/sun" &&
+             runtimeEvents.back().aspects.size() == 1 &&
+             runtimeEvents.back().aspects.front() ==
+                 LX_core::SceneNodeAspect::LightProperties,
+         "renamed light set should emit a light-properties scene node change");
 
   const CommandResult removeProbe = fixture.bus.dispatch("remove /world/cube/probe");
   EXPECT(removeProbe.ok, "remove child node succeeds");

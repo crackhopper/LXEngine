@@ -381,19 +381,21 @@ resolveDirectionalLight(SceneNode &node) {
   if (!scene) {
     return nullptr;
   }
+  return scene->getDirectionalLight(node);
+}
 
-  const std::string tag = lowerCopy(node.getName() + " " + node.getPath());
-  if (tag.find("light") == std::string::npos) {
-    return nullptr;
+void emitRuntimeNodeAspectChanged(SceneNode &node, const SceneNodeAspect aspect) {
+  const auto scene = node.getAttachedScene();
+  if (!scene) {
+    return;
   }
-
-  for (const auto &light : scene->getLights()) {
-    const auto directionalLight = std::dynamic_pointer_cast<DirectionalLight>(light);
-    if (directionalLight && directionalLight->ubo) {
-      return directionalLight;
-    }
-  }
-  return nullptr;
+  scene->events().emit(SceneEvent{
+      .domain = SceneEventDomain::Runtime,
+      .type = SceneEventType::SceneNodeChanged,
+      .path = node.getPath(),
+      .stableNodeName = node.getNodeName(),
+      .aspects = {aspect},
+  });
 }
 
 [[nodiscard]] std::vector<std::string> listComponentTypes() {
@@ -687,17 +689,42 @@ completeSetTarget(const Scene &scene, const CompletionContext &context) {
 struct CommandNodeStashEntry {
   SceneNodeSharedPtr node;
   SceneNodeSharedPtr parent;
-  LightBaseSharedPtr light;
+  std::vector<std::pair<SceneNodeSharedPtr, LightBaseSharedPtr>> attachedLights;
 };
 
 struct BuiltinCommandState {
   u64 nextStashId = 1;
   std::unordered_map<std::string, CommandNodeStashEntry> stash;
-  std::unordered_map<const SceneNode *, LightBaseSharedPtr> attachedLights;
 };
 
 [[nodiscard]] std::string allocateStashId(BuiltinCommandState &state) {
   return std::to_string(state.nextStashId++);
+}
+
+void collectSubtreeNodes(const SceneNodeSharedPtr &node,
+                         std::vector<SceneNodeSharedPtr> &out) {
+  if (!node) {
+    return;
+  }
+  out.push_back(node);
+  for (const auto &child : node->getChildren()) {
+    collectSubtreeNodes(child, out);
+  }
+}
+
+void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
+  if (!node) {
+    return;
+  }
+
+  if (node->getComponent<CameraComponent>().has_value()) {
+    scene.addCamera(node);
+  } else {
+    scene.addRenderable(node);
+  }
+  for (const auto &child : node->getChildren()) {
+    registerSubtreeWithScene(scene, child);
+  }
 }
 
 [[nodiscard]] CommandResult removeNodeToStash(Scene &scene, EditorState &editorState,
@@ -718,11 +745,13 @@ struct BuiltinCommandState {
   entry.node = removed;
   entry.parent = removed->getParent();
 
-  const auto lightIt = state.attachedLights.find(removed.get());
-  if (lightIt != state.attachedLights.end()) {
-    entry.light = lightIt->second;
-    scene.removeLight(lightIt->second);
-    state.attachedLights.erase(lightIt);
+  std::vector<SceneNodeSharedPtr> subtreeNodes;
+  collectSubtreeNodes(removed, subtreeNodes);
+  for (const auto &subtreeNode : subtreeNodes) {
+    const auto light = scene.getLight(*subtreeNode);
+    if (light) {
+      entry.attachedLights.push_back({subtreeNode, light});
+    }
   }
 
   scene.removeRenderable(removed);
@@ -748,15 +777,10 @@ struct BuiltinCommandState {
     entry.node->clearParent();
   }
 
-  if (entry.node->getComponent<CameraComponent>().has_value()) {
-    scene.addCamera(entry.node);
-  } else {
-    scene.addRenderable(entry.node);
-  }
+  registerSubtreeWithScene(scene, entry.node);
 
-  if (entry.light) {
-    scene.addLight(entry.light);
-    state.attachedLights[entry.node.get()] = entry.light;
+  for (const auto &[attachedNode, light] : entry.attachedLights) {
+    scene.attachLight(attachedNode, light);
   }
 
   return makeOk("restored " + entry.node->getPath(),
@@ -824,6 +848,7 @@ struct BuiltinCommandState {
     }
     camera->get().fovY = *value;
     camera->get().updateMatrices();
+    emitRuntimeNodeAspectChanged(node, SceneNodeAspect::CameraProperties);
     return makeOk("fov updated", "{\"value\":" + formatFloat(*value) + "}");
   }
   if (field == "visibilityMask") {
@@ -851,6 +876,7 @@ struct BuiltinCommandState {
     }
     camera->get().nearPlane = *value;
     camera->get().updateMatrices();
+    emitRuntimeNodeAspectChanged(node, SceneNodeAspect::CameraProperties);
     return makeOk("near updated", "{\"value\":" + formatFloat(*value) + "}");
   }
   if (field == "far") {
@@ -867,6 +893,7 @@ struct BuiltinCommandState {
     }
     camera->get().farPlane = *value;
     camera->get().updateMatrices();
+    emitRuntimeNodeAspectChanged(node, SceneNodeAspect::CameraProperties);
     return makeOk("far updated", "{\"value\":" + formatFloat(*value) + "}");
   }
   if (field == "projection") {
@@ -886,6 +913,7 @@ struct BuiltinCommandState {
       return makeError("invalid projection for set projection");
     }
     camera->get().updateMatrices();
+    emitRuntimeNodeAspectChanged(node, SceneNodeAspect::CameraProperties);
     return makeOk("projection updated",
                   "{\"value\":\"" + jsonEscape(value) + "\"}");
   }
@@ -902,6 +930,7 @@ struct BuiltinCommandState {
       return makeError("invalid unsigned for set cullingMask");
     }
     camera->get().setCullingMask(*value);
+    emitRuntimeNodeAspectChanged(node, SceneNodeAspect::CameraProperties);
     return makeOk("cullingMask updated", makeUnsignedJson(*value));
   }
   if (field == "direction") {
@@ -918,6 +947,7 @@ struct BuiltinCommandState {
     }
     light->ubo->param.dir = Vec4f{value->x, value->y, value->z, 0.0f};
     light->ubo->setDirty();
+    emitRuntimeNodeAspectChanged(node, SceneNodeAspect::LightProperties);
     return makeOk("direction updated", "{\"value\":" + makeVec3Json(*value) + "}");
   }
   if (field == "color") {
@@ -935,6 +965,7 @@ struct BuiltinCommandState {
     light->ubo->param.color =
         Vec4f{value->x, value->y, value->z, light->ubo->param.color.w};
     light->ubo->setDirty();
+    emitRuntimeNodeAspectChanged(node, SceneNodeAspect::LightProperties);
     return makeOk("color updated", "{\"value\":" + makeVec3Json(*value) + "}");
   }
   if (field == "intensity") {
@@ -951,6 +982,7 @@ struct BuiltinCommandState {
     }
     light->ubo->param.color.w = *value;
     light->ubo->setDirty();
+    emitRuntimeNodeAspectChanged(node, SceneNodeAspect::LightProperties);
     return makeOk("intensity updated", "{\"value\":" + formatFloat(*value) + "}");
   }
   if (field == "name") {
@@ -1362,8 +1394,7 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
         if (kind == "light") {
           scene.addRenderable(node);
           const auto light = std::make_shared<DirectionalLight>();
-          scene.addLight(light);
-          state->attachedLights[node.get()] = light;
+          scene.attachLight(node, light);
           CommandResult result =
               makeOk("added light placeholder " + node->getPath(),
                      "{\"path\":\"" + jsonEscape(node->getPath()) + "\",\"kind\":\"light\"}");
@@ -1534,6 +1565,10 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
               "cam fov " + formatFloat(camera->get().fovY);
           camera->get().fovY = *value;
           camera->get().updateMatrices();
+          if (const auto owner = camera->get().owner()) {
+            emitRuntimeNodeAspectChanged(owner->get(),
+                                         SceneNodeAspect::CameraProperties);
+          }
           result.ok = true;
           result.message = "camera fov = " + formatFloat(*value);
           result.structured = "{\"value\":" + formatFloat(*value) + "}";

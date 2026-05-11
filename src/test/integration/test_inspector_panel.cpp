@@ -76,6 +76,7 @@ struct Fixture {
     scene->addCamera(cameraNode);
     auto dirLight = std::dynamic_pointer_cast<LX_core::DirectionalLight>(
         scene->getLights().front());
+    scene->attachLight(lightNode, dirLight);
     dirLight->ubo->param.dir = LX_core::Vec4f{-0.3f, -1.0f, -0.5f, 0.0f};
     dirLight->ubo->param.color = LX_core::Vec4f{0.9f, 0.8f, 0.7f, 2.5f};
     LX_core::registerBuiltinCommands(bus, editorState, *scene);
@@ -144,6 +145,32 @@ void testSnapshotForLightNode() {
          "light color should match scene light");
   EXPECT(nearlyEqual(snapshot.lightIntensity, 2.5f),
          "light intensity should match scene light");
+}
+
+void testSnapshotForRenamedLightNodeUsesExactAttachedLight() {
+  Fixture fixture;
+  fixture.lightNode->setName("sun");
+
+  auto fillNode = LX_core::SceneNode::create("fill_light_node");
+  fillNode->setName("fill");
+  fixture.scene->addRenderable(fillNode);
+  auto fillLight = std::make_shared<LX_core::DirectionalLight>();
+  fillLight->ubo->param.dir = LX_core::Vec4f{1.0f, 0.0f, 0.0f, 0.0f};
+  fillLight->ubo->param.color = LX_core::Vec4f{0.1f, 0.2f, 0.3f, 9.0f};
+  fixture.scene->attachLight(fillNode, fillLight);
+
+  LX_core::InspectorPanel panel(fixture.bus, fixture.editorState);
+  fixture.editorState.select({fixture.lightNode});
+
+  const auto snapshot = panel.makeSnapshot();
+  EXPECT(snapshot.hasLight, "renamed light node should still report light fields");
+  EXPECT(snapshot.path == "/sun", "renamed light node path should match");
+  EXPECT(nearlyEqual(snapshot.lightDirection.x, -0.3f) &&
+             nearlyEqual(snapshot.lightDirection.y, -1.0f) &&
+             nearlyEqual(snapshot.lightDirection.z, -0.5f),
+         "renamed light snapshot should keep the exact attached light direction");
+  EXPECT(nearlyEqual(snapshot.lightIntensity, 2.5f),
+         "renamed light snapshot should keep the exact attached light intensity");
 }
 
 void testSnapshotTracksExternalNodeMutationAfterSelection() {
@@ -372,6 +399,7 @@ int main() {
   testSnapshotForRegularNode();
   testSnapshotForCameraNode();
   testSnapshotForLightNode();
+  testSnapshotForRenamedLightNodeUsesExactAttachedLight();
   testSnapshotTracksExternalNodeMutationAfterSelection();
   testDispatchHelpersUseCommandBus();
   testDrawFrameSurvivesCpuOnlyImGui();

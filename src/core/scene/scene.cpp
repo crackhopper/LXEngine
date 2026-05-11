@@ -33,6 +33,20 @@ void collectSubtreeSnapshots(const SceneNodeSharedPtr &node,
   }
 }
 
+[[nodiscard]] SceneNodeSharedPtr findRenderableNodeByAddress(
+    const std::vector<IRenderableSharedPtr> &renderables, const SceneNode *node) {
+  if (!node) {
+    return nullptr;
+  }
+  for (const auto &renderable : renderables) {
+    const auto renderableNode = std::dynamic_pointer_cast<SceneNode>(renderable);
+    if (renderableNode && renderableNode.get() == node) {
+      return renderableNode;
+    }
+  }
+  return nullptr;
+}
+
 } // namespace
 
 /*
@@ -358,6 +372,21 @@ void Scene::removeRenderable(const SceneNodeSharedPtr &node) {
                      }),
       m_renderables.end());
 
+  std::vector<LightBaseSharedPtr> removedLights;
+  for (auto lightIt = m_lightsByNode.begin(); lightIt != m_lightsByNode.end();) {
+    if (removedNodeIds.find(lightIt->first) == removedNodeIds.end()) {
+      ++lightIt;
+      continue;
+    }
+    if (lightIt->second) {
+      removedLights.push_back(lightIt->second);
+    }
+    lightIt = m_lightsByNode.erase(lightIt);
+  }
+  for (const auto &light : removedLights) {
+    removeLight(light);
+  }
+
   node->clearParentInternal(false);
   for (const auto &removedNode : removedNodes) {
     removedNode.node->detachFromScene();
@@ -418,9 +447,68 @@ void Scene::removeCamera(const SceneNodeSharedPtr &cameraNode) {
   removeRenderable(cameraNode);
 }
 
+void Scene::attachLight(const SceneNodeSharedPtr &node,
+                        const LightBaseSharedPtr &light) {
+  if (!node || !light) {
+    return;
+  }
+
+  const auto attachedScene = node->getAttachedScene();
+  if (!attachedScene || attachedScene.get() != this) {
+    return;
+  }
+
+  if (std::find(m_lights.begin(), m_lights.end(), light) == m_lights.end()) {
+    addLight(light);
+  }
+  m_lightsByNode[node.get()] = light;
+  node->emitRuntimeNodeChanged(SceneNodeAspect::RenderableStructure);
+}
+
+LightBaseSharedPtr Scene::getLight(const SceneNode &node) const {
+  const auto lightIt = m_lightsByNode.find(&node);
+  if (lightIt == m_lightsByNode.end()) {
+    return nullptr;
+  }
+  return lightIt->second;
+}
+
+DirectionalLightSharedPtr Scene::getDirectionalLight(const SceneNode &node) const {
+  return std::dynamic_pointer_cast<DirectionalLight>(getLight(node));
+}
+
+LightBaseSharedPtr Scene::detachLight(const SceneNodeSharedPtr &node) {
+  if (!node) {
+    return nullptr;
+  }
+
+  const auto lightIt = m_lightsByNode.find(node.get());
+  if (lightIt == m_lightsByNode.end()) {
+    return nullptr;
+  }
+
+  LightBaseSharedPtr light = lightIt->second;
+  m_lightsByNode.erase(lightIt);
+  removeLight(light);
+  node->emitRuntimeNodeChanged(SceneNodeAspect::RenderableStructure);
+  return light;
+}
+
 void Scene::removeLight(const LightBaseSharedPtr &light) {
   if (!light) {
     return;
+  }
+
+  std::vector<SceneNodeSharedPtr> affectedNodes;
+  for (auto lightIt = m_lightsByNode.begin(); lightIt != m_lightsByNode.end();) {
+    if (lightIt->second != light) {
+      ++lightIt;
+      continue;
+    }
+    if (const auto node = findRenderableNodeByAddress(m_renderables, lightIt->first)) {
+      affectedNodes.push_back(node);
+    }
+    lightIt = m_lightsByNode.erase(lightIt);
   }
 
   m_lights.erase(
@@ -429,6 +517,10 @@ void Scene::removeLight(const LightBaseSharedPtr &light) {
                        return candidate == light;
                      }),
       m_lights.end());
+
+  for (const auto &node : affectedNodes) {
+    node->emitRuntimeNodeChanged(SceneNodeAspect::RenderableStructure);
+  }
 }
 
 } // namespace LX_core

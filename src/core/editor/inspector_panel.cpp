@@ -74,33 +74,13 @@ constexpr float kRadToDeg = 180.0f / kPi;
   return std::to_string(value);
 }
 
-[[nodiscard]] std::string lowerCopy(std::string text) {
-  std::transform(text.begin(), text.end(), text.begin(),
-                 [](const unsigned char c) {
-                   return static_cast<char>(std::tolower(c));
-                 });
-  return text;
-}
-
 [[nodiscard]] std::shared_ptr<DirectionalLight>
 findDirectionalLightForNode(const SceneNode &node) {
   const auto scene = node.getAttachedScene();
   if (!scene) {
     return nullptr;
   }
-
-  const std::string tag = lowerCopy(node.getName() + " " + node.getPath());
-  if (tag.find("light") == std::string::npos) {
-    return nullptr;
-  }
-
-  for (const auto &light : scene->getLights()) {
-    const auto directionalLight = std::dynamic_pointer_cast<DirectionalLight>(light);
-    if (directionalLight && directionalLight->ubo) {
-      return directionalLight;
-    }
-  }
-  return nullptr;
+  return scene->getDirectionalLight(node);
 }
 
 [[nodiscard]] Vec3f quatToEulerDegrees(const Quatf &quat) {
@@ -310,7 +290,9 @@ bool InspectorPanel::shouldInvalidateForEvent(const SceneEvent &event) const {
         aspect == SceneNodeAspect::Identity ||
         aspect == SceneNodeAspect::Hierarchy ||
         aspect == SceneNodeAspect::Visibility ||
-        aspect == SceneNodeAspect::RenderableStructure) {
+        aspect == SceneNodeAspect::RenderableStructure ||
+        aspect == SceneNodeAspect::CameraProperties ||
+        aspect == SceneNodeAspect::LightProperties) {
       return true;
     }
   }

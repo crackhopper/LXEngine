@@ -26,6 +26,8 @@ enum class SceneNodeAspect {
   Hierarchy,
   Visibility,
   RenderableStructure,
+  CameraProperties,
+  LightProperties,
 };
 
 struct SceneEvent final {

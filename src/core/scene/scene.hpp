@@ -12,6 +12,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 
 namespace LX_core {
 
@@ -155,6 +156,11 @@ public:
   const std::vector<SceneNodeSharedPtr> &getCameras() const { return m_cameras; }
 
   void addLight(LightBaseSharedPtr light) { m_lights.push_back(std::move(light)); }
+  void attachLight(const SceneNodeSharedPtr &node, const LightBaseSharedPtr &light);
+  [[nodiscard]] LightBaseSharedPtr getLight(const SceneNode &node) const;
+  [[nodiscard]] DirectionalLightSharedPtr
+  getDirectionalLight(const SceneNode &node) const;
+  [[nodiscard]] LightBaseSharedPtr detachLight(const SceneNodeSharedPtr &node);
   void removeLight(const LightBaseSharedPtr &light);
   const std::vector<LightBaseSharedPtr> &getLights() const { return m_lights; }
   const std::string &getSceneName() const { return m_sceneName; }
@@ -195,6 +201,7 @@ private:
   std::vector<IRenderableSharedPtr> m_renderables;
   std::vector<SceneNodeSharedPtr> m_cameras;
   std::vector<LightBaseSharedPtr> m_lights;
+  std::unordered_map<const SceneNode *, LightBaseSharedPtr> m_lightsByNode;
   SceneEventHub m_events;
 };
 
