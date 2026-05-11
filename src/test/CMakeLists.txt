@@ -37,6 +37,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_scene_catalog
   test_scene_session
   test_scene_runtime
+  test_scene_events
   test_debug_ui_smoke
   test_scene_tree_panel
   test_editor_multi_select
@@ -45,6 +46,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_gizmo_adapter
   test_lxe_editor_layout
   test_lxe_editor_interaction
+  test_lxe_editor_session
   test_lxe_editor_api_service
   test_lxe_editor_api_server
   test_gltf_loader
@@ -188,6 +190,30 @@ if(TARGET test_lxe_editor_interaction)
     ${CMAKE_CURRENT_SOURCE_DIR}/..
   )
   target_link_libraries(test_lxe_editor_interaction PRIVATE yaml-cpp::yaml-cpp)
+endif()
+
+if(TARGET test_lxe_editor_session)
+  target_sources(test_lxe_editor_session PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_session.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/camera_rig.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_config_state.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_data_state.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_camera_state.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_commands.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_builder.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_catalog.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_document.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_interaction_controller.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_input_routing.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_runtime.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_session.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/ui_overlay.cpp
+  )
+  target_include_directories(test_lxe_editor_session PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/..
+    ${CMAKE_CURRENT_SOURCE_DIR}/../infra/external/yaml-cpp/include
+  )
+  target_link_libraries(test_lxe_editor_session PRIVATE imgui yaml-cpp::yaml-cpp)
 endif()
 
 if(TARGET test_lxe_editor_api_service)

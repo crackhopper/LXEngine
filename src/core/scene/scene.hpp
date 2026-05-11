@@ -2,6 +2,7 @@
 #include "core/pipeline/pipeline_key.hpp"
 #include "core/asset/shader.hpp"
 #include "core/math/ray.hpp"
+#include "core/scene/scene_events.hpp"
 #include "core/scene/components/camera_component.hpp"
 #include "core/scene/light.hpp"
 #include "core/scene/object.hpp"
@@ -161,6 +162,8 @@ public:
   [[nodiscard]] std::vector<std::string> listAllPaths() const;
   std::string dumpTree() const;
   void revalidateNodesUsing(const MaterialInstanceSharedPtr &materialInstance);
+  [[nodiscard]] SceneEventHub &events() { return m_events; }
+  [[nodiscard]] const SceneEventHub &events() const { return m_events; }
 
   /// REQ-009 two-axis filter form: camera by matchesTarget(target), light by
   /// supportsPass(pass). Returns camera data resources first, then light data
@@ -188,6 +191,7 @@ private:
   std::vector<IRenderableSharedPtr> m_renderables;
   std::vector<SceneNodeSharedPtr> m_cameras;
   std::vector<LightBaseSharedPtr> m_lights;
+  SceneEventHub m_events;
 };
 
 using SceneSharedPtr = Scene::SharedPtr;
