@@ -2,14 +2,17 @@
 
 #include "core/editor/command_bus.hpp"
 #include "core/math/vec.hpp"
+#include "core/scene/scene_events.hpp"
 
 #include <array>
+#include <memory>
 #include <string>
 #include <string_view>
 
 namespace LX_core {
 
 class EditorState;
+class Scene;
 class SceneNode;
 
 class InspectorPanel final {
@@ -66,12 +69,18 @@ public:
   void setOpen(bool open);
 
 private:
+  void refreshSceneSubscription();
+  void handleSceneEvent(const SceneEvent &event);
+  [[nodiscard]] bool shouldInvalidateForEvent(const SceneEvent &event) const;
   void syncDraftFromSnapshot(const Snapshot &snapshot);
   void drawSelection(const Snapshot &snapshot);
 
   CommandBus &m_commandBus;
   EditorState &m_editorState;
+  SceneEventSubscription m_sceneSubscription;
+  std::weak_ptr<Scene> m_subscribedScene;
   std::string m_syncedSelectionPath;
+  bool m_snapshotDirty = true;
   std::array<char, 256> m_nameBuffer{};
   Vec3f m_translationDraft{0.0f, 0.0f, 0.0f};
   Vec3f m_rotationDraft{0.0f, 0.0f, 0.0f};

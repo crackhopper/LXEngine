@@ -132,6 +132,8 @@ bool InspectorPanel::isOpen() const { return m_open; }
 void InspectorPanel::setOpen(const bool open) { m_open = open; }
 
 void InspectorPanel::draw() {
+  refreshSceneSubscription();
+
   if (!m_open) {
     return;
   }
@@ -145,11 +147,12 @@ void InspectorPanel::draw() {
   if (!snapshot.hasSelection) {
     ImGui::TextUnformatted("No selection");
     m_syncedSelectionPath.clear();
+    m_snapshotDirty = true;
     ImGui::End();
     return;
   }
 
-  if (snapshot.path != m_syncedSelectionPath) {
+  if (m_snapshotDirty || snapshot.path != m_syncedSelectionPath) {
     syncDraftFromSnapshot(snapshot);
   }
 
@@ -259,6 +262,61 @@ CommandResult InspectorPanel::dispatchScale(std::string_view path,
   return dispatchSetVec3(path, "scale", scale);
 }
 
+void InspectorPanel::refreshSceneSubscription() {
+  const auto selected = m_editorState.getPrimarySelected();
+  const auto selectedScene =
+      selected.has_value() ? selected->get().getAttachedScene() : nullptr;
+  const auto currentScene = m_subscribedScene.lock();
+  if (currentScene.get() == selectedScene.get()) {
+    return;
+  }
+
+  m_sceneSubscription.reset();
+  m_subscribedScene.reset();
+  m_snapshotDirty = true;
+  if (!selectedScene) {
+    return;
+  }
+
+  m_subscribedScene = selectedScene;
+  m_sceneSubscription =
+      selectedScene->events().subscribe([this](const SceneEvent &event) {
+        handleSceneEvent(event);
+      });
+}
+
+void InspectorPanel::handleSceneEvent(const SceneEvent &event) {
+  if (shouldInvalidateForEvent(event)) {
+    m_snapshotDirty = true;
+  }
+}
+
+bool InspectorPanel::shouldInvalidateForEvent(const SceneEvent &event) const {
+  if (event.domain != SceneEventDomain::Runtime ||
+      event.type != SceneEventType::SceneNodeChanged) {
+    return false;
+  }
+
+  const auto selected = m_editorState.getPrimarySelected();
+  if (!selected.has_value()) {
+    return false;
+  }
+  if (event.stableNodeName != selected->get().getNodeName()) {
+    return false;
+  }
+
+  for (const auto aspect : event.aspects) {
+    if (aspect == SceneNodeAspect::Transform ||
+        aspect == SceneNodeAspect::Identity ||
+        aspect == SceneNodeAspect::Hierarchy ||
+        aspect == SceneNodeAspect::Visibility ||
+        aspect == SceneNodeAspect::RenderableStructure) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void InspectorPanel::syncDraftFromSnapshot(const Snapshot &snapshot) {
   m_syncedSelectionPath = snapshot.path;
   std::fill(m_nameBuffer.begin(), m_nameBuffer.end(), '\0');
@@ -278,6 +336,7 @@ void InspectorPanel::syncDraftFromSnapshot(const Snapshot &snapshot) {
   m_lightDirectionDraft = snapshot.lightDirection;
   m_lightColorDraft = snapshot.lightColor;
   m_lightIntensityDraft = snapshot.lightIntensity;
+  m_snapshotDirty = false;
 }
 
 void InspectorPanel::drawSelection(const Snapshot &snapshot) {

@@ -146,6 +146,26 @@ void testSnapshotForLightNode() {
          "light intensity should match scene light");
 }
 
+void testSnapshotTracksExternalNodeMutationAfterSelection() {
+  Fixture fixture;
+  LX_core::InspectorPanel panel(fixture.bus, fixture.editorState);
+  fixture.editorState.select({fixture.cube});
+
+  const auto before = panel.makeSnapshot();
+  EXPECT(nearlyEqual(before.translation.x, 1.0f) &&
+             nearlyEqual(before.translation.y, 2.0f) &&
+             nearlyEqual(before.translation.z, 3.0f),
+         "precondition: initial snapshot should expose original translation");
+
+  fixture.cube->setTranslation({9.0f, 8.0f, 7.0f});
+
+  const auto after = panel.makeSnapshot();
+  EXPECT(nearlyEqual(after.translation.x, 9.0f) &&
+             nearlyEqual(after.translation.y, 8.0f) &&
+             nearlyEqual(after.translation.z, 7.0f),
+         "snapshot should reflect external runtime mutation for selected node");
+}
+
 void testDispatchHelpersUseCommandBus() {
   Fixture fixture;
   LX_core::InspectorPanel panel(fixture.bus, fixture.editorState);
@@ -206,6 +226,144 @@ void testDrawFrameSurvivesCpuOnlyImGui() {
   ImGui::DestroyContext();
 }
 
+void testDrawResyncsInspectorDraftAfterExternalMutation() {
+  if (!setupMinimalImGui()) {
+    std::cout << "[SKIP] inspector stale-draft draw regression\n";
+    ImGui::DestroyContext();
+    return;
+  }
+
+  Fixture fixture;
+  LX_core::InspectorPanel panel(fixture.bus, fixture.editorState);
+  fixture.editorState.select({fixture.cube});
+
+  ImGui::NewFrame();
+  panel.draw();
+  ImGui::EndFrame();
+
+  fixture.cube->setTranslation({4.0f, 5.0f, 6.0f});
+
+  const auto runtimeSnapshotBeforeResync = panel.makeSnapshot();
+  EXPECT(nearlyEqual(runtimeSnapshotBeforeResync.translation.x, 4.0f) &&
+             nearlyEqual(runtimeSnapshotBeforeResync.translation.y, 5.0f) &&
+             nearlyEqual(runtimeSnapshotBeforeResync.translation.z, 6.0f),
+         "selected-node snapshot should observe the external mutation immediately");
+
+  try {
+    ImGui::NewFrame();
+    panel.draw();
+    ImGui::EndFrame();
+  } catch (...) {
+    EXPECT(false, "draw should survive external mutation-triggered resync");
+  }
+
+  const auto snapshotAfterDraw = panel.makeSnapshot();
+  EXPECT(snapshotAfterDraw.path == "/world/cube",
+         "draw after mutation should preserve the active selected path");
+  EXPECT(nearlyEqual(snapshotAfterDraw.translation.x, 4.0f) &&
+             nearlyEqual(snapshotAfterDraw.translation.y, 5.0f) &&
+             nearlyEqual(snapshotAfterDraw.translation.z, 6.0f),
+         "draw after mutation should leave the inspector snapshot on the latest transform");
+
+  ImGui::DestroyContext();
+}
+
+void testSceneSubscriptionSwitchIgnoresOldSceneMutations() {
+  if (!setupMinimalImGui()) {
+    std::cout << "[SKIP] inspector scene-switch subscription regression\n";
+    ImGui::DestroyContext();
+    return;
+  }
+
+  LX_core::EditorState editorState;
+  LX_core::CommandBus bus;
+
+  auto rootA = LX_core::SceneNode::create("root_a");
+  rootA->setName("rootA");
+  auto nodeA = LX_core::SceneNode::create("node_a");
+  nodeA->setName("nodeA");
+  nodeA->setParent(rootA);
+  nodeA->setTranslation({1.0f, 2.0f, 3.0f});
+  auto sceneA = LX_core::Scene::create("scene_a", rootA);
+  sceneA->addRenderable(nodeA);
+
+  auto rootB = LX_core::SceneNode::create("root_b");
+  rootB->setName("rootB");
+  auto nodeB = LX_core::SceneNode::create("node_b");
+  nodeB->setName("nodeB");
+  nodeB->setParent(rootB);
+  nodeB->setTranslation({7.0f, 8.0f, 9.0f});
+  auto sceneB = LX_core::Scene::create("scene_b", rootB);
+  sceneB->addRenderable(nodeB);
+
+  LX_core::registerBuiltinCommands(bus, editorState, *sceneA);
+  LX_core::registerBuiltinCommands(bus, editorState, *sceneB);
+
+  LX_core::InspectorPanel panel(bus, editorState);
+  editorState.select({nodeA});
+
+  ImGui::NewFrame();
+  panel.draw();
+  ImGui::EndFrame();
+
+  const auto sceneASnapshot = panel.makeSnapshot();
+  EXPECT(sceneASnapshot.path == "/rootA/nodeA",
+         "initial draw should reflect the first scene selection");
+  EXPECT(nearlyEqual(sceneASnapshot.translation.x, 1.0f) &&
+             nearlyEqual(sceneASnapshot.translation.y, 2.0f) &&
+             nearlyEqual(sceneASnapshot.translation.z, 3.0f),
+         "initial snapshot should match the first scene selection");
+
+  editorState.select({nodeB});
+  ImGui::NewFrame();
+  panel.draw();
+  ImGui::EndFrame();
+
+  const auto sceneBSnapshot = panel.makeSnapshot();
+  EXPECT(sceneBSnapshot.path == "/rootB/nodeB",
+         "draw after selection switch should reflect the new scene selection");
+  EXPECT(nearlyEqual(sceneBSnapshot.translation.x, 7.0f) &&
+             nearlyEqual(sceneBSnapshot.translation.y, 8.0f) &&
+             nearlyEqual(sceneBSnapshot.translation.z, 9.0f),
+         "snapshot after selection switch should match the new scene selection");
+
+  nodeA->setTranslation({11.0f, 12.0f, 13.0f});
+
+  try {
+    ImGui::NewFrame();
+    panel.draw();
+    ImGui::EndFrame();
+  } catch (...) {
+    EXPECT(false,
+           "draw should survive mutations from a scene that is no longer selected");
+  }
+
+  const auto postSceneAMutationSnapshot = panel.makeSnapshot();
+  EXPECT(postSceneAMutationSnapshot.path == "/rootB/nodeB",
+         "current snapshot should still follow the active selection after old-scene mutation");
+  EXPECT(nearlyEqual(postSceneAMutationSnapshot.translation.x, 7.0f) &&
+             nearlyEqual(postSceneAMutationSnapshot.translation.y, 8.0f) &&
+             nearlyEqual(postSceneAMutationSnapshot.translation.z, 9.0f),
+         "old-scene mutation should not change the selected node snapshot");
+
+  editorState.deselect();
+  nodeB->setTranslation({14.0f, 15.0f, 16.0f});
+  try {
+    ImGui::NewFrame();
+    panel.draw();
+    ImGui::EndFrame();
+  } catch (...) {
+    EXPECT(false,
+           "draw should survive mutations after the inspector selection is cleared");
+  }
+
+  const auto noSelectionSnapshot = panel.makeSnapshot();
+  EXPECT(!noSelectionSnapshot.hasSelection,
+         "deselected panel should stay empty even when the prior scene mutates");
+
+  ImGui::DestroyContext();
+}
+
 } // namespace
 
 int main() {
@@ -214,8 +372,11 @@ int main() {
   testSnapshotForRegularNode();
   testSnapshotForCameraNode();
   testSnapshotForLightNode();
+  testSnapshotTracksExternalNodeMutationAfterSelection();
   testDispatchHelpersUseCommandBus();
   testDrawFrameSurvivesCpuOnlyImGui();
+  testDrawResyncsInspectorDraftAfterExternalMutation();
+  testSceneSubscriptionSwitchIgnoresOldSceneMutations();
 
   if (failures == 0) {
     std::cout << "[PASS] inspector_panel tests passed.\n";
