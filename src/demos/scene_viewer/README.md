@@ -1,17 +1,16 @@
 # demo_scene_viewer
 
-The default playground demo. Loads the authored scene document at
-`assets/scenes/scene_viewer.scene.yaml`, builds the DamagedHelmet + ground +
-directional-light preview scene through the project's Vulkan backend, and adds
-an ImGui editor MVP overlay with scene tree / inspector / console / viewport
-overlay plus Orbit / FreeFly camera modes.
+The default playground demo. Starts with an empty scene, lets you manually load
+built-in or local scene documents, renders them through the project's Vulkan
+backend, and adds an ImGui editor MVP overlay with scene tree / inspector /
+console / viewport overlay plus Orbit / FreeFly camera modes.
 
 ## Purpose
 
 - Collapse the "does the engine actually run end-to-end?" question into a
   single executable
-- Provide the default integration target for scene-document loading/saving plus
-  future scene features (Sponza, shadows, IBL, post-processing)
+- Provide the default integration target for full scene load/save plus future
+  scene features (Sponza, shadows, IBL, post-processing)
 - Keep a human-friendly UI surface so selection / camera / light / transform
   tweaks are observable without editing source
 
@@ -58,29 +57,38 @@ with a non-zero exit code if the `assets/` tree cannot be found.
 
 ## Scene document behavior
 
-- The default startup document is `assets/scenes/scene_viewer.scene.yaml`.
-- `game_cam` is the authored gameplay camera serialized under `gameCamera`.
-- `editor_cam` is editor-only state. It is restored from `editor.editorCamera`
-  metadata when present and otherwise falls back to the gameplay camera pose.
-- Current scene-document I/O only persists the metadata that `scene_viewer`
-  owns today: the scene name, `gameCamera`, and editor-only
-  `editor.editorCamera` state.
-- The Helmet / ground / directional-light content is still rebuilt from code
-  when a document is loaded; it is not serialized from the runtime scene graph.
-- `scene load <path>` queues a new document and applies it on the next update
-  tick rather than swapping the active scene immediately from the console call.
-- `scene save` writes the current owned document metadata back to the currently
-  loaded document path.
-- `scene save <path>` writes that same owned document metadata to a new path
-  and updates the current runtime document path to that saved location.
+- Startup begins with an empty scene. No sample scene is auto-loaded.
+- Built-in scenes live under `assets/scenes/` and are listed as `asset`.
+- User scenes and autosaved copies live under `data/scenes/` and are listed as
+  `local`.
+- `game_cam` is the authored gameplay camera serialized in the scene document.
+- `editor_cam` is editor-only state. It is restored from
+  `editor.editorCamera` when present and otherwise falls back to the gameplay
+  camera pose.
+- Current scene documents persist the authored scene name, gameplay camera
+  path, node list, transform hierarchy, built-in mesh/material references,
+  directional lights, and editor-camera metadata.
+- `scene load <path-or-id>` queues a new document and applies it on the next
+  update tick rather than swapping the active scene immediately from the
+  console call.
+- `scene save` writes back to the current scene when allowed.
+- When the current scene came from `asset` and the session is still `user`,
+  `scene save` protects the built-in file and writes a timestamped `local`
+  copy under `data/scenes/`.
+- Closing a dirty scene prompts for `Save`, `Discard`, or `Cancel`. `Save`
+  follows the same `scene save` rules.
 
 ## Console commands
 
 | Command | Effect |
 |---------|--------|
-| `scene load <path>` | Queue a document-metadata reload for the next update tick, then rebuild the authored scene content from code |
-| `scene save` | Save the current owned document metadata back to the current document |
-| `scene save <path>` | Save the current owned document metadata to a new path and make that path the current document |
+| `scene list` | List both built-in `asset` scenes and writable `local` scenes |
+| `scene load <path-or-id>` | Queue a full scene reload for the next update tick |
+| `scene save` | Save the current scene back to its current path when allowed, or redirect protected assets to a timestamped local copy |
+| `scene save <path>` | Save the current scene to an explicit path |
+| `admin on` | Enable admin mode so `scene save` may overwrite built-in assets |
+| `admin off` | Return to normal user mode |
+| `admin status` | Show the current permission level |
 
 ## Controls
 
@@ -141,5 +149,10 @@ registered with CTest.
    and interactive.
 6. Inspector edits, gizmo commits, and console commands all mutate the same
    scene state through the command bus.
-7. Closing the window exits the process cleanly (no crash, no hanging
-   validation errors in the console).
+7. `scene list` shows both `asset` and `local` entries.
+8. Loading `assets/scenes/scene_viewer.scene.yaml` restores Helmet, ground,
+   light, and gameplay camera.
+9. Saving a built-in scene in `user` mode creates a timestamped file under
+   `data/scenes/` instead of overwriting the asset.
+10. Closing a dirty scene shows a save/discard/cancel prompt and exits cleanly
+    after `Save` or `Discard`.

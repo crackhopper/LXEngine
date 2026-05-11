@@ -30,7 +30,7 @@ public:
 
   bool shouldClose() override;
 
-  void onClose(std::function<void()> cb) override;
+  void onClose(std::function<bool()> cb) override;
 
 private:
   struct Impl; // PImpl 隐藏 SDL/GLFW

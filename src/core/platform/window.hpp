@@ -45,7 +45,7 @@ public:
    */
   virtual void* getNativeHandle() const = 0;
 
-  virtual void onClose(std::function<void()> cb) = 0;
+  virtual void onClose(std::function<bool()> cb) = 0;
   virtual bool shouldClose() = 0;
 };
 using WindowSharedPtr = std::shared_ptr<Window>;

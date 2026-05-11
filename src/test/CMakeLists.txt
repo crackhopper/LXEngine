@@ -32,6 +32,8 @@ set(TEST_INTEGRATION_EXE_LIST
   test_command_bus
   test_command_bus_v2
   test_scene_document
+  test_scene_catalog
+  test_scene_session
   test_scene_runtime
   test_debug_ui_smoke
   test_scene_tree_panel
@@ -158,12 +160,32 @@ if(TARGET test_scene_document)
   target_link_libraries(test_scene_document PRIVATE yaml-cpp::yaml-cpp)
 endif()
 
+if(TARGET test_scene_catalog)
+  target_sources(test_scene_catalog PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/scene_viewer/scene_catalog.cpp
+  )
+  target_include_directories(test_scene_catalog PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/..
+  )
+endif()
+
+if(TARGET test_scene_session)
+  target_sources(test_scene_session PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/scene_viewer/scene_session.cpp
+  )
+  target_include_directories(test_scene_session PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/..
+  )
+endif()
+
 if(TARGET test_scene_runtime)
   target_sources(test_scene_runtime PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/scene_viewer/scene_builder.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/scene_viewer/editor_camera_state.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/scene_viewer/scene_catalog.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/scene_viewer/scene_document.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/scene_viewer/scene_runtime.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/scene_viewer/scene_session.cpp
   )
   target_include_directories(test_scene_runtime PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/..

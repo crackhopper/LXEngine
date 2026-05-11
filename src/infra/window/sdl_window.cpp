@@ -17,7 +17,7 @@ struct Window::Impl {
   const char *title;
   SDL_Window *window = nullptr;
   VkSurfaceKHR vkSurface = VK_NULL_HANDLE;
-  std::function<void()> closeCallback;
+  std::function<bool()> closeCallback;
   std::shared_ptr<Sdl3InputState> inputState;
 
   Impl(const char *t, int w, int h) : width(w), height(h), title(t), inputState(std::make_shared<Sdl3InputState>()) {
@@ -134,7 +134,7 @@ int Window::getHeight() const {
 bool Window::shouldClose() {
   bool result = pImpl->shouldClose();
   if (result && pImpl->closeCallback) {
-    pImpl->closeCallback();
+    result = pImpl->closeCallback();
   }
   return result;
 }
@@ -147,7 +147,7 @@ void Window::getRequiredExtensions(
 VkSurfaceKHR Window::getVulkanSurface(VkInstance instance) const {
   return const_cast<Impl *>(pImpl.get())->getVulkanSurface(instance);
 }
-void Window::onClose(std::function<void()> cb) { pImpl->closeCallback = cb; }
+void Window::onClose(std::function<bool()> cb) { pImpl->closeCallback = cb; }
 
 LX_core::InputStateSharedPtr Window::getInputState() const {
   return pImpl->inputState;

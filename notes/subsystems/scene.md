@@ -75,6 +75,20 @@
 - `src/core/scene/object.cpp` 里的 fatal 文本现在会直接带上缺失的 input 名字，例如 `missing vertex input 'inUV' at location 2`，便于把 forward variant 失败定位到具体 mesh contract。
 - `src/test/integration/test_scene_node_validation.cpp` 已经把 `missing inColor / inUV / inNormal / inTangent / inBoneIDs / inBoneWeights / Skeleton` 这些 forward-path 失败都跑成子进程死亡测试，同时覆盖了“可选 sampler 缺失不阻塞校验”的回归用例。
 
+## scene_viewer 场景工作流
+
+- `demo_scene_viewer` 现在默认启动为空场景，不再自动打开样例。
+- 内置测试场景放在 `assets/scenes/`，在命令行里显示为 `asset`；本地用户场景放在 `data/scenes/`，显示为 `local`。
+- `scene list` 会同时列出 `asset` 和 `local`，并带类型标记。
+- `scene load <id-or-path>` 可以加载两类场景；当前实现会在下一次 update tick 切换 runtime。
+- `scene save` 会按当前来源和权限决定目标：
+  - `local` 直接覆盖本地文件
+  - `asset` 在普通 `user` 模式下不会被覆盖，而是重定向到 `data/scenes/<name>.<timestamp>.scene.yaml`
+  - `asset` 在 `admin` 模式下允许直接覆盖
+- `scene save <path>` 支持显式另存；如果显式路径仍指向受保护的 `asset` 区域且权限不是 `admin`，也会被重定向到 `local`。
+- `admin on` / `admin off` / `admin status` 控制当前编辑会话的最小两级权限。
+- 关闭 dirty 场景时会弹出 `Save / Discard / Cancel`；`Save` 走的就是同一条 `scene save` 决策路径，不会在 `user` 模式下静默覆盖内置 asset。
+
 ## 从哪里改
 
 - 想改结构性校验：看 `src/core/scene/object.cpp` 里的 `rebuildValidatedCache()`。

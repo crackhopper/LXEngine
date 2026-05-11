@@ -12,7 +12,7 @@ struct Window::Impl {
   int height;
   const char *title;
   GLFWwindow *window = nullptr;
-  std::function<void()> closeCallback;
+  std::function<bool()> closeCallback;
 
   Impl(const char *t, int w, int h) : width(w), height(h), title(t) {
     if (!glfwInit())
@@ -88,14 +88,17 @@ int Window::getHeight() const {
 bool Window::shouldClose() {
   bool result = pImpl->shouldClose();
   if (result && pImpl->closeCallback) {
-    pImpl->closeCallback();
+    result = pImpl->closeCallback();
+    if (!result) {
+      glfwSetWindowShouldClose(pImpl->window, GLFW_FALSE);
+    }
   }
   return result;
 }
 VkSurfaceKHR Window::getVulkanSurface(VkInstance instance) const {
   return pImpl->getVulkanSurface(instance);
 }
-void Window::onClose(std::function<void()> cb) { pImpl->closeCallback = cb; }
+void Window::onClose(std::function<bool()> cb) { pImpl->closeCallback = cb; }
 
 LX_core::InputStateSharedPtr Window::getInputState() const {
   static auto dummy = std::make_shared<LX_core::DummyInputState>();

@@ -6,9 +6,11 @@ add_executable(demo_scene_viewer
   main.cpp
   camera_rig.cpp
   editor_camera_state.cpp
+  scene_catalog.cpp
   scene_builder.cpp
   scene_document.cpp
   scene_runtime.cpp
+  scene_session.cpp
   ui_overlay.cpp
 )
 

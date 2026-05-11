@@ -69,6 +69,11 @@ constexpr float kDegToRad = 3.14159265358979323846f / 180.0f;
                    " callback is not registered");
 }
 
+[[nodiscard]] CommandResult makeAdminUnavailable(const std::string &action) {
+  return makeError("admin unavailable: admin " + action +
+                   " callback is not registered");
+}
+
 [[nodiscard]] CommandResult markClearsHistoryOnSuccess(CommandResult result) {
   if (result.ok) {
     result.metadata[std::string(kCommandResultClearUndoOnSuccessMetadataKey)] =
@@ -976,6 +981,9 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
   const auto state = std::make_shared<BuiltinCommandState>();
   const auto sceneLoad = sceneIoContext.load;
   const auto sceneSave = sceneIoContext.save;
+  const auto sceneList = sceneIoContext.list;
+  const auto setAdmin = sceneIoContext.setAdmin;
+  const auto adminStatus = sceneIoContext.adminStatus;
 
   bus.registerHandler(
       "help", "help [verb]",
@@ -991,13 +999,22 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
       });
 
   bus.registerHandler(
-      "scene", "scene load <path> | scene save [path]",
-      [sceneLoad, sceneSave](std::vector<std::string> args) {
+      "scene", "scene list | scene load <path> | scene save [path]",
+      [sceneLoad, sceneSave, sceneList](std::vector<std::string> args) {
         if (args.empty()) {
-          return makeError("usage: scene load <path> | scene save [path]");
+          return makeError("usage: scene list | scene load <path> | scene save [path]");
         }
 
         const std::string &action = args[0];
+        if (action == "list") {
+          if (args.size() != 1) {
+            return makeError("usage: scene list");
+          }
+          if (!sceneList) {
+            return makeSceneIoUnavailable("list");
+          }
+          return sceneList();
+        }
         if (action == "load") {
           if (args.size() != 2) {
             return makeError("usage: scene load <path>");
@@ -1022,6 +1039,34 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
         }
 
         return makeError("unknown scene action: " + action);
+      });
+
+  bus.registerHandler(
+      "admin", "admin on | admin off | admin status",
+      [setAdmin, adminStatus](std::vector<std::string> args) {
+        if (args.size() != 1) {
+          return makeError("usage: admin on | admin off | admin status");
+        }
+        const std::string action = lowerCopy(args[0]);
+        if (action == "on") {
+          if (!setAdmin) {
+            return makeAdminUnavailable("on");
+          }
+          return setAdmin(true);
+        }
+        if (action == "off") {
+          if (!setAdmin) {
+            return makeAdminUnavailable("off");
+          }
+          return setAdmin(false);
+        }
+        if (action == "status") {
+          if (!adminStatus) {
+            return makeAdminUnavailable("status");
+          }
+          return adminStatus();
+        }
+        return makeError("unknown admin action: " + action);
       });
 
   bus.registerHandler(

@@ -54,14 +54,14 @@ public:
     return dummy;
   }
   void* getNativeHandle() const override { return nullptr; }
-  void onClose(std::function<void()> cb) override { m_onClose = std::move(cb); }
+  void onClose(std::function<bool()> cb) override { m_onClose = std::move(cb); }
   bool shouldClose() override {
     ++shouldCloseCalls;
     if (m_closeImmediately) {
       m_shouldClose = true;
     }
     if (m_shouldClose && m_onClose) {
-      m_onClose();
+      m_shouldClose = m_onClose();
     }
     return m_shouldClose;
   }
@@ -73,7 +73,7 @@ public:
 private:
   bool m_closeImmediately = false;
   bool m_shouldClose = false;
-  std::function<void()> m_onClose;
+  std::function<bool()> m_onClose;
 };
 
 class FakeRenderer final : public Renderer {
@@ -209,6 +209,33 @@ void testRunStopsOnWindowClose() {
          "no draw should happen when window closes immediately");
 }
 
+void testRunContinuesAfterCloseVeto() {
+  auto window = std::make_shared<FakeWindow>(true);
+  auto renderer = std::make_shared<FakeRenderer>();
+  EngineLoop loop;
+  loop.initialize(window, renderer);
+  loop.startScene(makeScene());
+
+  int closeAttempts = 0;
+  int hookCalls = 0;
+  window->onClose([&]() {
+    ++closeAttempts;
+    return closeAttempts > 1;
+  });
+  loop.setUpdateHook([&](Scene &, const Clock &) {
+    ++hookCalls;
+    if (hookCalls >= 2) {
+      loop.stop();
+    }
+  });
+
+  loop.run();
+
+  EXPECT(closeAttempts >= 2, "run should retry close after a veto");
+  EXPECT(hookCalls >= 1, "run should keep ticking after a vetoed close");
+  EXPECT(renderer->uploadCalls >= 1, "a vetoed close should allow frame execution");
+}
+
 } // namespace
 
 int main() {
@@ -219,6 +246,7 @@ int main() {
   testInitializeResetsRuntimeState();
   testRunStopsAfterStopCalled();
   testRunStopsOnWindowClose();
+  testRunContinuesAfterCloseVeto();
 
   if (failures > 0) {
     std::cerr << "FAILED: " << failures << " assertion(s)\n";

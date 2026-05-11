@@ -505,6 +505,11 @@ void testBuiltinRemainingCommandErrors() {
 void testSceneCommandsRequireRegisteredSceneIoCallbacks() {
   CommandFixture fixture;
 
+  const CommandResult listResult = fixture.bus.dispatch("scene list");
+  EXPECT(!listResult.ok, "scene list should fail before scene io is wired");
+  EXPECT(listResult.message.find("unknown command: scene") == std::string::npos,
+         "scene list should fail through a scene command handler");
+
   const CommandResult loadResult = fixture.bus.dispatch("scene load assets/example_scene.yaml");
   EXPECT(!loadResult.ok, "scene load should fail before scene io is wired");
   EXPECT(loadResult.message.find("unknown command: scene") == std::string::npos,
@@ -541,8 +546,17 @@ void testSceneCommandsUseRegisteredSceneIoCallbacks() {
                                "{\"path\":\"" + *path + "\"}"};
         }
         return CommandResult{true, "saved current scene", "{\"path\":null}"};
+      },
+      .list = [&]() {
+        return CommandResult{true, "listed scenes",
+                             "{\"entries\":[{\"id\":\"sample.scene.yaml\",\"kind\":\"asset\"}]}"};
       }};
   registerBuiltinCommands(bus, editorState, *scene, sceneIo);
+
+  const CommandResult listResult = bus.dispatch("scene list");
+  EXPECT(listResult.ok, "scene list should call registered callback");
+  EXPECT(listResult.structured.find("\"kind\":\"asset\"") != std::string::npos,
+         "scene list should surface structured catalog payload");
 
   const CommandResult loadResult = bus.dispatch("scene load assets/one.yaml");
   EXPECT(loadResult.ok, "scene load should call registered callback");
@@ -558,6 +572,54 @@ void testSceneCommandsUseRegisteredSceneIoCallbacks() {
   EXPECT(saveAsResult.ok, "scene save <path> should call registered callback");
   EXPECT(savePaths.size() == 2 && savePaths[1] == "assets/two.yaml",
          "scene save <path> passes explicit path to callback");
+}
+
+void testAdminCommandsRequireRegisteredCallbacks() {
+  CommandFixture fixture;
+
+  const CommandResult onResult = fixture.bus.dispatch("admin on");
+  EXPECT(!onResult.ok, "admin on should fail before callback wiring");
+  EXPECT(onResult.message.find("unknown command: admin") == std::string::npos,
+         "admin on should fail through admin handler");
+
+  const CommandResult statusResult = fixture.bus.dispatch("admin status");
+  EXPECT(!statusResult.ok, "admin status should fail before callback wiring");
+  EXPECT(statusResult.message.find("unknown command: admin") == std::string::npos,
+         "admin status should fail through admin handler");
+}
+
+void testAdminCommandsUseRegisteredCallbacks() {
+  SceneSharedPtr scene = Scene::create(nullptr);
+  EditorState editorState;
+  CommandBus bus;
+  bool adminEnabled = false;
+
+  SceneIoContext sceneIo{
+      .setAdmin = [&](const bool enabled) {
+        adminEnabled = enabled;
+        return CommandResult{true, enabled ? "admin enabled" : "admin disabled",
+                             enabled ? "{\"permission\":\"admin\"}"
+                                     : "{\"permission\":\"user\"}"};
+      },
+      .adminStatus = [&]() {
+        return CommandResult{true, adminEnabled ? "admin" : "user",
+                             adminEnabled ? "{\"permission\":\"admin\"}"
+                                          : "{\"permission\":\"user\"}"};
+      }};
+  registerBuiltinCommands(bus, editorState, *scene, sceneIo);
+
+  const CommandResult onResult = bus.dispatch("admin on");
+  EXPECT(onResult.ok && adminEnabled, "admin on should call registered callback");
+
+  const CommandResult statusResult = bus.dispatch("admin status");
+  EXPECT(statusResult.ok, "admin status should succeed through callback");
+  EXPECT(statusResult.structured.find("\"permission\":\"admin\"") !=
+             std::string::npos,
+         "admin status should expose current permission");
+
+  const CommandResult offResult = bus.dispatch("admin off");
+  EXPECT(offResult.ok && !adminEnabled,
+         "admin off should disable admin through callback");
 }
 
 void testSceneLoadClearsRedoHistory() {
@@ -755,6 +817,8 @@ int main() {
   testBuiltinRemainingCommandErrors();
   testSceneCommandsRequireRegisteredSceneIoCallbacks();
   testSceneCommandsUseRegisteredSceneIoCallbacks();
+  testAdminCommandsRequireRegisteredCallbacks();
+  testAdminCommandsUseRegisteredCallbacks();
   testSceneLoadClearsRedoHistory();
   testSceneSavePreservesRedoHistory();
   testConsolePanelSubmitsAndClearsDisplay();
