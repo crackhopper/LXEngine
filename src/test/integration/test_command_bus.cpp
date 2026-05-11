@@ -1,11 +1,14 @@
 #include "core/editor/command_bus.hpp"
 #include "core/editor/commands/builtin_commands.hpp"
+#include "core/editor/console_input_controller.hpp"
 #include "core/editor/console_panel.hpp"
 #include "core/editor/editor_state.hpp"
 #include "core/math/quat.hpp"
 #include "core/scene/components/camera_component.hpp"
 #include "core/scene/object.hpp"
 #include "core/scene/scene.hpp"
+
+#include <imgui.h>
 
 #include <cmath>
 #include <iostream>
@@ -785,6 +788,86 @@ void testConsolePanelBrowseAndAutocomplete() {
          "autocomplete completes set field suffix through bus completer");
 }
 
+void testConsoleInputControllerHistoryKeepsDraft() {
+  CommandFixture fixture;
+  ConsoleInputController controller(fixture.bus);
+
+  controller.submitLine("help");
+  controller.submitLine("list nodes");
+  controller.setInputText("move /world/cube");
+
+  controller.browseHistoryOlder();
+  EXPECT(controller.inputText() == "list nodes",
+         "first older browse should recall latest history entry");
+  controller.browseHistoryNewer();
+  EXPECT(controller.inputText() == "move /world/cube",
+         "moving past newest history entry should restore draft input");
+}
+
+void testConsoleInputControllerCompletionBehaviors() {
+  CommandFixture fixture;
+  ConsoleInputController controller(fixture.bus);
+
+  controller.setInputText("sel");
+  controller.autocomplete();
+  EXPECT(controller.inputText() == "select ",
+         "unique verb completion should append trailing space");
+
+  controller.setInputText("set /world/c");
+  controller.autocomplete();
+  EXPECT(controller.inputText() == "set /world/cube ",
+         "unique argument completion should append trailing space");
+
+  controller.setInputText("r");
+  controller.autocomplete();
+  EXPECT(controller.inputText() == "r",
+         "ambiguous completion with unchanged prefix should keep original input");
+  const std::string helper = controller.helperOutputText();
+  EXPECT(helper.find("remove") != std::string::npos,
+         "ambiguous completion should list remove candidate");
+  EXPECT(helper.find("redo") != std::string::npos,
+         "ambiguous completion should list redo candidate");
+}
+
+void testConsoleInputControllerEscRestoresDraft() {
+  CommandFixture fixture;
+  ConsoleInputController controller(fixture.bus);
+
+  controller.submitLine("help");
+  controller.submitLine("list nodes");
+  controller.setInputText("set /world/cube.translation");
+  controller.browseHistoryOlder();
+  controller.browseHistoryOlder();
+  controller.cancelHistoryBrowse();
+
+  EXPECT(controller.inputText() == "set /world/cube.translation",
+         "canceling history browse should restore original draft");
+}
+
+void testConsoleInputControllerCallbackEvents() {
+  CommandFixture fixture;
+  ConsoleInputController controller(fixture.bus);
+
+  controller.submitLine("help");
+  controller.submitLine("list nodes");
+
+  controller.setInputText("sel");
+  (void)controller.handleCallbackEvent(ImGuiInputTextFlags_CallbackCompletion,
+                                       ImGuiKey_Tab);
+  EXPECT(controller.inputText() == "select ",
+         "completion callback should route to autocomplete");
+
+  (void)controller.handleCallbackEvent(ImGuiInputTextFlags_CallbackHistory,
+                                       ImGuiKey_UpArrow);
+  EXPECT(controller.inputText() == "list nodes",
+         "history callback should route to older history");
+
+  (void)controller.handleCallbackEvent(ImGuiInputTextFlags_CallbackHistory,
+                                       ImGuiKey_DownArrow);
+  EXPECT(controller.inputText() == "select ",
+         "history callback should restore draft after returning past newest");
+}
+
 void testConsolePanelUndoRedoShortcutsUseCommandBus() {
   CommandFixture fixture;
   ConsolePanel panel(fixture.bus);
@@ -834,6 +917,10 @@ int main() {
   testConsolePanelSubmitsAndClearsDisplay();
   testConsolePanelBrowseAndAutocomplete();
   testConsolePanelUndoRedoShortcutsUseCommandBus();
+  testConsoleInputControllerHistoryKeepsDraft();
+  testConsoleInputControllerCompletionBehaviors();
+  testConsoleInputControllerEscRestoresDraft();
+  testConsoleInputControllerCallbackEvents();
 
   if (failures != 0) {
     std::cerr << "test_command_bus failed with " << failures << " failure(s)\n";

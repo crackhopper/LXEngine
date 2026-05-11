@@ -1,9 +1,10 @@
 #pragma once
 
 #include "core/editor/command_bus.hpp"
+#include "core/editor/console_input_controller.hpp"
 
-#include <array>
-#include <optional>
+#include <imgui.h>
+
 #include <string>
 #include <string_view>
 #include <vector>
@@ -34,16 +35,11 @@ public:
   void setOpen(bool open);
 
 private:
-  void setInputFromHistoryIndex(usize historyIndex);
-  void markCommandDispatched();
-  [[nodiscard]] static std::string trim(std::string_view text);
-  [[nodiscard]] static std::string commonPrefix(const std::string &a,
-                                                const std::string &b);
+  [[nodiscard]] static int inputTextCallback(ImGuiInputTextCallbackData *data);
 
   CommandBus &m_commandBus;
-  std::array<char, 512> m_inputBuffer{};
+  ConsoleInputController m_inputController;
   usize m_displayStartIndex = 0;
-  std::optional<usize> m_historyBrowseIndex;
   bool m_open = true;
   bool m_scrollToBottom = false;
 };

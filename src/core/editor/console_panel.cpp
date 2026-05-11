@@ -1,14 +1,15 @@
 #include "core/editor/console_panel.hpp"
 
 #include <algorithm>
-#include <cstring>
 #include <cfloat>
+#include <cstring>
 
 #include <imgui.h>
 
 namespace LX_core {
 
-ConsolePanel::ConsolePanel(CommandBus &commandBus) : m_commandBus(commandBus) {}
+ConsolePanel::ConsolePanel(CommandBus &commandBus)
+    : m_commandBus(commandBus), m_inputController(commandBus) {}
 
 void ConsolePanel::draw() {
   if (!m_open) {
@@ -43,20 +44,18 @@ void ConsolePanel::draw() {
 
   ImGui::PushItemWidth(-1.0f);
   const bool submitted = ImGui::InputText(
-      "##command_input", m_inputBuffer.data(), m_inputBuffer.size(),
-      ImGuiInputTextFlags_EnterReturnsTrue);
+      "##command_input", m_inputController.inputBufferData(),
+      m_inputController.inputBufferSize(),
+      ImGuiInputTextFlags_EnterReturnsTrue |
+          ImGuiInputTextFlags_CallbackCompletion |
+          ImGuiInputTextFlags_CallbackHistory,
+      &ConsolePanel::inputTextCallback, &m_inputController);
   ImGui::PopItemWidth();
 
   if (ImGui::IsItemActive()) {
     const ImGuiIO &io = ImGui::GetIO();
-    if (ImGui::IsKeyPressed(ImGuiKey_UpArrow, false)) {
-      browseHistoryOlder();
-    }
-    if (ImGui::IsKeyPressed(ImGuiKey_DownArrow, false)) {
-      browseHistoryNewer();
-    }
-    if (ImGui::IsKeyPressed(ImGuiKey_Tab, false)) {
-      autocompleteInput();
+    if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+      m_inputController.cancelHistoryBrowse();
     }
     if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Z, false)) {
       dispatchUndo();
@@ -75,101 +74,37 @@ void ConsolePanel::draw() {
 }
 
 void ConsolePanel::submitLine(std::string_view line) {
-  const std::string trimmed = trim(line);
-  if (trimmed.empty()) {
-    setInputText({});
-    m_historyBrowseIndex.reset();
-    return;
-  }
-
-  const CommandResult result = m_commandBus.dispatch(trimmed);
-  (void)result;
-  markCommandDispatched();
+  m_inputController.submitLine(line);
+  m_scrollToBottom = true;
 }
 
 void ConsolePanel::submitCurrentInput() { submitLine(getInputText()); }
 
 void ConsolePanel::clearDisplay() {
   m_displayStartIndex = m_commandBus.history().size();
+  m_inputController.clearHelperOutput();
   m_scrollToBottom = false;
 }
 
-void ConsolePanel::browseHistoryOlder() {
-  const auto &history = m_commandBus.history();
-  if (history.empty()) {
-    return;
-  }
+void ConsolePanel::browseHistoryOlder() { m_inputController.browseHistoryOlder(); }
 
-  if (!m_historyBrowseIndex.has_value()) {
-    m_historyBrowseIndex = history.size() - 1;
-  } else if (*m_historyBrowseIndex > 0) {
-    --(*m_historyBrowseIndex);
-  }
-  setInputFromHistoryIndex(*m_historyBrowseIndex);
-}
+void ConsolePanel::browseHistoryNewer() { m_inputController.browseHistoryNewer(); }
 
-void ConsolePanel::browseHistoryNewer() {
-  const auto &history = m_commandBus.history();
-  if (!m_historyBrowseIndex.has_value() || history.empty()) {
-    return;
-  }
-
-  if (*m_historyBrowseIndex + 1 < history.size()) {
-    ++(*m_historyBrowseIndex);
-    setInputFromHistoryIndex(*m_historyBrowseIndex);
-    return;
-  }
-
-  m_historyBrowseIndex.reset();
-  setInputText({});
-}
-
-void ConsolePanel::autocompleteInput() {
-  const std::string input = getInputText();
-  if (trim(input).empty()) {
-    return;
-  }
-
-  const CompletionResult completion = m_commandBus.complete(input);
-  if (completion.candidates.empty() || completion.commonPrefix.empty()) {
-    return;
-  }
-
-  std::string completedText;
-  const usize lastWhitespace = input.find_last_of(" \t");
-  if (lastWhitespace == std::string::npos) {
-    completedText = completion.commonPrefix;
-  } else {
-    completedText = input.substr(0, lastWhitespace + 1) + completion.commonPrefix;
-  }
-
-  if (completion.candidates.size() == 1) {
-    completedText.push_back(' ');
-  }
-  setInputText(completedText);
-}
+void ConsolePanel::autocompleteInput() { m_inputController.autocomplete(); }
 
 void ConsolePanel::dispatchUndo() {
-  (void)m_commandBus.dispatch("undo");
-  markCommandDispatched();
+  m_inputController.dispatchUndo();
+  m_scrollToBottom = true;
 }
 
 void ConsolePanel::dispatchRedo() {
-  (void)m_commandBus.dispatch("redo");
-  markCommandDispatched();
+  m_inputController.dispatchRedo();
+  m_scrollToBottom = true;
 }
 
-void ConsolePanel::setInputText(std::string_view text) {
-  const usize copyLength = std::min(text.size(), m_inputBuffer.size() - 1);
-  std::fill(m_inputBuffer.begin(), m_inputBuffer.end(), '\0');
-  if (copyLength > 0) {
-    std::memcpy(m_inputBuffer.data(), text.data(), copyLength);
-  }
-}
+void ConsolePanel::setInputText(std::string_view text) { m_inputController.setInputText(text); }
 
-std::string ConsolePanel::getInputText() const {
-  return std::string(m_inputBuffer.data());
-}
+std::string ConsolePanel::getInputText() const { return m_inputController.inputText(); }
 
 std::vector<CommandBus::HistoryEntry> ConsolePanel::displayedEntries() const {
   const auto &history = m_commandBus.history();
@@ -193,6 +128,13 @@ std::string ConsolePanel::displayedText() const {
       output += "\n\n";
     }
   }
+  const std::string helperText = m_inputController.helperOutputText();
+  if (!helperText.empty()) {
+    if (!output.empty()) {
+      output += "\n\n";
+    }
+    output += helperText;
+  }
   return output;
 }
 
@@ -200,46 +142,27 @@ bool ConsolePanel::isOpen() const { return m_open; }
 
 void ConsolePanel::setOpen(const bool open) { m_open = open; }
 
-void ConsolePanel::setInputFromHistoryIndex(const usize historyIndex) {
-  const auto &history = m_commandBus.history();
-  if (historyIndex >= history.size()) {
-    return;
+int ConsolePanel::inputTextCallback(ImGuiInputTextCallbackData *data) {
+  if (!data || !data->UserData) {
+    return 0;
   }
-  setInputText(history[historyIndex].line);
-}
-
-void ConsolePanel::markCommandDispatched() {
-  setInputText({});
-  m_historyBrowseIndex.reset();
-  m_scrollToBottom = true;
-}
-
-std::string ConsolePanel::trim(std::string_view text) {
-  usize begin = 0;
-  while (begin < text.size() &&
-         (text[begin] == ' ' || text[begin] == '\t' || text[begin] == '\r' ||
-          text[begin] == '\n')) {
-    ++begin;
+  auto *controller =
+      static_cast<ConsoleInputController *>(data->UserData);
+  const int result =
+      controller->handleCallbackEvent(data->EventFlag, data->EventKey);
+  const std::string text = controller->inputText();
+  const size_t copyLength =
+      std::min(text.size(), static_cast<size_t>(data->BufSize - 1));
+  std::memset(data->Buf, 0, static_cast<size_t>(data->BufSize));
+  if (copyLength > 0) {
+    std::memcpy(data->Buf, text.data(), copyLength);
   }
-
-  usize end = text.size();
-  while (end > begin &&
-         (text[end - 1] == ' ' || text[end - 1] == '\t' ||
-          text[end - 1] == '\r' || text[end - 1] == '\n')) {
-    --end;
-  }
-
-  return std::string(text.substr(begin, end - begin));
-}
-
-std::string ConsolePanel::commonPrefix(const std::string &a,
-                                       const std::string &b) {
-  const usize length = std::min(a.size(), b.size());
-  usize i = 0;
-  while (i < length && a[i] == b[i]) {
-    ++i;
-  }
-  return a.substr(0, i);
+  data->BufTextLen = static_cast<int>(copyLength);
+  data->CursorPos = data->BufTextLen;
+  data->SelectionStart = data->BufTextLen;
+  data->SelectionEnd = data->BufTextLen;
+  data->BufDirty = true;
+  return result;
 }
 
 } // namespace LX_core
