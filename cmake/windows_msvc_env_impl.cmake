@@ -80,8 +80,6 @@ function(lx_windows_msvc_import_env)
 
   include("${_lx_gen_cmake}")
 
-  lx_windows_msvc_inject_toolchain_paths()
-
   lx_windows_msvc_log_result("Using Visual Studio root=$ENV{LX_WINDOWS_MSVC_VS_ROOT}")
   lx_windows_msvc_log_result("Using VsDevCmd=$ENV{LX_WINDOWS_MSVC_VSDEVCMD}")
 

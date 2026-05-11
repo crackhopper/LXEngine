@@ -20,13 +20,12 @@ if(CMAKE_GENERATOR MATCHES "^Visual Studio")
   return()
 endif()
 
-if(DEFINED CMAKE_C_COMPILER OR DEFINED CMAKE_CXX_COMPILER)
-  return()
-endif()
-
 lx_windows_msvc_check_existing_env(_lx_existing_env_ready _lx_existing_reason)
-if(_lx_existing_env_ready)
-  return()
+if(NOT _lx_existing_env_ready)
+  lx_windows_msvc_import_env()
 endif()
 
-lx_windows_msvc_import_env()
+# Re-apply the inlined MSVC INCLUDE/LIB paths on every configure pass.
+# Cached compilers survive reconfigure, but generated build rules still need
+# fresh /I and /LIBPATH entries after CMake regenerates Ninja files.
+lx_windows_msvc_inject_toolchain_paths()
