@@ -285,6 +285,46 @@ void testRemoveCameraDetachesTopLevelCameraNode() {
          "removeCamera should detach a top-level camera node from scene path lookup");
 }
 
+void testRemoveRenderableDetachesWholeSubtreeFromPathLookupAndCameraRegistry() {
+  auto scene = Scene::create(nullptr);
+  auto world = makeNode("node_world");
+  world->setName("world");
+  scene->addRenderable(world);
+
+  auto branch = makeNode("node_branch");
+  branch->setName("branch");
+  branch->setParent(world);
+  scene->addRenderable(branch);
+
+  auto leaf = makeNode("node_leaf");
+  leaf->setName("leaf");
+  leaf->setParent(branch);
+  scene->addRenderable(leaf);
+
+  auto cameraNode = SceneNode::create("subtree_camera");
+  cameraNode->setName("branch_cam");
+  auto camera = cameraNode->addComponent<CameraComponent>();
+  EXPECT(camera.has_value(), "camera component should attach to subtree camera");
+  if (!camera.has_value()) {
+    return;
+  }
+
+  camera->get().setTarget(RenderTarget{});
+  scene->addCamera(cameraNode);
+  cameraNode->setParent(branch);
+
+  scene->removeRenderable(branch);
+
+  EXPECT(scene->findByPath("/world/branch") == nullptr,
+         "removeRenderable should detach subtree root from path lookup");
+  EXPECT(scene->findByPath("/world/branch/leaf") == nullptr,
+         "removeRenderable should detach subtree descendants from path lookup");
+  EXPECT(scene->findByPath("/world/branch/branch_cam") == nullptr,
+         "removeRenderable should detach subtree cameras from path lookup");
+  EXPECT(scene->getCameras().empty(),
+         "removeRenderable should erase subtree cameras from the registry");
+}
+
 void testNameSanitizationPreservesPathUsability() {
 #ifdef NDEBUG
   auto scene = Scene::create(nullptr);
@@ -311,6 +351,7 @@ int main() {
   testDumpTreePathsAreReversible();
   testRegisteredCameraNodeIsPathAddressable();
   testRemoveCameraDetachesTopLevelCameraNode();
+  testRemoveRenderableDetachesWholeSubtreeFromPathLookupAndCameraRegistry();
   testNameSanitizationPreservesPathUsability();
 
   if (failures != 0) {

@@ -4,9 +4,36 @@
 
 #include <algorithm>
 #include <sstream>
+#include <unordered_set>
 #include <utility>
 
 namespace LX_core {
+
+namespace {
+
+struct RemovedNodeSnapshot {
+  SceneNodeSharedPtr node;
+  std::string lastAttachedPath;
+  std::string stableNodeName;
+};
+
+void collectSubtreeSnapshots(const SceneNodeSharedPtr &node,
+                             std::vector<RemovedNodeSnapshot> &out) {
+  if (!node) {
+    return;
+  }
+
+  out.push_back(RemovedNodeSnapshot{
+      .node = node,
+      .lastAttachedPath = node->getPath(),
+      .stableNodeName = node->getNodeName(),
+  });
+  for (const auto &child : node->getChildren()) {
+    collectSubtreeSnapshots(child, out);
+  }
+}
+
+} // namespace
 
 /*
 @source_analysis.section ~Scene：weak detach 协议
@@ -300,28 +327,51 @@ void Scene::removeRenderable(const SceneNodeSharedPtr &node) {
     return;
   }
 
-  const std::string lastAttachedPath = node->getPath();
-  const std::string stableNodeName = node->getNodeName();
+  std::vector<RemovedNodeSnapshot> removedNodes;
+  collectSubtreeSnapshots(node, removedNodes);
+  if (removedNodes.empty()) {
+    return;
+  }
+
+  std::unordered_set<const SceneNode *> removedNodeIds;
+  for (const auto &removedNode : removedNodes) {
+    removedNodeIds.insert(removedNode.node.get());
+  }
 
   m_cameras.erase(
       std::remove_if(m_cameras.begin(), m_cameras.end(),
-                     [&node](const SceneNodeSharedPtr &candidate) {
-                       return candidate.get() == node.get();
+                     [&removedNodeIds](const SceneNodeSharedPtr &candidate) {
+                       return candidate &&
+                              removedNodeIds.find(candidate.get()) !=
+                                  removedNodeIds.end();
                      }),
       m_cameras.end());
 
+  m_renderables.erase(
+      std::remove_if(m_renderables.begin(), m_renderables.end(),
+                     [&removedNodeIds](const IRenderableSharedPtr &candidate) {
+                       const auto candidateNode =
+                           std::dynamic_pointer_cast<SceneNode>(candidate);
+                       return candidateNode &&
+                              removedNodeIds.find(candidateNode.get()) !=
+                                  removedNodeIds.end();
+                     }),
+      m_renderables.end());
+
   node->clearParentInternal(false);
-  node->detachFromScene();
-  node->setSceneDebugId(StringID{});
+  for (const auto &removedNode : removedNodes) {
+    removedNode.node->detachFromScene();
+    removedNode.node->setSceneDebugId(StringID{});
+  }
 
-  m_renderables.erase(renderableIt);
-
-  m_events.emit(SceneEvent{
-      .domain = SceneEventDomain::Runtime,
-      .type = SceneEventType::SceneNodeRemoved,
-      .path = lastAttachedPath,
-      .stableNodeName = stableNodeName,
-  });
+  for (const auto &removedNode : removedNodes) {
+    m_events.emit(SceneEvent{
+        .domain = SceneEventDomain::Runtime,
+        .type = SceneEventType::SceneNodeRemoved,
+        .path = removedNode.lastAttachedPath,
+        .stableNodeName = removedNode.stableNodeName,
+    });
+  }
 }
 
 void Scene::addCamera(const SceneNodeSharedPtr &cameraNode) {

@@ -545,6 +545,42 @@ void testBuiltinAddRemoveSetCommands() {
   EXPECT(fixture.scene->findByPath("/world/cube/debug_cam") == nullptr,
          "removed camera path no longer resolves");
 
+  const SceneNodeSharedPtr branch = SceneNode::create("node_branch");
+  branch->setName("branch");
+  branch->addComponent<LX_core::MeshComponent>(makeUnitSquareMesh());
+  branch->setParent(fixture.cube);
+  fixture.scene->addRenderable(branch);
+
+  const SceneNodeSharedPtr leaf = SceneNode::create("node_leaf");
+  leaf->setName("leaf");
+  leaf->addComponent<LX_core::MeshComponent>(makeUnitSquareMesh());
+  leaf->setParent(branch);
+  fixture.scene->addRenderable(leaf);
+
+  const SceneNodeSharedPtr branchCamera = SceneNode::create("node_branch_camera");
+  branchCamera->setName("branch_cam");
+  branchCamera->addComponent<CameraComponent>();
+  branchCamera->setParent(branch);
+  fixture.scene->addCamera(branchCamera);
+
+  EXPECT(fixture.scene->findByPath("/world/cube/branch/leaf") == leaf.get(),
+         "subtree leaf exists before removal");
+  EXPECT(fixture.scene->findByPath("/world/cube/branch/branch_cam") == branchCamera.get(),
+         "subtree camera exists before removal");
+  EXPECT(fixture.scene->getCameras().size() == 2,
+         "subtree camera is registered before removal");
+
+  const CommandResult removeBranch = fixture.bus.dispatch("remove /world/cube/branch");
+  EXPECT(removeBranch.ok, "remove subtree root succeeds");
+  EXPECT(fixture.scene->findByPath("/world/cube/branch") == nullptr,
+         "removed subtree root no longer resolves");
+  EXPECT(fixture.scene->findByPath("/world/cube/branch/leaf") == nullptr,
+         "removed subtree leaf no longer resolves");
+  EXPECT(fixture.scene->findByPath("/world/cube/branch/branch_cam") == nullptr,
+         "removed subtree camera no longer resolves");
+  EXPECT(fixture.scene->getCameras().size() == 1,
+         "remove subtree detaches descendant cameras from registry");
+
   const CommandResult removeRoot = fixture.bus.dispatch("remove /");
   EXPECT(!removeRoot.ok, "remove root should fail");
   EXPECT(removeRoot.message == "cannot remove scene root",

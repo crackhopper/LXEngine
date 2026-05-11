@@ -335,6 +335,64 @@ void testSceneRemoveChildUsesLastAttachedPathWithoutHierarchyNoise() {
   }
 }
 
+void testSceneRemoveSubtreeEmitsRemovalForEachRemovedNodeWithoutHierarchyNoise() {
+  auto scene = LX_core::Scene::create(nullptr);
+  std::vector<CapturedEvent> events;
+  auto subscription =
+      scene->events().subscribe([&](const LX_core::SceneEvent &event) {
+        events.push_back(captureEvent(event));
+      });
+
+  auto parent = LX_core::SceneNode::create("parent_node");
+  parent->setName("parent");
+  scene->addRenderable(parent);
+
+  auto child = LX_core::SceneNode::create("child_node");
+  child->setName("child");
+  scene->addRenderable(child);
+  child->setParent(parent);
+
+  auto grandchild = LX_core::SceneNode::create("grandchild_node");
+  grandchild->setName("grandchild");
+  scene->addRenderable(grandchild);
+  grandchild->setParent(child);
+
+  auto cameraNode = LX_core::SceneNode::create("camera_node");
+  cameraNode->setName("subtree_camera");
+  cameraNode->addComponent<LX_core::CameraComponent>();
+  scene->addCamera(cameraNode);
+  cameraNode->setParent(child);
+  events.clear();
+
+  scene->removeRenderable(child);
+
+  EXPECT(events.size() == 3,
+         "subtree removal should emit only the expected removal lifecycle events");
+  EXPECT(countEventsWithType(events, LX_core::SceneEventType::SceneNodeRemoved) == 3,
+         "subtree removal should emit one SceneNodeRemoved event per removed node");
+  EXPECT(countChangedEventsWithAspect(events, LX_core::SceneNodeAspect::Hierarchy) == 0,
+         "subtree removal should not leak hierarchy-changed events");
+
+  bool sawChild = false;
+  bool sawGrandchild = false;
+  bool sawCamera = false;
+  for (const auto &event : events) {
+    EXPECT(event.type == LX_core::SceneEventType::SceneNodeRemoved,
+           "subtree lifecycle events should all be removals");
+    if (event.path == "/parent/child") {
+      sawChild = true;
+    } else if (event.path == "/parent/child/grandchild") {
+      sawGrandchild = true;
+    } else if (event.path == "/parent/child/subtree_camera") {
+      sawCamera = true;
+    }
+  }
+
+  EXPECT(sawChild, "subtree removal should report the removed root path");
+  EXPECT(sawGrandchild, "subtree removal should report mesh descendant path");
+  EXPECT(sawCamera, "subtree removal should report camera descendant path");
+}
+
 void testSceneTeardownDoesNotEmitExplicitRemoveLifecycleEvents() {
   std::vector<CapturedEvent> events;
   LX_core::SceneEventSubscription subscription;
@@ -612,6 +670,7 @@ int main() {
   testAttachedNodeHierarchyMutationsEmitRuntimeEvents();
   testSceneAddRemoveLifecycleEmitsRuntimeNodeAddedAndRemovedEvents();
   testSceneRemoveChildUsesLastAttachedPathWithoutHierarchyNoise();
+  testSceneRemoveSubtreeEmitsRemovalForEachRemovedNodeWithoutHierarchyNoise();
   testSceneTeardownDoesNotEmitExplicitRemoveLifecycleEvents();
   testSceneRemoveRenderableIgnoresForeignAndDetachedNodes();
   testSceneRemoveCameraEmitsRemovalWithoutHierarchyNoise();
