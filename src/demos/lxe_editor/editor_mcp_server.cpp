@@ -43,6 +43,10 @@ constexpr SocketHandle kInvalidSocket = -1;
 constexpr std::string_view kJsonRpcVersion = "2.0";
 constexpr std::string_view kProtocolVersion = "2025-03-26";
 
+[[nodiscard]] bool isLoopbackHost(const std::string_view host) {
+  return host == "127.0.0.1" || host == "localhost" || host == "::1";
+}
+
 void closeSocket(const SocketHandle socket) {
   if (socket == kInvalidSocket) {
     return;
@@ -300,6 +304,7 @@ struct EditorMcpServer::Impl final {
   SocketHandle client = kInvalidSocket;
   std::uint16_t boundPort = 0;
   bool running = false;
+  bool clientAuthenticated = false;
   std::thread thread;
   std::mutex mutex;
   std::vector<std::string> pendingPayloads;
@@ -322,6 +327,7 @@ struct EditorMcpServer::Impl final {
           if (setNonBlocking(accepted)) {
             client = accepted;
             incomingBuffer.clear();
+            clientAuthenticated = false;
           } else {
             closeSocket(accepted);
           }
@@ -365,6 +371,7 @@ struct EditorMcpServer::Impl final {
           closeSocket(client);
           client = kInvalidSocket;
           incomingBuffer.clear();
+          clientAuthenticated = false;
           break;
         }
       }
@@ -496,6 +503,7 @@ void EditorMcpServer::stop() {
   m_impl->client = kInvalidSocket;
   m_impl->listener = kInvalidSocket;
   m_impl->boundPort = 0;
+  m_impl->clientAuthenticated = false;
   std::lock_guard<std::mutex> lock(m_impl->mutex);
   m_impl->pendingPayloads.clear();
   m_impl->outgoingFrames.clear();
@@ -522,6 +530,7 @@ void EditorMcpServer::pump(EditorAutomationService& service) {
   const auto captureFreshState = [&service]() {
     return service.captureState();
   };
+  const bool requiresAuthentication = !isLoopbackHost(m_config.host);
 
   for (const std::string& payload : payloads) {
     std::string parseError;
@@ -540,9 +549,36 @@ void EditorMcpServer::pump(EditorAutomationService& service) {
     const std::string idJson = message->idJson.value_or("null");
 
     if (message->method == "initialize") {
+      bool authenticated = !requiresAuthentication;
+      if (requiresAuthentication) {
+        try {
+          const YAML::Node params = message->paramsJson.empty()
+                                        ? YAML::Node{}
+                                        : YAML::Load(message->paramsJson);
+          const std::optional<std::string> token =
+              scalarString(params, "token");
+          authenticated =
+              token.has_value() && !m_config.token.empty() &&
+              *token == m_config.token;
+        } catch (...) {
+          authenticated = false;
+        }
+      }
+      m_impl->clientAuthenticated = authenticated;
+      if (!authenticated) {
+        frames.push_back(makeHeaderFrame(
+            makeErrorEnvelope(idJson, -32001, "unauthorized")));
+        continue;
+      }
       frames.push_back(
           makeHeaderFrame(makeResultEnvelope(
               idJson, initializeResult(std::string(kProtocolVersion)))));
+      continue;
+    }
+
+    if (requiresAuthentication && !m_impl->clientAuthenticated) {
+      frames.push_back(makeHeaderFrame(
+          makeErrorEnvelope(idJson, -32001, "unauthorized")));
       continue;
     }
 

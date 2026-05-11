@@ -9,8 +9,13 @@ instance through MCP instead of re-implementing editor probing logic in shell co
 ## Scope
 
 This skill assumes the repo-local Codex config registers an MCP server named
-`lxe_editor`. The server connection is discovered from
-`data/lxe_editor/runtime_state.yaml` through `.codex/scripts/lxe_editor_mcp_bridge.py`.
+`lxe_editor`. The bridge defaults to the local runtime discovered from
+`data/lxe_editor/runtime_state.yaml`, and can also target a remote editor when
+the current shell exports:
+
+- `LXE_EDITOR_REMOTE_MCP_HOST`
+- `LXE_EDITOR_REMOTE_MCP_PORT`
+- `LXE_EDITOR_REMOTE_MCP_TOKEN`
 
 This skill does not replace source-side MCP implementation. If the editor has
 not written `runtime_state.yaml`, or if the in-process localhost MCP server is
@@ -77,5 +82,5 @@ Use tools for actions and active polling:
 When MCP access fails, report the smallest true blocker:
 
 - `runtime_state.yaml` absent: the local editor runtime has not published MCP discovery data.
-- MCP socket connect failed: the source-side localhost MCP server is not live yet.
+- MCP socket connect failed: the source-side MCP server is not live yet, or the remote host/port/token is wrong.
 - Tool/resource absent: the server is reachable, but the requested MCP surface is not implemented yet.

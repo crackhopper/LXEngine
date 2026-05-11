@@ -98,6 +98,8 @@ struct AutomationLaunchOptions final {
   bool enabled = true;
   std::string host = "0.0.0.0";
   std::uint16_t port = 3768;
+  std::string mcpHost = "127.0.0.1";
+  std::uint16_t mcpPort = 3769;
 };
 
 [[nodiscard]] std::optional<AutomationLaunchOptions>
@@ -140,6 +142,32 @@ parseAutomationLaunchOptions(const int argc, char** argv,
       }
       continue;
     }
+    if (arg == "--mcp-host") {
+      if (i + 1 >= argc) {
+        errorMessage = "missing value for --mcp-host";
+        return std::nullopt;
+      }
+      options.mcpHost = argv[++i];
+      continue;
+    }
+    if (arg == "--mcp-port") {
+      if (i + 1 >= argc) {
+        errorMessage = "missing value for --mcp-port";
+        return std::nullopt;
+      }
+      try {
+        const int parsed = std::stoi(argv[++i]);
+        if (parsed < 0 || parsed > 65535) {
+          errorMessage = "mcp port out of range";
+          return std::nullopt;
+        }
+        options.mcpPort = static_cast<std::uint16_t>(parsed);
+      } catch (...) {
+        errorMessage = "invalid integer for --mcp-port";
+        return std::nullopt;
+      }
+      continue;
+    }
     errorMessage = "unknown argument: " + arg;
     return std::nullopt;
   }
@@ -148,9 +176,6 @@ parseAutomationLaunchOptions(const int argc, char** argv,
 
 constexpr int kWindowWidth = 1280;
 constexpr int kWindowHeight = 720;
-constexpr std::string_view kMcpHost = "127.0.0.1";
-constexpr std::uint16_t kMcpPort = 3769;
-
 [[nodiscard]] std::string jsonEscape(const std::string& text) {
   std::string out;
   out.reserve(text.size());
@@ -695,8 +720,9 @@ int main(int argc, char** argv) {
     demo::EditorMcpServer mcpServer(
         demo::EditorMcpServerConfig{
             .enabled = true,
-            .host = std::string(kMcpHost),
-            .port = kMcpPort,
+            .host = automationOptions->mcpHost,
+            .port = automationOptions->mcpPort,
+            .token = automationToken,
         });
     if (automationOptions->enabled) {
       std::string serverError;

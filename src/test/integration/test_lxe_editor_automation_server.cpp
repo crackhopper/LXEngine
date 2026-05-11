@@ -124,6 +124,42 @@ struct Fixture final {
   }
 };
 
+struct RemoteMcpFixture final {
+  SceneSharedPtr scene = Scene::create(nullptr);
+  EditorState editorState;
+  CommandBus bus;
+  EditorAutomationService::Hooks hooks;
+  std::unique_ptr<EditorAutomationService> service;
+  std::unique_ptr<EditorMcpServer> mcpServer;
+
+  RemoteMcpFixture() {
+    hooks.sceneSummary = [] {
+      return AutomationSceneSummary{
+          .sceneName = "Scene",
+          .currentDocumentPath = "data/scenes/test.scene.yaml",
+          .sourceKind = AutomationSceneSourceKind::Local,
+          .permission = AutomationPermissionLevel::User,
+          .dirty = false,
+      };
+    };
+    service =
+        std::make_unique<EditorAutomationService>(bus, editorState, *scene, hooks);
+    std::string error;
+    mcpServer = std::make_unique<EditorMcpServer>(
+        EditorMcpServerConfig{
+            .enabled = true,
+            .host = "0.0.0.0",
+            .port = 0,
+            .token = "secret-token",
+        });
+    if (!mcpServer->start(&error)) {
+      throw std::runtime_error("failed to start remote-style MCP server: " + error);
+    }
+  }
+
+  ~RemoteMcpFixture() { mcpServer->stop(); }
+};
+
 [[nodiscard]] SocketHandle connectClient(const std::uint16_t port) {
   const SocketHandle socketHandle = socket(AF_INET, SOCK_STREAM, 0);
   if (socketHandle == kInvalidSocket) {
@@ -172,13 +208,18 @@ std::string recvSome(const SocketHandle socketHandle) {
   return std::string(buffer, buffer + count);
 }
 
-std::string pumpUntilRead(Fixture& fixture, const SocketHandle socketHandle,
+template <typename ServiceT, typename HttpServerT, typename McpServerT>
+std::string pumpUntilRead(ServiceT& service, HttpServerT* server,
+                          McpServerT& mcpServer,
+                          const SocketHandle socketHandle,
                           const int maxIterations = 200) {
   std::string received;
   for (int i = 0; i < maxIterations; ++i) {
-    fixture.service->refresh();
-    fixture.server->pump(*fixture.service);
-    fixture.mcpServer->pump(*fixture.service);
+    service.refresh();
+    if (server != nullptr) {
+      server->pump(service);
+    }
+    mcpServer.pump(service);
     received += recvSome(socketHandle);
     if (!received.empty()) {
       break;
@@ -220,7 +261,9 @@ void testHttpAuthorizationAndCommandRoundTrip() {
       "GET /api/state/summary HTTP/1.1\r\nHost: localhost\r\n\r\n";
   EXPECT(sendAll(unauthorized, unauthorizedRequest),
          "unauthorized request should send");
-  const std::string unauthorizedResponse = pumpUntilRead(fixture, unauthorized);
+  const std::string unauthorizedResponse =
+      pumpUntilRead(*fixture.service, fixture.server.get(), *fixture.mcpServer,
+                    unauthorized);
   EXPECT(unauthorizedResponse.find("401 Unauthorized") != std::string::npos,
          "missing token should produce 401");
   closeSocket(unauthorized);
@@ -236,7 +279,8 @@ void testHttpAuthorizationAndCommandRoundTrip() {
       "secret-token\r\nContent-Type: application/json\r\nContent-Length: " +
       std::to_string(body.size()) + "\r\n\r\n" + body;
   EXPECT(sendAll(authorized, request), "authorized request should send");
-  const std::string response = pumpUntilRead(fixture, authorized);
+  const std::string response = pumpUntilRead(*fixture.service, fixture.server.get(),
+                                             *fixture.mcpServer, authorized);
   EXPECT(response.find("200 OK") != std::string::npos,
          "authorized command should return 200");
   EXPECT(response.find("\"message\":\"hello\"") != std::string::npos,
@@ -261,14 +305,18 @@ void testWebSocketHandshakeAndEvents() {
       "Sec-WebSocket-Version: 13\r\n"
       "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n";
   EXPECT(sendAll(socketHandle, handshake), "websocket handshake should send");
-  const std::string handshakeResponse = pumpUntilRead(fixture, socketHandle);
+  const std::string handshakeResponse =
+      pumpUntilRead(*fixture.service, fixture.server.get(), *fixture.mcpServer,
+                    socketHandle);
   EXPECT(handshakeResponse.find("101 Switching Protocols") != std::string::npos,
          "websocket handshake should succeed");
 
   const std::string commandFrame =
       makeMaskedWsFrame("{\"type\":\"command\",\"line\":\"echo websocket\"}");
   EXPECT(sendAll(socketHandle, commandFrame), "websocket command frame should send");
-  const std::string commandResponse = pumpUntilRead(fixture, socketHandle);
+  const std::string commandResponse =
+      pumpUntilRead(*fixture.service, fixture.server.get(), *fixture.mcpServer,
+                    socketHandle);
   EXPECT(commandResponse.find("command.response") != std::string::npos,
          "websocket command should return command response envelope");
   EXPECT(commandResponse.find("command.executed") != std::string::npos,
@@ -312,7 +360,9 @@ void testMcpInitializeAndTools() {
       makeMcpFrame("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\","
                    "\"params\":{\"protocolVersion\":\"1999-01-01\"}}");
   EXPECT(sendAll(socketHandle, initialize), "MCP initialize should send");
-  const std::string initializeResponse = pumpUntilRead(fixture, socketHandle);
+  const std::string initializeResponse =
+      pumpUntilRead(*fixture.service, fixture.server.get(), *fixture.mcpServer,
+                    socketHandle);
   EXPECT(initializeResponse.find("\"protocolVersion\":\"2025-03-26\"") !=
              std::string::npos,
          "MCP initialize should advertise the supported protocol version");
@@ -324,7 +374,9 @@ void testMcpInitializeAndTools() {
       makeMcpFrame("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\","
                    "\"params\":{}}");
   EXPECT(sendAll(socketHandle, toolsList), "MCP tools/list should send");
-  const std::string toolsResponse = pumpUntilRead(fixture, socketHandle);
+  const std::string toolsResponse =
+      pumpUntilRead(*fixture.service, fixture.server.get(), *fixture.mcpServer,
+                    socketHandle);
   EXPECT(toolsResponse.find("lxe_editor_command") != std::string::npos,
          "MCP tools/list should advertise lxe_editor_command");
   EXPECT(toolsResponse.find("lxe_editor_pick") != std::string::npos,
@@ -335,10 +387,56 @@ void testMcpInitializeAndTools() {
                    "\"params\":{\"name\":\"lxe_editor_get_summary\","
                    "\"arguments\":{}}}");
   EXPECT(sendAll(socketHandle, summaryCall), "MCP summary tool should send");
-  const std::string summaryResponse = pumpUntilRead(fixture, socketHandle);
+  const std::string summaryResponse =
+      pumpUntilRead(*fixture.service, fixture.server.get(), *fixture.mcpServer,
+                    socketHandle);
   EXPECT(summaryResponse.find("\"sceneName\":\"Scene\"") != std::string::npos,
          "MCP summary tool should return scene summary");
   closeSocket(socketHandle);
+}
+
+void testRemoteMcpRequiresTokenOnInitialize() {
+  RemoteMcpFixture fixture;
+
+  const SocketHandle socketHandle = connectClient(fixture.mcpServer->boundPort());
+  EXPECT(socketHandle != kInvalidSocket, "remote-style MCP client should connect");
+  if (socketHandle == kInvalidSocket) {
+    return;
+  }
+
+  const std::string unauthorizedInitialize =
+      makeMcpFrame("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\","
+                   "\"params\":{\"protocolVersion\":\"2025-03-26\"}}");
+  EXPECT(sendAll(socketHandle, unauthorizedInitialize),
+         "unauthorized MCP initialize should send");
+  const std::string unauthorizedResponse =
+      pumpUntilRead(*fixture.service,
+                    static_cast<EditorAutomationServer*>(nullptr),
+                    *fixture.mcpServer, socketHandle);
+  EXPECT(unauthorizedResponse.find("unauthorized") != std::string::npos,
+         "remote-style MCP initialize should reject missing token");
+  closeSocket(socketHandle);
+
+  const SocketHandle authorizedSocket = connectClient(fixture.mcpServer->boundPort());
+  EXPECT(authorizedSocket != kInvalidSocket,
+         "authorized remote-style MCP client should connect");
+  if (authorizedSocket == kInvalidSocket) {
+    return;
+  }
+  const std::string authorizedInitialize =
+      makeMcpFrame("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"initialize\","
+                   "\"params\":{\"protocolVersion\":\"2025-03-26\","
+                   "\"token\":\"secret-token\"}}");
+  EXPECT(sendAll(authorizedSocket, authorizedInitialize),
+         "authorized MCP initialize should send");
+  const std::string authorizedResponse =
+      pumpUntilRead(*fixture.service,
+                    static_cast<EditorAutomationServer*>(nullptr),
+                    *fixture.mcpServer, authorizedSocket);
+  EXPECT(authorizedResponse.find("\"protocolVersion\":\"2025-03-26\"") !=
+             std::string::npos,
+         "authorized remote-style MCP initialize should succeed");
+  closeSocket(authorizedSocket);
 }
 
 } // namespace
@@ -348,6 +446,7 @@ int main() {
   testWebSocketHandshakeAndEvents();
   testRuntimeStateRoundTripsYaml();
   testMcpInitializeAndTools();
+  testRemoteMcpRequiresTokenOnInitialize();
 
   if (failures != 0) {
     std::cerr << failures << " automation server test(s) failed\n";

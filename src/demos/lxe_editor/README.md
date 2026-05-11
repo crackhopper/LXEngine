@@ -168,10 +168,29 @@ port, and token-file path.
 `lxe_editor` also starts an in-process localhost MCP server for Codex-facing
 diagnostics.
 
-- MCP host: `127.0.0.1`
+- Default MCP host: `127.0.0.1`
 - Default MCP port: `3769`
 - Runtime discovery file: `data/lxe_editor/runtime_state.yaml`
 - Repo-local Codex bridge: `.codex/scripts/lxe_editor_mcp_bridge.py`
+- Startup flags:
+  - `--mcp-host <host>`
+  - `--mcp-port <port>`
+
+Remote MCP is also supported. When `--mcp-host` is not a loopback host, the
+server requires the same token used by the HTTP automation API. The repo-local
+bridge can target a remote editor through:
+
+```sh
+source scripts/lxe_editor/use_remote_mcp.sh <host> <port> <token>
+codex
+```
+
+To switch back to the local editor:
+
+```sh
+source scripts/lxe_editor/use_local_mcp.sh
+codex
+```
 
 Current MCP surface:
 

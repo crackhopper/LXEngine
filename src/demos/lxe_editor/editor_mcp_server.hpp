@@ -12,6 +12,7 @@ struct EditorMcpServerConfig final {
   bool enabled = true;
   std::string host = "127.0.0.1";
   std::uint16_t port = 3769;
+  std::string token;
 };
 
 class EditorMcpServer final {
