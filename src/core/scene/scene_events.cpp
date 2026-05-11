@@ -35,6 +35,13 @@ struct SceneEventHubState final {
     pendingListeners.clear();
   }
 
+  void finishDispatch() {
+    if (dispatchDepth == 0) {
+      compactRemovedListeners();
+      flushPendingListeners();
+    }
+  }
+
   void unsubscribe(const u64 subscriptionId) {
     for (auto &entry : listeners) {
       if (entry.id != subscriptionId) {
@@ -119,17 +126,19 @@ void SceneEventHub::emit(SceneEvent event) {
   event.sequence = m_state->nextSequence++;
 
   ++m_state->dispatchDepth;
-  for (auto &entry : m_state->listeners) {
-    if (!entry.removed && entry.callback) {
-      entry.callback(event);
+  try {
+    for (auto &entry : m_state->listeners) {
+      if (!entry.removed && entry.callback) {
+        entry.callback(event);
+      }
     }
+  } catch (...) {
+    --m_state->dispatchDepth;
+    m_state->finishDispatch();
+    throw;
   }
   --m_state->dispatchDepth;
-
-  if (m_state->dispatchDepth == 0) {
-    m_state->compactRemovedListeners();
-    m_state->flushPendingListeners();
-  }
+  m_state->finishDispatch();
 }
 
 } // namespace LX_core

@@ -2,7 +2,9 @@
 #include "core/scene/components/camera_component.hpp"
 #include "core/scene/scene.hpp"
 
+#include <exception>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -558,6 +560,46 @@ void testSceneEventUnsubscribeDuringCallbackStopsLaterEmits() {
   EXPECT(calls[2] == "peer", "remaining listener should still receive later emits");
 }
 
+void testSceneEventHubRecoversAfterThrowingListener() {
+  auto scene = LX_core::Scene::create(nullptr);
+  bool sawThrow = false;
+  auto throwingSubscription =
+      scene->events().subscribe([&](const LX_core::SceneEvent &) {
+        throw std::runtime_error("listener failed");
+      });
+
+  try {
+    scene->events().emit(LX_core::SceneEvent{
+        .path = "/throwing",
+        .stableNodeName = "throwing",
+    });
+  } catch (const std::runtime_error &) {
+    sawThrow = true;
+  } catch (...) {
+    EXPECT(false, "emit should rethrow the original listener exception type");
+  }
+
+  EXPECT(sawThrow, "throwing listener should propagate its exception");
+
+  usize healthyCalls = 0;
+  auto healthySubscription =
+      scene->events().subscribe([&](const LX_core::SceneEvent &) {
+        ++healthyCalls;
+      });
+
+  scene->events().emit(LX_core::SceneEvent{
+      .path = "/healthy",
+      .stableNodeName = "healthy",
+  });
+
+  EXPECT(healthyCalls == 1,
+         "hub should remain usable after a listener throws");
+  EXPECT(throwingSubscription.isActive(),
+         "throwing listener subscription should remain active unless explicitly reset");
+  EXPECT(healthySubscription.isActive(),
+         "new subscriptions should still work after exception recovery");
+}
+
 } // namespace
 
 int main() {
@@ -575,6 +617,7 @@ int main() {
   testSceneEventSubscriptionExpiresWhenSceneDies();
   testSceneEventSubscribeDuringCallbackDefersToNextEmit();
   testSceneEventUnsubscribeDuringCallbackStopsLaterEmits();
+  testSceneEventHubRecoversAfterThrowingListener();
 
   if (failures != 0) {
     std::cerr << failures << " scene_events test(s) failed\n";
