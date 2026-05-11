@@ -3,7 +3,7 @@
 The default playground demo. Starts with an empty scene, lets you manually load
 built-in or local scene documents, renders them through the project's Vulkan
 backend, and adds an ImGui editor MVP overlay with scene tree / inspector /
-console / viewport overlay plus Orbit / FreeFly camera modes.
+console plus a floating toolbar for Selection / Orbit / FreeFly / Preview.
 
 ## Purpose
 
@@ -62,10 +62,12 @@ with a non-zero exit code if the `assets/` tree cannot be found.
 - User scenes and autosaved copies live under `data/scenes/` and are listed as
   `local`.
 - Editor chrome persists locally under `data/scene_viewer/`:
-  `layout.ini` stores ImGui window layout/collapsed state and
-  `window_state.ini` stores the native window position/size/maximized state.
-  These files do not store the current scene path, selection, preview mode, or
-  other session state.
+  `editor_config.yaml` stores the native window position/size/maximized state,
+  floating panel layout/collapsed state, and local editor preferences such as
+  `uiFontScale`. It does not store the current scene path, selection, preview
+  mode, or other session state. The toolbar layout is persisted there too, but
+  startup forces the toolbar visible again so the mode switcher cannot be lost
+  behind a stale hidden-state entry.
 - `game_cam` is the authored gameplay camera serialized in the scene document.
 - `editor_cam` is editor-only state. It is restored from
   `editor.editorCamera` when present and otherwise falls back to the gameplay
@@ -100,11 +102,17 @@ with a non-zero exit code if the `assets/` tree cannot be found.
 | Key / Mouse | Effect |
 |-------------|--------|
 | `F1` | Toggle the Help panel |
-| `F2` | Switch between Orbit and FreeFly camera modes |
 | `F` | Toggle preview between the editor and gameplay camera paths |
-| `W` / `E` / `R` | Gizmo Translate / Rotate / Scale mode |
-| `Esc` | Deselect current node |
-| `Delete` | Remove selected node |
+| Toolbar | Switch Selection / Orbit / FreeFly editor modes |
+| `Esc` | Deselect current node in Selection mode when preview is off |
+| `Delete` | Remove the selected node when preview is off |
+
+### Selection mode
+
+- Left-click in the main scene view selects the hit node
+- Left-click empty space clears the current selection
+- Preview mode suppresses scene selection, `Esc`, and `Delete` so gameplay
+  camera preview does not mutate editor state
 
 ### Orbit mode (default)
 
@@ -146,14 +154,14 @@ Reviewers: run through these after a successful build. The demo is not
 registered with CTest.
 
 1. `demo_scene_viewer` launches and shows a window.
-2. DamagedHelmet and the ground plane are visible in the viewport.
+2. DamagedHelmet and the ground plane are visible in the main scene view.
 3. Orbit mode allows left-drag rotate, right-drag pan, and wheel zoom.
-4. Pressing `F2` switches to FreeFly; `W`/`A`/`S`/`D`/`Space`/`LShift`/`LCtrl`
-   all move the camera as described above.
+4. The floating toolbar switches between Selection / Orbit / FreeFly, and
+   FreeFly uses `W`/`A`/`S`/`D`/`Space`/`LShift`/`LCtrl` as described above.
 5. The Stats, Scene Tree, Inspector, Console, and Help panels are visible
    and interactive.
-6. Inspector edits, gizmo commits, and console commands all mutate the same
-   scene state through the command bus.
+6. Inspector edits and console commands mutate the same scene state through the
+   command bus, and preview mode blocks selection / deselect / remove actions.
 7. `scene list` shows both `asset` and `local` entries.
 8. Loading `assets/scenes/scene_viewer.scene.yaml` restores Helmet, ground,
    light, and gameplay camera.
@@ -161,5 +169,6 @@ registered with CTest.
    `data/scenes/` instead of overwriting the asset.
 10. Closing a dirty scene shows a save/discard/cancel prompt and exits cleanly
     after `Save` or `Discard`.
-11. Moving/resizing the main window or rearranging/collapsing editor panels is
-    restored on the next launch from `data/scene_viewer/`.
+11. Moving/resizing the main window, rearranging/collapsing editor panels, and
+    changing `UI Font Scale` is restored on the next launch from
+    `data/scene_viewer/editor_config.yaml`.

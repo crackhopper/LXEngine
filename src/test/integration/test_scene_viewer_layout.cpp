@@ -4,15 +4,16 @@
 #include "core/editor/editor_state.hpp"
 #include "core/editor/inspector_panel.hpp"
 #include "core/editor/scene_tree_panel.hpp"
-#include "core/editor/viewport_overlay.hpp"
+#include "core/input/key_code.hpp"
+#include "core/input/mock_input_state.hpp"
 #include "core/platform/window.hpp"
 #include "core/scene/components/camera_component.hpp"
 #include "core/scene/object.hpp"
 #include "core/scene/scene.hpp"
 #include "core/utils/env.hpp"
 #include "demos/scene_viewer/camera_rig.hpp"
+#include "demos/scene_viewer/editor_config_state.hpp"
 #include "demos/scene_viewer/ui_overlay.hpp"
-#include "demos/scene_viewer/window_layout_state.hpp"
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -40,11 +41,11 @@ int failures = 0;
 
 bool setupMinimalImGui() {
   ImGui::CreateContext();
-  ImGuiIO &io = ImGui::GetIO();
+  ImGuiIO& io = ImGui::GetIO();
   io.DisplaySize = ImVec2(1280.0f, 720.0f);
   io.DeltaTime = 1.0f / 60.0f;
   io.IniFilename = nullptr;
-  unsigned char *pixels = nullptr;
+  unsigned char* pixels = nullptr;
   int w = 0;
   int h = 0;
   io.Fonts->GetTexDataAsRGBA32(&pixels, &w, &h);
@@ -56,21 +57,24 @@ struct UiHarness final {
   LX_core::CommandBus bus;
   LX_core::SceneSharedPtr scene;
   LX_core::SceneNodeSharedPtr editorCameraNode;
+  LX_core::SceneNodeSharedPtr targetNode;
   LX_demo::scene_viewer::CameraRig rig;
+  LX_demo::scene_viewer::EditorConfigDocument config;
   LX_core::SceneTreePanel sceneTreePanel;
   LX_core::InspectorPanel inspectorPanel;
   LX_core::ConsolePanel consolePanel;
-  LX_core::ViewportOverlay viewportOverlay;
   LX_demo::scene_viewer::UiOverlay ui;
 
   UiHarness()
       : scene(LX_core::Scene::create("layout_scene")),
         editorCameraNode(LX_core::SceneNode::create("editor_camera")),
+        targetNode(LX_core::SceneNode::create("toolbar_target")),
         sceneTreePanel(bus, editorState, *scene),
         inspectorPanel(bus, editorState),
-        consolePanel(bus),
-        viewportOverlay(bus, editorState, *scene) {
+        consolePanel(bus) {
     editorCameraNode->setName("editor_cam");
+    targetNode->setName("toolbar_target");
+    scene->addRenderable(targetNode);
     auto editorCamera =
         editorCameraNode->addComponent<LX_core::CameraComponent>();
     scene->addCamera(editorCameraNode);
@@ -79,33 +83,10 @@ struct UiHarness final {
     (void)editorState.syncActiveCamera(*scene);
     LX_core::registerBuiltinCommands(bus, editorState, *scene);
     rig.attach(editorCamera->get());
-    ui.attach(rig, bus, sceneTreePanel, inspectorPanel, consolePanel,
-              viewportOverlay);
+    ui.attach(rig, bus, editorState, config, sceneTreePanel, inspectorPanel,
+              consolePanel);
   }
 };
-
-[[nodiscard]] std::string makePersistedLayoutIni() {
-  return
-      "[Window][Scene Tree]\n"
-      "Pos=96,84\n"
-      "Size=312,288\n"
-      "Collapsed=1\n"
-      "\n"
-      "[Window][Inspector]\n"
-      "Pos=840,40\n"
-      "Size=360,420\n"
-      "Collapsed=0\n"
-      "\n"
-      "[Window][Command Console]\n"
-      "Pos=280,520\n"
-      "Size=640,180\n"
-      "Collapsed=0\n"
-      "\n"
-      "[Window][Viewport]\n"
-      "Pos=280,24\n"
-      "Size=640,460\n"
-      "Collapsed=0\n";
-}
 
 class StubWindow final : public LX_core::Window {
 public:
@@ -166,41 +147,72 @@ public:
 
 private:
   LX_core::WindowPlacement m_placement{};
-  LX_core::WindowUsableBounds m_usableBounds{.x = 0, .y = 0, .width = 1920, .height = 1080};
+  LX_core::WindowUsableBounds m_usableBounds{
+      .x = 0, .y = 0, .width = 1920, .height = 1080};
   std::optional<LX_core::WindowUsableBounds> m_placementUsableBounds;
   std::optional<LX_core::WindowPlacement> m_appliedPlacement;
 };
 
-class CerrCapture final {
-public:
-  CerrCapture() : m_previous(std::cerr.rdbuf(m_stream.rdbuf())) {}
-  ~CerrCapture() { std::cerr.rdbuf(m_previous); }
-
-  [[nodiscard]] std::string str() const { return m_stream.str(); }
-
-private:
-  std::ostringstream m_stream;
-  std::streambuf* m_previous = nullptr;
-};
-
-[[nodiscard]] usize countSubstring(const std::string& text,
-                                   const std::string_view needle) {
-  if (needle.empty()) {
-    return 0;
-  }
-
-  usize count = 0;
-  size_t offset = 0;
-  while ((offset = text.find(needle, offset)) != std::string::npos) {
-    ++count;
-    offset += needle.size();
-  }
-  return count;
+[[nodiscard]] std::string makePersistedEditorConfigYaml() {
+  return
+      "version: 1\n"
+      "window:\n"
+      "  x: 42\n"
+      "  y: 64\n"
+      "  width: 1440\n"
+      "  height: 900\n"
+      "  maximized: true\n"
+      "layout:\n"
+      "  windows:\n"
+      "    - id: Toolbar\n"
+      "      visible: true\n"
+      "      collapsed: false\n"
+      "      x: 24\n"
+      "      y: 18\n"
+      "      width: 260\n"
+      "      height: 60\n"
+      "    - id: Scene Tree\n"
+      "      visible: true\n"
+      "      collapsed: true\n"
+      "      x: 96\n"
+      "      y: 84\n"
+      "      width: 312\n"
+      "      height: 288\n"
+      "    - id: Inspector\n"
+      "      visible: true\n"
+      "      collapsed: false\n"
+      "      x: 840\n"
+      "      y: 40\n"
+      "      width: 360\n"
+      "      height: 420\n"
+      "    - id: Command Console\n"
+      "      visible: true\n"
+      "      collapsed: false\n"
+      "      x: 280\n"
+      "      y: 520\n"
+      "      width: 640\n"
+      "      height: 180\n"
+      "preferences:\n"
+      "  uiFontScale: 1.35\n";
 }
 
-void testDefaultLayoutPlacesViewportBetweenPanels() {
+[[nodiscard]] std::string makeToolbarHiddenConfigYaml() {
+  return
+      "version: 1\n"
+      "layout:\n"
+      "  windows:\n"
+      "    - id: Toolbar\n"
+      "      visible: false\n"
+      "      collapsed: false\n"
+      "      x: 24\n"
+      "      y: 18\n"
+      "      width: 260\n"
+      "      height: 60\n";
+}
+
+void testDefaultLayoutShowsToolbarAndCorePanels() {
   if (!setupMinimalImGui()) {
-    std::cout << "[SKIP] scene_viewer layout test (font atlas unavailable)\n";
+    std::cout << "[SKIP] scene_viewer toolbar layout test (font atlas unavailable)\n";
     ImGui::DestroyContext();
     return;
   }
@@ -210,453 +222,279 @@ void testDefaultLayoutPlacesViewportBetweenPanels() {
   ImGui::NewFrame();
   harness.ui.drawFrame();
 
-  ImGuiWindow *sceneTree = ImGui::FindWindowByName("Scene Tree");
-  ImGuiWindow *inspector = ImGui::FindWindowByName("Inspector");
-  ImGuiWindow *console = ImGui::FindWindowByName("Command Console");
-  ImGuiWindow *viewport = ImGui::FindWindowByName("Viewport");
+  ImGuiWindow* toolbar = ImGui::FindWindowByName("Toolbar");
+  ImGuiWindow* sceneTree = ImGui::FindWindowByName("Scene Tree");
+  ImGuiWindow* inspector = ImGui::FindWindowByName("Inspector");
+  ImGuiWindow* console = ImGui::FindWindowByName("Command Console");
+  ImGuiWindow* stats = ImGui::FindWindowByName("Stats");
 
+  EXPECT(toolbar != nullptr, "toolbar window should exist");
   EXPECT(sceneTree != nullptr, "scene tree window should exist");
   EXPECT(inspector != nullptr, "inspector window should exist");
   EXPECT(console != nullptr, "console window should exist");
-  EXPECT(viewport != nullptr, "viewport window should exist");
+  EXPECT(stats != nullptr, "stats window should exist");
 
-  if (sceneTree && inspector && console && viewport) {
-    EXPECT(sceneTree->Pos.x < viewport->Pos.x,
-           "scene tree should be left of viewport");
-    EXPECT(inspector->Pos.x > viewport->Pos.x,
-           "inspector should be right of viewport");
-    EXPECT(console->Pos.y >= viewport->Pos.y + viewport->Size.y - 1.0f,
-           "console should be below viewport");
-    EXPECT(harness.viewportOverlay.getPanelRect().size.x > 0.0f &&
-               harness.viewportOverlay.getPanelRect().size.y > 0.0f,
-           "viewport overlay should bind to viewport content rect");
+  if (toolbar && sceneTree && inspector && console) {
+    EXPECT(toolbar->Pos.y <= sceneTree->Pos.y,
+           "toolbar should appear above the scene tree");
+    EXPECT(sceneTree->Pos.x < inspector->Pos.x,
+           "scene tree should remain left of inspector");
+    EXPECT(console->Pos.y > sceneTree->Pos.y,
+           "console should remain lower than the scene tree");
   }
 
   ImGui::EndFrame();
   ImGui::DestroyContext();
 }
 
-void testDefaultLayoutReflowsAfterResize() {
-  if (!setupMinimalImGui()) {
-    std::cout << "[SKIP] scene_viewer resize layout test (font atlas unavailable)\n";
-    ImGui::DestroyContext();
-    return;
-  }
-
-  UiHarness harness;
-
-  ImGuiIO &io = ImGui::GetIO();
-
-  ImGui::NewFrame();
-  harness.ui.drawFrame();
-  ImGui::EndFrame();
-
-  io.DisplaySize = ImVec2(1600.0f, 900.0f);
-  ImGui::NewFrame();
-  harness.ui.drawFrame();
-
-  ImGuiWindow *sceneTree = ImGui::FindWindowByName("Scene Tree");
-  ImGuiWindow *inspector = ImGui::FindWindowByName("Inspector");
-  ImGuiWindow *console = ImGui::FindWindowByName("Command Console");
-  ImGuiWindow *viewport = ImGui::FindWindowByName("Viewport");
-
-  EXPECT(sceneTree != nullptr, "scene tree window should exist after resize");
-  EXPECT(inspector != nullptr, "inspector window should exist after resize");
-  EXPECT(console != nullptr, "console window should exist after resize");
-  EXPECT(viewport != nullptr, "viewport window should exist after resize");
-
-  if (sceneTree && inspector && console && viewport) {
-    EXPECT(viewport->Size.x > 900.0f,
-           "viewport width should grow with display resize");
-    EXPECT(viewport->Size.y > 600.0f,
-           "viewport height should grow with display resize");
-    EXPECT(inspector->Pos.x + inspector->Size.x <= io.DisplaySize.x + 1.0f,
-           "inspector should stay within resized display bounds");
-    EXPECT(console->Pos.y + console->Size.y <= io.DisplaySize.y + 1.0f,
-           "console should stay within resized display bounds");
-  }
-
-  ImGui::EndFrame();
-  ImGui::DestroyContext();
-}
-
-void testDefaultLayoutKeepsEditorPanelsVisibleAcrossFrames() {
-  if (!setupMinimalImGui()) {
-    std::cout << "[SKIP] scene_viewer persistent layout test (font atlas unavailable)\n";
-    ImGui::DestroyContext();
-    return;
-  }
-
-  UiHarness harness;
-
-  ImGui::NewFrame();
-  harness.ui.drawFrame();
-  ImGui::EndFrame();
-
-  ImGui::NewFrame();
-  harness.ui.drawFrame();
-
-  const int currentFrame = ImGui::GetFrameCount();
-  ImGuiWindow *sceneTree = ImGui::FindWindowByName("Scene Tree");
-  ImGuiWindow *inspector = ImGui::FindWindowByName("Inspector");
-  ImGuiWindow *console = ImGui::FindWindowByName("Command Console");
-  ImGuiWindow *viewport = ImGui::FindWindowByName("Viewport");
-
-  EXPECT(sceneTree != nullptr && sceneTree->LastFrameActive == currentFrame,
-         "scene tree window should still be drawn on frame 2");
-  EXPECT(inspector != nullptr && inspector->LastFrameActive == currentFrame,
-         "inspector window should still be drawn on frame 2");
-  EXPECT(console != nullptr && console->LastFrameActive == currentFrame,
-         "console window should still be drawn on frame 2");
-  EXPECT(viewport != nullptr && viewport->LastFrameActive == currentFrame,
-         "viewport window should still be drawn on frame 2");
-
-  ImGui::EndFrame();
-  ImGui::DestroyContext();
-}
-
-void testPersistedLayoutOverridesDefaultWindowRects() {
+void testPersistedEditorConfigOverridesDefaultRectsAndPreferences() {
   namespace fs = std::filesystem;
 
   if (!setupMinimalImGui()) {
-    std::cout << "[SKIP] scene_viewer persisted layout override test (font atlas unavailable)\n";
+    std::cout << "[SKIP] scene_viewer persisted config test (font atlas unavailable)\n";
     ImGui::DestroyContext();
     return;
   }
 
-  UiHarness harness;
   const fs::path tempRoot =
-      fs::temp_directory_path() / "lxengine_scene_viewer_persisted_layout";
-  const std::string persistedLayout = makePersistedLayoutIni();
-  LX_demo::scene_viewer::WindowLayoutState state(tempRoot);
-  std::filesystem::remove_all(tempRoot);
-  std::filesystem::create_directories(tempRoot);
-  std::ofstream(state.imguiLayoutPath()) << persistedLayout;
-  const bool restored = state.restoreImGuiLayout();
-  EXPECT(restored, "scene_viewer should restore usable persisted layout");
-  harness.ui.setDefaultLayoutEnabled(!restored);
+      fs::temp_directory_path() / "lxengine_scene_viewer_editor_config";
+  fs::remove_all(tempRoot);
+  fs::create_directories(tempRoot);
+
+  LX_demo::scene_viewer::EditorConfigState state(tempRoot);
+  std::ofstream(state.configPath()) << makePersistedEditorConfigYaml();
+  UiHarness harness;
+  harness.config = state.load();
+  harness.ui.attach(harness.rig, harness.bus, harness.editorState, harness.config,
+                    harness.sceneTreePanel, harness.inspectorPanel,
+                    harness.consolePanel);
 
   ImGui::NewFrame();
   harness.ui.drawFrame();
 
+  ImGuiWindow* toolbar = ImGui::FindWindowByName("Toolbar");
   ImGuiWindow* sceneTree = ImGui::FindWindowByName("Scene Tree");
-  ImGuiWindow* viewport = ImGui::FindWindowByName("Viewport");
+  ImGuiWindow* console = ImGui::FindWindowByName("Command Console");
 
-  EXPECT(sceneTree != nullptr, "scene tree window should exist with persisted layout");
-  EXPECT(viewport != nullptr, "viewport window should exist with persisted layout");
+  EXPECT(toolbar != nullptr, "toolbar should exist with persisted config");
+  EXPECT(sceneTree != nullptr, "scene tree should exist with persisted config");
+  EXPECT(console != nullptr, "console should exist with persisted config");
 
+  if (toolbar) {
+    EXPECT(toolbar->Pos.x == 24.0f && toolbar->Pos.y == 18.0f,
+           "toolbar should restore persisted position");
+  }
   if (sceneTree) {
     EXPECT(sceneTree->Pos.x == 96.0f && sceneTree->Pos.y == 84.0f,
-           "scene tree should keep persisted position instead of default snapping");
+           "scene tree should restore persisted position");
     EXPECT(sceneTree->Collapsed,
-           "scene tree collapsed state should restore from persisted layout");
+           "scene tree collapsed state should restore from editor config");
   }
-  if (viewport) {
-    EXPECT(viewport->Pos.x == 280.0f && viewport->Pos.y == 24.0f,
-           "viewport should keep persisted position instead of default snapping");
-    EXPECT(viewport->Size.x == 640.0f && viewport->Size.y == 460.0f,
-           "viewport should keep persisted size");
+  if (console) {
+    EXPECT(console->Pos.x == 280.0f && console->Pos.y == 520.0f,
+           "console should restore persisted position");
   }
+  EXPECT(ImGui::GetStyle().FontScaleMain > 1.3f,
+         "persisted uiFontScale should be applied to ImGui style");
 
   ImGui::EndFrame();
   ImGui::DestroyContext();
   fs::remove_all(tempRoot);
 }
 
-void testWindowLayoutStateRoundTripsAndFailsSoft() {
+void testEditorConfigRoundTrips() {
   namespace fs = std::filesystem;
 
   const fs::path tempRoot =
-      fs::temp_directory_path() / "lxengine_scene_viewer_layout_test";
+      fs::temp_directory_path() / "lxengine_scene_viewer_editor_config_roundtrip";
   fs::remove_all(tempRoot);
 
-  LX_demo::scene_viewer::WindowLayoutState state(tempRoot);
-
-  EXPECT(!state.restoreImGuiLayout(),
-         "missing imgui layout file should fall back to defaults");
-  EXPECT(!state.loadNativeWindowPlacement().has_value(),
-         "missing native window layout file should fail soft");
-  EXPECT(!LX_demo::scene_viewer::WindowLayoutState::parseNativeWindowPlacement(
-              "version=1\nx=bad\ny=20\nwidth=1280\nheight=720\nmaximized=0\n")
-              .has_value(),
-         "corrupt native window layout text should fail soft");
-  EXPECT(LX_demo::scene_viewer::WindowLayoutState::isUsableImGuiLayout(
-              "[Window][Inspector]\nPos=1,2\nSize=3,4\nCollapsed=0\n"),
-         "single-window imgui layout should be treated as usable");
-  EXPECT(!LX_demo::scene_viewer::WindowLayoutState::hasSceneViewerCoreLayout(
-              "[Window][Inspector]\nPos=1,2\nSize=3,4\nCollapsed=0\n"),
-         "single-window imgui layout should not be authoritative for scene_viewer");
-  EXPECT(!LX_demo::scene_viewer::WindowLayoutState::hasSceneViewerCoreLayout(
-              "[Window][Scene Tree]\n"
-              "[Window][Inspector]\n"
-              "[Window][Command Console]\n"
-              "[Window][Viewport]\n"),
-         "core window headers without usable settings should not be authoritative");
-  EXPECT(!LX_demo::scene_viewer::WindowLayoutState::hasSceneViewerCoreLayout(
-              "[Window][Scene Tree]\n"
-              "Collapsed=0\n"
-              "[Window][Inspector]\n"
-              "Collapsed=0\n"
-              "[Window][Command Console]\n"
-              "Collapsed=0\n"
-              "[Window][Viewport]\n"
-              "Collapsed=0\n"),
-         "collapsed-only core sections should not disable default scene_viewer layout");
-  EXPECT(!LX_demo::scene_viewer::WindowLayoutState::hasSceneViewerCoreLayout(
-              "[Window][Scene Tree]\n"
-              "Pos=bad\n"
-              "Size=312,288\n"
-              "[Window][Inspector]\n"
-              "Pos=840,40\n"
-              "Size=oops\n"
-              "[Window][Command Console]\n"
-              "Pos=280,520\n"
-              "Size=640,180\n"
-              "[Window][Viewport]\n"
-              "Pos=280,24\n"
-              "Size=640,460\n"),
-         "malformed core geometry payloads should not disable default scene_viewer layout");
-
-  const LX_core::WindowPlacement placement{
+  LX_demo::scene_viewer::EditorConfigState state(tempRoot);
+  LX_demo::scene_viewer::EditorConfigDocument document;
+  document.windowPlacement = LX_core::WindowPlacement{
       .x = 42,
       .y = 64,
       .width = 1440,
       .height = 900,
       .maximized = true,
   };
-  state.saveNativeWindowPlacement(placement);
-
-  const auto loadedPlacement = state.loadNativeWindowPlacement();
-  EXPECT(loadedPlacement.has_value(), "saved native window layout should round-trip");
-  if (loadedPlacement.has_value()) {
-    EXPECT(loadedPlacement->x == placement.x, "native window x should round-trip");
-    EXPECT(loadedPlacement->y == placement.y, "native window y should round-trip");
-    EXPECT(loadedPlacement->width == placement.width,
-           "native window width should round-trip");
-    EXPECT(loadedPlacement->height == placement.height,
-           "native window height should round-trip");
-    EXPECT(loadedPlacement->maximized == placement.maximized,
-           "native window maximized should round-trip");
-  }
-
-  StubWindow sourceWindow(placement);
-  state.captureNativeWindowPlacement(sourceWindow);
-
-  StubWindow targetWindow(LX_core::WindowPlacement{
-      .x = 0,
-      .y = 0,
-      .width = 1280,
-      .height = 720,
-      .maximized = false,
+  document.preferences.uiFontScale = 1.4f;
+  document.layoutWindows.push_back(LX_demo::scene_viewer::EditorWindowLayout{
+      .id = "Toolbar",
+      .visible = true,
+      .collapsed = false,
+      .x = 24,
+      .y = 18,
+      .width = 260,
+      .height = 60,
   });
-  state.restoreNativeWindowPlacement(targetWindow);
-  EXPECT(targetWindow.appliedPlacement().has_value(),
-         "restoring native window layout should apply placement to window");
-  if (targetWindow.appliedPlacement().has_value()) {
-    EXPECT(targetWindow.appliedPlacement()->x == placement.x,
-           "applied x should match saved placement");
-    EXPECT(targetWindow.appliedPlacement()->y == placement.y,
-           "applied y should match saved placement");
-    EXPECT(targetWindow.appliedPlacement()->width == placement.width,
-           "applied width should match saved placement");
-    EXPECT(targetWindow.appliedPlacement()->height == placement.height,
-           "applied height should match saved placement");
-    EXPECT(targetWindow.appliedPlacement()->maximized == placement.maximized,
-           "applied maximized should match saved placement");
-  }
+  document.layoutWindows.push_back(LX_demo::scene_viewer::EditorWindowLayout{
+      .id = "Scene Tree",
+      .visible = false,
+      .collapsed = true,
+      .x = 96,
+      .y = 84,
+      .width = 312,
+      .height = 288,
+  });
 
-  {
-    CerrCapture capture;
-    std::ofstream(state.windowStatePath())
-        << "version=1\nx=bad\ny=20\nwidth=1280\nheight=720\nmaximized=0\n";
-    EXPECT(!state.loadNativeWindowPlacement().has_value(),
-           "corrupt native window state file should fail soft");
-    EXPECT(capture.str().find("warning") != std::string::npos &&
-               capture.str().find("window_state.ini") != std::string::npos,
-           "corrupt native window state should log a clear warning");
-  }
+  EXPECT(state.save(document), "editor config save should succeed");
+  EXPECT(fs::exists(state.configPath()),
+         "editor config save should create editor_config.yaml");
 
-  std::ofstream(state.imguiLayoutPath()) << "corrupt";
-  {
-    EXPECT(setupMinimalImGui(),
-           "imgui context should initialize for corrupt layout warning test");
-    CerrCapture capture;
-    EXPECT(!state.restoreImGuiLayout(),
-           "corrupt imgui layout file should fail soft");
-    EXPECT(capture.str().find("warning") != std::string::npos &&
-               capture.str().find("layout.ini") != std::string::npos,
-           "corrupt imgui layout should log a clear warning");
-    ImGui::DestroyContext();
+  const auto loaded = state.load();
+  EXPECT(loaded.windowPlacement.has_value(),
+         "editor config load should recover window placement");
+  if (loaded.windowPlacement.has_value()) {
+    EXPECT(loaded.windowPlacement->x == 42, "window x should round-trip");
+    EXPECT(loaded.windowPlacement->y == 64, "window y should round-trip");
+    EXPECT(loaded.windowPlacement->width == 1440,
+           "window width should round-trip");
+    EXPECT(loaded.windowPlacement->height == 900,
+           "window height should round-trip");
+    EXPECT(loaded.windowPlacement->maximized,
+           "window maximized flag should round-trip");
   }
+  EXPECT(loaded.layoutWindows.size() == 2,
+         "layout windows should round-trip");
+  EXPECT(loaded.preferences.uiFontScale > 1.39f &&
+             loaded.preferences.uiFontScale < 1.41f,
+         "preferences uiFontScale should round-trip");
 
   fs::remove_all(tempRoot);
 }
 
-void testPartialSceneViewerLayoutKeepsDefaultCoreLayout() {
-  namespace fs = std::filesystem;
-
+void testPreviewModeSuppressesHotkeyDeselectAndRemove() {
   if (!setupMinimalImGui()) {
-    std::cout << "[SKIP] scene_viewer partial layout fallback test (font atlas unavailable)\n";
+    std::cout
+        << "[SKIP] scene_viewer preview hotkey suppression test (font atlas unavailable)\n";
     ImGui::DestroyContext();
     return;
   }
 
   UiHarness harness;
+  LX_core::MockInputState input;
+  harness.editorState.select({harness.targetNode});
+  harness.editorState.setPreviewEnabled(true);
+  harness.ui.setEditMode(LX_demo::scene_viewer::UiOverlay::EditMode::Selection);
+
+  input.setKeyDown(LX_core::KeyCode::Escape, true);
+  harness.ui.handleHotkeys(input);
+  EXPECT(harness.editorState.getSelected().size() == 1,
+         "preview mode should suppress deselect hotkey");
+  EXPECT(harness.bus.history().empty(),
+         "preview mode should not dispatch deselect commands");
+
+  input.setKeyDown(LX_core::KeyCode::Escape, false);
+  harness.ui.handleHotkeys(input);
+  input.setKeyDown(LX_core::KeyCode::Delete, true);
+  harness.ui.handleHotkeys(input);
+  EXPECT(harness.editorState.getSelected().size() == 1,
+         "preview mode should suppress remove hotkey");
+  EXPECT(harness.scene->findByPath(harness.targetNode->getPath()) != nullptr,
+         "preview mode should keep the selected node in the scene");
+  EXPECT(harness.bus.history().empty(),
+         "preview mode should not dispatch remove commands");
+
+  ImGui::DestroyContext();
+}
+
+void testToolbarIsRecoverableFromPersistedHiddenState() {
+  namespace fs = std::filesystem;
+
+  if (!setupMinimalImGui()) {
+    std::cout
+        << "[SKIP] scene_viewer toolbar persistence test (font atlas unavailable)\n";
+    ImGui::DestroyContext();
+    return;
+  }
+
   const fs::path tempRoot =
-      fs::temp_directory_path() / "lxengine_scene_viewer_partial_layout";
+      fs::temp_directory_path() / "lxengine_scene_viewer_toolbar_hidden";
   fs::remove_all(tempRoot);
   fs::create_directories(tempRoot);
 
-  LX_demo::scene_viewer::WindowLayoutState state(tempRoot);
-  std::ofstream(state.imguiLayoutPath())
-      << "[Window][Scene Tree]\n"
-         "Pos=777,111\n"
-         "Size=123,222\n"
-         "Collapsed=0\n";
+  LX_demo::scene_viewer::EditorConfigState state(tempRoot);
+  std::ofstream(state.configPath()) << makeToolbarHiddenConfigYaml();
 
-  const bool restored = state.restoreImGuiLayout();
-  EXPECT(restored, "parseable partial imgui layout should still load generically");
-  EXPECT(!state.hasAuthoritativeSceneViewerLayout(),
-         "partial scene_viewer layout should not disable default core layout");
-  harness.ui.setDefaultLayoutEnabled(!state.hasAuthoritativeSceneViewerLayout());
+  UiHarness harness;
+  harness.config = state.load();
+  harness.ui.attach(harness.rig, harness.bus, harness.editorState, harness.config,
+                    harness.sceneTreePanel, harness.inspectorPanel,
+                    harness.consolePanel);
 
   ImGui::NewFrame();
   harness.ui.drawFrame();
+  ImGuiWindow* toolbar = ImGui::FindWindowByName("Toolbar");
 
-  ImGuiWindow* sceneTree = ImGui::FindWindowByName("Scene Tree");
-  ImGuiWindow* inspector = ImGui::FindWindowByName("Inspector");
-  ImGuiWindow* console = ImGui::FindWindowByName("Command Console");
-  ImGuiWindow* viewport = ImGui::FindWindowByName("Viewport");
-
-  EXPECT(sceneTree != nullptr, "scene tree should exist with partial persisted layout");
-  EXPECT(inspector != nullptr, "inspector should exist with partial persisted layout");
-  EXPECT(console != nullptr, "console should exist with partial persisted layout");
-  EXPECT(viewport != nullptr, "viewport should exist with partial persisted layout");
-
-  if (sceneTree && inspector && console && viewport) {
-    EXPECT(sceneTree->Pos.x < viewport->Pos.x,
-           "scene tree should still use default left-panel placement");
-    EXPECT(inspector->Pos.x > viewport->Pos.x,
-           "inspector should still use default right-panel placement");
-    EXPECT(console->Pos.y >= viewport->Pos.y + viewport->Size.y - 1.0f,
-           "console should still use default bottom-panel placement");
-    EXPECT(sceneTree->Pos.x != 777.0f || sceneTree->Pos.y != 111.0f,
-           "partial persisted layout should not become authoritative for core windows");
-  }
+  EXPECT(toolbar != nullptr,
+         "toolbar should still be reachable even if persisted config hid it");
+  const auto persistedToolbar =
+      LX_demo::scene_viewer::findEditorWindowLayout(harness.config, "Toolbar");
+  EXPECT(persistedToolbar.has_value() && persistedToolbar->get().visible,
+         "toolbar visibility should recover to visible when loading a hidden toolbar state");
 
   ImGui::EndFrame();
   ImGui::DestroyContext();
   fs::remove_all(tempRoot);
 }
 
-void testImGuiLayoutSaveAndReloadRoundTrip() {
-  namespace fs = std::filesystem;
-
-  const fs::path tempRoot =
-      fs::temp_directory_path() / "lxengine_scene_viewer_layout_round_trip";
-  fs::remove_all(tempRoot);
-
+void testUiFontScaleDoesNotCompoundAcrossReattach() {
   if (!setupMinimalImGui()) {
-    std::cout << "[SKIP] scene_viewer layout round-trip test (font atlas unavailable)\n";
+    std::cout
+        << "[SKIP] scene_viewer ui font scale reattach test (font atlas unavailable)\n";
     ImGui::DestroyContext();
     return;
   }
 
-  LX_demo::scene_viewer::WindowLayoutState state(tempRoot);
+  UiHarness harness;
+  harness.config.preferences.uiFontScale = 1.35f;
 
+  harness.ui.attach(harness.rig, harness.bus, harness.editorState, harness.config,
+                    harness.sceneTreePanel, harness.inspectorPanel,
+                    harness.consolePanel);
   ImGui::NewFrame();
-  ImGui::SetNextWindowPos(ImVec2(123.0f, 67.0f), ImGuiCond_Always);
-  ImGui::SetNextWindowSize(ImVec2(456.0f, 234.0f), ImGuiCond_Always);
-  bool open = true;
-  ImGui::Begin("Round Trip Window", &open);
-  ImGui::TextUnformatted("round trip");
-  ImGui::End();
+  harness.ui.drawFrame();
+  const float firstFontScale = ImGui::GetStyle().FontScaleMain;
+  const ImVec2 firstWindowPadding = ImGui::GetStyle().WindowPadding;
   ImGui::EndFrame();
-  state.saveImGuiLayout();
-  ImGui::DestroyContext();
 
-  EXPECT(fs::exists(state.imguiLayoutPath()),
-         "saving imgui layout should create the local layout file");
-
-  if (!setupMinimalImGui()) {
-    std::cout << "[SKIP] scene_viewer layout reload test (font atlas unavailable)\n";
-    ImGui::DestroyContext();
-    fs::remove_all(tempRoot);
-    return;
-  }
-
-  EXPECT(state.restoreImGuiLayout(),
-         "saved imgui layout should reload successfully");
+  harness.ui.attach(harness.rig, harness.bus, harness.editorState, harness.config,
+                    harness.sceneTreePanel, harness.inspectorPanel,
+                    harness.consolePanel);
   ImGui::NewFrame();
-  ImGui::Begin("Round Trip Window", &open);
-  ImGui::TextUnformatted("round trip");
-  ImGuiWindow* roundTrip = ImGui::FindWindowByName("Round Trip Window");
-  EXPECT(roundTrip != nullptr, "round-trip window should exist after reload");
-  if (roundTrip) {
-    EXPECT(roundTrip->Pos.x == 123.0f && roundTrip->Pos.y == 67.0f,
-           "round-trip restored window position should match saved layout");
-    EXPECT(roundTrip->Size.x == 456.0f && roundTrip->Size.y == 234.0f,
-           "round-trip restored window size should match saved layout");
-  }
-  ImGui::End();
+  harness.ui.drawFrame();
+  const float secondFontScale = ImGui::GetStyle().FontScaleMain;
+  const ImVec2 secondWindowPadding = ImGui::GetStyle().WindowPadding;
+
+  EXPECT(std::abs(secondFontScale - firstFontScale) < 0.001f,
+         "reattach should not compound the ui font scale");
+  EXPECT(std::abs(secondWindowPadding.x - firstWindowPadding.x) < 0.001f &&
+             std::abs(secondWindowPadding.y - firstWindowPadding.y) < 0.001f,
+         "reattach should not compound scaled window metrics");
+
   ImGui::EndFrame();
   ImGui::DestroyContext();
-  fs::remove_all(tempRoot);
 }
 
-void testInvalidNativeWindowGeometryIsNotPersisted() {
+void testInvalidConfigFallsBackToDefaults() {
   namespace fs = std::filesystem;
 
   const fs::path tempRoot =
-      fs::temp_directory_path() / "lxengine_scene_viewer_invalid_window_state";
+      fs::temp_directory_path() / "lxengine_scene_viewer_editor_config_invalid";
   fs::remove_all(tempRoot);
+  fs::create_directories(tempRoot);
 
-  LX_demo::scene_viewer::WindowLayoutState state(tempRoot);
-  const LX_core::WindowPlacement validPlacement{
-      .x = 10,
-      .y = 20,
-      .width = 1280,
-      .height = 720,
-      .maximized = false,
-  };
-  state.saveNativeWindowPlacement(validPlacement);
-  const auto originalText = [&]() -> std::string {
-    std::ifstream in(state.windowStatePath(), std::ios::in | std::ios::binary);
-    std::ostringstream buffer;
-    buffer << in.rdbuf();
-    return buffer.str();
-  }();
+  LX_demo::scene_viewer::EditorConfigState state(tempRoot);
+  std::ofstream(state.configPath()) << "version: nope\npreferences: [broken";
 
-  const LX_core::WindowPlacement invalidPlacement{
-      .x = 30,
-      .y = 40,
-      .width = 0,
-      .height = 720,
-      .maximized = false,
-  };
-  state.saveNativeWindowPlacement(invalidPlacement);
-
-  EXPECT(fs::exists(state.windowStatePath()),
-         "invalid native geometry should not remove the existing window state file");
-  const auto rewrittenText = [&]() -> std::string {
-    std::ifstream in(state.windowStatePath(), std::ios::in | std::ios::binary);
-    std::ostringstream buffer;
-    buffer << in.rdbuf();
-    return buffer.str();
-  }();
-  EXPECT(rewrittenText == originalText,
-         "invalid native geometry should not overwrite the last valid window state");
-
-  StubWindow invalidWindow(invalidPlacement);
-  state.captureNativeWindowPlacement(invalidWindow);
-  const auto capturedText = [&]() -> std::string {
-    std::ifstream in(state.windowStatePath(), std::ios::in | std::ios::binary);
-    std::ostringstream buffer;
-    buffer << in.rdbuf();
-    return buffer.str();
-  }();
-  EXPECT(capturedText == originalText,
-         "capturing invalid native geometry should keep the last valid window state");
+  const auto loaded = state.load();
+  EXPECT(!loaded.windowPlacement.has_value(),
+         "invalid editor config should fall back to default window placement");
+  EXPECT(loaded.layoutWindows.empty(),
+         "invalid editor config should fall back to empty layout windows");
+  EXPECT(loaded.preferences.uiFontScale == 1.0f,
+         "invalid editor config should fall back to default font scale");
 
   fs::remove_all(tempRoot);
 }
@@ -695,13 +533,6 @@ void testOffscreenNativeWindowPlacementIsSanitized() {
 }
 
 void testRestoreUsesPlacementTargetBounds() {
-  namespace fs = std::filesystem;
-
-  const fs::path tempRoot =
-      fs::temp_directory_path() / "lxengine_scene_viewer_secondary_monitor";
-  fs::remove_all(tempRoot);
-
-  LX_demo::scene_viewer::WindowLayoutState state(tempRoot);
   const LX_core::WindowPlacement savedPlacement{
       .x = 2500,
       .y = 120,
@@ -709,7 +540,6 @@ void testRestoreUsesPlacementTargetBounds() {
       .height = 700,
       .maximized = false,
   };
-  state.saveNativeWindowPlacement(savedPlacement);
 
   StubWindow targetWindow(LX_core::WindowPlacement{
       .x = 100,
@@ -719,29 +549,19 @@ void testRestoreUsesPlacementTargetBounds() {
       .maximized = false,
   });
   targetWindow.setUsableBounds(LX_core::WindowUsableBounds{
-      .x = 0,
-      .y = 0,
-      .width = 1920,
-      .height = 1080,
-  });
+      .x = 0, .y = 0, .width = 1920, .height = 1080});
   targetWindow.setUsableBoundsForPlacement(LX_core::WindowUsableBounds{
-      .x = 1920,
-      .y = 0,
-      .width = 1920,
-      .height = 1080,
-  });
+      .x = 1920, .y = 0, .width = 1920, .height = 1080});
 
-  state.restoreNativeWindowPlacement(targetWindow);
-  EXPECT(targetWindow.appliedPlacement().has_value(),
-         "restore should apply placement when target-monitor bounds are available");
-  if (targetWindow.appliedPlacement().has_value()) {
+  const auto sanitized = LX_core::sanitizeWindowPlacement(
+      savedPlacement, targetWindow.getUsableBoundsForPlacement(savedPlacement));
+  EXPECT(sanitized.has_value(),
+         "placement should sanitize against placement-target bounds");
+  if (sanitized.has_value()) {
+    targetWindow.applyPlacement(*sanitized);
     EXPECT(targetWindow.appliedPlacement()->x >= 1920,
-           "restore should sanitize against the target monitor selected from saved placement");
-    EXPECT(targetWindow.appliedPlacement()->x == savedPlacement.x,
-           "restore should preserve saved secondary-monitor x when it is valid there");
+           "sanitized placement should remain on the target monitor");
   }
-
-  fs::remove_all(tempRoot);
 }
 
 void testWindowPlacementCenterUsesWideMath() {
@@ -766,68 +586,20 @@ void testWindowPlacementCenterUsesWideMath() {
          "window placement center y should use wide math for large coordinates");
 }
 
-void testWriteFailuresLogWarnings() {
-  namespace fs = std::filesystem;
-
-  const fs::path tempRoot =
-      fs::temp_directory_path() / "lxengine_scene_viewer_write_failure";
-  fs::remove_all(tempRoot);
-  std::ofstream(tempRoot) << "block writes";
-
-  LX_demo::scene_viewer::WindowLayoutState state(tempRoot);
-
-  {
-    EXPECT(setupMinimalImGui(),
-           "imgui context should initialize for save warning test");
-    ImGui::NewFrame();
-    bool open = true;
-    ImGui::Begin("Write Failure Window", &open);
-    ImGui::TextUnformatted("persist");
-    ImGui::End();
-    ImGui::EndFrame();
-
-    CerrCapture capture;
-    ImGui::GetIO().WantSaveIniSettings = true;
-    state.maybeSaveImGuiLayout();
-    state.maybeSaveImGuiLayout();
-    EXPECT(countSubstring(capture.str(), "layout.ini") == 1,
-           "repeated failed imgui layout writes should warn only once per pending save");
-    ImGui::DestroyContext();
-  }
-
-  {
-    CerrCapture capture;
-    state.saveNativeWindowPlacement(LX_core::WindowPlacement{
-        .x = 1,
-        .y = 2,
-        .width = 1280,
-        .height = 720,
-        .maximized = false,
-    });
-    EXPECT(capture.str().find("warning") != std::string::npos &&
-               capture.str().find("window_state.ini") != std::string::npos,
-           "native window state write failure should log a clear warning");
-  }
-
-  fs::remove_all(tempRoot);
-}
-
 } // namespace
 
 int main() {
   expSetEnvVK();
-  testDefaultLayoutPlacesViewportBetweenPanels();
-  testDefaultLayoutReflowsAfterResize();
-  testDefaultLayoutKeepsEditorPanelsVisibleAcrossFrames();
-  testPersistedLayoutOverridesDefaultWindowRects();
-  testWindowLayoutStateRoundTripsAndFailsSoft();
-  testPartialSceneViewerLayoutKeepsDefaultCoreLayout();
-  testImGuiLayoutSaveAndReloadRoundTrip();
-  testInvalidNativeWindowGeometryIsNotPersisted();
+  testDefaultLayoutShowsToolbarAndCorePanels();
+  testPersistedEditorConfigOverridesDefaultRectsAndPreferences();
+  testEditorConfigRoundTrips();
+  testPreviewModeSuppressesHotkeyDeselectAndRemove();
+  testToolbarIsRecoverableFromPersistedHiddenState();
+  testUiFontScaleDoesNotCompoundAcrossReattach();
+  testInvalidConfigFallsBackToDefaults();
   testOffscreenNativeWindowPlacementIsSanitized();
   testRestoreUsesPlacementTargetBounds();
   testWindowPlacementCenterUsesWideMath();
-  testWriteFailuresLogWarnings();
 
   if (failures == 0) {
     std::cout << "[PASS] scene_viewer layout tests passed.\n";

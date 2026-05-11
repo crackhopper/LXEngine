@@ -42,6 +42,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_viewport_overlay
   test_gizmo_adapter
   test_scene_viewer_layout
+  test_scene_viewer_interaction
   test_gltf_loader
 
   # test_render_sphere
@@ -141,12 +142,22 @@ if(TARGET test_scene_viewer_layout)
   target_sources(test_scene_viewer_layout PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/scene_viewer/ui_overlay.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/scene_viewer/camera_rig.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/scene_viewer/window_layout_state.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/scene_viewer/editor_config_state.cpp
   )
   target_include_directories(test_scene_viewer_layout PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/..
   )
-  target_link_libraries(test_scene_viewer_layout PRIVATE imgui)
+  target_link_libraries(test_scene_viewer_layout PRIVATE imgui yaml-cpp::yaml-cpp)
+endif()
+
+if(TARGET test_scene_viewer_interaction)
+  target_sources(test_scene_viewer_interaction PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/scene_viewer/scene_interaction_controller.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/scene_viewer/scene_input_routing.cpp
+  )
+  target_include_directories(test_scene_viewer_interaction PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/..
+  )
 endif()
 
 if(TARGET test_scene_document)

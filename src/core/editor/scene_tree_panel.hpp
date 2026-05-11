@@ -27,6 +27,8 @@ public:
   [[nodiscard]] CommandResult dispatchRemovePath(std::string_view path);
   [[nodiscard]] CommandResult handleNodeClick(SceneNode &node, bool ctrlHeld,
                                               bool shiftHeld);
+  [[nodiscard]] bool isOpen() const;
+  void setOpen(bool open);
 
 private:
   [[nodiscard]] CommandResult

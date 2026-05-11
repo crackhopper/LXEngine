@@ -62,6 +62,8 @@ public:
                                              const Vec3f &rotationEulerDegrees);
   [[nodiscard]] CommandResult dispatchScale(std::string_view path,
                                             const Vec3f &scale);
+  [[nodiscard]] bool isOpen() const;
+  void setOpen(bool open);
 
 private:
   void syncDraftFromSnapshot(const Snapshot &snapshot);

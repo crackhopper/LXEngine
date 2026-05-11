@@ -88,10 +88,11 @@
 - `scene save <path>` 支持显式另存；如果显式路径仍指向受保护的 `asset` 区域且权限不是 `admin`，也会被重定向到 `local`。
 - `admin on` / `admin off` / `admin status` 控制当前编辑会话的最小两级权限。
 - 关闭 dirty 场景时会弹出 `Save / Discard / Cancel`；`Save` 走的就是同一条 `scene save` 决策路径，不会在 `user` 模式下静默覆盖内置 asset。
-- `scene_viewer` 的编辑器窗口布局和主窗口几何保存在 `data/scene_viewer/`：
-  - `layout.ini` 保存 ImGui 窗口位置、大小和折叠状态
-  - `window_state.ini` 保存主窗口位置、大小和最大化状态
-  这些本地文件不参与 scene asset 序列化，也不进入版本库。
+- `scene_viewer` 的编辑器窗口布局、主窗口几何、以及 editor-only preferences 保存在 `data/scene_viewer/editor_config.yaml`。
+  这份本地文件不参与 scene asset 序列化，也不进入版本库；其中会记录 panel layout 和 `uiFontScale`，但不会保存当前 scene path、selection 或 preview 开关。
+- `scene_viewer` 当前主路径不再走旧的 `ViewportOverlay` / gizmo 面板交互；节点选择来自主场景视图点击 + 浮动 toolbar 的 `Selection / Orbit / FreeFly / Preview` 模式切换。
+- 进入 preview 后，主场景视图点击、`Esc` 取消选择、以及 `Delete` 删除节点都会被抑制，避免 gameplay camera 预览期间误改 editor state。
+- toolbar 的位置与尺寸会写回 `editor_config.yaml`，但启动时会强制恢复可见，避免唯一的模式切换入口被旧配置永久隐藏。
 
 ## 从哪里改
 

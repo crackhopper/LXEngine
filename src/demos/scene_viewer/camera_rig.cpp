@@ -1,7 +1,5 @@
 #include "camera_rig.hpp"
 
-#include "core/input/key_code.hpp"
-
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
@@ -56,15 +54,17 @@ void CameraRig::attach(LX_core::CameraComponent& camera) {
   syncFreeFlyFromCamera(m_freefly, camera);
 }
 
-void CameraRig::switchMode() {
+void CameraRig::setMode(const Mode mode) {
+  if (m_mode == mode) {
+    return;
+  }
   if (!m_camera) return;
-  if (m_mode == Mode::Orbit) {
+  if (mode == Mode::FreeFly) {
     syncFreeFlyFromCamera(m_freefly, m_camera->get());
-    m_mode = Mode::FreeFly;
   } else {
     syncOrbitFromCamera(m_orbit, m_camera->get());
-    m_mode = Mode::Orbit;
   }
+  m_mode = mode;
   std::cerr << "[scene_viewer] camera mode -> "
             << (m_mode == Mode::Orbit ? "Orbit" : "FreeFly") << "\n";
 }
@@ -74,12 +74,6 @@ void CameraRig::update(LX_core::IInputState& input, float dt) {
     throw std::runtime_error(
         "[scene_viewer] CameraRig::update called without attach()");
   }
-
-  const bool f2Down = input.isKeyDown(LX_core::KeyCode::F2);
-  if (f2Down && !m_prevF2Down) {
-    switchMode();
-  }
-  m_prevF2Down = f2Down;
 
   if (m_mode == Mode::Orbit) {
     m_orbit.update(m_camera->get(), input, dt);

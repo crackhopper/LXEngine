@@ -127,6 +127,10 @@ findDirectionalLightForNode(const SceneNode &node) {
 InspectorPanel::InspectorPanel(CommandBus &commandBus, EditorState &editorState)
     : m_commandBus(commandBus), m_editorState(editorState) {}
 
+bool InspectorPanel::isOpen() const { return m_open; }
+
+void InspectorPanel::setOpen(const bool open) { m_open = open; }
+
 void InspectorPanel::draw() {
   if (!m_open) {
     return;

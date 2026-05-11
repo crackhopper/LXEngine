@@ -106,45 +106,59 @@ The demo SHALL express helmet, ground, and any additional renderables as `LX_cor
 - **WHEN** the demo builds its scene
 - **THEN** both the helmet and ground renderables SHALL be instances of `LX_core::SceneNode`
 
-### Requirement: Camera controllers with F2 edge-triggered switching
+### Requirement: Toolbar-driven edit modes and preview
 
-The demo SHALL register both `OrbitCameraController` and `FreeFlyCameraController`. Orbit SHALL be the default mode. Pressing the `F2` key SHALL switch between modes on a rising-edge transition; holding `F2` SHALL NOT cause repeated toggles. At every frame's update hook, the active controller SHALL be updated with the input state and the frame's delta time, followed by explicit refresh of the active `CameraComponent`'s GPU-facing matrices/resources from the current viewport state.
+The demo SHALL expose a floating toolbar window that is the primary editor-mode entry point. The toolbar SHALL provide mutually exclusive edit modes `Selection`, `Orbit`, and `FreeFly`, plus a separate `Preview` toggle and a `Preferences` entry.
 
-When switching modes, the newly-activated controller SHALL be seeded from the current camera-node pose so that the view remains continuous across the switch.
+`Orbit` SHALL remain the default edit mode. When switching between `Orbit` and `FreeFly`, the newly-activated controller SHALL be seeded from the current camera-node pose so that the view remains continuous across the switch.
+
+At every frame's update hook:
+
+- `Selection` SHALL capture scene clicks whenever the UI is not capturing the mouse, even if keyboard focus remains inside another panel
+- `Orbit` / `FreeFly` SHALL only update when neither keyboard nor mouse is captured by the UI
+- `Preview` SHALL disable editor-mode interactions and render the gameplay camera instead
 
 Control mappings SHALL include:
 
+- Selection: left-click pick, empty-space click deselect
 - Orbit: left-drag rotate, right-drag pan target, wheel zoom
 - FreeFly: right-button hold rotate, `W/A/S/D` translate, `Space` up, `LShift` down, `LCtrl` accelerate
-
-#### Scenario: F2 rising edge toggles mode exactly once
-
-- **WHEN** the user presses and holds `F2` for many frames
-- **THEN** the active mode SHALL toggle exactly once (on the initial press) and SHALL NOT toggle again until the key is released and pressed again
 
 #### Scenario: View is continuous across mode switch
 
 - **WHEN** mode is switched from Orbit to FreeFly while the camera is looking at a specific point
 - **THEN** the immediate next frame's camera position and forward direction SHALL be identical to the pre-switch pose (up to numerical precision from yaw/pitch reconstruction)
 
+#### Scenario: Preview suppresses edit interactions
+
+- **WHEN** preview is enabled from the toolbar or the `F` hotkey
+- **THEN** scene clicking, `Esc` deselect, and `Delete` remove SHALL NOT mutate editor state until preview is disabled
+
+#### Scenario: Hidden toolbar config is recovered
+
+- **WHEN** persisted local editor config marks the toolbar window as hidden
+- **THEN** startup SHALL force the toolbar visible again so the mode switcher cannot be lost behind stale local state
+
 ### Requirement: UI overlay via VulkanRenderer::setDrawUiCallback
 
 The demo SHALL register its UI drawing function through `LX_core::backend::VulkanRenderer::setDrawUiCallback(std::function<void()>)`. It SHALL NOT assume that `gpu::Renderer` exposes a UI callback API. The registered callback SHALL render, at minimum:
 
-1. A **Render Stats** panel showing frame count, delta time (ms), and smoothed FPS — using `LX_infra::debug_ui::renderStatsPanel(clock)` when available
-2. A **Camera** panel editing the active camera node’s transform and camera-component properties needed for projection / target binding / culling configuration
-3. A **Directional Light** panel editing `ubo->param.dir` and `ubo->param.color` — using `LX_infra::debug_ui::directionalLightPanel(...)` when available; the helper SHALL be responsible for calling `setDirty()` on user edits
-4. A **Help** panel (demo-local) listing `F1`, `F2`, Orbit controls, FreeFly controls; toggled on `F1` rising edge
+1. A **Toolbar** panel with editor-mode and preview controls
+2. A **Stats** panel showing frame count, delta time (ms), smoothed FPS, preview state, and current edit mode
+3. A **Scene Tree** panel and **Inspector** panel sharing editor state
+4. A **Command Console** panel
+5. A **Help** panel (demo-local) listing `F1`, `F`, toolbar-driven modes, and the selection/preview interaction rules; toggled on `F1` rising edge
+6. A **Preferences** panel exposing at least `preferences.uiFontScale`
 
 #### Scenario: UI is injected through VulkanRenderer
 
 - **WHEN** grepping `src/demos/scene_viewer/` for `setDrawUiCallback`
 - **THEN** there SHALL be exactly one registration site inside `main.cpp` (or its direct helper) targeting the concrete `VulkanRenderer`
 
-#### Scenario: Four panels are visible at startup
+#### Scenario: Core editor panels are visible at startup
 
 - **WHEN** running the demo with a display and the default Help visibility is ON
-- **THEN** all four panels (Stats / Camera / Directional Light / Help) SHALL be rendered at least once per frame
+- **THEN** Toolbar / Stats / Scene Tree / Inspector / Command Console / Help SHALL be rendered at least once per frame
 
 #### Scenario: Editing light color changes the frame
 

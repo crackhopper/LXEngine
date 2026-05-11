@@ -153,6 +153,10 @@ CommandResult SceneTreePanel::handleNodeClick(SceneNode &node, const bool ctrlHe
   return dispatchSelectPath(node.getPath());
 }
 
+bool SceneTreePanel::isOpen() const { return m_open; }
+
+void SceneTreePanel::setOpen(const bool open) { m_open = open; }
+
 CommandResult
 SceneTreePanel::dispatchSelectionPaths(const std::vector<std::string> &paths) {
   if (paths.empty()) {

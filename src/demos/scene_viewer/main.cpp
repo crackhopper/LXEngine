@@ -11,7 +11,6 @@
 #include "core/editor/editor_state.hpp"
 #include "core/editor/inspector_panel.hpp"
 #include "core/editor/scene_tree_panel.hpp"
-#include "core/editor/viewport_overlay.hpp"
 #include "core/gpu/engine_loop.hpp"
 #include "core/scene/components/camera_component.hpp"
 #include "core/utils/env.hpp"
@@ -19,11 +18,13 @@
 #include "infra/window/window.hpp"
 
 #include "camera_rig.hpp"
+#include "editor_config_state.hpp"
 #include "scene_catalog.hpp"
+#include "scene_interaction_controller.hpp"
+#include "scene_input_routing.hpp"
 #include "scene_runtime.hpp"
 #include "scene_session.hpp"
 #include "ui_overlay.hpp"
-#include "window_layout_state.hpp"
 
 #include <chrono>
 #include <cstdio>
@@ -43,6 +44,19 @@ using LX_core::gpu::EngineLoop;
 namespace demo = LX_demo::scene_viewer;
 
 namespace {
+
+[[nodiscard]] demo::SceneInputEditMode
+toSceneInputEditMode(const demo::UiOverlay::EditMode mode) {
+  switch (mode) {
+  case demo::UiOverlay::EditMode::Selection:
+    return demo::SceneInputEditMode::Selection;
+  case demo::UiOverlay::EditMode::Orbit:
+    return demo::SceneInputEditMode::Orbit;
+  case demo::UiOverlay::EditMode::FreeFly:
+    return demo::SceneInputEditMode::FreeFly;
+  }
+  return demo::SceneInputEditMode::Selection;
+}
 
 constexpr int kWindowWidth = 1280;
 constexpr int kWindowHeight = 720;
@@ -159,13 +173,13 @@ public:
 
   [[nodiscard]] LX_core::SceneSharedPtr scene() const { return m_runtime.scene(); }
 
-  [[nodiscard]] LX_core::ViewportOverlay& viewportOverlay() const {
-    return *m_viewportOverlay;
-  }
-
   [[nodiscard]] LX_core::CameraComponent& editorCamera() const {
     return requireCameraComponent(m_runtime.editorCameraNode(), "editor_camera")
         .get();
+  }
+
+  [[nodiscard]] demo::SceneInteractionController& sceneInteraction() const {
+    return *m_sceneInteraction;
   }
 
   [[nodiscard]] LX_core::CameraComponent& gameCamera() const {
@@ -174,6 +188,7 @@ public:
   }
 
   [[nodiscard]] bool isDirty() const { return m_session.isDirty(); }
+  demo::EditorConfigDocument& editorConfig() { return m_editorConfig; }
 
   [[nodiscard]] LX_core::CommandResult
   saveScene(const std::optional<std::string>& path) {
@@ -345,11 +360,11 @@ private:
         *m_commandBus, m_editorState, *m_runtime.scene());
     m_inspectorPanel =
         std::make_unique<LX_core::InspectorPanel>(*m_commandBus, m_editorState);
-    m_viewportOverlay = std::make_unique<LX_core::ViewportOverlay>(
+    m_sceneInteraction = std::make_unique<demo::SceneInteractionController>(
         *m_commandBus, m_editorState, *m_runtime.scene());
 
-    m_ui.attach(m_rig, *m_commandBus, *m_sceneTreePanel, *m_inspectorPanel,
-                *m_consolePanel, *m_viewportOverlay);
+    m_ui.attach(m_rig, *m_commandBus, m_editorState, m_editorConfig,
+                *m_sceneTreePanel, *m_inspectorPanel, *m_consolePanel);
     m_lastObservedHistoryIndex = m_commandBus->history().size();
   }
 
@@ -365,8 +380,9 @@ private:
   std::unique_ptr<LX_core::ConsolePanel> m_consolePanel;
   std::unique_ptr<LX_core::SceneTreePanel> m_sceneTreePanel;
   std::unique_ptr<LX_core::InspectorPanel> m_inspectorPanel;
-  std::unique_ptr<LX_core::ViewportOverlay> m_viewportOverlay;
+  std::unique_ptr<demo::SceneInteractionController> m_sceneInteraction;
   size_t m_lastObservedHistoryIndex = 0;
+  demo::EditorConfigDocument m_editorConfig;
 };
 
 struct ClosePromptState final {
@@ -438,10 +454,11 @@ int main() {
 
   try {
     LX_infra::Window::Initialize();
-    demo::WindowLayoutState layoutState(resolveRuntimePath("data/scene_viewer"));
-    const auto initialPlacement = layoutState.loadNativeWindowPlacement();
+    demo::EditorConfigState configState(resolveRuntimePath("data/scene_viewer"));
+    demo::EditorConfigDocument editorConfig = configState.load();
     auto window = std::make_shared<LX_infra::Window>(
-        "demo_scene_viewer", kWindowWidth, kWindowHeight, initialPlacement);
+        "demo_scene_viewer", kWindowWidth, kWindowHeight,
+        editorConfig.windowPlacement);
 
     auto vulkanRenderer =
         std::make_shared<VulkanRenderer>(VulkanRenderer::Token{});
@@ -452,16 +469,17 @@ int main() {
     LX_core::EditorState editorState;
     demo::UiOverlay ui;
     SceneViewerSession session(rig, ui, editorState);
+    session.editorConfig() = editorConfig;
     session.initialize();
-    const bool restoredImGuiLayout = layoutState.restoreImGuiLayout();
-    ui.setDefaultLayoutEnabled(
-        !(restoredImGuiLayout && layoutState.hasAuthoritativeSceneViewerLayout()));
     ClosePromptState closePrompt;
 
     vulkanRenderer->setDrawUiCallback([&] {
       ui.drawFrame();
       drawClosePrompt(closePrompt, session);
-      layoutState.maybeSaveImGuiLayout();
+      session.editorConfig().windowPlacement = window->getPlacement();
+      if (ui.consumeConfigDirty()) {
+        (void)configState.save(session.editorConfig());
+      }
     });
 
     EngineLoop loop;
@@ -503,8 +521,6 @@ int main() {
         ui.handleHotkeys(*input);
       }
 
-      session.viewportOverlay().enqueueDebugDraw();
-
       const int windowWidth = window->getWidth();
       const int windowHeight = window->getHeight();
       const bool hasValidExtent = windowWidth > 0 && windowHeight > 0;
@@ -518,8 +534,18 @@ int main() {
       }
       session.gameCamera().updateMatrices();
 
-      if (!wantsKeyboard && !wantsMouse) {
-        rig.update(*input, clock.deltaTime());
+      const demo::SceneInputEditMode inputMode =
+          toSceneInputEditMode(ui.currentEditMode());
+      if (demo::shouldProcessSelectionMode(editorState.isPreviewEnabled(),
+                                           wantsMouse, inputMode)) {
+          session.sceneInteraction().updateSelectionMode(
+              *input, LX_core::Vec2f{static_cast<float>(windowWidth),
+                                     static_cast<float>(windowHeight)});
+          session.editorCamera().updateMatrices();
+      } else if (demo::shouldProcessCameraRig(
+                     editorState.isPreviewEnabled(), wantsKeyboard, wantsMouse,
+                     inputMode)) {
+          rig.update(*input, clock.deltaTime());
       } else {
         session.editorCamera().updateMatrices();
       }
@@ -527,8 +553,8 @@ int main() {
     });
 
     loop.run();
-    layoutState.saveImGuiLayout();
-    layoutState.captureNativeWindowPlacement(*window);
+    session.editorConfig().windowPlacement = window->getPlacement();
+    (void)configState.save(session.editorConfig());
     renderer->shutdown();
     return 0;
   } catch (const std::exception& e) {

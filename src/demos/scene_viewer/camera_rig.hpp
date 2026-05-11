@@ -1,8 +1,6 @@
 #pragma once
 
-// REQ-019: wraps the two stock camera controllers with F2 rising-edge mode
-// switching. Edge detection is demo-local — Sdl3InputState only exposes
-// level state, so the rig remembers the previous frame's F2 down flag.
+// REQ-019: wraps the stock camera controllers behind an explicit editor mode.
 
 #include "core/input/input_state.hpp"
 #include "core/scene/components/camera_component.hpp"
@@ -23,19 +21,18 @@ public:
   // Bind the rig to the camera it will drive. Must be called before update().
   void attach(LX_core::CameraComponent& camera);
 
-  // Per-frame update: F2 edge detection -> controller update -> matrix refresh.
+  void setMode(Mode mode);
+
+  // Per-frame update: active controller update -> matrix refresh.
   void update(LX_core::IInputState& input, float dt);
 
   Mode currentMode() const { return m_mode; }
 
 private:
-  void switchMode();
-
   std::optional<std::reference_wrapper<LX_core::CameraComponent>> m_camera;
   LX_core::OrbitCameraController m_orbit;
   LX_core::FreeFlyCameraController m_freefly;
   Mode m_mode = Mode::Orbit;
-  bool m_prevF2Down = false;
 };
 
 } // namespace LX_demo::scene_viewer

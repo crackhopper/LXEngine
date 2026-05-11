@@ -5,14 +5,16 @@
 add_executable(demo_scene_viewer
   main.cpp
   camera_rig.cpp
+  editor_config_state.cpp
   editor_camera_state.cpp
   scene_catalog.cpp
   scene_builder.cpp
   scene_document.cpp
+  scene_interaction_controller.cpp
+  scene_input_routing.cpp
   scene_runtime.cpp
   scene_session.cpp
   ui_overlay.cpp
-  window_layout_state.cpp
 )
 
 target_include_directories(demo_scene_viewer PRIVATE
