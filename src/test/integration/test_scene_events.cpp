@@ -581,6 +581,8 @@ void testSceneEventHubRecoversAfterThrowingListener() {
 
   EXPECT(sawThrow, "throwing listener should propagate its exception");
 
+  throwingSubscription.reset();
+
   usize healthyCalls = 0;
   auto healthySubscription =
       scene->events().subscribe([&](const LX_core::SceneEvent &) {
@@ -594,8 +596,8 @@ void testSceneEventHubRecoversAfterThrowingListener() {
 
   EXPECT(healthyCalls == 1,
          "hub should remain usable after a listener throws");
-  EXPECT(throwingSubscription.isActive(),
-         "throwing listener subscription should remain active unless explicitly reset");
+  EXPECT(!throwingSubscription.isActive(),
+         "throwing listener subscription should be reset before the recovery emit");
   EXPECT(healthySubscription.isActive(),
          "new subscriptions should still work after exception recovery");
 }
