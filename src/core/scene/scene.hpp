@@ -121,6 +121,7 @@ public:
   绑定 — 它们没有需要从 scene 读回的状态。
   */
   void addRenderable(IRenderableSharedPtr r) {
+    auto node = std::dynamic_pointer_cast<SceneNode>(r);
     if (r) {
       for (const auto &existing : m_renderables) {
         if (!existing)
@@ -131,10 +132,10 @@ public:
                                             r->getNodeName());
         }
       }
-      if (auto node = std::dynamic_pointer_cast<SceneNode>(r)) {
+      if (node) {
         node->attachToScene(weak_from_this());
         if (!node->getParent()) {
-          node->setParent(m_rootNode);
+          node->setParentInternal(m_rootNode, false);
         }
         node->setSceneDebugId(
             StringID(m_sceneName + "/" + node->getNodeName()));
@@ -142,6 +143,9 @@ public:
       }
     }
     m_renderables.push_back(std::move(r));
+    if (node) {
+      node->emitRuntimeNodeLifecycle(SceneEventType::SceneNodeAdded);
+    }
   }
 
   void removeRenderable(const SceneNodeSharedPtr &node);

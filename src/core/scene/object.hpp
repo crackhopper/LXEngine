@@ -9,6 +9,7 @@
 #include "core/rhi/gpu_resource.hpp"
 #include "core/scene/component.hpp"
 #include "core/scene/camera.hpp"
+#include "core/scene/scene_events.hpp"
 #include "core/scene/visibility_mask.hpp"
 #include <algorithm>
 #include <cstdint>
@@ -210,15 +211,13 @@ public:
   std::string getNodeName() const override { return m_nodeName; }
   StringID getDebugId() const override { return m_debugId; }
   void setSceneDebugId(StringID debugId) { m_debugId = debugId; }
-  void attachToScene(const std::weak_ptr<Scene> &scene) { m_scene = scene; }
-  void detachFromScene() { m_scene.reset(); }
+  void attachToScene(const std::weak_ptr<Scene> &scene);
+  void detachFromScene();
   std::shared_ptr<Scene> getAttachedScene() const { return m_scene.lock(); }
   VisibilityLayerMask getVisibilityLayerMask() const override {
     return m_visibilityLayerMask;
   }
-  void setVisibilityLayerMask(VisibilityLayerMask mask) {
-    m_visibilityLayerMask = mask;
-  }
+  void setVisibilityLayerMask(VisibilityLayerMask mask);
 
   std::optional<std::reference_wrapper<const ValidatedRenderablePassData>>
   getValidatedPassData(StringID pass) const override;
@@ -236,7 +235,13 @@ private:
   void pruneExpiredChildren();
   void rebuildValidatedCache();
   void clearComponents();
+  void setParentInternal(const SharedPtr &parent, bool emitHierarchyEvent);
+  void clearParentInternal(bool emitHierarchyEvent);
   void warnIfSiblingNameIsDuplicated() const;
+  void emitRuntimeNodeChanged(SceneNodeAspect aspect) const;
+  void emitRuntimeNodeLifecycle(SceneEventType type) const;
+  void emitRuntimeNodeLifecycle(SceneEventType type,
+                                const std::string &path) const;
   [[nodiscard]] std::string getPathSegment() const;
   [[nodiscard]] static std::string sanitizeName(std::string name);
 

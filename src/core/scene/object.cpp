@@ -129,26 +129,31 @@ SceneNode::SharedPtr SceneNode::createPathRoot() {
 void SceneNode::setLocalTransform(const Transform &transform) {
   m_localTransform = transform.normalized();
   markWorldTransformDirty();
+  emitRuntimeNodeChanged(SceneNodeAspect::Transform);
 }
 
 void SceneNode::setTranslation(const Vec3f &translation) {
   m_localTransform.translation = translation;
   markWorldTransformDirty();
+  emitRuntimeNodeChanged(SceneNodeAspect::Transform);
 }
 
 void SceneNode::setRotation(const Quatf &rotation) {
   m_localTransform.rotation = rotation.normalized();
   markWorldTransformDirty();
+  emitRuntimeNodeChanged(SceneNodeAspect::Transform);
 }
 
 void SceneNode::setScale(const Vec3f &scale) {
   m_localTransform.scale = scale;
   markWorldTransformDirty();
+  emitRuntimeNodeChanged(SceneNodeAspect::Transform);
 }
 
 void SceneNode::setName(std::string name) {
   m_name = sanitizeName(std::move(name));
   warnIfSiblingNameIsDuplicated();
+  emitRuntimeNodeChanged(SceneNodeAspect::Identity);
 }
 
 std::string SceneNode::getPath() const {
@@ -192,6 +197,11 @@ BoundingBox SceneNode::getWorldBounds() const {
 }
 
 void SceneNode::setParent(const SharedPtr &parent) {
+  setParentInternal(parent, true);
+}
+
+void SceneNode::setParentInternal(const SharedPtr &parent,
+                                  const bool emitHierarchyEvent) {
   if (parent.get() == this) {
     throw std::logic_error("SceneNodeHierarchy node=" + m_nodeName +
                            " cannot parent itself");
@@ -220,9 +230,16 @@ void SceneNode::setParent(const SharedPtr &parent) {
 
   warnIfSiblingNameIsDuplicated();
   markWorldTransformDirty();
+  if (emitHierarchyEvent) {
+    emitRuntimeNodeChanged(SceneNodeAspect::Hierarchy);
+  }
 }
 
 void SceneNode::clearParent() {
+  clearParentInternal(true);
+}
+
+void SceneNode::clearParentInternal(const bool emitHierarchyEvent) {
   if (m_parent.expired()) {
     m_parent.reset();
     if (m_worldTransformHasParent) {
@@ -234,6 +251,9 @@ void SceneNode::clearParent() {
   removeFromParentChildrenList();
   m_parent.reset();
   markWorldTransformDirty();
+  if (emitHierarchyEvent) {
+    emitRuntimeNodeChanged(SceneNodeAspect::Hierarchy);
+  }
 }
 
 std::vector<SceneNode::SharedPtr> SceneNode::getChildren() const {
@@ -535,6 +555,15 @@ void SceneNode::clearComponents() {
   m_components.clear();
 }
 
+void SceneNode::attachToScene(const std::weak_ptr<Scene> &scene) { m_scene = scene; }
+
+void SceneNode::detachFromScene() { m_scene.reset(); }
+
+void SceneNode::setVisibilityLayerMask(const VisibilityLayerMask mask) {
+  m_visibilityLayerMask = mask;
+  emitRuntimeNodeChanged(SceneNodeAspect::Visibility);
+}
+
 void SceneNode::warnIfSiblingNameIsDuplicated() const {
   if (m_isPathRoot || m_name.empty()) {
     return;
@@ -604,6 +633,40 @@ std::string SceneNode::sanitizeName(std::string name) {
   }
   assert(!mutated && "SceneNode::setName sanitized illegal characters");
   return name;
+}
+
+void SceneNode::emitRuntimeNodeChanged(const SceneNodeAspect aspect) const {
+  const auto scene = m_scene.lock();
+  if (!scene) {
+    return;
+  }
+
+  scene->events().emit(SceneEvent{
+      .domain = SceneEventDomain::Runtime,
+      .type = SceneEventType::SceneNodeChanged,
+      .path = getPath(),
+      .stableNodeName = getNodeName(),
+      .aspects = {aspect},
+  });
+}
+
+void SceneNode::emitRuntimeNodeLifecycle(const SceneEventType type) const {
+  emitRuntimeNodeLifecycle(type, getPath());
+}
+
+void SceneNode::emitRuntimeNodeLifecycle(const SceneEventType type,
+                                         const std::string &path) const {
+  const auto scene = m_scene.lock();
+  if (!scene) {
+    return;
+  }
+
+  scene->events().emit(SceneEvent{
+      .domain = SceneEventDomain::Runtime,
+      .type = type,
+      .path = path,
+      .stableNodeName = getNodeName(),
+  });
 }
 
 } // namespace LX_core

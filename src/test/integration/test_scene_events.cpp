@@ -1,4 +1,5 @@
 #include "core/scene/object.hpp"
+#include "core/scene/components/camera_component.hpp"
 #include "core/scene/scene.hpp"
 
 #include <iostream>
@@ -27,19 +28,74 @@ struct CapturedEvent final {
   u64 sequence = 0;
 };
 
+CapturedEvent captureEvent(const LX_core::SceneEvent &event) {
+  return CapturedEvent{
+      .domain = event.domain,
+      .type = event.type,
+      .path = event.path,
+      .stableNodeName = event.stableNodeName,
+      .aspects = event.aspects,
+      .sequence = event.sequence,
+  };
+}
+
+usize countEventsWithType(const std::vector<CapturedEvent> &events,
+                          const LX_core::SceneEventType type) {
+  usize count = 0;
+  for (const auto &event : events) {
+    if (event.type == type) {
+      ++count;
+    }
+  }
+  return count;
+}
+
+usize countChangedEventsWithAspect(const std::vector<CapturedEvent> &events,
+                                   const LX_core::SceneNodeAspect aspect) {
+  usize count = 0;
+  for (const auto &event : events) {
+    if (event.type != LX_core::SceneEventType::SceneNodeChanged) {
+      continue;
+    }
+    if (event.aspects.size() == 1 && event.aspects.front() == aspect) {
+      ++count;
+    }
+  }
+  return count;
+}
+
+const CapturedEvent *findFirstEventWithType(const std::vector<CapturedEvent> &events,
+                                            const LX_core::SceneEventType type) {
+  for (const auto &event : events) {
+    if (event.type == type) {
+      return &event;
+    }
+  }
+  return nullptr;
+}
+
+void expectRuntimeChangedEvent(const CapturedEvent &event,
+                               const std::string &expectedPath,
+                               const std::string &expectedStableNodeName,
+                               const LX_core::SceneNodeAspect expectedAspect) {
+  EXPECT(event.domain == LX_core::SceneEventDomain::Runtime,
+         "node mutation should emit runtime-domain events");
+  EXPECT(event.type == LX_core::SceneEventType::SceneNodeChanged,
+         "node mutation should emit SceneNodeChanged");
+  EXPECT(event.path == expectedPath, "node mutation should emit current path");
+  EXPECT(event.stableNodeName == expectedStableNodeName,
+         "node mutation should emit stable nodeName");
+  EXPECT(event.aspects.size() == 1 && event.aspects.front() == expectedAspect,
+         "node mutation should emit the expected single aspect");
+  EXPECT(event.sequence >= 1, "node mutation event should receive a sequence");
+}
+
 void testSceneEventHubEmitsSubscribedEvent() {
   auto scene = LX_core::Scene::create(nullptr);
   std::vector<CapturedEvent> events;
   auto subscription =
       scene->events().subscribe([&](const LX_core::SceneEvent &event) {
-        events.push_back(CapturedEvent{
-            .domain = event.domain,
-            .type = event.type,
-            .path = event.path,
-            .stableNodeName = event.stableNodeName,
-            .aspects = event.aspects,
-            .sequence = event.sequence,
-        });
+        events.push_back(captureEvent(event));
       });
 
   scene->events().emit(LX_core::SceneEvent{
@@ -65,6 +121,350 @@ void testSceneEventHubEmitsSubscribedEvent() {
          "manual emit should preserve Transform aspect");
   EXPECT(events.front().sequence >= 1,
          "event should receive a monotonic sequence");
+}
+
+void testDetachedNodeMutationDoesNotEmitRuntimeSceneEvents() {
+  auto scene = LX_core::Scene::create(nullptr);
+  std::vector<CapturedEvent> events;
+  auto subscription =
+      scene->events().subscribe([&](const LX_core::SceneEvent &event) {
+        events.push_back(captureEvent(event));
+      });
+
+  auto detachedNode = LX_core::SceneNode::create("detached_node");
+  detachedNode->setName("detached");
+  detachedNode->setTranslation({1.0f, 2.0f, 3.0f});
+  detachedNode->setRotation(LX_core::Quatf{});
+  detachedNode->setScale({2.0f, 2.0f, 2.0f});
+  detachedNode->setVisibilityLayerMask(0x2u);
+
+  EXPECT(events.empty(),
+         "detached nodes should remain usable without emitting scene events");
+}
+
+void testAttachedNodeTransformMutationsEmitRuntimeSceneNodeChangedEvents() {
+  auto scene = LX_core::Scene::create(nullptr);
+  std::vector<CapturedEvent> events;
+  auto subscription =
+      scene->events().subscribe([&](const LX_core::SceneEvent &event) {
+        events.push_back(captureEvent(event));
+      });
+
+  auto node = LX_core::SceneNode::create("helmet_node");
+  node->setName("helmet");
+  scene->addRenderable(node);
+  events.clear();
+
+  node->setLocalTransform(LX_core::Transform{
+      .translation = {1.0f, 2.0f, 3.0f},
+      .rotation = LX_core::Quatf{},
+      .scale = {1.0f, 1.0f, 1.0f},
+  });
+  node->setTranslation({4.0f, 5.0f, 6.0f});
+  node->setRotation(LX_core::Quatf{});
+  node->setScale({2.0f, 3.0f, 4.0f});
+
+  EXPECT(events.size() == 4,
+         "each transform write point should emit one runtime node-changed event");
+  EXPECT(events[0].sequence < events[1].sequence &&
+             events[1].sequence < events[2].sequence &&
+             events[2].sequence < events[3].sequence,
+         "transform events should keep hub sequencing monotonic");
+  expectRuntimeChangedEvent(events[0], "/helmet", "helmet_node",
+                            LX_core::SceneNodeAspect::Transform);
+  expectRuntimeChangedEvent(events[1], "/helmet", "helmet_node",
+                            LX_core::SceneNodeAspect::Transform);
+  expectRuntimeChangedEvent(events[2], "/helmet", "helmet_node",
+                            LX_core::SceneNodeAspect::Transform);
+  expectRuntimeChangedEvent(events[3], "/helmet", "helmet_node",
+                            LX_core::SceneNodeAspect::Transform);
+}
+
+void testAttachedNodeIdentityAndVisibilityMutationsEmitRuntimeEvents() {
+  auto scene = LX_core::Scene::create(nullptr);
+  std::vector<CapturedEvent> events;
+  auto subscription =
+      scene->events().subscribe([&](const LX_core::SceneEvent &event) {
+        events.push_back(captureEvent(event));
+      });
+
+  auto node = LX_core::SceneNode::create("helmet_node");
+  node->setName("helmet");
+  scene->addRenderable(node);
+  events.clear();
+
+  node->setName("helmet_01");
+  node->setVisibilityLayerMask(0x4u);
+
+  EXPECT(events.size() == 2,
+         "identity and visibility writes should each emit one event");
+  expectRuntimeChangedEvent(events[0], "/helmet_01", "helmet_node",
+                            LX_core::SceneNodeAspect::Identity);
+  expectRuntimeChangedEvent(events[1], "/helmet_01", "helmet_node",
+                            LX_core::SceneNodeAspect::Visibility);
+}
+
+void testAttachedNodeHierarchyMutationsEmitRuntimeEvents() {
+  auto scene = LX_core::Scene::create(nullptr);
+  std::vector<CapturedEvent> events;
+  auto subscription =
+      scene->events().subscribe([&](const LX_core::SceneEvent &event) {
+        events.push_back(captureEvent(event));
+      });
+
+  auto parent = LX_core::SceneNode::create("parent_node");
+  parent->setName("parent");
+  scene->addRenderable(parent);
+  auto child = LX_core::SceneNode::create("child_node");
+  child->setName("child");
+  scene->addRenderable(child);
+  events.clear();
+
+  child->setParent(parent);
+  child->clearParent();
+
+  EXPECT(events.size() == 2,
+         "setParent and clearParent should each emit one hierarchy event");
+  expectRuntimeChangedEvent(events[0], "/parent/child", "child_node",
+                            LX_core::SceneNodeAspect::Hierarchy);
+  expectRuntimeChangedEvent(events[1], "/child", "child_node",
+                            LX_core::SceneNodeAspect::Hierarchy);
+}
+
+void testSceneAddRemoveLifecycleEmitsRuntimeNodeAddedAndRemovedEvents() {
+  auto scene = LX_core::Scene::create(nullptr);
+  std::vector<CapturedEvent> events;
+  LX_core::SceneNode::SharedPtr node;
+  bool removedCallbackObservedDetachedState = false;
+  auto subscription =
+      scene->events().subscribe([&](const LX_core::SceneEvent &event) {
+        if (event.type == LX_core::SceneEventType::SceneNodeRemoved) {
+          removedCallbackObservedDetachedState =
+              !node->getAttachedScene() && node->getPath() == "/helmet";
+          scene->removeRenderable(node);
+        }
+        events.push_back(captureEvent(event));
+      });
+
+  node = LX_core::SceneNode::create("helmet_node");
+  node->setName("helmet");
+
+  scene->addRenderable(node);
+
+  const CapturedEvent *addedEvent = findFirstEventWithType(
+      events, LX_core::SceneEventType::SceneNodeAdded);
+  EXPECT(addedEvent != nullptr,
+         "adding a renderable SceneNode should emit SceneNodeAdded");
+  if (addedEvent) {
+    EXPECT(addedEvent->domain == LX_core::SceneEventDomain::Runtime,
+           "SceneNodeAdded should be a runtime event");
+    EXPECT(addedEvent->path == "/helmet",
+           "SceneNodeAdded should report the node path");
+    EXPECT(addedEvent->stableNodeName == "helmet_node",
+           "SceneNodeAdded should report stable nodeName");
+    EXPECT(addedEvent->aspects.empty(),
+           "SceneNodeAdded should not report change aspects");
+  }
+  EXPECT(countEventsWithType(events, LX_core::SceneEventType::SceneNodeAdded) == 1,
+         "explicit add should emit exactly one SceneNodeAdded event");
+  EXPECT(countChangedEventsWithAspect(events, LX_core::SceneNodeAspect::Hierarchy) == 0,
+         "explicit add should not leak a hierarchy-changed event from root attachment");
+
+  events.clear();
+  scene->removeRenderable(node);
+
+  const CapturedEvent *removedEvent = findFirstEventWithType(
+      events, LX_core::SceneEventType::SceneNodeRemoved);
+  EXPECT(removedEvent != nullptr,
+         "removing a renderable SceneNode should emit SceneNodeRemoved");
+  if (removedEvent) {
+    EXPECT(removedEvent->domain == LX_core::SceneEventDomain::Runtime,
+           "SceneNodeRemoved should be a runtime event");
+    EXPECT(removedEvent->path == "/helmet",
+           "SceneNodeRemoved should report the last attached node path");
+    EXPECT(removedEvent->stableNodeName == "helmet_node",
+           "SceneNodeRemoved should report stable nodeName");
+    EXPECT(removedEvent->aspects.empty(),
+           "SceneNodeRemoved should not report change aspects");
+  }
+
+  EXPECT(countEventsWithType(events, LX_core::SceneEventType::SceneNodeRemoved) == 1,
+         "explicit removal should emit exactly one SceneNodeRemoved event");
+  EXPECT(countChangedEventsWithAspect(events, LX_core::SceneNodeAspect::Hierarchy) == 0,
+         "explicit removal should not leak a hierarchy-changed event from internal detach");
+  EXPECT(removedCallbackObservedDetachedState,
+         "SceneNodeRemoved should fire only after the node is observably detached");
+}
+
+void testSceneRemoveChildUsesLastAttachedPathWithoutHierarchyNoise() {
+  auto scene = LX_core::Scene::create(nullptr);
+  std::vector<CapturedEvent> events;
+  auto subscription =
+      scene->events().subscribe([&](const LX_core::SceneEvent &event) {
+        events.push_back(captureEvent(event));
+      });
+
+  auto parent = LX_core::SceneNode::create("parent_node");
+  parent->setName("parent");
+  scene->addRenderable(parent);
+  auto child = LX_core::SceneNode::create("child_node");
+  child->setName("child");
+  scene->addRenderable(child);
+  events.clear();
+
+  child->setParent(parent);
+  events.clear();
+
+  scene->removeRenderable(child);
+
+  EXPECT(countEventsWithType(events, LX_core::SceneEventType::SceneNodeRemoved) == 1,
+         "removing a child node should emit exactly one SceneNodeRemoved event");
+  EXPECT(countChangedEventsWithAspect(events, LX_core::SceneNodeAspect::Hierarchy) == 0,
+         "removing a child node should not leak hierarchy-changed events");
+  const CapturedEvent *removedEvent = findFirstEventWithType(
+      events, LX_core::SceneEventType::SceneNodeRemoved);
+  EXPECT(removedEvent != nullptr,
+         "removing a child node should emit SceneNodeRemoved");
+  if (removedEvent) {
+    EXPECT(removedEvent->path == "/parent/child",
+           "child removal should report the last attached path before clearParent");
+    EXPECT(removedEvent->stableNodeName == "child_node",
+           "child removal should preserve stable nodeName");
+  }
+}
+
+void testSceneTeardownDoesNotEmitExplicitRemoveLifecycleEvents() {
+  std::vector<CapturedEvent> events;
+  LX_core::SceneEventSubscription subscription;
+  {
+    auto scene = LX_core::Scene::create(nullptr);
+    subscription = scene->events().subscribe([&](const LX_core::SceneEvent &event) {
+      events.push_back(captureEvent(event));
+    });
+
+    auto node = LX_core::SceneNode::create("helmet_node");
+    node->setName("helmet");
+    scene->addRenderable(node);
+    events.clear();
+  }
+
+  EXPECT(events.empty(),
+         "scene teardown should not emit explicit remove-lifecycle events");
+}
+
+void testSceneRemoveRenderableIgnoresForeignAndDetachedNodes() {
+  auto sceneA = LX_core::Scene::create("SceneA", nullptr);
+  auto sceneB = LX_core::Scene::create("SceneB", nullptr);
+  std::vector<CapturedEvent> eventsA;
+  std::vector<CapturedEvent> eventsB;
+  auto subscriptionA =
+      sceneA->events().subscribe([&](const LX_core::SceneEvent &event) {
+        eventsA.push_back(captureEvent(event));
+      });
+  auto subscriptionB =
+      sceneB->events().subscribe([&](const LX_core::SceneEvent &event) {
+        eventsB.push_back(captureEvent(event));
+      });
+
+  auto foreignNode = LX_core::SceneNode::create("foreign_node");
+  foreignNode->setName("foreign");
+  sceneB->addRenderable(foreignNode);
+  eventsA.clear();
+  eventsB.clear();
+
+  sceneA->removeRenderable(foreignNode);
+
+  EXPECT(eventsA.empty(),
+         "removeRenderable should ignore nodes owned by another scene");
+  EXPECT(eventsB.empty(),
+         "removeRenderable misuse should not emit events into the foreign scene");
+  EXPECT(foreignNode->getAttachedScene() == sceneB,
+         "removeRenderable misuse should not detach a foreign node");
+  EXPECT(foreignNode->getPath() == "/foreign",
+         "removeRenderable misuse should not mutate a foreign node path");
+
+  sceneB->removeRenderable(foreignNode);
+  eventsB.clear();
+
+  sceneA->removeRenderable(foreignNode);
+
+  EXPECT(eventsA.empty(),
+         "removeRenderable should ignore already-detached nodes");
+  EXPECT(eventsB.empty(),
+         "removeRenderable on an already-detached node should not emit removal twice");
+  EXPECT(!foreignNode->getAttachedScene(),
+         "already-detached node should remain detached after misuse");
+  EXPECT(foreignNode->getPath() == "/foreign",
+         "already-detached remove misuse should not mutate detached node state");
+}
+
+void testSceneRemoveCameraEmitsRemovalWithoutHierarchyNoise() {
+  auto scene = LX_core::Scene::create(nullptr);
+  std::vector<CapturedEvent> events;
+  auto subscription =
+      scene->events().subscribe([&](const LX_core::SceneEvent &event) {
+        events.push_back(captureEvent(event));
+      });
+
+  auto cameraNode = LX_core::SceneNode::create("camera_node");
+  cameraNode->setName("editor_camera");
+  cameraNode->addComponent<LX_core::CameraComponent>();
+  scene->addCamera(cameraNode);
+  events.clear();
+
+  scene->removeCamera(cameraNode);
+
+  EXPECT(countEventsWithType(events, LX_core::SceneEventType::SceneNodeRemoved) == 1,
+         "removeCamera should emit exactly one SceneNodeRemoved event");
+  EXPECT(countChangedEventsWithAspect(events, LX_core::SceneNodeAspect::Hierarchy) == 0,
+         "removeCamera should not leak hierarchy-changed events for root cameras");
+  const CapturedEvent *removedEvent = findFirstEventWithType(
+      events, LX_core::SceneEventType::SceneNodeRemoved);
+  EXPECT(removedEvent != nullptr,
+         "removeCamera should emit SceneNodeRemoved for root cameras");
+  if (removedEvent) {
+    EXPECT(removedEvent->path == "/editor_camera",
+           "removeCamera should preserve the last root camera path");
+    EXPECT(removedEvent->stableNodeName == "camera_node",
+           "removeCamera should preserve the camera stable nodeName");
+  }
+}
+
+void testSceneRemoveNestedCameraEmitsRemovalWithoutHierarchyNoise() {
+  auto scene = LX_core::Scene::create(nullptr);
+  std::vector<CapturedEvent> events;
+  auto subscription =
+      scene->events().subscribe([&](const LX_core::SceneEvent &event) {
+        events.push_back(captureEvent(event));
+      });
+
+  auto parent = LX_core::SceneNode::create("parent_node");
+  parent->setName("parent");
+  scene->addRenderable(parent);
+
+  auto cameraNode = LX_core::SceneNode::create("camera_node");
+  cameraNode->setName("child_camera");
+  cameraNode->addComponent<LX_core::CameraComponent>();
+  scene->addCamera(cameraNode);
+  cameraNode->setParent(parent);
+  events.clear();
+
+  scene->removeCamera(cameraNode);
+
+  EXPECT(countEventsWithType(events, LX_core::SceneEventType::SceneNodeRemoved) == 1,
+         "removeCamera should emit removal for nested camera nodes");
+  EXPECT(countChangedEventsWithAspect(events, LX_core::SceneNodeAspect::Hierarchy) == 0,
+         "removeCamera should not leak hierarchy events for nested cameras");
+  const CapturedEvent *removedEvent = findFirstEventWithType(
+      events, LX_core::SceneEventType::SceneNodeRemoved);
+  EXPECT(removedEvent != nullptr,
+         "removeCamera should emit SceneNodeRemoved for nested cameras");
+  if (removedEvent) {
+    EXPECT(removedEvent->path == "/parent/child_camera",
+           "removeCamera should preserve the last nested camera path");
+    EXPECT(removedEvent->stableNodeName == "camera_node",
+           "removeCamera should preserve the nested camera stable nodeName");
+  }
 }
 
 void testSceneEventSubscriptionExpiresWhenSceneDies() {
@@ -162,6 +562,16 @@ void testSceneEventUnsubscribeDuringCallbackStopsLaterEmits() {
 
 int main() {
   testSceneEventHubEmitsSubscribedEvent();
+  testDetachedNodeMutationDoesNotEmitRuntimeSceneEvents();
+  testAttachedNodeTransformMutationsEmitRuntimeSceneNodeChangedEvents();
+  testAttachedNodeIdentityAndVisibilityMutationsEmitRuntimeEvents();
+  testAttachedNodeHierarchyMutationsEmitRuntimeEvents();
+  testSceneAddRemoveLifecycleEmitsRuntimeNodeAddedAndRemovedEvents();
+  testSceneRemoveChildUsesLastAttachedPathWithoutHierarchyNoise();
+  testSceneTeardownDoesNotEmitExplicitRemoveLifecycleEvents();
+  testSceneRemoveRenderableIgnoresForeignAndDetachedNodes();
+  testSceneRemoveCameraEmitsRemovalWithoutHierarchyNoise();
+  testSceneRemoveNestedCameraEmitsRemovalWithoutHierarchyNoise();
   testSceneEventSubscriptionExpiresWhenSceneDies();
   testSceneEventSubscribeDuringCallbackDefersToNextEmit();
   testSceneEventUnsubscribeDuringCallbackStopsLaterEmits();

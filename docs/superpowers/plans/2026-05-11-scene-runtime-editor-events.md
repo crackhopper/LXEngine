@@ -408,6 +408,7 @@ git commit -m "feat: add scene runtime event hub"
 - Modify: `src/core/scene/object.hpp`
 - Modify: `src/core/scene/object.cpp`
 - Modify: `src/core/scene/scene.hpp`
+- Modify: `src/core/scene/scene.cpp`
 - Test: `src/test/integration/test_scene_events.cpp`
 
 - [ ] **Step 1: Extend the passing baseline test to cover transform, identity, hierarchy, and add/remove events**
@@ -615,7 +616,7 @@ Modify `src/core/scene/scene.hpp` inside `addRenderable` after successful attach
       }
 ```
 
-Modify `removeRenderable(const SceneNodeSharedPtr& node)` in its implementation file to emit:
+Modify `removeRenderable(const SceneNodeSharedPtr& node)` in `src/core/scene/scene.cpp` to emit:
 
 ```cpp
   m_eventHub.emit(SceneEvent{
@@ -627,7 +628,12 @@ Modify `removeRenderable(const SceneNodeSharedPtr& node)` in its implementation 
   });
 ```
 
-If `Scene::removeRenderable` currently lives in another file or inline body, preserve existing removal logic and insert only the emission after the node is confirmed removable.
+Preserve existing removal logic, but make sure:
+
+- `SceneNodeRemoved` comes from explicit scene remove lifecycle rather than `SceneNode::detachFromScene()`
+- remove lifecycle does not leak extra `Hierarchy` events just because scene internals are clearing parent links
+- remove events report the last attached path before detaching / reparents mutate it
+- scene teardown (`Scene::~Scene`) does not emit explicit remove-lifecycle events unless the design is intentionally expanded later
 
 - [ ] **Step 6: Run the event tests and verify all runtime semantics pass**
 

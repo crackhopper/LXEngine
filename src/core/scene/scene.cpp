@@ -286,6 +286,23 @@ void Scene::removeRenderable(const SceneNodeSharedPtr &node) {
     return;
   }
 
+  const auto attachedScene = node->getAttachedScene();
+  if (!attachedScene || attachedScene.get() != this) {
+    return;
+  }
+
+  const auto renderableIt =
+      std::find_if(m_renderables.begin(), m_renderables.end(),
+                   [&node](const IRenderableSharedPtr &candidate) {
+                     return candidate.get() == node.get();
+                   });
+  if (renderableIt == m_renderables.end()) {
+    return;
+  }
+
+  const std::string lastAttachedPath = node->getPath();
+  const std::string stableNodeName = node->getNodeName();
+
   m_cameras.erase(
       std::remove_if(m_cameras.begin(), m_cameras.end(),
                      [&node](const SceneNodeSharedPtr &candidate) {
@@ -293,16 +310,18 @@ void Scene::removeRenderable(const SceneNodeSharedPtr &node) {
                      }),
       m_cameras.end());
 
-  node->clearParent();
+  node->clearParentInternal(false);
   node->detachFromScene();
   node->setSceneDebugId(StringID{});
 
-  m_renderables.erase(
-      std::remove_if(m_renderables.begin(), m_renderables.end(),
-                     [&node](const IRenderableSharedPtr &candidate) {
-                       return candidate.get() == node.get();
-                     }),
-      m_renderables.end());
+  m_renderables.erase(renderableIt);
+
+  m_events.emit(SceneEvent{
+      .domain = SceneEventDomain::Runtime,
+      .type = SceneEventType::SceneNodeRemoved,
+      .path = lastAttachedPath,
+      .stableNodeName = stableNodeName,
+  });
 }
 
 void Scene::addCamera(const SceneNodeSharedPtr &cameraNode) {
@@ -341,33 +360,12 @@ void Scene::removeCamera(const SceneNodeSharedPtr &cameraNode) {
     return;
   }
 
-  m_cameras.erase(
-      std::remove_if(m_cameras.begin(), m_cameras.end(),
-                     [&cameraNode](const SceneNodeSharedPtr &candidate) {
-                       return candidate.get() == cameraNode.get();
-                     }),
-      m_cameras.end());
-
-  const auto parent = cameraNode->getParent();
-  if (parent && parent.get() != m_rootNode.get()) {
+  const auto attachedScene = cameraNode->getAttachedScene();
+  if (!attachedScene || attachedScene.get() != this) {
     return;
   }
 
-  const auto renderableIt =
-      std::find_if(m_renderables.begin(), m_renderables.end(),
-                   [&cameraNode](const IRenderableSharedPtr &candidate) {
-                     return candidate.get() == cameraNode.get();
-                   });
-  if (renderableIt == m_renderables.end()) {
-    return;
-  }
-
-  if (auto node = std::dynamic_pointer_cast<SceneNode>(*renderableIt)) {
-    node->clearParent();
-    node->detachFromScene();
-    node->setSceneDebugId(StringID{});
-  }
-  m_renderables.erase(renderableIt);
+  removeRenderable(cameraNode);
 }
 
 void Scene::removeLight(const LightBaseSharedPtr &light) {
