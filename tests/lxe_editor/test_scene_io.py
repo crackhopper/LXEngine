@@ -3,7 +3,7 @@ from __future__ import annotations
 import pathlib
 import unittest
 
-from tests.lxe_editor.automation_client import LxeEditorHarness
+from tests.lxe_editor.api_client import LxeEditorHarness
 
 
 class SceneIoBlackBoxTest(unittest.TestCase):
@@ -17,7 +17,7 @@ class SceneIoBlackBoxTest(unittest.TestCase):
         except FileNotFoundError as exc:
             raise unittest.SkipTest(str(exc)) from exc
         except Exception as exc:
-            raise unittest.SkipTest(f"unable to launch automation target: {exc}") from exc
+            raise unittest.SkipTest(f"unable to launch API target: {exc}") from exc
 
     @classmethod
     def tearDownClass(cls) -> None:

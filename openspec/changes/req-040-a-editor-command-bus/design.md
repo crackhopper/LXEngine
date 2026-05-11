@@ -1,6 +1,6 @@
 ## Context
 
-REQ-040-a spans several layers, but the lowest-risk first increment is to land the pure core contract first: parsing, dispatch, history, and a selection state holder. These pieces are independent from ImGui and scene_viewer wiring, so they are easy to verify headlessly.
+REQ-040-a spans several layers, but the lowest-risk first increment is to land the pure core contract first: parsing, dispatch, history, and a selection state holder. These pieces are independent from ImGui and lxe_editor wiring, so they are easy to verify headlessly.
 
 ## Decisions
 

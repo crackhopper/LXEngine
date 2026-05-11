@@ -1,4 +1,4 @@
-#include "demos/lxe_editor/editor_automation_service.hpp"
+#include "demos/lxe_editor/lxe_editor_api_service.hpp"
 
 #include "core/scene/components/camera_component.hpp"
 
@@ -7,9 +7,9 @@
 namespace LX_demo::lxe_editor {
 namespace {
 
-[[nodiscard]] AutomationCameraPose captureCameraPose(
+[[nodiscard]] ApiCameraPose captureCameraPose(
     const LX_core::SceneNodeSharedPtr& node) {
-  AutomationCameraPose pose;
+  ApiCameraPose pose;
   if (!node) {
     return pose;
   }
@@ -27,9 +27,9 @@ namespace {
   return pose;
 }
 
-[[nodiscard]] AutomationCommandEventPayload commandPayloadFromHistory(
+[[nodiscard]] ApiCommandEventPayload commandPayloadFromHistory(
     const LX_core::CommandBus::HistoryEntry& entry) {
-  return AutomationCommandEventPayload{
+  return ApiCommandEventPayload{
       .line = entry.line,
       .ok = entry.result.ok,
       .message = entry.result.message,
@@ -51,8 +51,8 @@ LxeEditorApiService::LxeEditorApiService(
       m_lastObservedHistoryIndex(m_commandBus.history().size()),
       m_lastState(captureState()) {}
 
-AutomationCommandResponse LxeEditorApiService::executeCommand(
-    const AutomationCommandRequest& request) {
+ApiCommandResponse LxeEditorApiService::executeCommand(
+    const ApiCommandRequest& request) {
   if (m_hooks.recordCommandHistoryLine) {
     m_hooks.recordCommandHistoryLine(request.line);
   }
@@ -62,7 +62,7 @@ AutomationCommandResponse LxeEditorApiService::executeCommand(
   const auto& history = m_commandBus.history();
   const u64 timestampMs =
       history.empty() ? 0 : history.back().timestampMs;
-  AutomationCommandResponse response{
+  ApiCommandResponse response{
       .ok = result.ok,
       .line = request.line,
       .message = result.message,
@@ -71,14 +71,14 @@ AutomationCommandResponse LxeEditorApiService::executeCommand(
       .timestampMs = timestampMs,
   };
   if (!result.ok) {
-    response.error = AutomationError{.code = "command_failed",
+    response.error = ApiError{.code = "command_failed",
                                      .message = result.message};
   }
   return response;
 }
 
-AutomationStateSnapshot LxeEditorApiService::captureState() const {
-  return AutomationStateSnapshot{
+ApiStateSnapshot LxeEditorApiService::captureState() const {
+  return ApiStateSnapshot{
       .scene = captureSceneSummary(),
       .selection = captureSelection(),
       .cameras = captureCameras(),
@@ -91,13 +91,13 @@ void LxeEditorApiService::refresh() {
   observeStateChanges();
 }
 
-AutomationEventCursor LxeEditorApiService::currentCursor() const {
-  return AutomationEventCursor{m_nextSequence};
+ApiEventCursor LxeEditorApiService::currentCursor() const {
+  return ApiEventCursor{m_nextSequence};
 }
 
-AutomationEventBatch LxeEditorApiService::collectEventsSince(
-    const AutomationEventCursor cursor) const {
-  AutomationEventBatch batch;
+ApiEventBatch LxeEditorApiService::collectEventsSince(
+    const ApiEventCursor cursor) const {
+  ApiEventBatch batch;
   batch.nextCursor = currentCursor();
   for (const auto& event : m_events) {
     if (event.sequence >= cursor.nextSequence) {
@@ -107,22 +107,22 @@ AutomationEventBatch LxeEditorApiService::collectEventsSince(
   return batch;
 }
 
-AutomationSceneSummary LxeEditorApiService::captureSceneSummary() const {
+ApiSceneSummary LxeEditorApiService::captureSceneSummary() const {
   if (m_hooks.sceneSummary) {
     return m_hooks.sceneSummary();
   }
 
-  return AutomationSceneSummary{
+  return ApiSceneSummary{
       .sceneName = m_scene.getSceneName(),
       .currentDocumentPath = {},
-      .sourceKind = AutomationSceneSourceKind::Unknown,
-      .permission = AutomationPermissionLevel::Unknown,
+      .sourceKind = ApiSceneSourceKind::Unknown,
+      .permission = ApiPermissionLevel::Unknown,
       .dirty = false,
   };
 }
 
-AutomationSelectionSnapshot LxeEditorApiService::captureSelection() const {
-  AutomationSelectionSnapshot snapshot;
+ApiSelectionSnapshot LxeEditorApiService::captureSelection() const {
+  ApiSelectionSnapshot snapshot;
   const auto selected = m_editorState.getSelected();
   snapshot.selectedPaths.reserve(selected.size());
   for (const auto& node : selected) {
@@ -136,7 +136,7 @@ AutomationSelectionSnapshot LxeEditorApiService::captureSelection() const {
   if (primary.has_value()) {
     snapshot.primaryPath = primary->get().getPath();
     snapshot.primaryWorldBounds =
-        automationAabbFromBounds(primary->get().getWorldBounds());
+        apiAabbFromBounds(primary->get().getWorldBounds());
   }
 
   if (m_hooks.lastHitPoint) {
@@ -145,12 +145,12 @@ AutomationSelectionSnapshot LxeEditorApiService::captureSelection() const {
   return snapshot;
 }
 
-AutomationCameraSnapshot LxeEditorApiService::captureCameras() const {
+ApiCameraSnapshot LxeEditorApiService::captureCameras() const {
   if (m_hooks.cameraSnapshot) {
     return m_hooks.cameraSnapshot();
   }
 
-  AutomationCameraSnapshot snapshot;
+  ApiCameraSnapshot snapshot;
   snapshot.editor = captureCameraPose(m_editorState.getEditorCamera());
   snapshot.game = captureCameraPose(m_editorState.getPreviewCamera());
   if (const auto active = m_editorState.resolveActiveCamera(m_scene); active) {
@@ -165,13 +165,13 @@ AutomationCameraSnapshot LxeEditorApiService::captureCameras() const {
   return snapshot;
 }
 
-AutomationToolbarSnapshot LxeEditorApiService::captureToolbar() const {
+ApiToolbarSnapshot LxeEditorApiService::captureToolbar() const {
   if (m_hooks.toolbarSnapshot) {
     return m_hooks.toolbarSnapshot();
   }
 
-  return AutomationToolbarSnapshot{
-      .editMode = AutomationEditMode::Unknown,
+  return ApiToolbarSnapshot{
+      .editMode = ApiEditMode::Unknown,
       .previewEnabled = m_editorState.isPreviewEnabled(),
   };
 }
@@ -181,26 +181,26 @@ void LxeEditorApiService::observeCommandHistory() {
   while (m_lastObservedHistoryIndex < history.size()) {
     const auto& entry = history[m_lastObservedHistoryIndex++];
 
-    AutomationEvent commandEvent{
+    ApiEvent commandEvent{
         .sequence = m_nextSequence++,
-        .type = AutomationEventType::CommandExecuted,
+        .type = ApiEventType::CommandExecuted,
         .command = commandPayloadFromHistory(entry),
     };
     commandEvent.payloadJson = toJson(*commandEvent.command);
     appendEvent(std::move(commandEvent));
 
     if (entry.result.ok && isSceneLoadCommand(entry.line)) {
-      appendEvent(AutomationEvent{
+      appendEvent(ApiEvent{
           .sequence = m_nextSequence++,
-          .type = AutomationEventType::SceneLoaded,
+          .type = ApiEventType::SceneLoaded,
           .state = captureState(),
           .payloadJson = toJson(captureSceneSummary()),
       });
     }
     if (entry.result.ok && isSceneSaveCommand(entry.line)) {
-      appendEvent(AutomationEvent{
+      appendEvent(ApiEvent{
           .sequence = m_nextSequence++,
-          .type = AutomationEventType::SceneSaved,
+          .type = ApiEventType::SceneSaved,
           .state = captureState(),
           .payloadJson = toJson(captureSceneSummary()),
       });
@@ -209,36 +209,36 @@ void LxeEditorApiService::observeCommandHistory() {
 }
 
 void LxeEditorApiService::observeStateChanges() {
-  const AutomationStateSnapshot current = captureState();
+  const ApiStateSnapshot current = captureState();
 
   if (current.selection != m_lastState.selection) {
-    appendEvent(AutomationEvent{
+    appendEvent(ApiEvent{
         .sequence = m_nextSequence++,
-        .type = AutomationEventType::SelectionChanged,
+        .type = ApiEventType::SelectionChanged,
         .state = current,
         .payloadJson = toJson(current.selection),
     });
   }
   if (current.toolbar.editMode != m_lastState.toolbar.editMode) {
-    appendEvent(AutomationEvent{
+    appendEvent(ApiEvent{
         .sequence = m_nextSequence++,
-        .type = AutomationEventType::ModeChanged,
+        .type = ApiEventType::ModeChanged,
         .state = current,
         .payloadJson = toJson(current.toolbar),
     });
   }
   if (current.toolbar.previewEnabled != m_lastState.toolbar.previewEnabled) {
-    appendEvent(AutomationEvent{
+    appendEvent(ApiEvent{
         .sequence = m_nextSequence++,
-        .type = AutomationEventType::PreviewChanged,
+        .type = ApiEventType::PreviewChanged,
         .state = current,
         .payloadJson = toJson(current.toolbar),
     });
   }
   if (current.scene.dirty != m_lastState.scene.dirty) {
-    appendEvent(AutomationEvent{
+    appendEvent(ApiEvent{
         .sequence = m_nextSequence++,
-        .type = AutomationEventType::DirtyChanged,
+        .type = ApiEventType::DirtyChanged,
         .state = current,
         .payloadJson = toJson(current.scene),
     });
@@ -247,7 +247,7 @@ void LxeEditorApiService::observeStateChanges() {
   m_lastState = current;
 }
 
-void LxeEditorApiService::appendEvent(AutomationEvent event) {
+void LxeEditorApiService::appendEvent(ApiEvent event) {
   m_events.push_back(std::move(event));
   if (m_events.size() > kMaxBufferedEvents) {
     m_events.erase(m_events.begin(),

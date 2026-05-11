@@ -1,6 +1,6 @@
 #pragma once
 
-#include "demos/lxe_editor/editor_automation_service.hpp"
+#include "demos/lxe_editor/lxe_editor_api_service.hpp"
 
 #include <cstdint>
 #include <optional>

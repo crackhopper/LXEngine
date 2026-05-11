@@ -50,7 +50,7 @@ def _runtime_state_candidates(runtime_root: pathlib.Path) -> list[pathlib.Path]:
 
 def _token_candidates(runtime_root: pathlib.Path) -> list[pathlib.Path]:
     return [
-        runtime_root / "data" / "lxe_editor" / "automation_token.txt",
+        runtime_root / "data" / "lxe_editor" / "api_token.txt",
     ]
 
 
@@ -127,7 +127,7 @@ class LxeEditorClient:
                 if token:
                     self._token = token
                     return token
-        raise FileNotFoundError("automation token file not found")
+        raise FileNotFoundError("api token file not found")
 
     def read_mcp_url(self) -> str:
         state = self.read_runtime_state()
@@ -202,7 +202,7 @@ class LxeEditorClient:
             if last_value:
                 return last_value
             time.sleep(poll_interval_s)
-        raise TimeoutError("timed out waiting for automation condition")
+            raise TimeoutError("timed out waiting for API condition")
 
     def decode_structured_json(self, response: dict[str, Any]) -> dict[str, Any]:
         structured = response.get("structuredJson", "")
@@ -267,7 +267,7 @@ class LxeEditorClient:
     ) -> dict[str, Any]:
         self._refresh_endpoint_from_runtime_state()
         if self.endpoint is None:
-            raise RuntimeError("automation endpoint is not configured")
+            raise RuntimeError("API endpoint is not configured")
 
         body = None
         headers = {"Accept": "application/json"}
@@ -328,10 +328,10 @@ class LxeEditorHarness:
         self.process = subprocess.Popen(
             [
                 str(self.executable),
-                "--automation-enable",
-                "--automation-host",
+                "--api-enable",
+                "--api-host",
                 self.host,
-                "--automation-port",
+                "--api-port",
                 str(self.port),
             ],
             cwd=self.repo_root,

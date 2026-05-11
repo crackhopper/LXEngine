@@ -217,7 +217,7 @@ private:
 
 - `REQ-016`：复用 `ICameraController` 抽象
 - `REQ-018`：调试面板可编辑 orbit 参数
-- `REQ-019`：demo_scene_viewer 默认相机控制器
+- `REQ-019`：lxe_editor 默认相机控制器
 - Phase 2 更完整相机系统：在统一 controller 抽象上扩更多模式
 
 ## 实施状态

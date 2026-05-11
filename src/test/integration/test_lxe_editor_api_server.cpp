@@ -1,8 +1,8 @@
 #include "core/editor/command_bus.hpp"
 #include "core/editor/editor_state.hpp"
 #include "core/scene/scene.hpp"
-#include "demos/lxe_editor/editor_automation_server.hpp"
-#include "demos/lxe_editor/editor_automation_service.hpp"
+#include "demos/lxe_editor/lxe_editor_api_server.hpp"
+#include "demos/lxe_editor/lxe_editor_api_service.hpp"
 #include "demos/lxe_editor/runtime_state.hpp"
 
 #include <chrono>
@@ -72,17 +72,17 @@ struct Fixture final {
 
   Fixture() {
     hooks.sceneSummary = [] {
-      return AutomationSceneSummary{
+      return ApiSceneSummary{
           .sceneName = "Scene",
           .currentDocumentPath = "data/scenes/test.scene.yaml",
-          .sourceKind = AutomationSceneSourceKind::Local,
-          .permission = AutomationPermissionLevel::User,
+          .sourceKind = ApiSceneSourceKind::Local,
+          .permission = ApiPermissionLevel::User,
           .dirty = false,
       };
     };
     hooks.toolbarSnapshot = [] {
-      return AutomationToolbarSnapshot{
-          .editMode = AutomationEditMode::Orbit,
+      return ApiToolbarSnapshot{
+          .editMode = ApiEditMode::Orbit,
           .previewEnabled = false,
       };
     };
@@ -287,7 +287,7 @@ void testRuntimeStateRoundTripsYaml() {
       .wsHost = "0.0.0.0",
       .wsPort = 3768,
       .mcpUrl = "http://127.0.0.1:3768/mcp",
-      .tokenFile = (root / "automation_token.txt").string(),
+      .tokenFile = (root / "api_token.txt").string(),
       .startedAt = "2026-05-11-160000",
   };
 

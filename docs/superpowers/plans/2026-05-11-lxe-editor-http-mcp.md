@@ -4,7 +4,7 @@
    handler that can serve HTTP requests.
 2. Add authenticated `POST /mcp` support to the existing editor HTTP API
    server.
-3. Rename editor HTTP surface types and outward language from `automation` to
+3. Rename editor HTTP surface types and outward language from `api` to
    `api`.
 4. Update runtime-state writing and discovery to publish `mcpUrl` instead of
    raw TCP MCP host/port.

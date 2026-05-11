@@ -84,7 +84,7 @@
 - scene 文档从 `assets/scenes/` 或 `data/scenes/` 加载，运行时由 `SceneRuntime` 构造 `Scene`
 - ImGui overlay 提供 Scene Tree、Inspector、Console 和浮动 toolbar
 - Console、HTTP、WebSocket 和 MCP 入口最终都复用同一套 command-first surface
-- 本地 editor config / data / automation token 存在 `data/lxe_editor/`，不属于 scene asset
+- 本地 editor config / data / api token 存在 `data/lxe_editor/`，不属于 scene asset
 
 ## 总结
 

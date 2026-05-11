@@ -9,7 +9,7 @@ The project SHALL define the root `Renderer` executable as either a bootstrap/pr
 
 #### Scenario: entry contract is unambiguous
 - **WHEN** a developer inspects the build targets and notes
-- **THEN** the purpose of the root executable is explicit and does not conflict with `scene_viewer`
+- **THEN** the purpose of the root executable is explicit and does not conflict with `lxe_editor`
 
 ### Requirement: Bootstrap helper plumbing is centralized
 Environment/debug helper logic used during renderer bootstrap SHALL be centralized or removed if unused. Duplicate helper paths with the same semantic role MUST NOT remain as parallel dead code.

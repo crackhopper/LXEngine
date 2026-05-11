@@ -4,7 +4,7 @@ Date: 2026-05-11
 
 ## Context
 
-`scene_viewer` currently supports a narrow YAML document that only persists:
+`lxe_editor` currently supports a narrow YAML document that only persists:
 
 - `scene.name`
 - `gameCamera`
@@ -164,7 +164,7 @@ It stores references only.
 ## First-Version Supported Scene Content
 
 To keep the implementation bounded, the first serializer/deserializer must fully
-support the engine types already exercised by `scene_viewer`:
+support the engine types already exercised by `lxe_editor`:
 
 - renderable `SceneNode`
 - parent/child hierarchy
@@ -267,7 +267,7 @@ Automated coverage must include:
   to invent a reflection system in one step.
 - Built-in asset protection adds path-classification logic that must be kept
   centralized. Ad hoc path checks in command handlers would be brittle.
-- Starting with an empty scene means `scene_viewer` can no longer assume sample
+- Starting with an empty scene means `lxe_editor` can no longer assume sample
   content exists at boot. Tests and overlays must tolerate an intentionally blank scene.
 - Supporting both `asset` and `local` in one catalog means command UX gets
   better, but the output must clearly label source kind to avoid accidental edits.

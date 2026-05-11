@@ -180,7 +180,7 @@ private:
 
 ## 下游
 
-- `REQ-019`：demo_scene_viewer 在 Orbit / FreeFly 之间切换
+- `REQ-019`：lxe_editor 在 Orbit / FreeFly 之间切换
 - `REQ-018`：调试面板显示或编辑 free-fly 参数
 - Phase 2 更完整相机系统：扩展为 action map、手柄和鼠标锁定版本
 

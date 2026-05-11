@@ -2,9 +2,9 @@
 #include "core/editor/editor_state.hpp"
 #include "core/scene/object.hpp"
 #include "core/scene/scene.hpp"
-#include "demos/lxe_editor/automation_token_state.hpp"
-#include "demos/lxe_editor/editor_automation_protocol.hpp"
-#include "demos/lxe_editor/editor_automation_service.hpp"
+#include "demos/lxe_editor/api_token_state.hpp"
+#include "demos/lxe_editor/lxe_editor_api_protocol.hpp"
+#include "demos/lxe_editor/lxe_editor_api_service.hpp"
 
 #include <filesystem>
 #include <iostream>
@@ -30,9 +30,9 @@ int failures = 0;
   } while (0)
 
 struct MutableHookState final {
-  AutomationSceneSummary scene;
-  AutomationCameraSnapshot cameras;
-  AutomationToolbarSnapshot toolbar;
+  ApiSceneSummary scene;
+  ApiCameraSnapshot cameras;
+  ApiToolbarSnapshot toolbar;
   std::optional<LX_core::Vec3f> lastHitPoint;
 };
 
@@ -48,8 +48,8 @@ struct Fixture final {
   {
     hookState.scene.sceneName = "Scene";
     hookState.scene.currentDocumentPath = "data/scenes/test.scene.yaml";
-    hookState.scene.sourceKind = AutomationSceneSourceKind::Local;
-    hookState.scene.permission = AutomationPermissionLevel::User;
+    hookState.scene.sourceKind = ApiSceneSourceKind::Local;
+    hookState.scene.permission = ApiPermissionLevel::User;
     hookState.scene.dirty = false;
 
     hookState.cameras.activeCameraPath = "/editor_cam";
@@ -62,7 +62,7 @@ struct Fixture final {
     hookState.cameras.game.target = {4.0f, 5.0f, 5.0f};
     hookState.cameras.game.up = {0.0f, 1.0f, 0.0f};
 
-    hookState.toolbar.editMode = AutomationEditMode::Orbit;
+    hookState.toolbar.editMode = ApiEditMode::Orbit;
     hookState.toolbar.previewEnabled = false;
 
     hooks.sceneSummary = [this]() { return hookState.scene; };
@@ -82,9 +82,9 @@ void testExecuteCommandMirrorsCommandBusAndEmitsCommandEvent() {
                              "{\"kind\":\"echo\"}"};
       });
 
-  const AutomationEventCursor cursor = fixture.service->currentCursor();
-  const AutomationCommandResponse response = fixture.service->executeCommand(
-      AutomationCommandRequest{.line = "echo hello"});
+  const ApiEventCursor cursor = fixture.service->currentCursor();
+  const ApiCommandResponse response = fixture.service->executeCommand(
+      ApiCommandRequest{.line = "echo hello"});
   EXPECT(response.ok, "command execution should succeed");
   EXPECT(response.line == "echo hello", "response should preserve command line");
   EXPECT(response.message == "hello",
@@ -94,11 +94,11 @@ void testExecuteCommandMirrorsCommandBusAndEmitsCommandEvent() {
   EXPECT(fixture.bus.history().size() == 1,
          "command execution should go through command bus history");
 
-  const AutomationEventBatch batch =
+  const ApiEventBatch batch =
       fixture.service->collectEventsSince(cursor);
   EXPECT(batch.events.size() == 1,
          "command execution should emit one command event");
-  EXPECT(batch.events.front().type == AutomationEventType::CommandExecuted,
+  EXPECT(batch.events.front().type == ApiEventType::CommandExecuted,
          "command event type should be command.executed");
   EXPECT(batch.events.front().command.has_value(),
          "command event should carry command payload");
@@ -116,12 +116,12 @@ void testCaptureStateUsesHooksAndEditorSelection() {
   fixture.editorState.select({node});
   fixture.hookState.lastHitPoint = LX_core::Vec3f{9.0f, 8.0f, 7.0f};
 
-  const AutomationStateSnapshot snapshot = fixture.service->captureState();
+  const ApiStateSnapshot snapshot = fixture.service->captureState();
   EXPECT(snapshot.scene.sceneName == "Scene",
          "scene summary should come from hook provider");
   EXPECT(snapshot.scene.currentDocumentPath == "data/scenes/test.scene.yaml",
          "scene path should come from hook provider");
-  EXPECT(snapshot.toolbar.editMode == AutomationEditMode::Orbit,
+  EXPECT(snapshot.toolbar.editMode == ApiEditMode::Orbit,
          "toolbar snapshot should come from hook provider");
   EXPECT(snapshot.selection.selectedPaths.size() == 1,
          "selection snapshot should include EditorState selection");
@@ -138,22 +138,22 @@ void testCaptureStateUsesHooksAndEditorSelection() {
 
 void testRefreshEmitsDirtyPreviewAndModeChangeEvents() {
   Fixture fixture;
-  const AutomationEventCursor cursor = fixture.service->currentCursor();
+  const ApiEventCursor cursor = fixture.service->currentCursor();
 
   fixture.hookState.scene.dirty = true;
   fixture.hookState.toolbar.previewEnabled = true;
-  fixture.hookState.toolbar.editMode = AutomationEditMode::Selection;
+  fixture.hookState.toolbar.editMode = ApiEditMode::Selection;
   fixture.service->refresh();
 
-  const AutomationEventBatch batch =
+  const ApiEventBatch batch =
       fixture.service->collectEventsSince(cursor);
   bool sawDirty = false;
   bool sawPreview = false;
   bool sawMode = false;
   for (const auto& event : batch.events) {
-    sawDirty = sawDirty || event.type == AutomationEventType::DirtyChanged;
-    sawPreview = sawPreview || event.type == AutomationEventType::PreviewChanged;
-    sawMode = sawMode || event.type == AutomationEventType::ModeChanged;
+    sawDirty = sawDirty || event.type == ApiEventType::DirtyChanged;
+    sawPreview = sawPreview || event.type == ApiEventType::PreviewChanged;
+    sawMode = sawMode || event.type == ApiEventType::ModeChanged;
   }
   EXPECT(sawDirty, "refresh should emit dirty.changed when dirty flips");
   EXPECT(sawPreview,
@@ -161,13 +161,13 @@ void testRefreshEmitsDirtyPreviewAndModeChangeEvents() {
   EXPECT(sawMode, "refresh should emit mode.changed when edit mode flips");
 }
 
-void testAutomationTokenStatePersistsSingleGeneratedToken() {
+void testApiTokenStatePersistsSingleGeneratedToken() {
   const auto rootDir = std::filesystem::temp_directory_path() /
-                       "lxengine_automation_token_state_test";
+                       "lxengine_api_token_state_test";
   std::error_code ec;
   std::filesystem::remove_all(rootDir, ec);
 
-  const AutomationTokenState state(rootDir);
+  const ApiTokenState state(rootDir);
   const std::string first = state.loadOrCreateToken();
   const std::string second = state.loadOrCreateToken();
 
@@ -186,7 +186,7 @@ int main() {
   testExecuteCommandMirrorsCommandBusAndEmitsCommandEvent();
   testCaptureStateUsesHooksAndEditorSelection();
   testRefreshEmitsDirtyPreviewAndModeChangeEvents();
-  testAutomationTokenStatePersistsSingleGeneratedToken();
+  testApiTokenStatePersistsSingleGeneratedToken();
 
   if (failures != 0) {
     std::cerr << failures << " API service test(s) failed\n";

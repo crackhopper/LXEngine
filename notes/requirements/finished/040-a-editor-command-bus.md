@@ -183,7 +183,7 @@ class CommandBus {
 - `src/core/editor/editor_state.hpp` / `.cpp`（新）
 - `src/core/editor/console_panel.hpp` / `.cpp`（新；依赖 ImGui）
 - `src/core/editor/commands/builtin_commands.hpp` / `.cpp`（新；内置命令统一注册）
-- `src/demos/scene_viewer/main.cpp`（启动时构造 bus + 注册 builtins + 加载 console panel）
+- `src/demos/lxe_editor/main.cpp`（启动时构造 bus + 注册 builtins + 加载 console panel）
 - `src/test/integration/test_command_bus.cpp`（新）
 
 ## 边界与约束
@@ -218,5 +218,5 @@ class CommandBus {
 
 - 验证结论：R1-R8 已对照当前代码逐条核实；其中 R3 的“按主题拆 5 个 .cpp”落地为统一的 `builtin_commands.cpp` / `.hpp` 注册入口，R6 的选中态接口按 style guide 调整为 `weak_ptr` + `SceneNodeSharedPtr`，两者均已按代码事实回写本文
 - 代码入口：`src/core/editor/command_bus.*`、`src/core/editor/editor_state.*`、`src/core/editor/console_panel.*`、`src/core/editor/commands/builtin_commands.*`
-- demo 接入：`src/demos/scene_viewer/main.cpp` 构造 `CommandBus` / `EditorState` / `ConsolePanel` 并接入 overlay
-- 测试：`ninja -C build test_command_bus demo_scene_viewer`、`xvfb-run -a ./build/src/test/test_command_bus`、`xvfb-run -a ctest --output-on-failure -R test_command_bus`
+- demo 接入：`src/demos/lxe_editor/main.cpp` 构造 `CommandBus` / `EditorState` / `ConsolePanel` 并接入 overlay
+- 测试：`ninja -C build test_command_bus lxe_editor`、`xvfb-run -a ./build/src/test/test_command_bus`、`xvfb-run -a ctest --output-on-failure -R test_command_bus`

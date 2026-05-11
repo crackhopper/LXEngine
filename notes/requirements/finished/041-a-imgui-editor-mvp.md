@@ -6,7 +6,7 @@
 
 ## 背景
 
-`src/demos/scene_viewer/main.cpp` 当前是硬编码场景：写死立方体 + 地面 + 单方向光 + 一个相机。每次 RTR 章节实验都要改代码 + 重编 + 重启。Phase 1.5 前 6 个 REQ 已经备好基础（Transform / 路径查询 / Camera 作 SceneNode / picking / DebugDraw / 命令总线），本 REQ 把它们接通成一个**最小可用的 ImGui 编辑器**：用户在运行时摆放模型 / 相机 / 光源、拖动 gizmo 调整位置、用控制台敲命令做精确调整、按 F 键预览游戏相机视角。
+`src/demos/lxe_editor/main.cpp` 当前是硬编码场景：写死立方体 + 地面 + 单方向光 + 一个相机。每次 RTR 章节实验都要改代码 + 重编 + 重启。Phase 1.5 前 6 个 REQ 已经备好基础（Transform / 路径查询 / Camera 作 SceneNode / picking / DebugDraw / 命令总线），本 REQ 把它们接通成一个**最小可用的 ImGui 编辑器**：用户在运行时摆放模型 / 相机 / 光源、拖动 gizmo 调整位置、用控制台敲命令做精确调整、按 F 键预览游戏相机视角。
 
 收口点：跑起来 demo 后用户能完成 [Phase 1.5 stub](../roadmaps/main-roadmap/phase-1.5-imgui-editor-mvp.md#验收) 列出的 5 项操作。
 
@@ -24,7 +24,7 @@
 ### R1: ImGuizmo 引入
 
 - `third_party/ImGuizmo/`（MIT 单头文件库 + 单 cpp）
-- CMakeLists 把它作为 INTERFACE 库链入 `demo_scene_viewer`
+- CMakeLists 把它作为 INTERFACE 库链入 `lxe_editor`
 - 写一层薄薄的 adapter `src/core/editor/gizmo_adapter.{hpp,cpp}`：把 LX 的 `Mat4f` / `Vec3f` 与 ImGuizmo 的 `float[16]` / `float[3]` 桥接（约 50 LOC）
 - 立项前先 spike 验证 ImGuizmo 与 LX 数学类型 row-major / column-major 约定一致；不一致则 adapter 内部转置
 
@@ -125,7 +125,7 @@ void renderOverlay(ImDrawList* dl, const Camera &editorCam, const Scene &scene, 
 
 ## 测试
 
-启动 `demo_scene_viewer` 后人工跑：
+启动 `lxe_editor` 后人工跑：
 
 1. 场景树面板列出 root + 所有子节点
 2. 点击主 mesh → 节点被选中（高亮 + inspector 显示其 transform）
@@ -151,8 +151,8 @@ void renderOverlay(ImDrawList* dl, const Camera &editorCam, const Scene &scene, 
 - `src/core/editor/viewport_overlay.{hpp,cpp}`（新）
 - `src/core/scene/camera.hpp` / `.cpp`（加 `m_active` + `setActive/isActive`，per R6 方案 A）
 - `src/core/frame_graph/render_queue.cpp`（按 `m_active` 过滤 camera）
-- `src/demos/scene_viewer/main.cpp`（构造 4 个面板 + 注册 builtins + 编辑器 camera 初始化）
-- `src/demos/scene_viewer/ui_overlay.{hpp,cpp}`（保留作为 stats panel 或合并进 inspector）
+- `src/demos/lxe_editor/main.cpp`（构造 4 个面板 + 注册 builtins + 编辑器 camera 初始化）
+- `src/demos/lxe_editor/ui_overlay.{hpp,cpp}`（保留作为 stats panel 或合并进 inspector）
 - CMakeLists 多处接入 ImGuizmo
 - `src/test/integration/test_editor_smoke.cpp`（新，可选）
 
@@ -195,16 +195,16 @@ R6 引入的 `Camera::m_active` 与 [REQ-042 R6](042-render-target-desc-and-targ
 已完成并验证，2026-05-07 归档。
 
 - 验证结论：R1-R9 已按当前代码逐条复核；finish-req 期间补齐了 R2 的 path jump 自动展开祖先链，`/world/player` 类跳转现在会选中并展开目标链路
-- 代码入口：`third_party/ImGuizmo/`、`src/core/editor/gizmo_adapter.*`、`src/core/editor/scene_tree_panel.*`、`src/core/editor/inspector_panel.*`、`src/core/editor/viewport_overlay.*`、`src/core/editor/command_bus.*`、`src/core/editor/commands/builtin_commands.*`、`src/demos/scene_viewer/main.cpp`、`src/demos/scene_viewer/ui_overlay.*`
+- 代码入口：`third_party/ImGuizmo/`、`src/core/editor/gizmo_adapter.*`、`src/core/editor/scene_tree_panel.*`、`src/core/editor/inspector_panel.*`、`src/core/editor/viewport_overlay.*`、`src/core/editor/command_bus.*`、`src/core/editor/commands/builtin_commands.*`、`src/demos/lxe_editor/main.cpp`、`src/demos/lxe_editor/ui_overlay.*`
 - 设计说明回写：R7 的“默认 editor 布局”在当前 ImGui 集成下按 requirement 原文的 fallback 落地为固定窗口布局；R6 的 active-camera 开关落在 `CameraComponent::m_active` / `Scene::getSceneLevelResources()` / `Scene::getCombinedCameraCullingMask()`，语义与原提案一致
 - 验证命令：
-  - `cmake --build build --target demo_scene_viewer test_scene_tree_panel test_inspector_panel test_viewport_overlay test_scene_viewer_layout test_gizmo_adapter test_command_bus test_imgui_overlay -j4`
+  - `cmake --build build --target lxe_editor test_scene_tree_panel test_inspector_panel test_viewport_overlay test_lxe_editor_layout test_gizmo_adapter test_command_bus test_imgui_overlay -j4`
   - `./build/src/test/test_scene_tree_panel`
   - `./build/src/test/test_inspector_panel`
   - `./build/src/test/test_viewport_overlay`
-  - `./build/src/test/test_scene_viewer_layout`
+  - `./build/src/test/test_lxe_editor_layout`
   - `./build/src/test/test_gizmo_adapter`
   - `./build/src/test/test_command_bus`
   - `./build/src/test/test_imgui_overlay`
-  - `ctest --test-dir build --output-on-failure -R 'test_(scene_tree_panel|inspector_panel|viewport_overlay|scene_viewer_layout|gizmo_adapter|command_bus|imgui_overlay)$'`
+  - `ctest --test-dir build --output-on-failure -R 'test_(scene_tree_panel|inspector_panel|viewport_overlay|lxe_editor_layout|gizmo_adapter|command_bus|imgui_overlay)$'`
   - `ctest --test-dir build --output-on-failure -L auto -LE requires_video_device`

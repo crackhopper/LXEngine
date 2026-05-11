@@ -173,7 +173,7 @@ engineLoop.startScene(scene); // restart current scene
 
 至少包括：
 
-- `REQ-019 demo_scene_viewer`
+- `REQ-019 lxe_editor`
 - tutorial 中对应用主循环的描述
 
 若其他 requirement 仍保留直接手写 `while(running) { uploadData(); draw(); }` 的示例，应在相关段落补充说明那是“临时展开版”，长期归宿是 `EngineLoop`。
@@ -187,7 +187,7 @@ engineLoop.startScene(scene); // restart current scene
 | `notes/tutorial/05-app-main.md` | 主流程改写为 `EngineLoop` 心智模型 |
 | `docs/requirements/014-clock-and-delta-time.md` | 下游说明改为服务 `EngineLoop` |
 | `src/test/test_render_triangle.cpp` | 当前 runnable 入口切换为 `EngineLoop` |
-| `docs/requirements/019-demo-scene-viewer.md` | 需求方向改为基于 `EngineLoop` |
+| `docs/requirements/019-lxe-editor.md` | 需求方向改为基于 `EngineLoop` |
 
 ## 边界与约束
 
@@ -205,7 +205,7 @@ engineLoop.startScene(scene); // restart current scene
 ## 下游
 
 - 当前实现：`test_render_triangle` 已作为首个 runnable entry 接入 `EngineLoop`
-- **REQ-019**：`demo_scene_viewer` 仍是后续更完整的集成入口
+- **REQ-019**：`lxe_editor` 仍是后续更完整的集成入口
 - tutorial：不再让用户把 backend 当成“整个引擎入口”
 - 后续 gameplay / app framework / editor 需求：统一落在 `EngineLoop` 之上
 

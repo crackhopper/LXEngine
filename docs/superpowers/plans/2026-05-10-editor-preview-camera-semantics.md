@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add explicit scene serialize/deserialize for `scene_viewer`, persist `game_cam` as runtime scene state plus `editor_cam` as editor-only metadata, expose `scene load/save` through the command bus, and keep preview toggling as a pure active-camera switch.
+**Goal:** Add explicit scene serialize/deserialize for `lxe_editor`, persist `game_cam` as runtime scene state plus `editor_cam` as editor-only metadata, expose `scene load/save` through the command bus, and keep preview toggling as a pure active-camera switch.
 
-**Architecture:** Keep the first implementation scoped to `scene_viewer` instead of pretending the repo already has a generic scene asset system. Introduce a small YAML scene document, a runtime owner object that tracks the current scene path and can rebuild/persist the demo scene, and command-bus handlers that call the same load/save path used by startup and shutdown. `editor_cam` restores from `editor.editorCamera` metadata when present, otherwise falls back to a one-time copy from `game_cam`.
+**Architecture:** Keep the first implementation scoped to `lxe_editor` instead of pretending the repo already has a generic scene asset system. Introduce a small YAML scene document, a runtime owner object that tracks the current scene path and can rebuild/persist the demo scene, and command-bus handlers that call the same load/save path used by startup and shutdown. `editor_cam` restores from `editor.editorCamera` metadata when present, otherwise falls back to a one-time copy from `game_cam`.
 
 **Tech Stack:** C++20, yaml-cpp, CMake/Ninja, existing `Scene` / `SceneNode` / `CameraComponent` / `EditorState` / `CommandBus` integration tests.
 
@@ -12,29 +12,29 @@
 
 ## File Structure
 
-- Create: `src/demos/scene_viewer/editor_camera_state.hpp`
+- Create: `src/demos/lxe_editor/editor_camera_state.hpp`
   Responsibility: capture/apply editor camera pose and projection fields.
-- Create: `src/demos/scene_viewer/editor_camera_state.cpp`
+- Create: `src/demos/lxe_editor/editor_camera_state.cpp`
   Responsibility: conversions between `SceneNode` / `CameraComponent` and persisted editor state.
-- Create: `src/demos/scene_viewer/scene_document.hpp`
+- Create: `src/demos/lxe_editor/scene_document.hpp`
   Responsibility: YAML document contract for `scene`, `gameCamera`, and `editor.editorCamera`.
-- Create: `src/demos/scene_viewer/scene_document.cpp`
+- Create: `src/demos/lxe_editor/scene_document.cpp`
   Responsibility: yaml-cpp load/save implementation.
-- Create: `src/demos/scene_viewer/scene_runtime.hpp`
+- Create: `src/demos/lxe_editor/scene_runtime.hpp`
   Responsibility: own current scene path, current `SceneSharedPtr`, camera nodes, and rebuild/save helpers.
-- Create: `src/demos/scene_viewer/scene_runtime.cpp`
+- Create: `src/demos/lxe_editor/scene_runtime.cpp`
   Responsibility: compose existing demo builders with scene document I/O and camera semantics.
 - Modify: `src/core/editor/commands/builtin_commands.hpp`
   Responsibility: allow builtin registration to receive scene I/O callbacks/context.
 - Modify: `src/core/editor/commands/builtin_commands.cpp`
   Responsibility: add `scene load`, `scene save`, `scene save <path>` handlers.
-- Modify: `src/demos/scene_viewer/main.cpp`
+- Modify: `src/demos/lxe_editor/main.cpp`
   Responsibility: replace ad-hoc camera bootstrap with `SceneRuntime`, wire runtime callbacks into command bus, persist on shutdown.
-- Modify: `src/demos/scene_viewer/CMakeLists.txt`
+- Modify: `src/demos/lxe_editor/CMakeLists.txt`
   Responsibility: build the new runtime/document units and tests.
-- Modify: `src/demos/scene_viewer/README.md`
+- Modify: `src/demos/lxe_editor/README.md`
   Responsibility: document scene file, camera semantics, and scene commands.
-- Create: `assets/scenes/scene_viewer.scene.yaml`
+- Create: `assets/scenes/lxe_editor.scene.yaml`
   Responsibility: default scene document for the demo.
 - Create: `src/test/integration/test_scene_document.cpp`
   Responsibility: serializer/deserializer round-trip tests.
@@ -51,18 +51,18 @@
 - Create: `src/test/integration/test_scene_document.cpp`
 - Create: `src/test/integration/test_scene_runtime.cpp`
 - Modify: `src/test/integration/test_command_bus.cpp`
-- Modify: `src/demos/scene_viewer/CMakeLists.txt`
+- Modify: `src/demos/lxe_editor/CMakeLists.txt`
 
 - [ ] **Step 1: Add failing scene document tests**
 
 ```cpp
-#include "demos/scene_viewer/scene_document.hpp"
+#include "demos/lxe_editor/scene_document.hpp"
 
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 
-namespace demo = LX_demo::scene_viewer;
+namespace demo = LX_demo::lxe_editor;
 
 namespace {
 int failures = 0;
@@ -81,7 +81,7 @@ void testLoadSceneDocumentReadsGameAndEditorCamera() {
       std::filesystem::temp_directory_path() / "lx_scene_document_test.yaml";
   std::ofstream out(path);
   out << "scene:\n"
-         "  name: scene_viewer\n"
+         "  name: lxe_editor\n"
          "gameCamera:\n"
          "  eye: [0.0, 2.0, 6.0]\n"
          "  target: [0.0, 0.0, 0.0]\n"
@@ -99,7 +99,7 @@ void testLoadSceneDocumentReadsGameAndEditorCamera() {
   out.close();
 
   const demo::SceneDocument doc = demo::loadSceneDocument(path);
-  EXPECT(doc.sceneName() == "scene_viewer", "scene name should load");
+  EXPECT(doc.sceneName() == "lxe_editor", "scene name should load");
   EXPECT(doc.hasEditorCamera(), "editor camera metadata should load");
   EXPECT(doc.editorCamera().position.x == 5.0f, "editor camera x should load");
   EXPECT(doc.gameCamera().eye.y == 2.0f, "game camera eye should load");
@@ -110,11 +110,11 @@ void testLoadSceneDocumentReadsGameAndEditorCamera() {
 - [ ] **Step 2: Add failing runtime fallback tests**
 
 ```cpp
-#include "demos/scene_viewer/scene_runtime.hpp"
+#include "demos/lxe_editor/scene_runtime.hpp"
 
 #include <iostream>
 
-namespace demo = LX_demo::scene_viewer;
+namespace demo = LX_demo::lxe_editor;
 
 namespace {
 int failures = 0;
@@ -130,7 +130,7 @@ int failures = 0;
 
 void testRuntimeFallsBackEditorCameraFromGameCamera() {
   demo::SceneRuntime runtime;
-  runtime.loadFromDocumentPath("assets/scenes/scene_viewer.scene.yaml");
+  runtime.loadFromDocumentPath("assets/scenes/lxe_editor.scene.yaml");
   EXPECT(runtime.editorCameraNode(), "editor camera node should exist");
   EXPECT(runtime.gameCameraNode(), "game camera node should exist");
   EXPECT(runtime.editorCameraNode()->getLocalTransform().translation ==
@@ -180,15 +180,15 @@ Expected: FAIL because `SceneDocument`, `SceneRuntime`, and scene command plumbi
 - [ ] **Step 6: Commit the red test harness**
 
 ```bash
-git add src/test/integration/test_scene_document.cpp src/test/integration/test_scene_runtime.cpp src/test/integration/test_command_bus.cpp src/demos/scene_viewer/CMakeLists.txt
+git add src/test/integration/test_scene_document.cpp src/test/integration/test_scene_runtime.cpp src/test/integration/test_command_bus.cpp src/demos/lxe_editor/CMakeLists.txt
 git commit -m "test: add scene io red coverage"
 ```
 
 ### Task 2: Implement `EditorCameraState`
 
 **Files:**
-- Create: `src/demos/scene_viewer/editor_camera_state.hpp`
-- Create: `src/demos/scene_viewer/editor_camera_state.cpp`
+- Create: `src/demos/lxe_editor/editor_camera_state.hpp`
+- Create: `src/demos/lxe_editor/editor_camera_state.cpp`
 - Test: `src/test/integration/test_scene_document.cpp`
 
 - [ ] **Step 1: Add the value type header**
@@ -204,7 +204,7 @@ class CameraComponent;
 class SceneNode;
 }
 
-namespace LX_demo::scene_viewer {
+namespace LX_demo::lxe_editor {
 
 struct EditorCameraState final {
   LX_core::Vec3f position{0.0f, 0.0f, 0.0f};
@@ -220,20 +220,20 @@ struct EditorCameraState final {
   void applyTo(LX_core::SceneNode& node, LX_core::CameraComponent& camera) const;
 };
 
-} // namespace LX_demo::scene_viewer
+} // namespace LX_demo::lxe_editor
 ```
 
 - [ ] **Step 2: Implement capture/apply helpers**
 
 ```cpp
-#include "demos/scene_viewer/editor_camera_state.hpp"
+#include "demos/lxe_editor/editor_camera_state.hpp"
 
 #include "core/math/quat.hpp"
 #include "core/math/transform.hpp"
 #include "core/scene/components/camera_component.hpp"
 #include "core/scene/object.hpp"
 
-namespace LX_demo::scene_viewer {
+namespace LX_demo::lxe_editor {
 
 EditorCameraState EditorCameraState::fromSceneCamera(const LX_core::SceneNode& node,
                                                      const LX_core::CameraComponent& camera) {
@@ -263,7 +263,7 @@ void EditorCameraState::applyTo(LX_core::SceneNode& node,
   camera.updateMatrices();
 }
 
-} // namespace LX_demo::scene_viewer
+} // namespace LX_demo::lxe_editor
 ```
 
 - [ ] **Step 3: Re-run document test**
@@ -275,16 +275,16 @@ Expected: still FAIL, but only on missing `SceneDocument` symbols.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add src/demos/scene_viewer/editor_camera_state.hpp src/demos/scene_viewer/editor_camera_state.cpp
+git add src/demos/lxe_editor/editor_camera_state.hpp src/demos/lxe_editor/editor_camera_state.cpp
 git commit -m "feat: add editor camera state value type"
 ```
 
 ### Task 3: Implement `SceneDocument` YAML load/save
 
 **Files:**
-- Create: `src/demos/scene_viewer/scene_document.hpp`
-- Create: `src/demos/scene_viewer/scene_document.cpp`
-- Create: `assets/scenes/scene_viewer.scene.yaml`
+- Create: `src/demos/lxe_editor/scene_document.hpp`
+- Create: `src/demos/lxe_editor/scene_document.cpp`
+- Create: `assets/scenes/lxe_editor.scene.yaml`
 - Test: `src/test/integration/test_scene_document.cpp`
 
 - [ ] **Step 1: Add the document interface**
@@ -292,7 +292,7 @@ git commit -m "feat: add editor camera state value type"
 ```cpp
 #pragma once
 
-#include "demos/scene_viewer/editor_camera_state.hpp"
+#include "demos/lxe_editor/editor_camera_state.hpp"
 
 #include "core/math/vec3.hpp"
 
@@ -300,7 +300,7 @@ git commit -m "feat: add editor camera state value type"
 #include <optional>
 #include <string>
 
-namespace LX_demo::scene_viewer {
+namespace LX_demo::lxe_editor {
 
 struct GameplayCameraState final {
   LX_core::Vec3f eye{0.0f, 2.0f, 6.0f};
@@ -322,7 +322,7 @@ public:
   void setEditorCamera(EditorCameraState state) { m_editorCamera = std::move(state); }
 
 private:
-  std::string m_sceneName = "scene_viewer";
+  std::string m_sceneName = "lxe_editor";
   GameplayCameraState m_gameCamera;
   std::optional<EditorCameraState> m_editorCamera;
 
@@ -334,17 +334,17 @@ private:
 SceneDocument loadSceneDocument(const std::filesystem::path& path);
 void saveSceneDocument(const std::filesystem::path& path, const SceneDocument& document);
 
-} // namespace LX_demo::scene_viewer
+} // namespace LX_demo::lxe_editor
 ```
 
 - [ ] **Step 2: Implement YAML load/save**
 
 ```cpp
-#include "demos/scene_viewer/scene_document.hpp"
+#include "demos/lxe_editor/scene_document.hpp"
 
 #include <yaml-cpp/yaml.h>
 
-namespace LX_demo::scene_viewer {
+namespace LX_demo::lxe_editor {
 
 SceneDocument loadSceneDocument(const std::filesystem::path& path) {
   const YAML::Node root = YAML::LoadFile(path.string());
@@ -397,14 +397,14 @@ void saveSceneDocument(const std::filesystem::path& path, const SceneDocument& d
   stream << out.c_str();
 }
 
-} // namespace LX_demo::scene_viewer
+} // namespace LX_demo::lxe_editor
 ```
 
 - [ ] **Step 3: Seed the default scene file**
 
 ```yaml
 scene:
-  name: scene_viewer
+  name: lxe_editor
 gameCamera:
   eye: [0.0, 2.0, 6.0]
   target: [0.0, 0.0, 0.0]
@@ -424,16 +424,16 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/demos/scene_viewer/scene_document.hpp src/demos/scene_viewer/scene_document.cpp assets/scenes/scene_viewer.scene.yaml
+git add src/demos/lxe_editor/scene_document.hpp src/demos/lxe_editor/scene_document.cpp assets/scenes/lxe_editor.scene.yaml
 git commit -m "feat: add scene viewer scene document"
 ```
 
 ### Task 4: Implement `SceneRuntime` and bootstrap camera semantics
 
 **Files:**
-- Create: `src/demos/scene_viewer/scene_runtime.hpp`
-- Create: `src/demos/scene_viewer/scene_runtime.cpp`
-- Modify: `src/demos/scene_viewer/main.cpp`
+- Create: `src/demos/lxe_editor/scene_runtime.hpp`
+- Create: `src/demos/lxe_editor/scene_runtime.cpp`
+- Modify: `src/demos/lxe_editor/main.cpp`
 - Test: `src/test/integration/test_scene_runtime.cpp`
 
 - [ ] **Step 1: Define the runtime owner**
@@ -441,13 +441,13 @@ git commit -m "feat: add scene viewer scene document"
 ```cpp
 #pragma once
 
-#include "demos/scene_viewer/scene_document.hpp"
+#include "demos/lxe_editor/scene_document.hpp"
 
 #include "core/scene/scene.hpp"
 
 #include <filesystem>
 
-namespace LX_demo::scene_viewer {
+namespace LX_demo::lxe_editor {
 
 class SceneRuntime final {
 public:
@@ -470,7 +470,7 @@ private:
   LX_core::SceneNodeSharedPtr m_editorCameraNode;
 };
 
-} // namespace LX_demo::scene_viewer
+} // namespace LX_demo::lxe_editor
 ```
 
 - [ ] **Step 2: Implement rebuild, fallback copy, and save-back**
@@ -527,7 +527,7 @@ void SceneRuntime::rebuildSceneFromDocument() {
 
 ```cpp
 demo::SceneRuntime sceneRuntime;
-sceneRuntime.loadFromDocumentPath(resolveRuntimePath("assets/scenes/scene_viewer.scene.yaml"));
+sceneRuntime.loadFromDocumentPath(resolveRuntimePath("assets/scenes/lxe_editor.scene.yaml"));
 auto scene = sceneRuntime.scene();
 auto editorCameraNode = sceneRuntime.editorCameraNode();
 auto gameCameraNode = sceneRuntime.gameCameraNode();
@@ -544,7 +544,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/demos/scene_viewer/scene_runtime.hpp src/demos/scene_viewer/scene_runtime.cpp src/demos/scene_viewer/main.cpp
+git add src/demos/lxe_editor/scene_runtime.hpp src/demos/lxe_editor/scene_runtime.cpp src/demos/lxe_editor/main.cpp
 git commit -m "feat: add scene viewer runtime scene io"
 ```
 
@@ -642,7 +642,7 @@ git commit -m "feat: add scene load save commands"
 ### Task 6: Wire main-session scene commands to `SceneRuntime`
 
 **Files:**
-- Modify: `src/demos/scene_viewer/main.cpp`
+- Modify: `src/demos/lxe_editor/main.cpp`
 - Modify: `src/test/integration/test_viewport_overlay.cpp`
 - Modify: `src/test/integration/test_command_bus.cpp`
 
@@ -700,21 +700,21 @@ Expected: PASS.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add src/demos/scene_viewer/main.cpp src/test/integration/test_viewport_overlay.cpp src/test/integration/test_command_bus.cpp
+git add src/demos/lxe_editor/main.cpp src/test/integration/test_viewport_overlay.cpp src/test/integration/test_command_bus.cpp
 git commit -m "feat: wire scene runtime into editor commands"
 ```
 
 ### Task 7: Update demo docs and verify the full targeted matrix
 
 **Files:**
-- Modify: `src/demos/scene_viewer/README.md`
+- Modify: `src/demos/lxe_editor/README.md`
 
 - [ ] **Step 1: Document scene file and commands**
 
 ```md
 ## Scene file
 
-`scene_viewer` now loads from `assets/scenes/scene_viewer.scene.yaml`.
+`lxe_editor` now loads from `assets/scenes/lxe_editor.scene.yaml`.
 
 - `gameCamera` stores the authored gameplay camera.
 - `editor.editorCamera` stores editor-only view state.
@@ -730,7 +730,7 @@ git commit -m "feat: wire scene runtime into editor commands"
 
 - [ ] **Step 2: Run the full matrix**
 
-Run: `cmake --build build --target demo_scene_viewer test_scene_document test_scene_runtime test_command_bus test_viewport_overlay -j4`
+Run: `cmake --build build --target lxe_editor test_scene_document test_scene_runtime test_command_bus test_viewport_overlay -j4`
 
 Run: `ctest --test-dir build --output-on-failure -R 'test_(scene_document|scene_runtime|command_bus|viewport_overlay)$'`
 
@@ -739,7 +739,7 @@ Expected: PASS.
 - [ ] **Step 3: Commit**
 
 ```bash
-git add src/demos/scene_viewer/README.md
+git add src/demos/lxe_editor/README.md
 git commit -m "docs: describe scene viewer scene io"
 ```
 
@@ -753,6 +753,6 @@ git commit -m "docs: describe scene viewer scene io"
   - user-facing docs are covered by Task 7.
 - Placeholder scan:
   - No `TBD`, `TODO`, or “implement later” placeholders remain.
-  - The scope is intentionally `scene_viewer`-local and that limitation is explicit in the architecture.
+  - The scope is intentionally `lxe_editor`-local and that limitation is explicit in the architecture.
 - Type consistency:
   - `EditorCameraState`, `SceneDocument`, `SceneRuntime`, and `SceneIoContext` are defined once and reused consistently across tasks.

@@ -100,7 +100,7 @@ class CameraComponent final : public IComponent {
 - 把 `cameraNode->setParent(playerNode)` 后，移动 player → camera 跟随
 - camera 节点 scale 设为 (2,2,2) → view matrix 与 scale=1 时**完全一致**（R2 约束）
 - `Scene::findByPath("/camera_main")` 命中 camera 注册的 SceneNode；`getComponent<CameraComponent>()` 返回非空
-- 旧 demo 代码（不改 *逻辑*）能继续跑：`scene_viewer` 启动时 camera 行为与改造前一致
+- 旧 demo 代码（不改 *逻辑*）能继续跑：`lxe_editor` 启动时 camera 行为与改造前一致
 - `OrbitCameraController` / `FreeFlyCameraController` 改造（仅参数类型替换）后画面与改造前一致
 
 ## 修改范围
@@ -110,7 +110,7 @@ class CameraComponent final : public IComponent {
 - `src/core/scene/scene.hpp` / `.cpp`（addCamera / removeCamera 同时维护 m_cameras 与 SceneNode 层级；参数类型改 `SceneNode*`）
 - `src/core/frame_graph/render_queue.cpp`（按 owner node 取 `CameraComponent`，并按 `m_active` 过滤）
 - `src/infra/camera/orbit_camera_controller.cpp` / `freefly_camera_controller.cpp`（参数类型 `Camera*` → `CameraComponent*`，逻辑不变）
-- `src/demos/scene_viewer/main.cpp`（构造 camera 路径改为 SceneNode + addComponent）
+- `src/demos/lxe_editor/main.cpp`（构造 camera 路径改为 SceneNode + addComponent）
 - `src/test/integration/`（新增 camera-as-component 测试 + 现有 camera 测试参数迁移）
 - `notes/source_analysis/src/core/scene/camera.md`（落地后更新）
 
@@ -148,7 +148,7 @@ class CameraComponent final : public IComponent {
 - `R3`：已实现。控制器通过 `CameraComponent::lookAt()` / `setPosition()` 写回 owner transform；旧 `position / target / up` 字段未保留兼容层。
 - `R4`：已实现，但 API 相比草稿有两处已接受漂移：`Scene::addCamera/removeCamera` 使用 `SceneNodeSharedPtr` 而不是裸指针；scene 内部通过 renderable/path-root 现有语义让 camera 节点参与路径查询，而不是额外引入单独 root attach 对象模型。
 - `R5`：已实现。`target` / `cullingMask` / `matchesTarget()` 语义保持不变，inactive camera 会被 scene-level 资源与 mask 聚合忽略。
-- `R6`：已实现。`scene_viewer` 已改为显式创建 `editor_cam` 节点并挂 `CameraComponent`。
+- `R6`：已实现。`lxe_editor` 已改为显式创建 `editor_cam` 节点并挂 `CameraComponent`。
 - `R7`：已实现。Orbit / FreeFly 控制器逻辑保持原样，只把接口类型迁到 `CameraComponent&`。
 
 文档对实现的主要漂移：

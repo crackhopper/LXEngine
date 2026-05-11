@@ -1,16 +1,16 @@
-# demo-scene-viewer Specification
+# lxe-editor Specification
 
 ## Purpose
 
-Define the default integration demo that doubles as a hand-on playground for the renderer. The `scene_viewer` demo lives under `src/demos/scene_viewer/`, is gated by a build option separate from tests, and drives its frame loop through `LX_core::gpu::EngineLoop` rather than any hand-rolled loop. The default scene contains a `DamagedHelmet.gltf` node, a ground quad, one `DirectionalLight`, and a controllable camera. Two camera controllers (Orbit default, FreeFly) are available with `F2` rising-edge switching. UI panels are registered through `VulkanRenderer::setDrawUiCallback` and rely on `LX_infra::debug_ui` helpers where available. The glTF → current-material bridging is explicitly demo-local glue and does not get lowered into `src/infra/`. The demo is not registered with CTest; acceptance is a manual checklist captured in the demo's README.
+Define the default integration demo that doubles as a hand-on playground for the renderer. The `lxe_editor` demo lives under `src/demos/lxe_editor/`, is gated by a build option separate from tests, and drives its frame loop through `LX_core::gpu::EngineLoop` rather than any hand-rolled loop. The default scene contains a `DamagedHelmet.gltf` node, a ground quad, one `DirectionalLight`, and a controllable camera. Two camera controllers (Orbit default, FreeFly) are available with `F2` rising-edge switching. UI panels are registered through `VulkanRenderer::setDrawUiCallback` and rely on `LX_infra::debug_ui` helpers where available. The glTF → current-material bridging is explicitly demo-local glue and does not get lowered into `src/infra/`. The demo is not registered with CTest; acceptance is a manual checklist captured in the demo's README.
 
 ## Requirements
 
 ### Requirement: Demo directory layout and build switch
 
-A dedicated demo tree SHALL live under `src/demos/`. The first demo SHALL be `scene_viewer`, producing an executable target named `demo_scene_viewer`. Top-level `CMakeLists.txt` SHALL expose `option(LX_BUILD_DEMOS "Build demo executables" ON)` and, when enabled, SHALL `add_subdirectory(src/demos)`. `src/demos/CMakeLists.txt` SHALL be the entry that includes individual demo subdirectories via `add_subdirectory(scene_viewer)`. Demo sources SHALL NOT live in `src/test/` and SHALL NOT be registered with CTest.
+A dedicated demo tree SHALL live under `src/demos/`. The first demo SHALL be `lxe_editor`, producing an executable target named `lxe_editor`. Top-level `CMakeLists.txt` SHALL expose `option(LX_BUILD_DEMOS "Build demo executables" ON)` and, when enabled, SHALL `add_subdirectory(src/demos)`. `src/demos/CMakeLists.txt` SHALL be the entry that includes individual demo subdirectories via `add_subdirectory(lxe_editor)`. Demo sources SHALL NOT live in `src/test/` and SHALL NOT be registered with CTest.
 
-`src/demos/scene_viewer/` SHALL contain at minimum:
+`src/demos/lxe_editor/` SHALL contain at minimum:
 
 - `CMakeLists.txt`
 - `main.cpp`
@@ -21,22 +21,22 @@ A dedicated demo tree SHALL live under `src/demos/`. The first demo SHALL be `sc
 
 #### Scenario: LX_BUILD_DEMOS=ON produces demo executable
 
-- **WHEN** configuring with `LX_BUILD_DEMOS=ON` (default) and running `cmake --build build --target demo_scene_viewer`
-- **THEN** the build SHALL succeed and produce an executable at `build/src/demos/scene_viewer/demo_scene_viewer`
+- **WHEN** configuring with `LX_BUILD_DEMOS=ON` (default) and running `cmake --build build --target lxe_editor`
+- **THEN** the build SHALL succeed and produce an executable at `build/src/demos/lxe_editor/lxe_editor`
 
 #### Scenario: Demo is not registered with CTest
 
 - **WHEN** running `ctest --test-dir build -N`
-- **THEN** `demo_scene_viewer` SHALL NOT appear in the enumerated test list
+- **THEN** `lxe_editor` SHALL NOT appear in the enumerated test list
 
 ### Requirement: Demo runs on EngineLoop, not a hand-rolled loop
 
-`src/demos/scene_viewer/main.cpp` SHALL drive the frame pump through `LX_core::gpu::EngineLoop::run()` rather than any bespoke `while (running) { uploadData(); draw(); }` loop. The startup sequence SHALL perform, in order:
+`src/demos/lxe_editor/main.cpp` SHALL drive the frame pump through `LX_core::gpu::EngineLoop::run()` rather than any bespoke `while (running) { uploadData(); draw(); }` loop. The startup sequence SHALL perform, in order:
 
 1. Initialize the explicit runtime asset root and fail-fast (non-zero exit) on false
 2. Construct `LX_infra::Window`
 3. Construct `LX_core::backend::VulkanRenderer` via its factory
-4. `renderer->initialize(window, "demo_scene_viewer")`
+4. `renderer->initialize(window, "lxe_editor")`
 5. Build the `Scene` (helmet + ground + default directional light + camera)
 6. Construct `EngineLoop`
 7. `loop.initialize(window, renderer)`
@@ -49,7 +49,7 @@ Per-frame timing SHALL be read from the `Clock` passed into the update hook (or 
 
 #### Scenario: No hand-rolled main loop
 
-- **WHEN** grepping `src/demos/scene_viewer/main.cpp` for frame-pump constructs
+- **WHEN** grepping `src/demos/lxe_editor/main.cpp` for frame-pump constructs
 - **THEN** neither `while (running)` over `renderer->uploadData()` / `renderer->draw()`, nor any standalone `renderer->draw()` call outside of `EngineLoop`, SHALL be found
 
 #### Scenario: Startup fails fast when assets are missing
@@ -90,7 +90,7 @@ The demo SHALL NOT load `Sponza` in the first release; Sponza is a downstream ex
 #### Scenario: scene_builder stays demo-local
 
 - **WHEN** grepping the repository for `scene_builder.hpp`
-- **THEN** includes SHALL only appear under `src/demos/scene_viewer/`, not from any path under `src/core/` or `src/infra/`
+- **THEN** includes SHALL only appear under `src/demos/lxe_editor/`, not from any path under `src/core/` or `src/infra/`
 
 #### Scenario: Tangents are not generated when absent
 
@@ -152,7 +152,7 @@ The demo SHALL register its UI drawing function through `LX_core::backend::Vulka
 
 #### Scenario: UI is injected through VulkanRenderer
 
-- **WHEN** grepping `src/demos/scene_viewer/` for `setDrawUiCallback`
+- **WHEN** grepping `src/demos/lxe_editor/` for `setDrawUiCallback`
 - **THEN** there SHALL be exactly one registration site inside `main.cpp` (or its direct helper) targeting the concrete `VulkanRenderer`
 
 #### Scenario: Core editor panels are visible at startup
@@ -167,7 +167,7 @@ The demo SHALL register its UI drawing function through `LX_core::backend::Vulka
 
 ### Requirement: Demo README
 
-`src/demos/scene_viewer/README.md` SHALL contain, at minimum, these sections:
+`src/demos/lxe_editor/README.md` SHALL contain, at minimum, these sections:
 
 1. Purpose of the demo
 2. Upstream requirements it depends on (REQ-010 / 011 / 012 / 013 / 014 / 015 / 016 / 017 / 018 / 020)
@@ -181,14 +181,14 @@ The demo SHALL register its UI drawing function through `LX_core::backend::Vulka
 
 #### Scenario: README sections are present
 
-- **WHEN** reading `src/demos/scene_viewer/README.md`
+- **WHEN** reading `src/demos/lxe_editor/README.md`
 - **THEN** all five sections listed above SHALL be present and non-empty
 
 ### Requirement: Manual acceptance checklist
 
 Because the demo is not automated, acceptance SHALL be verified manually. The minimum checklist is:
 
-1. `demo_scene_viewer` launches successfully
+1. `lxe_editor` launches successfully
 2. `DamagedHelmet` and ground are visible in the viewport
 3. Orbit mode allows rotate / pan / zoom without obvious artifacts
 4. Pressing `F2` switches to FreeFly; W/A/S/D/Space/LShift/LCtrl all move the camera

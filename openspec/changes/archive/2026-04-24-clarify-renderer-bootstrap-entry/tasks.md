@@ -1,6 +1,6 @@
 ## 1. Entry Contract
 
-- [x] 1.1 Decide and document the role of the root `Renderer` executable relative to `scene_viewer`.
+- [x] 1.1 Decide and document the role of the root `Renderer` executable relative to `lxe_editor`.
 - [x] 1.2 Align CMake target comments/docs with that chosen role.
 
 ## 2. Helper Cleanup
@@ -10,5 +10,5 @@
 
 ## 3. Verification
 
-- [x] 3.1 Build the root executable and `scene_viewer` after the cleanup.
+- [x] 3.1 Build the root executable and `lxe_editor` after the cleanup.
 - [x] 3.2 Confirm docs and executable behavior no longer send conflicting signals.

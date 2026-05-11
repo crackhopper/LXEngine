@@ -17,10 +17,10 @@
 #include "core/utils/filesystem_tools.hpp"
 #include "infra/window/window.hpp"
 
-#include "automation_token_state.hpp"
+#include "api_token_state.hpp"
 #include "camera_rig.hpp"
-#include "editor_automation_server.hpp"
-#include "editor_automation_service.hpp"
+#include "lxe_editor_api_server.hpp"
+#include "lxe_editor_api_service.hpp"
 #include "editor_config_state.hpp"
 #include "editor_data_state.hpp"
 #include "runtime_state.hpp"
@@ -69,28 +69,28 @@ toSceneInputEditMode(const demo::UiOverlay::EditMode mode) {
   return demo::SceneInputEditMode::Selection;
 }
 
-[[nodiscard]] demo::AutomationEditMode
-toAutomationEditMode(const demo::UiOverlay::EditMode mode) {
+[[nodiscard]] demo::ApiEditMode toApiEditMode(
+    const demo::UiOverlay::EditMode mode) {
   switch (mode) {
   case demo::UiOverlay::EditMode::Selection:
-    return demo::AutomationEditMode::Selection;
+    return demo::ApiEditMode::Selection;
   case demo::UiOverlay::EditMode::Orbit:
-    return demo::AutomationEditMode::Orbit;
+    return demo::ApiEditMode::Orbit;
   case demo::UiOverlay::EditMode::FreeFly:
-    return demo::AutomationEditMode::FreeFly;
+    return demo::ApiEditMode::FreeFly;
   }
-  return demo::AutomationEditMode::Unknown;
+  return demo::ApiEditMode::Unknown;
 }
 
-[[nodiscard]] demo::AutomationPermissionLevel toAutomationPermissionLevel(
+[[nodiscard]] demo::ApiPermissionLevel toApiPermissionLevel(
     const demo::ScenePermissionLevel level) {
   switch (level) {
   case demo::ScenePermissionLevel::User:
-    return demo::AutomationPermissionLevel::User;
+    return demo::ApiPermissionLevel::User;
   case demo::ScenePermissionLevel::Admin:
-    return demo::AutomationPermissionLevel::Admin;
+    return demo::ApiPermissionLevel::Admin;
   }
-  return demo::AutomationPermissionLevel::Unknown;
+  return demo::ApiPermissionLevel::Unknown;
 }
 
 struct ApiLaunchOptions final {
@@ -105,36 +105,36 @@ parseApiLaunchOptions(const int argc, char** argv,
   ApiLaunchOptions options;
   for (int i = 1; i < argc; ++i) {
     const std::string arg = argv[i];
-    if (arg == "--automation-disable") {
+    if (arg == "--api-disable") {
       options.enabled = false;
       continue;
     }
-    if (arg == "--automation-enable") {
+    if (arg == "--api-enable") {
       options.enabled = true;
       continue;
     }
-    if (arg == "--automation-host") {
+    if (arg == "--api-host") {
       if (i + 1 >= argc) {
-        errorMessage = "missing value for --automation-host";
+        errorMessage = "missing value for --api-host";
         return std::nullopt;
       }
       options.host = argv[++i];
       continue;
     }
-    if (arg == "--automation-port") {
+    if (arg == "--api-port") {
       if (i + 1 >= argc) {
-        errorMessage = "missing value for --automation-port";
+        errorMessage = "missing value for --api-port";
         return std::nullopt;
       }
       try {
         const int parsed = std::stoi(argv[++i]);
         if (parsed < 0 || parsed > 65535) {
-          errorMessage = "automation port out of range";
+          errorMessage = "api port out of range";
           return std::nullopt;
         }
         options.port = static_cast<std::uint16_t>(parsed);
       } catch (...) {
-        errorMessage = "invalid integer for --automation-port";
+        errorMessage = "invalid integer for --api-port";
         return std::nullopt;
       }
       continue;
@@ -683,10 +683,10 @@ int main(int argc, char** argv) {
     session.editorConfig() = editorConfig;
     session.initialize();
     ClosePromptState closePrompt;
-    demo::AutomationTokenState automationTokenState(
+    demo::ApiTokenState apiTokenState(
         resolveRuntimePath("data/lxe_editor"));
     const std::string apiToken =
-        apiOptions->enabled ? automationTokenState.loadOrCreateToken()
+        apiOptions->enabled ? apiTokenState.loadOrCreateToken()
                             : std::string{};
     demo::LxeEditorApiServer apiServer(
         demo::LxeEditorApiServerConfig{
@@ -703,7 +703,7 @@ int main(int argc, char** argv) {
       std::cout << "[lxe_editor] api listening on "
                 << apiServer.config().host << ":"
                 << apiServer.boundPort() << " token_file="
-                << automationTokenState.tokenPath() << "\n";
+                << apiTokenState.tokenPath() << "\n";
     }
     const std::uint16_t apiBoundPort =
         apiOptions->enabled
@@ -727,7 +727,7 @@ int main(int argc, char** argv) {
                                                  : std::string{},
             .wsPort = apiBoundPort,
             .mcpUrl = mcpUrl,
-            .tokenFile = automationTokenState.tokenPath().string(),
+            .tokenFile = apiTokenState.tokenPath().string(),
             .startedAt = currentTimestampString(),
         });
     auto makeApiService =
@@ -737,7 +737,7 @@ int main(int argc, char** argv) {
           demo::LxeEditorApiService::Hooks{
               .sceneSummary =
                   [&]() {
-                    return demo::AutomationSceneSummary{
+                    return demo::ApiSceneSummary{
                         .sceneName = session.scene()->getSceneName(),
                         .currentDocumentPath =
                             session.currentDocumentPath().has_value()
@@ -747,18 +747,18 @@ int main(int argc, char** argv) {
                             session.currentSourceKind().has_value()
                                 ? (*session.currentSourceKind() ==
                                            demo::SceneSourceKind::Asset
-                                       ? demo::AutomationSceneSourceKind::Asset
-                                       : demo::AutomationSceneSourceKind::Local)
-                                : demo::AutomationSceneSourceKind::Unknown,
+                                       ? demo::ApiSceneSourceKind::Asset
+                                       : demo::ApiSceneSourceKind::Local)
+                                : demo::ApiSceneSourceKind::Unknown,
                         .permission =
-                            toAutomationPermissionLevel(session.permission()),
+                            toApiPermissionLevel(session.permission()),
                         .dirty = session.isDirty(),
                     };
                   },
               .toolbarSnapshot =
                   [&]() {
-                    return demo::AutomationToolbarSnapshot{
-                        .editMode = toAutomationEditMode(ui.currentEditMode()),
+                    return demo::ApiToolbarSnapshot{
+                        .editMode = toApiEditMode(ui.currentEditMode()),
                         .previewEnabled = editorState.isPreviewEnabled(),
                     };
                   },

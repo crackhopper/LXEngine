@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Introduce a real explicit scene root across runtime and scene serialization, show that root in the Scene Tree, and persist `scene_viewer` window/layout state under local `data/` storage.
+**Goal:** Introduce a real explicit scene root across runtime and scene serialization, show that root in the Scene Tree, and persist `lxe_editor` window/layout state under local `data/` storage.
 
 **Architecture:** Split the work into three seams. First, convert `Scene` from a synthetic-root path helper to a real root-node model and lock that with unit-style integration tests. Second, upgrade scene document load/save to serialize the explicit root while still normalizing older flat documents on load. Third, add a narrow editor-shell persistence layer that writes ImGui layout plus native window geometry to local files under `data/`, without mixing that state into scene assets.
 
-**Tech Stack:** C++20, yaml-cpp, ImGui, SDL/GLFW window backends, existing `Scene`, `SceneTreePanel`, `scene_viewer`, and `src/test/integration` coverage.
+**Tech Stack:** C++20, yaml-cpp, ImGui, SDL/GLFW window backends, existing `Scene`, `SceneTreePanel`, `lxe_editor`, and `src/test/integration` coverage.
 
 ---
 
@@ -22,13 +22,13 @@
   Responsibility: own the explicit root, update `findByPath("/")`, `getRootNodes()`, `dumpTree()`, and hierarchy traversal.
 - Modify: `src/core/editor/scene_tree_panel.cpp`
   Responsibility: render the explicit root row instead of flattening top-level authored nodes.
-- Modify: `src/demos/scene_viewer/scene_document.hpp`
+- Modify: `src/demos/lxe_editor/scene_document.hpp`
   Responsibility: extend the full-scene schema contract to include a serialized root node.
-- Modify: `src/demos/scene_viewer/scene_document.cpp`
+- Modify: `src/demos/lxe_editor/scene_document.cpp`
   Responsibility: load legacy flat documents, save canonical explicit-root documents.
-- Modify: `src/demos/scene_viewer/scene_runtime.cpp`
+- Modify: `src/demos/lxe_editor/scene_runtime.cpp`
   Responsibility: adapt runtime scene bootstrap and root-dependent traversal to the new model.
-- Modify: `src/demos/scene_viewer/README.md`
+- Modify: `src/demos/lxe_editor/README.md`
   Responsibility: document explicit-root scene files and local layout persistence behavior.
 - Modify: `notes/subsystems/scene.md`
   Responsibility: replace stale synthetic-root descriptions with the new explicit-root model after implementation lands.
@@ -42,17 +42,17 @@
   Responsibility: keep the GLFW backend aligned with the window API contract if this backend is still built.
 - Modify: `src/infra/gui/imgui_gui.cpp`
   Responsibility: move ImGui ini persistence from disabled mode to a local `data/` path.
-- Modify: `src/demos/scene_viewer/main.cpp`
+- Modify: `src/demos/lxe_editor/main.cpp`
   Responsibility: restore layout/window state on startup and save it on shutdown.
-- Create: `src/demos/scene_viewer/window_layout_state.hpp`
+- Create: `src/demos/lxe_editor/window_layout_state.hpp`
   Responsibility: small value types and helpers for local window/layout persistence.
-- Create: `src/demos/scene_viewer/window_layout_state.cpp`
+- Create: `src/demos/lxe_editor/window_layout_state.cpp`
   Responsibility: YAML or equivalent structured load/save for window geometry state.
 - Modify: `src/test/integration/test_scene_document.cpp`
   Responsibility: cover explicit-root save/load and legacy flat-document normalization.
 - Modify: `src/test/integration/test_scene_runtime.cpp`
   Responsibility: cover empty-scene/root bootstrap and root-aware runtime behavior.
-- Modify: `src/test/integration/test_scene_viewer_layout.cpp`
+- Modify: `src/test/integration/test_lxe_editor_layout.cpp`
   Responsibility: cover local layout-file paths and non-fatal missing/corrupt-state behavior.
 - Modify: `src/test/integration/test_scene_node_validation.cpp`
   Responsibility: lock root-node structural invariants if existing validation tests already cover node hierarchy.
@@ -263,9 +263,9 @@ git commit -m "feat: add explicit scene root model"
 ## Task 3: Upgrade scene document load/save to the explicit-root schema
 
 **Files:**
-- Modify: `src/demos/scene_viewer/scene_document.hpp`
-- Modify: `src/demos/scene_viewer/scene_document.cpp`
-- Modify: `src/demos/scene_viewer/scene_runtime.cpp`
+- Modify: `src/demos/lxe_editor/scene_document.hpp`
+- Modify: `src/demos/lxe_editor/scene_document.cpp`
+- Modify: `src/demos/lxe_editor/scene_runtime.cpp`
 - Modify: `src/test/integration/test_scene_document.cpp`
 - Modify: `src/test/integration/test_command_bus.cpp`
 
@@ -352,7 +352,7 @@ Expected: PASS, including legacy-load normalization and unchanged command-bus sa
 - [ ] **Step 6: Commit the document migration**
 
 ```bash
-git add src/demos/scene_viewer/scene_document.hpp src/demos/scene_viewer/scene_document.cpp src/demos/scene_viewer/scene_runtime.cpp src/test/integration/test_scene_document.cpp src/test/integration/test_command_bus.cpp
+git add src/demos/lxe_editor/scene_document.hpp src/demos/lxe_editor/scene_document.cpp src/demos/lxe_editor/scene_runtime.cpp src/test/integration/test_scene_document.cpp src/test/integration/test_command_bus.cpp
 git commit -m "feat: serialize explicit scene root"
 ```
 
@@ -417,12 +417,12 @@ git commit -m "feat: show explicit root in scene tree"
 ## Task 5: Add failing local layout/window-state coverage
 
 **Files:**
-- Create: `src/test/integration/test_scene_viewer_layout.cpp`
-- Modify: `src/demos/scene_viewer/CMakeLists.txt`
+- Create: `src/test/integration/test_lxe_editor_layout.cpp`
+- Modify: `src/demos/lxe_editor/CMakeLists.txt`
 
 - [ ] **Step 1: Add a failing test for missing-layout fallback**
 
-Create `test_scene_viewer_layout.cpp` with a small harness for the planned persistence helper:
+Create `test_lxe_editor_layout.cpp` with a small harness for the planned persistence helper:
 
 ```cpp
 void testLayoutLoaderMissingFilesFallsBackToDefaults() {
@@ -462,14 +462,14 @@ void testWindowLayoutStateRoundTripsGeometry() {
 
 - [ ] **Step 3: Register the new test target**
 
-Add to `src/demos/scene_viewer/CMakeLists.txt` or the test CMake file:
+Add to `src/demos/lxe_editor/CMakeLists.txt` or the test CMake file:
 
 ```cmake
-add_executable(test_scene_viewer_layout
-  ${CMAKE_SOURCE_DIR}/src/test/integration/test_scene_viewer_layout.cpp
+add_executable(test_lxe_editor_layout
+  ${CMAKE_SOURCE_DIR}/src/test/integration/test_lxe_editor_layout.cpp
   window_layout_state.cpp
 )
-add_test(NAME test_scene_viewer_layout COMMAND test_scene_viewer_layout)
+add_test(NAME test_lxe_editor_layout COMMAND test_lxe_editor_layout)
 ```
 
 - [ ] **Step 4: Run the new red test**
@@ -477,8 +477,8 @@ add_test(NAME test_scene_viewer_layout COMMAND test_scene_viewer_layout)
 Run:
 
 ```bash
-cmake --build build --target test_scene_viewer_layout
-./build/src/test/test_scene_viewer_layout
+cmake --build build --target test_lxe_editor_layout
+./build/src/test/test_lxe_editor_layout
 ```
 
 Expected: FAIL because the local layout persistence helper does not exist yet.
@@ -486,17 +486,17 @@ Expected: FAIL because the local layout persistence helper does not exist yet.
 - [ ] **Step 5: Commit the red layout coverage**
 
 ```bash
-git add src/test/integration/test_scene_viewer_layout.cpp src/demos/scene_viewer/CMakeLists.txt
+git add src/test/integration/test_lxe_editor_layout.cpp src/demos/lxe_editor/CMakeLists.txt
 git commit -m "test: add scene viewer layout persistence coverage"
 ```
 
 ## Task 6: Implement local window/layout persistence helpers
 
 **Files:**
-- Create: `src/demos/scene_viewer/window_layout_state.hpp`
-- Create: `src/demos/scene_viewer/window_layout_state.cpp`
+- Create: `src/demos/lxe_editor/window_layout_state.hpp`
+- Create: `src/demos/lxe_editor/window_layout_state.cpp`
 - Modify: `src/infra/gui/imgui_gui.cpp`
-- Modify: `src/test/integration/test_scene_viewer_layout.cpp`
+- Modify: `src/test/integration/test_lxe_editor_layout.cpp`
 
 - [ ] **Step 1: Define a narrow local persistence value type**
 
@@ -508,7 +508,7 @@ Create `window_layout_state.hpp`:
 #include <filesystem>
 #include <optional>
 
-namespace LX_demo::scene_viewer {
+namespace LX_demo::lxe_editor {
 
 struct WindowPoint final {
   int x = 0;
@@ -533,7 +533,7 @@ void saveWindowLayoutState(const std::filesystem::path& path,
 [[nodiscard]] std::filesystem::path defaultSceneViewerImGuiIniPath();
 [[nodiscard]] std::filesystem::path defaultSceneViewerWindowStatePath();
 
-} // namespace LX_demo::scene_viewer
+} // namespace LX_demo::lxe_editor
 ```
 
 - [ ] **Step 2: Implement structured YAML load/save**
@@ -558,7 +558,7 @@ WindowLayoutState loadWindowLayoutState(const std::filesystem::path& path) {
     }
     state.maximized = root["maximized"] ? root["maximized"].as<bool>() : false;
   } catch (const std::exception& e) {
-    std::cerr << "[scene_viewer] ignoring invalid window layout state '"
+    std::cerr << "[lxe_editor] ignoring invalid window layout state '"
               << path.string() << "': " << e.what() << "\n";
   }
   return state;
@@ -591,8 +591,8 @@ Keep `ConfigWindowsMoveFromTitleBarOnly = true`.
 Run:
 
 ```bash
-cmake --build build --target test_scene_viewer_layout
-./build/src/test/test_scene_viewer_layout
+cmake --build build --target test_lxe_editor_layout
+./build/src/test/test_lxe_editor_layout
 ```
 
 Expected: PASS for missing-file fallback and YAML round-trip.
@@ -600,7 +600,7 @@ Expected: PASS for missing-file fallback and YAML round-trip.
 - [ ] **Step 5: Commit the persistence helper**
 
 ```bash
-git add src/demos/scene_viewer/window_layout_state.hpp src/demos/scene_viewer/window_layout_state.cpp src/infra/gui/imgui_gui.cpp src/test/integration/test_scene_viewer_layout.cpp
+git add src/demos/lxe_editor/window_layout_state.hpp src/demos/lxe_editor/window_layout_state.cpp src/infra/gui/imgui_gui.cpp src/test/integration/test_lxe_editor_layout.cpp
 git commit -m "feat: add local scene viewer layout state"
 ```
 
@@ -663,7 +663,7 @@ If `src/infra/window/glfw_window.cpp` exists and is still built, implement the s
 Run:
 
 ```bash
-cmake --build build --target demo_scene_viewer test_scene_viewer_layout
+cmake --build build --target lxe_editor test_lxe_editor_layout
 ```
 
 Expected: PASS at compile time with both window backends satisfying the new interface.
@@ -675,13 +675,13 @@ git add src/core/platform/window.hpp src/infra/window/window.hpp src/infra/windo
 git commit -m "feat: add window geometry restore api"
 ```
 
-## Task 8: Wire startup/shutdown restore in `scene_viewer`
+## Task 8: Wire startup/shutdown restore in `lxe_editor`
 
 **Files:**
-- Modify: `src/demos/scene_viewer/main.cpp`
-- Modify: `src/demos/scene_viewer/README.md`
+- Modify: `src/demos/lxe_editor/main.cpp`
+- Modify: `src/demos/lxe_editor/README.md`
 - Modify: `notes/subsystems/scene.md`
-- Test: `src/test/integration/test_scene_viewer_layout.cpp`
+- Test: `src/test/integration/test_lxe_editor_layout.cpp`
 
 - [ ] **Step 1: Load local layout paths at startup**
 
@@ -689,13 +689,13 @@ In `main.cpp`, derive stable local paths:
 
 ```cpp
 const std::filesystem::path layoutDir =
-    scene_viewer::defaultSceneViewerLayoutDir();
+    lxe_editor::defaultSceneViewerLayoutDir();
 const std::filesystem::path imguiIniPath =
-    scene_viewer::defaultSceneViewerImGuiIniPath();
+    lxe_editor::defaultSceneViewerImGuiIniPath();
 const std::filesystem::path windowStatePath =
-    scene_viewer::defaultSceneViewerWindowStatePath();
-const scene_viewer::WindowLayoutState windowState =
-    scene_viewer::loadWindowLayoutState(windowStatePath);
+    lxe_editor::defaultSceneViewerWindowStatePath();
+const lxe_editor::WindowLayoutState windowState =
+    lxe_editor::loadWindowLayoutState(windowStatePath);
 ```
 
 Apply the loaded geometry before or immediately after window creation, depending on backend constraints.
@@ -720,11 +720,11 @@ At the same shutdown point where scene save prompts and runtime teardown already
 
 ```cpp
 if (const auto rect = window->getWindowRect(); rect.has_value()) {
-  scene_viewer::WindowLayoutState state;
-  state.position = scene_viewer::WindowPoint{rect->x, rect->y};
-  state.size = scene_viewer::WindowSize{rect->width, rect->height};
+  lxe_editor::WindowLayoutState state;
+  state.position = lxe_editor::WindowPoint{rect->x, rect->y};
+  state.size = lxe_editor::WindowSize{rect->width, rect->height};
   state.maximized = window->isMaximized();
-  scene_viewer::saveWindowLayoutState(windowStatePath, state);
+  lxe_editor::saveWindowLayoutState(windowStatePath, state);
 }
 ```
 
@@ -732,11 +732,11 @@ Let ImGui save its ini file through its normal shutdown path.
 
 - [ ] **Step 4: Update human-facing docs**
 
-Document in `src/demos/scene_viewer/README.md`:
+Document in `src/demos/lxe_editor/README.md`:
 
 - Scene Tree now shows an explicit `root`
 - scene files now save a canonical `root:` hierarchy
-- `scene_viewer` restores local layout from `data/scene_viewer/`
+- `lxe_editor` restores local layout from `data/lxe_editor/`
 
 Update `notes/subsystems/scene.md` to remove the stale "synthetic path root" description and describe the real root-node model instead.
 
@@ -745,23 +745,23 @@ Update `notes/subsystems/scene.md` to remove the stale "synthetic path root" des
 Run:
 
 ```bash
-cmake --build build --target demo_scene_viewer test_scene_document test_scene_runtime test_scene_node_validation test_scene_viewer_layout test_command_bus
+cmake --build build --target lxe_editor test_scene_document test_scene_runtime test_scene_node_validation test_lxe_editor_layout test_command_bus
 ./build/src/test/test_scene_document
 ./build/src/test/test_scene_runtime
 ./build/src/test/test_scene_node_validation
-./build/src/test/test_scene_viewer_layout
+./build/src/test/test_lxe_editor_layout
 ./build/src/test/test_command_bus
-timeout 8s xvfb-run -a ./build/src/demos/scene_viewer/demo_scene_viewer
+timeout 8s xvfb-run -a ./build/src/demos/lxe_editor/lxe_editor
 ```
 
 Expected:
 
 - all tests pass
-- `demo_scene_viewer` starts successfully without requiring preexisting layout files
+- `lxe_editor` starts successfully without requiring preexisting layout files
 
 - [ ] **Step 6: Perform the manual acceptance check**
 
-Manual check in `demo_scene_viewer`:
+Manual check in `lxe_editor`:
 
 1. Confirm Scene Tree shows `root` as the top row.
 2. Load a scene and confirm authored nodes appear under `root`.
@@ -772,7 +772,7 @@ Manual check in `demo_scene_viewer`:
 - [ ] **Step 7: Commit the integration wiring**
 
 ```bash
-git add src/demos/scene_viewer/main.cpp src/demos/scene_viewer/README.md notes/subsystems/scene.md
+git add src/demos/lxe_editor/main.cpp src/demos/lxe_editor/README.md notes/subsystems/scene.md
 git commit -m "feat: persist scene viewer layout and explicit root"
 ```
 

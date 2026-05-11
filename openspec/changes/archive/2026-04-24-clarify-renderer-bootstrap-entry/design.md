@@ -1,6 +1,6 @@
 ## Context
 
-The project now has a meaningful demo entrypoint in `scene_viewer`, while the root executable remains intentionally thin. That is acceptable only if the thin executable has a documented purpose rather than acting like a leftover product entry.
+The project now has a meaningful demo entrypoint in `lxe_editor`, while the root executable remains intentionally thin. That is acceptable only if the thin executable has a documented purpose rather than acting like a leftover product entry.
 
 ## Goals / Non-Goals
 
@@ -11,7 +11,7 @@ The project now has a meaningful demo entrypoint in `scene_viewer`, while the ro
 
 **Non-Goals:**
 - No large demo redesign.
-- No change to `scene_viewer` feature scope in this change.
+- No change to `lxe_editor` feature scope in this change.
 
 ## Decisions
 

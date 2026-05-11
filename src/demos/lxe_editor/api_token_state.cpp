@@ -1,4 +1,4 @@
-#include "demos/lxe_editor/automation_token_state.hpp"
+#include "demos/lxe_editor/api_token_state.hpp"
 
 #include <array>
 #include <fstream>
@@ -10,7 +10,7 @@
 namespace LX_demo::lxe_editor {
 namespace {
 
-constexpr std::string_view kTokenFileName = "automation_token.txt";
+constexpr std::string_view kTokenFileName = "api_token.txt";
 
 [[nodiscard]] std::string trimTrailingWhitespace(std::string text) {
   while (!text.empty() &&
@@ -23,18 +23,18 @@ constexpr std::string_view kTokenFileName = "automation_token.txt";
 
 } // namespace
 
-AutomationTokenState::AutomationTokenState(std::filesystem::path rootDir)
+ApiTokenState::ApiTokenState(std::filesystem::path rootDir)
     : m_rootDir(std::move(rootDir)), m_tokenPath(m_rootDir / kTokenFileName) {}
 
-const std::filesystem::path& AutomationTokenState::rootDir() const {
+const std::filesystem::path& ApiTokenState::rootDir() const {
   return m_rootDir;
 }
 
-const std::filesystem::path& AutomationTokenState::tokenPath() const {
+const std::filesystem::path& ApiTokenState::tokenPath() const {
   return m_tokenPath;
 }
 
-std::string AutomationTokenState::loadOrCreateToken() const {
+std::string ApiTokenState::loadOrCreateToken() const {
   if (std::filesystem::exists(m_tokenPath)) {
     std::ifstream in(m_tokenPath, std::ios::in | std::ios::binary);
     std::string token((std::istreambuf_iterator<char>(in)),
@@ -49,7 +49,7 @@ std::string AutomationTokenState::loadOrCreateToken() const {
   std::error_code ec;
   std::filesystem::create_directories(m_rootDir, ec);
   if (ec) {
-    std::cerr << "[lxe_editor] failed to create automation token directory "
+    std::cerr << "[lxe_editor] failed to create api token directory "
               << m_rootDir << ": " << ec.message() << "\n";
     return {};
   }
@@ -57,7 +57,7 @@ std::string AutomationTokenState::loadOrCreateToken() const {
   std::ofstream out(m_tokenPath, std::ios::out | std::ios::binary |
                                      std::ios::trunc);
   if (!out) {
-    std::cerr << "[lxe_editor] failed to write automation token file "
+    std::cerr << "[lxe_editor] failed to write api token file "
               << m_tokenPath << "\n";
     return {};
   }
@@ -65,7 +65,7 @@ std::string AutomationTokenState::loadOrCreateToken() const {
   return token;
 }
 
-std::string AutomationTokenState::generateToken() {
+std::string ApiTokenState::generateToken() {
   std::random_device rd;
   std::mt19937_64 rng(rd());
   std::uniform_int_distribution<unsigned int> dist(0, 255);

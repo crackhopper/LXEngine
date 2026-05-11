@@ -266,17 +266,17 @@ Expected: `test_command_bus passed`
 Run:
 
 ```bash
-cmake --build build --target test_command_bus test_scene_viewer_layout test_debug_ui_smoke demo_scene_viewer
+cmake --build build --target test_command_bus test_lxe_editor_layout test_debug_ui_smoke lxe_editor
 ./build/src/test/test_command_bus
-./build/src/test/test_scene_viewer_layout
+./build/src/test/test_lxe_editor_layout
 ./build/src/test/test_debug_ui_smoke
-timeout 8s xvfb-run -a ./build/src/demos/scene_viewer/demo_scene_viewer
+timeout 8s xvfb-run -a ./build/src/demos/lxe_editor/lxe_editor
 ```
 
 Expected:
 
 - `test_command_bus passed`
-- `scene_viewer` layout test passes
+- `lxe_editor` layout test passes
 - debug UI smoke passes
 - demo starts successfully under `xvfb-run` and exits via timeout without crash
 

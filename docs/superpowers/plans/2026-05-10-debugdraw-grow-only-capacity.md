@@ -338,10 +338,10 @@ Expected: PASS with no Vulkan validation errors related to undersized index buff
 Run:
 
 ```bash
-cmake --build build --target test_debug_draw test_viewport_overlay test_scene_viewer_layout test_vulkan_resource_manager -j4
+cmake --build build --target test_debug_draw test_viewport_overlay test_lxe_editor_layout test_vulkan_resource_manager -j4
 ./build/src/test/test_debug_draw
 ./build/src/test/test_viewport_overlay
-./build/src/test/test_scene_viewer_layout
+./build/src/test/test_lxe_editor_layout
 xvfb-run -a ./build/src/test/test_vulkan_resource_manager
 ```
 
@@ -349,7 +349,7 @@ Expected:
 
 - `OK: all debug_draw tests passed`
 - `[PASS] viewport_overlay tests passed.`
-- `[PASS] scene_viewer layout tests passed.`
+- `[PASS] lxe_editor layout tests passed.`
 - Vulkan resource-manager test exits successfully without new validation complaints
 
 - [ ] **Step 6: Commit the regression coverage**
@@ -370,10 +370,10 @@ git commit -m "test: cover debugdraw buffer growth in vulkan path"
 Run:
 
 ```bash
-cmake --build build --target test_debug_draw test_viewport_overlay test_scene_viewer_layout test_vulkan_resource_manager demo_scene_viewer -j4
+cmake --build build --target test_debug_draw test_viewport_overlay test_lxe_editor_layout test_vulkan_resource_manager lxe_editor -j4
 ./build/src/test/test_debug_draw
 ./build/src/test/test_viewport_overlay
-./build/src/test/test_scene_viewer_layout
+./build/src/test/test_lxe_editor_layout
 xvfb-run -a ./build/src/test/test_vulkan_resource_manager
 ```
 

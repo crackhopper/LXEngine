@@ -6,7 +6,7 @@ This change turns the remaining manual acceptance work into an explicit change a
 
 ## What Changes
 
-- Define the required manual acceptance checklist for `demo_scene_viewer`.
+- Define the required manual acceptance checklist for `lxe_editor`.
 - Capture Linux display-environment expectations for running the checklist.
 - Define completion evidence needed to archive the remaining REQ-019 work.
 

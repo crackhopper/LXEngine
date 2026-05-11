@@ -45,8 +45,8 @@ set(TEST_INTEGRATION_EXE_LIST
   test_gizmo_adapter
   test_lxe_editor_layout
   test_lxe_editor_interaction
-  test_lxe_editor_automation_service
-  test_lxe_editor_automation_server
+  test_lxe_editor_api_service
+  test_lxe_editor_api_server
   test_gltf_loader
 
   # test_render_sphere
@@ -190,33 +190,33 @@ if(TARGET test_lxe_editor_interaction)
   target_link_libraries(test_lxe_editor_interaction PRIVATE yaml-cpp::yaml-cpp)
 endif()
 
-if(TARGET test_lxe_editor_automation_service)
-  target_sources(test_lxe_editor_automation_service PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_automation_protocol.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_automation_service.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/automation_token_state.cpp
+if(TARGET test_lxe_editor_api_service)
+  target_sources(test_lxe_editor_api_service PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_api_protocol.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_api_service.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/api_token_state.cpp
   )
-  target_include_directories(test_lxe_editor_automation_service PRIVATE
+  target_include_directories(test_lxe_editor_api_service PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/..
   )
 endif()
 
-if(TARGET test_lxe_editor_automation_server)
-  target_sources(test_lxe_editor_automation_server PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_automation_protocol.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_automation_service.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_automation_server.cpp
+if(TARGET test_lxe_editor_api_server)
+  target_sources(test_lxe_editor_api_server PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_api_protocol.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_api_service.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_api_server.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_mcp_handler.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/automation_token_state.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/api_token_state.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/runtime_state.cpp
   )
-  target_include_directories(test_lxe_editor_automation_server PRIVATE
+  target_include_directories(test_lxe_editor_api_server PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/..
     ${CMAKE_CURRENT_SOURCE_DIR}/../infra/external/yaml-cpp/include
   )
-  target_link_libraries(test_lxe_editor_automation_server PRIVATE yaml-cpp::yaml-cpp)
+  target_link_libraries(test_lxe_editor_api_server PRIVATE yaml-cpp::yaml-cpp)
   if(WIN32)
-    target_link_libraries(test_lxe_editor_automation_server PRIVATE ws2_32)
+    target_link_libraries(test_lxe_editor_api_server PRIVATE ws2_32)
   endif()
 endif()
 

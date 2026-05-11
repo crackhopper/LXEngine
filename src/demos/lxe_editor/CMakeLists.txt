@@ -3,12 +3,12 @@
 # the existing VulkanRenderer.
 
 add_executable(lxe_editor
-  automation_token_state.cpp
+  api_token_state.cpp
   main.cpp
   camera_rig.cpp
-  editor_automation_protocol.cpp
-  editor_automation_server.cpp
-  editor_automation_service.cpp
+  lxe_editor_api_protocol.cpp
+  lxe_editor_api_server.cpp
+  lxe_editor_api_service.cpp
   editor_config_state.cpp
   editor_data_state.cpp
   editor_camera_state.cpp

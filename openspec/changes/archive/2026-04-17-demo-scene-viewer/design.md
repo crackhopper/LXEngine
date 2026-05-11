@@ -12,12 +12,12 @@ REQ-019 对本 demo 明确三件事：
 ## Goals / Non-Goals
 
 **Goals:**
-- 可运行的 `src/demos/scene_viewer/demo_scene_viewer` 可执行
+- 可运行的 `src/demos/lxe_editor/lxe_editor` 可执行
 - `DamagedHelmet` 在视口中可见、受光、可旋转/平移/缩放
 - 按 `F2` 切换 Orbit/FreeFly，双模式输入均正常
 - UI：Stats / Camera / Light / Help 四块面板
 - 修改 Camera / Light 字段后画面可见变化
-- `cmake --build build --target demo_scene_viewer` 在 `LX_BUILD_DEMOS=ON` 时产出可执行
+- `cmake --build build --target lxe_editor` 在 `LX_BUILD_DEMOS=ON` 时产出可执行
 - 正常关闭无崩溃
 
 **Non-Goals:**
@@ -30,15 +30,15 @@ REQ-019 对本 demo 明确三件事：
 
 ## Decisions
 
-### D1: `src/demos/scene_viewer/` 目录布局 + `LX_BUILD_DEMOS` 开关
+### D1: `src/demos/lxe_editor/` 目录布局 + `LX_BUILD_DEMOS` 开关
 
 **选择**：
 
 ```
 src/demos/
-├── CMakeLists.txt                     # add_subdirectory(scene_viewer)
-└── scene_viewer/
-    ├── CMakeLists.txt                 # add_executable(demo_scene_viewer ...)
+├── CMakeLists.txt                     # add_subdirectory(lxe_editor)
+└── lxe_editor/
+    ├── CMakeLists.txt                 # add_executable(lxe_editor ...)
     ├── main.cpp                       # EngineLoop 主入口
     ├── scene_builder.{hpp,cpp}        # glTF → Mesh / Material / SceneNode 桥接
     ├── camera_rig.{hpp,cpp}           # Orbit/FreeFly 切换 + sync
@@ -64,7 +64,7 @@ endif()
 
 ### D2: 主路径 `SceneNode`，不借用 `RenderableSubMesh`
 
-**选择**：helmet 与 ground 都以 `SceneNode::create(name, mesh, materialInstance)` 构造；`Scene::create("scene_viewer", helmetNode)` 后追加 ground。
+**选择**：helmet 与 ground 都以 `SceneNode::create(name, mesh, materialInstance)` 构造；`Scene::create("lxe_editor", helmetNode)` 后追加 ground。
 
 **替代方案**：沿用 `test_render_triangle.cpp` 的 `RenderableSubMesh` → REQ R6 明确要求"demo 应优先使用 SceneNode；不得把 RenderableSubMesh 写成长期推荐对象模型"；即便初期借用也只能视为临时过渡
 
@@ -178,7 +178,7 @@ indices 直接复制。
 ## Migration Plan
 
 1. 顶层 `CMakeLists.txt` 加 `LX_BUILD_DEMOS` option + `add_subdirectory(src/demos)`
-2. `src/demos/CMakeLists.txt` + `src/demos/scene_viewer/CMakeLists.txt` 建 target
+2. `src/demos/CMakeLists.txt` + `src/demos/lxe_editor/CMakeLists.txt` 建 target
 3. `scene_builder.{hpp,cpp}`（glTF 解包 + 材质桥接 + ground helper）
 4. `camera_rig.{hpp,cpp}`（Orbit/FreeFly + 切换）
 5. `ui_overlay.{hpp,cpp}`（setDrawUiCallback 目标 + Help panel）
@@ -191,4 +191,4 @@ indices 直接复制。
 ## Open Questions
 
 - `scene_builder::makeHelmetMaterial` 的 binding 名应为 `albedoMap` 还是别名？→ 实现阶段实测 `generic_material_loader` 解析 `blinnphong_default.material` 得到的 binding 名；若不是 `albedoMap` 就按真实名设置，不在 spec 硬编码
-- `Scene::create("scene_viewer", helmet)` 之后如何追加 ground 节点？→ 实现阶段先读 `scene.hpp` 的完整 API（看 Scene 是否有 `addRenderable` / `addRoot` 等），若只允许单根，则把 helmet + ground 组合成一个父 `SceneNode` 的子节点；这个调整不改本 spec 的承诺（demo 有 helmet + ground）
+- `Scene::create("lxe_editor", helmet)` 之后如何追加 ground 节点？→ 实现阶段先读 `scene.hpp` 的完整 API（看 Scene 是否有 `addRenderable` / `addRoot` 等），若只允许单根，则把 helmet + ground 组合成一个父 `SceneNode` 的子节点；这个调整不改本 spec 的承诺（demo 有 helmet + ground）

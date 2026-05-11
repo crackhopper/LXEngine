@@ -1,6 +1,6 @@
 ## Why
 
-The root `Renderer` executable is now only a thin environment bootstrap, but its role relative to `scene_viewer` is still ambiguous. The same part of the code also contains half-connected helper functions and duplicated environment toggles that obscure the intended entry flow.
+The root `Renderer` executable is now only a thin environment bootstrap, but its role relative to `lxe_editor` is still ambiguous. The same part of the code also contains half-connected helper functions and duplicated environment toggles that obscure the intended entry flow.
 
 This change gives the top-level executable a clear contract and removes misleading dead helper behavior around renderer bootstrap/debug plumbing.
 

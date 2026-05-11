@@ -2,15 +2,15 @@
 
 ## Context
 
-当前仓库里原来的 `scene_viewer` 已经不只是一个 demo。它已经具备：
+当前仓库里原来的 `lxe_editor` 已经不只是一个 demo。它已经具备：
 
 - 完整 scene asset / local workspace 工作流
 - 浮动 toolbar、selection / orbit / freefly / preview 编辑模式
 - command-first 的 editor command surface
-- HTTP / WebSocket automation surface
-- `EditorAutomationService` 这类可复用的自动化核心
+- HTTP / WebSocket API surface
+- `LxeEditorApiService` 这类可复用的自动化核心
 
-因此继续沿用 `scene_viewer` 这个名字已经不合适。新的统一名称应该是
+因此继续沿用 `lxe_editor` 这个名字已经不合适。新的统一名称应该是
 `lxe_editor`，即 `LX Engine Editor`。
 
 同时，当前自动化与测试还缺两层收口：
@@ -20,13 +20,13 @@
 
 这份设计把三件事放在一次连续迁移里处理：
 
-- 产品与工程命名统一：`scene_viewer` -> `lxe_editor`
+- 产品与工程命名统一：`lxe_editor` -> `lxe_editor`
 - 在 `lxe_editor` 进程内提供 MCP server
 - 把 `lxe_editor` 的测试主路径迁到 API 黑盒测试，MCP 主要用于 Codex 诊断
 
 ## Goals
 
-- `scene_viewer` 不再作为长期产品名存在；编辑器统一改名为 `lxe_editor`
+- `lxe_editor` 不再作为长期产品名存在；编辑器统一改名为 `lxe_editor`
 - `lxe_editor` 进程内提供 MCP server，并通过本地 `.codex` 配置接入 Codex
 - Codex 后续调试时可以直接使用 `lxe_editor` 的 MCP tools/resources
 - `lxe_editor` 的官方自动化测试主路径切换为 Python API 黑盒测试
@@ -34,7 +34,7 @@
 
 ## Non-Goals
 
-- 这次不废弃现有 HTTP / WebSocket automation surface
+- 这次不废弃现有 HTTP / WebSocket API surface
 - 这次不把 MCP 做成独立外部进程
 - 这次不把所有 engine 测试都迁成 Python；只迁 `lxe_editor` 相关的行为测试主路径
 - 这次不强制把所有 namespace 泛化成 `editor`；第一版统一到 `lxe_editor`
@@ -45,7 +45,7 @@
 
 这是推荐方案。
 
-- 代码、target、可执行名、窗口标题、文档、automation/MCP 命名全部统一为
+- 代码、target、可执行名、窗口标题、文档、api/MCP 命名全部统一为
   `lxe_editor`
 - MCP server 在 `lxe_editor` 进程内起独立线程，对 `127.0.0.1` 提供服务
 - HTTP / WebSocket 继续作为正式自动化 API
@@ -54,7 +54,7 @@
 
 优点：
 
-- 命名一次到位，后续不会再背 `scene_viewer` 的历史包袱
+- 命名一次到位，后续不会再背 `lxe_editor` 的历史包袱
 - MCP 和 API 共享同一个自动化核心，不会出现两套真相状态
 - Python 很适合拉起 GUI 进程、读 token、发请求、轮询状态、做断言
 
@@ -96,42 +96,42 @@
 理由很直接：
 
 - 命名统一越早做越便宜
-- `lxe_editor` 已经具备 automation core，最适合继续长成 editor，而不是继续挂在 demo 名下
+- `lxe_editor` 已经具备 API core，最适合继续长成 editor，而不是继续挂在 demo 名下
 - API 黑盒测试更接近真实用户行为，也更方便 Codex 和人工排障复用
 - MCP 放进进程内线程最贴合“Codex 诊断”这个用途
 
 ## Design 1: Naming Unification
 
-`scene_viewer` 作为正式名称被废弃，新的唯一产品名是 `lxe_editor`。
+`lxe_editor` 作为正式名称被废弃，新的唯一产品名是 `lxe_editor`。
 
 统一改名覆盖：
 
-- 源码目录：`src/demos/scene_viewer/` -> `src/demos/lxe_editor/`
-- CMake target：`demo_scene_viewer` -> `lxe_editor`
+- 源码目录：`src/demos/lxe_editor/` -> `src/demos/lxe_editor/`
+- CMake target：`lxe_editor` -> `lxe_editor`
 - 最终可执行名：`lxe_editor`
 - 窗口标题：`lxe_editor`
-- 本地数据目录：`data/scene_viewer/` -> `data/lxe_editor/`
-- README、notes、spec、plan、测试说明、automation 文案
+- 本地数据目录：`data/lxe_editor/` -> `data/lxe_editor/`
+- README、notes、spec、plan、测试说明、api 文案
 - MCP server 名称、MCP tool/resource 命名
 
 代码内部也要同步清理：
 
 - `SceneViewerSession` 这类类型名改成 `LxeEditorSession` 或等价语义名
-- `scene_viewer_commands.*` 改成 `lxe_editor_commands.*`
-- `test_scene_viewer_*` 改成 `test_lxe_editor_*`
+- `lxe_editor_commands.*` 是规范命名
+- `test_lxe_editor_*` 改成 `test_lxe_editor_*`
 
 兼容策略：
 
-- 这次不保留旧 `scene_viewer` 名称的长期别名
+- 这次不保留旧 `lxe_editor` 名称的长期别名
 - 如果过渡期需要，可以在单次变更里临时保留重定向或文件移动说明
-- 变更完成后，仓库里不应再把 `scene_viewer` 当正式入口名继续传播
+- 变更完成后，仓库里不应再把 `lxe_editor` 当正式入口名继续传播
 
 ## Design 2: Automation And MCP Layering
 
 `lxe_editor` 内部继续只有一套自动化真相状态：
 
 - command surface
-- `EditorAutomationService`
+- `LxeEditorApiService`
 - structured snapshots
 - events
 
@@ -148,7 +148,7 @@
 
 关键约束：
 
-- MCP 不允许直接绕过 automation core 偷改状态
+- MCP 不允许直接绕过 API core 偷改状态
 - 结构化操作如果本质是 editor action，最终仍应走 command surface 或同一自动化服务路径
 - Codex 看见的状态与脚本测试看见的状态必须是同一份
 
@@ -159,7 +159,7 @@ MCP server 放在 `lxe_editor` 进程内，以独立线程运行。
 选择本地 TCP：
 
 - 默认只绑定 `127.0.0.1`
-- 不复用 HTTP automation 的“全网卡开放”策略
+- 不复用 HTTP api 的“全网卡开放”策略
 - 不再增加额外 token 层，依赖本机地址边界控制
 
 原因：
@@ -249,7 +249,7 @@ MCP 第一版主要提供高层诊断能力，而不是简单复刻底层 HTTP p
 
 建议增加显式启动模式，例如：
 
-- `--automation-background`
+- `--api-background`
 - 或 `--profile codex`
 
 该模式下：
@@ -271,8 +271,8 @@ MCP 第一版主要提供高层诊断能力，而不是简单复刻底层 HTTP p
 - 数学、scene graph、transform、path lookup
 - `CommandBus` 的纯解析和 undo/redo 核心
 - `SceneDocument` / `SceneCatalog` / `SceneSession`
-- `EditorAutomationProtocol`
-- `EditorAutomationService`
+- `LxeEditorApiProtocol`
+- `LxeEditorApiService`
 - 渲染 backend 与资源系统测试
 
 原因是这些测试快、定位准，不依赖整个 editor 生命周期。
@@ -329,8 +329,8 @@ MCP 的主要角色是：
 
 为了降低风险，按下面顺序执行：
 
-1. 统一改名：`scene_viewer` -> `lxe_editor`
-2. 迁移本地数据目录：`data/scene_viewer` -> `data/lxe_editor`
+1. 统一改名：`lxe_editor` -> `lxe_editor`
+2. 迁移本地数据目录：`data/lxe_editor` -> `data/lxe_editor`
 3. 在 `lxe_editor` 内部接入 MCP server 线程
 4. 把 `.codex` 配置接上本地 MCP server
 5. 补本地 Codex 调试 skills
@@ -364,7 +364,7 @@ MCP 的主要角色是：
 - Codex 启动后能通过本地 `.codex` 配置访问 `lxe_editor` MCP
 - `lxe_editor` 可作为后台长期运行实例被复用
 - 新增 Python API 黑盒测试能覆盖 editor 主行为
-- 一部分旧的 `scene_viewer` 风格系统级 C++ 测试被迁移或删除
+- 一部分旧的 `lxe_editor` 风格系统级 C++ 测试被迁移或删除
 - 保留的 C++ 测试只承担纯逻辑 / 核心模块验证
 
 ## Open Questions Resolved

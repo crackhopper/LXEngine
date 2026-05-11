@@ -115,23 +115,23 @@ command system as the in-app console.
 
 ```sh
 ./build/src/demos/lxe_editor/lxe_editor \
-  --automation-host 0.0.0.0 \
-  --automation-port 3768
+  --api-host 0.0.0.0 \
+  --api-port 3768
 ```
 
 Supported flags:
 
-- `--automation-enable`
-- `--automation-disable`
-- `--automation-host <host>`
-- `--automation-port <port>`
+- `--api-enable`
+- `--api-disable`
+- `--api-host <host>`
+- `--api-port <port>`
 
 The API server is enabled by default. On startup the demo prints the bound
 host, port, and token-file path.
 
 ### Token auth
 
-- Token file: `data/lxe_editor/automation_token.txt`
+- Token file: `data/lxe_editor/api_token.txt`
 - HTTP: `Authorization: Bearer <token>`
 - WebSocket: either the same header or `?token=<token>` on `/ws`
 

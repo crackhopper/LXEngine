@@ -2,7 +2,7 @@ Date: 2026-05-11
 
 ## Context
 
-`scene_viewer` currently exposes two editor ergonomics gaps:
+`lxe_editor` currently exposes two editor ergonomics gaps:
 
 1. The Scene Tree renders top-level scene nodes as a flat list. The codebase
    still relies on a synthetic path root for `findByPath("/")`, but that root
@@ -15,7 +15,7 @@ The desired behavior is:
 
 - scenes use a real explicit root node in both runtime data and serialized scene files
 - the Scene Tree displays that root node directly
-- `scene_viewer` restores local editor layout state from user data on the next launch
+- `lxe_editor` restores local editor layout state from user data on the next launch
 - layout persistence stays local to the machine and does not travel with scene assets
 
 ## Goals
@@ -23,7 +23,7 @@ The desired behavior is:
 - Replace the synthetic scene root model with a real explicit root node in `Scene`.
 - Serialize and deserialize the root node as part of the scene document.
 - Display the explicit root node in the Scene Tree UI.
-- Persist `scene_viewer` layout state under `data/` and restore it on startup.
+- Persist `lxe_editor` layout state under `data/` and restore it on startup.
 - Restore main window position, size, and maximized state in addition to ImGui panel layout.
 
 ## Non-Goals
@@ -152,12 +152,12 @@ The restored state does not include:
 
 ### Storage
 
-`scene_viewer` should use a dedicated local layout file under `data/`.
+`lxe_editor` should use a dedicated local layout file under `data/`.
 
 Recommended shape:
 
-- `data/scene_viewer/layout.ini` for ImGui layout state
-- `data/scene_viewer/window_state.yaml` or equivalent small structured file for
+- `data/lxe_editor/layout.ini` for ImGui layout state
+- `data/lxe_editor/window_state.yaml` or equivalent small structured file for
   native window geometry and maximized state
 
 The exact filenames may vary, but the design requires:
@@ -188,7 +188,7 @@ The window abstraction must grow enough API to restore:
 - size
 - maximized state
 
-At minimum, the SDL backend path used by current `scene_viewer` must implement
+At minimum, the SDL backend path used by current `lxe_editor` must implement
 this behavior. If GLFW remains a supported backend in the repository, the same
 interface contract should be implemented there too, so the abstraction stays honest.
 
@@ -252,6 +252,6 @@ Automated coverage should include:
 
 Manual verification should include:
 
-- launch `scene_viewer`, confirm the Scene Tree shows `root`
+- launch `lxe_editor`, confirm the Scene Tree shows `root`
 - move panels, resize or maximize the main window, close the app, relaunch, and confirm layout restoration
 - load an older scene file, save it, and confirm the new file now contains the explicit root structure

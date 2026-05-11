@@ -1,6 +1,6 @@
 ## Why
 
-REQ-041-a needs to converge prior editor primitives (transform hierarchy, path lookup, camera component, picking, debug draw, command bus, and ImGui bootstrap) into the first minimal in-engine editor. Current `demo_scene_viewer` still exposes only stats/camera/light debug panels and cannot select or edit scene nodes through a unified command workflow.
+REQ-041-a needs to converge prior editor primitives (transform hierarchy, path lookup, camera component, picking, debug draw, command bus, and ImGui bootstrap) into the first minimal in-engine editor. Current `lxe_editor` still exposes only stats/camera/light debug panels and cannot select or edit scene nodes through a unified command workflow.
 
 ## What Changes
 
@@ -17,5 +17,5 @@ REQ-041-a needs to converge prior editor primitives (transform hierarchy, path l
 ## Impact
 
 - Adds new editor UI code under `src/core/editor/`.
-- Updates `scene_viewer` demo integration and camera/render-queue behavior.
+- Updates `lxe_editor` demo integration and camera/render-queue behavior.
 - Reuses the REQ-040 command bus as the only mutation entrypoint.

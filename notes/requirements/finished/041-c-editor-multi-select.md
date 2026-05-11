@@ -92,7 +92,7 @@
 
 本轮验证（2026-05-08）：
 
-- `cmake --build build --target demo_scene_viewer`
+- `cmake --build build --target lxe_editor`
 - `cmake --build build --target BuildTest test_scene_tree_panel test_editor_multi_select test_viewport_overlay`
 - `ctest --test-dir build --output-on-failure -L auto -LE requires_video_device`
-- `ctest --test-dir build --output-on-failure -R 'test_(scene_tree_panel|editor_multi_select|viewport_overlay|inspector_panel|gizmo_adapter|scene_viewer_layout|command_bus|command_bus_v2|debug_ui_smoke)$'`
+- `ctest --test-dir build --output-on-failure -R 'test_(scene_tree_panel|editor_multi_select|viewport_overlay|inspector_panel|gizmo_adapter|lxe_editor_layout|command_bus|command_bus_v2|debug_ui_smoke)$'`

@@ -13,6 +13,6 @@
 
 ## 3. Integration And Docs
 
-- [x] 3.1 Migrate the current runnable entry path (`test_render_triangle`; future `demo_scene_viewer`) to use `EngineLoop` as its runtime entry point
+- [x] 3.1 Migrate the current runnable entry path (`test_render_triangle`; future `lxe_editor`) to use `EngineLoop` as its runtime entry point
 - [x] 3.2 Update tutorial examples to present handwritten loops only as expanded teaching form and `EngineLoop` as the recommended production-facing shape
 - [x] 3.3 Add or update tests that verify scene start is not per-frame, the update hook runs before upload/draw, and `run()` exits on stop/window close

@@ -2,87 +2,87 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Fix scene-view picking and toolbar behavior, expose all key scene_viewer editor actions through the command system, and add a reusable HTTP/WebSocket automation surface with token auth and test coverage.
+**Goal:** Fix scene-view picking and toolbar behavior, expose all key lxe_editor editor actions through the command system, and add a reusable HTTP/WebSocket API surface with token auth and test coverage.
 
-**Architecture:** Split the work into four seams. First, tighten the existing scene_viewer interaction path so picking, hit markers, and toolbar actions behave correctly and are fully command-backed. Second, expand the command surface and structured probe outputs so every important editor behavior and state observation has a console command. Third, introduce a protocol-agnostic `EditorAutomationService` that owns command execution, snapshots, and events without owning editor state. Fourth, add transport adapters for HTTP/WebSocket plus out-of-process integration tests, while keeping MCP as a future adapter over the same service.
+**Architecture:** Split the work into four seams. First, tighten the existing lxe_editor interaction path so picking, hit markers, and toolbar actions behave correctly and are fully command-backed. Second, expand the command surface and structured probe outputs so every important editor behavior and state observation has a console command. Third, introduce a protocol-agnostic `LxeEditorApiService` that owns command execution, snapshots, and events without owning editor state. Fourth, add transport adapters for HTTP/WebSocket plus out-of-process integration tests, while keeping MCP as a future adapter over the same service.
 
-**Tech Stack:** C++20, existing `CommandBus`/`EditorState`/`SceneViewerSession`, scene_viewer demo code, yaml-cpp, ImGui, existing test binaries under `src/test/integration`, and a lightweight HTTP/WebSocket server library already acceptable to the repo or added narrowly to `scene_viewer`.
+**Tech Stack:** C++20, existing `CommandBus`/`EditorState`/`SceneViewerSession`, lxe_editor demo code, yaml-cpp, ImGui, existing test binaries under `src/test/integration`, and a lightweight HTTP/WebSocket server library already acceptable to the repo or added narrowly to `lxe_editor`.
 
 ---
 
 ## File Structure
 
-- Modify: `src/demos/scene_viewer/ui_overlay.hpp`
+- Modify: `src/demos/lxe_editor/ui_overlay.hpp`
   Responsibility: declare toolbar callbacks or state access needed for icon-only toolbar and reset-camera action.
-- Modify: `src/demos/scene_viewer/ui_overlay.cpp`
+- Modify: `src/demos/lxe_editor/ui_overlay.cpp`
   Responsibility: remove static toolbar text, add reset icon button, keep tooltip-only UX, and route button actions through command-backed callbacks.
-- Modify: `src/demos/scene_viewer/scene_interaction_controller.hpp`
+- Modify: `src/demos/lxe_editor/scene_interaction_controller.hpp`
   Responsibility: expose scene-view-rect aware picking entry points and keep selection debug state queryable.
-- Modify: `src/demos/scene_viewer/scene_interaction_controller.cpp`
+- Modify: `src/demos/lxe_editor/scene_interaction_controller.cpp`
   Responsibility: compute scene-view-local ray inputs, fix hit-point placement, and keep AABB/marker debug draw in sync with selection.
-- Create: `src/demos/scene_viewer/scene_view_rect.hpp`
+- Create: `src/demos/lxe_editor/scene_view_rect.hpp`
   Responsibility: small value type for the effective visible scene rect and hit-testing helpers.
-- Create: `src/demos/scene_viewer/scene_view_rect.cpp`
+- Create: `src/demos/lxe_editor/scene_view_rect.cpp`
   Responsibility: derive the visible scene rect from current editor layout/window state.
-- Modify: `src/demos/scene_viewer/main.cpp`
-  Responsibility: wire scene-view rect into update-hook picking, bind new commands, and host automation-service/server lifecycle.
-- Modify: `src/demos/scene_viewer/camera_rig.hpp`
+- Modify: `src/demos/lxe_editor/main.cpp`
+  Responsibility: wire scene-view rect into update-hook picking, bind new commands, and host api-service/server lifecycle.
+- Modify: `src/demos/lxe_editor/camera_rig.hpp`
   Responsibility: expose a narrow re-sync API for “editor cam <- game cam” without changing mode semantics.
-- Modify: `src/demos/scene_viewer/camera_rig.cpp`
+- Modify: `src/demos/lxe_editor/camera_rig.cpp`
   Responsibility: implement controller-state resync from the current camera pose.
 - Modify: `src/core/editor/commands/builtin_commands.cpp`
   Responsibility: add new editor commands and structured probe commands, using shared helpers rather than UI-only paths.
-- Create: `src/demos/scene_viewer/editor_automation_service.hpp`
-  Responsibility: declare protocol-agnostic automation API for command execution, snapshots, and events.
-- Create: `src/demos/scene_viewer/editor_automation_service.cpp`
+- Create: `src/demos/lxe_editor/lxe_editor_api_service.hpp`
+  Responsibility: declare protocol-agnostic API for command execution, snapshots, and events.
+- Create: `src/demos/lxe_editor/lxe_editor_api_service.cpp`
   Responsibility: implement command-backed actions, state snapshots, event generation, and error translation.
-- Create: `src/demos/scene_viewer/editor_automation_protocol.hpp`
+- Create: `src/demos/lxe_editor/lxe_editor_api_protocol.hpp`
   Responsibility: shared JSON-ish request/response/event schema structs reused by HTTP, WebSocket, and future MCP adapters.
-- Create: `src/demos/scene_viewer/editor_automation_protocol.cpp`
+- Create: `src/demos/lxe_editor/lxe_editor_api_protocol.cpp`
   Responsibility: serialization helpers and stable schema utilities.
-- Create: `src/demos/scene_viewer/editor_automation_server.hpp`
+- Create: `src/demos/lxe_editor/lxe_editor_api_server.hpp`
   Responsibility: declare HTTP/WebSocket server wrapper, config, and auth contract.
-- Create: `src/demos/scene_viewer/editor_automation_server.cpp`
+- Create: `src/demos/lxe_editor/lxe_editor_api_server.cpp`
   Responsibility: implement socket lifecycle, request routing, token auth, and event broadcast over HTTP/WebSocket.
-- Create: `src/demos/scene_viewer/automation_token_state.hpp`
+- Create: `src/demos/lxe_editor/api_token_state.hpp`
   Responsibility: token file path/config helpers.
-- Create: `src/demos/scene_viewer/automation_token_state.cpp`
-  Responsibility: load-or-generate token file handling under `data/scene_viewer/`.
-- Modify: `src/demos/scene_viewer/CMakeLists.txt`
-  Responsibility: compile the new automation and scene-rect modules plus any narrowly scoped transport dependency.
-- Modify: `src/demos/scene_viewer/README.md`
+- Create: `src/demos/lxe_editor/api_token_state.cpp`
+  Responsibility: load-or-generate token file handling under `data/lxe_editor/`.
+- Modify: `src/demos/lxe_editor/CMakeLists.txt`
+  Responsibility: compile the new api and scene-rect modules plus any narrowly scoped transport dependency.
+- Modify: `src/demos/lxe_editor/README.md`
   Responsibility: document toolbar behavior, new commands, token/auth files, and HTTP/WebSocket usage.
 - Modify: `notes/subsystems/scene.md`
-  Responsibility: update subsystem notes for command-first automation and scene_viewer testing hooks.
+  Responsibility: update subsystem notes for command-first api and lxe_editor testing hooks.
 - Modify: `src/test/CMakeLists.txt`
-  Responsibility: add sources/targets for new scene_viewer automation tests and any transport dependency linkage.
-- Modify: `src/test/integration/test_scene_viewer_interaction.cpp`
+  Responsibility: add sources/targets for new lxe_editor API tests and any transport dependency linkage.
+- Modify: `src/test/integration/test_lxe_editor_interaction.cpp`
   Responsibility: cover scene-view rect picking, corrected hit markers, and reset-camera behavior.
-- Modify: `src/test/integration/test_scene_viewer_layout.cpp`
+- Modify: `src/test/integration/test_lxe_editor_layout.cpp`
   Responsibility: cover icon-only toolbar and toolbar layout/persistence behavior after text removal.
 - Modify: `src/test/integration/test_command_bus.cpp`
   Responsibility: cover new mode/reset/probe commands and structured JSON outputs.
-- Create: `src/test/integration/test_scene_viewer_automation_service.cpp`
-  Responsibility: cover protocol-agnostic snapshots, events, and command-backed automation actions without opening sockets.
-- Create: `src/test/integration/test_scene_viewer_automation_server.cpp`
-  Responsibility: launch a real scene_viewer child process, authenticate over HTTP/WebSocket, drive commands, and assert state/events.
+- Create: `src/test/integration/test_lxe_lxe_editor_api_service.cpp`
+  Responsibility: cover protocol-agnostic snapshots, events, and command-backed api actions without opening sockets.
+- Create: `src/test/integration/test_lxe_lxe_editor_api_server.cpp`
+  Responsibility: launch a real lxe_editor child process, authenticate over HTTP/WebSocket, drive commands, and assert state/events.
 
 ## Task 1: Add failing coverage for scene-view rect picking and toolbar reset UX
 
 **Files:**
-- Create: `src/demos/scene_viewer/scene_view_rect.hpp`
-- Create: `src/demos/scene_viewer/scene_view_rect.cpp`
-- Modify: `src/test/integration/test_scene_viewer_interaction.cpp`
-- Modify: `src/test/integration/test_scene_viewer_layout.cpp`
+- Create: `src/demos/lxe_editor/scene_view_rect.hpp`
+- Create: `src/demos/lxe_editor/scene_view_rect.cpp`
+- Modify: `src/test/integration/test_lxe_editor_interaction.cpp`
+- Modify: `src/test/integration/test_lxe_editor_layout.cpp`
 
 - [ ] **Step 1: Add a failing scene-view-rect picking test**
 
-Extend `src/test/integration/test_scene_viewer_interaction.cpp` with a focused test that simulates a visible scene rect smaller than the full window:
+Extend `src/test/integration/test_lxe_editor_interaction.cpp` with a focused test that simulates a visible scene rect smaller than the full window:
 
 ```cpp
 void testSelectionPickingUsesSceneViewRectInsteadOfWholeWindow() {
   Fixture fixture;
-  const LX_demo::scene_viewer::SceneViewRect rect{
+  const LX_demo::lxe_editor::SceneViewRect rect{
       .x = 280.0f,
       .y = 68.0f,
       .width = 640.0f,
@@ -105,7 +105,7 @@ Add a second test to the same file:
 ```cpp
 void testSelectionPickingIgnoresClicksOutsideSceneViewRect() {
   Fixture fixture;
-  const LX_demo::scene_viewer::SceneViewRect rect{
+  const LX_demo::lxe_editor::SceneViewRect rect{
       .x = 280.0f,
       .y = 68.0f,
       .width = 640.0f,
@@ -121,7 +121,7 @@ void testSelectionPickingIgnoresClicksOutsideSceneViewRect() {
 
 - [ ] **Step 3: Add a failing reset-toolbar layout test**
 
-Extend `src/test/integration/test_scene_viewer_layout.cpp` with a toolbar assertion:
+Extend `src/test/integration/test_lxe_editor_layout.cpp` with a toolbar assertion:
 
 ```cpp
 void testToolbarRendersIconOnlyWithoutStaticModeText() {
@@ -173,37 +173,37 @@ void testResetEditorCameraToGameCameraCopiesPoseWithoutPreviewToggle() {
 Run:
 
 ```bash
-cmake --build build --target test_scene_viewer_interaction test_scene_viewer_layout test_command_bus
-./build/src/test/test_scene_viewer_interaction
-./build/src/test/test_scene_viewer_layout
+cmake --build build --target test_lxe_editor_interaction test_lxe_editor_layout test_command_bus
+./build/src/test/test_lxe_editor_interaction
+./build/src/test/test_lxe_editor_layout
 ./build/src/test/test_command_bus
 ```
 
-Expected: FAIL because `scene_viewer` still uses full-window coordinates, the toolbar still renders static text, and the reset command does not exist yet.
+Expected: FAIL because `lxe_editor` still uses full-window coordinates, the toolbar still renders static text, and the reset command does not exist yet.
 
 - [ ] **Step 6: Commit the red coverage**
 
 ```bash
-git add src/test/integration/test_scene_viewer_interaction.cpp src/test/integration/test_scene_viewer_layout.cpp src/test/integration/test_command_bus.cpp
+git add src/test/integration/test_lxe_editor_interaction.cpp src/test/integration/test_lxe_editor_layout.cpp src/test/integration/test_command_bus.cpp
 git commit -m "test: add scene viewer rect and toolbar reset coverage"
 ```
 
 ## Task 2: Fix scene-view picking and make the toolbar icon-only
 
 **Files:**
-- Create: `src/demos/scene_viewer/scene_view_rect.hpp`
-- Create: `src/demos/scene_viewer/scene_view_rect.cpp`
-- Modify: `src/demos/scene_viewer/scene_interaction_controller.hpp`
-- Modify: `src/demos/scene_viewer/scene_interaction_controller.cpp`
-- Modify: `src/demos/scene_viewer/ui_overlay.hpp`
-- Modify: `src/demos/scene_viewer/ui_overlay.cpp`
-- Modify: `src/demos/scene_viewer/main.cpp`
-- Test: `src/test/integration/test_scene_viewer_interaction.cpp`
-- Test: `src/test/integration/test_scene_viewer_layout.cpp`
+- Create: `src/demos/lxe_editor/scene_view_rect.hpp`
+- Create: `src/demos/lxe_editor/scene_view_rect.cpp`
+- Modify: `src/demos/lxe_editor/scene_interaction_controller.hpp`
+- Modify: `src/demos/lxe_editor/scene_interaction_controller.cpp`
+- Modify: `src/demos/lxe_editor/ui_overlay.hpp`
+- Modify: `src/demos/lxe_editor/ui_overlay.cpp`
+- Modify: `src/demos/lxe_editor/main.cpp`
+- Test: `src/test/integration/test_lxe_editor_interaction.cpp`
+- Test: `src/test/integration/test_lxe_editor_layout.cpp`
 
 - [ ] **Step 1: Define a focused scene-view rect type**
 
-Create `src/demos/scene_viewer/scene_view_rect.hpp`:
+Create `src/demos/lxe_editor/scene_view_rect.hpp`:
 
 ```cpp
 #pragma once
@@ -212,7 +212,7 @@ Create `src/demos/scene_viewer/scene_view_rect.hpp`:
 
 #include <optional>
 
-namespace LX_demo::scene_viewer {
+namespace LX_demo::lxe_editor {
 
 struct SceneViewRect final {
   float x = 0.0f;
@@ -230,19 +230,19 @@ struct SceneViewRect final {
     float windowWidth, float windowHeight,
     float leftInset, float topInset, float rightInset, float bottomInset);
 
-} // namespace LX_demo::scene_viewer
+} // namespace LX_demo::lxe_editor
 ```
 
 - [ ] **Step 2: Implement rect validation and local-coordinate helpers**
 
-Create `src/demos/scene_viewer/scene_view_rect.cpp`:
+Create `src/demos/lxe_editor/scene_view_rect.cpp`:
 
 ```cpp
-#include "demos/scene_viewer/scene_view_rect.hpp"
+#include "demos/lxe_editor/scene_view_rect.hpp"
 
 #include <algorithm>
 
-namespace LX_demo::scene_viewer {
+namespace LX_demo::lxe_editor {
 
 bool SceneViewRect::isValid() const {
   return width > 1.0f && height > 1.0f;
@@ -272,7 +272,7 @@ SceneViewRect makeSceneViewRect(float windowWidth, float windowHeight,
   return rect;
 }
 
-} // namespace LX_demo::scene_viewer
+} // namespace LX_demo::lxe_editor
 ```
 
 - [ ] **Step 3: Make scene picking rect-aware**
@@ -335,18 +335,18 @@ Delete the static `ImGui::TextUnformatted(editModeLabel(...))` and preview text 
 Run:
 
 ```bash
-cmake --build build --target demo_scene_viewer test_scene_viewer_interaction test_scene_viewer_layout test_command_bus
-./build/src/test/test_scene_viewer_interaction
-./build/src/test/test_scene_viewer_layout
+cmake --build build --target lxe_editor test_lxe_editor_interaction test_lxe_editor_layout test_command_bus
+./build/src/test/test_lxe_editor_interaction
+./build/src/test/test_lxe_editor_layout
 ./build/src/test/test_command_bus
 ```
 
-Expected: The new picking and toolbar tests pass, while later automation tests still do not exist yet.
+Expected: The new picking and toolbar tests pass, while later API tests still do not exist yet.
 
 - [ ] **Step 7: Commit the interaction-layer fix**
 
 ```bash
-git add src/demos/scene_viewer/scene_view_rect.hpp src/demos/scene_viewer/scene_view_rect.cpp src/demos/scene_viewer/scene_interaction_controller.hpp src/demos/scene_viewer/scene_interaction_controller.cpp src/demos/scene_viewer/ui_overlay.hpp src/demos/scene_viewer/ui_overlay.cpp src/demos/scene_viewer/main.cpp src/test/integration/test_scene_viewer_interaction.cpp src/test/integration/test_scene_viewer_layout.cpp
+git add src/demos/lxe_editor/scene_view_rect.hpp src/demos/lxe_editor/scene_view_rect.cpp src/demos/lxe_editor/scene_interaction_controller.hpp src/demos/lxe_editor/scene_interaction_controller.cpp src/demos/lxe_editor/ui_overlay.hpp src/demos/lxe_editor/ui_overlay.cpp src/demos/lxe_editor/main.cpp src/test/integration/test_lxe_editor_interaction.cpp src/test/integration/test_lxe_editor_layout.cpp
 git commit -m "feat: fix scene viewer picking and toolbar icons"
 ```
 
@@ -354,9 +354,9 @@ git commit -m "feat: fix scene viewer picking and toolbar icons"
 
 **Files:**
 - Modify: `src/core/editor/commands/builtin_commands.cpp`
-- Modify: `src/demos/scene_viewer/camera_rig.hpp`
-- Modify: `src/demos/scene_viewer/camera_rig.cpp`
-- Modify: `src/demos/scene_viewer/main.cpp`
+- Modify: `src/demos/lxe_editor/camera_rig.hpp`
+- Modify: `src/demos/lxe_editor/camera_rig.cpp`
+- Modify: `src/demos/lxe_editor/main.cpp`
 - Modify: `src/test/integration/test_command_bus.cpp`
 
 - [ ] **Step 1: Add failing command-bus coverage for mode/reset/probe commands**
@@ -401,12 +401,12 @@ void CameraRig::resyncFromAttachedCamera() {
 }
 ```
 
-- [ ] **Step 3: Register command-backed scene_viewer actions**
+- [ ] **Step 3: Register command-backed lxe_editor actions**
 
-In `main.cpp`, after builtin command registration, register narrow scene_viewer commands against the live `CommandBus`:
+In `main.cpp`, after builtin command registration, register narrow lxe_editor commands against the live `CommandBus`:
 
 ```cpp
-m_commandBus->registerHandler("mode", "switch scene_viewer edit mode",
+m_commandBus->registerHandler("mode", "switch lxe_editor edit mode",
   [this](std::vector<std::string> args) -> LX_core::CommandResult {
     if (args.size() != 1) {
       return makeCommandError("usage: mode <selection|orbit|freefly>");
@@ -429,7 +429,7 @@ Register `cam reset-editor-to-game` similarly by copying the gameplay camera tra
 
 - [ ] **Step 4: Add probe/state commands with structured JSON**
 
-Still in `main.cpp` or a scene_viewer-specific command registrar, add:
+Still in `main.cpp` or a lxe_editor-specific command registrar, add:
 
 ```cpp
 "state summary"
@@ -466,30 +466,30 @@ Expected: PASS for new mode/reset/probe commands, with structured JSON fields pr
 - [ ] **Step 6: Commit the command expansion**
 
 ```bash
-git add src/demos/scene_viewer/camera_rig.hpp src/demos/scene_viewer/camera_rig.cpp src/demos/scene_viewer/main.cpp src/core/editor/commands/builtin_commands.cpp src/test/integration/test_command_bus.cpp
+git add src/demos/lxe_editor/camera_rig.hpp src/demos/lxe_editor/camera_rig.cpp src/demos/lxe_editor/main.cpp src/core/editor/commands/builtin_commands.cpp src/test/integration/test_command_bus.cpp
 git commit -m "feat: add scene viewer mode and probe commands"
 ```
 
-## Task 4: Add a protocol-agnostic automation service
+## Task 4: Add a protocol-agnostic API service
 
 **Files:**
-- Create: `src/demos/scene_viewer/editor_automation_protocol.hpp`
-- Create: `src/demos/scene_viewer/editor_automation_protocol.cpp`
-- Create: `src/demos/scene_viewer/editor_automation_service.hpp`
-- Create: `src/demos/scene_viewer/editor_automation_service.cpp`
-- Modify: `src/demos/scene_viewer/main.cpp`
-- Create: `src/test/integration/test_scene_viewer_automation_service.cpp`
+- Create: `src/demos/lxe_editor/lxe_editor_api_protocol.hpp`
+- Create: `src/demos/lxe_editor/lxe_editor_api_protocol.cpp`
+- Create: `src/demos/lxe_editor/lxe_editor_api_service.hpp`
+- Create: `src/demos/lxe_editor/lxe_editor_api_service.cpp`
+- Modify: `src/demos/lxe_editor/main.cpp`
+- Create: `src/test/integration/test_lxe_lxe_editor_api_service.cpp`
 - Modify: `src/test/CMakeLists.txt`
 
 - [ ] **Step 1: Add failing service-level snapshot and event tests**
 
-Create `test_scene_viewer_automation_service.cpp` with focused coverage:
+Create `test_lxe_lxe_editor_api_service.cpp` with focused coverage:
 
 ```cpp
 void testAutomationServiceExecutesCommandAndReturnsSnapshot() {
   Fixture fixture;
   const auto result = fixture.service.executeCommand("scene list");
-  EXPECT(result.ok, "automation service should execute commands");
+  EXPECT(result.ok, "API service should execute commands");
 
   const auto summary = fixture.service.summaryState();
   EXPECT(summary.previewEnabled == false, "summary snapshot should expose preview flag");
@@ -502,28 +502,28 @@ void testAutomationServicePublishesSelectionChangedEvent() {
   const auto events = fixture.service.drainEvents();
   EXPECT(!events.empty(), "selection command should produce events");
   EXPECT(events.back().type == "selection.changed",
-         "selection change should be published as an automation event");
+         "selection change should be published as an api event");
 }
 ```
 
 - [ ] **Step 2: Define protocol structs instead of transport-specific JSON blobs**
 
-Create `editor_automation_protocol.hpp` with narrow domain types:
+Create `lxe_editor_api_protocol.hpp` with narrow domain types:
 
 ```cpp
-struct AutomationCommandResult final {
+struct ApiCommandResult final {
   bool ok = false;
   std::string message;
   std::string structuredJson;
 };
 
-struct AutomationEvent final {
+struct ApiEvent final {
   std::string type;
   u64 seq = 0;
   std::string payloadJson;
 };
 
-struct AutomationSummaryState final {
+struct ApiSummaryState final {
   bool previewEnabled = false;
   std::string editMode;
   std::string scenePath;
@@ -533,38 +533,38 @@ struct AutomationSummaryState final {
 
 Add helper serializers in the `.cpp` file so HTTP/WebSocket/MCP can reuse them later.
 
-- [ ] **Step 3: Implement `EditorAutomationService` over references**
+- [ ] **Step 3: Implement `LxeEditorApiService` over references**
 
-Create `editor_automation_service.hpp/.cpp`:
+Create `lxe_editor_api_service.hpp/.cpp`:
 
 ```cpp
-class EditorAutomationService final {
+class LxeEditorApiService final {
 public:
-  EditorAutomationService(LX_core::CommandBus& commandBus,
+  LxeEditorApiService(LX_core::CommandBus& commandBus,
                           LX_core::EditorState& editorState,
                           SceneViewerSession& session,
                           UiOverlay& ui);
 
-  [[nodiscard]] AutomationCommandResult executeCommand(std::string_view line);
+  [[nodiscard]] ApiCommandResult executeCommand(std::string_view line);
   [[nodiscard]] std::string stateSummaryJson() const;
   [[nodiscard]] std::string stateSelectionJson() const;
   [[nodiscard]] std::string stateCamerasJson() const;
   [[nodiscard]] std::string stateSceneJson() const;
   [[nodiscard]] std::string stateToolbarJson() const;
-  [[nodiscard]] std::vector<AutomationEvent> drainEvents();
+  [[nodiscard]] std::vector<ApiEvent> drainEvents();
   void publishStateChangedEvents();
 };
 ```
 
 Inside `executeCommand`, call the existing command bus and append a `command.executed` event. Inside `publishStateChangedEvents`, diff current snapshots against the previous frame and emit `selection.changed`, `mode.changed`, `preview.changed`, and `dirty.changed` when they change.
 
-- [ ] **Step 4: Wire the service into `scene_viewer` lifecycle**
+- [ ] **Step 4: Wire the service into `lxe_editor` lifecycle**
 
-In `main.cpp`, construct `EditorAutomationService` after the session/command bus/UI are bound, and call a per-frame publish hook after update logic:
+In `main.cpp`, construct `LxeEditorApiService` after the session/command bus/UI are bound, and call a per-frame publish hook after update logic:
 
 ```cpp
-if (m_automationService) {
-  m_automationService->publishStateChangedEvents();
+if (m_apiService) {
+  m_apiService->publishStateChangedEvents();
 }
 ```
 
@@ -575,48 +575,48 @@ Keep the service protocol-agnostic. Do not open sockets in this task.
 Run:
 
 ```bash
-cmake --build build --target test_scene_viewer_automation_service
-./build/src/test/test_scene_viewer_automation_service
+cmake --build build --target test_lxe_lxe_editor_api_service
+./build/src/test/test_lxe_lxe_editor_api_service
 ```
 
 Expected: PASS for snapshots and event generation with no server involved.
 
-- [ ] **Step 6: Commit the automation core**
+- [ ] **Step 6: Commit the API core**
 
 ```bash
-git add src/demos/scene_viewer/editor_automation_protocol.hpp src/demos/scene_viewer/editor_automation_protocol.cpp src/demos/scene_viewer/editor_automation_service.hpp src/demos/scene_viewer/editor_automation_service.cpp src/demos/scene_viewer/main.cpp src/test/integration/test_scene_viewer_automation_service.cpp src/test/CMakeLists.txt
-git commit -m "feat: add scene viewer automation service"
+git add src/demos/lxe_editor/lxe_editor_api_protocol.hpp src/demos/lxe_editor/lxe_editor_api_protocol.cpp src/demos/lxe_editor/lxe_editor_api_service.hpp src/demos/lxe_editor/lxe_editor_api_service.cpp src/demos/lxe_editor/main.cpp src/test/integration/test_lxe_lxe_editor_api_service.cpp src/test/CMakeLists.txt
+git commit -m "feat: add scene viewer API service"
 ```
 
 ## Task 5: Add token state and HTTP/WebSocket transport
 
 **Files:**
-- Create: `src/demos/scene_viewer/automation_token_state.hpp`
-- Create: `src/demos/scene_viewer/automation_token_state.cpp`
-- Create: `src/demos/scene_viewer/editor_automation_server.hpp`
-- Create: `src/demos/scene_viewer/editor_automation_server.cpp`
-- Modify: `src/demos/scene_viewer/CMakeLists.txt`
-- Modify: `src/demos/scene_viewer/main.cpp`
-- Modify: `src/demos/scene_viewer/README.md`
+- Create: `src/demos/lxe_editor/api_token_state.hpp`
+- Create: `src/demos/lxe_editor/api_token_state.cpp`
+- Create: `src/demos/lxe_editor/lxe_editor_api_server.hpp`
+- Create: `src/demos/lxe_editor/lxe_editor_api_server.cpp`
+- Modify: `src/demos/lxe_editor/CMakeLists.txt`
+- Modify: `src/demos/lxe_editor/main.cpp`
+- Modify: `src/demos/lxe_editor/README.md`
 
 - [ ] **Step 1: Add failing auth/token tests around load-or-generate behavior**
 
-Before server implementation, add a focused local test (either to the new automation service test or a tiny new test source) like:
+Before server implementation, add a focused local test (either to the new API service test or a tiny new test source) like:
 
 ```cpp
-void testAutomationTokenStateGeneratesMissingTokenFile() {
-  const auto root = std::filesystem::temp_directory_path() / "lx_automation_token";
+void testApiTokenStateGeneratesMissingTokenFile() {
+  const auto root = std::filesystem::temp_directory_path() / "lx_api_token";
   std::filesystem::remove_all(root);
-  const auto token = loadOrCreateAutomationToken(root / "automation_token.txt");
+  const auto token = loadOrCreateAutomationToken(root / "api_token.txt");
   EXPECT(!token.empty(), "generated token should not be empty");
-  EXPECT(std::filesystem::exists(root / "automation_token.txt"),
+  EXPECT(std::filesystem::exists(root / "api_token.txt"),
          "token file should be written on first run");
 }
 ```
 
 - [ ] **Step 2: Implement narrow token-file helpers**
 
-Create `automation_token_state.hpp/.cpp`:
+Create `api_token_state.hpp/.cpp`:
 
 ```cpp
 [[nodiscard]] std::string loadOrCreateAutomationToken(
@@ -632,19 +632,19 @@ Implementation requirements:
 
 - [ ] **Step 3: Implement HTTP/WebSocket server wrapper**
 
-Create `editor_automation_server.hpp/.cpp` with a transport-agnostic constructor but concrete HTTP/WS routing:
+Create `lxe_editor_api_server.hpp/.cpp` with a transport-agnostic constructor but concrete HTTP/WS routing:
 
 ```cpp
-struct EditorAutomationServerConfig final {
+struct LxeEditorApiServerConfig final {
   std::string host = "0.0.0.0";
   u16 port = 4599;
   std::filesystem::path tokenFile;
 };
 
-class EditorAutomationServer final {
+class LxeEditorApiServer final {
 public:
-  EditorAutomationServer(EditorAutomationService& service,
-                         EditorAutomationServerConfig config);
+  LxeEditorApiServer(LxeEditorApiService& service,
+                         LxeEditorApiServerConfig config);
 
   void start();
   void stop();
@@ -675,18 +675,18 @@ Authentication rule:
 Add startup parsing for:
 
 ```text
---automation-enable
---automation-host <host>
---automation-port <port>
---automation-token-file <path>
+--api-enable
+--api-host <host>
+--api-port <port>
+--api-token-file <path>
 ```
 
 Then:
 
 ```cpp
 const std::string token =
-    demo::loadOrCreateAutomationToken(resolveRuntimePath("data/scene_viewer/automation_token.txt"));
-demo::EditorAutomationServer server(*automationService, serverConfig);
+    demo::loadOrCreateAutomationToken(resolveRuntimePath("data/lxe_editor/api_token.txt"));
+demo::LxeEditorApiServer server(*apiService, serverConfig);
 server.start();
 ```
 
@@ -707,28 +707,28 @@ Document:
 Run:
 
 ```bash
-cmake --build build --target demo_scene_viewer
-timeout 8s xvfb-run -a ./build/src/demos/scene_viewer/demo_scene_viewer --automation-enable
+cmake --build build --target lxe_editor
+timeout 8s xvfb-run -a ./build/src/demos/lxe_editor/lxe_editor --api-enable
 ```
 
-Expected: process starts, binds automation server, writes/reads token file, and exits only because `timeout` stops the smoke test.
+Expected: process starts, binds API server, writes/reads token file, and exits only because `timeout` stops the smoke test.
 
 - [ ] **Step 7: Commit the transport layer**
 
 ```bash
-git add src/demos/scene_viewer/automation_token_state.hpp src/demos/scene_viewer/automation_token_state.cpp src/demos/scene_viewer/editor_automation_server.hpp src/demos/scene_viewer/editor_automation_server.cpp src/demos/scene_viewer/CMakeLists.txt src/demos/scene_viewer/main.cpp src/demos/scene_viewer/README.md
-git commit -m "feat: add scene viewer automation server"
+git add src/demos/lxe_editor/api_token_state.hpp src/demos/lxe_editor/api_token_state.cpp src/demos/lxe_editor/lxe_editor_api_server.hpp src/demos/lxe_editor/lxe_editor_api_server.cpp src/demos/lxe_editor/CMakeLists.txt src/demos/lxe_editor/main.cpp src/demos/lxe_editor/README.md
+git commit -m "feat: add scene viewer API server"
 ```
 
-## Task 6: Add out-of-process automation tests
+## Task 6: Add out-of-process API tests
 
 **Files:**
-- Create: `src/test/integration/test_scene_viewer_automation_server.cpp`
+- Create: `src/test/integration/test_lxe_lxe_editor_api_server.cpp`
 - Modify: `src/test/CMakeLists.txt`
 
-- [ ] **Step 1: Add a failing child-process automation test**
+- [ ] **Step 1: Add a failing child-process API test**
 
-Create `test_scene_viewer_automation_server.cpp` that:
+Create `test_lxe_lxe_editor_api_server.cpp` that:
 
 ```cpp
 void testAutomationServerAcceptsAuthenticatedCommands() {
@@ -789,52 +789,52 @@ struct ChildProcess final {
 
 Required behavior:
 
-- launch `demo_scene_viewer --automation-enable --automation-port <ephemeral>`
+- launch `lxe_editor --api-enable --api-port <ephemeral>`
 - wait until token file and HTTP ready state exist
 - tear down child process reliably even on failure
 
-- [ ] **Step 5: Run the full automation test set**
+- [ ] **Step 5: Run the full API test set**
 
 Run:
 
 ```bash
-cmake --build build --target test_scene_viewer_automation_service test_scene_viewer_automation_server demo_scene_viewer
-./build/src/test/test_scene_viewer_automation_service
-./build/src/test/test_scene_viewer_automation_server
-timeout 8s xvfb-run -a ./build/src/demos/scene_viewer/demo_scene_viewer --automation-enable
+cmake --build build --target test_lxe_lxe_editor_api_service test_lxe_lxe_editor_api_server lxe_editor
+./build/src/test/test_lxe_lxe_editor_api_service
+./build/src/test/test_lxe_lxe_editor_api_server
+timeout 8s xvfb-run -a ./build/src/demos/lxe_editor/lxe_editor --api-enable
 ```
 
-Expected: PASS for in-process and out-of-process automation coverage; the smoke test exits via `timeout` only.
+Expected: PASS for in-process and out-of-process api coverage; the smoke test exits via `timeout` only.
 
-- [ ] **Step 6: Commit the end-to-end automation coverage**
+- [ ] **Step 6: Commit the end-to-end api coverage**
 
 ```bash
-git add src/test/integration/test_scene_viewer_automation_server.cpp src/test/CMakeLists.txt
-git commit -m "test: add scene viewer automation server coverage"
+git add src/test/integration/test_lxe_lxe_editor_api_server.cpp src/test/CMakeLists.txt
+git commit -m "test: add scene viewer API server coverage"
 ```
 
 ## Task 7: Sync docs and final verification
 
 **Files:**
 - Modify: `notes/subsystems/scene.md`
-- Modify: `src/demos/scene_viewer/README.md`
+- Modify: `src/demos/lxe_editor/README.md`
 
-- [ ] **Step 1: Update subsystem notes for command-first automation**
+- [ ] **Step 1: Update subsystem notes for command-first api**
 
-In `notes/subsystems/scene.md`, add or refresh the `scene_viewer` section so it explicitly states:
+In `notes/subsystems/scene.md`, add or refresh the `lxe_editor` section so it explicitly states:
 
 ```md
-- scene_viewer editor actions are command-first; HTTP/WebSocket automation reuses the same command and snapshot surface.
-- scene_viewer local automation auth token lives under `data/scene_viewer/automation_token.txt`.
-- future MCP support is expected to adapt `EditorAutomationService` rather than bypass it.
+- lxe_editor editor actions are command-first; HTTP/WebSocket api reuses the same command and snapshot surface.
+- lxe_editor local API auth token lives under `data/lxe_editor/api_token.txt`.
+- future MCP support is expected to adapt `LxeEditorApiService` rather than bypass it.
 ```
 
 - [ ] **Step 2: Refresh README examples**
 
-In `src/demos/scene_viewer/README.md`, add examples for:
+In `src/demos/lxe_editor/README.md`, add examples for:
 
 ```bash
-TOKEN=$(cat data/scene_viewer/automation_token.txt)
+TOKEN=$(cat data/lxe_editor/api_token.txt)
 curl -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"line":"scene list"}' \
@@ -860,13 +860,13 @@ Also document the new commands:
 Run:
 
 ```bash
-cmake --build build --target demo_scene_viewer test_command_bus test_scene_viewer_interaction test_scene_viewer_layout test_scene_viewer_automation_service test_scene_viewer_automation_server
+cmake --build build --target lxe_editor test_command_bus test_lxe_editor_interaction test_lxe_editor_layout test_lxe_lxe_editor_api_service test_lxe_lxe_editor_api_server
 ./build/src/test/test_command_bus
-./build/src/test/test_scene_viewer_interaction
-./build/src/test/test_scene_viewer_layout
-./build/src/test/test_scene_viewer_automation_service
-./build/src/test/test_scene_viewer_automation_server
-timeout 8s xvfb-run -a ./build/src/demos/scene_viewer/demo_scene_viewer --automation-enable
+./build/src/test/test_lxe_editor_interaction
+./build/src/test/test_lxe_editor_layout
+./build/src/test/test_lxe_lxe_editor_api_service
+./build/src/test/test_lxe_lxe_editor_api_server
+timeout 8s xvfb-run -a ./build/src/demos/lxe_editor/lxe_editor --api-enable
 ```
 
 Expected: all targeted tests pass; demo smoke starts cleanly and is only terminated by `timeout`.
@@ -874,8 +874,8 @@ Expected: all targeted tests pass; demo smoke starts cleanly and is only termina
 - [ ] **Step 4: Commit the documentation sync**
 
 ```bash
-git add notes/subsystems/scene.md src/demos/scene_viewer/README.md
-git commit -m "docs: document scene viewer automation surface"
+git add notes/subsystems/scene.md src/demos/lxe_editor/README.md
+git commit -m "docs: document scene viewer API surface"
 ```
 
 ## Self-Review
@@ -884,7 +884,7 @@ git commit -m "docs: document scene viewer automation surface"
   - scene-view rect fix: Task 1-2
   - icon-only toolbar and reset button: Task 1-3 and Task 2-3 to 2-5
   - command coverage and probes: Task 3
-  - protocol-agnostic automation core: Task 4
+  - protocol-agnostic API core: Task 4
   - HTTP/WebSocket + token auth: Task 5
   - out-of-process testing: Task 6
   - MCP readiness through service/protocol separation: Task 4 + Task 7 docs
@@ -892,5 +892,4 @@ git commit -m "docs: document scene viewer automation surface"
   - No `TODO` / `TBD` placeholders remain.
   - Every task names concrete files and verification commands.
 - Type consistency:
-  - `SceneViewRect`, `EditorAutomationService`, `EditorAutomationServer`, and `loadOrCreateAutomationToken(...)` are introduced before later tasks rely on them.
-
+  - `SceneViewRect`, `LxeEditorApiService`, `LxeEditorApiServer`, and `loadOrCreateAutomationToken(...)` are introduced before later tasks rely on them.

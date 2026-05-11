@@ -192,7 +192,7 @@ class SceneNode {
 - 同节点重复 `addComponent<MeshComponent>` → assert（debug 构建）
 - `removeComponent<MeshComponent>()` 后 `getComponent<MeshComponent>() == nullptr`
 - `listComponents()` 返回的指针顺序与 `addComponent` 调用顺序一致
-- 完整 demo 场景（cube + plane + light + camera）渲染结果与重构前像素一致（用 `demo_scene_viewer` 的现有 golden image / smoke test）
+- 完整 demo 场景（cube + plane + light + camera）渲染结果与重构前像素一致（用 `lxe_editor` 的现有 golden image / smoke test）
 - `MaterialComponent` 析构时正确移除 `materialPassListener`（无悬空回调）
 
 ## 修改范围
@@ -204,7 +204,7 @@ class SceneNode {
 - `src/core/scene/object.hpp` / `.cpp`（删字段 / 删旧 getter / 加 component 容器与模板方法 / 重写 renderable 路径）
 - `src/core/scene/scene.cpp`（构造 SceneNode 的位置一并迁移）
 - `src/infra/mesh/`、`src/infra/material/` 中所有构造 SceneNode 的 helper（如 GLTF loader 产出的节点装配）
-- `src/demos/scene_viewer/main.cpp`（构造 cube / plane / light 的代码改为 `addComponent` 链式风格）
+- `src/demos/lxe_editor/main.cpp`（构造 cube / plane / light 的代码改为 `addComponent` 链式风格）
 - `src/test/integration/` 中所有 setup SceneNode 的测试一并迁移
 - `notes/source_analysis/src/core/scene/scene.md`（落地后更新）
 

@@ -23,6 +23,6 @@ Now that the project has `Clock`, input, camera controllers, and debug UI, it ne
 ## Impact
 
 - Affected code will include a new runtime module above the backend, likely in `src/core/` or a nearby engine-facing layer, plus tutorial/demo integration points.
-- `demo_scene_viewer` becomes the first full consumer of `EngineLoop` instead of manually orchestrating the frame loop.
+- `lxe_editor` becomes the first full consumer of `EngineLoop` instead of manually orchestrating the frame loop.
 - Documentation and tutorial flow will change to distinguish scene startup from frame execution.
 - Existing backend contracts (`initScene/uploadData/draw`) remain in place and are consumed by `EngineLoop` rather than removed.

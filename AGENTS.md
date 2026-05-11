@@ -20,7 +20,7 @@ LXEngine is a Vulkan-based 3D renderer written in C++20 with three layers:
 
 Important executable areas:
 
-- `src/demos/scene_viewer/`: main interactive demo
+- `src/demos/lxe_editor/`: main interactive demo
 - `src/test/`: integration tests
 - `assets/`: runtime assets and test assets
 
@@ -71,7 +71,7 @@ Linux build:
 ```bash
 mkdir build && cd build
 cmake .. -G Ninja
-ninja demo_scene_viewer
+ninja lxe_editor
 ```
 
 Linux test:

@@ -2,18 +2,18 @@ from __future__ import annotations
 
 import unittest
 
-from tests.lxe_editor.automation_client import LxeEditorHarness
+from tests.lxe_editor.api_client import LxeEditorHarness
 
 
 class PersistenceBlackBoxTest(unittest.TestCase):
-    def test_automation_token_persists_across_restart(self) -> None:
+    def test_api_token_persists_across_restart(self) -> None:
         harness = LxeEditorHarness()
         try:
             harness.start()
         except FileNotFoundError as exc:
             raise unittest.SkipTest(str(exc)) from exc
         except Exception as exc:
-            raise unittest.SkipTest(f"unable to launch automation target: {exc}") from exc
+            raise unittest.SkipTest(f"unable to launch API target: {exc}") from exc
 
         try:
             first_token = harness.client.read_token()
@@ -32,7 +32,7 @@ class PersistenceBlackBoxTest(unittest.TestCase):
         except FileNotFoundError as exc:
             raise unittest.SkipTest(str(exc)) from exc
         except Exception as exc:
-            raise unittest.SkipTest(f"unable to launch automation target: {exc}") from exc
+            raise unittest.SkipTest(f"unable to launch API target: {exc}") from exc
 
         marker = "scene list"
         try:

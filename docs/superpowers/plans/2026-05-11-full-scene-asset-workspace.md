@@ -2,26 +2,26 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add full scene import/export, scene listing, local-vs-asset save routing, session-scoped admin mode, empty-scene startup, and close-time save behavior for `scene_viewer`.
+**Goal:** Add full scene import/export, scene listing, local-vs-asset save routing, session-scoped admin mode, empty-scene startup, and close-time save behavior for `lxe_editor`.
 
 **Architecture:** Introduce a real scene document layer that serializes supported `Scene` content plus editor metadata, then place a catalog/session layer on top to classify files as `asset` or `local`, enforce save permissions, and drive command-bus behavior. Keep runtime orchestration in `SceneRuntime` so startup, command-driven load/save, and shutdown prompts all share one path.
 
-**Tech Stack:** C++20, CMake, yaml-cpp, existing `Scene` / `SceneNode` / command bus / `scene_viewer` overlay runtime.
+**Tech Stack:** C++20, CMake, yaml-cpp, existing `Scene` / `SceneNode` / command bus / `lxe_editor` overlay runtime.
 
 ---
 
 ## File Map
 
-- Create: `src/demos/scene_viewer/scene_catalog.hpp`
-- Create: `src/demos/scene_viewer/scene_catalog.cpp`
-- Create: `src/demos/scene_viewer/scene_session.hpp`
-- Create: `src/demos/scene_viewer/scene_session.cpp`
-- Modify: `src/demos/scene_viewer/scene_document.hpp`
-- Modify: `src/demos/scene_viewer/scene_document.cpp`
-- Modify: `src/demos/scene_viewer/scene_runtime.hpp`
-- Modify: `src/demos/scene_viewer/scene_runtime.cpp`
-- Modify: `src/demos/scene_viewer/main.cpp`
-- Modify: `src/demos/scene_viewer/CMakeLists.txt`
+- Create: `src/demos/lxe_editor/scene_catalog.hpp`
+- Create: `src/demos/lxe_editor/scene_catalog.cpp`
+- Create: `src/demos/lxe_editor/scene_session.hpp`
+- Create: `src/demos/lxe_editor/scene_session.cpp`
+- Modify: `src/demos/lxe_editor/scene_document.hpp`
+- Modify: `src/demos/lxe_editor/scene_document.cpp`
+- Modify: `src/demos/lxe_editor/scene_runtime.hpp`
+- Modify: `src/demos/lxe_editor/scene_runtime.cpp`
+- Modify: `src/demos/lxe_editor/main.cpp`
+- Modify: `src/demos/lxe_editor/CMakeLists.txt`
 - Modify: `src/core/editor/commands/builtin_commands.hpp`
 - Modify: `src/core/editor/commands/builtin_commands.cpp`
 - Modify: `src/core/editor/viewport_overlay.*` only if command output/UI labels need source-kind display
@@ -31,17 +31,17 @@
 - Modify: `src/test/integration/test_scene_document.cpp`
 - Modify: `src/test/integration/test_scene_runtime.cpp`
 - Modify: `src/test/integration/test_command_bus.cpp`
-- Modify: `src/demos/scene_viewer/README.md`
+- Modify: `src/demos/lxe_editor/README.md`
 - Modify: `.gitignore` if `data/` coverage needs tightening
 
 ## Task 1: Expand Scene Document Tests First
 
 **Files:**
 - Modify: `src/test/integration/test_scene_document.cpp`
-- Modify: `src/demos/scene_viewer/scene_document.hpp`
-- Modify: `src/demos/scene_viewer/scene_document.cpp`
+- Modify: `src/demos/lxe_editor/scene_document.hpp`
+- Modify: `src/demos/lxe_editor/scene_document.cpp`
 
-- [ ] Add failing tests that demand full-node serialization for the currently supported scene_viewer types:
+- [ ] Add failing tests that demand full-node serialization for the currently supported lxe_editor types:
   - scene name
   - node hierarchy
   - transforms
@@ -59,15 +59,15 @@
 - [ ] Commit with:
 
 ```bash
-git add src/demos/scene_viewer/scene_document.hpp src/demos/scene_viewer/scene_document.cpp src/test/integration/test_scene_document.cpp
+git add src/demos/lxe_editor/scene_document.hpp src/demos/lxe_editor/scene_document.cpp src/test/integration/test_scene_document.cpp
 git commit -m "feat: expand scene document schema"
 ```
 
 ## Task 2: Add Scene Catalog Classification
 
 **Files:**
-- Create: `src/demos/scene_viewer/scene_catalog.hpp`
-- Create: `src/demos/scene_viewer/scene_catalog.cpp`
+- Create: `src/demos/lxe_editor/scene_catalog.hpp`
+- Create: `src/demos/lxe_editor/scene_catalog.cpp`
 - Create: `src/test/integration/test_scene_catalog.cpp`
 - Modify: `src/test/CMakeLists.txt`
 
@@ -86,15 +86,15 @@ git commit -m "feat: expand scene document schema"
 - [ ] Commit with:
 
 ```bash
-git add src/demos/scene_viewer/scene_catalog.hpp src/demos/scene_viewer/scene_catalog.cpp src/test/integration/test_scene_catalog.cpp src/test/CMakeLists.txt
+git add src/demos/lxe_editor/scene_catalog.hpp src/demos/lxe_editor/scene_catalog.cpp src/test/integration/test_scene_catalog.cpp src/test/CMakeLists.txt
 git commit -m "feat: add scene catalog classification"
 ```
 
 ## Task 3: Add Session Permission And Save-Routing Rules
 
 **Files:**
-- Create: `src/demos/scene_viewer/scene_session.hpp`
-- Create: `src/demos/scene_viewer/scene_session.cpp`
+- Create: `src/demos/lxe_editor/scene_session.hpp`
+- Create: `src/demos/lxe_editor/scene_session.cpp`
 - Create: `src/test/integration/test_scene_session.cpp`
 - Modify: `src/test/CMakeLists.txt`
 
@@ -119,15 +119,15 @@ git commit -m "feat: add scene catalog classification"
 - [ ] Commit with:
 
 ```bash
-git add src/demos/scene_viewer/scene_session.hpp src/demos/scene_viewer/scene_session.cpp src/test/integration/test_scene_session.cpp src/test/CMakeLists.txt
+git add src/demos/lxe_editor/scene_session.hpp src/demos/lxe_editor/scene_session.cpp src/test/integration/test_scene_session.cpp src/test/CMakeLists.txt
 git commit -m "feat: add scene session save routing"
 ```
 
 ## Task 4: Make Scene Runtime Own Empty Startup And Full Round-Trip
 
 **Files:**
-- Modify: `src/demos/scene_viewer/scene_runtime.hpp`
-- Modify: `src/demos/scene_viewer/scene_runtime.cpp`
+- Modify: `src/demos/lxe_editor/scene_runtime.hpp`
+- Modify: `src/demos/lxe_editor/scene_runtime.cpp`
 - Modify: `src/test/integration/test_scene_runtime.cpp`
 
 - [ ] Add failing runtime tests for:
@@ -149,7 +149,7 @@ git commit -m "feat: add scene session save routing"
 - [ ] Commit with:
 
 ```bash
-git add src/demos/scene_viewer/scene_runtime.hpp src/demos/scene_viewer/scene_runtime.cpp src/test/integration/test_scene_runtime.cpp
+git add src/demos/lxe_editor/scene_runtime.hpp src/demos/lxe_editor/scene_runtime.cpp src/test/integration/test_scene_runtime.cpp
 git commit -m "feat: add full scene runtime roundtrip"
 ```
 
@@ -187,8 +187,8 @@ git commit -m "feat: add scene list and admin commands"
 ## Task 6: Integrate Scene Viewer Session Behavior
 
 **Files:**
-- Modify: `src/demos/scene_viewer/main.cpp`
-- Modify: `src/demos/scene_viewer/CMakeLists.txt`
+- Modify: `src/demos/lxe_editor/main.cpp`
+- Modify: `src/demos/lxe_editor/CMakeLists.txt`
 - Modify: `src/test/integration/test_scene_runtime.cpp`
 - Modify: `src/test/integration/test_command_bus.cpp`
 
@@ -212,15 +212,15 @@ git commit -m "feat: add scene list and admin commands"
 - [ ] Commit with:
 
 ```bash
-git add src/demos/scene_viewer/main.cpp src/demos/scene_viewer/CMakeLists.txt src/test/integration/test_scene_runtime.cpp src/test/integration/test_command_bus.cpp
+git add src/demos/lxe_editor/main.cpp src/demos/lxe_editor/CMakeLists.txt src/test/integration/test_scene_runtime.cpp src/test/integration/test_command_bus.cpp
 git commit -m "feat: integrate full scene workspace flow"
 ```
 
 ## Task 7: Close-Time Save And Documentation
 
 **Files:**
-- Modify: `src/demos/scene_viewer/main.cpp`
-- Modify: `src/demos/scene_viewer/README.md`
+- Modify: `src/demos/lxe_editor/main.cpp`
+- Modify: `src/demos/lxe_editor/README.md`
 - Modify: `.gitignore` if needed for `data/`
 
 - [ ] Add failing coverage or a minimal harness for close-time save routing if practical; otherwise add a narrow unit around the session save decision and keep smoke validation manual.
@@ -241,7 +241,7 @@ git commit -m "feat: integrate full scene workspace flow"
 - [ ] Commit with:
 
 ```bash
-git add src/demos/scene_viewer/main.cpp src/demos/scene_viewer/README.md .gitignore
+git add src/demos/lxe_editor/main.cpp src/demos/lxe_editor/README.md .gitignore
 git commit -m "docs: explain full scene workspace flow"
 ```
 
@@ -253,7 +253,7 @@ git commit -m "docs: explain full scene workspace flow"
 - [ ] Run:
 
 ```bash
-cmake --build build --target demo_scene_viewer test_scene_document test_scene_catalog test_scene_session test_scene_runtime test_command_bus
+cmake --build build --target lxe_editor test_scene_document test_scene_catalog test_scene_session test_scene_runtime test_command_bus
 ./build/src/test/test_scene_document
 ./build/src/test/test_scene_catalog
 ./build/src/test/test_scene_session
@@ -272,7 +272,7 @@ cmake --build build --target demo_scene_viewer test_scene_document test_scene_ca
 - [ ] Run a bounded demo smoke:
 
 ```bash
-xvfb-run -a bash -lc 'timeout 5s ./build/src/demos/scene_viewer/demo_scene_viewer >/tmp/demo_scene_viewer.log 2>&1; status=$?; if [ "$status" -eq 124 ]; then exit 0; else exit "$status"; fi'
+xvfb-run -a bash -lc 'timeout 5s ./build/src/demos/lxe_editor/lxe_editor >/tmp/lxe_editor.log 2>&1; status=$?; if [ "$status" -eq 124 ]; then exit 0; else exit "$status"; fi'
 ```
 
 - [ ] Inspect `git status --short` and ensure only expected non-repo-local files remain unstaged.

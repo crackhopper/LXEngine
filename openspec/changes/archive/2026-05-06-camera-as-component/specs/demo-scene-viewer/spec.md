@@ -45,7 +45,7 @@ The demo SHALL register its UI drawing function through `LX_core::backend::Vulka
 4. A **Help** panel (demo-local) listing `F1`, `F2`, Orbit controls, FreeFly controls; toggled on `F1` rising edge
 
 #### Scenario: UI is injected through VulkanRenderer
-- **WHEN** grepping `src/demos/scene_viewer/` for `setDrawUiCallback`
+- **WHEN** grepping `src/demos/lxe_editor/` for `setDrawUiCallback`
 - **THEN** there SHALL be exactly one registration site inside `main.cpp` (or its direct helper) targeting the concrete `VulkanRenderer`
 
 #### Scenario: Four panels are visible at startup

@@ -1,6 +1,6 @@
-#include "demos/lxe_editor/editor_automation_server.hpp"
+#include "demos/lxe_editor/lxe_editor_api_server.hpp"
 
-#include "demos/lxe_editor/editor_automation_protocol.hpp"
+#include "demos/lxe_editor/lxe_editor_api_protocol.hpp"
 #include "demos/lxe_editor/lxe_editor_mcp_handler.hpp"
 
 #include <algorithm>
@@ -218,23 +218,23 @@ void closeSocket(const SocketHandle socket) {
 }
 
 [[nodiscard]] std::string
-summaryJson(const AutomationStateSnapshot& state) {
+summaryJson(const ApiStateSnapshot& state) {
   std::ostringstream out;
   out << "{\"sceneName\":\""
-      << automationJsonEscape(state.scene.sceneName) << "\""
+      << apiJsonEscape(state.scene.sceneName) << "\""
       << ",\"currentDocumentPath\":\""
-      << automationJsonEscape(state.scene.currentDocumentPath) << "\""
+      << apiJsonEscape(state.scene.currentDocumentPath) << "\""
       << ",\"sourceKind\":\""
-      << automationSceneSourceKindName(state.scene.sourceKind) << "\""
+      << apiSceneSourceKindName(state.scene.sourceKind) << "\""
       << ",\"permission\":\""
-      << automationPermissionLevelName(state.scene.permission) << "\""
+      << apiPermissionLevelName(state.scene.permission) << "\""
       << ",\"dirty\":" << (state.scene.dirty ? "true" : "false")
       << ",\"previewEnabled\":"
       << (state.toolbar.previewEnabled ? "true" : "false")
-      << ",\"mode\":\"" << automationEditModeName(state.toolbar.editMode) << "\""
+      << ",\"mode\":\"" << apiEditModeName(state.toolbar.editMode) << "\""
       << ",\"selectionCount\":" << state.selection.selectedPaths.size()
       << ",\"activeCameraPath\":\""
-      << automationJsonEscape(state.cameras.activeCameraPath) << "\"}";
+      << apiJsonEscape(state.cameras.activeCameraPath) << "\"}";
   return out.str();
 }
 
@@ -547,7 +547,7 @@ struct LxeEditorApiServer::Impl final {
     bool closeAfterWrite = true;
     std::string readBuffer;
     std::string writeBuffer;
-    AutomationEventCursor cursor;
+    ApiEventCursor cursor;
   };
 
   SocketHandle listenSocket = kInvalidSocket;
@@ -755,7 +755,7 @@ void LxeEditorApiServer::pump(LxeEditorApiService& service) {
 
       auto commandResponse = [&](const std::string& line) {
         return toJson(service.executeCommand(
-            AutomationCommandRequest{.line = line}));
+            ApiCommandRequest{.line = line}));
       };
 
       if (request->method == "POST" && pathWithoutQuery == "/api/command") {
@@ -878,7 +878,7 @@ void LxeEditorApiServer::pump(LxeEditorApiService& service) {
               "{\"type\":\"command.response\",\"ok\":false,\"error\":{\"code\":\"bad_request\",\"message\":\"missing line\"}}");
         } else {
           const auto response = service.executeCommand(
-              AutomationCommandRequest{.line = *line});
+              ApiCommandRequest{.line = *line});
           client.writeBuffer += makeWsTextFrame(
               std::string("{\"type\":\"command.response\",\"payload\":") +
               toJson(response) + "}");
@@ -891,7 +891,7 @@ void LxeEditorApiServer::pump(LxeEditorApiService& service) {
     if (client.kind != Impl::Client::Kind::WebSocket) {
       continue;
     }
-    const AutomationEventBatch batch = service.collectEventsSince(client.cursor);
+    const ApiEventBatch batch = service.collectEventsSince(client.cursor);
     client.cursor = batch.nextCursor;
     for (const auto& event : batch.events) {
       client.writeBuffer += makeWsTextFrame(toJson(event));

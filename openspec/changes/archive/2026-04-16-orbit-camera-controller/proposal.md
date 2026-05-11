@@ -24,4 +24,4 @@ Camera 当前是纯数据对象，调试 PBR/IBL/shadow 时缺少最基本的"�
 - **新增文件**: `src/core/scene/camera_controller.hpp`, `orbit_camera_controller.hpp/.cpp`, `src/core/input/mock_input_state.hpp`, `src/test/integration/test_orbit_camera_controller.cpp`
 - **修改文件**: `src/core/CMakeLists.txt`（收集新 .cpp）, `src/test/CMakeLists.txt`（注册新测试）
 - **依赖**: `IInputState`（REQ-012）, `Camera`（已有）
-- **下游**: REQ-016 FreeFly 复用 ICameraController、REQ-019 demo_scene_viewer 默认控制器
+- **下游**: REQ-016 FreeFly 复用 ICameraController、REQ-019 lxe_editor 默认控制器

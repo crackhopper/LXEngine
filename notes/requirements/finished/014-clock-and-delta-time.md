@@ -159,7 +159,7 @@ float smoothedDeltaTime() const;
 
 - `REQ-016`：FreeFly 相机继续依赖 `deltaTime()`
 - `REQ-018`：调试统计面板用 `smoothedDeltaTime()` 显示更稳定的 FPS
-- `REQ-019`：demo_scene_viewer 通过 `EngineLoop::getClock()` 读取时间信息
+- `REQ-019`：lxe_editor 通过 `EngineLoop::getClock()` 读取时间信息
 - Phase 2 更完整时间系统：在当前 `Clock` 基础上扩 fixed step / timeScale / pause
 
 ## 实施状态

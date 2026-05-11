@@ -1,6 +1,6 @@
 #include "demos/lxe_editor/lxe_editor_mcp_handler.hpp"
 
-#include "demos/lxe_editor/editor_automation_protocol.hpp"
+#include "demos/lxe_editor/lxe_editor_api_protocol.hpp"
 #include "demos/lxe_editor/editor_mcp_protocol.hpp"
 
 #include "yaml-cpp/yaml.h"
@@ -18,26 +18,26 @@ constexpr std::string_view kJsonRpcVersion = "2.0";
 constexpr std::string_view kProtocolVersion = "2025-03-26";
 
 [[nodiscard]] std::string jsonEscape(std::string_view text) {
-  return automationJsonEscape(text);
+  return apiJsonEscape(text);
 }
 
 [[nodiscard]] std::string jsonQuoted(std::string_view text) {
   return std::string("\"") + jsonEscape(text) + "\"";
 }
 
-[[nodiscard]] std::string buildSummaryJson(const AutomationStateSnapshot& state) {
+[[nodiscard]] std::string buildSummaryJson(const ApiStateSnapshot& state) {
   std::ostringstream out;
   out << "{\"sceneName\":\"" << jsonEscape(state.scene.sceneName) << "\""
       << ",\"currentDocumentPath\":\""
       << jsonEscape(state.scene.currentDocumentPath) << "\""
       << ",\"sourceKind\":\""
-      << automationSceneSourceKindName(state.scene.sourceKind) << "\""
+      << apiSceneSourceKindName(state.scene.sourceKind) << "\""
       << ",\"permission\":\""
-      << automationPermissionLevelName(state.scene.permission) << "\""
+      << apiPermissionLevelName(state.scene.permission) << "\""
       << ",\"dirty\":" << (state.scene.dirty ? "true" : "false")
       << ",\"previewEnabled\":"
       << (state.toolbar.previewEnabled ? "true" : "false")
-      << ",\"mode\":\"" << automationEditModeName(state.toolbar.editMode) << "\""
+      << ",\"mode\":\"" << apiEditModeName(state.toolbar.editMode) << "\""
       << ",\"selectionCount\":" << state.selection.selectedPaths.size()
       << ",\"activeCameraPath\":\""
       << jsonEscape(state.cameras.activeCameraPath) << "\"}";
@@ -45,7 +45,7 @@ constexpr std::string_view kProtocolVersion = "2025-03-26";
 }
 
 [[nodiscard]] std::string resourceJson(const std::string_view uri,
-                                       const AutomationStateSnapshot& state) {
+                                       const ApiStateSnapshot& state) {
   if (uri == "lxe-editor://summary") {
     return buildSummaryJson(state);
   }
@@ -273,7 +273,7 @@ handleLxeEditorMcpHttpRequest(std::string_view payload,
     };
   }
   if (message->method == "resources/read") {
-    const AutomationStateSnapshot state = captureFreshState();
+    const ApiStateSnapshot state = captureFreshState();
     const YAML::Node params = message->paramsJson.empty()
                                   ? YAML::Node{}
                                   : YAML::Load(message->paramsJson);
@@ -296,8 +296,8 @@ handleLxeEditorMcpHttpRequest(std::string_view payload,
     if (name == "lxe_editor_command") {
       const std::string line =
           scalarString(arguments, "line").value_or(std::string{});
-      const AutomationCommandResponse response =
-          service.executeCommand(AutomationCommandRequest{.line = line});
+      const ApiCommandResponse response =
+          service.executeCommand(ApiCommandRequest{.line = line});
       return LxeEditorMcpResponse{
           .hasBody = true,
           .body = makeResultEnvelope(
@@ -306,7 +306,7 @@ handleLxeEditorMcpHttpRequest(std::string_view payload,
       };
     }
     if (name == "lxe_editor_get_summary") {
-      const AutomationStateSnapshot state = captureFreshState();
+      const ApiStateSnapshot state = captureFreshState();
       return LxeEditorMcpResponse{
           .hasBody = true,
           .body = makeResultEnvelope(
@@ -315,7 +315,7 @@ handleLxeEditorMcpHttpRequest(std::string_view payload,
       };
     }
     if (name == "lxe_editor_get_selection") {
-      const AutomationStateSnapshot state = captureFreshState();
+      const ApiStateSnapshot state = captureFreshState();
       return LxeEditorMcpResponse{
           .hasBody = true,
           .body = makeResultEnvelope(
@@ -324,7 +324,7 @@ handleLxeEditorMcpHttpRequest(std::string_view payload,
       };
     }
     if (name == "lxe_editor_get_cameras") {
-      const AutomationStateSnapshot state = captureFreshState();
+      const ApiStateSnapshot state = captureFreshState();
       return LxeEditorMcpResponse{
           .hasBody = true,
           .body = makeResultEnvelope(
@@ -345,8 +345,8 @@ handleLxeEditorMcpHttpRequest(std::string_view payload,
       }
       std::ostringstream line;
       line << "pick " << *x << " " << *y;
-      const AutomationCommandResponse response =
-          service.executeCommand(AutomationCommandRequest{.line = line.str()});
+      const ApiCommandResponse response =
+          service.executeCommand(ApiCommandRequest{.line = line.str()});
       return LxeEditorMcpResponse{
           .hasBody = true,
           .body = makeResultEnvelope(
@@ -355,7 +355,7 @@ handleLxeEditorMcpHttpRequest(std::string_view payload,
       };
     }
     if (name == "lxe_editor_wait_for") {
-      const AutomationStateSnapshot state = captureFreshState();
+      const ApiStateSnapshot state = captureFreshState();
       const std::string resource = scalarString(arguments, "resource")
                                        .value_or("lxe-editor://summary");
       const std::string expected =
@@ -375,7 +375,7 @@ handleLxeEditorMcpHttpRequest(std::string_view payload,
       };
     }
     if (name == "lxe_editor_ensure_running") {
-      const AutomationStateSnapshot state = captureFreshState();
+      const ApiStateSnapshot state = captureFreshState();
       return LxeEditorMcpResponse{
           .hasBody = true,
           .body = makeResultEnvelope(

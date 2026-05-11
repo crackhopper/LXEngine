@@ -4,7 +4,7 @@ Date: 2026-05-11
 
 ## Context
 
-`demo_scene_viewer` 现在已经具备：
+`lxe_editor` 现在已经具备：
 
 - 场景加载/保存与 `asset` / `local` 工作流
 - 浮动 toolbar + `Selection / Orbit / FreeFly / Preview`
@@ -16,7 +16,7 @@ Date: 2026-05-11
 
 1. 交互层仍有一部分能力只在 UI 里可用，没有完整命令面。
 2. 自动化与排障缺少稳定探针，导致很多行为只能靠人工看 UI 判断。
-3. 缺少正式的网络 automation 接口，无法稳定地从进程外驱动 `scene_viewer` 做集成测试，也不利于后续 MCP 接入。
+3. 缺少正式的网络 api 接口，无法稳定地从进程外驱动 `lxe_editor` 做集成测试，也不利于后续 MCP 接入。
 
 本设计把这些问题合并为一条统一原则：
 
@@ -32,14 +32,14 @@ Date: 2026-05-11
 - toolbar 改成纯 icon 面板，并新增“editor camera 对齐到 game camera”的按钮。
 - 让所有关键 editor 操作都能通过 command console 触发。
 - 增加足够的状态/探针命令，支持纯文本排障与自动化断言。
-- 为 `scene_viewer` 增加默认可用的 HTTP + WebSocket 自动化接口。
+- 为 `lxe_editor` 增加默认可用的 HTTP + WebSocket 自动化接口。
 - 默认全网卡开放时仍要求 token 认证。
-- 为后续 MCP adapter 保留稳定的 automation domain 与 JSON schema。
+- 为后续 MCP adapter 保留稳定的 API domain 与 JSON schema。
 
 ## Non-Goals
 
 - 本次不恢复旧的 `Viewport` 面板为主交互入口。
-- 本次不把 automation 能力直接做成 MCP server。
+- 本次不把 api 能力直接做成 MCP server。
 - 本次不引入复杂用户/权限系统；网络接口只做 token 认证。
 - 本次不把命中点升级成 mesh triangle 级表面 picking。
 - 本次不新增另一套绕过 command system 的隐藏调试 RPC。
@@ -61,9 +61,9 @@ HTTP、WebSocket、未来 MCP 都不直接拥有 editor 真相状态，也不直
 任何关键命令除了人类可读 message 外，都应返回稳定 structured JSON。  
 自动化查询优先使用结构化 state API，而不是解析 console 文本输出。
 
-### Protocol-agnostic automation core
+### Protocol-agnostic API core
 
-`scene_viewer` 内部先形成稳定 automation domain。  
+`lxe_editor` 内部先形成稳定 API domain。  
 HTTP / WebSocket / MCP 都只是这层 domain 的不同 adapter。
 
 ## Functional Design
@@ -171,9 +171,9 @@ Toolbar 保留为独立浮动面板，但最终形态改成：
 
 ## Automation Core
 
-### EditorAutomationService
+### LxeEditorApiService
 
-新增独立模块 `EditorAutomationService`。
+新增独立模块 `LxeEditorApiService`。
 
 职责：
 
@@ -237,9 +237,9 @@ WebSocket 和未来 MCP 订阅都复用同一套事件模型。
 
 ## Network Automation Server
 
-### EditorAutomationServer
+### LxeEditorApiServer
 
-新增独立 `EditorAutomationServer`。
+新增独立 `LxeEditorApiServer`。
 
 职责：
 
@@ -249,7 +249,7 @@ WebSocket 和未来 MCP 订阅都复用同一套事件模型。
 - JSON 编解码
 - connection / session 管理
 
-它本身不实现 editor 逻辑，只转调 `EditorAutomationService`。
+它本身不实现 editor 逻辑，只转调 `LxeEditorApiService`。
 
 ### HTTP API
 
@@ -303,7 +303,7 @@ WebSocket 第一版同时支持：
 
 启动时：
 
-- 若 `data/scene_viewer/automation_token.txt` 存在，则读取
+- 若 `data/lxe_editor/api_token.txt` 存在，则读取
 - 不存在则生成随机 token 并写入该文件
 
 ### Transport usage
@@ -315,16 +315,16 @@ WebSocket 第一版同时支持：
 
 ## Startup And Runtime Integration
 
-`scene_viewer` 启动参数第一版建议包含：
+`lxe_editor` 启动参数第一版建议包含：
 
-- `--automation-enable`
-- `--automation-host <host>`
-- `--automation-port <port>`
-- `--automation-token-file <path>`
+- `--api-enable`
+- `--api-host <host>`
+- `--api-port <port>`
+- `--api-token-file <path>`
 
 默认行为建议：
 
-- 程序正常启动即开启 automation server
+- 程序正常启动即开启 API server
 - 默认 host = `0.0.0.0`
 - 默认 port 使用固定值
 
@@ -338,12 +338,12 @@ WebSocket 第一版同时支持：
 
 ## MCP Readiness
 
-本次不直接把 `scene_viewer` 做成 MCP server。  
-但要为后续 `EditorAutomationMcpAdapter` 做准备。
+本次不直接把 `lxe_editor` 做成 MCP server。  
+但要为后续 `LxeEditorApiMcpAdapter` 做准备。
 
 约束：
 
-- 先稳定 `EditorAutomationService`
+- 先稳定 `LxeEditorApiService`
 - 先稳定结构化 state JSON shape
 - HTTP / WebSocket 的输入输出 schema 尽量贴近未来 MCP tool/resource schema
 
@@ -358,7 +358,7 @@ WebSocket 第一版同时支持：
 - command 执行失败必须保留统一 `ok/message/structured/metadata` 结果模型。
 - HTTP 返回稳定状态码和 JSON body，不返回只适合人类看的自由文本。
 - WebSocket 失败消息也要有统一 envelope。
-- token 文件读写失败、端口绑定失败、server 初始化失败时，`scene_viewer` 要有清晰错误输出。
+- token 文件读写失败、端口绑定失败、server 初始化失败时，`lxe_editor` 要有清晰错误输出。
 
 ## Testing Strategy
 
@@ -369,13 +369,13 @@ WebSocket 第一版同时支持：
 - toolbar 纯 icon 和 reset 行为
 - `scene view rect` 坐标映射
 - 新命令语义
-- automation service 状态快照与事件
+- API service 状态快照与事件
 
-### Out-of-process automation tests
+### Out-of-process API tests
 
 新增一类进程外集成测试：
 
-- 子进程拉起 `demo_scene_viewer`
+- 子进程拉起 `lxe_editor`
 - 读取 token 文件
 - 通过 HTTP 调 command / state query
 - 必要时通过 WebSocket 等待事件
@@ -407,10 +407,10 @@ WebSocket 第一版同时支持：
    - reset 按钮
    - mode/reset 命令
 
-2. command / probe / automation core
+2. command / probe / API core
    - 新命令
    - probe 命令
-   - `EditorAutomationService`
+   - `LxeEditorApiService`
    - 事件模型
 
 3. transport
@@ -422,7 +422,7 @@ WebSocket 第一版同时支持：
 并行前提：
 
 - 命令与状态 schema 先定死
-- automation core 接口先定死
+- API core 接口先定死
 
 这样 transport 和交互层可以并行实现而不互相踩逻辑。
 
@@ -434,7 +434,7 @@ WebSocket 第一版同时支持：
 2. toolbar 纯 icon + reset 按钮
 3. 把新增 UI 动作补成命令
 4. 增加 probe/state 命令
-5. 抽 `EditorAutomationService`
+5. 抽 `LxeEditorApiService`
 6. 上 HTTP
 7. 上 WebSocket
 8. 增加进程外集成测试
@@ -447,7 +447,7 @@ WebSocket 第一版同时支持：
 - 存在可用的 reset icon，把 `editor_cam` 对齐到 `game_cam`，且不切 preview。
 - toolbar 提供的所有关键动作，都能通过 command console 触发。
 - 缺观测点时可通过新增命令补足，而不是增加隐藏网络接口。
-- `scene_viewer` 可通过 HTTP / WebSocket 从外部进程驱动。
+- `lxe_editor` 可通过 HTTP / WebSocket 从外部进程驱动。
 - 默认全网卡开放时，未带 token 的请求无法通过认证。
-- 进程外自动测试可以启动 `demo_scene_viewer` 并通过 automation API 完成核心断言。
+- 进程外自动测试可以启动 `lxe_editor` 并通过 API 完成核心断言。
 - HTTP / WebSocket schema 与后续 MCP adapter 的输入输出模型兼容，不需要重写 editor 内核。

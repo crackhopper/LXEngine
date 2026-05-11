@@ -10,7 +10,7 @@ This change needs to preserve current rendering semantics while removing that sp
 
 - camera target matching and culling-mask filtering
 - scene-level camera UBO collection before queue building
-- orbit/freefly controller feel and F2 switching in `scene_viewer`
+- orbit/freefly controller feel and F2 switching in `lxe_editor`
 - path lookup and transform hierarchy contracts already implemented by `SceneNode`
 
 The repository also has two style constraints that shape the design:

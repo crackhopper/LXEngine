@@ -23,4 +23,4 @@ OrbitCamera 适合围绕单个模型调试，但在 Sponza 等大场景里需要
 - **新增文件**: `src/core/scene/freefly_camera_controller.hpp`, `.cpp`, `src/test/integration/test_freefly_camera_controller.cpp`
 - **修改文件**: `src/test/CMakeLists.txt`（注册新测试）
 - **依赖**: `ICameraController`（REQ-015）, `IInputState`（REQ-012）, `Clock`（REQ-014）
-- **下游**: REQ-019 demo_scene_viewer Orbit/FreeFly 切换、REQ-018 调试面板
+- **下游**: REQ-019 lxe_editor Orbit/FreeFly 切换、REQ-018 调试面板

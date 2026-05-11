@@ -1,6 +1,6 @@
 ## Why
 
-REQ-040-a needs one command entrypoint that both in-editor UI and future MCP/agent shims can share. Current scene_viewer only has ad-hoc hotkeys/UI callbacks; there is no text protocol, command registry, or command history surface.
+REQ-040-a needs one command entrypoint that both in-editor UI and future MCP/agent shims can share. Current lxe_editor only has ad-hoc hotkeys/UI callbacks; there is no text protocol, command registry, or command history surface.
 
 ## What Changes
 

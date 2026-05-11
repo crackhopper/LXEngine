@@ -269,7 +269,7 @@ private:
 
 ## 下游
 
-- `REQ-019`：demo_scene_viewer 读取 DamagedHelmet，并把 `GLTFLoader` 输出桥接到当前材质/mesh 路径
+- `REQ-019`：lxe_editor 读取 DamagedHelmet，并把 `GLTFLoader` 输出桥接到当前材质/mesh 路径
 - 后续材质桥接需求：将 `GLTFPbrMaterial` 转成工程内 `MaterialInstance`
 - Phase 3 资产管线：复用 `GLTFLoader` 作为基础导入入口
 

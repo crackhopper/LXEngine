@@ -12,6 +12,6 @@
 
 ## 3. Demo Wiring And Verification
 
-- [x] 3.1 Wire scene tree / inspector / console / viewport overlay into `demo_scene_viewer` with initial editor/game cameras.
+- [x] 3.1 Wire scene tree / inspector / console / viewport overlay into `lxe_editor` with initial editor/game cameras.
 - [x] 3.2 Add or extend smoke coverage for editor MVP flows where practical.
 - [x] 3.3 Run required configure/build/ctest matrix, then commit `Implement REQ-041-a: imgui-editor-mvp`.

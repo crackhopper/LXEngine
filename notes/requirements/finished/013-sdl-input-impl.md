@@ -205,7 +205,7 @@ private:
 
 - `REQ-015` / `REQ-016`：相机控制器读取真实 SDL 输入
 - `REQ-017`：ImGui 输入协调与事件 forwarding
-- `REQ-019`：demo_scene_viewer 的相机交互
+- `REQ-019`：lxe_editor 的相机交互
 - Phase 2 更完整输入系统：在本实现上扩边沿检测、设备类型和更多平台支持
 
 ## 实施状态

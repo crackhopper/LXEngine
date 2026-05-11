@@ -10,7 +10,7 @@ import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from tests.lxe_editor.automation_client import LxeEditorClient
+from tests.lxe_editor.api_client import LxeEditorClient
 
 
 class DirectMcpConfigTest(unittest.TestCase):
@@ -20,7 +20,7 @@ class DirectMcpConfigTest(unittest.TestCase):
         self.runtime_data_dir = self.runtime_root / "data" / "lxe_editor"
         self.runtime_data_dir.mkdir(parents=True, exist_ok=True)
         self.config_path = self.temp_root / "config.toml"
-        self.token_path = self.runtime_data_dir / "automation_token.txt"
+        self.token_path = self.runtime_data_dir / "api_token.txt"
         self.token_path.write_text("secret-token\n", encoding="utf-8")
         self.repo_root = pathlib.Path(__file__).resolve().parents[2]
 

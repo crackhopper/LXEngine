@@ -15,7 +15,7 @@ so MCP should move onto the same HTTP server as a first-class URL endpoint.
 - Expose MCP through an HTTP URL endpoint on the existing editor HTTP server.
 - Reuse the existing bearer-token authentication model for both `/api/...` and
   `/mcp`.
-- Rename `automation server` terminology to `api server`.
+- Rename `API server` terminology to `api server`.
 - Keep local and remote Codex usage on the same direct URL-based MCP flow.
 
 ## Non-Goals
@@ -38,7 +38,7 @@ That server SHALL host:
 - new MCP endpoint at `POST /mcp`
 
 The editor SHALL describe this service as the `API server`, not the
-`automation server`.
+`API server`.
 
 ### MCP Handler Core
 
@@ -101,7 +101,7 @@ pid: 12345
 apiHost: 0.0.0.0
 apiPort: 3768
 mcpUrl: http://127.0.0.1:3768/mcp
-tokenFile: /path/to/data/lxe_editor/automation_token.txt
+tokenFile: /path/to/data/lxe_editor/api_token.txt
 startedAt: 2026-05-11-210000
 ```
 
@@ -109,12 +109,12 @@ startedAt: 2026-05-11-210000
 
 The following naming cleanup SHALL happen as part of the migration:
 
-- `EditorAutomationServer` -> `LxeEditorApiServer`
-- `EditorAutomationService` -> `LxeEditorApiService`
-- `EditorAutomationProtocol` -> `LxeEditorApiProtocol`
+- `LxeEditorApiServer` -> `LxeEditorApiServer`
+- `LxeEditorApiService` -> `LxeEditorApiService`
+- `LxeEditorApiProtocol` -> `LxeEditorApiProtocol`
 
 Equivalent test names, logs, and README language SHALL move from
-`automation` to `api` when they refer to the editor HTTP surface.
+`api` to `api` when they refer to the editor HTTP surface.
 
 This migration does not require renaming every historically named data struct in
 one pass, but the public HTTP/MCP surface SHALL use `api` terminology.
@@ -142,7 +142,7 @@ The implementation SHALL proceed in this order:
 3. Switch runtime state output to HTTP MCP URL fields.
 4. Update `.codex/config.toml` to use direct MCP URL configuration.
 5. Remove the TCP MCP server and all bridge scripts.
-6. Rename HTTP server terminology from `automation` to `api`.
+6. Rename HTTP server terminology from `api` to `api`.
 
 ## Testing
 

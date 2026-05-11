@@ -25,6 +25,6 @@
 
 ## Impact
 
-- Affected code: `src/core/scene/camera*`, `src/core/scene/components/`, `src/core/scene/scene*`, `src/core/frame_graph/render_queue.cpp`, controller implementations, `scene_viewer`, and integration tests.
+- Affected code: `src/core/scene/camera*`, `src/core/scene/components/`, `src/core/scene/scene*`, `src/core/frame_graph/render_queue.cpp`, controller implementations, `lxe_editor`, and integration tests.
 - Affected APIs: camera creation/registration, controller update signatures, and any call sites that currently expect a standalone `Camera`.
 - Dependencies: builds directly on `scene-node-components`, `scene-transform-hierarchy`, `scene-node-path-lookup`, and existing camera culling-mask behavior.

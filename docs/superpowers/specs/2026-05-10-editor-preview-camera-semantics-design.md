@@ -4,12 +4,12 @@ Date: 2026-05-10
 
 ## Context
 
-The current editor preview flow in `scene_viewer` mixes two separate concerns:
+The current editor preview flow in `lxe_editor` mixes two separate concerns:
 
 - `game_cam` is intended to be the scene's real gameplay camera.
 - `editor_cam` is intended to be the editor-only working camera.
 
-Today both cameras are initialized independently in `src/demos/scene_viewer/main.cpp`, which creates two problems:
+Today both cameras are initialized independently in `src/demos/lxe_editor/main.cpp`, which creates two problems:
 
 1. The initial editor view does not match the gameplay camera.
 2. The preview feature is hard to reason about because camera ownership and persistence semantics are unclear.
@@ -146,7 +146,7 @@ Minimum required payloads for this change:
 
 ### `scene`
 
-This block owns the authored scene facts that should survive save/load. For the scope of this design, it may stay narrow and only cover what `scene_viewer` already needs to reconstruct its default scene consistently.
+This block owns the authored scene facts that should survive save/load. For the scope of this design, it may stay narrow and only cover what `lxe_editor` already needs to reconstruct its default scene consistently.
 
 At minimum it should identify:
 
@@ -154,7 +154,7 @@ At minimum it should identify:
 - the default gameplay camera name or identity
 - any demo-local authored defaults that are currently hard-coded in `main.cpp`
 
-This design deliberately allows the first serializer/deserializer to stay `scene_viewer`-scoped instead of pretending a generic scene asset system already exists.
+This design deliberately allows the first serializer/deserializer to stay `lxe_editor`-scoped instead of pretending a generic scene asset system already exists.
 
 ### `gameCamera`
 
@@ -216,7 +216,7 @@ This design implies five focused changes:
 
 ### 1. Demo / scene bootstrap
 
-Update `src/demos/scene_viewer/main.cpp` so camera creation order and defaults match the new semantics:
+Update `src/demos/lxe_editor/main.cpp` so camera creation order and defaults match the new semantics:
 
 - create `game_cam` first
 - create `editor_cam` second
@@ -231,11 +231,11 @@ Add a scene-facing editor metadata contract that can serialize and deserialize e
 
 Add a small scene document layer that can:
 
-- parse scene_viewer scene files from disk
-- emit the current scene_viewer state back to disk
+- parse lxe_editor scene files from disk
+- emit the current lxe_editor state back to disk
 - distinguish runtime scene data from editor-only metadata
 
-The first version may stay narrowly scoped to `scene_viewer` instead of claiming to serialize arbitrary scene graphs.
+The first version may stay narrowly scoped to `lxe_editor` instead of claiming to serialize arbitrary scene graphs.
 
 ### 4. Command bus scene I/O commands
 
@@ -273,7 +273,7 @@ Because the desired experience is scene-scoped continuity. The same scene should
 
 ### Why add explicit scene commands instead of only saving on exit?
 
-Because command-driven editing is already a core project direction. Scene persistence should be reachable through the same command bus used by UI, automation, and future MCP control. Keeping load/save outside the command system would create a second control path with different behavior.
+Because command-driven editing is already a core project direction. Scene persistence should be reachable through the same command bus used by UI, api, and future MCP control. Keeping load/save outside the command system would create a second control path with different behavior.
 
 ## Acceptance Criteria
 

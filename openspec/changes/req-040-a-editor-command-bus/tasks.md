@@ -13,4 +13,4 @@
 
 - [x] 3.1 Add built-in editor verbs (`help/select/move/...`) and registration helpers.
 - [x] 3.2 Add ImGui console panel and history navigation/autocomplete.
-- [x] 3.3 Wire the command bus into `demo_scene_viewer`, then run full REQ build/test matrix.
+- [x] 3.3 Wire the command bus into `lxe_editor`, then run full REQ build/test matrix.

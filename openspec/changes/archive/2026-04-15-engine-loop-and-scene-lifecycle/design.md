@@ -19,7 +19,7 @@ This is a cross-cutting change because it touches architecture boundaries, futur
 - Make scene startup explicit and separate from frame execution.
 - Provide a deterministic update hook before `uploadData()`.
 - Define explicit rebuild semantics for structural scene changes.
-- Make `demo_scene_viewer` and tutorial flow converge on the same lifecycle shape.
+- Make `lxe_editor` and tutorial flow converge on the same lifecycle shape.
 
 **Non-Goals:**
 
@@ -163,7 +163,7 @@ It is not meant to become a full scheduler. This keeps the abstraction useful fo
 1. Add `EngineLoop` type and minimal API surface.
 2. Implement `initialize`, `startScene`, `setUpdateHook`, `tickFrame`, `run`, and `stop`.
 3. Route `Clock` ownership into `EngineLoop`.
-4. Update at least one end-to-end consumer (`demo_scene_viewer`) to use `EngineLoop`.
+4. Update at least one end-to-end consumer (`lxe_editor`) to use `EngineLoop`.
 5. Update tutorial and architecture notes so scene startup and frame execution are described separately.
 
 Rollback is low-risk because the backend contract remains unchanged. Reverting the new runtime layer would mostly involve removing `EngineLoop` call sites and restoring handwritten loops.

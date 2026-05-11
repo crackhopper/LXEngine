@@ -5,9 +5,9 @@
 
 namespace LX_demo::lxe_editor {
 
-class AutomationTokenState final {
+class ApiTokenState final {
 public:
-  explicit AutomationTokenState(std::filesystem::path rootDir);
+  explicit ApiTokenState(std::filesystem::path rootDir);
 
   [[nodiscard]] const std::filesystem::path& rootDir() const;
   [[nodiscard]] const std::filesystem::path& tokenPath() const;

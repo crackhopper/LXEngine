@@ -16,7 +16,7 @@
 
 - [x] 3.1 Change `ICameraController`, `OrbitCameraController`, and `FreeFlyCameraController` to operate on `CameraComponent`.
 - [x] 3.2 Preserve orbit/free-fly controller behavior while switching pose writeback to `CameraComponent` methods instead of direct camera field mutation.
-- [x] 3.3 Update `scene_viewer` camera construction, camera rig switching, and per-frame camera refresh to use `SceneNode` + `CameraComponent`.
+- [x] 3.3 Update `lxe_editor` camera construction, camera rig switching, and per-frame camera refresh to use `SceneNode` + `CameraComponent`.
 - [x] 3.4 Update demo/editor-facing camera UI code to edit the active camera node transform plus camera-component properties.
 
 ## 4. Verification and Documentation

@@ -1,4 +1,4 @@
-#include "demos/lxe_editor/editor_automation_protocol.hpp"
+#include "demos/lxe_editor/lxe_editor_api_protocol.hpp"
 
 #include <algorithm>
 
@@ -13,7 +13,7 @@ void appendJsonStringField(std::string& out, std::string_view key,
   out += '"';
   out += key;
   out += "\":\"";
-  out += automationJsonEscape(value);
+  out += apiJsonEscape(value);
   out += '"';
 }
 
@@ -74,9 +74,9 @@ std::string metadataToJson(
       out += ',';
     }
     out += '"';
-    out += automationJsonEscape(keys[i]);
+    out += apiJsonEscape(keys[i]);
     out += "\":\"";
-    out += automationJsonEscape(metadata.at(keys[i]));
+    out += apiJsonEscape(metadata.at(keys[i]));
     out += '"';
   }
   out += '}';
@@ -85,68 +85,68 @@ std::string metadataToJson(
 
 } // namespace
 
-const char* automationSceneSourceKindName(const AutomationSceneSourceKind kind) {
+const char* apiSceneSourceKindName(const ApiSceneSourceKind kind) {
   switch (kind) {
-  case AutomationSceneSourceKind::Asset:
+  case ApiSceneSourceKind::Asset:
     return "asset";
-  case AutomationSceneSourceKind::Local:
+  case ApiSceneSourceKind::Local:
     return "local";
-  case AutomationSceneSourceKind::External:
+  case ApiSceneSourceKind::External:
     return "external";
-  case AutomationSceneSourceKind::Unknown:
+  case ApiSceneSourceKind::Unknown:
     break;
   }
   return "unknown";
 }
 
-const char* automationPermissionLevelName(
-    const AutomationPermissionLevel level) {
+const char* apiPermissionLevelName(
+    const ApiPermissionLevel level) {
   switch (level) {
-  case AutomationPermissionLevel::User:
+  case ApiPermissionLevel::User:
     return "user";
-  case AutomationPermissionLevel::Admin:
+  case ApiPermissionLevel::Admin:
     return "admin";
-  case AutomationPermissionLevel::Unknown:
+  case ApiPermissionLevel::Unknown:
     break;
   }
   return "unknown";
 }
 
-const char* automationEditModeName(const AutomationEditMode mode) {
+const char* apiEditModeName(const ApiEditMode mode) {
   switch (mode) {
-  case AutomationEditMode::Selection:
+  case ApiEditMode::Selection:
     return "selection";
-  case AutomationEditMode::Orbit:
+  case ApiEditMode::Orbit:
     return "orbit";
-  case AutomationEditMode::FreeFly:
+  case ApiEditMode::FreeFly:
     return "freefly";
-  case AutomationEditMode::Unknown:
+  case ApiEditMode::Unknown:
     break;
   }
   return "unknown";
 }
 
-const char* automationEventTypeName(const AutomationEventType type) {
+const char* apiEventTypeName(const ApiEventType type) {
   switch (type) {
-  case AutomationEventType::CommandExecuted:
+  case ApiEventType::CommandExecuted:
     return "command.executed";
-  case AutomationEventType::SceneLoaded:
+  case ApiEventType::SceneLoaded:
     return "scene.loaded";
-  case AutomationEventType::SceneSaved:
+  case ApiEventType::SceneSaved:
     return "scene.saved";
-  case AutomationEventType::SelectionChanged:
+  case ApiEventType::SelectionChanged:
     return "selection.changed";
-  case AutomationEventType::ModeChanged:
+  case ApiEventType::ModeChanged:
     return "mode.changed";
-  case AutomationEventType::PreviewChanged:
+  case ApiEventType::PreviewChanged:
     return "preview.changed";
-  case AutomationEventType::DirtyChanged:
+  case ApiEventType::DirtyChanged:
     return "dirty.changed";
   }
   return "unknown";
 }
 
-std::string automationJsonEscape(const std::string_view text) {
+std::string apiJsonEscape(const std::string_view text) {
   std::string out;
   out.reserve(text.size());
   for (const char c : text) {
@@ -174,7 +174,7 @@ std::string automationJsonEscape(const std::string_view text) {
   return out;
 }
 
-std::string toJson(const AutomationError& error) {
+std::string toJson(const ApiError& error) {
   std::string out = "{";
   appendJsonStringField(out, "code", error.code, true);
   appendJsonStringField(out, "message", error.message);
@@ -182,14 +182,14 @@ std::string toJson(const AutomationError& error) {
   return out;
 }
 
-std::string toJson(const AutomationCommandRequest& request) {
+std::string toJson(const ApiCommandRequest& request) {
   std::string out = "{";
   appendJsonStringField(out, "line", request.line, true);
   out += '}';
   return out;
 }
 
-std::string toJson(const AutomationCommandResponse& response) {
+std::string toJson(const ApiCommandResponse& response) {
   std::string out = "{";
   appendJsonBoolField(out, "ok", response.ok, true);
   appendJsonStringField(out, "line", response.line);
@@ -204,14 +204,14 @@ std::string toJson(const AutomationCommandResponse& response) {
   return out;
 }
 
-std::string toJson(const AutomationEventCursor& cursor) {
+std::string toJson(const ApiEventCursor& cursor) {
   std::string out = "{";
   appendJsonUIntField(out, "nextSequence", cursor.nextSequence, true);
   out += '}';
   return out;
 }
 
-std::string toJson(const AutomationAabb& bounds) {
+std::string toJson(const ApiAabb& bounds) {
   std::string out = "{";
   out += "\"min\":";
   out += toJson(bounds.min);
@@ -221,21 +221,21 @@ std::string toJson(const AutomationAabb& bounds) {
   return out;
 }
 
-std::string toJson(const AutomationSceneSummary& summary) {
+std::string toJson(const ApiSceneSummary& summary) {
   std::string out = "{";
   appendJsonStringField(out, "sceneName", summary.sceneName, true);
   appendJsonStringField(out, "currentDocumentPath",
                         summary.currentDocumentPath);
   appendJsonStringField(out, "sourceKind",
-                        automationSceneSourceKindName(summary.sourceKind));
+                        apiSceneSourceKindName(summary.sourceKind));
   appendJsonStringField(out, "permission",
-                        automationPermissionLevelName(summary.permission));
+                        apiPermissionLevelName(summary.permission));
   appendJsonBoolField(out, "dirty", summary.dirty);
   out += '}';
   return out;
 }
 
-std::string toJson(const AutomationSelectionSnapshot& selection) {
+std::string toJson(const ApiSelectionSnapshot& selection) {
   std::string out = "{";
   out += "\"selectedPaths\":[";
   for (size_t i = 0; i < selection.selectedPaths.size(); ++i) {
@@ -243,7 +243,7 @@ std::string toJson(const AutomationSelectionSnapshot& selection) {
       out += ',';
     }
     out += '"';
-    out += automationJsonEscape(selection.selectedPaths[i]);
+    out += apiJsonEscape(selection.selectedPaths[i]);
     out += '"';
   }
   out += "]";
@@ -259,7 +259,7 @@ std::string toJson(const AutomationSelectionSnapshot& selection) {
   return out;
 }
 
-std::string toJson(const AutomationCameraPose& pose) {
+std::string toJson(const ApiCameraPose& pose) {
   std::string out = "{";
   appendJsonStringField(out, "path", pose.path, true);
   out += ",\"eye\":";
@@ -273,7 +273,7 @@ std::string toJson(const AutomationCameraPose& pose) {
   return out;
 }
 
-std::string toJson(const AutomationCameraSnapshot& cameras) {
+std::string toJson(const ApiCameraSnapshot& cameras) {
   std::string out = "{";
   appendJsonStringField(out, "activeCameraPath", cameras.activeCameraPath, true);
   out += ",\"editor\":";
@@ -284,16 +284,16 @@ std::string toJson(const AutomationCameraSnapshot& cameras) {
   return out;
 }
 
-std::string toJson(const AutomationToolbarSnapshot& toolbar) {
+std::string toJson(const ApiToolbarSnapshot& toolbar) {
   std::string out = "{";
   appendJsonStringField(out, "editMode",
-                        automationEditModeName(toolbar.editMode), true);
+                        apiEditModeName(toolbar.editMode), true);
   appendJsonBoolField(out, "previewEnabled", toolbar.previewEnabled);
   out += '}';
   return out;
 }
 
-std::string toJson(const AutomationStateSnapshot& state) {
+std::string toJson(const ApiStateSnapshot& state) {
   std::string out = "{";
   out += "\"scene\":";
   out += toJson(state.scene);
@@ -307,7 +307,7 @@ std::string toJson(const AutomationStateSnapshot& state) {
   return out;
 }
 
-std::string toJson(const AutomationCommandEventPayload& payload) {
+std::string toJson(const ApiCommandEventPayload& payload) {
   std::string out = "{";
   appendJsonStringField(out, "line", payload.line, true);
   appendJsonBoolField(out, "ok", payload.ok);
@@ -320,7 +320,7 @@ std::string toJson(const AutomationCommandEventPayload& payload) {
   return out;
 }
 
-std::string toJson(const AutomationEvent& event) {
+std::string toJson(const ApiEvent& event) {
   std::string payload = event.payloadJson;
   if (payload.empty()) {
     if (event.command.has_value()) {
@@ -333,7 +333,7 @@ std::string toJson(const AutomationEvent& event) {
   }
 
   std::string out = "{";
-  appendJsonStringField(out, "type", automationEventTypeName(event.type), true);
+  appendJsonStringField(out, "type", apiEventTypeName(event.type), true);
   appendJsonUIntField(out, "seq", event.sequence);
   out += ",\"payload\":";
   out += payload;
@@ -341,7 +341,7 @@ std::string toJson(const AutomationEvent& event) {
   return out;
 }
 
-std::string toJson(const AutomationEventBatch& batch) {
+std::string toJson(const ApiEventBatch& batch) {
   std::string out = "{";
   out += "\"nextCursor\":";
   out += toJson(batch.nextCursor);
@@ -356,12 +356,12 @@ std::string toJson(const AutomationEventBatch& batch) {
   return out;
 }
 
-std::optional<AutomationAabb> automationAabbFromBounds(
+std::optional<ApiAabb> apiAabbFromBounds(
     const LX_core::BoundingBox& bounds) {
   if (!bounds.isValid()) {
     return std::nullopt;
   }
-  return AutomationAabb{bounds.min, bounds.max};
+  return ApiAabb{bounds.min, bounds.max};
 }
 
 } // namespace LX_demo::lxe_editor
