@@ -882,6 +882,27 @@ void testConsoleInputControllerCallbackEvents() {
          "history callback should restore draft after returning past newest");
 }
 
+void testConsoleInputControllerPersistsHistoryLines() {
+  CommandFixture fixture;
+  ConsoleInputController controller(fixture.bus);
+
+  controller.setPersistedHistory({"help", "list nodes"});
+  controller.setInputText("move /world/cube");
+  controller.browseHistoryOlder();
+  EXPECT(controller.inputText() == "list nodes",
+         "persisted history should seed history browsing after restart");
+  controller.browseHistoryOlder();
+  EXPECT(controller.inputText() == "help",
+         "older browsing should continue across persisted entries");
+
+  controller.submitLine("select /world/cube");
+  const auto persisted = controller.persistedHistory();
+  EXPECT(persisted.size() == 3,
+         "persisted history export should include newly submitted commands");
+  EXPECT(persisted.back() == "select /world/cube",
+         "persisted history export should append the latest submitted command");
+}
+
 void testConsolePanelUndoRedoShortcutsUseCommandBus() {
   CommandFixture fixture;
   ConsolePanel panel(fixture.bus);
@@ -935,6 +956,7 @@ int main() {
   testConsoleInputControllerCompletionBehaviors();
   testConsoleInputControllerEscRestoresDraft();
   testConsoleInputControllerCallbackEvents();
+  testConsoleInputControllerPersistsHistoryLines();
 
   if (failures != 0) {
     std::cerr << "test_command_bus failed with " << failures << " failure(s)\n";

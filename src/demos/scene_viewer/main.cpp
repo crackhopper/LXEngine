@@ -19,6 +19,7 @@
 
 #include "camera_rig.hpp"
 #include "editor_config_state.hpp"
+#include "editor_data_state.hpp"
 #include "scene_catalog.hpp"
 #include "scene_interaction_controller.hpp"
 #include "scene_input_routing.hpp"
@@ -161,9 +162,11 @@ public:
             .localRoots = {resolveRuntimePath("data/scenes")},
         }),
         m_session(resolveRuntimePath("data/scenes"),
-                  [] { return currentTimestampString(); }) {}
+                  [] { return currentTimestampString(); }),
+        m_editorDataState(resolveRuntimePath("data/scene_viewer")) {}
 
   void initialize() {
+    m_editorData = m_editorDataState.load();
     refreshCatalog();
     m_runtime.createEmptyScene();
     m_session.setCurrentDocument(std::nullopt, std::nullopt);
@@ -189,6 +192,12 @@ public:
 
   [[nodiscard]] bool isDirty() const { return m_session.isDirty(); }
   demo::EditorConfigDocument& editorConfig() { return m_editorConfig; }
+  void persistEditorData() {
+    if (m_consolePanel) {
+      m_editorData.consoleHistory = m_consolePanel->persistedHistory();
+    }
+    (void)m_editorDataState.save(m_editorData);
+  }
 
   [[nodiscard]] LX_core::CommandResult
   saveScene(const std::optional<std::string>& path) {
@@ -249,6 +258,10 @@ public:
       if (entry.result.ok && commandRequestsSceneRebuild(entry.result)) {
         loop.requestSceneRebuild();
       }
+    }
+    if (m_consolePanel && m_consolePanel->consumePersistedHistoryDirty()) {
+      m_editorData.consoleHistory = m_consolePanel->persistedHistory();
+      (void)m_editorDataState.save(m_editorData);
     }
   }
 
@@ -356,6 +369,7 @@ private:
             .adminStatus = [this]() { return adminStatus(); },
         });
     m_consolePanel = std::make_unique<LX_core::ConsolePanel>(*m_commandBus);
+    m_consolePanel->setPersistedHistory(m_editorData.consoleHistory);
     m_sceneTreePanel = std::make_unique<LX_core::SceneTreePanel>(
         *m_commandBus, m_editorState, *m_runtime.scene());
     m_inspectorPanel =
@@ -383,6 +397,8 @@ private:
   std::unique_ptr<demo::SceneInteractionController> m_sceneInteraction;
   size_t m_lastObservedHistoryIndex = 0;
   demo::EditorConfigDocument m_editorConfig;
+  demo::EditorDataState m_editorDataState;
+  demo::EditorDataDocument m_editorData;
 };
 
 struct ClosePromptState final {
@@ -549,12 +565,14 @@ int main() {
       } else {
         session.editorCamera().updateMatrices();
       }
+      session.sceneInteraction().enqueueDebugDraw();
       input->nextFrame();
     });
 
     loop.run();
     session.editorConfig().windowPlacement = window->getPlacement();
     (void)configState.save(session.editorConfig());
+    session.persistEditorData();
     renderer->shutdown();
     return 0;
   } catch (const std::exception& e) {

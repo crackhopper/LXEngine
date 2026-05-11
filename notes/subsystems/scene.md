@@ -88,9 +88,11 @@
 - `scene save <path>` 支持显式另存；如果显式路径仍指向受保护的 `asset` 区域且权限不是 `admin`，也会被重定向到 `local`。
 - `admin on` / `admin off` / `admin status` 控制当前编辑会话的最小两级权限。
 - 关闭 dirty 场景时会弹出 `Save / Discard / Cancel`；`Save` 走的就是同一条 `scene save` 决策路径，不会在 `user` 模式下静默覆盖内置 asset。
-- `scene_viewer` 的编辑器窗口布局、主窗口几何、以及 editor-only preferences 保存在 `data/scene_viewer/editor_config.yaml`。
-  这份本地文件不参与 scene asset 序列化，也不进入版本库；其中会记录 panel layout 和 `uiFontScale`，但不会保存当前 scene path、selection 或 preview 开关。
+- `scene_viewer` 的编辑器配置保存在 `data/scene_viewer/editor_config.yaml`，其中记录主窗口几何、panel layout 和 `uiFontScale` 等长期配置。
+- `scene_viewer` 的本地运行数据保存在 `data/scene_viewer/editor_data.yaml`，当前至少包含最近 50 条 command console 历史。
+- 这两份本地文件都不参与 scene asset 序列化，也不进入版本库；它们不会保存当前 selection、preview 开关，scene path 也不属于 scene 文档本身。
 - `scene_viewer` 当前主路径不再走旧的 `ViewportOverlay` / gizmo 面板交互；节点选择来自主场景视图点击 + 浮动 toolbar 的 `Selection / Orbit / FreeFly / Preview` 模式切换。
+- 主路径选择命中后，会通过 `DebugDraw` 持续显示选中节点自身的 world-space AABB，以及最近一次成功点击命中的交点小球；点空白会同时清掉选择和交点。
 - 进入 preview 后，主场景视图点击、`Esc` 取消选择、以及 `Delete` 删除节点都会被抑制，避免 gameplay camera 预览期间误改 editor state。
 - toolbar 的位置与尺寸会写回 `editor_config.yaml`，但启动时会强制恢复可见，避免唯一的模式切换入口被旧配置永久隐藏。
 

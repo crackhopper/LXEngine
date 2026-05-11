@@ -13,6 +13,7 @@
 #include "core/utils/env.hpp"
 #include "demos/scene_viewer/camera_rig.hpp"
 #include "demos/scene_viewer/editor_config_state.hpp"
+#include "demos/scene_viewer/editor_data_state.hpp"
 #include "demos/scene_viewer/ui_overlay.hpp"
 
 #include <imgui.h>
@@ -499,6 +500,57 @@ void testInvalidConfigFallsBackToDefaults() {
   fs::remove_all(tempRoot);
 }
 
+void testEditorDataRoundTripsHistory() {
+  namespace fs = std::filesystem;
+
+  const fs::path tempRoot =
+      fs::temp_directory_path() / "lxengine_scene_viewer_editor_data_roundtrip";
+  fs::remove_all(tempRoot);
+
+  LX_demo::scene_viewer::EditorDataState state(tempRoot);
+  LX_demo::scene_viewer::EditorDataDocument document;
+  document.consoleHistory = {"help", "scene list", "scene load foo.scene.yaml"};
+
+  EXPECT(state.save(document), "editor data save should succeed");
+  EXPECT(fs::exists(state.dataPath()),
+         "editor data save should create editor_data.yaml");
+
+  const auto loaded = state.load();
+  EXPECT(loaded.consoleHistory.size() == 3,
+         "editor data load should restore saved console history");
+  EXPECT(loaded.consoleHistory[1] == "scene list",
+         "editor data should preserve console history ordering");
+
+  fs::remove_all(tempRoot);
+}
+
+void testEditorDataLoadClampsConsoleHistoryToFiftyEntries() {
+  namespace fs = std::filesystem;
+
+  const fs::path tempRoot =
+      fs::temp_directory_path() / "lxengine_scene_viewer_editor_data_clamp";
+  fs::remove_all(tempRoot);
+  fs::create_directories(tempRoot);
+
+  LX_demo::scene_viewer::EditorDataState state(tempRoot);
+  std::ofstream file(state.dataPath());
+  file << "version: 1\nconsoleHistory:\n";
+  for (int i = 0; i < 60; ++i) {
+    file << "  - cmd-" << i << "\n";
+  }
+  file.close();
+
+  const auto loaded = state.load();
+  EXPECT(loaded.consoleHistory.size() == 50,
+         "editor data load should keep at most 50 console history entries");
+  EXPECT(!loaded.consoleHistory.empty() && loaded.consoleHistory.front() == "cmd-10",
+         "editor data load should drop the oldest history entries first");
+  EXPECT(!loaded.consoleHistory.empty() && loaded.consoleHistory.back() == "cmd-59",
+         "editor data load should preserve the newest history entries");
+
+  fs::remove_all(tempRoot);
+}
+
 void testOffscreenNativeWindowPlacementIsSanitized() {
   const LX_core::WindowPlacement placement{
       .x = 5000,
@@ -597,6 +649,8 @@ int main() {
   testToolbarIsRecoverableFromPersistedHiddenState();
   testUiFontScaleDoesNotCompoundAcrossReattach();
   testInvalidConfigFallsBackToDefaults();
+  testEditorDataRoundTripsHistory();
+  testEditorDataLoadClampsConsoleHistoryToFiftyEntries();
   testOffscreenNativeWindowPlacementIsSanitized();
   testRestoreUsesPlacementTargetBounds();
   testWindowPlacementCenterUsesWideMath();

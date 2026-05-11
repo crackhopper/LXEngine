@@ -143,6 +143,7 @@ if(TARGET test_scene_viewer_layout)
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/scene_viewer/ui_overlay.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/scene_viewer/camera_rig.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/scene_viewer/editor_config_state.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/scene_viewer/editor_data_state.cpp
   )
   target_include_directories(test_scene_viewer_layout PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/..
@@ -158,6 +159,7 @@ if(TARGET test_scene_viewer_interaction)
   target_include_directories(test_scene_viewer_interaction PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/..
   )
+  target_link_libraries(test_scene_viewer_interaction PRIVATE yaml-cpp::yaml-cpp)
 endif()
 
 if(TARGET test_scene_document)

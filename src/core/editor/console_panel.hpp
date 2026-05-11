@@ -25,6 +25,9 @@ public:
   void autocompleteInput();
   void dispatchUndo();
   void dispatchRedo();
+  void setPersistedHistory(std::vector<std::string> historyLines);
+  [[nodiscard]] std::vector<std::string> persistedHistory() const;
+  [[nodiscard]] bool consumePersistedHistoryDirty();
 
   void setInputText(std::string_view text);
   [[nodiscard]] std::string getInputText() const;

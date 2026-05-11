@@ -22,6 +22,9 @@ public:
   void cancelHistoryBrowse();
   void dispatchUndo();
   void dispatchRedo();
+  void setPersistedHistory(std::vector<std::string> historyLines);
+  [[nodiscard]] std::vector<std::string> persistedHistory() const;
+  [[nodiscard]] bool consumePersistedHistoryDirty();
 
   void setInputText(std::string_view text);
   [[nodiscard]] std::string inputText() const;
@@ -37,6 +40,7 @@ private:
   void beginHistoryBrowseIfNeeded();
   void setInputFromHistoryIndex(usize historyIndex);
   void markCommandDispatched();
+  void appendPersistedHistoryLine(std::string line);
   void appendHelperLine(std::string line);
   [[nodiscard]] static std::string trim(std::string_view text);
   [[nodiscard]] static std::string commonPrefix(const std::string &a,
@@ -47,6 +51,8 @@ private:
   std::optional<usize> m_historyBrowseIndex;
   std::optional<std::string> m_historyBrowseDraft;
   std::vector<std::string> m_helperLines;
+  std::vector<std::string> m_persistedHistory;
+  bool m_persistedHistoryDirty = false;
 };
 
 } // namespace LX_core

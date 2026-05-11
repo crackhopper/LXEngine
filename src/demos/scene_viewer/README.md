@@ -64,10 +64,11 @@ with a non-zero exit code if the `assets/` tree cannot be found.
 - Editor chrome persists locally under `data/scene_viewer/`:
   `editor_config.yaml` stores the native window position/size/maximized state,
   floating panel layout/collapsed state, and local editor preferences such as
-  `uiFontScale`. It does not store the current scene path, selection, preview
-  mode, or other session state. The toolbar layout is persisted there too, but
-  startup forces the toolbar visible again so the mode switcher cannot be lost
-  behind a stale hidden-state entry.
+  `uiFontScale`. `editor_data.yaml` stores editor data such as the last 50
+  command-console history lines. Neither file stores the current scene path,
+  selection, preview mode, or other scene-authored state. The toolbar layout is
+  persisted in `editor_config.yaml`, but startup forces the toolbar visible
+  again so the mode switcher cannot be lost behind a stale hidden-state entry.
 - `game_cam` is the authored gameplay camera serialized in the scene document.
 - `editor_cam` is editor-only state. It is restored from
   `editor.editorCamera` when present and otherwise falls back to the gameplay
@@ -111,6 +112,8 @@ with a non-zero exit code if the `assets/` tree cannot be found.
 
 - Left-click in the main scene view selects the hit node
 - Left-click empty space clears the current selection
+- The selected node draws a prominent debug AABB, and a successful pick keeps a
+  debug hit-point marker visible until selection changes or clears
 - Preview mode suppresses scene selection, `Esc`, and `Delete` so gameplay
   camera preview does not mutate editor state
 

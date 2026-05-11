@@ -6,6 +6,23 @@
 #include <imgui.h>
 
 namespace LX_core {
+namespace {
+
+constexpr usize kMaxPersistedHistoryEntries = 50;
+
+void clampPersistedHistory(std::vector<std::string> &history) {
+  history.erase(
+      std::remove_if(history.begin(), history.end(),
+                     [](const std::string &line) { return line.empty(); }),
+      history.end());
+  if (history.size() > kMaxPersistedHistoryEntries) {
+    history.erase(history.begin(),
+                  history.begin() + static_cast<std::ptrdiff_t>(
+                                        history.size() - kMaxPersistedHistoryEntries));
+  }
+}
+
+} // namespace
 
 ConsoleInputController::ConsoleInputController(CommandBus &commandBus)
     : m_commandBus(commandBus) {}
@@ -20,6 +37,7 @@ void ConsoleInputController::submitLine(std::string_view line) {
   }
 
   (void)m_commandBus.dispatch(trimmed);
+  appendPersistedHistoryLine(trimmed);
   markCommandDispatched();
 }
 
@@ -63,7 +81,7 @@ void ConsoleInputController::autocomplete() {
 }
 
 void ConsoleInputController::browseHistoryOlder() {
-  const auto &history = m_commandBus.history();
+  const auto &history = m_persistedHistory;
   if (history.empty()) {
     return;
   }
@@ -78,7 +96,7 @@ void ConsoleInputController::browseHistoryOlder() {
 }
 
 void ConsoleInputController::browseHistoryNewer() {
-  const auto &history = m_commandBus.history();
+  const auto &history = m_persistedHistory;
   if (!m_historyBrowseIndex.has_value() || history.empty()) {
     return;
   }
@@ -111,12 +129,33 @@ void ConsoleInputController::cancelHistoryBrowse() {
 
 void ConsoleInputController::dispatchUndo() {
   (void)m_commandBus.dispatch("undo");
+  appendPersistedHistoryLine("undo");
   markCommandDispatched();
 }
 
 void ConsoleInputController::dispatchRedo() {
   (void)m_commandBus.dispatch("redo");
+  appendPersistedHistoryLine("redo");
   markCommandDispatched();
+}
+
+void ConsoleInputController::setPersistedHistory(
+    std::vector<std::string> historyLines) {
+  clampPersistedHistory(historyLines);
+  m_persistedHistory = std::move(historyLines);
+  m_historyBrowseIndex.reset();
+  m_historyBrowseDraft.reset();
+  m_persistedHistoryDirty = false;
+}
+
+std::vector<std::string> ConsoleInputController::persistedHistory() const {
+  return m_persistedHistory;
+}
+
+bool ConsoleInputController::consumePersistedHistoryDirty() {
+  const bool dirty = m_persistedHistoryDirty;
+  m_persistedHistoryDirty = false;
+  return dirty;
 }
 
 void ConsoleInputController::setInputText(std::string_view text) {
@@ -173,11 +212,11 @@ void ConsoleInputController::beginHistoryBrowseIfNeeded() {
 }
 
 void ConsoleInputController::setInputFromHistoryIndex(const usize historyIndex) {
-  const auto &history = m_commandBus.history();
+  const auto &history = m_persistedHistory;
   if (historyIndex >= history.size()) {
     return;
   }
-  setInputText(history[historyIndex].line);
+  setInputText(history[historyIndex]);
 }
 
 void ConsoleInputController::markCommandDispatched() {
@@ -185,6 +224,15 @@ void ConsoleInputController::markCommandDispatched() {
   m_historyBrowseIndex.reset();
   m_historyBrowseDraft.reset();
   clearHelperOutput();
+}
+
+void ConsoleInputController::appendPersistedHistoryLine(std::string line) {
+  if (line.empty()) {
+    return;
+  }
+  m_persistedHistory.push_back(std::move(line));
+  clampPersistedHistory(m_persistedHistory);
+  m_persistedHistoryDirty = true;
 }
 
 void ConsoleInputController::appendHelperLine(std::string line) {

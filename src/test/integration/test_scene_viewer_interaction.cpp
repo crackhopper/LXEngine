@@ -5,6 +5,7 @@
 #include "core/input/mock_input_state.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
+#include "core/debug_draw/debug_draw.hpp"
 #include "core/scene/components/camera_component.hpp"
 #include "core/scene/components/mesh_component.hpp"
 #include "core/scene/object.hpp"
@@ -160,6 +161,31 @@ void testSelectionModeAllowsMousePickingWhileKeyboardIsCaptured() {
          "selection mode should still pick when only keyboard is captured elsewhere");
 }
 
+void testSelectionDebugStateTracksHitPointAndSelection() {
+  Fixture fixture;
+  LX_core::DebugDraw::reset();
+  LX_core::DebugDraw::attachScene(fixture.scene);
+  LX_core::DebugDraw::beginFrame();
+
+  const auto result =
+      fixture.controller.dispatchPickingClick({400.0f, 300.0f}, {800.0f, 600.0f});
+  EXPECT(result.ok, "selection click should succeed before drawing debug state");
+
+  fixture.controller.enqueueDebugDraw();
+  EXPECT(LX_core::DebugDraw::testing::queuedLineCount() > 0,
+         "selection debug draw should emit AABB and hit marker geometry");
+  const auto marker = fixture.controller.lastHitPoint();
+  EXPECT(marker.has_value(), "successful selection click should record hit point");
+
+  const auto miss =
+      fixture.controller.dispatchPickingClick({799.0f, 0.0f}, {800.0f, 600.0f});
+  EXPECT(miss.ok, "miss click should still dispatch before clearing debug state");
+  EXPECT(!fixture.controller.lastHitPoint().has_value(),
+         "miss click should clear the stored hit point");
+
+  LX_core::DebugDraw::endFrame();
+}
+
 } // namespace
 
 int main() {
@@ -169,6 +195,7 @@ int main() {
   testSelectionModeConsumesOnlyLeftPressEdge();
   testPreviewModeSuppressesSelectionInMainPath();
   testSelectionModeAllowsMousePickingWhileKeyboardIsCaptured();
+  testSelectionDebugStateTracksHitPointAndSelection();
 
   if (failures > 0) {
     std::cerr << "FAILED: " << failures << " assertion(s)\n";

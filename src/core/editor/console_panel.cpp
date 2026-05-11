@@ -102,6 +102,18 @@ void ConsolePanel::dispatchRedo() {
   m_scrollToBottom = true;
 }
 
+void ConsolePanel::setPersistedHistory(std::vector<std::string> historyLines) {
+  m_inputController.setPersistedHistory(std::move(historyLines));
+}
+
+std::vector<std::string> ConsolePanel::persistedHistory() const {
+  return m_inputController.persistedHistory();
+}
+
+bool ConsolePanel::consumePersistedHistoryDirty() {
+  return m_inputController.consumePersistedHistoryDirty();
+}
+
 void ConsolePanel::setInputText(std::string_view text) { m_inputController.setInputText(text); }
 
 std::string ConsolePanel::getInputText() const { return m_inputController.inputText(); }
