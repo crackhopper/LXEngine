@@ -9,17 +9,15 @@ instance through MCP instead of re-implementing editor probing logic in shell co
 ## Scope
 
 This skill assumes the repo-local Codex config registers an MCP server named
-`lxe_editor`. The bridge defaults to the local runtime discovered from
-`data/lxe_editor/runtime_state.yaml`, and can also target a remote editor when
-the current shell exports:
+`lxe_editor`. The repo-local helpers switch that config to either the local
+runtime discovered from `data/lxe_editor/runtime_state.yaml` or a remote MCP
+URL, and export:
 
-- `LXE_EDITOR_REMOTE_MCP_HOST`
-- `LXE_EDITOR_REMOTE_MCP_PORT`
-- `LXE_EDITOR_REMOTE_MCP_TOKEN`
+- `LXE_EDITOR_MCP_BEARER_TOKEN`
 
 This skill does not replace source-side MCP implementation. If the editor has
-not written `runtime_state.yaml`, or if the in-process localhost MCP server is
-not listening yet, report that as the blocker.
+not written `runtime_state.yaml`, or if the `/mcp` endpoint is not listening
+yet, report that as the blocker.
 
 ## Preferred Surfaces
 
@@ -62,7 +60,7 @@ Use tools for actions and active polling:
 - If tools or resources are missing, distinguish between:
   - repo-local registration missing
   - `data/lxe_editor/runtime_state.yaml` missing
-  - localhost MCP socket not listening yet
+  - configured MCP URL not responding yet
   - source-side server connected but missing a specific `lxe_editor_*` tool or
     `lxe-editor://` resource
 - Keep resource names and tool names aligned with the approved design:
@@ -82,5 +80,5 @@ Use tools for actions and active polling:
 When MCP access fails, report the smallest true blocker:
 
 - `runtime_state.yaml` absent: the local editor runtime has not published MCP discovery data.
-- MCP socket connect failed: the source-side MCP server is not live yet, or the remote host/port/token is wrong.
+- MCP request failed: the source-side `/mcp` endpoint is not live yet, or the configured URL/token is wrong.
 - Tool/resource absent: the server is reachable, but the requested MCP surface is not implemented yet.

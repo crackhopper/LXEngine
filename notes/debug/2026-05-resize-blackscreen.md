@@ -1,8 +1,8 @@
-# 2026-05 — demo_scene_viewer resize 偶发黑屏 / 闪烁（NVIDIA Optimus + dGPU）
+# 2026-05 — lxe_editor resize 偶发黑屏 / 闪烁（NVIDIA Optimus + dGPU）
 
 ## 摘要
 
-`demo_scene_viewer` 在窗口最大化 / 还原 / 切换显示器时，**场景画面**偶发黑屏（只剩 clear color，UI 正常）或闪烁（每帧细微差异）。修过单 depth race / per-image depth / 完整 subpass dependency / 显式 layout transition / 不同 in-flight 数 / oldSwapchain handle 等多轮，都只切换"症状形态"而非真正消除。
+`lxe_editor` 在窗口最大化 / 还原 / 切换显示器时，**场景画面**偶发黑屏（只剩 clear color，UI 正常）或闪烁（每帧细微差异）。修过单 depth race / per-image depth / 完整 subpass dependency / 显式 layout transition / 不同 in-flight 数 / oldSwapchain handle 等多轮，都只切换"症状形态"而非真正消除。
 
 最终在 `demo_minimal_resize` 教科书 baseline 上做单变量隔离，锁定**真正的根因**：
 
@@ -16,13 +16,13 @@
 
 | 阶段 | 关键现象 | 应用层假设 | 事实 |
 |---|---|---|---|
-| 0 | demo_scene_viewer 偶发蓝屏（clear color = 蓝） | 多帧共享 depth attachment 跨帧 race | 跨帧 race 真实存在但不是"黑屏 vs 闪烁"切换的元凶 |
+| 0 | lxe_editor 偶发蓝屏（clear color = 蓝） | 多帧共享 depth attachment 跨帧 race | 跨帧 race 真实存在但不是"黑屏 vs 闪烁"切换的元凶 |
 | 1 | 改 per-image depth + `m_imagesInFlight` + 完整 subpass dependency；蓝屏消失 | race 被压实 | race 在 iGPU 上根本无害；这一系列改动只是规范化 |
 | 2 | 出现持续闪烁（细微差异，UI 不闪） | per-image depth 引入 image 间不一致 | 在 dGPU + PRIME 路径下 driver 给每张 image 的内部 cache 模式是独立 lottery，被时序放大成肉眼可见的闪烁 |
 | 3 | DIAG: 强制 `kMaxFramesInFlight=1` + 单 depth → 闪烁消失但黑屏回来 | 跨帧 race 是元凶 | 单 depth 在 dGPU 路径上锁在不利状态 |
 | 4 | 写完全教科书 raw vk 的 baseline (`demo_minimal_resize_baseline`) → 完全稳定 | baseline 用了 first-suitable 选 GPU，**默认选了 iGPU** | 这是关键转折点，但当时没意识到 |
 | 5 | 从 baseline 出发单变量增量回放 `VulkanDevice` 的差异，最终 delta 2-only（仅 score-based pick）就能复现黑屏 | 锁定 score-based GPU pick | stdout 显示 `Selected discrete GPU: NVIDIA GeForce RTX 3070 Ti Laptop GPU` —— 切到 dGPU 了 |
-| 6 | 修复 fix A（默认 iGPU + 环境变量）+ fix B（rebuild 传 oldSwapchain）；`demo_scene_viewer` 默认稳定，`LX_VK_PREFER_GPU=discrete` 走 dGPU 仍偶发 | 应用层无法完全修 dGPU + Optimus 路径，需要 driver 配合 | 提供 workaround 文档化 |
+| 6 | 修复 fix A（默认 iGPU + 环境变量）+ fix B（rebuild 传 oldSwapchain）；`lxe_editor` 默认稳定，`LX_VK_PREFER_GPU=discrete` 走 dGPU 仍偶发 | 应用层无法完全修 dGPU + Optimus 路径，需要 driver 配合 | 提供 workaround 文档化 |
 
 ---
 

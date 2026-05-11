@@ -11,7 +11,7 @@
 
 namespace LX_demo::lxe_editor {
 
-class EditorAutomationService final {
+class LxeEditorApiService final {
 public:
   struct Hooks final {
     std::function<AutomationSceneSummary()> sceneSummary;
@@ -21,9 +21,9 @@ public:
     std::function<void(std::string_view)> recordCommandHistoryLine;
   };
 
-  EditorAutomationService(LX_core::CommandBus& commandBus,
-                          LX_core::EditorState& editorState,
-                          LX_core::Scene& scene, Hooks hooks = {});
+  LxeEditorApiService(LX_core::CommandBus& commandBus,
+                      LX_core::EditorState& editorState,
+                      LX_core::Scene& scene, Hooks hooks = {});
 
   [[nodiscard]] AutomationCommandResponse executeCommand(
       const AutomationCommandRequest& request);

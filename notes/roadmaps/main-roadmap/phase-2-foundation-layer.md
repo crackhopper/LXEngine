@@ -149,7 +149,7 @@ std::string Scene::dump(DumpFormat format, DumpResolution res) const;
 
 每个返回结构化文本 + drill-down hint（[P-7](principles.md#p-7-多分辨率观察)）。
 
-**验收**：在 `scene_viewer` 的 ImGui 面板增加一个 `Describe` 按钮，点击输出当前相机的 JSON 到日志。
+**验收**：在 `lxe_editor` 的 ImGui 面板增加一个 `Describe` 按钮，点击输出当前相机的 JSON 到日志。
 
 ### REQ-209 · AABB + 空间索引
 

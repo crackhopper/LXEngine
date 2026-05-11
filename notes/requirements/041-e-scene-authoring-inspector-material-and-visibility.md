@@ -128,8 +128,8 @@ Inspector 的材质编辑不得直接改内存后绕过 history。需要补齐�
 
 - `src/core/editor/inspector_panel.{hpp,cpp}`
 - `src/core/editor/commands/builtin_commands.cpp`
-- `src/demos/scene_viewer/scene_document.{hpp,cpp}`
-- `src/demos/scene_viewer/scene_runtime.cpp`
+- `src/demos/lxe_editor/scene_document.{hpp,cpp}`
+- `src/demos/lxe_editor/scene_runtime.cpp`
 - `src/test/integration/test_inspector_panel.cpp`
 - `src/test/integration/test_scene_document.cpp`
 - `src/test/integration/test_scene_runtime.cpp`

@@ -1,6 +1,6 @@
 # Phase 1.5 · ImGui Editor MVP + 命令总线
 
-> **目标**：把当前硬编码的 `demo_scene_viewer` 升级为一个**最小可用的 ImGui 编辑器**，配一条**文本命令总线** + 嵌入式控制台。让 RTR (Real Time Rendering 4th) 章节实验阶段的"摆放模型 / 相机 / 光源 + 调参 + 切换视角"全部在运行时完成，不再需要改代码 + 重编。
+> **目标**：把 `lxe_editor` 作为当前最小可用的 ImGui 编辑器入口，配一条**文本命令总线** + 嵌入式控制台。让 RTR (Real Time Rendering 4th) 章节实验阶段的"摆放模型 / 相机 / 光源 + 调参 + 切换视角"全部在运行时完成，不再需要改代码 + 重编。
 >
 > **依赖**：现状即可启动（`SceneNode` parent/child + dirty 传播、`Camera::cullingMask` × `SceneNode::visibilityLayerMask`、`PrimitiveTopology::LineList`、ImGui + SDL3 + Vulkan 集成均已就位）。
 >
@@ -52,7 +52,7 @@
 |-----|------|----------|
 | [REQ-039-a](../../requirements/finished/039-a-debug-draw-subsystem.md) | DebugDraw 子系统 | 公开 API：`drawLine / wireSphere / frustum / cone / arrow / axis`；累积每帧 line 顶点；line topology pipeline；`Layer_EditorOverlay` mask；FrameGraph 后置一个 debug overlay pass。**易用性硬指标：业务代码一行调用画一根世界空间线。** |
 | [REQ-040-a](../../requirements/finished/040-a-editor-command-bus.md) | Editor 命令总线 | `verb arg1 arg2` 文本协议；handler 注册表；返回 `{ ok, message, payload }`；初版命令集：`select / deselect / move / rotate / scale / add / remove / list / set / get / cam / preview`；预留 history（为后续 undo / MCP 服务） |
-| [REQ-041-a](../../requirements/041-a-imgui-editor-mvp.md) | ImGui Editor MVP | 接入 ImGuizmo；scene tree / inspector / console / viewport overlay 四个面板；F 键全屏切换游戏相机；视锥与 directional light 用 DebugDraw 画出 |
+| [REQ-041-a](../../requirements/finished/041-a-imgui-editor-mvp.md) | ImGui Editor MVP | 已完成：接入 ImGuizmo；scene tree / inspector / console / viewport overlay 四个面板；F 键全屏切换游戏相机；视锥与 directional light 用 DebugDraw 画出 |
 
 ### Phase 1.5 v2（编辑器 polish 等 — 全部归到 041-* 后缀族，不阻塞 Phase 1 / Phase 2 主线）
 
@@ -60,11 +60,13 @@
 
 | REQ | 标题 | 立项窗口 |
 |-----|------|----------|
-| [REQ-041-b](../../requirements/041-b-command-bus-v2.md) | 命令总线 v2（参数补全 + undo·redo + 多选 EditorState） | 040-a / 041-a 落地 + 实战暴露痛点后；最大杠杆 |
-| [REQ-041-c](../../requirements/041-c-editor-multi-select.md) | 编辑器多选 / 框选 | 041-b 落地后 |
+| [REQ-041-b](../../requirements/finished/041-b-command-bus-v2.md) | 命令总线 v2（参数补全 + undo·redo + 多选 EditorState） | 已完成 |
+| [REQ-041-c](../../requirements/finished/041-c-editor-multi-select.md) | 编辑器多选 / 框选 | 已完成 |
 | [REQ-041-d](../../requirements/041-d-scene-authoring-toolbar-palette.md) | 工具栏几何体 / 光源 / 相机拖拽创建 | 当前优先，直接服务测试场景搭建 |
 | [REQ-041-e](../../requirements/041-e-scene-authoring-inspector-material-and-visibility.md) | Inspector 的材质 / 颜色 / 可见性收敛 | 041-d 之后立即跟进 |
 | [REQ-041-f](../../requirements/041-f-scene-authoring-node-rename-duplicate.md) | Rename / Duplicate 对齐 scene document | 041-d / 041-e 之后 |
+| [REQ-041-g](../../requirements/041-g-rtr-light-experiment-foundation.md) | RTR 第五章多类型光源实验底座 | 041-f 之后 |
+| [REQ-041-h](../../requirements/041-h-rtr-material-experiment-foundation.md) | RTR 第五章实验材质接入底座 | 041-g 之后 |
 
 ## 推进顺序
 
@@ -91,11 +93,11 @@ v2 一族（041-b ~ 041-j；按各自立项窗口推进，可与 Phase 1 / Phase
          REQ-041-j     Component 依赖声明             ← 等 Phase 5 物理立项
 ```
 
-每个 step 完成时 `demo_scene_viewer` 都应仍能正常运行，不破坏已有可视效果。
+每个 step 完成时 `lxe_editor` 都应仍能正常运行，不破坏已有可视效果。
 
 ## 验收
 
-启动 `demo_scene_viewer` 后用户能够：
+启动 `lxe_editor` 后用户能够：
 
 1. **场景树面板** + **inspector**：点击节点 → 选中
 2. **TRS gizmo**：拖拽完成平移 / 旋转 / 缩放，所有交互最终发出文本命令
@@ -122,7 +124,7 @@ v2 一族（041-b ~ 041-j；按各自立项窗口推进，可与 Phase 1 / Phase
 
 - **ImGuizmo 与 LX 数学类型适配**：薄薄一层 adapter（约 50 LOC）。立项 [REQ-041](../../requirements/041-a-imgui-editor-mvp.md) 前先 spike 一次。
 - **Component 模型重构（[REQ-037-a](../../requirements/finished/037-a-component-model-foundation.md)）的扇出面**：已完成。`SceneNode::getMesh / getMaterialInstance / getSkeleton` 已删除，主路径迁移到 component lookup；后续 work 以此为前提。
-- **Camera-as-component（[REQ-037-b](../../requirements/finished/037-b-camera-as-component.md)）的迁移面**：已完成。scene_viewer 构造 camera + Orbit / FreeFly 控制器接口已从 `Camera*` 迁到 `CameraComponent*`。
+- **Camera-as-component（[REQ-037-b](../../requirements/finished/037-b-camera-as-component.md)）的迁移面**：已完成。`lxe_editor` 构造 camera + Orbit / FreeFly 控制器接口已从 `Camera*` 迁到 `CameraComponent*`。
 - **Mesh 包围盒**：当前 mesh loader 未必计算 bounds。需在 GLTF / OBJ 加载流程加一遍 min/max。
 - **多 camera 同 swapchain 渲染语义**：`Camera::matchesTarget(nullopt)` 默认绑定 swapchain，多 camera 同 nullopt 会都渲染。F 键切换在 [REQ-041](../../requirements/041-a-imgui-editor-mvp.md) R6 中已选定方案 A：每个 `Camera` 加 `m_active` 布尔。
 

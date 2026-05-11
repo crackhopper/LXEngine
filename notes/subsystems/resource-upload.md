@@ -154,5 +154,4 @@ texture 路径比 buffer 多了一层 staging，流程是：
 ## 从哪里继续读
 
 - [IGpuResource：core 层的 GPU 资源统一契约](../source_analysis/src/core/rhi/gpu_resource.md)
-- [Vulkan Backend 模块三：资源同步](../vulkan-backend/03-resource-sync.md)
 - [Vulkan Backend](vulkan-backend.md)

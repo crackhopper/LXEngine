@@ -1,6 +1,6 @@
 # Vulkan Present Mode：FIFO vs MAILBOX，以及为何 FIFO 在 NVIDIA Optimus 上 resize 黑屏
 
-本文是 [2026-05 demo_scene_viewer resize 偶发黑屏复盘](2026-05-resize-blackscreen.md) 的衍生技术解释。聚焦"为什么把默认 present mode 从 `VK_PRESENT_MODE_FIFO_KHR` 切到 `VK_PRESENT_MODE_MAILBOX_KHR` 救了 dGPU 路径"——目的是让后续读者不用回头读完整复盘也能理解机理。
+本文是 [2026-05 lxe_editor resize 偶发黑屏复盘](2026-05-resize-blackscreen.md) 的衍生技术解释。聚焦"为什么把默认 present mode 从 `VK_PRESENT_MODE_FIFO_KHR` 切到 `VK_PRESENT_MODE_MAILBOX_KHR` 救了 dGPU 路径"——目的是让后续读者不用回头读完整复盘也能理解机理。
 
 引擎当前默认行为（`VulkanSwapchain::createInternal`）：
 
@@ -251,4 +251,4 @@ MAILBOX 不阻塞 → 应用渲染速率不再受 vsync 限制；渲染了又被
 
 - Vulkan 规范 §29.5 Swapchains → presentMode 语义
 - dxvk / vkd3d-proton 的 swapchain present mode 选择（在 Optimus 上能跑稳的关键之一）
-- 主复盘：[2026-05 — demo_scene_viewer resize 偶发黑屏 / 闪烁](2026-05-resize-blackscreen.md)
+- 主复盘：[2026-05 — lxe_editor resize 偶发黑屏 / 闪烁](2026-05-resize-blackscreen.md)

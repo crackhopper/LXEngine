@@ -19,7 +19,6 @@
 
 #include "automation_token_state.hpp"
 #include "camera_rig.hpp"
-#include "editor_mcp_server.hpp"
 #include "editor_automation_server.hpp"
 #include "editor_automation_service.hpp"
 #include "editor_config_state.hpp"
@@ -94,18 +93,16 @@ toAutomationEditMode(const demo::UiOverlay::EditMode mode) {
   return demo::AutomationPermissionLevel::Unknown;
 }
 
-struct AutomationLaunchOptions final {
+struct ApiLaunchOptions final {
   bool enabled = true;
   std::string host = "0.0.0.0";
   std::uint16_t port = 3768;
-  std::string mcpHost = "127.0.0.1";
-  std::uint16_t mcpPort = 3769;
 };
 
-[[nodiscard]] std::optional<AutomationLaunchOptions>
-parseAutomationLaunchOptions(const int argc, char** argv,
-                             std::string& errorMessage) {
-  AutomationLaunchOptions options;
+[[nodiscard]] std::optional<ApiLaunchOptions>
+parseApiLaunchOptions(const int argc, char** argv,
+                      std::string& errorMessage) {
+  ApiLaunchOptions options;
   for (int i = 1; i < argc; ++i) {
     const std::string arg = argv[i];
     if (arg == "--automation-disable") {
@@ -138,32 +135,6 @@ parseAutomationLaunchOptions(const int argc, char** argv,
         options.port = static_cast<std::uint16_t>(parsed);
       } catch (...) {
         errorMessage = "invalid integer for --automation-port";
-        return std::nullopt;
-      }
-      continue;
-    }
-    if (arg == "--mcp-host") {
-      if (i + 1 >= argc) {
-        errorMessage = "missing value for --mcp-host";
-        return std::nullopt;
-      }
-      options.mcpHost = argv[++i];
-      continue;
-    }
-    if (arg == "--mcp-port") {
-      if (i + 1 >= argc) {
-        errorMessage = "missing value for --mcp-port";
-        return std::nullopt;
-      }
-      try {
-        const int parsed = std::stoi(argv[++i]);
-        if (parsed < 0 || parsed > 65535) {
-          errorMessage = "mcp port out of range";
-          return std::nullopt;
-        }
-        options.mcpPort = static_cast<std::uint16_t>(parsed);
-      } catch (...) {
-        errorMessage = "invalid integer for --mcp-port";
         return std::nullopt;
       }
       continue;
@@ -238,6 +209,13 @@ constexpr int kWindowHeight = 720;
 [[nodiscard]] std::string sceneSourceKindName(
     const demo::SceneSourceKind kind) {
   return kind == demo::SceneSourceKind::Asset ? "asset" : "local";
+}
+
+[[nodiscard]] std::string runtimeClientHost(std::string_view host) {
+  if (host == "0.0.0.0") {
+    return "127.0.0.1";
+  }
+  return std::string(host);
 }
 
 [[nodiscard]] bool commandMarksSceneDirty(const std::string& line) {
@@ -677,11 +655,11 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  std::string automationArgError;
-  const auto automationOptions =
-      parseAutomationLaunchOptions(argc, argv, automationArgError);
-  if (!automationOptions.has_value()) {
-    std::cerr << "[lxe_editor] " << automationArgError << "\n";
+  std::string apiArgError;
+  const auto apiOptions =
+      parseApiLaunchOptions(argc, argv, apiArgError);
+  if (!apiOptions.has_value()) {
+    std::cerr << "[lxe_editor] " << apiArgError << "\n";
     return 1;
   }
 
@@ -707,65 +685,56 @@ int main(int argc, char** argv) {
     ClosePromptState closePrompt;
     demo::AutomationTokenState automationTokenState(
         resolveRuntimePath("data/lxe_editor"));
-    const std::string automationToken =
-        automationOptions->enabled ? automationTokenState.loadOrCreateToken()
-                                   : std::string{};
-    demo::EditorAutomationServer automationServer(
-        demo::EditorAutomationServerConfig{
-            .enabled = automationOptions->enabled,
-            .host = automationOptions->host,
-            .port = automationOptions->port,
-            .token = automationToken,
+    const std::string apiToken =
+        apiOptions->enabled ? automationTokenState.loadOrCreateToken()
+                            : std::string{};
+    demo::LxeEditorApiServer apiServer(
+        demo::LxeEditorApiServerConfig{
+            .enabled = apiOptions->enabled,
+            .host = apiOptions->host,
+            .port = apiOptions->port,
+            .token = apiToken,
         });
-    demo::EditorMcpServer mcpServer(
-        demo::EditorMcpServerConfig{
-            .enabled = true,
-            .host = automationOptions->mcpHost,
-            .port = automationOptions->mcpPort,
-            .token = automationToken,
-        });
-    if (automationOptions->enabled) {
+    if (apiOptions->enabled) {
       std::string serverError;
-      if (!automationServer.start(&serverError)) {
+      if (!apiServer.start(&serverError)) {
         throw std::runtime_error(serverError);
       }
-      std::cout << "[lxe_editor] automation listening on "
-                << automationServer.config().host << ":"
-                << automationServer.boundPort() << " token_file="
+      std::cout << "[lxe_editor] api listening on "
+                << apiServer.config().host << ":"
+                << apiServer.boundPort() << " token_file="
                 << automationTokenState.tokenPath() << "\n";
     }
-    {
-      std::string serverError;
-      if (!mcpServer.start(&serverError)) {
-        throw std::runtime_error(serverError);
-      }
-      std::cout << "[lxe_editor] mcp listening on " << mcpServer.config().host
-                << ":" << mcpServer.boundPort() << "\n";
-    }
-    const std::uint16_t automationBoundPort =
-        automationOptions->enabled
-            ? static_cast<std::uint16_t>(automationServer.boundPort())
+    const std::uint16_t apiBoundPort =
+        apiOptions->enabled
+            ? static_cast<std::uint16_t>(apiServer.boundPort())
             : 0;
+    const std::string runtimeHost =
+        runtimeClientHost(apiServer.config().host);
+    const std::string mcpUrl =
+        apiOptions->enabled
+            ? std::string("http://") + runtimeHost + ":" +
+                  std::to_string(apiBoundPort) + "/mcp"
+            : std::string{};
     saveLxeEditorRuntimeState(
         resolveRuntimePath("data/lxe_editor"),
         demo::LxeEditorRuntimeState{
             .pid = currentProcessId(),
-            .httpHost = automationOptions->enabled ? automationServer.config().host
+            .httpHost = apiOptions->enabled ? runtimeHost
                                                    : std::string{},
-            .httpPort = automationBoundPort,
-            .wsHost = automationOptions->enabled ? automationServer.config().host
+            .httpPort = apiBoundPort,
+            .wsHost = apiOptions->enabled ? runtimeHost
                                                  : std::string{},
-            .wsPort = automationBoundPort,
-            .mcpHost = mcpServer.config().host,
-            .mcpPort = mcpServer.boundPort(),
+            .wsPort = apiBoundPort,
+            .mcpUrl = mcpUrl,
             .tokenFile = automationTokenState.tokenPath().string(),
             .startedAt = currentTimestampString(),
         });
-    auto makeAutomationService =
-        [&]() -> std::unique_ptr<demo::EditorAutomationService> {
-      return std::make_unique<demo::EditorAutomationService>(
+    auto makeApiService =
+        [&]() -> std::unique_ptr<demo::LxeEditorApiService> {
+      return std::make_unique<demo::LxeEditorApiService>(
           session.commandBus(), editorState, *session.scene(),
-          demo::EditorAutomationService::Hooks{
+          demo::LxeEditorApiService::Hooks{
               .sceneSummary =
                   [&]() {
                     return demo::AutomationSceneSummary{
@@ -801,8 +770,8 @@ int main(int argc, char** argv) {
               },
           });
     };
-    usize automationBindingsGeneration = session.bindingsGeneration();
-    auto automationService = makeAutomationService();
+    usize apiBindingsGeneration = session.bindingsGeneration();
+    auto apiService = makeApiService();
 
     vulkanRenderer->setDrawUiCallback([&] {
       ui.drawFrame();
@@ -837,14 +806,13 @@ int main(int argc, char** argv) {
         return;
       }
       session.flushPendingSceneLoad(loop);
-      if (automationBindingsGeneration != session.bindingsGeneration()) {
-        automationBindingsGeneration = session.bindingsGeneration();
-        automationService = makeAutomationService();
+      if (apiBindingsGeneration != session.bindingsGeneration()) {
+        apiBindingsGeneration = session.bindingsGeneration();
+        apiService = makeApiService();
       }
       session.pollCommandHistory(loop);
-      automationService->refresh();
-      automationServer.pump(*automationService);
-      mcpServer.pump(*automationService);
+      apiService->refresh();
+      apiServer.pump(*apiService);
 
       const bool imguiReady = ImGui::GetCurrentContext() != nullptr;
       const auto io =
@@ -897,8 +865,7 @@ int main(int argc, char** argv) {
     loop.run();
     std::filesystem::remove(resolveRuntimePath("data/lxe_editor") /
                             "runtime_state.yaml");
-    mcpServer.stop();
-    automationServer.stop();
+    apiServer.stop();
     session.editorConfig().windowPlacement = window->getPlacement();
     (void)configState.save(session.editorConfig());
     session.persistEditorData();

@@ -6,15 +6,7 @@
 
 ## 现在怎么读
 
-原来的单页说明已经拆成目录化文档，入口在 [notes/vulkan-backend/index.md](../vulkan-backend/index.md)。
-
-建议顺序：
-
-1. [总体结构与生命周期](../vulkan-backend/01-overview-and-lifecycle.md)
-2. [设备、RenderPass 与 Swapchain](../vulkan-backend/02-device-and-swapchain.md)
-3. [资源同步](../vulkan-backend/03-resource-sync.md)
-4. [Pipeline 与 Descriptor](../vulkan-backend/04-pipeline-and-descriptors.md)
-5. [命令录制与提交](../vulkan-backend/05-command-recording-and-draw.md)
+这页是当前 Vulkan backend 的维护入口。更细的源码阅读从下方“从哪里进入源码”开始；文件级解释优先看 `notes/source_analysis/` 中已经生成的页面。
 
 ## 一页版总结
 

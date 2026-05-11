@@ -87,7 +87,7 @@ private:
 - `update(dt)` 按通道插值得 bone pose，写入 `Skeleton` 的 bone matrices
 - 通过 `SkeletonUBO` 上传 GPU
 
-**验收**：挂到 `scene_viewer` 角色上，能看到骨骼动画循环播放。
+**验收**：挂到 `lxe_editor` 角色上，能看到骨骼动画循环播放。
 
 ### REQ-403 · 状态机
 

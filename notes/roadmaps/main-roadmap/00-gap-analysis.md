@@ -63,7 +63,7 @@
 |------|------|
 | CMake + Ninja 跨平台构建 | `CMakeLists.txt` + `src/*/CMakeLists.txt` |
 | 集成测试框架 | `src/test/integration/*` |
-| `demo_scene_viewer`（正式交互 demo） | `src/demos/scene_viewer/*` |
+| `lxe_editor`（正式交互编辑器） | `src/demos/lxe_editor/*` |
 | spec / requirement 流程 | `openspec/specs/*` + `notes/requirements/*` |
 
 ### 场景 / 游戏向

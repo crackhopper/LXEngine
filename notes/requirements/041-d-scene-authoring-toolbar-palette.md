@@ -1,15 +1,15 @@
-# REQ-041-d: 测试场景快速搭建 v1 — 工具栏几何体 / 光源 / 相机拖拽创建
+# REQ-041-d: lxe_editor 测试场景快速搭建 v1 — 工具栏几何体 / 光源 / 相机拖拽创建
 
 > 2026-05-11 重整：旧的 `041-d`/`041-f`/`041-g`~`041-j` 以“编辑器 polish / 底层成熟度”拆得过细，且多项已经偏离当前目标。按现有代码审计后，active REQ 收敛回“方便快速建立测试场景文件”这一条主线；本 REQ 负责创建入口。
 
 ## 背景
 
-当前 `scene_viewer` 已经具备一条可用但不高效的编辑链路：
+当前 `lxe_editor` 已经具备一条可用但不高效的编辑链路：
 
 - `UiOverlay` 里已经有浮动工具栏，但只提供 `Selection / Orbit / FreeFly / Preview / Preferences`
 - `CommandBus` 已有 `add` 命令，但当前只支持 `mesh|light|camera` 三种粗粒度目标，其中 `mesh` 只是空节点，并不会创建具体几何体与材质
 - `SceneDocument` 已能序列化 `meshUri` / `materialUri` / `camera` / `directionalLight`
-- `SceneRuntime` 当前只会把 `builtin://scene_viewer/helmet` 和 `builtin://scene_viewer/ground_mesh` 解析成真实内容
+- `SceneRuntime` 当前只会把 `builtin://lxe_editor/helmet` 和 `builtin://lxe_editor/ground_mesh` 解析成真实内容
 
 这意味着：我们已经能“保存场景”，但还不能“快速搭场景”。现在最缺的是一个直接面向测试场景的创建入口，而不是继续扩菜单栏、主题、组件模型 v2、mesh 级 picking 或 DebugDraw v2。
 
@@ -24,7 +24,7 @@
 
 ### R1: 在现有工具栏内加入“创建盘”，不再单独立菜单栏
 
-- 直接扩展 `src/demos/scene_viewer/ui_overlay.cpp` 现有浮动工具栏；不新增顶部 menubar，也不重做窗口 chrome
+- 直接扩展 `src/demos/lxe_editor/ui_overlay.cpp` 现有浮动工具栏；不新增顶部 menubar，也不重做窗口 chrome
 - 保留第一行现有编辑模式按钮
 - 在其下方新增两行：
 
@@ -44,11 +44,11 @@
 
 | 条目 | `meshUri` / 负载 | `materialUri` / 负载 |
 |---|---|---|
-| Cube | `builtin://scene_viewer/primitives/cube` | `assets/materials/blinnphong_lit.material` |
-| Sphere | `builtin://scene_viewer/primitives/sphere` | `assets/materials/blinnphong_lit.material` |
-| Plane | `builtin://scene_viewer/primitives/plane` | `assets/materials/blinnphong_lit.material` |
-| Cylinder | `builtin://scene_viewer/primitives/cylinder` | `assets/materials/blinnphong_lit.material` |
-| Cone | `builtin://scene_viewer/primitives/cone` | `assets/materials/blinnphong_lit.material` |
+| Cube | `builtin://lxe_editor/primitives/cube` | `assets/materials/blinnphong_lit.material` |
+| Sphere | `builtin://lxe_editor/primitives/sphere` | `assets/materials/blinnphong_lit.material` |
+| Plane | `builtin://lxe_editor/primitives/plane` | `assets/materials/blinnphong_lit.material` |
+| Cylinder | `builtin://lxe_editor/primitives/cylinder` | `assets/materials/blinnphong_lit.material` |
+| Cone | `builtin://lxe_editor/primitives/cone` | `assets/materials/blinnphong_lit.material` |
 | Directional Light | `directionalLight` 负载 | 无 mesh/material 必填负载 |
 | Camera | `camera` 负载 | 无 mesh/material 必填负载 |
 
@@ -109,19 +109,19 @@
 
 ## 修改范围
 
-- `src/demos/scene_viewer/ui_overlay.cpp`
-- `src/demos/scene_viewer/scene_document.{hpp,cpp}`
-- `src/demos/scene_viewer/scene_runtime.cpp`
-- `src/demos/scene_viewer/scene_builder.{hpp,cpp}`
+- `src/demos/lxe_editor/ui_overlay.cpp`
+- `src/demos/lxe_editor/scene_document.{hpp,cpp}`
+- `src/demos/lxe_editor/scene_runtime.cpp`
+- `src/demos/lxe_editor/scene_builder.{hpp,cpp}`
 - `src/core/editor/commands/builtin_commands.cpp`
 - `src/core/editor/viewport_overlay.{hpp,cpp}` 或其他承接 editor-space 放置的位置
 - `src/test/integration/test_scene_runtime.cpp`
 - `src/test/integration/test_scene_document.cpp`
-- `src/test/integration/test_scene_viewer_interaction.cpp`
+- `src/test/integration/test_lxe_editor_interaction.cpp`
 
 ## 边界与约束
 
-- 本 REQ 只做 `scene_viewer` 当前已经有语义支撑的测试场景作者路径；不引入通用 asset browser
+- 本 REQ 只做 `lxe_editor` 当前已经有语义支撑的测试场景作者路径；不引入通用 asset browser
 - 本 REQ 不做 point light / spot light；当前代码没有对应场景负载与 runtime 路径
 - 本 REQ 不依赖 mesh 三角面级 picking；基于现有 picking / 射线和平面回退即可
 - 本 REQ 不要求先实现菜单栏、主题系统、组件模型 v2、DebugDraw v2

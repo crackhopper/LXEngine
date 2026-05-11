@@ -41,7 +41,7 @@ namespace {
 
 } // namespace
 
-EditorAutomationService::EditorAutomationService(
+LxeEditorApiService::LxeEditorApiService(
     LX_core::CommandBus& commandBus, LX_core::EditorState& editorState,
     LX_core::Scene& scene, Hooks hooks)
     : m_commandBus(commandBus),
@@ -51,7 +51,7 @@ EditorAutomationService::EditorAutomationService(
       m_lastObservedHistoryIndex(m_commandBus.history().size()),
       m_lastState(captureState()) {}
 
-AutomationCommandResponse EditorAutomationService::executeCommand(
+AutomationCommandResponse LxeEditorApiService::executeCommand(
     const AutomationCommandRequest& request) {
   if (m_hooks.recordCommandHistoryLine) {
     m_hooks.recordCommandHistoryLine(request.line);
@@ -77,7 +77,7 @@ AutomationCommandResponse EditorAutomationService::executeCommand(
   return response;
 }
 
-AutomationStateSnapshot EditorAutomationService::captureState() const {
+AutomationStateSnapshot LxeEditorApiService::captureState() const {
   return AutomationStateSnapshot{
       .scene = captureSceneSummary(),
       .selection = captureSelection(),
@@ -86,16 +86,16 @@ AutomationStateSnapshot EditorAutomationService::captureState() const {
   };
 }
 
-void EditorAutomationService::refresh() {
+void LxeEditorApiService::refresh() {
   observeCommandHistory();
   observeStateChanges();
 }
 
-AutomationEventCursor EditorAutomationService::currentCursor() const {
+AutomationEventCursor LxeEditorApiService::currentCursor() const {
   return AutomationEventCursor{m_nextSequence};
 }
 
-AutomationEventBatch EditorAutomationService::collectEventsSince(
+AutomationEventBatch LxeEditorApiService::collectEventsSince(
     const AutomationEventCursor cursor) const {
   AutomationEventBatch batch;
   batch.nextCursor = currentCursor();
@@ -107,7 +107,7 @@ AutomationEventBatch EditorAutomationService::collectEventsSince(
   return batch;
 }
 
-AutomationSceneSummary EditorAutomationService::captureSceneSummary() const {
+AutomationSceneSummary LxeEditorApiService::captureSceneSummary() const {
   if (m_hooks.sceneSummary) {
     return m_hooks.sceneSummary();
   }
@@ -121,7 +121,7 @@ AutomationSceneSummary EditorAutomationService::captureSceneSummary() const {
   };
 }
 
-AutomationSelectionSnapshot EditorAutomationService::captureSelection() const {
+AutomationSelectionSnapshot LxeEditorApiService::captureSelection() const {
   AutomationSelectionSnapshot snapshot;
   const auto selected = m_editorState.getSelected();
   snapshot.selectedPaths.reserve(selected.size());
@@ -145,7 +145,7 @@ AutomationSelectionSnapshot EditorAutomationService::captureSelection() const {
   return snapshot;
 }
 
-AutomationCameraSnapshot EditorAutomationService::captureCameras() const {
+AutomationCameraSnapshot LxeEditorApiService::captureCameras() const {
   if (m_hooks.cameraSnapshot) {
     return m_hooks.cameraSnapshot();
   }
@@ -165,7 +165,7 @@ AutomationCameraSnapshot EditorAutomationService::captureCameras() const {
   return snapshot;
 }
 
-AutomationToolbarSnapshot EditorAutomationService::captureToolbar() const {
+AutomationToolbarSnapshot LxeEditorApiService::captureToolbar() const {
   if (m_hooks.toolbarSnapshot) {
     return m_hooks.toolbarSnapshot();
   }
@@ -176,7 +176,7 @@ AutomationToolbarSnapshot EditorAutomationService::captureToolbar() const {
   };
 }
 
-void EditorAutomationService::observeCommandHistory() {
+void LxeEditorApiService::observeCommandHistory() {
   const auto& history = m_commandBus.history();
   while (m_lastObservedHistoryIndex < history.size()) {
     const auto& entry = history[m_lastObservedHistoryIndex++];
@@ -208,7 +208,7 @@ void EditorAutomationService::observeCommandHistory() {
   }
 }
 
-void EditorAutomationService::observeStateChanges() {
+void LxeEditorApiService::observeStateChanges() {
   const AutomationStateSnapshot current = captureState();
 
   if (current.selection != m_lastState.selection) {
@@ -247,7 +247,7 @@ void EditorAutomationService::observeStateChanges() {
   m_lastState = current;
 }
 
-void EditorAutomationService::appendEvent(AutomationEvent event) {
+void LxeEditorApiService::appendEvent(AutomationEvent event) {
   m_events.push_back(std::move(event));
   if (m_events.size() > kMaxBufferedEvents) {
     m_events.erase(m_events.begin(),
@@ -256,11 +256,11 @@ void EditorAutomationService::appendEvent(AutomationEvent event) {
   }
 }
 
-bool EditorAutomationService::isSceneLoadCommand(const std::string_view line) {
+bool LxeEditorApiService::isSceneLoadCommand(const std::string_view line) {
   return line == "scene load" || line.starts_with("scene load ");
 }
 
-bool EditorAutomationService::isSceneSaveCommand(const std::string_view line) {
+bool LxeEditorApiService::isSceneSaveCommand(const std::string_view line) {
   return line == "scene save" || line.starts_with("scene save ");
 }
 

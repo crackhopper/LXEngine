@@ -6,13 +6,13 @@ add_executable(lxe_editor
   automation_token_state.cpp
   main.cpp
   camera_rig.cpp
-  editor_mcp_server.cpp
   editor_automation_protocol.cpp
   editor_automation_server.cpp
   editor_automation_service.cpp
   editor_config_state.cpp
   editor_data_state.cpp
   editor_camera_state.cpp
+  lxe_editor_mcp_handler.cpp
   runtime_state.cpp
   scene_catalog.cpp
   scene_builder.cpp

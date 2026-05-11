@@ -204,9 +204,9 @@ endif()
 if(TARGET test_lxe_editor_automation_server)
   target_sources(test_lxe_editor_automation_server PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_automation_protocol.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_mcp_server.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_automation_service.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_automation_server.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_mcp_handler.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/automation_token_state.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/runtime_state.cpp
   )

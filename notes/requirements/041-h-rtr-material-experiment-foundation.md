@@ -1,6 +1,6 @@
 # REQ-041-h: RTR 第五章实验底座 v1 — 实验材质接入与节点级参数覆盖
 
-> 2026-05-11 新增：本 REQ 排在 `041-g` 之后。目标不是实现 Gooch shading，而是让 `scene_viewer` 和材质系统提供足够稳定的接入面，使我们可以快速新增一个实验材质、挂到场景节点、修改参数、保存场景并验证效果。
+> 2026-05-11 新增：本 REQ 排在 `041-g` 之后。目标不是实现 Gooch shading，而是让 `lxe_editor` 和材质系统提供足够稳定的接入面，使我们可以快速新增一个实验材质、挂到场景节点、修改参数、保存场景并验证效果。
 
 ## 背景
 
@@ -20,7 +20,7 @@
 ## 目标
 
 1. 新增一个实验材质时，不需要改 backend 硬编码
-2. `scene_viewer` 能从材质目录发现或登记实验材质，并在 Inspector 中快速切换
+2. `lxe_editor` 能从材质目录发现或登记实验材质，并在 Inspector 中快速切换
 3. 常用材质参数可以作为节点级覆盖保存到 scene file
 4. get-started 能说明“如何新增一个实验材质并放进场景验证”
 
@@ -134,7 +134,7 @@ clear <path>.nodeMaterial.<binding>.<member>
 
 - `test_shader_compiler` 能编译模板 shader
 - `loadGenericMaterial(...)` 能加载模板 material
-- `demo_scene_viewer` 能把模板 material 挂到 primitive 节点
+- `lxe_editor` 能把模板 material 挂到 primitive 节点
 - 模板中的参数要覆盖 `float` 与 `Vec3/Vec4` 中至少两类，验证 Inspector 通用参数路径
 
 ### R7: 测试覆盖
@@ -153,8 +153,8 @@ clear <path>.nodeMaterial.<binding>.<member>
 
 - `src/core/editor/inspector_panel.{hpp,cpp}`
 - `src/core/editor/commands/builtin_commands.cpp`
-- `src/demos/scene_viewer/scene_document.{hpp,cpp}`
-- `src/demos/scene_viewer/scene_runtime.cpp`
+- `src/demos/lxe_editor/scene_document.{hpp,cpp}`
+- `src/demos/lxe_editor/scene_runtime.cpp`
 - `src/infra/material_loader/generic_material_loader.cpp`
 - `assets/materials/`
 - `assets/shaders/glsl/`

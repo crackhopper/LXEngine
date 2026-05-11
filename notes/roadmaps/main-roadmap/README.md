@@ -55,9 +55,11 @@
 
 活跃的 `notes/requirements/` 条目：
 
-- [`REQ-019` demo_scene_viewer](../../requirements/019-demo-scene-viewer.md)（仅剩显示环境下的人工验收）
-- [`REQ-042` RenderTarget 拆分为 descriptor 与 binding](../../requirements/042-render-target-desc-and-target.md)（草稿，后置到 Phase 1.5 完工后 / Phase 1 [REQ-103 Shadow](phase-1-rendering-depth.md#req-103--shadow-pass--depth-only-pipeline) 之前。详见 [research/frame-graph](../research/frame-graph/README.md)）
-- [`REQ-034` 删除 RenderTarget::getHash dead code](../../requirements/finished/034-remove-render-target-get-hash.md)（已归档；独立 cleanup PR，原 REQ-042 R9 拆出，不阻塞 Phase 1.5 / Phase 1）
+- [`REQ-041-d`](../../requirements/041-d-scene-authoring-toolbar-palette.md)：`lxe_editor` 工具栏几何体 / 光源 / 相机拖拽创建
+- [`REQ-041-e`](../../requirements/041-e-scene-authoring-inspector-material-and-visibility.md)：Inspector 材质 / 颜色 / 可见性收敛
+- [`REQ-041-f`](../../requirements/041-f-scene-authoring-node-rename-duplicate.md)：节点 Rename / Duplicate 对齐 scene document
+- [`REQ-041-g`](../../requirements/041-g-rtr-light-experiment-foundation.md)：RTR 第五章多类型光源实验底座
+- [`REQ-041-h`](../../requirements/041-h-rtr-material-experiment-foundation.md)：RTR 第五章实验材质接入底座
 
 其他历史 REQ 均已归档或下沉到本 roadmap 的对应 phase。
 

@@ -71,11 +71,20 @@
 `infra` 是 `core` 抽象的工程级实现层：
 
 - `ShaderCompiler` / `ShaderReflector` / `CompiledShader`
-- `loadBlinnPhongMaterial()`
+- `loadGenericMaterial()`
 - `ObjLoader` / `GLTFLoader`
 - `Window` 的 SDL3 / GLFW 实现
 
 其中 shader 子系统现在除了 descriptor / UBO 反射，还会输出 vertex input contract，供 `SceneNode` 校验 mesh layout。
+
+## 当前交互入口
+
+`src/demos/lxe_editor/` 是当前正式交互编辑器入口。它不是新的渲染层，而是把现有 `core / infra / backend` 能力组织成可运行的场景作者环境：
+
+- scene 文档从 `assets/scenes/` 或 `data/scenes/` 加载，运行时由 `SceneRuntime` 构造 `Scene`
+- ImGui overlay 提供 Scene Tree、Inspector、Console 和浮动 toolbar
+- Console、HTTP、WebSocket 和 MCP 入口最终都复用同一套 command-first surface
+- 本地 editor config / data / automation token 存在 `data/lxe_editor/`，不属于 scene asset
 
 ## 总结
 

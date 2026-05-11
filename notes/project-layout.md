@@ -8,18 +8,19 @@
 ## 顶层结构
 
 ```text
-renderer-demo/
+LXEngine/
 ├── src/
 │   ├── core/
 │   ├── infra/
 │   ├── backend/
 │   ├── demos/
 │   └── test/
-├── shaders/
 ├── assets/
 ├── notes/                 ← 所有人类可读文档的唯一入口
 ├── openspec/
 ├── scripts/
+├── tests/
+├── third_party/
 ├── build/
 ├── CMakeLists.txt
 ├── mkdocs.yml
@@ -134,7 +135,6 @@ notes/
 ├── review/                   # 代码评审记录（原 docs/review/ 并入）
 ├── roadmaps/                 # 路线图（main-roadmap + research）
 ├── source_analysis/          # 文件级源码解析（由 @source_analysis.section 注释生成）
-├── vulkan-backend/           # Vulkan 后端子页
 ├── tutorial/                 # 教程
 ├── ai-scanned/               # 历史 AI 扫描报告（只读快照）
 ├── tools/                    # notes 站点工具说明
@@ -166,21 +166,30 @@ openspec/
 
 ```text
 scripts/
-├── serve_site.sh / serve_site.ps1
-├── generate_site_config.py
-├── mkdocs_hooks.py
-├── extract_sections.py
+├── notes/
+│   ├── serve_site.sh / serve_site.ps1
+│   ├── generate_site_config.py
+│   ├── mkdocs_hooks.py
+│   ├── notes_chat_server.py
+│   └── watch_site_inputs.py
+├── source_analysis/
+│   └── extract_sections.py
+├── lxe_editor/
+│   ├── use_local_mcp.sh / use_local_mcp.ps1
+│   └── use_remote_mcp.sh / use_remote_mcp.ps1
 └── ...
 ```
 
-- `serve_site.sh` 本地预览 `notes/` 站点
-- `generate_site_config.py` 生成 `mkdocs.gen.yml` 并按 `notes/nav.yml` 组织导航
-- `extract_sections.py` 从源码注释产出 `notes/source_analysis/`
+- `scripts/notes/serve_site.sh` 本地预览 `notes/` 站点
+- `scripts/notes/generate_site_config.py` 生成 `mkdocs.gen.yml` 并按 `notes/nav.yml` 组织导航
+- `scripts/source_analysis/extract_sections.py` 从源码注释产出 `notes/source_analysis/`
+- `scripts/lxe_editor/use_*_mcp.*` 切换 Codex 使用的本地 / 远程 `lxe_editor` MCP 连接环境
 
 ## 哪些目录通常不需要改
 
 - `build/`：构建产物
 - `src/infra/external/`：第三方 vendored 代码
+- `third_party/`：项目直接引入的第三方源码，例如 ImGuizmo
 - `openspec/changes/archive/`：历史归档
 - `notes/requirements/finished/`：历史需求
 - `notes/ai-scanned/`：历史扫描快照

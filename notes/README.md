@@ -27,6 +27,7 @@
 - `shaderc + SPIRV-Cross` 驱动的 GLSL 编译与反射
 - `MaterialInstance / PipelineKey / FrameGraph / RenderQueue` 等渲染主干能力
 - SDL3 / GLFW 窗口层、OBJ / GLTF / texture loader、ImGui 集成
+- `lxe_editor` 交互编辑器、scene 文档、CommandBus、HTTP / WebSocket / MCP 自动化入口
 
 这些内容决定了 `LXEngine` 的第一性原点：先把“渲染器应该如何干净地组织起来”做扎实，再向 gameplay、编辑器、agent runtime 和 AI 资产生成扩展。
 

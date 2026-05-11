@@ -8,7 +8,7 @@
 
 ### 调试事件复盘
 
-- [2026-05 — demo_scene_viewer resize 偶发黑屏 / 闪烁（NVIDIA Optimus + dGPU）](2026-05-resize-blackscreen.md)
+- [2026-05 — lxe_editor resize 偶发黑屏 / 闪烁（NVIDIA Optimus + dGPU）](2026-05-resize-blackscreen.md)
 
 ### 从复盘衍生的技术解释
 

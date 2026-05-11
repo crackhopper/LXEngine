@@ -8,33 +8,33 @@
 
 namespace LX_demo::lxe_editor {
 
-struct EditorAutomationServerConfig final {
+struct LxeEditorApiServerConfig final {
   bool enabled = true;
   std::string host = "0.0.0.0";
   std::uint16_t port = 3768;
   std::string token;
 };
 
-class EditorAutomationServer final {
+class LxeEditorApiServer final {
 public:
-  explicit EditorAutomationServer(EditorAutomationServerConfig config = {});
-  ~EditorAutomationServer();
+  explicit LxeEditorApiServer(LxeEditorApiServerConfig config = {});
+  ~LxeEditorApiServer();
 
-  EditorAutomationServer(const EditorAutomationServer&) = delete;
-  EditorAutomationServer& operator=(const EditorAutomationServer&) = delete;
+  LxeEditorApiServer(const LxeEditorApiServer&) = delete;
+  LxeEditorApiServer& operator=(const LxeEditorApiServer&) = delete;
 
   [[nodiscard]] bool start(std::string* errorMessage = nullptr);
   void stop();
-  void pump(EditorAutomationService& service);
+  void pump(LxeEditorApiService& service);
 
   [[nodiscard]] bool isRunning() const;
-  [[nodiscard]] const EditorAutomationServerConfig& config() const;
+  [[nodiscard]] const LxeEditorApiServerConfig& config() const;
   [[nodiscard]] std::uint16_t boundPort() const;
 
 private:
   struct Impl;
 
-  EditorAutomationServerConfig m_config;
+  LxeEditorApiServerConfig m_config;
   Impl* m_impl = nullptr;
 };
 

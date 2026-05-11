@@ -41,8 +41,8 @@ struct Fixture final {
   EditorState editorState;
   CommandBus bus;
   MutableHookState hookState;
-  EditorAutomationService::Hooks hooks;
-  std::unique_ptr<EditorAutomationService> service;
+  LxeEditorApiService::Hooks hooks;
+  std::unique_ptr<LxeEditorApiService> service;
 
   Fixture()
   {
@@ -70,7 +70,7 @@ struct Fixture final {
     hooks.toolbarSnapshot = [this]() { return hookState.toolbar; };
     hooks.lastHitPoint = [this]() { return hookState.lastHitPoint; };
     service =
-        std::make_unique<EditorAutomationService>(bus, editorState, *scene, hooks);
+        std::make_unique<LxeEditorApiService>(bus, editorState, *scene, hooks);
   }
 };
 
@@ -189,10 +189,10 @@ int main() {
   testAutomationTokenStatePersistsSingleGeneratedToken();
 
   if (failures != 0) {
-    std::cerr << failures << " automation service test(s) failed\n";
+    std::cerr << failures << " API service test(s) failed\n";
     return 1;
   }
 
-  std::cout << "[PASS] lxe_editor automation service tests\n";
+  std::cout << "[PASS] lxe_editor API service tests\n";
   return 0;
 }

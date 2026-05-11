@@ -30,6 +30,12 @@ def _parse_simple_yaml_map(text: str) -> dict[str, str]:
     return values
 
 
+def _normalize_loopback_host(host: str) -> str:
+    if host == "0.0.0.0":
+        return "127.0.0.1"
+    return host
+
+
 def _pick_free_port() -> int:
     with contextlib.closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
         sock.bind(("127.0.0.1", 0))
@@ -123,6 +129,13 @@ class LxeEditorClient:
                     return token
         raise FileNotFoundError("automation token file not found")
 
+    def read_mcp_url(self) -> str:
+        state = self.read_runtime_state()
+        direct_url = state.get("mcpUrl", "").strip()
+        if direct_url:
+            return direct_url
+        raise FileNotFoundError("mcp URL not found in runtime_state.yaml")
+
     def wait_until_ready(self, timeout_s: float | None = None) -> None:
         deadline = time.monotonic() + (timeout_s or self.timeout_s)
         last_error: Exception | None = None
@@ -135,7 +148,7 @@ class LxeEditorClient:
             except Exception as exc:  # pragma: no cover - polling path
                 last_error = exc
                 time.sleep(0.1)
-        raise TimeoutError("editor automation server did not become ready") from last_error
+        raise TimeoutError("editor API server did not become ready") from last_error
 
     def health(self) -> dict[str, Any]:
         return self._request_json("GET", "/health", auth=False)
@@ -197,14 +210,52 @@ class LxeEditorClient:
             return {}
         return json.loads(structured)
 
+    def mcp_request(
+        self,
+        method: str,
+        params: dict[str, Any] | None = None,
+        *,
+        request_id: int = 1,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "method": method,
+        }
+        if params is not None:
+            payload["params"] = params
+
+        url = self.read_mcp_url()
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.read_token()}",
+        }
+        request = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            method="POST",
+            headers=headers,
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout_s) as response:
+                text = response.read().decode("utf-8")
+        except urllib.error.HTTPError as exc:
+            text = exc.read().decode("utf-8")
+            raise RuntimeError(f"POST {url} failed: {exc.code} {text}") from exc
+        return json.loads(text)
+
     def _refresh_endpoint_from_runtime_state(self) -> None:
         if self.endpoint is not None:
             return
         state = self.read_runtime_state()
-        host = state.get("httpHost") or state.get("host")
-        port_text = state.get("httpPort") or state.get("port")
+        host = state.get("apiHost") or state.get("httpHost") or state.get("host")
+        port_text = state.get("apiPort") or state.get("httpPort") or state.get("port")
         if host and port_text:
-            self.endpoint = RuntimeEndpoint(host=host, port=int(port_text))
+            self.endpoint = RuntimeEndpoint(
+                host=_normalize_loopback_host(host),
+                port=int(port_text),
+            )
 
     def _request_json(
         self,

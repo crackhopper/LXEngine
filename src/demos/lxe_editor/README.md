@@ -103,12 +103,12 @@ with a non-zero exit code if the `assets/` tree cannot be found.
 | `state cameras` | Return editor / gameplay camera poses and the active camera path |
 | `state scene` | Return scene metadata such as document path, source kind, node count, camera count, and light count |
 | `state toolbar` | Return the current toolbar mode and preview flag |
-| `pick <x> <y>` | Run a scene pick against the current main scene view rect from console / automation |
+| `pick <x> <y>` | Run a scene pick against the current main scene view rect from console / API |
 | `quit` | Gracefully stop the editor loop so tests and tools can persist local editor state before exit |
 
-## Automation API
+## API server
 
-`lxe_editor` now exposes a local automation surface that reuses the same
+`lxe_editor` now exposes a local API surface that reuses the same
 command system as the in-app console.
 
 ### Launch arguments
@@ -126,8 +126,8 @@ Supported flags:
 - `--automation-host <host>`
 - `--automation-port <port>`
 
-Automation is enabled by default. On startup the demo prints the bound host,
-port, and token-file path.
+The API server is enabled by default. On startup the demo prints the bound
+host, port, and token-file path.
 
 ### Token auth
 
@@ -141,7 +141,7 @@ port, and token-file path.
 |--------|------|--------|
 | `GET` | `/health` | Simple liveness check, no auth required |
 | `POST` | `/api/command` | Execute a command-console line from JSON `{ "line": "..." }` |
-| `GET` | `/api/state` | Return the full structured automation snapshot |
+| `GET` | `/api/state` | Return the full structured editor API snapshot |
 | `GET` | `/api/state/summary` | Return scene / dirty / mode / preview summary |
 | `GET` | `/api/state/selection` | Return selection and last-hit-point state |
 | `GET` | `/api/state/cameras` | Return editor / gameplay camera state |
@@ -165,32 +165,37 @@ port, and token-file path.
 
 ## MCP diagnostics
 
-`lxe_editor` also starts an in-process localhost MCP server for Codex-facing
-diagnostics.
+Codex-side MCP integration now expects `lxe_editor` to be reachable through a
+direct HTTP MCP URL. The repo-local bridge is gone; the local helper prefers
+the runtime state's `mcpUrl` and temporarily falls back to legacy
+`mcpHost`/`mcpPort` discovery while the source-side transport migration lands.
 
-- Default MCP host: `127.0.0.1`
-- Default MCP port: `3769`
+- Repo-local Codex config: `.codex/config.toml`
+- Direct MCP endpoint target: `POST /mcp`
+- Bearer token env var: `LXE_EDITOR_MCP_BEARER_TOKEN`
 - Runtime discovery file: `data/lxe_editor/runtime_state.yaml`
-- Repo-local Codex bridge: `.codex/scripts/lxe_editor_mcp_bridge.py`
-- Startup flags:
-  - `--mcp-host <host>`
-  - `--mcp-port <port>`
+- Preferred runtime-state key: `mcpUrl`
 
-Remote MCP is also supported. When `--mcp-host` is not a loopback host, the
-server requires the same token used by the HTTP automation API. The repo-local
-bridge can target a remote editor through:
-
-```sh
-source scripts/lxe_editor/use_remote_mcp.sh <host> <port> <token>
-codex
-```
-
-To switch back to the local editor:
+To point Codex at the currently running local editor:
 
 ```sh
 source scripts/lxe_editor/use_local_mcp.sh
 codex
 ```
+
+That helper reads `runtime_state.yaml`, loads the token from `tokenFile`,
+exports `LXE_EDITOR_MCP_BEARER_TOKEN`, and rewrites `.codex/config.toml` to
+the discovered direct MCP URL.
+
+To point Codex at a remote editor:
+
+```sh
+source scripts/lxe_editor/use_remote_mcp.sh https://editor.example.com/mcp <token>
+codex
+```
+
+The remote helper writes the same direct-URL config and exports the bearer
+token env var locally without committing secrets to the repo.
 
 Current MCP surface:
 
@@ -209,9 +214,9 @@ Current MCP surface:
   - `lxe-editor://toolbar`
   - `lxe-editor://scene`
 
-The MCP transport reuses the same `EditorAutomationService` state snapshots as
-HTTP and WebSocket. It is intended for Codex diagnostics; the official editor
-regression path remains the HTTP API.
+The MCP surface reuses the same editor state snapshots as the HTTP endpoints.
+It is intended for Codex diagnostics; the official editor regression path
+remains the HTTP API.
 
 ## API black-box tests
 

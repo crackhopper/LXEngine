@@ -10,7 +10,7 @@
 - `SceneRuntime` 里按节点维护的 directional light 关联
 - `CommandBus` 的 undo / redo stash 机制
 
-因此 Rename / Duplicate 若继续按“复制一堆 component 即可”去定义，会和当前 `scene_viewer` 的保存语义脱节。我们需要把它改成面向“可保存测试场景”的操作，而不是面向未来 component 架构实验的操作。
+因此 Rename / Duplicate 若继续按“复制一堆 component 即可”去定义，会和当前 `lxe_editor` 的保存语义脱节。我们需要把它改成面向“可保存测试场景”的操作，而不是面向未来 component 架构实验的操作。
 
 ## 目标
 
@@ -105,8 +105,8 @@
 - `src/core/editor/scene_tree_panel.cpp`
 - `src/core/editor/commands/builtin_commands.cpp`
 - `src/core/editor/inspector_panel.cpp`
-- `src/demos/scene_viewer/scene_document.{hpp,cpp}`
-- `src/demos/scene_viewer/scene_runtime.cpp`
+- `src/demos/lxe_editor/scene_document.{hpp,cpp}`
+- `src/demos/lxe_editor/scene_runtime.cpp`
 - `src/test/integration/test_scene_tree_panel.cpp`
 - `src/test/integration/test_command_bus.cpp`
 - `src/test/integration/test_scene_document.cpp`
@@ -116,7 +116,7 @@
 
 - 本 REQ 不做 component 模型 v2，也不引入 `IComponent::clone()`
 - 本 REQ 不做多选 duplicate、跨父节点 paste、剪贴板系统
-- duplicate 的保存语义以 `scene_viewer` 当前 scene document 为准；不追求成为通用引擎级复制框架
+- duplicate 的保存语义以 `lxe_editor` 当前 scene document 为准；不追求成为通用引擎级复制框架
 - 本 REQ 的粘贴目标固定为“当前选中节点的 parent 下”；不做“粘贴为子节点 / 粘贴到任意节点 / 跨 scene 粘贴”
 
 ## 依赖
@@ -128,7 +128,7 @@
 ## 后续工作
 
 - 若单节点 duplicate 路径稳定，再讨论多选 duplicate / copy-paste
-- 若未来 scene_viewer 脱离 demo、演化成更完整编辑器，再评估是否下沉成通用 scene authoring service
+- 若未来 `lxe_editor` 的场景作者能力需要被其他入口复用，再评估是否下沉成通用 scene authoring service
 
 ## 实施状态
 

@@ -137,7 +137,7 @@ text-to-motion / motion generation：
 
 引擎侧：输出直接对齐 Phase 4 REQ-401 `AnimationClip` 结构（2D / 3D 通道分别存）。
 
-**验收**：角色全链路跑通：立绘 → 3D 模型 → 骨骼 → 动作；`scene_viewer` 挂上去能走能跑。
+**验收**：角色全链路跑通：立绘 → 3D 模型 → 骨骼 → 动作；`lxe_editor` 挂上去能走能跑。
 
 ### REQ-1107 · 游戏 UI 生成
 

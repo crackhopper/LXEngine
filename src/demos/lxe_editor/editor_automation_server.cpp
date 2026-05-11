@@ -1,6 +1,7 @@
 #include "demos/lxe_editor/editor_automation_server.hpp"
 
 #include "demos/lxe_editor/editor_automation_protocol.hpp"
+#include "demos/lxe_editor/lxe_editor_mcp_handler.hpp"
 
 #include <algorithm>
 #include <array>
@@ -534,7 +535,7 @@ struct WsFrame final {
 
 } // namespace
 
-struct EditorAutomationServer::Impl final {
+struct LxeEditorApiServer::Impl final {
   struct Client final {
     enum class Kind {
       Http,
@@ -554,15 +555,15 @@ struct EditorAutomationServer::Impl final {
   bool running = false;
 };
 
-EditorAutomationServer::EditorAutomationServer(EditorAutomationServerConfig config)
+LxeEditorApiServer::LxeEditorApiServer(LxeEditorApiServerConfig config)
     : m_config(std::move(config)), m_impl(new Impl()) {}
 
-EditorAutomationServer::~EditorAutomationServer() {
+LxeEditorApiServer::~LxeEditorApiServer() {
   stop();
   delete m_impl;
 }
 
-bool EditorAutomationServer::start(std::string* errorMessage) {
+bool LxeEditorApiServer::start(std::string* errorMessage) {
   if (!m_config.enabled) {
     return true;
   }
@@ -614,7 +615,7 @@ bool EditorAutomationServer::start(std::string* errorMessage) {
 
   if (listenSocket == kInvalidSocket) {
     if (errorMessage) {
-      *errorMessage = "failed to bind/listen automation server: " +
+      *errorMessage = "failed to bind/listen API server: " +
                       socketErrorString();
     }
     return false;
@@ -631,7 +632,7 @@ bool EditorAutomationServer::start(std::string* errorMessage) {
   return true;
 }
 
-void EditorAutomationServer::stop() {
+void LxeEditorApiServer::stop() {
   if (!m_impl) {
     return;
   }
@@ -648,19 +649,19 @@ void EditorAutomationServer::stop() {
 #endif
 }
 
-bool EditorAutomationServer::isRunning() const {
+bool LxeEditorApiServer::isRunning() const {
   return m_impl && m_impl->running;
 }
 
-const EditorAutomationServerConfig& EditorAutomationServer::config() const {
+const LxeEditorApiServerConfig& LxeEditorApiServer::config() const {
   return m_config;
 }
 
-std::uint16_t EditorAutomationServer::boundPort() const {
+std::uint16_t LxeEditorApiServer::boundPort() const {
   return m_config.port;
 }
 
-void EditorAutomationServer::pump(EditorAutomationService& service) {
+void LxeEditorApiServer::pump(LxeEditorApiService& service) {
   if (!m_impl->running) {
     return;
   }
@@ -832,6 +833,14 @@ void EditorAutomationServer::pump(EditorAutomationService& service) {
           std::ostringstream line;
           line << "pick " << *x << " " << *y;
           client.writeBuffer += httpResponse("200 OK", commandResponse(line.str()));
+        }
+      } else if (request->method == "POST" && pathWithoutQuery == "/mcp") {
+        const LxeEditorMcpResponse response =
+            handleLxeEditorMcpHttpRequest(request->body, service);
+        if (response.hasBody) {
+          client.writeBuffer += httpResponse("200 OK", response.body);
+        } else {
+          client.writeBuffer += httpResponse("202 Accepted", "");
         }
       } else {
         client.writeBuffer += httpResponse(

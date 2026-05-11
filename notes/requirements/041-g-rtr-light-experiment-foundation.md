@@ -9,7 +9,7 @@
 - `src/core/scene/light.hpp` 已有 `LightBase` 抽象接口与 `DirectionalLight`
 - `Scene` 已通过 `std::vector<LightBaseSharedPtr>` 管理 scene-level lights
 - `Scene::getSceneLevelResources(pass, target)` 会收集 light 的 GPU resource
-- `scene_viewer` 的 `SceneDocument` 只保存 `DirectionalLightNodeState`
+- `lxe_editor` 的 `SceneDocument` 只保存 `DirectionalLightNodeState`
 - `SceneRuntime` 只维护 `directionalLightsByNode`
 - `CommandBus` 与 `InspectorPanel` 只认识 directional light 的 `direction / color / intensity`
 - 现有 forward shader 使用单个 `LightUBO`，没有 Point / Spot 的稳定数据合同
@@ -18,7 +18,7 @@
 
 ## 目标
 
-1. `scene_viewer` 能创建、保存、加载 Directional / Point / Spot 三类光源节点
+1. `lxe_editor` 能创建、保存、加载 Directional / Point / Spot 三类光源节点
 2. Inspector 能编辑三类光源的常用参数
 3. runtime 能为实验 shader 提供稳定的光源数据输入合同
 4. 需求只建立底座，不实现具体多光源 shading 公式
@@ -157,9 +157,9 @@ Inspector 不再通过节点名字猜测是否是 light。它应根据 scene doc
 - `src/core/editor/commands/builtin_commands.cpp`
 - `src/core/editor/inspector_panel.{hpp,cpp}`
 - `src/core/editor/viewport_overlay.{hpp,cpp}`
-- `src/demos/scene_viewer/ui_overlay.cpp`
-- `src/demos/scene_viewer/scene_document.{hpp,cpp}`
-- `src/demos/scene_viewer/scene_runtime.cpp`
+- `src/demos/lxe_editor/ui_overlay.cpp`
+- `src/demos/lxe_editor/scene_document.{hpp,cpp}`
+- `src/demos/lxe_editor/scene_runtime.cpp`
 - `assets/shaders/glsl/` 中实验 shader 需要的共享合同
 - `src/test/integration/test_scene_document.cpp`
 - `src/test/integration/test_scene_runtime.cpp`
