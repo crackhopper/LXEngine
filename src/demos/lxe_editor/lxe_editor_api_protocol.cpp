@@ -142,6 +142,8 @@ const char* apiEventTypeName(const ApiEventType type) {
     return "preview.changed";
   case ApiEventType::DirtyChanged:
     return "dirty.changed";
+  case ApiEventType::SceneNodeChanged:
+    return "scene_node.changed";
   }
   return "unknown";
 }
@@ -320,11 +322,30 @@ std::string toJson(const ApiCommandEventPayload& payload) {
   return out;
 }
 
+std::string toJson(const ApiSceneNodeEventPayload& payload) {
+  std::string out = "{";
+  appendJsonStringField(out, "path", payload.path, true);
+  appendJsonStringField(out, "stableNodeName", payload.stableNodeName);
+  out += ",\"aspects\":[";
+  for (usize i = 0; i < payload.aspects.size(); ++i) {
+    if (i != 0) {
+      out += ',';
+    }
+    out += '"';
+    out += apiJsonEscape(payload.aspects[i]);
+    out += '"';
+  }
+  out += "]}";
+  return out;
+}
+
 std::string toJson(const ApiEvent& event) {
   std::string payload = event.payloadJson;
   if (payload.empty()) {
     if (event.command.has_value()) {
       payload = toJson(*event.command);
+    } else if (event.sceneNode.has_value()) {
+      payload = toJson(*event.sceneNode);
     } else if (event.state.has_value()) {
       payload = toJson(*event.state);
     } else {

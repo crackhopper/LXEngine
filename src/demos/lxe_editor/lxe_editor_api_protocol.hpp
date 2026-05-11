@@ -40,6 +40,7 @@ enum class ApiEventType {
   ModeChanged,
   PreviewChanged,
   DirtyChanged,
+  SceneNodeChanged,
 };
 
 struct ApiError final {
@@ -144,10 +145,19 @@ struct ApiCommandEventPayload final {
   bool operator==(const ApiCommandEventPayload&) const = default;
 };
 
+struct ApiSceneNodeEventPayload final {
+  std::string path;
+  std::string stableNodeName;
+  std::vector<std::string> aspects;
+
+  bool operator==(const ApiSceneNodeEventPayload&) const = default;
+};
+
 struct ApiEvent final {
   u64 sequence = 0;
   ApiEventType type = ApiEventType::CommandExecuted;
   std::optional<ApiCommandEventPayload> command;
+  std::optional<ApiSceneNodeEventPayload> sceneNode;
   std::optional<ApiStateSnapshot> state;
   std::string payloadJson;
 
@@ -182,6 +192,8 @@ struct ApiEventBatch final {
 [[nodiscard]] std::string toJson(const ApiStateSnapshot& state);
 [[nodiscard]] std::string toJson(
     const ApiCommandEventPayload& payload);
+[[nodiscard]] std::string toJson(
+    const ApiSceneNodeEventPayload& payload);
 [[nodiscard]] std::string toJson(const ApiEvent& event);
 [[nodiscard]] std::string toJson(const ApiEventBatch& batch);
 [[nodiscard]] std::optional<ApiAabb> apiAabbFromBounds(

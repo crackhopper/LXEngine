@@ -3,6 +3,7 @@
 #include "core/editor/command_bus.hpp"
 #include "core/editor/editor_state.hpp"
 #include "core/scene/scene.hpp"
+#include "core/scene/scene_events.hpp"
 #include "demos/lxe_editor/lxe_editor_api_protocol.hpp"
 
 #include <functional>
@@ -41,9 +42,13 @@ private:
   [[nodiscard]] ApiSelectionSnapshot captureSelection() const;
   [[nodiscard]] ApiCameraSnapshot captureCameras() const;
   [[nodiscard]] ApiToolbarSnapshot captureToolbar() const;
+  void observeRuntimeSceneEvent(const LX_core::SceneEvent& event);
+  void flushPendingRuntimeSceneEvents();
   void observeCommandHistory();
   void observeStateChanges();
   void appendEvent(ApiEvent event);
+  [[nodiscard]] static std::string sceneNodeAspectName(
+      LX_core::SceneNodeAspect aspect);
   [[nodiscard]] static bool isSceneLoadCommand(std::string_view line);
   [[nodiscard]] static bool isSceneSaveCommand(std::string_view line);
 
@@ -51,10 +56,12 @@ private:
   LX_core::EditorState& m_editorState;
   LX_core::Scene& m_scene;
   Hooks m_hooks;
+  LX_core::SceneEventSubscription m_sceneSubscription;
   usize m_lastObservedHistoryIndex = 0;
   u64 m_nextSequence = 1;
   ApiStateSnapshot m_lastState;
   std::vector<ApiEvent> m_events;
+  std::vector<LX_core::SceneEvent> m_pendingRuntimeSceneEvents;
 };
 
 } // namespace LX_demo::lxe_editor

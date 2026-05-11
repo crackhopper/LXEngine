@@ -161,6 +161,173 @@ void testRefreshEmitsDirtyPreviewAndModeChangeEvents() {
   EXPECT(sawMode, "refresh should emit mode.changed when edit mode flips");
 }
 
+void testRuntimeSceneNodeMutationEmitsApiSceneNodeChangedEvent() {
+  Fixture fixture;
+  const auto parent = SceneNode::create("parent");
+  parent->setName("parent");
+  fixture.scene->addRenderable(parent);
+  const auto node = SceneNode::create("helmet_node");
+  node->setName("helmet");
+  node->setParent(parent);
+  fixture.scene->addRenderable(node);
+
+  const ApiEventCursor cursor = fixture.service->currentCursor();
+
+  node->setTranslation({0.0f, 1.0f, 0.0f});
+  const ApiEventBatch beforeRefresh =
+      fixture.service->collectEventsSince(cursor);
+  EXPECT(beforeRefresh.events.empty(),
+         "runtime scene-node events should stay queued until refresh");
+
+  fixture.service->refresh();
+
+  const ApiEventBatch batch =
+      fixture.service->collectEventsSince(cursor);
+  bool sawRuntimeNodeChanged = false;
+  for (const auto& event : batch.events) {
+    if (event.type != ApiEventType::SceneNodeChanged) {
+      continue;
+    }
+
+    sawRuntimeNodeChanged = true;
+    EXPECT(event.sceneNode.has_value(),
+           "scene_node.changed event should carry scene-node payload");
+    if (event.sceneNode.has_value()) {
+      EXPECT(event.sceneNode->path == node->getPath(),
+             "scene-node payload should preserve mutated node path");
+      EXPECT(event.sceneNode->path == "/parent/helmet",
+             "scene-node payload path should preserve full hierarchy path");
+      EXPECT(event.sceneNode->stableNodeName == node->getNodeName(),
+             "scene-node payload should preserve stable node name");
+      EXPECT(event.sceneNode->stableNodeName == "helmet_node",
+             "scene-node payload stable name should preserve constructor identity");
+      EXPECT(event.sceneNode->stableNodeName != event.sceneNode->path,
+             "stable node name should remain distinct from full path");
+      EXPECT(event.sceneNode->aspects.size() == 1,
+             "scene-node payload should keep a minimal aspect list");
+      if (event.sceneNode->aspects.size() == 1) {
+        EXPECT(event.sceneNode->aspects.front() == "transform",
+               "scene-node payload should report transform mutations");
+      }
+      EXPECT(event.payloadJson == toJson(*event.sceneNode),
+             "scene-node event payloadJson should match serialized payload");
+    }
+  }
+  EXPECT(sawRuntimeNodeChanged,
+         "runtime scene-node mutation should be mirrored into API events");
+}
+
+void testCommandDrivenSceneMutationKeepsCommandEventBeforeSceneNodeChanged() {
+  Fixture fixture;
+  const auto node = SceneNode::create("helmet_node");
+  node->setName("helmet");
+  fixture.scene->addRenderable(node);
+  fixture.bus.registerHandler(
+      "move_node", "move_node", [node](std::vector<std::string>) {
+        node->setTranslation({2.0f, 3.0f, 4.0f});
+        return CommandResult{true, "moved", "{\"kind\":\"move_node\"}"};
+      });
+
+  const ApiEventCursor cursor = fixture.service->currentCursor();
+
+  const ApiCommandResponse response = fixture.service->executeCommand(
+      ApiCommandRequest{.line = "move_node"});
+  EXPECT(response.ok, "command-driven node mutation should succeed");
+
+  const ApiEventBatch batch =
+      fixture.service->collectEventsSince(cursor);
+  EXPECT(batch.events.size() >= 2,
+         "command-driven node mutation should emit command and runtime events");
+
+  std::optional<ApiEvent> commandEvent;
+  std::optional<ApiEvent> sceneNodeEvent;
+  for (const auto& event : batch.events) {
+    if (event.type == ApiEventType::CommandExecuted && !commandEvent.has_value()) {
+      commandEvent = event;
+    }
+    if (event.type == ApiEventType::SceneNodeChanged && !sceneNodeEvent.has_value()) {
+      sceneNodeEvent = event;
+    }
+  }
+
+  EXPECT(commandEvent.has_value(),
+         "command-driven node mutation should emit command.executed");
+  EXPECT(sceneNodeEvent.has_value(),
+         "command-driven node mutation should emit scene_node.changed");
+  if (commandEvent.has_value() && sceneNodeEvent.has_value()) {
+    EXPECT(commandEvent->sequence < sceneNodeEvent->sequence,
+           "command.executed should keep an earlier API sequence than its runtime side effect");
+    EXPECT(sceneNodeEvent->sceneNode.has_value(),
+           "scene_node.changed should carry scene-node payload");
+    if (sceneNodeEvent->sceneNode.has_value()) {
+      EXPECT(sceneNodeEvent->sceneNode->aspects.size() == 1 &&
+                 sceneNodeEvent->sceneNode->aspects.front() == "transform",
+             "command-driven scene-node payload should report transform aspect");
+    }
+  }
+}
+
+void testExecuteCommandFlushesOlderQueuedRuntimeEventsBeforeNewCommand() {
+  Fixture fixture;
+  const auto olderNode = SceneNode::create("older_node");
+  olderNode->setName("older");
+  fixture.scene->addRenderable(olderNode);
+  const auto newerNode = SceneNode::create("newer_node");
+  newerNode->setName("newer");
+  fixture.scene->addRenderable(newerNode);
+  fixture.bus.registerHandler(
+      "move_newer", "move_newer", [newerNode](std::vector<std::string>) {
+        newerNode->setTranslation({5.0f, 6.0f, 7.0f});
+        return CommandResult{true, "moved", "{\"kind\":\"move_newer\"}"};
+      });
+
+  const ApiEventCursor cursor = fixture.service->currentCursor();
+
+  olderNode->setTranslation({1.0f, 2.0f, 3.0f});
+
+  const ApiCommandResponse response = fixture.service->executeCommand(
+      ApiCommandRequest{.line = "move_newer"});
+  EXPECT(response.ok, "executeCommand should succeed with pre-queued runtime events");
+
+  const ApiEventBatch batch =
+      fixture.service->collectEventsSince(cursor);
+  EXPECT(batch.events.size() >= 3,
+         "pre-queued runtime event plus command side effect should yield at least three events");
+
+  std::vector<ApiEvent> sceneNodeEvents;
+  std::optional<ApiEvent> commandEvent;
+  for (const auto& event : batch.events) {
+    if (event.type == ApiEventType::SceneNodeChanged) {
+      sceneNodeEvents.push_back(event);
+    }
+    if (event.type == ApiEventType::CommandExecuted && !commandEvent.has_value()) {
+      commandEvent = event;
+    }
+  }
+
+  EXPECT(sceneNodeEvents.size() >= 2,
+         "pre-queued runtime event and command side effect should both be mirrored");
+  EXPECT(commandEvent.has_value(),
+         "executeCommand should still emit command.executed");
+  if (sceneNodeEvents.size() >= 2 && commandEvent.has_value()) {
+    EXPECT(sceneNodeEvents[0].sceneNode.has_value(),
+           "older queued runtime event should carry scene-node payload");
+    EXPECT(sceneNodeEvents[1].sceneNode.has_value(),
+           "command-side-effect runtime event should carry scene-node payload");
+    if (sceneNodeEvents[0].sceneNode.has_value() &&
+        sceneNodeEvents[1].sceneNode.has_value()) {
+      EXPECT(sceneNodeEvents[0].sceneNode->stableNodeName == "older_node",
+             "older queued runtime event should flush before dispatching a new command");
+      EXPECT(commandEvent->sequence > sceneNodeEvents[0].sequence,
+             "older queued runtime event should get an earlier sequence than the new command");
+      EXPECT(commandEvent->sequence < sceneNodeEvents[1].sequence,
+             "command.executed should keep an earlier sequence than its own runtime side effect");
+      EXPECT(sceneNodeEvents[1].sceneNode->stableNodeName == "newer_node",
+             "later runtime event should belong to the command-mutated node");
+    }
+  }
+}
+
 void testApiTokenStatePersistsSingleGeneratedToken() {
   const auto rootDir = std::filesystem::temp_directory_path() /
                        "lxengine_api_token_state_test";
@@ -186,6 +353,9 @@ int main() {
   testExecuteCommandMirrorsCommandBusAndEmitsCommandEvent();
   testCaptureStateUsesHooksAndEditorSelection();
   testRefreshEmitsDirtyPreviewAndModeChangeEvents();
+  testRuntimeSceneNodeMutationEmitsApiSceneNodeChangedEvent();
+  testCommandDrivenSceneMutationKeepsCommandEventBeforeSceneNodeChanged();
+  testExecuteCommandFlushesOlderQueuedRuntimeEventsBeforeNewCommand();
   testApiTokenStatePersistsSingleGeneratedToken();
 
   if (failures != 0) {

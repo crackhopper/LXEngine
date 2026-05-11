@@ -48,6 +48,10 @@ LxeEditorApiService::LxeEditorApiService(
       m_editorState(editorState),
       m_scene(scene),
       m_hooks(std::move(hooks)),
+      m_sceneSubscription(m_scene.events().subscribe(
+          [this](const LX_core::SceneEvent& event) {
+            observeRuntimeSceneEvent(event);
+          })),
       m_lastObservedHistoryIndex(m_commandBus.history().size()),
       m_lastState(captureState()) {}
 
@@ -56,6 +60,7 @@ ApiCommandResponse LxeEditorApiService::executeCommand(
   if (m_hooks.recordCommandHistoryLine) {
     m_hooks.recordCommandHistoryLine(request.line);
   }
+  flushPendingRuntimeSceneEvents();
   const LX_core::CommandResult result = m_commandBus.dispatch(request.line);
   refresh();
 
@@ -88,6 +93,7 @@ ApiStateSnapshot LxeEditorApiService::captureState() const {
 
 void LxeEditorApiService::refresh() {
   observeCommandHistory();
+  flushPendingRuntimeSceneEvents();
   observeStateChanges();
 }
 
@@ -176,6 +182,38 @@ ApiToolbarSnapshot LxeEditorApiService::captureToolbar() const {
   };
 }
 
+void LxeEditorApiService::observeRuntimeSceneEvent(
+    const LX_core::SceneEvent& event) {
+  if (event.domain != LX_core::SceneEventDomain::Runtime ||
+      event.type != LX_core::SceneEventType::SceneNodeChanged) {
+    return;
+  }
+
+  m_pendingRuntimeSceneEvents.push_back(event);
+}
+
+void LxeEditorApiService::flushPendingRuntimeSceneEvents() {
+  for (const auto& event : m_pendingRuntimeSceneEvents) {
+    ApiSceneNodeEventPayload payload{
+        .path = event.path,
+        .stableNodeName = event.stableNodeName,
+    };
+    payload.aspects.reserve(event.aspects.size());
+    for (const auto aspect : event.aspects) {
+      payload.aspects.push_back(sceneNodeAspectName(aspect));
+    }
+
+    ApiEvent apiEvent{
+        .sequence = m_nextSequence++,
+        .type = ApiEventType::SceneNodeChanged,
+        .sceneNode = payload,
+        .payloadJson = toJson(payload),
+    };
+    appendEvent(std::move(apiEvent));
+  }
+  m_pendingRuntimeSceneEvents.clear();
+}
+
 void LxeEditorApiService::observeCommandHistory() {
   const auto& history = m_commandBus.history();
   while (m_lastObservedHistoryIndex < history.size()) {
@@ -258,6 +296,23 @@ void LxeEditorApiService::appendEvent(ApiEvent event) {
 
 bool LxeEditorApiService::isSceneLoadCommand(const std::string_view line) {
   return line == "scene load" || line.starts_with("scene load ");
+}
+
+std::string LxeEditorApiService::sceneNodeAspectName(
+    const LX_core::SceneNodeAspect aspect) {
+  switch (aspect) {
+  case LX_core::SceneNodeAspect::Transform:
+    return "transform";
+  case LX_core::SceneNodeAspect::Identity:
+    return "identity";
+  case LX_core::SceneNodeAspect::Hierarchy:
+    return "hierarchy";
+  case LX_core::SceneNodeAspect::Visibility:
+    return "visibility";
+  case LX_core::SceneNodeAspect::RenderableStructure:
+    return "renderable_structure";
+  }
+  return "unknown";
 }
 
 bool LxeEditorApiService::isSceneSaveCommand(const std::string_view line) {
