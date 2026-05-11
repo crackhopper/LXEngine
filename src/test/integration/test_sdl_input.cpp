@@ -123,6 +123,15 @@ void testQuitEventReturnsTrue() {
   EXPECT(quit, "handleSdlEvent should return true on quit");
 }
 
+void testWindowCloseRequestedReturnsTrue() {
+  Sdl3InputState input;
+  SDL_Event e{};
+  e.type = SDL_EVENT_WINDOW_CLOSE_REQUESTED;
+  const bool quit = input.handleSdlEvent(e);
+  EXPECT(quit,
+         "handleSdlEvent should return true on window close requested");
+}
+
 void testNonQuitEventReturnsFalse() {
   Sdl3InputState input;
   bool quit = input.handleSdlEvent(makeKeyEvent(SDL_EVENT_KEY_DOWN, SDL_SCANCODE_W, true));
@@ -148,6 +157,7 @@ int main() {
   testWheelDeltaAccumulation();
   testNextFrameClearsDeltaPreservesDown();
   testQuitEventReturnsTrue();
+  testWindowCloseRequestedReturnsTrue();
   testNonQuitEventReturnsFalse();
   testUnknownScancodeIgnored();
 

@@ -134,6 +134,7 @@ bool Sdl3InputState::handleSdlEvent(const SDL_Event& event) {
   case SDL_EVENT_MOUSE_WHEEL:
     m_wheelDeltaAccum += event.wheel.y;
     break;
+  case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
   case SDL_EVENT_QUIT:
     return true;
   default:
