@@ -469,11 +469,18 @@ void testBuiltinCamAndPreviewCommands() {
   EXPECT(previewOn.ok, "preview on succeeds");
   EXPECT(fixture.editorState.isPreviewEnabled(),
          "preview on updates editor state");
+  EXPECT(previewOn.metadata.find("scene.rebuild") != previewOn.metadata.end() &&
+             previewOn.metadata.at("scene.rebuild") == "true",
+         "preview on requests scene rebuild so active camera resources refresh");
 
   const CommandResult previewToggle = fixture.bus.dispatch("preview toggle");
   EXPECT(previewToggle.ok, "preview toggle succeeds");
   EXPECT(!fixture.editorState.isPreviewEnabled(),
          "preview toggle flips editor state");
+  EXPECT(previewToggle.metadata.find("scene.rebuild") !=
+             previewToggle.metadata.end() &&
+             previewToggle.metadata.at("scene.rebuild") == "true",
+         "preview toggle requests scene rebuild so active camera resources refresh");
 }
 
 void testBuiltinRemainingCommandErrors() {

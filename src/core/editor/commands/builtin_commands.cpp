@@ -1561,6 +1561,7 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
                        ",\"activePath\":\"" +
                        jsonEscape(activeCamera ? activeCamera->getPath() : std::string{}) +
                        "\"}");
+        result.metadata["scene.rebuild"] = "true";
         result.metadata["inverse.line"] =
             std::string("preview ") + (previewWasEnabled ? "on" : "off");
         return result;

@@ -112,6 +112,12 @@ constexpr int kWindowHeight = 720;
   return kMutatingVerbs.find(verb) != kMutatingVerbs.end();
 }
 
+[[nodiscard]] bool commandRequestsSceneRebuild(
+    const LX_core::CommandResult& result) {
+  const auto it = result.metadata.find("scene.rebuild");
+  return it != result.metadata.end() && it->second == "true";
+}
+
 [[nodiscard]] std::reference_wrapper<LX_core::CameraComponent>
 requireCameraComponent(const LX_core::SceneNodeSharedPtr& node,
                        const char* nodeLabel) {
@@ -214,7 +220,7 @@ public:
     loop.startScene(m_runtime.scene());
   }
 
-  void pollCommandHistoryForDirty() {
+  void pollCommandHistory(EngineLoop& loop) {
     if (!m_commandBus) {
       return;
     }
@@ -223,6 +229,9 @@ public:
       const auto& entry = history[m_lastObservedHistoryIndex++];
       if (entry.result.ok && commandMarksSceneDirty(entry.line)) {
         m_session.setDirty(true);
+      }
+      if (entry.result.ok && commandRequestsSceneRebuild(entry.result)) {
+        loop.requestSceneRebuild();
       }
     }
   }
@@ -472,7 +481,7 @@ int main() {
         return;
       }
       session.flushPendingSceneLoad(loop);
-      session.pollCommandHistoryForDirty();
+      session.pollCommandHistory(loop);
 
       const bool imguiReady = ImGui::GetCurrentContext() != nullptr;
       const auto io =
