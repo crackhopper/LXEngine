@@ -67,8 +67,8 @@ struct ProjectedPoint final {
   return ProjectedPoint{
       .ndc = LX_core::Vec2f{ndc3.x, ndc3.y},
       .pixel = LX_core::Vec2f{
-          (ndc3.x * 0.5f + 0.5f) * viewportSize.x,
-          (1.0f - (ndc3.y * 0.5f + 0.5f)) * viewportSize.y}};
+          (ndc3.x * 0.5f + 0.5f) * viewportSize.x - 0.5f,
+          (1.0f - (ndc3.y * 0.5f + 0.5f)) * viewportSize.y - 0.5f}};
 }
 
 [[nodiscard]] std::string makePickDebugLine(const LX_core::Vec2f& localPixel,
@@ -157,8 +157,11 @@ LX_core::CommandResult SceneInteractionController::dispatchPickingClick(
   std::optional<ProjectedPoint> projected;
   if (hit.has_value()) {
     hitWorld = ray.origin + ray.direction * hit->distance;
+    const float projectionAspect =
+        viewportSize.y > 0.0f ? viewportSize.x / viewportSize.y : 1.0f;
     const LX_core::Mat4f viewProj =
-        editorCamera->get().getProjMatrix() * editorCamera->get().getViewMatrix();
+        editorCamera->get().getProjMatrix(projectionAspect) *
+        editorCamera->get().getViewMatrix();
     projected = projectPointToViewport(*hitWorld, viewProj, viewportSize);
   }
   if (debugEnabled && m_appendDebugLine) {

@@ -15,7 +15,10 @@
 #include "demos/lxe_editor/scene_input_routing.hpp"
 #include "demos/lxe_editor/scene_view_rect.hpp"
 
+#include <cmath>
 #include <iostream>
+#include <optional>
+#include <string>
 
 namespace {
 
@@ -29,6 +32,29 @@ int failures = 0;
       ++failures;                                                              \
     }                                                                          \
   } while (0)
+
+constexpr float kEps = 2e-3f;
+
+[[nodiscard]] bool approx(const float a, const float b,
+                          const float eps = kEps) {
+  return std::fabs(a - b) <= eps;
+}
+
+[[nodiscard]] std::optional<LX_core::Vec2f> projectWorldPointToViewport(
+    const LX_core::Vec3f& worldPoint, LX_core::CameraComponent& camera,
+    const LX_core::Vec2f& viewportSize) {
+  const LX_core::Mat4f viewProj =
+      camera.getProjMatrix() * camera.getViewMatrix();
+  const LX_core::Vec4f clip =
+      viewProj * LX_core::Vec4f{worldPoint.x, worldPoint.y, worldPoint.z, 1.0f};
+  if (std::abs(clip.w) <= 1e-6f || clip.w <= 0.0f) {
+    return std::nullopt;
+  }
+  const LX_core::Vec3f ndc = clip.toVec3();
+  return LX_core::Vec2f{
+      (ndc.x * 0.5f + 0.5f) * viewportSize.x - 0.5f,
+      (1.0f - (ndc.y * 0.5f + 0.5f)) * viewportSize.y - 0.5f};
+}
 
 LX_core::MeshSharedPtr makeUnitSquareMesh() {
   auto vb = LX_core::VertexBuffer<LX_core::VertexPos>::create(
@@ -71,6 +97,42 @@ struct Fixture final {
     LX_core::registerBuiltinCommands(bus, editorState, *scene);
   }
 };
+
+void testPickRayProjectionRoundTripsBackToOriginalViewportPixel() {
+  Fixture fixture;
+  const auto editorCamera =
+      fixture.editorCameraNode->getComponent<LX_core::CameraComponent>();
+  EXPECT(editorCamera.has_value(), "editor camera component should exist");
+  if (!editorCamera.has_value()) {
+    return;
+  }
+
+  editorCamera->get().lookAt({1.5f, 1.2f, 4.0f}, {0.25f, 0.5f, 0.0f},
+                             {0.0f, 1.0f, 0.0f});
+  editorCamera->get().setAspect(1920.0f / 1008.0f);
+  const LX_core::Vec2f viewportSize{1920.0f, 1008.0f};
+  const LX_core::Vec2f screenPixel{1097.0f, 341.0f};
+
+  const LX_core::Ray ray = editorCamera->get().pickRay(screenPixel, viewportSize);
+  const LX_core::Vec3f worldPoint = ray.origin + ray.direction * 5.0f;
+  const auto projected =
+      projectWorldPointToViewport(worldPoint, editorCamera->get(), viewportSize);
+  EXPECT(projected.has_value(),
+         "point on pick ray should remain projectable through the same camera");
+  if (!projected.has_value()) {
+    return;
+  }
+
+  if (!(approx(projected->x, screenPixel.x) &&
+        approx(projected->y, screenPixel.y))) {
+    std::cerr << "  projected=(" << projected->x << ", " << projected->y
+              << ") expected=(" << screenPixel.x << ", " << screenPixel.y
+              << ")\n";
+  }
+  EXPECT(approx(projected->x, screenPixel.x) &&
+             approx(projected->y, screenPixel.y),
+         "point sampled from pick ray should project back to the original pixel");
+}
 
 void runSceneViewerMainPathSelectionStep(Fixture& fixture,
                                          LX_core::MockInputState& input,
@@ -226,6 +288,45 @@ void testSelectionDebugStateTracksHitPointAndSelection() {
   LX_core::DebugDraw::endFrame();
 }
 
+void testSelectionDebugProjectionRoundTripsBackToClickedPixel() {
+  Fixture fixture;
+  std::string debugLine;
+  fixture.controller.setDebugLoggingHooks(
+      []() { return true; },
+      [&debugLine](std::string_view line) { debugLine = std::string(line); });
+
+  const auto editorCamera =
+      fixture.editorCameraNode->getComponent<LX_core::CameraComponent>();
+  EXPECT(editorCamera.has_value(), "editor camera component should exist");
+  if (!editorCamera.has_value()) {
+    return;
+  }
+
+  const LX_demo::lxe_editor::SceneViewRect rect{
+      .x = 0.0f,
+      .y = 0.0f,
+      .width = 1920.0f,
+      .height = 1008.0f,
+  };
+  fixture.targetNode->setScale({6.0f, 6.0f, 1.0f});
+  editorCamera->get().lookAt({1.5f, 1.2f, 4.0f}, {0.25f, 0.5f, 0.0f},
+                             {0.0f, 1.0f, 0.0f});
+  editorCamera->get().setAspect(rect.width / rect.height);
+
+  const auto result =
+      fixture.controller.dispatchPickingClick(LX_core::Vec2f{1097.0f, 341.0f}, rect);
+  EXPECT(result.ok, "off-center selection click should succeed");
+  if (!(debugLine.find("\"projectedPixel\":{\"x\":1097.000") !=
+            std::string::npos &&
+        debugLine.find("\"y\":341.000") != std::string::npos)) {
+    std::cerr << "  debugLine=" << debugLine << "\n";
+  }
+  EXPECT(debugLine.find("\"projectedPixel\":{\"x\":1097.000") !=
+             std::string::npos &&
+             debugLine.find("\"y\":341.000") != std::string::npos,
+         "debug reprojection should match the clicked pixel for a hit on the pick ray");
+}
+
 void testResetEditorCameraToGameCameraCopiesPoseWithoutPreviewToggle() {
   Fixture fixture;
   fixture.editorCameraNode->setTranslation({3.0f, 4.0f, 5.0f});
@@ -244,6 +345,7 @@ void testResetEditorCameraToGameCameraCopiesPoseWithoutPreviewToggle() {
 
 int main() {
   expSetEnvVK();
+  testPickRayProjectionRoundTripsBackToOriginalViewportPixel();
   testSceneInteractionSelectsHitNodeOnClick();
   testSceneInteractionDeselectsOnMiss();
   testSelectionPickingUsesSceneViewRectInsteadOfWholeWindow();
@@ -252,6 +354,7 @@ int main() {
   testPreviewModeSuppressesSelectionInMainPath();
   testSelectionModeAllowsMousePickingWhileKeyboardIsCaptured();
   testSelectionDebugStateTracksHitPointAndSelection();
+  testSelectionDebugProjectionRoundTripsBackToClickedPixel();
   testResetEditorCameraToGameCameraCopiesPoseWithoutPreviewToggle();
 
   if (failures > 0) {

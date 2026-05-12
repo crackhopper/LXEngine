@@ -137,8 +137,9 @@ projectWorldPointToViewport(const Vec3f &worldPoint, const Mat4f &viewProj,
   }
 
   const Vec3f ndc = clip.toVec3();
-  const float screenX = (ndc.x * 0.5f + 0.5f) * viewportSize.x;
-  const float screenY = (1.0f - (ndc.y * 0.5f + 0.5f)) * viewportSize.y;
+  const float screenX = (ndc.x * 0.5f + 0.5f) * viewportSize.x - 0.5f;
+  const float screenY =
+      (1.0f - (ndc.y * 0.5f + 0.5f)) * viewportSize.y - 0.5f;
   return Vec2f{screenX, screenY};
 }
 
@@ -390,7 +391,9 @@ ViewportOverlay::gatherBoxSelectionPaths(const Vec2f &dragStart, const Vec2f &dr
   }
 
   const Mat4f viewProj =
-      editorCamera->get().getProjMatrix() * editorCamera->get().getViewMatrix();
+      editorCamera->get().getProjMatrix(
+          viewportSize.y > 0.0f ? viewportSize.x / viewportSize.y : 1.0f) *
+      editorCamera->get().getViewMatrix();
   std::vector<std::string> paths;
   for (const auto &renderable : m_scene.getRenderables()) {
     const auto node = std::dynamic_pointer_cast<SceneNode>(renderable);
@@ -504,7 +507,8 @@ void ViewportOverlay::enqueueDebugDraw() const {
     if (!camera.has_value()) {
       continue;
     }
-    const Mat4f viewProj = camera->get().getProjMatrix() * camera->get().getViewMatrix();
+    const Mat4f viewProj =
+        camera->get().getProjMatrix() * camera->get().getViewMatrix();
     DebugDraw::frustum(viewProj, DebugDraw::Color::white());
   }
 

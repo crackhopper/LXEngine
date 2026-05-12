@@ -15,6 +15,80 @@ float safeScaleComponent(float value) {
   return std::abs(value) <= std::numeric_limits<float>::epsilon() ? 1.0f : value;
 }
 
+[[nodiscard]] Mat4f invertMatrix(const Mat4f& matrix) {
+  float m[16] = {};
+  for (int row = 0; row < 4; ++row) {
+    for (int col = 0; col < 4; ++col) {
+      m[row * 4 + col] = matrix(row, col);
+    }
+  }
+
+  float inv[16] = {};
+  inv[0] = m[5] * m[10] * m[15] - m[5] * m[11] * m[14] -
+           m[9] * m[6] * m[15] + m[9] * m[7] * m[14] +
+           m[13] * m[6] * m[11] - m[13] * m[7] * m[10];
+  inv[4] = -m[4] * m[10] * m[15] + m[4] * m[11] * m[14] +
+           m[8] * m[6] * m[15] - m[8] * m[7] * m[14] -
+           m[12] * m[6] * m[11] + m[12] * m[7] * m[10];
+  inv[8] = m[4] * m[9] * m[15] - m[4] * m[11] * m[13] -
+           m[8] * m[5] * m[15] + m[8] * m[7] * m[13] +
+           m[12] * m[5] * m[11] - m[12] * m[7] * m[9];
+  inv[12] = -m[4] * m[9] * m[14] + m[4] * m[10] * m[13] +
+            m[8] * m[5] * m[14] - m[8] * m[6] * m[13] -
+            m[12] * m[5] * m[10] + m[12] * m[6] * m[9];
+  inv[1] = -m[1] * m[10] * m[15] + m[1] * m[11] * m[14] +
+           m[9] * m[2] * m[15] - m[9] * m[3] * m[14] -
+           m[13] * m[2] * m[11] + m[13] * m[3] * m[10];
+  inv[5] = m[0] * m[10] * m[15] - m[0] * m[11] * m[14] -
+           m[8] * m[2] * m[15] + m[8] * m[3] * m[14] +
+           m[12] * m[2] * m[11] - m[12] * m[3] * m[10];
+  inv[9] = -m[0] * m[9] * m[15] + m[0] * m[11] * m[13] +
+           m[8] * m[1] * m[15] - m[8] * m[3] * m[13] -
+           m[12] * m[1] * m[11] + m[12] * m[3] * m[9];
+  inv[13] = m[0] * m[9] * m[14] - m[0] * m[10] * m[13] -
+            m[8] * m[1] * m[14] + m[8] * m[2] * m[13] +
+            m[12] * m[1] * m[10] - m[12] * m[2] * m[9];
+  inv[2] = m[1] * m[6] * m[15] - m[1] * m[7] * m[14] -
+           m[5] * m[2] * m[15] + m[5] * m[3] * m[14] +
+           m[13] * m[2] * m[7] - m[13] * m[3] * m[6];
+  inv[6] = -m[0] * m[6] * m[15] + m[0] * m[7] * m[14] +
+           m[4] * m[2] * m[15] - m[4] * m[3] * m[14] -
+           m[12] * m[2] * m[7] + m[12] * m[3] * m[6];
+  inv[10] = m[0] * m[5] * m[15] - m[0] * m[7] * m[13] -
+            m[4] * m[1] * m[15] + m[4] * m[3] * m[13] +
+            m[12] * m[1] * m[7] - m[12] * m[3] * m[5];
+  inv[14] = -m[0] * m[5] * m[14] + m[0] * m[6] * m[13] +
+            m[4] * m[1] * m[14] - m[4] * m[2] * m[13] -
+            m[12] * m[1] * m[6] + m[12] * m[2] * m[5];
+  inv[3] = -m[1] * m[6] * m[11] + m[1] * m[7] * m[10] +
+           m[5] * m[2] * m[11] - m[5] * m[3] * m[10] -
+           m[9] * m[2] * m[7] + m[9] * m[3] * m[6];
+  inv[7] = m[0] * m[6] * m[11] - m[0] * m[7] * m[10] -
+           m[4] * m[2] * m[11] + m[4] * m[3] * m[10] +
+           m[8] * m[2] * m[7] - m[8] * m[3] * m[6];
+  inv[11] = -m[0] * m[5] * m[11] + m[0] * m[7] * m[9] +
+            m[4] * m[1] * m[11] - m[4] * m[3] * m[9] -
+            m[8] * m[1] * m[7] + m[8] * m[3] * m[5];
+  inv[15] = m[0] * m[5] * m[10] - m[0] * m[6] * m[9] -
+            m[4] * m[1] * m[10] + m[4] * m[2] * m[9] +
+            m[8] * m[1] * m[6] - m[8] * m[2] * m[5];
+
+  float det =
+      m[0] * inv[0] + m[1] * inv[4] + m[2] * inv[8] + m[3] * inv[12];
+  if (std::abs(det) < 1e-8f) {
+    return Mat4f::identity();
+  }
+
+  det = 1.0f / det;
+  Mat4f result{};
+  for (int row = 0; row < 4; ++row) {
+    for (int col = 0; col < 4; ++col) {
+      result(row, col) = inv[row * 4 + col] * det;
+    }
+  }
+  return result;
+}
+
 Transform toLocalFromWorld(const SceneNode &node, const Transform &worldTransform) {
   auto parent = node.getParent();
   if (!parent) {
@@ -194,10 +268,15 @@ Vec3f CameraComponent::getLookTarget(float distance) const {
 }
 
 Mat4f CameraComponent::getViewMatrix() const {
-  const Vec3f eye = getEyePosition();
-  const Vec3f forward = getForwardVector();
-  const Vec3f up = getUpVector();
-  return Mat4f::lookAt(eye, eye + forward, up);
+  const Transform worldTransform = getOwnerWorldTransform();
+  const Quatf inverseRotation =
+      worldTransform.rotation.conjugate().normalized();
+  Transform viewTransform;
+  viewTransform.translation =
+      inverseRotation.rotate(-worldTransform.translation);
+  viewTransform.rotation = inverseRotation;
+  viewTransform.scale = Vec3f{1.0f, 1.0f, 1.0f};
+  return viewTransform.toMat4();
 }
 
 Mat4f CameraComponent::getProjMatrix(float aspectOverride) const {
@@ -218,6 +297,17 @@ Ray CameraComponent::pickRay(const Vec2f &screenPixel,
   const float ndcX = ((screenPixel.x + 0.5f) / viewportWidth) * 2.0f - 1.0f;
   const float ndcY = 1.0f - ((screenPixel.y + 0.5f) / viewportHeight) * 2.0f;
 
+  if (m_type == CameraType::Perspective) {
+    const float projectionAspect = viewportWidth / viewportHeight;
+    const Mat4f viewProj =
+        getProjMatrix(projectionAspect) * getViewMatrix();
+    const Mat4f invViewProj = invertMatrix(viewProj);
+    const Vec3f farPoint =
+        (invViewProj * Vec4f{ndcX, ndcY, 1.0f, 1.0f}).toVec3();
+    const Vec3f eye = getEyePosition();
+    return Ray{eye, (farPoint - eye).normalized()};
+  }
+
   const Transform worldTransform = getOwnerWorldTransform();
   const Vec3f eye = worldTransform.translation;
   const Vec3f rightAxis =
@@ -225,19 +315,6 @@ Ray CameraComponent::pickRay(const Vec2f &screenPixel,
   const Vec3f upAxis =
       worldTransform.rotation.rotate(Vec3f{0.0f, 1.0f, 0.0f}).normalized();
   const Vec3f forwardAxis = getForwardVector();
-
-  if (m_type == CameraType::Perspective) {
-    const float projectionAspect =
-        m_aspect > 0.0f ? m_aspect : viewportWidth / viewportHeight;
-    const float tanHalfFov = std::tan(0.5f * m_fovY * kDegToRad);
-    const float halfHeight = tanHalfFov * m_nearPlane;
-    const float halfWidth = halfHeight * projectionAspect;
-    const Vec3f nearPoint = eye + forwardAxis * m_nearPlane +
-                            rightAxis * (ndcX * halfWidth) +
-                            upAxis * (ndcY * halfHeight);
-    return Ray{eye, (nearPoint - eye).normalized()};
-  }
-
   const float halfWidth = 0.5f * (m_right - m_left);
   const float halfHeight = 0.5f * (m_top - m_bottom);
   const float centerX = 0.5f * (m_left + m_right);

@@ -152,6 +152,10 @@ void testCameraComponentPickRayUsesOwnerPose() {
   camera->get().setOrthographicBounds(-2.0f, 2.0f, -1.0f, 1.0f);
   camera->get().setNearPlane(0.5f);
   const Ray orthoRay = camera->get().pickRay({0.0f, 0.0f}, {1.0f, 1.0f});
+  if (!approxVec3(orthoRay.origin, Vec3f{2.0f, 3.0f, 3.5f})) {
+    std::cerr << "  ortho origin = (" << orthoRay.origin.x << ", "
+              << orthoRay.origin.y << ", " << orthoRay.origin.z << ")\n";
+  }
   EXPECT(approxVec3(orthoRay.origin, Vec3f{2.0f, 3.0f, 3.5f}),
          "orthographic center ray originates on near plane");
   EXPECT(approxVec3(orthoRay.direction, Vec3f{0.0f, 0.0f, -1.0f}),

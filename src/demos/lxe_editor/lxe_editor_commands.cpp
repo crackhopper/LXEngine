@@ -395,18 +395,27 @@ void registerLxeEditorCommands(
   bus.registerHandler(
       "pick", "pick <x> <y>",
       [editorState, interaction, sceneViewRect](std::vector<std::string> args) {
-        if (args.size() != 2) {
-          return makeError("usage: pick <x> <y>");
-        }
         if (editorState->isPreviewEnabled()) {
           return makeError("pick unavailable while preview is enabled");
         }
         try {
-          const float x = std::stof(args[0]);
-          const float y = std::stof(args[1]);
-          const LX_core::CommandResult result =
-              interaction->dispatchPickingClick(LX_core::Vec2f{x, y},
-                                                sceneViewRect());
+          LX_core::CommandResult result;
+          if (args.size() == 2) {
+            const float x = std::stof(args[0]);
+            const float y = std::stof(args[1]);
+            result = interaction->dispatchPickingClick(LX_core::Vec2f{x, y},
+                                                       sceneViewRect());
+          } else if (args.size() == 5 && args[0] == "screen") {
+            const float x = std::stof(args[1]);
+            const float y = std::stof(args[2]);
+            const float viewportWidth = std::stof(args[3]);
+            const float viewportHeight = std::stof(args[4]);
+            result = interaction->dispatchPickingClick(
+                LX_core::Vec2f{x, y},
+                LX_core::Vec2f{viewportWidth, viewportHeight});
+          } else {
+            return makeError("usage: pick <x> <y> | pick screen <x> <y> <viewport-width> <viewport-height>");
+          }
           if (!result.ok) {
             return result;
           }

@@ -1056,6 +1056,24 @@ void testSceneViewerPickCommandUsesInteractionController() {
   EXPECT(!previewBlocked.ok, "pick should reject preview mode");
 }
 
+void testSceneViewerPickScreenCommandUsesExplicitViewportSize() {
+  SceneViewerPickFixture fixture;
+  fixture.rect = LX_demo::lxe_editor::SceneViewRect{
+      .x = 123.0f,
+      .y = 45.0f,
+      .width = 321.0f,
+      .height = 210.0f,
+  };
+
+  const CommandResult result =
+      fixture.bus.dispatch("pick screen 400 300 800 600");
+  EXPECT(result.ok, "pick screen should succeed with explicit viewport size");
+  EXPECT(!fixture.editorState.getSelected().empty(),
+         "pick screen should update selection through interaction controller");
+  EXPECT(result.structured.find("\"lastHitPoint\"") != std::string::npos,
+         "pick screen should surface hit point through selection payload");
+}
+
 void testSceneViewerPickDebugLogsArePrintedToConsole() {
   SceneViewerPickFixture fixture;
   const CommandResult enable = fixture.bus.dispatch("debug on");
@@ -1305,6 +1323,7 @@ int main() {
   testSceneViewerModeAndStateCommands();
   testSceneViewerDebugCommandsUpdateSummaryAndToolbarState();
   testSceneViewerPickCommandUsesInteractionController();
+  testSceneViewerPickScreenCommandUsesExplicitViewportSize();
   testSceneViewerPickDebugLogsArePrintedToConsole();
   testConsolePanelSubmitsAndClearsDisplay();
   testConsolePanelBrowseAndAutocomplete();
