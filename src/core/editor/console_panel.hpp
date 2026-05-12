@@ -13,6 +13,16 @@ namespace LX_core {
 
 class ConsolePanel final {
 public:
+  struct DisplayEntry final {
+    CommandBus::HistoryEntry historyEntry;
+    std::vector<std::string> attachments;
+  };
+
+  struct PendingSystemAttachment final {
+    usize historySizeBeforeOwner = 0;
+    std::vector<std::string> lines;
+  };
+
   explicit ConsolePanel(CommandBus &commandBus);
 
   void draw();
@@ -34,6 +44,7 @@ public:
   void setInputText(std::string_view text);
   [[nodiscard]] std::string getInputText() const;
   [[nodiscard]] std::vector<CommandBus::HistoryEntry> displayedEntries() const;
+  [[nodiscard]] std::vector<DisplayEntry> displayedDisplayEntries() const;
   [[nodiscard]] std::string displayedText() const;
 
   [[nodiscard]] bool isOpen() const;
@@ -41,10 +52,17 @@ public:
 
 private:
   [[nodiscard]] static int inputTextCallback(ImGuiInputTextCallbackData *data);
+  void queueSystemLineAttachment(std::string_view line);
+  void appendAttachmentToVisibleEntry(usize visibleIndex, std::string_view line) const;
+  void syncPendingSystemAttachments() const;
+  void drawOutputRegion(float reservedInputHeight);
+  void drawDisplayEntry(const DisplayEntry &entry) const;
 
   CommandBus &m_commandBus;
   ConsoleInputController m_inputController;
-  std::vector<std::string> m_systemLines;
+  mutable std::vector<std::string> m_orphanSystemLines;
+  mutable std::vector<std::vector<std::string>> m_entryAttachments;
+  mutable std::vector<PendingSystemAttachment> m_pendingSystemAttachments;
   usize m_displayStartIndex = 0;
   bool m_open = true;
   bool m_scrollToBottom = false;

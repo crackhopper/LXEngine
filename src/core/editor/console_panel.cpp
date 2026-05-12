@@ -1,12 +1,21 @@
 #include "core/editor/console_panel.hpp"
 
 #include <algorithm>
-#include <cfloat>
 #include <cstring>
+#include <utility>
 
 #include <imgui.h>
 
 namespace LX_core {
+
+namespace {
+
+[[nodiscard]] bool resultsMatchForAttachment(const CommandResult &lhs,
+                                             const CommandResult &rhs) {
+  return lhs.ok == rhs.ok && lhs.message == rhs.message;
+}
+
+} // namespace
 
 ConsolePanel::ConsolePanel(CommandBus &commandBus)
     : m_commandBus(commandBus), m_inputController(commandBus) {}
@@ -26,21 +35,7 @@ void ConsolePanel::draw() {
   }
 
   const float inputHeight = ImGui::GetFrameHeightWithSpacing() * 2.0f;
-  if (ImGui::BeginChild("console_output", ImVec2(0.0f, -inputHeight), true)) {
-    std::string output = displayedText();
-    output.push_back('\0');
-    ImGui::PushItemWidth(-FLT_MIN);
-    ImGui::InputTextMultiline("##console_output_text", output.data(),
-                              output.size(), ImVec2(-FLT_MIN, -FLT_MIN),
-                              ImGuiInputTextFlags_ReadOnly);
-    ImGui::PopItemWidth();
-
-    if (m_scrollToBottom) {
-      ImGui::SetScrollHereY(1.0f);
-      m_scrollToBottom = false;
-    }
-  }
-  ImGui::EndChild();
+  drawOutputRegion(inputHeight);
 
   ImGui::PushItemWidth(-1.0f);
   const bool submitted = ImGui::InputText(
@@ -82,7 +77,9 @@ void ConsolePanel::submitCurrentInput() { submitLine(getInputText()); }
 
 void ConsolePanel::clearDisplay() {
   m_displayStartIndex = m_commandBus.history().size();
-  m_systemLines.clear();
+  m_orphanSystemLines.clear();
+  m_entryAttachments.clear();
+  m_pendingSystemAttachments.clear();
   m_inputController.clearHelperOutput();
   m_scrollToBottom = false;
 }
@@ -115,7 +112,7 @@ void ConsolePanel::appendSystemLine(std::string_view line) {
   if (line.empty()) {
     return;
   }
-  m_systemLines.emplace_back(line);
+  queueSystemLineAttachment(line);
   m_scrollToBottom = true;
 }
 
@@ -132,6 +129,7 @@ void ConsolePanel::setInputText(std::string_view text) { m_inputController.setIn
 std::string ConsolePanel::getInputText() const { return m_inputController.inputText(); }
 
 std::vector<CommandBus::HistoryEntry> ConsolePanel::displayedEntries() const {
+  syncPendingSystemAttachments();
   const auto &history = m_commandBus.history();
   if (m_displayStartIndex >= history.size()) {
     return {};
@@ -140,20 +138,44 @@ std::vector<CommandBus::HistoryEntry> ConsolePanel::displayedEntries() const {
                                                history.end());
 }
 
+std::vector<ConsolePanel::DisplayEntry> ConsolePanel::displayedDisplayEntries() const {
+  syncPendingSystemAttachments();
+  const auto &history = m_commandBus.history();
+  if (m_displayStartIndex >= history.size()) {
+    return {};
+  }
+
+  std::vector<DisplayEntry> entries;
+  entries.reserve(history.size() - m_displayStartIndex);
+  for (usize historyIndex = m_displayStartIndex; historyIndex < history.size();
+       ++historyIndex) {
+    const usize visibleIndex = historyIndex - m_displayStartIndex;
+    DisplayEntry entry{.historyEntry = history[historyIndex], .attachments = {}};
+    if (visibleIndex < m_entryAttachments.size()) {
+      entry.attachments = m_entryAttachments[visibleIndex];
+    }
+    entries.emplace_back(std::move(entry));
+  }
+  return entries;
+}
+
 std::string ConsolePanel::displayedText() const {
   std::string output;
-  const auto entries = displayedEntries();
-  for (usize i = 0; i < entries.size(); ++i) {
-    output += "< ";
-    output += entries[i].line;
-    output += '\n';
-    output += "> ";
-    output += entries[i].result.message;
-    if (i + 1 < entries.size()) {
+  const auto entries = displayedDisplayEntries();
+  for (const auto &entry : entries) {
+    if (!output.empty()) {
       output += "\n\n";
     }
+    output += "> ";
+    output += entry.historyEntry.line;
+    output += '\n';
+    output += entry.historyEntry.result.message;
+    for (const auto &attachment : entry.attachments) {
+      output += '\n';
+      output += attachment;
+    }
   }
-  for (const auto& line : m_systemLines) {
+  for (const auto &line : m_orphanSystemLines) {
     if (!output.empty()) {
       output += "\n\n";
     }
@@ -167,6 +189,107 @@ std::string ConsolePanel::displayedText() const {
     output += helperText;
   }
   return output;
+}
+
+void ConsolePanel::queueSystemLineAttachment(std::string_view line) {
+  const usize historySize = m_commandBus.history().size();
+  if (!m_pendingSystemAttachments.empty() &&
+      m_pendingSystemAttachments.back().historySizeBeforeOwner == historySize) {
+    m_pendingSystemAttachments.back().lines.emplace_back(line);
+    return;
+  }
+
+  PendingSystemAttachment attachment;
+  attachment.historySizeBeforeOwner = historySize;
+  attachment.lines.emplace_back(line);
+  m_pendingSystemAttachments.emplace_back(std::move(attachment));
+}
+
+void ConsolePanel::appendAttachmentToVisibleEntry(const usize visibleIndex,
+                                                  std::string_view line) const {
+  if (m_entryAttachments.size() <= visibleIndex) {
+    m_entryAttachments.resize(visibleIndex + 1);
+  }
+  m_entryAttachments[visibleIndex].emplace_back(line);
+}
+
+void ConsolePanel::syncPendingSystemAttachments() const {
+  if (m_pendingSystemAttachments.empty()) {
+    return;
+  }
+
+  const usize historySize = m_commandBus.history().size();
+  for (const auto &attachment : m_pendingSystemAttachments) {
+    const bool ownerVisible =
+        historySize > attachment.historySizeBeforeOwner &&
+        attachment.historySizeBeforeOwner >= m_displayStartIndex;
+    if (ownerVisible) {
+      usize ownerHistoryIndex = attachment.historySizeBeforeOwner;
+      while (ownerHistoryIndex + 1 < historySize &&
+             resultsMatchForAttachment(
+                 m_commandBus.history()[ownerHistoryIndex].result,
+                 m_commandBus.history()[ownerHistoryIndex + 1].result)) {
+        ++ownerHistoryIndex;
+      }
+      const usize visibleIndex = ownerHistoryIndex - m_displayStartIndex;
+      for (const auto &line : attachment.lines) {
+        appendAttachmentToVisibleEntry(visibleIndex, line);
+      }
+      continue;
+    }
+
+    for (const auto &line : attachment.lines) {
+      m_orphanSystemLines.emplace_back(line);
+    }
+  }
+
+  m_pendingSystemAttachments.clear();
+}
+
+void ConsolePanel::drawOutputRegion(const float reservedInputHeight) {
+  if (!ImGui::BeginChild("console_output", ImVec2(0.0f, -reservedInputHeight),
+                         true)) {
+    ImGui::EndChild();
+    return;
+  }
+
+  for (const auto &entry : displayedDisplayEntries()) {
+    drawDisplayEntry(entry);
+    ImGui::Spacing();
+  }
+
+  for (const auto &line : m_orphanSystemLines) {
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextUnformatted(line.c_str());
+    ImGui::PopTextWrapPos();
+    ImGui::Spacing();
+  }
+
+  const std::string helperText = m_inputController.helperOutputText();
+  if (!helperText.empty()) {
+    ImGui::Separator();
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextUnformatted(helperText.c_str());
+    ImGui::PopTextWrapPos();
+  }
+
+  if (m_scrollToBottom) {
+    ImGui::SetScrollHereY(1.0f);
+    m_scrollToBottom = false;
+  }
+
+  ImGui::EndChild();
+}
+
+void ConsolePanel::drawDisplayEntry(const DisplayEntry &entry) const {
+  ImGui::PushTextWrapPos(0.0f);
+  const std::string commandLine = "> " + entry.historyEntry.line;
+  ImGui::TextUnformatted(commandLine.c_str());
+  ImGui::TextUnformatted(entry.historyEntry.result.message.c_str());
+  for (const auto &attachment : entry.attachments) {
+    ImGui::TextUnformatted(attachment.c_str());
+  }
+  ImGui::PopTextWrapPos();
 }
 
 bool ConsolePanel::isOpen() const { return m_open; }
