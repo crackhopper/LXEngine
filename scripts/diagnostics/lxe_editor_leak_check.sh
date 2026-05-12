@@ -76,7 +76,7 @@ fi
 CMAKE_BIN="${LX_LEAK_CHECK_CMAKE:-cmake}"
 CTEST_BIN="${LX_LEAK_CHECK_CTEST:-ctest}"
 NINJA_BIN="${LX_LEAK_CHECK_NINJA:-ninja}"
-EDITOR_BIN="${LX_LEAK_CHECK_LXE_EDITOR_BIN:-${REPO_ROOT}/build/src/demos/lxe_editor/lxe_editor}"
+EDITOR_BIN="${LX_LEAK_CHECK_LXE_EDITOR_BIN:-${BUILD_DIR}/src/demos/lxe_editor/lxe_editor}"
 
 mkdir -p "${OUTPUT_DIR}"
 mkdir -p "${BUILD_DIR}"
