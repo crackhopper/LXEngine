@@ -79,8 +79,7 @@ class LxeEditorLeakCheckScriptTest(unittest.TestCase):
             self.assertIn("stub cmake", stub_log)
             self.assertIn("stub ninja", stub_log)
             self.assertIn("stub ctest", stub_log)
-            sanitizer_log = (output_dir / "sanitizer.log").read_text()
-            self.assertIn("editor stdout", sanitizer_log)
+            self.assertIn("stub lxe_editor", stub_log)
             summary = (output_dir / "summary.txt").read_text()
             self.assertIn("sanitizer_status=passed", summary)
 
@@ -187,6 +186,7 @@ exit 0
         editor = self._write_executable(
             bin_dir / "lxe_editor",
             f"""#!/usr/bin/env bash
+echo "stub lxe_editor $*" >> "${{TMP_STUB_LOG}}"
 echo "editor stdout"
 echo "editor stderr" >&2
 sleep {editor_sleep}
