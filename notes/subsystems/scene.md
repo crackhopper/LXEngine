@@ -92,7 +92,7 @@
 - `lxe_editor` 的本地运行数据保存在 `data/lxe_editor/editor_data.yaml`，当前至少包含最近 50 条 command console 历史。
 - `lxe_editor` 还会在 `data/lxe_editor/api_token.txt` 保存 API token，并在 `data/lxe_editor/runtime_state.yaml` 发布 HTTP / WebSocket / MCP 的当前发现信息。
 - 这两份本地文件都不参与 scene asset 序列化，也不进入版本库；它们不会保存当前 selection、preview 开关，scene path 也不属于 scene 文档本身。
-- `lxe_editor` 当前主路径不再走旧的 `ViewportOverlay` / gizmo 面板交互；节点选择来自主场景视图点击 + 浮动 toolbar 的 `Selection / Orbit / FreeFly / Preview` 模式切换。
+- `lxe_editor` 当前主路径使用主场景视图点击选择、windowless ImGuizmo overlay，以及浮动 toolbar；toolbar 将 `Selection` editor mode、`Orbit` / `FreeFly` camera controls 和 `Preview` 分开呈现。
 - 主路径选择命中后，会通过 `DebugDraw` 持续显示选中节点自身的 world-space AABB，以及最近一次成功点击命中的交点小球；点空白会同时清掉选择和交点。
 - 进入 preview 后，主场景视图点击、`Esc` 取消选择、以及 `Delete` 删除节点都会被抑制，避免 gameplay camera 预览期间误改 editor state。
 - toolbar 的位置与尺寸会写回 `editor_config.yaml`，但启动时会强制恢复可见，避免唯一的模式切换入口被旧配置永久隐藏。

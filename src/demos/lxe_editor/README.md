@@ -3,7 +3,8 @@
 The default playground demo. Starts with an empty scene, lets you manually load
 built-in or local scene documents, renders them through the project's Vulkan
 backend, and adds an ImGui editor MVP overlay with scene tree / inspector /
-console plus a floating toolbar for Selection / Orbit / FreeFly / Preview.
+console plus a floating toolbar for Selection editor mode, Orbit / FreeFly
+camera controls, and Preview.
 
 ## Purpose
 
@@ -97,12 +98,13 @@ with a non-zero exit code if the `assets/` tree cannot be found.
 | `admin on` | Enable admin mode so `scene save` may overwrite built-in assets |
 | `admin off` | Return to normal user mode |
 | `admin status` | Show the current permission level |
-| `mode [selection|orbit|freefly|status]` | Change or inspect the current editor interaction mode |
-| `state summary` | Return a stable JSON snapshot with scene, dirty, mode, preview, permission, and active-camera info |
+| `mode [selection|status]` | Change or inspect the current editor mode |
+| `cam control [orbit|freefly|status]` | Change or inspect the current camera control mode |
+| `state summary` | Return a stable JSON snapshot with scene, dirty, mode, camera, preview, debug, permission, and active-camera info |
 | `state selection` | Return selected paths, primary AABB, and the last successful pick hit point |
 | `state cameras` | Return editor / gameplay camera poses and the active camera path |
 | `state scene` | Return scene metadata such as document path, source kind, node count, camera count, and light count |
-| `state toolbar` | Return the current toolbar mode and preview flag |
+| `state toolbar` | Return the current toolbar mode, camera, preview, and debug flags |
 | `pick <x> <y>` | Run a scene pick against the current main scene view rect from console / API |
 | `quit` | Gracefully stop the editor loop so tests and tools can persist local editor state before exit |
 
@@ -142,12 +144,11 @@ host, port, and token-file path.
 | `GET` | `/health` | Simple liveness check, no auth required |
 | `POST` | `/api/command` | Execute a command-console line from JSON `{ "line": "..." }` |
 | `GET` | `/api/state` | Return the full structured editor API snapshot |
-| `GET` | `/api/state/summary` | Return scene / dirty / mode / preview summary |
+| `GET` | `/api/state/summary` | Return scene / dirty / mode / camera / preview / debug summary |
 | `GET` | `/api/state/selection` | Return selection and last-hit-point state |
 | `GET` | `/api/state/cameras` | Return editor / gameplay camera state |
 | `GET` | `/api/state/scene` | Return scene metadata |
-| `GET` | `/api/state/toolbar` | Return toolbar mode + preview flag |
-| `POST` | `/api/mode` | Change mode from JSON `{ "mode": "selection|orbit|freefly" }` |
+| `GET` | `/api/state/toolbar` | Return toolbar mode + camera + preview + debug |
 | `POST` | `/api/preview` | Toggle or force preview using `{ "action": "toggle" }` or `{ "enabled": true|false }` |
 | `POST` | `/api/camera/reset-editor-to-game` | Copy `game_cam` pose onto `editor_cam` |
 | `POST` | `/api/pick` | Run a pick using `{ "x": 400, "y": 300 }` |
@@ -241,7 +242,7 @@ interaction, and transport internals.
 |-------------|--------|
 | `F1` | Toggle the Help panel |
 | `F` | Toggle preview between the editor and gameplay camera paths |
-| Toolbar | Switch Selection / Orbit / FreeFly editor modes |
+| Toolbar | Switch Selection editor mode and Orbit / FreeFly camera controls separately |
 | `Esc` | Deselect current node in Selection mode when preview is off |
 | `Delete` | Remove the selected node when preview is off |
 
@@ -254,13 +255,12 @@ interaction, and transport internals.
 - Preview mode suppresses scene selection, `Esc`, and `Delete` so gameplay
   camera preview does not mutate editor state
 
-### Orbit mode (default)
+### Orbit camera control (default)
 
-- Left-drag — rotate around the target
-- Right-drag — pan the target
+- Right-drag — rotate around the target
 - Wheel — zoom in / out
 
-### FreeFly mode
+### FreeFly camera control
 
 - Right-button held — look around
 - `W` / `A` / `S` / `D` — translate forward / left / back / right
@@ -268,8 +268,9 @@ interaction, and transport internals.
 - `LShift` — descend
 - `LCtrl` — hold to accelerate
 
-Switching modes preserves the current view direction so the framing stays
-continuous.
+Switching camera controls preserves the current view direction so the framing
+stays continuous. Selection remains the editor mode while the camera control
+changes.
 
 ## Known limitations
 
@@ -295,20 +296,22 @@ registered with CTest.
 
 1. `lxe_editor` launches and shows a window.
 2. DamagedHelmet and the ground plane are visible in the main scene view.
-3. Orbit mode allows left-drag rotate, right-drag pan, and wheel zoom.
-4. The floating toolbar switches between Selection / Orbit / FreeFly, and
-   FreeFly uses `W`/`A`/`S`/`D`/`Space`/`LShift`/`LCtrl` as described above.
+3. Orbit camera control allows right-drag rotate and wheel zoom.
+4. The floating toolbar switches camera control between Orbit / FreeFly without
+   leaving Selection mode, and FreeFly uses
+   `W`/`A`/`S`/`D`/`Space`/`LShift`/`LCtrl` as described above.
 5. The Stats, Scene Tree, Inspector, Console, and Help panels are visible
    and interactive.
-6. Inspector edits and console commands mutate the same scene state through the
+6. Gizmo handles can be clicked and dragged when visible.
+7. Inspector edits and console commands mutate the same scene state through the
    command bus, and preview mode blocks selection / deselect / remove actions.
-7. `scene list` shows both `asset` and `local` entries.
-8. Loading `assets/scenes/lxe_editor.scene.yaml` restores Helmet, ground,
+8. `scene list` shows both `asset` and `local` entries.
+9. Loading `assets/scenes/lxe_editor.scene.yaml` restores Helmet, ground,
    light, and gameplay camera.
-9. Saving a built-in scene in `user` mode creates a timestamped file under
+10. Saving a built-in scene in `user` mode creates a timestamped file under
    `data/scenes/` instead of overwriting the asset.
-10. Closing a dirty scene shows a save/discard/cancel prompt and exits cleanly
+11. Closing a dirty scene shows a save/discard/cancel prompt and exits cleanly
     after `Save` or `Discard`.
-11. Moving/resizing the main window, rearranging/collapsing editor panels, and
+12. Moving/resizing the main window, rearranging/collapsing editor panels, and
     changing `UI Font Scale` is restored on the next launch from
     `data/lxe_editor/editor_config.yaml`.

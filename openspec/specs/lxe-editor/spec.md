@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Define the default integration demo that doubles as a hand-on playground for the renderer. The `lxe_editor` demo lives under `src/demos/lxe_editor/`, is gated by a build option separate from tests, and drives its frame loop through `LX_core::gpu::EngineLoop` rather than any hand-rolled loop. The default scene contains a `DamagedHelmet.gltf` node, a ground quad, one `DirectionalLight`, and a controllable camera. Two camera controllers (Orbit default, FreeFly) are available with `F2` rising-edge switching. UI panels are registered through `VulkanRenderer::setDrawUiCallback` and rely on `LX_infra::debug_ui` helpers where available. The glTF → current-material bridging is explicitly demo-local glue and does not get lowered into `src/infra/`. The demo is not registered with CTest; acceptance is a manual checklist captured in the demo's README.
+Define the default integration demo that doubles as a hand-on playground for the renderer. The `lxe_editor` demo lives under `src/demos/lxe_editor/`, is gated by a build option separate from tests, and drives its frame loop through `LX_core::gpu::EngineLoop` rather than any hand-rolled loop. The default scene contains a `DamagedHelmet.gltf` node, a ground quad, one `DirectionalLight`, and a controllable camera. The floating toolbar exposes the `Selection` editor mode separately from mutually exclusive camera controls (`Orbit` default, `FreeFly`) and preview/debug/preferences actions. UI panels are registered through `VulkanRenderer::setDrawUiCallback` and rely on `LX_infra::debug_ui` helpers where available. The glTF → current-material bridging is explicitly demo-local glue and does not get lowered into `src/infra/`. The demo is not registered with CTest; acceptance is a manual checklist captured in the demo's README.
 
 ## Requirements
 
@@ -106,27 +106,33 @@ The demo SHALL express helmet, ground, and any additional renderables as `LX_cor
 - **WHEN** the demo builds its scene
 - **THEN** both the helmet and ground renderables SHALL be instances of `LX_core::SceneNode`
 
-### Requirement: Toolbar-driven edit modes and preview
+### Requirement: Toolbar-driven editor and camera controls
 
-The demo SHALL expose a floating toolbar window that is the primary editor-mode entry point. The toolbar SHALL provide mutually exclusive edit modes `Selection`, `Orbit`, and `FreeFly`, plus a separate `Preview` toggle and a `Preferences` entry.
+The demo SHALL expose a floating toolbar window that is the primary editor interaction entry point. The toolbar SHALL provide three groups:
 
-`Orbit` SHALL remain the default edit mode. When switching between `Orbit` and `FreeFly`, the newly-activated controller SHALL be seeded from the current camera-node pose so that the view remains continuous across the switch.
+1. Editor mode controls. The current editor mode set contains `Selection` only.
+2. Camera controls. `Orbit` and `FreeFly` are mutually exclusive camera control modes, and exactly one SHALL be selected.
+3. Functional buttons: reset editor camera, preview, debug, and preferences.
+
+Editor mode and camera control mode SHALL be orthogonal. Switching camera control SHALL NOT change editor mode. Selecting `Selection` SHALL NOT change camera control.
+
+`Orbit` SHALL remain the default camera control mode. When switching between `Orbit` and `FreeFly`, the newly-activated controller SHALL be seeded from the current camera-node pose so that the view remains continuous across the switch.
 
 At every frame's update hook:
 
-- `Selection` SHALL capture scene clicks whenever the UI is not capturing the mouse, even if keyboard focus remains inside another panel
-- `Orbit` / `FreeFly` SHALL only update when neither keyboard nor mouse is captured by the UI
-- `Preview` SHALL disable editor-mode interactions and render the gameplay camera instead
+- `Selection` interactions SHALL use the left mouse button and be suppressed by preview, UI mouse capture, and gizmo mouse capture.
+- Camera controls SHALL use the right mouse button and be suppressed by preview, UI mouse capture, UI keyboard capture, and gizmo mouse capture.
+- `Preview` SHALL disable selection, gizmo, and camera controls and render the gameplay camera instead.
 
 Control mappings SHALL include:
 
-- Selection: left-click pick, empty-space click deselect
-- Orbit: left-drag rotate, right-drag pan target, wheel zoom
+- Selection: left-click pick, left-click empty space deselect, and gizmo hover/drag consumes left mouse while the gizmo is active
+- Orbit camera control: right-drag rotate, wheel zoom
 - FreeFly: right-button hold rotate, `W/A/S/D` translate, `Space` up, `LShift` down, `LCtrl` accelerate
 
-#### Scenario: View is continuous across mode switch
+#### Scenario: View is continuous across camera control switch
 
-- **WHEN** mode is switched from Orbit to FreeFly while the camera is looking at a specific point
+- **WHEN** camera control is switched from Orbit to FreeFly while the camera is looking at a specific point
 - **THEN** the immediate next frame's camera position and forward direction SHALL be identical to the pre-switch pose (up to numerical precision from yaw/pitch reconstruction)
 
 #### Scenario: Preview suppresses edit interactions
@@ -144,10 +150,10 @@ Control mappings SHALL include:
 The demo SHALL register its UI drawing function through `LX_core::backend::VulkanRenderer::setDrawUiCallback(std::function<void()>)`. It SHALL NOT assume that `gpu::Renderer` exposes a UI callback API. The registered callback SHALL render, at minimum:
 
 1. A **Toolbar** panel with editor-mode and preview controls
-2. A **Stats** panel showing frame count, delta time (ms), smoothed FPS, preview state, and current edit mode
+2. A **Stats** panel showing frame count, delta time (ms), smoothed FPS, preview state, current editor mode, and current camera control mode
 3. A **Scene Tree** panel and **Inspector** panel sharing editor state
 4. A **Command Console** panel
-5. A **Help** panel (demo-local) listing `F1`, `F`, toolbar-driven modes, and the selection/preview interaction rules; toggled on `F1` rising edge
+5. A **Help** panel (demo-local) listing `F1`, `F`, toolbar-driven editor/camera controls, and the selection/preview interaction rules; toggled on `F1` rising edge
 6. A **Preferences** panel exposing at least `preferences.uiFontScale`
 
 #### Scenario: UI is injected through VulkanRenderer
@@ -190,8 +196,8 @@ Because the demo is not automated, acceptance SHALL be verified manually. The mi
 
 1. `lxe_editor` launches successfully
 2. `DamagedHelmet` and ground are visible in the viewport
-3. Orbit mode allows rotate / pan / zoom without obvious artifacts
-4. Pressing `F2` switches to FreeFly; W/A/S/D/Space/LShift/LCtrl all move the camera
+3. Orbit camera control allows right-drag rotate and wheel zoom without obvious artifacts
+4. Switching the toolbar camera control to FreeFly keeps Selection as the editor mode; W/A/S/D/Space/LShift/LCtrl all move the camera while right mouse is held
 5. ImGui panels are visible and interactive
 6. Edits to Camera / Directional Light fields cause visible changes in the rendered frame
 7. Closing the window exits cleanly without crashing
