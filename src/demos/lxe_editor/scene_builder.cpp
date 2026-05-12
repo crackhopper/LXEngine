@@ -12,6 +12,7 @@
 #include "infra/mesh_loader/gltf_mesh_loader.hpp"
 #include "infra/texture_loader/texture_loader.hpp"
 
+#include <array>
 #include <cstdint>
 #include <iostream>
 #include <stdexcept>
