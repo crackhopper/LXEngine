@@ -22,6 +22,12 @@ public:
   using AppendDebugLineFn = std::function<void(std::string_view)>;
   using ResolveHelperOwnerFn =
       std::function<LX_core::SceneNodeSharedPtr(const std::string&)>;
+  using BoxSelectionDispatchFn =
+      std::function<LX_core::CommandResult(const LX_core::Vec2f& dragStart,
+                                           const LX_core::Vec2f& dragEnd,
+                                           const SceneViewRect& sceneViewRect,
+                                           bool ctrlHeld,
+                                           bool shiftHeld)>;
 
   SceneInteractionController(LX_core::CommandBus& commandBus,
                              LX_core::EditorState& editorState,
@@ -29,6 +35,7 @@ public:
   void setDebugLoggingHooks(DebugEnabledFn debugEnabled,
                             AppendDebugLineFn appendDebugLine);
   void setResolveHelperOwner(ResolveHelperOwnerFn resolveHelperOwner);
+  void setBoxSelectionDispatch(BoxSelectionDispatchFn dispatchBoxSelection);
 
   [[nodiscard]] LX_core::CommandResult dispatchPickingClick(
       const LX_core::Vec2f& screenPixel, const LX_core::Vec2f& viewportSize);
@@ -53,10 +60,12 @@ private:
   LX_core::Scene& m_scene;
   bool m_prevLeftDown = false;
   bool m_leftPressArmed = false;
+  LX_core::Vec2f m_leftPressStart{0.0f, 0.0f};
   std::optional<HitMarker> m_lastHitMarker;
   DebugEnabledFn m_debugEnabled;
   AppendDebugLineFn m_appendDebugLine;
   ResolveHelperOwnerFn m_resolveHelperOwner;
+  BoxSelectionDispatchFn m_dispatchBoxSelection;
 };
 
 } // namespace LX_demo::lxe_editor

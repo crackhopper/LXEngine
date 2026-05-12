@@ -297,6 +297,57 @@ void testSuppressedSelectionFrameCancelsArmedClick() {
          "suppressed click should leave selection unchanged");
 }
 
+void testSelectionDragDispatchesBoxSelectionOnRelease() {
+  Fixture fixture;
+  LX_core::MockInputState input;
+  bool boxSelectionDispatched = false;
+  LX_core::Vec2f capturedStart{0.0f, 0.0f};
+  LX_core::Vec2f capturedEnd{0.0f, 0.0f};
+  bool capturedCtrl = false;
+  bool capturedShift = false;
+  fixture.controller.setBoxSelectionDispatch(
+      [&](const LX_core::Vec2f& dragStart, const LX_core::Vec2f& dragEnd,
+          const LX_demo::lxe_editor::SceneViewRect& sceneViewRect,
+          const bool ctrlHeld, const bool shiftHeld) {
+        boxSelectionDispatched = true;
+        capturedStart = sceneViewRect.localPixel(dragStart);
+        capturedEnd = sceneViewRect.localPixel(dragEnd);
+        capturedCtrl = ctrlHeld;
+        capturedShift = shiftHeld;
+        return LX_core::CommandResult{true, "box selection dispatched", {}, {}};
+      });
+
+  input.setMousePosition({300.0f, 200.0f});
+  input.setMouseButtonDown(LX_core::MouseButton::Left, true);
+  fixture.controller.updateSelectionMode(
+      input, LX_demo::lxe_editor::SceneViewRect{
+                 .x = 100.0f, .y = 50.0f, .width = 800.0f, .height = 600.0f});
+
+  input.setMousePosition({520.0f, 420.0f});
+  input.setKeyDown(LX_core::KeyCode::LCtrl, true);
+  input.setKeyDown(LX_core::KeyCode::LShift, true);
+  fixture.controller.updateSelectionMode(
+      input, LX_demo::lxe_editor::SceneViewRect{
+                 .x = 100.0f, .y = 50.0f, .width = 800.0f, .height = 600.0f});
+  EXPECT(!boxSelectionDispatched,
+         "held drag should not dispatch box selection before release");
+
+  input.setMouseButtonDown(LX_core::MouseButton::Left, false);
+  fixture.controller.updateSelectionMode(
+      input, LX_demo::lxe_editor::SceneViewRect{
+                 .x = 100.0f, .y = 50.0f, .width = 800.0f, .height = 600.0f});
+
+  EXPECT(boxSelectionDispatched,
+         "left drag release should dispatch box selection");
+  EXPECT(capturedStart.x == 200.0f && capturedStart.y == 150.0f &&
+             capturedEnd.x == 420.0f && capturedEnd.y == 370.0f,
+         "box selection should receive scene-local drag pixels");
+  EXPECT(capturedCtrl && capturedShift,
+         "box selection should receive append modifier state");
+  EXPECT(fixture.bus.history().empty(),
+         "box selection dispatcher should replace click picking for drags");
+}
+
 void testPreviewModeSuppressesSelectionInMainPath() {
   Fixture fixture;
   LX_core::MockInputState input;
@@ -593,6 +644,7 @@ int main() {
   testSelectionPickingIgnoresClicksOutsideSceneViewRect();
   testSelectionModeDispatchesPickOnLeftRelease();
   testSuppressedSelectionFrameCancelsArmedClick();
+  testSelectionDragDispatchesBoxSelectionOnRelease();
   testPreviewModeSuppressesSelectionInMainPath();
   testSelectionModeAllowsMousePickingWhileKeyboardIsCaptured();
   testSelectionModeStillAllowsCameraRigRouting();

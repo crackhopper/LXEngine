@@ -145,7 +145,7 @@ constexpr std::string_view kProtocolVersion = "2025-03-26";
       "{\"uri\":\"lxe-editor://cameras\",\"name\":\"cameras\","
       "\"description\":\"Current camera state.\",\"mimeType\":\"application/json\"},"
       "{\"uri\":\"lxe-editor://toolbar\",\"name\":\"toolbar\","
-      "\"description\":\"Current toolbar mode and preview state.\",\"mimeType\":\"application/json\"},"
+      "\"description\":\"Current toolbar mode, camera, preview, and debug state.\",\"mimeType\":\"application/json\"},"
       "{\"uri\":\"lxe-editor://scene\",\"name\":\"scene\","
       "\"description\":\"Current scene summary.\",\"mimeType\":\"application/json\"}"
       "]}");

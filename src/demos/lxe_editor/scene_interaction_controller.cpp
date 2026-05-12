@@ -2,6 +2,7 @@
 
 #include "core/debug_draw/debug_draw.hpp"
 #include "core/editor/editor_state.hpp"
+#include "core/input/key_code.hpp"
 #include "core/input/mouse_button.hpp"
 #include "core/math/bounds.hpp"
 #include "core/math/mat.hpp"
@@ -13,6 +14,8 @@
 
 namespace LX_demo::lxe_editor {
 namespace {
+
+constexpr float kSelectionDragThresholdPx = 4.0f;
 
 [[nodiscard]] LX_core::BoundingBox expandedBounds(
     const LX_core::BoundingBox& bounds, const float padding) {
@@ -119,6 +122,11 @@ void SceneInteractionController::setResolveHelperOwner(
   m_resolveHelperOwner = std::move(resolveHelperOwner);
 }
 
+void SceneInteractionController::setBoxSelectionDispatch(
+    BoxSelectionDispatchFn dispatchBoxSelection) {
+  m_dispatchBoxSelection = std::move(dispatchBoxSelection);
+}
+
 LX_core::CommandResult SceneInteractionController::dispatchPickingClick(
     const LX_core::Vec2f& screenPixel, const LX_core::Vec2f& viewportSize) {
   return dispatchPickingClick(
@@ -205,8 +213,22 @@ void SceneInteractionController::updateSelectionMode(
       input.isMouseButtonDown(LX_core::MouseButton::Left);
   if (leftDown && !m_prevLeftDown) {
     m_leftPressArmed = true;
+    m_leftPressStart = input.getMousePosition();
   } else if (!leftDown && m_prevLeftDown && m_leftPressArmed) {
-    (void)dispatchPickingClick(input.getMousePosition(), sceneViewRect);
+    const LX_core::Vec2f releasePoint = input.getMousePosition();
+    const LX_core::Vec2f delta = releasePoint - m_leftPressStart;
+    const bool isDrag =
+        delta.length2() > kSelectionDragThresholdPx * kSelectionDragThresholdPx;
+    if (isDrag && m_dispatchBoxSelection) {
+      const bool ctrlHeld = input.isKeyDown(LX_core::KeyCode::LCtrl) ||
+                            input.isKeyDown(LX_core::KeyCode::RCtrl);
+      const bool shiftHeld = input.isKeyDown(LX_core::KeyCode::LShift) ||
+                             input.isKeyDown(LX_core::KeyCode::RShift);
+      (void)m_dispatchBoxSelection(m_leftPressStart, releasePoint, sceneViewRect,
+                                   ctrlHeld, shiftHeld);
+    } else {
+      (void)dispatchPickingClick(releasePoint, sceneViewRect);
+    }
     m_leftPressArmed = false;
   } else if (!leftDown) {
     m_leftPressArmed = false;
@@ -217,6 +239,7 @@ void SceneInteractionController::updateSelectionMode(
 void SceneInteractionController::cancelPendingSelectionClick(
     const LX_core::IInputState& input) {
   m_leftPressArmed = false;
+  m_leftPressStart = input.getMousePosition();
   m_prevLeftDown = input.isMouseButtonDown(LX_core::MouseButton::Left);
 }
 

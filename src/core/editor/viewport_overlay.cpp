@@ -610,7 +610,6 @@ void ViewportOverlay::drawSceneOverlay(
   m_lastPanelRect.origin = Vec2f{sceneRect.x, sceneRect.y};
   m_lastPanelRect.size = Vec2f{sceneRect.width, sceneRect.height};
   m_gizmoHovered = false;
-  const Snapshot snapshot = makeSnapshot();
   if (!shouldRenderEditorOverlay()) {
     clearGizmoInteractionState();
     drawBoxSelectionConfirmModal();
@@ -618,19 +617,9 @@ void ViewportOverlay::drawSceneOverlay(
   }
 
   const PanelRect rect = computeViewportRect();
-  const char *modeText = modeLabel(snapshot.gizmoOperation);
   drawList->PushClipRect(
       ImVec2(rect.origin.x, rect.origin.y),
       ImVec2(rect.origin.x + rect.size.x, rect.origin.y + rect.size.y), true);
-  drawList->AddText(ImVec2(rect.origin.x + 16.0f, rect.origin.y + 16.0f),
-                    IM_COL32(255, 255, 0, 255), snapshot.hintText.c_str());
-  drawList->AddText(ImVec2(rect.origin.x + 16.0f, rect.origin.y + 56.0f),
-                    IM_COL32(120, 255, 120, 255), modeText);
-  if (!snapshot.selectedPath.empty()) {
-    const std::string selectedText = "Selected: " + snapshot.selectedPath;
-    drawList->AddText(ImVec2(rect.origin.x + 16.0f, rect.origin.y + 36.0f),
-                      IM_COL32(255, 255, 255, 255), selectedText.c_str());
-  }
 
   const auto selected = m_editorState.getPrimarySelected();
   const auto editorCameraNode = m_editorState.getEditorCamera();
@@ -736,18 +725,6 @@ void ViewportOverlay::drawSceneOverlay(
   m_gizmoUsing = usingNow;
   drawList->PopClipRect();
   drawBoxSelectionConfirmModal();
-}
-
-const char *ViewportOverlay::modeLabel(const GizmoOperation operation) {
-  switch (operation) {
-  case GizmoOperation::Translate:
-    return "W Translate";
-  case GizmoOperation::Rotate:
-    return "E Rotate";
-  case GizmoOperation::Scale:
-    return "R Scale";
-  }
-  return "Gizmo";
 }
 
 ImGuizmo::OPERATION

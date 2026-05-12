@@ -455,6 +455,20 @@ void LxeEditorSession::rebuildBindings() {
       [this](const std::string& path) {
         return m_runtime.resolveEditorHelperOwner(path);
       });
+  m_sceneInteraction->setBoxSelectionDispatch(
+      [this](const LX_core::Vec2f& dragStart,
+             const LX_core::Vec2f& dragEnd,
+             const SceneViewRect& sceneViewRect,
+             const bool ctrlHeld,
+             const bool shiftHeld) {
+        if (!m_viewportOverlay) {
+          return LX_core::CommandResult{false, "viewport overlay unavailable",
+                                        {}, {}};
+        }
+        return m_viewportOverlay->dispatchBoxSelection(
+            sceneViewRect.localPixel(dragStart), sceneViewRect.localPixel(dragEnd),
+            sceneViewRect.size(), ctrlHeld, shiftHeld);
+      });
   registerLxeEditorCommands(
       *m_commandBus,
       LxeEditorCommandContext{

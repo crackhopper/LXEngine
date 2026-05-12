@@ -96,7 +96,6 @@ private:
   void clearGizmoInteractionState();
   void drawBoxSelectionConfirmModal();
   [[nodiscard]] PanelRect computeViewportRect() const;
-  [[nodiscard]] static const char *modeLabel(GizmoOperation operation);
   [[nodiscard]] static ImGuizmo::OPERATION
   toImGuizmoOperation(GizmoOperation operation);
 
