@@ -399,6 +399,10 @@ void LxeEditorSession::rebuildBindings() {
       std::make_unique<LX_core::InspectorPanel>(*m_commandBus, m_editorState);
   m_sceneInteraction = std::make_unique<SceneInteractionController>(
       *m_commandBus, m_editorState, *m_runtime.scene());
+  m_sceneInteraction->setResolveHelperOwner(
+      [this](const std::string& path) {
+        return m_runtime.resolveEditorHelperOwner(path);
+      });
   registerLxeEditorCommands(
       *m_commandBus,
       LxeEditorCommandContext{

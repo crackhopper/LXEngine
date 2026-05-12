@@ -10,6 +10,7 @@
 #include "core/scene/components/mesh_component.hpp"
 #include "core/scene/object.hpp"
 #include "core/scene/scene.hpp"
+#include "core/scene/light.hpp"
 #include "core/utils/env.hpp"
 #include "demos/lxe_editor/scene_interaction_controller.hpp"
 #include "demos/lxe_editor/scene_input_routing.hpp"
@@ -99,6 +100,7 @@ struct Fixture final {
   LX_core::SceneNodeSharedPtr gameCameraNode =
       LX_core::SceneNode::create("game_cam_node");
   LX_core::SceneNodeSharedPtr targetNode = LX_core::SceneNode::create("cube");
+  LX_core::SceneNodeSharedPtr lightNode = LX_core::SceneNode::create("dir_light_node");
   LX_demo::lxe_editor::SceneInteractionController controller;
 
   Fixture()
@@ -117,6 +119,10 @@ struct Fixture final {
     gameCameraNode->setName("game_cam");
     gameCameraNode->addComponent<LX_core::CameraComponent>();
     scene->addCamera(gameCameraNode);
+
+    lightNode->setName("dir_light");
+    scene->addRenderable(lightNode);
+    scene->attachLight(lightNode, std::make_shared<LX_core::DirectionalLight>());
 
     editorState.setEditorCamera(editorCameraNode);
     editorState.setPreviewCamera(gameCameraNode);
@@ -425,6 +431,33 @@ void testResetEditorCameraToGameCameraCopiesPoseWithoutPreviewToggle() {
          "reset-editor-to-game should not toggle preview");
 }
 
+void testEditorModeDrawsCameraAndLightDebugHelpers() {
+  Fixture fixture;
+  LX_core::DebugDraw::reset();
+  LX_core::DebugDraw::attachScene(fixture.scene);
+  LX_core::DebugDraw::beginFrame();
+
+  fixture.controller.enqueueDebugDraw();
+
+  EXPECT(LX_core::DebugDraw::testing::queuedLineCount() >= 15,
+         "editor mode should draw camera frustum and directional-light helper lines");
+  LX_core::DebugDraw::endFrame();
+}
+
+void testPreviewModeSuppressesEditorDebugHelpers() {
+  Fixture fixture;
+  fixture.editorState.setPreviewEnabled(true);
+  LX_core::DebugDraw::reset();
+  LX_core::DebugDraw::attachScene(fixture.scene);
+  LX_core::DebugDraw::beginFrame();
+
+  fixture.controller.enqueueDebugDraw();
+
+  EXPECT(LX_core::DebugDraw::testing::queuedLineCount() == 0,
+         "preview mode should suppress editor helper debug draw");
+  LX_core::DebugDraw::endFrame();
+}
+
 } // namespace
 
 int main() {
@@ -441,6 +474,8 @@ int main() {
   testSelectionDebugProjectionRoundTripsBackToClickedPixel();
   testSelectionDebugUsesNegativeNdcYForLowerScreenPixels();
   testResetEditorCameraToGameCameraCopiesPoseWithoutPreviewToggle();
+  testEditorModeDrawsCameraAndLightDebugHelpers();
+  testPreviewModeSuppressesEditorDebugHelpers();
 
   if (failures > 0) {
     std::cerr << "FAILED: " << failures << " assertion(s)\n";

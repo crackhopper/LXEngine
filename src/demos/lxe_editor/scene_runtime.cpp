@@ -27,6 +27,7 @@ struct SceneRuntimeData final {
   LX_core::SceneSharedPtr scene;
   LX_core::SceneNodeSharedPtr editorCameraNode;
   LX_core::SceneNodeSharedPtr gameCameraNode;
+  std::unordered_map<std::string, LX_core::SceneNodeSharedPtr> helperOwnersByPath;
 };
 
 [[nodiscard]] std::filesystem::path normalizeDocumentPath(
@@ -98,10 +99,22 @@ cameraPathToDisplayName(const std::string& path, const std::string& fallback) {
       .right = 1.0f,
       .bottom = -1.0f,
       .top = 1.0f,
-      .cullingMask = LX_core::Layer_All & ~LX_core::Layer_EditorOverlay,
+      .cullingMask = LX_core::Layer_All & ~LX_core::Layer_EditorOverlay &
+                     ~Layer_EditorHelper,
   };
   rootNode.children.push_back(std::move(gameCameraNode));
   return document;
+}
+
+void registerHelperNode(const std::shared_ptr<SceneRuntimeData>& runtime,
+                        const LX_core::SceneNodeSharedPtr& owner,
+                        const LX_core::SceneNodeSharedPtr& helper) {
+  if (!runtime || !owner || !helper) {
+    return;
+  }
+  helper->setParent(owner);
+  runtime->scene->addRenderable(helper);
+  runtime->helperOwnersByPath.emplace(helper->getPath(), owner);
 }
 
 [[nodiscard]] LX_core::SceneNodeSharedPtr buildRenderableNodeFromDocument(
@@ -137,7 +150,7 @@ void applyCameraState(LX_core::SceneNode& node, LX_core::CameraComponent& camera
                               state.nearPlane, state.farPlane, state.left,
                               state.right, state.bottom, state.top);
   camera.setTarget(LX_core::RenderTarget{});
-  camera.setCullingMask(state.cullingMask);
+  camera.setCullingMask(state.cullingMask & ~Layer_EditorHelper);
   camera.lookAt(state.eye, state.target, state.up);
   auto local = node.getLocalTransform();
   local.scale = state.type == LX_core::CameraType::Perspective
@@ -243,6 +256,23 @@ buildRuntimeFromDocument(const SceneDocument& document,
   }
   runtime->scene->addCamera(runtime->editorCameraNode);
 
+  for (const auto& cameraNode : runtime->scene->getCameras()) {
+    if (!cameraNode || cameraNode == runtime->editorCameraNode) {
+      continue;
+    }
+    registerHelperNode(runtime, cameraNode, buildCameraHelperNode());
+  }
+
+  for (const auto& renderable : runtime->scene->getRenderables()) {
+    const auto node = std::dynamic_pointer_cast<LX_core::SceneNode>(renderable);
+    if (!node) {
+      continue;
+    }
+    if (runtime->scene->getDirectionalLight(*node)) {
+      registerHelperNode(runtime, node, buildDirectionalLightHelperNode());
+    }
+  }
+
   return runtime;
 }
 
@@ -315,6 +345,7 @@ captureSceneDocument(const std::shared_ptr<SceneRuntimeData>& runtime) {
     if (const auto* existing =
             findDocumentNodeByName(runtime->document.rootNode(),
                                    node->getNodeName())) {
+      entry.visibilityMask = existing->visibilityMask;
       entry.meshUri = existing->meshUri;
       entry.materialUri = existing->materialUri;
     } else if (node->getName() == "helmet") {
@@ -334,7 +365,8 @@ captureSceneDocument(const std::shared_ptr<SceneRuntimeData>& runtime) {
     }
 
     for (const auto& child : node->getChildren()) {
-      if (!child || child == runtime->editorCameraNode) {
+      if (!child || child == runtime->editorCameraNode ||
+          runtime->helperOwnersByPath.contains(child->getPath())) {
         continue;
       }
       entry.children.push_back(self(self, child));
@@ -358,7 +390,8 @@ captureSceneDocument(const std::shared_ptr<SceneRuntimeData>& runtime) {
     rootEntry.children.clear();
 
     for (const auto& child : rootNode->getChildren()) {
-      if (!child || child == runtime->editorCameraNode) {
+      if (!child || child == runtime->editorCameraNode ||
+          runtime->helperOwnersByPath.contains(child->getPath())) {
         continue;
       }
       rootEntry.children.push_back(captureNode(captureNode, child));
@@ -424,6 +457,16 @@ LX_core::SceneNodeSharedPtr SceneRuntime::editorCameraNode() const {
 
 LX_core::SceneNodeSharedPtr SceneRuntime::gameCameraNode() const {
   return requireRuntimeData(m_impl)->gameCameraNode;
+}
+
+LX_core::SceneNodeSharedPtr
+SceneRuntime::resolveEditorHelperOwner(const std::string& path) const {
+  const auto runtime = requireRuntimeData(m_impl);
+  const auto it = runtime->helperOwnersByPath.find(path);
+  if (it == runtime->helperOwnersByPath.end()) {
+    return {};
+  }
+  return it->second;
 }
 
 } // namespace LX_demo::lxe_editor

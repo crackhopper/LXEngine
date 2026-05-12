@@ -190,6 +190,45 @@ MaterialInstanceSharedPtr makeGroundMaterial() {
   return mat;
 }
 
+MaterialInstanceSharedPtr makeHelperMaterial(const Vec3f& baseColor) {
+  auto mat = LX_infra::loadGenericMaterial("assets/materials/blinnphong_lit.material");
+  if (!mat) {
+    throw std::runtime_error(
+        "[lxe_editor] failed to load assets/materials/blinnphong_lit.material");
+  }
+  mat->setParameter(StringID("MaterialUBO"), StringID("enableAlbedo"), 0);
+  mat->setParameter(StringID("MaterialUBO"), StringID("enableNormal"), 0);
+  mat->setParameter(StringID("MaterialUBO"), StringID("baseColor"), baseColor);
+  mat->syncGpuData();
+  return mat;
+}
+
+MeshSharedPtr buildOctahedronMesh(const float radius) {
+  const Vec4i zeroBones{0, 0, 0, 0};
+  const Vec4f zeroWeights{0.0f, 0.0f, 0.0f, 0.0f};
+  const Vec2f zeroUv{0.0f, 0.0f};
+  const Vec4f tangent{1.0f, 0.0f, 0.0f, 1.0f};
+  const std::vector<Vec3f> positions = {
+      {0.0f, radius, 0.0f},   {radius, 0.0f, 0.0f},   {0.0f, 0.0f, radius},
+      {-radius, 0.0f, 0.0f},  {0.0f, 0.0f, -radius},  {0.0f, -radius, 0.0f},
+  };
+  std::vector<VertexPosNormalUvBone> verts;
+  verts.reserve(positions.size());
+  for (const Vec3f& position : positions) {
+    verts.emplace_back(position, position.normalized(), zeroUv, tangent,
+                       zeroBones, zeroWeights);
+  }
+
+  auto vb = VertexBuffer<VertexPosNormalUvBone>::create(std::move(verts));
+  auto ib = IndexBuffer::create(std::vector<u32>{
+      0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 1,
+      5, 2, 1, 5, 3, 2, 5, 4, 3, 5, 1, 4,
+  });
+  return Mesh::create(vb, ib,
+                      LX_core::BoundingBox{Vec3f{-radius, -radius, -radius},
+                                           Vec3f{radius, radius, radius}});
+}
+
 MeshSharedPtr buildGroundMesh() {
   const float half = 20.0f; // 40m x 40m — wide enough to give visual context
   // Ground drops below the helmet's local origin so the helmet sits clearly
@@ -215,7 +254,7 @@ MeshSharedPtr buildGroundMesh() {
 
   auto vb = VertexBuffer<VertexPosNormalUvBone>::create(std::move(verts));
   auto ib = IndexBuffer::create(
-      std::vector<u32>{0, 1, 2, 0, 2, 3});
+      std::vector<u32>{0, 2, 1, 0, 3, 2});
   return Mesh::create(vb, ib,
                       LX_core::BoundingBox{Vec3f{-half, groundY, -half},
                                            Vec3f{half, groundY, half}});
@@ -247,6 +286,22 @@ LX_core::SceneNodeSharedPtr buildGroundNode() {
   auto mesh = buildGroundMesh();
   auto material = makeGroundMaterial();
   return makeRenderableNode("ground", std::move(mesh), std::move(material));
+}
+
+LX_core::SceneNodeSharedPtr buildCameraHelperNode() {
+  auto node = makeRenderableNode("helper_camera", buildOctahedronMesh(0.18f),
+                                 makeHelperMaterial(Vec3f{0.35f, 0.72f, 1.0f}));
+  node->setName("helper_camera");
+  node->setVisibilityLayerMask(Layer_EditorHelper);
+  return node;
+}
+
+LX_core::SceneNodeSharedPtr buildDirectionalLightHelperNode() {
+  auto node = makeRenderableNode("helper_light", buildOctahedronMesh(0.16f),
+                                 makeHelperMaterial(Vec3f{1.0f, 0.86f, 0.25f}));
+  node->setName("helper_light");
+  node->setVisibilityLayerMask(Layer_EditorHelper);
+  return node;
 }
 
 } // namespace LX_demo::lxe_editor

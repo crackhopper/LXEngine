@@ -20,12 +20,15 @@ class SceneInteractionController final {
 public:
   using DebugEnabledFn = std::function<bool()>;
   using AppendDebugLineFn = std::function<void(std::string_view)>;
+  using ResolveHelperOwnerFn =
+      std::function<LX_core::SceneNodeSharedPtr(const std::string&)>;
 
   SceneInteractionController(LX_core::CommandBus& commandBus,
                              LX_core::EditorState& editorState,
                              LX_core::Scene& scene);
   void setDebugLoggingHooks(DebugEnabledFn debugEnabled,
                             AppendDebugLineFn appendDebugLine);
+  void setResolveHelperOwner(ResolveHelperOwnerFn resolveHelperOwner);
 
   [[nodiscard]] LX_core::CommandResult dispatchPickingClick(
       const LX_core::Vec2f& screenPixel, const LX_core::Vec2f& viewportSize);
@@ -51,6 +54,7 @@ private:
   std::optional<HitMarker> m_lastHitMarker;
   DebugEnabledFn m_debugEnabled;
   AppendDebugLineFn m_appendDebugLine;
+  ResolveHelperOwnerFn m_resolveHelperOwner;
 };
 
 } // namespace LX_demo::lxe_editor

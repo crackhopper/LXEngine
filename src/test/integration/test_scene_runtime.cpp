@@ -1,5 +1,9 @@
+#include "core/rhi/index_buffer.hpp"
+#include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/components/camera_component.hpp"
+#include "core/scene/components/mesh_component.hpp"
 #include "demos/lxe_editor/editor_camera_state.hpp"
+#include "demos/lxe_editor/scene_builder.hpp"
 #include "demos/lxe_editor/scene_document.hpp"
 #include "demos/lxe_editor/scene_runtime.hpp"
 
@@ -73,8 +77,59 @@ void testRuntimeCreatesEmptyScene() {
          "empty runtime should not create a helmet node");
   EXPECT(runtime.scene()->findByPath("/ground") == nullptr,
          "empty runtime should not create a ground node");
-  EXPECT(runtime.scene()->getRenderables().size() == 2,
-         "empty runtime should contain only editor and gameplay camera nodes");
+  EXPECT(runtime.scene()->findByPath("/game_cam/helper_camera") != nullptr,
+         "empty runtime should create a gameplay-camera helper");
+  EXPECT(runtime.scene()->getRenderables().size() == 3,
+         "empty runtime should contain editor camera, gameplay camera, and helper");
+}
+
+void testRuntimeCreatesEditorOnlyHelpersForEditableSceneNodes() {
+  const std::filesystem::path path = makeTempPath("lx_scene_runtime_helpers.yaml");
+  writeSceneFile(path,
+                 "scene:\n"
+                 "  name: helper_scene\n"
+                 "  gameplayCameraPath: /game_cam\n"
+                 "nodes:\n"
+                 "  - nodeName: game_camera\n"
+                 "    name: game_cam\n"
+                 "    transform:\n"
+                 "      translation: [0.0, 2.0, 6.0]\n"
+                 "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                 "      scale: [1.0, 1.0, 1.0]\n"
+                 "    visibilityMask: 4294967295\n"
+                 "    camera:\n"
+                 "      eye: [0.0, 2.0, 6.0]\n"
+                 "      target: [0.0, 0.0, 0.0]\n"
+                 "      up: [0.0, 1.0, 0.0]\n"
+                 "      type: perspective\n"
+                 "      fovY: 45.0\n"
+                 "      aspect: 1.7777778\n"
+                 "      nearPlane: 0.1\n"
+                 "      farPlane: 1000.0\n"
+                 "      left: -1.0\n"
+                 "      right: 1.0\n"
+                 "      bottom: -1.0\n"
+                 "      top: 1.0\n"
+                 "      cullingMask: 4294967295\n"
+                 "  - nodeName: dir_light_node\n"
+                 "    name: dir_light\n"
+                 "    transform:\n"
+                 "      translation: [1.0, 2.0, 3.0]\n"
+                 "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                 "      scale: [1.0, 1.0, 1.0]\n"
+                 "    visibilityMask: 4294967295\n"
+                 "    directionalLight:\n"
+                 "      direction: [-0.3, -1.0, -0.5]\n"
+                 "      color: [1.0, 0.98, 0.9]\n"
+                 "      intensity: 1.0\n");
+
+  demo::SceneRuntime runtime;
+  runtime.loadFromDocumentPath(path);
+
+  EXPECT(runtime.scene()->findByPath("/game_cam/helper_camera") != nullptr,
+         "game camera should get an editor-only helper child");
+  EXPECT(runtime.scene()->findByPath("/dir_light/helper_light") != nullptr,
+         "directional light should get an editor-only helper child");
 }
 
 void testRuntimeLoadsFullSceneDocument() {
@@ -322,13 +377,43 @@ void testRuntimeSaveRoundTripsExpandedSceneDocument() {
              "save should persist editor camera x");
 }
 
+void testGroundMeshWindingMatchesUpwardNormal() {
+  const auto ground = demo::buildGroundNode();
+  const auto meshComponent = ground->getComponent<LX_core::MeshComponent>();
+  EXPECT(meshComponent.has_value(), "ground node should have mesh component");
+  if (!meshComponent.has_value()) {
+    return;
+  }
+
+  const auto& mesh = meshComponent->get().getMesh();
+  const auto* vertexBuffer =
+      dynamic_cast<LX_core::VertexBuffer<LX_core::VertexPosNormalUvBone>*>(
+          mesh->vertexBuffer.get());
+  EXPECT(vertexBuffer != nullptr,
+         "ground mesh should use VertexPosNormalUvBone vertices");
+  EXPECT(mesh->indexBuffer != nullptr, "ground mesh should have an index buffer");
+  if (!mesh->indexBuffer) {
+    return;
+  }
+  EXPECT(mesh->indexBuffer->getTopology() == LX_core::PrimitiveTopology::TriangleList,
+         "ground should be a triangle-list mesh");
+  EXPECT(mesh->indexBuffer->indexCount() == 6,
+         "ground should use two triangles");
+  const auto* indices = static_cast<const u32*>(mesh->indexBuffer->getRawData());
+  EXPECT(indices[0] == 0 && indices[1] == 2 && indices[2] == 1 &&
+             indices[3] == 0 && indices[4] == 3 && indices[5] == 2,
+         "ground winding should match the upward normal convention");
+}
+
 } // namespace
 
 int main() {
   testRuntimeCreatesEmptyScene();
+  testRuntimeCreatesEditorOnlyHelpersForEditableSceneNodes();
   testRuntimeLoadsFullSceneDocument();
   testRuntimeLoadsLegacyFlatSceneDocumentWithExplicitRootNormalization();
   testRuntimeSaveRoundTripsExpandedSceneDocument();
+  testGroundMeshWindingMatchesUpwardNormal();
 
   if (failures != 0) {
     std::cerr << "test_scene_runtime failed with " << failures

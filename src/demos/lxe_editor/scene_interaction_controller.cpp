@@ -114,6 +114,11 @@ void SceneInteractionController::setDebugLoggingHooks(
   m_appendDebugLine = std::move(appendDebugLine);
 }
 
+void SceneInteractionController::setResolveHelperOwner(
+    ResolveHelperOwnerFn resolveHelperOwner) {
+  m_resolveHelperOwner = std::move(resolveHelperOwner);
+}
+
 LX_core::CommandResult SceneInteractionController::dispatchPickingClick(
     const LX_core::Vec2f& screenPixel, const LX_core::Vec2f& viewportSize) {
   return dispatchPickingClick(
@@ -168,10 +173,16 @@ LX_core::CommandResult SceneInteractionController::dispatchPickingClick(
     m_appendDebugLine(makePickDebugLine(localPixel, clickNdc, hitWorld, projected));
   }
   if (hit.has_value() && hit->node) {
+    LX_core::SceneNodeSharedPtr selectedNode = hit->node;
+    if (m_resolveHelperOwner) {
+      if (const auto owner = m_resolveHelperOwner(hit->node->getPath())) {
+        selectedNode = owner;
+      }
+    }
     LX_core::CommandResult result =
-        m_commandBus.dispatch("select \"" + hit->node->getPath() + "\"");
+        m_commandBus.dispatch("select \"" + selectedNode->getPath() + "\"");
     if (result.ok) {
-      m_lastHitMarker = HitMarker{hit->node, *hitWorld};
+      m_lastHitMarker = HitMarker{selectedNode, *hitWorld};
     }
     return result;
   }
@@ -225,7 +236,74 @@ void SceneInteractionController::enqueueDebugDraw() const {
   }
 
   if (!m_lastHitMarker.has_value()) {
+    for (const auto& cameraNode : m_scene.getCameras()) {
+      if (!cameraNode || cameraNode == m_editorState.getEditorCamera()) {
+        continue;
+      }
+      const auto camera = cameraNode->getComponent<LX_core::CameraComponent>();
+      if (!camera.has_value()) {
+        continue;
+      }
+      const LX_core::Mat4f viewProj =
+          camera->get().getProjMatrix() * camera->get().getViewMatrix();
+      LX_core::DebugDraw::frustum(viewProj, LX_core::DebugDraw::Color::white());
+    }
+
+    for (const auto& renderable : m_scene.getRenderables()) {
+      const auto node = std::dynamic_pointer_cast<LX_core::SceneNode>(renderable);
+      if (!node) {
+        continue;
+      }
+      const auto directionalLight = m_scene.getDirectionalLight(*node);
+      if (!directionalLight) {
+        continue;
+      }
+      LX_core::Vec3f direction = directionalLight->getDirection();
+      if (direction.length2() <= 1e-6f) {
+        direction = LX_core::Vec3f{0.0f, -1.0f, 0.0f};
+      } else {
+        direction = direction.normalized();
+      }
+      const LX_core::Vec3f origin =
+          LX_core::Transform::fromMat4(node->getWorldTransform()).translation;
+      LX_core::DebugDraw::arrow(origin, origin + direction * 2.0f,
+                                LX_core::DebugDraw::Color::yellow());
+    }
     return;
+  }
+
+  for (const auto& cameraNode : m_scene.getCameras()) {
+    if (!cameraNode || cameraNode == m_editorState.getEditorCamera()) {
+      continue;
+    }
+    const auto camera = cameraNode->getComponent<LX_core::CameraComponent>();
+    if (!camera.has_value()) {
+      continue;
+    }
+    const LX_core::Mat4f viewProj =
+        camera->get().getProjMatrix() * camera->get().getViewMatrix();
+    LX_core::DebugDraw::frustum(viewProj, LX_core::DebugDraw::Color::white());
+  }
+
+  for (const auto& renderable : m_scene.getRenderables()) {
+    const auto node = std::dynamic_pointer_cast<LX_core::SceneNode>(renderable);
+    if (!node) {
+      continue;
+    }
+    const auto directionalLight = m_scene.getDirectionalLight(*node);
+    if (!directionalLight) {
+      continue;
+    }
+    LX_core::Vec3f direction = directionalLight->getDirection();
+    if (direction.length2() <= 1e-6f) {
+      direction = LX_core::Vec3f{0.0f, -1.0f, 0.0f};
+    } else {
+      direction = direction.normalized();
+    }
+    const LX_core::Vec3f origin =
+        LX_core::Transform::fromMat4(node->getWorldTransform()).translation;
+    LX_core::DebugDraw::arrow(origin, origin + direction * 2.0f,
+                              LX_core::DebugDraw::Color::yellow());
   }
 
   const auto selected = m_editorState.getSelected();
