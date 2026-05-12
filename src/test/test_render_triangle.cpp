@@ -129,10 +129,12 @@ int main() {
   auto dirLight =
       std::dynamic_pointer_cast<DirectionalLight>(scene->getLights().front());
 
-  if (dirLight && dirLight->ubo) {
-    dirLight->ubo->param.dir = Vec4f{0.0f, -1.0f, 0.0f, 0.0f};
-    dirLight->ubo->param.color = Vec4f{1.0f, 1.0f, 1.0f, 1.0f};
-    dirLight->ubo->setDirty();
+  const auto lightUbo =
+      dirLight ? dirLight->getDirectionalUBO() : DirectionalLightDataSharedPtr{};
+  if (lightUbo) {
+    lightUbo->param.dir = Vec4f{0.0f, -1.0f, 0.0f, 0.0f};
+    lightUbo->param.color = Vec4f{1.0f, 1.0f, 1.0f, 1.0f};
+    lightUbo->setDirty();
   }
 
   if (testDebugEnabled()) {
@@ -171,7 +173,7 @@ int main() {
     }
     tabWasDown = tabDown;
 
-    camera->get().aspect = 800.0f / 600.0f;
+    camera->get().setAspect(800.0f / 600.0f);
     if (useOrbit) {
       orbitCtrl.update(camera->get(), *input, clock.deltaTime());
     } else {
@@ -187,7 +189,7 @@ int main() {
                 << camera->get().getLookTarget().x << ","
                 << camera->get().getLookTarget().y << ","
                 << camera->get().getLookTarget().z
-                << "), aspect=" << camera->get().aspect << std::endl;
+                << "), aspect=" << camera->get().getAspect() << std::endl;
       if (frameCounter == 0) {
         const auto &view = camera->get().getUBO()->param.view;
         const auto &proj = camera->get().getUBO()->param.proj;

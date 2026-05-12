@@ -425,10 +425,10 @@ int main(int argc, char** argv) {
       const float aspect =
           hasValidExtent
               ? static_cast<float>(windowWidth) / static_cast<float>(windowHeight)
-              : session.editorCamera().aspect;
+              : session.editorCamera().getAspect();
       if (hasValidExtent) {
-        session.editorCamera().aspect = aspect;
-        session.gameCamera().aspect = aspect;
+        session.editorCamera().setAspect(aspect);
+        session.gameCamera().setAspect(aspect);
       }
       session.gameCamera().updateMatrices();
 

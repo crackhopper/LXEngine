@@ -107,10 +107,12 @@ int main() {
         scene->getLights().front());
 
     // Default directional light UBO (shader expects it).
-    if (dirLight && dirLight->ubo) {
-      dirLight->ubo->param.dir = LX_core::Vec4f{0.0f, -1.0f, 0.0f, 0.0f};
-      dirLight->ubo->param.color = LX_core::Vec4f{1.0f, 1.0f, 1.0f, 1.0f};
-      dirLight->ubo->setDirty();
+    const auto lightUbo = dirLight ? dirLight->getDirectionalUBO()
+                                   : LX_core::DirectionalLightDataSharedPtr{};
+    if (lightUbo) {
+      lightUbo->param.dir = LX_core::Vec4f{0.0f, -1.0f, 0.0f, 0.0f};
+      lightUbo->param.color = LX_core::Vec4f{1.0f, 1.0f, 1.0f, 1.0f};
+      lightUbo->setDirty();
     }
 
     // Camera matrices needed for camera data uploads.

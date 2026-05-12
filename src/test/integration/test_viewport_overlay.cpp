@@ -85,7 +85,7 @@ struct Fixture {
     editorCameraNode->setName("editor_cam");
     auto editorCamRef = editorCameraNode->addComponent<LX_core::CameraComponent>();
     editorCamera = &editorCamRef->get();
-    editorCamera->aspect = 1.0f;
+    editorCamera->setAspect(1.0f);
     scene->addCamera(editorCameraNode);
 
     gameCameraNode->setName("game_cam");

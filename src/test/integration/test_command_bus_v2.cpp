@@ -185,7 +185,7 @@ void testMultiTargetMoveAppliesDeltaAndUndoRestoresEachNode() {
 void testPreviewAndCamFovGainUndoCoverage() {
   Fixture fixture;
   auto camera = fixture.cameraNode->getComponent<CameraComponent>();
-  camera->get().fovY = 60.0f;
+  camera->get().setFovY(60.0f);
 
   const CommandResult previewOn = fixture.bus.dispatch("preview on");
   EXPECT(previewOn.ok, "preview on should succeed");
@@ -199,12 +199,12 @@ void testPreviewAndCamFovGainUndoCoverage() {
 
   const CommandResult camFov = fixture.bus.dispatch("cam fov 75");
   EXPECT(camFov.ok, "cam fov should succeed");
-  EXPECT(nearlyEqual(camera->get().fovY, 75.0f),
+  EXPECT(nearlyEqual(camera->get().getFovY(), 75.0f),
          "cam fov should update active camera fov");
 
   const CommandResult undoFov = fixture.bus.dispatch("undo");
   EXPECT(undoFov.ok, "undo should restore previous camera fov");
-  EXPECT(nearlyEqual(camera->get().fovY, 60.0f),
+  EXPECT(nearlyEqual(camera->get().getFovY(), 60.0f),
          "undo should restore camera fov");
 }
 
@@ -245,7 +245,7 @@ void testAddRemoveSupportUndoRedo() {
   EXPECT(restoredCameraNode != nullptr, "undo remove should restore camera path");
   auto restoredCamera = restoredCameraNode->getComponent<CameraComponent>();
   EXPECT(restoredCamera.has_value() &&
-             nearlyEqual(restoredCamera->get().fovY, 75.0f),
+             nearlyEqual(restoredCamera->get().getFovY(), 75.0f),
          "undo remove should restore camera component state");
 
   const CommandResult redoRemove = fixture.bus.dispatch("redo");

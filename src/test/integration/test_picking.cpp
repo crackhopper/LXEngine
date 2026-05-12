@@ -139,8 +139,8 @@ void testCameraComponentPickRayUsesOwnerPose() {
   auto cameraNode = SceneNode::create("pick_camera");
   auto camera = cameraNode->addComponent<CameraComponent>();
   cameraNode->setTranslation({2.0f, 3.0f, 4.0f});
-  camera->get().aspect = 1.0f;
-  camera->get().fovY = 90.0f;
+  camera->get().setAspect(1.0f);
+  camera->get().setFovY(90.0f);
 
   const Ray perspectiveRay = camera->get().pickRay({0.0f, 0.0f}, {1.0f, 1.0f});
   EXPECT(approxVec3(perspectiveRay.origin, Vec3f{2.0f, 3.0f, 4.0f}),
@@ -148,12 +148,9 @@ void testCameraComponentPickRayUsesOwnerPose() {
   EXPECT(approxVec3(perspectiveRay.direction, Vec3f{0.0f, 0.0f, -1.0f}),
          "center perspective ray follows camera forward");
 
-  camera->get().type = CameraType::Orthographic;
-  camera->get().left = -2.0f;
-  camera->get().right = 2.0f;
-  camera->get().bottom = -1.0f;
-  camera->get().top = 1.0f;
-  camera->get().nearPlane = 0.5f;
+  camera->get().setProjectionType(CameraType::Orthographic);
+  camera->get().setOrthographicBounds(-2.0f, 2.0f, -1.0f, 1.0f);
+  camera->get().setNearPlane(0.5f);
   const Ray orthoRay = camera->get().pickRay({0.0f, 0.0f}, {1.0f, 1.0f});
   EXPECT(approxVec3(orthoRay.origin, Vec3f{2.0f, 3.0f, 3.5f}),
          "orthographic center ray originates on near plane");
