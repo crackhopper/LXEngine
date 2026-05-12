@@ -77,10 +77,17 @@ void testRuntimeCreatesEmptyScene() {
          "empty runtime should not create a helmet node");
   EXPECT(runtime.scene()->findByPath("/ground") == nullptr,
          "empty runtime should not create a ground node");
+  EXPECT(runtime.scene()->findByPath("/dir_light") != nullptr,
+         "empty runtime should create a default directional light node");
+  EXPECT(runtime.scene()->getDirectionalLight(
+             *runtime.scene()->findByPath("/dir_light")) != nullptr,
+         "empty runtime should attach a directional light to the default light node");
   EXPECT(runtime.scene()->findByPath("/game_cam/helper_camera") != nullptr,
          "empty runtime should create a gameplay-camera helper");
-  EXPECT(runtime.scene()->getRenderables().size() == 3,
-         "empty runtime should contain editor camera, gameplay camera, and helper");
+  EXPECT(runtime.scene()->findByPath("/dir_light/helper_light") != nullptr,
+         "empty runtime should create a directional-light helper");
+  EXPECT(runtime.scene()->getRenderables().size() == 5,
+         "empty runtime should contain gameplay camera, editor camera, default light, and both helpers");
 }
 
 void testRuntimeCreatesEditorOnlyHelpersForEditableSceneNodes() {

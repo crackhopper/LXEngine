@@ -103,6 +103,17 @@ cameraPathToDisplayName(const std::string& path, const std::string& fallback) {
                      ~Layer_EditorHelper,
   };
   rootNode.children.push_back(std::move(gameCameraNode));
+
+  SceneNodeDocument directionalLightNode;
+  directionalLightNode.nodeName = "dir_light_node";
+  directionalLightNode.name = "dir_light";
+  directionalLightNode.visibilityMask = LX_core::Layer_All;
+  directionalLightNode.directionalLight = DirectionalLightNodeState{
+      .direction = {-0.3f, -1.0f, -0.5f},
+      .color = {1.0f, 0.98f, 0.9f},
+      .intensity = 1.0f,
+  };
+  rootNode.children.push_back(std::move(directionalLightNode));
   return document;
 }
 
