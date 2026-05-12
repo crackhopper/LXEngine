@@ -311,6 +311,10 @@ std::string LxeEditorApiService::sceneNodeAspectName(
     return "visibility";
   case LX_core::SceneNodeAspect::RenderableStructure:
     return "renderable_structure";
+  case LX_core::SceneNodeAspect::CameraProperties:
+    return "cameraProperties";
+  case LX_core::SceneNodeAspect::LightProperties:
+    return "lightProperties";
   }
   return "unknown";
 }

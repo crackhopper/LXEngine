@@ -298,6 +298,38 @@ void testDrawResyncsInspectorDraftAfterExternalMutation() {
   ImGui::DestroyContext();
 }
 
+void testDrawResyncsInspectorAfterExternalCameraMutation() {
+  Fixture fixture;
+  LX_core::InspectorPanel panel(fixture.bus, fixture.editorState);
+  fixture.editorState.select({fixture.cameraNode});
+
+  fixture.cameraNode->getComponent<LX_core::CameraComponent>()
+      ->get()
+      .setFovY(95.0f);
+
+  const auto snapshot = panel.makeSnapshot();
+  EXPECT(nearlyEqual(snapshot.cameraFov, 95.0f),
+         "external camera mutation should refresh inspector snapshot");
+}
+
+void testDrawResyncsInspectorAfterExternalLightMutation() {
+  Fixture fixture;
+  LX_core::InspectorPanel panel(fixture.bus, fixture.editorState);
+  fixture.editorState.select({fixture.lightNode});
+
+  const auto light = fixture.scene->getDirectionalLight(*fixture.lightNode);
+  EXPECT(light != nullptr, "fixture light should resolve");
+  if (!light) {
+    return;
+  }
+
+  light->setIntensity(6.0f);
+
+  const auto snapshot = panel.makeSnapshot();
+  EXPECT(nearlyEqual(snapshot.lightIntensity, 6.0f),
+         "external light mutation should refresh inspector snapshot");
+}
+
 void testSceneSubscriptionSwitchIgnoresOldSceneMutations() {
   if (!setupMinimalImGui()) {
     std::cout << "[SKIP] inspector scene-switch subscription regression\n";
@@ -407,6 +439,8 @@ int main() {
   testDispatchHelpersUseCommandBus();
   testDrawFrameSurvivesCpuOnlyImGui();
   testDrawResyncsInspectorDraftAfterExternalMutation();
+  testDrawResyncsInspectorAfterExternalCameraMutation();
+  testDrawResyncsInspectorAfterExternalLightMutation();
   testSceneSubscriptionSwitchIgnoresOldSceneMutations();
 
   if (failures == 0) {

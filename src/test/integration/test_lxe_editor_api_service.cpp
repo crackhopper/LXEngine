@@ -328,6 +328,93 @@ void testExecuteCommandFlushesOlderQueuedRuntimeEventsBeforeNewCommand() {
   }
 }
 
+void testRuntimeCameraPropertyMutationEmitsApiSceneNodeChangedEvent() {
+  Fixture fixture;
+  const auto cameraNode = SceneNode::create("camera_node");
+  cameraNode->setName("camera");
+  auto camera = cameraNode->addComponent<CameraComponent>();
+  fixture.scene->addCamera(cameraNode);
+
+  const ApiEventCursor cursor = fixture.service->currentCursor();
+  camera->get().setFovY(88.0f);
+  fixture.service->refresh();
+
+  const ApiEventBatch batch = fixture.service->collectEventsSince(cursor);
+  bool sawCameraEvent = false;
+  for (const auto& event : batch.events) {
+    if (event.type != ApiEventType::SceneNodeChanged ||
+        !event.sceneNode.has_value()) {
+      continue;
+    }
+
+    if (event.sceneNode->stableNodeName != cameraNode->getNodeName()) {
+      continue;
+    }
+
+    sawCameraEvent = true;
+    EXPECT(event.sceneNode->path == cameraNode->getPath(),
+           "camera property event should preserve camera node path");
+    EXPECT(event.sceneNode->aspects.size() == 1,
+           "camera property event should keep a minimal aspect list");
+    if (event.sceneNode->aspects.size() == 1) {
+      EXPECT(event.sceneNode->aspects.front() == "cameraProperties",
+             "API event should serialize camera property aspect");
+    }
+    EXPECT(event.payloadJson == toJson(*event.sceneNode),
+           "camera property event payloadJson should match serialized payload");
+  }
+
+  EXPECT(sawCameraEvent,
+         "runtime camera property mutation should be mirrored into API events");
+}
+
+void testRuntimeLightPropertyMutationEmitsApiSceneNodeChangedEvent() {
+  Fixture fixture;
+  const auto lightNode = SceneNode::create("light_node");
+  lightNode->setName("sun");
+  fixture.scene->addRenderable(lightNode);
+  const auto light = std::make_shared<DirectionalLight>();
+  fixture.scene->attachLight(lightNode, light);
+  fixture.service->refresh();
+  const ApiEventCursor cursor = fixture.service->currentCursor();
+
+  light->setIntensity(4.5f);
+  fixture.service->refresh();
+
+  const ApiEventBatch batch = fixture.service->collectEventsSince(cursor);
+  bool sawLightEvent = false;
+  for (const auto& event : batch.events) {
+    if (event.type != ApiEventType::SceneNodeChanged ||
+        !event.sceneNode.has_value()) {
+      continue;
+    }
+
+    if (event.sceneNode->stableNodeName != lightNode->getNodeName()) {
+      continue;
+    }
+
+    if (event.sceneNode->aspects.size() != 1 ||
+        event.sceneNode->aspects.front() != "lightProperties") {
+      continue;
+    }
+
+    sawLightEvent = true;
+    EXPECT(event.sceneNode->path == lightNode->getPath(),
+           "light property event should preserve light node path");
+    EXPECT(event.sceneNode->aspects.size() == 1,
+           "light property event should keep a minimal aspect list");
+    if (event.sceneNode->aspects.size() == 1) {
+      EXPECT(event.sceneNode->aspects.front() == "lightProperties",
+             "API event should serialize light property aspect");
+    }
+    EXPECT(event.payloadJson == toJson(*event.sceneNode),
+           "light property event payloadJson should match serialized payload");
+  }
+
+  EXPECT(sawLightEvent,
+         "runtime light property mutation should be mirrored into API events");
+}
+
 void testApiTokenStatePersistsSingleGeneratedToken() {
   const auto rootDir = std::filesystem::temp_directory_path() /
                        "lxengine_api_token_state_test";
@@ -356,6 +443,8 @@ int main() {
   testRuntimeSceneNodeMutationEmitsApiSceneNodeChangedEvent();
   testCommandDrivenSceneMutationKeepsCommandEventBeforeSceneNodeChanged();
   testExecuteCommandFlushesOlderQueuedRuntimeEventsBeforeNewCommand();
+  testRuntimeCameraPropertyMutationEmitsApiSceneNodeChangedEvent();
+  testRuntimeLightPropertyMutationEmitsApiSceneNodeChangedEvent();
   testApiTokenStatePersistsSingleGeneratedToken();
 
   if (failures != 0) {
