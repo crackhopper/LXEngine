@@ -384,20 +384,6 @@ resolveDirectionalLight(SceneNode &node) {
   return scene->getDirectionalLight(node);
 }
 
-void emitRuntimeNodeAspectChanged(SceneNode &node, const SceneNodeAspect aspect) {
-  const auto scene = node.getAttachedScene();
-  if (!scene) {
-    return;
-  }
-  scene->events().emit(SceneEvent{
-      .domain = SceneEventDomain::Runtime,
-      .type = SceneEventType::SceneNodeChanged,
-      .path = node.getPath(),
-      .stableNodeName = node.getNodeName(),
-      .aspects = {aspect},
-  });
-}
-
 [[nodiscard]] std::vector<std::string> listComponentTypes() {
   return {"camera", "light", "mesh"};
 }
@@ -941,7 +927,6 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
       return makeError("invalid float for set direction");
     }
     light->setDirection(*value);
-    emitRuntimeNodeAspectChanged(node, SceneNodeAspect::LightProperties);
     return makeOk("direction updated", "{\"value\":" + makeVec3Json(*value) + "}");
   }
   if (field == "color") {
@@ -957,7 +942,6 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
       return makeError("invalid float for set color");
     }
     light->setColor(*value);
-    emitRuntimeNodeAspectChanged(node, SceneNodeAspect::LightProperties);
     return makeOk("color updated", "{\"value\":" + makeVec3Json(*value) + "}");
   }
   if (field == "intensity") {
@@ -973,7 +957,6 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
       return makeError("invalid float for set intensity");
     }
     light->setIntensity(*value);
-    emitRuntimeNodeAspectChanged(node, SceneNodeAspect::LightProperties);
     return makeOk("intensity updated", "{\"value\":" + formatFloat(*value) + "}");
   }
   if (field == "name") {

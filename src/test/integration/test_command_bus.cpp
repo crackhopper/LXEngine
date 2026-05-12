@@ -79,7 +79,7 @@ struct CommandFixture {
     cameraNode->setName("camera_main");
     const auto cameraComponent = cameraNode->addComponent<CameraComponent>();
     camera = &cameraComponent->get();
-    camera->fovY = 60.0f;
+    camera->setFovY(60.0f);
     scene->addCamera(cameraNode);
 
     lightNode->setName("dir_light");
@@ -147,7 +147,7 @@ struct SceneViewerPickFixture {
     editorCameraNode->setName("editor_cam");
     auto editorCamera =
         editorCameraNode->addComponent<LX_core::CameraComponent>();
-    editorCamera->get().aspect = 1.0f;
+    editorCamera->get().setAspect(1.0f);
     scene->addCamera(editorCameraNode);
 
     gameCameraNode->setName("game_cam");
@@ -479,9 +479,11 @@ void testBuiltinAddRemoveSetCommands() {
   runtimeEvents.clear();
   const CommandResult setFov = fixture.bus.dispatch("set /camera_main.fov 75");
   EXPECT(setFov.ok, "set fov succeeds");
-  EXPECT(nearlyEqual(fixture.camera->fovY, 75.0f),
+  EXPECT(nearlyEqual(fixture.camera->getFovY(), 75.0f),
          "set fov updates camera component");
   EXPECT(!runtimeEvents.empty(), "set fov should emit a runtime event");
+  EXPECT(runtimeEvents.size() == 1,
+         "set fov should emit exactly one camera-properties runtime event");
   EXPECT(runtimeEvents.back().type == LX_core::SceneEventType::SceneNodeChanged &&
              runtimeEvents.back().path == "/camera_main" &&
              runtimeEvents.back().aspects.size() == 1 &&
@@ -505,18 +507,18 @@ void testBuiltinAddRemoveSetCommands() {
 
   const CommandResult setNear = fixture.bus.dispatch("set /camera_main.near 0.5");
   EXPECT(setNear.ok, "set near succeeds");
-  EXPECT(nearlyEqual(fixture.camera->nearPlane, 0.5f),
+  EXPECT(nearlyEqual(fixture.camera->getNearPlane(), 0.5f),
          "set near updates camera");
 
   const CommandResult setFar = fixture.bus.dispatch("set /camera_main.far 250");
   EXPECT(setFar.ok, "set far succeeds");
-  EXPECT(nearlyEqual(fixture.camera->farPlane, 250.0f),
+  EXPECT(nearlyEqual(fixture.camera->getFarPlane(), 250.0f),
          "set far updates camera");
 
   const CommandResult setProjection =
       fixture.bus.dispatch("set /camera_main.projection orthographic");
   EXPECT(setProjection.ok, "set projection succeeds");
-  EXPECT(fixture.camera->type == CameraType::Orthographic,
+  EXPECT(fixture.camera->getProjectionType() == CameraType::Orthographic,
          "set projection updates camera type");
 
   const CommandResult setCulling =
@@ -538,14 +540,14 @@ void testBuiltinAddRemoveSetCommands() {
   EXPECT(setLightIntensity.ok, "set light intensity succeeds");
   const auto dirLight = std::dynamic_pointer_cast<DirectionalLight>(
       fixture.scene->getLights().front());
-  EXPECT(nearlyEqual(dirLight->ubo->param.dir.x, 0.0f) &&
-             nearlyEqual(dirLight->ubo->param.dir.y, -1.0f) &&
-             nearlyEqual(dirLight->ubo->param.dir.z, 0.0f),
+  EXPECT(nearlyEqual(dirLight->getDirection().x, 0.0f) &&
+             nearlyEqual(dirLight->getDirection().y, -1.0f) &&
+             nearlyEqual(dirLight->getDirection().z, 0.0f),
          "set direction updates scene light");
-  EXPECT(nearlyEqual(dirLight->ubo->param.color.x, 0.2f) &&
-             nearlyEqual(dirLight->ubo->param.color.y, 0.4f) &&
-             nearlyEqual(dirLight->ubo->param.color.z, 0.6f) &&
-             nearlyEqual(dirLight->ubo->param.color.w, 3.5f),
+  EXPECT(nearlyEqual(dirLight->getColor().x, 0.2f) &&
+             nearlyEqual(dirLight->getColor().y, 0.4f) &&
+             nearlyEqual(dirLight->getColor().z, 0.6f) &&
+             nearlyEqual(dirLight->getIntensity(), 3.5f),
          "set color/intensity updates scene light");
 
   fixture.lightNode->setName("sun");
@@ -554,7 +556,7 @@ void testBuiltinAddRemoveSetCommands() {
   fillNode->setParent(fixture.world);
   fixture.scene->addRenderable(fillNode);
   auto fillLight = std::make_shared<DirectionalLight>();
-  fillLight->ubo->param.color.w = 1.25f;
+  fillLight->setIntensity(1.25f);
   fixture.scene->attachLight(fillNode, fillLight);
 
   runtimeEvents.clear();
@@ -562,11 +564,13 @@ void testBuiltinAddRemoveSetCommands() {
       fixture.bus.dispatch("set /sun.intensity 4.5");
   EXPECT(setSunIntensity.ok,
          "set light intensity should work for renamed light nodes");
-  EXPECT(nearlyEqual(dirLight->ubo->param.color.w, 4.5f),
+  EXPECT(nearlyEqual(dirLight->getIntensity(), 4.5f),
          "renamed light node should still target its attached light");
-  EXPECT(nearlyEqual(fillLight->ubo->param.color.w, 1.25f),
+  EXPECT(nearlyEqual(fillLight->getIntensity(), 1.25f),
          "renamed light command should not mutate other scene lights");
   EXPECT(!runtimeEvents.empty(), "set intensity should emit a runtime event");
+  EXPECT(runtimeEvents.size() == 1,
+         "renamed light set should emit exactly one light-properties runtime event");
   EXPECT(runtimeEvents.back().type == LX_core::SceneEventType::SceneNodeChanged &&
              runtimeEvents.back().path == "/sun" &&
              runtimeEvents.back().aspects.size() == 1 &&
@@ -634,7 +638,7 @@ void testBuiltinCamAndPreviewCommands() {
 
   const CommandResult camFov = fixture.bus.dispatch("cam fov 80");
   EXPECT(camFov.ok, "cam fov succeeds");
-  EXPECT(nearlyEqual(fixture.camera->fovY, 80.0f),
+  EXPECT(nearlyEqual(fixture.camera->getFovY(), 80.0f),
          "cam fov updates active camera");
 
   const CommandResult camLookAt =

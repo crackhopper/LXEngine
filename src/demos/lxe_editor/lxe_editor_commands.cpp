@@ -124,10 +124,10 @@ makeCameraJson(const LX_core::SceneNodeSharedPtr& node) {
       << ",\"eye\":" << makeVec3Json(camera->get().getEyePosition())
       << ",\"target\":" << makeVec3Json(camera->get().getLookTarget())
       << ",\"up\":" << makeVec3Json(camera->get().getUpVector())
-      << ",\"fovY\":" << formatFloat(camera->get().fovY)
-      << ",\"near\":" << formatFloat(camera->get().nearPlane)
-      << ",\"far\":" << formatFloat(camera->get().farPlane)
-      << ",\"aspect\":" << formatFloat(camera->get().aspect) << "}";
+      << ",\"fovY\":" << formatFloat(camera->get().getFovY())
+      << ",\"near\":" << formatFloat(camera->get().getNearPlane())
+      << ",\"far\":" << formatFloat(camera->get().getFarPlane())
+      << ",\"aspect\":" << formatFloat(camera->get().getAspect()) << "}";
   return oss.str();
 }
 
