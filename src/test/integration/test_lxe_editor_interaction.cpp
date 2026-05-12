@@ -171,17 +171,17 @@ void runSceneViewerMainPathSelectionStep(Fixture& fixture,
                                          LX_core::MockInputState& input,
                                          const bool wantsKeyboard,
                                          const bool wantsMouse,
-                                         const bool selectionModeActive) {
+                                         const bool gizmoConsumesMouse) {
   if (LX_demo::lxe_editor::shouldProcessSelectionMode(
           fixture.editorState.isPreviewEnabled(), wantsMouse,
-          selectionModeActive
-              ? LX_demo::lxe_editor::SceneInputEditMode::Selection
-              : LX_demo::lxe_editor::SceneInputEditMode::Orbit)) {
+          gizmoConsumesMouse,
+          LX_demo::lxe_editor::SceneInputEditMode::Selection)) {
     fixture.controller.updateSelectionMode(
         input, LX_core::Vec2f{800.0f, 600.0f});
   }
   EXPECT(!LX_demo::lxe_editor::shouldProcessCameraRig(
              fixture.editorState.isPreviewEnabled(), wantsKeyboard, wantsMouse,
+             gizmoConsumesMouse,
              LX_demo::lxe_editor::SceneInputEditMode::Selection),
          "selection mode test harness should not route into the camera rig branch");
 }
@@ -273,7 +273,7 @@ void testPreviewModeSuppressesSelectionInMainPath() {
   input.setMouseButtonDown(LX_core::MouseButton::Left, true);
 
   fixture.editorState.setPreviewEnabled(true);
-  runSceneViewerMainPathSelectionStep(fixture, input, false, false, true);
+  runSceneViewerMainPathSelectionStep(fixture, input, false, false, false);
 
   EXPECT(fixture.editorState.getSelected().empty(),
          "preview mode should suppress selection clicks in the lxe_editor main path");
@@ -287,7 +287,7 @@ void testSelectionModeAllowsMousePickingWhileKeyboardIsCaptured() {
   input.setMousePosition({400.0f, 300.0f});
   input.setMouseButtonDown(LX_core::MouseButton::Left, true);
 
-  runSceneViewerMainPathSelectionStep(fixture, input, true, false, true);
+  runSceneViewerMainPathSelectionStep(fixture, input, true, false, false);
 
   const auto selected = fixture.editorState.getSelected();
   EXPECT(selected.size() == 1 && selected.front() == fixture.targetNode,
@@ -296,12 +296,45 @@ void testSelectionModeAllowsMousePickingWhileKeyboardIsCaptured() {
 
 void testSelectionModeStillAllowsCameraRigRouting() {
   EXPECT(LX_demo::lxe_editor::shouldProcessSelectionMode(
-             false, false, LX_demo::lxe_editor::SceneInputEditMode::Selection),
-         "selection mode should still process selection clicks");
-  EXPECT(LX_demo::lxe_editor::shouldProcessCameraRig(
              false, false, false,
              LX_demo::lxe_editor::SceneInputEditMode::Selection),
+         "selection mode should still process selection clicks");
+  EXPECT(LX_demo::lxe_editor::shouldProcessCameraRig(
+             false, false, false, false,
+             LX_demo::lxe_editor::SceneInputEditMode::Selection),
          "selection mode should still allow camera rig updates");
+}
+
+void testSelectionRoutingIsSuppressedByGizmoMouse() {
+  EXPECT(!LX_demo::lxe_editor::shouldProcessSelectionMode(
+             false, false, true,
+             LX_demo::lxe_editor::SceneInputEditMode::Selection),
+         "gizmo hover/use should suppress selection routing");
+}
+
+void testCameraRoutingIsSuppressedByGizmoMouse() {
+  EXPECT(!LX_demo::lxe_editor::shouldProcessCameraRig(
+             false, false, false, true,
+             LX_demo::lxe_editor::SceneInputEditMode::Selection),
+         "gizmo hover/use should suppress camera rig routing");
+}
+
+void testCameraRoutingRunsInSelectionModeWithoutPreviewOrUiCapture() {
+  EXPECT(LX_demo::lxe_editor::shouldProcessCameraRig(
+             false, false, false, false,
+             LX_demo::lxe_editor::SceneInputEditMode::Selection),
+         "camera rig should run in selection mode when preview and UI capture are off");
+}
+
+void testPreviewSuppressesSelectionAndCameraRouting() {
+  EXPECT(!LX_demo::lxe_editor::shouldProcessSelectionMode(
+             true, false, false,
+             LX_demo::lxe_editor::SceneInputEditMode::Selection),
+         "preview should suppress selection routing");
+  EXPECT(!LX_demo::lxe_editor::shouldProcessCameraRig(
+             true, false, false, false,
+             LX_demo::lxe_editor::SceneInputEditMode::Selection),
+         "preview should suppress camera rig routing");
 }
 
 void testSelectionDebugStateTracksHitPointAndSelection() {
@@ -481,6 +514,10 @@ int main() {
   testPreviewModeSuppressesSelectionInMainPath();
   testSelectionModeAllowsMousePickingWhileKeyboardIsCaptured();
   testSelectionModeStillAllowsCameraRigRouting();
+  testSelectionRoutingIsSuppressedByGizmoMouse();
+  testCameraRoutingIsSuppressedByGizmoMouse();
+  testCameraRoutingRunsInSelectionModeWithoutPreviewOrUiCapture();
+  testPreviewSuppressesSelectionAndCameraRouting();
   testSelectionDebugStateTracksHitPointAndSelection();
   testSelectionDebugProjectionRoundTripsBackToClickedPixel();
   testSelectionDebugUsesNegativeNdcYForLowerScreenPixels();

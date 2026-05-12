@@ -238,6 +238,10 @@ SceneViewRect UiOverlay::sceneViewRect(const LX_core::Vec2f &windowSize) const {
   return makeSceneViewRect(windowSize.x, windowSize.y, 0.0f, 0.0f, 0.0f, 0.0f);
 }
 
+bool UiOverlay::isGizmoCapturingMouse() const {
+  return m_viewportOverlay && m_viewportOverlay->get().isGizmoCapturingMouse();
+}
+
 void UiOverlay::setEditorMode(const EditorMode mode) { m_editorMode = mode; }
 
 void UiOverlay::setCameraControlMode(const CameraControlMode mode) {

@@ -53,15 +53,6 @@ namespace demo = LX_demo::lxe_editor;
 
 namespace {
 
-[[nodiscard]] demo::SceneInputEditMode
-toSceneInputEditMode(const demo::UiOverlay::EditorMode mode) {
-  switch (mode) {
-  case demo::UiOverlay::EditorMode::Selection:
-    return demo::SceneInputEditMode::Selection;
-  }
-  return demo::SceneInputEditMode::Selection;
-}
-
 [[nodiscard]] demo::ApiEditorMode
 toApiEditorMode(const demo::UiOverlay::EditorMode mode) {
   switch (mode) {
@@ -427,10 +418,12 @@ int main(int argc, char **argv) {
       session.gameCamera().updateMatrices();
 
       const demo::SceneInputEditMode inputMode =
-          toSceneInputEditMode(ui.currentEditorMode());
+          demo::SceneInputEditMode::Selection;
+      const bool gizmoConsumesMouse = ui.isGizmoCapturingMouse();
       bool cameraUpdated = false;
       if (demo::shouldProcessSelectionMode(editorState.isPreviewEnabled(),
-                                           wantsMouse, inputMode)) {
+                                           wantsMouse, gizmoConsumesMouse,
+                                           inputMode)) {
         session.sceneInteraction().updateSelectionMode(
             *input,
             ui.sceneViewRect(LX_core::Vec2f{static_cast<float>(windowWidth),
@@ -438,16 +431,11 @@ int main(int argc, char **argv) {
         session.editorCamera().updateMatrices();
       }
       if (demo::shouldProcessCameraRig(editorState.isPreviewEnabled(),
-                                       wantsKeyboard, wantsMouse, inputMode)) {
-        if (inputMode == demo::SceneInputEditMode::Selection) {
-          const demo::SelectionNavigationMode navigationMode =
-              ui.selectionNavigationMode();
-          demo::SelectionCameraInput selectionNavigationInput(*input,
-                                                              navigationMode);
-          rig.update(selectionNavigationInput, clock.deltaTime());
-        } else {
-          rig.update(*input, clock.deltaTime());
-        }
+                                       wantsKeyboard, wantsMouse,
+                                       gizmoConsumesMouse, inputMode)) {
+        demo::SelectionCameraInput cameraInput(*input,
+                                               ui.selectionNavigationMode());
+        rig.update(cameraInput, clock.deltaTime());
         cameraUpdated = true;
       }
       if (!cameraUpdated) {

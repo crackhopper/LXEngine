@@ -3,16 +3,19 @@
 namespace LX_demo::lxe_editor {
 
 bool shouldProcessSelectionMode(const bool previewEnabled, const bool wantsMouse,
+                                const bool gizmoConsumesMouse,
                                 const SceneInputEditMode mode) {
-  return !previewEnabled && !wantsMouse &&
+  return !previewEnabled && !wantsMouse && !gizmoConsumesMouse &&
          mode == SceneInputEditMode::Selection;
 }
 
 bool shouldProcessCameraRig(const bool previewEnabled, const bool wantsKeyboard,
                             const bool wantsMouse,
+                            const bool gizmoConsumesMouse,
                             const SceneInputEditMode mode) {
   (void)mode;
-  return !previewEnabled && !wantsKeyboard && !wantsMouse;
+  return !previewEnabled && !wantsKeyboard && !wantsMouse &&
+         !gizmoConsumesMouse;
 }
 
 } // namespace LX_demo::lxe_editor

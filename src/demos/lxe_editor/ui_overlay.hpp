@@ -46,6 +46,7 @@ public:
   [[nodiscard]] SelectionNavigationMode selectionNavigationMode() const;
   [[nodiscard]] SceneViewRect
   sceneViewRect(const LX_core::Vec2f &windowSize) const;
+  [[nodiscard]] bool isGizmoCapturingMouse() const;
   void setEditorMode(EditorMode mode);
   void setCameraControlMode(CameraControlMode mode);
   [[nodiscard]] bool consumeConfigDirty();
