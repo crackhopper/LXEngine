@@ -130,6 +130,33 @@ class LxeEditorLeakCheckScriptTest(unittest.TestCase):
             summary = (output_dir / "summary.txt").read_text()
             self.assertIn("sanitizer_status=passed", summary)
 
+    def test_sanitizer_mode_surfaces_nonzero_editor_exit_code(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            tools = self._write_stub_tools(root, editor_sleep="0", editor_exit_code="7")
+            output_dir = root / "artifacts"
+            env = self._script_env(tools)
+
+            completed = subprocess.run(
+                [
+                    str(SCRIPT_PATH),
+                    "sanitizer",
+                    "--output-dir",
+                    str(output_dir),
+                    "--build-dir",
+                    str(root / "build-asan"),
+                ],
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+
+            self.assertNotEqual(completed.returncode, 0)
+            summary = (output_dir / "summary.txt").read_text()
+            self.assertIn("sanitizer_status=failed", summary)
+            self.assertNotIn("editor smoke timeout", (output_dir / "sanitizer.log").read_text())
+
     def test_sanitizer_smoke_times_out_and_terminates_uncooperative_editor(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -296,6 +323,7 @@ class LxeEditorLeakCheckScriptTest(unittest.TestCase):
         root: Path,
         *,
         editor_sleep: str = "1",
+        editor_exit_code: str = "0",
         ignore_term: bool = False,
     ) -> dict[str, Path]:
         bin_dir = root / "bin"
@@ -335,7 +363,7 @@ if [[ "{str(ignore_term).lower()}" == "true" ]]; then
 else
   sleep {editor_sleep}
 fi
-exit 0
+exit {editor_exit_code}
 """,
         )
         stub_log = root / "stub.log"

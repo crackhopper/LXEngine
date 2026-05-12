@@ -260,7 +260,9 @@ run_bounded_editor_smoke() {
     stop_process_group_with_grace "${editor_pid}" "${SOAK_TERMINATION_GRACE_SECONDS}"
   fi
 
-  if ! wait "${editor_pid}"; then
+  if wait "${editor_pid}"; then
+    editor_exit_status=0
+  else
     editor_exit_status=$?
   fi
 
