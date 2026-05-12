@@ -159,6 +159,11 @@ class LxeEditorLeakCheckScriptTest(unittest.TestCase):
             self.assertTrue((output_dir / "soak.stderr.log").exists())
             rss_lines = (output_dir / "rss.csv").read_text().strip().splitlines()
             self.assertGreaterEqual(len(rss_lines), 2)
+            summary = (output_dir / "summary.txt").read_text()
+            self.assertIn("soak_status=passed", summary)
+            self.assertIn("rss_start_kb=", summary)
+            self.assertIn("rss_end_kb=", summary)
+            self.assertIn("rss_peak_kb=", summary)
 
     def test_all_mode_runs_both_paths_and_reports_them(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -193,8 +198,19 @@ class LxeEditorLeakCheckScriptTest(unittest.TestCase):
             self.assertTrue((output_dir / "rss.csv").exists())
             summary = (output_dir / "summary.txt").read_text()
             self.assertIn("mode=all", summary)
-            self.assertIn("sanitizer_status=not_run", summary)
-            self.assertIn("soak_status=not_run", summary)
+            self.assertIn("sanitizer_status=passed", summary)
+            self.assertIn("soak_status=passed", summary)
+            self.assertIn("rss_start_kb=", summary)
+            self.assertIn("rss_end_kb=", summary)
+            self.assertIn("rss_peak_kb=", summary)
+            stub_log = (root / "stub.log").read_text().splitlines()
+            self.assertTrue(any(line.startswith("stub cmake ") for line in stub_log))
+            self.assertTrue(any(line.startswith("stub ninja ") for line in stub_log))
+            self.assertTrue(any(line.startswith("stub ctest ") for line in stub_log))
+            self.assertTrue(
+                stub_log.index(next(line for line in stub_log if line.startswith("stub cmake ")))
+                < stub_log.index(next(line for line in stub_log if line.startswith("stub lxe_editor ")))
+            )
 
     def _script_env(self, tools: dict[str, Path]) -> dict[str, str]:
         env = os.environ.copy()
