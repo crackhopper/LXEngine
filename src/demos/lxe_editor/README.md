@@ -242,7 +242,7 @@ interaction, and transport internals.
 |-------------|--------|
 | `F1` | Toggle the Help panel |
 | `F` | Toggle preview between the editor and gameplay camera paths |
-| Toolbar | Switch Selection editor mode and Orbit / FreeFly camera controls separately |
+| Toolbar | Switch Selection editor mode and Orbit / FreeFly camera controls; trigger reset editor camera, preview, debug, and preferences |
 | `Esc` | Deselect current node in Selection mode when preview is off |
 | `Delete` | Remove the selected node when preview is off |
 

@@ -149,7 +149,7 @@ Control mappings SHALL include:
 
 The demo SHALL register its UI drawing function through `LX_core::backend::VulkanRenderer::setDrawUiCallback(std::function<void()>)`. It SHALL NOT assume that `gpu::Renderer` exposes a UI callback API. The registered callback SHALL render, at minimum:
 
-1. A **Toolbar** panel with editor-mode and preview controls
+1. A **Toolbar** panel with `Selection` editor mode, `Orbit` / `FreeFly` camera controls, and functional buttons for reset editor camera, preview, debug, and preferences
 2. A **Stats** panel showing frame count, delta time (ms), smoothed FPS, preview state, current editor mode, and current camera control mode
 3. A **Scene Tree** panel and **Inspector** panel sharing editor state
 4. A **Command Console** panel
