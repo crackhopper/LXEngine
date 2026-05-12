@@ -49,7 +49,6 @@ void VulkanCommandBufferManager::beginFrame(u32 currentFrameIndex) {
 
   CommandFrameContext &frame = m_frameContexts[currentFrameIndex];
   vkResetCommandPool(m_device.getLogicalDevice(), frame.pool, 0);
-  frame.activeBuffers.clear();
   frame.nextAvailableBuffer = 0;
 }
 
