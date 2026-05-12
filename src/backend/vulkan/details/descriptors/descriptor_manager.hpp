@@ -87,6 +87,9 @@ public:
   void reset();
 
   VkDevice getDeviceHandle() const;
+  usize getFreeSetCount(u32 frameIndex) const;
+  usize getPendingReturnCount(u32 frameIndex) const;
+  usize getLayoutCount() const;
 
 private:
   VulkanDevice &m_device;

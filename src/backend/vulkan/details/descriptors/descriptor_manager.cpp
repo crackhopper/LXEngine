@@ -231,6 +231,24 @@ bool shouldLogBurst(const T &next, T &state, int &remainingFrames) {
 }
 } // namespace
 
+usize VulkanDescriptorManager::getFreeSetCount(const u32 frameIndex) const {
+  if (frameIndex >= m_frameContexts.size()) {
+    return 0;
+  }
+  return countFreeDescriptorSets(m_frameContexts[frameIndex].freeSets);
+}
+
+usize VulkanDescriptorManager::getPendingReturnCount(const u32 frameIndex) const {
+  if (frameIndex >= m_frameContexts.size()) {
+    return 0;
+  }
+  return m_frameContexts[frameIndex].pendingReturn.size();
+}
+
+usize VulkanDescriptorManager::getLayoutCount() const {
+  return m_layoutCache.size();
+}
+
 VkDescriptorSetLayout VulkanDescriptorManager::getOrCreateLayout(
     const std::vector<LX_core::ShaderResourceBinding> &bindingsIn) {
   DescriptorLayoutKey key{bindingsIn};

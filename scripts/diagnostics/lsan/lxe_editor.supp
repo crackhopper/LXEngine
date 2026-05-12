@@ -1,0 +1,7 @@
+# Known external leak stacks observed during SDL/X11/desktop-service teardown
+# under sanitizer-enabled lxe_editor smoke runs. These patterns intentionally
+# target system-library frames rather than engine symbols.
+leak:dbus_bus_register
+leak:dbus_connection_send_with_reply_and_block
+leak:dbus_pending_call_block
+leak:_dbus_message_loader_queue_messages

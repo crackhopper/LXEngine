@@ -11,6 +11,7 @@ SCENE_PATH=""
 DURATION_SECONDS="600"
 SAMPLE_INTERVAL_SECONDS="5"
 OUTPUT_DIR=""
+LSAN_SUPPRESSIONS_MODE="off"
 
 usage() {
   cat >&2 <<'EOF'
@@ -20,6 +21,7 @@ usage: scripts/diagnostics/lxe_editor_leak_check.sh <sanitizer|soak|all> [option
   --duration <seconds>
   --sample-interval <seconds>
   --output-dir <dir>
+  --lsan-suppressions <on|off>
 EOF
 }
 
@@ -32,6 +34,22 @@ require_option_value() {
     exit 2
   fi
   printf '%s' "${option_value}"
+}
+
+require_toggle_value() {
+  local option_name="${1}"
+  local option_value="${2:-}"
+  option_value="$(require_option_value "${option_name}" "${option_value}")"
+  case "${option_value}" in
+    on|off)
+      printf '%s' "${option_value}"
+      ;;
+    *)
+      echo "invalid value for ${option_name}: ${option_value} (expected on|off)" >&2
+      usage
+      exit 2
+      ;;
+  esac
 }
 
 while [[ $# -gt 0 ]]; do
@@ -54,6 +72,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --output-dir)
       OUTPUT_DIR="$(require_option_value "$1" "${2:-}")"
+      shift 2
+      ;;
+    --lsan-suppressions)
+      LSAN_SUPPRESSIONS_MODE="$(require_toggle_value "$1" "${2:-}")"
       shift 2
       ;;
     *)
@@ -94,6 +116,7 @@ SOAK_TERMINATION_GRACE_SECONDS="${LX_LEAK_CHECK_SOAK_TERMINATION_GRACE_SECONDS:-
 EDITOR_API_HOST="${LX_LEAK_CHECK_EDITOR_API_HOST:-127.0.0.1}"
 EDITOR_API_PORT="${LX_LEAK_CHECK_EDITOR_API_PORT:-37681}"
 EDITOR_API_TOKEN_FILE="${LX_LEAK_CHECK_EDITOR_API_TOKEN_FILE:-${REPO_ROOT}/data/lxe_editor/api_token.txt}"
+LSAN_SUPPRESSIONS_FILE="${REPO_ROOT}/scripts/diagnostics/lsan/lxe_editor.supp"
 
 mkdir -p "${OUTPUT_DIR}"
 mkdir -p "${BUILD_DIR}"
@@ -134,7 +157,36 @@ merge_asan_options() {
   export ASAN_OPTIONS="${merged_options}"
 }
 
+merge_lsan_options() {
+  local merged_options=""
+  local option
+  local -a lsan_parts=()
+
+  if [[ -n "${LSAN_OPTIONS:-}" ]]; then
+    IFS=':' read -r -a lsan_parts <<< "${LSAN_OPTIONS}"
+    for option in "${lsan_parts[@]}"; do
+      if [[ -z "${option}" || "${option}" == suppressions=* ]]; then
+        continue
+      fi
+      if [[ -n "${merged_options}" ]]; then
+        merged_options+=":"
+      fi
+      merged_options+="${option}"
+    done
+  fi
+
+  if [[ "${LSAN_SUPPRESSIONS_MODE}" == "on" ]]; then
+    if [[ -n "${merged_options}" ]]; then
+      merged_options+=":"
+    fi
+    merged_options+="suppressions=${LSAN_SUPPRESSIONS_FILE}"
+  fi
+
+  export LSAN_OPTIONS="${merged_options}"
+}
+
 merge_asan_options
+merge_lsan_options
 
 GIT_COMMIT="$(git -C "${REPO_ROOT}" rev-parse HEAD)"
 
@@ -209,6 +261,9 @@ write_env() {
     echo "editor_api_host=${EDITOR_API_HOST}"
     echo "editor_api_port=${EDITOR_API_PORT}"
     echo "editor_api_token_file=${EDITOR_API_TOKEN_FILE}"
+    echo "lsan_suppressions=${LSAN_SUPPRESSIONS_MODE}"
+    echo "lsan_suppressions_file=${LSAN_SUPPRESSIONS_FILE}"
+    echo "lsan_options=${LSAN_OPTIONS}"
     echo "asan_options=${ASAN_OPTIONS}"
     echo "git_commit=${GIT_COMMIT}"
   } > "${OUTPUT_DIR}/env.txt"

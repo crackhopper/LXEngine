@@ -240,6 +240,58 @@ void test_canonical_parameters_shared_across_passes() {
   std::cout << "  canonical parameters shared across passes\n";
 }
 
+void test_vector_parameters_load_without_aliasing_yaml_nodes() {
+  std::cout << "\n-- test_vector_parameters_load_without_aliasing_yaml_nodes --\n";
+  auto root = findProjectRoot();
+  if (root.empty()) {
+    std::cerr << "  SETUP: project root not found; skipping\n";
+    return;
+  }
+
+  auto matPath = root / "assets" / "materials" / "test_vector_params.material";
+  {
+    std::ofstream out(matPath);
+    out << "shader: pbr\n\n"
+           "parameters:\n"
+           "  MaterialUBO.baseColorFactor: [0.25, 0.5, 0.75, 1.0]\n"
+           "  MaterialUBO.metallicFactor: 0.9\n"
+           "  MaterialUBO.roughnessFactor: 0.2\n"
+           "  MaterialUBO.ao: 0.8\n"
+           "resources:\n"
+            "  albedoMap: white\n";
+  }
+
+  auto prev = fs::current_path();
+  fs::current_path(root);
+  auto mat = loadGenericMaterial(matPath);
+  fs::current_path(prev);
+  fs::remove(matPath);
+
+  REQUIRE(mat != nullptr);
+
+  const auto &buf = mat->getParameterBufferBytes(StringID("MaterialUBO"));
+  REQUIRE(buf.size() >= 28);
+
+  float baseColor[4] = {};
+  float metallic = 0.0f;
+  float roughness = 0.0f;
+  float ao = 0.0f;
+  std::memcpy(baseColor, buf.data(), sizeof(baseColor));
+  std::memcpy(&metallic, buf.data() + 16, sizeof(float));
+  std::memcpy(&roughness, buf.data() + 20, sizeof(float));
+  std::memcpy(&ao, buf.data() + 24, sizeof(float));
+
+  REQUIRE(baseColor[0] == 0.25f);
+  REQUIRE(baseColor[1] == 0.5f);
+  REQUIRE(baseColor[2] == 0.75f);
+  REQUIRE(baseColor[3] == 1.0f);
+  REQUIRE(metallic == 0.9f);
+  REQUIRE(roughness == 0.2f);
+  REQUIRE(ao == 0.8f);
+
+  std::cout << "  vector parameters survive YAML iteration safely\n";
+}
+
 void test_placeholder_textures() {
   std::cout << "\n-- test_placeholder_textures --\n";
 
@@ -278,6 +330,7 @@ int main() {
   test_pbr_example_material_loads();
   test_per_pass_shader_override();
   test_canonical_parameters_shared_across_passes();
+  test_vector_parameters_load_without_aliasing_yaml_nodes();
 
   std::cout << "\n========================================\n";
   if (s_failures == 0) {

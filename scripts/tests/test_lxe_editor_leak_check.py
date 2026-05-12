@@ -32,6 +32,7 @@ class LxeEditorLeakCheckScriptTest(unittest.TestCase):
             "--duration",
             "--sample-interval",
             "--output-dir",
+            "--lsan-suppressions",
         ):
             with self.subTest(option=option):
                 completed = subprocess.run(
@@ -98,6 +99,99 @@ class LxeEditorLeakCheckScriptTest(unittest.TestCase):
             env_text = (output_dir / "env.txt").read_text()
             self.assertIn("asan_options=foo=bar:detect_leaks=1", env_text)
             self.assertNotIn("detect_leaks=0", env_text)
+
+    def test_sanitizer_mode_uses_repo_lsan_suppression_file_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            tools = self._write_stub_tools(root, fake_api=True)
+            output_dir = root / "artifacts"
+            env = self._script_env(tools)
+
+            completed = subprocess.run(
+                [
+                    str(SCRIPT_PATH),
+                    "sanitizer",
+                    "--output-dir",
+                    str(output_dir),
+                    "--build-dir",
+                    str(root / "build-asan"),
+                ],
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            env_text = (output_dir / "env.txt").read_text()
+            expected = REPO_ROOT / "scripts" / "diagnostics" / "lsan" / "lxe_editor.supp"
+            self.assertIn("lsan_suppressions=off", env_text)
+            self.assertIn(f"lsan_suppressions_file={expected}", env_text)
+            self.assertIn("lsan_options=", env_text)
+            self.assertNotIn(f"lsan_options=suppressions={expected}", env_text)
+
+    def test_sanitizer_mode_enables_repo_lsan_suppressions_when_requested(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            tools = self._write_stub_tools(root, fake_api=True)
+            output_dir = root / "artifacts"
+            env = self._script_env(tools)
+
+            completed = subprocess.run(
+                [
+                    str(SCRIPT_PATH),
+                    "sanitizer",
+                    "--output-dir",
+                    str(output_dir),
+                    "--build-dir",
+                    str(root / "build-asan"),
+                    "--lsan-suppressions",
+                    "on",
+                ],
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            env_text = (output_dir / "env.txt").read_text()
+            expected = REPO_ROOT / "scripts" / "diagnostics" / "lsan" / "lxe_editor.supp"
+            self.assertIn("lsan_suppressions=on", env_text)
+            self.assertIn(f"lsan_options=suppressions={expected}", env_text)
+
+    def test_sanitizer_mode_merges_existing_lsan_options_with_repo_suppressions(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            tools = self._write_stub_tools(root, fake_api=True)
+            output_dir = root / "artifacts"
+            env = self._script_env(tools)
+            env["LSAN_OPTIONS"] = "report_objects=1:print_suppressions=0"
+
+            completed = subprocess.run(
+                [
+                    str(SCRIPT_PATH),
+                    "sanitizer",
+                    "--output-dir",
+                    str(output_dir),
+                    "--build-dir",
+                    str(root / "build-asan"),
+                    "--lsan-suppressions",
+                    "on",
+                ],
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            env_text = (output_dir / "env.txt").read_text()
+            expected = REPO_ROOT / "scripts" / "diagnostics" / "lsan" / "lxe_editor.supp"
+            self.assertIn(
+                f"lsan_options=report_objects=1:print_suppressions=0:suppressions={expected}",
+                env_text,
+            )
 
     def test_sanitizer_mode_invokes_configure_build_tests_and_editor_smoke(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

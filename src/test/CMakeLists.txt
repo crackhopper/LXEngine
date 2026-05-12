@@ -32,6 +32,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_orbit_camera_controller
   test_freefly_camera_controller
   test_imgui_overlay
+  test_vulkan_renderer_memory_probe
   test_command_bus
   test_command_bus_v2
   test_scene_document
@@ -50,6 +51,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_lxe_editor_session
   test_lxe_editor_api_service
   test_lxe_editor_api_server
+  test_lxe_editor_memory_probe
   test_gltf_loader
 
   # test_render_sphere
@@ -67,7 +69,9 @@ set(TEST_VIDEO_DEVICE_EXE_LIST
   test_vulkan_resource_manager
   test_pipeline_cache
   test_imgui_overlay
+  test_vulkan_renderer_memory_probe
   test_command_bus
+  test_lxe_editor_memory_probe
 )
 
 function(lx_register_ctest test_name)
@@ -131,6 +135,11 @@ endif()
 if(USE_SDL AND TARGET test_imgui_overlay)
   target_compile_definitions(test_imgui_overlay PRIVATE USE_SDL=1)
   target_link_libraries(test_imgui_overlay PRIVATE imgui)
+endif()
+
+if(USE_SDL AND TARGET test_vulkan_renderer_memory_probe)
+  target_compile_definitions(test_vulkan_renderer_memory_probe PRIVATE USE_SDL=1)
+  target_link_libraries(test_vulkan_renderer_memory_probe PRIVATE imgui)
 endif()
 
 if(TARGET test_command_bus)
@@ -245,6 +254,30 @@ if(TARGET test_lxe_editor_api_server)
   if(WIN32)
     target_link_libraries(test_lxe_editor_api_server PRIVATE ws2_32)
   endif()
+endif()
+
+if(TARGET test_lxe_editor_memory_probe)
+  target_sources(test_lxe_editor_memory_probe PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_session.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/camera_rig.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_config_state.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_data_state.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_camera_state.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_commands.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_builder.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_catalog.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_document.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_interaction_controller.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_input_routing.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_runtime.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_session.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/ui_overlay.cpp
+  )
+  target_include_directories(test_lxe_editor_memory_probe PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/..
+    ${CMAKE_CURRENT_SOURCE_DIR}/../infra/external/yaml-cpp/include
+  )
+  target_link_libraries(test_lxe_editor_memory_probe PRIVATE imgui yaml-cpp::yaml-cpp)
 endif()
 
 if(TARGET test_scene_document)

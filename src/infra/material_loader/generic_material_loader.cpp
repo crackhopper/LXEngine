@@ -158,7 +158,7 @@ void applyParameters(LX_core::MaterialInstance &mat,
 
   for (auto it = paramsNode.begin(); it != paramsNode.end(); ++it) {
     const auto key = it->first.as<std::string>();
-    const auto &val = it->second;
+    const YAML::Node valueNode = it->second;
     auto [bindingName, memberName] = parseParamKey(key);
 
     const auto bindingId = LX_core::StringID(bindingName);
@@ -186,13 +186,13 @@ void applyParameters(LX_core::MaterialInstance &mat,
 
     switch (memberType) {
     case LX_core::ShaderPropertyType::Float:
-      mat.setParameter(bindingId, memberId, val.as<float>());
+      mat.setParameter(bindingId, memberId, valueNode.as<float>());
       break;
     case LX_core::ShaderPropertyType::Int:
-      mat.setParameter(bindingId, memberId, val.as<i32>());
+      mat.setParameter(bindingId, memberId, valueNode.as<i32>());
       break;
     case LX_core::ShaderPropertyType::Vec3: {
-      auto seq = val.as<std::vector<float>>();
+      auto seq = valueNode.as<std::vector<float>>();
       if (seq.size() != 3)
         fatalLoader("Vec3 parameter '" + key + "' requires 3 values");
       LX_core::Vec3f v3{seq[0], seq[1], seq[2]};
@@ -200,7 +200,7 @@ void applyParameters(LX_core::MaterialInstance &mat,
       break;
     }
     case LX_core::ShaderPropertyType::Vec4: {
-      auto seq = val.as<std::vector<float>>();
+      auto seq = valueNode.as<std::vector<float>>();
       if (seq.size() != 4)
         fatalLoader("Vec4 parameter '" + key + "' requires 4 values");
       LX_core::Vec4f v4{seq[0], seq[1], seq[2], seq[3]};

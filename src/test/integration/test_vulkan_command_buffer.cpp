@@ -1,4 +1,5 @@
 #include "backend/vulkan/details/commands/command_buffer_manager.hpp"
+#include "backend/vulkan/details/descriptors/descriptor_manager.hpp"
 #include "backend/vulkan/details/render_objects/framebuffer.hpp"
 #include "backend/vulkan/details/render_objects/render_pass.hpp"
 #include "backend/vulkan/details/device_resources/texture.hpp"
@@ -164,6 +165,45 @@ int main() {
     cmd->endRenderPass();
 
     vkEndCommandBuffer(cmd->getHandle());
+
+    auto &descriptorMgr = device->getDescriptorManager();
+    const auto descriptorFootprint = [&descriptorMgr](const u32 frameCount) {
+      usize total = 0;
+      for (u32 frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
+        total += descriptorMgr.getFreeSetCount(frameIndex);
+        total += descriptorMgr.getPendingReturnCount(frameIndex);
+      }
+      return total;
+    };
+
+    const usize initialDescriptorFootprint = descriptorFootprint(maxFrameInFlight);
+    for (u32 frame = 0; frame < 600; ++frame) {
+      const u32 frameIndex = frame % maxFrameInFlight;
+      cmdBufferMgr->beginFrame(frameIndex);
+      descriptorMgr.beginFrame(frameIndex);
+      auto loopCmd = cmdBufferMgr->allocateBuffer();
+
+      VkCommandBufferBeginInfo loopBeginInfo{};
+      loopBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+      vkBeginCommandBuffer(loopCmd->getHandle(), &loopBeginInfo);
+      loopCmd->beginRenderPass(renderPass.getHandle(), framebuffer->getHandle(),
+                               extent, renderPass.getClearValues());
+      loopCmd->setViewport(extent.width, extent.height);
+      loopCmd->setScissor(extent.width, extent.height);
+      loopCmd->bindPipeline(pipeline);
+      loopCmd->bindResources(*resourceManager, pipeline, renderItem);
+      loopCmd->drawItem(renderItem);
+      loopCmd->endRenderPass();
+      vkEndCommandBuffer(loopCmd->getHandle());
+    }
+
+    const usize finalDescriptorFootprint = descriptorFootprint(maxFrameInFlight);
+    if (finalDescriptorFootprint > initialDescriptorFootprint + 16) {
+      std::cerr << "Descriptor footprint grew unexpectedly: initial="
+                << initialDescriptorFootprint << " final="
+                << finalDescriptorFootprint << "\n";
+      return 1;
+    }
 
     framebuffer.reset();
 

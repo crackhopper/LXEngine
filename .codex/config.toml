@@ -5,5 +5,5 @@ sandbox_mode = "danger-full-access"
 trust_level = "trusted"
 
 [mcp_servers.lxe_editor]
-url = "http://127.0.0.1:3768/mcp"
+url = "http://192.168.66.10:3768/mcp"
 bearer_token_env_var = "LXE_EDITOR_MCP_BEARER_TOKEN"
