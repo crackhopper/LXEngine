@@ -15,6 +15,7 @@
 #include "demos/lxe_editor/scene_interaction_controller.hpp"
 #include "demos/lxe_editor/scene_input_routing.hpp"
 #include "demos/lxe_editor/scene_view_rect.hpp"
+#include "demos/lxe_editor/selection_camera_input.hpp"
 
 #include <cmath>
 #include <iostream>
@@ -39,6 +40,11 @@ constexpr float kEps = 2e-3f;
 [[nodiscard]] bool approx(const float a, const float b,
                           const float eps = kEps) {
   return std::fabs(a - b) <= eps;
+}
+
+[[nodiscard]] bool approx(const LX_core::Vec2f& a, const LX_core::Vec2f& b,
+                          const float eps = kEps) {
+  return approx(a.x, b.x, eps) && approx(a.y, b.y, eps);
 }
 
 [[nodiscard]] std::optional<LX_core::Vec2f> projectWorldPointToViewport(
@@ -178,12 +184,10 @@ void runSceneViewerMainPathSelectionStep(Fixture& fixture,
           LX_demo::lxe_editor::SceneInputEditMode::Selection)) {
     fixture.controller.updateSelectionMode(
         input, LX_core::Vec2f{800.0f, 600.0f});
+  } else {
+    fixture.controller.cancelPendingSelectionClick(input);
   }
-  EXPECT(!LX_demo::lxe_editor::shouldProcessCameraRig(
-             fixture.editorState.isPreviewEnabled(), wantsKeyboard, wantsMouse,
-             gizmoConsumesMouse,
-             LX_demo::lxe_editor::SceneInputEditMode::Selection),
-         "selection mode test harness should not route into the camera rig branch");
+  (void)wantsKeyboard;
 }
 
 void testSceneInteractionSelectsHitNodeOnClick() {
@@ -244,26 +248,53 @@ void testSelectionPickingIgnoresClicksOutsideSceneViewRect() {
          "outside-rect clicks should leave selection untouched");
 }
 
-void testSelectionModeConsumesOnlyLeftPressEdge() {
+void testSelectionModeDispatchesPickOnLeftRelease() {
   Fixture fixture;
   LX_core::MockInputState input;
   input.setMousePosition({400.0f, 300.0f});
 
   input.setMouseButtonDown(LX_core::MouseButton::Left, true);
   fixture.controller.updateSelectionMode(input, LX_core::Vec2f{800.0f, 600.0f});
-  EXPECT(fixture.bus.history().size() == 1,
-         "first left press should dispatch one selection command");
+  EXPECT(fixture.bus.history().empty(),
+         "left press should arm selection without dispatching immediately");
 
   fixture.controller.updateSelectionMode(input, LX_core::Vec2f{800.0f, 600.0f});
-  EXPECT(fixture.bus.history().size() == 1,
-         "held left button should not redispatch selection");
+  EXPECT(fixture.bus.history().empty(),
+         "held left button should not dispatch selection");
 
   input.setMouseButtonDown(LX_core::MouseButton::Left, false);
   fixture.controller.updateSelectionMode(input, LX_core::Vec2f{800.0f, 600.0f});
+  EXPECT(fixture.bus.history().size() == 1,
+         "left release should dispatch one selection command");
+
   input.setMouseButtonDown(LX_core::MouseButton::Left, true);
   fixture.controller.updateSelectionMode(input, LX_core::Vec2f{800.0f, 600.0f});
+  EXPECT(fixture.bus.history().size() == 1,
+         "second left press should arm without dispatching");
+  input.setMouseButtonDown(LX_core::MouseButton::Left, false);
+  fixture.controller.updateSelectionMode(input, LX_core::Vec2f{800.0f, 600.0f});
   EXPECT(fixture.bus.history().size() == 2,
-         "second left press edge should dispatch again");
+         "second left release should dispatch again");
+}
+
+void testSuppressedSelectionFrameCancelsArmedClick() {
+  Fixture fixture;
+  LX_core::MockInputState input;
+  input.setMousePosition({400.0f, 300.0f});
+
+  input.setMouseButtonDown(LX_core::MouseButton::Left, true);
+  runSceneViewerMainPathSelectionStep(fixture, input, false, false, false);
+  EXPECT(fixture.bus.history().empty(),
+         "allowed press should only arm selection");
+
+  runSceneViewerMainPathSelectionStep(fixture, input, false, false, true);
+  input.setMouseButtonDown(LX_core::MouseButton::Left, false);
+  runSceneViewerMainPathSelectionStep(fixture, input, false, false, false);
+
+  EXPECT(fixture.bus.history().empty(),
+         "suppressed frame should cancel the armed press instead of leaking a stale pick");
+  EXPECT(fixture.editorState.getSelected().empty(),
+         "suppressed click should leave selection unchanged");
 }
 
 void testPreviewModeSuppressesSelectionInMainPath() {
@@ -289,6 +320,9 @@ void testSelectionModeAllowsMousePickingWhileKeyboardIsCaptured() {
 
   runSceneViewerMainPathSelectionStep(fixture, input, true, false, false);
 
+  input.setMouseButtonDown(LX_core::MouseButton::Left, false);
+  runSceneViewerMainPathSelectionStep(fixture, input, true, false, false);
+
   const auto selected = fixture.editorState.getSelected();
   EXPECT(selected.size() == 1 && selected.front() == fixture.targetNode,
          "selection mode should still pick when only keyboard is captured elsewhere");
@@ -300,8 +334,7 @@ void testSelectionModeStillAllowsCameraRigRouting() {
              LX_demo::lxe_editor::SceneInputEditMode::Selection),
          "selection mode should still process selection clicks");
   EXPECT(LX_demo::lxe_editor::shouldProcessCameraRig(
-             false, false, false, false,
-             LX_demo::lxe_editor::SceneInputEditMode::Selection),
+             false, false, false, false),
          "selection mode should still allow camera rig updates");
 }
 
@@ -314,15 +347,13 @@ void testSelectionRoutingIsSuppressedByGizmoMouse() {
 
 void testCameraRoutingIsSuppressedByGizmoMouse() {
   EXPECT(!LX_demo::lxe_editor::shouldProcessCameraRig(
-             false, false, false, true,
-             LX_demo::lxe_editor::SceneInputEditMode::Selection),
+             false, false, false, true),
          "gizmo hover/use should suppress camera rig routing");
 }
 
 void testCameraRoutingRunsInSelectionModeWithoutPreviewOrUiCapture() {
   EXPECT(LX_demo::lxe_editor::shouldProcessCameraRig(
-             false, false, false, false,
-             LX_demo::lxe_editor::SceneInputEditMode::Selection),
+             false, false, false, false),
          "camera rig should run in selection mode when preview and UI capture are off");
 }
 
@@ -332,9 +363,59 @@ void testPreviewSuppressesSelectionAndCameraRouting() {
              LX_demo::lxe_editor::SceneInputEditMode::Selection),
          "preview should suppress selection routing");
   EXPECT(!LX_demo::lxe_editor::shouldProcessCameraRig(
-             true, false, false, false,
-             LX_demo::lxe_editor::SceneInputEditMode::Selection),
+             true, false, false, false),
          "preview should suppress camera rig routing");
+}
+
+void testSelectionCameraInputOrbitMapsRightMouseToLeftOnly() {
+  LX_core::MockInputState input;
+  input.setMouseButtonDown(LX_core::MouseButton::Left, true);
+  input.setMouseDelta({3.0f, -2.0f});
+
+  LX_demo::lxe_editor::SelectionCameraInput cameraInput(
+      input, LX_demo::lxe_editor::SelectionNavigationMode::Orbit);
+  EXPECT(!cameraInput.isMouseButtonDown(LX_core::MouseButton::Left),
+         "orbit adapter should not expose raw left mouse");
+  EXPECT(!cameraInput.isMouseButtonDown(LX_core::MouseButton::Right),
+         "orbit adapter should suppress raw right mouse when not held");
+  EXPECT(approx(cameraInput.getMouseDelta(), LX_core::Vec2f{0.0f, 0.0f}),
+         "orbit adapter should suppress mouse delta until right is held");
+
+  input.setMouseButtonDown(LX_core::MouseButton::Right, true);
+  EXPECT(cameraInput.isMouseButtonDown(LX_core::MouseButton::Left),
+         "orbit adapter should map right-held to left mouse");
+  EXPECT(!cameraInput.isMouseButtonDown(LX_core::MouseButton::Right),
+         "orbit adapter should still suppress raw right mouse");
+  EXPECT(approx(cameraInput.getMouseDelta(), LX_core::Vec2f{3.0f, -2.0f}),
+         "orbit adapter should expose mouse delta while right is held");
+}
+
+void testSelectionCameraInputFreeFlyExposesRightMouseAndKeyboardOnlyWhileHeld() {
+  LX_core::MockInputState input;
+  input.setKeyDown(LX_core::KeyCode::W, true);
+  input.setMouseButtonDown(LX_core::MouseButton::Left, true);
+  input.setMouseDelta({1.0f, 2.0f});
+
+  LX_demo::lxe_editor::SelectionCameraInput cameraInput(
+      input, LX_demo::lxe_editor::SelectionNavigationMode::FreeFly);
+  EXPECT(!cameraInput.isKeyDown(LX_core::KeyCode::W),
+         "freefly adapter should suppress keyboard until right is held");
+  EXPECT(!cameraInput.isMouseButtonDown(LX_core::MouseButton::Left),
+         "freefly adapter should not expose raw left mouse");
+  EXPECT(!cameraInput.isMouseButtonDown(LX_core::MouseButton::Right),
+         "freefly adapter should suppress right mouse until held");
+  EXPECT(approx(cameraInput.getMouseDelta(), LX_core::Vec2f{0.0f, 0.0f}),
+         "freefly adapter should suppress mouse delta until right is held");
+
+  input.setMouseButtonDown(LX_core::MouseButton::Right, true);
+  EXPECT(cameraInput.isKeyDown(LX_core::KeyCode::W),
+         "freefly adapter should expose keyboard while right is held");
+  EXPECT(!cameraInput.isMouseButtonDown(LX_core::MouseButton::Left),
+         "freefly adapter should never expose raw left mouse");
+  EXPECT(cameraInput.isMouseButtonDown(LX_core::MouseButton::Right),
+         "freefly adapter should expose right mouse while held");
+  EXPECT(approx(cameraInput.getMouseDelta(), LX_core::Vec2f{1.0f, 2.0f}),
+         "freefly adapter should expose mouse delta while right is held");
 }
 
 void testSelectionDebugStateTracksHitPointAndSelection() {
@@ -510,7 +591,8 @@ int main() {
   testSceneInteractionDeselectsOnMiss();
   testSelectionPickingUsesSceneViewRectInsteadOfWholeWindow();
   testSelectionPickingIgnoresClicksOutsideSceneViewRect();
-  testSelectionModeConsumesOnlyLeftPressEdge();
+  testSelectionModeDispatchesPickOnLeftRelease();
+  testSuppressedSelectionFrameCancelsArmedClick();
   testPreviewModeSuppressesSelectionInMainPath();
   testSelectionModeAllowsMousePickingWhileKeyboardIsCaptured();
   testSelectionModeStillAllowsCameraRigRouting();
@@ -518,6 +600,8 @@ int main() {
   testCameraRoutingIsSuppressedByGizmoMouse();
   testCameraRoutingRunsInSelectionModeWithoutPreviewOrUiCapture();
   testPreviewSuppressesSelectionAndCameraRouting();
+  testSelectionCameraInputOrbitMapsRightMouseToLeftOnly();
+  testSelectionCameraInputFreeFlyExposesRightMouseAndKeyboardOnlyWhileHeld();
   testSelectionDebugStateTracksHitPointAndSelection();
   testSelectionDebugProjectionRoundTripsBackToClickedPixel();
   testSelectionDebugUsesNegativeNdcYForLowerScreenPixels();

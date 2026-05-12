@@ -421,18 +421,21 @@ int main(int argc, char **argv) {
           demo::SceneInputEditMode::Selection;
       const bool gizmoConsumesMouse = ui.isGizmoCapturingMouse();
       bool cameraUpdated = false;
-      if (demo::shouldProcessSelectionMode(editorState.isPreviewEnabled(),
-                                           wantsMouse, gizmoConsumesMouse,
-                                           inputMode)) {
+      const bool processSelection = demo::shouldProcessSelectionMode(
+          editorState.isPreviewEnabled(), wantsMouse, gizmoConsumesMouse,
+          inputMode);
+      if (processSelection) {
         session.sceneInteraction().updateSelectionMode(
             *input,
             ui.sceneViewRect(LX_core::Vec2f{static_cast<float>(windowWidth),
                                             static_cast<float>(windowHeight)}));
         session.editorCamera().updateMatrices();
+      } else {
+        session.sceneInteraction().cancelPendingSelectionClick(*input);
       }
       if (demo::shouldProcessCameraRig(editorState.isPreviewEnabled(),
                                        wantsKeyboard, wantsMouse,
-                                       gizmoConsumesMouse, inputMode)) {
+                                       gizmoConsumesMouse)) {
         demo::SelectionCameraInput cameraInput(*input,
                                                ui.selectionNavigationMode());
         rig.update(cameraInput, clock.deltaTime());

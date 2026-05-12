@@ -204,9 +204,20 @@ void SceneInteractionController::updateSelectionMode(
   const bool leftDown =
       input.isMouseButtonDown(LX_core::MouseButton::Left);
   if (leftDown && !m_prevLeftDown) {
+    m_leftPressArmed = true;
+  } else if (!leftDown && m_prevLeftDown && m_leftPressArmed) {
     (void)dispatchPickingClick(input.getMousePosition(), sceneViewRect);
+    m_leftPressArmed = false;
+  } else if (!leftDown) {
+    m_leftPressArmed = false;
   }
   m_prevLeftDown = leftDown;
+}
+
+void SceneInteractionController::cancelPendingSelectionClick(
+    const LX_core::IInputState& input) {
+  m_leftPressArmed = false;
+  m_prevLeftDown = input.isMouseButtonDown(LX_core::MouseButton::Left);
 }
 
 void SceneInteractionController::enqueueDebugDraw() const {

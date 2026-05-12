@@ -38,6 +38,7 @@ public:
                            const LX_core::Vec2f& viewportSize);
   void updateSelectionMode(LX_core::IInputState& input,
                            const SceneViewRect& sceneViewRect);
+  void cancelPendingSelectionClick(const LX_core::IInputState& input);
   void enqueueDebugDraw() const;
   [[nodiscard]] std::optional<LX_core::Vec3f> lastHitPoint() const;
 
@@ -51,6 +52,7 @@ private:
   LX_core::EditorState& m_editorState;
   LX_core::Scene& m_scene;
   bool m_prevLeftDown = false;
+  bool m_leftPressArmed = false;
   std::optional<HitMarker> m_lastHitMarker;
   DebugEnabledFn m_debugEnabled;
   AppendDebugLineFn m_appendDebugLine;

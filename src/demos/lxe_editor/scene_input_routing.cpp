@@ -11,9 +11,7 @@ bool shouldProcessSelectionMode(const bool previewEnabled, const bool wantsMouse
 
 bool shouldProcessCameraRig(const bool previewEnabled, const bool wantsKeyboard,
                             const bool wantsMouse,
-                            const bool gizmoConsumesMouse,
-                            const SceneInputEditMode mode) {
-  (void)mode;
+                            const bool gizmoConsumesMouse) {
   return !previewEnabled && !wantsKeyboard && !wantsMouse &&
          !gizmoConsumesMouse;
 }
