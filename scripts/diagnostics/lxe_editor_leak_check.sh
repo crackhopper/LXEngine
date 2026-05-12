@@ -104,8 +104,6 @@ write_summary_stub() {
     echo "mode=${MODE}"
     echo "sanitizer_status=${SANITIZER_STATUS}"
     echo "soak_status=${SOAK_STATUS}"
-    echo "compat_sanitizer_status=passed"
-    echo "compat_soak_status=passed"
   } > "${OUTPUT_DIR}/summary.txt"
 }
 
