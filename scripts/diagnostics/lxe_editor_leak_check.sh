@@ -88,6 +88,8 @@ CMAKE_BIN="${LX_LEAK_CHECK_CMAKE:-cmake}"
 CTEST_BIN="${LX_LEAK_CHECK_CTEST:-ctest}"
 NINJA_BIN="${LX_LEAK_CHECK_NINJA:-ninja}"
 EDITOR_BIN="${LX_LEAK_CHECK_LXE_EDITOR_BIN:-${BUILD_DIR}/src/demos/lxe_editor/lxe_editor}"
+EDITOR_SMOKE_TIMEOUT_SECONDS="${LX_LEAK_CHECK_EDITOR_SMOKE_TIMEOUT_SECONDS:-120}"
+SOAK_TERMINATION_GRACE_SECONDS="${LX_LEAK_CHECK_SOAK_TERMINATION_GRACE_SECONDS:-10}"
 
 mkdir -p "${OUTPUT_DIR}"
 mkdir -p "${BUILD_DIR}"
@@ -140,6 +142,8 @@ write_env() {
     echo "ctest_bin=${CTEST_BIN}"
     echo "ninja_bin=${NINJA_BIN}"
     echo "editor_bin=${EDITOR_BIN}"
+    echo "editor_smoke_timeout_seconds=${EDITOR_SMOKE_TIMEOUT_SECONDS}"
+    echo "soak_termination_grace_seconds=${SOAK_TERMINATION_GRACE_SECONDS}"
     echo "asan_options=${ASAN_OPTIONS}"
     echo "git_commit=${GIT_COMMIT}"
   } > "${OUTPUT_DIR}/env.txt"
@@ -198,19 +202,74 @@ run_sanitizer_mode() {
   {
     echo "[sanitizer] editor smoke"
   } >> "${OUTPUT_DIR}/sanitizer.log"
-  if [[ -n "${SCENE_PATH}" ]]; then
-    if ! "${EDITOR_BIN}" "${SCENE_PATH}" >> "${OUTPUT_DIR}/sanitizer.log" 2>&1; then
-      SANITIZER_STATUS="failed"
-      return 1
-    fi
-  else
-    if ! "${EDITOR_BIN}" >> "${OUTPUT_DIR}/sanitizer.log" 2>&1; then
-      SANITIZER_STATUS="failed"
-      return 1
-    fi
+  if ! run_bounded_editor_smoke >> "${OUTPUT_DIR}/sanitizer.log" 2>&1; then
+    SANITIZER_STATUS="failed"
+    return 1
   fi
 
   SANITIZER_STATUS="passed"
+}
+
+wait_for_pid_exit() {
+  local pid="${1}"
+  local timeout_seconds="${2}"
+  local deadline
+
+  deadline="$(( $(date +%s) + timeout_seconds ))"
+  while kill -0 "${pid}" 2>/dev/null; do
+    if [[ "$(date +%s)" -ge "${deadline}" ]]; then
+      return 1
+    fi
+    sleep 1
+  done
+  return 0
+}
+
+stop_process_group_with_grace() {
+  local pid="${1}"
+  local grace_seconds="${2}"
+
+  if ! kill -0 "${pid}" 2>/dev/null; then
+    return 0
+  fi
+
+  kill -TERM -- "-${pid}" || true
+  if wait_for_pid_exit "${pid}" "${grace_seconds}"; then
+    return 0
+  fi
+
+  kill -KILL -- "-${pid}" || true
+  wait_for_pid_exit "${pid}" 5 || true
+}
+
+run_bounded_editor_smoke() {
+  local editor_pid
+  local timed_out="false"
+  local editor_exit_status=0
+  local editor_args=()
+
+  if [[ -n "${SCENE_PATH}" ]]; then
+    editor_args+=("${SCENE_PATH}")
+  fi
+
+  setsid "${EDITOR_BIN}" "${editor_args[@]}" &
+  editor_pid=$!
+
+  if ! wait_for_pid_exit "${editor_pid}" "${EDITOR_SMOKE_TIMEOUT_SECONDS}"; then
+    timed_out="true"
+    stop_process_group_with_grace "${editor_pid}" "${SOAK_TERMINATION_GRACE_SECONDS}"
+  fi
+
+  if ! wait "${editor_pid}"; then
+    editor_exit_status=$?
+  fi
+
+  if [[ "${timed_out}" == "true" ]]; then
+    echo "[sanitizer] editor smoke timeout after ${EDITOR_SMOKE_TIMEOUT_SECONDS}s"
+    return 1
+  fi
+
+  return "${editor_exit_status}"
 }
 
 sample_process_metrics() {
@@ -257,7 +316,7 @@ run_soak_mode() {
     editor_args+=("${SCENE_PATH}")
   fi
 
-  "${EDITOR_BIN}" "${editor_args[@]}" > "${OUTPUT_DIR}/soak.stdout.log" 2> "${OUTPUT_DIR}/soak.stderr.log" &
+  setsid "${EDITOR_BIN}" "${editor_args[@]}" > "${OUTPUT_DIR}/soak.stdout.log" 2> "${OUTPUT_DIR}/soak.stderr.log" &
   editor_pid=$!
   end_time="$(( $(date +%s) + DURATION_SECONDS ))"
 
@@ -285,7 +344,7 @@ run_soak_mode() {
 
   if kill -0 "${editor_pid}" 2>/dev/null; then
     timed_out="true"
-    kill "${editor_pid}" || true
+    stop_process_group_with_grace "${editor_pid}" "${SOAK_TERMINATION_GRACE_SECONDS}"
   fi
 
   if wait "${editor_pid}"; then

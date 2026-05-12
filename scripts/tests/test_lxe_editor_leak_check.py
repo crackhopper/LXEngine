@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 import textwrap
 import unittest
+import time
 from pathlib import Path
 
 
@@ -129,6 +130,39 @@ class LxeEditorLeakCheckScriptTest(unittest.TestCase):
             summary = (output_dir / "summary.txt").read_text()
             self.assertIn("sanitizer_status=passed", summary)
 
+    def test_sanitizer_smoke_times_out_and_terminates_uncooperative_editor(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            tools = self._write_stub_tools(root, ignore_term=True)
+            output_dir = root / "artifacts"
+            env = self._script_env(tools)
+            env["LX_LEAK_CHECK_EDITOR_SMOKE_TIMEOUT_SECONDS"] = "1"
+            env["LX_LEAK_CHECK_SOAK_TERMINATION_GRACE_SECONDS"] = "1"
+
+            started = time.monotonic()
+            completed = subprocess.run(
+                [
+                    str(SCRIPT_PATH),
+                    "sanitizer",
+                    "--output-dir",
+                    str(output_dir),
+                    "--build-dir",
+                    str(root / "build-asan"),
+                ],
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+            elapsed = time.monotonic() - started
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertLess(elapsed, 10)
+            summary = (output_dir / "summary.txt").read_text()
+            self.assertIn("sanitizer_status=failed", summary)
+            self.assertIn("editor_smoke_timeout_seconds=1", (output_dir / "env.txt").read_text())
+            self.assertIn("editor smoke timeout after 1s", (output_dir / "sanitizer.log").read_text())
+
     def test_soak_mode_writes_rss_csv_and_process_logs(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -161,6 +195,42 @@ class LxeEditorLeakCheckScriptTest(unittest.TestCase):
             self.assertGreaterEqual(len(rss_lines), 2)
             summary = (output_dir / "summary.txt").read_text()
             self.assertIn("soak_status=passed", summary)
+            self.assertIn("rss_start_kb=", summary)
+            self.assertIn("rss_end_kb=", summary)
+            self.assertIn("rss_peak_kb=", summary)
+
+    def test_soak_mode_forcibly_terminates_uncooperative_editor(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            tools = self._write_stub_tools(root, ignore_term=True)
+            output_dir = root / "artifacts"
+            env = self._script_env(tools)
+            env["LX_LEAK_CHECK_SOAK_TERMINATION_GRACE_SECONDS"] = "1"
+
+            started = time.monotonic()
+            completed = subprocess.run(
+                [
+                    str(SCRIPT_PATH),
+                    "soak",
+                    "--output-dir",
+                    str(output_dir),
+                    "--duration",
+                    "1",
+                    "--sample-interval",
+                    "1",
+                ],
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+            elapsed = time.monotonic() - started
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertLess(elapsed, 10)
+            summary = (output_dir / "summary.txt").read_text()
+            self.assertIn("soak_status=passed", summary)
+            self.assertIn("soak_exit_status=timeout", summary)
             self.assertIn("rss_start_kb=", summary)
             self.assertIn("rss_end_kb=", summary)
             self.assertIn("rss_peak_kb=", summary)
@@ -221,7 +291,13 @@ class LxeEditorLeakCheckScriptTest(unittest.TestCase):
         env["TMP_STUB_LOG"] = str(tools["stub_log"])
         return env
 
-    def _write_stub_tools(self, root: Path, *, editor_sleep: str) -> dict[str, Path]:
+    def _write_stub_tools(
+        self,
+        root: Path,
+        *,
+        editor_sleep: str = "1",
+        ignore_term: bool = False,
+    ) -> dict[str, Path]:
         bin_dir = root / "bin"
         bin_dir.mkdir(parents=True, exist_ok=True)
         cmake = self._write_executable(
@@ -248,10 +324,17 @@ exit 0
         editor = self._write_executable(
             bin_dir / "lxe_editor",
             f"""#!/usr/bin/env bash
+trap '' TERM
 echo "stub lxe_editor $*" >> "${{TMP_STUB_LOG}}"
 echo "editor stdout"
 echo "editor stderr" >&2
-sleep {editor_sleep}
+if [[ "{str(ignore_term).lower()}" == "true" ]]; then
+  while true; do
+    sleep 1
+  done
+else
+  sleep {editor_sleep}
+fi
 exit 0
 """,
         )
