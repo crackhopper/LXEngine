@@ -174,6 +174,48 @@ class LxeEditorLeakCheckScriptTest(unittest.TestCase):
             self.assertEqual(summary["sanitizer_status"], "passed")
             self.assertEqual(summary["failure_kind"], "none")
 
+    def test_sanitizer_smoke_dwells_before_quit(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            tools = self._write_stub_tools(root, fake_api=True)
+            output_dir = root / "artifacts"
+            env = self._script_env(tools)
+            env["LX_LEAK_CHECK_EDITOR_SMOKE_DWELL_SECONDS"] = "1"
+            scene_path = root / "sample.scene"
+            scene_path.write_text("stub", encoding="utf-8")
+
+            started = time.monotonic()
+            completed = subprocess.run(
+                [
+                    str(SCRIPT_PATH),
+                    "sanitizer",
+                    "--output-dir",
+                    str(output_dir),
+                    "--build-dir",
+                    str(root / "build-asan"),
+                    "--scene",
+                    str(scene_path),
+                ],
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+            elapsed = time.monotonic() - started
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertGreaterEqual(elapsed, 1.0)
+            stub_log = (root / "stub.log").read_text().splitlines()
+            scene_load_line = next(
+                line
+                for line in stub_log
+                if f'stub api command scene load "{scene_path}"' in line
+            )
+            quit_line = next(line for line in stub_log if "stub api command quit" in line)
+            scene_load_time = self._extract_log_timestamp(scene_load_line)
+            quit_time = self._extract_log_timestamp(quit_line)
+            self.assertGreaterEqual(quit_time - scene_load_time, 1.0)
+
     def test_sanitizer_mode_surfaces_nonzero_editor_exit_code(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -429,7 +471,7 @@ class LxeEditorLeakCheckScriptTest(unittest.TestCase):
     def test_soak_mode_writes_rss_csv_and_process_logs(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            tools = self._write_stub_tools(root, editor_sleep="2")
+            tools = self._write_stub_tools(root, editor_sleep="5")
             output_dir = root / "artifacts"
             env = self._script_env(tools)
 
@@ -440,7 +482,7 @@ class LxeEditorLeakCheckScriptTest(unittest.TestCase):
                     "--output-dir",
                     str(output_dir),
                     "--duration",
-                    "2",
+                    "1",
                     "--sample-interval",
                     "1",
                 ],
@@ -461,6 +503,38 @@ class LxeEditorLeakCheckScriptTest(unittest.TestCase):
             self.assertIn("rss_start_kb=", summary)
             self.assertIn("rss_end_kb=", summary)
             self.assertIn("rss_peak_kb=", summary)
+
+    def test_soak_mode_fails_when_editor_exits_before_duration(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            tools = self._write_stub_tools(root, editor_sleep="1", editor_exit_code="0")
+            output_dir = root / "artifacts"
+            env = self._script_env(tools)
+
+            completed = subprocess.run(
+                [
+                    str(SCRIPT_PATH),
+                    "soak",
+                    "--output-dir",
+                    str(output_dir),
+                    "--duration",
+                    "3",
+                    "--sample-interval",
+                    "1",
+                ],
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+
+            self.assertNotEqual(completed.returncode, 0)
+            summary = self._read_key_values(output_dir / "summary.txt")
+            self.assertEqual(summary["soak_status"], "failed")
+            self.assertEqual(summary["soak_exit_status"], "0")
+            self.assertEqual(summary["failure_kind"], "smoke_control_failure")
+            self.assertEqual(summary["failed_step"], "soak_duration")
+            self.assertIn("editor exited before soak duration completed", summary["failure_reason"])
 
     def test_soak_mode_forcibly_terminates_uncooperative_editor(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -552,6 +626,7 @@ class LxeEditorLeakCheckScriptTest(unittest.TestCase):
         env["LX_LEAK_CHECK_NINJA"] = str(tools["ninja"])
         env["LX_LEAK_CHECK_LXE_EDITOR_BIN"] = str(tools["editor"])
         env["LX_LEAK_CHECK_EDITOR_API_TOKEN_FILE"] = str(tools["token_file"])
+        env["LX_LEAK_CHECK_EDITOR_SMOKE_DWELL_SECONDS"] = "0"
         env["TMP_STUB_LOG"] = str(tools["stub_log"])
         return env
 
@@ -563,6 +638,11 @@ class LxeEditorLeakCheckScriptTest(unittest.TestCase):
             key, value = line.split("=", 1)
             pairs[key] = value
         return pairs
+
+    def _extract_log_timestamp(self, line: str) -> float:
+        marker = " t="
+        start = line.index(marker) + len(marker)
+        return float(line[start:])
 
     def _write_stub_tools(
         self,
@@ -619,6 +699,7 @@ import os
 import pathlib
 import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 log_path = pathlib.Path(os.environ["TMP_STUB_LOG"])
@@ -643,7 +724,7 @@ while i < len(args):
     i += 1
 
 with log_path.open("a", encoding="utf-8") as log:
-    log.write("stub lxe_editor " + " ".join(sys.argv[1:]) + "\\n")
+    log.write("stub lxe_editor " + " ".join(sys.argv[1:]) + f" t={time.monotonic():.6f}\\n")
 
 class Handler(BaseHTTPRequestHandler):
     def _authorized(self) -> bool:
@@ -662,7 +743,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         with log_path.open("a", encoding="utf-8") as log:
-            log.write(f"stub api GET {self.path}\\n")
+            log.write(f"stub api GET {self.path} t={time.monotonic():.6f}\\n")
         if self.path == "/health":
             self._write_json(200, {"ok": True, "status": "ok"})
             return
@@ -685,7 +766,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         line = str(payload.get("line", ""))
         with log_path.open("a", encoding="utf-8") as log:
-            log.write(f"stub api command {line}\\n")
+            log.write(f"stub api command {line} t={time.monotonic():.6f}\\n")
         self._write_json(200, {"ok": True, "line": line})
         if line == "quit":
             threading.Thread(target=self.server.shutdown, daemon=True).start()
