@@ -23,26 +23,37 @@ usage: scripts/diagnostics/lxe_editor_leak_check.sh <sanitizer|soak|all> [option
 EOF
 }
 
+require_option_value() {
+  local option_name="${1}"
+  local option_value="${2:-}"
+  if [[ -z "${option_value}" || "${option_value}" == -* ]]; then
+    echo "missing value for ${option_name}" >&2
+    usage
+    exit 2
+  fi
+  printf '%s' "${option_value}"
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --build-dir)
-      BUILD_DIR="${2:-}"
+      BUILD_DIR="$(require_option_value "$1" "${2:-}")"
       shift 2
       ;;
     --scene)
-      SCENE_PATH="${2:-}"
+      SCENE_PATH="$(require_option_value "$1" "${2:-}")"
       shift 2
       ;;
     --duration)
-      DURATION_SECONDS="${2:-}"
+      DURATION_SECONDS="$(require_option_value "$1" "${2:-}")"
       shift 2
       ;;
     --sample-interval)
-      SAMPLE_INTERVAL_SECONDS="${2:-}"
+      SAMPLE_INTERVAL_SECONDS="$(require_option_value "$1" "${2:-}")"
       shift 2
       ;;
     --output-dir)
-      OUTPUT_DIR="${2:-}"
+      OUTPUT_DIR="$(require_option_value "$1" "${2:-}")"
       shift 2
       ;;
     *)
@@ -83,7 +94,33 @@ mkdir -p "${BUILD_DIR}"
 
 SANITIZER_STATUS="not_run"
 SOAK_STATUS="not_run"
-export ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=1}"
+
+merge_asan_options() {
+  local merged_options=""
+  local option
+  local -a asan_parts=()
+
+  if [[ -n "${ASAN_OPTIONS:-}" ]]; then
+    IFS=':' read -r -a asan_parts <<< "${ASAN_OPTIONS}"
+    for option in "${asan_parts[@]}"; do
+      if [[ -z "${option}" || "${option}" == detect_leaks=* ]]; then
+        continue
+      fi
+      if [[ -n "${merged_options}" ]]; then
+        merged_options+=":"
+      fi
+      merged_options+="${option}"
+    done
+  fi
+
+  if [[ -n "${merged_options}" ]]; then
+    merged_options+=":"
+  fi
+  merged_options+="detect_leaks=1"
+  export ASAN_OPTIONS="${merged_options}"
+}
+
+merge_asan_options
 
 write_env() {
   {
