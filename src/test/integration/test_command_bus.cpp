@@ -1129,21 +1129,30 @@ void testSceneViewerPickDebugLogsAttachToNewestCommandEntry() {
 
   const CommandResult pick = fixture.bus.dispatch("pick 400 300");
   EXPECT(pick.ok, "pick command should succeed while debug logging is enabled");
+  const CommandResult listNodes = fixture.bus.dispatch("list nodes");
+  EXPECT(listNodes.ok, "later visible command should succeed after pick logging");
 
   const std::string consoleText = fixture.consolePanel.displayedText();
-  const std::string commandLine = "> pick 400 300";
-  const usize commandPos = consoleText.find(commandLine);
-  const usize resultPos = consoleText.find(pick.message, commandPos);
-  const usize debugPos = consoleText.find("pick_debug", commandPos);
+  const usize pickCommandPos = consoleText.find("> pick 400 300");
+  const usize pickResultPos = consoleText.find(pick.message, pickCommandPos);
+  const usize debugPos = consoleText.find("pick_debug", pickResultPos);
+  const usize laterCommandPos = consoleText.find("> list nodes", debugPos);
+  const usize laterResultPos = consoleText.find(listNodes.message, laterCommandPos);
 
-  EXPECT(commandPos != std::string::npos,
+  EXPECT(pickCommandPos != std::string::npos,
          "pick command should remain visible in console output");
-  EXPECT(resultPos != std::string::npos,
+  EXPECT(pickResultPos != std::string::npos,
          "pick result should remain visible in console output");
   EXPECT(debugPos != std::string::npos,
          "pick debug output should remain visible in console output");
-  EXPECT(commandPos < resultPos && resultPos < debugPos,
+  EXPECT(laterCommandPos != std::string::npos,
+         "later command should remain visible in console output");
+  EXPECT(laterResultPos != std::string::npos,
+         "later command result should remain visible in console output");
+  EXPECT(pickCommandPos < pickResultPos && pickResultPos < debugPos,
          "pick debug output should appear after the owning command result");
+  EXPECT(debugPos < laterCommandPos && laterCommandPos < laterResultPos,
+         "pick debug output should stay attached before the later command block");
 }
 
 void testConsoleClearDropsOldDebugAttachmentsFromVisibleOutput() {
