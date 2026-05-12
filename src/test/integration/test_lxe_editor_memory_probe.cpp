@@ -1,5 +1,7 @@
 #include "backend/vulkan/vulkan_renderer.hpp"
 #include "core/editor/editor_state.hpp"
+#include "core/debug_draw/debug_draw.hpp"
+#include "core/gpu/engine_loop.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/filesystem_tools.hpp"
 #include "demos/lxe_editor/camera_rig.hpp"
@@ -51,10 +53,21 @@ int skipped = 0;
 }
 
 struct ProbeResult final {
+  usize rssBeforeLoadKb = 0;
+  usize rssAfterLoadKb = 0;
   usize rssStartKb = 0;
   usize rssEndKb = 0;
   usize rssPeakKb = 0;
   usize configDirtyFrames = 0;
+  usize rendererCacheStart = 0;
+  usize rendererCacheEnd = 0;
+  usize rendererCachePeak = 0;
+  usize frameGraphItemCount = 0;
+  usize initSceneCallCount = 0;
+  usize debugVertexCapacityPeak = 0;
+  usize debugIndexCapacityPeak = 0;
+  usize debugVertexIdentityChanges = 0;
+  usize debugIndexIdentityChanges = 0;
 };
 
 enum class ProbeMode {
@@ -63,6 +76,8 @@ enum class ProbeMode {
   UiPlusCameraUpdates,
   UiPlusDebugDraw,
   UiPlusFrameLogic,
+  HelmetUiOnly,
+  HelmetUiPlusFrameLogic,
 };
 
 [[nodiscard]] std::optional<ProbeMode> requestedProbeMode() {
@@ -86,7 +101,75 @@ enum class ProbeMode {
   if (text == "ui_plus_debugdraw") {
     return ProbeMode::UiPlusDebugDraw;
   }
+  if (text == "helmet_ui_only") {
+    return ProbeMode::HelmetUiOnly;
+  }
+  if (text == "helmet_ui_plus_frame_logic") {
+    return ProbeMode::HelmetUiPlusFrameLogic;
+  }
   return std::nullopt;
+}
+
+[[nodiscard]] usize requestedFrameCount(const usize fallback) {
+  const char* value = std::getenv("LX_MEMORY_PROBE_FRAMES");
+  if (!value || !*value) {
+    return fallback;
+  }
+  try {
+    const auto parsed = static_cast<usize>(std::stoul(value));
+    return parsed == 0 ? fallback : parsed;
+  } catch (...) {
+    return fallback;
+  }
+}
+
+[[nodiscard]] bool usesHelmetScene(const ProbeMode mode) {
+  return mode == ProbeMode::HelmetUiOnly ||
+         mode == ProbeMode::HelmetUiPlusFrameLogic;
+}
+
+[[nodiscard]] bool runsFrameLogic(const ProbeMode mode) {
+  return mode == ProbeMode::UiPlusFrameLogic ||
+         mode == ProbeMode::HelmetUiPlusFrameLogic;
+}
+
+[[nodiscard]] bool runsCameraUpdates(const ProbeMode mode) {
+  return mode == ProbeMode::UiPlusCameraUpdates || runsFrameLogic(mode);
+}
+
+[[nodiscard]] bool runsDebugDraw(const ProbeMode mode) {
+  return mode == ProbeMode::UiPlusDebugDraw || runsFrameLogic(mode);
+}
+
+[[nodiscard]] const char* labelForProbeMode(const ProbeMode mode) {
+  switch (mode) {
+  case ProbeMode::UiOnly:
+    return "ui_only";
+  case ProbeMode::UiMinimalPanels:
+    return "ui_minimal";
+  case ProbeMode::UiPlusCameraUpdates:
+    return "ui_plus_camera_updates";
+  case ProbeMode::UiPlusDebugDraw:
+    return "ui_plus_debugdraw";
+  case ProbeMode::UiPlusFrameLogic:
+    return "ui_plus_frame_logic";
+  case ProbeMode::HelmetUiOnly:
+    return "helmet_ui_only";
+  case ProbeMode::HelmetUiPlusFrameLogic:
+    return "helmet_ui_plus_frame_logic";
+  }
+  return "unknown";
+}
+
+void loadHelmetScene(LX_demo::lxe_editor::LxeEditorSession& session,
+                     LX_core::gpu::EngineLoop& loop) {
+  const auto result =
+      session.commandBus().dispatch("scene load lxe_editor.scene.yaml");
+  if (!result.ok) {
+    throw std::runtime_error("failed to queue helmet scene load: " +
+                             result.message);
+  }
+  session.flushPendingSceneLoad(loop);
 }
 
 void configurePanelVisibility(LX_demo::lxe_editor::EditorConfigDocument& config,
@@ -113,15 +196,15 @@ void configurePanelVisibility(LX_demo::lxe_editor::EditorConfigDocument& config,
   LX_infra::Window::Initialize();
   auto window =
       std::make_shared<LX_infra::Window>("lxe-editor-memory-probe", 1280, 720);
-  auto renderer = LX_core::backend::VulkanRenderer::create(
-      LX_core::backend::VulkanRenderer::Token{});
+  auto renderer = std::shared_ptr<LX_core::backend::VulkanRenderer>(
+      LX_core::backend::VulkanRenderer::create(
+          LX_core::backend::VulkanRenderer::Token{}).release());
   renderer->initialize(window, "lxe-editor-memory-probe");
 
   LX_demo::lxe_editor::CameraRig rig;
   LX_core::EditorState editorState;
   LX_demo::lxe_editor::UiOverlay ui;
   LX_demo::lxe_editor::LxeEditorSession session(rig, ui, editorState);
-  LX_core::Clock clock;
   session.initialize();
   if (mode == ProbeMode::UiMinimalPanels) {
     auto& config = session.editorConfig();
@@ -133,52 +216,119 @@ void configurePanelVisibility(LX_demo::lxe_editor::EditorConfigDocument& config,
     configurePanelVisibility(config, "Preferences", false);
     configurePanelVisibility(config, "Toolbar", true);
   }
-  renderer->initScene(session.scene());
-  ui.attachClock(clock);
+  LX_core::gpu::EngineLoop loop;
+  loop.initialize(window, renderer);
+  loop.startScene(session.scene());
+  ui.attachClock(loop.getClock());
 
-  renderer->setDrawUiCallback([&] { ui.drawFrame(); });
-
-  const auto input = window->getInputState();
-  const auto startRss = currentRssKb();
-  if (!startRss.has_value()) {
-    throw std::runtime_error("failed to read /proc/self/status VmRSS");
-  }
-
-  usize peakRss = *startRss;
   usize configDirtyFrames = 0;
-  for (usize frame = 0; frame < frameCount; ++frame) {
-    (void)window->shouldClose();
-    if (mode == ProbeMode::UiPlusCameraUpdates ||
-        mode == ProbeMode::UiPlusFrameLogic) {
-      const int windowWidth = window->getWidth();
-      const int windowHeight = window->getHeight();
-      session.setWindowSize(
-          LX_core::Vec2f{static_cast<float>(windowWidth),
-                         static_cast<float>(windowHeight)});
-      const bool hasValidExtent = windowWidth > 0 && windowHeight > 0;
-      if (hasValidExtent) {
-        const float aspect =
-            static_cast<float>(windowWidth) / static_cast<float>(windowHeight);
-        session.editorCamera().setAspect(aspect);
-        session.gameCamera().setAspect(aspect);
-      }
-      session.gameCamera().updateMatrices();
-      session.editorCamera().updateMatrices();
-    }
-    if (mode == ProbeMode::UiPlusDebugDraw ||
-        mode == ProbeMode::UiPlusFrameLogic) {
-      session.sceneInteraction().enqueueDebugDraw();
-      input->nextFrame();
-    }
-
-    renderer->uploadData();
-    renderer->draw();
+  renderer->setDrawUiCallback([&] {
+    ui.drawFrame();
     if (ui.consumeConfigDirty()) {
       ++configDirtyFrames;
     }
+  });
+
+  if (usesHelmetScene(mode)) {
+    loadHelmetScene(session, loop);
+  }
+
+  const auto input = window->getInputState();
+  const auto rssAfterLoad = currentRssKb();
+  if (!rssAfterLoad.has_value()) {
+    throw std::runtime_error("failed to read /proc/self/status VmRSS");
+  }
+
+  loop.setUpdateHook([&](LX_core::Scene&, const LX_core::Clock& clock) {
+    const int windowWidth = window->getWidth();
+    const int windowHeight = window->getHeight();
+    session.setWindowSize(
+        LX_core::Vec2f{static_cast<float>(windowWidth),
+                       static_cast<float>(windowHeight)});
+    const bool hasValidExtent = windowWidth > 0 && windowHeight > 0;
+    if (runsCameraUpdates(mode) && hasValidExtent) {
+      const float aspect =
+          static_cast<float>(windowWidth) / static_cast<float>(windowHeight);
+      session.editorCamera().setAspect(aspect);
+      session.gameCamera().setAspect(aspect);
+    }
+    if (runsCameraUpdates(mode)) {
+      session.gameCamera().updateMatrices();
+      session.editorCamera().updateMatrices();
+    }
+    if (runsDebugDraw(mode)) {
+      session.sceneInteraction().enqueueDebugDraw();
+      input->nextFrame();
+    }
+    (void)clock;
+  });
+
+  if (window->shouldClose()) {
+    throw std::runtime_error("window closed before probe started");
+  }
+  loop.tickFrame();
+
+  const auto startRss = currentRssKb();
+  if (!startRss.has_value()) {
+    throw std::runtime_error("failed to sample post-warmup VmRSS");
+  }
+  const usize rendererCacheStart = renderer->cachedResourceCount();
+
+  const auto debugVertexIdentityFor = [] {
+    return LX_core::DebugDraw::testing::vertexBufferIdentity(
+        LX_core::Layer_EditorOverlay);
+  };
+  const auto debugIndexIdentityFor = [] {
+    return LX_core::DebugDraw::testing::indexBufferIdentity(
+        LX_core::Layer_EditorOverlay);
+  };
+
+  usize peakRss = *startRss;
+  usize peakRendererCache = renderer->cachedResourceCount();
+  usize peakDebugVertexCapacity =
+      LX_core::DebugDraw::testing::reservedVertexCapacity(
+          LX_core::Layer_EditorOverlay);
+  usize peakDebugIndexCapacity =
+      LX_core::DebugDraw::testing::reservedIndexCapacity(
+          LX_core::Layer_EditorOverlay);
+  LX_core::ResourceCacheIdentity previousDebugVertexIdentity =
+      debugVertexIdentityFor();
+  LX_core::ResourceCacheIdentity previousDebugIndexIdentity =
+      debugIndexIdentityFor();
+  usize debugVertexIdentityChanges = 0;
+  usize debugIndexIdentityChanges = 0;
+  for (usize frame = 0; frame < frameCount; ++frame) {
+    (void)window->shouldClose();
+    loop.tickFrame();
     if (const auto rss = currentRssKb()) {
       peakRss = std::max(peakRss, *rss);
     }
+    peakRendererCache =
+        std::max(peakRendererCache, renderer->cachedResourceCount());
+    peakDebugVertexCapacity = std::max(
+        peakDebugVertexCapacity,
+        LX_core::DebugDraw::testing::reservedVertexCapacity(
+            LX_core::Layer_EditorOverlay));
+    peakDebugIndexCapacity = std::max(
+        peakDebugIndexCapacity,
+        LX_core::DebugDraw::testing::reservedIndexCapacity(
+            LX_core::Layer_EditorOverlay));
+
+    const LX_core::ResourceCacheIdentity currentDebugVertexIdentity =
+        debugVertexIdentityFor();
+    const LX_core::ResourceCacheIdentity currentDebugIndexIdentity =
+        debugIndexIdentityFor();
+    if (currentDebugVertexIdentity != 0 &&
+        previousDebugVertexIdentity != 0 &&
+        currentDebugVertexIdentity != previousDebugVertexIdentity) {
+      ++debugVertexIdentityChanges;
+    }
+    if (currentDebugIndexIdentity != 0 && previousDebugIndexIdentity != 0 &&
+        currentDebugIndexIdentity != previousDebugIndexIdentity) {
+      ++debugIndexIdentityChanges;
+    }
+    previousDebugVertexIdentity = currentDebugVertexIdentity;
+    previousDebugIndexIdentity = currentDebugIndexIdentity;
   }
 
   const auto endRss = currentRssKb();
@@ -186,12 +336,26 @@ void configurePanelVisibility(LX_demo::lxe_editor::EditorConfigDocument& config,
     throw std::runtime_error("failed to sample end-of-probe VmRSS");
   }
 
+  const usize rendererCacheEnd = renderer->cachedResourceCount();
+  const usize frameGraphItemCount = renderer->frameGraphItemCount();
+  const usize initSceneCallCount = renderer->initSceneCallCount();
   renderer->shutdown();
   return ProbeResult{
+      .rssBeforeLoadKb = *rssAfterLoad,
+      .rssAfterLoadKb = *startRss,
       .rssStartKb = *startRss,
       .rssEndKb = *endRss,
       .rssPeakKb = peakRss,
       .configDirtyFrames = configDirtyFrames,
+      .rendererCacheStart = rendererCacheStart,
+      .rendererCacheEnd = rendererCacheEnd,
+      .rendererCachePeak = peakRendererCache,
+      .frameGraphItemCount = frameGraphItemCount,
+      .initSceneCallCount = initSceneCallCount,
+      .debugVertexCapacityPeak = peakDebugVertexCapacity,
+      .debugIndexCapacityPeak = peakDebugIndexCapacity,
+      .debugVertexIdentityChanges = debugVertexIdentityChanges,
+      .debugIndexIdentityChanges = debugIndexIdentityChanges,
   };
 }
 
@@ -203,42 +367,51 @@ void testLxeEditorMemoryProbe() {
   }
 
   try {
-    constexpr usize kFrameCount = 1500;
+    constexpr usize kDefaultFrameCount = 1500;
     constexpr usize kUiOnlyGrowthBudgetKb = 64 * 1024;
     constexpr usize kFrameLogicGrowthBudgetKb = 128 * 1024;
+    const usize frameCount = requestedFrameCount(kDefaultFrameCount);
 
     const auto scenario = requestedProbeMode();
     if (scenario.has_value()) {
-      const ProbeResult result = runProbe(*scenario, kFrameCount);
+      const ProbeResult result = runProbe(*scenario, frameCount);
       const usize growthKb = result.rssPeakKb - result.rssStartKb;
-      const char* label = *scenario == ProbeMode::UiOnly
-                              ? "ui_only"
-                              : (*scenario == ProbeMode::UiMinimalPanels
-                                     ? "ui_minimal"
-                                     : (*scenario == ProbeMode::UiPlusCameraUpdates
-                                            ? "ui_plus_camera_updates"
-                                            : (*scenario == ProbeMode::UiPlusDebugDraw
-                                                   ? "ui_plus_debugdraw"
-                                                   : "ui_plus_frame_logic")));
-      std::cout << "[probe] " << label << " start=" << result.rssStartKb
+      const char* label = labelForProbeMode(*scenario);
+      std::cout << "[probe] " << label
+                << " frames=" << frameCount
+                << " after_load=" << result.rssBeforeLoadKb
+                << " post_warmup=" << result.rssStartKb
                 << " peak=" << result.rssPeakKb
                 << " end=" << result.rssEndKb
                 << " growth_kb=" << growthKb
-                << " config_dirty_frames=" << result.configDirtyFrames << "\n";
+                << " config_dirty_frames=" << result.configDirtyFrames
+                << " renderer_cache_peak=" << result.rendererCachePeak
+                << " frame_graph_items=" << result.frameGraphItemCount
+                << " init_scene_calls=" << result.initSceneCallCount
+                << " debug_vertex_cap_peak=" << result.debugVertexCapacityPeak
+                << " debug_index_cap_peak=" << result.debugIndexCapacityPeak
+                << " debug_vertex_identity_changes="
+                << result.debugVertexIdentityChanges
+                << " debug_index_identity_changes="
+                << result.debugIndexIdentityChanges << "\n";
       return;
     }
 
-    const ProbeResult uiOnly = runProbe(ProbeMode::UiOnly, kFrameCount);
+    const ProbeResult uiOnly = runProbe(ProbeMode::UiOnly, frameCount);
     const ProbeResult uiMinimal =
-        runProbe(ProbeMode::UiMinimalPanels, kFrameCount);
+        runProbe(ProbeMode::UiMinimalPanels, frameCount);
     const ProbeResult frameLogic =
-        runProbe(ProbeMode::UiPlusFrameLogic, kFrameCount);
+        runProbe(ProbeMode::UiPlusFrameLogic, frameCount);
+    const ProbeResult helmetFrameLogic =
+        runProbe(ProbeMode::HelmetUiPlusFrameLogic, frameCount);
 
     const usize uiOnlyGrowthKb = uiOnly.rssPeakKb - uiOnly.rssStartKb;
     const usize uiMinimalGrowthKb =
         uiMinimal.rssPeakKb - uiMinimal.rssStartKb;
     const usize frameLogicGrowthKb =
         frameLogic.rssPeakKb - frameLogic.rssStartKb;
+    const usize helmetFrameLogicGrowthKb =
+        helmetFrameLogic.rssPeakKb - helmetFrameLogic.rssStartKb;
 
     std::cout << "[probe] ui_only start=" << uiOnly.rssStartKb
               << " peak=" << uiOnly.rssPeakKb
@@ -256,6 +429,23 @@ void testLxeEditorMemoryProbe() {
               << " end=" << frameLogic.rssEndKb
               << " growth_kb=" << frameLogicGrowthKb
               << " config_dirty_frames=" << frameLogic.configDirtyFrames << "\n";
+    std::cout << "[probe] helmet_ui_plus_frame_logic after_load="
+              << helmetFrameLogic.rssBeforeLoadKb
+              << " post_warmup=" << helmetFrameLogic.rssStartKb
+              << " peak=" << helmetFrameLogic.rssPeakKb
+              << " end=" << helmetFrameLogic.rssEndKb
+              << " growth_kb=" << helmetFrameLogicGrowthKb
+              << " renderer_cache_peak=" << helmetFrameLogic.rendererCachePeak
+              << " frame_graph_items=" << helmetFrameLogic.frameGraphItemCount
+              << " init_scene_calls=" << helmetFrameLogic.initSceneCallCount
+              << " debug_vertex_cap_peak="
+              << helmetFrameLogic.debugVertexCapacityPeak
+              << " debug_index_cap_peak="
+              << helmetFrameLogic.debugIndexCapacityPeak
+              << " debug_vertex_identity_changes="
+              << helmetFrameLogic.debugVertexIdentityChanges
+              << " debug_index_identity_changes="
+              << helmetFrameLogic.debugIndexIdentityChanges << "\n";
 
     EXPECT(uiOnlyGrowthKb <= kUiOnlyGrowthBudgetKb,
            "lxe_editor UI-only probe exceeded RSS growth budget");

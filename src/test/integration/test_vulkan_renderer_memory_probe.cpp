@@ -47,6 +47,19 @@ int skipped = 0;
   return value && *value && std::string(value) != "0";
 }
 
+[[nodiscard]] usize requestedFrameCount(const usize fallback) {
+  const char* value = std::getenv("LX_MEMORY_PROBE_FRAMES");
+  if (!value || !*value) {
+    return fallback;
+  }
+  try {
+    const auto parsed = static_cast<usize>(std::stoul(value));
+    return parsed == 0 ? fallback : parsed;
+  } catch (...) {
+    return fallback;
+  }
+}
+
 [[nodiscard]] std::optional<usize> currentRssKb() {
 #if defined(__linux__)
   std::ifstream status("/proc/self/status");
@@ -115,6 +128,45 @@ enum class ProbeUiMode {
   SimpleText,
   MultiWindowWidgets,
 };
+
+struct RendererProbeScenario final {
+  ProbeUiMode uiMode = ProbeUiMode::None;
+  bool initializeScene = false;
+  const char* label = "no_scene_no_ui";
+};
+
+[[nodiscard]] std::optional<RendererProbeScenario> requestedScenario() {
+  const char* value = std::getenv("LX_RENDERER_MEMORY_PROBE_SCENARIO");
+  if (!value || !*value) {
+    return std::nullopt;
+  }
+  const std::string_view text(value);
+  if (text == "no_scene_no_ui") {
+    return RendererProbeScenario{
+        .uiMode = ProbeUiMode::None,
+        .initializeScene = false,
+        .label = "no_scene_no_ui"};
+  }
+  if (text == "no_ui") {
+    return RendererProbeScenario{
+        .uiMode = ProbeUiMode::None,
+        .initializeScene = true,
+        .label = "no_ui"};
+  }
+  if (text == "simple_ui") {
+    return RendererProbeScenario{
+        .uiMode = ProbeUiMode::SimpleText,
+        .initializeScene = true,
+        .label = "simple_ui"};
+  }
+  if (text == "multi_window_ui") {
+    return RendererProbeScenario{
+        .uiMode = ProbeUiMode::MultiWindowWidgets,
+        .initializeScene = true,
+        .label = "multi_window_ui"};
+  }
+  return std::nullopt;
+}
 
 [[nodiscard]] ProbeResult runRendererProbe(const ProbeUiMode uiMode,
                                            const usize frameCount,
@@ -197,18 +249,33 @@ void testRendererMemoryProbe() {
 #else
   try {
     LX_infra::Window::Initialize();
-    constexpr usize kFrameCount = 1500;
+    constexpr usize kDefaultFrameCount = 1500;
     constexpr usize kMaxNoUiGrowthKb = 64 * 1024;
     constexpr usize kMaxUiGrowthKb = 96 * 1024;
+    const usize frameCount = requestedFrameCount(kDefaultFrameCount);
+    const auto scenario = requestedScenario();
+
+    if (scenario.has_value()) {
+      const ProbeResult result = runRendererProbe(
+          scenario->uiMode, frameCount, scenario->initializeScene);
+      const usize growthKb = result.rssPeakKb - result.rssStartKb;
+      std::cout << "[probe] " << scenario->label
+                << " frames=" << frameCount
+                << " start=" << result.rssStartKb
+                << " peak=" << result.rssPeakKb
+                << " end=" << result.rssEndKb
+                << " growth_kb=" << growthKb << "\n";
+      return;
+    }
 
     const ProbeResult noSceneNoUi =
-        runRendererProbe(ProbeUiMode::None, kFrameCount, false);
+        runRendererProbe(ProbeUiMode::None, frameCount, false);
     const ProbeResult noUi =
-        runRendererProbe(ProbeUiMode::None, kFrameCount, true);
+        runRendererProbe(ProbeUiMode::None, frameCount, true);
     const ProbeResult simpleUi =
-        runRendererProbe(ProbeUiMode::SimpleText, kFrameCount, true);
+        runRendererProbe(ProbeUiMode::SimpleText, frameCount, true);
     const ProbeResult multiWindowUi =
-        runRendererProbe(ProbeUiMode::MultiWindowWidgets, kFrameCount, true);
+        runRendererProbe(ProbeUiMode::MultiWindowWidgets, frameCount, true);
 
     const usize noSceneNoUiGrowthKb =
         noSceneNoUi.rssPeakKb - noSceneNoUi.rssStartKb;
@@ -217,19 +284,23 @@ void testRendererMemoryProbe() {
     const usize multiWindowUiGrowthKb =
         multiWindowUi.rssPeakKb - multiWindowUi.rssStartKb;
 
-    std::cout << "[probe] no_scene_no_ui start=" << noSceneNoUi.rssStartKb
+    std::cout << "[probe] no_scene_no_ui frames=" << frameCount
+              << " start=" << noSceneNoUi.rssStartKb
               << " peak=" << noSceneNoUi.rssPeakKb
               << " end=" << noSceneNoUi.rssEndKb
               << " growth_kb=" << noSceneNoUiGrowthKb << "\n";
-    std::cout << "[probe] no_ui start=" << noUi.rssStartKb
+    std::cout << "[probe] no_ui frames=" << frameCount
+              << " start=" << noUi.rssStartKb
               << " peak=" << noUi.rssPeakKb
               << " end=" << noUi.rssEndKb
               << " growth_kb=" << noUiGrowthKb << "\n";
-    std::cout << "[probe] simple_ui start=" << simpleUi.rssStartKb
+    std::cout << "[probe] simple_ui frames=" << frameCount
+              << " start=" << simpleUi.rssStartKb
               << " peak=" << simpleUi.rssPeakKb
               << " end=" << simpleUi.rssEndKb
               << " growth_kb=" << simpleUiGrowthKb << "\n";
-    std::cout << "[probe] multi_window_ui start=" << multiWindowUi.rssStartKb
+    std::cout << "[probe] multi_window_ui frames=" << frameCount
+              << " start=" << multiWindowUi.rssStartKb
               << " peak=" << multiWindowUi.rssPeakKb
               << " end=" << multiWindowUi.rssEndKb
               << " growth_kb=" << multiWindowUiGrowthKb << "\n";

@@ -199,6 +199,8 @@ MaterialInstanceSharedPtr makeHelperMaterial(const Vec3f& baseColor) {
   mat->setParameter(StringID("MaterialUBO"), StringID("enableAlbedo"), 0);
   mat->setParameter(StringID("MaterialUBO"), StringID("enableNormal"), 0);
   mat->setParameter(StringID("MaterialUBO"), StringID("baseColor"), baseColor);
+  mat->setParameter(StringID("MaterialUBO"), StringID("shininess"), 2.0f);
+  mat->setParameter(StringID("MaterialUBO"), StringID("specularIntensity"), 0.0f);
   mat->syncGpuData();
   return mat;
 }
@@ -208,22 +210,42 @@ MeshSharedPtr buildOctahedronMesh(const float radius) {
   const Vec4f zeroWeights{0.0f, 0.0f, 0.0f, 0.0f};
   const Vec2f zeroUv{0.0f, 0.0f};
   const Vec4f tangent{1.0f, 0.0f, 0.0f, 1.0f};
-  const std::vector<Vec3f> positions = {
-      {0.0f, radius, 0.0f},   {radius, 0.0f, 0.0f},   {0.0f, 0.0f, radius},
-      {-radius, 0.0f, 0.0f},  {0.0f, 0.0f, -radius},  {0.0f, -radius, 0.0f},
-  };
+  const Vec3f top{0.0f, radius, 0.0f};
+  const Vec3f right{radius, 0.0f, 0.0f};
+  const Vec3f front{0.0f, 0.0f, radius};
+  const Vec3f left{-radius, 0.0f, 0.0f};
+  const Vec3f back{0.0f, 0.0f, -radius};
+  const Vec3f bottom{0.0f, -radius, 0.0f};
+  const std::array<std::array<Vec3f, 3>, 8> faces = {{
+      {top, right, front},
+      {top, front, left},
+      {top, left, back},
+      {top, back, right},
+      {bottom, front, right},
+      {bottom, left, front},
+      {bottom, back, left},
+      {bottom, right, back},
+  }};
+
   std::vector<VertexPosNormalUvBone> verts;
-  verts.reserve(positions.size());
-  for (const Vec3f& position : positions) {
-    verts.emplace_back(position, position.normalized(), zeroUv, tangent,
-                       zeroBones, zeroWeights);
+  verts.reserve(faces.size() * 3);
+  std::vector<u32> indices;
+  indices.reserve(faces.size() * 3);
+
+  u32 vertexIndex = 0;
+  for (const auto& face : faces) {
+    const Vec3f edgeA = face[1] - face[0];
+    const Vec3f edgeB = face[2] - face[0];
+    const Vec3f faceNormal = edgeA.cross(edgeB).normalized();
+    for (const Vec3f& position : face) {
+      verts.emplace_back(position, faceNormal, zeroUv, tangent, zeroBones,
+                         zeroWeights);
+      indices.push_back(vertexIndex++);
+    }
   }
 
   auto vb = VertexBuffer<VertexPosNormalUvBone>::create(std::move(verts));
-  auto ib = IndexBuffer::create(std::vector<u32>{
-      0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 1,
-      5, 2, 1, 5, 3, 2, 5, 4, 3, 5, 1, 4,
-  });
+  auto ib = IndexBuffer::create(std::move(indices));
   return Mesh::create(vb, ib,
                       LX_core::BoundingBox{Vec3f{-radius, -radius, -radius},
                                            Vec3f{radius, radius, radius}});

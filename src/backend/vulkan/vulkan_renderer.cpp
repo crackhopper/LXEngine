@@ -132,6 +132,7 @@ public:
   }
 
   void initScene(SceneSharedPtr _scene) {
+    ++m_initSceneCallCount;
     m_scene = _scene;
 
     // REQ-009: compute the swapchain target once, use it for both:
@@ -287,9 +288,12 @@ public:
     // render pass so the UI callback can emit widgets before scene draws,
     // and the final ImGui draw data is merged via endFrame(cmd) right before
     // endRenderPass.
-    m_gui.beginFrame();
-    if (m_drawUiCallback) {
-      m_drawUiCallback();
+    const bool skipGuiFrame = expEnvEnabled("LX_RENDER_SKIP_GUI_FRAME");
+    if (!skipGuiFrame) {
+      m_gui.beginFrame();
+      if (m_drawUiCallback) {
+        m_drawUiCallback();
+      }
     }
 
     // Iterate every pass × every item in the FrameGraph. Each item may use a
@@ -303,7 +307,9 @@ public:
       }
     }
 
-    m_gui.endFrame(cmd->getHandle());
+    if (!skipGuiFrame) {
+      m_gui.endFrame(cmd->getHandle());
+    }
 
     cmd->endRenderPass();
     cmd->end();
@@ -354,6 +360,22 @@ public:
     m_drawUiCallback = std::move(cb);
   }
 
+  [[nodiscard]] usize cachedResourceCount() const {
+    return m_resourceManager ? m_resourceManager->getCachedResourceCount() : 0;
+  }
+
+  [[nodiscard]] usize frameGraphItemCount() const {
+    usize total = 0;
+    for (const auto &pass : m_frameGraph.getPasses()) {
+      total += pass.queue.getItems().size();
+    }
+    return total;
+  }
+
+  [[nodiscard]] usize initSceneCallCount() const {
+    return m_initSceneCallCount;
+  }
+
 private:
   void rebuildSwapchain() {
     // A zero-sized window (minimized, or mid-drag) produces an invalid
@@ -397,6 +419,7 @@ private:
   SceneSharedPtr m_scene = nullptr;
   LX_core::FrameGraph m_frameGraph{};
   u32 m_frameIndex = 0;
+  usize m_initSceneCallCount = 0;
   bool m_swapchainNeedsRebuild = false;
   infra::Gui m_gui{};
   std::function<void()> m_drawUiCallback{};
@@ -421,6 +444,18 @@ void VulkanRenderer::draw() { p_impl->draw(); }
 
 void VulkanRenderer::setDrawUiCallback(std::function<void()> cb) {
   p_impl->setDrawUiCallback(std::move(cb));
+}
+
+usize VulkanRenderer::cachedResourceCount() const {
+  return p_impl->cachedResourceCount();
+}
+
+usize VulkanRenderer::frameGraphItemCount() const {
+  return p_impl->frameGraphItemCount();
+}
+
+usize VulkanRenderer::initSceneCallCount() const {
+  return p_impl->initSceneCallCount();
 }
 
 } // namespace LX_core::backend

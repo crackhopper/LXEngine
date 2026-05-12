@@ -29,6 +29,10 @@ public:
   // an empty std::function to clear. Not lifted to the gpu::Renderer base.
   void setDrawUiCallback(std::function<void()> cb);
 
+  [[nodiscard]] usize cachedResourceCount() const;
+  [[nodiscard]] usize frameGraphItemCount() const;
+  [[nodiscard]] usize initSceneCallCount() const;
+
 private:
   std::unique_ptr<VulkanRendererImpl> p_impl;
 };

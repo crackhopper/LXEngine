@@ -4,6 +4,7 @@
 #include "core/gpu/engine_loop.hpp"
 #include "core/input/dummy_input_state.hpp"
 #include "core/rhi/renderer.hpp"
+#include "core/scene/components/mesh_component.hpp"
 #include "core/utils/filesystem_tools.hpp"
 
 #include <iostream>
@@ -136,10 +137,54 @@ void testSceneLoadPreservesEditorCommandHistoryAndConsole() {
          "flushing the pending scene load should restart the engine scene once");
 }
 
+void testEditorHelpersUseFacetedOctahedronGeometry() {
+  const bool initialized = initializeRuntimeAssetRoot();
+  EXPECT(initialized, "runtime asset root should initialize for helper geometry test");
+  if (!initialized) {
+    return;
+  }
+
+  LX_core::EditorState editorState;
+  LX_demo::lxe_editor::CameraRig rig;
+  LX_demo::lxe_editor::UiOverlay ui;
+  LX_demo::lxe_editor::LxeEditorSession session(rig, ui, editorState);
+  session.initialize();
+
+  LX_core::Scene* scene = session.scene().get();
+  EXPECT(scene != nullptr, "editor session should expose a scene");
+  if (!scene) {
+    return;
+  }
+
+  auto requireHelperVertexCount = [&](const char* path) {
+    LX_core::SceneNode* node = scene->findByPath(path);
+    EXPECT(node != nullptr, std::string("helper node should exist: ") + path);
+    if (!node) {
+      return;
+    }
+    const auto mesh = node->getComponent<LX_core::MeshComponent>();
+    EXPECT(mesh.has_value(), std::string("helper node should carry mesh: ") + path);
+    if (!mesh.has_value()) {
+      return;
+    }
+    EXPECT(mesh->get().getMesh() != nullptr,
+           std::string("helper mesh should be present: ") + path);
+    if (!mesh->get().getMesh()) {
+      return;
+    }
+    EXPECT(mesh->get().getMesh()->vertexBuffer->getVertexCount() == 24,
+           std::string("helper should use faceted octahedron vertices: ") + path);
+  };
+
+  requireHelperVertexCount("/game_cam/helper_camera");
+  requireHelperVertexCount("/dir_light/helper_light");
+}
+
 } // namespace
 
 int main() {
   testSceneLoadPreservesEditorCommandHistoryAndConsole();
+  testEditorHelpersUseFacetedOctahedronGeometry();
 
   if (failures != 0) {
     std::cerr << failures << " lxe_editor session test(s) failed\n";
