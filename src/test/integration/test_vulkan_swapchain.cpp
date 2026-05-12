@@ -1,4 +1,5 @@
 #include "backend/vulkan/details/render_objects/render_pass.hpp"
+#include "backend/vulkan/details/render_objects/swapchain_extent.hpp"
 #include "backend/vulkan/details/render_objects/swapchain.hpp"
 #include "backend/vulkan/details/device.hpp"
 #include "core/utils/env.hpp"
@@ -7,11 +8,56 @@
 #include <vulkan/vulkan.h>
 
 #include <iostream>
+#include <limits>
+#include <optional>
 #include <vector>
+
+namespace {
+
+bool testResolveSwapchainExtentRejectsZeroCurrentExtent() {
+  VkSurfaceCapabilitiesKHR capabilities{};
+  capabilities.currentExtent = {0, 0};
+
+  const std::optional<VkExtent2D> extent =
+      LX_core::backend::resolveSwapchainExtent(
+          VkExtent2D{1280, 720}, capabilities);
+  if (extent.has_value()) {
+    std::cerr << "resolveSwapchainExtent should defer rebuild when current "
+                 "surface extent is zero\n";
+    return false;
+  }
+  return true;
+}
+
+bool testResolveSwapchainExtentRejectsClampedZeroExtent() {
+  VkSurfaceCapabilitiesKHR capabilities{};
+  capabilities.currentExtent = {std::numeric_limits<uint32_t>::max(),
+                                std::numeric_limits<uint32_t>::max()};
+  capabilities.minImageExtent = {0, 0};
+  capabilities.maxImageExtent = {0, 0};
+
+  const std::optional<VkExtent2D> extent =
+      LX_core::backend::resolveSwapchainExtent(
+          VkExtent2D{1280, 720}, capabilities);
+  if (extent.has_value()) {
+    std::cerr << "resolveSwapchainExtent should reject clamped zero extent\n";
+    return false;
+  }
+  return true;
+}
+
+} // namespace
 
 int main() {
   expSetEnvVK();
   try {
+    if (!testResolveSwapchainExtentRejectsZeroCurrentExtent()) {
+      return 1;
+    }
+    if (!testResolveSwapchainExtentRejectsClampedZeroExtent()) {
+      return 1;
+    }
+
     LX_infra::Window::Initialize();
     auto window = std::make_shared<LX_infra::Window>("Test Vulkan Depth", 64, 64);
 

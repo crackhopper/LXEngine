@@ -1,4 +1,5 @@
 #include "swapchain.hpp"
+#include "swapchain_extent.hpp"
 #include "../device.hpp"
 #include "framebuffer.hpp"
 #include "render_pass.hpp"
@@ -75,7 +76,15 @@ void VulkanSwapchain::initialize(VulkanRenderPass &renderPass) {
   m_surfaceFormat = m_device.getSurfaceFormat();
   m_depthFormat = m_device.getDepthFormat();
   m_depthAspectMask = m_device.getDepthAspectMask();
-  createInternal(m_extent);
+  VkSurfaceCapabilitiesKHR capabilities{};
+  vkGetPhysicalDeviceSurfaceCapabilitiesKHR(m_device.getPhysicalDevice(),
+                                            m_surface, &capabilities);
+  const auto resolvedExtent = resolveSwapchainExtent(m_extent, capabilities);
+  if (!resolvedExtent.has_value()) {
+    throw std::runtime_error(
+        "VulkanSwapchain: window extent is zero (minimized?)");
+  }
+  createInternal(capabilities, *resolvedExtent);
   createImageViews();
   createDepthResources();
   createSyncObjects();
@@ -141,38 +150,18 @@ void VulkanSwapchain::cleanup() {
   }
 }
 
-void VulkanSwapchain::createInternal(VkExtent2D extent,
+void VulkanSwapchain::createInternal(const VkSurfaceCapabilitiesKHR &capabilities,
+                                     VkExtent2D extent,
                                      VkSwapchainKHR oldSwapchain) {
-  // Vulkan spec: currentExtent == UINT32_MAX means it's not fixed by the
-  // surface; otherwise it is the exact value we must use.
-  VkPhysicalDevice physDevice = m_device.getPhysicalDevice();
-  VkSurfaceCapabilitiesKHR capabilities;
-  vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physDevice, m_surface,
-                                            &capabilities);
-
   if (extent.width == 0 || extent.height == 0) {
     throw std::runtime_error(
         "VulkanSwapchain: window extent is zero (minimized?)");
   }
-
-  VkExtent2D actualExtent{};
-  if (capabilities.currentExtent.width != std::numeric_limits<u32>::max()) {
-    actualExtent = capabilities.currentExtent;
-  } else {
-    actualExtent = extent;
-    actualExtent.width = std::clamp(
-        actualExtent.width, capabilities.minImageExtent.width,
-        capabilities.maxImageExtent.width);
-    actualExtent.height = std::clamp(
-        actualExtent.height, capabilities.minImageExtent.height,
-        capabilities.maxImageExtent.height);
-  }
-
-  if (actualExtent.width == 0 || actualExtent.height == 0) {
+  if (extent.width == 0 || extent.height == 0) {
     throw std::runtime_error("VulkanSwapchain: clamped extent is zero");
   }
 
-  m_extent = actualExtent;
+  m_extent = extent;
 
   u32 imageCount = capabilities.minImageCount + 1;
   if (capabilities.maxImageCount > 0 &&
@@ -193,6 +182,7 @@ void VulkanSwapchain::createInternal(VkExtent2D extent,
   u32 graphicsIdx = m_device.getGraphicsQueueFamilyIndex();
   u32 presentIdx = m_device.getPresentQueueFamilyIndex();
   u32 queueFamilyIndices[] = {graphicsIdx, presentIdx};
+  VkPhysicalDevice physDevice = m_device.getPhysicalDevice();
 
   if (graphicsIdx != presentIdx) {
     createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
@@ -453,8 +443,19 @@ void VulkanSwapchain::setupFramebuffers(VulkanRenderPass &renderPass) {
   }
 }
 
-void VulkanSwapchain::rebuild(VulkanRenderPass &renderPass) {
+bool VulkanSwapchain::rebuild(VulkanRenderPass &renderPass) {
   waitIdle();
+
+  VkSurfaceCapabilitiesKHR capabilities{};
+  vkGetPhysicalDeviceSurfaceCapabilitiesKHR(m_device.getPhysicalDevice(),
+                                            m_surface, &capabilities);
+  VkExtent2D rawExtent{
+      static_cast<u32>(m_window->getWidth()),
+      static_cast<u32>(m_window->getHeight())};
+  const auto resolvedExtent = resolveSwapchainExtent(rawExtent, capabilities);
+  if (!resolvedExtent.has_value()) {
+    return false;
+  }
 
   // Keep the old swapchain alive across cleanup so we can hand it to the
   // driver as VkSwapchainCreateInfoKHR::oldSwapchain — the driver is
@@ -465,15 +466,19 @@ void VulkanSwapchain::rebuild(VulkanRenderPass &renderPass) {
 
   cleanup();
 
-  VkExtent2D rawExtent{
-      static_cast<u32>(m_window->getWidth()),
-      static_cast<u32>(m_window->getHeight())};
-  createInternal(rawExtent, oldHandle);
-  createImageViews();
-  m_depthFormat = m_device.getDepthFormat();
-  createDepthResources();
-  createSyncObjects(); // 重新创建 semaphores 和 fences
-  setupFramebuffers(renderPass);
+  try {
+    createInternal(capabilities, *resolvedExtent, oldHandle);
+    createImageViews();
+    m_depthFormat = m_device.getDepthFormat();
+    createDepthResources();
+    createSyncObjects(); // 重新创建 semaphores 和 fences
+    setupFramebuffers(renderPass);
+  } catch (...) {
+    if (oldHandle != VK_NULL_HANDLE) {
+      vkDestroySwapchainKHR(m_device.getLogicalDevice(), oldHandle, nullptr);
+    }
+    throw;
+  }
 
   // Spec requires oldSwapchain to be destroyed by the application after the
   // new swapchain is in use. We've already finished creating the new one and
@@ -481,6 +486,7 @@ void VulkanSwapchain::rebuild(VulkanRenderPass &renderPass) {
   if (oldHandle != VK_NULL_HANDLE) {
     vkDestroySwapchainKHR(m_device.getLogicalDevice(), oldHandle, nullptr);
   }
+  return true;
 }
 
 VkResult VulkanSwapchain::acquireNextImage(u32 currentFrameIndex,

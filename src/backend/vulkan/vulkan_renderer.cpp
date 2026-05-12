@@ -233,6 +233,11 @@ public:
   }
 
   void draw() {
+    if (m_swapchainNeedsRebuild) {
+      rebuildSwapchain();
+      return;
+    }
+
     // If the window has zero client area (minimized or in the middle of a
     // drag-resize on Windows), rebuilding or acquiring would either fail or
     // produce an invalid swapchain. Skip this frame cleanly; the next call
@@ -250,6 +255,7 @@ public:
         m_swapchain->acquireNextImage(currentFrameIndex, imageIndex);
     if (acquireResult == VK_ERROR_OUT_OF_DATE_KHR ||
         acquireResult == VK_SUBOPTIMAL_KHR) {
+      m_swapchainNeedsRebuild = true;
       // No queue submission will happen on this path, so keep the frame fence
       // signaled. Resetting it here would leave the next acquire blocked if
       // swapchain rebuild is deferred while the window is zero-sized.
@@ -332,6 +338,7 @@ public:
     VkResult presentResult = m_swapchain->present(imageIndex);
     if (presentResult == VK_ERROR_OUT_OF_DATE_KHR ||
         presentResult == VK_SUBOPTIMAL_KHR) {
+      m_swapchainNeedsRebuild = true;
       rebuildSwapchain();
       return;
     }
@@ -355,7 +362,10 @@ private:
       return;
     }
     m_swapchain->waitIdle();
-    m_swapchain->rebuild(m_resourceManager->getRenderPass());
+    if (!m_swapchain->rebuild(m_resourceManager->getRenderPass())) {
+      return;
+    }
+    m_swapchainNeedsRebuild = false;
     m_gui.updateSwapchainImageCount(m_swapchain->getImageCount());
   }
 
@@ -387,6 +397,7 @@ private:
   SceneSharedPtr m_scene = nullptr;
   LX_core::FrameGraph m_frameGraph{};
   u32 m_frameIndex = 0;
+  bool m_swapchainNeedsRebuild = false;
   infra::Gui m_gui{};
   std::function<void()> m_drawUiCallback{};
 };

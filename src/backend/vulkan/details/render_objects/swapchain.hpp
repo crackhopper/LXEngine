@@ -32,7 +32,7 @@ public:
 
   // --- 核心生命周期控制 ---
   void initialize(VulkanRenderPass &renderPass);
-  void rebuild(VulkanRenderPass &renderPass);
+  bool rebuild(VulkanRenderPass &renderPass);
 
   // --- 同步对象获取 ---
   VkSemaphore getImageAvailableSemaphore(u32 currentFrameIndex) const;
@@ -67,7 +67,8 @@ private:
   // pass the previous handle on rebuild so the driver can reuse the
   // underlying surface / image memory chain (matters on cross-GPU PRIME
   // paths, e.g. NVIDIA Optimus laptops).
-  void createInternal(VkExtent2D extent,
+  void createInternal(const VkSurfaceCapabilitiesKHR &capabilities,
+                      VkExtent2D extent,
                       VkSwapchainKHR oldSwapchain = VK_NULL_HANDLE);
   void createImageViews();
   void createDepthResources();
