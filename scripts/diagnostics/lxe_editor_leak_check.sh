@@ -89,6 +89,7 @@ CTEST_BIN="${LX_LEAK_CHECK_CTEST:-ctest}"
 NINJA_BIN="${LX_LEAK_CHECK_NINJA:-ninja}"
 EDITOR_BIN="${LX_LEAK_CHECK_LXE_EDITOR_BIN:-${BUILD_DIR}/src/demos/lxe_editor/lxe_editor}"
 EDITOR_SMOKE_TIMEOUT_SECONDS="${LX_LEAK_CHECK_EDITOR_SMOKE_TIMEOUT_SECONDS:-120}"
+EDITOR_SMOKE_DWELL_SECONDS="${LX_LEAK_CHECK_EDITOR_SMOKE_DWELL_SECONDS:-3}"
 SOAK_TERMINATION_GRACE_SECONDS="${LX_LEAK_CHECK_SOAK_TERMINATION_GRACE_SECONDS:-10}"
 EDITOR_API_HOST="${LX_LEAK_CHECK_EDITOR_API_HOST:-127.0.0.1}"
 EDITOR_API_PORT="${LX_LEAK_CHECK_EDITOR_API_PORT:-37681}"
@@ -203,6 +204,7 @@ write_env() {
     echo "ninja_bin=${NINJA_BIN}"
     echo "editor_bin=${EDITOR_BIN}"
     echo "editor_smoke_timeout_seconds=${EDITOR_SMOKE_TIMEOUT_SECONDS}"
+    echo "editor_smoke_dwell_seconds=${EDITOR_SMOKE_DWELL_SECONDS}"
     echo "soak_termination_grace_seconds=${SOAK_TERMINATION_GRACE_SECONDS}"
     echo "editor_api_host=${EDITOR_API_HOST}"
     echo "editor_api_port=${EDITOR_API_PORT}"
@@ -404,6 +406,25 @@ wait_for_editor_api_ready() {
   done
 }
 
+wait_for_pid_dwell() {
+  local pid="${1}"
+  local dwell_seconds="${2}"
+  local deadline
+
+  if [[ "${dwell_seconds}" -le 0 ]]; then
+    return 0
+  fi
+
+  deadline="$(( $(date +%s) + dwell_seconds ))"
+  while [[ "$(date +%s)" -lt "${deadline}" ]]; do
+    if ! kill -0 "${pid}" 2>/dev/null; then
+      return 1
+    fi
+    sleep 1
+  done
+  return 0
+}
+
 post_editor_command() {
   local line="${1}"
 
@@ -498,6 +519,17 @@ run_bounded_editor_smoke() {
       fi
     fi
 
+    if ! wait_for_pid_dwell "${editor_pid}" "${EDITOR_SMOKE_DWELL_SECONDS}"; then
+      stop_process_group_with_grace "${editor_pid}" "${SOAK_TERMINATION_GRACE_SECONDS}"
+      wait "${editor_pid}" || true
+      record_environment_or_control_failure \
+        "editor_smoke_dwell" \
+        "editor exited during smoke dwell before normal quit" \
+        "environment prerequisite missing during smoke dwell" \
+        "${OUTPUT_DIR}/sanitizer.log"
+      return 1
+    fi
+
     if ! post_editor_command "quit"; then
       stop_process_group_with_grace "${editor_pid}" "${SOAK_TERMINATION_GRACE_SECONDS}"
       wait "${editor_pid}" || true
@@ -559,6 +591,7 @@ run_soak_mode() {
   local editor_exit_status
   local timed_out="false"
   local ready_status
+  local duration_completed="false"
 
   SOAK_STATUS="running"
   SOAK_EDITOR_EXIT_STATUS="running"
@@ -620,6 +653,7 @@ run_soak_mode() {
 
   while kill -0 "${editor_pid}" 2>/dev/null; do
     if [[ "$(date +%s)" -ge "${end_time}" ]]; then
+      duration_completed="true"
       break
     fi
     sleep "${SAMPLE_INTERVAL_SECONDS}"
@@ -634,6 +668,10 @@ run_soak_mode() {
       fi
     fi
   done
+
+  if [[ "${duration_completed}" != "true" && "$(date +%s)" -ge "${end_time}" ]]; then
+    duration_completed="true"
+  fi
 
   if kill -0 "${editor_pid}" 2>/dev/null; then
     timed_out="true"
@@ -653,8 +691,13 @@ run_soak_mode() {
   fi
 
   SOAK_EDITOR_EXIT_STATUS="${editor_exit_status}"
-  if [[ "${editor_exit_status}" -eq 0 ]]; then
+  if [[ "${editor_exit_status}" -eq 0 && "${duration_completed}" == "true" ]]; then
     SOAK_STATUS="passed"
+  elif [[ "${editor_exit_status}" -eq 0 ]]; then
+    SOAK_STATUS="failed"
+    record_failure "smoke_control_failure" "soak_duration" \
+      "editor exited before soak duration completed"
+    return 1
   else
     SOAK_STATUS="failed"
     record_failure "smoke_control_failure" "soak_exit" \
