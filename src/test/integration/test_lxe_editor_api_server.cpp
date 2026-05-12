@@ -209,6 +209,17 @@ void expectSplitToolbarState(const std::string& body) {
          "toolbar response should not include legacy editMode");
 }
 
+void expectMcpToolbarResourceText(const std::string& body) {
+  EXPECT(body.find("\\\"mode\\\":\\\"selection\\\"") != std::string::npos,
+         "MCP toolbar resource text should include editor mode");
+  EXPECT(body.find("\\\"camera\\\":\\\"freefly\\\"") != std::string::npos,
+         "MCP toolbar resource text should include camera control mode");
+  EXPECT(body.find("\\\"editMode\\\"") == std::string::npos,
+         "MCP toolbar resource text should not include legacy editMode");
+  EXPECT(body.find("\"json\":") == std::string::npos,
+         "MCP resource response should not add a raw json envelope field");
+}
+
 std::string makeMaskedWsFrame(const std::string& payload) {
   const std::array<std::uint8_t, 4> mask = {0x12, 0x34, 0x56, 0x78};
   std::string out;
@@ -396,7 +407,7 @@ void testMcpInitializeAndTools() {
   const std::string toolbarResourceResponse = roundTrip(
       "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"resources/read\","
       "\"params\":{\"uri\":\"lxe-editor://toolbar\"}}");
-  expectSplitToolbarState(toolbarResourceResponse);
+  expectMcpToolbarResourceText(toolbarResourceResponse);
 }
 
 void testHttpMcpRequiresBearerToken() {

@@ -155,7 +155,7 @@ constexpr std::string_view kProtocolVersion = "2025-03-26";
                                              const std::string& text) {
   return std::string("{\"contents\":[{\"uri\":\"") + jsonEscape(uri) +
          "\",\"mimeType\":\"application/json\",\"text\":\"" +
-         jsonEscape(text) + "\",\"json\":" + text + "}]}";
+         jsonEscape(text) + "\"}]}";
 }
 
 [[nodiscard]] std::optional<std::string> scalarString(const YAML::Node& node,

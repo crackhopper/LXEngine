@@ -126,9 +126,16 @@ struct SceneViewerCommandFixture {
                                         CameraControlMode::FreeFly)
                             ? "freefly"
                             : "orbit";
-                    return LX_core::CommandResult{
+                    LX_core::CommandResult result{
                         true, "camera " + camera,
                         "{\"camera\":\"" + camera + "\"}"};
+                    result.metadata[std::string(
+                        LX_core::kCommandResultClearRedoOnSuccessMetadataKey)] =
+                        "false";
+                    result.metadata[std::string(
+                        LX_core::kCommandResultClearUndoOnSuccessMetadataKey)] =
+                        "false";
+                    return result;
                   }
                   if (args[1] != "orbit" && args[1] != "freefly") {
                     return LX_core::CommandResult{
@@ -1043,6 +1050,28 @@ void testSceneSavePreservesRedoHistory() {
          "successful scene save should preserve redo history");
 }
 
+void testCameraControlStatusPreservesRedoHistory() {
+  SceneViewerCommandFixture fixture;
+
+  const CommandResult moveResult =
+      fixture.base.bus.dispatch("move /world/cube 1 0 0");
+  EXPECT(moveResult.ok, "redo setup move should succeed");
+
+  const CommandResult undoResult = fixture.base.bus.undo();
+  EXPECT(undoResult.ok, "undo should succeed before camera status");
+  EXPECT(fixture.base.bus.canRedo(),
+         "undoable command should leave redo history before camera status");
+
+  const CommandResult statusResult =
+      fixture.base.bus.dispatch("cam control status");
+  EXPECT(statusResult.ok, "cam control status should succeed");
+  EXPECT(statusResult.structured.find("\"camera\":\"orbit\"") !=
+             std::string::npos,
+         "camera status should report current camera control mode");
+  EXPECT(fixture.base.bus.canRedo(),
+         "read-only camera status should preserve redo history");
+}
+
 void testSceneViewerModeAndStateCommands() {
   SceneViewerCommandFixture fixture;
 
@@ -1810,6 +1839,7 @@ int main() {
   testAdminCommandsUseRegisteredCallbacks();
   testSceneLoadClearsRedoHistory();
   testSceneSavePreservesRedoHistory();
+  testCameraControlStatusPreservesRedoHistory();
   testSceneViewerModeAndStateCommands();
   testSceneViewerDebugCommandsUpdateSummaryAndToolbarState();
   testSceneViewerPickCommandUsesInteractionController();

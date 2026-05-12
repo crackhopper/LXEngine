@@ -410,8 +410,16 @@ void LxeEditorSession::rebuildBindings() {
                 if (args[1] == "status") {
                   const std::string camera = cameraControlModeName(
                       m_ui.currentCameraControlMode());
-                  return makeCommandOk("camera " + camera,
-                                       "{\"camera\":\"" + camera + "\"}");
+                  LX_core::CommandResult result =
+                      makeCommandOk("camera " + camera,
+                                    "{\"camera\":\"" + camera + "\"}");
+                  result.metadata[std::string(
+                      LX_core::kCommandResultClearRedoOnSuccessMetadataKey)] =
+                      "false";
+                  result.metadata[std::string(
+                      LX_core::kCommandResultClearUndoOnSuccessMetadataKey)] =
+                      "false";
+                  return result;
                 }
                 if (args[1] != "orbit" && args[1] != "freefly") {
                   return makeCommandError("unknown camera control: " + args[1]);
