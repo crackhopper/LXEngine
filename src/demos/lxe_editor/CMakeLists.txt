@@ -4,6 +4,7 @@
 
 add_executable(lxe_editor
   api_token_state.cpp
+  editor_session.cpp
   main.cpp
   camera_rig.cpp
   lxe_editor_api_protocol.cpp

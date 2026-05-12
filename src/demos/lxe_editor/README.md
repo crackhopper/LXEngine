@@ -176,16 +176,18 @@ the runtime state's `mcpUrl` and temporarily falls back to legacy
 - Runtime discovery file: `data/lxe_editor/runtime_state.yaml`
 - Preferred runtime-state key: `mcpUrl`
 
-To point Codex at the currently running local editor:
+To point Codex at the local editor:
 
 ```sh
 source scripts/lxe_editor/use_local_mcp.sh
 codex
 ```
 
-That helper reads `runtime_state.yaml`, loads the token from `tokenFile`,
-exports `LXE_EDITOR_MCP_BEARER_TOKEN`, and rewrites `.codex/config.toml` to
-the discovered direct MCP URL.
+That helper ensures a local `lxe_editor` instance is running, waits for
+`runtime_state.yaml`, loads the token from `tokenFile`, exports
+`LXE_EDITOR_MCP_BEARER_TOKEN`, and rewrites `.codex/config.toml` to the
+discovered direct MCP URL. Override the executable with
+`LXE_EDITOR_EXECUTABLE=/path/to/lxe_editor` when needed.
 
 To point Codex at a remote editor:
 

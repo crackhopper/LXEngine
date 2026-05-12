@@ -1,0 +1,90 @@
+#pragma once
+
+#include "core/editor/command_bus.hpp"
+#include "core/editor/editor_state.hpp"
+#include "core/gpu/engine_loop.hpp"
+#include "core/platform/types.hpp"
+#include "demos/lxe_editor/camera_rig.hpp"
+#include "demos/lxe_editor/editor_config_state.hpp"
+#include "demos/lxe_editor/editor_data_state.hpp"
+#include "demos/lxe_editor/scene_catalog.hpp"
+#include "demos/lxe_editor/scene_runtime.hpp"
+#include "demos/lxe_editor/scene_session.hpp"
+#include "demos/lxe_editor/ui_overlay.hpp"
+
+#include <filesystem>
+#include <memory>
+#include <optional>
+#include <string>
+#include <string_view>
+
+namespace LX_core {
+class CommandBus;
+class ConsolePanel;
+class InspectorPanel;
+class SceneTreePanel;
+} // namespace LX_core
+
+namespace LX_demo::lxe_editor {
+
+class SceneInteractionController;
+
+class LxeEditorSession final {
+public:
+  LxeEditorSession(CameraRig& rig, UiOverlay& ui,
+                   LX_core::EditorState& editorState);
+  ~LxeEditorSession();
+
+  void initialize();
+
+  [[nodiscard]] LX_core::SceneSharedPtr scene() const;
+  [[nodiscard]] LX_core::CameraComponent& editorCamera() const;
+  [[nodiscard]] SceneInteractionController& sceneInteraction() const;
+  [[nodiscard]] LX_core::CameraComponent& gameCamera() const;
+  [[nodiscard]] bool isDirty() const;
+  void setWindowSize(const LX_core::Vec2f& size);
+  [[nodiscard]] EditorConfigDocument& editorConfig();
+  [[nodiscard]] LX_core::CommandBus& commandBus() const;
+  [[nodiscard]] const LX_core::ConsolePanel& consolePanel() const;
+  [[nodiscard]] usize bindingsGeneration() const;
+  [[nodiscard]] ScenePermissionLevel permission() const;
+  [[nodiscard]] const std::optional<std::filesystem::path>&
+  currentDocumentPath() const;
+  [[nodiscard]] const std::optional<SceneSourceKind>& currentSourceKind() const;
+  void persistEditorData();
+  void recordCommandHistoryLine(std::string_view line);
+  [[nodiscard]] LX_core::CommandResult
+  saveScene(const std::optional<std::string>& path);
+  void flushPendingSceneLoad(LX_core::gpu::EngineLoop& loop);
+  void pollCommandHistory(LX_core::gpu::EngineLoop& loop);
+
+private:
+  void refreshCatalog();
+  [[nodiscard]] LX_core::CommandResult listScenes();
+  [[nodiscard]] LX_core::CommandResult queueSceneLoad(const std::string& path);
+  [[nodiscard]] LX_core::CommandResult setAdmin(bool enabled);
+  [[nodiscard]] LX_core::CommandResult adminStatus() const;
+  void rebuildBindings();
+
+  CameraRig& m_rig;
+  UiOverlay& m_ui;
+  LX_core::EditorState& m_editorState;
+  SceneCatalog m_catalog;
+  SceneSession m_session;
+  SceneRuntime m_runtime;
+  std::optional<SceneRuntime> m_pendingRuntime;
+  std::optional<SceneSourceKind> m_pendingSourceKind;
+  std::unique_ptr<LX_core::CommandBus> m_commandBus;
+  std::unique_ptr<LX_core::ConsolePanel> m_consolePanel;
+  std::unique_ptr<LX_core::SceneTreePanel> m_sceneTreePanel;
+  std::unique_ptr<LX_core::InspectorPanel> m_inspectorPanel;
+  std::unique_ptr<SceneInteractionController> m_sceneInteraction;
+  size_t m_lastObservedHistoryIndex = 0;
+  EditorConfigDocument m_editorConfig;
+  EditorDataState m_editorDataState;
+  EditorDataDocument m_editorData;
+  LX_core::Vec2f m_windowSize{1280.0f, 720.0f};
+  usize m_bindingsGeneration = 0;
+};
+
+} // namespace LX_demo::lxe_editor

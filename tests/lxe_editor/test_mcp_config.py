@@ -84,6 +84,55 @@ class DirectMcpConfigTest(unittest.TestCase):
         self.assertIn('url = "http://127.0.0.1:3768/mcp"', output)
         self.assertIn('bearer_token_env_var = "LXE_EDITOR_MCP_BEARER_TOKEN"', output)
 
+    def test_use_local_mcp_script_autostarts_when_runtime_state_is_missing(self) -> None:
+        fake_editor = self.temp_root / "fake_lxe_editor.sh"
+        fake_editor.write_text(
+            textwrap.dedent(
+                f"""\
+                #!/usr/bin/env bash
+                set -euo pipefail
+                runtime_root="${{LX_RUNTIME_ROOT:?}}"
+                mkdir -p "${{runtime_root}}/data/lxe_editor"
+                cat > "${{runtime_root}}/data/lxe_editor/runtime_state.yaml" <<EOF
+                version: 1
+                pid: $$
+                mcpUrl: http://127.0.0.1:3768/mcp
+                tokenFile: {self.token_path}
+                startedAt: 2026-05-11-210000
+                EOF
+                printf 'secret-token\\n' > "{self.token_path}"
+                sleep 1
+                """
+            ),
+            encoding="utf-8",
+        )
+        fake_editor.chmod(0o755)
+
+        script = self.repo_root / "scripts" / "lxe_editor" / "use_local_mcp.sh"
+        command = (
+            f"source '{script}' >/dev/null && "
+            "printf '%s\\n' \"$LXE_EDITOR_MCP_BEARER_TOKEN\" && "
+            f"cat '{self.config_path}'"
+        )
+        result = subprocess.run(
+            ["bash", "-lc", command],
+            check=True,
+            capture_output=True,
+            text=True,
+            env={
+                **os.environ,
+                "LXE_EDITOR_RUNTIME_ROOT": str(self.runtime_root),
+                "LXE_EDITOR_CODEX_CONFIG_PATH": str(self.config_path),
+                "LXE_EDITOR_EXECUTABLE": str(fake_editor),
+                "LXE_EDITOR_AUTOSTART_TIMEOUT_S": "5",
+            },
+        )
+
+        output = result.stdout
+        self.assertIn("secret-token", output)
+        self.assertIn('url = "http://127.0.0.1:3768/mcp"', output)
+        self.assertTrue((self.runtime_data_dir / "runtime_state.yaml").is_file())
+
     def test_use_remote_mcp_script_writes_direct_url_config(self) -> None:
         script = self.repo_root / "scripts" / "lxe_editor" / "use_remote_mcp.sh"
         command = (
