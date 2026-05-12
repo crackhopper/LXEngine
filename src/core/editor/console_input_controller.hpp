@@ -36,7 +36,8 @@ public:
   void clearHelperOutput();
   [[nodiscard]] std::string sanitizedInputText() const;
 
-  [[nodiscard]] int handleCallbackEvent(int eventFlag, int eventKey);
+  [[nodiscard]] int handleCallbackEvent(int eventFlag, int eventKey,
+                                        unsigned int eventChar);
 
 private:
   void beginHistoryBrowseIfNeeded();

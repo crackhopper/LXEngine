@@ -196,8 +196,14 @@ std::string ConsoleInputController::helperOutputText() const {
 void ConsoleInputController::clearHelperOutput() { m_helperLines.clear(); }
 
 int ConsoleInputController::handleCallbackEvent(const int eventFlag,
-                                                const int eventKey) {
+                                                const int eventKey,
+                                                const unsigned int eventChar) {
   switch (eventFlag) {
+  case ImGuiInputTextFlags_CallbackCharFilter:
+    if (eventChar == '\r' || eventChar == '\n') {
+      return 1;
+    }
+    return 0;
   case ImGuiInputTextFlags_CallbackCompletion:
     autocomplete();
     return 0;

@@ -31,18 +31,26 @@ void ConsolePanel::draw() {
   drawOutputRegion(inputHeight);
 
   ImGui::PushItemWidth(-1.0f);
-  const bool submitted = ImGui::InputTextMultiline(
+  (void)ImGui::InputTextMultiline(
       "##command_input", m_inputController.inputBufferData(),
       m_inputController.inputBufferSize(), inputSize,
-      ImGuiInputTextFlags_EnterReturnsTrue |
-          ImGuiInputTextFlags_WordWrap |
+      ImGuiInputTextFlags_WordWrap |
+          ImGuiInputTextFlags_CallbackCharFilter |
           ImGuiInputTextFlags_CallbackCompletion |
           ImGuiInputTextFlags_CallbackHistory,
       &ConsolePanel::inputTextCallback, &m_inputController);
   ImGui::PopItemWidth();
 
+  bool submitted = false;
   if (ImGui::IsItemActive()) {
     const ImGuiIO &io = ImGui::GetIO();
+    const bool plainEnterPressed =
+        (ImGui::IsKeyPressed(ImGuiKey_Enter, false) ||
+         ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false)) &&
+        !io.KeyCtrl && !io.KeyShift && !io.KeyAlt && !io.KeySuper;
+    if (plainEnterPressed) {
+      submitted = true;
+    }
     if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
       m_inputController.cancelHistoryBrowse();
     }
@@ -266,7 +274,8 @@ int ConsolePanel::inputTextCallback(ImGuiInputTextCallbackData *data) {
   auto *controller =
       static_cast<ConsoleInputController *>(data->UserData);
   const int result =
-      controller->handleCallbackEvent(data->EventFlag, data->EventKey);
+      controller->handleCallbackEvent(data->EventFlag, data->EventKey,
+                                      data->EventChar);
   const std::string text = controller->inputText();
   const size_t copyLength =
       std::min(text.size(), static_cast<size_t>(data->BufSize - 1));

@@ -1495,19 +1495,29 @@ void testConsoleInputControllerCallbackEvents() {
 
   controller.setInputText("sel");
   (void)controller.handleCallbackEvent(ImGuiInputTextFlags_CallbackCompletion,
-                                       ImGuiKey_Tab);
+                                       ImGuiKey_Tab, 0);
   EXPECT(controller.inputText() == "select ",
          "completion callback should route to autocomplete");
 
   (void)controller.handleCallbackEvent(ImGuiInputTextFlags_CallbackHistory,
-                                       ImGuiKey_UpArrow);
+                                       ImGuiKey_UpArrow, 0);
   EXPECT(controller.inputText() == "list nodes",
          "history callback should route to older history");
 
   (void)controller.handleCallbackEvent(ImGuiInputTextFlags_CallbackHistory,
-                                       ImGuiKey_DownArrow);
+                                       ImGuiKey_DownArrow, 0);
   EXPECT(controller.inputText() == "select ",
          "history callback should restore draft after returning past newest");
+
+  EXPECT(controller.handleCallbackEvent(ImGuiInputTextFlags_CallbackCharFilter, 0,
+                                        '\n') == 1,
+         "char filter should reject newline insertion");
+  EXPECT(controller.handleCallbackEvent(ImGuiInputTextFlags_CallbackCharFilter, 0,
+                                        '\r') == 1,
+         "char filter should reject carriage return insertion");
+  EXPECT(controller.handleCallbackEvent(ImGuiInputTextFlags_CallbackCharFilter, 0,
+                                        'a') == 0,
+         "char filter should allow ordinary characters");
 }
 
 void testConsoleInputControllerPersistsHistoryLines() {
