@@ -8,6 +8,8 @@
 #include <string_view>
 #include <vector>
 
+struct ImGuiInputTextCallbackData;
+
 namespace LX_core {
 
 class ConsoleInputController final {
@@ -35,6 +37,7 @@ public:
   [[nodiscard]] std::string helperOutputText() const;
   void clearHelperOutput();
   [[nodiscard]] std::string sanitizedInputText() const;
+  void syncCallbackBuffer(ImGuiInputTextCallbackData &data) const;
 
   [[nodiscard]] int handleCallbackEvent(int eventFlag, int eventKey,
                                         unsigned int eventChar);

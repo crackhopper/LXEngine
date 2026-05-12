@@ -178,6 +178,22 @@ std::string ConsoleInputController::sanitizedInputText() const {
   return sanitizeSubmittedLine(inputText());
 }
 
+void ConsoleInputController::syncCallbackBuffer(
+    ImGuiInputTextCallbackData &data) const {
+  const std::string text = inputText();
+  const size_t copyLength =
+      std::min(text.size(), static_cast<size_t>(data.BufSize - 1));
+  std::memset(data.Buf, 0, static_cast<size_t>(data.BufSize));
+  if (copyLength > 0) {
+    std::memcpy(data.Buf, text.data(), copyLength);
+  }
+  data.BufTextLen = static_cast<int>(copyLength);
+  data.CursorPos = data.BufTextLen;
+  data.SelectionStart = data.BufTextLen;
+  data.SelectionEnd = data.BufTextLen;
+  data.BufDirty = true;
+}
+
 char *ConsoleInputController::inputBufferData() { return m_inputBuffer.data(); }
 
 usize ConsoleInputController::inputBufferSize() const { return m_inputBuffer.size(); }

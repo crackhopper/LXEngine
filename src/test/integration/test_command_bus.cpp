@@ -1520,6 +1520,110 @@ void testConsoleInputControllerCallbackEvents() {
          "char filter should allow ordinary characters");
 }
 
+void testConsolePanelShouldSubmitPlainEnterOnly() {
+  EXPECT(ConsolePanel::shouldSubmitInputOnPlainEnter(
+             true, true, false, false, false, false, false) == true,
+         "plain enter on active multiline input should submit");
+  EXPECT(ConsolePanel::shouldSubmitInputOnPlainEnter(
+             true, false, true, false, false, false, false) == true,
+         "plain keypad enter on active multiline input should submit");
+  EXPECT(ConsolePanel::shouldSubmitInputOnPlainEnter(
+             false, true, false, false, false, false, false) == false,
+         "inactive multiline input should not submit on enter");
+  EXPECT(ConsolePanel::shouldSubmitInputOnPlainEnter(
+             true, true, false, true, false, false, false) == false,
+         "ctrl-enter should not submit");
+  EXPECT(ConsolePanel::shouldSubmitInputOnPlainEnter(
+             true, true, false, false, true, false, false) == false,
+         "shift-enter should not submit");
+  EXPECT(ConsolePanel::shouldSubmitInputOnPlainEnter(
+             true, true, false, false, false, true, false) == false,
+         "alt-enter should not submit");
+  EXPECT(ConsolePanel::shouldSubmitInputOnPlainEnter(
+             true, true, false, false, false, false, true) == false,
+         "super-enter should not submit");
+}
+
+void testConsoleInputControllerSyncsCallbackBufferAfterControllerMutations() {
+  CommandFixture fixture;
+  ConsoleInputController controller(fixture.bus);
+
+  controller.submitLine("help");
+  controller.submitLine("list nodes");
+  controller.setInputText("sel");
+
+  std::array<char, 64> completionBuffer{};
+  ImGuiInputTextCallbackData completionData{};
+  completionData.EventFlag = ImGuiInputTextFlags_CallbackCompletion;
+  completionData.EventKey = ImGuiKey_Tab;
+  completionData.Buf = completionBuffer.data();
+  completionData.BufSize = static_cast<int>(completionBuffer.size());
+
+  (void)controller.handleCallbackEvent(completionData.EventFlag,
+                                       completionData.EventKey,
+                                       completionData.EventChar);
+  controller.syncCallbackBuffer(completionData);
+  EXPECT(std::string(completionData.Buf) == "select ",
+         "callback sync should copy completion text into ImGui buffer");
+  EXPECT(completionData.BufTextLen == 7,
+         "callback sync should update completion buffer length");
+  EXPECT(completionData.CursorPos == completionData.BufTextLen,
+         "callback sync should move completion cursor to buffer end");
+  EXPECT(completionData.SelectionStart == completionData.BufTextLen &&
+             completionData.SelectionEnd == completionData.BufTextLen,
+         "callback sync should collapse completion selection at buffer end");
+  EXPECT(completionData.BufDirty,
+         "callback sync should mark completion buffer dirty");
+
+  controller.setInputText("draft");
+  std::array<char, 64> historyBuffer{};
+  ImGuiInputTextCallbackData historyData{};
+  historyData.EventFlag = ImGuiInputTextFlags_CallbackHistory;
+  historyData.EventKey = ImGuiKey_UpArrow;
+  historyData.Buf = historyBuffer.data();
+  historyData.BufSize = static_cast<int>(historyBuffer.size());
+
+  (void)controller.handleCallbackEvent(historyData.EventFlag, historyData.EventKey,
+                                       historyData.EventChar);
+  controller.syncCallbackBuffer(historyData);
+  EXPECT(std::string(historyData.Buf) == "list nodes",
+         "callback sync should copy history text into ImGui buffer");
+  EXPECT(historyData.BufTextLen == 10,
+         "callback sync should update history buffer length");
+  EXPECT(historyData.CursorPos == historyData.BufTextLen,
+         "callback sync should move history cursor to buffer end");
+  EXPECT(historyData.SelectionStart == historyData.BufTextLen &&
+             historyData.SelectionEnd == historyData.BufTextLen,
+         "callback sync should collapse history selection at buffer end");
+  EXPECT(historyData.BufDirty,
+         "callback sync should mark history buffer dirty");
+
+  controller.setInputText("draft");
+  std::array<char, 64> filterBuffer{};
+  std::memcpy(filterBuffer.data(), "keep", 5);
+  ImGuiInputTextCallbackData filterData{};
+  filterData.EventFlag = ImGuiInputTextFlags_CallbackCharFilter;
+  filterData.EventChar = '\n';
+  filterData.Buf = filterBuffer.data();
+  filterData.BufSize = static_cast<int>(filterBuffer.size());
+
+  EXPECT(controller.handleCallbackEvent(filterData.EventFlag, filterData.EventKey,
+                                        filterData.EventChar) == 1,
+         "char filter should reject newline before callback sync");
+  controller.syncCallbackBuffer(filterData);
+  EXPECT(std::string(filterData.Buf) == "draft",
+         "callback sync should preserve controller-owned buffer after filter event");
+  EXPECT(filterData.BufTextLen == 5,
+         "callback sync should update filter buffer length coherently");
+  EXPECT(filterData.CursorPos == filterData.BufTextLen,
+         "callback sync should move filter cursor to buffer end");
+  EXPECT(filterData.SelectionStart == filterData.BufTextLen &&
+             filterData.SelectionEnd == filterData.BufTextLen,
+         "callback sync should collapse filter selection at buffer end");
+  EXPECT(filterData.BufDirty,
+         "callback sync should mark filter buffer dirty");
+}
+
 void testConsoleInputControllerPersistsHistoryLines() {
   CommandFixture fixture;
   ConsoleInputController controller(fixture.bus);
@@ -1628,6 +1732,8 @@ int main() {
   testConsoleInputControllerCompletionBehaviors();
   testConsoleInputControllerEscRestoresDraft();
   testConsoleInputControllerCallbackEvents();
+  testConsolePanelShouldSubmitPlainEnterOnly();
+  testConsoleInputControllerSyncsCallbackBufferAfterControllerMutations();
   testConsoleInputControllerPersistsHistoryLines();
   testConsoleInputControllerSanitizesMultilineSubmitToSingleLine();
 

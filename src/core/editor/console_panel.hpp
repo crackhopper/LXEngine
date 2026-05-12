@@ -36,6 +36,9 @@ public:
   void appendSystemLine(std::string_view line);
   [[nodiscard]] std::vector<std::string> persistedHistory() const;
   [[nodiscard]] bool consumePersistedHistoryDirty();
+  [[nodiscard]] static bool shouldSubmitInputOnPlainEnter(
+      bool itemActive, bool enterPressed, bool keypadEnterPressed, bool ctrlHeld,
+      bool shiftHeld, bool altHeld, bool superHeld);
 
   void setInputText(std::string_view text);
   [[nodiscard]] std::string getInputText() const;

@@ -41,16 +41,13 @@ void ConsolePanel::draw() {
       &ConsolePanel::inputTextCallback, &m_inputController);
   ImGui::PopItemWidth();
 
-  bool submitted = false;
-  if (ImGui::IsItemActive()) {
-    const ImGuiIO &io = ImGui::GetIO();
-    const bool plainEnterPressed =
-        (ImGui::IsKeyPressed(ImGuiKey_Enter, false) ||
-         ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false)) &&
-        !io.KeyCtrl && !io.KeyShift && !io.KeyAlt && !io.KeySuper;
-    if (plainEnterPressed) {
-      submitted = true;
-    }
+  const ImGuiIO &io = ImGui::GetIO();
+  const bool itemActive = ImGui::IsItemActive();
+  const bool submitted = shouldSubmitInputOnPlainEnter(
+      itemActive, ImGui::IsKeyPressed(ImGuiKey_Enter, false),
+      ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false), io.KeyCtrl, io.KeyShift,
+      io.KeyAlt, io.KeySuper);
+  if (itemActive) {
     if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
       m_inputController.cancelHistoryBrowse();
     }
@@ -212,6 +209,14 @@ std::string ConsolePanel::displayedText() const {
   return output;
 }
 
+bool ConsolePanel::shouldSubmitInputOnPlainEnter(
+    const bool itemActive, const bool enterPressed,
+    const bool keypadEnterPressed, const bool ctrlHeld, const bool shiftHeld,
+    const bool altHeld, const bool superHeld) {
+  return itemActive && (enterPressed || keypadEnterPressed) && !ctrlHeld &&
+         !shiftHeld && !altHeld && !superHeld;
+}
+
 void ConsolePanel::appendAttachmentToDispatchOwner(const u64 dispatchOwnerId,
                                                    std::string_view line) {
   m_dispatchAttachments[dispatchOwnerId].emplace_back(line);
@@ -276,18 +281,7 @@ int ConsolePanel::inputTextCallback(ImGuiInputTextCallbackData *data) {
   const int result =
       controller->handleCallbackEvent(data->EventFlag, data->EventKey,
                                       data->EventChar);
-  const std::string text = controller->inputText();
-  const size_t copyLength =
-      std::min(text.size(), static_cast<size_t>(data->BufSize - 1));
-  std::memset(data->Buf, 0, static_cast<size_t>(data->BufSize));
-  if (copyLength > 0) {
-    std::memcpy(data->Buf, text.data(), copyLength);
-  }
-  data->BufTextLen = static_cast<int>(copyLength);
-  data->CursorPos = data->BufTextLen;
-  data->SelectionStart = data->BufTextLen;
-  data->SelectionEnd = data->BufTextLen;
-  data->BufDirty = true;
+  controller->syncCallbackBuffer(*data);
   return result;
 }
 
