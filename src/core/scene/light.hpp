@@ -69,10 +69,6 @@ public:
   /// explicitly configured as a shadow caster.
   DirectionalLight();
 
-  /// Direct access to the strongly-typed light data (legacy callers mutate
-  /// `ubo->param` directly; new callers go through LightBase::getUBO()).
-  DirectionalLightDataSharedPtr ubo;
-
   [[nodiscard]] Vec3f getDirection() const;
   [[nodiscard]] Vec3f getColor() const;
   [[nodiscard]] float getIntensity() const;
@@ -84,7 +80,10 @@ public:
                          const std::weak_ptr<SceneNode> &node);
   void detachFromSceneNode();
 
-  IGpuResourceSharedPtr getUBO() const override { return ubo; }
+  IGpuResourceSharedPtr getUBO() const override { return m_ubo; }
+  [[nodiscard]] DirectionalLightDataSharedPtr getDirectionalUBO() const {
+    return m_ubo;
+  }
   bool supportsPass(StringID pass) const override;
   void setSupportedPasses(std::initializer_list<StringID> passes);
   void setSupportedPasses(const std::vector<StringID> &passes);
@@ -92,6 +91,7 @@ public:
 private:
   void emitLightPropertyChanged() const;
 
+  DirectionalLightDataSharedPtr m_ubo;
   std::unordered_set<StringID, StringID::Hash> m_supportedPasses;
   std::weak_ptr<Scene> m_scene;
   std::weak_ptr<SceneNode> m_node;

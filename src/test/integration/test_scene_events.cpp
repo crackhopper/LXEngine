@@ -283,6 +283,21 @@ void testDirectionalLightPropertySettersEmitRuntimeEvents() {
   light->setColor({0.2f, 0.4f, 0.6f});
   light->setIntensity(3.5f);
 
+  const auto directionalUbo = light->getDirectionalUBO();
+  EXPECT(directionalUbo != nullptr,
+         "typed directional light UBO accessor should stay available");
+  if (directionalUbo != nullptr) {
+    EXPECT(directionalUbo->param.dir.x == 0.0f &&
+               directionalUbo->param.dir.y == -1.0f &&
+               directionalUbo->param.dir.z == 0.0f,
+           "typed directional light UBO accessor should expose latest direction");
+    EXPECT(directionalUbo->param.color.x == 0.2f &&
+               directionalUbo->param.color.y == 0.4f &&
+               directionalUbo->param.color.z == 0.6f &&
+               directionalUbo->param.color.w == 3.5f,
+           "typed directional light UBO accessor should expose latest color and intensity");
+  }
+
   EXPECT(countChangedEventsWithAspect(events,
                                       LX_core::SceneNodeAspect::LightProperties) == 3,
          "light property setters should each emit LightProperties events");

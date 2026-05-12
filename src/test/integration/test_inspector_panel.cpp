@@ -77,8 +77,9 @@ struct Fixture {
     auto dirLight = std::dynamic_pointer_cast<LX_core::DirectionalLight>(
         scene->getLights().front());
     scene->attachLight(lightNode, dirLight);
-    dirLight->ubo->param.dir = LX_core::Vec4f{-0.3f, -1.0f, -0.5f, 0.0f};
-    dirLight->ubo->param.color = LX_core::Vec4f{0.9f, 0.8f, 0.7f, 2.5f};
+    dirLight->setDirection({-0.3f, -1.0f, -0.5f});
+    dirLight->setColor({0.9f, 0.8f, 0.7f});
+    dirLight->setIntensity(2.5f);
     LX_core::registerBuiltinCommands(bus, editorState, *scene);
   }
 };
@@ -155,8 +156,9 @@ void testSnapshotForRenamedLightNodeUsesExactAttachedLight() {
   fillNode->setName("fill");
   fixture.scene->addRenderable(fillNode);
   auto fillLight = std::make_shared<LX_core::DirectionalLight>();
-  fillLight->ubo->param.dir = LX_core::Vec4f{1.0f, 0.0f, 0.0f, 0.0f};
-  fillLight->ubo->param.color = LX_core::Vec4f{0.1f, 0.2f, 0.3f, 9.0f};
+  fillLight->setDirection({1.0f, 0.0f, 0.0f});
+  fillLight->setColor({0.1f, 0.2f, 0.3f});
+  fillLight->setIntensity(9.0f);
   fixture.scene->attachLight(fillNode, fillLight);
 
   LX_core::InspectorPanel panel(fixture.bus, fixture.editorState);
@@ -225,9 +227,10 @@ void testDispatchHelpersUseCommandBus() {
   EXPECT(setDirection.ok, "light direction helper should succeed");
   const auto dirLight = std::dynamic_pointer_cast<LX_core::DirectionalLight>(
       fixture.scene->getLights().front());
-  EXPECT(nearlyEqual(dirLight->ubo->param.dir.x, 0.0f) &&
-             nearlyEqual(dirLight->ubo->param.dir.y, -1.0f) &&
-             nearlyEqual(dirLight->ubo->param.dir.z, 0.0f),
+  const LX_core::Vec3f direction = dirLight->getDirection();
+  EXPECT(nearlyEqual(direction.x, 0.0f) &&
+             nearlyEqual(direction.y, -1.0f) &&
+             nearlyEqual(direction.z, 0.0f),
          "light direction helper should update scene light");
 }
 

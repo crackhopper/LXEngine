@@ -150,11 +150,18 @@ void cameraPanel(const char* title, LX_core::CameraComponent& camera) {
 void directionalLightPanel(const char* title,
                            LX_core::DirectionalLight& light) {
   separatorText(title);
-  bool changed = false;
-  changed |= dragVec4("dir", light.ubo->param.dir, 0.01f);
-  changed |= colorEdit4("color", light.ubo->param.color);
-  if (changed) {
-    light.ubo->setDirty();
+  LX_core::Vec3f direction = light.getDirection();
+  LX_core::Vec4f directionValue{direction.x, direction.y, direction.z, 0.0f};
+  if (dragVec4("dir", directionValue, 0.01f)) {
+    light.setDirection(
+        {directionValue.x, directionValue.y, directionValue.z});
+  }
+
+  LX_core::Vec3f color = light.getColor();
+  LX_core::Vec4f colorValue{color.x, color.y, color.z, light.getIntensity()};
+  if (colorEdit4("color", colorValue)) {
+    light.setColor({colorValue.x, colorValue.y, colorValue.z});
+    light.setIntensity(colorValue.w);
   }
 }
 

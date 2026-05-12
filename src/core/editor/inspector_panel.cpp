@@ -167,9 +167,9 @@ InspectorPanel::Snapshot InspectorPanel::makeSnapshot() const {
   }
   if (const auto light = findDirectionalLightForNode(node)) {
     snapshot.hasLight = true;
-    snapshot.lightDirection = Vec3f{light->ubo->param.dir.x, light->ubo->param.dir.y, light->ubo->param.dir.z};
-    snapshot.lightColor = Vec3f{light->ubo->param.color.x, light->ubo->param.color.y, light->ubo->param.color.z};
-    snapshot.lightIntensity = light->ubo->param.color.w;
+    snapshot.lightDirection = light->getDirection();
+    snapshot.lightColor = light->getColor();
+    snapshot.lightIntensity = light->getIntensity();
   }
   snapshot.hasMesh = node.getComponent<MeshComponent>().has_value();
   snapshot.hasMaterial = node.getComponent<MaterialComponent>().has_value();

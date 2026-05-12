@@ -510,7 +510,7 @@ void ViewportOverlay::enqueueDebugDraw() const {
 
   for (const auto &light : m_scene.getLights()) {
     const auto directionalLight = std::dynamic_pointer_cast<DirectionalLight>(light);
-    if (!directionalLight || !directionalLight->ubo) {
+    if (!directionalLight) {
       continue;
     }
 
@@ -518,7 +518,7 @@ void ViewportOverlay::enqueueDebugDraw() const {
     if (SceneNode *lightNode = m_scene.findByPath("/dir_light")) {
       origin = Transform::fromMat4(lightNode->getWorldTransform()).translation;
     }
-    Vec3f direction = Vec3f{directionalLight->ubo->param.dir.x, directionalLight->ubo->param.dir.y, directionalLight->ubo->param.dir.z};
+    Vec3f direction = directionalLight->getDirection();
     if (direction.length2() <= 1e-6f) {
       direction = Vec3f{0.0f, -1.0f, 0.0f};
     } else {

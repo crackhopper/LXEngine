@@ -528,7 +528,7 @@ findActiveCamera(Scene &scene, EditorState &editorState) {
     if (!light) {
       return makeError("field not available on node: direction");
     }
-    const Vec3f value = Vec3f{light->ubo->param.dir.x, light->ubo->param.dir.y, light->ubo->param.dir.z};
+    const Vec3f value = light->getDirection();
     return makeOk("direction = (" + formatFloat(value.x) + ", " +
                       formatFloat(value.y) + ", " + formatFloat(value.z) + ")",
                   "{\"value\":" + makeVec3Json(value) + "}");
@@ -538,7 +538,7 @@ findActiveCamera(Scene &scene, EditorState &editorState) {
     if (!light) {
       return makeError("field not available on node: color");
     }
-    const Vec3f value = Vec3f{light->ubo->param.color.x, light->ubo->param.color.y, light->ubo->param.color.z};
+    const Vec3f value = light->getColor();
     return makeOk("color = (" + formatFloat(value.x) + ", " +
                       formatFloat(value.y) + ", " + formatFloat(value.z) + ")",
                   "{\"value\":" + makeVec3Json(value) + "}");
@@ -548,7 +548,7 @@ findActiveCamera(Scene &scene, EditorState &editorState) {
     if (!light) {
       return makeError("field not available on node: intensity");
     }
-    const float value = light->ubo->param.color.w;
+    const float value = light->getIntensity();
     return makeOk("intensity = " + formatFloat(value),
                   "{\"value\":" + formatFloat(value) + "}");
   }
@@ -614,20 +614,20 @@ findActiveCamera(Scene &scene, EditorState &editorState) {
 
   const auto light = resolveDirectionalLight(node);
   if (field == "direction" && light) {
+    const Vec3f value = light->getDirection();
     return "set " + quoteToken(path + ".direction") + " " +
-           formatFloat(light->ubo->param.dir.x) + " " +
-           formatFloat(light->ubo->param.dir.y) + " " +
-           formatFloat(light->ubo->param.dir.z);
+           formatFloat(value.x) + " " + formatFloat(value.y) + " " +
+           formatFloat(value.z);
   }
   if (field == "color" && light) {
+    const Vec3f value = light->getColor();
     return "set " + quoteToken(path + ".color") + " " +
-           formatFloat(light->ubo->param.color.x) + " " +
-           formatFloat(light->ubo->param.color.y) + " " +
-           formatFloat(light->ubo->param.color.z);
+           formatFloat(value.x) + " " + formatFloat(value.y) + " " +
+           formatFloat(value.z);
   }
   if (field == "intensity" && light) {
     return "set " + quoteToken(path + ".intensity") + " " +
-           formatFloat(light->ubo->param.color.w);
+           formatFloat(light->getIntensity());
   }
 
   return {};
@@ -940,8 +940,7 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
     if (!value) {
       return makeError("invalid float for set direction");
     }
-    light->ubo->param.dir = Vec4f{value->x, value->y, value->z, 0.0f};
-    light->ubo->setDirty();
+    light->setDirection(*value);
     emitRuntimeNodeAspectChanged(node, SceneNodeAspect::LightProperties);
     return makeOk("direction updated", "{\"value\":" + makeVec3Json(*value) + "}");
   }
@@ -957,9 +956,7 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
     if (!value) {
       return makeError("invalid float for set color");
     }
-    light->ubo->param.color =
-        Vec4f{value->x, value->y, value->z, light->ubo->param.color.w};
-    light->ubo->setDirty();
+    light->setColor(*value);
     emitRuntimeNodeAspectChanged(node, SceneNodeAspect::LightProperties);
     return makeOk("color updated", "{\"value\":" + makeVec3Json(*value) + "}");
   }
@@ -975,8 +972,7 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
     if (!value) {
       return makeError("invalid float for set intensity");
     }
-    light->ubo->param.color.w = *value;
-    light->ubo->setDirty();
+    light->setIntensity(*value);
     emitRuntimeNodeAspectChanged(node, SceneNodeAspect::LightProperties);
     return makeOk("intensity updated", "{\"value\":" + formatFloat(*value) + "}");
   }

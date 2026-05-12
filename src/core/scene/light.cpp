@@ -6,38 +6,38 @@
 namespace LX_core {
 
 DirectionalLight::DirectionalLight()
-    : ubo(std::make_shared<DirectionalLightData>()),
+    : m_ubo(std::make_shared<DirectionalLightData>()),
       m_supportedPasses({Pass_Forward, Pass_Deferred}) {}
 
 Vec3f DirectionalLight::getDirection() const {
-  return Vec3f{ubo->param.dir.x, ubo->param.dir.y, ubo->param.dir.z};
+  return Vec3f{m_ubo->param.dir.x, m_ubo->param.dir.y, m_ubo->param.dir.z};
 }
 
 Vec3f DirectionalLight::getColor() const {
-  return Vec3f{ubo->param.color.x, ubo->param.color.y, ubo->param.color.z};
+  return Vec3f{m_ubo->param.color.x, m_ubo->param.color.y, m_ubo->param.color.z};
 }
 
 float DirectionalLight::getIntensity() const {
-  return ubo->param.color.w;
+  return m_ubo->param.color.w;
 }
 
 void DirectionalLight::setDirection(const Vec3f &direction) {
-  ubo->param.dir = Vec4f{direction.x, direction.y, direction.z, 0.0f};
-  ubo->setDirty();
+  m_ubo->param.dir = Vec4f{direction.x, direction.y, direction.z, 0.0f};
+  m_ubo->setDirty();
   emitLightPropertyChanged();
 }
 
 void DirectionalLight::setColor(const Vec3f &color) {
-  ubo->param.color.x = color.x;
-  ubo->param.color.y = color.y;
-  ubo->param.color.z = color.z;
-  ubo->setDirty();
+  m_ubo->param.color.x = color.x;
+  m_ubo->param.color.y = color.y;
+  m_ubo->param.color.z = color.z;
+  m_ubo->setDirty();
   emitLightPropertyChanged();
 }
 
 void DirectionalLight::setIntensity(const float intensity) {
-  ubo->param.color.w = intensity;
-  ubo->setDirty();
+  m_ubo->param.color.w = intensity;
+  m_ubo->setDirty();
   emitLightPropertyChanged();
 }
 

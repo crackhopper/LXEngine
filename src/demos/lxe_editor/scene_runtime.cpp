@@ -148,11 +148,9 @@ void applyCameraState(LX_core::SceneNode& node, LX_core::CameraComponent& camera
 
 void configureDirectionalLight(LX_core::DirectionalLight& light,
                                const DirectionalLightNodeState& state) {
-  light.ubo->param.dir =
-      LX_core::Vec4f{state.direction.x, state.direction.y, state.direction.z, 0.0f};
-  light.ubo->param.color =
-      LX_core::Vec4f{state.color.x, state.color.y, state.color.z, state.intensity};
-  light.ubo->setDirty();
+  light.setDirection(state.direction);
+  light.setColor(state.color);
+  light.setIntensity(state.intensity);
 }
 
 void buildSceneNodesRecursive(
@@ -291,9 +289,9 @@ captureCameraState(const LX_core::CameraComponent& camera) {
 [[nodiscard]] DirectionalLightNodeState
 captureDirectionalLightState(const LX_core::DirectionalLight& light) {
   return DirectionalLightNodeState{
-      .direction = {light.ubo->param.dir.x, light.ubo->param.dir.y, light.ubo->param.dir.z},
-      .color = {light.ubo->param.color.x, light.ubo->param.color.y, light.ubo->param.color.z},
-      .intensity = light.ubo->param.color.w,
+      .direction = light.getDirection(),
+      .color = light.getColor(),
+      .intensity = light.getIntensity(),
   };
 }
 
