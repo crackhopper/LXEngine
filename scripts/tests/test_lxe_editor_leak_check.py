@@ -52,6 +52,38 @@ class LxeEditorLeakCheckScriptTest(unittest.TestCase):
             self.assertTrue((output_dir / "sanitizer.log").exists())
             self.assertIn("mode=sanitizer", (output_dir / "summary.txt").read_text())
 
+    def test_sanitizer_mode_invokes_configure_build_tests_and_editor_smoke(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            tools = self._write_stub_tools(root, editor_sleep="1")
+            output_dir = root / "artifacts"
+            env = self._script_env(tools)
+
+            completed = subprocess.run(
+                [
+                    str(SCRIPT_PATH),
+                    "sanitizer",
+                    "--output-dir",
+                    str(output_dir),
+                    "--build-dir",
+                    str(root / "build-asan"),
+                ],
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            stub_log = (root / "stub.log").read_text()
+            self.assertIn("stub cmake", stub_log)
+            self.assertIn("stub ninja", stub_log)
+            self.assertIn("stub ctest", stub_log)
+            sanitizer_log = (output_dir / "sanitizer.log").read_text()
+            self.assertIn("editor stdout", sanitizer_log)
+            summary = (output_dir / "summary.txt").read_text()
+            self.assertIn("sanitizer_status=passed", summary)
+
     def test_soak_mode_writes_rss_csv_and_process_logs(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
