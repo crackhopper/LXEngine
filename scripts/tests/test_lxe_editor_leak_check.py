@@ -24,6 +24,24 @@ class LxeEditorLeakCheckScriptTest(unittest.TestCase):
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("usage:", completed.stderr)
 
+    def test_rejects_missing_values_for_options(self) -> None:
+        for option in (
+            "--build-dir",
+            "--scene",
+            "--duration",
+            "--sample-interval",
+            "--output-dir",
+        ):
+            with self.subTest(option=option):
+                completed = subprocess.run(
+                    [str(SCRIPT_PATH), "sanitizer", option],
+                    text=True,
+                    capture_output=True,
+                )
+                self.assertNotEqual(completed.returncode, 0)
+                self.assertIn("missing value for", completed.stderr)
+                self.assertIn("usage:", completed.stderr)
+
     def test_sanitizer_mode_writes_env_summary_and_log(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -51,6 +69,34 @@ class LxeEditorLeakCheckScriptTest(unittest.TestCase):
             self.assertTrue((output_dir / "summary.txt").exists())
             self.assertTrue((output_dir / "sanitizer.log").exists())
             self.assertIn("mode=sanitizer", (output_dir / "summary.txt").read_text())
+
+    def test_sanitizer_mode_forces_detect_leaks_even_when_inherited_off(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            tools = self._write_stub_tools(root, editor_sleep="1")
+            output_dir = root / "artifacts"
+            env = self._script_env(tools)
+            env["ASAN_OPTIONS"] = "detect_leaks=0:foo=bar"
+
+            completed = subprocess.run(
+                [
+                    str(SCRIPT_PATH),
+                    "sanitizer",
+                    "--output-dir",
+                    str(output_dir),
+                    "--build-dir",
+                    str(root / "build-asan"),
+                ],
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            env_text = (output_dir / "env.txt").read_text()
+            self.assertIn("asan_options=foo=bar:detect_leaks=1", env_text)
+            self.assertNotIn("detect_leaks=0", env_text)
 
     def test_sanitizer_mode_invokes_configure_build_tests_and_editor_smoke(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
