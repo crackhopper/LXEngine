@@ -46,7 +46,7 @@ class LxeEditorLeakCheckScriptTest(unittest.TestCase):
     def test_sanitizer_mode_writes_env_summary_and_log(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            tools = self._write_stub_tools(root, editor_sleep="1")
+            tools = self._write_stub_tools(root, fake_api=True)
             output_dir = root / "artifacts"
             env = self._script_env(tools)
 
@@ -74,7 +74,7 @@ class LxeEditorLeakCheckScriptTest(unittest.TestCase):
     def test_sanitizer_mode_forces_detect_leaks_even_when_inherited_off(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            tools = self._write_stub_tools(root, editor_sleep="1")
+            tools = self._write_stub_tools(root, fake_api=True)
             output_dir = root / "artifacts"
             env = self._script_env(tools)
             env["ASAN_OPTIONS"] = "detect_leaks=0:foo=bar"
@@ -102,7 +102,7 @@ class LxeEditorLeakCheckScriptTest(unittest.TestCase):
     def test_sanitizer_mode_invokes_configure_build_tests_and_editor_smoke(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            tools = self._write_stub_tools(root, editor_sleep="1")
+            tools = self._write_stub_tools(root, fake_api=True)
             output_dir = root / "artifacts"
             env = self._script_env(tools)
 
@@ -127,13 +127,16 @@ class LxeEditorLeakCheckScriptTest(unittest.TestCase):
             self.assertIn("stub ninja", stub_log)
             self.assertIn("stub ctest", stub_log)
             self.assertIn("stub lxe_editor", stub_log)
+            self.assertIn("stub api GET /health", stub_log)
+            self.assertIn("stub api GET /api/state/summary", stub_log)
+            self.assertIn("stub api command quit", stub_log)
             summary = (output_dir / "summary.txt").read_text()
             self.assertIn("sanitizer_status=passed", summary)
 
     def test_sanitizer_smoke_uses_api_flags_without_positional_scene_arg(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            tools = self._write_stub_tools(root, editor_sleep="0")
+            tools = self._write_stub_tools(root, fake_api=True)
             output_dir = root / "artifacts"
             env = self._script_env(tools)
             scene_path = root / "sample.scene"
@@ -164,6 +167,9 @@ class LxeEditorLeakCheckScriptTest(unittest.TestCase):
             )
             self.assertIn("--api-host 127.0.0.1 --api-port 37681", editor_line)
             self.assertNotIn(str(scene_path), editor_line)
+            stub_log = (root / "stub.log").read_text()
+            self.assertIn(f'stub api command scene load "{scene_path}"', stub_log)
+            self.assertIn("stub api command quit", stub_log)
             summary = self._read_key_values(output_dir / "summary.txt")
             self.assertEqual(summary["sanitizer_status"], "passed")
             self.assertEqual(summary["failure_kind"], "none")
@@ -171,7 +177,12 @@ class LxeEditorLeakCheckScriptTest(unittest.TestCase):
     def test_sanitizer_mode_surfaces_nonzero_editor_exit_code(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            tools = self._write_stub_tools(root, editor_sleep="0", editor_exit_code="7")
+            tools = self._write_stub_tools(
+                root,
+                editor_sleep="0",
+                editor_exit_code="7",
+                write_token_file=True,
+            )
             output_dir = root / "artifacts"
             env = self._script_env(tools)
 
@@ -194,14 +205,43 @@ class LxeEditorLeakCheckScriptTest(unittest.TestCase):
             summary = self._read_key_values(output_dir / "summary.txt")
             self.assertEqual(summary["sanitizer_status"], "failed")
             self.assertEqual(summary["failure_kind"], "smoke_control_failure")
-            self.assertEqual(summary["failed_step"], "editor_smoke_exit")
-            self.assertIn("editor exited with status 7", summary["failure_reason"])
+            self.assertEqual(summary["failed_step"], "editor_smoke_api_ready")
+            self.assertIn("editor exited before API became ready", summary["failure_reason"])
             self.assertNotIn("editor smoke timeout", (output_dir / "sanitizer.log").read_text())
+
+    def test_sanitizer_smoke_classifies_missing_token_as_environment_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            tools = self._write_stub_tools(root, editor_sleep="0", editor_exit_code="0")
+            output_dir = root / "artifacts"
+            env = self._script_env(tools)
+
+            completed = subprocess.run(
+                [
+                    str(SCRIPT_PATH),
+                    "sanitizer",
+                    "--output-dir",
+                    str(output_dir),
+                    "--build-dir",
+                    str(root / "build-asan"),
+                ],
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+
+            self.assertNotEqual(completed.returncode, 0)
+            summary = self._read_key_values(output_dir / "summary.txt")
+            self.assertEqual(summary["sanitizer_status"], "failed")
+            self.assertEqual(summary["failure_kind"], "environment_failure")
+            self.assertEqual(summary["failed_step"], "editor_smoke_api_ready")
+            self.assertIn("API token missing before readiness", summary["failure_reason"])
 
     def test_sanitizer_smoke_times_out_and_terminates_uncooperative_editor(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            tools = self._write_stub_tools(root, ignore_term=True)
+            tools = self._write_stub_tools(root, ignore_term=True, write_token_file=True)
             output_dir = root / "artifacts"
             env = self._script_env(tools)
             env["LX_LEAK_CHECK_EDITOR_SMOKE_TIMEOUT_SECONDS"] = "1"
@@ -354,6 +394,38 @@ class LxeEditorLeakCheckScriptTest(unittest.TestCase):
             self.assertEqual(summary["failed_step"], "ctest")
             self.assertIn("ctest failed without sanitizer signature", summary["failure_reason"])
 
+    def test_sanitizer_summary_classifies_ctest_environment_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            tools = self._write_stub_tools(
+                root,
+                ctest_exit_code="6",
+                ctest_stderr="No available video device",
+            )
+            output_dir = root / "artifacts"
+            env = self._script_env(tools)
+
+            completed = subprocess.run(
+                [
+                    str(SCRIPT_PATH),
+                    "sanitizer",
+                    "--output-dir",
+                    str(output_dir),
+                    "--build-dir",
+                    str(root / "build-asan"),
+                ],
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+
+            self.assertNotEqual(completed.returncode, 0)
+            summary = self._read_key_values(output_dir / "summary.txt")
+            self.assertEqual(summary["failure_kind"], "environment_failure")
+            self.assertEqual(summary["failed_step"], "ctest")
+            self.assertIn("environment prerequisite missing", summary["failure_reason"])
+
     def test_soak_mode_writes_rss_csv_and_process_logs(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -429,7 +501,7 @@ class LxeEditorLeakCheckScriptTest(unittest.TestCase):
     def test_all_mode_runs_both_paths_and_reports_them(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            tools = self._write_stub_tools(root, editor_sleep="1")
+            tools = self._write_stub_tools(root, fake_api=True)
             output_dir = root / "artifacts"
             env = self._script_env(tools)
 
@@ -479,6 +551,7 @@ class LxeEditorLeakCheckScriptTest(unittest.TestCase):
         env["LX_LEAK_CHECK_CTEST"] = str(tools["ctest"])
         env["LX_LEAK_CHECK_NINJA"] = str(tools["ninja"])
         env["LX_LEAK_CHECK_LXE_EDITOR_BIN"] = str(tools["editor"])
+        env["LX_LEAK_CHECK_EDITOR_API_TOKEN_FILE"] = str(tools["token_file"])
         env["TMP_STUB_LOG"] = str(tools["stub_log"])
         return env
 
@@ -498,6 +571,8 @@ class LxeEditorLeakCheckScriptTest(unittest.TestCase):
         editor_sleep: str = "1",
         editor_exit_code: str = "0",
         ignore_term: bool = False,
+        fake_api: bool = False,
+        write_token_file: bool = False,
         cmake_exit_code: str = "0",
         ninja_exit_code: str = "0",
         ctest_exit_code: str = "0",
@@ -534,9 +609,96 @@ exit """
             + """
 """,
         )
-        editor = self._write_executable(
-            bin_dir / "lxe_editor",
-            f"""#!/usr/bin/env bash
+        token_file = root / "api_token.txt"
+        if fake_api:
+            editor = self._write_executable(
+                bin_dir / "lxe_editor",
+                """#!/usr/bin/env python3
+import json
+import os
+import pathlib
+import sys
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+log_path = pathlib.Path(os.environ["TMP_STUB_LOG"])
+token_path = pathlib.Path(os.environ["LX_LEAK_CHECK_EDITOR_API_TOKEN_FILE"])
+token_path.parent.mkdir(parents=True, exist_ok=True)
+token = "stub-token"
+token_path.write_text(token, encoding="utf-8")
+
+host = "127.0.0.1"
+port = 37681
+args = sys.argv[1:]
+i = 0
+while i < len(args):
+    if args[i] == "--api-host":
+        host = args[i + 1]
+        i += 2
+        continue
+    if args[i] == "--api-port":
+        port = int(args[i + 1])
+        i += 2
+        continue
+    i += 1
+
+with log_path.open("a", encoding="utf-8") as log:
+    log.write("stub lxe_editor " + " ".join(sys.argv[1:]) + "\\n")
+
+class Handler(BaseHTTPRequestHandler):
+    def _authorized(self) -> bool:
+        return self.headers.get("Authorization") == f"Bearer {token}"
+
+    def _write_json(self, status: int, payload: dict[str, object]) -> None:
+        body = json.dumps(payload).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, format: str, *args: object) -> None:
+        return
+
+    def do_GET(self) -> None:
+        with log_path.open("a", encoding="utf-8") as log:
+            log.write(f"stub api GET {self.path}\\n")
+        if self.path == "/health":
+            self._write_json(200, {"ok": True, "status": "ok"})
+            return
+        if not self._authorized():
+            self._write_json(401, {"ok": False, "error": {"message": "unauthorized"}})
+            return
+        if self.path == "/api/state/summary":
+            self._write_json(200, {"ok": True, "scene": {"path": ""}})
+            return
+        self._write_json(404, {"ok": False, "error": {"message": "not found"}})
+
+    def do_POST(self) -> None:
+        length = int(self.headers.get("Content-Length", "0"))
+        payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+        if not self._authorized():
+            self._write_json(401, {"ok": False, "error": {"message": "unauthorized"}})
+            return
+        if self.path != "/api/command":
+            self._write_json(404, {"ok": False, "error": {"message": "not found"}})
+            return
+        line = str(payload.get("line", ""))
+        with log_path.open("a", encoding="utf-8") as log:
+            log.write(f"stub api command {line}\\n")
+        self._write_json(200, {"ok": True, "line": line})
+        if line == "quit":
+            threading.Thread(target=self.server.shutdown, daemon=True).start()
+
+server = ThreadingHTTPServer((host, port), Handler)
+server.serve_forever()
+server.server_close()
+""",
+            )
+        else:
+            editor = self._write_executable(
+                bin_dir / "lxe_editor",
+                f"""#!/usr/bin/env bash
 trap '' TERM
 echo "stub lxe_editor $*" >> "${{TMP_STUB_LOG}}"
 echo "editor stdout"
@@ -550,7 +712,9 @@ else
 fi
 exit {editor_exit_code}
 """,
-        )
+            )
+            if write_token_file:
+                token_file.write_text("stub-token", encoding="utf-8")
         stub_log = root / "stub.log"
         return {
             "cmake": cmake,
@@ -558,6 +722,7 @@ exit {editor_exit_code}
             "ninja": ninja,
             "editor": editor,
             "stub_log": stub_log,
+            "token_file": token_file,
         }
 
     def _write_executable(self, path: Path, body: str) -> Path:
