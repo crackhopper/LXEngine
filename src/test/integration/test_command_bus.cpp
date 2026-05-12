@@ -1097,38 +1097,93 @@ void testSceneViewerPickDebugLogsArePrintedToConsole() {
          "console should include hit reprojection pixel coordinates");
 }
 
-void testConsolePanelSubmitsAndClearsDisplay() {
+void testConsolePanelFormatsCommandAndResultWithNewPrompts() {
   CommandFixture fixture;
   ConsolePanel panel(fixture.bus);
 
   panel.submitLine("select /world/cube");
+  const std::string consoleText = panel.displayedText();
+  const std::string resultMessage = fixture.bus.history().back().result.message;
+
   EXPECT(fixture.editorState.getSelected().size() == 1 && fixture.editorState.getSelected()[0] == fixture.cube,
          "panel submit routes through builtin command bus");
   EXPECT(panel.displayedEntries().size() == 1,
          "panel display shows newly executed command");
-  EXPECT(panel.displayedText().find("< select /world/cube") != std::string::npos,
-         "displayedText should include visible command text");
-  EXPECT(panel.displayedText().find(fixture.bus.history().back().result.message) !=
+  EXPECT(consoleText.find("> select /world/cube") != std::string::npos,
+         "displayedText should render commands with the new prompt prefix");
+  EXPECT(consoleText.find('\n' + resultMessage) !=
              std::string::npos,
-         "displayedText should include visible result text");
+         "displayedText should render result text without a prompt prefix");
+  EXPECT(consoleText.find("< select /world/cube") == std::string::npos,
+         "legacy command prefix should be removed");
+  EXPECT(consoleText.find("\n> " + resultMessage) == std::string::npos,
+         "legacy result prefix should be removed");
   EXPECT(fixture.bus.history().size() == 1,
          "panel submit contributes to command history");
+}
 
-  panel.clearDisplay();
-  EXPECT(panel.displayedEntries().empty(),
+void testSceneViewerPickDebugLogsAttachToNewestCommandEntry() {
+  SceneViewerPickFixture fixture;
+  const CommandResult enable = fixture.bus.dispatch("debug on");
+  EXPECT(enable.ok, "debug on should succeed before pick logging");
+
+  const CommandResult pick = fixture.bus.dispatch("pick 400 300");
+  EXPECT(pick.ok, "pick command should succeed while debug logging is enabled");
+
+  const std::string consoleText = fixture.consolePanel.displayedText();
+  const std::string commandLine = "> pick 400 300";
+  const usize commandPos = consoleText.find(commandLine);
+  const usize resultPos = consoleText.find(pick.message, commandPos);
+  const usize debugPos = consoleText.find("pick_debug", commandPos);
+
+  EXPECT(commandPos != std::string::npos,
+         "pick command should remain visible in console output");
+  EXPECT(resultPos != std::string::npos,
+         "pick result should remain visible in console output");
+  EXPECT(debugPos != std::string::npos,
+         "pick debug output should remain visible in console output");
+  EXPECT(commandPos < resultPos && resultPos < debugPos,
+         "pick debug output should appear after the owning command result");
+}
+
+void testConsoleClearDropsOldDebugAttachmentsFromVisibleOutput() {
+  SceneViewerPickFixture fixture;
+  EXPECT(fixture.bus.dispatch("debug on").ok,
+         "debug on should succeed before clear behavior test");
+  EXPECT(fixture.bus.dispatch("pick 400 300").ok,
+         "pick should succeed before clear behavior test");
+  const usize historySizeBeforeClear = fixture.bus.history().size();
+
+  fixture.consolePanel.clearDisplay();
+  const std::string afterClear = fixture.consolePanel.displayedText();
+  EXPECT(afterClear.find("pick_debug") == std::string::npos,
+         "clearDisplay should hide prior attached debug lines");
+  EXPECT(afterClear.find("> pick 400 300") == std::string::npos,
+         "clearDisplay should hide prior visible command entries");
+  EXPECT(fixture.consolePanel.displayedEntries().empty(),
          "clearDisplay hides old output without mutating bus history");
-  EXPECT(fixture.bus.history().size() == 1,
+  EXPECT(fixture.bus.history().size() == historySizeBeforeClear,
          "clearDisplay leaves command bus history intact");
 
-  panel.submitLine("list nodes");
-  EXPECT(panel.displayedEntries().size() == 1,
+  EXPECT(fixture.bus.dispatch("pick 400 300").ok,
+         "pick should still work after clear");
+  const std::string afterNewPick = fixture.consolePanel.displayedText();
+  EXPECT(!fixture.consolePanel.displayedEntries().empty(),
          "new entries appear after clearDisplay checkpoint");
-  EXPECT(panel.displayedText().find("< list nodes") != std::string::npos,
-         "displayedText should include subsequent command text");
-  EXPECT(panel.displayedText().find(fixture.bus.history().back().result.message) !=
+  EXPECT(afterNewPick.find("> pick 400 300") != std::string::npos,
+         "new command should be visible after clear");
+  EXPECT(afterNewPick.find(fixture.bus.history().back().result.message) !=
              std::string::npos,
-         "displayedText should include multiline command output");
-  EXPECT(fixture.bus.history().size() == 2,
+         "new command result should be visible after clear");
+  EXPECT(afterNewPick.find("pick_debug") != std::string::npos,
+         "newly attached debug output should be visible after clear");
+  const usize commandPos = afterNewPick.find("> pick 400 300");
+  const usize resultPos =
+      afterNewPick.find(fixture.bus.history().back().result.message, commandPos);
+  const usize debugPos = afterNewPick.find("pick_debug", commandPos);
+  EXPECT(commandPos < resultPos && resultPos < debugPos,
+         "newly attached debug output should follow the new visible command result");
+  EXPECT(fixture.bus.history().size() > historySizeBeforeClear,
          "history keeps full record after clearDisplay");
 }
 
@@ -1325,7 +1380,9 @@ int main() {
   testSceneViewerPickCommandUsesInteractionController();
   testSceneViewerPickScreenCommandUsesExplicitViewportSize();
   testSceneViewerPickDebugLogsArePrintedToConsole();
-  testConsolePanelSubmitsAndClearsDisplay();
+  testConsolePanelFormatsCommandAndResultWithNewPrompts();
+  testSceneViewerPickDebugLogsAttachToNewestCommandEntry();
+  testConsoleClearDropsOldDebugAttachmentsFromVisibleOutput();
   testConsolePanelBrowseAndAutocomplete();
   testConsolePanelUndoRedoShortcutsUseCommandBus();
   testConsoleInputControllerHistoryKeepsDraft();
