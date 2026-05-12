@@ -95,4 +95,5 @@ camera->updateMatrices();
 
 - [camera.hpp](/home/lx/proj/renderer-demo/src/core/scene/camera.hpp:46)
 - [`pixel-ndc-vulkan.md`](./pixel-ndc-vulkan.md)
+  说明 editor 像素、OpenGL 风格 NDC、Vulkan 负高度 viewport 之间怎样对齐，并索引到 `CameraComponent`、`SceneInteractionController`、`ViewportOverlay`、`command_buffer.cpp`
 - [`../../subsystems/scene.md`](../../subsystems/scene.md)

@@ -56,6 +56,33 @@ constexpr float kEps = 2e-3f;
       (1.0f - (ndc.y * 0.5f + 0.5f)) * viewportSize.y - 0.5f};
 }
 
+[[nodiscard]] std::optional<float> extractJsonFloatField(
+    const std::string& text, const std::string& anchor,
+    const std::string& fieldName) {
+  const std::size_t anchorStart = text.find(anchor);
+  if (anchorStart == std::string::npos) {
+    return std::nullopt;
+  }
+  const std::size_t fieldStart = text.find(fieldName, anchorStart + anchor.size());
+  if (fieldStart == std::string::npos) {
+    return std::nullopt;
+  }
+  const std::size_t valueStart = fieldStart + fieldName.size();
+  std::size_t valueEnd = valueStart;
+  while (valueEnd < text.size()) {
+    const char ch = text[valueEnd];
+    if ((ch >= '0' && ch <= '9') || ch == '-' || ch == '+' || ch == '.') {
+      ++valueEnd;
+      continue;
+    }
+    break;
+  }
+  if (valueEnd == valueStart) {
+    return std::nullopt;
+  }
+  return std::stof(text.substr(valueStart, valueEnd - valueStart));
+}
+
 LX_core::MeshSharedPtr makeUnitSquareMesh() {
   auto vb = LX_core::VertexBuffer<LX_core::VertexPos>::create(
       std::vector<LX_core::VertexPos>{{{0, 0, 0}}, {{1, 0, 0}}, {{0, 1, 0}}});
@@ -313,18 +340,75 @@ void testSelectionDebugProjectionRoundTripsBackToClickedPixel() {
                              {0.0f, 1.0f, 0.0f});
   editorCamera->get().setAspect(rect.width / rect.height);
 
-  const auto result =
-      fixture.controller.dispatchPickingClick(LX_core::Vec2f{1097.0f, 341.0f}, rect);
-  EXPECT(result.ok, "off-center selection click should succeed");
-  if (!(debugLine.find("\"projectedPixel\":{\"x\":1097.000") !=
-            std::string::npos &&
-        debugLine.find("\"y\":341.000") != std::string::npos)) {
+  const auto projectedTargetCenter = projectWorldPointToViewport(
+      LX_core::Vec3f{2.5f, 2.5f, -5.0f}, editorCamera->get(), rect.size());
+  EXPECT(projectedTargetCenter.has_value(),
+         "target center should be projectable for debug round-trip test");
+  if (!projectedTargetCenter.has_value()) {
+    return;
+  }
+
+  const auto result = fixture.controller.dispatchPickingClick(
+      LX_core::Vec2f{projectedTargetCenter->x, projectedTargetCenter->y}, rect);
+  EXPECT(result.ok, "projected target-center click should succeed");
+
+  const auto projectedX = extractJsonFloatField(
+      debugLine, "\"projectedPixel\":{", "\"x\":");
+  const auto projectedY = extractJsonFloatField(
+      debugLine, "\"projectedPixel\":{", "\"y\":");
+  if (!(projectedX.has_value() && projectedY.has_value() &&
+        approx(*projectedX, projectedTargetCenter->x, 1e-2f) &&
+        approx(*projectedY, projectedTargetCenter->y, 1e-2f))) {
     std::cerr << "  debugLine=" << debugLine << "\n";
   }
-  EXPECT(debugLine.find("\"projectedPixel\":{\"x\":1097.000") !=
-             std::string::npos &&
-             debugLine.find("\"y\":341.000") != std::string::npos,
+  EXPECT(projectedX.has_value() && projectedY.has_value() &&
+             approx(*projectedX, projectedTargetCenter->x, 1e-2f) &&
+             approx(*projectedY, projectedTargetCenter->y, 1e-2f),
          "debug reprojection should match the clicked pixel for a hit on the pick ray");
+}
+
+void testSelectionDebugUsesNegativeNdcYForLowerScreenPixels() {
+  Fixture fixture;
+  std::string debugLine;
+  fixture.controller.setDebugLoggingHooks(
+      []() { return true; },
+      [&debugLine](std::string_view line) { debugLine = std::string(line); });
+
+  const auto editorCamera =
+      fixture.editorCameraNode->getComponent<LX_core::CameraComponent>();
+  EXPECT(editorCamera.has_value(), "editor camera component should exist");
+  if (!editorCamera.has_value()) {
+    return;
+  }
+
+  const LX_demo::lxe_editor::SceneViewRect rect{
+      .x = 0.0f,
+      .y = 0.0f,
+      .width = 1920.0f,
+      .height = 1008.0f,
+  };
+  fixture.targetNode->setScale({6.0f, 6.0f, 1.0f});
+  editorCamera->get().lookAt({1.5f, 1.2f, 4.0f}, {0.25f, 0.5f, 0.0f},
+                             {0.0f, 1.0f, 0.0f});
+  editorCamera->get().setAspect(rect.width / rect.height);
+
+  const LX_core::Vec2f lowerScreenPixel{901.0f, 896.0f};
+  const auto result =
+      fixture.controller.dispatchPickingClick(lowerScreenPixel, rect);
+  EXPECT(result.ok, "lower-screen selection click should succeed");
+  const auto screenNdcX = extractJsonFloatField(
+      debugLine, "\"screenNdc\":{", "\"x\":");
+  const auto screenNdcY = extractJsonFloatField(
+      debugLine, "\"screenNdc\":{", "\"y\":");
+  EXPECT(screenNdcX.has_value(),
+         "debug line should include the screen NDC x component");
+  EXPECT(screenNdcY.has_value(),
+         "debug line should include the screen NDC y component");
+  if (!(screenNdcY.has_value() && *screenNdcY < 0.0f)) {
+    std::cerr << "  debugLine=" << debugLine << "\n";
+  }
+  EXPECT(screenNdcY.has_value() && *screenNdcY < 0.0f,
+         "lower-screen pixels should map to negative top-left-origin NDC Y");
 }
 
 void testResetEditorCameraToGameCameraCopiesPoseWithoutPreviewToggle() {
@@ -355,6 +439,7 @@ int main() {
   testSelectionModeAllowsMousePickingWhileKeyboardIsCaptured();
   testSelectionDebugStateTracksHitPointAndSelection();
   testSelectionDebugProjectionRoundTripsBackToClickedPixel();
+  testSelectionDebugUsesNegativeNdcYForLowerScreenPixels();
   testResetEditorCameraToGameCameraCopiesPoseWithoutPreviewToggle();
 
   if (failures > 0) {

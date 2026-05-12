@@ -199,9 +199,9 @@ VkPipelineViewportStateCreateInfo VulkanPipeline::getViewportStateCreateInfo() {
   viewportState.scissorCount = 1;
 
   m_viewport.x = static_cast<float>(m_offset.x);
-  m_viewport.y = static_cast<float>(m_offset.y);
+  m_viewport.y = static_cast<float>(m_offset.y + static_cast<int>(m_extent.height));
   m_viewport.width = static_cast<float>(m_extent.width);
-  m_viewport.height = static_cast<float>(m_extent.height);
+  m_viewport.height = -static_cast<float>(m_extent.height);
   m_viewport.minDepth = 0.0f;
   m_viewport.maxDepth = 1.0f;
 
