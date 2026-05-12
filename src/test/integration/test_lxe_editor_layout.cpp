@@ -279,6 +279,32 @@ void testDefaultLayoutDoesNotCreateViewportWindowAndUsesFullSceneRect() {
   ImGui::DestroyContext();
 }
 
+void testSceneViewRectUsesRequestedWindowSizeAfterResize() {
+  if (!setupMinimalImGui()) {
+    std::cout << "[SKIP] lxe_editor scene rect resize test (font atlas "
+                 "unavailable)\n";
+    ImGui::DestroyContext();
+    return;
+  }
+
+  UiHarness harness;
+
+  ImGui::NewFrame();
+  harness.ui.drawFrame({1280.0f, 720.0f});
+
+  const auto resizedRect =
+      harness.ui.sceneViewRect(LX_core::Vec2f{1920.0f, 1080.0f});
+  EXPECT(resizedRect.isValid(),
+         "scene view rect should remain valid after a resize query");
+  EXPECT(resizedRect.x == 0.0f && resizedRect.y == 0.0f,
+         "resized scene view rect should start at full-window origin");
+  EXPECT(resizedRect.width == 1920.0f && resizedRect.height == 1080.0f,
+         "scene view rect should derive from the requested window size");
+
+  ImGui::EndFrame();
+  ImGui::DestroyContext();
+}
+
 void testToolbarRendersIconOnlyWithoutStaticModeText() {
   if (!setupMinimalImGui()) {
     std::cout << "[SKIP] toolbar icon-only test\n";
@@ -730,6 +756,7 @@ int main() {
   expSetEnvVK();
   testDefaultLayoutShowsToolbarAndCorePanels();
   testDefaultLayoutDoesNotCreateViewportWindowAndUsesFullSceneRect();
+  testSceneViewRectUsesRequestedWindowSizeAfterResize();
   testToolbarRendersIconOnlyWithoutStaticModeText();
   testCameraRigResyncKeepsUpdatedEditorCameraPose();
   testPersistedEditorConfigOverridesDefaultRectsAndPreferences();

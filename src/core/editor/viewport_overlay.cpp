@@ -561,6 +561,13 @@ ViewportOverlay::PanelRect ViewportOverlay::computeViewportRect() const {
   return rect;
 }
 
+void ViewportOverlay::clearGizmoInteractionState() {
+  m_gizmoHovered = false;
+  m_gizmoUsing = false;
+  m_gizmoDragPaths.clear();
+  m_gizmoPreDragTransforms.clear();
+}
+
 void ViewportOverlay::drawBoxSelectionConfirmModal() {
   if (m_boxSelectPopupRequested) {
     ImGui::OpenPopup("Confirm Large Box Select");
@@ -591,16 +598,21 @@ void ViewportOverlay::drawBoxSelectionConfirmModal() {
 void ViewportOverlay::drawSceneOverlay(
     const LX_demo::lxe_editor::SceneViewRect &sceneRect) {
   if (!sceneRect.isValid() || ImGui::GetCurrentContext() == nullptr) {
+    clearGizmoInteractionState();
     return;
   }
 
   ImDrawList *drawList = ImGui::GetForegroundDrawList();
+  if (drawList == nullptr) {
+    clearGizmoInteractionState();
+    return;
+  }
   m_lastPanelRect.origin = Vec2f{sceneRect.x, sceneRect.y};
   m_lastPanelRect.size = Vec2f{sceneRect.width, sceneRect.height};
   m_gizmoHovered = false;
   const Snapshot snapshot = makeSnapshot();
   if (!shouldRenderEditorOverlay()) {
-    m_gizmoUsing = false;
+    clearGizmoInteractionState();
     drawBoxSelectionConfirmModal();
     return;
   }
@@ -624,12 +636,14 @@ void ViewportOverlay::drawSceneOverlay(
   const auto editorCameraNode = m_editorState.getEditorCamera();
   if (!editorCameraNode) {
     drawList->PopClipRect();
+    clearGizmoInteractionState();
     drawBoxSelectionConfirmModal();
     return;
   }
   auto editorCamera = editorCameraNode->getComponent<CameraComponent>();
   if (!editorCamera.has_value()) {
     drawList->PopClipRect();
+    clearGizmoInteractionState();
     drawBoxSelectionConfirmModal();
     return;
   }

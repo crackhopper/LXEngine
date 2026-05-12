@@ -3,7 +3,9 @@
 #include "core/editor/commands/builtin_commands.hpp"
 #include "core/editor/editor_config.hpp"
 #include "core/editor/editor_state.hpp"
+#define private public
 #include "core/editor/viewport_overlay.hpp"
+#undef private
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/components/camera_component.hpp"
@@ -340,6 +342,58 @@ void testViewportOverlayDrawSmoke() {
   ImGui::DestroyContext();
 }
 
+void testViewportOverlayClearsCaptureStateOnInvalidSceneRect() {
+  Fixture fixture;
+  fixture.editorState.select({fixture.cube});
+  LX_core::ViewportOverlay overlay(fixture.bus, fixture.editorState,
+                                   *fixture.scene);
+  overlay.m_gizmoHovered = true;
+  overlay.m_gizmoUsing = true;
+  overlay.m_gizmoDragPaths.push_back("/world/cube");
+  overlay.m_gizmoPreDragTransforms.push_back(fixture.cube->getLocalTransform());
+
+  overlay.drawSceneOverlay(LX_demo::lxe_editor::SceneViewRect{
+      .x = 0.0f, .y = 0.0f, .width = 0.0f, .height = 0.0f});
+
+  EXPECT(!overlay.isGizmoCapturingMouse(),
+         "invalid scene rect should clear stale gizmo capture state");
+  EXPECT(overlay.m_gizmoDragPaths.empty() &&
+             overlay.m_gizmoPreDragTransforms.empty(),
+         "invalid scene rect should clear stale gizmo drag bookkeeping");
+}
+
+void testViewportOverlayClearsCaptureStateWhenEditorCameraIsMissing() {
+  if (!setupMinimalImGui()) {
+    std::cout << "[SKIP] viewport_overlay stale capture test (font atlas "
+                 "unavailable)\n";
+    ImGui::DestroyContext();
+    return;
+  }
+
+  Fixture fixture;
+  fixture.editorState.setEditorCamera(LX_core::SceneNodeSharedPtr{});
+  fixture.editorState.select({fixture.cube});
+  LX_core::ViewportOverlay overlay(fixture.bus, fixture.editorState,
+                                   *fixture.scene);
+  overlay.m_gizmoHovered = true;
+  overlay.m_gizmoUsing = true;
+  overlay.m_gizmoDragPaths.push_back("/world/cube");
+  overlay.m_gizmoPreDragTransforms.push_back(fixture.cube->getLocalTransform());
+
+  ImGui::NewFrame();
+  overlay.drawSceneOverlay(LX_demo::lxe_editor::SceneViewRect{
+      .x = 0.0f, .y = 0.0f, .width = 1280.0f, .height = 720.0f});
+
+  EXPECT(!overlay.isGizmoCapturingMouse(),
+         "missing editor camera should clear stale gizmo capture state");
+  EXPECT(overlay.m_gizmoDragPaths.empty() &&
+             overlay.m_gizmoPreDragTransforms.empty(),
+         "missing editor camera should clear stale gizmo drag bookkeeping");
+
+  ImGui::EndFrame();
+  ImGui::DestroyContext();
+}
+
 } // namespace
 
 int main() {
@@ -353,6 +407,8 @@ int main() {
   testViewportOverlayBoxSelectionCtrlAppendKeepsExistingSelection();
   testViewportOverlayLargeSelectionRequiresConfirmation();
   testViewportOverlayDrawSmoke();
+  testViewportOverlayClearsCaptureStateOnInvalidSceneRect();
+  testViewportOverlayClearsCaptureStateWhenEditorCameraIsMissing();
 
   if (failures == 0) {
     std::cout << "[PASS] viewport_overlay tests passed.\n";

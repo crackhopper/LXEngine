@@ -235,9 +235,6 @@ SelectionNavigationMode UiOverlay::selectionNavigationMode() const {
 }
 
 SceneViewRect UiOverlay::sceneViewRect(const LX_core::Vec2f &windowSize) const {
-  if (m_sceneViewRect.isValid()) {
-    return m_sceneViewRect;
-  }
   return makeSceneViewRect(windowSize.x, windowSize.y, 0.0f, 0.0f, 0.0f, 0.0f);
 }
 

@@ -8,7 +8,10 @@
 #include "demos/lxe_editor/scene_view_rect.hpp"
 
 #include <imgui.h>
+// ImGuizmo declares APIs with ImGui types and must be included after imgui.h.
+// clang-format off
 #include <ImGuizmo.h>
+// clang-format on
 
 #include <optional>
 #include <string>
@@ -90,6 +93,7 @@ private:
   [[nodiscard]] static bool appendSelectionMode(bool ctrlHeld, bool shiftHeld);
   [[nodiscard]] CommandResult
   dispatchSelectionPaths(const std::vector<std::string> &paths);
+  void clearGizmoInteractionState();
   void drawBoxSelectionConfirmModal();
   [[nodiscard]] PanelRect computeViewportRect() const;
   [[nodiscard]] static const char *modeLabel(GizmoOperation operation);
