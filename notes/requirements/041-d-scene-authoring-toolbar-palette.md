@@ -6,7 +6,7 @@
 
 当前 `lxe_editor` 已经具备一条可用但不高效的编辑链路：
 
-- `UiOverlay` 里已经有浮动工具栏，但只提供 `Selection / Orbit / FreeFly / Preview / Preferences`
+- `UiOverlay` 里已经有浮动工具栏，当前第一行提供 `Selection` 编辑模式、`Orbit / FreeFly` 相机控制，以及 reset editor camera / Preview / Debug / Preferences 功能按钮
 - `CommandBus` 已有 `add` 命令，但当前只支持 `mesh|light|camera` 三种粗粒度目标，其中 `mesh` 只是空节点，并不会创建具体几何体与材质
 - `SceneDocument` 已能序列化 `meshUri` / `materialUri` / `camera` / `directionalLight`
 - `SceneRuntime` 当前只会把 `builtin://lxe_editor/helmet` 和 `builtin://lxe_editor/ground_mesh` 解析成真实内容
@@ -25,7 +25,7 @@
 ### R1: 在现有工具栏内加入“创建盘”，不再单独立菜单栏
 
 - 直接扩展 `src/demos/lxe_editor/ui_overlay.cpp` 现有浮动工具栏；不新增顶部 menubar，也不重做窗口 chrome
-- 保留第一行现有编辑模式按钮
+- 保留第一行现有工具栏分组：`Selection` 编辑模式、`Orbit / FreeFly` 相机控制，以及 reset editor camera / Preview / Debug / Preferences 功能按钮
 - 在其下方新增两行：
 
 | 行 | 内容 |
