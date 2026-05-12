@@ -79,9 +79,11 @@ NINJA_BIN="${LX_LEAK_CHECK_NINJA:-ninja}"
 EDITOR_BIN="${LX_LEAK_CHECK_LXE_EDITOR_BIN:-${REPO_ROOT}/build/src/demos/lxe_editor/lxe_editor}"
 
 mkdir -p "${OUTPUT_DIR}"
+mkdir -p "${BUILD_DIR}"
 
 SANITIZER_STATUS="not_run"
 SOAK_STATUS="not_run"
+export ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=1}"
 
 write_env() {
   {
@@ -95,16 +97,71 @@ write_env() {
     echo "ctest_bin=${CTEST_BIN}"
     echo "ninja_bin=${NINJA_BIN}"
     echo "editor_bin=${EDITOR_BIN}"
+    echo "asan_options=${ASAN_OPTIONS}"
     git -C "${REPO_ROOT}" rev-parse HEAD | sed 's/^/git_commit=/'
   } > "${OUTPUT_DIR}/env.txt"
 }
 
-write_summary_stub() {
+write_summary() {
   {
     echo "mode=${MODE}"
     echo "sanitizer_status=${SANITIZER_STATUS}"
     echo "soak_status=${SOAK_STATUS}"
   } > "${OUTPUT_DIR}/summary.txt"
+}
+
+run_sanitizer_mode() {
+  SANITIZER_STATUS="running"
+
+  {
+    echo "[sanitizer] asan_options=${ASAN_OPTIONS}"
+    echo "[sanitizer] configure"
+  } >> "${OUTPUT_DIR}/sanitizer.log"
+  if ! "${CMAKE_BIN}" -S "${REPO_ROOT}" -B "${BUILD_DIR}" -G Ninja \
+      -DCMAKE_BUILD_TYPE=Debug \
+      -DLX_ENABLE_SANITIZERS=ON \
+      -DLX_BUILD_DEMOS=ON \
+      >> "${OUTPUT_DIR}/sanitizer.log" 2>&1; then
+    SANITIZER_STATUS="failed"
+    return 1
+  fi
+
+  {
+    echo "[sanitizer] build"
+  } >> "${OUTPUT_DIR}/sanitizer.log"
+  if ! "${NINJA_BIN}" -C "${BUILD_DIR}" \
+      test_lxe_editor_session test_lxe_editor_interaction test_command_bus \
+      lxe_editor >> "${OUTPUT_DIR}/sanitizer.log" 2>&1; then
+    SANITIZER_STATUS="failed"
+    return 1
+  fi
+
+  {
+    echo "[sanitizer] ctest"
+  } >> "${OUTPUT_DIR}/sanitizer.log"
+  if ! "${CTEST_BIN}" --test-dir "${BUILD_DIR}" --output-on-failure \
+      -R '^(test_lxe_editor_session|test_lxe_editor_interaction|test_command_bus)$' \
+      >> "${OUTPUT_DIR}/sanitizer.log" 2>&1; then
+    SANITIZER_STATUS="failed"
+    return 1
+  fi
+
+  {
+    echo "[sanitizer] editor smoke"
+  } >> "${OUTPUT_DIR}/sanitizer.log"
+  if [[ -n "${SCENE_PATH}" ]]; then
+    if ! "${EDITOR_BIN}" "${SCENE_PATH}" >> "${OUTPUT_DIR}/sanitizer.log" 2>&1; then
+      SANITIZER_STATUS="failed"
+      return 1
+    fi
+  else
+    if ! "${EDITOR_BIN}" >> "${OUTPUT_DIR}/sanitizer.log" 2>&1; then
+      SANITIZER_STATUS="failed"
+      return 1
+    fi
+  fi
+
+  SANITIZER_STATUS="passed"
 }
 
 write_stub_artifacts() {
@@ -123,16 +180,20 @@ write_env
 write_stub_artifacts
 
 if [[ "${MODE}" == "sanitizer" ]]; then
-  write_summary_stub
+  if ! run_sanitizer_mode; then
+    write_summary
+    exit 1
+  fi
+  write_summary
   exit 0
 fi
 
 if [[ "${MODE}" == "soak" ]]; then
-  write_summary_stub
+  write_summary
   exit 0
 fi
 
 if [[ "${MODE}" == "all" ]]; then
-  write_summary_stub
+  write_summary
   exit 0
 fi
