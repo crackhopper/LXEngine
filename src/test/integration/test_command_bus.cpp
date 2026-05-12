@@ -1196,6 +1196,45 @@ void testConsoleClearDropsOldDebugAttachmentsFromVisibleOutput() {
          "history keeps full record after clearDisplay");
 }
 
+void testConsoleSystemLinesStayOrphanedWithoutVisibleOwner() {
+  CommandFixture fixture;
+  ConsolePanel panel(fixture.bus);
+
+  panel.clearDisplay();
+  panel.appendSystemLine("orphan line");
+
+  const std::string orphanOnlyText = panel.displayedText();
+  EXPECT(orphanOnlyText.find("orphan line") != std::string::npos,
+         "system line should be visible immediately without a visible command owner");
+  EXPECT(panel.displayedEntries().empty(),
+         "orphan system line should not create a synthetic history entry");
+
+}
+
+void testConsoleSystemLinesDoNotRetroactivelyAttachAfterClear() {
+  CommandFixture fixture;
+  ConsolePanel panel(fixture.bus);
+
+  panel.clearDisplay();
+  panel.appendSystemLine("orphan line");
+  panel.submitLine("help");
+
+  const std::string afterCommandText = panel.displayedText();
+  const std::string helpResult = fixture.bus.history().back().result.message;
+  const usize helpCommandPos = afterCommandText.find("> help");
+  const usize helpResultPos = afterCommandText.find(helpResult, helpCommandPos);
+  const usize orphanPos = afterCommandText.find("orphan line");
+
+  EXPECT(helpCommandPos != std::string::npos,
+         "new command should still render after orphan system output");
+  EXPECT(helpResultPos != std::string::npos,
+         "new command result should still render after orphan system output");
+  EXPECT(orphanPos != std::string::npos,
+         "orphan system line should remain visible after a later command");
+  EXPECT(afterCommandText.find(helpResult + "\norphan line") == std::string::npos,
+         "orphan system line should not migrate into the later command block");
+}
+
 void testConsolePanelBrowseAndAutocomplete() {
   CommandFixture fixture;
   ConsolePanel panel(fixture.bus);
@@ -1392,6 +1431,8 @@ int main() {
   testConsolePanelFormatsCommandAndResultWithNewPrompts();
   testSceneViewerPickDebugLogsAttachToNewestCommandEntry();
   testConsoleClearDropsOldDebugAttachmentsFromVisibleOutput();
+  testConsoleSystemLinesStayOrphanedWithoutVisibleOwner();
+  testConsoleSystemLinesDoNotRetroactivelyAttachAfterClear();
   testConsolePanelBrowseAndAutocomplete();
   testConsolePanelUndoRedoShortcutsUseCommandBus();
   testConsoleInputControllerHistoryKeepsDraft();

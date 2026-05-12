@@ -112,7 +112,11 @@ void ConsolePanel::appendSystemLine(std::string_view line) {
   if (line.empty()) {
     return;
   }
-  queueSystemLineAttachment(line);
+  if (m_displayStartIndex >= m_commandBus.history().size()) {
+    m_orphanSystemLines.emplace_back(line);
+  } else {
+    queueSystemLineAttachment(line);
+  }
   m_scrollToBottom = true;
 }
 
