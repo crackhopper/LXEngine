@@ -58,6 +58,7 @@ public:
     std::string line;
     CommandResult result;
     u64 timestampMs = 0;
+    u64 topLevelDispatchId = 0;
   };
 
   void registerHandler(std::string verb, std::string brief, CommandHandler handler);
@@ -78,6 +79,7 @@ public:
   [[nodiscard]] std::vector<std::string> listVerbs() const;
   [[nodiscard]] std::string brief(const std::string &verb) const;
   [[nodiscard]] const std::vector<HistoryEntry> &history() const;
+  [[nodiscard]] std::optional<u64> activeTopLevelDispatchId() const;
 
 private:
   struct RegisteredCommand {
@@ -112,6 +114,9 @@ private:
   std::vector<HistoryEntry> m_history;
   std::vector<UndoEntry> m_undoStack;
   std::vector<UndoEntry> m_redoStack;
+  std::optional<u64> m_activeTopLevelDispatchId;
+  u64 m_nextTopLevelDispatchId = 1;
+  usize m_dispatchDepth = 0;
 };
 
 } // namespace LX_core

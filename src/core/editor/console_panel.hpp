@@ -7,6 +7,7 @@
 
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace LX_core {
@@ -16,12 +17,6 @@ public:
   struct DisplayEntry final {
     CommandBus::HistoryEntry historyEntry;
     std::vector<std::string> attachments;
-  };
-
-  struct PendingSystemAttachment final {
-    usize sourceHistoryIndex = 0;
-    usize historySizeBeforeOwner = 0;
-    std::vector<std::string> lines;
   };
 
   explicit ConsolePanel(CommandBus &commandBus);
@@ -53,19 +48,14 @@ public:
 
 private:
   [[nodiscard]] static int inputTextCallback(ImGuiInputTextCallbackData *data);
-  void queueSystemLineAttachment(std::string_view line);
-  void appendAttachmentToVisibleEntry(usize visibleIndex, std::string_view line) const;
-  void removeTrailingAttachmentsFromVisibleEntry(usize visibleIndex,
-                                                 const std::vector<std::string> &lines) const;
-  void syncPendingSystemAttachments() const;
+  void appendAttachmentToDispatchOwner(u64 dispatchOwnerId, std::string_view line);
   void drawOutputRegion(float reservedInputHeight);
   void drawDisplayEntry(const DisplayEntry &entry) const;
 
   CommandBus &m_commandBus;
   ConsoleInputController m_inputController;
-  mutable std::vector<std::string> m_orphanSystemLines;
-  mutable std::vector<std::vector<std::string>> m_entryAttachments;
-  mutable std::vector<PendingSystemAttachment> m_pendingSystemAttachments;
+  std::vector<std::string> m_orphanSystemLines;
+  std::unordered_map<u64, std::vector<std::string>> m_dispatchAttachments;
   usize m_displayStartIndex = 0;
   bool m_open = true;
   bool m_scrollToBottom = false;

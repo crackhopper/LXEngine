@@ -281,6 +281,40 @@ void testDispatchScriptSkipsCommentsAndContinuesAfterFailure() {
   EXPECT(bus.history().size() == 3, "script dispatch contributes to history");
 }
 
+void testNestedDispatchesShareTopLevelDispatchIdentity() {
+  CommandBus bus;
+  std::optional<u64> outerActiveDispatchId;
+  std::optional<u64> innerActiveDispatchId;
+
+  bus.registerHandler(
+      "inner", "inner",
+      [&](std::vector<std::string>) {
+        innerActiveDispatchId = bus.activeTopLevelDispatchId();
+        return CommandResult{true, "inner ok", {}, {}};
+      });
+  bus.registerHandler(
+      "outer", "outer",
+      [&](std::vector<std::string>) {
+        outerActiveDispatchId = bus.activeTopLevelDispatchId();
+        return bus.dispatch("inner");
+      });
+
+  const CommandResult result = bus.dispatch("outer");
+  EXPECT(result.ok, "nested dispatch test should succeed");
+  EXPECT(outerActiveDispatchId.has_value(),
+         "outer handler should observe an active top-level dispatch id");
+  EXPECT(innerActiveDispatchId.has_value(),
+         "inner handler should observe an active top-level dispatch id");
+  EXPECT(outerActiveDispatchId == innerActiveDispatchId,
+         "nested dispatches should share one top-level dispatch id");
+  EXPECT(bus.history().size() == 2,
+         "nested dispatch test should record both inner and outer commands");
+  EXPECT(bus.history()[0].topLevelDispatchId == bus.history()[1].topLevelDispatchId,
+         "nested history entries should share one top-level dispatch id");
+  EXPECT(!bus.activeTopLevelDispatchId().has_value(),
+         "active top-level dispatch id should clear after dispatch returns");
+}
+
 void testListVerbsAndBriefAreDeterministic() {
   CommandBus bus;
   bus.registerHandler("zeta", "last", [](std::vector<std::string>) {
@@ -1260,6 +1294,51 @@ void testConsoleLateSystemLinesAttachToNewestVisibleEntry() {
          "late system line should not render as a separate orphan block");
 }
 
+void testConsoleInDispatchSystemLinesDoNotDependOnResultMatchingOrReadTiming() {
+  CommandBus bus;
+  ConsolePanel panel(bus);
+
+  bus.registerHandler(
+      "emit", "emit",
+      [&](std::vector<std::string>) {
+        panel.appendSystemLine("owned line");
+        return CommandResult{true, "same result", {}, {}};
+      });
+  bus.registerHandler(
+      "same", "same",
+      [](std::vector<std::string>) {
+        return CommandResult{true, "same result", {}, {}};
+      });
+
+  panel.submitLine("emit");
+  EXPECT(bus.history().size() == 1,
+         "first command should be recorded before the collision command runs");
+  EXPECT(bus.dispatch("same").ok,
+         "second command with colliding result text should still succeed");
+
+  const std::string consoleText = panel.displayedText();
+  const usize emitCommandPos = consoleText.find("> emit");
+  const usize emitResultPos = consoleText.find("same result", emitCommandPos);
+  const usize ownedLinePos = consoleText.find("owned line", emitResultPos);
+  const usize sameCommandPos = consoleText.find("> same", ownedLinePos);
+  const usize sameResultPos = consoleText.find("same result", sameCommandPos);
+
+  EXPECT(emitCommandPos != std::string::npos,
+         "first command should remain visible in collision regression");
+  EXPECT(emitResultPos != std::string::npos,
+         "first result should remain visible in collision regression");
+  EXPECT(ownedLinePos != std::string::npos,
+         "in-dispatch system line should remain visible in collision regression");
+  EXPECT(sameCommandPos != std::string::npos,
+         "second command should remain visible in collision regression");
+  EXPECT(sameResultPos != std::string::npos,
+         "second result should remain visible in collision regression");
+  EXPECT(emitCommandPos < emitResultPos && emitResultPos < ownedLinePos,
+         "in-dispatch system line should stay under the owning command result");
+  EXPECT(ownedLinePos < sameCommandPos && sameCommandPos < sameResultPos,
+         "in-dispatch system line should not migrate to a later colliding result");
+}
+
 void testConsolePanelBrowseAndAutocomplete() {
   CommandFixture fixture;
   ConsolePanel panel(fixture.bus);
@@ -1433,6 +1512,7 @@ int main() {
   testUnknownVerbAndParseErrorsStayInBand();
   testHandlerExceptionBecomesFailedResult();
   testDispatchScriptSkipsCommentsAndContinuesAfterFailure();
+  testNestedDispatchesShareTopLevelDispatchIdentity();
   testListVerbsAndBriefAreDeterministic();
   testEditorStateUsesWeakSelection();
   testBuiltinHelpSelectAndDeselect();
@@ -1459,6 +1539,7 @@ int main() {
   testConsoleSystemLinesStayOrphanedWithoutVisibleOwner();
   testConsoleSystemLinesDoNotRetroactivelyAttachAfterClear();
   testConsoleLateSystemLinesAttachToNewestVisibleEntry();
+  testConsoleInDispatchSystemLinesDoNotDependOnResultMatchingOrReadTiming();
   testConsolePanelBrowseAndAutocomplete();
   testConsolePanelUndoRedoShortcutsUseCommandBus();
   testConsoleInputControllerHistoryKeepsDraft();

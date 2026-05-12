@@ -8,15 +8,6 @@
 
 namespace LX_core {
 
-namespace {
-
-[[nodiscard]] bool resultsMatchForAttachment(const CommandResult &lhs,
-                                             const CommandResult &rhs) {
-  return lhs.ok == rhs.ok && lhs.message == rhs.message;
-}
-
-} // namespace
-
 ConsolePanel::ConsolePanel(CommandBus &commandBus)
     : m_commandBus(commandBus), m_inputController(commandBus) {}
 
@@ -78,8 +69,7 @@ void ConsolePanel::submitCurrentInput() { submitLine(getInputText()); }
 void ConsolePanel::clearDisplay() {
   m_displayStartIndex = m_commandBus.history().size();
   m_orphanSystemLines.clear();
-  m_entryAttachments.clear();
-  m_pendingSystemAttachments.clear();
+  m_dispatchAttachments.clear();
   m_inputController.clearHelperOutput();
   m_scrollToBottom = false;
 }
@@ -112,13 +102,15 @@ void ConsolePanel::appendSystemLine(std::string_view line) {
   if (line.empty()) {
     return;
   }
-  if (m_displayStartIndex >= m_commandBus.history().size()) {
-    m_orphanSystemLines.emplace_back(line);
+  if (const std::optional<u64> activeDispatchId =
+          m_commandBus.activeTopLevelDispatchId();
+      activeDispatchId.has_value()) {
+    appendAttachmentToDispatchOwner(*activeDispatchId, line);
+  } else if (const auto &history = m_commandBus.history();
+             m_displayStartIndex < history.size()) {
+    appendAttachmentToDispatchOwner(history.back().topLevelDispatchId, line);
   } else {
-    const usize visibleIndex =
-        m_commandBus.history().size() - m_displayStartIndex - 1;
-    appendAttachmentToVisibleEntry(visibleIndex, line);
-    queueSystemLineAttachment(line);
+    m_orphanSystemLines.emplace_back(line);
   }
   m_scrollToBottom = true;
 }
@@ -136,7 +128,6 @@ void ConsolePanel::setInputText(std::string_view text) { m_inputController.setIn
 std::string ConsolePanel::getInputText() const { return m_inputController.inputText(); }
 
 std::vector<CommandBus::HistoryEntry> ConsolePanel::displayedEntries() const {
-  syncPendingSystemAttachments();
   const auto &history = m_commandBus.history();
   if (m_displayStartIndex >= history.size()) {
     return {};
@@ -146,20 +137,32 @@ std::vector<CommandBus::HistoryEntry> ConsolePanel::displayedEntries() const {
 }
 
 std::vector<ConsolePanel::DisplayEntry> ConsolePanel::displayedDisplayEntries() const {
-  syncPendingSystemAttachments();
   const auto &history = m_commandBus.history();
   if (m_displayStartIndex >= history.size()) {
     return {};
+  }
+
+  std::unordered_map<u64, usize> lastVisibleHistoryIndexByDispatchId;
+  for (usize historyIndex = m_displayStartIndex; historyIndex < history.size();
+       ++historyIndex) {
+    lastVisibleHistoryIndexByDispatchId[history[historyIndex].topLevelDispatchId] =
+        historyIndex;
   }
 
   std::vector<DisplayEntry> entries;
   entries.reserve(history.size() - m_displayStartIndex);
   for (usize historyIndex = m_displayStartIndex; historyIndex < history.size();
        ++historyIndex) {
-    const usize visibleIndex = historyIndex - m_displayStartIndex;
     DisplayEntry entry{.historyEntry = history[historyIndex], .attachments = {}};
-    if (visibleIndex < m_entryAttachments.size()) {
-      entry.attachments = m_entryAttachments[visibleIndex];
+    const auto lastVisibleIt = lastVisibleHistoryIndexByDispatchId.find(
+        history[historyIndex].topLevelDispatchId);
+    if (lastVisibleIt != lastVisibleHistoryIndexByDispatchId.end() &&
+        lastVisibleIt->second == historyIndex) {
+      const auto attachmentIt =
+          m_dispatchAttachments.find(history[historyIndex].topLevelDispatchId);
+      if (attachmentIt != m_dispatchAttachments.end()) {
+        entry.attachments = attachmentIt->second;
+      }
     }
     entries.emplace_back(std::move(entry));
   }
@@ -198,79 +201,9 @@ std::string ConsolePanel::displayedText() const {
   return output;
 }
 
-void ConsolePanel::queueSystemLineAttachment(std::string_view line) {
-  const usize historySize = m_commandBus.history().size();
-  if (!m_pendingSystemAttachments.empty() &&
-      m_pendingSystemAttachments.back().historySizeBeforeOwner == historySize &&
-      m_pendingSystemAttachments.back().sourceHistoryIndex + 1 == historySize) {
-    m_pendingSystemAttachments.back().lines.emplace_back(line);
-    return;
-  }
-
-  PendingSystemAttachment attachment;
-  attachment.sourceHistoryIndex = historySize - 1;
-  attachment.historySizeBeforeOwner = historySize;
-  attachment.lines.emplace_back(line);
-  m_pendingSystemAttachments.emplace_back(std::move(attachment));
-}
-
-void ConsolePanel::appendAttachmentToVisibleEntry(const usize visibleIndex,
-                                                  std::string_view line) const {
-  if (m_entryAttachments.size() <= visibleIndex) {
-    m_entryAttachments.resize(visibleIndex + 1);
-  }
-  m_entryAttachments[visibleIndex].emplace_back(line);
-}
-
-void ConsolePanel::removeTrailingAttachmentsFromVisibleEntry(
-    const usize visibleIndex, const std::vector<std::string> &lines) const {
-  if (visibleIndex >= m_entryAttachments.size()) {
-    return;
-  }
-  auto &attachments = m_entryAttachments[visibleIndex];
-  if (attachments.size() < lines.size()) {
-    return;
-  }
-  const usize startIndex = attachments.size() - lines.size();
-  for (usize i = 0; i < lines.size(); ++i) {
-    if (attachments[startIndex + i] != lines[i]) {
-      return;
-    }
-  }
-  attachments.resize(startIndex);
-}
-
-void ConsolePanel::syncPendingSystemAttachments() const {
-  if (m_pendingSystemAttachments.empty()) {
-    return;
-  }
-
-  const usize historySize = m_commandBus.history().size();
-  for (const auto &attachment : m_pendingSystemAttachments) {
-    const bool ownerVisible =
-        historySize > attachment.historySizeBeforeOwner &&
-        attachment.historySizeBeforeOwner >= m_displayStartIndex;
-    if (ownerVisible) {
-      const usize sourceVisibleIndex =
-          attachment.sourceHistoryIndex - m_displayStartIndex;
-      removeTrailingAttachmentsFromVisibleEntry(sourceVisibleIndex,
-                                                attachment.lines);
-      usize ownerHistoryIndex = attachment.historySizeBeforeOwner;
-      while (ownerHistoryIndex + 1 < historySize &&
-             resultsMatchForAttachment(
-                 m_commandBus.history()[ownerHistoryIndex].result,
-                 m_commandBus.history()[ownerHistoryIndex + 1].result)) {
-        ++ownerHistoryIndex;
-      }
-      const usize visibleIndex = ownerHistoryIndex - m_displayStartIndex;
-      for (const auto &line : attachment.lines) {
-        appendAttachmentToVisibleEntry(visibleIndex, line);
-      }
-      continue;
-    }
-  }
-
-  m_pendingSystemAttachments.clear();
+void ConsolePanel::appendAttachmentToDispatchOwner(const u64 dispatchOwnerId,
+                                                   std::string_view line) {
+  m_dispatchAttachments[dispatchOwnerId].emplace_back(line);
 }
 
 void ConsolePanel::drawOutputRegion(const float reservedInputHeight) {

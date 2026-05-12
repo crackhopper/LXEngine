@@ -294,6 +294,10 @@ const std::vector<CommandBus::HistoryEntry> &CommandBus::history() const {
   return m_history;
 }
 
+std::optional<u64> CommandBus::activeTopLevelDispatchId() const {
+  return m_activeTopLevelDispatchId;
+}
+
 u64 CommandBus::currentTimestampMs() {
   const auto now = std::chrono::system_clock::now().time_since_epoch();
   return static_cast<u64>(
@@ -326,6 +330,13 @@ std::string CommandBus::commonPrefix(const std::vector<std::string> &values) {
 
 CommandResult CommandBus::dispatchInternal(const std::string &line,
                                           const DispatchOptions &options) {
+  const bool enteringTopLevelDispatch = m_dispatchDepth == 0;
+  if (enteringTopLevelDispatch) {
+    m_activeTopLevelDispatchId = m_nextTopLevelDispatchId++;
+  }
+  ++m_dispatchDepth;
+  const u64 topLevelDispatchId = m_activeTopLevelDispatchId.value_or(0);
+
   const TokenizeResult tokenized = tokenizeCommandLine(line);
   CommandResult result;
   if (!tokenized.ok) {
@@ -389,7 +400,13 @@ CommandResult CommandBus::dispatchInternal(const std::string &line,
   }
 
   if (options.recordHistory) {
-    m_history.push_back(HistoryEntry{line, result, currentTimestampMs()});
+    m_history.push_back(
+        HistoryEntry{line, result, currentTimestampMs(), topLevelDispatchId});
+  }
+
+  --m_dispatchDepth;
+  if (enteringTopLevelDispatch) {
+    m_activeTopLevelDispatchId.reset();
   }
   return result;
 }
