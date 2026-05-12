@@ -331,7 +331,7 @@ std::string CommandBus::commonPrefix(const std::vector<std::string> &values) {
 CommandResult CommandBus::dispatchInternal(const std::string &line,
                                           const DispatchOptions &options) {
   const bool enteringTopLevelDispatch = m_dispatchDepth == 0;
-  if (enteringTopLevelDispatch) {
+  if (enteringTopLevelDispatch && options.recordHistory) {
     m_activeTopLevelDispatchId = m_nextTopLevelDispatchId++;
   }
   ++m_dispatchDepth;

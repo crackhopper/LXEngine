@@ -1339,6 +1339,56 @@ void testConsoleInDispatchSystemLinesDoNotDependOnResultMatchingOrReadTiming() {
          "in-dispatch system line should not migrate to a later colliding result");
 }
 
+void testHistorylessUndoConsoleLinesStayVisible() {
+  CommandBus bus;
+  ConsolePanel panel(bus);
+  bool enabled = false;
+
+  bus.registerHandler(
+      "toggle", CommandMetadata{
+                    .brief = "toggle",
+                    .inverse =
+                        [](const ParsedCommand &, const CommandResult &) {
+                          return std::optional<std::string>{"toggle_inverse"};
+                        },
+                    .mutatesState = true},
+      [&](std::vector<std::string>) {
+        enabled = !enabled;
+        return CommandResult{true, enabled ? "enabled" : "disabled", {}, {}};
+      });
+  bus.registerHandler(
+      "toggle_inverse", "toggle_inverse",
+      [&](std::vector<std::string>) {
+        panel.appendSystemLine("undo line");
+        enabled = !enabled;
+        return CommandResult{true, enabled ? "enabled" : "disabled", {}, {}};
+      });
+
+  panel.submitLine("toggle");
+  EXPECT(enabled, "setup command should mutate state before undo");
+  const usize historySizeBeforeUndo = bus.history().size();
+
+  const CommandResult undoResult = bus.undo();
+  EXPECT(undoResult.ok, "historyless undo should succeed");
+  EXPECT(!enabled, "historyless undo should restore prior state");
+  EXPECT(bus.history().size() == historySizeBeforeUndo,
+         "historyless undo should not record a new top-level history entry");
+
+  const std::string consoleText = panel.displayedText();
+  const usize toggleCommandPos = consoleText.find("> toggle");
+  const usize toggleResultPos = consoleText.find("enabled", toggleCommandPos);
+  const usize undoLinePos = consoleText.find("undo line", toggleResultPos);
+
+  EXPECT(toggleCommandPos != std::string::npos,
+         "owning visible command should remain visible after historyless undo");
+  EXPECT(toggleResultPos != std::string::npos,
+         "owning visible result should remain visible after historyless undo");
+  EXPECT(undoLinePos != std::string::npos,
+         "historyless undo system line should remain visible");
+  EXPECT(toggleCommandPos < toggleResultPos && toggleResultPos < undoLinePos,
+         "historyless undo system line should attach through the visible late/orphan path");
+}
+
 void testConsolePanelBrowseAndAutocomplete() {
   CommandFixture fixture;
   ConsolePanel panel(fixture.bus);
@@ -1540,6 +1590,7 @@ int main() {
   testConsoleSystemLinesDoNotRetroactivelyAttachAfterClear();
   testConsoleLateSystemLinesAttachToNewestVisibleEntry();
   testConsoleInDispatchSystemLinesDoNotDependOnResultMatchingOrReadTiming();
+  testHistorylessUndoConsoleLinesStayVisible();
   testConsolePanelBrowseAndAutocomplete();
   testConsolePanelUndoRedoShortcutsUseCommandBus();
   testConsoleInputControllerHistoryKeepsDraft();
