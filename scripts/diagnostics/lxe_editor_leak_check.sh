@@ -94,6 +94,10 @@ mkdir -p "${BUILD_DIR}"
 
 SANITIZER_STATUS="not_run"
 SOAK_STATUS="not_run"
+SOAK_EDITOR_EXIT_STATUS="not_run"
+SOAK_RSS_START_KB=""
+SOAK_RSS_END_KB=""
+SOAK_RSS_PEAK_KB=""
 
 merge_asan_options() {
   local merged_options=""
@@ -122,6 +126,8 @@ merge_asan_options() {
 
 merge_asan_options
 
+GIT_COMMIT="$(git -C "${REPO_ROOT}" rev-parse HEAD)"
+
 write_env() {
   {
     echo "mode=${MODE}"
@@ -135,15 +141,21 @@ write_env() {
     echo "ninja_bin=${NINJA_BIN}"
     echo "editor_bin=${EDITOR_BIN}"
     echo "asan_options=${ASAN_OPTIONS}"
-    git -C "${REPO_ROOT}" rev-parse HEAD | sed 's/^/git_commit=/'
+    echo "git_commit=${GIT_COMMIT}"
   } > "${OUTPUT_DIR}/env.txt"
 }
 
 write_summary() {
   {
     echo "mode=${MODE}"
+    echo "git_commit=${GIT_COMMIT}"
     echo "sanitizer_status=${SANITIZER_STATUS}"
     echo "soak_status=${SOAK_STATUS}"
+    echo "duration_seconds=${DURATION_SECONDS}"
+    echo "soak_exit_status=${SOAK_EDITOR_EXIT_STATUS}"
+    echo "rss_start_kb=${SOAK_RSS_START_KB}"
+    echo "rss_end_kb=${SOAK_RSS_END_KB}"
+    echo "rss_peak_kb=${SOAK_RSS_PEAK_KB}"
   } > "${OUTPUT_DIR}/summary.txt"
 }
 
@@ -201,36 +213,130 @@ run_sanitizer_mode() {
   SANITIZER_STATUS="passed"
 }
 
-write_stub_artifacts() {
-  : > "${OUTPUT_DIR}/sanitizer.log"
-  if [[ "${MODE}" == "soak" || "${MODE}" == "all" ]]; then
-    : > "${OUTPUT_DIR}/soak.stdout.log"
-    : > "${OUTPUT_DIR}/soak.stderr.log"
-    {
-      printf "timestamp,rss_kb,vsz_kb,cpu_percent\n"
-      printf "stub,0,0,0\n"
-    } > "${OUTPUT_DIR}/rss.csv"
+sample_process_metrics() {
+  local pid="${1}"
+  local timestamp
+  local sample
+  local rss_kb
+  local vsz_kb
+  local cpu_percent
+
+  timestamp="$(date +%s)"
+  sample="$(ps -o rss=,vsz=,%cpu= -p "${pid}" | awk '{print $1","$2","$3}')" || return 1
+
+  IFS=',' read -r rss_kb vsz_kb cpu_percent <<< "${sample}"
+  printf "%s,%s,%s,%s\n" "${timestamp}" "${rss_kb}" "${vsz_kb}" "${cpu_percent}" >> "${OUTPUT_DIR}/rss.csv"
+
+  if [[ -z "${SOAK_RSS_START_KB}" ]]; then
+    SOAK_RSS_START_KB="${rss_kb}"
+  fi
+  SOAK_RSS_END_KB="${rss_kb}"
+  if [[ -z "${SOAK_RSS_PEAK_KB}" || "${rss_kb}" -gt "${SOAK_RSS_PEAK_KB}" ]]; then
+    SOAK_RSS_PEAK_KB="${rss_kb}"
+  fi
+}
+
+run_soak_mode() {
+  local end_time
+  local editor_pid
+  local editor_exit_status
+  local timed_out="false"
+  local editor_args=()
+
+  SOAK_STATUS="running"
+  SOAK_EDITOR_EXIT_STATUS="running"
+  SOAK_RSS_START_KB=""
+  SOAK_RSS_END_KB=""
+  SOAK_RSS_PEAK_KB=""
+
+  : > "${OUTPUT_DIR}/soak.stdout.log"
+  : > "${OUTPUT_DIR}/soak.stderr.log"
+  printf "timestamp,rss_kb,vsz_kb,cpu_percent\n" > "${OUTPUT_DIR}/rss.csv"
+
+  if [[ -n "${SCENE_PATH}" ]]; then
+    editor_args+=("${SCENE_PATH}")
+  fi
+
+  "${EDITOR_BIN}" "${editor_args[@]}" > "${OUTPUT_DIR}/soak.stdout.log" 2> "${OUTPUT_DIR}/soak.stderr.log" &
+  editor_pid=$!
+  end_time="$(( $(date +%s) + DURATION_SECONDS ))"
+
+  if ! sample_process_metrics "${editor_pid}"; then
+    wait "${editor_pid}" || true
+    SOAK_STATUS="failed"
+    SOAK_EDITOR_EXIT_STATUS="failed"
+    return 1
+  fi
+
+  while kill -0 "${editor_pid}" 2>/dev/null; do
+    if [[ "$(date +%s)" -ge "${end_time}" ]]; then
+      break
+    fi
+    sleep "${SAMPLE_INTERVAL_SECONDS}"
+    if kill -0 "${editor_pid}" 2>/dev/null; then
+      if ! sample_process_metrics "${editor_pid}"; then
+        wait "${editor_pid}" || true
+        SOAK_STATUS="failed"
+        SOAK_EDITOR_EXIT_STATUS="failed"
+        return 1
+      fi
+    fi
+  done
+
+  if kill -0 "${editor_pid}" 2>/dev/null; then
+    timed_out="true"
+    kill "${editor_pid}" || true
+  fi
+
+  if wait "${editor_pid}"; then
+    editor_exit_status=0
+  else
+    editor_exit_status=$?
+  fi
+
+  if [[ "${timed_out}" == "true" ]]; then
+    SOAK_EDITOR_EXIT_STATUS="timeout"
+    SOAK_STATUS="passed"
+    return 0
+  fi
+
+  SOAK_EDITOR_EXIT_STATUS="${editor_exit_status}"
+  if [[ "${editor_exit_status}" -eq 0 ]]; then
+    SOAK_STATUS="passed"
+  else
+    SOAK_STATUS="failed"
+    return 1
   fi
 }
 
 write_env
-write_stub_artifacts
 
-if [[ "${MODE}" == "sanitizer" ]]; then
-  if ! run_sanitizer_mode; then
-    write_summary
-    exit 1
-  fi
-  write_summary
-  exit 0
-fi
+case "${MODE}" in
+  sanitizer)
+    if ! run_sanitizer_mode; then
+      write_summary
+      exit 1
+    fi
+    ;;
+  soak)
+    if ! run_soak_mode; then
+      write_summary
+      exit 1
+    fi
+    ;;
+  all)
+    if ! run_sanitizer_mode; then
+      :
+    fi
+    if ! run_soak_mode; then
+      :
+    fi
+    ;;
+esac
 
-if [[ "${MODE}" == "soak" ]]; then
-  write_summary
-  exit 0
-fi
+write_summary
 
-if [[ "${MODE}" == "all" ]]; then
-  write_summary
-  exit 0
+if [[ "${SANITIZER_STATUS}" == "failed" || "${SOAK_STATUS}" == "failed" ]]; then
+  exit 1
 fi
+exit 0
