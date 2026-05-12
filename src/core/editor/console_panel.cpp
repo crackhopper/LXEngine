@@ -115,6 +115,9 @@ void ConsolePanel::appendSystemLine(std::string_view line) {
   if (m_displayStartIndex >= m_commandBus.history().size()) {
     m_orphanSystemLines.emplace_back(line);
   } else {
+    const usize visibleIndex =
+        m_commandBus.history().size() - m_displayStartIndex - 1;
+    appendAttachmentToVisibleEntry(visibleIndex, line);
     queueSystemLineAttachment(line);
   }
   m_scrollToBottom = true;
@@ -198,12 +201,14 @@ std::string ConsolePanel::displayedText() const {
 void ConsolePanel::queueSystemLineAttachment(std::string_view line) {
   const usize historySize = m_commandBus.history().size();
   if (!m_pendingSystemAttachments.empty() &&
-      m_pendingSystemAttachments.back().historySizeBeforeOwner == historySize) {
+      m_pendingSystemAttachments.back().historySizeBeforeOwner == historySize &&
+      m_pendingSystemAttachments.back().sourceHistoryIndex + 1 == historySize) {
     m_pendingSystemAttachments.back().lines.emplace_back(line);
     return;
   }
 
   PendingSystemAttachment attachment;
+  attachment.sourceHistoryIndex = historySize - 1;
   attachment.historySizeBeforeOwner = historySize;
   attachment.lines.emplace_back(line);
   m_pendingSystemAttachments.emplace_back(std::move(attachment));
@@ -217,6 +222,24 @@ void ConsolePanel::appendAttachmentToVisibleEntry(const usize visibleIndex,
   m_entryAttachments[visibleIndex].emplace_back(line);
 }
 
+void ConsolePanel::removeTrailingAttachmentsFromVisibleEntry(
+    const usize visibleIndex, const std::vector<std::string> &lines) const {
+  if (visibleIndex >= m_entryAttachments.size()) {
+    return;
+  }
+  auto &attachments = m_entryAttachments[visibleIndex];
+  if (attachments.size() < lines.size()) {
+    return;
+  }
+  const usize startIndex = attachments.size() - lines.size();
+  for (usize i = 0; i < lines.size(); ++i) {
+    if (attachments[startIndex + i] != lines[i]) {
+      return;
+    }
+  }
+  attachments.resize(startIndex);
+}
+
 void ConsolePanel::syncPendingSystemAttachments() const {
   if (m_pendingSystemAttachments.empty()) {
     return;
@@ -228,6 +251,10 @@ void ConsolePanel::syncPendingSystemAttachments() const {
         historySize > attachment.historySizeBeforeOwner &&
         attachment.historySizeBeforeOwner >= m_displayStartIndex;
     if (ownerVisible) {
+      const usize sourceVisibleIndex =
+          attachment.sourceHistoryIndex - m_displayStartIndex;
+      removeTrailingAttachmentsFromVisibleEntry(sourceVisibleIndex,
+                                                attachment.lines);
       usize ownerHistoryIndex = attachment.historySizeBeforeOwner;
       while (ownerHistoryIndex + 1 < historySize &&
              resultsMatchForAttachment(
@@ -240,10 +267,6 @@ void ConsolePanel::syncPendingSystemAttachments() const {
         appendAttachmentToVisibleEntry(visibleIndex, line);
       }
       continue;
-    }
-
-    for (const auto &line : attachment.lines) {
-      m_orphanSystemLines.emplace_back(line);
     }
   }
 

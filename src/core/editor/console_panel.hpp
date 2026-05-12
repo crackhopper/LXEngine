@@ -19,6 +19,7 @@ public:
   };
 
   struct PendingSystemAttachment final {
+    usize sourceHistoryIndex = 0;
     usize historySizeBeforeOwner = 0;
     std::vector<std::string> lines;
   };
@@ -54,6 +55,8 @@ private:
   [[nodiscard]] static int inputTextCallback(ImGuiInputTextCallbackData *data);
   void queueSystemLineAttachment(std::string_view line);
   void appendAttachmentToVisibleEntry(usize visibleIndex, std::string_view line) const;
+  void removeTrailingAttachmentsFromVisibleEntry(usize visibleIndex,
+                                                 const std::vector<std::string> &lines) const;
   void syncPendingSystemAttachments() const;
   void drawOutputRegion(float reservedInputHeight);
   void drawDisplayEntry(const DisplayEntry &entry) const;

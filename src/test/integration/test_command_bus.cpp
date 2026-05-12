@@ -1235,6 +1235,31 @@ void testConsoleSystemLinesDoNotRetroactivelyAttachAfterClear() {
          "orphan system line should not migrate into the later command block");
 }
 
+void testConsoleLateSystemLinesAttachToNewestVisibleEntry() {
+  CommandFixture fixture;
+  ConsolePanel panel(fixture.bus);
+
+  panel.submitLine("help");
+  panel.appendSystemLine("late line");
+
+  const std::string consoleText = panel.displayedText();
+  const std::string helpResult = fixture.bus.history().back().result.message;
+  const usize helpCommandPos = consoleText.find("> help");
+  const usize helpResultPos = consoleText.find(helpResult, helpCommandPos);
+  const usize lateLinePos = consoleText.find("late line", helpResultPos);
+
+  EXPECT(helpCommandPos != std::string::npos,
+         "late-line test should keep the owning command visible");
+  EXPECT(helpResultPos != std::string::npos,
+         "late-line test should keep the owning result visible");
+  EXPECT(lateLinePos != std::string::npos,
+         "late system line should remain visible");
+  EXPECT(helpCommandPos < helpResultPos && helpResultPos < lateLinePos,
+         "late system line should render under the newest visible command result");
+  EXPECT(consoleText.find(helpResult + "\n\nlate line") == std::string::npos,
+         "late system line should not render as a separate orphan block");
+}
+
 void testConsolePanelBrowseAndAutocomplete() {
   CommandFixture fixture;
   ConsolePanel panel(fixture.bus);
@@ -1433,6 +1458,7 @@ int main() {
   testConsoleClearDropsOldDebugAttachmentsFromVisibleOutput();
   testConsoleSystemLinesStayOrphanedWithoutVisibleOwner();
   testConsoleSystemLinesDoNotRetroactivelyAttachAfterClear();
+  testConsoleLateSystemLinesAttachToNewestVisibleEntry();
   testConsolePanelBrowseAndAutocomplete();
   testConsolePanelUndoRedoShortcutsUseCommandBus();
   testConsoleInputControllerHistoryKeepsDraft();
