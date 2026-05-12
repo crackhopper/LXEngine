@@ -7,6 +7,7 @@
 namespace LX_core {
 
 class SceneNode;
+enum class SceneNodeAspect;
 
 using ComponentTypeId = std::size_t;
 
@@ -40,6 +41,7 @@ protected:
   IComponent() = default;
 
   void notifyOwnerStructuralChange() const;
+  void notifyOwnerRuntimeAspectChange(SceneNodeAspect aspect) const;
   virtual void onAttached() {}
   virtual void onDetaching() {}
 

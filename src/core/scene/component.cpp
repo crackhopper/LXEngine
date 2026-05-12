@@ -1,6 +1,8 @@
 #include "component.hpp"
 
 #include "object.hpp"
+#include "scene.hpp"
+#include "scene_events.hpp"
 
 #include <atomic>
 #include <cassert>
@@ -47,6 +49,23 @@ void IComponent::notifyOwnerStructuralChange() const {
     return;
   }
   m_owner->get().rebuildValidatedCache();
+}
+
+void IComponent::notifyOwnerRuntimeAspectChange(const SceneNodeAspect aspect) const {
+  const auto ownerNode = owner();
+  if (!ownerNode.has_value()) {
+    return;
+  }
+
+  if (const auto scene = ownerNode->get().getAttachedScene()) {
+    scene->events().emit(SceneEvent{
+        .domain = SceneEventDomain::Runtime,
+        .type = SceneEventType::SceneNodeChanged,
+        .path = ownerNode->get().getPath(),
+        .stableNodeName = ownerNode->get().getNodeName(),
+        .aspects = {aspect},
+    });
+  }
 }
 
 } // namespace LX_core

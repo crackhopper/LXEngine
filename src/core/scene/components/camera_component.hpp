@@ -30,19 +30,28 @@ public:
   float bottom = -1.0f;
   float top = 1.0f;
 
+  [[nodiscard]] CameraType getProjectionType() const { return type; }
+  void setProjectionType(CameraType projectionType);
+  void setFovY(float value);
+  void setAspect(float value);
+  void setNearPlane(float value);
+  void setFarPlane(float value);
+  void setOrthographicBounds(float leftValue, float rightValue,
+                             float bottomValue, float topValue);
+
   const std::optional<RenderTarget> &getTarget() const { return m_target; }
-  void setTarget(RenderTarget target) { m_target = std::move(target); }
-  void setTarget(std::optional<RenderTarget> target) { m_target = std::move(target); }
-  void clearTarget() { m_target.reset(); }
+  void setTarget(RenderTarget target);
+  void setTarget(std::optional<RenderTarget> target);
+  void clearTarget();
   bool matchesTarget(const RenderTarget &target) const {
     return m_target.has_value() && *m_target == target;
   }
 
   VisibilityLayerMask getCullingMask() const { return m_cullingMask; }
-  void setCullingMask(VisibilityLayerMask mask) { m_cullingMask = mask; }
+  void setCullingMask(VisibilityLayerMask mask);
 
   bool isActive() const { return m_active; }
-  void setActive(bool active) { m_active = active; }
+  void setActive(bool active);
 
   Vec3f getEyePosition() const;
   Vec3f getForwardVector() const;

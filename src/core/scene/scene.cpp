@@ -379,6 +379,10 @@ void Scene::removeRenderable(const SceneNodeSharedPtr &node) {
       continue;
     }
     if (lightIt->second) {
+      if (const auto directionalLight =
+              std::dynamic_pointer_cast<DirectionalLight>(lightIt->second)) {
+        directionalLight->detachFromSceneNode();
+      }
       removedLights.push_back(lightIt->second);
     }
     lightIt = m_lightsByNode.erase(lightIt);
@@ -462,6 +466,10 @@ void Scene::attachLight(const SceneNodeSharedPtr &node,
     addLight(light);
   }
   m_lightsByNode[node.get()] = light;
+  if (const auto directionalLight =
+          std::dynamic_pointer_cast<DirectionalLight>(light)) {
+    directionalLight->attachToSceneNode(weak_from_this(), node);
+  }
   node->emitRuntimeNodeChanged(SceneNodeAspect::RenderableStructure);
 }
 
@@ -489,6 +497,9 @@ LightBaseSharedPtr Scene::detachLight(const SceneNodeSharedPtr &node) {
 
   LightBaseSharedPtr light = lightIt->second;
   m_lightsByNode.erase(lightIt);
+  if (const auto directionalLight = std::dynamic_pointer_cast<DirectionalLight>(light)) {
+    directionalLight->detachFromSceneNode();
+  }
   removeLight(light);
   node->emitRuntimeNodeChanged(SceneNodeAspect::RenderableStructure);
   return light;
@@ -509,6 +520,10 @@ void Scene::removeLight(const LightBaseSharedPtr &light) {
       affectedNodes.push_back(node);
     }
     lightIt = m_lightsByNode.erase(lightIt);
+  }
+
+  if (const auto directionalLight = std::dynamic_pointer_cast<DirectionalLight>(light)) {
+    directionalLight->detachFromSceneNode();
   }
 
   m_lights.erase(

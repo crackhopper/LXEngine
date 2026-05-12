@@ -233,6 +233,61 @@ void testAttachedNodeHierarchyMutationsEmitRuntimeEvents() {
                             LX_core::SceneNodeAspect::Hierarchy);
 }
 
+void testCameraComponentPropertySettersEmitRuntimeEvents() {
+  auto scene = LX_core::Scene::create(nullptr);
+  std::vector<CapturedEvent> events;
+  auto subscription =
+      scene->events().subscribe([&](const LX_core::SceneEvent &event) {
+        events.push_back(captureEvent(event));
+      });
+
+  auto cameraNode = LX_core::SceneNode::create("camera_node");
+  cameraNode->setName("camera");
+  auto camera = cameraNode->addComponent<LX_core::CameraComponent>();
+  EXPECT(camera.has_value(), "camera component should exist");
+  if (!camera.has_value()) {
+    return;
+  }
+
+  scene->addCamera(cameraNode);
+  events.clear();
+
+  camera->get().setFovY(75.0f);
+  camera->get().setNearPlane(0.5f);
+  camera->get().setFarPlane(250.0f);
+  camera->get().setProjectionType(LX_core::CameraType::Orthographic);
+  camera->get().setCullingMask(0x0Fu);
+
+  EXPECT(countChangedEventsWithAspect(events,
+                                      LX_core::SceneNodeAspect::CameraProperties) == 5,
+         "camera property setters should each emit CameraProperties events");
+}
+
+void testDirectionalLightPropertySettersEmitRuntimeEvents() {
+  auto scene = LX_core::Scene::create(nullptr);
+  std::vector<CapturedEvent> events;
+  auto subscription =
+      scene->events().subscribe([&](const LX_core::SceneEvent &event) {
+        events.push_back(captureEvent(event));
+      });
+
+  auto lightNode = LX_core::SceneNode::create("light_node");
+  lightNode->setName("sun");
+  scene->addRenderable(lightNode);
+
+  auto light = std::make_shared<LX_core::DirectionalLight>();
+  scene->attachLight(lightNode, light);
+  events.clear();
+
+  light->setDirection({0.0f, -1.0f, 0.0f});
+  light->setColor({0.2f, 0.4f, 0.6f});
+  light->setIntensity(3.5f);
+
+  EXPECT(countChangedEventsWithAspect(events,
+                                      LX_core::SceneNodeAspect::LightProperties) == 3,
+         "light property setters should each emit LightProperties events");
+}
+
 void testSceneAddRemoveLifecycleEmitsRuntimeNodeAddedAndRemovedEvents() {
   auto scene = LX_core::Scene::create(nullptr);
   std::vector<CapturedEvent> events;
@@ -668,6 +723,8 @@ int main() {
   testAttachedNodeTransformMutationsEmitRuntimeSceneNodeChangedEvents();
   testAttachedNodeIdentityAndVisibilityMutationsEmitRuntimeEvents();
   testAttachedNodeHierarchyMutationsEmitRuntimeEvents();
+  testCameraComponentPropertySettersEmitRuntimeEvents();
+  testDirectionalLightPropertySettersEmitRuntimeEvents();
   testSceneAddRemoveLifecycleEmitsRuntimeNodeAddedAndRemovedEvents();
   testSceneRemoveChildUsesLastAttachedPathWithoutHierarchyNoise();
   testSceneRemoveSubtreeEmitsRemovalForEachRemovedNodeWithoutHierarchyNoise();

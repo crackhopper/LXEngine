@@ -12,6 +12,9 @@
 
 namespace LX_core {
 
+class Scene;
+class SceneNode;
+
 /// Abstract base for all light types. A concrete light contributes (a) pass
 /// participation rules owned by the light itself and (b) an optional data
 /// resource to feed shaders. Runtime filtering in
@@ -64,27 +67,34 @@ public:
   /// Default supported passes: Forward + Deferred. Shadow participation is
   /// opt-in because a directional light only writes the shadow map when
   /// explicitly configured as a shadow caster.
-  DirectionalLight()
-      : ubo(std::make_shared<DirectionalLightData>()),
-        m_supportedPasses({Pass_Forward, Pass_Deferred}) {}
+  DirectionalLight();
 
   /// Direct access to the strongly-typed light data (legacy callers mutate
   /// `ubo->param` directly; new callers go through LightBase::getUBO()).
   DirectionalLightDataSharedPtr ubo;
 
+  [[nodiscard]] Vec3f getDirection() const;
+  [[nodiscard]] Vec3f getColor() const;
+  [[nodiscard]] float getIntensity() const;
+  void setDirection(const Vec3f &direction);
+  void setColor(const Vec3f &color);
+  void setIntensity(float intensity);
+
+  void attachToSceneNode(const std::weak_ptr<Scene> &scene,
+                         const std::weak_ptr<SceneNode> &node);
+  void detachFromSceneNode();
+
   IGpuResourceSharedPtr getUBO() const override { return ubo; }
-  bool supportsPass(StringID pass) const override {
-    return m_supportedPasses.find(pass) != m_supportedPasses.end();
-  }
-  void setSupportedPasses(std::initializer_list<StringID> passes) {
-    m_supportedPasses = {passes.begin(), passes.end()};
-  }
-  void setSupportedPasses(const std::vector<StringID> &passes) {
-    m_supportedPasses = {passes.begin(), passes.end()};
-  }
+  bool supportsPass(StringID pass) const override;
+  void setSupportedPasses(std::initializer_list<StringID> passes);
+  void setSupportedPasses(const std::vector<StringID> &passes);
 
 private:
+  void emitLightPropertyChanged() const;
+
   std::unordered_set<StringID, StringID::Hash> m_supportedPasses;
+  std::weak_ptr<Scene> m_scene;
+  std::weak_ptr<SceneNode> m_node;
 };
 using DirectionalLightSharedPtr = std::shared_ptr<DirectionalLight>;
 

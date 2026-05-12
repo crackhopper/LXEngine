@@ -84,6 +84,73 @@ Transform CameraComponent::getOwnerWorldTransform() const {
   return Transform::fromMat4(ownerNode->get().getWorldTransform());
 }
 
+void CameraComponent::setProjectionType(const CameraType projectionType) {
+  type = projectionType;
+  updateMatrices();
+  notifyOwnerRuntimeAspectChange(SceneNodeAspect::CameraProperties);
+}
+
+void CameraComponent::setFovY(const float value) {
+  fovY = value;
+  updateMatrices();
+  notifyOwnerRuntimeAspectChange(SceneNodeAspect::CameraProperties);
+}
+
+void CameraComponent::setAspect(const float value) {
+  aspect = value;
+  updateMatrices();
+  notifyOwnerRuntimeAspectChange(SceneNodeAspect::CameraProperties);
+}
+
+void CameraComponent::setNearPlane(const float value) {
+  nearPlane = value;
+  updateMatrices();
+  notifyOwnerRuntimeAspectChange(SceneNodeAspect::CameraProperties);
+}
+
+void CameraComponent::setFarPlane(const float value) {
+  farPlane = value;
+  updateMatrices();
+  notifyOwnerRuntimeAspectChange(SceneNodeAspect::CameraProperties);
+}
+
+void CameraComponent::setOrthographicBounds(const float leftValue,
+                                            const float rightValue,
+                                            const float bottomValue,
+                                            const float topValue) {
+  left = leftValue;
+  right = rightValue;
+  bottom = bottomValue;
+  top = topValue;
+  updateMatrices();
+  notifyOwnerRuntimeAspectChange(SceneNodeAspect::CameraProperties);
+}
+
+void CameraComponent::setTarget(RenderTarget target) {
+  m_target = std::move(target);
+  notifyOwnerRuntimeAspectChange(SceneNodeAspect::CameraProperties);
+}
+
+void CameraComponent::setTarget(std::optional<RenderTarget> target) {
+  m_target = std::move(target);
+  notifyOwnerRuntimeAspectChange(SceneNodeAspect::CameraProperties);
+}
+
+void CameraComponent::clearTarget() {
+  m_target.reset();
+  notifyOwnerRuntimeAspectChange(SceneNodeAspect::CameraProperties);
+}
+
+void CameraComponent::setCullingMask(const VisibilityLayerMask mask) {
+  m_cullingMask = mask;
+  notifyOwnerRuntimeAspectChange(SceneNodeAspect::CameraProperties);
+}
+
+void CameraComponent::setActive(const bool active) {
+  m_active = active;
+  notifyOwnerRuntimeAspectChange(SceneNodeAspect::CameraProperties);
+}
+
 Vec3f CameraComponent::getEyePosition() const {
   return getOwnerWorldTransform().translation;
 }
