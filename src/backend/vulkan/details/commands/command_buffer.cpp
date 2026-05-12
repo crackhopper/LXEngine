@@ -16,6 +16,17 @@
 
 namespace LX_core::backend {
 
+VkViewport makeVulkanViewport(u32 width, u32 height) {
+  VkViewport viewport{};
+  viewport.x = 0.0f;
+  viewport.y = 0.0f;
+  viewport.width = static_cast<float>(width);
+  viewport.height = static_cast<float>(height);
+  viewport.minDepth = 0.0f;
+  viewport.maxDepth = 1.0f;
+  return viewport;
+}
+
 void VulkanCommandBuffer::begin() {
   VkCommandBufferBeginInfo beginInfo{};
   beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -44,18 +55,7 @@ void VulkanCommandBuffer::beginRenderPass(
 }
 
 void VulkanCommandBuffer::setViewport(u32 width, u32 height) {
-  VkViewport viewport{};
-  viewport.x = 0.0f;
-  viewport.width = static_cast<float>(width);
-  if (expEnvEnabled("LX_RENDER_FLIP_VIEWPORT_Y")) {
-    viewport.y = static_cast<float>(height);
-    viewport.height = -static_cast<float>(height);
-  } else {
-    viewport.y = 0.0f;
-    viewport.height = static_cast<float>(height);
-  }
-  viewport.minDepth = 0.0f;
-  viewport.maxDepth = 1.0f;
+  const VkViewport viewport = makeVulkanViewport(width, height);
   vkCmdSetViewport(m_handle, 0, 1, &viewport);
 }
 

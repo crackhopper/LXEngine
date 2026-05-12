@@ -84,7 +84,9 @@ LX_RENDER_DEBUG=1 ./test_pbr_cube
 | `LX_RENDER_DEBUG_CLEAR=1` | 清屏色改成蓝色，用来确认 renderpass 有没有生效 |
 | `LX_RENDER_DISABLE_CULL=1` | 关掉 back-face culling，用来排查 winding 问题 |
 | `LX_RENDER_DISABLE_DEPTH=1` | 关掉深度测试，用来排查深度 format 问题 |
-| `LX_RENDER_FLIP_VIEWPORT_Y=1` | 翻转 viewport Y，用来排查上下颠倒 |
+
+当前 runtime 不再支持通过环境变量翻转 Vulkan viewport Y。`LX_RENDER_FLIP_VIEWPORT_Y`
+是历史排障开关，现有代码不会再读取它。
 
 ---
 

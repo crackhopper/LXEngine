@@ -26,6 +26,7 @@ nav:
           - 怎样定义自己的材质模板: concepts/material/custom-template.md
       - 相机系统:
           - concepts/camera/index.md
+          - 一次点击怎样穿过像素、NDC 和 Vulkan: concepts/camera/pixel-ndc-vulkan.md
       - 光源系统:
           - concepts/light/index.md
       - 引擎循环:

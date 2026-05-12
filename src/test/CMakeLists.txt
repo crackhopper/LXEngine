@@ -1,6 +1,7 @@
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
 set(TEST_INTEGRATION_EXE_LIST
+  test_vulkan_viewport_convention
   test_vulkan_buffer
   test_vulkan_command_buffer
   test_vulkan_swapchain

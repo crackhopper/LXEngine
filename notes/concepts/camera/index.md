@@ -94,4 +94,5 @@ camera->updateMatrices();
 继续展开时，可以参考：
 
 - [camera.hpp](/home/lx/proj/renderer-demo/src/core/scene/camera.hpp:46)
+- [`pixel-ndc-vulkan.md`](./pixel-ndc-vulkan.md)
 - [`../../subsystems/scene.md`](../../subsystems/scene.md)

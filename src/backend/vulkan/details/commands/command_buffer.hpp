@@ -8,6 +8,8 @@
 
 namespace LX_core::backend {
 
+[[nodiscard]] VkViewport makeVulkanViewport(u32 width, u32 height);
+
 class VulkanResourceManager;
 
 class VulkanCommandBuffer {
