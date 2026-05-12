@@ -449,7 +449,8 @@ void testPreviewModeSuppressesHotkeyDeselectAndRemove() {
   LX_core::MockInputState input;
   harness.editorState.select({harness.targetNode});
   harness.editorState.setPreviewEnabled(true);
-  harness.ui.setEditMode(LX_demo::lxe_editor::UiOverlay::EditMode::Selection);
+  harness.ui.setEditorMode(
+      LX_demo::lxe_editor::UiOverlay::EditorMode::Selection);
 
   input.setKeyDown(LX_core::KeyCode::Escape, true);
   harness.ui.handleHotkeys(input);
