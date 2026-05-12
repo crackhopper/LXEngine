@@ -8,6 +8,15 @@
 
 namespace LX_core {
 
+namespace {
+
+constexpr ImGuiInputTextFlags kConsoleInputTextFlags =
+    ImGuiInputTextFlags_CallbackCharFilter |
+    ImGuiInputTextFlags_CallbackCompletion |
+    ImGuiInputTextFlags_CallbackHistory;
+
+} // namespace
+
 ConsolePanel::ConsolePanel(CommandBus &commandBus)
     : m_commandBus(commandBus), m_inputController(commandBus) {}
 
@@ -25,19 +34,13 @@ void ConsolePanel::draw() {
     clearDisplay();
   }
 
-  const ImVec2 inputSize(-1.0f, ImGui::GetTextLineHeightWithSpacing() * 3.0f);
-  const float inputHeight =
-      inputSize.y + ImGui::GetStyle().ItemSpacing.y + ImGui::GetFrameHeightWithSpacing();
+  const float inputHeight = ImGui::GetFrameHeightWithSpacing();
   drawOutputRegion(inputHeight);
 
   ImGui::PushItemWidth(-1.0f);
-  (void)ImGui::InputTextMultiline(
+  (void)ImGui::InputText(
       "##command_input", m_inputController.inputBufferData(),
-      m_inputController.inputBufferSize(), inputSize,
-      ImGuiInputTextFlags_WordWrap |
-          ImGuiInputTextFlags_CallbackCharFilter |
-          ImGuiInputTextFlags_CallbackCompletion |
-          ImGuiInputTextFlags_CallbackHistory,
+      m_inputController.inputBufferSize(), inputTextFlags(),
       &ConsolePanel::inputTextCallback, &m_inputController);
   ImGui::PopItemWidth();
 
@@ -130,6 +133,12 @@ std::vector<std::string> ConsolePanel::persistedHistory() const {
 bool ConsolePanel::consumePersistedHistoryDirty() {
   return m_inputController.consumePersistedHistoryDirty();
 }
+
+ImGuiInputTextFlags ConsolePanel::inputTextFlags() {
+  return kConsoleInputTextFlags;
+}
+
+bool ConsolePanel::usesMultilineInput() { return false; }
 
 void ConsolePanel::setInputText(std::string_view text) { m_inputController.setInputText(text); }
 

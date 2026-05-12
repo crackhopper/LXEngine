@@ -1544,6 +1544,18 @@ void testConsolePanelShouldSubmitPlainEnterOnly() {
          "super-enter should not submit");
 }
 
+void testConsolePanelUsesSingleLineHistoryCompatibleInputFlags() {
+  const ImGuiInputTextFlags flags = ConsolePanel::inputTextFlags();
+  EXPECT((flags & ImGuiInputTextFlags_CallbackHistory) != 0,
+         "console input should keep history callback support");
+  EXPECT((flags & ImGuiInputTextFlags_CallbackCompletion) != 0,
+         "console input should keep completion callback support");
+  EXPECT((flags & ImGuiInputTextFlags_CallbackCharFilter) != 0,
+         "console input should keep character filtering support");
+  EXPECT(!ConsolePanel::usesMultilineInput(),
+         "console input widget must remain single-line when history callbacks are enabled");
+}
+
 void testConsoleInputControllerSyncsCallbackBufferAfterControllerMutations() {
   CommandFixture fixture;
   ConsoleInputController controller(fixture.bus);
@@ -1733,6 +1745,7 @@ int main() {
   testConsoleInputControllerEscRestoresDraft();
   testConsoleInputControllerCallbackEvents();
   testConsolePanelShouldSubmitPlainEnterOnly();
+  testConsolePanelUsesSingleLineHistoryCompatibleInputFlags();
   testConsoleInputControllerSyncsCallbackBufferAfterControllerMutations();
   testConsoleInputControllerPersistsHistoryLines();
   testConsoleInputControllerSanitizesMultilineSubmitToSingleLine();

@@ -39,6 +39,8 @@ public:
   [[nodiscard]] static bool shouldSubmitInputOnPlainEnter(
       bool itemActive, bool enterPressed, bool keypadEnterPressed, bool ctrlHeld,
       bool shiftHeld, bool altHeld, bool superHeld);
+  [[nodiscard]] static ImGuiInputTextFlags inputTextFlags();
+  [[nodiscard]] static bool usesMultilineInput();
 
   void setInputText(std::string_view text);
   [[nodiscard]] std::string getInputText() const;
