@@ -7,10 +7,9 @@
 #include "core/scene/components/camera_component.hpp"
 #include "core/scene/object.hpp"
 #include "core/scene/scene.hpp"
-#include "core/utils/env.hpp"
 
-#include <imgui.h>
 #include <ImGuizmo.h>
+#include <imgui.h>
 
 #include <algorithm>
 #include <cmath>
@@ -54,25 +53,28 @@ constexpr float kDegToRad = 3.14159265358979323846f / 180.0f;
                ratio(before.z, after.z)};
 }
 
-[[nodiscard]] Transform applyTransformDelta(
-    const ViewportOverlay::GizmoOperation operation, const Transform &nodeBefore,
-    const Transform &primaryBefore, const Transform &primaryAfter) {
+[[nodiscard]] Transform
+applyTransformDelta(const ViewportOverlay::GizmoOperation operation,
+                    const Transform &nodeBefore, const Transform &primaryBefore,
+                    const Transform &primaryAfter) {
   Transform updated = nodeBefore;
   switch (operation) {
   case ViewportOverlay::GizmoOperation::Translate:
-    updated.translation =
-        nodeBefore.translation + (primaryAfter.translation - primaryBefore.translation);
+    updated.translation = nodeBefore.translation + (primaryAfter.translation -
+                                                    primaryBefore.translation);
     break;
   case ViewportOverlay::GizmoOperation::Rotate: {
     const Quatf delta =
-        (primaryAfter.rotation * primaryBefore.rotation.conjugate()).normalized();
+        (primaryAfter.rotation * primaryBefore.rotation.conjugate())
+            .normalized();
     updated.rotation = (delta * nodeBefore.rotation).normalized();
     break;
   }
   case ViewportOverlay::GizmoOperation::Scale: {
     const Vec3f ratio = safeScaleRatio(primaryBefore.scale, primaryAfter.scale);
-    updated.scale = Vec3f{nodeBefore.scale.x * ratio.x, nodeBefore.scale.y * ratio.y,
-                          nodeBefore.scale.z * ratio.z};
+    updated.scale =
+        Vec3f{nodeBefore.scale.x * ratio.x, nodeBefore.scale.y * ratio.y,
+              nodeBefore.scale.z * ratio.z};
     break;
   }
   }
@@ -89,9 +91,9 @@ constexpr float kDegToRad = 3.14159265358979323846f / 180.0f;
   return (qz * qy * qx).normalized();
 }
 
-[[nodiscard]] std::string buildSingleGizmoLine(
-    const ViewportOverlay::GizmoOperation operation, std::string_view path,
-    const Transform &targetTransform) {
+[[nodiscard]] std::string
+buildSingleGizmoLine(const ViewportOverlay::GizmoOperation operation,
+                     std::string_view path, const Transform &targetTransform) {
   const GizmoTransformComponents components =
       GizmoAdapter::decompose(targetTransform.toMat4());
   switch (operation) {
@@ -131,15 +133,15 @@ void appendUniquePath(std::vector<std::string> &paths, std::string_view path) {
 [[nodiscard]] std::optional<Vec2f>
 projectWorldPointToViewport(const Vec3f &worldPoint, const Mat4f &viewProj,
                             const Vec2f &viewportSize) {
-  const Vec4f clip = viewProj * Vec4f{worldPoint.x, worldPoint.y, worldPoint.z, 1.0f};
+  const Vec4f clip =
+      viewProj * Vec4f{worldPoint.x, worldPoint.y, worldPoint.z, 1.0f};
   if (std::abs(clip.w) <= 1e-6f || clip.w <= 0.0f) {
     return std::nullopt;
   }
 
   const Vec3f ndc = clip.toVec3();
   const float screenX = (ndc.x * 0.5f + 0.5f) * viewportSize.x - 0.5f;
-  const float screenY =
-      (1.0f - (ndc.y * 0.5f + 0.5f)) * viewportSize.y - 0.5f;
+  const float screenY = (1.0f - (ndc.y * 0.5f + 0.5f)) * viewportSize.y - 0.5f;
   return Vec2f{screenX, screenY};
 }
 
@@ -162,8 +164,8 @@ projectBoundsToViewportRect(const BoundingBox &bounds, const Mat4f &viewProj,
   };
 
   bool hasProjectedPoint = false;
-  ViewportOverlay::SelectionRect rect{
-      Vec2f{viewportSize.x, viewportSize.y}, Vec2f{0.0f, 0.0f}};
+  ViewportOverlay::SelectionRect rect{Vec2f{viewportSize.x, viewportSize.y},
+                                      Vec2f{0.0f, 0.0f}};
   for (const Vec3f &corner : corners) {
     const auto projected =
         projectWorldPointToViewport(corner, viewProj, viewportSize);
@@ -184,7 +186,8 @@ projectBoundsToViewportRect(const BoundingBox &bounds, const Mat4f &viewProj,
   return rect;
 }
 
-[[nodiscard]] BoundingBox expandedBounds(const BoundingBox &bounds, const float padding) {
+[[nodiscard]] BoundingBox expandedBounds(const BoundingBox &bounds,
+                                         const float padding) {
   if (!bounds.isValid()) {
     return bounds;
   }
@@ -194,8 +197,9 @@ projectBoundsToViewportRect(const BoundingBox &bounds, const Mat4f &viewProj,
 
 } // namespace
 
-ViewportOverlay::ViewportOverlay(CommandBus &commandBus, EditorState &editorState,
-                                 Scene &scene, EditorConfig config)
+ViewportOverlay::ViewportOverlay(CommandBus &commandBus,
+                                 EditorState &editorState, Scene &scene,
+                                 EditorConfig config)
     : m_commandBus(commandBus), m_editorState(editorState), m_scene(scene),
       m_config(config) {}
 
@@ -217,11 +221,11 @@ ViewportOverlay::Snapshot ViewportOverlay::makeSnapshot() const {
   }
 
   snapshot.gizmoOperation = m_gizmoOperation;
-  snapshot.hintText = std::string("F preview: ") +
-                      (snapshot.previewEnabled ? "ON" : "OFF") +
-                      " | active: " +
-                      (snapshot.activeCameraPath.empty() ? "<none>"
-                                                         : snapshot.activeCameraPath);
+  snapshot.hintText =
+      std::string("F preview: ") + (snapshot.previewEnabled ? "ON" : "OFF") +
+      " | active: " +
+      (snapshot.activeCameraPath.empty() ? "<none>"
+                                         : snapshot.activeCameraPath);
   return snapshot;
 }
 
@@ -263,7 +267,8 @@ CommandResult ViewportOverlay::dispatchGizmoCommit(
   target.translation = components.translation;
   target.rotation = eulerDegreesToQuat(components.rotationEulerDegrees);
   target.scale = components.scale;
-  return m_commandBus.dispatch(buildSingleGizmoLine(m_gizmoOperation, path, target));
+  return m_commandBus.dispatch(
+      buildSingleGizmoLine(m_gizmoOperation, path, target));
 }
 
 CommandResult ViewportOverlay::dispatchGizmoSelectionCommit(
@@ -276,13 +281,13 @@ CommandResult ViewportOverlay::dispatchGizmoSelectionCommit(
   }
 
   if (paths.size() == 1) {
-    return m_commandBus.dispatch(
-        buildSingleGizmoLine(m_gizmoOperation, paths.front(), afterTransforms.front()));
+    return m_commandBus.dispatch(buildSingleGizmoLine(
+        m_gizmoOperation, paths.front(), afterTransforms.front()));
   }
 
   if (m_gizmoOperation == GizmoOperation::Translate) {
-    const Vec3f delta =
-        afterTransforms.front().translation - beforeTransforms.front().translation;
+    const Vec3f delta = afterTransforms.front().translation -
+                        beforeTransforms.front().translation;
     std::ostringstream oss;
     oss << "move";
     for (const auto &path : paths) {
@@ -295,9 +300,11 @@ CommandResult ViewportOverlay::dispatchGizmoSelectionCommit(
   std::vector<std::string> lines;
   lines.reserve(paths.size());
   for (usize i = 0; i < paths.size(); ++i) {
-    lines.push_back(buildSingleGizmoLine(m_gizmoOperation, paths[i], afterTransforms[i]));
+    lines.push_back(
+        buildSingleGizmoLine(m_gizmoOperation, paths[i], afterTransforms[i]));
   }
-  const std::vector<CommandResult> results = m_commandBus.dispatchScript(joinLines(lines));
+  const std::vector<CommandResult> results =
+      m_commandBus.dispatchScript(joinLines(lines));
   if (results.empty()) {
     return CommandResult{false, "empty gizmo commit script", {}};
   }
@@ -335,7 +342,8 @@ ViewportOverlay::makeSelectionRect(const Vec2f &a, const Vec2f &b,
   const Vec2f clampedB = clampPointToViewport(b, viewportSize);
   return SelectionRect{
       Vec2f{std::min(clampedA.x, clampedB.x), std::min(clampedA.y, clampedB.y)},
-      Vec2f{std::max(clampedA.x, clampedB.x), std::max(clampedA.y, clampedB.y)}};
+      Vec2f{std::max(clampedA.x, clampedB.x),
+            std::max(clampedA.y, clampedB.y)}};
 }
 
 float ViewportOverlay::selectionRectArea(const SelectionRect &rect) {
@@ -373,7 +381,8 @@ ViewportOverlay::dispatchSelectionPaths(const std::vector<std::string> &paths) {
 }
 
 std::vector<std::string>
-ViewportOverlay::gatherBoxSelectionPaths(const Vec2f &dragStart, const Vec2f &dragEnd,
+ViewportOverlay::gatherBoxSelectionPaths(const Vec2f &dragStart,
+                                         const Vec2f &dragEnd,
                                          const Vec2f &viewportSize) const {
   const auto editorCameraNode = m_editorState.getEditorCamera();
   if (!editorCameraNode) {
@@ -428,7 +437,8 @@ CommandResult ViewportOverlay::dispatchBoxSelection(const Vec2f &dragStart,
     return CommandResult{false, "box selection requires drag area", {}};
   }
 
-  std::vector<std::string> hits = gatherBoxSelectionPaths(dragStart, dragEnd, viewportSize);
+  std::vector<std::string> hits =
+      gatherBoxSelectionPaths(dragStart, dragEnd, viewportSize);
   std::vector<std::string> paths;
   const bool appendMode = appendSelectionMode(ctrlHeld, shiftHeld);
   if (appendMode) {
@@ -446,7 +456,8 @@ CommandResult ViewportOverlay::dispatchBoxSelection(const Vec2f &dragStart,
   const float thresholdArea = viewportArea * m_config.boxSelectConfirmThreshold;
   const float selectionArea = selectionRectArea(selectionRect);
   if (selectionArea > thresholdArea) {
-    m_pendingBoxSelection = PendingBoxSelection{paths, appendMode, paths.size()};
+    m_pendingBoxSelection =
+        PendingBoxSelection{paths, appendMode, paths.size()};
     m_boxSelectPopupRequested = true;
     return CommandResult{true, "box selection pending confirmation", {}};
   }
@@ -473,6 +484,10 @@ CommandResult ViewportOverlay::resolvePendingBoxSelection(const bool confirm) {
 
 ViewportOverlay::PanelRect ViewportOverlay::getPanelRect() const {
   return m_lastPanelRect;
+}
+
+bool ViewportOverlay::isGizmoCapturingMouse() const {
+  return m_gizmoHovered || m_gizmoUsing;
 }
 
 void ViewportOverlay::enqueueDebugDraw() const {
@@ -513,7 +528,8 @@ void ViewportOverlay::enqueueDebugDraw() const {
   }
 
   for (const auto &light : m_scene.getLights()) {
-    const auto directionalLight = std::dynamic_pointer_cast<DirectionalLight>(light);
+    const auto directionalLight =
+        std::dynamic_pointer_cast<DirectionalLight>(light);
     if (!directionalLight) {
       continue;
     }
@@ -545,16 +561,6 @@ ViewportOverlay::PanelRect ViewportOverlay::computeViewportRect() const {
   return rect;
 }
 
-void ViewportOverlay::drawBoxSelectionRect(ImDrawList &drawList,
-                                           const SelectionRect &rect,
-                                           const PanelRect &panelRect) const {
-  const ImVec2 min{panelRect.origin.x + rect.min.x, panelRect.origin.y + rect.min.y};
-  const ImVec2 max{panelRect.origin.x + rect.max.x, panelRect.origin.y + rect.max.y};
-  drawList.AddRectFilled(min, max, IM_COL32(80, 180, 255, 48));
-  drawList.AddRect(min, max, IM_COL32(120, 220, 255, 220), 0.0f, ImDrawFlags_None,
-                   1.5f);
-}
-
 void ViewportOverlay::drawBoxSelectionConfirmModal() {
   if (m_boxSelectPopupRequested) {
     ImGui::OpenPopup("Confirm Large Box Select");
@@ -567,7 +573,8 @@ void ViewportOverlay::drawBoxSelectionConfirmModal() {
 
   if (ImGui::BeginPopupModal("Confirm Large Box Select", nullptr,
                              ImGuiWindowFlags_AlwaysAutoResize)) {
-    ImGui::Text("框选了 %zu 个节点，确认全选?", m_pendingBoxSelection->hitCount);
+    ImGui::Text("框选了 %zu 个节点，确认全选?",
+                m_pendingBoxSelection->hitCount);
     if (ImGui::Button("Confirm")) {
       (void)resolvePendingBoxSelection(true);
       ImGui::CloseCurrentPopup();
@@ -581,60 +588,36 @@ void ViewportOverlay::drawBoxSelectionConfirmModal() {
   }
 }
 
-void ViewportOverlay::draw() {
-  const bool transparentViewportBg =
-      expEnvEnabled("LX_SCENE_VIEWER_VIEWPORT_NO_BG");
-  if (transparentViewportBg) {
-    ImGui::SetNextWindowBgAlpha(0.0f);
-  }
-
-  ImGuiWindowFlags viewportFlags = 0;
-  if (transparentViewportBg) {
-    viewportFlags |= ImGuiWindowFlags_NoBackground;
-  }
-
-  if (!ImGui::Begin("Viewport", nullptr, viewportFlags)) {
-    ImGui::End();
+void ViewportOverlay::drawSceneOverlay(
+    const LX_demo::lxe_editor::SceneViewRect &sceneRect) {
+  if (!sceneRect.isValid() || ImGui::GetCurrentContext() == nullptr) {
     return;
   }
 
-  ImDrawList *drawList = ImGui::GetWindowDrawList();
-  ImVec2 canvasMin = ImGui::GetCursorScreenPos();
-  ImVec2 canvasSize = ImGui::GetContentRegionAvail();
-  if (canvasSize.x < 1.0f) {
-    canvasSize.x = 1.0f;
-  }
-  if (canvasSize.y < 1.0f) {
-    canvasSize.y = 1.0f;
-  }
-  ImGui::InvisibleButton("##viewport_canvas", canvasSize,
-                         ImGuiButtonFlags_MouseButtonLeft |
-                             ImGuiButtonFlags_MouseButtonRight);
-  const bool viewportHovered = ImGui::IsItemHovered();
-  m_lastPanelRect.origin = Vec2f{canvasMin.x, canvasMin.y};
-  m_lastPanelRect.size = Vec2f{canvasSize.x, canvasSize.y};
-
+  ImDrawList *drawList = ImGui::GetForegroundDrawList();
+  m_lastPanelRect.origin = Vec2f{sceneRect.x, sceneRect.y};
+  m_lastPanelRect.size = Vec2f{sceneRect.width, sceneRect.height};
   m_gizmoHovered = false;
   const Snapshot snapshot = makeSnapshot();
   if (!shouldRenderEditorOverlay()) {
     m_gizmoUsing = false;
-    ImGui::End();
+    drawBoxSelectionConfirmModal();
     return;
   }
 
   const PanelRect rect = computeViewportRect();
   const char *modeText = modeLabel(snapshot.gizmoOperation);
-  drawList->PushClipRect(ImVec2(rect.origin.x, rect.origin.y),
-                         ImVec2(rect.origin.x + rect.size.x,
-                                rect.origin.y + rect.size.y),
-                         true);
-  drawList->AddText(ImVec2(rect.origin.x + 16.0f, rect.origin.y + 16.0f), IM_COL32(255, 255, 0, 255),
-                    snapshot.hintText.c_str());
-  drawList->AddText(ImVec2(rect.origin.x + 16.0f, rect.origin.y + 56.0f), IM_COL32(120, 255, 120, 255), modeText);
+  drawList->PushClipRect(
+      ImVec2(rect.origin.x, rect.origin.y),
+      ImVec2(rect.origin.x + rect.size.x, rect.origin.y + rect.size.y), true);
+  drawList->AddText(ImVec2(rect.origin.x + 16.0f, rect.origin.y + 16.0f),
+                    IM_COL32(255, 255, 0, 255), snapshot.hintText.c_str());
+  drawList->AddText(ImVec2(rect.origin.x + 16.0f, rect.origin.y + 56.0f),
+                    IM_COL32(120, 255, 120, 255), modeText);
   if (!snapshot.selectedPath.empty()) {
     const std::string selectedText = "Selected: " + snapshot.selectedPath;
-    drawList->AddText(ImVec2(rect.origin.x + 16.0f, rect.origin.y + 36.0f), IM_COL32(255, 255, 255, 255),
-                      selectedText.c_str());
+    drawList->AddText(ImVec2(rect.origin.x + 16.0f, rect.origin.y + 36.0f),
+                      IM_COL32(255, 255, 255, 255), selectedText.c_str());
   }
 
   const auto selected = m_editorState.getPrimarySelected();
@@ -642,23 +625,20 @@ void ViewportOverlay::draw() {
   if (!editorCameraNode) {
     drawList->PopClipRect();
     drawBoxSelectionConfirmModal();
-    ImGui::End();
     return;
   }
   auto editorCamera = editorCameraNode->getComponent<CameraComponent>();
   if (!editorCamera.has_value()) {
     drawList->PopClipRect();
     drawBoxSelectionConfirmModal();
-    ImGui::End();
     return;
   }
 
   ImGuizmo::BeginFrame();
-  ImGuizmo::Enable(true);
+  ImGuizmo::Enable(selected.has_value());
   ImGuizmo::SetDrawlist(drawList);
   ImGuizmo::SetOrthographic(editorCamera->get().getProjectionType() ==
-                           CameraType::Orthographic);
-  ImGuiIO &io = ImGui::GetIO();
+                            CameraType::Orthographic);
   ImGuizmo::SetRect(rect.origin.x, rect.origin.y, rect.size.x, rect.size.y);
 
   float view[16] = {};
@@ -670,10 +650,11 @@ void ViewportOverlay::draw() {
   bool usingNow = false;
   if (selected.has_value()) {
     float objectMatrix[16] = {};
-    GizmoAdapter::toFloat16(selected->get().getLocalTransform().toMat4(), objectMatrix);
+    GizmoAdapter::toFloat16(selected->get().getLocalTransform().toMat4(),
+                            objectMatrix);
     changed = ImGuizmo::Manipulate(
-        view, projection, toImGuizmoOperation(m_gizmoOperation), ImGuizmo::LOCAL,
-        objectMatrix, nullptr, nullptr, nullptr, nullptr);
+        view, projection, toImGuizmoOperation(m_gizmoOperation),
+        ImGuizmo::LOCAL, objectMatrix, nullptr, nullptr, nullptr, nullptr);
     m_gizmoHovered = ImGuizmo::IsOver();
     usingNow = ImGuizmo::IsUsing();
 
@@ -694,14 +675,15 @@ void ViewportOverlay::draw() {
           Transform::fromMat4(GizmoAdapter::fromFloat16(objectMatrix));
       const Transform primaryBefore = m_gizmoPreDragTransforms.back();
       const auto selectedNodes = m_editorState.getSelected();
-      for (usize i = 0; i < selectedNodes.size() && i < m_gizmoPreDragTransforms.size();
+      for (usize i = 0;
+           i < selectedNodes.size() && i < m_gizmoPreDragTransforms.size();
            ++i) {
         if (!selectedNodes[i]) {
           continue;
         }
-        selectedNodes[i]->setLocalTransform(applyTransformDelta(
-            m_gizmoOperation, m_gizmoPreDragTransforms[i], primaryBefore,
-            primaryCommitted));
+        selectedNodes[i]->setLocalTransform(
+            applyTransformDelta(m_gizmoOperation, m_gizmoPreDragTransforms[i],
+                                primaryBefore, primaryCommitted));
       }
     }
 
@@ -714,8 +696,8 @@ void ViewportOverlay::draw() {
         }
       }
 
-      for (usize i = 0; i < m_gizmoDragPaths.size() &&
-                       i < m_gizmoPreDragTransforms.size();
+      for (usize i = 0;
+           i < m_gizmoDragPaths.size() && i < m_gizmoPreDragTransforms.size();
            ++i) {
         if (SceneNode *node = m_scene.findByPath(m_gizmoDragPaths[i])) {
           node->setLocalTransform(m_gizmoPreDragTransforms[i]);
@@ -725,7 +707,8 @@ void ViewportOverlay::draw() {
       const CommandResult commit = dispatchGizmoSelectionCommit(
           m_gizmoDragPaths, m_gizmoPreDragTransforms, committedTransforms);
       if (!commit.ok) {
-        for (usize i = 0; i < m_gizmoDragPaths.size() && i < committedTransforms.size();
+        for (usize i = 0;
+             i < m_gizmoDragPaths.size() && i < committedTransforms.size();
              ++i) {
           if (SceneNode *node = m_scene.findByPath(m_gizmoDragPaths[i])) {
             node->setLocalTransform(committedTransforms[i]);
@@ -737,49 +720,8 @@ void ViewportOverlay::draw() {
     }
   }
   m_gizmoUsing = usingNow;
-
-  const bool mouseInsideViewport = io.MousePos.x >= rect.origin.x &&
-                                   io.MousePos.x <= rect.origin.x + rect.size.x &&
-                                   io.MousePos.y >= rect.origin.y &&
-                                   io.MousePos.y <= rect.origin.y + rect.size.y;
-  const Vec2f localMouse{io.MousePos.x - rect.origin.x, io.MousePos.y - rect.origin.y};
-  if (!m_gizmoHovered && !m_gizmoUsing && io.MouseClicked[0] && viewportHovered &&
-      mouseInsideViewport) {
-    m_boxSelectTracking = true;
-    m_boxSelectActive = false;
-    m_boxSelectStart = localMouse;
-    m_boxSelectRect = makeSelectionRect(localMouse, localMouse, rect.size);
-    m_boxSelectCtrlHeld = io.KeyCtrl;
-    m_boxSelectShiftHeld = io.KeyShift;
-  }
-
-  if (m_boxSelectTracking) {
-    m_boxSelectRect = makeSelectionRect(m_boxSelectStart, localMouse, rect.size);
-    const float width = m_boxSelectRect.max.x - m_boxSelectRect.min.x;
-    const float height = m_boxSelectRect.max.y - m_boxSelectRect.min.y;
-    if (width >= m_config.boxSelectDragThresholdPixels &&
-        height >= m_config.boxSelectDragThresholdPixels) {
-      m_boxSelectActive = true;
-    }
-  }
-
-  if (m_boxSelectActive) {
-    drawBoxSelectionRect(*drawList, m_boxSelectRect, rect);
-  }
-
-  if (m_boxSelectTracking && io.MouseReleased[0]) {
-    if (m_boxSelectActive) {
-      (void)dispatchBoxSelection(m_boxSelectStart, localMouse, rect.size,
-                                 m_boxSelectCtrlHeld, m_boxSelectShiftHeld);
-    } else if (mouseInsideViewport) {
-      (void)dispatchPickingClick(localMouse, rect.size);
-    }
-    m_boxSelectTracking = false;
-    m_boxSelectActive = false;
-  }
   drawList->PopClipRect();
   drawBoxSelectionConfirmModal();
-  ImGui::End();
 }
 
 const char *ViewportOverlay::modeLabel(const GizmoOperation operation) {
@@ -794,8 +736,8 @@ const char *ViewportOverlay::modeLabel(const GizmoOperation operation) {
   return "Gizmo";
 }
 
-ImGuizmo::OPERATION ViewportOverlay::toImGuizmoOperation(
-    const GizmoOperation operation) {
+ImGuizmo::OPERATION
+ViewportOverlay::toImGuizmoOperation(const GizmoOperation operation) {
   switch (operation) {
   case GizmoOperation::Translate:
     return ImGuizmo::TRANSLATE;

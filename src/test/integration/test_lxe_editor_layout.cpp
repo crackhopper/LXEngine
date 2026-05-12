@@ -43,11 +43,11 @@ int failures = 0;
 
 bool setupMinimalImGui() {
   ImGui::CreateContext();
-  ImGuiIO& io = ImGui::GetIO();
+  ImGuiIO &io = ImGui::GetIO();
   io.DisplaySize = ImVec2(1280.0f, 720.0f);
   io.DeltaTime = 1.0f / 60.0f;
   io.IniFilename = nullptr;
-  unsigned char* pixels = nullptr;
+  unsigned char *pixels = nullptr;
   int w = 0;
   int h = 0;
   io.Fonts->GetTexDataAsRGBA32(&pixels, &w, &h);
@@ -73,8 +73,7 @@ struct UiHarness final {
         editorCameraNode(LX_core::SceneNode::create("editor_camera")),
         targetNode(LX_core::SceneNode::create("toolbar_target")),
         sceneTreePanel(bus, editorState, *scene),
-        inspectorPanel(bus, editorState),
-        consolePanel(bus),
+        inspectorPanel(bus, editorState), consolePanel(bus),
         viewportOverlay(bus, editorState, *scene) {
     editorCameraNode->setName("editor_cam");
     targetNode->setName("toolbar_target");
@@ -87,19 +86,19 @@ struct UiHarness final {
     (void)editorState.syncActiveCamera(*scene);
     LX_core::registerBuiltinCommands(bus, editorState, *scene);
     rig.attach(editorCamera->get());
-    ui.attach(rig, bus, editorState, config, viewportOverlay, sceneTreePanel, inspectorPanel,
-              consolePanel);
+    ui.attach(rig, bus, editorState, config, viewportOverlay, sceneTreePanel,
+              inspectorPanel, consolePanel);
   }
 };
 
 class StubWindow final : public LX_core::Window {
 public:
-  explicit StubWindow(const LX_core::WindowPlacement& placement)
+  explicit StubWindow(const LX_core::WindowPlacement &placement)
       : m_placement(placement) {}
 
   int getWidth() const override { return m_placement.width; }
   int getHeight() const override { return m_placement.height; }
-  void updateSize(bool* closed, int* width, int* height) override {
+  void updateSize(bool *closed, int *width, int *height) override {
     if (closed) {
       *closed = false;
     }
@@ -110,7 +109,7 @@ public:
       *height = m_placement.height;
     }
   }
-  void getRequiredExtensions(std::vector<const char*>&) const override {}
+  void getRequiredExtensions(std::vector<const char *> &) const override {}
   LX_core::WindowGraphicsHandle
   createGraphicsHandle(GraphicsAPI,
                        LX_core::GraphicsInstanceHandle) const override {
@@ -118,33 +117,34 @@ public:
   }
   void destroyGraphicsHandle(GraphicsAPI, LX_core::GraphicsInstanceHandle,
                              LX_core::WindowGraphicsHandle) const override {}
-  LX_core::InputStateSharedPtr getInputState() const override { return nullptr; }
-  void* getNativeHandle() const override { return nullptr; }
+  LX_core::InputStateSharedPtr getInputState() const override {
+    return nullptr;
+  }
+  void *getNativeHandle() const override { return nullptr; }
   void onClose(std::function<bool()>) override {}
   bool shouldClose() override { return false; }
   LX_core::WindowPlacement getPlacement() const override { return m_placement; }
   LX_core::WindowUsableBounds getUsableBounds() const override {
     return m_usableBounds;
   }
-  LX_core::WindowUsableBounds
-  getUsableBoundsForPlacement(
-      const LX_core::WindowPlacement& placement) const override {
+  LX_core::WindowUsableBounds getUsableBoundsForPlacement(
+      const LX_core::WindowPlacement &placement) const override {
     (void)placement;
     return m_placementUsableBounds.value_or(m_usableBounds);
   }
-  void applyPlacement(const LX_core::WindowPlacement& placement) override {
+  void applyPlacement(const LX_core::WindowPlacement &placement) override {
     m_placement = placement;
     m_appliedPlacement = placement;
   }
 
-  void setUsableBounds(const LX_core::WindowUsableBounds& bounds) {
+  void setUsableBounds(const LX_core::WindowUsableBounds &bounds) {
     m_usableBounds = bounds;
   }
-  void setUsableBoundsForPlacement(const LX_core::WindowUsableBounds& bounds) {
+  void setUsableBoundsForPlacement(const LX_core::WindowUsableBounds &bounds) {
     m_placementUsableBounds = bounds;
   }
 
-  [[nodiscard]] const std::optional<LX_core::WindowPlacement>&
+  [[nodiscard]] const std::optional<LX_core::WindowPlacement> &
   appliedPlacement() const {
     return m_appliedPlacement;
   }
@@ -158,65 +158,64 @@ private:
 };
 
 [[nodiscard]] std::string makePersistedEditorConfigYaml() {
-  return
-      "version: 1\n"
-      "window:\n"
-      "  x: 42\n"
-      "  y: 64\n"
-      "  width: 1440\n"
-      "  height: 900\n"
-      "  maximized: true\n"
-      "layout:\n"
-      "  windows:\n"
-      "    - id: Toolbar\n"
-      "      visible: true\n"
-      "      collapsed: false\n"
-      "      x: 24\n"
-      "      y: 18\n"
-      "      width: 260\n"
-      "      height: 60\n"
-      "    - id: Scene Tree\n"
-      "      visible: true\n"
-      "      collapsed: true\n"
-      "      x: 96\n"
-      "      y: 84\n"
-      "      width: 312\n"
-      "      height: 288\n"
-      "    - id: Inspector\n"
-      "      visible: true\n"
-      "      collapsed: false\n"
-      "      x: 840\n"
-      "      y: 40\n"
-      "      width: 360\n"
-      "      height: 420\n"
-      "    - id: Command Console\n"
-      "      visible: true\n"
-      "      collapsed: false\n"
-      "      x: 280\n"
-      "      y: 520\n"
-      "      width: 640\n"
-      "      height: 180\n"
-      "preferences:\n"
-      "  uiFontScale: 1.35\n";
+  return "version: 1\n"
+         "window:\n"
+         "  x: 42\n"
+         "  y: 64\n"
+         "  width: 1440\n"
+         "  height: 900\n"
+         "  maximized: true\n"
+         "layout:\n"
+         "  windows:\n"
+         "    - id: Toolbar\n"
+         "      visible: true\n"
+         "      collapsed: false\n"
+         "      x: 24\n"
+         "      y: 18\n"
+         "      width: 260\n"
+         "      height: 60\n"
+         "    - id: Scene Tree\n"
+         "      visible: true\n"
+         "      collapsed: true\n"
+         "      x: 96\n"
+         "      y: 84\n"
+         "      width: 312\n"
+         "      height: 288\n"
+         "    - id: Inspector\n"
+         "      visible: true\n"
+         "      collapsed: false\n"
+         "      x: 840\n"
+         "      y: 40\n"
+         "      width: 360\n"
+         "      height: 420\n"
+         "    - id: Command Console\n"
+         "      visible: true\n"
+         "      collapsed: false\n"
+         "      x: 280\n"
+         "      y: 520\n"
+         "      width: 640\n"
+         "      height: 180\n"
+         "preferences:\n"
+         "  uiFontScale: 1.35\n";
 }
 
 [[nodiscard]] std::string makeToolbarHiddenConfigYaml() {
-  return
-      "version: 1\n"
-      "layout:\n"
-      "  windows:\n"
-      "    - id: Toolbar\n"
-      "      visible: false\n"
-      "      collapsed: false\n"
-      "      x: 24\n"
-      "      y: 18\n"
-      "      width: 260\n"
-      "      height: 60\n";
+  return "version: 1\n"
+         "layout:\n"
+         "  windows:\n"
+         "    - id: Toolbar\n"
+         "      visible: false\n"
+         "      collapsed: false\n"
+         "      x: 24\n"
+         "      y: 18\n"
+         "      width: 260\n"
+         "      height: 60\n";
 }
 
 void testDefaultLayoutShowsToolbarAndCorePanels() {
   if (!setupMinimalImGui()) {
-    std::cout << "[SKIP] lxe_editor toolbar layout test (font atlas unavailable)\n";
+    std::cout
+        << "[SKIP] lxe_editor toolbar layout test (font atlas unavailable)\n";
     ImGui::DestroyContext();
     return;
   }
@@ -224,13 +223,13 @@ void testDefaultLayoutShowsToolbarAndCorePanels() {
   UiHarness harness;
 
   ImGui::NewFrame();
-  harness.ui.drawFrame();
+  harness.ui.drawFrame({1280.0f, 720.0f});
 
-  ImGuiWindow* toolbar = ImGui::FindWindowByName("Toolbar");
-  ImGuiWindow* sceneTree = ImGui::FindWindowByName("Scene Tree");
-  ImGuiWindow* inspector = ImGui::FindWindowByName("Inspector");
-  ImGuiWindow* console = ImGui::FindWindowByName("Command Console");
-  ImGuiWindow* stats = ImGui::FindWindowByName("Stats");
+  ImGuiWindow *toolbar = ImGui::FindWindowByName("Toolbar");
+  ImGuiWindow *sceneTree = ImGui::FindWindowByName("Scene Tree");
+  ImGuiWindow *inspector = ImGui::FindWindowByName("Inspector");
+  ImGuiWindow *console = ImGui::FindWindowByName("Command Console");
+  ImGuiWindow *stats = ImGui::FindWindowByName("Stats");
 
   EXPECT(toolbar != nullptr, "toolbar window should exist");
   EXPECT(sceneTree != nullptr, "scene tree window should exist");
@@ -251,9 +250,10 @@ void testDefaultLayoutShowsToolbarAndCorePanels() {
   ImGui::DestroyContext();
 }
 
-void testDefaultLayoutShowsViewportWindowAndValidSceneRect() {
+void testDefaultLayoutDoesNotCreateViewportWindowAndUsesFullSceneRect() {
   if (!setupMinimalImGui()) {
-    std::cout << "[SKIP] lxe_editor viewport layout test (font atlas unavailable)\n";
+    std::cout
+        << "[SKIP] lxe_editor viewport layout test (font atlas unavailable)\n";
     ImGui::DestroyContext();
     return;
   }
@@ -261,15 +261,19 @@ void testDefaultLayoutShowsViewportWindowAndValidSceneRect() {
   UiHarness harness;
 
   ImGui::NewFrame();
-  harness.ui.drawFrame();
+  harness.ui.drawFrame({1280.0f, 720.0f});
 
-  ImGuiWindow* viewport = ImGui::FindWindowByName("Viewport");
-  EXPECT(viewport != nullptr, "viewport window should exist");
+  ImGuiWindow *viewport = ImGui::FindWindowByName("Viewport");
+  EXPECT(viewport == nullptr,
+         "viewport window should not exist in the maintained editor path");
 
   const auto rect = harness.ui.sceneViewRect(LX_core::Vec2f{1280.0f, 720.0f});
-  EXPECT(rect.isValid(), "scene view rect should be valid after drawing the ui");
-  EXPECT(rect.width > 0.0f && rect.height > 0.0f,
-         "scene view rect should have a positive extent");
+  EXPECT(rect.isValid(),
+         "scene view rect should be valid without a viewport window");
+  EXPECT(rect.x == 0.0f && rect.y == 0.0f,
+         "scene view rect should start at the full-window origin");
+  EXPECT(rect.width == 1280.0f && rect.height == 720.0f,
+         "scene view rect should cover the full window");
 
   ImGui::EndFrame();
   ImGui::DestroyContext();
@@ -284,12 +288,13 @@ void testToolbarRendersIconOnlyWithoutStaticModeText() {
 
   UiHarness harness;
   ImGui::NewFrame();
-  harness.ui.drawFrame();
-  ImGuiWindow* toolbar = ImGui::FindWindowByName("Toolbar");
+  harness.ui.drawFrame({1280.0f, 720.0f});
+  ImGuiWindow *toolbar = ImGui::FindWindowByName("Toolbar");
   EXPECT(toolbar != nullptr, "toolbar should exist");
   if (toolbar) {
-    EXPECT(toolbar->ContentSize.x < 250.0f,
-           "toolbar content should remain compact once static labels are removed");
+    EXPECT(
+        toolbar->ContentSize.x < 250.0f,
+        "toolbar content should remain compact once static labels are removed");
   }
   ImGui::EndFrame();
   ImGui::DestroyContext();
@@ -315,15 +320,17 @@ void testCameraRigResyncKeepsUpdatedEditorCameraPose() {
   harness.rig.update(input, 1.0f / 60.0f);
 
   EXPECT((harness.editorCameraNode->getTranslation() ==
-              LX_core::Vec3f{12.0f, 6.0f, 18.0f}),
-         "camera rig resync should keep the externally updated editor camera pose");
+          LX_core::Vec3f{12.0f, 6.0f, 18.0f}),
+         "camera rig resync should keep the externally updated editor camera "
+         "pose");
 }
 
 void testPersistedEditorConfigOverridesDefaultRectsAndPreferences() {
   namespace fs = std::filesystem;
 
   if (!setupMinimalImGui()) {
-    std::cout << "[SKIP] lxe_editor persisted config test (font atlas unavailable)\n";
+    std::cout
+        << "[SKIP] lxe_editor persisted config test (font atlas unavailable)\n";
     ImGui::DestroyContext();
     return;
   }
@@ -337,17 +344,17 @@ void testPersistedEditorConfigOverridesDefaultRectsAndPreferences() {
   std::ofstream(state.configPath()) << makePersistedEditorConfigYaml();
   UiHarness harness;
   harness.config = state.load();
-  harness.ui.attach(harness.rig, harness.bus, harness.editorState, harness.config,
-                    harness.viewportOverlay,
+  harness.ui.attach(harness.rig, harness.bus, harness.editorState,
+                    harness.config, harness.viewportOverlay,
                     harness.sceneTreePanel, harness.inspectorPanel,
                     harness.consolePanel);
 
   ImGui::NewFrame();
-  harness.ui.drawFrame();
+  harness.ui.drawFrame({1280.0f, 720.0f});
 
-  ImGuiWindow* toolbar = ImGui::FindWindowByName("Toolbar");
-  ImGuiWindow* sceneTree = ImGui::FindWindowByName("Scene Tree");
-  ImGuiWindow* console = ImGui::FindWindowByName("Command Console");
+  ImGuiWindow *toolbar = ImGui::FindWindowByName("Toolbar");
+  ImGuiWindow *sceneTree = ImGui::FindWindowByName("Scene Tree");
+  ImGuiWindow *console = ImGui::FindWindowByName("Command Console");
 
   EXPECT(toolbar != nullptr, "toolbar should exist with persisted config");
   EXPECT(sceneTree != nullptr, "scene tree should exist with persisted config");
@@ -428,8 +435,7 @@ void testEditorConfigRoundTrips() {
     EXPECT(loaded.windowPlacement->maximized,
            "window maximized flag should round-trip");
   }
-  EXPECT(loaded.layoutWindows.size() == 2,
-         "layout windows should round-trip");
+  EXPECT(loaded.layoutWindows.size() == 2, "layout windows should round-trip");
   EXPECT(loaded.preferences.uiFontScale > 1.39f &&
              loaded.preferences.uiFontScale < 1.41f,
          "preferences uiFontScale should round-trip");
@@ -439,8 +445,8 @@ void testEditorConfigRoundTrips() {
 
 void testPreviewModeSuppressesHotkeyDeselectAndRemove() {
   if (!setupMinimalImGui()) {
-    std::cout
-        << "[SKIP] lxe_editor preview hotkey suppression test (font atlas unavailable)\n";
+    std::cout << "[SKIP] lxe_editor preview hotkey suppression test (font "
+                 "atlas unavailable)\n";
     ImGui::DestroyContext();
     return;
   }
@@ -477,8 +483,8 @@ void testToolbarIsRecoverableFromPersistedHiddenState() {
   namespace fs = std::filesystem;
 
   if (!setupMinimalImGui()) {
-    std::cout
-        << "[SKIP] lxe_editor toolbar persistence test (font atlas unavailable)\n";
+    std::cout << "[SKIP] lxe_editor toolbar persistence test (font atlas "
+                 "unavailable)\n";
     ImGui::DestroyContext();
     return;
   }
@@ -493,21 +499,22 @@ void testToolbarIsRecoverableFromPersistedHiddenState() {
 
   UiHarness harness;
   harness.config = state.load();
-  harness.ui.attach(harness.rig, harness.bus, harness.editorState, harness.config,
-                    harness.viewportOverlay,
+  harness.ui.attach(harness.rig, harness.bus, harness.editorState,
+                    harness.config, harness.viewportOverlay,
                     harness.sceneTreePanel, harness.inspectorPanel,
                     harness.consolePanel);
 
   ImGui::NewFrame();
-  harness.ui.drawFrame();
-  ImGuiWindow* toolbar = ImGui::FindWindowByName("Toolbar");
+  harness.ui.drawFrame({1280.0f, 720.0f});
+  ImGuiWindow *toolbar = ImGui::FindWindowByName("Toolbar");
 
   EXPECT(toolbar != nullptr,
          "toolbar should still be reachable even if persisted config hid it");
   const auto persistedToolbar =
       LX_demo::lxe_editor::findEditorWindowLayout(harness.config, "Toolbar");
   EXPECT(persistedToolbar.has_value() && persistedToolbar->get().visible,
-         "toolbar visibility should recover to visible when loading a hidden toolbar state");
+         "toolbar visibility should recover to visible when loading a hidden "
+         "toolbar state");
 
   ImGui::EndFrame();
   ImGui::DestroyContext();
@@ -516,8 +523,8 @@ void testToolbarIsRecoverableFromPersistedHiddenState() {
 
 void testUiFontScaleDoesNotCompoundAcrossReattach() {
   if (!setupMinimalImGui()) {
-    std::cout
-        << "[SKIP] lxe_editor ui font scale reattach test (font atlas unavailable)\n";
+    std::cout << "[SKIP] lxe_editor ui font scale reattach test (font atlas "
+                 "unavailable)\n";
     ImGui::DestroyContext();
     return;
   }
@@ -525,22 +532,22 @@ void testUiFontScaleDoesNotCompoundAcrossReattach() {
   UiHarness harness;
   harness.config.preferences.uiFontScale = 1.35f;
 
-  harness.ui.attach(harness.rig, harness.bus, harness.editorState, harness.config,
-                    harness.viewportOverlay,
+  harness.ui.attach(harness.rig, harness.bus, harness.editorState,
+                    harness.config, harness.viewportOverlay,
                     harness.sceneTreePanel, harness.inspectorPanel,
                     harness.consolePanel);
   ImGui::NewFrame();
-  harness.ui.drawFrame();
+  harness.ui.drawFrame({1280.0f, 720.0f});
   const float firstFontScale = ImGui::GetStyle().FontScaleMain;
   const ImVec2 firstWindowPadding = ImGui::GetStyle().WindowPadding;
   ImGui::EndFrame();
 
-  harness.ui.attach(harness.rig, harness.bus, harness.editorState, harness.config,
-                    harness.viewportOverlay,
+  harness.ui.attach(harness.rig, harness.bus, harness.editorState,
+                    harness.config, harness.viewportOverlay,
                     harness.sceneTreePanel, harness.inspectorPanel,
                     harness.consolePanel);
   ImGui::NewFrame();
-  harness.ui.drawFrame();
+  harness.ui.drawFrame({1280.0f, 720.0f});
   const float secondFontScale = ImGui::GetStyle().FontScaleMain;
   const ImVec2 secondWindowPadding = ImGui::GetStyle().WindowPadding;
 
@@ -619,9 +626,11 @@ void testEditorDataLoadClampsConsoleHistoryToFiftyEntries() {
   const auto loaded = state.load();
   EXPECT(loaded.consoleHistory.size() == 50,
          "editor data load should keep at most 50 console history entries");
-  EXPECT(!loaded.consoleHistory.empty() && loaded.consoleHistory.front() == "cmd-10",
+  EXPECT(!loaded.consoleHistory.empty() &&
+             loaded.consoleHistory.front() == "cmd-10",
          "editor data load should drop the oldest history entries first");
-  EXPECT(!loaded.consoleHistory.empty() && loaded.consoleHistory.back() == "cmd-59",
+  EXPECT(!loaded.consoleHistory.empty() &&
+             loaded.consoleHistory.back() == "cmd-59",
          "editor data load should preserve the newest history entries");
 
   fs::remove_all(tempRoot);
@@ -642,8 +651,7 @@ void testOffscreenNativeWindowPlacementIsSanitized() {
       .height = 1080,
   };
 
-  const auto sanitized =
-      LX_core::sanitizeWindowPlacement(placement, bounds);
+  const auto sanitized = LX_core::sanitizeWindowPlacement(placement, bounds);
   EXPECT(sanitized.has_value(),
          "valid saved placement should sanitize against current usable bounds");
   if (sanitized.has_value()) {
@@ -708,10 +716,12 @@ void testWindowPlacementCenterUsesWideMath() {
       static_cast<long long>(std::numeric_limits<int>::min() + 10) +
       static_cast<long long>(std::numeric_limits<int>::max()) / 2LL;
 
-  EXPECT(LX_core::windowPlacementCenterX(placement) == expectedCenterX,
-         "window placement center x should use wide math for large coordinates");
-  EXPECT(LX_core::windowPlacementCenterY(placement) == expectedCenterY,
-         "window placement center y should use wide math for large coordinates");
+  EXPECT(
+      LX_core::windowPlacementCenterX(placement) == expectedCenterX,
+      "window placement center x should use wide math for large coordinates");
+  EXPECT(
+      LX_core::windowPlacementCenterY(placement) == expectedCenterY,
+      "window placement center y should use wide math for large coordinates");
 }
 
 } // namespace
@@ -719,7 +729,7 @@ void testWindowPlacementCenterUsesWideMath() {
 int main() {
   expSetEnvVK();
   testDefaultLayoutShowsToolbarAndCorePanels();
-  testDefaultLayoutShowsViewportWindowAndValidSceneRect();
+  testDefaultLayoutDoesNotCreateViewportWindowAndUsesFullSceneRect();
   testToolbarRendersIconOnlyWithoutStaticModeText();
   testCameraRigResyncKeepsUpdatedEditorCameraPose();
   testPersistedEditorConfigOverridesDefaultRectsAndPreferences();

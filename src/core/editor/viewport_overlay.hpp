@@ -3,8 +3,9 @@
 #include "core/editor/command_bus.hpp"
 #include "core/editor/editor_config.hpp"
 #include "core/editor/gizmo_adapter.hpp"
-#include "core/math/vec.hpp"
 #include "core/math/transform.hpp"
+#include "core/math/vec.hpp"
+#include "demos/lxe_editor/scene_view_rect.hpp"
 
 #include <imgui.h>
 #include <ImGuizmo.h>
@@ -12,8 +13,6 @@
 #include <optional>
 #include <string>
 #include <vector>
-
-struct ImDrawList;
 
 namespace LX_core {
 
@@ -42,8 +41,8 @@ public:
     GizmoOperation gizmoOperation = GizmoOperation::Translate;
   };
 
-  ViewportOverlay(CommandBus &commandBus, EditorState &editorState, Scene &scene,
-                  EditorConfig config = {});
+  ViewportOverlay(CommandBus &commandBus, EditorState &editorState,
+                  Scene &scene, EditorConfig config = {});
 
   [[nodiscard]] Snapshot makeSnapshot() const;
   [[nodiscard]] GizmoOperation getGizmoOperation() const;
@@ -51,8 +50,9 @@ public:
   bool handleGizmoHotkeys(int imguiKeyOrChar);
   [[nodiscard]] bool shouldRenderEditorOverlay() const;
   [[nodiscard]] CommandResult dispatchPreviewToggle();
-  [[nodiscard]] CommandResult dispatchGizmoCommit(std::string_view path,
-                                                  const GizmoTransformComponents &components);
+  [[nodiscard]] CommandResult
+  dispatchGizmoCommit(std::string_view path,
+                      const GizmoTransformComponents &components);
   [[nodiscard]] CommandResult
   dispatchGizmoSelectionCommit(const std::vector<std::string> &paths,
                                const std::vector<Transform> &beforeTransforms,
@@ -70,8 +70,9 @@ public:
   [[nodiscard]] bool hasPendingBoxSelectionConfirmation() const;
   [[nodiscard]] CommandResult resolvePendingBoxSelection(bool confirm);
   [[nodiscard]] PanelRect getPanelRect() const;
+  [[nodiscard]] bool isGizmoCapturingMouse() const;
   void enqueueDebugDraw() const;
-  void draw();
+  void drawSceneOverlay(const LX_demo::lxe_editor::SceneViewRect &sceneRect);
 
 private:
   struct PendingBoxSelection final {
@@ -80,21 +81,20 @@ private:
     usize hitCount = 0;
   };
 
-  [[nodiscard]] static SelectionRect makeSelectionRect(const Vec2f &a,
-                                                       const Vec2f &b,
-                                                       const Vec2f &viewportSize);
+  [[nodiscard]] static SelectionRect
+  makeSelectionRect(const Vec2f &a, const Vec2f &b, const Vec2f &viewportSize);
   [[nodiscard]] static float selectionRectArea(const SelectionRect &rect);
   [[nodiscard]] static bool selectionRectIsDrag(const SelectionRect &rect);
   [[nodiscard]] static bool selectionRectsIntersect(const SelectionRect &lhs,
                                                     const SelectionRect &rhs);
   [[nodiscard]] static bool appendSelectionMode(bool ctrlHeld, bool shiftHeld);
-  [[nodiscard]] CommandResult dispatchSelectionPaths(const std::vector<std::string> &paths);
-  void drawBoxSelectionRect(ImDrawList &drawList, const SelectionRect &rect,
-                            const PanelRect &panelRect) const;
+  [[nodiscard]] CommandResult
+  dispatchSelectionPaths(const std::vector<std::string> &paths);
   void drawBoxSelectionConfirmModal();
   [[nodiscard]] PanelRect computeViewportRect() const;
   [[nodiscard]] static const char *modeLabel(GizmoOperation operation);
-  [[nodiscard]] static ImGuizmo::OPERATION toImGuizmoOperation(GizmoOperation operation);
+  [[nodiscard]] static ImGuizmo::OPERATION
+  toImGuizmoOperation(GizmoOperation operation);
 
   CommandBus &m_commandBus;
   EditorState &m_editorState;
@@ -104,13 +104,7 @@ private:
   PanelRect m_lastPanelRect{};
   bool m_gizmoHovered = false;
   bool m_gizmoUsing = false;
-  bool m_boxSelectTracking = false;
-  bool m_boxSelectActive = false;
   bool m_boxSelectPopupRequested = false;
-  Vec2f m_boxSelectStart{0.0f, 0.0f};
-  SelectionRect m_boxSelectRect{};
-  bool m_boxSelectCtrlHeld = false;
-  bool m_boxSelectShiftHeld = false;
   std::optional<PendingBoxSelection> m_pendingBoxSelection;
   std::vector<std::string> m_gizmoDragPaths;
   std::vector<Transform> m_gizmoPreDragTransforms;

@@ -19,22 +19,22 @@
 
 #include "api_token_state.hpp"
 #include "camera_rig.hpp"
-#include "editor_session.hpp"
 #include "editor_config_state.hpp"
+#include "editor_session.hpp"
 #include "lxe_editor_api_server.hpp"
 #include "lxe_editor_api_service.hpp"
 #include "runtime_state.hpp"
-#include "scene_interaction_controller.hpp"
 #include "scene_input_routing.hpp"
+#include "scene_interaction_controller.hpp"
 #include "selection_camera_input.hpp"
 #include "ui_overlay.hpp"
 
+#include <imgui.h>
 #include <chrono>
 #include <cstdio>
 #include <exception>
 #include <filesystem>
 #include <functional>
-#include <imgui.h>
 #include <iostream>
 #include <memory>
 #include <optional>
@@ -62,8 +62,8 @@ toSceneInputEditMode(const demo::UiOverlay::EditorMode mode) {
   return demo::SceneInputEditMode::Selection;
 }
 
-[[nodiscard]] demo::ApiEditorMode toApiEditorMode(
-    const demo::UiOverlay::EditorMode mode) {
+[[nodiscard]] demo::ApiEditorMode
+toApiEditorMode(const demo::UiOverlay::EditorMode mode) {
   switch (mode) {
   case demo::UiOverlay::EditorMode::Selection:
     return demo::ApiEditorMode::Selection;
@@ -71,8 +71,8 @@ toSceneInputEditMode(const demo::UiOverlay::EditorMode mode) {
   return demo::ApiEditorMode::Unknown;
 }
 
-[[nodiscard]] demo::ApiCameraControlMode toApiCameraControlMode(
-    const demo::UiOverlay::CameraControlMode mode) {
+[[nodiscard]] demo::ApiCameraControlMode
+toApiCameraControlMode(const demo::UiOverlay::CameraControlMode mode) {
   switch (mode) {
   case demo::UiOverlay::CameraControlMode::Orbit:
     return demo::ApiCameraControlMode::Orbit;
@@ -82,8 +82,8 @@ toSceneInputEditMode(const demo::UiOverlay::EditorMode mode) {
   return demo::ApiCameraControlMode::Unknown;
 }
 
-[[nodiscard]] demo::ApiPermissionLevel toApiPermissionLevel(
-    const demo::ScenePermissionLevel level) {
+[[nodiscard]] demo::ApiPermissionLevel
+toApiPermissionLevel(const demo::ScenePermissionLevel level) {
   switch (level) {
   case demo::ScenePermissionLevel::User:
     return demo::ApiPermissionLevel::User;
@@ -103,8 +103,7 @@ constexpr int kWindowWidth = 1280;
 constexpr int kWindowHeight = 720;
 
 [[nodiscard]] std::optional<ApiLaunchOptions>
-parseApiLaunchOptions(const int argc, char** argv,
-                      std::string& errorMessage) {
+parseApiLaunchOptions(const int argc, char **argv, std::string &errorMessage) {
   ApiLaunchOptions options;
   for (int i = 1; i < argc; ++i) {
     const std::string arg = argv[i];
@@ -170,8 +169,8 @@ parseApiLaunchOptions(const int argc, char** argv,
   return buffer;
 }
 
-[[nodiscard]] std::string sceneSourceKindName(
-    const demo::SceneSourceKind kind) {
+[[nodiscard]] std::string
+sceneSourceKindName(const demo::SceneSourceKind kind) {
   return kind == demo::SceneSourceKind::Asset ? "asset" : "local";
 }
 
@@ -189,7 +188,7 @@ struct ClosePromptState final {
   std::optional<std::string> saveError;
 };
 
-void drawClosePrompt(ClosePromptState& state, demo::LxeEditorSession& session) {
+void drawClosePrompt(ClosePromptState &state, demo::LxeEditorSession &session) {
   if (state.open && !state.popupOpened) {
     ImGui::OpenPopup("Save Scene Before Exit");
     state.popupOpened = true;
@@ -242,7 +241,7 @@ void drawClosePrompt(ClosePromptState& state, demo::LxeEditorSession& session) {
 
 } // namespace
 
-int main(int argc, char** argv) {
+int main(int argc, char **argv) {
   expSetEnvVK();
   if (!initializeRuntimeAssetRoot()) {
     std::cerr << "[lxe_editor] failed to initialize runtime asset root\n";
@@ -250,8 +249,7 @@ int main(int argc, char** argv) {
   }
 
   std::string apiArgError;
-  const auto apiOptions =
-      parseApiLaunchOptions(argc, argv, apiArgError);
+  const auto apiOptions = parseApiLaunchOptions(argc, argv, apiArgError);
   if (!apiOptions.has_value()) {
     std::cerr << "[lxe_editor] " << apiArgError << "\n";
     return 1;
@@ -277,55 +275,45 @@ int main(int argc, char** argv) {
     session.editorConfig() = editorConfig;
     session.initialize();
     ClosePromptState closePrompt;
-    demo::ApiTokenState apiTokenState(
-        resolveRuntimePath("data/lxe_editor"));
+    demo::ApiTokenState apiTokenState(resolveRuntimePath("data/lxe_editor"));
     const std::string apiToken =
-        apiOptions->enabled ? apiTokenState.loadOrCreateToken()
-                            : std::string{};
-    demo::LxeEditorApiServer apiServer(
-        demo::LxeEditorApiServerConfig{
-            .enabled = apiOptions->enabled,
-            .host = apiOptions->host,
-            .port = apiOptions->port,
-            .token = apiToken,
-        });
+        apiOptions->enabled ? apiTokenState.loadOrCreateToken() : std::string{};
+    demo::LxeEditorApiServer apiServer(demo::LxeEditorApiServerConfig{
+        .enabled = apiOptions->enabled,
+        .host = apiOptions->host,
+        .port = apiOptions->port,
+        .token = apiToken,
+    });
     if (apiOptions->enabled) {
       std::string serverError;
       if (!apiServer.start(&serverError)) {
         throw std::runtime_error(serverError);
       }
-      std::cout << "[lxe_editor] api listening on "
-                << apiServer.config().host << ":"
-                << apiServer.boundPort() << " token_file="
-                << apiTokenState.tokenPath() << "\n";
+      std::cout << "[lxe_editor] api listening on " << apiServer.config().host
+                << ":" << apiServer.boundPort()
+                << " token_file=" << apiTokenState.tokenPath() << "\n";
     }
     const std::uint16_t apiBoundPort =
-        apiOptions->enabled
-            ? static_cast<std::uint16_t>(apiServer.boundPort())
-            : 0;
-    const std::string runtimeHost =
-        runtimeClientHost(apiServer.config().host);
+        apiOptions->enabled ? static_cast<std::uint16_t>(apiServer.boundPort())
+                            : 0;
+    const std::string runtimeHost = runtimeClientHost(apiServer.config().host);
     const std::string mcpUrl =
-        apiOptions->enabled
-            ? std::string("http://") + runtimeHost + ":" +
-                  std::to_string(apiBoundPort) + "/mcp"
-            : std::string{};
+        apiOptions->enabled ? std::string("http://") + runtimeHost + ":" +
+                                  std::to_string(apiBoundPort) + "/mcp"
+                            : std::string{};
     demo::saveLxeEditorRuntimeState(
         resolveRuntimePath("data/lxe_editor"),
         demo::LxeEditorRuntimeState{
             .pid = currentProcessId(),
-            .httpHost = apiOptions->enabled ? runtimeHost
-                                                   : std::string{},
+            .httpHost = apiOptions->enabled ? runtimeHost : std::string{},
             .httpPort = apiBoundPort,
-            .wsHost = apiOptions->enabled ? runtimeHost
-                                                 : std::string{},
+            .wsHost = apiOptions->enabled ? runtimeHost : std::string{},
             .wsPort = apiBoundPort,
             .mcpUrl = mcpUrl,
             .tokenFile = apiTokenState.tokenPath().string(),
             .startedAt = currentTimestampString(),
         });
-    auto makeApiService =
-        [&]() -> std::unique_ptr<demo::LxeEditorApiService> {
+    auto makeApiService = [&]() -> std::unique_ptr<demo::LxeEditorApiService> {
       return std::make_unique<demo::LxeEditorApiService>(
           session.commandBus(), editorState, *session.scene(),
           demo::LxeEditorApiService::Hooks{
@@ -359,19 +347,20 @@ int main(int argc, char** argv) {
                         .debugEnabled = session.debugEnabled(),
                     };
                   },
-              .lastHitPoint = [&]() {
-                return session.sceneInteraction().lastHitPoint();
-              },
-              .recordCommandHistoryLine = [&session](std::string_view line) {
-                session.recordCommandHistoryLine(line);
-              },
+              .lastHitPoint =
+                  [&]() { return session.sceneInteraction().lastHitPoint(); },
+              .recordCommandHistoryLine =
+                  [&session](std::string_view line) {
+                    session.recordCommandHistoryLine(line);
+                  },
           });
     };
     usize apiBindingsGeneration = session.bindingsGeneration();
     auto apiService = makeApiService();
 
     vulkanRenderer->setDrawUiCallback([&] {
-      ui.drawFrame();
+      ui.drawFrame(LX_core::Vec2f{static_cast<float>(window->getWidth()),
+                                  static_cast<float>(window->getHeight())});
       drawClosePrompt(closePrompt, session);
       session.editorConfig().windowPlacement = window->getPlacement();
       if (ui.consumeConfigDirty()) {
@@ -397,7 +386,7 @@ int main(int argc, char** argv) {
 
     auto input = window->getInputState();
 
-    loop.setUpdateHook([&](LX_core::Scene&, const LX_core::Clock& clock) {
+    loop.setUpdateHook([&](LX_core::Scene &, const LX_core::Clock &clock) {
       if (closePrompt.confirmedClose) {
         loop.stop();
         return;
@@ -413,10 +402,9 @@ int main(int argc, char** argv) {
 
       const bool imguiReady = ImGui::GetCurrentContext() != nullptr;
       const auto io =
-          imguiReady
-              ? std::optional<std::reference_wrapper<const ImGuiIO>>(
-                    std::cref(ImGui::GetIO()))
-              : std::nullopt;
+          imguiReady ? std::optional<std::reference_wrapper<const ImGuiIO>>(
+                           std::cref(ImGui::GetIO()))
+                     : std::nullopt;
       const bool wantsKeyboard = io && io->get().WantCaptureKeyboard;
       const bool wantsMouse = io && io->get().WantCaptureMouse;
 
@@ -429,10 +417,9 @@ int main(int argc, char** argv) {
       session.setWindowSize(LX_core::Vec2f{static_cast<float>(windowWidth),
                                            static_cast<float>(windowHeight)});
       const bool hasValidExtent = windowWidth > 0 && windowHeight > 0;
-      const float aspect =
-          hasValidExtent
-              ? static_cast<float>(windowWidth) / static_cast<float>(windowHeight)
-              : session.editorCamera().getAspect();
+      const float aspect = hasValidExtent ? static_cast<float>(windowWidth) /
+                                                static_cast<float>(windowHeight)
+                                          : session.editorCamera().getAspect();
       if (hasValidExtent) {
         session.editorCamera().setAspect(aspect);
         session.gameCamera().setAspect(aspect);
@@ -444,11 +431,11 @@ int main(int argc, char** argv) {
       bool cameraUpdated = false;
       if (demo::shouldProcessSelectionMode(editorState.isPreviewEnabled(),
                                            wantsMouse, inputMode)) {
-          session.sceneInteraction().updateSelectionMode(
-              *input, ui.sceneViewRect(LX_core::Vec2f{
-                          static_cast<float>(windowWidth),
-                          static_cast<float>(windowHeight)}));
-          session.editorCamera().updateMatrices();
+        session.sceneInteraction().updateSelectionMode(
+            *input,
+            ui.sceneViewRect(LX_core::Vec2f{static_cast<float>(windowWidth),
+                                            static_cast<float>(windowHeight)}));
+        session.editorCamera().updateMatrices();
       }
       if (demo::shouldProcessCameraRig(editorState.isPreviewEnabled(),
                                        wantsKeyboard, wantsMouse, inputMode)) {
@@ -479,7 +466,7 @@ int main(int argc, char** argv) {
     session.persistEditorData();
     renderer->shutdown();
     return 0;
-  } catch (const std::exception& e) {
+  } catch (const std::exception &e) {
     std::cerr << "[lxe_editor] fatal: " << e.what() << "\n";
     return 2;
   }

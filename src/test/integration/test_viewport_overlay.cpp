@@ -1,13 +1,13 @@
+#include "core/asset/mesh.hpp"
+#include "core/debug_draw/debug_draw.hpp"
 #include "core/editor/commands/builtin_commands.hpp"
 #include "core/editor/editor_config.hpp"
 #include "core/editor/editor_state.hpp"
-#include "core/debug_draw/debug_draw.hpp"
 #include "core/editor/viewport_overlay.hpp"
-#include "core/asset/mesh.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
-#include "core/scene/components/mesh_component.hpp"
 #include "core/scene/components/camera_component.hpp"
+#include "core/scene/components/mesh_component.hpp"
 #include "core/scene/object.hpp"
 #include "core/scene/scene.hpp"
 #include "core/utils/env.hpp"
@@ -47,7 +47,8 @@ LX_core::MeshSharedPtr makeUnitSquareMesh() {
   auto vb = LX_core::VertexBuffer<LX_core::VertexPos>::create(
       std::vector<LX_core::VertexPos>{{{0, 0, 0}}, {{1, 0, 0}}, {{0, 1, 0}}});
   auto ib = LX_core::IndexBuffer::create({0, 1, 2});
-  return LX_core::Mesh::create(vb, ib, LX_core::BoundingBox{{0, 0, 0}, {1, 1, 0}});
+  return LX_core::Mesh::create(vb, ib,
+                               LX_core::BoundingBox{{0, 0, 0}, {1, 1, 0}});
 }
 
 struct Fixture {
@@ -55,8 +56,10 @@ struct Fixture {
   LX_core::CommandBus bus;
   LX_core::SceneSharedPtr scene = LX_core::Scene::create(nullptr);
   LX_core::SceneNodeSharedPtr world = LX_core::SceneNode::create("world");
-  LX_core::SceneNodeSharedPtr editorCameraNode = LX_core::SceneNode::create("editor_cam_node");
-  LX_core::SceneNodeSharedPtr gameCameraNode = LX_core::SceneNode::create("game_cam_node");
+  LX_core::SceneNodeSharedPtr editorCameraNode =
+      LX_core::SceneNode::create("editor_cam_node");
+  LX_core::SceneNodeSharedPtr gameCameraNode =
+      LX_core::SceneNode::create("game_cam_node");
   LX_core::SceneNodeSharedPtr cube = LX_core::SceneNode::create("cube");
   LX_core::SceneNodeSharedPtr sphere = LX_core::SceneNode::create("sphere");
   LX_core::SceneNodeSharedPtr cone = LX_core::SceneNode::create("cone");
@@ -83,7 +86,8 @@ struct Fixture {
     scene->addRenderable(cone);
 
     editorCameraNode->setName("editor_cam");
-    auto editorCamRef = editorCameraNode->addComponent<LX_core::CameraComponent>();
+    auto editorCamRef =
+        editorCameraNode->addComponent<LX_core::CameraComponent>();
     editorCamera = &editorCamRef->get();
     editorCamera->setAspect(1.0f);
     scene->addCamera(editorCameraNode);
@@ -109,9 +113,11 @@ void testEditorStateSyncsActiveCameraAcrossPreviewToggle() {
   const auto onResult = fixture.bus.dispatch("preview on");
   EXPECT(onResult.ok, "preview on command succeeds");
   EXPECT(fixture.editorState.isPreviewEnabled(), "preview state flips on");
-  EXPECT(!fixture.editorCamera->isActive(), "editor camera deactivates in preview");
+  EXPECT(!fixture.editorCamera->isActive(),
+         "editor camera deactivates in preview");
   EXPECT(fixture.gameCamera->isActive(), "preview camera activates in preview");
-  EXPECT(onResult.structured.find("\"activePath\":\"/game_cam\"") != std::string::npos,
+  EXPECT(onResult.structured.find("\"activePath\":\"/game_cam\"") !=
+             std::string::npos,
          "preview structured payload includes active camera path");
 
   const auto offResult = fixture.bus.dispatch("preview off");
@@ -124,20 +130,27 @@ void testEditorStateSyncsActiveCameraAcrossPreviewToggle() {
 void testViewportOverlaySnapshotAndCommandEntry() {
   Fixture fixture;
   fixture.editorState.select({fixture.cube});
-  LX_core::ViewportOverlay overlay(fixture.bus, fixture.editorState, *fixture.scene);
+  LX_core::ViewportOverlay overlay(fixture.bus, fixture.editorState,
+                                   *fixture.scene);
 
   const auto snapshot = overlay.makeSnapshot();
-  EXPECT(snapshot.editorCameraPath == "/editor_cam", "snapshot keeps editor camera path");
-  EXPECT(snapshot.previewCameraPath == "/game_cam", "snapshot keeps preview camera path");
-  EXPECT(snapshot.activeCameraPath == "/editor_cam", "snapshot reports current active camera");
-  EXPECT(snapshot.selectedPath == "/world/cube", "snapshot reports selected node");
+  EXPECT(snapshot.editorCameraPath == "/editor_cam",
+         "snapshot keeps editor camera path");
+  EXPECT(snapshot.previewCameraPath == "/game_cam",
+         "snapshot keeps preview camera path");
+  EXPECT(snapshot.activeCameraPath == "/editor_cam",
+         "snapshot reports current active camera");
+  EXPECT(snapshot.selectedPath == "/world/cube",
+         "snapshot reports selected node");
   EXPECT(snapshot.hintText.find("F preview: OFF") != std::string::npos,
          "snapshot hint text includes preview status");
 
   const auto toggleResult = overlay.dispatchPreviewToggle();
   EXPECT(toggleResult.ok, "overlay preview dispatch succeeds");
-  EXPECT(fixture.editorState.isPreviewEnabled(), "overlay dispatch reuses preview command path");
-  EXPECT(!overlay.shouldRenderEditorOverlay(), "preview on hides editor overlay state");
+  EXPECT(fixture.editorState.isPreviewEnabled(),
+         "overlay dispatch reuses preview command path");
+  EXPECT(!overlay.shouldRenderEditorOverlay(),
+         "preview on hides editor overlay state");
   EXPECT(fixture.bus.history().back().line == "preview toggle",
          "overlay dispatch records command bus line");
 }
@@ -145,7 +158,8 @@ void testViewportOverlaySnapshotAndCommandEntry() {
 void testViewportOverlayEnqueueDebugDrawTracksPreviewVisibility() {
   Fixture fixture;
   fixture.editorState.select({fixture.cube});
-  LX_core::ViewportOverlay overlay(fixture.bus, fixture.editorState, *fixture.scene);
+  LX_core::ViewportOverlay overlay(fixture.bus, fixture.editorState,
+                                   *fixture.scene);
 
   LX_core::DebugDraw::reset();
   LX_core::DebugDraw::attachScene(fixture.scene);
@@ -153,10 +167,12 @@ void testViewportOverlayEnqueueDebugDrawTracksPreviewVisibility() {
   overlay.enqueueDebugDraw();
   LX_core::DebugDraw::endFrame();
   EXPECT(LX_core::DebugDraw::testing::queuedLineCount() > 12,
-         "overlay debug draw should emit selection/frustum/light lines when preview is off");
+         "overlay debug draw should emit selection/frustum/light lines when "
+         "preview is off");
 
   const auto previewResult = overlay.dispatchPreviewToggle();
-  EXPECT(previewResult.ok, "preview toggle should succeed before hidden debug draw check");
+  EXPECT(previewResult.ok,
+         "preview toggle should succeed before hidden debug draw check");
   LX_core::DebugDraw::beginFrame();
   overlay.enqueueDebugDraw();
   LX_core::DebugDraw::endFrame();
@@ -166,14 +182,16 @@ void testViewportOverlayEnqueueDebugDrawTracksPreviewVisibility() {
 
 void testViewportOverlayBoxSelectionReplaceSelectsIntersectingMeshes() {
   Fixture fixture;
-  LX_core::ViewportOverlay overlay(fixture.bus, fixture.editorState, *fixture.scene);
+  LX_core::ViewportOverlay overlay(fixture.bus, fixture.editorState,
+                                   *fixture.scene);
 
-  const auto result = overlay.dispatchBoxSelection({100.0f, 100.0f}, {700.0f, 500.0f},
-                                                   {800.0f, 600.0f}, false, false);
+  const auto result = overlay.dispatchBoxSelection(
+      {100.0f, 100.0f}, {700.0f, 500.0f}, {800.0f, 600.0f}, false, false);
   EXPECT(result.ok, "box selection replace should succeed");
 
   const auto selected = fixture.editorState.getSelected();
-  EXPECT(selected.size() == 3, "box selection should select all three projected meshes");
+  EXPECT(selected.size() == 3,
+         "box selection should select all three projected meshes");
   EXPECT(selected[0] == fixture.cube && selected[1] == fixture.sphere &&
              selected[2] == fixture.cone,
          "box selection should preserve projected node order");
@@ -181,32 +199,39 @@ void testViewportOverlayBoxSelectionReplaceSelectsIntersectingMeshes() {
 
 void testViewportOverlayBoxSelectionCtrlAppendKeepsExistingSelection() {
   Fixture fixture;
-  EXPECT(fixture.bus.dispatch("select /world/cube").ok, "initial select should succeed");
-  LX_core::ViewportOverlay overlay(fixture.bus, fixture.editorState, *fixture.scene);
+  EXPECT(fixture.bus.dispatch("select /world/cube").ok,
+         "initial select should succeed");
+  LX_core::ViewportOverlay overlay(fixture.bus, fixture.editorState,
+                                   *fixture.scene);
 
-  const auto result = overlay.dispatchBoxSelection({300.0f, 180.0f}, {520.0f, 420.0f},
-                                                   {800.0f, 600.0f}, true, false);
+  const auto result = overlay.dispatchBoxSelection(
+      {300.0f, 180.0f}, {520.0f, 420.0f}, {800.0f, 600.0f}, true, false);
   EXPECT(result.ok, "ctrl box selection append should succeed");
 
   const auto selected = fixture.editorState.getSelected();
   EXPECT(selected.size() == 2, "ctrl box selection should append hit node");
   EXPECT(selected[0] == fixture.cube && selected[1] == fixture.sphere,
-         "ctrl box selection should preserve previous selection then append new hit");
+         "ctrl box selection should preserve previous selection then append "
+         "new hit");
   EXPECT(fixture.editorState.getPrimarySelected().has_value() &&
-             &fixture.editorState.getPrimarySelected()->get() == fixture.sphere.get(),
+             &fixture.editorState.getPrimarySelected()->get() ==
+                 fixture.sphere.get(),
          "ctrl box selection should make appended node primary");
 }
 
 void testViewportOverlayLargeSelectionRequiresConfirmation() {
   Fixture fixture;
-  EXPECT(fixture.bus.dispatch("select /world/cube").ok, "initial select should succeed");
+  EXPECT(fixture.bus.dispatch("select /world/cube").ok,
+         "initial select should succeed");
   LX_core::EditorConfig config;
   config.boxSelectConfirmThreshold = 0.2f;
-  LX_core::ViewportOverlay overlay(fixture.bus, fixture.editorState, *fixture.scene, config);
+  LX_core::ViewportOverlay overlay(fixture.bus, fixture.editorState,
+                                   *fixture.scene, config);
 
-  const auto pending = overlay.dispatchBoxSelection({0.0f, 0.0f}, {799.0f, 599.0f},
-                                                    {800.0f, 600.0f}, false, false);
-  EXPECT(pending.ok, "large box selection should produce pending confirmation state");
+  const auto pending = overlay.dispatchBoxSelection(
+      {0.0f, 0.0f}, {799.0f, 599.0f}, {800.0f, 600.0f}, false, false);
+  EXPECT(pending.ok,
+         "large box selection should produce pending confirmation state");
   EXPECT(overlay.hasPendingBoxSelectionConfirmation(),
          "large selection should require confirmation");
   EXPECT(fixture.editorState.getSelected().size() == 1 &&
@@ -224,23 +249,29 @@ void testViewportOverlayLargeSelectionRequiresConfirmation() {
 
 void testViewportOverlayGizmoModeHotkeysAndCommitPath() {
   Fixture fixture;
-  LX_core::ViewportOverlay overlay(fixture.bus, fixture.editorState, *fixture.scene);
+  LX_core::ViewportOverlay overlay(fixture.bus, fixture.editorState,
+                                   *fixture.scene);
 
-  EXPECT(overlay.getGizmoOperation() == LX_core::ViewportOverlay::GizmoOperation::Translate,
+  EXPECT(overlay.getGizmoOperation() ==
+             LX_core::ViewportOverlay::GizmoOperation::Translate,
          "default gizmo mode is translate");
   EXPECT(overlay.handleGizmoHotkeys('E'), "E switches gizmo mode");
-  EXPECT(overlay.getGizmoOperation() == LX_core::ViewportOverlay::GizmoOperation::Rotate,
+  EXPECT(overlay.getGizmoOperation() ==
+             LX_core::ViewportOverlay::GizmoOperation::Rotate,
          "E selects rotate");
   EXPECT(overlay.handleGizmoHotkeys('R'), "R switches gizmo mode");
-  EXPECT(overlay.getGizmoOperation() == LX_core::ViewportOverlay::GizmoOperation::Scale,
+  EXPECT(overlay.getGizmoOperation() ==
+             LX_core::ViewportOverlay::GizmoOperation::Scale,
          "R selects scale");
   EXPECT(overlay.handleGizmoHotkeys('W'), "W switches gizmo mode");
-  EXPECT(overlay.getGizmoOperation() == LX_core::ViewportOverlay::GizmoOperation::Translate,
+  EXPECT(overlay.getGizmoOperation() ==
+             LX_core::ViewportOverlay::GizmoOperation::Translate,
          "W selects translate");
 
   LX_core::GizmoTransformComponents components;
   components.translation = {7.0f, 8.0f, 9.0f};
-  const auto moveResult = overlay.dispatchGizmoCommit("/world/cube", components);
+  const auto moveResult =
+      overlay.dispatchGizmoCommit("/world/cube", components);
   EXPECT(moveResult.ok, "translate commit dispatches move command");
   EXPECT(fixture.bus.history().back().line.find("move") == 0,
          "translate commit records move command");
@@ -251,7 +282,8 @@ void testViewportOverlayMultiSelectionCommitAppliesSharedDelta() {
   fixture.cube->setTranslation({2.0f, 0.0f, 0.0f});
   fixture.sphere->setTranslation({5.0f, 1.0f, 0.0f});
   fixture.editorState.select({fixture.cube, fixture.sphere});
-  LX_core::ViewportOverlay overlay(fixture.bus, fixture.editorState, *fixture.scene);
+  LX_core::ViewportOverlay overlay(fixture.bus, fixture.editorState,
+                                   *fixture.scene);
 
   std::vector<LX_core::Transform> before = {
       fixture.cube->getLocalTransform(), fixture.sphere->getLocalTransform()};
@@ -275,31 +307,34 @@ void testViewportOverlayMultiSelectionCommitAppliesSharedDelta() {
 
 void testViewportOverlayDrawSmoke() {
   if (!setupMinimalImGui()) {
-    std::cout << "[SKIP] viewport_overlay draw smoke (font atlas unavailable)\n";
+    std::cout
+        << "[SKIP] viewport_overlay draw smoke (font atlas unavailable)\n";
     ImGui::DestroyContext();
     return;
   }
 
   Fixture fixture;
   fixture.editorState.select({fixture.cube});
-  LX_core::ViewportOverlay overlay(fixture.bus, fixture.editorState, *fixture.scene);
+  LX_core::ViewportOverlay overlay(fixture.bus, fixture.editorState,
+                                   *fixture.scene);
 
   try {
     ImGui::NewFrame();
-    overlay.draw();
+    overlay.drawSceneOverlay(LX_demo::lxe_editor::SceneViewRect{
+        .x = 0.0f, .y = 0.0f, .width = 1280.0f, .height = 720.0f});
     const auto panelRect = overlay.getPanelRect();
     ImGuiWindow *viewportWindow = ImGui::FindWindowByName("Viewport");
-    EXPECT(viewportWindow != nullptr, "viewport draw should create a Viewport window");
+    EXPECT(viewportWindow == nullptr,
+           "viewport overlay should not create a Viewport window");
     EXPECT(panelRect.size.x > 0.0f && panelRect.size.y > 0.0f,
            "viewport draw should record a non-empty panel rect");
-    EXPECT(panelRect.origin.x >= viewportWindow->InnerRect.Min.x - 1.0f &&
-               panelRect.origin.y >= viewportWindow->InnerRect.Min.y - 1.0f &&
-               panelRect.origin.x + panelRect.size.x <= viewportWindow->InnerRect.Max.x + 1.0f &&
-               panelRect.origin.y + panelRect.size.y <= viewportWindow->InnerRect.Max.y + 1.0f,
-           "panel rect should stay inside viewport content rect");
+    EXPECT(panelRect.origin.x == 0.0f && panelRect.origin.y == 0.0f &&
+               panelRect.size.x == 1280.0f && panelRect.size.y == 720.0f,
+           "panel rect should mirror the supplied scene rect");
     ImGui::EndFrame();
   } catch (...) {
-    EXPECT(false, "ViewportOverlay draw should not throw in CPU-only ImGui frame");
+    EXPECT(false, "ViewportOverlay scene overlay draw should not throw in "
+                  "CPU-only ImGui frame");
   }
 
   ImGui::DestroyContext();

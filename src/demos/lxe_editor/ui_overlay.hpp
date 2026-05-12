@@ -4,8 +4,8 @@
 #include "core/time/clock.hpp"
 
 #include "editor_config_state.hpp"
-#include "selection_camera_input.hpp"
 #include "scene_view_rect.hpp"
+#include "selection_camera_input.hpp"
 
 namespace LX_core {
 class CommandBus;
@@ -14,10 +14,10 @@ class EditorState;
 class InspectorPanel;
 class SceneTreePanel;
 class ViewportOverlay;
-}
+} // namespace LX_core
 
-#include <functional>
 #include <imgui.h>
+#include <functional>
 #include <optional>
 
 namespace LX_demo::lxe_editor {
@@ -29,23 +29,23 @@ public:
   enum class EditorMode { Selection };
   enum class CameraControlMode { Orbit, FreeFly };
 
-  void attach(CameraRig& rig, LX_core::CommandBus& commandBus,
-              LX_core::EditorState& editorState,
-              EditorConfigDocument& editorConfig,
-              LX_core::ViewportOverlay& viewportOverlay,
-              LX_core::SceneTreePanel& sceneTreePanel,
-              LX_core::InspectorPanel& inspectorPanel,
-              LX_core::ConsolePanel& consolePanel,
+  void attach(CameraRig &rig, LX_core::CommandBus &commandBus,
+              LX_core::EditorState &editorState,
+              EditorConfigDocument &editorConfig,
+              LX_core::ViewportOverlay &viewportOverlay,
+              LX_core::SceneTreePanel &sceneTreePanel,
+              LX_core::InspectorPanel &inspectorPanel,
+              LX_core::ConsolePanel &consolePanel,
               std::function<bool()> debugEnabled = {});
-  void attachClock(const LX_core::Clock& clock);
+  void attachClock(const LX_core::Clock &clock);
 
-  void drawFrame();
-  void handleHotkeys(LX_core::IInputState& input);
+  void drawFrame(const LX_core::Vec2f &windowSize);
+  void handleHotkeys(LX_core::IInputState &input);
   [[nodiscard]] EditorMode currentEditorMode() const;
   [[nodiscard]] CameraControlMode currentCameraControlMode() const;
   [[nodiscard]] SelectionNavigationMode selectionNavigationMode() const;
-  [[nodiscard]] SceneViewRect sceneViewRect(
-      const LX_core::Vec2f& windowSize) const;
+  [[nodiscard]] SceneViewRect
+  sceneViewRect(const LX_core::Vec2f &windowSize) const;
   void setEditorMode(EditorMode mode);
   void setCameraControlMode(CameraControlMode mode);
   [[nodiscard]] bool consumeConfigDirty();
@@ -60,9 +60,9 @@ private:
   };
 
   void applyUiFontScale();
-  void applyPanelLayout(std::string_view id, const PanelDefaults& defaults);
+  void applyPanelLayout(std::string_view id, const PanelDefaults &defaults);
   void syncPanelLayout(std::string_view id, bool visible);
-  void ensurePanelLayout(std::string_view id, const PanelDefaults& defaults,
+  void ensurePanelLayout(std::string_view id, const PanelDefaults &defaults,
                          bool visible);
   void syncPanelOpenStatesFromConfig();
   void ensureInitialPanelLayouts();
@@ -76,9 +76,12 @@ private:
   std::optional<std::reference_wrapper<LX_core::CommandBus>> m_commandBus;
   std::optional<std::reference_wrapper<LX_core::EditorState>> m_editorState;
   std::optional<std::reference_wrapper<EditorConfigDocument>> m_editorConfig;
-  std::optional<std::reference_wrapper<LX_core::ViewportOverlay>> m_viewportOverlay;
-  std::optional<std::reference_wrapper<LX_core::SceneTreePanel>> m_sceneTreePanel;
-  std::optional<std::reference_wrapper<LX_core::InspectorPanel>> m_inspectorPanel;
+  std::optional<std::reference_wrapper<LX_core::ViewportOverlay>>
+      m_viewportOverlay;
+  std::optional<std::reference_wrapper<LX_core::SceneTreePanel>>
+      m_sceneTreePanel;
+  std::optional<std::reference_wrapper<LX_core::InspectorPanel>>
+      m_inspectorPanel;
   std::optional<std::reference_wrapper<LX_core::ConsolePanel>> m_consolePanel;
   std::function<bool()> m_debugEnabled;
   bool m_prevF1Down = false;

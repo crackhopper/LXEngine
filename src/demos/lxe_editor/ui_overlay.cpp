@@ -45,7 +45,7 @@ constexpr float kMaxUiFontScale = 2.0f;
   return std::clamp(value, kMinUiFontScale, kMaxUiFontScale);
 }
 
-[[nodiscard]] const char* editorModeLabel(const UiOverlay::EditorMode mode) {
+[[nodiscard]] const char *editorModeLabel(const UiOverlay::EditorMode mode) {
   switch (mode) {
   case UiOverlay::EditorMode::Selection:
     return "Selection";
@@ -53,8 +53,8 @@ constexpr float kMaxUiFontScale = 2.0f;
   return "Selection";
 }
 
-[[nodiscard]] const char* cameraControlModeLabel(
-    const UiOverlay::CameraControlMode mode) {
+[[nodiscard]] const char *
+cameraControlModeLabel(const UiOverlay::CameraControlMode mode) {
   switch (mode) {
   case UiOverlay::CameraControlMode::Orbit:
     return "Orbit";
@@ -66,7 +66,7 @@ constexpr float kMaxUiFontScale = 2.0f;
 
 enum class ToolbarIcon { Selection, Orbit, FreeFly };
 
-void drawButtonIcon(ImDrawList& drawList, const ImVec2 min, const ImVec2 max,
+void drawButtonIcon(ImDrawList &drawList, const ImVec2 min, const ImVec2 max,
                     const ToolbarIcon icon, const ImU32 color) {
   const float w = max.x - min.x;
   const float h = max.y - min.y;
@@ -105,7 +105,7 @@ void drawButtonIcon(ImDrawList& drawList, const ImVec2 min, const ImVec2 max,
   }
 }
 
-void drawPreviewIcon(ImDrawList& drawList, const ImVec2 min, const ImVec2 max,
+void drawPreviewIcon(ImDrawList &drawList, const ImVec2 min, const ImVec2 max,
                      const ImU32 color) {
   const float pad = std::min(max.x - min.x, max.y - min.y) * 0.18f;
   drawList.AddRect(ImVec2(min.x + pad, min.y + pad),
@@ -116,7 +116,7 @@ void drawPreviewIcon(ImDrawList& drawList, const ImVec2 min, const ImVec2 max,
                              color);
 }
 
-void drawPreferencesIcon(ImDrawList& drawList, const ImVec2 min,
+void drawPreferencesIcon(ImDrawList &drawList, const ImVec2 min,
                          const ImVec2 max, const ImU32 color) {
   const ImVec2 c{(min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f};
   const float r = std::min(max.x - min.x, max.y - min.y) * 0.16f;
@@ -131,60 +131,24 @@ void drawPreferencesIcon(ImDrawList& drawList, const ImVec2 min,
   }
 }
 
-void drawResetIcon(ImDrawList& drawList, const ImVec2 min, const ImVec2 max,
+void drawResetIcon(ImDrawList &drawList, const ImVec2 min, const ImVec2 max,
                    const ImU32 color) {
   const ImVec2 c{(min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f};
   const float radius = std::min(max.x - min.x, max.y - min.y) * 0.24f;
   drawList.PathArcTo(c, radius, 0.9f, 5.2f, 20);
   drawList.PathStroke(color, 0, 2.0f);
-  drawList.AddTriangleFilled(
-      ImVec2(c.x - radius * 0.85f, c.y - radius * 0.45f),
-      ImVec2(c.x - radius * 0.25f, c.y - radius * 0.95f),
-      ImVec2(c.x - radius * 0.15f, c.y - radius * 0.25f), color);
+  drawList.AddTriangleFilled(ImVec2(c.x - radius * 0.85f, c.y - radius * 0.45f),
+                             ImVec2(c.x - radius * 0.25f, c.y - radius * 0.95f),
+                             ImVec2(c.x - radius * 0.15f, c.y - radius * 0.25f),
+                             color);
 }
 
-[[nodiscard]] float maxWindowBottom(const char* name, const float fallback) {
-  if (ImGuiWindow* window = ImGui::FindWindowByName(name);
-      window != nullptr && window->WasActive) {
-    return window->Pos.y + window->Size.y;
-  }
-  return fallback;
-}
-
-[[nodiscard]] float maxWindowRight(const char* name, const float fallback) {
-  if (ImGuiWindow* window = ImGui::FindWindowByName(name);
-      window != nullptr && window->WasActive && !window->Collapsed) {
-    return window->Pos.x + window->Size.x;
-  }
-  return fallback;
-}
-
-[[nodiscard]] float rightInsetFromWindow(const char* name,
-                                         const float displayWidth,
-                                         const float fallback) {
-  if (ImGuiWindow* window = ImGui::FindWindowByName(name);
-      window != nullptr && window->WasActive && !window->Collapsed) {
-    return std::max(0.0f, displayWidth - window->Pos.x);
-  }
-  return fallback;
-}
-
-[[nodiscard]] float bottomInsetFromWindowTop(const char* name,
-                                             const float displayHeight,
-                                             const float fallback) {
-  if (ImGuiWindow* window = ImGui::FindWindowByName(name);
-      window != nullptr && window->WasActive && !window->Collapsed) {
-    return std::max(0.0f, displayHeight - window->Pos.y);
-  }
-  return fallback;
-}
-
-[[nodiscard]] bool drawIconToggleButton(const char* id, const bool active,
-                                        const char* tooltip,
-                                        void (*drawIcon)(ImDrawList&, const ImVec2,
-                                                         const ImVec2, const ImU32)) {
+[[nodiscard]] bool drawIconToggleButton(
+    const char *id, const bool active, const char *tooltip,
+    void (*drawIcon)(ImDrawList &, const ImVec2, const ImVec2, const ImU32)) {
   if (active) {
-    ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+    ImGui::PushStyleColor(ImGuiCol_Button,
+                          ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
   }
   const bool clicked = ImGui::Button(id, ImVec2(34.0f, 34.0f));
   if (active) {
@@ -192,7 +156,7 @@ void drawResetIcon(ImDrawList& drawList, const ImVec2 min, const ImVec2 max,
   }
   const ImVec2 min = ImGui::GetItemRectMin();
   const ImVec2 max = ImGui::GetItemRectMax();
-  ImDrawList* drawList = ImGui::GetWindowDrawList();
+  ImDrawList *drawList = ImGui::GetWindowDrawList();
   const ImU32 color =
       ImGui::GetColorU32(active ? ImGuiCol_Text : ImGuiCol_TextDisabled);
   drawIcon(*drawList, min, max, color);
@@ -202,11 +166,11 @@ void drawResetIcon(ImDrawList& drawList, const ImVec2 min, const ImVec2 max,
   return clicked;
 }
 
-[[nodiscard]] bool drawModeButton(const char* id, const bool active,
-                                  const ToolbarIcon icon,
-                                  const char* tooltip) {
+[[nodiscard]] bool drawModeButton(const char *id, const bool active,
+                                  const ToolbarIcon icon, const char *tooltip) {
   if (active) {
-    ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+    ImGui::PushStyleColor(ImGuiCol_Button,
+                          ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
   }
   const bool clicked = ImGui::Button(id, ImVec2(34.0f, 34.0f));
   if (active) {
@@ -214,7 +178,7 @@ void drawResetIcon(ImDrawList& drawList, const ImVec2 min, const ImVec2 max,
   }
   const ImVec2 min = ImGui::GetItemRectMin();
   const ImVec2 max = ImGui::GetItemRectMax();
-  ImDrawList* drawList = ImGui::GetWindowDrawList();
+  ImDrawList *drawList = ImGui::GetWindowDrawList();
   const ImU32 color =
       ImGui::GetColorU32(active ? ImGuiCol_Text : ImGuiCol_TextDisabled);
   drawButtonIcon(*drawList, min, max, icon, color);
@@ -226,13 +190,13 @@ void drawResetIcon(ImDrawList& drawList, const ImVec2 min, const ImVec2 max,
 
 } // namespace
 
-void UiOverlay::attach(CameraRig& rig, LX_core::CommandBus& commandBus,
-                       LX_core::EditorState& editorState,
-                       EditorConfigDocument& editorConfig,
-                       LX_core::ViewportOverlay& viewportOverlay,
-                       LX_core::SceneTreePanel& sceneTreePanel,
-                       LX_core::InspectorPanel& inspectorPanel,
-                       LX_core::ConsolePanel& consolePanel,
+void UiOverlay::attach(CameraRig &rig, LX_core::CommandBus &commandBus,
+                       LX_core::EditorState &editorState,
+                       EditorConfigDocument &editorConfig,
+                       LX_core::ViewportOverlay &viewportOverlay,
+                       LX_core::SceneTreePanel &sceneTreePanel,
+                       LX_core::InspectorPanel &inspectorPanel,
+                       LX_core::ConsolePanel &consolePanel,
                        std::function<bool()> debugEnabled) {
   m_rig = std::ref(rig);
   m_commandBus = std::ref(commandBus);
@@ -254,7 +218,9 @@ void UiOverlay::attach(CameraRig& rig, LX_core::CommandBus& commandBus,
   setCameraControlMode(m_cameraControlMode);
 }
 
-void UiOverlay::attachClock(const LX_core::Clock& clock) { m_clock = std::cref(clock); }
+void UiOverlay::attachClock(const LX_core::Clock &clock) {
+  m_clock = std::cref(clock);
+}
 
 UiOverlay::EditorMode UiOverlay::currentEditorMode() const {
   return m_editorMode;
@@ -268,25 +234,14 @@ SelectionNavigationMode UiOverlay::selectionNavigationMode() const {
   return m_selectionNavigationMode;
 }
 
-SceneViewRect UiOverlay::sceneViewRect(const LX_core::Vec2f& windowSize) const {
-  if (m_viewportOverlay) {
-    const auto rect = m_viewportOverlay->get().getPanelRect();
-    if (rect.size.x > 1.0f && rect.size.y > 1.0f) {
-      return SceneViewRect{.x = rect.origin.x,
-                           .y = rect.origin.y,
-                           .width = rect.size.x,
-                           .height = rect.size.y};
-    }
-  }
+SceneViewRect UiOverlay::sceneViewRect(const LX_core::Vec2f &windowSize) const {
   if (m_sceneViewRect.isValid()) {
     return m_sceneViewRect;
   }
   return makeSceneViewRect(windowSize.x, windowSize.y, 0.0f, 0.0f, 0.0f, 0.0f);
 }
 
-void UiOverlay::setEditorMode(const EditorMode mode) {
-  m_editorMode = mode;
-}
+void UiOverlay::setEditorMode(const EditorMode mode) { m_editorMode = mode; }
 
 void UiOverlay::setCameraControlMode(const CameraControlMode mode) {
   m_cameraControlMode = mode;
@@ -330,7 +285,7 @@ void UiOverlay::applyUiFontScale() {
 }
 
 void UiOverlay::ensurePanelLayout(std::string_view id,
-                                  const PanelDefaults& defaults,
+                                  const PanelDefaults &defaults,
                                   const bool visible) {
   if (!m_editorConfig) {
     return;
@@ -357,15 +312,18 @@ void UiOverlay::syncPanelOpenStatesFromConfig() {
   if (!m_editorConfig) {
     return;
   }
-  if (const auto panel = findEditorWindowLayout(m_editorConfig->get(), "Scene Tree");
+  if (const auto panel =
+          findEditorWindowLayout(m_editorConfig->get(), "Scene Tree");
       panel && m_sceneTreePanel) {
     m_sceneTreePanel->get().setOpen(panel->get().visible);
   }
-  if (const auto panel = findEditorWindowLayout(m_editorConfig->get(), "Inspector");
+  if (const auto panel =
+          findEditorWindowLayout(m_editorConfig->get(), "Inspector");
       panel && m_inspectorPanel) {
     m_inspectorPanel->get().setOpen(panel->get().visible);
   }
-  if (const auto panel = findEditorWindowLayout(m_editorConfig->get(), "Command Console");
+  if (const auto panel =
+          findEditorWindowLayout(m_editorConfig->get(), "Command Console");
       panel && m_consolePanel) {
     m_consolePanel->get().setOpen(panel->get().visible);
   }
@@ -377,7 +335,8 @@ void UiOverlay::syncPanelOpenStatesFromConfig() {
       panel) {
     m_helpVisible = panel->get().visible;
   }
-  if (const auto panel = findEditorWindowLayout(m_editorConfig->get(), "Toolbar");
+  if (const auto panel =
+          findEditorWindowLayout(m_editorConfig->get(), "Toolbar");
       panel) {
     m_toolbarVisible = true;
     if (!panel->get().visible) {
@@ -400,11 +359,12 @@ void UiOverlay::ensureInitialPanelLayouts() {
   const float topInset = 68.0f;
   const float centerHeight = std::max(1.0f, display.y - bottomHeight);
 
-  ensurePanelLayout("Toolbar", PanelDefaults{12.0f, 12.0f, 360.0f, 72.0f, false},
+  ensurePanelLayout("Toolbar",
+                    PanelDefaults{12.0f, 12.0f, 360.0f, 72.0f, false},
                     m_toolbarVisible);
   ensurePanelLayout("Stats",
-                    PanelDefaults{display.x - rightWidth - 16.0f, 12.0f, rightWidth,
-                                  132.0f, false},
+                    PanelDefaults{display.x - rightWidth - 16.0f, 12.0f,
+                                  rightWidth, 132.0f, false},
                     m_statsVisible);
   ensurePanelLayout("Scene Tree",
                     PanelDefaults{12.0f, topInset, leftWidth,
@@ -412,20 +372,16 @@ void UiOverlay::ensureInitialPanelLayouts() {
                     m_sceneTreePanel ? m_sceneTreePanel->get().isOpen() : true);
   ensurePanelLayout("Inspector",
                     PanelDefaults{display.x - rightWidth - 12.0f, topInset,
-                                  rightWidth, centerHeight - topInset - 12.0f, false},
+                                  rightWidth, centerHeight - topInset - 12.0f,
+                                  false},
                     m_inspectorPanel ? m_inspectorPanel->get().isOpen() : true);
-  ensurePanelLayout("Viewport",
-                    PanelDefaults{leftWidth + 24.0f, topInset,
-                                  std::max(1.0f, display.x - leftWidth - rightWidth - 48.0f),
-                                  centerHeight - topInset - 12.0f, false},
-                    true);
-  ensurePanelLayout("Command Console",
-                    PanelDefaults{leftWidth + 24.0f, centerHeight,
-                                  std::max(1.0f, display.x - leftWidth - rightWidth - 48.0f),
-                                  bottomHeight - 12.0f, false},
-                    m_consolePanel ? m_consolePanel->get().isOpen() : true);
-  ensurePanelLayout("Help",
-                    PanelDefaults{320.0f, 84.0f, 420.0f, 150.0f, false},
+  ensurePanelLayout(
+      "Command Console",
+      PanelDefaults{leftWidth + 24.0f, centerHeight,
+                    std::max(1.0f, display.x - leftWidth - rightWidth - 48.0f),
+                    bottomHeight - 12.0f, false},
+      m_consolePanel ? m_consolePanel->get().isOpen() : true);
+  ensurePanelLayout("Help", PanelDefaults{320.0f, 84.0f, 420.0f, 150.0f, false},
                     m_helpVisible);
   ensurePanelLayout("Preferences",
                     PanelDefaults{340.0f, 120.0f, 360.0f, 160.0f, false},
@@ -433,9 +389,10 @@ void UiOverlay::ensureInitialPanelLayouts() {
 }
 
 void UiOverlay::applyPanelLayout(std::string_view id,
-                                 const PanelDefaults& defaults) {
+                                 const PanelDefaults &defaults) {
   if (!m_editorConfig) {
-    ImGui::SetNextWindowPos(ImVec2(defaults.x, defaults.y), ImGuiCond_Appearing);
+    ImGui::SetNextWindowPos(ImVec2(defaults.x, defaults.y),
+                            ImGuiCond_Appearing);
     ImGui::SetNextWindowSize(ImVec2(defaults.width, defaults.height),
                              ImGuiCond_Appearing);
     ImGui::SetNextWindowCollapsed(defaults.collapsed, ImGuiCond_Appearing);
@@ -443,27 +400,26 @@ void UiOverlay::applyPanelLayout(std::string_view id,
   }
 
   const auto layout = findEditorWindowLayout(m_editorConfig->get(), id);
-  const ImGuiCond cond = m_initialLayoutApplied ? ImGuiCond_Appearing
-                                                : ImGuiCond_Always;
-  const EditorWindowLayout resolved = layout.has_value()
-                                          ? layout->get()
-                                          : EditorWindowLayout{
-                                                .id = std::string(id),
-                                                .visible = true,
-                                                .collapsed = defaults.collapsed,
-                                                .x = static_cast<int>(defaults.x),
-                                                .y = static_cast<int>(defaults.y),
-                                                .width =
-                                                    static_cast<int>(defaults.width),
-                                                .height =
-                                                    static_cast<int>(defaults.height),
-                                            };
-  ImGui::SetNextWindowPos(ImVec2(static_cast<float>(resolved.x),
-                                 static_cast<float>(resolved.y)),
-                          cond);
-  ImGui::SetNextWindowSize(ImVec2(static_cast<float>(std::max(1, resolved.width)),
-                                  static_cast<float>(std::max(1, resolved.height))),
-                           cond);
+  const ImGuiCond cond =
+      m_initialLayoutApplied ? ImGuiCond_Appearing : ImGuiCond_Always;
+  const EditorWindowLayout resolved =
+      layout.has_value() ? layout->get()
+                         : EditorWindowLayout{
+                               .id = std::string(id),
+                               .visible = true,
+                               .collapsed = defaults.collapsed,
+                               .x = static_cast<int>(defaults.x),
+                               .y = static_cast<int>(defaults.y),
+                               .width = static_cast<int>(defaults.width),
+                               .height = static_cast<int>(defaults.height),
+                           };
+  ImGui::SetNextWindowPos(
+      ImVec2(static_cast<float>(resolved.x), static_cast<float>(resolved.y)),
+      cond);
+  ImGui::SetNextWindowSize(
+      ImVec2(static_cast<float>(std::max(1, resolved.width)),
+             static_cast<float>(std::max(1, resolved.height))),
+      cond);
   ImGui::SetNextWindowCollapsed(resolved.collapsed, cond);
 }
 
@@ -479,7 +435,7 @@ void UiOverlay::syncPanelLayout(std::string_view id, const bool visible) {
   EditorWindowLayout updated = layout->get();
   updated.visible = visible;
 
-  if (ImGuiWindow* window = ImGui::FindWindowByName(std::string(id).c_str());
+  if (ImGuiWindow *window = ImGui::FindWindowByName(std::string(id).c_str());
       window != nullptr) {
     updated.x = static_cast<int>(window->Pos.x);
     updated.y = static_cast<int>(window->Pos.y);
@@ -488,16 +444,17 @@ void UiOverlay::syncPanelLayout(std::string_view id, const bool visible) {
     updated.collapsed = window->Collapsed;
   }
 
-  EditorWindowLayout& target = layout->get();
-  if (target.visible != updated.visible || target.collapsed != updated.collapsed ||
-      target.x != updated.x || target.y != updated.y ||
-      target.width != updated.width || target.height != updated.height) {
+  EditorWindowLayout &target = layout->get();
+  if (target.visible != updated.visible ||
+      target.collapsed != updated.collapsed || target.x != updated.x ||
+      target.y != updated.y || target.width != updated.width ||
+      target.height != updated.height) {
     target = updated;
     m_configDirty = true;
   }
 }
 
-void UiOverlay::handleHotkeys(LX_core::IInputState& input) {
+void UiOverlay::handleHotkeys(LX_core::IInputState &input) {
   const bool previewEnabled =
       m_editorState && m_editorState->get().isPreviewEnabled();
   const bool f1Down = input.isKeyDown(LX_core::KeyCode::F1);
@@ -551,9 +508,11 @@ void UiOverlay::handleHotkeys(LX_core::IInputState& input) {
 }
 
 void UiOverlay::drawToolbarPanel() {
-  applyPanelLayout("Toolbar", PanelDefaults{12.0f, 12.0f, 360.0f, 72.0f, false});
+  applyPanelLayout("Toolbar",
+                   PanelDefaults{12.0f, 12.0f, 360.0f, 72.0f, false});
   if (!ImGui::Begin("Toolbar", nullptr,
-                    ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
+                    ImGuiWindowFlags_NoScrollbar |
+                        ImGuiWindowFlags_NoScrollWithMouse)) {
     ImGui::End();
     syncPanelLayout("Toolbar", true);
     return;
@@ -566,8 +525,7 @@ void UiOverlay::drawToolbarPanel() {
   if (!editingEnabled) {
     ImGui::BeginDisabled();
   }
-  if (drawModeButton("##tool_select",
-                     m_editorMode == EditorMode::Selection,
+  if (drawModeButton("##tool_select", m_editorMode == EditorMode::Selection,
                      ToolbarIcon::Selection, "Selection")) {
     setEditorMode(EditorMode::Selection);
   }
@@ -632,8 +590,8 @@ void UiOverlay::drawStatsPanel() {
   }
 
   const ImVec2 display = ImGui::GetIO().DisplaySize;
-  applyPanelLayout("Stats",
-                   PanelDefaults{display.x - 372.0f, 12.0f, 360.0f, 132.0f, false});
+  applyPanelLayout(
+      "Stats", PanelDefaults{display.x - 372.0f, 12.0f, 360.0f, 132.0f, false});
   if (!ImGui::Begin("Stats", &m_statsVisible)) {
     ImGui::End();
     syncPanelLayout("Stats", m_statsVisible);
@@ -668,9 +626,11 @@ void UiOverlay::drawHelpPanel() {
   ImGui::TextUnformatted("F   preview toggle");
   ImGui::TextUnformatted("Toolbar  Selection | Orbit / FreeFly");
   ImGui::TextUnformatted("Toolbar  Reset / Preview / Debug / Preferences");
-  ImGui::TextUnformatted("Left mouse selects and manipulates gizmos outside UI");
+  ImGui::TextUnformatted(
+      "Left mouse selects and manipulates gizmos outside UI");
   ImGui::TextUnformatted("Right mouse controls the editor camera outside UI");
-  ImGui::TextUnformatted("Esc deselect in Selection mode | Delete remove when preview is off");
+  ImGui::TextUnformatted(
+      "Esc deselect in Selection mode | Delete remove when preview is off");
   ImGui::End();
   syncPanelLayout("Help", m_helpVisible);
 }
@@ -690,7 +650,8 @@ void UiOverlay::drawPreferencesPanel() {
   }
 
   ImGui::SeparatorText("Appearance");
-  float fontScale = clampUiFontScale(m_editorConfig->get().preferences.uiFontScale);
+  float fontScale =
+      clampUiFontScale(m_editorConfig->get().preferences.uiFontScale);
   if (ImGui::SliderFloat("UI Font Scale", &fontScale, kMinUiFontScale,
                          kMaxUiFontScale, "%.2f")) {
     m_editorConfig->get().preferences.uiFontScale = clampUiFontScale(fontScale);
@@ -702,13 +663,15 @@ void UiOverlay::drawPreferencesPanel() {
   syncPanelLayout("Preferences", m_preferencesVisible);
 }
 
-void UiOverlay::drawFrame() {
+void UiOverlay::drawFrame(const LX_core::Vec2f &windowSize) {
   if (!m_editorConfig || ImGui::GetCurrentContext() == nullptr) {
     return;
   }
 
   ensureInitialPanelLayouts();
   applyUiFontScale();
+  m_sceneViewRect =
+      makeSceneViewRect(windowSize.x, windowSize.y, 0.0f, 0.0f, 0.0f, 0.0f);
 
   drawToolbarPanel();
   drawStatsPanel();
@@ -731,24 +694,17 @@ void UiOverlay::drawFrame() {
   if (m_inspectorPanel) {
     applyPanelLayout("Inspector",
                      PanelDefaults{display.x - rightWidth - 12.0f, topInset,
-                                   rightWidth, centerHeight - topInset - 12.0f, false});
+                                   rightWidth, centerHeight - topInset - 12.0f,
+                                   false});
     m_inspectorPanel->get().draw();
     syncPanelLayout("Inspector", m_inspectorPanel->get().isOpen());
-  }
-
-  if (m_viewportOverlay) {
-    applyPanelLayout("Viewport",
-                     PanelDefaults{leftWidth + 24.0f, topInset,
-                                   std::max(1.0f, display.x - leftWidth - rightWidth - 48.0f),
-                                   centerHeight - topInset - 12.0f, false});
-    m_viewportOverlay->get().draw();
-    syncPanelLayout("Viewport", true);
   }
 
   if (m_consolePanel) {
     applyPanelLayout("Command Console",
                      PanelDefaults{leftWidth + 24.0f, centerHeight,
-                                   std::max(1.0f, display.x - leftWidth - rightWidth - 48.0f),
+                                   std::max(1.0f, display.x - leftWidth -
+                                                      rightWidth - 48.0f),
                                    bottomHeight - 12.0f, false});
     m_consolePanel->get().draw();
     syncPanelLayout("Command Console", m_consolePanel->get().isOpen());
@@ -757,20 +713,7 @@ void UiOverlay::drawFrame() {
   drawHelpPanel();
   drawPreferencesPanel();
   if (m_viewportOverlay) {
-    const auto rect = m_viewportOverlay->get().getPanelRect();
-    m_sceneViewRect = SceneViewRect{.x = rect.origin.x,
-                                    .y = rect.origin.y,
-                                    .width = rect.size.x,
-                                    .height = rect.size.y};
-  } else {
-    m_sceneViewRect =
-        makeSceneViewRect(display.x, display.y,
-                          maxWindowRight("Scene Tree", 12.0f) + 12.0f,
-                          maxWindowBottom("Toolbar", 12.0f),
-                          rightInsetFromWindow("Inspector", display.x, 12.0f) +
-                              12.0f,
-                          bottomInsetFromWindowTop("Command Console", display.y,
-                                                   12.0f));
+    m_viewportOverlay->get().drawSceneOverlay(m_sceneViewRect);
   }
   m_initialLayoutApplied = true;
 }
