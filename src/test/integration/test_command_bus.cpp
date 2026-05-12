@@ -1546,6 +1546,8 @@ void testConsolePanelShouldSubmitPlainEnterOnly() {
 
 void testConsolePanelUsesSingleLineHistoryCompatibleInputFlags() {
   const ImGuiInputTextFlags flags = ConsolePanel::inputTextFlags();
+  EXPECT((flags & ImGuiInputTextFlags_EnterReturnsTrue) != 0,
+         "single-line console input should use EnterReturnsTrue for reliable submit");
   EXPECT((flags & ImGuiInputTextFlags_CallbackHistory) != 0,
          "console input should keep history callback support");
   EXPECT((flags & ImGuiInputTextFlags_CallbackCompletion) != 0,

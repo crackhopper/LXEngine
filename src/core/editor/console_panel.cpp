@@ -11,6 +11,7 @@ namespace LX_core {
 namespace {
 
 constexpr ImGuiInputTextFlags kConsoleInputTextFlags =
+    ImGuiInputTextFlags_EnterReturnsTrue |
     ImGuiInputTextFlags_CallbackCharFilter |
     ImGuiInputTextFlags_CallbackCompletion |
     ImGuiInputTextFlags_CallbackHistory;
@@ -38,7 +39,7 @@ void ConsolePanel::draw() {
   drawOutputRegion(inputHeight);
 
   ImGui::PushItemWidth(-1.0f);
-  (void)ImGui::InputText(
+  const bool submitted = ImGui::InputText(
       "##command_input", m_inputController.inputBufferData(),
       m_inputController.inputBufferSize(), inputTextFlags(),
       &ConsolePanel::inputTextCallback, &m_inputController);
@@ -46,10 +47,6 @@ void ConsolePanel::draw() {
 
   const ImGuiIO &io = ImGui::GetIO();
   const bool itemActive = ImGui::IsItemActive();
-  const bool submitted = shouldSubmitInputOnPlainEnter(
-      itemActive, ImGui::IsKeyPressed(ImGuiKey_Enter, false),
-      ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false), io.KeyCtrl, io.KeyShift,
-      io.KeyAlt, io.KeySuper);
   if (itemActive) {
     if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
       m_inputController.cancelHistoryBrowse();
