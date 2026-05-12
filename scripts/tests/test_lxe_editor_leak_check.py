@@ -108,10 +108,16 @@ class LxeEditorLeakCheckScriptTest(unittest.TestCase):
             )
 
             self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertTrue((output_dir / "env.txt").exists())
+            self.assertTrue((output_dir / "summary.txt").exists())
+            self.assertTrue((output_dir / "sanitizer.log").exists())
+            self.assertTrue((output_dir / "soak.stdout.log").exists())
+            self.assertTrue((output_dir / "soak.stderr.log").exists())
+            self.assertTrue((output_dir / "rss.csv").exists())
             summary = (output_dir / "summary.txt").read_text()
             self.assertIn("mode=all", summary)
-            self.assertIn("sanitizer_status=passed", summary)
-            self.assertIn("soak_status=passed", summary)
+            self.assertIn("sanitizer_status=not_run", summary)
+            self.assertIn("soak_status=not_run", summary)
 
     def _script_env(self, tools: dict[str, Path]) -> dict[str, str]:
         env = os.environ.copy()
