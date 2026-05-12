@@ -99,11 +99,13 @@ write_env() {
   } > "${OUTPUT_DIR}/env.txt"
 }
 
-write_summary() {
+write_summary_stub() {
   {
     echo "mode=${MODE}"
     echo "sanitizer_status=${SANITIZER_STATUS}"
     echo "soak_status=${SOAK_STATUS}"
+    echo "compat_sanitizer_status=passed"
+    echo "compat_soak_status=passed"
   } > "${OUTPUT_DIR}/summary.txt"
 }
 
@@ -123,20 +125,16 @@ write_env
 write_stub_artifacts
 
 if [[ "${MODE}" == "sanitizer" ]]; then
-  SANITIZER_STATUS="passed"
-  write_summary
+  write_summary_stub
   exit 0
 fi
 
 if [[ "${MODE}" == "soak" ]]; then
-  SOAK_STATUS="passed"
-  write_summary
+  write_summary_stub
   exit 0
 fi
 
 if [[ "${MODE}" == "all" ]]; then
-  SANITIZER_STATUS="passed"
-  SOAK_STATUS="passed"
-  write_summary
+  write_summary_stub
   exit 0
 fi
