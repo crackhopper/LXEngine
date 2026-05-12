@@ -90,6 +90,9 @@ NINJA_BIN="${LX_LEAK_CHECK_NINJA:-ninja}"
 EDITOR_BIN="${LX_LEAK_CHECK_LXE_EDITOR_BIN:-${BUILD_DIR}/src/demos/lxe_editor/lxe_editor}"
 EDITOR_SMOKE_TIMEOUT_SECONDS="${LX_LEAK_CHECK_EDITOR_SMOKE_TIMEOUT_SECONDS:-120}"
 SOAK_TERMINATION_GRACE_SECONDS="${LX_LEAK_CHECK_SOAK_TERMINATION_GRACE_SECONDS:-10}"
+EDITOR_API_HOST="${LX_LEAK_CHECK_EDITOR_API_HOST:-127.0.0.1}"
+EDITOR_API_PORT="${LX_LEAK_CHECK_EDITOR_API_PORT:-37681}"
+EDITOR_API_TOKEN_FILE="${LX_LEAK_CHECK_EDITOR_API_TOKEN_FILE:-${REPO_ROOT}/data/lxe_editor/api_token.txt}"
 
 mkdir -p "${OUTPUT_DIR}"
 mkdir -p "${BUILD_DIR}"
@@ -100,6 +103,10 @@ SOAK_EDITOR_EXIT_STATUS="not_run"
 SOAK_RSS_START_KB=""
 SOAK_RSS_END_KB=""
 SOAK_RSS_PEAK_KB=""
+FAILURE_KIND="none"
+FAILED_STEP=""
+FAILURE_REASON=""
+LAUNCHED_EDITOR_PID=""
 
 merge_asan_options() {
   local merged_options=""
@@ -130,6 +137,27 @@ merge_asan_options
 
 GIT_COMMIT="$(git -C "${REPO_ROOT}" rev-parse HEAD)"
 
+sanitize_summary_value() {
+  local value="${1:-}"
+  value="${value//$'\n'/ }"
+  value="${value//$'\r'/ }"
+  printf '%s' "${value}"
+}
+
+record_failure() {
+  local kind="${1}"
+  local step="${2}"
+  local reason="${3:-}"
+
+  if [[ "${FAILURE_KIND}" != "none" ]]; then
+    return 0
+  fi
+
+  FAILURE_KIND="${kind}"
+  FAILED_STEP="${step}"
+  FAILURE_REASON="$(sanitize_summary_value "${reason}")"
+}
+
 write_env() {
   {
     echo "mode=${MODE}"
@@ -144,6 +172,9 @@ write_env() {
     echo "editor_bin=${EDITOR_BIN}"
     echo "editor_smoke_timeout_seconds=${EDITOR_SMOKE_TIMEOUT_SECONDS}"
     echo "soak_termination_grace_seconds=${SOAK_TERMINATION_GRACE_SECONDS}"
+    echo "editor_api_host=${EDITOR_API_HOST}"
+    echo "editor_api_port=${EDITOR_API_PORT}"
+    echo "editor_api_token_file=${EDITOR_API_TOKEN_FILE}"
     echo "asan_options=${ASAN_OPTIONS}"
     echo "git_commit=${GIT_COMMIT}"
   } > "${OUTPUT_DIR}/env.txt"
@@ -160,6 +191,9 @@ write_summary() {
     echo "rss_start_kb=${SOAK_RSS_START_KB}"
     echo "rss_end_kb=${SOAK_RSS_END_KB}"
     echo "rss_peak_kb=${SOAK_RSS_PEAK_KB}"
+    echo "failure_kind=${FAILURE_KIND}"
+    echo "failed_step=${FAILED_STEP}"
+    echo "failure_reason=${FAILURE_REASON}"
   } > "${OUTPUT_DIR}/summary.txt"
 }
 
@@ -176,6 +210,7 @@ run_sanitizer_mode() {
       -DLX_BUILD_DEMOS=ON \
       >> "${OUTPUT_DIR}/sanitizer.log" 2>&1; then
     SANITIZER_STATUS="failed"
+    record_failure "setup_failure" "configure" "cmake configure failed"
     return 1
   fi
 
@@ -186,6 +221,7 @@ run_sanitizer_mode() {
       test_lxe_editor_session test_lxe_editor_interaction test_command_bus \
       lxe_editor >> "${OUTPUT_DIR}/sanitizer.log" 2>&1; then
     SANITIZER_STATUS="failed"
+    record_failure "build_failure" "build" "ninja build failed"
     return 1
   fi
 
@@ -196,6 +232,13 @@ run_sanitizer_mode() {
       -R '^(test_lxe_editor_session|test_lxe_editor_interaction|test_command_bus)$' \
       >> "${OUTPUT_DIR}/sanitizer.log" 2>&1; then
     SANITIZER_STATUS="failed"
+    if grep -Eq 'AddressSanitizer|LeakSanitizer' "${OUTPUT_DIR}/sanitizer.log"; then
+      record_failure "sanitizer_finding" "ctest" \
+        "ctest failed with sanitizer signature in sanitizer.log"
+    else
+      record_failure "test_failure" "ctest" \
+        "ctest failed without sanitizer signature"
+    fi
     return 1
   fi
 
@@ -208,6 +251,25 @@ run_sanitizer_mode() {
   fi
 
   SANITIZER_STATUS="passed"
+}
+
+launch_editor_process() {
+  local stdout_file="${1:-}"
+  local stderr_file="${2:-}"
+
+  pushd "${REPO_ROOT}" >/dev/null
+  if [[ -n "${stdout_file}" || -n "${stderr_file}" ]]; then
+    setsid "${EDITOR_BIN}" \
+      --api-host "${EDITOR_API_HOST}" \
+      --api-port "${EDITOR_API_PORT}" \
+      > "${stdout_file}" 2> "${stderr_file}" &
+  else
+    setsid "${EDITOR_BIN}" \
+      --api-host "${EDITOR_API_HOST}" \
+      --api-port "${EDITOR_API_PORT}" &
+  fi
+  LAUNCHED_EDITOR_PID="$!"
+  popd >/dev/null
 }
 
 wait_for_pid_exit() {
@@ -242,22 +304,164 @@ stop_process_group_with_grace() {
   wait_for_pid_exit "${pid}" 5 || true
 }
 
+build_scene_load_command() {
+  local escaped_path="${SCENE_PATH//\\/\\\\}"
+  escaped_path="${escaped_path//\"/\\\"}"
+  printf 'scene load "%s"' "${escaped_path}"
+}
+
+editor_api_ready_check() {
+  python3 - "${EDITOR_API_HOST}" "${EDITOR_API_PORT}" "${EDITOR_API_TOKEN_FILE}" <<'PY'
+import http.client
+import pathlib
+import sys
+
+host, port_text, token_path_text = sys.argv[1:4]
+port = int(port_text)
+token_path = pathlib.Path(token_path_text)
+token = token_path.read_text(encoding="utf-8").strip() if token_path.exists() else ""
+if not token:
+    raise SystemExit(1)
+
+health = http.client.HTTPConnection(host, port, timeout=2)
+try:
+    health.request("GET", "/health")
+    health_response = health.getresponse()
+    health_response.read()
+    if health_response.status != 200:
+        raise SystemExit(1)
+finally:
+    health.close()
+
+state = http.client.HTTPConnection(host, port, timeout=2)
+try:
+    state.request(
+        "GET",
+        "/api/state/summary",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    state_response = state.getresponse()
+    state_response.read()
+    if state_response.status != 200:
+        raise SystemExit(1)
+finally:
+    state.close()
+PY
+}
+
+wait_for_editor_api_ready() {
+  local pid="${1}"
+  local timeout_seconds="${2}"
+  local deadline
+
+  deadline="$(( $(date +%s) + timeout_seconds ))"
+  while true; do
+    if editor_api_ready_check; then
+      return 0
+    fi
+    if ! kill -0 "${pid}" 2>/dev/null; then
+      return 2
+    fi
+    if [[ "$(date +%s)" -ge "${deadline}" ]]; then
+      return 1
+    fi
+    sleep 1
+  done
+}
+
+post_editor_command() {
+  local line="${1}"
+
+  python3 - "${EDITOR_API_HOST}" "${EDITOR_API_PORT}" "${EDITOR_API_TOKEN_FILE}" "${line}" <<'PY'
+import http.client
+import json
+import pathlib
+import sys
+
+host, port_text, token_path_text, line = sys.argv[1:5]
+port = int(port_text)
+token_path = pathlib.Path(token_path_text)
+token = token_path.read_text(encoding="utf-8").strip() if token_path.exists() else ""
+if not token:
+    sys.stderr.write("missing API token\n")
+    raise SystemExit(1)
+
+conn = http.client.HTTPConnection(host, port, timeout=3)
+try:
+    body = json.dumps({"line": line})
+    conn.request(
+        "POST",
+        "/api/command",
+        body=body,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        },
+    )
+    response = conn.getresponse()
+    payload = response.read().decode("utf-8", errors="replace")
+    if response.status < 200 or response.status >= 300:
+        sys.stderr.write(payload + "\n")
+        raise SystemExit(1)
+    parsed = json.loads(payload)
+    if not parsed.get("ok", False):
+        error = parsed.get("error") or {}
+        message = error.get("message") or parsed.get("message") or "command failed"
+        sys.stderr.write(message + "\n")
+        raise SystemExit(1)
+    sys.stdout.write(payload)
+finally:
+    conn.close()
+PY
+}
+
 run_bounded_editor_smoke() {
   local editor_pid
-  local timed_out="false"
+  local ready_status
   local editor_exit_status=0
-  local editor_args=()
 
-  if [[ -n "${SCENE_PATH}" ]]; then
-    editor_args+=("${SCENE_PATH}")
+  launch_editor_process
+  editor_pid="${LAUNCHED_EDITOR_PID}"
+
+  wait_for_editor_api_ready "${editor_pid}" "${EDITOR_SMOKE_TIMEOUT_SECONDS}"
+  ready_status=$?
+
+  if [[ "${ready_status}" -eq 1 ]]; then
+    echo "[sanitizer] editor smoke timeout after ${EDITOR_SMOKE_TIMEOUT_SECONDS}s"
+    stop_process_group_with_grace "${editor_pid}" "${SOAK_TERMINATION_GRACE_SECONDS}"
+    wait "${editor_pid}" || true
+    record_failure "smoke_control_failure" "editor_smoke_timeout" \
+      "editor smoke timeout after ${EDITOR_SMOKE_TIMEOUT_SECONDS}s"
+    return 1
   fi
 
-  setsid "${EDITOR_BIN}" "${editor_args[@]}" &
-  editor_pid=$!
+  if [[ "${ready_status}" -eq 0 ]]; then
+    if [[ -n "${SCENE_PATH}" ]]; then
+      if ! post_editor_command "$(build_scene_load_command)"; then
+        stop_process_group_with_grace "${editor_pid}" "${SOAK_TERMINATION_GRACE_SECONDS}"
+        wait "${editor_pid}" || true
+        record_failure "smoke_control_failure" "editor_smoke_scene_load" \
+          "failed to load scene via editor API"
+        return 1
+      fi
+    fi
 
-  if ! wait_for_pid_exit "${editor_pid}" "${EDITOR_SMOKE_TIMEOUT_SECONDS}"; then
-    timed_out="true"
-    stop_process_group_with_grace "${editor_pid}" "${SOAK_TERMINATION_GRACE_SECONDS}"
+    if ! post_editor_command "quit"; then
+      stop_process_group_with_grace "${editor_pid}" "${SOAK_TERMINATION_GRACE_SECONDS}"
+      wait "${editor_pid}" || true
+      record_failure "smoke_control_failure" "editor_smoke_quit" \
+        "failed to send quit through editor API"
+      return 1
+    fi
+
+    if ! wait_for_pid_exit "${editor_pid}" "${EDITOR_SMOKE_TIMEOUT_SECONDS}"; then
+      echo "[sanitizer] editor smoke timeout after ${EDITOR_SMOKE_TIMEOUT_SECONDS}s"
+      stop_process_group_with_grace "${editor_pid}" "${SOAK_TERMINATION_GRACE_SECONDS}"
+      wait "${editor_pid}" || true
+      record_failure "smoke_control_failure" "editor_smoke_timeout" \
+        "editor smoke timeout after ${EDITOR_SMOKE_TIMEOUT_SECONDS}s"
+      return 1
+    fi
   fi
 
   if wait "${editor_pid}"; then
@@ -266,9 +470,9 @@ run_bounded_editor_smoke() {
     editor_exit_status=$?
   fi
 
-  if [[ "${timed_out}" == "true" ]]; then
-    echo "[sanitizer] editor smoke timeout after ${EDITOR_SMOKE_TIMEOUT_SECONDS}s"
-    return 1
+  if [[ "${editor_exit_status}" -ne 0 ]]; then
+    record_failure "smoke_control_failure" "editor_smoke_exit" \
+      "editor exited with status ${editor_exit_status}"
   fi
 
   return "${editor_exit_status}"
@@ -302,7 +506,7 @@ run_soak_mode() {
   local editor_pid
   local editor_exit_status
   local timed_out="false"
-  local editor_args=()
+  local ready_status
 
   SOAK_STATUS="running"
   SOAK_EDITOR_EXIT_STATUS="running"
@@ -314,18 +518,51 @@ run_soak_mode() {
   : > "${OUTPUT_DIR}/soak.stderr.log"
   printf "timestamp,rss_kb,vsz_kb,cpu_percent\n" > "${OUTPUT_DIR}/rss.csv"
 
+  launch_editor_process "${OUTPUT_DIR}/soak.stdout.log" "${OUTPUT_DIR}/soak.stderr.log"
+  editor_pid="${LAUNCHED_EDITOR_PID}"
+
   if [[ -n "${SCENE_PATH}" ]]; then
-    editor_args+=("${SCENE_PATH}")
+    wait_for_editor_api_ready "${editor_pid}" "${EDITOR_SMOKE_TIMEOUT_SECONDS}"
+    ready_status=$?
+
+    if [[ "${ready_status}" -eq 2 ]]; then
+      wait "${editor_pid}" || true
+      SOAK_STATUS="failed"
+      SOAK_EDITOR_EXIT_STATUS="failed"
+      record_failure "smoke_control_failure" "soak_scene_load" \
+        "editor exited before scene load API became ready"
+      return 1
+    fi
+
+    if [[ "${ready_status}" -eq 1 ]]; then
+      stop_process_group_with_grace "${editor_pid}" "${SOAK_TERMINATION_GRACE_SECONDS}"
+      wait "${editor_pid}" || true
+      SOAK_STATUS="failed"
+      SOAK_EDITOR_EXIT_STATUS="failed"
+      record_failure "smoke_control_failure" "soak_scene_load" \
+        "timed out waiting for editor API readiness before scene load"
+      return 1
+    fi
+
+    if ! post_editor_command "$(build_scene_load_command)"; then
+      stop_process_group_with_grace "${editor_pid}" "${SOAK_TERMINATION_GRACE_SECONDS}"
+      wait "${editor_pid}" || true
+      SOAK_STATUS="failed"
+      SOAK_EDITOR_EXIT_STATUS="failed"
+      record_failure "smoke_control_failure" "soak_scene_load" \
+        "failed to load scene via editor API"
+      return 1
+    fi
   fi
 
-  setsid "${EDITOR_BIN}" "${editor_args[@]}" > "${OUTPUT_DIR}/soak.stdout.log" 2> "${OUTPUT_DIR}/soak.stderr.log" &
-  editor_pid=$!
   end_time="$(( $(date +%s) + DURATION_SECONDS ))"
 
   if ! sample_process_metrics "${editor_pid}"; then
     wait "${editor_pid}" || true
     SOAK_STATUS="failed"
     SOAK_EDITOR_EXIT_STATUS="failed"
+    record_failure "smoke_control_failure" "soak_launch" \
+      "editor exited before soak sampling could start"
     return 1
   fi
 
@@ -339,6 +576,8 @@ run_soak_mode() {
         wait "${editor_pid}" || true
         SOAK_STATUS="failed"
         SOAK_EDITOR_EXIT_STATUS="failed"
+        record_failure "smoke_control_failure" "soak_sample" \
+          "failed to sample editor process metrics"
         return 1
       fi
     fi
@@ -366,6 +605,8 @@ run_soak_mode() {
     SOAK_STATUS="passed"
   else
     SOAK_STATUS="failed"
+    record_failure "smoke_control_failure" "soak_exit" \
+      "editor exited during soak with status ${editor_exit_status}"
     return 1
   fi
 }
