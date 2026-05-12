@@ -28,7 +28,7 @@ ConsoleInputController::ConsoleInputController(CommandBus &commandBus)
     : m_commandBus(commandBus) {}
 
 void ConsoleInputController::submitLine(std::string_view line) {
-  const std::string trimmed = trim(line);
+  const std::string trimmed = trim(sanitizeSubmittedLine(line));
   if (trimmed.empty()) {
     setInputText({});
     m_historyBrowseIndex.reset();
@@ -41,7 +41,7 @@ void ConsoleInputController::submitLine(std::string_view line) {
   markCommandDispatched();
 }
 
-void ConsoleInputController::submitCurrentInput() { submitLine(inputText()); }
+void ConsoleInputController::submitCurrentInput() { submitLine(sanitizedInputText()); }
 
 void ConsoleInputController::autocomplete() {
   const std::string input = inputText();
@@ -174,6 +174,10 @@ std::string ConsoleInputController::inputText() const {
   return std::string(m_inputBuffer.data());
 }
 
+std::string ConsoleInputController::sanitizedInputText() const {
+  return sanitizeSubmittedLine(inputText());
+}
+
 char *ConsoleInputController::inputBufferData() { return m_inputBuffer.data(); }
 
 usize ConsoleInputController::inputBufferSize() const { return m_inputBuffer.size(); }
@@ -241,6 +245,31 @@ void ConsoleInputController::appendPersistedHistoryLine(std::string line) {
 
 void ConsoleInputController::appendHelperLine(std::string line) {
   m_helperLines.push_back(std::move(line));
+}
+
+std::string ConsoleInputController::sanitizeSubmittedLine(
+    std::string_view text) {
+  std::string normalized;
+  normalized.reserve(text.size());
+
+  bool pendingSpace = false;
+  for (const char c : text) {
+    if (c == '\r' || c == '\n') {
+      pendingSpace = true;
+      continue;
+    }
+
+    if (pendingSpace) {
+      if (!normalized.empty() && normalized.back() != ' ') {
+        normalized.push_back(' ');
+      }
+      pendingSpace = false;
+    }
+
+    normalized.push_back(c);
+  }
+
+  return normalized;
 }
 
 std::string ConsoleInputController::trim(std::string_view text) {

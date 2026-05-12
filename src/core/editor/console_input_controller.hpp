@@ -34,6 +34,7 @@ public:
 
   [[nodiscard]] std::string helperOutputText() const;
   void clearHelperOutput();
+  [[nodiscard]] std::string sanitizedInputText() const;
 
   [[nodiscard]] int handleCallbackEvent(int eventFlag, int eventKey);
 
@@ -43,6 +44,7 @@ private:
   void markCommandDispatched();
   void appendPersistedHistoryLine(std::string line);
   void appendHelperLine(std::string line);
+  [[nodiscard]] static std::string sanitizeSubmittedLine(std::string_view text);
   [[nodiscard]] static std::string trim(std::string_view text);
   [[nodiscard]] static std::string commonPrefix(const std::string &a,
                                                 const std::string &b);

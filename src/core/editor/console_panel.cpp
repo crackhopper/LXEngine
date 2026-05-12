@@ -25,14 +25,18 @@ void ConsolePanel::draw() {
     clearDisplay();
   }
 
-  const float inputHeight = ImGui::GetFrameHeightWithSpacing() * 2.0f;
+  const ImVec2 inputSize(-1.0f, ImGui::GetTextLineHeightWithSpacing() * 3.0f);
+  const float inputHeight =
+      inputSize.y + ImGui::GetStyle().ItemSpacing.y + ImGui::GetFrameHeightWithSpacing();
   drawOutputRegion(inputHeight);
 
   ImGui::PushItemWidth(-1.0f);
-  const bool submitted = ImGui::InputText(
+  const bool submitted = ImGui::InputTextMultiline(
       "##command_input", m_inputController.inputBufferData(),
-      m_inputController.inputBufferSize(),
+      m_inputController.inputBufferSize(), inputSize,
       ImGuiInputTextFlags_EnterReturnsTrue |
+          ImGuiInputTextFlags_CtrlEnterForNewLine |
+          ImGuiInputTextFlags_WordWrap |
           ImGuiInputTextFlags_CallbackCompletion |
           ImGuiInputTextFlags_CallbackHistory,
       &ConsolePanel::inputTextCallback, &m_inputController);

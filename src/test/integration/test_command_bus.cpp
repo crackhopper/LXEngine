@@ -1531,6 +1531,27 @@ void testConsoleInputControllerPersistsHistoryLines() {
          "persisted history export should append the latest submitted command");
 }
 
+void testConsoleInputControllerSanitizesMultilineSubmitToSingleLine() {
+  CommandFixture fixture;
+  ConsoleInputController controller(fixture.bus);
+
+  controller.submitLine("select\n/world/cube");
+
+  EXPECT(fixture.bus.history().size() == 1,
+         "multiline widget submit should still dispatch one logical command");
+  EXPECT(fixture.bus.history().back().result.ok,
+         "sanitized multiline submit should succeed");
+  EXPECT(fixture.bus.history().back().line == "select /world/cube",
+         "sanitized multiline submit should collapse embedded newlines to spaces");
+  EXPECT(controller.persistedHistory().size() == 1,
+         "persisted history should record sanitized multiline submit");
+  EXPECT(controller.persistedHistory().back() == "select /world/cube",
+         "persisted history should store the single-line sanitized command");
+  EXPECT(fixture.editorState.getSelected().size() == 1 &&
+             fixture.editorState.getSelected()[0] == fixture.cube,
+         "sanitized multiline submit should preserve normal command behavior");
+}
+
 void testConsolePanelUndoRedoShortcutsUseCommandBus() {
   CommandFixture fixture;
   ConsolePanel panel(fixture.bus);
@@ -1598,6 +1619,7 @@ int main() {
   testConsoleInputControllerEscRestoresDraft();
   testConsoleInputControllerCallbackEvents();
   testConsoleInputControllerPersistsHistoryLines();
+  testConsoleInputControllerSanitizesMultilineSubmitToSingleLine();
 
   if (failures != 0) {
     std::cerr << "test_command_bus failed with " << failures << " failure(s)\n";
