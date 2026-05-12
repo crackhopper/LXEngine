@@ -5,6 +5,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace LX_core {
 
@@ -18,12 +19,15 @@ struct SceneIoContext {
   using ListFn = std::function<CommandResult()>;
   using SetAdminFn = std::function<CommandResult(bool enabled)>;
   using AdminStatusFn = std::function<CommandResult()>;
+  using CameraControlFn =
+      std::function<CommandResult(const std::vector<std::string> &args)>;
 
   LoadFn load;
   SaveFn save;
   ListFn list;
   SetAdminFn setAdmin;
   AdminStatusFn adminStatus;
+  CameraControlFn cameraControl;
 };
 
 void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,

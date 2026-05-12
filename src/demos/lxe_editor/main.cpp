@@ -54,29 +54,32 @@ namespace demo = LX_demo::lxe_editor;
 namespace {
 
 [[nodiscard]] demo::SceneInputEditMode
-toSceneInputEditMode(const demo::UiOverlay::EditMode mode) {
+toSceneInputEditMode(const demo::UiOverlay::EditorMode mode) {
   switch (mode) {
-  case demo::UiOverlay::EditMode::Selection:
+  case demo::UiOverlay::EditorMode::Selection:
     return demo::SceneInputEditMode::Selection;
-  case demo::UiOverlay::EditMode::Orbit:
-    return demo::SceneInputEditMode::Orbit;
-  case demo::UiOverlay::EditMode::FreeFly:
-    return demo::SceneInputEditMode::FreeFly;
   }
   return demo::SceneInputEditMode::Selection;
 }
 
-[[nodiscard]] demo::ApiEditMode toApiEditMode(
-    const demo::UiOverlay::EditMode mode) {
+[[nodiscard]] demo::ApiEditorMode toApiEditorMode(
+    const demo::UiOverlay::EditorMode mode) {
   switch (mode) {
-  case demo::UiOverlay::EditMode::Selection:
-    return demo::ApiEditMode::Selection;
-  case demo::UiOverlay::EditMode::Orbit:
-    return demo::ApiEditMode::Orbit;
-  case demo::UiOverlay::EditMode::FreeFly:
-    return demo::ApiEditMode::FreeFly;
+  case demo::UiOverlay::EditorMode::Selection:
+    return demo::ApiEditorMode::Selection;
   }
-  return demo::ApiEditMode::Unknown;
+  return demo::ApiEditorMode::Unknown;
+}
+
+[[nodiscard]] demo::ApiCameraControlMode toApiCameraControlMode(
+    const demo::UiOverlay::CameraControlMode mode) {
+  switch (mode) {
+  case demo::UiOverlay::CameraControlMode::Orbit:
+    return demo::ApiCameraControlMode::Orbit;
+  case demo::UiOverlay::CameraControlMode::FreeFly:
+    return demo::ApiCameraControlMode::FreeFly;
+  }
+  return demo::ApiCameraControlMode::Unknown;
 }
 
 [[nodiscard]] demo::ApiPermissionLevel toApiPermissionLevel(
@@ -349,7 +352,9 @@ int main(int argc, char** argv) {
               .toolbarSnapshot =
                   [&]() {
                     return demo::ApiToolbarSnapshot{
-                        .editMode = toApiEditMode(ui.currentEditMode()),
+                        .mode = toApiEditorMode(ui.currentEditorMode()),
+                        .camera = toApiCameraControlMode(
+                            ui.currentCameraControlMode()),
                         .previewEnabled = editorState.isPreviewEnabled(),
                         .debugEnabled = session.debugEnabled(),
                     };
@@ -435,7 +440,7 @@ int main(int argc, char** argv) {
       session.gameCamera().updateMatrices();
 
       const demo::SceneInputEditMode inputMode =
-          toSceneInputEditMode(ui.currentEditMode());
+          toSceneInputEditMode(ui.currentEditorMode());
       bool cameraUpdated = false;
       if (demo::shouldProcessSelectionMode(editorState.isPreviewEnabled(),
                                            wantsMouse, inputMode)) {

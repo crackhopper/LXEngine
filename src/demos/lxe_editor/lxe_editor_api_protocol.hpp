@@ -25,9 +25,13 @@ enum class ApiPermissionLevel {
   Admin,
 };
 
-enum class ApiEditMode {
+enum class ApiEditorMode {
   Unknown,
   Selection,
+};
+
+enum class ApiCameraControlMode {
+  Unknown,
   Orbit,
   FreeFly,
 };
@@ -119,7 +123,8 @@ struct ApiCameraSnapshot final {
 };
 
 struct ApiToolbarSnapshot final {
-  ApiEditMode editMode = ApiEditMode::Unknown;
+  ApiEditorMode mode = ApiEditorMode::Unknown;
+  ApiCameraControlMode camera = ApiCameraControlMode::Unknown;
   bool previewEnabled = false;
   bool debugEnabled = false;
 
@@ -176,7 +181,9 @@ struct ApiEventBatch final {
     ApiSceneSourceKind kind);
 [[nodiscard]] const char* apiPermissionLevelName(
     ApiPermissionLevel level);
-[[nodiscard]] const char* apiEditModeName(ApiEditMode mode);
+[[nodiscard]] const char* apiEditorModeName(ApiEditorMode mode);
+[[nodiscard]] const char* apiCameraControlModeName(
+    ApiCameraControlMode mode);
 [[nodiscard]] const char* apiEventTypeName(ApiEventType type);
 
 [[nodiscard]] std::string apiJsonEscape(std::string_view text);

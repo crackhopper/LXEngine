@@ -26,7 +26,8 @@ class CameraRig;
 
 class UiOverlay {
 public:
-  enum class EditMode { Selection, Orbit, FreeFly };
+  enum class EditorMode { Selection };
+  enum class CameraControlMode { Orbit, FreeFly };
 
   void attach(CameraRig& rig, LX_core::CommandBus& commandBus,
               LX_core::EditorState& editorState,
@@ -40,11 +41,13 @@ public:
 
   void drawFrame();
   void handleHotkeys(LX_core::IInputState& input);
-  [[nodiscard]] EditMode currentEditMode() const;
+  [[nodiscard]] EditorMode currentEditorMode() const;
+  [[nodiscard]] CameraControlMode currentCameraControlMode() const;
   [[nodiscard]] SelectionNavigationMode selectionNavigationMode() const;
   [[nodiscard]] SceneViewRect sceneViewRect(
       const LX_core::Vec2f& windowSize) const;
-  void setEditMode(EditMode mode);
+  void setEditorMode(EditorMode mode);
+  void setCameraControlMode(CameraControlMode mode);
   [[nodiscard]] bool consumeConfigDirty();
 
 private:
@@ -95,7 +98,8 @@ private:
   float m_appliedUiFontScale = 1.0f;
   ImGuiStyle m_baseStyle{};
   SceneViewRect m_sceneViewRect;
-  EditMode m_editMode = EditMode::Orbit;
+  EditorMode m_editorMode = EditorMode::Selection;
+  CameraControlMode m_cameraControlMode = CameraControlMode::Orbit;
   SelectionNavigationMode m_selectionNavigationMode =
       SelectionNavigationMode::Orbit;
 };

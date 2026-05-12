@@ -65,46 +65,55 @@ namespace {
          formatFloat(value.y) + ",\"z\":" + formatFloat(value.z) + "}";
 }
 
-[[nodiscard]] std::string modeName(const UiOverlay::EditMode mode) {
+[[nodiscard]] std::string modeName(const UiOverlay::EditorMode mode) {
   switch (mode) {
-  case UiOverlay::EditMode::Selection:
+  case UiOverlay::EditorMode::Selection:
     return "selection";
-  case UiOverlay::EditMode::Orbit:
-    return "orbit";
-  case UiOverlay::EditMode::FreeFly:
-    return "freefly";
   }
   return "selection";
 }
 
-[[nodiscard]] std::optional<UiOverlay::EditMode>
+[[nodiscard]] std::optional<UiOverlay::EditorMode>
 parseMode(const std::string& text) {
   if (text == "selection") {
-    return UiOverlay::EditMode::Selection;
-  }
-  if (text == "orbit") {
-    return UiOverlay::EditMode::Orbit;
-  }
-  if (text == "freefly") {
-    return UiOverlay::EditMode::FreeFly;
+    return UiOverlay::EditorMode::Selection;
   }
   return std::nullopt;
 }
 
-[[nodiscard]] int modeCode(const UiOverlay::EditMode mode) {
+[[nodiscard]] int modeCode(const UiOverlay::EditorMode mode) {
   return static_cast<int>(mode);
 }
 
-[[nodiscard]] UiOverlay::EditMode modeFromCode(const int code) {
+[[nodiscard]] UiOverlay::EditorMode modeFromCode(const int code) {
   switch (code) {
-  case static_cast<int>(UiOverlay::EditMode::Selection):
-    return UiOverlay::EditMode::Selection;
-  case static_cast<int>(UiOverlay::EditMode::Orbit):
-    return UiOverlay::EditMode::Orbit;
-  case static_cast<int>(UiOverlay::EditMode::FreeFly):
-    return UiOverlay::EditMode::FreeFly;
+  case static_cast<int>(UiOverlay::EditorMode::Selection):
+    return UiOverlay::EditorMode::Selection;
   default:
-    return UiOverlay::EditMode::Selection;
+    return UiOverlay::EditorMode::Selection;
+  }
+}
+
+[[nodiscard]] std::string cameraControlModeName(
+    const UiOverlay::CameraControlMode mode) {
+  switch (mode) {
+  case UiOverlay::CameraControlMode::Orbit:
+    return "orbit";
+  case UiOverlay::CameraControlMode::FreeFly:
+    return "freefly";
+  }
+  return "orbit";
+}
+
+[[nodiscard]] UiOverlay::CameraControlMode cameraControlModeFromCode(
+    const int code) {
+  switch (code) {
+  case static_cast<int>(UiOverlay::CameraControlMode::Orbit):
+    return UiOverlay::CameraControlMode::Orbit;
+  case static_cast<int>(UiOverlay::CameraControlMode::FreeFly):
+    return UiOverlay::CameraControlMode::FreeFly;
+  default:
+    return UiOverlay::CameraControlMode::Orbit;
   }
 }
 
@@ -176,6 +185,10 @@ makeSummaryJson(const LxeEditorCommandContext& context) {
       << ",\"debugEnabled\":"
       << (context.debugEnabled && context.debugEnabled() ? "true" : "false")
       << ",\"mode\":\"" << modeName(modeFromCode(context.getEditMode())) << "\""
+      << ",\"camera\":\""
+      << cameraControlModeName(
+             cameraControlModeFromCode(context.getCameraControlMode()))
+      << "\""
       << ",\"selectionCount\":" << context.editorState.getSelected().size()
       << ",\"activeCameraPath\":";
   if (activeCamera) {
@@ -209,6 +222,7 @@ void registerLxeEditorCommands(
   auto* interaction = &context.interaction;
   auto getEditMode = context.getEditMode;
   auto setEditMode = context.setEditMode;
+  auto getCameraControlMode = context.getCameraControlMode;
   auto sceneViewRect = context.sceneViewRect;
   auto dirty = context.dirty;
   auto permission = context.permission;
@@ -233,26 +247,34 @@ void registerLxeEditorCommands(
       });
 
   bus.registerHandler(
-      "mode", "mode [selection|orbit|freefly|status]",
+      "mode", "mode [selection|status]",
       [getEditMode, setEditMode](std::vector<std::string> args) {
         if (args.empty()) {
-          const UiOverlay::EditMode mode = modeFromCode(getEditMode());
+          const UiOverlay::EditorMode mode = modeFromCode(getEditMode());
           return makeOk("mode " + modeName(mode),
                         "{\"mode\":\"" + modeName(mode) + "\"}");
         }
         if (args.size() != 1) {
-          return makeError("usage: mode [selection|orbit|freefly|status]");
+          return makeError("usage: mode [selection|status]");
         }
         if (args[0] == "status") {
-          const UiOverlay::EditMode mode = modeFromCode(getEditMode());
+          const UiOverlay::EditorMode mode = modeFromCode(getEditMode());
           return makeOk("mode " + modeName(mode),
                         "{\"mode\":\"" + modeName(mode) + "\"}");
+        }
+        if (args[0] == "orbit") {
+          return makeError(
+              "mode orbit is no longer a camera control; use cam control orbit");
+        }
+        if (args[0] == "freefly") {
+          return makeError(
+              "mode freefly is no longer a camera control; use cam control freefly");
         }
         const auto mode = parseMode(args[0]);
         if (!mode.has_value()) {
           return makeError("unknown mode: " + args[0]);
         }
-        const UiOverlay::EditMode previousMode = modeFromCode(getEditMode());
+        const UiOverlay::EditorMode previousMode = modeFromCode(getEditMode());
         setEditMode(modeCode(*mode));
         LX_core::CommandResult result =
             makeOk("mode " + modeName(*mode),
@@ -288,8 +310,8 @@ void registerLxeEditorCommands(
 
   bus.registerHandler(
       "state", "state (summary|selection|cameras|scene|toolbar|history)",
-      [editorState, scene, interaction, getEditMode, dirty, permission,
-       debugEnabled,
+      [editorState, scene, interaction, getEditMode, getCameraControlMode,
+       dirty, permission, debugEnabled,
        currentDocumentPath, currentSourceKind,
        persistedHistory](std::vector<std::string> args) {
         if (args.size() != 1) {
@@ -302,6 +324,8 @@ void registerLxeEditorCommands(
             .interaction = *interaction,
             .getEditMode = getEditMode,
             .setEditMode = [](int) {},
+            .getCameraControlMode = getCameraControlMode,
+            .setCameraControlMode = [](int) {},
             .sceneViewRect = [] { return SceneViewRect{}; },
             .dirty = dirty,
             .permission = permission,
@@ -361,17 +385,16 @@ void registerLxeEditorCommands(
           return makeOk(structured, structured);
         }
         if (args[0] == "toolbar") {
-          const std::string structured = "{\"mode\":\"" +
-                                         modeName(modeFromCode(getEditMode())) +
-                                         "\",\"previewEnabled\":" +
-                                         std::string(editorState->isPreviewEnabled()
-                                                         ? "true"
-                                                         : "false") +
-                                         ",\"debugEnabled\":" +
-                                         std::string(debugEnabled && debugEnabled()
-                                                         ? "true"
-                                                         : "false") +
-                                         "}";
+          const std::string structured =
+              "{\"mode\":\"" + modeName(modeFromCode(getEditMode())) +
+              "\",\"camera\":\"" +
+              cameraControlModeName(
+                  cameraControlModeFromCode(getCameraControlMode())) +
+              "\",\"previewEnabled\":" +
+              std::string(editorState->isPreviewEnabled() ? "true" : "false") +
+              ",\"debugEnabled\":" +
+              std::string(debugEnabled && debugEnabled() ? "true" : "false") +
+              "}";
           return makeOk(structured, structured);
         }
         if (args[0] == "history") {
@@ -429,8 +452,7 @@ void registerLxeEditorCommands(
 
   bus.registerCompleter(
       "mode", 0, [](const LX_core::CompletionContext& context) {
-        static const std::vector<std::string> kModes = {"selection", "orbit",
-                                                        "freefly"};
+        static const std::vector<std::string> kModes = {"selection", "status"};
         std::vector<std::string> out;
         for (const auto& mode : kModes) {
           if (mode.rfind(context.partialToken, 0) == 0) {

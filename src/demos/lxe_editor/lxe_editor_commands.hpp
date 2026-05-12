@@ -23,6 +23,8 @@ struct LxeEditorCommandContext final {
   using SetDebugEnabledFn = std::function<void(bool)>;
   using GetEditModeFn = std::function<int()>;
   using SetEditModeFn = std::function<void(int)>;
+  using GetCameraControlModeFn = std::function<int()>;
+  using SetCameraControlModeFn = std::function<void(int)>;
   using PermissionFn = std::function<std::string()>;
   using CurrentDocumentPathFn =
       std::function<std::optional<std::string>()>;
@@ -35,6 +37,8 @@ struct LxeEditorCommandContext final {
   SceneInteractionController& interaction;
   GetEditModeFn getEditMode;
   SetEditModeFn setEditMode;
+  GetCameraControlModeFn getCameraControlMode;
+  SetCameraControlModeFn setCameraControlMode;
   SceneViewRectFn sceneViewRect;
   DirtyFn dirty;
   PermissionFn permission;

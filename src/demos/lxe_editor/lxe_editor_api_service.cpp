@@ -177,7 +177,8 @@ ApiToolbarSnapshot LxeEditorApiService::captureToolbar() const {
   }
 
   return ApiToolbarSnapshot{
-      .editMode = ApiEditMode::Unknown,
+      .mode = ApiEditorMode::Unknown,
+      .camera = ApiCameraControlMode::Unknown,
       .previewEnabled = m_editorState.isPreviewEnabled(),
       .debugEnabled = false,
   };
@@ -258,7 +259,8 @@ void LxeEditorApiService::observeStateChanges() {
         .payloadJson = toJson(current.selection),
     });
   }
-  if (current.toolbar.editMode != m_lastState.toolbar.editMode) {
+  if (current.toolbar.mode != m_lastState.toolbar.mode ||
+      current.toolbar.camera != m_lastState.toolbar.camera) {
     appendEvent(ApiEvent{
         .sequence = m_nextSequence++,
         .type = ApiEventType::ModeChanged,

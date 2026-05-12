@@ -20,6 +20,7 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_set>
+#include <vector>
 
 #if defined(_WIN32)
 #include <process.h>
@@ -83,6 +84,17 @@ namespace {
 
 [[nodiscard]] std::string sceneSourceKindName(const SceneSourceKind kind) {
   return kind == SceneSourceKind::Asset ? "asset" : "local";
+}
+
+[[nodiscard]] std::string cameraControlModeName(
+    const UiOverlay::CameraControlMode mode) {
+  switch (mode) {
+  case UiOverlay::CameraControlMode::Orbit:
+    return "orbit";
+  case UiOverlay::CameraControlMode::FreeFly:
+    return "freefly";
+  }
+  return "orbit";
 }
 
 [[nodiscard]] bool commandMarksSceneDirty(const std::string& line) {
@@ -389,6 +401,35 @@ void LxeEditorSession::rebuildBindings() {
           .list = [this]() { return listScenes(); },
           .setAdmin = [this](const bool enabled) { return setAdmin(enabled); },
           .adminStatus = [this]() { return adminStatus(); },
+          .cameraControl =
+              [this](const std::vector<std::string>& args) {
+                if (args.size() != 2) {
+                  return makeCommandError(
+                      "usage: cam control (orbit|freefly|status)");
+                }
+                if (args[1] == "status") {
+                  const std::string camera = cameraControlModeName(
+                      m_ui.currentCameraControlMode());
+                  return makeCommandOk("camera " + camera,
+                                       "{\"camera\":\"" + camera + "\"}");
+                }
+                if (args[1] != "orbit" && args[1] != "freefly") {
+                  return makeCommandError("unknown camera control: " + args[1]);
+                }
+                const UiOverlay::CameraControlMode previous =
+                    m_ui.currentCameraControlMode();
+                const UiOverlay::CameraControlMode next =
+                    args[1] == "orbit" ? UiOverlay::CameraControlMode::Orbit
+                                        : UiOverlay::CameraControlMode::FreeFly;
+                m_ui.setCameraControlMode(next);
+                const std::string camera = cameraControlModeName(next);
+                LX_core::CommandResult result =
+                    makeCommandOk("camera " + camera,
+                                  "{\"camera\":\"" + camera + "\"}");
+                result.metadata["inverse.line"] =
+                    "cam control " + cameraControlModeName(previous);
+                return result;
+              },
       });
   if (!m_consolePanel) {
     m_consolePanel = std::make_unique<LX_core::ConsolePanel>(*m_commandBus);
@@ -412,9 +453,17 @@ void LxeEditorSession::rebuildBindings() {
           .editorState = m_editorState,
           .scene = *m_runtime.scene(),
           .interaction = *m_sceneInteraction,
-          .getEditMode = [this]() { return static_cast<int>(m_ui.currentEditMode()); },
+          .getEditMode =
+              [this]() { return static_cast<int>(m_ui.currentEditorMode()); },
           .setEditMode = [this](const int modeCode) {
-            m_ui.setEditMode(static_cast<UiOverlay::EditMode>(modeCode));
+            m_ui.setEditorMode(static_cast<UiOverlay::EditorMode>(modeCode));
+          },
+          .getCameraControlMode = [this]() {
+            return static_cast<int>(m_ui.currentCameraControlMode());
+          },
+          .setCameraControlMode = [this](const int modeCode) {
+            m_ui.setCameraControlMode(
+                static_cast<UiOverlay::CameraControlMode>(modeCode));
           },
           .sceneViewRect = [this]() { return m_ui.sceneViewRect(m_windowSize); },
           .dirty = [this]() { return m_session.isDirty(); },

@@ -399,6 +399,19 @@ completeComponentTypes(const CompletionContext &context) {
   return matches;
 }
 
+[[nodiscard]] std::vector<std::string>
+completeCamActions(const CompletionContext &context) {
+  static const std::vector<std::string> kActions = {
+      "control", "fov", "look-at", "reset", "reset-editor-to-game"};
+  std::vector<std::string> matches;
+  for (const auto &action : kActions) {
+    if (action.rfind(context.partialToken, 0) == 0) {
+      matches.push_back(action);
+    }
+  }
+  return matches;
+}
+
 [[nodiscard]] std::optional<std::pair<std::string, std::string>>
 splitFieldPath(const std::string &text) {
   const usize dot = text.find_last_of('.');
@@ -1488,11 +1501,17 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
       });
 
   bus.registerHandler(
-      "cam", CommandMetadata{"cam (look-at|reset|reset-editor-to-game|fov ...)", inverseFromMetadata(),
+      "cam", CommandMetadata{"cam (control|look-at|reset|reset-editor-to-game|fov ...)", inverseFromMetadata(),
                               true},
-      [&scene, &editorState](std::vector<std::string> args) {
+      [&scene, &editorState, sceneIoContext](std::vector<std::string> args) {
         if (args.empty()) {
-          return makeError("usage: cam (look-at|reset|reset-editor-to-game|fov ...)");
+          return makeError("usage: cam (control|look-at|reset|reset-editor-to-game|fov ...)");
+        }
+        if (args[0] == "control") {
+          if (!sceneIoContext.cameraControl) {
+            return makeError("camera control unavailable");
+          }
+          return sceneIoContext.cameraControl(args);
         }
         auto camera = findActiveCamera(scene, editorState);
         if (!camera.has_value()) {
@@ -1632,6 +1651,10 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
   bus.registerCompleter(
       "add", 0, [](const CompletionContext &context) {
         return completeComponentTypes(context);
+      });
+  bus.registerCompleter(
+      "cam", 0, [](const CompletionContext &context) {
+        return completeCamActions(context);
       });
 }
 

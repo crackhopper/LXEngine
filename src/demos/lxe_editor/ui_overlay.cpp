@@ -45,28 +45,37 @@ constexpr float kMaxUiFontScale = 2.0f;
   return std::clamp(value, kMinUiFontScale, kMaxUiFontScale);
 }
 
-[[nodiscard]] const char* editModeLabel(const UiOverlay::EditMode mode) {
+[[nodiscard]] const char* editorModeLabel(const UiOverlay::EditorMode mode) {
   switch (mode) {
-  case UiOverlay::EditMode::Selection:
+  case UiOverlay::EditorMode::Selection:
     return "Selection";
-  case UiOverlay::EditMode::Orbit:
-    return "Orbit";
-  case UiOverlay::EditMode::FreeFly:
-    return "FreeFly";
   }
   return "Selection";
 }
 
+[[nodiscard]] const char* cameraControlModeLabel(
+    const UiOverlay::CameraControlMode mode) {
+  switch (mode) {
+  case UiOverlay::CameraControlMode::Orbit:
+    return "Orbit";
+  case UiOverlay::CameraControlMode::FreeFly:
+    return "FreeFly";
+  }
+  return "Orbit";
+}
+
+enum class ToolbarIcon { Selection, Orbit, FreeFly };
+
 void drawButtonIcon(ImDrawList& drawList, const ImVec2 min, const ImVec2 max,
-                    const UiOverlay::EditMode mode, const ImU32 color) {
+                    const ToolbarIcon icon, const ImU32 color) {
   const float w = max.x - min.x;
   const float h = max.y - min.y;
   const ImVec2 c{min.x + w * 0.5f, min.y + h * 0.5f};
   const float pad = std::min(w, h) * 0.18f;
   const float stroke = 2.0f;
 
-  switch (mode) {
-  case UiOverlay::EditMode::Selection: {
+  switch (icon) {
+  case ToolbarIcon::Selection: {
     const ImVec2 a{min.x + pad, min.y + pad};
     const ImVec2 b{min.x + w * 0.62f, min.y + h * 0.52f};
     const ImVec2 tip{min.x + w * 0.42f, max.y - pad};
@@ -74,14 +83,14 @@ void drawButtonIcon(ImDrawList& drawList, const ImVec2 min, const ImVec2 max,
     drawList.AddLine(b, ImVec2(max.x - pad, max.y - pad), color, stroke);
     break;
   }
-  case UiOverlay::EditMode::Orbit:
+  case ToolbarIcon::Orbit:
     drawList.AddCircle(c, std::min(w, h) * 0.28f, color, 0, stroke);
     drawList.AddLine(ImVec2(c.x, min.y + pad), ImVec2(c.x, max.y - pad), color,
                      stroke);
     drawList.AddLine(ImVec2(min.x + pad, c.y), ImVec2(max.x - pad, c.y), color,
                      stroke);
     break;
-  case UiOverlay::EditMode::FreeFly:
+  case ToolbarIcon::FreeFly:
     drawList.AddLine(ImVec2(min.x + pad, c.y), ImVec2(max.x - pad, c.y), color,
                      stroke);
     drawList.AddLine(ImVec2(c.x, min.y + pad), ImVec2(c.x, max.y - pad), color,
@@ -194,7 +203,7 @@ void drawResetIcon(ImDrawList& drawList, const ImVec2 min, const ImVec2 max,
 }
 
 [[nodiscard]] bool drawModeButton(const char* id, const bool active,
-                                  const UiOverlay::EditMode mode,
+                                  const ToolbarIcon icon,
                                   const char* tooltip) {
   if (active) {
     ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
@@ -208,7 +217,7 @@ void drawResetIcon(ImDrawList& drawList, const ImVec2 min, const ImVec2 max,
   ImDrawList* drawList = ImGui::GetWindowDrawList();
   const ImU32 color =
       ImGui::GetColorU32(active ? ImGuiCol_Text : ImGuiCol_TextDisabled);
-  drawButtonIcon(*drawList, min, max, mode, color);
+  drawButtonIcon(*drawList, min, max, icon, color);
   if (ImGui::IsItemHovered() && tooltip && tooltip[0] != '\0') {
     ImGui::SetTooltip("%s", tooltip);
   }
@@ -241,12 +250,19 @@ void UiOverlay::attach(CameraRig& rig, LX_core::CommandBus& commandBus,
   }
   m_toolbarVisible = true;
   applyUiFontScale();
-  setEditMode(m_editMode);
+  setEditorMode(m_editorMode);
+  setCameraControlMode(m_cameraControlMode);
 }
 
 void UiOverlay::attachClock(const LX_core::Clock& clock) { m_clock = std::cref(clock); }
 
-UiOverlay::EditMode UiOverlay::currentEditMode() const { return m_editMode; }
+UiOverlay::EditorMode UiOverlay::currentEditorMode() const {
+  return m_editorMode;
+}
+
+UiOverlay::CameraControlMode UiOverlay::currentCameraControlMode() const {
+  return m_cameraControlMode;
+}
 
 SelectionNavigationMode UiOverlay::selectionNavigationMode() const {
   return m_selectionNavigationMode;
@@ -268,21 +284,22 @@ SceneViewRect UiOverlay::sceneViewRect(const LX_core::Vec2f& windowSize) const {
   return makeSceneViewRect(windowSize.x, windowSize.y, 0.0f, 0.0f, 0.0f, 0.0f);
 }
 
-void UiOverlay::setEditMode(const EditMode mode) {
-  m_editMode = mode;
-  if (!m_rig) {
-    return;
-  }
-  if (mode == EditMode::Orbit) {
+void UiOverlay::setEditorMode(const EditorMode mode) {
+  m_editorMode = mode;
+}
+
+void UiOverlay::setCameraControlMode(const CameraControlMode mode) {
+  m_cameraControlMode = mode;
+  if (mode == CameraControlMode::Orbit) {
     m_selectionNavigationMode = SelectionNavigationMode::Orbit;
-    m_rig->get().setMode(CameraRig::Mode::Orbit);
-  } else if (mode == EditMode::FreeFly) {
-    m_selectionNavigationMode = SelectionNavigationMode::FreeFly;
-    m_rig->get().setMode(CameraRig::Mode::FreeFly);
-  } else if (m_selectionNavigationMode == SelectionNavigationMode::FreeFly) {
-    m_rig->get().setMode(CameraRig::Mode::FreeFly);
+    if (m_rig) {
+      m_rig->get().setMode(CameraRig::Mode::Orbit);
+    }
   } else {
-    m_rig->get().setMode(CameraRig::Mode::Orbit);
+    m_selectionNavigationMode = SelectionNavigationMode::FreeFly;
+    if (m_rig) {
+      m_rig->get().setMode(CameraRig::Mode::FreeFly);
+    }
   }
 }
 
@@ -383,7 +400,7 @@ void UiOverlay::ensureInitialPanelLayouts() {
   const float topInset = 68.0f;
   const float centerHeight = std::max(1.0f, display.y - bottomHeight);
 
-  ensurePanelLayout("Toolbar", PanelDefaults{12.0f, 12.0f, 252.0f, 94.0f, false},
+  ensurePanelLayout("Toolbar", PanelDefaults{12.0f, 12.0f, 360.0f, 72.0f, false},
                     m_toolbarVisible);
   ensurePanelLayout("Stats",
                     PanelDefaults{display.x - rightWidth - 16.0f, 12.0f, rightWidth,
@@ -498,7 +515,7 @@ void UiOverlay::handleHotkeys(LX_core::IInputState& input) {
 
   const bool escapeDown = input.isKeyDown(LX_core::KeyCode::Escape);
   if (!previewEnabled && escapeDown && !m_prevEscapeDown && m_commandBus &&
-      m_editMode == EditMode::Selection) {
+      m_editorMode == EditorMode::Selection) {
     (void)m_commandBus->get().dispatch("deselect");
   }
   m_prevEscapeDown = escapeDown;
@@ -534,7 +551,7 @@ void UiOverlay::handleHotkeys(LX_core::IInputState& input) {
 }
 
 void UiOverlay::drawToolbarPanel() {
-  applyPanelLayout("Toolbar", PanelDefaults{12.0f, 12.0f, 252.0f, 94.0f, false});
+  applyPanelLayout("Toolbar", PanelDefaults{12.0f, 12.0f, 360.0f, 72.0f, false});
   if (!ImGui::Begin("Toolbar", nullptr,
                     ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
     ImGui::End();
@@ -549,24 +566,31 @@ void UiOverlay::drawToolbarPanel() {
   if (!editingEnabled) {
     ImGui::BeginDisabled();
   }
-  if (drawModeButton("##tool_select", m_editMode == EditMode::Selection,
-                     EditMode::Selection, "Selection")) {
-    setEditMode(EditMode::Selection);
+  if (drawModeButton("##tool_select",
+                     m_editorMode == EditorMode::Selection,
+                     ToolbarIcon::Selection, "Selection")) {
+    setEditorMode(EditorMode::Selection);
   }
   ImGui::SameLine();
-  if (drawModeButton("##tool_orbit", m_editMode == EditMode::Orbit,
-                     EditMode::Orbit, "Orbit")) {
-    setEditMode(EditMode::Orbit);
+  ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
+  ImGui::SameLine();
+  if (drawModeButton("##tool_orbit",
+                     m_cameraControlMode == CameraControlMode::Orbit,
+                     ToolbarIcon::Orbit, "Orbit camera")) {
+    setCameraControlMode(CameraControlMode::Orbit);
   }
   ImGui::SameLine();
-  if (drawModeButton("##tool_freefly", m_editMode == EditMode::FreeFly,
-                     EditMode::FreeFly, "FreeFly")) {
-    setEditMode(EditMode::FreeFly);
+  if (drawModeButton("##tool_freefly",
+                     m_cameraControlMode == CameraControlMode::FreeFly,
+                     ToolbarIcon::FreeFly, "FreeFly camera")) {
+    setCameraControlMode(CameraControlMode::FreeFly);
   }
   if (!editingEnabled) {
     ImGui::EndDisabled();
   }
 
+  ImGui::SameLine();
+  ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
   ImGui::SameLine();
   if (drawIconToggleButton("##tool_reset_editor_camera", false,
                            "Reset editor camera from game camera",
@@ -583,18 +607,18 @@ void UiOverlay::drawToolbarPanel() {
   }
 
   ImGui::SameLine();
-  if (drawIconToggleButton("##tool_preferences", m_preferencesVisible,
-                           "Preferences", drawPreferencesIcon)) {
-    m_preferencesVisible = !m_preferencesVisible;
-    m_configDirty = true;
-  }
-
-  ImGui::Separator();
   const bool debugEnabled = m_debugEnabled && m_debugEnabled();
   if (drawIconToggleButton("##tool_debug", debugEnabled, "Debug",
                            drawPreferencesIcon) &&
       m_commandBus) {
     (void)m_commandBus->get().dispatch(debugEnabled ? "debug off" : "debug on");
+  }
+
+  ImGui::SameLine();
+  if (drawIconToggleButton("##tool_preferences", m_preferencesVisible,
+                           "Preferences", drawPreferencesIcon)) {
+    m_preferencesVisible = !m_preferencesVisible;
+    m_configDirty = true;
   }
 
   ImGui::End();
@@ -622,7 +646,8 @@ void UiOverlay::drawStatsPanel() {
     dui::labelText("preview",
                    m_editorState->get().isPreviewEnabled() ? "Game" : "Editor");
   }
-  dui::labelText("edit mode", editModeLabel(m_editMode));
+  dui::labelText("mode", editorModeLabel(m_editorMode));
+  dui::labelText("camera", cameraControlModeLabel(m_cameraControlMode));
   ImGui::End();
   syncPanelLayout("Stats", m_statsVisible);
 }
@@ -641,9 +666,10 @@ void UiOverlay::drawHelpPanel() {
   }
   ImGui::TextUnformatted("F1  toggle this help panel");
   ImGui::TextUnformatted("F   preview toggle");
-  ImGui::TextUnformatted("Toolbar  Selection / Orbit / FreeFly / Preview / Preferences");
-  ImGui::TextUnformatted("Toolbar row 2  Debug toggle");
-  ImGui::TextUnformatted("Selection mode captures scene clicks outside UI");
+  ImGui::TextUnformatted("Toolbar  Selection | Orbit / FreeFly");
+  ImGui::TextUnformatted("Toolbar  Reset / Preview / Debug / Preferences");
+  ImGui::TextUnformatted("Left mouse selects and manipulates gizmos outside UI");
+  ImGui::TextUnformatted("Right mouse controls the editor camera outside UI");
   ImGui::TextUnformatted("Esc deselect in Selection mode | Delete remove when preview is off");
   ImGui::End();
   syncPanelLayout("Help", m_helpVisible);

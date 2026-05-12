@@ -233,7 +233,9 @@ summaryJson(const ApiStateSnapshot& state) {
       << (state.toolbar.previewEnabled ? "true" : "false")
       << ",\"debugEnabled\":"
       << (state.toolbar.debugEnabled ? "true" : "false")
-      << ",\"mode\":\"" << apiEditModeName(state.toolbar.editMode) << "\""
+      << ",\"mode\":\"" << apiEditorModeName(state.toolbar.mode) << "\""
+      << ",\"camera\":\"" << apiCameraControlModeName(state.toolbar.camera)
+      << "\""
       << ",\"selectionCount\":" << state.selection.selectedPaths.size()
       << ",\"activeCameraPath\":\""
       << apiJsonEscape(state.cameras.activeCameraPath) << "\"}";

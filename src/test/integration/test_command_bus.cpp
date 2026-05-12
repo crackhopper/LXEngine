@@ -98,7 +98,10 @@ struct SceneViewerCommandFixture {
       base.bus, base.editorState, *base.scene};
   bool dirty = false;
   bool debugEnabled = false;
-  int editMode = static_cast<int>(LX_demo::lxe_editor::UiOverlay::EditMode::Orbit);
+  int editMode =
+      static_cast<int>(LX_demo::lxe_editor::UiOverlay::EditorMode::Selection);
+  int cameraControlMode =
+      static_cast<int>(LX_demo::lxe_editor::UiOverlay::CameraControlMode::Orbit);
   std::optional<std::string> documentPath = std::string("data/scenes/test.scene.yaml");
   std::optional<std::string> sourceKind = std::string("local");
   LX_demo::lxe_editor::SceneViewRect rect{
@@ -106,6 +109,52 @@ struct SceneViewerCommandFixture {
 
   SceneViewerCommandFixture() {
     base.editorState.setEditorCamera(base.cameraNode);
+    LX_core::registerBuiltinCommands(
+        base.bus, base.editorState, *base.scene,
+        LX_core::SceneIoContext{
+            .cameraControl =
+                [this](const std::vector<std::string>& args) {
+                  if (args.size() != 2) {
+                    return LX_core::CommandResult{
+                        false, "usage: cam control (orbit|freefly|status)", {}};
+                  }
+                  if (args[1] == "status") {
+                    const std::string camera =
+                        cameraControlMode ==
+                                static_cast<int>(
+                                    LX_demo::lxe_editor::UiOverlay::
+                                        CameraControlMode::FreeFly)
+                            ? "freefly"
+                            : "orbit";
+                    return LX_core::CommandResult{
+                        true, "camera " + camera,
+                        "{\"camera\":\"" + camera + "\"}"};
+                  }
+                  if (args[1] != "orbit" && args[1] != "freefly") {
+                    return LX_core::CommandResult{
+                        false, "unknown camera control: " + args[1], {}};
+                  }
+                  const int previous = cameraControlMode;
+                  cameraControlMode =
+                      args[1] == "orbit"
+                          ? static_cast<int>(
+                                LX_demo::lxe_editor::UiOverlay::
+                                    CameraControlMode::Orbit)
+                          : static_cast<int>(
+                                LX_demo::lxe_editor::UiOverlay::
+                                    CameraControlMode::FreeFly);
+                  LX_core::CommandResult result{
+                      true, "camera " + args[1],
+                      "{\"camera\":\"" + args[1] + "\"}"};
+                  result.metadata["inverse.line"] =
+                      previous == static_cast<int>(
+                                      LX_demo::lxe_editor::UiOverlay::
+                                          CameraControlMode::FreeFly)
+                          ? "cam control freefly"
+                          : "cam control orbit";
+                  return result;
+                },
+        });
     LX_demo::lxe_editor::registerLxeEditorCommands(
         base.bus,
         LX_demo::lxe_editor::LxeEditorCommandContext{
@@ -114,6 +163,10 @@ struct SceneViewerCommandFixture {
             .interaction = interaction,
             .getEditMode = [this]() { return editMode; },
             .setEditMode = [this](const int modeCode) { editMode = modeCode; },
+            .getCameraControlMode = [this]() { return cameraControlMode; },
+            .setCameraControlMode = [this](const int modeCode) {
+              cameraControlMode = modeCode;
+            },
             .sceneViewRect = [this]() { return rect; },
             .dirty = [this]() { return dirty; },
             .permission = []() { return std::string("user"); },
@@ -141,7 +194,10 @@ struct SceneViewerPickFixture {
   LX_demo::lxe_editor::SceneInteractionController interaction{
       bus, editorState, *scene};
   bool debugEnabled = false;
-  int editMode = static_cast<int>(LX_demo::lxe_editor::UiOverlay::EditMode::Selection);
+  int editMode =
+      static_cast<int>(LX_demo::lxe_editor::UiOverlay::EditorMode::Selection);
+  int cameraControlMode =
+      static_cast<int>(LX_demo::lxe_editor::UiOverlay::CameraControlMode::Orbit);
   LX_demo::lxe_editor::SceneViewRect rect{
       .x = 0.0f, .y = 0.0f, .width = 800.0f, .height = 600.0f};
 
@@ -173,6 +229,10 @@ struct SceneViewerPickFixture {
             .interaction = interaction,
             .getEditMode = [this]() { return editMode; },
             .setEditMode = [this](const int modeCode) { editMode = modeCode; },
+            .getCameraControlMode = [this]() { return cameraControlMode; },
+            .setCameraControlMode = [this](const int modeCode) {
+              cameraControlMode = modeCode;
+            },
             .sceneViewRect = [this]() { return rect; },
             .dirty = []() { return false; },
             .permission = []() { return std::string("user"); },

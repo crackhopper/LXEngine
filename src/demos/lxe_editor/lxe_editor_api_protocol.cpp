@@ -112,15 +112,23 @@ const char* apiPermissionLevelName(
   return "unknown";
 }
 
-const char* apiEditModeName(const ApiEditMode mode) {
+const char* apiEditorModeName(const ApiEditorMode mode) {
   switch (mode) {
-  case ApiEditMode::Selection:
+  case ApiEditorMode::Selection:
     return "selection";
-  case ApiEditMode::Orbit:
+  case ApiEditorMode::Unknown:
+    break;
+  }
+  return "unknown";
+}
+
+const char* apiCameraControlModeName(const ApiCameraControlMode mode) {
+  switch (mode) {
+  case ApiCameraControlMode::Orbit:
     return "orbit";
-  case ApiEditMode::FreeFly:
+  case ApiCameraControlMode::FreeFly:
     return "freefly";
-  case ApiEditMode::Unknown:
+  case ApiCameraControlMode::Unknown:
     break;
   }
   return "unknown";
@@ -288,8 +296,9 @@ std::string toJson(const ApiCameraSnapshot& cameras) {
 
 std::string toJson(const ApiToolbarSnapshot& toolbar) {
   std::string out = "{";
-  appendJsonStringField(out, "editMode",
-                        apiEditModeName(toolbar.editMode), true);
+  appendJsonStringField(out, "mode", apiEditorModeName(toolbar.mode), true);
+  appendJsonStringField(out, "camera",
+                        apiCameraControlModeName(toolbar.camera));
   appendJsonBoolField(out, "previewEnabled", toolbar.previewEnabled);
   appendJsonBoolField(out, "debugEnabled", toolbar.debugEnabled);
   out += '}';

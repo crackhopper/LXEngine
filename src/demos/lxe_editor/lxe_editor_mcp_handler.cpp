@@ -39,7 +39,9 @@ constexpr std::string_view kProtocolVersion = "2025-03-26";
       << (state.toolbar.previewEnabled ? "true" : "false")
       << ",\"debugEnabled\":"
       << (state.toolbar.debugEnabled ? "true" : "false")
-      << ",\"mode\":\"" << apiEditModeName(state.toolbar.editMode) << "\""
+      << ",\"mode\":\"" << apiEditorModeName(state.toolbar.mode) << "\""
+      << ",\"camera\":\""
+      << apiCameraControlModeName(state.toolbar.camera) << "\""
       << ",\"selectionCount\":" << state.selection.selectedPaths.size()
       << ",\"activeCameraPath\":\""
       << jsonEscape(state.cameras.activeCameraPath) << "\"}";
@@ -153,7 +155,7 @@ constexpr std::string_view kProtocolVersion = "2025-03-26";
                                              const std::string& text) {
   return std::string("{\"contents\":[{\"uri\":\"") + jsonEscape(uri) +
          "\",\"mimeType\":\"application/json\",\"text\":\"" +
-         jsonEscape(text) + "\"}]}";
+         jsonEscape(text) + "\",\"json\":" + text + "}]}";
 }
 
 [[nodiscard]] std::optional<std::string> scalarString(const YAML::Node& node,
