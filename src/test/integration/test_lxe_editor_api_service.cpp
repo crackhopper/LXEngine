@@ -62,7 +62,8 @@ struct Fixture final {
     hookState.cameras.game.target = {4.0f, 5.0f, 5.0f};
     hookState.cameras.game.up = {0.0f, 1.0f, 0.0f};
 
-    hookState.toolbar.editMode = ApiEditMode::Orbit;
+    hookState.toolbar.mode = ApiEditorMode::Selection;
+    hookState.toolbar.camera = ApiCameraControlMode::FreeFly;
     hookState.toolbar.previewEnabled = false;
 
     hooks.sceneSummary = [this]() { return hookState.scene; };
@@ -121,8 +122,18 @@ void testCaptureStateUsesHooksAndEditorSelection() {
          "scene summary should come from hook provider");
   EXPECT(snapshot.scene.currentDocumentPath == "data/scenes/test.scene.yaml",
          "scene path should come from hook provider");
-  EXPECT(snapshot.toolbar.editMode == ApiEditMode::Orbit,
-         "toolbar snapshot should come from hook provider");
+  EXPECT(snapshot.toolbar.mode == ApiEditorMode::Selection,
+         "toolbar snapshot should expose editor mode from hook provider");
+  EXPECT(snapshot.toolbar.camera == ApiCameraControlMode::FreeFly,
+         "toolbar snapshot should expose camera control mode from hook provider");
+  const std::string toolbarJson =
+      LX_demo::lxe_editor::toJson(snapshot.toolbar);
+  EXPECT(toolbarJson.find("\"mode\":\"selection\"") != std::string::npos,
+         "toolbar JSON should expose editor mode as selection");
+  EXPECT(toolbarJson.find("\"camera\":\"freefly\"") != std::string::npos,
+         "toolbar JSON should expose camera control mode separately");
+  EXPECT(toolbarJson.find("\"editMode\"") == std::string::npos,
+         "toolbar JSON should not expose legacy editMode");
   EXPECT(snapshot.selection.selectedPaths.size() == 1,
          "selection snapshot should include EditorState selection");
   EXPECT(snapshot.selection.primaryPath == node->getPath(),
@@ -136,29 +147,25 @@ void testCaptureStateUsesHooksAndEditorSelection() {
   }
 }
 
-void testRefreshEmitsDirtyPreviewAndModeChangeEvents() {
+void testRefreshEmitsDirtyAndPreviewChangeEvents() {
   Fixture fixture;
   const ApiEventCursor cursor = fixture.service->currentCursor();
 
   fixture.hookState.scene.dirty = true;
   fixture.hookState.toolbar.previewEnabled = true;
-  fixture.hookState.toolbar.editMode = ApiEditMode::Selection;
   fixture.service->refresh();
 
   const ApiEventBatch batch =
       fixture.service->collectEventsSince(cursor);
   bool sawDirty = false;
   bool sawPreview = false;
-  bool sawMode = false;
   for (const auto& event : batch.events) {
     sawDirty = sawDirty || event.type == ApiEventType::DirtyChanged;
     sawPreview = sawPreview || event.type == ApiEventType::PreviewChanged;
-    sawMode = sawMode || event.type == ApiEventType::ModeChanged;
   }
   EXPECT(sawDirty, "refresh should emit dirty.changed when dirty flips");
   EXPECT(sawPreview,
          "refresh should emit preview.changed when preview flips");
-  EXPECT(sawMode, "refresh should emit mode.changed when edit mode flips");
 }
 
 void testRuntimeSceneNodeMutationEmitsApiSceneNodeChangedEvent() {
@@ -439,7 +446,7 @@ void testApiTokenStatePersistsSingleGeneratedToken() {
 int main() {
   testExecuteCommandMirrorsCommandBusAndEmitsCommandEvent();
   testCaptureStateUsesHooksAndEditorSelection();
-  testRefreshEmitsDirtyPreviewAndModeChangeEvents();
+  testRefreshEmitsDirtyAndPreviewChangeEvents();
   testRuntimeSceneNodeMutationEmitsApiSceneNodeChangedEvent();
   testCommandDrivenSceneMutationKeepsCommandEventBeforeSceneNodeChanged();
   testExecuteCommandFlushesOlderQueuedRuntimeEventsBeforeNewCommand();

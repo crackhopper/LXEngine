@@ -82,8 +82,10 @@ struct Fixture final {
     };
     hooks.toolbarSnapshot = [] {
       return ApiToolbarSnapshot{
-          .editMode = ApiEditMode::Orbit,
+          .mode = ApiEditorMode::Selection,
+          .camera = ApiCameraControlMode::FreeFly,
           .previewEnabled = false,
+          .debugEnabled = true,
       };
     };
     service =
@@ -188,6 +190,25 @@ std::string makeHttpPostRequest(const std::string& path,
   return request;
 }
 
+std::string makeHttpGetRequest(const std::string& path,
+                               const bool authorized = true) {
+  std::string request = "GET " + path + " HTTP/1.1\r\nHost: localhost\r\n";
+  if (authorized) {
+    request += "Authorization: Bearer secret-token\r\n";
+  }
+  request += "\r\n";
+  return request;
+}
+
+void expectSplitToolbarState(const std::string& body) {
+  EXPECT(body.find("\"mode\":\"selection\"") != std::string::npos,
+         "toolbar response should include editor mode");
+  EXPECT(body.find("\"camera\":\"freefly\"") != std::string::npos,
+         "toolbar response should include camera control mode");
+  EXPECT(body.find("\"editMode\"") == std::string::npos,
+         "toolbar response should not include legacy editMode");
+}
+
 std::string makeMaskedWsFrame(const std::string& payload) {
   const std::array<std::uint8_t, 4> mask = {0x12, 0x34, 0x56, 0x78};
   std::string out;
@@ -239,6 +260,34 @@ void testHttpAuthorizationAndCommandRoundTrip() {
   EXPECT(response.find("\"message\":\"hello\"") != std::string::npos,
          "authorized command should surface command response");
   closeSocket(authorized);
+}
+
+void testHttpStateEndpointsExposeSplitToolbarState() {
+  Fixture fixture;
+
+  const auto get = [&](const std::string& path) -> std::string {
+    const SocketHandle socketHandle = connectClient(fixture.server->boundPort());
+    EXPECT(socketHandle != kInvalidSocket, "HTTP state client should connect");
+    if (socketHandle == kInvalidSocket) {
+      return {};
+    }
+    EXPECT(sendAll(socketHandle, makeHttpGetRequest(path)),
+           "HTTP state request should send");
+    const std::string response =
+        pumpUntilRead(*fixture.service, fixture.server.get(), socketHandle);
+    closeSocket(socketHandle);
+    return response;
+  };
+
+  const std::string toolbarResponse = get("/api/state/toolbar");
+  EXPECT(toolbarResponse.find("200 OK") != std::string::npos,
+         "toolbar state request should return 200");
+  expectSplitToolbarState(toolbarResponse);
+
+  const std::string summaryResponse = get("/api/state/summary");
+  EXPECT(summaryResponse.find("200 OK") != std::string::npos,
+         "summary state request should return 200");
+  expectSplitToolbarState(summaryResponse);
 }
 
 void testWebSocketHandshakeAndEvents() {
@@ -343,6 +392,11 @@ void testMcpInitializeAndTools() {
       "\"arguments\":{}}}");
   EXPECT(summaryResponse.find("\"sceneName\":\"Scene\"") != std::string::npos,
          "MCP summary tool should return scene summary");
+
+  const std::string toolbarResourceResponse = roundTrip(
+      "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"resources/read\","
+      "\"params\":{\"uri\":\"lxe-editor://toolbar\"}}");
+  expectSplitToolbarState(toolbarResourceResponse);
 }
 
 void testHttpMcpRequiresBearerToken() {
@@ -374,6 +428,7 @@ void testHttpMcpRequiresBearerToken() {
 
 int main() {
   testHttpAuthorizationAndCommandRoundTrip();
+  testHttpStateEndpointsExposeSplitToolbarState();
   testWebSocketHandshakeAndEvents();
   testRuntimeStateRoundTripsYaml();
   testMcpInitializeAndTools();

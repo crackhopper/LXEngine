@@ -986,11 +986,24 @@ void testSceneSavePreservesRedoHistory() {
 void testSceneViewerModeAndStateCommands() {
   SceneViewerCommandFixture fixture;
 
-  const CommandResult modeResult = fixture.base.bus.dispatch("mode freefly");
-  EXPECT(modeResult.ok, "mode freefly should succeed");
-  EXPECT(modeResult.structured.find("\"mode\":\"freefly\"") !=
+  const CommandResult rejectedMode = fixture.base.bus.dispatch("mode freefly");
+  EXPECT(!rejectedMode.ok,
+         "mode freefly should be rejected because camera is separate");
+  EXPECT(rejectedMode.message.find("cam control freefly") != std::string::npos,
+         "mode freefly error should point at cam control freefly");
+
+  const CommandResult modeResult = fixture.base.bus.dispatch("mode selection");
+  EXPECT(modeResult.ok, "mode selection should succeed");
+  EXPECT(modeResult.structured.find("\"mode\":\"selection\"") !=
              std::string::npos,
-         "mode command should return structured mode payload");
+         "mode command should return selection mode payload");
+
+  const CommandResult cameraResult =
+      fixture.base.bus.dispatch("cam control freefly");
+  EXPECT(cameraResult.ok, "cam control freefly should succeed");
+  EXPECT(cameraResult.structured.find("\"camera\":\"freefly\"") !=
+             std::string::npos,
+         "camera command should return camera payload");
 
   const CommandResult selectResult = fixture.base.bus.dispatch("select /world/cube");
   EXPECT(selectResult.ok, "select setup for state summary should succeed");
@@ -1029,18 +1042,28 @@ void testSceneViewerModeAndStateCommands() {
 
   const CommandResult toolbarResult = fixture.base.bus.dispatch("state toolbar");
   EXPECT(toolbarResult.ok, "state toolbar should succeed");
-  EXPECT(toolbarResult.structured.find("\"mode\":\"freefly\"") !=
+  EXPECT(toolbarResult.structured.find("\"mode\":\"selection\"") !=
              std::string::npos,
-         "state toolbar should reflect current edit mode");
+         "state toolbar should reflect current editor mode");
+  EXPECT(toolbarResult.structured.find("\"camera\":\"freefly\"") !=
+             std::string::npos,
+         "state toolbar should reflect current camera control mode");
   EXPECT(toolbarResult.structured.find("\"debugEnabled\":false") !=
              std::string::npos,
          "state toolbar should include debug toggle state");
 
   const CommandResult modeStatus = fixture.base.bus.dispatch("mode status");
   EXPECT(modeStatus.ok, "mode status should succeed");
-  EXPECT(modeStatus.structured.find("\"mode\":\"freefly\"") !=
+  EXPECT(modeStatus.structured.find("\"mode\":\"selection\"") !=
              std::string::npos,
-         "mode status should report current mode");
+         "mode status should report current editor mode");
+
+  const CommandResult cameraStatus =
+      fixture.base.bus.dispatch("cam control status");
+  EXPECT(cameraStatus.ok, "cam control status should succeed");
+  EXPECT(cameraStatus.structured.find("\"camera\":\"freefly\"") !=
+             std::string::npos,
+         "camera status should report current camera control mode");
 }
 
 void testSceneViewerDebugCommandsUpdateSummaryAndToolbarState() {
