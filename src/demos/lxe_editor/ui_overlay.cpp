@@ -221,7 +221,8 @@ void UiOverlay::attach(CameraRig& rig, LX_core::CommandBus& commandBus,
                        EditorConfigDocument& editorConfig,
                        LX_core::SceneTreePanel& sceneTreePanel,
                        LX_core::InspectorPanel& inspectorPanel,
-                       LX_core::ConsolePanel& consolePanel) {
+                       LX_core::ConsolePanel& consolePanel,
+                       std::function<bool()> debugEnabled) {
   m_rig = std::ref(rig);
   m_commandBus = std::ref(commandBus);
   m_editorState = std::ref(editorState);
@@ -229,6 +230,7 @@ void UiOverlay::attach(CameraRig& rig, LX_core::CommandBus& commandBus,
   m_sceneTreePanel = std::ref(sceneTreePanel);
   m_inspectorPanel = std::ref(inspectorPanel);
   m_consolePanel = std::ref(consolePanel);
+  m_debugEnabled = std::move(debugEnabled);
   syncPanelOpenStatesFromConfig();
   if (!m_baseStyleCaptured && ImGui::GetCurrentContext() != nullptr) {
     m_baseStyle = ImGui::GetStyle();
@@ -359,7 +361,7 @@ void UiOverlay::ensureInitialPanelLayouts() {
   const float topInset = 68.0f;
   const float centerHeight = std::max(1.0f, display.y - bottomHeight);
 
-  ensurePanelLayout("Toolbar", PanelDefaults{12.0f, 12.0f, 252.0f, 56.0f, false},
+  ensurePanelLayout("Toolbar", PanelDefaults{12.0f, 12.0f, 252.0f, 94.0f, false},
                     m_toolbarVisible);
   ensurePanelLayout("Stats",
                     PanelDefaults{display.x - rightWidth - 16.0f, 12.0f, rightWidth,
@@ -487,7 +489,7 @@ void UiOverlay::handleHotkeys(LX_core::IInputState& input) {
 }
 
 void UiOverlay::drawToolbarPanel() {
-  applyPanelLayout("Toolbar", PanelDefaults{12.0f, 12.0f, 252.0f, 56.0f, false});
+  applyPanelLayout("Toolbar", PanelDefaults{12.0f, 12.0f, 252.0f, 94.0f, false});
   if (!ImGui::Begin("Toolbar", nullptr,
                     ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
     ImGui::End();
@@ -542,6 +544,14 @@ void UiOverlay::drawToolbarPanel() {
     m_configDirty = true;
   }
 
+  ImGui::Separator();
+  const bool debugEnabled = m_debugEnabled && m_debugEnabled();
+  if (drawIconToggleButton("##tool_debug", debugEnabled, "Debug",
+                           drawPreferencesIcon) &&
+      m_commandBus) {
+    (void)m_commandBus->get().dispatch(debugEnabled ? "debug off" : "debug on");
+  }
+
   ImGui::End();
   syncPanelLayout("Toolbar", true);
 }
@@ -587,6 +597,7 @@ void UiOverlay::drawHelpPanel() {
   ImGui::TextUnformatted("F1  toggle this help panel");
   ImGui::TextUnformatted("F   preview toggle");
   ImGui::TextUnformatted("Toolbar  Selection / Orbit / FreeFly / Preview / Preferences");
+  ImGui::TextUnformatted("Toolbar row 2  Debug toggle");
   ImGui::TextUnformatted("Selection mode captures scene clicks outside UI");
   ImGui::TextUnformatted("Esc deselect in Selection mode | Delete remove when preview is off");
   ImGui::End();

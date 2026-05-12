@@ -4,9 +4,12 @@
 #include "core/editor/editor_state.hpp"
 #include "core/input/mouse_button.hpp"
 #include "core/math/bounds.hpp"
+#include "core/math/mat.hpp"
 #include "core/scene/components/camera_component.hpp"
 
 #include <algorithm>
+#include <iomanip>
+#include <sstream>
 
 namespace LX_demo::lxe_editor {
 namespace {
@@ -21,12 +24,95 @@ namespace {
       bounds.max + LX_core::Vec3f{padding, padding, padding}};
 }
 
+[[nodiscard]] std::string formatFloat(const float value) {
+  std::ostringstream oss;
+  oss << std::fixed << std::setprecision(3) << value;
+  return oss.str();
+}
+
+[[nodiscard]] std::string makeVec2Json(const LX_core::Vec2f& value) {
+  return std::string("{\"x\":") + formatFloat(value.x) + ",\"y\":" +
+         formatFloat(value.y) + "}";
+}
+
+[[nodiscard]] std::string makeVec3Json(const LX_core::Vec3f& value) {
+  return std::string("{\"x\":") + formatFloat(value.x) + ",\"y\":" +
+         formatFloat(value.y) + ",\"z\":" + formatFloat(value.z) + "}";
+}
+
+[[nodiscard]] LX_core::Vec2f screenPixelToNdc(const LX_core::Vec2f& screenPixel,
+                                              const LX_core::Vec2f& viewportSize) {
+  const float viewportWidth = viewportSize.x > 0.0f ? viewportSize.x : 1.0f;
+  const float viewportHeight = viewportSize.y > 0.0f ? viewportSize.y : 1.0f;
+  return LX_core::Vec2f{
+      ((screenPixel.x + 0.5f) / viewportWidth) * 2.0f - 1.0f,
+      1.0f - ((screenPixel.y + 0.5f) / viewportHeight) * 2.0f};
+}
+
+struct ProjectedPoint final {
+  LX_core::Vec2f ndc{0.0f, 0.0f};
+  LX_core::Vec2f pixel{0.0f, 0.0f};
+};
+
+[[nodiscard]] std::optional<ProjectedPoint> projectPointToViewport(
+    const LX_core::Vec3f& worldPoint, const LX_core::Mat4f& viewProj,
+    const LX_core::Vec2f& viewportSize) {
+  const LX_core::Vec4f clip =
+      viewProj * LX_core::Vec4f{worldPoint.x, worldPoint.y, worldPoint.z, 1.0f};
+  if (std::abs(clip.w) <= 1e-6f || clip.w <= 0.0f) {
+    return std::nullopt;
+  }
+
+  const LX_core::Vec3f ndc3 = clip.toVec3();
+  return ProjectedPoint{
+      .ndc = LX_core::Vec2f{ndc3.x, ndc3.y},
+      .pixel = LX_core::Vec2f{
+          (ndc3.x * 0.5f + 0.5f) * viewportSize.x,
+          (1.0f - (ndc3.y * 0.5f + 0.5f)) * viewportSize.y}};
+}
+
+[[nodiscard]] std::string makePickDebugLine(const LX_core::Vec2f& localPixel,
+                                            const LX_core::Vec2f& clickNdc,
+                                            const std::optional<LX_core::Vec3f>& hitWorld,
+                                            const std::optional<ProjectedPoint>& projected) {
+  std::ostringstream oss;
+  oss << "pick_debug {\"screenPixel\":" << makeVec2Json(localPixel)
+      << ",\"screenNdc\":" << makeVec2Json(clickNdc)
+      << ",\"hit\":" << (hitWorld.has_value() ? "true" : "false")
+      << ",\"hitWorld\":";
+  if (hitWorld.has_value()) {
+    oss << makeVec3Json(*hitWorld);
+  } else {
+    oss << "null";
+  }
+  oss << ",\"hitNdc\":";
+  if (projected.has_value()) {
+    oss << makeVec2Json(projected->ndc);
+  } else {
+    oss << "null";
+  }
+  oss << ",\"projectedPixel\":";
+  if (projected.has_value()) {
+    oss << makeVec2Json(projected->pixel);
+  } else {
+    oss << "null";
+  }
+  oss << "}";
+  return oss.str();
+}
+
 } // namespace
 
 SceneInteractionController::SceneInteractionController(
     LX_core::CommandBus& commandBus, LX_core::EditorState& editorState,
     LX_core::Scene& scene)
     : m_commandBus(commandBus), m_editorState(editorState), m_scene(scene) {}
+
+void SceneInteractionController::setDebugLoggingHooks(
+    DebugEnabledFn debugEnabled, AppendDebugLineFn appendDebugLine) {
+  m_debugEnabled = std::move(debugEnabled);
+  m_appendDebugLine = std::move(appendDebugLine);
+}
 
 LX_core::CommandResult SceneInteractionController::dispatchPickingClick(
     const LX_core::Vec2f& screenPixel, const LX_core::Vec2f& viewportSize) {
@@ -59,16 +145,30 @@ LX_core::CommandResult SceneInteractionController::dispatchPickingClick(
                                   {}};
   }
 
+  const LX_core::Vec2f localPixel = sceneViewRect.localPixel(screenPixel);
+  const LX_core::Vec2f viewportSize = sceneViewRect.size();
   const LX_core::Ray ray = editorCamera->get().pickRay(
-      sceneViewRect.localPixel(screenPixel), sceneViewRect.size());
+      localPixel, viewportSize);
   const auto hit =
       m_scene.pick(ray, LX_core::Layer_All & ~LX_core::Layer_EditorOverlay);
+  const bool debugEnabled = m_debugEnabled && m_debugEnabled();
+  const LX_core::Vec2f clickNdc = screenPixelToNdc(localPixel, viewportSize);
+  std::optional<LX_core::Vec3f> hitWorld;
+  std::optional<ProjectedPoint> projected;
+  if (hit.has_value()) {
+    hitWorld = ray.origin + ray.direction * hit->distance;
+    const LX_core::Mat4f viewProj =
+        editorCamera->get().getProjMatrix() * editorCamera->get().getViewMatrix();
+    projected = projectPointToViewport(*hitWorld, viewProj, viewportSize);
+  }
+  if (debugEnabled && m_appendDebugLine) {
+    m_appendDebugLine(makePickDebugLine(localPixel, clickNdc, hitWorld, projected));
+  }
   if (hit.has_value() && hit->node) {
     LX_core::CommandResult result =
         m_commandBus.dispatch("select \"" + hit->node->getPath() + "\"");
     if (result.ok) {
-      m_lastHitMarker = HitMarker{hit->node,
-                                  ray.origin + ray.direction * hit->distance};
+      m_lastHitMarker = HitMarker{hit->node, *hitWorld};
     }
     return result;
   }

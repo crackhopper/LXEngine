@@ -291,6 +291,7 @@ std::string toJson(const ApiToolbarSnapshot& toolbar) {
   appendJsonStringField(out, "editMode",
                         apiEditModeName(toolbar.editMode), true);
   appendJsonBoolField(out, "previewEnabled", toolbar.previewEnabled);
+  appendJsonBoolField(out, "debugEnabled", toolbar.debugEnabled);
   out += '}';
   return out;
 }

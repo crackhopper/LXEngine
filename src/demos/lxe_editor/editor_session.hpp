@@ -48,6 +48,7 @@ public:
   [[nodiscard]] const LX_core::ConsolePanel& consolePanel() const;
   [[nodiscard]] usize bindingsGeneration() const;
   [[nodiscard]] ScenePermissionLevel permission() const;
+  [[nodiscard]] bool debugEnabled() const;
   [[nodiscard]] const std::optional<std::filesystem::path>&
   currentDocumentPath() const;
   [[nodiscard]] const std::optional<SceneSourceKind>& currentSourceKind() const;
@@ -85,6 +86,7 @@ private:
   EditorDataDocument m_editorData;
   LX_core::Vec2f m_windowSize{1280.0f, 720.0f};
   usize m_bindingsGeneration = 0;
+  bool m_debugEnabled = false;
 };
 
 } // namespace LX_demo::lxe_editor

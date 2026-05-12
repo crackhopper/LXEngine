@@ -188,6 +188,8 @@ ScenePermissionLevel LxeEditorSession::permission() const {
   return m_session.permission();
 }
 
+bool LxeEditorSession::debugEnabled() const { return m_debugEnabled; }
+
 const std::optional<std::filesystem::path>&
 LxeEditorSession::currentDocumentPath() const {
   return m_session.currentDocumentPath();
@@ -414,6 +416,10 @@ void LxeEditorSession::rebuildBindings() {
                        ? std::string("admin")
                        : std::string("user");
           },
+          .debugEnabled = [this]() { return m_debugEnabled; },
+          .setDebugEnabled = [this](const bool enabled) {
+            m_debugEnabled = enabled;
+          },
           .currentDocumentPath = [this]() -> std::optional<std::string> {
             const auto path = m_session.currentDocumentPath();
             return path ? std::optional<std::string>(path->string()) : std::nullopt;
@@ -429,10 +435,16 @@ void LxeEditorSession::rebuildBindings() {
             return m_consolePanel ? m_consolePanel->persistedHistory()
                                   : std::vector<std::string>{};
           },
+          .appendConsoleDebugLine = [this](std::string_view line) {
+            if (m_consolePanel) {
+              m_consolePanel->appendSystemLine(line);
+            }
+          },
       });
 
   m_ui.attach(m_rig, *m_commandBus, m_editorState, m_editorConfig, *m_sceneTreePanel,
-              *m_inspectorPanel, *m_consolePanel);
+              *m_inspectorPanel, *m_consolePanel,
+              [this]() { return m_debugEnabled; });
   ++m_bindingsGeneration;
 }
 

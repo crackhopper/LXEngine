@@ -27,6 +27,7 @@ public:
   void dispatchRedo();
   void setPersistedHistory(std::vector<std::string> historyLines);
   void recordPersistedHistoryLine(std::string_view line);
+  void appendSystemLine(std::string_view line);
   [[nodiscard]] std::vector<std::string> persistedHistory() const;
   [[nodiscard]] bool consumePersistedHistoryDirty();
 
@@ -43,6 +44,7 @@ private:
 
   CommandBus &m_commandBus;
   ConsoleInputController m_inputController;
+  std::vector<std::string> m_systemLines;
   usize m_displayStartIndex = 0;
   bool m_open = true;
   bool m_scrollToBottom = false;

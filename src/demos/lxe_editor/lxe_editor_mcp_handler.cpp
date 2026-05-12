@@ -37,6 +37,8 @@ constexpr std::string_view kProtocolVersion = "2025-03-26";
       << ",\"dirty\":" << (state.scene.dirty ? "true" : "false")
       << ",\"previewEnabled\":"
       << (state.toolbar.previewEnabled ? "true" : "false")
+      << ",\"debugEnabled\":"
+      << (state.toolbar.debugEnabled ? "true" : "false")
       << ",\"mode\":\"" << apiEditModeName(state.toolbar.editMode) << "\""
       << ",\"selectionCount\":" << state.selection.selectedPaths.size()
       << ",\"activeCameraPath\":\""

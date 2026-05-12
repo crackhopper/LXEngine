@@ -231,6 +231,8 @@ summaryJson(const ApiStateSnapshot& state) {
       << ",\"dirty\":" << (state.scene.dirty ? "true" : "false")
       << ",\"previewEnabled\":"
       << (state.toolbar.previewEnabled ? "true" : "false")
+      << ",\"debugEnabled\":"
+      << (state.toolbar.debugEnabled ? "true" : "false")
       << ",\"mode\":\"" << apiEditModeName(state.toolbar.editMode) << "\""
       << ",\"selectionCount\":" << state.selection.selectedPaths.size()
       << ",\"activeCameraPath\":\""

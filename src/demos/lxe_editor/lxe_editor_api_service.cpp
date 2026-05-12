@@ -179,6 +179,7 @@ ApiToolbarSnapshot LxeEditorApiService::captureToolbar() const {
   return ApiToolbarSnapshot{
       .editMode = ApiEditMode::Unknown,
       .previewEnabled = m_editorState.isPreviewEnabled(),
+      .debugEnabled = false,
   };
 }
 

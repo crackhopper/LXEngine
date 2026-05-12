@@ -8,6 +8,7 @@
 #include "scene_view_rect.hpp"
 
 #include <optional>
+#include <functional>
 
 namespace LX_core {
 class EditorState;
@@ -17,9 +18,14 @@ namespace LX_demo::lxe_editor {
 
 class SceneInteractionController final {
 public:
+  using DebugEnabledFn = std::function<bool()>;
+  using AppendDebugLineFn = std::function<void(std::string_view)>;
+
   SceneInteractionController(LX_core::CommandBus& commandBus,
                              LX_core::EditorState& editorState,
                              LX_core::Scene& scene);
+  void setDebugLoggingHooks(DebugEnabledFn debugEnabled,
+                            AppendDebugLineFn appendDebugLine);
 
   [[nodiscard]] LX_core::CommandResult dispatchPickingClick(
       const LX_core::Vec2f& screenPixel, const LX_core::Vec2f& viewportSize);
@@ -43,6 +49,8 @@ private:
   LX_core::Scene& m_scene;
   bool m_prevLeftDown = false;
   std::optional<HitMarker> m_lastHitMarker;
+  DebugEnabledFn m_debugEnabled;
+  AppendDebugLineFn m_appendDebugLine;
 };
 
 } // namespace LX_demo::lxe_editor

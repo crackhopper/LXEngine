@@ -97,6 +97,7 @@ struct SceneViewerCommandFixture {
   LX_demo::lxe_editor::SceneInteractionController interaction{
       base.bus, base.editorState, *base.scene};
   bool dirty = false;
+  bool debugEnabled = false;
   int editMode = static_cast<int>(LX_demo::lxe_editor::UiOverlay::EditMode::Orbit);
   std::optional<std::string> documentPath = std::string("data/scenes/test.scene.yaml");
   std::optional<std::string> sourceKind = std::string("local");
@@ -116,6 +117,10 @@ struct SceneViewerCommandFixture {
             .sceneViewRect = [this]() { return rect; },
             .dirty = [this]() { return dirty; },
             .permission = []() { return std::string("user"); },
+            .debugEnabled = [this]() { return debugEnabled; },
+            .setDebugEnabled = [this](const bool enabled) {
+              debugEnabled = enabled;
+            },
             .currentDocumentPath = [this]() { return documentPath; },
             .currentSourceKind = [this]() { return sourceKind; },
             .persistedHistory = []() { return std::vector<std::string>{}; },
@@ -126,6 +131,7 @@ struct SceneViewerCommandFixture {
 struct SceneViewerPickFixture {
   LX_core::EditorState editorState;
   LX_core::CommandBus bus;
+  LX_core::ConsolePanel consolePanel{bus};
   LX_core::SceneSharedPtr scene = LX_core::Scene::create(nullptr);
   LX_core::SceneNodeSharedPtr editorCameraNode =
       LX_core::SceneNode::create("editor_cam_node");
@@ -134,6 +140,7 @@ struct SceneViewerPickFixture {
   LX_core::SceneNodeSharedPtr targetNode = LX_core::SceneNode::create("cube");
   LX_demo::lxe_editor::SceneInteractionController interaction{
       bus, editorState, *scene};
+  bool debugEnabled = false;
   int editMode = static_cast<int>(LX_demo::lxe_editor::UiOverlay::EditMode::Selection);
   LX_demo::lxe_editor::SceneViewRect rect{
       .x = 0.0f, .y = 0.0f, .width = 800.0f, .height = 600.0f};
@@ -169,9 +176,15 @@ struct SceneViewerPickFixture {
             .sceneViewRect = [this]() { return rect; },
             .dirty = []() { return false; },
             .permission = []() { return std::string("user"); },
+            .debugEnabled = [this]() { return debugEnabled; },
+            .setDebugEnabled = [this](const bool enabled) {
+              debugEnabled = enabled;
+            },
             .currentDocumentPath = []() { return std::optional<std::string>{}; },
             .currentSourceKind = []() { return std::optional<std::string>{}; },
             .persistedHistory = []() { return std::vector<std::string>{}; },
+            .appendConsoleDebugLine =
+                [this](std::string_view line) { consolePanel.appendSystemLine(line); },
         });
   }
 };
@@ -985,12 +998,48 @@ void testSceneViewerModeAndStateCommands() {
   EXPECT(toolbarResult.structured.find("\"mode\":\"freefly\"") !=
              std::string::npos,
          "state toolbar should reflect current edit mode");
+  EXPECT(toolbarResult.structured.find("\"debugEnabled\":false") !=
+             std::string::npos,
+         "state toolbar should include debug toggle state");
 
   const CommandResult modeStatus = fixture.base.bus.dispatch("mode status");
   EXPECT(modeStatus.ok, "mode status should succeed");
   EXPECT(modeStatus.structured.find("\"mode\":\"freefly\"") !=
              std::string::npos,
          "mode status should report current mode");
+}
+
+void testSceneViewerDebugCommandsUpdateSummaryAndToolbarState() {
+  SceneViewerCommandFixture fixture;
+
+  const CommandResult initialStatus = fixture.base.bus.dispatch("debug status");
+  EXPECT(initialStatus.ok, "debug status should succeed");
+  EXPECT(initialStatus.structured.find("\"debugEnabled\":false") !=
+             std::string::npos,
+         "debug status should report disabled by default");
+
+  const CommandResult enable = fixture.base.bus.dispatch("debug on");
+  EXPECT(enable.ok, "debug on should succeed");
+  EXPECT(enable.structured.find("\"debugEnabled\":true") != std::string::npos,
+         "debug on should report enabled state");
+
+  const CommandResult summaryResult = fixture.base.bus.dispatch("state summary");
+  EXPECT(summaryResult.ok, "state summary should still succeed after debug on");
+  EXPECT(summaryResult.structured.find("\"debugEnabled\":true") !=
+             std::string::npos,
+         "state summary should surface debug state");
+
+  const CommandResult toolbarResult = fixture.base.bus.dispatch("state toolbar");
+  EXPECT(toolbarResult.ok, "state toolbar should succeed after debug on");
+  EXPECT(toolbarResult.structured.find("\"debugEnabled\":true") !=
+             std::string::npos,
+         "state toolbar should surface debug state");
+
+  const CommandResult disable = fixture.base.bus.dispatch("debug off");
+  EXPECT(disable.ok, "debug off should succeed");
+  EXPECT(disable.structured.find("\"debugEnabled\":false") !=
+             std::string::npos,
+         "debug off should report disabled state");
 }
 
 void testSceneViewerPickCommandUsesInteractionController() {
@@ -1005,6 +1054,29 @@ void testSceneViewerPickCommandUsesInteractionController() {
   fixture.editorState.setPreviewEnabled(true);
   const CommandResult previewBlocked = fixture.bus.dispatch("pick 400 300");
   EXPECT(!previewBlocked.ok, "pick should reject preview mode");
+}
+
+void testSceneViewerPickDebugLogsArePrintedToConsole() {
+  SceneViewerPickFixture fixture;
+  const CommandResult enable = fixture.bus.dispatch("debug on");
+  EXPECT(enable.ok, "debug on should succeed before pick logging");
+
+  const CommandResult result = fixture.bus.dispatch("pick 400 300");
+  EXPECT(result.ok, "pick command should succeed while debug logging is enabled");
+
+  const std::string consoleText = fixture.consolePanel.displayedText();
+  EXPECT(consoleText.find("pick_debug") != std::string::npos,
+         "console should include pick debug log header");
+  EXPECT(consoleText.find("\"screenPixel\"") != std::string::npos,
+         "console should include click pixel coordinates");
+  EXPECT(consoleText.find("\"screenNdc\"") != std::string::npos,
+         "console should include click ndc coordinates");
+  EXPECT(consoleText.find("\"hitWorld\"") != std::string::npos,
+         "console should include world-space hit point");
+  EXPECT(consoleText.find("\"hitNdc\"") != std::string::npos,
+         "console should include hit ndc coordinates");
+  EXPECT(consoleText.find("\"projectedPixel\"") != std::string::npos,
+         "console should include hit reprojection pixel coordinates");
 }
 
 void testConsolePanelSubmitsAndClearsDisplay() {
@@ -1231,7 +1303,9 @@ int main() {
   testSceneLoadClearsRedoHistory();
   testSceneSavePreservesRedoHistory();
   testSceneViewerModeAndStateCommands();
+  testSceneViewerDebugCommandsUpdateSummaryAndToolbarState();
   testSceneViewerPickCommandUsesInteractionController();
+  testSceneViewerPickDebugLogsArePrintedToConsole();
   testConsolePanelSubmitsAndClearsDisplay();
   testConsolePanelBrowseAndAutocomplete();
   testConsolePanelUndoRedoShortcutsUseCommandBus();

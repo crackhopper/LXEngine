@@ -157,7 +157,7 @@ makeCameraJson(const LX_core::SceneNodeSharedPtr& node) {
   if (const auto hitPoint = interaction.lastHitPoint(); hitPoint.has_value()) {
     oss << ",\"lastHitPoint\":" << makeVec3Json(*hitPoint);
   } else {
-    oss << ",\"lastHitPoint\":null";
+  oss << ",\"lastHitPoint\":null";
   }
   oss << "}";
   return oss.str();
@@ -173,6 +173,8 @@ makeSummaryJson(const LxeEditorCommandContext& context) {
       << ",\"permission\":\"" << jsonEscape(context.permission()) << "\""
       << ",\"previewEnabled\":"
       << (context.editorState.isPreviewEnabled() ? "true" : "false")
+      << ",\"debugEnabled\":"
+      << (context.debugEnabled && context.debugEnabled() ? "true" : "false")
       << ",\"mode\":\"" << modeName(modeFromCode(context.getEditMode())) << "\""
       << ",\"selectionCount\":" << context.editorState.getSelected().size()
       << ",\"activeCameraPath\":";
@@ -210,9 +212,13 @@ void registerLxeEditorCommands(
   auto sceneViewRect = context.sceneViewRect;
   auto dirty = context.dirty;
   auto permission = context.permission;
+  auto debugEnabled = context.debugEnabled;
+  auto setDebugEnabled = context.setDebugEnabled;
   auto currentDocumentPath = context.currentDocumentPath;
   auto currentSourceKind = context.currentSourceKind;
   auto persistedHistory = context.persistedHistory;
+  interaction->setDebugLoggingHooks(context.debugEnabled,
+                                    context.appendConsoleDebugLine);
 
   bus.registerHandler(
       "quit", "quit",
@@ -256,8 +262,34 @@ void registerLxeEditorCommands(
       });
 
   bus.registerHandler(
+      "debug", "debug [on|off|status]",
+      [debugEnabled, setDebugEnabled](std::vector<std::string> args) {
+        if (args.empty() || args.size() > 1) {
+          return makeError("usage: debug [on|off|status]");
+        }
+        if (!debugEnabled || !setDebugEnabled) {
+          return makeError("debug state unavailable");
+        }
+        if (args[0] == "status") {
+          return makeOk(debugEnabled() ? "debug on" : "debug off",
+                        std::string("{\"debugEnabled\":") +
+                            (debugEnabled() ? "true" : "false") + "}");
+        }
+        if (args[0] == "on") {
+          setDebugEnabled(true);
+          return makeOk("debug on", "{\"debugEnabled\":true}");
+        }
+        if (args[0] == "off") {
+          setDebugEnabled(false);
+          return makeOk("debug off", "{\"debugEnabled\":false}");
+        }
+        return makeError("usage: debug [on|off|status]");
+      });
+
+  bus.registerHandler(
       "state", "state (summary|selection|cameras|scene|toolbar|history)",
       [editorState, scene, interaction, getEditMode, dirty, permission,
+       debugEnabled,
        currentDocumentPath, currentSourceKind,
        persistedHistory](std::vector<std::string> args) {
         if (args.size() != 1) {
@@ -273,6 +305,7 @@ void registerLxeEditorCommands(
             .sceneViewRect = [] { return SceneViewRect{}; },
             .dirty = dirty,
             .permission = permission,
+            .debugEnabled = debugEnabled,
             .currentDocumentPath = currentDocumentPath,
             .currentSourceKind = currentSourceKind,
             .persistedHistory = persistedHistory,
@@ -332,6 +365,10 @@ void registerLxeEditorCommands(
                                          modeName(modeFromCode(getEditMode())) +
                                          "\",\"previewEnabled\":" +
                                          std::string(editorState->isPreviewEnabled()
+                                                         ? "true"
+                                                         : "false") +
+                                         ",\"debugEnabled\":" +
+                                         std::string(debugEnabled && debugEnabled()
                                                          ? "true"
                                                          : "false") +
                                          "}";

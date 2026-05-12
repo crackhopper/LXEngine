@@ -31,7 +31,8 @@ public:
               EditorConfigDocument& editorConfig,
               LX_core::SceneTreePanel& sceneTreePanel,
               LX_core::InspectorPanel& inspectorPanel,
-              LX_core::ConsolePanel& consolePanel);
+              LX_core::ConsolePanel& consolePanel,
+              std::function<bool()> debugEnabled = {});
   void attachClock(const LX_core::Clock& clock);
 
   void drawFrame();
@@ -71,6 +72,7 @@ private:
   std::optional<std::reference_wrapper<LX_core::SceneTreePanel>> m_sceneTreePanel;
   std::optional<std::reference_wrapper<LX_core::InspectorPanel>> m_inspectorPanel;
   std::optional<std::reference_wrapper<LX_core::ConsolePanel>> m_consolePanel;
+  std::function<bool()> m_debugEnabled;
   bool m_prevF1Down = false;
   bool m_prevFDown = false;
   bool m_prevEscapeDown = false;

@@ -121,6 +121,7 @@ struct ApiCameraSnapshot final {
 struct ApiToolbarSnapshot final {
   ApiEditMode editMode = ApiEditMode::Unknown;
   bool previewEnabled = false;
+  bool debugEnabled = false;
 
   bool operator==(const ApiToolbarSnapshot&) const = default;
 };

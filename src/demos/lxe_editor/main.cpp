@@ -350,6 +350,7 @@ int main(int argc, char** argv) {
                     return demo::ApiToolbarSnapshot{
                         .editMode = toApiEditMode(ui.currentEditMode()),
                         .previewEnabled = editorState.isPreviewEnabled(),
+                        .debugEnabled = session.debugEnabled(),
                     };
                   },
               .lastHitPoint = [&]() {

@@ -82,6 +82,7 @@ void ConsolePanel::submitCurrentInput() { submitLine(getInputText()); }
 
 void ConsolePanel::clearDisplay() {
   m_displayStartIndex = m_commandBus.history().size();
+  m_systemLines.clear();
   m_inputController.clearHelperOutput();
   m_scrollToBottom = false;
 }
@@ -108,6 +109,14 @@ void ConsolePanel::setPersistedHistory(std::vector<std::string> historyLines) {
 
 void ConsolePanel::recordPersistedHistoryLine(std::string_view line) {
   m_inputController.recordPersistedHistoryLine(std::string(line));
+}
+
+void ConsolePanel::appendSystemLine(std::string_view line) {
+  if (line.empty()) {
+    return;
+  }
+  m_systemLines.emplace_back(line);
+  m_scrollToBottom = true;
 }
 
 std::vector<std::string> ConsolePanel::persistedHistory() const {
@@ -143,6 +152,12 @@ std::string ConsolePanel::displayedText() const {
     if (i + 1 < entries.size()) {
       output += "\n\n";
     }
+  }
+  for (const auto& line : m_systemLines) {
+    if (!output.empty()) {
+      output += "\n\n";
+    }
+    output += line;
   }
   const std::string helperText = m_inputController.helperOutputText();
   if (!helperText.empty()) {
