@@ -11,8 +11,8 @@ bool shouldProcessSelectionMode(const bool previewEnabled, const bool wantsMouse
 bool shouldProcessCameraRig(const bool previewEnabled, const bool wantsKeyboard,
                             const bool wantsMouse,
                             const SceneInputEditMode mode) {
-  return !previewEnabled && !wantsKeyboard && !wantsMouse &&
-         mode != SceneInputEditMode::Selection;
+  (void)mode;
+  return !previewEnabled && !wantsKeyboard && !wantsMouse;
 }
 
 } // namespace LX_demo::lxe_editor

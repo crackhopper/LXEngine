@@ -4,6 +4,7 @@
 #include "core/time/clock.hpp"
 
 #include "editor_config_state.hpp"
+#include "selection_camera_input.hpp"
 #include "scene_view_rect.hpp"
 
 namespace LX_core {
@@ -12,6 +13,7 @@ class ConsolePanel;
 class EditorState;
 class InspectorPanel;
 class SceneTreePanel;
+class ViewportOverlay;
 }
 
 #include <functional>
@@ -29,6 +31,7 @@ public:
   void attach(CameraRig& rig, LX_core::CommandBus& commandBus,
               LX_core::EditorState& editorState,
               EditorConfigDocument& editorConfig,
+              LX_core::ViewportOverlay& viewportOverlay,
               LX_core::SceneTreePanel& sceneTreePanel,
               LX_core::InspectorPanel& inspectorPanel,
               LX_core::ConsolePanel& consolePanel,
@@ -38,6 +41,7 @@ public:
   void drawFrame();
   void handleHotkeys(LX_core::IInputState& input);
   [[nodiscard]] EditMode currentEditMode() const;
+  [[nodiscard]] SelectionNavigationMode selectionNavigationMode() const;
   [[nodiscard]] SceneViewRect sceneViewRect(
       const LX_core::Vec2f& windowSize) const;
   void setEditMode(EditMode mode);
@@ -69,6 +73,7 @@ private:
   std::optional<std::reference_wrapper<LX_core::CommandBus>> m_commandBus;
   std::optional<std::reference_wrapper<LX_core::EditorState>> m_editorState;
   std::optional<std::reference_wrapper<EditorConfigDocument>> m_editorConfig;
+  std::optional<std::reference_wrapper<LX_core::ViewportOverlay>> m_viewportOverlay;
   std::optional<std::reference_wrapper<LX_core::SceneTreePanel>> m_sceneTreePanel;
   std::optional<std::reference_wrapper<LX_core::InspectorPanel>> m_inspectorPanel;
   std::optional<std::reference_wrapper<LX_core::ConsolePanel>> m_consolePanel;
@@ -77,6 +82,9 @@ private:
   bool m_prevFDown = false;
   bool m_prevEscapeDown = false;
   bool m_prevDeleteDown = false;
+  bool m_prevWDown = false;
+  bool m_prevEDown = false;
+  bool m_prevRDown = false;
   bool m_statsVisible = true;
   bool m_helpVisible = true;
   bool m_toolbarVisible = true;
@@ -88,6 +96,8 @@ private:
   ImGuiStyle m_baseStyle{};
   SceneViewRect m_sceneViewRect;
   EditMode m_editMode = EditMode::Orbit;
+  SelectionNavigationMode m_selectionNavigationMode =
+      SelectionNavigationMode::Orbit;
 };
 
 } // namespace LX_demo::lxe_editor

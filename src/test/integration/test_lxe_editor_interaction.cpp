@@ -294,6 +294,16 @@ void testSelectionModeAllowsMousePickingWhileKeyboardIsCaptured() {
          "selection mode should still pick when only keyboard is captured elsewhere");
 }
 
+void testSelectionModeStillAllowsCameraRigRouting() {
+  EXPECT(LX_demo::lxe_editor::shouldProcessSelectionMode(
+             false, false, LX_demo::lxe_editor::SceneInputEditMode::Selection),
+         "selection mode should still process selection clicks");
+  EXPECT(LX_demo::lxe_editor::shouldProcessCameraRig(
+             false, false, false,
+             LX_demo::lxe_editor::SceneInputEditMode::Selection),
+         "selection mode should still allow camera rig updates");
+}
+
 void testSelectionDebugStateTracksHitPointAndSelection() {
   Fixture fixture;
   LX_core::DebugDraw::reset();
@@ -470,6 +480,7 @@ int main() {
   testSelectionModeConsumesOnlyLeftPressEdge();
   testPreviewModeSuppressesSelectionInMainPath();
   testSelectionModeAllowsMousePickingWhileKeyboardIsCaptured();
+  testSelectionModeStillAllowsCameraRigRouting();
   testSelectionDebugStateTracksHitPointAndSelection();
   testSelectionDebugProjectionRoundTripsBackToClickedPixel();
   testSelectionDebugUsesNegativeNdcYForLowerScreenPixels();

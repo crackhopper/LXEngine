@@ -26,6 +26,7 @@
 #include "runtime_state.hpp"
 #include "scene_interaction_controller.hpp"
 #include "scene_input_routing.hpp"
+#include "selection_camera_input.hpp"
 #include "ui_overlay.hpp"
 
 #include <chrono>
@@ -435,6 +436,7 @@ int main(int argc, char** argv) {
 
       const demo::SceneInputEditMode inputMode =
           toSceneInputEditMode(ui.currentEditMode());
+      bool cameraUpdated = false;
       if (demo::shouldProcessSelectionMode(editorState.isPreviewEnabled(),
                                            wantsMouse, inputMode)) {
           session.sceneInteraction().updateSelectionMode(
@@ -442,11 +444,21 @@ int main(int argc, char** argv) {
                           static_cast<float>(windowWidth),
                           static_cast<float>(windowHeight)}));
           session.editorCamera().updateMatrices();
-      } else if (demo::shouldProcessCameraRig(
-                     editorState.isPreviewEnabled(), wantsKeyboard, wantsMouse,
-                     inputMode)) {
+      }
+      if (demo::shouldProcessCameraRig(editorState.isPreviewEnabled(),
+                                       wantsKeyboard, wantsMouse, inputMode)) {
+        if (inputMode == demo::SceneInputEditMode::Selection) {
+          const demo::SelectionNavigationMode navigationMode =
+              ui.selectionNavigationMode();
+          demo::SelectionCameraInput selectionNavigationInput(*input,
+                                                              navigationMode);
+          rig.update(selectionNavigationInput, clock.deltaTime());
+        } else {
           rig.update(*input, clock.deltaTime());
-      } else {
+        }
+        cameraUpdated = true;
+      }
+      if (!cameraUpdated) {
         session.editorCamera().updateMatrices();
       }
       session.sceneInteraction().enqueueDebugDraw();

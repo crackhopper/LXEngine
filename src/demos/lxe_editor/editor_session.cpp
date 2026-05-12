@@ -5,6 +5,7 @@
 #include "core/editor/console_panel.hpp"
 #include "core/editor/inspector_panel.hpp"
 #include "core/editor/scene_tree_panel.hpp"
+#include "core/editor/viewport_overlay.hpp"
 #include "core/gpu/engine_loop.hpp"
 #include "core/scene/components/camera_component.hpp"
 #include "core/utils/filesystem_tools.hpp"
@@ -397,6 +398,8 @@ void LxeEditorSession::rebuildBindings() {
       *m_commandBus, m_editorState, *m_runtime.scene());
   m_inspectorPanel =
       std::make_unique<LX_core::InspectorPanel>(*m_commandBus, m_editorState);
+  m_viewportOverlay = std::make_unique<LX_core::ViewportOverlay>(
+      *m_commandBus, m_editorState, *m_runtime.scene());
   m_sceneInteraction = std::make_unique<SceneInteractionController>(
       *m_commandBus, m_editorState, *m_runtime.scene());
   m_sceneInteraction->setResolveHelperOwner(
@@ -446,8 +449,9 @@ void LxeEditorSession::rebuildBindings() {
           },
       });
 
-  m_ui.attach(m_rig, *m_commandBus, m_editorState, m_editorConfig, *m_sceneTreePanel,
-              *m_inspectorPanel, *m_consolePanel,
+  m_ui.attach(m_rig, *m_commandBus, m_editorState, m_editorConfig,
+              *m_viewportOverlay, *m_sceneTreePanel, *m_inspectorPanel,
+              *m_consolePanel,
               [this]() { return m_debugEnabled; });
   ++m_bindingsGeneration;
 }

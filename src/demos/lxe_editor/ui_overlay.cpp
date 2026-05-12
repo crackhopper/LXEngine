@@ -7,6 +7,7 @@
 #include "core/editor/editor_state.hpp"
 #include "core/editor/inspector_panel.hpp"
 #include "core/editor/scene_tree_panel.hpp"
+#include "core/editor/viewport_overlay.hpp"
 #include "infra/gui/debug_ui.hpp"
 
 #include <imgui.h>
@@ -219,6 +220,7 @@ void drawResetIcon(ImDrawList& drawList, const ImVec2 min, const ImVec2 max,
 void UiOverlay::attach(CameraRig& rig, LX_core::CommandBus& commandBus,
                        LX_core::EditorState& editorState,
                        EditorConfigDocument& editorConfig,
+                       LX_core::ViewportOverlay& viewportOverlay,
                        LX_core::SceneTreePanel& sceneTreePanel,
                        LX_core::InspectorPanel& inspectorPanel,
                        LX_core::ConsolePanel& consolePanel,
@@ -227,6 +229,7 @@ void UiOverlay::attach(CameraRig& rig, LX_core::CommandBus& commandBus,
   m_commandBus = std::ref(commandBus);
   m_editorState = std::ref(editorState);
   m_editorConfig = std::ref(editorConfig);
+  m_viewportOverlay = std::ref(viewportOverlay);
   m_sceneTreePanel = std::ref(sceneTreePanel);
   m_inspectorPanel = std::ref(inspectorPanel);
   m_consolePanel = std::ref(consolePanel);
@@ -245,7 +248,20 @@ void UiOverlay::attachClock(const LX_core::Clock& clock) { m_clock = std::cref(c
 
 UiOverlay::EditMode UiOverlay::currentEditMode() const { return m_editMode; }
 
+SelectionNavigationMode UiOverlay::selectionNavigationMode() const {
+  return m_selectionNavigationMode;
+}
+
 SceneViewRect UiOverlay::sceneViewRect(const LX_core::Vec2f& windowSize) const {
+  if (m_viewportOverlay) {
+    const auto rect = m_viewportOverlay->get().getPanelRect();
+    if (rect.size.x > 1.0f && rect.size.y > 1.0f) {
+      return SceneViewRect{.x = rect.origin.x,
+                           .y = rect.origin.y,
+                           .width = rect.size.x,
+                           .height = rect.size.y};
+    }
+  }
   if (m_sceneViewRect.isValid()) {
     return m_sceneViewRect;
   }
@@ -258,9 +274,15 @@ void UiOverlay::setEditMode(const EditMode mode) {
     return;
   }
   if (mode == EditMode::Orbit) {
+    m_selectionNavigationMode = SelectionNavigationMode::Orbit;
     m_rig->get().setMode(CameraRig::Mode::Orbit);
   } else if (mode == EditMode::FreeFly) {
+    m_selectionNavigationMode = SelectionNavigationMode::FreeFly;
     m_rig->get().setMode(CameraRig::Mode::FreeFly);
+  } else if (m_selectionNavigationMode == SelectionNavigationMode::FreeFly) {
+    m_rig->get().setMode(CameraRig::Mode::FreeFly);
+  } else {
+    m_rig->get().setMode(CameraRig::Mode::Orbit);
   }
 }
 
@@ -375,6 +397,11 @@ void UiOverlay::ensureInitialPanelLayouts() {
                     PanelDefaults{display.x - rightWidth - 12.0f, topInset,
                                   rightWidth, centerHeight - topInset - 12.0f, false},
                     m_inspectorPanel ? m_inspectorPanel->get().isOpen() : true);
+  ensurePanelLayout("Viewport",
+                    PanelDefaults{leftWidth + 24.0f, topInset,
+                                  std::max(1.0f, display.x - leftWidth - rightWidth - 48.0f),
+                                  centerHeight - topInset - 12.0f, false},
+                    true);
   ensurePanelLayout("Command Console",
                     PanelDefaults{leftWidth + 24.0f, centerHeight,
                                   std::max(1.0f, display.x - leftWidth - rightWidth - 48.0f),
@@ -486,6 +513,24 @@ void UiOverlay::handleHotkeys(LX_core::IInputState& input) {
     }
   }
   m_prevDeleteDown = deleteDown;
+
+  if (m_viewportOverlay) {
+    const bool wDown = input.isKeyDown(LX_core::KeyCode::W);
+    const bool eDown = input.isKeyDown(LX_core::KeyCode::E);
+    const bool rDown = input.isKeyDown(LX_core::KeyCode::R);
+    if (wDown && !m_prevWDown) {
+      (void)m_viewportOverlay->get().handleGizmoHotkeys('W');
+    }
+    if (eDown && !m_prevEDown) {
+      (void)m_viewportOverlay->get().handleGizmoHotkeys('E');
+    }
+    if (rDown && !m_prevRDown) {
+      (void)m_viewportOverlay->get().handleGizmoHotkeys('R');
+    }
+    m_prevWDown = wDown;
+    m_prevEDown = eDown;
+    m_prevRDown = rDown;
+  }
 }
 
 void UiOverlay::drawToolbarPanel() {
@@ -665,6 +710,15 @@ void UiOverlay::drawFrame() {
     syncPanelLayout("Inspector", m_inspectorPanel->get().isOpen());
   }
 
+  if (m_viewportOverlay) {
+    applyPanelLayout("Viewport",
+                     PanelDefaults{leftWidth + 24.0f, topInset,
+                                   std::max(1.0f, display.x - leftWidth - rightWidth - 48.0f),
+                                   centerHeight - topInset - 12.0f, false});
+    m_viewportOverlay->get().draw();
+    syncPanelLayout("Viewport", true);
+  }
+
   if (m_consolePanel) {
     applyPanelLayout("Command Console",
                      PanelDefaults{leftWidth + 24.0f, centerHeight,
@@ -676,14 +730,22 @@ void UiOverlay::drawFrame() {
 
   drawHelpPanel();
   drawPreferencesPanel();
-  m_sceneViewRect =
-      makeSceneViewRect(display.x, display.y,
-                        maxWindowRight("Scene Tree", 12.0f) + 12.0f,
-                        maxWindowBottom("Toolbar", 12.0f),
-                        rightInsetFromWindow("Inspector", display.x, 12.0f) +
-                            12.0f,
-                        bottomInsetFromWindowTop("Command Console", display.y,
-                                                 12.0f));
+  if (m_viewportOverlay) {
+    const auto rect = m_viewportOverlay->get().getPanelRect();
+    m_sceneViewRect = SceneViewRect{.x = rect.origin.x,
+                                    .y = rect.origin.y,
+                                    .width = rect.size.x,
+                                    .height = rect.size.y};
+  } else {
+    m_sceneViewRect =
+        makeSceneViewRect(display.x, display.y,
+                          maxWindowRight("Scene Tree", 12.0f) + 12.0f,
+                          maxWindowBottom("Toolbar", 12.0f),
+                          rightInsetFromWindow("Inspector", display.x, 12.0f) +
+                              12.0f,
+                          bottomInsetFromWindowTop("Command Console", display.y,
+                                                   12.0f));
+  }
   m_initialLayoutApplied = true;
 }
 

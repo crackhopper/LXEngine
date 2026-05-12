@@ -23,6 +23,7 @@ class CommandBus;
 class ConsolePanel;
 class InspectorPanel;
 class SceneTreePanel;
+class ViewportOverlay;
 } // namespace LX_core
 
 namespace LX_demo::lxe_editor {
@@ -79,6 +80,7 @@ private:
   std::unique_ptr<LX_core::ConsolePanel> m_consolePanel;
   std::unique_ptr<LX_core::SceneTreePanel> m_sceneTreePanel;
   std::unique_ptr<LX_core::InspectorPanel> m_inspectorPanel;
+  std::unique_ptr<LX_core::ViewportOverlay> m_viewportOverlay;
   std::unique_ptr<SceneInteractionController> m_sceneInteraction;
   size_t m_lastObservedHistoryIndex = 0;
   EditorConfigDocument m_editorConfig;

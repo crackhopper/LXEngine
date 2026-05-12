@@ -4,6 +4,7 @@
 #include "core/editor/editor_state.hpp"
 #include "core/editor/inspector_panel.hpp"
 #include "core/editor/scene_tree_panel.hpp"
+#include "core/editor/viewport_overlay.hpp"
 #include "core/input/key_code.hpp"
 #include "core/input/mock_input_state.hpp"
 #include "core/platform/window.hpp"
@@ -64,6 +65,7 @@ struct UiHarness final {
   LX_core::SceneTreePanel sceneTreePanel;
   LX_core::InspectorPanel inspectorPanel;
   LX_core::ConsolePanel consolePanel;
+  LX_core::ViewportOverlay viewportOverlay;
   LX_demo::lxe_editor::UiOverlay ui;
 
   UiHarness()
@@ -72,7 +74,8 @@ struct UiHarness final {
         targetNode(LX_core::SceneNode::create("toolbar_target")),
         sceneTreePanel(bus, editorState, *scene),
         inspectorPanel(bus, editorState),
-        consolePanel(bus) {
+        consolePanel(bus),
+        viewportOverlay(bus, editorState, *scene) {
     editorCameraNode->setName("editor_cam");
     targetNode->setName("toolbar_target");
     scene->addRenderable(targetNode);
@@ -84,7 +87,7 @@ struct UiHarness final {
     (void)editorState.syncActiveCamera(*scene);
     LX_core::registerBuiltinCommands(bus, editorState, *scene);
     rig.attach(editorCamera->get());
-    ui.attach(rig, bus, editorState, config, sceneTreePanel, inspectorPanel,
+    ui.attach(rig, bus, editorState, config, viewportOverlay, sceneTreePanel, inspectorPanel,
               consolePanel);
   }
 };
@@ -248,6 +251,30 @@ void testDefaultLayoutShowsToolbarAndCorePanels() {
   ImGui::DestroyContext();
 }
 
+void testDefaultLayoutShowsViewportWindowAndValidSceneRect() {
+  if (!setupMinimalImGui()) {
+    std::cout << "[SKIP] lxe_editor viewport layout test (font atlas unavailable)\n";
+    ImGui::DestroyContext();
+    return;
+  }
+
+  UiHarness harness;
+
+  ImGui::NewFrame();
+  harness.ui.drawFrame();
+
+  ImGuiWindow* viewport = ImGui::FindWindowByName("Viewport");
+  EXPECT(viewport != nullptr, "viewport window should exist");
+
+  const auto rect = harness.ui.sceneViewRect(LX_core::Vec2f{1280.0f, 720.0f});
+  EXPECT(rect.isValid(), "scene view rect should be valid after drawing the ui");
+  EXPECT(rect.width > 0.0f && rect.height > 0.0f,
+         "scene view rect should have a positive extent");
+
+  ImGui::EndFrame();
+  ImGui::DestroyContext();
+}
+
 void testToolbarRendersIconOnlyWithoutStaticModeText() {
   if (!setupMinimalImGui()) {
     std::cout << "[SKIP] toolbar icon-only test\n";
@@ -311,6 +338,7 @@ void testPersistedEditorConfigOverridesDefaultRectsAndPreferences() {
   UiHarness harness;
   harness.config = state.load();
   harness.ui.attach(harness.rig, harness.bus, harness.editorState, harness.config,
+                    harness.viewportOverlay,
                     harness.sceneTreePanel, harness.inspectorPanel,
                     harness.consolePanel);
 
@@ -465,6 +493,7 @@ void testToolbarIsRecoverableFromPersistedHiddenState() {
   UiHarness harness;
   harness.config = state.load();
   harness.ui.attach(harness.rig, harness.bus, harness.editorState, harness.config,
+                    harness.viewportOverlay,
                     harness.sceneTreePanel, harness.inspectorPanel,
                     harness.consolePanel);
 
@@ -496,6 +525,7 @@ void testUiFontScaleDoesNotCompoundAcrossReattach() {
   harness.config.preferences.uiFontScale = 1.35f;
 
   harness.ui.attach(harness.rig, harness.bus, harness.editorState, harness.config,
+                    harness.viewportOverlay,
                     harness.sceneTreePanel, harness.inspectorPanel,
                     harness.consolePanel);
   ImGui::NewFrame();
@@ -505,6 +535,7 @@ void testUiFontScaleDoesNotCompoundAcrossReattach() {
   ImGui::EndFrame();
 
   harness.ui.attach(harness.rig, harness.bus, harness.editorState, harness.config,
+                    harness.viewportOverlay,
                     harness.sceneTreePanel, harness.inspectorPanel,
                     harness.consolePanel);
   ImGui::NewFrame();
@@ -687,6 +718,7 @@ void testWindowPlacementCenterUsesWideMath() {
 int main() {
   expSetEnvVK();
   testDefaultLayoutShowsToolbarAndCorePanels();
+  testDefaultLayoutShowsViewportWindowAndValidSceneRect();
   testToolbarRendersIconOnlyWithoutStaticModeText();
   testCameraRigResyncKeepsUpdatedEditorCameraPose();
   testPersistedEditorConfigOverridesDefaultRectsAndPreferences();
