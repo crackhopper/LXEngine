@@ -35,7 +35,6 @@ void ConsolePanel::draw() {
       "##command_input", m_inputController.inputBufferData(),
       m_inputController.inputBufferSize(), inputSize,
       ImGuiInputTextFlags_EnterReturnsTrue |
-          ImGuiInputTextFlags_CtrlEnterForNewLine |
           ImGuiInputTextFlags_WordWrap |
           ImGuiInputTextFlags_CallbackCompletion |
           ImGuiInputTextFlags_CallbackHistory,
