@@ -17,7 +17,7 @@ SCRIPT_PATH = REPO_ROOT / "scripts" / "diagnostics" / "lxe_editor_leak_check.sh"
 class LxeEditorLeakCheckScriptTest(unittest.TestCase):
     def test_rejects_unknown_mode_with_usage(self) -> None:
         completed = subprocess.run(
-            ["bash", str(SCRIPT_PATH), "unknown-mode"],
+            [str(SCRIPT_PATH), "unknown-mode"],
             text=True,
             capture_output=True,
         )
@@ -33,7 +33,6 @@ class LxeEditorLeakCheckScriptTest(unittest.TestCase):
 
             completed = subprocess.run(
                 [
-                    "bash",
                     str(SCRIPT_PATH),
                     "sanitizer",
                     "--output-dir",
@@ -62,7 +61,6 @@ class LxeEditorLeakCheckScriptTest(unittest.TestCase):
 
             completed = subprocess.run(
                 [
-                    "bash",
                     str(SCRIPT_PATH),
                     "soak",
                     "--output-dir",
@@ -94,7 +92,6 @@ class LxeEditorLeakCheckScriptTest(unittest.TestCase):
 
             completed = subprocess.run(
                 [
-                    "bash",
                     str(SCRIPT_PATH),
                     "all",
                     "--output-dir",
@@ -122,6 +119,7 @@ class LxeEditorLeakCheckScriptTest(unittest.TestCase):
         env["LX_LEAK_CHECK_CTEST"] = str(tools["ctest"])
         env["LX_LEAK_CHECK_NINJA"] = str(tools["ninja"])
         env["LX_LEAK_CHECK_LXE_EDITOR_BIN"] = str(tools["editor"])
+        env["TMP_STUB_LOG"] = str(tools["stub_log"])
         return env
 
     def _write_stub_tools(self, root: Path, *, editor_sleep: str) -> dict[str, Path]:
@@ -157,8 +155,14 @@ sleep {editor_sleep}
 exit 0
 """,
         )
-        os.environ["TMP_STUB_LOG"] = str(root / "stub.log")
-        return {"cmake": cmake, "ctest": ctest, "ninja": ninja, "editor": editor}
+        stub_log = root / "stub.log"
+        return {
+            "cmake": cmake,
+            "ctest": ctest,
+            "ninja": ninja,
+            "editor": editor,
+            "stub_log": stub_log,
+        }
 
     def _write_executable(self, path: Path, body: str) -> Path:
         path.write_text(textwrap.dedent(body), encoding="utf-8")
