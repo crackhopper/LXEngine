@@ -58,7 +58,6 @@ VulkanCommandBufferUniquePtr VulkanCommandBufferManager::allocateBuffer(VkComman
 
   if (frame.nextAvailableBuffer < frame.activeBuffers.size()) {
     VkCommandBuffer buffer = frame.activeBuffers[frame.nextAvailableBuffer++];
-    vkResetCommandBuffer(buffer, 0);
     return std::make_unique<VulkanCommandBuffer>(buffer, m_device);
   }
 
