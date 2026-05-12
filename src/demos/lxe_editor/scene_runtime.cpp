@@ -274,14 +274,18 @@ buildRuntimeFromDocument(const SceneDocument& document,
     registerHelperNode(runtime, cameraNode, buildCameraHelperNode());
   }
 
+  std::vector<LX_core::SceneNodeSharedPtr> lightOwnerNodes;
   for (const auto& renderable : runtime->scene->getRenderables()) {
     const auto node = std::dynamic_pointer_cast<LX_core::SceneNode>(renderable);
     if (!node) {
       continue;
     }
     if (runtime->scene->getDirectionalLight(*node)) {
-      registerHelperNode(runtime, node, buildDirectionalLightHelperNode());
+      lightOwnerNodes.push_back(node);
     }
+  }
+  for (const auto& node : lightOwnerNodes) {
+    registerHelperNode(runtime, node, buildDirectionalLightHelperNode());
   }
 
   return runtime;
