@@ -650,7 +650,8 @@ void ViewportOverlay::draw() {
   }
 
   ImGuizmo::SetDrawlist(drawList);
-  ImGuizmo::SetOrthographic(editorCamera->get().type == CameraType::Orthographic);
+  ImGuizmo::SetOrthographic(editorCamera->get().getProjectionType() ==
+                           CameraType::Orthographic);
   ImGuiIO &io = ImGui::GetIO();
   ImGuizmo::SetRect(rect.origin.x, rect.origin.y, rect.size.x, rect.size.y);
 

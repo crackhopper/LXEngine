@@ -50,9 +50,9 @@ EditorCameraState EditorCameraState::captureFrom(
   return EditorCameraState{
       .position = node.getTranslation(),
       .rotationEulerDeg = quatToEulerDegrees(node.getRotation()),
-      .fovY = camera.fovY,
-      .nearPlane = camera.nearPlane,
-      .farPlane = camera.farPlane,
+      .fovY = camera.getFovY(),
+      .nearPlane = camera.getNearPlane(),
+      .farPlane = camera.getFarPlane(),
   };
 }
 
@@ -70,10 +70,9 @@ void EditorCameraState::applyToNode(LX_core::SceneNode& node) const {
 }
 
 void EditorCameraState::applyToCamera(LX_core::CameraComponent& camera) const {
-  camera.fovY = fovY;
-  camera.nearPlane = nearPlane;
-  camera.farPlane = farPlane;
-  camera.updateMatrices();
+  camera.setFovY(fovY);
+  camera.setNearPlane(nearPlane);
+  camera.setFarPlane(farPlane);
 }
 
 } // namespace LX_demo::lxe_editor

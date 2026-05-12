@@ -475,7 +475,7 @@ findActiveCamera(Scene &scene, EditorState &editorState) {
     if (!camera.has_value()) {
       return makeError("field not available on node: fov");
     }
-    const float value = camera->get().fovY;
+    const float value = camera->get().getFovY();
     return makeOk("fov = " + formatFloat(value),
                   "{\"value\":" + formatFloat(value) + "}");
   }
@@ -489,16 +489,18 @@ findActiveCamera(Scene &scene, EditorState &editorState) {
     if (!camera.has_value()) {
       return makeError("field not available on node: near");
     }
-    return makeOk("near = " + formatFloat(camera->get().nearPlane),
-                  "{\"value\":" + formatFloat(camera->get().nearPlane) + "}");
+    return makeOk("near = " + formatFloat(camera->get().getNearPlane()),
+                  "{\"value\":" +
+                      formatFloat(camera->get().getNearPlane()) + "}");
   }
   if (field == "far") {
     const auto camera = node.getComponent<CameraComponent>();
     if (!camera.has_value()) {
       return makeError("field not available on node: far");
     }
-    return makeOk("far = " + formatFloat(camera->get().farPlane),
-                  "{\"value\":" + formatFloat(camera->get().farPlane) + "}");
+    return makeOk("far = " + formatFloat(camera->get().getFarPlane()),
+                  "{\"value\":" +
+                      formatFloat(camera->get().getFarPlane()) + "}");
   }
   if (field == "projection") {
     const auto camera = node.getComponent<CameraComponent>();
@@ -506,8 +508,9 @@ findActiveCamera(Scene &scene, EditorState &editorState) {
       return makeError("field not available on node: projection");
     }
     const std::string value =
-        camera->get().type == CameraType::Perspective ? "perspective"
-                                                      : "orthographic";
+        camera->get().getProjectionType() == CameraType::Perspective
+            ? "perspective"
+            : "orthographic";
     return makeOk("projection = " + value,
                   "{\"value\":\"" + jsonEscape(value) + "\"}");
   }
@@ -587,20 +590,21 @@ findActiveCamera(Scene &scene, EditorState &editorState) {
   const auto camera = node.getComponent<CameraComponent>();
   if (field == "fov" && camera.has_value()) {
     return "set " + quoteToken(path + ".fov") + " " +
-           formatFloat(camera->get().fovY);
+           formatFloat(camera->get().getFovY());
   }
   if (field == "near" && camera.has_value()) {
     return "set " + quoteToken(path + ".near") + " " +
-           formatFloat(camera->get().nearPlane);
+           formatFloat(camera->get().getNearPlane());
   }
   if (field == "far" && camera.has_value()) {
     return "set " + quoteToken(path + ".far") + " " +
-           formatFloat(camera->get().farPlane);
+           formatFloat(camera->get().getFarPlane());
   }
   if (field == "projection" && camera.has_value()) {
     const std::string projection =
-        camera->get().type == CameraType::Perspective ? "perspective"
-                                                      : "orthographic";
+        camera->get().getProjectionType() == CameraType::Perspective
+            ? "perspective"
+            : "orthographic";
     return "set " + quoteToken(path + ".projection") + " " + projection;
   }
   if (field == "cullingMask" && camera.has_value()) {
@@ -846,9 +850,7 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
     if (!value) {
       return makeError("invalid float for set fov");
     }
-    camera->get().fovY = *value;
-    camera->get().updateMatrices();
-    emitRuntimeNodeAspectChanged(node, SceneNodeAspect::CameraProperties);
+    camera->get().setFovY(*value);
     return makeOk("fov updated", "{\"value\":" + formatFloat(*value) + "}");
   }
   if (field == "visibilityMask") {
@@ -874,9 +876,7 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
     if (!value) {
       return makeError("invalid float for set near");
     }
-    camera->get().nearPlane = *value;
-    camera->get().updateMatrices();
-    emitRuntimeNodeAspectChanged(node, SceneNodeAspect::CameraProperties);
+    camera->get().setNearPlane(*value);
     return makeOk("near updated", "{\"value\":" + formatFloat(*value) + "}");
   }
   if (field == "far") {
@@ -891,9 +891,7 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
     if (!value) {
       return makeError("invalid float for set far");
     }
-    camera->get().farPlane = *value;
-    camera->get().updateMatrices();
-    emitRuntimeNodeAspectChanged(node, SceneNodeAspect::CameraProperties);
+    camera->get().setFarPlane(*value);
     return makeOk("far updated", "{\"value\":" + formatFloat(*value) + "}");
   }
   if (field == "projection") {
@@ -906,14 +904,12 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
     }
     const std::string value = lowerCopy(args[valueStartIndex]);
     if (value == "perspective") {
-      camera->get().type = CameraType::Perspective;
+      camera->get().setProjectionType(CameraType::Perspective);
     } else if (value == "orthographic") {
-      camera->get().type = CameraType::Orthographic;
+      camera->get().setProjectionType(CameraType::Orthographic);
     } else {
       return makeError("invalid projection for set projection");
     }
-    camera->get().updateMatrices();
-    emitRuntimeNodeAspectChanged(node, SceneNodeAspect::CameraProperties);
     return makeOk("projection updated",
                   "{\"value\":\"" + jsonEscape(value) + "\"}");
   }
@@ -930,7 +926,6 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
       return makeError("invalid unsigned for set cullingMask");
     }
     camera->get().setCullingMask(*value);
-    emitRuntimeNodeAspectChanged(node, SceneNodeAspect::CameraProperties);
     return makeOk("cullingMask updated", makeUnsignedJson(*value));
   }
   if (field == "direction") {
@@ -1562,13 +1557,8 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
           }
           CommandResult result;
           result.metadata["inverse.line"] =
-              "cam fov " + formatFloat(camera->get().fovY);
-          camera->get().fovY = *value;
-          camera->get().updateMatrices();
-          if (const auto owner = camera->get().owner()) {
-            emitRuntimeNodeAspectChanged(owner->get(),
-                                         SceneNodeAspect::CameraProperties);
-          }
+              "cam fov " + formatFloat(camera->get().getFovY());
+          camera->get().setFovY(*value);
           result.ok = true;
           result.message = "camera fov = " + formatFloat(*value);
           result.structured = "{\"value\":" + formatFloat(*value) + "}";

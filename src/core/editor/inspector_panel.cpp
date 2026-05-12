@@ -158,10 +158,11 @@ InspectorPanel::Snapshot InspectorPanel::makeSnapshot() const {
   snapshot.hasCamera = node.getComponent<CameraComponent>().has_value();
   if (snapshot.hasCamera) {
     const auto camera = node.getComponent<CameraComponent>();
-    snapshot.cameraFov = camera->get().fovY;
-    snapshot.cameraNear = camera->get().nearPlane;
-    snapshot.cameraFar = camera->get().farPlane;
-    snapshot.cameraPerspective = camera->get().type == CameraType::Perspective;
+    snapshot.cameraFov = camera->get().getFovY();
+    snapshot.cameraNear = camera->get().getNearPlane();
+    snapshot.cameraFar = camera->get().getFarPlane();
+    snapshot.cameraPerspective =
+        camera->get().getProjectionType() == CameraType::Perspective;
     snapshot.cameraCullingMask = camera->get().getCullingMask();
   }
   if (const auto light = findDirectionalLightForNode(node)) {

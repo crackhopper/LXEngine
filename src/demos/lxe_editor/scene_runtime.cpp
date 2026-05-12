@@ -133,19 +133,12 @@ void applyNodeIdentityAndTransform(LX_core::SceneNode& node,
 
 void applyCameraState(LX_core::SceneNode& node, LX_core::CameraComponent& camera,
                       const CameraNodeState& state) {
-  camera.type = state.type;
-  camera.fovY = state.fovY;
-  camera.aspect = state.aspect;
-  camera.nearPlane = state.nearPlane;
-  camera.farPlane = state.farPlane;
-  camera.left = state.left;
-  camera.right = state.right;
-  camera.bottom = state.bottom;
-  camera.top = state.top;
+  camera.applyProjectionState(state.type, state.fovY, state.aspect,
+                              state.nearPlane, state.farPlane, state.left,
+                              state.right, state.bottom, state.top);
   camera.setTarget(LX_core::RenderTarget{});
   camera.setCullingMask(state.cullingMask);
   camera.lookAt(state.eye, state.target, state.up);
-  camera.updateMatrices();
   auto local = node.getLocalTransform();
   local.scale = state.type == LX_core::CameraType::Perspective
                     ? node.getLocalTransform().scale
@@ -244,15 +237,11 @@ buildRuntimeFromDocument(const SceneDocument& document,
                         gameCamera.getUpVector());
     runtime->editorCameraNode->setLocalTransform(
         runtime->gameCameraNode->getLocalTransform());
-    editorCamera.fovY = gameCamera.fovY;
-    editorCamera.aspect = gameCamera.aspect;
-    editorCamera.nearPlane = gameCamera.nearPlane;
-    editorCamera.farPlane = gameCamera.farPlane;
-    editorCamera.left = gameCamera.left;
-    editorCamera.right = gameCamera.right;
-    editorCamera.bottom = gameCamera.bottom;
-    editorCamera.top = gameCamera.top;
-    editorCamera.updateMatrices();
+    editorCamera.applyProjectionState(
+        gameCamera.getProjectionType(), gameCamera.getFovY(),
+        gameCamera.getAspect(), gameCamera.getNearPlane(),
+        gameCamera.getFarPlane(), gameCamera.getLeft(), gameCamera.getRight(),
+        gameCamera.getBottom(), gameCamera.getTop());
   }
   runtime->scene->addCamera(runtime->editorCameraNode);
 
@@ -286,15 +275,15 @@ captureCameraState(const LX_core::CameraComponent& camera) {
       .eye = camera.getEyePosition(),
       .target = camera.getLookTarget(),
       .up = camera.getUpVector(),
-      .type = camera.type,
-      .fovY = camera.fovY,
-      .aspect = camera.aspect,
-      .nearPlane = camera.nearPlane,
-      .farPlane = camera.farPlane,
-      .left = camera.left,
-      .right = camera.right,
-      .bottom = camera.bottom,
-      .top = camera.top,
+      .type = camera.getProjectionType(),
+      .fovY = camera.getFovY(),
+      .aspect = camera.getAspect(),
+      .nearPlane = camera.getNearPlane(),
+      .farPlane = camera.getFarPlane(),
+      .left = camera.getLeft(),
+      .right = camera.getRight(),
+      .bottom = camera.getBottom(),
+      .top = camera.getTop(),
       .cullingMask = camera.getCullingMask(),
   };
 }

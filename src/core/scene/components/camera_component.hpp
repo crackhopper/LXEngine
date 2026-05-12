@@ -20,24 +20,31 @@ public:
 
   CameraDataSharedPtr getUBO() const { return m_ubo; }
 
-  CameraType type = CameraType::Perspective;
-  float fovY = 45.0f;
-  float aspect = 16.0f / 9.0f;
-  float nearPlane = 0.1f;
-  float farPlane = 1000.0f;
-  float left = -1.0f;
-  float right = 1.0f;
-  float bottom = -1.0f;
-  float top = 1.0f;
-
-  [[nodiscard]] CameraType getProjectionType() const { return type; }
+  [[nodiscard]] CameraType getProjectionType() const { return m_type; }
   void setProjectionType(CameraType projectionType);
+
+  [[nodiscard]] float getFovY() const { return m_fovY; }
   void setFovY(float value);
+
+  [[nodiscard]] float getAspect() const { return m_aspect; }
   void setAspect(float value);
+
+  [[nodiscard]] float getNearPlane() const { return m_nearPlane; }
   void setNearPlane(float value);
+
+  [[nodiscard]] float getFarPlane() const { return m_farPlane; }
   void setFarPlane(float value);
+
+  [[nodiscard]] float getLeft() const { return m_left; }
+  [[nodiscard]] float getRight() const { return m_right; }
+  [[nodiscard]] float getBottom() const { return m_bottom; }
+  [[nodiscard]] float getTop() const { return m_top; }
   void setOrthographicBounds(float leftValue, float rightValue,
                              float bottomValue, float topValue);
+  void applyProjectionState(CameraType projectionType, float fovY, float aspect,
+                            float nearPlane, float farPlane, float leftValue,
+                            float rightValue, float bottomValue,
+                            float topValue);
 
   const std::optional<RenderTarget> &getTarget() const { return m_target; }
   void setTarget(RenderTarget target);
@@ -69,6 +76,15 @@ public:
 private:
   Transform getOwnerWorldTransform() const;
 
+  CameraType m_type = CameraType::Perspective;
+  float m_fovY = 45.0f;
+  float m_aspect = 16.0f / 9.0f;
+  float m_nearPlane = 0.1f;
+  float m_farPlane = 1000.0f;
+  float m_left = -1.0f;
+  float m_right = 1.0f;
+  float m_bottom = -1.0f;
+  float m_top = 1.0f;
   CameraDataSharedPtr m_ubo = std::make_shared<CameraData>();
   std::optional<float> m_lookDistance;
   std::optional<RenderTarget> m_target;

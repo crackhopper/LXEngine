@@ -85,31 +85,31 @@ Transform CameraComponent::getOwnerWorldTransform() const {
 }
 
 void CameraComponent::setProjectionType(const CameraType projectionType) {
-  type = projectionType;
+  m_type = projectionType;
   updateMatrices();
   notifyOwnerRuntimeAspectChange(SceneNodeAspect::CameraProperties);
 }
 
 void CameraComponent::setFovY(const float value) {
-  fovY = value;
+  m_fovY = value;
   updateMatrices();
   notifyOwnerRuntimeAspectChange(SceneNodeAspect::CameraProperties);
 }
 
 void CameraComponent::setAspect(const float value) {
-  aspect = value;
+  m_aspect = value;
   updateMatrices();
   notifyOwnerRuntimeAspectChange(SceneNodeAspect::CameraProperties);
 }
 
 void CameraComponent::setNearPlane(const float value) {
-  nearPlane = value;
+  m_nearPlane = value;
   updateMatrices();
   notifyOwnerRuntimeAspectChange(SceneNodeAspect::CameraProperties);
 }
 
 void CameraComponent::setFarPlane(const float value) {
-  farPlane = value;
+  m_farPlane = value;
   updateMatrices();
   notifyOwnerRuntimeAspectChange(SceneNodeAspect::CameraProperties);
 }
@@ -118,10 +118,32 @@ void CameraComponent::setOrthographicBounds(const float leftValue,
                                             const float rightValue,
                                             const float bottomValue,
                                             const float topValue) {
-  left = leftValue;
-  right = rightValue;
-  bottom = bottomValue;
-  top = topValue;
+  m_left = leftValue;
+  m_right = rightValue;
+  m_bottom = bottomValue;
+  m_top = topValue;
+  updateMatrices();
+  notifyOwnerRuntimeAspectChange(SceneNodeAspect::CameraProperties);
+}
+
+void CameraComponent::applyProjectionState(const CameraType projectionType,
+                                           const float fovY,
+                                           const float aspect,
+                                           const float nearPlane,
+                                           const float farPlane,
+                                           const float leftValue,
+                                           const float rightValue,
+                                           const float bottomValue,
+                                           const float topValue) {
+  m_type = projectionType;
+  m_fovY = fovY;
+  m_aspect = aspect;
+  m_nearPlane = nearPlane;
+  m_farPlane = farPlane;
+  m_left = leftValue;
+  m_right = rightValue;
+  m_bottom = bottomValue;
+  m_top = topValue;
   updateMatrices();
   notifyOwnerRuntimeAspectChange(SceneNodeAspect::CameraProperties);
 }
@@ -179,12 +201,14 @@ Mat4f CameraComponent::getViewMatrix() const {
 }
 
 Mat4f CameraComponent::getProjMatrix(float aspectOverride) const {
-  const float projectionAspect = aspectOverride > 0.0f ? aspectOverride : aspect;
-  if (type == CameraType::Perspective) {
-    return Mat4f::perspective(fovY * kDegToRad, projectionAspect, nearPlane,
-                              farPlane);
+  const float projectionAspect =
+      aspectOverride > 0.0f ? aspectOverride : m_aspect;
+  if (m_type == CameraType::Perspective) {
+    return Mat4f::perspective(m_fovY * kDegToRad, projectionAspect,
+                              m_nearPlane, m_farPlane);
   }
-  return Mat4f::orthographic(left, right, bottom, top, nearPlane, farPlane);
+  return Mat4f::orthographic(m_left, m_right, m_bottom, m_top, m_nearPlane,
+                             m_farPlane);
 }
 
 Ray CameraComponent::pickRay(const Vec2f &screenPixel,
@@ -202,24 +226,25 @@ Ray CameraComponent::pickRay(const Vec2f &screenPixel,
       worldTransform.rotation.rotate(Vec3f{0.0f, 1.0f, 0.0f}).normalized();
   const Vec3f forwardAxis = getForwardVector();
 
-  if (type == CameraType::Perspective) {
-    const float projectionAspect = aspect > 0.0f ? aspect : viewportWidth / viewportHeight;
-    const float tanHalfFov = std::tan(0.5f * fovY * kDegToRad);
-    const float halfHeight = tanHalfFov * nearPlane;
+  if (m_type == CameraType::Perspective) {
+    const float projectionAspect =
+        m_aspect > 0.0f ? m_aspect : viewportWidth / viewportHeight;
+    const float tanHalfFov = std::tan(0.5f * m_fovY * kDegToRad);
+    const float halfHeight = tanHalfFov * m_nearPlane;
     const float halfWidth = halfHeight * projectionAspect;
-    const Vec3f nearPoint = eye + forwardAxis * nearPlane +
+    const Vec3f nearPoint = eye + forwardAxis * m_nearPlane +
                             rightAxis * (ndcX * halfWidth) +
                             upAxis * (ndcY * halfHeight);
     return Ray{eye, (nearPoint - eye).normalized()};
   }
 
-  const float halfWidth = 0.5f * (right - left);
-  const float halfHeight = 0.5f * (top - bottom);
-  const float centerX = 0.5f * (left + right);
-  const float centerY = 0.5f * (bottom + top);
+  const float halfWidth = 0.5f * (m_right - m_left);
+  const float halfHeight = 0.5f * (m_top - m_bottom);
+  const float centerX = 0.5f * (m_left + m_right);
+  const float centerY = 0.5f * (m_bottom + m_top);
   const Vec3f origin = eye + rightAxis * (centerX + ndcX * halfWidth) +
                        upAxis * (centerY + ndcY * halfHeight) +
-                       forwardAxis * nearPlane;
+                       forwardAxis * m_nearPlane;
   return Ray{origin, forwardAxis};
 }
 

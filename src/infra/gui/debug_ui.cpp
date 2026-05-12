@@ -126,10 +126,25 @@ void cameraPanel(const char* title, LX_core::CameraComponent& camera) {
     camera.lookAt(eye, target, up);
   }
 
-  sliderFloat("fovY", camera.fovY, 1.0f, 179.0f);
-  sliderFloat("aspect", camera.aspect, 0.1f, 4.0f);
-  sliderFloat("near", camera.nearPlane, 0.001f, 10.0f);
-  sliderFloat("far", camera.farPlane, 1.0f, 10000.0f);
+  float fovY = camera.getFovY();
+  if (sliderFloat("fovY", fovY, 1.0f, 179.0f)) {
+    camera.setFovY(fovY);
+  }
+
+  float aspect = camera.getAspect();
+  if (sliderFloat("aspect", aspect, 0.1f, 4.0f)) {
+    camera.setAspect(aspect);
+  }
+
+  float nearPlane = camera.getNearPlane();
+  if (sliderFloat("near", nearPlane, 0.001f, 10.0f)) {
+    camera.setNearPlane(nearPlane);
+  }
+
+  float farPlane = camera.getFarPlane();
+  if (sliderFloat("far", farPlane, 1.0f, 10000.0f)) {
+    camera.setFarPlane(farPlane);
+  }
 }
 
 void directionalLightPanel(const char* title,

@@ -62,10 +62,10 @@ struct Fixture {
 
     cameraNode->setName("game_cam");
     auto camera = cameraNode->addComponent<LX_core::CameraComponent>();
-    camera->get().fovY = 70.0f;
-    camera->get().nearPlane = 0.5f;
-    camera->get().farPlane = 250.0f;
-    camera->get().type = LX_core::CameraType::Orthographic;
+    camera->get().setFovY(70.0f);
+    camera->get().setNearPlane(0.5f);
+    camera->get().setFarPlane(250.0f);
+    camera->get().setProjectionType(LX_core::CameraType::Orthographic);
     camera->get().setCullingMask(0x00FF00FFu);
 
     lightNode->setName("dir_light");

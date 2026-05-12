@@ -172,6 +172,17 @@ void testRuntimeLoadsFullSceneDocument() {
          "gameplay camera path should resolve to runtime gameplay camera");
   EXPECT(runtime.editorCameraNode()->getLocalTransform().translation.x == 5.0f,
          "editor metadata should restore editor camera x");
+  const auto editorCamera =
+      runtime.editorCameraNode()->getComponent<LX_core::CameraComponent>();
+  EXPECT(editorCamera.has_value(), "editor camera component should exist");
+  if (editorCamera.has_value()) {
+    expectNear(editorCamera->get().getFovY(), 35.0f,
+               "editor metadata should restore editor camera fov");
+    expectNear(editorCamera->get().getNearPlane(), 0.2f,
+               "editor metadata should restore editor camera near");
+    expectNear(editorCamera->get().getFarPlane(), 400.0f,
+               "editor metadata should restore editor camera far");
+  }
 }
 
 void testRuntimeLoadsLegacyFlatSceneDocumentWithExplicitRootNormalization() {
@@ -280,10 +291,9 @@ void testRuntimeSaveRoundTripsExpandedSceneDocument() {
   gameCamera->get().lookAt(LX_core::Vec3f{7.0f, 8.0f, 9.0f},
                            LX_core::Vec3f{7.0f, 8.0f, 2.0f},
                            LX_core::Vec3f{0.0f, 1.0f, 0.0f});
-  gameCamera->get().fovY = 60.0f;
-  gameCamera->get().nearPlane = 0.5f;
-  gameCamera->get().farPlane = 250.0f;
-  gameCamera->get().updateMatrices();
+  gameCamera->get().setFovY(60.0f);
+  gameCamera->get().setNearPlane(0.5f);
+  gameCamera->get().setFarPlane(250.0f);
 
   runtime.saveToDocumentPath(savePath);
 
