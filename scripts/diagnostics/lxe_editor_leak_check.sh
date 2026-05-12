@@ -158,6 +158,38 @@ record_failure() {
   FAILURE_REASON="$(sanitize_summary_value "${reason}")"
 }
 
+editor_api_token_available() {
+  [[ -s "${EDITOR_API_TOKEN_FILE}" ]]
+}
+
+log_indicates_environment_failure() {
+  local log_file="${1}"
+  [[ -f "${log_file}" ]] || return 1
+  grep -Eiq \
+    'No available video device|video device|unable to open display|cannot open display|failed to create api token directory|failed to write api token file|missing API token|missing api token|token missing|graphics prerequisite|display server' \
+    "${log_file}"
+}
+
+record_environment_or_control_failure() {
+  local step="${1}"
+  local control_reason="${2}"
+  local environment_reason="${3}"
+  local log_file="${4:-}"
+
+  if ! editor_api_token_available; then
+    record_failure "environment_failure" "${step}" \
+      "editor API token missing before readiness"
+    return 0
+  fi
+
+  if [[ -n "${log_file}" ]] && log_indicates_environment_failure "${log_file}"; then
+    record_failure "environment_failure" "${step}" "${environment_reason}"
+    return 0
+  fi
+
+  record_failure "smoke_control_failure" "${step}" "${control_reason}"
+}
+
 write_env() {
   {
     echo "mode=${MODE}"
@@ -235,6 +267,9 @@ run_sanitizer_mode() {
     if grep -Eq 'AddressSanitizer|LeakSanitizer' "${OUTPUT_DIR}/sanitizer.log"; then
       record_failure "sanitizer_finding" "ctest" \
         "ctest failed with sanitizer signature in sanitizer.log"
+    elif log_indicates_environment_failure "${OUTPUT_DIR}/sanitizer.log"; then
+      record_failure "environment_failure" "ctest" \
+        "environment prerequisite missing during ctest"
     else
       record_failure "test_failure" "ctest" \
         "ctest failed without sanitizer signature"
@@ -430,8 +465,25 @@ run_bounded_editor_smoke() {
     echo "[sanitizer] editor smoke timeout after ${EDITOR_SMOKE_TIMEOUT_SECONDS}s"
     stop_process_group_with_grace "${editor_pid}" "${SOAK_TERMINATION_GRACE_SECONDS}"
     wait "${editor_pid}" || true
-    record_failure "smoke_control_failure" "editor_smoke_timeout" \
-      "editor smoke timeout after ${EDITOR_SMOKE_TIMEOUT_SECONDS}s"
+    record_environment_or_control_failure \
+      "editor_smoke_timeout" \
+      "editor smoke timeout after ${EDITOR_SMOKE_TIMEOUT_SECONDS}s" \
+      "environment prerequisite missing before editor API became ready" \
+      "${OUTPUT_DIR}/sanitizer.log"
+    return 1
+  fi
+
+  if [[ "${ready_status}" -eq 2 ]]; then
+    if wait "${editor_pid}"; then
+      editor_exit_status=0
+    else
+      editor_exit_status=$?
+    fi
+    record_environment_or_control_failure \
+      "editor_smoke_api_ready" \
+      "editor exited before API became ready with status ${editor_exit_status}" \
+      "environment prerequisite missing before editor API became ready" \
+      "${OUTPUT_DIR}/sanitizer.log"
     return 1
   fi
 
