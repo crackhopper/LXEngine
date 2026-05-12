@@ -33,6 +33,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_freefly_camera_controller
   test_imgui_overlay
   test_vulkan_renderer_memory_probe
+  test_vulkan_offscreen_submit_memory_probe
   test_command_bus
   test_command_bus_v2
   test_scene_document
@@ -70,6 +71,7 @@ set(TEST_VIDEO_DEVICE_EXE_LIST
   test_pipeline_cache
   test_imgui_overlay
   test_vulkan_renderer_memory_probe
+  test_vulkan_offscreen_submit_memory_probe
   test_command_bus
   test_lxe_editor_memory_probe
 )
