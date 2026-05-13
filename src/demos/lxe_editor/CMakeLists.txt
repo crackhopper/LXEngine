@@ -13,7 +13,6 @@ add_executable(lxe_editor
   editor_config_state.cpp
   editor_data_state.cpp
   editor_camera_state.cpp
-  lxe_editor_mcp_handler.cpp
   runtime_state.cpp
   scene_catalog.cpp
   scene_builder.cpp

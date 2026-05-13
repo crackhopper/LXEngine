@@ -288,10 +288,6 @@ int main(int argc, char **argv) {
         apiOptions->enabled ? static_cast<std::uint16_t>(apiServer.boundPort())
                             : 0;
     const std::string runtimeHost = runtimeClientHost(apiServer.config().host);
-    const std::string mcpUrl =
-        apiOptions->enabled ? std::string("http://") + runtimeHost + ":" +
-                                  std::to_string(apiBoundPort) + "/mcp"
-                            : std::string{};
     demo::saveLxeEditorRuntimeState(
         resolveRuntimePath("data/lxe_editor"),
         demo::LxeEditorRuntimeState{
@@ -300,7 +296,6 @@ int main(int argc, char **argv) {
             .httpPort = apiBoundPort,
             .wsHost = apiOptions->enabled ? runtimeHost : std::string{},
             .wsPort = apiBoundPort,
-            .mcpUrl = mcpUrl,
             .tokenFile = apiTokenState.tokenPath().string(),
             .startedAt = currentTimestampString(),
         });

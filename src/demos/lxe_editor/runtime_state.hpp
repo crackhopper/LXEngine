@@ -13,7 +13,6 @@ struct LxeEditorRuntimeState final {
   std::uint16_t httpPort = 0;
   std::string wsHost;
   std::uint16_t wsPort = 0;
-  std::string mcpUrl;
   std::string tokenFile;
   std::string startedAt;
 

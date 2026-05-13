@@ -29,7 +29,6 @@ void saveLxeEditorRuntimeState(const std::filesystem::path& root,
     out << YAML::Key << "httpPort" << YAML::Value << state.httpPort;
     out << YAML::Key << "wsHost" << YAML::Value << state.wsHost;
     out << YAML::Key << "wsPort" << YAML::Value << state.wsPort;
-    out << YAML::Key << "mcpUrl" << YAML::Value << state.mcpUrl;
     out << YAML::Key << "tokenFile" << YAML::Value << state.tokenFile;
     out << YAML::Key << "startedAt" << YAML::Value << state.startedAt;
     out << YAML::EndMap;
@@ -70,7 +69,6 @@ loadLxeEditorRuntimeState(const std::filesystem::path& root) {
     state.wsHost = doc["wsHost"] ? doc["wsHost"].as<std::string>() : "";
     state.wsPort =
         doc["wsPort"] ? static_cast<std::uint16_t>(doc["wsPort"].as<int>()) : 0;
-    state.mcpUrl = doc["mcpUrl"] ? doc["mcpUrl"].as<std::string>() : "";
     state.tokenFile =
         doc["tokenFile"] ? doc["tokenFile"].as<std::string>() : "";
     state.startedAt =

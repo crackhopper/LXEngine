@@ -1,7 +1,6 @@
 #include "demos/lxe_editor/lxe_editor_api_server.hpp"
 
 #include "demos/lxe_editor/lxe_editor_api_protocol.hpp"
-#include "demos/lxe_editor/lxe_editor_mcp_handler.hpp"
 
 #include <algorithm>
 #include <array>
@@ -837,14 +836,6 @@ void LxeEditorApiServer::pump(LxeEditorApiService& service) {
           std::ostringstream line;
           line << "pick " << *x << " " << *y;
           client.writeBuffer += httpResponse("200 OK", commandResponse(line.str()));
-        }
-      } else if (request->method == "POST" && pathWithoutQuery == "/mcp") {
-        const LxeEditorMcpResponse response =
-            handleLxeEditorMcpHttpRequest(request->body, service);
-        if (response.hasBody) {
-          client.writeBuffer += httpResponse("200 OK", response.body);
-        } else {
-          client.writeBuffer += httpResponse("202 Accepted", "");
         }
       } else {
         client.writeBuffer += httpResponse(

@@ -244,7 +244,6 @@ if(TARGET test_lxe_editor_api_server)
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_api_protocol.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_api_service.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_api_server.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_mcp_handler.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/api_token_state.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/runtime_state.cpp
   )

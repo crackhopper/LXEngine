@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <memory>
 #include <optional>
@@ -209,17 +210,6 @@ void expectSplitToolbarState(const std::string& body) {
          "toolbar response should not include legacy editMode");
 }
 
-void expectMcpToolbarResourceText(const std::string& body) {
-  EXPECT(body.find("\\\"mode\\\":\\\"selection\\\"") != std::string::npos,
-         "MCP toolbar resource text should include editor mode");
-  EXPECT(body.find("\\\"camera\\\":\\\"freefly\\\"") != std::string::npos,
-         "MCP toolbar resource text should include camera control mode");
-  EXPECT(body.find("\\\"editMode\\\"") == std::string::npos,
-         "MCP toolbar resource text should not include legacy editMode");
-  EXPECT(body.find("\"json\":") == std::string::npos,
-         "MCP resource response should not add a raw json envelope field");
-}
-
 std::string makeMaskedWsFrame(const std::string& payload) {
   const std::array<std::uint8_t, 4> mask = {0x12, 0x34, 0x56, 0x78};
   std::string out;
@@ -339,6 +329,7 @@ void testRuntimeStateRoundTripsYaml() {
   const auto root = std::filesystem::temp_directory_path() /
                     "lxengine_lxe_editor_runtime_state";
   std::filesystem::remove_all(root);
+  const auto statePath = root / "runtime_state.yaml";
 
   const LxeEditorRuntimeState expected{
       .pid = 1234,
@@ -346,92 +337,40 @@ void testRuntimeStateRoundTripsYaml() {
       .httpPort = 3768,
       .wsHost = "0.0.0.0",
       .wsPort = 3768,
-      .mcpUrl = "http://127.0.0.1:3768/mcp",
       .tokenFile = (root / "api_token.txt").string(),
       .startedAt = "2026-05-11-160000",
   };
 
   saveLxeEditorRuntimeState(root, expected);
+  std::ifstream stateFile(statePath);
+  const std::string yaml((std::istreambuf_iterator<char>(stateFile)),
+                         std::istreambuf_iterator<char>());
+  EXPECT(yaml.find("mcpUrl") == std::string::npos,
+         "runtime state yaml should not publish mcpUrl");
   const auto loaded = loadLxeEditorRuntimeState(root);
   EXPECT(loaded.has_value(), "runtime state should reload from yaml");
   EXPECT(*loaded == expected, "runtime state yaml should round-trip");
 }
 
-void testMcpInitializeAndTools() {
-  Fixture fixture;
-
-  const auto roundTrip = [&](const std::string& requestBody) -> std::string {
-    const SocketHandle socketHandle = connectClient(fixture.server->boundPort());
-    EXPECT(socketHandle != kInvalidSocket, "MCP HTTP client should connect");
-    if (socketHandle == kInvalidSocket) {
-      return {};
-    }
-    const std::string request = makeHttpPostRequest("/mcp", requestBody);
-    EXPECT(sendAll(socketHandle, request), "MCP HTTP request should send");
-    const std::string response =
-        pumpUntilRead(*fixture.service, fixture.server.get(), socketHandle);
-    closeSocket(socketHandle);
-    return response;
-  };
-
-  const std::string initializeResponse = roundTrip(
-      "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\","
-      "\"params\":{\"protocolVersion\":\"1999-01-01\"}}");
-  if (initializeResponse.empty()) {
-    return;
-  }
-  EXPECT(initializeResponse.find("200 OK") != std::string::npos,
-         "MCP initialize should return 200");
-  EXPECT(initializeResponse.find("\"protocolVersion\":\"2025-03-26\"") !=
-             std::string::npos,
-         "MCP initialize should advertise the supported protocol version");
-  EXPECT(initializeResponse.find("\"name\":\"lxe_editor\"") !=
-             std::string::npos,
-         "MCP initialize should advertise lxe_editor server name");
-
-  const std::string toolsResponse = roundTrip(
-      "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\","
-      "\"params\":{}}");
-  EXPECT(toolsResponse.find("lxe_editor_command") != std::string::npos,
-         "MCP tools/list should advertise lxe_editor_command");
-  EXPECT(toolsResponse.find("lxe_editor_pick") != std::string::npos,
-         "MCP tools/list should advertise lxe_editor_pick");
-
-  const std::string summaryResponse = roundTrip(
-      "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\","
-      "\"params\":{\"name\":\"lxe_editor_get_summary\","
-      "\"arguments\":{}}}");
-  EXPECT(summaryResponse.find("\"sceneName\":\"Scene\"") != std::string::npos,
-         "MCP summary tool should return scene summary");
-
-  const std::string toolbarResourceResponse = roundTrip(
-      "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"resources/read\","
-      "\"params\":{\"uri\":\"lxe-editor://toolbar\"}}");
-  expectMcpToolbarResourceText(toolbarResourceResponse);
-}
-
-void testHttpMcpRequiresBearerToken() {
+void testHttpMcpEndpointIsRemoved() {
   Fixture fixture;
 
   const SocketHandle socketHandle = connectClient(fixture.server->boundPort());
-  EXPECT(socketHandle != kInvalidSocket, "MCP HTTP client should connect");
+  EXPECT(socketHandle != kInvalidSocket, "removed MCP HTTP client should connect");
   if (socketHandle == kInvalidSocket) {
     return;
   }
-
-  const std::string unauthorizedInitialize = makeHttpPostRequest(
+  const std::string request = makeHttpPostRequest(
       "/mcp",
       "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\","
-      "\"params\":{\"protocolVersion\":\"2025-03-26\"}}",
-      false);
-  EXPECT(sendAll(socketHandle, unauthorizedInitialize),
-         "unauthorized MCP initialize should send");
-  const std::string unauthorizedResponse =
+      "\"params\":{\"protocolVersion\":\"2025-03-26\"}}");
+  EXPECT(sendAll(socketHandle, request), "removed MCP request should send");
+  const std::string response =
       pumpUntilRead(*fixture.service, fixture.server.get(), socketHandle);
-  EXPECT(unauthorizedResponse.find("401 Unauthorized") != std::string::npos,
-         "HTTP MCP should reject missing bearer token");
-  EXPECT(unauthorizedResponse.find("unauthorized") != std::string::npos,
-         "HTTP MCP should describe unauthorized access");
+  EXPECT(response.find("404 Not Found") != std::string::npos,
+         "removed MCP endpoint should return 404");
+  EXPECT(response.find("\"code\":\"not_found\"") != std::string::npos,
+         "removed MCP endpoint should use not_found error");
   closeSocket(socketHandle);
 }
 
@@ -442,8 +381,7 @@ int main() {
   testHttpStateEndpointsExposeSplitToolbarState();
   testWebSocketHandshakeAndEvents();
   testRuntimeStateRoundTripsYaml();
-  testMcpInitializeAndTools();
-  testHttpMcpRequiresBearerToken();
+  testHttpMcpEndpointIsRemoved();
 
   if (failures != 0) {
     std::cerr << failures << " API server test(s) failed\n";
