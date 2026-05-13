@@ -458,11 +458,8 @@ describe("mcp tool handlers", () => {
         method: "notifications/initialized",
       }),
     });
-    await expect(initializedResponse.json()).resolves.toEqual({
-      jsonrpc: "2.0",
-      id: null,
-      result: {},
-    });
+    expect(initializedResponse.status).toBe(202);
+    await expect(initializedResponse.text()).resolves.toBe("");
 
     const promptsResponse = await fetch(`http://127.0.0.1:${port}/mcp`, {
       method: "POST",

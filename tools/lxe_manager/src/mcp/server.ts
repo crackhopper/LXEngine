@@ -206,11 +206,17 @@ export function createMcpHttpServer(input: {
 
     try {
       const rpcRequest = JSON.parse(await readBody(request)) as JsonRpcRequest;
-      writeJson(
-        response,
-        200,
-        await handleJsonRpcRequest(input.handlers, rpcRequest, input.resources),
+      const rpcResponse = await handleJsonRpcRequest(
+        input.handlers,
+        rpcRequest,
+        input.resources,
       );
+      if (!rpcResponse) {
+        response.writeHead(202);
+        response.end();
+        return;
+      }
+      writeJson(response, 200, rpcResponse);
     } catch (error) {
       writeJson(response, 200, {
         jsonrpc: "2.0",
@@ -228,8 +234,9 @@ export async function handleJsonRpcRequest(
   handlers: Record<string, ToolHandler>,
   request: JsonRpcRequest,
   resources?: ResourceHandlers,
-): Promise<JsonRpcResponse> {
-  const id = request.id ?? null;
+): Promise<JsonRpcResponse | undefined> {
+  const isNotification = request.id === undefined;
+  const id: JsonRpcId = isNotification ? null : (request.id ?? null);
   if (request.jsonrpc !== "2.0" || typeof request.method !== "string") {
     return rpcError(id, -32600, "invalid JSON-RPC request");
   }
@@ -244,7 +251,7 @@ export async function handleJsonRpcRequest(
     case "ping":
       return rpcResult(id, {});
     case "notifications/initialized":
-      return rpcResult(id, {});
+      return isNotification ? undefined : rpcResult(id, {});
     case "prompts/list":
       return rpcResult(id, { prompts: [] });
     case "tools/list":
