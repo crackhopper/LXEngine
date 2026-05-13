@@ -1,6 +1,6 @@
 ---
 name: lxe-editor-debug
-description: Inspect and debug a running lxe_editor instance through the repo-local lxe_editor MCP server and its lxe_editor_* tools/resources.
+description: Inspect and debug a running lxe_editor instance through the repo-local lxe_manager MCP server and its lxe_editor_* tools/resources.
 ---
 
 Use this skill when the task is to inspect, diagnose, or drive a running `lxe_editor`
@@ -9,15 +9,16 @@ instance through MCP instead of re-implementing editor probing logic in shell co
 ## Scope
 
 This skill assumes the repo-local Codex config registers an MCP server named
-`lxe_editor`. The repo-local helpers switch that config to either the local
-runtime discovered from `data/lxe_editor/runtime_state.yaml` or a remote MCP
-URL, and export:
+`lxe_manager`. The repo-local helpers switch that config to either the local
+manager MCP URL or a remote manager MCP URL, and use:
 
-- `LXE_EDITOR_MCP_BEARER_TOKEN`
+- `LXE_MANAGER_MCP_BEARER_TOKEN`
 
-This skill does not replace source-side MCP implementation. If the editor has
-not written `runtime_state.yaml`, or if the `/mcp` endpoint is not listening
-yet, report that as the blocker.
+This skill does not replace source-side manager MCP implementation. If
+`lxe_manager` is not running, or if the configured manager MCP URL is not
+listening yet, report that as the blocker. The editor's
+`runtime_state.yaml` is still useful for HTTP/WebSocket discovery, but it no
+longer publishes an MCP URL.
 
 ## Preferred Surfaces
 
@@ -41,7 +42,7 @@ Use tools for actions and active polling:
 
 ## Workflow
 
-1. Check that the `lxe_editor` MCP server is available in the current session.
+1. Check that the `lxe_manager` MCP server is available in the current session.
 2. If MCP resources are available, read `lxe-editor://summary` first to anchor
    the current scene, mode, preview state, dirty bit, and active camera.
 3. Read narrower resources such as `lxe-editor://selection` or
@@ -58,10 +59,10 @@ Use tools for actions and active polling:
 - Prefer MCP over direct file scraping once the server is connected.
 - Do not maintain a second debug protocol in the skill.
 - If tools or resources are missing, distinguish between:
-  - repo-local registration missing
-  - `data/lxe_editor/runtime_state.yaml` missing
-  - configured MCP URL not responding yet
-  - source-side server connected but missing a specific `lxe_editor_*` tool or
+  - repo-local manager registration missing
+  - `data/lxe_editor/runtime_state.yaml` missing for editor HTTP/WS discovery
+  - configured manager MCP URL not responding yet
+  - manager server connected but missing a specific `lxe_editor_*` tool or
     `lxe-editor://` resource
 - Keep resource names and tool names aligned with the approved design:
   `lxe_editor_*` for tools, `lxe-editor://...` for resources.
@@ -79,6 +80,6 @@ Use tools for actions and active polling:
 
 When MCP access fails, report the smallest true blocker:
 
-- `runtime_state.yaml` absent: the local editor runtime has not published MCP discovery data.
-- MCP request failed: the source-side `/mcp` endpoint is not live yet, or the configured URL/token is wrong.
+- `runtime_state.yaml` absent: the local editor runtime has not published HTTP/WS discovery data.
+- MCP request failed: the manager MCP endpoint is not live yet, or the configured URL/token is wrong.
 - Tool/resource absent: the server is reachable, but the requested MCP surface is not implemented yet.

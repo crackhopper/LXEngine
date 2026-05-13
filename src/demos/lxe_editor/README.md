@@ -166,39 +166,47 @@ host, port, and token-file path.
 
 ## MCP diagnostics
 
-Codex-side MCP integration now expects `lxe_editor` to be reachable through a
-direct HTTP MCP URL. The repo-local bridge is gone; the local helper prefers
-the runtime state's `mcpUrl` and temporarily falls back to legacy
-`mcpHost`/`mcpPort` discovery while the source-side transport migration lands.
+Codex-side MCP integration now goes through the standalone `lxe_manager`
+server. `lxe_editor` publishes only its editor HTTP/WebSocket discovery in
+`runtime_state.yaml`; it no longer exposes `POST /mcp` and no longer writes an
+MCP URL into runtime state.
 
 - Repo-local Codex config: `.codex/config.toml`
-- Direct MCP endpoint target: `POST /mcp`
-- Bearer token env var: `LXE_EDITOR_MCP_BEARER_TOKEN`
-- Runtime discovery file: `data/lxe_editor/runtime_state.yaml`
-- Preferred runtime-state key: `mcpUrl`
+- Manager MCP endpoint: `http://127.0.0.1:3880/mcp` by default
+- Bearer token env var: `LXE_MANAGER_MCP_BEARER_TOKEN`
+- Editor runtime discovery file: `data/lxe_editor/runtime_state.yaml`
+- Editor runtime discovery content: editor HTTP/WS host, port, token, and
+  process metadata only
 
-To point Codex at the local editor:
+To point Codex at the local manager:
 
 ```sh
-source scripts/lxe_editor/use_local_mcp.sh
+source scripts/lxe_manager/use_local_mcp.sh
 codex
 ```
 
-That helper ensures a local `lxe_editor` instance is running, waits for
-`runtime_state.yaml`, loads the token from `tokenFile`, exports
-`LXE_EDITOR_MCP_BEARER_TOKEN`, and rewrites `.codex/config.toml` to the
-discovered direct MCP URL. Override the executable with
-`LXE_EDITOR_EXECUTABLE=/path/to/lxe_editor` when needed.
+That helper rewrites `.codex/config.toml` to register `lxe_manager` at
+`http://127.0.0.1:3880/mcp` and configures Codex to read the bearer token from
+`LXE_MANAGER_MCP_BEARER_TOKEN`. Override the endpoint with
+`LXE_MANAGER_URL=http://host:port/mcp` when needed.
 
-To point Codex at a remote editor:
+PowerShell:
 
-```sh
-source scripts/lxe_editor/use_remote_mcp.sh https://editor.example.com/mcp <token>
+```powershell
+scripts/lxe_manager/use_local_mcp.ps1
 codex
 ```
 
-The remote helper writes the same direct-URL config and exports the bearer
-token env var locally without committing secrets to the repo.
+To point Codex at a remote manager:
+
+```sh
+source scripts/lxe_manager/use_remote_mcp.sh https://manager.example.com/mcp <token>
+codex
+```
+
+The remote helper writes the manager URL config and exports
+`LXE_MANAGER_MCP_BEARER_TOKEN` only in the current shell, without committing
+secrets to the repo.
 
 Current MCP surface:
 

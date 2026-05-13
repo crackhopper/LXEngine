@@ -130,11 +130,9 @@ class LxeEditorClient:
         raise FileNotFoundError("api token file not found")
 
     def read_mcp_url(self) -> str:
-        state = self.read_runtime_state()
-        direct_url = state.get("mcpUrl", "").strip()
-        if direct_url:
-            return direct_url
-        raise FileNotFoundError("mcp URL not found in runtime_state.yaml")
+        raise FileNotFoundError(
+            "manager MCP URL is no longer published by editor runtime_state.yaml"
+        )
 
     def wait_until_ready(self, timeout_s: float | None = None) -> None:
         deadline = time.monotonic() + (timeout_s or self.timeout_s)
