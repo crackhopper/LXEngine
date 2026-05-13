@@ -143,7 +143,7 @@ Expected: FAIL because `package.json`, `vitest`, and `resolveManagerConfig` do n
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "dev": "node --loader tsx ./src/index.ts"
+    "dev": "node --import tsx ./src/index.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",
@@ -1249,4 +1249,3 @@ No spec requirement is currently uncovered.
 - Manager config stays `repoRoot`, `runtimeRoot`, `runtimeStatePath`, `editorExecutable` across tasks.
 - Editor runtime state consistently excludes `mcpUrl`.
 - MCP tool names remain `editor.get_summary`, `ops.repo_pull`, and `ops.editor_status` across the plan.
-

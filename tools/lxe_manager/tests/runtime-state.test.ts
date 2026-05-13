@@ -1,3 +1,4 @@
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { resolveManagerConfig } from "../src/config.js";
 
@@ -9,7 +10,28 @@ describe("resolveManagerConfig", () => {
     });
 
     expect(config.repoRoot).toBe("/repo");
-    expect(config.runtimeStatePath).toBe("/runtime/data/lxe_editor/runtime_state.yaml");
-    expect(config.editorExecutable).toContain("/repo/build/src/demos/lxe_editor/lxe_editor");
+    expect(config.runtimeStatePath).toBe(
+      path.join("/runtime", "data", "lxe_editor", "runtime_state.yaml"),
+    );
+    expect(config.editorExecutable).toBe(
+      path.join(
+        "/repo",
+        "build",
+        "src",
+        "demos",
+        "lxe_editor",
+        process.platform === "win32" ? "lxe_editor.exe" : "lxe_editor",
+      ),
+    );
+  });
+
+  it("allows an explicit editor executable override", () => {
+    const config = resolveManagerConfig({
+      repoRoot: "/repo",
+      runtimeRoot: "/runtime",
+      editorExecutable: "/custom/lxe_editor",
+    });
+
+    expect(config.editorExecutable).toBe("/custom/lxe_editor");
   });
 });

@@ -49,6 +49,6 @@ notes/temporary/index.md
 # local editor / scene workspace data
 data/
 
-# Node tooling
-node_modules/
-dist/
+# lxe_manager local Node tooling
+/tools/lxe_manager/node_modules/
+/tools/lxe_manager/dist/
