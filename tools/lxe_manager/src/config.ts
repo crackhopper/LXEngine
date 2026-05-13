@@ -1,4 +1,5 @@
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 export interface ManagerConfig {
   repoRoot: string;
@@ -33,4 +34,8 @@ export function resolveManagerConfig(input: {
         executableName,
       ),
   };
+}
+
+export function defaultRepoRoot(metaUrl: string = import.meta.url): string {
+  return path.resolve(path.dirname(fileURLToPath(metaUrl)), "..", "..", "..");
 }

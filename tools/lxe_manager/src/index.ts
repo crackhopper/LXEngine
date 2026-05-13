@@ -1,6 +1,6 @@
-import { resolveManagerConfig } from "./config.js";
+import { defaultRepoRoot, resolveManagerConfig } from "./config.js";
 
-const repoRoot = process.env.LXE_MANAGER_REPO_ROOT ?? process.cwd();
+const repoRoot = process.env.LXE_MANAGER_REPO_ROOT ?? defaultRepoRoot();
 const runtimeRoot = process.env.LXE_MANAGER_RUNTIME_ROOT ?? repoRoot;
 const editorExecutable = process.env.LXE_MANAGER_EDITOR_EXECUTABLE;
 
