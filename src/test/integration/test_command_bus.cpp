@@ -18,7 +18,9 @@
 
 #include <imgui.h>
 
+#include <array>
 #include <cmath>
+#include <cstring>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
@@ -1632,6 +1634,30 @@ void testConsoleInputControllerCallbackEvents() {
          "char filter should allow ordinary characters");
 }
 
+void testConsolePanelCharFilterDoesNotRewriteCallbackBuffer() {
+  CommandFixture fixture;
+  ConsoleInputController controller(fixture.bus);
+  controller.setInputText("draft");
+
+  std::array<char, 64> filterBuffer{};
+  std::memcpy(filterBuffer.data(), "keep", 5);
+  ImGuiInputTextCallbackData filterData{};
+  filterData.EventFlag = ImGuiInputTextFlags_CallbackCharFilter;
+  filterData.EventChar = 'a';
+  filterData.UserData = &controller;
+  filterData.Buf = filterBuffer.data();
+  filterData.BufSize = static_cast<int>(filterBuffer.size());
+
+  EXPECT(ConsolePanel::inputTextCallback(&filterData) == 0,
+         "char filter callback should allow ordinary characters");
+  EXPECT(std::string(filterData.Buf) == "keep",
+         "char filter callback should not rewrite ImGui text buffer");
+  EXPECT(!filterData.BufDirty,
+         "char filter callback should not mark callback buffer dirty");
+  EXPECT(controller.inputText() == "draft",
+         "char filter callback should not mutate controller-owned draft text");
+}
+
 void testConsolePanelShouldSubmitPlainEnterOnly() {
   EXPECT(ConsolePanel::shouldSubmitInputOnPlainEnter(
              true, true, false, false, false, false, false) == true,
@@ -1670,7 +1696,7 @@ void testConsolePanelUsesSingleLineHistoryCompatibleInputFlags() {
          "console input widget must remain single-line when history callbacks are enabled");
 }
 
-void testConsoleInputControllerSyncsCallbackBufferAfterControllerMutations() {
+void testConsoleInputControllerSyncsCallbackBufferAfterCompletionAndHistory() {
   CommandFixture fixture;
   ConsoleInputController controller(fixture.bus);
 
@@ -1723,31 +1749,6 @@ void testConsoleInputControllerSyncsCallbackBufferAfterControllerMutations() {
          "callback sync should collapse history selection at buffer end");
   EXPECT(historyData.BufDirty,
          "callback sync should mark history buffer dirty");
-
-  controller.setInputText("draft");
-  std::array<char, 64> filterBuffer{};
-  std::memcpy(filterBuffer.data(), "keep", 5);
-  ImGuiInputTextCallbackData filterData{};
-  filterData.EventFlag = ImGuiInputTextFlags_CallbackCharFilter;
-  filterData.EventChar = '\n';
-  filterData.Buf = filterBuffer.data();
-  filterData.BufSize = static_cast<int>(filterBuffer.size());
-
-  EXPECT(controller.handleCallbackEvent(filterData.EventFlag, filterData.EventKey,
-                                        filterData.EventChar) == 1,
-         "char filter should reject newline before callback sync");
-  controller.syncCallbackBuffer(filterData);
-  EXPECT(std::string(filterData.Buf) == "draft",
-         "callback sync should preserve controller-owned buffer after filter event");
-  EXPECT(filterData.BufTextLen == 5,
-         "callback sync should update filter buffer length coherently");
-  EXPECT(filterData.CursorPos == filterData.BufTextLen,
-         "callback sync should move filter cursor to buffer end");
-  EXPECT(filterData.SelectionStart == filterData.BufTextLen &&
-             filterData.SelectionEnd == filterData.BufTextLen,
-         "callback sync should collapse filter selection at buffer end");
-  EXPECT(filterData.BufDirty,
-         "callback sync should mark filter buffer dirty");
 }
 
 void testConsoleInputControllerPersistsHistoryLines() {
@@ -1859,9 +1860,10 @@ int main() {
   testConsoleInputControllerCompletionBehaviors();
   testConsoleInputControllerEscRestoresDraft();
   testConsoleInputControllerCallbackEvents();
+  testConsolePanelCharFilterDoesNotRewriteCallbackBuffer();
   testConsolePanelShouldSubmitPlainEnterOnly();
   testConsolePanelUsesSingleLineHistoryCompatibleInputFlags();
-  testConsoleInputControllerSyncsCallbackBufferAfterControllerMutations();
+  testConsoleInputControllerSyncsCallbackBufferAfterCompletionAndHistory();
   testConsoleInputControllerPersistsHistoryLines();
   testConsoleInputControllerSanitizesMultilineSubmitToSingleLine();
 

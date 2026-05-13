@@ -287,7 +287,10 @@ int ConsolePanel::inputTextCallback(ImGuiInputTextCallbackData *data) {
   const int result =
       controller->handleCallbackEvent(data->EventFlag, data->EventKey,
                                       data->EventChar);
-  controller->syncCallbackBuffer(*data);
+  if (data->EventFlag == ImGuiInputTextFlags_CallbackCompletion ||
+      data->EventFlag == ImGuiInputTextFlags_CallbackHistory) {
+    controller->syncCallbackBuffer(*data);
+  }
   return result;
 }
 

@@ -41,6 +41,7 @@ public:
       bool shiftHeld, bool altHeld, bool superHeld);
   [[nodiscard]] static ImGuiInputTextFlags inputTextFlags();
   [[nodiscard]] static bool usesMultilineInput();
+  [[nodiscard]] static int inputTextCallback(ImGuiInputTextCallbackData *data);
 
   void setInputText(std::string_view text);
   [[nodiscard]] std::string getInputText() const;
@@ -52,7 +53,6 @@ public:
   void setOpen(bool open);
 
 private:
-  [[nodiscard]] static int inputTextCallback(ImGuiInputTextCallbackData *data);
   void appendAttachmentToDispatchOwner(u64 dispatchOwnerId, std::string_view line);
   void drawOutputRegion(float reservedInputHeight);
   void drawDisplayEntry(const DisplayEntry &entry) const;
