@@ -52,6 +52,10 @@ For command syntax beyond obvious one-line actions, load
 6. After an action, verify the result with a resource read or
    `lxe_editor_wait_for`; do not assume the editor state changed as requested.
 
+If `lxe_editor_ensure_running` or a state read returns `editor_unavailable`,
+switch to `lxe-manager-ops` and call `ops.editor_status`. That is the canonical
+way to tell whether the editor is simply not started.
+
 ## Guardrails
 
 - Prefer MCP over direct file scraping once the server is connected.

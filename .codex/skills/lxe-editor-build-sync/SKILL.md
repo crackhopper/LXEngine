@@ -37,6 +37,10 @@ git status --short
    different commit, report the mismatch and switch to `lxe-manager-ops` for
    stop/pull/build/start.
 
+If build info returns `editor_unavailable`, switch to `lxe-manager-ops` and call
+`ops.editor_status` before diagnosing version drift. A stopped editor has no
+build identity to compare.
+
 ## Guardrails
 
 - Do not run `git pull`, build, stop, or start from this skill.

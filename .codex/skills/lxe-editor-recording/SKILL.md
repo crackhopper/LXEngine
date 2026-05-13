@@ -30,6 +30,10 @@ state reads belong to `lxe-editor-debug`; process lifecycle work belongs to
 6. Replay once, then use `recording_probe` at the failure state instead of
    repeatedly mutating the editor.
 
+If `recording_status` returns `editor_unavailable`, stop the recording workflow
+and switch to `lxe-manager-ops` to call `ops.editor_status`. That distinguishes
+"manager reachable but editor not started" from recording API failure.
+
 ## Guardrails
 
 - Treat recordings as debug artifacts, not deterministic frame-perfect tests.

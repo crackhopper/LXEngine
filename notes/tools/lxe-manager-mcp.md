@@ -145,7 +145,7 @@ MCP 来源操作；后续可以在 editor 内部继续扩展 toolbar、pick、dr
 | Skill | 何时使用 | 主要 MCP 面 |
 |---|---|---|
 | `lxe-editor-build-sync` | 需要确认远端 editor 是否由当前 Git 版本构建 | `editor.get_build_info` / `lxe_editor_get_build_info` |
-| `lxe-manager-ops` | 需要 stop/start、pull、configure、build、查日志或处理资源守护失败 | `ops.editor_*`、`ops.repo_pull`、`ops.build_*` |
+| `lxe-manager-ops` | 需要查询 editor 是否启动，或需要 stop/start、pull、configure、build、查日志、处理资源守护失败 | `ops.editor_*`、`ops.repo_pull`、`ops.build_*` |
 | `lxe-editor-debug` | 需要读取状态、轻量 command、pick 或 wait-for | `lxe_editor_*` 和 `lxe-editor://...` 资源 |
 | `lxe-editor-recording` | 需要录制、读取、回放或 probe 调试录制文件 | `recording_*` |
 | `lxe-editor-command-reference` | 需要确认 editor command 名称、参数和示例 | 当前代码里的 command 注册与解析处 |
@@ -154,6 +154,11 @@ MCP 来源操作；后续可以在 editor 内部继续扩展 toolbar、pick、dr
 再切到 `lxe-manager-ops` 完成停止、拉取、构建和启动。普通状态诊断只加载
 `lxe-editor-debug`。当问题需要复现证据时，再加载 `lxe-editor-recording`。只有
 准备发送非平凡 command 时，才加载 `lxe-editor-command-reference` 查证语法。
+
+如果任何 editor-facing 工具返回 `editor_unavailable`，我们先切到
+`lxe-manager-ops` 调 `ops.editor_status`。`{ "running": false }` 表示 manager
+可达但没有启动 editor；这时不应继续调用录制、debug 或 build-info 工具，除非
+随后用 `ops.editor_start` 启动了 editor。
 
 ## 安全边界
 
