@@ -106,6 +106,43 @@ describe("resource guardian", () => {
     expect(kill).toHaveBeenCalledOnce();
   });
 
+  it("serializes overlapping ticks so kill is still called once", async () => {
+    const kill = vi.fn(async () => undefined);
+    let resolveSample: ((sample: ResourceSample) => void) | undefined;
+    const guardian = new ResourceGuardian({
+      sample: async () =>
+        new Promise<ResourceSample>((resolve) => {
+          resolveSample = resolve;
+        }),
+      kill,
+      maxConsecutiveBreaches: 1,
+      thresholds: {
+        minSystemFreeMemoryBytes: 64,
+        maxProcessRssBytes: 512,
+        maxProcessCpuPercent: 350,
+        maxSystemCpuBusyPercent: 95,
+        maxProcessIoBytesPerSecond: 1000,
+        maxSystemIoBusyPercent: 95,
+      },
+    });
+
+    const firstTick = guardian.tick();
+    const secondTick = guardian.tick();
+    resolveSample?.({
+      processRssBytes: 4096,
+      processCpuPercent: 390,
+      systemFreeMemoryBytes: 16,
+      systemCpuBusyPercent: 99,
+      processReadBytesPerSecond: 1024,
+      processWriteBytesPerSecond: 1024,
+      systemIoBusyPercent: 98,
+    });
+
+    await Promise.all([firstTick, secondTick]);
+
+    expect(kill).toHaveBeenCalledOnce();
+  });
+
   it("does not kill for system I/O pressure from another process", async () => {
     const kill = vi.fn(async () => undefined);
     const guardian = new ResourceGuardian({

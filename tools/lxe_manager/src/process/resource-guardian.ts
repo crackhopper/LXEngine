@@ -19,10 +19,24 @@ export interface ResourceGuardianInput {
 export class ResourceGuardian {
   private breachCount = 0;
   private killStarted = false;
+  private activeTick: Promise<void> | undefined;
 
   constructor(private readonly input: ResourceGuardianInput) {}
 
   async tick(): Promise<void> {
+    if (this.activeTick) {
+      await this.activeTick;
+      return;
+    }
+    this.activeTick = this.runTick();
+    try {
+      await this.activeTick;
+    } finally {
+      this.activeTick = undefined;
+    }
+  }
+
+  private async runTick(): Promise<void> {
     if (this.killStarted) {
       return;
     }
