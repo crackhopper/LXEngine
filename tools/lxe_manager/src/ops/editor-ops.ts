@@ -90,6 +90,11 @@ export class EditorOps {
     return { running, pid };
   }
 
+  async restart(): Promise<EditorStatus> {
+    await this.stop();
+    return this.start();
+  }
+
   async status(): Promise<EditorStatus> {
     const pid = await this.resolveReachableEditorPid();
     if (!pid) {

@@ -19,6 +19,8 @@ probing in `lxe-editor-debug` and build comparison in `lxe-editor-build-sync`.
 | `ops.repo_pull` | Run repository `git pull --ff-only` through manager |
 | `ops.build_configure` | Run CMake configure |
 | `ops.build_target` | Build a specific CMake target |
+| `ops.build_state` | Read manager-side metadata for the last successful build target action |
+| `ops.editor_restart` | Stop and then start the managed editor |
 | `lxe_editor_ensure_running` | Non-destructive editor health check |
 
 ## Status Query
@@ -45,7 +47,9 @@ Interpret common results:
 4. Configure before build when CMake inputs, build identity, or dependencies
    changed.
 5. Build the smallest target that satisfies the task, usually `lxe_editor`.
-6. Start the editor and verify with `lxe_editor_ensure_running`.
+6. Read `ops.build_state` after a successful build when Git/build identity is
+   needed without forcing CMake configure.
+7. Start or restart the editor and verify with `lxe_editor_ensure_running`.
 
 ## Resource Guardian Failures
 

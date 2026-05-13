@@ -145,7 +145,10 @@ describe("process supervision", () => {
   });
 
   it("builds a repo pull command in the repo root", async () => {
-    const ops = new WorkspaceOps(new ProcessSupervisor(), { repoRoot: "/repo" });
+    const ops = new WorkspaceOps(new ProcessSupervisor(), {
+      repoRoot: "/repo",
+      runtimeRoot: "/runtime",
+    });
     const command = ops.buildRepoPullCommand();
 
     expect(command.command).toBe("git");
@@ -156,6 +159,7 @@ describe("process supervision", () => {
   it("only adds a CMake generator when one is configured", () => {
     const defaultOps = new WorkspaceOps(new ProcessSupervisor(), {
       repoRoot: "/repo",
+      runtimeRoot: "/runtime",
     });
     expect(defaultOps.buildConfigureCommand("/build").args).toEqual([
       "-S",
@@ -166,6 +170,7 @@ describe("process supervision", () => {
 
     const ninjaOps = new WorkspaceOps(new ProcessSupervisor(), {
       repoRoot: "/repo",
+      runtimeRoot: "/runtime",
       cmakeGenerator: "Ninja",
     });
     expect(ninjaOps.buildConfigureCommand("/build").args).toEqual([

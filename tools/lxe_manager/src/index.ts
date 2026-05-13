@@ -33,7 +33,10 @@ const editorClientProvider = createEditorClient;
 const handlers = createToolHandlers({
   editorOps: new EditorOps(processSupervisor, config),
   editorClientProvider,
-  workspaceOps: new WorkspaceOps(processSupervisor, { repoRoot: config.repoRoot }),
+  workspaceOps: new WorkspaceOps(processSupervisor, {
+    repoRoot: config.repoRoot,
+    runtimeRoot: config.runtimeRoot,
+  }),
 });
 const resources = createResourceHandlers(editorClientProvider);
 const server = createMcpHttpServer({

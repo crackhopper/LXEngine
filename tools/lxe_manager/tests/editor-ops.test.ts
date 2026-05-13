@@ -139,6 +139,29 @@ describe("editor ops", () => {
     expect(status).toEqual({ running: false, pid: 4321 });
   });
 
+  it("restarts the editor by stopping then starting", async () => {
+    const supervisor = {
+      startDetached: vi.fn(async () => ({ label: "editor.start", pid: 4321 })),
+      stopDetachedProcessTree: vi.fn(async () => undefined),
+      forceKillDetachedProcessTree: vi.fn(async () => undefined),
+      waitForProcessExit: vi.fn(async () => true),
+      isProcessRunning: vi.fn(() => true),
+      logsForDetachedProcess: vi.fn(),
+    } as unknown as ProcessSupervisor;
+    const ops = new EditorOps(supervisor, config(), {
+      stopGracePeriodMs: 5,
+      startTimeoutMs: 1,
+      startPollIntervalMs: 1,
+    });
+
+    await ops.start();
+    const status = await ops.restart();
+
+    expect(supervisor.stopDetachedProcessTree).toHaveBeenCalledWith(4321);
+    expect(supervisor.startDetached).toHaveBeenCalledTimes(2);
+    expect(status).toEqual({ running: true, pid: 4321 });
+  });
+
   it("recovers editor status from runtime state after manager restart", async () => {
     const server = createServer((_request, response) => {
       response.writeHead(200, { "content-type": "application/json" });

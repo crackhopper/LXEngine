@@ -45,6 +45,7 @@ type EditorClientProvider = () =>
 interface EditorOpsSurface {
   start: () => Promise<unknown>;
   stop: () => Promise<unknown>;
+  restart: () => Promise<unknown>;
   status: () => Promise<unknown>;
   logs: () => Promise<unknown>;
 }
@@ -53,6 +54,7 @@ interface WorkspaceOpsSurface {
   repoPull: () => Promise<unknown>;
   buildConfigure: (buildDir?: string) => Promise<unknown>;
   buildTarget: (buildDir?: string, target?: string) => Promise<unknown>;
+  buildState: () => Promise<unknown> | unknown;
 }
 
 export function createToolHandlers(input: {
@@ -145,8 +147,10 @@ export function createToolHandlers(input: {
           optionalString(args, "target"),
         ),
       ),
+    "ops.build_state": async () => jsonText(await input.workspaceOps.buildState()),
     "ops.editor_start": async () => jsonText(await input.editorOps.start()),
     "ops.editor_stop": async () => jsonText(await input.editorOps.stop()),
+    "ops.editor_restart": async () => jsonText(await input.editorOps.restart()),
     "ops.editor_status": async () => jsonText(await input.editorOps.status()),
     "ops.editor_logs": async () => jsonText(await input.editorOps.logs()),
   };

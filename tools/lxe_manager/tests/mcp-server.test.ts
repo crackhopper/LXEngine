@@ -54,6 +54,7 @@ describe("mcp tool handlers", () => {
       editorOps: {
         start: vi.fn(async () => ({ running: true, pid: 123 })),
         stop: vi.fn(async () => ({ running: false })),
+        restart: vi.fn(async () => ({ running: true, pid: 456 })),
         status: vi.fn(async () => ({ running: true, pid: 123 })),
         logs: vi.fn(async () => ({ stdout: "", stderr: "" })),
         ...overrides.editorOps,
@@ -88,6 +89,7 @@ describe("mcp tool handlers", () => {
         repoPull: vi.fn(async () => ({ exitCode: 0 })),
         buildConfigure: vi.fn(async () => ({ exitCode: 0 })),
         buildTarget: vi.fn(async () => ({ exitCode: 0 })),
+        buildState: vi.fn(async () => ({ repoHeadShort: "0123456789ab" })),
         ...overrides.workspaceOps,
       },
     };
@@ -172,8 +174,10 @@ describe("mcp tool handlers", () => {
       "lxe_editor_pick",
       "lxe_editor_wait_for",
       "ops.build_configure",
+      "ops.build_state",
       "ops.build_target",
       "ops.editor_logs",
+      "ops.editor_restart",
       "ops.editor_start",
       "ops.editor_status",
       "ops.editor_stop",
@@ -251,8 +255,10 @@ describe("mcp tool handlers", () => {
     const waitFor = vi.fn(async () => ({ found: true }));
     const buildConfigure = vi.fn(async () => ({ exitCode: 0, label: "build.configure" }));
     const buildTarget = vi.fn(async () => ({ exitCode: 0, label: "build.target" }));
+    const buildState = vi.fn(async () => ({ repoHeadShort: "0123456789ab" }));
     const start = vi.fn(async () => ({ running: true, pid: 321 }));
     const stop = vi.fn(async () => ({ running: false }));
+    const restart = vi.fn(async () => ({ running: true, pid: 654 }));
     const logs = vi.fn(async () => ({ stdout: "out", stderr: "err" }));
     const handlers = createToolHandlers(
       makeInput({
@@ -265,8 +271,8 @@ describe("mcp tool handlers", () => {
           command,
           waitFor,
         },
-        editorOps: { start, stop, logs },
-        workspaceOps: { buildConfigure, buildTarget },
+        editorOps: { start, stop, restart, logs },
+        workspaceOps: { buildConfigure, buildTarget, buildState },
       }),
     );
 
@@ -285,8 +291,10 @@ describe("mcp tool handlers", () => {
     await handlers["lxe_editor_ensure_running"]({});
     await handlers["ops.build_configure"]({ buildDir: "/tmp/build" });
     await handlers["ops.build_target"]({ buildDir: "/tmp/build", target: "lxe_editor" });
+    await handlers["ops.build_state"]({});
     await handlers["ops.editor_start"]({});
     await handlers["ops.editor_stop"]({});
+    await handlers["ops.editor_restart"]({});
     await handlers["ops.editor_logs"]({});
 
     expect(getSelection).toHaveBeenCalledTimes(2);
@@ -298,8 +306,10 @@ describe("mcp tool handlers", () => {
     expect(health).toHaveBeenCalledOnce();
     expect(buildConfigure).toHaveBeenCalledWith("/tmp/build");
     expect(buildTarget).toHaveBeenCalledWith("/tmp/build", "lxe_editor");
+    expect(buildState).toHaveBeenCalledOnce();
     expect(start).toHaveBeenCalledOnce();
     expect(stop).toHaveBeenCalledOnce();
+    expect(restart).toHaveBeenCalledOnce();
     expect(logs).toHaveBeenCalledOnce();
   });
 
