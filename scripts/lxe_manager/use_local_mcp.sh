@@ -25,7 +25,7 @@ block = (
 )
 pattern = re.compile(r"(?ms)^\[mcp_servers\.lxe_manager\]\r?\n.*?(?=^\[|\Z)")
 if pattern.search(text):
-    text = pattern.sub(block, text)
+    text = pattern.sub(lambda _: block, text)
 else:
     text = text.rstrip()
     text = f"{text}\n\n{block}" if text else block

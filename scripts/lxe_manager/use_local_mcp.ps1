@@ -16,7 +16,7 @@ $block = "[mcp_servers.lxe_manager]`nurl = $escapedUrl`nbearer_token_env_var = `
 $text = if (Test-Path $ConfigPath) { Get-Content $ConfigPath -Raw } else { "" }
 $pattern = "(?ms)^\[mcp_servers\.lxe_manager\]\r?`n.*?(?=^\[|\z)"
 if ($text -match $pattern) {
-    $text = [regex]::Replace($text, $pattern, $block)
+    $text = [regex]::Replace($text, $pattern, { param($match) $block })
 } elseif ($text.Trim()) {
     $text = $text.TrimEnd() + "`n`n" + $block
 } else {

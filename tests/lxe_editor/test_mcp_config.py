@@ -199,6 +199,28 @@ class ManagerMcpConfigTest(unittest.TestCase):
         self.assertIn('url = "http://127.0.0.1:3880/mcp"', output)
         self.assertIn("[mcp_servers.other]", output)
 
+    def test_use_local_mcp_script_replaces_existing_table_with_literal_escaped_url(self) -> None:
+        self.write_existing_crlf_manager_config()
+        script = self.repo_root / "scripts" / "lxe_manager" / "use_local_mcp.sh"
+        subprocess.run(
+            ["bash", "-lc", f"source '{script}' >/dev/null"],
+            check=True,
+            capture_output=True,
+            text=True,
+            env={
+                **os.environ,
+                "LXE_EDITOR_CODEX_CONFIG_PATH": str(self.config_path),
+                "LXE_MANAGER_URL": r"http://127.0.0.1:4999/mcp?path=C:\\tmp&token=$1",
+            },
+        )
+
+        output = self.config_path.read_text(encoding="utf-8")
+        self.assertEqual(output.count("[mcp_servers.lxe_manager]"), 1)
+        self.assertIn(
+            r'url = "http://127.0.0.1:4999/mcp?path=C:\\\\tmp&token=$1"',
+            output,
+        )
+
     def test_use_local_mcp_script_preserves_shell_options_when_sourced(self) -> None:
         script = self.repo_root / "scripts" / "lxe_manager" / "use_local_mcp.sh"
         command = textwrap.dedent(

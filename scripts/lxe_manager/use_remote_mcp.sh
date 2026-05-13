@@ -4,7 +4,7 @@ _lxe_manager_use_remote_mcp() (
   set -euo pipefail
 
   if [ "$#" -ne 1 ]; then
-    echo "usage: LXE_MANAGER_MCP_BEARER_TOKEN=<token> source scripts/lxe_manager/use_remote_mcp.sh <manager-mcp-url>" >&2
+    echo "usage: export LXE_MANAGER_MCP_BEARER_TOKEN=<token>; source scripts/lxe_manager/use_remote_mcp.sh <manager-mcp-url>" >&2
     return 1 2>/dev/null || exit 1
   fi
 
@@ -36,7 +36,7 @@ block = (
 )
 pattern = re.compile(r"(?ms)^\[mcp_servers\.lxe_manager\]\r?\n.*?(?=^\[|\Z)")
 if pattern.search(text):
-    text = pattern.sub(block, text)
+    text = pattern.sub(lambda _: block, text)
 else:
     text = text.rstrip()
     text = f"{text}\n\n{block}" if text else block
