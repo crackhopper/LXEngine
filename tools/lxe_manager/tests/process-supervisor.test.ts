@@ -45,6 +45,38 @@ describe("process supervision", () => {
     expect(result.error).toContain("ENOENT");
   });
 
+  it("marks results killed by a guardian", async () => {
+    const supervisor = new ProcessSupervisor({
+      guardianPollIntervalMs: 1,
+      guardianFactory: (managedProcess) => ({
+        tick: async () => {
+          await managedProcess.stop();
+        },
+      }),
+    });
+    const result = await supervisor.run({
+      command: process.execPath,
+      args: ["-e", "setTimeout(() => {}, 1000)"],
+      cwd: process.cwd(),
+      label: "guardian-task",
+    });
+
+    expect(result.error).toBe("killed_by_guardian: label=guardian-task");
+  });
+
+  it("rejects detached start when spawn fails", async () => {
+    const supervisor = new ProcessSupervisor();
+
+    await expect(
+      supervisor.startDetached({
+        command: "definitely-not-a-real-lxe-manager-command",
+        args: [],
+        cwd: process.cwd(),
+        label: "missing-detached-command",
+      }),
+    ).rejects.toThrow("ENOENT");
+  });
+
   it("builds a repo pull command in the repo root", async () => {
     const ops = new WorkspaceOps(new ProcessSupervisor(), { repoRoot: "/repo" });
     const command = ops.buildRepoPullCommand();

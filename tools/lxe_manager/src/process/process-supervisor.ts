@@ -1,6 +1,9 @@
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
-import type { ResourceGuardian } from "./resource-guardian.js";
+import { KillPolicy } from "./kill-policy.js";
+import type { ResourceThresholds } from "./resource-guardian.js";
+import { ResourceGuardian } from "./resource-guardian.js";
+import { createProcessResourceSampler } from "./resource-sampler.js";
 
 export interface ManagedCommand {
   command: string;
@@ -25,6 +28,7 @@ export interface ManagedProcess {
   label: string;
   pid: number | undefined;
   stop: () => Promise<void>;
+  forceKill: () => Promise<void>;
   isRunning: () => boolean;
 }
 
@@ -37,15 +41,41 @@ export interface ProcessSupervisorOptions {
   guardianFactory?: (
     process: ManagedProcess,
     command: ManagedCommand,
-  ) => ResourceGuardian | undefined;
+  ) => { tick: () => Promise<void> } | undefined;
   guardianPollIntervalMs?: number;
+  defaultResourceThresholds?: ResourceThresholds;
 }
 
 export class ProcessSupervisor {
   private readonly guardianPollIntervalMs: number;
+  private readonly guardianFactory:
+    | ((
+        process: ManagedProcess,
+        command: ManagedCommand,
+      ) => { tick: () => Promise<void> } | undefined)
+    | undefined;
 
   constructor(private readonly options: ProcessSupervisorOptions = {}) {
     this.guardianPollIntervalMs = options.guardianPollIntervalMs ?? 1000;
+    const defaultResourceThresholds = options.defaultResourceThresholds;
+    this.guardianFactory =
+      options.guardianFactory ??
+      (defaultResourceThresholds
+        ? (managedProcess) =>
+            new ResourceGuardian({
+              sample: createProcessResourceSampler(managedProcess.pid),
+              kill: async () => {
+                const policy = new KillPolicy({
+                  gracefulStop: managedProcess.stop,
+                  forceKill: managedProcess.forceKill,
+                  isRunning: managedProcess.isRunning,
+                });
+                await policy.terminate();
+              },
+              maxConsecutiveBreaches: 3,
+              thresholds: defaultResourceThresholds,
+            })
+        : undefined);
   }
 
   async run(input: ManagedCommand): Promise<ManagedResult> {
@@ -96,6 +126,7 @@ export class ProcessSupervisor {
           label: input.label,
           stdoutTruncated: stdout.truncated,
           stderrTruncated: stderr.truncated,
+          error: guardian?.error(),
         });
       });
     });
@@ -114,6 +145,10 @@ export class ProcessSupervisor {
     });
     child.once("error", () => {
       guardian?.stop();
+    });
+    await new Promise<void>((resolve, reject) => {
+      child.once("error", reject);
+      setImmediate(resolve);
     });
     child.unref();
 
@@ -135,13 +170,19 @@ export class ProcessSupervisor {
   private startGuardian(
     child: ChildProcess,
     command: ManagedCommand,
-  ): { stop: () => void } | undefined {
-    const guardian = this.options.guardianFactory?.(
+  ): { stop: () => void; error: () => string | undefined } | undefined {
+    let guardianError: string | undefined;
+    const guardian = this.guardianFactory?.(
       {
         label: command.label,
         pid: child.pid,
         stop: async () => {
+          guardianError = `killed_by_guardian: label=${command.label}`;
           child.kill("SIGTERM");
+        },
+        forceKill: async () => {
+          guardianError = `killed_by_guardian: label=${command.label}`;
+          child.kill("SIGKILL");
         },
         isRunning: () => this.isProcessRunning(child.pid),
       },
@@ -153,12 +194,14 @@ export class ProcessSupervisor {
 
     const timer = setInterval(() => {
       void guardian.tick().catch(() => {
+        guardianError = `killed_by_guardian: label=${command.label}`;
         child.kill("SIGTERM");
       });
     }, this.guardianPollIntervalMs);
 
     return {
       stop: () => clearInterval(timer),
+      error: () => guardianError,
     };
   }
 }
