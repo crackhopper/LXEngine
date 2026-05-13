@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
-set -euo pipefail
 
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-manager_url="${LXE_MANAGER_URL:-http://127.0.0.1:3880/mcp}"
-config_path="${LXE_EDITOR_CODEX_CONFIG_PATH:-${repo_root}/.codex/config.toml}"
+_lxe_manager_use_local_mcp() (
+  set -euo pipefail
 
-mkdir -p "$(dirname "${config_path}")"
-MANAGER_URL="${manager_url}" CONFIG_PATH="${config_path}" python3 - <<'PY'
+  local repo_root
+  repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+  local manager_url="${LXE_MANAGER_URL:-http://127.0.0.1:3880/mcp}"
+  local config_path="${LXE_EDITOR_CODEX_CONFIG_PATH:-${repo_root}/.codex/config.toml}"
+
+  mkdir -p "$(dirname "${config_path}")"
+  MANAGER_URL="${manager_url}" CONFIG_PATH="${config_path}" python3 - <<'PY'
 import json
 import os
 import pathlib
@@ -29,4 +32,10 @@ else:
 config_path.write_text(text if text.endswith("\n") else text + "\n", encoding="utf-8")
 PY
 
-echo "lxe_manager MCP target: local ${manager_url}"
+  echo "lxe_manager MCP target: local ${manager_url}"
+)
+
+_lxe_manager_use_local_mcp "$@"
+_lxe_manager_status=$?
+unset -f _lxe_manager_use_local_mcp
+return "${_lxe_manager_status}" 2>/dev/null || exit "${_lxe_manager_status}"

@@ -199,6 +199,41 @@ class ManagerMcpConfigTest(unittest.TestCase):
         self.assertIn('url = "http://127.0.0.1:3880/mcp"', output)
         self.assertIn("[mcp_servers.other]", output)
 
+    def test_use_local_mcp_script_preserves_shell_options_when_sourced(self) -> None:
+        script = self.repo_root / "scripts" / "lxe_manager" / "use_local_mcp.sh"
+        command = textwrap.dedent(
+            f"""
+            set +e +u +o pipefail
+            before="$(set -o | awk '/errexit|nounset|pipefail/ {{print $1 "=" $2}}' | sort)"
+            source '{script}' >/dev/null
+            after="$(set -o | awk '/errexit|nounset|pipefail/ {{print $1 "=" $2}}' | sort)"
+            printf 'before:%s\\nafter:%s\\n' "$before" "$after"
+            """
+        )
+        result = subprocess.run(
+            ["bash", "-lc", command],
+            check=True,
+            capture_output=True,
+            text=True,
+            env={
+                **os.environ,
+                "LXE_EDITOR_CODEX_CONFIG_PATH": str(self.config_path),
+            },
+        )
+
+        before_text, after_text = result.stdout.split("\nafter:", 1)
+        before_text = before_text.removeprefix("before:")
+        self.assertEqual(before_text.splitlines(), [
+            "errexit=off",
+            "nounset=off",
+            "pipefail=off",
+        ])
+        self.assertEqual(after_text.splitlines(), [
+            "errexit=off",
+            "nounset=off",
+            "pipefail=off",
+        ])
+
     @unittest.skipUnless(shutil.which("pwsh"), "pwsh not available")
     def test_use_local_mcp_powershell_preserves_existing_config(self) -> None:
         self.write_existing_config()

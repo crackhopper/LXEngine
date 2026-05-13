@@ -1,24 +1,26 @@
 #!/usr/bin/env bash
-set -euo pipefail
 
-if [ "$#" -ne 1 ]; then
-  echo "usage: LXE_MANAGER_MCP_BEARER_TOKEN=<token> source scripts/lxe_manager/use_remote_mcp.sh <manager-mcp-url>" >&2
-  return 1 2>/dev/null || exit 1
-fi
+_lxe_manager_use_remote_mcp() (
+  set -euo pipefail
 
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-config_path="${LXE_EDITOR_CODEX_CONFIG_PATH:-${repo_root}/.codex/config.toml}"
-manager_url="$1"
-token="${LXE_MANAGER_MCP_BEARER_TOKEN:-}"
+  if [ "$#" -ne 1 ]; then
+    echo "usage: LXE_MANAGER_MCP_BEARER_TOKEN=<token> source scripts/lxe_manager/use_remote_mcp.sh <manager-mcp-url>" >&2
+    return 1 2>/dev/null || exit 1
+  fi
 
-if [ -z "${manager_url}" ] || [ -z "${token}" ]; then
-  echo "lxe_manager MCP target: manager-mcp-url and LXE_MANAGER_MCP_BEARER_TOKEN are required" >&2
-  return 1 2>/dev/null || exit 1
-fi
+  local repo_root
+  repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+  local config_path="${LXE_EDITOR_CODEX_CONFIG_PATH:-${repo_root}/.codex/config.toml}"
+  local manager_url="$1"
+  local token="${LXE_MANAGER_MCP_BEARER_TOKEN:-}"
 
-export LXE_MANAGER_MCP_BEARER_TOKEN="${token}"
-mkdir -p "$(dirname "${config_path}")"
-MANAGER_URL="${manager_url}" CONFIG_PATH="${config_path}" python3 - <<'PY'
+  if [ -z "${manager_url}" ] || [ -z "${token}" ]; then
+    echo "lxe_manager MCP target: manager-mcp-url and LXE_MANAGER_MCP_BEARER_TOKEN are required" >&2
+    return 1 2>/dev/null || exit 1
+  fi
+
+  mkdir -p "$(dirname "${config_path}")"
+  MANAGER_URL="${manager_url}" CONFIG_PATH="${config_path}" python3 - <<'PY'
 import json
 import os
 import pathlib
@@ -41,4 +43,13 @@ else:
 config_path.write_text(text if text.endswith("\n") else text + "\n", encoding="utf-8")
 PY
 
-echo "lxe_manager MCP target: remote ${manager_url}"
+  echo "lxe_manager MCP target: remote ${manager_url}"
+)
+
+_lxe_manager_use_remote_mcp "$@"
+_lxe_manager_status=$?
+unset -f _lxe_manager_use_remote_mcp
+if [ "${_lxe_manager_status}" -eq 0 ]; then
+  export LXE_MANAGER_MCP_BEARER_TOKEN
+fi
+return "${_lxe_manager_status}" 2>/dev/null || exit "${_lxe_manager_status}"
