@@ -118,6 +118,40 @@ class ManagerMcpConfigTest(unittest.TestCase):
             output,
         )
 
+    def test_legacy_editor_local_mcp_script_delegates_to_manager_config(self) -> None:
+        self.write_runtime_state(
+            f"""
+            version: 1
+            mcpUrl: http://stale.example.com/mcp
+            tokenFile: {self.token_path}
+            """
+        )
+        self.write_existing_config()
+        script = self.repo_root / "scripts" / "lxe_editor" / "use_local_mcp.sh"
+        command = (
+            f"source '{script}' >/dev/null && "
+            f"cat '{self.config_path}'"
+        )
+        result = subprocess.run(
+            ["bash", "-lc", command],
+            check=True,
+            capture_output=True,
+            text=True,
+            env={
+                **os.environ,
+                "LXE_EDITOR_CODEX_CONFIG_PATH": str(self.config_path),
+                "LXE_EDITOR_RUNTIME_ROOT": str(self.runtime_root),
+                "LXE_MANAGER_URL": "http://127.0.0.1:4999/mcp",
+            },
+        )
+
+        output = result.stdout
+        self.assertIn("[mcp_servers.lxe_manager]", output)
+        self.assertIn('url = "http://127.0.0.1:4999/mcp"', output)
+        self.assertNotIn("[mcp_servers.lxe_editor]", output)
+        self.assertNotIn("stale.example.com", output)
+        self.assertNotIn("LXE_EDITOR_MCP_BEARER_TOKEN", output)
+
     def test_use_local_mcp_script_honors_manager_url_override_and_escapes_toml(self) -> None:
         script = self.repo_root / "scripts" / "lxe_manager" / "use_local_mcp.sh"
         command = (
@@ -172,6 +206,36 @@ class ManagerMcpConfigTest(unittest.TestCase):
             'bearer_token_env_var = "LXE_MANAGER_MCP_BEARER_TOKEN"',
             output,
         )
+
+    def test_legacy_editor_remote_mcp_script_uses_manager_env_token(self) -> None:
+        script = self.repo_root / "scripts" / "lxe_editor" / "use_remote_mcp.sh"
+        command = (
+            f"source '{script}' 'https://manager.example.com/mcp' >/dev/null && "
+            "printf '%s\n' \"$LXE_MANAGER_MCP_BEARER_TOKEN\" && "
+            "printf '%s\n' \"${LXE_EDITOR_MCP_BEARER_TOKEN-unset}\" && "
+            f"cat '{self.config_path}'"
+        )
+        env = {
+            **os.environ,
+            "LXE_EDITOR_CODEX_CONFIG_PATH": str(self.config_path),
+            "LXE_MANAGER_MCP_BEARER_TOKEN": "remote-token",
+        }
+        env.pop("LXE_EDITOR_MCP_BEARER_TOKEN", None)
+        result = subprocess.run(
+            ["bash", "-lc", command],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+
+        output = result.stdout
+        self.assertIn("remote-token", output)
+        self.assertIn("unset", output)
+        self.assertIn("[mcp_servers.lxe_manager]", output)
+        self.assertIn('url = "https://manager.example.com/mcp"', output)
+        self.assertNotIn("[mcp_servers.lxe_editor]", output)
+        self.assertNotIn("LXE_EDITOR_MCP_BEARER_TOKEN", output)
 
     def test_use_remote_mcp_script_rejects_command_line_token(self) -> None:
         script = self.repo_root / "scripts" / "lxe_manager" / "use_remote_mcp.sh"
@@ -269,6 +333,19 @@ class ManagerMcpConfigTest(unittest.TestCase):
             "nounset=off",
             "pipefail=off",
         ])
+
+    def test_legacy_editor_mcp_scripts_do_not_reference_removed_runtime_keys(self) -> None:
+        for script_name in (
+            "use_local_mcp.sh",
+            "use_remote_mcp.sh",
+            "use_local_mcp.ps1",
+            "use_remote_mcp.ps1",
+        ):
+            script = self.repo_root / "scripts" / "lxe_editor" / script_name
+            text = script.read_text(encoding="utf-8")
+            self.assertNotIn("mcpUrl", text, script_name)
+            self.assertNotIn("mcp_servers.lxe_editor", text, script_name)
+            self.assertNotIn("LXE_EDITOR_MCP_BEARER_TOKEN", text, script_name)
 
     @unittest.skipUnless(shutil.which("pwsh"), "pwsh not available")
     def test_use_local_mcp_powershell_preserves_existing_config(self) -> None:
