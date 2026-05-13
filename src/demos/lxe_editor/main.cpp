@@ -339,6 +339,12 @@ int main(int argc, char **argv) {
                   [&session](std::string_view line) {
                     session.recordCommandHistoryLine(line);
                   },
+              .recording =
+                  [&session]()
+                      -> std::optional<
+                          std::reference_wrapper<demo::RecordingController>> {
+                    return session.recording();
+                  },
           });
     };
     usize apiBindingsGeneration = session.bindingsGeneration();

@@ -173,6 +173,17 @@ startedAt: 2026-05-13-120000
         res.end(JSON.stringify({ active: "editor_cam" }));
         return;
       }
+      if (req.url === "/api/build") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            gitCommit: "0123456789abcdef",
+            gitCommitShort: "0123456789ab",
+            gitDirty: false,
+          }),
+        );
+        return;
+      }
       if (req.url === "/api/pick") {
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ hit: true }));
@@ -198,16 +209,78 @@ startedAt: 2026-05-13-120000
     });
     await expect(client.getSelection()).resolves.toEqual({ selectedNodeId: 7 });
     await expect(client.getCameras()).resolves.toEqual({ active: "editor_cam" });
+    await expect(client.buildInfo()).resolves.toEqual({
+      gitCommit: "0123456789abcdef",
+      gitCommitShort: "0123456789ab",
+      gitDirty: false,
+    });
     await expect(client.pick(4, 8)).resolves.toEqual({ hit: true });
     expect(requests.map((request) => request.url)).toEqual([
       "/api/state/summary",
       "/api/state/selection",
       "/api/state/cameras",
+      "/api/build",
       "/api/pick",
     ]);
     expect(requests.every((request) => request.authorization === "Bearer fake-token")).toBe(
       true,
     );
+  });
+
+  it("forwards recording API requests to the editor", async () => {
+    const requests: Array<{
+      method: string | undefined;
+      url: string | undefined;
+      body?: unknown;
+    }> = [];
+    server = createServer(async (req, res) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) {
+        chunks.push(Buffer.from(chunk));
+      }
+      const text = Buffer.concat(chunks).toString("utf8");
+      requests.push({
+        method: req.method,
+        url: req.url,
+        body: text.length === 0 ? undefined : JSON.parse(text),
+      });
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, path: req.url }));
+    });
+
+    const port = await listen(server);
+    const client = new EditorClient({
+      httpBaseUrl: `http://127.0.0.1:${port}`,
+      bearerToken: "fake-token",
+    });
+
+    await expect(client.recordingStatus()).resolves.toMatchObject({ ok: true });
+    await expect(client.recordingEnable()).resolves.toMatchObject({ ok: true });
+    await expect(client.recordingDisable({ force: true })).resolves.toMatchObject({
+      ok: true,
+    });
+    await expect(client.recordingStart({ detailLevel: "diagnostic" })).resolves.toMatchObject({
+      ok: true,
+    });
+    await expect(client.recordingStop({ save: false })).resolves.toMatchObject({ ok: true });
+    await expect(client.recordingList()).resolves.toMatchObject({ ok: true });
+    await expect(client.recordingRead("session-1")).resolves.toMatchObject({ ok: true });
+    await expect(client.recordingReplay({ id: "session-1" })).resolves.toMatchObject({
+      ok: true,
+    });
+    await expect(client.recordingProbe("summary")).resolves.toMatchObject({ ok: true });
+
+    expect(requests).toEqual([
+      { method: "GET", url: "/recording/status", body: undefined },
+      { method: "POST", url: "/recording/enable", body: undefined },
+      { method: "POST", url: "/recording/disable", body: { force: true } },
+      { method: "POST", url: "/recording/start", body: { detailLevel: "diagnostic" } },
+      { method: "POST", url: "/recording/stop", body: { save: false } },
+      { method: "GET", url: "/recording/list", body: undefined },
+      { method: "GET", url: "/recording/read?id=session-1", body: undefined },
+      { method: "POST", url: "/recording/replay", body: { id: "session-1" } },
+      { method: "GET", url: "/recording/probe?target=summary", body: undefined },
+    ]);
   });
 
   it("aborts editor requests after timeout", async () => {

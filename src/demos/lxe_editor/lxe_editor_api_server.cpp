@@ -526,6 +526,66 @@ struct WsFrame final {
   return std::nullopt;
 }
 
+[[nodiscard]] std::optional<std::string> queryParamFromPath(
+    const std::string& path, const std::string& name) {
+  const size_t queryPos = path.find('?');
+  if (queryPos == std::string::npos) {
+    return std::nullopt;
+  }
+  const std::string query = path.substr(queryPos + 1);
+  size_t begin = 0;
+  while (begin < query.size()) {
+    const size_t end = query.find('&', begin);
+    const std::string pair =
+        query.substr(begin, end == std::string::npos ? std::string::npos
+                                                     : end - begin);
+    const size_t equals = pair.find('=');
+    if (equals != std::string::npos && pair.substr(0, equals) == name) {
+      return pair.substr(equals + 1);
+    }
+    if (end == std::string::npos) {
+      break;
+    }
+    begin = end + 1;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] int hexValue(const char c) {
+  if (c >= '0' && c <= '9') {
+    return c - '0';
+  }
+  if (c >= 'a' && c <= 'f') {
+    return 10 + c - 'a';
+  }
+  if (c >= 'A' && c <= 'F') {
+    return 10 + c - 'A';
+  }
+  return -1;
+}
+
+[[nodiscard]] std::string urlDecode(std::string_view text) {
+  std::string out;
+  out.reserve(text.size());
+  for (size_t i = 0; i < text.size(); ++i) {
+    if (text[i] == '+') {
+      out.push_back(' ');
+      continue;
+    }
+    if (text[i] == '%' && i + 2 < text.size()) {
+      const int hi = hexValue(text[i + 1]);
+      const int lo = hexValue(text[i + 2]);
+      if (hi >= 0 && lo >= 0) {
+        out.push_back(static_cast<char>((hi << 4) | lo));
+        i += 2;
+        continue;
+      }
+    }
+    out.push_back(text[i]);
+  }
+  return out;
+}
+
 [[nodiscard]] bool isAuthorized(
     const ParsedHttpRequest& request, const std::string& expectedToken) {
   const auto bearer = bearerTokenFromHeaders(request.headers);
@@ -790,6 +850,9 @@ void LxeEditorApiServer::pump(LxeEditorApiService& service) {
         client.writeBuffer += httpResponse(
             "200 OK", toJson(service.captureState().scene));
       } else if (request->method == "GET" &&
+                 pathWithoutQuery == "/api/build") {
+        client.writeBuffer += httpResponse("200 OK", service.buildInfo());
+      } else if (request->method == "GET" &&
                  pathWithoutQuery == "/api/state/toolbar") {
         client.writeBuffer += httpResponse(
             "200 OK", toJson(service.captureState().toolbar));
@@ -837,6 +900,71 @@ void LxeEditorApiServer::pump(LxeEditorApiService& service) {
           line << "pick " << *x << " " << *y;
           client.writeBuffer += httpResponse("200 OK", commandResponse(line.str()));
         }
+      } else if (request->method == "GET" &&
+                 pathWithoutQuery == "/recording/status") {
+        client.writeBuffer +=
+            httpResponse("200 OK", service.recordingStatus());
+      } else if (request->method == "POST" &&
+                 pathWithoutQuery == "/recording/enable") {
+        client.writeBuffer +=
+            httpResponse("200 OK", service.recordingEnable());
+      } else if (request->method == "POST" &&
+                 pathWithoutQuery == "/recording/disable") {
+        client.writeBuffer += httpResponse(
+            "200 OK",
+            service.recordingDisable(jsonBoolField(request->body, "force")
+                                         .value_or(false)));
+      } else if (request->method == "POST" &&
+                 pathWithoutQuery == "/recording/start") {
+        RecordingDetailLevel detailLevel = RecordingDetailLevel::Basic;
+        if (const auto detail = jsonStringField(request->body, "detailLevel");
+            detail.has_value()) {
+          detailLevel = recordingDetailLevelFromName(*detail)
+                            .value_or(RecordingDetailLevel::Basic);
+        }
+        client.writeBuffer +=
+            httpResponse("200 OK", service.recordingStart(detailLevel));
+      } else if (request->method == "POST" &&
+                 pathWithoutQuery == "/recording/stop") {
+        client.writeBuffer += httpResponse(
+            "200 OK",
+            service.recordingStop(jsonBoolField(request->body, "save")
+                                      .value_or(true)));
+      } else if (request->method == "GET" &&
+                 pathWithoutQuery == "/recording/list") {
+        client.writeBuffer +=
+            httpResponse("200 OK", service.recordingList());
+      } else if (request->method == "GET" &&
+                 pathWithoutQuery == "/recording/read") {
+        const auto id = queryParamFromPath(request->path, "id");
+        if (!id.has_value()) {
+          client.writeBuffer += httpResponse(
+              "400 Bad Request",
+              "{\"ok\":false,\"error\":{\"code\":\"bad_request\",\"message\":\"missing recording id\"}}");
+        } else {
+          client.writeBuffer +=
+              httpResponse("200 OK", service.recordingRead(urlDecode(*id)));
+        }
+      } else if (request->method == "POST" &&
+                 pathWithoutQuery == "/recording/replay") {
+        std::optional<std::string> id = jsonStringField(request->body, "id");
+        if (!id.has_value()) {
+          id = jsonStringField(request->body, "path");
+        }
+        if (!id.has_value()) {
+          client.writeBuffer += httpResponse(
+              "400 Bad Request",
+              "{\"ok\":false,\"error\":{\"code\":\"bad_request\",\"message\":\"missing recording id\"}}");
+        } else {
+          client.writeBuffer +=
+              httpResponse("200 OK", service.recordingReplay(urlDecode(*id)));
+        }
+      } else if (request->method == "GET" &&
+                 pathWithoutQuery == "/recording/probe") {
+        client.writeBuffer += httpResponse(
+            "200 OK",
+            service.recordingProbe(
+                queryParamFromPath(request->path, "target").value_or("state")));
       } else {
         client.writeBuffer += httpResponse(
             "404 Not Found",

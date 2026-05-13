@@ -13,6 +13,7 @@ interface EditorClientSurface {
   getCameras: () => Promise<unknown>;
   getToolbar: () => Promise<unknown>;
   getScene: () => Promise<unknown>;
+  buildInfo: () => Promise<unknown>;
   pick: (x: number, y: number) => Promise<unknown>;
   command: (line: string) => Promise<unknown>;
   waitFor: (input: {
@@ -21,6 +22,19 @@ interface EditorClientSurface {
     timeoutMs?: number;
     intervalMs?: number;
   }) => Promise<unknown>;
+  recordingStatus: () => Promise<unknown>;
+  recordingEnable: () => Promise<unknown>;
+  recordingDisable: (input: { force?: boolean }) => Promise<unknown>;
+  recordingStart: (input: {
+    detailLevel?: "basic" | "diagnostic" | "trace";
+  }) => Promise<unknown>;
+  recordingStop: (input: { save?: boolean }) => Promise<unknown>;
+  recordingList: () => Promise<unknown>;
+  recordingRead: (id: string) => Promise<unknown>;
+  recordingReplay: (input: { id?: string; path?: string }) => Promise<unknown>;
+  recordingProbe: (
+    target: "summary" | "selection" | "cameras" | "toolbar" | "scene" | "state",
+  ) => Promise<unknown>;
 }
 
 type EditorClientProvider = () =>
@@ -67,6 +81,8 @@ export function createToolHandlers(input: {
       withEditorClient((editorClient) => editorClient.getSelection()),
     "editor.get_cameras": async () =>
       withEditorClient((editorClient) => editorClient.getCameras()),
+    "editor.get_build_info": async () =>
+      withEditorClient((editorClient) => editorClient.buildInfo()),
     "editor.pick": async (args) =>
       withEditorClient((editorClient) =>
         editorClient.pick(readNumber(args, "x"), readNumber(args, "y")),
@@ -81,6 +97,41 @@ export function createToolHandlers(input: {
           timeoutMs: optionalNumber(args, "timeoutMs"),
           intervalMs: optionalNumber(args, "intervalMs"),
         }),
+      ),
+    recording_status: async () =>
+      withEditorClient((editorClient) => editorClient.recordingStatus()),
+    recording_enable: async () =>
+      withEditorClient((editorClient) => editorClient.recordingEnable()),
+    recording_disable: async (args) =>
+      withEditorClient((editorClient) =>
+        editorClient.recordingDisable({ force: optionalBoolean(args, "force") }),
+      ),
+    recording_start: async (args) =>
+      withEditorClient((editorClient) =>
+        editorClient.recordingStart({
+          detailLevel: optionalDetailLevel(args, "detailLevel"),
+        }),
+      ),
+    recording_stop: async (args) =>
+      withEditorClient((editorClient) =>
+        editorClient.recordingStop({ save: optionalBoolean(args, "save") }),
+      ),
+    recording_list: async () =>
+      withEditorClient((editorClient) => editorClient.recordingList()),
+    recording_read: async (args) =>
+      withEditorClient((editorClient) =>
+        editorClient.recordingRead(readString(args, "id")),
+      ),
+    recording_replay: async (args) =>
+      withEditorClient((editorClient) =>
+        editorClient.recordingReplay({
+          id: optionalString(args, "id"),
+          path: optionalString(args, "path"),
+        }),
+      ),
+    recording_probe: async (args) =>
+      withEditorClient((editorClient) =>
+        editorClient.recordingProbe(readProbeTarget(args, "target")),
       ),
     "ops.repo_pull": async () => guarded("ops.repo_pull", () => input.workspaceOps.repoPull()),
     "ops.build_configure": async (args) =>
@@ -103,6 +154,7 @@ export function createToolHandlers(input: {
   handlers.lxe_editor_get_summary = handlers["editor.get_summary"];
   handlers.lxe_editor_get_selection = handlers["editor.get_selection"];
   handlers.lxe_editor_get_cameras = handlers["editor.get_cameras"];
+  handlers.lxe_editor_get_build_info = handlers["editor.get_build_info"];
   handlers.lxe_editor_pick = handlers["editor.pick"];
   handlers.lxe_editor_command = handlers["editor.command"];
   handlers.lxe_editor_wait_for = handlers["editor.wait_for"];
@@ -387,6 +439,46 @@ function optionalNumber(args: ToolArguments, key: string): number | undefined {
     throw new Error(`invalid number argument: ${key}`);
   }
   return value;
+}
+
+function optionalBoolean(args: ToolArguments, key: string): boolean | undefined {
+  const value = args[key];
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== "boolean") {
+    throw new Error(`invalid boolean argument: ${key}`);
+  }
+  return value;
+}
+
+function optionalDetailLevel(
+  args: ToolArguments,
+  key: string,
+): "basic" | "diagnostic" | "trace" | undefined {
+  const value = optionalString(args, key);
+  if (value === undefined || value === "basic" || value === "diagnostic" || value === "trace") {
+    return value;
+  }
+  throw new Error(`invalid recording detail level: ${key}`);
+}
+
+function readProbeTarget(
+  args: ToolArguments,
+  key: string,
+): "summary" | "selection" | "cameras" | "toolbar" | "scene" | "state" {
+  const value = readString(args, key);
+  if (
+    value === "summary" ||
+    value === "selection" ||
+    value === "cameras" ||
+    value === "toolbar" ||
+    value === "scene" ||
+    value === "state"
+  ) {
+    return value;
+  }
+  throw new Error(`invalid recording probe target: ${key}`);
 }
 
 function normalizeEditorResourceUri(uri: string): (typeof EDITOR_RESOURCE_NAMES)[number] {

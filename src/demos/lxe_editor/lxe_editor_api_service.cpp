@@ -1,11 +1,19 @@
 #include "demos/lxe_editor/lxe_editor_api_service.hpp"
 
 #include "core/scene/components/camera_component.hpp"
+#include "demos/lxe_editor/lxe_editor_build_info.hpp"
 
 #include <algorithm>
+#include <exception>
+#include <sstream>
 
 namespace LX_demo::lxe_editor {
 namespace {
+
+[[nodiscard]] std::optional<std::reference_wrapper<RecordingController>>
+recordingFromHooks(const LxeEditorApiService::Hooks& hooks) {
+  return hooks.recording ? hooks.recording() : std::nullopt;
+}
 
 [[nodiscard]] ApiCameraPose captureCameraPose(
     const LX_core::SceneNodeSharedPtr& node) {
@@ -39,6 +47,74 @@ namespace {
   };
 }
 
+[[nodiscard]] std::optional<std::string> jsonStringField(
+    const std::string& body, const std::string& key, const size_t startPos = 0) {
+  const std::string needle = "\"" + key + "\"";
+  const size_t keyPos = body.find(needle, startPos);
+  if (keyPos == std::string::npos) {
+    return std::nullopt;
+  }
+  const size_t colonPos = body.find(':', keyPos + needle.size());
+  if (colonPos == std::string::npos) {
+    return std::nullopt;
+  }
+  const size_t firstQuote = body.find('"', colonPos + 1);
+  if (firstQuote == std::string::npos) {
+    return std::nullopt;
+  }
+  std::string value;
+  bool escaping = false;
+  for (size_t i = firstQuote + 1; i < body.size(); ++i) {
+    const char c = body[i];
+    if (escaping) {
+      value.push_back(c);
+      escaping = false;
+      continue;
+    }
+    if (c == '\\') {
+      escaping = true;
+      continue;
+    }
+    if (c == '"') {
+      return value;
+    }
+    value.push_back(c);
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::string statusToJson(const RecordingStatus& status) {
+  std::string out = "{";
+  out += "\"enabled\":";
+  out += status.enabled ? "true" : "false";
+  out += ",\"active\":";
+  out += status.active ? "true" : "false";
+  out += ",\"sessionId\":\"";
+  out += apiJsonEscape(status.sessionId);
+  out += "\",\"detailLevel\":\"";
+  out += recordingDetailLevelName(status.detailLevel);
+  out += "\",\"stepCount\":";
+  out += std::to_string(status.stepCount);
+  out += ",\"lastSavedPath\":";
+  if (status.lastSavedPath.has_value()) {
+    out += "\"";
+    out += apiJsonEscape(status.lastSavedPath->string());
+    out += "\"";
+  } else {
+    out += "null";
+  }
+  out += "}";
+  return out;
+}
+
+[[nodiscard]] std::string stepPayloadJson(const std::string& line) {
+  return "{\"line\":\"" + apiJsonEscape(line) + "\"}";
+}
+
+[[nodiscard]] std::string recordingErrorJson(const std::exception& error) {
+  return "{\"ok\":false,\"error\":\"" + apiJsonEscape(error.what()) + "\"}";
+}
+
 } // namespace
 
 LxeEditorApiService::LxeEditorApiService(
@@ -62,6 +138,15 @@ ApiCommandResponse LxeEditorApiService::executeCommand(
   }
   flushPendingRuntimeSceneEvents();
   const LX_core::CommandResult result = m_commandBus.dispatch(request.line);
+  if (result.ok) {
+    if (auto recording = recordingFromHooks(m_hooks); recording.has_value()) {
+      (void)recording->get().appendStep(RecordingStepInput{
+        .kind = "command",
+        .source = RecordingSource::Mcp,
+        .payloadJson = stepPayloadJson(request.line),
+      });
+    }
+  }
   refresh();
 
   const auto& history = m_commandBus.history();
@@ -80,6 +165,171 @@ ApiCommandResponse LxeEditorApiService::executeCommand(
                                      .message = result.message};
   }
   return response;
+}
+
+std::string LxeEditorApiService::buildInfo() const {
+  return toJson(currentLxeEditorBuildInfo());
+}
+
+std::string LxeEditorApiService::recordingStatus() const {
+  const auto recording = recordingFromHooks(m_hooks);
+  if (!recording.has_value()) {
+    return "{\"available\":false}";
+  }
+  return statusToJson(recording->get().status());
+}
+
+std::string LxeEditorApiService::recordingEnable() {
+  const auto recording = recordingFromHooks(m_hooks);
+  if (!recording.has_value()) {
+    return "{\"ok\":false,\"error\":\"recording unavailable\"}";
+  }
+  recording->get().enable();
+  return statusToJson(recording->get().status());
+}
+
+std::string LxeEditorApiService::recordingDisable(const bool force) {
+  const auto recording = recordingFromHooks(m_hooks);
+  if (!recording.has_value()) {
+    return "{\"ok\":false,\"error\":\"recording unavailable\"}";
+  }
+  const bool disabled = recording->get().disable(force);
+  if (!disabled) {
+    return "{\"ok\":false,\"error\":\"recording active; pass force=true\"}";
+  }
+  return statusToJson(recording->get().status());
+}
+
+std::string LxeEditorApiService::recordingStart(
+    const RecordingDetailLevel detailLevel) {
+  const auto recording = recordingFromHooks(m_hooks);
+  if (!recording.has_value()) {
+    return "{\"ok\":false,\"error\":\"recording unavailable\"}";
+  }
+  try {
+    const ApiStateSnapshot state = captureState();
+    const auto result = recording->get().start(RecordingStartOptions{
+        .detailLevel = detailLevel,
+        .scenePath = state.scene.currentDocumentPath,
+        .buildInfoJson = buildInfo(),
+    });
+    return "{\"active\":" + std::string(result.active ? "true" : "false") +
+           ",\"sessionId\":\"" + apiJsonEscape(result.sessionId) + "\"}";
+  } catch (const std::exception& error) {
+    return recordingErrorJson(error);
+  }
+}
+
+std::string LxeEditorApiService::recordingStop(const bool save) {
+  const auto recording = recordingFromHooks(m_hooks);
+  if (!recording.has_value()) {
+    return "{\"ok\":false,\"error\":\"recording unavailable\"}";
+  }
+  try {
+    const auto result =
+        recording->get().stop(RecordingStopOptions{.save = save});
+    return "{\"saved\":" + std::string(result.saved ? "true" : "false") +
+           ",\"path\":\"" + apiJsonEscape(result.path.string()) +
+           "\",\"stepCount\":" + std::to_string(result.stepCount) +
+           ",\"sessionId\":\"" + apiJsonEscape(result.sessionId) + "\"}";
+  } catch (const std::exception& error) {
+    return recordingErrorJson(error);
+  }
+}
+
+std::string LxeEditorApiService::recordingList() const {
+  const auto recording = recordingFromHooks(m_hooks);
+  if (!recording.has_value()) {
+    return "{\"recordings\":[]}";
+  }
+  try {
+    const auto entries = recording->get().list();
+    std::string out = "{\"recordings\":[";
+    for (size_t i = 0; i < entries.size(); ++i) {
+      if (i != 0) {
+        out += ",";
+      }
+      out += "{\"id\":\"" + apiJsonEscape(entries[i].id) + "\",\"path\":\"" +
+             apiJsonEscape(entries[i].path.string()) + "\"}";
+    }
+    out += "]}";
+    return out;
+  } catch (const std::exception& error) {
+    return recordingErrorJson(error);
+  }
+}
+
+std::string LxeEditorApiService::recordingRead(
+    const std::string& idOrPath) const {
+  const auto recording = recordingFromHooks(m_hooks);
+  if (!recording.has_value()) {
+    return "{\"ok\":false,\"error\":\"recording unavailable\"}";
+  }
+  try {
+    return recording->get().read(idOrPath);
+  } catch (const std::exception& error) {
+    return recordingErrorJson(error);
+  }
+}
+
+std::string LxeEditorApiService::recordingReplay(const std::string& idOrPath) {
+  const auto recording = recordingFromHooks(m_hooks);
+  if (!recording.has_value()) {
+    return "{\"ok\":false,\"error\":\"recording unavailable\"}";
+  }
+  std::string text;
+  try {
+    text = recording->get().read(idOrPath);
+  } catch (const std::exception& error) {
+    return recordingErrorJson(error);
+  }
+  int completed = 0;
+  size_t search = 0;
+  while (true) {
+    const size_t kindPos = text.find("\"kind\":\"command\"", search);
+    if (kindPos == std::string::npos) {
+      break;
+    }
+    const auto line = jsonStringField(text, "line", kindPos);
+    if (!line.has_value()) {
+      return "{\"ok\":false,\"completedSteps\":" + std::to_string(completed) +
+             ",\"error\":\"recording command step missing line\",\"summary\":" +
+             toJson(captureSceneSummary()) + "}";
+    }
+    const LX_core::CommandResult result = m_commandBus.dispatch(*line);
+    refresh();
+    if (!result.ok) {
+      return "{\"ok\":false,\"completedSteps\":" + std::to_string(completed) +
+             ",\"failedKind\":\"command\",\"error\":\"" +
+             apiJsonEscape(result.message) + "\",\"summary\":" +
+             toJson(captureSceneSummary()) + "}";
+    }
+    ++completed;
+    search = kindPos + 1;
+  }
+  return "{\"ok\":true,\"completedSteps\":" + std::to_string(completed) +
+         ",\"summary\":" + toJson(captureSceneSummary()) + "}";
+}
+
+std::string LxeEditorApiService::recordingProbe(
+    const std::string& target) const {
+  const ApiStateSnapshot state = captureState();
+  if (target == "summary") {
+    return toJson(state.scene);
+  }
+  if (target == "selection") {
+    return toJson(state.selection);
+  }
+  if (target == "cameras") {
+    return toJson(state.cameras);
+  }
+  if (target == "toolbar") {
+    return toJson(state.toolbar);
+  }
+  if (target == "scene") {
+    return toJson(state.scene);
+  }
+  return toJson(state);
 }
 
 ApiStateSnapshot LxeEditorApiService::captureState() const {

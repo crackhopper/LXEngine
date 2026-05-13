@@ -3,6 +3,7 @@
 #include "core/scene/scene.hpp"
 #include "demos/lxe_editor/lxe_editor_api_server.hpp"
 #include "demos/lxe_editor/lxe_editor_api_service.hpp"
+#include "demos/lxe_editor/recording_controller.hpp"
 #include "demos/lxe_editor/runtime_state.hpp"
 
 #include <chrono>
@@ -70,6 +71,7 @@ struct Fixture final {
   LxeEditorApiService::Hooks hooks;
   std::unique_ptr<LxeEditorApiService> service;
   std::unique_ptr<LxeEditorApiServer> server;
+  std::unique_ptr<RecordingController> recording;
 
   Fixture() {
     hooks.sceneSummary = [] {
@@ -88,6 +90,12 @@ struct Fixture final {
           .previewEnabled = false,
           .debugEnabled = true,
       };
+    };
+    recording = std::make_unique<RecordingController>(
+        std::filesystem::temp_directory_path() / "lxe_api_server_recording");
+    hooks.recording =
+        [this]() -> std::optional<std::reference_wrapper<RecordingController>> {
+      return *recording;
     };
     service =
         std::make_unique<LxeEditorApiService>(bus, editorState, *scene, hooks);
@@ -374,6 +382,106 @@ void testHttpMcpEndpointIsRemoved() {
   closeSocket(socketHandle);
 }
 
+void testHttpRecordingEndpointRoundTrip() {
+  Fixture fixture;
+
+  const auto post = [&](const std::string& path,
+                        const std::string& body) -> std::string {
+    const SocketHandle socketHandle = connectClient(fixture.server->boundPort());
+    EXPECT(socketHandle != kInvalidSocket, "recording POST client should connect");
+    if (socketHandle == kInvalidSocket) {
+      return {};
+    }
+    EXPECT(sendAll(socketHandle, makeHttpPostRequest(path, body)),
+           "recording POST request should send");
+    const std::string response =
+        pumpUntilRead(*fixture.service, fixture.server.get(), socketHandle);
+    closeSocket(socketHandle);
+    return response;
+  };
+  const auto get = [&](const std::string& path) -> std::string {
+    const SocketHandle socketHandle = connectClient(fixture.server->boundPort());
+    EXPECT(socketHandle != kInvalidSocket, "recording GET client should connect");
+    if (socketHandle == kInvalidSocket) {
+      return {};
+    }
+    EXPECT(sendAll(socketHandle, makeHttpGetRequest(path)),
+           "recording GET request should send");
+    const std::string response =
+        pumpUntilRead(*fixture.service, fixture.server.get(), socketHandle);
+    closeSocket(socketHandle);
+    return response;
+  };
+
+  const std::string enableResponse = post("/recording/enable", "{}");
+  EXPECT(enableResponse.find("\"enabled\":true") != std::string::npos,
+         "recording enable should set enabled=true");
+
+  const std::string startResponse =
+      post("/recording/start", "{\"detailLevel\":\"basic\"}");
+  EXPECT(startResponse.find("\"active\":true") != std::string::npos,
+         "recording start should activate session");
+
+  const std::string commandResponse =
+      post("/api/command", "{\"line\":\"echo recorded\"}");
+  EXPECT(commandResponse.find("\"message\":\"recorded\"") != std::string::npos,
+         "command should execute while recording");
+
+  const std::string activeResponse = get("/recording/read?id=active");
+  EXPECT(activeResponse.find("\"source\":\"mcp\"") != std::string::npos,
+         "active recording should include mcp command source");
+  EXPECT(activeResponse.find("echo recorded") != std::string::npos,
+         "active recording should include command line");
+  EXPECT(activeResponse.find("\"build\":{") != std::string::npos,
+         "active recording should include build identity");
+
+  const std::string stopResponse =
+      post("/recording/stop", "{\"save\":false}");
+  EXPECT(stopResponse.find("\"stepCount\":1") != std::string::npos,
+         "recording stop should report one step");
+}
+
+void testHttpBuildInfoRequiresTokenAndReturnsIdentity() {
+  Fixture fixture;
+
+  const SocketHandle unauthorized = connectClient(fixture.server->boundPort());
+  EXPECT(unauthorized != kInvalidSocket,
+         "unauthorized build info client should connect");
+  if (unauthorized != kInvalidSocket) {
+    EXPECT(sendAll(unauthorized, makeHttpGetRequest("/api/build", false)),
+           "unauthorized build info request should send");
+    const std::string response =
+        pumpUntilRead(*fixture.service, fixture.server.get(), unauthorized);
+    EXPECT(response.find("401 Unauthorized") != std::string::npos,
+           "build info should require authorization");
+    closeSocket(unauthorized);
+  }
+
+  const SocketHandle authorized = connectClient(fixture.server->boundPort());
+  EXPECT(authorized != kInvalidSocket,
+         "authorized build info client should connect");
+  if (authorized == kInvalidSocket) {
+    return;
+  }
+  EXPECT(sendAll(authorized, makeHttpGetRequest("/api/build")),
+         "authorized build info request should send");
+  const std::string response =
+      pumpUntilRead(*fixture.service, fixture.server.get(), authorized);
+  EXPECT(response.find("200 OK") != std::string::npos,
+         "build info should return HTTP 200");
+  EXPECT(response.find("\"gitCommit\"") != std::string::npos,
+         "build info should include gitCommit");
+  EXPECT(response.find("\"gitCommitShort\"") != std::string::npos,
+         "build info should include gitCommitShort");
+  EXPECT(response.find("\"gitDirty\"") != std::string::npos,
+         "build info should include gitDirty");
+  EXPECT(response.find("\"buildType\"") != std::string::npos,
+         "build info should include buildType");
+  EXPECT(response.find("\"builtAt\"") != std::string::npos,
+         "build info should include builtAt");
+  closeSocket(authorized);
+}
+
 } // namespace
 
 int main() {
@@ -382,6 +490,8 @@ int main() {
   testWebSocketHandshakeAndEvents();
   testRuntimeStateRoundTripsYaml();
   testHttpMcpEndpointIsRemoved();
+  testHttpRecordingEndpointRoundTrip();
+  testHttpBuildInfoRequiresTokenAndReturnsIdentity();
 
   if (failures != 0) {
     std::cerr << failures << " API server test(s) failed\n";

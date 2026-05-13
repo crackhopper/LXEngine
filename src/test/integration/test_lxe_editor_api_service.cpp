@@ -5,6 +5,7 @@
 #include "demos/lxe_editor/api_token_state.hpp"
 #include "demos/lxe_editor/lxe_editor_api_protocol.hpp"
 #include "demos/lxe_editor/lxe_editor_api_service.hpp"
+#include "demos/lxe_editor/recording_controller.hpp"
 
 #include <filesystem>
 #include <iostream>
@@ -43,6 +44,7 @@ struct Fixture final {
   MutableHookState hookState;
   LxeEditorApiService::Hooks hooks;
   std::unique_ptr<LxeEditorApiService> service;
+  std::unique_ptr<RecordingController> recording;
 
   Fixture()
   {
@@ -70,6 +72,12 @@ struct Fixture final {
     hooks.cameraSnapshot = [this]() { return hookState.cameras; };
     hooks.toolbarSnapshot = [this]() { return hookState.toolbar; };
     hooks.lastHitPoint = [this]() { return hookState.lastHitPoint; };
+    recording = std::make_unique<RecordingController>(
+        std::filesystem::temp_directory_path() / "lxe_api_service_recording");
+    hooks.recording =
+        [this]() -> std::optional<std::reference_wrapper<RecordingController>> {
+      return *recording;
+    };
     service =
         std::make_unique<LxeEditorApiService>(bus, editorState, *scene, hooks);
   }
@@ -107,6 +115,51 @@ void testExecuteCommandMirrorsCommandBusAndEmitsCommandEvent() {
     EXPECT(batch.events.front().command->line == "echo hello",
            "event command payload should preserve line");
   }
+}
+
+void testRecordingToolsRecordMcpCommand() {
+  Fixture fixture;
+  fixture.bus.registerHandler(
+      "echo", "echo <value>", [](std::vector<std::string> args) {
+        return CommandResult{true, args.empty() ? std::string{} : args.front(),
+                             "{}"};
+      });
+
+  const std::string disabledStatus = fixture.service->recordingStatus();
+  EXPECT(disabledStatus.find("\"enabled\":false") != std::string::npos,
+         "recording should default disabled");
+
+  (void)fixture.service->recordingEnable();
+  (void)fixture.service->recordingStart(RecordingDetailLevel::Basic);
+  const ApiCommandResponse response =
+      fixture.service->executeCommand(ApiCommandRequest{.line = "echo hello"});
+  EXPECT(response.ok, "recorded command should still execute");
+
+  const std::string activeRecording = fixture.service->recordingRead("active");
+  EXPECT(activeRecording.find("\"source\":\"mcp\"") != std::string::npos,
+         "MCP command should record source=mcp");
+  EXPECT(activeRecording.find("echo hello") != std::string::npos,
+         "recording should include command line");
+  EXPECT(activeRecording.find("\"build\":{") != std::string::npos,
+         "recording metadata should include build identity");
+  EXPECT(activeRecording.find("\"gitCommit\"") != std::string::npos,
+         "recording build identity should include git commit field");
+}
+
+void testBuildInfoExposesGitIdentityFields() {
+  Fixture fixture;
+
+  const std::string buildInfo = fixture.service->buildInfo();
+  EXPECT(buildInfo.find("\"gitCommit\"") != std::string::npos,
+         "build info should include gitCommit");
+  EXPECT(buildInfo.find("\"gitCommitShort\"") != std::string::npos,
+         "build info should include gitCommitShort");
+  EXPECT(buildInfo.find("\"gitDirty\"") != std::string::npos,
+         "build info should include gitDirty");
+  EXPECT(buildInfo.find("\"buildType\"") != std::string::npos,
+         "build info should include buildType");
+  EXPECT(buildInfo.find("\"builtAt\"") != std::string::npos,
+         "build info should include builtAt");
 }
 
 void testCaptureStateUsesHooksAndEditorSelection() {
@@ -452,6 +505,8 @@ int main() {
   testExecuteCommandFlushesOlderQueuedRuntimeEventsBeforeNewCommand();
   testRuntimeCameraPropertyMutationEmitsApiSceneNodeChangedEvent();
   testRuntimeLightPropertyMutationEmitsApiSceneNodeChangedEvent();
+  testRecordingToolsRecordMcpCommand();
+  testBuildInfoExposesGitIdentityFields();
   testApiTokenStatePersistsSingleGeneratedToken();
 
   if (failures != 0) {

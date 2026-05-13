@@ -251,6 +251,14 @@ Current MCP surface:
   - `lxe_editor_pick`
   - `lxe_editor_wait_for`
   - `lxe_editor_ensure_running`
+  - `recording_status`
+  - `recording_enable`
+  - `recording_start`
+  - `recording_stop`
+  - `recording_list`
+  - `recording_read`
+  - `recording_replay`
+  - `recording_probe`
 - Resources:
   - `lxe-editor://summary`
   - `lxe-editor://selection`
@@ -261,6 +269,10 @@ Current MCP surface:
 The MCP surface reuses the same editor state snapshots as the HTTP endpoints.
 It is intended for Codex diagnostics; the official editor regression path
 remains the HTTP API.
+
+Recording is disabled by default. When enabled and started, completed
+recordings are saved under `data/lxe_editor/recordings/` and can be replayed
+through `recording_replay` for debug-first reproduction.
 
 ## API black-box tests
 

@@ -31,6 +31,10 @@ export class EditorClient {
     return this.requestJson("GET", "/api/state/scene");
   }
 
+  async buildInfo(): Promise<unknown> {
+    return this.requestJson("GET", "/api/build");
+  }
+
   async pick(x: number, y: number): Promise<unknown> {
     return this.requestJson("POST", "/api/pick", { x, y });
   }
@@ -68,6 +72,49 @@ export class EditorClient {
       resource: normalizeResource(input.resource),
       elapsedMs: Date.now() - startedAt,
     };
+  }
+
+  async recordingStatus(): Promise<unknown> {
+    return this.requestJson("GET", "/recording/status");
+  }
+
+  async recordingEnable(): Promise<unknown> {
+    return this.requestJson("POST", "/recording/enable");
+  }
+
+  async recordingDisable(input: { force?: boolean } = {}): Promise<unknown> {
+    return this.requestJson("POST", "/recording/disable", input);
+  }
+
+  async recordingStart(input: {
+    detailLevel?: "basic" | "diagnostic" | "trace";
+  } = {}): Promise<unknown> {
+    return this.requestJson("POST", "/recording/start", input);
+  }
+
+  async recordingStop(input: { save?: boolean } = {}): Promise<unknown> {
+    return this.requestJson("POST", "/recording/stop", input);
+  }
+
+  async recordingList(): Promise<unknown> {
+    return this.requestJson("GET", "/recording/list");
+  }
+
+  async recordingRead(id: string): Promise<unknown> {
+    return this.requestJson("GET", `/recording/read?id=${encodeURIComponent(id)}`);
+  }
+
+  async recordingReplay(input: { id?: string; path?: string } = {}): Promise<unknown> {
+    return this.requestJson("POST", "/recording/replay", input);
+  }
+
+  async recordingProbe(
+    target: "summary" | "selection" | "cameras" | "toolbar" | "scene" | "state",
+  ): Promise<unknown> {
+    return this.requestJson(
+      "GET",
+      `/recording/probe?target=${encodeURIComponent(target)}`,
+    );
   }
 
   private async requestJson(

@@ -53,6 +53,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_lxe_editor_api_service
   test_lxe_editor_api_server
   test_lxe_editor_memory_probe
+  test_lxe_editor_recording
   test_gltf_loader
 
   # test_render_sphere
@@ -212,6 +213,7 @@ if(TARGET test_lxe_editor_session)
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_data_state.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_camera_state.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_commands.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/recording_controller.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_builder.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_catalog.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_document.cpp
@@ -232,7 +234,9 @@ if(TARGET test_lxe_editor_api_service)
   target_sources(test_lxe_editor_api_service PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_api_protocol.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_api_service.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_build_info.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/api_token_state.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/recording_controller.cpp
   )
   target_include_directories(test_lxe_editor_api_service PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/..
@@ -243,8 +247,10 @@ if(TARGET test_lxe_editor_api_server)
   target_sources(test_lxe_editor_api_server PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_api_protocol.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_api_service.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_build_info.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_api_server.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/api_token_state.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/recording_controller.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/runtime_state.cpp
   )
   target_include_directories(test_lxe_editor_api_server PRIVATE
@@ -265,6 +271,7 @@ if(TARGET test_lxe_editor_memory_probe)
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_data_state.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_camera_state.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_commands.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/recording_controller.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_builder.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_catalog.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_document.cpp
@@ -279,6 +286,15 @@ if(TARGET test_lxe_editor_memory_probe)
     ${CMAKE_CURRENT_SOURCE_DIR}/../infra/external/yaml-cpp/include
   )
   target_link_libraries(test_lxe_editor_memory_probe PRIVATE imgui yaml-cpp::yaml-cpp)
+endif()
+
+if(TARGET test_lxe_editor_recording)
+  target_sources(test_lxe_editor_recording PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/recording_controller.cpp
+  )
+  target_include_directories(test_lxe_editor_recording PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/..
+  )
 endif()
 
 if(TARGET test_scene_document)

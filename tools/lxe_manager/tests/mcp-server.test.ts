@@ -65,9 +65,23 @@ describe("mcp tool handlers", () => {
         getCameras: vi.fn(async () => ({ active: "editor_cam" })),
         getToolbar: vi.fn(async () => ({ activeTool: "select" })),
         getScene: vi.fn(async () => ({ nodes: [{ id: 7, name: "Cube" }] })),
+        buildInfo: vi.fn(async () => ({
+          gitCommit: "0123456789abcdef",
+          gitCommitShort: "0123456789ab",
+          gitDirty: false,
+        })),
         pick: vi.fn(async () => ({ hit: true })),
         command: vi.fn(async () => ({ ok: true })),
         waitFor: vi.fn(async () => ({ found: true })),
+        recordingStatus: vi.fn(async () => ({ enabled: false })),
+        recordingEnable: vi.fn(async () => ({ enabled: true })),
+        recordingDisable: vi.fn(async () => ({ enabled: false })),
+        recordingStart: vi.fn(async () => ({ sessionId: "session-1" })),
+        recordingStop: vi.fn(async () => ({ saved: true })),
+        recordingList: vi.fn(async () => ({ recordings: [] })),
+        recordingRead: vi.fn(async () => ({ id: "session-1" })),
+        recordingReplay: vi.fn(async () => ({ ok: true })),
+        recordingProbe: vi.fn(async () => ({ target: "summary" })),
         ...overrides.editorClient,
       },
       workspaceOps: {
@@ -143,6 +157,7 @@ describe("mcp tool handlers", () => {
 
     expect(Object.keys(handlers).sort()).toEqual([
       "editor.command",
+      "editor.get_build_info",
       "editor.get_cameras",
       "editor.get_selection",
       "editor.get_summary",
@@ -150,6 +165,7 @@ describe("mcp tool handlers", () => {
       "editor.wait_for",
       "lxe_editor_command",
       "lxe_editor_ensure_running",
+      "lxe_editor_get_build_info",
       "lxe_editor_get_cameras",
       "lxe_editor_get_selection",
       "lxe_editor_get_summary",
@@ -162,11 +178,72 @@ describe("mcp tool handlers", () => {
       "ops.editor_status",
       "ops.editor_stop",
       "ops.repo_pull",
+      "recording_disable",
+      "recording_enable",
+      "recording_list",
+      "recording_probe",
+      "recording_read",
+      "recording_replay",
+      "recording_start",
+      "recording_status",
+      "recording_stop",
     ]);
+  });
+
+  it("routes recording tools to the editor client", async () => {
+    const recordingStatus = vi.fn(async () => ({ enabled: false }));
+    const recordingEnable = vi.fn(async () => ({ enabled: true }));
+    const recordingDisable = vi.fn(async () => ({ enabled: false }));
+    const recordingStart = vi.fn(async () => ({ sessionId: "session-1" }));
+    const recordingStop = vi.fn(async () => ({ saved: false }));
+    const recordingList = vi.fn(async () => ({ recordings: [] }));
+    const recordingRead = vi.fn(async () => ({ id: "session-1" }));
+    const recordingReplay = vi.fn(async () => ({ ok: true }));
+    const recordingProbe = vi.fn(async () => ({ target: "summary" }));
+    const handlers = createToolHandlers(
+      makeInput({
+        editorClient: {
+          recordingStatus,
+          recordingEnable,
+          recordingDisable,
+          recordingStart,
+          recordingStop,
+          recordingList,
+          recordingRead,
+          recordingReplay,
+          recordingProbe,
+        },
+      }),
+    );
+
+    await handlers.recording_status({});
+    await handlers.recording_enable({});
+    await handlers.recording_disable({ force: true });
+    await handlers.recording_start({ detailLevel: "trace" });
+    await handlers.recording_stop({ save: false });
+    await handlers.recording_list({});
+    await handlers.recording_read({ id: "session-1" });
+    await handlers.recording_replay({ path: "/tmp/recording.json" });
+    await handlers.recording_probe({ target: "selection" });
+
+    expect(recordingStatus).toHaveBeenCalledOnce();
+    expect(recordingEnable).toHaveBeenCalledOnce();
+    expect(recordingDisable).toHaveBeenCalledWith({ force: true });
+    expect(recordingStart).toHaveBeenCalledWith({ detailLevel: "trace" });
+    expect(recordingStop).toHaveBeenCalledWith({ save: false });
+    expect(recordingList).toHaveBeenCalledOnce();
+    expect(recordingRead).toHaveBeenCalledWith("session-1");
+    expect(recordingReplay).toHaveBeenCalledWith({ path: "/tmp/recording.json" });
+    expect(recordingProbe).toHaveBeenCalledWith("selection");
   });
 
   it("routes new editor and ops tools to their handlers", async () => {
     const health = vi.fn(async () => ({ ok: true }));
+    const buildInfo = vi.fn(async () => ({
+      gitCommit: "0123456789abcdef",
+      gitCommitShort: "0123456789ab",
+      gitDirty: false,
+    }));
     const getSelection = vi.fn(async () => ({ selectedNodeId: 7 }));
     const getCameras = vi.fn(async () => ({ active: "editor_cam" }));
     const pick = vi.fn(async () => ({ hit: true }));
@@ -179,7 +256,15 @@ describe("mcp tool handlers", () => {
     const logs = vi.fn(async () => ({ stdout: "out", stderr: "err" }));
     const handlers = createToolHandlers(
       makeInput({
-        editorClient: { health, getSelection, getCameras, pick, command, waitFor },
+        editorClient: {
+          health,
+          buildInfo,
+          getSelection,
+          getCameras,
+          pick,
+          command,
+          waitFor,
+        },
         editorOps: { start, stop, logs },
         workspaceOps: { buildConfigure, buildTarget },
       }),
@@ -187,11 +272,13 @@ describe("mcp tool handlers", () => {
 
     await handlers["editor.get_selection"]({});
     await handlers["editor.get_cameras"]({});
+    await handlers["editor.get_build_info"]({});
     await handlers["editor.pick"]({ x: 11, y: 22 });
     await handlers["editor.command"]({ line: "scene list" });
     await handlers["editor.wait_for"]({ contains: "Scene" });
     await handlers["lxe_editor_get_selection"]({});
     await handlers["lxe_editor_get_cameras"]({});
+    await handlers["lxe_editor_get_build_info"]({});
     await handlers["lxe_editor_pick"]({ x: 11, y: 22 });
     await handlers["lxe_editor_command"]({ line: "scene list" });
     await handlers["lxe_editor_wait_for"]({ contains: "Scene" });
@@ -204,6 +291,7 @@ describe("mcp tool handlers", () => {
 
     expect(getSelection).toHaveBeenCalledTimes(2);
     expect(getCameras).toHaveBeenCalledTimes(2);
+    expect(buildInfo).toHaveBeenCalledTimes(2);
     expect(pick).toHaveBeenCalledWith(11, 22);
     expect(command).toHaveBeenCalledWith("scene list");
     expect(waitFor).toHaveBeenCalledWith({ contains: "Scene" });
@@ -244,9 +332,19 @@ describe("mcp tool handlers", () => {
         getCameras: vi.fn(),
         getToolbar: vi.fn(),
         getScene: vi.fn(),
+        buildInfo: vi.fn(),
         pick: vi.fn(),
         command: vi.fn(),
         waitFor: vi.fn(),
+        recordingStatus: vi.fn(),
+        recordingEnable: vi.fn(),
+        recordingDisable: vi.fn(),
+        recordingStart: vi.fn(),
+        recordingStop: vi.fn(),
+        recordingList: vi.fn(),
+        recordingRead: vi.fn(),
+        recordingReplay: vi.fn(),
+        recordingProbe: vi.fn(),
       });
     const handlers = createToolHandlers({
       ...makeInput(),
@@ -297,9 +395,19 @@ describe("mcp tool handlers", () => {
         getCameras: vi.fn(),
         getToolbar: vi.fn(),
         getScene: vi.fn(),
+        buildInfo: vi.fn(),
         pick: vi.fn(),
         command: vi.fn(),
         waitFor: vi.fn(),
+        recordingStatus: vi.fn(),
+        recordingEnable: vi.fn(),
+        recordingDisable: vi.fn(),
+        recordingStart: vi.fn(),
+        recordingStop: vi.fn(),
+        recordingList: vi.fn(),
+        recordingRead: vi.fn(),
+        recordingReplay: vi.fn(),
+        recordingProbe: vi.fn(),
       });
     const resources = createResourceHandlers(provider);
 
@@ -340,8 +448,11 @@ describe("mcp tool handlers", () => {
       result: {
         tools: expect.arrayContaining([
           expect.objectContaining({ name: "editor.get_summary" }),
+          expect.objectContaining({ name: "editor.get_build_info" }),
           expect.objectContaining({ name: "lxe_editor_get_summary" }),
+          expect.objectContaining({ name: "lxe_editor_get_build_info" }),
           expect.objectContaining({ name: "ops.editor_logs" }),
+          expect.objectContaining({ name: "recording_status" }),
         ]),
       },
     });

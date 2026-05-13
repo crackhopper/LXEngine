@@ -123,10 +123,37 @@ history 或进程列表里。
 | `lxe_editor_pick` | 在 editor 主视图坐标执行 pick |
 | `lxe_editor_wait_for` | 轮询资源直到出现指定内容 |
 | `lxe_editor_ensure_running` | 做非破坏性的 editor health 检查 |
+| `editor.get_build_info` / `lxe_editor_get_build_info` | 读取当前 editor 二进制的 Git 构建信息 |
 | `ops.editor_start` / `ops.editor_stop` / `ops.editor_status` | 管理 editor 进程 |
 | `ops.repo_pull` | 在仓库根目录执行 `git pull --ff-only` |
 | `ops.build_configure` / `ops.build_target` | 执行 CMake configure / build |
+| `recording_enable` / `recording_disable` / `recording_status` | 控制 editor 录制开关，默认关闭 |
+| `recording_start` / `recording_stop` | 开始或停止一次调试录制，可保存到 `data/lxe_editor/recordings/` |
+| `recording_list` / `recording_read` | 枚举和读取已保存或 active 的录制 JSON |
+| `recording_replay` / `recording_probe` | 回放录制并在失败点读取 summary、selection、cameras、toolbar 等状态 |
 | `lxe-editor://summary` 等资源 | 暴露 editor 状态快照 |
+
+录制能力以调试复现为目标，不追求逐帧输入确定性。第一版主要记录语义命令和
+MCP 来源操作；后续可以在 editor 内部继续扩展 toolbar、pick、drag 和输入摘要。
+
+## Codex Skill 套装
+
+我们把 repo-local Codex skills 严格拆开，不维护总控 skill。每个 skill 只加载
+当前阶段需要的 MCP 面和工作流，避免 editor command 与 MCP 工具继续扩展后让
+单个上下文过大。
+
+| Skill | 何时使用 | 主要 MCP 面 |
+|---|---|---|
+| `lxe-editor-build-sync` | 需要确认远端 editor 是否由当前 Git 版本构建 | `editor.get_build_info` / `lxe_editor_get_build_info` |
+| `lxe-manager-ops` | 需要 stop/start、pull、configure、build、查日志或处理资源守护失败 | `ops.editor_*`、`ops.repo_pull`、`ops.build_*` |
+| `lxe-editor-debug` | 需要读取状态、轻量 command、pick 或 wait-for | `lxe_editor_*` 和 `lxe-editor://...` 资源 |
+| `lxe-editor-recording` | 需要录制、读取、回放或 probe 调试录制文件 | `recording_*` |
+| `lxe-editor-command-reference` | 需要确认 editor command 名称、参数和示例 | 当前代码里的 command 注册与解析处 |
+
+典型顺序是先用 `lxe-editor-build-sync` 确认运行中的 editor commit；如果版本不匹配，
+再切到 `lxe-manager-ops` 完成停止、拉取、构建和启动。普通状态诊断只加载
+`lxe-editor-debug`。当问题需要复现证据时，再加载 `lxe-editor-recording`。只有
+准备发送非平凡 command 时，才加载 `lxe-editor-command-reference` 查证语法。
 
 ## 安全边界
 

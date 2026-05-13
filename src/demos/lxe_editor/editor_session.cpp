@@ -153,7 +153,8 @@ LxeEditorSession::LxeEditorSession(CameraRig& rig, UiOverlay& ui,
       }),
       m_session(resolveRuntimePath("data/scenes"),
                 [] { return currentTimestampString(); }),
-      m_editorDataState(resolveRuntimePath("data/lxe_editor")) {}
+      m_editorDataState(resolveRuntimePath("data/lxe_editor")),
+      m_recording(resolveRuntimePath("data/lxe_editor")) {}
 
 LxeEditorSession::~LxeEditorSession() = default;
 
@@ -202,6 +203,12 @@ ScenePermissionLevel LxeEditorSession::permission() const {
 }
 
 bool LxeEditorSession::debugEnabled() const { return m_debugEnabled; }
+
+RecordingController& LxeEditorSession::recording() { return m_recording; }
+
+const RecordingController& LxeEditorSession::recording() const {
+  return m_recording;
+}
 
 const std::optional<std::filesystem::path>&
 LxeEditorSession::currentDocumentPath() const {

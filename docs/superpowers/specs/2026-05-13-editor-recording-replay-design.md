@@ -170,6 +170,55 @@ known to be asynchronous, such as scene loading.
 The existing `lxe_editor_*` tools remain the preferred low-level probes.
 Recording tools add lifecycle and artifact management.
 
+## Build Identity Surface
+
+Codex needs to know which editor binary it is controlling before deciding
+whether to stop it, pull code, rebuild, and restart it. The editor therefore
+publishes build identity through its HTTP API, and `lxe_manager` forwards that
+identity through MCP.
+
+| Field | Meaning |
+|---|---|
+| `gitCommit` | Full commit hash captured when `lxe_editor` was configured/built |
+| `gitCommitShort` | Short commit hash for display |
+| `gitDirty` | Whether the source tree was dirty when build identity was captured |
+| `buildType` | CMake build type when available |
+| `builtAt` | Optional build/configure timestamp when available |
+
+The editor HTTP API exposes this at `GET /api/build`. The manager MCP exposes
+`editor.get_build_info` and `lxe_editor_get_build_info`. Recording metadata
+also stores the build identity so saved recordings can be analyzed without a
+running editor.
+
+This design only exposes facts. Automatic compare/pull/build/restart remains a
+separate workflow built on top of these facts.
+
+## Codex Skill Workflow
+
+The repo-local Codex skills should stay strictly split by task phase instead of
+using one broad entry skill. Each skill carries only the MCP surface and
+workflow needed for that phase.
+
+| Skill | Scope |
+|---|---|
+| `lxe-editor-debug` | Read editor state, issue small command-bus actions, pick, and wait for state |
+| `lxe-editor-recording` | Enable/disable recording, start/stop/list/read/replay, and probe replay state |
+| `lxe-editor-build-sync` | Read editor build info, compare it with local Git state, and decide whether ops are needed |
+| `lxe-manager-ops` | Start/stop/status/logs, repo pull, CMake configure, CMake target build, and resource-guardian failures |
+| `lxe-editor-command-reference` | Load command categories and examples only when command syntax is needed |
+
+The normal workflow is:
+
+1. Use `lxe-editor-build-sync` to verify the remote editor binary matches the
+   local source state.
+2. Use `lxe-manager-ops` only if the editor must be stopped, updated, built, or
+   restarted.
+3. Use `lxe-editor-debug` for ordinary state inspection and lightweight actions.
+4. Use `lxe-editor-recording` only when reproducing or analyzing a bug through
+   saved operations.
+5. Use `lxe-editor-command-reference` only when command syntax or command
+   discovery is needed.
+
 ## Error Handling
 
 - Starting a session while disabled returns a clear error.

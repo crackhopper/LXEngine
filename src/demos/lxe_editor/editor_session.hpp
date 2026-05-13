@@ -7,6 +7,7 @@
 #include "demos/lxe_editor/camera_rig.hpp"
 #include "demos/lxe_editor/editor_config_state.hpp"
 #include "demos/lxe_editor/editor_data_state.hpp"
+#include "demos/lxe_editor/recording_controller.hpp"
 #include "demos/lxe_editor/scene_catalog.hpp"
 #include "demos/lxe_editor/scene_runtime.hpp"
 #include "demos/lxe_editor/scene_session.hpp"
@@ -50,6 +51,8 @@ public:
   [[nodiscard]] usize bindingsGeneration() const;
   [[nodiscard]] ScenePermissionLevel permission() const;
   [[nodiscard]] bool debugEnabled() const;
+  [[nodiscard]] RecordingController& recording();
+  [[nodiscard]] const RecordingController& recording() const;
   [[nodiscard]] const std::optional<std::filesystem::path>&
   currentDocumentPath() const;
   [[nodiscard]] const std::optional<SceneSourceKind>& currentSourceKind() const;
@@ -86,6 +89,7 @@ private:
   EditorConfigDocument m_editorConfig;
   EditorDataState m_editorDataState;
   EditorDataDocument m_editorData;
+  RecordingController m_recording;
   LX_core::Vec2f m_windowSize{1280.0f, 720.0f};
   usize m_bindingsGeneration = 0;
   bool m_debugEnabled = false;

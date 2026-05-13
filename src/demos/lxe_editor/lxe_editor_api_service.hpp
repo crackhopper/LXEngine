@@ -5,6 +5,7 @@
 #include "core/scene/scene.hpp"
 #include "core/scene/scene_events.hpp"
 #include "demos/lxe_editor/lxe_editor_api_protocol.hpp"
+#include "demos/lxe_editor/recording_controller.hpp"
 
 #include <functional>
 #include <optional>
@@ -20,15 +21,27 @@ public:
     std::function<ApiToolbarSnapshot()> toolbarSnapshot;
     std::function<std::optional<LX_core::Vec3f>()> lastHitPoint;
     std::function<void(std::string_view)> recordCommandHistoryLine;
+    std::function<std::optional<std::reference_wrapper<RecordingController>>()>
+        recording;
   };
 
   LxeEditorApiService(LX_core::CommandBus& commandBus,
                       LX_core::EditorState& editorState,
-                      LX_core::Scene& scene, Hooks hooks = {});
+                      LX_core::Scene& scene, Hooks hooks);
 
   [[nodiscard]] ApiCommandResponse executeCommand(
       const ApiCommandRequest& request);
   [[nodiscard]] ApiStateSnapshot captureState() const;
+  [[nodiscard]] std::string buildInfo() const;
+  [[nodiscard]] std::string recordingStatus() const;
+  [[nodiscard]] std::string recordingEnable();
+  [[nodiscard]] std::string recordingDisable(bool force);
+  [[nodiscard]] std::string recordingStart(RecordingDetailLevel detailLevel);
+  [[nodiscard]] std::string recordingStop(bool save);
+  [[nodiscard]] std::string recordingList() const;
+  [[nodiscard]] std::string recordingRead(const std::string& idOrPath) const;
+  [[nodiscard]] std::string recordingReplay(const std::string& idOrPath);
+  [[nodiscard]] std::string recordingProbe(const std::string& target) const;
   void refresh();
 
   [[nodiscard]] ApiEventCursor currentCursor() const;
