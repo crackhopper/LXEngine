@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then
+if [ "$#" -ne 1 ]; then
   echo "usage: LXE_MANAGER_MCP_BEARER_TOKEN=<token> source scripts/lxe_manager/use_remote_mcp.sh <manager-mcp-url>" >&2
   return 1 2>/dev/null || exit 1
 fi
@@ -9,7 +9,7 @@ fi
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 config_path="${LXE_EDITOR_CODEX_CONFIG_PATH:-${repo_root}/.codex/config.toml}"
 manager_url="$1"
-token="${LXE_MANAGER_MCP_BEARER_TOKEN:-${2:-}}"
+token="${LXE_MANAGER_MCP_BEARER_TOKEN:-}"
 
 if [ -z "${manager_url}" ] || [ -z "${token}" ]; then
   echo "lxe_manager MCP target: manager-mcp-url and LXE_MANAGER_MCP_BEARER_TOKEN are required" >&2
@@ -32,7 +32,7 @@ block = (
     f"url = {json.dumps(manager_url)}\n"
     'bearer_token_env_var = "LXE_MANAGER_MCP_BEARER_TOKEN"\n'
 )
-pattern = re.compile(r"(?ms)^\[mcp_servers\.lxe_manager\]\n.*?(?=^\[|\Z)")
+pattern = re.compile(r"(?ms)^\[mcp_servers\.lxe_manager\]\r?\n.*?(?=^\[|\Z)")
 if pattern.search(text):
     text = pattern.sub(block, text)
 else:

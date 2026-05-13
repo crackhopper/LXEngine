@@ -46,6 +46,17 @@ class ManagerMcpConfigTest(unittest.TestCase):
             encoding="utf-8",
         )
 
+    def write_existing_crlf_manager_config(self) -> None:
+        self.config_path.write_text(
+            'model = "gpt-test"\r\n\r\n'
+            "[mcp_servers.lxe_manager]\r\n"
+            'url = "http://old.example.com/mcp"\r\n'
+            'bearer_token_env_var = "OLD_TOKEN"\r\n\r\n'
+            "[mcp_servers.other]\r\n"
+            'url = "http://127.0.0.1:3999/mcp"\r\n',
+            encoding="utf-8",
+        )
+
     def test_client_no_longer_reads_mcp_url_from_runtime_state(self) -> None:
         self.write_runtime_state(
             f"""
@@ -148,6 +159,46 @@ class ManagerMcpConfigTest(unittest.TestCase):
             output,
         )
 
+    def test_use_remote_mcp_script_rejects_command_line_token(self) -> None:
+        script = self.repo_root / "scripts" / "lxe_manager" / "use_remote_mcp.sh"
+        result = subprocess.run(
+            [
+                "bash",
+                "-lc",
+                f"source '{script}' 'https://manager.example.com/mcp' 'remote-token'",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            env={
+                **os.environ,
+                "LXE_EDITOR_CODEX_CONFIG_PATH": str(self.config_path),
+            },
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("LXE_MANAGER_MCP_BEARER_TOKEN", result.stderr)
+
+    def test_use_local_mcp_script_replaces_existing_crlf_manager_table(self) -> None:
+        self.write_existing_crlf_manager_config()
+        script = self.repo_root / "scripts" / "lxe_manager" / "use_local_mcp.sh"
+        subprocess.run(
+            ["bash", "-lc", f"source '{script}' >/dev/null"],
+            check=True,
+            capture_output=True,
+            text=True,
+            env={
+                **os.environ,
+                "LXE_EDITOR_CODEX_CONFIG_PATH": str(self.config_path),
+            },
+        )
+
+        output = self.config_path.read_text(encoding="utf-8")
+        self.assertEqual(output.count("[mcp_servers.lxe_manager]"), 1)
+        self.assertNotIn("OLD_TOKEN", output)
+        self.assertIn('url = "http://127.0.0.1:3880/mcp"', output)
+        self.assertIn("[mcp_servers.other]", output)
+
     @unittest.skipUnless(shutil.which("pwsh"), "pwsh not available")
     def test_use_local_mcp_powershell_preserves_existing_config(self) -> None:
         self.write_existing_config()
@@ -206,3 +257,29 @@ class ManagerMcpConfigTest(unittest.TestCase):
             'bearer_token_env_var = "LXE_MANAGER_MCP_BEARER_TOKEN"',
             output,
         )
+
+    @unittest.skipUnless(shutil.which("pwsh"), "pwsh not available")
+    def test_use_local_mcp_powershell_replaces_existing_crlf_manager_table(self) -> None:
+        self.write_existing_crlf_manager_config()
+        script = self.repo_root / "scripts" / "lxe_manager" / "use_local_mcp.ps1"
+        subprocess.run(
+            [
+                "pwsh",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(script),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            env={
+                **os.environ,
+                "LXE_EDITOR_CODEX_CONFIG_PATH": str(self.config_path),
+            },
+        )
+
+        output = self.config_path.read_text(encoding="utf-8")
+        self.assertEqual(output.count("[mcp_servers.lxe_manager]"), 1)
+        self.assertNotIn("OLD_TOKEN", output)

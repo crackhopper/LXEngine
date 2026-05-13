@@ -20,7 +20,7 @@ block = (
     f"url = {json.dumps(manager_url)}\n"
     'bearer_token_env_var = "LXE_MANAGER_MCP_BEARER_TOKEN"\n'
 )
-pattern = re.compile(r"(?ms)^\[mcp_servers\.lxe_manager\]\n.*?(?=^\[|\Z)")
+pattern = re.compile(r"(?ms)^\[mcp_servers\.lxe_manager\]\r?\n.*?(?=^\[|\Z)")
 if pattern.search(text):
     text = pattern.sub(block, text)
 else:
