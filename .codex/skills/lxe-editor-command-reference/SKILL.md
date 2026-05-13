@@ -48,6 +48,7 @@ Common recording and camera commands:
 
 ```text
 preview off
+deselect
 cam control orbit
 cam look-at 2.8 2.0 4.5 0.0 0.6 0.0
 recording enable
@@ -55,8 +56,9 @@ recording start basic
 recording stop save
 ```
 
-With preview off, `cam look-at` changes `editor_cam`. Use it before pick-heavy
-use cases so the default view does not keep hitting `game_cam`.
+With preview off and no selected camera node, `cam look-at` changes
+`editor_cam`. Run `deselect` before pick-heavy use cases so a previously
+selected `/game_cam` does not receive the camera command.
 
 ## Guardrails
 

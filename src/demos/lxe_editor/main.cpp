@@ -388,9 +388,10 @@ int main(int argc, char **argv) {
         apiBindingsGeneration = session.bindingsGeneration();
         apiService = makeApiService();
       }
-      session.pollCommandHistory(loop);
       apiService->refresh();
       apiServer.pump(*apiService);
+      session.pollCommandHistory(loop);
+      apiService->refresh();
 
       const bool imguiReady = ImGui::GetCurrentContext() != nullptr;
       const auto io =

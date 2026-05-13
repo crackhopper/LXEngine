@@ -35,27 +35,28 @@
 4. 等待 `state summary` 中 `sceneName` 为 `lxe_editor`，且 `documentPath`
    指向测试场景。
 5. 执行 `preview off`，确保 pick 使用 editor camera。
-6. 执行 `cam control orbit`，让 toolbar 状态处于标准编辑控制模式。
-7. 执行 `cam look-at 2.8 2.0 4.5 0.0 0.6 0.0`，把 editor camera 从默认
+6. 执行 `deselect`，避免 `cam look-at` 优先操作当前选中的 camera 节点。
+7. 执行 `cam control orbit`，让 toolbar 状态处于标准编辑控制模式。
+8. 执行 `cam look-at 2.8 2.0 4.5 0.0 0.6 0.0`，把 editor camera 从默认
    game camera 视角旋开。
-8. 执行 `state cameras`，确认 `editor.eye` 已经变化。
-9. 执行 `pick screen 640 360 1280 720`。
-10. 执行 `state selection`。如果仍选中 `/game_cam` 或没有选中，执行
+9. 执行 `state cameras`，确认 `editor.eye` 已经变化。
+10. 执行 `pick screen 640 360 1280 720`。
+11. 执行 `state selection`。如果仍选中 `/game_cam` 或没有选中，执行
     `pick screen 520 360 1280 720` 或 `pick screen 760 360 1280 720` 后再确认。
-11. 执行 `select /helmet`。如果该路径不存在，先用 `list nodes` 查找
+12. 执行 `select /helmet`。如果该路径不存在，先用 `list nodes` 查找
     一个 mesh 节点，并选择第一个业务 mesh 节点。
-12. 执行 `move /helmet 0.25 0.1 0.0`。如果使用了替代节点，把路径替换
+13. 执行 `move /helmet 0.25 0.1 0.0`。如果使用了替代节点，把路径替换
     为实际选中的业务 mesh 节点路径。
-13. 执行 `rotate /helmet 0 25 0`。
-14. 执行 `scale /helmet 1.05`。
-15. 执行 `preview on`，再执行 `preview off`，验证编辑 / gameplay camera 切换。
-16. 执行 `scene save data/scenes/codex-recording-use-case.scene.yaml`。
-17. 执行 `recording stop save`。
-18. 用 `recording_list` 找到最新录制 id。
-19. 用 `recording_read` 读取最新录制，确认其中包含 scene load、camera、
+14. 执行 `rotate /helmet 0 25 0`。
+15. 执行 `scale /helmet 1.05`。
+16. 执行 `preview on`，再执行 `preview off`，验证编辑 / gameplay camera 切换。
+17. 执行 `scene save data/scenes/codex-recording-use-case.scene.yaml`。
+18. 执行 `recording stop save`。
+19. 用 `recording_list` 找到最新录制 id。
+20. 用 `recording_read` 读取最新录制，确认其中包含 scene load、camera、
     pick、select、move、rotate、scale、preview、scene save 等操作。
-20. 用 `recording_replay` 回放最新录制。
-21. 用 `recording_probe` 读取 `summary`、`selection`、`cameras`。
+21. 用 `recording_replay` 回放最新录制。
+22. 用 `recording_probe` 读取 `summary`、`selection`、`cameras`。
 
 ## 验收标准
 
