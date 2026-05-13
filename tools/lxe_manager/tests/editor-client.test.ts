@@ -35,9 +35,14 @@ function close(server: Server): Promise<void> {
 
 describe("editor runtime discovery", () => {
   let server: Server | undefined;
+  const originalApiToken = process.env.LXE_EDITOR_API_TOKEN;
 
   afterEach(async () => {
-    process.env.LXE_EDITOR_API_TOKEN = "";
+    if (originalApiToken === undefined) {
+      delete process.env.LXE_EDITOR_API_TOKEN;
+    } else {
+      process.env.LXE_EDITOR_API_TOKEN = originalApiToken;
+    }
     if (server?.listening) {
       await close(server);
     }
@@ -67,6 +72,20 @@ startedAt: 2026-05-13-120000
     expect("mcpUrl" in state).toBe(false);
   });
 
+  it("rejects malformed runtime_state.yaml", () => {
+    expect(() =>
+      loadRuntimeState(`
+pid: 42
+httpHost: 127.0.0.1
+httpPort: not-a-port
+wsHost: 127.0.0.1
+wsPort: 3768
+tokenFile: /tmp/api_token.txt
+startedAt: 2026-05-13-120000
+`),
+    ).toThrow("runtime state invalid httpPort");
+  });
+
   it("rejects stale discovery when health probe fails", async () => {
     const reachable = await runtimeStateIsReachable({
       pid: 42,
@@ -77,6 +96,28 @@ startedAt: 2026-05-13-120000
       tokenFile: "/tmp/api_token.txt",
       startedAt: "2026-05-13-120000",
     });
+
+    expect(reachable).toBe(false);
+  });
+
+  it("rejects a stalled health probe after timeout", async () => {
+    server = createServer(() => {
+      // Leave the request open to exercise AbortSignal.timeout.
+    });
+
+    const port = await listen(server);
+    const reachable = await runtimeStateIsReachable(
+      {
+        pid: 42,
+        httpHost: "127.0.0.1",
+        httpPort: port,
+        wsHost: "127.0.0.1",
+        wsPort: port,
+        tokenFile: "/tmp/api_token.txt",
+        startedAt: "2026-05-13-120000",
+      },
+      10,
+    );
 
     expect(reachable).toBe(false);
   });
@@ -109,5 +150,19 @@ startedAt: 2026-05-13-120000
       dirty: false,
     });
     expect(authorizationHeader).toBe("Bearer fake-token");
+  });
+
+  it("aborts editor requests after timeout", async () => {
+    server = createServer(() => {
+      // Leave the request open to exercise the client timeout.
+    });
+
+    const port = await listen(server);
+    const client = new EditorClient({
+      httpBaseUrl: `http://127.0.0.1:${port}`,
+      timeoutMs: 10,
+    });
+
+    await expect(client.getSummary()).rejects.toThrow();
   });
 });

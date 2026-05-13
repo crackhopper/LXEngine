@@ -3,6 +3,7 @@ export class EditorClient {
     private readonly input: {
       httpBaseUrl: string;
       bearerToken?: string;
+      timeoutMs?: number;
     },
   ) {}
 
@@ -34,6 +35,7 @@ export class EditorClient {
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(this.input.timeoutMs ?? 5_000),
     });
     if (!response.ok) {
       throw new Error(`editor request failed: ${response.status}`);

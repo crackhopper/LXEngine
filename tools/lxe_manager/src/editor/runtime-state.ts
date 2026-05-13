@@ -8,6 +8,8 @@ export interface EditorRuntimeState {
   startedAt: string;
 }
 
+const DEFAULT_HEALTH_TIMEOUT_MS = 1_000;
+
 export function loadRuntimeState(text: string): EditorRuntimeState {
   const values = new Map<string, string>();
 
@@ -24,25 +26,48 @@ export function loadRuntimeState(text: string): EditorRuntimeState {
   }
 
   return {
-    pid: Number(values.get("pid") ?? "0"),
-    httpHost: values.get("httpHost") ?? "",
-    httpPort: Number(values.get("httpPort") ?? "0"),
-    wsHost: values.get("wsHost") ?? "",
-    wsPort: Number(values.get("wsPort") ?? "0"),
-    tokenFile: values.get("tokenFile") ?? "",
-    startedAt: values.get("startedAt") ?? "",
+    pid: readInteger(values, "pid", 1, Number.MAX_SAFE_INTEGER),
+    httpHost: readString(values, "httpHost"),
+    httpPort: readInteger(values, "httpPort", 1, 65_535),
+    wsHost: readString(values, "wsHost"),
+    wsPort: readInteger(values, "wsPort", 1, 65_535),
+    tokenFile: readString(values, "tokenFile"),
+    startedAt: readString(values, "startedAt"),
   };
 }
 
 export async function runtimeStateIsReachable(
   state: EditorRuntimeState,
+  timeoutMs = DEFAULT_HEALTH_TIMEOUT_MS,
 ): Promise<boolean> {
   try {
     const response = await fetch(
       `http://${state.httpHost}:${state.httpPort}/health`,
+      { signal: AbortSignal.timeout(timeoutMs) },
     );
     return response.ok;
   } catch {
     return false;
   }
+}
+
+function readString(values: Map<string, string>, key: string): string {
+  const value = values.get(key)?.trim();
+  if (!value) {
+    throw new Error(`runtime state missing ${key}`);
+  }
+  return value;
+}
+
+function readInteger(
+  values: Map<string, string>,
+  key: string,
+  min: number,
+  max: number,
+): number {
+  const value = Number(values.get(key));
+  if (!Number.isInteger(value) || value < min || value > max) {
+    throw new Error(`runtime state invalid ${key}`);
+  }
+  return value;
 }
