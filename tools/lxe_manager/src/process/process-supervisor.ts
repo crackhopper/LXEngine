@@ -235,6 +235,14 @@ export class ProcessSupervisor {
     await this.killProcessTree(pid, "SIGKILL");
   }
 
+  async stopDetachedProcessTree(pid: number | undefined): Promise<void> {
+    await this.killProcessTree(pid, "SIGTERM", true);
+  }
+
+  async forceKillDetachedProcessTree(pid: number | undefined): Promise<void> {
+    await this.killProcessTree(pid, "SIGKILL", true);
+  }
+
   async waitForProcessExit(
     pid: number | undefined,
     input: { timeoutMs: number; pollIntervalMs: number },

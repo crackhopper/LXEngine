@@ -126,6 +126,24 @@ describe("process supervision", () => {
     expect(killed).toContainEqual({ pid: -123, signal: "SIGTERM" });
   });
 
+  it("can target a detached POSIX process group after external PID recovery", async () => {
+    const killed: Array<{ pid: number; signal: NodeJS.Signals }> = [];
+    const supervisor = new ProcessSupervisor({
+      platform: "linux",
+      processKiller: async (pid, signal) => {
+        killed.push({ pid, signal });
+      },
+    });
+
+    await supervisor.stopDetachedProcessTree(456);
+    await supervisor.forceKillDetachedProcessTree(456);
+
+    expect(killed).toEqual([
+      { pid: -456, signal: "SIGTERM" },
+      { pid: -456, signal: "SIGKILL" },
+    ]);
+  });
+
   it("builds a repo pull command in the repo root", async () => {
     const ops = new WorkspaceOps(new ProcessSupervisor(), { repoRoot: "/repo" });
     const command = ops.buildRepoPullCommand();

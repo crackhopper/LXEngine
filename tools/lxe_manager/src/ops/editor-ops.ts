@@ -1,9 +1,6 @@
 import type { ManagerConfig } from "../config.js";
 import type { ProcessSupervisor } from "../process/process-supervisor.js";
-import {
-  discoverEditorClientConfig,
-  discoverReachableEditorClientConfig,
-} from "../editor/runtime-state.js";
+import { discoverReachableEditorClientConfig } from "../editor/runtime-state.js";
 
 export interface EditorStatus {
   running: boolean;
@@ -62,7 +59,7 @@ export class EditorOps {
   }
 
   async stop(): Promise<EditorStatus> {
-    const pid = this.editorPid ?? this.resolveEditorPid();
+    const pid = this.editorPid ?? (await this.resolveReachableEditorPid());
     if (!pid) {
       return { running: false };
     }
@@ -72,14 +69,14 @@ export class EditorOps {
       return { running: false, pid };
     }
 
-    await this.supervisor.stopProcessTree(pid);
+    await this.supervisor.stopDetachedProcessTree(pid);
     let stopped = await this.supervisor.waitForProcessExit(pid, {
       timeoutMs: this.stopGracePeriodMs,
       pollIntervalMs: this.stopPollIntervalMs,
     });
 
     if (!stopped && this.supervisor.isProcessRunning(pid)) {
-      await this.supervisor.forceKillProcessTree(pid);
+      await this.supervisor.forceKillDetachedProcessTree(pid);
       stopped = await this.supervisor.waitForProcessExit(pid, {
         timeoutMs: this.forceKillGracePeriodMs,
         pollIntervalMs: this.stopPollIntervalMs,
@@ -94,7 +91,7 @@ export class EditorOps {
   }
 
   async status(): Promise<EditorStatus> {
-    const pid = this.resolveEditorPid();
+    const pid = await this.resolveReachableEditorPid();
     if (!pid) {
       return { running: false };
     }
@@ -105,7 +102,7 @@ export class EditorOps {
   }
 
   async logs(): Promise<EditorLogs> {
-    const pid = this.resolveEditorPid();
+    const pid = await this.resolveReachableEditorPid();
     const logs = pid ? this.supervisor.logsForDetachedProcess(pid) : undefined;
     return {
       stdout: logs?.stdout ?? "",
@@ -116,12 +113,15 @@ export class EditorOps {
     };
   }
 
-  private resolveEditorPid(): number | undefined {
+  private async resolveReachableEditorPid(): Promise<number | undefined> {
     if (this.editorPid && this.supervisor.isProcessRunning(this.editorPid)) {
       return this.editorPid;
     }
 
-    const discovered = discoverEditorClientConfig(this.config.runtimeStatePath);
+    const discovered = await discoverReachableEditorClientConfig(
+      this.config.runtimeStatePath,
+      this.startPollIntervalMs,
+    );
     const pid = discovered?.state.pid;
     if (pid && this.supervisor.isProcessRunning(pid)) {
       this.editorPid = pid;
