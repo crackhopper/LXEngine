@@ -218,6 +218,13 @@ PowerShell:
 scripts/lxe_manager/start_mcp.ps1 0.0.0.0 3880
 ```
 
+If a fixed bearer token is needed at startup, pass it as the third positional
+argument:
+
+```powershell
+scripts/lxe_manager/start_mcp.ps1 0.0.0.0 3880 <token>
+```
+
 On the remote Codex client:
 
 ```sh

@@ -68,12 +68,16 @@ export function parseManagerCliOptions(
 }
 
 function readPositionalHostPort(options: ManagerCliOptions, values: string[]): void {
-  if (values.length > 2) {
+  if (values.length > 3) {
     throw new Error(`unexpected lxe_manager positional arguments: ${values.join(" ")}`);
   }
   options.host = values[0];
   if (values[1] !== undefined) {
     options.port = readPort(values[1], undefined, "positional port");
+  }
+  if (values[2] !== undefined) {
+    options.bearerToken = values[2];
+    options.bearerTokenGenerated = false;
   }
 }
 

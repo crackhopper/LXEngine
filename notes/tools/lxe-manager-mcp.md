@@ -51,8 +51,8 @@ scripts/lxe_manager/start_mcp.ps1 0.0.0.0 3880
 ```
 
 我们也可以传完整参数名，例如 `scripts/lxe_manager/start_mcp.sh --host
-0.0.0.0 --port 3880`。不过位置参数形式在 npm / PowerShell 组合下更稳定：
-第一个参数是 host，第二个参数是 port。
+0.0.0.0 --port 3880 --token <token>`。不过位置参数形式在不同 shell 下更稳定：
+第一个参数是 host，第二个参数是 port，第三个可选参数是 token。
 
 启动输出会打印 `endpoint`、`bearerTokenEnvVar`、`bearerToken` 和
 `bearerTokenGenerated`。上面的 manager 进程会占用当前终端；我们通常在另一个

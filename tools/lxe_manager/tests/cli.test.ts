@@ -114,6 +114,17 @@ describe("manager cli options", () => {
     });
   });
 
+  it("accepts positional host, port, and token when npm strips option names", () => {
+    expect(
+      parseManagerCliOptions(["0.0.0.0", "3880", "secret"], {}, generateToken),
+    ).toMatchObject({
+      host: "0.0.0.0",
+      port: 3880,
+      bearerToken: "secret",
+      bearerTokenGenerated: false,
+    });
+  });
+
   it("rejects unknown arguments and invalid ports", () => {
     expect(() => parseManagerCliOptions(["--unknown"], {})).toThrow(
       "unknown lxe_manager argument",

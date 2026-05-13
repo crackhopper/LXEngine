@@ -11,5 +11,12 @@ if (-not (Test-Path $PackageJson)) {
     throw "lxe_manager MCP start failed: package.json not found under $ManagerDir"
 }
 
-& npm --prefix $ManagerDir run dev -- @ManagerArgs
-exit $LASTEXITCODE
+Push-Location $ManagerDir
+try {
+    & node --import tsx ./src/index.ts @ManagerArgs
+    $ExitCode = $LASTEXITCODE
+}
+finally {
+    Pop-Location
+}
+exit $ExitCode

@@ -9,4 +9,5 @@ if [ ! -f "${manager_dir}/package.json" ]; then
   exit 1
 fi
 
-exec npm --prefix "${manager_dir}" run dev -- "$@"
+cd "${manager_dir}"
+exec node --import tsx ./src/index.ts "$@"
