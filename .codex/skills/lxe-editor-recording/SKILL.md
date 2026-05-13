@@ -23,16 +23,23 @@ state reads belong to `lxe-editor-debug`; process lifecycle work belongs to
 ## Workflow
 
 1. Call `recording_status` before changing anything.
-2. Enable recording only when needed; it is intentionally off by default.
-3. Start with `detailLevel: "basic"` unless the user asks for heavier dumps.
-4. Stop with save enabled when the recording should become a bug artifact.
-5. Read the saved JSON before replaying; note step ids, sources, and payloads.
-6. Replay once, then use `recording_probe` at the failure state instead of
+2. Confirm the editor has a loaded scene before starting a recording. Use
+   `lxe-editor-debug` to read `lxe-editor://summary` or `lxe_editor_get_summary`;
+   if no scene/document is loaded, load the intended test scene first.
+3. Enable recording only when needed; it is intentionally off by default.
+4. Start with `detailLevel: "basic"` unless the user asks for heavier dumps.
+5. Stop with save enabled when the recording should become a bug artifact.
+6. Read the saved JSON before replaying; note step ids, sources, and payloads.
+7. Replay once, then use `recording_probe` at the failure state instead of
    repeatedly mutating the editor.
 
 If `recording_status` returns `editor_unavailable`, stop the recording workflow
 and switch to `lxe-manager-ops` to call `ops.editor_status`. That distinguishes
 "manager reachable but editor not started" from recording API failure.
+
+Do not use recording as the first operation after starting editor. A recording
+without a loaded scene is usually not useful and can hide setup bugs as replay
+bugs.
 
 ## Guardrails
 
@@ -42,3 +49,6 @@ and switch to `lxe-manager-ops` to call `ops.editor_status`. That distinguishes
   count, and the probe target used for follow-up.
 - Do not use this skill for command syntax discovery; load
   `lxe-editor-command-reference` only when command payloads need verification.
+- If testing reveals a code defect, fix it locally and use
+  `lxe-remote-fix-rebuild-retest` to push, pull, rebuild, restart, and rerun the
+  recording scenario.

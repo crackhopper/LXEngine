@@ -38,18 +38,26 @@ Use only these tools for debug actions and active polling:
 For command syntax beyond obvious one-line actions, load
 `lxe-editor-command-reference` instead of guessing.
 
+MCP should stay a stable transport layer. When a new editor operation can be
+expressed as a command-console action, prefer adding or using a command-bus
+command and documenting it in skills instead of expanding manager MCP protocol
+surface. That keeps a running manager usable without restart.
+
 ## Workflow
 
 1. Check that the `lxe_manager` MCP server is available in the current session.
 2. If MCP resources are available, read `lxe-editor://summary` first to anchor
    the current scene, mode, preview state, dirty bit, and active camera.
-3. Read narrower resources such as `lxe-editor://selection` or
+3. For scene-specific debugging, confirm the summary has a loaded scene or
+   current document. If not, load the intended test scene before probing. Use
+   `lxe-editor-command-reference` to verify `scene load` syntax when needed.
+4. Read narrower resources such as `lxe-editor://selection` or
    `lxe-editor://cameras` before issuing commands.
-4. Use `lxe_editor_command` only for small, reversible or already-approved
+5. Use `lxe_editor_command` only for small, reversible or already-approved
    command-bus actions.
-5. Use `lxe_editor_pick` for coordinate-driven probing instead of synthesizing
+6. Use `lxe_editor_pick` for coordinate-driven probing instead of synthesizing
    lower-level HTTP requests.
-6. After an action, verify the result with a resource read or
+7. After an action, verify the result with a resource read or
    `lxe_editor_wait_for`; do not assume the editor state changed as requested.
 
 If `lxe_editor_ensure_running` or a state read returns `editor_unavailable`,
@@ -62,6 +70,8 @@ way to tell whether the editor is simply not started.
 - Do not call `recording_*`, `ops.*`, `editor.get_build_info`, or
   `lxe_editor_get_build_info` from this skill; switch to the focused skill.
 - Do not maintain a second debug protocol in the skill.
+- When a missing capability looks command-like, switch to
+  `lxe-editor-command-reference` before proposing a new MCP tool.
 - If tools or resources are missing, distinguish between:
   - repo-local manager registration missing
   - `data/lxe_editor/runtime_state.yaml` missing for editor HTTP/WS discovery
@@ -75,7 +85,9 @@ way to tell whether the editor is simply not started.
 
 1. Ensure the editor is running.
 2. Read `lxe-editor://summary`.
-3. Read `lxe-editor://selection` or `lxe-editor://scene` if the issue is about
+3. Load the intended scene if summary shows no scene/document for the current
+   task.
+4. Read `lxe-editor://selection` or `lxe-editor://scene` if the issue is about
    picking, selection, or document state.
-4. Issue one command or pick action.
-5. Re-read the affected resource or wait for the expected state.
+5. Issue one command or pick action.
+6. Re-read the affected resource or wait for the expected state.

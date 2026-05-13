@@ -85,6 +85,14 @@ void testStartAppendStopAndSaveRecording() {
          "recording should include mcp source");
   EXPECT(text.find("scene load lxe_editor.scene.yaml") != std::string::npos,
          "recording should include command payload");
+
+  const auto entries = recorder.list();
+  EXPECT(entries.size() == 1, "saved recording should be listed");
+  if (!entries.empty()) {
+    const std::string byId = recorder.read(entries.front().id);
+    EXPECT(byId.find("scene load lxe_editor.scene.yaml") != std::string::npos,
+           "recording list id should be readable");
+  }
 }
 
 } // namespace

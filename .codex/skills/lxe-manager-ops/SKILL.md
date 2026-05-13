@@ -64,3 +64,10 @@ If manager reports CPU, memory, or IO guard termination:
 - Do not restart a user-controlled editor unless the user approved that flow or
   build-sync showed it is required.
 - Do not inspect command syntax here; use `lxe-editor-command-reference`.
+- Do not expand manager MCP tools for editor-local actions until checking
+  whether the command console can expose the capability through
+  `lxe_editor_command`. Prefer command-bus expansion when it avoids restarting
+  the manager server.
+- After local fixes that must be deployed remotely, use
+  `lxe-remote-fix-rebuild-retest` for the full stop/pull/build/start/retest
+  workflow.
