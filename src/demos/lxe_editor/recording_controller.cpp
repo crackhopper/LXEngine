@@ -188,7 +188,7 @@ std::vector<RecordingListEntry> RecordingController::list() const {
   }
   std::sort(entries.begin(), entries.end(),
             [](const RecordingListEntry& a, const RecordingListEntry& b) {
-              return a.id < b.id;
+              return a.id > b.id;
             });
   return entries;
 }

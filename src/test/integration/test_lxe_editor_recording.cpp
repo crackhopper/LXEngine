@@ -95,11 +95,34 @@ void testStartAppendStopAndSaveRecording() {
   }
 }
 
+void testRecordingListReturnsNewestFirst() {
+  const auto root = makeTempRoot("lxe_recording_list_order");
+  const auto recordings = root / "recordings";
+  std::filesystem::create_directories(recordings);
+
+  {
+    std::ofstream(recordings / "20260513T090000-recording.json") << "{}";
+    std::ofstream(recordings / "20260513T091000-recording.json") << "{}";
+    std::ofstream(recordings / "20260513T085000-recording.json") << "{}";
+  }
+
+  demo::RecordingController recorder(root);
+  const auto entries = recorder.list();
+  EXPECT(entries.size() == 3, "all saved recordings should be listed");
+  if (entries.size() == 3) {
+    EXPECT(entries[0].id == "20260513T091000-recording.json",
+           "newest recording id should be listed first");
+    EXPECT(entries[2].id == "20260513T085000-recording.json",
+           "oldest recording id should be listed last");
+  }
+}
+
 } // namespace
 
 int main() {
   testDisabledRecorderHasNoSideEffects();
   testStartAppendStopAndSaveRecording();
+  testRecordingListReturnsNewestFirst();
 
   if (failures != 0) {
     std::cerr << "[FAIL] lxe_editor recording tests: " << failures << "\n";
