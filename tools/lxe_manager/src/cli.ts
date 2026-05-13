@@ -1,15 +1,19 @@
+import { randomBytes } from "node:crypto";
+
 export interface ManagerCliOptions {
   host: string;
   port: number;
   repoRoot?: string;
   runtimeRoot?: string;
   editorExecutable?: string;
-  bearerToken?: string;
+  bearerToken: string;
+  bearerTokenGenerated: boolean;
 }
 
 export function parseManagerCliOptions(
   argv: string[],
   env: NodeJS.ProcessEnv = process.env,
+  generateToken: () => string = generateBearerToken,
 ): ManagerCliOptions {
   const options: ManagerCliOptions = {
     host: env.LXE_MANAGER_HOST ?? "127.0.0.1",
@@ -17,7 +21,8 @@ export function parseManagerCliOptions(
     repoRoot: env.LXE_MANAGER_REPO_ROOT,
     runtimeRoot: env.LXE_MANAGER_RUNTIME_ROOT,
     editorExecutable: env.LXE_MANAGER_EDITOR_EXECUTABLE,
-    bearerToken: env.LXE_MANAGER_MCP_BEARER_TOKEN,
+    bearerToken: env.LXE_MANAGER_MCP_BEARER_TOKEN ?? "",
+    bearerTokenGenerated: false,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -43,12 +48,17 @@ export function parseManagerCliOptions(
       case "--token":
       case "--bearer-token":
         options.bearerToken = readValue(argv, ++index, arg);
+        options.bearerTokenGenerated = false;
         break;
       default:
         throw new Error(`unknown lxe_manager argument: ${arg}`);
     }
   }
 
+  if (!options.bearerToken) {
+    options.bearerToken = generateToken();
+    options.bearerTokenGenerated = true;
+  }
   validateManagerCliOptions(options);
   return options;
 }
@@ -56,11 +66,6 @@ export function parseManagerCliOptions(
 function validateManagerCliOptions(options: ManagerCliOptions): void {
   if (!options.host.trim()) {
     throw new Error("lxe_manager host must not be empty");
-  }
-  if (!isLoopbackHost(options.host) && !options.bearerToken) {
-    throw new Error(
-      "LXE_MANAGER_MCP_BEARER_TOKEN or --token is required when binding lxe_manager to a non-loopback host",
-    );
   }
 }
 
@@ -90,12 +95,6 @@ function readPort(
   return port;
 }
 
-function isLoopbackHost(host: string): boolean {
-  const normalized = host.trim().toLowerCase();
-  return (
-    normalized === "localhost" ||
-    normalized === "127.0.0.1" ||
-    normalized === "::1" ||
-    normalized === "[::1]"
-  );
+function generateBearerToken(): string {
+  return randomBytes(32).toString("hex");
 }

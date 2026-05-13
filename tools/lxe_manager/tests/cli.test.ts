@@ -2,10 +2,14 @@ import { describe, expect, it } from "vitest";
 import { parseManagerCliOptions } from "../src/cli.js";
 
 describe("manager cli options", () => {
-  it("uses loopback defaults", () => {
-    expect(parseManagerCliOptions([], {})).toMatchObject({
+  const generateToken = () => "generated-token";
+
+  it("uses loopback defaults and generates a token", () => {
+    expect(parseManagerCliOptions([], {}, generateToken)).toMatchObject({
       host: "127.0.0.1",
       port: 3880,
+      bearerToken: "generated-token",
+      bearerTokenGenerated: true,
     });
   });
 
@@ -27,6 +31,7 @@ describe("manager cli options", () => {
           "secret",
         ],
         {},
+        generateToken,
       ),
     ).toEqual({
       host: "0.0.0.0",
@@ -35,6 +40,7 @@ describe("manager cli options", () => {
       runtimeRoot: "/runtime",
       editorExecutable: "/repo/build/lxe_editor",
       bearerToken: "secret",
+      bearerTokenGenerated: false,
     });
   });
 
@@ -55,13 +61,18 @@ describe("manager cli options", () => {
       runtimeRoot: "/runtime",
       editorExecutable: "/repo/editor",
       bearerToken: "secret",
+      bearerTokenGenerated: false,
     });
   });
 
-  it("requires a token for non-loopback bindings", () => {
-    expect(() => parseManagerCliOptions(["--host", "0.0.0.0"], {})).toThrow(
-      "LXE_MANAGER_MCP_BEARER_TOKEN or --token is required",
-    );
+  it("generates a token for non-loopback bindings", () => {
+    expect(
+      parseManagerCliOptions(["--host", "0.0.0.0"], {}, generateToken),
+    ).toMatchObject({
+      host: "0.0.0.0",
+      bearerToken: "generated-token",
+      bearerTokenGenerated: true,
+    });
   });
 
   it("allows non-loopback bindings when a token is provided by the environment", () => {
@@ -73,6 +84,7 @@ describe("manager cli options", () => {
       host: "0.0.0.0",
       port: 3880,
       bearerToken: "secret",
+      bearerTokenGenerated: false,
     });
   });
 
@@ -81,11 +93,13 @@ describe("manager cli options", () => {
       parseManagerCliOptions(
         ["--mcp-host", "0.0.0.0", "--mcp-port", "3999", "--bearer-token", "secret"],
         {},
+        generateToken,
       ),
     ).toMatchObject({
       host: "0.0.0.0",
       port: 3999,
       bearerToken: "secret",
+      bearerTokenGenerated: false,
     });
   });
 

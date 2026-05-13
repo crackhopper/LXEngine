@@ -182,15 +182,13 @@ Start the local manager in one terminal:
 
 ```sh
 cd tools/lxe_manager
-export LXE_MANAGER_MCP_BEARER_TOKEN="$(openssl rand -hex 32)"
-printf 'manager token: %s\n' "$LXE_MANAGER_MCP_BEARER_TOKEN"
 npm run dev -- --host 127.0.0.1 --port 3880
 ```
 
 Then point Codex at it from another terminal:
 
 ```sh
-export LXE_MANAGER_MCP_BEARER_TOKEN=<same-token>
+export LXE_MANAGER_MCP_BEARER_TOKEN=<token-from-manager-output>
 cd /home/lixiang/proj/LXEngine
 source scripts/lxe_manager/use_local_mcp.sh
 codex
@@ -204,7 +202,7 @@ That helper rewrites `.codex/config.toml` to register `lxe_manager` at
 PowerShell:
 
 ```powershell
-$Env:LXE_MANAGER_MCP_BEARER_TOKEN = "<same-token>"
+$Env:LXE_MANAGER_MCP_BEARER_TOKEN = "<token-from-manager-output>"
 scripts/lxe_manager/use_local_mcp.ps1
 codex
 ```
@@ -213,8 +211,6 @@ To point Codex at a remote manager:
 
 ```sh
 cd tools/lxe_manager
-export LXE_MANAGER_MCP_BEARER_TOKEN="$(openssl rand -hex 32)"
-printf 'manager token: %s\n' "$LXE_MANAGER_MCP_BEARER_TOKEN"
 npm run dev -- --host 0.0.0.0 --port 3880
 ```
 
@@ -230,8 +226,8 @@ The remote helper writes the manager URL config and exports
 `LXE_MANAGER_MCP_BEARER_TOKEN` only in the current shell, without committing
 secrets to the repo.
 
-Remote binding requires a token. `lxe_manager --host 0.0.0.0` exits during
-startup if neither `LXE_MANAGER_MCP_BEARER_TOKEN` nor `--token` is provided.
+`lxe_manager` prints `bearerToken` during startup. Copy that value into
+`LXE_MANAGER_MCP_BEARER_TOKEN` on the Codex client.
 See `notes/tools/lxe-manager-mcp.md` for the full service guide.
 
 Current MCP surface:

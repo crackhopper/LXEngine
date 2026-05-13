@@ -10,10 +10,11 @@
 |---|---|
 | `lxe_editor` | 只提供 HTTP / WebSocket API，并写出 `runtime_state.yaml` |
 | `lxe_manager` | 提供 `/mcp`，动态发现 editor HTTP API，并管理后台进程 |
-| Codex MCP 配置 | 指向 `lxe_manager`，token 通过环境变量传入 |
+| Codex MCP 配置 | 指向 `lxe_manager`，token 从 manager 启动输出复制到客户端环境变量 |
 
 `lxe_manager` 默认只监听 `127.0.0.1:3880`。如果我们需要让另一台机器访问
-MCP，需要显式传 `--host 0.0.0.0` 或内网 IP，并提供 bearer token。
+MCP，需要显式传 `--host 0.0.0.0` 或内网 IP。manager 会在启动时生成并打印
+bearer token，也可以用环境变量或参数提供固定 token。
 
 ## 启动服务
 
@@ -27,22 +28,19 @@ npm run build
 
 本机访问：
 
-```bash
-export LXE_MANAGER_MCP_BEARER_TOKEN="$(openssl rand -hex 32)"
-printf 'manager token: %s\n' "$LXE_MANAGER_MCP_BEARER_TOKEN"
+```sh
 npm run dev -- --host 127.0.0.1 --port 3880
 ```
 
 远程访问：
 
-```bash
-export LXE_MANAGER_MCP_BEARER_TOKEN="$(openssl rand -hex 32)"
-printf 'manager token: %s\n' "$LXE_MANAGER_MCP_BEARER_TOKEN"
+```sh
 npm run dev -- --host 0.0.0.0 --port 3880
 ```
 
-远程绑定没有 token 时会直接启动失败，避免把运维工具裸露到网络上。
-上面的 manager 进程会占用当前终端；我们通常在另一个终端里配置 Codex。
+启动输出会打印 `endpoint`、`bearerTokenEnvVar`、`bearerToken` 和
+`bearerTokenGenerated`。上面的 manager 进程会占用当前终端；我们通常在另一个
+终端里配置 Codex。
 
 ## 连接 Codex
 
@@ -50,8 +48,16 @@ npm run dev -- --host 0.0.0.0 --port 3880
 
 ```bash
 cd /home/lixiang/proj/LXEngine
-export LXE_MANAGER_MCP_BEARER_TOKEN="<server-token>"
+export LXE_MANAGER_MCP_BEARER_TOKEN="<token-from-manager-output>"
 source scripts/lxe_manager/use_local_mcp.sh
+codex
+```
+
+PowerShell:
+
+```powershell
+$Env:LXE_MANAGER_MCP_BEARER_TOKEN = "<token-from-manager-output>"
+scripts/lxe_manager/use_local_mcp.ps1
 codex
 ```
 
@@ -59,8 +65,16 @@ codex
 
 ```bash
 cd /home/lixiang/proj/LXEngine
-export LXE_MANAGER_MCP_BEARER_TOKEN="<server-token>"
+export LXE_MANAGER_MCP_BEARER_TOKEN="<token-from-manager-output>"
 source scripts/lxe_manager/use_remote_mcp.sh http://<server-ip>:3880/mcp
+codex
+```
+
+PowerShell:
+
+```powershell
+$Env:LXE_MANAGER_MCP_BEARER_TOKEN = "<token-from-manager-output>"
+scripts/lxe_manager/use_remote_mcp.ps1 http://<server-ip>:3880/mcp
 codex
 ```
 
@@ -76,10 +90,11 @@ codex
 | `--repo-root` | `LXE_MANAGER_REPO_ROOT` | 自动发现 | LXEngine 仓库根目录 |
 | `--runtime-root` | `LXE_MANAGER_RUNTIME_ROOT` | repo root | editor 运行时数据根目录 |
 | `--editor-executable` | `LXE_MANAGER_EDITOR_EXECUTABLE` | build 内的 `lxe_editor` | editor 可执行文件 |
-| `--token` / `--bearer-token` | `LXE_MANAGER_MCP_BEARER_TOKEN` | 空 | MCP bearer token |
+| `--token` / `--bearer-token` | `LXE_MANAGER_MCP_BEARER_TOKEN` | 自动生成 | MCP bearer token |
 
 `--token` 主要用于一次性本地调试。远程运行时更推荐
-`LXE_MANAGER_MCP_BEARER_TOKEN`，避免 token 出现在 shell history 或进程列表里。
+`LXE_MANAGER_MCP_BEARER_TOKEN` 或自动生成的启动输出，避免 token 出现在 shell
+history 或进程列表里。
 
 ## MCP 能力
 
@@ -99,7 +114,7 @@ codex
 
 ## 安全边界
 
-- 远程 bind 必须配置 token。
+- MCP 默认始终启用 bearer token；未提供 token 时由 manager 启动入口生成。
 - token 不应写入 `.codex/config.toml` 或提交到仓库。
 - MCP 当前是 HTTP 明文；跨不可信网络时应放在 VPN、SSH 隧道或反向代理 TLS
   后面。
