@@ -2,6 +2,7 @@ import {
   ProcessSupervisor,
   type ManagedCommand,
 } from "../process/process-supervisor.js";
+import path from "node:path";
 
 export class WorkspaceOps {
   constructor(
@@ -32,5 +33,21 @@ export class WorkspaceOps {
 
   async repoPull() {
     return this.supervisor.run(this.buildRepoPullCommand());
+  }
+
+  async buildConfigure(buildDir = path.join(this.config.repoRoot, "build")) {
+    return this.supervisor.run(this.buildConfigureCommand(buildDir));
+  }
+
+  async buildTarget(
+    buildDir = path.join(this.config.repoRoot, "build"),
+    target = "lxe_editor",
+  ) {
+    return this.supervisor.run({
+      command: "cmake",
+      args: ["--build", buildDir, "--target", target],
+      cwd: this.config.repoRoot,
+      label: "build.target",
+    });
   }
 }

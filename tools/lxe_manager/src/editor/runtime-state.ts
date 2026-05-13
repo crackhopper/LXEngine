@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from "node:fs";
+
 export interface EditorRuntimeState {
   pid: number;
   httpHost: string;
@@ -6,6 +8,12 @@ export interface EditorRuntimeState {
   wsPort: number;
   tokenFile: string;
   startedAt: string;
+}
+
+export interface DiscoveredEditorClientConfig {
+  httpBaseUrl: string;
+  bearerToken: string;
+  state: EditorRuntimeState;
 }
 
 const DEFAULT_HEALTH_TIMEOUT_MS = 1_000;
@@ -49,6 +57,30 @@ export async function runtimeStateIsReachable(
   } catch {
     return false;
   }
+}
+
+export function discoverEditorClientConfig(
+  runtimeStatePath: string,
+): DiscoveredEditorClientConfig | undefined {
+  if (!existsSync(runtimeStatePath)) {
+    return undefined;
+  }
+
+  const state = loadRuntimeState(readFileSync(runtimeStatePath, "utf8"));
+  if (!existsSync(state.tokenFile)) {
+    return undefined;
+  }
+
+  const bearerToken = readFileSync(state.tokenFile, "utf8").trim();
+  if (!bearerToken) {
+    return undefined;
+  }
+
+  return {
+    httpBaseUrl: `http://${state.httpHost}:${state.httpPort}`,
+    bearerToken,
+    state,
+  };
 }
 
 function readString(values: Map<string, string>, key: string): string {

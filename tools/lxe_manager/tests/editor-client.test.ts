@@ -1,6 +1,10 @@
 import { createServer, type Server } from "node:http";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  discoverEditorClientConfig,
   loadRuntimeState,
   runtimeStateIsReachable,
 } from "../src/editor/runtime-state.js";
@@ -86,6 +90,34 @@ startedAt: 2026-05-13-120000
     ).toThrow("runtime state invalid httpPort");
   });
 
+  it("discovers editor client config from runtime_state.yaml and token file", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "lxe-runtime-"));
+    const tokenFile = path.join(root, "api_token.txt");
+    const stateFile = path.join(root, "runtime_state.yaml");
+    writeFileSync(tokenFile, "secret-token\n");
+    writeFileSync(
+      stateFile,
+      `
+pid: 42
+httpHost: 127.0.0.1
+httpPort: 3768
+wsHost: 127.0.0.1
+wsPort: 3768
+tokenFile: ${tokenFile}
+startedAt: 2026-05-13-120000
+`,
+    );
+
+    expect(discoverEditorClientConfig(stateFile)).toMatchObject({
+      httpBaseUrl: "http://127.0.0.1:3768",
+      bearerToken: "secret-token",
+      state: {
+        pid: 42,
+        tokenFile,
+      },
+    });
+  });
+
   it("rejects stale discovery when health probe fails", async () => {
     const reachable = await runtimeStateIsReachable({
       pid: 42,
@@ -123,12 +155,27 @@ startedAt: 2026-05-13-120000
   });
 
   it("fetches summary from a healthy editor API", async () => {
-    let authorizationHeader: string | undefined;
+    const requests: Array<{ url: string | undefined; authorization?: string }> = [];
     server = createServer((req, res) => {
+      requests.push({ url: req.url, authorization: req.headers.authorization });
       if (req.url === "/api/state/summary") {
-        authorizationHeader = req.headers.authorization;
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ sceneName: "Scene", dirty: false }));
+        return;
+      }
+      if (req.url === "/api/state/selection") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ selectedNodeId: 7 }));
+        return;
+      }
+      if (req.url === "/api/state/cameras") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ active: "editor_cam" }));
+        return;
+      }
+      if (req.url === "/api/pick") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ hit: true }));
         return;
       }
       if (req.url === "/health") {
@@ -149,7 +196,18 @@ startedAt: 2026-05-13-120000
       sceneName: "Scene",
       dirty: false,
     });
-    expect(authorizationHeader).toBe("Bearer fake-token");
+    await expect(client.getSelection()).resolves.toEqual({ selectedNodeId: 7 });
+    await expect(client.getCameras()).resolves.toEqual({ active: "editor_cam" });
+    await expect(client.pick(4, 8)).resolves.toEqual({ hit: true });
+    expect(requests.map((request) => request.url)).toEqual([
+      "/api/state/summary",
+      "/api/state/selection",
+      "/api/state/cameras",
+      "/api/pick",
+    ]);
+    expect(requests.every((request) => request.authorization === "Bearer fake-token")).toBe(
+      true,
+    );
   });
 
   it("aborts editor requests after timeout", async () => {

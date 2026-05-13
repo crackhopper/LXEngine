@@ -15,8 +15,51 @@ export class EditorClient {
     return this.requestJson("GET", "/api/state/summary");
   }
 
+  async getSelection(): Promise<unknown> {
+    return this.requestJson("GET", "/api/state/selection");
+  }
+
+  async getCameras(): Promise<unknown> {
+    return this.requestJson("GET", "/api/state/cameras");
+  }
+
+  async pick(x: number, y: number): Promise<unknown> {
+    return this.requestJson("POST", "/api/pick", { x, y });
+  }
+
   async command(line: string): Promise<unknown> {
     return this.requestJson("POST", "/api/command", { line });
+  }
+
+  async waitFor(input: {
+    contains?: string;
+    resource?: string;
+    timeoutMs?: number;
+    intervalMs?: number;
+  }): Promise<unknown> {
+    const startedAt = Date.now();
+    const timeoutMs = input.timeoutMs ?? 5_000;
+    const intervalMs = input.intervalMs ?? 100;
+
+    while (Date.now() - startedAt <= timeoutMs) {
+      const value = await this.readResource(input.resource);
+      const text = JSON.stringify(value);
+      if (!input.contains || text.includes(input.contains)) {
+        return {
+          found: true,
+          resource: normalizeResource(input.resource),
+          elapsedMs: Date.now() - startedAt,
+          value,
+        };
+      }
+      await delay(intervalMs);
+    }
+
+    return {
+      found: false,
+      resource: normalizeResource(input.resource),
+      elapsedMs: Date.now() - startedAt,
+    };
   }
 
   private async requestJson(
@@ -42,4 +85,30 @@ export class EditorClient {
     }
     return response.json();
   }
+
+  private async readResource(resource: string | undefined): Promise<unknown> {
+    switch (normalizeResource(resource)) {
+      case "summary":
+        return this.getSummary();
+      case "selection":
+        return this.getSelection();
+      case "cameras":
+        return this.getCameras();
+      case "scene":
+        return this.requestJson("GET", "/api/state/scene");
+      case "toolbar":
+        return this.requestJson("GET", "/api/state/toolbar");
+    }
+  }
+}
+
+function normalizeResource(resource: string | undefined): string {
+  if (!resource || resource === "lxe-editor://summary") {
+    return "summary";
+  }
+  return resource.replace(/^lxe-editor:\/\//, "");
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
