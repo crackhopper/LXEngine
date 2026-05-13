@@ -27,6 +27,10 @@ export function parseManagerCliOptions(
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
+    if (!arg.startsWith("--")) {
+      readPositionalHostPort(options, argv.slice(index));
+      break;
+    }
     switch (arg) {
       case "--host":
       case "--mcp-host":
@@ -61,6 +65,16 @@ export function parseManagerCliOptions(
   }
   validateManagerCliOptions(options);
   return options;
+}
+
+function readPositionalHostPort(options: ManagerCliOptions, values: string[]): void {
+  if (values.length > 2) {
+    throw new Error(`unexpected lxe_manager positional arguments: ${values.join(" ")}`);
+  }
+  options.host = values[0];
+  if (values[1] !== undefined) {
+    options.port = readPort(values[1], undefined, "positional port");
+  }
 }
 
 function validateManagerCliOptions(options: ManagerCliOptions): void {

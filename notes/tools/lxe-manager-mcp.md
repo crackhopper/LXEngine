@@ -21,22 +21,38 @@ bearer token，也可以用环境变量或参数提供固定 token。
 先准备 Node 依赖和构建产物：
 
 ```bash
-cd /home/lixiang/proj/LXEngine/tools/lxe_manager
-npm install
-npm run build
+cd /home/lixiang/proj/LXEngine
+npm --prefix tools/lxe_manager install
+npm --prefix tools/lxe_manager run build
 ```
 
 本机访问：
 
 ```sh
-npm run dev -- --host 127.0.0.1 --port 3880
+scripts/lxe_manager/start_mcp.sh
+```
+
+PowerShell:
+
+```powershell
+scripts/lxe_manager/start_mcp.ps1
 ```
 
 远程访问：
 
 ```sh
-npm run dev -- --host 0.0.0.0 --port 3880
+scripts/lxe_manager/start_mcp.sh 0.0.0.0 3880
 ```
+
+PowerShell:
+
+```powershell
+scripts/lxe_manager/start_mcp.ps1 0.0.0.0 3880
+```
+
+我们也可以传完整参数名，例如 `scripts/lxe_manager/start_mcp.sh --host
+0.0.0.0 --port 3880`。不过位置参数形式在 npm / PowerShell 组合下更稳定：
+第一个参数是 host，第二个参数是 port。
 
 启动输出会打印 `endpoint`、`bearerTokenEnvVar`、`bearerToken` 和
 `bearerTokenGenerated`。上面的 manager 进程会占用当前终端；我们通常在另一个

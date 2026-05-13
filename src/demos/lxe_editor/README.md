@@ -181,8 +181,7 @@ MCP URL into runtime state.
 Start the local manager in one terminal:
 
 ```sh
-cd tools/lxe_manager
-npm run dev -- --host 127.0.0.1 --port 3880
+scripts/lxe_manager/start_mcp.sh
 ```
 
 Then point Codex at it from another terminal:
@@ -210,8 +209,13 @@ codex
 To point Codex at a remote manager:
 
 ```sh
-cd tools/lxe_manager
-npm run dev -- --host 0.0.0.0 --port 3880
+scripts/lxe_manager/start_mcp.sh 0.0.0.0 3880
+```
+
+PowerShell:
+
+```powershell
+scripts/lxe_manager/start_mcp.ps1 0.0.0.0 3880
 ```
 
 On the remote Codex client:
