@@ -59,7 +59,12 @@ export class ResourceGuardian {
       this.breachCount += 1;
       if (this.breachCount >= this.input.maxConsecutiveBreaches) {
         this.killStarted = true;
-        await this.input.kill();
+        try {
+          await this.input.kill();
+        } catch (error) {
+          this.killStarted = false;
+          throw error;
+        }
       }
       return;
     }

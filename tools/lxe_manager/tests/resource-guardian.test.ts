@@ -143,6 +143,39 @@ describe("resource guardian", () => {
     expect(kill).toHaveBeenCalledOnce();
   });
 
+  it("allows a later tick to retry when kill fails", async () => {
+    const kill = vi
+      .fn<() => Promise<void>>()
+      .mockRejectedValueOnce(new Error("termination failed"))
+      .mockResolvedValueOnce(undefined);
+    const guardian = new ResourceGuardian({
+      sample: async () => ({
+        processRssBytes: 4096,
+        processCpuPercent: 390,
+        systemFreeMemoryBytes: 16,
+        systemCpuBusyPercent: 99,
+        processReadBytesPerSecond: 1024,
+        processWriteBytesPerSecond: 1024,
+        systemIoBusyPercent: 98,
+      }),
+      kill,
+      maxConsecutiveBreaches: 1,
+      thresholds: {
+        minSystemFreeMemoryBytes: 64,
+        maxProcessRssBytes: 512,
+        maxProcessCpuPercent: 350,
+        maxSystemCpuBusyPercent: 95,
+        maxProcessIoBytesPerSecond: 1000,
+        maxSystemIoBusyPercent: 95,
+      },
+    });
+
+    await expect(guardian.tick()).rejects.toThrow("termination failed");
+    await guardian.tick();
+
+    expect(kill).toHaveBeenCalledTimes(2);
+  });
+
   it("does not kill for system I/O pressure from another process", async () => {
     const kill = vi.fn(async () => undefined);
     const guardian = new ResourceGuardian({
