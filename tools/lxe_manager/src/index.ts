@@ -1,3 +1,4 @@
+import { parseManagerCliOptions } from "./cli.js";
 import { defaultRepoRoot, resolveManagerConfig } from "./config.js";
 import { EditorClient } from "./editor/editor-client.js";
 import { discoverReachableEditorClientConfig } from "./editor/runtime-state.js";
@@ -11,9 +12,10 @@ import { WorkspaceOps } from "./ops/workspace-ops.js";
 import { ProcessSupervisor } from "./process/process-supervisor.js";
 import type { ResourceThresholds } from "./process/resource-guardian.js";
 
-const repoRoot = process.env.LXE_MANAGER_REPO_ROOT ?? defaultRepoRoot();
-const runtimeRoot = process.env.LXE_MANAGER_RUNTIME_ROOT ?? repoRoot;
-const editorExecutable = process.env.LXE_MANAGER_EDITOR_EXECUTABLE;
+const cliOptions = parseManagerCliOptions(process.argv.slice(2));
+const repoRoot = cliOptions.repoRoot ?? defaultRepoRoot();
+const runtimeRoot = cliOptions.runtimeRoot ?? repoRoot;
+const editorExecutable = cliOptions.editorExecutable;
 
 const config = resolveManagerConfig({ repoRoot, runtimeRoot, editorExecutable });
 const defaultResourceThresholds: ResourceThresholds = {
@@ -34,19 +36,20 @@ const handlers = createToolHandlers({
   workspaceOps: new WorkspaceOps(processSupervisor, { repoRoot: config.repoRoot }),
 });
 const resources = createResourceHandlers(editorClientProvider);
-const port = readPort(process.env.LXE_MANAGER_PORT, 3880);
 const server = createMcpHttpServer({
   handlers,
   resources,
-  bearerToken: process.env.LXE_MANAGER_MCP_BEARER_TOKEN,
+  bearerToken: cliOptions.bearerToken,
 });
 
-server.listen(port, "127.0.0.1", () => {
+server.listen(cliOptions.port, cliOptions.host, () => {
   console.log(
     JSON.stringify(
       {
         status: "listening",
-        endpoint: `http://127.0.0.1:${port}/mcp`,
+        endpoint: `http://${cliOptions.host}:${cliOptions.port}/mcp`,
+        host: cliOptions.host,
+        port: cliOptions.port,
         config,
         editorApi: "dynamic",
         tools: Object.keys(handlers).sort(),
@@ -74,15 +77,4 @@ async function createEditorClient(): Promise<EditorClient | undefined> {
     httpBaseUrl: discovered.httpBaseUrl,
     bearerToken: discovered.bearerToken,
   });
-}
-
-function readPort(value: string | undefined, fallback: number): number {
-  if (value === undefined) {
-    return fallback;
-  }
-  const port = Number(value);
-  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
-    throw new Error(`invalid LXE_MANAGER_PORT: ${value}`);
-  }
-  return port;
 }

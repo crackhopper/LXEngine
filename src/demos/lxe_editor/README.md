@@ -178,9 +178,20 @@ MCP URL into runtime state.
 - Editor runtime discovery content: editor HTTP/WS host, port, token, and
   process metadata only
 
-To point Codex at the local manager:
+Start the local manager in one terminal:
 
 ```sh
+cd tools/lxe_manager
+export LXE_MANAGER_MCP_BEARER_TOKEN="$(openssl rand -hex 32)"
+printf 'manager token: %s\n' "$LXE_MANAGER_MCP_BEARER_TOKEN"
+npm run dev -- --host 127.0.0.1 --port 3880
+```
+
+Then point Codex at it from another terminal:
+
+```sh
+export LXE_MANAGER_MCP_BEARER_TOKEN=<same-token>
+cd /home/lixiang/proj/LXEngine
 source scripts/lxe_manager/use_local_mcp.sh
 codex
 ```
@@ -193,6 +204,7 @@ That helper rewrites `.codex/config.toml` to register `lxe_manager` at
 PowerShell:
 
 ```powershell
+$Env:LXE_MANAGER_MCP_BEARER_TOKEN = "<same-token>"
 scripts/lxe_manager/use_local_mcp.ps1
 codex
 ```
@@ -200,14 +212,27 @@ codex
 To point Codex at a remote manager:
 
 ```sh
+cd tools/lxe_manager
+export LXE_MANAGER_MCP_BEARER_TOKEN="$(openssl rand -hex 32)"
+printf 'manager token: %s\n' "$LXE_MANAGER_MCP_BEARER_TOKEN"
+npm run dev -- --host 0.0.0.0 --port 3880
+```
+
+On the remote Codex client:
+
+```sh
 export LXE_MANAGER_MCP_BEARER_TOKEN=<token>
-source scripts/lxe_manager/use_remote_mcp.sh https://manager.example.com/mcp
+source scripts/lxe_manager/use_remote_mcp.sh http://manager.example.com:3880/mcp
 codex
 ```
 
 The remote helper writes the manager URL config and exports
 `LXE_MANAGER_MCP_BEARER_TOKEN` only in the current shell, without committing
 secrets to the repo.
+
+Remote binding requires a token. `lxe_manager --host 0.0.0.0` exits during
+startup if neither `LXE_MANAGER_MCP_BEARER_TOKEN` nor `--token` is provided.
+See `notes/tools/lxe-manager-mcp.md` for the full service guide.
 
 Current MCP surface:
 

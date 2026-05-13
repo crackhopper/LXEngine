@@ -66,6 +66,7 @@ nav:
       - "@temporary"
   - 相关工具:
       - tools/index.md
+      - lxe_manager MCP 服务: tools/lxe-manager-mcp.md
       - Notes 工具链说明: tools/notes-tooling.md
   - Debug 复盘:
       - 总览: debug/index.md
