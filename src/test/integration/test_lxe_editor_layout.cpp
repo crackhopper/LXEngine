@@ -326,6 +326,71 @@ void testToolbarRendersIconOnlyWithoutStaticModeText() {
   ImGui::DestroyContext();
 }
 
+void testToolbarSecondRowSwitchesGizmoModes() {
+  if (!setupMinimalImGui()) {
+    std::cout << "[SKIP] toolbar gizmo mode test\n";
+    ImGui::DestroyContext();
+    return;
+  }
+
+  UiHarness harness;
+
+  ImGui::NewFrame();
+  harness.ui.drawFrame({1280.0f, 720.0f});
+  ImGuiWindow *toolbar = ImGui::FindWindowByName("Toolbar");
+  EXPECT(toolbar != nullptr, "toolbar should exist");
+  if (!toolbar) {
+    ImGui::EndFrame();
+    ImGui::DestroyContext();
+    return;
+  }
+  EXPECT(toolbar->Size.y >= 100.0f,
+         "toolbar window should be tall enough to show a second row");
+
+  const ImVec2 spacing = ImGui::GetStyle().ItemSpacing;
+  const float buttonSize = 34.0f;
+  const float secondRowCenterY =
+      toolbar->DC.CursorStartPos.y + buttonSize + spacing.y + buttonSize * 0.5f;
+  const auto buttonCenter = [&](const int index) {
+    return ImVec2(toolbar->DC.CursorStartPos.x + buttonSize * 0.5f +
+                      static_cast<float>(index) * (buttonSize + spacing.x),
+                  secondRowCenterY);
+  };
+  ImGui::EndFrame();
+
+  auto clickToolbarButton = [&](const ImVec2 position) {
+    ImGuiIO &io = ImGui::GetIO();
+    io.AddMousePosEvent(position.x, position.y);
+    io.AddMouseButtonEvent(0, true);
+    ImGui::NewFrame();
+    harness.ui.drawFrame({1280.0f, 720.0f});
+    ImGui::EndFrame();
+
+    io.AddMousePosEvent(position.x, position.y);
+    io.AddMouseButtonEvent(0, false);
+    ImGui::NewFrame();
+    harness.ui.drawFrame({1280.0f, 720.0f});
+    ImGui::EndFrame();
+  };
+
+  clickToolbarButton(buttonCenter(1));
+  EXPECT(harness.viewportOverlay.getGizmoOperation() ==
+             LX_core::ViewportOverlay::GizmoOperation::Rotate,
+         "second-row rotate button should switch gizmo to rotate mode");
+
+  clickToolbarButton(buttonCenter(2));
+  EXPECT(harness.viewportOverlay.getGizmoOperation() ==
+             LX_core::ViewportOverlay::GizmoOperation::Scale,
+         "second-row scale button should switch gizmo to scale mode");
+
+  clickToolbarButton(buttonCenter(0));
+  EXPECT(harness.viewportOverlay.getGizmoOperation() ==
+             LX_core::ViewportOverlay::GizmoOperation::Translate,
+         "second-row translate button should switch gizmo to translate mode");
+
+  ImGui::DestroyContext();
+}
+
 void testCameraRigResyncKeepsUpdatedEditorCameraPose() {
   UiHarness harness;
   auto editorCamera =
@@ -501,6 +566,16 @@ void testPreviewModeSuppressesHotkeyDeselectAndRemove() {
          "preview mode should keep the selected node in the scene");
   EXPECT(harness.bus.history().empty(),
          "preview mode should not dispatch remove commands");
+
+  harness.viewportOverlay.setGizmoOperation(
+      LX_core::ViewportOverlay::GizmoOperation::Translate);
+  input.setKeyDown(LX_core::KeyCode::Delete, false);
+  harness.ui.handleHotkeys(input);
+  input.setKeyDown(LX_core::KeyCode::E, true);
+  harness.ui.handleHotkeys(input);
+  EXPECT(harness.viewportOverlay.getGizmoOperation() ==
+             LX_core::ViewportOverlay::GizmoOperation::Translate,
+         "preview mode should suppress gizmo hotkey changes");
 
   ImGui::DestroyContext();
 }
@@ -758,6 +833,7 @@ int main() {
   testDefaultLayoutDoesNotCreateViewportWindowAndUsesFullSceneRect();
   testSceneViewRectUsesRequestedWindowSizeAfterResize();
   testToolbarRendersIconOnlyWithoutStaticModeText();
+  testToolbarSecondRowSwitchesGizmoModes();
   testCameraRigResyncKeepsUpdatedEditorCameraPose();
   testPersistedEditorConfigOverridesDefaultRectsAndPreferences();
   testEditorConfigRoundTrips();

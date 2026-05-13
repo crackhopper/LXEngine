@@ -108,11 +108,12 @@ The demo SHALL express helmet, ground, and any additional renderables as `LX_cor
 
 ### Requirement: Toolbar-driven editor and camera controls
 
-The demo SHALL expose a floating toolbar window that is the primary editor interaction entry point. The toolbar SHALL provide three groups:
+The demo SHALL expose a floating toolbar window that is the primary editor interaction entry point. The toolbar SHALL provide four groups:
 
 1. Editor mode controls. The current editor mode set contains `Selection` only.
 2. Camera controls. `Orbit` and `FreeFly` are mutually exclusive camera control modes, and exactly one SHALL be selected.
 3. Functional buttons: reset editor camera, preview, debug, and preferences.
+4. Gizmo operation controls on the second toolbar row. `Translate`, `Rotate`, and `Scale` are mutually exclusive gizmo operations, and exactly one SHALL be selected when the editor overlay is visible.
 
 Editor mode and camera control mode SHALL be orthogonal. Switching camera control SHALL NOT change editor mode. Selecting `Selection` SHALL NOT change camera control.
 
@@ -127,6 +128,7 @@ At every frame's update hook:
 Control mappings SHALL include:
 
 - Selection: left-click pick, left-click empty space deselect, and gizmo hover/drag consumes left mouse while the gizmo is active
+- Gizmo operation: toolbar second-row buttons select Translate / Rotate / Scale; `W`, `E`, and `R` select the same operations from the keyboard
 - Orbit camera control: right-drag rotate, wheel zoom
 - FreeFly: right-button hold rotate, `W/A/S/D` translate, `Space` up, `LShift` down, `LCtrl` accelerate
 

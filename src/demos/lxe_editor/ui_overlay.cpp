@@ -26,6 +26,8 @@ namespace {
 
 constexpr float kMinUiFontScale = 0.75f;
 constexpr float kMaxUiFontScale = 2.0f;
+constexpr int kToolbarMinWidth = 360;
+constexpr int kToolbarMinHeight = 112;
 
 [[nodiscard]] std::string quoteToken(std::string_view text) {
   std::string out;
@@ -65,6 +67,7 @@ cameraControlModeLabel(const UiOverlay::CameraControlMode mode) {
 }
 
 enum class ToolbarIcon { Selection, Orbit, FreeFly };
+enum class GizmoIcon { Translate, Rotate, Scale };
 
 void drawButtonIcon(ImDrawList &drawList, const ImVec2 min, const ImVec2 max,
                     const ToolbarIcon icon, const ImU32 color) {
@@ -101,6 +104,45 @@ void drawButtonIcon(ImDrawList &drawList, const ImVec2 min, const ImVec2 max,
     drawList.AddTriangleFilled(ImVec2(c.x, min.y + pad),
                                ImVec2(c.x - 5.0f, min.y + pad + 8.0f),
                                ImVec2(c.x + 5.0f, min.y + pad + 8.0f), color);
+    break;
+  }
+}
+
+void drawGizmoIcon(ImDrawList &drawList, const ImVec2 min, const ImVec2 max,
+                   const GizmoIcon icon, const ImU32 color) {
+  const float w = max.x - min.x;
+  const float h = max.y - min.y;
+  const ImVec2 c{min.x + w * 0.5f, min.y + h * 0.5f};
+  const float pad = std::min(w, h) * 0.18f;
+  const float stroke = 2.0f;
+
+  switch (icon) {
+  case GizmoIcon::Translate:
+    drawList.AddLine(ImVec2(min.x + pad, c.y), ImVec2(max.x - pad, c.y), color,
+                     stroke);
+    drawList.AddLine(ImVec2(c.x, min.y + pad), ImVec2(c.x, max.y - pad), color,
+                     stroke);
+    drawList.AddTriangleFilled(ImVec2(max.x - pad, c.y),
+                               ImVec2(max.x - pad - 7.0f, c.y - 4.5f),
+                               ImVec2(max.x - pad - 7.0f, c.y + 4.5f), color);
+    drawList.AddTriangleFilled(ImVec2(c.x, min.y + pad),
+                               ImVec2(c.x - 4.5f, min.y + pad + 7.0f),
+                               ImVec2(c.x + 4.5f, min.y + pad + 7.0f), color);
+    break;
+  case GizmoIcon::Rotate:
+    drawList.PathArcTo(c, std::min(w, h) * 0.27f, 0.45f, 5.4f, 28);
+    drawList.PathStroke(color, 0, stroke);
+    drawList.AddTriangleFilled(ImVec2(c.x + 9.0f, c.y - 10.0f),
+                               ImVec2(c.x + 15.0f, c.y - 9.0f),
+                               ImVec2(c.x + 11.0f, c.y - 4.0f), color);
+    break;
+  case GizmoIcon::Scale:
+    drawList.AddRect(ImVec2(min.x + pad, min.y + pad),
+                     ImVec2(max.x - pad, max.y - pad), color, 0.0f, 0, stroke);
+    drawList.AddLine(ImVec2(min.x + pad, max.y - pad),
+                     ImVec2(max.x - pad, min.y + pad), color, stroke);
+    drawList.AddRectFilled(ImVec2(max.x - pad - 5.0f, min.y + pad),
+                           ImVec2(max.x - pad, min.y + pad + 5.0f), color);
     break;
   }
 }
@@ -182,6 +224,29 @@ void drawResetIcon(ImDrawList &drawList, const ImVec2 min, const ImVec2 max,
   const ImU32 color =
       ImGui::GetColorU32(active ? ImGuiCol_Text : ImGuiCol_TextDisabled);
   drawButtonIcon(*drawList, min, max, icon, color);
+  if (ImGui::IsItemHovered() && tooltip && tooltip[0] != '\0') {
+    ImGui::SetTooltip("%s", tooltip);
+  }
+  return clicked;
+}
+
+[[nodiscard]] bool drawGizmoModeButton(const char *id, const bool active,
+                                       const GizmoIcon icon,
+                                       const char *tooltip) {
+  if (active) {
+    ImGui::PushStyleColor(ImGuiCol_Button,
+                          ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+  }
+  const bool clicked = ImGui::Button(id, ImVec2(34.0f, 34.0f));
+  if (active) {
+    ImGui::PopStyleColor();
+  }
+  const ImVec2 min = ImGui::GetItemRectMin();
+  const ImVec2 max = ImGui::GetItemRectMax();
+  ImDrawList *drawList = ImGui::GetWindowDrawList();
+  const ImU32 color =
+      ImGui::GetColorU32(active ? ImGuiCol_Text : ImGuiCol_TextDisabled);
+  drawGizmoIcon(*drawList, min, max, icon, color);
   if (ImGui::IsItemHovered() && tooltip && tooltip[0] != '\0') {
     ImGui::SetTooltip("%s", tooltip);
   }
@@ -340,8 +405,20 @@ void UiOverlay::syncPanelOpenStatesFromConfig() {
           findEditorWindowLayout(m_editorConfig->get(), "Toolbar");
       panel) {
     m_toolbarVisible = true;
+    bool toolbarDirty = false;
     if (!panel->get().visible) {
       panel->get().visible = true;
+      toolbarDirty = true;
+    }
+    if (panel->get().width < kToolbarMinWidth) {
+      panel->get().width = kToolbarMinWidth;
+      toolbarDirty = true;
+    }
+    if (panel->get().height < kToolbarMinHeight) {
+      panel->get().height = kToolbarMinHeight;
+      toolbarDirty = true;
+    }
+    if (toolbarDirty) {
       m_configDirty = true;
     }
   }
@@ -357,11 +434,11 @@ void UiOverlay::ensureInitialPanelLayouts() {
   const float leftWidth = 280.0f;
   const float rightWidth = 360.0f;
   const float bottomHeight = 220.0f;
-  const float topInset = 68.0f;
+  const float topInset = 128.0f;
   const float centerHeight = std::max(1.0f, display.y - bottomHeight);
 
   ensurePanelLayout("Toolbar",
-                    PanelDefaults{12.0f, 12.0f, 360.0f, 72.0f, false},
+                    PanelDefaults{12.0f, 12.0f, 360.0f, 112.0f, false},
                     m_toolbarVisible);
   ensurePanelLayout("Stats",
                     PanelDefaults{display.x - rightWidth - 16.0f, 12.0f,
@@ -382,7 +459,7 @@ void UiOverlay::ensureInitialPanelLayouts() {
                     std::max(1.0f, display.x - leftWidth - rightWidth - 48.0f),
                     bottomHeight - 12.0f, false},
       m_consolePanel ? m_consolePanel->get().isOpen() : true);
-  ensurePanelLayout("Help", PanelDefaults{320.0f, 84.0f, 420.0f, 150.0f, false},
+  ensurePanelLayout("Help", PanelDefaults{384.0f, 84.0f, 420.0f, 172.0f, false},
                     m_helpVisible);
   ensurePanelLayout("Preferences",
                     PanelDefaults{340.0f, 120.0f, 360.0f, 160.0f, false},
@@ -489,7 +566,7 @@ void UiOverlay::handleHotkeys(LX_core::IInputState &input) {
   }
   m_prevDeleteDown = deleteDown;
 
-  if (m_viewportOverlay) {
+  if (!previewEnabled && m_viewportOverlay) {
     const bool wDown = input.isKeyDown(LX_core::KeyCode::W);
     const bool eDown = input.isKeyDown(LX_core::KeyCode::E);
     const bool rDown = input.isKeyDown(LX_core::KeyCode::R);
@@ -510,7 +587,7 @@ void UiOverlay::handleHotkeys(LX_core::IInputState &input) {
 
 void UiOverlay::drawToolbarPanel() {
   applyPanelLayout("Toolbar",
-                   PanelDefaults{12.0f, 12.0f, 360.0f, 72.0f, false});
+                   PanelDefaults{12.0f, 12.0f, 360.0f, 112.0f, false});
   if (!ImGui::Begin("Toolbar", nullptr,
                     ImGuiWindowFlags_NoScrollbar |
                         ImGuiWindowFlags_NoScrollWithMouse)) {
@@ -580,6 +657,46 @@ void UiOverlay::drawToolbarPanel() {
     m_configDirty = true;
   }
 
+  if (m_viewportOverlay) {
+    const auto currentOperation = m_viewportOverlay->get().getGizmoOperation();
+    const ImGuiStyle &style = ImGui::GetStyle();
+    const ImVec2 cursorStart = ImGui::GetCursorStartPos();
+    const float secondRowY = cursorStart.y + 34.0f + style.ItemSpacing.y;
+    ImGui::SetCursorPos(ImVec2(cursorStart.x, secondRowY));
+
+    if (!editingEnabled) {
+      ImGui::BeginDisabled();
+    }
+    if (drawGizmoModeButton(
+            "##tool_gizmo_translate",
+            currentOperation ==
+                LX_core::ViewportOverlay::GizmoOperation::Translate,
+            GizmoIcon::Translate, "Translate gizmo (W)")) {
+      m_viewportOverlay->get().setGizmoOperation(
+          LX_core::ViewportOverlay::GizmoOperation::Translate);
+    }
+    ImGui::SameLine();
+    if (drawGizmoModeButton(
+            "##tool_gizmo_rotate",
+            currentOperation ==
+                LX_core::ViewportOverlay::GizmoOperation::Rotate,
+            GizmoIcon::Rotate, "Rotate gizmo (E)")) {
+      m_viewportOverlay->get().setGizmoOperation(
+          LX_core::ViewportOverlay::GizmoOperation::Rotate);
+    }
+    ImGui::SameLine();
+    if (drawGizmoModeButton("##tool_gizmo_scale",
+                            currentOperation ==
+                                LX_core::ViewportOverlay::GizmoOperation::Scale,
+                            GizmoIcon::Scale, "Scale gizmo (R)")) {
+      m_viewportOverlay->get().setGizmoOperation(
+          LX_core::ViewportOverlay::GizmoOperation::Scale);
+    }
+    if (!editingEnabled) {
+      ImGui::EndDisabled();
+    }
+  }
+
   ImGui::End();
   syncPanelLayout("Toolbar", true);
 }
@@ -617,7 +734,7 @@ void UiOverlay::drawHelpPanel() {
     return;
   }
 
-  applyPanelLayout("Help", PanelDefaults{320.0f, 84.0f, 420.0f, 150.0f, false});
+  applyPanelLayout("Help", PanelDefaults{384.0f, 84.0f, 420.0f, 172.0f, false});
   if (!ImGui::Begin("Help", &m_helpVisible)) {
     ImGui::End();
     syncPanelLayout("Help", m_helpVisible);
@@ -626,7 +743,9 @@ void UiOverlay::drawHelpPanel() {
   ImGui::TextUnformatted("F1  toggle this help panel");
   ImGui::TextUnformatted("F   preview toggle");
   ImGui::TextUnformatted("Toolbar  Selection | Orbit / FreeFly");
+  ImGui::TextUnformatted("Toolbar  Translate / Rotate / Scale gizmo");
   ImGui::TextUnformatted("Toolbar  Reset / Preview / Debug / Preferences");
+  ImGui::TextUnformatted("W / E / R  gizmo translate / rotate / scale");
   ImGui::TextUnformatted(
       "Left mouse selects and manipulates gizmos outside UI");
   ImGui::TextUnformatted("Right mouse controls the editor camera outside UI");
@@ -674,14 +793,13 @@ void UiOverlay::drawFrame(const LX_core::Vec2f &windowSize) {
   m_sceneViewRect =
       makeSceneViewRect(windowSize.x, windowSize.y, 0.0f, 0.0f, 0.0f, 0.0f);
 
-  drawToolbarPanel();
   drawStatsPanel();
 
   const ImVec2 display = ImGui::GetIO().DisplaySize;
   const float leftWidth = 280.0f;
   const float rightWidth = 360.0f;
   const float bottomHeight = 220.0f;
-  const float topInset = 68.0f;
+  const float topInset = 128.0f;
   const float centerHeight = std::max(1.0f, display.y - bottomHeight);
 
   if (m_sceneTreePanel) {
@@ -713,6 +831,7 @@ void UiOverlay::drawFrame(const LX_core::Vec2f &windowSize) {
 
   drawHelpPanel();
   drawPreferencesPanel();
+  drawToolbarPanel();
   if (m_viewportOverlay) {
     m_viewportOverlay->get().drawSceneOverlay(m_sceneViewRect);
   }

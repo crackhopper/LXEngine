@@ -283,7 +283,8 @@ interaction, and transport internals.
 |-------------|--------|
 | `F1` | Toggle the Help panel |
 | `F` | Toggle preview between the editor and gameplay camera paths |
-| Toolbar | Switch Selection editor mode and Orbit / FreeFly camera controls; trigger reset editor camera, preview, debug, and preferences |
+| Toolbar | Switch Selection editor mode, Orbit / FreeFly camera controls, and Translate / Rotate / Scale gizmo modes; trigger reset editor camera, preview, debug, and preferences |
+| `W` / `E` / `R` | Switch gizmo mode to Translate / Rotate / Scale |
 | `Esc` | Deselect current node in Selection mode when preview is off |
 | `Delete` | Remove the selected node when preview is off |
 
@@ -313,6 +314,12 @@ Switching camera controls preserves the current view direction so the framing
 stays continuous. Selection remains the editor mode while the camera control
 changes.
 
+### Gizmo mode
+
+- Toolbar second-row buttons switch the visible gizmo between Translate,
+  Rotate, and Scale
+- `W` / `E` / `R` select the same gizmo modes from the keyboard
+
 ## Known limitations
 
 - **Material bridging is transitional glue, not full PBR.** The demo uses the
@@ -339,7 +346,8 @@ registered with CTest.
 2. DamagedHelmet and the ground plane are visible in the main scene view.
 3. Orbit camera control allows right-drag rotate and wheel zoom.
 4. The floating toolbar switches camera control between Orbit / FreeFly without
-   leaving Selection mode, and FreeFly uses
+   leaving Selection mode, switches gizmo mode between Translate / Rotate /
+   Scale from its second row, and FreeFly uses
    `W`/`A`/`S`/`D`/`Space`/`LShift`/`LCtrl` as described above.
 5. The Stats, Scene Tree, Inspector, Console, and Help panels are visible
    and interactive.
