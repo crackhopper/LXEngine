@@ -14,6 +14,8 @@ New-Item -ItemType Directory -Force -Path (Split-Path -Parent $ConfigPath) | Out
 $escapedUrl = ConvertTo-Json $ManagerUrl -Compress
 $block = "[mcp_servers.lxe_manager]`nurl = $escapedUrl`nbearer_token_env_var = `"LXE_MANAGER_MCP_BEARER_TOKEN`"`n"
 $text = if (Test-Path $ConfigPath) { Get-Content $ConfigPath -Raw } else { "" }
+$oldEditorPattern = "(?ms)^\[mcp_servers\.lxe_editor\]\r?`n.*?(?=^\[|\z)"
+$text = [regex]::Replace($text, $oldEditorPattern, "")
 $pattern = "(?ms)^\[mcp_servers\.lxe_manager\]\r?`n.*?(?=^\[|\z)"
 if ($text -match $pattern) {
     $text = [regex]::Replace($text, $pattern, { param($match) $block })

@@ -59,6 +59,7 @@ describe("mcp tool handlers", () => {
         ...overrides.editorOps,
       },
       editorClient: {
+        health: vi.fn(async () => ({ ok: true })),
         getSummary: vi.fn(async () => ({ sceneName: "Scene", dirty: false })),
         getSelection: vi.fn(async () => ({ selectedNodeId: 7 })),
         getCameras: vi.fn(async () => ({ active: "editor_cam" })),
@@ -165,6 +166,7 @@ describe("mcp tool handlers", () => {
   });
 
   it("routes new editor and ops tools to their handlers", async () => {
+    const health = vi.fn(async () => ({ ok: true }));
     const getSelection = vi.fn(async () => ({ selectedNodeId: 7 }));
     const getCameras = vi.fn(async () => ({ active: "editor_cam" }));
     const pick = vi.fn(async () => ({ hit: true }));
@@ -177,7 +179,7 @@ describe("mcp tool handlers", () => {
     const logs = vi.fn(async () => ({ stdout: "out", stderr: "err" }));
     const handlers = createToolHandlers(
       makeInput({
-        editorClient: { getSelection, getCameras, pick, command, waitFor },
+        editorClient: { health, getSelection, getCameras, pick, command, waitFor },
         editorOps: { start, stop, logs },
         workspaceOps: { buildConfigure, buildTarget },
       }),
@@ -205,9 +207,10 @@ describe("mcp tool handlers", () => {
     expect(pick).toHaveBeenCalledWith(11, 22);
     expect(command).toHaveBeenCalledWith("scene list");
     expect(waitFor).toHaveBeenCalledWith({ contains: "Scene" });
+    expect(health).toHaveBeenCalledOnce();
     expect(buildConfigure).toHaveBeenCalledWith("/tmp/build");
     expect(buildTarget).toHaveBeenCalledWith("/tmp/build", "lxe_editor");
-    expect(start).toHaveBeenCalledTimes(2);
+    expect(start).toHaveBeenCalledOnce();
     expect(stop).toHaveBeenCalledOnce();
     expect(logs).toHaveBeenCalledOnce();
   });
@@ -235,6 +238,7 @@ describe("mcp tool handlers", () => {
       .fn()
       .mockReturnValueOnce(undefined)
       .mockReturnValueOnce({
+        health: vi.fn(),
         getSummary,
         getSelection: vi.fn(),
         getCameras: vi.fn(),
@@ -287,6 +291,7 @@ describe("mcp tool handlers", () => {
       .fn()
       .mockReturnValueOnce(undefined)
       .mockReturnValueOnce({
+        health: vi.fn(),
         getSummary,
         getSelection: vi.fn(),
         getCameras: vi.fn(),
@@ -437,6 +442,41 @@ describe("mcp tool handlers", () => {
           resources: {},
         },
       },
+    });
+  });
+
+  it("accepts common MCP client handshake methods", async () => {
+    const handlers = createToolHandlers(makeInput());
+    server = createMcpHttpServer({ handlers });
+    const port = await listen(server);
+
+    const initializedResponse = await fetch(`http://127.0.0.1:${port}/mcp`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "notifications/initialized",
+      }),
+    });
+    await expect(initializedResponse.json()).resolves.toEqual({
+      jsonrpc: "2.0",
+      id: null,
+      result: {},
+    });
+
+    const promptsResponse = await fetch(`http://127.0.0.1:${port}/mcp`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 2,
+        method: "prompts/list",
+      }),
+    });
+    await expect(promptsResponse.json()).resolves.toEqual({
+      jsonrpc: "2.0",
+      id: 2,
+      result: { prompts: [] },
     });
   });
 });

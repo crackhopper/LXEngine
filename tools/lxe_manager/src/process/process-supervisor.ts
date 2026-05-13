@@ -37,6 +37,13 @@ export interface DetachedProcess {
   pid: number | undefined;
 }
 
+export interface DetachedProcessLogs {
+  stdout: string;
+  stderr: string;
+  stdoutTruncated: boolean;
+  stderrTruncated: boolean;
+}
+
 export interface ProcessSupervisorOptions {
   guardianFactory?: (
     process: ManagedProcess,
@@ -60,6 +67,10 @@ export interface ProcessSupervisorOptions {
 export class ProcessSupervisor {
   private readonly guardianPollIntervalMs: number;
   private readonly detachedPids = new Set<number>();
+  private readonly detachedOutputs = new Map<
+    number,
+    { stdout: CappedOutput; stderr: CappedOutput }
+  >();
   private readonly guardianFactory:
     | ((
         process: ManagedProcess,
@@ -171,11 +182,18 @@ export class ProcessSupervisor {
     const child = this.spawnProcess(input.command, input.args, {
       cwd: input.cwd,
       detached: true,
-      stdio: "ignore",
+      stdio: ["ignore", "pipe", "pipe"],
     });
     this.registerDetachedPid(child.pid);
+    const output = this.registerDetachedOutput(child.pid, input.maxOutputBytes);
     const guardian = this.startGuardian(child, input, true);
 
+    child.stdout?.on("data", (chunk: Buffer) => {
+      output?.stdout.append(chunk);
+    });
+    child.stderr?.on("data", (chunk: Buffer) => {
+      output?.stderr.append(chunk);
+    });
     child.once("exit", () => {
       guardian?.stop();
       this.unregisterDetachedPid(child.pid);
@@ -191,6 +209,22 @@ export class ProcessSupervisor {
     child.unref();
 
     return { label: input.label, pid: child.pid };
+  }
+
+  logsForDetachedProcess(pid: number | undefined): DetachedProcessLogs | undefined {
+    if (pid === undefined) {
+      return undefined;
+    }
+    const output = this.detachedOutputs.get(pid);
+    if (!output) {
+      return undefined;
+    }
+    return {
+      stdout: output.stdout.text(),
+      stderr: output.stderr.text(),
+      stdoutTruncated: output.stdout.truncated,
+      stderrTruncated: output.stderr.truncated,
+    };
   }
 
   async stopProcessTree(pid: number | undefined): Promise<void> {
@@ -294,6 +328,21 @@ export class ProcessSupervisor {
     if (pid !== undefined) {
       this.detachedPids.delete(pid);
     }
+  }
+
+  private registerDetachedOutput(
+    pid: number | undefined,
+    maxOutputBytes: number | undefined,
+  ): { stdout: CappedOutput; stderr: CappedOutput } | undefined {
+    if (pid === undefined) {
+      return undefined;
+    }
+    const output = {
+      stdout: new CappedOutput(maxOutputBytes),
+      stderr: new CappedOutput(maxOutputBytes),
+    };
+    this.detachedOutputs.set(pid, output);
+    return output;
   }
 }
 

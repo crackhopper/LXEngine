@@ -1,6 +1,6 @@
 import { defaultRepoRoot, resolveManagerConfig } from "./config.js";
 import { EditorClient } from "./editor/editor-client.js";
-import { discoverEditorClientConfig } from "./editor/runtime-state.js";
+import { discoverReachableEditorClientConfig } from "./editor/runtime-state.js";
 import {
   createMcpHttpServer,
   createResourceHandlers,
@@ -57,7 +57,7 @@ server.listen(port, "127.0.0.1", () => {
   );
 });
 
-function createEditorClient(): EditorClient | undefined {
+async function createEditorClient(): Promise<EditorClient | undefined> {
   if (process.env.LXE_EDITOR_HTTP_BASE_URL) {
     return new EditorClient({
       httpBaseUrl: process.env.LXE_EDITOR_HTTP_BASE_URL,
@@ -65,7 +65,7 @@ function createEditorClient(): EditorClient | undefined {
     });
   }
 
-  const discovered = discoverEditorClientConfig(config.runtimeStatePath);
+  const discovered = await discoverReachableEditorClientConfig(config.runtimeStatePath);
   if (!discovered) {
     return undefined;
   }

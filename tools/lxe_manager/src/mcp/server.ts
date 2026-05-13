@@ -7,6 +7,7 @@ import {
 import type { ToolArguments, ToolHandler, ToolResult } from "./types.js";
 
 interface EditorClientSurface {
+  health: () => Promise<unknown>;
   getSummary: () => Promise<unknown>;
   getSelection: () => Promise<unknown>;
   getCameras: () => Promise<unknown>;
@@ -22,7 +23,10 @@ interface EditorClientSurface {
   }) => Promise<unknown>;
 }
 
-type EditorClientProvider = () => EditorClientSurface | undefined;
+type EditorClientProvider = () =>
+  | EditorClientSurface
+  | undefined
+  | Promise<EditorClientSurface | undefined>;
 
 interface EditorOpsSurface {
   start: () => Promise<unknown>;
@@ -52,7 +56,7 @@ export function createToolHandlers(input: {
   const withEditorClient = async (
     fn: (editorClient: EditorClientSurface) => Promise<unknown>,
   ): Promise<ToolResult> => {
-    const editorClient = getEditorClient();
+    const editorClient = await getEditorClient();
     return editorClient ? jsonText(await fn(editorClient)) : editorUnavailable();
   };
 
@@ -102,7 +106,8 @@ export function createToolHandlers(input: {
   handlers.lxe_editor_pick = handlers["editor.pick"];
   handlers.lxe_editor_command = handlers["editor.command"];
   handlers.lxe_editor_wait_for = handlers["editor.wait_for"];
-  handlers.lxe_editor_ensure_running = handlers["ops.editor_start"];
+  handlers.lxe_editor_ensure_running = async () =>
+    withEditorClient((editorClient) => editorClient.health());
 
   return handlers;
 }
@@ -151,7 +156,7 @@ export function createResourceHandlers(
       })),
     read: async (uri) => {
       const normalized = normalizeEditorResourceUri(uri);
-      const editorClient = getEditorClient();
+      const editorClient = await getEditorClient();
       if (!editorClient) {
         throw new Error(
           "lxe_editor HTTP API is unavailable: runtime_state.yaml and token file were not discovered",
@@ -238,6 +243,10 @@ export async function handleJsonRpcRequest(
       });
     case "ping":
       return rpcResult(id, {});
+    case "notifications/initialized":
+      return rpcResult(id, {});
+    case "prompts/list":
+      return rpcResult(id, { prompts: [] });
     case "tools/list":
       return rpcResult(id, {
         tools: Object.keys(handlers)

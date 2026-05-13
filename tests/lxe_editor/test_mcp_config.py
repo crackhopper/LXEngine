@@ -57,6 +57,24 @@ class ManagerMcpConfigTest(unittest.TestCase):
             encoding="utf-8",
         )
 
+    def write_existing_legacy_editor_config(self) -> None:
+        self.config_path.write_text(
+            textwrap.dedent(
+                """
+                model = "gpt-test"
+
+                [mcp_servers.lxe_editor]
+                url = "http://stale.example.com/mcp"
+                bearer_token_env_var = "LXE_EDITOR_MCP_BEARER_TOKEN"
+
+                [mcp_servers.other]
+                url = "http://127.0.0.1:3999/mcp"
+                """
+            ).strip()
+            + "\n",
+            encoding="utf-8",
+        )
+
     def test_client_no_longer_reads_mcp_url_from_runtime_state(self) -> None:
         self.write_runtime_state(
             f"""
@@ -117,6 +135,28 @@ class ManagerMcpConfigTest(unittest.TestCase):
             'bearer_token_env_var = "LXE_MANAGER_MCP_BEARER_TOKEN"',
             output,
         )
+
+    def test_use_local_mcp_script_removes_legacy_editor_table(self) -> None:
+        self.write_existing_legacy_editor_config()
+        script = self.repo_root / "scripts" / "lxe_manager" / "use_local_mcp.sh"
+        subprocess.run(
+            ["bash", "-lc", f"source '{script}' >/dev/null"],
+            check=True,
+            capture_output=True,
+            text=True,
+            env={
+                **os.environ,
+                "LXE_EDITOR_CODEX_CONFIG_PATH": str(self.config_path),
+            },
+        )
+
+        output = self.config_path.read_text(encoding="utf-8")
+        self.assertIn('model = "gpt-test"', output)
+        self.assertIn("[mcp_servers.other]", output)
+        self.assertIn("[mcp_servers.lxe_manager]", output)
+        self.assertNotIn("[mcp_servers.lxe_editor]", output)
+        self.assertNotIn("stale.example.com", output)
+        self.assertNotIn("LXE_EDITOR_MCP_BEARER_TOKEN", output)
 
     def test_legacy_editor_local_mcp_script_delegates_to_manager_config(self) -> None:
         self.write_runtime_state(

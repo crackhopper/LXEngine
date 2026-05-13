@@ -62,6 +62,26 @@ export async function runtimeStateIsReachable(
 export function discoverEditorClientConfig(
   runtimeStatePath: string,
 ): DiscoveredEditorClientConfig | undefined {
+  return readEditorClientConfig(runtimeStatePath);
+}
+
+export async function discoverReachableEditorClientConfig(
+  runtimeStatePath: string,
+  timeoutMs = DEFAULT_HEALTH_TIMEOUT_MS,
+): Promise<DiscoveredEditorClientConfig | undefined> {
+  const config = readEditorClientConfig(runtimeStatePath);
+  if (!config) {
+    return undefined;
+  }
+  if (!(await runtimeStateIsReachable(config.state, timeoutMs))) {
+    return undefined;
+  }
+  return config;
+}
+
+function readEditorClientConfig(
+  runtimeStatePath: string,
+): DiscoveredEditorClientConfig | undefined {
   if (!existsSync(runtimeStatePath)) {
     return undefined;
   }

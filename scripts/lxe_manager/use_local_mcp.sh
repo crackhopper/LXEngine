@@ -23,9 +23,11 @@ block = (
     f"url = {json.dumps(manager_url)}\n"
     'bearer_token_env_var = "LXE_MANAGER_MCP_BEARER_TOKEN"\n'
 )
-pattern = re.compile(r"(?ms)^\[mcp_servers\.lxe_manager\]\r?\n.*?(?=^\[|\Z)")
-if pattern.search(text):
-    text = pattern.sub(lambda _: block, text)
+old_editor_pattern = re.compile(r"(?ms)^\[mcp_servers\.lxe_editor\]\r?\n.*?(?=^\[|\Z)")
+text = old_editor_pattern.sub("", text)
+manager_pattern = re.compile(r"(?ms)^\[mcp_servers\.lxe_manager\]\r?\n.*?(?=^\[|\Z)")
+if manager_pattern.search(text):
+    text = manager_pattern.sub(lambda _: block, text)
 else:
     text = text.rstrip()
     text = f"{text}\n\n{block}" if text else block
