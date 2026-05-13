@@ -1,5 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { existsSync } from "node:fs";
 
 export interface ManagerConfig {
   repoRoot: string;
@@ -37,5 +38,19 @@ export function resolveManagerConfig(input: {
 }
 
 export function defaultRepoRoot(metaUrl: string = import.meta.url): string {
-  return path.resolve(path.dirname(fileURLToPath(metaUrl)), "..", "..", "..");
+  let current = path.dirname(fileURLToPath(metaUrl));
+  while (true) {
+    if (
+      existsSync(path.join(current, "AGENTS.md")) &&
+      existsSync(path.join(current, "CMakeLists.txt"))
+    ) {
+      return current;
+    }
+
+    const parent = path.dirname(current);
+    if (parent === current) {
+      throw new Error(`unable to locate LXEngine repo root from ${metaUrl}`);
+    }
+    current = parent;
+  }
 }

@@ -1,3 +1,6 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { defaultRepoRoot, resolveManagerConfig } from "../src/config.js";
@@ -36,8 +39,37 @@ describe("resolveManagerConfig", () => {
   });
 
   it("resolves the default repo root from the manager source location", () => {
-    const sourceUrl = new URL("file:///repo/tools/lxe_manager/src/index.ts");
+    const repoRoot = mkdtempSync(path.join(tmpdir(), "lxe-manager-repo-"));
+    mkdirSync(path.join(repoRoot, "tools", "lxe_manager", "src"), {
+      recursive: true,
+    });
+    writeFileSync(path.join(repoRoot, "AGENTS.md"), "");
+    writeFileSync(path.join(repoRoot, "CMakeLists.txt"), "");
+    const sourceUrl = new URL(
+      `file://${path.join(repoRoot, "tools", "lxe_manager", "src", "index.ts")}`,
+    );
 
-    expect(defaultRepoRoot(sourceUrl.href)).toBe(path.resolve("/repo"));
+    expect(defaultRepoRoot(sourceUrl.href)).toBe(repoRoot);
+  });
+
+  it("resolves the default repo root from a compiled dist location", () => {
+    const repoRoot = mkdtempSync(path.join(tmpdir(), "lxe-manager-repo-"));
+    mkdirSync(path.join(repoRoot, "tools", "lxe_manager", "dist", "src"), {
+      recursive: true,
+    });
+    writeFileSync(path.join(repoRoot, "AGENTS.md"), "");
+    writeFileSync(path.join(repoRoot, "CMakeLists.txt"), "");
+    const distUrl = new URL(
+      `file://${path.join(
+        repoRoot,
+        "tools",
+        "lxe_manager",
+        "dist",
+        "src",
+        "index.js",
+      )}`,
+    );
+
+    expect(defaultRepoRoot(distUrl.href)).toBe(repoRoot);
   });
 });
