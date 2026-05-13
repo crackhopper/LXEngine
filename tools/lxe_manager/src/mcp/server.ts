@@ -7,7 +7,14 @@ export function createToolHandlers(input: {
 }): Record<string, () => Promise<ToolResult>> {
   return {
     "editor.get_summary": async () => jsonText(await input.editorClient.getSummary()),
-    "ops.repo_pull": async () => jsonText(await input.workspaceOps.repoPull()),
+    "ops.repo_pull": async () => {
+      try {
+        return jsonText(await input.workspaceOps.repoPull());
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(`ops.repo_pull failed: ${message}`);
+      }
+    },
     "ops.editor_status": async () => jsonText(await input.editorOps.status()),
   };
 }

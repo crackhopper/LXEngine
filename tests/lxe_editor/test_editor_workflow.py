@@ -25,6 +25,7 @@ class EditorWorkflowBlackBoxTest(unittest.TestCase):
     def test_mode_preview_and_camera_reset(self) -> None:
         summary = self.harness.client.get_summary()
         self.assertIn(summary["mode"], {"selection", "orbit", "freefly", "unknown"})
+        self.assertNotIn("mcpUrl", self.harness.client.read_runtime_state())
 
         mode_response = self.harness.client.set_mode("selection")
         self.assertTrue(mode_response["ok"])

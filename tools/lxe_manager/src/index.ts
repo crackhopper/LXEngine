@@ -14,7 +14,7 @@ const editorHttpBaseUrl =
 const config = resolveManagerConfig({ repoRoot, runtimeRoot, editorExecutable });
 const processSupervisor = new ProcessSupervisor();
 const handlers = createToolHandlers({
-  editorOps: new EditorOps(),
+  editorOps: new EditorOps(processSupervisor, config),
   editorClient: new EditorClient({ httpBaseUrl: editorHttpBaseUrl }),
   workspaceOps: new WorkspaceOps(processSupervisor, { repoRoot: config.repoRoot }),
 });

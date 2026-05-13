@@ -47,4 +47,20 @@ describe("mcp tool handlers", () => {
     });
     expect(repoPull).toHaveBeenCalledOnce();
   });
+
+  it("returns a structured guardian error when a task is killed", async () => {
+    const handlers = createToolHandlers({
+      editorOps: { status: async () => ({ running: false }) },
+      editorClient: { getSummary: async () => ({}) },
+      workspaceOps: {
+        repoPull: async () => {
+          throw new Error("killed_by_guardian: cpu=390 rss=4096 free_mem=16");
+        },
+      },
+    });
+
+    await expect(handlers["ops.repo_pull"]()).rejects.toThrow(
+      "ops.repo_pull failed: killed_by_guardian: cpu=390 rss=4096 free_mem=16",
+    );
+  });
 });
