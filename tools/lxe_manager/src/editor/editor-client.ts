@@ -23,6 +23,14 @@ export class EditorClient {
     return this.requestJson("GET", "/api/state/cameras");
   }
 
+  async getToolbar(): Promise<unknown> {
+    return this.requestJson("GET", "/api/state/toolbar");
+  }
+
+  async getScene(): Promise<unknown> {
+    return this.requestJson("GET", "/api/state/scene");
+  }
+
   async pick(x: number, y: number): Promise<unknown> {
     return this.requestJson("POST", "/api/pick", { x, y });
   }
@@ -86,7 +94,7 @@ export class EditorClient {
     return response.json();
   }
 
-  private async readResource(resource: string | undefined): Promise<unknown> {
+  async readResource(resource: string | undefined): Promise<unknown> {
     switch (normalizeResource(resource)) {
       case "summary":
         return this.getSummary();
@@ -95,9 +103,11 @@ export class EditorClient {
       case "cameras":
         return this.getCameras();
       case "scene":
-        return this.requestJson("GET", "/api/state/scene");
+        return this.getScene();
       case "toolbar":
-        return this.requestJson("GET", "/api/state/toolbar");
+        return this.getToolbar();
+      default:
+        throw new Error(`unknown editor resource: ${resource}`);
     }
   }
 }

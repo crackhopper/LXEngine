@@ -10,6 +10,8 @@ interface EditorClientSurface {
   getSummary: () => Promise<unknown>;
   getSelection: () => Promise<unknown>;
   getCameras: () => Promise<unknown>;
+  getToolbar: () => Promise<unknown>;
+  getScene: () => Promise<unknown>;
   pick: (x: number, y: number) => Promise<unknown>;
   command: (line: string) => Promise<unknown>;
   waitFor: (input: {
@@ -19,6 +21,8 @@ interface EditorClientSurface {
     intervalMs?: number;
   }) => Promise<unknown>;
 }
+
+type EditorClientProvider = () => EditorClientSurface | undefined;
 
 interface EditorOpsSurface {
   start: () => Promise<unknown>;
@@ -36,6 +40,7 @@ interface WorkspaceOpsSurface {
 export function createToolHandlers(input: {
   editorOps: EditorOpsSurface;
   editorClient?: EditorClientSurface;
+  editorClientProvider?: EditorClientProvider;
   workspaceOps: WorkspaceOpsSurface;
 }): Record<string, ToolHandler> {
   const editorUnavailable = () =>
@@ -43,34 +48,36 @@ export function createToolHandlers(input: {
       "editor_unavailable",
       "lxe_editor HTTP API is unavailable: runtime_state.yaml and token file were not discovered",
     );
-  const editorClient = input.editorClient;
+  const getEditorClient = input.editorClientProvider ?? (() => input.editorClient);
+  const withEditorClient = async (
+    fn: (editorClient: EditorClientSurface) => Promise<unknown>,
+  ): Promise<ToolResult> => {
+    const editorClient = getEditorClient();
+    return editorClient ? jsonText(await fn(editorClient)) : editorUnavailable();
+  };
 
-  return {
+  const handlers: Record<string, ToolHandler> = {
     "editor.get_summary": async () =>
-      editorClient ? jsonText(await editorClient.getSummary()) : editorUnavailable(),
+      withEditorClient((editorClient) => editorClient.getSummary()),
     "editor.get_selection": async () =>
-      editorClient ? jsonText(await editorClient.getSelection()) : editorUnavailable(),
+      withEditorClient((editorClient) => editorClient.getSelection()),
     "editor.get_cameras": async () =>
-      editorClient ? jsonText(await editorClient.getCameras()) : editorUnavailable(),
+      withEditorClient((editorClient) => editorClient.getCameras()),
     "editor.pick": async (args) =>
-      editorClient
-        ? jsonText(await editorClient.pick(readNumber(args, "x"), readNumber(args, "y")))
-        : editorUnavailable(),
+      withEditorClient((editorClient) =>
+        editorClient.pick(readNumber(args, "x"), readNumber(args, "y")),
+      ),
     "editor.command": async (args) =>
-      editorClient
-        ? jsonText(await editorClient.command(readString(args, "line")))
-        : editorUnavailable(),
+      withEditorClient((editorClient) => editorClient.command(readString(args, "line"))),
     "editor.wait_for": async (args) =>
-      editorClient
-        ? jsonText(
-            await editorClient.waitFor({
-              contains: optionalString(args, "contains"),
-              resource: optionalString(args, "resource"),
-              timeoutMs: optionalNumber(args, "timeoutMs"),
-              intervalMs: optionalNumber(args, "intervalMs"),
-            }),
-          )
-        : editorUnavailable(),
+      withEditorClient((editorClient) =>
+        editorClient.waitFor({
+          contains: optionalString(args, "contains"),
+          resource: optionalString(args, "resource"),
+          timeoutMs: optionalNumber(args, "timeoutMs"),
+          intervalMs: optionalNumber(args, "intervalMs"),
+        }),
+      ),
     "ops.repo_pull": async () => guarded("ops.repo_pull", () => input.workspaceOps.repoPull()),
     "ops.build_configure": async (args) =>
       guarded("ops.build_configure", () =>
@@ -88,10 +95,85 @@ export function createToolHandlers(input: {
     "ops.editor_status": async () => jsonText(await input.editorOps.status()),
     "ops.editor_logs": async () => jsonText(await input.editorOps.logs()),
   };
+
+  handlers.lxe_editor_get_summary = handlers["editor.get_summary"];
+  handlers.lxe_editor_get_selection = handlers["editor.get_selection"];
+  handlers.lxe_editor_get_cameras = handlers["editor.get_cameras"];
+  handlers.lxe_editor_pick = handlers["editor.pick"];
+  handlers.lxe_editor_command = handlers["editor.command"];
+  handlers.lxe_editor_wait_for = handlers["editor.wait_for"];
+  handlers.lxe_editor_ensure_running = handlers["ops.editor_start"];
+
+  return handlers;
+}
+
+export interface ResourceDescriptor {
+  uri: string;
+  name: string;
+  mimeType: string;
+}
+
+export interface ResourceReadResult {
+  contents: Array<{
+    uri: string;
+    mimeType: string;
+    text: string;
+  }>;
+}
+
+interface ResourceHandlers {
+  list: () => ResourceDescriptor[];
+  read: (uri: string) => Promise<ResourceReadResult>;
+}
+
+const EDITOR_RESOURCE_NAMES = [
+  "summary",
+  "selection",
+  "cameras",
+  "toolbar",
+  "scene",
+] as const;
+
+export function createResourceHandlers(
+  editorClientOrProvider?: EditorClientSurface | EditorClientProvider,
+): ResourceHandlers {
+  const getEditorClient =
+    typeof editorClientOrProvider === "function"
+      ? editorClientOrProvider
+      : () => editorClientOrProvider;
+
+  return {
+    list: () =>
+      EDITOR_RESOURCE_NAMES.map((name) => ({
+        uri: `lxe-editor://${name}`,
+        name,
+        mimeType: "application/json",
+      })),
+    read: async (uri) => {
+      const normalized = normalizeEditorResourceUri(uri);
+      const editorClient = getEditorClient();
+      if (!editorClient) {
+        throw new Error(
+          "lxe_editor HTTP API is unavailable: runtime_state.yaml and token file were not discovered",
+        );
+      }
+      const value = await readEditorResource(editorClient, normalized);
+      return {
+        contents: [
+          {
+            uri: `lxe-editor://${normalized}`,
+            mimeType: "application/json",
+            text: JSON.stringify(value),
+          },
+        ],
+      };
+    },
+  };
 }
 
 export function createMcpHttpServer(input: {
   handlers: Record<string, ToolHandler>;
+  resources?: ResourceHandlers;
   bearerToken?: string;
 }): Server {
   return createServer(async (request, response) => {
@@ -119,7 +201,11 @@ export function createMcpHttpServer(input: {
 
     try {
       const rpcRequest = JSON.parse(await readBody(request)) as JsonRpcRequest;
-      writeJson(response, 200, await handleJsonRpcRequest(input.handlers, rpcRequest));
+      writeJson(
+        response,
+        200,
+        await handleJsonRpcRequest(input.handlers, rpcRequest, input.resources),
+      );
     } catch (error) {
       writeJson(response, 200, {
         jsonrpc: "2.0",
@@ -136,6 +222,7 @@ export function createMcpHttpServer(input: {
 export async function handleJsonRpcRequest(
   handlers: Record<string, ToolHandler>,
   request: JsonRpcRequest,
+  resources?: ResourceHandlers,
 ): Promise<JsonRpcResponse> {
   const id = request.id ?? null;
   if (request.jsonrpc !== "2.0" || typeof request.method !== "string") {
@@ -146,7 +233,7 @@ export async function handleJsonRpcRequest(
     case "initialize":
       return rpcResult(id, {
         protocolVersion: "2024-11-05",
-        capabilities: { tools: {} },
+        capabilities: { tools: {}, resources: {} },
         serverInfo: { name: "lxe_manager", version: "0.1.0" },
       });
     case "ping":
@@ -163,8 +250,35 @@ export async function handleJsonRpcRequest(
       });
     case "tools/call":
       return callTool(handlers, id, request.params);
+    case "resources/list":
+      return rpcResult(id, { resources: resources?.list() ?? [] });
+    case "resources/read":
+      return readResource(resources, id, request.params);
     default:
       return rpcError(id, -32601, `unknown method: ${request.method}`);
+  }
+}
+
+async function readResource(
+  resources: ResourceHandlers | undefined,
+  id: JsonRpcId,
+  params: unknown,
+): Promise<JsonRpcResponse> {
+  if (!resources) {
+    return rpcError(id, -32601, "resources are not available");
+  }
+  if (!isObject(params) || typeof params.uri !== "string") {
+    return rpcError(id, -32602, "resources/read requires params.uri");
+  }
+
+  try {
+    return rpcResult(id, await resources.read(params.uri));
+  } catch (error) {
+    return rpcError(
+      id,
+      -32000,
+      error instanceof Error ? error.message : String(error),
+    );
   }
 }
 
@@ -257,6 +371,32 @@ function optionalNumber(args: ToolArguments, key: string): number | undefined {
     throw new Error(`invalid number argument: ${key}`);
   }
   return value;
+}
+
+function normalizeEditorResourceUri(uri: string): (typeof EDITOR_RESOURCE_NAMES)[number] {
+  const resourceName = uri.replace(/^lxe-editor:\/\//, "");
+  if (EDITOR_RESOURCE_NAMES.some((name) => name === resourceName)) {
+    return resourceName as (typeof EDITOR_RESOURCE_NAMES)[number];
+  }
+  throw new Error(`unknown resource: ${uri}`);
+}
+
+async function readEditorResource(
+  editorClient: EditorClientSurface,
+  resourceName: (typeof EDITOR_RESOURCE_NAMES)[number],
+): Promise<unknown> {
+  switch (resourceName) {
+    case "summary":
+      return editorClient.getSummary();
+    case "selection":
+      return editorClient.getSelection();
+    case "cameras":
+      return editorClient.getCameras();
+    case "toolbar":
+      return editorClient.getToolbar();
+    case "scene":
+      return editorClient.getScene();
+  }
 }
 
 function isAuthorized(request: IncomingMessage, bearerToken: string): boolean {

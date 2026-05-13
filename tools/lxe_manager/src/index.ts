@@ -1,7 +1,11 @@
 import { defaultRepoRoot, resolveManagerConfig } from "./config.js";
 import { EditorClient } from "./editor/editor-client.js";
 import { discoverEditorClientConfig } from "./editor/runtime-state.js";
-import { createMcpHttpServer, createToolHandlers } from "./mcp/server.js";
+import {
+  createMcpHttpServer,
+  createResourceHandlers,
+  createToolHandlers,
+} from "./mcp/server.js";
 import { EditorOps } from "./ops/editor-ops.js";
 import { WorkspaceOps } from "./ops/workspace-ops.js";
 import { ProcessSupervisor } from "./process/process-supervisor.js";
@@ -23,15 +27,17 @@ const defaultResourceThresholds: ResourceThresholds = {
 const processSupervisor = new ProcessSupervisor({
   defaultResourceThresholds,
 });
-const editorClient = createEditorClient();
+const editorClientProvider = createEditorClient;
 const handlers = createToolHandlers({
   editorOps: new EditorOps(processSupervisor, config),
-  editorClient,
+  editorClientProvider,
   workspaceOps: new WorkspaceOps(processSupervisor, { repoRoot: config.repoRoot }),
 });
+const resources = createResourceHandlers(editorClientProvider);
 const port = readPort(process.env.LXE_MANAGER_PORT, 3880);
 const server = createMcpHttpServer({
   handlers,
+  resources,
   bearerToken: process.env.LXE_MANAGER_MCP_BEARER_TOKEN,
 });
 
@@ -42,7 +48,7 @@ server.listen(port, "127.0.0.1", () => {
         status: "listening",
         endpoint: `http://127.0.0.1:${port}/mcp`,
         config,
-        editorApi: editorClient ? "available" : "unavailable",
+        editorApi: "dynamic",
         tools: Object.keys(handlers).sort(),
       },
       null,
