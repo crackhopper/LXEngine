@@ -42,12 +42,12 @@
 9. 执行 `pick screen 640 360 1280 720`。
 10. 执行 `state selection`。如果仍选中 `/game_cam` 或没有选中，执行
     `pick screen 520 360 1280 720` 或 `pick screen 760 360 1280 720` 后再确认。
-11. 执行 `select /DamagedHelmet`。如果该路径不存在，先用 `list nodes` 查找
+11. 执行 `select /helmet`。如果该路径不存在，先用 `list nodes` 查找
     一个 mesh 节点，并选择第一个业务 mesh 节点。
-12. 执行 `move /DamagedHelmet 0.25 0.1 0.0`。如果使用了替代节点，把路径替换
+12. 执行 `move /helmet 0.25 0.1 0.0`。如果使用了替代节点，把路径替换
     为实际选中的业务 mesh 节点路径。
-13. 执行 `rotate /DamagedHelmet 0 25 0`。
-14. 执行 `scale /DamagedHelmet 1.05`。
+13. 执行 `rotate /helmet 0 25 0`。
+14. 执行 `scale /helmet 1.05`。
 15. 执行 `preview on`，再执行 `preview off`，验证编辑 / gameplay camera 切换。
 16. 执行 `scene save data/scenes/codex-recording-use-case.scene.yaml`。
 17. 执行 `recording stop save`。

@@ -756,6 +756,10 @@ void testBuiltinCamAndPreviewCommands() {
   EXPECT(camFov.ok, "cam fov succeeds");
   EXPECT(nearlyEqual(fixture.camera->getFovY(), 80.0f),
          "cam fov updates active camera");
+  EXPECT(camFov.metadata.find("editor_camera.resync") !=
+             camFov.metadata.end() &&
+             camFov.metadata.at("editor_camera.resync") == "true",
+         "cam fov requests camera rig state resync");
 
   const CommandResult camLookAt =
       fixture.bus.dispatch("cam look-at 1 2 3 0 0 0");
@@ -764,11 +768,19 @@ void testBuiltinCamAndPreviewCommands() {
              nearlyEqual(fixture.camera->getEyePosition().y, 2.0f) &&
              nearlyEqual(fixture.camera->getEyePosition().z, 3.0f),
          "cam look-at updates camera position");
+  EXPECT(camLookAt.metadata.find("editor_camera.resync") !=
+             camLookAt.metadata.end() &&
+             camLookAt.metadata.at("editor_camera.resync") == "true",
+         "cam look-at requests camera rig state resync");
 
   const CommandResult camReset = fixture.bus.dispatch("cam reset");
   EXPECT(camReset.ok, "cam reset succeeds");
   EXPECT(nearlyEqual(fixture.camera->getEyePosition().z, 3.0f),
          "cam reset restores default eye distance");
+  EXPECT(camReset.metadata.find("editor_camera.resync") !=
+             camReset.metadata.end() &&
+             camReset.metadata.at("editor_camera.resync") == "true",
+         "cam reset requests camera rig state resync");
 
   const SceneNodeSharedPtr editorCameraNode = SceneNode::create("node_editor_camera");
   editorCameraNode->setName("editor_cam");

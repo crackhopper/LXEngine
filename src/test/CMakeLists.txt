@@ -149,6 +149,7 @@ if(TARGET test_command_bus)
   target_sources(test_command_bus PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_interaction_controller.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_commands.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/recording_controller.cpp
   )
   target_include_directories(test_command_bus PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/..

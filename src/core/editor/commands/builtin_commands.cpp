@@ -1522,7 +1522,9 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
           camera->get().lookAt(Vec3f{0.0f, 0.0f, 3.0f}, Vec3f{0.0f, 0.0f, 0.0f},
                                Vec3f{0.0f, 1.0f, 0.0f});
           camera->get().updateMatrices();
-          return makeOk("camera reset", "{\"mode\":\"reset\"}");
+          CommandResult result = makeOk("camera reset", "{\"mode\":\"reset\"}");
+          result.metadata["editor_camera.resync"] = "true";
+          return result;
         }
         if (args[0] == "reset-editor-to-game") {
           const SceneNodeSharedPtr editorNode = editorState.getEditorCamera();
@@ -1560,6 +1562,7 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
           result.ok = true;
           result.message = "camera fov = " + formatFloat(*value);
           result.structured = "{\"value\":" + formatFloat(*value) + "}";
+          result.metadata["editor_camera.resync"] = "true";
           return result;
         }
         if (args[0] == "look-at") {
@@ -1574,9 +1577,12 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
           }
           camera->get().lookAt(*eye, *target, Vec3f{0.0f, 1.0f, 0.0f});
           camera->get().updateMatrices();
-          return makeOk("camera look-at updated",
-                        "{\"eye\":" + makeVec3Json(*eye) + ",\"target\":" +
-                            makeVec3Json(*target) + "}");
+          CommandResult result =
+              makeOk("camera look-at updated",
+                     "{\"eye\":" + makeVec3Json(*eye) + ",\"target\":" +
+                         makeVec3Json(*target) + "}");
+          result.metadata["editor_camera.resync"] = "true";
+          return result;
         }
 
         return makeError("unknown cam action: " + args[0]);
