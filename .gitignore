@@ -48,3 +48,7 @@ notes/temporary/index.md
 
 # local editor / scene workspace data
 data/
+
+# Node tooling
+node_modules/
+dist/
