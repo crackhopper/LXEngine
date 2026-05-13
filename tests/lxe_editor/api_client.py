@@ -200,7 +200,7 @@ class LxeEditorClient:
             if last_value:
                 return last_value
             time.sleep(poll_interval_s)
-            raise TimeoutError("timed out waiting for API condition")
+        raise TimeoutError("timed out waiting for API condition")
 
     def decode_structured_json(self, response: dict[str, Any]) -> dict[str, Any]:
         structured = response.get("structuredJson", "")

@@ -77,6 +77,20 @@ class ManagerMcpConfigTest(unittest.TestCase):
             str(raised.exception),
         )
 
+    def test_client_wait_for_polls_until_predicate_succeeds(self) -> None:
+        client = LxeEditorClient(self.runtime_root)
+        attempts = 0
+
+        def predicate() -> bool:
+            nonlocal attempts
+            attempts += 1
+            return attempts == 3
+
+        self.assertTrue(
+            client.wait_for(predicate, timeout_s=1.0, poll_interval_s=0.001)
+        )
+        self.assertEqual(attempts, 3)
+
     def test_use_local_mcp_script_writes_manager_url_config(self) -> None:
         self.write_existing_config()
         script = self.repo_root / "scripts" / "lxe_manager" / "use_local_mcp.sh"
@@ -314,6 +328,33 @@ class ManagerMcpConfigTest(unittest.TestCase):
             'bearer_token_env_var = "LXE_MANAGER_MCP_BEARER_TOKEN"',
             output,
         )
+
+    @unittest.skipUnless(shutil.which("pwsh"), "pwsh not available")
+    def test_use_remote_mcp_powershell_rejects_token_argument(self) -> None:
+        script = self.repo_root / "scripts" / "lxe_manager" / "use_remote_mcp.ps1"
+        result = subprocess.run(
+            [
+                "pwsh",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(script),
+                "https://manager.example.com/mcp",
+                "remote-token",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            env={
+                **os.environ,
+                "LXE_EDITOR_CODEX_CONFIG_PATH": str(self.config_path),
+                "LXE_MANAGER_MCP_BEARER_TOKEN": "env-token",
+            },
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("not as an argument", result.stderr + result.stdout)
 
     @unittest.skipUnless(shutil.which("pwsh"), "pwsh not available")
     def test_use_local_mcp_powershell_replaces_existing_crlf_manager_table(self) -> None:

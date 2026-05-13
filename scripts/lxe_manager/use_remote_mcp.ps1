@@ -3,6 +3,10 @@ param(
     [string]$ManagerUrl
 )
 
+if ($args.Count -ne 0) {
+    throw "lxe_manager MCP target: pass token through LXE_MANAGER_MCP_BEARER_TOKEN, not as an argument"
+}
+
 $ResolvedToken = $Env:LXE_MANAGER_MCP_BEARER_TOKEN
 
 if (-not $ManagerUrl -or -not $ResolvedToken) {
