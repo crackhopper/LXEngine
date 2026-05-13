@@ -200,7 +200,8 @@ codex
 To point Codex at a remote manager:
 
 ```sh
-source scripts/lxe_manager/use_remote_mcp.sh https://manager.example.com/mcp <token>
+export LXE_MANAGER_MCP_BEARER_TOKEN=<token>
+source scripts/lxe_manager/use_remote_mcp.sh https://manager.example.com/mcp
 codex
 ```
 

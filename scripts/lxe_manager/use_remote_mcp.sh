@@ -1,33 +1,44 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ "$#" -ne 2 ]; then
-  echo "usage: source scripts/lxe_manager/use_remote_mcp.sh <manager-mcp-url> <token>" >&2
+if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then
+  echo "usage: LXE_MANAGER_MCP_BEARER_TOKEN=<token> source scripts/lxe_manager/use_remote_mcp.sh <manager-mcp-url>" >&2
   return 1 2>/dev/null || exit 1
 fi
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 config_path="${LXE_EDITOR_CODEX_CONFIG_PATH:-${repo_root}/.codex/config.toml}"
 manager_url="$1"
-token="$2"
+token="${LXE_MANAGER_MCP_BEARER_TOKEN:-${2:-}}"
 
 if [ -z "${manager_url}" ] || [ -z "${token}" ]; then
-  echo "lxe_manager MCP target: both manager-mcp-url and token are required" >&2
+  echo "lxe_manager MCP target: manager-mcp-url and LXE_MANAGER_MCP_BEARER_TOKEN are required" >&2
   return 1 2>/dev/null || exit 1
 fi
 
 export LXE_MANAGER_MCP_BEARER_TOKEN="${token}"
 mkdir -p "$(dirname "${config_path}")"
-cat > "${config_path}" <<EOF
-model = "gpt-5.4"
-model_reasoning_effort = "medium"
-approval_policy = "never"
-sandbox_mode = "danger-full-access"
-trust_level = "trusted"
+MANAGER_URL="${manager_url}" CONFIG_PATH="${config_path}" python3 - <<'PY'
+import json
+import os
+import pathlib
+import re
 
-[mcp_servers.lxe_manager]
-url = "${manager_url}"
-bearer_token_env_var = "LXE_MANAGER_MCP_BEARER_TOKEN"
-EOF
+config_path = pathlib.Path(os.environ["CONFIG_PATH"])
+manager_url = os.environ["MANAGER_URL"]
+text = config_path.read_text(encoding="utf-8") if config_path.is_file() else ""
+block = (
+    "[mcp_servers.lxe_manager]\n"
+    f"url = {json.dumps(manager_url)}\n"
+    'bearer_token_env_var = "LXE_MANAGER_MCP_BEARER_TOKEN"\n'
+)
+pattern = re.compile(r"(?ms)^\[mcp_servers\.lxe_manager\]\n.*?(?=^\[|\Z)")
+if pattern.search(text):
+    text = pattern.sub(block, text)
+else:
+    text = text.rstrip()
+    text = f"{text}\n\n{block}" if text else block
+config_path.write_text(text if text.endswith("\n") else text + "\n", encoding="utf-8")
+PY
 
 echo "lxe_manager MCP target: remote ${manager_url}"

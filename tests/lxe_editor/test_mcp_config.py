@@ -31,6 +31,21 @@ class ManagerMcpConfigTest(unittest.TestCase):
             encoding="utf-8",
         )
 
+    def write_existing_config(self) -> None:
+        self.config_path.write_text(
+            textwrap.dedent(
+                """
+                model = "gpt-test"
+
+                [mcp_servers.other]
+                url = "http://127.0.0.1:3999/mcp"
+                bearer_token_env_var = "OTHER_TOKEN"
+                """
+            ).strip()
+            + "\n",
+            encoding="utf-8",
+        )
+
     def test_client_no_longer_reads_mcp_url_from_runtime_state(self) -> None:
         self.write_runtime_state(
             f"""
@@ -52,6 +67,7 @@ class ManagerMcpConfigTest(unittest.TestCase):
         )
 
     def test_use_local_mcp_script_writes_manager_url_config(self) -> None:
+        self.write_existing_config()
         script = self.repo_root / "scripts" / "lxe_manager" / "use_local_mcp.sh"
         command = (
             f"source '{script}' >/dev/null && "
@@ -69,13 +85,15 @@ class ManagerMcpConfigTest(unittest.TestCase):
         )
 
         output = result.stdout
+        self.assertIn('model = "gpt-test"', output)
+        self.assertIn("[mcp_servers.other]", output)
         self.assertIn('url = "http://127.0.0.1:3880/mcp"', output)
         self.assertIn(
             'bearer_token_env_var = "LXE_MANAGER_MCP_BEARER_TOKEN"',
             output,
         )
 
-    def test_use_local_mcp_script_honors_manager_url_override(self) -> None:
+    def test_use_local_mcp_script_honors_manager_url_override_and_escapes_toml(self) -> None:
         script = self.repo_root / "scripts" / "lxe_manager" / "use_local_mcp.sh"
         command = (
             f"source '{script}' >/dev/null && "
@@ -89,21 +107,22 @@ class ManagerMcpConfigTest(unittest.TestCase):
             env={
                 **os.environ,
                 "LXE_EDITOR_CODEX_CONFIG_PATH": str(self.config_path),
-                "LXE_MANAGER_URL": "http://127.0.0.1:4999/mcp",
+                "LXE_MANAGER_URL": 'http://127.0.0.1:4999/mcp?name="quoted"',
             },
         )
 
         output = result.stdout
-        self.assertIn('url = "http://127.0.0.1:4999/mcp"', output)
+        self.assertIn('url = "http://127.0.0.1:4999/mcp?name=\\"quoted\\""', output)
         self.assertIn(
             'bearer_token_env_var = "LXE_MANAGER_MCP_BEARER_TOKEN"',
             output,
         )
 
     def test_use_remote_mcp_script_writes_manager_url_config(self) -> None:
+        self.write_existing_config()
         script = self.repo_root / "scripts" / "lxe_manager" / "use_remote_mcp.sh"
         command = (
-            f"source '{script}' 'https://manager.example.com/mcp' 'remote-token' >/dev/null && "
+            f"source '{script}' 'https://manager.example.com/mcp' >/dev/null && "
             "printf '%s\n' \"$LXE_MANAGER_MCP_BEARER_TOKEN\" && "
             f"cat '{self.config_path}'"
         )
@@ -115,11 +134,73 @@ class ManagerMcpConfigTest(unittest.TestCase):
             env={
                 **os.environ,
                 "LXE_EDITOR_CODEX_CONFIG_PATH": str(self.config_path),
+                "LXE_MANAGER_MCP_BEARER_TOKEN": "remote-token",
             },
         )
 
         output = result.stdout
         self.assertIn("remote-token", output)
+        self.assertIn('model = "gpt-test"', output)
+        self.assertIn("[mcp_servers.other]", output)
+        self.assertIn('url = "https://manager.example.com/mcp"', output)
+        self.assertIn(
+            'bearer_token_env_var = "LXE_MANAGER_MCP_BEARER_TOKEN"',
+            output,
+        )
+
+    @unittest.skipUnless(shutil.which("pwsh"), "pwsh not available")
+    def test_use_local_mcp_powershell_preserves_existing_config(self) -> None:
+        self.write_existing_config()
+        script = self.repo_root / "scripts" / "lxe_manager" / "use_local_mcp.ps1"
+        result = subprocess.run(
+            [
+                "pwsh",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(script),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            env={
+                **os.environ,
+                "LXE_EDITOR_CODEX_CONFIG_PATH": str(self.config_path),
+                "LXE_MANAGER_URL": 'http://127.0.0.1:4999/mcp?name="quoted"',
+            },
+        )
+
+        output = self.config_path.read_text(encoding="utf-8")
+        self.assertIn("lxe_manager MCP target", result.stdout)
+        self.assertIn('model = "gpt-test"', output)
+        self.assertIn("[mcp_servers.other]", output)
+        self.assertIn('url = "http://127.0.0.1:4999/mcp?name=\\"quoted\\""', output)
+
+    @unittest.skipUnless(shutil.which("pwsh"), "pwsh not available")
+    def test_use_remote_mcp_powershell_uses_env_token(self) -> None:
+        script = self.repo_root / "scripts" / "lxe_manager" / "use_remote_mcp.ps1"
+        subprocess.run(
+            [
+                "pwsh",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(script),
+                "https://manager.example.com/mcp",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            env={
+                **os.environ,
+                "LXE_EDITOR_CODEX_CONFIG_PATH": str(self.config_path),
+                "LXE_MANAGER_MCP_BEARER_TOKEN": "remote-token",
+            },
+        )
+
+        output = self.config_path.read_text(encoding="utf-8")
         self.assertIn('url = "https://manager.example.com/mcp"', output)
         self.assertIn(
             'bearer_token_env_var = "LXE_MANAGER_MCP_BEARER_TOKEN"',
