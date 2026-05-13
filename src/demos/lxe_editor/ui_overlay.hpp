@@ -4,6 +4,7 @@
 #include "core/time/clock.hpp"
 
 #include "editor_config_state.hpp"
+#include "recording_controller.hpp"
 #include "scene_view_rect.hpp"
 #include "selection_camera_input.hpp"
 
@@ -36,7 +37,8 @@ public:
               LX_core::SceneTreePanel &sceneTreePanel,
               LX_core::InspectorPanel &inspectorPanel,
               LX_core::ConsolePanel &consolePanel,
-              std::function<bool()> debugEnabled = {});
+              std::function<bool()> debugEnabled = {},
+              std::function<RecordingStatus()> recordingStatus = {});
   void attachClock(const LX_core::Clock &clock);
 
   void drawFrame(const LX_core::Vec2f &windowSize);
@@ -85,6 +87,7 @@ private:
       m_inspectorPanel;
   std::optional<std::reference_wrapper<LX_core::ConsolePanel>> m_consolePanel;
   std::function<bool()> m_debugEnabled;
+  std::function<RecordingStatus()> m_recordingStatus;
   bool m_prevF1Down = false;
   bool m_prevFDown = false;
   bool m_prevEscapeDown = false;

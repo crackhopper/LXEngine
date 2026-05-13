@@ -100,12 +100,17 @@ with a non-zero exit code if the `assets/` tree cannot be found.
 | `admin status` | Show the current permission level |
 | `mode [selection|status]` | Change or inspect the current editor mode |
 | `cam control [orbit|freefly|status]` | Change or inspect the current camera control mode |
+| `cam look-at <eye-x> <eye-y> <eye-z> <target-x> <target-y> <target-z>` | Place the active camera at a specific eye/target pose; with preview off this drives `editor_cam` |
 | `state summary` | Return a stable JSON snapshot with scene, dirty, mode, camera, preview, debug, permission, and active-camera info |
 | `state selection` | Return selected paths, primary AABB, and the last successful pick hit point |
 | `state cameras` | Return editor / gameplay camera poses and the active camera path |
 | `state scene` | Return scene metadata such as document path, source kind, node count, camera count, and light count |
 | `state toolbar` | Return the current toolbar mode, camera, preview, and debug flags |
 | `pick <x> <y>` | Run a scene pick against the current main scene view rect from console / API |
+| `recording status` | Return recorder enabled/active/detail/save state |
+| `recording enable` / `recording disable [force]` | Turn recording hooks on or off |
+| `recording start [basic|diagnostic|trace]` | Start one recorder session |
+| `recording stop [save|discard]` | Stop the current recorder session and optionally save it |
 | `quit` | Gracefully stop the editor loop so tests and tools can persist local editor state before exit |
 
 ## API server
@@ -270,9 +275,11 @@ The MCP surface reuses the same editor state snapshots as the HTTP endpoints.
 It is intended for Codex diagnostics; the official editor regression path
 remains the HTTP API.
 
-Recording is disabled by default. When enabled and started, completed
-recordings are saved under `data/lxe_editor/recordings/` and can be replayed
-through `recording_replay` for debug-first reproduction.
+Recording is disabled by default. It can be controlled either through manager
+MCP `recording_*` tools or through command-console commands such as
+`recording enable`, `recording start basic`, and `recording stop save`.
+Completed recordings are saved under `data/lxe_editor/recordings/` and can be
+replayed through `recording_replay` for debug-first reproduction.
 
 ## API black-box tests
 
@@ -295,7 +302,7 @@ interaction, and transport internals.
 |-------------|--------|
 | `F1` | Toggle the Help panel |
 | `F` | Toggle preview between the editor and gameplay camera paths |
-| Toolbar | Switch Selection editor mode and Orbit / FreeFly camera controls; trigger reset editor camera, preview, debug, and preferences |
+| Toolbar | Switch Selection editor mode and Orbit / FreeFly camera controls; trigger reset editor camera, preview, debug, recording, and preferences |
 | `Esc` | Deselect current node in Selection mode when preview is off |
 | `Delete` | Remove the selected node when preview is off |
 

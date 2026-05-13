@@ -296,4 +296,27 @@ startedAt: 2026-05-13-120000
 
     await expect(client.getSummary()).rejects.toThrow();
   });
+
+  it("retries transient GET failures", async () => {
+    let requests = 0;
+    server = createServer((req, res) => {
+      ++requests;
+      if (requests === 1) {
+        req.socket.destroy();
+        return;
+      }
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ sceneName: "Recovered" }));
+    });
+
+    const port = await listen(server);
+    const client = new EditorClient({
+      httpBaseUrl: `http://127.0.0.1:${port}`,
+    });
+
+    await expect(client.getSummary()).resolves.toEqual({
+      sceneName: "Recovered",
+    });
+    expect(requests).toBe(2);
+  });
 });

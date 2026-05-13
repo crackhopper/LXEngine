@@ -150,6 +150,7 @@ MCP 来源操作；后续可以在 editor 内部继续扩展 toolbar、pick、dr
 | `lxe-editor-debug` | 需要读取状态、轻量 command、pick 或 wait-for | `lxe_editor_*` 和 `lxe-editor://...` 资源 |
 | `lxe-editor-recording` | 需要录制、读取、回放或 probe 调试录制文件 | `recording_*` |
 | `lxe-editor-command-reference` | 需要确认 editor command 名称、参数和示例 | 当前代码里的 command 注册与解析处 |
+| `lxe-editor-use-case-runner` | 需要执行 `notes/use_cases/lxe_editor/` 下的复杂业务场景 | 组合使用状态、command、recording、ops skills |
 
 典型顺序是先用 `lxe-editor-build-sync` 确认运行中的 editor commit；如果版本不匹配，
 再切到 `lxe-manager-ops` 完成停止、拉取、构建和启动。普通状态诊断只加载
@@ -166,6 +167,11 @@ MCP 完成 stop / pull / build / start / retest；只有修改了 manager MCP se
 自身工具注册或 manager 无法热加载的代码时，才需要用户协助重启 MCP server。
 `ops.build_state` 是判断远端最近一次 build 对应 Git 版本的首选事实来源，不需要
 为了刷新 editor 编译宏而每次重新 configure。
+
+复杂场景验证不要临时口头编排。把稳定流程写成
+`notes/use_cases/lxe_editor/*.md`，由 `lxe-editor-use-case-runner` 读取后调用
+MCP 执行。当前固定录制场景是
+`notes/use_cases/lxe_editor/record-complex-scene-edit.md`。
 
 ## 安全边界
 

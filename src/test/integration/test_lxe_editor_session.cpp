@@ -180,11 +180,43 @@ void testEditorHelpersUseFacetedOctahedronGeometry() {
   requireHelperVertexCount("/dir_light/helper_light");
 }
 
+void testRecordingCommandControlsSessionRecorder() {
+  const bool initialized = initializeRuntimeAssetRoot();
+  EXPECT(initialized, "runtime asset root should initialize for recording command test");
+  if (!initialized) {
+    return;
+  }
+
+  LX_core::EditorState editorState;
+  LX_demo::lxe_editor::CameraRig rig;
+  LX_demo::lxe_editor::UiOverlay ui;
+  LX_demo::lxe_editor::LxeEditorSession session(rig, ui, editorState);
+  session.initialize();
+
+  const auto initial = session.commandBus().dispatch("recording status");
+  EXPECT(initial.ok, "recording status command should succeed");
+  EXPECT(initial.structured.find("\"enabled\":false") != std::string::npos,
+         "recording should default disabled");
+
+  EXPECT(session.commandBus().dispatch("recording enable").ok,
+         "recording enable command should succeed");
+  EXPECT(session.commandBus().dispatch("recording start basic").ok,
+         "recording start command should succeed");
+  EXPECT(session.recording().status().active,
+         "recording start command should activate recorder");
+
+  const auto stop = session.commandBus().dispatch("recording stop discard");
+  EXPECT(stop.ok, "recording stop command should succeed");
+  EXPECT(!session.recording().status().active,
+         "recording stop command should deactivate recorder");
+}
+
 } // namespace
 
 int main() {
   testSceneLoadPreservesEditorCommandHistoryAndConsole();
   testEditorHelpersUseFacetedOctahedronGeometry();
+  testRecordingCommandControlsSessionRecorder();
 
   if (failures != 0) {
     std::cerr << failures << " lxe_editor session test(s) failed\n";

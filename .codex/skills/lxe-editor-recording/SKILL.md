@@ -20,12 +20,28 @@ state reads belong to `lxe-editor-debug`; process lifecycle work belongs to
 | `recording_replay` | Replay a recording and stop at the first failure |
 | `recording_probe` | Read focused state while analyzing a recording |
 
+## Editor Commands
+
+The in-app command console exposes the same recorder controls for humans and
+agent-driven use cases:
+
+```text
+recording status
+recording enable
+recording disable [force]
+recording start [basic|diagnostic|trace]
+recording stop [save|discard]
+```
+
+The floating toolbar has a `Rec` / `Stop Rec` button that starts basic
+recording and stops with save.
+
 ## Workflow
 
 1. Call `recording_status` before changing anything.
-2. Confirm the editor has a loaded scene before starting a recording. Use
-   `lxe-editor-debug` to read `lxe-editor://summary` or `lxe_editor_get_summary`;
-   if no scene/document is loaded, load the intended test scene first.
+2. Confirm the target scene setup. For ad-hoc debugging, load the intended
+   scene before recording. For saved use cases that intentionally record
+   setup, start recording and make `scene load ...` the first meaningful step.
 3. Enable recording only when needed; it is intentionally off by default.
 4. Start with `detailLevel: "basic"` unless the user asks for heavier dumps.
 5. Stop with save enabled when the recording should become a bug artifact.
@@ -33,13 +49,16 @@ state reads belong to `lxe-editor-debug`; process lifecycle work belongs to
 7. Replay once, then use `recording_probe` at the failure state instead of
    repeatedly mutating the editor.
 
+For complex scene-editing verification, prefer a saved use case under
+`notes/use_cases/lxe_editor/` and run it through `lxe-editor-use-case-runner`
+instead of inventing a fresh sequence.
+
 If `recording_status` returns `editor_unavailable`, stop the recording workflow
 and switch to `lxe-manager-ops` to call `ops.editor_status`. That distinguishes
 "manager reachable but editor not started" from recording API failure.
 
-Do not use recording as the first operation after starting editor. A recording
-without a loaded scene is usually not useful and can hide setup bugs as replay
-bugs.
+Do not leave a recording without a target scene. Either start from an already
+loaded scene or record `scene load ...` as the first meaningful use-case step.
 
 ## Guardrails
 

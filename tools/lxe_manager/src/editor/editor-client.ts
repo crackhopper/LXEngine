@@ -122,6 +122,27 @@ export class EditorClient {
     path: string,
     body?: unknown,
   ): Promise<unknown> {
+    const maxAttempts = method === "GET" ? 4 : 1;
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= maxAttempts; ++attempt) {
+      try {
+        return await this.fetchJson(method, path, body);
+      } catch (error) {
+        lastError = error;
+        if (attempt === maxAttempts || !isTransientEditorRequestError(error)) {
+          throw error;
+        }
+        await delay(100 * attempt);
+      }
+    }
+    throw lastError;
+  }
+
+  private async fetchJson(
+    method: "GET" | "POST",
+    path: string,
+    body?: unknown,
+  ): Promise<unknown> {
     const headers: Record<string, string> = {
       "content-type": "application/json",
     };
@@ -168,4 +189,13 @@ function normalizeResource(resource: string | undefined): string {
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isTransientEditorRequestError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  return error.message.includes("fetch failed") ||
+    error.name === "TimeoutError" ||
+    error.name === "AbortError";
 }

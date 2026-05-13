@@ -44,6 +44,20 @@ scene load assets/scenes/lxe_editor.scene.yaml
 
 Verify the path from the current repo before using it in a remote workflow.
 
+Common recording and camera commands:
+
+```text
+preview off
+cam control orbit
+cam look-at 2.8 2.0 4.5 0.0 0.6 0.0
+recording enable
+recording start basic
+recording stop save
+```
+
+With preview off, `cam look-at` changes `editor_cam`. Use it before pick-heavy
+use cases so the default view does not keep hitting `game_cam`.
+
 ## Guardrails
 
 - Do not guess command names from UI labels.

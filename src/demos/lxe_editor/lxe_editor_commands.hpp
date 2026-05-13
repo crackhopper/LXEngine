@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/editor/command_bus.hpp"
+#include "demos/lxe_editor/recording_controller.hpp"
 
 #include <functional>
 #include <optional>
@@ -31,6 +32,9 @@ struct LxeEditorCommandContext final {
   using CurrentSourceKindFn = std::function<std::optional<std::string>()>;
   using PersistedHistoryFn = std::function<std::vector<std::string>()>;
   using AppendConsoleDebugLineFn = std::function<void(std::string_view)>;
+  using RecordingFn =
+      std::function<std::optional<std::reference_wrapper<RecordingController>>()>;
+  using BuildInfoJsonFn = std::function<std::string()>;
 
   LX_core::EditorState& editorState;
   LX_core::Scene& scene;
@@ -48,6 +52,8 @@ struct LxeEditorCommandContext final {
   CurrentSourceKindFn currentSourceKind;
   PersistedHistoryFn persistedHistory;
   AppendConsoleDebugLineFn appendConsoleDebugLine;
+  RecordingFn recording;
+  BuildInfoJsonFn buildInfoJson;
 };
 
 void registerLxeEditorCommands(

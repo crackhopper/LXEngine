@@ -9,6 +9,7 @@
 #include "core/gpu/engine_loop.hpp"
 #include "core/scene/components/camera_component.hpp"
 #include "core/utils/filesystem_tools.hpp"
+#include "demos/lxe_editor/lxe_editor_build_info.hpp"
 #include "demos/lxe_editor/lxe_editor_commands.hpp"
 #include "demos/lxe_editor/scene_interaction_controller.hpp"
 
@@ -525,12 +526,19 @@ void LxeEditorSession::rebuildBindings() {
               m_consolePanel->appendSystemLine(line);
             }
           },
+          .recording =
+              [this]()
+                  -> std::optional<std::reference_wrapper<RecordingController>> {
+            return m_recording;
+          },
+          .buildInfoJson = []() { return toJson(currentLxeEditorBuildInfo()); },
       });
 
   m_ui.attach(m_rig, *m_commandBus, m_editorState, m_editorConfig,
               *m_viewportOverlay, *m_sceneTreePanel, *m_inspectorPanel,
               *m_consolePanel,
-              [this]() { return m_debugEnabled; });
+              [this]() { return m_debugEnabled; },
+              [this]() { return m_recording.status(); });
   ++m_bindingsGeneration;
 }
 

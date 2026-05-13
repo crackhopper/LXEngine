@@ -197,7 +197,8 @@ void UiOverlay::attach(CameraRig &rig, LX_core::CommandBus &commandBus,
                        LX_core::SceneTreePanel &sceneTreePanel,
                        LX_core::InspectorPanel &inspectorPanel,
                        LX_core::ConsolePanel &consolePanel,
-                       std::function<bool()> debugEnabled) {
+                       std::function<bool()> debugEnabled,
+                       std::function<RecordingStatus()> recordingStatus) {
   m_rig = std::ref(rig);
   m_commandBus = std::ref(commandBus);
   m_editorState = std::ref(editorState);
@@ -207,6 +208,7 @@ void UiOverlay::attach(CameraRig &rig, LX_core::CommandBus &commandBus,
   m_inspectorPanel = std::ref(inspectorPanel);
   m_consolePanel = std::ref(consolePanel);
   m_debugEnabled = std::move(debugEnabled);
+  m_recordingStatus = std::move(recordingStatus);
   syncPanelOpenStatesFromConfig();
   if (!m_baseStyleCaptured && ImGui::GetCurrentContext() != nullptr) {
     m_baseStyle = ImGui::GetStyle();
@@ -571,6 +573,35 @@ void UiOverlay::drawToolbarPanel() {
                            drawPreferencesIcon) &&
       m_commandBus) {
     (void)m_commandBus->get().dispatch(debugEnabled ? "debug off" : "debug on");
+  }
+
+  ImGui::SameLine();
+  const RecordingStatus recordingStatus =
+      m_recordingStatus ? m_recordingStatus() : RecordingStatus{};
+  if (recordingStatus.active) {
+    ImGui::PushStyleColor(ImGuiCol_Button,
+                          ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+  }
+  const bool recordingClicked =
+      ImGui::Button(recordingStatus.active ? "Stop Rec" : "Rec",
+                    ImVec2(72.0f, 34.0f));
+  if (recordingStatus.active) {
+    ImGui::PopStyleColor();
+  }
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("%s",
+                      recordingStatus.active ? "Stop and save recording"
+                                             : "Start basic recording");
+  }
+  if (recordingClicked && m_commandBus) {
+    if (recordingStatus.active) {
+      (void)m_commandBus->get().dispatch("recording stop save");
+    } else {
+      if (!recordingStatus.enabled) {
+        (void)m_commandBus->get().dispatch("recording enable");
+      }
+      (void)m_commandBus->get().dispatch("recording start basic");
+    }
   }
 
   ImGui::SameLine();
