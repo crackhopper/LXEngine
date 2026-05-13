@@ -1,6 +1,17 @@
-import { describe, expect, it } from "vitest";
+import { EventEmitter } from "node:events";
+import type { ChildProcess, SpawnOptions } from "node:child_process";
+import { describe, expect, it, vi } from "vitest";
 import { ProcessSupervisor } from "../src/process/process-supervisor.js";
 import { WorkspaceOps } from "../src/ops/workspace-ops.js";
+
+function fakeChild(pid: number | undefined): ChildProcess {
+  const child = new EventEmitter() as ChildProcess;
+  Object.defineProperty(child, "pid", { value: pid });
+  child.stdout = new EventEmitter() as ChildProcess["stdout"];
+  child.stderr = new EventEmitter() as ChildProcess["stderr"];
+  child.unref = vi.fn();
+  return child;
+}
 
 describe("process supervision", () => {
   it("captures stdout and exit code for a managed task", async () => {
@@ -65,16 +76,54 @@ describe("process supervision", () => {
   });
 
   it("rejects detached start when spawn fails", async () => {
-    const supervisor = new ProcessSupervisor();
+    const supervisor = new ProcessSupervisor({
+      spawnProcess: () => {
+        const child = fakeChild(undefined);
+        setImmediate(() => child.emit("error", new Error("spawn failed")));
+        return child;
+      },
+    });
 
     await expect(
       supervisor.startDetached({
-        command: "definitely-not-a-real-lxe-manager-command",
+        command: "missing-command",
         args: [],
         cwd: process.cwd(),
         label: "missing-detached-command",
       }),
-    ).rejects.toThrow("ENOENT");
+    ).rejects.toThrow("spawn failed");
+  });
+
+  it("targets the managed process group when guardian stops a POSIX task", async () => {
+    const child = fakeChild(123);
+    const killed: Array<{ pid: number; signal: NodeJS.Signals }> = [];
+    const supervisor = new ProcessSupervisor({
+      platform: "linux",
+      guardianPollIntervalMs: 1,
+      processKiller: async (pid, signal) => {
+        killed.push({ pid, signal });
+        child.emit("close", null, signal);
+      },
+      spawnProcess: (_command, _args, options?: SpawnOptions) => {
+        expect(options?.detached).toBe(true);
+        return child;
+      },
+      guardianFactory: (managedProcess) => ({
+        tick: async () => {
+          await managedProcess.stop();
+        },
+      }),
+    });
+
+    const result = await supervisor.run({
+      command: "node",
+      args: ["-e", "setTimeout(() => {}, 1000)"],
+      cwd: process.cwd(),
+      label: "guardian-group-task",
+    });
+
+    expect(result.error).toBe("killed_by_guardian: label=guardian-group-task");
+    expect(killed).toContainEqual({ pid: -123, signal: "SIGTERM" });
   });
 
   it("builds a repo pull command in the repo root", async () => {

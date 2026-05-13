@@ -12,13 +12,27 @@ export interface EditorLogs {
   message: string;
 }
 
+export interface EditorOpsOptions {
+  stopGracePeriodMs?: number;
+  forceKillGracePeriodMs?: number;
+  stopPollIntervalMs?: number;
+}
+
 export class EditorOps {
   private editorPid: number | undefined;
+  private readonly stopGracePeriodMs: number;
+  private readonly forceKillGracePeriodMs: number;
+  private readonly stopPollIntervalMs: number;
 
   constructor(
     private readonly supervisor: ProcessSupervisor,
     private readonly config: ManagerConfig,
-  ) {}
+    options: EditorOpsOptions = {},
+  ) {
+    this.stopGracePeriodMs = options.stopGracePeriodMs ?? 1500;
+    this.forceKillGracePeriodMs = options.forceKillGracePeriodMs ?? 500;
+    this.stopPollIntervalMs = options.stopPollIntervalMs ?? 25;
+  }
 
   async start(): Promise<EditorStatus> {
     this.editorPid = undefined;
@@ -37,12 +51,31 @@ export class EditorOps {
       return { running: false };
     }
 
-    if (this.supervisor.isProcessRunning(this.editorPid)) {
-      process.kill(this.editorPid, "SIGTERM");
-    }
     const pid = this.editorPid;
-    this.editorPid = undefined;
-    return { running: false, pid };
+    if (!this.supervisor.isProcessRunning(pid)) {
+      this.editorPid = undefined;
+      return { running: false, pid };
+    }
+
+    await this.supervisor.stopProcessTree(pid);
+    let stopped = await this.supervisor.waitForProcessExit(pid, {
+      timeoutMs: this.stopGracePeriodMs,
+      pollIntervalMs: this.stopPollIntervalMs,
+    });
+
+    if (!stopped && this.supervisor.isProcessRunning(pid)) {
+      await this.supervisor.forceKillProcessTree(pid);
+      stopped = await this.supervisor.waitForProcessExit(pid, {
+        timeoutMs: this.forceKillGracePeriodMs,
+        pollIntervalMs: this.stopPollIntervalMs,
+      });
+    }
+
+    const running = !stopped && this.supervisor.isProcessRunning(pid);
+    if (!running) {
+      this.editorPid = undefined;
+    }
+    return { running, pid };
   }
 
   async status(): Promise<EditorStatus> {

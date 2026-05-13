@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import type { ChildProcess } from "node:child_process";
+import type { ChildProcess, SpawnOptions } from "node:child_process";
 import { KillPolicy } from "./kill-policy.js";
 import type { ResourceThresholds } from "./resource-guardian.js";
 import { ResourceGuardian } from "./resource-guardian.js";
@@ -44,19 +44,48 @@ export interface ProcessSupervisorOptions {
   ) => { tick: () => Promise<void> } | undefined;
   guardianPollIntervalMs?: number;
   defaultResourceThresholds?: ResourceThresholds;
+  platform?: NodeJS.Platform;
+  processKiller?: (
+    pid: number,
+    signal: NodeJS.Signals,
+  ) => Promise<void> | void;
+  sleep?: (ms: number) => Promise<void>;
+  spawnProcess?: (
+    command: string,
+    args: string[],
+    options: SpawnOptions,
+  ) => ChildProcess;
 }
 
 export class ProcessSupervisor {
   private readonly guardianPollIntervalMs: number;
+  private readonly detachedPids = new Set<number>();
   private readonly guardianFactory:
     | ((
         process: ManagedProcess,
         command: ManagedCommand,
       ) => { tick: () => Promise<void> } | undefined)
     | undefined;
+  private readonly platform: NodeJS.Platform;
+  private readonly processKiller: (
+    pid: number,
+    signal: NodeJS.Signals,
+  ) => Promise<void> | void;
+  private readonly sleep: (ms: number) => Promise<void>;
+  private readonly spawnProcess: (
+    command: string,
+    args: string[],
+    options: SpawnOptions,
+  ) => ChildProcess;
 
-  constructor(private readonly options: ProcessSupervisorOptions = {}) {
+  constructor(options: ProcessSupervisorOptions = {}) {
     this.guardianPollIntervalMs = options.guardianPollIntervalMs ?? 1000;
+    this.platform = options.platform ?? process.platform;
+    this.processKiller =
+      options.processKiller ??
+      ((pid, signal) => defaultProcessKiller(this.platform, pid, signal));
+    this.sleep = options.sleep ?? defaultSleep;
+    this.spawnProcess = options.spawnProcess ?? spawn;
     const defaultResourceThresholds = options.defaultResourceThresholds;
     this.guardianFactory =
       options.guardianFactory ??
@@ -80,11 +109,16 @@ export class ProcessSupervisor {
 
   async run(input: ManagedCommand): Promise<ManagedResult> {
     return new Promise((resolve) => {
-      const child = spawn(input.command, input.args, {
+      const detached = this.platform !== "win32";
+      const child = this.spawnProcess(input.command, input.args, {
         cwd: input.cwd,
+        detached,
         stdio: ["ignore", "pipe", "pipe"],
       });
-      const guardian = this.startGuardian(child, input);
+      if (detached) {
+        this.registerDetachedPid(child.pid);
+      }
+      const guardian = this.startGuardian(child, input, detached);
 
       const stdout = new CappedOutput(input.maxOutputBytes);
       const stderr = new CappedOutput(input.maxOutputBytes);
@@ -96,13 +130,14 @@ export class ProcessSupervisor {
         }
         resolved = true;
         guardian?.stop();
+        this.unregisterDetachedPid(child.pid);
         resolve(result);
       };
 
-      child.stdout.on("data", (chunk: Buffer) => {
+      child.stdout?.on("data", (chunk: Buffer) => {
         stdout.append(chunk);
       });
-      child.stderr.on("data", (chunk: Buffer) => {
+      child.stderr?.on("data", (chunk: Buffer) => {
         stderr.append(chunk);
       });
       child.on("error", (error) => {
@@ -133,18 +168,21 @@ export class ProcessSupervisor {
   }
 
   async startDetached(input: ManagedCommand): Promise<DetachedProcess> {
-    const child = spawn(input.command, input.args, {
+    const child = this.spawnProcess(input.command, input.args, {
       cwd: input.cwd,
       detached: true,
       stdio: "ignore",
     });
-    const guardian = this.startGuardian(child, input);
+    this.registerDetachedPid(child.pid);
+    const guardian = this.startGuardian(child, input, true);
 
     child.once("exit", () => {
       guardian?.stop();
+      this.unregisterDetachedPid(child.pid);
     });
     child.once("error", () => {
       guardian?.stop();
+      this.unregisterDetachedPid(child.pid);
     });
     await new Promise<void>((resolve, reject) => {
       child.once("error", reject);
@@ -153,6 +191,33 @@ export class ProcessSupervisor {
     child.unref();
 
     return { label: input.label, pid: child.pid };
+  }
+
+  async stopProcessTree(pid: number | undefined): Promise<void> {
+    await this.killProcessTree(pid, "SIGTERM");
+  }
+
+  async forceKillProcessTree(pid: number | undefined): Promise<void> {
+    await this.killProcessTree(pid, "SIGKILL");
+  }
+
+  async waitForProcessExit(
+    pid: number | undefined,
+    input: { timeoutMs: number; pollIntervalMs: number },
+  ): Promise<boolean> {
+    if (pid === undefined) {
+      return true;
+    }
+
+    const deadline = Date.now() + input.timeoutMs;
+    while (this.isProcessRunning(pid)) {
+      if (Date.now() >= deadline) {
+        return false;
+      }
+      await this.sleep(Math.max(1, input.pollIntervalMs));
+    }
+
+    return true;
   }
 
   isProcessRunning(pid: number | undefined): boolean {
@@ -170,6 +235,7 @@ export class ProcessSupervisor {
   private startGuardian(
     child: ChildProcess,
     command: ManagedCommand,
+    detached: boolean,
   ): { stop: () => void; error: () => string | undefined } | undefined {
     let guardianError: string | undefined;
     const guardian = this.guardianFactory?.(
@@ -178,11 +244,11 @@ export class ProcessSupervisor {
         pid: child.pid,
         stop: async () => {
           guardianError = `killed_by_guardian: label=${command.label}`;
-          child.kill("SIGTERM");
+          await this.killProcessTree(child.pid, "SIGTERM", detached);
         },
         forceKill: async () => {
           guardianError = `killed_by_guardian: label=${command.label}`;
-          child.kill("SIGKILL");
+          await this.killProcessTree(child.pid, "SIGKILL", detached);
         },
         isRunning: () => this.isProcessRunning(child.pid),
       },
@@ -195,7 +261,7 @@ export class ProcessSupervisor {
     const timer = setInterval(() => {
       void guardian.tick().catch(() => {
         guardianError = `killed_by_guardian: label=${command.label}`;
-        child.kill("SIGTERM");
+        void this.killProcessTree(child.pid, "SIGTERM", detached);
       });
     }, this.guardianPollIntervalMs);
 
@@ -203,6 +269,31 @@ export class ProcessSupervisor {
       stop: () => clearInterval(timer),
       error: () => guardianError,
     };
+  }
+
+  private async killProcessTree(
+    pid: number | undefined,
+    signal: NodeJS.Signals,
+    detached = pid !== undefined && this.detachedPids.has(pid),
+  ): Promise<void> {
+    if (pid === undefined) {
+      return;
+    }
+
+    const targetPid = this.platform !== "win32" && detached ? -pid : pid;
+    await this.processKiller(targetPid, signal);
+  }
+
+  private registerDetachedPid(pid: number | undefined): void {
+    if (pid !== undefined) {
+      this.detachedPids.add(pid);
+    }
+  }
+
+  private unregisterDetachedPid(pid: number | undefined): void {
+    if (pid !== undefined) {
+      this.detachedPids.delete(pid);
+    }
   }
 }
 
@@ -230,4 +321,43 @@ class CappedOutput {
   text(): string {
     return this.buffer.toString();
   }
+}
+
+async function defaultProcessKiller(
+  platform: NodeJS.Platform,
+  pid: number,
+  signal: NodeJS.Signals,
+): Promise<void> {
+  if (platform === "win32") {
+    await killWindowsProcessTree(pid, signal);
+    return;
+  }
+
+  try {
+    process.kill(pid, signal);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ESRCH") {
+      throw error;
+    }
+  }
+}
+
+function killWindowsProcessTree(
+  pid: number,
+  signal: NodeJS.Signals,
+): Promise<void> {
+  const args = ["/PID", String(pid), "/T"];
+  if (signal === "SIGKILL") {
+    args.push("/F");
+  }
+
+  return new Promise((resolve, reject) => {
+    const child = spawn("taskkill", args, { stdio: "ignore" });
+    child.once("error", reject);
+    child.once("close", () => resolve());
+  });
+}
+
+function defaultSleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
