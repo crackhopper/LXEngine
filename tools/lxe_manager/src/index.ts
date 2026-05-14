@@ -8,6 +8,7 @@ import {
   createToolHandlers,
 } from "./mcp/server.js";
 import { EditorOps } from "./ops/editor-ops.js";
+import { ManagerOps } from "./ops/manager-ops.js";
 import { WorkspaceOps } from "./ops/workspace-ops.js";
 import { ProcessSupervisor } from "./process/process-supervisor.js";
 import type { ResourceThresholds } from "./process/resource-guardian.js";
@@ -33,6 +34,7 @@ const editorClientProvider = createEditorClient;
 const handlers = createToolHandlers({
   editorOps: new EditorOps(processSupervisor, config),
   editorClientProvider,
+  managerOps: new ManagerOps(),
   workspaceOps: new WorkspaceOps(processSupervisor, {
     repoRoot: config.repoRoot,
     runtimeRoot: config.runtimeRoot,
