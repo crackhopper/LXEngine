@@ -74,6 +74,9 @@ void testRuntimeCreatesEmptyScene() {
          "gameplay camera should attach under the scene root");
   EXPECT(runtime.editorCameraNode()->getParent() == runtime.scene()->getRootNode(),
          "editor camera should attach under the scene root");
+  EXPECT(runtime.editorCameraNode()->getVisibilityLayerMask() ==
+             LX_core::Layer_EditorOverlay,
+         "editor camera should be an editor-only node excluded from scene picking");
   EXPECT(runtime.scene()->findByPath("/helmet") == nullptr,
          "empty runtime should not create a helmet node");
   EXPECT(runtime.scene()->findByPath("/ground") == nullptr,
@@ -89,6 +92,11 @@ void testRuntimeCreatesEmptyScene() {
          "gameplay camera should not carry a helper mesh");
   EXPECT(runtime.scene()->getPickBounds(*runtime.gameCameraNode()).isValid(),
          "gameplay camera should expose debug pick bounds without a helper mesh");
+  const LX_core::BoundingBox gameCameraBounds =
+      runtime.scene()->getPickBounds(*runtime.gameCameraNode());
+  EXPECT(gameCameraBounds.min.y > 1.7f && gameCameraBounds.max.y < 2.3f &&
+             gameCameraBounds.min.z > 5.7f && gameCameraBounds.max.z < 6.3f,
+         "gameplay camera pick bounds should be a small box around the eye");
   EXPECT(runtime.scene()->findByPath("/dir_light/helper_light") == nullptr,
          "empty runtime should not create a directional-light helper child");
   EXPECT(runtime.scene()->getRenderables().size() == 3,

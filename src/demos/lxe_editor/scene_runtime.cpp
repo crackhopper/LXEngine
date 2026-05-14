@@ -283,6 +283,7 @@ buildRuntimeFromDocument(const SceneDocument& document,
 
   runtime->editorCameraNode =
       makeCameraNode("editor_camera", "editor_cam", LX_core::Layer_All);
+  runtime->editorCameraNode->setVisibilityLayerMask(LX_core::Layer_EditorOverlay);
   auto& editorCamera =
       requireCameraComponent(runtime->editorCameraNode, "editor_camera").get();
   auto& gameCamera =
