@@ -31,10 +31,20 @@ struct CameraNodeState final {
                                              ~LX_core::Layer_EditorOverlay;
 };
 
-struct DirectionalLightNodeState final {
+enum class LightKind {
+  Directional,
+  Point,
+  Spot,
+};
+
+struct LightNodeState final {
+  LightKind kind = LightKind::Directional;
   LX_core::Vec3f direction{-0.3f, -1.0f, -0.5f};
   LX_core::Vec3f color{1.0f, 0.98f, 0.9f};
   float intensity = 1.0f;
+  float range = 5.0f;
+  float innerConeDegrees = 20.0f;
+  float outerConeDegrees = 35.0f;
 };
 
 struct MaterialOverrideState final {
@@ -52,7 +62,7 @@ struct SceneNodeDocument final {
   MaterialOverrideState nodeMaterialOverrides;
   MaterialOverrideState materialOverrides;
   std::optional<CameraNodeState> camera;
-  std::optional<DirectionalLightNodeState> directionalLight;
+  std::optional<LightNodeState> light;
   std::vector<SceneNodeDocument> children;
 };
 

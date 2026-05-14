@@ -181,9 +181,14 @@ public:
   [[nodiscard]] LightBaseSharedPtr getLight(const SceneNode &node) const;
   [[nodiscard]] DirectionalLightSharedPtr
   getDirectionalLight(const SceneNode &node) const;
+  [[nodiscard]] PointLightSharedPtr getPointLight(const SceneNode &node) const;
+  [[nodiscard]] SpotLightSharedPtr getSpotLight(const SceneNode &node) const;
   [[nodiscard]] LightBaseSharedPtr detachLight(const SceneNodeSharedPtr &node);
   void removeLight(const LightBaseSharedPtr &light);
   const std::vector<LightBaseSharedPtr> &getLights() const { return m_lights; }
+  [[nodiscard]] SceneLightsDataSharedPtr getSceneLightsUBO() const {
+    return m_sceneLightsUbo;
+  }
   const std::string &getSceneName() const { return m_sceneName; }
   struct PickHit {
     SceneNodeSharedPtr node;
@@ -224,6 +229,8 @@ private:
   std::vector<SceneNodeSharedPtr> m_cameras;
   std::vector<LightBaseSharedPtr> m_lights;
   std::unordered_map<const SceneNode *, LightBaseSharedPtr> m_lightsByNode;
+  mutable SceneLightsDataSharedPtr m_sceneLightsUbo =
+      std::make_shared<SceneLightsData>();
   SceneEventHub m_events;
 };
 

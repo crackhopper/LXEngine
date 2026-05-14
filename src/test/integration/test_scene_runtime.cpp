@@ -12,6 +12,7 @@
 #include "demos/lxe_editor/scene_document.hpp"
 #include "demos/lxe_editor/scene_runtime.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <algorithm>
 #include <cstring>
@@ -260,6 +261,94 @@ void testRuntimeDoesNotCreateCameraHelperVisualAtStaleTransform() {
               ->getComponent<LX_core::MeshComponent>()
               .has_value(),
          "camera should not create a stale helper visual mesh");
+}
+
+void testRuntimeLoadsTypedPointAndSpotLights() {
+  const std::filesystem::path path =
+      makeTempPath("lx_scene_runtime_typed_lights.yaml");
+  writeSceneFile(path,
+                 "scene:\n"
+                 "  name: typed_light_scene\n"
+                 "  gameplayCameraPath: /game_cam\n"
+                 "nodes:\n"
+                 "  - nodeName: game_camera\n"
+                 "    name: game_cam\n"
+                 "    transform:\n"
+                 "      translation: [0.0, 2.0, 6.0]\n"
+                 "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                 "      scale: [1.0, 1.0, 1.0]\n"
+                 "    visibilityMask: 4294967295\n"
+                 "    camera:\n"
+                 "      eye: [0.0, 2.0, 6.0]\n"
+                 "      target: [0.0, 0.0, 0.0]\n"
+                 "      up: [0.0, 1.0, 0.0]\n"
+                 "      type: perspective\n"
+                 "      fovY: 45.0\n"
+                 "      aspect: 1.7777778\n"
+                 "      nearPlane: 0.1\n"
+                 "      farPlane: 1000.0\n"
+                 "      left: -1.0\n"
+                 "      right: 1.0\n"
+                 "      bottom: -1.0\n"
+                 "      top: 1.0\n"
+                 "      cullingMask: 4294967295\n"
+                 "  - nodeName: point_node\n"
+                 "    name: point\n"
+                 "    transform:\n"
+                 "      translation: [1.0, 2.0, 3.0]\n"
+                 "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                 "      scale: [1.0, 1.0, 1.0]\n"
+                 "    light:\n"
+                 "      kind: Point\n"
+                 "      color: [0.8, 0.7, 0.6]\n"
+                 "      intensity: 2.0\n"
+                 "      range: 6.0\n"
+                 "  - nodeName: spot_node\n"
+                 "    name: spot\n"
+                 "    transform:\n"
+                 "      translation: [0.0, 3.0, 1.0]\n"
+                 "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                 "      scale: [1.0, 1.0, 1.0]\n"
+                 "    light:\n"
+                 "      kind: Spot\n"
+                 "      direction: [0.0, -0.5, -1.0]\n"
+                 "      color: [0.7, 0.8, 1.0]\n"
+                 "      intensity: 3.0\n"
+                 "      range: 8.0\n"
+                 "      innerConeDegrees: 20.0\n"
+                 "      outerConeDegrees: 35.0\n");
+
+  demo::SceneRuntime runtime;
+  runtime.loadFromDocumentPath(path);
+
+  auto* pointNode = runtime.scene()->findByPath("/point");
+  auto* spotNode = runtime.scene()->findByPath("/spot");
+  EXPECT(pointNode != nullptr && spotNode != nullptr,
+         "typed light nodes should load");
+  if (pointNode != nullptr && spotNode != nullptr) {
+    EXPECT(runtime.scene()->getPointLight(*pointNode) != nullptr,
+           "point light runtime instance should attach");
+    const auto spot = runtime.scene()->getSpotLight(*spotNode);
+    EXPECT(spot != nullptr, "spot light runtime instance should attach");
+    EXPECT(spot != nullptr && spot->getOuterConeDegrees() == 35.0f,
+           "spot light cone should load");
+  }
+
+  const auto resources = runtime.scene()->getSceneLevelResources(
+      LX_core::Pass_Forward, LX_core::RenderTarget{});
+  LX_core::SceneLightsDataSharedPtr sceneLights;
+  for (const auto& resource : resources) {
+    if (resource && resource->getBindingName() ==
+                        LX_core::StringID("SceneLightsUBO")) {
+      sceneLights = std::dynamic_pointer_cast<LX_core::SceneLightsData>(resource);
+    }
+  }
+  EXPECT(sceneLights != nullptr, "scene resources should expose SceneLightsUBO");
+  if (sceneLights != nullptr) {
+    EXPECT(sceneLights->param.counts.x == 0 && sceneLights->param.counts.y == 1 &&
+               sceneLights->param.counts.z == 1,
+           "SceneLightsUBO should count typed point and spot lights");
+  }
 }
 
 void testRuntimeSkipsLegacyEditorHelperNodesOnLoad() {
@@ -984,6 +1073,7 @@ int main() {
   testRuntimeCreatesEmptyScene();
   testRuntimeCreatesEditorOnlyHelpersForEditableSceneNodes();
   testRuntimeDoesNotCreateCameraHelperVisualAtStaleTransform();
+  testRuntimeLoadsTypedPointAndSpotLights();
   testRuntimeSkipsLegacyEditorHelperNodesOnLoad();
   testRuntimeLoadsFullSceneDocument();
   testRuntimeLoadsLegacyFlatSceneDocumentWithExplicitRootNormalization();

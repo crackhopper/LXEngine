@@ -573,9 +573,7 @@ void testBuiltinAddRemoveSetCommands() {
   EXPECT(selectResult.ok, "select before add commands succeeds");
 
   const CommandResult addMesh = fixture.bus.dispatch("add mesh probe");
-  EXPECT(addMesh.ok, "add mesh succeeds");
-  EXPECT(fixture.scene->findByPath("/world/cube/probe") != nullptr,
-         "add mesh attaches new node under selected parent");
+  EXPECT(!addMesh.ok, "add mesh is rejected after concrete primitive kinds");
 
   const CommandResult addCamera = fixture.bus.dispatch("add camera debug_cam");
   EXPECT(addCamera.ok, "add camera succeeds");
@@ -694,11 +692,6 @@ void testBuiltinAddRemoveSetCommands() {
                  LX_core::SceneNodeAspect::LightProperties,
          "renamed light set should emit a light-properties scene node change");
 
-  const CommandResult removeProbe = fixture.bus.dispatch("remove /world/cube/probe");
-  EXPECT(removeProbe.ok, "remove child node succeeds");
-  EXPECT(fixture.scene->findByPath("/world/cube/probe") == nullptr,
-         "remove detaches child from path lookup");
-
   const CommandResult removeCamera =
       fixture.bus.dispatch("remove /world/cube/debug_cam");
   EXPECT(removeCamera.ok, "remove child camera succeeds");
@@ -747,6 +740,49 @@ void testBuiltinAddRemoveSetCommands() {
          "remove root should report explicit root-role restriction");
   EXPECT(fixture.scene->findByPath("/") == fixture.scene->getRootNode().get(),
          "remove root failure should leave scene root intact");
+}
+
+void testBuiltinCreatesAndEditsTypedLights() {
+  CommandFixture fixture;
+
+  const CommandResult addPoint = fixture.bus.dispatch("add light:point point_fill");
+  EXPECT(addPoint.ok, "add point light succeeds");
+  auto* pointNode = fixture.scene->findByPath("/point_fill");
+  EXPECT(pointNode != nullptr, "point light node should exist");
+  if (pointNode != nullptr) {
+    const auto point = fixture.scene->getPointLight(*pointNode);
+    EXPECT(point != nullptr, "point light runtime instance should attach");
+    const CommandResult setRange =
+        fixture.bus.dispatch("set /point_fill.light.range 7.5");
+    EXPECT(setRange.ok, "set point light range succeeds");
+    const CommandResult setColor =
+        fixture.bus.dispatch("set /point_fill.light.color 0.3 0.4 0.5");
+    EXPECT(setColor.ok, "set point light color succeeds");
+    EXPECT(nearlyEqual(point->getRange(), 7.5f) &&
+               nearlyEqual(point->getColor().z, 0.5f),
+           "point light fields should update runtime state");
+  }
+
+  const CommandResult addSpot = fixture.bus.dispatch("add light:spot spot_key");
+  EXPECT(addSpot.ok, "add spot light succeeds");
+  auto* spotNode = fixture.scene->findByPath("/spot_key");
+  EXPECT(spotNode != nullptr, "spot light node should exist");
+  if (spotNode != nullptr) {
+    const auto spot = fixture.scene->getSpotLight(*spotNode);
+    EXPECT(spot != nullptr, "spot light runtime instance should attach");
+    const CommandResult setDirection =
+        fixture.bus.dispatch("set /spot_key.light.direction 0 -0.5 -1");
+    EXPECT(setDirection.ok, "set spot light direction succeeds");
+    const auto inner =
+        fixture.bus.dispatch("set /spot_key.light.innerConeDegrees 15");
+    const auto outer =
+        fixture.bus.dispatch("set /spot_key.light.outerConeDegrees 30");
+    EXPECT(inner.ok && outer.ok, "set spot cone fields succeeds");
+    EXPECT(nearlyEqual(spot->getDirection().z, -1.0f) &&
+               nearlyEqual(spot->getInnerConeDegrees(), 15.0f) &&
+               nearlyEqual(spot->getOuterConeDegrees(), 30.0f),
+           "spot light fields should update runtime state");
+  }
 }
 
 void testBuiltinCamAndPreviewCommands() {
@@ -1844,6 +1880,7 @@ int main() {
   testBuiltinListCommands();
   testBuiltinCommandErrors();
   testBuiltinAddRemoveSetCommands();
+  testBuiltinCreatesAndEditsTypedLights();
   testBuiltinCamAndPreviewCommands();
   testBuiltinRemainingCommandErrors();
   testSceneCommandsRequireRegisteredSceneIoCallbacks();

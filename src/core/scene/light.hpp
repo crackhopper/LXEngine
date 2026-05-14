@@ -32,6 +32,10 @@ public:
 
   /// Whether this light participates in the given pass.
   virtual bool supportsPass(StringID pass) const = 0;
+  virtual void attachToSceneNode(const std::weak_ptr<Scene> &scene,
+                                 const std::weak_ptr<SceneNode> &node) = 0;
+  virtual void detachFromSceneNode() = 0;
+  [[nodiscard]] virtual std::shared_ptr<SceneNode> getSceneNode() const = 0;
 
   /// Editor/debug pick bounds in the owning SceneNode's local space. Lights do
   /// not render mesh geometry, but the editor can use this to draw and pick the
@@ -68,6 +72,51 @@ private:
 };
 using DirectionalLightDataSharedPtr = std::shared_ptr<DirectionalLightData>;
 
+inline constexpr u32 MaxDirectionalLights = 4;
+inline constexpr u32 MaxPointLights = 16;
+inline constexpr u32 MaxSpotLights = 8;
+
+struct alignas(16) SceneLightsData : public IGpuResource {
+  explicit SceneLightsData(StringID bindingName = StringID("SceneLightsUBO"))
+      : m_bindingName(bindingName) {}
+
+  struct DirectionalEntry {
+    Vec4f direction;
+    Vec4f colorIntensity;
+  };
+
+  struct PointEntry {
+    Vec4f positionRange;
+    Vec4f colorIntensity;
+  };
+
+  struct SpotEntry {
+    Vec4f positionRange;
+    Vec4f directionCone;
+    Vec4f colorIntensity;
+  };
+
+  struct Param {
+    Vec4i counts;
+    DirectionalEntry directional[MaxDirectionalLights];
+    PointEntry point[MaxPointLights];
+    SpotEntry spot[MaxSpotLights];
+  };
+
+  Param param{};
+  static constexpr u32 ResourceSize = sizeof(Param);
+
+  ResourceType getType() const override { return ResourceType::UniformBuffer; }
+  const void *getRawData() const override { return &param; }
+  u32 getByteSize() const override { return ResourceSize; }
+  StringID getBindingName() const override { return m_bindingName; }
+
+private:
+  StringID m_bindingName;
+};
+
+using SceneLightsDataSharedPtr = std::shared_ptr<SceneLightsData>;
+
 class DirectionalLight : public LightBase {
 public:
   /// Default supported passes: Forward + Deferred. Shadow participation is
@@ -78,14 +127,14 @@ public:
   [[nodiscard]] Vec3f getDirection() const;
   [[nodiscard]] Vec3f getColor() const;
   [[nodiscard]] float getIntensity() const;
-  [[nodiscard]] std::shared_ptr<SceneNode> getSceneNode() const;
+  [[nodiscard]] std::shared_ptr<SceneNode> getSceneNode() const override;
   void setDirection(const Vec3f &direction);
   void setColor(const Vec3f &color);
   void setIntensity(float intensity);
 
   void attachToSceneNode(const std::weak_ptr<Scene> &scene,
-                         const std::weak_ptr<SceneNode> &node);
-  void detachFromSceneNode();
+                         const std::weak_ptr<SceneNode> &node) override;
+  void detachFromSceneNode() override;
 
   IGpuResourceSharedPtr getUBO() const override { return m_ubo; }
   [[nodiscard]] DirectionalLightDataSharedPtr getDirectionalUBO() const {
@@ -105,5 +154,84 @@ private:
   std::weak_ptr<SceneNode> m_node;
 };
 using DirectionalLightSharedPtr = std::shared_ptr<DirectionalLight>;
+
+class PointLight final : public LightBase {
+public:
+  PointLight();
+
+  [[nodiscard]] Vec3f getColor() const;
+  [[nodiscard]] float getIntensity() const;
+  [[nodiscard]] float getRange() const;
+  [[nodiscard]] std::shared_ptr<SceneNode> getSceneNode() const override;
+  void setColor(const Vec3f &color);
+  void setIntensity(float intensity);
+  void setRange(float range);
+
+  void attachToSceneNode(const std::weak_ptr<Scene> &scene,
+                         const std::weak_ptr<SceneNode> &node) override;
+  void detachFromSceneNode() override;
+
+  IGpuResourceSharedPtr getUBO() const override { return nullptr; }
+  bool supportsPass(StringID pass) const override;
+  BoundingBox getDebugLocalBounds() const override;
+  void setSupportedPasses(std::initializer_list<StringID> passes);
+  void setSupportedPasses(const std::vector<StringID> &passes);
+
+private:
+  void emitLightPropertyChanged() const;
+
+  Vec3f m_color{1.0f, 0.98f, 0.9f};
+  float m_intensity = 1.0f;
+  float m_range = 5.0f;
+  std::unordered_set<StringID, StringID::Hash> m_supportedPasses;
+  std::weak_ptr<Scene> m_scene;
+  std::weak_ptr<SceneNode> m_node;
+};
+
+using PointLightSharedPtr = std::shared_ptr<PointLight>;
+
+class SpotLight final : public LightBase {
+public:
+  SpotLight();
+
+  [[nodiscard]] Vec3f getDirection() const;
+  [[nodiscard]] Vec3f getColor() const;
+  [[nodiscard]] float getIntensity() const;
+  [[nodiscard]] float getRange() const;
+  [[nodiscard]] float getInnerConeDegrees() const;
+  [[nodiscard]] float getOuterConeDegrees() const;
+  [[nodiscard]] std::shared_ptr<SceneNode> getSceneNode() const override;
+  void setDirection(const Vec3f &direction);
+  void setColor(const Vec3f &color);
+  void setIntensity(float intensity);
+  void setRange(float range);
+  void setInnerConeDegrees(float degrees);
+  void setOuterConeDegrees(float degrees);
+
+  void attachToSceneNode(const std::weak_ptr<Scene> &scene,
+                         const std::weak_ptr<SceneNode> &node) override;
+  void detachFromSceneNode() override;
+
+  IGpuResourceSharedPtr getUBO() const override { return nullptr; }
+  bool supportsPass(StringID pass) const override;
+  BoundingBox getDebugLocalBounds() const override;
+  void setSupportedPasses(std::initializer_list<StringID> passes);
+  void setSupportedPasses(const std::vector<StringID> &passes);
+
+private:
+  void emitLightPropertyChanged() const;
+
+  Vec3f m_direction{0.0f, -1.0f, 0.0f};
+  Vec3f m_color{1.0f, 0.98f, 0.9f};
+  float m_intensity = 1.0f;
+  float m_range = 8.0f;
+  float m_innerConeDegrees = 20.0f;
+  float m_outerConeDegrees = 35.0f;
+  std::unordered_set<StringID, StringID::Hash> m_supportedPasses;
+  std::weak_ptr<Scene> m_scene;
+  std::weak_ptr<SceneNode> m_node;
+};
+
+using SpotLightSharedPtr = std::shared_ptr<SpotLight>;
 
 } // namespace LX_core

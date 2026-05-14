@@ -212,6 +212,31 @@ void drawDirectionalLightDebug(const SceneNode &node,
                    DebugDraw::Color::yellow());
 }
 
+[[nodiscard]] Vec4f lightDebugColor(const Vec3f &color) {
+  return Vec4f{color.x, color.y, color.z, 1.0f};
+}
+
+void drawPointLightDebug(const SceneNode &node, const PointLight &light) {
+  const Vec3f origin =
+      Transform::fromMat4(node.getWorldTransform()).translation;
+  DebugDraw::wireSphere(origin, light.getRange(), lightDebugColor(light.getColor()));
+}
+
+void drawSpotLightDebug(const SceneNode &node, const SpotLight &light) {
+  Vec3f direction = light.getDirection();
+  if (direction.length2() <= 1e-6f) {
+    direction = Vec3f{0.0f, -1.0f, 0.0f};
+  } else {
+    direction = direction.normalized();
+  }
+  constexpr float kDegToRad = 3.14159265358979323846f / 180.0f;
+  const Vec3f origin =
+      Transform::fromMat4(node.getWorldTransform()).translation;
+  DebugDraw::cone(origin, direction, light.getRange(),
+                  light.getOuterConeDegrees() * kDegToRad,
+                  lightDebugColor(light.getColor()));
+}
+
 } // namespace
 
 ViewportOverlay::ViewportOverlay(CommandBus &commandBus,
@@ -545,17 +570,20 @@ void ViewportOverlay::enqueueDebugDraw() const {
   }
 
   for (const auto &light : m_scene.getLights()) {
-    const auto directionalLight =
-        std::dynamic_pointer_cast<DirectionalLight>(light);
-    if (!directionalLight) {
-      continue;
-    }
-
-    const auto node = directionalLight->getSceneNode();
+    const auto node = light->getSceneNode();
     if (!node) {
       continue;
     }
-    drawDirectionalLightDebug(*node, *directionalLight);
+    if (const auto directionalLight =
+            std::dynamic_pointer_cast<DirectionalLight>(light)) {
+      drawDirectionalLightDebug(*node, *directionalLight);
+    } else if (const auto pointLight =
+                   std::dynamic_pointer_cast<PointLight>(light)) {
+      drawPointLightDebug(*node, *pointLight);
+    } else if (const auto spotLight =
+                   std::dynamic_pointer_cast<SpotLight>(light)) {
+      drawSpotLightDebug(*node, *spotLight);
+    }
   }
 }
 
