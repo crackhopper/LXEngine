@@ -47,6 +47,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_inspector_panel
   test_viewport_overlay
   test_gizmo_adapter
+  test_lxe_editor_display_config
   test_lxe_editor_layout
   test_lxe_editor_interaction
   test_lxe_editor_session
