@@ -166,4 +166,12 @@ Inspector 的材质编辑不得直接改内存后绕过 history。需要补齐�
 
 ## 实施状态
 
-待实施。当前代码已经有 mask/camera/light 的 Inspector 与命令基础，但 mask UI 仍是 bit matrix，材质区块、`materialUri` 切换、node-level override、`apply_material_override` 与对应保存语义尚未落地。优先级紧跟 `041-d`，因为创建出来的测试对象如果不能直接换材质和改颜色，仍然要回到手写 YAML，目标没有真正达成。
+已实施并验证。Inspector 的 visibility/culling mask 已收敛为单值输入；Material 区块支持 URI、preset、node-level `MaterialUBO.baseColor` 覆盖和显式 `apply_material_override`。CommandBus、runtime material instance 更新、scene document round-trip 与 undo/redo 语义已通过集成测试覆盖。
+
+验证命令：
+
+- `cmake --build build --target test_command_bus test_command_bus_v2 test_scene_tree_panel test_inspector_panel test_scene_document test_scene_runtime test_generic_material_loader test_shader_compiler test_material_instance lxe_editor -j2`
+- `./build/src/test/test_command_bus`
+- `./build/src/test/test_inspector_panel`
+- `./build/src/test/test_scene_document`
+- `./build/src/test/test_scene_runtime`

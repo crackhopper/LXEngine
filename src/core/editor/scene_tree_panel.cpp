@@ -76,6 +76,51 @@ void appendUniquePath(std::vector<std::string> &paths, std::string_view path) {
   return primarySelected.has_value() && &primarySelected->get() == &node;
 }
 
+[[nodiscard]] std::string quoteToken(std::string_view text) {
+  std::string out;
+  out.reserve(text.size() + 2);
+  out.push_back('"');
+  for (const char c : text) {
+    if (c == '"' || c == '\\') {
+      out.push_back('\\');
+    }
+    out.push_back(c);
+  }
+  out.push_back('"');
+  return out;
+}
+
+[[nodiscard]] const char *defaultCreateNameForKind(std::string_view kind) {
+  if (kind == "primitive:cube") {
+    return "Cube";
+  }
+  if (kind == "primitive:sphere") {
+    return "Sphere";
+  }
+  if (kind == "primitive:plane") {
+    return "Plane";
+  }
+  if (kind == "primitive:cylinder") {
+    return "Cylinder";
+  }
+  if (kind == "primitive:cone") {
+    return "Cone";
+  }
+  if (kind == "light:directional") {
+    return "Directional Light";
+  }
+  if (kind == "light:point") {
+    return "Point Light";
+  }
+  if (kind == "light:spot") {
+    return "Spot Light";
+  }
+  if (kind == "camera:perspective") {
+    return "Camera";
+  }
+  return "Node";
+}
+
 } // namespace
 
 SceneTreePanel::SceneTreePanel(CommandBus &commandBus, EditorState &editorState,
@@ -349,6 +394,20 @@ void SceneTreePanel::drawNode(SceneNode &node) {
   if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen()) {
     const ImGuiIO &io = ImGui::GetIO();
     (void)handleNodeClick(node, io.KeyCtrl, io.KeyShift);
+  }
+
+  if (ImGui::BeginDragDropTarget()) {
+    if (const ImGuiPayload *payload =
+            ImGui::AcceptDragDropPayload("LXE_CREATE_KIND")) {
+      if (payload->Data != nullptr && payload->DataSize > 0) {
+        const std::string kind(static_cast<const char *>(payload->Data));
+        const std::string command = "add " + kind + " " +
+                                    quoteToken(defaultCreateNameForKind(kind)) +
+                                    " " + quoteToken(node.getPath());
+        (void)m_commandBus.dispatch(command);
+      }
+    }
+    ImGui::EndDragDropTarget();
   }
 
   if (!node.isSceneRoot() && ImGui::BeginPopupContextItem()) {

@@ -199,4 +199,13 @@ Inspector 不再通过节点名字猜测是否是 light。它应根据 scene doc
 
 ## 实施状态
 
-待实施。当前代码只具备 directional light 的 core/runtime/document/Inspector 路径；`light.kind`、Point / Spot、`SceneLightsUBO`、三类 light 创建与可视化仍未落地。优先级排在 `041-f` 之后，因为它依赖前面的场景创建、编辑和复制语义稳定。
+已实施并验证。Scene document 已升级为 `light.kind` typed payload 并兼容旧 `directionalLight` 读取；core/runtime 支持 Directional / Point / Spot Light，CommandBus 与 Inspector 支持三类 light 的创建和编辑，editor overlay 提供对应调试代理，`SceneLightsUBO` 已登记为 system-owned binding 并保留旧 `LightUBO` 兼容路径。
+
+验证命令：
+
+- `cmake --build build --target test_command_bus test_inspector_panel test_scene_document test_scene_runtime test_material_instance lxe_editor -j2`
+- `./build/src/test/test_command_bus`
+- `./build/src/test/test_inspector_panel`
+- `./build/src/test/test_scene_document`
+- `./build/src/test/test_scene_runtime`
+- `./build/src/test/test_material_instance`

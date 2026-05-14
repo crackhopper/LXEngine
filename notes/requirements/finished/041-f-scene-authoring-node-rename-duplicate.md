@@ -142,4 +142,11 @@
 
 ## 实施状态
 
-待实施。当前只有 Inspector Rename 与 Scene Tree Remove；Duplicate、Copy/Paste、Scene Tree Rename 入口、gameplay camera path 同步和 document payload 深复制仍未实现。优先级低于 `041-d` / `041-e`，但仍保留在 active 队列中，因为它直接提升“批量搭测试场景”的速度。
+已实施并验证。Scene Tree 已提供 Rename / Duplicate / Remove，聚焦时支持 `Ctrl+C` / `Ctrl+V`，CommandBus 提供 `copy` 与 `paste_as_sibling`，复制结果保留 primitive、camera、typed light、material URI 与 node material override 等可保存 payload，并支持 undo/redo。
+
+验证命令：
+
+- `cmake --build build --target test_command_bus test_command_bus_v2 test_scene_tree_panel test_scene_document test_scene_runtime lxe_editor -j2`
+- `./build/src/test/test_command_bus_v2`
+- `./build/src/test/test_scene_tree_panel`
+- `./build/src/test/test_scene_runtime`

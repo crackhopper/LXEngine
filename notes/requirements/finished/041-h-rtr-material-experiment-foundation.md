@@ -198,4 +198,14 @@ clear <path>.nodeMaterial.<binding>.<member>
 
 ## 实施状态
 
-待实施。当前材质加载和反射基础已经存在，但 editor 侧材质候选、通用 node-level 参数覆盖、`rtr_*` 模板和 `SceneLightsUBO` 相关路径尚未落地。优先级排在 `041-g` 之后，因为 Gooch 等实验材质通常需要先明确使用单光源还是多光源数据合同。
+已实施并验证。新增 `rtr_experiment_template` shader/material 模板，Inspector 可发现 `rtr_*.material` 候选并展示反射驱动参数，scene document/runtime 支持通用 `nodeMaterialOverrides` 参数表且保留 `baseColor` 兼容入口，CommandBus 支持 `set` / `clear <path>.nodeMaterial.<binding>.<member>`。
+
+验证命令：
+
+- `cmake --build build --target test_generic_material_loader test_shader_compiler test_scene_document test_command_bus test_inspector_panel test_scene_runtime lxe_editor -j2`
+- `./build/src/test/test_generic_material_loader`
+- `./build/src/test/test_shader_compiler`
+- `./build/src/test/test_scene_document`
+- `./build/src/test/test_command_bus`
+- `./build/src/test/test_inspector_panel`
+- `./build/src/test/test_scene_runtime`

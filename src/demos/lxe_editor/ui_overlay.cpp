@@ -209,6 +209,37 @@ void drawResetIcon(ImDrawList &drawList, const ImVec2 min, const ImVec2 max,
   return clicked;
 }
 
+[[nodiscard]] const char *defaultCreateNameForKind(std::string_view kind) {
+  if (kind == "primitive:cube") {
+    return "Cube";
+  }
+  if (kind == "primitive:sphere") {
+    return "Sphere";
+  }
+  if (kind == "primitive:plane") {
+    return "Plane";
+  }
+  if (kind == "primitive:cylinder") {
+    return "Cylinder";
+  }
+  if (kind == "primitive:cone") {
+    return "Cone";
+  }
+  if (kind == "light:directional") {
+    return "Directional Light";
+  }
+  if (kind == "light:point") {
+    return "Point Light";
+  }
+  if (kind == "light:spot") {
+    return "Spot Light";
+  }
+  if (kind == "camera:perspective") {
+    return "Camera";
+  }
+  return "Node";
+}
+
 } // namespace
 
 void UiOverlay::attach(CameraRig &rig, LX_core::CommandBus &commandBus,
@@ -296,6 +327,31 @@ void UiOverlay::dispatchCreatePaletteItem(std::string_view kind,
   const std::string line =
       "add " + std::string(kind) + " " + quoteToken(displayName);
   (void)m_commandBus->get().dispatch(line);
+}
+
+void UiOverlay::dispatchCreatePaletteDrop(std::string_view kind) {
+  dispatchCreatePaletteItem(kind, defaultCreateNameForKind(kind));
+}
+
+void UiOverlay::drawSceneCreateDropTarget() {
+  if (!m_commandBus || !m_sceneViewRect.isValid()) {
+    return;
+  }
+  const ImRect dropRect(
+      ImVec2(m_sceneViewRect.x, m_sceneViewRect.y),
+      ImVec2(m_sceneViewRect.x + m_sceneViewRect.width,
+             m_sceneViewRect.y + m_sceneViewRect.height));
+  const ImGuiID id = ImGui::GetID("##scene_create_drop_target");
+  if (!ImGui::BeginDragDropTargetCustom(dropRect, id)) {
+    return;
+  }
+  if (const ImGuiPayload *payload =
+          ImGui::AcceptDragDropPayload("LXE_CREATE_KIND")) {
+    if (payload->Data != nullptr && payload->DataSize > 0) {
+      dispatchCreatePaletteDrop(static_cast<const char *>(payload->Data));
+    }
+  }
+  ImGui::EndDragDropTarget();
 }
 
 void UiOverlay::applyUiFontScale() {
@@ -647,8 +703,10 @@ void UiOverlay::drawToolbarPanel() {
       {"Cylinder", "primitive:cylinder", "Cylinder"},
       {"Cone", "primitive:cone", "Cone"},
   }};
-  static constexpr std::array<CreatePaletteItem, 2> kSceneObjectItems = {{
+  static constexpr std::array<CreatePaletteItem, 4> kSceneObjectItems = {{
       {"Directional Light", "light:directional", "Directional Light"},
+      {"Point Light", "light:point", "Point Light"},
+      {"Spot Light", "light:spot", "Spot Light"},
       {"Camera", "camera:perspective", "Camera"},
   }};
 
@@ -811,6 +869,7 @@ void UiOverlay::drawFrame(const LX_core::Vec2f &windowSize) {
 
   drawHelpPanel();
   drawPreferencesPanel();
+  drawSceneCreateDropTarget();
   if (m_viewportOverlay) {
     m_viewportOverlay->get().drawSceneOverlay(m_sceneViewRect);
   }

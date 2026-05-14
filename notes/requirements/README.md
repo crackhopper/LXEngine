@@ -36,25 +36,7 @@
 
 ## 当前 pending REQ（实施顺序快照，2026-05-14）
 
-本轮按代码事实重整后，active REQ 不再围绕“编辑器 chrome / 组件成熟度 / DebugDraw v2”展开，而是收敛到一个更明确的目标：**让 `lxe_editor` 可以快速搭建并保存测试场景文件**。
-
-| 文件号 | 主题 | 说明 |
-|---|---|---|
-| [041-d](041-d-scene-authoring-toolbar-palette.md) | 工具栏几何体 / 光源 / 相机拖拽创建 | 建立最快的场景创建入口 |
-| [041-e](041-e-scene-authoring-inspector-material-and-visibility.md) | Inspector 的材质 / 颜色 / 可见性收敛 | 让创建后的对象能直接在面板里细调并保存 |
-| [041-f](041-f-scene-authoring-node-rename-duplicate.md) | Rename / Duplicate 对齐 scene document | 提升批量搭测试场景的编辑效率 |
-| [041-g](041-g-rtr-light-experiment-foundation.md) | RTR 第五章多类型光源实验底座 | 为 Directional / Point / Spot Light 建立可保存、可编辑、可绑定的数据入口 |
-| [041-h](041-h-rtr-material-experiment-foundation.md) | RTR 第五章实验材质接入底座 | 让新增实验材质能快速挂到场景节点并保存节点级参数覆盖 |
-
-## 当前代码对照（2026-05-14）
-
-本轮按当前工作区代码复核后，active REQ 的主线仍成立，但有几项前置事实需要写清楚：
-
-- `SceneDocument` 已能保存 `mesh.uri` / `material.uri` / `camera` / `directionalLight`，`SceneRuntime` 已能从文档恢复 camera 和 directional light，并在保存时捕获运行时 camera / light 状态。
-- `InspectorPanel` 已能编辑 name、transform、`visibilityMask`、camera 投影 / `cullingMask`、directional light 的 direction / color / intensity；mask UI 仍是 32 位 checkbox 矩阵，还不是单值输入。
-- `CommandBus` 当前仍只有 `add mesh|light|camera <name> [parentPath]`，其中 `mesh` 是空 renderable 节点，`light` 是 directional light，占位命令尚未升级为 `primitive:*` / `light:*` / `camera:*` 的 scene-document 作者入口。
-- `SceneTreePanel` 右键菜单当前只有 `Remove`；Rename 通过 Inspector name 字段实现，Duplicate / Copy / Paste 尚未实现。
-- 编辑器 overlay 已有 camera frustum 与 directional light 线框/箭头调试代理，并且当前工作区新增了拖拽 gizmo 时抑制这些 editor helper 的逻辑；这属于现有编辑体验事实，不等同于 `041-d` 的创建盘已经完成。
+当前没有 active REQ。`041-d` 到 `041-h` 已完成验证并归档到 `finished/`，本轮场景作者链路与 RTR 第五章实验底座进入已落地状态。
 
 ## 本轮删除的 active REQ（2026-05-11）
 
@@ -69,6 +51,7 @@
 
 ## 历史
 
+- 2026-05-14：`REQ-041-d` 到 `REQ-041-h` 完成验证并归档到 `finished/`。`lxe_editor` 已具备测试场景 primitive/camera/light 创建、Inspector 材质/可见性编辑、节点复制、typed light、RTR 实验材质模板与节点级参数覆盖。
 - 2026-05-14：按当前代码复核 active REQ，补充每个需求的“当前代码对照”，澄清已存在的 camera / directional light / Inspector / helper overlay 基础能力与仍待实现的 scene authoring 能力边界。
 - 2026-05-13：清理 `finished/`，删除 `REQ-034` 及以前的过时归档，只保留近期 10 个需求（`REQ-035` 到 `REQ-041-c`）。仍有价值的上下文下沉到 concept / subsystem / roadmap / spec，未完成存疑点记录到 `tmp/notes/unfinished-finished-requirements.md`。
 - 2026-05-11：按当前代码与目标重整 active REQ。删除 `041-g`~`041-j`，并把保留需求改写为面向测试场景搭建的 `041-d` / `041-e` / `041-f`。

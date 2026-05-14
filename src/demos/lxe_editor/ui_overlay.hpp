@@ -71,6 +71,8 @@ private:
   void ensureInitialPanelLayouts();
   void dispatchCreatePaletteItem(std::string_view kind,
                                  std::string_view displayName);
+  void dispatchCreatePaletteDrop(std::string_view kind);
+  void drawSceneCreateDropTarget();
   void drawToolbarPanel();
   void drawStatsPanel();
   void drawHelpPanel();

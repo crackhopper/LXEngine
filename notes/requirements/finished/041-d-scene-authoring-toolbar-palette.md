@@ -153,4 +153,17 @@
 
 ## 实施状态
 
-待实施。当前代码已有 toolbar 外壳、粗粒度 `add`、camera/directional light 保存与 helper overlay；仍缺创建盘、builtin primitive runtime 解析、拖拽放置和具体命令语义。优先级为当前 active REQ 最高，因为它直接决定我们能否高效搭出可保存的测试场景文件。
+已实施并验证。工具栏创建盘已接入 primitive、Directional / Point / Spot Light 与 Camera；点击、视口拖放、Scene Tree 拖放均走 CommandBus `add` 路径。Builtin primitive runtime 构建、scene document 保存/加载、创建历史 undo/redo 和 CPU-only ImGui 绘制已通过集成测试覆盖。
+
+验证命令：
+
+- `cmake --build build --target test_command_bus test_command_bus_v2 test_scene_tree_panel test_inspector_panel test_scene_document test_scene_runtime test_generic_material_loader test_shader_compiler test_material_instance lxe_editor -j2`
+- `./build/src/test/test_command_bus`
+- `./build/src/test/test_command_bus_v2`
+- `./build/src/test/test_scene_tree_panel`
+- `./build/src/test/test_inspector_panel`
+- `./build/src/test/test_scene_document`
+- `./build/src/test/test_scene_runtime`
+- `./build/src/test/test_generic_material_loader`
+- `./build/src/test/test_shader_compiler`
+- `./build/src/test/test_material_instance`
