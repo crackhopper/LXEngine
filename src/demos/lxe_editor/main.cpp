@@ -30,15 +30,20 @@
 #include "selection_camera_input.hpp"
 #include "ui_overlay.hpp"
 
+#include "yaml-cpp/yaml.h"
+
 #include <imgui.h>
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <exception>
 #include <filesystem>
 #include <functional>
 #include <iostream>
+#include <iterator>
 #include <memory>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -146,18 +151,473 @@ void printDisplayList(const std::vector<LX_core::DisplayInfo> &displays,
                       std::string_view activeDisplayKey) {
   std::cout << "[lxe_editor] displays\n";
   for (const auto &display : displays) {
-    const char *active =
-        display.key == activeDisplayKey ? " active" : "";
+    const char *active = display.key == activeDisplayKey ? " active" : "";
     std::cout << "  [" << display.index << "] key=" << display.key
               << " label=\"" << display.label << "\" bounds=("
               << display.bounds.x << "," << display.bounds.y << " "
               << display.bounds.width << "x" << display.bounds.height
               << ") usable=(" << display.usableBounds.x << ","
-              << display.usableBounds.y << " "
-              << display.usableBounds.width << "x"
-              << display.usableBounds.height << ") scale="
-              << display.contentScale << active << "\n";
+              << display.usableBounds.y << " " << display.usableBounds.width
+              << "x" << display.usableBounds.height
+              << ") scale=" << display.contentScale << active << "\n";
   }
+}
+
+[[nodiscard]] const demo::EditorDisplayProfile *
+findDisplayProfile(const demo::EditorDisplayConfigDocument &document,
+                   std::string_view key) {
+  const auto it = std::find_if(
+      document.displayProfiles.begin(), document.displayProfiles.end(),
+      [key](const demo::EditorDisplayProfile &profile) {
+        return profile.key == key;
+      });
+  return it == document.displayProfiles.end() ? nullptr : &*it;
+}
+
+[[nodiscard]] demo::EditorDisplayProfile *
+findDisplayProfile(demo::EditorDisplayConfigDocument &document,
+                   std::string_view key) {
+  const auto it = std::find_if(
+      document.displayProfiles.begin(), document.displayProfiles.end(),
+      [key](const demo::EditorDisplayProfile &profile) {
+        return profile.key == key;
+      });
+  return it == document.displayProfiles.end() ? nullptr : &*it;
+}
+
+[[nodiscard]] std::string boolJson(const bool value) {
+  return value ? "true" : "false";
+}
+
+[[nodiscard]] std::string
+windowPlacementJson(const std::optional<LX_core::WindowPlacement> &placement) {
+  if (!placement.has_value()) {
+    return "null";
+  }
+  std::ostringstream out;
+  out << "{\"x\":" << placement->x << ",\"y\":" << placement->y
+      << ",\"width\":" << placement->width
+      << ",\"height\":" << placement->height
+      << ",\"maximized\":" << boolJson(placement->maximized) << "}";
+  return out.str();
+}
+
+[[nodiscard]] std::string
+layoutWindowsJson(const std::vector<demo::EditorWindowLayout> &windows) {
+  std::ostringstream out;
+  out << "[";
+  for (usize i = 0; i < windows.size(); ++i) {
+    if (i != 0) {
+      out << ",";
+    }
+    const auto &window = windows[i];
+    out << "{\"id\":\"" << demo::apiJsonEscape(window.id) << "\""
+        << ",\"visible\":" << boolJson(window.visible)
+        << ",\"collapsed\":" << boolJson(window.collapsed)
+        << ",\"x\":" << window.x << ",\"y\":" << window.y
+        << ",\"width\":" << window.width << ",\"height\":" << window.height
+        << "}";
+  }
+  out << "]";
+  return out.str();
+}
+
+[[nodiscard]] std::string
+configJson(const demo::EditorConfigDocument &document) {
+  std::ostringstream out;
+  out << "{\"window\":" << windowPlacementJson(document.windowPlacement)
+      << ",\"layout\":{\"windows\":"
+      << layoutWindowsJson(document.layoutWindows) << "}"
+      << ",\"preferences\":{\"uiFontScale\":"
+      << document.preferences.uiFontScale << "}}";
+  return out.str();
+}
+
+[[nodiscard]] std::string windowPlacementOverrideJson(
+    const std::optional<demo::EditorWindowPlacementOverride> &placement) {
+  if (!placement.has_value()) {
+    return "null";
+  }
+  std::ostringstream out;
+  out << "{";
+  bool first = true;
+  auto addInt = [&](std::string_view key, const std::optional<int> &value) {
+    if (!value.has_value()) {
+      return;
+    }
+    out << (first ? "" : ",") << "\"" << key << "\":" << *value;
+    first = false;
+  };
+  addInt("x", placement->x);
+  addInt("y", placement->y);
+  addInt("width", placement->width);
+  addInt("height", placement->height);
+  if (placement->maximized.has_value()) {
+    out << (first ? "" : ",")
+        << "\"maximized\":" << boolJson(*placement->maximized);
+  }
+  out << "}";
+  return out.str();
+}
+
+[[nodiscard]] std::string layoutWindowOverridesJson(
+    const std::vector<demo::EditorWindowLayoutOverride> &windows) {
+  std::ostringstream out;
+  out << "[";
+  for (usize i = 0; i < windows.size(); ++i) {
+    if (i != 0) {
+      out << ",";
+    }
+    const auto &window = windows[i];
+    out << "{\"id\":\"" << demo::apiJsonEscape(window.id) << "\"";
+    if (window.visible.has_value()) {
+      out << ",\"visible\":" << boolJson(*window.visible);
+    }
+    if (window.collapsed.has_value()) {
+      out << ",\"collapsed\":" << boolJson(*window.collapsed);
+    }
+    if (window.x.has_value()) {
+      out << ",\"x\":" << *window.x;
+    }
+    if (window.y.has_value()) {
+      out << ",\"y\":" << *window.y;
+    }
+    if (window.width.has_value()) {
+      out << ",\"width\":" << *window.width;
+    }
+    if (window.height.has_value()) {
+      out << ",\"height\":" << *window.height;
+    }
+    out << "}";
+  }
+  out << "]";
+  return out.str();
+}
+
+[[nodiscard]] std::string
+overridesJson(const demo::EditorConfigOverrideDocument &document) {
+  std::ostringstream out;
+  out << "{\"window\":" << windowPlacementOverrideJson(document.windowPlacement)
+      << ",\"layout\":{\"windows\":"
+      << layoutWindowOverridesJson(document.layoutWindows) << "}"
+      << ",\"preferences\":{";
+  if (document.preferences.uiFontScale.has_value()) {
+    out << "\"uiFontScale\":" << *document.preferences.uiFontScale;
+  }
+  out << "}}";
+  return out.str();
+}
+
+[[nodiscard]] std::string
+displayListJson(const std::vector<LX_core::DisplayInfo> &displays,
+                const demo::EditorDisplayConfigDocument &document,
+                std::string_view activeDisplayKey) {
+  std::ostringstream out;
+  out << "{\"profiles\":[";
+  for (usize i = 0; i < document.displayProfiles.size(); ++i) {
+    if (i != 0) {
+      out << ",";
+    }
+    const auto &profile = document.displayProfiles[i];
+    out << "{\"key\":\"" << demo::apiJsonEscape(profile.key) << "\""
+        << ",\"label\":\"" << demo::apiJsonEscape(profile.label) << "\""
+        << ",\"available\":" << boolJson(profile.available)
+        << ",\"active\":" << boolJson(profile.key == activeDisplayKey) << "}";
+  }
+  out << "],\"displayCount\":" << displays.size() << "}";
+  return out.str();
+}
+
+[[nodiscard]] std::string displayActiveJson(std::string_view activeDisplayKey) {
+  return "{\"activeDisplay\":\"" + demo::apiJsonEscape(activeDisplayKey) +
+         "\"}";
+}
+
+[[nodiscard]] std::string
+displayConfigGetJson(const demo::EditorConfigState &configState,
+                     const demo::EditorDisplayConfigDocument &document,
+                     std::string_view startupDisplayKey,
+                     std::string_view requestedKey) {
+  if (requestedKey == "default") {
+    return "{\"key\":\"default\",\"config\":" +
+           configJson(document.displayDefault) + "}";
+  }
+
+  const std::string key = requestedKey == "active"
+                              ? std::string(startupDisplayKey)
+                              : std::string(requestedKey);
+  const auto *profile = findDisplayProfile(document, key);
+  if (profile == nullptr) {
+    return "{\"ok\":false,\"error\":\"unknown display profile: " +
+           demo::apiJsonEscape(key) + "\"}";
+  }
+  const demo::EditorConfigDocument effective =
+      configState.composeEffectiveConfig(document, key);
+  std::ostringstream out;
+  out << "{\"key\":\"" << demo::apiJsonEscape(key) << "\""
+      << ",\"profile\":{\"key\":\"" << demo::apiJsonEscape(profile->key)
+      << "\",\"label\":\"" << demo::apiJsonEscape(profile->label)
+      << "\",\"available\":" << boolJson(profile->available) << "}"
+      << ",\"overrides\":" << overridesJson(profile->overrides)
+      << ",\"effective\":" << configJson(effective) << "}";
+  return out.str();
+}
+
+void applyWindowPatch(const YAML::Node &node,
+                      demo::EditorConfigDocument &document) {
+  if (!node || !node.IsMap()) {
+    return;
+  }
+  LX_core::WindowPlacement placement =
+      document.windowPlacement.value_or(LX_core::WindowPlacement{});
+  if (const auto value = node["x"]; value) {
+    placement.x = value.as<int>();
+  }
+  if (const auto value = node["y"]; value) {
+    placement.y = value.as<int>();
+  }
+  if (const auto value = node["width"]; value) {
+    placement.width = value.as<int>();
+  }
+  if (const auto value = node["height"]; value) {
+    placement.height = value.as<int>();
+  }
+  if (const auto value = node["maximized"]; value) {
+    placement.maximized = value.as<bool>();
+  }
+  document.windowPlacement = placement;
+}
+
+void applyWindowPatch(const YAML::Node &node,
+                      demo::EditorConfigOverrideDocument &document) {
+  if (!node || !node.IsMap()) {
+    return;
+  }
+  demo::EditorWindowPlacementOverride placement =
+      document.windowPlacement.value_or(demo::EditorWindowPlacementOverride{});
+  if (const auto value = node["x"]; value) {
+    placement.x = value.as<int>();
+  }
+  if (const auto value = node["y"]; value) {
+    placement.y = value.as<int>();
+  }
+  if (const auto value = node["width"]; value) {
+    placement.width = value.as<int>();
+  }
+  if (const auto value = node["height"]; value) {
+    placement.height = value.as<int>();
+  }
+  if (const auto value = node["maximized"]; value) {
+    placement.maximized = value.as<bool>();
+  }
+  document.windowPlacement = placement;
+}
+
+void applyLayoutPatch(const YAML::Node &node,
+                      demo::EditorConfigDocument &document) {
+  if (!node || !node.IsMap()) {
+    return;
+  }
+  const auto windows = node["windows"];
+  if (!windows || !windows.IsSequence()) {
+    return;
+  }
+  for (const auto &windowNode : windows) {
+    if (!windowNode["id"]) {
+      continue;
+    }
+    const std::string id = windowNode["id"].as<std::string>();
+    if (id.empty()) {
+      continue;
+    }
+    auto layout = demo::findEditorWindowLayout(document, id);
+    if (!layout.has_value()) {
+      document.layoutWindows.push_back(demo::EditorWindowLayout{.id = id});
+      layout = std::ref(document.layoutWindows.back());
+    }
+    auto &window = layout->get();
+    if (const auto value = windowNode["visible"]; value) {
+      window.visible = value.as<bool>();
+    }
+    if (const auto value = windowNode["collapsed"]; value) {
+      window.collapsed = value.as<bool>();
+    }
+    if (const auto value = windowNode["x"]; value) {
+      window.x = value.as<int>();
+    }
+    if (const auto value = windowNode["y"]; value) {
+      window.y = value.as<int>();
+    }
+    if (const auto value = windowNode["width"]; value) {
+      window.width = value.as<int>();
+    }
+    if (const auto value = windowNode["height"]; value) {
+      window.height = value.as<int>();
+    }
+  }
+}
+
+void applyLayoutPatch(const YAML::Node &node,
+                      demo::EditorConfigOverrideDocument &document) {
+  if (!node || !node.IsMap()) {
+    return;
+  }
+  const auto windows = node["windows"];
+  if (!windows || !windows.IsSequence()) {
+    return;
+  }
+  for (const auto &windowNode : windows) {
+    if (!windowNode["id"]) {
+      continue;
+    }
+    const std::string id = windowNode["id"].as<std::string>();
+    if (id.empty()) {
+      continue;
+    }
+    auto it = std::find_if(
+        document.layoutWindows.begin(), document.layoutWindows.end(),
+        [&id](const demo::EditorWindowLayoutOverride &layout) {
+          return layout.id == id;
+        });
+    if (it == document.layoutWindows.end()) {
+      document.layoutWindows.push_back(
+          demo::EditorWindowLayoutOverride{.id = id});
+      it = std::prev(document.layoutWindows.end());
+    }
+    if (const auto value = windowNode["visible"]; value) {
+      it->visible = value.as<bool>();
+    }
+    if (const auto value = windowNode["collapsed"]; value) {
+      it->collapsed = value.as<bool>();
+    }
+    if (const auto value = windowNode["x"]; value) {
+      it->x = value.as<int>();
+    }
+    if (const auto value = windowNode["y"]; value) {
+      it->y = value.as<int>();
+    }
+    if (const auto value = windowNode["width"]; value) {
+      it->width = value.as<int>();
+    }
+    if (const auto value = windowNode["height"]; value) {
+      it->height = value.as<int>();
+    }
+  }
+}
+
+void applyConfigPatch(const YAML::Node &patch,
+                      demo::EditorConfigDocument &document) {
+  const YAML::Node root =
+      patch["displayDefault"] ? patch["displayDefault"] : patch;
+  applyWindowPatch(root["window"], document);
+  applyLayoutPatch(root["layout"], document);
+  if (const auto preferences = root["preferences"];
+      preferences && preferences.IsMap()) {
+    if (const auto value = preferences["uiFontScale"]; value) {
+      document.preferences.uiFontScale = value.as<float>();
+    }
+  }
+}
+
+void applyConfigPatch(const YAML::Node &patch,
+                      demo::EditorConfigOverrideDocument &document) {
+  const YAML::Node root = patch["overrides"] ? patch["overrides"] : patch;
+  applyWindowPatch(root["window"], document);
+  applyLayoutPatch(root["layout"], document);
+  if (const auto preferences = root["preferences"];
+      preferences && preferences.IsMap()) {
+    if (const auto value = preferences["uiFontScale"]; value) {
+      document.preferences.uiFontScale = value.as<float>();
+    }
+  }
+}
+
+bool saveDisplayDocumentPreservingActive(
+    demo::EditorConfigState &configState,
+    const std::vector<LX_core::DisplayInfo> &displays,
+    demo::EditorDisplayConfigDocument &document,
+    std::string_view currentDisplayKey,
+    const demo::EditorConfigDocument &currentDisplayEffectiveConfig) {
+  const std::string requestedActiveDisplay =
+      document.activeDisplay.empty() ? std::string(currentDisplayKey)
+                                     : document.activeDisplay;
+  if (!configState.saveDisplayDocument(document, currentDisplayKey,
+                                       currentDisplayEffectiveConfig)) {
+    return false;
+  }
+  document = configState.loadOrCreateForDisplays(displays);
+  if (requestedActiveDisplay == currentDisplayKey) {
+    return true;
+  }
+
+  document.activeDisplay = requestedActiveDisplay;
+  const demo::EditorConfigDocument selectedEffective =
+      configState.composeEffectiveConfig(document, requestedActiveDisplay);
+  if (!configState.saveDisplayDocument(document, requestedActiveDisplay,
+                                       selectedEffective)) {
+    return false;
+  }
+  document = configState.loadOrCreateForDisplays(displays);
+  return true;
+}
+
+[[nodiscard]] std::string
+displayConfigSetJson(demo::EditorConfigState &configState,
+                     const std::vector<LX_core::DisplayInfo> &displays,
+                     demo::EditorDisplayConfigDocument &document,
+                     const demo::EditorConfigDocument &currentEffectiveConfig,
+                     std::string_view activeDisplayKey, std::string_view key,
+                     std::string_view patchText) {
+  try {
+    const YAML::Node patch = YAML::Load(std::string(patchText));
+    if (!patch || !patch.IsMap()) {
+      return "{\"ok\":false,\"error\":\"display config patch must be a map\"}";
+    }
+    if (key == "default") {
+      applyConfigPatch(patch, document.displayDefault);
+    } else {
+      auto *profile = findDisplayProfile(document, key);
+      if (profile == nullptr) {
+        return "{\"ok\":false,\"error\":\"unknown display profile: " +
+               demo::apiJsonEscape(key) + "\"}";
+      }
+      applyConfigPatch(patch, profile->overrides);
+    }
+    const demo::EditorConfigDocument effective =
+        key == "default" || key == activeDisplayKey
+            ? configState.composeEffectiveConfig(document, activeDisplayKey)
+            : currentEffectiveConfig;
+    if (!saveDisplayDocumentPreservingActive(configState, displays, document,
+                                             activeDisplayKey, effective)) {
+      return "{\"ok\":false,\"error\":\"failed to save editor_config.yaml\"}";
+    }
+    return "{\"ok\":true,\"key\":\"" + demo::apiJsonEscape(key) +
+           "\",\"saved\":true}";
+  } catch (const std::exception &error) {
+    return "{\"ok\":false,\"error\":\"" + demo::apiJsonEscape(error.what()) +
+           "\"}";
+  }
+}
+
+[[nodiscard]] std::string
+displaySelectJson(demo::EditorConfigState &configState,
+                  const std::vector<LX_core::DisplayInfo> &displays,
+                  demo::EditorDisplayConfigDocument &document,
+                  const demo::EditorConfigDocument &currentEffectiveConfig,
+                  std::string_view currentDisplayKey, std::string_view key) {
+  if (findDisplayProfile(document, key) == nullptr) {
+    return "{\"ok\":false,\"error\":\"unknown display profile: " +
+           demo::apiJsonEscape(key) + "\"}";
+  }
+  document.activeDisplay = std::string(key);
+  if (!saveDisplayDocumentPreservingActive(configState, displays, document,
+                                           currentDisplayKey,
+                                           currentEffectiveConfig)) {
+    return "{\"ok\":false,\"error\":\"failed to save editor_config.yaml\"}";
+  }
+  return "{\"ok\":true,\"activeDisplay\":\"" + demo::apiJsonEscape(key) +
+         "\",\"restartRequired\":true,\"message\":\"restart required to apply "
+         "display selection\"}";
 }
 
 [[nodiscard]] int currentProcessId() {
@@ -313,8 +773,9 @@ int main(int argc, char **argv) {
     demo::EditorConfigDocument editorConfig =
         configState.composeEffectiveConfig(displayConfig, startupDisplay.key);
     if (!editorConfig.windowPlacement.has_value()) {
-      editorConfig.windowPlacement = LX_core::makeDefaultWindowPlacementForDisplay(
-          startupDisplay, kWindowWidth, kWindowHeight);
+      editorConfig.windowPlacement =
+          LX_core::makeDefaultWindowPlacementForDisplay(
+              startupDisplay, kWindowWidth, kWindowHeight);
     }
 
     auto window = std::make_shared<LX_infra::Window>(
@@ -333,7 +794,33 @@ int main(int argc, char **argv) {
     demo::UiOverlay ui;
     demo::LxeEditorSession session(rig, ui, editorState);
     session.editorConfig() = editorConfig;
-    session.initialize();
+    demo::LxeEditorSession::DisplayCommandHooks displayCommandHooks{
+        .displayListJson =
+            [&]() {
+              return displayListJson(displays, displayConfig,
+                                     startupDisplay.key);
+            },
+        .displayActiveJson =
+            [&]() { return displayActiveJson(startupDisplay.key); },
+        .displayConfigGetJson =
+            [&](std::string_view key) {
+              return displayConfigGetJson(configState, displayConfig,
+                                          startupDisplay.key, key);
+            },
+        .displayConfigSet =
+            [&](std::string_view key, std::string_view patch) {
+              return displayConfigSetJson(configState, displays, displayConfig,
+                                          session.editorConfig(),
+                                          startupDisplay.key, key, patch);
+            },
+        .displaySelect =
+            [&](std::string_view key) {
+              return displaySelectJson(configState, displays, displayConfig,
+                                       session.editorConfig(),
+                                       startupDisplay.key, key);
+            },
+    };
+    session.initialize(displayCommandHooks);
     ClosePromptState closePrompt;
     demo::ApiTokenState apiTokenState(resolveRuntimePath("data/lxe_editor"));
     const std::string apiToken =
@@ -408,11 +895,24 @@ int main(int argc, char **argv) {
                   [&session](std::string_view line) {
                     session.recordCommandHistoryLine(line);
                   },
-              .recording =
-                  [&session]()
-                      -> std::optional<
-                          std::reference_wrapper<demo::RecordingController>> {
-                    return session.recording();
+              .recording = [&session]()
+                  -> std::optional<
+                      std::reference_wrapper<demo::RecordingController>> {
+                return session.recording();
+              },
+              .displayListJson = displayCommandHooks.displayListJson,
+              .displayActiveJson = displayCommandHooks.displayActiveJson,
+              .displayConfigGetJson =
+                  [&](const std::string &key) {
+                    return displayCommandHooks.displayConfigGetJson(key);
+                  },
+              .displayConfigSet =
+                  [&](const std::string &key, const std::string &patch) {
+                    return displayCommandHooks.displayConfigSet(key, patch);
+                  },
+              .displaySelect =
+                  [&](const std::string &key) {
+                    return displayCommandHooks.displaySelect(key);
                   },
           });
     };
@@ -425,8 +925,9 @@ int main(int argc, char **argv) {
       drawClosePrompt(closePrompt, session);
       session.editorConfig().windowPlacement = window->getPlacement();
       if (ui.consumeConfigDirty()) {
-        (void)configState.saveDisplayDocument(
-            displayConfig, startupDisplay.key, session.editorConfig());
+        (void)saveDisplayDocumentPreservingActive(
+            configState, displays, displayConfig, startupDisplay.key,
+            session.editorConfig());
       }
     });
 
@@ -525,8 +1026,9 @@ int main(int argc, char **argv) {
                             "runtime_state.yaml");
     apiServer.stop();
     session.editorConfig().windowPlacement = window->getPlacement();
-    (void)configState.saveDisplayDocument(displayConfig, startupDisplay.key,
-                                          session.editorConfig());
+    (void)saveDisplayDocumentPreservingActive(configState, displays,
+                                              displayConfig, startupDisplay.key,
+                                              session.editorConfig());
     session.persistEditorData();
     renderer->shutdown();
     return 0;

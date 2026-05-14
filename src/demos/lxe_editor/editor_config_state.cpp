@@ -633,15 +633,75 @@ bool writeYamlToConfig(const std::filesystem::path &rootDir,
     return false;
   }
 
-  std::ofstream file(configPath,
+  std::filesystem::path tempPath = configPath;
+  tempPath += ".tmp";
+  std::filesystem::path backupPath = configPath;
+  backupPath += ".bak";
+
+  std::ofstream file(tempPath,
                      std::ios::out | std::ios::binary | std::ios::trunc);
   if (!file) {
     std::cerr << "[lxe_editor] failed to open editor config for write "
-              << configPath << "\n";
+              << tempPath << "\n";
     return false;
   }
   file << out.c_str();
-  return static_cast<bool>(file);
+  file.flush();
+  if (!file) {
+    std::cerr << "[lxe_editor] failed to flush editor config " << tempPath
+              << "\n";
+    file.close();
+    std::filesystem::remove(tempPath, ec);
+    return false;
+  }
+  file.close();
+  if (!file) {
+    std::cerr << "[lxe_editor] failed to close editor config " << tempPath
+              << "\n";
+    std::filesystem::remove(tempPath, ec);
+    return false;
+  }
+
+  std::filesystem::rename(tempPath, configPath, ec);
+  if (!ec) {
+    return true;
+  }
+
+  if (!std::filesystem::exists(configPath)) {
+    std::cerr << "[lxe_editor] failed to install editor config " << configPath
+              << ": " << ec.message() << "\n";
+    std::filesystem::remove(tempPath, ec);
+    return false;
+  }
+
+  ec.clear();
+  std::filesystem::remove(backupPath, ec);
+  ec.clear();
+  std::filesystem::rename(configPath, backupPath, ec);
+  if (ec) {
+    std::cerr << "[lxe_editor] failed to preserve previous editor config "
+              << configPath << ": " << ec.message() << "\n";
+    std::filesystem::remove(tempPath, ec);
+    return false;
+  }
+
+  ec.clear();
+  std::filesystem::rename(tempPath, configPath, ec);
+  if (ec) {
+    std::cerr << "[lxe_editor] failed to install editor config " << configPath
+              << ": " << ec.message() << "\n";
+    std::error_code restoreEc;
+    std::filesystem::rename(backupPath, configPath, restoreEc);
+    if (restoreEc) {
+      std::cerr << "[lxe_editor] failed to restore previous editor config "
+                << configPath << ": " << restoreEc.message() << "\n";
+    }
+    std::filesystem::remove(tempPath, restoreEc);
+    return false;
+  }
+
+  std::filesystem::remove(backupPath, ec);
+  return true;
 }
 
 } // namespace

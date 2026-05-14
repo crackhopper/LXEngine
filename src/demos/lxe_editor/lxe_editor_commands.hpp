@@ -10,7 +10,7 @@
 namespace LX_core {
 class EditorState;
 class Scene;
-}
+} // namespace LX_core
 
 namespace LX_demo::lxe_editor {
 
@@ -27,18 +27,23 @@ struct LxeEditorCommandContext final {
   using GetCameraControlModeFn = std::function<int()>;
   using SetCameraControlModeFn = std::function<void(int)>;
   using PermissionFn = std::function<std::string()>;
-  using CurrentDocumentPathFn =
-      std::function<std::optional<std::string>()>;
+  using CurrentDocumentPathFn = std::function<std::optional<std::string>()>;
   using CurrentSourceKindFn = std::function<std::optional<std::string>()>;
   using PersistedHistoryFn = std::function<std::vector<std::string>()>;
   using AppendConsoleDebugLineFn = std::function<void(std::string_view)>;
-  using RecordingFn =
-      std::function<std::optional<std::reference_wrapper<RecordingController>>()>;
+  using RecordingFn = std::function<
+      std::optional<std::reference_wrapper<RecordingController>>()>;
   using BuildInfoJsonFn = std::function<std::string()>;
+  using DisplayListJsonFn = std::function<std::string()>;
+  using DisplayActiveJsonFn = std::function<std::string()>;
+  using DisplayConfigGetJsonFn = std::function<std::string(std::string_view)>;
+  using DisplayConfigSetFn =
+      std::function<std::string(std::string_view, std::string_view)>;
+  using DisplaySelectFn = std::function<std::string(std::string_view)>;
 
-  LX_core::EditorState& editorState;
-  LX_core::Scene& scene;
-  SceneInteractionController& interaction;
+  LX_core::EditorState &editorState;
+  LX_core::Scene &scene;
+  SceneInteractionController &interaction;
   GetEditModeFn getEditMode;
   SetEditModeFn setEditMode;
   GetCameraControlModeFn getCameraControlMode;
@@ -54,10 +59,14 @@ struct LxeEditorCommandContext final {
   AppendConsoleDebugLineFn appendConsoleDebugLine;
   RecordingFn recording;
   BuildInfoJsonFn buildInfoJson;
+  DisplayListJsonFn displayListJson;
+  DisplayActiveJsonFn displayActiveJson;
+  DisplayConfigGetJsonFn displayConfigGetJson;
+  DisplayConfigSetFn displayConfigSet;
+  DisplaySelectFn displaySelect;
 };
 
-void registerLxeEditorCommands(
-    LX_core::CommandBus& bus,
-    const LxeEditorCommandContext& context);
+void registerLxeEditorCommands(LX_core::CommandBus &bus,
+                               const LxeEditorCommandContext &context);
 
 } // namespace LX_demo::lxe_editor

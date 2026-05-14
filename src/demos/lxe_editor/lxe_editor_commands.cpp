@@ -9,6 +9,7 @@
 #include "scene_view_rect.hpp"
 #include "ui_overlay.hpp"
 
+#include <exception>
 #include <iomanip>
 #include <optional>
 #include <sstream>
@@ -17,7 +18,7 @@
 namespace LX_demo::lxe_editor {
 namespace {
 
-[[nodiscard]] std::string jsonEscape(const std::string& text) {
+[[nodiscard]] std::string jsonEscape(const std::string &text) {
   std::string out;
   out.reserve(text.size());
   for (const char c : text) {
@@ -57,12 +58,23 @@ namespace {
 
 [[nodiscard]] LX_core::CommandResult makeOk(std::string message,
                                             std::string structured = {}) {
-  return LX_core::CommandResult{true, std::move(message), std::move(structured)};
+  return LX_core::CommandResult{true, std::move(message),
+                                std::move(structured)};
 }
 
-[[nodiscard]] std::string makeVec3Json(const LX_core::Vec3f& value) {
-  return std::string("{\"x\":") + formatFloat(value.x) + ",\"y\":" +
-         formatFloat(value.y) + ",\"z\":" + formatFloat(value.z) + "}";
+[[nodiscard]] LX_core::CommandResult
+makeDisplayResult(std::string successMessage, std::string structured) {
+  if (structured.find("\"ok\":false") != std::string::npos) {
+    return LX_core::CommandResult{false, "display command failed",
+                                  std::move(structured)};
+  }
+  return makeOk(std::move(successMessage), std::move(structured));
+}
+
+[[nodiscard]] std::string makeVec3Json(const LX_core::Vec3f &value) {
+  return std::string("{\"x\":") + formatFloat(value.x) +
+         ",\"y\":" + formatFloat(value.y) + ",\"z\":" + formatFloat(value.z) +
+         "}";
 }
 
 [[nodiscard]] std::string modeName(const UiOverlay::EditorMode mode) {
@@ -74,7 +86,7 @@ namespace {
 }
 
 [[nodiscard]] std::optional<UiOverlay::EditorMode>
-parseMode(const std::string& text) {
+parseMode(const std::string &text) {
   if (text == "selection") {
     return UiOverlay::EditorMode::Selection;
   }
@@ -94,8 +106,8 @@ parseMode(const std::string& text) {
   }
 }
 
-[[nodiscard]] std::string cameraControlModeName(
-    const UiOverlay::CameraControlMode mode) {
+[[nodiscard]] std::string
+cameraControlModeName(const UiOverlay::CameraControlMode mode) {
   switch (mode) {
   case UiOverlay::CameraControlMode::Orbit:
     return "orbit";
@@ -105,8 +117,8 @@ parseMode(const std::string& text) {
   return "orbit";
 }
 
-[[nodiscard]] UiOverlay::CameraControlMode cameraControlModeFromCode(
-    const int code) {
+[[nodiscard]] UiOverlay::CameraControlMode
+cameraControlModeFromCode(const int code) {
   switch (code) {
   case static_cast<int>(UiOverlay::CameraControlMode::Orbit):
     return UiOverlay::CameraControlMode::Orbit;
@@ -118,7 +130,7 @@ parseMode(const std::string& text) {
 }
 
 [[nodiscard]] std::string
-makeCameraJson(const LX_core::SceneNodeSharedPtr& node) {
+makeCameraJson(const LX_core::SceneNodeSharedPtr &node) {
   if (!node) {
     return "null";
   }
@@ -140,9 +152,9 @@ makeCameraJson(const LX_core::SceneNodeSharedPtr& node) {
   return oss.str();
 }
 
-[[nodiscard]] std::string makeSelectionJson(
-    LX_core::EditorState& editorState,
-    SceneInteractionController& interaction) {
+[[nodiscard]] std::string
+makeSelectionJson(LX_core::EditorState &editorState,
+                  SceneInteractionController &interaction) {
   std::ostringstream oss;
   oss << "{\"paths\":[";
   const auto selected = editorState.getSelected();
@@ -153,7 +165,8 @@ makeCameraJson(const LX_core::SceneNodeSharedPtr& node) {
     oss << '"' << jsonEscape(selected[i]->getPath()) << '"';
   }
   oss << "]";
-  if (const auto primary = editorState.getPrimarySelected(); primary.has_value()) {
+  if (const auto primary = editorState.getPrimarySelected();
+      primary.has_value()) {
     oss << ",\"primaryPath\":\"" << jsonEscape(primary->get().getPath()) << '"';
     const auto bounds = primary->get().getWorldBounds();
     if (bounds.isValid()) {
@@ -166,14 +179,14 @@ makeCameraJson(const LX_core::SceneNodeSharedPtr& node) {
   if (const auto hitPoint = interaction.lastHitPoint(); hitPoint.has_value()) {
     oss << ",\"lastHitPoint\":" << makeVec3Json(*hitPoint);
   } else {
-  oss << ",\"lastHitPoint\":null";
+    oss << ",\"lastHitPoint\":null";
   }
   oss << "}";
   return oss.str();
 }
 
 [[nodiscard]] std::string
-makeSummaryJson(const LxeEditorCommandContext& context) {
+makeSummaryJson(const LxeEditorCommandContext &context) {
   const LX_core::SceneNodeSharedPtr activeCamera =
       context.editorState.resolveActiveCamera(context.scene);
   std::ostringstream oss;
@@ -213,14 +226,13 @@ makeSummaryJson(const LxeEditorCommandContext& context) {
 }
 
 [[nodiscard]] std::string
-makeRecordingStatusJson(const RecordingStatus& status) {
+makeRecordingStatusJson(const RecordingStatus &status) {
   std::ostringstream oss;
   oss << "{\"enabled\":" << (status.enabled ? "true" : "false")
       << ",\"active\":" << (status.active ? "true" : "false")
       << ",\"sessionId\":\"" << jsonEscape(status.sessionId) << "\""
       << ",\"detailLevel\":\"" << recordingDetailLevelName(status.detailLevel)
-      << "\""
-      << ",\"stepCount\":" << status.stepCount << ",\"lastSavedPath\":";
+      << "\"" << ",\"stepCount\":" << status.stepCount << ",\"lastSavedPath\":";
   if (status.lastSavedPath.has_value()) {
     oss << '"' << jsonEscape(status.lastSavedPath->string()) << '"';
   } else {
@@ -231,7 +243,7 @@ makeRecordingStatusJson(const RecordingStatus& status) {
 }
 
 [[nodiscard]] std::optional<RecordingDetailLevel>
-parseRecordingDetailLevel(const std::vector<std::string>& args,
+parseRecordingDetailLevel(const std::vector<std::string> &args,
                           const usize index) {
   if (index >= args.size()) {
     return RecordingDetailLevel::Basic;
@@ -239,14 +251,30 @@ parseRecordingDetailLevel(const std::vector<std::string>& args,
   return recordingDetailLevelFromName(args[index]);
 }
 
+[[nodiscard]] std::string joinArgs(const std::vector<std::string> &args,
+                                   const usize first) {
+  std::string out;
+  for (usize i = first; i < args.size(); ++i) {
+    if (!out.empty()) {
+      out.push_back(' ');
+    }
+    out += args[i];
+  }
+  return out;
+}
+
+[[nodiscard]] LX_core::CommandResult
+makeDisplayHookError(const std::exception &error) {
+  return makeError(std::string("display error: ") + error.what());
+}
+
 } // namespace
 
-void registerLxeEditorCommands(
-    LX_core::CommandBus& bus,
-    const LxeEditorCommandContext& context) {
-  auto* editorState = &context.editorState;
-  auto* scene = &context.scene;
-  auto* interaction = &context.interaction;
+void registerLxeEditorCommands(LX_core::CommandBus &bus,
+                               const LxeEditorCommandContext &context) {
+  auto *editorState = &context.editorState;
+  auto *scene = &context.scene;
+  auto *interaction = &context.interaction;
   auto getEditMode = context.getEditMode;
   auto setEditMode = context.setEditMode;
   auto getCameraControlMode = context.getCameraControlMode;
@@ -260,19 +288,94 @@ void registerLxeEditorCommands(
   auto persistedHistory = context.persistedHistory;
   auto recording = context.recording;
   auto buildInfoJson = context.buildInfoJson;
+  auto displayListJson = context.displayListJson;
+  auto displayActiveJson = context.displayActiveJson;
+  auto displayConfigGetJson = context.displayConfigGetJson;
+  auto displayConfigSet = context.displayConfigSet;
+  auto displaySelect = context.displaySelect;
   interaction->setDebugLoggingHooks(context.debugEnabled,
                                     context.appendConsoleDebugLine);
 
+  bus.registerHandler("quit", "quit", [](std::vector<std::string> args) {
+    if (!args.empty()) {
+      return makeError("usage: quit");
+    }
+    LX_core::CommandResult result =
+        makeOk("quitting editor", "{\"quitting\":true}");
+    result.metadata["editor.quit"] = "true";
+    return result;
+  });
+
   bus.registerHandler(
-      "quit", "quit",
-      [](std::vector<std::string> args) {
-        if (!args.empty()) {
-          return makeError("usage: quit");
+      "display",
+      "display list|active|config get <key|active|default>|config set "
+      "<key|default> <json-or-yaml-patch>|select <key>",
+      [displayListJson, displayActiveJson, displayConfigGetJson,
+       displayConfigSet, displaySelect](std::vector<std::string> args) {
+        if (args.size() == 1 && args[0] == "list") {
+          if (!displayListJson) {
+            return makeError("display list unavailable");
+          }
+          try {
+            std::string structured = displayListJson();
+            std::string message = structured;
+            return makeDisplayResult(std::move(message), std::move(structured));
+          } catch (const std::exception &error) {
+            return makeDisplayHookError(error);
+          }
         }
-        LX_core::CommandResult result =
-            makeOk("quitting editor", "{\"quitting\":true}");
-        result.metadata["editor.quit"] = "true";
-        return result;
+        if (args.size() == 1 && args[0] == "active") {
+          if (!displayActiveJson) {
+            return makeError("display active unavailable");
+          }
+          try {
+            std::string structured = displayActiveJson();
+            std::string message = structured;
+            return makeDisplayResult(std::move(message), std::move(structured));
+          } catch (const std::exception &error) {
+            return makeDisplayHookError(error);
+          }
+        }
+        if (args.size() == 3 && args[0] == "config" && args[1] == "get") {
+          if (!displayConfigGetJson) {
+            return makeError("display config get unavailable");
+          }
+          try {
+            std::string structured = displayConfigGetJson(args[2]);
+            std::string message = structured;
+            return makeDisplayResult(std::move(message), std::move(structured));
+          } catch (const std::exception &error) {
+            return makeDisplayHookError(error);
+          }
+        }
+        if (args.size() >= 4 && args[0] == "config" && args[1] == "set") {
+          if (!displayConfigSet) {
+            return makeError("display config set unavailable");
+          }
+          try {
+            const std::string patch = joinArgs(args, 3);
+            std::string structured = displayConfigSet(args[2], patch);
+            return makeDisplayResult("display config saved",
+                                     std::move(structured));
+          } catch (const std::exception &error) {
+            return makeDisplayHookError(error);
+          }
+        }
+        if (args.size() == 2 && args[0] == "select") {
+          if (!displaySelect) {
+            return makeError("display select unavailable");
+          }
+          try {
+            std::string structured = displaySelect(args[1]);
+            return makeDisplayResult("display selected; restart required",
+                                     std::move(structured));
+          } catch (const std::exception &error) {
+            return makeDisplayHookError(error);
+          }
+        }
+        return makeError(
+            "usage: display list|active|config get <key|active|default>|config "
+            "set <key|default> <json-or-yaml-patch>|select <key>");
       });
 
   bus.registerHandler(
@@ -292,12 +395,12 @@ void registerLxeEditorCommands(
                         "{\"mode\":\"" + modeName(mode) + "\"}");
         }
         if (args[0] == "orbit") {
-          return makeError(
-              "mode orbit is no longer a camera control; use cam control orbit");
+          return makeError("mode orbit is no longer a camera control; use cam "
+                           "control orbit");
         }
         if (args[0] == "freefly") {
-          return makeError(
-              "mode freefly is no longer a camera control; use cam control freefly");
+          return makeError("mode freefly is no longer a camera control; use "
+                           "cam control freefly");
         }
         const auto mode = parseMode(args[0]);
         if (!mode.has_value()) {
@@ -339,7 +442,8 @@ void registerLxeEditorCommands(
 
   bus.registerHandler(
       "recording",
-      "recording status|enable|disable [force]|start [basic|diagnostic|trace]|stop [save|discard]",
+      "recording status|enable|disable [force]|start "
+      "[basic|diagnostic|trace]|stop [save|discard]",
       [recording, currentDocumentPath,
        buildInfoJson](std::vector<std::string> args) {
         if (!recording) {
@@ -349,7 +453,7 @@ void registerLxeEditorCommands(
         if (!recorder.has_value()) {
           return makeError("recording unavailable");
         }
-        RecordingController& controller = recorder->get();
+        RecordingController &controller = recorder->get();
         if (args.empty() || args[0] == "status") {
           const std::string structured =
               makeRecordingStatusJson(controller.status());
@@ -389,16 +493,14 @@ void registerLxeEditorCommands(
               .buildInfoJson =
                   buildInfoJson ? buildInfoJson() : std::string{"{}"},
           });
-          return makeOk("recording started",
-                        "{\"active\":" +
-                            std::string(result.active ? "true" : "false") +
-                            ",\"sessionId\":\"" + jsonEscape(result.sessionId) +
-                            "\"}");
+          return makeOk(
+              "recording started",
+              "{\"active\":" + std::string(result.active ? "true" : "false") +
+                  ",\"sessionId\":\"" + jsonEscape(result.sessionId) + "\"}");
         }
         if (args[0] == "stop") {
           if (args.size() > 2 ||
-              (args.size() == 2 && args[1] != "save" &&
-               args[1] != "discard")) {
+              (args.size() == 2 && args[1] != "save" && args[1] != "discard")) {
             return makeError("usage: recording stop [save|discard]");
           }
           const bool save = args.size() < 2 || args[1] == "save";
@@ -407,20 +509,19 @@ void registerLxeEditorCommands(
           std::ostringstream oss;
           oss << "{\"saved\":" << (result.saved ? "true" : "false")
               << ",\"path\":\"" << jsonEscape(result.path.string()) << "\""
-              << ",\"stepCount\":" << result.stepCount
-              << ",\"sessionId\":\"" << jsonEscape(result.sessionId) << "\"}";
+              << ",\"stepCount\":" << result.stepCount << ",\"sessionId\":\""
+              << jsonEscape(result.sessionId) << "\"}";
           return makeOk(result.saved ? "recording saved" : "recording stopped",
                         oss.str());
         }
-        return makeError(
-            "usage: recording status|enable|disable [force]|start [basic|diagnostic|trace]|stop [save|discard]");
+        return makeError("usage: recording status|enable|disable [force]|start "
+                         "[basic|diagnostic|trace]|stop [save|discard]");
       });
 
   bus.registerHandler(
       "state", "state (summary|selection|cameras|scene|toolbar|history)",
       [editorState, scene, interaction, getEditMode, getCameraControlMode,
-       dirty, permission, debugEnabled,
-       currentDocumentPath, currentSourceKind,
+       dirty, permission, debugEnabled, currentDocumentPath, currentSourceKind,
        persistedHistory](std::vector<std::string> args) {
         if (args.size() != 1) {
           return makeError(
@@ -457,10 +558,10 @@ void registerLxeEditorCommands(
           const std::string structured =
               "{\"activePath\":" +
               std::string(activeCamera
-                              ? "\"" + jsonEscape(activeCamera->getPath()) + "\""
+                              ? "\"" + jsonEscape(activeCamera->getPath()) +
+                                    "\""
                               : "null") +
-              ",\"editor\":" +
-              makeCameraJson(editorState->getEditorCamera()) +
+              ",\"editor\":" + makeCameraJson(editorState->getEditorCamera()) +
               ",\"game\":" + makeCameraJson(editorState->getPreviewCamera()) +
               "}";
           return makeOk(structured, structured);
@@ -507,7 +608,8 @@ void registerLxeEditorCommands(
         }
         if (args[0] == "history") {
           const std::vector<std::string> lines =
-              persistedHistory ? persistedHistory() : std::vector<std::string>{};
+              persistedHistory ? persistedHistory()
+                               : std::vector<std::string>{};
           std::ostringstream oss;
           oss << "{\"lines\":[";
           for (usize i = 0; i < lines.size(); ++i) {
@@ -545,7 +647,8 @@ void registerLxeEditorCommands(
                 LX_core::Vec2f{x, y},
                 LX_core::Vec2f{viewportWidth, viewportHeight});
           } else {
-            return makeError("usage: pick <x> <y> | pick screen <x> <y> <viewport-width> <viewport-height>");
+            return makeError("usage: pick <x> <y> | pick screen <x> <y> "
+                             "<viewport-width> <viewport-height>");
           }
           if (!result.ok) {
             return result;
@@ -559,10 +662,10 @@ void registerLxeEditorCommands(
       });
 
   bus.registerCompleter(
-      "mode", 0, [](const LX_core::CompletionContext& context) {
+      "mode", 0, [](const LX_core::CompletionContext &context) {
         static const std::vector<std::string> kModes = {"selection", "status"};
         std::vector<std::string> out;
-        for (const auto& mode : kModes) {
+        for (const auto &mode : kModes) {
           if (mode.rfind(context.partialToken, 0) == 0) {
             out.push_back(mode);
           }
@@ -570,29 +673,41 @@ void registerLxeEditorCommands(
         return out;
       });
   bus.registerCompleter(
-      "state", 0, [](const LX_core::CompletionContext& context) {
+      "state", 0, [](const LX_core::CompletionContext &context) {
         static const std::vector<std::string> kTargets = {
             "summary", "selection", "cameras", "scene", "toolbar"};
         std::vector<std::string> out;
-        for (const auto& target : kTargets) {
+        for (const auto &target : kTargets) {
           if (target.rfind(context.partialToken, 0) == 0) {
             out.push_back(target);
           }
         }
         return out;
       });
-  bus.registerCompleter(
-      "recording", 0, [](const LX_core::CompletionContext& context) {
-        static const std::vector<std::string> kActions = {
-            "status", "enable", "disable", "start", "stop"};
-        std::vector<std::string> out;
-        for (const auto& action : kActions) {
-          if (action.rfind(context.partialToken, 0) == 0) {
-            out.push_back(action);
-          }
-        }
-        return out;
-      });
+  bus.registerCompleter("recording", 0,
+                        [](const LX_core::CompletionContext &context) {
+                          static const std::vector<std::string> kActions = {
+                              "status", "enable", "disable", "start", "stop"};
+                          std::vector<std::string> out;
+                          for (const auto &action : kActions) {
+                            if (action.rfind(context.partialToken, 0) == 0) {
+                              out.push_back(action);
+                            }
+                          }
+                          return out;
+                        });
+  bus.registerCompleter("display", 0,
+                        [](const LX_core::CompletionContext &context) {
+                          static const std::vector<std::string> kActions = {
+                              "list", "active", "config", "select"};
+                          std::vector<std::string> out;
+                          for (const auto &action : kActions) {
+                            if (action.rfind(context.partialToken, 0) == 0) {
+                              out.push_back(action);
+                            }
+                          }
+                          return out;
+                        });
 }
 
 } // namespace LX_demo::lxe_editor

@@ -11,12 +11,12 @@ namespace LX_demo::lxe_editor {
 namespace {
 
 [[nodiscard]] std::optional<std::reference_wrapper<RecordingController>>
-recordingFromHooks(const LxeEditorApiService::Hooks& hooks) {
+recordingFromHooks(const LxeEditorApiService::Hooks &hooks) {
   return hooks.recording ? hooks.recording() : std::nullopt;
 }
 
-[[nodiscard]] ApiCameraPose captureCameraPose(
-    const LX_core::SceneNodeSharedPtr& node) {
+[[nodiscard]] ApiCameraPose
+captureCameraPose(const LX_core::SceneNodeSharedPtr &node) {
   ApiCameraPose pose;
   if (!node) {
     return pose;
@@ -35,8 +35,8 @@ recordingFromHooks(const LxeEditorApiService::Hooks& hooks) {
   return pose;
 }
 
-[[nodiscard]] ApiCommandEventPayload commandPayloadFromHistory(
-    const LX_core::CommandBus::HistoryEntry& entry) {
+[[nodiscard]] ApiCommandEventPayload
+commandPayloadFromHistory(const LX_core::CommandBus::HistoryEntry &entry) {
   return ApiCommandEventPayload{
       .line = entry.line,
       .ok = entry.result.ok,
@@ -47,8 +47,9 @@ recordingFromHooks(const LxeEditorApiService::Hooks& hooks) {
   };
 }
 
-[[nodiscard]] std::optional<std::string> jsonStringField(
-    const std::string& body, const std::string& key, const size_t startPos = 0) {
+[[nodiscard]] std::optional<std::string>
+jsonStringField(const std::string &body, const std::string &key,
+                const size_t startPos = 0) {
   const std::string needle = "\"" + key + "\"";
   const size_t keyPos = body.find(needle, startPos);
   if (keyPos == std::string::npos) {
@@ -83,7 +84,7 @@ recordingFromHooks(const LxeEditorApiService::Hooks& hooks) {
   return std::nullopt;
 }
 
-[[nodiscard]] std::string statusToJson(const RecordingStatus& status) {
+[[nodiscard]] std::string statusToJson(const RecordingStatus &status) {
   std::string out = "{";
   out += "\"enabled\":";
   out += status.enabled ? "true" : "false";
@@ -107,32 +108,29 @@ recordingFromHooks(const LxeEditorApiService::Hooks& hooks) {
   return out;
 }
 
-[[nodiscard]] std::string stepPayloadJson(const std::string& line) {
+[[nodiscard]] std::string stepPayloadJson(const std::string &line) {
   return "{\"line\":\"" + apiJsonEscape(line) + "\"}";
 }
 
-[[nodiscard]] std::string recordingErrorJson(const std::exception& error) {
+[[nodiscard]] std::string recordingErrorJson(const std::exception &error) {
   return "{\"ok\":false,\"error\":\"" + apiJsonEscape(error.what()) + "\"}";
 }
 
 } // namespace
 
-LxeEditorApiService::LxeEditorApiService(
-    LX_core::CommandBus& commandBus, LX_core::EditorState& editorState,
-    LX_core::Scene& scene, Hooks hooks)
-    : m_commandBus(commandBus),
-      m_editorState(editorState),
-      m_scene(scene),
-      m_hooks(std::move(hooks)),
-      m_sceneSubscription(m_scene.events().subscribe(
-          [this](const LX_core::SceneEvent& event) {
-            observeRuntimeSceneEvent(event);
-          })),
+LxeEditorApiService::LxeEditorApiService(LX_core::CommandBus &commandBus,
+                                         LX_core::EditorState &editorState,
+                                         LX_core::Scene &scene, Hooks hooks)
+    : m_commandBus(commandBus), m_editorState(editorState), m_scene(scene),
+      m_hooks(std::move(hooks)), m_sceneSubscription(m_scene.events().subscribe(
+                                     [this](const LX_core::SceneEvent &event) {
+                                       observeRuntimeSceneEvent(event);
+                                     })),
       m_lastObservedHistoryIndex(m_commandBus.history().size()),
       m_lastState(captureState()) {}
 
-ApiCommandResponse LxeEditorApiService::executeCommand(
-    const ApiCommandRequest& request) {
+ApiCommandResponse
+LxeEditorApiService::executeCommand(const ApiCommandRequest &request) {
   if (m_hooks.recordCommandHistoryLine) {
     m_hooks.recordCommandHistoryLine(request.line);
   }
@@ -141,17 +139,16 @@ ApiCommandResponse LxeEditorApiService::executeCommand(
   if (result.ok) {
     if (auto recording = recordingFromHooks(m_hooks); recording.has_value()) {
       (void)recording->get().appendStep(RecordingStepInput{
-        .kind = "command",
-        .source = RecordingSource::Mcp,
-        .payloadJson = stepPayloadJson(request.line),
+          .kind = "command",
+          .source = RecordingSource::Mcp,
+          .payloadJson = stepPayloadJson(request.line),
       });
     }
   }
   refresh();
 
-  const auto& history = m_commandBus.history();
-  const u64 timestampMs =
-      history.empty() ? 0 : history.back().timestampMs;
+  const auto &history = m_commandBus.history();
+  const u64 timestampMs = history.empty() ? 0 : history.back().timestampMs;
   ApiCommandResponse response{
       .ok = result.ok,
       .line = request.line,
@@ -161,8 +158,8 @@ ApiCommandResponse LxeEditorApiService::executeCommand(
       .timestampMs = timestampMs,
   };
   if (!result.ok) {
-    response.error = ApiError{.code = "command_failed",
-                                     .message = result.message};
+    response.error =
+        ApiError{.code = "command_failed", .message = result.message};
   }
   return response;
 }
@@ -200,8 +197,8 @@ std::string LxeEditorApiService::recordingDisable(const bool force) {
   return statusToJson(recording->get().status());
 }
 
-std::string LxeEditorApiService::recordingStart(
-    const RecordingDetailLevel detailLevel) {
+std::string
+LxeEditorApiService::recordingStart(const RecordingDetailLevel detailLevel) {
   const auto recording = recordingFromHooks(m_hooks);
   if (!recording.has_value()) {
     return "{\"ok\":false,\"error\":\"recording unavailable\"}";
@@ -215,7 +212,7 @@ std::string LxeEditorApiService::recordingStart(
     });
     return "{\"active\":" + std::string(result.active ? "true" : "false") +
            ",\"sessionId\":\"" + apiJsonEscape(result.sessionId) + "\"}";
-  } catch (const std::exception& error) {
+  } catch (const std::exception &error) {
     return recordingErrorJson(error);
   }
 }
@@ -232,7 +229,7 @@ std::string LxeEditorApiService::recordingStop(const bool save) {
            ",\"path\":\"" + apiJsonEscape(result.path.string()) +
            "\",\"stepCount\":" + std::to_string(result.stepCount) +
            ",\"sessionId\":\"" + apiJsonEscape(result.sessionId) + "\"}";
-  } catch (const std::exception& error) {
+  } catch (const std::exception &error) {
     return recordingErrorJson(error);
   }
 }
@@ -254,25 +251,25 @@ std::string LxeEditorApiService::recordingList() const {
     }
     out += "]}";
     return out;
-  } catch (const std::exception& error) {
+  } catch (const std::exception &error) {
     return recordingErrorJson(error);
   }
 }
 
-std::string LxeEditorApiService::recordingRead(
-    const std::string& idOrPath) const {
+std::string
+LxeEditorApiService::recordingRead(const std::string &idOrPath) const {
   const auto recording = recordingFromHooks(m_hooks);
   if (!recording.has_value()) {
     return "{\"ok\":false,\"error\":\"recording unavailable\"}";
   }
   try {
     return recording->get().read(idOrPath);
-  } catch (const std::exception& error) {
+  } catch (const std::exception &error) {
     return recordingErrorJson(error);
   }
 }
 
-std::string LxeEditorApiService::recordingReplay(const std::string& idOrPath) {
+std::string LxeEditorApiService::recordingReplay(const std::string &idOrPath) {
   const auto recording = recordingFromHooks(m_hooks);
   if (!recording.has_value()) {
     return "{\"ok\":false,\"error\":\"recording unavailable\"}";
@@ -280,7 +277,7 @@ std::string LxeEditorApiService::recordingReplay(const std::string& idOrPath) {
   std::string text;
   try {
     text = recording->get().read(idOrPath);
-  } catch (const std::exception& error) {
+  } catch (const std::exception &error) {
     return recordingErrorJson(error);
   }
   int completed = 0;
@@ -301,8 +298,8 @@ std::string LxeEditorApiService::recordingReplay(const std::string& idOrPath) {
     if (!result.ok) {
       return "{\"ok\":false,\"completedSteps\":" + std::to_string(completed) +
              ",\"failedKind\":\"command\",\"error\":\"" +
-             apiJsonEscape(result.message) + "\",\"summary\":" +
-             toJson(captureSceneSummary()) + "}";
+             apiJsonEscape(result.message) +
+             "\",\"summary\":" + toJson(captureSceneSummary()) + "}";
     }
     ++completed;
     search = kindPos + 1;
@@ -311,8 +308,8 @@ std::string LxeEditorApiService::recordingReplay(const std::string& idOrPath) {
          ",\"summary\":" + toJson(captureSceneSummary()) + "}";
 }
 
-std::string LxeEditorApiService::recordingProbe(
-    const std::string& target) const {
+std::string
+LxeEditorApiService::recordingProbe(const std::string &target) const {
   const ApiStateSnapshot state = captureState();
   if (target == "summary") {
     return toJson(state.scene);
@@ -330,6 +327,43 @@ std::string LxeEditorApiService::recordingProbe(
     return toJson(state.scene);
   }
   return toJson(state);
+}
+
+std::string LxeEditorApiService::displayList() const {
+  if (!m_hooks.displayListJson) {
+    return "{\"ok\":false,\"error\":\"display config unavailable\"}";
+  }
+  return m_hooks.displayListJson();
+}
+
+std::string LxeEditorApiService::displayActive() const {
+  if (!m_hooks.displayActiveJson) {
+    return "{\"ok\":false,\"error\":\"display config unavailable\"}";
+  }
+  return m_hooks.displayActiveJson();
+}
+
+std::string
+LxeEditorApiService::displayConfigGet(const std::string &key) const {
+  if (!m_hooks.displayConfigGetJson) {
+    return "{\"ok\":false,\"error\":\"display config unavailable\"}";
+  }
+  return m_hooks.displayConfigGetJson(key);
+}
+
+std::string LxeEditorApiService::displayConfigSet(const std::string &key,
+                                                  const std::string &patch) {
+  if (!m_hooks.displayConfigSet) {
+    return "{\"ok\":false,\"error\":\"display config unavailable\"}";
+  }
+  return m_hooks.displayConfigSet(key, patch);
+}
+
+std::string LxeEditorApiService::displaySelect(const std::string &key) {
+  if (!m_hooks.displaySelect) {
+    return "{\"ok\":false,\"error\":\"display config unavailable\"}";
+  }
+  return m_hooks.displaySelect(key);
 }
 
 ApiStateSnapshot LxeEditorApiService::captureState() const {
@@ -351,11 +385,11 @@ ApiEventCursor LxeEditorApiService::currentCursor() const {
   return ApiEventCursor{m_nextSequence};
 }
 
-ApiEventBatch LxeEditorApiService::collectEventsSince(
-    const ApiEventCursor cursor) const {
+ApiEventBatch
+LxeEditorApiService::collectEventsSince(const ApiEventCursor cursor) const {
   ApiEventBatch batch;
   batch.nextCursor = currentCursor();
-  for (const auto& event : m_events) {
+  for (const auto &event : m_events) {
     if (event.sequence >= cursor.nextSequence) {
       batch.events.push_back(event);
     }
@@ -381,7 +415,7 @@ ApiSelectionSnapshot LxeEditorApiService::captureSelection() const {
   ApiSelectionSnapshot snapshot;
   const auto selected = m_editorState.getSelected();
   snapshot.selectedPaths.reserve(selected.size());
-  for (const auto& node : selected) {
+  for (const auto &node : selected) {
     if (!node) {
       continue;
     }
@@ -435,7 +469,7 @@ ApiToolbarSnapshot LxeEditorApiService::captureToolbar() const {
 }
 
 void LxeEditorApiService::observeRuntimeSceneEvent(
-    const LX_core::SceneEvent& event) {
+    const LX_core::SceneEvent &event) {
   if (event.domain != LX_core::SceneEventDomain::Runtime ||
       event.type != LX_core::SceneEventType::SceneNodeChanged) {
     return;
@@ -445,7 +479,7 @@ void LxeEditorApiService::observeRuntimeSceneEvent(
 }
 
 void LxeEditorApiService::flushPendingRuntimeSceneEvents() {
-  for (const auto& event : m_pendingRuntimeSceneEvents) {
+  for (const auto &event : m_pendingRuntimeSceneEvents) {
     ApiSceneNodeEventPayload payload{
         .path = event.path,
         .stableNodeName = event.stableNodeName,
@@ -467,9 +501,9 @@ void LxeEditorApiService::flushPendingRuntimeSceneEvents() {
 }
 
 void LxeEditorApiService::observeCommandHistory() {
-  const auto& history = m_commandBus.history();
+  const auto &history = m_commandBus.history();
   while (m_lastObservedHistoryIndex < history.size()) {
-    const auto& entry = history[m_lastObservedHistoryIndex++];
+    const auto &entry = history[m_lastObservedHistoryIndex++];
 
     ApiEvent commandEvent{
         .sequence = m_nextSequence++,
@@ -541,9 +575,10 @@ void LxeEditorApiService::observeStateChanges() {
 void LxeEditorApiService::appendEvent(ApiEvent event) {
   m_events.push_back(std::move(event));
   if (m_events.size() > kMaxBufferedEvents) {
-    m_events.erase(m_events.begin(),
-                   m_events.begin() + static_cast<std::ptrdiff_t>(
-                                         m_events.size() - kMaxBufferedEvents));
+    m_events.erase(
+        m_events.begin(),
+        m_events.begin() +
+            static_cast<std::ptrdiff_t>(m_events.size() - kMaxBufferedEvents));
   }
 }
 

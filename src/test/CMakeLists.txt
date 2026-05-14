@@ -245,11 +245,15 @@ if(TARGET test_lxe_editor_api_service)
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_api_service.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_build_info.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/api_token_state.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_commands.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/recording_controller.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_interaction_controller.cpp
   )
   target_include_directories(test_lxe_editor_api_service PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/..
+    ${CMAKE_CURRENT_SOURCE_DIR}/../infra/external/yaml-cpp/include
   )
+  target_link_libraries(test_lxe_editor_api_service PRIVATE imgui yaml-cpp::yaml-cpp)
 endif()
 
 if(TARGET test_lxe_editor_api_server)
