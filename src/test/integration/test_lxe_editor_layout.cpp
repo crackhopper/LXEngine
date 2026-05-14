@@ -212,6 +212,31 @@ private:
          "      height: 60\n";
 }
 
+[[nodiscard]] LX_core::DisplayInfo
+makeTestDisplay(const int index, std::string name, const int x, const int y,
+                const int width, const int height, const float scale) {
+  LX_core::DisplayInfo display;
+  display.index = index;
+  display.backend = "test";
+  display.name = std::move(name);
+  display.bounds = {.x = x, .y = y, .width = width, .height = height};
+  display.usableBounds = {.x = x, .y = y, .width = width, .height = height};
+  display.contentScale = scale;
+  LX_core::finalizeDisplayInfo(display);
+  return display;
+}
+
+[[nodiscard]] int countOccurrences(std::string_view text,
+                                   std::string_view needle) {
+  int count = 0;
+  std::size_t offset = 0;
+  while ((offset = text.find(needle, offset)) != std::string_view::npos) {
+    ++count;
+    offset += needle.size();
+  }
+  return count;
+}
+
 void testDefaultLayoutShowsToolbarAndCorePanels() {
   if (!setupMinimalImGui()) {
     std::cout
@@ -465,6 +490,707 @@ void testEditorConfigRoundTrips() {
   EXPECT(loaded.preferences.uiFontScale > 1.39f &&
              loaded.preferences.uiFontScale < 1.41f,
          "preferences uiFontScale should round-trip");
+
+  fs::remove_all(tempRoot);
+}
+
+void testEditorConfigV2CreatesProfilesForAllDisplays() {
+  namespace fs = std::filesystem;
+
+  const fs::path tempRoot =
+      fs::temp_directory_path() / "lxengine_lxe_editor_display_profiles_create";
+  fs::remove_all(tempRoot);
+
+  const std::vector<LX_core::DisplayInfo> displays{
+      makeTestDisplay(0, "Primary", 0, 0, 1920, 1080, 1.0f),
+      makeTestDisplay(1, "Side", 1920, 0, 2560, 1440, 1.25f),
+  };
+
+  LX_demo::lxe_editor::EditorConfigState state(tempRoot);
+  const auto created = state.loadOrCreateForDisplays(displays);
+
+  EXPECT(created.version == 2, "display config should use v2 document version");
+  EXPECT(created.activeDisplay == displays.front().key,
+         "new display config should select the first current display");
+  EXPECT(created.displayProfiles.size() == 2,
+         "new display config should create one profile per display");
+  EXPECT(created.displayProfiles[0].key == displays[0].key &&
+             created.displayProfiles[0].available,
+         "first display profile should be available");
+  EXPECT(created.displayProfiles[1].key == displays[1].key &&
+             created.displayProfiles[1].available,
+         "second display profile should be available");
+  EXPECT(fs::exists(state.configPath()),
+         "load-or-create should persist editor_config.yaml on first startup");
+
+  const auto reloaded = state.loadOrCreateForDisplays(displays);
+  EXPECT(reloaded.displayProfiles.size() == 2,
+         "reloaded display config should keep both display profiles");
+
+  fs::remove_all(tempRoot);
+}
+
+void testDisplayOverrideComposesWithDefault() {
+  namespace fs = std::filesystem;
+
+  const fs::path tempRoot = fs::temp_directory_path() /
+                            "lxengine_lxe_editor_display_override_compose";
+  fs::remove_all(tempRoot);
+  fs::create_directories(tempRoot);
+
+  const auto display = makeTestDisplay(0, "Primary", 0, 0, 1920, 1080, 1.0f);
+  LX_demo::lxe_editor::EditorConfigState state(tempRoot);
+  std::ofstream(state.configPath()) << "version: 2\n"
+                                       "activeDisplay: \""
+                                    << display.key
+                                    << "\"\n"
+                                       "displayDefault:\n"
+                                       "  layout:\n"
+                                       "    windows:\n"
+                                       "      - id: Inspector\n"
+                                       "        visible: true\n"
+                                       "        collapsed: false\n"
+                                       "        x: 840\n"
+                                       "        y: 40\n"
+                                       "        width: 360\n"
+                                       "        height: 420\n"
+                                       "  preferences:\n"
+                                       "    uiFontScale: 1.0\n"
+                                       "displayProfiles:\n"
+                                       "  - key: \""
+                                    << display.key
+                                    << "\"\n"
+                                       "    label: \""
+                                    << display.label
+                                    << "\"\n"
+                                       "    available: true\n"
+                                       "    overrides:\n"
+                                       "      layout:\n"
+                                       "        windows:\n"
+                                       "          - id: Inspector\n"
+                                       "            width: 512\n"
+                                       "      preferences:\n"
+                                       "        uiFontScale: 1.25\n";
+
+  const auto document = state.loadOrCreateForDisplays({display});
+  const auto effective = state.composeEffectiveConfig(document, display.key);
+  const auto inspector =
+      LX_demo::lxe_editor::findEditorWindowLayout(effective, "Inspector");
+
+  EXPECT(effective.preferences.uiFontScale > 1.24f &&
+             effective.preferences.uiFontScale < 1.26f,
+         "display override should replace default ui font scale");
+  EXPECT(inspector.has_value(), "inspector layout should compose");
+  if (inspector.has_value()) {
+    EXPECT(inspector->get().x == 840,
+           "inspector x should remain from display default");
+    EXPECT(inspector->get().width == 512,
+           "inspector width should come from display override");
+  }
+
+  fs::remove_all(tempRoot);
+}
+
+void testEditorConfigV2RetainsUnavailableProfiles() {
+  namespace fs = std::filesystem;
+
+  const fs::path tempRoot =
+      fs::temp_directory_path() / "lxengine_lxe_editor_display_profiles_retain";
+  fs::remove_all(tempRoot);
+  fs::create_directories(tempRoot);
+
+  const auto current = makeTestDisplay(0, "Primary", 0, 0, 1920, 1080, 1.0f);
+  const auto missing = makeTestDisplay(1, "Side", 1920, 0, 2560, 1440, 1.25f);
+  LX_demo::lxe_editor::EditorConfigState state(tempRoot);
+  std::ofstream(state.configPath()) << "version: 2\n"
+                                       "activeDisplay: \""
+                                    << missing.key
+                                    << "\"\n"
+                                       "displayDefault:\n"
+                                       "  preferences:\n"
+                                       "    uiFontScale: 1.0\n"
+                                       "displayProfiles:\n"
+                                       "  - key: \""
+                                    << current.key
+                                    << "\"\n"
+                                       "    label: \""
+                                    << current.label
+                                    << "\"\n"
+                                       "    available: true\n"
+                                       "    overrides: {}\n"
+                                       "  - key: \""
+                                    << missing.key
+                                    << "\"\n"
+                                       "    label: \""
+                                    << missing.label
+                                    << "\"\n"
+                                       "    available: true\n"
+                                       "    overrides:\n"
+                                       "      preferences:\n"
+                                       "        uiFontScale: 1.2\n";
+
+  const auto document = state.loadOrCreateForDisplays({current});
+
+  EXPECT(
+      document.activeDisplay == current.key,
+      "unavailable active display should fall back to first current display");
+  EXPECT(document.displayProfiles.size() == 2,
+         "sync should retain unavailable display profiles");
+  const auto unavailable = std::find_if(
+      document.displayProfiles.begin(), document.displayProfiles.end(),
+      [&missing](const LX_demo::lxe_editor::EditorDisplayProfile &profile) {
+        return profile.key == missing.key;
+      });
+  EXPECT(unavailable != document.displayProfiles.end(),
+         "missing display profile should remain in document");
+  if (unavailable != document.displayProfiles.end()) {
+    EXPECT(!unavailable->available,
+           "missing display profile should be marked unavailable");
+  }
+
+  fs::remove_all(tempRoot);
+}
+
+void testDisplayOverrideComposesDefaultLikeWindowAndPreferenceValues() {
+  namespace fs = std::filesystem;
+
+  const fs::path tempRoot =
+      fs::temp_directory_path() / "lxengine_lxe_editor_display_zero_values";
+  fs::remove_all(tempRoot);
+  fs::create_directories(tempRoot);
+
+  const auto display = makeTestDisplay(0, "Primary", 0, 0, 1920, 1080, 1.0f);
+  LX_demo::lxe_editor::EditorConfigState state(tempRoot);
+  std::ofstream(state.configPath()) << "version: 2\n"
+                                       "activeDisplay: \""
+                                    << display.key
+                                    << "\"\n"
+                                       "displayDefault:\n"
+                                       "  window:\n"
+                                       "    x: 50\n"
+                                       "    y: 60\n"
+                                       "    width: 1280\n"
+                                       "    height: 720\n"
+                                       "    maximized: true\n"
+                                       "  preferences:\n"
+                                       "    uiFontScale: 1.25\n"
+                                       "displayProfiles:\n"
+                                       "  - key: \""
+                                    << display.key
+                                    << "\"\n"
+                                       "    label: \""
+                                    << display.label
+                                    << "\"\n"
+                                       "    available: true\n"
+                                       "    overrides:\n"
+                                       "      window:\n"
+                                       "        x: 0\n"
+                                       "        y: 0\n"
+                                       "        maximized: false\n"
+                                       "      preferences:\n"
+                                       "        uiFontScale: 1.0\n";
+
+  const auto document = state.loadOrCreateForDisplays({display});
+  const auto effective = state.composeEffectiveConfig(document, display.key);
+
+  EXPECT(effective.windowPlacement.has_value(),
+         "window placement should compose");
+  if (effective.windowPlacement.has_value()) {
+    EXPECT(effective.windowPlacement->x == 0,
+           "window x override should allow zero");
+    EXPECT(effective.windowPlacement->y == 0,
+           "window y override should allow zero");
+    EXPECT(!effective.windowPlacement->maximized,
+           "window maximized override should allow false");
+  }
+  EXPECT(effective.preferences.uiFontScale > 0.99f &&
+             effective.preferences.uiFontScale < 1.01f,
+         "ui font scale override should allow 1.0");
+
+  fs::remove_all(tempRoot);
+}
+
+void testLayoutOverrideComposesDefaultLikeValues() {
+  namespace fs = std::filesystem;
+
+  const fs::path tempRoot =
+      fs::temp_directory_path() / "lxengine_lxe_editor_layout_zero_values";
+  fs::remove_all(tempRoot);
+  fs::create_directories(tempRoot);
+
+  const auto display = makeTestDisplay(0, "Primary", 0, 0, 1920, 1080, 1.0f);
+  LX_demo::lxe_editor::EditorConfigState state(tempRoot);
+  std::ofstream(state.configPath()) << "version: 2\n"
+                                       "activeDisplay: \""
+                                    << display.key
+                                    << "\"\n"
+                                       "displayDefault:\n"
+                                       "  layout:\n"
+                                       "    windows:\n"
+                                       "      - id: Inspector\n"
+                                       "        visible: true\n"
+                                       "        collapsed: true\n"
+                                       "        x: 25\n"
+                                       "        y: 25\n"
+                                       "        width: 300\n"
+                                       "        height: 200\n"
+                                       "displayProfiles:\n"
+                                       "  - key: \""
+                                    << display.key
+                                    << "\"\n"
+                                       "    label: \""
+                                    << display.label
+                                    << "\"\n"
+                                       "    available: true\n"
+                                       "    overrides:\n"
+                                       "      layout:\n"
+                                       "        windows:\n"
+                                       "          - id: Inspector\n"
+                                       "            visible: false\n"
+                                       "            collapsed: false\n"
+                                       "            x: 0\n"
+                                       "            y: 0\n";
+
+  const auto document = state.loadOrCreateForDisplays({display});
+  const auto effective = state.composeEffectiveConfig(document, display.key);
+  const auto inspector =
+      LX_demo::lxe_editor::findEditorWindowLayout(effective, "Inspector");
+
+  EXPECT(inspector.has_value(), "inspector layout should compose");
+  if (inspector.has_value()) {
+    EXPECT(!inspector->get().visible,
+           "layout visible override should allow false");
+    EXPECT(!inspector->get().collapsed,
+           "layout collapsed override should allow false");
+    EXPECT(inspector->get().x == 0, "layout x override should allow zero");
+    EXPECT(inspector->get().y == 0, "layout y override should allow zero");
+  }
+
+  fs::remove_all(tempRoot);
+}
+
+void testDisplaySaveDiffPersistsDefaultLikeOverrideValues() {
+  namespace fs = std::filesystem;
+
+  const fs::path tempRoot =
+      fs::temp_directory_path() / "lxengine_lxe_editor_display_zero_save";
+  fs::remove_all(tempRoot);
+
+  const auto display = makeTestDisplay(0, "Primary", 0, 0, 1920, 1080, 1.0f);
+  LX_demo::lxe_editor::EditorConfigState state(tempRoot);
+  LX_demo::lxe_editor::EditorDisplayConfigDocument document;
+  document.activeDisplay = display.key;
+  document.displayDefault.windowPlacement = LX_core::WindowPlacement{
+      .x = 50, .y = 60, .width = 1280, .height = 720, .maximized = true};
+  document.displayDefault.preferences.uiFontScale = 1.25f;
+  document.displayDefault.layoutWindows.push_back(
+      LX_demo::lxe_editor::EditorWindowLayout{
+          .id = "Inspector",
+          .visible = true,
+          .collapsed = true,
+          .x = 25,
+          .y = 25,
+          .width = 300,
+          .height = 200,
+      });
+  document.displayProfiles.push_back(LX_demo::lxe_editor::EditorDisplayProfile{
+      .key = display.key,
+      .label = display.label,
+      .available = true,
+      .overrides = LX_demo::lxe_editor::EditorConfigOverrideDocument{},
+  });
+
+  LX_demo::lxe_editor::EditorConfigDocument effective = document.displayDefault;
+  effective.windowPlacement = LX_core::WindowPlacement{
+      .x = 0, .y = 0, .width = 1280, .height = 720, .maximized = false};
+  effective.preferences.uiFontScale = 1.0f;
+  auto inspector =
+      LX_demo::lxe_editor::findEditorWindowLayout(effective, "Inspector");
+  EXPECT(inspector.has_value(), "test setup should include inspector layout");
+  if (inspector.has_value()) {
+    inspector->get().visible = false;
+    inspector->get().collapsed = false;
+    inspector->get().x = 0;
+    inspector->get().y = 0;
+  }
+
+  EXPECT(state.saveDisplayDocument(document, display.key, effective),
+         "display document save should succeed");
+  std::ifstream savedFile(state.configPath());
+  std::stringstream savedBuffer;
+  savedBuffer << savedFile.rdbuf();
+  const std::string savedYaml = savedBuffer.str();
+  EXPECT(savedYaml.find("x: 0") != std::string::npos,
+         "saved override YAML should include x: 0");
+  EXPECT(savedYaml.find("y: 0") != std::string::npos,
+         "saved override YAML should include y: 0");
+  EXPECT(savedYaml.find("maximized: false") != std::string::npos,
+         "saved override YAML should include maximized: false");
+  EXPECT(savedYaml.find("uiFontScale: 1") != std::string::npos,
+         "saved override YAML should include uiFontScale: 1.0");
+  EXPECT(savedYaml.find("visible: false") != std::string::npos,
+         "saved override YAML should include visible: false");
+  EXPECT(savedYaml.find("collapsed: false") != std::string::npos,
+         "saved override YAML should include collapsed: false");
+
+  const auto reloaded = state.loadOrCreateForDisplays({display});
+  const auto composed = state.composeEffectiveConfig(reloaded, display.key);
+  const auto composedInspector =
+      LX_demo::lxe_editor::findEditorWindowLayout(composed, "Inspector");
+  EXPECT(composed.windowPlacement.has_value(),
+         "reloaded window placement should compose");
+  if (composed.windowPlacement.has_value()) {
+    EXPECT(composed.windowPlacement->x == 0,
+           "reloaded x override should preserve zero");
+    EXPECT(composed.windowPlacement->y == 0,
+           "reloaded y override should preserve zero");
+    EXPECT(!composed.windowPlacement->maximized,
+           "reloaded maximized override should preserve false");
+  }
+  EXPECT(composed.preferences.uiFontScale > 0.99f &&
+             composed.preferences.uiFontScale < 1.01f,
+         "reloaded ui font scale override should preserve 1.0");
+  EXPECT(composedInspector.has_value(),
+         "reloaded inspector layout should compose");
+  if (composedInspector.has_value()) {
+    EXPECT(!composedInspector->get().visible,
+           "reloaded visible override should preserve false");
+    EXPECT(!composedInspector->get().collapsed,
+           "reloaded collapsed override should preserve false");
+    EXPECT(composedInspector->get().x == 0,
+           "reloaded layout x override should preserve zero");
+    EXPECT(composedInspector->get().y == 0,
+           "reloaded layout y override should preserve zero");
+  }
+
+  fs::remove_all(tempRoot);
+}
+
+void testEmptyOverrideMapsDoNotMutateEffectiveConfig() {
+  namespace fs = std::filesystem;
+
+  const fs::path tempRoot =
+      fs::temp_directory_path() / "lxengine_lxe_editor_empty_overrides";
+  fs::remove_all(tempRoot);
+  fs::create_directories(tempRoot);
+
+  const auto display = makeTestDisplay(0, "Primary", 0, 0, 1920, 1080, 1.0f);
+  LX_demo::lxe_editor::EditorConfigState state(tempRoot);
+  std::ofstream(state.configPath()) << "version: 2\n"
+                                       "activeDisplay: \""
+                                    << display.key
+                                    << "\"\n"
+                                       "displayDefault:\n"
+                                       "  window:\n"
+                                       "    x: 50\n"
+                                       "    y: 60\n"
+                                       "    width: 1280\n"
+                                       "    height: 720\n"
+                                       "    maximized: true\n"
+                                       "displayProfiles:\n"
+                                       "  - key: \""
+                                    << display.key
+                                    << "\"\n"
+                                       "    label: \""
+                                    << display.label
+                                    << "\"\n"
+                                       "    available: true\n"
+                                       "    overrides:\n"
+                                       "      window: {}\n";
+
+  const auto document = state.loadOrCreateForDisplays({display});
+  const auto effective = state.composeEffectiveConfig(document, display.key);
+
+  EXPECT(effective.windowPlacement.has_value(),
+         "default window placement should remain present");
+  if (effective.windowPlacement.has_value()) {
+    EXPECT(effective.windowPlacement->x == 50,
+           "empty window override should not replace default x");
+    EXPECT(effective.windowPlacement->y == 60,
+           "empty window override should not replace default y");
+    EXPECT(effective.windowPlacement->width == 1280,
+           "empty window override should not replace default width");
+    EXPECT(effective.windowPlacement->height == 720,
+           "empty window override should not replace default height");
+    EXPECT(effective.windowPlacement->maximized,
+           "empty window override should not replace default maximized");
+  }
+
+  fs::remove_all(tempRoot);
+}
+
+void testIdOnlyLayoutOverrideEntriesAreIgnored() {
+  namespace fs = std::filesystem;
+
+  const fs::path tempRoot =
+      fs::temp_directory_path() / "lxengine_lxe_editor_id_only_overrides";
+  fs::remove_all(tempRoot);
+  fs::create_directories(tempRoot);
+
+  const auto display = makeTestDisplay(0, "Primary", 0, 0, 1920, 1080, 1.0f);
+  LX_demo::lxe_editor::EditorConfigState state(tempRoot);
+  std::ofstream(state.configPath()) << "version: 2\n"
+                                       "activeDisplay: \""
+                                    << display.key
+                                    << "\"\n"
+                                       "displayDefault:\n"
+                                       "  layout:\n"
+                                       "    windows:\n"
+                                       "      - id: Inspector\n"
+                                       "        visible: true\n"
+                                       "        collapsed: false\n"
+                                       "        x: 25\n"
+                                       "        y: 25\n"
+                                       "        width: 300\n"
+                                       "        height: 200\n"
+                                       "displayProfiles:\n"
+                                       "  - key: \""
+                                    << display.key
+                                    << "\"\n"
+                                       "    label: \""
+                                    << display.label
+                                    << "\"\n"
+                                       "    available: true\n"
+                                       "    overrides:\n"
+                                       "      layout:\n"
+                                       "        windows:\n"
+                                       "          - id: Inspector\n"
+                                       "          - id: Floating\n";
+
+  const auto document = state.loadOrCreateForDisplays({display});
+  const auto effective = state.composeEffectiveConfig(document, display.key);
+  const auto inspector =
+      LX_demo::lxe_editor::findEditorWindowLayout(effective, "Inspector");
+  const auto floating =
+      LX_demo::lxe_editor::findEditorWindowLayout(effective, "Floating");
+
+  EXPECT(inspector.has_value(), "default inspector layout should remain");
+  if (inspector.has_value()) {
+    EXPECT(inspector->get().x == 25 && inspector->get().y == 25,
+           "id-only override should not mutate default layout position");
+  }
+  EXPECT(!floating.has_value(),
+         "id-only override should not create a new zero-size layout");
+
+  fs::remove_all(tempRoot);
+}
+
+void testLoadOrCreateMigratesV1ToDurableV2() {
+  namespace fs = std::filesystem;
+
+  const fs::path tempRoot =
+      fs::temp_directory_path() / "lxengine_lxe_editor_migrate_v1_durable";
+  fs::remove_all(tempRoot);
+  fs::create_directories(tempRoot);
+
+  const auto display = makeTestDisplay(0, "Primary", 0, 0, 1920, 1080, 1.0f);
+  LX_demo::lxe_editor::EditorConfigState state(tempRoot);
+  std::ofstream(state.configPath()) << makePersistedEditorConfigYaml();
+
+  (void)state.loadOrCreateForDisplays({display});
+  const auto reloaded = state.loadOrCreateForDisplays({display});
+  std::ifstream savedFile(state.configPath());
+  std::stringstream savedBuffer;
+  savedBuffer << savedFile.rdbuf();
+  const std::string savedYaml = savedBuffer.str();
+
+  EXPECT(savedYaml.find("version: 2") != std::string::npos,
+         "v1 migration should be persisted as v2");
+  EXPECT(savedYaml.find("displayDefault:") != std::string::npos,
+         "migrated v2 file should contain displayDefault");
+  EXPECT(reloaded.displayProfiles.size() == 1,
+         "migrated v2 reload should keep current display profile");
+  EXPECT(reloaded.displayDefault.windowPlacement.has_value(),
+         "migrated v2 reload should preserve v1 window placement");
+
+  fs::remove_all(tempRoot);
+}
+
+void testLoadOrCreatePersistsDisplaySyncAndActiveFallback() {
+  namespace fs = std::filesystem;
+
+  const fs::path tempRoot =
+      fs::temp_directory_path() / "lxengine_lxe_editor_sync_v2_durable";
+  fs::remove_all(tempRoot);
+  fs::create_directories(tempRoot);
+
+  const auto current = makeTestDisplay(0, "Primary", 0, 0, 1920, 1080, 1.0f);
+  const auto added = makeTestDisplay(1, "Side", 1920, 0, 2560, 1440, 1.25f);
+  const auto missing = makeTestDisplay(2, "Gone", 4480, 0, 1280, 720, 1.0f);
+  LX_demo::lxe_editor::EditorConfigState state(tempRoot);
+  std::ofstream(state.configPath()) << "version: 2\n"
+                                       "activeDisplay: \""
+                                    << missing.key
+                                    << "\"\n"
+                                       "displayDefault:\n"
+                                       "  preferences:\n"
+                                       "    uiFontScale: 1.0\n"
+                                       "displayProfiles:\n"
+                                       "  - key: \""
+                                    << current.key
+                                    << "\"\n"
+                                       "    label: \""
+                                    << current.label
+                                    << "\"\n"
+                                       "    available: true\n"
+                                       "    overrides: {}\n"
+                                       "  - key: \""
+                                    << missing.key
+                                    << "\"\n"
+                                       "    label: \""
+                                    << missing.label
+                                    << "\"\n"
+                                       "    available: true\n"
+                                       "    overrides: {}\n";
+
+  (void)state.loadOrCreateForDisplays({current, added});
+  std::ifstream savedFile(state.configPath());
+  std::stringstream savedBuffer;
+  savedBuffer << savedFile.rdbuf();
+  const std::string savedYaml = savedBuffer.str();
+  const auto reloaded = state.loadOrCreateForDisplays({current, added});
+
+  EXPECT(savedYaml.find("activeDisplay: " + current.key) != std::string::npos ||
+             savedYaml.find("activeDisplay: \"" + current.key + "\"") !=
+                 std::string::npos,
+         "active display fallback should be written to disk");
+  EXPECT(savedYaml.find(added.key) != std::string::npos,
+         "new display profile should be written to disk");
+  EXPECT(savedYaml.find("available: false") != std::string::npos,
+         "unavailable display profile should be written to disk");
+  EXPECT(reloaded.activeDisplay == current.key,
+         "active display fallback should be durable");
+  EXPECT(reloaded.displayProfiles.size() == 3,
+         "display sync should persist retained and new profiles");
+  const auto addedProfile = std::find_if(
+      reloaded.displayProfiles.begin(), reloaded.displayProfiles.end(),
+      [&added](const LX_demo::lxe_editor::EditorDisplayProfile &profile) {
+        return profile.key == added.key;
+      });
+  const auto missingProfile = std::find_if(
+      reloaded.displayProfiles.begin(), reloaded.displayProfiles.end(),
+      [&missing](const LX_demo::lxe_editor::EditorDisplayProfile &profile) {
+        return profile.key == missing.key;
+      });
+  EXPECT(addedProfile != reloaded.displayProfiles.end() &&
+             addedProfile->available,
+         "new display profile should be persisted as available");
+  EXPECT(missingProfile != reloaded.displayProfiles.end() &&
+             !missingProfile->available,
+         "missing display profile should be persisted as unavailable");
+
+  fs::remove_all(tempRoot);
+}
+
+void testDuplicateDisplayProfilesNormalizeOnLoadCreate() {
+  namespace fs = std::filesystem;
+
+  const fs::path tempRoot =
+      fs::temp_directory_path() / "lxengine_lxe_editor_duplicate_profiles";
+  fs::remove_all(tempRoot);
+  fs::create_directories(tempRoot);
+
+  const auto display = makeTestDisplay(0, "Primary", 0, 0, 1920, 1080, 1.0f);
+  LX_demo::lxe_editor::EditorConfigState state(tempRoot);
+  std::ofstream(state.configPath()) << "version: 2\n"
+                                       "activeDisplay: \""
+                                    << display.key
+                                    << "\"\n"
+                                       "displayDefault:\n"
+                                       "  preferences:\n"
+                                       "    uiFontScale: 1.0\n"
+                                       "displayProfiles:\n"
+                                       "  - key: \""
+                                    << display.key
+                                    << "\"\n"
+                                       "    label: first profile\n"
+                                       "    available: true\n"
+                                       "    overrides:\n"
+                                       "      preferences:\n"
+                                       "        uiFontScale: 1.25\n"
+                                       "  - key: \""
+                                    << display.key
+                                    << "\"\n"
+                                       "    label: duplicate profile\n"
+                                       "    available: true\n"
+                                       "    overrides:\n"
+                                       "      preferences:\n"
+                                       "        uiFontScale: 1.5\n";
+
+  (void)state.loadOrCreateForDisplays({display});
+  const auto reloaded = state.loadOrCreateForDisplays({display});
+  std::ifstream savedFile(state.configPath());
+  std::stringstream savedBuffer;
+  savedBuffer << savedFile.rdbuf();
+  const std::string savedYaml = savedBuffer.str();
+
+  EXPECT(reloaded.displayProfiles.size() == 1,
+         "duplicate profile keys should normalize to one profile");
+  EXPECT(reloaded.displayProfiles.front().label == display.label,
+         "current display sync should update the retained profile label");
+  const auto effective = state.composeEffectiveConfig(reloaded, display.key);
+  EXPECT(effective.preferences.uiFontScale > 1.24f &&
+             effective.preferences.uiFontScale < 1.26f,
+         "duplicate normalization should preserve the first profile overrides");
+  EXPECT(countOccurrences(savedYaml, display.key) == 2,
+         "saved YAML should contain the display key once in activeDisplay and "
+         "once in displayProfiles");
+
+  fs::remove_all(tempRoot);
+}
+
+void testLoadOrCreateDoesNotOverwriteInvalidYaml() {
+  namespace fs = std::filesystem;
+
+  const fs::path tempRoot =
+      fs::temp_directory_path() / "lxengine_lxe_editor_invalid_v2_no_overwrite";
+  fs::remove_all(tempRoot);
+  fs::create_directories(tempRoot);
+
+  const auto display = makeTestDisplay(0, "Primary", 0, 0, 1920, 1080, 1.0f);
+  LX_demo::lxe_editor::EditorConfigState state(tempRoot);
+  const std::string invalidYaml = "version: 2\npreferences: [broken";
+  std::ofstream(state.configPath()) << invalidYaml;
+
+  const auto document = state.loadOrCreateForDisplays({display});
+  std::ifstream savedFile(state.configPath());
+  std::stringstream savedBuffer;
+  savedBuffer << savedFile.rdbuf();
+
+  EXPECT(document.version == 2,
+         "invalid existing config should still return in-memory v2 defaults");
+  EXPECT(savedBuffer.str() == invalidYaml,
+         "invalid existing config should not be overwritten");
+
+  fs::remove_all(tempRoot);
+}
+
+void testLoadOrCreateDoesNotOverwriteUnsupportedVersion() {
+  namespace fs = std::filesystem;
+
+  const fs::path tempRoot = fs::temp_directory_path() /
+                            "lxengine_lxe_editor_unsupported_no_overwrite";
+  fs::remove_all(tempRoot);
+  fs::create_directories(tempRoot);
+
+  const auto display = makeTestDisplay(0, "Primary", 0, 0, 1920, 1080, 1.0f);
+  LX_demo::lxe_editor::EditorConfigState state(tempRoot);
+  const std::string unsupportedYaml = "version: 999\n"
+                                      "activeDisplay: future-display\n";
+  std::ofstream(state.configPath()) << unsupportedYaml;
+
+  const auto document = state.loadOrCreateForDisplays({display});
+  std::ifstream savedFile(state.configPath());
+  std::stringstream savedBuffer;
+  savedBuffer << savedFile.rdbuf();
+
+  EXPECT(
+      document.version == 2,
+      "unsupported existing config should still return in-memory v2 defaults");
+  EXPECT(savedBuffer.str().find("version: 999") != std::string::npos,
+         "unsupported existing config version should remain on disk");
+  EXPECT(savedBuffer.str() == unsupportedYaml,
+         "unsupported existing config should not be overwritten");
 
   fs::remove_all(tempRoot);
 }
@@ -761,6 +1487,19 @@ int main() {
   testCameraRigResyncKeepsUpdatedEditorCameraPose();
   testPersistedEditorConfigOverridesDefaultRectsAndPreferences();
   testEditorConfigRoundTrips();
+  testEditorConfigV2CreatesProfilesForAllDisplays();
+  testDisplayOverrideComposesWithDefault();
+  testEditorConfigV2RetainsUnavailableProfiles();
+  testDisplayOverrideComposesDefaultLikeWindowAndPreferenceValues();
+  testLayoutOverrideComposesDefaultLikeValues();
+  testDisplaySaveDiffPersistsDefaultLikeOverrideValues();
+  testEmptyOverrideMapsDoNotMutateEffectiveConfig();
+  testIdOnlyLayoutOverrideEntriesAreIgnored();
+  testLoadOrCreateMigratesV1ToDurableV2();
+  testLoadOrCreatePersistsDisplaySyncAndActiveFallback();
+  testDuplicateDisplayProfilesNormalizeOnLoadCreate();
+  testLoadOrCreateDoesNotOverwriteInvalidYaml();
+  testLoadOrCreateDoesNotOverwriteUnsupportedVersion();
   testPreviewModeSuppressesHotkeyDeselectAndRemove();
   testToolbarIsRecoverableFromPersistedHiddenState();
   testUiFontScaleDoesNotCompoundAcrossReattach();
