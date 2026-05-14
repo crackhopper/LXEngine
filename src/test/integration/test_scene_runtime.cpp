@@ -1076,6 +1076,12 @@ void testGroundMeshWindingMatchesUpwardNormal() {
   }
 
   const auto &mesh = meshComponent->get().getMesh();
+  expectNear(mesh->bounds.getCenter().y, 0.0f,
+             "ground mesh pivot should sit on the plane center");
+  expectNear(mesh->bounds.min.y, 0.0f,
+             "ground mesh local min y should match pivot height");
+  expectNear(mesh->bounds.max.y, 0.0f,
+             "ground mesh local max y should match pivot height");
   const auto *vertexBuffer =
       dynamic_cast<LX_core::VertexBuffer<LX_core::VertexPosNormalUvBone> *>(
           mesh->vertexBuffer.get());

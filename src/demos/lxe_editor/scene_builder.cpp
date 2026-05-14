@@ -375,11 +375,7 @@ MeshSharedPtr buildPrimitiveMesh(std::string_view meshUri) {
 
 MeshSharedPtr buildGroundMesh() {
   const float half = 20.0f; // 40m x 40m — wide enough to give visual context
-  // Ground drops below the helmet's local origin so the helmet sits clearly
-  // above the plane. DamagedHelmet is roughly 2m tall centered near y=0 in
-  // mesh space; we don't yet apply glTF node transforms, so hand-tune the
-  // ground height here.
-  const float groundY = -1.5f;
+  const float groundY = 0.0f;
   const Vec3f up{0.0f, 1.0f, 0.0f};
   const Vec4f tangent{1.0f, 0.0f, 0.0f, 1.0f};
   const Vec4i zeroBones{0, 0, 0, 0};
