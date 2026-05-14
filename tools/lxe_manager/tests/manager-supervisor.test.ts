@@ -48,13 +48,13 @@ describe("manager supervisor", () => {
     );
   });
 
-  it("starts a replacement supervisor when the MCP server requests restart", () => {
+  it("restarts the MCP server child in the same supervisor when restart is requested", () => {
     const child = fakeChild(102);
-    const replacement = fakeChild(202);
+    const restartedChild = fakeChild(202);
     const spawnProcess = vi
       .fn()
       .mockReturnValueOnce(child)
-      .mockReturnValueOnce(replacement);
+      .mockReturnValueOnce(restartedChild);
     const exit = vi.fn();
     const supervisor = new ManagerSupervisor({
       managerDir: "/repo/tools/lxe_manager",
@@ -75,17 +75,16 @@ describe("manager supervisor", () => {
       [
         "--import",
         "tsx",
-        "/repo/tools/lxe_manager/src/supervisor.ts",
+        "./src/index.ts",
         "--host",
         "0.0.0.0",
       ],
       expect.objectContaining({
         cwd: "/repo/tools/lxe_manager",
-        detached: true,
-        stdio: "inherit",
+        stdio: ["ignore", "pipe", "pipe"],
       }) as SpawnOptions,
     );
-    expect(exit).toHaveBeenCalledWith(0);
+    expect(exit).not.toHaveBeenCalled();
   });
 
   it("exits without replacement when the MCP server exits with another code", () => {

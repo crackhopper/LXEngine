@@ -48,8 +48,8 @@ export class ManagerSupervisor {
         `lxe_manager child exited code=${code ?? ""} signal=${signal ?? ""}`,
       );
       if (code === MANAGER_RESTART_EXIT_CODE) {
-        this.startReplacementSupervisor();
-        this.exit(0);
+        this.log("restart code received; restarting lxe_manager child");
+        this.start();
         return;
       }
       this.exit(code ?? 1);
@@ -80,18 +80,4 @@ export class ManagerSupervisor {
     return child;
   }
 
-  private startReplacementSupervisor(): void {
-    const args = [
-      ...this.nodeExecArgv,
-      this.options.supervisorScript,
-      ...this.options.managerArgs,
-    ];
-    this.log(`starting replacement lxe_manager supervisor: node ${args.join(" ")}`);
-    const child = this.spawnProcess(process.execPath, args, {
-      cwd: this.options.managerDir,
-      detached: true,
-      stdio: "inherit",
-    });
-    child.unref();
-  }
 }
