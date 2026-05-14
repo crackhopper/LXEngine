@@ -53,6 +53,13 @@ public:
     static auto dummy = std::make_shared<DummyInputState>();
     return dummy;
   }
+  WindowPlacement getPlacement() const override { return m_placement; }
+  WindowUsableBounds getUsableBounds() const override {
+    return WindowUsableBounds{.x = 0, .y = 0, .width = 640, .height = 480};
+  }
+  void applyPlacement(const WindowPlacement& placement) override {
+    m_placement = placement;
+  }
   void* getNativeHandle() const override { return nullptr; }
   void onClose(std::function<bool()> cb) override { m_onClose = std::move(cb); }
   bool shouldClose() override {
@@ -73,6 +80,7 @@ public:
 private:
   bool m_closeImmediately = false;
   bool m_shouldClose = false;
+  WindowPlacement m_placement{.width = 640, .height = 480};
   std::function<bool()> m_onClose;
 };
 

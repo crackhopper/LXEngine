@@ -5,9 +5,12 @@
 #include <SDL3/SDL_vulkan.h>
 #include <backends/imgui_impl_sdl3.h>
 #include <imgui.h>
+#include <algorithm>
+#include <cstdlib>
 #include <functional>
 #include <iostream>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 
@@ -27,6 +30,53 @@ namespace {
   const long long dx = x - clampedX;
   const long long dy = y - clampedY;
   return dx * dx + dy * dy;
+}
+
+[[nodiscard]] LX_core::WindowUsableBounds makeBounds(const SDL_Rect& rect) {
+  return LX_core::WindowUsableBounds{
+      .x = rect.x,
+      .y = rect.y,
+      .width = rect.w,
+      .height = rect.h,
+  };
+}
+
+void initializeVideoForDisplayEnumeration() {
+  if (SDL_Init(SDL_INIT_VIDEO)) {
+    return;
+  }
+
+  const std::string initialError = SDL_GetError();
+  if (std::getenv("SDL_VIDEO_DRIVER") == nullptr) {
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "dummy");
+    if (SDL_Init(SDL_INIT_VIDEO)) {
+      return;
+    }
+  }
+
+  std::cerr << "Failed to initialize SDL: " << initialError << "\n";
+  throw std::runtime_error(initialError);
+}
+
+[[nodiscard]] std::optional<LX_core::WindowPlacement>
+resolveInitialPlacement(const int width, const int height,
+                        const WindowCreateOptions& options) {
+  if (options.initialPlacement.has_value()) {
+    return options.initialPlacement;
+  }
+
+  if (!options.displayKey.has_value()) {
+    return std::nullopt;
+  }
+
+  for (const auto& display : Window::enumerateDisplays()) {
+    if (display.key == *options.displayKey) {
+      return LX_core::makeDefaultWindowPlacementForDisplay(display, width,
+                                                           height);
+    }
+  }
+
+  return std::nullopt;
 }
 
 } // namespace
@@ -236,10 +286,62 @@ void Window::Initialize() {}
 
 Window::Window(const char *title, int width, int height,
                std::optional<LX_core::WindowPlacement> initialPlacement)
-    : pImpl(
-          std::make_unique<Impl>(title, width, height, initialPlacement)) {}
+    : Window(title, width, height,
+             WindowCreateOptions{.initialPlacement = initialPlacement}) {}
+
+Window::Window(const char *title, int width, int height,
+               const WindowCreateOptions& options)
+    : pImpl(std::make_unique<Impl>(
+          title, width, height,
+          resolveInitialPlacement(width, height, options))) {}
 
 Window::~Window() = default;
+
+std::vector<LX_core::DisplayInfo> Window::enumerateDisplays() {
+  initializeVideoForDisplayEnumeration();
+
+  int displayCount = 0;
+  std::unique_ptr<SDL_DisplayID, decltype(&SDL_free)> displays(
+      SDL_GetDisplays(&displayCount), SDL_free);
+  if (displays == nullptr) {
+    throw std::runtime_error(SDL_GetError());
+  }
+
+  std::vector<LX_core::DisplayInfo> result;
+  result.reserve(static_cast<size_t>(std::max(0, displayCount)));
+  for (int i = 0; i < displayCount; ++i) {
+    SDL_Rect bounds{};
+    if (!SDL_GetDisplayBounds(displays.get()[i], &bounds)) {
+      continue;
+    }
+
+    SDL_Rect usableBounds{};
+    if (!SDL_GetDisplayUsableBounds(displays.get()[i], &usableBounds) ||
+        usableBounds.w <= 0 || usableBounds.h <= 0) {
+      usableBounds = bounds;
+    }
+
+    float scale = SDL_GetDisplayContentScale(displays.get()[i]);
+    if (scale <= 0.0f) {
+      scale = 1.0f;
+    }
+
+    const char* name = SDL_GetDisplayName(displays.get()[i]);
+    LX_core::DisplayInfo info{
+        .index = i,
+        .backend = "sdl",
+        .name = name != nullptr ? name : "",
+        .bounds = makeBounds(bounds),
+        .usableBounds = makeBounds(usableBounds),
+        .contentScale = scale,
+    };
+    LX_core::finalizeDisplayInfo(info);
+    result.push_back(std::move(info));
+  }
+
+  return result;
+}
+
 // getWidth/getHeight query SDL for the live pixel size each call so swapchain
 // rebuild after a resize sees the new extent, not the construction-time value.
 // SDL_GetWindowSizeInPixels is a cheap local lookup; the per-frame cost is

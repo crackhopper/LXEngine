@@ -1,4 +1,5 @@
 #include "core/platform/window.hpp"
+#include "infra/window/window.hpp"
 
 #include <iostream>
 #include <string>
@@ -104,6 +105,16 @@ void testDefaultPlacementKeepsPositiveDimensionsForInvalidInputs() {
   EXPECT(placement.x == 100, "invalid usable width should use usable x");
   EXPECT(placement.y == 200, "invalid usable height should use usable y");
 }
+
+void testWindowCanEnumerateDisplays() {
+  const auto displays = LX_infra::Window::enumerateDisplays();
+
+  EXPECT(!displays.empty(), "window backend should enumerate at least one display");
+  for (const auto& display : displays) {
+    EXPECT(!display.key.empty(), "display key should be populated");
+    EXPECT(!display.label.empty(), "display label should be populated");
+  }
+}
 } // namespace
 
 int main() {
@@ -112,6 +123,7 @@ int main() {
   testDefaultPlacementUsesSelectedDisplayUsableBounds();
   testDefaultPlacementClampsOversizeWindowToUsableBounds();
   testDefaultPlacementKeepsPositiveDimensionsForInvalidInputs();
+  testWindowCanEnumerateDisplays();
 
   if (failures != 0) {
     std::cerr << failures << " display config test(s) failed\n";
