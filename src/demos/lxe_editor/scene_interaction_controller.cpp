@@ -27,6 +27,23 @@ constexpr float kSelectionDragThresholdPx = 4.0f;
       bounds.max + LX_core::Vec3f{padding, padding, padding}};
 }
 
+void drawDirectionalLightDebug(const LX_core::SceneNode& node,
+                               const LX_core::DirectionalLight& light) {
+  LX_core::Vec3f direction = light.getDirection();
+  if (direction.length2() <= 1e-6f) {
+    direction = LX_core::Vec3f{0.0f, -1.0f, 0.0f};
+  } else {
+    direction = direction.normalized();
+  }
+  const LX_core::Vec3f origin =
+      LX_core::Transform::fromMat4(node.getWorldTransform()).translation;
+  constexpr float kLightDebugRadius = 0.16f;
+  LX_core::DebugDraw::wireOctahedron(
+      origin, kLightDebugRadius, LX_core::DebugDraw::Color::yellow());
+  LX_core::DebugDraw::arrow(origin, origin + direction * 2.0f,
+                            LX_core::DebugDraw::Color::yellow());
+}
+
 [[nodiscard]] std::string formatFloat(const float value) {
   std::ostringstream oss;
   oss << std::fixed << std::setprecision(3) << value;
@@ -253,7 +270,7 @@ void SceneInteractionController::enqueueDebugDraw() const {
     if (!selected) {
       continue;
     }
-    const LX_core::BoundingBox bounds = selected->getWorldBounds();
+    const LX_core::BoundingBox bounds = m_scene.getPickBounds(*selected);
     if (!bounds.isValid()) {
       continue;
     }
@@ -292,16 +309,7 @@ void SceneInteractionController::enqueueDebugDraw() const {
       if (!directionalLight) {
         continue;
       }
-      LX_core::Vec3f direction = directionalLight->getDirection();
-      if (direction.length2() <= 1e-6f) {
-        direction = LX_core::Vec3f{0.0f, -1.0f, 0.0f};
-      } else {
-        direction = direction.normalized();
-      }
-      const LX_core::Vec3f origin =
-          LX_core::Transform::fromMat4(node->getWorldTransform()).translation;
-      LX_core::DebugDraw::arrow(origin, origin + direction * 2.0f,
-                                LX_core::DebugDraw::Color::yellow());
+      drawDirectionalLightDebug(*node, *directionalLight);
     }
     return;
   }
@@ -328,16 +336,7 @@ void SceneInteractionController::enqueueDebugDraw() const {
     if (!directionalLight) {
       continue;
     }
-    LX_core::Vec3f direction = directionalLight->getDirection();
-    if (direction.length2() <= 1e-6f) {
-      direction = LX_core::Vec3f{0.0f, -1.0f, 0.0f};
-    } else {
-      direction = direction.normalized();
-    }
-    const LX_core::Vec3f origin =
-        LX_core::Transform::fromMat4(node->getWorldTransform()).translation;
-    LX_core::DebugDraw::arrow(origin, origin + direction * 2.0f,
-                              LX_core::DebugDraw::Color::yellow());
+    drawDirectionalLightDebug(*node, *directionalLight);
   }
 
   const auto selected = m_editorState.getSelected();

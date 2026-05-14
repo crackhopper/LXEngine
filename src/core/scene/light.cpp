@@ -21,6 +21,10 @@ float DirectionalLight::getIntensity() const {
   return m_ubo->param.color.w;
 }
 
+std::shared_ptr<SceneNode> DirectionalLight::getSceneNode() const {
+  return m_node.lock();
+}
+
 void DirectionalLight::setDirection(const Vec3f &direction) {
   m_ubo->param.dir = Vec4f{direction.x, direction.y, direction.z, 0.0f};
   m_ubo->setDirty();
@@ -54,6 +58,12 @@ void DirectionalLight::detachFromSceneNode() {
 
 bool DirectionalLight::supportsPass(const StringID pass) const {
   return m_supportedPasses.find(pass) != m_supportedPasses.end();
+}
+
+BoundingBox DirectionalLight::getDebugLocalBounds() const {
+  constexpr float radius = 0.16f;
+  return BoundingBox{Vec3f{-radius, -radius, -radius},
+                     Vec3f{radius, radius, radius}};
 }
 
 void DirectionalLight::setSupportedPasses(

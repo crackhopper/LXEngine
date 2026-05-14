@@ -554,6 +554,32 @@ void wireSphere(Vec3f center, float radius, Vec4f color, int segments) {
   wireCircle(center, Vec3f{0.0f, 0.0f, 1.0f}, radius, color, segments);
 }
 
+void wireOctahedron(Vec3f center, float radius, Vec4f color) {
+  if (radius <= 0.0f) {
+    return;
+  }
+
+  const Vec3f top = center + Vec3f{0.0f, radius, 0.0f};
+  const Vec3f bottom = center + Vec3f{0.0f, -radius, 0.0f};
+  const Vec3f right = center + Vec3f{radius, 0.0f, 0.0f};
+  const Vec3f left = center + Vec3f{-radius, 0.0f, 0.0f};
+  const Vec3f front = center + Vec3f{0.0f, 0.0f, radius};
+  const Vec3f back = center + Vec3f{0.0f, 0.0f, -radius};
+
+  drawLine(top, right, color);
+  drawLine(top, front, color);
+  drawLine(top, left, color);
+  drawLine(top, back, color);
+  drawLine(bottom, right, color);
+  drawLine(bottom, front, color);
+  drawLine(bottom, left, color);
+  drawLine(bottom, back, color);
+  drawLine(right, front, color);
+  drawLine(front, left, color);
+  drawLine(left, back, color);
+  drawLine(back, right, color);
+}
+
 void wireBox(const BoundingBox &bounds, Vec4f color) {
   if (!bounds.isValid()) {
     return;

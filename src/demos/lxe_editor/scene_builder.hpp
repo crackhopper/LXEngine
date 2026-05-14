@@ -22,6 +22,5 @@ LX_core::SceneNodeSharedPtr buildHelmetNode(const std::filesystem::path& gltfPat
 // albedo sampling disabled. Returns a SceneNode ready to attach.
 LX_core::SceneNodeSharedPtr buildGroundNode();
 LX_core::SceneNodeSharedPtr buildCameraHelperNode();
-LX_core::SceneNodeSharedPtr buildDirectionalLightHelperNode();
 
 } // namespace LX_demo::lxe_editor

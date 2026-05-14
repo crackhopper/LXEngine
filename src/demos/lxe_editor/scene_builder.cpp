@@ -319,12 +319,4 @@ LX_core::SceneNodeSharedPtr buildCameraHelperNode() {
   return node;
 }
 
-LX_core::SceneNodeSharedPtr buildDirectionalLightHelperNode() {
-  auto node = makeRenderableNode("helper_light", buildOctahedronMesh(0.16f),
-                                 makeHelperMaterial(Vec3f{1.0f, 0.86f, 0.25f}));
-  node->setName("helper_light");
-  node->setVisibilityLayerMask(Layer_EditorHelper);
-  return node;
-}
-
 } // namespace LX_demo::lxe_editor

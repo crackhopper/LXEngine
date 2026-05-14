@@ -227,6 +227,19 @@ Scene::getCombinedCameraCullingMask(const RenderTarget &target) const {
   return mask;
 }
 
+BoundingBox Scene::getPickBounds(const SceneNode &node) const {
+  const BoundingBox meshBounds = node.getWorldBounds();
+  if (meshBounds.isValid()) {
+    return meshBounds;
+  }
+
+  const auto light = getLight(node);
+  if (!light) {
+    return {};
+  }
+  return light->getDebugLocalBounds().transformed(node.getWorldTransform());
+}
+
 std::optional<Scene::PickHit>
 Scene::pick(const Ray &ray, VisibilityLayerMask layerMask) const {
   std::optional<PickHit> bestHit;
@@ -239,13 +252,17 @@ Scene::pick(const Ray &ray, VisibilityLayerMask layerMask) const {
       continue;
     }
 
-    const BoundingBox worldBounds = node->getWorldBounds();
+    const BoundingBox worldBounds = getPickBounds(*node);
     if (!worldBounds.isValid()) {
       continue;
     }
 
     const auto hitDistance = intersectRayBox(ray, worldBounds);
     if (!hitDistance.has_value()) {
+      continue;
+    }
+    if (*hitDistance <= 1e-4f && getLight(*node) &&
+        !node->getWorldBounds().isValid()) {
       continue;
     }
 

@@ -203,6 +203,21 @@ void testSceneInteractionSelectsHitNodeOnClick() {
          "selection click should pick the mesh under the cursor");
 }
 
+void testSceneInteractionSelectsLightNodeViaDebugBounds() {
+  Fixture fixture;
+  fixture.targetNode->setTranslation({100.0f, 100.0f, -5.0f});
+  fixture.lightNode->setTranslation({0.0f, 0.0f, -5.0f});
+
+  const auto result =
+      fixture.controller.dispatchPickingClick(LX_core::Vec2f{400.0f, 300.0f},
+                                             LX_core::Vec2f{800.0f, 600.0f});
+  EXPECT(result.ok, "light debug bounds should be pickable");
+
+  const auto selected = fixture.editorState.getSelected();
+  EXPECT(selected.size() == 1 && selected.front() == fixture.lightNode,
+         "selection click should pick the light owner node");
+}
+
 void testSceneInteractionDeselectsOnMiss() {
   Fixture fixture;
   fixture.editorState.select({fixture.targetNode});
@@ -615,7 +630,7 @@ void testEditorModeDrawsCameraAndLightDebugHelpers() {
   fixture.controller.enqueueDebugDraw();
 
   EXPECT(LX_core::DebugDraw::testing::queuedLineCount() >= 15,
-         "editor mode should draw camera frustum and directional-light helper lines");
+         "editor mode should draw camera frustum and directional-light debug lines");
   LX_core::DebugDraw::endFrame();
 }
 
@@ -639,6 +654,7 @@ int main() {
   expSetEnvVK();
   testPickRayProjectionRoundTripsBackToOriginalViewportPixel();
   testSceneInteractionSelectsHitNodeOnClick();
+  testSceneInteractionSelectsLightNodeViaDebugBounds();
   testSceneInteractionDeselectsOnMiss();
   testSelectionPickingUsesSceneViewRectInsteadOfWholeWindow();
   testSelectionPickingIgnoresClicksOutsideSceneViewRect();

@@ -231,7 +231,8 @@ void testEditorHelpersUseFacetedOctahedronGeometry() {
   };
 
   requireHelperVertexCount("/game_cam/helper_camera");
-  requireHelperVertexCount("/dir_light/helper_light");
+  EXPECT(scene->findByPath("/dir_light/helper_light") == nullptr,
+         "directional lights should draw through their owning node instead of a helper child");
 }
 
 void testRecordingCommandControlsSessionRecorder() {

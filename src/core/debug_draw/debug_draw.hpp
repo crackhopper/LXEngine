@@ -41,6 +41,7 @@ void drawLine(Vec3f a, Vec3f b, Vec4f color = Color::white());
 void drawTriangle(Vec3f a, Vec3f b, Vec3f c, Vec4f color = Color::white());
 void wireSphere(Vec3f center, float radius, Vec4f color = Color::white(),
                 int segments = 24);
+void wireOctahedron(Vec3f center, float radius, Vec4f color = Color::white());
 void wireCircle(Vec3f center, Vec3f normal, float radius,
                 Vec4f color = Color::white(), int segments = 24);
 void wireBox(const BoundingBox &bounds, Vec4f color = Color::white());

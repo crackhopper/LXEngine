@@ -85,10 +85,10 @@ void testRuntimeCreatesEmptyScene() {
          "empty runtime should attach a directional light to the default light node");
   EXPECT(runtime.scene()->findByPath("/game_cam/helper_camera") != nullptr,
          "empty runtime should create a gameplay-camera helper");
-  EXPECT(runtime.scene()->findByPath("/dir_light/helper_light") != nullptr,
-         "empty runtime should create a directional-light helper");
-  EXPECT(runtime.scene()->getRenderables().size() == 5,
-         "empty runtime should contain gameplay camera, editor camera, default light, and both helpers");
+  EXPECT(runtime.scene()->findByPath("/dir_light/helper_light") == nullptr,
+         "empty runtime should not create a directional-light helper child");
+  EXPECT(runtime.scene()->getRenderables().size() == 4,
+         "empty runtime should contain gameplay camera, editor camera, default light, and camera helper");
 }
 
 void testRuntimeCreatesEditorOnlyHelpersForEditableSceneNodes() {
@@ -136,8 +136,8 @@ void testRuntimeCreatesEditorOnlyHelpersForEditableSceneNodes() {
 
   EXPECT(runtime.scene()->findByPath("/game_cam/helper_camera") != nullptr,
          "game camera should get an editor-only helper child");
-  EXPECT(runtime.scene()->findByPath("/dir_light/helper_light") != nullptr,
-         "directional light should get an editor-only helper child");
+  EXPECT(runtime.scene()->findByPath("/dir_light/helper_light") == nullptr,
+         "directional light should not get an editor-only helper child");
 }
 
 void testRuntimeLoadsFullSceneDocument() {

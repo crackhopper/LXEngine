@@ -1,5 +1,6 @@
 #pragma once
 #include "core/rhi/gpu_resource.hpp"
+#include "core/math/bounds.hpp"
 #include "core/math/vec.hpp"
 #include "core/frame_graph/pass.hpp"
 #include "core/utils/string_table.hpp"
@@ -31,6 +32,11 @@ public:
 
   /// Whether this light participates in the given pass.
   virtual bool supportsPass(StringID pass) const = 0;
+
+  /// Editor/debug pick bounds in the owning SceneNode's local space. Lights do
+  /// not render mesh geometry, but the editor can use this to draw and pick the
+  /// light through the owning node instead of adding runtime helper children.
+  virtual BoundingBox getDebugLocalBounds() const { return {}; }
 };
 
 using LightBaseSharedPtr = std::shared_ptr<LightBase>;
@@ -72,6 +78,7 @@ public:
   [[nodiscard]] Vec3f getDirection() const;
   [[nodiscard]] Vec3f getColor() const;
   [[nodiscard]] float getIntensity() const;
+  [[nodiscard]] std::shared_ptr<SceneNode> getSceneNode() const;
   void setDirection(const Vec3f &direction);
   void setColor(const Vec3f &color);
   void setIntensity(float intensity);
@@ -85,6 +92,7 @@ public:
     return m_ubo;
   }
   bool supportsPass(StringID pass) const override;
+  BoundingBox getDebugLocalBounds() const override;
   void setSupportedPasses(std::initializer_list<StringID> passes);
   void setSupportedPasses(const std::vector<StringID> &passes);
 

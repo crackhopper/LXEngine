@@ -183,6 +183,7 @@ public:
   getSceneLevelResources(StringID pass, const RenderTarget &target) const;
   VisibilityLayerMask getCombinedCameraCullingMask(
       const RenderTarget &target) const;
+  [[nodiscard]] BoundingBox getPickBounds(const SceneNode &node) const;
   std::optional<PickHit> pick(
       const Ray &ray,
       VisibilityLayerMask layerMask = VisibilityMask_All) const;

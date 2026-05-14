@@ -195,6 +195,23 @@ projectBoundsToViewportRect(const BoundingBox &bounds, const Mat4f &viewProj,
                      bounds.max + Vec3f{padding, padding, padding}};
 }
 
+void drawDirectionalLightDebug(const SceneNode &node,
+                               const DirectionalLight &light) {
+  Vec3f direction = light.getDirection();
+  if (direction.length2() <= 1e-6f) {
+    direction = Vec3f{0.0f, -1.0f, 0.0f};
+  } else {
+    direction = direction.normalized();
+  }
+  const Vec3f origin =
+      Transform::fromMat4(node.getWorldTransform()).translation;
+  constexpr float kLightDebugRadius = 0.16f;
+  DebugDraw::wireOctahedron(origin, kLightDebugRadius,
+                            DebugDraw::Color::yellow());
+  DebugDraw::arrow(origin, origin + direction * 2.0f,
+                   DebugDraw::Color::yellow());
+}
+
 } // namespace
 
 ViewportOverlay::ViewportOverlay(CommandBus &commandBus,
@@ -409,7 +426,7 @@ ViewportOverlay::gatherBoxSelectionPaths(const Vec2f &dragStart,
     if (!node) {
       continue;
     }
-    const BoundingBox bounds = node->getWorldBounds();
+    const BoundingBox bounds = m_scene.getPickBounds(*node);
     if (!bounds.isValid()) {
       continue;
     }
@@ -500,7 +517,7 @@ void ViewportOverlay::enqueueDebugDraw() const {
     if (!selected) {
       continue;
     }
-    const BoundingBox bounds = selected->getWorldBounds();
+    const BoundingBox bounds = m_scene.getPickBounds(*selected);
     if (bounds.isValid()) {
       const bool primary = primarySelected.has_value() &&
                            &primarySelected->get() == selected.get();
@@ -534,18 +551,11 @@ void ViewportOverlay::enqueueDebugDraw() const {
       continue;
     }
 
-    Vec3f origin{0.0f, 0.0f, 0.0f};
-    if (SceneNode *lightNode = m_scene.findByPath("/dir_light")) {
-      origin = Transform::fromMat4(lightNode->getWorldTransform()).translation;
+    const auto node = directionalLight->getSceneNode();
+    if (!node) {
+      continue;
     }
-    Vec3f direction = directionalLight->getDirection();
-    if (direction.length2() <= 1e-6f) {
-      direction = Vec3f{0.0f, -1.0f, 0.0f};
-    } else {
-      direction = direction.normalized();
-    }
-    DebugDraw::arrow(origin, origin + direction * 2.0f,
-                     DebugDraw::Color::yellow());
+    drawDirectionalLightDebug(*node, *directionalLight);
   }
 }
 
