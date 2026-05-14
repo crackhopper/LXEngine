@@ -130,6 +130,32 @@ void saveDirectionalLightState(YAML::Emitter& out,
   out << YAML::EndMap;
 }
 
+[[nodiscard]] MaterialOverrideState loadMaterialOverrideState(
+    const YAML::Node& node, const char* fieldName) {
+  MaterialOverrideState state;
+  if (!node) {
+    return state;
+  }
+  if (!node.IsMap()) {
+    throw std::runtime_error(std::string("expected map for ") + fieldName);
+  }
+  if (const auto baseColorNode = node["baseColor"]; baseColorNode) {
+    state.baseColor = loadVec3(baseColorNode, fieldName);
+  }
+  return state;
+}
+
+void saveMaterialOverrideState(YAML::Emitter& out, const char* key,
+                               const MaterialOverrideState& state) {
+  if (!state.baseColor.has_value()) {
+    return;
+  }
+  out << YAML::Key << key << YAML::Value << YAML::BeginMap;
+  out << YAML::Key << "baseColor" << YAML::Value;
+  saveVec3(out, *state.baseColor);
+  out << YAML::EndMap;
+}
+
 [[nodiscard]] std::optional<EditorCameraState>
 loadEditorCamera(const YAML::Node& node) {
   if (!node) {
@@ -189,6 +215,10 @@ void saveEditorCamera(YAML::Emitter& out, const EditorCameraState& state) {
       materialNode && materialNode["uri"]) {
     entry.materialUri = materialNode["uri"].as<std::string>();
   }
+  entry.nodeMaterialOverrides = loadMaterialOverrideState(
+      node["nodeMaterialOverrides"], "nodes[].nodeMaterialOverrides");
+  entry.materialOverrides = loadMaterialOverrideState(
+      node["materialOverrides"], "nodes[].materialOverrides");
   if (const auto cameraNode = node["camera"]; cameraNode) {
     entry.camera = loadCameraState(cameraNode);
   }
@@ -218,6 +248,8 @@ void validateExplicitRootNode(const SceneNodeDocument& rootNode) {
         "scene document root identity must use empty name and no parentPath");
   }
   if (rootNode.meshUri.has_value() || rootNode.materialUri.has_value() ||
+      rootNode.nodeMaterialOverrides.baseColor.has_value() ||
+      rootNode.materialOverrides.baseColor.has_value() ||
       rootNode.camera.has_value() || rootNode.directionalLight.has_value()) {
     throw std::runtime_error(
         "scene document root payload is unsupported");
@@ -247,6 +279,9 @@ void saveNodeDocument(YAML::Emitter& out, const SceneNodeDocument& node) {
     out << YAML::Key << "uri" << YAML::Value << *node.materialUri;
     out << YAML::EndMap;
   }
+  saveMaterialOverrideState(out, "nodeMaterialOverrides",
+                            node.nodeMaterialOverrides);
+  saveMaterialOverrideState(out, "materialOverrides", node.materialOverrides);
   if (node.camera.has_value()) {
     saveCameraState(out, *node.camera);
   }

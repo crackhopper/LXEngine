@@ -417,6 +417,17 @@ completeCamActions(const CompletionContext &context) {
 
 [[nodiscard]] std::optional<std::pair<std::string, std::string>>
 splitFieldPath(const std::string &text) {
+  constexpr std::string_view kNodeMaterialBaseColorSuffix =
+      ".nodeMaterial.baseColor";
+  if (text.size() > kNodeMaterialBaseColorSuffix.size() &&
+      text.compare(text.size() - kNodeMaterialBaseColorSuffix.size(),
+                   kNodeMaterialBaseColorSuffix.size(),
+                   kNodeMaterialBaseColorSuffix) == 0) {
+    return std::make_pair(
+        text.substr(0, text.size() - kNodeMaterialBaseColorSuffix.size()),
+        "nodeMaterial.baseColor");
+  }
+
   const usize dot = text.find_last_of('.');
   if (dot == std::string::npos || dot == 0 || dot + 1 >= text.size()) {
     return std::nullopt;
@@ -564,6 +575,35 @@ findActiveCamera(Scene &scene, EditorState &editorState) {
   return makeError("unknown field: " + field);
 }
 
+[[nodiscard]] CommandResult getMaterialField(
+    const SceneIoContext &context, const std::string &path,
+    const std::string &field) {
+  if (field == "materialUri") {
+    if (!context.getMaterialUri) {
+      return makeError("material editing unavailable: material URI callback is not registered");
+    }
+    const auto value = context.getMaterialUri(path);
+    if (!value.has_value()) {
+      return makeError("material URI not available on node: " + path);
+    }
+    return makeOk("materialUri = " + *value,
+                  "{\"value\":\"" + jsonEscape(*value) + "\"}");
+  }
+  if (field == "nodeMaterial.baseColor") {
+    if (!context.getNodeMaterialBaseColor) {
+      return makeError("material editing unavailable: baseColor callback is not registered");
+    }
+    const auto value = context.getNodeMaterialBaseColor(path);
+    if (!value.has_value()) {
+      return makeError("node material baseColor not available on node: " + path);
+    }
+    return makeOk("nodeMaterial.baseColor = (" + formatFloat(value->x) + ", " +
+                      formatFloat(value->y) + ", " + formatFloat(value->z) + ")",
+                  "{\"value\":" + makeVec3Json(*value) + "}");
+  }
+  return makeError("unknown field: " + field);
+}
+
 [[nodiscard]] std::string buildSetInverseCommand(SceneNode &node,
                                                  const std::string &field) {
   const std::string path = node.getPath();
@@ -638,6 +678,26 @@ findActiveCamera(Scene &scene, EditorState &editorState) {
   return {};
 }
 
+[[nodiscard]] std::string buildMaterialSetInverseCommand(
+    const SceneIoContext &context, const std::string &path,
+    const std::string &field) {
+  if (field == "materialUri" && context.getMaterialUri) {
+    if (const auto value = context.getMaterialUri(path); value.has_value()) {
+      return "set " + quoteToken(path + ".materialUri") + " " +
+             quoteToken(*value);
+    }
+  }
+  if (field == "nodeMaterial.baseColor" && context.getNodeMaterialBaseColor) {
+    if (const auto value = context.getNodeMaterialBaseColor(path);
+        value.has_value()) {
+      return "set " + quoteToken(path + ".nodeMaterial.baseColor") + " " +
+             formatFloat(value->x) + " " + formatFloat(value->y) + " " +
+             formatFloat(value->z);
+    }
+  }
+  return {};
+}
+
 [[nodiscard]] std::vector<std::string>
 completeScenePaths(const Scene &scene, const CompletionContext &context) {
   std::vector<std::string> matches;
@@ -664,6 +724,8 @@ completeScenePaths(const Scene &scene, const CompletionContext &context) {
     fields.push_back("direction");
     fields.push_back("intensity");
   }
+  fields.push_back("materialUri");
+  fields.push_back("nodeMaterial.baseColor");
   std::sort(fields.begin(), fields.end());
   return fields;
 }
@@ -1125,6 +1187,35 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
   return makeError("unknown field: " + field);
 }
 
+[[nodiscard]] CommandResult setMaterialField(
+    const SceneIoContext &context, const std::string &path,
+    const std::string &field, const std::vector<std::string> &args,
+    const usize valueStartIndex) {
+  if (field == "materialUri") {
+    if (args.size() != valueStartIndex + 1) {
+      return makeError("usage: set <path>.materialUri <uri>");
+    }
+    if (!context.setMaterialUri) {
+      return makeError("material editing unavailable: material URI callback is not registered");
+    }
+    return context.setMaterialUri(path, args[valueStartIndex]);
+  }
+  if (field == "nodeMaterial.baseColor") {
+    if (args.size() != valueStartIndex + 3) {
+      return makeError("usage: set <path>.nodeMaterial.baseColor <r> <g> <b>");
+    }
+    if (!context.setNodeMaterialBaseColor) {
+      return makeError("material editing unavailable: baseColor callback is not registered");
+    }
+    const auto value = parseVec3(args, valueStartIndex);
+    if (!value) {
+      return makeError("invalid float for set nodeMaterial.baseColor");
+    }
+    return context.setNodeMaterialBaseColor(path, *value);
+  }
+  return makeError("unknown field: " + field);
+}
+
 [[nodiscard]] InverseFn inverseFromMetadata() {
   return [](const ParsedCommand &,
             const CommandResult &result) -> std::optional<std::string> {
@@ -1148,6 +1239,7 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
   const auto setAdmin = sceneIoContext.setAdmin;
   const auto adminStatus = sceneIoContext.adminStatus;
   const auto createNode = sceneIoContext.createNode;
+  const SceneIoContext materialContext = sceneIoContext;
 
   bus.registerHandler(
       "help", "help [verb]", [&bus](std::vector<std::string> args) {
@@ -1648,7 +1740,8 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
       });
 
   bus.registerHandler(
-      "get", "get <path>.<field>", [&scene](std::vector<std::string> args) {
+      "get", "get <path>.<field>",
+      [&scene, materialContext](std::vector<std::string> args) {
         if (args.size() != 1) {
           return makeError("usage: get <path>.<field>");
         }
@@ -1661,46 +1754,84 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
         if (!found.ok) {
           return found;
         }
+        if (split->second == "materialUri" ||
+            split->second == "nodeMaterial.baseColor") {
+          return getMaterialField(materialContext, split->first, split->second);
+        }
         return getField(*node, split->second);
       });
 
-  bus.registerHandler("set",
-                      CommandMetadata{"set <path>.<field> <value>",
-                                      inverseFromMetadata(), true},
-                      [&scene](std::vector<std::string> args) {
-                        if (args.size() < 2) {
-                          return makeError("usage: set <path>.<field> <value>");
-                        }
-                        const auto split = splitFieldPath(args[0]);
-                        if (!split.has_value()) {
-                          return makeError("usage: set <path>.<field> <value>");
-                        }
-                        SceneNode *node = nullptr;
-                        const CommandResult found =
-                            requireNode(scene, split->first, node);
-                        if (!found.ok) {
-                          return found;
-                        }
-                        const std::string oldName = node->getName();
-                        const std::string inverseLine =
-                            buildSetInverseCommand(*node, split->second);
-                        CommandResult result =
-                            setField(*node, split->second, args, 1);
-                        if (result.ok && split->second == "name") {
-                          result.metadata["inverse.line"] =
-                              "set " + quoteToken(node->getPath() + ".name") +
-                              " " + quoteToken(oldName);
-                        } else if (result.ok && !inverseLine.empty()) {
-                          result.metadata["inverse.line"] = inverseLine;
-                        }
-                        return result;
-                      });
+  bus.registerHandler(
+      "set", CommandMetadata{"set <path>.<field> <value>", inverseFromMetadata(),
+                              true},
+      [&scene, materialContext](std::vector<std::string> args) {
+        if (args.size() < 2) {
+          return makeError("usage: set <path>.<field> <value>");
+        }
+        const auto split = splitFieldPath(args[0]);
+        if (!split.has_value()) {
+          return makeError("usage: set <path>.<field> <value>");
+        }
+        SceneNode *node = nullptr;
+        const CommandResult found = requireNode(scene, split->first, node);
+        if (!found.ok) {
+          return found;
+        }
+        const std::string oldName = node->getName();
+        const bool materialField = split->second == "materialUri" ||
+                                   split->second == "nodeMaterial.baseColor";
+        const std::string inverseLine =
+            materialField
+                ? buildMaterialSetInverseCommand(materialContext, split->first,
+                                                 split->second)
+                : buildSetInverseCommand(*node, split->second);
+        CommandResult result =
+            materialField
+                ? setMaterialField(materialContext, split->first, split->second,
+                                   args, 1)
+                : setField(*node, split->second, args, 1);
+        if (result.ok && split->second == "name") {
+          result.metadata["inverse.line"] =
+              "set " + quoteToken(node->getPath() + ".name") + " " +
+              quoteToken(oldName);
+        } else if (result.ok && !inverseLine.empty()) {
+          result.metadata["inverse.line"] = inverseLine;
+        }
+        return result;
+      });
 
   bus.registerHandler(
-      "cam",
-      CommandMetadata{
-          "cam (control|look-at|reset|reset-editor-to-game|fov ...)",
-          inverseFromMetadata(), true},
+      "apply_material_override",
+      CommandMetadata{"apply_material_override <path> baseColor",
+                      inverseFromMetadata(), true},
+      [&scene, materialContext](std::vector<std::string> args) {
+        if (args.size() != 2) {
+          return makeError("usage: apply_material_override <path> baseColor");
+        }
+        if (args[1] != "baseColor") {
+          return makeError("unknown material override field: " + args[1]);
+        }
+        SceneNode *node = nullptr;
+        const CommandResult found = requireNode(scene, args[0], node);
+        if (!found.ok) {
+          return found;
+        }
+        if (!materialContext.applyMaterialOverride) {
+          return makeError("material editing unavailable: apply callback is not registered");
+        }
+        const std::string inverseLine = buildMaterialSetInverseCommand(
+            materialContext, args[0], "nodeMaterial.baseColor");
+        CommandResult result =
+            materialContext.applyMaterialOverride(args[0], args[1]);
+        if (result.ok && !inverseLine.empty()) {
+          result.metadata["inverse.line"] = inverseLine;
+        }
+        return result;
+      });
+
+  bus.registerHandler(
+      "cam", CommandMetadata{"cam (control|look-at|reset|reset-editor-to-game|fov ...)", inverseFromMetadata(),
+                              true},
       [&scene, &editorState, sceneIoContext](std::vector<std::string> args) {
         if (args.empty()) {
           return makeError(

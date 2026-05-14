@@ -5,15 +5,25 @@
 #include "core/scene/scene_events.hpp"
 
 #include <array>
+#include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace LX_core {
 
 class EditorState;
 class Scene;
 class SceneNode;
+
+struct InspectorMaterialCallbacks {
+  std::function<std::optional<std::string>(const std::string &path)> materialUri;
+  std::function<std::optional<Vec3f>(const std::string &path)> nodeBaseColor;
+  std::function<bool(const std::string &path)> canEditBaseColor;
+  std::function<std::vector<std::string>()> presets;
+};
 
 class InspectorPanel final {
 public:
@@ -38,9 +48,16 @@ public:
     bool hasMesh = false;
     bool hasMaterial = false;
     bool hasSkeleton = false;
+    bool hasMaterialSection = false;
+    std::string materialUri;
+    bool hasNodeBaseColorOverride = false;
+    Vec3f nodeBaseColorOverride{0.8f, 0.8f, 0.8f};
+    bool canEditBaseColor = false;
+    std::vector<std::string> materialPresets;
   };
 
-  InspectorPanel(CommandBus &commandBus, EditorState &editorState);
+  InspectorPanel(CommandBus &commandBus, EditorState &editorState,
+                 InspectorMaterialCallbacks materialCallbacks = {});
 
   void draw();
 
@@ -59,6 +76,8 @@ public:
   [[nodiscard]] CommandResult dispatchSetToken(std::string_view path,
                                                std::string_view field,
                                                std::string_view value);
+  [[nodiscard]] CommandResult dispatchApplyMaterialOverride(
+      std::string_view path, std::string_view field);
   [[nodiscard]] CommandResult dispatchMove(std::string_view path,
                                            const Vec3f &translation);
   [[nodiscard]] CommandResult dispatchRotate(std::string_view path,
@@ -77,6 +96,7 @@ private:
 
   CommandBus &m_commandBus;
   EditorState &m_editorState;
+  InspectorMaterialCallbacks m_materialCallbacks;
   SceneEventSubscription m_sceneSubscription;
   std::weak_ptr<Scene> m_subscribedScene;
   std::string m_syncedSelectionPath;
@@ -94,6 +114,11 @@ private:
   Vec3f m_lightDirectionDraft{0.0f, -1.0f, 0.0f};
   Vec3f m_lightColorDraft{1.0f, 1.0f, 1.0f};
   float m_lightIntensityDraft = 1.0f;
+  std::array<char, 256> m_visibilityMaskBuffer{};
+  std::array<char, 256> m_cameraCullingMaskBuffer{};
+  std::array<char, 512> m_materialUriBuffer{};
+  int m_materialPresetDraft = -1;
+  Vec3f m_nodeBaseColorDraft{0.8f, 0.8f, 0.8f};
   bool m_open = true;
 };
 

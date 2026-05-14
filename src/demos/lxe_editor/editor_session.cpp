@@ -557,6 +557,27 @@ void LxeEditorSession::rebuildBindings(
                   return makeCommandError(e.what());
                 }
               },
+          .getMaterialUri =
+              [this](const std::string &path) {
+                return m_runtime.materialUriForNode(path);
+              },
+          .setMaterialUri =
+              [this](const std::string &path, const std::string &uri) {
+                return m_runtime.setNodeMaterialUri(path, uri);
+              },
+          .getNodeMaterialBaseColor =
+              [this](const std::string &path) {
+                return m_runtime.nodeMaterialBaseColorForNode(path);
+              },
+          .setNodeMaterialBaseColor =
+              [this](const std::string &path,
+                     const LX_core::Vec3f &color) {
+                return m_runtime.setNodeMaterialBaseColor(path, color);
+              },
+          .applyMaterialOverride =
+              [this](const std::string &path, const std::string &field) {
+                return m_runtime.applyMaterialOverride(path, field);
+              },
       });
   if (!m_consolePanel) {
     m_consolePanel = std::make_unique<LX_core::ConsolePanel>(*m_commandBus);
@@ -565,7 +586,24 @@ void LxeEditorSession::rebuildBindings(
   m_sceneTreePanel = std::make_unique<LX_core::SceneTreePanel>(
       *m_commandBus, m_editorState, *m_runtime.scene());
   m_inspectorPanel =
-      std::make_unique<LX_core::InspectorPanel>(*m_commandBus, m_editorState);
+      std::make_unique<LX_core::InspectorPanel>(
+          *m_commandBus, m_editorState,
+          LX_core::InspectorMaterialCallbacks{
+              .materialUri =
+                  [this](const std::string &path) {
+                    return m_runtime.materialUriForNode(path);
+                  },
+              .nodeBaseColor =
+                  [this](const std::string &path) {
+                    return m_runtime.nodeMaterialBaseColorForNode(path);
+                  },
+              .canEditBaseColor =
+                  [this](const std::string &path) {
+                    return m_runtime.nodeMaterialBaseColorEditable(path);
+                  },
+              .presets =
+                  [this]() { return m_runtime.materialPresets(); },
+          });
   m_viewportOverlay = std::make_unique<LX_core::ViewportOverlay>(
       *m_commandBus, m_editorState, *m_runtime.scene());
   m_sceneInteraction = std::make_unique<SceneInteractionController>(

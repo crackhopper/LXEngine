@@ -15,7 +15,11 @@
 #include <cstring>
 #include <iomanip>
 #include <imgui.h>
+#include <limits>
+#include <optional>
 #include <sstream>
+#include <span>
+#include <utility>
 
 namespace LX_core {
 namespace {
@@ -74,6 +78,39 @@ constexpr float kRadToDeg = 180.0f / kPi;
   return std::to_string(value);
 }
 
+[[nodiscard]] std::string formatMask(const u32 value) {
+  std::ostringstream oss;
+  oss << "0x" << std::uppercase << std::hex << std::setw(8)
+      << std::setfill('0') << value;
+  return oss.str();
+}
+
+[[nodiscard]] std::optional<u32> parseUnsignedText(std::string_view text) {
+  const std::string trimmed = trim(text);
+  if (trimmed.empty()) {
+    return std::nullopt;
+  }
+  try {
+    size_t parsed = 0;
+    const unsigned long value = std::stoul(trimmed, &parsed, 0);
+    if (parsed != trimmed.size() ||
+        value > std::numeric_limits<u32>::max()) {
+      return std::nullopt;
+    }
+    return static_cast<u32>(value);
+  } catch (...) {
+    return std::nullopt;
+  }
+}
+
+void copyToBuffer(std::string_view text, std::span<char> buffer) {
+  std::fill(buffer.begin(), buffer.end(), '\0');
+  const usize copyLength = std::min(text.size(), buffer.size() - 1);
+  if (copyLength > 0) {
+    std::memcpy(buffer.data(), text.data(), copyLength);
+  }
+}
+
 [[nodiscard]] std::shared_ptr<DirectionalLight>
 findDirectionalLightForNode(const SceneNode &node) {
   const auto scene = node.getAttachedScene();
@@ -104,8 +141,10 @@ findDirectionalLightForNode(const SceneNode &node) {
 
 } // namespace
 
-InspectorPanel::InspectorPanel(CommandBus &commandBus, EditorState &editorState)
-    : m_commandBus(commandBus), m_editorState(editorState) {}
+InspectorPanel::InspectorPanel(CommandBus &commandBus, EditorState &editorState,
+                               InspectorMaterialCallbacks materialCallbacks)
+    : m_commandBus(commandBus), m_editorState(editorState),
+      m_materialCallbacks(std::move(materialCallbacks)) {}
 
 bool InspectorPanel::isOpen() const { return m_open; }
 
@@ -174,6 +213,28 @@ InspectorPanel::Snapshot InspectorPanel::makeSnapshot() const {
   snapshot.hasMesh = node.getComponent<MeshComponent>().has_value();
   snapshot.hasMaterial = node.getComponent<MaterialComponent>().has_value();
   snapshot.hasSkeleton = node.getComponent<SkeletonComponent>().has_value();
+  if (m_materialCallbacks.materialUri) {
+    if (const auto uri = m_materialCallbacks.materialUri(snapshot.path);
+        uri.has_value()) {
+      snapshot.materialUri = *uri;
+    }
+  }
+  snapshot.hasMaterialSection =
+      (snapshot.hasMesh && snapshot.hasMaterial) || !snapshot.materialUri.empty();
+  if (m_materialCallbacks.nodeBaseColor) {
+    if (const auto color = m_materialCallbacks.nodeBaseColor(snapshot.path);
+        color.has_value()) {
+      snapshot.hasNodeBaseColorOverride = true;
+      snapshot.nodeBaseColorOverride = *color;
+    }
+  }
+  if (m_materialCallbacks.canEditBaseColor) {
+    snapshot.canEditBaseColor =
+        m_materialCallbacks.canEditBaseColor(snapshot.path);
+  }
+  if (m_materialCallbacks.presets) {
+    snapshot.materialPresets = m_materialCallbacks.presets();
+  }
   return snapshot;
 }
 
@@ -226,6 +287,12 @@ CommandResult InspectorPanel::dispatchSetToken(std::string_view path,
   return m_commandBus.dispatch("set " +
                                quoteToken(std::string(path) + "." + std::string(field)) + " " +
                                quoteToken(value));
+}
+
+CommandResult InspectorPanel::dispatchApplyMaterialOverride(
+    std::string_view path, std::string_view field) {
+  return m_commandBus.dispatch("apply_material_override " + quoteToken(path) +
+                               " " + quoteToken(field));
 }
 
 CommandResult InspectorPanel::dispatchMove(std::string_view path,
@@ -303,10 +370,7 @@ bool InspectorPanel::shouldInvalidateForEvent(const SceneEvent &event) const {
 void InspectorPanel::syncDraftFromSnapshot(const Snapshot &snapshot) {
   m_syncedSelectionPath = snapshot.path;
   std::fill(m_nameBuffer.begin(), m_nameBuffer.end(), '\0');
-  const usize copyLength = std::min(snapshot.name.size(), m_nameBuffer.size() - 1);
-  if (copyLength > 0) {
-    std::memcpy(m_nameBuffer.data(), snapshot.name.data(), copyLength);
-  }
+  copyToBuffer(snapshot.name, m_nameBuffer);
   m_translationDraft = snapshot.translation;
   m_rotationDraft = snapshot.rotationEulerDegrees;
   m_scaleDraft = snapshot.scale;
@@ -319,6 +383,17 @@ void InspectorPanel::syncDraftFromSnapshot(const Snapshot &snapshot) {
   m_lightDirectionDraft = snapshot.lightDirection;
   m_lightColorDraft = snapshot.lightColor;
   m_lightIntensityDraft = snapshot.lightIntensity;
+  copyToBuffer(formatMask(snapshot.visibilityMask), m_visibilityMaskBuffer);
+  copyToBuffer(formatMask(snapshot.cameraCullingMask), m_cameraCullingMaskBuffer);
+  copyToBuffer(snapshot.materialUri, m_materialUriBuffer);
+  m_nodeBaseColorDraft = snapshot.nodeBaseColorOverride;
+  m_materialPresetDraft = -1;
+  for (usize i = 0; i < snapshot.materialPresets.size(); ++i) {
+    if (snapshot.materialPresets[i] == snapshot.materialUri) {
+      m_materialPresetDraft = static_cast<int>(i);
+      break;
+    }
+  }
   m_snapshotDirty = false;
 }
 
@@ -329,33 +404,17 @@ void InspectorPanel::drawSelection(const Snapshot &snapshot) {
       syncDraftFromSnapshot(refreshed);
     }
   };
-  auto drawMaskEditor = [&](const char *label, u32 &draft,
+  auto drawMaskEditor = [&](const char *label, std::array<char, 256> &buffer,
                             auto &&dispatchFn) {
-    ImGui::Text("%s: 0x%08X", label, draft);
     ImGui::PushID(label);
-    bool changed = false;
-    for (int bit = 0; bit < 32; ++bit) {
-      bool enabled = (draft & (1u << bit)) != 0;
-      ImGui::PushID(bit);
-      if (ImGui::Checkbox("##bit", &enabled)) {
-        if (enabled) {
-          draft |= (1u << bit);
-        } else {
-          draft &= ~(1u << bit);
+    ImGui::InputText(label, buffer.data(), buffer.size(),
+                     ImGuiInputTextFlags_EnterReturnsTrue);
+    if (ImGui::IsItemDeactivatedAfterEdit()) {
+      if (const auto value = parseUnsignedText(buffer.data())) {
+        const CommandResult result = dispatchFn(*value);
+        if (result.ok) {
+          refreshDrafts();
         }
-        changed = true;
-      }
-      ImGui::SameLine();
-      ImGui::Text("%02d", bit);
-      if ((bit % 4) != 3) {
-        ImGui::SameLine();
-      }
-      ImGui::PopID();
-    }
-    if (changed) {
-      const CommandResult result = dispatchFn(draft);
-      if (result.ok) {
-        refreshDrafts();
       }
     }
     ImGui::PopID();
@@ -375,7 +434,7 @@ void InspectorPanel::drawSelection(const Snapshot &snapshot) {
   ImGui::Text("Camera: %s", snapshot.hasCamera ? "yes" : "no");
   ImGui::SameLine();
   ImGui::Text("Light: %s", snapshot.hasLight ? "yes" : "no");
-  ImGui::Text("Visibility mask: 0x%08X", snapshot.visibilityMask);
+  ImGui::Text("Visibility mask: %s", formatMask(snapshot.visibilityMask).c_str());
   ImGui::Text("Mesh: %s", snapshot.hasMesh ? "yes" : "no");
   ImGui::Text("Material: %s", snapshot.hasMaterial ? "yes" : "no");
   ImGui::Text("Skeleton: %s", snapshot.hasSkeleton ? "yes" : "no");
@@ -405,10 +464,75 @@ void InspectorPanel::drawSelection(const Snapshot &snapshot) {
     }
   }
 
-  drawMaskEditor("Visibility bits", m_visibilityMaskDraft,
+  drawMaskEditor("Visibility Mask", m_visibilityMaskBuffer,
                  [&](const u32 value) {
                    return dispatchSetUnsigned(snapshot.path, "visibilityMask", value);
                  });
+
+  if (snapshot.hasMaterialSection) {
+    ImGui::Separator();
+    ImGui::TextUnformatted("Material");
+
+    ImGui::InputText("Material URI", m_materialUriBuffer.data(),
+                     m_materialUriBuffer.size(),
+                     ImGuiInputTextFlags_EnterReturnsTrue);
+    if (ImGui::IsItemDeactivatedAfterEdit()) {
+      const CommandResult result =
+          dispatchSetToken(snapshot.path, "materialUri", m_materialUriBuffer.data());
+      if (result.ok) {
+        refreshDrafts();
+      }
+    }
+
+    if (!snapshot.materialPresets.empty()) {
+      if (ImGui::Combo(
+              "Preset", &m_materialPresetDraft,
+              [](void *data, int index, const char **outText) {
+                const auto &items =
+                    *static_cast<const std::vector<std::string> *>(data);
+                if (index < 0 || static_cast<usize>(index) >= items.size()) {
+                  return false;
+                }
+                *outText = items[static_cast<usize>(index)].c_str();
+                return true;
+              },
+              const_cast<std::vector<std::string> *>(&snapshot.materialPresets),
+              static_cast<int>(snapshot.materialPresets.size()))) {
+        if (m_materialPresetDraft >= 0 &&
+            static_cast<usize>(m_materialPresetDraft) <
+                snapshot.materialPresets.size()) {
+          const CommandResult result = dispatchSetToken(
+              snapshot.path, "materialUri",
+              snapshot.materialPresets[static_cast<usize>(m_materialPresetDraft)]);
+          if (result.ok) {
+            refreshDrafts();
+          }
+        }
+      }
+    }
+
+    if (snapshot.canEditBaseColor) {
+      ImGui::ColorEdit3("Base Color Override", m_nodeBaseColorDraft.data);
+      if (ImGui::IsItemDeactivatedAfterEdit()) {
+        const CommandResult result = dispatchSetVec3(
+            snapshot.path, "nodeMaterial.baseColor", m_nodeBaseColorDraft);
+        if (result.ok) {
+          refreshDrafts();
+        }
+      }
+      ImGui::TextUnformatted(
+          "Apply Override To Material updates this scene document only.");
+      if (ImGui::Button("Apply Override To Material")) {
+        const CommandResult result =
+            dispatchApplyMaterialOverride(snapshot.path, "baseColor");
+        if (result.ok) {
+          refreshDrafts();
+        }
+      }
+    } else {
+      ImGui::TextUnformatted("Material does not expose MaterialUBO.baseColor.");
+    }
+  }
 
   if (snapshot.hasCamera) {
     ImGui::Separator();
@@ -452,7 +576,7 @@ void InspectorPanel::drawSelection(const Snapshot &snapshot) {
       }
     }
 
-    drawMaskEditor("Camera culling bits", m_cameraCullingMaskDraft,
+    drawMaskEditor("Camera Culling Mask", m_cameraCullingMaskBuffer,
                    [&](const u32 value) {
                      return dispatchSetUnsigned(snapshot.path, "cullingMask",
                                                 value);

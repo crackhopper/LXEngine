@@ -37,6 +37,10 @@ struct DirectionalLightNodeState final {
   float intensity = 1.0f;
 };
 
+struct MaterialOverrideState final {
+  std::optional<LX_core::Vec3f> baseColor;
+};
+
 struct SceneNodeDocument final {
   std::string nodeName;
   std::string name;
@@ -45,6 +49,8 @@ struct SceneNodeDocument final {
   LX_core::VisibilityLayerMask visibilityMask = LX_core::VisibilityMask_All;
   std::optional<std::string> meshUri;
   std::optional<std::string> materialUri;
+  MaterialOverrideState nodeMaterialOverrides;
+  MaterialOverrideState materialOverrides;
   std::optional<CameraNodeState> camera;
   std::optional<DirectionalLightNodeState> directionalLight;
   std::vector<SceneNodeDocument> children;

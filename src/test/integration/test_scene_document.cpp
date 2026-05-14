@@ -395,6 +395,14 @@ void testSaveSceneDocumentWritesExplicitRootCanonicalFormat() {
       .name = "helmet",
       .meshUri = std::string("assets/models/damaged_helmet/DamagedHelmet.gltf"),
       .materialUri = std::string("assets/materials/blinnphong_textured.material"),
+      .nodeMaterialOverrides =
+          demo::MaterialOverrideState{
+              .baseColor = LX_core::Vec3f{0.8f, 0.2f, 0.2f},
+          },
+      .materialOverrides =
+          demo::MaterialOverrideState{
+              .baseColor = LX_core::Vec3f{0.4f, 0.5f, 0.6f},
+          },
   });
   world.children.push_back(demo::SceneNodeDocument{
       .nodeName = "dir_light_node",
@@ -465,6 +473,18 @@ void testSaveSceneDocumentWritesExplicitRootCanonicalFormat() {
          "mesh uri should round trip");
   EXPECT(loadedHelmet->materialUri.has_value(),
          "material uri should survive round trip");
+  EXPECT(loadedHelmet->nodeMaterialOverrides.baseColor.has_value(),
+         "node baseColor override should survive round trip");
+  EXPECT(loadedHelmet->nodeMaterialOverrides.baseColor->x == 0.8f &&
+             loadedHelmet->nodeMaterialOverrides.baseColor->y == 0.2f &&
+             loadedHelmet->nodeMaterialOverrides.baseColor->z == 0.2f,
+         "node baseColor override value should round trip");
+  EXPECT(loadedHelmet->materialOverrides.baseColor.has_value(),
+         "material-side baseColor override should survive round trip");
+  EXPECT(loadedHelmet->materialOverrides.baseColor->x == 0.4f &&
+             loadedHelmet->materialOverrides.baseColor->y == 0.5f &&
+             loadedHelmet->materialOverrides.baseColor->z == 0.6f,
+         "material-side baseColor override value should round trip");
   const demo::SceneNodeDocument* loadedLight =
       findChildByName(*loadedWorld, "dir_light_node");
   EXPECT(loadedLight != nullptr, "light should survive round trip");

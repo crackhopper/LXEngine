@@ -8,11 +8,16 @@
 #include "demos/lxe_editor/editor_camera_state.hpp"
 #include "demos/lxe_editor/scene_builder.hpp"
 #include "demos/lxe_editor/scene_document.hpp"
+#include "infra/material_loader/generic_material_loader.hpp"
 
+#include <algorithm>
 #include <filesystem>
+#include <functional>
+#include <iomanip>
 #include <iostream>
 #include <memory>
 #include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -29,6 +34,10 @@ constexpr const char *BuiltinPrimitivePrefix =
     "builtin://lxe_editor/primitives/";
 constexpr const char *BuiltinPrimitiveMaterial =
     "assets/materials/blinnphong_lit.material";
+constexpr const char *kDefaultGroundMaterial =
+    "assets/materials/blinnphong_lit.material";
+constexpr const char *kDefaultHelmetMaterial =
+    "assets/materials/blinnphong_textured.material";
 
 struct SceneRuntimeData final {
   std::optional<std::filesystem::path> documentPath;
@@ -94,8 +103,124 @@ isLegacyEditorHelperNode(const LX_core::SceneNodeSharedPtr &node) {
                   isLegacyEditorHelperName(node->getName()));
 }
 
-[[nodiscard]] std::filesystem::path
-normalizeDocumentPath(const std::filesystem::path &path) {
+[[nodiscard]] std::string jsonEscape(const std::string &text) {
+  std::string out;
+  out.reserve(text.size());
+  for (const char c : text) {
+    switch (c) {
+    case '\\':
+      out += "\\\\";
+      break;
+    case '"':
+      out += "\\\"";
+      break;
+    case '\n':
+      out += "\\n";
+      break;
+    default:
+      out.push_back(c);
+      break;
+    }
+  }
+  return out;
+}
+
+[[nodiscard]] std::string makeVec3Json(const LX_core::Vec3f &value) {
+  std::ostringstream oss;
+  oss << "{\"x\":" << value.x << ",\"y\":" << value.y << ",\"z\":"
+      << value.z << "}";
+  return oss.str();
+}
+
+[[nodiscard]] LX_core::CommandResult makeCommandError(std::string message) {
+  return LX_core::CommandResult{false, std::move(message), {}, {}};
+}
+
+[[nodiscard]] LX_core::CommandResult makeCommandOk(std::string message,
+                                                   std::string structured) {
+  return LX_core::CommandResult{true, std::move(message),
+                                std::move(structured), {}};
+}
+
+[[nodiscard]] const std::vector<std::string> &materialPresetUris() {
+  static const std::vector<std::string> kPresets = {
+      "assets/materials/blinnphong_lit.material",
+      "assets/materials/blinnphong_default.material",
+      "assets/materials/blinnphong_textured.material",
+      "assets/materials/pbr_gold.material",
+  };
+  return kPresets;
+}
+
+[[nodiscard]] bool isAllowedMaterialPreset(const std::string &uri) {
+  const auto &presets = materialPresetUris();
+  return std::find(presets.begin(), presets.end(), uri) != presets.end();
+}
+
+[[nodiscard]] std::string normalizeMaterialUri(const SceneNodeDocument &node) {
+  if (node.materialUri.has_value()) {
+    if (*node.materialUri == "builtin://lxe_editor/ground_material") {
+      return kDefaultGroundMaterial;
+    }
+    return *node.materialUri;
+  }
+  if (node.meshUri == "builtin://lxe_editor/helmet") {
+    return kDefaultHelmetMaterial;
+  }
+  if (node.meshUri == "builtin://lxe_editor/ground_mesh") {
+    return kDefaultGroundMaterial;
+  }
+  return kDefaultGroundMaterial;
+}
+
+[[nodiscard]] bool documentNodeHasMaterialSurface(
+    const SceneNodeDocument &node) {
+  return node.meshUri.has_value() || node.materialUri.has_value();
+}
+
+[[nodiscard]] bool materialHasBaseColor(
+    const LX_core::MaterialInstanceSharedPtr &material) {
+  if (!material) {
+    return false;
+  }
+  const auto layout = material->getParameterBufferLayout(
+      LX_core::StringID("MaterialUBO"));
+  if (!layout.has_value()) {
+    return false;
+  }
+  const auto &members = layout->get().members;
+  return std::any_of(members.begin(), members.end(), [](const auto &member) {
+    return member.name == "baseColor" &&
+           member.type == LX_core::ShaderPropertyType::Vec3;
+  });
+}
+
+void applyBaseColorIfSupported(
+    const LX_core::MaterialInstanceSharedPtr &material,
+    const std::optional<LX_core::Vec3f> &color) {
+  if (!material || !color.has_value() || !materialHasBaseColor(material)) {
+    return;
+  }
+  material->setParameter(LX_core::StringID("MaterialUBO"),
+                         LX_core::StringID("baseColor"), *color);
+  material->syncGpuData();
+}
+
+[[nodiscard]] LX_core::MaterialInstanceSharedPtr
+loadMaterialForSceneNode(const std::string &uri,
+                         const MaterialOverrideState &materialOverrides,
+                         const MaterialOverrideState &nodeOverrides) {
+  auto material = LX_infra::loadGenericMaterial(uri);
+  if (!material) {
+    throw std::runtime_error("failed to load material: " + uri);
+  }
+  applyBaseColorIfSupported(material, materialOverrides.baseColor);
+  applyBaseColorIfSupported(material, nodeOverrides.baseColor);
+  return material;
+}
+
+[[nodiscard]] std::filesystem::path normalizeDocumentPath(
+    const std::filesystem::path &path) {
   if (path.empty()) {
     throw std::runtime_error("scene document path is empty");
   }
@@ -191,11 +316,43 @@ buildRenderableNodeFromDocument(const SceneNodeDocument &nodeDocument) {
   if (*nodeDocument.meshUri == "builtin://lxe_editor/helmet") {
     auto node = buildHelmetNode(
         resolveRuntimePath("assets/models/damaged_helmet/DamagedHelmet.gltf"));
+    if (auto materialComponent =
+            node->getComponent<LX_core::MaterialComponent>();
+        materialComponent.has_value()) {
+      const std::string uri = normalizeMaterialUri(nodeDocument);
+      if (nodeDocument.materialUri.has_value() ||
+          nodeDocument.nodeMaterialOverrides.baseColor.has_value() ||
+          nodeDocument.materialOverrides.baseColor.has_value()) {
+        materialComponent->get().setMaterialInstance(loadMaterialForSceneNode(
+            uri, nodeDocument.materialOverrides,
+            nodeDocument.nodeMaterialOverrides));
+      } else {
+        applyBaseColorIfSupported(
+            materialComponent->get().getMaterialInstance(),
+            nodeDocument.materialOverrides.baseColor);
+        applyBaseColorIfSupported(
+            materialComponent->get().getMaterialInstance(),
+            nodeDocument.nodeMaterialOverrides.baseColor);
+      }
+    }
     return node;
   }
 
   if (*nodeDocument.meshUri == "builtin://lxe_editor/ground_mesh") {
-    return buildGroundNode();
+    auto node = buildGroundNode();
+    if (auto materialComponent =
+            node->getComponent<LX_core::MaterialComponent>();
+        materialComponent.has_value()) {
+      const std::string uri = normalizeMaterialUri(nodeDocument);
+      if (nodeDocument.materialUri.has_value() ||
+          nodeDocument.nodeMaterialOverrides.baseColor.has_value() ||
+          nodeDocument.materialOverrides.baseColor.has_value()) {
+        materialComponent->get().setMaterialInstance(loadMaterialForSceneNode(
+            uri, nodeDocument.materialOverrides,
+            nodeDocument.nodeMaterialOverrides));
+      }
+    }
+    return node;
   }
 
   if (isBuiltinPrimitiveMeshUri(*nodeDocument.meshUri)) {
@@ -368,6 +525,66 @@ findDocumentNodeByName(const SceneNodeDocument &node,
   return nullptr;
 }
 
+[[nodiscard]] SceneNodeDocument*
+findDocumentNodeByName(SceneNodeDocument& node, const std::string& nodeName) {
+  if (node.nodeName == nodeName) {
+    return &node;
+  }
+  for (auto& child : node.children) {
+    if (auto* match = findDocumentNodeByName(child, nodeName)) {
+      return match;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] SceneNodeDocument*
+findDocumentNodeForRuntimePath(SceneRuntimeData& runtime,
+                               const std::string& path) {
+  if (!runtime.scene) {
+    return nullptr;
+  }
+  LX_core::SceneNode* node = runtime.scene->findByPath(path);
+  if (!node) {
+    return nullptr;
+  }
+  return findDocumentNodeByName(runtime.document.mutableRootNode(),
+                                node->getNodeName());
+}
+
+[[nodiscard]] const SceneNodeDocument*
+findDocumentNodeForRuntimePath(const SceneRuntimeData& runtime,
+                               const std::string& path) {
+  if (!runtime.scene) {
+    return nullptr;
+  }
+  LX_core::SceneNode* node = runtime.scene->findByPath(path);
+  if (!node) {
+    return nullptr;
+  }
+  return findDocumentNodeByName(runtime.document.rootNode(),
+                                node->getNodeName());
+}
+
+void forEachDocumentNode(SceneNodeDocument& node,
+                         const std::function<void(SceneNodeDocument&)>& fn) {
+  fn(node);
+  for (auto& child : node.children) {
+    forEachDocumentNode(child, fn);
+  }
+}
+
+void forEachRuntimeNode(const LX_core::SceneNodeSharedPtr& node,
+                        const std::function<void(LX_core::SceneNode&)>& fn) {
+  if (!node) {
+    return;
+  }
+  fn(*node);
+  for (const auto& child : node->getChildren()) {
+    forEachRuntimeNode(child, fn);
+  }
+}
+
 [[nodiscard]] CameraNodeState
 captureCameraState(const LX_core::CameraComponent &camera) {
   return CameraNodeState{
@@ -419,11 +636,14 @@ captureSceneDocument(const std::shared_ptr<SceneRuntimeData> &runtime) {
       entry.visibilityMask = existing->visibilityMask;
       entry.meshUri = existing->meshUri;
       entry.materialUri = existing->materialUri;
+      entry.nodeMaterialOverrides = existing->nodeMaterialOverrides;
+      entry.materialOverrides = existing->materialOverrides;
     } else if (node->getName() == "helmet") {
       entry.meshUri = "builtin://lxe_editor/helmet";
+      entry.materialUri = kDefaultHelmetMaterial;
     } else if (node->getName() == "ground") {
       entry.meshUri = "builtin://lxe_editor/ground_mesh";
-      entry.materialUri = "builtin://lxe_editor/ground_material";
+      entry.materialUri = kDefaultGroundMaterial;
     } else if (const auto primitiveUri =
                    primitiveUriFromNodeName(node->getNodeName())) {
       entry.meshUri = *primitiveUri;
@@ -460,6 +680,8 @@ captureSceneDocument(const std::shared_ptr<SceneRuntimeData> &runtime) {
     rootEntry.visibilityMask = rootNode->getVisibilityLayerMask();
     rootEntry.meshUri.reset();
     rootEntry.materialUri.reset();
+    rootEntry.nodeMaterialOverrides = MaterialOverrideState{};
+    rootEntry.materialOverrides = MaterialOverrideState{};
     rootEntry.camera.reset();
     rootEntry.directionalLight.reset();
     rootEntry.children.clear();
@@ -532,6 +754,200 @@ LX_core::SceneNodeSharedPtr SceneRuntime::editorCameraNode() const {
 
 LX_core::SceneNodeSharedPtr SceneRuntime::gameCameraNode() const {
   return requireRuntimeData(m_impl)->gameCameraNode;
+}
+
+std::optional<std::string>
+SceneRuntime::materialUriForNode(const std::string& path) const {
+  const auto runtime = requireRuntimeData(m_impl);
+  const auto* documentNode = findDocumentNodeForRuntimePath(*runtime, path);
+  if (!documentNode) {
+    return std::nullopt;
+  }
+  if (!documentNode->meshUri.has_value() && !documentNode->materialUri.has_value()) {
+    return std::nullopt;
+  }
+  return normalizeMaterialUri(*documentNode);
+}
+
+std::optional<LX_core::Vec3f>
+SceneRuntime::nodeMaterialBaseColorForNode(const std::string& path) const {
+  const auto runtime = requireRuntimeData(m_impl);
+  const auto* documentNode = findDocumentNodeForRuntimePath(*runtime, path);
+  if (!documentNode) {
+    return std::nullopt;
+  }
+  if (documentNode->nodeMaterialOverrides.baseColor.has_value()) {
+    return documentNode->nodeMaterialOverrides.baseColor;
+  }
+  if (documentNode->materialOverrides.baseColor.has_value()) {
+    return documentNode->materialOverrides.baseColor;
+  }
+  return LX_core::Vec3f{0.8f, 0.8f, 0.8f};
+}
+
+bool SceneRuntime::nodeMaterialBaseColorEditable(const std::string& path) const {
+  const auto runtime = requireRuntimeData(m_impl);
+  if (!runtime->scene) {
+    return false;
+  }
+  LX_core::SceneNode* node = runtime->scene->findByPath(path);
+  if (!node) {
+    return false;
+  }
+  const auto materialComponent =
+      node->getComponent<LX_core::MaterialComponent>();
+  return materialComponent.has_value() &&
+         materialHasBaseColor(materialComponent->get().getMaterialInstance());
+}
+
+std::vector<std::string> SceneRuntime::materialPresets() const {
+  return materialPresetUris();
+}
+
+LX_core::CommandResult
+SceneRuntime::setNodeMaterialUri(const std::string& path,
+                                 const std::string& uri) {
+  if (!isAllowedMaterialPreset(uri)) {
+    return makeCommandError("unsupported material preset: " + uri);
+  }
+
+  const auto runtime = requireRuntimeData(m_impl);
+  auto* documentNode = findDocumentNodeForRuntimePath(*runtime, path);
+  if (!documentNode) {
+    return makeCommandError("scene document node not found: " + path);
+  }
+  LX_core::SceneNode* node = runtime->scene->findByPath(path);
+  if (!node) {
+    return makeCommandError("node not found: " + path);
+  }
+
+  try {
+    auto material = loadMaterialForSceneNode(
+        uri, documentNode->materialOverrides, documentNode->nodeMaterialOverrides);
+    auto materialComponent = node->getComponent<LX_core::MaterialComponent>();
+    if (materialComponent.has_value()) {
+      materialComponent->get().setMaterialInstance(std::move(material));
+    } else {
+      node->addComponent<LX_core::MaterialComponent>(std::move(material));
+    }
+  } catch (const std::exception& error) {
+    return makeCommandError(std::string("failed to set materialUri: ") +
+                            error.what());
+  }
+  documentNode->materialUri = uri;
+
+  return makeCommandOk(
+      "materialUri updated",
+      "{\"path\":\"" + jsonEscape(path) + "\",\"materialUri\":\"" +
+          jsonEscape(uri) + "\"}");
+}
+
+LX_core::CommandResult
+SceneRuntime::setNodeMaterialBaseColor(const std::string& path,
+                                       const LX_core::Vec3f& color) {
+  const auto runtime = requireRuntimeData(m_impl);
+  auto* documentNode = findDocumentNodeForRuntimePath(*runtime, path);
+  if (!documentNode) {
+    return makeCommandError("scene document node not found: " + path);
+  }
+  LX_core::SceneNode* node = runtime->scene->findByPath(path);
+  if (!node) {
+    return makeCommandError("node not found: " + path);
+  }
+  auto materialComponent = node->getComponent<LX_core::MaterialComponent>();
+  if (!materialComponent.has_value()) {
+    return makeCommandError("node has no material component: " + path);
+  }
+
+  const std::string uri = normalizeMaterialUri(*documentNode);
+  try {
+    MaterialOverrideState nodeOverrides = documentNode->nodeMaterialOverrides;
+    nodeOverrides.baseColor = color;
+    auto material = loadMaterialForSceneNode(uri, documentNode->materialOverrides,
+                                            nodeOverrides);
+    if (!materialHasBaseColor(material)) {
+      return makeCommandError("material does not expose MaterialUBO.baseColor: " +
+                              uri);
+    }
+    materialComponent->get().setMaterialInstance(std::move(material));
+    documentNode->materialUri = uri;
+    documentNode->nodeMaterialOverrides = nodeOverrides;
+  } catch (const std::exception& error) {
+    return makeCommandError(std::string("failed to set node material baseColor: ") +
+                            error.what());
+  }
+
+  return makeCommandOk("node material baseColor updated",
+                       "{\"path\":\"" + jsonEscape(path) +
+                           "\",\"baseColor\":" + makeVec3Json(color) + "}");
+}
+
+LX_core::CommandResult
+SceneRuntime::applyMaterialOverride(const std::string& path,
+                                    const std::string& field) {
+  if (field != "baseColor") {
+    return makeCommandError("unknown material override field: " + field);
+  }
+
+  const auto runtime = requireRuntimeData(m_impl);
+  auto* documentNode = findDocumentNodeForRuntimePath(*runtime, path);
+  if (!documentNode) {
+    return makeCommandError("scene document node not found: " + path);
+  }
+  const auto color = documentNode->nodeMaterialOverrides.baseColor;
+  if (!color.has_value()) {
+    return makeCommandError("node has no baseColor override: " + path);
+  }
+
+  const std::string uri = normalizeMaterialUri(*documentNode);
+  usize updatedDocuments = 0;
+  forEachDocumentNode(runtime->document.mutableRootNode(),
+                      [&](SceneNodeDocument& candidate) {
+                        if (!documentNodeHasMaterialSurface(candidate)) {
+                          return;
+                        }
+                        if (normalizeMaterialUri(candidate) != uri) {
+                          return;
+                        }
+                        candidate.materialUri = uri;
+                        candidate.materialOverrides.baseColor = *color;
+                        ++updatedDocuments;
+                      });
+
+  usize updatedRuntimeNodes = 0;
+  forEachRuntimeNode(runtime->scene->getRootNode(), [&](LX_core::SceneNode& node) {
+    auto* candidateDocument =
+        findDocumentNodeByName(runtime->document.mutableRootNode(),
+                               node.getNodeName());
+    if (!candidateDocument || !documentNodeHasMaterialSurface(*candidateDocument) ||
+        normalizeMaterialUri(*candidateDocument) != uri) {
+      return;
+    }
+    const auto materialComponent =
+        node.getComponent<LX_core::MaterialComponent>();
+    if (!materialComponent.has_value()) {
+      return;
+    }
+    const auto effectiveNodeOverride =
+        candidateDocument->nodeMaterialOverrides.baseColor;
+    try {
+      auto material = loadMaterialForSceneNode(
+          uri, candidateDocument->materialOverrides,
+          MaterialOverrideState{.baseColor = effectiveNodeOverride});
+      materialComponent->get().setMaterialInstance(std::move(material));
+      ++updatedRuntimeNodes;
+    } catch (const std::exception& error) {
+      std::cerr << "[lxe_editor] failed to apply material override to "
+                << node.getPath() << ": " << error.what() << "\n";
+    }
+  });
+
+  return makeCommandOk(
+      "material baseColor override applied",
+      "{\"materialUri\":\"" + jsonEscape(uri) + "\",\"updatedDocuments\":" +
+          std::to_string(updatedDocuments) + ",\"updatedRuntimeNodes\":" +
+          std::to_string(updatedRuntimeNodes) + ",\"baseColor\":" +
+          makeVec3Json(*color) + "}");
 }
 
 } // namespace LX_demo::lxe_editor
