@@ -64,9 +64,30 @@ If `lxe_editor_ensure_running` or a state read returns `editor_unavailable`,
 switch to `lxe-manager-ops` and call `ops.editor_status`. That is the canonical
 way to tell whether the editor is simply not started.
 
+## Evidence-First Debugging
+
+When debugging crashes, unexpected editor exits, failed scene loads, or remote
+MCP/editor mismatches, do not guess the root cause from symptoms. Establish
+evidence before changing editor behavior:
+
+1. Reproduce through manager-owned editor process when possible.
+2. Capture current build identity (`lxe-editor-build-sync`) and process status
+   (`lxe-manager-ops`) before and after the action.
+3. Read `ops.editor_logs` immediately after an editor exit or failed command.
+4. If logs are empty or unavailable, add targeted logging or manager/editor
+   log capture first, deploy that observability change, then reproduce again.
+5. Only propose or implement a behavioral fix after logs, command output,
+   stack/error text, or a focused regression test identifies the failing layer.
+
+If a command returns success and the editor exits on the next tick, treat the
+boundary between command handling, deferred apply, and renderer/runtime update
+as unknown until logs or instrumentation prove where it failed.
+
 ## Guardrails
 
 - Prefer MCP over direct file scraping once the server is connected.
+- Do not say "likely", "probably", or equivalent when naming a root cause
+  unless the evidence has been collected and stated.
 - Do not call `recording_*`, `ops.*`, `editor.get_build_info`, or
   `lxe_editor_get_build_info` from this skill; switch to the focused skill.
 - Do not maintain a second debug protocol in the skill.

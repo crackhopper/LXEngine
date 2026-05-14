@@ -51,6 +51,27 @@ Interpret common results:
    needed without forcing CMake configure.
 7. Start or restart the editor and verify with `lxe_editor_ensure_running`.
 
+## Evidence-First Failure Handling
+
+For editor crashes, manager restarts, failed remote builds, or MCP transport
+breakage, collect evidence before changing behavior:
+
+1. Capture `ops.editor_status`, `ops.editor_logs`, and relevant command output.
+2. For manager restart issues, inspect `data/lxe_manager/mcp.log` on the remote
+   runtime root. Confirm whether the wrapper logged child start, exit code,
+   restart-code handling, and a subsequent listen attempt.
+3. If `ops.editor_logs` says logs are unavailable or empty after a manager-owned
+   editor exit, improve logging/capture first and reproduce again.
+4. Do not infer root cause from the fact that a process exited. Distinguish:
+   clean exit, C++ exception, assertion/abort, access violation, resource
+   guardian kill, missing runtime state, stale build, and MCP transport loss.
+5. Implement a fix only after logs, status transitions, build identity, or a
+   focused regression test identifies the failing component.
+
+When the user explicitly asks for diagnosis, report what is proven, what is
+unknown, and what evidence will be collected next. Avoid presenting hypotheses
+as conclusions.
+
 ## Resource Guardian Failures
 
 If manager reports CPU, memory, or IO guard termination:
