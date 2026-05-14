@@ -234,7 +234,6 @@ void buildSceneNodesRecursive(
   if (nodeDocument.camera.has_value()) {
     auto& camera = requireCameraComponent(node, nodeDocument.nodeName.c_str()).get();
     applyCameraState(*node, camera, *nodeDocument.camera);
-    attachCameraHelperVisual(*node);
     runtime->scene->addCamera(node);
   } else {
     runtime->scene->addRenderable(node);

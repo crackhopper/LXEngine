@@ -194,7 +194,7 @@ void testSceneLoadFailureKeepsEditorRunningAndCurrentScene() {
          "load failure should be reported in the console");
 }
 
-void testEditorHelpersUseFacetedOctahedronGeometry() {
+void testEditorDoesNotCreateCameraOrLightHelperNodes() {
   const bool initialized = initializeRuntimeAssetRoot();
   EXPECT(initialized, "runtime asset root should initialize for helper geometry test");
   if (!initialized) {
@@ -213,31 +213,16 @@ void testEditorHelpersUseFacetedOctahedronGeometry() {
     return;
   }
 
-  auto requireHelperVertexCount = [&](const char* path) {
-    LX_core::SceneNode* node = scene->findByPath(path);
-    EXPECT(node != nullptr, std::string("helper node should exist: ") + path);
-    if (!node) {
-      return;
-    }
-    const auto mesh = node->getComponent<LX_core::MeshComponent>();
-    EXPECT(mesh.has_value(), std::string("helper node should carry mesh: ") + path);
-    if (!mesh.has_value()) {
-      return;
-    }
-    EXPECT(mesh->get().getMesh() != nullptr,
-           std::string("helper mesh should be present: ") + path);
-    if (!mesh->get().getMesh()) {
-      return;
-    }
-    EXPECT(mesh->get().getMesh()->vertexBuffer->getVertexCount() == 24,
-           std::string("helper should use faceted octahedron vertices: ") + path);
-  };
-
-  requireHelperVertexCount("/game_cam");
+  LX_core::SceneNode* gameCamera = scene->findByPath("/game_cam");
+  EXPECT(gameCamera != nullptr, "game camera node should exist");
+  if (gameCamera) {
+    EXPECT(!gameCamera->getComponent<LX_core::MeshComponent>().has_value(),
+           "game camera should not carry a solid helper mesh");
+  }
   EXPECT(scene->findByPath("/game_cam/helper_camera") == nullptr,
-         "camera helpers should be visual components, not child nodes");
+         "camera helpers should not exist as child nodes");
   EXPECT(scene->findByPath("/dir_light/helper_light") == nullptr,
-         "directional lights should draw through their owning node instead of a helper child");
+         "directional lights should not create helper child nodes");
 }
 
 void testRecordingCommandControlsSessionRecorder() {
@@ -337,7 +322,7 @@ void testSceneSaveLoadRoundTripsEditorSidecarState() {
 int main() {
   testSceneLoadPreservesEditorCommandHistoryAndConsole();
   testSceneLoadFailureKeepsEditorRunningAndCurrentScene();
-  testEditorHelpersUseFacetedOctahedronGeometry();
+  testEditorDoesNotCreateCameraOrLightHelperNodes();
   testRecordingCommandControlsSessionRecorder();
   testSceneSaveLoadRoundTripsEditorSidecarState();
 

@@ -85,10 +85,8 @@ void testRuntimeCreatesEmptyScene() {
          "empty runtime should attach a directional light to the default light node");
   EXPECT(runtime.scene()->findByPath("/game_cam/helper_camera") == nullptr,
          "empty runtime should not create gameplay-camera helper child nodes");
-  const auto gameCameraMesh =
-      runtime.gameCameraNode()->getComponent<LX_core::MeshComponent>();
-  EXPECT(gameCameraMesh.has_value(),
-         "gameplay camera should carry its helper mesh directly");
+  EXPECT(!runtime.gameCameraNode()->getComponent<LX_core::MeshComponent>().has_value(),
+         "gameplay camera should not carry a helper mesh");
   EXPECT(runtime.scene()->findByPath("/dir_light/helper_light") == nullptr,
          "empty runtime should not create a directional-light helper child");
   EXPECT(runtime.scene()->getRenderables().size() == 3,
@@ -140,15 +138,13 @@ void testRuntimeCreatesEditorOnlyHelpersForEditableSceneNodes() {
 
   EXPECT(runtime.scene()->findByPath("/game_cam/helper_camera") == nullptr,
          "game camera should not get an editor-only helper child");
-  const auto gameCameraMesh =
-      runtime.gameCameraNode()->getComponent<LX_core::MeshComponent>();
-  EXPECT(gameCameraMesh.has_value(),
-         "game camera should carry its helper mesh directly");
+  EXPECT(!runtime.gameCameraNode()->getComponent<LX_core::MeshComponent>().has_value(),
+         "game camera should not carry a helper mesh");
   EXPECT(runtime.scene()->findByPath("/dir_light/helper_light") == nullptr,
          "directional light should not get an editor-only helper child");
 }
 
-void testRuntimePlacesCameraHelperVisualAtCameraEye() {
+void testRuntimeDoesNotCreateCameraHelperVisualAtStaleTransform() {
   const std::filesystem::path path =
       makeTempPath("lx_scene_runtime_camera_eye_helper.yaml");
   writeSceneFile(path,
@@ -195,11 +191,13 @@ void testRuntimePlacesCameraHelperVisualAtCameraEye() {
   const LX_core::Vec3f translation =
       runtime.gameCameraNode()->getLocalTransform().translation;
   expectNear(translation.x, 0.0f,
-             "camera helper visual should use camera eye x");
+             "camera node transform should use camera eye x");
   expectNear(translation.y, 2.0f,
-             "camera helper visual should use camera eye y");
+             "camera node transform should use camera eye y");
   expectNear(translation.z, 6.0f,
-             "camera helper visual should use camera eye z");
+             "camera node transform should use camera eye z");
+  EXPECT(!runtime.gameCameraNode()->getComponent<LX_core::MeshComponent>().has_value(),
+         "camera should not create a stale helper visual mesh");
 }
 
 void testRuntimeSkipsLegacyEditorHelperNodesOnLoad() {
@@ -642,7 +640,7 @@ void testGroundMeshWindingMatchesUpwardNormal() {
 int main() {
   testRuntimeCreatesEmptyScene();
   testRuntimeCreatesEditorOnlyHelpersForEditableSceneNodes();
-  testRuntimePlacesCameraHelperVisualAtCameraEye();
+  testRuntimeDoesNotCreateCameraHelperVisualAtStaleTransform();
   testRuntimeSkipsLegacyEditorHelperNodesOnLoad();
   testRuntimeLoadsFullSceneDocument();
   testRuntimeLoadsLegacyFlatSceneDocumentWithExplicitRootNormalization();
