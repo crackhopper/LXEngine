@@ -30,6 +30,7 @@ namespace LX_core {
 inline constexpr std::string_view kSystemOwnedBindings[] = {
     "CameraUBO",
     "LightUBO",
+    "SceneLightsUBO",
     "Bones",
 };
 
@@ -59,6 +60,8 @@ getExpectedTypeForSystemBinding(std::string_view name) {
   if (name == "CameraUBO")
     return ShaderPropertyType::UniformBuffer;
   if (name == "LightUBO")
+    return ShaderPropertyType::UniformBuffer;
+  if (name == "SceneLightsUBO")
     return ShaderPropertyType::UniformBuffer;
   if (name == "Bones")
     return ShaderPropertyType::UniformBuffer;

@@ -182,14 +182,79 @@ Scene::getSceneLevelResources(StringID pass, const RenderTarget &target) const {
 
   // Lights filter by pass only. A light's target scope is transitive — it
   // illuminates any surface being drawn in a pass it participates in.
+  bool hasSceneLights = false;
+  u32 directionalCount = 0;
+  u32 pointCount = 0;
+  u32 spotCount = 0;
+  m_sceneLightsUbo->param = {};
   for (const auto &light : m_lights) {
     if (!light)
       continue;
     if (!light->supportsPass(pass))
       continue;
+    hasSceneLights = true;
+    if (const auto directionalLight =
+            std::dynamic_pointer_cast<DirectionalLight>(light)) {
+      if (directionalCount >= MaxDirectionalLights) {
+        std::cerr << "[SceneLightsUBO] directional light limit exceeded: max "
+                  << MaxDirectionalLights << "\n";
+        continue;
+      }
+      auto &entry = m_sceneLightsUbo->param.directional[directionalCount++];
+      const Vec3f direction = directionalLight->getDirection();
+      const Vec3f color = directionalLight->getColor();
+      entry.direction = Vec4f{direction.x, direction.y, direction.z, 0.0f};
+      entry.colorIntensity =
+          Vec4f{color.x, color.y, color.z, directionalLight->getIntensity()};
+    } else if (const auto pointLight =
+                   std::dynamic_pointer_cast<PointLight>(light)) {
+      if (pointCount >= MaxPointLights) {
+        std::cerr << "[SceneLightsUBO] point light limit exceeded: max "
+                  << MaxPointLights << "\n";
+        continue;
+      }
+      const auto node = pointLight->getSceneNode();
+      const Vec3f position =
+          node ? Transform::fromMat4(node->getWorldTransform()).translation
+               : Vec3f{};
+      const Vec3f color = pointLight->getColor();
+      auto &entry = m_sceneLightsUbo->param.point[pointCount++];
+      entry.positionRange =
+          Vec4f{position.x, position.y, position.z, pointLight->getRange()};
+      entry.colorIntensity =
+          Vec4f{color.x, color.y, color.z, pointLight->getIntensity()};
+    } else if (const auto spotLight =
+                   std::dynamic_pointer_cast<SpotLight>(light)) {
+      if (spotCount >= MaxSpotLights) {
+        std::cerr << "[SceneLightsUBO] spot light limit exceeded: max "
+                  << MaxSpotLights << "\n";
+        continue;
+      }
+      const auto node = spotLight->getSceneNode();
+      const Vec3f position =
+          node ? Transform::fromMat4(node->getWorldTransform()).translation
+               : Vec3f{};
+      const Vec3f direction = spotLight->getDirection();
+      const Vec3f color = spotLight->getColor();
+      auto &entry = m_sceneLightsUbo->param.spot[spotCount++];
+      entry.positionRange =
+          Vec4f{position.x, position.y, position.z, spotLight->getRange()};
+      entry.directionCone =
+          Vec4f{direction.x, direction.y, direction.z,
+                spotLight->getOuterConeDegrees()};
+      entry.colorIntensity =
+          Vec4f{color.x, color.y, color.z, spotLight->getIntensity()};
+    }
     if (auto lightUbo = light->getUBO()) {
       out.push_back(lightUbo);
     }
+  }
+  if (hasSceneLights) {
+    m_sceneLightsUbo->param.counts =
+        Vec4i{static_cast<i32>(directionalCount), static_cast<i32>(pointCount),
+              static_cast<i32>(spotCount), 0};
+    m_sceneLightsUbo->setDirty();
+    out.push_back(m_sceneLightsUbo);
   }
 
   return out;
@@ -402,10 +467,7 @@ void Scene::removeRenderable(const SceneNodeSharedPtr &node) {
       continue;
     }
     if (lightIt->second) {
-      if (const auto directionalLight =
-              std::dynamic_pointer_cast<DirectionalLight>(lightIt->second)) {
-        directionalLight->detachFromSceneNode();
-      }
+      lightIt->second->detachFromSceneNode();
       removedLights.push_back(lightIt->second);
     }
     lightIt = m_lightsByNode.erase(lightIt);
@@ -489,10 +551,7 @@ void Scene::attachLight(const SceneNodeSharedPtr &node,
     addLight(light);
   }
   m_lightsByNode[node.get()] = light;
-  if (const auto directionalLight =
-          std::dynamic_pointer_cast<DirectionalLight>(light)) {
-    directionalLight->attachToSceneNode(weak_from_this(), node);
-  }
+  light->attachToSceneNode(weak_from_this(), node);
   node->emitRuntimeNodeChanged(SceneNodeAspect::RenderableStructure);
 }
 
@@ -508,6 +567,14 @@ DirectionalLightSharedPtr Scene::getDirectionalLight(const SceneNode &node) cons
   return std::dynamic_pointer_cast<DirectionalLight>(getLight(node));
 }
 
+PointLightSharedPtr Scene::getPointLight(const SceneNode &node) const {
+  return std::dynamic_pointer_cast<PointLight>(getLight(node));
+}
+
+SpotLightSharedPtr Scene::getSpotLight(const SceneNode &node) const {
+  return std::dynamic_pointer_cast<SpotLight>(getLight(node));
+}
+
 LightBaseSharedPtr Scene::detachLight(const SceneNodeSharedPtr &node) {
   if (!node) {
     return nullptr;
@@ -520,9 +587,7 @@ LightBaseSharedPtr Scene::detachLight(const SceneNodeSharedPtr &node) {
 
   LightBaseSharedPtr light = lightIt->second;
   m_lightsByNode.erase(lightIt);
-  if (const auto directionalLight = std::dynamic_pointer_cast<DirectionalLight>(light)) {
-    directionalLight->detachFromSceneNode();
-  }
+  light->detachFromSceneNode();
   removeLight(light);
   node->emitRuntimeNodeChanged(SceneNodeAspect::RenderableStructure);
   return light;
@@ -545,9 +610,7 @@ void Scene::removeLight(const LightBaseSharedPtr &light) {
     lightIt = m_lightsByNode.erase(lightIt);
   }
 
-  if (const auto directionalLight = std::dynamic_pointer_cast<DirectionalLight>(light)) {
-    directionalLight->detachFromSceneNode();
-  }
+  light->detachFromSceneNode();
 
   m_lights.erase(
       std::remove_if(m_lights.begin(), m_lights.end(),

@@ -110,23 +110,79 @@ void saveCameraState(YAML::Emitter& out, const CameraNodeState& state) {
   out << YAML::EndMap;
 }
 
-[[nodiscard]] DirectionalLightNodeState
-loadDirectionalLightState(const YAML::Node& node) {
-  DirectionalLightNodeState state;
+[[nodiscard]] LightKind loadLightKind(const YAML::Node& node) {
+  const std::string kind = node.as<std::string>();
+  if (kind == "Directional") {
+    return LightKind::Directional;
+  }
+  if (kind == "Point") {
+    return LightKind::Point;
+  }
+  if (kind == "Spot") {
+    return LightKind::Spot;
+  }
+  throw std::runtime_error("unsupported light kind: " + kind);
+}
+
+[[nodiscard]] const char* lightKindName(const LightKind kind) {
+  switch (kind) {
+  case LightKind::Directional:
+    return "Directional";
+  case LightKind::Point:
+    return "Point";
+  case LightKind::Spot:
+    return "Spot";
+  }
+  return "Directional";
+}
+
+[[nodiscard]] LightNodeState
+loadLegacyDirectionalLightState(const YAML::Node& node) {
+  LightNodeState state;
+  state.kind = LightKind::Directional;
   state.direction = loadVec3(node["direction"], "nodes[].directionalLight.direction");
   state.color = loadVec3(node["color"], "nodes[].directionalLight.color");
   state.intensity = node["intensity"].as<float>();
   return state;
 }
 
-void saveDirectionalLightState(YAML::Emitter& out,
-                               const DirectionalLightNodeState& state) {
-  out << YAML::Key << "directionalLight" << YAML::Value << YAML::BeginMap;
-  out << YAML::Key << "direction" << YAML::Value;
-  saveVec3(out, state.direction);
+[[nodiscard]] LightNodeState loadLightState(const YAML::Node& node) {
+  LightNodeState state;
+  state.kind = loadLightKind(node["kind"]);
+  if (state.kind == LightKind::Directional || state.kind == LightKind::Spot) {
+    state.direction = loadVec3(node["direction"], "nodes[].light.direction");
+  }
+  state.color = loadVec3(node["color"], "nodes[].light.color");
+  state.intensity = node["intensity"].as<float>();
+  if (state.kind == LightKind::Point || state.kind == LightKind::Spot) {
+    state.range = node["range"].as<float>();
+  }
+  if (state.kind == LightKind::Spot) {
+    state.innerConeDegrees = node["innerConeDegrees"].as<float>();
+    state.outerConeDegrees = node["outerConeDegrees"].as<float>();
+  }
+  return state;
+}
+
+void saveLightState(YAML::Emitter& out, const LightNodeState& state) {
+  out << YAML::Key << "light" << YAML::Value << YAML::BeginMap;
+  out << YAML::Key << "kind" << YAML::Value << lightKindName(state.kind);
+  if (state.kind == LightKind::Directional || state.kind == LightKind::Spot) {
+    out << YAML::Key << "direction" << YAML::Value;
+    saveVec3(out, state.direction);
+  }
   out << YAML::Key << "color" << YAML::Value;
   saveVec3(out, state.color);
   out << YAML::Key << "intensity" << YAML::Value << state.intensity;
+  if (state.kind == LightKind::Point || state.kind == LightKind::Spot) {
+    out << YAML::Key << "range" << YAML::Value << state.range;
+  }
+  if (state.kind == LightKind::Spot) {
+    out << YAML::Key << "innerConeDegrees" << YAML::Value
+        << state.innerConeDegrees;
+    out << YAML::Key << "outerConeDegrees" << YAML::Value
+        << state.outerConeDegrees;
+  }
   out << YAML::EndMap;
 }
 
@@ -192,8 +248,11 @@ void saveEditorCamera(YAML::Emitter& out, const EditorCameraState& state) {
   if (const auto cameraNode = node["camera"]; cameraNode) {
     entry.camera = loadCameraState(cameraNode);
   }
-  if (const auto lightNode = node["directionalLight"]; lightNode) {
-    entry.directionalLight = loadDirectionalLightState(lightNode);
+  if (const auto lightNode = node["light"]; lightNode) {
+    entry.light = loadLightState(lightNode);
+  } else if (const auto legacyLightNode = node["directionalLight"];
+             legacyLightNode) {
+    entry.light = loadLegacyDirectionalLightState(legacyLightNode);
   }
   if (const auto childrenNode = node["children"];
       childrenNode) {
@@ -218,7 +277,7 @@ void validateExplicitRootNode(const SceneNodeDocument& rootNode) {
         "scene document root identity must use empty name and no parentPath");
   }
   if (rootNode.meshUri.has_value() || rootNode.materialUri.has_value() ||
-      rootNode.camera.has_value() || rootNode.directionalLight.has_value()) {
+      rootNode.camera.has_value() || rootNode.light.has_value()) {
     throw std::runtime_error(
         "scene document root payload is unsupported");
   }
@@ -250,8 +309,8 @@ void saveNodeDocument(YAML::Emitter& out, const SceneNodeDocument& node) {
   if (node.camera.has_value()) {
     saveCameraState(out, *node.camera);
   }
-  if (node.directionalLight.has_value()) {
-    saveDirectionalLightState(out, *node.directionalLight);
+  if (node.light.has_value()) {
+    saveLightState(out, *node.light);
   }
   if (!node.children.empty()) {
     out << YAML::Key << "children" << YAML::Value << YAML::BeginSeq;

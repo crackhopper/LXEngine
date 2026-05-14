@@ -74,13 +74,12 @@ constexpr float kRadToDeg = 180.0f / kPi;
   return std::to_string(value);
 }
 
-[[nodiscard]] std::shared_ptr<DirectionalLight>
-findDirectionalLightForNode(const SceneNode &node) {
+[[nodiscard]] LightBaseSharedPtr findLightForNode(const SceneNode &node) {
   const auto scene = node.getAttachedScene();
   if (!scene) {
     return nullptr;
   }
-  return scene->getDirectionalLight(node);
+  return scene->getLight(node);
 }
 
 [[nodiscard]] Vec3f quatToEulerDegrees(const Quatf &quat) {
@@ -165,11 +164,27 @@ InspectorPanel::Snapshot InspectorPanel::makeSnapshot() const {
         camera->get().getProjectionType() == CameraType::Perspective;
     snapshot.cameraCullingMask = camera->get().getCullingMask();
   }
-  if (const auto light = findDirectionalLightForNode(node)) {
+  if (const auto light = findLightForNode(node)) {
     snapshot.hasLight = true;
-    snapshot.lightDirection = light->getDirection();
-    snapshot.lightColor = light->getColor();
-    snapshot.lightIntensity = light->getIntensity();
+    if (const auto directional = std::dynamic_pointer_cast<DirectionalLight>(light)) {
+      snapshot.lightKind = "Directional";
+      snapshot.lightDirection = directional->getDirection();
+      snapshot.lightColor = directional->getColor();
+      snapshot.lightIntensity = directional->getIntensity();
+    } else if (const auto point = std::dynamic_pointer_cast<PointLight>(light)) {
+      snapshot.lightKind = "Point";
+      snapshot.lightColor = point->getColor();
+      snapshot.lightIntensity = point->getIntensity();
+      snapshot.lightRange = point->getRange();
+    } else if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
+      snapshot.lightKind = "Spot";
+      snapshot.lightDirection = spot->getDirection();
+      snapshot.lightColor = spot->getColor();
+      snapshot.lightIntensity = spot->getIntensity();
+      snapshot.lightRange = spot->getRange();
+      snapshot.lightInnerConeDegrees = spot->getInnerConeDegrees();
+      snapshot.lightOuterConeDegrees = spot->getOuterConeDegrees();
+    }
   }
   snapshot.hasMesh = node.getComponent<MeshComponent>().has_value();
   snapshot.hasMaterial = node.getComponent<MaterialComponent>().has_value();
@@ -319,6 +334,9 @@ void InspectorPanel::syncDraftFromSnapshot(const Snapshot &snapshot) {
   m_lightDirectionDraft = snapshot.lightDirection;
   m_lightColorDraft = snapshot.lightColor;
   m_lightIntensityDraft = snapshot.lightIntensity;
+  m_lightRangeDraft = snapshot.lightRange;
+  m_lightInnerConeDraft = snapshot.lightInnerConeDegrees;
+  m_lightOuterConeDraft = snapshot.lightOuterConeDegrees;
   m_snapshotDirty = false;
 }
 
@@ -461,21 +479,23 @@ void InspectorPanel::drawSelection(const Snapshot &snapshot) {
 
   if (snapshot.hasLight) {
     ImGui::Separator();
-    ImGui::TextUnformatted("Directional Light");
+    ImGui::Text("%s Light", snapshot.lightKind.c_str());
 
-    ImGui::DragFloat3("Direction", m_lightDirectionDraft.data, 0.05f);
-    if (ImGui::IsItemDeactivatedAfterEdit()) {
-      const CommandResult result =
-          dispatchSetVec3(snapshot.path, "direction", m_lightDirectionDraft);
-      if (result.ok) {
-        refreshDrafts();
+    if (snapshot.lightKind == "Directional" || snapshot.lightKind == "Spot") {
+      ImGui::DragFloat3("Direction", m_lightDirectionDraft.data, 0.05f);
+      if (ImGui::IsItemDeactivatedAfterEdit()) {
+        const CommandResult result = dispatchSetVec3(
+            snapshot.path, "light.direction", m_lightDirectionDraft);
+        if (result.ok) {
+          refreshDrafts();
+        }
       }
     }
 
     ImGui::ColorEdit3("Color", m_lightColorDraft.data);
     if (ImGui::IsItemDeactivatedAfterEdit()) {
       const CommandResult result =
-          dispatchSetVec3(snapshot.path, "color", m_lightColorDraft);
+          dispatchSetVec3(snapshot.path, "light.color", m_lightColorDraft);
       if (result.ok) {
         refreshDrafts();
       }
@@ -484,9 +504,41 @@ void InspectorPanel::drawSelection(const Snapshot &snapshot) {
     ImGui::DragFloat("Intensity", &m_lightIntensityDraft, 0.05f, 0.0f, 100.0f);
     if (ImGui::IsItemDeactivatedAfterEdit()) {
       const CommandResult result =
-          dispatchSetFloat(snapshot.path, "intensity", m_lightIntensityDraft);
+          dispatchSetFloat(snapshot.path, "light.intensity", m_lightIntensityDraft);
       if (result.ok) {
         refreshDrafts();
+      }
+    }
+
+    if (snapshot.lightKind == "Point" || snapshot.lightKind == "Spot") {
+      ImGui::DragFloat("Range", &m_lightRangeDraft, 0.1f, 0.0f, 1000.0f);
+      if (ImGui::IsItemDeactivatedAfterEdit()) {
+        const CommandResult result =
+            dispatchSetFloat(snapshot.path, "light.range", m_lightRangeDraft);
+        if (result.ok) {
+          refreshDrafts();
+        }
+      }
+    }
+
+    if (snapshot.lightKind == "Spot") {
+      ImGui::DragFloat("Inner Cone", &m_lightInnerConeDraft, 0.25f, 0.0f,
+                       179.0f);
+      if (ImGui::IsItemDeactivatedAfterEdit()) {
+        const CommandResult result = dispatchSetFloat(
+            snapshot.path, "light.innerConeDegrees", m_lightInnerConeDraft);
+        if (result.ok) {
+          refreshDrafts();
+        }
+      }
+      ImGui::DragFloat("Outer Cone", &m_lightOuterConeDraft, 0.25f, 0.0f,
+                       179.0f);
+      if (ImGui::IsItemDeactivatedAfterEdit()) {
+        const CommandResult result = dispatchSetFloat(
+            snapshot.path, "light.outerConeDegrees", m_lightOuterConeDraft);
+        if (result.ok) {
+          refreshDrafts();
+        }
       }
     }
   }

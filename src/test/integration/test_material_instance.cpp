@@ -385,6 +385,7 @@ void test_isSystemOwnedBinding_classification() {
   std::cout << "\n-- test_isSystemOwnedBinding_classification --\n";
   REQUIRE(isSystemOwnedBinding("CameraUBO") == true);
   REQUIRE(isSystemOwnedBinding("LightUBO") == true);
+  REQUIRE(isSystemOwnedBinding("SceneLightsUBO") == true);
   REQUIRE(isSystemOwnedBinding("Bones") == true);
   REQUIRE(isSystemOwnedBinding("MaterialUBO") == false);
   REQUIRE(isSystemOwnedBinding("SurfaceParams") == false);

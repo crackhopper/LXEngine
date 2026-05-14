@@ -163,9 +163,10 @@ void testLoadExplicitRootSceneDocumentReadsGameAndEditorCamera() {
   if (light == nullptr) {
     return;
   }
-  EXPECT(light->directionalLight.has_value(),
-         "directional light should load");
-  EXPECT(light->directionalLight->color.y == 0.98f,
+  EXPECT(light->light.has_value(), "directional light should load");
+  EXPECT(light->light->kind == demo::LightKind::Directional,
+         "legacy directional light should migrate to typed kind");
+  EXPECT(light->light->color.y == 0.98f,
          "directional light color should load");
   EXPECT(doc.hasEditorCamera(), "editor camera metadata should load");
   EXPECT(doc.editorCamera().position.x == 5.0f, "editor camera x should load");
@@ -399,8 +400,9 @@ void testSaveSceneDocumentWritesExplicitRootCanonicalFormat() {
   world.children.push_back(demo::SceneNodeDocument{
       .nodeName = "dir_light_node",
       .name = "dir_light",
-      .directionalLight =
-          demo::DirectionalLightNodeState{
+      .light =
+          demo::LightNodeState{
+              .kind = demo::LightKind::Directional,
               .direction = {-0.3f, -1.0f, -0.5f},
               .color = {1.0f, 0.98f, 0.9f},
               .intensity = 2.0f,
@@ -471,9 +473,11 @@ void testSaveSceneDocumentWritesExplicitRootCanonicalFormat() {
   if (loadedLight == nullptr) {
     return;
   }
-  EXPECT(loadedLight->directionalLight.has_value(),
+  EXPECT(loadedLight->light.has_value(),
          "directional light should survive round trip");
-  EXPECT(loadedLight->directionalLight->intensity == 2.0f,
+  EXPECT(loadedLight->light->kind == demo::LightKind::Directional,
+         "directional light kind should survive round trip");
+  EXPECT(loadedLight->light->intensity == 2.0f,
          "directional light intensity should survive round trip");
   EXPECT(loaded.hasEditorCamera(),
          "editor camera metadata should survive round trip");
@@ -512,6 +516,69 @@ void testSaveSceneDocumentRejectsUnsupportedRootPayload() {
          "save should reject unsupported payload fields on the explicit root");
 }
 
+void testSceneDocumentRoundTripsTypedLightPayloads() {
+  demo::SceneDocument doc;
+  auto& root = doc.mutableRootNode();
+  root.children.push_back(demo::SceneNodeDocument{
+      .nodeName = "sun_node",
+      .name = "sun",
+      .light =
+          demo::LightNodeState{
+              .kind = demo::LightKind::Directional,
+              .direction = {-0.3f, -1.0f, -0.5f},
+              .color = {1.0f, 0.98f, 0.9f},
+              .intensity = 1.0f,
+          },
+  });
+  root.children.push_back(demo::SceneNodeDocument{
+      .nodeName = "point_node",
+      .name = "point",
+      .light =
+          demo::LightNodeState{
+              .kind = demo::LightKind::Point,
+              .color = {0.8f, 0.7f, 0.6f},
+              .intensity = 2.0f,
+              .range = 6.0f,
+          },
+  });
+  root.children.push_back(demo::SceneNodeDocument{
+      .nodeName = "spot_node",
+      .name = "spot",
+      .light =
+          demo::LightNodeState{
+              .kind = demo::LightKind::Spot,
+              .direction = {0.0f, -0.5f, -1.0f},
+              .color = {0.7f, 0.8f, 1.0f},
+              .intensity = 3.0f,
+              .range = 8.0f,
+              .innerConeDegrees = 20.0f,
+              .outerConeDegrees = 35.0f,
+          },
+  });
+
+  const std::filesystem::path path =
+      makeTempPath("lx_scene_document_typed_lights.yaml");
+  demo::saveSceneDocument(path, doc);
+  const std::string savedText = readFile(path);
+  EXPECT(savedText.find("light:") != std::string::npos,
+         "save should write typed light payloads");
+  EXPECT(savedText.find("directionalLight:") == std::string::npos,
+         "save should not write legacy directionalLight payloads");
+
+  const demo::SceneDocument loaded = demo::loadSceneDocument(path);
+  EXPECT(loaded.rootNode().children.size() == 3,
+         "all typed lights should round trip");
+  EXPECT(loaded.rootNode().children[0].light->kind ==
+             demo::LightKind::Directional,
+         "directional kind should round trip");
+  EXPECT(loaded.rootNode().children[1].light->kind == demo::LightKind::Point &&
+             loaded.rootNode().children[1].light->range == 6.0f,
+         "point light range should round trip");
+  EXPECT(loaded.rootNode().children[2].light->kind == demo::LightKind::Spot &&
+             loaded.rootNode().children[2].light->outerConeDegrees == 35.0f,
+         "spot cone should round trip");
+}
+
 void testSaveSceneDocumentRejectsNonCanonicalRootIdentity() {
   demo::SceneDocument doc;
   doc.setSceneName("lxe_editor");
@@ -545,6 +612,7 @@ int main() {
   testLoadExplicitRootDocumentRejectsUnsupportedRootPayload();
   testLoadExplicitRootDocumentRejectsNonCanonicalRootIdentity();
   testSaveSceneDocumentWritesExplicitRootCanonicalFormat();
+  testSceneDocumentRoundTripsTypedLightPayloads();
   testSaveSceneDocumentRejectsUnsupportedRootPayload();
   testSaveSceneDocumentRejectsNonCanonicalRootIdentity();
 

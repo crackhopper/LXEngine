@@ -142,7 +142,8 @@ cameraPathToDisplayName(const std::string& path, const std::string& fallback) {
   directionalLightNode.nodeName = "dir_light_node";
   directionalLightNode.name = "dir_light";
   directionalLightNode.visibilityMask = LX_core::Layer_All;
-  directionalLightNode.directionalLight = DirectionalLightNodeState{
+  directionalLightNode.light = LightNodeState{
+      .kind = LightKind::Directional,
       .direction = {-0.3f, -1.0f, -0.5f},
       .color = {1.0f, 0.98f, 0.9f},
       .intensity = 1.0f,
@@ -195,10 +196,27 @@ void applyCameraState(LX_core::SceneNode& node, LX_core::CameraComponent& camera
 }
 
 void configureDirectionalLight(LX_core::DirectionalLight& light,
-                               const DirectionalLightNodeState& state) {
+                               const LightNodeState& state) {
   light.setDirection(state.direction);
   light.setColor(state.color);
   light.setIntensity(state.intensity);
+}
+
+void configurePointLight(LX_core::PointLight& light,
+                         const LightNodeState& state) {
+  light.setColor(state.color);
+  light.setIntensity(state.intensity);
+  light.setRange(state.range);
+}
+
+void configureSpotLight(LX_core::SpotLight& light,
+                        const LightNodeState& state) {
+  light.setDirection(state.direction);
+  light.setColor(state.color);
+  light.setIntensity(state.intensity);
+  light.setRange(state.range);
+  light.setInnerConeDegrees(state.innerConeDegrees);
+  light.setOuterConeDegrees(state.outerConeDegrees);
 }
 
 void buildSceneNodesRecursive(
@@ -241,10 +259,27 @@ void buildSceneNodesRecursive(
 
   nodesByPath[node->getPath()] = node;
 
-  if (nodeDocument.directionalLight.has_value()) {
-    auto light = std::make_shared<LX_core::DirectionalLight>();
-    configureDirectionalLight(*light, *nodeDocument.directionalLight);
-    runtime->scene->attachLight(node, light);
+  if (nodeDocument.light.has_value()) {
+    switch (nodeDocument.light->kind) {
+    case LightKind::Directional: {
+      auto light = std::make_shared<LX_core::DirectionalLight>();
+      configureDirectionalLight(*light, *nodeDocument.light);
+      runtime->scene->attachLight(node, light);
+      break;
+    }
+    case LightKind::Point: {
+      auto light = std::make_shared<LX_core::PointLight>();
+      configurePointLight(*light, *nodeDocument.light);
+      runtime->scene->attachLight(node, light);
+      break;
+    }
+    case LightKind::Spot: {
+      auto light = std::make_shared<LX_core::SpotLight>();
+      configureSpotLight(*light, *nodeDocument.light);
+      runtime->scene->attachLight(node, light);
+      break;
+    }
+    }
   }
 
   for (const auto& childDocument : nodeDocument.children) {
@@ -346,12 +381,34 @@ captureCameraState(const LX_core::CameraComponent& camera) {
   };
 }
 
-[[nodiscard]] DirectionalLightNodeState
+[[nodiscard]] LightNodeState
 captureDirectionalLightState(const LX_core::DirectionalLight& light) {
-  return DirectionalLightNodeState{
+  return LightNodeState{
+      .kind = LightKind::Directional,
       .direction = light.getDirection(),
       .color = light.getColor(),
       .intensity = light.getIntensity(),
+  };
+}
+
+[[nodiscard]] LightNodeState capturePointLightState(const LX_core::PointLight& light) {
+  return LightNodeState{
+      .kind = LightKind::Point,
+      .color = light.getColor(),
+      .intensity = light.getIntensity(),
+      .range = light.getRange(),
+  };
+}
+
+[[nodiscard]] LightNodeState captureSpotLightState(const LX_core::SpotLight& light) {
+  return LightNodeState{
+      .kind = LightKind::Spot,
+      .direction = light.getDirection(),
+      .color = light.getColor(),
+      .intensity = light.getIntensity(),
+      .range = light.getRange(),
+      .innerConeDegrees = light.getInnerConeDegrees(),
+      .outerConeDegrees = light.getOuterConeDegrees(),
   };
 }
 
@@ -390,8 +447,17 @@ captureSceneDocument(const std::shared_ptr<SceneRuntimeData>& runtime) {
       entry.camera = captureCameraState(camera->get());
     }
 
-    if (const auto light = runtime->scene->getDirectionalLight(*node)) {
-      entry.directionalLight = captureDirectionalLightState(*light);
+    if (const auto light = runtime->scene->getLight(*node)) {
+      if (const auto directional =
+              std::dynamic_pointer_cast<LX_core::DirectionalLight>(light)) {
+        entry.light = captureDirectionalLightState(*directional);
+      } else if (const auto point =
+                     std::dynamic_pointer_cast<LX_core::PointLight>(light)) {
+        entry.light = capturePointLightState(*point);
+      } else if (const auto spot =
+                     std::dynamic_pointer_cast<LX_core::SpotLight>(light)) {
+        entry.light = captureSpotLightState(*spot);
+      }
     }
 
     for (const auto& child : node->getChildren()) {
@@ -417,7 +483,7 @@ captureSceneDocument(const std::shared_ptr<SceneRuntimeData>& runtime) {
     rootEntry.meshUri.reset();
     rootEntry.materialUri.reset();
     rootEntry.camera.reset();
-    rootEntry.directionalLight.reset();
+    rootEntry.light.reset();
     rootEntry.children.clear();
 
     for (const auto& child : rootNode->getChildren()) {

@@ -32,9 +32,13 @@ public:
     bool cameraPerspective = true;
     u32 cameraCullingMask = 0;
     bool hasLight = false;
+    std::string lightKind;
     Vec3f lightDirection{0.0f, -1.0f, 0.0f};
     Vec3f lightColor{1.0f, 1.0f, 1.0f};
     float lightIntensity = 1.0f;
+    float lightRange = 5.0f;
+    float lightInnerConeDegrees = 20.0f;
+    float lightOuterConeDegrees = 35.0f;
     bool hasMesh = false;
     bool hasMaterial = false;
     bool hasSkeleton = false;
@@ -94,6 +98,9 @@ private:
   Vec3f m_lightDirectionDraft{0.0f, -1.0f, 0.0f};
   Vec3f m_lightColorDraft{1.0f, 1.0f, 1.0f};
   float m_lightIntensityDraft = 1.0f;
+  float m_lightRangeDraft = 5.0f;
+  float m_lightInnerConeDraft = 20.0f;
+  float m_lightOuterConeDraft = 35.0f;
   bool m_open = true;
 };
 

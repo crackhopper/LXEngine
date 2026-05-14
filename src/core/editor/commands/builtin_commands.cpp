@@ -384,8 +384,30 @@ resolveDirectionalLight(SceneNode &node) {
   return scene->getDirectionalLight(node);
 }
 
+[[nodiscard]] LightBaseSharedPtr resolveLight(SceneNode &node) {
+  const auto scene = node.getAttachedScene();
+  if (!scene) {
+    return nullptr;
+  }
+  return scene->getLight(node);
+}
+
+[[nodiscard]] std::string lightKindName(const LightBaseSharedPtr &light) {
+  if (std::dynamic_pointer_cast<DirectionalLight>(light)) {
+    return "Directional";
+  }
+  if (std::dynamic_pointer_cast<PointLight>(light)) {
+    return "Point";
+  }
+  if (std::dynamic_pointer_cast<SpotLight>(light)) {
+    return "Spot";
+  }
+  return {};
+}
+
 [[nodiscard]] std::vector<std::string> listComponentTypes() {
-  return {"camera", "light", "mesh"};
+  return {"camera", "light", "light:directional", "light:point", "light:spot",
+          "mesh"};
 }
 
 [[nodiscard]] std::vector<std::string>
@@ -522,34 +544,96 @@ findActiveCamera(Scene &scene, EditorState &editorState) {
     return makeOk("cullingMask = " + std::to_string(value),
                   makeUnsignedJson(value));
   }
-  if (field == "direction") {
-    const auto light = resolveDirectionalLight(node);
+  if (field == "light.kind" || field == "kind") {
+    const auto light = resolveLight(node);
+    if (!light) {
+      return makeError("field not available on node: light.kind");
+    }
+    const std::string value = lightKindName(light);
+    return makeOk("light.kind = " + value,
+                  "{\"value\":\"" + jsonEscape(value) + "\"}");
+  }
+  if (field == "light.direction" || field == "direction") {
+    const auto light = resolveLight(node);
     if (!light) {
       return makeError("field not available on node: direction");
     }
-    const Vec3f value = light->getDirection();
+    Vec3f value{};
+    if (const auto directional = std::dynamic_pointer_cast<DirectionalLight>(light)) {
+      value = directional->getDirection();
+    } else if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
+      value = spot->getDirection();
+    } else {
+      return makeError("field not available on node: direction");
+    }
     return makeOk("direction = (" + formatFloat(value.x) + ", " +
                       formatFloat(value.y) + ", " + formatFloat(value.z) + ")",
                   "{\"value\":" + makeVec3Json(value) + "}");
   }
-  if (field == "color") {
-    const auto light = resolveDirectionalLight(node);
+  if (field == "light.color" || field == "color") {
+    const auto light = resolveLight(node);
     if (!light) {
       return makeError("field not available on node: color");
     }
-    const Vec3f value = light->getColor();
+    Vec3f value{};
+    if (const auto directional = std::dynamic_pointer_cast<DirectionalLight>(light)) {
+      value = directional->getColor();
+    } else if (const auto point = std::dynamic_pointer_cast<PointLight>(light)) {
+      value = point->getColor();
+    } else if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
+      value = spot->getColor();
+    }
     return makeOk("color = (" + formatFloat(value.x) + ", " +
                       formatFloat(value.y) + ", " + formatFloat(value.z) + ")",
                   "{\"value\":" + makeVec3Json(value) + "}");
   }
-  if (field == "intensity") {
-    const auto light = resolveDirectionalLight(node);
+  if (field == "light.intensity" || field == "intensity") {
+    const auto light = resolveLight(node);
     if (!light) {
       return makeError("field not available on node: intensity");
     }
-    const float value = light->getIntensity();
+    float value = 0.0f;
+    if (const auto directional = std::dynamic_pointer_cast<DirectionalLight>(light)) {
+      value = directional->getIntensity();
+    } else if (const auto point = std::dynamic_pointer_cast<PointLight>(light)) {
+      value = point->getIntensity();
+    } else if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
+      value = spot->getIntensity();
+    }
     return makeOk("intensity = " + formatFloat(value),
                   "{\"value\":" + formatFloat(value) + "}");
+  }
+  if (field == "light.range" || field == "range") {
+    const auto light = resolveLight(node);
+    if (const auto point = std::dynamic_pointer_cast<PointLight>(light)) {
+      return makeOk("range = " + formatFloat(point->getRange()),
+                    "{\"value\":" + formatFloat(point->getRange()) + "}");
+    }
+    if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
+      return makeOk("range = " + formatFloat(spot->getRange()),
+                    "{\"value\":" + formatFloat(spot->getRange()) + "}");
+    }
+    return makeError("field not available on node: range");
+  }
+  if (field == "light.innerConeDegrees" || field == "innerConeDegrees") {
+    const auto light = std::dynamic_pointer_cast<SpotLight>(resolveLight(node));
+    if (!light) {
+      return makeError("field not available on node: innerConeDegrees");
+    }
+    return makeOk("innerConeDegrees = " +
+                      formatFloat(light->getInnerConeDegrees()),
+                  "{\"value\":" +
+                      formatFloat(light->getInnerConeDegrees()) + "}");
+  }
+  if (field == "light.outerConeDegrees" || field == "outerConeDegrees") {
+    const auto light = std::dynamic_pointer_cast<SpotLight>(resolveLight(node));
+    if (!light) {
+      return makeError("field not available on node: outerConeDegrees");
+    }
+    return makeOk("outerConeDegrees = " +
+                      formatFloat(light->getOuterConeDegrees()),
+                  "{\"value\":" +
+                      formatFloat(light->getOuterConeDegrees()) + "}");
   }
   if (field == "name") {
     const std::string value = node.getName();
@@ -611,22 +695,66 @@ findActiveCamera(Scene &scene, EditorState &editorState) {
            std::to_string(camera->get().getCullingMask());
   }
 
-  const auto light = resolveDirectionalLight(node);
-  if (field == "direction" && light) {
-    const Vec3f value = light->getDirection();
-    return "set " + quoteToken(path + ".direction") + " " +
+  const auto light = resolveLight(node);
+  if ((field == "light.direction" || field == "direction") && light) {
+    Vec3f value{};
+    if (const auto directional = std::dynamic_pointer_cast<DirectionalLight>(light)) {
+      value = directional->getDirection();
+    } else if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
+      value = spot->getDirection();
+    } else {
+      return {};
+    }
+    return "set " + quoteToken(path + ".light.direction") + " " +
            formatFloat(value.x) + " " + formatFloat(value.y) + " " +
            formatFloat(value.z);
   }
-  if (field == "color" && light) {
-    const Vec3f value = light->getColor();
-    return "set " + quoteToken(path + ".color") + " " +
+  if ((field == "light.color" || field == "color") && light) {
+    Vec3f value{};
+    if (const auto directional = std::dynamic_pointer_cast<DirectionalLight>(light)) {
+      value = directional->getColor();
+    } else if (const auto point = std::dynamic_pointer_cast<PointLight>(light)) {
+      value = point->getColor();
+    } else if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
+      value = spot->getColor();
+    }
+    return "set " + quoteToken(path + ".light.color") + " " +
            formatFloat(value.x) + " " + formatFloat(value.y) + " " +
            formatFloat(value.z);
   }
-  if (field == "intensity" && light) {
-    return "set " + quoteToken(path + ".intensity") + " " +
-           formatFloat(light->getIntensity());
+  if ((field == "light.intensity" || field == "intensity") && light) {
+    float value = 0.0f;
+    if (const auto directional = std::dynamic_pointer_cast<DirectionalLight>(light)) {
+      value = directional->getIntensity();
+    } else if (const auto point = std::dynamic_pointer_cast<PointLight>(light)) {
+      value = point->getIntensity();
+    } else if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
+      value = spot->getIntensity();
+    }
+    return "set " + quoteToken(path + ".light.intensity") + " " +
+           formatFloat(value);
+  }
+  if ((field == "light.range" || field == "range") && light) {
+    if (const auto point = std::dynamic_pointer_cast<PointLight>(light)) {
+      return "set " + quoteToken(path + ".light.range") + " " +
+             formatFloat(point->getRange());
+    }
+    if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
+      return "set " + quoteToken(path + ".light.range") + " " +
+             formatFloat(spot->getRange());
+    }
+  }
+  if ((field == "light.innerConeDegrees" || field == "innerConeDegrees") && light) {
+    if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
+      return "set " + quoteToken(path + ".light.innerConeDegrees") + " " +
+             formatFloat(spot->getInnerConeDegrees());
+    }
+  }
+  if ((field == "light.outerConeDegrees" || field == "outerConeDegrees") && light) {
+    if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
+      return "set " + quoteToken(path + ".light.outerConeDegrees") + " " +
+             formatFloat(spot->getOuterConeDegrees());
+    }
   }
 
   return {};
@@ -653,10 +781,22 @@ completeScenePaths(const Scene &scene, const CompletionContext &context) {
     fields.push_back("near");
     fields.push_back("projection");
   }
-  if (resolveDirectionalLight(node)) {
-    fields.push_back("color");
-    fields.push_back("direction");
-    fields.push_back("intensity");
+  if (const auto light = resolveLight(node)) {
+    fields.push_back("light.color");
+    fields.push_back("light.intensity");
+    fields.push_back("light.kind");
+    if (std::dynamic_pointer_cast<DirectionalLight>(light) ||
+        std::dynamic_pointer_cast<SpotLight>(light)) {
+      fields.push_back("light.direction");
+    }
+    if (std::dynamic_pointer_cast<PointLight>(light) ||
+        std::dynamic_pointer_cast<SpotLight>(light)) {
+      fields.push_back("light.range");
+    }
+    if (std::dynamic_pointer_cast<SpotLight>(light)) {
+      fields.push_back("light.innerConeDegrees");
+      fields.push_back("light.outerConeDegrees");
+    }
   }
   std::sort(fields.begin(), fields.end());
   return fields;
@@ -927,11 +1067,11 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
     camera->get().setCullingMask(*value);
     return makeOk("cullingMask updated", makeUnsignedJson(*value));
   }
-  if (field == "direction") {
+  if (field == "light.direction" || field == "direction") {
     if (args.size() != valueStartIndex + 3) {
-      return makeError("usage: set <path>.direction <x> <y> <z>");
+      return makeError("usage: set <path>.light.direction <x> <y> <z>");
     }
-    const auto light = resolveDirectionalLight(node);
+    const auto light = resolveLight(node);
     if (!light) {
       return makeError("field not available on node: direction");
     }
@@ -939,14 +1079,20 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
     if (!value) {
       return makeError("invalid float for set direction");
     }
-    light->setDirection(*value);
+    if (const auto directional = std::dynamic_pointer_cast<DirectionalLight>(light)) {
+      directional->setDirection(*value);
+    } else if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
+      spot->setDirection(*value);
+    } else {
+      return makeError("field not available on node: direction");
+    }
     return makeOk("direction updated", "{\"value\":" + makeVec3Json(*value) + "}");
   }
-  if (field == "color") {
+  if (field == "light.color" || field == "color") {
     if (args.size() != valueStartIndex + 3) {
-      return makeError("usage: set <path>.color <r> <g> <b>");
+      return makeError("usage: set <path>.light.color <r> <g> <b>");
     }
-    const auto light = resolveDirectionalLight(node);
+    const auto light = resolveLight(node);
     if (!light) {
       return makeError("field not available on node: color");
     }
@@ -954,14 +1100,20 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
     if (!value) {
       return makeError("invalid float for set color");
     }
-    light->setColor(*value);
+    if (const auto directional = std::dynamic_pointer_cast<DirectionalLight>(light)) {
+      directional->setColor(*value);
+    } else if (const auto point = std::dynamic_pointer_cast<PointLight>(light)) {
+      point->setColor(*value);
+    } else if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
+      spot->setColor(*value);
+    }
     return makeOk("color updated", "{\"value\":" + makeVec3Json(*value) + "}");
   }
-  if (field == "intensity") {
+  if (field == "light.intensity" || field == "intensity") {
     if (args.size() != valueStartIndex + 1) {
-      return makeError("usage: set <path>.intensity <value>");
+      return makeError("usage: set <path>.light.intensity <value>");
     }
-    const auto light = resolveDirectionalLight(node);
+    const auto light = resolveLight(node);
     if (!light) {
       return makeError("field not available on node: intensity");
     }
@@ -969,8 +1121,64 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
     if (!value) {
       return makeError("invalid float for set intensity");
     }
-    light->setIntensity(*value);
+    if (const auto directional = std::dynamic_pointer_cast<DirectionalLight>(light)) {
+      directional->setIntensity(*value);
+    } else if (const auto point = std::dynamic_pointer_cast<PointLight>(light)) {
+      point->setIntensity(*value);
+    } else if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
+      spot->setIntensity(*value);
+    }
     return makeOk("intensity updated", "{\"value\":" + formatFloat(*value) + "}");
+  }
+  if (field == "light.range" || field == "range") {
+    if (args.size() != valueStartIndex + 1) {
+      return makeError("usage: set <path>.light.range <value>");
+    }
+    const auto value = parseFloat(args[valueStartIndex]);
+    if (!value) {
+      return makeError("invalid float for set range");
+    }
+    const auto light = resolveLight(node);
+    if (const auto point = std::dynamic_pointer_cast<PointLight>(light)) {
+      point->setRange(*value);
+    } else if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
+      spot->setRange(*value);
+    } else {
+      return makeError("field not available on node: range");
+    }
+    return makeOk("range updated", "{\"value\":" + formatFloat(*value) + "}");
+  }
+  if (field == "light.innerConeDegrees" || field == "innerConeDegrees") {
+    if (args.size() != valueStartIndex + 1) {
+      return makeError("usage: set <path>.light.innerConeDegrees <value>");
+    }
+    const auto value = parseFloat(args[valueStartIndex]);
+    if (!value) {
+      return makeError("invalid float for set innerConeDegrees");
+    }
+    const auto light = std::dynamic_pointer_cast<SpotLight>(resolveLight(node));
+    if (!light) {
+      return makeError("field not available on node: innerConeDegrees");
+    }
+    light->setInnerConeDegrees(*value);
+    return makeOk("innerConeDegrees updated",
+                  "{\"value\":" + formatFloat(*value) + "}");
+  }
+  if (field == "light.outerConeDegrees" || field == "outerConeDegrees") {
+    if (args.size() != valueStartIndex + 1) {
+      return makeError("usage: set <path>.light.outerConeDegrees <value>");
+    }
+    const auto value = parseFloat(args[valueStartIndex]);
+    if (!value) {
+      return makeError("invalid float for set outerConeDegrees");
+    }
+    const auto light = std::dynamic_pointer_cast<SpotLight>(resolveLight(node));
+    if (!light) {
+      return makeError("field not available on node: outerConeDegrees");
+    }
+    light->setOuterConeDegrees(*value);
+    return makeOk("outerConeDegrees updated",
+                  "{\"value\":" + formatFloat(*value) + "}");
   }
   if (field == "name") {
     if (args.size() != valueStartIndex + 1) {
@@ -1331,9 +1539,15 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
           return makeError("usage: add (mesh|light|camera) <name> [parentPath]");
         }
 
-        const std::string &kind = args[0];
+        std::string kind = args[0];
+        std::string lightKind = "directional";
+        if (kind.rfind("light:", 0) == 0) {
+          lightKind = lowerCopy(kind.substr(std::string("light:").size()));
+          kind = "light";
+        }
         const std::string &name = args[1];
-        auto node = SceneNode::create(kind + "_node");
+        auto node = SceneNode::create(
+            kind == "light" ? lightKind + "_light_node" : kind + "_node");
         node->setName(name);
         SceneNodeSharedPtr parent;
         if (args.size() == 3) {
@@ -1380,11 +1594,37 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
         }
         if (kind == "light") {
           scene.addRenderable(node);
-          const auto light = std::make_shared<DirectionalLight>();
+          LightBaseSharedPtr light;
+          if (lightKind == "directional") {
+            auto directional = std::make_shared<DirectionalLight>();
+            directional->setDirection(Vec3f{-0.3f, -1.0f, -0.5f});
+            directional->setColor(Vec3f{1.0f, 0.98f, 0.9f});
+            directional->setIntensity(1.0f);
+            light = directional;
+          } else if (lightKind == "point") {
+            auto point = std::make_shared<PointLight>();
+            point->setColor(Vec3f{1.0f, 0.98f, 0.9f});
+            point->setIntensity(1.0f);
+            point->setRange(5.0f);
+            light = point;
+          } else if (lightKind == "spot") {
+            auto spot = std::make_shared<SpotLight>();
+            spot->setDirection(Vec3f{0.0f, -1.0f, 0.0f});
+            spot->setColor(Vec3f{1.0f, 0.98f, 0.9f});
+            spot->setIntensity(1.0f);
+            spot->setRange(8.0f);
+            spot->setInnerConeDegrees(20.0f);
+            spot->setOuterConeDegrees(35.0f);
+            light = spot;
+          } else {
+            return makeError("unknown light kind: " + lightKind);
+          }
           scene.attachLight(node, light);
           CommandResult result =
-              makeOk("added light placeholder " + node->getPath(),
-                     "{\"path\":\"" + jsonEscape(node->getPath()) + "\",\"kind\":\"light\"}");
+              makeOk("added " + lightKind + " light " + node->getPath(),
+                     "{\"path\":\"" + jsonEscape(node->getPath()) +
+                         "\",\"kind\":\"light\",\"lightKind\":\"" +
+                         jsonEscape(lightKind) + "\"}");
           result.metadata["inverse.line"] =
               "__remove_to_stash " + quoteToken(node->getPath()) + " " + quoteToken(stashId);
           result.metadata["redo.line"] =
@@ -1463,12 +1703,22 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
         if (!split.has_value()) {
           return makeError("usage: get <path>.<field>");
         }
+        std::string nodePath = split->first;
+        std::string field = split->second;
+        constexpr std::string_view kLightPathSuffix = ".light";
+        if (nodePath.size() > kLightPathSuffix.size() &&
+            nodePath.compare(nodePath.size() - kLightPathSuffix.size(),
+                             kLightPathSuffix.size(),
+                             kLightPathSuffix) == 0) {
+          nodePath.resize(nodePath.size() - kLightPathSuffix.size());
+          field = "light." + field;
+        }
         SceneNode *node = nullptr;
-        const CommandResult found = requireNode(scene, split->first, node);
+        const CommandResult found = requireNode(scene, nodePath, node);
         if (!found.ok) {
           return found;
         }
-        return getField(*node, split->second);
+        return getField(*node, field);
       });
 
   bus.registerHandler(
@@ -1482,15 +1732,25 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
         if (!split.has_value()) {
           return makeError("usage: set <path>.<field> <value>");
         }
+        std::string nodePath = split->first;
+        std::string field = split->second;
+        constexpr std::string_view kLightPathSuffix = ".light";
+        if (nodePath.size() > kLightPathSuffix.size() &&
+            nodePath.compare(nodePath.size() - kLightPathSuffix.size(),
+                             kLightPathSuffix.size(),
+                             kLightPathSuffix) == 0) {
+          nodePath.resize(nodePath.size() - kLightPathSuffix.size());
+          field = "light." + field;
+        }
         SceneNode *node = nullptr;
-        const CommandResult found = requireNode(scene, split->first, node);
+        const CommandResult found = requireNode(scene, nodePath, node);
         if (!found.ok) {
           return found;
         }
         const std::string oldName = node->getName();
-        const std::string inverseLine = buildSetInverseCommand(*node, split->second);
-        CommandResult result = setField(*node, split->second, args, 1);
-        if (result.ok && split->second == "name") {
+        const std::string inverseLine = buildSetInverseCommand(*node, field);
+        CommandResult result = setField(*node, field, args, 1);
+        if (result.ok && field == "name") {
           result.metadata["inverse.line"] =
               "set " + quoteToken(node->getPath() + ".name") + " " +
               quoteToken(oldName);

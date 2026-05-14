@@ -44,6 +44,38 @@ void drawDirectionalLightDebug(const LX_core::SceneNode& node,
                             LX_core::DebugDraw::Color::yellow());
 }
 
+[[nodiscard]] LX_core::Vec4f lightDebugColor(const LX_core::Vec3f& color) {
+  return LX_core::Vec4f{color.x, color.y, color.z, 1.0f};
+}
+
+void drawLightDebug(const LX_core::SceneNode& node,
+                    const LX_core::LightBaseSharedPtr& light) {
+  if (const auto directional =
+          std::dynamic_pointer_cast<LX_core::DirectionalLight>(light)) {
+    drawDirectionalLightDebug(node, *directional);
+    return;
+  }
+  const LX_core::Vec3f origin =
+      LX_core::Transform::fromMat4(node.getWorldTransform()).translation;
+  if (const auto point = std::dynamic_pointer_cast<LX_core::PointLight>(light)) {
+    LX_core::DebugDraw::wireSphere(origin, point->getRange(),
+                                   lightDebugColor(point->getColor()));
+    return;
+  }
+  if (const auto spot = std::dynamic_pointer_cast<LX_core::SpotLight>(light)) {
+    LX_core::Vec3f direction = spot->getDirection();
+    if (direction.length2() <= 1e-6f) {
+      direction = LX_core::Vec3f{0.0f, -1.0f, 0.0f};
+    } else {
+      direction = direction.normalized();
+    }
+    constexpr float kDegToRad = 3.14159265358979323846f / 180.0f;
+    LX_core::DebugDraw::cone(origin, direction, spot->getRange(),
+                             spot->getOuterConeDegrees() * kDegToRad,
+                             lightDebugColor(spot->getColor()));
+  }
+}
+
 [[nodiscard]] std::string formatFloat(const float value) {
   std::ostringstream oss;
   oss << std::fixed << std::setprecision(3) << value;
@@ -306,11 +338,11 @@ void SceneInteractionController::enqueueDebugDraw(
       if (!node) {
         continue;
       }
-      const auto directionalLight = m_scene.getDirectionalLight(*node);
-      if (!directionalLight) {
+      const auto light = m_scene.getLight(*node);
+      if (!light) {
         continue;
       }
-      drawDirectionalLightDebug(*node, *directionalLight);
+      drawLightDebug(*node, light);
     }
     return;
   }
@@ -333,11 +365,11 @@ void SceneInteractionController::enqueueDebugDraw(
     if (!node) {
       continue;
     }
-    const auto directionalLight = m_scene.getDirectionalLight(*node);
-    if (!directionalLight) {
+    const auto light = m_scene.getLight(*node);
+    if (!light) {
       continue;
     }
-    drawDirectionalLightDebug(*node, *directionalLight);
+    drawLightDebug(*node, light);
   }
 
   const auto selected = m_editorState.getSelected();
