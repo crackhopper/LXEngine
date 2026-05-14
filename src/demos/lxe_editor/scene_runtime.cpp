@@ -10,6 +10,7 @@
 #include "demos/lxe_editor/scene_document.hpp"
 
 #include <filesystem>
+#include <iostream>
 #include <memory>
 #include <optional>
 #include <stdexcept>
@@ -20,6 +21,8 @@
 namespace LX_demo::lxe_editor {
 namespace {
 
+constexpr const char* RuntimeDebugDrawNodePrefix = "debug_draw_";
+
 struct SceneRuntimeData final {
   std::optional<std::filesystem::path> documentPath;
   std::optional<SceneSourceKind> sourceKind;
@@ -29,6 +32,20 @@ struct SceneRuntimeData final {
   LX_core::SceneNodeSharedPtr gameCameraNode;
   std::unordered_map<std::string, LX_core::SceneNodeSharedPtr> helperOwnersByPath;
 };
+
+[[nodiscard]] bool isRuntimeDebugDrawNodeName(const std::string& nodeName) {
+  return nodeName.rfind(RuntimeDebugDrawNodePrefix, 0) == 0;
+}
+
+[[nodiscard]] bool
+isRuntimeDebugDrawNode(const SceneNodeDocument& nodeDocument) {
+  return isRuntimeDebugDrawNodeName(nodeDocument.nodeName);
+}
+
+[[nodiscard]] bool
+isRuntimeDebugDrawNode(const LX_core::SceneNodeSharedPtr& node) {
+  return node && isRuntimeDebugDrawNodeName(node->getNodeName());
+}
 
 [[nodiscard]] std::filesystem::path normalizeDocumentPath(
     const std::filesystem::path& path) {
@@ -181,6 +198,12 @@ void buildSceneNodesRecursive(
     const SceneNodeDocument& nodeDocument, const LX_core::SceneNodeSharedPtr& parent,
     const std::shared_ptr<SceneRuntimeData>& runtime,
     std::unordered_map<std::string, LX_core::SceneNodeSharedPtr>& nodesByPath) {
+  if (isRuntimeDebugDrawNode(nodeDocument)) {
+    std::cerr << "[lxe_editor] skipping runtime-only scene node: "
+              << nodeDocument.nodeName << "\n";
+    return;
+  }
+
   LX_core::SceneNodeSharedPtr node;
   if (nodeDocument.camera.has_value()) {
     node = makeCameraNode(
@@ -381,6 +404,7 @@ captureSceneDocument(const std::shared_ptr<SceneRuntimeData>& runtime) {
 
     for (const auto& child : node->getChildren()) {
       if (!child || child == runtime->editorCameraNode ||
+          isRuntimeDebugDrawNode(child) ||
           runtime->helperOwnersByPath.contains(child->getPath())) {
         continue;
       }
@@ -406,6 +430,7 @@ captureSceneDocument(const std::shared_ptr<SceneRuntimeData>& runtime) {
 
     for (const auto& child : rootNode->getChildren()) {
       if (!child || child == runtime->editorCameraNode ||
+          isRuntimeDebugDrawNode(child) ||
           runtime->helperOwnersByPath.contains(child->getPath())) {
         continue;
       }

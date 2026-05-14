@@ -1,3 +1,4 @@
+#include "core/debug_draw/debug_draw.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/components/camera_component.hpp"
@@ -384,6 +385,90 @@ void testRuntimeSaveRoundTripsExpandedSceneDocument() {
              "save should persist editor camera x");
 }
 
+void testRuntimeSkipsLegacyDebugDrawNodesOnLoad() {
+  const std::filesystem::path path =
+      makeTempPath("lx_scene_runtime_legacy_debug_draw.yaml");
+  writeSceneFile(path,
+                 "scene:\n"
+                 "  name: sample_scene\n"
+                 "  gameplayCameraPath: /game_cam\n"
+                 "nodes:\n"
+                 "  - nodeName: game_camera\n"
+                 "    name: game_cam\n"
+                 "    transform:\n"
+                 "      translation: [0.0, 2.0, 6.0]\n"
+                 "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                 "      scale: [1.0, 1.0, 1.0]\n"
+                 "    visibilityMask: 4294967295\n"
+                 "    camera:\n"
+                 "      eye: [0.0, 2.0, 6.0]\n"
+                 "      target: [0.0, 0.0, 0.0]\n"
+                 "      up: [0.0, 1.0, 0.0]\n"
+                 "      type: perspective\n"
+                 "      fovY: 45.0\n"
+                 "      aspect: 1.7777778\n"
+                 "      nearPlane: 0.1\n"
+                 "      farPlane: 1000.0\n"
+                 "      left: -1.0\n"
+                 "      right: 1.0\n"
+                 "      bottom: -1.0\n"
+                 "      top: 1.0\n"
+                 "      cullingMask: 4294967295\n"
+                 "  - nodeName: debug_draw_2147483648\n"
+                 "    name: debug_draw_2147483648\n"
+                 "    transform:\n"
+                 "      translation: [0.0, 0.0, 0.0]\n"
+                 "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                 "      scale: [1.0, 1.0, 1.0]\n"
+                 "    visibilityMask: 2147483648\n");
+
+  demo::SceneRuntime runtime;
+  runtime.loadFromDocumentPath(path);
+
+  EXPECT(runtime.scene()->findByPath("/debug_draw_2147483648") == nullptr,
+         "legacy runtime debug draw nodes should not load as editable scene nodes");
+
+  LX_core::DebugDraw::reset();
+  LX_core::DebugDraw::attachScene(runtime.scene());
+  LX_core::DebugDraw::beginFrame();
+  LX_core::DebugDraw::drawLine({0.0f, 0.0f, 0.0f},
+                               {1.0f, 0.0f, 0.0f});
+  bool debugDrawSucceeded = false;
+  try {
+    debugDrawSucceeded = LX_core::DebugDraw::endFrame();
+  } catch (const std::exception& ex) {
+    std::cerr << "[FAIL] " << __FUNCTION__ << ":" << __LINE__
+              << " DebugDraw should not collide with loaded scene nodes: "
+              << ex.what() << "\n";
+    ++failures;
+  }
+  EXPECT(debugDrawSucceeded,
+         "debug draw should create its runtime bucket after loading scene");
+  LX_core::DebugDraw::reset();
+}
+
+void testRuntimeSaveOmitsDebugDrawRuntimeNodes() {
+  const std::filesystem::path savePath =
+      makeTempPath("lx_scene_runtime_save_debug_draw.yaml");
+
+  demo::SceneRuntime runtime;
+  runtime.createEmptyScene();
+
+  LX_core::DebugDraw::reset();
+  LX_core::DebugDraw::attachScene(runtime.scene());
+  LX_core::DebugDraw::beginFrame();
+  LX_core::DebugDraw::drawLine({0.0f, 0.0f, 0.0f},
+                               {1.0f, 0.0f, 0.0f});
+  LX_core::DebugDraw::endFrame();
+
+  runtime.saveToDocumentPath(savePath);
+  LX_core::DebugDraw::reset();
+
+  const std::string savedText = readFile(savePath);
+  EXPECT(savedText.find("debug_draw_") == std::string::npos,
+         "save should omit DebugDraw runtime nodes");
+}
+
 void testGroundMeshWindingMatchesUpwardNormal() {
   const auto ground = demo::buildGroundNode();
   const auto meshComponent = ground->getComponent<LX_core::MeshComponent>();
@@ -420,6 +505,8 @@ int main() {
   testRuntimeLoadsFullSceneDocument();
   testRuntimeLoadsLegacyFlatSceneDocumentWithExplicitRootNormalization();
   testRuntimeSaveRoundTripsExpandedSceneDocument();
+  testRuntimeSkipsLegacyDebugDrawNodesOnLoad();
+  testRuntimeSaveOmitsDebugDrawRuntimeNodes();
   testGroundMeshWindingMatchesUpwardNormal();
 
   if (failures != 0) {
