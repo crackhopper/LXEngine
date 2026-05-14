@@ -19,6 +19,7 @@
 
 #include "api_token_state.hpp"
 #include "camera_rig.hpp"
+#include "display_launch_options.hpp"
 #include "editor_config_state.hpp"
 #include "editor_session.hpp"
 #include "lxe_editor_api_server.hpp"
@@ -39,7 +40,9 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_set>
+#include <vector>
 #if defined(_WIN32)
 #include <process.h>
 #else
@@ -94,10 +97,11 @@ constexpr int kWindowWidth = 1280;
 constexpr int kWindowHeight = 720;
 
 [[nodiscard]] std::optional<ApiLaunchOptions>
-parseApiLaunchOptions(const int argc, char **argv, std::string &errorMessage) {
+parseApiLaunchOptions(const std::vector<std::string> &args,
+                      std::string &errorMessage) {
   ApiLaunchOptions options;
-  for (int i = 1; i < argc; ++i) {
-    const std::string arg = argv[i];
+  for (usize i = 1; i < args.size(); ++i) {
+    const std::string &arg = args[i];
     if (arg == "--api-disable") {
       options.enabled = false;
       continue;
@@ -107,20 +111,20 @@ parseApiLaunchOptions(const int argc, char **argv, std::string &errorMessage) {
       continue;
     }
     if (arg == "--api-host") {
-      if (i + 1 >= argc) {
+      if (i + 1 >= args.size()) {
         errorMessage = "missing value for --api-host";
         return std::nullopt;
       }
-      options.host = argv[++i];
+      options.host = args[++i];
       continue;
     }
     if (arg == "--api-port") {
-      if (i + 1 >= argc) {
+      if (i + 1 >= args.size()) {
         errorMessage = "missing value for --api-port";
         return std::nullopt;
       }
       try {
-        const int parsed = std::stoi(argv[++i]);
+        const int parsed = std::stoi(args[++i]);
         if (parsed < 0 || parsed > 65535) {
           errorMessage = "api port out of range";
           return std::nullopt;
@@ -136,6 +140,24 @@ parseApiLaunchOptions(const int argc, char **argv, std::string &errorMessage) {
     return std::nullopt;
   }
   return options;
+}
+
+void printDisplayList(const std::vector<LX_core::DisplayInfo> &displays,
+                      std::string_view activeDisplayKey) {
+  std::cout << "[lxe_editor] displays\n";
+  for (const auto &display : displays) {
+    const char *active =
+        display.key == activeDisplayKey ? " active" : "";
+    std::cout << "  [" << display.index << "] key=" << display.key
+              << " label=\"" << display.label << "\" bounds=("
+              << display.bounds.x << "," << display.bounds.y << " "
+              << display.bounds.width << "x" << display.bounds.height
+              << ") usable=(" << display.usableBounds.x << ","
+              << display.usableBounds.y << " "
+              << display.usableBounds.width << "x"
+              << display.usableBounds.height << ") scale="
+              << display.contentScale << active << "\n";
+  }
 }
 
 [[nodiscard]] int currentProcessId() {
@@ -239,8 +261,21 @@ int main(int argc, char **argv) {
     return 1;
   }
 
+  std::vector<std::string> launchArgs;
+  launchArgs.reserve(static_cast<usize>(argc));
+  for (int i = 0; i < argc; ++i) {
+    launchArgs.emplace_back(argv[i]);
+  }
+
+  const auto displayArgResult = demo::parseDisplayLaunchOptions(launchArgs);
+  if (displayArgResult.error.has_value()) {
+    std::cerr << "[lxe_editor] " << *displayArgResult.error << "\n";
+    return 1;
+  }
+
   std::string apiArgError;
-  const auto apiOptions = parseApiLaunchOptions(argc, argv, apiArgError);
+  const auto apiOptions =
+      parseApiLaunchOptions(displayArgResult.remainingArgs, apiArgError);
   if (!apiOptions.has_value()) {
     std::cerr << "[lxe_editor] " << apiArgError << "\n";
     return 1;
@@ -248,11 +283,45 @@ int main(int argc, char **argv) {
 
   try {
     LX_infra::Window::Initialize();
+    const std::vector<LX_core::DisplayInfo> displays =
+        LX_infra::Window::enumerateDisplays();
+    if (displays.empty()) {
+      std::cerr << "[lxe_editor] no displays available\n";
+      return 1;
+    }
+
+    if (!demo::shouldLoadDisplayConfigDocument(displayArgResult.options)) {
+      printDisplayList(displays, std::string_view{});
+      return 0;
+    }
+
     demo::EditorConfigState configState(resolveRuntimePath("data/lxe_editor"));
-    demo::EditorConfigDocument editorConfig = configState.load();
+    demo::EditorDisplayConfigDocument displayConfig =
+        configState.loadOrCreateForDisplays(displays);
+
+    std::string displayError;
+    const auto startupDisplayIndex = demo::selectStartupDisplayIndex(
+        displays, displayArgResult.options.displaySelector,
+        displayConfig.activeDisplay, displayError);
+    if (!startupDisplayIndex.has_value()) {
+      std::cerr << "[lxe_editor] " << displayError << "\n";
+      return 1;
+    }
+
+    const LX_core::DisplayInfo &startupDisplay = displays[*startupDisplayIndex];
+    displayConfig.activeDisplay = startupDisplay.key;
+    demo::EditorConfigDocument editorConfig =
+        configState.composeEffectiveConfig(displayConfig, startupDisplay.key);
+    if (!editorConfig.windowPlacement.has_value()) {
+      editorConfig.windowPlacement = LX_core::makeDefaultWindowPlacementForDisplay(
+          startupDisplay, kWindowWidth, kWindowHeight);
+    }
+
     auto window = std::make_shared<LX_infra::Window>(
         "lxe_editor", kWindowWidth, kWindowHeight,
-        editorConfig.windowPlacement);
+        LX_infra::WindowCreateOptions{.initialPlacement =
+                                          editorConfig.windowPlacement,
+                                      .displayKey = startupDisplay.key});
 
     auto vulkanRenderer =
         std::make_shared<VulkanRenderer>(VulkanRenderer::Token{});
@@ -356,7 +425,8 @@ int main(int argc, char **argv) {
       drawClosePrompt(closePrompt, session);
       session.editorConfig().windowPlacement = window->getPlacement();
       if (ui.consumeConfigDirty()) {
-        (void)configState.save(session.editorConfig());
+        (void)configState.saveDisplayDocument(
+            displayConfig, startupDisplay.key, session.editorConfig());
       }
     });
 
@@ -455,7 +525,8 @@ int main(int argc, char **argv) {
                             "runtime_state.yaml");
     apiServer.stop();
     session.editorConfig().windowPlacement = window->getPlacement();
-    (void)configState.save(session.editorConfig());
+    (void)configState.saveDisplayDocument(displayConfig, startupDisplay.key,
+                                          session.editorConfig());
     session.persistEditorData();
     renderer->shutdown();
     return 0;

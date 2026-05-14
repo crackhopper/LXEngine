@@ -196,6 +196,12 @@ if(TARGET test_lxe_editor_layout)
   target_link_libraries(test_lxe_editor_layout PRIVATE imgui yaml-cpp::yaml-cpp)
 endif()
 
+if(TARGET test_lxe_editor_display_config)
+  target_sources(test_lxe_editor_display_config PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/display_launch_options.cpp
+  )
+endif()
+
 if(TARGET test_lxe_editor_interaction)
   target_sources(test_lxe_editor_interaction PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_interaction_controller.cpp
