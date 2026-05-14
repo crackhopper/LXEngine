@@ -11,6 +11,7 @@
 #include "infra/material_loader/generic_material_loader.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <functional>
 #include <iomanip>
@@ -89,6 +90,25 @@ primitiveUriFromNodeName(const std::string &nodeName) {
     return std::nullopt;
   }
   return std::string(BuiltinPrimitivePrefix) + shape;
+}
+
+[[nodiscard]] std::string stripCopySuffix(const std::string &name) {
+  const std::string suffix = ".copy";
+  const auto suffixPos = name.rfind(suffix);
+  if (suffixPos == std::string::npos) {
+    return name;
+  }
+  const usize afterSuffix = suffixPos + suffix.size();
+  if (afterSuffix == name.size()) {
+    return name.substr(0, suffixPos);
+  }
+  if (afterSuffix + 4 == name.size() && name[afterSuffix] == '.' &&
+      std::isdigit(static_cast<unsigned char>(name[afterSuffix + 1])) &&
+      std::isdigit(static_cast<unsigned char>(name[afterSuffix + 2])) &&
+      std::isdigit(static_cast<unsigned char>(name[afterSuffix + 3]))) {
+    return name.substr(0, suffixPos);
+  }
+  return name;
 }
 
 [[nodiscard]] bool
@@ -525,22 +545,22 @@ findDocumentNodeByName(const SceneNodeDocument &node,
   return nullptr;
 }
 
-[[nodiscard]] SceneNodeDocument*
-findDocumentNodeByName(SceneNodeDocument& node, const std::string& nodeName) {
+[[nodiscard]] SceneNodeDocument *
+findDocumentNodeByName(SceneNodeDocument &node, const std::string &nodeName) {
   if (node.nodeName == nodeName) {
     return &node;
   }
-  for (auto& child : node.children) {
-    if (auto* match = findDocumentNodeByName(child, nodeName)) {
+  for (auto &child : node.children) {
+    if (auto *match = findDocumentNodeByName(child, nodeName)) {
       return match;
     }
   }
   return nullptr;
 }
 
-[[nodiscard]] SceneNodeDocument*
-findDocumentNodeForRuntimePath(SceneRuntimeData& runtime,
-                               const std::string& path) {
+[[nodiscard]] SceneNodeDocument *
+findDocumentNodeForRuntimePath(SceneRuntimeData &runtime,
+                               const std::string &path) {
   if (!runtime.scene) {
     return nullptr;
   }
@@ -552,9 +572,9 @@ findDocumentNodeForRuntimePath(SceneRuntimeData& runtime,
                                 node->getNodeName());
 }
 
-[[nodiscard]] const SceneNodeDocument*
-findDocumentNodeForRuntimePath(const SceneRuntimeData& runtime,
-                               const std::string& path) {
+[[nodiscard]] const SceneNodeDocument *
+findDocumentNodeForRuntimePath(const SceneRuntimeData &runtime,
+                               const std::string &path) {
   if (!runtime.scene) {
     return nullptr;
   }
@@ -566,23 +586,36 @@ findDocumentNodeForRuntimePath(const SceneRuntimeData& runtime,
                                 node->getNodeName());
 }
 
-void forEachDocumentNode(SceneNodeDocument& node,
-                         const std::function<void(SceneNodeDocument&)>& fn) {
+void forEachDocumentNode(SceneNodeDocument &node,
+                         const std::function<void(SceneNodeDocument &)> &fn) {
   fn(node);
-  for (auto& child : node.children) {
+  for (auto &child : node.children) {
     forEachDocumentNode(child, fn);
   }
 }
 
-void forEachRuntimeNode(const LX_core::SceneNodeSharedPtr& node,
-                        const std::function<void(LX_core::SceneNode&)>& fn) {
+void forEachRuntimeNode(const LX_core::SceneNodeSharedPtr &node,
+                        const std::function<void(LX_core::SceneNode &)> &fn) {
   if (!node) {
     return;
   }
   fn(*node);
-  for (const auto& child : node->getChildren()) {
+  for (const auto &child : node->getChildren()) {
     forEachRuntimeNode(child, fn);
   }
+}
+
+[[nodiscard]] const SceneNodeDocument *
+findDocumentNodeByNameOrCopySource(const SceneNodeDocument &node,
+                                   const std::string &nodeName) {
+  if (const auto* exact = findDocumentNodeByName(node, nodeName)) {
+    return exact;
+  }
+  const std::string sourceName = stripCopySuffix(nodeName);
+  if (sourceName == nodeName) {
+    return nullptr;
+  }
+  return findDocumentNodeByName(node, sourceName);
 }
 
 [[nodiscard]] CameraNodeState
@@ -631,7 +664,7 @@ captureSceneDocument(const std::shared_ptr<SceneRuntimeData> &runtime) {
     entry.transform = node->getLocalTransform();
     entry.visibilityMask = node->getVisibilityLayerMask();
 
-    if (const auto *existing = findDocumentNodeByName(
+    if (const auto *existing = findDocumentNodeByNameOrCopySource(
             runtime->document.rootNode(), node->getNodeName())) {
       entry.visibilityMask = existing->visibilityMask;
       entry.meshUri = existing->meshUri;

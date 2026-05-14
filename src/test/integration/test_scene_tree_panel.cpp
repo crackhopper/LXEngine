@@ -89,6 +89,24 @@ void testDispatchSelectPathUsesCommandBus() {
          "dispatchSelectPath should go through command bus history");
 }
 
+void testDispatchDuplicatePathUsesCopyPasteSiblingCommands() {
+  Fixture fixture;
+  LX_core::SceneTreePanel panel(fixture.bus, fixture.editorState, *fixture.scene);
+
+  const LX_core::CommandResult result = panel.dispatchDuplicatePath("/world/cube");
+
+  EXPECT(result.ok, "dispatchDuplicatePath should succeed");
+  EXPECT(fixture.scene->findByPath("/world/cube.copy") != nullptr,
+         "duplicate should create copied sibling");
+  EXPECT(fixture.bus.history().size() >= 2,
+         "duplicate should dispatch copy and paste commands");
+  const auto &history = fixture.bus.history();
+  EXPECT(history[history.size() - 2].line == "copy /world/cube",
+         "duplicate should copy source path first");
+  EXPECT(history.back().line == "paste_as_sibling /world/cube",
+         "duplicate should paste as sibling second");
+}
+
 void testDrawFrameSurvivesCpuOnlyImGui() {
   if (!setupMinimalImGui()) {
     std::cout << "[SKIP] scene_tree_panel draw smoke (font atlas unavailable)\n";
@@ -243,6 +261,7 @@ int main() {
   expSetEnvVK();
   testPathJumpDispatchesSelect();
   testDispatchSelectPathUsesCommandBus();
+  testDispatchDuplicatePathUsesCopyPasteSiblingCommands();
   testDrawFrameSurvivesCpuOnlyImGui();
   testPathJumpExpandsAncestorChainOnNextDraw();
   testPrimarySelectionDrawsOutline();

@@ -1,4 +1,7 @@
 #include "core/debug_draw/debug_draw.hpp"
+#include "core/editor/command_bus.hpp"
+#include "core/editor/commands/builtin_commands.hpp"
+#include "core/editor/editor_state.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/components/camera_component.hpp"
@@ -560,6 +563,131 @@ void testRuntimeSaveRoundTripsExpandedSceneDocument() {
              "save should persist editor camera x");
 }
 
+void testRuntimeSavePreservesDuplicatedDocumentPayloads() {
+  const std::filesystem::path inputPath =
+      makeTempPath("lx_scene_runtime_duplicate_payload_input.yaml");
+  const std::filesystem::path savePath =
+      makeTempPath("lx_scene_runtime_duplicate_payload_output.yaml");
+  writeSceneFile(inputPath,
+                 "scene:\n"
+                 "  name: duplicate_payload_scene\n"
+                 "  gameplayCameraPath: /game_cam\n"
+                 "nodes:\n"
+                 "  - nodeName: game_camera\n"
+                 "    name: game_cam\n"
+                 "    transform:\n"
+                 "      translation: [0.0, 2.0, 6.0]\n"
+                 "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                 "      scale: [1.0, 1.0, 1.0]\n"
+                 "    visibilityMask: 4294967295\n"
+                 "    camera:\n"
+                 "      eye: [0.0, 2.0, 6.0]\n"
+                 "      target: [0.0, 0.0, 0.0]\n"
+                 "      up: [0.0, 1.0, 0.0]\n"
+                 "      type: perspective\n"
+                 "      fovY: 45.0\n"
+                 "      aspect: 1.7777778\n"
+                 "      nearPlane: 0.1\n"
+                 "      farPlane: 1000.0\n"
+                 "      left: -1.0\n"
+                 "      right: 1.0\n"
+                 "      bottom: -1.0\n"
+                 "      top: 1.0\n"
+                 "      cullingMask: 4294967295\n"
+                 "  - nodeName: cube_node\n"
+                 "    name: cube\n"
+                 "    transform:\n"
+                 "      translation: [1.0, 0.0, 0.0]\n"
+                 "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                 "      scale: [1.0, 1.0, 1.0]\n"
+                 "    visibilityMask: 7\n"
+                 "    mesh:\n"
+                 "      uri: test://mesh/cube\n"
+                 "    material:\n"
+                 "      uri: test://material/red\n");
+
+  demo::SceneRuntime runtime;
+  runtime.loadFromDocumentPath(inputPath);
+  LX_core::EditorState editorState;
+  LX_core::CommandBus bus;
+  LX_core::registerBuiltinCommands(bus, editorState, *runtime.scene());
+
+  const LX_core::CommandResult copy = bus.dispatch("copy /cube");
+  EXPECT(copy.ok, "copy primitive payload node should succeed");
+  const LX_core::CommandResult paste = bus.dispatch("paste_as_sibling /cube");
+  EXPECT(paste.ok, "paste primitive payload node should succeed");
+
+  runtime.saveToDocumentPath(savePath);
+  const demo::SceneDocument saved = demo::loadSceneDocument(savePath);
+
+  const demo::SceneNodeDocument* copied = nullptr;
+  for (const auto& child : saved.rootNode().children) {
+    if (child.name == "cube.copy") {
+      copied = &child;
+      break;
+    }
+  }
+  EXPECT(copied != nullptr, "saved document should include duplicated node");
+  if (copied != nullptr) {
+    EXPECT(copied->meshUri.has_value() &&
+               *copied->meshUri == "test://mesh/cube",
+           "duplicated primitive should preserve meshUri");
+    EXPECT(copied->materialUri.has_value() &&
+               *copied->materialUri == "test://material/red",
+           "duplicated primitive should preserve materialUri");
+    expectNear(copied->transform.translation.x, 1.5f,
+               "duplicated primitive should save default local +X offset");
+  }
+}
+
+void testRuntimeSaveSyncsRenamedGameplayCameraPath() {
+  const std::filesystem::path inputPath =
+      makeTempPath("lx_scene_runtime_rename_gameplay_camera_input.yaml");
+  const std::filesystem::path savePath =
+      makeTempPath("lx_scene_runtime_rename_gameplay_camera_output.yaml");
+  writeSceneFile(inputPath,
+                 "scene:\n"
+                 "  name: rename_gameplay_camera_scene\n"
+                 "  gameplayCameraPath: /game_cam\n"
+                 "nodes:\n"
+                 "  - nodeName: game_camera\n"
+                 "    name: game_cam\n"
+                 "    transform:\n"
+                 "      translation: [0.0, 2.0, 6.0]\n"
+                 "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                 "      scale: [1.0, 1.0, 1.0]\n"
+                 "    visibilityMask: 4294967295\n"
+                 "    camera:\n"
+                 "      eye: [0.0, 2.0, 6.0]\n"
+                 "      target: [0.0, 0.0, 0.0]\n"
+                 "      up: [0.0, 1.0, 0.0]\n"
+                 "      type: perspective\n"
+                 "      fovY: 45.0\n"
+                 "      aspect: 1.7777778\n"
+                 "      nearPlane: 0.1\n"
+                 "      farPlane: 1000.0\n"
+                 "      left: -1.0\n"
+                 "      right: 1.0\n"
+                 "      bottom: -1.0\n"
+                 "      top: 1.0\n"
+                 "      cullingMask: 4294967295\n");
+
+  demo::SceneRuntime runtime;
+  runtime.loadFromDocumentPath(inputPath);
+  LX_core::EditorState editorState;
+  LX_core::CommandBus bus;
+  LX_core::registerBuiltinCommands(bus, editorState, *runtime.scene());
+
+  const LX_core::CommandResult rename =
+      bus.dispatch("set /game_cam.name gameplay_main");
+  EXPECT(rename.ok, "rename gameplay camera should succeed");
+
+  runtime.saveToDocumentPath(savePath);
+  const demo::SceneDocument saved = demo::loadSceneDocument(savePath);
+  EXPECT(saved.gameplayCameraPath() == "/gameplay_main",
+         "save should sync gameplayCameraPath after gameplay camera rename");
+}
+
 void testRuntimeSkipsLegacyDebugDrawNodesOnLoad() {
   const std::filesystem::path path =
       makeTempPath("lx_scene_runtime_legacy_debug_draw.yaml");
@@ -860,6 +988,8 @@ int main() {
   testRuntimeLoadsFullSceneDocument();
   testRuntimeLoadsLegacyFlatSceneDocumentWithExplicitRootNormalization();
   testRuntimeSaveRoundTripsExpandedSceneDocument();
+  testRuntimeSavePreservesDuplicatedDocumentPayloads();
+  testRuntimeSaveSyncsRenamedGameplayCameraPath();
   testRuntimeSkipsLegacyDebugDrawNodesOnLoad();
   testRuntimeSaveOmitsDebugDrawRuntimeNodes();
   testRuntimeSaveOmitsLegacyEditorHelperNodes();
