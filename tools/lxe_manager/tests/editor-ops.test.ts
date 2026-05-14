@@ -226,4 +226,34 @@ describe("editor ops", () => {
       await close(server);
     }
   });
+
+  it("keeps captured logs for the last manager-owned editor after exit", async () => {
+    const supervisor = {
+      startDetached: vi.fn(async () => ({ label: "editor.start", pid: 4321 })),
+      isProcessRunning: vi.fn(() => false),
+      logsForDetachedProcess: vi.fn((pid: number | undefined) =>
+        pid === 4321
+          ? {
+              stdout: "last out",
+              stderr: "last err",
+              stdoutTruncated: false,
+              stderrTruncated: false,
+            }
+          : undefined,
+      ),
+    } as unknown as ProcessSupervisor;
+    const ops = new EditorOps(supervisor, config(), {
+      startTimeoutMs: 1,
+      startPollIntervalMs: 1,
+    });
+
+    await ops.start();
+    await expect(ops.status()).resolves.toEqual({ running: false });
+    await expect(ops.logs()).resolves.toEqual({
+      stdout: "last out",
+      stderr: "last err",
+      message: "captured output for the last manager-owned lxe_editor process",
+    });
+    expect(supervisor.logsForDetachedProcess).toHaveBeenCalledWith(4321);
+  });
 });
