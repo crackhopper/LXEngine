@@ -293,18 +293,40 @@ void LxeEditorSession::flushPendingSceneLoad(LX_core::gpu::EngineLoop &loop) {
     return;
   }
 
-  m_runtime = std::move(*m_pendingRuntime);
-  if (m_pendingSourceKind.has_value() && m_runtime.documentPath().has_value()) {
+  SceneRuntime nextRuntime = std::move(*m_pendingRuntime);
+  const std::optional<SceneSourceKind> nextSourceKind = m_pendingSourceKind;
+  m_pendingRuntime.reset();
+  m_pendingSourceKind.reset();
+
+  try {
+    loop.startScene(nextRuntime.scene());
+  } catch (const std::exception &error) {
+    try {
+      loop.startScene(m_runtime.scene());
+    } catch (const std::exception &restoreError) {
+      if (m_consolePanel) {
+        m_consolePanel->appendSystemLine(
+            std::string("scene restore failed after load error: ") +
+            restoreError.what());
+      }
+      throw;
+    }
+    if (m_consolePanel) {
+      m_consolePanel->appendSystemLine(std::string("scene load failed: ") +
+                                       error.what());
+    }
+    return;
+  }
+
+  m_runtime = std::move(nextRuntime);
+  if (nextSourceKind.has_value() && m_runtime.documentPath().has_value()) {
     m_session.setCurrentDocument(*m_runtime.documentPath(),
-                                 *m_pendingSourceKind);
+                                 *nextSourceKind);
   } else {
     m_session.setCurrentDocument(m_runtime.documentPath(), std::nullopt);
   }
   m_session.setDirty(false);
-  m_pendingRuntime.reset();
-  m_pendingSourceKind.reset();
   rebuildBindings();
-  loop.startScene(m_runtime.scene());
 }
 
 void LxeEditorSession::pollCommandHistory(LX_core::gpu::EngineLoop &loop) {

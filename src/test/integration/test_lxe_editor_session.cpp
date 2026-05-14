@@ -9,6 +9,7 @@
 
 #include <iostream>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -76,11 +77,16 @@ public:
   void initScene(LX_core::SceneSharedPtr scene) override {
     ++initSceneCalls;
     lastScene = std::move(scene);
+    if (failNextInit) {
+      failNextInit = false;
+      throw std::runtime_error("renderer rejected scene");
+    }
   }
   void uploadData() override {}
   void draw() override {}
 
   int initSceneCalls = 0;
+  bool failNextInit = false;
   LX_core::SceneSharedPtr lastScene;
 };
 
@@ -135,6 +141,54 @@ void testSceneLoadPreservesEditorCommandHistoryAndConsole() {
          "scene load should preserve its own console output text");
   EXPECT(renderer->initSceneCalls == 1,
          "flushing the pending scene load should restart the engine scene once");
+}
+
+void testSceneLoadFailureKeepsEditorRunningAndCurrentScene() {
+  const bool initialized = initializeRuntimeAssetRoot();
+  EXPECT(initialized, "runtime asset root should initialize for load failure test");
+  if (!initialized) {
+    return;
+  }
+
+  LX_core::EditorState editorState;
+  LX_demo::lxe_editor::CameraRig rig;
+  LX_demo::lxe_editor::UiOverlay ui;
+  LX_demo::lxe_editor::LxeEditorSession session(rig, ui, editorState);
+  session.initialize();
+
+  auto window = std::make_shared<FakeWindow>();
+  auto renderer = std::make_shared<FakeRenderer>();
+  LX_core::gpu::EngineLoop loop;
+  loop.initialize(window, renderer);
+  loop.startScene(session.scene());
+  const auto oldScene = session.scene();
+
+  const auto loadResult =
+      session.commandBus().dispatch("scene load lxe_editor.scene.yaml");
+  EXPECT(loadResult.ok, "valid scene load should queue before renderer failure");
+
+  renderer->failNextInit = true;
+  bool threw = false;
+  try {
+    session.flushPendingSceneLoad(loop);
+  } catch (const std::exception& error) {
+    threw = true;
+    std::cerr << "[FAIL] unexpected scene load exception: " << error.what()
+              << "\n";
+  }
+
+  EXPECT(!threw, "renderer scene-load failure should not escape flush");
+  EXPECT(session.scene() == oldScene,
+         "failed deferred scene load should keep the previous session scene");
+  EXPECT(!session.currentDocumentPath().has_value(),
+         "failed deferred scene load should not commit the new document path");
+  EXPECT(renderer->initSceneCalls == 3,
+         "failed load should try pending scene and restore the previous scene");
+  EXPECT(renderer->lastScene == oldScene,
+         "engine loop should be restored to the previous scene after failure");
+  EXPECT(session.consolePanel().displayedText().find(
+             "scene load failed: renderer rejected scene") != std::string::npos,
+         "load failure should be reported in the console");
 }
 
 void testEditorHelpersUseFacetedOctahedronGeometry() {
@@ -215,6 +269,7 @@ void testRecordingCommandControlsSessionRecorder() {
 
 int main() {
   testSceneLoadPreservesEditorCommandHistoryAndConsole();
+  testSceneLoadFailureKeepsEditorRunningAndCurrentScene();
   testEditorHelpersUseFacetedOctahedronGeometry();
   testRecordingCommandControlsSessionRecorder();
 
