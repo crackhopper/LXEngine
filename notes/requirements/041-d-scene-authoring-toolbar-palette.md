@@ -13,6 +13,18 @@
 
 这意味着：我们已经能“保存场景”，但还不能“快速搭场景”。现在最缺的是一个直接面向测试场景的创建入口，而不是继续扩菜单栏、主题、组件模型 v2、mesh 级 picking 或 DebugDraw v2。
 
+## 当前代码对照（2026-05-14）
+
+对照当前工作区代码，本 REQ 仍未实现，但已有基础能力如下：
+
+| 能力 | 当前事实 | 对本 REQ 的影响 |
+|---|---|---|
+| Toolbar 外壳 | `UiOverlay::drawToolbarPanel()` 已提供 Selection、Orbit / FreeFly、reset editor camera、Preview、Debug、Preferences | R1 应继续扩展现有浮动 Toolbar，不新建 menubar |
+| CommandBus 创建 | `add mesh|light|camera <name> [parentPath]` 已存在；`mesh` 是空 renderable，`light` 是 directional light，`camera` 创建 `CameraComponent` | R5 仍要把粗粒度 `add` 升级为具体 `primitive:*` / `light:directional` / `camera:perspective` |
+| Scene document | `SceneNodeDocument` 已保存 `meshUri`、`materialUri`、`camera`、`directionalLight` | R2 可基于现有字段落地，不需要先重做 scene document |
+| Runtime 解析 | `SceneRuntime` 只把 `builtin://lxe_editor/helmet` 与 `builtin://lxe_editor/ground_mesh` 解析为真实内容，未知 mesh URI 仍退化为空节点 | builtin primitive 解析仍是 R2 的核心缺口 |
+| Editor helper | `SceneInteractionController::enqueueDebugDraw()` 已绘制 camera frustum 与 directional light 线框/箭头，并可在 gizmo 拖拽时抑制 helper | R4 的 camera 可见代理已有雏形，但仍要确认选中强化与创建后体验 |
+
 ## 目标
 
 1. 在现有浮动工具栏里直接展示常用测试几何体
@@ -79,7 +91,7 @@
 
 ### R4: 相机节点需要可见的编辑器线框代理
 
-- Camera 节点在编辑模式下应有线框代理，至少包含 frustum / forward 指示
+- Camera 节点在编辑模式下应有线框代理；当前已有 frustum 调试绘制，本 REQ 需要补齐或确认 forward 指示与选中强化
 - 该代理只用于 editor overlay，可通过现有 DebugDraw/overlay 路径绘制
 - 代理不写入 scene document，不影响 gameplay camera 渲染
 - 选中 Camera 节点时，代理应比普通节点轮廓更明显，避免“场景里有相机但看不见”
@@ -141,4 +153,4 @@
 
 ## 实施状态
 
-待实施。优先级为当前 active REQ 最高，因为它直接决定我们能否高效搭出可保存的测试场景文件。
+待实施。当前代码已有 toolbar 外壳、粗粒度 `add`、camera/directional light 保存与 helper overlay；仍缺创建盘、builtin primitive runtime 解析、拖拽放置和具体命令语义。优先级为当前 active REQ 最高，因为它直接决定我们能否高效搭出可保存的测试场景文件。

@@ -16,6 +16,16 @@
 1. 对 mesh/material 节点，只显示 `Material: yes/no`，不能改材质来源，也不能改常见的基础颜色
 2. `visibilityMask` 与 `camera cullingMask` 目前用 32 个 bit checkbox 展开，信息密度过高，不适合日常编辑
 
+## 当前代码对照（2026-05-14）
+
+| 能力 | 当前事实 | 对本 REQ 的影响 |
+|---|---|---|
+| Inspector snapshot | `InspectorPanel::Snapshot` 已包含 transform、`visibilityMask`、camera 参数、directional light 参数，以及 `hasMesh/hasMaterial/hasSkeleton` 布尔值 | 可直接扩展 snapshot，但仍缺 material URI 与参数覆盖字段 |
+| Mask UI | `drawMaskEditor()` 仍展开 32 个 checkbox，并显示 `Visibility bits` / `Camera culling bits` | R1/R2 仍需改为单值输入 |
+| CommandBus set | 已支持 `set <path>.visibilityMask`、`set <path>.cullingMask`、camera `fov/near/far/projection`、directional light `direction/color/intensity` | mask 的底层命令已存在；材质相关命令仍未实现 |
+| 材质信息 | Inspector 目前只显示 `Material: yes/no`，`SceneDocument` 只保存 `material.uri` | R3/R4/R5/R6 仍是主要新增工作 |
+| 保存路径 | `SceneRuntime::captureSceneDocument()` 会保留既有文档节点的 `meshUri/materialUri`，但不会捕获新建空 mesh 的 material 语义或 node-level override | 材质修改必须补 scene document 数据结构与 capture/apply 路径 |
+
 ## 目标
 
 1. Inspector 能直接编辑节点使用的材质来源
@@ -156,4 +166,4 @@ Inspector 的材质编辑不得直接改内存后绕过 history。需要补齐�
 
 ## 实施状态
 
-待实施。优先级紧跟 `041-d`，因为创建出来的测试对象如果不能直接换材质和改颜色，仍然要回到手写 YAML，目标没有真正达成。
+待实施。当前代码已经有 mask/camera/light 的 Inspector 与命令基础，但 mask UI 仍是 bit matrix，材质区块、`materialUri` 切换、node-level override、`apply_material_override` 与对应保存语义尚未落地。优先级紧跟 `041-d`，因为创建出来的测试对象如果不能直接换材质和改颜色，仍然要回到手写 YAML，目标没有真正达成。

@@ -260,8 +260,9 @@ void SceneInteractionController::cancelPendingSelectionClick(
   m_prevLeftDown = input.isMouseButtonDown(LX_core::MouseButton::Left);
 }
 
-void SceneInteractionController::enqueueDebugDraw() const {
-  if (m_editorState.isPreviewEnabled()) {
+void SceneInteractionController::enqueueDebugDraw(
+    const bool suppressEditorHelpers) const {
+  if (m_editorState.isPreviewEnabled() || suppressEditorHelpers) {
     return;
   }
 

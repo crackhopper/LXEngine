@@ -17,6 +17,16 @@
 - scene document 只计划保存 `baseColor` 这种单一节点级覆盖
 - 新 shader / material 是否符合 runtime 资源合同，需要有更明确的最小模板和验证路径
 
+## 当前代码对照（2026-05-14）
+
+| 能力 | 当前事实 | 对本 REQ 的影响 |
+|---|---|---|
+| Material loader | `GenericMaterialLoader`、`.material` YAML、shader reflection 校验和 shader CMake 收集路径已经存在 | R1 主要是把实验接入合同文档化并补模板，不需要改 backend 硬编码 |
+| System-owned binding | 当前登记了 `CameraUBO`、`LightUBO`、`Bones`，还没有 `SceneLightsUBO` | 若实验材质要用多光源合同，需要等待或配合 `041-g` |
+| Inspector material | `041-e` 尚未实现，当前 Inspector 只显示 `Material: yes/no` | R2/R4/R5 依赖先有 material 区块和 `set <path>.materialUri` |
+| Scene document override | 当前没有 `nodeMaterialOverrides`，也没有通用参数表 | R3/R5 是本 REQ 的核心新增保存语义 |
+| 实验资产 | 当前 `assets/materials/` 已有 blinnphong / pbr 材质，但未见 `rtr_*.material` 模板 | R6 仍要新增实验模板与测试 |
+
 ## 目标
 
 1. 新增一个实验材质时，不需要改 backend 硬编码
@@ -188,4 +198,4 @@ clear <path>.nodeMaterial.<binding>.<member>
 
 ## 实施状态
 
-待实施。优先级排在 `041-g` 之后，因为 Gooch 等实验材质通常需要先明确使用单光源还是多光源数据合同。
+待实施。当前材质加载和反射基础已经存在，但 editor 侧材质候选、通用 node-level 参数覆盖、`rtr_*` 模板和 `SceneLightsUBO` 相关路径尚未落地。优先级排在 `041-g` 之后，因为 Gooch 等实验材质通常需要先明确使用单光源还是多光源数据合同。

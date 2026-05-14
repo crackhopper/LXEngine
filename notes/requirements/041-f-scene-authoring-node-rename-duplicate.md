@@ -12,6 +12,16 @@
 
 因此 Rename / Duplicate 若继续按“复制一堆 component 即可”去定义，会和当前 `lxe_editor` 的保存语义脱节。我们需要把它改成面向“可保存测试场景”的操作，而不是面向未来 component 架构实验的操作。
 
+## 当前代码对照（2026-05-14）
+
+| 能力 | 当前事实 | 对本 REQ 的影响 |
+|---|---|---|
+| Rename | Inspector 顶部 name 输入已通过 `set <path>.name <newName>` 改名 | R1 的命令基础已存在；仍要补 gameplay camera path 同步、冲突失败信息、Scene Tree 入口 |
+| Scene Tree 菜单 | `SceneTreePanel` 右键菜单当前只有 `Remove` | R4 的 Rename / Duplicate 右键入口仍未实现 |
+| Copy / Paste | 当前没有 `copy`、`paste_as_sibling` 或 editor 内部剪贴板命令 | R5 仍是新增命令能力 |
+| 保存语义 | `SceneRuntime::captureSceneDocument()` 会捕获 runtime camera/directional light，并保留既有文档节点的 `meshUri/materialUri` | Duplicate 必须复制 document payload，而不是只复制 runtime node/component |
+| 依赖数据 | node-level material override 还未实现 | R2 中复制 material override 的部分依赖 `041-e` 落地 |
+
 ## 目标
 
 1. Scene Tree 右键菜单提供 Rename / Duplicate
@@ -132,4 +142,4 @@
 
 ## 实施状态
 
-待实施。优先级低于 `041-d` / `041-e`，但仍保留在 active 队列中，因为它直接提升“批量搭测试场景”的速度。
+待实施。当前只有 Inspector Rename 与 Scene Tree Remove；Duplicate、Copy/Paste、Scene Tree Rename 入口、gameplay camera path 同步和 document payload 深复制仍未实现。优先级低于 `041-d` / `041-e`，但仍保留在 active 队列中，因为它直接提升“批量搭测试场景”的速度。

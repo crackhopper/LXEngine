@@ -16,6 +16,17 @@
 
 因此，当前能力足够支持一个方向光 demo，但不适合用作“学习并验证多种光源”的实验环境。
 
+## 当前代码对照（2026-05-14）
+
+| 能力 | 当前事实 | 对本 REQ 的影响 |
+|---|---|---|
+| Core light | `LightBase` 与 `DirectionalLight` 已存在，`Scene` 通过 light 列表和 node 绑定管理 scene-level lights | R2 仍要新增 `PointLight` / `SpotLight`，但不需要重建 directional light 基础 |
+| Scene document | 仍只有 `DirectionalLightNodeState` 与 `directionalLight` YAML 负载 | R1 的 `light.kind` 迁移仍未实现 |
+| Runtime | `SceneRuntime` 只创建并捕获 directional light | Point / Spot 的 runtime 构建、保存与 reload 仍是新增工作 |
+| Inspector/CommandBus | 只认识 directional light 的 `direction/color/intensity`，命令字段也没有 `light.<field>` 命名空间 | R5/R4 仍要按 light kind 重建编辑和创建入口 |
+| Shader binding | system-owned binding 当前包含 `CameraUBO`、`LightUBO`、`Bones`，未登记 `SceneLightsUBO` | R3 的多光源数据合同仍未实现 |
+| Editor helper | 方向光已有线框/箭头代理 | R6 需要扩展到 point range sphere 与 spot cone，并保留 directional 代理 |
+
 ## 目标
 
 1. `lxe_editor` 能创建、保存、加载 Directional / Point / Spot 三类光源节点
@@ -188,4 +199,4 @@ Inspector 不再通过节点名字猜测是否是 light。它应根据 scene doc
 
 ## 实施状态
 
-待实施。优先级排在 `041-f` 之后，因为它依赖前面的场景创建、编辑和复制语义稳定。
+待实施。当前代码只具备 directional light 的 core/runtime/document/Inspector 路径；`light.kind`、Point / Spot、`SceneLightsUBO`、三类 light 创建与可视化仍未落地。优先级排在 `041-f` 之后，因为它依赖前面的场景创建、编辑和复制语义稳定。

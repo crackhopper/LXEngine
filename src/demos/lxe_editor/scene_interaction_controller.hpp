@@ -46,7 +46,7 @@ public:
   void updateSelectionMode(LX_core::IInputState& input,
                            const SceneViewRect& sceneViewRect);
   void cancelPendingSelectionClick(const LX_core::IInputState& input);
-  void enqueueDebugDraw() const;
+  void enqueueDebugDraw(bool suppressEditorHelpers = false) const;
   [[nodiscard]] std::optional<LX_core::Vec3f> lastHitPoint() const;
 
 private:

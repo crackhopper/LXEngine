@@ -12,6 +12,7 @@
 #include "core/editor/inspector_panel.hpp"
 #include "core/editor/scene_tree_panel.hpp"
 #include "core/gpu/engine_loop.hpp"
+#include "core/input/mouse_button.hpp"
 #include "core/scene/components/camera_component.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/filesystem_tools.hpp"
@@ -1024,7 +1025,10 @@ int main(int argc, char **argv) {
       if (!cameraUpdated) {
         session.editorCamera().updateMatrices();
       }
-      session.sceneInteraction().enqueueDebugDraw();
+      const bool suppressEditorDebugHelpers =
+          gizmoConsumesMouse ||
+          input->isMouseButtonDown(LX_core::MouseButton::Left);
+      session.sceneInteraction().enqueueDebugDraw(suppressEditorDebugHelpers);
       rig.enqueueDebugDraw();
       input->nextFrame();
     });

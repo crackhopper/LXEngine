@@ -634,6 +634,19 @@ void testEditorModeDrawsCameraAndLightDebugHelpers() {
   LX_core::DebugDraw::endFrame();
 }
 
+void testEditorDebugHelpersCanBeSuppressedDuringGizmoDrag() {
+  Fixture fixture;
+  LX_core::DebugDraw::reset();
+  LX_core::DebugDraw::attachScene(fixture.scene);
+  LX_core::DebugDraw::beginFrame();
+
+  fixture.controller.enqueueDebugDraw(true);
+
+  EXPECT(LX_core::DebugDraw::testing::queuedLineCount() == 0,
+         "gizmo drag frames should suppress stale editor debug helper geometry");
+  LX_core::DebugDraw::endFrame();
+}
+
 void testPreviewModeSuppressesEditorDebugHelpers() {
   Fixture fixture;
   fixture.editorState.setPreviewEnabled(true);
@@ -675,6 +688,7 @@ int main() {
   testSelectionDebugUsesNegativeNdcYForLowerScreenPixels();
   testResetEditorCameraToGameCameraCopiesPoseWithoutPreviewToggle();
   testEditorModeDrawsCameraAndLightDebugHelpers();
+  testEditorDebugHelpersCanBeSuppressedDuringGizmoDrag();
   testPreviewModeSuppressesEditorDebugHelpers();
 
   if (failures > 0) {
