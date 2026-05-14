@@ -41,22 +41,15 @@ try {
     while ($true) {
         $NodeArgs = @("--import", "tsx", "./src/index.ts") + $ManagerArgs
         Write-ManagerLog "starting lxe_manager: node $($NodeArgs -join ' ')"
-        $StdoutLog = Join-Path (Split-Path -Parent $LogFile) "mcp.stdout.tmp.log"
-        $StderrLog = Join-Path (Split-Path -Parent $LogFile) "mcp.stderr.tmp.log"
-        Remove-Item $StdoutLog, $StderrLog -ErrorAction SilentlyContinue
-        $script:ActiveChild = Start-Process -FilePath "node" -ArgumentList $NodeArgs -NoNewWindow -PassThru -RedirectStandardOutput $StdoutLog -RedirectStandardError $StderrLog
-        Write-ManagerLog "lxe_manager child pid=$($script:ActiveChild.Id)"
-        $script:ActiveChild.WaitForExit()
-        $ExitCode = $script:ActiveChild.ExitCode
-        if (Test-Path $StdoutLog) {
-            Get-Content $StdoutLog | ForEach-Object { Add-Content -Path $LogFile -Value $_; Write-Host $_ }
+        & node @NodeArgs *>&1 | ForEach-Object {
+            Add-Content -Path $LogFile -Value $_
+            Write-Host $_
         }
-        if (Test-Path $StderrLog) {
-            Get-Content $StderrLog | ForEach-Object { Add-Content -Path $LogFile -Value $_; Write-Host $_ }
+        $ExitCode = $LASTEXITCODE
+        if ($null -eq $ExitCode) {
+            $ExitCode = 1
         }
-        Remove-Item $StdoutLog, $StderrLog -ErrorAction SilentlyContinue
         Write-ManagerLog "lxe_manager child exited code=$ExitCode"
-        $script:ActiveChild = $null
         if ($ExitCode -ne $RestartCode) {
             Write-ManagerLog "exit code $ExitCode is not restart code $RestartCode; wrapper exiting"
             exit $ExitCode
