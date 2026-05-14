@@ -267,6 +267,12 @@ Vec3f CameraComponent::getLookTarget(float distance) const {
   return getEyePosition() + getForwardVector() * resolvedDistance;
 }
 
+BoundingBox CameraComponent::getDebugLocalBounds() const {
+  constexpr float radius = 0.18f;
+  return BoundingBox{Vec3f{-radius, -radius, -radius},
+                     Vec3f{radius, radius, radius}};
+}
+
 Mat4f CameraComponent::getViewMatrix() const {
   const Transform worldTransform = getOwnerWorldTransform();
   const Quatf inverseRotation =

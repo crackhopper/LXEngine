@@ -218,6 +218,8 @@ void testEditorDoesNotCreateCameraOrLightHelperNodes() {
   if (gameCamera) {
     EXPECT(!gameCamera->getComponent<LX_core::MeshComponent>().has_value(),
            "game camera should not carry a solid helper mesh");
+    EXPECT(scene->getPickBounds(*gameCamera).isValid(),
+           "game camera should remain selectable through debug pick bounds");
   }
   EXPECT(scene->findByPath("/game_cam/helper_camera") == nullptr,
          "camera helpers should not exist as child nodes");

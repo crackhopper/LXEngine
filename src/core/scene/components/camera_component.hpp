@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/frame_graph/render_target.hpp"
+#include "core/math/bounds.hpp"
 #include "core/math/ray.hpp"
 #include "core/math/transform.hpp"
 #include "core/scene/camera.hpp"
@@ -64,6 +65,7 @@ public:
   Vec3f getForwardVector() const;
   Vec3f getUpVector() const;
   Vec3f getLookTarget(float distance = 1.0f) const;
+  BoundingBox getDebugLocalBounds() const;
 
   Mat4f getViewMatrix() const;
   Mat4f getProjMatrix(float aspectOverride = 0.0f) const;

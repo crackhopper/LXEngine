@@ -233,6 +233,12 @@ BoundingBox Scene::getPickBounds(const SceneNode &node) const {
     return meshBounds;
   }
 
+  const auto camera = node.getComponent<CameraComponent>();
+  if (camera.has_value()) {
+    return camera->get().getDebugLocalBounds().transformed(
+        node.getWorldTransform());
+  }
+
   const auto light = getLight(node);
   if (!light) {
     return {};

@@ -87,6 +87,8 @@ void testRuntimeCreatesEmptyScene() {
          "empty runtime should not create gameplay-camera helper child nodes");
   EXPECT(!runtime.gameCameraNode()->getComponent<LX_core::MeshComponent>().has_value(),
          "gameplay camera should not carry a helper mesh");
+  EXPECT(runtime.scene()->getPickBounds(*runtime.gameCameraNode()).isValid(),
+         "gameplay camera should expose debug pick bounds without a helper mesh");
   EXPECT(runtime.scene()->findByPath("/dir_light/helper_light") == nullptr,
          "empty runtime should not create a directional-light helper child");
   EXPECT(runtime.scene()->getRenderables().size() == 3,
@@ -140,6 +142,8 @@ void testRuntimeCreatesEditorOnlyHelpersForEditableSceneNodes() {
          "game camera should not get an editor-only helper child");
   EXPECT(!runtime.gameCameraNode()->getComponent<LX_core::MeshComponent>().has_value(),
          "game camera should not carry a helper mesh");
+  EXPECT(runtime.scene()->getPickBounds(*runtime.gameCameraNode()).isValid(),
+         "game camera should expose debug pick bounds without a helper mesh");
   EXPECT(runtime.scene()->findByPath("/dir_light/helper_light") == nullptr,
          "directional light should not get an editor-only helper child");
 }
