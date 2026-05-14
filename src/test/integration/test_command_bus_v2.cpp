@@ -21,7 +21,7 @@ int failures = 0;
 #define EXPECT(cond, msg)                                                      \
   do {                                                                         \
     if (!(cond)) {                                                             \
-      std::cerr << "[FAIL] " << __FUNCTION__ << ":" << __LINE__ << " " << msg \
+      std::cerr << "[FAIL] " << __FUNCTION__ << ":" << __LINE__ << " " << msg  \
                 << " (" #cond ")\n";                                           \
       ++failures;                                                              \
     }                                                                          \
@@ -61,18 +61,27 @@ struct Fixture {
     cameraNode->addComponent<CameraComponent>();
     scene->addCamera(cameraNode);
 
-    registerBuiltinCommands(bus, editorState, *scene);
+    registerBuiltinCommands(
+        bus, editorState, *scene,
+        SceneIoContext{.createNode = [](const std::string &,
+                                        const std::string &nodeName,
+                                        const std::string &displayName,
+                                        SceneNodeSharedPtr &outNode) {
+          outNode = SceneNode::create(nodeName);
+          outNode->setName(displayName);
+          return CommandResult{true, "created", {}, {}};
+        }});
   }
 };
 
 void testCompleterReturnsScenePathCandidates() {
   Fixture fixture;
 
-  const CompletionResult addCompletion = fixture.bus.complete("add c");
+  const CompletionResult addCompletion = fixture.bus.complete("add camera");
   EXPECT(addCompletion.candidates.size() == 1 &&
-             addCompletion.candidates[0] == "camera",
-         "add completer should suggest supported component type names");
-  EXPECT(addCompletion.commonPrefix == "camera",
+             addCompletion.candidates[0] == "camera:perspective",
+         "add completer should suggest concrete creation kinds");
+  EXPECT(addCompletion.commonPrefix == "camera:perspective",
          "component type completer should collapse to full match");
 
   const CompletionResult completion = fixture.bus.complete("move /w");
@@ -83,14 +92,16 @@ void testCompleterReturnsScenePathCandidates() {
   EXPECT(completion.commonPrefix == "/world",
          "common prefix should collapse to /world for sibling nodes");
 
-  const CompletionResult setPathCompletion = fixture.bus.complete("set /world/a.t");
+  const CompletionResult setPathCompletion =
+      fixture.bus.complete("set /world/a.t");
   EXPECT(setPathCompletion.candidates.size() == 1 &&
              setPathCompletion.candidates[0] == "/world/a.translation",
          "set completer should expand editable field suffixes");
   EXPECT(setPathCompletion.commonPrefix == "/world/a.translation",
          "set field completer should return full common prefix");
 
-  const CompletionResult getPathCompletion = fixture.bus.complete("get /camera_main.p");
+  const CompletionResult getPathCompletion =
+      fixture.bus.complete("get /camera_main.p");
   EXPECT(getPathCompletion.candidates.size() == 1 &&
              getPathCompletion.candidates[0] == "/camera_main.projection",
          "get completer should share editable field path completion");
@@ -105,7 +116,8 @@ void testUndoRedoThroughBusRestoresMoveAndSet() {
              nearlyEqual(fixture.a->getTranslation().y, 2.0f) &&
              nearlyEqual(fixture.a->getTranslation().z, 3.0f),
          "move should update translation");
-  EXPECT(fixture.bus.canUndo(), "successful mutable move should enter undo stack");
+  EXPECT(fixture.bus.canUndo(),
+         "successful mutable move should enter undo stack");
 
   const CommandResult undoMove = fixture.bus.undo();
   EXPECT(undoMove.ok, "bus.undo should succeed after move");
@@ -142,14 +154,18 @@ void testUndoRedoThroughBusRestoresMoveAndSet() {
 void testMultiSelectKeepsPrimarySelectionOrder() {
   Fixture fixture;
 
-  const CommandResult select = fixture.bus.dispatch("select /world/a /world/b /world/c");
+  const CommandResult select =
+      fixture.bus.dispatch("select /world/a /world/b /world/c");
   EXPECT(select.ok, "multi-select should succeed");
   const auto selected = fixture.editorState.getSelected();
-  EXPECT(selected.size() == 3, "multi-select should populate all selected nodes");
-  EXPECT(selected[0] == fixture.a && selected[1] == fixture.b && selected[2] == fixture.c,
+  EXPECT(selected.size() == 3,
+         "multi-select should populate all selected nodes");
+  EXPECT(selected[0] == fixture.a && selected[1] == fixture.b &&
+             selected[2] == fixture.c,
          "selection order should follow command arg order");
   EXPECT(fixture.editorState.getPrimarySelected().has_value() &&
-             &fixture.editorState.getPrimarySelected()->get() == fixture.c.get(),
+             &fixture.editorState.getPrimarySelected()->get() ==
+                 fixture.c.get(),
          "primary selection should be last selected node");
 
   const CommandResult undoSelect = fixture.bus.dispatch("undo");
@@ -163,7 +179,8 @@ void testMultiTargetMoveAppliesDeltaAndUndoRestoresEachNode() {
   fixture.a->setTranslation({2.0f, 0.0f, 0.0f});
   fixture.b->setTranslation({5.0f, 1.0f, 0.0f});
 
-  const CommandResult move = fixture.bus.dispatch("move /world/a /world/b 1 0 0");
+  const CommandResult move =
+      fixture.bus.dispatch("move /world/a /world/b 1 0 0");
   EXPECT(move.ok, "multi-target move should succeed");
   EXPECT(nearlyEqual(fixture.a->getTranslation().x, 3.0f) &&
              nearlyEqual(fixture.b->getTranslation().x, 6.0f),
@@ -214,7 +231,8 @@ void testAddRemoveSupportUndoRedo() {
   const CommandResult selectParent = fixture.bus.dispatch("select /world");
   EXPECT(selectParent.ok, "selecting add parent should succeed");
 
-  const CommandResult addCamera = fixture.bus.dispatch("add camera debug_cam");
+  const CommandResult addCamera =
+      fixture.bus.dispatch("add camera:perspective debug_cam");
   EXPECT(addCamera.ok, "add camera should succeed");
   EXPECT(fixture.scene->findByPath("/world/debug_cam") != nullptr,
          "added camera path should resolve");
@@ -242,7 +260,8 @@ void testAddRemoveSupportUndoRedo() {
   const CommandResult undoRemove = fixture.bus.dispatch("undo");
   EXPECT(undoRemove.ok, "undo should restore removed camera");
   restoredCameraNode = fixture.scene->findByPath("/world/debug_cam");
-  EXPECT(restoredCameraNode != nullptr, "undo remove should restore camera path");
+  EXPECT(restoredCameraNode != nullptr,
+         "undo remove should restore camera path");
   auto restoredCamera = restoredCameraNode->getComponent<CameraComponent>();
   EXPECT(restoredCamera.has_value() &&
              nearlyEqual(restoredCamera->get().getFovY(), 75.0f),
@@ -254,6 +273,38 @@ void testAddRemoveSupportUndoRedo() {
          "redo remove should remove camera again");
 }
 
+void testConcreteAddKindsUseHistory() {
+  Fixture fixture;
+
+  const CommandResult addCube =
+      fixture.bus.dispatch("add primitive:cube Cube /world 1 2 3");
+  EXPECT(addCube.ok, "add primitive cube should use concrete kind");
+  auto *cube = fixture.scene->findByPath("/world/Cube");
+  EXPECT(cube != nullptr, "added primitive should resolve by path");
+  EXPECT(cube != nullptr && nearlyEqual(cube->getTranslation().x, 1.0f) &&
+             nearlyEqual(cube->getTranslation().y, 2.0f) &&
+             nearlyEqual(cube->getTranslation().z, 3.0f),
+         "add primitive should apply explicit placement");
+
+  const CommandResult undoCube = fixture.bus.dispatch("undo");
+  EXPECT(undoCube.ok, "undo should remove added primitive");
+  EXPECT(fixture.scene->findByPath("/world/Cube") == nullptr,
+         "undo add primitive should remove node");
+
+  const CommandResult redoCube = fixture.bus.dispatch("redo");
+  EXPECT(redoCube.ok, "redo should restore added primitive");
+  EXPECT(fixture.scene->findByPath("/world/Cube") != nullptr,
+         "redo add primitive should restore node");
+
+  const CommandResult addLight =
+      fixture.bus.dispatch("add light:directional Key /world");
+  EXPECT(addLight.ok, "add directional light should succeed");
+  auto *lightNode = fixture.scene->findByPath("/world/Key");
+  EXPECT(lightNode != nullptr &&
+             fixture.scene->getDirectionalLight(*lightNode) != nullptr,
+         "add directional light should attach a light payload");
+}
+
 } // namespace
 
 int main() {
@@ -263,9 +314,11 @@ int main() {
   testMultiTargetMoveAppliesDeltaAndUndoRestoresEachNode();
   testPreviewAndCamFovGainUndoCoverage();
   testAddRemoveSupportUndoRedo();
+  testConcreteAddKindsUseHistory();
 
   if (failures != 0) {
-    std::cerr << "test_command_bus_v2 failed with " << failures << " failure(s)\n";
+    std::cerr << "test_command_bus_v2 failed with " << failures
+              << " failure(s)\n";
     return 1;
   }
 

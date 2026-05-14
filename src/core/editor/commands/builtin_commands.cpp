@@ -7,6 +7,7 @@
 #include "core/scene/object.hpp"
 #include "core/scene/scene.hpp"
 
+#include <cctype>
 #include <cmath>
 #include <iomanip>
 #include <memory>
@@ -110,8 +111,8 @@ constexpr float kDegToRad = 3.14159265358979323846f / 180.0f;
   }
 }
 
-[[nodiscard]] std::optional<Vec3f> parseVec3(const std::vector<std::string> &args,
-                                             const usize startIndex) {
+[[nodiscard]] std::optional<Vec3f>
+parseVec3(const std::vector<std::string> &args, const usize startIndex) {
   if (startIndex + 2 >= args.size()) {
     return std::nullopt;
   }
@@ -169,8 +170,8 @@ constexpr float kDegToRad = 3.14159265358979323846f / 180.0f;
   return oss.str();
 }
 
-[[nodiscard]] std::string buildSelectionCommand(
-    const std::vector<SceneNodeSharedPtr> &selection) {
+[[nodiscard]] std::string
+buildSelectionCommand(const std::vector<SceneNodeSharedPtr> &selection) {
   if (selection.empty()) {
     return "deselect";
   }
@@ -275,8 +276,8 @@ extractTargetPathsAndScaleArgs(const std::vector<std::string> &args,
   return selected.back();
 }
 
-[[nodiscard]] std::string buildHelpMessage(CommandBus &bus,
-                                           const std::vector<std::string> &args) {
+[[nodiscard]] std::string
+buildHelpMessage(CommandBus &bus, const std::vector<std::string> &args) {
   if (args.empty()) {
     std::ostringstream oss;
     const auto verbs = bus.listVerbs();
@@ -305,7 +306,8 @@ extractTargetPathsAndScaleArgs(const std::vector<std::string> &args,
   return args.front() + " - " + summary;
 }
 
-[[nodiscard]] std::string makeVerbListJson(const std::vector<std::string> &verbs) {
+[[nodiscard]] std::string
+makeVerbListJson(const std::vector<std::string> &verbs) {
   std::ostringstream oss;
   oss << "{\"verbs\":[";
   for (usize i = 0; i < verbs.size(); ++i) {
@@ -351,8 +353,8 @@ extractTargetPathsAndScaleArgs(const std::vector<std::string> &args,
 
 [[nodiscard]] std::string makeVec3Json(const Vec3f &value) {
   std::ostringstream oss;
-  oss << "{\"x\":" << value.x << ",\"y\":" << value.y << ",\"z\":"
-      << value.z << "}";
+  oss << "{\"x\":" << value.x << ",\"y\":" << value.y << ",\"z\":" << value.z
+      << "}";
   return oss.str();
 }
 
@@ -368,10 +370,9 @@ extractTargetPathsAndScaleArgs(const std::vector<std::string> &args,
 }
 
 [[nodiscard]] std::string lowerCopy(std::string text) {
-  std::transform(text.begin(), text.end(), text.begin(),
-                 [](const unsigned char c) {
-                   return static_cast<char>(std::tolower(c));
-                 });
+  std::transform(
+      text.begin(), text.end(), text.begin(),
+      [](const unsigned char c) { return static_cast<char>(std::tolower(c)); });
   return text;
 }
 
@@ -385,7 +386,9 @@ resolveDirectionalLight(SceneNode &node) {
 }
 
 [[nodiscard]] std::vector<std::string> listComponentTypes() {
-  return {"camera", "light", "mesh"};
+  return {"camera:perspective", "light:directional",  "primitive:cone",
+          "primitive:cube",     "primitive:cylinder", "primitive:plane",
+          "primitive:sphere"};
 }
 
 [[nodiscard]] std::vector<std::string>
@@ -449,7 +452,8 @@ findActiveCamera(Scene &scene, EditorState &editorState) {
   return std::nullopt;
 }
 
-[[nodiscard]] CommandResult getField(SceneNode &node, const std::string &field) {
+[[nodiscard]] CommandResult getField(SceneNode &node,
+                                     const std::string &field) {
   if (field == "translation") {
     const Vec3f value = node.getTranslation();
     return makeOk("translation = (" + formatFloat(value.x) + ", " +
@@ -489,8 +493,8 @@ findActiveCamera(Scene &scene, EditorState &editorState) {
       return makeError("field not available on node: near");
     }
     return makeOk("near = " + formatFloat(camera->get().getNearPlane()),
-                  "{\"value\":" +
-                      formatFloat(camera->get().getNearPlane()) + "}");
+                  "{\"value\":" + formatFloat(camera->get().getNearPlane()) +
+                      "}");
   }
   if (field == "far") {
     const auto camera = node.getComponent<CameraComponent>();
@@ -498,8 +502,8 @@ findActiveCamera(Scene &scene, EditorState &editorState) {
       return makeError("field not available on node: far");
     }
     return makeOk("far = " + formatFloat(camera->get().getFarPlane()),
-                  "{\"value\":" +
-                      formatFloat(camera->get().getFarPlane()) + "}");
+                  "{\"value\":" + formatFloat(camera->get().getFarPlane()) +
+                      "}");
   }
   if (field == "projection") {
     const auto camera = node.getComponent<CameraComponent>();
@@ -565,25 +569,28 @@ findActiveCamera(Scene &scene, EditorState &editorState) {
   const std::string path = node.getPath();
   if (field == "translation") {
     const Vec3f value = node.getTranslation();
-    return "set " + quoteToken(path + ".translation") + " " + formatFloat(value.x) +
-           " " + formatFloat(value.y) + " " + formatFloat(value.z);
+    return "set " + quoteToken(path + ".translation") + " " +
+           formatFloat(value.x) + " " + formatFloat(value.y) + " " +
+           formatFloat(value.z);
   }
   if (field == "scale") {
     const Vec3f value = node.getScale();
-    return "set " + quoteToken(path + ".scale") + " " + formatFloat(value.x) + " " +
-           formatFloat(value.y) + " " + formatFloat(value.z);
+    return "set " + quoteToken(path + ".scale") + " " + formatFloat(value.x) +
+           " " + formatFloat(value.y) + " " + formatFloat(value.z);
   }
   if (field == "rotation") {
     const Vec3f value = quatToEulerDegrees(node.getRotation());
-    return "set " + quoteToken(path + ".rotation") + " " + formatFloat(value.x) +
-           " " + formatFloat(value.y) + " " + formatFloat(value.z);
+    return "set " + quoteToken(path + ".rotation") + " " +
+           formatFloat(value.x) + " " + formatFloat(value.y) + " " +
+           formatFloat(value.z);
   }
   if (field == "visibilityMask") {
     return "set " + quoteToken(path + ".visibilityMask") + " " +
            std::to_string(node.getVisibilityLayerMask());
   }
   if (field == "name") {
-    return "set " + quoteToken(path + ".name") + " " + quoteToken(node.getName());
+    return "set " + quoteToken(path + ".name") + " " +
+           quoteToken(node.getName());
   }
 
   const auto camera = node.getComponent<CameraComponent>();
@@ -620,9 +627,8 @@ findActiveCamera(Scene &scene, EditorState &editorState) {
   }
   if (field == "color" && light) {
     const Vec3f value = light->getColor();
-    return "set " + quoteToken(path + ".color") + " " +
-           formatFloat(value.x) + " " + formatFloat(value.y) + " " +
-           formatFloat(value.z);
+    return "set " + quoteToken(path + ".color") + " " + formatFloat(value.x) +
+           " " + formatFloat(value.y) + " " + formatFloat(value.z);
   }
   if (field == "intensity" && light) {
     return "set " + quoteToken(path + ".intensity") + " " +
@@ -697,11 +703,139 @@ struct CommandNodeStashEntry {
 
 struct BuiltinCommandState {
   u64 nextStashId = 1;
+  u64 nextNodeSerial = 1;
   std::unordered_map<std::string, CommandNodeStashEntry> stash;
 };
 
 [[nodiscard]] std::string allocateStashId(BuiltinCommandState &state) {
   return std::to_string(state.nextStashId++);
+}
+
+[[nodiscard]] bool sceneContainsNodeName(const Scene &scene,
+                                         const std::string &nodeName) {
+  for (const auto &renderable : scene.getRenderables()) {
+    if (renderable && renderable->getNodeName() == nodeName) {
+      return true;
+    }
+  }
+  for (const auto &cameraNode : scene.getCameras()) {
+    if (cameraNode && cameraNode->getNodeName() == nodeName) {
+      return true;
+    }
+  }
+  return false;
+}
+
+[[nodiscard]] std::string sanitizeNodeNameToken(std::string text) {
+  if (text.empty()) {
+    return "node";
+  }
+  for (char &c : text) {
+    const bool valid = std::isalnum(static_cast<unsigned char>(c)) || c == '_';
+    if (!valid) {
+      c = '_';
+    }
+  }
+  return text;
+}
+
+[[nodiscard]] std::string makeUniqueNodeName(Scene &scene,
+                                             BuiltinCommandState &state,
+                                             const std::string &base) {
+  std::string candidate = sanitizeNodeNameToken(base);
+  while (sceneContainsNodeName(scene, candidate)) {
+    candidate = sanitizeNodeNameToken(base) + "_" +
+                std::to_string(state.nextNodeSerial++);
+  }
+  return candidate;
+}
+
+[[nodiscard]] std::optional<Vec3f>
+parseOptionalAddPlacement(const std::vector<std::string> &args,
+                          usize &parentPathIndex, CommandResult &error) {
+  parentPathIndex = args.size();
+  if (args.size() == 2) {
+    return std::nullopt;
+  }
+  if (args.size() == 3) {
+    parentPathIndex = 2;
+    return std::nullopt;
+  }
+  if (args.size() == 5) {
+    const auto placement = parseVec3(args, 2);
+    if (!placement) {
+      error = makeError("invalid float for add placement");
+      return std::nullopt;
+    }
+    return placement;
+  }
+  if (args.size() == 6) {
+    parentPathIndex = 2;
+    const auto placement = parseVec3(args, 3);
+    if (!placement) {
+      error = makeError("invalid float for add placement");
+      return std::nullopt;
+    }
+    return placement;
+  }
+  error = makeError("usage: add <kind> <name> [parentPath] [x y z]");
+  return std::nullopt;
+}
+
+[[nodiscard]] Vec3f defaultPlacementFromEditorCamera(Scene &scene,
+                                                     EditorState &editorState) {
+  const SceneNodeSharedPtr cameraNode = editorState.resolveActiveCamera(scene);
+  if (!cameraNode) {
+    return Vec3f{0.0f, 0.0f, 0.0f};
+  }
+  const auto camera = cameraNode->getComponent<CameraComponent>();
+  if (!camera.has_value()) {
+    return cameraNode->getTranslation();
+  }
+  const Vec3f eye = camera->get().getEyePosition();
+  Vec3f forward = camera->get().getLookTarget() - eye;
+  if (forward.length2() <= 1e-6f) {
+    forward = Vec3f{0.0f, 0.0f, -1.0f};
+  } else {
+    forward = forward.normalized();
+  }
+  return eye + forward * 5.0f;
+}
+
+void copyActiveCameraPose(Scene &scene, EditorState &editorState,
+                          SceneNode &node, CameraComponent &camera) {
+  const SceneNodeSharedPtr sourceNode = editorState.resolveActiveCamera(scene);
+  if (!sourceNode) {
+    camera.updateMatrices();
+    return;
+  }
+  const auto sourceCamera = sourceNode->getComponent<CameraComponent>();
+  if (!sourceCamera.has_value()) {
+    camera.updateMatrices();
+    return;
+  }
+  const CameraComponent &source = sourceCamera->get();
+  camera.applyProjectionState(
+      source.getProjectionType(), source.getFovY(), source.getAspect(),
+      source.getNearPlane(), source.getFarPlane(), source.getLeft(),
+      source.getRight(), source.getBottom(), source.getTop());
+  camera.setTarget(source.getTarget().value_or(RenderTarget{}));
+  camera.setCullingMask(source.getCullingMask());
+  camera.lookAt(source.getEyePosition(), source.getLookTarget(),
+                source.getUpVector());
+  node.setLocalTransform(sourceNode->getLocalTransform());
+  node.setTranslation(source.getEyePosition());
+}
+
+[[nodiscard]] bool isPrimitiveAddKind(const std::string &kind) {
+  return kind == "primitive:cube" || kind == "primitive:sphere" ||
+         kind == "primitive:plane" || kind == "primitive:cylinder" ||
+         kind == "primitive:cone";
+}
+
+[[nodiscard]] std::string primitiveNameFromKind(const std::string &kind) {
+  const usize colon = kind.find(':');
+  return colon == std::string::npos ? kind : kind.substr(colon + 1);
 }
 
 void collectSubtreeNodes(const SceneNodeSharedPtr &node,
@@ -730,7 +864,8 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
   }
 }
 
-[[nodiscard]] CommandResult removeNodeToStash(Scene &scene, EditorState &editorState,
+[[nodiscard]] CommandResult removeNodeToStash(Scene &scene,
+                                              EditorState &editorState,
                                               BuiltinCommandState &state,
                                               const std::string &path,
                                               const std::string &stashId) {
@@ -760,9 +895,9 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
   scene.removeRenderable(removed);
   editorState.selectRemove(removed);
   state.stash[stashId] = std::move(entry);
-  return makeOk("removed " + path,
-                "{\"path\":\"" + jsonEscape(path) + "\",\"stash\":\"" +
-                    jsonEscape(stashId) + "\"}");
+  return makeOk("removed " + path, "{\"path\":\"" + jsonEscape(path) +
+                                       "\",\"stash\":\"" + jsonEscape(stashId) +
+                                       "\"}");
 }
 
 [[nodiscard]] CommandResult restoreNodeFromStash(Scene &scene,
@@ -803,7 +938,8 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
       return makeError("invalid float for set translation");
     }
     node.setTranslation(*value);
-    return makeOk("translation updated", "{\"value\":" + makeVec3Json(*value) + "}");
+    return makeOk("translation updated",
+                  "{\"value\":" + makeVec3Json(*value) + "}");
   }
   if (field == "scale") {
     Vec3f value{};
@@ -820,7 +956,8 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
       }
       value = *parsed;
     } else {
-      return makeError("usage: set <path>.scale <s> | set <path>.scale <sx> <sy> <sz>");
+      return makeError(
+          "usage: set <path>.scale <s> | set <path>.scale <sx> <sy> <sz>");
     }
     node.setScale(value);
     return makeOk("scale updated", "{\"value\":" + makeVec3Json(value) + "}");
@@ -835,7 +972,8 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
     }
     const Quatf rotation = eulerDegreesToQuat(value->x, value->y, value->z);
     node.setRotation(rotation);
-    return makeOk("rotation updated", "{\"value\":" + makeQuatJson(rotation) + "}");
+    return makeOk("rotation updated",
+                  "{\"value\":" + makeQuatJson(rotation) + "}");
   }
   if (field == "fov") {
     if (args.size() != valueStartIndex + 1) {
@@ -895,7 +1033,8 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
   }
   if (field == "projection") {
     if (args.size() != valueStartIndex + 1) {
-      return makeError("usage: set <path>.projection <perspective|orthographic>");
+      return makeError(
+          "usage: set <path>.projection <perspective|orthographic>");
     }
     const auto camera = node.getComponent<CameraComponent>();
     if (!camera.has_value()) {
@@ -940,7 +1079,8 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
       return makeError("invalid float for set direction");
     }
     light->setDirection(*value);
-    return makeOk("direction updated", "{\"value\":" + makeVec3Json(*value) + "}");
+    return makeOk("direction updated",
+                  "{\"value\":" + makeVec3Json(*value) + "}");
   }
   if (field == "color") {
     if (args.size() != valueStartIndex + 3) {
@@ -970,23 +1110,24 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
       return makeError("invalid float for set intensity");
     }
     light->setIntensity(*value);
-    return makeOk("intensity updated", "{\"value\":" + formatFloat(*value) + "}");
+    return makeOk("intensity updated",
+                  "{\"value\":" + formatFloat(*value) + "}");
   }
   if (field == "name") {
     if (args.size() != valueStartIndex + 1) {
       return makeError("usage: set <path>.name <value>");
     }
     node.setName(args[valueStartIndex]);
-    return makeOk("name updated", "{\"value\":\"" +
-                                      jsonEscape(node.getName()) + "\"}");
+    return makeOk("name updated",
+                  "{\"value\":\"" + jsonEscape(node.getName()) + "\"}");
   }
 
   return makeError("unknown field: " + field);
 }
 
 [[nodiscard]] InverseFn inverseFromMetadata() {
-  return [](const ParsedCommand &, const CommandResult &result)
-             -> std::optional<std::string> {
+  return [](const ParsedCommand &,
+            const CommandResult &result) -> std::optional<std::string> {
     const auto it = result.metadata.find("inverse.line");
     if (it == result.metadata.end() || it->second.empty()) {
       return std::nullopt;
@@ -1006,10 +1147,10 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
   const auto sceneList = sceneIoContext.list;
   const auto setAdmin = sceneIoContext.setAdmin;
   const auto adminStatus = sceneIoContext.adminStatus;
+  const auto createNode = sceneIoContext.createNode;
 
   bus.registerHandler(
-      "help", "help [verb]",
-      [&bus](std::vector<std::string> args) {
+      "help", "help [verb]", [&bus](std::vector<std::string> args) {
         if (args.size() > 1) {
           return makeError("usage: help [verb]");
         }
@@ -1024,7 +1165,8 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
       "scene", "scene list | scene load <path> | scene save [path]",
       [sceneLoad, sceneSave, sceneList](std::vector<std::string> args) {
         if (args.empty()) {
-          return makeError("usage: scene list | scene load <path> | scene save [path]");
+          return makeError(
+              "usage: scene list | scene load <path> | scene save [path]");
         }
 
         const std::string &action = args[0];
@@ -1063,33 +1205,33 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
         return makeError("unknown scene action: " + action);
       });
 
-  bus.registerHandler(
-      "admin", "admin on | admin off | admin status",
-      [setAdmin, adminStatus](std::vector<std::string> args) {
-        if (args.size() != 1) {
-          return makeError("usage: admin on | admin off | admin status");
-        }
-        const std::string action = lowerCopy(args[0]);
-        if (action == "on") {
-          if (!setAdmin) {
-            return makeAdminUnavailable("on");
-          }
-          return setAdmin(true);
-        }
-        if (action == "off") {
-          if (!setAdmin) {
-            return makeAdminUnavailable("off");
-          }
-          return setAdmin(false);
-        }
-        if (action == "status") {
-          if (!adminStatus) {
-            return makeAdminUnavailable("status");
-          }
-          return adminStatus();
-        }
-        return makeError("unknown admin action: " + action);
-      });
+  bus.registerHandler("admin", "admin on | admin off | admin status",
+                      [setAdmin, adminStatus](std::vector<std::string> args) {
+                        if (args.size() != 1) {
+                          return makeError(
+                              "usage: admin on | admin off | admin status");
+                        }
+                        const std::string action = lowerCopy(args[0]);
+                        if (action == "on") {
+                          if (!setAdmin) {
+                            return makeAdminUnavailable("on");
+                          }
+                          return setAdmin(true);
+                        }
+                        if (action == "off") {
+                          if (!setAdmin) {
+                            return makeAdminUnavailable("off");
+                          }
+                          return setAdmin(false);
+                        }
+                        if (action == "status") {
+                          if (!adminStatus) {
+                            return makeAdminUnavailable("status");
+                          }
+                          return adminStatus();
+                        }
+                        return makeError("unknown admin action: " + action);
+                      });
 
   bus.registerHandler(
       "__remove_to_stash", "__remove_to_stash <path> <stash-id>",
@@ -1100,14 +1242,14 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
         return removeNodeToStash(scene, editorState, *state, args[0], args[1]);
       });
 
-  bus.registerHandler(
-      "__restore_from_stash", "__restore_from_stash <stash-id>",
-      [&scene, state](std::vector<std::string> args) {
-        if (args.size() != 1) {
-          return makeError("usage: __restore_from_stash <stash-id>");
-        }
-        return restoreNodeFromStash(scene, *state, args[0]);
-      });
+  bus.registerHandler("__restore_from_stash", "__restore_from_stash <stash-id>",
+                      [&scene, state](std::vector<std::string> args) {
+                        if (args.size() != 1) {
+                          return makeError(
+                              "usage: __restore_from_stash <stash-id>");
+                        }
+                        return restoreNodeFromStash(scene, *state, args[0]);
+                      });
 
   bus.registerHandler(
       "select",
@@ -1142,24 +1284,25 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
         structured << "]}";
 
         result.ok = true;
-        result.message = "selected " + std::to_string(nodes->size()) + " node(s)";
+        result.message =
+            "selected " + std::to_string(nodes->size()) + " node(s)";
         result.structured = structured.str();
         return result;
       });
 
-  bus.registerHandler(
-      "deselect",
-      CommandMetadata{"deselect", inverseFromMetadata(), true},
-      [&editorState](std::vector<std::string> args) {
-        if (!args.empty()) {
-          return makeError("usage: deselect");
-        }
-        CommandResult result = makeOk("selection cleared", "{\"selected\":null}");
-        result.metadata["inverse.line"] =
-            buildSelectionCommand(editorState.getSelected());
-        editorState.deselect();
-        return result;
-      });
+  bus.registerHandler("deselect",
+                      CommandMetadata{"deselect", inverseFromMetadata(), true},
+                      [&editorState](std::vector<std::string> args) {
+                        if (!args.empty()) {
+                          return makeError("usage: deselect");
+                        }
+                        CommandResult result =
+                            makeOk("selection cleared", "{\"selected\":null}");
+                        result.metadata["inverse.line"] =
+                            buildSelectionCommand(editorState.getSelected());
+                        editorState.deselect();
+                        return result;
+                      });
 
   bus.registerHandler(
       "move",
@@ -1168,7 +1311,8 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
       [&scene](std::vector<std::string> args) {
         CommandResult error;
         const auto paths = extractTargetPathsAndVec3Args(
-            args, error, "usage: move <path> <x> <y> <z> | move <path...> <dx> <dy> <dz>",
+            args, error,
+            "usage: move <path> <x> <y> <z> | move <path...> <dx> <dy> <dz>",
             "invalid float for move");
         if (!paths.has_value()) {
           return error;
@@ -1197,8 +1341,8 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
           (*nodes)[0]->setTranslation(*value);
           CommandResult result =
               makeOk("moved " + (*nodes)[0]->getPath() + " to (" +
-                         formatFloat(value->x) + ", " + formatFloat(value->y) + ", " +
-                         formatFloat(value->z) + ")",
+                         formatFloat(value->x) + ", " + formatFloat(value->y) +
+                         ", " + formatFloat(value->z) + ")",
                      makeVec3Json(*value));
           result.metadata["inverse.line"] = inverseLines.front();
           return result;
@@ -1208,24 +1352,26 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
           node->setTranslation(node->getTranslation() + *value);
         }
 
-        CommandResult result =
-            makeOk("moved " + std::to_string(nodes->size()) + " node(s) by delta (" +
-                       formatFloat(value->x) + ", " + formatFloat(value->y) + ", " +
-                       formatFloat(value->z) + ")",
-                   makeVec3Json(*value));
+        CommandResult result = makeOk(
+            "moved " + std::to_string(nodes->size()) + " node(s) by delta (" +
+                formatFloat(value->x) + ", " + formatFloat(value->y) + ", " +
+                formatFloat(value->z) + ")",
+            makeVec3Json(*value));
         result.metadata["inverse.line"] = joinLines(inverseLines);
         return result;
       });
 
   bus.registerHandler(
       "rotate",
-      CommandMetadata{"rotate <path> <rx-deg> <ry-deg> <rz-deg> | rotate <path...> <rx-deg> <ry-deg> <rz-deg>",
+      CommandMetadata{"rotate <path> <rx-deg> <ry-deg> <rz-deg> | rotate "
+                      "<path...> <rx-deg> <ry-deg> <rz-deg>",
                       inverseFromMetadata(), true},
       [&scene](std::vector<std::string> args) {
         CommandResult error;
         const auto paths = extractTargetPathsAndVec3Args(
             args, error,
-            "usage: rotate <path> <rx-deg> <ry-deg> <rz-deg> | rotate <path...> <rx-deg> <ry-deg> <rz-deg>",
+            "usage: rotate <path> <rx-deg> <ry-deg> <rz-deg> | rotate "
+            "<path...> <rx-deg> <ry-deg> <rz-deg>",
             "invalid float for rotate");
         if (!paths.has_value()) {
           return error;
@@ -1324,21 +1470,41 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
       });
 
   bus.registerHandler(
-      "add", CommandMetadata{"add (mesh|light|camera) <name> [parentPath]",
-                              inverseFromMetadata(), true},
-      [&scene, &editorState, state](std::vector<std::string> args) {
-        if (args.size() != 2 && args.size() != 3) {
-          return makeError("usage: add (mesh|light|camera) <name> [parentPath]");
+      "add",
+      CommandMetadata{"add "
+                      "(primitive:cube|primitive:sphere|primitive:plane|"
+                      "primitive:cylinder|primitive:cone|light:directional|"
+                      "camera:perspective) <name> [parentPath] [x y z]",
+                      inverseFromMetadata(), true},
+      [&scene, &editorState, state, createNode](std::vector<std::string> args) {
+        if (args.size() < 2) {
+          return makeError("usage: add <kind> <name> [parentPath] [x y z]");
         }
 
-        const std::string &kind = args[0];
+        std::string kind = args[0];
+        if (kind == "camera") {
+          kind = "camera:perspective";
+        } else if (kind == "light") {
+          kind = "light:directional";
+        } else if (kind == "mesh") {
+          return makeError(
+              "add mesh is no longer supported; use add primitive:<shape>");
+        }
+
         const std::string &name = args[1];
-        auto node = SceneNode::create(kind + "_node");
-        node->setName(name);
+        usize parentPathIndex = args.size();
+        CommandResult placementError;
+        const std::optional<Vec3f> explicitPlacement =
+            parseOptionalAddPlacement(args, parentPathIndex, placementError);
+        if (!placementError.message.empty()) {
+          return placementError;
+        }
+
         SceneNodeSharedPtr parent;
-        if (args.size() == 3) {
+        if (parentPathIndex < args.size()) {
           SceneNode *parentNode = nullptr;
-          const CommandResult found = requireNode(scene, args[2], parentNode);
+          const CommandResult found =
+              requireNode(scene, args[parentPathIndex], parentNode);
           if (!found.ok) {
             return found;
           }
@@ -1346,53 +1512,79 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
         } else {
           parent = chooseCommandParent(editorState);
         }
+
+        const bool primitiveKind = isPrimitiveAddKind(kind);
+        const bool cameraKind = kind == "camera:perspective";
+        const bool lightKind = kind == "light:directional";
+        if (!primitiveKind && !cameraKind && !lightKind) {
+          return makeError("unknown add target: " + kind);
+        }
+
+        const std::string nodeNameBase =
+            primitiveKind
+                ? "primitive_" + primitiveNameFromKind(kind) + "_node"
+                : (cameraKind ? "camera_node" : "directional_light_node");
+        const std::string nodeName =
+            makeUniqueNodeName(scene, *state, nodeNameBase);
+
+        SceneNodeSharedPtr node;
+        if (primitiveKind) {
+          if (!createNode) {
+            return makeError("primitive creation is unavailable");
+          }
+          CommandResult created = createNode(kind, nodeName, name, node);
+          if (!created.ok) {
+            return created;
+          }
+          if (!node) {
+            return makeError("primitive creation returned no node");
+          }
+        } else {
+          node = SceneNode::create(nodeName);
+          node->setName(name);
+        }
+
         if (parent) {
           node->setParent(parent);
         }
-        const std::string stashId = allocateStashId(*state);
 
-        if (kind == "mesh") {
-          scene.addRenderable(node);
-          CommandResult result = makeOk(
-              "added mesh node " + node->getPath(),
-              "{\"path\":\"" + jsonEscape(node->getPath()) + "\",\"kind\":\"mesh\"}");
-          result.metadata["inverse.line"] =
-              "__remove_to_stash " + quoteToken(node->getPath()) + " " + quoteToken(stashId);
-          result.metadata["redo.line"] =
-              "__restore_from_stash " + quoteToken(stashId);
-          return result;
+        const Vec3f placement = explicitPlacement.value_or(
+            defaultPlacementFromEditorCamera(scene, editorState));
+        if (!cameraKind) {
+          node->setTranslation(placement);
         }
-        if (kind == "camera") {
+
+        const std::string stashId = allocateStashId(*state);
+        if (primitiveKind) {
+          scene.addRenderable(node);
+        } else if (cameraKind) {
           const auto camera = node->addComponent<CameraComponent>();
           if (!camera.has_value()) {
             return makeError("failed to add camera component");
           }
-          camera->get().updateMatrices();
+          copyActiveCameraPose(scene, editorState, *node, camera->get());
+          if (explicitPlacement.has_value()) {
+            node->setTranslation(*explicitPlacement);
+          }
           scene.addCamera(node);
-          CommandResult result = makeOk(
-              "added camera " + node->getPath(),
-              "{\"path\":\"" + jsonEscape(node->getPath()) + "\",\"kind\":\"camera\"}");
-          result.metadata["inverse.line"] =
-              "__remove_to_stash " + quoteToken(node->getPath()) + " " + quoteToken(stashId);
-          result.metadata["redo.line"] =
-              "__restore_from_stash " + quoteToken(stashId);
-          return result;
-        }
-        if (kind == "light") {
+        } else {
           scene.addRenderable(node);
           const auto light = std::make_shared<DirectionalLight>();
+          light->setDirection(Vec3f{-0.3f, -1.0f, -0.5f});
           scene.attachLight(node, light);
-          CommandResult result =
-              makeOk("added light placeholder " + node->getPath(),
-                     "{\"path\":\"" + jsonEscape(node->getPath()) + "\",\"kind\":\"light\"}");
-          result.metadata["inverse.line"] =
-              "__remove_to_stash " + quoteToken(node->getPath()) + " " + quoteToken(stashId);
-          result.metadata["redo.line"] =
-              "__restore_from_stash " + quoteToken(stashId);
-          return result;
         }
 
-        return makeError("unknown add target: " + kind);
+        CommandResult result =
+            makeOk("added " + kind + " " + node->getPath(),
+                   "{\"path\":\"" + jsonEscape(node->getPath()) +
+                       "\",\"kind\":\"" + jsonEscape(kind) + "\"}");
+        result.metadata["inverse.line"] = "__remove_to_stash " +
+                                          quoteToken(node->getPath()) + " " +
+                                          quoteToken(stashId);
+        result.metadata["redo.line"] =
+            "__restore_from_stash " + quoteToken(stashId);
+        result.metadata["scene.rebuild"] = "true";
+        return result;
       });
 
   bus.registerHandler(
@@ -1411,8 +1603,9 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
         result.metadata["inverse.line"] =
             "__restore_from_stash " + quoteToken(stashId) + "\n" +
             buildSelectionCommand(selectionBeforeRemove);
-        result.metadata["redo.line"] =
-            "__remove_to_stash " + quoteToken(args[0]) + " " + quoteToken(stashId);
+        result.metadata["redo.line"] = "__remove_to_stash " +
+                                       quoteToken(args[0]) + " " +
+                                       quoteToken(stashId);
         return result;
       });
 
@@ -1437,7 +1630,8 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
               message << '\n';
               structured << ',';
             }
-            const std::string path = cameras[i] ? cameras[i]->getPath() : std::string{};
+            const std::string path =
+                cameras[i] ? cameras[i]->getPath() : std::string{};
             message << path;
             structured << '"' << jsonEscape(path) << '"';
           }
@@ -1454,8 +1648,7 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
       });
 
   bus.registerHandler(
-      "get", "get <path>.<field>",
-      [&scene](std::vector<std::string> args) {
+      "get", "get <path>.<field>", [&scene](std::vector<std::string> args) {
         if (args.size() != 1) {
           return makeError("usage: get <path>.<field>");
         }
@@ -1471,41 +1664,48 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
         return getField(*node, split->second);
       });
 
-  bus.registerHandler(
-      "set", CommandMetadata{"set <path>.<field> <value>", inverseFromMetadata(),
-                              true},
-      [&scene](std::vector<std::string> args) {
-        if (args.size() < 2) {
-          return makeError("usage: set <path>.<field> <value>");
-        }
-        const auto split = splitFieldPath(args[0]);
-        if (!split.has_value()) {
-          return makeError("usage: set <path>.<field> <value>");
-        }
-        SceneNode *node = nullptr;
-        const CommandResult found = requireNode(scene, split->first, node);
-        if (!found.ok) {
-          return found;
-        }
-        const std::string oldName = node->getName();
-        const std::string inverseLine = buildSetInverseCommand(*node, split->second);
-        CommandResult result = setField(*node, split->second, args, 1);
-        if (result.ok && split->second == "name") {
-          result.metadata["inverse.line"] =
-              "set " + quoteToken(node->getPath() + ".name") + " " +
-              quoteToken(oldName);
-        } else if (result.ok && !inverseLine.empty()) {
-          result.metadata["inverse.line"] = inverseLine;
-        }
-        return result;
-      });
+  bus.registerHandler("set",
+                      CommandMetadata{"set <path>.<field> <value>",
+                                      inverseFromMetadata(), true},
+                      [&scene](std::vector<std::string> args) {
+                        if (args.size() < 2) {
+                          return makeError("usage: set <path>.<field> <value>");
+                        }
+                        const auto split = splitFieldPath(args[0]);
+                        if (!split.has_value()) {
+                          return makeError("usage: set <path>.<field> <value>");
+                        }
+                        SceneNode *node = nullptr;
+                        const CommandResult found =
+                            requireNode(scene, split->first, node);
+                        if (!found.ok) {
+                          return found;
+                        }
+                        const std::string oldName = node->getName();
+                        const std::string inverseLine =
+                            buildSetInverseCommand(*node, split->second);
+                        CommandResult result =
+                            setField(*node, split->second, args, 1);
+                        if (result.ok && split->second == "name") {
+                          result.metadata["inverse.line"] =
+                              "set " + quoteToken(node->getPath() + ".name") +
+                              " " + quoteToken(oldName);
+                        } else if (result.ok && !inverseLine.empty()) {
+                          result.metadata["inverse.line"] = inverseLine;
+                        }
+                        return result;
+                      });
 
   bus.registerHandler(
-      "cam", CommandMetadata{"cam (control|look-at|reset|reset-editor-to-game|fov ...)", inverseFromMetadata(),
-                              true},
+      "cam",
+      CommandMetadata{
+          "cam (control|look-at|reset|reset-editor-to-game|fov ...)",
+          inverseFromMetadata(), true},
       [&scene, &editorState, sceneIoContext](std::vector<std::string> args) {
         if (args.empty()) {
-          return makeError("usage: cam (control|look-at|reset|reset-editor-to-game|fov ...)");
+          return makeError(
+              "usage: cam (control|look-at|reset|reset-editor-to-game|fov "
+              "...)");
         }
         if (args[0] == "control") {
           if (!sceneIoContext.cameraControl) {
@@ -1535,15 +1735,15 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
           auto editorCamera = editorNode->getComponent<CameraComponent>();
           auto gameCamera = gameNode->getComponent<CameraComponent>();
           if (!editorCamera.has_value() || !gameCamera.has_value()) {
-            return makeError("editor or game camera is missing a camera component");
+            return makeError(
+                "editor or game camera is missing a camera component");
           }
           editorCamera->get().lookAt(gameCamera->get().getEyePosition(),
                                      gameCamera->get().getLookTarget(),
                                      gameCamera->get().getUpVector());
           editorCamera->get().updateMatrices();
-          CommandResult result =
-              makeOk("editor camera reset from game camera",
-                     "{\"mode\":\"reset-editor-to-game\"}");
+          CommandResult result = makeOk("editor camera reset from game camera",
+                                        "{\"mode\":\"reset-editor-to-game\"}");
           result.metadata["editor_camera.resync"] = "true";
           return result;
         }
@@ -1567,8 +1767,8 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
         }
         if (args[0] == "look-at") {
           if (args.size() != 7) {
-            return makeError(
-                "usage: cam look-at <eye-x> <eye-y> <eye-z> <target-x> <target-y> <target-z>");
+            return makeError("usage: cam look-at <eye-x> <eye-y> <eye-z> "
+                             "<target-x> <target-y> <target-z>");
           }
           const auto eye = parseVec3(args, 1);
           const auto target = parseVec3(args, 4);
@@ -1579,8 +1779,8 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
           camera->get().updateMatrices();
           CommandResult result =
               makeOk("camera look-at updated",
-                     "{\"eye\":" + makeVec3Json(*eye) + ",\"target\":" +
-                         makeVec3Json(*target) + "}");
+                     "{\"eye\":" + makeVec3Json(*eye) +
+                         ",\"target\":" + makeVec3Json(*target) + "}");
           result.metadata["editor_camera.resync"] = "true";
           return result;
         }
@@ -1605,14 +1805,16 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
         } else {
           return makeError("unknown preview action: " + args[0]);
         }
-        const SceneNodeSharedPtr activeCamera = editorState.syncActiveCamera(scene);
+        const SceneNodeSharedPtr activeCamera =
+            editorState.syncActiveCamera(scene);
         CommandResult result =
             makeOk(std::string("preview ") +
                        (editorState.isPreviewEnabled() ? "on" : "off"),
                    std::string("{\"enabled\":") +
                        (editorState.isPreviewEnabled() ? "true" : "false") +
                        ",\"activePath\":\"" +
-                       jsonEscape(activeCamera ? activeCamera->getPath() : std::string{}) +
+                       jsonEscape(activeCamera ? activeCamera->getPath()
+                                               : std::string{}) +
                        "\"}");
         result.metadata["scene.rebuild"] = "true";
         result.metadata["inverse.line"] =
@@ -1620,48 +1822,40 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
         return result;
       });
 
-  bus.registerHandler(
-      "undo", "undo",
-      [&bus](std::vector<std::string> args) {
-        if (!args.empty()) {
-          return makeError("usage: undo");
-        }
-        return bus.undo();
-      });
+  bus.registerHandler("undo", "undo", [&bus](std::vector<std::string> args) {
+    if (!args.empty()) {
+      return makeError("usage: undo");
+    }
+    return bus.undo();
+  });
 
-  bus.registerHandler(
-      "redo", "redo",
-      [&bus](std::vector<std::string> args) {
-        if (!args.empty()) {
-          return makeError("usage: redo");
-        }
-        return bus.redo();
-      });
+  bus.registerHandler("redo", "redo", [&bus](std::vector<std::string> args) {
+    if (!args.empty()) {
+      return makeError("usage: redo");
+    }
+    return bus.redo();
+  });
 
   for (const std::string &verb : {"select", "move", "rotate", "scale"}) {
     for (usize argIndex = 0; argIndex < 8; ++argIndex) {
-      bus.registerCompleter(
-          verb, argIndex, [&scene](const CompletionContext &context) {
-            return completeScenePaths(scene, context);
-          });
+      bus.registerCompleter(verb, argIndex,
+                            [&scene](const CompletionContext &context) {
+                              return completeScenePaths(scene, context);
+                            });
     }
   }
-  bus.registerCompleter(
-      "set", 0, [&scene](const CompletionContext &context) {
-        return completeSetTarget(scene, context);
-      });
-  bus.registerCompleter(
-      "get", 0, [&scene](const CompletionContext &context) {
-        return completeSetTarget(scene, context);
-      });
-  bus.registerCompleter(
-      "add", 0, [](const CompletionContext &context) {
-        return completeComponentTypes(context);
-      });
-  bus.registerCompleter(
-      "cam", 0, [](const CompletionContext &context) {
-        return completeCamActions(context);
-      });
+  bus.registerCompleter("set", 0, [&scene](const CompletionContext &context) {
+    return completeSetTarget(scene, context);
+  });
+  bus.registerCompleter("get", 0, [&scene](const CompletionContext &context) {
+    return completeSetTarget(scene, context);
+  });
+  bus.registerCompleter("add", 0, [](const CompletionContext &context) {
+    return completeComponentTypes(context);
+  });
+  bus.registerCompleter("cam", 0, [](const CompletionContext &context) {
+    return completeCamActions(context);
+  });
 }
 
 } // namespace LX_core

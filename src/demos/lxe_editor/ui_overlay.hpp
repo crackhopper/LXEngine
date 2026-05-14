@@ -69,6 +69,8 @@ private:
                          bool visible);
   void syncPanelOpenStatesFromConfig();
   void ensureInitialPanelLayouts();
+  void dispatchCreatePaletteItem(std::string_view kind,
+                                 std::string_view displayName);
   void drawToolbarPanel();
   void drawStatsPanel();
   void drawHelpPanel();

@@ -67,9 +67,8 @@ LX_core::MeshSharedPtr makeCenteredSquareMesh() {
           {{0.0f, 0.5f, 0.0f}},
       });
   auto ib = LX_core::IndexBuffer::create({0, 1, 2});
-  return LX_core::Mesh::create(vb, ib,
-                               LX_core::BoundingBox{{-0.5f, -0.5f, 0.0f},
-                                                    {0.5f, 0.5f, 0.0f}});
+  return LX_core::Mesh::create(
+      vb, ib, LX_core::BoundingBox{{-0.5f, -0.5f, 0.0f}, {0.5f, 0.5f, 0.0f}});
 }
 
 struct UiHarness final {
@@ -94,6 +93,7 @@ struct UiHarness final {
         inspectorPanel(bus, editorState), consolePanel(bus),
         viewportOverlay(bus, editorState, *scene) {
     editorCameraNode->setName("editor_cam");
+    editorCameraNode->setVisibilityLayerMask(LX_core::Layer_EditorOverlay);
     targetNode->setName("toolbar_target");
     scene->addRenderable(targetNode);
     auto editorCamera =
