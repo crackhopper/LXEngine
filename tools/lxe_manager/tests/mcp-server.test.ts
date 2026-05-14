@@ -388,6 +388,37 @@ describe("mcp tool handlers", () => {
     expect(managerRestart).toHaveBeenCalledOnce();
   });
 
+  it("accepts command as a compatibility alias for editor command line", async () => {
+    const command = vi.fn(async () => ({ ok: true }));
+    const handlers = createToolHandlers(makeInput({ editorClient: { command } }));
+
+    await handlers["lxe_editor_command"]({
+      command: "scene save data/scenes/test.scene.yaml",
+    });
+
+    expect(command).toHaveBeenCalledWith("scene save data/scenes/test.scene.yaml");
+  });
+
+  it("prefers line over command when both editor command fields are present", async () => {
+    const command = vi.fn(async () => ({ ok: true }));
+    const handlers = createToolHandlers(makeInput({ editorClient: { command } }));
+
+    await handlers["lxe_editor_command"]({
+      line: "scene list",
+      command: "scene save data/scenes/test.scene.yaml",
+    });
+
+    expect(command).toHaveBeenCalledWith("scene list");
+  });
+
+  it("reports both supported editor command fields when the command line is missing", async () => {
+    const handlers = createToolHandlers(makeInput());
+
+    await expect(handlers["lxe_editor_command"]({})).rejects.toThrow(
+      "missing string argument: line or command",
+    );
+  });
+
   it("schedules manager restart only after the HTTP response is written", async () => {
     const events: string[] = [];
     const scheduleRestart = vi.fn(() => {

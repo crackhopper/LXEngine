@@ -116,7 +116,7 @@ export function createToolHandlers(input: {
         editorClient.pick(readNumber(args, "x"), readNumber(args, "y")),
       ),
     "editor.command": async (args) =>
-      withEditorClient((editorClient) => editorClient.command(readString(args, "line"))),
+      withEditorClient((editorClient) => editorClient.command(readCommandLine(args))),
     "editor.wait_for": async (args) =>
       withEditorClient((editorClient) =>
         editorClient.waitFor({
@@ -634,6 +634,20 @@ function readString(args: ToolArguments, key: string): string {
     throw new Error(`missing string argument: ${key}`);
   }
   return value;
+}
+
+function readCommandLine(args: ToolArguments): string {
+  const line = args.line;
+  if (typeof line === "string" && line.length > 0) {
+    return line;
+  }
+
+  const command = args.command;
+  if (typeof command === "string" && command.length > 0) {
+    return command;
+  }
+
+  throw new Error("missing string argument: line or command");
 }
 
 function optionalString(args: ToolArguments, key: string): string | undefined {

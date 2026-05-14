@@ -13,6 +13,10 @@ If a capability can be represented as a command-bus verb, document and use that
 command through existing MCP command forwarding instead of requiring a new
 manager MCP tool and manager restart.
 
+When issuing `lxe_editor_command`, pass the command-bus text as `line`.
+`command` is accepted by the manager as a compatibility alias, but `line` is the
+canonical field and wins if both fields are present.
+
 ## Source Of Truth
 
 Prefer current code over memory or old notes. Search the command registration
@@ -43,6 +47,10 @@ scene load assets/scenes/lxe_editor.scene.yaml
 ```
 
 Verify the path from the current repo before using it in a remote workflow.
+Prefer repo-relative paths with forward slashes for command-bus scene paths.
+Do not feed Windows absolute paths copied from `currentDocumentPath` directly
+back into a command line unless they are quoted/escaped and intentionally
+tested; backslashes are command-parser escapes.
 
 Common recording and camera commands:
 
