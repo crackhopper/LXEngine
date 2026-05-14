@@ -83,6 +83,11 @@ describe("mcp tool handlers", () => {
         recordingRead: vi.fn(async () => ({ id: "session-1" })),
         recordingReplay: vi.fn(async () => ({ ok: true })),
         recordingProbe: vi.fn(async () => ({ target: "summary" })),
+        displayList: vi.fn(async () => ({ profiles: [] })),
+        displayActive: vi.fn(async () => ({ key: "active" })),
+        displayConfigGet: vi.fn(async () => ({ key: "active", config: {} })),
+        displayConfigSet: vi.fn(async () => ({ ok: true })),
+        displaySelect: vi.fn(async () => ({ key: "desktop" })),
         ...overrides.editorClient,
       },
       workspaceOps: {
@@ -158,6 +163,11 @@ describe("mcp tool handlers", () => {
     const handlers = createToolHandlers(makeInput());
 
     expect(Object.keys(handlers).sort()).toEqual([
+      "display_active",
+      "display_config_get",
+      "display_config_set",
+      "display_list",
+      "display_select",
       "editor.command",
       "editor.get_build_info",
       "editor.get_cameras",
@@ -239,6 +249,42 @@ describe("mcp tool handlers", () => {
     expect(recordingRead).toHaveBeenCalledWith("session-1");
     expect(recordingReplay).toHaveBeenCalledWith({ path: "/tmp/recording.json" });
     expect(recordingProbe).toHaveBeenCalledWith("selection");
+  });
+
+  it("routes display tools to the editor client", async () => {
+    const displayList = vi.fn(async () => ({ profiles: ["desktop"] }));
+    const displayActive = vi.fn(async () => ({ key: "desktop" }));
+    const displayConfigGet = vi.fn(async () => ({ key: "desktop", config: {} }));
+    const displayConfigSet = vi.fn(async () => ({ ok: true }));
+    const displaySelect = vi.fn(async () => ({ key: "desktop" }));
+    const handlers = createToolHandlers(
+      makeInput({
+        editorClient: {
+          displayList,
+          displayActive,
+          displayConfigGet,
+          displayConfigSet,
+          displaySelect,
+        },
+      }),
+    );
+
+    await handlers.display_list({});
+    await handlers.display_active({});
+    await handlers.display_config_get({});
+    await handlers.display_config_get({ key: "desktop" });
+    await handlers.display_config_set({ key: "desktop", patch: "width: 1280" });
+    await handlers.display_select({ key: "desktop" });
+
+    expect(displayList).toHaveBeenCalledOnce();
+    expect(displayActive).toHaveBeenCalledOnce();
+    expect(displayConfigGet).toHaveBeenNthCalledWith(1, "active");
+    expect(displayConfigGet).toHaveBeenNthCalledWith(2, "desktop");
+    expect(displayConfigSet).toHaveBeenCalledWith({
+      key: "desktop",
+      patch: "width: 1280",
+    });
+    expect(displaySelect).toHaveBeenCalledWith("desktop");
   });
 
   it("routes new editor and ops tools to their handlers", async () => {
@@ -355,6 +401,11 @@ describe("mcp tool handlers", () => {
         recordingRead: vi.fn(),
         recordingReplay: vi.fn(),
         recordingProbe: vi.fn(),
+        displayList: vi.fn(),
+        displayActive: vi.fn(),
+        displayConfigGet: vi.fn(),
+        displayConfigSet: vi.fn(),
+        displaySelect: vi.fn(),
       });
     const handlers = createToolHandlers({
       ...makeInput(),
@@ -418,6 +469,11 @@ describe("mcp tool handlers", () => {
         recordingRead: vi.fn(),
         recordingReplay: vi.fn(),
         recordingProbe: vi.fn(),
+        displayList: vi.fn(),
+        displayActive: vi.fn(),
+        displayConfigGet: vi.fn(),
+        displayConfigSet: vi.fn(),
+        displaySelect: vi.fn(),
       });
     const resources = createResourceHandlers(provider);
 

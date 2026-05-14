@@ -117,6 +117,29 @@ export class EditorClient {
     );
   }
 
+  async displayList(): Promise<unknown> {
+    return this.requestJson("GET", "/api/display/list");
+  }
+
+  async displayActive(): Promise<unknown> {
+    return this.requestJson("GET", "/api/display/active");
+  }
+
+  async displayConfigGet(key: string): Promise<unknown> {
+    return this.requestJson(
+      "GET",
+      `/api/display/config?key=${encodeURIComponent(key)}`,
+    );
+  }
+
+  async displayConfigSet(input: { key: string; patch: string }): Promise<unknown> {
+    return this.requestJson("POST", "/api/display/config", input);
+  }
+
+  async displaySelect(key: string): Promise<unknown> {
+    return this.requestJson("POST", "/api/display/select", { key });
+  }
+
   private async requestJson(
     method: "GET" | "POST",
     path: string,

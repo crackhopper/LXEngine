@@ -35,6 +35,11 @@ interface EditorClientSurface {
   recordingProbe: (
     target: "summary" | "selection" | "cameras" | "toolbar" | "scene" | "state",
   ) => Promise<unknown>;
+  displayList: () => Promise<unknown>;
+  displayActive: () => Promise<unknown>;
+  displayConfigGet: (key: string) => Promise<unknown>;
+  displayConfigSet: (input: { key: string; patch: string }) => Promise<unknown>;
+  displaySelect: (key: string) => Promise<unknown>;
 }
 
 type EditorClientProvider = () =>
@@ -134,6 +139,25 @@ export function createToolHandlers(input: {
     recording_probe: async (args) =>
       withEditorClient((editorClient) =>
         editorClient.recordingProbe(readProbeTarget(args, "target")),
+      ),
+    display_list: async () =>
+      withEditorClient((editorClient) => editorClient.displayList()),
+    display_active: async () =>
+      withEditorClient((editorClient) => editorClient.displayActive()),
+    display_config_get: async (args) =>
+      withEditorClient((editorClient) =>
+        editorClient.displayConfigGet(optionalString(args, "key") ?? "active"),
+      ),
+    display_config_set: async (args) =>
+      withEditorClient((editorClient) =>
+        editorClient.displayConfigSet({
+          key: readString(args, "key"),
+          patch: readString(args, "patch"),
+        }),
+      ),
+    display_select: async (args) =>
+      withEditorClient((editorClient) =>
+        editorClient.displaySelect(readString(args, "key")),
       ),
     "ops.repo_pull": async () => guarded("ops.repo_pull", () => input.workspaceOps.repoPull()),
     "ops.build_configure": async (args) =>

@@ -283,6 +283,60 @@ startedAt: 2026-05-13-120000
     ]);
   });
 
+  it("forwards display API requests to the editor", async () => {
+    const requests: Array<{
+      method: string | undefined;
+      url: string | undefined;
+      body?: unknown;
+    }> = [];
+    server = createServer(async (req, res) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) {
+        chunks.push(Buffer.from(chunk));
+      }
+      const text = Buffer.concat(chunks).toString("utf8");
+      requests.push({
+        method: req.method,
+        url: req.url,
+        body: text.length === 0 ? undefined : JSON.parse(text),
+      });
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, path: req.url }));
+    });
+
+    const port = await listen(server);
+    const client = new EditorClient({
+      httpBaseUrl: `http://127.0.0.1:${port}`,
+      bearerToken: "fake-token",
+    });
+
+    await expect(client.displayList()).resolves.toMatchObject({ ok: true });
+    await expect(client.displayActive()).resolves.toMatchObject({ ok: true });
+    await expect(client.displayConfigGet("active profile")).resolves.toMatchObject({
+      ok: true,
+    });
+    await expect(
+      client.displayConfigSet({ key: "desktop", patch: "width: 1280" }),
+    ).resolves.toMatchObject({ ok: true });
+    await expect(client.displaySelect("desktop")).resolves.toMatchObject({ ok: true });
+
+    expect(requests).toEqual([
+      { method: "GET", url: "/api/display/list", body: undefined },
+      { method: "GET", url: "/api/display/active", body: undefined },
+      {
+        method: "GET",
+        url: "/api/display/config?key=active%20profile",
+        body: undefined,
+      },
+      {
+        method: "POST",
+        url: "/api/display/config",
+        body: { key: "desktop", patch: "width: 1280" },
+      },
+      { method: "POST", url: "/api/display/select", body: { key: "desktop" } },
+    ]);
+  });
+
   it("aborts editor requests after timeout", async () => {
     server = createServer(() => {
       // Leave the request open to exercise the client timeout.
