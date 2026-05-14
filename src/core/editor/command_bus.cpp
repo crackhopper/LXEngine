@@ -112,6 +112,19 @@ struct TokenizeResult {
   return fallback;
 }
 
+void propagateMetadataFlag(const std::vector<CommandResult> &sourceResults,
+                           CommandResult &target,
+                           const std::string &metadataKey) {
+  for (const auto &sourceResult : sourceResults) {
+    const auto metadataIt = sourceResult.metadata.find(metadataKey);
+    if (metadataIt != sourceResult.metadata.end() &&
+        parseMetadataBool(metadataIt->second, false)) {
+      target.metadata[metadataKey] = "true";
+      return;
+    }
+  }
+}
+
 } // namespace
 
 void CommandBus::registerHandler(std::string verb, std::string brief,
@@ -179,7 +192,10 @@ CommandResult CommandBus::undo() {
   }
 
   m_redoStack.push_back(entry);
-  return CommandResult{true, "undid: " + entry.redoLine, {}, {}};
+  CommandResult result{true, "undid: " + entry.redoLine, {}, {}};
+  propagateMetadataFlag(results, result, "scene.rebuild");
+  propagateMetadataFlag(results, result, "editor_camera.resync");
+  return result;
 }
 
 CommandResult CommandBus::redo() {
@@ -204,7 +220,10 @@ CommandResult CommandBus::redo() {
   }
 
   m_undoStack.push_back(entry);
-  return CommandResult{true, "redid: " + entry.redoLine, {}, {}};
+  CommandResult result{true, "redid: " + entry.redoLine, {}, {}};
+  propagateMetadataFlag(results, result, "scene.rebuild");
+  propagateMetadataFlag(results, result, "editor_camera.resync");
+  return result;
 }
 
 bool CommandBus::canUndo() const { return !m_undoStack.empty(); }

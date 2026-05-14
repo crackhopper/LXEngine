@@ -2621,6 +2621,9 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
                 ? setMaterialField(materialContext, nodePath, field,
                                    args, 1)
                 : setField(*node, field, args, 1);
+        if (result.ok && materialField) {
+          result.metadata["scene.rebuild"] = "true";
+        }
         if (result.ok && field == "name") {
           result.metadata["inverse.line"] =
               "set " + quoteToken(node->getPath() + ".name") + " " +
@@ -2663,6 +2666,9 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
             materialContext, split->first, split->second);
         CommandResult result = materialContext.clearNodeMaterialParameter(
             split->first, target->binding, target->member);
+        if (result.ok) {
+          result.metadata["scene.rebuild"] = "true";
+        }
         if (result.ok && !inverseLine.empty()) {
           result.metadata["inverse.line"] = inverseLine;
         }
@@ -2692,6 +2698,9 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
             materialContext, args[0], "nodeMaterial.baseColor");
         CommandResult result =
             materialContext.applyMaterialOverride(args[0], args[1]);
+        if (result.ok) {
+          result.metadata["scene.rebuild"] = "true";
+        }
         if (result.ok && !inverseLine.empty()) {
           result.metadata["inverse.line"] = inverseLine;
         }

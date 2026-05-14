@@ -8,6 +8,7 @@
 
 #include <cmath>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -40,6 +41,9 @@ struct Fixture {
   SceneNodeSharedPtr b = SceneNode::create("node_b");
   SceneNodeSharedPtr c = SceneNode::create("node_c");
   SceneNodeSharedPtr cameraNode = SceneNode::create("node_camera");
+  std::optional<std::string> materialUri =
+      std::string("assets/materials/blinnphong_lit.material");
+  std::optional<Vec3f> baseColor = Vec3f{0.8f, 0.8f, 0.8f};
 
   Fixture() {
     world->setName("world");
@@ -61,16 +65,44 @@ struct Fixture {
     cameraNode->addComponent<CameraComponent>();
     scene->addCamera(cameraNode);
 
-    registerBuiltinCommands(
-        bus, editorState, *scene,
-        SceneIoContext{.createNode = [](const std::string &,
-                                        const std::string &nodeName,
-                                        const std::string &displayName,
-                                        SceneNodeSharedPtr &outNode) {
-          outNode = SceneNode::create(nodeName);
-          outNode->setName(displayName);
-          return CommandResult{true, "created", {}, {}};
-        }});
+    registerBuiltinCommands(bus, editorState, *scene,
+                            SceneIoContext{
+                                .createNode =
+                                    [](const std::string &,
+                                       const std::string &nodeName,
+                                       const std::string &displayName,
+                                       SceneNodeSharedPtr &outNode) {
+                                      outNode = SceneNode::create(nodeName);
+                                      outNode->setName(displayName);
+                                      return CommandResult{true, "created", {},
+                                                           {}};
+                                    },
+                                .getMaterialUri =
+                                    [this](const std::string &) {
+                                      return materialUri;
+                                    },
+                                .setMaterialUri =
+                                    [this](const std::string &,
+                                           const std::string &uri) {
+                                      materialUri = uri;
+                                      return CommandResult{true,
+                                                           "materialUri updated",
+                                                           "{}", {}};
+                                    },
+                                .getNodeMaterialBaseColor =
+                                    [this](const std::string &) {
+                                      return baseColor;
+                                    },
+                                .setNodeMaterialBaseColor =
+                                    [this](const std::string &,
+                                           const Vec3f &color) {
+                                      baseColor = color;
+                                      return CommandResult{
+                                          true,
+                                          "node material baseColor updated",
+                                          "{}", {}};
+                                    },
+                            });
   }
 };
 
@@ -273,6 +305,30 @@ void testAddRemoveSupportUndoRedo() {
          "redo remove should remove camera again");
 }
 
+void testMaterialEditsRequestSceneRebuild() {
+  Fixture fixture;
+
+  const CommandResult setColor =
+      fixture.bus.dispatch("set /world/a.nodeMaterial.baseColor 0.2 0.3 0.4");
+  EXPECT(setColor.ok, "set node material baseColor should succeed");
+  EXPECT(setColor.metadata.find("scene.rebuild") != setColor.metadata.end() &&
+             setColor.metadata.at("scene.rebuild") == "true",
+         "set node material baseColor should request scene rebuild");
+
+  const CommandResult setUri = fixture.bus.dispatch(
+      "set /world/a.materialUri assets/materials/pbr_gold.material");
+  EXPECT(setUri.ok, "set materialUri should succeed");
+  EXPECT(setUri.metadata.find("scene.rebuild") != setUri.metadata.end() &&
+             setUri.metadata.at("scene.rebuild") == "true",
+         "set materialUri should request scene rebuild");
+
+  const CommandResult undoUri = fixture.bus.dispatch("undo");
+  EXPECT(undoUri.ok, "undo materialUri should succeed");
+  EXPECT(undoUri.metadata.find("scene.rebuild") != undoUri.metadata.end() &&
+             undoUri.metadata.at("scene.rebuild") == "true",
+         "undo materialUri should request scene rebuild");
+}
+
 void testConcreteAddKindsUseHistory() {
   Fixture fixture;
 
@@ -402,6 +458,7 @@ int main() {
   testMultiTargetMoveAppliesDeltaAndUndoRestoresEachNode();
   testPreviewAndCamFovGainUndoCoverage();
   testAddRemoveSupportUndoRedo();
+  testMaterialEditsRequestSceneRebuild();
   testConcreteAddKindsUseHistory();
   testCopyPasteAsSiblingDuplicatesCameraAndSelection();
   testCopyPasteAsSiblingDuplicatesDirectionalLightIndependently();
