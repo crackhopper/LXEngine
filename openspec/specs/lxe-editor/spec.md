@@ -127,7 +127,7 @@ At every frame's update hook:
 Control mappings SHALL include:
 
 - Selection: left-click pick, left-click empty space deselect, and gizmo hover/drag consumes left mouse while the gizmo is active
-- Orbit camera control: right-drag rotate, wheel zoom
+- Orbit camera control: right-drag rotate, wheel zoom, `Right+M` retargets the orbit center to the scene pick hit under the cursor, and `Right+W/A/S/D` pans the orbit center in the camera plane
 - FreeFly: right-button hold rotate, `W/A/S/D` translate, `Space` up, `LShift` down, `LCtrl` accelerate
 
 #### Scenario: View is continuous across camera control switch
@@ -196,7 +196,7 @@ Because the demo is not automated, acceptance SHALL be verified manually. The mi
 
 1. `lxe_editor` launches successfully
 2. `DamagedHelmet` and ground are visible in the viewport
-3. Orbit camera control allows right-drag rotate and wheel zoom without obvious artifacts
+3. Orbit camera control allows right-drag rotate, wheel zoom, `Right+M` center retargeting, and `Right+W/A/S/D` center panning without obvious artifacts
 4. Switching the toolbar camera control to FreeFly keeps Selection as the editor mode; W/A/S/D/Space/LShift/LCtrl all move the camera while right mouse is held
 5. ImGui panels are visible and interactive
 6. Edits to Camera / Directional Light fields cause visible changes in the rendered frame

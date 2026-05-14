@@ -352,6 +352,9 @@ interaction, and transport internals.
 
 - Right-drag — rotate around the target
 - Wheel — zoom in / out
+- Right + `M` — move the orbit target to the scene pick hit under the cursor
+- Right + `W` / `A` / `S` / `D` — pan the orbit target in the camera plane
+- The orbit target marker is editor-only debug geometry and is not selectable
 
 ### FreeFly camera control
 
@@ -389,7 +392,8 @@ registered with CTest.
 
 1. `lxe_editor` launches and shows a window.
 2. DamagedHelmet and the ground plane are visible in the main scene view.
-3. Orbit camera control allows right-drag rotate and wheel zoom.
+3. Orbit camera control allows right-drag rotate, wheel zoom, `Right+M`
+   retargeting, and `Right+W`/`A`/`S`/`D` target panning.
 4. The floating toolbar switches camera control between Orbit / FreeFly without
    leaving Selection mode, and FreeFly uses
    `W`/`A`/`S`/`D`/`Space`/`LShift`/`LCtrl` as described above.

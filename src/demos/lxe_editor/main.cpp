@@ -1011,6 +1011,11 @@ int main(int argc, char **argv) {
       if (demo::shouldProcessCameraRig(editorState.isPreviewEnabled(),
                                        wantsKeyboard, wantsMouse,
                                        gizmoConsumesMouse)) {
+        rig.handleOrbitTargetControls(
+            *input, *session.scene(),
+            ui.sceneViewRect(LX_core::Vec2f{static_cast<float>(windowWidth),
+                                            static_cast<float>(windowHeight)}),
+            clock.deltaTime());
         demo::SelectionCameraInput cameraInput(*input,
                                                ui.selectionNavigationMode());
         rig.update(cameraInput, clock.deltaTime());
@@ -1020,6 +1025,7 @@ int main(int argc, char **argv) {
         session.editorCamera().updateMatrices();
       }
       session.sceneInteraction().enqueueDebugDraw();
+      rig.enqueueDebugDraw();
       input->nextFrame();
     });
 

@@ -1,3 +1,5 @@
+#include "core/asset/mesh.hpp"
+#include "core/debug_draw/debug_draw.hpp"
 #include "core/editor/command_bus.hpp"
 #include "core/editor/commands/builtin_commands.hpp"
 #include "core/editor/console_panel.hpp"
@@ -8,7 +10,10 @@
 #include "core/input/key_code.hpp"
 #include "core/input/mock_input_state.hpp"
 #include "core/platform/window.hpp"
+#include "core/rhi/index_buffer.hpp"
+#include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/components/camera_component.hpp"
+#include "core/scene/components/mesh_component.hpp"
 #include "core/scene/object.hpp"
 #include "core/scene/scene.hpp"
 #include "core/utils/env.hpp"
@@ -52,6 +57,19 @@ bool setupMinimalImGui() {
   int h = 0;
   io.Fonts->GetTexDataAsRGBA32(&pixels, &w, &h);
   return pixels != nullptr && w > 0 && h > 0;
+}
+
+LX_core::MeshSharedPtr makeCenteredSquareMesh() {
+  auto vb = LX_core::VertexBuffer<LX_core::VertexPos>::create(
+      std::vector<LX_core::VertexPos>{
+          {{-0.5f, -0.5f, 0.0f}},
+          {{0.5f, -0.5f, 0.0f}},
+          {{0.0f, 0.5f, 0.0f}},
+      });
+  auto ib = LX_core::IndexBuffer::create({0, 1, 2});
+  return LX_core::Mesh::create(vb, ib,
+                               LX_core::BoundingBox{{-0.5f, -0.5f, 0.0f},
+                                                    {0.5f, 0.5f, 0.0f}});
 }
 
 struct UiHarness final {
@@ -374,6 +392,80 @@ void testCameraRigResyncKeepsUpdatedEditorCameraPose() {
           LX_core::Vec3f{12.0f, 6.0f, 18.0f}),
          "camera rig resync should keep the externally updated editor camera "
          "pose");
+}
+
+void testOrbitTargetPickUsesSceneHitWithoutSelectingMarker() {
+  UiHarness harness;
+  auto editorCamera =
+      harness.editorCameraNode->getComponent<LX_core::CameraComponent>();
+  EXPECT(editorCamera.has_value(), "editor camera component should exist");
+  if (!editorCamera.has_value()) {
+    return;
+  }
+
+  harness.targetNode->addComponent<LX_core::MeshComponent>(
+      makeCenteredSquareMesh());
+  editorCamera->get().setAspect(800.0f / 600.0f);
+  editorCamera->get().lookAt({0.0f, 0.0f, 3.0f}, {0.0f, 1.0f, 0.0f},
+                             {0.0f, 1.0f, 0.0f});
+  harness.rig.attach(editorCamera->get());
+  EXPECT(harness.rig.orbitTarget().y > 0.5f,
+         "test setup should seed a non-origin orbit target");
+
+  editorCamera->get().lookAt({0.0f, 0.0f, 3.0f}, {0.0f, 0.0f, 0.0f},
+                             {0.0f, 1.0f, 0.0f});
+  LX_core::MockInputState input;
+  input.setMouseButtonDown(LX_core::MouseButton::Right, true);
+  input.setKeyDown(LX_core::KeyCode::M, true);
+  input.setMousePosition({399.5f, 299.5f});
+  harness.rig.handleOrbitTargetControls(
+      input, *harness.scene,
+      LX_demo::lxe_editor::SceneViewRect{
+          .x = 0.0f, .y = 0.0f, .width = 800.0f, .height = 600.0f},
+      1.0f / 60.0f);
+
+  const LX_core::Vec3f target = harness.rig.orbitTarget();
+  EXPECT(std::abs(target.x) < 1e-3f && std::abs(target.y) < 1e-3f &&
+             std::abs(target.z) < 1e-3f,
+         "right+M should move orbit target to the picked scene hit");
+
+  const auto renderableCount = harness.scene->getRenderables().size();
+  LX_core::DebugDraw::reset();
+  LX_core::DebugDraw::beginFrame();
+  harness.rig.enqueueDebugDraw();
+  EXPECT(LX_core::DebugDraw::testing::queuedLineCount() > 0,
+         "orbit target marker should be drawn as debug lines");
+  EXPECT(harness.scene->getRenderables().size() == renderableCount,
+         "orbit target marker should not add a selectable scene node");
+  LX_core::DebugDraw::endFrame();
+}
+
+void testOrbitTargetKeyboardPanMovesReferencePoint() {
+  UiHarness harness;
+  auto editorCamera =
+      harness.editorCameraNode->getComponent<LX_core::CameraComponent>();
+  EXPECT(editorCamera.has_value(), "editor camera component should exist");
+  if (!editorCamera.has_value()) {
+    return;
+  }
+
+  editorCamera->get().lookAt({0.0f, 0.0f, 3.0f}, {0.0f, 0.0f, 0.0f},
+                             {0.0f, 1.0f, 0.0f});
+  harness.rig.attach(editorCamera->get());
+  const LX_core::Vec3f before = harness.rig.orbitTarget();
+
+  LX_core::MockInputState input;
+  input.setMouseButtonDown(LX_core::MouseButton::Right, true);
+  input.setKeyDown(LX_core::KeyCode::W, true);
+  harness.rig.handleOrbitTargetControls(
+      input, *harness.scene,
+      LX_demo::lxe_editor::SceneViewRect{
+          .x = 0.0f, .y = 0.0f, .width = 800.0f, .height = 600.0f},
+      1.0f);
+
+  const LX_core::Vec3f after = harness.rig.orbitTarget();
+  EXPECT(after.y > before.y && std::abs(after.x - before.x) < 1e-4f,
+         "right+W should pan the orbit target upward in the camera plane");
 }
 
 void testPersistedEditorConfigOverridesDefaultRectsAndPreferences() {
@@ -1485,6 +1577,8 @@ int main() {
   testSceneViewRectUsesRequestedWindowSizeAfterResize();
   testToolbarRendersIconOnlyWithoutStaticModeText();
   testCameraRigResyncKeepsUpdatedEditorCameraPose();
+  testOrbitTargetPickUsesSceneHitWithoutSelectingMarker();
+  testOrbitTargetKeyboardPanMovesReferencePoint();
   testPersistedEditorConfigOverridesDefaultRectsAndPreferences();
   testEditorConfigRoundTrips();
   testEditorConfigV2CreatesProfilesForAllDisplays();
