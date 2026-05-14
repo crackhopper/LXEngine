@@ -235,11 +235,24 @@ Manager restart integration:
 
 - The existing manager MCP operation `ops.editor_restart` remains responsible
   for restarting the managed editor process.
-- Display commands do not add another restart command. They return restart
-  guidance when a change affects the next launch.
+- A separate manager MCP operation `ops.manager_restart` is required so Codex
+  can apply changes to `tools/lxe_manager` after `ops.repo_pull` without asking
+  the user to manually restart the MCP service.
+- `ops.manager_restart` restarts the manager MCP service itself, not the editor.
+  It should send an accepted response, then restart after the response is
+  flushed. Existing MCP clients should reconnect to the same endpoint.
+- The manager start scripts should support this self-restart flow. The preferred
+  implementation is an outer restart loop with a dedicated restart exit code;
+  if the manager is launched without that wrapper, the tool may fall back to
+  spawning a replacement process with the same args/env before exiting.
+- Display commands do not add their own restart command. They return restart
+  guidance when a change affects the next editor launch.
 - Remote tests that need to validate startup display selection should call the
   display command/API/MCP surface first, then call `ops.editor_restart`, then
   verify the restarted editor state.
+- Remote tests that change manager code should call `ops.repo_pull`, then
+  `ops.manager_restart`, reconnect to MCP, and only then use any new manager
+  MCP tools.
 
 Remote test flow:
 
@@ -249,6 +262,15 @@ Remote test flow:
 4. Set the next startup display through `display select`.
 5. Restart the editor through manager MCP `ops.editor_restart`.
 6. Verify startup selection and UI config.
+
+Manager update flow:
+
+1. Use `ops.repo_pull` to fetch manager/editor changes.
+2. If files under `tools/lxe_manager` or manager start scripts changed, call
+   `ops.manager_restart`.
+3. Reconnect to the manager MCP endpoint.
+4. Continue with build, editor restart, display commands, or verification using
+   the updated manager tool surface.
 
 ## Component Responsibilities
 
@@ -299,3 +321,5 @@ logic should be testable with fake `DisplayInfo` values.
   overrides, and select the next active display.
 - Remote validation can use the existing manager MCP `ops.editor_restart` after
   changing `activeDisplay`.
+- Manager MCP exposes `ops.manager_restart` so manager-side tool changes can be
+  applied remotely after `ops.repo_pull`.
