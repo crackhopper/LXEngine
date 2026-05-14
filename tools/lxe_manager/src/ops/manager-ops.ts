@@ -31,6 +31,9 @@ export class ManagerOps {
       exitCode: MANAGER_RESTART_EXIT_CODE,
       scheduleRestart: () => {
         this.setTimeout(() => {
+          console.error(
+            `[lxe_manager] manager restart requested; exiting with code ${MANAGER_RESTART_EXIT_CODE}`,
+          );
           this.exit(MANAGER_RESTART_EXIT_CODE);
         }, this.restartDelayMs);
       },

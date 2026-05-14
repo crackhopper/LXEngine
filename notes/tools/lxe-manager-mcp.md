@@ -58,6 +58,11 @@ scripts/lxe_manager/start_mcp.ps1 0.0.0.0 3880
 `bearerTokenGenerated`。上面的 manager 进程会占用当前终端；我们通常在另一个
 终端里配置 Codex。
 
+启动脚本会把 manager wrapper 与 Node 子进程输出追加到
+`data/lxe_manager/mcp.log`。如果需要改日志位置，可以设置
+`LXE_MANAGER_MCP_LOG_FILE`。这个文件用于排查 manager 启动失败、
+`ops.manager_restart` 后没有重新监听、Node/tsx 启动错误等问题。
+
 ## 连接 Codex
 
 本机 Codex：
@@ -177,6 +182,15 @@ manager 代码变更后：
 2. `ops.manager_restart`
 3. 重新连接 MCP endpoint
 4. 再执行 build/editor/display 验证
+
+`ops.manager_restart` 依赖 `scripts/lxe_manager/start_mcp.sh` 或
+`scripts/lxe_manager/start_mcp.ps1` 作为外层 wrapper。它的语义是让当前
+manager 进程以退出码 `75` 退出，然后由 wrapper 识别该退出码并重新启动。
+如果 manager 是直接用 `node --import tsx ./src/index.ts` 或 `npm run dev`
+启动的，没有外层 wrapper，`ops.manager_restart` 只会让当前进程退出，不会自动
+拉起。遇到 manager 重启后无法连接时，先看 `data/lxe_manager/mcp.log`，确认
+是否出现 `restart code 75 received; restarting lxe_manager` 以及下一次
+`starting lxe_manager`。
 
 复杂场景验证不要临时口头编排。把稳定流程写成
 `notes/use_cases/lxe_editor/*.md`，由 `lxe-editor-use-case-runner` 读取后调用
