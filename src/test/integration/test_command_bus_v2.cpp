@@ -254,6 +254,94 @@ void testAddRemoveSupportUndoRedo() {
          "redo remove should remove camera again");
 }
 
+void testCopyPasteAsSiblingDuplicatesCameraAndSelection() {
+  Fixture fixture;
+  const auto camera = fixture.cameraNode->getComponent<CameraComponent>();
+  camera->get().setFovY(72.0f);
+  camera->get().setCullingMask(0x12u);
+
+  const CommandResult copy = fixture.bus.dispatch("copy /camera_main");
+  EXPECT(copy.ok, "copy camera should succeed");
+  const CommandResult paste =
+      fixture.bus.dispatch("paste_as_sibling /camera_main");
+  EXPECT(paste.ok, "paste_as_sibling camera should succeed");
+
+  SceneNode *copyNode = fixture.scene->findByPath("/camera_main.copy");
+  EXPECT(copyNode != nullptr, "paste should create a copied sibling path");
+  EXPECT(copyNode != fixture.cameraNode.get(),
+         "paste should create a distinct node");
+  EXPECT(copyNode != nullptr && copyNode->getParent() ==
+                                  fixture.cameraNode->getParent(),
+         "paste_as_sibling should use target parent");
+  if (copyNode != nullptr) {
+    const auto copiedCamera = copyNode->getComponent<CameraComponent>();
+    EXPECT(copiedCamera.has_value(), "camera duplicate should keep camera payload");
+    EXPECT(copiedCamera.has_value() &&
+               nearlyEqual(copiedCamera->get().getFovY(), 72.0f),
+           "camera duplicate should preserve fov");
+    EXPECT(copiedCamera.has_value() &&
+               copiedCamera->get().getCullingMask() == 0x12u,
+           "camera duplicate should preserve culling mask");
+  }
+  const auto selected = fixture.editorState.getSelected();
+  EXPECT(selected.size() == 1 && selected[0].get() == copyNode,
+         "paste should select the new node");
+
+  const CommandResult undo = fixture.bus.dispatch("undo");
+  EXPECT(undo.ok, "undo paste should succeed");
+  EXPECT(fixture.scene->findByPath("/camera_main.copy") == nullptr,
+         "undo paste should remove copied camera");
+
+  const CommandResult redo = fixture.bus.dispatch("redo");
+  EXPECT(redo.ok, "redo paste should succeed");
+  EXPECT(fixture.scene->findByPath("/camera_main.copy") != nullptr,
+         "redo paste should restore copied camera");
+}
+
+void testCopyPasteAsSiblingDuplicatesDirectionalLightIndependently() {
+  Fixture fixture;
+  const CommandResult addLight = fixture.bus.dispatch("add light sun /world");
+  EXPECT(addLight.ok, "add light should succeed before duplicate");
+  const CommandResult setColor =
+      fixture.bus.dispatch("set /world/sun.color 0.2 0.4 0.6");
+  EXPECT(setColor.ok, "set light color should succeed before duplicate");
+
+  const CommandResult copy = fixture.bus.dispatch("copy /world/sun");
+  EXPECT(copy.ok, "copy light should succeed");
+  const CommandResult paste = fixture.bus.dispatch("paste_as_sibling /world/sun");
+  EXPECT(paste.ok, "paste light should succeed");
+
+  SceneNode *originalNode = fixture.scene->findByPath("/world/sun");
+  SceneNode *copyNode = fixture.scene->findByPath("/world/sun.copy");
+  EXPECT(originalNode != nullptr && copyNode != nullptr,
+         "light copy should create copied sibling");
+  if (originalNode != nullptr && copyNode != nullptr) {
+    const auto originalLight = fixture.scene->getDirectionalLight(*originalNode);
+    const auto copiedLight = fixture.scene->getDirectionalLight(*copyNode);
+    EXPECT(originalLight != nullptr && copiedLight != nullptr,
+           "light duplicate should keep directional light payload");
+    EXPECT(originalLight != copiedLight,
+           "light duplicate should create an independent light binding");
+    if (copiedLight) {
+      EXPECT(nearlyEqual(copiedLight->getColor().x, 0.2f) &&
+                 nearlyEqual(copiedLight->getColor().y, 0.4f) &&
+                 nearlyEqual(copiedLight->getColor().z, 0.6f),
+             "light duplicate should preserve color payload");
+    }
+  }
+}
+
+void testRenameRejectsSiblingConflict() {
+  Fixture fixture;
+
+  const CommandResult conflict = fixture.bus.dispatch("set /world/a.name b");
+  EXPECT(!conflict.ok, "rename to sibling name should fail");
+  EXPECT(conflict.message == "rename conflict: sibling already named b",
+         "rename conflict should use stable message");
+  EXPECT(fixture.scene->findByPath("/world/a") == fixture.a.get(),
+         "failed rename should keep original path");
+}
+
 } // namespace
 
 int main() {
@@ -263,6 +351,9 @@ int main() {
   testMultiTargetMoveAppliesDeltaAndUndoRestoresEachNode();
   testPreviewAndCamFovGainUndoCoverage();
   testAddRemoveSupportUndoRedo();
+  testCopyPasteAsSiblingDuplicatesCameraAndSelection();
+  testCopyPasteAsSiblingDuplicatesDirectionalLightIndependently();
+  testRenameRejectsSiblingConflict();
 
   if (failures != 0) {
     std::cerr << "test_command_bus_v2 failed with " << failures << " failure(s)\n";

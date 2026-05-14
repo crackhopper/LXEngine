@@ -98,12 +98,14 @@ void SceneTreePanel::draw() {
   if (submitted) {
     (void)submitPathJump();
   }
+  handleFocusedShortcuts();
 
   ImGui::Separator();
 
   if (const auto& root = m_scene.getRootNode(); root) {
     drawNode(*root);
   }
+  drawRenamePopup();
 
   ImGui::End();
 }
@@ -140,6 +142,22 @@ CommandResult SceneTreePanel::dispatchSelectPath(std::string_view path) {
 
 CommandResult SceneTreePanel::dispatchRemovePath(std::string_view path) {
   return m_commandBus.dispatch("remove " + std::string(path));
+}
+
+CommandResult SceneTreePanel::dispatchCopyPath(std::string_view path) {
+  return m_commandBus.dispatch("copy " + std::string(path));
+}
+
+CommandResult SceneTreePanel::dispatchPasteAsSiblingPath(std::string_view path) {
+  return m_commandBus.dispatch("paste_as_sibling " + std::string(path));
+}
+
+CommandResult SceneTreePanel::dispatchDuplicatePath(std::string_view path) {
+  CommandResult copy = dispatchCopyPath(path);
+  if (!copy.ok) {
+    return copy;
+  }
+  return dispatchPasteAsSiblingPath(path);
 }
 
 CommandResult SceneTreePanel::handleNodeClick(SceneNode &node, const bool ctrlHeld,
@@ -233,6 +251,63 @@ SceneTreePanel::buildSiblingRangeSelectionPaths(const SceneNode &node) const {
   return paths;
 }
 
+void SceneTreePanel::handleFocusedShortcuts() {
+  const ImGuiIO &io = ImGui::GetIO();
+  if (!io.KeyCtrl || ImGui::IsAnyItemActive() ||
+      !ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) {
+    return;
+  }
+
+  const auto primarySelected = m_editorState.getPrimarySelected();
+  if (!primarySelected.has_value()) {
+    return;
+  }
+
+  if (ImGui::IsKeyPressed(ImGuiKey_C, false)) {
+    (void)dispatchCopyPath(primarySelected->get().getPath());
+  } else if (ImGui::IsKeyPressed(ImGuiKey_V, false)) {
+    (void)dispatchPasteAsSiblingPath(primarySelected->get().getPath());
+  }
+}
+
+void SceneTreePanel::beginRename(SceneNode &node) {
+  m_renamePath = node.getPath();
+  const std::string name = node.getName();
+  const usize copyLength = std::min(name.size(), m_renameInputBuffer.size() - 1);
+  std::fill(m_renameInputBuffer.begin(), m_renameInputBuffer.end(), '\0');
+  if (copyLength > 0) {
+    std::memcpy(m_renameInputBuffer.data(), name.data(), copyLength);
+  }
+  ImGui::OpenPopup("Rename Node");
+}
+
+void SceneTreePanel::drawRenamePopup() {
+  if (!ImGui::BeginPopupModal("Rename Node", nullptr,
+                              ImGuiWindowFlags_AlwaysAutoResize)) {
+    return;
+  }
+
+  ImGui::InputText("Name##scene_tree_rename", m_renameInputBuffer.data(),
+                   m_renameInputBuffer.size(),
+                   ImGuiInputTextFlags_EnterReturnsTrue);
+  const bool submitted = ImGui::IsItemDeactivatedAfterEdit() ||
+                         ImGui::IsKeyPressed(ImGuiKey_Enter, false);
+  if (ImGui::Button("Rename") || submitted) {
+    const std::string name = trim(std::string(m_renameInputBuffer.data()));
+    if (!m_renamePath.empty() && !name.empty()) {
+      (void)m_commandBus.dispatch("set " + m_renamePath + ".name " + name);
+    }
+    m_renamePath.clear();
+    ImGui::CloseCurrentPopup();
+  }
+  ImGui::SameLine();
+  if (ImGui::Button("Cancel")) {
+    m_renamePath.clear();
+    ImGui::CloseCurrentPopup();
+  }
+  ImGui::EndPopup();
+}
+
 void SceneTreePanel::drawNode(SceneNode &node) {
   if (!m_revealPath.empty() && isAncestorOrSelf(node.getPath(), m_revealPath)) {
     ImGui::SetNextItemOpen(true, ImGuiCond_Always);
@@ -277,6 +352,12 @@ void SceneTreePanel::drawNode(SceneNode &node) {
   }
 
   if (!node.isSceneRoot() && ImGui::BeginPopupContextItem()) {
+    if (ImGui::MenuItem("Rename")) {
+      beginRename(node);
+    }
+    if (ImGui::MenuItem("Duplicate")) {
+      (void)dispatchDuplicatePath(node.getPath());
+    }
     if (ImGui::MenuItem("Remove")) {
       (void)dispatchRemovePath(node.getPath());
     }

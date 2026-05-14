@@ -625,7 +625,8 @@ std::string SceneNode::sanitizeName(std::string name) {
   bool mutated = false;
   for (char &c : name) {
     const unsigned char uc = static_cast<unsigned char>(c);
-    const bool allowed = std::isalnum(uc) != 0 || c == '_' || c == '-';
+    const bool allowed = std::isalnum(uc) != 0 || c == '_' || c == '-' ||
+                         c == '.';
     if (!allowed) {
       c = '_';
       mutated = true;

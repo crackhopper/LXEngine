@@ -3,6 +3,9 @@
 #include "core/editor/editor_state.hpp"
 #include "core/math/quat.hpp"
 #include "core/scene/components/camera_component.hpp"
+#include "core/scene/components/material_component.hpp"
+#include "core/scene/components/mesh_component.hpp"
+#include "core/scene/components/skeleton_component.hpp"
 #include "core/scene/light.hpp"
 #include "core/scene/object.hpp"
 #include "core/scene/scene.hpp"
@@ -20,6 +23,41 @@ namespace LX_core {
 namespace {
 
 constexpr float kDegToRad = 3.14159265358979323846f / 180.0f;
+constexpr float kDuplicateOffsetX = 0.5f;
+
+struct CameraClipboardState final {
+  CameraType type = CameraType::Perspective;
+  float fovY = 45.0f;
+  float aspect = 16.0f / 9.0f;
+  float nearPlane = 0.1f;
+  float farPlane = 1000.0f;
+  float left = -1.0f;
+  float right = 1.0f;
+  float bottom = -1.0f;
+  float top = 1.0f;
+  VisibilityLayerMask cullingMask = Layer_All & ~Layer_EditorOverlay;
+  bool active = true;
+  std::optional<RenderTarget> target;
+};
+
+struct DirectionalLightClipboardState final {
+  Vec3f direction{-0.3f, -1.0f, -0.5f};
+  Vec3f color{1.0f, 0.98f, 0.9f};
+  float intensity = 1.0f;
+};
+
+struct NodeClipboardEntry final {
+  std::string nodeName;
+  std::string name;
+  Transform transform = Transform::identity();
+  VisibilityLayerMask visibilityMask = VisibilityMask_All;
+  MeshSharedPtr mesh;
+  MaterialInstanceSharedPtr material;
+  SkeletonSharedPtr skeleton;
+  std::optional<CameraClipboardState> camera;
+  std::optional<DirectionalLightClipboardState> directionalLight;
+  std::vector<NodeClipboardEntry> children;
+};
 
 [[nodiscard]] std::string jsonEscape(const std::string &text) {
   std::string out;
@@ -156,6 +194,76 @@ constexpr float kDegToRad = 3.14159265358979323846f / 180.0f;
   }
   outNode = node;
   return CommandResult{true, {}, {}};
+}
+
+[[nodiscard]] bool siblingNameExists(const SceneNode &node,
+                                     const std::string &name) {
+  if (name.empty()) {
+    return false;
+  }
+
+  const auto parent = node.getParent();
+  const std::vector<SceneNodeSharedPtr> siblings =
+      parent ? parent->getChildren()
+             : (node.getAttachedScene() ? node.getAttachedScene()->getRootNodes()
+                                        : std::vector<SceneNodeSharedPtr>{});
+  for (const auto &sibling : siblings) {
+    if (sibling && sibling.get() != &node && sibling->getName() == name) {
+      return true;
+    }
+  }
+  return false;
+}
+
+[[nodiscard]] bool childNameExists(const SceneNodeSharedPtr &parent,
+                                   const std::string &name) {
+  if (!parent || name.empty()) {
+    return false;
+  }
+  for (const auto &child : parent->getChildren()) {
+    if (child && child->getName() == name) {
+      return true;
+    }
+  }
+  return false;
+}
+
+[[nodiscard]] std::string stripCopySuffix(const std::string &name) {
+  const std::string suffix = ".copy";
+  const auto suffixPos = name.rfind(suffix);
+  if (suffixPos == std::string::npos) {
+    return name;
+  }
+  const usize afterSuffix = suffixPos + suffix.size();
+  if (afterSuffix == name.size()) {
+    return name.substr(0, suffixPos);
+  }
+  if (afterSuffix + 4 == name.size() && name[afterSuffix] == '.' &&
+      std::isdigit(static_cast<unsigned char>(name[afterSuffix + 1])) &&
+      std::isdigit(static_cast<unsigned char>(name[afterSuffix + 2])) &&
+      std::isdigit(static_cast<unsigned char>(name[afterSuffix + 3]))) {
+    return name.substr(0, suffixPos);
+  }
+  return name;
+}
+
+[[nodiscard]] std::string makeCopyName(const SceneNodeSharedPtr &parent,
+                                       const std::string &sourceName) {
+  const std::string base = stripCopySuffix(sourceName.empty() ? "node" : sourceName);
+  std::string candidate = base + ".copy";
+  if (!childNameExists(parent, candidate)) {
+    return candidate;
+  }
+
+  for (u32 index = 1; index < 100000; ++index) {
+    std::ostringstream suffix;
+    suffix << ".copy." << std::setw(3) << std::setfill('0') << index;
+    candidate = base + suffix.str();
+    if (!childNameExists(parent, candidate)) {
+      return candidate;
+    }
+  }
+  return base + ".copy.overflow";
 }
 
 [[nodiscard]] std::string joinLines(const std::vector<std::string> &lines) {
@@ -698,6 +806,7 @@ struct CommandNodeStashEntry {
 struct BuiltinCommandState {
   u64 nextStashId = 1;
   std::unordered_map<std::string, CommandNodeStashEntry> stash;
+  std::optional<NodeClipboardEntry> clipboard;
 };
 
 [[nodiscard]] std::string allocateStashId(BuiltinCommandState &state) {
@@ -712,6 +821,168 @@ void collectSubtreeNodes(const SceneNodeSharedPtr &node,
   out.push_back(node);
   for (const auto &child : node->getChildren()) {
     collectSubtreeNodes(child, out);
+  }
+}
+
+[[nodiscard]] CameraClipboardState
+captureCameraClipboardState(const CameraComponent &camera) {
+  return CameraClipboardState{
+      .type = camera.getProjectionType(),
+      .fovY = camera.getFovY(),
+      .aspect = camera.getAspect(),
+      .nearPlane = camera.getNearPlane(),
+      .farPlane = camera.getFarPlane(),
+      .left = camera.getLeft(),
+      .right = camera.getRight(),
+      .bottom = camera.getBottom(),
+      .top = camera.getTop(),
+      .cullingMask = camera.getCullingMask(),
+      .active = camera.isActive(),
+      .target = camera.getTarget(),
+  };
+}
+
+[[nodiscard]] DirectionalLightClipboardState
+captureDirectionalLightClipboardState(const DirectionalLight &light) {
+  return DirectionalLightClipboardState{
+      .direction = light.getDirection(),
+      .color = light.getColor(),
+      .intensity = light.getIntensity(),
+  };
+}
+
+[[nodiscard]] NodeClipboardEntry captureNodeClipboardEntry(Scene &scene,
+                                                           const SceneNode &node) {
+  NodeClipboardEntry entry;
+  entry.nodeName = node.getNodeName();
+  entry.name = node.getName();
+  entry.transform = node.getLocalTransform();
+  entry.visibilityMask = node.getVisibilityLayerMask();
+
+  if (const auto mesh = node.getComponent<MeshComponent>(); mesh.has_value()) {
+    entry.mesh = mesh->get().getMesh();
+  }
+  if (const auto material = node.getComponent<MaterialComponent>();
+      material.has_value()) {
+    entry.material = material->get().getMaterialInstance();
+  }
+  if (const auto skeleton = node.getComponent<SkeletonComponent>();
+      skeleton.has_value()) {
+    entry.skeleton = skeleton->get().getSkeleton();
+  }
+  if (const auto camera = node.getComponent<CameraComponent>();
+      camera.has_value()) {
+    entry.camera = captureCameraClipboardState(camera->get());
+  }
+  if (const auto light = scene.getDirectionalLight(node)) {
+    entry.directionalLight = captureDirectionalLightClipboardState(*light);
+  }
+
+  for (const auto &child : node.getChildren()) {
+    if (child) {
+      entry.children.push_back(captureNodeClipboardEntry(scene, *child));
+    }
+  }
+  return entry;
+}
+
+[[nodiscard]] std::string uniqueNodeName(Scene &scene,
+                                         const std::string &sourceNodeName) {
+  const std::string base =
+      stripCopySuffix(sourceNodeName.empty() ? "node" : sourceNodeName);
+  auto exists = [&scene](const std::string &candidate) {
+    for (const auto &renderable : scene.getRenderables()) {
+      if (renderable && renderable->getNodeName() == candidate) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  std::string candidate = base + ".copy";
+  if (!exists(candidate)) {
+    return candidate;
+  }
+  for (u32 index = 1; index < 100000; ++index) {
+    std::ostringstream suffix;
+    suffix << ".copy." << std::setw(3) << std::setfill('0') << index;
+    candidate = base + suffix.str();
+    if (!exists(candidate)) {
+      return candidate;
+    }
+  }
+  return base + ".copy.overflow";
+}
+
+void applyCameraClipboardState(CameraComponent &camera,
+                               const CameraClipboardState &state) {
+  camera.applyProjectionState(state.type, state.fovY, state.aspect,
+                              state.nearPlane, state.farPlane, state.left,
+                              state.right, state.bottom, state.top);
+  camera.setCullingMask(state.cullingMask);
+  camera.setActive(state.active);
+  camera.setTarget(state.target);
+}
+
+void applyDirectionalLightClipboardState(DirectionalLight &light,
+                                         const DirectionalLightClipboardState &state) {
+  light.setDirection(state.direction);
+  light.setColor(state.color);
+  light.setIntensity(state.intensity);
+}
+
+[[nodiscard]] SceneNodeSharedPtr instantiateClipboardSubtree(
+    Scene &scene, const NodeClipboardEntry &entry, const SceneNodeSharedPtr &parent,
+    const bool renameRootAsCopy, const bool offsetRoot) {
+  auto node = SceneNode::create(uniqueNodeName(scene, entry.nodeName));
+  node->setName(renameRootAsCopy ? makeCopyName(parent, entry.name) : entry.name);
+  Transform transform = entry.transform;
+  if (offsetRoot) {
+    transform.translation.x += kDuplicateOffsetX;
+  }
+  node->setLocalTransform(transform);
+  node->setVisibilityLayerMask(entry.visibilityMask);
+  if (entry.mesh) {
+    (void)node->addComponent<MeshComponent>(entry.mesh);
+  }
+  if (entry.material) {
+    (void)node->addComponent<MaterialComponent>(entry.material);
+  }
+  if (entry.skeleton) {
+    (void)node->addComponent<SkeletonComponent>(entry.skeleton);
+  }
+  if (entry.camera.has_value()) {
+    const auto camera = node->addComponent<CameraComponent>();
+    if (camera.has_value()) {
+      applyCameraClipboardState(camera->get(), *entry.camera);
+    }
+  }
+  if (parent) {
+    node->setParent(parent);
+  }
+
+  for (const auto &childEntry : entry.children) {
+    (void)instantiateClipboardSubtree(scene, childEntry, node, false, false);
+  }
+  return node;
+}
+
+void attachClipboardDirectionalLights(Scene &scene,
+                                      const NodeClipboardEntry &entry,
+                                      const SceneNodeSharedPtr &node) {
+  if (!node) {
+    return;
+  }
+  if (entry.directionalLight.has_value()) {
+    auto light = std::make_shared<DirectionalLight>();
+    applyDirectionalLightClipboardState(*light, *entry.directionalLight);
+    scene.attachLight(node, light);
+  }
+
+  const auto children = node->getChildren();
+  const usize childCount = std::min(children.size(), entry.children.size());
+  for (usize i = 0; i < childCount; ++i) {
+    attachClipboardDirectionalLights(scene, entry.children[i], children[i]);
   }
 }
 
@@ -975,6 +1246,10 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
   if (field == "name") {
     if (args.size() != valueStartIndex + 1) {
       return makeError("usage: set <path>.name <value>");
+    }
+    if (siblingNameExists(node, args[valueStartIndex])) {
+      return makeError("rename conflict: sibling already named " +
+                       args[valueStartIndex]);
     }
     node.setName(args[valueStartIndex]);
     return makeOk("name updated", "{\"value\":\"" +
@@ -1413,6 +1688,67 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
             buildSelectionCommand(selectionBeforeRemove);
         result.metadata["redo.line"] =
             "__remove_to_stash " + quoteToken(args[0]) + " " + quoteToken(stashId);
+        return result;
+      });
+
+  bus.registerHandler(
+      "copy", "copy <path>",
+      [&scene, state](std::vector<std::string> args) {
+        if (args.size() != 1) {
+          return makeError("usage: copy <path>");
+        }
+        SceneNode *node = nullptr;
+        const CommandResult found = requireNode(scene, args[0], node);
+        if (!found.ok) {
+          return found;
+        }
+        if (node->isSceneRoot()) {
+          return makeError("cannot copy scene root");
+        }
+        state->clipboard = captureNodeClipboardEntry(scene, *node);
+        return makeOk("copied " + node->getPath(),
+                      "{\"path\":\"" + jsonEscape(node->getPath()) + "\"}");
+      });
+
+  bus.registerHandler(
+      "paste_as_sibling",
+      CommandMetadata{"paste_as_sibling <targetPath>", inverseFromMetadata(), true},
+      [&scene, &editorState, state](std::vector<std::string> args) {
+        if (args.size() != 1) {
+          return makeError("usage: paste_as_sibling <targetPath>");
+        }
+        if (!state->clipboard.has_value()) {
+          return makeError("clipboard is empty");
+        }
+
+        SceneNode *target = nullptr;
+        const CommandResult found = requireNode(scene, args[0], target);
+        if (!found.ok) {
+          return found;
+        }
+        const auto parent = target->getParent();
+        if (!parent) {
+          return makeError("cannot paste sibling for node without parent: " +
+                           target->getPath());
+        }
+
+        const auto pasted = instantiateClipboardSubtree(
+            scene, *state->clipboard, parent, true, true);
+        registerSubtreeWithScene(scene, pasted);
+        attachClipboardDirectionalLights(scene, *state->clipboard, pasted);
+        editorState.select({pasted});
+
+        const std::string pastedPath = pasted->getPath();
+        const std::string stashId = allocateStashId(*state);
+        CommandResult result = makeOk(
+            "pasted " + pastedPath,
+            "{\"path\":\"" + jsonEscape(pastedPath) + "\"}");
+        result.metadata["inverse.line"] =
+            "__remove_to_stash " + quoteToken(pastedPath) + " " +
+            quoteToken(stashId);
+        result.metadata["redo.line"] =
+            "__restore_from_stash " + quoteToken(stashId) + "\nselect " +
+            quoteToken(pastedPath);
         return result;
       });
 

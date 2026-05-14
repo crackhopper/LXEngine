@@ -9,6 +9,7 @@
 #include "demos/lxe_editor/scene_builder.hpp"
 #include "demos/lxe_editor/scene_document.hpp"
 
+#include <cctype>
 #include <filesystem>
 #include <iostream>
 #include <memory>
@@ -50,6 +51,25 @@ isRuntimeDebugDrawNode(const LX_core::SceneNodeSharedPtr& node) {
 
 [[nodiscard]] bool isLegacyEditorHelperName(const std::string& name) {
   return name == LegacyCameraHelperNodeName || name == LegacyLightHelperNodeName;
+}
+
+[[nodiscard]] std::string stripCopySuffix(const std::string& name) {
+  const std::string suffix = ".copy";
+  const auto suffixPos = name.rfind(suffix);
+  if (suffixPos == std::string::npos) {
+    return name;
+  }
+  const usize afterSuffix = suffixPos + suffix.size();
+  if (afterSuffix == name.size()) {
+    return name.substr(0, suffixPos);
+  }
+  if (afterSuffix + 4 == name.size() && name[afterSuffix] == '.' &&
+      std::isdigit(static_cast<unsigned char>(name[afterSuffix + 1])) &&
+      std::isdigit(static_cast<unsigned char>(name[afterSuffix + 2])) &&
+      std::isdigit(static_cast<unsigned char>(name[afterSuffix + 3]))) {
+    return name.substr(0, suffixPos);
+  }
+  return name;
 }
 
 [[nodiscard]] bool isLegacyEditorHelperNode(
@@ -327,6 +347,19 @@ findDocumentNodeByName(const SceneNodeDocument& node, const std::string& nodeNam
   return nullptr;
 }
 
+[[nodiscard]] const SceneNodeDocument*
+findDocumentNodeByNameOrCopySource(const SceneNodeDocument& node,
+                                   const std::string& nodeName) {
+  if (const auto* exact = findDocumentNodeByName(node, nodeName)) {
+    return exact;
+  }
+  const std::string sourceName = stripCopySuffix(nodeName);
+  if (sourceName == nodeName) {
+    return nullptr;
+  }
+  return findDocumentNodeByName(node, sourceName);
+}
+
 [[nodiscard]] CameraNodeState
 captureCameraState(const LX_core::CameraComponent& camera) {
   return CameraNodeState{
@@ -372,9 +405,8 @@ captureSceneDocument(const std::shared_ptr<SceneRuntimeData>& runtime) {
     entry.transform = node->getLocalTransform();
     entry.visibilityMask = node->getVisibilityLayerMask();
 
-    if (const auto* existing =
-            findDocumentNodeByName(runtime->document.rootNode(),
-                                   node->getNodeName())) {
+    if (const auto* existing = findDocumentNodeByNameOrCopySource(
+            runtime->document.rootNode(), node->getNodeName())) {
       entry.visibilityMask = existing->visibilityMask;
       entry.meshUri = existing->meshUri;
       entry.materialUri = existing->materialUri;

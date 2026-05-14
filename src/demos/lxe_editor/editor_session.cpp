@@ -111,6 +111,7 @@ cameraControlModeName(const UiOverlay::CameraControlMode mode) {
       "set",
       "add",
       "remove",
+      "paste_as_sibling",
       "undo",
       "redo",
       "__remove_to_stash",
