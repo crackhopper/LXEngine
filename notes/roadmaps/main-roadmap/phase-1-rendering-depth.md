@@ -204,7 +204,7 @@ vec3 ambient = (kD * irrd * albedo + prefiltered * (F * brdf.x + brdf.y)) * ao;
   - RT1 `RGBA8` — world normal（rg 八面体编码）+ roughness / metallic（ba）
   - RT2 `RGBA16F` — emissive（rgb）+ reserved
   - Depth 单独 attachment
-- **Geometry pass**：Scene renderable 走 `Pass_Deferred` 把几何 + 材质属性写进 G-Buffer；descriptor 沿用 REQ-031 保留名字集 + 材质 canonical binding
+- **Geometry pass**：Scene renderable 走 `Pass_Deferred` 把几何 + 材质属性写进 G-Buffer；descriptor 沿用 system-owned binding 保留名字集 + 材质 canonical binding
 - **Lighting pass**：fullscreen pass（复用 REQ-102 `FullscreenPass`）采样 G-Buffer，计算 PBR + IBL + shadow，写入 HDR scene color
 - **Scene-level 切换**：`Scene::setRenderPath(Forward | Deferred)`，`SceneNode::supportsPass(Pass_Deferred)` 基于 material template 的 `Pass_Deferred` 定义
 - **PipelineKey 稳定性**：forward / deferred 共享 `MaterialTemplate`，但 pass 不同 → `PipelineKey` 自然区分；scene-level 切换不改变身份

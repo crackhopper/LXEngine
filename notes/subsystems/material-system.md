@@ -2,7 +2,7 @@
 
 > 材质系统的核心不是一堆独立状态，而是 `MaterialTemplate + MaterialInstance` 的分层：template 持有 pass 结构与 shader variants，instance 只持有一份 canonical 运行期参数、资源和 pass enable 状态。
 >
-> 权威 spec: `openspec/specs/material-system/spec.md` + `openspec/specs/forward-shader-variant-contract/spec.md`
+> 权威 spec: `openspec/specs/material-system/spec.md`
 
 ## 它解决什么问题
 

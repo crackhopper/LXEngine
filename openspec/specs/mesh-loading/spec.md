@@ -36,7 +36,7 @@ The ObjLoader SHALL provide access to loaded mesh data including vertices, norma
 
 ### Requirement: GLTF mesh loading
 
-The mesh loading system SHALL provide a `GLTFLoader` class capable of loading glTF 2.0 files. Parsing SHALL be implemented by the vendored `cgltf` library (see capability `gltf-pbr-loader`), not by any stub. The loader SHALL support ASCII `.gltf` with external `.bin` and external image references as its primary path; `.glb` MAY also work via cgltf's own auto-detection but is not a primary acceptance target. The loader SHALL throw `std::runtime_error` on parse failure with a message that contains the input filename.
+The mesh loading system SHALL provide a `GLTFLoader` class capable of loading glTF 2.0 files. Parsing SHALL be implemented by the vendored `cgltf` library, not by any stub. The loader SHALL support ASCII `.gltf` with external `.bin` and external image references as its primary path; `.glb` MAY also work via cgltf's own auto-detection but is not a primary acceptance target. The loader SHALL throw `std::runtime_error` on parse failure with a message that contains the input filename.
 
 #### Scenario: Load valid GLTF file
 
@@ -59,7 +59,7 @@ const std::vector<LX_core::Vec4f>& getTangents() const;
 const GLTFPbrMaterial&             getMaterial() const;
 ```
 
-`getTangents()` SHALL return an empty vector when the glTF file does not declare a `TANGENT` accessor for the consumed primitive; the loader SHALL NOT generate tangents automatically. `getMaterial()` SHALL return a `GLTFPbrMaterial` describing the primitive's bound glTF material (see capability `gltf-pbr-loader`).
+`getTangents()` SHALL return an empty vector when the glTF file does not declare a `TANGENT` accessor for the consumed primitive; the loader SHALL NOT generate tangents automatically. `getMaterial()` SHALL return a `GLTFPbrMaterial` describing the primitive's bound glTF material.
 
 #### Scenario: Get GLTF vertex positions
 

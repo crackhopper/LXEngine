@@ -33,7 +33,7 @@ LX 当前的 `FrameGraph` 名字与业界 *frame graph* 重叠，但它实际上
 | 02 | [数据驱动方式](02-数据驱动方式.md) | JSON 节点结构 + 四种资源类型（attachment / texture / buffer / reference）+ 为什么需要 reference |
 | 03 | [实现层数据结构](03-实现层数据结构.md) | `FrameGraphResource` / `FrameGraphNode` 字段拆解 + Builder 模式 + 四步生命周期 |
 | 04 | [compile 阶段](04-compile-阶段.md) | 构边 / 拓扑排序（DFS + 三态 visited）/ resource aliasing（ref_count + free_list） |
-| 05 | [LX 当前状态对照](05-LX当前状态对照.md) | 字段级 / 能力级 gap 分析；REQ-009 target 轴的占位现状 |
+| 05 | [LX 当前状态对照](05-LX当前状态对照.md) | 字段级 / 能力级 gap 分析；target 轴的占位现状 |
 | 06 | [演进路径](06-演进路径.md) | REQ-A..G 切分；风险点与可独立交付的中间里程碑 |
 
 ## TL;DR

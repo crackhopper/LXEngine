@@ -3,8 +3,6 @@
 > `EngineLoop` 是 renderer 之上的运行时编排层。它不关心 Vulkan 细节，也不负责决定 pass / pipeline 如何构建；它负责把“开始一个场景”和“执行一帧”组织成稳定、可复用的引擎入口。
 >
 > 如果你刚接触这个概念，先看 [`../concepts/engine-loop.md`](../concepts/engine-loop.md)。本文档更偏当前实现和接口行为。
->
-> 对应需求归档：`notes/requirements/finished/020-engine-loop-and-scene-lifecycle.md`
 
 ## 它解决什么问题
 
@@ -151,4 +149,4 @@ App / Demo
 - `notes/architecture.md`
 - `notes/subsystems/vulkan-backend.md`
 - `notes/tutorial/05-app-main.md`
-- `notes/requirements/finished/020-engine-loop-and-scene-lifecycle.md`
+- `src/core/gpu/engine_loop.hpp`

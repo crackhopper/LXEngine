@@ -321,7 +321,7 @@ for (auto& [texHandle, uploadHandle] : completedTextures) {
 | `pipeline-key/spec.md` | 不变 |
 | `pipeline-signature/spec.md` | 不变 |
 | `renderer-backend-vulkan/spec.md` | 会扩展：新增 `VulkanGpuJobOrchestrator` 章节 |
-| 新增 spec | `openspec/specs/task-scheduler/spec.md`、`openspec/specs/gpu-job/spec.md` |
+| 新增 spec | 后续立项时再创建 task scheduler / gpu job specs；当前仓库不预留空 spec 文件 |
 
 ## 6.9 实施路径（和 04 演进路径映射）
 

@@ -80,16 +80,18 @@ OBJ / GLTF loader 也已经存在，因此我们不一定要自己手写顶点�
 
 可以把现状理解成三层：
 
-- 已实现：`assets/` 目录约定与测试资产基线（REQ-010）、OBJ / GLTF mesh loader、texture loading、`Skeleton` 资源、显式 runtime asset root helper（旧 `cdToWhereAssetsExist()` 保留为 fallback）
-- 部分实现：GLTF 已经不只是几何输入，还带上了 PBR 材质元数据
-- 尚未实现：统一的材质模板加载契约，以及 IBL 资源作为正式资产接入 scene
+- 已实现：`assets/` 目录约定与测试资产基线、OBJ / GLTF mesh loader、texture loading、`Skeleton` 资源、显式 runtime asset root helper（旧 `cdToWhereAssetsExist()` 保留为 fallback）
+- 已实现：GLTF 已经不只是几何输入，还带上了 PBR 材质元数据
+- 已实现：通用 `.material` loader 可以承载 shader / pass / 默认参数 / 默认资源
+- 尚未实现：IBL 资源作为正式资产接入 scene
 
-对应需求：
+当前资产相关合同主要下沉到 specs 与 subsystem 文档：
 
-- [`REQ-010`](../../requirements/finished/010-test-assets-and-layout.md)：测试资产与 `assets/` 目录约定
-- [`REQ-011`](../../requirements/finished/011-gltf-pbr-loader.md)：GLTF + PBR 元数据加载
-- [`REQ-025`](../../requirements/025-custom-material-template-and-loader.md)：自定义材质模板与模板 loader 契约
-- [`REQ-028`](../../requirements/028-ibl-environment-lighting.md)：IBL 环境光资源接入
+- `openspec/specs/asset-directory-convention/spec.md`
+- `openspec/specs/asset-path-helper/spec.md`
+- `openspec/specs/mesh-loading/spec.md`
+- `openspec/specs/material-asset-loader/spec.md`
+- `notes/subsystems/material-system.md`
 
 ## 往实现层再走一步
 

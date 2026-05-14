@@ -1,5 +1,7 @@
 # REQ-039-a: DebugDraw 子系统 — 一行调用画世界空间线 / 球 / 视锥 / 锥 / 箭头 / 坐标轴
 
+> 2026-05-13 清理说明：本文件保留为 DebugDraw v1 的工作记录。复核发现 R5 的“调用线程安全：UI 线程与 render 线程都能调用”没有在当前代码中形成可验证实现：`DebugDraw` 使用全局 `State`、`std::unordered_map` 和 `std::vector`，未见同步保护或并发测试。该点已整理到 `tmp/notes/unfinished-finished-requirements.md` 作为后续有价值需求；在完成前，当前实现应按单线程 frame 内调用模型理解。
+
 > 本 REQ 是 [Phase 1.5 ImGui Editor MVP + 命令总线](../roadmaps/main-roadmap/phase-1.5-imgui-editor-mvp.md) 的第 5 步。在 roadmap 中以"REQ-150 DebugDraw 子系统"前向声明。
 >
 > 2026-05-06 拆分：原 `039-debug-draw-subsystem.md` 即本档（v1，每帧瞬时 draw + 几何原语 only）。persistent draw / 整 mesh 线框等 v2 方向曾被讨论，但 2026-05-11 起已不在 active 队列中。

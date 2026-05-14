@@ -34,5 +34,4 @@
 
 - [`../../subsystems/material-system.md`](../../subsystems/material-system.md) — 实现层设计文档
 - `openspec/specs/material-system/spec.md` — 材质系统 spec
-- `openspec/specs/shader-binding-ownership/spec.md` — binding 归属 spec
 - `openspec/specs/material-asset-loader/spec.md` — 通用 loader spec

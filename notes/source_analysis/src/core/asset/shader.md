@@ -79,7 +79,7 @@
 ### System-owned binding：按名字切开反射结果的所有权边界
 
 这段代码看起来只是一个常量数组加一个 `contains`，但它其实是反射层和材质层
-之间的所有权契约，来源是 REQ-031。
+之间的所有权契约，当前合同见 `openspec/specs/material-system/spec.md`。
 
 `IShader::getReflectionBindings()` 会把 shader 里所有 descriptor binding 都暴露出来，
 不区分谁应该拥有它们。材质系统如果照单全收，就会出现两类 binding 被混在一起：

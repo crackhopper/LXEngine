@@ -2,7 +2,7 @@
 
 > 这个系统把 GLSL 文件变成运行时可消费的 `IShader`。它负责三件事：编译、反射、封装；现在反射结果除了 descriptor bindings，还显式包含 vertex-stage input contract。
 >
-> 权威 spec: `openspec/specs/shader-compilation/spec.md` + `openspec/specs/shader-reflection/spec.md` + `openspec/specs/forward-shader-variant-contract/spec.md`
+> 权威 spec: `openspec/specs/shader-compilation/spec.md` + `openspec/specs/shader-reflection/spec.md`
 
 ## 它解决什么问题
 

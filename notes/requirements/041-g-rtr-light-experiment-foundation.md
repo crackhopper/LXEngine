@@ -179,7 +179,7 @@ Inspector 不再通过节点名字猜测是否是 light。它应根据 scene doc
 - [REQ-041-d](041-d-scene-authoring-toolbar-palette.md) — 复用工具栏拖拽创建入口
 - [REQ-041-e](041-e-scene-authoring-inspector-material-and-visibility.md) — 复用 Inspector 与 CommandBus 编辑路径
 - [REQ-041-f](041-f-scene-authoring-node-rename-duplicate.md) — 复制三类 light 节点时需要 scene document 语义完整
-- [REQ-031](finished/031-global-shader-binding-contract.md) — system-owned binding 合同
+- `src/core/asset/shader_binding_ownership.hpp` 与 `openspec/specs/material-system/spec.md` — system-owned binding 合同
 
 ## 后续工作
 

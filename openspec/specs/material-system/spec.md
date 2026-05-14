@@ -151,7 +151,7 @@ The file-shader loader for `blinnphong_0` SHALL be named `loadBlinnPhongMaterial
 - **THEN** the returned `MaterialInstanceSharedPtr` has non-empty canonical parameter data, a resolvable `getPassShader()`, and default uniform values written via `setParameter(...)`
 
 #### Scenario: No DrawMaterial references remain
-- **WHEN** searching `src/` (excluding `openspec/changes/archive/`) for the symbol `DrawMaterial`
+- **WHEN** searching `src/` for the symbol `DrawMaterial`
 - **THEN** no matches are found
 
 ### Requirement: Engine-wide draw push constant ABI is model-only

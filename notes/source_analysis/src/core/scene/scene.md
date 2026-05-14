@@ -90,7 +90,7 @@ scene 上吗" 用 `m_scene.lock() != nullptr` 就能给出确定答案，不会�
 
 ### getSceneLevelResources：camera-node×target 与 light×pass 两轴筛选
 
-REQ-009 的核心设计：camera 按 target 选，light 按 pass 选 — 两条规则有意拆开，
+这条路径的核心设计：camera 按 target 选，light 按 pass 选 — 两条规则有意拆开，
 不合并成"同时过 pass 和 target"。原因来自身份的不同：
 
 - camera 的身份是"画到哪个 target"，与 pass 无关。同一个 `CameraComponent` 在 forward、
@@ -136,7 +136,7 @@ target 相关 camera 接受就保留），不是交集。
 3. 然后看 **`findByPath` / `dumpTree`**，它们解释为什么 Scene 需要一个 synthetic root，
    以及为什么 path 语义故意和 renderable 的 `nodeName` 解耦。
 4. 最后跳到 **`getSceneLevelResources` 两轴筛选**，这是整个文件设计上最非平凡的一段，
-   也是 REQ-009 落地的核心。
+   也是 scene-level 资源过滤的核心。
 5. 最后用 **`getCombinedCameraCullingMask`** 收尾，理解资源筛选和可见性裁剪
    为什么要解耦。
 

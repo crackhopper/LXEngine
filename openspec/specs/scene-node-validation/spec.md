@@ -84,14 +84,14 @@ At minimum, the validation rules SHALL be:
 - `USE_NORMAL_MAP => mesh` provides `inTangent` and `inUV`
 - `USE_SKINNING => mesh` provides `inBoneIDs` and `inBoneWeights`, and the node provides `SkeletonComponent/Bones`
 
-Additionally, `SceneNode` SHALL validate descriptor resource ownership using the `isSystemOwnedBinding()` query from `shader-binding-ownership`. The validation logic MUST NOT use hardcoded binding name comparisons (such as checking for `"MaterialUBO"`, `"CameraUBO"`, or `"LightUBO"` by literal string). Instead:
+Additionally, `SceneNode` SHALL validate descriptor resource ownership using the material-system `isSystemOwnedBinding()` query. The validation logic MUST NOT use hardcoded binding name comparisons (such as checking for `"MaterialUBO"`, `"CameraUBO"`, or `"LightUBO"` by literal string). Instead:
 
 - For each binding in the shader reflection:
   - If `isSystemOwnedBinding(binding.name)` returns `true` and the binding is `Bones`: validate that the node provides a `SkeletonComponent` whose skeleton resource exposes a `Bones` UBO resource.
   - If `isSystemOwnedBinding(binding.name)` returns `true` and the binding is not `Bones`: skip (scene provides these resources, not the renderable).
   - If `isSystemOwnedBinding(binding.name)` returns `false`: validate that the material's descriptor resources contain a resource with a matching `getBindingName()`.
 
-Reserved binding name misuse (type mismatch against the system contract) SHALL be validated as specified by `shader-binding-ownership` and SHALL be treated as `FATAL + terminate`.
+Reserved binding name misuse (type mismatch against the system contract) SHALL be validated as specified by the material-system binding ownership rules and SHALL be treated as `FATAL + terminate`.
 
 Any mismatch between the enabled variant set and the available mesh/skeleton/material resources MUST be treated as a structural validation failure and handled as `FATAL + terminate`.
 

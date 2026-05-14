@@ -14,7 +14,7 @@ backend 能直接消费的 draw 列表。
 可以先带着一个问题阅读：为什么 `RenderQueue` 不是一个全局队列？答案是，
 同一个 renderable 在不同 pass 下的 RenderingItem 本就不同（不同 shader、
 不同 binding、不同 pipelineKey），合并会让"按 pipelineKey 聚合"的语义崩塌；
-这里只在单个 pass 内部完成 REQ-009 两轴筛选、稳定排序、和 pipeline 去重。
+这里只在单个 pass 内部完成 scene resource 两轴筛选、稳定排序、和 pipeline 去重。
 
 源码入口：[render_queue.hpp](../../../../src/core/frame_graph/render_queue.hpp)
 
@@ -61,13 +61,13 @@ RenderingItem 共用同一条 pipeline，没必要重复构建。
 `FrameGraph::collectAllPipelineBuildDescs` 再做一遍 — 这是分层去重，避免单个 pass
 的预构建在拿不到全局视角时反复做无意义的工作。
 
-### buildFromScene：REQ-009 两轴筛选与 scene-level 资源拼接
+### buildFromScene：两轴筛选与 scene-level 资源拼接
 
 `RenderQueue::buildFromScene` 是 RenderQueue 唯一面向 Scene 的入口，也是把
 "scene 视角" 翻译成 "pass 视角" 的收口点。三步固定流程：
 
 1. 取 scene-level 资源：`scene.getSceneLevelResources(pass, target)` — 这一步本身
-   就是 REQ-009 的两轴筛选（camera 按 target 匹配，light 按 pass 匹配）的产物。
+   就是两轴筛选（camera 按 target 匹配，light 按 pass 匹配）的产物。
 2. 取该 target 上所有 camera 的 OR-combined 可见性掩码，作为本 pass 的可见性下界。
 3. 遍历 `scene.getRenderables()`，对每个 renderable 串联三个独立条件：
    `supportsPass(pass)`、`getVisibilityLayerMask() & visibleMask != 0`、
@@ -104,9 +104,9 @@ RenderingItem 共用同一条 pipeline，没必要重复构建。
 2. 回到本页 `RenderQueue：一个 pass 内的 draw 列表与 pipeline 收口` 一节，看清
    它在数据流里只占两个端点：写入侧的 `buildFromScene` 和读出侧的
    `getItems / collectUniquePipelineBuildDescs`。
-3. 看 `buildFromScene` 一节 — REQ-009 两轴筛选第一次出现是在 `Scene::getSceneLevelResources`
+3. 看 `buildFromScene` 一节 — 两轴筛选第一次出现是在 `Scene::getSceneLevelResources`
    做 camera × target 与 light × pass 的资源筛选；本页里它再一次出现，是用 camera 的
-   OR-combined 可见性掩码反过来筛 renderable。两次筛选的"轴"不同，但都来自同一条 REQ。
+   OR-combined 可见性掩码反过来筛 renderable。两次筛选的"轴"不同，但属于同一条 scene resource 过滤路径。
 4. 最后读 `sort` 与 `collectUniquePipelineBuildDescs` — 它们是同一组事实的两次利用：
    排序让相同 pipelineKey 的 draw 相邻，预构建去重让相同 pipelineKey 只被 backend 构建一次。
 
@@ -145,12 +145,12 @@ RenderQueue 只负责 *单个 pass* 内的收口。跨 pass 的两件事都在 `
   `targetSig = desc.getPipelineSignature()`。这意味着相同几何 + 相同材质在两个
   attachment format 不同的 pass 里会被算成两条 pipeline，与 Vulkan renderpass
   兼容性规则对齐 — 这是显式化"pipeline 与 attachment format 强绑"的硬约束。
-- **REQ-009 target 轴变得有真实负载**：当前所有 pass / Camera 默认 target 相同，
+- **target 轴变得有真实负载**：当前所有 pass / Camera 默认 target 相同，
   target 轴几乎不做事；REQ-042 R2 让 RenderTargetDesc 长出 MRT、stencil、layer
   等真字段后，target 轴才会有非平凡的过滤行为。
 - **`collectUniquePipelineBuildDescs` 去重粒度自然变细**：targetSig 进入
   PipelineKey 后，本队列内"同 pipelineKey"的判定自动包含 attachment format 一致
   这一条，不需要额外代码
 
-本页 `buildFromScene` 一节的"REQ-009 两轴筛选"叙事在 REQ-042 落地前都成立；
+本页 `buildFromScene` 一节的“两轴筛选”叙事在 REQ-042 落地前都成立；
 落地后需要按上面四条同步重写。

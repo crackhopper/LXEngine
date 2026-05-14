@@ -154,13 +154,10 @@ notes/
 
 ```text
 openspec/
-├── specs/               # 当前有效规范（权威）
-└── changes/
-    ├── archive/         # 已落地变更归档
-    └── ...              # 活跃变更
+└── specs/               # 当前有效规范（权威）
 ```
 
-`openspec/specs/` 是子系统行为的权威描述。`openspec/changes/archive/` 是历史记录，参考有用，不当作当前事实来源。
+`openspec/specs/` 是子系统行为的权威描述。历史 change 归档已清理；需要判断当前行为时看 `src/`、`openspec/specs/` 和 `notes/`。
 
 ## scripts/
 
@@ -190,7 +187,7 @@ scripts/
 - `build/`：构建产物
 - `src/infra/external/`：第三方 vendored 代码
 - `third_party/`：项目直接引入的第三方源码，例如 ImGuizmo
-- `openspec/changes/archive/`：历史归档
+- `openspec/changes/`：历史 change 已清理，不作为当前事实来源
 - `notes/requirements/finished/`：历史需求
 - `notes/ai-scanned/`：历史扫描快照
 

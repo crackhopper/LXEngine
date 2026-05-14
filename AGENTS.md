@@ -132,7 +132,7 @@ Core specs commonly needed by agents:
 - `openspec/specs/test-build-execution/spec.md`
 - `openspec/specs/notes-writing-style/spec.md`
 
-Active implementation proposals live in `openspec/changes/`. Archived history lives in `openspec/changes/archive/`.
+OpenSpec change archives are pruned from this repository. Current behavior lives in `openspec/specs/`, `notes/`, and `src/`; do not depend on historical `openspec/changes/` content.
 
 ## Design And Notes Entry Points
 

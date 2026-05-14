@@ -28,9 +28,9 @@
 6. **实施顺序变化时的重排**：当依赖图变了（新依赖、新优先级），如果导致现有 pending 文件号顺序与实施顺序不一致，先判断能否用局部后缀族表达。只有不能局部表达时才**重排数字号**：
    - 调整需要的 `mv` 命令：`mv NNN-slug.md MMM-slug.md`
    - 同步更新所有引用
-   - **不**改 `openspec/changes/archive/` 中的归档（历史快照不动）
+   - OpenSpec 历史 change 已清理；不要依赖 `openspec/changes/archive/` 作为当前事实来源
 
-7. **`finished/` 归档不动**：已归档需求的文件号是当时完成顺序的快照，**不**回溯重排。新增 finished 时直接保留它在 active 时的文件号。
+7. **`finished/` 只保留近期工作记录**：已归档需求的文件号是当时完成顺序的快照，**不**回溯重排。`finished/` 不是永久历史库；过时需求应下沉到 subsystem / concept / roadmap / spec，目录内原则上只保留最近约 10 个仍有直接协作价值的需求。
 
 8. **speculative 候选编号用字母**：研究文档中的“未来 REQ”用字母占位（`REQ-A`、`REQ-B` ...），不要占用数字号。数字号留给真正落地到 `notes/requirements/` 的文件。
 
@@ -59,6 +59,7 @@
 
 ## 历史
 
+- 2026-05-13：清理 `finished/`，删除 `REQ-034` 及以前的过时归档，只保留近期 10 个需求（`REQ-035` 到 `REQ-041-c`）。仍有价值的上下文下沉到 concept / subsystem / roadmap / spec，未完成存疑点记录到 `tmp/notes/unfinished-finished-requirements.md`。
 - 2026-05-11：按当前代码与目标重整 active REQ。删除 `041-g`~`041-j`，并把保留需求改写为面向测试场景搭建的 `041-d` / `041-e` / `041-f`。
 - 2026-05-11：在 `041-f` 后新增 RTR 第五章实验底座需求：`041-g` 多类型光源数据与作者入口、`041-h` 实验材质接入与节点级参数覆盖。两者只定义环境能力，不实现具体光照公式或 Gooch shader。
 - 2026-05-08：`REQ-041-c` 编辑器多选 / 框选完成验证并归档到 `finished/041-c-editor-multi-select.md`。

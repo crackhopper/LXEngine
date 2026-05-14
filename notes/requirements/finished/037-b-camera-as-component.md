@@ -91,7 +91,7 @@ class CameraComponent final : public IComponent {
 ### R7: 控制器仍写 owner SceneNode 的 local transform
 
 - `OrbitCameraController::update(cameraComp, input, dt)` 内部计算 eye/target/up 后调 `cameraComp.lookAt(...)` —— R3 实现已经把这一步写回 owner 的 SceneNode
-- 这保证 [REQ-015](015-orbit-camera-controller.md) / [REQ-016](016-freefly-camera-controller.md) 完成的控制器代码 *逻辑* 无需改动，仅参数类型从 `Camera*` 改为 `CameraComponent*`
+- 这保证 Orbit / FreeFly 控制器代码 *逻辑* 无需改动，仅参数类型从 `Camera*` 改为 `CameraComponent*`
 
 ## 测试
 
@@ -131,7 +131,7 @@ class CameraComponent final : public IComponent {
 - [REQ-037-a IComponent 基础设施](037-a-component-model-foundation.md) — `CameraComponent` 是其第一个非 mesh-bearing 应用，**硬前置**
 - [REQ-035 Transform 组件](035-transform-component.md) — Camera 通过 owner SceneNode 间接消费
 - [REQ-036 路径查询](036-scene-node-path-lookup.md) — `Scene::findByPath("/editor_cam")` 命中 camera 节点
-- 现有 [REQ-026 Camera visibility layer mask](026-camera-visibility-layer-mask.md) — culling mask 字段不变
+- 现有 camera visibility layer mask — culling mask 字段不变
 
 ## 后续工作
 

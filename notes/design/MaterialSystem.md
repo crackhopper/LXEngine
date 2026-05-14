@@ -9,8 +9,8 @@
 细节约束看：
 
 - `openspec/specs/material-system/spec.md`
-- `notes/requirements/finished/021-renderable-variants-and-push-constant-cleanup.md`
-- `notes/requirements/finished/022-material-pass-selection.md`
+- `openspec/specs/material-asset-loader/spec.md`
+- `notes/subsystems/material-system.md`
 
 ## 一句话模型
 
@@ -144,4 +144,4 @@ variants 属于 shader/program 形态，因此归属 `MaterialTemplate`，不归
 
 1. 先看本页，建立边界
 2. 再看 `notes/subsystems/material-system.md`，了解当前实现
-3. 最后看 REQ-021 / REQ-022，理解这轮重构为什么要动这些边界
+3. 最后看 `openspec/specs/material-system/spec.md`，确认 pass enable、binding ownership 和 renderable validation 的当前合同

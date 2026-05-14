@@ -1,5 +1,7 @@
 # REQ-041-a: ImGui Editor MVP — 场景树 / inspector / TRS gizmo / 视口 overlay / F 键预览
 
+> 2026-05-13 清理说明：本文件保留为 editor MVP 的工作记录。正文仍包含早期 `Camera`、`Camera::m_active`、`selected.getWorldAABB()` 和“REQ-041-e 待创建”等 stale 表述；当前 editor 已继续演进到 041-d/e/f，当前 API 以 `CameraComponent`、`getWorldBounds()`、`src/demos/lxe_editor/` 和 active 041-* 需求为准。
+
 > 本 REQ 是 [Phase 1.5 ImGui Editor MVP + 命令总线](../roadmaps/main-roadmap/phase-1.5-imgui-editor-mvp.md) 的第 7 步（收口）。在 roadmap 中以"REQ-152 ImGui Editor MVP"前向声明。
 >
 > 2026-05-06 拆分：原 `041-imgui-editor-mvp.md` 即本档（v1，单选 + 4 面板 + F 键预览）。后续 active 工作已经在 2026-05-11 重整为面向测试场景作者链路的 3 份 REQ：[REQ-041-d 工具栏几何体 / 光源 / 相机拖拽创建](../041-d-scene-authoring-toolbar-palette.md) / [REQ-041-e Inspector 的材质 / 颜色 / 可见性收敛](../041-e-scene-authoring-inspector-material-and-visibility.md) / [REQ-041-f Rename / Duplicate 对齐 scene document](../041-f-scene-authoring-node-rename-duplicate.md)。
@@ -179,8 +181,8 @@ R6 引入的 `Camera::m_active` 与 [REQ-042 R6](042-render-target-desc-and-targ
 - [REQ-038 picking](finished/038-a-ray-aabb-picking-min.md) — 视口点击
 - [REQ-039 DebugDraw](finished/039-a-debug-draw-subsystem.md) — frustum / arrow / wireBox 可视化
 - [REQ-040 命令总线](finished/040-a-editor-command-bus.md) — 所有交互的统一入口
-- [REQ-017](finished/017-imgui-overlay.md) ImGui + SDL3 + Vulkan 基础设施
-- [REQ-018](finished/018-debug-panel-helper.md) 现有 debug panel helper（可选复用）
+- ImGui + SDL3 + Vulkan 基础设施
+- 现有 debug panel helper（可选复用）
 
 ## 后续工作
 

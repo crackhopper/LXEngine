@@ -54,11 +54,7 @@ dirLight->ubo->setDirty();
 - 还没有：IBL 环境光资源接入
 - 还没有：正式的多光源资源模型
 
-对应需求：
-
-- [`REQ-027`](../../requirements/027-spot-light.md)
-- [`REQ-028`](../../requirements/028-ibl-environment-lighting.md)
-- [`REQ-029`](../../requirements/029-multi-light-scene-resource-model.md)
+当前正在排队补齐的方向见 `notes/requirements/041-g-rtr-light-experiment-foundation.md`：先为 Directional / Point / Spot Light 建立可保存、可编辑、可上传的数据底座，再进入具体光照公式。
 
 ## 这条边界为什么重要
 
@@ -80,5 +76,5 @@ dirLight->ubo->setDirty();
 
 继续展开时，可以参考：
 
-- [light.hpp](/home/lx/proj/renderer-demo/src/core/scene/light.hpp:17)
+- [light.hpp](/home/lixiang/proj/LXEngine/src/core/scene/light.hpp:1)
 - [`../../subsystems/scene.md`](../../subsystems/scene.md)

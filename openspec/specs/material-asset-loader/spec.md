@@ -76,7 +76,7 @@ If a parameter or resource name in the yaml does not match any reflected binding
 - **THEN** the loader proceeds without error
 
 ### Requirement: Material asset file does not participate in ownership
-The YAML material asset file SHALL NOT contain any fields that declare or override binding ownership. Ownership is determined solely by `shader-binding-ownership` (REQ-031) and shader reflection.
+The YAML material asset file SHALL NOT contain any fields that declare or override binding ownership. Ownership is determined by the material-system system-owned binding rules and shader reflection.
 
 #### Scenario: Yaml cannot override system-owned status
 - **WHEN** a yaml attempts to treat `CameraUBO` as a material parameter binding
@@ -123,4 +123,3 @@ Parameters and resources listed in the yaml SHALL be treated as defaults and met
 #### Scenario: Unlisted parameter remains valid
 - **WHEN** a shader reflects `MaterialUBO.specularIntensity` but the yaml does not mention it
 - **THEN** `specularIntensity` is zero-initialized and can be set at runtime via `setParameter` or `setFloat`
-

@@ -31,7 +31,7 @@ core 层这层"frame graph"只承担"per-pass per-scene 预构建"的薄壳角�
 
 `FramePass` 把三件本来分散的事打包成一个结构体：
 
-- `name`：StringID，匹配 REQ-007 的 `Pass_*` 常量；它是这条 pass 在 scene-level
+- `name`：StringID，匹配当前 `Pass_*` 常量；它是这条 pass 在 scene-level
   资源筛选、material pass 选择、shader 变体合并里的统一身份
 - `target`：这条 pass 的输出形状。当前类型是 `RenderTarget`（占位实现，详见
   `render_target.md`），REQ-042 落地后会改为 `RenderTargetDesc`
@@ -53,7 +53,7 @@ scene-level 资源；分开存就要在 `FrameGraph` 里维护"i-th name 对应 
 
 - 持有 `vector<FramePass>`：通过 `addPass` 累加，顺序即提交顺序
 - 在 `buildFromScene` 时按 pass 顺序逐个调用 `RenderQueue::buildFromScene`，
-  把 `pass.target` 透传下去（REQ-009 target 轴的入口）
+  把 `pass.target` 透传下去（target 轴的入口）
 
 注意它 *不* 做 pass 间依赖分析、不做 pass reorder、不做 attachment 复用 —
 这些都是 backend 渲染图（render graph）的职责。core 层的 FrameGraph 只是
@@ -71,7 +71,7 @@ scene-level 资源；分开存就要在 `FrameGraph` 里维护"i-th name 对应 
 画到哪种 target"两个参数从 FramePass 解包后透传给 RenderQueue。
 
 这种"FrameGraph 不做语义、只做调度"的写法把"pass × scene"二维问题摊成
-一维循环。每一条 pass 的 RenderQueue 内部独立完成 REQ-009 两轴筛选，
+一维循环。每一条 pass 的 RenderQueue 内部独立完成两轴筛选，
 FrameGraph 只负责保证 *每条 pass 都被处理一次* 这一条简单不变量。
 
 调用语义上这是重建而非增量：每次 `buildFromScene` 都触发每个 queue 的

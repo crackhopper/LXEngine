@@ -162,7 +162,7 @@ class CommandBus {
 ### R8: 安全约束
 
 - 命令不直接执行任意文件系统 I/O（`add mesh /etc/passwd` 不能读 root）
-- `add mesh <path>` 的 path 必须经过 `assets/` 目录策略校验（沿用 [REQ-010](010-test-assets-and-layout.md) / [REQ-011](011-gltf-pbr-loader.md) 的 asset 路径解析）
+- `add mesh <path>` 的 path 必须经过 `assets/` 目录策略校验（沿用当前 asset path helper 与 mesh loading 合同）
 - 不引入 `exec` / `eval` / shell 命令
 - 命令不直接 `assert` 退出进程；非法输入仅返回 `{ ok: false }`
 
@@ -203,7 +203,7 @@ class CommandBus {
 - [REQ-036 路径查询](036-scene-node-path-lookup.md) — 所有 `<path>` 参数靠 `findByPath`
 - [REQ-037-b Camera 作为 component](037-b-camera-as-component.md) — `move camera_main` / `cam ...` 命令统一接口
 - [REQ-038 picking](038-a-ray-aabb-picking-min.md) — 视口点击 → 内部生成 `select <path>` 命令
-- [REQ-017](017-imgui-overlay.md) ImGui overlay — 控制台面板的渲染
+- ImGui overlay — 控制台面板的渲染
 
 ## 后续工作
 

@@ -27,7 +27,7 @@
 
 **不做：**
 
-- picture-in-picture 相机预览（依赖 [REQ-042](../../requirements/042-render-target-desc-and-target.md) RenderTarget 重写，后置到本 phase 完工后、Phase 1 [REQ-103 Shadow](phase-1-rendering-depth.md#req-103--shadow-pass--depth-only-pipeline) 之前；与之配套的 [REQ-034 删 getHash dead code](../../requirements/finished/034-remove-render-target-get-hash.md) cleanup 已归档、不阻塞本 phase）
+- picture-in-picture 相机预览（依赖 [REQ-042](../../requirements/042-render-target-desc-and-target.md) RenderTarget 重写，后置到本 phase 完工后、Phase 1 [REQ-103 Shadow](phase-1-rendering-depth.md#req-103--shadow-pass--depth-only-pipeline) 之前；`RenderTarget::getHash` cleanup 已完成，不阻塞本 phase）
 - 文件系统 asset browser 对话框（用命令 `add mesh <path>` 替代）
 - 多选 / 框选（v1 仅单选）
 - 撤销 / 重做（命令总线预留 history 字段，逻辑 v2 再做）
@@ -117,8 +117,8 @@ v2 一族（041-b ~ 041-j；按各自立项窗口推进，可与 Phase 1 / Phase
 - 复用 `SceneNode` 现有 parent/child + dirty 传播逻辑（`src/core/scene/object.hpp:122-176`），不重写
 - 复用 `Camera::cullingMask` × `SceneNode::visibilityLayerMask` 交集过滤（`src/core/scene/scene.cpp:109-120`）—— gizmo / debug 线挂 `Layer_EditorOverlay` bit 即可与游戏相机隔离
 - 复用 `PrimitiveTopology::LineList` + backend `topologyToVk`（`src/core/scene/index_buffer.hpp:18-25`）—— DebugDraw pipeline 直接消费
-- 复用 ImGui + SDL3 + Vulkan 集成（[REQ-017](../../requirements/finished/017-imgui-overlay.md)）—— 只新增面板，不动后端
-- 复用 `IInputState` / Orbit / FreeFly 控制器（[REQ-012](../../requirements/finished/012-input-abstraction.md) / [REQ-015](../../requirements/finished/015-orbit-camera-controller.md) / [REQ-016](../../requirements/finished/016-freefly-camera-controller.md)）—— 编辑器相机直接复用 FreeFly
+- 复用 ImGui + SDL3 + Vulkan 集成——只新增面板，不动后端
+- 复用 `IInputState` / Orbit / FreeFly 控制器——编辑器相机直接复用 FreeFly
 
 ## 风险
 
