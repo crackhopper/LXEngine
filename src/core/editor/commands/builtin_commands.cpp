@@ -149,6 +149,20 @@ struct NodeClipboardEntry final {
   }
 }
 
+[[nodiscard]] std::optional<i32> parseInt(const std::string &text) {
+  try {
+    size_t index = 0;
+    const long value = std::stol(text, &index, 0);
+    if (index != text.size() || value < std::numeric_limits<i32>::min() ||
+        value > std::numeric_limits<i32>::max()) {
+      return std::nullopt;
+    }
+    return static_cast<i32>(value);
+  } catch (...) {
+    return std::nullopt;
+  }
+}
+
 [[nodiscard]] std::optional<Vec3f>
 parseVec3(const std::vector<std::string> &args, const usize startIndex) {
   if (startIndex + 2 >= args.size()) {
@@ -161,6 +175,21 @@ parseVec3(const std::vector<std::string> &args, const usize startIndex) {
     return std::nullopt;
   }
   return Vec3f{*x, *y, *z};
+}
+
+[[nodiscard]] std::optional<Vec4f>
+parseVec4(const std::vector<std::string> &args, const usize startIndex) {
+  if (startIndex + 3 >= args.size()) {
+    return std::nullopt;
+  }
+  const auto x = parseFloat(args[startIndex]);
+  const auto y = parseFloat(args[startIndex + 1]);
+  const auto z = parseFloat(args[startIndex + 2]);
+  const auto w = parseFloat(args[startIndex + 3]);
+  if (!x || !y || !z || !w) {
+    return std::nullopt;
+  }
+  return Vec4f{*x, *y, *z, *w};
 }
 
 [[nodiscard]] std::string quoteToken(std::string_view text) {
@@ -477,6 +506,41 @@ makeVerbListJson(const std::vector<std::string> &verbs) {
   return "{\"value\":" + std::to_string(value) + "}";
 }
 
+[[nodiscard]] const char *
+materialParameterTypeName(const MaterialParameterValueType type) {
+  switch (type) {
+  case MaterialParameterValueType::Float:
+    return "float";
+  case MaterialParameterValueType::Int:
+    return "int";
+  case MaterialParameterValueType::Vec3:
+    return "Vec3";
+  case MaterialParameterValueType::Vec4:
+    return "Vec4";
+  }
+  return "unknown";
+}
+
+[[nodiscard]] std::string
+makeMaterialValueJson(const MaterialParameterValue &value) {
+  switch (value.type) {
+  case MaterialParameterValueType::Float:
+    return std::to_string(value.floatValue);
+  case MaterialParameterValueType::Int:
+    return std::to_string(value.intValue);
+  case MaterialParameterValueType::Vec3:
+    return "[" + std::to_string(value.vectorValue.x) + "," +
+           std::to_string(value.vectorValue.y) + "," +
+           std::to_string(value.vectorValue.z) + "]";
+  case MaterialParameterValueType::Vec4:
+    return "[" + std::to_string(value.vectorValue.x) + "," +
+           std::to_string(value.vectorValue.y) + "," +
+           std::to_string(value.vectorValue.z) + "," +
+           std::to_string(value.vectorValue.w) + "]";
+  }
+  return "null";
+}
+
 [[nodiscard]] std::string lowerCopy(std::string text) {
   std::transform(
       text.begin(), text.end(), text.begin(),
@@ -546,6 +610,12 @@ completeCamActions(const CompletionContext &context) {
 
 [[nodiscard]] std::optional<std::pair<std::string, std::string>>
 splitFieldPath(const std::string &text) {
+  constexpr std::string_view kNodeMaterialMarker = ".nodeMaterial.";
+  if (const usize marker = text.find(kNodeMaterialMarker);
+      marker != std::string::npos && marker > 0) {
+    return std::make_pair(text.substr(0, marker), text.substr(marker + 1));
+  }
+
   constexpr std::string_view kNodeMaterialBaseColorSuffix =
       ".nodeMaterial.baseColor";
   if (text.size() > kNodeMaterialBaseColorSuffix.size() &&
@@ -766,6 +836,89 @@ findActiveCamera(Scene &scene, EditorState &editorState) {
   return makeError("unknown field: " + field);
 }
 
+struct NodeMaterialTarget final {
+  std::string binding;
+  std::string member;
+  std::string key;
+};
+
+[[nodiscard]] std::optional<NodeMaterialTarget>
+parseNodeMaterialTarget(const std::string &field) {
+  constexpr std::string_view prefix = "nodeMaterial.";
+  if (field.rfind(prefix, 0) != 0) {
+    return std::nullopt;
+  }
+  const std::string rest = field.substr(prefix.size());
+  const usize dot = rest.find('.');
+  if (dot == std::string::npos || dot == 0 || dot + 1 >= rest.size()) {
+    return std::nullopt;
+  }
+  NodeMaterialTarget target;
+  target.binding = rest.substr(0, dot);
+  target.member = rest.substr(dot + 1);
+  target.key = target.binding + "." + target.member;
+  return target;
+}
+
+[[nodiscard]] std::optional<MaterialParameterValue>
+parseMaterialParameterValue(const ShaderPropertyType type,
+                            const std::vector<std::string> &args,
+                            const usize valueStartIndex) {
+  MaterialParameterValue value;
+  switch (type) {
+  case ShaderPropertyType::Float: {
+    if (args.size() != valueStartIndex + 1) {
+      return std::nullopt;
+    }
+    const auto parsed = parseFloat(args[valueStartIndex]);
+    if (!parsed) {
+      return std::nullopt;
+    }
+    value.type = MaterialParameterValueType::Float;
+    value.floatValue = *parsed;
+    return value;
+  }
+  case ShaderPropertyType::Int: {
+    if (args.size() != valueStartIndex + 1) {
+      return std::nullopt;
+    }
+    const auto parsed = parseInt(args[valueStartIndex]);
+    if (!parsed) {
+      return std::nullopt;
+    }
+    value.type = MaterialParameterValueType::Int;
+    value.intValue = *parsed;
+    return value;
+  }
+  case ShaderPropertyType::Vec3: {
+    if (args.size() != valueStartIndex + 3) {
+      return std::nullopt;
+    }
+    const auto parsed = parseVec3(args, valueStartIndex);
+    if (!parsed) {
+      return std::nullopt;
+    }
+    value.type = MaterialParameterValueType::Vec3;
+    value.vectorValue = Vec4f{parsed->x, parsed->y, parsed->z, 0.0f};
+    return value;
+  }
+  case ShaderPropertyType::Vec4: {
+    if (args.size() != valueStartIndex + 4) {
+      return std::nullopt;
+    }
+    const auto parsed = parseVec4(args, valueStartIndex);
+    if (!parsed) {
+      return std::nullopt;
+    }
+    value.type = MaterialParameterValueType::Vec4;
+    value.vectorValue = *parsed;
+    return value;
+  }
+  default:
+    return std::nullopt;
+  }
+}
+
 [[nodiscard]] CommandResult getMaterialField(
     const SceneIoContext &context, const std::string &path,
     const std::string &field) {
@@ -791,6 +944,25 @@ findActiveCamera(Scene &scene, EditorState &editorState) {
     return makeOk("nodeMaterial.baseColor = (" + formatFloat(value->x) + ", " +
                       formatFloat(value->y) + ", " + formatFloat(value->z) + ")",
                   "{\"value\":" + makeVec3Json(*value) + "}");
+  }
+  if (const auto target = parseNodeMaterialTarget(field);
+      target.has_value()) {
+    if (!context.getNodeMaterialParameter) {
+      return makeError("material editing unavailable: parameter callback is not registered");
+    }
+    const auto value = context.getNodeMaterialParameter(
+        path, target->binding, target->member);
+    if (!value.has_value()) {
+      return makeError("node material parameter not available on node: " +
+                       target->key);
+    }
+    return makeOk("nodeMaterial." + target->key + " = " +
+                      makeMaterialValueJson(*value),
+                  "{\"binding\":\"" + jsonEscape(target->binding) +
+                      "\",\"member\":\"" + jsonEscape(target->member) +
+                      "\",\"type\":\"" +
+                      materialParameterTypeName(value->type) +
+                      "\",\"value\":" + makeMaterialValueJson(*value) + "}");
   }
   return makeError("unknown field: " + field);
 }
@@ -930,6 +1102,36 @@ findActiveCamera(Scene &scene, EditorState &editorState) {
              formatFloat(value->x) + " " + formatFloat(value->y) + " " +
              formatFloat(value->z);
     }
+  }
+  if (const auto target = parseNodeMaterialTarget(field);
+      target.has_value() && context.getNodeMaterialParameter) {
+    const auto value = context.getNodeMaterialParameter(
+        path, target->binding, target->member);
+    if (!value.has_value()) {
+      return {};
+    }
+    std::ostringstream oss;
+    oss << "set " << quoteToken(path + ".nodeMaterial." + target->key) << ' ';
+    switch (value->type) {
+    case MaterialParameterValueType::Float:
+      oss << formatFloat(value->floatValue);
+      break;
+    case MaterialParameterValueType::Int:
+      oss << value->intValue;
+      break;
+    case MaterialParameterValueType::Vec3:
+      oss << formatFloat(value->vectorValue.x) << ' '
+          << formatFloat(value->vectorValue.y) << ' '
+          << formatFloat(value->vectorValue.z);
+      break;
+    case MaterialParameterValueType::Vec4:
+      oss << formatFloat(value->vectorValue.x) << ' '
+          << formatFloat(value->vectorValue.y) << ' '
+          << formatFloat(value->vectorValue.z) << ' '
+          << formatFloat(value->vectorValue.w);
+      break;
+    }
+    return oss.str();
   }
   return {};
 }
@@ -1694,6 +1896,39 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
     }
     return context.setNodeMaterialBaseColor(path, *value);
   }
+  if (const auto target = parseNodeMaterialTarget(field);
+      target.has_value()) {
+    if (!context.getNodeMaterialParameter || !context.setNodeMaterialParameter) {
+      return makeError("material editing unavailable: parameter callback is not registered");
+    }
+    const auto current = context.getNodeMaterialParameter(
+        path, target->binding, target->member);
+    if (!current.has_value()) {
+      return makeError("material parameter not found: " + target->key);
+    }
+    ShaderPropertyType reflectedType = ShaderPropertyType::Float;
+    switch (current->type) {
+    case MaterialParameterValueType::Float:
+      reflectedType = ShaderPropertyType::Float;
+      break;
+    case MaterialParameterValueType::Int:
+      reflectedType = ShaderPropertyType::Int;
+      break;
+    case MaterialParameterValueType::Vec3:
+      reflectedType = ShaderPropertyType::Vec3;
+      break;
+    case MaterialParameterValueType::Vec4:
+      reflectedType = ShaderPropertyType::Vec4;
+      break;
+    }
+    const auto value = parseMaterialParameterValue(reflectedType, args,
+                                                  valueStartIndex);
+    if (!value.has_value()) {
+      return makeError("invalid value for material parameter: " + target->key);
+    }
+    return context.setNodeMaterialParameter(path, target->binding,
+                                            target->member, *value);
+  }
   return makeError("unknown field: " + field);
 }
 
@@ -2340,7 +2575,8 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
         if (!found.ok) {
           return found;
         }
-        if (field == "materialUri" || field == "nodeMaterial.baseColor") {
+        if (field == "materialUri" ||
+            field.rfind("nodeMaterial.", 0) == 0) {
           return getMaterialField(materialContext, nodePath, field);
         }
         return getField(*node, field);
@@ -2374,7 +2610,7 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
         }
         const std::string oldName = node->getName();
         const bool materialField =
-            field == "materialUri" || field == "nodeMaterial.baseColor";
+            field == "materialUri" || field.rfind("nodeMaterial.", 0) == 0;
         const std::string inverseLine =
             materialField
                 ? buildMaterialSetInverseCommand(materialContext, nodePath,
@@ -2390,6 +2626,44 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
               "set " + quoteToken(node->getPath() + ".name") + " " +
               quoteToken(oldName);
         } else if (result.ok && !inverseLine.empty()) {
+          result.metadata["inverse.line"] = inverseLine;
+        }
+        return result;
+      });
+
+  bus.registerHandler(
+      "clear",
+      CommandMetadata{"clear <path>.nodeMaterial.<binding>.<member>",
+                      inverseFromMetadata(), true},
+      [&scene, materialContext](std::vector<std::string> args) {
+        if (args.size() != 1) {
+          return makeError(
+              "usage: clear <path>.nodeMaterial.<binding>.<member>");
+        }
+        const auto split = splitFieldPath(args[0]);
+        if (!split.has_value()) {
+          return makeError(
+              "usage: clear <path>.nodeMaterial.<binding>.<member>");
+        }
+        const auto target = parseNodeMaterialTarget(split->second);
+        if (!target.has_value()) {
+          return makeError(
+              "usage: clear <path>.nodeMaterial.<binding>.<member>");
+        }
+        SceneNode *node = nullptr;
+        const CommandResult found = requireNode(scene, split->first, node);
+        if (!found.ok) {
+          return found;
+        }
+        (void)node;
+        if (!materialContext.clearNodeMaterialParameter) {
+          return makeError("material editing unavailable: parameter callback is not registered");
+        }
+        const std::string inverseLine = buildMaterialSetInverseCommand(
+            materialContext, split->first, split->second);
+        CommandResult result = materialContext.clearNodeMaterialParameter(
+            split->first, target->binding, target->member);
+        if (result.ok && !inverseLine.empty()) {
           result.metadata["inverse.line"] = inverseLine;
         }
         return result;

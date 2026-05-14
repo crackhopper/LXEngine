@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/asset/material_instance.hpp"
 #include "core/editor/command_bus.hpp"
 #include "core/scene/object.hpp"
 #include "core/scene/scene.hpp"
@@ -12,6 +13,12 @@
 #include <vector>
 
 namespace LX_demo::lxe_editor {
+
+struct RuntimeMaterialParameterValue final {
+  std::string binding;
+  std::string member;
+  LX_core::MaterialParameterValue value;
+};
 
 class SceneRuntime final {
 public:
@@ -39,10 +46,23 @@ public:
   nodeMaterialBaseColorForNode(const std::string& path) const;
   [[nodiscard]] bool nodeMaterialBaseColorEditable(const std::string& path) const;
   [[nodiscard]] std::vector<std::string> materialPresets() const;
+  [[nodiscard]] std::optional<LX_core::MaterialParameterValue>
+  nodeMaterialParameterForNode(const std::string& path,
+                               const std::string& binding,
+                               const std::string& member) const;
+  [[nodiscard]] std::vector<RuntimeMaterialParameterValue>
+  nodeMaterialParametersForNode(const std::string& path) const;
   LX_core::CommandResult setNodeMaterialUri(const std::string& path,
                                             const std::string& uri);
   LX_core::CommandResult setNodeMaterialBaseColor(
       const std::string& path, const LX_core::Vec3f& color);
+  LX_core::CommandResult setNodeMaterialParameter(
+      const std::string& path, const std::string& binding,
+      const std::string& member,
+      const LX_core::MaterialParameterValue& value);
+  LX_core::CommandResult clearNodeMaterialParameter(
+      const std::string& path, const std::string& binding,
+      const std::string& member);
   LX_core::CommandResult applyMaterialOverride(const std::string& path,
                                                const std::string& field);
 

@@ -9,11 +9,26 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
 namespace LX_core {
+
+enum class MaterialParameterValueType {
+  Float,
+  Int,
+  Vec3,
+  Vec4,
+};
+
+struct MaterialParameterValue final {
+  MaterialParameterValueType type = MaterialParameterValueType::Float;
+  float floatValue = 0.0f;
+  i32 intValue = 0;
+  Vec4f vectorValue{0.0f, 0.0f, 0.0f, 0.0f};
+};
 
 /*
 @source_analysis.section MaterialInstance：模板的运行时账本，而不是第二份模板
@@ -59,6 +74,12 @@ public:
                     const Vec3f &value);
   void setParameter(StringID bindingName, StringID memberName,
                     const Vec4f &value);
+  void setParameterValue(StringID bindingName, StringID memberName,
+                         const MaterialParameterValue &value);
+  [[nodiscard]] std::optional<MaterialParameterValue>
+  readParameterValue(StringID bindingName, StringID memberName) const;
+  [[nodiscard]] std::optional<std::reference_wrapper<const StructMemberInfo>>
+  findParameterMember(StringID bindingName, StringID memberName) const;
 
   void setTexture(StringID bindingName, CombinedTextureSamplerSharedPtr tex);
 
@@ -84,6 +105,7 @@ public:
   std::vector<StringID> getEnabledPasses() const;
   u64 addPassStateListener(std::function<void()> callback);
   void removePassStateListener(u64 listenerId);
+  [[nodiscard]] SharedPtr cloneInstanceData() const;
 
 private:
   std::optional<std::reference_wrapper<ParameterBuffer>>

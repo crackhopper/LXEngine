@@ -136,6 +136,43 @@ void test_pbr_example_material_loads() {
   std::cout << "  pbr_gold.material loads through the formal asset path\n";
 }
 
+void test_rtr_experiment_template_material_loads() {
+  std::cout << "\n-- test_rtr_experiment_template_material_loads --\n";
+  auto root = findProjectRoot();
+  if (root.empty()) {
+    std::cerr << "  SETUP: project root not found; skipping\n";
+    return;
+  }
+
+  auto prev = fs::current_path();
+  fs::current_path(root);
+  auto mat = loadGenericMaterial(root / "assets" / "materials" /
+                                 "rtr_experiment_template.material");
+  fs::current_path(prev);
+
+  REQUIRE(mat != nullptr);
+  REQUIRE(mat->getPassShader(Pass_Forward) != nullptr);
+  REQUIRE(mat->findParameterMember(StringID("MaterialUBO"),
+                                   StringID("surfaceColor"))
+              .has_value());
+  REQUIRE(mat->findParameterMember(StringID("MaterialUBO"),
+                                   StringID("accentColor"))
+              .has_value());
+  REQUIRE(mat->findParameterMember(StringID("MaterialUBO"),
+                                   StringID("mixAmount"))
+              .has_value());
+  REQUIRE(mat->findParameterMember(StringID("MaterialUBO"), StringID("mode"))
+              .has_value());
+
+  const auto mixAmount =
+      mat->readParameterValue(StringID("MaterialUBO"), StringID("mixAmount"));
+  REQUIRE(mixAmount.has_value());
+  REQUIRE(mixAmount->type == MaterialParameterValueType::Float);
+  REQUIRE(mixAmount->floatValue == 0.35f);
+
+  std::cout << "  rtr_experiment_template.material loads and reflects params\n";
+}
+
 void test_per_pass_shader_override() {
   std::cout << "\n-- test_per_pass_shader_override --\n";
   auto root = findProjectRoot();
@@ -328,6 +365,7 @@ int main() {
   test_placeholder_textures();
   test_generic_loader_produces_valid_instance();
   test_pbr_example_material_loads();
+  test_rtr_experiment_template_material_loads();
   test_per_pass_shader_override();
   test_canonical_parameters_shared_across_passes();
   test_vector_parameters_load_without_aliasing_yaml_nodes();

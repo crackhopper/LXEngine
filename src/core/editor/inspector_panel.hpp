@@ -1,10 +1,12 @@
 #pragma once
 
+#include "core/asset/material_instance.hpp"
 #include "core/editor/command_bus.hpp"
 #include "core/math/vec.hpp"
 #include "core/scene/scene_events.hpp"
 
 #include <array>
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -18,11 +20,20 @@ class EditorState;
 class Scene;
 class SceneNode;
 
+struct MaterialParameterEditorValue final {
+  std::string binding;
+  std::string member;
+  MaterialParameterValue value;
+};
+
 struct InspectorMaterialCallbacks {
   std::function<std::optional<std::string>(const std::string &path)> materialUri;
   std::function<std::optional<Vec3f>(const std::string &path)> nodeBaseColor;
   std::function<bool(const std::string &path)> canEditBaseColor;
   std::function<std::vector<std::string>()> presets;
+  std::function<std::vector<MaterialParameterEditorValue>(
+      const std::string &path)>
+      materialParameters;
 };
 
 class InspectorPanel final {
@@ -58,6 +69,7 @@ public:
     Vec3f nodeBaseColorOverride{0.8f, 0.8f, 0.8f};
     bool canEditBaseColor = false;
     std::vector<std::string> materialPresets;
+    std::vector<MaterialParameterEditorValue> materialParameters;
   };
 
   InspectorPanel(CommandBus &commandBus, EditorState &editorState,
@@ -82,6 +94,9 @@ public:
                                                std::string_view value);
   [[nodiscard]] CommandResult dispatchApplyMaterialOverride(
       std::string_view path, std::string_view field);
+  [[nodiscard]] static std::vector<std::string>
+  discoverExperimentMaterialCandidates(
+      const std::filesystem::path &materialsDir);
   [[nodiscard]] CommandResult dispatchMove(std::string_view path,
                                            const Vec3f &translation);
   [[nodiscard]] CommandResult dispatchRotate(std::string_view path,

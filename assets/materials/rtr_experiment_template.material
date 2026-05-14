@@ -1,0 +1,14 @@
+shader: rtr_experiment_template
+
+passes:
+  Forward:
+    renderState:
+      cullMode: Back
+      depthTest: true
+      depthWrite: true
+
+parameters:
+  MaterialUBO.surfaceColor: [0.8, 0.35, 0.25]
+  MaterialUBO.accentColor: [0.15, 0.4, 0.95, 1.0]
+  MaterialUBO.mixAmount: 0.35
+  MaterialUBO.mode: 0

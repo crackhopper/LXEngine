@@ -10,6 +10,8 @@
 #include <imgui.h>
 
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <optional>
 #include <string>
@@ -158,6 +160,29 @@ void testSnapshotIncludesMaterialCallbacks() {
          "snapshot should expose baseColor editability");
   EXPECT(snapshot.materialPresets.size() == 2,
          "snapshot should expose material preset list");
+}
+
+void testExperimentMaterialCandidateDiscovery() {
+  const auto dir = std::filesystem::temp_directory_path() /
+                   "lxe_inspector_rtr_material_candidates";
+  std::filesystem::remove_all(dir);
+  std::filesystem::create_directories(dir);
+  {
+    std::ofstream(dir / "rtr_b.material") << "shader: b\n";
+    std::ofstream(dir / "rtr_a.material") << "shader: a\n";
+    std::ofstream(dir / "blinnphong_lit.material") << "shader: ignored\n";
+    std::ofstream(dir / "rtr_notes.txt") << "ignored\n";
+  }
+
+  const auto candidates =
+      LX_core::InspectorPanel::discoverExperimentMaterialCandidates(dir);
+  EXPECT(candidates.size() == 2,
+         "candidate discovery should include only rtr_*.material files");
+  EXPECT(candidates[0].find("rtr_a.material") != std::string::npos &&
+             candidates[1].find("rtr_b.material") != std::string::npos,
+         "candidate discovery should be sorted by filename/path");
+
+  std::filesystem::remove_all(dir);
 }
 
 void testSnapshotForCameraNode() {
@@ -528,6 +553,7 @@ int main() {
   testSnapshotWithoutSelection();
   testSnapshotForRegularNode();
   testSnapshotIncludesMaterialCallbacks();
+  testExperimentMaterialCandidateDiscovery();
   testSnapshotForCameraNode();
   testSnapshotForLightNode();
   testSnapshotForRenamedLightNodeUsesExactAttachedLight();

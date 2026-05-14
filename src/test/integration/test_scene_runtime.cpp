@@ -975,6 +975,98 @@ void testRuntimeMaterialUriAndBaseColorOverridesRoundTrip() {
          "applied material override should persist on same-URI sibling material config");
 }
 
+void testGenericNodeMaterialParameterOverrideRoundTrips() {
+  const std::filesystem::path inputPath =
+      makeTempPath("lx_scene_runtime_generic_material_input.yaml");
+  const std::filesystem::path savePath =
+      makeTempPath("lx_scene_runtime_generic_material_output.yaml");
+  writeSceneFile(inputPath,
+                 "scene:\n"
+                 "  name: rtr_material_scene\n"
+                 "  gameplayCameraPath: /game_cam\n"
+                 "nodes:\n"
+                 "  - nodeName: game_camera\n"
+                 "    name: game_cam\n"
+                 "    transform:\n"
+                 "      translation: [0.0, 2.0, 6.0]\n"
+                 "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                 "      scale: [1.0, 1.0, 1.0]\n"
+                 "    visibilityMask: 4294967295\n"
+                 "    camera:\n"
+                 "      eye: [0.0, 2.0, 6.0]\n"
+                 "      target: [0.0, 0.0, 0.0]\n"
+                 "      up: [0.0, 1.0, 0.0]\n"
+                 "      type: perspective\n"
+                 "      fovY: 45.0\n"
+                 "      aspect: 1.7777778\n"
+                 "      nearPlane: 0.1\n"
+                 "      farPlane: 1000.0\n"
+                 "      left: -1.0\n"
+                 "      right: 1.0\n"
+                 "      bottom: -1.0\n"
+                 "      top: 1.0\n"
+                 "      cullingMask: 4294967295\n"
+                 "  - nodeName: primitive_cube_node\n"
+                 "    name: cube_a\n"
+                 "    transform:\n"
+                 "      translation: [0.0, 0.0, 0.0]\n"
+                 "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                 "      scale: [1.0, 1.0, 1.0]\n"
+                 "    visibilityMask: 4294967295\n"
+                 "    mesh:\n"
+                 "      uri: builtin://lxe_editor/primitives/cube\n"
+                 "    material:\n"
+                 "      uri: assets/materials/rtr_experiment_template.material\n"
+                 "  - nodeName: primitive_sphere_node\n"
+                 "    name: sphere_b\n"
+                 "    transform:\n"
+                 "      translation: [2.0, 0.0, 0.0]\n"
+                 "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                 "      scale: [1.0, 1.0, 1.0]\n"
+                 "    visibilityMask: 4294967295\n"
+                 "    mesh:\n"
+                 "      uri: builtin://lxe_editor/primitives/sphere\n"
+                 "    material:\n"
+                 "      uri: assets/materials/rtr_experiment_template.material\n");
+
+  demo::SceneRuntime runtime;
+  runtime.loadFromDocumentPath(inputPath);
+
+  LX_core::MaterialParameterValue value;
+  value.type = LX_core::MaterialParameterValueType::Float;
+  value.floatValue = 0.75f;
+  const auto set = runtime.setNodeMaterialParameter(
+      "/cube_a", "MaterialUBO", "mixAmount", value);
+  EXPECT(set.ok, "setting generic node material parameter should succeed");
+
+  const auto cubeValue = runtime.nodeMaterialParameterForNode(
+      "/cube_a", "MaterialUBO", "mixAmount");
+  const auto sphereValue = runtime.nodeMaterialParameterForNode(
+      "/sphere_b", "MaterialUBO", "mixAmount");
+  EXPECT(cubeValue.has_value(),
+         "selected node should expose updated generic float parameter");
+  if (cubeValue.has_value()) {
+    expectNear(cubeValue->floatValue, 0.75f,
+               "selected node generic float override should update runtime");
+  }
+  EXPECT(sphereValue.has_value(),
+         "sibling node should expose generic float parameter");
+  if (sphereValue.has_value()) {
+    expectNear(sphereValue->floatValue, 0.35f,
+               "generic float override should not mutate sibling runtime");
+  }
+
+  runtime.saveToDocumentPath(savePath);
+  const demo::SceneDocument saved = demo::loadSceneDocument(savePath);
+  const auto& savedCube = saved.rootNode().children[1];
+  const auto& savedSphere = saved.rootNode().children[2];
+  EXPECT(savedCube.nodeMaterialOverrides.parameters.count(
+             "MaterialUBO.mixAmount") == 1,
+         "generic node material override should persist to scene document");
+  EXPECT(savedSphere.nodeMaterialOverrides.parameters.empty(),
+         "sibling should not receive generic material override");
+}
+
 void testGroundMeshWindingMatchesUpwardNormal() {
   const auto ground = demo::buildGroundNode();
   const auto meshComponent = ground->getComponent<LX_core::MeshComponent>();
@@ -1084,6 +1176,7 @@ int main() {
   testRuntimeSaveOmitsDebugDrawRuntimeNodes();
   testRuntimeSaveOmitsLegacyEditorHelperNodes();
   testRuntimeMaterialUriAndBaseColorOverridesRoundTrip();
+  testGenericNodeMaterialParameterOverrideRoundTrips();
   testGroundMeshWindingMatchesUpwardNormal();
   testBuiltinPrimitiveScenePayloadRoundTrips();
 
