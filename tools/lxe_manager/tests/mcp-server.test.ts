@@ -752,4 +752,111 @@ describe("mcp tool handlers", () => {
       result: { prompts: [] },
     });
   });
+
+  it("serves a browser dashboard without bearer auth", async () => {
+    const handlers = createToolHandlers(makeInput());
+    const resources = createResourceHandlers(makeInput().editorClient);
+    server = createMcpHttpServer({
+      handlers,
+      resources,
+      bearerToken: "secret",
+      dashboard: {
+        startedAt: "2026-05-14T00:00:00.000Z",
+        host: "127.0.0.1",
+        port: 3880,
+      },
+    });
+    const port = await listen(server);
+
+    const response = await fetch(`http://127.0.0.1:${port}/dashboard`);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/html");
+    await expect(response.text()).resolves.toContain("lxe_manager");
+  });
+
+  it("requires bearer auth for dashboard status and returns manager state", async () => {
+    const handlers = createToolHandlers(makeInput());
+    const resources = createResourceHandlers(makeInput().editorClient);
+    server = createMcpHttpServer({
+      handlers,
+      resources,
+      bearerToken: "secret",
+      dashboard: {
+        startedAt: "2026-05-14T00:00:00.000Z",
+        host: "127.0.0.1",
+        port: 3880,
+      },
+    });
+    const port = await listen(server);
+
+    const unauthorized = await fetch(`http://127.0.0.1:${port}/api/manager/status`);
+    expect(unauthorized.status).toBe(401);
+
+    const response = await fetch(`http://127.0.0.1:${port}/api/manager/status`, {
+      headers: { authorization: "Bearer secret" },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      manager: {
+        startedAt: "2026-05-14T00:00:00.000Z",
+        host: "127.0.0.1",
+        port: 3880,
+        toolCount: Object.keys(handlers).length,
+      },
+      editor: { running: true, pid: 123 },
+      build: { repoHeadShort: "0123456789ab" },
+      logs: { stdout: "", stderr: "" },
+      tools: Object.keys(handlers).sort(),
+    });
+  });
+
+  it("dashboard tool call API invokes allowlisted tools and rejects unknown tools", async () => {
+    const editorStart = vi.fn(async () => ({ running: true, pid: 999 }));
+    const handlers = createToolHandlers(
+      makeInput({ editorOps: { start: editorStart } }),
+    );
+    server = createMcpHttpServer({
+      handlers,
+      bearerToken: "secret",
+      dashboard: {
+        startedAt: "2026-05-14T00:00:00.000Z",
+        host: "127.0.0.1",
+        port: 3880,
+      },
+    });
+    const port = await listen(server);
+
+    const response = await fetch(`http://127.0.0.1:${port}/api/manager/tool-call`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer secret",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ name: "ops.editor_start", arguments: {} }),
+    });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      content: [{ type: "text", text: '{"running":true,"pid":999}' }],
+    });
+    expect(editorStart).toHaveBeenCalledOnce();
+
+    const rejected = await fetch(`http://127.0.0.1:${port}/api/manager/tool-call`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer secret",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ name: "editor.pick", arguments: {} }),
+    });
+    expect(rejected.status).toBe(400);
+    await expect(rejected.json()).resolves.toEqual({
+      ok: false,
+      error: {
+        code: "tool_not_allowed",
+        message: "dashboard cannot call tool: editor.pick",
+      },
+    });
+  });
 });

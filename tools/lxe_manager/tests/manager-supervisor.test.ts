@@ -83,6 +83,7 @@ describe("manager supervisor", () => {
         cwd: "/repo/tools/lxe_manager",
         detached: true,
         stdio: "ignore",
+        windowsHide: true,
       }) as SpawnOptions,
     );
     expect(exit).toHaveBeenCalledWith(0);

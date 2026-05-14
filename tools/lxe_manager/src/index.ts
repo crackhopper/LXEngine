@@ -14,6 +14,7 @@ import { ProcessSupervisor } from "./process/process-supervisor.js";
 import type { ResourceThresholds } from "./process/resource-guardian.js";
 
 const cliOptions = parseManagerCliOptions(process.argv.slice(2));
+const startedAt = new Date().toISOString();
 const repoRoot = cliOptions.repoRoot ?? defaultRepoRoot();
 const runtimeRoot = cliOptions.runtimeRoot ?? repoRoot;
 const editorExecutable = cliOptions.editorExecutable;
@@ -45,6 +46,11 @@ const server = createMcpHttpServer({
   handlers,
   resources,
   bearerToken: cliOptions.bearerToken,
+  dashboard: {
+    startedAt,
+    host: cliOptions.host,
+    port: cliOptions.port,
+  },
 });
 
 server.listen(cliOptions.port, cliOptions.host, () => {

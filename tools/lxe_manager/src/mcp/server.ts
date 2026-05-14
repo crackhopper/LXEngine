@@ -66,6 +66,12 @@ interface ManagerOpsSurface {
   restart: () => Promise<unknown>;
 }
 
+interface DashboardConfig {
+  startedAt: string;
+  host: string;
+  port: number;
+}
+
 const POST_RESPONSE_ACTION = Symbol("postResponseAction");
 
 interface PostResponseToolResult extends ToolResult {
@@ -289,8 +295,13 @@ export function createMcpHttpServer(input: {
   handlers: Record<string, ToolHandler>;
   resources?: ResourceHandlers;
   bearerToken?: string;
+  dashboard?: DashboardConfig;
 }): Server {
   return createServer(async (request, response) => {
+    if (await handleDashboardRequest(input, request, response)) {
+      return;
+    }
+
     if (request.url !== "/mcp") {
       writeJson(response, 404, {
         ok: false,
@@ -338,6 +349,136 @@ export function createMcpHttpServer(input: {
     }
   });
 }
+
+async function handleDashboardRequest(
+  input: {
+    handlers: Record<string, ToolHandler>;
+    bearerToken?: string;
+    dashboard?: DashboardConfig;
+  },
+  request: IncomingMessage,
+  response: ServerResponse,
+): Promise<boolean> {
+  const url = new URL(request.url ?? "/", "http://127.0.0.1");
+  if (url.pathname === "/" || url.pathname === "/dashboard") {
+    if (request.method !== "GET") {
+      writeJson(response, 405, {
+        ok: false,
+        error: { code: "method_not_allowed", message: "GET required" },
+      });
+      return true;
+    }
+    writeHtml(response, dashboardHtml());
+    return true;
+  }
+
+  if (url.pathname === "/api/manager/status") {
+    if (request.method !== "GET") {
+      writeJson(response, 405, {
+        ok: false,
+        error: { code: "method_not_allowed", message: "GET required" },
+      });
+      return true;
+    }
+    if (input.bearerToken && !isAuthorized(request, input.bearerToken)) {
+      writeUnauthorized(response);
+      return true;
+    }
+    writeJson(response, 200, await dashboardStatus(input));
+    return true;
+  }
+
+  if (url.pathname === "/api/manager/tool-call") {
+    if (request.method !== "POST") {
+      writeJson(response, 405, {
+        ok: false,
+        error: { code: "method_not_allowed", message: "POST required" },
+      });
+      return true;
+    }
+    if (input.bearerToken && !isAuthorized(request, input.bearerToken)) {
+      writeUnauthorized(response);
+      return true;
+    }
+    const body = JSON.parse(await readBody(request)) as {
+      name?: unknown;
+      arguments?: unknown;
+    };
+    if (typeof body.name !== "string" || !DASHBOARD_ALLOWED_TOOLS.has(body.name)) {
+      writeJson(response, 400, {
+        ok: false,
+        error: {
+          code: "tool_not_allowed",
+          message: `dashboard cannot call tool: ${String(body.name)}`,
+        },
+      });
+      return true;
+    }
+    const handler = input.handlers[body.name];
+    if (!handler) {
+      writeJson(response, 400, {
+        ok: false,
+        error: {
+          code: "unknown_tool",
+          message: `unknown tool: ${body.name}`,
+        },
+      });
+      return true;
+    }
+    const args = isObject(body.arguments) ? body.arguments : {};
+    writeJson(response, 200, await handler(args));
+    return true;
+  }
+
+  return false;
+}
+
+async function dashboardStatus(input: {
+  handlers: Record<string, ToolHandler>;
+  dashboard?: DashboardConfig;
+}): Promise<unknown> {
+  const startedAt = input.dashboard?.startedAt ?? new Date(0).toISOString();
+  const host = input.dashboard?.host ?? "";
+  const port = input.dashboard?.port ?? 0;
+  return {
+    manager: {
+      startedAt,
+      host,
+      port,
+      toolCount: Object.keys(input.handlers).length,
+    },
+    editor: await toolJson(input.handlers, "ops.editor_status", {}),
+    build: await toolJson(input.handlers, "ops.build_state", {}),
+    logs: await toolJson(input.handlers, "ops.editor_logs", {}),
+    tools: Object.keys(input.handlers).sort(),
+  };
+}
+
+async function toolJson(
+  handlers: Record<string, ToolHandler>,
+  name: string,
+  args: ToolArguments,
+): Promise<unknown> {
+  const handler = handlers[name];
+  if (!handler) {
+    return undefined;
+  }
+  const result = await handler(args);
+  const text = result.content[0]?.text;
+  return typeof text === "string" ? JSON.parse(text) : undefined;
+}
+
+const DASHBOARD_ALLOWED_TOOLS = new Set([
+  "ops.editor_start",
+  "ops.editor_stop",
+  "ops.editor_restart",
+  "ops.editor_status",
+  "ops.editor_logs",
+  "ops.repo_pull",
+  "ops.build_target",
+  "ops.build_state",
+  "ops.manager_restart",
+]);
 
 export async function handleJsonRpcRequest(
   handlers: Record<string, ToolHandler>,
@@ -595,6 +736,13 @@ function isAuthorized(request: IncomingMessage, bearerToken: string): boolean {
   return request.headers.authorization === `Bearer ${bearerToken}`;
 }
 
+function writeUnauthorized(response: ServerResponse): void {
+  writeJson(response, 401, {
+    ok: false,
+    error: { code: "unauthorized", message: "missing or invalid token" },
+  });
+}
+
 function readBody(request: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
@@ -612,6 +760,97 @@ function writeJson(
 ): void {
   response.writeHead(statusCode, { "content-type": "application/json" });
   response.end(JSON.stringify(value), callback);
+}
+
+function writeHtml(response: ServerResponse, html: string): void {
+  response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+  response.end(html);
+}
+
+function dashboardHtml(): string {
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>lxe_manager</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #16181d; color: #e7e9ef; }
+    body { margin: 0; }
+    header { padding: 18px 24px; border-bottom: 1px solid #30343d; background: #1e222a; }
+    main { display: grid; grid-template-columns: 320px 1fr; gap: 18px; padding: 18px; }
+    section { border: 1px solid #30343d; border-radius: 6px; background: #20242c; padding: 14px; }
+    h1 { margin: 0; font-size: 20px; }
+    h2 { margin: 0 0 10px; font-size: 15px; }
+    label { display: block; margin-bottom: 10px; color: #aab0bd; font-size: 12px; }
+    input, select, textarea, button { box-sizing: border-box; width: 100%; border-radius: 5px; border: 1px solid #3b414d; background: #14171c; color: #f3f5f8; padding: 8px; }
+    button { cursor: pointer; background: #2f6fed; border-color: #2f6fed; font-weight: 600; }
+    pre { min-height: 260px; overflow: auto; white-space: pre-wrap; background: #111318; border-radius: 5px; padding: 12px; }
+    .grid { display: grid; gap: 10px; }
+    .row { display: flex; gap: 8px; }
+    .row button { flex: 1; }
+    @media (max-width: 800px) { main { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header><h1>lxe_manager</h1></header>
+  <main>
+    <section class="grid">
+      <h2>Connection</h2>
+      <label>Bearer token<input id="token" type="password" autocomplete="off"></label>
+      <div class="row"><button id="saveToken">Save</button><button id="refresh">Refresh</button></div>
+      <h2>Actions</h2>
+      <select id="tool">
+        <option>ops.editor_start</option>
+        <option>ops.editor_stop</option>
+        <option>ops.editor_restart</option>
+        <option>ops.editor_status</option>
+        <option>ops.editor_logs</option>
+        <option>ops.repo_pull</option>
+        <option>ops.build_target</option>
+        <option>ops.build_state</option>
+        <option>ops.manager_restart</option>
+      </select>
+      <textarea id="args" rows="5">{}</textarea>
+      <button id="call">Call Tool</button>
+    </section>
+    <section>
+      <h2>Status / Result</h2>
+      <pre id="output"></pre>
+    </section>
+  </main>
+  <script>
+    const tokenInput = document.getElementById('token');
+    const output = document.getElementById('output');
+    tokenInput.value = localStorage.getItem('lxe_manager_token') || '';
+    function headers() {
+      const token = tokenInput.value.trim();
+      return token ? { authorization: 'Bearer ' + token } : {};
+    }
+    async function refresh() {
+      const response = await fetch('/api/manager/status', { headers: headers() });
+      output.textContent = JSON.stringify(await response.json(), null, 2);
+    }
+    document.getElementById('saveToken').onclick = () => {
+      localStorage.setItem('lxe_manager_token', tokenInput.value.trim());
+      refresh();
+    };
+    document.getElementById('refresh').onclick = refresh;
+    document.getElementById('call').onclick = async () => {
+      const response = await fetch('/api/manager/tool-call', {
+        method: 'POST',
+        headers: { ...headers(), 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: document.getElementById('tool').value,
+          arguments: JSON.parse(document.getElementById('args').value || '{}'),
+        }),
+      });
+      output.textContent = JSON.stringify(await response.json(), null, 2);
+    };
+    refresh().catch(error => { output.textContent = String(error); });
+  </script>
+</body>
+</html>`;
 }
 
 function rpcResult(id: JsonRpcId, result: unknown): JsonRpcResponse {

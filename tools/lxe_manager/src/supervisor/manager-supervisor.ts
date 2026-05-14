@@ -91,6 +91,7 @@ export class ManagerSupervisor {
       cwd: this.options.managerDir,
       detached: true,
       stdio: "ignore",
+      windowsHide: true,
     });
     child.unref();
   }
