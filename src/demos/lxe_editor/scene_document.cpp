@@ -46,6 +46,62 @@ void saveVec3(YAML::Emitter& out, const LX_core::Vec3f& value) {
       << YAML::EndSeq;
 }
 
+[[nodiscard]] LX_core::MaterialParameterValue
+loadMaterialParameterValue(const YAML::Node& node, const char* fieldName) {
+  LX_core::MaterialParameterValue value;
+  if (node.IsScalar()) {
+    const std::string scalar = node.Scalar();
+    if (scalar.find_first_of(".eE") == std::string::npos) {
+      value.type = LX_core::MaterialParameterValueType::Int;
+      value.intValue = node.as<i32>();
+      return value;
+    }
+    value.type = LX_core::MaterialParameterValueType::Float;
+    value.floatValue = node.as<float>();
+    return value;
+  }
+  if (!node.IsSequence()) {
+    throw std::runtime_error(std::string("expected scalar or vector for ") +
+                             fieldName);
+  }
+  if (node.size() == 3) {
+    value.type = LX_core::MaterialParameterValueType::Vec3;
+    value.vectorValue = LX_core::Vec4f{
+        node[0].as<float>(), node[1].as<float>(), node[2].as<float>(), 0.0f};
+    return value;
+  }
+  if (node.size() == 4) {
+    value.type = LX_core::MaterialParameterValueType::Vec4;
+    value.vectorValue =
+        LX_core::Vec4f{node[0].as<float>(), node[1].as<float>(),
+                       node[2].as<float>(), node[3].as<float>()};
+    return value;
+  }
+  throw std::runtime_error(std::string("expected Vec3 or Vec4 sequence for ") +
+                           fieldName);
+}
+
+void saveMaterialParameterValue(YAML::Emitter& out,
+                                const LX_core::MaterialParameterValue& value) {
+  switch (value.type) {
+  case LX_core::MaterialParameterValueType::Float:
+    out << value.floatValue;
+    break;
+  case LX_core::MaterialParameterValueType::Int:
+    out << value.intValue;
+    break;
+  case LX_core::MaterialParameterValueType::Vec3:
+    out << YAML::Flow << YAML::BeginSeq << value.vectorValue.x
+        << value.vectorValue.y << value.vectorValue.z << YAML::EndSeq;
+    break;
+  case LX_core::MaterialParameterValueType::Vec4:
+    out << YAML::Flow << YAML::BeginSeq << value.vectorValue.x
+        << value.vectorValue.y << value.vectorValue.z << value.vectorValue.w
+        << YAML::EndSeq;
+    break;
+  }
+}
+
 [[nodiscard]] LX_core::Quatf loadQuat(const YAML::Node& node,
                                       const char* fieldName) {
   if (!node || !node.IsSequence() || node.size() != 4) {
@@ -198,17 +254,42 @@ void saveLightState(YAML::Emitter& out, const LightNodeState& state) {
   if (const auto baseColorNode = node["baseColor"]; baseColorNode) {
     state.baseColor = loadVec3(baseColorNode, fieldName);
   }
+  for (auto it = node.begin(); it != node.end(); ++it) {
+    const std::string parameterKey = it->first.as<std::string>();
+    if (parameterKey == "baseColor") {
+      continue;
+    }
+    if (parameterKey.find('.') == std::string::npos) {
+      throw std::runtime_error(std::string(fieldName) +
+                               " key must use binding.member: " +
+                               parameterKey);
+    }
+    state.parameters.emplace(
+        parameterKey, loadMaterialParameterValue(it->second, fieldName));
+  }
   return state;
 }
 
 void saveMaterialOverrideState(YAML::Emitter& out, const char* key,
                                const MaterialOverrideState& state) {
-  if (!state.baseColor.has_value()) {
+  if (state.empty()) {
     return;
   }
   out << YAML::Key << key << YAML::Value << YAML::BeginMap;
-  out << YAML::Key << "baseColor" << YAML::Value;
-  saveVec3(out, *state.baseColor);
+  if (state.baseColor.has_value()) {
+    out << YAML::Key << "baseColor" << YAML::Value;
+    saveVec3(out, *state.baseColor);
+  }
+  std::vector<std::string> parameterKeys;
+  parameterKeys.reserve(state.parameters.size());
+  for (const auto &[parameterKey, _] : state.parameters) {
+    parameterKeys.push_back(parameterKey);
+  }
+  std::sort(parameterKeys.begin(), parameterKeys.end());
+  for (const auto &parameterKey : parameterKeys) {
+    out << YAML::Key << parameterKey << YAML::Value;
+    saveMaterialParameterValue(out, state.parameters.at(parameterKey));
+  }
   out << YAML::EndMap;
 }
 
@@ -307,8 +388,8 @@ void validateExplicitRootNode(const SceneNodeDocument& rootNode) {
         "scene document root identity must use empty name and no parentPath");
   }
   if (rootNode.meshUri.has_value() || rootNode.materialUri.has_value() ||
-      rootNode.nodeMaterialOverrides.baseColor.has_value() ||
-      rootNode.materialOverrides.baseColor.has_value() ||
+      !rootNode.nodeMaterialOverrides.empty() ||
+      !rootNode.materialOverrides.empty() ||
       rootNode.camera.has_value() || rootNode.light.has_value()) {
     throw std::runtime_error(
         "scene document root payload is unsupported");

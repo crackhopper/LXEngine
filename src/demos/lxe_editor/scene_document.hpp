@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/asset/material_instance.hpp"
 #include "core/math/vec.hpp"
 #include "core/math/transform.hpp"
 #include "core/scene/camera.hpp"
@@ -10,6 +11,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace LX_demo::lxe_editor {
@@ -49,6 +51,11 @@ struct LightNodeState final {
 
 struct MaterialOverrideState final {
   std::optional<LX_core::Vec3f> baseColor;
+  std::unordered_map<std::string, LX_core::MaterialParameterValue> parameters;
+
+  [[nodiscard]] bool empty() const {
+    return !baseColor.has_value() && parameters.empty();
+  }
 };
 
 struct SceneNodeDocument final {

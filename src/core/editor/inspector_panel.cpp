@@ -13,6 +13,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstring>
+#include <filesystem>
 #include <iomanip>
 #include <imgui.h>
 #include <limits>
@@ -76,6 +77,26 @@ constexpr float kRadToDeg = 180.0f / kPi;
 
 [[nodiscard]] std::string formatUnsigned(const u32 value) {
   return std::to_string(value);
+}
+
+[[nodiscard]] std::string formatMaterialParameterCommandArgs(
+    const MaterialParameterValue &value) {
+  switch (value.type) {
+  case MaterialParameterValueType::Float:
+    return formatFloat(value.floatValue);
+  case MaterialParameterValueType::Int:
+    return std::to_string(value.intValue);
+  case MaterialParameterValueType::Vec3:
+    return formatFloat(value.vectorValue.x) + " " +
+           formatFloat(value.vectorValue.y) + " " +
+           formatFloat(value.vectorValue.z);
+  case MaterialParameterValueType::Vec4:
+    return formatFloat(value.vectorValue.x) + " " +
+           formatFloat(value.vectorValue.y) + " " +
+           formatFloat(value.vectorValue.z) + " " +
+           formatFloat(value.vectorValue.w);
+  }
+  return {};
 }
 
 [[nodiscard]] std::string formatMask(const u32 value) {
@@ -250,6 +271,10 @@ InspectorPanel::Snapshot InspectorPanel::makeSnapshot() const {
   if (m_materialCallbacks.presets) {
     snapshot.materialPresets = m_materialCallbacks.presets();
   }
+  if (m_materialCallbacks.materialParameters) {
+    snapshot.materialParameters =
+        m_materialCallbacks.materialParameters(snapshot.path);
+  }
   return snapshot;
 }
 
@@ -308,6 +333,28 @@ CommandResult InspectorPanel::dispatchApplyMaterialOverride(
     std::string_view path, std::string_view field) {
   return m_commandBus.dispatch("apply_material_override " + quoteToken(path) +
                                " " + quoteToken(field));
+}
+
+std::vector<std::string> InspectorPanel::discoverExperimentMaterialCandidates(
+    const std::filesystem::path &materialsDir) {
+  std::vector<std::string> out;
+  std::error_code error;
+  if (!std::filesystem::exists(materialsDir, error)) {
+    return out;
+  }
+  for (const auto &entry :
+       std::filesystem::directory_iterator(materialsDir, error)) {
+    if (error || !entry.is_regular_file()) {
+      continue;
+    }
+    const auto path = entry.path();
+    const std::string filename = path.filename().string();
+    if (path.extension() == ".material" && filename.rfind("rtr_", 0) == 0) {
+      out.push_back(path.generic_string());
+    }
+  }
+  std::sort(out.begin(), out.end());
+  return out;
 }
 
 CommandResult InspectorPanel::dispatchMove(std::string_view path,
@@ -549,6 +596,45 @@ void InspectorPanel::drawSelection(const Snapshot &snapshot) {
       }
     } else {
       ImGui::TextUnformatted("Material does not expose MaterialUBO.baseColor.");
+    }
+
+    for (const auto &parameter : snapshot.materialParameters) {
+      if (parameter.binding == "MaterialUBO" && parameter.member == "baseColor") {
+        continue;
+      }
+      const std::string label = parameter.binding + "." + parameter.member;
+      MaterialParameterValue value = parameter.value;
+      bool changed = false;
+      switch (value.type) {
+      case MaterialParameterValueType::Float:
+        changed = ImGui::InputFloat(label.c_str(), &value.floatValue);
+        break;
+      case MaterialParameterValueType::Int:
+        changed = ImGui::InputInt(label.c_str(), &value.intValue);
+        break;
+      case MaterialParameterValueType::Vec3: {
+        float data[3] = {value.vectorValue.x, value.vectorValue.y,
+                         value.vectorValue.z};
+        changed = ImGui::DragFloat3(label.c_str(), data, 0.01f);
+        value.vectorValue = Vec4f{data[0], data[1], data[2], 0.0f};
+        break;
+      }
+      case MaterialParameterValueType::Vec4: {
+        float data[4] = {value.vectorValue.x, value.vectorValue.y,
+                         value.vectorValue.z, value.vectorValue.w};
+        changed = ImGui::DragFloat4(label.c_str(), data, 0.01f);
+        value.vectorValue = Vec4f{data[0], data[1], data[2], data[3]};
+        break;
+      }
+      }
+      if (changed && ImGui::IsItemDeactivatedAfterEdit()) {
+        const CommandResult result = m_commandBus.dispatch(
+            "set " + quoteToken(snapshot.path + ".nodeMaterial." + label) +
+            " " + formatMaterialParameterCommandArgs(value));
+        if (result.ok) {
+          refreshDrafts();
+        }
+      }
     }
   }
 

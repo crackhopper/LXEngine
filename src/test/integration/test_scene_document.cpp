@@ -399,10 +399,20 @@ void testSaveSceneDocumentWritesExplicitRootCanonicalFormat() {
       .nodeMaterialOverrides =
           demo::MaterialOverrideState{
               .baseColor = LX_core::Vec3f{0.8f, 0.2f, 0.2f},
+              .parameters =
+                  {{"MaterialUBO.mixAmount",
+                    LX_core::MaterialParameterValue{
+                        .type = LX_core::MaterialParameterValueType::Float,
+                        .floatValue = 0.35f}}},
           },
       .materialOverrides =
           demo::MaterialOverrideState{
               .baseColor = LX_core::Vec3f{0.4f, 0.5f, 0.6f},
+              .parameters =
+                  {{"MaterialUBO.mode",
+                    LX_core::MaterialParameterValue{
+                        .type = LX_core::MaterialParameterValueType::Int,
+                        .intValue = 1}}},
           },
   });
   world.children.push_back(demo::SceneNodeDocument{
@@ -487,6 +497,16 @@ void testSaveSceneDocumentWritesExplicitRootCanonicalFormat() {
              loadedHelmet->materialOverrides.baseColor->y == 0.5f &&
              loadedHelmet->materialOverrides.baseColor->z == 0.6f,
          "material-side baseColor override value should round trip");
+  EXPECT(loadedHelmet->nodeMaterialOverrides.parameters.count(
+             "MaterialUBO.mixAmount") == 1,
+         "generic node material parameter should survive round trip");
+  EXPECT(loadedHelmet->nodeMaterialOverrides.parameters.at(
+             "MaterialUBO.mixAmount").type ==
+             LX_core::MaterialParameterValueType::Float,
+         "generic node material float type should survive round trip");
+  EXPECT(loadedHelmet->materialOverrides.parameters.count("MaterialUBO.mode") ==
+             1,
+         "generic material-side int parameter should survive round trip");
   const demo::SceneNodeDocument* loadedLight =
       findChildByName(*loadedWorld, "dir_light_node");
   EXPECT(loadedLight != nullptr, "light should survive round trip");

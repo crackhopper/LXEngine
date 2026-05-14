@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/asset/material_instance.hpp"
 #include "core/editor/command_bus.hpp"
 #include "core/math/vec.hpp"
 
@@ -40,6 +41,15 @@ struct SceneIoContext {
   using ApplyMaterialOverrideFn =
       std::function<CommandResult(const std::string &path,
                                   const std::string &field)>;
+  using GetMaterialParameterFn = std::function<std::optional<MaterialParameterValue>(
+      const std::string &path, const std::string &binding,
+      const std::string &member)>;
+  using SetMaterialParameterFn = std::function<CommandResult(
+      const std::string &path, const std::string &binding,
+      const std::string &member, const MaterialParameterValue &value)>;
+  using ClearMaterialParameterFn = std::function<CommandResult(
+      const std::string &path, const std::string &binding,
+      const std::string &member)>;
 
   LoadFn load;
   SaveFn save;
@@ -52,6 +62,9 @@ struct SceneIoContext {
   SetStringFieldFn setMaterialUri;
   GetVec3FieldFn getNodeMaterialBaseColor;
   SetVec3FieldFn setNodeMaterialBaseColor;
+  GetMaterialParameterFn getNodeMaterialParameter;
+  SetMaterialParameterFn setNodeMaterialParameter;
+  ClearMaterialParameterFn clearNodeMaterialParameter;
   ApplyMaterialOverrideFn applyMaterialOverride;
 };
 

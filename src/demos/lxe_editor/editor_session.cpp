@@ -575,6 +575,25 @@ void LxeEditorSession::rebuildBindings(
                      const LX_core::Vec3f &color) {
                 return m_runtime.setNodeMaterialBaseColor(path, color);
               },
+          .getNodeMaterialParameter =
+              [this](const std::string &path, const std::string &binding,
+                     const std::string &member) {
+                return m_runtime.nodeMaterialParameterForNode(path, binding,
+                                                              member);
+              },
+          .setNodeMaterialParameter =
+              [this](const std::string &path, const std::string &binding,
+                     const std::string &member,
+                     const LX_core::MaterialParameterValue &value) {
+                return m_runtime.setNodeMaterialParameter(path, binding,
+                                                          member, value);
+              },
+          .clearNodeMaterialParameter =
+              [this](const std::string &path, const std::string &binding,
+                     const std::string &member) {
+                return m_runtime.clearNodeMaterialParameter(path, binding,
+                                                            member);
+              },
           .applyMaterialOverride =
               [this](const std::string &path, const std::string &field) {
                 return m_runtime.applyMaterialOverride(path, field);
@@ -604,6 +623,20 @@ void LxeEditorSession::rebuildBindings(
                   },
               .presets =
                   [this]() { return m_runtime.materialPresets(); },
+              .materialParameters =
+                  [this](const std::string &path) {
+                    std::vector<LX_core::MaterialParameterEditorValue> out;
+                    const auto runtimeValues =
+                        m_runtime.nodeMaterialParametersForNode(path);
+                    out.reserve(runtimeValues.size());
+                    for (const auto &value : runtimeValues) {
+                      out.push_back(LX_core::MaterialParameterEditorValue{
+                          .binding = value.binding,
+                          .member = value.member,
+                          .value = value.value});
+                    }
+                    return out;
+                  },
           });
   m_viewportOverlay = std::make_unique<LX_core::ViewportOverlay>(
       *m_commandBus, m_editorState, *m_runtime.scene());

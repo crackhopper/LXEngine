@@ -1,6 +1,7 @@
 #include "material_instance.hpp"
 #include "core/asset/shader_binding_ownership.hpp"
 #include <algorithm>
+#include <cstring>
 #include <iostream>
 #include <stdexcept>
 #include <utility>
@@ -132,6 +133,82 @@ void MaterialInstance::setParameter(StringID bindingName, StringID memberName,
                                               ShaderPropertyType::Vec4);
 }
 
+void MaterialInstance::setParameterValue(StringID bindingName,
+                                         StringID memberName,
+                                         const MaterialParameterValue &value) {
+  switch (value.type) {
+  case MaterialParameterValueType::Float:
+    setParameter(bindingName, memberName, value.floatValue);
+    return;
+  case MaterialParameterValueType::Int:
+    setParameter(bindingName, memberName, value.intValue);
+    return;
+  case MaterialParameterValueType::Vec3:
+    setParameter(
+        bindingName, memberName,
+        Vec3f{value.vectorValue.x, value.vectorValue.y, value.vectorValue.z});
+    return;
+  case MaterialParameterValueType::Vec4:
+    setParameter(bindingName, memberName, value.vectorValue);
+    return;
+  }
+}
+
+std::optional<std::reference_wrapper<const StructMemberInfo>>
+MaterialInstance::findParameterMember(StringID bindingName,
+                                      StringID memberName) const {
+  const auto binding = getParameterBufferLayout(bindingName);
+  if (!binding.has_value()) {
+    return std::nullopt;
+  }
+  for (const auto &member : binding->get().members) {
+    if (StringID(member.name) == memberName) {
+      return std::cref(member);
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<MaterialParameterValue>
+MaterialInstance::readParameterValue(StringID bindingName,
+                                     StringID memberName) const {
+  const auto member = findParameterMember(bindingName, memberName);
+  if (!member.has_value()) {
+    return std::nullopt;
+  }
+  const auto &bytes = getParameterBufferBytes(bindingName);
+  if (static_cast<usize>(member->get().offset) + member->get().size >
+      bytes.size()) {
+    return std::nullopt;
+  }
+
+  MaterialParameterValue value;
+  switch (member->get().type) {
+  case ShaderPropertyType::Float:
+    value.type = MaterialParameterValueType::Float;
+    std::memcpy(&value.floatValue, bytes.data() + member->get().offset,
+                sizeof(float));
+    return value;
+  case ShaderPropertyType::Int:
+    value.type = MaterialParameterValueType::Int;
+    std::memcpy(&value.intValue, bytes.data() + member->get().offset,
+                sizeof(i32));
+    return value;
+  case ShaderPropertyType::Vec3:
+    value.type = MaterialParameterValueType::Vec3;
+    std::memcpy(&value.vectorValue, bytes.data() + member->get().offset,
+                sizeof(float) * 3);
+    return value;
+  case ShaderPropertyType::Vec4:
+    value.type = MaterialParameterValueType::Vec4;
+    std::memcpy(&value.vectorValue, bytes.data() + member->get().offset,
+                sizeof(Vec4f));
+    return value;
+  default:
+    return std::nullopt;
+  }
+}
+
 void MaterialInstance::setTexture(StringID bindingName,
                                   CombinedTextureSamplerSharedPtr tex) {
   auto bindingOpt = m_template->findCanonicalMaterialBinding(bindingName);
@@ -156,6 +233,26 @@ void MaterialInstance::syncGpuData() {
       parameterBuffer->clearPendingSync();
     }
   }
+}
+
+MaterialInstance::SharedPtr MaterialInstance::cloneInstanceData() const {
+  auto clone = MaterialInstance::create(m_template);
+  clone->m_textureBindingsByName = m_textureBindingsByName;
+  clone->m_enabledPasses = m_enabledPasses;
+  for (const auto &[bindingId, parameterBuffer] : m_parameterBuffersByName) {
+    if (!parameterBuffer) {
+      continue;
+    }
+    const auto &binding = parameterBuffer->getBinding();
+    for (const auto &member : binding.members) {
+      const auto value = readParameterValue(bindingId, StringID(member.name));
+      if (value.has_value()) {
+        clone->setParameterValue(bindingId, StringID(member.name), *value);
+      }
+    }
+  }
+  clone->syncGpuData();
+  return clone;
 }
 
 /*****************************************************************
