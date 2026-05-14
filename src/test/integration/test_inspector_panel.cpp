@@ -11,6 +11,9 @@
 
 #include <cmath>
 #include <iostream>
+#include <optional>
+#include <string>
+#include <vector>
 
 namespace {
 
@@ -108,6 +111,53 @@ void testSnapshotForRegularNode() {
   EXPECT(snapshot.visibilityMask == 0x12345678u,
          "regular node visibility mask should be reported");
   EXPECT(!snapshot.hasCamera, "regular node should not report camera component");
+}
+
+void testSnapshotIncludesMaterialCallbacks() {
+  Fixture fixture;
+  LX_core::InspectorPanel panel(
+      fixture.bus, fixture.editorState,
+      LX_core::InspectorMaterialCallbacks{
+          .materialUri =
+              [](const std::string& path) -> std::optional<std::string> {
+            return path == "/world/cube"
+                       ? std::optional<std::string>(
+                             "assets/materials/blinnphong_lit.material")
+                       : std::nullopt;
+          },
+          .nodeBaseColor =
+              [](const std::string& path) -> std::optional<LX_core::Vec3f> {
+            return path == "/world/cube"
+                       ? std::optional<LX_core::Vec3f>(
+                             LX_core::Vec3f{0.25f, 0.5f, 0.75f})
+                       : std::nullopt;
+          },
+          .canEditBaseColor =
+              [](const std::string& path) { return path == "/world/cube"; },
+          .presets =
+              []() {
+                return std::vector<std::string>{
+                    "assets/materials/blinnphong_lit.material",
+                    "assets/materials/blinnphong_default.material"};
+              },
+      });
+  fixture.editorState.select({fixture.cube});
+
+  const auto snapshot = panel.makeSnapshot();
+  EXPECT(snapshot.hasMaterialSection,
+         "material URI callback should make the material section visible");
+  EXPECT(snapshot.materialUri == "assets/materials/blinnphong_lit.material",
+         "snapshot should expose callback material URI");
+  EXPECT(snapshot.hasNodeBaseColorOverride,
+         "snapshot should expose callback node baseColor override");
+  EXPECT(nearlyEqual(snapshot.nodeBaseColorOverride.x, 0.25f) &&
+             nearlyEqual(snapshot.nodeBaseColorOverride.y, 0.5f) &&
+             nearlyEqual(snapshot.nodeBaseColorOverride.z, 0.75f),
+         "snapshot should expose callback node baseColor value");
+  EXPECT(snapshot.canEditBaseColor,
+         "snapshot should expose baseColor editability");
+  EXPECT(snapshot.materialPresets.size() == 2,
+         "snapshot should expose material preset list");
 }
 
 void testSnapshotForCameraNode() {
@@ -251,6 +301,51 @@ void testDrawFrameSurvivesCpuOnlyImGui() {
     ImGui::EndFrame();
   } catch (...) {
     EXPECT(false, "InspectorPanel draw should not throw in CPU-only ImGui frame");
+  }
+
+  ImGui::DestroyContext();
+}
+
+void testDrawFrameSurvivesMaterialSectionCpuOnlyImGui() {
+  if (!setupMinimalImGui()) {
+    std::cout << "[SKIP] inspector material draw smoke (font atlas unavailable)\n";
+    ImGui::DestroyContext();
+    return;
+  }
+
+  Fixture fixture;
+  LX_core::InspectorPanel panel(
+      fixture.bus, fixture.editorState,
+      LX_core::InspectorMaterialCallbacks{
+          .materialUri =
+              [](const std::string&) {
+                return std::optional<std::string>(
+                    "assets/materials/blinnphong_lit.material");
+              },
+          .nodeBaseColor =
+              [](const std::string&) {
+                return std::optional<LX_core::Vec3f>(
+                    LX_core::Vec3f{0.8f, 0.2f, 0.2f});
+              },
+          .canEditBaseColor = [](const std::string&) { return true; },
+          .presets =
+              []() {
+                return std::vector<std::string>{
+                    "assets/materials/blinnphong_lit.material",
+                    "assets/materials/blinnphong_default.material",
+                    "assets/materials/blinnphong_textured.material",
+                    "assets/materials/pbr_gold.material"};
+              },
+      });
+  fixture.editorState.select({fixture.cube});
+
+  try {
+    ImGui::NewFrame();
+    panel.draw();
+    ImGui::EndFrame();
+  } catch (...) {
+    EXPECT(false,
+           "InspectorPanel material section should not throw in CPU-only ImGui frame");
   }
 
   ImGui::DestroyContext();
@@ -432,12 +527,14 @@ int main() {
   expSetEnvVK();
   testSnapshotWithoutSelection();
   testSnapshotForRegularNode();
+  testSnapshotIncludesMaterialCallbacks();
   testSnapshotForCameraNode();
   testSnapshotForLightNode();
   testSnapshotForRenamedLightNodeUsesExactAttachedLight();
   testSnapshotTracksExternalNodeMutationAfterSelection();
   testDispatchHelpersUseCommandBus();
   testDrawFrameSurvivesCpuOnlyImGui();
+  testDrawFrameSurvivesMaterialSectionCpuOnlyImGui();
   testDrawResyncsInspectorDraftAfterExternalMutation();
   testDrawResyncsInspectorAfterExternalCameraMutation();
   testDrawResyncsInspectorAfterExternalLightMutation();

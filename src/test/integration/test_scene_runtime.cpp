@@ -2,6 +2,7 @@
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/components/camera_component.hpp"
+#include "core/scene/components/material_component.hpp"
 #include "core/scene/components/mesh_component.hpp"
 #include "demos/lxe_editor/editor_camera_state.hpp"
 #include "demos/lxe_editor/scene_builder.hpp"
@@ -9,6 +10,8 @@
 #include "demos/lxe_editor/scene_runtime.hpp"
 
 #include <cmath>
+#include <algorithm>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -57,6 +60,36 @@ void expectNear(const float lhs, const float rhs, const char* msg,
               << " (" << lhs << " vs " << rhs << ")\n";
     ++failures;
   }
+}
+
+[[nodiscard]] std::optional<LX_core::Vec3f>
+readNodeBaseColor(const LX_core::SceneNodeSharedPtr& node) {
+  if (!node) {
+    return std::nullopt;
+  }
+  const auto materialComponent =
+      node->getComponent<LX_core::MaterialComponent>();
+  if (!materialComponent.has_value() ||
+      !materialComponent->get().getMaterialInstance()) {
+    return std::nullopt;
+  }
+  const auto material = materialComponent->get().getMaterialInstance();
+  const auto layout =
+      material->getParameterBufferLayout(LX_core::StringID("MaterialUBO"));
+  if (!layout.has_value()) {
+    return std::nullopt;
+  }
+  const auto memberIt = std::find_if(
+      layout->get().members.begin(), layout->get().members.end(),
+      [](const auto& member) { return member.name == "baseColor"; });
+  if (memberIt == layout->get().members.end()) {
+    return std::nullopt;
+  }
+  const auto& bytes =
+      material->getParameterBufferBytes(LX_core::StringID("MaterialUBO"));
+  LX_core::Vec3f color{};
+  std::memcpy(&color, bytes.data() + memberIt->offset, sizeof(float) * 3);
+  return color;
 }
 
 void testRuntimeCreatesEmptyScene() {
@@ -619,6 +652,102 @@ void testRuntimeSaveOmitsLegacyEditorHelperNodes() {
          "save should omit legacy light helper nodes");
 }
 
+void testRuntimeMaterialUriAndBaseColorOverridesRoundTrip() {
+  const std::filesystem::path inputPath =
+      makeTempPath("lx_scene_runtime_material_input.yaml");
+  const std::filesystem::path savePath =
+      makeTempPath("lx_scene_runtime_material_save.yaml");
+
+  writeSceneFile(inputPath,
+                 "scene:\n"
+                 "  name: material_scene\n"
+                 "  gameplayCameraPath: /game_cam\n"
+                 "nodes:\n"
+                 "  - nodeName: game_camera\n"
+                 "    name: game_cam\n"
+                 "    transform:\n"
+                 "      translation: [0.0, 2.0, 6.0]\n"
+                 "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                 "      scale: [1.0, 1.0, 1.0]\n"
+                 "    visibilityMask: 4294967295\n"
+                 "    camera:\n"
+                 "      eye: [0.0, 2.0, 6.0]\n"
+                 "      target: [0.0, 0.0, 0.0]\n"
+                 "      up: [0.0, 1.0, 0.0]\n"
+                 "      type: perspective\n"
+                 "      fovY: 45.0\n"
+                 "      aspect: 1.7777778\n"
+                 "      nearPlane: 0.1\n"
+                 "      farPlane: 1000.0\n"
+                 "      left: -1.0\n"
+                 "      right: 1.0\n"
+                 "      bottom: -1.0\n"
+                 "      top: 1.0\n"
+                 "      cullingMask: 4294967295\n"
+                 "  - nodeName: ground\n"
+                 "    name: ground_a\n"
+                 "    transform:\n"
+                 "      translation: [0.0, 0.0, 0.0]\n"
+                 "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                 "      scale: [1.0, 1.0, 1.0]\n"
+                 "    visibilityMask: 4294967295\n"
+                 "    mesh:\n"
+                 "      uri: builtin://lxe_editor/ground_mesh\n"
+                 "    material:\n"
+                 "      uri: assets/materials/blinnphong_lit.material\n"
+                 "  - nodeName: helmet\n"
+                 "    name: helmet\n"
+                 "    transform:\n"
+                 "      translation: [2.0, 0.0, 0.0]\n"
+                 "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                 "      scale: [1.0, 1.0, 1.0]\n"
+                 "    visibilityMask: 4294967295\n"
+                 "    mesh:\n"
+                 "      uri: builtin://lxe_editor/helmet\n"
+                 "    material:\n"
+                 "      uri: assets/materials/blinnphong_lit.material\n");
+
+  demo::SceneRuntime runtime;
+  runtime.loadFromDocumentPath(inputPath);
+
+  const auto setColor =
+      runtime.setNodeMaterialBaseColor("/ground_a", {0.2f, 0.3f, 0.4f});
+  EXPECT(setColor.ok, "setting node baseColor override should succeed");
+
+  const auto groundA =
+      runtime.scene()->findByPath("/ground_a")->shared_from_this();
+  const auto groundB =
+      runtime.scene()->findByPath("/helmet")->shared_from_this();
+  const auto colorA = readNodeBaseColor(groundA);
+  const auto colorB = readNodeBaseColor(groundB);
+  EXPECT(colorA.has_value() && colorB.has_value(),
+         "both ground nodes should expose MaterialUBO.baseColor");
+  if (colorA.has_value() && colorB.has_value()) {
+    expectNear(colorA->x, 0.2f,
+               "node override should update only selected node red");
+    expectNear(colorA->y, 0.3f,
+               "node override should update only selected node green");
+    expectNear(colorB->x, 0.8f,
+         "node override should not mutate sibling material red");
+  }
+
+  const auto apply = runtime.applyMaterialOverride("/ground_a", "baseColor");
+  EXPECT(apply.ok, "applying baseColor override should succeed");
+  runtime.saveToDocumentPath(savePath);
+
+  const demo::SceneDocument saved = demo::loadSceneDocument(savePath);
+  EXPECT(saved.rootNode().children.size() == 3,
+         "saved material scene should keep all root children");
+  const auto& savedGroundA = saved.rootNode().children[1];
+  const auto& savedGroundB = saved.rootNode().children[2];
+  EXPECT(savedGroundA.nodeMaterialOverrides.baseColor.has_value(),
+         "node-level override should persist on selected node");
+  EXPECT(savedGroundA.materialOverrides.baseColor.has_value(),
+         "applied material override should persist on selected node material config");
+  EXPECT(savedGroundB.materialOverrides.baseColor.has_value(),
+         "applied material override should persist on same-URI sibling material config");
+}
+
 void testGroundMeshWindingMatchesUpwardNormal() {
   const auto ground = demo::buildGroundNode();
   const auto meshComponent = ground->getComponent<LX_core::MeshComponent>();
@@ -660,6 +789,7 @@ int main() {
   testRuntimeSkipsLegacyDebugDrawNodesOnLoad();
   testRuntimeSaveOmitsDebugDrawRuntimeNodes();
   testRuntimeSaveOmitsLegacyEditorHelperNodes();
+  testRuntimeMaterialUriAndBaseColorOverridesRoundTrip();
   testGroundMeshWindingMatchesUpwardNormal();
 
   if (failures != 0) {
