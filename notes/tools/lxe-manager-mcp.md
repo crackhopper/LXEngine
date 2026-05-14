@@ -183,14 +183,18 @@ manager 代码变更后：
 3. 重新连接 MCP endpoint
 4. 再执行 build/editor/display 验证
 
-`ops.manager_restart` 依赖 `scripts/lxe_manager/start_mcp.sh` 或
-`scripts/lxe_manager/start_mcp.ps1` 作为外层 wrapper。它的语义是让当前
-manager 进程以退出码 `75` 退出，然后由 wrapper 识别该退出码并重新启动。
-如果 manager 是直接用 `node --import tsx ./src/index.ts` 或 `npm run dev`
-启动的，没有外层 wrapper，`ops.manager_restart` 只会让当前进程退出，不会自动
-拉起。遇到 manager 重启后无法连接时，先看 `data/lxe_manager/mcp.log`，确认
-是否出现 `restart code 75 received; restarting lxe_manager` 以及下一次
-`starting lxe_manager`。
+`scripts/lxe_manager/start_mcp.sh` 和 `scripts/lxe_manager/start_mcp.ps1`
+只负责启动 Node supervisor：`node --import tsx ./src/supervisor.ts`。
+supervisor 是 manager MCP server 的父进程，负责拉起
+`node --import tsx ./src/index.ts`。`ops.manager_restart` 的语义是让当前
+manager child 在返回响应后以退出码 `75` 退出；supervisor 看到 `75` 后会启动
+新版 supervisor 并退出，由新版 supervisor 拉起新版 manager child。这样
+`tools/lxe_manager/src/` 里的 manager 与 supervisor 代码更新都能在一次
+`ops.manager_restart` 后生效。
+
+遇到 manager 重启后无法连接时，先看 `data/lxe_manager/mcp.log`，确认是否出现
+`lxe_manager child exited code=75`、`starting replacement lxe_manager supervisor`
+以及下一次 `starting lxe_manager`。
 
 复杂场景验证不要临时口头编排。把稳定流程写成
 `notes/use_cases/lxe_editor/*.md`，由 `lxe-editor-use-case-runner` 读取后调用

@@ -26,39 +26,19 @@ function Write-ManagerLog {
 }
 
 Push-Location $ManagerDir
-$script:ActiveChild = $null
-
-function Stop-ActiveChild {
-    if ($null -ne $script:ActiveChild -and -not $script:ActiveChild.HasExited) {
-        Write-ManagerLog "stopping active lxe_manager pid=$($script:ActiveChild.Id)"
-        Stop-Process -Id $script:ActiveChild.Id -Force -ErrorAction SilentlyContinue
-        $script:ActiveChild.WaitForExit()
-    }
-}
 
 try {
-    $RestartCode = 75
-    while ($true) {
-        $NodeArgs = @("--import", "tsx", "./src/index.ts") + $ManagerArgs
-        Write-ManagerLog "starting lxe_manager: node $($NodeArgs -join ' ')"
-        & node @NodeArgs *>&1 | ForEach-Object {
-            Add-Content -Path $LogFile -Value $_
-            Write-Host $_
-        }
-        $ExitCode = $LASTEXITCODE
-        if ($null -eq $ExitCode) {
-            $ExitCode = 1
-        }
-        Write-ManagerLog "lxe_manager child exited code=$ExitCode"
-        if ($ExitCode -ne $RestartCode) {
-            Write-ManagerLog "exit code $ExitCode is not restart code $RestartCode; wrapper exiting"
-            exit $ExitCode
-        }
-        Write-ManagerLog "restart code $RestartCode received; restarting lxe_manager"
+    $NodeArgs = @("--import", "tsx", "./src/supervisor.ts") + $ManagerArgs
+    Write-ManagerLog "starting lxe_manager supervisor: node $($NodeArgs -join ' ')"
+    & node @NodeArgs
+    $ExitCode = $LASTEXITCODE
+    if ($null -eq $ExitCode) {
+        $ExitCode = 1
     }
+    Write-ManagerLog "lxe_manager supervisor exited code=$ExitCode"
+    exit $ExitCode
 }
 finally {
-    Stop-ActiveChild
     Write-ManagerLog "wrapper stopped"
     Pop-Location
 }

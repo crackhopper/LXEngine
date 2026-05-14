@@ -387,13 +387,20 @@ class ManagerMcpConfigTest(unittest.TestCase):
             self.assertNotIn("mcp_servers.lxe_editor", text, script_name)
             self.assertNotIn("LXE_EDITOR_MCP_BEARER_TOKEN", text, script_name)
 
-    def test_powershell_manager_wrapper_uses_native_exit_code_for_restart(self) -> None:
-        script = self.repo_root / "scripts" / "lxe_manager" / "start_mcp.ps1"
-        text = script.read_text(encoding="utf-8")
+    def test_manager_start_wrappers_delegate_restart_logic_to_node_supervisor(self) -> None:
+        powershell_script = (
+            self.repo_root / "scripts" / "lxe_manager" / "start_mcp.ps1"
+        ).read_text(encoding="utf-8")
+        bash_script = (
+            self.repo_root / "scripts" / "lxe_manager" / "start_mcp.sh"
+        ).read_text(encoding="utf-8")
 
-        self.assertIn("$LASTEXITCODE", text)
-        self.assertNotIn("Start-Process", text)
-        self.assertIn("restart code $RestartCode received; restarting lxe_manager", text)
+        self.assertIn("./src/supervisor.ts", powershell_script)
+        self.assertNotIn("Start-Process", powershell_script)
+        self.assertNotIn("restart code", powershell_script)
+        self.assertIn("./src/supervisor.ts", bash_script)
+        self.assertNotIn("restart_code", bash_script)
+        self.assertNotIn("./src/index.ts", bash_script)
 
     @unittest.skipUnless(shutil.which("pwsh"), "pwsh not available")
     def test_use_local_mcp_powershell_preserves_existing_config(self) -> None:
