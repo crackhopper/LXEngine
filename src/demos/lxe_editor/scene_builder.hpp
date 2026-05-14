@@ -8,6 +8,8 @@
 #include "core/scene/visibility_mask.hpp"
 
 #include <filesystem>
+#include <string>
+#include <string_view>
 
 namespace LX_demo::lxe_editor {
 
@@ -16,10 +18,14 @@ inline constexpr LX_core::VisibilityLayerMask Layer_EditorHelper = 1u << 30;
 // Loads DamagedHelmet.gltf, bridges its PBR texture metadata into the
 // existing blinnphong_0 material, and returns a SceneNode ready to attach to
 // a Scene. Throws std::runtime_error on failure.
-LX_core::SceneNodeSharedPtr buildHelmetNode(const std::filesystem::path& gltfPath);
+LX_core::SceneNodeSharedPtr
+buildHelmetNode(const std::filesystem::path &gltfPath);
 
 // Builds a 20m x 20m XZ ground plane (y = 0) with the Blinn-Phong material,
 // albedo sampling disabled. Returns a SceneNode ready to attach.
 LX_core::SceneNodeSharedPtr buildGroundNode();
+
+LX_core::SceneNodeSharedPtr buildBuiltinPrimitiveNode(std::string_view meshUri,
+                                                      std::string nodeName);
 
 } // namespace LX_demo::lxe_editor

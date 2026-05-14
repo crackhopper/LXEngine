@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstring>
 #include <string>
 #include <string_view>
 
@@ -65,6 +66,12 @@ cameraControlModeLabel(const UiOverlay::CameraControlMode mode) {
 }
 
 enum class ToolbarIcon { Selection, Orbit, FreeFly };
+
+struct CreatePaletteItem final {
+  const char *label = "";
+  const char *kind = "";
+  const char *name = "";
+};
 
 void drawButtonIcon(ImDrawList &drawList, const ImVec2 min, const ImVec2 max,
                     const ToolbarIcon icon, const ImU32 color) {
@@ -188,6 +195,20 @@ void drawResetIcon(ImDrawList &drawList, const ImVec2 min, const ImVec2 max,
   return clicked;
 }
 
+[[nodiscard]] bool drawCreatePaletteButton(const CreatePaletteItem &item) {
+  const bool clicked = ImGui::Button(item.label, ImVec2(112.0f, 26.0f));
+  if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
+    ImGui::SetDragDropPayload("LXE_CREATE_KIND", item.kind,
+                              std::strlen(item.kind) + 1);
+    ImGui::TextUnformatted(item.label);
+    ImGui::EndDragDropSource();
+  }
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("Create %s", item.label);
+  }
+  return clicked;
+}
+
 } // namespace
 
 void UiOverlay::attach(CameraRig &rig, LX_core::CommandBus &commandBus,
@@ -265,6 +286,16 @@ bool UiOverlay::consumeConfigDirty() {
   const bool dirty = m_configDirty;
   m_configDirty = false;
   return dirty;
+}
+
+void UiOverlay::dispatchCreatePaletteItem(std::string_view kind,
+                                          std::string_view displayName) {
+  if (!m_commandBus) {
+    return;
+  }
+  const std::string line =
+      "add " + std::string(kind) + " " + quoteToken(displayName);
+  (void)m_commandBus->get().dispatch(line);
 }
 
 void UiOverlay::applyUiFontScale() {
@@ -512,7 +543,7 @@ void UiOverlay::handleHotkeys(LX_core::IInputState &input) {
 
 void UiOverlay::drawToolbarPanel() {
   applyPanelLayout("Toolbar",
-                   PanelDefaults{12.0f, 12.0f, 360.0f, 72.0f, false});
+                   PanelDefaults{12.0f, 12.0f, 620.0f, 128.0f, false});
   if (!ImGui::Begin("Toolbar", nullptr,
                     ImGuiWindowFlags_NoScrollbar |
                         ImGuiWindowFlags_NoScrollWithMouse)) {
@@ -582,16 +613,14 @@ void UiOverlay::drawToolbarPanel() {
     ImGui::PushStyleColor(ImGuiCol_Button,
                           ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
   }
-  const bool recordingClicked =
-      ImGui::Button(recordingStatus.active ? "Stop Rec" : "Rec",
-                    ImVec2(72.0f, 34.0f));
+  const bool recordingClicked = ImGui::Button(
+      recordingStatus.active ? "Stop Rec" : "Rec", ImVec2(72.0f, 34.0f));
   if (recordingStatus.active) {
     ImGui::PopStyleColor();
   }
   if (ImGui::IsItemHovered()) {
-    ImGui::SetTooltip("%s",
-                      recordingStatus.active ? "Stop and save recording"
-                                             : "Start basic recording");
+    ImGui::SetTooltip("%s", recordingStatus.active ? "Stop and save recording"
+                                                   : "Start basic recording");
   }
   if (recordingClicked && m_commandBus) {
     if (recordingStatus.active) {
@@ -609,6 +638,44 @@ void UiOverlay::drawToolbarPanel() {
                            "Preferences", drawPreferencesIcon)) {
     m_preferencesVisible = !m_preferencesVisible;
     m_configDirty = true;
+  }
+
+  static constexpr std::array<CreatePaletteItem, 5> kPrimitiveItems = {{
+      {"Cube", "primitive:cube", "Cube"},
+      {"Sphere", "primitive:sphere", "Sphere"},
+      {"Plane", "primitive:plane", "Plane"},
+      {"Cylinder", "primitive:cylinder", "Cylinder"},
+      {"Cone", "primitive:cone", "Cone"},
+  }};
+  static constexpr std::array<CreatePaletteItem, 2> kSceneObjectItems = {{
+      {"Directional Light", "light:directional", "Directional Light"},
+      {"Camera", "camera:perspective", "Camera"},
+  }};
+
+  ImGui::Separator();
+  if (!editingEnabled) {
+    ImGui::BeginDisabled();
+  }
+  for (usize i = 0; i < kPrimitiveItems.size(); ++i) {
+    if (i != 0) {
+      ImGui::SameLine();
+    }
+    const auto &item = kPrimitiveItems[i];
+    if (drawCreatePaletteButton(item)) {
+      dispatchCreatePaletteItem(item.kind, item.name);
+    }
+  }
+  for (usize i = 0; i < kSceneObjectItems.size(); ++i) {
+    if (i != 0) {
+      ImGui::SameLine();
+    }
+    const auto &item = kSceneObjectItems[i];
+    if (drawCreatePaletteButton(item)) {
+      dispatchCreatePaletteItem(item.kind, item.name);
+    }
+  }
+  if (!editingEnabled) {
+    ImGui::EndDisabled();
   }
 
   ImGui::End();

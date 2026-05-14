@@ -15,15 +15,20 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 
 namespace LX_demo::lxe_editor {
 namespace {
 
-constexpr const char* RuntimeDebugDrawNodePrefix = "debug_draw_";
-constexpr const char* LegacyCameraHelperNodeName = "helper_camera";
-constexpr const char* LegacyLightHelperNodeName = "helper_light";
+constexpr const char *RuntimeDebugDrawNodePrefix = "debug_draw_";
+constexpr const char *LegacyCameraHelperNodeName = "helper_camera";
+constexpr const char *LegacyLightHelperNodeName = "helper_light";
+constexpr const char *BuiltinPrimitivePrefix =
+    "builtin://lxe_editor/primitives/";
+constexpr const char *BuiltinPrimitiveMaterial =
+    "assets/materials/blinnphong_lit.material";
 
 struct SceneRuntimeData final {
   std::optional<std::filesystem::path> documentPath;
@@ -34,38 +39,63 @@ struct SceneRuntimeData final {
   LX_core::SceneNodeSharedPtr gameCameraNode;
 };
 
-[[nodiscard]] bool isRuntimeDebugDrawNodeName(const std::string& nodeName) {
+[[nodiscard]] bool isRuntimeDebugDrawNodeName(const std::string &nodeName) {
   return nodeName.rfind(RuntimeDebugDrawNodePrefix, 0) == 0;
 }
 
 [[nodiscard]] bool
-isRuntimeDebugDrawNode(const SceneNodeDocument& nodeDocument) {
+isRuntimeDebugDrawNode(const SceneNodeDocument &nodeDocument) {
   return isRuntimeDebugDrawNodeName(nodeDocument.nodeName);
 }
 
 [[nodiscard]] bool
-isRuntimeDebugDrawNode(const LX_core::SceneNodeSharedPtr& node) {
+isRuntimeDebugDrawNode(const LX_core::SceneNodeSharedPtr &node) {
   return node && isRuntimeDebugDrawNodeName(node->getNodeName());
 }
 
-[[nodiscard]] bool isLegacyEditorHelperName(const std::string& name) {
-  return name == LegacyCameraHelperNodeName || name == LegacyLightHelperNodeName;
+[[nodiscard]] bool isLegacyEditorHelperName(const std::string &name) {
+  return name == LegacyCameraHelperNodeName ||
+         name == LegacyLightHelperNodeName;
 }
 
-[[nodiscard]] bool isLegacyEditorHelperNode(
-    const SceneNodeDocument& nodeDocument) {
+[[nodiscard]] bool isBuiltinPrimitiveMeshUri(const std::string &uri) {
+  return uri.rfind(BuiltinPrimitivePrefix, 0) == 0;
+}
+
+[[nodiscard]] std::optional<std::string>
+primitiveUriFromNodeName(const std::string &nodeName) {
+  constexpr const char *prefix = "primitive_";
+  constexpr const char *suffix = "_node";
+  if (nodeName.rfind(prefix, 0) != 0) {
+    return std::nullopt;
+  }
+  const usize begin = std::string_view(prefix).size();
+  const usize suffixPos = nodeName.find(suffix, begin);
+  if (suffixPos == std::string::npos || suffixPos == begin) {
+    return std::nullopt;
+  }
+  const std::string shape = nodeName.substr(begin, suffixPos - begin);
+  if (shape != "cube" && shape != "sphere" && shape != "plane" &&
+      shape != "cylinder" && shape != "cone") {
+    return std::nullopt;
+  }
+  return std::string(BuiltinPrimitivePrefix) + shape;
+}
+
+[[nodiscard]] bool
+isLegacyEditorHelperNode(const SceneNodeDocument &nodeDocument) {
   return isLegacyEditorHelperName(nodeDocument.nodeName) ||
          isLegacyEditorHelperName(nodeDocument.name);
 }
 
 [[nodiscard]] bool
-isLegacyEditorHelperNode(const LX_core::SceneNodeSharedPtr& node) {
+isLegacyEditorHelperNode(const LX_core::SceneNodeSharedPtr &node) {
   return node && (isLegacyEditorHelperName(node->getNodeName()) ||
                   isLegacyEditorHelperName(node->getName()));
 }
 
-[[nodiscard]] std::filesystem::path normalizeDocumentPath(
-    const std::filesystem::path& path) {
+[[nodiscard]] std::filesystem::path
+normalizeDocumentPath(const std::filesystem::path &path) {
   if (path.empty()) {
     throw std::runtime_error("scene document path is empty");
   }
@@ -73,8 +103,8 @@ isLegacyEditorHelperNode(const LX_core::SceneNodeSharedPtr& node) {
 }
 
 [[nodiscard]] std::reference_wrapper<LX_core::CameraComponent>
-requireCameraComponent(const LX_core::SceneNodeSharedPtr& node,
-                       const char* nodeLabel) {
+requireCameraComponent(const LX_core::SceneNodeSharedPtr &node,
+                       const char *nodeLabel) {
   if (!node) {
     throw std::runtime_error(std::string("missing scene node: ") + nodeLabel);
   }
@@ -86,9 +116,9 @@ requireCameraComponent(const LX_core::SceneNodeSharedPtr& node,
   return camera->get();
 }
 
-[[nodiscard]] LX_core::SceneNodeSharedPtr makeCameraNode(
-    const std::string& nodeName, const std::string& displayName,
-    const LX_core::VisibilityLayerMask cullingMask) {
+[[nodiscard]] LX_core::SceneNodeSharedPtr
+makeCameraNode(const std::string &nodeName, const std::string &displayName,
+               const LX_core::VisibilityLayerMask cullingMask) {
   auto node = LX_core::SceneNode::create(nodeName);
   node->setName(displayName);
   const auto camera = node->addComponent<LX_core::CameraComponent>();
@@ -101,13 +131,14 @@ requireCameraComponent(const LX_core::SceneNodeSharedPtr& node,
   return node;
 }
 
-[[nodiscard]] std::string
-cameraPathToDisplayName(const std::string& path, const std::string& fallback) {
+[[nodiscard]] std::string cameraPathToDisplayName(const std::string &path,
+                                                  const std::string &fallback) {
   if (path.empty() || path == "/") {
     return fallback;
   }
   const auto slash = path.find_last_of('/');
-  const std::string name = slash == std::string::npos ? path : path.substr(slash + 1);
+  const std::string name =
+      slash == std::string::npos ? path : path.substr(slash + 1);
   return name.empty() ? fallback : name;
 }
 
@@ -116,7 +147,7 @@ cameraPathToDisplayName(const std::string& path, const std::string& fallback) {
   document.setSceneName("Scene");
   document.setGameplayCameraPath("/game_cam");
 
-  auto& rootNode = document.mutableRootNode();
+  auto &rootNode = document.mutableRootNode();
   SceneNodeDocument gameCameraNode;
   gameCameraNode.nodeName = "game_camera";
   gameCameraNode.name = "game_cam";
@@ -151,8 +182,8 @@ cameraPathToDisplayName(const std::string& path, const std::string& fallback) {
   return document;
 }
 
-[[nodiscard]] LX_core::SceneNodeSharedPtr buildRenderableNodeFromDocument(
-    const SceneNodeDocument& nodeDocument) {
+[[nodiscard]] LX_core::SceneNodeSharedPtr
+buildRenderableNodeFromDocument(const SceneNodeDocument &nodeDocument) {
   if (!nodeDocument.meshUri.has_value()) {
     return LX_core::SceneNode::create(nodeDocument.nodeName);
   }
@@ -167,19 +198,25 @@ cameraPathToDisplayName(const std::string& path, const std::string& fallback) {
     return buildGroundNode();
   }
 
+  if (isBuiltinPrimitiveMeshUri(*nodeDocument.meshUri)) {
+    return buildBuiltinPrimitiveNode(*nodeDocument.meshUri,
+                                     nodeDocument.nodeName);
+  }
+
   // Placeholder for future generic mesh import support.
   return LX_core::SceneNode::create(nodeDocument.nodeName);
 }
 
-void applyNodeIdentityAndTransform(LX_core::SceneNode& node,
-                                   const SceneNodeDocument& documentNode) {
+void applyNodeIdentityAndTransform(LX_core::SceneNode &node,
+                                   const SceneNodeDocument &documentNode) {
   node.setName(documentNode.name);
   node.setLocalTransform(documentNode.transform);
   node.setVisibilityLayerMask(documentNode.visibilityMask);
 }
 
-void applyCameraState(LX_core::SceneNode& node, LX_core::CameraComponent& camera,
-                      const CameraNodeState& state) {
+void applyCameraState(LX_core::SceneNode &node,
+                      LX_core::CameraComponent &camera,
+                      const CameraNodeState &state) {
   camera.applyProjectionState(state.type, state.fovY, state.aspect,
                               state.nearPlane, state.farPlane, state.left,
                               state.right, state.bottom, state.top);
@@ -194,17 +231,18 @@ void applyCameraState(LX_core::SceneNode& node, LX_core::CameraComponent& camera
   node.setLocalTransform(local);
 }
 
-void configureDirectionalLight(LX_core::DirectionalLight& light,
-                               const DirectionalLightNodeState& state) {
+void configureDirectionalLight(LX_core::DirectionalLight &light,
+                               const DirectionalLightNodeState &state) {
   light.setDirection(state.direction);
   light.setColor(state.color);
   light.setIntensity(state.intensity);
 }
 
 void buildSceneNodesRecursive(
-    const SceneNodeDocument& nodeDocument, const LX_core::SceneNodeSharedPtr& parent,
-    const std::shared_ptr<SceneRuntimeData>& runtime,
-    std::unordered_map<std::string, LX_core::SceneNodeSharedPtr>& nodesByPath) {
+    const SceneNodeDocument &nodeDocument,
+    const LX_core::SceneNodeSharedPtr &parent,
+    const std::shared_ptr<SceneRuntimeData> &runtime,
+    std::unordered_map<std::string, LX_core::SceneNodeSharedPtr> &nodesByPath) {
   if (isRuntimeDebugDrawNode(nodeDocument)) {
     std::cerr << "[lxe_editor] skipping runtime-only scene node: "
               << nodeDocument.nodeName << "\n";
@@ -218,10 +256,10 @@ void buildSceneNodesRecursive(
 
   LX_core::SceneNodeSharedPtr node;
   if (nodeDocument.camera.has_value()) {
-    node = makeCameraNode(
-        nodeDocument.nodeName,
-        nodeDocument.name.empty() ? nodeDocument.nodeName : nodeDocument.name,
-        nodeDocument.camera->cullingMask);
+    node = makeCameraNode(nodeDocument.nodeName,
+                          nodeDocument.name.empty() ? nodeDocument.nodeName
+                                                    : nodeDocument.name,
+                          nodeDocument.camera->cullingMask);
   } else {
     node = buildRenderableNodeFromDocument(nodeDocument);
   }
@@ -232,7 +270,8 @@ void buildSceneNodesRecursive(
   }
 
   if (nodeDocument.camera.has_value()) {
-    auto& camera = requireCameraComponent(node, nodeDocument.nodeName.c_str()).get();
+    auto &camera =
+        requireCameraComponent(node, nodeDocument.nodeName.c_str()).get();
     applyCameraState(*node, camera, *nodeDocument.camera);
     runtime->scene->addCamera(node);
   } else {
@@ -247,14 +286,14 @@ void buildSceneNodesRecursive(
     runtime->scene->attachLight(node, light);
   }
 
-  for (const auto& childDocument : nodeDocument.children) {
+  for (const auto &childDocument : nodeDocument.children) {
     buildSceneNodesRecursive(childDocument, node, runtime, nodesByPath);
   }
 }
 
 [[nodiscard]] std::shared_ptr<SceneRuntimeData>
-buildRuntimeFromDocument(const SceneDocument& document,
-                         const std::optional<std::filesystem::path>& path,
+buildRuntimeFromDocument(const SceneDocument &document,
+                         const std::optional<std::filesystem::path> &path,
                          const std::optional<SceneSourceKind> sourceKind) {
   auto runtime = std::make_shared<SceneRuntimeData>();
   runtime->documentPath = path;
@@ -269,24 +308,25 @@ buildRuntimeFromDocument(const SceneDocument& document,
   std::unordered_map<std::string, LX_core::SceneNodeSharedPtr> nodesByPath;
   auto rootNode = runtime->scene->getRootNode();
   applyNodeIdentityAndTransform(*rootNode, document.rootNode());
-  for (const auto& childDocument : document.rootNode().children) {
+  for (const auto &childDocument : document.rootNode().children) {
     buildSceneNodesRecursive(childDocument, rootNode, runtime, nodesByPath);
   }
 
   const std::string gameplayPath = document.gameplayCameraPath();
   const auto gameplayNodeIt = nodesByPath.find(gameplayPath);
   if (gameplayNodeIt == nodesByPath.end()) {
-    throw std::runtime_error("gameplay camera path not found in scene document: " +
-                             gameplayPath);
+    throw std::runtime_error(
+        "gameplay camera path not found in scene document: " + gameplayPath);
   }
   runtime->gameCameraNode = gameplayNodeIt->second;
 
   runtime->editorCameraNode =
       makeCameraNode("editor_camera", "editor_cam", LX_core::Layer_All);
-  runtime->editorCameraNode->setVisibilityLayerMask(LX_core::Layer_EditorOverlay);
-  auto& editorCamera =
+  runtime->editorCameraNode->setVisibilityLayerMask(
+      LX_core::Layer_EditorOverlay);
+  auto &editorCamera =
       requireCameraComponent(runtime->editorCameraNode, "editor_camera").get();
-  auto& gameCamera =
+  auto &gameCamera =
       requireCameraComponent(runtime->gameCameraNode, "game_camera").get();
   if (document.hasEditorCamera()) {
     document.editorCamera().applyTo(*runtime->editorCameraNode, editorCamera);
@@ -307,20 +347,21 @@ buildRuntimeFromDocument(const SceneDocument& document,
 }
 
 [[nodiscard]] std::shared_ptr<SceneRuntimeData>
-requireRuntimeData(const std::shared_ptr<void>& impl) {
+requireRuntimeData(const std::shared_ptr<void> &impl) {
   if (!impl) {
     throw std::runtime_error("scene runtime is not loaded");
   }
   return std::static_pointer_cast<SceneRuntimeData>(impl);
 }
 
-[[nodiscard]] const SceneNodeDocument*
-findDocumentNodeByName(const SceneNodeDocument& node, const std::string& nodeName) {
+[[nodiscard]] const SceneNodeDocument *
+findDocumentNodeByName(const SceneNodeDocument &node,
+                       const std::string &nodeName) {
   if (node.nodeName == nodeName) {
     return &node;
   }
-  for (const auto& child : node.children) {
-    if (const auto* match = findDocumentNodeByName(child, nodeName)) {
+  for (const auto &child : node.children) {
+    if (const auto *match = findDocumentNodeByName(child, nodeName)) {
       return match;
     }
   }
@@ -328,7 +369,7 @@ findDocumentNodeByName(const SceneNodeDocument& node, const std::string& nodeNam
 }
 
 [[nodiscard]] CameraNodeState
-captureCameraState(const LX_core::CameraComponent& camera) {
+captureCameraState(const LX_core::CameraComponent &camera) {
   return CameraNodeState{
       .eye = camera.getEyePosition(),
       .target = camera.getLookTarget(),
@@ -347,7 +388,7 @@ captureCameraState(const LX_core::CameraComponent& camera) {
 }
 
 [[nodiscard]] DirectionalLightNodeState
-captureDirectionalLightState(const LX_core::DirectionalLight& light) {
+captureDirectionalLightState(const LX_core::DirectionalLight &light) {
   return DirectionalLightNodeState{
       .direction = light.getDirection(),
       .color = light.getColor(),
@@ -356,25 +397,25 @@ captureDirectionalLightState(const LX_core::DirectionalLight& light) {
 }
 
 [[nodiscard]] SceneDocument
-captureSceneDocument(const std::shared_ptr<SceneRuntimeData>& runtime) {
+captureSceneDocument(const std::shared_ptr<SceneRuntimeData> &runtime) {
   SceneDocument document;
-  document.setSceneName(runtime->scene ? runtime->scene->getSceneName() : "Scene");
+  document.setSceneName(runtime->scene ? runtime->scene->getSceneName()
+                                       : "Scene");
   document.setGameplayCameraPath(runtime->gameCameraNode
                                      ? runtime->gameCameraNode->getPath()
                                      : "/game_cam");
 
-  auto captureNode = [&](const auto& self,
-                         const LX_core::SceneNodeSharedPtr& node)
-      -> SceneNodeDocument {
+  auto captureNode =
+      [&](const auto &self,
+          const LX_core::SceneNodeSharedPtr &node) -> SceneNodeDocument {
     SceneNodeDocument entry;
     entry.nodeName = node->getNodeName();
     entry.name = node->getName();
     entry.transform = node->getLocalTransform();
     entry.visibilityMask = node->getVisibilityLayerMask();
 
-    if (const auto* existing =
-            findDocumentNodeByName(runtime->document.rootNode(),
-                                   node->getNodeName())) {
+    if (const auto *existing = findDocumentNodeByName(
+            runtime->document.rootNode(), node->getNodeName())) {
       entry.visibilityMask = existing->visibilityMask;
       entry.meshUri = existing->meshUri;
       entry.materialUri = existing->materialUri;
@@ -383,6 +424,10 @@ captureSceneDocument(const std::shared_ptr<SceneRuntimeData>& runtime) {
     } else if (node->getName() == "ground") {
       entry.meshUri = "builtin://lxe_editor/ground_mesh";
       entry.materialUri = "builtin://lxe_editor/ground_material";
+    } else if (const auto primitiveUri =
+                   primitiveUriFromNodeName(node->getNodeName())) {
+      entry.meshUri = *primitiveUri;
+      entry.materialUri = BuiltinPrimitiveMaterial;
     }
 
     if (const auto camera = node->getComponent<LX_core::CameraComponent>();
@@ -394,10 +439,9 @@ captureSceneDocument(const std::shared_ptr<SceneRuntimeData>& runtime) {
       entry.directionalLight = captureDirectionalLightState(*light);
     }
 
-    for (const auto& child : node->getChildren()) {
+    for (const auto &child : node->getChildren()) {
       if (!child || child == runtime->editorCameraNode ||
-          isRuntimeDebugDrawNode(child) ||
-          isLegacyEditorHelperNode(child)) {
+          isRuntimeDebugDrawNode(child) || isLegacyEditorHelperNode(child)) {
         continue;
       }
       entry.children.push_back(self(self, child));
@@ -406,9 +450,9 @@ captureSceneDocument(const std::shared_ptr<SceneRuntimeData>& runtime) {
     return entry;
   };
 
-  auto& rootEntry = document.mutableRootNode();
+  auto &rootEntry = document.mutableRootNode();
   if (runtime->scene && runtime->scene->getRootNode()) {
-    const auto& rootNode = runtime->scene->getRootNode();
+    const auto &rootNode = runtime->scene->getRootNode();
     rootEntry.nodeName = rootNode->getNodeName();
     rootEntry.name = rootNode->getName();
     rootEntry.parentPath.clear();
@@ -420,17 +464,16 @@ captureSceneDocument(const std::shared_ptr<SceneRuntimeData>& runtime) {
     rootEntry.directionalLight.reset();
     rootEntry.children.clear();
 
-    for (const auto& child : rootNode->getChildren()) {
+    for (const auto &child : rootNode->getChildren()) {
       if (!child || child == runtime->editorCameraNode ||
-          isRuntimeDebugDrawNode(child) ||
-          isLegacyEditorHelperNode(child)) {
+          isRuntimeDebugDrawNode(child) || isLegacyEditorHelperNode(child)) {
         continue;
       }
       rootEntry.children.push_back(captureNode(captureNode, child));
     }
   }
 
-  auto& editorCamera =
+  auto &editorCamera =
       requireCameraComponent(runtime->editorCameraNode, "editor_camera").get();
   document.setEditorCamera(
       EditorCameraState::captureFrom(*runtime->editorCameraNode, editorCamera));
@@ -445,7 +488,7 @@ void SceneRuntime::createEmptyScene() {
 }
 
 void SceneRuntime::loadFromDocumentPath(
-    const std::filesystem::path& path,
+    const std::filesystem::path &path,
     const std::optional<SceneSourceKind> sourceKind) {
   const std::filesystem::path normalizedPath = normalizeDocumentPath(path);
   const SceneDocument document = loadSceneDocument(normalizedPath);
@@ -460,7 +503,7 @@ void SceneRuntime::saveToCurrentDocumentPath() {
   saveToDocumentPath(*runtime->documentPath);
 }
 
-void SceneRuntime::saveToDocumentPath(const std::filesystem::path& path) {
+void SceneRuntime::saveToDocumentPath(const std::filesystem::path &path) {
   const auto runtime = requireRuntimeData(m_impl);
   const std::filesystem::path normalizedPath = normalizeDocumentPath(path);
   SceneDocument document = captureSceneDocument(runtime);

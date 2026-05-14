@@ -11,6 +11,7 @@
 #include "core/utils/filesystem_tools.hpp"
 #include "demos/lxe_editor/lxe_editor_build_info.hpp"
 #include "demos/lxe_editor/lxe_editor_commands.hpp"
+#include "demos/lxe_editor/scene_builder.hpp"
 #include "demos/lxe_editor/scene_interaction_controller.hpp"
 
 #include <chrono>
@@ -324,8 +325,7 @@ void LxeEditorSession::flushPendingSceneLoad(LX_core::gpu::EngineLoop &loop) {
 
   m_runtime = std::move(nextRuntime);
   if (nextSourceKind.has_value() && m_runtime.documentPath().has_value()) {
-    m_session.setCurrentDocument(*m_runtime.documentPath(),
-                                 *nextSourceKind);
+    m_session.setCurrentDocument(*m_runtime.documentPath(), *nextSourceKind);
   } else {
     m_session.setCurrentDocument(m_runtime.documentPath(), std::nullopt);
   }
@@ -411,8 +411,7 @@ LxeEditorSession::queueSceneLoad(const std::string &path) {
     m_pendingRuntime = std::move(loaded);
     m_pendingSourceKind =
         classified ? std::optional{classified->kind} : std::nullopt;
-    m_pendingEditorSceneState =
-        loadEditorSceneStateIfPresent(*loadedPath);
+    m_pendingEditorSceneState = loadEditorSceneStateIfPresent(*loadedPath);
     return makeCommandOk(
         "queued scene load for next update tick: " + loadedPath->string(),
         "{\"path\":\"" + jsonEscape(loadedPath->string()) + "\",\"kind\":\"" +
@@ -441,13 +440,12 @@ LX_core::CommandResult LxeEditorSession::adminStatus() const {
 
 EditorSceneStateDocument LxeEditorSession::captureEditorSceneState() const {
   EditorSceneStateDocument state;
-  state.editorCamera =
-      EditorCameraState::captureFrom(*m_runtime.editorCameraNode(),
-                                     editorCamera());
+  state.editorCamera = EditorCameraState::captureFrom(
+      *m_runtime.editorCameraNode(), editorCamera());
   state.orbitTarget = m_rig.orbitTarget();
   const auto selected = m_editorState.getSelected();
   state.selectedPaths.reserve(selected.size());
-  for (const auto& node : selected) {
+  for (const auto &node : selected) {
     if (node) {
       state.selectedPaths.push_back(node->getPath());
     }
@@ -456,9 +454,9 @@ EditorSceneStateDocument LxeEditorSession::captureEditorSceneState() const {
 }
 
 void LxeEditorSession::applyEditorSceneState(
-    const EditorSceneStateDocument& state) {
+    const EditorSceneStateDocument &state) {
   if (state.editorCamera.has_value()) {
-    auto& camera = editorCamera();
+    auto &camera = editorCamera();
     state.editorCamera->applyTo(*m_runtime.editorCameraNode(), camera);
     camera.updateMatrices();
   }
@@ -468,8 +466,8 @@ void LxeEditorSession::applyEditorSceneState(
 
   std::vector<LX_core::SceneNodeSharedPtr> selectedNodes;
   selectedNodes.reserve(state.selectedPaths.size());
-  for (const auto& path : state.selectedPaths) {
-    if (LX_core::SceneNode* node = m_runtime.scene()->findByPath(path)) {
+  for (const auto &path : state.selectedPaths) {
+    if (LX_core::SceneNode *node = m_runtime.scene()->findByPath(path)) {
       selectedNodes.push_back(node->shared_from_this());
     }
   }
@@ -539,6 +537,25 @@ void LxeEditorSession::rebuildBindings(
                 result.metadata["inverse.line"] =
                     "cam control " + cameraControlModeName(previous);
                 return result;
+              },
+          .createNode =
+              [](const std::string &kind, const std::string &nodeName,
+                 const std::string &displayName,
+                 LX_core::SceneNodeSharedPtr &outNode) {
+                if (kind.rfind("primitive:", 0) != 0) {
+                  return makeCommandError("unsupported create kind: " + kind);
+                }
+                const std::string shape =
+                    kind.substr(std::string("primitive:").size());
+                const std::string meshUri =
+                    "builtin://lxe_editor/primitives/" + shape;
+                try {
+                  outNode = buildBuiltinPrimitiveNode(meshUri, nodeName);
+                  outNode->setName(displayName);
+                  return makeCommandOk("created " + kind);
+                } catch (const std::exception &e) {
+                  return makeCommandError(e.what());
+                }
               },
       });
   if (!m_consolePanel) {
