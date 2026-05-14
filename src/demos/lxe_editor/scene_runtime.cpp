@@ -187,6 +187,7 @@ void applyCameraState(LX_core::SceneNode& node, LX_core::CameraComponent& camera
   camera.setCullingMask(state.cullingMask & ~Layer_EditorHelper);
   camera.lookAt(state.eye, state.target, state.up);
   auto local = node.getLocalTransform();
+  local.translation = state.eye;
   local.scale = state.type == LX_core::CameraType::Perspective
                     ? node.getLocalTransform().scale
                     : local.scale;
