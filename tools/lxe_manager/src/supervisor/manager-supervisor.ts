@@ -89,9 +89,7 @@ export class ManagerSupervisor {
     this.log(`starting replacement lxe_manager supervisor: node ${args.join(" ")}`);
     const child = this.spawnProcess(process.execPath, args, {
       cwd: this.options.managerDir,
-      detached: true,
-      stdio: "ignore",
-      windowsHide: true,
+      stdio: "inherit",
     });
     child.unref();
   }

@@ -81,9 +81,7 @@ describe("manager supervisor", () => {
       ],
       expect.objectContaining({
         cwd: "/repo/tools/lxe_manager",
-        detached: true,
-        stdio: "ignore",
-        windowsHide: true,
+        stdio: "inherit",
       }) as SpawnOptions,
     );
     expect(exit).toHaveBeenCalledWith(0);
