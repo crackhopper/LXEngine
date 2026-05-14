@@ -7,6 +7,7 @@
 #include "demos/lxe_editor/camera_rig.hpp"
 #include "demos/lxe_editor/editor_config_state.hpp"
 #include "demos/lxe_editor/editor_data_state.hpp"
+#include "demos/lxe_editor/editor_scene_state.hpp"
 #include "demos/lxe_editor/recording_controller.hpp"
 #include "demos/lxe_editor/scene_catalog.hpp"
 #include "demos/lxe_editor/scene_runtime.hpp"
@@ -79,7 +80,10 @@ private:
   [[nodiscard]] LX_core::CommandResult queueSceneLoad(const std::string& path);
   [[nodiscard]] LX_core::CommandResult setAdmin(bool enabled);
   [[nodiscard]] LX_core::CommandResult adminStatus() const;
-  void rebuildBindings();
+  [[nodiscard]] EditorSceneStateDocument captureEditorSceneState() const;
+  void applyEditorSceneState(const EditorSceneStateDocument& state);
+  void rebuildBindings(
+      std::optional<EditorSceneStateDocument> editorSceneState = std::nullopt);
 
   CameraRig& m_rig;
   UiOverlay& m_ui;
@@ -89,6 +93,7 @@ private:
   SceneRuntime m_runtime;
   std::optional<SceneRuntime> m_pendingRuntime;
   std::optional<SceneSourceKind> m_pendingSourceKind;
+  std::optional<EditorSceneStateDocument> m_pendingEditorSceneState;
   std::unique_ptr<LX_core::CommandBus> m_commandBus;
   std::unique_ptr<LX_core::ConsolePanel> m_consolePanel;
   std::unique_ptr<LX_core::SceneTreePanel> m_sceneTreePanel;

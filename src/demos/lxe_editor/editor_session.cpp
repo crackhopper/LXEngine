@@ -269,6 +269,7 @@ LxeEditorSession::saveScene(const std::optional<std::string> &path) {
         explicitPath,
         m_runtime.scene() ? m_runtime.scene()->getSceneName() : "Scene");
     m_runtime.saveToDocumentPath(decision.path);
+    saveEditorSceneStateForScenePath(decision.path, captureEditorSceneState());
     m_session.setCurrentDocument(decision.path, decision.kind);
     m_session.setDirty(false);
     refreshCatalog();
@@ -295,8 +296,11 @@ void LxeEditorSession::flushPendingSceneLoad(LX_core::gpu::EngineLoop &loop) {
 
   SceneRuntime nextRuntime = std::move(*m_pendingRuntime);
   const std::optional<SceneSourceKind> nextSourceKind = m_pendingSourceKind;
+  std::optional<EditorSceneStateDocument> nextEditorSceneState =
+      std::move(m_pendingEditorSceneState);
   m_pendingRuntime.reset();
   m_pendingSourceKind.reset();
+  m_pendingEditorSceneState.reset();
 
   try {
     loop.startScene(nextRuntime.scene());
@@ -326,7 +330,7 @@ void LxeEditorSession::flushPendingSceneLoad(LX_core::gpu::EngineLoop &loop) {
     m_session.setCurrentDocument(m_runtime.documentPath(), std::nullopt);
   }
   m_session.setDirty(false);
-  rebuildBindings();
+  rebuildBindings(std::move(nextEditorSceneState));
 }
 
 void LxeEditorSession::pollCommandHistory(LX_core::gpu::EngineLoop &loop) {
@@ -407,6 +411,8 @@ LxeEditorSession::queueSceneLoad(const std::string &path) {
     m_pendingRuntime = std::move(loaded);
     m_pendingSourceKind =
         classified ? std::optional{classified->kind} : std::nullopt;
+    m_pendingEditorSceneState =
+        loadEditorSceneStateIfPresent(*loadedPath);
     return makeCommandOk(
         "queued scene load for next update tick: " + loadedPath->string(),
         "{\"path\":\"" + jsonEscape(loadedPath->string()) + "\",\"kind\":\"" +
@@ -433,7 +439,45 @@ LX_core::CommandResult LxeEditorSession::adminStatus() const {
                                : "{\"permission\":\"user\"}");
 }
 
-void LxeEditorSession::rebuildBindings() {
+EditorSceneStateDocument LxeEditorSession::captureEditorSceneState() const {
+  EditorSceneStateDocument state;
+  state.editorCamera =
+      EditorCameraState::captureFrom(*m_runtime.editorCameraNode(),
+                                     editorCamera());
+  state.orbitTarget = m_rig.orbitTarget();
+  const auto selected = m_editorState.getSelected();
+  state.selectedPaths.reserve(selected.size());
+  for (const auto& node : selected) {
+    if (node) {
+      state.selectedPaths.push_back(node->getPath());
+    }
+  }
+  return state;
+}
+
+void LxeEditorSession::applyEditorSceneState(
+    const EditorSceneStateDocument& state) {
+  if (state.editorCamera.has_value()) {
+    auto& camera = editorCamera();
+    state.editorCamera->applyTo(*m_runtime.editorCameraNode(), camera);
+    camera.updateMatrices();
+  }
+  if (state.orbitTarget.has_value()) {
+    m_rig.setOrbitTarget(*state.orbitTarget);
+  }
+
+  std::vector<LX_core::SceneNodeSharedPtr> selectedNodes;
+  selectedNodes.reserve(state.selectedPaths.size());
+  for (const auto& path : state.selectedPaths) {
+    if (LX_core::SceneNode* node = m_runtime.scene()->findByPath(path)) {
+      selectedNodes.push_back(node->shared_from_this());
+    }
+  }
+  m_editorState.select(std::move(selectedNodes));
+}
+
+void LxeEditorSession::rebuildBindings(
+    std::optional<EditorSceneStateDocument> editorSceneState) {
   const bool previewEnabled = m_editorState.isPreviewEnabled();
   m_editorState.deselect();
   m_editorState.setEditorCamera(m_runtime.editorCameraNode());
@@ -442,6 +486,9 @@ void LxeEditorSession::rebuildBindings() {
   (void)m_editorState.syncActiveCamera(*m_runtime.scene());
 
   m_rig.attach(editorCamera());
+  if (editorSceneState.has_value()) {
+    applyEditorSceneState(*editorSceneState);
+  }
 
   if (!m_commandBus) {
     m_commandBus = std::make_unique<LX_core::CommandBus>();
@@ -506,9 +553,6 @@ void LxeEditorSession::rebuildBindings() {
       *m_commandBus, m_editorState, *m_runtime.scene());
   m_sceneInteraction = std::make_unique<SceneInteractionController>(
       *m_commandBus, m_editorState, *m_runtime.scene());
-  m_sceneInteraction->setResolveHelperOwner([this](const std::string &path) {
-    return m_runtime.resolveEditorHelperOwner(path);
-  });
   m_sceneInteraction->setBoxSelectionDispatch(
       [this](const LX_core::Vec2f &dragStart, const LX_core::Vec2f &dragEnd,
              const SceneViewRect &sceneViewRect, const bool ctrlHeld,

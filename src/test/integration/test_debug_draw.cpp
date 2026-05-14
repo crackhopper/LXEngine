@@ -8,6 +8,7 @@
 
 #include <iostream>
 #include <memory>
+#include <string>
 
 using namespace LX_core;
 
@@ -61,6 +62,22 @@ void testDrawLineFlushesSixVertices() {
   EXPECT(DebugDraw::testing::queuedLineCount() == 3, "three lines queued");
   EXPECT(DebugDraw::testing::flushedVertexCount(Layer_EditorOverlay) == 6,
          "three lines flush six vertices");
+}
+
+void testDebugDrawBucketDoesNotEnterEditableSceneTree() {
+  auto scene = makeSceneWithCamera(Layer_All);
+  resetForScene(scene);
+
+  DebugDraw::beginFrame();
+  DebugDraw::drawLine({0, 0, 0}, {1, 0, 0});
+  DebugDraw::endFrame();
+
+  EXPECT(DebugDraw::testing::hasRenderable(Layer_EditorOverlay),
+         "debug draw should still create a renderable bucket");
+  EXPECT(scene->findByPath("/debug_draw_2147483648") == nullptr,
+         "debug draw bucket should not be addressable as an editable scene node");
+  EXPECT(scene->dumpTree().find("debug_draw_") == std::string::npos,
+         "debug draw bucket should not appear in the scene tree");
 }
 
 void testWireSphereSegmentsMatchThreeGreatCircles() {
@@ -317,6 +334,7 @@ int main() {
   initializeRuntimeAssetRoot();
 
   testDrawLineFlushesSixVertices();
+  testDebugDrawBucketDoesNotEnterEditableSceneTree();
   testWireSphereSegmentsMatchThreeGreatCircles();
   testFrustumProducesTwelveLines();
   testOverlayHiddenFromGameCameraMask();

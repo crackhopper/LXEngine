@@ -6,7 +6,10 @@
 #include "core/rhi/renderer.hpp"
 #include "core/scene/components/mesh_component.hpp"
 #include "core/utils/filesystem_tools.hpp"
+#include "demos/lxe_editor/editor_scene_state.hpp"
 
+#include <cmath>
+#include <filesystem>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
@@ -230,7 +233,9 @@ void testEditorHelpersUseFacetedOctahedronGeometry() {
            std::string("helper should use faceted octahedron vertices: ") + path);
   };
 
-  requireHelperVertexCount("/game_cam/helper_camera");
+  requireHelperVertexCount("/game_cam");
+  EXPECT(scene->findByPath("/game_cam/helper_camera") == nullptr,
+         "camera helpers should be visual components, not child nodes");
   EXPECT(scene->findByPath("/dir_light/helper_light") == nullptr,
          "directional lights should draw through their owning node instead of a helper child");
 }
@@ -266,6 +271,67 @@ void testRecordingCommandControlsSessionRecorder() {
          "recording stop command should deactivate recorder");
 }
 
+void testSceneSaveLoadRoundTripsEditorSidecarState() {
+  const bool initialized = initializeRuntimeAssetRoot();
+  EXPECT(initialized, "runtime asset root should initialize for sidecar test");
+  if (!initialized) {
+    return;
+  }
+
+  const std::filesystem::path scenePath =
+      resolveRuntimePath("data/scenes/session_sidecar_test.scene.yaml");
+  const std::filesystem::path statePath =
+      LX_demo::lxe_editor::editorSceneStatePathForScenePath(scenePath);
+  std::filesystem::remove(scenePath);
+  std::filesystem::remove(statePath);
+
+  LX_core::EditorState editorState;
+  LX_demo::lxe_editor::CameraRig rig;
+  LX_demo::lxe_editor::UiOverlay ui;
+  LX_demo::lxe_editor::LxeEditorSession session(rig, ui, editorState);
+  session.initialize();
+
+  auto* lightNode = session.scene()->findByPath("/dir_light");
+  EXPECT(lightNode != nullptr, "default scene should have a light node");
+  if (!lightNode) {
+    return;
+  }
+
+  editorState.select({lightNode->shared_from_this()});
+  rig.setOrbitTarget({1.25f, 2.5f, -3.75f});
+
+  const auto save = session.commandBus().dispatch(
+      "scene save " + scenePath.string());
+  EXPECT(save.ok, "scene save should succeed");
+  EXPECT(std::filesystem::exists(statePath),
+         "scene save should write a same-stem editor sidecar");
+
+  editorState.deselect();
+  rig.setOrbitTarget({0.0f, 0.0f, 0.0f});
+
+  const auto load = session.commandBus().dispatch(
+      "scene load " + scenePath.string());
+  EXPECT(load.ok, "scene load should queue saved local scene");
+
+  auto window = std::make_shared<FakeWindow>();
+  auto renderer = std::make_shared<FakeRenderer>();
+  LX_core::gpu::EngineLoop loop;
+  loop.initialize(window, renderer);
+  session.flushPendingSceneLoad(loop);
+
+  const LX_core::Vec3f target = rig.orbitTarget();
+  EXPECT(std::abs(target.x - 1.25f) < 0.001f &&
+             std::abs(target.y - 2.5f) < 0.001f &&
+             std::abs(target.z + 3.75f) < 0.001f,
+         "sidecar should restore orbit target");
+  const auto selected = editorState.getSelected();
+  EXPECT(selected.size() == 1 && selected.front()->getPath() == "/dir_light",
+         "sidecar should restore selected scene node paths");
+
+  std::filesystem::remove(scenePath);
+  std::filesystem::remove(statePath);
+}
+
 } // namespace
 
 int main() {
@@ -273,6 +339,7 @@ int main() {
   testSceneLoadFailureKeepsEditorRunningAndCurrentScene();
   testEditorHelpersUseFacetedOctahedronGeometry();
   testRecordingCommandControlsSessionRecorder();
+  testSceneSaveLoadRoundTripsEditorSidecarState();
 
   if (failures != 0) {
     std::cerr << failures << " lxe_editor session test(s) failed\n";

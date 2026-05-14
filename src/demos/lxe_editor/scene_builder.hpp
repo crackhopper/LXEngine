@@ -21,6 +21,6 @@ LX_core::SceneNodeSharedPtr buildHelmetNode(const std::filesystem::path& gltfPat
 // Builds a 20m x 20m XZ ground plane (y = 0) with the Blinn-Phong material,
 // albedo sampling disabled. Returns a SceneNode ready to attach.
 LX_core::SceneNodeSharedPtr buildGroundNode();
-LX_core::SceneNodeSharedPtr buildCameraHelperNode();
+void attachCameraHelperVisual(LX_core::SceneNode& cameraNode);
 
 } // namespace LX_demo::lxe_editor

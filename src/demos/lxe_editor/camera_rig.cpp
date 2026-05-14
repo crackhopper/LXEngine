@@ -99,6 +99,15 @@ void CameraRig::resyncFromAttachedCamera() {
   syncFreeFlyFromCamera(m_freefly, m_camera->get());
 }
 
+void CameraRig::setOrbitTarget(const LX_core::Vec3f& target) {
+  if (m_camera) {
+    setOrbitTargetKeepingEye(m_orbit, m_camera->get(), target);
+    syncFreeFlyFromCamera(m_freefly, m_camera->get());
+    return;
+  }
+  m_orbit.setTarget(target);
+}
+
 void CameraRig::handleOrbitTargetControls(const LX_core::IInputState& input,
                                           const LX_core::Scene& scene,
                                           const SceneViewRect& sceneViewRect,

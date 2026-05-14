@@ -55,6 +55,7 @@ add_executable(lxe_editor
   editor_data_state.cpp
   editor_log_file.cpp
   editor_camera_state.cpp
+  editor_scene_state.cpp
   runtime_state.cpp
   scene_catalog.cpp
   scene_builder.cpp

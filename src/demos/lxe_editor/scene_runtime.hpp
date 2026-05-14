@@ -30,8 +30,6 @@ public:
   [[nodiscard]] LX_core::SceneSharedPtr scene() const;
   [[nodiscard]] LX_core::SceneNodeSharedPtr editorCameraNode() const;
   [[nodiscard]] LX_core::SceneNodeSharedPtr gameCameraNode() const;
-  [[nodiscard]] LX_core::SceneNodeSharedPtr
-  resolveEditorHelperOwner(const std::string& path) const;
 
 private:
   std::shared_ptr<void> m_impl;

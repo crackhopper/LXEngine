@@ -22,6 +22,8 @@ namespace LX_demo::lxe_editor {
 namespace {
 
 constexpr const char* RuntimeDebugDrawNodePrefix = "debug_draw_";
+constexpr const char* LegacyCameraHelperNodeName = "helper_camera";
+constexpr const char* LegacyLightHelperNodeName = "helper_light";
 
 struct SceneRuntimeData final {
   std::optional<std::filesystem::path> documentPath;
@@ -30,7 +32,6 @@ struct SceneRuntimeData final {
   LX_core::SceneSharedPtr scene;
   LX_core::SceneNodeSharedPtr editorCameraNode;
   LX_core::SceneNodeSharedPtr gameCameraNode;
-  std::unordered_map<std::string, LX_core::SceneNodeSharedPtr> helperOwnersByPath;
 };
 
 [[nodiscard]] bool isRuntimeDebugDrawNodeName(const std::string& nodeName) {
@@ -45,6 +46,22 @@ isRuntimeDebugDrawNode(const SceneNodeDocument& nodeDocument) {
 [[nodiscard]] bool
 isRuntimeDebugDrawNode(const LX_core::SceneNodeSharedPtr& node) {
   return node && isRuntimeDebugDrawNodeName(node->getNodeName());
+}
+
+[[nodiscard]] bool isLegacyEditorHelperName(const std::string& name) {
+  return name == LegacyCameraHelperNodeName || name == LegacyLightHelperNodeName;
+}
+
+[[nodiscard]] bool isLegacyEditorHelperNode(
+    const SceneNodeDocument& nodeDocument) {
+  return isLegacyEditorHelperName(nodeDocument.nodeName) ||
+         isLegacyEditorHelperName(nodeDocument.name);
+}
+
+[[nodiscard]] bool
+isLegacyEditorHelperNode(const LX_core::SceneNodeSharedPtr& node) {
+  return node && (isLegacyEditorHelperName(node->getNodeName()) ||
+                  isLegacyEditorHelperName(node->getName()));
 }
 
 [[nodiscard]] std::filesystem::path normalizeDocumentPath(
@@ -134,17 +151,6 @@ cameraPathToDisplayName(const std::string& path, const std::string& fallback) {
   return document;
 }
 
-void registerHelperNode(const std::shared_ptr<SceneRuntimeData>& runtime,
-                        const LX_core::SceneNodeSharedPtr& owner,
-                        const LX_core::SceneNodeSharedPtr& helper) {
-  if (!runtime || !owner || !helper) {
-    return;
-  }
-  helper->setParent(owner);
-  runtime->scene->addRenderable(helper);
-  runtime->helperOwnersByPath.emplace(helper->getPath(), owner);
-}
-
 [[nodiscard]] LX_core::SceneNodeSharedPtr buildRenderableNodeFromDocument(
     const SceneNodeDocument& nodeDocument) {
   if (!nodeDocument.meshUri.has_value()) {
@@ -203,6 +209,11 @@ void buildSceneNodesRecursive(
               << nodeDocument.nodeName << "\n";
     return;
   }
+  if (isLegacyEditorHelperNode(nodeDocument)) {
+    std::cerr << "[lxe_editor] skipping legacy editor helper scene node: "
+              << nodeDocument.nodeName << "\n";
+    return;
+  }
 
   LX_core::SceneNodeSharedPtr node;
   if (nodeDocument.camera.has_value()) {
@@ -222,6 +233,7 @@ void buildSceneNodesRecursive(
   if (nodeDocument.camera.has_value()) {
     auto& camera = requireCameraComponent(node, nodeDocument.nodeName.c_str()).get();
     applyCameraState(*node, camera, *nodeDocument.camera);
+    attachCameraHelperVisual(*node);
     runtime->scene->addCamera(node);
   } else {
     runtime->scene->addRenderable(node);
@@ -289,13 +301,6 @@ buildRuntimeFromDocument(const SceneDocument& document,
         gameCamera.getBottom(), gameCamera.getTop());
   }
   runtime->scene->addCamera(runtime->editorCameraNode);
-
-  for (const auto& cameraNode : runtime->scene->getCameras()) {
-    if (!cameraNode || cameraNode == runtime->editorCameraNode) {
-      continue;
-    }
-    registerHelperNode(runtime, cameraNode, buildCameraHelperNode());
-  }
 
   return runtime;
 }
@@ -391,7 +396,7 @@ captureSceneDocument(const std::shared_ptr<SceneRuntimeData>& runtime) {
     for (const auto& child : node->getChildren()) {
       if (!child || child == runtime->editorCameraNode ||
           isRuntimeDebugDrawNode(child) ||
-          runtime->helperOwnersByPath.contains(child->getPath())) {
+          isLegacyEditorHelperNode(child)) {
         continue;
       }
       entry.children.push_back(self(self, child));
@@ -417,7 +422,7 @@ captureSceneDocument(const std::shared_ptr<SceneRuntimeData>& runtime) {
     for (const auto& child : rootNode->getChildren()) {
       if (!child || child == runtime->editorCameraNode ||
           isRuntimeDebugDrawNode(child) ||
-          runtime->helperOwnersByPath.contains(child->getPath())) {
+          isLegacyEditorHelperNode(child)) {
         continue;
       }
       rootEntry.children.push_back(captureNode(captureNode, child));
@@ -483,16 +488,6 @@ LX_core::SceneNodeSharedPtr SceneRuntime::editorCameraNode() const {
 
 LX_core::SceneNodeSharedPtr SceneRuntime::gameCameraNode() const {
   return requireRuntimeData(m_impl)->gameCameraNode;
-}
-
-LX_core::SceneNodeSharedPtr
-SceneRuntime::resolveEditorHelperOwner(const std::string& path) const {
-  const auto runtime = requireRuntimeData(m_impl);
-  const auto it = runtime->helperOwnersByPath.find(path);
-  if (it == runtime->helperOwnersByPath.end()) {
-    return {};
-  }
-  return it->second;
 }
 
 } // namespace LX_demo::lxe_editor

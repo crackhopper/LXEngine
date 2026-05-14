@@ -311,12 +311,15 @@ LX_core::SceneNodeSharedPtr buildGroundNode() {
   return makeRenderableNode("ground", std::move(mesh), std::move(material));
 }
 
-LX_core::SceneNodeSharedPtr buildCameraHelperNode() {
-  auto node = makeRenderableNode("helper_camera", buildOctahedronMesh(0.18f),
-                                 makeHelperMaterial(Vec3f{0.35f, 0.72f, 1.0f}));
-  node->setName("helper_camera");
-  node->setVisibilityLayerMask(Layer_EditorHelper);
-  return node;
+void attachCameraHelperVisual(LX_core::SceneNode& cameraNode) {
+  if (!cameraNode.getComponent<LX_core::MeshComponent>().has_value()) {
+    cameraNode.addComponent<LX_core::MeshComponent>(buildOctahedronMesh(0.18f));
+  }
+  if (!cameraNode.getComponent<LX_core::MaterialComponent>().has_value()) {
+    cameraNode.addComponent<LX_core::MaterialComponent>(
+        makeHelperMaterial(Vec3f{0.35f, 0.72f, 1.0f}));
+  }
+  cameraNode.setVisibilityLayerMask(Layer_EditorHelper);
 }
 
 } // namespace LX_demo::lxe_editor

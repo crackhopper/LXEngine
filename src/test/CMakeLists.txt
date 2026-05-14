@@ -230,6 +230,7 @@ if(TARGET test_lxe_editor_session)
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_config_state.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_data_state.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_camera_state.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_scene_state.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_build_info.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_commands.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/recording_controller.cpp
@@ -293,6 +294,7 @@ if(TARGET test_lxe_editor_memory_probe)
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_config_state.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_data_state.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_camera_state.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_scene_state.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_build_info.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_commands.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/recording_controller.cpp

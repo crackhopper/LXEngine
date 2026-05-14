@@ -32,6 +32,7 @@ public:
                                  const SceneViewRect& sceneViewRect, float dt);
   void enqueueDebugDraw() const;
   void resyncFromAttachedCamera();
+  void setOrbitTarget(const LX_core::Vec3f& target);
 
   Mode currentMode() const { return m_mode; }
   LX_core::Vec3f orbitTarget() const { return m_orbit.getTarget(); }

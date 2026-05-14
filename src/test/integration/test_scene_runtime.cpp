@@ -83,12 +83,16 @@ void testRuntimeCreatesEmptyScene() {
   EXPECT(runtime.scene()->getDirectionalLight(
              *runtime.scene()->findByPath("/dir_light")) != nullptr,
          "empty runtime should attach a directional light to the default light node");
-  EXPECT(runtime.scene()->findByPath("/game_cam/helper_camera") != nullptr,
-         "empty runtime should create a gameplay-camera helper");
+  EXPECT(runtime.scene()->findByPath("/game_cam/helper_camera") == nullptr,
+         "empty runtime should not create gameplay-camera helper child nodes");
+  const auto gameCameraMesh =
+      runtime.gameCameraNode()->getComponent<LX_core::MeshComponent>();
+  EXPECT(gameCameraMesh.has_value(),
+         "gameplay camera should carry its helper mesh directly");
   EXPECT(runtime.scene()->findByPath("/dir_light/helper_light") == nullptr,
          "empty runtime should not create a directional-light helper child");
-  EXPECT(runtime.scene()->getRenderables().size() == 4,
-         "empty runtime should contain gameplay camera, editor camera, default light, and camera helper");
+  EXPECT(runtime.scene()->getRenderables().size() == 3,
+         "empty runtime should contain gameplay camera, editor camera, and default light");
 }
 
 void testRuntimeCreatesEditorOnlyHelpersForEditableSceneNodes() {
@@ -134,10 +138,72 @@ void testRuntimeCreatesEditorOnlyHelpersForEditableSceneNodes() {
   demo::SceneRuntime runtime;
   runtime.loadFromDocumentPath(path);
 
-  EXPECT(runtime.scene()->findByPath("/game_cam/helper_camera") != nullptr,
-         "game camera should get an editor-only helper child");
+  EXPECT(runtime.scene()->findByPath("/game_cam/helper_camera") == nullptr,
+         "game camera should not get an editor-only helper child");
+  const auto gameCameraMesh =
+      runtime.gameCameraNode()->getComponent<LX_core::MeshComponent>();
+  EXPECT(gameCameraMesh.has_value(),
+         "game camera should carry its helper mesh directly");
   EXPECT(runtime.scene()->findByPath("/dir_light/helper_light") == nullptr,
          "directional light should not get an editor-only helper child");
+}
+
+void testRuntimeSkipsLegacyEditorHelperNodesOnLoad() {
+  const std::filesystem::path path =
+      makeTempPath("lx_scene_runtime_legacy_helpers.yaml");
+  writeSceneFile(path,
+                 "scene:\n"
+                 "  name: legacy_helper_scene\n"
+                 "  gameplayCameraPath: /game_cam\n"
+                 "nodes:\n"
+                 "  - nodeName: game_camera\n"
+                 "    name: game_cam\n"
+                 "    transform:\n"
+                 "      translation: [0.0, 2.0, 6.0]\n"
+                 "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                 "      scale: [1.0, 1.0, 1.0]\n"
+                 "    visibilityMask: 4294967295\n"
+                 "    camera:\n"
+                 "      eye: [0.0, 2.0, 6.0]\n"
+                 "      target: [0.0, 0.0, 0.0]\n"
+                 "      up: [0.0, 1.0, 0.0]\n"
+                 "      type: perspective\n"
+                 "      fovY: 45.0\n"
+                 "      aspect: 1.7777778\n"
+                 "      nearPlane: 0.1\n"
+                 "      farPlane: 1000.0\n"
+                 "      left: -1.0\n"
+                 "      right: 1.0\n"
+                 "      bottom: -1.0\n"
+                 "      top: 1.0\n"
+                 "      cullingMask: 4294967295\n"
+                 "  - nodeName: dir_light_node\n"
+                 "    name: dir_light\n"
+                 "    transform:\n"
+                 "      translation: [2.0, 0.0, 0.0]\n"
+                 "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                 "      scale: [1.0, 1.0, 1.0]\n"
+                 "    visibilityMask: 4294967295\n"
+                 "    directionalLight:\n"
+                 "      direction: [-0.3, -1.0, -0.5]\n"
+                 "      color: [1.0, 0.98, 0.9]\n"
+                 "      intensity: 1.0\n"
+                 "    children:\n"
+                 "      - nodeName: helper_light\n"
+                 "        name: helper_light\n"
+                 "        transform:\n"
+                 "          translation: [-2.0, 0.0, 0.0]\n"
+                 "          rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                 "          scale: [1.0, 1.0, 1.0]\n"
+                 "        visibilityMask: 1073741824\n");
+
+  demo::SceneRuntime runtime;
+  runtime.loadFromDocumentPath(path);
+
+  EXPECT(runtime.scene()->findByPath("/dir_light") != nullptr,
+         "legacy scene should still load the light owner");
+  EXPECT(runtime.scene()->findByPath("/dir_light/helper_light") == nullptr,
+         "legacy light helper child should be dropped on load");
 }
 
 void testRuntimeLoadsFullSceneDocument() {
@@ -469,6 +535,26 @@ void testRuntimeSaveOmitsDebugDrawRuntimeNodes() {
          "save should omit DebugDraw runtime nodes");
 }
 
+void testRuntimeSaveOmitsLegacyEditorHelperNodes() {
+  const std::filesystem::path savePath =
+      makeTempPath("lx_scene_runtime_save_legacy_helpers.yaml");
+
+  demo::SceneRuntime runtime;
+  runtime.createEmptyScene();
+
+  auto staleHelper = LX_core::SceneNode::create("helper_light");
+  staleHelper->setName("helper_light");
+  staleHelper->setParent(
+      runtime.scene()->findByPath("/dir_light")->shared_from_this());
+  runtime.scene()->addRenderable(staleHelper);
+
+  runtime.saveToDocumentPath(savePath);
+
+  const std::string savedText = readFile(savePath);
+  EXPECT(savedText.find("helper_light") == std::string::npos,
+         "save should omit legacy light helper nodes");
+}
+
 void testGroundMeshWindingMatchesUpwardNormal() {
   const auto ground = demo::buildGroundNode();
   const auto meshComponent = ground->getComponent<LX_core::MeshComponent>();
@@ -502,11 +588,13 @@ void testGroundMeshWindingMatchesUpwardNormal() {
 int main() {
   testRuntimeCreatesEmptyScene();
   testRuntimeCreatesEditorOnlyHelpersForEditableSceneNodes();
+  testRuntimeSkipsLegacyEditorHelperNodesOnLoad();
   testRuntimeLoadsFullSceneDocument();
   testRuntimeLoadsLegacyFlatSceneDocumentWithExplicitRootNormalization();
   testRuntimeSaveRoundTripsExpandedSceneDocument();
   testRuntimeSkipsLegacyDebugDrawNodesOnLoad();
   testRuntimeSaveOmitsDebugDrawRuntimeNodes();
+  testRuntimeSaveOmitsLegacyEditorHelperNodes();
   testGroundMeshWindingMatchesUpwardNormal();
 
   if (failures != 0) {

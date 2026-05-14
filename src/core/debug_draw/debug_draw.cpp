@@ -300,7 +300,7 @@ BucketState &ensureBucket(VisibilityLayerMask mask) {
   if (!s.scene) {
     throw std::runtime_error("DebugDraw requires an attached scene before creating renderables");
   }
-  s.scene->addRenderable(bucket.node);
+  s.scene->addRuntimeRenderable(bucket.node);
   s.sceneStructureDirty = true;
 
   auto [insertedIt, inserted] = s.buckets.emplace(mask, std::move(bucket));

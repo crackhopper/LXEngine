@@ -149,6 +149,27 @@ public:
     }
   }
 
+  void addRuntimeRenderable(IRenderableSharedPtr r) {
+    auto node = std::dynamic_pointer_cast<SceneNode>(r);
+    if (r) {
+      for (const auto &existing : m_renderables) {
+        if (!existing)
+          continue;
+        if (existing->getNodeName() == r->getNodeName()) {
+          detail::throwProgrammerLogicError("Scene duplicate nodeName in scene '" +
+                                            m_sceneName + "': " +
+                                            r->getNodeName());
+        }
+      }
+      if (node) {
+        node->attachToScene(weak_from_this());
+        node->setSceneDebugId(
+            StringID(m_sceneName + "/" + node->getNodeName()));
+      }
+    }
+    m_renderables.push_back(std::move(r));
+  }
+
   void removeRenderable(const SceneNodeSharedPtr &node);
 
   void addCamera(const SceneNodeSharedPtr &cameraNode);
