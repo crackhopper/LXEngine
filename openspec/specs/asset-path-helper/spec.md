@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Define the compatibility asset path helper behavior and build-tree asset synchronization contract used by tests and maintained startup paths.
+
+## Requirements
 
 ### Requirement: cdToWhereAssetsExist function
 `src/core/utils/filesystem_tools.hpp` SHALL declare and `filesystem_tools.cpp` SHALL implement:

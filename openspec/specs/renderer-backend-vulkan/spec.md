@@ -313,6 +313,10 @@ The test suite SHALL include:
 - test_vulkan_pipeline: Test pipeline creation
 - test_vulkan_renderer: Test full render loop with triangle
 
+#### Scenario: Vulkan module tests are registered
+- **WHEN** the test suite is configured
+- **THEN** each listed Vulkan module test SHALL be available through the project test runner or documented as a windowed/manual test with its runtime preconditions
+
 ### Requirement: Linux Vulkan windowed tests shall support headless execution guidance
 
 On Linux, any integration test or demo executable that creates an SDL/GLFW window, initializes `VulkanRenderer`, creates a swapchain, or otherwise depends on an available video device SHALL document its runtime preconditions:

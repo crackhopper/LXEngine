@@ -62,7 +62,7 @@ The analogy MUST NOT replace technical precision. After the analogy, the documen
 
 ### Requirement: Use tables for structured comparisons
 
-When a concept involves:
+Concept pages SHALL use Markdown tables when a concept involves:
 
 - multiple objects with parallel attributes
 - a boundary between two systems (e.g., template vs instance)
@@ -169,9 +169,9 @@ Index pages (e.g., `index.md` for a concept group) SHALL follow this structure:
 - **WHEN** a new concept group index is created
 - **THEN** it contains all five sections in the order above
 
-### Requirement: Navigation labels may stay plain even when page titles are richer
+### Requirement: Navigation labels SHALL stay concise when page titles are richer
 
-Navigation labels in `notes/nav.yml` MAY use simple capability names (e.g., `材质系统`). The page title itself SHOULD be more expressive and explanatory.
+Navigation labels in `notes/nav.yml` SHALL stay short and scannable, and MAY use simple capability names (e.g., `材质系统`). The page title itself SHOULD be more expressive and explanatory.
 
 #### Scenario: Nav label vs page title
 - **WHEN** a page is added to navigation

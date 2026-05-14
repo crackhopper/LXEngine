@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Define the repository asset directory layout, baseline test assets, size budget, and documentation expectations for checked-in runtime assets.
+
+## Requirements
 
 ### Requirement: Assets directory structure
 The repository SHALL have a top-level `assets/` directory with the following sub-directories: `models/`, `textures/`, `env/`.

@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Define stable scene-node naming, path generation, path lookup, and hierarchy dump behavior for editor, command, and debugging workflows.
+
+## Requirements
 
 ### Requirement: Scene nodes expose stable human-readable names and paths
 The scene system SHALL allow each `SceneNode` to carry a human-readable `std::string` name for editor, command, and debugging workflows. The name SHALL NOT participate in pipeline identity or renderability contracts.
