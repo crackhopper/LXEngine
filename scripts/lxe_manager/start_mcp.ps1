@@ -12,11 +12,29 @@ if (-not (Test-Path $PackageJson)) {
 }
 
 Push-Location $ManagerDir
+$script:ActiveChild = $null
+
+function Stop-ActiveChild {
+    if ($null -ne $script:ActiveChild -and -not $script:ActiveChild.HasExited) {
+        Stop-Process -Id $script:ActiveChild.Id -Force -ErrorAction SilentlyContinue
+        $script:ActiveChild.WaitForExit()
+    }
+}
+
 try {
-    & node --import tsx ./src/index.ts @ManagerArgs
-    $ExitCode = $LASTEXITCODE
+    $RestartCode = 75
+    while ($true) {
+        $NodeArgs = @("--import", "tsx", "./src/index.ts") + $ManagerArgs
+        $script:ActiveChild = Start-Process -FilePath "node" -ArgumentList $NodeArgs -NoNewWindow -PassThru
+        $script:ActiveChild.WaitForExit()
+        $ExitCode = $script:ActiveChild.ExitCode
+        $script:ActiveChild = $null
+        if ($ExitCode -ne $RestartCode) {
+            exit $ExitCode
+        }
+    }
 }
 finally {
+    Stop-ActiveChild
     Pop-Location
 }
-exit $ExitCode

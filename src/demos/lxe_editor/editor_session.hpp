@@ -14,6 +14,7 @@
 #include "demos/lxe_editor/ui_overlay.hpp"
 
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -33,11 +34,20 @@ class SceneInteractionController;
 
 class LxeEditorSession final {
 public:
+  struct DisplayCommandHooks final {
+    std::function<std::string()> displayListJson;
+    std::function<std::string()> displayActiveJson;
+    std::function<std::string(std::string_view)> displayConfigGetJson;
+    std::function<std::string(std::string_view, std::string_view)>
+        displayConfigSet;
+    std::function<std::string(std::string_view)> displaySelect;
+  };
+
   LxeEditorSession(CameraRig& rig, UiOverlay& ui,
                    LX_core::EditorState& editorState);
   ~LxeEditorSession();
 
-  void initialize();
+  void initialize(DisplayCommandHooks displayCommandHooks = {});
 
   [[nodiscard]] LX_core::SceneSharedPtr scene() const;
   [[nodiscard]] LX_core::CameraComponent& editorCamera() const;
@@ -90,6 +100,7 @@ private:
   EditorDataState m_editorDataState;
   EditorDataDocument m_editorData;
   RecordingController m_recording;
+  DisplayCommandHooks m_displayCommandHooks;
   LX_core::Vec2f m_windowSize{1280.0f, 720.0f};
   usize m_bindingsGeneration = 0;
   bool m_debugEnabled = false;

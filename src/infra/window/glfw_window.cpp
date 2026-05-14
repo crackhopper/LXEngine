@@ -2,6 +2,7 @@
 #include "window.hpp"
 #include "core/input/dummy_input_state.hpp"
 #include <GLFW/glfw3.h>
+#include <algorithm>
 #include <functional>
 #include <limits>
 #include <optional>
@@ -27,6 +28,27 @@ namespace {
   const long long dx = x - clampedX;
   const long long dy = y - clampedY;
   return dx * dx + dy * dy;
+}
+
+[[nodiscard]] std::optional<LX_core::WindowPlacement>
+resolveInitialPlacement(const int width, const int height,
+                        const WindowCreateOptions& options) {
+  if (options.initialPlacement.has_value()) {
+    return options.initialPlacement;
+  }
+
+  if (!options.displayKey.has_value()) {
+    return std::nullopt;
+  }
+
+  for (const auto& display : Window::enumerateDisplays()) {
+    if (display.key == *options.displayKey) {
+      return LX_core::makeDefaultWindowPlacementForDisplay(display, width,
+                                                           height);
+    }
+  }
+
+  return std::nullopt;
 }
 
 } // namespace
@@ -208,10 +230,81 @@ void Window::Initialize() {}
 
 Window::Window(const char *title, int width, int height,
                std::optional<LX_core::WindowPlacement> initialPlacement)
-    : pImpl(
-          std::make_unique<Impl>(title, width, height, initialPlacement)) {}
+    : Window(title, width, height,
+             WindowCreateOptions{.initialPlacement = initialPlacement}) {}
+
+Window::Window(const char *title, int width, int height,
+               const WindowCreateOptions& options)
+    : pImpl(std::make_unique<Impl>(
+          title, width, height,
+          resolveInitialPlacement(width, height, options))) {}
 
 Window::~Window() = default;
+
+std::vector<LX_core::DisplayInfo> Window::enumerateDisplays() {
+  if (!glfwInit()) {
+    throw std::runtime_error("GLFW init failed");
+  }
+
+  int monitorCount = 0;
+  GLFWmonitor** monitors = glfwGetMonitors(&monitorCount);
+  if (monitors == nullptr || monitorCount <= 0) {
+    return {};
+  }
+
+  std::vector<LX_core::DisplayInfo> result;
+  result.reserve(static_cast<size_t>(monitorCount));
+  for (int i = 0; i < monitorCount; ++i) {
+    int x = 0;
+    int y = 0;
+    glfwGetMonitorPos(monitors[i], &x, &y);
+
+    int widthPx = 0;
+    int heightPx = 0;
+    const GLFWvidmode* mode = glfwGetVideoMode(monitors[i]);
+    if (mode != nullptr) {
+      widthPx = mode->width;
+      heightPx = mode->height;
+    }
+
+    int workX = 0;
+    int workY = 0;
+    int workWidth = 0;
+    int workHeight = 0;
+    glfwGetMonitorWorkarea(monitors[i], &workX, &workY, &workWidth,
+                           &workHeight);
+    if (workWidth <= 0 || workHeight <= 0) {
+      workX = x;
+      workY = y;
+      workWidth = widthPx;
+      workHeight = heightPx;
+    }
+
+    float xScale = 1.0f;
+    float yScale = 1.0f;
+    glfwGetMonitorContentScale(monitors[i], &xScale, &yScale);
+    float scale = std::max(xScale, yScale);
+    if (scale <= 0.0f) {
+      scale = 1.0f;
+    }
+
+    const char* name = glfwGetMonitorName(monitors[i]);
+    LX_core::DisplayInfo info{
+        .index = i,
+        .backend = "glfw",
+        .name = name != nullptr ? name : "",
+        .bounds = {.x = x, .y = y, .width = widthPx, .height = heightPx},
+        .usableBounds =
+            {.x = workX, .y = workY, .width = workWidth, .height = workHeight},
+        .contentScale = scale,
+    };
+    LX_core::finalizeDisplayInfo(info);
+    result.push_back(std::move(info));
+  }
+
+  return result;
+}
+
 // Live-query to survive window resizes: swapchain rebuild asks getWidth/Height
 // to pick up the new framebuffer extent.
 int Window::getWidth() const {

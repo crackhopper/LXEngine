@@ -5,7 +5,10 @@
 #include "demos/lxe_editor/api_token_state.hpp"
 #include "demos/lxe_editor/lxe_editor_api_protocol.hpp"
 #include "demos/lxe_editor/lxe_editor_api_service.hpp"
+#include "demos/lxe_editor/lxe_editor_commands.hpp"
 #include "demos/lxe_editor/recording_controller.hpp"
+#include "demos/lxe_editor/scene_interaction_controller.hpp"
+#include "demos/lxe_editor/scene_view_rect.hpp"
 
 #include <filesystem>
 #include <iostream>
@@ -35,6 +38,16 @@ struct MutableHookState final {
   ApiCameraSnapshot cameras;
   ApiToolbarSnapshot toolbar;
   std::optional<LX_core::Vec3f> lastHitPoint;
+  std::string displayListJson =
+      "{\"profiles\":[{\"key\":\"display-a\",\"label\":\"Display "
+      "A\",\"available\":true,\"active\":true}]}";
+  std::string displayActiveJson = "{\"activeDisplay\":\"display-a\"}";
+  std::string displayConfigGetJson = "{\"key\":\"display-a\",\"effective\":{"
+                                     "\"preferences\":{\"uiFontScale\":1.25}}}";
+  std::string displayConfigSetJson =
+      "{\"ok\":true,\"key\":\"display-a\",\"saved\":true}";
+  std::string displaySelectJson =
+      "{\"ok\":true,\"activeDisplay\":\"display-b\",\"restartRequired\":true}";
 };
 
 struct Fixture final {
@@ -46,8 +59,7 @@ struct Fixture final {
   std::unique_ptr<LxeEditorApiService> service;
   std::unique_ptr<RecordingController> recording;
 
-  Fixture()
-  {
+  Fixture() {
     hookState.scene.sceneName = "Scene";
     hookState.scene.currentDocumentPath = "data/scenes/test.scene.yaml";
     hookState.scene.sourceKind = ApiSceneSourceKind::Local;
@@ -72,6 +84,18 @@ struct Fixture final {
     hooks.cameraSnapshot = [this]() { return hookState.cameras; };
     hooks.toolbarSnapshot = [this]() { return hookState.toolbar; };
     hooks.lastHitPoint = [this]() { return hookState.lastHitPoint; };
+    hooks.displayListJson = [this]() { return hookState.displayListJson; };
+    hooks.displayActiveJson = [this]() { return hookState.displayActiveJson; };
+    hooks.displayConfigGetJson = [this](const std::string &key) {
+      return "{\"key\":\"" + key + "\",\"source\":\"hook\"}";
+    };
+    hooks.displayConfigSet = [this](const std::string &key,
+                                    const std::string &patch) {
+      return "{\"key\":\"" + key + "\",\"patch\":\"" + patch + "\"}";
+    };
+    hooks.displaySelect = [this](const std::string &key) {
+      return "{\"selected\":\"" + key + "\",\"restartRequired\":true}";
+    };
     recording = std::make_unique<RecordingController>(
         std::filesystem::temp_directory_path() / "lxe_api_service_recording");
     hooks.recording =
@@ -92,10 +116,11 @@ void testExecuteCommandMirrorsCommandBusAndEmitsCommandEvent() {
       });
 
   const ApiEventCursor cursor = fixture.service->currentCursor();
-  const ApiCommandResponse response = fixture.service->executeCommand(
-      ApiCommandRequest{.line = "echo hello"});
+  const ApiCommandResponse response =
+      fixture.service->executeCommand(ApiCommandRequest{.line = "echo hello"});
   EXPECT(response.ok, "command execution should succeed");
-  EXPECT(response.line == "echo hello", "response should preserve command line");
+  EXPECT(response.line == "echo hello",
+         "response should preserve command line");
   EXPECT(response.message == "hello",
          "response should mirror command bus message");
   EXPECT(response.structuredJson == "{\"kind\":\"echo\"}",
@@ -103,8 +128,7 @@ void testExecuteCommandMirrorsCommandBusAndEmitsCommandEvent() {
   EXPECT(fixture.bus.history().size() == 1,
          "command execution should go through command bus history");
 
-  const ApiEventBatch batch =
-      fixture.service->collectEventsSince(cursor);
+  const ApiEventBatch batch = fixture.service->collectEventsSince(cursor);
   EXPECT(batch.events.size() == 1,
          "command execution should emit one command event");
   EXPECT(batch.events.front().type == ApiEventType::CommandExecuted,
@@ -115,6 +139,110 @@ void testExecuteCommandMirrorsCommandBusAndEmitsCommandEvent() {
     EXPECT(batch.events.front().command->line == "echo hello",
            "event command payload should preserve line");
   }
+}
+
+void testDisplayCommandsReturnStructuredHookJson() {
+  Fixture fixture;
+  SceneInteractionController interaction{fixture.bus, fixture.editorState,
+                                         *fixture.scene};
+  int editMode = 0;
+  int cameraControlMode = 0;
+  std::string capturedSetKey;
+  std::string capturedSetPatch;
+  std::string capturedSelectKey;
+  registerLxeEditorCommands(
+      fixture.bus,
+      LxeEditorCommandContext{
+          .editorState = fixture.editorState,
+          .scene = *fixture.scene,
+          .interaction = interaction,
+          .getEditMode = [&editMode]() { return editMode; },
+          .setEditMode =
+              [&editMode](const int modeCode) { editMode = modeCode; },
+          .getCameraControlMode =
+              [&cameraControlMode]() { return cameraControlMode; },
+          .setCameraControlMode =
+              [&cameraControlMode](const int modeCode) {
+                cameraControlMode = modeCode;
+              },
+          .sceneViewRect = []() { return SceneViewRect{}; },
+          .dirty = []() { return false; },
+          .permission = []() { return std::string("user"); },
+          .debugEnabled = []() { return false; },
+          .setDebugEnabled = [](bool) {},
+          .currentDocumentPath = []() { return std::optional<std::string>{}; },
+          .currentSourceKind = []() { return std::optional<std::string>{}; },
+          .persistedHistory = []() { return std::vector<std::string>{}; },
+          .appendConsoleDebugLine = [](std::string_view) {},
+          .displayListJson =
+              [&fixture]() { return fixture.hookState.displayListJson; },
+          .displayActiveJson =
+              [&fixture]() { return fixture.hookState.displayActiveJson; },
+          .displayConfigGetJson =
+              [](std::string_view key) {
+                return "{\"key\":\"" + std::string(key) +
+                       "\",\"source\":\"command-hook\"}";
+              },
+          .displayConfigSet =
+              [&capturedSetKey, &capturedSetPatch](std::string_view key,
+                                                   std::string_view patch) {
+                capturedSetKey = std::string(key);
+                capturedSetPatch = std::string(patch);
+                return "{\"ok\":true,\"source\":\"command-set-hook\"}";
+              },
+          .displaySelect =
+              [&capturedSelectKey](std::string_view key) {
+                capturedSelectKey = std::string(key);
+                return "{\"ok\":true,\"restartRequired\":true,"
+                       "\"source\":\"command-select-hook\"}";
+              },
+      });
+
+  const ApiCommandResponse list = fixture.service->executeCommand(
+      ApiCommandRequest{.line = "display list"});
+  EXPECT(list.ok, "display list should succeed when hook is present");
+  EXPECT(list.structuredJson.find("\"profiles\"") != std::string::npos,
+         "display list should return structured profiles JSON");
+  EXPECT(list.structuredJson.find("\"display-a\"") != std::string::npos,
+         "display list structured JSON should come from hook");
+
+  const ApiCommandResponse active = fixture.service->executeCommand(
+      ApiCommandRequest{.line = "display active"});
+  EXPECT(active.ok, "display active should succeed through registered command");
+  EXPECT(active.structuredJson.find("\"activeDisplay\":\"display-a\"") !=
+             std::string::npos,
+         "display active should use registered command hook");
+
+  const ApiCommandResponse config = fixture.service->executeCommand(
+      ApiCommandRequest{.line = "display config get default"});
+  EXPECT(
+      config.ok,
+      "display config get default should succeed through registered command");
+  EXPECT(
+      config.structuredJson.find("\"key\":\"default\"") != std::string::npos,
+      "display config get default should pass key through registered command");
+
+  const ApiCommandResponse set = fixture.service->executeCommand(
+      ApiCommandRequest{.line =
+                            "display config set default \"preferences: "
+                            "{uiFontScale: 1.4}\""});
+  EXPECT(set.ok,
+         "display config set should succeed through registered command");
+  EXPECT(capturedSetKey == "default",
+         "display config set should pass key through registered command");
+  EXPECT(capturedSetPatch == "preferences: {uiFontScale: 1.4}",
+         "display config set should pass patch through registered command");
+  EXPECT(set.structuredJson.find("\"ok\":true") != std::string::npos,
+         "display config set should return structured hook JSON");
+
+  const ApiCommandResponse select = fixture.service->executeCommand(
+      ApiCommandRequest{.line = "display select display-b"});
+  EXPECT(select.ok, "display select should succeed through registered command");
+  EXPECT(capturedSelectKey == "display-b",
+         "display select should pass key through registered command");
+  EXPECT(select.structuredJson.find("\"restartRequired\":true") !=
+             std::string::npos,
+         "display select should return restartRequired structured JSON");
 }
 
 void testRecordingToolsRecordMcpCommand() {
@@ -162,6 +290,58 @@ void testBuildInfoExposesGitIdentityFields() {
          "build info should include builtAt");
 }
 
+void testDisplayApiMethodsUseHooks() {
+  Fixture fixture;
+
+  EXPECT(fixture.service->displayList().find("\"profiles\"") !=
+             std::string::npos,
+         "displayList should return hook JSON");
+  EXPECT(fixture.service->displayActive().find(
+             "\"activeDisplay\":\"display-a\"") != std::string::npos,
+         "displayActive should return hook JSON");
+  EXPECT(fixture.service->displayConfigGet("active").find(
+             "\"key\":\"active\"") != std::string::npos,
+         "displayConfigGet should pass key to hook");
+  EXPECT(fixture.service->displayConfigSet("display-a", "preferences: {}")
+                 .find("\"patch\":\"preferences: {}\"") != std::string::npos,
+         "displayConfigSet should pass patch text to hook");
+  EXPECT(fixture.service->displaySelect("display-b")
+                 .find("\"restartRequired\":true") != std::string::npos,
+         "displaySelect should return hook JSON");
+}
+
+void testDisplayApiMethodsReturnErrorsWhenHooksMissing() {
+  SceneSharedPtr scene = Scene::create(nullptr);
+  EditorState editorState;
+  CommandBus bus;
+  LxeEditorApiService service(bus, editorState, *scene,
+                              LxeEditorApiService::Hooks{});
+
+  EXPECT(service.displayList().find("\"ok\":false") != std::string::npos,
+         "displayList should return in-band error without hook");
+  EXPECT(service.displayActive().find("display config unavailable") !=
+             std::string::npos,
+         "displayActive should return clear unavailable error");
+  EXPECT(service.displayConfigGet("active").find(
+             "display config unavailable") != std::string::npos,
+         "displayConfigGet should return config unavailable error without hook");
+  EXPECT(service.displayConfigSet("default", "{}")
+             .find("display config unavailable") != std::string::npos,
+         "displayConfigSet should return config unavailable error without hook");
+  EXPECT(service.displaySelect("display-a")
+             .find("display config unavailable") != std::string::npos,
+         "displaySelect should return config unavailable error without hook");
+  EXPECT(service.displayConfigGet("active").find("\"ok\":false") !=
+             std::string::npos,
+         "displayConfigGet should return in-band error without hook");
+  EXPECT(service.displayConfigSet("default", "{}").find("\"ok\":false") !=
+             std::string::npos,
+         "displayConfigSet should return in-band error without hook");
+  EXPECT(service.displaySelect("display-a").find("\"ok\":false") !=
+             std::string::npos,
+         "displaySelect should return in-band error without hook");
+}
+
 void testCaptureStateUsesHooksAndEditorSelection() {
   Fixture fixture;
   const auto node = SceneNode::create("node_target");
@@ -177,10 +357,10 @@ void testCaptureStateUsesHooksAndEditorSelection() {
          "scene path should come from hook provider");
   EXPECT(snapshot.toolbar.mode == ApiEditorMode::Selection,
          "toolbar snapshot should expose editor mode from hook provider");
-  EXPECT(snapshot.toolbar.camera == ApiCameraControlMode::FreeFly,
-         "toolbar snapshot should expose camera control mode from hook provider");
-  const std::string toolbarJson =
-      LX_demo::lxe_editor::toJson(snapshot.toolbar);
+  EXPECT(
+      snapshot.toolbar.camera == ApiCameraControlMode::FreeFly,
+      "toolbar snapshot should expose camera control mode from hook provider");
+  const std::string toolbarJson = LX_demo::lxe_editor::toJson(snapshot.toolbar);
   EXPECT(toolbarJson.find("\"mode\":\"selection\"") != std::string::npos,
          "toolbar JSON should expose editor mode as selection");
   EXPECT(toolbarJson.find("\"camera\":\"freefly\"") != std::string::npos,
@@ -208,17 +388,15 @@ void testRefreshEmitsDirtyAndPreviewChangeEvents() {
   fixture.hookState.toolbar.previewEnabled = true;
   fixture.service->refresh();
 
-  const ApiEventBatch batch =
-      fixture.service->collectEventsSince(cursor);
+  const ApiEventBatch batch = fixture.service->collectEventsSince(cursor);
   bool sawDirty = false;
   bool sawPreview = false;
-  for (const auto& event : batch.events) {
+  for (const auto &event : batch.events) {
     sawDirty = sawDirty || event.type == ApiEventType::DirtyChanged;
     sawPreview = sawPreview || event.type == ApiEventType::PreviewChanged;
   }
   EXPECT(sawDirty, "refresh should emit dirty.changed when dirty flips");
-  EXPECT(sawPreview,
-         "refresh should emit preview.changed when preview flips");
+  EXPECT(sawPreview, "refresh should emit preview.changed when preview flips");
 }
 
 void testRuntimeSceneNodeMutationEmitsApiSceneNodeChangedEvent() {
@@ -241,10 +419,9 @@ void testRuntimeSceneNodeMutationEmitsApiSceneNodeChangedEvent() {
 
   fixture.service->refresh();
 
-  const ApiEventBatch batch =
-      fixture.service->collectEventsSince(cursor);
+  const ApiEventBatch batch = fixture.service->collectEventsSince(cursor);
   bool sawRuntimeNodeChanged = false;
-  for (const auto& event : batch.events) {
+  for (const auto &event : batch.events) {
     if (event.type != ApiEventType::SceneNodeChanged) {
       continue;
     }
@@ -260,7 +437,8 @@ void testRuntimeSceneNodeMutationEmitsApiSceneNodeChangedEvent() {
       EXPECT(event.sceneNode->stableNodeName == node->getNodeName(),
              "scene-node payload should preserve stable node name");
       EXPECT(event.sceneNode->stableNodeName == "helmet_node",
-             "scene-node payload stable name should preserve constructor identity");
+             "scene-node payload stable name should preserve constructor "
+             "identity");
       EXPECT(event.sceneNode->stableNodeName != event.sceneNode->path,
              "stable node name should remain distinct from full path");
       EXPECT(event.sceneNode->aspects.size() == 1,
@@ -290,22 +468,23 @@ void testCommandDrivenSceneMutationKeepsCommandEventBeforeSceneNodeChanged() {
 
   const ApiEventCursor cursor = fixture.service->currentCursor();
 
-  const ApiCommandResponse response = fixture.service->executeCommand(
-      ApiCommandRequest{.line = "move_node"});
+  const ApiCommandResponse response =
+      fixture.service->executeCommand(ApiCommandRequest{.line = "move_node"});
   EXPECT(response.ok, "command-driven node mutation should succeed");
 
-  const ApiEventBatch batch =
-      fixture.service->collectEventsSince(cursor);
+  const ApiEventBatch batch = fixture.service->collectEventsSince(cursor);
   EXPECT(batch.events.size() >= 2,
          "command-driven node mutation should emit command and runtime events");
 
   std::optional<ApiEvent> commandEvent;
   std::optional<ApiEvent> sceneNodeEvent;
-  for (const auto& event : batch.events) {
-    if (event.type == ApiEventType::CommandExecuted && !commandEvent.has_value()) {
+  for (const auto &event : batch.events) {
+    if (event.type == ApiEventType::CommandExecuted &&
+        !commandEvent.has_value()) {
       commandEvent = event;
     }
-    if (event.type == ApiEventType::SceneNodeChanged && !sceneNodeEvent.has_value()) {
+    if (event.type == ApiEventType::SceneNodeChanged &&
+        !sceneNodeEvent.has_value()) {
       sceneNodeEvent = event;
     }
   }
@@ -316,13 +495,15 @@ void testCommandDrivenSceneMutationKeepsCommandEventBeforeSceneNodeChanged() {
          "command-driven node mutation should emit scene_node.changed");
   if (commandEvent.has_value() && sceneNodeEvent.has_value()) {
     EXPECT(commandEvent->sequence < sceneNodeEvent->sequence,
-           "command.executed should keep an earlier API sequence than its runtime side effect");
+           "command.executed should keep an earlier API sequence than its "
+           "runtime side effect");
     EXPECT(sceneNodeEvent->sceneNode.has_value(),
            "scene_node.changed should carry scene-node payload");
     if (sceneNodeEvent->sceneNode.has_value()) {
-      EXPECT(sceneNodeEvent->sceneNode->aspects.size() == 1 &&
-                 sceneNodeEvent->sceneNode->aspects.front() == "transform",
-             "command-driven scene-node payload should report transform aspect");
+      EXPECT(
+          sceneNodeEvent->sceneNode->aspects.size() == 1 &&
+              sceneNodeEvent->sceneNode->aspects.front() == "transform",
+          "command-driven scene-node payload should report transform aspect");
     }
   }
 }
@@ -345,28 +526,29 @@ void testExecuteCommandFlushesOlderQueuedRuntimeEventsBeforeNewCommand() {
 
   olderNode->setTranslation({1.0f, 2.0f, 3.0f});
 
-  const ApiCommandResponse response = fixture.service->executeCommand(
-      ApiCommandRequest{.line = "move_newer"});
-  EXPECT(response.ok, "executeCommand should succeed with pre-queued runtime events");
+  const ApiCommandResponse response =
+      fixture.service->executeCommand(ApiCommandRequest{.line = "move_newer"});
+  EXPECT(response.ok,
+         "executeCommand should succeed with pre-queued runtime events");
 
-  const ApiEventBatch batch =
-      fixture.service->collectEventsSince(cursor);
-  EXPECT(batch.events.size() >= 3,
-         "pre-queued runtime event plus command side effect should yield at least three events");
+  const ApiEventBatch batch = fixture.service->collectEventsSince(cursor);
+  EXPECT(batch.events.size() >= 3, "pre-queued runtime event plus command side "
+                                   "effect should yield at least three events");
 
   std::vector<ApiEvent> sceneNodeEvents;
   std::optional<ApiEvent> commandEvent;
-  for (const auto& event : batch.events) {
+  for (const auto &event : batch.events) {
     if (event.type == ApiEventType::SceneNodeChanged) {
       sceneNodeEvents.push_back(event);
     }
-    if (event.type == ApiEventType::CommandExecuted && !commandEvent.has_value()) {
+    if (event.type == ApiEventType::CommandExecuted &&
+        !commandEvent.has_value()) {
       commandEvent = event;
     }
   }
 
-  EXPECT(sceneNodeEvents.size() >= 2,
-         "pre-queued runtime event and command side effect should both be mirrored");
+  EXPECT(sceneNodeEvents.size() >= 2, "pre-queued runtime event and command "
+                                      "side effect should both be mirrored");
   EXPECT(commandEvent.has_value(),
          "executeCommand should still emit command.executed");
   if (sceneNodeEvents.size() >= 2 && commandEvent.has_value()) {
@@ -377,11 +559,14 @@ void testExecuteCommandFlushesOlderQueuedRuntimeEventsBeforeNewCommand() {
     if (sceneNodeEvents[0].sceneNode.has_value() &&
         sceneNodeEvents[1].sceneNode.has_value()) {
       EXPECT(sceneNodeEvents[0].sceneNode->stableNodeName == "older_node",
-             "older queued runtime event should flush before dispatching a new command");
+             "older queued runtime event should flush before dispatching a new "
+             "command");
       EXPECT(commandEvent->sequence > sceneNodeEvents[0].sequence,
-             "older queued runtime event should get an earlier sequence than the new command");
+             "older queued runtime event should get an earlier sequence than "
+             "the new command");
       EXPECT(commandEvent->sequence < sceneNodeEvents[1].sequence,
-             "command.executed should keep an earlier sequence than its own runtime side effect");
+             "command.executed should keep an earlier sequence than its own "
+             "runtime side effect");
       EXPECT(sceneNodeEvents[1].sceneNode->stableNodeName == "newer_node",
              "later runtime event should belong to the command-mutated node");
     }
@@ -401,7 +586,7 @@ void testRuntimeCameraPropertyMutationEmitsApiSceneNodeChangedEvent() {
 
   const ApiEventBatch batch = fixture.service->collectEventsSince(cursor);
   bool sawCameraEvent = false;
-  for (const auto& event : batch.events) {
+  for (const auto &event : batch.events) {
     if (event.type != ApiEventType::SceneNodeChanged ||
         !event.sceneNode.has_value()) {
       continue;
@@ -443,7 +628,7 @@ void testRuntimeLightPropertyMutationEmitsApiSceneNodeChangedEvent() {
 
   const ApiEventBatch batch = fixture.service->collectEventsSince(cursor);
   bool sawLightEvent = false;
-  for (const auto& event : batch.events) {
+  for (const auto &event : batch.events) {
     if (event.type != ApiEventType::SceneNodeChanged ||
         !event.sceneNode.has_value()) {
       continue;
@@ -476,8 +661,8 @@ void testRuntimeLightPropertyMutationEmitsApiSceneNodeChangedEvent() {
 }
 
 void testApiTokenStatePersistsSingleGeneratedToken() {
-  const auto rootDir = std::filesystem::temp_directory_path() /
-                       "lxengine_api_token_state_test";
+  const auto rootDir =
+      std::filesystem::temp_directory_path() / "lxengine_api_token_state_test";
   std::error_code ec;
   std::filesystem::remove_all(rootDir, ec);
 
@@ -498,6 +683,7 @@ void testApiTokenStatePersistsSingleGeneratedToken() {
 
 int main() {
   testExecuteCommandMirrorsCommandBusAndEmitsCommandEvent();
+  testDisplayCommandsReturnStructuredHookJson();
   testCaptureStateUsesHooksAndEditorSelection();
   testRefreshEmitsDirtyAndPreviewChangeEvents();
   testRuntimeSceneNodeMutationEmitsApiSceneNodeChangedEvent();
@@ -507,6 +693,8 @@ int main() {
   testRuntimeLightPropertyMutationEmitsApiSceneNodeChangedEvent();
   testRecordingToolsRecordMcpCommand();
   testBuildInfoExposesGitIdentityFields();
+  testDisplayApiMethodsUseHooks();
+  testDisplayApiMethodsReturnErrorsWhenHooksMissing();
   testApiTokenStatePersistsSingleGeneratedToken();
 
   if (failures != 0) {

@@ -72,6 +72,8 @@ struct Fixture final {
   std::unique_ptr<LxeEditorApiService> service;
   std::unique_ptr<LxeEditorApiServer> server;
   std::unique_ptr<RecordingController> recording;
+  std::string capturedDisplayConfigKey;
+  std::string capturedDisplayConfigPatch;
 
   Fixture() {
     hooks.sceneSummary = [] {
@@ -90,6 +92,12 @@ struct Fixture final {
           .previewEnabled = false,
           .debugEnabled = true,
       };
+    };
+    hooks.displayConfigSet = [this](const std::string& key,
+                                    const std::string& patch) {
+      capturedDisplayConfigKey = key;
+      capturedDisplayConfigPatch = patch;
+      return "{\"ok\":true,\"source\":\"display-config-test\"}";
     };
     recording = std::make_unique<RecordingController>(
         std::filesystem::temp_directory_path() / "lxe_api_server_recording");
@@ -299,6 +307,61 @@ void testHttpStateEndpointsExposeSplitToolbarState() {
   expectSplitToolbarState(summaryResponse);
 }
 
+void testHttpDisplayConfigObjectPatchPassesRawJson() {
+  Fixture fixture;
+
+  const SocketHandle socketHandle = connectClient(fixture.server->boundPort());
+  EXPECT(socketHandle != kInvalidSocket, "display config client should connect");
+  if (socketHandle == kInvalidSocket) {
+    return;
+  }
+  const std::string body =
+      "{\"key\":\"default\",\"patch\":{\"preferences\":{\"uiFontScale\":1.4}}}";
+  EXPECT(sendAll(socketHandle,
+                 makeHttpPostRequest("/api/display/config", body)),
+         "display config request should send");
+  const std::string response =
+      pumpUntilRead(*fixture.service, fixture.server.get(), socketHandle);
+  closeSocket(socketHandle);
+
+  EXPECT(response.find("200 OK") != std::string::npos,
+         "display config object patch should return 200");
+  EXPECT(response.find("\"source\":\"display-config-test\"") !=
+             std::string::npos,
+         "display config object patch should return hook response");
+  EXPECT(fixture.capturedDisplayConfigKey == "default",
+         "display config object patch should pass key to hook");
+  EXPECT(fixture.capturedDisplayConfigPatch ==
+             "{\"preferences\":{\"uiFontScale\":1.4}}",
+         "display config object patch should pass raw JSON object to hook");
+}
+
+void testHttpDisplayConfigPatchIgnoresNestedPatchKey() {
+  Fixture fixture;
+
+  const SocketHandle socketHandle = connectClient(fixture.server->boundPort());
+  EXPECT(socketHandle != kInvalidSocket,
+         "display config nested patch client should connect");
+  if (socketHandle == kInvalidSocket) {
+    return;
+  }
+  const std::string body =
+      "{\"key\":\"default\",\"meta\":{\"patch\":{\"preferences\":{"
+      "\"uiFontScale\":2.0}}},\"patch\":{\"preferences\":{\"uiFontScale\":1.4}}}";
+  EXPECT(sendAll(socketHandle,
+                 makeHttpPostRequest("/api/display/config", body)),
+         "display config nested patch request should send");
+  const std::string response =
+      pumpUntilRead(*fixture.service, fixture.server.get(), socketHandle);
+  closeSocket(socketHandle);
+
+  EXPECT(response.find("200 OK") != std::string::npos,
+         "display config nested patch request should return 200");
+  EXPECT(fixture.capturedDisplayConfigPatch ==
+             "{\"preferences\":{\"uiFontScale\":1.4}}",
+         "display config should use top-level patch instead of nested patch");
+}
+
 void testWebSocketHandshakeAndEvents() {
   Fixture fixture;
 
@@ -487,6 +550,8 @@ void testHttpBuildInfoRequiresTokenAndReturnsIdentity() {
 int main() {
   testHttpAuthorizationAndCommandRoundTrip();
   testHttpStateEndpointsExposeSplitToolbarState();
+  testHttpDisplayConfigObjectPatchPassesRawJson();
+  testHttpDisplayConfigPatchIgnoresNestedPatchKey();
   testWebSocketHandshakeAndEvents();
   testRuntimeStateRoundTripsYaml();
   testHttpMcpEndpointIsRemoved();

@@ -3,9 +3,13 @@
 #include "core/platform/types.hpp"
 #include <algorithm>
 #include <functional>
+#include <iomanip>
+#include <locale>
 #include <limits>
 #include <memory>
 #include <optional>
+#include <sstream>
+#include <string>
 #include <vector>
 namespace LX_core {
 using WindowGraphicsHandle = void *;
@@ -25,6 +29,58 @@ struct WindowUsableBounds final {
   int width = 0;
   int height = 0;
 };
+
+struct DisplayInfo final {
+  int index = 0;
+  std::string backend;
+  std::string name;
+  WindowUsableBounds bounds;
+  WindowUsableBounds usableBounds;
+  float contentScale = 1.0f;
+  std::string key;
+  std::string label;
+};
+
+[[nodiscard]] inline std::string formatDisplayScale(float scale) {
+  std::ostringstream stream;
+  stream.imbue(std::locale::classic());
+  stream << std::fixed << std::setprecision(2) << scale;
+  return stream.str();
+}
+
+inline void finalizeDisplayInfo(DisplayInfo& display) {
+  const std::string displayName =
+      display.name.empty() ? "Display" : display.name;
+  const std::string scale = formatDisplayScale(display.contentScale);
+
+  display.key = display.backend + ":" + std::to_string(display.index) + ":" +
+                displayName + ":" + std::to_string(display.usableBounds.width) +
+                "x" + std::to_string(display.usableBounds.height) + ":" + scale;
+  display.label = std::to_string(display.index) + ": " + displayName + " (" +
+                  std::to_string(display.usableBounds.width) + "x" +
+                  std::to_string(display.usableBounds.height) + " @ " + scale +
+                  "x)";
+}
+
+[[nodiscard]] inline WindowPlacement
+makeDefaultWindowPlacementForDisplay(const DisplayInfo& display, int width,
+                                     int height) {
+  const WindowUsableBounds& bounds = display.usableBounds;
+  const int usableWidth = std::max(1, bounds.width);
+  const int usableHeight = std::max(1, bounds.height);
+  const int requestedWidth = std::max(1, width);
+  const int requestedHeight = std::max(1, height);
+  const int clampedWidth = std::min(requestedWidth, usableWidth);
+  const int clampedHeight = std::min(requestedHeight, usableHeight);
+
+  return WindowPlacement{
+      .x = bounds.x + (usableWidth - clampedWidth) / 2,
+      .y = bounds.y + (usableHeight - clampedHeight) / 2,
+      .width = clampedWidth,
+      .height = clampedHeight,
+      .maximized = false,
+  };
+}
 
 [[nodiscard]] inline long long
 windowPlacementCenterX(const WindowPlacement& placement) {

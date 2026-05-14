@@ -35,6 +35,11 @@ interface EditorClientSurface {
   recordingProbe: (
     target: "summary" | "selection" | "cameras" | "toolbar" | "scene" | "state",
   ) => Promise<unknown>;
+  displayList: () => Promise<unknown>;
+  displayActive: () => Promise<unknown>;
+  displayConfigGet: (key: string) => Promise<unknown>;
+  displayConfigSet: (input: { key: string; patch: string }) => Promise<unknown>;
+  displaySelect: (key: string) => Promise<unknown>;
 }
 
 type EditorClientProvider = () =>
@@ -57,10 +62,25 @@ interface WorkspaceOpsSurface {
   buildState: () => Promise<unknown> | unknown;
 }
 
+interface ManagerOpsSurface {
+  restart: () => Promise<unknown>;
+}
+
+const POST_RESPONSE_ACTION = Symbol("postResponseAction");
+
+interface PostResponseToolResult extends ToolResult {
+  [POST_RESPONSE_ACTION]?: () => void;
+}
+
+interface MaybeManagerRestartResult {
+  scheduleRestart?: unknown;
+}
+
 export function createToolHandlers(input: {
   editorOps: EditorOpsSurface;
   editorClient?: EditorClientSurface;
   editorClientProvider?: EditorClientProvider;
+  managerOps?: ManagerOpsSurface;
   workspaceOps: WorkspaceOpsSurface;
 }): Record<string, ToolHandler> {
   const editorUnavailable = () =>
@@ -135,6 +155,25 @@ export function createToolHandlers(input: {
       withEditorClient((editorClient) =>
         editorClient.recordingProbe(readProbeTarget(args, "target")),
       ),
+    display_list: async () =>
+      withEditorClient((editorClient) => editorClient.displayList()),
+    display_active: async () =>
+      withEditorClient((editorClient) => editorClient.displayActive()),
+    display_config_get: async (args) =>
+      withEditorClient((editorClient) =>
+        editorClient.displayConfigGet(optionalString(args, "key") ?? "active"),
+      ),
+    display_config_set: async (args) =>
+      withEditorClient((editorClient) =>
+        editorClient.displayConfigSet({
+          key: readString(args, "key"),
+          patch: readString(args, "patch"),
+        }),
+      ),
+    display_select: async (args) =>
+      withEditorClient((editorClient) =>
+        editorClient.displaySelect(readString(args, "key")),
+      ),
     "ops.repo_pull": async () => guarded("ops.repo_pull", () => input.workspaceOps.repoPull()),
     "ops.build_configure": async (args) =>
       guarded("ops.build_configure", () =>
@@ -153,6 +192,20 @@ export function createToolHandlers(input: {
     "ops.editor_restart": async () => jsonText(await input.editorOps.restart()),
     "ops.editor_status": async () => jsonText(await input.editorOps.status()),
     "ops.editor_logs": async () => jsonText(await input.editorOps.logs()),
+    "ops.manager_restart": async () => {
+      if (!input.managerOps) {
+        return errorText(
+            "manager_restart_unavailable",
+            "manager restart is unavailable in this manager process",
+        );
+      }
+
+      const result = await input.managerOps.restart();
+      const scheduleRestart = readScheduleRestart(result);
+      return scheduleRestart
+        ? jsonTextWithPostResponseAction(result, scheduleRestart)
+        : jsonText(result);
+    },
   };
 
   handlers.lxe_editor_get_summary = handlers["editor.get_summary"];
@@ -272,7 +325,7 @@ export function createMcpHttpServer(input: {
         response.end();
         return;
       }
-      writeJson(response, 200, rpcResponse);
+      writeJson(response, 200, rpcResponse, postResponseActionFor(rpcResponse));
     } catch (error) {
       writeJson(response, 200, {
         jsonrpc: "2.0",
@@ -393,6 +446,33 @@ function jsonText(value: unknown): ToolResult {
   return {
     content: [{ type: "text", text: JSON.stringify(value) }],
   };
+}
+
+function jsonTextWithPostResponseAction(
+  value: unknown,
+  action: () => void,
+): ToolResult {
+  const result = jsonText(value) as PostResponseToolResult;
+  Object.defineProperty(result, POST_RESPONSE_ACTION, {
+    value: action,
+  });
+  return result;
+}
+
+function readScheduleRestart(value: unknown): (() => void) | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+  const candidate = (value as MaybeManagerRestartResult).scheduleRestart;
+  return typeof candidate === "function" ? (candidate as () => void) : undefined;
+}
+
+function postResponseActionFor(response: JsonRpcResponse): (() => void) | undefined {
+  const result = response.result;
+  if (!isObject(result)) {
+    return undefined;
+  }
+  return (result as unknown as PostResponseToolResult)[POST_RESPONSE_ACTION];
 }
 
 function errorText(code: string, message: string): ToolResult {
@@ -528,9 +608,10 @@ function writeJson(
   response: ServerResponse,
   statusCode: number,
   value: unknown,
+  callback?: () => void,
 ): void {
   response.writeHead(statusCode, { "content-type": "application/json" });
-  response.end(JSON.stringify(value));
+  response.end(JSON.stringify(value), callback);
 }
 
 function rpcResult(id: JsonRpcId, result: unknown): JsonRpcResponse {

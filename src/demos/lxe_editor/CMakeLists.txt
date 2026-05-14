@@ -45,6 +45,7 @@ add_executable(lxe_editor
   editor_session.cpp
   main.cpp
   camera_rig.cpp
+  display_launch_options.cpp
   lxe_editor_api_protocol.cpp
   lxe_editor_api_server.cpp
   lxe_editor_api_service.cpp

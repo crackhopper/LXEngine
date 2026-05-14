@@ -48,6 +48,9 @@ describe("mcp tool handlers", () => {
     editorClient?: Partial<
       NonNullable<Parameters<typeof createToolHandlers>[0]["editorClient"]>
     >;
+    managerOps?: Partial<
+      NonNullable<Parameters<typeof createToolHandlers>[0]["managerOps"]>
+    >;
     workspaceOps?: Partial<Parameters<typeof createToolHandlers>[0]["workspaceOps"]>;
   } = {}): Parameters<typeof createToolHandlers>[0] {
     return {
@@ -83,7 +86,21 @@ describe("mcp tool handlers", () => {
         recordingRead: vi.fn(async () => ({ id: "session-1" })),
         recordingReplay: vi.fn(async () => ({ ok: true })),
         recordingProbe: vi.fn(async () => ({ target: "summary" })),
+        displayList: vi.fn(async () => ({ profiles: [] })),
+        displayActive: vi.fn(async () => ({ key: "active" })),
+        displayConfigGet: vi.fn(async () => ({ key: "active", config: {} })),
+        displayConfigSet: vi.fn(async () => ({ ok: true })),
+        displaySelect: vi.fn(async () => ({ key: "desktop" })),
         ...overrides.editorClient,
+      },
+      managerOps: {
+        restart: vi.fn(async () => ({
+          accepted: true,
+          message: "manager restart scheduled; reconnect to the MCP endpoint",
+          exitCode: 75,
+          scheduleRestart: vi.fn(),
+        })),
+        ...overrides.managerOps,
       },
       workspaceOps: {
         repoPull: vi.fn(async () => ({ exitCode: 0 })),
@@ -158,6 +175,11 @@ describe("mcp tool handlers", () => {
     const handlers = createToolHandlers(makeInput());
 
     expect(Object.keys(handlers).sort()).toEqual([
+      "display_active",
+      "display_config_get",
+      "display_config_set",
+      "display_list",
+      "display_select",
       "editor.command",
       "editor.get_build_info",
       "editor.get_cameras",
@@ -181,6 +203,7 @@ describe("mcp tool handlers", () => {
       "ops.editor_start",
       "ops.editor_status",
       "ops.editor_stop",
+      "ops.manager_restart",
       "ops.repo_pull",
       "recording_disable",
       "recording_enable",
@@ -241,6 +264,42 @@ describe("mcp tool handlers", () => {
     expect(recordingProbe).toHaveBeenCalledWith("selection");
   });
 
+  it("routes display tools to the editor client", async () => {
+    const displayList = vi.fn(async () => ({ profiles: ["desktop"] }));
+    const displayActive = vi.fn(async () => ({ key: "desktop" }));
+    const displayConfigGet = vi.fn(async () => ({ key: "desktop", config: {} }));
+    const displayConfigSet = vi.fn(async () => ({ ok: true }));
+    const displaySelect = vi.fn(async () => ({ key: "desktop" }));
+    const handlers = createToolHandlers(
+      makeInput({
+        editorClient: {
+          displayList,
+          displayActive,
+          displayConfigGet,
+          displayConfigSet,
+          displaySelect,
+        },
+      }),
+    );
+
+    await handlers.display_list({});
+    await handlers.display_active({});
+    await handlers.display_config_get({});
+    await handlers.display_config_get({ key: "desktop" });
+    await handlers.display_config_set({ key: "desktop", patch: "width: 1280" });
+    await handlers.display_select({ key: "desktop" });
+
+    expect(displayList).toHaveBeenCalledOnce();
+    expect(displayActive).toHaveBeenCalledOnce();
+    expect(displayConfigGet).toHaveBeenNthCalledWith(1, "active");
+    expect(displayConfigGet).toHaveBeenNthCalledWith(2, "desktop");
+    expect(displayConfigSet).toHaveBeenCalledWith({
+      key: "desktop",
+      patch: "width: 1280",
+    });
+    expect(displaySelect).toHaveBeenCalledWith("desktop");
+  });
+
   it("routes new editor and ops tools to their handlers", async () => {
     const health = vi.fn(async () => ({ ok: true }));
     const buildInfo = vi.fn(async () => ({
@@ -260,6 +319,12 @@ describe("mcp tool handlers", () => {
     const stop = vi.fn(async () => ({ running: false }));
     const restart = vi.fn(async () => ({ running: true, pid: 654 }));
     const logs = vi.fn(async () => ({ stdout: "out", stderr: "err" }));
+    const managerRestart = vi.fn(async () => ({
+      accepted: true,
+      message: "manager restart scheduled; reconnect to the MCP endpoint",
+      exitCode: 75,
+      scheduleRestart: vi.fn(),
+    }));
     const handlers = createToolHandlers(
       makeInput({
         editorClient: {
@@ -272,6 +337,7 @@ describe("mcp tool handlers", () => {
           waitFor,
         },
         editorOps: { start, stop, restart, logs },
+        managerOps: { restart: managerRestart },
         workspaceOps: { buildConfigure, buildTarget, buildState },
       }),
     );
@@ -296,6 +362,14 @@ describe("mcp tool handlers", () => {
     await handlers["ops.editor_stop"]({});
     await handlers["ops.editor_restart"]({});
     await handlers["ops.editor_logs"]({});
+    await expect(handlers["ops.manager_restart"]({})).resolves.toEqual({
+      content: [
+        {
+          type: "text",
+          text: '{"accepted":true,"message":"manager restart scheduled; reconnect to the MCP endpoint","exitCode":75}',
+        },
+      ],
+    });
 
     expect(getSelection).toHaveBeenCalledTimes(2);
     expect(getCameras).toHaveBeenCalledTimes(2);
@@ -311,6 +385,77 @@ describe("mcp tool handlers", () => {
     expect(stop).toHaveBeenCalledOnce();
     expect(restart).toHaveBeenCalledOnce();
     expect(logs).toHaveBeenCalledOnce();
+    expect(managerRestart).toHaveBeenCalledOnce();
+  });
+
+  it("schedules manager restart only after the HTTP response is written", async () => {
+    const events: string[] = [];
+    const scheduleRestart = vi.fn(() => {
+      events.push("scheduled");
+    });
+    const handlers = createToolHandlers(
+      makeInput({
+        managerOps: {
+          restart: vi.fn(async () => {
+            events.push("handler");
+            return {
+              accepted: true,
+              message: "manager restart scheduled; reconnect to the MCP endpoint",
+              exitCode: 75,
+              scheduleRestart,
+            };
+          }),
+        },
+      }),
+    );
+    server = createMcpHttpServer({ handlers });
+    const port = await listen(server);
+
+    const response = await fetch(`http://127.0.0.1:${port}/mcp`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 7,
+        method: "tools/call",
+        params: {
+          name: "ops.manager_restart",
+          arguments: {},
+        },
+      }),
+    });
+
+    await expect(response.json()).resolves.toEqual({
+      jsonrpc: "2.0",
+      id: 7,
+      result: {
+        content: [
+          {
+            type: "text",
+            text: '{"accepted":true,"message":"manager restart scheduled; reconnect to the MCP endpoint","exitCode":75}',
+          },
+        ],
+      },
+    });
+    expect(events).toEqual(["handler", "scheduled"]);
+    expect(scheduleRestart).toHaveBeenCalledOnce();
+  });
+
+  it("returns a clear manager restart unavailable tool error", async () => {
+    const handlers = createToolHandlers({
+      ...makeInput(),
+      managerOps: undefined,
+    });
+
+    await expect(handlers["ops.manager_restart"]({})).resolves.toEqual({
+      isError: true,
+      content: [
+        {
+          type: "text",
+          text: '{"ok":false,"error":{"code":"manager_restart_unavailable","message":"manager restart is unavailable in this manager process"}}',
+        },
+      ],
+    });
   });
 
   it("returns a clear editor unavailable tool error without discovery", async () => {
@@ -355,6 +500,11 @@ describe("mcp tool handlers", () => {
         recordingRead: vi.fn(),
         recordingReplay: vi.fn(),
         recordingProbe: vi.fn(),
+        displayList: vi.fn(),
+        displayActive: vi.fn(),
+        displayConfigGet: vi.fn(),
+        displayConfigSet: vi.fn(),
+        displaySelect: vi.fn(),
       });
     const handlers = createToolHandlers({
       ...makeInput(),
@@ -418,6 +568,11 @@ describe("mcp tool handlers", () => {
         recordingRead: vi.fn(),
         recordingReplay: vi.fn(),
         recordingProbe: vi.fn(),
+        displayList: vi.fn(),
+        displayActive: vi.fn(),
+        displayConfigGet: vi.fn(),
+        displayConfigSet: vi.fn(),
+        displaySelect: vi.fn(),
       });
     const resources = createResourceHandlers(provider);
 

@@ -21,6 +21,7 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #if defined(_WIN32)
@@ -32,7 +33,7 @@
 namespace LX_demo::lxe_editor {
 namespace {
 
-[[nodiscard]] std::string jsonEscape(const std::string& text) {
+[[nodiscard]] std::string jsonEscape(const std::string &text) {
   std::string out;
   out.reserve(text.size());
   for (const char c : text) {
@@ -64,9 +65,10 @@ namespace {
   return LX_core::CommandResult{false, std::move(message), {}};
 }
 
-[[nodiscard]] LX_core::CommandResult makeCommandOk(std::string message,
-                                                   std::string structured = {}) {
-  return LX_core::CommandResult{true, std::move(message), std::move(structured)};
+[[nodiscard]] LX_core::CommandResult
+makeCommandOk(std::string message, std::string structured = {}) {
+  return LX_core::CommandResult{true, std::move(message),
+                                std::move(structured)};
 }
 
 [[nodiscard]] std::string currentTimestampString() {
@@ -87,8 +89,8 @@ namespace {
   return kind == SceneSourceKind::Asset ? "asset" : "local";
 }
 
-[[nodiscard]] std::string cameraControlModeName(
-    const UiOverlay::CameraControlMode mode) {
+[[nodiscard]] std::string
+cameraControlModeName(const UiOverlay::CameraControlMode mode) {
   switch (mode) {
   case UiOverlay::CameraControlMode::Orbit:
     return "orbit";
@@ -98,36 +100,44 @@ namespace {
   return "orbit";
 }
 
-[[nodiscard]] bool commandMarksSceneDirty(const std::string& line) {
+[[nodiscard]] bool commandMarksSceneDirty(const std::string &line) {
   const auto firstSpace = line.find(' ');
   const std::string verb =
       firstSpace == std::string::npos ? line : line.substr(0, firstSpace);
   static const std::unordered_set<std::string> kMutatingVerbs = {
-      "move", "rotate", "scale", "set", "add", "remove", "undo", "redo",
-      "__remove_to_stash", "__restore_from_stash"};
+      "move",
+      "rotate",
+      "scale",
+      "set",
+      "add",
+      "remove",
+      "undo",
+      "redo",
+      "__remove_to_stash",
+      "__restore_from_stash"};
   return kMutatingVerbs.find(verb) != kMutatingVerbs.end();
 }
 
-[[nodiscard]] bool commandRequestsSceneRebuild(
-    const LX_core::CommandResult& result) {
+[[nodiscard]] bool
+commandRequestsSceneRebuild(const LX_core::CommandResult &result) {
   const auto it = result.metadata.find("scene.rebuild");
   return it != result.metadata.end() && it->second == "true";
 }
 
-[[nodiscard]] bool commandRequestsCameraRigResync(
-    const LX_core::CommandResult& result) {
+[[nodiscard]] bool
+commandRequestsCameraRigResync(const LX_core::CommandResult &result) {
   const auto it = result.metadata.find("editor_camera.resync");
   return it != result.metadata.end() && it->second == "true";
 }
 
-[[nodiscard]] bool commandRequestsQuit(const LX_core::CommandResult& result) {
+[[nodiscard]] bool commandRequestsQuit(const LX_core::CommandResult &result) {
   const auto it = result.metadata.find("editor.quit");
   return it != result.metadata.end() && it->second == "true";
 }
 
 [[nodiscard]] std::reference_wrapper<LX_core::CameraComponent>
-requireCameraComponent(const LX_core::SceneNodeSharedPtr& node,
-                       const char* nodeLabel) {
+requireCameraComponent(const LX_core::SceneNodeSharedPtr &node,
+                       const char *nodeLabel) {
   if (!node) {
     throw std::runtime_error(std::string("[lxe_editor] missing scene node: ") +
                              nodeLabel);
@@ -143,11 +153,9 @@ requireCameraComponent(const LX_core::SceneNodeSharedPtr& node,
 
 } // namespace
 
-LxeEditorSession::LxeEditorSession(CameraRig& rig, UiOverlay& ui,
-                                   LX_core::EditorState& editorState)
-    : m_rig(rig),
-      m_ui(ui),
-      m_editorState(editorState),
+LxeEditorSession::LxeEditorSession(CameraRig &rig, UiOverlay &ui,
+                                   LX_core::EditorState &editorState)
+    : m_rig(rig), m_ui(ui), m_editorState(editorState),
       m_catalog(SceneCatalogRoots{
           .assetRoots = {resolveRuntimePath("assets/scenes")},
           .localRoots = {resolveRuntimePath("data/scenes")},
@@ -159,7 +167,8 @@ LxeEditorSession::LxeEditorSession(CameraRig& rig, UiOverlay& ui,
 
 LxeEditorSession::~LxeEditorSession() = default;
 
-void LxeEditorSession::initialize() {
+void LxeEditorSession::initialize(DisplayCommandHooks displayCommandHooks) {
+  m_displayCommandHooks = std::move(displayCommandHooks);
   m_editorData = m_editorDataState.load();
   refreshCatalog();
   m_runtime.createEmptyScene();
@@ -168,36 +177,45 @@ void LxeEditorSession::initialize() {
   rebuildBindings();
 }
 
-LX_core::SceneSharedPtr LxeEditorSession::scene() const { return m_runtime.scene(); }
+LX_core::SceneSharedPtr LxeEditorSession::scene() const {
+  return m_runtime.scene();
+}
 
-LX_core::CameraComponent& LxeEditorSession::editorCamera() const {
+LX_core::CameraComponent &LxeEditorSession::editorCamera() const {
   return requireCameraComponent(m_runtime.editorCameraNode(), "editor_camera")
       .get();
 }
 
-SceneInteractionController& LxeEditorSession::sceneInteraction() const {
+SceneInteractionController &LxeEditorSession::sceneInteraction() const {
   return *m_sceneInteraction;
 }
 
-LX_core::CameraComponent& LxeEditorSession::gameCamera() const {
-  return requireCameraComponent(m_runtime.gameCameraNode(), "game_camera").get();
+LX_core::CameraComponent &LxeEditorSession::gameCamera() const {
+  return requireCameraComponent(m_runtime.gameCameraNode(), "game_camera")
+      .get();
 }
 
 bool LxeEditorSession::isDirty() const { return m_session.isDirty(); }
 
-void LxeEditorSession::setWindowSize(const LX_core::Vec2f& size) {
+void LxeEditorSession::setWindowSize(const LX_core::Vec2f &size) {
   m_windowSize = size;
 }
 
-EditorConfigDocument& LxeEditorSession::editorConfig() { return m_editorConfig; }
+EditorConfigDocument &LxeEditorSession::editorConfig() {
+  return m_editorConfig;
+}
 
-LX_core::CommandBus& LxeEditorSession::commandBus() const { return *m_commandBus; }
+LX_core::CommandBus &LxeEditorSession::commandBus() const {
+  return *m_commandBus;
+}
 
-const LX_core::ConsolePanel& LxeEditorSession::consolePanel() const {
+const LX_core::ConsolePanel &LxeEditorSession::consolePanel() const {
   return *m_consolePanel;
 }
 
-usize LxeEditorSession::bindingsGeneration() const { return m_bindingsGeneration; }
+usize LxeEditorSession::bindingsGeneration() const {
+  return m_bindingsGeneration;
+}
 
 ScenePermissionLevel LxeEditorSession::permission() const {
   return m_session.permission();
@@ -205,18 +223,19 @@ ScenePermissionLevel LxeEditorSession::permission() const {
 
 bool LxeEditorSession::debugEnabled() const { return m_debugEnabled; }
 
-RecordingController& LxeEditorSession::recording() { return m_recording; }
+RecordingController &LxeEditorSession::recording() { return m_recording; }
 
-const RecordingController& LxeEditorSession::recording() const {
+const RecordingController &LxeEditorSession::recording() const {
   return m_recording;
 }
 
-const std::optional<std::filesystem::path>&
+const std::optional<std::filesystem::path> &
 LxeEditorSession::currentDocumentPath() const {
   return m_session.currentDocumentPath();
 }
 
-const std::optional<SceneSourceKind>& LxeEditorSession::currentSourceKind() const {
+const std::optional<SceneSourceKind> &
+LxeEditorSession::currentSourceKind() const {
   return m_session.currentSourceKind();
 }
 
@@ -241,13 +260,14 @@ void LxeEditorSession::recordCommandHistoryLine(std::string_view line) {
 }
 
 LX_core::CommandResult
-LxeEditorSession::saveScene(const std::optional<std::string>& path) {
+LxeEditorSession::saveScene(const std::optional<std::string> &path) {
   try {
     const std::optional<std::filesystem::path> explicitPath =
         path.has_value() ? std::optional<std::filesystem::path>(*path)
                          : std::nullopt;
     const SaveDecision decision = m_session.decideSaveTarget(
-        explicitPath, m_runtime.scene() ? m_runtime.scene()->getSceneName() : "Scene");
+        explicitPath,
+        m_runtime.scene() ? m_runtime.scene()->getSceneName() : "Scene");
     m_runtime.saveToDocumentPath(decision.path);
     m_session.setCurrentDocument(decision.path, decision.kind);
     m_session.setDirty(false);
@@ -255,26 +275,28 @@ LxeEditorSession::saveScene(const std::optional<std::string>& path) {
 
     std::string message = "saved scene " + decision.path.string();
     if (decision.redirectedFromAsset) {
-      message = "asset is read-only; saved local copy " + decision.path.string();
+      message =
+          "asset is read-only; saved local copy " + decision.path.string();
     }
     return makeCommandOk(
         std::move(message),
         "{\"path\":\"" + jsonEscape(decision.path.string()) + "\",\"kind\":\"" +
             sceneSourceKindName(decision.kind) + "\",\"redirectedFromAsset\":" +
             std::string(decision.redirectedFromAsset ? "true" : "false") + "}");
-  } catch (const std::exception& e) {
+  } catch (const std::exception &e) {
     return makeCommandError(e.what());
   }
 }
 
-void LxeEditorSession::flushPendingSceneLoad(LX_core::gpu::EngineLoop& loop) {
+void LxeEditorSession::flushPendingSceneLoad(LX_core::gpu::EngineLoop &loop) {
   if (!m_pendingRuntime.has_value()) {
     return;
   }
 
   m_runtime = std::move(*m_pendingRuntime);
   if (m_pendingSourceKind.has_value() && m_runtime.documentPath().has_value()) {
-    m_session.setCurrentDocument(*m_runtime.documentPath(), *m_pendingSourceKind);
+    m_session.setCurrentDocument(*m_runtime.documentPath(),
+                                 *m_pendingSourceKind);
   } else {
     m_session.setCurrentDocument(m_runtime.documentPath(), std::nullopt);
   }
@@ -285,13 +307,13 @@ void LxeEditorSession::flushPendingSceneLoad(LX_core::gpu::EngineLoop& loop) {
   loop.startScene(m_runtime.scene());
 }
 
-void LxeEditorSession::pollCommandHistory(LX_core::gpu::EngineLoop& loop) {
+void LxeEditorSession::pollCommandHistory(LX_core::gpu::EngineLoop &loop) {
   if (!m_commandBus) {
     return;
   }
-  const auto& history = m_commandBus->history();
+  const auto &history = m_commandBus->history();
   while (m_lastObservedHistoryIndex < history.size()) {
-    const auto& entry = history[m_lastObservedHistoryIndex++];
+    const auto &entry = history[m_lastObservedHistoryIndex++];
     if (entry.result.ok && commandMarksSceneDirty(entry.line)) {
       m_session.setDirty(true);
     }
@@ -317,7 +339,7 @@ LX_core::CommandResult LxeEditorSession::listScenes() {
   refreshCatalog();
   std::string message =
       "listed " + std::to_string(m_catalog.entries().size()) + " scene(s)";
-  const auto& entries = m_catalog.entries();
+  const auto &entries = m_catalog.entries();
   if (!entries.empty()) {
     message += ":\n";
     for (size_t i = 0; i < entries.size(); ++i) {
@@ -345,10 +367,12 @@ LX_core::CommandResult LxeEditorSession::listScenes() {
   return makeCommandOk(std::move(message), std::move(structured));
 }
 
-LX_core::CommandResult LxeEditorSession::queueSceneLoad(const std::string& path) {
+LX_core::CommandResult
+LxeEditorSession::queueSceneLoad(const std::string &path) {
   try {
     refreshCatalog();
-    const std::filesystem::path resolvedPath = m_catalog.resolveNameOrPath(path);
+    const std::filesystem::path resolvedPath =
+        m_catalog.resolveNameOrPath(path);
     const auto classified = m_catalog.classifyPath(resolvedPath);
     SceneRuntime loaded;
     loaded.loadFromDocumentPath(resolvedPath,
@@ -359,14 +383,15 @@ LX_core::CommandResult LxeEditorSession::queueSceneLoad(const std::string& path)
       return makeCommandError("queued scene load produced no document path");
     }
     m_pendingRuntime = std::move(loaded);
-    m_pendingSourceKind = classified ? std::optional{classified->kind} : std::nullopt;
+    m_pendingSourceKind =
+        classified ? std::optional{classified->kind} : std::nullopt;
     return makeCommandOk(
         "queued scene load for next update tick: " + loadedPath->string(),
         "{\"path\":\"" + jsonEscape(loadedPath->string()) + "\",\"kind\":\"" +
             jsonEscape(classified ? sceneSourceKindName(classified->kind)
                                   : std::string("external")) +
             "\",\"status\":\"queued\",\"deferredUntil\":\"next_update_tick\"}");
-  } catch (const std::exception& e) {
+  } catch (const std::exception &e) {
     return makeCommandError(e.what());
   }
 }
@@ -402,25 +427,26 @@ void LxeEditorSession::rebuildBindings() {
   LX_core::registerBuiltinCommands(
       *m_commandBus, m_editorState, *m_runtime.scene(),
       LX_core::SceneIoContext{
-          .load = [this](const std::string& path) { return queueSceneLoad(path); },
-          .save = [this](const std::optional<std::string>& path) {
-            return saveScene(path);
-          },
+          .load =
+              [this](const std::string &path) { return queueSceneLoad(path); },
+          .save =
+              [this](const std::optional<std::string> &path) {
+                return saveScene(path);
+              },
           .list = [this]() { return listScenes(); },
           .setAdmin = [this](const bool enabled) { return setAdmin(enabled); },
           .adminStatus = [this]() { return adminStatus(); },
           .cameraControl =
-              [this](const std::vector<std::string>& args) {
+              [this](const std::vector<std::string> &args) {
                 if (args.size() != 2) {
                   return makeCommandError(
                       "usage: cam control (orbit|freefly|status)");
                 }
                 if (args[1] == "status") {
-                  const std::string camera = cameraControlModeName(
-                      m_ui.currentCameraControlMode());
-                  LX_core::CommandResult result =
-                      makeCommandOk("camera " + camera,
-                                    "{\"camera\":\"" + camera + "\"}");
+                  const std::string camera =
+                      cameraControlModeName(m_ui.currentCameraControlMode());
+                  LX_core::CommandResult result = makeCommandOk(
+                      "camera " + camera, "{\"camera\":\"" + camera + "\"}");
                   result.metadata[std::string(
                       LX_core::kCommandResultClearRedoOnSuccessMetadataKey)] =
                       "false";
@@ -436,12 +462,11 @@ void LxeEditorSession::rebuildBindings() {
                     m_ui.currentCameraControlMode();
                 const UiOverlay::CameraControlMode next =
                     args[1] == "orbit" ? UiOverlay::CameraControlMode::Orbit
-                                        : UiOverlay::CameraControlMode::FreeFly;
+                                       : UiOverlay::CameraControlMode::FreeFly;
                 m_ui.setCameraControlMode(next);
                 const std::string camera = cameraControlModeName(next);
-                LX_core::CommandResult result =
-                    makeCommandOk("camera " + camera,
-                                  "{\"camera\":\"" + camera + "\"}");
+                LX_core::CommandResult result = makeCommandOk(
+                    "camera " + camera, "{\"camera\":\"" + camera + "\"}");
                 result.metadata["inverse.line"] =
                     "cam control " + cameraControlModeName(previous);
                 return result;
@@ -459,23 +484,21 @@ void LxeEditorSession::rebuildBindings() {
       *m_commandBus, m_editorState, *m_runtime.scene());
   m_sceneInteraction = std::make_unique<SceneInteractionController>(
       *m_commandBus, m_editorState, *m_runtime.scene());
-  m_sceneInteraction->setResolveHelperOwner(
-      [this](const std::string& path) {
-        return m_runtime.resolveEditorHelperOwner(path);
-      });
+  m_sceneInteraction->setResolveHelperOwner([this](const std::string &path) {
+    return m_runtime.resolveEditorHelperOwner(path);
+  });
   m_sceneInteraction->setBoxSelectionDispatch(
-      [this](const LX_core::Vec2f& dragStart,
-             const LX_core::Vec2f& dragEnd,
-             const SceneViewRect& sceneViewRect,
-             const bool ctrlHeld,
+      [this](const LX_core::Vec2f &dragStart, const LX_core::Vec2f &dragEnd,
+             const SceneViewRect &sceneViewRect, const bool ctrlHeld,
              const bool shiftHeld) {
         if (!m_viewportOverlay) {
-          return LX_core::CommandResult{false, "viewport overlay unavailable",
-                                        {}, {}};
+          return LX_core::CommandResult{
+              false, "viewport overlay unavailable", {}, {}};
         }
         return m_viewportOverlay->dispatchBoxSelection(
-            sceneViewRect.localPixel(dragStart), sceneViewRect.localPixel(dragEnd),
-            sceneViewRect.size(), ctrlHeld, shiftHeld);
+            sceneViewRect.localPixel(dragStart),
+            sceneViewRect.localPixel(dragEnd), sceneViewRect.size(), ctrlHeld,
+            shiftHeld);
       });
   registerLxeEditorCommands(
       *m_commandBus,
@@ -485,30 +508,36 @@ void LxeEditorSession::rebuildBindings() {
           .interaction = *m_sceneInteraction,
           .getEditMode =
               [this]() { return static_cast<int>(m_ui.currentEditorMode()); },
-          .setEditMode = [this](const int modeCode) {
-            m_ui.setEditorMode(static_cast<UiOverlay::EditorMode>(modeCode));
-          },
-          .getCameraControlMode = [this]() {
-            return static_cast<int>(m_ui.currentCameraControlMode());
-          },
-          .setCameraControlMode = [this](const int modeCode) {
-            m_ui.setCameraControlMode(
-                static_cast<UiOverlay::CameraControlMode>(modeCode));
-          },
-          .sceneViewRect = [this]() { return m_ui.sceneViewRect(m_windowSize); },
+          .setEditMode =
+              [this](const int modeCode) {
+                m_ui.setEditorMode(
+                    static_cast<UiOverlay::EditorMode>(modeCode));
+              },
+          .getCameraControlMode =
+              [this]() {
+                return static_cast<int>(m_ui.currentCameraControlMode());
+              },
+          .setCameraControlMode =
+              [this](const int modeCode) {
+                m_ui.setCameraControlMode(
+                    static_cast<UiOverlay::CameraControlMode>(modeCode));
+              },
+          .sceneViewRect =
+              [this]() { return m_ui.sceneViewRect(m_windowSize); },
           .dirty = [this]() { return m_session.isDirty(); },
-          .permission = [this]() {
-            return m_session.permission() == ScenePermissionLevel::Admin
-                       ? std::string("admin")
-                       : std::string("user");
-          },
+          .permission =
+              [this]() {
+                return m_session.permission() == ScenePermissionLevel::Admin
+                           ? std::string("admin")
+                           : std::string("user");
+              },
           .debugEnabled = [this]() { return m_debugEnabled; },
-          .setDebugEnabled = [this](const bool enabled) {
-            m_debugEnabled = enabled;
-          },
+          .setDebugEnabled =
+              [this](const bool enabled) { m_debugEnabled = enabled; },
           .currentDocumentPath = [this]() -> std::optional<std::string> {
             const auto path = m_session.currentDocumentPath();
-            return path ? std::optional<std::string>(path->string()) : std::nullopt;
+            return path ? std::optional<std::string>(path->string())
+                        : std::nullopt;
           },
           .currentSourceKind = [this]() -> std::optional<std::string> {
             const auto kind = m_session.currentSourceKind();
@@ -517,28 +546,34 @@ void LxeEditorSession::rebuildBindings() {
             }
             return sceneSourceKindName(*kind);
           },
-          .persistedHistory = [this]() {
-            return m_consolePanel ? m_consolePanel->persistedHistory()
-                                  : std::vector<std::string>{};
-          },
-          .appendConsoleDebugLine = [this](std::string_view line) {
-            if (m_consolePanel) {
-              m_consolePanel->appendSystemLine(line);
-            }
-          },
-          .recording =
-              [this]()
-                  -> std::optional<std::reference_wrapper<RecordingController>> {
+          .persistedHistory =
+              [this]() {
+                return m_consolePanel ? m_consolePanel->persistedHistory()
+                                      : std::vector<std::string>{};
+              },
+          .appendConsoleDebugLine =
+              [this](std::string_view line) {
+                if (m_consolePanel) {
+                  m_consolePanel->appendSystemLine(line);
+                }
+              },
+          .recording = [this]()
+              -> std::optional<std::reference_wrapper<RecordingController>> {
             return m_recording;
           },
           .buildInfoJson = []() { return toJson(currentLxeEditorBuildInfo()); },
+          .displayListJson = m_displayCommandHooks.displayListJson,
+          .displayActiveJson = m_displayCommandHooks.displayActiveJson,
+          .displayConfigGetJson = m_displayCommandHooks.displayConfigGetJson,
+          .displayConfigSet = m_displayCommandHooks.displayConfigSet,
+          .displaySelect = m_displayCommandHooks.displaySelect,
       });
 
-  m_ui.attach(m_rig, *m_commandBus, m_editorState, m_editorConfig,
-              *m_viewportOverlay, *m_sceneTreePanel, *m_inspectorPanel,
-              *m_consolePanel,
-              [this]() { return m_debugEnabled; },
-              [this]() { return m_recording.status(); });
+  m_ui.attach(
+      m_rig, *m_commandBus, m_editorState, m_editorConfig, *m_viewportOverlay,
+      *m_sceneTreePanel, *m_inspectorPanel, *m_consolePanel,
+      [this]() { return m_debugEnabled; },
+      [this]() { return m_recording.status(); });
   ++m_bindingsGeneration;
 }
 

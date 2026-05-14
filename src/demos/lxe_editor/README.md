@@ -56,6 +56,33 @@ export LD_LIBRARY_PATH=build/_deps/sdl3-build:$LD_LIBRARY_PATH
 The demo now initializes an explicit runtime asset root and fails fast
 with a non-zero exit code if the `assets/` tree cannot be found.
 
+### Display selection
+
+List available displays:
+
+```sh
+./build/src/demos/lxe_editor/lxe_editor --display-list
+```
+
+Launch on a display by index:
+
+```sh
+./build/src/demos/lxe_editor/lxe_editor --display 0
+```
+
+Launch on a stable display profile id:
+
+```sh
+./build/src/demos/lxe_editor/lxe_editor --display "sdl:1:DELL U2720Q:3840x2160:1.50"
+```
+
+`data/lxe_editor/editor_config.yaml` stores display preferences under
+`displayDefault` plus per-display overrides. `activeDisplay` records the
+preferred display for the next launch and may be edited directly when the
+editor is closed. A CLI `--display` value overrides the config for that launch;
+when the editor saves configuration, that launched display becomes the saved
+`activeDisplay`.
+
 ## Scene document behavior
 
 - Startup begins with an empty scene. No sample scene is auto-loaded.
@@ -264,6 +291,12 @@ Current MCP surface:
   - `recording_read`
   - `recording_replay`
   - `recording_probe`
+  - `display_list`
+  - `display_active`
+  - `display_config_get`
+  - `display_config_set`
+  - `display_select`
+  - `ops.manager_restart`
 - Resources:
   - `lxe-editor://summary`
   - `lxe-editor://selection`

@@ -126,12 +126,15 @@ history 或进程列表里。
 | `editor.get_build_info` / `lxe_editor_get_build_info` | 读取当前 editor 二进制的 Git 构建信息 |
 | `ops.editor_start` / `ops.editor_stop` / `ops.editor_restart` / `ops.editor_status` | 管理 editor 进程 |
 | `ops.repo_pull` | 在仓库根目录执行 `git pull --ff-only` |
+| `ops.manager_restart` | 重启 manager MCP 服务本身，用于 `ops.repo_pull` 后应用 manager tool 变更 |
 | `ops.build_configure` / `ops.build_target` | 执行 CMake configure / build |
 | `ops.build_state` | 读取 manager 记录的最近一次成功 build 动作，包括 Git HEAD、dirty 状态、target 和时间 |
 | `recording_enable` / `recording_disable` / `recording_status` | 控制 editor 录制开关，默认关闭 |
 | `recording_start` / `recording_stop` | 开始或停止一次调试录制，可保存到 `data/lxe_editor/recordings/` |
 | `recording_list` / `recording_read` | 枚举和读取已保存或 active 的录制 JSON |
 | `recording_replay` / `recording_probe` | 回放录制并在失败点读取 summary、selection、cameras、toolbar 等状态 |
+| `display_list` / `display_active` | 读取 editor display profile 列表和当前启动绑定 display |
+| `display_config_get` / `display_config_set` / `display_select` | 读取、修改 display default/override，并设置下次启动 display |
 | `lxe-editor://summary` 等资源 | 暴露 editor 状态快照 |
 
 录制能力以调试复现为目标，不追求逐帧输入确定性。第一版主要记录语义命令和
@@ -167,6 +170,13 @@ MCP 完成 stop / pull / build / start / retest；只有修改了 manager MCP se
 自身工具注册或 manager 无法热加载的代码时，才需要用户协助重启 MCP server。
 `ops.build_state` 是判断远端最近一次 build 对应 Git 版本的首选事实来源，不需要
 为了刷新 editor 编译宏而每次重新 configure。
+
+manager 代码变更后：
+
+1. `ops.repo_pull`
+2. `ops.manager_restart`
+3. 重新连接 MCP endpoint
+4. 再执行 build/editor/display 验证
 
 复杂场景验证不要临时口头编排。把稳定流程写成
 `notes/use_cases/lxe_editor/*.md`，由 `lxe-editor-use-case-runner` 读取后调用

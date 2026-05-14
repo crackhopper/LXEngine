@@ -31,13 +31,63 @@ struct EditorConfigDocument final {
   EditorPreferences preferences;
 };
 
+struct EditorWindowPlacementOverride final {
+  std::optional<int> x;
+  std::optional<int> y;
+  std::optional<int> width;
+  std::optional<int> height;
+  std::optional<bool> maximized;
+};
+
+struct EditorWindowLayoutOverride final {
+  std::string id;
+  std::optional<bool> visible;
+  std::optional<bool> collapsed;
+  std::optional<int> x;
+  std::optional<int> y;
+  std::optional<int> width;
+  std::optional<int> height;
+};
+
+struct EditorPreferencesOverride final {
+  std::optional<float> uiFontScale;
+};
+
+struct EditorConfigOverrideDocument final {
+  std::optional<EditorWindowPlacementOverride> windowPlacement;
+  std::vector<EditorWindowLayoutOverride> layoutWindows;
+  EditorPreferencesOverride preferences;
+};
+
+struct EditorDisplayProfile final {
+  std::string key;
+  std::string label;
+  bool available = false;
+  EditorConfigOverrideDocument overrides;
+};
+
+struct EditorDisplayConfigDocument final {
+  int version = 2;
+  std::string activeDisplay;
+  EditorConfigDocument displayDefault;
+  std::vector<EditorDisplayProfile> displayProfiles;
+};
+
 class EditorConfigState final {
 public:
   explicit EditorConfigState(std::filesystem::path rootDir);
 
-  [[nodiscard]] const std::filesystem::path& configPath() const;
+  [[nodiscard]] const std::filesystem::path &configPath() const;
   [[nodiscard]] EditorConfigDocument load() const;
-  bool save(const EditorConfigDocument& document) const;
+  bool save(const EditorConfigDocument &document) const;
+  [[nodiscard]] EditorDisplayConfigDocument loadOrCreateForDisplays(
+      const std::vector<LX_core::DisplayInfo> &displays) const;
+  bool saveDisplayDocument(const EditorDisplayConfigDocument &document,
+                           std::string_view activeDisplayKey,
+                           const EditorConfigDocument &effectiveConfig) const;
+  [[nodiscard]] EditorConfigDocument
+  composeEffectiveConfig(const EditorDisplayConfigDocument &document,
+                         std::string_view displayKey) const;
 
 private:
   std::filesystem::path m_rootDir;
@@ -45,9 +95,10 @@ private:
 };
 
 [[nodiscard]] std::optional<std::reference_wrapper<EditorWindowLayout>>
-findEditorWindowLayout(EditorConfigDocument& document, std::string_view id);
+findEditorWindowLayout(EditorConfigDocument &document, std::string_view id);
 
 [[nodiscard]] std::optional<std::reference_wrapper<const EditorWindowLayout>>
-findEditorWindowLayout(const EditorConfigDocument& document, std::string_view id);
+findEditorWindowLayout(const EditorConfigDocument &document,
+                       std::string_view id);
 
 } // namespace LX_demo::lxe_editor

@@ -2,18 +2,30 @@
 #include <optional>
 #include <functional>
 #include <memory>
+#include <string>
+#include <vector>
 #include <vulkan/vulkan.h>
 #include "core/platform/window.hpp"
 namespace LX_infra {
 using LX_core::WindowGraphicsHandle;
 using LX_core::GraphicsInstanceHandle;
+
+struct WindowCreateOptions final {
+  std::optional<LX_core::WindowPlacement> initialPlacement;
+  std::optional<std::string> displayKey;
+};
+
 class Window: public LX_core::Window {
 public:
   static void Initialize(); // 初始化窗口系统
 
   Window(const char *title, int width, int height,
          std::optional<LX_core::WindowPlacement> initialPlacement = std::nullopt);
+  Window(const char *title, int width, int height,
+         const WindowCreateOptions& options);
   ~Window();
+
+  [[nodiscard]] static std::vector<LX_core::DisplayInfo> enumerateDisplays();
 
   int getWidth() const override;
   int getHeight() const override;

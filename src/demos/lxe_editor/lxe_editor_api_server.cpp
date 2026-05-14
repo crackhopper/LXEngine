@@ -40,15 +40,13 @@ constexpr SocketHandle kInvalidSocket = -1;
 #endif
 
 [[nodiscard]] std::string trim(std::string text) {
-  while (!text.empty() &&
-         (text.back() == '\r' || text.back() == '\n' || text.back() == ' ' ||
-          text.back() == '\t')) {
+  while (!text.empty() && (text.back() == '\r' || text.back() == '\n' ||
+                           text.back() == ' ' || text.back() == '\t')) {
     text.pop_back();
   }
   size_t start = 0;
-  while (start < text.size() &&
-         (text[start] == ' ' || text[start] == '\t' || text[start] == '\r' ||
-          text[start] == '\n')) {
+  while (start < text.size() && (text[start] == ' ' || text[start] == '\t' ||
+                                 text[start] == '\r' || text[start] == '\n')) {
     ++start;
   }
   return text.substr(start);
@@ -95,9 +93,9 @@ void closeSocket(const SocketHandle socket) {
 #endif
 }
 
-[[nodiscard]] std::optional<std::string> headerValue(
-    const std::unordered_map<std::string, std::string>& headers,
-    const std::string& key) {
+[[nodiscard]] std::optional<std::string>
+headerValue(const std::unordered_map<std::string, std::string> &headers,
+            const std::string &key) {
   const auto it = headers.find(key);
   if (it == headers.end()) {
     return std::nullopt;
@@ -111,8 +109,8 @@ void closeSocket(const SocketHandle socket) {
   return text;
 }
 
-[[nodiscard]] std::optional<std::string> jsonStringField(
-    const std::string& body, const std::string& key) {
+[[nodiscard]] std::optional<std::string>
+jsonStringField(const std::string &body, const std::string &key) {
   const std::string needle = "\"" + key + "\"";
   const size_t keyPos = body.find(needle);
   if (keyPos == std::string::npos) {
@@ -160,8 +158,159 @@ void closeSocket(const SocketHandle socket) {
   return std::nullopt;
 }
 
-[[nodiscard]] std::optional<bool> jsonBoolField(const std::string& body,
-                                                const std::string& key) {
+[[nodiscard]] std::optional<std::string>
+jsonStringOrRawContainerField(const std::string &body,
+                              const std::string &key) {
+  size_t pos = 0;
+  while (pos < body.size() &&
+         (body[pos] == ' ' || body[pos] == '\t' || body[pos] == '\r' ||
+          body[pos] == '\n')) {
+    ++pos;
+  }
+  if (pos >= body.size() || body[pos] != '{') {
+    return std::nullopt;
+  }
+  ++pos;
+  bool inString = false;
+  bool escaping = false;
+  while (pos < body.size()) {
+    while (pos < body.size() &&
+           (body[pos] == ' ' || body[pos] == '\t' || body[pos] == '\r' ||
+            body[pos] == '\n' || body[pos] == ',')) {
+      ++pos;
+    }
+    if (pos >= body.size() || body[pos] == '}') {
+      return std::nullopt;
+    }
+    if (body[pos] != '"') {
+      return std::nullopt;
+    }
+
+    std::string memberKey;
+    escaping = false;
+    for (++pos; pos < body.size(); ++pos) {
+      const char c = body[pos];
+      if (escaping) {
+        memberKey.push_back(c);
+        escaping = false;
+        continue;
+      }
+      if (c == '\\') {
+        escaping = true;
+        continue;
+      }
+      if (c == '"') {
+        ++pos;
+        break;
+      }
+      memberKey.push_back(c);
+    }
+    while (pos < body.size() &&
+           (body[pos] == ' ' || body[pos] == '\t' || body[pos] == '\r' ||
+            body[pos] == '\n')) {
+      ++pos;
+    }
+    if (pos >= body.size() || body[pos] != ':') {
+      return std::nullopt;
+    }
+    ++pos;
+    while (pos < body.size() &&
+           (body[pos] == ' ' || body[pos] == '\t' || body[pos] == '\r' ||
+            body[pos] == '\n')) {
+      ++pos;
+    }
+    if (pos >= body.size()) {
+      return std::nullopt;
+    }
+    const size_t valuePos = pos;
+    if (body[pos] == '"') {
+      std::string value;
+      escaping = false;
+      for (++pos; pos < body.size(); ++pos) {
+        const char c = body[pos];
+        if (escaping) {
+          switch (c) {
+          case 'n':
+            value.push_back('\n');
+            break;
+          case 'r':
+            value.push_back('\r');
+            break;
+          case 't':
+            value.push_back('\t');
+            break;
+          default:
+            value.push_back(c);
+            break;
+          }
+          escaping = false;
+          continue;
+        }
+        if (c == '\\') {
+          escaping = true;
+          continue;
+        }
+        if (c == '"') {
+          ++pos;
+          if (memberKey == key) {
+            return value;
+          }
+          break;
+        }
+        value.push_back(c);
+      }
+      continue;
+    }
+
+    const char opener = body[valuePos];
+    const char closer = opener == '{' ? '}' : opener == '[' ? ']' : '\0';
+    if (closer == '\0') {
+      return std::nullopt;
+    }
+    inString = false;
+    escaping = false;
+    int valueDepth = 0;
+    for (; pos < body.size(); ++pos) {
+      const char c = body[pos];
+      if (inString) {
+        if (escaping) {
+          escaping = false;
+          continue;
+        }
+        if (c == '\\') {
+          escaping = true;
+          continue;
+        }
+        if (c == '"') {
+          inString = false;
+        }
+        continue;
+      }
+      if (c == '"') {
+        inString = true;
+        continue;
+      }
+      if (c == opener) {
+        ++valueDepth;
+        continue;
+      }
+      if (c == closer) {
+        --valueDepth;
+        if (valueDepth == 0) {
+          ++pos;
+          if (memberKey == key) {
+            return body.substr(valuePos, pos - valuePos);
+          }
+          break;
+        }
+      }
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<bool> jsonBoolField(const std::string &body,
+                                                const std::string &key) {
   const std::string needle = "\"" + key + "\"";
   const size_t keyPos = body.find(needle);
   if (keyPos == std::string::npos) {
@@ -181,8 +330,8 @@ void closeSocket(const SocketHandle socket) {
   return std::nullopt;
 }
 
-[[nodiscard]] std::optional<double> jsonNumberField(const std::string& body,
-                                                    const std::string& key) {
+[[nodiscard]] std::optional<double> jsonNumberField(const std::string &body,
+                                                    const std::string &key) {
   const std::string needle = "\"" + key + "\"";
   const size_t keyPos = body.find(needle);
   if (keyPos == std::string::npos) {
@@ -203,10 +352,9 @@ void closeSocket(const SocketHandle socket) {
   }
 }
 
-[[nodiscard]] std::string httpResponse(std::string_view status,
-                                       std::string_view body,
-                                       std::string_view contentType =
-                                           "application/json") {
+[[nodiscard]] std::string
+httpResponse(std::string_view status, std::string_view body,
+             std::string_view contentType = "application/json") {
   std::ostringstream out;
   out << "HTTP/1.1 " << status << "\r\n"
       << "Content-Type: " << contentType << "\r\n"
@@ -216,26 +364,21 @@ void closeSocket(const SocketHandle socket) {
   return out.str();
 }
 
-[[nodiscard]] std::string
-summaryJson(const ApiStateSnapshot& state) {
+[[nodiscard]] std::string summaryJson(const ApiStateSnapshot &state) {
   std::ostringstream out;
-  out << "{\"sceneName\":\""
-      << apiJsonEscape(state.scene.sceneName) << "\""
+  out << "{\"sceneName\":\"" << apiJsonEscape(state.scene.sceneName) << "\""
       << ",\"currentDocumentPath\":\""
       << apiJsonEscape(state.scene.currentDocumentPath) << "\""
-      << ",\"sourceKind\":\""
-      << apiSceneSourceKindName(state.scene.sourceKind) << "\""
-      << ",\"permission\":\""
+      << ",\"sourceKind\":\"" << apiSceneSourceKindName(state.scene.sourceKind)
+      << "\"" << ",\"permission\":\""
       << apiPermissionLevelName(state.scene.permission) << "\""
       << ",\"dirty\":" << (state.scene.dirty ? "true" : "false")
       << ",\"previewEnabled\":"
       << (state.toolbar.previewEnabled ? "true" : "false")
-      << ",\"debugEnabled\":"
-      << (state.toolbar.debugEnabled ? "true" : "false")
+      << ",\"debugEnabled\":" << (state.toolbar.debugEnabled ? "true" : "false")
       << ",\"mode\":\"" << apiEditorModeName(state.toolbar.mode) << "\""
       << ",\"camera\":\"" << apiCameraControlModeName(state.toolbar.camera)
-      << "\""
-      << ",\"selectionCount\":" << state.selection.selectedPaths.size()
+      << "\"" << ",\"selectionCount\":" << state.selection.selectedPaths.size()
       << ",\"activeCameraPath\":\""
       << apiJsonEscape(state.cameras.activeCameraPath) << "\"}";
   return out.str();
@@ -314,16 +457,14 @@ summaryJson(const ApiStateSnapshot& state) {
   const std::array<std::uint32_t, 5> words = {h0, h1, h2, h3, h4};
   for (size_t i = 0; i < words.size(); ++i) {
     digest[i * 4] = static_cast<std::uint8_t>((words[i] >> 24u) & 0xffu);
-    digest[i * 4 + 1] =
-        static_cast<std::uint8_t>((words[i] >> 16u) & 0xffu);
-    digest[i * 4 + 2] =
-        static_cast<std::uint8_t>((words[i] >> 8u) & 0xffu);
+    digest[i * 4 + 1] = static_cast<std::uint8_t>((words[i] >> 16u) & 0xffu);
+    digest[i * 4 + 2] = static_cast<std::uint8_t>((words[i] >> 8u) & 0xffu);
     digest[i * 4 + 3] = static_cast<std::uint8_t>(words[i] & 0xffu);
   }
   return digest;
 }
 
-[[nodiscard]] std::string base64Encode(const std::uint8_t* data,
+[[nodiscard]] std::string base64Encode(const std::uint8_t *data,
                                        const size_t size) {
   static constexpr char kAlphabet[] =
       "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -342,7 +483,7 @@ summaryJson(const ApiStateSnapshot& state) {
   return out;
 }
 
-[[nodiscard]] std::string websocketAcceptKey(const std::string& clientKey) {
+[[nodiscard]] std::string websocketAcceptKey(const std::string &clientKey) {
   static constexpr std::string_view kGuid =
       "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
   const std::string source = clientKey + std::string(kGuid);
@@ -363,8 +504,8 @@ struct WsFrame final {
   std::string payload;
 };
 
-[[nodiscard]] std::optional<ParsedHttpRequest> tryParseHttpRequest(
-    const std::string& buffer, size_t& consumedBytes) {
+[[nodiscard]] std::optional<ParsedHttpRequest>
+tryParseHttpRequest(const std::string &buffer, size_t &consumedBytes) {
   const size_t headerEnd = buffer.find("\r\n\r\n");
   if (headerEnd == std::string::npos) {
     return std::nullopt;
@@ -409,8 +550,8 @@ struct WsFrame final {
   return request;
 }
 
-[[nodiscard]] std::optional<WsFrame> tryParseWsFrame(const std::string& buffer,
-                                                     size_t& consumedBytes) {
+[[nodiscard]] std::optional<WsFrame> tryParseWsFrame(const std::string &buffer,
+                                                     size_t &consumedBytes) {
   if (buffer.size() < 2) {
     return std::nullopt;
   }
@@ -432,8 +573,8 @@ struct WsFrame final {
     }
     payloadLength = 0;
     for (int i = 0; i < 8; ++i) {
-      payloadLength = (payloadLength << 8u) |
-                      static_cast<std::uint8_t>(buffer[offset + i]);
+      payloadLength =
+          (payloadLength << 8u) | static_cast<std::uint8_t>(buffer[offset + i]);
     }
     offset += 8;
   }
@@ -459,8 +600,7 @@ struct WsFrame final {
   for (size_t i = 0; i < payloadLength; ++i) {
     char value = buffer[offset + i];
     if (masked) {
-      value = static_cast<char>(static_cast<std::uint8_t>(value) ^
-                                mask[i % 4]);
+      value = static_cast<char>(static_cast<std::uint8_t>(value) ^ mask[i % 4]);
     }
     frame.payload[i] = value;
   }
@@ -468,7 +608,7 @@ struct WsFrame final {
   return frame;
 }
 
-[[nodiscard]] std::string makeWsTextFrame(const std::string& payload,
+[[nodiscard]] std::string makeWsTextFrame(const std::string &payload,
                                           const std::uint8_t opcode = 0x1u) {
   std::string out;
   out.push_back(static_cast<char>(0x80u | opcode));
@@ -489,7 +629,7 @@ struct WsFrame final {
 }
 
 [[nodiscard]] std::optional<std::string> bearerTokenFromHeaders(
-    const std::unordered_map<std::string, std::string>& headers) {
+    const std::unordered_map<std::string, std::string> &headers) {
   const auto auth = headerValue(headers, "authorization");
   if (!auth.has_value()) {
     return std::nullopt;
@@ -501,8 +641,8 @@ struct WsFrame final {
   return auth->substr(kPrefix.size());
 }
 
-[[nodiscard]] std::optional<std::string> queryTokenFromPath(
-    const std::string& path) {
+[[nodiscard]] std::optional<std::string>
+queryTokenFromPath(const std::string &path) {
   const size_t queryPos = path.find('?');
   if (queryPos == std::string::npos) {
     return std::nullopt;
@@ -511,9 +651,8 @@ struct WsFrame final {
   size_t begin = 0;
   while (begin < query.size()) {
     const size_t end = query.find('&', begin);
-    const std::string pair =
-        query.substr(begin, end == std::string::npos ? std::string::npos
-                                                     : end - begin);
+    const std::string pair = query.substr(
+        begin, end == std::string::npos ? std::string::npos : end - begin);
     const size_t equals = pair.find('=');
     if (equals != std::string::npos && pair.substr(0, equals) == "token") {
       return pair.substr(equals + 1);
@@ -526,8 +665,8 @@ struct WsFrame final {
   return std::nullopt;
 }
 
-[[nodiscard]] std::optional<std::string> queryParamFromPath(
-    const std::string& path, const std::string& name) {
+[[nodiscard]] std::optional<std::string>
+queryParamFromPath(const std::string &path, const std::string &name) {
   const size_t queryPos = path.find('?');
   if (queryPos == std::string::npos) {
     return std::nullopt;
@@ -536,9 +675,8 @@ struct WsFrame final {
   size_t begin = 0;
   while (begin < query.size()) {
     const size_t end = query.find('&', begin);
-    const std::string pair =
-        query.substr(begin, end == std::string::npos ? std::string::npos
-                                                     : end - begin);
+    const std::string pair = query.substr(
+        begin, end == std::string::npos ? std::string::npos : end - begin);
     const size_t equals = pair.find('=');
     if (equals != std::string::npos && pair.substr(0, equals) == name) {
       return pair.substr(equals + 1);
@@ -586,8 +724,8 @@ struct WsFrame final {
   return out;
 }
 
-[[nodiscard]] bool isAuthorized(
-    const ParsedHttpRequest& request, const std::string& expectedToken) {
+[[nodiscard]] bool isAuthorized(const ParsedHttpRequest &request,
+                                const std::string &expectedToken) {
   const auto bearer = bearerTokenFromHeaders(request.headers);
   if (bearer.has_value() && *bearer == expectedToken) {
     return true;
@@ -626,7 +764,7 @@ LxeEditorApiServer::~LxeEditorApiServer() {
   delete m_impl;
 }
 
-bool LxeEditorApiServer::start(std::string* errorMessage) {
+bool LxeEditorApiServer::start(std::string *errorMessage) {
   if (!m_config.enabled) {
     return true;
   }
@@ -647,7 +785,7 @@ bool LxeEditorApiServer::start(std::string* errorMessage) {
   hints.ai_family = AF_INET;
   hints.ai_socktype = SOCK_STREAM;
   hints.ai_flags = AI_PASSIVE;
-  addrinfo* result = nullptr;
+  addrinfo *result = nullptr;
   const std::string portText = std::to_string(m_config.port);
   const int getaddrinfoResult =
       getaddrinfo(m_config.host.c_str(), portText.c_str(), &hints, &result);
@@ -659,14 +797,15 @@ bool LxeEditorApiServer::start(std::string* errorMessage) {
   }
 
   SocketHandle listenSocket = kInvalidSocket;
-  for (addrinfo* addr = result; addr != nullptr; addr = addr->ai_next) {
-    listenSocket = socket(addr->ai_family, addr->ai_socktype, addr->ai_protocol);
+  for (addrinfo *addr = result; addr != nullptr; addr = addr->ai_next) {
+    listenSocket =
+        socket(addr->ai_family, addr->ai_socktype, addr->ai_protocol);
     if (listenSocket == kInvalidSocket) {
       continue;
     }
     const int one = 1;
     setsockopt(listenSocket, SOL_SOCKET, SO_REUSEADDR,
-               reinterpret_cast<const char*>(&one), sizeof(one));
+               reinterpret_cast<const char *>(&one), sizeof(one));
     if (bind(listenSocket, addr->ai_addr, addr->ai_addrlen) == 0 &&
         listen(listenSocket, 16) == 0 && setNonBlocking(listenSocket)) {
       break;
@@ -678,15 +817,15 @@ bool LxeEditorApiServer::start(std::string* errorMessage) {
 
   if (listenSocket == kInvalidSocket) {
     if (errorMessage) {
-      *errorMessage = "failed to bind/listen API server: " +
-                      socketErrorString();
+      *errorMessage =
+          "failed to bind/listen API server: " + socketErrorString();
     }
     return false;
   }
 
   sockaddr_in boundAddr{};
   socklen_t boundAddrSize = sizeof(boundAddr);
-  if (getsockname(listenSocket, reinterpret_cast<sockaddr*>(&boundAddr),
+  if (getsockname(listenSocket, reinterpret_cast<sockaddr *>(&boundAddr),
                   &boundAddrSize) == 0) {
     m_config.port = ntohs(boundAddr.sin_port);
   }
@@ -699,7 +838,7 @@ void LxeEditorApiServer::stop() {
   if (!m_impl) {
     return;
   }
-  for (auto& client : m_impl->clients) {
+  for (auto &client : m_impl->clients) {
     closeSocket(client.socket);
     client.socket = kInvalidSocket;
   }
@@ -712,19 +851,15 @@ void LxeEditorApiServer::stop() {
 #endif
 }
 
-bool LxeEditorApiServer::isRunning() const {
-  return m_impl && m_impl->running;
-}
+bool LxeEditorApiServer::isRunning() const { return m_impl && m_impl->running; }
 
-const LxeEditorApiServerConfig& LxeEditorApiServer::config() const {
+const LxeEditorApiServerConfig &LxeEditorApiServer::config() const {
   return m_config;
 }
 
-std::uint16_t LxeEditorApiServer::boundPort() const {
-  return m_config.port;
-}
+std::uint16_t LxeEditorApiServer::boundPort() const { return m_config.port; }
 
-void LxeEditorApiServer::pump(LxeEditorApiService& service) {
+void LxeEditorApiServer::pump(LxeEditorApiService &service) {
   if (!m_impl->running) {
     return;
   }
@@ -733,7 +868,7 @@ void LxeEditorApiServer::pump(LxeEditorApiService& service) {
     sockaddr_in clientAddr{};
     socklen_t clientAddrSize = sizeof(clientAddr);
     const SocketHandle clientSocket =
-        accept(m_impl->listenSocket, reinterpret_cast<sockaddr*>(&clientAddr),
+        accept(m_impl->listenSocket, reinterpret_cast<sockaddr *>(&clientAddr),
                &clientAddrSize);
     if (clientSocket == kInvalidSocket) {
       break;
@@ -745,7 +880,7 @@ void LxeEditorApiServer::pump(LxeEditorApiService& service) {
     m_impl->clients.push_back(Impl::Client{.socket = clientSocket});
   }
 
-  for (auto& client : m_impl->clients) {
+  for (auto &client : m_impl->clients) {
     char buffer[4096];
     while (true) {
       const int bytesRead =
@@ -765,7 +900,7 @@ void LxeEditorApiServer::pump(LxeEditorApiService& service) {
     }
   }
 
-  for (auto& client : m_impl->clients) {
+  for (auto &client : m_impl->clients) {
     if (client.kind == Impl::Client::Kind::Http) {
       size_t consumed = 0;
       const auto request = tryParseHttpRequest(client.readBuffer, consumed);
@@ -778,9 +913,10 @@ void LxeEditorApiServer::pump(LxeEditorApiService& service) {
           request->path.substr(0, request->path.find('?'));
       if (pathWithoutQuery != "/health" &&
           !isAuthorized(*request, m_config.token)) {
-        client.writeBuffer += httpResponse(
-            "401 Unauthorized",
-            "{\"ok\":false,\"error\":{\"code\":\"unauthorized\",\"message\":\"missing or invalid token\"}}");
+        client.writeBuffer +=
+            httpResponse("401 Unauthorized",
+                         "{\"ok\":false,\"error\":{\"code\":\"unauthorized\","
+                         "\"message\":\"missing or invalid token\"}}");
         client.closeAfterWrite = true;
         continue;
       }
@@ -797,9 +933,10 @@ void LxeEditorApiServer::pump(LxeEditorApiService& service) {
           pathWithoutQuery == "/ws") {
         const auto key = headerValue(request->headers, "sec-websocket-key");
         if (!key.has_value()) {
-          client.writeBuffer += httpResponse(
-              "400 Bad Request",
-              "{\"ok\":false,\"error\":{\"code\":\"bad_request\",\"message\":\"missing websocket key\"}}");
+          client.writeBuffer +=
+              httpResponse("400 Bad Request",
+                           "{\"ok\":false,\"error\":{\"code\":\"bad_request\","
+                           "\"message\":\"missing websocket key\"}}");
           client.closeAfterWrite = true;
           continue;
         }
@@ -816,17 +953,16 @@ void LxeEditorApiServer::pump(LxeEditorApiService& service) {
         continue;
       }
 
-      auto commandResponse = [&](const std::string& line) {
-        return toJson(service.executeCommand(
-            ApiCommandRequest{.line = line}));
+      auto commandResponse = [&](const std::string &line) {
+        return toJson(service.executeCommand(ApiCommandRequest{.line = line}));
       };
 
       if (request->method == "POST" && pathWithoutQuery == "/api/command") {
         const auto line = jsonStringField(request->body, "line");
         if (!line.has_value()) {
           client.writeBuffer += httpResponse(
-              "400 Bad Request",
-              "{\"ok\":false,\"error\":{\"code\":\"bad_request\",\"message\":\"missing line\"}}");
+              "400 Bad Request", "{\"ok\":false,\"error\":{\"code\":\"bad_"
+                                 "request\",\"message\":\"missing line\"}}");
         } else {
           client.writeBuffer += httpResponse("200 OK", commandResponse(*line));
         }
@@ -839,29 +975,77 @@ void LxeEditorApiServer::pump(LxeEditorApiService& service) {
             httpResponse("200 OK", summaryJson(service.captureState()));
       } else if (request->method == "GET" &&
                  pathWithoutQuery == "/api/state/selection") {
-        client.writeBuffer += httpResponse(
-            "200 OK", toJson(service.captureState().selection));
+        client.writeBuffer +=
+            httpResponse("200 OK", toJson(service.captureState().selection));
       } else if (request->method == "GET" &&
                  pathWithoutQuery == "/api/state/cameras") {
-        client.writeBuffer += httpResponse(
-            "200 OK", toJson(service.captureState().cameras));
+        client.writeBuffer +=
+            httpResponse("200 OK", toJson(service.captureState().cameras));
       } else if (request->method == "GET" &&
                  pathWithoutQuery == "/api/state/scene") {
-        client.writeBuffer += httpResponse(
-            "200 OK", toJson(service.captureState().scene));
-      } else if (request->method == "GET" &&
-                 pathWithoutQuery == "/api/build") {
+        client.writeBuffer +=
+            httpResponse("200 OK", toJson(service.captureState().scene));
+      } else if (request->method == "GET" && pathWithoutQuery == "/api/build") {
         client.writeBuffer += httpResponse("200 OK", service.buildInfo());
       } else if (request->method == "GET" &&
+                 pathWithoutQuery == "/api/display/list") {
+        client.writeBuffer += httpResponse("200 OK", service.displayList());
+      } else if (request->method == "GET" &&
+                 pathWithoutQuery == "/api/display/active") {
+        client.writeBuffer += httpResponse("200 OK", service.displayActive());
+      } else if (request->method == "GET" &&
+                 pathWithoutQuery == "/api/display/config") {
+        const auto key = queryParamFromPath(request->path, "key");
+        if (!key.has_value()) {
+          client.writeBuffer +=
+              httpResponse("400 Bad Request",
+                           "{\"ok\":false,\"error\":{\"code\":\"bad_request\","
+                           "\"message\":\"missing display config key\"}}");
+        } else {
+          client.writeBuffer +=
+              httpResponse("200 OK", service.displayConfigGet(urlDecode(*key)));
+        }
+      } else if (request->method == "POST" &&
+                 pathWithoutQuery == "/api/display/config") {
+        const auto key = jsonStringField(request->body, "key");
+        const auto patch =
+            jsonStringOrRawContainerField(request->body, "patch");
+        if (!key.has_value()) {
+          client.writeBuffer +=
+              httpResponse("400 Bad Request",
+                           "{\"ok\":false,\"error\":{\"code\":\"bad_request\","
+                           "\"message\":\"missing display config key\"}}");
+        } else if (!patch.has_value()) {
+          client.writeBuffer +=
+              httpResponse("400 Bad Request",
+                           "{\"ok\":false,\"error\":{\"code\":\"bad_request\","
+                           "\"message\":\"missing display config patch\"}}");
+        } else {
+          client.writeBuffer +=
+              httpResponse("200 OK", service.displayConfigSet(*key, *patch));
+        }
+      } else if (request->method == "POST" &&
+                 pathWithoutQuery == "/api/display/select") {
+        const auto key = jsonStringField(request->body, "key");
+        if (!key.has_value()) {
+          client.writeBuffer +=
+              httpResponse("400 Bad Request",
+                           "{\"ok\":false,\"error\":{\"code\":\"bad_request\","
+                           "\"message\":\"missing display key\"}}");
+        } else {
+          client.writeBuffer +=
+              httpResponse("200 OK", service.displaySelect(*key));
+        }
+      } else if (request->method == "GET" &&
                  pathWithoutQuery == "/api/state/toolbar") {
-        client.writeBuffer += httpResponse(
-            "200 OK", toJson(service.captureState().toolbar));
+        client.writeBuffer +=
+            httpResponse("200 OK", toJson(service.captureState().toolbar));
       } else if (request->method == "POST" && pathWithoutQuery == "/api/mode") {
         const auto mode = jsonStringField(request->body, "mode");
         if (!mode.has_value()) {
           client.writeBuffer += httpResponse(
-              "400 Bad Request",
-              "{\"ok\":false,\"error\":{\"code\":\"bad_request\",\"message\":\"missing mode\"}}");
+              "400 Bad Request", "{\"ok\":false,\"error\":{\"code\":\"bad_"
+                                 "request\",\"message\":\"missing mode\"}}");
         } else {
           client.writeBuffer +=
               httpResponse("200 OK", commandResponse("mode " + *mode));
@@ -871,76 +1055,72 @@ void LxeEditorApiServer::pump(LxeEditorApiService& service) {
         if (const auto enabled = jsonBoolField(request->body, "enabled");
             enabled.has_value()) {
           client.writeBuffer += httpResponse(
-              "200 OK",
-              commandResponse(std::string("preview ") +
-                              (*enabled ? "on" : "off")));
-        } else if (const auto action =
-                       jsonStringField(request->body, "action");
+              "200 OK", commandResponse(std::string("preview ") +
+                                        (*enabled ? "on" : "off")));
+        } else if (const auto action = jsonStringField(request->body, "action");
                    action.has_value()) {
-          client.writeBuffer += httpResponse(
-              "200 OK", commandResponse("preview " + *action));
+          client.writeBuffer +=
+              httpResponse("200 OK", commandResponse("preview " + *action));
         } else {
           client.writeBuffer +=
               httpResponse("200 OK", commandResponse("preview toggle"));
         }
       } else if (request->method == "POST" &&
                  pathWithoutQuery == "/api/camera/reset-editor-to-game") {
-        client.writeBuffer += httpResponse(
-            "200 OK", commandResponse("cam reset-editor-to-game"));
-      } else if (request->method == "POST" &&
-                 pathWithoutQuery == "/api/pick") {
+        client.writeBuffer +=
+            httpResponse("200 OK", commandResponse("cam reset-editor-to-game"));
+      } else if (request->method == "POST" && pathWithoutQuery == "/api/pick") {
         const auto x = jsonNumberField(request->body, "x");
         const auto y = jsonNumberField(request->body, "y");
         if (!x.has_value() || !y.has_value()) {
-          client.writeBuffer += httpResponse(
-              "400 Bad Request",
-              "{\"ok\":false,\"error\":{\"code\":\"bad_request\",\"message\":\"missing pick coordinates\"}}");
+          client.writeBuffer +=
+              httpResponse("400 Bad Request",
+                           "{\"ok\":false,\"error\":{\"code\":\"bad_request\","
+                           "\"message\":\"missing pick coordinates\"}}");
         } else {
           std::ostringstream line;
           line << "pick " << *x << " " << *y;
-          client.writeBuffer += httpResponse("200 OK", commandResponse(line.str()));
+          client.writeBuffer +=
+              httpResponse("200 OK", commandResponse(line.str()));
         }
       } else if (request->method == "GET" &&
                  pathWithoutQuery == "/recording/status") {
-        client.writeBuffer +=
-            httpResponse("200 OK", service.recordingStatus());
+        client.writeBuffer += httpResponse("200 OK", service.recordingStatus());
       } else if (request->method == "POST" &&
                  pathWithoutQuery == "/recording/enable") {
-        client.writeBuffer +=
-            httpResponse("200 OK", service.recordingEnable());
+        client.writeBuffer += httpResponse("200 OK", service.recordingEnable());
       } else if (request->method == "POST" &&
                  pathWithoutQuery == "/recording/disable") {
         client.writeBuffer += httpResponse(
             "200 OK",
-            service.recordingDisable(jsonBoolField(request->body, "force")
-                                         .value_or(false)));
+            service.recordingDisable(
+                jsonBoolField(request->body, "force").value_or(false)));
       } else if (request->method == "POST" &&
                  pathWithoutQuery == "/recording/start") {
         RecordingDetailLevel detailLevel = RecordingDetailLevel::Basic;
         if (const auto detail = jsonStringField(request->body, "detailLevel");
             detail.has_value()) {
-          detailLevel = recordingDetailLevelFromName(*detail)
-                            .value_or(RecordingDetailLevel::Basic);
+          detailLevel = recordingDetailLevelFromName(*detail).value_or(
+              RecordingDetailLevel::Basic);
         }
         client.writeBuffer +=
             httpResponse("200 OK", service.recordingStart(detailLevel));
       } else if (request->method == "POST" &&
                  pathWithoutQuery == "/recording/stop") {
         client.writeBuffer += httpResponse(
-            "200 OK",
-            service.recordingStop(jsonBoolField(request->body, "save")
-                                      .value_or(true)));
+            "200 OK", service.recordingStop(
+                          jsonBoolField(request->body, "save").value_or(true)));
       } else if (request->method == "GET" &&
                  pathWithoutQuery == "/recording/list") {
-        client.writeBuffer +=
-            httpResponse("200 OK", service.recordingList());
+        client.writeBuffer += httpResponse("200 OK", service.recordingList());
       } else if (request->method == "GET" &&
                  pathWithoutQuery == "/recording/read") {
         const auto id = queryParamFromPath(request->path, "id");
         if (!id.has_value()) {
-          client.writeBuffer += httpResponse(
-              "400 Bad Request",
-              "{\"ok\":false,\"error\":{\"code\":\"bad_request\",\"message\":\"missing recording id\"}}");
+          client.writeBuffer +=
+              httpResponse("400 Bad Request",
+                           "{\"ok\":false,\"error\":{\"code\":\"bad_request\","
+                           "\"message\":\"missing recording id\"}}");
         } else {
           client.writeBuffer +=
               httpResponse("200 OK", service.recordingRead(urlDecode(*id)));
@@ -952,9 +1132,10 @@ void LxeEditorApiServer::pump(LxeEditorApiService& service) {
           id = jsonStringField(request->body, "path");
         }
         if (!id.has_value()) {
-          client.writeBuffer += httpResponse(
-              "400 Bad Request",
-              "{\"ok\":false,\"error\":{\"code\":\"bad_request\",\"message\":\"missing recording id\"}}");
+          client.writeBuffer +=
+              httpResponse("400 Bad Request",
+                           "{\"ok\":false,\"error\":{\"code\":\"bad_request\","
+                           "\"message\":\"missing recording id\"}}");
         } else {
           client.writeBuffer +=
               httpResponse("200 OK", service.recordingReplay(urlDecode(*id)));
@@ -967,8 +1148,8 @@ void LxeEditorApiServer::pump(LxeEditorApiService& service) {
                 queryParamFromPath(request->path, "target").value_or("state")));
       } else {
         client.writeBuffer += httpResponse(
-            "404 Not Found",
-            "{\"ok\":false,\"error\":{\"code\":\"not_found\",\"message\":\"unknown endpoint\"}}");
+            "404 Not Found", "{\"ok\":false,\"error\":{\"code\":\"not_found\","
+                             "\"message\":\"unknown endpoint\"}}");
       }
       client.closeAfterWrite = true;
       continue;
@@ -998,10 +1179,11 @@ void LxeEditorApiServer::pump(LxeEditorApiService& service) {
         const auto line = jsonStringField(frame->payload, "line");
         if (!line.has_value()) {
           client.writeBuffer += makeWsTextFrame(
-              "{\"type\":\"command.response\",\"ok\":false,\"error\":{\"code\":\"bad_request\",\"message\":\"missing line\"}}");
+              "{\"type\":\"command.response\",\"ok\":false,\"error\":{\"code\":"
+              "\"bad_request\",\"message\":\"missing line\"}}");
         } else {
-          const auto response = service.executeCommand(
-              ApiCommandRequest{.line = *line});
+          const auto response =
+              service.executeCommand(ApiCommandRequest{.line = *line});
           client.writeBuffer += makeWsTextFrame(
               std::string("{\"type\":\"command.response\",\"payload\":") +
               toJson(response) + "}");
@@ -1010,18 +1192,18 @@ void LxeEditorApiServer::pump(LxeEditorApiService& service) {
     }
   }
 
-  for (auto& client : m_impl->clients) {
+  for (auto &client : m_impl->clients) {
     if (client.kind != Impl::Client::Kind::WebSocket) {
       continue;
     }
     const ApiEventBatch batch = service.collectEventsSince(client.cursor);
     client.cursor = batch.nextCursor;
-    for (const auto& event : batch.events) {
+    for (const auto &event : batch.events) {
       client.writeBuffer += makeWsTextFrame(toJson(event));
     }
   }
 
-  for (auto& client : m_impl->clients) {
+  for (auto &client : m_impl->clients) {
     while (!client.writeBuffer.empty()) {
       const int sent = send(client.socket, client.writeBuffer.data(),
                             static_cast<int>(client.writeBuffer.size()), 0);
@@ -1036,14 +1218,14 @@ void LxeEditorApiServer::pump(LxeEditorApiService& service) {
     }
   }
 
-  auto eraseBegin = std::remove_if(
-      m_impl->clients.begin(), m_impl->clients.end(),
-      [](const Impl::Client& client) {
-        const bool deadSocket = client.socket == kInvalidSocket;
-        const bool readyToClose =
-            client.closeAfterWrite && client.writeBuffer.empty();
-        return deadSocket || readyToClose;
-      });
+  auto eraseBegin =
+      std::remove_if(m_impl->clients.begin(), m_impl->clients.end(),
+                     [](const Impl::Client &client) {
+                       const bool deadSocket = client.socket == kInvalidSocket;
+                       const bool readyToClose =
+                           client.closeAfterWrite && client.writeBuffer.empty();
+                       return deadSocket || readyToClose;
+                     });
   for (auto it = eraseBegin; it != m_impl->clients.end(); ++it) {
     closeSocket(it->socket);
   }

@@ -47,6 +47,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_inspector_panel
   test_viewport_overlay
   test_gizmo_adapter
+  test_lxe_editor_display_config
   test_lxe_editor_layout
   test_lxe_editor_interaction
   test_lxe_editor_session
@@ -195,6 +196,12 @@ if(TARGET test_lxe_editor_layout)
   target_link_libraries(test_lxe_editor_layout PRIVATE imgui yaml-cpp::yaml-cpp)
 endif()
 
+if(TARGET test_lxe_editor_display_config)
+  target_sources(test_lxe_editor_display_config PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/display_launch_options.cpp
+  )
+endif()
+
 if(TARGET test_lxe_editor_interaction)
   target_sources(test_lxe_editor_interaction PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_interaction_controller.cpp
@@ -238,11 +245,15 @@ if(TARGET test_lxe_editor_api_service)
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_api_service.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_build_info.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/api_token_state.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_commands.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/recording_controller.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_interaction_controller.cpp
   )
   target_include_directories(test_lxe_editor_api_service PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/..
+    ${CMAKE_CURRENT_SOURCE_DIR}/../infra/external/yaml-cpp/include
   )
+  target_link_libraries(test_lxe_editor_api_service PRIVATE imgui yaml-cpp::yaml-cpp)
 endif()
 
 if(TARGET test_lxe_editor_api_server)

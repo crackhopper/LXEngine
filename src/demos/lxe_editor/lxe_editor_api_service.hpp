@@ -23,14 +23,20 @@ public:
     std::function<void(std::string_view)> recordCommandHistoryLine;
     std::function<std::optional<std::reference_wrapper<RecordingController>>()>
         recording;
+    std::function<std::string()> displayListJson;
+    std::function<std::string()> displayActiveJson;
+    std::function<std::string(const std::string &)> displayConfigGetJson;
+    std::function<std::string(const std::string &, const std::string &)>
+        displayConfigSet;
+    std::function<std::string(const std::string &)> displaySelect;
   };
 
-  LxeEditorApiService(LX_core::CommandBus& commandBus,
-                      LX_core::EditorState& editorState,
-                      LX_core::Scene& scene, Hooks hooks);
+  LxeEditorApiService(LX_core::CommandBus &commandBus,
+                      LX_core::EditorState &editorState, LX_core::Scene &scene,
+                      Hooks hooks);
 
-  [[nodiscard]] ApiCommandResponse executeCommand(
-      const ApiCommandRequest& request);
+  [[nodiscard]] ApiCommandResponse
+  executeCommand(const ApiCommandRequest &request);
   [[nodiscard]] ApiStateSnapshot captureState() const;
   [[nodiscard]] std::string buildInfo() const;
   [[nodiscard]] std::string recordingStatus() const;
@@ -39,14 +45,19 @@ public:
   [[nodiscard]] std::string recordingStart(RecordingDetailLevel detailLevel);
   [[nodiscard]] std::string recordingStop(bool save);
   [[nodiscard]] std::string recordingList() const;
-  [[nodiscard]] std::string recordingRead(const std::string& idOrPath) const;
-  [[nodiscard]] std::string recordingReplay(const std::string& idOrPath);
-  [[nodiscard]] std::string recordingProbe(const std::string& target) const;
+  [[nodiscard]] std::string recordingRead(const std::string &idOrPath) const;
+  [[nodiscard]] std::string recordingReplay(const std::string &idOrPath);
+  [[nodiscard]] std::string recordingProbe(const std::string &target) const;
+  [[nodiscard]] std::string displayList() const;
+  [[nodiscard]] std::string displayActive() const;
+  [[nodiscard]] std::string displayConfigGet(const std::string &key) const;
+  [[nodiscard]] std::string displayConfigSet(const std::string &key,
+                                             const std::string &patch);
+  [[nodiscard]] std::string displaySelect(const std::string &key);
   void refresh();
 
   [[nodiscard]] ApiEventCursor currentCursor() const;
-  [[nodiscard]] ApiEventBatch collectEventsSince(
-      ApiEventCursor cursor) const;
+  [[nodiscard]] ApiEventBatch collectEventsSince(ApiEventCursor cursor) const;
 
 private:
   static constexpr usize kMaxBufferedEvents = 256;
@@ -55,19 +66,19 @@ private:
   [[nodiscard]] ApiSelectionSnapshot captureSelection() const;
   [[nodiscard]] ApiCameraSnapshot captureCameras() const;
   [[nodiscard]] ApiToolbarSnapshot captureToolbar() const;
-  void observeRuntimeSceneEvent(const LX_core::SceneEvent& event);
+  void observeRuntimeSceneEvent(const LX_core::SceneEvent &event);
   void flushPendingRuntimeSceneEvents();
   void observeCommandHistory();
   void observeStateChanges();
   void appendEvent(ApiEvent event);
-  [[nodiscard]] static std::string sceneNodeAspectName(
-      LX_core::SceneNodeAspect aspect);
+  [[nodiscard]] static std::string
+  sceneNodeAspectName(LX_core::SceneNodeAspect aspect);
   [[nodiscard]] static bool isSceneLoadCommand(std::string_view line);
   [[nodiscard]] static bool isSceneSaveCommand(std::string_view line);
 
-  LX_core::CommandBus& m_commandBus;
-  LX_core::EditorState& m_editorState;
-  LX_core::Scene& m_scene;
+  LX_core::CommandBus &m_commandBus;
+  LX_core::EditorState &m_editorState;
+  LX_core::Scene &m_scene;
   Hooks m_hooks;
   LX_core::SceneEventSubscription m_sceneSubscription;
   usize m_lastObservedHistoryIndex = 0;
