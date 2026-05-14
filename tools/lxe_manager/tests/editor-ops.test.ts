@@ -197,7 +197,7 @@ describe("editor ops", () => {
     await expect(ops.status()).resolves.toEqual({ running: false });
   });
 
-  it("uses captured detached editor logs when available", async () => {
+  it("reads editor logs from the shared editor log file", async () => {
     const server = createServer((_request, response) => {
       response.writeHead(200, { "content-type": "application/json" });
       response.end('{"ok":true}');
@@ -205,42 +205,35 @@ describe("editor ops", () => {
     const port = await listen(server);
     const fixture = tempConfig();
     writeRuntimeState(fixture.config, fixture.tokenPath, 8765, port);
+    const logPath = path.join(fixture.config.runtimeRoot, "data", "lxe_editor", "editor.log");
+    writeFileSync(logPath, "out\nerr\n");
     const supervisor = {
       isProcessRunning: vi.fn((pid: number | undefined) => pid === 8765),
-      logsForDetachedProcess: vi.fn(() => ({
-        stdout: "out",
-        stderr: "err",
-        stdoutTruncated: false,
-        stderrTruncated: false,
-      })),
+      logsForDetachedProcess: vi.fn(() => undefined),
     } as unknown as ProcessSupervisor;
     const ops = new EditorOps(supervisor, fixture.config);
 
     try {
       await expect(ops.logs()).resolves.toEqual({
-        stdout: "out",
-        stderr: "err",
-        message: "captured output for the current manager-owned lxe_editor process",
+        text: "out\nerr\n",
+        message: "captured output from editor log file",
       });
+      expect(supervisor.logsForDetachedProcess).not.toHaveBeenCalled();
     } finally {
       await close(server);
     }
   });
 
-  it("keeps captured logs for the last manager-owned editor after exit", async () => {
+  it("does not fall back to captured detached logs when editor log file is missing", async () => {
     const supervisor = {
       startDetached: vi.fn(async () => ({ label: "editor.start", pid: 4321 })),
       isProcessRunning: vi.fn(() => false),
-      logsForDetachedProcess: vi.fn((pid: number | undefined) =>
-        pid === 4321
-          ? {
-              stdout: "last out",
-              stderr: "last err",
-              stdoutTruncated: false,
-              stderrTruncated: false,
-            }
-          : undefined,
-      ),
+      logsForDetachedProcess: vi.fn(() => ({
+        stdout: "last out",
+        stderr: "last err",
+        stdoutTruncated: false,
+        stderrTruncated: false,
+      })),
     } as unknown as ProcessSupervisor;
     const ops = new EditorOps(supervisor, config(), {
       startTimeoutMs: 1,
@@ -250,10 +243,9 @@ describe("editor ops", () => {
     await ops.start();
     await expect(ops.status()).resolves.toEqual({ running: false });
     await expect(ops.logs()).resolves.toEqual({
-      stdout: "last out",
-      stderr: "last err",
-      message: "captured output for the last manager-owned lxe_editor process",
+      text: "",
+      message: "editor log file is unavailable",
     });
-    expect(supervisor.logsForDetachedProcess).toHaveBeenCalledWith(4321);
+    expect(supervisor.logsForDetachedProcess).not.toHaveBeenCalled();
   });
 });

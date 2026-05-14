@@ -21,6 +21,7 @@
 #include "camera_rig.hpp"
 #include "display_launch_options.hpp"
 #include "editor_config_state.hpp"
+#include "editor_log_file.hpp"
 #include "editor_session.hpp"
 #include "lxe_editor_api_server.hpp"
 #include "lxe_editor_api_service.hpp"
@@ -720,6 +721,7 @@ int main(int argc, char **argv) {
     std::cerr << "[lxe_editor] failed to initialize runtime asset root\n";
     return 1;
   }
+  demo::ScopedEditorLogFile editorLogFile(demo::editorLogFilePath());
 
   std::vector<std::string> launchArgs;
   launchArgs.reserve(static_cast<usize>(argc));

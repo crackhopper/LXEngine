@@ -48,6 +48,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_viewport_overlay
   test_gizmo_adapter
   test_lxe_editor_display_config
+  test_lxe_editor_log_file
   test_lxe_editor_layout
   test_lxe_editor_interaction
   test_lxe_editor_session
@@ -161,6 +162,15 @@ endif()
 # debug_ui smoke test needs access to the imgui header
 if(TARGET test_debug_ui_smoke)
   target_link_libraries(test_debug_ui_smoke PRIVATE imgui)
+endif()
+
+if(TARGET test_lxe_editor_log_file)
+  target_sources(test_lxe_editor_log_file PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_log_file.cpp
+  )
+  target_include_directories(test_lxe_editor_log_file PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/..
+  )
 endif()
 
 if(TARGET test_scene_tree_panel)

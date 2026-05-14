@@ -53,6 +53,7 @@ add_executable(lxe_editor
   recording_controller.cpp
   editor_config_state.cpp
   editor_data_state.cpp
+  editor_log_file.cpp
   editor_camera_state.cpp
   runtime_state.cpp
   scene_catalog.cpp

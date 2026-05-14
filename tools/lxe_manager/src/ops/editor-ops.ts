@@ -1,6 +1,8 @@
 import type { ManagerConfig } from "../config.js";
 import type { ProcessSupervisor } from "../process/process-supervisor.js";
 import { discoverReachableEditorClientConfig } from "../editor/runtime-state.js";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 
 export interface EditorStatus {
   running: boolean;
@@ -8,8 +10,7 @@ export interface EditorStatus {
 }
 
 export interface EditorLogs {
-  stdout: string;
-  stderr: string;
+  text: string;
   message: string;
 }
 
@@ -23,7 +24,6 @@ export interface EditorOpsOptions {
 
 export class EditorOps {
   private editorPid: number | undefined;
-  private lastEditorPid: number | undefined;
   private readonly stopGracePeriodMs: number;
   private readonly forceKillGracePeriodMs: number;
   private readonly stopPollIntervalMs: number;
@@ -56,7 +56,6 @@ export class EditorOps {
       label: "editor.start",
     });
     this.editorPid = child.pid;
-    this.lastEditorPid = child.pid;
     return this.waitForReachableEditor(child.pid);
   }
 
@@ -109,19 +108,22 @@ export class EditorOps {
   }
 
   async logs(): Promise<EditorLogs> {
-    const pid = await this.resolveReachableEditorPid();
-    const logPid = pid ?? this.lastEditorPid;
-    const logs = logPid
-      ? this.supervisor.logsForDetachedProcess(logPid)
-      : undefined;
+    const logPath = path.join(
+      this.config.runtimeRoot,
+      "data",
+      "lxe_editor",
+      "editor.log",
+    );
+    if (!existsSync(logPath)) {
+      return {
+        text: "",
+        message: "editor log file is unavailable",
+      };
+    }
+
     return {
-      stdout: logs?.stdout ?? "",
-      stderr: logs?.stderr ?? "",
-      message: logs
-        ? pid
-          ? "captured output for the current manager-owned lxe_editor process"
-          : "captured output for the last manager-owned lxe_editor process"
-        : "editor logs are only available for manager-owned lxe_editor processes",
+      text: readFileSync(logPath, "utf8"),
+      message: "captured output from editor log file",
     };
   }
 
@@ -137,7 +139,6 @@ export class EditorOps {
     const pid = discovered?.state.pid;
     if (pid && this.supervisor.isProcessRunning(pid)) {
       this.editorPid = pid;
-      this.lastEditorPid = pid;
       return pid;
     }
 
@@ -155,7 +156,6 @@ export class EditorOps {
       const discoveredPid = discovered?.state.pid;
       if (discoveredPid && this.supervisor.isProcessRunning(discoveredPid)) {
         this.editorPid = discoveredPid;
-        this.lastEditorPid = discoveredPid;
         return { running: true, pid: discoveredPid };
       }
       await new Promise((resolve) => setTimeout(resolve, this.startPollIntervalMs));
@@ -172,7 +172,6 @@ export class EditorOps {
     const pid = discovered?.state.pid;
     if (pid && this.supervisor.isProcessRunning(pid)) {
       this.editorPid = pid;
-      this.lastEditorPid = pid;
       return { running: true, pid };
     }
     return { running: false };
