@@ -81,6 +81,7 @@ describe("manager supervisor", () => {
       ],
       expect.objectContaining({
         cwd: "/repo/tools/lxe_manager",
+        detached: true,
         stdio: "inherit",
       }) as SpawnOptions,
     );
