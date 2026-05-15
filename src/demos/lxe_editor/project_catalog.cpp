@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
+#include <iostream>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -54,11 +55,12 @@ ProjectTemplateCatalog::ProjectTemplateCatalog(std::filesystem::path root)
     : m_root(std::move(root)) {}
 
 void ProjectTemplateCatalog::refresh() {
-  m_entries.clear();
   if (!std::filesystem::is_directory(m_root)) {
+    m_entries.clear();
     return;
   }
 
+  std::vector<ProjectTemplateCatalogEntry> entries;
   for (const auto &entry : std::filesystem::directory_iterator(m_root)) {
     if (!entry.is_directory()) {
       continue;
@@ -69,15 +71,21 @@ void ProjectTemplateCatalog::refresh() {
       continue;
     }
 
-    const auto document = loadProjectTemplateDocument(templatePath);
-    m_entries.push_back(
-        {document.id, document.displayName, absoluteNormal(entry.path())});
+    try {
+      const auto document = loadProjectTemplateDocument(templatePath);
+      entries.push_back(
+          {document.id, document.displayName, absoluteNormal(entry.path())});
+    } catch (const std::exception &ex) {
+      std::cerr << "[lxe_editor] skipping project template catalog entry "
+                << templatePath << ": " << ex.what() << "\n";
+    }
   }
 
   std::sort(
-      m_entries.begin(), m_entries.end(),
+      entries.begin(), entries.end(),
       [](const ProjectTemplateCatalogEntry &lhs,
          const ProjectTemplateCatalogEntry &rhs) { return lhs.id < rhs.id; });
+  m_entries = std::move(entries);
 }
 
 const std::vector<ProjectTemplateCatalogEntry> &
@@ -94,11 +102,12 @@ ProjectCatalog::ProjectCatalog(std::filesystem::path root)
     : m_root(std::move(root)) {}
 
 void ProjectCatalog::refresh() {
-  m_entries.clear();
   if (!std::filesystem::is_directory(m_root)) {
+    m_entries.clear();
     return;
   }
 
+  std::vector<ProjectCatalogEntry> entries;
   for (const auto &entry : std::filesystem::directory_iterator(m_root)) {
     if (!entry.is_directory()) {
       continue;
@@ -109,15 +118,21 @@ void ProjectCatalog::refresh() {
       continue;
     }
 
-    const auto document = loadProjectDocument(projectPath);
-    m_entries.push_back(
-        {document.id, document.displayName, absoluteNormal(entry.path())});
+    try {
+      const auto document = loadProjectDocument(projectPath);
+      entries.push_back(
+          {document.id, document.displayName, absoluteNormal(entry.path())});
+    } catch (const std::exception &ex) {
+      std::cerr << "[lxe_editor] skipping project catalog entry " << projectPath
+                << ": " << ex.what() << "\n";
+    }
   }
 
-  std::sort(m_entries.begin(), m_entries.end(),
+  std::sort(entries.begin(), entries.end(),
             [](const ProjectCatalogEntry &lhs, const ProjectCatalogEntry &rhs) {
               return lhs.id < rhs.id;
             });
+  m_entries = std::move(entries);
 }
 
 const std::vector<ProjectCatalogEntry> &ProjectCatalog::entries() const {
