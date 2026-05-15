@@ -1,7 +1,7 @@
 # lxe_editor
 
-The default playground demo. Starts with an empty scene, lets you manually load
-built-in or local scene documents, renders them through the project's Vulkan
+The default playground demo. Starts with an empty scene, lets you initialize or
+open a project, renders the active project scene through the project's Vulkan
 backend, and adds an ImGui editor MVP overlay with scene tree / inspector /
 console plus a floating toolbar for Selection editor mode, Orbit / FreeFly
 camera controls, and Preview.
@@ -85,17 +85,20 @@ when the editor saves configuration, that launched display becomes the saved
 
 ## Scene document behavior
 
-- Startup begins with an empty scene. No sample scene is auto-loaded.
-- Built-in scenes live under `assets/scenes/` and are listed as `asset`.
-- User scenes and autosaved copies live under `data/scenes/` and are listed as
-  `local`.
+- Startup opens the last project recorded in `data/lxe_editor/editor_data.yaml`
+  when possible. If there is no last project, the editor begins with an empty
+  unsaved scene.
+- Project templates live under `assets/project_templates/` and are read-only.
+  `project init <template-id> [project-name]` copies a template into
+  `data/projects/` and opens the project's active scene.
+- A project can contain multiple scenes. Scene ids and scene paths are resolved
+  only inside the current project.
 - Editor chrome persists locally under `data/lxe_editor/`:
   `editor_config.yaml` stores the native window position/size/maximized state,
   floating panel layout/collapsed state, and local editor preferences such as
   `uiFontScale`. `editor_data.yaml` stores editor data such as the last 50
-  command-console history lines. Neither file stores the current scene path,
-  selection, preview mode, or other scene-authored state. The toolbar layout is
-  persisted in `editor_config.yaml`, but startup forces the toolbar visible
+  command-console history lines and the last opened project. The toolbar layout
+  is persisted in `editor_config.yaml`, but startup forces the toolbar visible
   again so the mode switcher cannot be lost behind a stale hidden-state entry.
 - `game_cam` is the authored gameplay camera serialized in the scene document.
 - `editor_cam` is editor-only state. It is restored from
@@ -104,13 +107,11 @@ when the editor saves configuration, that launched display becomes the saved
 - Current scene documents persist the authored scene name, gameplay camera
   path, node list, transform hierarchy, built-in mesh/material references,
   directional lights, and editor-camera metadata.
-- `scene load <path-or-id>` queues a new document and applies it on the next
-  update tick rather than swapping the active scene immediately from the
-  console call.
-- `scene save` writes back to the current scene when allowed.
-- When the current scene came from `asset` and the session is still `user`,
-  `scene save` protects the built-in file and writes a timestamped `local`
-  copy under `data/scenes/`.
+- `scene open <scene-id-or-path>` queues a project scene and applies it on the
+  next update tick rather than swapping the active runtime scene immediately
+  from the console call.
+- `scene save` writes the currently loaded runtime scene back to the active
+  project scene and saves the project metadata.
 - Closing a dirty scene prompts for `Save`, `Discard`, or `Cancel`. `Save`
   follows the same `scene save` rules.
 
@@ -118,20 +119,26 @@ when the editor saves configuration, that launched display becomes the saved
 
 | Command | Effect |
 |---------|--------|
-| `scene list` | List both built-in `asset` scenes and writable `local` scenes |
-| `scene load <path-or-id>` | Queue a full scene reload for the next update tick |
-| `scene save` | Save the current scene back to its current path when allowed, or redirect protected assets to a timestamped local copy |
-| `scene save <path>` | Save the current scene to an explicit path |
-| `admin on` | Enable admin mode so `scene save` may overwrite built-in assets |
-| `admin off` | Return to normal user mode |
-| `admin status` | Show the current permission level |
+| `project templates [list]` | List available read-only project templates |
+| `project list` | List initialized projects under `data/projects/` |
+| `project init <template-id> [project-name]` | Create a writable project from a template and queue its active scene |
+| `project open <project-id-or-path>` | Open an existing project and queue its active scene |
+| `project save` | Save the active project scene and `project.yaml` |
+| `project status` | Return the current project summary |
+| `project close` | Close the project, cancel pending scene opens, and return to an empty scene |
+| `scene list` | List scenes registered in the current project |
+| `scene open <scene-id-or-path>` | Queue a project-scoped scene open for the next update tick |
+| `scene save` | Save the loaded runtime scene to the active project scene |
+| `scene new <scene-id>` | Create a new project scene and queue it |
+| `scene duplicate <source-id> <new-id>` | Copy a project scene and queue the duplicate |
+| `scene remove <scene-id>` | Remove a non-active, non-last project scene |
 | `mode [selection|status]` | Change or inspect the current editor mode |
 | `cam control [orbit|freefly|status]` | Change or inspect the current camera control mode |
 | `cam look-at <eye-x> <eye-y> <eye-z> <target-x> <target-y> <target-z>` | Place the active camera at a specific eye/target pose; with preview off this drives `editor_cam` |
-| `state summary` | Return a stable JSON snapshot with scene, dirty, mode, camera, preview, debug, permission, and active-camera info |
+| `state summary` | Return a stable JSON snapshot with scene, project, dirty, mode, camera, preview, debug, and active-camera info |
 | `state selection` | Return selected paths, primary AABB, and the last successful pick hit point |
 | `state cameras` | Return editor / gameplay camera poses and the active camera path |
-| `state scene` | Return scene metadata such as document path, source kind, node count, camera count, and light count |
+| `state scene` | Return scene metadata such as document path, dirty flag, node count, camera count, and light count |
 | `state toolbar` | Return the current toolbar mode, camera, preview, and debug flags |
 | `pick <x> <y>` | Run a scene pick against the current main scene view rect from console / API |
 | `recording status` | Return recorder enabled/active/detail/save state |
@@ -402,13 +409,13 @@ registered with CTest.
 6. Gizmo handles can be clicked and dragged when visible.
 7. Inspector edits and console commands mutate the same scene state through the
    command bus, and preview mode blocks selection / deselect / remove actions.
-8. `scene list` shows both `asset` and `local` entries.
-9. Loading `assets/scenes/lxe_editor.scene.yaml` restores Helmet, ground,
-   light, and gameplay camera.
-10. Saving a built-in scene in `user` mode creates a timestamped file under
-   `data/scenes/` instead of overwriting the asset.
-11. Closing a dirty scene shows a save/discard/cancel prompt and exits cleanly
+8. `project templates` lists the built-in `empty` template.
+9. `project init empty smoke-project` creates `data/projects/smoke-project/`
+   and queues its active scene.
+10. `scene list` shows scenes registered in the open project.
+11. `scene save` writes the loaded runtime scene to the active project scene.
+12. Closing a dirty scene shows a save/discard/cancel prompt and exits cleanly
     after `Save` or `Discard`.
-12. Moving/resizing the main window, rearranging/collapsing editor panels, and
+13. Moving/resizing the main window, rearranging/collapsing editor panels, and
     changing `UI Font Scale` is restored on the next launch from
     `data/lxe_editor/editor_config.yaml`.
