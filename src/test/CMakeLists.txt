@@ -198,6 +198,7 @@ endif()
 
 if(TARGET test_lxe_editor_layout)
   target_sources(test_lxe_editor_layout PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/builtin_asset_catalog.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/ui_overlay.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/camera_rig.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_config_state.cpp
