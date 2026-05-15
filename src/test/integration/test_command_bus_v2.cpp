@@ -65,44 +65,33 @@ struct Fixture {
     cameraNode->addComponent<CameraComponent>();
     scene->addCamera(cameraNode);
 
-    registerBuiltinCommands(bus, editorState, *scene,
-                            SceneIoContext{
-                                .createNode =
-                                    [](const std::string &,
-                                       const std::string &nodeName,
-                                       const std::string &displayName,
-                                       SceneNodeSharedPtr &outNode) {
-                                      outNode = SceneNode::create(nodeName);
-                                      outNode->setName(displayName);
-                                      return CommandResult{true, "created", {},
-                                                           {}};
-                                    },
-                                .getMaterialUri =
-                                    [this](const std::string &) {
-                                      return materialUri;
-                                    },
-                                .setMaterialUri =
-                                    [this](const std::string &,
-                                           const std::string &uri) {
-                                      materialUri = uri;
-                                      return CommandResult{true,
-                                                           "materialUri updated",
-                                                           "{}", {}};
-                                    },
-                                .getNodeMaterialBaseColor =
-                                    [this](const std::string &) {
-                                      return baseColor;
-                                    },
-                                .setNodeMaterialBaseColor =
-                                    [this](const std::string &,
-                                           const Vec3f &color) {
-                                      baseColor = color;
-                                      return CommandResult{
-                                          true,
-                                          "node material baseColor updated",
-                                          "{}", {}};
-                                    },
-                            });
+    registerBuiltinCommands(
+        bus, editorState, *scene,
+        SceneIoContext{
+            .createNode =
+                [](const std::string &, const std::string &nodeName,
+                   const std::string &displayName,
+                   SceneNodeSharedPtr &outNode) {
+                  outNode = SceneNode::create(nodeName);
+                  outNode->setName(displayName);
+                  return CommandResult{true, "created", {}, {}};
+                },
+            .getMaterialUri =
+                [this](const std::string &) { return materialUri; },
+            .setMaterialUri =
+                [this](const std::string &, const std::string &uri) {
+                  materialUri = uri;
+                  return CommandResult{true, "materialUri updated", "{}", {}};
+                },
+            .getNodeMaterialBaseColor =
+                [this](const std::string &) { return baseColor; },
+            .setNodeMaterialBaseColor =
+                [this](const std::string &, const Vec3f &color) {
+                  baseColor = color;
+                  return CommandResult{
+                      true, "node material baseColor updated", "{}", {}};
+                },
+        });
   }
 };
 
@@ -359,6 +348,13 @@ void testConcreteAddKindsUseHistory() {
   EXPECT(lightNode != nullptr &&
              fixture.scene->getDirectionalLight(*lightNode) != nullptr,
          "add directional light should attach a light payload");
+
+  const CommandResult addModelWithDisplayName = fixture.bus.dispatch(
+      "add model:characters_blocky_a \"Blocky Character A\" /world");
+  EXPECT(addModelWithDisplayName.ok,
+         "add model should accept asset display names with spaces");
+  EXPECT(fixture.scene->findByPath("/world/Blocky_Character_A") != nullptr,
+         "add model should sanitize display name for scene path");
 }
 
 void testCopyPasteAsSiblingDuplicatesCameraAndSelection() {
@@ -377,12 +373,13 @@ void testCopyPasteAsSiblingDuplicatesCameraAndSelection() {
   EXPECT(copyNode != nullptr, "paste should create a copied sibling path");
   EXPECT(copyNode != fixture.cameraNode.get(),
          "paste should create a distinct node");
-  EXPECT(copyNode != nullptr && copyNode->getParent() ==
-                                  fixture.cameraNode->getParent(),
+  EXPECT(copyNode != nullptr &&
+             copyNode->getParent() == fixture.cameraNode->getParent(),
          "paste_as_sibling should use target parent");
   if (copyNode != nullptr) {
     const auto copiedCamera = copyNode->getComponent<CameraComponent>();
-    EXPECT(copiedCamera.has_value(), "camera duplicate should keep camera payload");
+    EXPECT(copiedCamera.has_value(),
+           "camera duplicate should keep camera payload");
     EXPECT(copiedCamera.has_value() &&
                nearlyEqual(copiedCamera->get().getFovY(), 72.0f),
            "camera duplicate should preserve fov");
@@ -415,7 +412,8 @@ void testCopyPasteAsSiblingDuplicatesDirectionalLightIndependently() {
 
   const CommandResult copy = fixture.bus.dispatch("copy /world/sun");
   EXPECT(copy.ok, "copy light should succeed");
-  const CommandResult paste = fixture.bus.dispatch("paste_as_sibling /world/sun");
+  const CommandResult paste =
+      fixture.bus.dispatch("paste_as_sibling /world/sun");
   EXPECT(paste.ok, "paste light should succeed");
 
   SceneNode *originalNode = fixture.scene->findByPath("/world/sun");
@@ -423,7 +421,8 @@ void testCopyPasteAsSiblingDuplicatesDirectionalLightIndependently() {
   EXPECT(originalNode != nullptr && copyNode != nullptr,
          "light copy should create copied sibling");
   if (originalNode != nullptr && copyNode != nullptr) {
-    const auto originalLight = fixture.scene->getDirectionalLight(*originalNode);
+    const auto originalLight =
+        fixture.scene->getDirectionalLight(*originalNode);
     const auto copiedLight = fixture.scene->getDirectionalLight(*copyNode);
     EXPECT(originalLight != nullptr && copiedLight != nullptr,
            "light duplicate should keep directional light payload");

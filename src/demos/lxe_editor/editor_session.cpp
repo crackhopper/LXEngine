@@ -403,9 +403,7 @@ LxeEditorSession::queueSceneLoad(const std::string &path) {
         m_catalog.resolveNameOrPath(path);
     const auto classified = m_catalog.classifyPath(resolvedPath);
     SceneRuntime loaded;
-    loaded.loadFromDocumentPath(resolvedPath,
-                                classified ? std::optional{classified->kind}
-                                           : std::nullopt);
+    loaded.loadFromDocumentPath(resolvedPath);
     const auto loadedPath = loaded.documentPath();
     if (!loadedPath.has_value()) {
       return makeCommandError("queued scene load produced no document path");

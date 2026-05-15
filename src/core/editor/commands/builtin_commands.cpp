@@ -1268,6 +1268,21 @@ struct BuiltinCommandState {
   return text;
 }
 
+[[nodiscard]] std::string sanitizeSceneNodeDisplayName(std::string text) {
+  if (text.empty()) {
+    return "node";
+  }
+  for (char &c : text) {
+    const unsigned char uc = static_cast<unsigned char>(c);
+    const bool valid =
+        std::isalnum(uc) != 0 || c == '_' || c == '-' || c == '.';
+    if (!valid) {
+      c = '_';
+    }
+  }
+  return text;
+}
+
 [[nodiscard]] std::string makeUniqueNodeName(Scene &scene,
                                              BuiltinCommandState &state,
                                              const std::string &base) {
@@ -2345,7 +2360,7 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
           lightKindName = lowerCopy(kind.substr(std::string("light:").size()));
         }
 
-        const std::string &name = args[1];
+        const std::string name = sanitizeSceneNodeDisplayName(args[1]);
         usize parentPathIndex = args.size();
         CommandResult placementError;
         const std::optional<Vec3f> explicitPlacement =
