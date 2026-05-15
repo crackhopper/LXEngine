@@ -133,6 +133,9 @@ public:
 
   void initScene(SceneSharedPtr _scene) {
     ++m_initSceneCallCount;
+    if (m_swapchain) {
+      m_swapchain->waitForAllFrames();
+    }
     m_scene = _scene;
 
     // REQ-009: compute the swapchain target once, use it for both:
