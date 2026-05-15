@@ -3,9 +3,15 @@ displayName: "Bookcase Open"
 category: "indoor/furniture"
 meshUri: "assets/models/builtin/indoor/furniture/indoor_furniture_bookcase_open/model.obj"
 defaultMaterialUri: "assets/materials/blinnphong_lit.material"
+albedoTextureUri: ""
+materialFiles:
+  - "bookcaseOpen.mtl"
+textureFiles:
 sourcePack: "Kenney Furniture Kit"
 sourceUrl: "https://kenney.nl/assets/furniture-kit"
 license: "CC0-1.0"
 commercialUse: true
 triangleCount: 640
-modelBytes: 25003
+modelBytes: 25028
+resourceBytes: 147
+assetBytes: 50843

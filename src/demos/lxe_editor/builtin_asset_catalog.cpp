@@ -48,10 +48,13 @@ void BuiltinAssetCatalog::refresh(const std::filesystem::path &root) {
     asset.category = readString(node, "category");
     asset.meshUri = readString(node, "meshUri");
     asset.defaultMaterialUri = readString(node, "defaultMaterialUri");
+    asset.albedoTextureUri = readString(node, "albedoTextureUri");
     asset.sourcePack = readString(node, "sourcePack");
     asset.license = readString(node, "license");
     asset.triangleCount = readInt(node, "triangleCount");
     asset.modelBytes = readInt(node, "modelBytes");
+    asset.resourceBytes = readInt(node, "resourceBytes");
+    asset.assetBytes = readInt(node, "assetBytes");
     if (!asset.assetId.empty() && !asset.meshUri.empty()) {
       m_models.push_back(std::move(asset));
     }

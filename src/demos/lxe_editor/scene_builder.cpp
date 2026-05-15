@@ -245,18 +245,39 @@ MaterialInstanceSharedPtr makePrimitiveMaterial() {
   return mat;
 }
 
-MaterialInstanceSharedPtr makeModelMaterial(std::string_view materialUri) {
-  const std::string uri = materialUri.empty()
-                              ? "assets/materials/blinnphong_lit.material"
-                              : std::string(materialUri);
+MaterialInstanceSharedPtr makeModelMaterial(std::string_view materialUri,
+                                            std::string_view albedoTextureUri) {
+  constexpr const char *kTexturedMaterial =
+      "assets/materials/blinnphong_textured.material";
+  constexpr const char *kFallbackMaterial =
+      "assets/materials/blinnphong_lit.material";
+
+  std::string uri =
+      materialUri.empty() ? kFallbackMaterial : std::string(materialUri);
+  if (!albedoTextureUri.empty() && uri == kFallbackMaterial) {
+    uri = kTexturedMaterial;
+  }
   auto mat = LX_infra::loadGenericMaterial(uri);
   if (!mat) {
     throw std::runtime_error("[lxe_editor] failed to load " + uri);
   }
-  mat->setParameter(StringID("MaterialUBO"), StringID("enableAlbedo"), 0);
   mat->setParameter(StringID("MaterialUBO"), StringID("enableNormal"), 0);
   mat->setParameter(StringID("MaterialUBO"), StringID("baseColor"),
                     Vec3f{0.72f, 0.74f, 0.78f});
+  if (!albedoTextureUri.empty() && uri == kTexturedMaterial) {
+    try {
+      auto sampler = loadCombinedTexture(
+          resolveRuntimePath(std::string(albedoTextureUri)));
+      mat->setTexture(StringID("albedoMap"), std::move(sampler));
+      mat->setParameter(StringID("MaterialUBO"), StringID("enableAlbedo"), 1);
+    } catch (const std::exception &e) {
+      std::cerr << "[lxe_editor] model albedo texture load failed (" << e.what()
+                << "); falling back to flat color\n";
+      mat->setParameter(StringID("MaterialUBO"), StringID("enableAlbedo"), 0);
+    }
+  } else {
+    mat->setParameter(StringID("MaterialUBO"), StringID("enableAlbedo"), 0);
+  }
   mat->syncGpuData();
   return mat;
 }
@@ -506,11 +527,11 @@ LX_core::SceneNodeSharedPtr buildBuiltinPrimitiveNode(std::string_view meshUri,
                             std::move(material));
 }
 
-LX_core::SceneNodeSharedPtr buildModelAssetNode(std::string_view meshUri,
-                                                std::string_view materialUri,
-                                                std::string nodeName) {
+LX_core::SceneNodeSharedPtr
+buildModelAssetNode(std::string_view meshUri, std::string_view materialUri,
+                    std::string_view albedoTextureUri, std::string nodeName) {
   auto mesh = loadModelMesh(meshUri);
-  auto material = makeModelMaterial(materialUri);
+  auto material = makeModelMaterial(materialUri, albedoTextureUri);
   return makeRenderableNode(nodeName.c_str(), std::move(mesh),
                             std::move(material));
 }

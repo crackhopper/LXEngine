@@ -3,9 +3,15 @@ displayName: "Large Rock"
 category: "outdoor/nature"
 meshUri: "assets/models/builtin/outdoor/nature/outdoor_nature_large_rock/model.obj"
 defaultMaterialUri: "assets/materials/blinnphong_lit.material"
+albedoTextureUri: ""
+materialFiles:
+  - "rock_largeA.mtl"
+textureFiles:
 sourcePack: "Kenney Nature Kit"
 sourceUrl: "https://kenney.nl/assets/nature-kit"
 license: "CC0-1.0"
 commercialUse: true
 triangleCount: 80
-modelBytes: 7866
+modelBytes: 7889
+resourceBytes: 137
+assetBytes: 16230

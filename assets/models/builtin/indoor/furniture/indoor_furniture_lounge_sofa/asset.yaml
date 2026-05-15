@@ -3,9 +3,15 @@ displayName: "Lounge Sofa"
 category: "indoor/furniture"
 meshUri: "assets/models/builtin/indoor/furniture/indoor_furniture_lounge_sofa/model.obj"
 defaultMaterialUri: "assets/materials/blinnphong_lit.material"
+albedoTextureUri: ""
+materialFiles:
+  - "loungeSofa.mtl"
+textureFiles:
 sourcePack: "Kenney Furniture Kit"
 sourceUrl: "https://kenney.nl/assets/furniture-kit"
 license: "CC0-1.0"
 commercialUse: true
 triangleCount: 256
-modelBytes: 11614
+modelBytes: 11637
+resourceBytes: 257
+assetBytes: 23787

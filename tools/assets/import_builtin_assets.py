@@ -19,6 +19,7 @@ import urllib.request
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterable
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -176,8 +177,6 @@ def triangulate_obj(text: str) -> tuple[str, int]:
     out: list[str] = []
     triangles = 0
     for raw in text.splitlines():
-        if raw.startswith("mtllib "):
-            continue
         parts = raw.strip().split()
         if parts and parts[0] == "f":
             face = parts[1:]
@@ -190,6 +189,43 @@ def triangulate_obj(text: str) -> tuple[str, int]:
         out.append(raw)
     out.append("")
     return "\n".join(out), triangles
+
+
+def obj_material_libraries(text: str) -> list[str]:
+    libraries: list[str] = []
+    for raw in text.splitlines():
+        parts = raw.strip().split(maxsplit=1)
+        if len(parts) == 2 and parts[0] == "mtllib":
+            libraries.append(parts[1].strip())
+    return libraries
+
+
+def material_texture_maps(text: str, keys: set[str] | None = None) -> list[str]:
+    maps: list[str] = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line.startswith("map_"):
+            continue
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        if keys is not None and parts[0] not in keys:
+            continue
+        # Keep the last token; common MTL options such as "-s 1 1 1" appear
+        # before the image path.
+        maps.append(parts[-1])
+    return maps
+
+
+def unique_preserving_order(values: Iterable[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        out.append(value)
+    return out
 
 
 def write_yaml(path: Path, data: dict[str, object]) -> None:
@@ -206,6 +242,10 @@ def write_yaml(path: Path, data: dict[str, object]) -> None:
             lines.append(f"{key}:")
             for child_key, child_value in value.items():
                 lines.append(f"  {child_key}: {scalar(child_value)}")
+        elif isinstance(value, list):
+            lines.append(f"{key}:")
+            for item in value:
+                lines.append(f"  - {scalar(item)}")
         else:
             lines.append(f"{key}: {scalar(value)}")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -267,6 +307,40 @@ def import_assets(dry_run: bool) -> int:
             obj_text = zip_file.read(source_path).decode("utf-8", errors="replace")
             obj_out, triangles = triangulate_obj(obj_text)
             model_bytes = len(obj_out.encode("utf-8"))
+            source_dir = Path(source_path).parent
+            material_files: list[str] = []
+            texture_files: list[str] = []
+            albedo_texture_files: list[str] = []
+            copied_resource_bytes = 0
+            for mtl_name in obj_material_libraries(obj_text):
+                mtl_zip_path = str(source_dir / mtl_name).replace("\\", "/")
+                if mtl_zip_path not in zip_file.namelist():
+                    continue
+                material_files.append(mtl_name)
+                mtl_text = zip_file.read(mtl_zip_path).decode(
+                    "utf-8", errors="replace"
+                )
+                copied_resource_bytes += len(mtl_text.encode("utf-8"))
+                albedo_texture_files.extend(
+                    material_texture_maps(mtl_text, {"map_Kd"})
+                )
+                for texture_name in material_texture_maps(mtl_text):
+                    texture_zip_path = str(source_dir / texture_name).replace(
+                        "\\", "/"
+                    )
+                    if texture_zip_path not in zip_file.namelist():
+                        continue
+                    texture_files.append(texture_name)
+                    copied_resource_bytes += len(zip_file.read(texture_zip_path))
+            material_files = unique_preserving_order(material_files)
+            texture_files = unique_preserving_order(texture_files)
+            albedo_texture_files = unique_preserving_order(albedo_texture_files)
+            albedo_texture_uri = (
+                f"assets/models/builtin/{item.category}/{item.asset_id}/"
+                f"{albedo_texture_files[0]}"
+                if albedo_texture_files
+                else ""
+            )
             if triangles > MAX_TRIANGLES:
                 report["rejected"].append(
                     {
@@ -288,18 +362,30 @@ def import_assets(dry_run: bool) -> int:
             mesh_uri = (
                 f"assets/models/builtin/{item.category}/{item.asset_id}/model.obj"
             )
+            default_material_uri = (
+                "assets/materials/blinnphong_textured.material"
+                if albedo_texture_uri
+                else "assets/materials/blinnphong_lit.material"
+            )
             entry = {
                 "assetId": item.asset_id,
                 "displayName": item.display_name,
                 "category": item.category,
                 "meshUri": mesh_uri,
-                "defaultMaterialUri": "assets/materials/blinnphong_lit.material",
+                "defaultMaterialUri": default_material_uri,
+                "albedoTextureUri": albedo_texture_uri,
+                "materialFiles": material_files,
+                "textureFiles": texture_files,
                 "sourcePack": pack.display_name,
                 "sourceUrl": pack.page_url,
                 "license": "CC0-1.0",
                 "commercialUse": True,
                 "triangleCount": triangles,
                 "modelBytes": model_bytes,
+                "resourceBytes": copied_resource_bytes,
+                "assetBytes": model_bytes
+                + len(obj_text.encode("utf-8"))
+                + copied_resource_bytes,
             }
             report["imported"].append(entry)
             if dry_run:
@@ -308,6 +394,16 @@ def import_assets(dry_run: bool) -> int:
             asset_dir.mkdir(parents=True, exist_ok=True)
             (asset_dir / "original.obj").write_text(obj_text, encoding="utf-8")
             (asset_dir / "model.obj").write_text(obj_out, encoding="utf-8")
+            for mtl_name in material_files:
+                mtl_zip_path = str(source_dir / mtl_name).replace("\\", "/")
+                (asset_dir / mtl_name).write_bytes(zip_file.read(mtl_zip_path))
+            for texture_name in texture_files:
+                texture_zip_path = str(source_dir / texture_name).replace(
+                    "\\", "/"
+                )
+                texture_target = asset_dir / texture_name
+                texture_target.parent.mkdir(parents=True, exist_ok=True)
+                texture_target.write_bytes(zip_file.read(texture_zip_path))
             write_yaml(asset_dir / "asset.yaml", entry)
 
         if not dry_run:

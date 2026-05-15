@@ -28,8 +28,8 @@ LX_core::SceneNodeSharedPtr buildGroundNode();
 LX_core::SceneNodeSharedPtr buildBuiltinPrimitiveNode(std::string_view meshUri,
                                                       std::string nodeName);
 
-LX_core::SceneNodeSharedPtr buildModelAssetNode(std::string_view meshUri,
-                                                std::string_view materialUri,
-                                                std::string nodeName);
+LX_core::SceneNodeSharedPtr
+buildModelAssetNode(std::string_view meshUri, std::string_view materialUri,
+                    std::string_view albedoTextureUri, std::string nodeName);
 
 } // namespace LX_demo::lxe_editor

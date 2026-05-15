@@ -6,12 +6,19 @@
       "category": "indoor/furniture",
       "meshUri": "assets/models/builtin/indoor/furniture/indoor_furniture_bed_single/model.obj",
       "defaultMaterialUri": "assets/materials/blinnphong_lit.material",
+      "albedoTextureUri": "",
+      "materialFiles": [
+        "bedSingle.mtl"
+      ],
+      "textureFiles": [],
       "sourcePack": "Kenney Furniture Kit",
       "sourceUrl": "https://kenney.nl/assets/furniture-kit",
       "license": "CC0-1.0",
       "commercialUse": true,
       "triangleCount": 314,
-      "modelBytes": 19355
+      "modelBytes": 19377,
+      "resourceBytes": 466,
+      "assetBytes": 39534
     },
     {
       "assetId": "indoor_furniture_bookcase_open",
@@ -19,12 +26,19 @@
       "category": "indoor/furniture",
       "meshUri": "assets/models/builtin/indoor/furniture/indoor_furniture_bookcase_open/model.obj",
       "defaultMaterialUri": "assets/materials/blinnphong_lit.material",
+      "albedoTextureUri": "",
+      "materialFiles": [
+        "bookcaseOpen.mtl"
+      ],
+      "textureFiles": [],
       "sourcePack": "Kenney Furniture Kit",
       "sourceUrl": "https://kenney.nl/assets/furniture-kit",
       "license": "CC0-1.0",
       "commercialUse": true,
       "triangleCount": 640,
-      "modelBytes": 25003
+      "modelBytes": 25028,
+      "resourceBytes": 147,
+      "assetBytes": 50843
     },
     {
       "assetId": "indoor_furniture_chair",
@@ -32,12 +46,19 @@
       "category": "indoor/furniture",
       "meshUri": "assets/models/builtin/indoor/furniture/indoor_furniture_chair/model.obj",
       "defaultMaterialUri": "assets/materials/blinnphong_lit.material",
+      "albedoTextureUri": "",
+      "materialFiles": [
+        "chair.mtl"
+      ],
+      "textureFiles": [],
       "sourcePack": "Kenney Furniture Kit",
       "sourceUrl": "https://kenney.nl/assets/furniture-kit",
       "license": "CC0-1.0",
       "commercialUse": true,
       "triangleCount": 340,
-      "modelBytes": 13493
+      "modelBytes": 13511,
+      "resourceBytes": 147,
+      "assetBytes": 27509
     },
     {
       "assetId": "indoor_furniture_desk",
@@ -45,12 +66,19 @@
       "category": "indoor/furniture",
       "meshUri": "assets/models/builtin/indoor/furniture/indoor_furniture_desk/model.obj",
       "defaultMaterialUri": "assets/materials/blinnphong_lit.material",
+      "albedoTextureUri": "",
+      "materialFiles": [
+        "desk.mtl"
+      ],
+      "textureFiles": [],
       "sourcePack": "Kenney Furniture Kit",
       "sourceUrl": "https://kenney.nl/assets/furniture-kit",
       "license": "CC0-1.0",
       "commercialUse": true,
       "triangleCount": 352,
-      "modelBytes": 17042
+      "modelBytes": 17059,
+      "resourceBytes": 257,
+      "assetBytes": 34727
     },
     {
       "assetId": "indoor_furniture_lounge_sofa",
@@ -58,12 +86,19 @@
       "category": "indoor/furniture",
       "meshUri": "assets/models/builtin/indoor/furniture/indoor_furniture_lounge_sofa/model.obj",
       "defaultMaterialUri": "assets/materials/blinnphong_lit.material",
+      "albedoTextureUri": "",
+      "materialFiles": [
+        "loungeSofa.mtl"
+      ],
+      "textureFiles": [],
       "sourcePack": "Kenney Furniture Kit",
       "sourceUrl": "https://kenney.nl/assets/furniture-kit",
       "license": "CC0-1.0",
       "commercialUse": true,
       "triangleCount": 256,
-      "modelBytes": 11614
+      "modelBytes": 11637,
+      "resourceBytes": 257,
+      "assetBytes": 23787
     },
     {
       "assetId": "indoor_props_computer_screen",
@@ -71,129 +106,217 @@
       "category": "indoor/props",
       "meshUri": "assets/models/builtin/indoor/props/indoor_props_computer_screen/model.obj",
       "defaultMaterialUri": "assets/materials/blinnphong_lit.material",
+      "albedoTextureUri": "",
+      "materialFiles": [
+        "computerScreen.mtl"
+      ],
+      "textureFiles": [],
       "sourcePack": "Kenney Furniture Kit",
       "sourceUrl": "https://kenney.nl/assets/furniture-kit",
       "license": "CC0-1.0",
       "commercialUse": true,
       "triangleCount": 144,
-      "modelBytes": 8049
+      "modelBytes": 8076,
+      "resourceBytes": 262,
+      "assetBytes": 16558
     },
     {
       "assetId": "indoor_props_supply_box",
       "displayName": "Supply Box",
       "category": "indoor/props",
       "meshUri": "assets/models/builtin/indoor/props/indoor_props_supply_box/model.obj",
-      "defaultMaterialUri": "assets/materials/blinnphong_lit.material",
+      "defaultMaterialUri": "assets/materials/blinnphong_textured.material",
+      "albedoTextureUri": "assets/models/builtin/indoor/props/indoor_props_supply_box/Textures/colormap.png",
+      "materialFiles": [
+        "box.mtl"
+      ],
+      "textureFiles": [
+        "Textures/colormap.png"
+      ],
       "sourcePack": "Kenney Survival Kit",
       "sourceUrl": "https://kenney.nl/assets/survival-kit",
       "license": "CC0-1.0",
       "commercialUse": true,
       "triangleCount": 248,
-      "modelBytes": 10841
+      "modelBytes": 10856,
+      "resourceBytes": 7538,
+      "assetBytes": 29659
     },
     {
       "assetId": "indoor_props_barrel",
       "displayName": "Barrel",
       "category": "indoor/props",
       "meshUri": "assets/models/builtin/indoor/props/indoor_props_barrel/model.obj",
-      "defaultMaterialUri": "assets/materials/blinnphong_lit.material",
+      "defaultMaterialUri": "assets/materials/blinnphong_textured.material",
+      "albedoTextureUri": "assets/models/builtin/indoor/props/indoor_props_barrel/Textures/colormap.png",
+      "materialFiles": [
+        "barrel.mtl"
+      ],
+      "textureFiles": [
+        "Textures/colormap.png"
+      ],
       "sourcePack": "Kenney Survival Kit",
       "sourceUrl": "https://kenney.nl/assets/survival-kit",
       "license": "CC0-1.0",
       "commercialUse": true,
       "triangleCount": 824,
-      "modelBytes": 29614
+      "modelBytes": 29632,
+      "resourceBytes": 7538,
+      "assetBytes": 67884
     },
     {
       "assetId": "indoor_props_apple",
       "displayName": "Apple",
       "category": "indoor/props",
       "meshUri": "assets/models/builtin/indoor/props/indoor_props_apple/model.obj",
-      "defaultMaterialUri": "assets/materials/blinnphong_lit.material",
+      "defaultMaterialUri": "assets/materials/blinnphong_textured.material",
+      "albedoTextureUri": "assets/models/builtin/indoor/props/indoor_props_apple/Textures/colormap.png",
+      "materialFiles": [
+        "apple.mtl"
+      ],
+      "textureFiles": [
+        "Textures/colormap.png"
+      ],
       "sourcePack": "Kenney Food Kit",
       "sourceUrl": "https://kenney.nl/assets/food-kit",
       "license": "CC0-1.0",
       "commercialUse": true,
       "triangleCount": 272,
-      "modelBytes": 12283
+      "modelBytes": 12300,
+      "resourceBytes": 10813,
+      "assetBytes": 35859
     },
     {
       "assetId": "outdoor_buildings_low_detail_a",
       "displayName": "Low Detail Building A",
       "category": "outdoor/buildings",
       "meshUri": "assets/models/builtin/outdoor/buildings/outdoor_buildings_low_detail_a/model.obj",
-      "defaultMaterialUri": "assets/materials/blinnphong_lit.material",
+      "defaultMaterialUri": "assets/materials/blinnphong_textured.material",
+      "albedoTextureUri": "assets/models/builtin/outdoor/buildings/outdoor_buildings_low_detail_a/Textures/colormap.png",
+      "materialFiles": [
+        "low-detail-building-a.mtl"
+      ],
+      "textureFiles": [
+        "Textures/colormap.png"
+      ],
       "sourcePack": "Kenney City Kit Commercial",
       "sourceUrl": "https://kenney.nl/assets/city-kit-commercial",
       "license": "CC0-1.0",
       "commercialUse": true,
       "triangleCount": 376,
-      "modelBytes": 11711
+      "modelBytes": 11744,
+      "resourceBytes": 11100,
+      "assetBytes": 35107
     },
     {
       "assetId": "outdoor_buildings_low_detail_wide",
       "displayName": "Low Detail Wide Building",
       "category": "outdoor/buildings",
       "meshUri": "assets/models/builtin/outdoor/buildings/outdoor_buildings_low_detail_wide/model.obj",
-      "defaultMaterialUri": "assets/materials/blinnphong_lit.material",
+      "defaultMaterialUri": "assets/materials/blinnphong_textured.material",
+      "albedoTextureUri": "assets/models/builtin/outdoor/buildings/outdoor_buildings_low_detail_wide/Textures/colormap.png",
+      "materialFiles": [
+        "low-detail-building-wide-a.mtl"
+      ],
+      "textureFiles": [
+        "Textures/colormap.png"
+      ],
       "sourcePack": "Kenney City Kit Commercial",
       "sourceUrl": "https://kenney.nl/assets/city-kit-commercial",
       "license": "CC0-1.0",
       "commercialUse": true,
       "triangleCount": 312,
-      "modelBytes": 9546
+      "modelBytes": 9584,
+      "resourceBytes": 11100,
+      "assetBytes": 30698
     },
     {
       "assetId": "outdoor_buildings_low_detail_b",
       "displayName": "Low Detail Building B",
       "category": "outdoor/buildings",
       "meshUri": "assets/models/builtin/outdoor/buildings/outdoor_buildings_low_detail_b/model.obj",
-      "defaultMaterialUri": "assets/materials/blinnphong_lit.material",
+      "defaultMaterialUri": "assets/materials/blinnphong_textured.material",
+      "albedoTextureUri": "assets/models/builtin/outdoor/buildings/outdoor_buildings_low_detail_b/Textures/colormap.png",
+      "materialFiles": [
+        "low-detail-building-b.mtl"
+      ],
+      "textureFiles": [
+        "Textures/colormap.png"
+      ],
       "sourcePack": "Kenney City Kit Commercial",
       "sourceUrl": "https://kenney.nl/assets/city-kit-commercial",
       "license": "CC0-1.0",
       "commercialUse": true,
       "triangleCount": 400,
-      "modelBytes": 12904
+      "modelBytes": 12937,
+      "resourceBytes": 11100,
+      "assetBytes": 37530
     },
     {
       "assetId": "outdoor_roads_straight",
       "displayName": "Road Straight",
       "category": "outdoor/roads",
       "meshUri": "assets/models/builtin/outdoor/roads/outdoor_roads_straight/model.obj",
-      "defaultMaterialUri": "assets/materials/blinnphong_lit.material",
+      "defaultMaterialUri": "assets/materials/blinnphong_textured.material",
+      "albedoTextureUri": "assets/models/builtin/outdoor/roads/outdoor_roads_straight/Textures/colormap.png",
+      "materialFiles": [
+        "road-straight.mtl"
+      ],
+      "textureFiles": [
+        "Textures/colormap.png"
+      ],
       "sourcePack": "Kenney City Kit Roads",
       "sourceUrl": "https://kenney.nl/assets/city-kit-roads",
       "license": "CC0-1.0",
       "commercialUse": true,
       "triangleCount": 88,
-      "modelBytes": 2776
+      "modelBytes": 2801,
+      "resourceBytes": 9208,
+      "assetBytes": 14952
     },
     {
       "assetId": "outdoor_roads_bend",
       "displayName": "Road Bend",
       "category": "outdoor/roads",
       "meshUri": "assets/models/builtin/outdoor/roads/outdoor_roads_bend/model.obj",
-      "defaultMaterialUri": "assets/materials/blinnphong_lit.material",
+      "defaultMaterialUri": "assets/materials/blinnphong_textured.material",
+      "albedoTextureUri": "assets/models/builtin/outdoor/roads/outdoor_roads_bend/Textures/colormap.png",
+      "materialFiles": [
+        "road-bend-square.mtl"
+      ],
+      "textureFiles": [
+        "Textures/colormap.png"
+      ],
       "sourcePack": "Kenney City Kit Roads",
       "sourceUrl": "https://kenney.nl/assets/city-kit-roads",
       "license": "CC0-1.0",
       "commercialUse": true,
       "triangleCount": 120,
-      "modelBytes": 4095
+      "modelBytes": 4123,
+      "resourceBytes": 9208,
+      "assetBytes": 17647
     },
     {
       "assetId": "outdoor_roads_crossroad",
       "displayName": "Road Crossroad",
       "category": "outdoor/roads",
       "meshUri": "assets/models/builtin/outdoor/roads/outdoor_roads_crossroad/model.obj",
-      "defaultMaterialUri": "assets/materials/blinnphong_lit.material",
+      "defaultMaterialUri": "assets/materials/blinnphong_textured.material",
+      "albedoTextureUri": "assets/models/builtin/outdoor/roads/outdoor_roads_crossroad/Textures/colormap.png",
+      "materialFiles": [
+        "road-crossroad.mtl"
+      ],
+      "textureFiles": [
+        "Textures/colormap.png"
+      ],
       "sourcePack": "Kenney City Kit Roads",
       "sourceUrl": "https://kenney.nl/assets/city-kit-roads",
       "license": "CC0-1.0",
       "commercialUse": true,
       "triangleCount": 232,
-      "modelBytes": 7064
+      "modelBytes": 7090,
+      "resourceBytes": 9208,
+      "assetBytes": 23714
     },
     {
       "assetId": "outdoor_nature_oak_tree",
@@ -201,12 +324,19 @@
       "category": "outdoor/nature",
       "meshUri": "assets/models/builtin/outdoor/nature/outdoor_nature_oak_tree/model.obj",
       "defaultMaterialUri": "assets/materials/blinnphong_lit.material",
+      "albedoTextureUri": "",
+      "materialFiles": [
+        "tree_oak.mtl"
+      ],
+      "textureFiles": [],
       "sourcePack": "Kenney Nature Kit",
       "sourceUrl": "https://kenney.nl/assets/nature-kit",
       "license": "CC0-1.0",
       "commercialUse": true,
       "triangleCount": 196,
-      "modelBytes": 17594
+      "modelBytes": 17614,
+      "resourceBytes": 147,
+      "assetBytes": 36040
     },
     {
       "assetId": "outdoor_nature_pine_tree",
@@ -214,12 +344,19 @@
       "category": "outdoor/nature",
       "meshUri": "assets/models/builtin/outdoor/nature/outdoor_nature_pine_tree/model.obj",
       "defaultMaterialUri": "assets/materials/blinnphong_lit.material",
+      "albedoTextureUri": "",
+      "materialFiles": [
+        "tree_pineDefaultA.mtl"
+      ],
+      "textureFiles": [],
       "sourcePack": "Kenney Nature Kit",
       "sourceUrl": "https://kenney.nl/assets/nature-kit",
       "license": "CC0-1.0",
       "commercialUse": true,
       "triangleCount": 230,
-      "modelBytes": 17159
+      "modelBytes": 17188,
+      "resourceBytes": 144,
+      "assetBytes": 35125
     },
     {
       "assetId": "outdoor_nature_large_rock",
@@ -227,38 +364,63 @@
       "category": "outdoor/nature",
       "meshUri": "assets/models/builtin/outdoor/nature/outdoor_nature_large_rock/model.obj",
       "defaultMaterialUri": "assets/materials/blinnphong_lit.material",
+      "albedoTextureUri": "",
+      "materialFiles": [
+        "rock_largeA.mtl"
+      ],
+      "textureFiles": [],
       "sourcePack": "Kenney Nature Kit",
       "sourceUrl": "https://kenney.nl/assets/nature-kit",
       "license": "CC0-1.0",
       "commercialUse": true,
       "triangleCount": 80,
-      "modelBytes": 7866
+      "modelBytes": 7889,
+      "resourceBytes": 137,
+      "assetBytes": 16230
     },
     {
       "assetId": "characters_blocky_a",
       "displayName": "Blocky Character A",
       "category": "characters",
       "meshUri": "assets/models/builtin/characters/characters_blocky_a/model.obj",
-      "defaultMaterialUri": "assets/materials/blinnphong_lit.material",
+      "defaultMaterialUri": "assets/materials/blinnphong_textured.material",
+      "albedoTextureUri": "assets/models/builtin/characters/characters_blocky_a/Textures/texture-a.png",
+      "materialFiles": [
+        "character-a.mtl"
+      ],
+      "textureFiles": [
+        "Textures/texture-a.png"
+      ],
       "sourcePack": "Kenney Blocky Characters",
       "sourceUrl": "https://kenney.nl/assets/blocky-characters",
       "license": "CC0-1.0",
       "commercialUse": true,
       "triangleCount": 72,
-      "modelBytes": 6988
+      "modelBytes": 7011,
+      "resourceBytes": 20271,
+      "assetBytes": 34610
     },
     {
       "assetId": "characters_blocky_b",
       "displayName": "Blocky Character B",
       "category": "characters",
       "meshUri": "assets/models/builtin/characters/characters_blocky_b/model.obj",
-      "defaultMaterialUri": "assets/materials/blinnphong_lit.material",
+      "defaultMaterialUri": "assets/materials/blinnphong_textured.material",
+      "albedoTextureUri": "assets/models/builtin/characters/characters_blocky_b/Textures/texture-b.png",
+      "materialFiles": [
+        "character-b.mtl"
+      ],
+      "textureFiles": [
+        "Textures/texture-b.png"
+      ],
       "sourcePack": "Kenney Blocky Characters",
       "sourceUrl": "https://kenney.nl/assets/blocky-characters",
       "license": "CC0-1.0",
       "commercialUse": true,
       "triangleCount": 72,
-      "modelBytes": 6940
+      "modelBytes": 6963,
+      "resourceBytes": 15706,
+      "assetBytes": 29949
     }
   ],
   "rejected": []

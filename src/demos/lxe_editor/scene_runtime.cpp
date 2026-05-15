@@ -561,8 +561,11 @@ buildRenderableNodeFromDocument(const SceneNodeDocument &nodeDocument) {
 
   if (isBuiltinModelMeshUri(*nodeDocument.meshUri)) {
     const std::string materialUri = normalizeMaterialUri(nodeDocument);
-    auto node = buildModelAssetNode(*nodeDocument.meshUri, materialUri,
-                                    nodeDocument.nodeName);
+    const BuiltinAssetCatalog builtinAssets = loadBuiltinAssetCatalog();
+    const auto asset = builtinAssets.findByMeshUri(*nodeDocument.meshUri);
+    auto node = buildModelAssetNode(
+        *nodeDocument.meshUri, materialUri,
+        asset ? asset->albedoTextureUri : std::string{}, nodeDocument.nodeName);
     node->setName(nodeDocument.name);
     if (auto materialComponent =
             node->getComponent<LX_core::MaterialComponent>();

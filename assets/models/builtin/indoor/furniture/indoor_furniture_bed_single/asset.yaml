@@ -3,9 +3,15 @@ displayName: "Bed Single"
 category: "indoor/furniture"
 meshUri: "assets/models/builtin/indoor/furniture/indoor_furniture_bed_single/model.obj"
 defaultMaterialUri: "assets/materials/blinnphong_lit.material"
+albedoTextureUri: ""
+materialFiles:
+  - "bedSingle.mtl"
+textureFiles:
 sourcePack: "Kenney Furniture Kit"
 sourceUrl: "https://kenney.nl/assets/furniture-kit"
 license: "CC0-1.0"
 commercialUse: true
 triangleCount: 314
-modelBytes: 19355
+modelBytes: 19377
+resourceBytes: 466
+assetBytes: 39534

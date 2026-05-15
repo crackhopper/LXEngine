@@ -556,7 +556,8 @@ void LxeEditorSession::rebuildBindings(
                   }
                   try {
                     outNode = buildModelAssetNode(
-                        asset->meshUri, asset->defaultMaterialUri, nodeName);
+                        asset->meshUri, asset->defaultMaterialUri,
+                        asset->albedoTextureUri, nodeName);
                     outNode->setName(displayName);
                     return makeCommandOk("created " + kind);
                   } catch (const std::exception &e) {

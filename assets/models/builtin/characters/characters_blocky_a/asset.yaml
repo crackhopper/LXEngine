@@ -2,10 +2,17 @@ assetId: "characters_blocky_a"
 displayName: "Blocky Character A"
 category: "characters"
 meshUri: "assets/models/builtin/characters/characters_blocky_a/model.obj"
-defaultMaterialUri: "assets/materials/blinnphong_lit.material"
+defaultMaterialUri: "assets/materials/blinnphong_textured.material"
+albedoTextureUri: "assets/models/builtin/characters/characters_blocky_a/Textures/texture-a.png"
+materialFiles:
+  - "character-a.mtl"
+textureFiles:
+  - "Textures/texture-a.png"
 sourcePack: "Kenney Blocky Characters"
 sourceUrl: "https://kenney.nl/assets/blocky-characters"
 license: "CC0-1.0"
 commercialUse: true
 triangleCount: 72
-modelBytes: 6988
+modelBytes: 7011
+resourceBytes: 20271
+assetBytes: 34610

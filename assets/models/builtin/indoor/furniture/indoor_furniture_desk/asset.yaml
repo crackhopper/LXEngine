@@ -3,9 +3,15 @@ displayName: "Desk"
 category: "indoor/furniture"
 meshUri: "assets/models/builtin/indoor/furniture/indoor_furniture_desk/model.obj"
 defaultMaterialUri: "assets/materials/blinnphong_lit.material"
+albedoTextureUri: ""
+materialFiles:
+  - "desk.mtl"
+textureFiles:
 sourcePack: "Kenney Furniture Kit"
 sourceUrl: "https://kenney.nl/assets/furniture-kit"
 license: "CC0-1.0"
 commercialUse: true
 triangleCount: 352
-modelBytes: 17042
+modelBytes: 17059
+resourceBytes: 257
+assetBytes: 34727

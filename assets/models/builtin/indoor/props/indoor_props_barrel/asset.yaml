@@ -2,10 +2,17 @@ assetId: "indoor_props_barrel"
 displayName: "Barrel"
 category: "indoor/props"
 meshUri: "assets/models/builtin/indoor/props/indoor_props_barrel/model.obj"
-defaultMaterialUri: "assets/materials/blinnphong_lit.material"
+defaultMaterialUri: "assets/materials/blinnphong_textured.material"
+albedoTextureUri: "assets/models/builtin/indoor/props/indoor_props_barrel/Textures/colormap.png"
+materialFiles:
+  - "barrel.mtl"
+textureFiles:
+  - "Textures/colormap.png"
 sourcePack: "Kenney Survival Kit"
 sourceUrl: "https://kenney.nl/assets/survival-kit"
 license: "CC0-1.0"
 commercialUse: true
 triangleCount: 824
-modelBytes: 29614
+modelBytes: 29632
+resourceBytes: 7538
+assetBytes: 67884

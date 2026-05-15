@@ -13,10 +13,13 @@ struct BuiltinModelAsset final {
   std::string category;
   std::string meshUri;
   std::string defaultMaterialUri;
+  std::string albedoTextureUri;
   std::string sourcePack;
   std::string license;
   int triangleCount = 0;
   int modelBytes = 0;
+  int resourceBytes = 0;
+  int assetBytes = 0;
 };
 
 class BuiltinAssetCatalog final {
