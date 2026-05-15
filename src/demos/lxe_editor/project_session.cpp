@@ -334,6 +334,11 @@ resolveRegisteredScenePath(const std::filesystem::path &projectRoot,
   return isRegularFileNoSymlink(projectPath / document.defaultScene);
 }
 
+void cleanupProjectPath(const std::filesystem::path &projectPath) {
+  std::error_code ec;
+  std::filesystem::remove_all(projectPath, ec);
+}
+
 [[nodiscard]] bool copyTemplateRoots(const std::filesystem::path &templatePath,
                                      const std::filesystem::path &projectPath,
                                      const ProjectTemplateDocument &document) {
@@ -462,20 +467,22 @@ ProjectSession::initProject(const std::string &templateId,
 
     if (!copyTemplateRoots(templateEntry->path, projectPath,
                            templateDocument)) {
+      cleanupProjectPath(projectPath);
       return makeResult(false, "failed to copy project template", projectPath);
     }
     if (!validateCopiedDefaultScene(projectPath, templateDocument)) {
+      cleanupProjectPath(projectPath);
       return makeResult(false, "copied template default scene is invalid",
                         projectPath);
     }
 
+    const auto defaultScenePath = templateDocument.defaultScene.lexically_normal();
     ProjectDocument document;
     document.id = makeProjectSlug(allocationName);
     document.displayName = displayName;
-    document.activeScene = templateDocument.defaultScene;
+    document.activeScene = defaultScenePath;
     document.scenes.push_back(
-        {sceneIdFromPath(templateDocument.defaultScene),
-         templateDocument.defaultScene.lexically_normal()});
+        {sceneIdFromPath(defaultScenePath), defaultScenePath});
     for (const auto &copyRoot : templateDocument.copyRoots) {
       const auto normalized = copyRoot.lexically_normal();
       if (!normalized.empty() && normalized.begin()->generic_string() ==
@@ -487,6 +494,7 @@ ProjectSession::initProject(const std::string &templateId,
     document.createdFromTemplate = templateDocument.id;
 
     if (!saveProjectDocument(projectPath / "project.yaml", document)) {
+      cleanupProjectPath(projectPath);
       return makeResult(false, "failed to save project document", projectPath,
                         document.id);
     }

@@ -97,6 +97,8 @@ void testInitCopiesTemplateAndOpensDefaultScene() {
          "project active scene should be template default");
   EXPECT(document.scenes.size() == 1, "template default scene should be listed");
   EXPECT(document.scenes[0].id == "main", "default scene id should be main");
+  EXPECT(document.scenes[0].path == document.activeScene,
+         "default scene entry path should match normalized active scene");
   EXPECT(document.assetRoots.size() == 1, "template asset root should be listed");
   EXPECT(document.createdFromTemplate == std::optional<std::string>("empty"),
          "project should record source template");
@@ -330,6 +332,50 @@ void testInitRejectsTemplateDefaultSceneSymlinkEscape() {
   EXPECT(!result.ok, "project init should reject default scene symlink escape");
   EXPECT(!session.hasProject(),
          "rejected default scene symlink should not open a project");
+}
+
+void testInitCleansProjectDirectoryAfterPostCopyDefaultSceneFailure() {
+  const auto root = makeTempRoot("lx_project_session_init_cleanup");
+  const auto templateRoot = root / "templates";
+  writeFile(templateRoot / "broken/project_template.yaml",
+            "schema: lxe.project_template.v1\n"
+            "id: broken\n"
+            "displayName: Broken\n"
+            "defaultScene: scenes/main.scene.yaml\n"
+            "copy:\n"
+            "  - assets/\n");
+  writeFile(templateRoot / "broken/scenes/main.scene.yaml",
+            "scene:\n  name: Main\nnodes: []\n");
+  writeFile(templateRoot / "broken/assets/local.txt", "local\n");
+  demo::ProjectSession broken = makeSession(templateRoot, root / "projects");
+
+  const auto result = broken.initProject("broken", "retryable");
+
+  EXPECT(!result.ok,
+         "project init should fail when copied default scene is missing");
+  EXPECT(!broken.hasProject(),
+         "failed post-copy default scene validation should not open a project");
+  EXPECT(!std::filesystem::exists(root / "projects/retryable"),
+         "failed post-copy init should clean allocated project directory");
+
+  writeFile(templateRoot / "fixed/project_template.yaml",
+            "schema: lxe.project_template.v1\n"
+            "id: fixed\n"
+            "displayName: Fixed\n"
+            "defaultScene: scenes/main.scene.yaml\n"
+            "copy:\n"
+            "  - scenes/\n"
+            "  - assets/\n");
+  writeFile(templateRoot / "fixed/scenes/main.scene.yaml",
+            "scene:\n  name: Main\nnodes: []\n");
+  writeFile(templateRoot / "fixed/assets/local.txt", "local\n");
+  demo::ProjectSession fixed = makeSession(templateRoot, root / "projects");
+
+  const auto retryResult = fixed.initProject("fixed", "retryable");
+
+  EXPECT(retryResult.ok, "retry should reuse cleaned project directory");
+  EXPECT(fixed.projectRoot()->filename() == "retryable",
+         "retry should allocate retryable rather than retryable-2");
 }
 
 void testOpenProjectLoadsSavedProject() {
@@ -629,6 +675,7 @@ int main() {
   testInitRejectsTemplateDefaultSceneTraversal();
   testInitRejectsMissingTemplateDefaultScene();
   testInitRejectsTemplateDefaultSceneSymlinkEscape();
+  testInitCleansProjectDirectoryAfterPostCopyDefaultSceneFailure();
   testOpenProjectLoadsSavedProject();
   testSceneNewAddsProjectSceneEntry();
   testSaveProjectPersistsNewSceneAndActiveScene();
