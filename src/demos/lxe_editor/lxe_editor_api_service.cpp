@@ -674,7 +674,8 @@ void LxeEditorApiService::observeStateChanges() {
     });
   }
   const auto activeSceneEventKey = captureActiveSceneEventKey();
-  if (activeSceneEventKey != m_lastActiveSceneEventKey) {
+  if (activeSceneEventKey.has_value() &&
+      activeSceneEventKey != m_lastActiveSceneEventKey) {
     appendEvent(ApiEvent{
         .sequence = m_nextSequence++,
         .type = ApiEventType::ActiveSceneChanged,

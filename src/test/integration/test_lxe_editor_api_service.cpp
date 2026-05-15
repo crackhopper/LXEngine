@@ -987,6 +987,27 @@ void testActiveSceneEventRequiresRuntimeSceneKey() {
          "active_scene.changed should require a runtime-loaded scene key");
 }
 
+void testActiveSceneEventDoesNotEmitWhenRuntimeSceneKeyClears() {
+  Fixture fixture;
+  fixture.activeSceneEventKey = "data/projects/demo/scenes/loaded.scene.yaml";
+  fixture.service->refresh();
+  const ApiEventCursor cursor = fixture.service->currentCursor();
+
+  fixture.hookState.project = std::nullopt;
+  fixture.activeSceneEventKey = std::nullopt;
+  fixture.service->refresh();
+
+  const ApiEventBatch batch = fixture.service->collectEventsSince(cursor);
+  bool sawActiveSceneChanged = false;
+  for (const auto &event : batch.events) {
+    sawActiveSceneChanged =
+        sawActiveSceneChanged || event.type == ApiEventType::ActiveSceneChanged;
+  }
+  EXPECT(!sawActiveSceneChanged,
+         "clearing the runtime-loaded scene key should not emit "
+         "active_scene.changed");
+}
+
 void testApiServiceReplacementPreservesPendingRuntimeSceneEvents() {
   Fixture fixture;
   const auto node = SceneNode::create("pending_node");
@@ -1090,6 +1111,7 @@ int main() {
   testRuntimeLightPropertyMutationEmitsApiSceneNodeChangedEvent();
   testProjectScopedSceneReplacementCommandsEmitProjectAwareEvents();
   testActiveSceneEventRequiresRuntimeSceneKey();
+  testActiveSceneEventDoesNotEmitWhenRuntimeSceneKeyClears();
   testApiServiceReplacementPreservesPendingRuntimeSceneEvents();
   testApiServiceReplacementPreservesEventStateForDeferredActiveSceneChanged();
   testRecordingToolsRecordMcpCommand();
