@@ -1242,6 +1242,28 @@ void testStateSummarySanitizesProjectJson() {
   EXPECT(objectResult.structured.find("sourceKind") == std::string::npos,
          "object project summary should not add source kind");
 
+  fixture.projectSummary = "{\"scenes\":[]}";
+  const CommandResult emptyArrayResult =
+      fixture.base.bus.dispatch("state summary");
+  EXPECT(emptyArrayResult.ok,
+         "state summary should accept empty array project json values");
+  EXPECT(emptyArrayResult.structured.find("\"project\":{\"scenes\":[]}") !=
+             std::string::npos,
+         "empty array project json value should be preserved");
+  EXPECT(emptyArrayResult.structured.find("sourceKind") == std::string::npos,
+         "empty array project summary should not add source kind");
+
+  fixture.projectSummary = "{\"templates\":[\"empty\"]}";
+  const CommandResult stringArrayResult =
+      fixture.base.bus.dispatch("state summary");
+  EXPECT(stringArrayResult.ok,
+         "state summary should accept string array project json values");
+  EXPECT(stringArrayResult.structured.find(
+             "\"project\":{\"templates\":[\"empty\"]}") != std::string::npos,
+         "string array project json value should be preserved");
+  EXPECT(stringArrayResult.structured.find("sourceKind") == std::string::npos,
+         "string array project summary should not add source kind");
+
   fixture.projectSummary = "null";
   const CommandResult nullResult = fixture.base.bus.dispatch("state summary");
   EXPECT(nullResult.ok, "state summary should accept null project json");

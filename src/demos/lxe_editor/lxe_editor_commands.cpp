@@ -146,6 +146,8 @@ private:
     switch (peek()) {
     case '{':
       return parseObject();
+    case '[':
+      return parseArray();
     case '"':
       return parseString();
     case 't':
@@ -156,6 +158,30 @@ private:
       return parseLiteral("null");
     default:
       return parseNumber();
+    }
+  }
+
+  bool parseArray() {
+    if (!consume('[')) {
+      return false;
+    }
+    skipWhitespace();
+    if (consume(']')) {
+      return true;
+    }
+
+    while (true) {
+      if (!parseValue()) {
+        return false;
+      }
+      skipWhitespace();
+      if (consume(']')) {
+        return true;
+      }
+      if (!consume(',')) {
+        return false;
+      }
+      skipWhitespace();
     }
   }
 
