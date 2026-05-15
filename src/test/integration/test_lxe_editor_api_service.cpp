@@ -28,8 +28,6 @@ const std::string kLegacyDocumentKey =
     std::string("current") + "DocumentPath";
 const std::string kLegacyPermissionKey = std::string("permi") + "ssion";
 
-#define LXE_CURRENT_DOCUMENT_PATH current ## DocumentPath
-
 #define EXPECT(cond, msg)                                                      \
   do {                                                                         \
     if (!(cond)) {                                                             \
@@ -62,6 +60,8 @@ struct Fixture final {
   EditorState editorState;
   CommandBus bus;
   MutableHookState hookState;
+  std::optional<std::string> activeSceneEventKey =
+      "data/projects/demo/scenes/main.scene.yaml";
   LxeEditorApiService::Hooks hooks;
   std::unique_ptr<LxeEditorApiService> service;
   std::unique_ptr<RecordingController> recording;
@@ -93,6 +93,7 @@ struct Fixture final {
 
     hooks.sceneSummary = [this]() { return hookState.scene; };
     hooks.projectSummary = [this]() { return hookState.project; };
+    hooks.activeSceneEventKey = [this]() { return activeSceneEventKey; };
     hooks.cameraSnapshot = [this]() { return hookState.cameras; };
     hooks.toolbarSnapshot = [this]() { return hookState.toolbar; };
     hooks.lastHitPoint = [this]() { return hookState.lastHitPoint; };
@@ -181,7 +182,7 @@ void testDisplayCommandsReturnStructuredHookJson() {
           .dirty = []() { return false; },
           .debugEnabled = []() { return false; },
           .setDebugEnabled = [](bool) {},
-          .LXE_CURRENT_DOCUMENT_PATH =
+          .currentDocumentPath =
               []() { return std::optional<std::string>{}; },
           .persistedHistory = []() { return std::vector<std::string>{}; },
           .appendConsoleDebugLine = [](std::string_view) {},
@@ -415,6 +416,21 @@ void testCaptureStateUsesHooksAndEditorSelection() {
   }
 }
 
+void testCaptureStateSerializesNullProject() {
+  Fixture fixture;
+  fixture.hookState.project = std::nullopt;
+
+  const ApiStateSnapshot snapshot = fixture.service->captureState();
+  EXPECT(!snapshot.project.has_value(),
+         "project summary should be absent when hook returns no project");
+
+  const std::string stateJson = LX_demo::lxe_editor::toJson(snapshot);
+  EXPECT(stateJson.find("\"project\":null") != std::string::npos,
+         "state JSON should serialize a missing project as null");
+  EXPECT(fixture.service->recordingProbe("project") == "null",
+         "project probe should serialize a missing project as null");
+}
+
 void testRefreshEmitsDirtyAndPreviewChangeEvents() {
   Fixture fixture;
   const ApiEventCursor cursor = fixture.service->currentCursor();
@@ -432,6 +448,33 @@ void testRefreshEmitsDirtyAndPreviewChangeEvents() {
   }
   EXPECT(sawDirty, "refresh should emit dirty.changed when dirty flips");
   EXPECT(sawPreview, "refresh should emit preview.changed when preview flips");
+}
+
+void testRefreshProjectDirtyChangePayloadIncludesProject() {
+  Fixture fixture;
+  fixture.hookState.scene.dirty = false;
+  fixture.hookState.project->dirty = false;
+  fixture.service->refresh();
+  const ApiEventCursor cursor = fixture.service->currentCursor();
+
+  fixture.hookState.project->dirty = true;
+  fixture.service->refresh();
+
+  const ApiEventBatch batch = fixture.service->collectEventsSince(cursor);
+  bool sawProjectDirty = false;
+  for (const auto &event : batch.events) {
+    if (event.type != ApiEventType::DirtyChanged) {
+      continue;
+    }
+    sawProjectDirty = true;
+    EXPECT(event.payloadJson.find("\"project\":{\"id\":\"demo\"") !=
+               std::string::npos,
+           "project-only dirty.changed payload should include project state");
+    EXPECT(event.payloadJson.find("\"dirty\":true") != std::string::npos,
+           "project-only dirty.changed payload should include the dirty value");
+  }
+  EXPECT(sawProjectDirty,
+         "refresh should emit dirty.changed when only project dirty flips");
 }
 
 void testRuntimeSceneNodeMutationEmitsApiSceneNodeChangedEvent() {
@@ -728,6 +771,16 @@ void testProjectScopedSceneReplacementCommandsEmitProjectAwareEvents() {
                                       true, "scene opened",
                                       "{\"path\":\"scenes/main.scene.yaml\"}"};
                                 }
+                                if (!args.empty() && args[0] == "new") {
+                                  return CommandResult{
+                                      true, "scene created",
+                                      "{\"path\":\"scenes/new.scene.yaml\"}"};
+                                }
+                                if (!args.empty() && args[0] == "duplicate") {
+                                  return CommandResult{
+                                      true, "scene duplicated",
+                                      "{\"path\":\"scenes/copy.scene.yaml\"}"};
+                                }
                                 if (!args.empty() && args[0] == "save") {
                                   return CommandResult{
                                       true, "scene saved",
@@ -758,6 +811,8 @@ void testProjectScopedSceneReplacementCommandsEmitProjectAwareEvents() {
          "project init should not emit active_scene.changed before active "
          "scene changes");
   fixture.hookState.project->activeScene = "scenes/initialized.scene.yaml";
+  fixture.activeSceneEventKey =
+      "data/projects/demo/scenes/initialized.scene.yaml";
   fixture.service->refresh();
   batch = fixture.service->collectEventsSince(cursor);
   bool sawProjectInitActiveSceneChanged = false;
@@ -799,6 +854,7 @@ void testProjectScopedSceneReplacementCommandsEmitProjectAwareEvents() {
          "scene open should not emit active_scene.changed before active scene "
          "changes");
   fixture.hookState.project->activeScene = "scenes/alternate.scene.yaml";
+  fixture.activeSceneEventKey = "data/projects/demo/scenes/alternate.scene.yaml";
   fixture.service->refresh();
   batch = fixture.service->collectEventsSince(cursor);
   bool sawSceneOpenActiveChanged = false;
@@ -810,6 +866,64 @@ void testProjectScopedSceneReplacementCommandsEmitProjectAwareEvents() {
   EXPECT(sawSceneOpenActiveChanged,
          "active scene change should emit active_scene.changed after scene "
          "open");
+
+  cursor = fixture.service->currentCursor();
+  EXPECT(fixture.service
+             ->executeCommand(ApiCommandRequest{.line = "scene new scratch"})
+             .ok,
+         "scene new command should succeed");
+  batch = fixture.service->collectEventsSince(cursor);
+  bool sawImmediateSceneNewActiveChanged = false;
+  for (const auto &event : batch.events) {
+    sawImmediateSceneNewActiveChanged =
+        sawImmediateSceneNewActiveChanged ||
+        event.type == ApiEventType::ActiveSceneChanged;
+  }
+  EXPECT(!sawImmediateSceneNewActiveChanged,
+         "scene new should not emit active_scene.changed before active scene "
+         "changes");
+  fixture.hookState.project->activeScene = "scenes/new.scene.yaml";
+  fixture.activeSceneEventKey = "data/projects/demo/scenes/new.scene.yaml";
+  fixture.service->refresh();
+  batch = fixture.service->collectEventsSince(cursor);
+  bool sawSceneNewActiveChanged = false;
+  for (const auto &event : batch.events) {
+    sawSceneNewActiveChanged =
+        sawSceneNewActiveChanged ||
+        event.type == ApiEventType::ActiveSceneChanged;
+  }
+  EXPECT(sawSceneNewActiveChanged,
+         "active scene change should emit active_scene.changed after scene new");
+
+  cursor = fixture.service->currentCursor();
+  EXPECT(fixture.service
+             ->executeCommand(ApiCommandRequest{
+                 .line = "scene duplicate scratch scratch_copy"})
+             .ok,
+         "scene duplicate command should succeed");
+  batch = fixture.service->collectEventsSince(cursor);
+  bool sawImmediateSceneDuplicateActiveChanged = false;
+  for (const auto &event : batch.events) {
+    sawImmediateSceneDuplicateActiveChanged =
+        sawImmediateSceneDuplicateActiveChanged ||
+        event.type == ApiEventType::ActiveSceneChanged;
+  }
+  EXPECT(!sawImmediateSceneDuplicateActiveChanged,
+         "scene duplicate should not emit active_scene.changed before active "
+         "scene changes");
+  fixture.hookState.project->activeScene = "scenes/copy.scene.yaml";
+  fixture.activeSceneEventKey = "data/projects/demo/scenes/copy.scene.yaml";
+  fixture.service->refresh();
+  batch = fixture.service->collectEventsSince(cursor);
+  bool sawSceneDuplicateActiveChanged = false;
+  for (const auto &event : batch.events) {
+    sawSceneDuplicateActiveChanged =
+        sawSceneDuplicateActiveChanged ||
+        event.type == ApiEventType::ActiveSceneChanged;
+  }
+  EXPECT(sawSceneDuplicateActiveChanged,
+         "active scene change should emit active_scene.changed after scene "
+         "duplicate");
 
   cursor = fixture.service->currentCursor();
   EXPECT(fixture.service->executeCommand(ApiCommandRequest{.line = "scene save"})
@@ -854,6 +968,8 @@ void testApiServiceReplacementPreservesEventStateForDeferredActiveSceneChanged()
   const ApiEventCursor cursor = fixture.service->currentCursor();
 
   fixture.hookState.project->activeScene = "scenes/replacement.scene.yaml";
+  fixture.activeSceneEventKey =
+      "data/projects/demo/scenes/replacement.scene.yaml";
   auto replacement = std::make_unique<LxeEditorApiService>(
       fixture.bus, fixture.editorState, *fixture.scene, fixture.hooks,
       *fixture.service);
@@ -906,13 +1022,13 @@ void testApiTokenStatePersistsSingleGeneratedToken() {
 
 } // namespace
 
-#undef LXE_CURRENT_DOCUMENT_PATH
-
 int main() {
   testExecuteCommandMirrorsCommandBusAndEmitsCommandEvent();
   testDisplayCommandsReturnStructuredHookJson();
   testCaptureStateUsesHooksAndEditorSelection();
+  testCaptureStateSerializesNullProject();
   testRefreshEmitsDirtyAndPreviewChangeEvents();
+  testRefreshProjectDirtyChangePayloadIncludesProject();
   testRuntimeSceneNodeMutationEmitsApiSceneNodeChangedEvent();
   testCommandDrivenSceneMutationKeepsCommandEventBeforeSceneNodeChanged();
   testExecuteCommandFlushesOlderQueuedRuntimeEventsBeforeNewCommand();

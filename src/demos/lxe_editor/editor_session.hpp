@@ -66,6 +66,8 @@ public:
   [[nodiscard]] std::optional<std::filesystem::path>
   currentDocumentPath() const;
   [[nodiscard]] std::optional<std::string> currentProjectId() const;
+  [[nodiscard]] std::optional<std::string> currentProjectDisplayName() const;
+  [[nodiscard]] std::optional<std::string> currentProjectActiveScene() const;
   [[nodiscard]] std::optional<std::filesystem::path> currentProjectRoot() const;
   [[nodiscard]] std::optional<std::filesystem::path> activeScenePath() const;
   void persistEditorData();

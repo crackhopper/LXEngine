@@ -246,6 +246,24 @@ std::optional<std::string> LxeEditorSession::currentProjectId() const {
   return project->id;
 }
 
+std::optional<std::string>
+LxeEditorSession::currentProjectDisplayName() const {
+  const auto &project = m_projectSession.currentProject();
+  if (!project.has_value()) {
+    return std::nullopt;
+  }
+  return project->displayName;
+}
+
+std::optional<std::string>
+LxeEditorSession::currentProjectActiveScene() const {
+  const auto &project = m_projectSession.currentProject();
+  if (!project.has_value()) {
+    return std::nullopt;
+  }
+  return project->activeScene.generic_string();
+}
+
 std::optional<std::filesystem::path>
 LxeEditorSession::currentProjectRoot() const {
   return m_projectSession.projectRoot();

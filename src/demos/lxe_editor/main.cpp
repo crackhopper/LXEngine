@@ -856,19 +856,28 @@ int main(int argc, char **argv) {
           .projectSummary =
               [&]() -> std::optional<demo::ApiProjectSummary> {
             const auto projectId = session.currentProjectId();
+            const auto projectDisplayName = session.currentProjectDisplayName();
+            const auto projectActiveScene = session.currentProjectActiveScene();
             const auto projectRoot = session.currentProjectRoot();
-            if (!projectId.has_value() || !projectRoot.has_value()) {
+            if (!projectId.has_value() || !projectDisplayName.has_value() ||
+                !projectActiveScene.has_value() || !projectRoot.has_value()) {
               return std::nullopt;
             }
-            const auto activeScene = session.activeScenePath();
             return demo::ApiProjectSummary{
                 .id = *projectId,
-                .displayName = *projectId,
+                .displayName = *projectDisplayName,
                 .path = projectRoot->string(),
                 .dirty = session.isDirty(),
-                .activeScene =
-                    activeScene.has_value() ? activeScene->string() : std::string{},
+                .activeScene = *projectActiveScene,
             };
+          },
+          .activeSceneEventKey =
+              [&]() -> std::optional<std::string> {
+            const auto loadedScene = session.currentDocumentPath();
+            if (!loadedScene.has_value()) {
+              return std::nullopt;
+            }
+            return loadedScene->lexically_normal().string();
           },
           .toolbarSnapshot =
               [&]() {

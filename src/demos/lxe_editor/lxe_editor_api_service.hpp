@@ -18,6 +18,7 @@ public:
   struct Hooks final {
     std::function<ApiSceneSummary()> sceneSummary;
     std::function<std::optional<ApiProjectSummary>()> projectSummary;
+    std::function<std::optional<std::string>()> activeSceneEventKey;
     std::function<ApiCameraSnapshot()> cameraSnapshot;
     std::function<ApiToolbarSnapshot()> toolbarSnapshot;
     std::function<std::optional<LX_core::Vec3f>()> lastHitPoint;
@@ -68,6 +69,7 @@ private:
 
   [[nodiscard]] ApiSceneSummary captureSceneSummary() const;
   [[nodiscard]] std::optional<ApiProjectSummary> captureProjectSummary() const;
+  [[nodiscard]] std::optional<std::string> captureActiveSceneEventKey() const;
   [[nodiscard]] ApiSelectionSnapshot captureSelection() const;
   [[nodiscard]] ApiCameraSnapshot captureCameras() const;
   [[nodiscard]] ApiToolbarSnapshot captureToolbar() const;
@@ -92,6 +94,7 @@ private:
   usize m_lastObservedHistoryIndex = 0;
   u64 m_nextSequence = 1;
   ApiStateSnapshot m_lastState;
+  std::optional<std::string> m_lastActiveSceneEventKey;
   std::vector<ApiEvent> m_events;
   std::vector<LX_core::SceneEvent> m_pendingRuntimeSceneEvents;
 };

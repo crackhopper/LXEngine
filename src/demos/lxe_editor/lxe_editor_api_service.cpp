@@ -139,7 +139,8 @@ LxeEditorApiService::LxeEditorApiService(LX_core::CommandBus &commandBus,
                                        observeRuntimeSceneEvent(event);
                                      })),
       m_lastObservedHistoryIndex(m_commandBus.history().size()),
-      m_lastState(captureState()) {}
+      m_lastState(captureState()),
+      m_lastActiveSceneEventKey(captureActiveSceneEventKey()) {}
 
 LxeEditorApiService::LxeEditorApiService(
     LX_core::CommandBus &commandBus, LX_core::EditorState &editorState,
@@ -148,6 +149,7 @@ LxeEditorApiService::LxeEditorApiService(
   m_lastObservedHistoryIndex = previous.m_lastObservedHistoryIndex;
   m_nextSequence = previous.m_nextSequence;
   m_lastState = previous.m_lastState;
+  m_lastActiveSceneEventKey = previous.m_lastActiveSceneEventKey;
   m_events = previous.m_events;
 }
 
@@ -444,6 +446,14 @@ LxeEditorApiService::captureProjectSummary() const {
   return std::nullopt;
 }
 
+std::optional<std::string>
+LxeEditorApiService::captureActiveSceneEventKey() const {
+  if (m_hooks.activeSceneEventKey) {
+    return m_hooks.activeSceneEventKey();
+  }
+  return activeSceneFromState(captureState());
+}
+
 ApiSelectionSnapshot LxeEditorApiService::captureSelection() const {
   ApiSelectionSnapshot snapshot;
   const auto selected = m_editorState.getSelected();
@@ -631,10 +641,11 @@ void LxeEditorApiService::observeStateChanges() {
         .sequence = m_nextSequence++,
         .type = ApiEventType::DirtyChanged,
         .state = current,
-        .payloadJson = toJson(current.scene),
+        .payloadJson = toJson(current),
     });
   }
-  if (activeSceneFromState(current) != activeSceneFromState(m_lastState)) {
+  const auto activeSceneEventKey = captureActiveSceneEventKey();
+  if (activeSceneEventKey != m_lastActiveSceneEventKey) {
     appendEvent(ApiEvent{
         .sequence = m_nextSequence++,
         .type = ApiEventType::ActiveSceneChanged,
@@ -645,6 +656,7 @@ void LxeEditorApiService::observeStateChanges() {
   }
 
   m_lastState = current;
+  m_lastActiveSceneEventKey = activeSceneEventKey;
 }
 
 void LxeEditorApiService::appendEvent(ApiEvent event) {

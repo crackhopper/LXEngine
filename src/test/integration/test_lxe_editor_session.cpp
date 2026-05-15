@@ -148,6 +148,7 @@ void testProjectSceneOpenPreservesEditorCommandHistoryAndConsole() {
   if (!initialized) {
     return;
   }
+  cleanupProject("empty");
   cleanupProject("editor_session_history");
 
   LX_core::EditorState editorState;
@@ -168,12 +169,31 @@ void testProjectSceneOpenPreservesEditorCommandHistoryAndConsole() {
              std::string::npos,
          "console should render command output from command bus history");
 
+  const auto templateInitResult =
+      session.commandBus().dispatch("project init empty");
+  EXPECT(templateInitResult.ok,
+         "project init without explicit name should open a template-named "
+         "project");
+  EXPECT(session.currentProjectDisplayName() ==
+             std::optional<std::string>("Empty"),
+         "project init should expose the template display name separately from "
+         "the project id");
+
+  const auto closeTemplateResult =
+      session.commandBus().dispatch("project close");
+  EXPECT(closeTemplateResult.ok,
+         "project close should clear the template-named project");
+
   const auto initResult = session.commandBus().dispatch(
       "project init empty editor_session_history");
   EXPECT(initResult.ok, "project init should open a new project");
   EXPECT(session.currentProjectId() ==
              std::optional<std::string>("editor_session_history"),
          "project init should expose the current project id");
+  EXPECT(session.currentProjectDisplayName() ==
+             std::optional<std::string>("editor_session_history"),
+         "project init with an explicit name should expose the project display "
+         "name");
   EXPECT(session.activeScenePath().has_value(),
          "project init should expose the active scene path");
 
@@ -183,7 +203,7 @@ void testProjectSceneOpenPreservesEditorCommandHistoryAndConsole() {
 
   const auto openResult = session.commandBus().dispatch("scene open main");
   EXPECT(openResult.ok, "scene open should queue a project scene");
-  EXPECT(session.commandBus().history().size() == historySizeBefore + 4,
+  EXPECT(session.commandBus().history().size() == historySizeBefore + 6,
          "project and scene commands should contribute to command history");
 
   auto window = std::make_shared<FakeWindow>();
@@ -199,7 +219,7 @@ void testProjectSceneOpenPreservesEditorCommandHistoryAndConsole() {
          "scene open should preserve the editor-level command bus");
   EXPECT(&session.consolePanel() == consoleBefore,
          "scene open should preserve the editor-level console panel");
-  EXPECT(session.commandBus().history().size() == historySizeBefore + 5,
+  EXPECT(session.commandBus().history().size() == historySizeBefore + 7,
          "scene open should not clear command history");
   EXPECT(session.consolePanel().displayedText().find(helpResult.message) !=
              std::string::npos,
@@ -211,6 +231,7 @@ void testProjectSceneOpenPreservesEditorCommandHistoryAndConsole() {
       renderer->initSceneCalls == 1,
       "flushing the pending scene open should restart the engine scene once");
 
+  cleanupProject("empty");
   cleanupProject("editor_session_history");
 }
 

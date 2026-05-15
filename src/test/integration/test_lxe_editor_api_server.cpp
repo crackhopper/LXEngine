@@ -76,25 +76,25 @@ struct Fixture final {
   std::unique_ptr<LxeEditorApiService> service;
   std::unique_ptr<LxeEditorApiServer> server;
   std::unique_ptr<RecordingController> recording;
+  std::optional<ApiProjectSummary> project;
   std::string capturedDisplayConfigKey;
   std::string capturedDisplayConfigPatch;
 
   Fixture() {
+    project = ApiProjectSummary{
+        .id = "demo",
+        .displayName = "Demo",
+        .path = "data/projects/demo",
+        .dirty = true,
+        .activeScene = "scenes/main.scene.yaml",
+    };
     hooks.sceneSummary = [] {
       return ApiSceneSummary{
           .sceneName = "Scene",
           .dirty = false,
       };
     };
-    hooks.projectSummary = [] {
-      return ApiProjectSummary{
-          .id = "demo",
-          .displayName = "Demo",
-          .path = "data/projects/demo",
-          .dirty = true,
-          .activeScene = "scenes/main.scene.yaml",
-      };
-    };
+    hooks.projectSummary = [this] { return project; };
     hooks.toolbarSnapshot = [] {
       return ApiToolbarSnapshot{
           .mode = ApiEditorMode::Selection,
@@ -341,6 +341,14 @@ void testHttpStateEndpointsExposeSplitToolbarState() {
          "full state response should not include legacy document path key");
   EXPECT(stateResponse.find(kLegacyPermissionKey) == std::string::npos,
          "full state response should not include legacy access key");
+
+  fixture.project = std::nullopt;
+  const std::string nullSummaryResponse = get("/api/state/summary");
+  EXPECT(nullSummaryResponse.find("\"project\":null") != std::string::npos,
+         "summary response should serialize a missing project as null");
+  const std::string nullStateResponse = get("/api/state");
+  EXPECT(nullStateResponse.find("\"project\":null") != std::string::npos,
+         "full state response should serialize a missing project as null");
 }
 
 void testHttpDisplayConfigObjectPatchPassesRawJson() {
