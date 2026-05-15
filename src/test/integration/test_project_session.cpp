@@ -257,6 +257,81 @@ void testInitRejectsMissingTemplateCopyRoot() {
          "rejected missing copy root should not open a project");
 }
 
+void testInitRejectsTemplateDefaultSceneTraversal() {
+  const auto root = makeTempRoot("lx_project_session_default_scene_escape");
+  const auto templateRoot = root / "templates";
+  writeFile(templateRoot / "bad/project_template.yaml",
+            "schema: lxe.project_template.v1\n"
+            "id: bad\n"
+            "displayName: Bad\n"
+            "defaultScene: ../outside.scene.yaml\n"
+            "copy:\n"
+            "  - scenes/\n");
+  writeFile(templateRoot / "bad/scenes/main.scene.yaml",
+            "scene:\n  name: Main\nnodes: []\n");
+  writeFile(templateRoot / "outside.scene.yaml",
+            "scene:\n  name: Outside\nnodes: []\n");
+  demo::ProjectSession session = makeSession(templateRoot, root / "projects");
+
+  const auto result = session.initProject("bad", std::nullopt);
+
+  EXPECT(!result.ok, "project init should reject default scene traversal");
+  EXPECT(!session.hasProject(),
+         "rejected default scene traversal should not open a project");
+}
+
+void testInitRejectsMissingTemplateDefaultScene() {
+  const auto root = makeTempRoot("lx_project_session_default_scene_missing");
+  const auto templateRoot = root / "templates";
+  writeFile(templateRoot / "bad/project_template.yaml",
+            "schema: lxe.project_template.v1\n"
+            "id: bad\n"
+            "displayName: Bad\n"
+            "defaultScene: scenes/missing.scene.yaml\n"
+            "copy:\n"
+            "  - scenes/\n");
+  writeFile(templateRoot / "bad/scenes/main.scene.yaml",
+            "scene:\n  name: Main\nnodes: []\n");
+  demo::ProjectSession session = makeSession(templateRoot, root / "projects");
+
+  const auto result = session.initProject("bad", std::nullopt);
+
+  EXPECT(!result.ok, "project init should reject missing default scene");
+  EXPECT(!session.hasProject(),
+         "rejected missing default scene should not open a project");
+}
+
+void testInitRejectsTemplateDefaultSceneSymlinkEscape() {
+  const auto root = makeTempRoot("lx_project_session_default_scene_symlink");
+  const auto templateRoot = root / "templates";
+  writeFile(templateRoot / "bad/project_template.yaml",
+            "schema: lxe.project_template.v1\n"
+            "id: bad\n"
+            "displayName: Bad\n"
+            "defaultScene: scenes/main.scene.yaml\n"
+            "copy:\n"
+            "  - scenes/\n");
+  writeFile(root / "outside/main.scene.yaml",
+            "scene:\n  name: Outside\nnodes: []\n");
+  std::filesystem::create_directories(templateRoot / "bad/scenes");
+  std::error_code ec;
+  std::filesystem::create_symlink(root / "outside/main.scene.yaml",
+                                  templateRoot / "bad/scenes/main.scene.yaml",
+                                  ec);
+  if (ec) {
+    std::cerr << "[SKIP] default scene symlink assertion: " << ec.message()
+              << "\n";
+    return;
+  }
+  demo::ProjectSession session = makeSession(templateRoot, root / "projects");
+
+  const auto result = session.initProject("bad", std::nullopt);
+
+  EXPECT(!result.ok, "project init should reject default scene symlink escape");
+  EXPECT(!session.hasProject(),
+         "rejected default scene symlink should not open a project");
+}
+
 void testOpenProjectLoadsSavedProject() {
   const auto root = makeTempRoot("lx_project_session_open_project");
   demo::ProjectSession session = makeSession(root);
@@ -551,6 +626,9 @@ int main() {
   testInitRejectsTemplateSymlinkCopyRootEscape();
   testInitRejectsNestedTemplateCopyRootSymlink();
   testInitRejectsMissingTemplateCopyRoot();
+  testInitRejectsTemplateDefaultSceneTraversal();
+  testInitRejectsMissingTemplateDefaultScene();
+  testInitRejectsTemplateDefaultSceneSymlinkEscape();
   testOpenProjectLoadsSavedProject();
   testSceneNewAddsProjectSceneEntry();
   testSaveProjectPersistsNewSceneAndActiveScene();

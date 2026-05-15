@@ -307,6 +307,33 @@ resolveRegisteredScenePath(const std::filesystem::path &projectRoot,
   return false;
 }
 
+[[nodiscard]] bool isRegularFileNoSymlink(const std::filesystem::path &path) {
+  std::error_code ec;
+  const auto status = std::filesystem::symlink_status(path, ec);
+  if (ec || std::filesystem::is_symlink(status)) {
+    return false;
+  }
+  return std::filesystem::is_regular_file(status);
+}
+
+[[nodiscard]] bool validateTemplateDefaultSceneSource(
+    const std::filesystem::path &templatePath,
+    const ProjectTemplateDocument &document) {
+  if (!isContainedRelativePath(templatePath, document.defaultScene)) {
+    return false;
+  }
+  return isRegularFileNoSymlink(templatePath / document.defaultScene);
+}
+
+[[nodiscard]] bool validateCopiedDefaultScene(
+    const std::filesystem::path &projectPath,
+    const ProjectTemplateDocument &document) {
+  if (!isContainedRelativePath(projectPath, document.defaultScene)) {
+    return false;
+  }
+  return isRegularFileNoSymlink(projectPath / document.defaultScene);
+}
+
 [[nodiscard]] bool copyTemplateRoots(const std::filesystem::path &templatePath,
                                      const std::filesystem::path &projectPath,
                                      const ProjectTemplateDocument &document) {
@@ -428,9 +455,18 @@ ProjectSession::initProject(const std::string &templateId,
                                                          : templateId;
     const auto projectPath = allocateProjectPath(m_projectsRoot, allocationName);
 
+    if (!validateTemplateDefaultSceneSource(templateEntry->path,
+                                            templateDocument)) {
+      return makeResult(false, "invalid template default scene", projectPath);
+    }
+
     if (!copyTemplateRoots(templateEntry->path, projectPath,
                            templateDocument)) {
       return makeResult(false, "failed to copy project template", projectPath);
+    }
+    if (!validateCopiedDefaultScene(projectPath, templateDocument)) {
+      return makeResult(false, "copied template default scene is invalid",
+                        projectPath);
     }
 
     ProjectDocument document;
