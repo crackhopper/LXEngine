@@ -5,6 +5,8 @@
 #include "yaml-cpp/yaml.h"
 
 #include <algorithm>
+#include <array>
+#include <cctype>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -18,6 +20,92 @@ namespace {
 [[nodiscard]] std::filesystem::path
 absoluteNormal(const std::filesystem::path &path) {
   return std::filesystem::absolute(path).lexically_normal();
+}
+
+[[nodiscard]] std::filesystem::path
+weaklyCanonicalNormal(const std::filesystem::path &path) {
+  std::error_code ec;
+  const auto canonicalPath = std::filesystem::weakly_canonical(path, ec);
+  if (ec) {
+    return absoluteNormal(path);
+  }
+  return canonicalPath.lexically_normal();
+}
+
+[[nodiscard]] bool pathStartsWith(const std::filesystem::path &path,
+                                  const std::filesystem::path &root) {
+  const auto normalizedPath = path.lexically_normal();
+  const auto normalizedRoot = root.lexically_normal();
+  auto pathIt = normalizedPath.begin();
+  const auto pathEnd = normalizedPath.end();
+  for (auto rootIt = normalizedRoot.begin(); rootIt != normalizedRoot.end();
+       ++rootIt, ++pathIt) {
+    if (pathIt == pathEnd || *pathIt != *rootIt) {
+      return false;
+    }
+  }
+  return true;
+}
+
+[[nodiscard]] std::filesystem::path
+resolveContainedPathByComponents(const std::filesystem::path &root,
+                                 const std::filesystem::path &path) {
+  const auto normalizedRoot = weaklyCanonicalNormal(root);
+  const auto requestedPath = path.is_absolute()
+                                 ? absoluteNormal(path)
+                                 : absoluteNormal(normalizedRoot / path);
+  if (!pathStartsWith(requestedPath, normalizedRoot)) {
+    return requestedPath;
+  }
+
+  auto currentPath = normalizedRoot;
+  bool missingTail = false;
+  const auto relativePath = requestedPath.lexically_relative(normalizedRoot);
+  for (const auto &component : relativePath) {
+    if (component.empty() || component == ".") {
+      continue;
+    }
+
+    if (missingTail) {
+      currentPath /= component;
+      currentPath = currentPath.lexically_normal();
+      continue;
+    }
+
+    const auto candidatePath = (currentPath / component).lexically_normal();
+    std::error_code statusError;
+    const auto status =
+        std::filesystem::symlink_status(candidatePath, statusError);
+    if (statusError || status.type() == std::filesystem::file_type::not_found) {
+      currentPath = candidatePath;
+      missingTail = true;
+      continue;
+    }
+
+    if (std::filesystem::is_symlink(status)) {
+      std::error_code readError;
+      const auto symlinkTarget =
+          std::filesystem::read_symlink(candidatePath, readError);
+      if (readError) {
+        return candidatePath;
+      }
+      const auto targetPath = symlinkTarget.is_absolute()
+                                  ? symlinkTarget
+                                  : candidatePath.parent_path() / symlinkTarget;
+      currentPath = weaklyCanonicalNormal(targetPath);
+      if (!pathStartsWith(currentPath, normalizedRoot)) {
+        return currentPath;
+      }
+      continue;
+    }
+
+    currentPath = weaklyCanonicalNormal(candidatePath);
+    if (!pathStartsWith(currentPath, normalizedRoot)) {
+      return currentPath;
+    }
+  }
+
+  return currentPath.lexically_normal();
 }
 
 [[nodiscard]] std::string escapeJsonString(const std::string &value) {
@@ -118,17 +206,97 @@ findScene(const ProjectDocument &document, const std::string &sceneId) {
 }
 
 [[nodiscard]] bool isValidNewSceneId(const std::string &sceneId) {
-  if (sceneId.empty() || sceneId == "." ||
-      sceneId.find("..") != std::string::npos) {
+  if (sceneId.empty()) {
     return false;
   }
-  return sceneId.find('/') == std::string::npos &&
-         sceneId.find('\\') == std::string::npos;
+  for (const char ch : sceneId) {
+    const auto value = static_cast<unsigned char>(ch);
+    const bool alphaNumeric = std::isalnum(value) != 0;
+    if (!alphaNumeric && ch != '_' && ch != '-') {
+      return false;
+    }
+  }
+
+  constexpr std::array<const char *, 22> kReservedNames = {
+      "CON",  "PRN",  "AUX",  "NUL",  "COM1", "COM2", "COM3", "COM4",
+      "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3",
+      "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"};
+  std::string upperSceneId = sceneId;
+  for (char &ch : upperSceneId) {
+    ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
+  }
+  return std::none_of(kReservedNames.begin(), kReservedNames.end(),
+                      [&upperSceneId](const char *reservedName) {
+                        return upperSceneId == reservedName;
+                      });
+}
+
+[[nodiscard]] bool isContainedRelativePath(
+    const std::filesystem::path &root, const std::filesystem::path &path) {
+  if (path.empty() || path.is_absolute()) {
+    return false;
+  }
+  for (const auto &component : path) {
+    if (component == "..") {
+      return false;
+    }
+  }
+  const auto normalizedRoot = weaklyCanonicalNormal(root);
+  const auto resolvedPath = resolveContainedPathByComponents(root, path);
+  return pathStartsWith(resolvedPath, normalizedRoot);
+}
+
+[[nodiscard]] std::filesystem::path
+resolveRegisteredScenePath(const std::filesystem::path &projectRoot,
+                           const ProjectDocument &document,
+                           const std::string &sceneIdOrPath) {
+  if (const auto scene = findScene(document, sceneIdOrPath);
+      scene.has_value()) {
+    return resolveProjectScenePath(projectRoot, document, sceneIdOrPath);
+  }
+
+  const std::filesystem::path requestedPath(sceneIdOrPath);
+  const auto requestedRelativePath =
+      requestedPath.is_absolute()
+          ? relativeToRoot(projectRoot, requestedPath)
+          : requestedPath.lexically_normal();
+  const auto normalizedRoot = weaklyCanonicalNormal(projectRoot);
+  const auto requestedAbsolutePath =
+      resolveProjectScenePath(projectRoot, document, sceneIdOrPath);
+
+  for (const auto &scene : document.scenes) {
+    const auto sceneRelativePath = scene.path.lexically_normal();
+    if (requestedRelativePath == sceneRelativePath) {
+      return requestedAbsolutePath;
+    }
+
+    const auto sceneAbsolutePath =
+        resolveProjectScenePath(projectRoot, document, scene.id);
+    if (pathStartsWith(sceneAbsolutePath, normalizedRoot) &&
+        requestedAbsolutePath == sceneAbsolutePath) {
+      return requestedAbsolutePath;
+    }
+  }
+
+  throw std::runtime_error("scene is not registered in project: " +
+                           sceneIdOrPath);
 }
 
 [[nodiscard]] bool copyTemplateRoots(const std::filesystem::path &templatePath,
                                      const std::filesystem::path &projectPath,
                                      const ProjectTemplateDocument &document) {
+  for (const auto &copyRoot : document.copyRoots) {
+    if (!isContainedRelativePath(templatePath, copyRoot) ||
+        !isContainedRelativePath(projectPath, copyRoot)) {
+      return false;
+    }
+
+    const auto sourcePath = templatePath / copyRoot;
+    if (!std::filesystem::exists(sourcePath)) {
+      return false;
+    }
+  }
+
   std::error_code ec;
   std::filesystem::create_directories(projectPath, ec);
   if (ec) {
@@ -137,9 +305,6 @@ findScene(const ProjectDocument &document, const std::string &sceneId) {
 
   for (const auto &copyRoot : document.copyRoots) {
     const auto sourcePath = templatePath / copyRoot;
-    if (!std::filesystem::exists(sourcePath)) {
-      return false;
-    }
     const auto targetPath = projectPath / copyRoot;
     if (sourcePath == targetPath) {
       continue;
@@ -321,8 +486,8 @@ ProjectSession::openScene(const std::string &sceneIdOrPath) {
 
   try {
     const auto resolvedPath =
-        resolveProjectScenePath(*m_projectRoot, *m_currentProject,
-                                sceneIdOrPath);
+        resolveRegisteredScenePath(*m_projectRoot, *m_currentProject,
+                                   sceneIdOrPath);
     const auto relativePath = relativeToRoot(*m_projectRoot, resolvedPath);
     if (m_currentProject->activeScene != relativePath) {
       m_currentProject->activeScene = relativePath;
@@ -384,8 +549,8 @@ ProjectCommandResult ProjectSession::duplicateScene(
 
   try {
     const auto sourcePath =
-        resolveProjectScenePath(*m_projectRoot, *m_currentProject,
-                                sourceSceneId);
+        resolveRegisteredScenePath(*m_projectRoot, *m_currentProject,
+                                   sourceSceneId);
     const auto relativePath =
         (std::filesystem::path("scenes") / (newSceneId + ".scene.yaml"))
             .lexically_normal();

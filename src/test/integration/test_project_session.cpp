@@ -1,6 +1,7 @@
 #include "demos/lxe_editor/project_session.hpp"
 
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <optional>
 #include <string>
@@ -27,6 +28,18 @@ int failures = 0;
 [[nodiscard]] demo::ProjectSession
 makeSession(const std::filesystem::path &root) {
   return demo::ProjectSession("assets/project_templates", root / "projects");
+}
+
+[[nodiscard]] demo::ProjectSession
+makeSession(const std::filesystem::path &templateRoot,
+            const std::filesystem::path &projectsRoot) {
+  return demo::ProjectSession(templateRoot, projectsRoot);
+}
+
+void writeFile(const std::filesystem::path &path, const std::string &text) {
+  std::filesystem::create_directories(path.parent_path());
+  std::ofstream out(path, std::ios::binary | std::ios::trunc);
+  out << text;
 }
 
 void testSaveFailsWithoutOpenProject() {
@@ -110,6 +123,107 @@ void testInitEmptyProjectNameUsesTemplateIdForAllocation() {
          "empty project name should use template display name");
 }
 
+void testInitRejectsTemplateCopyRootTraversal() {
+  const auto root = makeTempRoot("lx_project_session_template_escape");
+  const auto templateRoot = root / "templates";
+  writeFile(templateRoot / "bad/project_template.yaml",
+            "schema: lxe.project_template.v1\n"
+            "id: bad\n"
+            "displayName: Bad\n"
+            "defaultScene: scenes/main.scene.yaml\n"
+            "copy:\n"
+            "  - ../outside/\n");
+  writeFile(templateRoot / "outside/secret.txt", "secret\n");
+  demo::ProjectSession session = makeSession(templateRoot, root / "projects");
+
+  const auto result = session.initProject("bad", std::nullopt);
+
+  EXPECT(!result.ok, "project init should reject traversal copy root");
+  EXPECT(!session.hasProject(),
+         "rejected template copy root should not open a project");
+  EXPECT(!std::filesystem::exists(root / "projects/outside/secret.txt"),
+         "traversal copy root should not write outside project directory");
+}
+
+void testInitRejectsTemplateAbsoluteCopyRoot() {
+  const auto root = makeTempRoot("lx_project_session_template_absolute");
+  const auto templateRoot = root / "templates";
+  const auto absoluteRoot = root / "absolute_source";
+  writeFile(absoluteRoot / "secret.txt", "secret\n");
+  writeFile(templateRoot / "bad/project_template.yaml",
+            "schema: lxe.project_template.v1\n"
+            "id: bad\n"
+            "displayName: Bad\n"
+            "defaultScene: scenes/main.scene.yaml\n"
+            "copy:\n"
+            "  - " +
+                absoluteRoot.generic_string() + "/\n");
+  demo::ProjectSession session = makeSession(templateRoot, root / "projects");
+
+  const auto result = session.initProject("bad", std::nullopt);
+
+  EXPECT(!result.ok, "project init should reject absolute copy root");
+  EXPECT(!session.hasProject(),
+         "rejected absolute copy root should not open a project");
+  EXPECT(!std::filesystem::exists(root / "projects/bad/secret.txt"),
+         "absolute copy root should not be copied into project");
+}
+
+void testInitRejectsTemplateSymlinkCopyRootEscape() {
+  const auto root = makeTempRoot("lx_project_session_template_symlink");
+  const auto templateRoot = root / "templates";
+  writeFile(templateRoot / "bad/project_template.yaml",
+            "schema: lxe.project_template.v1\n"
+            "id: bad\n"
+            "displayName: Bad\n"
+            "defaultScene: scenes/main.scene.yaml\n"
+            "copy:\n"
+            "  - linked/\n");
+  writeFile(root / "outside/secret.txt", "secret\n");
+
+  std::error_code ec;
+  std::filesystem::create_directory_symlink(root / "outside",
+                                            templateRoot / "bad/linked", ec);
+  if (ec) {
+    std::cerr << "[SKIP] symlink copy root assertion: " << ec.message()
+              << "\n";
+    return;
+  }
+
+  demo::ProjectSession session = makeSession(templateRoot, root / "projects");
+  const auto result = session.initProject("bad", std::nullopt);
+
+  EXPECT(!result.ok, "project init should reject symlink copy root escape");
+  EXPECT(!session.hasProject(),
+         "rejected symlink copy root should not open a project");
+  EXPECT(!std::filesystem::exists(root / "projects/bad/linked/secret.txt"),
+         "symlink copy root should not copy escaped content");
+}
+
+void testOpenProjectLoadsSavedProject() {
+  const auto root = makeTempRoot("lx_project_session_open_project");
+  demo::ProjectSession session = makeSession(root);
+  EXPECT(session.initProject("empty", "Open Test").ok,
+         "project init should succeed");
+
+  demo::ProjectSession byId = makeSession(root);
+  const auto idResult = byId.openProject("open_test");
+
+  EXPECT(idResult.ok, "openProject should open saved project by id");
+  EXPECT(byId.hasProject(), "openProject by id should set project state");
+  EXPECT(byId.currentProject()->id == "open_test",
+         "openProject by id should load project document");
+
+  demo::ProjectSession byPath = makeSession(root);
+  const auto pathResult = byPath.openProject((root / "projects/open_test")
+                                                 .generic_string());
+
+  EXPECT(pathResult.ok, "openProject should open saved project by path");
+  EXPECT(byPath.hasProject(), "openProject by path should set project state");
+  EXPECT(byPath.currentProject()->displayName == "Open Test",
+         "openProject by path should load project display name");
+}
+
 void testSceneNewAddsProjectSceneEntry() {
   const auto root = makeTempRoot("lx_project_session_new_scene");
   demo::ProjectSession session = makeSession(root);
@@ -136,6 +250,27 @@ void testSceneNewAddsProjectSceneEntry() {
                                  "scenes/lighting.scene.yaml"),
          "scene new should write scene file");
   EXPECT(session.dirty(), "scene new should mark project dirty");
+}
+
+void testSaveProjectPersistsNewSceneAndActiveScene() {
+  const auto root = makeTempRoot("lx_project_session_save_persistence");
+  demo::ProjectSession session = makeSession(root);
+  EXPECT(session.initProject("empty", "Save Test").ok,
+         "project init should succeed");
+  EXPECT(session.newScene("lighting").ok, "scene new should succeed");
+  EXPECT(session.saveProject().ok, "saveProject should persist metadata");
+  EXPECT(!session.dirty(), "saveProject should clear dirty state");
+
+  demo::ProjectSession reopened = makeSession(root);
+  EXPECT(reopened.openProject("save_test").ok,
+         "saved project should reopen by id");
+  EXPECT(reopened.currentProject()->scenes.size() == 2,
+         "saved project should round trip scene list");
+  EXPECT(reopened.currentProject()->activeScene ==
+             std::filesystem::path("scenes/lighting.scene.yaml"),
+         "saved project should round trip active scene");
+  EXPECT(reopened.activeScenePath()->filename() == "lighting.scene.yaml",
+         "saved active scene should resolve after reopen");
 }
 
 void testSceneNewRejectsPathTraversalSceneId() {
@@ -170,6 +305,51 @@ void testSceneDuplicateRejectsPathTraversalSceneId() {
          "rejected scene duplicate should not add scene entry");
 }
 
+void testSceneIdsUsePortableWhitelist() {
+  const auto root = makeTempRoot("lx_project_session_scene_id_whitelist");
+  demo::ProjectSession session = makeSession(root);
+  EXPECT(session.initProject("empty", "Whitelist Test").ok,
+         "project init should succeed");
+
+  EXPECT(!session.newScene("bad:name").ok,
+         "scene id with colon should be rejected");
+  EXPECT(!session.newScene("bad name").ok,
+         "scene id with space should be rejected");
+  EXPECT(!session.newScene("..").ok, "dot-dot scene id should be rejected");
+  EXPECT(!session.newScene("CON").ok,
+         "Windows reserved scene id should be rejected");
+  EXPECT(!session.duplicateScene("main", "bad:name").ok,
+         "duplicate scene id with colon should be rejected");
+  EXPECT(session.currentProject()->scenes.size() == 1,
+         "rejected scene ids should not add scene entries");
+}
+
+void testDuplicateSceneSuccessAndRejectsDuplicateIdAndPath() {
+  const auto root = makeTempRoot("lx_project_session_duplicate_scene");
+  demo::ProjectSession session = makeSession(root);
+  EXPECT(session.initProject("empty", "Duplicate Test").ok,
+         "project init should succeed");
+
+  const auto result = session.duplicateScene("main", "copy");
+
+  EXPECT(result.ok, "duplicateScene should copy existing scene");
+  EXPECT(session.currentProject()->scenes.size() == 2,
+         "duplicateScene should add scene entry");
+  EXPECT(session.currentProject()->activeScene ==
+             std::filesystem::path("scenes/copy.scene.yaml"),
+         "duplicateScene should activate duplicate");
+  EXPECT(std::filesystem::exists(*session.projectRoot() /
+                                 "scenes/copy.scene.yaml"),
+         "duplicateScene should write duplicate file");
+  EXPECT(!session.duplicateScene("main", "copy").ok,
+         "duplicateScene should reject duplicate scene id");
+
+  writeFile(*session.projectRoot() / "scenes/collision.scene.yaml",
+            "scene:\n  name: Collision\nnodes: []\n");
+  EXPECT(!session.duplicateScene("main", "collision").ok,
+         "duplicateScene should reject duplicate target path");
+}
+
 void testSceneOpenRejectsPathOutsideProjectRoot() {
   const auto root = makeTempRoot("lx_project_session_scene_escape");
   demo::ProjectSession session = makeSession(root);
@@ -177,11 +357,52 @@ void testSceneOpenRejectsPathOutsideProjectRoot() {
          "project init should succeed");
   const auto originalScene = session.activeScenePath();
 
+  EXPECT(session.openScene("scenes/main.scene.yaml").ok,
+         "registered scene path should open");
+
   const auto result = session.openScene("../outside.scene.yaml");
 
   EXPECT(!result.ok, "scene path should not escape project root");
   EXPECT(session.activeScenePath() == originalScene,
          "rejected scene open should keep active scene");
+}
+
+void testSceneOpenRejectsUnregisteredContainedPath() {
+  const auto root = makeTempRoot("lx_project_session_scene_unregistered");
+  demo::ProjectSession session = makeSession(root);
+  EXPECT(session.initProject("empty", "Ghost Test").ok,
+         "project init should succeed");
+  writeFile(*session.projectRoot() / "scenes/ghost.scene.yaml",
+            "scene:\n  name: Ghost\nnodes: []\n");
+  const auto originalScene = session.activeScenePath();
+
+  const auto result = session.openScene("scenes/ghost.scene.yaml");
+
+  EXPECT(!result.ok, "openScene should reject unregistered scene path");
+  EXPECT(session.activeScenePath() == originalScene,
+         "rejected unregistered scene should keep active scene");
+}
+
+void testRemoveSceneSuccessAndRejectsActiveOrLastScene() {
+  const auto root = makeTempRoot("lx_project_session_remove_scene");
+  demo::ProjectSession session = makeSession(root);
+  EXPECT(session.initProject("empty", "Remove Test").ok,
+         "project init should succeed");
+  EXPECT(session.newScene("scratch").ok, "scene new should succeed");
+  EXPECT(!session.removeScene("scratch").ok,
+         "removeScene should reject active scene");
+  EXPECT(session.openScene("main").ok, "openScene should switch by scene id");
+
+  const auto removeResult = session.removeScene("scratch");
+
+  EXPECT(removeResult.ok, "removeScene should remove inactive non-last scene");
+  EXPECT(session.currentProject()->scenes.size() == 1,
+         "removeScene should remove scene entry");
+  EXPECT(!std::filesystem::exists(*session.projectRoot() /
+                                  "scenes/scratch.scene.yaml"),
+         "removeScene should delete scene file");
+  EXPECT(!session.removeScene("main").ok,
+         "removeScene should reject removing last scene");
 }
 
 void testProjectCloseReturnsToNoProjectState() {
@@ -209,10 +430,19 @@ int main() {
   testSaveFailsWithoutOpenProject();
   testInitCopiesTemplateAndOpensDefaultScene();
   testInitEmptyProjectNameUsesTemplateIdForAllocation();
+  testInitRejectsTemplateCopyRootTraversal();
+  testInitRejectsTemplateAbsoluteCopyRoot();
+  testInitRejectsTemplateSymlinkCopyRootEscape();
+  testOpenProjectLoadsSavedProject();
   testSceneNewAddsProjectSceneEntry();
+  testSaveProjectPersistsNewSceneAndActiveScene();
   testSceneNewRejectsPathTraversalSceneId();
   testSceneDuplicateRejectsPathTraversalSceneId();
+  testSceneIdsUsePortableWhitelist();
+  testDuplicateSceneSuccessAndRejectsDuplicateIdAndPath();
   testSceneOpenRejectsPathOutsideProjectRoot();
+  testSceneOpenRejectsUnregisteredContainedPath();
+  testRemoveSceneSuccessAndRejectsActiveOrLastScene();
   testProjectCloseReturnsToNoProjectState();
   return failures == 0 ? 0 : 1;
 }
