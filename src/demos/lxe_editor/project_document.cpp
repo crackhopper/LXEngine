@@ -99,6 +99,11 @@ void savePathSequence(YAML::Emitter &out, const char *key,
   out << YAML::EndSeq;
 }
 
+[[nodiscard]] bool canSaveProjectDocument(const ProjectDocument &document) {
+  return !document.id.empty() && !document.displayName.empty() &&
+         !document.activeScene.empty();
+}
+
 } // namespace
 
 ProjectTemplateDocument
@@ -137,6 +142,12 @@ ProjectDocument loadProjectDocument(const std::filesystem::path &path) {
 
 bool saveProjectDocument(const std::filesystem::path &path,
                          const ProjectDocument &document) {
+  if (!canSaveProjectDocument(document)) {
+    std::cerr << "[lxe_editor] refusing to write incomplete project document "
+              << path << "\n";
+    return false;
+  }
+
   std::error_code ec;
   const auto parentPath = path.parent_path();
   if (!parentPath.empty()) {
