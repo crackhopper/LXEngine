@@ -1436,17 +1436,39 @@ void testEditorDataRoundTripsHistory() {
 
   LX_demo::lxe_editor::EditorDataState state(tempRoot);
   LX_demo::lxe_editor::EditorDataDocument document;
+  document.lastProject = fs::path("data/projects/demo");
   document.consoleHistory = {"help", "scene list", "scene load foo.scene.yaml"};
 
   EXPECT(state.save(document), "editor data save should succeed");
   EXPECT(fs::exists(state.dataPath()),
          "editor data save should create editor_data.yaml");
+  std::ifstream savedFile(state.dataPath());
+  std::stringstream savedContents;
+  savedContents << savedFile.rdbuf();
+  EXPECT(savedContents.str().find("lastProject: data/projects/demo") !=
+             std::string::npos,
+         "editor data save should write the last project path");
 
   const auto loaded = state.load();
+  EXPECT(loaded.lastProject.has_value(),
+         "editor data load should restore the saved last project");
+  EXPECT(loaded.lastProject == fs::path("data/projects/demo"),
+         "editor data load should preserve the last project path");
   EXPECT(loaded.consoleHistory.size() == 3,
          "editor data load should restore saved console history");
   EXPECT(loaded.consoleHistory[1] == "scene list",
          "editor data should preserve console history ordering");
+
+  LX_demo::lxe_editor::EditorDataDocument documentWithoutLastProject;
+  documentWithoutLastProject.consoleHistory = {"help"};
+  EXPECT(state.save(documentWithoutLastProject),
+         "editor data save without last project should succeed");
+  const auto loadedWithoutLastProject = state.load();
+  EXPECT(!loadedWithoutLastProject.lastProject.has_value(),
+         "editor data load should not invent a last project when absent");
+  EXPECT(loadedWithoutLastProject.consoleHistory.size() == 1 &&
+             loadedWithoutLastProject.consoleHistory.front() == "help",
+         "editor data should still round-trip history without last project");
 
   fs::remove_all(tempRoot);
 }
@@ -1461,13 +1483,17 @@ void testEditorDataLoadClampsConsoleHistoryToFiftyEntries() {
 
   LX_demo::lxe_editor::EditorDataState state(tempRoot);
   std::ofstream file(state.dataPath());
-  file << "version: 1\nconsoleHistory:\n";
+  file << "version: 1\nlastProject: data/projects/demo\nconsoleHistory:\n";
   for (int i = 0; i < 60; ++i) {
     file << "  - cmd-" << i << "\n";
   }
   file.close();
 
   const auto loaded = state.load();
+  EXPECT(loaded.lastProject.has_value(),
+         "editor data load should read an existing last project path");
+  EXPECT(loaded.lastProject == fs::path("data/projects/demo"),
+         "editor data load should preserve an existing last project path");
   EXPECT(loaded.consoleHistory.size() == 50,
          "editor data load should keep at most 50 console history entries");
   EXPECT(!loaded.consoleHistory.empty() &&

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -8,6 +9,7 @@ namespace LX_demo::lxe_editor {
 
 struct EditorDataDocument final {
   int version = 1;
+  std::optional<std::filesystem::path> lastProject;
   std::vector<std::string> consoleHistory;
 };
 

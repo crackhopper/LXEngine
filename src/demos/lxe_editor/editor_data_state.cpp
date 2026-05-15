@@ -53,6 +53,11 @@ EditorDataDocument EditorDataState::load() const {
       return EditorDataDocument{};
     }
 
+    if (const auto lastProjectNode = root["lastProject"];
+        lastProjectNode && lastProjectNode.IsScalar()) {
+      document.lastProject = lastProjectNode.as<std::string>();
+    }
+
     if (const auto historyNode = root["consoleHistory"];
         historyNode && historyNode.IsSequence()) {
       for (const auto& entryNode : historyNode) {
@@ -88,6 +93,10 @@ bool EditorDataState::save(const EditorDataDocument& sourceDocument) const {
   YAML::Emitter out;
   out << YAML::BeginMap;
   out << YAML::Key << "version" << YAML::Value << document.version;
+  if (document.lastProject.has_value()) {
+    out << YAML::Key << "lastProject" << YAML::Value
+        << document.lastProject->string();
+  }
   out << YAML::Key << "consoleHistory" << YAML::Value << YAML::BeginSeq;
   for (const auto& line : document.consoleHistory) {
     out << line;
