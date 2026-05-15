@@ -83,17 +83,6 @@ toApiCameraControlMode(const demo::UiOverlay::CameraControlMode mode) {
   return demo::ApiCameraControlMode::Unknown;
 }
 
-[[nodiscard]] demo::ApiPermissionLevel
-toApiPermissionLevel(const demo::ScenePermissionLevel level) {
-  switch (level) {
-  case demo::ScenePermissionLevel::User:
-    return demo::ApiPermissionLevel::User;
-  case demo::ScenePermissionLevel::Admin:
-    return demo::ApiPermissionLevel::Admin;
-  }
-  return demo::ApiPermissionLevel::Unknown;
-}
-
 struct ApiLaunchOptions final {
   bool enabled = true;
   std::string host = "0.0.0.0";
@@ -644,11 +633,6 @@ displaySelectJson(demo::EditorConfigState &configState,
   return buffer;
 }
 
-[[nodiscard]] std::string
-sceneSourceKindName(const demo::SceneSourceKind kind) {
-  return kind == demo::SceneSourceKind::Asset ? "asset" : "local";
-}
-
 [[nodiscard]] std::string runtimeClientHost(std::string_view host) {
   if (host == "0.0.0.0") {
     return "127.0.0.1";
@@ -870,15 +854,8 @@ int main(int argc, char **argv) {
                             session.currentDocumentPath().has_value()
                                 ? session.currentDocumentPath()->string()
                                 : std::string{},
-                        .sourceKind =
-                            session.currentSourceKind().has_value()
-                                ? (*session.currentSourceKind() ==
-                                           demo::SceneSourceKind::Asset
-                                       ? demo::ApiSceneSourceKind::Asset
-                                       : demo::ApiSceneSourceKind::Local)
-                                : demo::ApiSceneSourceKind::Unknown,
-                        .permission =
-                            toApiPermissionLevel(session.permission()),
+                        .sourceKind = demo::ApiSceneSourceKind::Unknown,
+                        .permission = demo::ApiPermissionLevel::User,
                         .dirty = session.isDirty(),
                     };
                   },

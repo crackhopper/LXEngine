@@ -11,7 +11,6 @@
 #include "demos/lxe_editor/project_session.hpp"
 #include "demos/lxe_editor/recording_controller.hpp"
 #include "demos/lxe_editor/scene_runtime.hpp"
-#include "demos/lxe_editor/scene_session.hpp"
 #include "demos/lxe_editor/ui_overlay.hpp"
 
 #include <filesystem>
@@ -61,13 +60,11 @@ public:
   [[nodiscard]] LX_core::CommandBus &commandBus() const;
   [[nodiscard]] const LX_core::ConsolePanel &consolePanel() const;
   [[nodiscard]] usize bindingsGeneration() const;
-  [[nodiscard]] ScenePermissionLevel permission() const;
   [[nodiscard]] bool debugEnabled() const;
   [[nodiscard]] RecordingController &recording();
   [[nodiscard]] const RecordingController &recording() const;
   [[nodiscard]] std::optional<std::filesystem::path>
   currentDocumentPath() const;
-  [[nodiscard]] std::optional<SceneSourceKind> currentSourceKind() const;
   [[nodiscard]] std::optional<std::string> currentProjectId() const;
   [[nodiscard]] std::optional<std::filesystem::path> currentProjectRoot() const;
   [[nodiscard]] std::optional<std::filesystem::path> activeScenePath() const;

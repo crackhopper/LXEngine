@@ -215,10 +215,6 @@ usize LxeEditorSession::bindingsGeneration() const {
   return m_bindingsGeneration;
 }
 
-ScenePermissionLevel LxeEditorSession::permission() const {
-  return ScenePermissionLevel::User;
-}
-
 bool LxeEditorSession::debugEnabled() const { return m_debugEnabled; }
 
 RecordingController &LxeEditorSession::recording() { return m_recording; }
@@ -230,10 +226,6 @@ const RecordingController &LxeEditorSession::recording() const {
 std::optional<std::filesystem::path>
 LxeEditorSession::currentDocumentPath() const {
   return m_projectSession.activeScenePath();
-}
-
-std::optional<SceneSourceKind> LxeEditorSession::currentSourceKind() const {
-  return std::nullopt;
 }
 
 std::optional<std::string> LxeEditorSession::currentProjectId() const {

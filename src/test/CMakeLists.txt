@@ -40,8 +40,6 @@ set(TEST_INTEGRATION_EXE_LIST
   test_project_document
   test_project_catalog
   test_project_session
-  test_scene_catalog
-  test_scene_session
   test_scene_runtime
   test_scene_events
   test_debug_ui_smoke
@@ -379,33 +377,13 @@ if(TARGET test_project_session)
   target_link_libraries(test_project_session PRIVATE yaml-cpp::yaml-cpp)
 endif()
 
-if(TARGET test_scene_catalog)
-  target_sources(test_scene_catalog PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_catalog.cpp
-  )
-  target_include_directories(test_scene_catalog PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/..
-  )
-endif()
-
-if(TARGET test_scene_session)
-  target_sources(test_scene_session PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_session.cpp
-  )
-  target_include_directories(test_scene_session PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/..
-  )
-endif()
-
 if(TARGET test_scene_runtime)
   target_sources(test_scene_runtime PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/builtin_asset_catalog.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_builder.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_camera_state.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_catalog.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_document.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_runtime.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_session.cpp
   )
   target_include_directories(test_scene_runtime PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/..
