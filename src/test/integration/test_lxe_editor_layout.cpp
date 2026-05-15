@@ -1437,7 +1437,8 @@ void testEditorDataRoundTripsHistory() {
   LX_demo::lxe_editor::EditorDataState state(tempRoot);
   LX_demo::lxe_editor::EditorDataDocument document;
   document.lastProject = fs::path("data") / "projects" / "demo";
-  document.consoleHistory = {"help", "scene list", "scene load foo.scene.yaml"};
+  document.consoleHistory = {
+      "help", "project init empty demo", "scene open main"};
 
   EXPECT(state.save(document), "editor data save should succeed");
   EXPECT(fs::exists(state.dataPath()),
@@ -1456,7 +1457,7 @@ void testEditorDataRoundTripsHistory() {
          "editor data load should preserve the last project path");
   EXPECT(loaded.consoleHistory.size() == 3,
          "editor data load should restore saved console history");
-  EXPECT(loaded.consoleHistory[1] == "scene list",
+  EXPECT(loaded.consoleHistory[1] == "project init empty demo",
          "editor data should preserve console history ordering");
 
   LX_demo::lxe_editor::EditorDataDocument documentWithoutLastProject;

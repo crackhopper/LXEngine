@@ -56,7 +56,7 @@ void testStartAppendStopAndSaveRecording() {
   recorder.enable();
   const auto start = recorder.start(demo::RecordingStartOptions{
       .detailLevel = demo::RecordingDetailLevel::Basic,
-      .scenePath = "assets/scenes/lxe_editor.scene.yaml",
+      .scenePath = "",
       .windowWidth = 1600,
       .windowHeight = 900,
   });
@@ -66,10 +66,17 @@ void testStartAppendStopAndSaveRecording() {
   const auto appendResult = recorder.appendStep(demo::RecordingStepInput{
       .kind = "command",
       .source = demo::RecordingSource::Mcp,
-      .payloadJson = "{\"line\":\"scene load lxe_editor.scene.yaml\"}",
+      .payloadJson = "{\"line\":\"project init empty recording_test\"}",
   });
   EXPECT(appendResult.recorded, "active recorder should append command step");
   EXPECT(appendResult.stepId == 1, "first recorded step id should be 1");
+  const auto openResult = recorder.appendStep(demo::RecordingStepInput{
+      .kind = "command",
+      .source = demo::RecordingSource::Mcp,
+      .payloadJson = "{\"line\":\"scene open main\"}",
+  });
+  EXPECT(openResult.recorded, "active recorder should append scene open step");
+  EXPECT(openResult.stepId == 2, "second recorded step id should be 2");
 
   const auto stop = recorder.stop(demo::RecordingStopOptions{.save = true});
   EXPECT(!recorder.status().active, "recording should be inactive after stop");
@@ -81,16 +88,20 @@ void testStartAppendStopAndSaveRecording() {
          "recording should include schema version");
   EXPECT(text.find("\"detailLevel\":\"basic\"") != std::string::npos,
          "recording should include detail level");
+  EXPECT(text.find("\"scenePath\":\"\"") != std::string::npos,
+         "recording should allow empty scene metadata before project init");
   EXPECT(text.find("\"source\":\"mcp\"") != std::string::npos,
          "recording should include mcp source");
-  EXPECT(text.find("scene load lxe_editor.scene.yaml") != std::string::npos,
-         "recording should include command payload");
+  EXPECT(text.find("project init empty recording_test") != std::string::npos,
+         "recording should include project init command payload");
+  EXPECT(text.find("scene open main") != std::string::npos,
+         "recording should include scene open command payload");
 
   const auto entries = recorder.list();
   EXPECT(entries.size() == 1, "saved recording should be listed");
   if (!entries.empty()) {
     const std::string byId = recorder.read(entries.front().id);
-    EXPECT(byId.find("scene load lxe_editor.scene.yaml") != std::string::npos,
+    EXPECT(byId.find("scene open main") != std::string::npos,
            "recording list id should be readable");
   }
 }

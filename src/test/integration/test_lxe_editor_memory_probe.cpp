@@ -10,6 +10,7 @@
 #include "demos/lxe_editor/scene_interaction_controller.hpp"
 #include "demos/lxe_editor/ui_overlay.hpp"
 
+#include <chrono>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -76,8 +77,8 @@ enum class ProbeMode {
   UiPlusCameraUpdates,
   UiPlusDebugDraw,
   UiPlusFrameLogic,
-  HelmetUiOnly,
-  HelmetUiPlusFrameLogic,
+  ProjectUiOnly,
+  ProjectUiPlusFrameLogic,
 };
 
 [[nodiscard]] std::optional<ProbeMode> requestedProbeMode() {
@@ -101,11 +102,11 @@ enum class ProbeMode {
   if (text == "ui_plus_debugdraw") {
     return ProbeMode::UiPlusDebugDraw;
   }
-  if (text == "helmet_ui_only") {
-    return ProbeMode::HelmetUiOnly;
+  if (text == "project_ui_only") {
+    return ProbeMode::ProjectUiOnly;
   }
-  if (text == "helmet_ui_plus_frame_logic") {
-    return ProbeMode::HelmetUiPlusFrameLogic;
+  if (text == "project_ui_plus_frame_logic") {
+    return ProbeMode::ProjectUiPlusFrameLogic;
   }
   return std::nullopt;
 }
@@ -123,14 +124,14 @@ enum class ProbeMode {
   }
 }
 
-[[nodiscard]] bool usesHelmetScene(const ProbeMode mode) {
-  return mode == ProbeMode::HelmetUiOnly ||
-         mode == ProbeMode::HelmetUiPlusFrameLogic;
+[[nodiscard]] bool usesProjectScene(const ProbeMode mode) {
+  return mode == ProbeMode::ProjectUiOnly ||
+         mode == ProbeMode::ProjectUiPlusFrameLogic;
 }
 
 [[nodiscard]] bool runsFrameLogic(const ProbeMode mode) {
   return mode == ProbeMode::UiPlusFrameLogic ||
-         mode == ProbeMode::HelmetUiPlusFrameLogic;
+         mode == ProbeMode::ProjectUiPlusFrameLogic;
 }
 
 [[nodiscard]] bool runsCameraUpdates(const ProbeMode mode) {
@@ -153,23 +154,31 @@ enum class ProbeMode {
     return "ui_plus_debugdraw";
   case ProbeMode::UiPlusFrameLogic:
     return "ui_plus_frame_logic";
-  case ProbeMode::HelmetUiOnly:
-    return "helmet_ui_only";
-  case ProbeMode::HelmetUiPlusFrameLogic:
-    return "helmet_ui_plus_frame_logic";
+  case ProbeMode::ProjectUiOnly:
+    return "project_ui_only";
+  case ProbeMode::ProjectUiPlusFrameLogic:
+    return "project_ui_plus_frame_logic";
   }
   return "unknown";
 }
 
-void loadHelmetScene(LX_demo::lxe_editor::LxeEditorSession &session,
-                     LX_core::gpu::EngineLoop &loop) {
-  const auto result =
-      session.commandBus().dispatch("project init empty memory_probe_helmet");
+void loadProbeProjectScene(LX_demo::lxe_editor::LxeEditorSession &session,
+                           LX_core::gpu::EngineLoop &loop) {
+  const auto suffix =
+      std::chrono::steady_clock::now().time_since_epoch().count();
+  const auto result = session.commandBus().dispatch(
+      "project init empty memory_probe_project_" + std::to_string(suffix));
   if (!result.ok) {
-    throw std::runtime_error("failed to queue helmet project scene: " +
+    throw std::runtime_error("failed to queue probe project scene: " +
                              result.message);
   }
   session.flushPendingSceneLoad(loop);
+  if (!session.currentDocumentPath().has_value() ||
+      session.currentProjectActiveScene() !=
+          std::optional<std::string>("scenes/main.scene.yaml") ||
+      session.scene()->getSceneName() != "Empty Project") {
+    throw std::runtime_error("probe project scene did not bind at runtime");
+  }
 }
 
 void configurePanelVisibility(LX_demo::lxe_editor::EditorConfigDocument &config,
@@ -230,8 +239,8 @@ void configurePanelVisibility(LX_demo::lxe_editor::EditorConfigDocument &config,
     }
   });
 
-  if (usesHelmetScene(mode)) {
-    loadHelmetScene(session, loop);
+  if (usesProjectScene(mode)) {
+    loadProbeProjectScene(session, loop);
   }
 
   const auto input = window->getInputState();
@@ -399,15 +408,15 @@ void testLxeEditorMemoryProbe() {
         runProbe(ProbeMode::UiMinimalPanels, frameCount);
     const ProbeResult frameLogic =
         runProbe(ProbeMode::UiPlusFrameLogic, frameCount);
-    const ProbeResult helmetFrameLogic =
-        runProbe(ProbeMode::HelmetUiPlusFrameLogic, frameCount);
+    const ProbeResult projectFrameLogic =
+        runProbe(ProbeMode::ProjectUiPlusFrameLogic, frameCount);
 
     const usize uiOnlyGrowthKb = uiOnly.rssPeakKb - uiOnly.rssStartKb;
     const usize uiMinimalGrowthKb = uiMinimal.rssPeakKb - uiMinimal.rssStartKb;
     const usize frameLogicGrowthKb =
         frameLogic.rssPeakKb - frameLogic.rssStartKb;
-    const usize helmetFrameLogicGrowthKb =
-        helmetFrameLogic.rssPeakKb - helmetFrameLogic.rssStartKb;
+    const usize projectFrameLogicGrowthKb =
+        projectFrameLogic.rssPeakKb - projectFrameLogic.rssStartKb;
 
     std::cout << "[probe] ui_only start=" << uiOnly.rssStartKb
               << " peak=" << uiOnly.rssPeakKb << " end=" << uiOnly.rssEndKb
@@ -424,23 +433,23 @@ void testLxeEditorMemoryProbe() {
               << " growth_kb=" << frameLogicGrowthKb
               << " config_dirty_frames=" << frameLogic.configDirtyFrames
               << "\n";
-    std::cout << "[probe] helmet_ui_plus_frame_logic after_load="
-              << helmetFrameLogic.rssBeforeLoadKb
-              << " post_warmup=" << helmetFrameLogic.rssStartKb
-              << " peak=" << helmetFrameLogic.rssPeakKb
-              << " end=" << helmetFrameLogic.rssEndKb
-              << " growth_kb=" << helmetFrameLogicGrowthKb
-              << " renderer_cache_peak=" << helmetFrameLogic.rendererCachePeak
-              << " frame_graph_items=" << helmetFrameLogic.frameGraphItemCount
-              << " init_scene_calls=" << helmetFrameLogic.initSceneCallCount
+    std::cout << "[probe] project_ui_plus_frame_logic after_load="
+              << projectFrameLogic.rssBeforeLoadKb
+              << " post_warmup=" << projectFrameLogic.rssStartKb
+              << " peak=" << projectFrameLogic.rssPeakKb
+              << " end=" << projectFrameLogic.rssEndKb
+              << " growth_kb=" << projectFrameLogicGrowthKb
+              << " renderer_cache_peak=" << projectFrameLogic.rendererCachePeak
+              << " frame_graph_items=" << projectFrameLogic.frameGraphItemCount
+              << " init_scene_calls=" << projectFrameLogic.initSceneCallCount
               << " debug_vertex_cap_peak="
-              << helmetFrameLogic.debugVertexCapacityPeak
+              << projectFrameLogic.debugVertexCapacityPeak
               << " debug_index_cap_peak="
-              << helmetFrameLogic.debugIndexCapacityPeak
+              << projectFrameLogic.debugIndexCapacityPeak
               << " debug_vertex_identity_changes="
-              << helmetFrameLogic.debugVertexIdentityChanges
+              << projectFrameLogic.debugVertexIdentityChanges
               << " debug_index_identity_changes="
-              << helmetFrameLogic.debugIndexIdentityChanges << "\n";
+              << projectFrameLogic.debugIndexIdentityChanges << "\n";
 
     EXPECT(uiOnlyGrowthKb <= kUiOnlyGrowthBudgetKb,
            "lxe_editor UI-only probe exceeded RSS growth budget");
