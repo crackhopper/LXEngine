@@ -7,6 +7,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace LX_core {
 class EditorState;
@@ -30,7 +31,7 @@ struct LxeEditorCommandContext final {
   using PermissionFn = std::function<std::string()>;
   using CurrentDocumentPathFn = std::function<std::optional<std::string>()>;
   using ProjectCommandFn =
-      std::function<LX_core::CommandResult(std::string_view)>;
+      std::function<LX_core::CommandResult(const std::vector<std::string> &)>;
   using ProjectSummaryJsonFn = std::function<std::string()>;
   using PersistedHistoryFn = std::function<std::vector<std::string>()>;
   using AppendConsoleDebugLineFn = std::function<void(std::string_view)>;

@@ -105,8 +105,8 @@ struct SceneViewerCommandFixture {
   int cameraControlMode =
       static_cast<int>(LX_demo::lxe_editor::UiOverlay::CameraControlMode::Orbit);
   std::optional<std::string> documentPath = std::string("data/scenes/test.scene.yaml");
-  std::vector<std::string> projectCommands;
-  std::vector<std::string> sceneCommands;
+  std::vector<std::vector<std::string>> projectCommands;
+  std::vector<std::vector<std::string>> sceneCommands;
   std::string projectSummary = "{\"name\":\"demo\",\"scene\":\"main\"}";
   LX_demo::lxe_editor::SceneViewRect rect{
       .x = 0.0f, .y = 0.0f, .width = 800.0f, .height = 600.0f};
@@ -187,22 +187,23 @@ struct SceneViewerCommandFixture {
             },
             .currentDocumentPath = [this]() { return documentPath; },
             .projectCommand =
-                [this](std::string_view args) {
-                  projectCommands.emplace_back(args);
+                [this](const std::vector<std::string>& args) {
+                  projectCommands.push_back(args);
                   return LX_core::CommandResult{
-                      true, "project " + std::string(args),
-                      "{\"projectCommand\":\"" + std::string(args) + "\"}"};
+                      true, "project",
+                      "{\"projectCommand\":\"ok\"}"};
                 },
             .sceneCommand =
-                [this](std::string_view args) {
-                  sceneCommands.emplace_back(args);
-                  if (args == "load main") {
+                [this](const std::vector<std::string>& args) {
+                  sceneCommands.push_back(args);
+                  if (args.size() == 2 && args[0] == "load" &&
+                      args[1] == "main") {
                     return LX_core::CommandResult{
                         false, "scene load removed; use scene open", {}};
                   }
                   return LX_core::CommandResult{
-                      true, "scene " + std::string(args),
-                      "{\"sceneCommand\":\"" + std::string(args) + "\"}"};
+                      true, "scene",
+                      "{\"sceneCommand\":\"ok\"}"};
                 },
             .projectSummaryJson = [this]() { return projectSummary; },
             .persistedHistory = []() { return std::vector<std::string>{}; },
@@ -271,14 +272,14 @@ struct SceneViewerPickFixture {
             },
             .currentDocumentPath = []() { return std::optional<std::string>{}; },
             .projectCommand =
-                [](std::string_view args) {
+                [](const std::vector<std::string>&) {
                   return LX_core::CommandResult{
-                      true, "project " + std::string(args), {}};
+                      true, "project", {}};
                 },
             .sceneCommand =
-                [](std::string_view args) {
+                [](const std::vector<std::string>&) {
                   return LX_core::CommandResult{
-                      true, "scene " + std::string(args), {}};
+                      true, "scene", {}};
                 },
             .projectSummaryJson = []() { return std::string("{}"); },
             .persistedHistory = []() { return std::vector<std::string>{}; },
@@ -935,6 +936,11 @@ void testProjectAndSceneCommandsUseRegisteredCallbacks() {
       fixture.base.bus.dispatch("project init empty demo");
   EXPECT(projectInit.ok, "project init should route through project handler");
 
+  const CommandResult projectQuoted =
+      fixture.base.bus.dispatch("project init \"name with spaces\"");
+  EXPECT(projectQuoted.ok,
+         "project command with quoted whitespace should route through handler");
+
   const CommandResult sceneOpen = fixture.base.bus.dispatch("scene open main");
   EXPECT(sceneOpen.ok,
          "scene open should route through project-scoped handler");
@@ -945,13 +951,54 @@ void testProjectAndSceneCommandsUseRegisteredCallbacks() {
              sceneLoad.message.find("unknown command") != std::string::npos,
          "scene load should not be a compatibility alias");
 
-  EXPECT(fixture.projectCommands.size() == 2 &&
-             fixture.projectCommands[0] == "templates" &&
-             fixture.projectCommands[1] == "init empty demo",
-         "project command handler should receive remaining args");
+  EXPECT(fixture.projectCommands.size() == 3 &&
+             fixture.projectCommands[0] == std::vector<std::string>{"templates"} &&
+             fixture.projectCommands[1] ==
+                 std::vector<std::string>({"init", "empty", "demo"}) &&
+             fixture.projectCommands[2] ==
+                 std::vector<std::string>({"init", "name with spaces"}),
+         "project command handler should receive parsed args");
   EXPECT(fixture.sceneCommands.size() == 1 &&
-             fixture.sceneCommands[0] == "open main",
+             fixture.sceneCommands[0] ==
+                 std::vector<std::string>({"open", "main"}),
          "scene load should not reach project-scoped scene handler");
+}
+
+void testSceneLoadReportsRemovalWithoutSceneCallback() {
+  CommandFixture base;
+  LX_demo::lxe_editor::SceneInteractionController interaction{
+      base.bus, base.editorState, *base.scene};
+
+  LX_demo::lxe_editor::registerLxeEditorCommands(
+      base.bus,
+      LX_demo::lxe_editor::LxeEditorCommandContext{
+          .editorState = base.editorState,
+          .scene = *base.scene,
+          .interaction = interaction,
+          .getEditMode = []() {
+            return static_cast<int>(
+                LX_demo::lxe_editor::UiOverlay::EditorMode::Selection);
+          },
+          .setEditMode = [](int) {},
+          .getCameraControlMode = []() {
+            return static_cast<int>(
+                LX_demo::lxe_editor::UiOverlay::CameraControlMode::Orbit);
+          },
+          .setCameraControlMode = [](int) {},
+          .sceneViewRect = []() { return LX_demo::lxe_editor::SceneViewRect{}; },
+          .dirty = []() { return false; },
+          .permission = []() { return std::string("user"); },
+          .debugEnabled = []() { return false; },
+          .setDebugEnabled = [](bool) {},
+          .currentDocumentPath = []() { return std::optional<std::string>{}; },
+          .projectSummaryJson = []() { return std::string("{}"); },
+          .persistedHistory = []() { return std::vector<std::string>{}; },
+      });
+
+  const CommandResult sceneLoad = base.bus.dispatch("scene load main");
+  EXPECT(!sceneLoad.ok, "scene load should be removed without scene callback");
+  EXPECT(sceneLoad.message.find("scene open") != std::string::npos,
+         "scene load removal should report scene open guidance");
 }
 
 void testAdminCommandsRequireRegisteredCallbacks() {
@@ -1173,6 +1220,43 @@ void testSceneViewerModeAndStateCommands() {
   EXPECT(cameraStatus.structured.find("\"camera\":\"freefly\"") !=
              std::string::npos,
          "camera status should report current camera control mode");
+}
+
+void testStateSummarySanitizesProjectJson() {
+  SceneViewerCommandFixture fixture;
+
+  fixture.projectSummary = {};
+  const CommandResult emptyResult = fixture.base.bus.dispatch("state summary");
+  EXPECT(emptyResult.ok, "state summary should accept empty project json");
+  EXPECT(emptyResult.structured.find("\"project\":null") != std::string::npos,
+         "empty project json should become null");
+  EXPECT(emptyResult.structured.find("sourceKind") == std::string::npos,
+         "empty project summary should not add source kind");
+
+  fixture.projectSummary = "{\"name\":\"demo\"}";
+  const CommandResult objectResult = fixture.base.bus.dispatch("state summary");
+  EXPECT(objectResult.ok, "state summary should accept object project json");
+  EXPECT(objectResult.structured.find("\"project\":{\"name\":\"demo\"}") !=
+             std::string::npos,
+         "object project json should be embedded as project object");
+  EXPECT(objectResult.structured.find("sourceKind") == std::string::npos,
+         "object project summary should not add source kind");
+
+  fixture.projectSummary = "null";
+  const CommandResult nullResult = fixture.base.bus.dispatch("state summary");
+  EXPECT(nullResult.ok, "state summary should accept null project json");
+  EXPECT(nullResult.structured.find("\"project\":null") != std::string::npos,
+         "null project json should remain null");
+  EXPECT(nullResult.structured.find("sourceKind") == std::string::npos,
+         "null project summary should not add source kind");
+
+  fixture.projectSummary = "not json";
+  const CommandResult invalidResult = fixture.base.bus.dispatch("state summary");
+  EXPECT(invalidResult.ok, "state summary should tolerate invalid project json");
+  EXPECT(invalidResult.structured.find("\"project\":null") != std::string::npos,
+         "invalid project json should fall back to null");
+  EXPECT(invalidResult.structured.find("sourceKind") == std::string::npos,
+         "invalid project summary should not add source kind");
 }
 
 void testSceneViewerDebugCommandsUpdateSummaryAndToolbarState() {
@@ -1854,12 +1938,14 @@ int main() {
   testBuiltinCamAndPreviewCommands();
   testBuiltinRemainingCommandErrors();
   testProjectAndSceneCommandsUseRegisteredCallbacks();
+  testSceneLoadReportsRemovalWithoutSceneCallback();
   testAdminCommandsRequireRegisteredCallbacks();
   testAdminCommandsUseRegisteredCallbacks();
   testSceneOpenClearsRedoHistory();
   testSceneSavePreservesRedoHistory();
   testCameraControlStatusPreservesRedoHistory();
   testSceneViewerModeAndStateCommands();
+  testStateSummarySanitizesProjectJson();
   testSceneViewerDebugCommandsUpdateSummaryAndToolbarState();
   testSceneViewerPickCommandUsesInteractionController();
   testSceneViewerPickScreenCommandUsesExplicitViewportSize();

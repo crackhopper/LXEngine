@@ -14,6 +14,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <string_view>
 
 namespace LX_demo::lxe_editor {
 namespace {
@@ -50,6 +51,31 @@ namespace {
   std::ostringstream oss;
   oss << std::fixed << std::setprecision(3) << value;
   return oss.str();
+}
+
+[[nodiscard]] std::string_view trimView(std::string_view text) {
+  while (!text.empty() &&
+         (text.front() == ' ' || text.front() == '\t' ||
+          text.front() == '\r' || text.front() == '\n')) {
+    text.remove_prefix(1);
+  }
+  while (!text.empty() &&
+         (text.back() == ' ' || text.back() == '\t' ||
+          text.back() == '\r' || text.back() == '\n')) {
+    text.remove_suffix(1);
+  }
+  return text;
+}
+
+[[nodiscard]] std::string sanitizeProjectSummaryJson(std::string text) {
+  const std::string_view trimmed = trimView(text);
+  if (trimmed.empty() || trimmed == "null") {
+    return "null";
+  }
+  if (trimmed.size() >= 2 && trimmed.front() == '{' && trimmed.back() == '}') {
+    return std::string(trimmed);
+  }
+  return "null";
 }
 
 [[nodiscard]] LX_core::CommandResult makeError(std::string message) {
@@ -190,8 +216,9 @@ makeSummaryJson(const LxeEditorCommandContext &context) {
   const LX_core::SceneNodeSharedPtr activeCamera =
       context.editorState.resolveActiveCamera(context.scene);
   const std::string projectSummary =
-      context.projectSummaryJson ? context.projectSummaryJson()
-                                 : std::string("null");
+      sanitizeProjectSummaryJson(context.projectSummaryJson
+                                     ? context.projectSummaryJson()
+                                     : std::string{});
   std::ostringstream oss;
   oss << "{\"sceneName\":\"" << jsonEscape(context.scene.getSceneName()) << "\""
       << ",\"dirty\":" << (context.dirty() ? "true" : "false")
@@ -384,22 +411,22 @@ void registerLxeEditorCommands(LX_core::CommandBus &bus,
         if (!projectCommand) {
           return makeError("project command unavailable");
         }
-        return projectCommand(joinArgs(args, 0));
+        return projectCommand(args);
       });
 
   bus.registerHandler(
       "scene", "scene open <name-or-path> | scene save [args]",
       [sceneCommand](std::vector<std::string> args) {
-        if (!sceneCommand) {
-          return makeError("scene command unavailable");
-        }
         if (args.empty()) {
           return makeError("usage: scene open <name-or-path> | scene save [args]");
         }
         if (args[0] == "load") {
           return makeError("scene load was removed; use scene open");
         }
-        LX_core::CommandResult result = sceneCommand(joinArgs(args, 0));
+        if (!sceneCommand) {
+          return makeError("scene command unavailable");
+        }
+        LX_core::CommandResult result = sceneCommand(args);
         if (args[0] == "open" && result.ok) {
           result.metadata[std::string(
               LX_core::kCommandResultClearUndoOnSuccessMetadataKey)] = "true";
