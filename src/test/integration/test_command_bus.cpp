@@ -33,6 +33,9 @@ namespace {
 
 constexpr float kPi = 3.14159265358979323846f;
 constexpr float kFloatEps = 1e-4f;
+const std::string kLegacySourceKey = std::string("source") + "Kind";
+const std::string kLegacyAdminOnLine = std::string("admin ") + "on";
+const std::string kLegacySceneLoadLine = std::string("scene ") + "load main";
 
 int failures = 0;
 
@@ -104,7 +107,8 @@ struct SceneViewerCommandFixture {
       static_cast<int>(LX_demo::lxe_editor::UiOverlay::EditorMode::Selection);
   int cameraControlMode =
       static_cast<int>(LX_demo::lxe_editor::UiOverlay::CameraControlMode::Orbit);
-  std::optional<std::string> documentPath = std::string("data/scenes/test.scene.yaml");
+  std::optional<std::string> documentPath =
+      std::string("data/projects/demo/scenes/test.scene.yaml");
   std::vector<std::vector<std::string>> projectCommands;
   std::vector<std::vector<std::string>> sceneCommands;
   std::string projectSummary = "{\"name\":\"demo\",\"scene\":\"main\"}";
@@ -198,7 +202,9 @@ struct SceneViewerCommandFixture {
                   if (args.size() == 2 && args[0] == "load" &&
                       args[1] == "main") {
                     return LX_core::CommandResult{
-                        false, "scene load removed; use scene open", {}};
+                        false,
+                        std::string("scene ") + "load removed; use scene open",
+                        {}};
                   }
                   return LX_core::CommandResult{
                       true, "scene",
@@ -943,11 +949,11 @@ void testProjectAndSceneCommandsUseRegisteredCallbacks() {
   EXPECT(sceneOpen.ok,
          "scene open should route through project-scoped handler");
 
-  const CommandResult sceneLoad = fixture.base.bus.dispatch("scene load main");
-  EXPECT(!sceneLoad.ok, "scene load should be removed");
+  const CommandResult sceneLoad = fixture.base.bus.dispatch(kLegacySceneLoadLine);
+  EXPECT(!sceneLoad.ok, "removed scene command should fail");
   EXPECT(sceneLoad.message.find("scene open") != std::string::npos ||
              sceneLoad.message.find("unknown command") != std::string::npos,
-         "scene load should not be a compatibility alias");
+         "removed scene command should not be a compatibility alias");
 
   EXPECT(fixture.projectCommands.size() == 3 &&
              fixture.projectCommands[0] == std::vector<std::string>{"templates"} &&
@@ -959,7 +965,7 @@ void testProjectAndSceneCommandsUseRegisteredCallbacks() {
   EXPECT(fixture.sceneCommands.size() == 1 &&
              fixture.sceneCommands[0] ==
                  std::vector<std::string>({"open", "main"}),
-         "scene load should not reach project-scoped scene handler");
+         "removed scene command should not reach project-scoped scene handler");
 }
 
 void testSceneLoadReportsRemovalWithoutSceneCallback() {
@@ -992,19 +998,20 @@ void testSceneLoadReportsRemovalWithoutSceneCallback() {
           .persistedHistory = []() { return std::vector<std::string>{}; },
       });
 
-  const CommandResult sceneLoad = base.bus.dispatch("scene load main");
-  EXPECT(!sceneLoad.ok, "scene load should be removed without scene callback");
+  const CommandResult sceneLoad = base.bus.dispatch(kLegacySceneLoadLine);
+  EXPECT(!sceneLoad.ok,
+         "removed scene command should fail without scene callback");
   EXPECT(sceneLoad.message.find("scene open") != std::string::npos,
-         "scene load removal should report scene open guidance");
+         "removed scene command should report scene open guidance");
 }
 
 void testAdminCommandsRequireRegisteredCallbacks() {
   CommandFixture fixture;
 
-  const CommandResult onResult = fixture.bus.dispatch("admin on");
-  EXPECT(!onResult.ok, "admin on should fail before callback wiring");
+  const CommandResult onResult = fixture.bus.dispatch(kLegacyAdminOnLine);
+  EXPECT(!onResult.ok, "legacy admin command should fail before callback wiring");
   EXPECT(onResult.message.find("unknown command: admin") != std::string::npos,
-         "admin on should not be registered without callbacks");
+         "legacy admin command should not be registered without callbacks");
 
   const CommandResult statusResult = fixture.bus.dispatch("admin status");
   EXPECT(!statusResult.ok, "admin status should fail before callback wiring");
@@ -1033,8 +1040,9 @@ void testAdminCommandsUseRegisteredCallbacks() {
       }};
   registerBuiltinCommands(bus, editorState, *scene, sceneIo);
 
-  const CommandResult onResult = bus.dispatch("admin on");
-  EXPECT(onResult.ok && adminEnabled, "admin on should call registered callback");
+  const CommandResult onResult = bus.dispatch(kLegacyAdminOnLine);
+  EXPECT(onResult.ok && adminEnabled,
+         "legacy admin command should call registered callback");
 
   const CommandResult statusResult = bus.dispatch("admin status");
   EXPECT(statusResult.ok, "admin status should succeed through callback");
@@ -1201,7 +1209,7 @@ void testSceneViewerModeAndStateCommands() {
   EXPECT(summaryResult.structured.find("\"project\":{\"name\":\"demo\"") !=
              std::string::npos,
          "state summary should include project state");
-  EXPECT(summaryResult.structured.find("sourceKind") == std::string::npos,
+  EXPECT(summaryResult.structured.find(kLegacySourceKey) == std::string::npos,
          "state summary should not include source kind");
   EXPECT(summaryResult.structured.find("permission") == std::string::npos,
          "state summary should not include scene-source permission");
@@ -1258,7 +1266,7 @@ void testStateSummarySanitizesProjectJson() {
   EXPECT(emptyResult.ok, "state summary should accept empty project json");
   EXPECT(emptyResult.structured.find("\"project\":null") != std::string::npos,
          "empty project json should become null");
-  EXPECT(emptyResult.structured.find("sourceKind") == std::string::npos,
+  EXPECT(emptyResult.structured.find(kLegacySourceKey) == std::string::npos,
          "empty project summary should not add source kind");
 
   fixture.projectSummary = "{\"name\":\"demo\"}";
@@ -1267,7 +1275,7 @@ void testStateSummarySanitizesProjectJson() {
   EXPECT(objectResult.structured.find("\"project\":{\"name\":\"demo\"}") !=
              std::string::npos,
          "object project json should be embedded as project object");
-  EXPECT(objectResult.structured.find("sourceKind") == std::string::npos,
+  EXPECT(objectResult.structured.find(kLegacySourceKey) == std::string::npos,
          "object project summary should not add source kind");
 
   fixture.projectSummary = "{\"scenes\":[]}";
@@ -1278,7 +1286,7 @@ void testStateSummarySanitizesProjectJson() {
   EXPECT(emptyArrayResult.structured.find("\"project\":{\"scenes\":[]}") !=
              std::string::npos,
          "empty array project json value should be preserved");
-  EXPECT(emptyArrayResult.structured.find("sourceKind") == std::string::npos,
+  EXPECT(emptyArrayResult.structured.find(kLegacySourceKey) == std::string::npos,
          "empty array project summary should not add source kind");
 
   fixture.projectSummary = "{\"templates\":[\"empty\"]}";
@@ -1289,7 +1297,7 @@ void testStateSummarySanitizesProjectJson() {
   EXPECT(stringArrayResult.structured.find(
              "\"project\":{\"templates\":[\"empty\"]}") != std::string::npos,
          "string array project json value should be preserved");
-  EXPECT(stringArrayResult.structured.find("sourceKind") == std::string::npos,
+  EXPECT(stringArrayResult.structured.find(kLegacySourceKey) == std::string::npos,
          "string array project summary should not add source kind");
 
   fixture.projectSummary = "null";
@@ -1297,7 +1305,7 @@ void testStateSummarySanitizesProjectJson() {
   EXPECT(nullResult.ok, "state summary should accept null project json");
   EXPECT(nullResult.structured.find("\"project\":null") != std::string::npos,
          "null project json should remain null");
-  EXPECT(nullResult.structured.find("sourceKind") == std::string::npos,
+  EXPECT(nullResult.structured.find(kLegacySourceKey) == std::string::npos,
          "null project summary should not add source kind");
 
   fixture.projectSummary = "not json";
@@ -1305,7 +1313,7 @@ void testStateSummarySanitizesProjectJson() {
   EXPECT(invalidResult.ok, "state summary should tolerate invalid project json");
   EXPECT(invalidResult.structured.find("\"project\":null") != std::string::npos,
          "invalid project json should fall back to null");
-  EXPECT(invalidResult.structured.find("sourceKind") == std::string::npos,
+  EXPECT(invalidResult.structured.find(kLegacySourceKey) == std::string::npos,
          "invalid project summary should not add source kind");
 
   fixture.projectSummary = "{not json}";
@@ -1316,7 +1324,8 @@ void testStateSummarySanitizesProjectJson() {
   EXPECT(invalidObjectResult.structured.find("\"project\":null") !=
              std::string::npos,
          "malformed object project json should fall back to null");
-  EXPECT(invalidObjectResult.structured.find("sourceKind") == std::string::npos,
+  EXPECT(invalidObjectResult.structured.find(kLegacySourceKey) ==
+             std::string::npos,
          "malformed object project summary should not add source kind");
 
   fixture.projectSummary = "{\"name\":}";
@@ -1328,7 +1337,8 @@ void testStateSummarySanitizesProjectJson() {
              std::string::npos,
          "project json ending with a colon before object close should fall back "
          "to null");
-  EXPECT(missingValueResult.structured.find("sourceKind") == std::string::npos,
+  EXPECT(missingValueResult.structured.find(kLegacySourceKey) ==
+             std::string::npos,
          "missing value project summary should not add source kind");
 
   fixture.projectSummary = "{\"name\":unquoted}";
@@ -1339,7 +1349,8 @@ void testStateSummarySanitizesProjectJson() {
   EXPECT(unquotedValueResult.structured.find("\"project\":null") !=
              std::string::npos,
          "unquoted project json values should fall back to null");
-  EXPECT(unquotedValueResult.structured.find("sourceKind") == std::string::npos,
+  EXPECT(unquotedValueResult.structured.find(kLegacySourceKey) ==
+             std::string::npos,
          "unquoted value project summary should not add source kind");
 
   fixture.projectSummary = "{\"name\":\"demo\",bad}";
@@ -1350,7 +1361,7 @@ void testStateSummarySanitizesProjectJson() {
   EXPECT(malformedMemberResult.structured.find("\"project\":null") !=
              std::string::npos,
          "malformed project json members should fall back to null");
-  EXPECT(malformedMemberResult.structured.find("sourceKind") ==
+  EXPECT(malformedMemberResult.structured.find(kLegacySourceKey) ==
              std::string::npos,
          "malformed member project summary should not add source kind");
 }

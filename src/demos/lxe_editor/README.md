@@ -10,7 +10,7 @@ camera controls, and Preview.
 
 - Collapse the "does the engine actually run end-to-end?" question into a
   single executable
-- Provide the default integration target for full scene load/save plus future
+- Provide the default integration target for full project scene editing plus future
   scene features (Sponza, shadows, IBL, post-processing)
 - Keep a human-friendly UI surface so selection / camera / light / transform
   tweaks are observable without editing source
@@ -138,7 +138,7 @@ when the editor saves configuration, that launched display becomes the saved
 | `state summary` | Return a stable JSON snapshot with scene, project, dirty, mode, camera, preview, debug, and active-camera info |
 | `state selection` | Return selected paths, primary AABB, and the last successful pick hit point |
 | `state cameras` | Return editor / gameplay camera poses and the active camera path |
-| `state scene` | Return scene metadata such as document path, dirty flag, node count, camera count, and light count |
+| `state scene` | Return current runtime scene metadata such as scene name, dirty flag, node count, camera count, and light count |
 | `state toolbar` | Return the current toolbar mode, camera, preview, and debug flags |
 | `pick <x> <y>` | Run a scene pick against the current main scene view rect from console / API |
 | `recording status` | Return recorder enabled/active/detail/save state |
@@ -183,7 +183,7 @@ host, port, and token-file path.
 | `GET` | `/health` | Simple liveness check, no auth required |
 | `POST` | `/api/command` | Execute a command-console line from JSON `{ "line": "..." }` |
 | `GET` | `/api/state` | Return the full structured editor API snapshot |
-| `GET` | `/api/state/summary` | Return scene / dirty / mode / camera / preview / debug summary |
+| `GET` | `/api/state/summary` | Return scene / project / dirty / mode / camera / preview / debug summary |
 | `GET` | `/api/state/selection` | Return selection and last-hit-point state |
 | `GET` | `/api/state/cameras` | Return editor / gameplay camera state |
 | `GET` | `/api/state/scene` | Return scene metadata |
@@ -199,9 +199,9 @@ host, port, and token-file path.
   - `{"type":"command","line":"scene list"}`
 - Outbound messages:
   - `{"type":"command.response","payload":...}`
-  - event stream messages such as `command.executed`, `selection.changed`,
-    `mode.changed`, `preview.changed`, `dirty.changed`, `scene.loaded`,
-    and `scene.saved`
+  - event stream messages such as `command.executed`, `project.opened`,
+    `active_scene.changed`, `selection.changed`, `mode.changed`,
+    `preview.changed`, `dirty.changed`, and `scene.saved`
 
 ## MCP diagnostics
 

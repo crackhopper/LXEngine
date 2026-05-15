@@ -81,7 +81,7 @@
 
 `src/demos/lxe_editor/` 是当前正式交互编辑器入口。它不是新的渲染层，而是把现有 `core / infra / backend` 能力组织成可运行的场景作者环境：
 
-- scene 文档从 `assets/scenes/` 或 `data/scenes/` 加载，运行时由 `SceneRuntime` 构造 `Scene`
+- editor 从 `assets/project_templates/` 创建可写 project，再由 `SceneRuntime` 加载当前 project 的 active scene
 - ImGui overlay 提供 Scene Tree、Inspector、Console 和浮动 toolbar
 - Console、HTTP、WebSocket 和 MCP 入口最终都复用同一套 command-first surface
 - 本地 editor config / data / api token 存在 `data/lxe_editor/`，不属于 scene asset

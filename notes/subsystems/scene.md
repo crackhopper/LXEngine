@@ -77,21 +77,19 @@
 
 ## lxe_editor 场景工作流
 
-- `lxe_editor` 现在默认启动为空场景，不再自动打开样例。
-- 内置测试场景放在 `assets/scenes/`，在命令行里显示为 `asset`；本地用户场景放在 `data/scenes/`，显示为 `local`。
-- `scene list` 会同时列出 `asset` 和 `local`，并带类型标记。
-- `scene load <id-or-path>` 可以加载两类场景；当前实现会在下一次 update tick 切换 runtime。
-- `scene save` 会按当前来源和权限决定目标：
-  - `local` 直接覆盖本地文件
-  - `asset` 在普通 `user` 模式下不会被覆盖，而是重定向到 `data/scenes/<name>.<timestamp>.scene.yaml`
-  - `asset` 在 `admin` 模式下允许直接覆盖
-- `scene save <path>` 支持显式另存；如果显式路径仍指向受保护的 `asset` 区域且权限不是 `admin`，也会被重定向到 `local`。
-- `admin on` / `admin off` / `admin status` 控制当前编辑会话的最小两级权限。
-- 关闭 dirty 场景时会弹出 `Save / Discard / Cancel`；`Save` 走的就是同一条 `scene save` 决策路径，不会在 `user` 模式下静默覆盖内置 asset。
+- `lxe_editor` 启动时优先打开 `data/lxe_editor/editor_data.yaml` 记录的 last project；没有可用 project 时进入空 runtime scene。
+- 只读项目模板放在 `assets/project_templates/`。`project init <type> [name]` 会把模板复制到 `data/projects/`，生成可写 project。
+- project 可以包含多个 scene。`project.yaml` 记录 scene 列表、active scene 和 asset roots。
+- `scene list` 只列出当前 project 注册的 scenes。
+- `scene open <id-or-path>` 只在当前 project 内解析 scene，并在下一次 update tick 切换 runtime。
+- `scene save` 写回当前 project 的 active scene；`project save` 保存 project metadata，并确保 active scene 已落盘。
+- `scene new <scene-id>` / `scene duplicate <source-id> <new-id>` 会创建新的 project scene，并把它设为 active scene。
+- `scene remove <scene-id>` 只能删除非 active、非最后一个 scene。
+- 关闭 dirty 场景时会弹出 `Save / Discard / Cancel`；`Save` 走当前 project 的 `scene save` 路径。
 - `lxe_editor` 的编辑器配置保存在 `data/lxe_editor/editor_config.yaml`，其中记录主窗口几何、panel layout 和 `uiFontScale` 等长期配置。
 - `lxe_editor` 的本地运行数据保存在 `data/lxe_editor/editor_data.yaml`，当前至少包含最近 50 条 command console 历史。
 - `lxe_editor` 还会在 `data/lxe_editor/api_token.txt` 保存 API token，并在 `data/lxe_editor/runtime_state.yaml` 发布 HTTP / WebSocket / MCP 的当前发现信息。
-- 这两份本地文件都不参与 scene asset 序列化，也不进入版本库；它们不会保存当前 selection、preview 开关，scene path 也不属于 scene 文档本身。
+- `editor_data.yaml` 记录 last project 和 command history；它不参与 scene 序列化，也不进入版本库。
 - `lxe_editor` 当前主路径使用主场景视图点击选择、windowless ImGuizmo overlay，以及浮动 toolbar；toolbar 将 `Selection` editor mode、`Orbit` / `FreeFly` camera controls 和 `Preview` 分开呈现。
 - 主路径选择命中后，会通过 `DebugDraw` 持续显示选中节点自身的 world-space AABB，以及最近一次成功点击命中的交点小球；点空白会同时清掉选择和交点。
 - 进入 preview 后，主场景视图点击、`Esc` 取消选择、以及 `Delete` 删除节点都会被抑制，避免 gameplay camera 预览期间误改 editor state。
@@ -101,7 +99,7 @@
   - HTTP 负责命令调用和结构化状态查询。
   - WebSocket 负责事件流与远程命令响应。
   - MCP 作为单独的 localhost 诊断 transport，复用同一套 `LxeEditorApiService`，主要给 Codex 使用。
-  - 当前内置状态命令至少包括 `mode ...`、`state summary`、`state selection`、`state cameras`、`state scene`、`state toolbar`、`pick <x> <y>`、`quit`。
+  - 当前内置状态命令至少包括 `project ...`、`scene ...`、`mode ...`、`state summary`、`state selection`、`state cameras`、`state scene`、`state toolbar`、`pick <x> <y>`、`quit`。
   - transport 层不会直接绕过 `CommandBus` 改 editor state；`/api/command`、结构化 endpoint、以及 MCP tools/resources 最终都复用同一套 lxe_editor command surface。
   - 官方 editor 行为回归现在优先走 `tests/lxe_editor/` 下的 Python HTTP 黑盒测试；低层 C++ 测试保留给命令、交互、layout、transport 这些更适合进程内验证的逻辑。
 

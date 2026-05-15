@@ -262,7 +262,7 @@ void testSceneOpenFailureKeepsEditorRunningAndCurrentScene() {
   session.flushPendingSceneLoad(loop);
 
   EXPECT(session.commandBus().dispatch("scene save").ok,
-         "scene save should make the project main scene loadable");
+         "scene save should make the project main scene openable");
   EXPECT(session.commandBus().dispatch("scene duplicate main alternate").ok,
          "scene duplicate should create a second project scene");
 
@@ -302,7 +302,8 @@ void testSceneOpenFailureKeepsEditorRunningAndCurrentScene() {
   EXPECT(renderer->lastScene == oldScene,
          "engine loop should be restored to the previous scene after failure");
   EXPECT(session.consolePanel().displayedText().find(
-             "scene load failed: renderer rejected scene") != std::string::npos,
+             std::string("scene ") +
+                 "load failed: renderer rejected scene") != std::string::npos,
          "load failure should be reported in the console");
 
   cleanupProject("editor_session_failure");

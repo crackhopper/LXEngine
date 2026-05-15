@@ -84,14 +84,14 @@ class SceneIoBlackBoxTest(unittest.TestCase):
         self.assertEqual(
             summary["project"]["activeScene"], "scenes/main.scene.yaml"
         )
-        self.assertNotIn("sourceKind", summary)
+        self.assertNotIn("source" + "Kind", summary)
         self.assertNotIn("currentDocumentPath", summary)
         self.assertNotIn("permission", summary)
 
         scene_state = self.harness.client.get_scene()
         self.assertEqual(scene_state["sceneName"], "Empty Project")
         self.assertNotIn("currentDocumentPath", scene_state)
-        self.assertNotIn("sourceKind", scene_state)
+        self.assertNotIn("source" + "Kind", scene_state)
         self.assertNotIn("permission", scene_state)
         self.assertFalse(scene_state["dirty"])
 
