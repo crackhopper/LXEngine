@@ -175,6 +175,11 @@ void LxeEditorSession::initialize(DisplayCommandHooks displayCommandHooks) {
     }
   }
   if (!loadedRuntime) {
+    if (m_projectSession.hasProject()) {
+      (void)m_projectSession.closeProject();
+      m_editorData.lastProject.reset();
+      (void)m_editorDataState.save(m_editorData);
+    }
     m_runtime.createEmptyScene();
   }
   rebuildBindings(std::move(editorSceneState));
@@ -886,7 +891,7 @@ void LxeEditorSession::rebuildBindings(
           .setDebugEnabled =
               [this](const bool enabled) { m_debugEnabled = enabled; },
           .currentDocumentPath = [this]() -> std::optional<std::string> {
-            const auto path = m_projectSession.activeScenePath();
+            const auto path = currentDocumentPath();
             return path ? std::optional<std::string>(path->string())
                         : std::nullopt;
           },

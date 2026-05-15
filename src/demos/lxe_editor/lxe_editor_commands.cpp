@@ -507,6 +507,20 @@ makeDisplayHookError(const std::exception &error) {
   return makeError(std::string("display error: ") + error.what());
 }
 
+void clearUndoRedoOnSuccess(LX_core::CommandResult &result) {
+  result.metadata[std::string(
+      LX_core::kCommandResultClearUndoOnSuccessMetadataKey)] = "true";
+  result.metadata[std::string(
+      LX_core::kCommandResultClearRedoOnSuccessMetadataKey)] = "true";
+}
+
+void preserveUndoRedoOnSuccess(LX_core::CommandResult &result) {
+  result.metadata[std::string(
+      LX_core::kCommandResultClearUndoOnSuccessMetadataKey)] = "false";
+  result.metadata[std::string(
+      LX_core::kCommandResultClearRedoOnSuccessMetadataKey)] = "false";
+}
+
 } // namespace
 
 void registerLxeEditorCommands(LX_core::CommandBus &bus,
@@ -624,7 +638,15 @@ void registerLxeEditorCommands(LX_core::CommandBus &bus,
         if (!projectCommand) {
           return makeError("project command unavailable");
         }
-        return projectCommand(args);
+        LX_core::CommandResult result = projectCommand(args);
+        if (result.ok && !args.empty() &&
+            (args[0] == "init" || args[0] == "open" ||
+             args[0] == "close")) {
+          clearUndoRedoOnSuccess(result);
+        } else if (result.ok && !args.empty() && args[0] == "save") {
+          preserveUndoRedoOnSuccess(result);
+        }
+        return result;
       });
 
   bus.registerHandler(
@@ -640,16 +662,12 @@ void registerLxeEditorCommands(LX_core::CommandBus &bus,
           return makeError("scene command unavailable");
         }
         LX_core::CommandResult result = sceneCommand(args);
-        if (args[0] == "open" && result.ok) {
-          result.metadata[std::string(
-              LX_core::kCommandResultClearUndoOnSuccessMetadataKey)] = "true";
-          result.metadata[std::string(
-              LX_core::kCommandResultClearRedoOnSuccessMetadataKey)] = "true";
+        if ((args[0] == "open" || args[0] == "new" ||
+             args[0] == "duplicate") &&
+            result.ok) {
+          clearUndoRedoOnSuccess(result);
         } else if (args[0] == "save" && result.ok) {
-          result.metadata[std::string(
-              LX_core::kCommandResultClearUndoOnSuccessMetadataKey)] = "false";
-          result.metadata[std::string(
-              LX_core::kCommandResultClearRedoOnSuccessMetadataKey)] = "false";
+          preserveUndoRedoOnSuccess(result);
         }
         return result;
       });

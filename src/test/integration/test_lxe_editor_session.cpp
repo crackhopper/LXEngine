@@ -10,8 +10,11 @@
 
 #include <cmath>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <iterator>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -98,6 +101,45 @@ void cleanupProject(const std::string &projectName) {
   std::filesystem::remove_all(resolveRuntimePath("data/projects") /
                               projectName);
 }
+
+[[nodiscard]] std::string readTextFile(const std::filesystem::path &path) {
+  std::ifstream in(path, std::ios::binary);
+  return std::string(std::istreambuf_iterator<char>(in),
+                     std::istreambuf_iterator<char>());
+}
+
+void writeTextFile(const std::filesystem::path &path,
+                   const std::string &contents) {
+  std::filesystem::create_directories(path.parent_path());
+  std::ofstream out(path, std::ios::binary | std::ios::trunc);
+  out << contents;
+}
+
+class ScopedFileBackup final {
+public:
+  explicit ScopedFileBackup(std::filesystem::path path)
+      : m_path(std::move(path)) {
+    if (std::filesystem::exists(m_path)) {
+      m_contents = readTextFile(m_path);
+    }
+  }
+
+  ~ScopedFileBackup() {
+    if (m_contents.has_value()) {
+      writeTextFile(m_path, *m_contents);
+      return;
+    }
+    std::error_code ec;
+    std::filesystem::remove(m_path, ec);
+  }
+
+  ScopedFileBackup(const ScopedFileBackup &) = delete;
+  ScopedFileBackup &operator=(const ScopedFileBackup &) = delete;
+
+private:
+  std::filesystem::path m_path;
+  std::optional<std::string> m_contents;
+};
 
 void testProjectSceneOpenPreservesEditorCommandHistoryAndConsole() {
   const bool initialized = initializeRuntimeAssetRoot();
@@ -222,6 +264,14 @@ void testSceneOpenFailureKeepsEditorRunningAndCurrentScene() {
   EXPECT(
       session.currentDocumentPath() != session.activeScenePath(),
       "failed deferred scene open should leave the loaded document unchanged");
+  const auto stateScene = session.commandBus().dispatch("state scene");
+  EXPECT(stateScene.ok, "state scene should succeed after failed scene open");
+  EXPECT(stateScene.structured.find(session.currentDocumentPath()->string()) !=
+             std::string::npos,
+         "state scene should report the loaded runtime document path");
+  EXPECT(stateScene.structured.find(session.activeScenePath()->string()) ==
+             std::string::npos,
+         "state scene should not report the pending active scene path");
   const auto failedSave = session.commandBus().dispatch("scene save");
   EXPECT(!failedSave.ok,
          "scene save should not write while the active project scene is not "
@@ -235,6 +285,52 @@ void testSceneOpenFailureKeepsEditorRunningAndCurrentScene() {
          "load failure should be reported in the console");
 
   cleanupProject("editor_session_failure");
+}
+
+void testStartupClosesProjectWhenLastProjectSceneCannotLoad() {
+  const bool initialized = initializeRuntimeAssetRoot();
+  EXPECT(initialized,
+         "runtime asset root should initialize for startup fallback test");
+  if (!initialized) {
+    return;
+  }
+
+  cleanupProject("editor_session_broken_start");
+  const std::filesystem::path editorDataPath =
+      resolveRuntimePath("data/lxe_editor/editor_data.yaml");
+  ScopedFileBackup editorDataBackup(editorDataPath);
+  const std::filesystem::path projectRoot =
+      resolveRuntimePath("data/projects/editor_session_broken_start");
+  writeTextFile(projectRoot / "project.yaml",
+                "schema: lxe.project.v1\n"
+                "id: editor_session_broken_start\n"
+                "displayName: Broken Start\n"
+                "activeScene: scenes/missing.scene.yaml\n"
+                "scenes:\n"
+                "  - id: main\n"
+                "    path: scenes/missing.scene.yaml\n");
+  writeTextFile(editorDataPath,
+                "version: 1\n"
+                "lastProject: data/projects/editor_session_broken_start\n"
+                "consoleHistory: []\n");
+
+  LX_core::EditorState editorState;
+  LX_demo::lxe_editor::CameraRig rig;
+  LX_demo::lxe_editor::UiOverlay ui;
+  LX_demo::lxe_editor::LxeEditorSession session(rig, ui, editorState);
+  session.initialize();
+
+  EXPECT(!session.currentProjectId().has_value(),
+         "startup should close a project whose active scene cannot load");
+  EXPECT(!session.currentDocumentPath().has_value(),
+         "startup fallback should leave an unsaved empty runtime scene");
+  const auto status = session.commandBus().dispatch("project status");
+  EXPECT(status.ok && status.structured == "null",
+         "project status should report no open project after startup fallback");
+  EXPECT(readTextFile(editorDataPath).find("lastProject") == std::string::npos,
+         "startup fallback should clear the broken lastProject entry");
+
+  cleanupProject("editor_session_broken_start");
 }
 
 void testProjectCloseCancelsPendingSceneOpen() {
@@ -411,6 +507,7 @@ void testSceneSaveLoadRoundTripsEditorSidecarState() {
 int main() {
   testProjectSceneOpenPreservesEditorCommandHistoryAndConsole();
   testSceneOpenFailureKeepsEditorRunningAndCurrentScene();
+  testStartupClosesProjectWhenLastProjectSceneCannotLoad();
   testProjectCloseCancelsPendingSceneOpen();
   testEditorDoesNotCreateCameraOrLightHelperNodes();
   testRecordingCommandControlsSessionRecorder();

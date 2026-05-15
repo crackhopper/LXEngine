@@ -1078,6 +1078,30 @@ void testSceneOpenClearsRedoHistory() {
   EXPECT(openRedoResult.ok, "scene open should succeed with redo history present");
   EXPECT(!redoFixture.base.bus.canRedo(),
          "successful scene open should clear stale redo history");
+
+  SceneViewerCommandFixture projectFixture;
+  const CommandResult projectMove =
+      projectFixture.base.bus.dispatch("move /world/cube 1 0 0");
+  EXPECT(projectMove.ok, "project replacement setup move should succeed");
+  EXPECT(projectFixture.base.bus.canUndo(),
+         "mutating command should leave undo history before project init");
+  const CommandResult projectInit =
+      projectFixture.base.bus.dispatch("project init empty replacement");
+  EXPECT(projectInit.ok, "project init should succeed through callback");
+  EXPECT(!projectFixture.base.bus.canUndo(),
+         "successful project init should clear stale undo history");
+
+  SceneViewerCommandFixture newSceneFixture;
+  const CommandResult newSceneMove =
+      newSceneFixture.base.bus.dispatch("move /world/cube 1 0 0");
+  EXPECT(newSceneMove.ok, "scene new setup move should succeed");
+  EXPECT(newSceneFixture.base.bus.canUndo(),
+         "mutating command should leave undo history before scene new");
+  const CommandResult sceneNew =
+      newSceneFixture.base.bus.dispatch("scene new replacement");
+  EXPECT(sceneNew.ok, "scene new should succeed through callback");
+  EXPECT(!newSceneFixture.base.bus.canUndo(),
+         "successful scene new should clear stale undo history");
 }
 
 void testSceneSavePreservesRedoHistory() {
