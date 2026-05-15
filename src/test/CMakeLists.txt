@@ -238,14 +238,15 @@ if(TARGET test_lxe_editor_session)
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_scene_state.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_build_info.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_commands.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/project_catalog.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/project_document.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/project_session.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/recording_controller.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_builder.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_catalog.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_document.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_interaction_controller.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_input_routing.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_runtime.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_session.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/ui_overlay.cpp
   )
   target_include_directories(test_lxe_editor_session PRIVATE
@@ -303,14 +304,15 @@ if(TARGET test_lxe_editor_memory_probe)
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_scene_state.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_build_info.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_commands.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/project_catalog.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/project_document.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/project_session.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/recording_controller.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_builder.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_catalog.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_document.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_interaction_controller.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_input_routing.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_runtime.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_session.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/ui_overlay.cpp
   )
   target_include_directories(test_lxe_editor_memory_probe PRIVATE

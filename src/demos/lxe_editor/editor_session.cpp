@@ -12,14 +12,14 @@
 #include "demos/lxe_editor/builtin_asset_catalog.hpp"
 #include "demos/lxe_editor/lxe_editor_build_info.hpp"
 #include "demos/lxe_editor/lxe_editor_commands.hpp"
+#include "demos/lxe_editor/project_catalog.hpp"
 #include "demos/lxe_editor/scene_builder.hpp"
 #include "demos/lxe_editor/scene_interaction_controller.hpp"
 
-#include <chrono>
-#include <ctime>
 #include <exception>
 #include <functional>
 #include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <unordered_set>
@@ -71,24 +71,6 @@ namespace {
 makeCommandOk(std::string message, std::string structured = {}) {
   return LX_core::CommandResult{true, std::move(message),
                                 std::move(structured)};
-}
-
-[[nodiscard]] std::string currentTimestampString() {
-  const auto now = std::chrono::system_clock::now();
-  const std::time_t timeNow = std::chrono::system_clock::to_time_t(now);
-  std::tm tmNow{};
-#if defined(_WIN32)
-  localtime_s(&tmNow, &timeNow);
-#else
-  localtime_r(&timeNow, &tmNow);
-#endif
-  char buffer[32] = {};
-  std::strftime(buffer, sizeof(buffer), "%Y-%m-%d-%H%M%S", &tmNow);
-  return buffer;
-}
-
-[[nodiscard]] std::string sceneSourceKindName(const SceneSourceKind kind) {
-  return kind == SceneSourceKind::Asset ? "asset" : "local";
 }
 
 [[nodiscard]] std::string
@@ -159,12 +141,8 @@ requireCameraComponent(const LX_core::SceneNodeSharedPtr &node,
 LxeEditorSession::LxeEditorSession(CameraRig &rig, UiOverlay &ui,
                                    LX_core::EditorState &editorState)
     : m_rig(rig), m_ui(ui), m_editorState(editorState),
-      m_catalog(SceneCatalogRoots{
-          .assetRoots = {resolveRuntimePath("assets/scenes")},
-          .localRoots = {resolveRuntimePath("data/scenes")},
-      }),
-      m_session(resolveRuntimePath("data/scenes"),
-                [] { return currentTimestampString(); }),
+      m_projectSession(resolveRuntimePath("assets/project_templates"),
+                       resolveRuntimePath("data/projects")),
       m_editorDataState(resolveRuntimePath("data/lxe_editor")),
       m_recording(resolveRuntimePath("data/lxe_editor")) {}
 
@@ -173,11 +151,28 @@ LxeEditorSession::~LxeEditorSession() = default;
 void LxeEditorSession::initialize(DisplayCommandHooks displayCommandHooks) {
   m_displayCommandHooks = std::move(displayCommandHooks);
   m_editorData = m_editorDataState.load();
-  refreshCatalog();
-  m_runtime.createEmptyScene();
-  m_session.setCurrentDocument(std::nullopt, std::nullopt);
-  m_session.setDirty(false);
-  rebuildBindings();
+  std::optional<EditorSceneStateDocument> editorSceneState;
+  bool loadedRuntime = false;
+  if (m_editorData.lastProject.has_value()) {
+    const auto opened =
+        m_projectSession.openProject(m_editorData.lastProject->string());
+    if (opened.ok) {
+      if (const auto activePath = m_projectSession.activeScenePath();
+          activePath.has_value()) {
+        try {
+          m_runtime.loadFromDocumentPath(*activePath);
+          editorSceneState = loadEditorSceneStateIfPresent(*activePath);
+          loadedRuntime = true;
+        } catch (const std::exception &) {
+          loadedRuntime = false;
+        }
+      }
+    }
+  }
+  if (!loadedRuntime) {
+    m_runtime.createEmptyScene();
+  }
+  rebuildBindings(std::move(editorSceneState));
 }
 
 LX_core::SceneSharedPtr LxeEditorSession::scene() const {
@@ -198,7 +193,7 @@ LX_core::CameraComponent &LxeEditorSession::gameCamera() const {
       .get();
 }
 
-bool LxeEditorSession::isDirty() const { return m_session.isDirty(); }
+bool LxeEditorSession::isDirty() const { return m_projectSession.dirty(); }
 
 void LxeEditorSession::setWindowSize(const LX_core::Vec2f &size) {
   m_windowSize = size;
@@ -221,7 +216,7 @@ usize LxeEditorSession::bindingsGeneration() const {
 }
 
 ScenePermissionLevel LxeEditorSession::permission() const {
-  return m_session.permission();
+  return ScenePermissionLevel::User;
 }
 
 bool LxeEditorSession::debugEnabled() const { return m_debugEnabled; }
@@ -232,14 +227,30 @@ const RecordingController &LxeEditorSession::recording() const {
   return m_recording;
 }
 
-const std::optional<std::filesystem::path> &
+std::optional<std::filesystem::path>
 LxeEditorSession::currentDocumentPath() const {
-  return m_session.currentDocumentPath();
+  return m_projectSession.activeScenePath();
 }
 
-const std::optional<SceneSourceKind> &
-LxeEditorSession::currentSourceKind() const {
-  return m_session.currentSourceKind();
+std::optional<SceneSourceKind> LxeEditorSession::currentSourceKind() const {
+  return std::nullopt;
+}
+
+std::optional<std::string> LxeEditorSession::currentProjectId() const {
+  const auto &project = m_projectSession.currentProject();
+  if (!project.has_value()) {
+    return std::nullopt;
+  }
+  return project->id;
+}
+
+std::optional<std::filesystem::path>
+LxeEditorSession::currentProjectRoot() const {
+  return m_projectSession.projectRoot();
+}
+
+std::optional<std::filesystem::path> LxeEditorSession::activeScenePath() const {
+  return m_projectSession.activeScenePath();
 }
 
 void LxeEditorSession::persistEditorData() {
@@ -264,32 +275,11 @@ void LxeEditorSession::recordCommandHistoryLine(std::string_view line) {
 
 LX_core::CommandResult
 LxeEditorSession::saveScene(const std::optional<std::string> &path) {
-  try {
-    const std::optional<std::filesystem::path> explicitPath =
-        path.has_value() ? std::optional<std::filesystem::path>(*path)
-                         : std::nullopt;
-    const SaveDecision decision = m_session.decideSaveTarget(
-        explicitPath,
-        m_runtime.scene() ? m_runtime.scene()->getSceneName() : "Scene");
-    m_runtime.saveToDocumentPath(decision.path);
-    saveEditorSceneStateForScenePath(decision.path, captureEditorSceneState());
-    m_session.setCurrentDocument(decision.path, decision.kind);
-    m_session.setDirty(false);
-    refreshCatalog();
-
-    std::string message = "saved scene " + decision.path.string();
-    if (decision.redirectedFromAsset) {
-      message =
-          "asset is read-only; saved local copy " + decision.path.string();
-    }
-    return makeCommandOk(
-        std::move(message),
-        "{\"path\":\"" + jsonEscape(decision.path.string()) + "\",\"kind\":\"" +
-            sceneSourceKindName(decision.kind) + "\",\"redirectedFromAsset\":" +
-            std::string(decision.redirectedFromAsset ? "true" : "false") + "}");
-  } catch (const std::exception &e) {
-    return makeCommandError(e.what());
+  if (path.has_value()) {
+    return makeCommandError(
+        "scene save is project-scoped; use scene save without a path");
   }
+  return saveActiveProjectScene();
 }
 
 void LxeEditorSession::flushPendingSceneLoad(LX_core::gpu::EngineLoop &loop) {
@@ -298,11 +288,11 @@ void LxeEditorSession::flushPendingSceneLoad(LX_core::gpu::EngineLoop &loop) {
   }
 
   SceneRuntime nextRuntime = std::move(*m_pendingRuntime);
-  const std::optional<SceneSourceKind> nextSourceKind = m_pendingSourceKind;
+  const std::optional<std::filesystem::path> nextScenePath = m_pendingScenePath;
   std::optional<EditorSceneStateDocument> nextEditorSceneState =
       std::move(m_pendingEditorSceneState);
   m_pendingRuntime.reset();
-  m_pendingSourceKind.reset();
+  m_pendingScenePath.reset();
   m_pendingEditorSceneState.reset();
 
   try {
@@ -326,12 +316,7 @@ void LxeEditorSession::flushPendingSceneLoad(LX_core::gpu::EngineLoop &loop) {
   }
 
   m_runtime = std::move(nextRuntime);
-  if (nextSourceKind.has_value() && m_runtime.documentPath().has_value()) {
-    m_session.setCurrentDocument(*m_runtime.documentPath(), *nextSourceKind);
-  } else {
-    m_session.setCurrentDocument(m_runtime.documentPath(), std::nullopt);
-  }
-  m_session.setDirty(false);
+  (void)nextScenePath;
   rebuildBindings(std::move(nextEditorSceneState));
 }
 
@@ -343,7 +328,7 @@ void LxeEditorSession::pollCommandHistory(LX_core::gpu::EngineLoop &loop) {
   while (m_lastObservedHistoryIndex < history.size()) {
     const auto &entry = history[m_lastObservedHistoryIndex++];
     if (entry.result.ok && commandMarksSceneDirty(entry.line)) {
-      m_session.setDirty(true);
+      m_projectSession.setDirty(true);
     }
     if (entry.result.ok && commandRequestsSceneRebuild(entry.result)) {
       loop.requestSceneRebuild();
@@ -361,81 +346,286 @@ void LxeEditorSession::pollCommandHistory(LX_core::gpu::EngineLoop &loop) {
   }
 }
 
-void LxeEditorSession::refreshCatalog() { m_catalog.refresh(); }
-
-LX_core::CommandResult LxeEditorSession::listScenes() {
-  refreshCatalog();
-  std::string message =
-      "listed " + std::to_string(m_catalog.entries().size()) + " scene(s)";
-  const auto &entries = m_catalog.entries();
-  if (!entries.empty()) {
-    message += ":\n";
-    for (size_t i = 0; i < entries.size(); ++i) {
-      if (i != 0) {
-        message += '\n';
-      }
-      message += "- [";
-      message += sceneSourceKindName(entries[i].kind);
-      message += "] ";
-      message += entries[i].id;
-      message += " -> ";
-      message += entries[i].path.string();
-    }
+LX_core::CommandResult LxeEditorSession::queueActiveSceneOpen() {
+  const auto activePath = m_projectSession.activeScenePath();
+  if (!activePath.has_value()) {
+    return makeCommandError("no active project scene; use project init first");
   }
-  std::string structured = "{\"entries\":[";
-  for (size_t i = 0; i < entries.size(); ++i) {
-    if (i != 0) {
-      structured += ",";
-    }
-    structured += "{\"id\":\"" + jsonEscape(entries[i].id) + "\",\"kind\":\"" +
-                  sceneSourceKindName(entries[i].kind) + "\",\"path\":\"" +
-                  jsonEscape(entries[i].path.string()) + "\"}";
-  }
-  structured += "]}";
-  return makeCommandOk(std::move(message), std::move(structured));
-}
-
-LX_core::CommandResult
-LxeEditorSession::queueSceneLoad(const std::string &path) {
   try {
-    refreshCatalog();
-    const std::filesystem::path resolvedPath =
-        m_catalog.resolveNameOrPath(path);
-    const auto classified = m_catalog.classifyPath(resolvedPath);
     SceneRuntime loaded;
-    loaded.loadFromDocumentPath(resolvedPath);
+    loaded.loadFromDocumentPath(*activePath);
     const auto loadedPath = loaded.documentPath();
     if (!loadedPath.has_value()) {
-      return makeCommandError("queued scene load produced no document path");
+      return makeCommandError("queued scene open produced no document path");
     }
     m_pendingRuntime = std::move(loaded);
-    m_pendingSourceKind =
-        classified ? std::optional{classified->kind} : std::nullopt;
+    m_pendingScenePath = *loadedPath;
     m_pendingEditorSceneState = loadEditorSceneStateIfPresent(*loadedPath);
     return makeCommandOk(
-        "queued scene load for next update tick: " + loadedPath->string(),
-        "{\"path\":\"" + jsonEscape(loadedPath->string()) + "\",\"kind\":\"" +
-            jsonEscape(classified ? sceneSourceKindName(classified->kind)
-                                  : std::string("external")) +
+        "queued scene open for next update tick: " + loadedPath->string(),
+        "{\"path\":\"" + jsonEscape(loadedPath->string()) +
             "\",\"status\":\"queued\",\"deferredUntil\":\"next_update_tick\"}");
   } catch (const std::exception &e) {
     return makeCommandError(e.what());
   }
 }
 
+LX_core::CommandResult LxeEditorSession::saveActiveProjectScene() {
+  if (!m_projectSession.hasProject()) {
+    return makeCommandError("no project is open; use project init first");
+  }
+  const auto activePath = m_projectSession.activeScenePath();
+  if (!activePath.has_value()) {
+    return makeCommandError("project has no active scene");
+  }
+  try {
+    m_runtime.saveToDocumentPath(*activePath);
+    saveEditorSceneStateForScenePath(*activePath, captureEditorSceneState());
+    const auto saved = m_projectSession.saveProject();
+    if (!saved.ok) {
+      return makeCommandError(saved.message);
+    }
+    m_editorData.lastProject = m_projectSession.projectRoot();
+    persistEditorData();
+    return makeCommandOk("saved project scene " + activePath->string(),
+                         "{\"path\":\"" + jsonEscape(activePath->string()) +
+                             "\",\"project\":" + projectSummaryJson() + "}");
+  } catch (const std::exception &e) {
+    return makeCommandError(e.what());
+  }
+}
+
+LX_core::CommandResult
+LxeEditorSession::handleProjectCommand(const std::vector<std::string> &args) {
+  if (args.empty() || args[0] == "status") {
+    return makeCommandOk(projectSummaryJson(), projectSummaryJson());
+  }
+  if (args[0] == "templates") {
+    if (args.size() > 2 || (args.size() == 2 && args[1] != "list")) {
+      return makeCommandError("usage: project templates [list]");
+    }
+    ProjectTemplateCatalog catalog(
+        resolveRuntimePath("assets/project_templates"));
+    catalog.refresh();
+    std::ostringstream oss;
+    oss << "{\"templates\":[";
+    const auto &entries = catalog.entries();
+    for (usize i = 0; i < entries.size(); ++i) {
+      if (i != 0) {
+        oss << ',';
+      }
+      oss << "{\"id\":\"" << jsonEscape(entries[i].id)
+          << "\",\"displayName\":\"" << jsonEscape(entries[i].displayName)
+          << "\",\"path\":\"" << jsonEscape(entries[i].path.string()) << "\"}";
+    }
+    oss << "]}";
+    return makeCommandOk("listed project templates", oss.str());
+  }
+  if (args[0] == "list") {
+    ProjectCatalog catalog(resolveRuntimePath("data/projects"));
+    catalog.refresh();
+    std::ostringstream oss;
+    oss << "{\"projects\":[";
+    const auto &entries = catalog.entries();
+    for (usize i = 0; i < entries.size(); ++i) {
+      if (i != 0) {
+        oss << ',';
+      }
+      oss << "{\"id\":\"" << jsonEscape(entries[i].id)
+          << "\",\"displayName\":\"" << jsonEscape(entries[i].displayName)
+          << "\",\"path\":\"" << jsonEscape(entries[i].path.string()) << "\"}";
+    }
+    oss << "]}";
+    return makeCommandOk("listed projects", oss.str());
+  }
+  if (args[0] == "init") {
+    if (args.size() < 2) {
+      return makeCommandError(
+          "usage: project init <template-id> [project-name]");
+    }
+    std::optional<std::string> projectName;
+    if (args.size() > 2) {
+      projectName = args[2];
+      for (usize i = 3; i < args.size(); ++i) {
+        *projectName += " " + args[i];
+      }
+    }
+    const auto initialized = m_projectSession.initProject(args[1], projectName);
+    if (!initialized.ok) {
+      return makeCommandError(initialized.message);
+    }
+    m_editorData.lastProject = m_projectSession.projectRoot();
+    persistEditorData();
+    LX_core::CommandResult queued = queueActiveSceneOpen();
+    if (!queued.ok) {
+      try {
+        const auto activePath = m_projectSession.activeScenePath();
+        if (activePath.has_value()) {
+          m_runtime.saveToDocumentPath(*activePath);
+          saveEditorSceneStateForScenePath(*activePath,
+                                           captureEditorSceneState());
+          queued = queueActiveSceneOpen();
+        }
+      } catch (const std::exception &) {}
+    }
+    if (!queued.ok) {
+      return makeCommandOk("project initialized; active scene load failed: " +
+                               queued.message,
+                           initialized.structuredJson);
+    }
+    return makeCommandOk(initialized.message, initialized.structuredJson);
+  }
+  if (args[0] == "open") {
+    if (args.size() != 2) {
+      return makeCommandError("usage: project open <project-id-or-path>");
+    }
+    const auto opened = m_projectSession.openProject(args[1]);
+    if (!opened.ok) {
+      return makeCommandError(opened.message);
+    }
+    m_editorData.lastProject = m_projectSession.projectRoot();
+    persistEditorData();
+    const auto queued = queueActiveSceneOpen();
+    if (!queued.ok) {
+      return makeCommandError("project opened but active scene load failed: " +
+                              queued.message);
+    }
+    return makeCommandOk(opened.message, opened.structuredJson);
+  }
+  if (args[0] == "save") {
+    if (args.size() != 1) {
+      return makeCommandError("usage: project save");
+    }
+    return saveActiveProjectScene();
+  }
+  if (args[0] == "close") {
+    if (args.size() != 1) {
+      return makeCommandError("usage: project close");
+    }
+    const auto closed = m_projectSession.closeProject();
+    m_editorData.lastProject.reset();
+    persistEditorData();
+    m_runtime.createEmptyScene();
+    rebuildBindings();
+    return makeCommandOk(closed.message, closed.structuredJson);
+  }
+  return makeCommandError(
+      "usage: project templates [list] | project list | project init "
+      "<template-id> [project-name] | project open <project-id-or-path> | "
+      "project save | project status | project close");
+}
+
+LX_core::CommandResult
+LxeEditorSession::handleSceneCommand(const std::vector<std::string> &args) {
+  if (args.empty() || args[0] == "status") {
+    return makeCommandOk(projectSummaryJson(), projectSummaryJson());
+  }
+  if (args[0] == "list") {
+    const auto &project = m_projectSession.currentProject();
+    if (!project.has_value()) {
+      return makeCommandError("no project is open; use project init first");
+    }
+    std::ostringstream oss;
+    oss << "{\"scenes\":[";
+    for (usize i = 0; i < project->scenes.size(); ++i) {
+      if (i != 0) {
+        oss << ',';
+      }
+      const auto &scene = project->scenes[i];
+      oss << "{\"id\":\"" << jsonEscape(scene.id) << "\",\"path\":\""
+          << jsonEscape(scene.path.generic_string()) << "\"}";
+    }
+    oss << "],\"activeScene\":\""
+        << jsonEscape(project->activeScene.generic_string()) << "\"}";
+    return makeCommandOk("listed project scenes", oss.str());
+  }
+  if (args[0] == "save") {
+    if (args.size() != 1) {
+      return makeCommandError("usage: scene save");
+    }
+    return saveActiveProjectScene();
+  }
+  if (args[0] == "open") {
+    if (args.size() != 2) {
+      return makeCommandError("usage: scene open <scene-id-or-path>");
+    }
+    const auto opened = m_projectSession.openScene(args[1]);
+    if (!opened.ok) {
+      return makeCommandError(opened.message);
+    }
+    const auto queued = queueActiveSceneOpen();
+    if (!queued.ok) {
+      return makeCommandError(queued.message);
+    }
+    return makeCommandOk(opened.message, opened.structuredJson);
+  }
+  if (args[0] == "new") {
+    if (args.size() != 2) {
+      return makeCommandError("usage: scene new <scene-id>");
+    }
+    const auto created = m_projectSession.newScene(args[1]);
+    if (!created.ok) {
+      return makeCommandError(created.message);
+    }
+    const auto queued = queueActiveSceneOpen();
+    if (!queued.ok) {
+      return makeCommandError(queued.message);
+    }
+    return makeCommandOk(created.message, created.structuredJson);
+  }
+  if (args[0] == "duplicate") {
+    if (args.size() != 3) {
+      return makeCommandError("usage: scene duplicate <source-id> <new-id>");
+    }
+    const auto duplicated = m_projectSession.duplicateScene(args[1], args[2]);
+    if (!duplicated.ok) {
+      return makeCommandError(duplicated.message);
+    }
+    const auto queued = queueActiveSceneOpen();
+    if (!queued.ok) {
+      return makeCommandError(queued.message);
+    }
+    return makeCommandOk(duplicated.message, duplicated.structuredJson);
+  }
+  if (args[0] == "remove") {
+    if (args.size() != 2) {
+      return makeCommandError("usage: scene remove <scene-id>");
+    }
+    const auto removed = m_projectSession.removeScene(args[1]);
+    if (!removed.ok) {
+      return makeCommandError(removed.message);
+    }
+    return makeCommandOk(removed.message, removed.structuredJson);
+  }
+  return makeCommandError(
+      "usage: scene list | scene open <scene-id-or-path> | scene save | "
+      "scene new <scene-id> | scene duplicate <source-id> <new-id> | "
+      "scene remove <scene-id> | scene status");
+}
+
+std::string LxeEditorSession::projectSummaryJson() const {
+  const auto &project = m_projectSession.currentProject();
+  const auto &projectRoot = m_projectSession.projectRoot();
+  if (!project.has_value() || !projectRoot.has_value()) {
+    return "null";
+  }
+  std::ostringstream oss;
+  oss << "{\"id\":\"" << jsonEscape(project->id) << "\",\"displayName\":\""
+      << jsonEscape(project->displayName) << "\",\"path\":\""
+      << jsonEscape(projectRoot->string())
+      << "\",\"dirty\":" << (m_projectSession.dirty() ? "true" : "false")
+      << ",\"activeScene\":\""
+      << jsonEscape(project->activeScene.generic_string()) << "\"}";
+  return oss.str();
+}
+
 LX_core::CommandResult LxeEditorSession::setAdmin(const bool enabled) {
-  m_session.setPermission(enabled ? ScenePermissionLevel::Admin
-                                  : ScenePermissionLevel::User);
-  return makeCommandOk(enabled ? "admin enabled" : "admin disabled",
-                       enabled ? "{\"permission\":\"admin\"}"
-                               : "{\"permission\":\"user\"}");
+  (void)enabled;
+  return makeCommandError("admin scene-source mode was removed");
 }
 
 LX_core::CommandResult LxeEditorSession::adminStatus() const {
-  const bool enabled = m_session.permission() == ScenePermissionLevel::Admin;
-  return makeCommandOk(enabled ? "admin" : "user",
-                       enabled ? "{\"permission\":\"admin\"}"
-                               : "{\"permission\":\"user\"}");
+  return makeCommandOk("user", "{\"permission\":\"user\"}");
 }
 
 EditorSceneStateDocument LxeEditorSession::captureEditorSceneState() const {
@@ -495,12 +685,19 @@ void LxeEditorSession::rebuildBindings(
       *m_commandBus, m_editorState, *m_runtime.scene(),
       LX_core::SceneIoContext{
           .load =
-              [this](const std::string &path) { return queueSceneLoad(path); },
+              [](const std::string &) {
+                return makeCommandError(
+                    "scene load was removed; use scene open");
+              },
           .save =
               [this](const std::optional<std::string> &path) {
                 return saveScene(path);
               },
-          .list = [this]() { return listScenes(); },
+          .list =
+              []() {
+                return makeCommandError(
+                    "scene list is project-scoped; use scene list");
+              },
           .setAdmin = [this](const bool enabled) { return setAdmin(enabled); },
           .adminStatus = [this]() { return adminStatus(); },
           .cameraControl =
@@ -695,28 +892,25 @@ void LxeEditorSession::rebuildBindings(
               },
           .sceneViewRect =
               [this]() { return m_ui.sceneViewRect(m_windowSize); },
-          .dirty = [this]() { return m_session.isDirty(); },
-          .permission =
-              [this]() {
-                return m_session.permission() == ScenePermissionLevel::Admin
-                           ? std::string("admin")
-                           : std::string("user");
-              },
+          .dirty = [this]() { return m_projectSession.dirty(); },
+          .permission = []() { return std::string("user"); },
           .debugEnabled = [this]() { return m_debugEnabled; },
           .setDebugEnabled =
               [this](const bool enabled) { m_debugEnabled = enabled; },
           .currentDocumentPath = [this]() -> std::optional<std::string> {
-            const auto path = m_session.currentDocumentPath();
+            const auto path = m_projectSession.activeScenePath();
             return path ? std::optional<std::string>(path->string())
                         : std::nullopt;
           },
-          .currentSourceKind = [this]() -> std::optional<std::string> {
-            const auto kind = m_session.currentSourceKind();
-            if (!kind.has_value()) {
-              return std::nullopt;
-            }
-            return sceneSourceKindName(*kind);
-          },
+          .projectCommand =
+              [this](const std::vector<std::string> &args) {
+                return handleProjectCommand(args);
+              },
+          .sceneCommand =
+              [this](const std::vector<std::string> &args) {
+                return handleSceneCommand(args);
+              },
+          .projectSummaryJson = [this]() { return projectSummaryJson(); },
           .persistedHistory =
               [this]() {
                 return m_consolePanel ? m_consolePanel->persistedHistory()

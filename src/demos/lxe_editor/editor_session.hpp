@@ -8,8 +8,8 @@
 #include "demos/lxe_editor/editor_config_state.hpp"
 #include "demos/lxe_editor/editor_data_state.hpp"
 #include "demos/lxe_editor/editor_scene_state.hpp"
+#include "demos/lxe_editor/project_session.hpp"
 #include "demos/lxe_editor/recording_controller.hpp"
-#include "demos/lxe_editor/scene_catalog.hpp"
 #include "demos/lxe_editor/scene_runtime.hpp"
 #include "demos/lxe_editor/scene_session.hpp"
 #include "demos/lxe_editor/ui_overlay.hpp"
@@ -20,6 +20,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace LX_core {
 class CommandBus;
@@ -44,55 +45,61 @@ public:
     std::function<std::string(std::string_view)> displaySelect;
   };
 
-  LxeEditorSession(CameraRig& rig, UiOverlay& ui,
-                   LX_core::EditorState& editorState);
+  LxeEditorSession(CameraRig &rig, UiOverlay &ui,
+                   LX_core::EditorState &editorState);
   ~LxeEditorSession();
 
   void initialize(DisplayCommandHooks displayCommandHooks = {});
 
   [[nodiscard]] LX_core::SceneSharedPtr scene() const;
-  [[nodiscard]] LX_core::CameraComponent& editorCamera() const;
-  [[nodiscard]] SceneInteractionController& sceneInteraction() const;
-  [[nodiscard]] LX_core::CameraComponent& gameCamera() const;
+  [[nodiscard]] LX_core::CameraComponent &editorCamera() const;
+  [[nodiscard]] SceneInteractionController &sceneInteraction() const;
+  [[nodiscard]] LX_core::CameraComponent &gameCamera() const;
   [[nodiscard]] bool isDirty() const;
-  void setWindowSize(const LX_core::Vec2f& size);
-  [[nodiscard]] EditorConfigDocument& editorConfig();
-  [[nodiscard]] LX_core::CommandBus& commandBus() const;
-  [[nodiscard]] const LX_core::ConsolePanel& consolePanel() const;
+  void setWindowSize(const LX_core::Vec2f &size);
+  [[nodiscard]] EditorConfigDocument &editorConfig();
+  [[nodiscard]] LX_core::CommandBus &commandBus() const;
+  [[nodiscard]] const LX_core::ConsolePanel &consolePanel() const;
   [[nodiscard]] usize bindingsGeneration() const;
   [[nodiscard]] ScenePermissionLevel permission() const;
   [[nodiscard]] bool debugEnabled() const;
-  [[nodiscard]] RecordingController& recording();
-  [[nodiscard]] const RecordingController& recording() const;
-  [[nodiscard]] const std::optional<std::filesystem::path>&
+  [[nodiscard]] RecordingController &recording();
+  [[nodiscard]] const RecordingController &recording() const;
+  [[nodiscard]] std::optional<std::filesystem::path>
   currentDocumentPath() const;
-  [[nodiscard]] const std::optional<SceneSourceKind>& currentSourceKind() const;
+  [[nodiscard]] std::optional<SceneSourceKind> currentSourceKind() const;
+  [[nodiscard]] std::optional<std::string> currentProjectId() const;
+  [[nodiscard]] std::optional<std::filesystem::path> currentProjectRoot() const;
+  [[nodiscard]] std::optional<std::filesystem::path> activeScenePath() const;
   void persistEditorData();
   void recordCommandHistoryLine(std::string_view line);
   [[nodiscard]] LX_core::CommandResult
-  saveScene(const std::optional<std::string>& path);
-  void flushPendingSceneLoad(LX_core::gpu::EngineLoop& loop);
-  void pollCommandHistory(LX_core::gpu::EngineLoop& loop);
+  saveScene(const std::optional<std::string> &path);
+  void flushPendingSceneLoad(LX_core::gpu::EngineLoop &loop);
+  void pollCommandHistory(LX_core::gpu::EngineLoop &loop);
 
 private:
-  void refreshCatalog();
-  [[nodiscard]] LX_core::CommandResult listScenes();
-  [[nodiscard]] LX_core::CommandResult queueSceneLoad(const std::string& path);
+  [[nodiscard]] LX_core::CommandResult
+  handleProjectCommand(const std::vector<std::string> &args);
+  [[nodiscard]] LX_core::CommandResult
+  handleSceneCommand(const std::vector<std::string> &args);
+  [[nodiscard]] LX_core::CommandResult queueActiveSceneOpen();
+  [[nodiscard]] LX_core::CommandResult saveActiveProjectScene();
+  [[nodiscard]] std::string projectSummaryJson() const;
   [[nodiscard]] LX_core::CommandResult setAdmin(bool enabled);
   [[nodiscard]] LX_core::CommandResult adminStatus() const;
   [[nodiscard]] EditorSceneStateDocument captureEditorSceneState() const;
-  void applyEditorSceneState(const EditorSceneStateDocument& state);
+  void applyEditorSceneState(const EditorSceneStateDocument &state);
   void rebuildBindings(
       std::optional<EditorSceneStateDocument> editorSceneState = std::nullopt);
 
-  CameraRig& m_rig;
-  UiOverlay& m_ui;
-  LX_core::EditorState& m_editorState;
-  SceneCatalog m_catalog;
-  SceneSession m_session;
+  CameraRig &m_rig;
+  UiOverlay &m_ui;
+  LX_core::EditorState &m_editorState;
+  ProjectSession m_projectSession;
   SceneRuntime m_runtime;
   std::optional<SceneRuntime> m_pendingRuntime;
-  std::optional<SceneSourceKind> m_pendingSourceKind;
+  std::optional<std::filesystem::path> m_pendingScenePath;
   std::optional<EditorSceneStateDocument> m_pendingEditorSceneState;
   std::unique_ptr<LX_core::CommandBus> m_commandBus;
   std::unique_ptr<LX_core::ConsolePanel> m_consolePanel;

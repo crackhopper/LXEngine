@@ -33,7 +33,7 @@ class FakeWindow final : public LX_core::Window {
 public:
   int getWidth() const override { return 800; }
   int getHeight() const override { return 600; }
-  void updateSize(bool* closed, int* width, int* height) override {
+  void updateSize(bool *closed, int *width, int *height) override {
     if (closed) {
       *closed = false;
     }
@@ -44,13 +44,13 @@ public:
       *height = getHeight();
     }
   }
-  void getRequiredExtensions(std::vector<const char*>&) const override {}
-  LX_core::WindowGraphicsHandle createGraphicsHandle(
-      GraphicsAPI, LX_core::GraphicsInstanceHandle) const override {
+  void getRequiredExtensions(std::vector<const char *> &) const override {}
+  LX_core::WindowGraphicsHandle
+  createGraphicsHandle(GraphicsAPI,
+                       LX_core::GraphicsInstanceHandle) const override {
     return nullptr;
   }
-  void destroyGraphicsHandle(GraphicsAPI,
-                             LX_core::GraphicsInstanceHandle,
+  void destroyGraphicsHandle(GraphicsAPI, LX_core::GraphicsInstanceHandle,
                              LX_core::WindowGraphicsHandle) const override {}
   LX_core::InputStateSharedPtr getInputState() const override {
     static auto dummy = std::make_shared<LX_core::DummyInputState>();
@@ -60,22 +60,23 @@ public:
   LX_core::WindowUsableBounds getUsableBounds() const override {
     return m_usableBounds;
   }
-  void applyPlacement(const LX_core::WindowPlacement& placement) override {
+  void applyPlacement(const LX_core::WindowPlacement &placement) override {
     m_placement = placement;
   }
-  void* getNativeHandle() const override { return nullptr; }
+  void *getNativeHandle() const override { return nullptr; }
   void onClose(std::function<bool()>) override {}
   bool shouldClose() override { return false; }
 
 private:
-  LX_core::WindowPlacement m_placement{.x = 0, .y = 0, .width = 800, .height = 600};
+  LX_core::WindowPlacement m_placement{
+      .x = 0, .y = 0, .width = 800, .height = 600};
   LX_core::WindowUsableBounds m_usableBounds{
       .x = 0, .y = 0, .width = 1920, .height = 1080};
 };
 
 class FakeRenderer final : public LX_core::gpu::Renderer {
 public:
-  void initialize(LX_core::WindowSharedPtr, const char*) override {}
+  void initialize(LX_core::WindowSharedPtr, const char *) override {}
   void shutdown() override {}
   void initScene(LX_core::SceneSharedPtr scene) override {
     ++initSceneCalls;
@@ -93,12 +94,19 @@ public:
   LX_core::SceneSharedPtr lastScene;
 };
 
-void testSceneLoadPreservesEditorCommandHistoryAndConsole() {
+void cleanupProject(const std::string &projectName) {
+  std::filesystem::remove_all(resolveRuntimePath("data/projects") /
+                              projectName);
+}
+
+void testProjectSceneOpenPreservesEditorCommandHistoryAndConsole() {
   const bool initialized = initializeRuntimeAssetRoot();
-  EXPECT(initialized, "runtime asset root should initialize for editor session");
+  EXPECT(initialized,
+         "runtime asset root should initialize for editor session");
   if (!initialized) {
     return;
   }
+  cleanupProject("editor_session_history");
 
   LX_core::EditorState editorState;
   LX_demo::lxe_editor::CameraRig rig;
@@ -106,8 +114,8 @@ void testSceneLoadPreservesEditorCommandHistoryAndConsole() {
   LX_demo::lxe_editor::LxeEditorSession session(rig, ui, editorState);
   session.initialize();
 
-  auto* const commandBusBefore = &session.commandBus();
-  auto* const consoleBefore = &session.consolePanel();
+  auto *const commandBusBefore = &session.commandBus();
+  auto *const consoleBefore = &session.consolePanel();
   const size_t historySizeBefore = session.commandBus().history().size();
 
   const auto helpResult = session.commandBus().dispatch("help");
@@ -118,11 +126,22 @@ void testSceneLoadPreservesEditorCommandHistoryAndConsole() {
              std::string::npos,
          "console should render command output from command bus history");
 
-  const auto loadResult =
-      session.commandBus().dispatch("scene load lxe_editor.scene.yaml");
-  EXPECT(loadResult.ok, "scene load should queue a valid asset scene");
-  EXPECT(session.commandBus().history().size() == historySizeBefore + 2,
-         "scene load should also contribute to command history");
+  const auto initResult = session.commandBus().dispatch(
+      "project init empty editor_session_history");
+  EXPECT(initResult.ok, "project init should open a new project");
+  EXPECT(session.currentProjectId() ==
+             std::optional<std::string>("editor_session_history"),
+         "project init should expose the current project id");
+  EXPECT(session.activeScenePath().has_value(),
+         "project init should expose the active scene path");
+
+  const auto saveResult = session.commandBus().dispatch("scene save");
+  EXPECT(saveResult.ok, "scene save should write the active project scene");
+
+  const auto openResult = session.commandBus().dispatch("scene open main");
+  EXPECT(openResult.ok, "scene open should queue a project scene");
+  EXPECT(session.commandBus().history().size() == historySizeBefore + 4,
+         "project and scene commands should contribute to command history");
 
   auto window = std::make_shared<FakeWindow>();
   auto renderer = std::make_shared<FakeRenderer>();
@@ -131,33 +150,47 @@ void testSceneLoadPreservesEditorCommandHistoryAndConsole() {
   session.flushPendingSceneLoad(loop);
 
   EXPECT(&session.commandBus() == commandBusBefore,
-         "scene load should preserve the editor-level command bus");
+         "scene open should preserve the editor-level command bus");
   EXPECT(&session.consolePanel() == consoleBefore,
-         "scene load should preserve the editor-level console panel");
-  EXPECT(session.commandBus().history().size() == historySizeBefore + 2,
-         "scene load should not clear command history");
+         "scene open should preserve the editor-level console panel");
+  EXPECT(session.commandBus().history().size() == historySizeBefore + 4,
+         "scene open should not clear command history");
   EXPECT(session.consolePanel().displayedText().find(helpResult.message) !=
              std::string::npos,
-         "scene load should preserve earlier console output text");
-  EXPECT(session.consolePanel().displayedText().find(loadResult.message) !=
+         "scene open should preserve earlier console output text");
+  EXPECT(session.consolePanel().displayedText().find(openResult.message) !=
              std::string::npos,
-         "scene load should preserve its own console output text");
-  EXPECT(renderer->initSceneCalls == 1,
-         "flushing the pending scene load should restart the engine scene once");
+         "scene open should preserve its own console output text");
+  EXPECT(
+      renderer->initSceneCalls == 1,
+      "flushing the pending scene open should restart the engine scene once");
+
+  cleanupProject("editor_session_history");
 }
 
-void testSceneLoadFailureKeepsEditorRunningAndCurrentScene() {
+void testSceneOpenFailureKeepsEditorRunningAndCurrentScene() {
   const bool initialized = initializeRuntimeAssetRoot();
-  EXPECT(initialized, "runtime asset root should initialize for load failure test");
+  EXPECT(initialized,
+         "runtime asset root should initialize for load failure test");
   if (!initialized) {
     return;
   }
+  cleanupProject("editor_session_failure");
 
   LX_core::EditorState editorState;
   LX_demo::lxe_editor::CameraRig rig;
   LX_demo::lxe_editor::UiOverlay ui;
   LX_demo::lxe_editor::LxeEditorSession session(rig, ui, editorState);
   session.initialize();
+
+  EXPECT(session.commandBus()
+             .dispatch("project init empty editor_session_failure")
+             .ok,
+         "project init should succeed before load failure test");
+  EXPECT(session.commandBus().dispatch("scene save").ok,
+         "scene save should make the project main scene loadable");
+  EXPECT(session.commandBus().dispatch("scene duplicate main alternate").ok,
+         "scene duplicate should create a second project scene");
 
   auto window = std::make_shared<FakeWindow>();
   auto renderer = std::make_shared<FakeRenderer>();
@@ -166,25 +199,22 @@ void testSceneLoadFailureKeepsEditorRunningAndCurrentScene() {
   loop.startScene(session.scene());
   const auto oldScene = session.scene();
 
-  const auto loadResult =
-      session.commandBus().dispatch("scene load lxe_editor.scene.yaml");
-  EXPECT(loadResult.ok, "valid scene load should queue before renderer failure");
-
   renderer->failNextInit = true;
   bool threw = false;
   try {
     session.flushPendingSceneLoad(loop);
-  } catch (const std::exception& error) {
+  } catch (const std::exception &error) {
     threw = true;
-    std::cerr << "[FAIL] unexpected scene load exception: " << error.what()
+    std::cerr << "[FAIL] unexpected scene open exception: " << error.what()
               << "\n";
   }
 
-  EXPECT(!threw, "renderer scene-load failure should not escape flush");
+  EXPECT(!threw, "renderer scene-open failure should not escape flush");
   EXPECT(session.scene() == oldScene,
-         "failed deferred scene load should keep the previous session scene");
-  EXPECT(!session.currentDocumentPath().has_value(),
-         "failed deferred scene load should not commit the new document path");
+         "failed deferred scene open should keep the previous session scene");
+  EXPECT(
+      session.currentDocumentPath() == session.activeScenePath(),
+      "failed deferred scene open should expose the project active scene path");
   EXPECT(renderer->initSceneCalls == 3,
          "failed load should try pending scene and restore the previous scene");
   EXPECT(renderer->lastScene == oldScene,
@@ -192,11 +222,14 @@ void testSceneLoadFailureKeepsEditorRunningAndCurrentScene() {
   EXPECT(session.consolePanel().displayedText().find(
              "scene load failed: renderer rejected scene") != std::string::npos,
          "load failure should be reported in the console");
+
+  cleanupProject("editor_session_failure");
 }
 
 void testEditorDoesNotCreateCameraOrLightHelperNodes() {
   const bool initialized = initializeRuntimeAssetRoot();
-  EXPECT(initialized, "runtime asset root should initialize for helper geometry test");
+  EXPECT(initialized,
+         "runtime asset root should initialize for helper geometry test");
   if (!initialized) {
     return;
   }
@@ -207,13 +240,13 @@ void testEditorDoesNotCreateCameraOrLightHelperNodes() {
   LX_demo::lxe_editor::LxeEditorSession session(rig, ui, editorState);
   session.initialize();
 
-  LX_core::Scene* scene = session.scene().get();
+  LX_core::Scene *scene = session.scene().get();
   EXPECT(scene != nullptr, "editor session should expose a scene");
   if (!scene) {
     return;
   }
 
-  LX_core::SceneNode* gameCamera = scene->findByPath("/game_cam");
+  LX_core::SceneNode *gameCamera = scene->findByPath("/game_cam");
   EXPECT(gameCamera != nullptr, "game camera node should exist");
   if (gameCamera) {
     EXPECT(!gameCamera->getComponent<LX_core::MeshComponent>().has_value(),
@@ -229,7 +262,8 @@ void testEditorDoesNotCreateCameraOrLightHelperNodes() {
 
 void testRecordingCommandControlsSessionRecorder() {
   const bool initialized = initializeRuntimeAssetRoot();
-  EXPECT(initialized, "runtime asset root should initialize for recording command test");
+  EXPECT(initialized,
+         "runtime asset root should initialize for recording command test");
   if (!initialized) {
     return;
   }
@@ -265,11 +299,11 @@ void testSceneSaveLoadRoundTripsEditorSidecarState() {
     return;
   }
 
-  const std::filesystem::path scenePath =
-      resolveRuntimePath("data/scenes/session_sidecar_test.scene.yaml");
+  cleanupProject("editor_session_sidecar");
+  const std::filesystem::path scenePath = resolveRuntimePath(
+      "data/projects/editor_session_sidecar/scenes/main.scene.yaml");
   const std::filesystem::path statePath =
       LX_demo::lxe_editor::editorSceneStatePathForScenePath(scenePath);
-  std::filesystem::remove(scenePath);
   std::filesystem::remove(statePath);
 
   LX_core::EditorState editorState;
@@ -277,8 +311,12 @@ void testSceneSaveLoadRoundTripsEditorSidecarState() {
   LX_demo::lxe_editor::UiOverlay ui;
   LX_demo::lxe_editor::LxeEditorSession session(rig, ui, editorState);
   session.initialize();
+  EXPECT(session.commandBus()
+             .dispatch("project init empty editor_session_sidecar")
+             .ok,
+         "project init should succeed for sidecar test");
 
-  auto* lightNode = session.scene()->findByPath("/dir_light");
+  auto *lightNode = session.scene()->findByPath("/dir_light");
   EXPECT(lightNode != nullptr, "default scene should have a light node");
   if (!lightNode) {
     return;
@@ -287,8 +325,7 @@ void testSceneSaveLoadRoundTripsEditorSidecarState() {
   editorState.select({lightNode->shared_from_this()});
   rig.setOrbitTarget({1.25f, 2.5f, -3.75f});
 
-  const auto save = session.commandBus().dispatch(
-      "scene save " + scenePath.string());
+  const auto save = session.commandBus().dispatch("scene save");
   EXPECT(save.ok, "scene save should succeed");
   EXPECT(std::filesystem::exists(statePath),
          "scene save should write a same-stem editor sidecar");
@@ -296,9 +333,8 @@ void testSceneSaveLoadRoundTripsEditorSidecarState() {
   editorState.deselect();
   rig.setOrbitTarget({0.0f, 0.0f, 0.0f});
 
-  const auto load = session.commandBus().dispatch(
-      "scene load " + scenePath.string());
-  EXPECT(load.ok, "scene load should queue saved local scene");
+  const auto load = session.commandBus().dispatch("scene open main");
+  EXPECT(load.ok, "scene open should queue saved project scene");
 
   auto window = std::make_shared<FakeWindow>();
   auto renderer = std::make_shared<FakeRenderer>();
@@ -315,15 +351,15 @@ void testSceneSaveLoadRoundTripsEditorSidecarState() {
   EXPECT(selected.size() == 1 && selected.front()->getPath() == "/dir_light",
          "sidecar should restore selected scene node paths");
 
-  std::filesystem::remove(scenePath);
   std::filesystem::remove(statePath);
+  cleanupProject("editor_session_sidecar");
 }
 
 } // namespace
 
 int main() {
-  testSceneLoadPreservesEditorCommandHistoryAndConsole();
-  testSceneLoadFailureKeepsEditorRunningAndCurrentScene();
+  testProjectSceneOpenPreservesEditorCommandHistoryAndConsole();
+  testSceneOpenFailureKeepsEditorRunningAndCurrentScene();
   testEditorDoesNotCreateCameraOrLightHelperNodes();
   testRecordingCommandControlsSessionRecorder();
   testSceneSaveLoadRoundTripsEditorSidecarState();

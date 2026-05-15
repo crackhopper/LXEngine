@@ -51,6 +51,9 @@ add_executable(lxe_editor
   lxe_editor_api_server.cpp
   lxe_editor_api_service.cpp
   lxe_editor_build_info.cpp
+  project_catalog.cpp
+  project_document.cpp
+  project_session.cpp
   recording_controller.cpp
   editor_config_state.cpp
   editor_data_state.cpp
@@ -58,7 +61,6 @@ add_executable(lxe_editor
   editor_camera_state.cpp
   editor_scene_state.cpp
   runtime_state.cpp
-  scene_catalog.cpp
   scene_builder.cpp
   scene_document.cpp
   scene_interaction_controller.cpp
@@ -66,7 +68,6 @@ add_executable(lxe_editor
   scene_view_rect.cpp
   lxe_editor_commands.cpp
   scene_runtime.cpp
-  scene_session.cpp
   ui_overlay.cpp
 )
 
