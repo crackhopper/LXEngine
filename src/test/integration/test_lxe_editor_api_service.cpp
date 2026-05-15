@@ -827,16 +827,18 @@ void testProjectScopedSceneReplacementCommandsEmitProjectAwareEvents() {
 
   cursor = fixture.service->currentCursor();
   EXPECT(fixture.service
-             ->executeCommand(ApiCommandRequest{.line = "project open demo"})
+             ->executeCommand(ApiCommandRequest{.line = "\tproject   open demo"})
              .ok,
-         "project open command should succeed");
+         "project open command with flexible whitespace should succeed");
   batch = fixture.service->collectEventsSince(cursor);
   bool sawProjectOpened = false;
   for (const auto &event : batch.events) {
     sawProjectOpened =
         sawProjectOpened || event.type == ApiEventType::ProjectOpened;
   }
-  EXPECT(sawProjectOpened, "project open should emit a project.opened event");
+  EXPECT(sawProjectOpened,
+         "project open with flexible whitespace should emit a project.opened "
+         "event");
 
   cursor = fixture.service->currentCursor();
   EXPECT(fixture.service
@@ -926,15 +928,17 @@ void testProjectScopedSceneReplacementCommandsEmitProjectAwareEvents() {
          "duplicate");
 
   cursor = fixture.service->currentCursor();
-  EXPECT(fixture.service->executeCommand(ApiCommandRequest{.line = "scene save"})
+  EXPECT(fixture.service->executeCommand(ApiCommandRequest{.line = " scene\tsave"})
              .ok,
-         "scene save command should succeed");
+         "scene save command with flexible whitespace should succeed");
   batch = fixture.service->collectEventsSince(cursor);
   bool sawSceneSaved = false;
   for (const auto &event : batch.events) {
     sawSceneSaved = sawSceneSaved || event.type == ApiEventType::SceneSaved;
   }
-  EXPECT(sawSceneSaved, "scene save should emit a scene.saved API event");
+  EXPECT(sawSceneSaved,
+         "scene save with flexible whitespace should emit a scene.saved API "
+         "event");
 
   cursor = fixture.service->currentCursor();
   EXPECT(fixture.service
@@ -961,6 +965,56 @@ void testProjectScopedSceneReplacementCommandsEmitProjectAwareEvents() {
         sawProjectClosed || event.type == ApiEventType::ProjectClosed;
   }
   EXPECT(sawProjectClosed, "project close should emit a project.closed event");
+}
+
+void testActiveSceneEventRequiresRuntimeSceneKey() {
+  Fixture fixture;
+  fixture.hooks.activeSceneEventKey = {};
+  fixture.service = std::make_unique<LxeEditorApiService>(
+      fixture.bus, fixture.editorState, *fixture.scene, fixture.hooks);
+
+  const ApiEventCursor cursor = fixture.service->currentCursor();
+  fixture.hookState.project->activeScene = "scenes/pending.scene.yaml";
+  fixture.service->refresh();
+
+  const ApiEventBatch batch = fixture.service->collectEventsSince(cursor);
+  bool sawActiveSceneChanged = false;
+  for (const auto &event : batch.events) {
+    sawActiveSceneChanged =
+        sawActiveSceneChanged || event.type == ApiEventType::ActiveSceneChanged;
+  }
+  EXPECT(!sawActiveSceneChanged,
+         "active_scene.changed should require a runtime-loaded scene key");
+}
+
+void testApiServiceReplacementPreservesPendingRuntimeSceneEvents() {
+  Fixture fixture;
+  const auto node = SceneNode::create("pending_node");
+  node->setName("pending");
+  fixture.scene->addRenderable(node);
+  fixture.service->refresh();
+  const ApiEventCursor cursor = fixture.service->currentCursor();
+
+  node->setTranslation({2.0f, 0.0f, 0.0f});
+  auto replacement = std::make_unique<LxeEditorApiService>(
+      fixture.bus, fixture.editorState, *fixture.scene, fixture.hooks,
+      *fixture.service);
+  replacement->refresh();
+
+  const ApiEventBatch batch = replacement->collectEventsSince(cursor);
+  bool sawPendingRuntimeNodeChanged = false;
+  for (const auto &event : batch.events) {
+    if (event.type != ApiEventType::SceneNodeChanged ||
+        !event.sceneNode.has_value()) {
+      continue;
+    }
+    if (event.sceneNode->path == node->getPath()) {
+      sawPendingRuntimeNodeChanged = true;
+    }
+  }
+  EXPECT(sawPendingRuntimeNodeChanged,
+         "service replacement should preserve already observed runtime scene "
+         "events");
 }
 
 void testApiServiceReplacementPreservesEventStateForDeferredActiveSceneChanged() {
@@ -1035,6 +1089,8 @@ int main() {
   testRuntimeCameraPropertyMutationEmitsApiSceneNodeChangedEvent();
   testRuntimeLightPropertyMutationEmitsApiSceneNodeChangedEvent();
   testProjectScopedSceneReplacementCommandsEmitProjectAwareEvents();
+  testActiveSceneEventRequiresRuntimeSceneKey();
+  testApiServiceReplacementPreservesPendingRuntimeSceneEvents();
   testApiServiceReplacementPreservesEventStateForDeferredActiveSceneChanged();
   testRecordingToolsRecordMcpCommand();
   testBuildInfoExposesGitIdentityFields();

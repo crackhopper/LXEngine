@@ -128,6 +128,34 @@ activeSceneFromState(const ApiStateSnapshot &state) {
   return state.project.has_value() ? state.project->dirty : false;
 }
 
+[[nodiscard]] bool commandStartsWith(std::string_view line,
+                                     std::string_view verb,
+                                     std::string_view subcommand) {
+  std::vector<std::string_view> tokens;
+  bool inToken = false;
+  size_t tokenBegin = 0;
+  for (size_t i = 0; i <= line.size(); ++i) {
+    const bool atEnd = i == line.size();
+    const char c = atEnd ? '\0' : line[i];
+    const bool whitespace = c == ' ' || c == '\t' || c == '\r';
+    if (!atEnd && !whitespace) {
+      if (!inToken) {
+        tokenBegin = i;
+        inToken = true;
+      }
+      continue;
+    }
+    if (inToken) {
+      tokens.push_back(line.substr(tokenBegin, i - tokenBegin));
+      if (tokens.size() >= 2) {
+        break;
+      }
+      inToken = false;
+    }
+  }
+  return tokens.size() >= 2 && tokens[0] == verb && tokens[1] == subcommand;
+}
+
 } // namespace
 
 LxeEditorApiService::LxeEditorApiService(LX_core::CommandBus &commandBus,
@@ -151,6 +179,7 @@ LxeEditorApiService::LxeEditorApiService(
   m_lastState = previous.m_lastState;
   m_lastActiveSceneEventKey = previous.m_lastActiveSceneEventKey;
   m_events = previous.m_events;
+  m_pendingRuntimeSceneEvents = previous.m_pendingRuntimeSceneEvents;
 }
 
 ApiCommandResponse
@@ -451,7 +480,7 @@ LxeEditorApiService::captureActiveSceneEventKey() const {
   if (m_hooks.activeSceneEventKey) {
     return m_hooks.activeSceneEventKey();
   }
-  return activeSceneFromState(captureState());
+  return std::nullopt;
 }
 
 ApiSelectionSnapshot LxeEditorApiService::captureSelection() const {
@@ -691,23 +720,23 @@ std::string LxeEditorApiService::sceneNodeAspectName(
 }
 
 bool LxeEditorApiService::isSceneSaveCommand(const std::string_view line) {
-  return line == "scene save" || line.starts_with("scene save ");
+  return commandStartsWith(line, "scene", "save");
 }
 
 bool LxeEditorApiService::isProjectInitCommand(const std::string_view line) {
-  return line == "project init" || line.starts_with("project init ");
+  return commandStartsWith(line, "project", "init");
 }
 
 bool LxeEditorApiService::isProjectOpenCommand(const std::string_view line) {
-  return line == "project open" || line.starts_with("project open ");
+  return commandStartsWith(line, "project", "open");
 }
 
 bool LxeEditorApiService::isProjectSaveCommand(const std::string_view line) {
-  return line == "project save" || line.starts_with("project save ");
+  return commandStartsWith(line, "project", "save");
 }
 
 bool LxeEditorApiService::isProjectCloseCommand(const std::string_view line) {
-  return line == "project close" || line.starts_with("project close ");
+  return commandStartsWith(line, "project", "close");
 }
 
 } // namespace LX_demo::lxe_editor
