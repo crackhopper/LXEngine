@@ -8,6 +8,7 @@
 #include "core/editor/inspector_panel.hpp"
 #include "core/editor/scene_tree_panel.hpp"
 #include "core/editor/viewport_overlay.hpp"
+#include "core/utils/filesystem_tools.hpp"
 #include "infra/gui/debug_ui.hpp"
 
 #include <imgui.h>
@@ -15,6 +16,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cmath>
 #include <cstring>
 #include <string>
@@ -27,6 +29,13 @@ namespace {
 
 constexpr float kMinUiFontScale = 0.75f;
 constexpr float kMaxUiFontScale = 2.0f;
+
+[[nodiscard]] std::string lowerCopy(std::string text) {
+  std::transform(
+      text.begin(), text.end(), text.begin(),
+      [](const unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  return text;
+}
 
 [[nodiscard]] std::string quoteToken(std::string_view text) {
   std::string out;
@@ -225,6 +234,9 @@ void drawResetIcon(ImDrawList &drawList, const ImVec2 min, const ImVec2 max,
   if (kind == "primitive:cone") {
     return "Cone";
   }
+  if (kind.rfind("model:", 0) == 0) {
+    return "Model";
+  }
   if (kind == "light:directional") {
     return "Directional Light";
   }
@@ -330,6 +342,18 @@ void UiOverlay::dispatchCreatePaletteItem(std::string_view kind,
 }
 
 void UiOverlay::dispatchCreatePaletteDrop(std::string_view kind) {
+  if (kind.rfind("model:", 0) == 0) {
+    if (!m_builtinAssetsLoaded) {
+      m_builtinAssets.refresh(resolveRuntimePath("assets/models/builtin"));
+      m_builtinAssetsLoaded = true;
+    }
+    const std::string assetId =
+        std::string(kind.substr(std::string_view("model:").size()));
+    if (const auto asset = m_builtinAssets.findByAssetId(assetId)) {
+      dispatchCreatePaletteItem(kind, asset->displayName);
+      return;
+    }
+  }
   dispatchCreatePaletteItem(kind, defaultCreateNameForKind(kind));
 }
 
@@ -337,10 +361,9 @@ void UiOverlay::drawSceneCreateDropTarget() {
   if (!m_commandBus || !m_sceneViewRect.isValid()) {
     return;
   }
-  const ImRect dropRect(
-      ImVec2(m_sceneViewRect.x, m_sceneViewRect.y),
-      ImVec2(m_sceneViewRect.x + m_sceneViewRect.width,
-             m_sceneViewRect.y + m_sceneViewRect.height));
+  const ImRect dropRect(ImVec2(m_sceneViewRect.x, m_sceneViewRect.y),
+                        ImVec2(m_sceneViewRect.x + m_sceneViewRect.width,
+                               m_sceneViewRect.y + m_sceneViewRect.height));
   const ImGuiID id = ImGui::GetID("##scene_create_drop_target");
   if (!ImGui::BeginDragDropTargetCustom(dropRect, id)) {
     return;
@@ -352,6 +375,79 @@ void UiOverlay::drawSceneCreateDropTarget() {
     }
   }
   ImGui::EndDragDropTarget();
+}
+
+void UiOverlay::drawBuiltinAssetsPanel() {
+  if (!m_builtinAssetsVisible) {
+    syncPanelLayout("Builtin Assets", false);
+    return;
+  }
+  if (!m_builtinAssetsLoaded) {
+    m_builtinAssets.refresh(resolveRuntimePath("assets/models/builtin"));
+    m_builtinAssetsLoaded = true;
+  }
+
+  applyPanelLayout("Builtin Assets",
+                   PanelDefaults{304.0f, 84.0f, 360.0f, 420.0f, false});
+  if (!ImGui::Begin("Builtin Assets", &m_builtinAssetsVisible)) {
+    ImGui::End();
+    syncPanelLayout("Builtin Assets", m_builtinAssetsVisible);
+    return;
+  }
+
+  ImGui::SetNextItemWidth(-1.0f);
+  ImGui::InputTextWithHint("##builtin_asset_search", "Search", m_assetSearch,
+                           sizeof(m_assetSearch));
+  const std::string query = lowerCopy(m_assetSearch);
+
+  std::string currentCategory;
+  bool categoryOpen = false;
+  for (const auto &asset : m_builtinAssets.models()) {
+    const std::string haystack = lowerCopy(
+        asset.displayName + " " + asset.category + " " + asset.assetId);
+    if (!query.empty() && haystack.find(query) == std::string::npos) {
+      continue;
+    }
+
+    if (asset.category != currentCategory) {
+      if (categoryOpen) {
+        ImGui::TreePop();
+      }
+      currentCategory = asset.category;
+      categoryOpen = ImGui::TreeNodeEx(currentCategory.c_str(),
+                                       ImGuiTreeNodeFlags_DefaultOpen |
+                                           ImGuiTreeNodeFlags_SpanAvailWidth);
+    }
+    if (!categoryOpen) {
+      continue;
+    }
+
+    ImGui::PushID(asset.assetId.c_str());
+    const bool selected = ImGui::Selectable(asset.displayName.c_str(), false);
+    if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
+      const std::string kind = "model:" + asset.assetId;
+      ImGui::SetDragDropPayload("LXE_CREATE_KIND", kind.c_str(),
+                                kind.size() + 1);
+      ImGui::TextUnformatted(asset.displayName.c_str());
+      ImGui::Text("%d tris", asset.triangleCount);
+      ImGui::EndDragDropSource();
+    }
+    if (ImGui::IsItemHovered()) {
+      ImGui::SetTooltip("%s\n%s\n%d triangles\n%s", asset.displayName.c_str(),
+                        asset.category.c_str(), asset.triangleCount,
+                        asset.license.c_str());
+    }
+    if (selected) {
+      dispatchCreatePaletteItem("model:" + asset.assetId, asset.displayName);
+    }
+    ImGui::PopID();
+  }
+  if (categoryOpen) {
+    ImGui::TreePop();
+  }
+
+  ImGui::End();
+  syncPanelLayout("Builtin Assets", m_builtinAssetsVisible);
 }
 
 void UiOverlay::applyUiFontScale() {
@@ -831,6 +927,7 @@ void UiOverlay::drawFrame(const LX_core::Vec2f &windowSize) {
       makeSceneViewRect(windowSize.x, windowSize.y, 0.0f, 0.0f, 0.0f, 0.0f);
 
   drawToolbarPanel();
+  drawBuiltinAssetsPanel();
   drawStatsPanel();
 
   const ImVec2 display = ImGui::GetIO().DisplaySize;

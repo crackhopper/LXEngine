@@ -1,0 +1,11 @@
+assetId: "outdoor_buildings_low_detail_a"
+displayName: "Low Detail Building A"
+category: "outdoor/buildings"
+meshUri: "assets/models/builtin/outdoor/buildings/outdoor_buildings_low_detail_a/model.obj"
+defaultMaterialUri: "assets/materials/blinnphong_lit.material"
+sourcePack: "Kenney City Kit Commercial"
+sourceUrl: "https://kenney.nl/assets/city-kit-commercial"
+license: "CC0-1.0"
+commercialUse: true
+triangleCount: 376
+modelBytes: 11711

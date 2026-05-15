@@ -1,0 +1,4 @@
+description: "LXEngine built-in model asset manifest root"
+licensePolicy: "Only commercial-use friendly CC0 assets are imported here."
+maxTrianglesPerModel: 1000
+maxModelBytes: 262144

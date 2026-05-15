@@ -7,15 +7,18 @@
 #include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/components/material_component.hpp"
 #include "core/scene/components/mesh_component.hpp"
+#include "core/utils/filesystem_tools.hpp"
 #include "core/utils/string_table.hpp"
 #include "infra/material_loader/generic_material_loader.hpp"
 #include "infra/mesh_loader/gltf_mesh_loader.hpp"
+#include "infra/mesh_loader/obj_mesh_loader.hpp"
 #include "infra/texture_loader/texture_loader.hpp"
 
 #include <cmath>
 #include <cstdint>
 #include <iostream>
 #include <stdexcept>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -99,6 +102,40 @@ MeshSharedPtr buildMeshFromGltf(const infra::GLTFLoader &loader) {
     const Vec2f uv = i < uvs.size() ? uvs[i] : fallbackUv;
     const Vec4f t = i < tangents.size() ? tangents[i] : fallbackTangent;
     verts.emplace_back(positions[i], n, uv, t, zeroBones, zeroWeights);
+  }
+
+  auto vb = VertexBuffer<VertexPosNormalUvBone>::create(std::move(verts));
+  auto ib = IndexBuffer::create(std::vector<u32>(indices));
+  return Mesh::create(vb, ib, loader.getBounds());
+}
+
+MeshSharedPtr buildMeshFromObj(const infra::ObjLoader &loader) {
+  const auto &positions = loader.getPositions();
+  const auto &normals = loader.getNormals();
+  const auto &uvs = loader.getTexCoords();
+  const auto &indices = loader.getIndices();
+
+  if (positions.empty()) {
+    throw std::runtime_error("[lxe_editor] ObjLoader returned empty positions");
+  }
+  if (indices.empty()) {
+    throw std::runtime_error("[lxe_editor] ObjLoader returned empty indices");
+  }
+
+  std::vector<VertexPosNormalUvBone> verts;
+  verts.reserve(positions.size());
+
+  const Vec3f fallbackNormal{0.0f, 1.0f, 0.0f};
+  const Vec2f fallbackUv{0.0f, 0.0f};
+  const Vec4f fallbackTangent{1.0f, 0.0f, 0.0f, 1.0f};
+  const Vec4i zeroBones{0, 0, 0, 0};
+  const Vec4f zeroWeights{0.0f, 0.0f, 0.0f, 0.0f};
+
+  for (usize i = 0; i < positions.size(); ++i) {
+    const Vec3f n = i < normals.size() ? normals[i] : fallbackNormal;
+    const Vec2f uv = i < uvs.size() ? uvs[i] : fallbackUv;
+    verts.emplace_back(positions[i], n, uv, fallbackTangent, zeroBones,
+                       zeroWeights);
   }
 
   auto vb = VertexBuffer<VertexPosNormalUvBone>::create(std::move(verts));
@@ -206,6 +243,39 @@ MaterialInstanceSharedPtr makePrimitiveMaterial() {
                     Vec3f{0.72f, 0.74f, 0.78f});
   mat->syncGpuData();
   return mat;
+}
+
+MaterialInstanceSharedPtr makeModelMaterial(std::string_view materialUri) {
+  const std::string uri = materialUri.empty()
+                              ? "assets/materials/blinnphong_lit.material"
+                              : std::string(materialUri);
+  auto mat = LX_infra::loadGenericMaterial(uri);
+  if (!mat) {
+    throw std::runtime_error("[lxe_editor] failed to load " + uri);
+  }
+  mat->setParameter(StringID("MaterialUBO"), StringID("enableAlbedo"), 0);
+  mat->setParameter(StringID("MaterialUBO"), StringID("enableNormal"), 0);
+  mat->setParameter(StringID("MaterialUBO"), StringID("baseColor"),
+                    Vec3f{0.72f, 0.74f, 0.78f});
+  mat->syncGpuData();
+  return mat;
+}
+
+MeshSharedPtr loadModelMesh(std::string_view meshUri) {
+  const std::filesystem::path path = resolveRuntimePath(std::string(meshUri));
+  const std::string extension = path.extension().string();
+  if (extension == ".obj") {
+    infra::ObjLoader loader;
+    loader.load(path.string());
+    return buildMeshFromObj(loader);
+  }
+  if (extension == ".gltf" || extension == ".glb") {
+    infra::GLTFLoader loader;
+    loader.load(path.string());
+    return buildMeshFromGltf(loader);
+  }
+  throw std::runtime_error("[lxe_editor] unsupported model asset extension: " +
+                           path.string());
 }
 
 MeshSharedPtr makeMesh(std::vector<VertexPosNormalUvBone> verts,
@@ -432,6 +502,15 @@ LX_core::SceneNodeSharedPtr buildBuiltinPrimitiveNode(std::string_view meshUri,
                                                       std::string nodeName) {
   auto mesh = buildPrimitiveMesh(meshUri);
   auto material = makePrimitiveMaterial();
+  return makeRenderableNode(nodeName.c_str(), std::move(mesh),
+                            std::move(material));
+}
+
+LX_core::SceneNodeSharedPtr buildModelAssetNode(std::string_view meshUri,
+                                                std::string_view materialUri,
+                                                std::string nodeName) {
+  auto mesh = loadModelMesh(meshUri);
+  auto material = makeModelMaterial(materialUri);
   return makeRenderableNode(nodeName.c_str(), std::move(mesh),
                             std::move(material));
 }

@@ -1,0 +1,11 @@
+assetId: "characters_blocky_a"
+displayName: "Blocky Character A"
+category: "characters"
+meshUri: "assets/models/builtin/characters/characters_blocky_a/model.obj"
+defaultMaterialUri: "assets/materials/blinnphong_lit.material"
+sourcePack: "Kenney Blocky Characters"
+sourceUrl: "https://kenney.nl/assets/blocky-characters"
+license: "CC0-1.0"
+commercialUse: true
+triangleCount: 72
+modelBytes: 6988

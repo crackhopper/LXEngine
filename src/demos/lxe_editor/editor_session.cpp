@@ -9,6 +9,7 @@
 #include "core/gpu/engine_loop.hpp"
 #include "core/scene/components/camera_component.hpp"
 #include "core/utils/filesystem_tools.hpp"
+#include "demos/lxe_editor/builtin_asset_catalog.hpp"
 #include "demos/lxe_editor/lxe_editor_build_info.hpp"
 #include "demos/lxe_editor/lxe_editor_commands.hpp"
 #include "demos/lxe_editor/scene_builder.hpp"
@@ -543,6 +544,24 @@ void LxeEditorSession::rebuildBindings(
               [](const std::string &kind, const std::string &nodeName,
                  const std::string &displayName,
                  LX_core::SceneNodeSharedPtr &outNode) {
+                if (kind.rfind("model:", 0) == 0) {
+                  BuiltinAssetCatalog catalog;
+                  catalog.refresh(resolveRuntimePath("assets/models/builtin"));
+                  const std::string assetId =
+                      kind.substr(std::string("model:").size());
+                  const auto asset = catalog.findByAssetId(assetId);
+                  if (!asset.has_value()) {
+                    return makeCommandError("unknown model asset: " + assetId);
+                  }
+                  try {
+                    outNode = buildModelAssetNode(
+                        asset->meshUri, asset->defaultMaterialUri, nodeName);
+                    outNode->setName(displayName);
+                    return makeCommandOk("created " + kind);
+                  } catch (const std::exception &e) {
+                    return makeCommandError(e.what());
+                  }
+                }
                 if (kind.rfind("primitive:", 0) != 0) {
                   return makeCommandError("unsupported create kind: " + kind);
                 }
@@ -571,8 +590,7 @@ void LxeEditorSession::rebuildBindings(
                 return m_runtime.nodeMaterialBaseColorForNode(path);
               },
           .setNodeMaterialBaseColor =
-              [this](const std::string &path,
-                     const LX_core::Vec3f &color) {
+              [this](const std::string &path, const LX_core::Vec3f &color) {
                 return m_runtime.setNodeMaterialBaseColor(path, color);
               },
           .getNodeMaterialParameter =
@@ -585,8 +603,8 @@ void LxeEditorSession::rebuildBindings(
               [this](const std::string &path, const std::string &binding,
                      const std::string &member,
                      const LX_core::MaterialParameterValue &value) {
-                return m_runtime.setNodeMaterialParameter(path, binding,
-                                                          member, value);
+                return m_runtime.setNodeMaterialParameter(path, binding, member,
+                                                          value);
               },
           .clearNodeMaterialParameter =
               [this](const std::string &path, const std::string &binding,
@@ -605,39 +623,37 @@ void LxeEditorSession::rebuildBindings(
   }
   m_sceneTreePanel = std::make_unique<LX_core::SceneTreePanel>(
       *m_commandBus, m_editorState, *m_runtime.scene());
-  m_inspectorPanel =
-      std::make_unique<LX_core::InspectorPanel>(
-          *m_commandBus, m_editorState,
-          LX_core::InspectorMaterialCallbacks{
-              .materialUri =
-                  [this](const std::string &path) {
-                    return m_runtime.materialUriForNode(path);
-                  },
-              .nodeBaseColor =
-                  [this](const std::string &path) {
-                    return m_runtime.nodeMaterialBaseColorForNode(path);
-                  },
-              .canEditBaseColor =
-                  [this](const std::string &path) {
-                    return m_runtime.nodeMaterialBaseColorEditable(path);
-                  },
-              .presets =
-                  [this]() { return m_runtime.materialPresets(); },
-              .materialParameters =
-                  [this](const std::string &path) {
-                    std::vector<LX_core::MaterialParameterEditorValue> out;
-                    const auto runtimeValues =
-                        m_runtime.nodeMaterialParametersForNode(path);
-                    out.reserve(runtimeValues.size());
-                    for (const auto &value : runtimeValues) {
-                      out.push_back(LX_core::MaterialParameterEditorValue{
-                          .binding = value.binding,
-                          .member = value.member,
-                          .value = value.value});
-                    }
-                    return out;
-                  },
-          });
+  m_inspectorPanel = std::make_unique<LX_core::InspectorPanel>(
+      *m_commandBus, m_editorState,
+      LX_core::InspectorMaterialCallbacks{
+          .materialUri =
+              [this](const std::string &path) {
+                return m_runtime.materialUriForNode(path);
+              },
+          .nodeBaseColor =
+              [this](const std::string &path) {
+                return m_runtime.nodeMaterialBaseColorForNode(path);
+              },
+          .canEditBaseColor =
+              [this](const std::string &path) {
+                return m_runtime.nodeMaterialBaseColorEditable(path);
+              },
+          .presets = [this]() { return m_runtime.materialPresets(); },
+          .materialParameters =
+              [this](const std::string &path) {
+                std::vector<LX_core::MaterialParameterEditorValue> out;
+                const auto runtimeValues =
+                    m_runtime.nodeMaterialParametersForNode(path);
+                out.reserve(runtimeValues.size());
+                for (const auto &value : runtimeValues) {
+                  out.push_back(LX_core::MaterialParameterEditorValue{
+                      .binding = value.binding,
+                      .member = value.member,
+                      .value = value.value});
+                }
+                return out;
+              },
+      });
   m_viewportOverlay = std::make_unique<LX_core::ViewportOverlay>(
       *m_commandBus, m_editorState, *m_runtime.scene());
   m_sceneInteraction = std::make_unique<SceneInteractionController>(

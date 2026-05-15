@@ -3,6 +3,7 @@
 #include "core/input/input_state.hpp"
 #include "core/time/clock.hpp"
 
+#include "builtin_asset_catalog.hpp"
 #include "editor_config_state.hpp"
 #include "recording_controller.hpp"
 #include "scene_view_rect.hpp"
@@ -73,6 +74,7 @@ private:
                                  std::string_view displayName);
   void dispatchCreatePaletteDrop(std::string_view kind);
   void drawSceneCreateDropTarget();
+  void drawBuiltinAssetsPanel();
   void drawToolbarPanel();
   void drawStatsPanel();
   void drawHelpPanel();
@@ -103,12 +105,16 @@ private:
   bool m_helpVisible = true;
   bool m_toolbarVisible = true;
   bool m_preferencesVisible = false;
+  bool m_builtinAssetsVisible = true;
   bool m_initialLayoutApplied = false;
+  bool m_builtinAssetsLoaded = false;
   bool m_configDirty = false;
   bool m_baseStyleCaptured = false;
   float m_appliedUiFontScale = 1.0f;
   ImGuiStyle m_baseStyle{};
   SceneViewRect m_sceneViewRect;
+  BuiltinAssetCatalog m_builtinAssets;
+  char m_assetSearch[96]{};
   EditorMode m_editorMode = EditorMode::Selection;
   CameraControlMode m_cameraControlMode = CameraControlMode::Orbit;
   SelectionNavigationMode m_selectionNavigationMode =

@@ -234,9 +234,10 @@ parseVec4(const std::vector<std::string> &args, const usize startIndex) {
 
   const auto parent = node.getParent();
   const std::vector<SceneNodeSharedPtr> siblings =
-      parent ? parent->getChildren()
-             : (node.getAttachedScene() ? node.getAttachedScene()->getRootNodes()
-                                        : std::vector<SceneNodeSharedPtr>{});
+      parent
+          ? parent->getChildren()
+          : (node.getAttachedScene() ? node.getAttachedScene()->getRootNodes()
+                                     : std::vector<SceneNodeSharedPtr>{});
   for (const auto &sibling : siblings) {
     if (sibling && sibling.get() != &node && sibling->getName() == name) {
       return true;
@@ -279,7 +280,8 @@ parseVec4(const std::vector<std::string> &args, const usize startIndex) {
 
 [[nodiscard]] std::string makeCopyName(const SceneNodeSharedPtr &parent,
                                        const std::string &sourceName) {
-  const std::string base = stripCopySuffix(sourceName.empty() ? "node" : sourceName);
+  const std::string base =
+      stripCopySuffix(sourceName.empty() ? "node" : sourceName);
   std::string candidate = base + ".copy";
   if (!childNameExists(parent, candidate)) {
     return candidate;
@@ -579,9 +581,9 @@ resolveDirectionalLight(SceneNode &node) {
 }
 
 [[nodiscard]] std::vector<std::string> listComponentTypes() {
-  return {"camera:perspective", "light:directional", "light:point", "light:spot",
-          "primitive:cone",  "primitive:cube",     "primitive:cylinder",
-          "primitive:plane", "primitive:sphere"};
+  return {"camera:perspective", "light:directional", "light:point",
+          "light:spot",         "primitive:cone",    "primitive:cube",
+          "primitive:cylinder", "primitive:plane",   "primitive:sphere"};
 }
 
 [[nodiscard]] std::vector<std::string>
@@ -751,7 +753,8 @@ findActiveCamera(Scene &scene, EditorState &editorState) {
       return makeError("field not available on node: direction");
     }
     Vec3f value{};
-    if (const auto directional = std::dynamic_pointer_cast<DirectionalLight>(light)) {
+    if (const auto directional =
+            std::dynamic_pointer_cast<DirectionalLight>(light)) {
       value = directional->getDirection();
     } else if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
       value = spot->getDirection();
@@ -768,9 +771,11 @@ findActiveCamera(Scene &scene, EditorState &editorState) {
       return makeError("field not available on node: color");
     }
     Vec3f value{};
-    if (const auto directional = std::dynamic_pointer_cast<DirectionalLight>(light)) {
+    if (const auto directional =
+            std::dynamic_pointer_cast<DirectionalLight>(light)) {
       value = directional->getColor();
-    } else if (const auto point = std::dynamic_pointer_cast<PointLight>(light)) {
+    } else if (const auto point =
+                   std::dynamic_pointer_cast<PointLight>(light)) {
       value = point->getColor();
     } else if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
       value = spot->getColor();
@@ -785,9 +790,11 @@ findActiveCamera(Scene &scene, EditorState &editorState) {
       return makeError("field not available on node: intensity");
     }
     float value = 0.0f;
-    if (const auto directional = std::dynamic_pointer_cast<DirectionalLight>(light)) {
+    if (const auto directional =
+            std::dynamic_pointer_cast<DirectionalLight>(light)) {
       value = directional->getIntensity();
-    } else if (const auto point = std::dynamic_pointer_cast<PointLight>(light)) {
+    } else if (const auto point =
+                   std::dynamic_pointer_cast<PointLight>(light)) {
       value = point->getIntensity();
     } else if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
       value = spot->getIntensity();
@@ -812,20 +819,18 @@ findActiveCamera(Scene &scene, EditorState &editorState) {
     if (!light) {
       return makeError("field not available on node: innerConeDegrees");
     }
-    return makeOk("innerConeDegrees = " +
-                      formatFloat(light->getInnerConeDegrees()),
-                  "{\"value\":" +
-                      formatFloat(light->getInnerConeDegrees()) + "}");
+    return makeOk(
+        "innerConeDegrees = " + formatFloat(light->getInnerConeDegrees()),
+        "{\"value\":" + formatFloat(light->getInnerConeDegrees()) + "}");
   }
   if (field == "light.outerConeDegrees" || field == "outerConeDegrees") {
     const auto light = std::dynamic_pointer_cast<SpotLight>(resolveLight(node));
     if (!light) {
       return makeError("field not available on node: outerConeDegrees");
     }
-    return makeOk("outerConeDegrees = " +
-                      formatFloat(light->getOuterConeDegrees()),
-                  "{\"value\":" +
-                      formatFloat(light->getOuterConeDegrees()) + "}");
+    return makeOk(
+        "outerConeDegrees = " + formatFloat(light->getOuterConeDegrees()),
+        "{\"value\":" + formatFloat(light->getOuterConeDegrees()) + "}");
   }
   if (field == "name") {
     const std::string value = node.getName();
@@ -919,12 +924,13 @@ parseMaterialParameterValue(const ShaderPropertyType type,
   }
 }
 
-[[nodiscard]] CommandResult getMaterialField(
-    const SceneIoContext &context, const std::string &path,
-    const std::string &field) {
+[[nodiscard]] CommandResult getMaterialField(const SceneIoContext &context,
+                                             const std::string &path,
+                                             const std::string &field) {
   if (field == "materialUri") {
     if (!context.getMaterialUri) {
-      return makeError("material editing unavailable: material URI callback is not registered");
+      return makeError("material editing unavailable: material URI callback is "
+                       "not registered");
     }
     const auto value = context.getMaterialUri(path);
     if (!value.has_value()) {
@@ -935,34 +941,36 @@ parseMaterialParameterValue(const ShaderPropertyType type,
   }
   if (field == "nodeMaterial.baseColor") {
     if (!context.getNodeMaterialBaseColor) {
-      return makeError("material editing unavailable: baseColor callback is not registered");
+      return makeError(
+          "material editing unavailable: baseColor callback is not registered");
     }
     const auto value = context.getNodeMaterialBaseColor(path);
     if (!value.has_value()) {
-      return makeError("node material baseColor not available on node: " + path);
+      return makeError("node material baseColor not available on node: " +
+                       path);
     }
     return makeOk("nodeMaterial.baseColor = (" + formatFloat(value->x) + ", " +
-                      formatFloat(value->y) + ", " + formatFloat(value->z) + ")",
+                      formatFloat(value->y) + ", " + formatFloat(value->z) +
+                      ")",
                   "{\"value\":" + makeVec3Json(*value) + "}");
   }
-  if (const auto target = parseNodeMaterialTarget(field);
-      target.has_value()) {
+  if (const auto target = parseNodeMaterialTarget(field); target.has_value()) {
     if (!context.getNodeMaterialParameter) {
-      return makeError("material editing unavailable: parameter callback is not registered");
+      return makeError(
+          "material editing unavailable: parameter callback is not registered");
     }
-    const auto value = context.getNodeMaterialParameter(
-        path, target->binding, target->member);
+    const auto value =
+        context.getNodeMaterialParameter(path, target->binding, target->member);
     if (!value.has_value()) {
       return makeError("node material parameter not available on node: " +
                        target->key);
     }
-    return makeOk("nodeMaterial." + target->key + " = " +
-                      makeMaterialValueJson(*value),
-                  "{\"binding\":\"" + jsonEscape(target->binding) +
-                      "\",\"member\":\"" + jsonEscape(target->member) +
-                      "\",\"type\":\"" +
-                      materialParameterTypeName(value->type) +
-                      "\",\"value\":" + makeMaterialValueJson(*value) + "}");
+    return makeOk(
+        "nodeMaterial." + target->key + " = " + makeMaterialValueJson(*value),
+        "{\"binding\":\"" + jsonEscape(target->binding) + "\",\"member\":\"" +
+            jsonEscape(target->member) + "\",\"type\":\"" +
+            materialParameterTypeName(value->type) +
+            "\",\"value\":" + makeMaterialValueJson(*value) + "}");
   }
   return makeError("unknown field: " + field);
 }
@@ -1024,7 +1032,8 @@ parseMaterialParameterValue(const ShaderPropertyType type,
   const auto light = resolveLight(node);
   if ((field == "light.direction" || field == "direction") && light) {
     Vec3f value{};
-    if (const auto directional = std::dynamic_pointer_cast<DirectionalLight>(light)) {
+    if (const auto directional =
+            std::dynamic_pointer_cast<DirectionalLight>(light)) {
       value = directional->getDirection();
     } else if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
       value = spot->getDirection();
@@ -1037,9 +1046,11 @@ parseMaterialParameterValue(const ShaderPropertyType type,
   }
   if ((field == "light.color" || field == "color") && light) {
     Vec3f value{};
-    if (const auto directional = std::dynamic_pointer_cast<DirectionalLight>(light)) {
+    if (const auto directional =
+            std::dynamic_pointer_cast<DirectionalLight>(light)) {
       value = directional->getColor();
-    } else if (const auto point = std::dynamic_pointer_cast<PointLight>(light)) {
+    } else if (const auto point =
+                   std::dynamic_pointer_cast<PointLight>(light)) {
       value = point->getColor();
     } else if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
       value = spot->getColor();
@@ -1050,9 +1061,11 @@ parseMaterialParameterValue(const ShaderPropertyType type,
   }
   if ((field == "light.intensity" || field == "intensity") && light) {
     float value = 0.0f;
-    if (const auto directional = std::dynamic_pointer_cast<DirectionalLight>(light)) {
+    if (const auto directional =
+            std::dynamic_pointer_cast<DirectionalLight>(light)) {
       value = directional->getIntensity();
-    } else if (const auto point = std::dynamic_pointer_cast<PointLight>(light)) {
+    } else if (const auto point =
+                   std::dynamic_pointer_cast<PointLight>(light)) {
       value = point->getIntensity();
     } else if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
       value = spot->getIntensity();
@@ -1070,13 +1083,15 @@ parseMaterialParameterValue(const ShaderPropertyType type,
              formatFloat(spot->getRange());
     }
   }
-  if ((field == "light.innerConeDegrees" || field == "innerConeDegrees") && light) {
+  if ((field == "light.innerConeDegrees" || field == "innerConeDegrees") &&
+      light) {
     if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
       return "set " + quoteToken(path + ".light.innerConeDegrees") + " " +
              formatFloat(spot->getInnerConeDegrees());
     }
   }
-  if ((field == "light.outerConeDegrees" || field == "outerConeDegrees") && light) {
+  if ((field == "light.outerConeDegrees" || field == "outerConeDegrees") &&
+      light) {
     if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
       return "set " + quoteToken(path + ".light.outerConeDegrees") + " " +
              formatFloat(spot->getOuterConeDegrees());
@@ -1086,9 +1101,10 @@ parseMaterialParameterValue(const ShaderPropertyType type,
   return {};
 }
 
-[[nodiscard]] std::string buildMaterialSetInverseCommand(
-    const SceneIoContext &context, const std::string &path,
-    const std::string &field) {
+[[nodiscard]] std::string
+buildMaterialSetInverseCommand(const SceneIoContext &context,
+                               const std::string &path,
+                               const std::string &field) {
   if (field == "materialUri" && context.getMaterialUri) {
     if (const auto value = context.getMaterialUri(path); value.has_value()) {
       return "set " + quoteToken(path + ".materialUri") + " " +
@@ -1105,8 +1121,8 @@ parseMaterialParameterValue(const ShaderPropertyType type,
   }
   if (const auto target = parseNodeMaterialTarget(field);
       target.has_value() && context.getNodeMaterialParameter) {
-    const auto value = context.getNodeMaterialParameter(
-        path, target->binding, target->member);
+    const auto value =
+        context.getNodeMaterialParameter(path, target->binding, target->member);
     if (!value.has_value()) {
       return {};
     }
@@ -1346,9 +1362,18 @@ void copyActiveCameraPose(Scene &scene, EditorState &editorState,
          kind == "primitive:cone";
 }
 
+[[nodiscard]] bool isModelAddKind(const std::string &kind) {
+  return kind.rfind("model:", 0) == 0 &&
+         kind.size() > std::string("model:").size();
+}
+
 [[nodiscard]] std::string primitiveNameFromKind(const std::string &kind) {
   const usize colon = kind.find(':');
   return colon == std::string::npos ? kind : kind.substr(colon + 1);
+}
+
+[[nodiscard]] std::string modelAssetIdFromKind(const std::string &kind) {
+  return kind.substr(std::string("model:").size());
 }
 
 void collectSubtreeNodes(const SceneNodeSharedPtr &node,
@@ -1389,8 +1414,8 @@ captureDirectionalLightClipboardState(const DirectionalLight &light) {
   };
 }
 
-[[nodiscard]] NodeClipboardEntry captureNodeClipboardEntry(Scene &scene,
-                                                           const SceneNode &node) {
+[[nodiscard]] NodeClipboardEntry
+captureNodeClipboardEntry(Scene &scene, const SceneNode &node) {
   NodeClipboardEntry entry;
   entry.nodeName = node.getNodeName();
   entry.name = node.getName();
@@ -1462,18 +1487,21 @@ void applyCameraClipboardState(CameraComponent &camera,
   camera.setTarget(state.target);
 }
 
-void applyDirectionalLightClipboardState(DirectionalLight &light,
-                                         const DirectionalLightClipboardState &state) {
+void applyDirectionalLightClipboardState(
+    DirectionalLight &light, const DirectionalLightClipboardState &state) {
   light.setDirection(state.direction);
   light.setColor(state.color);
   light.setIntensity(state.intensity);
 }
 
-[[nodiscard]] SceneNodeSharedPtr instantiateClipboardSubtree(
-    Scene &scene, const NodeClipboardEntry &entry, const SceneNodeSharedPtr &parent,
-    const bool renameRootAsCopy, const bool offsetRoot) {
+[[nodiscard]] SceneNodeSharedPtr
+instantiateClipboardSubtree(Scene &scene, const NodeClipboardEntry &entry,
+                            const SceneNodeSharedPtr &parent,
+                            const bool renameRootAsCopy,
+                            const bool offsetRoot) {
   auto node = SceneNode::create(uniqueNodeName(scene, entry.nodeName));
-  node->setName(renameRootAsCopy ? makeCopyName(parent, entry.name) : entry.name);
+  node->setName(renameRootAsCopy ? makeCopyName(parent, entry.name)
+                                 : entry.name);
   Transform transform = entry.transform;
   if (offsetRoot) {
     transform.translation.x += kDuplicateOffsetX;
@@ -1753,14 +1781,16 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
     if (!value) {
       return makeError("invalid float for set direction");
     }
-    if (const auto directional = std::dynamic_pointer_cast<DirectionalLight>(light)) {
+    if (const auto directional =
+            std::dynamic_pointer_cast<DirectionalLight>(light)) {
       directional->setDirection(*value);
     } else if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
       spot->setDirection(*value);
     } else {
       return makeError("field not available on node: direction");
     }
-    return makeOk("direction updated", "{\"value\":" + makeVec3Json(*value) + "}");
+    return makeOk("direction updated",
+                  "{\"value\":" + makeVec3Json(*value) + "}");
   }
   if (field == "light.color" || field == "color") {
     if (args.size() != valueStartIndex + 3) {
@@ -1774,9 +1804,11 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
     if (!value) {
       return makeError("invalid float for set color");
     }
-    if (const auto directional = std::dynamic_pointer_cast<DirectionalLight>(light)) {
+    if (const auto directional =
+            std::dynamic_pointer_cast<DirectionalLight>(light)) {
       directional->setColor(*value);
-    } else if (const auto point = std::dynamic_pointer_cast<PointLight>(light)) {
+    } else if (const auto point =
+                   std::dynamic_pointer_cast<PointLight>(light)) {
       point->setColor(*value);
     } else if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
       spot->setColor(*value);
@@ -1795,14 +1827,17 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
     if (!value) {
       return makeError("invalid float for set intensity");
     }
-    if (const auto directional = std::dynamic_pointer_cast<DirectionalLight>(light)) {
+    if (const auto directional =
+            std::dynamic_pointer_cast<DirectionalLight>(light)) {
       directional->setIntensity(*value);
-    } else if (const auto point = std::dynamic_pointer_cast<PointLight>(light)) {
+    } else if (const auto point =
+                   std::dynamic_pointer_cast<PointLight>(light)) {
       point->setIntensity(*value);
     } else if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
       spot->setIntensity(*value);
     }
-    return makeOk("intensity updated", "{\"value\":" + formatFloat(*value) + "}");
+    return makeOk("intensity updated",
+                  "{\"value\":" + formatFloat(*value) + "}");
   }
   if (field == "light.range" || field == "range") {
     if (args.size() != valueStartIndex + 1) {
@@ -1870,16 +1905,17 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
   return makeError("unknown field: " + field);
 }
 
-[[nodiscard]] CommandResult setMaterialField(
-    const SceneIoContext &context, const std::string &path,
-    const std::string &field, const std::vector<std::string> &args,
-    const usize valueStartIndex) {
+[[nodiscard]] CommandResult
+setMaterialField(const SceneIoContext &context, const std::string &path,
+                 const std::string &field, const std::vector<std::string> &args,
+                 const usize valueStartIndex) {
   if (field == "materialUri") {
     if (args.size() != valueStartIndex + 1) {
       return makeError("usage: set <path>.materialUri <uri>");
     }
     if (!context.setMaterialUri) {
-      return makeError("material editing unavailable: material URI callback is not registered");
+      return makeError("material editing unavailable: material URI callback is "
+                       "not registered");
     }
     return context.setMaterialUri(path, args[valueStartIndex]);
   }
@@ -1888,7 +1924,8 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
       return makeError("usage: set <path>.nodeMaterial.baseColor <r> <g> <b>");
     }
     if (!context.setNodeMaterialBaseColor) {
-      return makeError("material editing unavailable: baseColor callback is not registered");
+      return makeError(
+          "material editing unavailable: baseColor callback is not registered");
     }
     const auto value = parseVec3(args, valueStartIndex);
     if (!value) {
@@ -1896,13 +1933,14 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
     }
     return context.setNodeMaterialBaseColor(path, *value);
   }
-  if (const auto target = parseNodeMaterialTarget(field);
-      target.has_value()) {
-    if (!context.getNodeMaterialParameter || !context.setNodeMaterialParameter) {
-      return makeError("material editing unavailable: parameter callback is not registered");
+  if (const auto target = parseNodeMaterialTarget(field); target.has_value()) {
+    if (!context.getNodeMaterialParameter ||
+        !context.setNodeMaterialParameter) {
+      return makeError(
+          "material editing unavailable: parameter callback is not registered");
     }
-    const auto current = context.getNodeMaterialParameter(
-        path, target->binding, target->member);
+    const auto current =
+        context.getNodeMaterialParameter(path, target->binding, target->member);
     if (!current.has_value()) {
       return makeError("material parameter not found: " + target->key);
     }
@@ -1921,8 +1959,8 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
       reflectedType = ShaderPropertyType::Vec4;
       break;
     }
-    const auto value = parseMaterialParameterValue(reflectedType, args,
-                                                  valueStartIndex);
+    const auto value =
+        parseMaterialParameterValue(reflectedType, args, valueStartIndex);
     if (!value.has_value()) {
       return makeError("invalid value for material parameter: " + target->key);
     }
@@ -2279,12 +2317,13 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
 
   bus.registerHandler(
       "add",
-      CommandMetadata{"add "
-                      "(primitive:cube|primitive:sphere|primitive:plane|"
-                      "primitive:cylinder|primitive:cone|light:directional|"
-                      "light:point|light:spot|camera:perspective) <name> "
-                      "[parentPath] [x y z]",
-                      inverseFromMetadata(), true},
+      CommandMetadata{
+          "add "
+          "(primitive:cube|primitive:sphere|primitive:plane|"
+          "primitive:cylinder|primitive:cone|light:directional|"
+          "light:point|light:spot|camera:perspective|model:<id>) <name> "
+          "[parentPath] [x y z]",
+          inverseFromMetadata(), true},
       [&scene, &editorState, state, createNode](std::vector<std::string> args) {
         if (args.size() < 2) {
           return makeError("usage: add <kind> <name> [parentPath] [x y z]");
@@ -2301,8 +2340,7 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
               "add mesh is no longer supported; use add primitive:<shape>");
         }
         if (kind.rfind("light:", 0) == 0) {
-          lightKindName =
-              lowerCopy(kind.substr(std::string("light:").size()));
+          lightKindName = lowerCopy(kind.substr(std::string("light:").size()));
         }
 
         const std::string &name = args[1];
@@ -2328,35 +2366,34 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
         }
 
         const bool primitiveKind = isPrimitiveAddKind(kind);
+        const bool modelKind = isModelAddKind(kind);
         const bool cameraKind = kind == "camera:perspective";
         const bool lightKind = kind == "light:directional" ||
                                kind == "light:point" || kind == "light:spot";
-        if (!primitiveKind && !cameraKind && !lightKind) {
+        if (!primitiveKind && !modelKind && !cameraKind && !lightKind) {
           return makeError("unknown add target: " + kind);
         }
 
-        const std::string nodeNameBase = primitiveKind
-                                             ? "primitive_" +
-                                                   primitiveNameFromKind(kind) +
-                                                   "_node"
-                                             : (cameraKind
-                                                    ? "camera_node"
-                                                    : lightKindName +
-                                                          "_light_node");
+        const std::string nodeNameBase =
+            primitiveKind
+                ? "primitive_" + primitiveNameFromKind(kind) + "_node"
+                : (modelKind ? "model_" + modelAssetIdFromKind(kind) + "_node"
+                             : (cameraKind ? "camera_node"
+                                           : lightKindName + "_light_node"));
         const std::string nodeName =
             makeUniqueNodeName(scene, *state, nodeNameBase);
 
         SceneNodeSharedPtr node;
-        if (primitiveKind) {
+        if (primitiveKind || modelKind) {
           if (!createNode) {
-            return makeError("primitive creation is unavailable");
+            return makeError("node creation is unavailable");
           }
           CommandResult created = createNode(kind, nodeName, name, node);
           if (!created.ok) {
             return created;
           }
           if (!node) {
-            return makeError("primitive creation returned no node");
+            return makeError("node creation returned no node");
           }
         } else {
           node = SceneNode::create(nodeName);
@@ -2374,7 +2411,7 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
         }
 
         const std::string stashId = allocateStashId(*state);
-        if (primitiveKind) {
+        if (primitiveKind || modelKind) {
           scene.addRenderable(node);
         } else if (cameraKind) {
           const auto camera = node->addComponent<CameraComponent>();
@@ -2452,8 +2489,7 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
       });
 
   bus.registerHandler(
-      "copy", "copy <path>",
-      [&scene, state](std::vector<std::string> args) {
+      "copy", "copy <path>", [&scene, state](std::vector<std::string> args) {
         if (args.size() != 1) {
           return makeError("usage: copy <path>");
         }
@@ -2472,7 +2508,8 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
 
   bus.registerHandler(
       "paste_as_sibling",
-      CommandMetadata{"paste_as_sibling <targetPath>", inverseFromMetadata(), true},
+      CommandMetadata{"paste_as_sibling <targetPath>", inverseFromMetadata(),
+                      true},
       [&scene, &editorState, state](std::vector<std::string> args) {
         if (args.size() != 1) {
           return makeError("usage: paste_as_sibling <targetPath>");
@@ -2500,15 +2537,15 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
 
         const std::string pastedPath = pasted->getPath();
         const std::string stashId = allocateStashId(*state);
-        CommandResult result = makeOk(
-            "pasted " + pastedPath,
-            "{\"path\":\"" + jsonEscape(pastedPath) + "\"}");
-        result.metadata["inverse.line"] =
-            "__remove_to_stash " + quoteToken(pastedPath) + " " +
-            quoteToken(stashId);
-        result.metadata["redo.line"] =
-            "__restore_from_stash " + quoteToken(stashId) + "\nselect " +
-            quoteToken(pastedPath);
+        CommandResult result =
+            makeOk("pasted " + pastedPath,
+                   "{\"path\":\"" + jsonEscape(pastedPath) + "\"}");
+        result.metadata["inverse.line"] = "__remove_to_stash " +
+                                          quoteToken(pastedPath) + " " +
+                                          quoteToken(stashId);
+        result.metadata["redo.line"] = "__restore_from_stash " +
+                                       quoteToken(stashId) + "\nselect " +
+                                       quoteToken(pastedPath);
         return result;
       });
 
@@ -2565,8 +2602,7 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
         constexpr std::string_view kLightPathSuffix = ".light";
         if (nodePath.size() > kLightPathSuffix.size() &&
             nodePath.compare(nodePath.size() - kLightPathSuffix.size(),
-                             kLightPathSuffix.size(),
-                             kLightPathSuffix) == 0) {
+                             kLightPathSuffix.size(), kLightPathSuffix) == 0) {
           nodePath.resize(nodePath.size() - kLightPathSuffix.size());
           field = "light." + field;
         }
@@ -2575,16 +2611,16 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
         if (!found.ok) {
           return found;
         }
-        if (field == "materialUri" ||
-            field.rfind("nodeMaterial.", 0) == 0) {
+        if (field == "materialUri" || field.rfind("nodeMaterial.", 0) == 0) {
           return getMaterialField(materialContext, nodePath, field);
         }
         return getField(*node, field);
       });
 
   bus.registerHandler(
-      "set", CommandMetadata{"set <path>.<field> <value>", inverseFromMetadata(),
-                              true},
+      "set",
+      CommandMetadata{"set <path>.<field> <value>", inverseFromMetadata(),
+                      true},
       [&scene, materialContext](std::vector<std::string> args) {
         if (args.size() < 2) {
           return makeError("usage: set <path>.<field> <value>");
@@ -2598,8 +2634,7 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
         constexpr std::string_view kLightPathSuffix = ".light";
         if (nodePath.size() > kLightPathSuffix.size() &&
             nodePath.compare(nodePath.size() - kLightPathSuffix.size(),
-                             kLightPathSuffix.size(),
-                             kLightPathSuffix) == 0) {
+                             kLightPathSuffix.size(), kLightPathSuffix) == 0) {
           nodePath.resize(nodePath.size() - kLightPathSuffix.size());
           field = "light." + field;
         }
@@ -2612,14 +2647,12 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
         const bool materialField =
             field == "materialUri" || field.rfind("nodeMaterial.", 0) == 0;
         const std::string inverseLine =
-            materialField
-                ? buildMaterialSetInverseCommand(materialContext, nodePath,
-                                                 field)
-                : buildSetInverseCommand(*node, field);
+            materialField ? buildMaterialSetInverseCommand(materialContext,
+                                                           nodePath, field)
+                          : buildSetInverseCommand(*node, field);
         CommandResult result =
             materialField
-                ? setMaterialField(materialContext, nodePath, field,
-                                   args, 1)
+                ? setMaterialField(materialContext, nodePath, field, args, 1)
                 : setField(*node, field, args, 1);
         if (result.ok && materialField) {
           result.metadata["scene.rebuild"] = "true";
@@ -2660,7 +2693,8 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
         }
         (void)node;
         if (!materialContext.clearNodeMaterialParameter) {
-          return makeError("material editing unavailable: parameter callback is not registered");
+          return makeError("material editing unavailable: parameter callback "
+                           "is not registered");
         }
         const std::string inverseLine = buildMaterialSetInverseCommand(
             materialContext, split->first, split->second);
@@ -2692,7 +2726,8 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
           return found;
         }
         if (!materialContext.applyMaterialOverride) {
-          return makeError("material editing unavailable: apply callback is not registered");
+          return makeError(
+              "material editing unavailable: apply callback is not registered");
         }
         const std::string inverseLine = buildMaterialSetInverseCommand(
             materialContext, args[0], "nodeMaterial.baseColor");
@@ -2708,8 +2743,10 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
       });
 
   bus.registerHandler(
-      "cam", CommandMetadata{"cam (control|look-at|reset|reset-editor-to-game|fov ...)", inverseFromMetadata(),
-                              true},
+      "cam",
+      CommandMetadata{
+          "cam (control|look-at|reset|reset-editor-to-game|fov ...)",
+          inverseFromMetadata(), true},
       [&scene, &editorState, sceneIoContext](std::vector<std::string> args) {
         if (args.empty()) {
           return makeError(

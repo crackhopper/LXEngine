@@ -1,0 +1,11 @@
+assetId: "indoor_props_computer_screen"
+displayName: "Computer Screen"
+category: "indoor/props"
+meshUri: "assets/models/builtin/indoor/props/indoor_props_computer_screen/model.obj"
+defaultMaterialUri: "assets/materials/blinnphong_lit.material"
+sourcePack: "Kenney Furniture Kit"
+sourceUrl: "https://kenney.nl/assets/furniture-kit"
+license: "CC0-1.0"
+commercialUse: true
+triangleCount: 144
+modelBytes: 8049

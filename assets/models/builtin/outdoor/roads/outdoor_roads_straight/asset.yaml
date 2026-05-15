@@ -1,0 +1,11 @@
+assetId: "outdoor_roads_straight"
+displayName: "Road Straight"
+category: "outdoor/roads"
+meshUri: "assets/models/builtin/outdoor/roads/outdoor_roads_straight/model.obj"
+defaultMaterialUri: "assets/materials/blinnphong_lit.material"
+sourcePack: "Kenney City Kit Roads"
+sourceUrl: "https://kenney.nl/assets/city-kit-roads"
+license: "CC0-1.0"
+commercialUse: true
+triangleCount: 88
+modelBytes: 2776

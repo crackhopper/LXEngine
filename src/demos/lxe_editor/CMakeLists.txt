@@ -42,6 +42,7 @@ string(TIMESTAMP LXE_EDITOR_BUILT_AT "%Y-%m-%dT%H:%M:%SZ" UTC)
 
 add_executable(lxe_editor
   api_token_state.cpp
+  builtin_asset_catalog.cpp
   editor_session.cpp
   main.cpp
   camera_rig.cpp

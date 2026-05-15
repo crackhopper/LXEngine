@@ -1,0 +1,11 @@
+assetId: "outdoor_nature_large_rock"
+displayName: "Large Rock"
+category: "outdoor/nature"
+meshUri: "assets/models/builtin/outdoor/nature/outdoor_nature_large_rock/model.obj"
+defaultMaterialUri: "assets/materials/blinnphong_lit.material"
+sourcePack: "Kenney Nature Kit"
+sourceUrl: "https://kenney.nl/assets/nature-kit"
+license: "CC0-1.0"
+commercialUse: true
+triangleCount: 80
+modelBytes: 7866
