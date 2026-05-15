@@ -510,8 +510,9 @@ LxeEditorSession::handleProjectCommand(const std::vector<std::string> &args) {
     m_pendingRuntime.reset();
     m_pendingScenePath.reset();
     m_pendingEditorSceneState.reset();
-    m_runtime.createEmptyScene();
-    rebuildBindings();
+    SceneRuntime emptyRuntime;
+    emptyRuntime.createEmptyScene();
+    m_pendingRuntime = std::move(emptyRuntime);
     return makeCommandOk(closed.message, closed.structuredJson);
   }
   return makeCommandError(

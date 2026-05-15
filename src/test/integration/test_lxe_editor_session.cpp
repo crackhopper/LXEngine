@@ -363,12 +363,59 @@ void testProjectCloseCancelsPendingSceneOpen() {
   loop.initialize(window, renderer);
   session.flushPendingSceneLoad(loop);
 
-  EXPECT(renderer->initSceneCalls == 0,
-         "project close should cancel the pending scene open");
+  EXPECT(renderer->initSceneCalls == 1,
+         "project close should replace the engine scene with an empty scene");
   EXPECT(!session.currentDocumentPath().has_value(),
          "project close should leave the editor on an unsaved empty scene");
 
   cleanupProject("editor_session_close_pending");
+}
+
+void testProjectCloseAfterLoadedSceneUpdatesEngineLoop() {
+  const bool initialized = initializeRuntimeAssetRoot();
+  EXPECT(initialized,
+         "runtime asset root should initialize for loaded project close test");
+  if (!initialized) {
+    return;
+  }
+  cleanupProject("editor_session_close_loaded");
+
+  LX_core::EditorState editorState;
+  LX_demo::lxe_editor::CameraRig rig;
+  LX_demo::lxe_editor::UiOverlay ui;
+  LX_demo::lxe_editor::LxeEditorSession session(rig, ui, editorState);
+  session.initialize();
+
+  EXPECT(session.commandBus()
+             .dispatch("project init empty editor_session_close_loaded")
+             .ok,
+         "project init should queue the project scene");
+
+  auto window = std::make_shared<FakeWindow>();
+  auto renderer = std::make_shared<FakeRenderer>();
+  LX_core::gpu::EngineLoop loop;
+  loop.initialize(window, renderer);
+  session.flushPendingSceneLoad(loop);
+  EXPECT(renderer->lastScene == session.scene(),
+         "project init flush should bind the project scene");
+  const auto loadedScene = session.scene();
+
+  const auto closeResult = session.commandBus().dispatch("project close");
+  EXPECT(closeResult.ok, "project close should succeed after a loaded scene");
+  EXPECT(session.scene() == loadedScene,
+         "project close should not rebuild bindings inside command dispatch");
+  session.flushPendingSceneLoad(loop);
+
+  EXPECT(session.scene() != loadedScene,
+         "project close flush should replace the editor runtime scene");
+  EXPECT(renderer->lastScene == session.scene(),
+         "project close flush should replace the engine scene");
+  EXPECT(!session.currentProjectId().has_value(),
+         "project close should clear the current project");
+  EXPECT(!session.currentDocumentPath().has_value(),
+         "project close should leave no loaded document path");
+
+  cleanupProject("editor_session_close_loaded");
 }
 
 void testEditorDoesNotCreateCameraOrLightHelperNodes() {
@@ -509,6 +556,7 @@ int main() {
   testSceneOpenFailureKeepsEditorRunningAndCurrentScene();
   testStartupClosesProjectWhenLastProjectSceneCannotLoad();
   testProjectCloseCancelsPendingSceneOpen();
+  testProjectCloseAfterLoadedSceneUpdatesEngineLoop();
   testEditorDoesNotCreateCameraOrLightHelperNodes();
   testRecordingCommandControlsSessionRecorder();
   testSceneSaveLoadRoundTripsEditorSidecarState();
