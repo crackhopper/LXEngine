@@ -135,8 +135,9 @@ void testProjectSceneOpenPreservesEditorCommandHistoryAndConsole() {
   EXPECT(session.activeScenePath().has_value(),
          "project init should expose the active scene path");
 
-  const auto saveResult = session.commandBus().dispatch("scene save");
-  EXPECT(saveResult.ok, "scene save should write the active project scene");
+  const auto earlySaveResult = session.commandBus().dispatch("scene save");
+  EXPECT(!earlySaveResult.ok,
+         "scene save should wait until the queued project scene is loaded");
 
   const auto openResult = session.commandBus().dispatch("scene open main");
   EXPECT(openResult.ok, "scene open should queue a project scene");
@@ -149,11 +150,14 @@ void testProjectSceneOpenPreservesEditorCommandHistoryAndConsole() {
   loop.initialize(window, renderer);
   session.flushPendingSceneLoad(loop);
 
+  const auto saveResult = session.commandBus().dispatch("scene save");
+  EXPECT(saveResult.ok, "scene save should write the active project scene");
+
   EXPECT(&session.commandBus() == commandBusBefore,
          "scene open should preserve the editor-level command bus");
   EXPECT(&session.consolePanel() == consoleBefore,
          "scene open should preserve the editor-level console panel");
-  EXPECT(session.commandBus().history().size() == historySizeBefore + 4,
+  EXPECT(session.commandBus().history().size() == historySizeBefore + 5,
          "scene open should not clear command history");
   EXPECT(session.consolePanel().displayedText().find(helpResult.message) !=
              std::string::npos,
@@ -187,15 +191,18 @@ void testSceneOpenFailureKeepsEditorRunningAndCurrentScene() {
              .dispatch("project init empty editor_session_failure")
              .ok,
          "project init should succeed before load failure test");
-  EXPECT(session.commandBus().dispatch("scene save").ok,
-         "scene save should make the project main scene loadable");
-  EXPECT(session.commandBus().dispatch("scene duplicate main alternate").ok,
-         "scene duplicate should create a second project scene");
 
   auto window = std::make_shared<FakeWindow>();
   auto renderer = std::make_shared<FakeRenderer>();
   LX_core::gpu::EngineLoop loop;
   loop.initialize(window, renderer);
+  session.flushPendingSceneLoad(loop);
+
+  EXPECT(session.commandBus().dispatch("scene save").ok,
+         "scene save should make the project main scene loadable");
+  EXPECT(session.commandBus().dispatch("scene duplicate main alternate").ok,
+         "scene duplicate should create a second project scene");
+
   loop.startScene(session.scene());
   const auto oldScene = session.scene();
 
@@ -213,9 +220,13 @@ void testSceneOpenFailureKeepsEditorRunningAndCurrentScene() {
   EXPECT(session.scene() == oldScene,
          "failed deferred scene open should keep the previous session scene");
   EXPECT(
-      session.currentDocumentPath() == session.activeScenePath(),
-      "failed deferred scene open should expose the project active scene path");
-  EXPECT(renderer->initSceneCalls == 3,
+      session.currentDocumentPath() != session.activeScenePath(),
+      "failed deferred scene open should leave the loaded document unchanged");
+  const auto failedSave = session.commandBus().dispatch("scene save");
+  EXPECT(!failedSave.ok,
+         "scene save should not write while the active project scene is not "
+         "loaded");
+  EXPECT(renderer->initSceneCalls == 4,
          "failed load should try pending scene and restore the previous scene");
   EXPECT(renderer->lastScene == oldScene,
          "engine loop should be restored to the previous scene after failure");
@@ -316,6 +327,12 @@ void testSceneSaveLoadRoundTripsEditorSidecarState() {
              .ok,
          "project init should succeed for sidecar test");
 
+  auto window = std::make_shared<FakeWindow>();
+  auto renderer = std::make_shared<FakeRenderer>();
+  LX_core::gpu::EngineLoop loop;
+  loop.initialize(window, renderer);
+  session.flushPendingSceneLoad(loop);
+
   auto *lightNode = session.scene()->findByPath("/dir_light");
   EXPECT(lightNode != nullptr, "default scene should have a light node");
   if (!lightNode) {
@@ -336,10 +353,6 @@ void testSceneSaveLoadRoundTripsEditorSidecarState() {
   const auto load = session.commandBus().dispatch("scene open main");
   EXPECT(load.ok, "scene open should queue saved project scene");
 
-  auto window = std::make_shared<FakeWindow>();
-  auto renderer = std::make_shared<FakeRenderer>();
-  LX_core::gpu::EngineLoop loop;
-  loop.initialize(window, renderer);
   session.flushPendingSceneLoad(loop);
 
   const LX_core::Vec3f target = rig.orbitTarget();

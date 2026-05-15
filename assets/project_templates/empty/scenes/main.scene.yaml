@@ -1,3 +1,36 @@
 scene:
   name: Empty Project
-nodes: []
+  gameplayCameraPath: /game_cam
+nodes:
+  - nodeName: game_camera
+    name: game_cam
+    transform:
+      translation: [0.0, 2.0, 6.0]
+      rotation: [1.0, 0.0, 0.0, 0.0]
+      scale: [1.0, 1.0, 1.0]
+    visibilityMask: 4294967295
+    camera:
+      eye: [0.0, 2.0, 6.0]
+      target: [0.0, 0.0, 0.0]
+      up: [0.0, 1.0, 0.0]
+      type: perspective
+      fovY: 45.0
+      aspect: 1.7777778
+      nearPlane: 0.1
+      farPlane: 1000.0
+      left: -1.0
+      right: 1.0
+      bottom: -1.0
+      top: 1.0
+      cullingMask: 4294967295
+  - nodeName: dir_light_node
+    name: dir_light
+    transform:
+      translation: [0.0, 0.0, 0.0]
+      rotation: [1.0, 0.0, 0.0, 0.0]
+      scale: [1.0, 1.0, 1.0]
+    visibilityMask: 4294967295
+    directionalLight:
+      direction: [-0.3, -1.0, -0.5]
+      color: [1.0, 0.98, 0.9]
+      intensity: 1.0

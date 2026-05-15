@@ -120,6 +120,11 @@ commandRequestsCameraRigResync(const LX_core::CommandResult &result) {
   return it != result.metadata.end() && it->second == "true";
 }
 
+[[nodiscard]] std::filesystem::path
+normalizedAbsolutePath(const std::filesystem::path &path) {
+  return std::filesystem::absolute(path).lexically_normal();
+}
+
 [[nodiscard]] std::reference_wrapper<LX_core::CameraComponent>
 requireCameraComponent(const LX_core::SceneNodeSharedPtr &node,
                        const char *nodeLabel) {
@@ -225,7 +230,7 @@ const RecordingController &LxeEditorSession::recording() const {
 
 std::optional<std::filesystem::path>
 LxeEditorSession::currentDocumentPath() const {
-  return m_projectSession.activeScenePath();
+  return m_runtime.documentPath();
 }
 
 std::optional<std::string> LxeEditorSession::currentProjectId() const {
@@ -370,6 +375,17 @@ LX_core::CommandResult LxeEditorSession::saveActiveProjectScene() {
   if (!activePath.has_value()) {
     return makeCommandError("project has no active scene");
   }
+  if (m_pendingRuntime.has_value()) {
+    return makeCommandError(
+        "active scene open is pending; wait for the next update tick");
+  }
+  const auto runtimePath = m_runtime.documentPath();
+  if (!runtimePath.has_value() ||
+      normalizedAbsolutePath(*runtimePath) !=
+          normalizedAbsolutePath(*activePath)) {
+    return makeCommandError(
+        "active project scene is not loaded; wait for scene open to finish");
+  }
   try {
     m_runtime.saveToDocumentPath(*activePath);
     saveEditorSceneStateForScenePath(*activePath, captureEditorSceneState());
@@ -449,17 +465,6 @@ LxeEditorSession::handleProjectCommand(const std::vector<std::string> &args) {
     m_editorData.lastProject = m_projectSession.projectRoot();
     persistEditorData();
     LX_core::CommandResult queued = queueActiveSceneOpen();
-    if (!queued.ok) {
-      try {
-        const auto activePath = m_projectSession.activeScenePath();
-        if (activePath.has_value()) {
-          m_runtime.saveToDocumentPath(*activePath);
-          saveEditorSceneStateForScenePath(*activePath,
-                                           captureEditorSceneState());
-          queued = queueActiveSceneOpen();
-        }
-      } catch (const std::exception &) {}
-    }
     if (!queued.ok) {
       return makeCommandOk("project initialized; active scene load failed: " +
                                queued.message,

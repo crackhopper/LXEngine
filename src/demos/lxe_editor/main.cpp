@@ -854,7 +854,6 @@ int main(int argc, char **argv) {
                             session.currentDocumentPath().has_value()
                                 ? session.currentDocumentPath()->string()
                                 : std::string{},
-                        .sourceKind = demo::ApiSceneSourceKind::Unknown,
                         .permission = demo::ApiPermissionLevel::User,
                         .dirty = session.isDirty(),
                     };
