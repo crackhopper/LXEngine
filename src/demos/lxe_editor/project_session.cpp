@@ -516,6 +516,10 @@ ProjectCommandResult ProjectSession::newScene(const std::string &sceneId) {
   const auto relativePath =
       (std::filesystem::path("scenes") / (sceneId + ".scene.yaml"))
           .lexically_normal();
+  if (!isContainedRelativePath(*m_projectRoot, relativePath)) {
+    return makeResult(false, "scene target path escapes project root", {},
+                      m_currentProject->id);
+  }
   const auto scenePath = *m_projectRoot / relativePath;
   if (std::filesystem::exists(scenePath)) {
     return makeResult(false, "scene file already exists", scenePath,
@@ -554,6 +558,10 @@ ProjectCommandResult ProjectSession::duplicateScene(
     const auto relativePath =
         (std::filesystem::path("scenes") / (newSceneId + ".scene.yaml"))
             .lexically_normal();
+    if (!isContainedRelativePath(*m_projectRoot, relativePath)) {
+      return makeResult(false, "scene target path escapes project root", {},
+                        m_currentProject->id);
+    }
     const auto targetPath = *m_projectRoot / relativePath;
     if (std::filesystem::exists(targetPath)) {
       return makeResult(false, "scene file already exists", targetPath,

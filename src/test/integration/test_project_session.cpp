@@ -305,6 +305,65 @@ void testSceneDuplicateRejectsPathTraversalSceneId() {
          "rejected scene duplicate should not add scene entry");
 }
 
+void testSceneNewRejectsSymlinkedScenesDirectoryEscape() {
+  const auto root = makeTempRoot("lx_project_session_new_scene_symlink");
+  demo::ProjectSession session = makeSession(root);
+  EXPECT(session.initProject("empty", "New Symlink Test").ok,
+         "project init should succeed");
+  const auto projectRoot = *session.projectRoot();
+  const auto outsideRoot = root / "outside_scenes";
+  std::filesystem::remove_all(projectRoot / "scenes");
+  std::filesystem::create_directories(outsideRoot);
+
+  std::error_code ec;
+  std::filesystem::create_directory_symlink(outsideRoot, projectRoot / "scenes",
+                                            ec);
+  if (ec) {
+    std::cerr << "[SKIP] new scene symlink assertion: " << ec.message()
+              << "\n";
+    return;
+  }
+
+  const auto result = session.newScene("safe_id");
+
+  EXPECT(!result.ok, "scene new should reject symlinked scenes directory");
+  EXPECT(!std::filesystem::exists(outsideRoot / "safe_id.scene.yaml"),
+         "scene new should not write through symlinked scenes directory");
+  EXPECT(session.currentProject()->scenes.size() == 1,
+         "rejected symlinked scene new should not add scene entry");
+}
+
+void testSceneDuplicateRejectsSymlinkedScenesDirectoryEscape() {
+  const auto root = makeTempRoot("lx_project_session_duplicate_scene_symlink");
+  demo::ProjectSession session = makeSession(root);
+  EXPECT(session.initProject("empty", "Duplicate Symlink Test").ok,
+         "project init should succeed");
+  const auto projectRoot = *session.projectRoot();
+  const auto outsideRoot = root / "outside_scenes";
+  std::filesystem::remove_all(projectRoot / "scenes");
+  std::filesystem::create_directories(outsideRoot);
+  writeFile(outsideRoot / "main.scene.yaml",
+            "scene:\n  name: Outside Main\nnodes: []\n");
+
+  std::error_code ec;
+  std::filesystem::create_directory_symlink(outsideRoot, projectRoot / "scenes",
+                                            ec);
+  if (ec) {
+    std::cerr << "[SKIP] duplicate scene symlink assertion: " << ec.message()
+              << "\n";
+    return;
+  }
+
+  const auto result = session.duplicateScene("main", "copy_id");
+
+  EXPECT(!result.ok,
+         "scene duplicate should reject symlinked scenes directory");
+  EXPECT(!std::filesystem::exists(outsideRoot / "copy_id.scene.yaml"),
+         "scene duplicate should not write through symlinked scenes directory");
+  EXPECT(session.currentProject()->scenes.size() == 1,
+         "rejected symlinked scene duplicate should not add scene entry");
+}
+
 void testSceneIdsUsePortableWhitelist() {
   const auto root = makeTempRoot("lx_project_session_scene_id_whitelist");
   demo::ProjectSession session = makeSession(root);
@@ -438,6 +497,8 @@ int main() {
   testSaveProjectPersistsNewSceneAndActiveScene();
   testSceneNewRejectsPathTraversalSceneId();
   testSceneDuplicateRejectsPathTraversalSceneId();
+  testSceneNewRejectsSymlinkedScenesDirectoryEscape();
+  testSceneDuplicateRejectsSymlinkedScenesDirectoryEscape();
   testSceneIdsUsePortableWhitelist();
   testDuplicateSceneSuccessAndRejectsDuplicateIdAndPath();
   testSceneOpenRejectsPathOutsideProjectRoot();
