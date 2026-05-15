@@ -454,7 +454,7 @@ makeSummaryJson(const LxeEditorCommandContext &context) {
     oss << "null";
   }
   oss << ",\"documentPath\":";
-  if (const auto path = context.currentDocumentPath(); path.has_value()) {
+  if (const auto path = context.runtimeScenePath(); path.has_value()) {
     oss << '"' << jsonEscape(*path) << '"';
   } else {
     oss << "null";
@@ -535,7 +535,7 @@ void registerLxeEditorCommands(LX_core::CommandBus &bus,
   auto dirty = context.dirty;
   auto debugEnabled = context.debugEnabled;
   auto setDebugEnabled = context.setDebugEnabled;
-  auto currentDocumentPath = context.currentDocumentPath;
+  auto runtimeScenePath = context.runtimeScenePath;
   auto projectCommand = context.projectCommand;
   auto sceneCommand = context.sceneCommand;
   auto projectSummaryJson = context.projectSummaryJson;
@@ -656,7 +656,7 @@ void registerLxeEditorCommands(LX_core::CommandBus &bus,
           return makeError("usage: scene open <name-or-path> | scene save [args]");
         }
         if (args[0] == "load") {
-          return makeError("scene load was removed; use scene open");
+          return makeError("scene command removed; use scene open");
         }
         if (!sceneCommand) {
           return makeError("scene command unavailable");
@@ -738,7 +738,7 @@ void registerLxeEditorCommands(LX_core::CommandBus &bus,
       "recording",
       "recording status|enable|disable [force]|start "
       "[basic|diagnostic|trace]|stop [save|discard]",
-      [recording, currentDocumentPath,
+      [recording, runtimeScenePath,
        buildInfoJson](std::vector<std::string> args) {
         if (!recording) {
           return makeError("recording unavailable");
@@ -780,7 +780,7 @@ void registerLxeEditorCommands(LX_core::CommandBus &bus,
             return makeError("usage: recording start [basic|diagnostic|trace]");
           }
           const auto path =
-              currentDocumentPath ? currentDocumentPath() : std::nullopt;
+              runtimeScenePath ? runtimeScenePath() : std::nullopt;
           const auto result = controller.start(RecordingStartOptions{
               .detailLevel = *detailLevel,
               .scenePath = path.value_or(std::string{}),
@@ -815,7 +815,7 @@ void registerLxeEditorCommands(LX_core::CommandBus &bus,
   bus.registerHandler(
       "state", "state (summary|selection|cameras|scene|toolbar|history)",
       [editorState, scene, interaction, getEditMode, getCameraControlMode,
-       dirty, debugEnabled, currentDocumentPath, projectSummaryJson,
+       dirty, debugEnabled, runtimeScenePath, projectSummaryJson,
        persistedHistory](std::vector<std::string> args) {
         if (args.size() != 1) {
           return makeError(
@@ -832,7 +832,7 @@ void registerLxeEditorCommands(LX_core::CommandBus &bus,
             .sceneViewRect = [] { return SceneViewRect{}; },
             .dirty = dirty,
             .debugEnabled = debugEnabled,
-            .currentDocumentPath = currentDocumentPath,
+            .runtimeScenePath = runtimeScenePath,
             .projectSummaryJson = projectSummaryJson,
             .persistedHistory = persistedHistory,
         };
@@ -867,7 +867,7 @@ void registerLxeEditorCommands(LX_core::CommandBus &bus,
                                 ? scene->getRootNode()->getPath()
                                 : std::string("/"))
               << "\",\"documentPath\":";
-          if (const auto path = currentDocumentPath(); path.has_value()) {
+          if (const auto path = runtimeScenePath(); path.has_value()) {
             oss << '"' << jsonEscape(*path) << '"';
           } else {
             oss << "null";

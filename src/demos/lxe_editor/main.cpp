@@ -873,7 +873,7 @@ int main(int argc, char **argv) {
           },
           .activeSceneEventKey =
               [&]() -> std::optional<std::string> {
-            const auto loadedScene = session.currentDocumentPath();
+            const auto loadedScene = session.runtimeScenePath();
             if (!loadedScene.has_value()) {
               return std::nullopt;
             }
@@ -962,7 +962,7 @@ int main(int argc, char **argv) {
         loop.stop();
         return;
       }
-      session.flushPendingSceneLoad(loop);
+      session.flushPendingSceneOpen(loop);
       if (apiBindingsGeneration != session.bindingsGeneration()) {
         apiBindingsGeneration = session.bindingsGeneration();
         apiService = makeApiService(apiService.get());

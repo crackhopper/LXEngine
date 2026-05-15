@@ -35,7 +35,7 @@ constexpr float kPi = 3.14159265358979323846f;
 constexpr float kFloatEps = 1e-4f;
 const std::string kLegacySourceKey = std::string("source") + "Kind";
 const std::string kLegacyAdminOnLine = std::string("admin ") + "on";
-const std::string kLegacySceneLoadLine = std::string("scene ") + "load main";
+const std::string kRemovedSceneCommandLine = std::string("scene ") + "load main";
 
 int failures = 0;
 
@@ -188,7 +188,7 @@ struct SceneViewerCommandFixture {
             .setDebugEnabled = [this](const bool enabled) {
               debugEnabled = enabled;
             },
-            .currentDocumentPath = [this]() { return documentPath; },
+            .runtimeScenePath = [this]() { return documentPath; },
             .projectCommand =
                 [this](const std::vector<std::string>& args) {
                   projectCommands.push_back(args);
@@ -274,7 +274,7 @@ struct SceneViewerPickFixture {
             .setDebugEnabled = [this](const bool enabled) {
               debugEnabled = enabled;
             },
-            .currentDocumentPath = []() { return std::optional<std::string>{}; },
+            .runtimeScenePath = []() { return std::optional<std::string>{}; },
             .projectCommand =
                 [](const std::vector<std::string>&) {
                   return LX_core::CommandResult{
@@ -949,10 +949,10 @@ void testProjectAndSceneCommandsUseRegisteredCallbacks() {
   EXPECT(sceneOpen.ok,
          "scene open should route through project-scoped handler");
 
-  const CommandResult sceneLoad = fixture.base.bus.dispatch(kLegacySceneLoadLine);
-  EXPECT(!sceneLoad.ok, "removed scene command should fail");
-  EXPECT(sceneLoad.message.find("scene open") != std::string::npos ||
-             sceneLoad.message.find("unknown command") != std::string::npos,
+  const CommandResult removedSceneCommand = fixture.base.bus.dispatch(kRemovedSceneCommandLine);
+  EXPECT(!removedSceneCommand.ok, "removed scene command should fail");
+  EXPECT(removedSceneCommand.message.find("scene open") != std::string::npos ||
+             removedSceneCommand.message.find("unknown command") != std::string::npos,
          "removed scene command should not be a compatibility alias");
 
   EXPECT(fixture.projectCommands.size() == 3 &&
@@ -968,7 +968,7 @@ void testProjectAndSceneCommandsUseRegisteredCallbacks() {
          "removed scene command should not reach project-scoped scene handler");
 }
 
-void testSceneLoadReportsRemovalWithoutSceneCallback() {
+void testRemovedSceneCommandReportsGuidanceWithoutSceneCallback() {
   CommandFixture base;
   LX_demo::lxe_editor::SceneInteractionController interaction{
       base.bus, base.editorState, *base.scene};
@@ -993,15 +993,15 @@ void testSceneLoadReportsRemovalWithoutSceneCallback() {
           .dirty = []() { return false; },
           .debugEnabled = []() { return false; },
           .setDebugEnabled = [](bool) {},
-          .currentDocumentPath = []() { return std::optional<std::string>{}; },
+          .runtimeScenePath = []() { return std::optional<std::string>{}; },
           .projectSummaryJson = []() { return std::string("{}"); },
           .persistedHistory = []() { return std::vector<std::string>{}; },
       });
 
-  const CommandResult sceneLoad = base.bus.dispatch(kLegacySceneLoadLine);
-  EXPECT(!sceneLoad.ok,
+  const CommandResult removedSceneCommand = base.bus.dispatch(kRemovedSceneCommandLine);
+  EXPECT(!removedSceneCommand.ok,
          "removed scene command should fail without scene callback");
-  EXPECT(sceneLoad.message.find("scene open") != std::string::npos,
+  EXPECT(removedSceneCommand.message.find("scene open") != std::string::npos,
          "removed scene command should report scene open guidance");
 }
 
@@ -2045,7 +2045,7 @@ int main() {
   testBuiltinCamAndPreviewCommands();
   testBuiltinRemainingCommandErrors();
   testProjectAndSceneCommandsUseRegisteredCallbacks();
-  testSceneLoadReportsRemovalWithoutSceneCallback();
+  testRemovedSceneCommandReportsGuidanceWithoutSceneCallback();
   testAdminCommandsRequireRegisteredCallbacks();
   testAdminCommandsUseRegisteredCallbacks();
   testSceneOpenClearsRedoHistory();

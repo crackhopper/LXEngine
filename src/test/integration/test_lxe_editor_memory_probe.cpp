@@ -172,8 +172,8 @@ void loadProbeProjectScene(LX_demo::lxe_editor::LxeEditorSession &session,
     throw std::runtime_error("failed to queue probe project scene: " +
                              result.message);
   }
-  session.flushPendingSceneLoad(loop);
-  if (!session.currentDocumentPath().has_value() ||
+  session.flushPendingSceneOpen(loop);
+  if (!session.runtimeScenePath().has_value() ||
       session.currentProjectActiveScene() !=
           std::optional<std::string>("scenes/main.scene.yaml") ||
       session.scene()->getSceneName() != "Empty Project") {

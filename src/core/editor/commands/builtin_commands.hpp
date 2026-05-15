@@ -18,7 +18,7 @@ class SceneNode;
 using SceneNodeSharedPtr = std::shared_ptr<SceneNode>;
 
 struct SceneIoContext {
-  using LoadFn = std::function<CommandResult(const std::string &path)>;
+  using OpenFn = std::function<CommandResult(const std::string &path)>;
   using SaveFn =
       std::function<CommandResult(const std::optional<std::string> &path)>;
   using ListFn = std::function<CommandResult()>;
@@ -51,7 +51,7 @@ struct SceneIoContext {
       const std::string &path, const std::string &binding,
       const std::string &member)>;
 
-  LoadFn load;
+  OpenFn open;
   SaveFn save;
   ListFn list;
   SetAdminFn setAdmin;

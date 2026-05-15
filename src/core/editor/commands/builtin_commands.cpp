@@ -2002,7 +2002,7 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
                              Scene &scene,
                              const SceneIoContext &sceneIoContext) {
   const auto state = std::make_shared<BuiltinCommandState>();
-  const auto sceneLoad = sceneIoContext.load;
+  const auto sceneOpen = sceneIoContext.open;
   const auto sceneSave = sceneIoContext.save;
   const auto sceneList = sceneIoContext.list;
   const auto setAdmin = sceneIoContext.setAdmin;
@@ -2024,11 +2024,11 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
       });
 
   bus.registerHandler(
-      "scene", "scene list | scene load <path> | scene save [path]",
-      [sceneLoad, sceneSave, sceneList](std::vector<std::string> args) {
+      "scene", "scene list | scene open <path> | scene save [path]",
+      [sceneOpen, sceneSave, sceneList](std::vector<std::string> args) {
         if (args.empty()) {
           return makeError(
-              "usage: scene list | scene load <path> | scene save [path]");
+              "usage: scene list | scene open <path> | scene save [path]");
         }
 
         const std::string &action = args[0];
@@ -2041,14 +2041,14 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
           }
           return sceneList();
         }
-        if (action == "load") {
+        if (action == "open") {
           if (args.size() != 2) {
-            return makeError("usage: scene load <path>");
+            return makeError("usage: scene open <path>");
           }
-          if (!sceneLoad) {
-            return makeSceneIoUnavailable("load");
+          if (!sceneOpen) {
+            return makeSceneIoUnavailable("open");
           }
-          return markClearsHistoryOnSuccess(sceneLoad(args[1]));
+          return markClearsHistoryOnSuccess(sceneOpen(args[1]));
         }
 
         if (action == "save") {

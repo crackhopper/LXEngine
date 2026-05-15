@@ -234,7 +234,7 @@ const RecordingController &LxeEditorSession::recording() const {
 }
 
 std::optional<std::filesystem::path>
-LxeEditorSession::currentDocumentPath() const {
+LxeEditorSession::runtimeScenePath() const {
   return m_runtime.documentPath();
 }
 
@@ -302,7 +302,7 @@ LxeEditorSession::saveScene(const std::optional<std::string> &path) {
   return saveActiveProjectScene();
 }
 
-void LxeEditorSession::flushPendingSceneLoad(LX_core::gpu::EngineLoop &loop) {
+void LxeEditorSession::flushPendingSceneOpen(LX_core::gpu::EngineLoop &loop) {
   if (!m_pendingRuntime.has_value()) {
     return;
   }
@@ -323,13 +323,13 @@ void LxeEditorSession::flushPendingSceneLoad(LX_core::gpu::EngineLoop &loop) {
     } catch (const std::exception &restoreError) {
       if (m_consolePanel) {
         m_consolePanel->appendSystemLine(
-            std::string("scene restore failed after load error: ") +
+            std::string("scene restore failed after open error: ") +
             restoreError.what());
       }
       throw;
     }
     if (m_consolePanel) {
-      m_consolePanel->appendSystemLine(std::string("scene load failed: ") +
+      m_consolePanel->appendSystemLine(std::string("scene open failed: ") +
                                        error.what());
     }
     return;
@@ -489,7 +489,7 @@ LxeEditorSession::handleProjectCommand(const std::vector<std::string> &args) {
     persistEditorData();
     LX_core::CommandResult queued = queueActiveSceneOpen();
     if (!queued.ok) {
-      return makeCommandOk("project initialized; active scene load failed: " +
+      return makeCommandOk("project initialized; active scene open failed: " +
                                queued.message,
                            initialized.structuredJson);
     }
@@ -507,7 +507,7 @@ LxeEditorSession::handleProjectCommand(const std::vector<std::string> &args) {
     persistEditorData();
     const auto queued = queueActiveSceneOpen();
     if (!queued.ok) {
-      return makeCommandError("project opened but active scene load failed: " +
+      return makeCommandError("project opened but active scene open failed: " +
                               queued.message);
     }
     return makeCommandOk(opened.message, opened.structuredJson);
@@ -699,10 +699,10 @@ void LxeEditorSession::rebuildBindings(
   LX_core::registerBuiltinCommands(
       *m_commandBus, m_editorState, *m_runtime.scene(),
       LX_core::SceneIoContext{
-          .load =
+          .open =
               [](const std::string &) {
                 return makeCommandError(
-                    "scene load was removed; use scene open");
+                    "scene command removed; use scene open");
               },
           .save =
               [this](const std::optional<std::string> &path) {
@@ -909,8 +909,8 @@ void LxeEditorSession::rebuildBindings(
           .debugEnabled = [this]() { return m_debugEnabled; },
           .setDebugEnabled =
               [this](const bool enabled) { m_debugEnabled = enabled; },
-          .currentDocumentPath = [this]() -> std::optional<std::string> {
-            const auto path = currentDocumentPath();
+          .runtimeScenePath = [this]() -> std::optional<std::string> {
+            const auto path = runtimeScenePath();
             return path ? std::optional<std::string>(path->string())
                         : std::nullopt;
           },

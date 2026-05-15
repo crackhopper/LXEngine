@@ -41,7 +41,7 @@ copy:
 | edit | CommandBus / panels -> runtime + document state | 命令修改 runtime，同时维护可保存字段 |
 | save | `SceneRuntime` -> `.scene.yaml` | capture 当前 scene document 并写入 active scene path |
 
-`scene open` 会先让 `ProjectSession` 解析 project 内的 scene，再由 `LxeEditorSession` 加载 pending runtime。真正切换 runtime scene 的动作发生在下一次 `flushPendingSceneLoad(...)`，这样命令 handler 不需要在主循环正在使用 scene 时直接替换对象。
+`scene open` 会先让 `ProjectSession` 解析 project 内的 scene，再由 `LxeEditorSession` 加载 pending runtime。真正切换 runtime scene 的动作发生在下一次 `flushPendingSceneOpen(...)`，这样命令 handler 不需要在主循环正在使用 scene 时直接替换对象。
 
 ## project save 与 scene save 的边界
 

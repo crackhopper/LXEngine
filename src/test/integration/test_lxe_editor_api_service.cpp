@@ -182,7 +182,7 @@ void testDisplayCommandsReturnStructuredHookJson() {
           .dirty = []() { return false; },
           .debugEnabled = []() { return false; },
           .setDebugEnabled = [](bool) {},
-          .currentDocumentPath =
+          .runtimeScenePath =
               []() { return std::optional<std::string>{}; },
           .persistedHistory = []() { return std::vector<std::string>{}; },
           .appendConsoleDebugLine = [](std::string_view) {},

@@ -64,7 +64,7 @@ public:
   [[nodiscard]] RecordingController &recording();
   [[nodiscard]] const RecordingController &recording() const;
   [[nodiscard]] std::optional<std::filesystem::path>
-  currentDocumentPath() const;
+  runtimeScenePath() const;
   [[nodiscard]] std::optional<std::string> currentProjectId() const;
   [[nodiscard]] std::optional<std::string> currentProjectDisplayName() const;
   [[nodiscard]] std::optional<std::string> currentProjectActiveScene() const;
@@ -74,7 +74,7 @@ public:
   void recordCommandHistoryLine(std::string_view line);
   [[nodiscard]] LX_core::CommandResult
   saveScene(const std::optional<std::string> &path);
-  void flushPendingSceneLoad(LX_core::gpu::EngineLoop &loop);
+  void flushPendingSceneOpen(LX_core::gpu::EngineLoop &loop);
   void pollCommandHistory(LX_core::gpu::EngineLoop &loop);
 
 private:
