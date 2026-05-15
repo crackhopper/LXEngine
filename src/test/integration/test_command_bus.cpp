@@ -1280,6 +1280,29 @@ void testStateSummarySanitizesProjectJson() {
          "to null");
   EXPECT(missingValueResult.structured.find("sourceKind") == std::string::npos,
          "missing value project summary should not add source kind");
+
+  fixture.projectSummary = "{\"name\":unquoted}";
+  const CommandResult unquotedValueResult =
+      fixture.base.bus.dispatch("state summary");
+  EXPECT(unquotedValueResult.ok,
+         "state summary should tolerate unquoted project json values");
+  EXPECT(unquotedValueResult.structured.find("\"project\":null") !=
+             std::string::npos,
+         "unquoted project json values should fall back to null");
+  EXPECT(unquotedValueResult.structured.find("sourceKind") == std::string::npos,
+         "unquoted value project summary should not add source kind");
+
+  fixture.projectSummary = "{\"name\":\"demo\",bad}";
+  const CommandResult malformedMemberResult =
+      fixture.base.bus.dispatch("state summary");
+  EXPECT(malformedMemberResult.ok,
+         "state summary should tolerate malformed project json members");
+  EXPECT(malformedMemberResult.structured.find("\"project\":null") !=
+             std::string::npos,
+         "malformed project json members should fall back to null");
+  EXPECT(malformedMemberResult.structured.find("sourceKind") ==
+             std::string::npos,
+         "malformed member project summary should not add source kind");
 }
 
 void testSceneViewerDebugCommandsUpdateSummaryAndToolbarState() {

@@ -9,6 +9,7 @@
 #include "scene_view_rect.hpp"
 #include "ui_overlay.hpp"
 
+#include <cctype>
 #include <exception>
 #include <iomanip>
 #include <optional>
@@ -67,22 +68,203 @@ namespace {
   return text;
 }
 
+class ProjectSummaryJsonValidator final {
+public:
+  explicit ProjectSummaryJsonValidator(std::string_view text) : m_text(text) {}
+
+  [[nodiscard]] bool isNullOrObject() {
+    skipWhitespace();
+    const bool valid = parseLiteral("null") || parseObject();
+    skipWhitespace();
+    return valid && atEnd();
+  }
+
+private:
+  [[nodiscard]] bool atEnd() const { return m_index >= m_text.size(); }
+
+  [[nodiscard]] char peek() const { return atEnd() ? '\0' : m_text[m_index]; }
+
+  bool consume(const char expected) {
+    if (peek() != expected) {
+      return false;
+    }
+    ++m_index;
+    return true;
+  }
+
+  void skipWhitespace() {
+    while (!atEnd()) {
+      const char c = peek();
+      if (c != ' ' && c != '\t' && c != '\r' && c != '\n') {
+        return;
+      }
+      ++m_index;
+    }
+  }
+
+  bool parseLiteral(std::string_view literal) {
+    if (m_text.substr(m_index, literal.size()) != literal) {
+      return false;
+    }
+    m_index += literal.size();
+    return true;
+  }
+
+  bool parseObject() {
+    if (!consume('{')) {
+      return false;
+    }
+    skipWhitespace();
+    if (consume('}')) {
+      return true;
+    }
+
+    while (true) {
+      if (!parseString()) {
+        return false;
+      }
+      skipWhitespace();
+      if (!consume(':')) {
+        return false;
+      }
+      skipWhitespace();
+      if (!parseValue()) {
+        return false;
+      }
+      skipWhitespace();
+      if (consume('}')) {
+        return true;
+      }
+      if (!consume(',')) {
+        return false;
+      }
+      skipWhitespace();
+    }
+  }
+
+  bool parseValue() {
+    switch (peek()) {
+    case '{':
+      return parseObject();
+    case '"':
+      return parseString();
+    case 't':
+      return parseLiteral("true");
+    case 'f':
+      return parseLiteral("false");
+    case 'n':
+      return parseLiteral("null");
+    default:
+      return parseNumber();
+    }
+  }
+
+  bool parseString() {
+    if (!consume('"')) {
+      return false;
+    }
+    while (!atEnd()) {
+      const char c = m_text[m_index++];
+      if (c == '"') {
+        return true;
+      }
+      if (static_cast<unsigned char>(c) < 0x20U) {
+        return false;
+      }
+      if (c != '\\') {
+        continue;
+      }
+      if (atEnd()) {
+        return false;
+      }
+      const char escaped = m_text[m_index++];
+      switch (escaped) {
+      case '"':
+      case '\\':
+      case '/':
+      case 'b':
+      case 'f':
+      case 'n':
+      case 'r':
+      case 't':
+        break;
+      case 'u':
+        if (!parseHexQuad()) {
+          return false;
+        }
+        break;
+      default:
+        return false;
+      }
+    }
+    return false;
+  }
+
+  bool parseHexQuad() {
+    if (m_index + 4 > m_text.size()) {
+      return false;
+    }
+    for (usize i = 0; i < 4; ++i) {
+      const auto c = static_cast<unsigned char>(m_text[m_index + i]);
+      if (std::isxdigit(c) == 0) {
+        return false;
+      }
+    }
+    m_index += 4;
+    return true;
+  }
+
+  bool parseNumber() {
+    if (consume('-') && atEnd()) {
+      return false;
+    }
+
+    if (consume('0')) {
+      if (std::isdigit(static_cast<unsigned char>(peek())) != 0) {
+        return false;
+      }
+    } else if (!parseDigits()) {
+      return false;
+    }
+
+    if (consume('.')) {
+      if (!parseDigits()) {
+        return false;
+      }
+    }
+
+    if (peek() == 'e' || peek() == 'E') {
+      ++m_index;
+      if (peek() == '+' || peek() == '-') {
+        ++m_index;
+      }
+      if (!parseDigits()) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  bool parseDigits() {
+    const usize start = m_index;
+    while (std::isdigit(static_cast<unsigned char>(peek())) != 0) {
+      ++m_index;
+    }
+    return m_index > start;
+  }
+
+  std::string_view m_text;
+  usize m_index = 0;
+};
+
 [[nodiscard]] std::string sanitizeProjectSummaryJson(std::string text) {
   const std::string_view trimmed = trimView(text);
-  if (trimmed.empty() || trimmed == "null") {
-    return "null";
-  }
-  if (trimmed.size() < 2 || trimmed.front() != '{' || trimmed.back() != '}') {
-    return "null";
-  }
-  const std::string_view body = trimView(trimmed.substr(1, trimmed.size() - 2));
-  if (body.empty()) {
+  if (!trimmed.empty() &&
+      ProjectSummaryJsonValidator(trimmed).isNullOrObject()) {
     return std::string(trimmed);
   }
-  if (body.front() != '"' || body.back() == ':' || body.back() == ',') {
-    return "null";
-  }
-  return std::string(trimmed);
+  return "null";
 }
 
 [[nodiscard]] LX_core::CommandResult makeError(std::string message) {
