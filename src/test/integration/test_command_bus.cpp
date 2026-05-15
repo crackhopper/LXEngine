@@ -1257,6 +1257,29 @@ void testStateSummarySanitizesProjectJson() {
          "invalid project json should fall back to null");
   EXPECT(invalidResult.structured.find("sourceKind") == std::string::npos,
          "invalid project summary should not add source kind");
+
+  fixture.projectSummary = "{not json}";
+  const CommandResult invalidObjectResult =
+      fixture.base.bus.dispatch("state summary");
+  EXPECT(invalidObjectResult.ok,
+         "state summary should tolerate malformed object project json");
+  EXPECT(invalidObjectResult.structured.find("\"project\":null") !=
+             std::string::npos,
+         "malformed object project json should fall back to null");
+  EXPECT(invalidObjectResult.structured.find("sourceKind") == std::string::npos,
+         "malformed object project summary should not add source kind");
+
+  fixture.projectSummary = "{\"name\":}";
+  const CommandResult missingValueResult =
+      fixture.base.bus.dispatch("state summary");
+  EXPECT(missingValueResult.ok,
+         "state summary should tolerate missing project json values");
+  EXPECT(missingValueResult.structured.find("\"project\":null") !=
+             std::string::npos,
+         "project json ending with a colon before object close should fall back "
+         "to null");
+  EXPECT(missingValueResult.structured.find("sourceKind") == std::string::npos,
+         "missing value project summary should not add source kind");
 }
 
 void testSceneViewerDebugCommandsUpdateSummaryAndToolbarState() {

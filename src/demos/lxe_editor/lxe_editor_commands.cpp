@@ -72,10 +72,17 @@ namespace {
   if (trimmed.empty() || trimmed == "null") {
     return "null";
   }
-  if (trimmed.size() >= 2 && trimmed.front() == '{' && trimmed.back() == '}') {
+  if (trimmed.size() < 2 || trimmed.front() != '{' || trimmed.back() != '}') {
+    return "null";
+  }
+  const std::string_view body = trimView(trimmed.substr(1, trimmed.size() - 2));
+  if (body.empty()) {
     return std::string(trimmed);
   }
-  return "null";
+  if (body.front() != '"' || body.back() == ':' || body.back() == ',') {
+    return "null";
+  }
+  return std::string(trimmed);
 }
 
 [[nodiscard]] LX_core::CommandResult makeError(std::string message) {
