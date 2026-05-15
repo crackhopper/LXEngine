@@ -130,6 +130,13 @@ void testTemplateDocumentRejectsInvalidSchemaAndMissingFields() {
   EXPECT(loadTemplateThrows(missingIdPath),
          "template load should reject missing id");
 
+  const auto missingDisplayNamePath = root / "missing_display_name.yaml";
+  writeFile(missingDisplayNamePath, "schema: lxe.project_template.v1\n"
+                                    "id: basic-3d\n"
+                                    "defaultScene: scenes/main.scene.yaml\n");
+  EXPECT(loadTemplateThrows(missingDisplayNamePath),
+         "template load should reject missing displayName");
+
   const auto missingDefaultScenePath = root / "missing_default_scene.yaml";
   writeFile(missingDefaultScenePath, "schema: lxe.project_template.v1\n"
                                      "id: basic-3d\n"
@@ -157,6 +164,13 @@ void testProjectDocumentRejectsInvalidSchemaAndMissingFields() {
                            "activeScene: scenes/main.scene.yaml\n");
   EXPECT(loadProjectThrows(missingIdPath),
          "project load should reject missing id");
+
+  const auto missingDisplayNamePath = root / "missing_display_name.yaml";
+  writeFile(missingDisplayNamePath, "schema: lxe.project.v1\n"
+                                    "id: my_project\n"
+                                    "activeScene: scenes/main.scene.yaml\n");
+  EXPECT(loadProjectThrows(missingDisplayNamePath),
+         "project load should reject missing displayName");
 
   const auto missingActiveScenePath = root / "missing_active_scene.yaml";
   writeFile(missingActiveScenePath, "schema: lxe.project.v1\n"
@@ -194,6 +208,40 @@ void testSaveProjectDocumentRejectsMissingRequiredFields() {
          "project save should reject empty activeScene");
   EXPECT(!std::filesystem::exists(missingActiveScenePath),
          "empty activeScene should not write a document");
+
+  auto missingSceneId = makeValidProjectDocument();
+  missingSceneId.scenes[0].id.clear();
+  const auto missingSceneIdPath = root / "missing_scene_id.yaml";
+  EXPECT(!demo::saveProjectDocument(missingSceneIdPath, missingSceneId),
+         "project save should reject empty scene id");
+  EXPECT(!std::filesystem::exists(missingSceneIdPath),
+         "empty scene id should not write a document");
+
+  auto missingScenePath = makeValidProjectDocument();
+  missingScenePath.scenes[0].path.clear();
+  const auto missingScenePathPath = root / "missing_scene_path.yaml";
+  EXPECT(!demo::saveProjectDocument(missingScenePathPath, missingScenePath),
+         "project save should reject empty scene path");
+  EXPECT(!std::filesystem::exists(missingScenePathPath),
+         "empty scene path should not write a document");
+
+  auto missingAssetRoot = makeValidProjectDocument();
+  missingAssetRoot.assetRoots[0].clear();
+  const auto missingAssetRootPath = root / "missing_asset_root.yaml";
+  EXPECT(!demo::saveProjectDocument(missingAssetRootPath, missingAssetRoot),
+         "project save should reject empty asset root");
+  EXPECT(!std::filesystem::exists(missingAssetRootPath),
+         "empty asset root should not write a document");
+
+  auto emptyCreatedFromTemplate = makeValidProjectDocument();
+  emptyCreatedFromTemplate.createdFromTemplate = "";
+  const auto emptyCreatedFromTemplatePath =
+      root / "empty_created_from_template.yaml";
+  EXPECT(!demo::saveProjectDocument(emptyCreatedFromTemplatePath,
+                                    emptyCreatedFromTemplate),
+         "project save should reject empty createdFromTemplate");
+  EXPECT(!std::filesystem::exists(emptyCreatedFromTemplatePath),
+         "empty createdFromTemplate should not write a document");
 }
 } // namespace
 

@@ -100,8 +100,25 @@ void savePathSequence(YAML::Emitter &out, const char *key,
 }
 
 [[nodiscard]] bool canSaveProjectDocument(const ProjectDocument &document) {
-  return !document.id.empty() && !document.displayName.empty() &&
-         !document.activeScene.empty();
+  if (document.id.empty() || document.displayName.empty() ||
+      document.activeScene.empty()) {
+    return false;
+  }
+  for (const auto &scene : document.scenes) {
+    if (scene.id.empty() || scene.path.empty()) {
+      return false;
+    }
+  }
+  for (const auto &assetRoot : document.assetRoots) {
+    if (assetRoot.empty()) {
+      return false;
+    }
+  }
+  if (document.createdFromTemplate.has_value() &&
+      document.createdFromTemplate->empty()) {
+    return false;
+  }
+  return true;
 }
 
 } // namespace
