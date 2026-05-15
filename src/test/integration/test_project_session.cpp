@@ -84,6 +84,32 @@ void testInitCopiesTemplateAndOpensDefaultScene() {
          "project should record source template");
 }
 
+void testInitEmptyProjectNameUsesTemplateIdForAllocation() {
+  const auto root = makeTempRoot("lx_project_session_init_empty_name");
+  demo::ProjectSession session = makeSession(root);
+
+  const auto result =
+      session.initProject("empty", std::optional<std::string>{""});
+
+  EXPECT(result.ok, "project init with empty name should succeed");
+  EXPECT(session.hasProject(), "project init should open a project");
+  EXPECT(session.projectRoot().has_value(),
+         "project init should expose project root");
+  const auto projectRoot = *session.projectRoot();
+  EXPECT(projectRoot.filename() == "empty",
+         "empty project name should allocate from template id");
+  EXPECT(std::filesystem::exists(root / "projects/empty/project.yaml"),
+         "empty project name should create empty project directory");
+  EXPECT(!std::filesystem::exists(root / "projects/project/project.yaml"),
+         "empty project name should not allocate generic project directory");
+
+  const auto &document = *session.currentProject();
+  EXPECT(document.id == "empty",
+         "empty project name should use template id for project id");
+  EXPECT(document.displayName == "Empty",
+         "empty project name should use template display name");
+}
+
 void testSceneNewAddsProjectSceneEntry() {
   const auto root = makeTempRoot("lx_project_session_new_scene");
   demo::ProjectSession session = makeSession(root);
@@ -110,6 +136,38 @@ void testSceneNewAddsProjectSceneEntry() {
                                  "scenes/lighting.scene.yaml"),
          "scene new should write scene file");
   EXPECT(session.dirty(), "scene new should mark project dirty");
+}
+
+void testSceneNewRejectsPathTraversalSceneId() {
+  const auto root = makeTempRoot("lx_project_session_new_scene_escape");
+  demo::ProjectSession session = makeSession(root);
+  EXPECT(session.initProject("empty", "Traversal Test").ok,
+         "project init should succeed");
+  const auto outsideScene = *session.projectRoot() / "../outside.scene.yaml";
+
+  const auto result = session.newScene("../../outside");
+
+  EXPECT(!result.ok, "scene new should reject path traversal scene id");
+  EXPECT(!std::filesystem::exists(outsideScene.lexically_normal()),
+         "scene new should not write outside project root");
+  EXPECT(session.currentProject()->scenes.size() == 1,
+         "rejected scene new should not add scene entry");
+}
+
+void testSceneDuplicateRejectsPathTraversalSceneId() {
+  const auto root = makeTempRoot("lx_project_session_duplicate_scene_escape");
+  demo::ProjectSession session = makeSession(root);
+  EXPECT(session.initProject("empty", "Duplicate Traversal Test").ok,
+         "project init should succeed");
+  const auto outsideScene = *session.projectRoot() / "../outside.scene.yaml";
+
+  const auto result = session.duplicateScene("main", "../../outside");
+
+  EXPECT(!result.ok, "scene duplicate should reject path traversal scene id");
+  EXPECT(!std::filesystem::exists(outsideScene.lexically_normal()),
+         "scene duplicate should not write outside project root");
+  EXPECT(session.currentProject()->scenes.size() == 1,
+         "rejected scene duplicate should not add scene entry");
 }
 
 void testSceneOpenRejectsPathOutsideProjectRoot() {
@@ -150,7 +208,10 @@ void testProjectCloseReturnsToNoProjectState() {
 int main() {
   testSaveFailsWithoutOpenProject();
   testInitCopiesTemplateAndOpensDefaultScene();
+  testInitEmptyProjectNameUsesTemplateIdForAllocation();
   testSceneNewAddsProjectSceneEntry();
+  testSceneNewRejectsPathTraversalSceneId();
+  testSceneDuplicateRejectsPathTraversalSceneId();
   testSceneOpenRejectsPathOutsideProjectRoot();
   testProjectCloseReturnsToNoProjectState();
   return failures == 0 ? 0 : 1;

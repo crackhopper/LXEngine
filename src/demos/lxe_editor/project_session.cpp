@@ -117,6 +117,15 @@ findScene(const ProjectDocument &document, const std::string &sceneId) {
   return *sceneIt;
 }
 
+[[nodiscard]] bool isValidNewSceneId(const std::string &sceneId) {
+  if (sceneId.empty() || sceneId == "." ||
+      sceneId.find("..") != std::string::npos) {
+    return false;
+  }
+  return sceneId.find('/') == std::string::npos &&
+         sceneId.find('\\') == std::string::npos;
+}
+
 [[nodiscard]] bool copyTemplateRoots(const std::filesystem::path &templatePath,
                                      const std::filesystem::path &projectPath,
                                      const ProjectTemplateDocument &document) {
@@ -221,8 +230,10 @@ ProjectSession::initProject(const std::string &templateId,
         projectName.has_value() && !projectName->empty()
             ? *projectName
             : templateDocument.displayName;
-    const auto projectPath =
-        allocateProjectPath(m_projectsRoot, projectName.value_or(templateId));
+    const std::string allocationName =
+        projectName.has_value() && !projectName->empty() ? *projectName
+                                                         : templateId;
+    const auto projectPath = allocateProjectPath(m_projectsRoot, allocationName);
 
     if (!copyTemplateRoots(templateEntry->path, projectPath,
                            templateDocument)) {
@@ -230,7 +241,7 @@ ProjectSession::initProject(const std::string &templateId,
     }
 
     ProjectDocument document;
-    document.id = makeProjectSlug(displayName);
+    document.id = makeProjectSlug(allocationName);
     document.displayName = displayName;
     document.activeScene = templateDocument.defaultScene;
     document.scenes.push_back(
@@ -328,8 +339,9 @@ ProjectCommandResult ProjectSession::newScene(const std::string &sceneId) {
   if (!hasProject()) {
     return makeResult(false, "no project is open");
   }
-  if (sceneId.empty()) {
-    return makeResult(false, "scene id is empty", {}, m_currentProject->id);
+  if (!isValidNewSceneId(sceneId)) {
+    return makeResult(false, "invalid scene id: " + sceneId, {},
+                      m_currentProject->id);
   }
   if (sceneIdExists(*m_currentProject, sceneId)) {
     return makeResult(false, "scene already exists: " + sceneId, {},
@@ -361,8 +373,9 @@ ProjectCommandResult ProjectSession::duplicateScene(
   if (!hasProject()) {
     return makeResult(false, "no project is open");
   }
-  if (newSceneId.empty()) {
-    return makeResult(false, "scene id is empty", {}, m_currentProject->id);
+  if (!isValidNewSceneId(newSceneId)) {
+    return makeResult(false, "invalid scene id: " + newSceneId, {},
+                      m_currentProject->id);
   }
   if (sceneIdExists(*m_currentProject, newSceneId)) {
     return makeResult(false, "scene already exists: " + newSceneId, {},
