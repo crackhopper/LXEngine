@@ -105,7 +105,9 @@ struct SceneViewerCommandFixture {
   int cameraControlMode =
       static_cast<int>(LX_demo::lxe_editor::UiOverlay::CameraControlMode::Orbit);
   std::optional<std::string> documentPath = std::string("data/scenes/test.scene.yaml");
-  std::optional<std::string> sourceKind = std::string("local");
+  std::vector<std::string> projectCommands;
+  std::vector<std::string> sceneCommands;
+  std::string projectSummary = "{\"name\":\"demo\",\"scene\":\"main\"}";
   LX_demo::lxe_editor::SceneViewRect rect{
       .x = 0.0f, .y = 0.0f, .width = 800.0f, .height = 600.0f};
 
@@ -184,7 +186,25 @@ struct SceneViewerCommandFixture {
               debugEnabled = enabled;
             },
             .currentDocumentPath = [this]() { return documentPath; },
-            .currentSourceKind = [this]() { return sourceKind; },
+            .projectCommand =
+                [this](std::string_view args) {
+                  projectCommands.emplace_back(args);
+                  return LX_core::CommandResult{
+                      true, "project " + std::string(args),
+                      "{\"projectCommand\":\"" + std::string(args) + "\"}"};
+                },
+            .sceneCommand =
+                [this](std::string_view args) {
+                  sceneCommands.emplace_back(args);
+                  if (args == "load main") {
+                    return LX_core::CommandResult{
+                        false, "scene load removed; use scene open", {}};
+                  }
+                  return LX_core::CommandResult{
+                      true, "scene " + std::string(args),
+                      "{\"sceneCommand\":\"" + std::string(args) + "\"}"};
+                },
+            .projectSummaryJson = [this]() { return projectSummary; },
             .persistedHistory = []() { return std::vector<std::string>{}; },
         });
   }
@@ -250,7 +270,17 @@ struct SceneViewerPickFixture {
               debugEnabled = enabled;
             },
             .currentDocumentPath = []() { return std::optional<std::string>{}; },
-            .currentSourceKind = []() { return std::optional<std::string>{}; },
+            .projectCommand =
+                [](std::string_view args) {
+                  return LX_core::CommandResult{
+                      true, "project " + std::string(args), {}};
+                },
+            .sceneCommand =
+                [](std::string_view args) {
+                  return LX_core::CommandResult{
+                      true, "scene " + std::string(args), {}};
+                },
+            .projectSummaryJson = []() { return std::string("{}"); },
             .persistedHistory = []() { return std::vector<std::string>{}; },
             .appendConsoleDebugLine =
                 [this](std::string_view line) { consolePanel.appendSystemLine(line); },
@@ -893,76 +923,35 @@ void testBuiltinRemainingCommandErrors() {
          "preview unknown action returns stable error");
 }
 
-void testSceneCommandsRequireRegisteredSceneIoCallbacks() {
-  CommandFixture fixture;
+void testProjectAndSceneCommandsUseRegisteredCallbacks() {
+  SceneViewerCommandFixture fixture;
 
-  const CommandResult listResult = fixture.bus.dispatch("scene list");
-  EXPECT(!listResult.ok, "scene list should fail before scene io is wired");
-  EXPECT(listResult.message.find("unknown command: scene") == std::string::npos,
-         "scene list should fail through a scene command handler");
+  const CommandResult projectTemplates =
+      fixture.base.bus.dispatch("project templates");
+  EXPECT(projectTemplates.ok,
+         "project templates should route through project handler");
 
-  const CommandResult loadResult = fixture.bus.dispatch("scene load assets/example_scene.yaml");
-  EXPECT(!loadResult.ok, "scene load should fail before scene io is wired");
-  EXPECT(loadResult.message.find("unknown command: scene") == std::string::npos,
-         "scene load should fail through a scene command handler, not unknown-command dispatch");
+  const CommandResult projectInit =
+      fixture.base.bus.dispatch("project init empty demo");
+  EXPECT(projectInit.ok, "project init should route through project handler");
 
-  const CommandResult saveResult = fixture.bus.dispatch("scene save");
-  EXPECT(!saveResult.ok, "scene save should fail before scene io is wired");
-  EXPECT(saveResult.message.find("unknown command: scene") == std::string::npos,
-         "scene save should fail through a scene command handler, not unknown-command dispatch");
+  const CommandResult sceneOpen = fixture.base.bus.dispatch("scene open main");
+  EXPECT(sceneOpen.ok,
+         "scene open should route through project-scoped handler");
 
-  const CommandResult saveAsResult =
-      fixture.bus.dispatch("scene save assets/example_scene.yaml");
-  EXPECT(!saveAsResult.ok, "scene save <path> should fail before scene io is wired");
-  EXPECT(saveAsResult.message.find("unknown command: scene") == std::string::npos,
-         "scene save <path> should fail through a scene command handler");
-}
+  const CommandResult sceneLoad = fixture.base.bus.dispatch("scene load main");
+  EXPECT(!sceneLoad.ok, "scene load should be removed");
+  EXPECT(sceneLoad.message.find("scene open") != std::string::npos ||
+             sceneLoad.message.find("unknown command") != std::string::npos,
+         "scene load should not be a compatibility alias");
 
-void testSceneCommandsUseRegisteredSceneIoCallbacks() {
-  SceneSharedPtr scene = Scene::create(nullptr);
-  EditorState editorState;
-  CommandBus bus;
-
-  std::vector<std::string> loadPaths;
-  std::vector<std::string> savePaths;
-  SceneIoContext sceneIo{
-      .load = [&](const std::string &path) {
-        loadPaths.push_back(path);
-        return CommandResult{true, "loaded " + path, "{\"path\":\"" + path + "\"}"};
-      },
-      .save = [&](const std::optional<std::string> &path) {
-        savePaths.push_back(path.value_or(std::string{}));
-        if (path.has_value()) {
-          return CommandResult{true, "saved " + *path,
-                               "{\"path\":\"" + *path + "\"}"};
-        }
-        return CommandResult{true, "saved current scene", "{\"path\":null}"};
-      },
-      .list = [&]() {
-        return CommandResult{true, "listed scenes",
-                             "{\"entries\":[{\"id\":\"sample.scene.yaml\",\"kind\":\"asset\"}]}"};
-      }};
-  registerBuiltinCommands(bus, editorState, *scene, sceneIo);
-
-  const CommandResult listResult = bus.dispatch("scene list");
-  EXPECT(listResult.ok, "scene list should call registered callback");
-  EXPECT(listResult.structured.find("\"kind\":\"asset\"") != std::string::npos,
-         "scene list should surface structured catalog payload");
-
-  const CommandResult loadResult = bus.dispatch("scene load assets/one.yaml");
-  EXPECT(loadResult.ok, "scene load should call registered callback");
-  EXPECT(loadPaths.size() == 1 && loadPaths[0] == "assets/one.yaml",
-         "scene load passes the requested path to callback");
-
-  const CommandResult saveResult = bus.dispatch("scene save");
-  EXPECT(saveResult.ok, "scene save should call registered callback");
-  EXPECT(savePaths.size() == 1 && savePaths[0].empty(),
-         "scene save without path should pass nullopt semantics to callback");
-
-  const CommandResult saveAsResult = bus.dispatch("scene save assets/two.yaml");
-  EXPECT(saveAsResult.ok, "scene save <path> should call registered callback");
-  EXPECT(savePaths.size() == 2 && savePaths[1] == "assets/two.yaml",
-         "scene save <path> passes explicit path to callback");
+  EXPECT(fixture.projectCommands.size() == 2 &&
+             fixture.projectCommands[0] == "templates" &&
+             fixture.projectCommands[1] == "init empty demo",
+         "project command handler should receive remaining args");
+  EXPECT(fixture.sceneCommands.size() == 1 &&
+             fixture.sceneCommands[0] == "open main",
+         "scene load should not reach project-scoped scene handler");
 }
 
 void testAdminCommandsRequireRegisteredCallbacks() {
@@ -1013,90 +1002,69 @@ void testAdminCommandsUseRegisteredCallbacks() {
          "admin off should disable admin through callback");
 }
 
-void testSceneLoadClearsRedoHistory() {
-  CommandFixture undoFixture;
-
-  SceneIoContext sceneIo{
-      .load = [](const std::string &path) {
-        return CommandResult{true, "loaded " + path, "{\"path\":\"" + path + "\"}"};
-      }};
-  registerBuiltinCommands(undoFixture.bus, undoFixture.editorState,
-                          *undoFixture.scene, sceneIo);
+void testSceneOpenClearsRedoHistory() {
+  SceneViewerCommandFixture undoFixture;
 
   const CommandResult moveResult =
-      undoFixture.bus.dispatch("move /world/cube 1 0 0");
+      undoFixture.base.bus.dispatch("move /world/cube 1 0 0");
   EXPECT(moveResult.ok, "setup move should succeed");
-  EXPECT(undoFixture.bus.canUndo(),
-         "mutating command should leave undo history before scene load");
+  EXPECT(undoFixture.base.bus.canUndo(),
+         "mutating command should leave undo history before scene open");
 
-  const CommandResult loadUndoResult =
-      undoFixture.bus.dispatch("scene load assets/reloaded.yaml");
-  EXPECT(loadUndoResult.ok, "scene load should succeed through callback");
-  EXPECT(!undoFixture.bus.canUndo(),
-         "successful scene load should invalidate stale undo history");
+  const CommandResult openUndoResult =
+      undoFixture.base.bus.dispatch("scene open reloaded");
+  EXPECT(openUndoResult.ok, "scene open should succeed through callback");
+  EXPECT(!undoFixture.base.bus.canUndo(),
+         "successful scene open should invalidate stale undo history");
 
-  CommandFixture redoFixture;
-  registerBuiltinCommands(redoFixture.bus, redoFixture.editorState,
-                          *redoFixture.scene, sceneIo);
+  SceneViewerCommandFixture redoFixture;
 
   const CommandResult redoMoveResult =
-      redoFixture.bus.dispatch("move /world/cube 1 0 0");
+      redoFixture.base.bus.dispatch("move /world/cube 1 0 0");
   EXPECT(redoMoveResult.ok, "redo setup move should succeed");
 
-  const CommandResult undoResult = redoFixture.bus.undo();
-  EXPECT(undoResult.ok, "undo should succeed before scene load");
-  EXPECT(redoFixture.bus.canRedo(), "undoable command should leave redo history");
+  const CommandResult undoResult = redoFixture.base.bus.undo();
+  EXPECT(undoResult.ok, "undo should succeed before scene open");
+  EXPECT(redoFixture.base.bus.canRedo(),
+         "undoable command should leave redo history");
 
-  const CommandResult loadRedoResult =
-      redoFixture.bus.dispatch("scene load assets/reloaded.yaml");
-  EXPECT(loadRedoResult.ok, "scene load should succeed with redo history present");
-  EXPECT(!redoFixture.bus.canRedo(),
-         "successful scene load should clear stale redo history");
+  const CommandResult openRedoResult =
+      redoFixture.base.bus.dispatch("scene open reloaded");
+  EXPECT(openRedoResult.ok, "scene open should succeed with redo history present");
+  EXPECT(!redoFixture.base.bus.canRedo(),
+         "successful scene open should clear stale redo history");
 }
 
 void testSceneSavePreservesRedoHistory() {
-  CommandFixture undoFixture;
-
-  SceneIoContext sceneIo{
-      .save = [](const std::optional<std::string> &path) {
-        if (path.has_value()) {
-          return CommandResult{true, "saved " + *path,
-                               "{\"path\":\"" + *path + "\"}"};
-        }
-        return CommandResult{true, "saved current scene", "{\"path\":null}"};
-      }};
-  registerBuiltinCommands(undoFixture.bus, undoFixture.editorState,
-                          *undoFixture.scene, sceneIo);
+  SceneViewerCommandFixture undoFixture;
 
   const CommandResult moveResult =
-      undoFixture.bus.dispatch("move /world/cube 1 0 0");
+      undoFixture.base.bus.dispatch("move /world/cube 1 0 0");
   EXPECT(moveResult.ok, "setup move should succeed");
-  EXPECT(undoFixture.bus.canUndo(),
+  EXPECT(undoFixture.base.bus.canUndo(),
          "mutating command should leave undo history before scene save");
 
   const CommandResult saveUndoResult =
-      undoFixture.bus.dispatch("scene save assets/snapshot.yaml");
+      undoFixture.base.bus.dispatch("scene save snapshot");
   EXPECT(saveUndoResult.ok, "scene save should succeed through callback");
-  EXPECT(undoFixture.bus.canUndo(),
+  EXPECT(undoFixture.base.bus.canUndo(),
          "successful scene save should preserve undo history");
 
-  CommandFixture redoFixture;
-  registerBuiltinCommands(redoFixture.bus, redoFixture.editorState,
-                          *redoFixture.scene, sceneIo);
+  SceneViewerCommandFixture redoFixture;
 
   const CommandResult redoMoveResult =
-      redoFixture.bus.dispatch("move /world/cube 1 0 0");
+      redoFixture.base.bus.dispatch("move /world/cube 1 0 0");
   EXPECT(redoMoveResult.ok, "redo setup move should succeed");
 
-  const CommandResult undoResult = redoFixture.bus.undo();
+  const CommandResult undoResult = redoFixture.base.bus.undo();
   EXPECT(undoResult.ok, "undo should succeed before scene save");
-  EXPECT(redoFixture.bus.canRedo(),
+  EXPECT(redoFixture.base.bus.canRedo(),
          "undoable command should leave redo history");
 
   const CommandResult saveRedoResult =
-      redoFixture.bus.dispatch("scene save assets/snapshot.yaml");
+      redoFixture.base.bus.dispatch("scene save snapshot");
   EXPECT(saveRedoResult.ok, "scene save should succeed with redo history present");
-  EXPECT(redoFixture.bus.canRedo(),
+  EXPECT(redoFixture.base.bus.canRedo(),
          "successful scene save should preserve redo history");
 }
 
@@ -1153,9 +1121,11 @@ void testSceneViewerModeAndStateCommands() {
   EXPECT(summaryResult.structured.find("\"selectionCount\":1") !=
              std::string::npos,
          "state summary should include selection count");
-  EXPECT(summaryResult.structured.find("\"sourceKind\":\"local\"") !=
+  EXPECT(summaryResult.structured.find("\"project\":{\"name\":\"demo\"") !=
              std::string::npos,
-         "state summary should include source kind");
+         "state summary should include project state");
+  EXPECT(summaryResult.structured.find("sourceKind") == std::string::npos,
+         "state summary should not include source kind");
   EXPECT(summaryResult.structured.find("\"permission\":\"user\"") !=
              std::string::npos,
          "state summary should include permission");
@@ -1883,11 +1853,10 @@ int main() {
   testBuiltinCreatesAndEditsTypedLights();
   testBuiltinCamAndPreviewCommands();
   testBuiltinRemainingCommandErrors();
-  testSceneCommandsRequireRegisteredSceneIoCallbacks();
-  testSceneCommandsUseRegisteredSceneIoCallbacks();
+  testProjectAndSceneCommandsUseRegisteredCallbacks();
   testAdminCommandsRequireRegisteredCallbacks();
   testAdminCommandsUseRegisteredCallbacks();
-  testSceneLoadClearsRedoHistory();
+  testSceneOpenClearsRedoHistory();
   testSceneSavePreservesRedoHistory();
   testCameraControlStatusPreservesRedoHistory();
   testSceneViewerModeAndStateCommands();

@@ -6,6 +6,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <string_view>
 
 namespace LX_core {
 class EditorState;
@@ -28,7 +29,9 @@ struct LxeEditorCommandContext final {
   using SetCameraControlModeFn = std::function<void(int)>;
   using PermissionFn = std::function<std::string()>;
   using CurrentDocumentPathFn = std::function<std::optional<std::string>()>;
-  using CurrentSourceKindFn = std::function<std::optional<std::string>()>;
+  using ProjectCommandFn =
+      std::function<LX_core::CommandResult(std::string_view)>;
+  using ProjectSummaryJsonFn = std::function<std::string()>;
   using PersistedHistoryFn = std::function<std::vector<std::string>()>;
   using AppendConsoleDebugLineFn = std::function<void(std::string_view)>;
   using RecordingFn = std::function<
@@ -54,7 +57,9 @@ struct LxeEditorCommandContext final {
   DebugEnabledFn debugEnabled;
   SetDebugEnabledFn setDebugEnabled;
   CurrentDocumentPathFn currentDocumentPath;
-  CurrentSourceKindFn currentSourceKind;
+  ProjectCommandFn projectCommand;
+  ProjectCommandFn sceneCommand;
+  ProjectSummaryJsonFn projectSummaryJson;
   PersistedHistoryFn persistedHistory;
   AppendConsoleDebugLineFn appendConsoleDebugLine;
   RecordingFn recording;

@@ -189,6 +189,9 @@ makeSelectionJson(LX_core::EditorState &editorState,
 makeSummaryJson(const LxeEditorCommandContext &context) {
   const LX_core::SceneNodeSharedPtr activeCamera =
       context.editorState.resolveActiveCamera(context.scene);
+  const std::string projectSummary =
+      context.projectSummaryJson ? context.projectSummaryJson()
+                                 : std::string("null");
   std::ostringstream oss;
   oss << "{\"sceneName\":\"" << jsonEscape(context.scene.getSceneName()) << "\""
       << ",\"dirty\":" << (context.dirty() ? "true" : "false")
@@ -215,13 +218,8 @@ makeSummaryJson(const LxeEditorCommandContext &context) {
   } else {
     oss << "null";
   }
-  oss << ",\"sourceKind\":";
-  if (const auto kind = context.currentSourceKind(); kind.has_value()) {
-    oss << '"' << jsonEscape(*kind) << '"';
-  } else {
-    oss << "null";
-  }
-  oss << "}";
+  oss << ",\"project\":" << (projectSummary.empty() ? "null" : projectSummary)
+      << "}";
   return oss.str();
 }
 
@@ -284,7 +282,9 @@ void registerLxeEditorCommands(LX_core::CommandBus &bus,
   auto debugEnabled = context.debugEnabled;
   auto setDebugEnabled = context.setDebugEnabled;
   auto currentDocumentPath = context.currentDocumentPath;
-  auto currentSourceKind = context.currentSourceKind;
+  auto projectCommand = context.projectCommand;
+  auto sceneCommand = context.sceneCommand;
+  auto projectSummaryJson = context.projectSummaryJson;
   auto persistedHistory = context.persistedHistory;
   auto recording = context.recording;
   auto buildInfoJson = context.buildInfoJson;
@@ -376,6 +376,42 @@ void registerLxeEditorCommands(LX_core::CommandBus &bus,
         return makeError(
             "usage: display list|active|config get <key|active|default>|config "
             "set <key|default> <json-or-yaml-patch>|select <key>");
+      });
+
+  bus.registerHandler(
+      "project", "project <args>",
+      [projectCommand](std::vector<std::string> args) {
+        if (!projectCommand) {
+          return makeError("project command unavailable");
+        }
+        return projectCommand(joinArgs(args, 0));
+      });
+
+  bus.registerHandler(
+      "scene", "scene open <name-or-path> | scene save [args]",
+      [sceneCommand](std::vector<std::string> args) {
+        if (!sceneCommand) {
+          return makeError("scene command unavailable");
+        }
+        if (args.empty()) {
+          return makeError("usage: scene open <name-or-path> | scene save [args]");
+        }
+        if (args[0] == "load") {
+          return makeError("scene load was removed; use scene open");
+        }
+        LX_core::CommandResult result = sceneCommand(joinArgs(args, 0));
+        if (args[0] == "open" && result.ok) {
+          result.metadata[std::string(
+              LX_core::kCommandResultClearUndoOnSuccessMetadataKey)] = "true";
+          result.metadata[std::string(
+              LX_core::kCommandResultClearRedoOnSuccessMetadataKey)] = "true";
+        } else if (args[0] == "save" && result.ok) {
+          result.metadata[std::string(
+              LX_core::kCommandResultClearUndoOnSuccessMetadataKey)] = "false";
+          result.metadata[std::string(
+              LX_core::kCommandResultClearRedoOnSuccessMetadataKey)] = "false";
+        }
+        return result;
       });
 
   bus.registerHandler(
@@ -521,7 +557,7 @@ void registerLxeEditorCommands(LX_core::CommandBus &bus,
   bus.registerHandler(
       "state", "state (summary|selection|cameras|scene|toolbar|history)",
       [editorState, scene, interaction, getEditMode, getCameraControlMode,
-       dirty, permission, debugEnabled, currentDocumentPath, currentSourceKind,
+       dirty, permission, debugEnabled, currentDocumentPath, projectSummaryJson,
        persistedHistory](std::vector<std::string> args) {
         if (args.size() != 1) {
           return makeError(
@@ -540,7 +576,7 @@ void registerLxeEditorCommands(LX_core::CommandBus &bus,
             .permission = permission,
             .debugEnabled = debugEnabled,
             .currentDocumentPath = currentDocumentPath,
-            .currentSourceKind = currentSourceKind,
+            .projectSummaryJson = projectSummaryJson,
             .persistedHistory = persistedHistory,
         };
         if (args[0] == "summary") {
@@ -576,12 +612,6 @@ void registerLxeEditorCommands(LX_core::CommandBus &bus,
               << "\",\"documentPath\":";
           if (const auto path = currentDocumentPath(); path.has_value()) {
             oss << '"' << jsonEscape(*path) << '"';
-          } else {
-            oss << "null";
-          }
-          oss << ",\"sourceKind\":";
-          if (const auto kind = currentSourceKind(); kind.has_value()) {
-            oss << '"' << jsonEscape(*kind) << '"';
           } else {
             oss << "null";
           }
