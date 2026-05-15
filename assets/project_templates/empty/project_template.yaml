@@ -1,0 +1,7 @@
+schema: lxe.project_template.v1
+id: empty
+displayName: Empty
+defaultScene: scenes/main.scene.yaml
+copy:
+  - scenes/
+  - assets/

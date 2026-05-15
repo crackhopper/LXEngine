@@ -1,0 +1,205 @@
+#include "demos/lxe_editor/project_catalog.hpp"
+
+#include <algorithm>
+#include <cctype>
+#include <filesystem>
+#include <stdexcept>
+#include <string>
+#include <utility>
+#include <vector>
+
+namespace LX_demo::lxe_editor {
+namespace {
+
+[[nodiscard]] std::filesystem::path
+absoluteNormal(const std::filesystem::path &path) {
+  return std::filesystem::absolute(path).lexically_normal();
+}
+
+[[nodiscard]] bool pathStartsWith(const std::filesystem::path &path,
+                                  const std::filesystem::path &root) {
+  const auto normalizedPath = path.lexically_normal();
+  const auto normalizedRoot = root.lexically_normal();
+  auto pathIt = normalizedPath.begin();
+  const auto pathEnd = normalizedPath.end();
+  for (auto rootIt = normalizedRoot.begin(); rootIt != normalizedRoot.end();
+       ++rootIt, ++pathIt) {
+    if (pathIt == pathEnd || *pathIt != *rootIt) {
+      return false;
+    }
+  }
+  return true;
+}
+
+[[nodiscard]] bool hasPathSeparator(const std::string &token) {
+  return token.find('/') != std::string::npos ||
+         token.find('\\') != std::string::npos;
+}
+
+template <typename Entry>
+[[nodiscard]] std::optional<Entry>
+findEntryById(const std::vector<Entry> &entries, const std::string &id) {
+  const auto entryIt =
+      std::find_if(entries.begin(), entries.end(),
+                   [&id](const Entry &entry) { return entry.id == id; });
+  if (entryIt == entries.end()) {
+    return std::nullopt;
+  }
+  return *entryIt;
+}
+
+} // namespace
+
+ProjectTemplateCatalog::ProjectTemplateCatalog(std::filesystem::path root)
+    : m_root(std::move(root)) {}
+
+void ProjectTemplateCatalog::refresh() {
+  m_entries.clear();
+  if (!std::filesystem::is_directory(m_root)) {
+    return;
+  }
+
+  for (const auto &entry : std::filesystem::directory_iterator(m_root)) {
+    if (!entry.is_directory()) {
+      continue;
+    }
+
+    const auto templatePath = entry.path() / "project_template.yaml";
+    if (!std::filesystem::is_regular_file(templatePath)) {
+      continue;
+    }
+
+    const auto document = loadProjectTemplateDocument(templatePath);
+    m_entries.push_back(
+        {document.id, document.displayName, absoluteNormal(entry.path())});
+  }
+
+  std::sort(
+      m_entries.begin(), m_entries.end(),
+      [](const ProjectTemplateCatalogEntry &lhs,
+         const ProjectTemplateCatalogEntry &rhs) { return lhs.id < rhs.id; });
+}
+
+const std::vector<ProjectTemplateCatalogEntry> &
+ProjectTemplateCatalog::entries() const {
+  return m_entries;
+}
+
+std::optional<ProjectTemplateCatalogEntry>
+ProjectTemplateCatalog::findById(const std::string &id) const {
+  return findEntryById(m_entries, id);
+}
+
+ProjectCatalog::ProjectCatalog(std::filesystem::path root)
+    : m_root(std::move(root)) {}
+
+void ProjectCatalog::refresh() {
+  m_entries.clear();
+  if (!std::filesystem::is_directory(m_root)) {
+    return;
+  }
+
+  for (const auto &entry : std::filesystem::directory_iterator(m_root)) {
+    if (!entry.is_directory()) {
+      continue;
+    }
+
+    const auto projectPath = entry.path() / "project.yaml";
+    if (!std::filesystem::is_regular_file(projectPath)) {
+      continue;
+    }
+
+    const auto document = loadProjectDocument(projectPath);
+    m_entries.push_back(
+        {document.id, document.displayName, absoluteNormal(entry.path())});
+  }
+
+  std::sort(m_entries.begin(), m_entries.end(),
+            [](const ProjectCatalogEntry &lhs, const ProjectCatalogEntry &rhs) {
+              return lhs.id < rhs.id;
+            });
+}
+
+const std::vector<ProjectCatalogEntry> &ProjectCatalog::entries() const {
+  return m_entries;
+}
+
+std::optional<ProjectCatalogEntry>
+ProjectCatalog::findById(const std::string &id) const {
+  return findEntryById(m_entries, id);
+}
+
+std::filesystem::path
+ProjectCatalog::resolveIdOrPath(const std::string &token) const {
+  if (const auto entry = findById(token); entry.has_value()) {
+    return entry->path;
+  }
+
+  const std::filesystem::path tokenPath(token);
+  if (tokenPath.is_absolute() || hasPathSeparator(token)) {
+    return absoluteNormal(tokenPath);
+  }
+
+  throw std::runtime_error("unknown project id: " + token);
+}
+
+std::filesystem::path
+resolveProjectScenePath(const std::filesystem::path &projectRoot,
+                        const ProjectDocument &document,
+                        const std::string &sceneIdOrPath) {
+  std::filesystem::path scenePath(sceneIdOrPath);
+  const auto sceneIt =
+      std::find_if(document.scenes.begin(), document.scenes.end(),
+                   [&sceneIdOrPath](const ProjectSceneEntry &scene) {
+                     return scene.id == sceneIdOrPath;
+                   });
+  if (sceneIt != document.scenes.end()) {
+    scenePath = sceneIt->path;
+  }
+
+  const auto normalizedRoot = absoluteNormal(projectRoot);
+  const auto resolvedPath = scenePath.is_absolute()
+                                ? absoluteNormal(scenePath)
+                                : absoluteNormal(normalizedRoot / scenePath);
+  if (!pathStartsWith(resolvedPath, normalizedRoot)) {
+    throw std::runtime_error("project scene path escapes project root: " +
+                             sceneIdOrPath);
+  }
+  return resolvedPath;
+}
+
+std::string makeProjectSlug(std::string name) {
+  bool hasAlphaNumeric = false;
+  for (char &ch : name) {
+    const auto value = static_cast<unsigned char>(ch);
+    ch = static_cast<char>(std::tolower(value));
+    hasAlphaNumeric = hasAlphaNumeric ||
+                      ((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9'));
+    const bool safe = (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') ||
+                      ch == '_' || ch == '-';
+    if (!safe) {
+      ch = '_';
+    }
+  }
+
+  if (name.empty() || !hasAlphaNumeric) {
+    return "project";
+  }
+  return name;
+}
+
+std::filesystem::path
+allocateProjectPath(const std::filesystem::path &projectsRoot,
+                    const std::string &requestedName) {
+  const auto root = absoluteNormal(projectsRoot);
+  const auto slug = makeProjectSlug(requestedName);
+  auto candidate = root / slug;
+  int suffix = 2;
+  while (std::filesystem::exists(candidate)) {
+    candidate = root / (slug + "-" + std::to_string(suffix));
+    ++suffix;
+  }
+  return candidate.lexically_normal();
+}
+
+} // namespace LX_demo::lxe_editor

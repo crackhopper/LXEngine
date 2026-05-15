@@ -38,6 +38,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_command_bus_v2
   test_scene_document
   test_project_document
+  test_project_catalog
   test_scene_catalog
   test_scene_session
   test_scene_runtime
@@ -345,6 +346,18 @@ if(TARGET test_project_document)
     ${CMAKE_CURRENT_SOURCE_DIR}/../infra/external/yaml-cpp/include
   )
   target_link_libraries(test_project_document PRIVATE yaml-cpp::yaml-cpp)
+endif()
+
+if(TARGET test_project_catalog)
+  target_sources(test_project_catalog PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/project_catalog.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/project_document.cpp
+  )
+  target_include_directories(test_project_catalog PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/..
+    ${CMAKE_CURRENT_SOURCE_DIR}/../infra/external/yaml-cpp/include
+  )
+  target_link_libraries(test_project_catalog PRIVATE yaml-cpp::yaml-cpp)
 endif()
 
 if(TARGET test_scene_catalog)
