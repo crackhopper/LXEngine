@@ -95,7 +95,7 @@ bool EditorDataState::save(const EditorDataDocument& sourceDocument) const {
   out << YAML::Key << "version" << YAML::Value << document.version;
   if (document.lastProject.has_value()) {
     out << YAML::Key << "lastProject" << YAML::Value
-        << document.lastProject->string();
+        << document.lastProject->generic_string();
   }
   out << YAML::Key << "consoleHistory" << YAML::Value << YAML::BeginSeq;
   for (const auto& line : document.consoleHistory) {

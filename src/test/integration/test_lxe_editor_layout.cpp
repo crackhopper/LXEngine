@@ -1436,7 +1436,7 @@ void testEditorDataRoundTripsHistory() {
 
   LX_demo::lxe_editor::EditorDataState state(tempRoot);
   LX_demo::lxe_editor::EditorDataDocument document;
-  document.lastProject = fs::path("data/projects/demo");
+  document.lastProject = fs::path("data") / "projects" / "demo";
   document.consoleHistory = {"help", "scene list", "scene load foo.scene.yaml"};
 
   EXPECT(state.save(document), "editor data save should succeed");
@@ -1502,6 +1502,60 @@ void testEditorDataLoadClampsConsoleHistoryToFiftyEntries() {
   EXPECT(!loaded.consoleHistory.empty() &&
              loaded.consoleHistory.back() == "cmd-59",
          "editor data load should preserve the newest history entries");
+
+  fs::remove_all(tempRoot);
+}
+
+void testEditorDataIgnoresNonScalarLastProject() {
+  namespace fs = std::filesystem;
+
+  const fs::path tempRoot =
+      fs::temp_directory_path() / "lxengine_lxe_editor_editor_data_bad_project";
+  fs::remove_all(tempRoot);
+  fs::create_directories(tempRoot);
+
+  LX_demo::lxe_editor::EditorDataState state(tempRoot);
+  std::ofstream file(state.dataPath());
+  file << "version: 1\n"
+          "lastProject:\n"
+          "  nested: value\n"
+          "consoleHistory:\n"
+          "  - help\n";
+  file.close();
+
+  const auto loaded = state.load();
+  EXPECT(!loaded.lastProject.has_value(),
+         "editor data load should ignore non-scalar last project values");
+  EXPECT(loaded.consoleHistory.size() == 1 &&
+             loaded.consoleHistory.front() == "help",
+         "editor data load should still read history after bad last project");
+
+  fs::remove_all(tempRoot);
+}
+
+void testEditorDataUnsupportedVersionFallsBackToDefaults() {
+  namespace fs = std::filesystem;
+
+  const fs::path tempRoot =
+      fs::temp_directory_path() / "lxengine_lxe_editor_editor_data_bad_version";
+  fs::remove_all(tempRoot);
+  fs::create_directories(tempRoot);
+
+  LX_demo::lxe_editor::EditorDataState state(tempRoot);
+  std::ofstream file(state.dataPath());
+  file << "version: 2\n"
+          "lastProject: data/projects/demo\n"
+          "consoleHistory:\n"
+          "  - help\n";
+  file.close();
+
+  const auto loaded = state.load();
+  EXPECT(loaded.version == 1,
+         "unsupported editor data version should fall back to default version");
+  EXPECT(!loaded.lastProject.has_value(),
+         "unsupported editor data version should not load last project");
+  EXPECT(loaded.consoleHistory.empty(),
+         "unsupported editor data version should not load history");
 
   fs::remove_all(tempRoot);
 }
@@ -1626,6 +1680,8 @@ int main() {
   testInvalidConfigFallsBackToDefaults();
   testEditorDataRoundTripsHistory();
   testEditorDataLoadClampsConsoleHistoryToFiftyEntries();
+  testEditorDataIgnoresNonScalarLastProject();
+  testEditorDataUnsupportedVersionFallsBackToDefaults();
   testOffscreenNativeWindowPlacementIsSanitized();
   testRestoreUsesPlacementTargetBounds();
   testWindowPlacementCenterUsesWideMath();
