@@ -260,6 +260,33 @@ void testSceneResolutionRejectsSymlinkEscape() {
          "scene path through symlink should not escape project root");
 }
 
+void testSceneResolutionRejectsBrokenSymlinkEscape() {
+  const auto root = std::filesystem::temp_directory_path() /
+                    "lx_project_catalog_broken_symlink";
+  std::filesystem::remove_all(root);
+  const auto projectRoot = root / "data/projects/demo";
+  const auto outsideRoot = root / "outside_missing";
+  std::filesystem::create_directories(projectRoot / "scenes");
+
+  std::error_code ec;
+  std::filesystem::create_directory_symlink(outsideRoot,
+                                            projectRoot / "scenes/linked", ec);
+  if (ec) {
+    std::cerr << "[SKIP] broken symlink escape assertion: " << ec.message()
+              << "\n";
+    return;
+  }
+
+  demo::ProjectDocument document;
+  document.id = "demo";
+  document.displayName = "Demo";
+  document.activeScene = "scenes/linked/main.scene.yaml";
+  document.scenes.push_back({"main", "scenes/linked/main.scene.yaml"});
+
+  EXPECT(sceneResolutionThrows(projectRoot, document, "main"),
+         "scene path through broken symlink should not escape project root");
+}
+
 void testSlugAndProjectPathAllocation() {
   const auto root =
       std::filesystem::temp_directory_path() / "lx_project_catalog_slug";
@@ -310,6 +337,7 @@ int main() {
   testDuplicateProjectIdsKeepFirstPath();
   testSceneResolutionStaysInsideProject();
   testSceneResolutionRejectsSymlinkEscape();
+  testSceneResolutionRejectsBrokenSymlinkEscape();
   testSlugAndProjectPathAllocation();
   testProjectResolveIdOrPath();
   return failures == 0 ? 0 : 1;

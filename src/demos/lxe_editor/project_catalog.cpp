@@ -42,6 +42,68 @@ weaklyCanonicalNormal(const std::filesystem::path &path) {
   return true;
 }
 
+[[nodiscard]] std::filesystem::path
+resolveContainedPathByComponents(const std::filesystem::path &root,
+                                 const std::filesystem::path &path) {
+  const auto normalizedRoot = weaklyCanonicalNormal(root);
+  const auto requestedPath = path.is_absolute()
+                                 ? absoluteNormal(path)
+                                 : absoluteNormal(normalizedRoot / path);
+  if (!pathStartsWith(requestedPath, normalizedRoot)) {
+    return requestedPath;
+  }
+
+  auto currentPath = normalizedRoot;
+  bool missingTail = false;
+  const auto relativePath = requestedPath.lexically_relative(normalizedRoot);
+  for (const auto &component : relativePath) {
+    if (component.empty() || component == ".") {
+      continue;
+    }
+
+    if (missingTail) {
+      currentPath /= component;
+      currentPath = currentPath.lexically_normal();
+      continue;
+    }
+
+    const auto candidatePath = (currentPath / component).lexically_normal();
+    std::error_code statusError;
+    const auto status =
+        std::filesystem::symlink_status(candidatePath, statusError);
+    if (statusError || status.type() == std::filesystem::file_type::not_found) {
+      currentPath = candidatePath;
+      missingTail = true;
+      continue;
+    }
+
+    if (std::filesystem::is_symlink(status)) {
+      std::error_code readError;
+      const auto symlinkTarget =
+          std::filesystem::read_symlink(candidatePath, readError);
+      if (readError) {
+        throw std::runtime_error("failed to read project scene symlink: " +
+                                 candidatePath.string());
+      }
+      const auto targetPath = symlinkTarget.is_absolute()
+                                  ? symlinkTarget
+                                  : candidatePath.parent_path() / symlinkTarget;
+      currentPath = weaklyCanonicalNormal(targetPath);
+      if (!pathStartsWith(currentPath, normalizedRoot)) {
+        return currentPath;
+      }
+      continue;
+    }
+
+    currentPath = weaklyCanonicalNormal(candidatePath);
+    if (!pathStartsWith(currentPath, normalizedRoot)) {
+      return currentPath;
+    }
+  }
+
+  return currentPath.lexically_normal();
+}
+
 [[nodiscard]] bool catalogEntryLess(const ProjectTemplateCatalogEntry &lhs,
                                     const ProjectTemplateCatalogEntry &rhs) {
   if (lhs.id != rhs.id) {
@@ -220,9 +282,7 @@ resolveProjectScenePath(const std::filesystem::path &projectRoot,
 
   const auto normalizedRoot = weaklyCanonicalNormal(projectRoot);
   const auto resolvedPath =
-      scenePath.is_absolute()
-          ? weaklyCanonicalNormal(scenePath)
-          : weaklyCanonicalNormal(normalizedRoot / scenePath);
+      resolveContainedPathByComponents(normalizedRoot, scenePath);
   if (!pathStartsWith(resolvedPath, normalizedRoot)) {
     throw std::runtime_error("project scene path escapes project root: " +
                              sceneIdOrPath);
