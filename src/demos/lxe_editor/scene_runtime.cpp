@@ -44,7 +44,6 @@ constexpr const char *kDefaultHelmetMaterial =
 
 struct SceneRuntimeData final {
   std::optional<std::filesystem::path> documentPath;
-  std::optional<SceneSourceKind> sourceKind;
   SceneDocument document;
   LX_core::SceneSharedPtr scene;
   LX_core::SceneNodeSharedPtr editorCameraNode;
@@ -704,11 +703,9 @@ void buildSceneNodesRecursive(
 
 [[nodiscard]] std::shared_ptr<SceneRuntimeData>
 buildRuntimeFromDocument(const SceneDocument &document,
-                         const std::optional<std::filesystem::path> &path,
-                         const std::optional<SceneSourceKind> sourceKind) {
+                         const std::optional<std::filesystem::path> &path) {
   auto runtime = std::make_shared<SceneRuntimeData>();
   runtime->documentPath = path;
-  runtime->sourceKind = sourceKind;
   runtime->document = document;
   runtime->scene = LX_core::Scene::create(document.sceneName(), nullptr);
 
@@ -1012,16 +1009,13 @@ captureSceneDocument(const std::shared_ptr<SceneRuntimeData> &runtime) {
 } // namespace
 
 void SceneRuntime::createEmptyScene() {
-  m_impl = buildRuntimeFromDocument(makeEmptySceneDocument(), std::nullopt,
-                                    std::nullopt);
+  m_impl = buildRuntimeFromDocument(makeEmptySceneDocument(), std::nullopt);
 }
 
-void SceneRuntime::loadFromDocumentPath(
-    const std::filesystem::path &path,
-    const std::optional<SceneSourceKind> sourceKind) {
+void SceneRuntime::loadFromDocumentPath(const std::filesystem::path &path) {
   const std::filesystem::path normalizedPath = normalizeDocumentPath(path);
   const SceneDocument document = loadSceneDocument(normalizedPath);
-  m_impl = buildRuntimeFromDocument(document, normalizedPath, sourceKind);
+  m_impl = buildRuntimeFromDocument(document, normalizedPath);
 }
 
 void SceneRuntime::saveToCurrentDocumentPath() {
@@ -1044,11 +1038,6 @@ void SceneRuntime::saveToDocumentPath(const std::filesystem::path &path) {
 std::optional<std::filesystem::path> SceneRuntime::documentPath() const {
   const auto runtime = requireRuntimeData(m_impl);
   return runtime->documentPath;
-}
-
-std::optional<SceneSourceKind> SceneRuntime::sourceKind() const {
-  const auto runtime = requireRuntimeData(m_impl);
-  return runtime->sourceKind;
 }
 
 LX_core::SceneSharedPtr SceneRuntime::scene() const {

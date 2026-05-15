@@ -4,7 +4,6 @@
 #include "core/editor/command_bus.hpp"
 #include "core/scene/object.hpp"
 #include "core/scene/scene.hpp"
-#include "demos/lxe_editor/scene_catalog.hpp"
 
 #include <filesystem>
 #include <memory>
@@ -30,13 +29,10 @@ public:
   ~SceneRuntime() = default;
 
   void createEmptyScene();
-  void loadFromDocumentPath(
-      const std::filesystem::path& path,
-      std::optional<SceneSourceKind> sourceKind = std::nullopt);
+  void loadFromDocumentPath(const std::filesystem::path& path);
   void saveToCurrentDocumentPath();
   void saveToDocumentPath(const std::filesystem::path& path);
   [[nodiscard]] std::optional<std::filesystem::path> documentPath() const;
-  [[nodiscard]] std::optional<SceneSourceKind> sourceKind() const;
   [[nodiscard]] LX_core::SceneSharedPtr scene() const;
   [[nodiscard]] LX_core::SceneNodeSharedPtr editorCameraNode() const;
   [[nodiscard]] LX_core::SceneNodeSharedPtr gameCameraNode() const;
