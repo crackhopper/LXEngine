@@ -689,14 +689,6 @@ void LxeEditorSession::rebuildBindings(
                 return makeCommandError(
                     "scene list is project-scoped; use scene list");
               },
-          .setAdmin =
-              [](const bool) {
-                return makeCommandError("admin scene-source mode was removed");
-              },
-          .adminStatus =
-              []() {
-                return makeCommandError("admin scene-source mode was removed");
-              },
           .cameraControl =
               [this](const std::vector<std::string> &args) {
                 if (args.size() != 2) {

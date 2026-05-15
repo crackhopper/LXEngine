@@ -1003,13 +1003,14 @@ void testAdminCommandsRequireRegisteredCallbacks() {
 
   const CommandResult onResult = fixture.bus.dispatch("admin on");
   EXPECT(!onResult.ok, "admin on should fail before callback wiring");
-  EXPECT(onResult.message.find("unknown command: admin") == std::string::npos,
-         "admin on should fail through admin handler");
+  EXPECT(onResult.message.find("unknown command: admin") != std::string::npos,
+         "admin on should not be registered without callbacks");
 
   const CommandResult statusResult = fixture.bus.dispatch("admin status");
   EXPECT(!statusResult.ok, "admin status should fail before callback wiring");
-  EXPECT(statusResult.message.find("unknown command: admin") == std::string::npos,
-         "admin status should fail through admin handler");
+  EXPECT(statusResult.message.find("unknown command: admin") !=
+             std::string::npos,
+         "admin status should not be registered without callbacks");
 }
 
 void testAdminCommandsUseRegisteredCallbacks() {

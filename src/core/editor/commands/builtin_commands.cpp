@@ -2067,33 +2067,35 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
         return makeError("unknown scene action: " + action);
       });
 
-  bus.registerHandler("admin", "admin on | admin off | admin status",
-                      [setAdmin, adminStatus](std::vector<std::string> args) {
-                        if (args.size() != 1) {
-                          return makeError(
-                              "usage: admin on | admin off | admin status");
-                        }
-                        const std::string action = lowerCopy(args[0]);
-                        if (action == "on") {
-                          if (!setAdmin) {
-                            return makeAdminUnavailable("on");
+  if (setAdmin || adminStatus) {
+    bus.registerHandler("admin", "admin on | admin off | admin status",
+                        [setAdmin, adminStatus](std::vector<std::string> args) {
+                          if (args.size() != 1) {
+                            return makeError(
+                                "usage: admin on | admin off | admin status");
                           }
-                          return setAdmin(true);
-                        }
-                        if (action == "off") {
-                          if (!setAdmin) {
-                            return makeAdminUnavailable("off");
+                          const std::string action = lowerCopy(args[0]);
+                          if (action == "on") {
+                            if (!setAdmin) {
+                              return makeAdminUnavailable("on");
+                            }
+                            return setAdmin(true);
                           }
-                          return setAdmin(false);
-                        }
-                        if (action == "status") {
-                          if (!adminStatus) {
-                            return makeAdminUnavailable("status");
+                          if (action == "off") {
+                            if (!setAdmin) {
+                              return makeAdminUnavailable("off");
+                            }
+                            return setAdmin(false);
                           }
-                          return adminStatus();
-                        }
-                        return makeError("unknown admin action: " + action);
-                      });
+                          if (action == "status") {
+                            if (!adminStatus) {
+                              return makeAdminUnavailable("status");
+                            }
+                            return adminStatus();
+                          }
+                          return makeError("unknown admin action: " + action);
+                        });
+  }
 
   bus.registerHandler(
       "__remove_to_stash", "__remove_to_stash <path> <stash-id>",
