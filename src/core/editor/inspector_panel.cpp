@@ -9,17 +9,17 @@
 #include "core/scene/object.hpp"
 #include "core/scene/scene.hpp"
 
+#include <imgui.h>
 #include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
 #include <iomanip>
-#include <imgui.h>
 #include <limits>
 #include <optional>
-#include <sstream>
 #include <span>
+#include <sstream>
 #include <utility>
 
 namespace LX_core {
@@ -30,16 +30,14 @@ constexpr float kRadToDeg = 180.0f / kPi;
 
 [[nodiscard]] std::string trim(std::string_view text) {
   usize begin = 0;
-  while (begin < text.size() &&
-         (text[begin] == ' ' || text[begin] == '\t' || text[begin] == '\r' ||
-          text[begin] == '\n')) {
+  while (begin < text.size() && (text[begin] == ' ' || text[begin] == '\t' ||
+                                 text[begin] == '\r' || text[begin] == '\n')) {
     ++begin;
   }
 
   usize end = text.size();
-  while (end > begin &&
-         (text[end - 1] == ' ' || text[end - 1] == '\t' ||
-          text[end - 1] == '\r' || text[end - 1] == '\n')) {
+  while (end > begin && (text[end - 1] == ' ' || text[end - 1] == '\t' ||
+                         text[end - 1] == '\r' || text[end - 1] == '\n')) {
     --end;
   }
   return std::string(text.substr(begin, end - begin));
@@ -79,8 +77,8 @@ constexpr float kRadToDeg = 180.0f / kPi;
   return std::to_string(value);
 }
 
-[[nodiscard]] std::string formatMaterialParameterCommandArgs(
-    const MaterialParameterValue &value) {
+[[nodiscard]] std::string
+formatMaterialParameterCommandArgs(const MaterialParameterValue &value) {
   switch (value.type) {
   case MaterialParameterValueType::Float:
     return formatFloat(value.floatValue);
@@ -101,8 +99,8 @@ constexpr float kRadToDeg = 180.0f / kPi;
 
 [[nodiscard]] std::string formatMask(const u32 value) {
   std::ostringstream oss;
-  oss << "0x" << std::uppercase << std::hex << std::setw(8)
-      << std::setfill('0') << value;
+  oss << "0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0')
+      << value;
   return oss.str();
 }
 
@@ -114,8 +112,7 @@ constexpr float kRadToDeg = 180.0f / kPi;
   try {
     size_t parsed = 0;
     const unsigned long value = std::stoul(trimmed, &parsed, 0);
-    if (parsed != trimmed.size() ||
-        value > std::numeric_limits<u32>::max()) {
+    if (parsed != trimmed.size() || value > std::numeric_limits<u32>::max()) {
       return std::nullopt;
     }
     return static_cast<u32>(value);
@@ -148,9 +145,8 @@ void copyToBuffer(std::string_view text, std::span<char> buffer) {
   const float roll = std::atan2(sinrCosp, cosrCosp);
 
   const float sinp = 2.0f * (q.w * q.v.y - q.v.z * q.v.x);
-  const float pitch = std::abs(sinp) >= 1.0f
-                          ? std::copysign(0.5f * kPi, sinp)
-                          : std::asin(sinp);
+  const float pitch = std::abs(sinp) >= 1.0f ? std::copysign(0.5f * kPi, sinp)
+                                             : std::asin(sinp);
 
   const float sinyCosp = 2.0f * (q.w * q.v.z + q.v.x * q.v.y);
   const float cosyCosp = 1.0f - 2.0f * (q.v.y * q.v.y + q.v.z * q.v.z);
@@ -226,12 +222,14 @@ InspectorPanel::Snapshot InspectorPanel::makeSnapshot() const {
   }
   if (const auto light = findLightForNode(node)) {
     snapshot.hasLight = true;
-    if (const auto directional = std::dynamic_pointer_cast<DirectionalLight>(light)) {
+    if (const auto directional =
+            std::dynamic_pointer_cast<DirectionalLight>(light)) {
       snapshot.lightKind = "Directional";
       snapshot.lightDirection = directional->getDirection();
       snapshot.lightColor = directional->getColor();
       snapshot.lightIntensity = directional->getIntensity();
-    } else if (const auto point = std::dynamic_pointer_cast<PointLight>(light)) {
+    } else if (const auto point =
+                   std::dynamic_pointer_cast<PointLight>(light)) {
       snapshot.lightKind = "Point";
       snapshot.lightColor = point->getColor();
       snapshot.lightIntensity = point->getIntensity();
@@ -255,8 +253,8 @@ InspectorPanel::Snapshot InspectorPanel::makeSnapshot() const {
       snapshot.materialUri = *uri;
     }
   }
-  snapshot.hasMaterialSection =
-      (snapshot.hasMesh && snapshot.hasMaterial) || !snapshot.materialUri.empty();
+  snapshot.hasMaterialSection = (snapshot.hasMesh && snapshot.hasMaterial) ||
+                                !snapshot.materialUri.empty();
   if (m_materialCallbacks.nodeBaseColor) {
     if (const auto color = m_materialCallbacks.nodeBaseColor(snapshot.path);
         color.has_value()) {
@@ -288,49 +286,51 @@ CommandResult InspectorPanel::dispatchRename(std::string_view path,
     const unsigned char uc = static_cast<unsigned char>(c);
     const bool allowed = std::isalnum(uc) != 0 || c == "_"[0] || c == "-"[0];
     if (!allowed) {
-      return CommandResult{false, "invalid name: only [A-Za-z0-9_-] allowed", {}};
+      return CommandResult{
+          false, "invalid name: only [A-Za-z0-9_-] allowed", {}};
     }
   }
-  return m_commandBus.dispatch("set " + quoteToken(std::string(path) + ".name") + " " +
+  return m_commandBus.dispatch("set " +
+                               quoteToken(std::string(path) + ".name") + " " +
                                quoteToken(trimmed));
 }
 
 CommandResult InspectorPanel::dispatchSetVec3(std::string_view path,
                                               std::string_view field,
                                               const Vec3f &value) {
-  return m_commandBus.dispatch("set " +
-                               quoteToken(std::string(path) + "." + std::string(field)) + " " +
-                               formatFloat(value.x) + " " +
-                               formatFloat(value.y) + " " +
-                               formatFloat(value.z));
+  return m_commandBus.dispatch(
+      "set " + quoteToken(std::string(path) + "." + std::string(field)) + " " +
+      formatFloat(value.x) + " " + formatFloat(value.y) + " " +
+      formatFloat(value.z));
 }
 
 CommandResult InspectorPanel::dispatchSetFloat(std::string_view path,
                                                std::string_view field,
                                                const float value) {
-  return m_commandBus.dispatch("set " +
-                               quoteToken(std::string(path) + "." + std::string(field)) + " " +
-                               formatFloat(value));
+  return m_commandBus.dispatch(
+      "set " + quoteToken(std::string(path) + "." + std::string(field)) + " " +
+      formatFloat(value));
 }
 
 CommandResult InspectorPanel::dispatchSetUnsigned(std::string_view path,
                                                   std::string_view field,
                                                   const u32 value) {
-  return m_commandBus.dispatch("set " +
-                               quoteToken(std::string(path) + "." + std::string(field)) + " " +
-                               formatUnsigned(value));
+  return m_commandBus.dispatch(
+      "set " + quoteToken(std::string(path) + "." + std::string(field)) + " " +
+      formatUnsigned(value));
 }
 
 CommandResult InspectorPanel::dispatchSetToken(std::string_view path,
                                                std::string_view field,
                                                std::string_view value) {
-  return m_commandBus.dispatch("set " +
-                               quoteToken(std::string(path) + "." + std::string(field)) + " " +
-                               quoteToken(value));
+  return m_commandBus.dispatch(
+      "set " + quoteToken(std::string(path) + "." + std::string(field)) + " " +
+      quoteToken(value));
 }
 
-CommandResult InspectorPanel::dispatchApplyMaterialOverride(
-    std::string_view path, std::string_view field) {
+CommandResult
+InspectorPanel::dispatchApplyMaterialOverride(std::string_view path,
+                                              std::string_view field) {
   return m_commandBus.dispatch("apply_material_override " + quoteToken(path) +
                                " " + quoteToken(field));
 }
@@ -362,8 +362,9 @@ CommandResult InspectorPanel::dispatchMove(std::string_view path,
   return dispatchSetVec3(path, "translation", translation);
 }
 
-CommandResult InspectorPanel::dispatchRotate(std::string_view path,
-                                             const Vec3f &rotationEulerDegrees) {
+CommandResult
+InspectorPanel::dispatchRotate(std::string_view path,
+                               const Vec3f &rotationEulerDegrees) {
   return dispatchSetVec3(path, "rotation", rotationEulerDegrees);
 }
 
@@ -389,10 +390,8 @@ void InspectorPanel::refreshSceneSubscription() {
   }
 
   m_subscribedScene = selectedScene;
-  m_sceneSubscription =
-      selectedScene->events().subscribe([this](const SceneEvent &event) {
-        handleSceneEvent(event);
-      });
+  m_sceneSubscription = selectedScene->events().subscribe(
+      [this](const SceneEvent &event) { handleSceneEvent(event); });
 }
 
 void InspectorPanel::handleSceneEvent(const SceneEvent &event) {
@@ -446,7 +445,8 @@ void InspectorPanel::syncDraftFromSnapshot(const Snapshot &snapshot) {
   m_lightColorDraft = snapshot.lightColor;
   m_lightIntensityDraft = snapshot.lightIntensity;
   copyToBuffer(formatMask(snapshot.visibilityMask), m_visibilityMaskBuffer);
-  copyToBuffer(formatMask(snapshot.cameraCullingMask), m_cameraCullingMaskBuffer);
+  copyToBuffer(formatMask(snapshot.cameraCullingMask),
+               m_cameraCullingMaskBuffer);
   copyToBuffer(snapshot.materialUri, m_materialUriBuffer);
   m_nodeBaseColorDraft = snapshot.nodeBaseColorOverride;
   m_materialPresetDraft = -1;
@@ -490,7 +490,8 @@ void InspectorPanel::drawSelection(const Snapshot &snapshot) {
 
   ImGui::InputText("Name", m_nameBuffer.data(), m_nameBuffer.size());
   if (ImGui::IsItemDeactivatedAfterEdit()) {
-    const CommandResult result = dispatchRename(snapshot.path, m_nameBuffer.data());
+    const CommandResult result =
+        dispatchRename(snapshot.path, m_nameBuffer.data());
     if (result.ok) {
       refreshDrafts();
     }
@@ -499,7 +500,8 @@ void InspectorPanel::drawSelection(const Snapshot &snapshot) {
   ImGui::Text("Camera: %s", snapshot.hasCamera ? "yes" : "no");
   ImGui::SameLine();
   ImGui::Text("Light: %s", snapshot.hasLight ? "yes" : "no");
-  ImGui::Text("Visibility mask: %s", formatMask(snapshot.visibilityMask).c_str());
+  ImGui::Text("Visibility mask: %s",
+              formatMask(snapshot.visibilityMask).c_str());
   ImGui::Text("Mesh: %s", snapshot.hasMesh ? "yes" : "no");
   ImGui::Text("Material: %s", snapshot.hasMaterial ? "yes" : "no");
   ImGui::Text("Skeleton: %s", snapshot.hasSkeleton ? "yes" : "no");
@@ -507,7 +509,8 @@ void InspectorPanel::drawSelection(const Snapshot &snapshot) {
 
   ImGui::DragFloat3("Translation", m_translationDraft.data, 0.1f);
   if (ImGui::IsItemDeactivatedAfterEdit()) {
-    const CommandResult result = dispatchMove(snapshot.path, m_translationDraft);
+    const CommandResult result =
+        dispatchMove(snapshot.path, m_translationDraft);
     if (result.ok) {
       refreshDrafts();
     }
@@ -529,10 +532,10 @@ void InspectorPanel::drawSelection(const Snapshot &snapshot) {
     }
   }
 
-  drawMaskEditor("Visibility Mask", m_visibilityMaskBuffer,
-                 [&](const u32 value) {
-                   return dispatchSetUnsigned(snapshot.path, "visibilityMask", value);
-                 });
+  drawMaskEditor(
+      "Visibility Mask", m_visibilityMaskBuffer, [&](const u32 value) {
+        return dispatchSetUnsigned(snapshot.path, "visibilityMask", value);
+      });
 
   if (snapshot.hasMaterialSection) {
     ImGui::Separator();
@@ -542,8 +545,8 @@ void InspectorPanel::drawSelection(const Snapshot &snapshot) {
                      m_materialUriBuffer.size(),
                      ImGuiInputTextFlags_EnterReturnsTrue);
     if (ImGui::IsItemDeactivatedAfterEdit()) {
-      const CommandResult result =
-          dispatchSetToken(snapshot.path, "materialUri", m_materialUriBuffer.data());
+      const CommandResult result = dispatchSetToken(
+          snapshot.path, "materialUri", m_materialUriBuffer.data());
       if (result.ok) {
         refreshDrafts();
       }
@@ -568,7 +571,8 @@ void InspectorPanel::drawSelection(const Snapshot &snapshot) {
                 snapshot.materialPresets.size()) {
           const CommandResult result = dispatchSetToken(
               snapshot.path, "materialUri",
-              snapshot.materialPresets[static_cast<usize>(m_materialPresetDraft)]);
+              snapshot
+                  .materialPresets[static_cast<usize>(m_materialPresetDraft)]);
           if (result.ok) {
             refreshDrafts();
           }
@@ -577,13 +581,14 @@ void InspectorPanel::drawSelection(const Snapshot &snapshot) {
     }
 
     if (snapshot.canEditBaseColor) {
-      ImGui::ColorEdit3("Base Color Override", m_nodeBaseColorDraft.data);
+      const bool baseColorChanged =
+          ImGui::ColorEdit3("Base Color Override", m_nodeBaseColorDraft.data);
+      if (baseColorChanged) {
+        (void)dispatchSetVec3(snapshot.path, "nodeMaterial.baseColor",
+                              m_nodeBaseColorDraft);
+      }
       if (ImGui::IsItemDeactivatedAfterEdit()) {
-        const CommandResult result = dispatchSetVec3(
-            snapshot.path, "nodeMaterial.baseColor", m_nodeBaseColorDraft);
-        if (result.ok) {
-          refreshDrafts();
-        }
+        refreshDrafts();
       }
       ImGui::TextUnformatted(
           "Apply Override To Material updates this scene document only.");
@@ -599,7 +604,8 @@ void InspectorPanel::drawSelection(const Snapshot &snapshot) {
     }
 
     for (const auto &parameter : snapshot.materialParameters) {
-      if (parameter.binding == "MaterialUBO" && parameter.member == "baseColor") {
+      if (parameter.binding == "MaterialUBO" &&
+          parameter.member == "baseColor") {
         continue;
       }
       const std::string label = parameter.binding + "." + parameter.member;
@@ -680,11 +686,10 @@ void InspectorPanel::drawSelection(const Snapshot &snapshot) {
       }
     }
 
-    drawMaskEditor("Camera Culling Mask", m_cameraCullingMaskBuffer,
-                   [&](const u32 value) {
-                     return dispatchSetUnsigned(snapshot.path, "cullingMask",
-                                                value);
-                   });
+    drawMaskEditor(
+        "Camera Culling Mask", m_cameraCullingMaskBuffer, [&](const u32 value) {
+          return dispatchSetUnsigned(snapshot.path, "cullingMask", value);
+        });
   }
 
   if (snapshot.hasLight) {
@@ -713,8 +718,8 @@ void InspectorPanel::drawSelection(const Snapshot &snapshot) {
 
     ImGui::DragFloat("Intensity", &m_lightIntensityDraft, 0.05f, 0.0f, 100.0f);
     if (ImGui::IsItemDeactivatedAfterEdit()) {
-      const CommandResult result =
-          dispatchSetFloat(snapshot.path, "light.intensity", m_lightIntensityDraft);
+      const CommandResult result = dispatchSetFloat(
+          snapshot.path, "light.intensity", m_lightIntensityDraft);
       if (result.ok) {
         refreshDrafts();
       }
