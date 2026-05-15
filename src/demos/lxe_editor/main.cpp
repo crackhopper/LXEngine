@@ -842,57 +842,65 @@ int main(int argc, char **argv) {
             .tokenFile = apiTokenState.tokenPath().string(),
             .startedAt = currentTimestampString(),
         });
-    auto makeApiService = [&]() -> std::unique_ptr<demo::LxeEditorApiService> {
+    auto makeApiService =
+        [&](const demo::LxeEditorApiService *previous = nullptr)
+        -> std::unique_ptr<demo::LxeEditorApiService> {
+      demo::LxeEditorApiService::Hooks hooks{
+          .sceneSummary =
+              [&]() {
+                return demo::ApiSceneSummary{
+                    .sceneName = session.scene()->getSceneName(),
+                    .currentDocumentPath =
+                        session.currentDocumentPath().has_value()
+                            ? session.currentDocumentPath()->string()
+                            : std::string{},
+                    .dirty = session.isDirty(),
+                };
+              },
+          .toolbarSnapshot =
+              [&]() {
+                return demo::ApiToolbarSnapshot{
+                    .mode = toApiEditorMode(ui.currentEditorMode()),
+                    .camera =
+                        toApiCameraControlMode(ui.currentCameraControlMode()),
+                    .previewEnabled = editorState.isPreviewEnabled(),
+                    .debugEnabled = session.debugEnabled(),
+                };
+              },
+          .lastHitPoint =
+              [&]() { return session.sceneInteraction().lastHitPoint(); },
+          .recordCommandHistoryLine =
+              [&session](std::string_view line) {
+                session.recordCommandHistoryLine(line);
+              },
+          .recording = [&session]()
+              -> std::optional<
+                  std::reference_wrapper<demo::RecordingController>> {
+            return session.recording();
+          },
+          .displayListJson = displayCommandHooks.displayListJson,
+          .displayActiveJson = displayCommandHooks.displayActiveJson,
+          .displayConfigGetJson =
+              [&](const std::string &key) {
+                return displayCommandHooks.displayConfigGetJson(key);
+              },
+          .displayConfigSet =
+              [&](const std::string &key, const std::string &patch) {
+                return displayCommandHooks.displayConfigSet(key, patch);
+              },
+          .displaySelect =
+              [&](const std::string &key) {
+                return displayCommandHooks.displaySelect(key);
+              },
+      };
+      if (previous) {
+        return std::make_unique<demo::LxeEditorApiService>(
+            session.commandBus(), editorState, *session.scene(),
+            std::move(hooks), *previous);
+      }
       return std::make_unique<demo::LxeEditorApiService>(
           session.commandBus(), editorState, *session.scene(),
-          demo::LxeEditorApiService::Hooks{
-              .sceneSummary =
-                  [&]() {
-                    return demo::ApiSceneSummary{
-                        .sceneName = session.scene()->getSceneName(),
-                        .currentDocumentPath =
-                            session.currentDocumentPath().has_value()
-                                ? session.currentDocumentPath()->string()
-                                : std::string{},
-                        .dirty = session.isDirty(),
-                    };
-                  },
-              .toolbarSnapshot =
-                  [&]() {
-                    return demo::ApiToolbarSnapshot{
-                        .mode = toApiEditorMode(ui.currentEditorMode()),
-                        .camera = toApiCameraControlMode(
-                            ui.currentCameraControlMode()),
-                        .previewEnabled = editorState.isPreviewEnabled(),
-                        .debugEnabled = session.debugEnabled(),
-                    };
-                  },
-              .lastHitPoint =
-                  [&]() { return session.sceneInteraction().lastHitPoint(); },
-              .recordCommandHistoryLine =
-                  [&session](std::string_view line) {
-                    session.recordCommandHistoryLine(line);
-                  },
-              .recording = [&session]()
-                  -> std::optional<
-                      std::reference_wrapper<demo::RecordingController>> {
-                return session.recording();
-              },
-              .displayListJson = displayCommandHooks.displayListJson,
-              .displayActiveJson = displayCommandHooks.displayActiveJson,
-              .displayConfigGetJson =
-                  [&](const std::string &key) {
-                    return displayCommandHooks.displayConfigGetJson(key);
-                  },
-              .displayConfigSet =
-                  [&](const std::string &key, const std::string &patch) {
-                    return displayCommandHooks.displayConfigSet(key, patch);
-                  },
-              .displaySelect =
-                  [&](const std::string &key) {
-                    return displayCommandHooks.displaySelect(key);
-                  },
-          });
+          std::move(hooks));
     };
     usize apiBindingsGeneration = session.bindingsGeneration();
     auto apiService = makeApiService();
@@ -935,7 +943,7 @@ int main(int argc, char **argv) {
       session.flushPendingSceneLoad(loop);
       if (apiBindingsGeneration != session.bindingsGeneration()) {
         apiBindingsGeneration = session.bindingsGeneration();
-        apiService = makeApiService();
+        apiService = makeApiService(apiService.get());
       }
       apiService->refresh();
       apiServer.pump(*apiService);

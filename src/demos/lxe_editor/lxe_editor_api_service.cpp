@@ -129,6 +129,16 @@ LxeEditorApiService::LxeEditorApiService(LX_core::CommandBus &commandBus,
       m_lastObservedHistoryIndex(m_commandBus.history().size()),
       m_lastState(captureState()) {}
 
+LxeEditorApiService::LxeEditorApiService(
+    LX_core::CommandBus &commandBus, LX_core::EditorState &editorState,
+    LX_core::Scene &scene, Hooks hooks, const LxeEditorApiService &previous)
+    : LxeEditorApiService(commandBus, editorState, scene, std::move(hooks)) {
+  m_lastObservedHistoryIndex = previous.m_lastObservedHistoryIndex;
+  m_nextSequence = previous.m_nextSequence;
+  m_lastState = previous.m_lastState;
+  m_events = previous.m_events;
+}
+
 ApiCommandResponse
 LxeEditorApiService::executeCommand(const ApiCommandRequest &request) {
   if (m_hooks.recordCommandHistoryLine) {

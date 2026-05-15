@@ -765,6 +765,37 @@ void testProjectScopedSceneReplacementCommandsEmitSceneLoadedEvents() {
   EXPECT(sawProjectSaved, "project save should emit a scene.saved API event");
 }
 
+void testApiServiceReplacementPreservesEventStateForDeferredSceneLoaded() {
+  Fixture fixture;
+  const ApiEventCursor cursor = fixture.service->currentCursor();
+
+  fixture.hookState.scene.currentDocumentPath =
+      "data/projects/demo/scenes/main.scene.yaml";
+  auto replacement = std::make_unique<LxeEditorApiService>(
+      fixture.bus, fixture.editorState, *fixture.scene, fixture.hooks,
+      *fixture.service);
+  replacement->refresh();
+
+  const ApiEventBatch batch = replacement->collectEventsSince(cursor);
+  bool sawSceneLoaded = false;
+  for (const auto &event : batch.events) {
+    if (event.type != ApiEventType::SceneLoaded) {
+      continue;
+    }
+    sawSceneLoaded = true;
+    EXPECT(event.state.has_value(),
+           "scene.loaded after service replacement should carry state");
+    if (event.state.has_value()) {
+      EXPECT(event.state->scene.currentDocumentPath ==
+                 "data/projects/demo/scenes/main.scene.yaml",
+             "scene.loaded after service replacement should report the new "
+             "runtime document path");
+    }
+  }
+  EXPECT(sawSceneLoaded,
+         "replacement service should emit scene.loaded from previous state");
+}
+
 void testApiTokenStatePersistsSingleGeneratedToken() {
   const auto rootDir =
       std::filesystem::temp_directory_path() / "lxengine_api_token_state_test";
@@ -797,6 +828,7 @@ int main() {
   testRuntimeCameraPropertyMutationEmitsApiSceneNodeChangedEvent();
   testRuntimeLightPropertyMutationEmitsApiSceneNodeChangedEvent();
   testProjectScopedSceneReplacementCommandsEmitSceneLoadedEvents();
+  testApiServiceReplacementPreservesEventStateForDeferredSceneLoaded();
   testRecordingToolsRecordMcpCommand();
   testBuildInfoExposesGitIdentityFields();
   testDisplayApiMethodsUseHooks();

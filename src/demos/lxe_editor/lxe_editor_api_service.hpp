@@ -34,6 +34,9 @@ public:
   LxeEditorApiService(LX_core::CommandBus &commandBus,
                       LX_core::EditorState &editorState, LX_core::Scene &scene,
                       Hooks hooks);
+  LxeEditorApiService(LX_core::CommandBus &commandBus,
+                      LX_core::EditorState &editorState, LX_core::Scene &scene,
+                      Hooks hooks, const LxeEditorApiService &previous);
 
   [[nodiscard]] ApiCommandResponse
   executeCommand(const ApiCommandRequest &request);
