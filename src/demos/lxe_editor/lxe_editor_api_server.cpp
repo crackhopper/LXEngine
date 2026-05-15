@@ -367,12 +367,9 @@ httpResponse(std::string_view status, std::string_view body,
 [[nodiscard]] std::string summaryJson(const ApiStateSnapshot &state) {
   std::ostringstream out;
   out << "{\"sceneName\":\"" << apiJsonEscape(state.scene.sceneName) << "\""
-      << ",\"currentDocumentPath\":\""
-      << apiJsonEscape(state.scene.currentDocumentPath) << "\""
-      << ",\"sourceKind\":\"" << apiSceneSourceKindName(state.scene.sourceKind)
-      << "\"" << ",\"permission\":\""
-      << apiPermissionLevelName(state.scene.permission) << "\""
       << ",\"dirty\":" << (state.scene.dirty ? "true" : "false")
+      << ",\"project\":"
+      << (state.project.has_value() ? toJson(*state.project) : "null")
       << ",\"previewEnabled\":"
       << (state.toolbar.previewEnabled ? "true" : "false")
       << ",\"debugEnabled\":" << (state.toolbar.debugEnabled ? "true" : "false")

@@ -85,33 +85,6 @@ std::string metadataToJson(
 
 } // namespace
 
-const char* apiSceneSourceKindName(const ApiSceneSourceKind kind) {
-  switch (kind) {
-  case ApiSceneSourceKind::Asset:
-    return "asset";
-  case ApiSceneSourceKind::Local:
-    return "local";
-  case ApiSceneSourceKind::External:
-    return "external";
-  case ApiSceneSourceKind::Unknown:
-    break;
-  }
-  return "unknown";
-}
-
-const char* apiPermissionLevelName(
-    const ApiPermissionLevel level) {
-  switch (level) {
-  case ApiPermissionLevel::User:
-    return "user";
-  case ApiPermissionLevel::Admin:
-    return "admin";
-  case ApiPermissionLevel::Unknown:
-    break;
-  }
-  return "unknown";
-}
-
 const char* apiEditorModeName(const ApiEditorMode mode) {
   switch (mode) {
   case ApiEditorMode::Selection:
@@ -138,8 +111,16 @@ const char* apiEventTypeName(const ApiEventType type) {
   switch (type) {
   case ApiEventType::CommandExecuted:
     return "command.executed";
-  case ApiEventType::SceneLoaded:
-    return "scene.loaded";
+  case ApiEventType::ProjectInitialized:
+    return "project.initialized";
+  case ApiEventType::ProjectOpened:
+    return "project.opened";
+  case ApiEventType::ProjectSaved:
+    return "project.saved";
+  case ApiEventType::ProjectClosed:
+    return "project.closed";
+  case ApiEventType::ActiveSceneChanged:
+    return "active_scene.changed";
   case ApiEventType::SceneSaved:
     return "scene.saved";
   case ApiEventType::SelectionChanged:
@@ -234,13 +215,18 @@ std::string toJson(const ApiAabb& bounds) {
 std::string toJson(const ApiSceneSummary& summary) {
   std::string out = "{";
   appendJsonStringField(out, "sceneName", summary.sceneName, true);
-  appendJsonStringField(out, "currentDocumentPath",
-                        summary.currentDocumentPath);
-  appendJsonStringField(out, "sourceKind",
-                        apiSceneSourceKindName(summary.sourceKind));
-  appendJsonStringField(out, "permission",
-                        apiPermissionLevelName(summary.permission));
   appendJsonBoolField(out, "dirty", summary.dirty);
+  out += '}';
+  return out;
+}
+
+std::string toJson(const ApiProjectSummary& summary) {
+  std::string out = "{";
+  appendJsonStringField(out, "id", summary.id, true);
+  appendJsonStringField(out, "displayName", summary.displayName);
+  appendJsonStringField(out, "path", summary.path);
+  appendJsonBoolField(out, "dirty", summary.dirty);
+  appendJsonStringField(out, "activeScene", summary.activeScene);
   out += '}';
   return out;
 }
@@ -309,6 +295,8 @@ std::string toJson(const ApiStateSnapshot& state) {
   std::string out = "{";
   out += "\"scene\":";
   out += toJson(state.scene);
+  out += ",\"project\":";
+  out += state.project.has_value() ? toJson(*state.project) : "null";
   out += ",\"selection\":";
   out += toJson(state.selection);
   out += ",\"cameras\":";

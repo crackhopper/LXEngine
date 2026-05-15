@@ -850,13 +850,26 @@ int main(int argc, char **argv) {
               [&]() {
                 return demo::ApiSceneSummary{
                     .sceneName = session.scene()->getSceneName(),
-                    .currentDocumentPath =
-                        session.currentDocumentPath().has_value()
-                            ? session.currentDocumentPath()->string()
-                            : std::string{},
                     .dirty = session.isDirty(),
                 };
               },
+          .projectSummary =
+              [&]() -> std::optional<demo::ApiProjectSummary> {
+            const auto projectId = session.currentProjectId();
+            const auto projectRoot = session.currentProjectRoot();
+            if (!projectId.has_value() || !projectRoot.has_value()) {
+              return std::nullopt;
+            }
+            const auto activeScene = session.activeScenePath();
+            return demo::ApiProjectSummary{
+                .id = *projectId,
+                .displayName = *projectId,
+                .path = projectRoot->string(),
+                .dirty = session.isDirty(),
+                .activeScene =
+                    activeScene.has_value() ? activeScene->string() : std::string{},
+            };
+          },
           .toolbarSnapshot =
               [&]() {
                 return demo::ApiToolbarSnapshot{

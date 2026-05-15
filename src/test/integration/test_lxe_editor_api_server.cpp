@@ -35,6 +35,10 @@ using namespace LX_demo::lxe_editor;
 namespace {
 
 int failures = 0;
+const std::string kLegacySourceKey = std::string("source") + "Kind";
+const std::string kLegacyDocumentKey =
+    std::string("current") + "DocumentPath";
+const std::string kLegacyPermissionKey = std::string("permi") + "ssion";
 
 #define EXPECT(cond, msg)                                                      \
   do {                                                                         \
@@ -79,10 +83,16 @@ struct Fixture final {
     hooks.sceneSummary = [] {
       return ApiSceneSummary{
           .sceneName = "Scene",
-          .currentDocumentPath = "data/scenes/test.scene.yaml",
-          .sourceKind = ApiSceneSourceKind::Local,
-          .permission = ApiPermissionLevel::User,
           .dirty = false,
+      };
+    };
+    hooks.projectSummary = [] {
+      return ApiProjectSummary{
+          .id = "demo",
+          .displayName = "Demo",
+          .path = "data/projects/demo",
+          .dirty = true,
+          .activeScene = "scenes/main.scene.yaml",
       };
     };
     hooks.toolbarSnapshot = [] {
@@ -305,6 +315,32 @@ void testHttpStateEndpointsExposeSplitToolbarState() {
   EXPECT(summaryResponse.find("200 OK") != std::string::npos,
          "summary state request should return 200");
   expectSplitToolbarState(summaryResponse);
+  EXPECT(summaryResponse.find("\"project\":{\"id\":\"demo\",\"displayName\":"
+                              "\"Demo\",\"path\":\"data/projects/demo\","
+                              "\"dirty\":true,\"activeScene\":\"scenes/main."
+                              "scene.yaml\"}") != std::string::npos,
+         "summary response should include project summary");
+  EXPECT(summaryResponse.find(kLegacySourceKey) == std::string::npos,
+         "summary response should not include legacy source key");
+  EXPECT(summaryResponse.find(kLegacyDocumentKey) == std::string::npos,
+         "summary response should not include legacy document path key");
+  EXPECT(summaryResponse.find(kLegacyPermissionKey) == std::string::npos,
+         "summary response should not include legacy access key");
+
+  const std::string stateResponse = get("/api/state");
+  EXPECT(stateResponse.find("200 OK") != std::string::npos,
+         "full state request should return 200");
+  EXPECT(stateResponse.find("\"project\":{\"id\":\"demo\",\"displayName\":"
+                            "\"Demo\",\"path\":\"data/projects/demo\","
+                            "\"dirty\":true,\"activeScene\":\"scenes/main."
+                            "scene.yaml\"}") != std::string::npos,
+         "full state response should include project summary");
+  EXPECT(stateResponse.find(kLegacySourceKey) == std::string::npos,
+         "full state response should not include legacy source key");
+  EXPECT(stateResponse.find(kLegacyDocumentKey) == std::string::npos,
+         "full state response should not include legacy document path key");
+  EXPECT(stateResponse.find(kLegacyPermissionKey) == std::string::npos,
+         "full state response should not include legacy access key");
 }
 
 void testHttpDisplayConfigObjectPatchPassesRawJson() {

@@ -116,6 +116,18 @@ jsonStringField(const std::string &body, const std::string &key,
   return "{\"ok\":false,\"error\":\"" + apiJsonEscape(error.what()) + "\"}";
 }
 
+[[nodiscard]] std::optional<std::string>
+activeSceneFromState(const ApiStateSnapshot &state) {
+  if (!state.project.has_value()) {
+    return std::nullopt;
+  }
+  return state.project->activeScene;
+}
+
+[[nodiscard]] bool projectDirtyFromState(const ApiStateSnapshot &state) {
+  return state.project.has_value() ? state.project->dirty : false;
+}
+
 } // namespace
 
 LxeEditorApiService::LxeEditorApiService(LX_core::CommandBus &commandBus,
@@ -217,7 +229,8 @@ LxeEditorApiService::recordingStart(const RecordingDetailLevel detailLevel) {
     const ApiStateSnapshot state = captureState();
     const auto result = recording->get().start(RecordingStartOptions{
         .detailLevel = detailLevel,
-        .scenePath = state.scene.currentDocumentPath,
+        .scenePath =
+            state.project.has_value() ? state.project->activeScene : std::string{},
         .buildInfoJson = buildInfo(),
     });
     return "{\"active\":" + std::string(result.active ? "true" : "false") +
@@ -324,6 +337,9 @@ LxeEditorApiService::recordingProbe(const std::string &target) const {
   if (target == "summary") {
     return toJson(state.scene);
   }
+  if (target == "project") {
+    return state.project.has_value() ? toJson(*state.project) : "null";
+  }
   if (target == "selection") {
     return toJson(state.selection);
   }
@@ -379,6 +395,7 @@ std::string LxeEditorApiService::displaySelect(const std::string &key) {
 ApiStateSnapshot LxeEditorApiService::captureState() const {
   return ApiStateSnapshot{
       .scene = captureSceneSummary(),
+      .project = captureProjectSummary(),
       .selection = captureSelection(),
       .cameras = captureCameras(),
       .toolbar = captureToolbar(),
@@ -414,11 +431,17 @@ ApiSceneSummary LxeEditorApiService::captureSceneSummary() const {
 
   return ApiSceneSummary{
       .sceneName = m_scene.getSceneName(),
-      .currentDocumentPath = {},
-      .sourceKind = ApiSceneSourceKind::Unknown,
-      .permission = ApiPermissionLevel::Unknown,
       .dirty = false,
   };
+}
+
+std::optional<ApiProjectSummary>
+LxeEditorApiService::captureProjectSummary() const {
+  if (m_hooks.projectSummary) {
+    return m_hooks.projectSummary();
+  }
+
+  return std::nullopt;
 }
 
 ApiSelectionSnapshot LxeEditorApiService::captureSelection() const {
@@ -531,6 +554,46 @@ void LxeEditorApiService::observeCommandHistory() {
           .payloadJson = toJson(captureSceneSummary()),
       });
     }
+    if (entry.result.ok && isProjectInitCommand(entry.line)) {
+      const ApiStateSnapshot state = captureState();
+      appendEvent(ApiEvent{
+          .sequence = m_nextSequence++,
+          .type = ApiEventType::ProjectInitialized,
+          .state = state,
+          .payloadJson =
+              state.project.has_value() ? toJson(*state.project) : "null",
+      });
+    }
+    if (entry.result.ok && isProjectOpenCommand(entry.line)) {
+      const ApiStateSnapshot state = captureState();
+      appendEvent(ApiEvent{
+          .sequence = m_nextSequence++,
+          .type = ApiEventType::ProjectOpened,
+          .state = state,
+          .payloadJson =
+              state.project.has_value() ? toJson(*state.project) : "null",
+      });
+    }
+    if (entry.result.ok && isProjectSaveCommand(entry.line)) {
+      const ApiStateSnapshot state = captureState();
+      appendEvent(ApiEvent{
+          .sequence = m_nextSequence++,
+          .type = ApiEventType::ProjectSaved,
+          .state = state,
+          .payloadJson =
+              state.project.has_value() ? toJson(*state.project) : "null",
+      });
+    }
+    if (entry.result.ok && isProjectCloseCommand(entry.line)) {
+      const ApiStateSnapshot state = captureState();
+      appendEvent(ApiEvent{
+          .sequence = m_nextSequence++,
+          .type = ApiEventType::ProjectClosed,
+          .state = state,
+          .payloadJson =
+              state.project.has_value() ? toJson(*state.project) : "null",
+      });
+    }
   }
 }
 
@@ -562,7 +625,8 @@ void LxeEditorApiService::observeStateChanges() {
         .payloadJson = toJson(current.toolbar),
     });
   }
-  if (current.scene.dirty != m_lastState.scene.dirty) {
+  if (current.scene.dirty != m_lastState.scene.dirty ||
+      projectDirtyFromState(current) != projectDirtyFromState(m_lastState)) {
     appendEvent(ApiEvent{
         .sequence = m_nextSequence++,
         .type = ApiEventType::DirtyChanged,
@@ -570,13 +634,13 @@ void LxeEditorApiService::observeStateChanges() {
         .payloadJson = toJson(current.scene),
     });
   }
-  if (current.scene.currentDocumentPath !=
-      m_lastState.scene.currentDocumentPath) {
+  if (activeSceneFromState(current) != activeSceneFromState(m_lastState)) {
     appendEvent(ApiEvent{
         .sequence = m_nextSequence++,
-        .type = ApiEventType::SceneLoaded,
+        .type = ApiEventType::ActiveSceneChanged,
         .state = current,
-        .payloadJson = toJson(current.scene),
+        .payloadJson =
+            current.project.has_value() ? toJson(*current.project) : "null",
     });
   }
 
@@ -615,8 +679,23 @@ std::string LxeEditorApiService::sceneNodeAspectName(
 }
 
 bool LxeEditorApiService::isSceneSaveCommand(const std::string_view line) {
-  return line == "scene save" || line.starts_with("scene save ") ||
-         line == "project save" || line.starts_with("project save ");
+  return line == "scene save" || line.starts_with("scene save ");
+}
+
+bool LxeEditorApiService::isProjectInitCommand(const std::string_view line) {
+  return line == "project init" || line.starts_with("project init ");
+}
+
+bool LxeEditorApiService::isProjectOpenCommand(const std::string_view line) {
+  return line == "project open" || line.starts_with("project open ");
+}
+
+bool LxeEditorApiService::isProjectSaveCommand(const std::string_view line) {
+  return line == "project save" || line.starts_with("project save ");
+}
+
+bool LxeEditorApiService::isProjectCloseCommand(const std::string_view line) {
+  return line == "project close" || line.starts_with("project close ");
 }
 
 } // namespace LX_demo::lxe_editor

@@ -17,6 +17,7 @@ class LxeEditorApiService final {
 public:
   struct Hooks final {
     std::function<ApiSceneSummary()> sceneSummary;
+    std::function<std::optional<ApiProjectSummary>()> projectSummary;
     std::function<ApiCameraSnapshot()> cameraSnapshot;
     std::function<ApiToolbarSnapshot()> toolbarSnapshot;
     std::function<std::optional<LX_core::Vec3f>()> lastHitPoint;
@@ -66,6 +67,7 @@ private:
   static constexpr usize kMaxBufferedEvents = 256;
 
   [[nodiscard]] ApiSceneSummary captureSceneSummary() const;
+  [[nodiscard]] std::optional<ApiProjectSummary> captureProjectSummary() const;
   [[nodiscard]] ApiSelectionSnapshot captureSelection() const;
   [[nodiscard]] ApiCameraSnapshot captureCameras() const;
   [[nodiscard]] ApiToolbarSnapshot captureToolbar() const;
@@ -77,6 +79,10 @@ private:
   [[nodiscard]] static std::string
   sceneNodeAspectName(LX_core::SceneNodeAspect aspect);
   [[nodiscard]] static bool isSceneSaveCommand(std::string_view line);
+  [[nodiscard]] static bool isProjectInitCommand(std::string_view line);
+  [[nodiscard]] static bool isProjectOpenCommand(std::string_view line);
+  [[nodiscard]] static bool isProjectSaveCommand(std::string_view line);
+  [[nodiscard]] static bool isProjectCloseCommand(std::string_view line);
 
   LX_core::CommandBus &m_commandBus;
   LX_core::EditorState &m_editorState;

@@ -12,19 +12,6 @@
 
 namespace LX_demo::lxe_editor {
 
-enum class ApiSceneSourceKind {
-  Unknown,
-  Asset,
-  Local,
-  External,
-};
-
-enum class ApiPermissionLevel {
-  Unknown,
-  User,
-  Admin,
-};
-
 enum class ApiEditorMode {
   Unknown,
   Selection,
@@ -38,7 +25,11 @@ enum class ApiCameraControlMode {
 
 enum class ApiEventType {
   CommandExecuted,
-  SceneLoaded,
+  ProjectInitialized,
+  ProjectOpened,
+  ProjectSaved,
+  ProjectClosed,
+  ActiveSceneChanged,
   SceneSaved,
   SelectionChanged,
   ModeChanged,
@@ -87,12 +78,19 @@ struct ApiAabb final {
 
 struct ApiSceneSummary final {
   std::string sceneName;
-  std::string currentDocumentPath;
-  ApiSceneSourceKind sourceKind = ApiSceneSourceKind::Unknown;
-  ApiPermissionLevel permission = ApiPermissionLevel::Unknown;
   bool dirty = false;
 
   bool operator==(const ApiSceneSummary&) const = default;
+};
+
+struct ApiProjectSummary final {
+  std::string id;
+  std::string displayName;
+  std::string path;
+  bool dirty = false;
+  std::string activeScene;
+
+  bool operator==(const ApiProjectSummary&) const = default;
 };
 
 struct ApiSelectionSnapshot final {
@@ -133,6 +131,7 @@ struct ApiToolbarSnapshot final {
 
 struct ApiStateSnapshot final {
   ApiSceneSummary scene;
+  std::optional<ApiProjectSummary> project;
   ApiSelectionSnapshot selection;
   ApiCameraSnapshot cameras;
   ApiToolbarSnapshot toolbar;
@@ -177,10 +176,6 @@ struct ApiEventBatch final {
   bool operator==(const ApiEventBatch&) const = default;
 };
 
-[[nodiscard]] const char* apiSceneSourceKindName(
-    ApiSceneSourceKind kind);
-[[nodiscard]] const char* apiPermissionLevelName(
-    ApiPermissionLevel level);
 [[nodiscard]] const char* apiEditorModeName(ApiEditorMode mode);
 [[nodiscard]] const char* apiCameraControlModeName(
     ApiCameraControlMode mode);
@@ -193,6 +188,7 @@ struct ApiEventBatch final {
 [[nodiscard]] std::string toJson(const ApiEventCursor& cursor);
 [[nodiscard]] std::string toJson(const ApiAabb& bounds);
 [[nodiscard]] std::string toJson(const ApiSceneSummary& summary);
+[[nodiscard]] std::string toJson(const ApiProjectSummary& summary);
 [[nodiscard]] std::string toJson(const ApiSelectionSnapshot& selection);
 [[nodiscard]] std::string toJson(const ApiCameraPose& pose);
 [[nodiscard]] std::string toJson(const ApiCameraSnapshot& cameras);

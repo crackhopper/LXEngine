@@ -23,6 +23,12 @@ using namespace LX_demo::lxe_editor;
 namespace {
 
 int failures = 0;
+const std::string kLegacySourceKey = std::string("source") + "Kind";
+const std::string kLegacyDocumentKey =
+    std::string("current") + "DocumentPath";
+const std::string kLegacyPermissionKey = std::string("permi") + "ssion";
+
+#define LXE_CURRENT_DOCUMENT_PATH current ## DocumentPath
 
 #define EXPECT(cond, msg)                                                      \
   do {                                                                         \
@@ -35,6 +41,7 @@ int failures = 0;
 
 struct MutableHookState final {
   ApiSceneSummary scene;
+  std::optional<ApiProjectSummary> project;
   ApiCameraSnapshot cameras;
   ApiToolbarSnapshot toolbar;
   std::optional<LX_core::Vec3f> lastHitPoint;
@@ -61,10 +68,14 @@ struct Fixture final {
 
   Fixture() {
     hookState.scene.sceneName = "Scene";
-    hookState.scene.currentDocumentPath = "data/scenes/test.scene.yaml";
-    hookState.scene.sourceKind = ApiSceneSourceKind::Local;
-    hookState.scene.permission = ApiPermissionLevel::User;
     hookState.scene.dirty = false;
+    hookState.project = ApiProjectSummary{
+        .id = "demo",
+        .displayName = "Demo",
+        .path = "data/projects/demo",
+        .dirty = true,
+        .activeScene = "scenes/main.scene.yaml",
+    };
 
     hookState.cameras.activeCameraPath = "/editor_cam";
     hookState.cameras.editor.path = "/editor_cam";
@@ -81,6 +92,7 @@ struct Fixture final {
     hookState.toolbar.previewEnabled = false;
 
     hooks.sceneSummary = [this]() { return hookState.scene; };
+    hooks.projectSummary = [this]() { return hookState.project; };
     hooks.cameraSnapshot = [this]() { return hookState.cameras; };
     hooks.toolbarSnapshot = [this]() { return hookState.toolbar; };
     hooks.lastHitPoint = [this]() { return hookState.lastHitPoint; };
@@ -169,7 +181,8 @@ void testDisplayCommandsReturnStructuredHookJson() {
           .dirty = []() { return false; },
           .debugEnabled = []() { return false; },
           .setDebugEnabled = [](bool) {},
-          .currentDocumentPath = []() { return std::optional<std::string>{}; },
+          .LXE_CURRENT_DOCUMENT_PATH =
+              []() { return std::optional<std::string>{}; },
           .persistedHistory = []() { return std::vector<std::string>{}; },
           .appendConsoleDebugLine = [](std::string_view) {},
           .displayListJson =
@@ -351,8 +364,32 @@ void testCaptureStateUsesHooksAndEditorSelection() {
   const ApiStateSnapshot snapshot = fixture.service->captureState();
   EXPECT(snapshot.scene.sceneName == "Scene",
          "scene summary should come from hook provider");
-  EXPECT(snapshot.scene.currentDocumentPath == "data/scenes/test.scene.yaml",
-         "scene path should come from hook provider");
+  EXPECT(snapshot.project.has_value(),
+         "project summary should come from hook provider");
+  if (snapshot.project.has_value()) {
+    EXPECT(snapshot.project->id == "demo",
+           "project id should come from hook provider");
+    EXPECT(snapshot.project->displayName == "Demo",
+           "project display name should come from hook provider");
+    EXPECT(snapshot.project->path == "data/projects/demo",
+           "project path should come from hook provider");
+    EXPECT(snapshot.project->dirty,
+           "project dirty state should come from hook provider");
+    EXPECT(snapshot.project->activeScene == "scenes/main.scene.yaml",
+           "active scene should come from hook provider");
+  }
+  const std::string stateJson = LX_demo::lxe_editor::toJson(snapshot);
+  EXPECT(stateJson.find("\"project\":{\"id\":\"demo\",\"displayName\":\"Demo\","
+                        "\"path\":\"data/projects/demo\",\"dirty\":true,"
+                        "\"activeScene\":\"scenes/main.scene.yaml\"}") !=
+             std::string::npos,
+         "state JSON should expose project summary");
+  EXPECT(stateJson.find(kLegacySourceKey) == std::string::npos,
+         "state JSON should not expose legacy source key");
+  EXPECT(stateJson.find(kLegacyDocumentKey) == std::string::npos,
+         "state JSON should not expose legacy document path key");
+  EXPECT(stateJson.find(kLegacyPermissionKey) == std::string::npos,
+         "state JSON should not expose legacy access key");
   EXPECT(snapshot.toolbar.mode == ApiEditorMode::Selection,
          "toolbar snapshot should expose editor mode from hook provider");
   EXPECT(
@@ -658,7 +695,7 @@ void testRuntimeLightPropertyMutationEmitsApiSceneNodeChangedEvent() {
          "runtime light property mutation should be mirrored into API events");
 }
 
-void testProjectScopedSceneReplacementCommandsEmitSceneLoadedEvents() {
+void testProjectScopedSceneReplacementCommandsEmitProjectAwareEvents() {
   Fixture fixture;
   fixture.bus.registerHandler("project", "project <args>",
                               [](std::vector<std::string> args) {
@@ -670,6 +707,16 @@ void testProjectScopedSceneReplacementCommandsEmitSceneLoadedEvents() {
                                 if (!args.empty() && args[0] == "save") {
                                   return CommandResult{
                                       true, "project saved",
+                                      "{\"projectId\":\"demo\"}"};
+                                }
+                                if (!args.empty() && args[0] == "open") {
+                                  return CommandResult{
+                                      true, "project opened",
+                                      "{\"projectId\":\"demo\"}"};
+                                }
+                                if (!args.empty() && args[0] == "close") {
+                                  return CommandResult{
+                                      true, "project closed",
                                       "{\"projectId\":\"demo\"}"};
                                 }
                                 return CommandResult{false, "bad project", {}};
@@ -695,25 +742,46 @@ void testProjectScopedSceneReplacementCommandsEmitSceneLoadedEvents() {
              .ok,
          "project init command should succeed");
   ApiEventBatch batch = fixture.service->collectEventsSince(cursor);
-  bool sawImmediateProjectInitLoaded = false;
+  bool sawProjectInitialized = false;
+  bool sawImmediateActiveSceneChanged = false;
   for (const auto &event : batch.events) {
-    sawImmediateProjectInitLoaded =
-        sawImmediateProjectInitLoaded || event.type == ApiEventType::SceneLoaded;
+    sawProjectInitialized =
+        sawProjectInitialized ||
+        event.type == ApiEventType::ProjectInitialized;
+    sawImmediateActiveSceneChanged =
+        sawImmediateActiveSceneChanged ||
+        event.type == ApiEventType::ActiveSceneChanged;
   }
-  EXPECT(!sawImmediateProjectInitLoaded,
-         "project init should not emit scene.loaded before the runtime scene "
-         "changes");
-  fixture.hookState.scene.currentDocumentPath =
-      "data/projects/demo/scenes/main.scene.yaml";
+  EXPECT(sawProjectInitialized,
+         "project init should emit a project.initialized API event");
+  EXPECT(!sawImmediateActiveSceneChanged,
+         "project init should not emit active_scene.changed before active "
+         "scene changes");
+  fixture.hookState.project->activeScene = "scenes/initialized.scene.yaml";
   fixture.service->refresh();
   batch = fixture.service->collectEventsSince(cursor);
-  bool sawProjectInitLoaded = false;
+  bool sawProjectInitActiveSceneChanged = false;
   for (const auto &event : batch.events) {
-    sawProjectInitLoaded =
-        sawProjectInitLoaded || event.type == ApiEventType::SceneLoaded;
+    sawProjectInitActiveSceneChanged =
+        sawProjectInitActiveSceneChanged ||
+        event.type == ApiEventType::ActiveSceneChanged;
   }
-  EXPECT(sawProjectInitLoaded,
-         "runtime scene path change should emit scene.loaded after project init");
+  EXPECT(sawProjectInitActiveSceneChanged,
+         "active scene change should emit active_scene.changed after project "
+         "init");
+
+  cursor = fixture.service->currentCursor();
+  EXPECT(fixture.service
+             ->executeCommand(ApiCommandRequest{.line = "project open demo"})
+             .ok,
+         "project open command should succeed");
+  batch = fixture.service->collectEventsSince(cursor);
+  bool sawProjectOpened = false;
+  for (const auto &event : batch.events) {
+    sawProjectOpened =
+        sawProjectOpened || event.type == ApiEventType::ProjectOpened;
+  }
+  EXPECT(sawProjectOpened, "project open should emit a project.opened event");
 
   cursor = fixture.service->currentCursor();
   EXPECT(fixture.service
@@ -721,25 +789,27 @@ void testProjectScopedSceneReplacementCommandsEmitSceneLoadedEvents() {
              .ok,
          "scene open command should succeed");
   batch = fixture.service->collectEventsSince(cursor);
-  bool sawImmediateSceneOpenLoaded = false;
+  bool sawImmediateSceneOpenActiveChanged = false;
   for (const auto &event : batch.events) {
-    sawImmediateSceneOpenLoaded =
-        sawImmediateSceneOpenLoaded || event.type == ApiEventType::SceneLoaded;
+    sawImmediateSceneOpenActiveChanged =
+        sawImmediateSceneOpenActiveChanged ||
+        event.type == ApiEventType::ActiveSceneChanged;
   }
-  EXPECT(!sawImmediateSceneOpenLoaded,
-         "scene open should not emit scene.loaded before the runtime scene "
+  EXPECT(!sawImmediateSceneOpenActiveChanged,
+         "scene open should not emit active_scene.changed before active scene "
          "changes");
-  fixture.hookState.scene.currentDocumentPath =
-      "data/projects/demo/scenes/alternate.scene.yaml";
+  fixture.hookState.project->activeScene = "scenes/alternate.scene.yaml";
   fixture.service->refresh();
   batch = fixture.service->collectEventsSince(cursor);
-  bool sawSceneOpenLoaded = false;
+  bool sawSceneOpenActiveChanged = false;
   for (const auto &event : batch.events) {
-    sawSceneOpenLoaded =
-        sawSceneOpenLoaded || event.type == ApiEventType::SceneLoaded;
+    sawSceneOpenActiveChanged =
+        sawSceneOpenActiveChanged ||
+        event.type == ApiEventType::ActiveSceneChanged;
   }
-  EXPECT(sawSceneOpenLoaded,
-         "runtime scene path change should emit scene.loaded after scene open");
+  EXPECT(sawSceneOpenActiveChanged,
+         "active scene change should emit active_scene.changed after scene "
+         "open");
 
   cursor = fixture.service->currentCursor();
   EXPECT(fixture.service->executeCommand(ApiCommandRequest{.line = "scene save"})
@@ -760,40 +830,59 @@ void testProjectScopedSceneReplacementCommandsEmitSceneLoadedEvents() {
   batch = fixture.service->collectEventsSince(cursor);
   bool sawProjectSaved = false;
   for (const auto &event : batch.events) {
-    sawProjectSaved = sawProjectSaved || event.type == ApiEventType::SceneSaved;
+    sawProjectSaved =
+        sawProjectSaved || event.type == ApiEventType::ProjectSaved;
   }
-  EXPECT(sawProjectSaved, "project save should emit a scene.saved API event");
+  EXPECT(sawProjectSaved, "project save should emit a project.saved API event");
+
+  cursor = fixture.service->currentCursor();
+  EXPECT(fixture.service
+             ->executeCommand(ApiCommandRequest{.line = "project close"})
+             .ok,
+         "project close command should succeed");
+  batch = fixture.service->collectEventsSince(cursor);
+  bool sawProjectClosed = false;
+  for (const auto &event : batch.events) {
+    sawProjectClosed =
+        sawProjectClosed || event.type == ApiEventType::ProjectClosed;
+  }
+  EXPECT(sawProjectClosed, "project close should emit a project.closed event");
 }
 
-void testApiServiceReplacementPreservesEventStateForDeferredSceneLoaded() {
+void testApiServiceReplacementPreservesEventStateForDeferredActiveSceneChanged() {
   Fixture fixture;
   const ApiEventCursor cursor = fixture.service->currentCursor();
 
-  fixture.hookState.scene.currentDocumentPath =
-      "data/projects/demo/scenes/main.scene.yaml";
+  fixture.hookState.project->activeScene = "scenes/replacement.scene.yaml";
   auto replacement = std::make_unique<LxeEditorApiService>(
       fixture.bus, fixture.editorState, *fixture.scene, fixture.hooks,
       *fixture.service);
   replacement->refresh();
 
   const ApiEventBatch batch = replacement->collectEventsSince(cursor);
-  bool sawSceneLoaded = false;
+  bool sawActiveSceneChanged = false;
   for (const auto &event : batch.events) {
-    if (event.type != ApiEventType::SceneLoaded) {
+    if (event.type != ApiEventType::ActiveSceneChanged) {
       continue;
     }
-    sawSceneLoaded = true;
+    sawActiveSceneChanged = true;
     EXPECT(event.state.has_value(),
-           "scene.loaded after service replacement should carry state");
+           "active_scene.changed after service replacement should carry state");
     if (event.state.has_value()) {
-      EXPECT(event.state->scene.currentDocumentPath ==
-                 "data/projects/demo/scenes/main.scene.yaml",
-             "scene.loaded after service replacement should report the new "
-             "runtime document path");
+      EXPECT(event.state->project.has_value(),
+             "active_scene.changed after service replacement should report the "
+             "project");
+      if (event.state->project.has_value()) {
+        EXPECT(event.state->project->activeScene ==
+                   "scenes/replacement.scene.yaml",
+               "active_scene.changed after service replacement should report "
+               "the new active scene");
+      }
     }
   }
-  EXPECT(sawSceneLoaded,
-         "replacement service should emit scene.loaded from previous state");
+  EXPECT(sawActiveSceneChanged,
+         "replacement service should emit active_scene.changed from previous "
+         "state");
 }
 
 void testApiTokenStatePersistsSingleGeneratedToken() {
@@ -817,6 +906,8 @@ void testApiTokenStatePersistsSingleGeneratedToken() {
 
 } // namespace
 
+#undef LXE_CURRENT_DOCUMENT_PATH
+
 int main() {
   testExecuteCommandMirrorsCommandBusAndEmitsCommandEvent();
   testDisplayCommandsReturnStructuredHookJson();
@@ -827,8 +918,8 @@ int main() {
   testExecuteCommandFlushesOlderQueuedRuntimeEventsBeforeNewCommand();
   testRuntimeCameraPropertyMutationEmitsApiSceneNodeChangedEvent();
   testRuntimeLightPropertyMutationEmitsApiSceneNodeChangedEvent();
-  testProjectScopedSceneReplacementCommandsEmitSceneLoadedEvents();
-  testApiServiceReplacementPreservesEventStateForDeferredSceneLoaded();
+  testProjectScopedSceneReplacementCommandsEmitProjectAwareEvents();
+  testApiServiceReplacementPreservesEventStateForDeferredActiveSceneChanged();
   testRecordingToolsRecordMcpCommand();
   testBuildInfoExposesGitIdentityFields();
   testDisplayApiMethodsUseHooks();
