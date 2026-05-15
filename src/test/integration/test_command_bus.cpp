@@ -180,7 +180,6 @@ struct SceneViewerCommandFixture {
             },
             .sceneViewRect = [this]() { return rect; },
             .dirty = [this]() { return dirty; },
-            .permission = []() { return std::string("user"); },
             .debugEnabled = [this]() { return debugEnabled; },
             .setDebugEnabled = [this](const bool enabled) {
               debugEnabled = enabled;
@@ -265,7 +264,6 @@ struct SceneViewerPickFixture {
             },
             .sceneViewRect = [this]() { return rect; },
             .dirty = []() { return false; },
-            .permission = []() { return std::string("user"); },
             .debugEnabled = [this]() { return debugEnabled; },
             .setDebugEnabled = [this](const bool enabled) {
               debugEnabled = enabled;
@@ -987,7 +985,6 @@ void testSceneLoadReportsRemovalWithoutSceneCallback() {
           .setCameraControlMode = [](int) {},
           .sceneViewRect = []() { return LX_demo::lxe_editor::SceneViewRect{}; },
           .dirty = []() { return false; },
-          .permission = []() { return std::string("user"); },
           .debugEnabled = []() { return false; },
           .setDebugEnabled = [](bool) {},
           .currentDocumentPath = []() { return std::optional<std::string>{}; },
@@ -1173,9 +1170,8 @@ void testSceneViewerModeAndStateCommands() {
          "state summary should include project state");
   EXPECT(summaryResult.structured.find("sourceKind") == std::string::npos,
          "state summary should not include source kind");
-  EXPECT(summaryResult.structured.find("\"permission\":\"user\"") !=
-             std::string::npos,
-         "state summary should include permission");
+  EXPECT(summaryResult.structured.find("permission") == std::string::npos,
+         "state summary should not include scene-source permission");
 
   const CommandResult selectionResult =
       fixture.base.bus.dispatch("state selection");
@@ -1192,9 +1188,8 @@ void testSceneViewerModeAndStateCommands() {
   EXPECT(sceneResult.ok, "state scene should succeed");
   EXPECT(sceneResult.structured.find("\"nodeCount\"") != std::string::npos,
          "state scene should include scene counts");
-  EXPECT(sceneResult.structured.find("\"permission\":\"user\"") !=
-             std::string::npos,
-         "state scene should include permission");
+  EXPECT(sceneResult.structured.find("permission") == std::string::npos,
+         "state scene should not include scene-source permission");
 
   const CommandResult toolbarResult = fixture.base.bus.dispatch("state toolbar");
   EXPECT(toolbarResult.ok, "state toolbar should succeed");

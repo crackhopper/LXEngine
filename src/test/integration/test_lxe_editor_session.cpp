@@ -237,6 +237,44 @@ void testSceneOpenFailureKeepsEditorRunningAndCurrentScene() {
   cleanupProject("editor_session_failure");
 }
 
+void testProjectCloseCancelsPendingSceneOpen() {
+  const bool initialized = initializeRuntimeAssetRoot();
+  EXPECT(initialized,
+         "runtime asset root should initialize for project close test");
+  if (!initialized) {
+    return;
+  }
+  cleanupProject("editor_session_close_pending");
+
+  LX_core::EditorState editorState;
+  LX_demo::lxe_editor::CameraRig rig;
+  LX_demo::lxe_editor::UiOverlay ui;
+  LX_demo::lxe_editor::LxeEditorSession session(rig, ui, editorState);
+  session.initialize();
+
+  EXPECT(session.commandBus()
+             .dispatch("project init empty editor_session_close_pending")
+             .ok,
+         "project init should queue the template scene");
+  const auto closeResult = session.commandBus().dispatch("project close");
+  EXPECT(closeResult.ok, "project close should succeed");
+  EXPECT(!session.currentProjectId().has_value(),
+         "project close should clear the current project");
+
+  auto window = std::make_shared<FakeWindow>();
+  auto renderer = std::make_shared<FakeRenderer>();
+  LX_core::gpu::EngineLoop loop;
+  loop.initialize(window, renderer);
+  session.flushPendingSceneLoad(loop);
+
+  EXPECT(renderer->initSceneCalls == 0,
+         "project close should cancel the pending scene open");
+  EXPECT(!session.currentDocumentPath().has_value(),
+         "project close should leave the editor on an unsaved empty scene");
+
+  cleanupProject("editor_session_close_pending");
+}
+
 void testEditorDoesNotCreateCameraOrLightHelperNodes() {
   const bool initialized = initializeRuntimeAssetRoot();
   EXPECT(initialized,
@@ -373,6 +411,7 @@ void testSceneSaveLoadRoundTripsEditorSidecarState() {
 int main() {
   testProjectSceneOpenPreservesEditorCommandHistoryAndConsole();
   testSceneOpenFailureKeepsEditorRunningAndCurrentScene();
+  testProjectCloseCancelsPendingSceneOpen();
   testEditorDoesNotCreateCameraOrLightHelperNodes();
   testRecordingCommandControlsSessionRecorder();
   testSceneSaveLoadRoundTripsEditorSidecarState();

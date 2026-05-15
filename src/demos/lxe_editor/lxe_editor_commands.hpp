@@ -28,7 +28,6 @@ struct LxeEditorCommandContext final {
   using SetEditModeFn = std::function<void(int)>;
   using GetCameraControlModeFn = std::function<int()>;
   using SetCameraControlModeFn = std::function<void(int)>;
-  using PermissionFn = std::function<std::string()>;
   using CurrentDocumentPathFn = std::function<std::optional<std::string>()>;
   using ProjectCommandFn =
       std::function<LX_core::CommandResult(const std::vector<std::string> &)>;
@@ -54,7 +53,6 @@ struct LxeEditorCommandContext final {
   SetCameraControlModeFn setCameraControlMode;
   SceneViewRectFn sceneViewRect;
   DirtyFn dirty;
-  PermissionFn permission;
   DebugEnabledFn debugEnabled;
   SetDebugEnabledFn setDebugEnabled;
   CurrentDocumentPathFn currentDocumentPath;

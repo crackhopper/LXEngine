@@ -167,11 +167,9 @@ void testDisplayCommandsReturnStructuredHookJson() {
               },
           .sceneViewRect = []() { return SceneViewRect{}; },
           .dirty = []() { return false; },
-          .permission = []() { return std::string("user"); },
           .debugEnabled = []() { return false; },
           .setDebugEnabled = [](bool) {},
           .currentDocumentPath = []() { return std::optional<std::string>{}; },
-          .currentSourceKind = []() { return std::optional<std::string>{}; },
           .persistedHistory = []() { return std::vector<std::string>{}; },
           .appendConsoleDebugLine = [](std::string_view) {},
           .displayListJson =

@@ -437,7 +437,6 @@ makeSummaryJson(const LxeEditorCommandContext &context) {
   std::ostringstream oss;
   oss << "{\"sceneName\":\"" << jsonEscape(context.scene.getSceneName()) << "\""
       << ",\"dirty\":" << (context.dirty() ? "true" : "false")
-      << ",\"permission\":\"" << jsonEscape(context.permission()) << "\""
       << ",\"previewEnabled\":"
       << (context.editorState.isPreviewEnabled() ? "true" : "false")
       << ",\"debugEnabled\":"
@@ -520,7 +519,6 @@ void registerLxeEditorCommands(LX_core::CommandBus &bus,
   auto getCameraControlMode = context.getCameraControlMode;
   auto sceneViewRect = context.sceneViewRect;
   auto dirty = context.dirty;
-  auto permission = context.permission;
   auto debugEnabled = context.debugEnabled;
   auto setDebugEnabled = context.setDebugEnabled;
   auto currentDocumentPath = context.currentDocumentPath;
@@ -799,7 +797,7 @@ void registerLxeEditorCommands(LX_core::CommandBus &bus,
   bus.registerHandler(
       "state", "state (summary|selection|cameras|scene|toolbar|history)",
       [editorState, scene, interaction, getEditMode, getCameraControlMode,
-       dirty, permission, debugEnabled, currentDocumentPath, projectSummaryJson,
+       dirty, debugEnabled, currentDocumentPath, projectSummaryJson,
        persistedHistory](std::vector<std::string> args) {
         if (args.size() != 1) {
           return makeError(
@@ -815,7 +813,6 @@ void registerLxeEditorCommands(LX_core::CommandBus &bus,
             .setCameraControlMode = [](int) {},
             .sceneViewRect = [] { return SceneViewRect{}; },
             .dirty = dirty,
-            .permission = permission,
             .debugEnabled = debugEnabled,
             .currentDocumentPath = currentDocumentPath,
             .projectSummaryJson = projectSummaryJson,
@@ -858,7 +855,6 @@ void registerLxeEditorCommands(LX_core::CommandBus &bus,
             oss << "null";
           }
           oss << ",\"dirty\":" << (dirty() ? "true" : "false")
-              << ",\"permission\":\"" << jsonEscape(permission()) << "\""
               << ",\"nodeCount\":" << scene->listAllPaths().size()
               << ",\"cameraCount\":" << scene->getCameras().size()
               << ",\"lightCount\":" << scene->getLights().size() << "}";

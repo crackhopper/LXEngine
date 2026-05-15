@@ -83,8 +83,6 @@ private:
   [[nodiscard]] LX_core::CommandResult queueActiveSceneOpen();
   [[nodiscard]] LX_core::CommandResult saveActiveProjectScene();
   [[nodiscard]] std::string projectSummaryJson() const;
-  [[nodiscard]] LX_core::CommandResult setAdmin(bool enabled);
-  [[nodiscard]] LX_core::CommandResult adminStatus() const;
   [[nodiscard]] EditorSceneStateDocument captureEditorSceneState() const;
   void applyEditorSceneState(const EditorSceneStateDocument &state);
   void rebuildBindings(

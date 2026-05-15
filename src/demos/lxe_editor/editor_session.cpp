@@ -502,6 +502,9 @@ LxeEditorSession::handleProjectCommand(const std::vector<std::string> &args) {
     const auto closed = m_projectSession.closeProject();
     m_editorData.lastProject.reset();
     persistEditorData();
+    m_pendingRuntime.reset();
+    m_pendingScenePath.reset();
+    m_pendingEditorSceneState.reset();
     m_runtime.createEmptyScene();
     rebuildBindings();
     return makeCommandOk(closed.message, closed.structuredJson);
@@ -616,15 +619,6 @@ std::string LxeEditorSession::projectSummaryJson() const {
   return oss.str();
 }
 
-LX_core::CommandResult LxeEditorSession::setAdmin(const bool enabled) {
-  (void)enabled;
-  return makeCommandError("admin scene-source mode was removed");
-}
-
-LX_core::CommandResult LxeEditorSession::adminStatus() const {
-  return makeCommandOk("user", "{\"permission\":\"user\"}");
-}
-
 EditorSceneStateDocument LxeEditorSession::captureEditorSceneState() const {
   EditorSceneStateDocument state;
   state.editorCamera = EditorCameraState::captureFrom(
@@ -695,8 +689,14 @@ void LxeEditorSession::rebuildBindings(
                 return makeCommandError(
                     "scene list is project-scoped; use scene list");
               },
-          .setAdmin = [this](const bool enabled) { return setAdmin(enabled); },
-          .adminStatus = [this]() { return adminStatus(); },
+          .setAdmin =
+              [](const bool) {
+                return makeCommandError("admin scene-source mode was removed");
+              },
+          .adminStatus =
+              []() {
+                return makeCommandError("admin scene-source mode was removed");
+              },
           .cameraControl =
               [this](const std::vector<std::string> &args) {
                 if (args.size() != 2) {
@@ -890,7 +890,6 @@ void LxeEditorSession::rebuildBindings(
           .sceneViewRect =
               [this]() { return m_ui.sceneViewRect(m_windowSize); },
           .dirty = [this]() { return m_projectSession.dirty(); },
-          .permission = []() { return std::string("user"); },
           .debugEnabled = [this]() { return m_debugEnabled; },
           .setDebugEnabled =
               [this](const bool enabled) { m_debugEnabled = enabled; },
