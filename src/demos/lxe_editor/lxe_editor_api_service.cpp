@@ -513,14 +513,6 @@ void LxeEditorApiService::observeCommandHistory() {
     commandEvent.payloadJson = toJson(*commandEvent.command);
     appendEvent(std::move(commandEvent));
 
-    if (entry.result.ok && isSceneReplacementCommand(entry.line)) {
-      appendEvent(ApiEvent{
-          .sequence = m_nextSequence++,
-          .type = ApiEventType::SceneLoaded,
-          .state = captureState(),
-          .payloadJson = toJson(captureSceneSummary()),
-      });
-    }
     if (entry.result.ok && isSceneSaveCommand(entry.line)) {
       appendEvent(ApiEvent{
           .sequence = m_nextSequence++,
@@ -568,6 +560,15 @@ void LxeEditorApiService::observeStateChanges() {
         .payloadJson = toJson(current.scene),
     });
   }
+  if (current.scene.currentDocumentPath !=
+      m_lastState.scene.currentDocumentPath) {
+    appendEvent(ApiEvent{
+        .sequence = m_nextSequence++,
+        .type = ApiEventType::SceneLoaded,
+        .state = current,
+        .payloadJson = toJson(current.scene),
+    });
+  }
 
   m_lastState = current;
 }
@@ -580,16 +581,6 @@ void LxeEditorApiService::appendEvent(ApiEvent event) {
         m_events.begin() +
             static_cast<std::ptrdiff_t>(m_events.size() - kMaxBufferedEvents));
   }
-}
-
-bool LxeEditorApiService::isSceneReplacementCommand(
-    const std::string_view line) {
-  return line == "project close" || line == "project init" ||
-         line.starts_with("project init ") || line == "project open" ||
-         line.starts_with("project open ") || line == "scene open" ||
-         line.starts_with("scene open ") || line == "scene new" ||
-         line.starts_with("scene new ") || line == "scene duplicate" ||
-         line.starts_with("scene duplicate ");
 }
 
 std::string LxeEditorApiService::sceneNodeAspectName(
@@ -614,7 +605,8 @@ std::string LxeEditorApiService::sceneNodeAspectName(
 }
 
 bool LxeEditorApiService::isSceneSaveCommand(const std::string_view line) {
-  return line == "scene save" || line.starts_with("scene save ");
+  return line == "scene save" || line.starts_with("scene save ") ||
+         line == "project save" || line.starts_with("project save ");
 }
 
 } // namespace LX_demo::lxe_editor

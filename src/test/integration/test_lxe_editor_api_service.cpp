@@ -667,6 +667,11 @@ void testProjectScopedSceneReplacementCommandsEmitSceneLoadedEvents() {
                                       true, "project initialized",
                                       "{\"projectId\":\"demo\"}"};
                                 }
+                                if (!args.empty() && args[0] == "save") {
+                                  return CommandResult{
+                                      true, "project saved",
+                                      "{\"projectId\":\"demo\"}"};
+                                }
                                 return CommandResult{false, "bad project", {}};
                               });
   fixture.bus.registerHandler("scene", "scene <args>",
@@ -690,13 +695,25 @@ void testProjectScopedSceneReplacementCommandsEmitSceneLoadedEvents() {
              .ok,
          "project init command should succeed");
   ApiEventBatch batch = fixture.service->collectEventsSince(cursor);
+  bool sawImmediateProjectInitLoaded = false;
+  for (const auto &event : batch.events) {
+    sawImmediateProjectInitLoaded =
+        sawImmediateProjectInitLoaded || event.type == ApiEventType::SceneLoaded;
+  }
+  EXPECT(!sawImmediateProjectInitLoaded,
+         "project init should not emit scene.loaded before the runtime scene "
+         "changes");
+  fixture.hookState.scene.currentDocumentPath =
+      "data/projects/demo/scenes/main.scene.yaml";
+  fixture.service->refresh();
+  batch = fixture.service->collectEventsSince(cursor);
   bool sawProjectInitLoaded = false;
   for (const auto &event : batch.events) {
     sawProjectInitLoaded =
         sawProjectInitLoaded || event.type == ApiEventType::SceneLoaded;
   }
   EXPECT(sawProjectInitLoaded,
-         "project init should emit a scene.loaded API event");
+         "runtime scene path change should emit scene.loaded after project init");
 
   cursor = fixture.service->currentCursor();
   EXPECT(fixture.service
@@ -704,12 +721,25 @@ void testProjectScopedSceneReplacementCommandsEmitSceneLoadedEvents() {
              .ok,
          "scene open command should succeed");
   batch = fixture.service->collectEventsSince(cursor);
+  bool sawImmediateSceneOpenLoaded = false;
+  for (const auto &event : batch.events) {
+    sawImmediateSceneOpenLoaded =
+        sawImmediateSceneOpenLoaded || event.type == ApiEventType::SceneLoaded;
+  }
+  EXPECT(!sawImmediateSceneOpenLoaded,
+         "scene open should not emit scene.loaded before the runtime scene "
+         "changes");
+  fixture.hookState.scene.currentDocumentPath =
+      "data/projects/demo/scenes/alternate.scene.yaml";
+  fixture.service->refresh();
+  batch = fixture.service->collectEventsSince(cursor);
   bool sawSceneOpenLoaded = false;
   for (const auto &event : batch.events) {
     sawSceneOpenLoaded =
         sawSceneOpenLoaded || event.type == ApiEventType::SceneLoaded;
   }
-  EXPECT(sawSceneOpenLoaded, "scene open should emit a scene.loaded API event");
+  EXPECT(sawSceneOpenLoaded,
+         "runtime scene path change should emit scene.loaded after scene open");
 
   cursor = fixture.service->currentCursor();
   EXPECT(fixture.service->executeCommand(ApiCommandRequest{.line = "scene save"})
@@ -721,6 +751,18 @@ void testProjectScopedSceneReplacementCommandsEmitSceneLoadedEvents() {
     sawSceneSaved = sawSceneSaved || event.type == ApiEventType::SceneSaved;
   }
   EXPECT(sawSceneSaved, "scene save should emit a scene.saved API event");
+
+  cursor = fixture.service->currentCursor();
+  EXPECT(fixture.service
+             ->executeCommand(ApiCommandRequest{.line = "project save"})
+             .ok,
+         "project save command should succeed");
+  batch = fixture.service->collectEventsSince(cursor);
+  bool sawProjectSaved = false;
+  for (const auto &event : batch.events) {
+    sawProjectSaved = sawProjectSaved || event.type == ApiEventType::SceneSaved;
+  }
+  EXPECT(sawProjectSaved, "project save should emit a scene.saved API event");
 }
 
 void testApiTokenStatePersistsSingleGeneratedToken() {

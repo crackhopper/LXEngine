@@ -73,7 +73,6 @@ private:
   void appendEvent(ApiEvent event);
   [[nodiscard]] static std::string
   sceneNodeAspectName(LX_core::SceneNodeAspect aspect);
-  [[nodiscard]] static bool isSceneReplacementCommand(std::string_view line);
   [[nodiscard]] static bool isSceneSaveCommand(std::string_view line);
 
   LX_core::CommandBus &m_commandBus;
