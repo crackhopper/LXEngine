@@ -17,6 +17,16 @@ absoluteNormal(const std::filesystem::path &path) {
   return std::filesystem::absolute(path).lexically_normal();
 }
 
+[[nodiscard]] std::filesystem::path
+weaklyCanonicalNormal(const std::filesystem::path &path) {
+  std::error_code ec;
+  const auto canonicalPath = std::filesystem::weakly_canonical(path, ec);
+  if (ec) {
+    return absoluteNormal(path);
+  }
+  return canonicalPath.lexically_normal();
+}
+
 [[nodiscard]] bool pathStartsWith(const std::filesystem::path &path,
                                   const std::filesystem::path &root) {
   const auto normalizedPath = path.lexically_normal();
@@ -30,6 +40,39 @@ absoluteNormal(const std::filesystem::path &path) {
     }
   }
   return true;
+}
+
+[[nodiscard]] bool catalogEntryLess(const ProjectTemplateCatalogEntry &lhs,
+                                    const ProjectTemplateCatalogEntry &rhs) {
+  if (lhs.id != rhs.id) {
+    return lhs.id < rhs.id;
+  }
+  return lhs.path.generic_string() < rhs.path.generic_string();
+}
+
+[[nodiscard]] bool catalogEntryLess(const ProjectCatalogEntry &lhs,
+                                    const ProjectCatalogEntry &rhs) {
+  if (lhs.id != rhs.id) {
+    return lhs.id < rhs.id;
+  }
+  return lhs.path.generic_string() < rhs.path.generic_string();
+}
+
+template <typename Entry>
+void keepFirstEntryPerId(std::vector<Entry> &entries,
+                         const char *catalogEntryName) {
+  std::vector<Entry> uniqueEntries;
+  uniqueEntries.reserve(entries.size());
+  for (const auto &entry : entries) {
+    if (!uniqueEntries.empty() && uniqueEntries.back().id == entry.id) {
+      std::cerr << "[lxe_editor] skipping duplicate " << catalogEntryName
+                << " id '" << entry.id << "' at " << entry.path << "; keeping "
+                << uniqueEntries.back().path << "\n";
+      continue;
+    }
+    uniqueEntries.push_back(entry);
+  }
+  entries = std::move(uniqueEntries);
 }
 
 [[nodiscard]] bool hasPathSeparator(const std::string &token) {
@@ -81,10 +124,12 @@ void ProjectTemplateCatalog::refresh() {
     }
   }
 
-  std::sort(
-      entries.begin(), entries.end(),
-      [](const ProjectTemplateCatalogEntry &lhs,
-         const ProjectTemplateCatalogEntry &rhs) { return lhs.id < rhs.id; });
+  std::sort(entries.begin(), entries.end(),
+            [](const ProjectTemplateCatalogEntry &lhs,
+               const ProjectTemplateCatalogEntry &rhs) {
+              return catalogEntryLess(lhs, rhs);
+            });
+  keepFirstEntryPerId(entries, "project template");
   m_entries = std::move(entries);
 }
 
@@ -130,8 +175,9 @@ void ProjectCatalog::refresh() {
 
   std::sort(entries.begin(), entries.end(),
             [](const ProjectCatalogEntry &lhs, const ProjectCatalogEntry &rhs) {
-              return lhs.id < rhs.id;
+              return catalogEntryLess(lhs, rhs);
             });
+  keepFirstEntryPerId(entries, "project");
   m_entries = std::move(entries);
 }
 
@@ -172,10 +218,11 @@ resolveProjectScenePath(const std::filesystem::path &projectRoot,
     scenePath = sceneIt->path;
   }
 
-  const auto normalizedRoot = absoluteNormal(projectRoot);
-  const auto resolvedPath = scenePath.is_absolute()
-                                ? absoluteNormal(scenePath)
-                                : absoluteNormal(normalizedRoot / scenePath);
+  const auto normalizedRoot = weaklyCanonicalNormal(projectRoot);
+  const auto resolvedPath =
+      scenePath.is_absolute()
+          ? weaklyCanonicalNormal(scenePath)
+          : weaklyCanonicalNormal(normalizedRoot / scenePath);
   if (!pathStartsWith(resolvedPath, normalizedRoot)) {
     throw std::runtime_error("project scene path escapes project root: " +
                              sceneIdOrPath);

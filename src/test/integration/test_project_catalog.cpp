@@ -133,6 +133,72 @@ void testMalformedProjectIsSkipped() {
          "valid project should still be listed");
 }
 
+void testDuplicateTemplateIdsKeepFirstPath() {
+  const auto root = std::filesystem::temp_directory_path() /
+                    "lx_project_catalog_dup_template";
+  std::filesystem::remove_all(root);
+  writeFile(root / "assets/project_templates/a/project_template.yaml",
+            "schema: lxe.project_template.v1\n"
+            "id: duplicate\n"
+            "displayName: First\n"
+            "defaultScene: scenes/main.scene.yaml\n");
+  writeFile(root / "assets/project_templates/z/project_template.yaml",
+            "schema: lxe.project_template.v1\n"
+            "id: duplicate\n"
+            "displayName: Later\n"
+            "defaultScene: scenes/main.scene.yaml\n");
+
+  demo::ProjectTemplateCatalog templates(root / "assets/project_templates");
+  templates.refresh();
+
+  EXPECT(templates.entries().size() == 1,
+         "duplicate template id should be skipped");
+  EXPECT(templates.findById("duplicate").has_value(),
+         "kept template id should resolve");
+  EXPECT(templates.entries()[0].displayName == "First",
+         "first duplicate template path should be kept");
+  EXPECT(templates.entries()[0].path ==
+             std::filesystem::absolute(root / "assets/project_templates/a")
+                 .lexically_normal(),
+         "kept duplicate template should have deterministic path");
+}
+
+void testDuplicateProjectIdsKeepFirstPath() {
+  const auto root =
+      std::filesystem::temp_directory_path() / "lx_project_catalog_dup_project";
+  std::filesystem::remove_all(root);
+  writeFile(root / "data/projects/a/project.yaml",
+            "schema: lxe.project.v1\n"
+            "id: duplicate\n"
+            "displayName: First\n"
+            "activeScene: scenes/main.scene.yaml\n"
+            "scenes:\n"
+            "  - id: main\n"
+            "    path: scenes/main.scene.yaml\n");
+  writeFile(root / "data/projects/z/project.yaml",
+            "schema: lxe.project.v1\n"
+            "id: duplicate\n"
+            "displayName: Later\n"
+            "activeScene: scenes/main.scene.yaml\n"
+            "scenes:\n"
+            "  - id: main\n"
+            "    path: scenes/main.scene.yaml\n");
+
+  demo::ProjectCatalog projects(root / "data/projects");
+  projects.refresh();
+
+  EXPECT(projects.entries().size() == 1,
+         "duplicate project id should be skipped");
+  EXPECT(projects.findById("duplicate").has_value(),
+         "kept project id should resolve");
+  EXPECT(projects.entries()[0].displayName == "First",
+         "first duplicate project path should be kept");
+  EXPECT(projects.entries()[0].path ==
+             std::filesystem::absolute(root / "data/projects/a")
+                 .lexically_normal(),
+         "kept duplicate project should have deterministic path");
+}
+
 void testSceneResolutionStaysInsideProject() {
   const auto root =
       std::filesystem::temp_directory_path() / "lx_project_catalog_scene";
@@ -165,6 +231,33 @@ void testSceneResolutionStaysInsideProject() {
                                        "main.scene.yaml")
                                    .string()),
          "sibling-prefix scene path should not escape project root");
+}
+
+void testSceneResolutionRejectsSymlinkEscape() {
+  const auto root =
+      std::filesystem::temp_directory_path() / "lx_project_catalog_symlink";
+  std::filesystem::remove_all(root);
+  const auto projectRoot = root / "data/projects/demo";
+  const auto outsideRoot = root / "outside";
+  std::filesystem::create_directories(projectRoot / "scenes");
+  std::filesystem::create_directories(outsideRoot);
+
+  std::error_code ec;
+  std::filesystem::create_directory_symlink(outsideRoot,
+                                            projectRoot / "scenes/linked", ec);
+  if (ec) {
+    std::cerr << "[SKIP] symlink escape assertion: " << ec.message() << "\n";
+    return;
+  }
+
+  demo::ProjectDocument document;
+  document.id = "demo";
+  document.displayName = "Demo";
+  document.activeScene = "scenes/linked/main.scene.yaml";
+  document.scenes.push_back({"main", "scenes/linked/main.scene.yaml"});
+
+  EXPECT(sceneResolutionThrows(projectRoot, document, "main"),
+         "scene path through symlink should not escape project root");
 }
 
 void testSlugAndProjectPathAllocation() {
@@ -213,7 +306,10 @@ int main() {
   testCatalogListsTemplatesAndProjects();
   testMalformedTemplateIsSkipped();
   testMalformedProjectIsSkipped();
+  testDuplicateTemplateIdsKeepFirstPath();
+  testDuplicateProjectIdsKeepFirstPath();
   testSceneResolutionStaysInsideProject();
+  testSceneResolutionRejectsSymlinkEscape();
   testSlugAndProjectPathAllocation();
   testProjectResolveIdOrPath();
   return failures == 0 ? 0 : 1;
