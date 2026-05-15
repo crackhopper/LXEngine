@@ -658,6 +658,71 @@ void testRuntimeLightPropertyMutationEmitsApiSceneNodeChangedEvent() {
          "runtime light property mutation should be mirrored into API events");
 }
 
+void testProjectScopedSceneReplacementCommandsEmitSceneLoadedEvents() {
+  Fixture fixture;
+  fixture.bus.registerHandler("project", "project <args>",
+                              [](std::vector<std::string> args) {
+                                if (!args.empty() && args[0] == "init") {
+                                  return CommandResult{
+                                      true, "project initialized",
+                                      "{\"projectId\":\"demo\"}"};
+                                }
+                                return CommandResult{false, "bad project", {}};
+                              });
+  fixture.bus.registerHandler("scene", "scene <args>",
+                              [](std::vector<std::string> args) {
+                                if (!args.empty() && args[0] == "open") {
+                                  return CommandResult{
+                                      true, "scene opened",
+                                      "{\"path\":\"scenes/main.scene.yaml\"}"};
+                                }
+                                if (!args.empty() && args[0] == "save") {
+                                  return CommandResult{
+                                      true, "scene saved",
+                                      "{\"path\":\"scenes/main.scene.yaml\"}"};
+                                }
+                                return CommandResult{false, "bad scene", {}};
+                              });
+
+  ApiEventCursor cursor = fixture.service->currentCursor();
+  EXPECT(fixture.service
+             ->executeCommand(ApiCommandRequest{.line = "project init empty"})
+             .ok,
+         "project init command should succeed");
+  ApiEventBatch batch = fixture.service->collectEventsSince(cursor);
+  bool sawProjectInitLoaded = false;
+  for (const auto &event : batch.events) {
+    sawProjectInitLoaded =
+        sawProjectInitLoaded || event.type == ApiEventType::SceneLoaded;
+  }
+  EXPECT(sawProjectInitLoaded,
+         "project init should emit a scene.loaded API event");
+
+  cursor = fixture.service->currentCursor();
+  EXPECT(fixture.service
+             ->executeCommand(ApiCommandRequest{.line = "scene open main"})
+             .ok,
+         "scene open command should succeed");
+  batch = fixture.service->collectEventsSince(cursor);
+  bool sawSceneOpenLoaded = false;
+  for (const auto &event : batch.events) {
+    sawSceneOpenLoaded =
+        sawSceneOpenLoaded || event.type == ApiEventType::SceneLoaded;
+  }
+  EXPECT(sawSceneOpenLoaded, "scene open should emit a scene.loaded API event");
+
+  cursor = fixture.service->currentCursor();
+  EXPECT(fixture.service->executeCommand(ApiCommandRequest{.line = "scene save"})
+             .ok,
+         "scene save command should succeed");
+  batch = fixture.service->collectEventsSince(cursor);
+  bool sawSceneSaved = false;
+  for (const auto &event : batch.events) {
+    sawSceneSaved = sawSceneSaved || event.type == ApiEventType::SceneSaved;
+  }
+  EXPECT(sawSceneSaved, "scene save should emit a scene.saved API event");
+}
+
 void testApiTokenStatePersistsSingleGeneratedToken() {
   const auto rootDir =
       std::filesystem::temp_directory_path() / "lxengine_api_token_state_test";
@@ -689,6 +754,7 @@ int main() {
   testExecuteCommandFlushesOlderQueuedRuntimeEventsBeforeNewCommand();
   testRuntimeCameraPropertyMutationEmitsApiSceneNodeChangedEvent();
   testRuntimeLightPropertyMutationEmitsApiSceneNodeChangedEvent();
+  testProjectScopedSceneReplacementCommandsEmitSceneLoadedEvents();
   testRecordingToolsRecordMcpCommand();
   testBuildInfoExposesGitIdentityFields();
   testDisplayApiMethodsUseHooks();

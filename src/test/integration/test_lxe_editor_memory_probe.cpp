@@ -164,9 +164,9 @@ enum class ProbeMode {
 void loadHelmetScene(LX_demo::lxe_editor::LxeEditorSession &session,
                      LX_core::gpu::EngineLoop &loop) {
   const auto result =
-      session.commandBus().dispatch("scene load lxe_editor.scene.yaml");
+      session.commandBus().dispatch("project init empty memory_probe_helmet");
   if (!result.ok) {
-    throw std::runtime_error("failed to queue helmet scene load: " +
+    throw std::runtime_error("failed to queue helmet project scene: " +
                              result.message);
   }
   session.flushPendingSceneLoad(loop);

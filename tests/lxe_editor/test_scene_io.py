@@ -23,39 +23,37 @@ class SceneIoBlackBoxTest(unittest.TestCase):
     def tearDownClass(cls) -> None:
         cls.harness.close()
 
-    def test_scene_list_load_and_user_save_redirect(self) -> None:
-        list_response = self.harness.client.command("scene list")
-        self.assertTrue(list_response["ok"])
-        catalog = self.harness.client.decode_structured_json(list_response)
-        entries = catalog.get("entries", [])
-        self.assertTrue(entries, "scene catalog should expose at least one entry")
-        self.assertIn(
-            "lxe_editor.scene.yaml",
-            {entry["id"] for entry in entries},
-        )
+    def test_project_init_scene_list_open_and_save(self) -> None:
+        templates_response = self.harness.client.command("project templates")
+        self.assertTrue(templates_response["ok"])
+        templates = self.harness.client.decode_structured_json(templates_response)
+        self.assertIn("empty", {entry["id"] for entry in templates["templates"]})
 
-        load_response = self.harness.client.command("scene load lxe_editor.scene.yaml")
-        self.assertTrue(load_response["ok"])
+        init_response = self.harness.client.command(
+            "project init empty blackbox_scene_io"
+        )
+        self.assertTrue(init_response["ok"])
         scene_state = self.harness.client.wait_for(
             lambda: (
                 result
-                if (result := self.harness.client.get_scene())["currentDocumentPath"].endswith(
-                    "assets/scenes/lxe_editor.scene.yaml"
+                if (
+                    result := self.harness.client.get_scene()
+                )["currentDocumentPath"].endswith(
+                    "data/projects/blackbox_scene_io/scenes/main.scene.yaml"
                 )
                 else None
             )
         )
-        self.assertEqual(scene_state["sourceKind"], "asset")
-        self.assertEqual(scene_state["permission"], "user")
+        self.assertFalse(scene_state["dirty"])
+
+        list_response = self.harness.client.command("scene list")
+        self.assertTrue(list_response["ok"])
+        scenes = self.harness.client.decode_structured_json(list_response)
+        self.assertIn("main", {entry["id"] for entry in scenes["scenes"]})
 
         save_response = self.harness.client.command("scene save")
         self.assertTrue(save_response["ok"])
         saved = self.harness.client.decode_structured_json(save_response)
-        self.assertEqual(saved["kind"], "local")
-        self.assertTrue(saved["redirectedFromAsset"])
         saved_path = pathlib.Path(saved["path"])
         self.assertTrue(saved_path.is_file())
-        self.assertEqual(
-            saved_path.parent.resolve(),
-            (self.harness.runtime_root / "data" / "scenes").resolve(),
-        )
+        self.assertEqual(saved["project"]["id"], "blackbox_scene_io")

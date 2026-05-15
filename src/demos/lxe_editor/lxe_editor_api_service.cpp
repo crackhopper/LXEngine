@@ -513,7 +513,7 @@ void LxeEditorApiService::observeCommandHistory() {
     commandEvent.payloadJson = toJson(*commandEvent.command);
     appendEvent(std::move(commandEvent));
 
-    if (entry.result.ok && isSceneLoadCommand(entry.line)) {
+    if (entry.result.ok && isSceneReplacementCommand(entry.line)) {
       appendEvent(ApiEvent{
           .sequence = m_nextSequence++,
           .type = ApiEventType::SceneLoaded,
@@ -582,8 +582,14 @@ void LxeEditorApiService::appendEvent(ApiEvent event) {
   }
 }
 
-bool LxeEditorApiService::isSceneLoadCommand(const std::string_view line) {
-  return line == "scene load" || line.starts_with("scene load ");
+bool LxeEditorApiService::isSceneReplacementCommand(
+    const std::string_view line) {
+  return line == "project close" || line == "project init" ||
+         line.starts_with("project init ") || line == "project open" ||
+         line.starts_with("project open ") || line == "scene open" ||
+         line.starts_with("scene open ") || line == "scene new" ||
+         line.starts_with("scene new ") || line == "scene duplicate" ||
+         line.starts_with("scene duplicate ");
 }
 
 std::string LxeEditorApiService::sceneNodeAspectName(

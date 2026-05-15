@@ -1045,6 +1045,14 @@ void testAdminCommandsUseRegisteredCallbacks() {
   const CommandResult offResult = bus.dispatch("admin off");
   EXPECT(offResult.ok && !adminEnabled,
          "admin off should disable admin through callback");
+
+  registerBuiltinCommands(bus, editorState, *scene);
+  const CommandResult removedResult = bus.dispatch("admin status");
+  EXPECT(!removedResult.ok &&
+             removedResult.message.find("unknown command: admin") !=
+                 std::string::npos,
+         "registering without admin callbacks should remove stale admin "
+         "handler");
 }
 
 void testSceneOpenClearsRedoHistory() {

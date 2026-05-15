@@ -2095,6 +2095,8 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
                           }
                           return makeError("unknown admin action: " + action);
                         });
+  } else {
+    bus.unregisterHandler("admin");
   }
 
   bus.registerHandler(
