@@ -64,6 +64,11 @@ void testInitCopiesTemplateAndOpensDefaultScene() {
   const auto result = session.initProject("empty", "My Project");
 
   EXPECT(result.ok, "project init should succeed");
+  EXPECT(result.structuredJson.find("\"ok\":true") != std::string::npos,
+         "project init success result should include ok JSON field");
+  EXPECT(result.structuredJson.find("\"projectId\":\"my_project\"") !=
+             std::string::npos,
+         "project init success result should include project id JSON field");
   EXPECT(session.hasProject(), "project init should open a project");
   EXPECT(session.currentProject().has_value(),
          "project init should expose project document");
@@ -198,6 +203,58 @@ void testInitRejectsTemplateSymlinkCopyRootEscape() {
          "rejected symlink copy root should not open a project");
   EXPECT(!std::filesystem::exists(root / "projects/bad/linked/secret.txt"),
          "symlink copy root should not copy escaped content");
+}
+
+void testInitRejectsNestedTemplateCopyRootSymlink() {
+  const auto root = makeTempRoot("lx_project_session_template_nested_symlink");
+  const auto templateRoot = root / "templates";
+  writeFile(templateRoot / "bad/project_template.yaml",
+            "schema: lxe.project_template.v1\n"
+            "id: bad\n"
+            "displayName: Bad\n"
+            "defaultScene: scenes/main.scene.yaml\n"
+            "copy:\n"
+            "  - assets/\n");
+  writeFile(templateRoot / "bad/assets/local.txt", "local\n");
+  writeFile(root / "outside/secret.txt", "secret\n");
+
+  std::error_code ec;
+  std::filesystem::create_directory_symlink(root / "outside",
+                                            templateRoot / "bad/assets/linked",
+                                            ec);
+  if (ec) {
+    std::cerr << "[SKIP] nested symlink assertion: " << ec.message() << "\n";
+    return;
+  }
+
+  demo::ProjectSession session = makeSession(templateRoot, root / "projects");
+  const auto result = session.initProject("bad", std::nullopt);
+
+  EXPECT(!result.ok, "project init should reject nested copy root symlink");
+  EXPECT(!session.hasProject(),
+         "rejected nested copy root symlink should not open a project");
+  EXPECT(!std::filesystem::exists(root /
+                                  "projects/bad/assets/linked/secret.txt"),
+         "nested copy root symlink should not copy outside content");
+}
+
+void testInitRejectsMissingTemplateCopyRoot() {
+  const auto root = makeTempRoot("lx_project_session_template_missing_root");
+  const auto templateRoot = root / "templates";
+  writeFile(templateRoot / "bad/project_template.yaml",
+            "schema: lxe.project_template.v1\n"
+            "id: bad\n"
+            "displayName: Bad\n"
+            "defaultScene: scenes/main.scene.yaml\n"
+            "copy:\n"
+            "  - missing/\n");
+  demo::ProjectSession session = makeSession(templateRoot, root / "projects");
+
+  const auto result = session.initProject("bad", std::nullopt);
+
+  EXPECT(!result.ok, "project init should reject missing copy root");
+  EXPECT(!session.hasProject(),
+         "rejected missing copy root should not open a project");
 }
 
 void testOpenProjectLoadsSavedProject() {
@@ -492,6 +549,8 @@ int main() {
   testInitRejectsTemplateCopyRootTraversal();
   testInitRejectsTemplateAbsoluteCopyRoot();
   testInitRejectsTemplateSymlinkCopyRootEscape();
+  testInitRejectsNestedTemplateCopyRootSymlink();
+  testInitRejectsMissingTemplateCopyRoot();
   testOpenProjectLoadsSavedProject();
   testSceneNewAddsProjectSceneEntry();
   testSaveProjectPersistsNewSceneAndActiveScene();

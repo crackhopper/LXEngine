@@ -282,6 +282,31 @@ resolveRegisteredScenePath(const std::filesystem::path &projectRoot,
                            sceneIdOrPath);
 }
 
+[[nodiscard]] bool treeContainsSymlink(const std::filesystem::path &root) {
+  std::error_code ec;
+  const auto rootStatus = std::filesystem::symlink_status(root, ec);
+  if (ec || std::filesystem::is_symlink(rootStatus)) {
+    return true;
+  }
+
+  std::filesystem::recursive_directory_iterator it(root, ec);
+  if (ec) {
+    return true;
+  }
+  const std::filesystem::recursive_directory_iterator end;
+  while (it != end) {
+    const auto entryStatus = it->symlink_status(ec);
+    if (ec || std::filesystem::is_symlink(entryStatus)) {
+      return true;
+    }
+    it.increment(ec);
+    if (ec) {
+      return true;
+    }
+  }
+  return false;
+}
+
 [[nodiscard]] bool copyTemplateRoots(const std::filesystem::path &templatePath,
                                      const std::filesystem::path &projectPath,
                                      const ProjectTemplateDocument &document) {
@@ -293,6 +318,9 @@ resolveRegisteredScenePath(const std::filesystem::path &projectRoot,
 
     const auto sourcePath = templatePath / copyRoot;
     if (!std::filesystem::exists(sourcePath)) {
+      return false;
+    }
+    if (treeContainsSymlink(sourcePath)) {
       return false;
     }
   }
