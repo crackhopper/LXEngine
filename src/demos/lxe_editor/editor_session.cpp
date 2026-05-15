@@ -540,6 +540,7 @@ void LxeEditorSession::rebuildBindings(
                     "cam control " + cameraControlModeName(previous);
                 return result;
               },
+          .defaultAddPlacement = [this]() { return m_rig.orbitTarget(); },
           .createNode =
               [](const std::string &kind, const std::string &nodeName,
                  const std::string &displayName,

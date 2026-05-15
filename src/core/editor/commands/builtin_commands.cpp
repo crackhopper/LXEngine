@@ -1992,6 +1992,7 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
   const auto sceneList = sceneIoContext.list;
   const auto setAdmin = sceneIoContext.setAdmin;
   const auto adminStatus = sceneIoContext.adminStatus;
+  const auto defaultAddPlacement = sceneIoContext.defaultAddPlacement;
   const auto createNode = sceneIoContext.createNode;
   const SceneIoContext materialContext = sceneIoContext;
 
@@ -2324,7 +2325,8 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
           "light:point|light:spot|camera:perspective|model:<id>) <name> "
           "[parentPath] [x y z]",
           inverseFromMetadata(), true},
-      [&scene, &editorState, state, createNode](std::vector<std::string> args) {
+      [&scene, &editorState, state, defaultAddPlacement,
+       createNode](std::vector<std::string> args) {
         if (args.size() < 2) {
           return makeError("usage: add <kind> <name> [parentPath] [x y z]");
         }
@@ -2405,7 +2407,9 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
         }
 
         const Vec3f placement = explicitPlacement.value_or(
-            defaultPlacementFromEditorCamera(scene, editorState));
+            defaultAddPlacement
+                ? defaultAddPlacement()
+                : defaultPlacementFromEditorCamera(scene, editorState));
         if (!cameraKind) {
           node->setTranslation(placement);
         }

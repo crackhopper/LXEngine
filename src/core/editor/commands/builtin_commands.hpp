@@ -26,24 +26,24 @@ struct SceneIoContext {
   using AdminStatusFn = std::function<CommandResult()>;
   using CameraControlFn =
       std::function<CommandResult(const std::vector<std::string> &args)>;
+  using DefaultAddPlacementFn = std::function<Vec3f()>;
   using CreateNodeFn = std::function<CommandResult(
       const std::string &kind, const std::string &nodeName,
       const std::string &displayName, SceneNodeSharedPtr &outNode)>;
   using GetStringFieldFn =
       std::function<std::optional<std::string>(const std::string &path)>;
-  using SetStringFieldFn =
-      std::function<CommandResult(const std::string &path,
-                                  const std::string &value)>;
+  using SetStringFieldFn = std::function<CommandResult(
+      const std::string &path, const std::string &value)>;
   using GetVec3FieldFn =
       std::function<std::optional<Vec3f>(const std::string &path)>;
   using SetVec3FieldFn =
       std::function<CommandResult(const std::string &path, const Vec3f &value)>;
-  using ApplyMaterialOverrideFn =
-      std::function<CommandResult(const std::string &path,
-                                  const std::string &field)>;
-  using GetMaterialParameterFn = std::function<std::optional<MaterialParameterValue>(
-      const std::string &path, const std::string &binding,
-      const std::string &member)>;
+  using ApplyMaterialOverrideFn = std::function<CommandResult(
+      const std::string &path, const std::string &field)>;
+  using GetMaterialParameterFn =
+      std::function<std::optional<MaterialParameterValue>(
+          const std::string &path, const std::string &binding,
+          const std::string &member)>;
   using SetMaterialParameterFn = std::function<CommandResult(
       const std::string &path, const std::string &binding,
       const std::string &member, const MaterialParameterValue &value)>;
@@ -57,6 +57,7 @@ struct SceneIoContext {
   SetAdminFn setAdmin;
   AdminStatusFn adminStatus;
   CameraControlFn cameraControl;
+  DefaultAddPlacementFn defaultAddPlacement;
   CreateNodeFn createNode;
   GetStringFieldFn getMaterialUri;
   SetStringFieldFn setMaterialUri;
