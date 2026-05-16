@@ -70,6 +70,7 @@ class NotesChatProtocolsTest(unittest.TestCase):
 
         self.assertEqual(raised.exception.status, 502)
         self.assertIn("No compatible Codex MCP tool", raised.exception.message)
+        self.assertIn("not.codex", raised.exception.message)
         self.assertIn("codex-exec", raised.exception.message)
 
     def test_mcp_stdio_protocol_early_exit_raises_502(self) -> None:

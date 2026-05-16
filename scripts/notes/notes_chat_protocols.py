@@ -215,13 +215,16 @@ class McpStdioProtocol:
             )
             client.notify("notifications/initialized", {})
             tools_result = client.request("tools/list", {})
-            tool_name = select_mcp_tool(tools_result, self.tool_candidates)
+            available_tools = mcp_tool_names(tools_result)
+            tool_name = select_mcp_tool(available_tools, self.tool_candidates)
             if tool_name is None:
+                available = ", ".join(available_tools) if available_tools else "(none)"
                 raise ChatError(
                     502,
                     "No compatible Codex MCP tool found. "
                     "Expected one of: "
                     f"{', '.join(self.tool_candidates)}. "
+                    f"Available tools: {available}. "
                     "Use the codex-exec notes chat backend as a fallback.",
                 )
             result = client.request("tools/call", {"name": tool_name, "arguments": {"prompt": prompt}})
@@ -608,17 +611,21 @@ def parse_content_length(header: bytes) -> int:
         return 0
 
 
-def select_mcp_tool(tools_result: Any, tool_candidates: list[str]) -> str | None:
+def mcp_tool_names(tools_result: Any) -> list[str]:
     tools = tools_result.get("tools") if isinstance(tools_result, dict) else tools_result
     if not isinstance(tools, list):
-        return None
-    available = {
+        return []
+    return sorted({
         tool.get("name")
         for tool in tools
         if isinstance(tool, dict) and isinstance(tool.get("name"), str)
-    }
+    })
+
+
+def select_mcp_tool(available: list[str], tool_candidates: list[str]) -> str | None:
+    available_set = set(available)
     for candidate in tool_candidates:
-        if candidate in available:
+        if candidate in available_set:
             return candidate
     return None
 
