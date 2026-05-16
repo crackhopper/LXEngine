@@ -255,10 +255,12 @@ class McpStdioProtocol:
         command: list[str] | str,
         timeout: float,
         tool_candidates: list[str] | None = None,
+        write_framing: str = "content-length",
     ) -> None:
         self.command = command
         self.timeout = timeout
         self.tool_candidates = tool_candidates or ["codex.prompt", "prompt", "chat", "codex"]
+        self.write_framing = write_framing
 
     def health(self) -> dict[str, Any]:
         command = self._command_list()
@@ -268,11 +270,12 @@ class McpStdioProtocol:
             "command": self.command,
             "available": bool(executable and shutil.which(executable)),
             "streaming": True,
+            "writeFraming": self.write_framing,
         }
 
     def stream(self, request: ChatRequest) -> Iterable[str]:
         prompt = build_agent_prompt(request)
-        client = McpStdioClient(self._command_list(), self.timeout)
+        client = McpStdioClient(self._command_list(), self.timeout, write_framing=self.write_framing)
         try:
             client.start()
             client.request(
@@ -472,9 +475,10 @@ class AcpStdioClient:
 
 
 class McpStdioClient:
-    def __init__(self, command: list[str], timeout: float) -> None:
+    def __init__(self, command: list[str], timeout: float, write_framing: str = "content-length") -> None:
         self.command = command
         self.timeout = timeout
+        self.write_framing = write_framing
         self.proc: subprocess.Popen[bytes] | None = None
         self.messages: queue.Queue[dict[str, Any]] = queue.Queue()
         self.next_id = 1
@@ -551,7 +555,7 @@ class McpStdioClient:
             request_id = self.next_id
             self.next_id += 1
             payload["id"] = request_id
-        write_mcp_message(proc.stdin, payload)
+        write_mcp_message(proc.stdin, payload, self.write_framing)
         proc.stdin.flush()
         return request_id
 
@@ -653,12 +657,17 @@ class McpStdioClient:
                 "message": "notes-chat does not expose MCP client methods",
             },
         }
-        write_mcp_message(proc.stdin, response)
+        write_mcp_message(proc.stdin, response, self.write_framing)
         proc.stdin.flush()
 
 
-def write_mcp_message(stream: Any, payload: dict[str, Any]) -> None:
+def write_mcp_message(stream: Any, payload: dict[str, Any], framing: str = "content-length") -> None:
     body = json.dumps(payload, separators=(",", ":"))
+    if framing == "line":
+        stream.write(body.encode("utf-8") + b"\n")
+        return
+    if framing != "content-length":
+        raise ChatError(500, f"Unsupported MCP write framing: {framing}")
     body_bytes = body.encode("utf-8")
     header = f"Content-Length: {len(body_bytes)}\r\n\r\n".encode("ascii")
     stream.write(header + body_bytes)

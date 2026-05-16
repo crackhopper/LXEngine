@@ -17,6 +17,7 @@ class NotesChatAgentsTest(unittest.TestCase):
         self.assertEqual(health["name"], "codex")
         self.assertEqual(health["command"], "codex mcp-server")
         self.assertEqual(health["transport"], "mcp-stdio")
+        self.assertEqual(health["writeFraming"], "line")
 
     def test_make_codex_adapter_uses_env_default_command(self) -> None:
         with mock.patch.dict("os.environ", {"NOTES_CHAT_CODEX_CMD": "custom-codex mcp"}, clear=True):

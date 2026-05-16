@@ -42,7 +42,11 @@ class ProtocolAgentAdapter(AgentAdapter):
 
 def make_adapter(agent: str, command: str | None, timeout: float) -> AgentAdapter:
     if agent == "codex":
-        protocol = McpStdioProtocol(command or os.environ.get("NOTES_CHAT_CODEX_CMD", "codex mcp-server"), timeout)
+        protocol = McpStdioProtocol(
+            command or os.environ.get("NOTES_CHAT_CODEX_CMD", "codex mcp-server"),
+            timeout,
+            write_framing="line",
+        )
         return ProtocolAgentAdapter("codex", protocol)
     if agent == "codex-exec":
         protocol = CliJsonProtocol(

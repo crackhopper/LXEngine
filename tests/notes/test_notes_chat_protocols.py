@@ -57,6 +57,23 @@ class NotesChatProtocolsTest(unittest.TestCase):
 
         self.assertEqual("".join(protocol.stream(make_request())), "fake mcp response with prompt")
 
+    def test_mcp_stdio_protocol_can_write_line_json_for_codex_mcp(self) -> None:
+        protocol = McpStdioProtocol(
+            [sys.executable, str(FAKE_MCP_SERVER), "--mode", "line-only"],
+            5.0,
+            write_framing="line",
+        )
+
+        self.assertEqual("".join(protocol.stream(make_request())), "fake mcp response with prompt")
+
+    def test_mcp_stdio_protocol_content_length_write_fails_against_line_only_server(self) -> None:
+        protocol = McpStdioProtocol([sys.executable, str(FAKE_MCP_SERVER), "--mode", "line-only"], 1.0)
+
+        with self.assertRaises(ChatError) as raised:
+            list(protocol.stream(make_request()))
+
+        self.assertIn(raised.exception.status, {502, 504})
+
     def test_mcp_stdio_protocol_drains_stderr_while_running(self) -> None:
         protocol = McpStdioProtocol(
             [sys.executable, str(FAKE_MCP_SERVER), "--stderr-bytes", "200000"],
