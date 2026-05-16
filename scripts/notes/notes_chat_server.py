@@ -19,6 +19,10 @@ from pathlib import Path
 from typing import Any, Iterable
 from urllib.parse import parse_qs, urlparse
 
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(REPO_ROOT))
+
 from scripts.notes.notes_chat_core import (
     DEFAULT_MAX_DOC_CHARS,
     ChatError,
@@ -32,7 +36,6 @@ from scripts.notes.notes_chat_core import (
     validate_session_id,
 )
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 SESSION_DIR = REPO_ROOT / ".tmp" / "notes-chat" / "sessions"
 DEFAULT_TIMEOUT = 120.0
 
