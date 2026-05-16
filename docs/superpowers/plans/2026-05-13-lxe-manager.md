@@ -54,14 +54,12 @@
   - Guardian thresholds and kill escalation coverage
 - `tools/lxe_manager/tests/mcp-server.test.ts`
   - MCP tool mapping coverage
-- `scripts/lxe_manager/use_local_mcp.sh`
-  - Local shell helper that points Codex at the manager
-- `scripts/lxe_manager/use_remote_mcp.sh`
-  - Remote shell helper for manager URL + bearer token
-- `scripts/lxe_manager/use_local_mcp.ps1`
-  - Windows local helper
-- `scripts/lxe_manager/use_remote_mcp.ps1`
-  - Windows remote helper
+- `scripts/lxe_manager/enable_mcp.sh`
+  - Shell helper: local / remote / keep-url + export bearer token
+- `scripts/lxe_manager/enable_mcp.ps1`
+  - Windows helper for the same flow
+- `scripts/lxe_manager/enable_mcp_write_config.py`
+  - Shared TOML rewrite used by both helpers
 
 ### Modified files
 
@@ -1093,7 +1091,7 @@ def read_mcp_url(self) -> str:
 ```md
 - Local MCP endpoint now comes from `lxe_manager`, not from `lxe_editor`.
 - `runtime_state.yaml` publishes editor HTTP/WS discovery only.
-- Use `scripts/lxe_manager/use_local_mcp.sh` or `.ps1` to point Codex at the manager.
+- Use `scripts/lxe_manager/enable_mcp.sh` or `enable_mcp.ps1` to point Codex at the manager.
 ```
 
 - [ ] **Step 4: Run test to verify it passes**

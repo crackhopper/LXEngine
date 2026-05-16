@@ -69,16 +69,15 @@ scripts/lxe_manager/start_mcp.ps1 0.0.0.0 3880
 
 ```bash
 cd /home/lixiang/proj/LXEngine
-export LXE_MANAGER_MCP_BEARER_TOKEN="<token-from-manager-output>"
-source scripts/lxe_manager/use_local_mcp.sh
+source scripts/lxe_manager/enable_mcp.sh --local --token "<token-from-manager-output>"
 codex
 ```
 
 PowerShell:
 
 ```powershell
-$Env:LXE_MANAGER_MCP_BEARER_TOKEN = "<token-from-manager-output>"
-scripts/lxe_manager/use_local_mcp.ps1
+cd C:\path\to\LXEngine
+scripts/lxe_manager/enable_mcp.ps1 -Local -Token "<token-from-manager-output>"
 codex
 ```
 
@@ -86,21 +85,25 @@ codex
 
 ```bash
 cd /home/lixiang/proj/LXEngine
-export LXE_MANAGER_MCP_BEARER_TOKEN="<token-from-manager-output>"
-source scripts/lxe_manager/use_remote_mcp.sh http://<server-ip>:3880/mcp
+source scripts/lxe_manager/enable_mcp.sh --endpoint "http://<server-ip>:3880/mcp" --token "<token-from-manager-output>"
 codex
 ```
 
 PowerShell:
 
 ```powershell
-$Env:LXE_MANAGER_MCP_BEARER_TOKEN = "<token-from-manager-output>"
-scripts/lxe_manager/use_remote_mcp.ps1 http://<server-ip>:3880/mcp
+scripts/lxe_manager/enable_mcp.ps1 -Endpoint "http://<server-ip>:3880/mcp" -Token "<token-from-manager-output>"
 codex
 ```
 
-`use_remote_mcp.sh` 只把 token 名称写进 `.codex/config.toml`，真实 token
-保留在当前 shell 的 `LXE_MANAGER_MCP_BEARER_TOKEN` 中。
+若不想改动 `.codex/config.toml` 里已有的 `url`，只更新当前 shell 的 token：
+
+```bash
+source scripts/lxe_manager/enable_mcp.sh --token "<token-from-manager-output>"
+```
+
+`enable_mcp` 只把 token **环境变量名**写进 `.codex/config.toml`；真实 token 由
+脚本导出为 `LXE_MANAGER_MCP_BEARER_TOKEN`。
 
 ## 常用启动参数
 

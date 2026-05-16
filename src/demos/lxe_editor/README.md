@@ -226,22 +226,22 @@ scripts/lxe_manager/start_mcp.sh
 Then point Codex at it from another terminal:
 
 ```sh
-export LXE_MANAGER_MCP_BEARER_TOKEN=<token-from-manager-output>
 cd /home/lixiang/proj/LXEngine
-source scripts/lxe_manager/use_local_mcp.sh
+source scripts/lxe_manager/enable_mcp.sh --local --token '<token-from-manager-output>'
 codex
 ```
 
 That helper rewrites `.codex/config.toml` to register `lxe_manager` at
-`http://127.0.0.1:3880/mcp` and configures Codex to read the bearer token from
-`LXE_MANAGER_MCP_BEARER_TOKEN`. Override the endpoint with
-`LXE_MANAGER_URL=http://host:port/mcp` when needed.
+`http://127.0.0.1:3880/mcp` and exports `LXE_MANAGER_MCP_BEARER_TOKEN` for Codex.
+Use `--endpoint 'http://host:port/mcp'` for a non-default URL, or `--token` alone
+to keep the URL already in config. Legacy wrappers `scripts/lxe_editor/use_local_mcp.sh`
+still work if you set `LXE_MANAGER_MCP_BEARER_TOKEN` first (optional
+`LXE_MANAGER_URL` for a custom endpoint).
 
 PowerShell:
 
 ```powershell
-$Env:LXE_MANAGER_MCP_BEARER_TOKEN = "<token-from-manager-output>"
-scripts/lxe_manager/use_local_mcp.ps1
+scripts/lxe_manager/enable_mcp.ps1 -Local -Token "<token-from-manager-output>"
 codex
 ```
 
@@ -267,17 +267,18 @@ scripts/lxe_manager/start_mcp.ps1 0.0.0.0 3880 <token>
 On the remote Codex client:
 
 ```sh
-export LXE_MANAGER_MCP_BEARER_TOKEN=<token>
-source scripts/lxe_manager/use_remote_mcp.sh http://manager.example.com:3880/mcp
+cd /home/lixiang/proj/LXEngine
+source scripts/lxe_manager/enable_mcp.sh --endpoint 'http://manager.example.com:3880/mcp' --token '<token>'
 codex
 ```
 
-The remote helper writes the manager URL config and exports
+The helper writes the manager URL into `.codex/config.toml` and exports
 `LXE_MANAGER_MCP_BEARER_TOKEN` only in the current shell, without committing
-secrets to the repo.
+secrets to the repo. Alternatively:
+`export LXE_MANAGER_MCP_BEARER_TOKEN=<token>; source scripts/lxe_editor/use_remote_mcp.sh http://manager.example.com:3880/mcp`.
 
-`lxe_manager` prints `bearerToken` during startup. Copy that value into
-`LXE_MANAGER_MCP_BEARER_TOKEN` on the Codex client.
+`lxe_manager` prints `bearerToken` during startup. Pass that value to
+`enable_mcp` as `--token` (or `-Token` in PowerShell).
 See `notes/tools/lxe-manager-mcp.md` for the full service guide.
 
 Current MCP surface:
