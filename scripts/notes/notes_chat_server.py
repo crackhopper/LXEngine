@@ -31,6 +31,10 @@ DEFAULT_TIMEOUT = 120.0
 SUPPORTED_AGENTS = ["codex", "claude", "acp"]
 
 
+def supported_agent_choices() -> str:
+    return ", ".join(repr(agent) for agent in SUPPORTED_AGENTS)
+
+
 class NotesChatHandler(BaseHTTPRequestHandler):
     server: "NotesChatServer"
 
@@ -303,6 +307,11 @@ def main() -> int:
         parser.error("--timeout must be positive")
     if args.max_doc_chars <= 0:
         parser.error("--max-doc-chars must be positive")
+    if args.agent not in SUPPORTED_AGENTS:
+        parser.error(
+            f"argument --agent: invalid choice: {args.agent!r} "
+            f"(choose from {supported_agent_choices()})"
+        )
 
     adapter = make_adapter(args.agent, args.agent_command, args.timeout)
     store = SessionStore()

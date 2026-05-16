@@ -224,8 +224,7 @@ class McpStdioProtocol:
                     "No compatible Codex MCP tool found. "
                     "Expected one of: "
                     f"{', '.join(self.tool_candidates)}. "
-                    f"Available tools: {available}. "
-                    "Use the codex-exec notes chat backend as a fallback.",
+                    f"Available tools: {available}.",
                 )
             result = client.request("tools/call", {"name": tool_name, "arguments": {"prompt": prompt}})
             text = extract_content_text(result)
