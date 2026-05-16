@@ -27,6 +27,7 @@ Makefile
 *.log
 .env
 .site/
+.cache/
 
 # mkdocs notes 预览生成物（由 scripts/_gen_notes_site.py 产生）
 mkdocs.gen.yml
