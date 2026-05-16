@@ -176,6 +176,67 @@ class AcpStdioProtocol:
             client.stop()
 
 
+class McpStdioProtocol:
+    def __init__(
+        self,
+        command: list[str] | str,
+        timeout: float,
+        tool_candidates: list[str] | None = None,
+    ) -> None:
+        self.command = command
+        self.timeout = timeout
+        self.tool_candidates = tool_candidates or ["codex.prompt", "prompt", "chat", "codex"]
+
+    def health(self) -> dict[str, Any]:
+        command = self._command_list()
+        executable = command[0] if command else ""
+        return {
+            "transport": "mcp-stdio",
+            "command": self.command,
+            "available": bool(executable and shutil.which(executable)),
+            "streaming": True,
+        }
+
+    def stream(self, request: ChatRequest) -> Iterable[str]:
+        prompt = build_agent_prompt(request)
+        client = McpStdioClient(self._command_list(), self.timeout)
+        try:
+            client.start()
+            client.request(
+                "initialize",
+                {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {},
+                    "clientInfo": {
+                        "name": "notes-chat",
+                        "version": "0.1.0",
+                    },
+                },
+            )
+            client.notify("notifications/initialized", {})
+            tools_result = client.request("tools/list", {})
+            tool_name = select_mcp_tool(tools_result, self.tool_candidates)
+            if tool_name is None:
+                raise ChatError(
+                    502,
+                    "No compatible Codex MCP tool found. "
+                    "Expected one of: "
+                    f"{', '.join(self.tool_candidates)}. "
+                    "Use the codex-exec notes chat backend as a fallback.",
+                )
+            result = client.request("tools/call", {"name": tool_name, "arguments": {"prompt": prompt}})
+            text = extract_content_text(result)
+            if text:
+                yield text
+        finally:
+            client.stop()
+
+    def _command_list(self) -> list[str]:
+        if isinstance(self.command, str):
+            return shlex.split(self.command)
+        return list(self.command)
+
+
 class AcpStdioClient:
     def __init__(self, command: list[str], timeout: float) -> None:
         self.command = command
@@ -332,6 +393,206 @@ class AcpStdioClient:
         }
         proc.stdin.write(json.dumps(response, separators=(",", ":")) + "\n")
         proc.stdin.flush()
+
+
+class McpStdioClient:
+    def __init__(self, command: list[str], timeout: float) -> None:
+        self.command = command
+        self.timeout = timeout
+        self.proc: subprocess.Popen[str] | None = None
+        self.messages: queue.Queue[dict[str, Any]] = queue.Queue()
+        self.next_id = 1
+
+    def start(self) -> None:
+        if not self.command:
+            raise ChatError(502, "MCP command is empty.")
+        if shutil.which(self.command[0]) is None:
+            raise ChatError(502, f"MCP command not found: {self.command[0]}.")
+        try:
+            self.proc = subprocess.Popen(
+                self.command,
+                cwd=REPO_ROOT,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1,
+            )
+        except OSError as exc:
+            raise ChatError(502, f"Failed to start MCP server: {exc}") from exc
+        threading.Thread(target=self._read_stdout, daemon=True).start()
+
+    def stop(self) -> None:
+        proc = self.proc
+        if proc is None:
+            return
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=3)
+        for stream in (proc.stdin, proc.stdout, proc.stderr):
+            if stream is not None and not stream.closed:
+                stream.close()
+
+    def request(self, method: str, params: dict[str, Any]) -> Any:
+        request_id = self._send_message(method, params, include_id=True)
+        deadline = time.monotonic() + self.timeout
+        while time.monotonic() < deadline:
+            message = self._next_message(deadline)
+            if message is None:
+                continue
+            if "method" in message and "id" in message:
+                self._reject_server_request(message)
+                continue
+            if message.get("id") != request_id:
+                continue
+            if "error" in message:
+                raise_mcp_error(message["error"])
+            return message.get("result")
+        raise ChatError(504, f"MCP request '{method}' timed out after {self.timeout:g}s.")
+
+    def notify(self, method: str, params: dict[str, Any]) -> None:
+        self._send_message(method, params, include_id=False)
+
+    def _send_message(self, method: str, params: dict[str, Any], include_id: bool) -> int | None:
+        proc = self.proc
+        if proc is None or proc.stdin is None:
+            raise ChatError(502, "MCP process is not running.")
+        request_id: int | None = None
+        payload: dict[str, Any] = {
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": params,
+        }
+        if include_id:
+            request_id = self.next_id
+            self.next_id += 1
+            payload["id"] = request_id
+        write_mcp_message(proc.stdin, payload)
+        proc.stdin.flush()
+        return request_id
+
+    def _next_message(self, deadline: float) -> dict[str, Any] | None:
+        proc = self.proc
+        if proc is None:
+            raise ChatError(502, "MCP process is not running.")
+        if proc.poll() is not None:
+            stderr = self._read_stderr()
+            detail = f": {stderr}" if stderr else ""
+            raise ChatError(502, f"MCP server exited early{detail}")
+        remaining = max(0.1, deadline - time.monotonic())
+        try:
+            return self.messages.get(timeout=min(0.5, remaining))
+        except queue.Empty:
+            return None
+
+    def _read_stdout(self) -> None:
+        proc = self.proc
+        if proc is None or proc.stdout is None:
+            return
+        while True:
+            line = proc.stdout.readline()
+            if line == "":
+                return
+            line = line.strip()
+            if not line:
+                continue
+            if line.lower().startswith("content-length:"):
+                message = self._read_content_length_message(line)
+            else:
+                message = line
+            if not message:
+                continue
+            try:
+                self.messages.put(json.loads(message))
+            except json.JSONDecodeError:
+                self.messages.put(
+                    {
+                        "jsonrpc": "2.0",
+                        "error": {
+                            "code": -32700,
+                            "message": f"Invalid MCP JSON message: {message[:200]}",
+                        },
+                        "id": None,
+                    }
+                )
+
+    def _read_content_length_message(self, first_header: str) -> str:
+        proc = self.proc
+        if proc is None or proc.stdout is None:
+            return ""
+        length = parse_content_length(first_header)
+        while True:
+            header = proc.stdout.readline()
+            if header in {"", "\n", "\r\n"}:
+                break
+            if header.lower().startswith("content-length:"):
+                length = parse_content_length(header.strip())
+        if length <= 0:
+            return ""
+        return proc.stdout.read(length)
+
+    def _read_stderr(self) -> str:
+        proc = self.proc
+        if proc is None or proc.stderr is None:
+            return ""
+        try:
+            data = proc.stderr.read()
+        except OSError:
+            return ""
+        return data.strip()[:1200]
+
+    def _reject_server_request(self, message: dict[str, Any]) -> None:
+        proc = self.proc
+        if proc is None or proc.stdin is None:
+            return
+        response = {
+            "jsonrpc": "2.0",
+            "id": message.get("id"),
+            "error": {
+                "code": -32601,
+                "message": "notes-chat does not expose MCP client methods",
+            },
+        }
+        write_mcp_message(proc.stdin, response)
+        proc.stdin.flush()
+
+
+def write_mcp_message(stream: Any, payload: dict[str, Any]) -> None:
+    body = json.dumps(payload, separators=(",", ":"))
+    stream.write(f"Content-Length: {len(body.encode('utf-8'))}\r\n\r\n{body}")
+
+
+def parse_content_length(header: str) -> int:
+    _, _, value = header.partition(":")
+    try:
+        return int(value.strip())
+    except ValueError:
+        return 0
+
+
+def select_mcp_tool(tools_result: Any, tool_candidates: list[str]) -> str | None:
+    tools = tools_result.get("tools") if isinstance(tools_result, dict) else tools_result
+    if not isinstance(tools, list):
+        return None
+    available = {
+        tool.get("name")
+        for tool in tools
+        if isinstance(tool, dict) and isinstance(tool.get("name"), str)
+    }
+    for candidate in tool_candidates:
+        if candidate in available:
+            return candidate
+    return None
+
+
+def raise_mcp_error(error: Any) -> None:
+    if isinstance(error, dict):
+        raise ChatError(502, f"MCP error: {error.get('message', error)}")
+    raise ChatError(502, f"MCP error: {error}")
 
 
 def raise_acp_error(error: Any) -> None:
