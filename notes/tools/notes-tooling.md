@@ -166,6 +166,46 @@ MkDocs hook，处理运行期：
 
 传 `--build` 时只做静态构建，不起开发服务器。
 
+### Notes Chat agent
+
+`serve_site.sh --chat` 会同时启动只读文档 Chat 服务。默认 agent 是 `codex`，后端命令是：
+
+```bash
+codex mcp-server
+```
+
+Chat 服务只读取当前 notes 页面、选中文本和会话历史，把它们拼成只读提示词交给 agent；服务端不会写 `notes/`，提示词也要求 agent 不编辑文件、不运行命令。会话 JSON 保存在 `.tmp/notes-chat/sessions/`，只记录网页聊天历史。
+
+可选 agent：
+
+| Agent | 默认命令 | 用途 |
+|---|---|---|
+| `codex` | `codex mcp-server` | 默认路径，通过 Codex MCP stdio 工具回答 |
+| `codex-exec` | `codex exec --json --ephemeral --sandbox read-only` | Codex MCP 不可用时的 JSONL CLI fallback |
+| `claude` | `claude` | 使用 Claude CLI stream-json 输出 |
+| `acp` | 空 | 使用 ACP stdio agent，必须显式提供命令 |
+
+常用启动方式：
+
+```bash
+scripts/notes/serve_site.sh --chat
+scripts/notes/serve_site.sh --chat --chat-agent codex-exec
+scripts/notes/serve_site.sh --chat --chat-agent claude
+scripts/notes/serve_site.sh --chat --chat-agent acp --chat-agent-command "agent acp"
+```
+
+同一配置也可以通过环境变量传入：
+
+```bash
+NOTES_CHAT_AGENT=codex scripts/notes/serve_site.sh --chat
+NOTES_CHAT_CODEX_CMD="codex mcp-server" scripts/notes/serve_site.sh --chat
+NOTES_CHAT_AGENT=codex-exec NOTES_CHAT_CODEX_EXEC_CMD="codex exec --json --ephemeral --sandbox read-only" scripts/notes/serve_site.sh --chat
+NOTES_CHAT_AGENT=claude NOTES_CHAT_CLAUDE_CMD="claude" scripts/notes/serve_site.sh --chat
+NOTES_CHAT_AGENT=acp NOTES_CHAT_ACP_CMD="agent acp" scripts/notes/serve_site.sh --chat
+```
+
+`--chat-agent-command` / `NOTES_CHAT_AGENT_COMMAND` 会覆盖当前 agent 的默认命令，适合临时测试本地 wrapper。
+
 ## 自动加载
 
 推荐流程不依赖 mkdocs 热加载：
