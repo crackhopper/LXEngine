@@ -160,6 +160,11 @@ class CliJsonProtocolTest(unittest.TestCase):
 
         self.assertEqual("".join(protocol.stream(make_request())), "exec answer")
 
+    def test_cli_json_protocol_reads_codex_item_completed_agent_message(self) -> None:
+        protocol = CliJsonProtocol(self.fake_agent("codex-item"), timeout=3.0)
+
+        self.assertEqual("".join(protocol.stream(make_request())), "OK")
+
     def test_cli_json_protocol_reports_bad_json(self) -> None:
         protocol = CliJsonProtocol(self.fake_agent("bad-json"), timeout=3.0)
 
@@ -184,6 +189,10 @@ class CliJsonProtocolTest(unittest.TestCase):
         self.assertEqual(extract_cli_json_text({"text": "plain text"}), "plain text")
         self.assertEqual(extract_cli_json_text({"type": "result", "result": {"text": "final"}}), "final")
         self.assertEqual(extract_cli_json_text({"message": {"content": [{"text": "nested"}]}}), "nested")
+        self.assertEqual(
+            extract_cli_json_text({"type": "item.completed", "item": {"type": "agent_message", "text": "OK"}}),
+            "OK",
+        )
 
 
 if __name__ == "__main__":

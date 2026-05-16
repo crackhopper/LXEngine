@@ -49,7 +49,7 @@ def make_adapter(agent: str, command: str | None, timeout: float) -> AgentAdapte
             command
             or os.environ.get(
                 "NOTES_CHAT_CODEX_EXEC_CMD",
-                "codex exec --json --ephemeral --sandbox read-only --ask-for-approval never",
+                "codex exec --json --ephemeral --sandbox read-only",
             ),
             timeout,
         )

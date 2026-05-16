@@ -748,10 +748,16 @@ def extract_content_text(content: Any) -> str:
 
 
 def is_cli_json_final(payload: dict[str, Any]) -> bool:
+    if payload.get("type") == "item.completed" and isinstance(payload.get("item"), dict):
+        return payload["item"].get("type") == "agent_message"
     return payload.get("type") == "result" or "result" in payload or payload.get("final") is True
 
 
 def extract_cli_json_text(payload: dict[str, Any]) -> str:
+    if payload.get("type") == "item.completed" and isinstance(payload.get("item"), dict):
+        item = payload["item"]
+        if item.get("type") == "agent_message":
+            return extract_content_text(item)
     if payload.get("type") == "result":
         return extract_content_text(payload.get("result"))
     if "result" in payload:

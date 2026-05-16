@@ -37,7 +37,7 @@ class NotesChatAgentsTest(unittest.TestCase):
         self.assertEqual(health["name"], "codex-exec")
         self.assertEqual(
             health["command"],
-            "codex exec --json --ephemeral --sandbox read-only --ask-for-approval never",
+            "codex exec --json --ephemeral --sandbox read-only",
         )
         self.assertEqual(health["transport"], "cli-json")
 

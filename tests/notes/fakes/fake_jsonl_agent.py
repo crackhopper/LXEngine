@@ -8,7 +8,7 @@ import sys
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", choices=["ok", "bad-json", "fail"], default="ok")
+    parser.add_argument("--mode", choices=["ok", "codex-item", "bad-json", "fail"], default="ok")
     args = parser.parse_args()
 
     sys.stdin.read()
@@ -18,6 +18,10 @@ def main() -> int:
         return 9
     if args.mode == "bad-json":
         print("{not json")
+        return 0
+    if args.mode == "codex-item":
+        print(json.dumps({"type": "item.started", "item": {"type": "agent_message"}}))
+        print(json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": "OK"}}))
         return 0
 
     print(json.dumps({"type": "assistant_delta", "delta": "exec "}))
