@@ -295,7 +295,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         --chat-agent)
             if [[ -z "${2:-}" ]]; then
-                echo "Error: --chat-agent requires codex, claude, or acp" >&2
+                echo "Error: --chat-agent requires codex, codex-exec, claude, or acp" >&2
                 exit 1
             fi
             CHAT_AGENT="$2"
@@ -320,8 +320,8 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ "${CHAT_AGENT}" != "codex" && "${CHAT_AGENT}" != "claude" && "${CHAT_AGENT}" != "acp" ]]; then
-    echo "Error: --chat-agent must be codex, claude, or acp" >&2
+if [[ "${CHAT_AGENT}" != "codex" && "${CHAT_AGENT}" != "codex-exec" && "${CHAT_AGENT}" != "claude" && "${CHAT_AGENT}" != "acp" ]]; then
+    echo "Error: --chat-agent must be codex, codex-exec, claude, or acp" >&2
     exit 1
 fi
 

@@ -7,16 +7,19 @@ import unittest
 from scripts.notes.notes_chat_protocols import (
     AcpStdioProtocol,
     ClaudeCliProtocol,
+    CliJsonProtocol,
     McpStdioProtocol,
     extract_acp_update_text,
     extract_claude_result_text,
     extract_claude_stream_text,
+    extract_cli_json_text,
     extract_content_text,
 )
 from scripts.notes.notes_chat_core import ChatError, ChatRequest, DocumentContext
 
 
 FAKE_MCP_SERVER = Path(__file__).resolve().parent / "fakes" / "fake_mcp_server.py"
+FAKE_JSONL_AGENT = Path(__file__).resolve().parent / "fakes" / "fake_jsonl_agent.py"
 
 
 def make_request() -> ChatRequest:
@@ -71,7 +74,7 @@ class NotesChatProtocolsTest(unittest.TestCase):
         self.assertEqual(raised.exception.status, 502)
         self.assertIn("No compatible Codex MCP tool", raised.exception.message)
         self.assertIn("not.codex", raised.exception.message)
-        self.assertNotIn("codex-exec", raised.exception.message)
+        self.assertIn("codex-exec", raised.exception.message)
 
     def test_mcp_stdio_protocol_early_exit_raises_502(self) -> None:
         protocol = McpStdioProtocol([sys.executable, str(FAKE_MCP_SERVER), "--mode", "early-exit"], 5.0)
@@ -140,6 +143,47 @@ class NotesChatProtocolsTest(unittest.TestCase):
             extract_acp_update_text({"update": {"sessionUpdate": "tool_call", "content": {"text": "hidden"}}}),
             "",
         )
+
+
+class CliJsonProtocolTest(unittest.TestCase):
+    def fake_agent(self, mode: str) -> str:
+        return f"{sys.executable} {FAKE_JSONL_AGENT} --mode {mode}"
+
+    def test_cli_json_protocol_health_does_not_include_adapter_name(self) -> None:
+        health = CliJsonProtocol(self.fake_agent("ok"), timeout=3.0).health()
+        self.assertNotIn("name", health)
+        self.assertEqual(health["transport"], "cli-json")
+        self.assertTrue(health["streaming"])
+
+    def test_cli_json_protocol_prefers_final_result_text(self) -> None:
+        protocol = CliJsonProtocol(self.fake_agent("ok"), timeout=3.0)
+
+        self.assertEqual("".join(protocol.stream(make_request())), "exec answer")
+
+    def test_cli_json_protocol_reports_bad_json(self) -> None:
+        protocol = CliJsonProtocol(self.fake_agent("bad-json"), timeout=3.0)
+
+        with self.assertRaises(ChatError) as raised:
+            list(protocol.stream(make_request()))
+
+        self.assertEqual(raised.exception.status, 502)
+        self.assertIn("Invalid JSONL", raised.exception.message)
+
+    def test_cli_json_protocol_reports_nonzero_exit(self) -> None:
+        protocol = CliJsonProtocol(self.fake_agent("fail"), timeout=3.0)
+
+        with self.assertRaises(ChatError) as raised:
+            list(protocol.stream(make_request()))
+
+        self.assertEqual(raised.exception.status, 502)
+        self.assertIn("exited with code 9", raised.exception.message)
+
+    def test_extract_cli_json_text_handles_common_shapes(self) -> None:
+        self.assertEqual(extract_cli_json_text({"delta": "delta text"}), "delta text")
+        self.assertEqual(extract_cli_json_text({"message": "message text"}), "message text")
+        self.assertEqual(extract_cli_json_text({"text": "plain text"}), "plain text")
+        self.assertEqual(extract_cli_json_text({"type": "result", "result": {"text": "final"}}), "final")
+        self.assertEqual(extract_cli_json_text({"message": {"content": [{"text": "nested"}]}}), "nested")
 
 
 if __name__ == "__main__":

@@ -120,6 +120,79 @@ class ClaudeCliProtocol:
             raise ChatError(502, f"Claude exited with code {return_code}: {stderr}")
 
 
+class CliJsonProtocol:
+    def __init__(self, command: str, timeout: float) -> None:
+        self.command = command
+        self.timeout = timeout
+
+    def health(self) -> dict[str, Any]:
+        executable = shlex.split(self.command)[0] if self.command else ""
+        return {
+            "transport": "cli-json",
+            "command": self.command,
+            "available": bool(executable and shutil.which(executable)),
+            "streaming": True,
+        }
+
+    def stream(self, request: ChatRequest) -> Iterable[str]:
+        base_cmd = shlex.split(self.command)
+        if not base_cmd:
+            raise ChatError(500, "CLI JSON command is empty.")
+        if shutil.which(base_cmd[0]) is None:
+            raise ChatError(503, f"CLI JSON command not found: {base_cmd[0]}.")
+
+        try:
+            proc = subprocess.Popen(
+                base_cmd,
+                cwd=REPO_ROOT,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+        except OSError as exc:
+            raise ChatError(503, f"Failed to start CLI JSON agent: {exc}") from exc
+
+        prompt = build_agent_prompt(request)
+        try:
+            stdout, stderr = proc.communicate(prompt, timeout=self.timeout)
+        except subprocess.TimeoutExpired as exc:
+            proc.kill()
+            proc.communicate()
+            raise ChatError(504, f"CLI JSON request timed out after {self.timeout:g}s.") from exc
+
+        if proc.returncode != 0:
+            detail = stderr.strip()
+            if len(detail) > 1200:
+                detail = detail[:1200] + "\n..."
+            suffix = f": {detail}" if detail else ""
+            raise ChatError(502, f"CLI JSON agent exited with code {proc.returncode}{suffix}")
+
+        delta_text: list[str] = []
+        final_text = ""
+        for line in stdout.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise ChatError(502, f"Invalid JSONL from CLI JSON agent: {line[:200]}") from exc
+            if not isinstance(payload, dict):
+                continue
+            text = extract_cli_json_text(payload)
+            if not text:
+                continue
+            if is_cli_json_final(payload):
+                final_text = text
+            else:
+                delta_text.append(text)
+
+        text = final_text or "".join(delta_text)
+        if text:
+            yield text
+
+
 class AcpStdioProtocol:
     def __init__(self, command: str, timeout: float) -> None:
         self.command = command
@@ -224,7 +297,8 @@ class McpStdioProtocol:
                     "No compatible Codex MCP tool found. "
                     "Expected one of: "
                     f"{', '.join(self.tool_candidates)}. "
-                    f"Available tools: {available}.",
+                    f"Available tools: {available}. "
+                    "Try --chat-agent codex-exec.",
                 )
             result = client.request("tools/call", {"name": tool_name, "arguments": {"prompt": prompt}})
             text = extract_content_text(result)
@@ -671,6 +745,24 @@ def extract_content_text(content: Any) -> str:
         if isinstance(content.get("content"), list):
             return extract_content_text(content["content"])
     return ""
+
+
+def is_cli_json_final(payload: dict[str, Any]) -> bool:
+    return payload.get("type") == "result" or "result" in payload or payload.get("final") is True
+
+
+def extract_cli_json_text(payload: dict[str, Any]) -> str:
+    if payload.get("type") == "result":
+        return extract_content_text(payload.get("result"))
+    if "result" in payload:
+        return extract_content_text(payload.get("result"))
+    if isinstance(payload.get("delta"), str):
+        return payload["delta"]
+    if isinstance(payload.get("message"), str):
+        return payload["message"]
+    if isinstance(payload.get("text"), str):
+        return payload["text"]
+    return extract_content_text(payload.get("message"))
 
 
 def extract_claude_stream_text(payload: dict[str, Any]) -> str:

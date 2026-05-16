@@ -28,7 +28,7 @@ from scripts.notes.notes_chat_agents import AgentAdapter, make_adapter
 from scripts.notes.notes_chat_sessions import SessionStore, session_summary
 
 DEFAULT_TIMEOUT = 120.0
-SUPPORTED_AGENTS = ["codex", "claude", "acp"]
+SUPPORTED_AGENTS = ["codex", "codex-exec", "claude", "acp"]
 
 
 def supported_agent_choices() -> str:

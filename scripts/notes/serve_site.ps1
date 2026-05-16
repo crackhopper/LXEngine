@@ -25,7 +25,7 @@ param(
     [switch]$Chat,
     [switch]$NoChat,
     [string]$ChatHost = $(if ($env:NOTES_CHAT_HOST) { $env:NOTES_CHAT_HOST } else { "" }),
-    [ValidateSet("codex", "claude", "acp")]
+    [ValidateSet("codex", "codex-exec", "claude", "acp")]
     [string]$ChatAgent = $(if ($env:NOTES_CHAT_AGENT) { $env:NOTES_CHAT_AGENT } else { "codex" }),
     [string]$ChatAgentCommand = $(if ($env:NOTES_CHAT_AGENT_COMMAND) { $env:NOTES_CHAT_AGENT_COMMAND } else { "" })
 )
