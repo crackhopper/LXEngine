@@ -29,6 +29,16 @@ class NotesGenerateSiteConfigTest(unittest.TestCase):
 
         self.assertEqual(config, {"host": "192.168.66.12", "port": 8112})
 
+    def test_chat_client_config_omits_wildcard_bind_hosts(self) -> None:
+        for host in ("0.0.0.0", "::", "[::]"):
+            with self.subTest(host=host):
+                cfg = {"extra": {"notes_chat": {"enabled": True, "host": host}}}
+
+                with mock.patch.dict("os.environ", {"NOTES_CHAT_CLIENT_PORT": "8112"}, clear=True):
+                    config = generate_site_config.chat_client_config(cfg)
+
+                self.assertEqual(config, {"port": 8112})
+
     def test_inject_writes_chat_config_before_chat_script(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = pathlib.Path(tmp)
@@ -74,6 +84,47 @@ class NotesGenerateSiteConfigTest(unittest.TestCase):
             self.assertTrue(config_js.is_file())
             payload = config_js.read_text(encoding="utf-8").split(" = ", 1)[1].rstrip(";\n")
             self.assertEqual(json.loads(payload), {"host": "192.168.66.12", "port": 8112})
+
+    def test_inject_removes_stale_chat_config_when_chat_is_disabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            notes_dir = root / "notes"
+            config_js = notes_dir / generate_site_config.CHAT_CONFIG_JS
+            config_js.parent.mkdir(parents=True)
+            config_js.write_text("window.NOTES_CHAT_CONFIG = {stale: true};\n", encoding="utf-8")
+            mkdocs_src = root / "mkdocs.yml"
+            mkdocs_gen = root / "mkdocs.gen.yml"
+            mkdocs_src.write_text(
+                "\n".join(
+                    [
+                        "site_name: Test",
+                        "docs_dir: notes",
+                        "extra:",
+                        "  notes_chat:",
+                        "    enabled: false",
+                        "extra_javascript:",
+                        "  - assets/javascripts/mathjax.js",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            with (
+                mock.patch.object(generate_site_config, "REPO_ROOT", root),
+                mock.patch.object(generate_site_config, "NOTES_DIR", notes_dir),
+                mock.patch.object(generate_site_config, "REQ_DIR", notes_dir / "requirements"),
+                mock.patch.object(generate_site_config, "NAV_CONFIG", notes_dir / "nav.yml"),
+                mock.patch.object(generate_site_config, "MKDOCS_SRC", mkdocs_src),
+                mock.patch.object(generate_site_config, "MKDOCS_GEN", mkdocs_gen),
+                mock.patch.dict("os.environ", {"NOTES_CHAT_ENABLED": "0"}, clear=True),
+            ):
+                generate_site_config.inject_into_mkdocs([], [], ["README.md"])
+
+            generated = yaml.safe_load(mkdocs_gen.read_text(encoding="utf-8"))
+            self.assertNotIn(generate_site_config.CHAT_CONFIG_JS, generated["extra_javascript"])
+            self.assertNotIn(generate_site_config.CHAT_JS, generated["extra_javascript"])
+            self.assertFalse(config_js.exists())
 
 
 if __name__ == "__main__":

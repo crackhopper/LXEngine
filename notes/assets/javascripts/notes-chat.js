@@ -36,6 +36,10 @@
         return host;
     }
 
+    function isWildcardHost(host) {
+        return host === "0.0.0.0" || host === "::" || host === "[::]";
+    }
+
     function normalizeEndpoint(value) {
         if (typeof value !== "string") {
             return "";
@@ -79,6 +83,9 @@
             if (!port) {
                 port = Number(parts[1]);
             }
+        }
+        if (isWildcardHost(host)) {
+            host = "";
         }
 
         if (!host && !port) {
