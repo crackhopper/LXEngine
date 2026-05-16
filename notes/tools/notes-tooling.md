@@ -168,13 +168,15 @@ MkDocs hook，处理运行期：
 
 ### Notes Chat agent
 
-`serve_site.sh --chat` 会同时启动只读文档 Chat 服务。默认 agent 是 `codex`，后端命令是：
+Notes Chat 可以由 `mkdocs.yml` 的 `extra.notes_chat.enabled: true` 默认开启；命令行里的 `--chat` 会临时开启，`--no-chat` 会临时关闭。默认 agent 是 `codex`，后端命令是：
 
 ```bash
 codex mcp-server
 ```
 
 Chat 服务只读取当前 notes 页面、选中文本和会话历史，把它们拼成只读提示词交给 agent；服务端不会写 `notes/`，提示词也要求 agent 不编辑文件、不运行命令。会话 JSON 保存在 `.tmp/notes-chat/sessions/`，只记录网页聊天历史。
+
+浏览器端会从生成的 `assets/javascripts/notes-chat-config.js` 读取 `extra.notes_chat.host`。配置了 host 时，页面直接连接这个 host；没有配置 host 时，页面沿用当前访问域名并使用 notes 端口加 2 的 Chat 端口。
 
 可选 agent：
 

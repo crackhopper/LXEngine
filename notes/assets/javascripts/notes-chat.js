@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    var endpoint = window.NOTES_CHAT_ENDPOINT || inferEndpoint();
+    var endpoint = normalizeEndpoint(window.NOTES_CHAT_ENDPOINT) || configuredEndpoint() || inferEndpoint();
     var storagePrefix = "notes-chat:";
     var state = {
         open: localStorage.getItem(storagePrefix + "open") === "1",
@@ -16,13 +16,81 @@
         messages: [],
     };
 
-    function inferEndpoint() {
+    function inferPort() {
         var port = Number(window.location.port || (window.location.protocol === "https:" ? 443 : 80));
+        return port + 2;
+    }
+
+    function inferHost() {
         var host = window.location.hostname || "127.0.0.1";
         if (host === "0.0.0.0" || host === "::") {
             host = "127.0.0.1";
         }
-        return window.location.protocol + "//" + host + ":" + String(port + 2);
+        return host;
+    }
+
+    function endpointHost(host) {
+        if (host.indexOf(":") !== -1 && host.charAt(0) !== "[") {
+            return "[" + host + "]";
+        }
+        return host;
+    }
+
+    function normalizeEndpoint(value) {
+        if (typeof value !== "string") {
+            return "";
+        }
+        value = value.trim();
+        while (value.endsWith("/")) {
+            value = value.slice(0, -1);
+        }
+        return value;
+    }
+
+    function configuredEndpoint() {
+        var config = window.NOTES_CHAT_CONFIG || {};
+        if (!config || typeof config !== "object") {
+            return "";
+        }
+
+        var explicit = normalizeEndpoint(config.endpoint);
+        if (explicit) {
+            return explicit;
+        }
+
+        var host = typeof config.host === "string" ? config.host.trim() : "";
+        var protocol = window.location.protocol;
+        var port = Number(config.port || 0);
+
+        if (host.indexOf("://") !== -1) {
+            try {
+                var parsed = new URL(host);
+                protocol = parsed.protocol || protocol;
+                host = parsed.hostname;
+                if (!port && parsed.port) {
+                    port = Number(parsed.port);
+                }
+            } catch (error) {
+                return "";
+            }
+        } else if (host.indexOf(":") !== -1 && host.charAt(0) !== "[" && host.split(":").length === 2) {
+            var parts = host.split(":");
+            host = parts[0];
+            if (!port) {
+                port = Number(parts[1]);
+            }
+        }
+
+        if (!host && !port) {
+            return "";
+        }
+        host = host || inferHost();
+        port = port || inferPort();
+        return protocol + "//" + endpointHost(host) + ":" + String(port);
+    }
+
+    function inferEndpoint() {
+        return window.location.protocol + "//" + endpointHost(inferHost()) + ":" + String(inferPort());
     }
 
     function inferDocPath() {

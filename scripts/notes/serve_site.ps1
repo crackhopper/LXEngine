@@ -13,7 +13,7 @@
 #   - 启动前检测目标端口，若被占用显示占用进程并交互式询问是否 kill
 #   - kill 后等待端口真正释放，失败则中止
 #   - serve 模式同时启动 notes watcher，自动重建 mkdocs.gen.yml
-#   - 指定 -Chat 时启动本机只读 Chat 服务（默认 Codex）
+#   - mkdocs.yml 或 -Chat 启用时启动本机只读 Chat 服务（默认 Codex）
 #
 # 依赖: mkdocs + mkdocs-material（pipx install mkdocs-material）
 
@@ -62,11 +62,19 @@ if (-not (Get-Command python -ErrorAction SilentlyContinue) -and
 
 function Invoke-GenerateSiteConfig {
     $oldChatEnabled = $env:NOTES_CHAT_ENABLED
+    $oldChatClientHost = $env:NOTES_CHAT_CLIENT_HOST
+    $oldChatClientPort = $env:NOTES_CHAT_CLIENT_PORT
     try {
         if ((Resolve-ChatEnabled) -and -not $Build) {
             $env:NOTES_CHAT_ENABLED = "1"
         } else {
             $env:NOTES_CHAT_ENABLED = "0"
+        }
+        $env:NOTES_CHAT_CLIENT_HOST = Get-ConfiguredChatClientHost -PythonCmd (Get-PythonCommand)
+        if (Get-Variable -Name ChatPort -ErrorAction SilentlyContinue) {
+            $env:NOTES_CHAT_CLIENT_PORT = "$ChatPort"
+        } else {
+            Remove-Item Env:NOTES_CHAT_CLIENT_PORT -ErrorAction SilentlyContinue
         }
 
         if (Get-Command python3 -ErrorAction SilentlyContinue) {
@@ -79,6 +87,16 @@ function Invoke-GenerateSiteConfig {
             Remove-Item Env:NOTES_CHAT_ENABLED -ErrorAction SilentlyContinue
         } else {
             $env:NOTES_CHAT_ENABLED = $oldChatEnabled
+        }
+        if ($null -eq $oldChatClientHost) {
+            Remove-Item Env:NOTES_CHAT_CLIENT_HOST -ErrorAction SilentlyContinue
+        } else {
+            $env:NOTES_CHAT_CLIENT_HOST = $oldChatClientHost
+        }
+        if ($null -eq $oldChatClientPort) {
+            Remove-Item Env:NOTES_CHAT_CLIENT_PORT -ErrorAction SilentlyContinue
+        } else {
+            $env:NOTES_CHAT_CLIENT_PORT = $oldChatClientPort
         }
     }
 
@@ -121,6 +139,34 @@ except Exception:
         return "$value".Trim()
     }
     return "127.0.0.1"
+}
+
+function Get-ConfiguredChatClientHost {
+    param([string]$PythonCmd)
+
+    if ($ChatHost) {
+        return $ChatHost
+    }
+
+    $code = @'
+from pathlib import Path
+
+try:
+    import yaml
+
+    cfg = yaml.safe_load(Path("mkdocs.yml").read_text(encoding="utf-8")) or {}
+    extra = cfg.get("extra") or {}
+    notes_chat = extra.get("notes_chat") or {}
+    host = notes_chat.get("host") or ""
+    print(host if isinstance(host, str) else "")
+except Exception:
+    print("")
+'@
+    $value = & $PythonCmd -c $code
+    if ($LASTEXITCODE -eq 0 -and $value) {
+        return "$value".Trim()
+    }
+    return ""
 }
 
 function Get-ConfiguredChatEnabled {
@@ -339,6 +385,7 @@ if ($ChatEnabled) {
         "--chat-port", "$ChatPort",
         "--chat-log", ".tmp/notes-chat.log",
         "--chat-pid-file", ".tmp/notes-chat.pid",
+        "--chat-client-host", (Get-ConfiguredChatClientHost -PythonCmd $PythonCmd),
         "--chat-agent", $ChatAgent
     )
     if ($ChatAgentCommand) {

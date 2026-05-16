@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import signal
 import subprocess
 import sys
@@ -116,9 +117,15 @@ def changed_paths(
     return changed
 
 
-def run_generator() -> int:
+def run_generator(chat_client_host: str, chat_port: int | None) -> int:
     print(">> notes watcher: regenerating mkdocs.gen.yml", flush=True)
-    result = subprocess.run([sys.executable, str(GENERATOR)], cwd=REPO_ROOT)
+    env = os.environ.copy()
+    env["NOTES_CHAT_CLIENT_HOST"] = chat_client_host
+    if chat_port is not None:
+        env["NOTES_CHAT_CLIENT_PORT"] = str(chat_port)
+    else:
+        env.pop("NOTES_CHAT_CLIENT_PORT", None)
+    result = subprocess.run([sys.executable, str(GENERATOR)], cwd=REPO_ROOT, env=env)
     if result.returncode != 0:
         print(
             f"!! notes watcher: generator failed with exit code {result.returncode}",
@@ -319,6 +326,7 @@ def supervise(
     chat_port: int | None,
     chat_log: Path | None,
     chat_pid_file: Path | None,
+    chat_client_host: str,
     chat_agent: str,
     chat_agent_command: str,
     interval: float,
@@ -391,7 +399,7 @@ def supervise(
                 continue
 
             if pending_since is not None and time.monotonic() - pending_since >= debounce:
-                if run_generator() == 0:
+                if run_generator(chat_client_host, chat_port) == 0:
                     proc = restart_mkdocs(proc, addr, mkdocs_log, mkdocs_pid_file)
                     version.bump()
                 current = snapshot()
@@ -412,6 +420,7 @@ def main() -> int:
     parser.add_argument("--chat-port", type=int)
     parser.add_argument("--chat-log")
     parser.add_argument("--chat-pid-file")
+    parser.add_argument("--chat-client-host", default="")
     parser.add_argument("--chat-agent", default="codex", choices=["codex", "codex-exec", "claude", "acp"])
     parser.add_argument("--chat-agent-command", default="")
     parser.add_argument("--interval", type=float, default=1.0)
@@ -438,6 +447,7 @@ def main() -> int:
             chat_port=args.chat_port,
             chat_log=Path(args.chat_log) if args.chat_log else None,
             chat_pid_file=Path(args.chat_pid_file) if args.chat_pid_file else None,
+            chat_client_host=args.chat_client_host,
             chat_agent=args.chat_agent,
             chat_agent_command=args.chat_agent_command,
             interval=args.interval,

@@ -14,7 +14,7 @@
 #   - 每次执行都重新生成 mkdocs.gen.yml
 #   - 若目标端口已有旧服务，自动停止旧进程
 #   - 默认在后台拉起 notes supervisor，由它管理 mkdocs serve 和热加载
-#   - 指定 --chat 时启动本机只读 Chat 服务（默认 Codex）
+#   - mkdocs.yml 或 --chat 启用时启动本机只读 Chat 服务（默认 Codex）
 #   - 输出 PID、日志路径、访问地址
 
 set -euo pipefail
@@ -48,7 +48,10 @@ if ! command -v python3 >/dev/null 2>&1; then
 fi
 
 regen_site_config() {
-    NOTES_CHAT_ENABLED="${CHAT_ENABLED:-0}" python3 scripts/notes/generate_site_config.py
+    NOTES_CHAT_ENABLED="${CHAT_ENABLED:-0}" \
+        NOTES_CHAT_CLIENT_HOST="${CHAT_CLIENT_HOST:-}" \
+        NOTES_CHAT_CLIENT_PORT="${CHAT_PORT:-}" \
+        python3 scripts/notes/generate_site_config.py
 }
 
 read_config_chat_host() {
@@ -118,6 +121,7 @@ start_background_watcher() {
             --chat-port "${chat_port}"
             --chat-log "${chat_log_file}"
             --chat-pid-file "${chat_pid_file}"
+            --chat-client-host "${CHAT_CLIENT_HOST}"
             --chat-agent "${chat_agent}"
         )
         if [[ -n "${chat_agent_command}" ]]; then
@@ -264,6 +268,7 @@ MODE="background"
 ADDR="0.0.0.0:8110"
 CHAT_ENABLED="${NOTES_CHAT_ENABLED:-}"
 CHAT_HOST="${NOTES_CHAT_HOST:-}"
+CHAT_CLIENT_HOST="${NOTES_CHAT_HOST:-}"
 CHAT_AGENT="${NOTES_CHAT_AGENT:-codex}"
 CHAT_AGENT_COMMAND="${NOTES_CHAT_AGENT_COMMAND:-}"
 
@@ -291,6 +296,7 @@ while [[ $# -gt 0 ]]; do
                 exit 1
             fi
             CHAT_HOST="$2"
+            CHAT_CLIENT_HOST="$2"
             shift 2
             ;;
         --chat-agent)
@@ -333,7 +339,11 @@ if [[ -z "${CHAT_ENABLED}" ]]; then
 fi
 
 if [[ -z "${CHAT_HOST}" ]]; then
-    CHAT_HOST="$(read_config_chat_host)"
+    CONFIG_CHAT_HOST="$(read_config_chat_host)"
+    if [[ -n "${CONFIG_CHAT_HOST}" ]]; then
+        CHAT_HOST="${CONFIG_CHAT_HOST}"
+        CHAT_CLIENT_HOST="${CONFIG_CHAT_HOST}"
+    fi
 fi
 if [[ -z "${CHAT_HOST}" ]]; then
     CHAT_HOST="127.0.0.1"
@@ -373,6 +383,7 @@ if [[ "${MODE}" == "foreground" ]]; then
             --chat-port "${CHAT_PORT}"
             --chat-log "${CHAT_LOG_FILE}"
             --chat-pid-file "${CHAT_PID_FILE}"
+            --chat-client-host "${CHAT_CLIENT_HOST}"
             --chat-agent "${CHAT_AGENT}"
         )
         if [[ -n "${CHAT_AGENT_COMMAND}" ]]; then
