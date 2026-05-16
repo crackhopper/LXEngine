@@ -34,7 +34,7 @@
 ## 阅读入口
 
 - [GetStarted](get-started.md)：给第一次进入项目的人预留的快速起步入口。
-- [Tutorial](tutorial/00-overview.md)：从零搭一个 PBR 旋转立方体，按真实代码走完整链路。
+- [Tutorial](tutorial/index.md)：按系列学习启动项目、自定义材质、自定义灯光、扩展编辑器和扩展场景节点。
 - [概念 / 资产系统](concepts/assets/index.md)：理解引擎当前能加载哪些资源，以及网格对象、纹理、材质怎样进入运行时。
 - [概念 / 场景对象](concepts/scene/index.md)：从使用者视角理解 `Scene` / `SceneNode` 与场景组织方式。
 - [概念 / 材质系统 / 什么是 Pipeline](concepts/material/what-is-pipeline.md)：先理解 pipeline 是怎样成为一套可复用渲染结构的。

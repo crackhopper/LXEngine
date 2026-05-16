@@ -172,8 +172,8 @@ scripts/
 ├── source_analysis/
 │   └── extract_sections.py
 ├── lxe_editor/
-│   ├── use_local_mcp.sh / use_local_mcp.ps1
-│   └── use_remote_mcp.sh / use_remote_mcp.ps1
+│   ├── enable_mcp.sh / enable_mcp.ps1
+│   └── enable_mcp_write_config.py
 └── ...
 ```
 
