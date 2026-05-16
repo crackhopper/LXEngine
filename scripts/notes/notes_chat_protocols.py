@@ -399,9 +399,12 @@ class McpStdioClient:
     def __init__(self, command: list[str], timeout: float) -> None:
         self.command = command
         self.timeout = timeout
-        self.proc: subprocess.Popen[str] | None = None
+        self.proc: subprocess.Popen[bytes] | None = None
         self.messages: queue.Queue[dict[str, Any]] = queue.Queue()
         self.next_id = 1
+        self.stderr_buffer = bytearray()
+        self.stderr_lock = threading.Lock()
+        self.stderr_thread: threading.Thread | None = None
 
     def start(self) -> None:
         if not self.command:
@@ -415,12 +418,13 @@ class McpStdioClient:
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True,
-                bufsize=1,
+                bufsize=0,
             )
         except OSError as exc:
             raise ChatError(502, f"Failed to start MCP server: {exc}") from exc
         threading.Thread(target=self._read_stdout, daemon=True).start()
+        self.stderr_thread = threading.Thread(target=self._drain_stderr, daemon=True)
+        self.stderr_thread.start()
 
     def stop(self) -> None:
         proc = self.proc
@@ -495,15 +499,15 @@ class McpStdioClient:
             return
         while True:
             line = proc.stdout.readline()
-            if line == "":
+            if line == b"":
                 return
             line = line.strip()
             if not line:
                 continue
-            if line.lower().startswith("content-length:"):
+            if line.lower().startswith(b"content-length:"):
                 message = self._read_content_length_message(line)
             else:
-                message = line
+                message = line.decode("utf-8", errors="replace")
             if not message:
                 continue
             try:
@@ -520,30 +524,46 @@ class McpStdioClient:
                     }
                 )
 
-    def _read_content_length_message(self, first_header: str) -> str:
+    def _read_content_length_message(self, first_header: bytes) -> str:
         proc = self.proc
         if proc is None or proc.stdout is None:
             return ""
         length = parse_content_length(first_header)
         while True:
             header = proc.stdout.readline()
-            if header in {"", "\n", "\r\n"}:
+            if header in {b"", b"\n", b"\r\n"}:
                 break
-            if header.lower().startswith("content-length:"):
+            if header.lower().startswith(b"content-length:"):
                 length = parse_content_length(header.strip())
         if length <= 0:
             return ""
-        return proc.stdout.read(length)
+        data = proc.stdout.read(length)
+        if len(data) != length:
+            return ""
+        return data.decode("utf-8", errors="replace")
 
     def _read_stderr(self) -> str:
+        if self.stderr_thread is not None:
+            self.stderr_thread.join(timeout=0.2)
+        with self.stderr_lock:
+            data = bytes(self.stderr_buffer)
+        return data.decode("utf-8", errors="replace").strip()[:1200]
+
+    def _drain_stderr(self) -> None:
         proc = self.proc
         if proc is None or proc.stderr is None:
-            return ""
-        try:
-            data = proc.stderr.read()
-        except OSError:
-            return ""
-        return data.strip()[:1200]
+            return
+        while True:
+            try:
+                chunk = proc.stderr.read(4096)
+            except OSError:
+                return
+            if not chunk:
+                return
+            with self.stderr_lock:
+                self.stderr_buffer.extend(chunk)
+                if len(self.stderr_buffer) > 1200:
+                    del self.stderr_buffer[:-1200]
 
     def _reject_server_request(self, message: dict[str, Any]) -> None:
         proc = self.proc
@@ -563,11 +583,13 @@ class McpStdioClient:
 
 def write_mcp_message(stream: Any, payload: dict[str, Any]) -> None:
     body = json.dumps(payload, separators=(",", ":"))
-    stream.write(f"Content-Length: {len(body.encode('utf-8'))}\r\n\r\n{body}")
+    body_bytes = body.encode("utf-8")
+    header = f"Content-Length: {len(body_bytes)}\r\n\r\n".encode("ascii")
+    stream.write(header + body_bytes)
 
 
-def parse_content_length(header: str) -> int:
-    _, _, value = header.partition(":")
+def parse_content_length(header: bytes) -> int:
+    _, _, value = header.partition(b":")
     try:
         return int(value.strip())
     except ValueError:

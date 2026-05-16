@@ -44,6 +44,19 @@ class NotesChatProtocolsTest(unittest.TestCase):
 
         self.assertEqual("".join(protocol.stream(make_request())), "fake mcp response with prompt")
 
+    def test_mcp_stdio_protocol_handles_utf8_content_length_frames(self) -> None:
+        protocol = McpStdioProtocol([sys.executable, str(FAKE_MCP_SERVER), "--mode", "unicode"], 5.0)
+
+        self.assertEqual("".join(protocol.stream(make_request())), "fake mcp response: 你好，世界 with prompt")
+
+    def test_mcp_stdio_protocol_drains_stderr_while_running(self) -> None:
+        protocol = McpStdioProtocol(
+            [sys.executable, str(FAKE_MCP_SERVER), "--stderr-bytes", "200000"],
+            2.0,
+        )
+
+        self.assertEqual("".join(protocol.stream(make_request())), "fake mcp response with prompt")
+
     def test_mcp_stdio_protocol_missing_compatible_tool_raises_502(self) -> None:
         protocol = McpStdioProtocol([sys.executable, str(FAKE_MCP_SERVER), "--mode", "no-tool"], 5.0)
 
