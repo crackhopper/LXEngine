@@ -31,7 +31,7 @@ from scripts.notes.notes_chat_core import (
     first_param,
     resolve_document,
 )
-from scripts.notes.notes_chat_sessions import SESSION_DIR, SessionStore, session_summary
+from scripts.notes.notes_chat_sessions import SessionStore, session_summary
 
 DEFAULT_TIMEOUT = 120.0
 
@@ -719,7 +719,7 @@ def main() -> int:
         parser.error("--max-doc-chars must be positive")
 
     adapter = make_adapter(args.agent, args.agent_command, args.timeout)
-    store = SessionStore(SESSION_DIR)
+    store = SessionStore()
     server = NotesChatServer((args.host, args.port), adapter, store, args.max_doc_chars)
     print(
         f">> notes chat endpoint: http://{args.host}:{args.port} "

@@ -8,14 +8,13 @@ from typing import Any
 
 from scripts.notes.notes_chat_core import (
     ChatError,
+    REPO_ROOT,
     clean_session_title,
     now_iso,
     validate_session_id,
 )
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-NOTES_DIR = REPO_ROOT / "notes"
-SESSION_DIR = NOTES_DIR / ".chat_sessions"
+SESSION_DIR = REPO_ROOT / ".tmp" / "notes-chat" / "sessions"
 
 
 class SessionStore:

@@ -6,8 +6,9 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from scripts.notes.notes_chat_core import ChatError
+from scripts.notes.notes_chat_core import ChatError, REPO_ROOT
 from scripts.notes.notes_chat_sessions import SessionStore, session_summary
+from scripts.notes import notes_chat_sessions
 
 
 class NotesChatSessionsTest(unittest.TestCase):
@@ -62,6 +63,14 @@ class NotesChatSessionsTest(unittest.TestCase):
 
     def test_delete_missing_session_is_false(self) -> None:
         self.assertFalse(self.store.delete("missing123"))
+
+
+class NotesChatSessionDefaultsTest(unittest.TestCase):
+    def test_default_session_dir_preserves_tmp_location(self) -> None:
+        self.assertEqual(
+            notes_chat_sessions.SESSION_DIR,
+            REPO_ROOT / ".tmp" / "notes-chat" / "sessions",
+        )
 
 
 if __name__ == "__main__":
