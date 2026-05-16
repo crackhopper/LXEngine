@@ -537,8 +537,8 @@ class McpStdioClient:
                 length = parse_content_length(header.strip())
         if length <= 0:
             return ""
-        data = proc.stdout.read(length)
-        if len(data) != length:
+        data = read_exact_bytes(proc.stdout, length)
+        if data is None:
             return ""
         return data.decode("utf-8", errors="replace")
 
@@ -586,6 +586,18 @@ def write_mcp_message(stream: Any, payload: dict[str, Any]) -> None:
     body_bytes = body.encode("utf-8")
     header = f"Content-Length: {len(body_bytes)}\r\n\r\n".encode("ascii")
     stream.write(header + body_bytes)
+
+
+def read_exact_bytes(stream: Any, length: int) -> bytes | None:
+    chunks: list[bytes] = []
+    remaining = length
+    while remaining > 0:
+        chunk = stream.read(remaining)
+        if not chunk:
+            return None
+        chunks.append(chunk)
+        remaining -= len(chunk)
+    return b"".join(chunks)
 
 
 def parse_content_length(header: bytes) -> int:

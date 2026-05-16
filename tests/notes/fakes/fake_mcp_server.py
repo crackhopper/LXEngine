@@ -5,13 +5,22 @@ import argparse
 import json
 import os
 import sys
+import time
 from typing import Any
 
 
-def write_message(message: dict[str, Any]) -> None:
+def write_message(message: dict[str, Any], split_body: bool = False) -> None:
     body = json.dumps(message, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
     header = f"Content-Length: {len(body)}\r\n\r\n".encode("ascii")
-    sys.stdout.buffer.write(header + body)
+    sys.stdout.buffer.write(header)
+    if split_body and len(body) > 1:
+        split_at = len(body) // 2
+        sys.stdout.buffer.write(body[:split_at])
+        sys.stdout.buffer.flush()
+        time.sleep(0.02)
+        sys.stdout.buffer.write(body[split_at:])
+    else:
+        sys.stdout.buffer.write(body)
     sys.stdout.buffer.flush()
 
 
@@ -48,7 +57,7 @@ def response(request: dict[str, Any], result: Any) -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", choices=["ok", "unicode", "no-tool", "early-exit"], default=None)
+    parser.add_argument("--mode", choices=["ok", "unicode", "split-body", "no-tool", "early-exit"], default=None)
     parser.add_argument("--stderr-bytes", type=int, default=0)
     args = parser.parse_args()
     mode = args.mode or os.environ.get("FAKE_MCP_MODE", "ok")
@@ -81,7 +90,10 @@ def main() -> int:
                 text = "fake mcp response: 你好，世界"
             if "Current user question:" in str(arguments.get("prompt", "")):
                 text += " with prompt"
-            write_message(response(request, {"content": [{"type": "text", "text": text}]}))
+            write_message(
+                response(request, {"content": [{"type": "text", "text": text}]}),
+                split_body=mode == "split-body",
+            )
         else:
             write_message(
                 {
