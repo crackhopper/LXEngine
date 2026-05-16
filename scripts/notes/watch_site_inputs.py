@@ -412,7 +412,7 @@ def main() -> int:
     parser.add_argument("--chat-port", type=int)
     parser.add_argument("--chat-log")
     parser.add_argument("--chat-pid-file")
-    parser.add_argument("--chat-agent", default="claude", choices=["claude", "acp"])
+    parser.add_argument("--chat-agent", default="codex", choices=["codex", "claude", "acp"])
     parser.add_argument("--chat-agent-command", default="")
     parser.add_argument("--interval", type=float, default=1.0)
     parser.add_argument("--debounce", type=float, default=0.5)

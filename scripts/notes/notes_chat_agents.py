@@ -4,7 +4,7 @@ import os
 from typing import Any, Iterable, Protocol
 
 from scripts.notes.notes_chat_core import ChatError, ChatRequest
-from scripts.notes.notes_chat_protocols import AcpStdioProtocol, ClaudeCliProtocol
+from scripts.notes.notes_chat_protocols import AcpStdioProtocol, ClaudeCliProtocol, McpStdioProtocol
 
 
 class AgentAdapter:
@@ -41,6 +41,9 @@ class ProtocolAgentAdapter(AgentAdapter):
 
 
 def make_adapter(agent: str, command: str | None, timeout: float) -> AgentAdapter:
+    if agent == "codex":
+        protocol = McpStdioProtocol(command or os.environ.get("NOTES_CHAT_CODEX_CMD", "codex mcp-server"), timeout)
+        return ProtocolAgentAdapter("codex", protocol)
     if agent == "claude":
         protocol = ClaudeCliProtocol(command or os.environ.get("NOTES_CHAT_CLAUDE_CMD", "claude"), timeout)
         return ProtocolAgentAdapter("claude", protocol)

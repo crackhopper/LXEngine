@@ -28,6 +28,7 @@ from scripts.notes.notes_chat_agents import AgentAdapter, make_adapter
 from scripts.notes.notes_chat_sessions import SessionStore, session_summary
 
 DEFAULT_TIMEOUT = 120.0
+SUPPORTED_AGENTS = ["codex", "claude", "acp"]
 
 
 class NotesChatHandler(BaseHTTPRequestHandler):
@@ -292,7 +293,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, required=True)
-    parser.add_argument("--agent", choices=["claude", "acp"], default=os.environ.get("NOTES_CHAT_AGENT", "claude"))
+    parser.add_argument("--agent", choices=SUPPORTED_AGENTS, default=os.environ.get("NOTES_CHAT_AGENT", "codex"))
     parser.add_argument("--agent-command", default=os.environ.get("NOTES_CHAT_AGENT_COMMAND", ""))
     parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT)
     parser.add_argument("--max-doc-chars", type=int, default=DEFAULT_MAX_DOC_CHARS)

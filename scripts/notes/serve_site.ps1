@@ -13,7 +13,7 @@
 #   - 启动前检测目标端口，若被占用显示占用进程并交互式询问是否 kill
 #   - kill 后等待端口真正释放，失败则中止
 #   - serve 模式同时启动 notes watcher，自动重建 mkdocs.gen.yml
-#   - 指定 -Chat 时启动本机只读 Chat 服务（默认 Claude）
+#   - 指定 -Chat 时启动本机只读 Chat 服务（默认 Codex）
 #
 # 依赖: mkdocs + mkdocs-material（pipx install mkdocs-material）
 
@@ -25,8 +25,8 @@ param(
     [switch]$Chat,
     [switch]$NoChat,
     [string]$ChatHost = $(if ($env:NOTES_CHAT_HOST) { $env:NOTES_CHAT_HOST } else { "" }),
-    [ValidateSet("claude", "acp")]
-    [string]$ChatAgent = $(if ($env:NOTES_CHAT_AGENT) { $env:NOTES_CHAT_AGENT } else { "claude" }),
+    [ValidateSet("codex", "claude", "acp")]
+    [string]$ChatAgent = $(if ($env:NOTES_CHAT_AGENT) { $env:NOTES_CHAT_AGENT } else { "codex" }),
     [string]$ChatAgentCommand = $(if ($env:NOTES_CHAT_AGENT_COMMAND) { $env:NOTES_CHAT_AGENT_COMMAND } else { "" })
 )
 

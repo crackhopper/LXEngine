@@ -14,7 +14,7 @@
 #   - 每次执行都重新生成 mkdocs.gen.yml
 #   - 若目标端口已有旧服务，自动停止旧进程
 #   - 默认在后台拉起 notes supervisor，由它管理 mkdocs serve 和热加载
-#   - 指定 --chat 时启动本机只读 Chat 服务（默认 Claude）
+#   - 指定 --chat 时启动本机只读 Chat 服务（默认 Codex）
 #   - 输出 PID、日志路径、访问地址
 
 set -euo pipefail
@@ -264,7 +264,7 @@ MODE="background"
 ADDR="0.0.0.0:8110"
 CHAT_ENABLED="${NOTES_CHAT_ENABLED:-}"
 CHAT_HOST="${NOTES_CHAT_HOST:-}"
-CHAT_AGENT="${NOTES_CHAT_AGENT:-claude}"
+CHAT_AGENT="${NOTES_CHAT_AGENT:-codex}"
 CHAT_AGENT_COMMAND="${NOTES_CHAT_AGENT_COMMAND:-}"
 
 while [[ $# -gt 0 ]]; do
@@ -295,7 +295,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         --chat-agent)
             if [[ -z "${2:-}" ]]; then
-                echo "Error: --chat-agent requires claude or acp" >&2
+                echo "Error: --chat-agent requires codex, claude, or acp" >&2
                 exit 1
             fi
             CHAT_AGENT="$2"
@@ -320,8 +320,8 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ "${CHAT_AGENT}" != "claude" && "${CHAT_AGENT}" != "acp" ]]; then
-    echo "Error: --chat-agent must be claude or acp" >&2
+if [[ "${CHAT_AGENT}" != "codex" && "${CHAT_AGENT}" != "claude" && "${CHAT_AGENT}" != "acp" ]]; then
+    echo "Error: --chat-agent must be codex, claude, or acp" >&2
     exit 1
 fi
 
