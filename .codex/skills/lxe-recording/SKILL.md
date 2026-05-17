@@ -1,12 +1,12 @@
 ---
-name: lxe-editor-recording
+name: lxe-recording
 description: Use when recording, reading, replaying, or probing lxe_editor interaction recordings through lxe_manager MCP.
 ---
 
-# lxe-editor-recording
+# lxe_recording
 
 Use this skill only for recording artifacts and replay-based debugging. Ordinary
-state reads belong to `lxe-editor-debug`; process lifecycle work belongs to
+state reads belong to `lxe-debug`; process lifecycle work belongs to
 `lxe-manager-ops`.
 
 ## Tools
@@ -50,7 +50,7 @@ recording and stops with save.
    repeatedly mutating the editor.
 
 For complex scene-editing verification, prefer a saved use case under
-`notes/use_cases/lxe_editor/` and run it through `lxe-editor-use-case-runner`
+`notes/use_cases/lxe_editor/` and run it through `lxe-use-case-runner`
 instead of inventing a fresh sequence.
 
 If `recording_status` returns `editor_unavailable`, stop the recording workflow
@@ -66,8 +66,8 @@ loaded scene or record `scene load ...` as the first meaningful use-case step.
 - Do not record broad diagnostic or trace data unless the user accepts the cost.
 - If replay fails, report recording id/path, failed step id, completed step
   count, and the probe target used for follow-up.
-- Do not use this skill for command syntax discovery; load
-  `lxe-editor-command-reference` only when command payloads need verification.
+- Do not use this skill for command syntax discovery; use `lxe-debug` command
+  syntax lookup before sending non-trivial command payloads.
 - If testing reveals a code defect, fix it locally and use
-  `lxe-remote-fix-rebuild-retest` to push, pull, rebuild, restart, and rerun the
-  recording scenario.
+  `lxe-verify-implement` to push, pull, rebuild, restart, and rerun the
+  relevant scenario.

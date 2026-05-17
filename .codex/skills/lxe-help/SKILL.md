@@ -23,13 +23,10 @@ skills. All skills in this family use an `lxe-` directory/frontmatter prefix;
 |---|---|---|
 | `lxe-help` | Choosing among lxe skills or explaining the workflow family | Execute editor operations |
 | `lxe-manager-ops` | Checking process status, starting/stopping editor, pulling repo, configuring/building, reading logs | Inspect scene contents or command syntax |
-| `lxe-editor-debug` | Reading summary/cameras/selection, running small command-bus actions, pick probes, wait-for polling | Pull/build/restart workflows |
-| `lxe-editor-command-reference` | Verifying exact command-bus syntax before sending a command | Execute the command |
-| `lxe-editor-build-sync` | Comparing running editor build identity with local Git state | Rebuild or restart by itself |
-| `lxe-editor-recording` | Recording, reading, replaying, or probing editor interaction recordings | Ordinary state inspection |
-| `lxe-editor-use-case-runner` | Running saved agent-readable use cases under `notes/use_cases/lxe_editor/` | Broad process lifecycle management |
-| `lxe-remote-editor-refresh-restore` | Preserve current scene, stop remote editor, pull/build/restart, restore scene | Debug an unknown crash |
-| `lxe-remote-fix-rebuild-retest` | After a local editor/manager fix, deploy remotely and rerun the failing reproduction | Design a new reproduction from scratch |
+| `lxe-debug` | Diagnosing user-visible editor issues through MCP: summary/cameras/selection, small commands, picking, command syntax lookup, build identity checks, logs handoff | Pull/build/restart workflows |
+| `lxe-recording` | Recording, reading, replaying, or probing editor interaction recordings | Ordinary state inspection |
+| `lxe-use-case-runner` | Running saved agent-readable use cases under `notes/use_cases/lxe_editor/` | Broad process lifecycle management |
+| `lxe-remote-refresh-restore` | Preserve current scene, stop remote editor, pull/build/restart, restore scene | Debug an unknown crash |
 | `lxe-verify-implement` | Proving implementation changes are pushed, pulled, built, launched, command-smoked, and visually checked | Replace human visual confirmation for rendering features |
 
 ## Common Workflows
@@ -43,31 +40,29 @@ skills. All skills in this family use an `lxe-` directory/frontmatter prefix;
 
 ### I need to inspect or lightly change the current scene
 
-1. Use `lxe-editor-debug`.
+1. Use `lxe-debug`.
 2. Read summary first.
-3. Use `lxe-editor-command-reference` for any non-trivial command.
+3. For any non-trivial command, use `lxe-debug` command syntax lookup.
 4. Run one small command.
 5. Re-read the affected state.
 
 ### I fixed code and need remote verification
 
 1. Use `lxe-verify-implement` for the full push/pull/build/restart/check flow.
-2. Use `lxe-remote-fix-rebuild-retest` instead when there is a specific failing
-   reproduction to rerun after a fix.
-3. For renderer visual features, always tell the user exactly what to inspect
+2. For renderer visual features, always tell the user exactly what to inspect
    in the editor window.
 
 ### I need to preserve the current scene while updating the editor
 
-1. Use `lxe-remote-editor-refresh-restore`.
+1. Use `lxe-remote-refresh-restore`.
 2. Save or identify the current scene.
 3. Stop, pull, build, restart, reload.
 4. Verify summary after reload.
 
 ### I need a repeatable scenario
 
-1. Use `lxe-editor-recording` for capture/replay artifacts.
-2. Use `lxe-editor-use-case-runner` to execute saved use cases.
+1. Use `lxe-recording` for capture/replay artifacts.
+2. Use `lxe-use-case-runner` to execute saved use cases.
 3. Use `lxe-manager-ops` only for lifecycle prerequisites.
 
 ## Boundaries
@@ -83,7 +78,6 @@ skills. All skills in this family use an `lxe-` directory/frontmatter prefix;
 When in doubt:
 
 1. Need lifecycle/build/logs: `lxe-manager-ops`.
-2. Need scene state or one command: `lxe-editor-debug`.
-3. Need command syntax: `lxe-editor-command-reference`.
-4. Need deployed implementation proof: `lxe-verify-implement`.
-5. Need help choosing: `lxe-help`.
+2. Need scene state, one command, command syntax, picking, or build identity checks: `lxe-debug`.
+3. Need deployed implementation proof: `lxe-verify-implement`.
+4. Need help choosing: `lxe-help`.

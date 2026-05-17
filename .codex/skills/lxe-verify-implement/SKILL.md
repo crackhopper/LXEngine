@@ -12,12 +12,10 @@ editor commands, and leaves the user with a concrete visual check to perform.
 This skill composes these existing skills when needed:
 
 - `lxe-manager-ops` for process status, pull, build, logs, start/restart.
-- `lxe-editor-build-sync` when build identity must be compared.
-- `lxe-editor-command-reference` before issuing non-trivial command lines.
-- `lxe-editor-debug` for summary/camera/selection reads and small commands.
-- `lxe-editor-use-case-runner` for recorded or multi-step editor scenarios.
-- `lxe-remote-fix-rebuild-retest` when a local code fix must be deployed and
-  retested end to end.
+- `lxe-debug` for build identity checks, command syntax lookup,
+  summary/camera/selection reads, and small commands.
+- `lxe-use-case-runner` for recorded or multi-step editor scenarios.
+- `lxe-recording` for recording/replay artifacts.
 
 ## Preconditions
 
@@ -69,8 +67,8 @@ alignment before trusting the build.
 2. Read the current state:
    - `lxe_editor_get_summary`
    - `lxe_editor_get_cameras`
-3. If no intended scene is loaded, verify command syntax with
-   `lxe-editor-command-reference`, then load a scene through command bus:
+3. If no intended scene is loaded, verify command syntax with `lxe-debug`, then
+   load a scene through command bus:
 
 ```text
 scene load assets/scenes/lxe_editor.scene.yaml

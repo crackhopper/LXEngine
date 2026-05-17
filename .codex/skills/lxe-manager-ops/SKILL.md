@@ -7,7 +7,7 @@ description: Use when querying lxe_editor process status through lxe_manager, op
 
 Use this skill for checking whether `lxe_editor` is running and for operations
 that can start, stop, update, or rebuild the editor environment. Keep diagnostic
-probing in `lxe-editor-debug` and build comparison in `lxe-editor-build-sync`.
+probing and command syntax checks in `lxe-debug`.
 
 ## Tools
 
@@ -87,12 +87,11 @@ If manager reports CPU, memory, or IO guard termination:
 
 - Do not use destructive Git commands.
 - Do not restart a user-controlled editor unless the user approved that flow or
-  build-sync showed it is required.
-- Do not inspect command syntax here; use `lxe-editor-command-reference`.
+  build evidence showed it is required.
+- Do not inspect command syntax here; use `lxe-debug`.
 - Do not expand manager MCP tools for editor-local actions until checking
   whether the command console can expose the capability through
   `lxe_editor_command`. Prefer command-bus expansion when it avoids restarting
   the manager server.
 - After local fixes that must be deployed remotely, use
-  `lxe-remote-fix-rebuild-retest` for the full stop/pull/build/start/retest
-  workflow.
+  `lxe-verify-implement` for the full stop/pull/build/start/retest workflow.

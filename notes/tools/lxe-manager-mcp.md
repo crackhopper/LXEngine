@@ -169,34 +169,35 @@ MCP 来源操作；后续可以在 editor 内部继续扩展 toolbar、pick、dr
 
 ## Codex Skill 套装
 
-我们把 repo-local Codex skills 严格拆开，不维护总控 skill。每个 skill 只加载
-当前阶段需要的 MCP 面和工作流，避免 editor command 与 MCP 工具继续扩展后让
-单个上下文过大。
+我们把 repo-local Codex skills 收敛成 `lxe-` 前缀的一组入口。`lxe-debug`
+承担 MCP 调试主入口：状态读取、轻量 command、pick、wait-for、命令语法查证和
+build identity 判断都放在这里；进程、拉取和构建仍交给 `lxe-manager-ops`。
 
 | Skill | 何时使用 | 主要 MCP 面 |
 |---|---|---|
-| `lxe-editor-build-sync` | 需要确认远端 editor 是否由当前 Git 版本构建 | `editor.get_build_info` / `lxe_editor_get_build_info` |
+| `lxe-help` | 需要选择或解释 lxe skill 家族 | 当前 skill 索引 |
 | `lxe-manager-ops` | 需要查询 editor 是否启动，或需要 stop/start、pull、configure、build、查日志、处理资源守护失败 | `ops.editor_*`、`ops.repo_pull`、`ops.build_*` |
-| `lxe-editor-debug` | 需要读取状态、轻量 command、pick 或 wait-for | `lxe_editor_*` 和 `lxe-editor://...` 资源 |
-| `lxe-editor-recording` | 需要录制、读取、回放或 probe 调试录制文件 | `recording_*` |
-| `lxe-editor-command-reference` | 需要确认 editor command 名称、参数和示例 | 当前代码里的 command 注册与解析处 |
-| `lxe-editor-use-case-runner` | 需要执行 `notes/use_cases/lxe_editor/` 下的复杂业务场景 | 组合使用状态、command、recording、ops skills |
+| `lxe-debug` | 需要诊断用户遇到的 editor 问题，读取状态、查 command 语法、轻量 command、pick、wait-for 或 build identity | `lxe_editor_*`、`lxe-editor://...`、必要时读取 `ops.editor_logs` / `ops.build_state` |
+| `lxe-recording` | 需要录制、读取、回放或 probe 调试录制文件 | `recording_*` |
+| `lxe-use-case-runner` | 需要执行 `notes/use_cases/lxe_editor/` 下的复杂业务场景 | 组合使用状态、command、recording、ops skills |
+| `lxe-remote-refresh-restore` | 需要保留当前场景并远端 pull / build / restart / reload | `ops.*` + `lxe_editor_command` |
+| `lxe-verify-implement` | 需要证明实现已推送、远端拉取、构建、启动、命令 smoke，并提示用户目检 | `ops.*` + `lxe_editor_*` |
 
-典型顺序是先用 `lxe-editor-build-sync` 确认运行中的 editor commit；如果版本不匹配，
-再切到 `lxe-manager-ops` 完成停止、拉取、构建和启动。普通状态诊断只加载
-`lxe-editor-debug`。当问题需要复现证据时，再加载 `lxe-editor-recording`。只有
-准备发送非平凡 command 时，才加载 `lxe-editor-command-reference` 查证语法。
+典型顺序是先用 `lxe-debug` 读取 summary / cameras / selection，并在需要时比对
+运行中的 editor commit 或 `ops.build_state`。如果版本不匹配，再切到
+`lxe-manager-ops` 完成停止、拉取、构建和启动。当问题需要复现证据时，再加载
+`lxe-recording`；复杂业务路径使用 `lxe-use-case-runner`。
 
 如果任何 editor-facing 工具返回 `editor_unavailable`，我们先切到
 `lxe-manager-ops` 调 `ops.editor_status`。`{ "running": false }` 表示 manager
 可达但没有启动 editor；这时不应继续调用录制、debug 或 build-info 工具，除非
 随后用 `ops.editor_start` 启动了 editor。
 
-远端修复闭环使用 `lxe-remote-fix-rebuild-retest` 作为总入口。默认由 Codex 通过
-MCP 完成 stop / pull / build / start / retest；只有修改了 manager MCP server
-自身工具注册或 manager 无法热加载的代码时，才需要用户协助重启 MCP server。
-`ops.build_state` 是判断远端最近一次 build 对应 Git 版本的首选事实来源，不需要
-为了刷新 editor 编译宏而每次重新 configure。
+远端实现验证使用 `lxe-verify-implement` 作为总入口。默认由 Codex 通过 MCP 完成
+push / pull / build / start / smoke / visual-check prompt；只有修改了 manager MCP
+server 自身工具注册或 manager 无法热加载的代码时，才需要用户协助重启 MCP
+server。`ops.build_state` 是判断远端最近一次 build 对应 Git 版本的首选事实来源，
+不需要为了刷新 editor 编译宏而每次重新 configure。
 
 manager 代码变更后：
 
@@ -219,7 +220,7 @@ manager child 在返回响应后以退出码 `75` 退出；supervisor 看到 `75
 以及下一次 `starting lxe_manager`。
 
 复杂场景验证不要临时口头编排。把稳定流程写成
-`notes/use_cases/lxe_editor/*.md`，由 `lxe-editor-use-case-runner` 读取后调用
+`notes/use_cases/lxe_editor/*.md`，由 `lxe-use-case-runner` 读取后调用
 MCP 执行。当前固定录制场景是
 `notes/use_cases/lxe_editor/record-complex-scene-edit.md`。
 

@@ -1,9 +1,9 @@
 ---
-name: lxe-editor-use-case-runner
+name: lxe-use-case-runner
 description: Use when executing agent-readable lxe_editor use cases through lxe_manager MCP, especially complex scene editing, recording, replay, or remote regression scenarios.
 ---
 
-# lxe-editor-use-case-runner
+# lxe_use_case_runner
 
 Use this skill when the user asks to run a saved lxe_editor use case, a complex
 business workflow, or a repeatable remote MCP scenario.
@@ -24,12 +24,13 @@ than inventing a new ad-hoc scenario.
 
 1. Read the requested use case file.
 2. Use `lxe-manager-ops` to confirm manager/editor status.
-3. Use `lxe-editor-build-sync` before testing if the use case depends on recent
+3. Use `lxe-debug` build identity checks if the use case depends on recent
    code.
-4. If remote code is stale, use `lxe-remote-fix-rebuild-retest`.
-5. Use `lxe-editor-command-reference` before sending non-trivial command lines.
-6. Use `lxe-editor-debug` for state reads, command execution, pick, and waits.
-7. Use `lxe-editor-recording` for recording, reading, replaying, and probes.
+4. If remote code is stale, use `lxe-verify-implement`.
+5. Use `lxe-debug` command syntax lookup before sending non-trivial command
+   lines.
+6. Use `lxe-debug` for state reads, command execution, pick, and waits.
+7. Use `lxe-recording` for recording, reading, replaying, and probes.
 8. Record exact use case deviations, such as substitute node paths or alternate
    pick coordinates.
 9. Report the recording id/path, replay result, generated scene path, and any

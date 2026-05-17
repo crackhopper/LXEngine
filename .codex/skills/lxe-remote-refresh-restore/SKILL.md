@@ -1,9 +1,9 @@
 ---
-name: lxe-remote-editor-refresh-restore
+name: lxe-remote-refresh-restore
 description: Use when the MCP-managed remote lxe_editor must preserve the current scene, stop, pull latest code, build, restart, and reload the saved scene.
 ---
 
-# lxe-remote-editor-refresh-restore
+# lxe_remote_refresh_restore
 
 Use this skill when the user asks to update or relaunch the remote editor while
 preserving the current scene state.
@@ -11,8 +11,8 @@ preserving the current scene state.
 Coordinate with:
 
 - `lxe-manager-ops` for process, pull, build, and start operations.
-- `lxe-editor-command-reference` before issuing scene save/load commands.
-- `lxe-editor-debug` for state checks after restart.
+- `lxe-debug` command syntax lookup before issuing scene save/load commands.
+- `lxe-debug` for state checks after restart.
 
 ## Required Sequence
 

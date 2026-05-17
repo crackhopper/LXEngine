@@ -17,7 +17,7 @@
 - `ops.editor_status` 显示 editor 正在运行；如果没有运行，先用
   `ops.editor_start` 或远端修复工作流启动。
 - 远端 editor 的 build identity 应与当前 Git HEAD 匹配；如不匹配，使用
-  `lxe-remote-fix-rebuild-retest` 工作流拉取、构建并重启 editor。
+  `lxe-verify-implement` 工作流拉取、构建并重启 editor。
 - recording 默认可以是关闭状态，本流程会显式开启。
 
 ## 场景和坐标
