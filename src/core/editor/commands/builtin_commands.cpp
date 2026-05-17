@@ -501,6 +501,12 @@ makeVerbListJson(const std::vector<std::string> &verbs) {
   return oss.str();
 }
 
+[[nodiscard]] std::string makeVec2Json(const Vec2f &value) {
+  std::ostringstream oss;
+  oss << "{\"x\":" << value.x << ",\"y\":" << value.y << "}";
+  return oss.str();
+}
+
 [[nodiscard]] std::string makeQuatJson(const Quatf &value) {
   std::ostringstream oss;
   oss << "{\"w\":" << value.w << ",\"x\":" << value.v.x
@@ -1615,6 +1621,137 @@ makeLightDebugCamera(Scene &scene, EditorState &editorState,
   result.metadata["editor_camera.resync"] = "true";
   result.metadata["scene.rebuild"] = "true";
   return result;
+}
+
+[[nodiscard]] Vec3f projectToNdc(const Mat4f &viewProj,
+                                 const Vec3f &worldPoint) {
+  const Vec4f clip =
+      viewProj * Vec4f{worldPoint.x, worldPoint.y, worldPoint.z, 1.0f};
+  if (std::abs(clip.w) <= 1e-6f) {
+    return {};
+  }
+  return Vec3f{clip.x / clip.w, clip.y / clip.w, clip.z / clip.w};
+}
+
+[[nodiscard]] Vec2f ndcToImagePixel(const Vec3f &ndc, const float width,
+                                    const float height) {
+  return Vec2f{(ndc.x * 0.5f + 0.5f) * width, (0.5f - ndc.y * 0.5f) * height};
+}
+
+[[nodiscard]] std::vector<Vec3f>
+transformedLocalBoundsCorners(const SceneNode &node) {
+  const BoundingBox localBounds = node.getLocalBounds();
+  if (!localBounds.isValid()) {
+    return {};
+  }
+  const Mat4f world = node.getWorldTransform();
+  const Vec3f min = localBounds.min;
+  const Vec3f max = localBounds.max;
+  const Vec3f localCorners[8] = {
+      {min.x, min.y, min.z}, {max.x, min.y, min.z}, {min.x, max.y, min.z},
+      {max.x, max.y, min.z}, {min.x, min.y, max.z}, {max.x, min.y, max.z},
+      {min.x, max.y, max.z}, {max.x, max.y, max.z},
+  };
+
+  std::vector<Vec3f> corners;
+  corners.reserve(8);
+  for (const Vec3f &corner : localCorners) {
+    const Vec4f p = world * Vec4f{corner.x, corner.y, corner.z, 1.0f};
+    corners.push_back(Vec3f{p.x, p.y, p.z});
+  }
+  return corners;
+}
+
+[[nodiscard]] std::string
+projectedBoundsJson(const std::vector<Vec3f> &worldCorners,
+                    const Mat4f &viewProj, const float width,
+                    const float height) {
+  Vec2f minPixel{std::numeric_limits<float>::max(),
+                 std::numeric_limits<float>::max()};
+  Vec2f maxPixel{-std::numeric_limits<float>::max(),
+                 -std::numeric_limits<float>::max()};
+  std::ostringstream json;
+  json << "{\"corners\":[";
+  for (usize i = 0; i < worldCorners.size(); ++i) {
+    const Vec3f ndc = projectToNdc(viewProj, worldCorners[i]);
+    const Vec2f pixel = ndcToImagePixel(ndc, width, height);
+    minPixel.x = std::min(minPixel.x, pixel.x);
+    minPixel.y = std::min(minPixel.y, pixel.y);
+    maxPixel.x = std::max(maxPixel.x, pixel.x);
+    maxPixel.y = std::max(maxPixel.y, pixel.y);
+    if (i != 0) {
+      json << ',';
+    }
+    json << "{\"world\":" << makeVec3Json(worldCorners[i])
+         << ",\"ndc\":" << makeVec3Json(ndc)
+         << ",\"pixel\":" << makeVec2Json(pixel) << "}";
+  }
+  json << "],\"pixelBounds\":{\"min\":" << makeVec2Json(minPixel)
+       << ",\"max\":" << makeVec2Json(maxPixel) << "}}";
+  return json.str();
+}
+
+[[nodiscard]] CommandResult
+shadowProjectProbe(Scene &scene, const std::vector<std::string> &args) {
+  if (args.size() < 3 || args.size() > 5) {
+    return makeError("usage: debug shadow-project <node-path> <camera-path> "
+                     "<light-path> [width height]");
+  }
+  float width = 1920.0f;
+  float height = 1009.0f;
+  if (args.size() == 5) {
+    const auto parsedWidth = parseFloat(args[3]);
+    const auto parsedHeight = parseFloat(args[4]);
+    if (!parsedWidth || !parsedHeight || *parsedWidth <= 0.0f ||
+        *parsedHeight <= 0.0f) {
+      return makeError("invalid viewport size for debug shadow-project");
+    }
+    width = *parsedWidth;
+    height = *parsedHeight;
+  }
+
+  SceneNode *node = nullptr;
+  CommandResult found = requireNode(scene, args[0], node);
+  if (!found.ok) {
+    return found;
+  }
+  SceneNode *cameraNode = nullptr;
+  found = requireNode(scene, args[1], cameraNode);
+  if (!found.ok) {
+    return found;
+  }
+  const auto camera = cameraNode->getComponent<CameraComponent>();
+  if (!camera.has_value()) {
+    return makeError("debug shadow-project camera path is not a camera");
+  }
+  SceneNode *lightNode = nullptr;
+  found = requireNode(scene, args[2], lightNode);
+  if (!found.ok) {
+    return found;
+  }
+  const auto light =
+      std::dynamic_pointer_cast<DirectionalLight>(scene.getLight(*lightNode));
+  if (!light) {
+    return makeError("debug shadow-project light path is not directional");
+  }
+
+  const std::vector<Vec3f> worldCorners = transformedLocalBoundsCorners(*node);
+  if (worldCorners.empty()) {
+    return makeError("debug shadow-project node has no local bounds");
+  }
+
+  const Mat4f cameraViewProj =
+      camera->get().getProjMatrix() * camera->get().getViewMatrix();
+  const Mat4f shadowViewProj = light->getShadowViewProj();
+  std::ostringstream json;
+  json << "{\"nodePath\":\"" << jsonEscape(args[0]) << "\",\"cameraPath\":\""
+       << jsonEscape(args[1]) << "\",\"lightPath\":\"" << jsonEscape(args[2])
+       << "\",\"width\":" << width << ",\"height\":" << height << ",\"camera\":"
+       << projectedBoundsJson(worldCorners, cameraViewProj, width, height)
+       << ",\"shadow\":"
+       << projectedBoundsJson(worldCorners, shadowViewProj, width, height)
+       << "}";
+  return makeOk("shadow project probe", json.str());
 }
 
 [[nodiscard]] bool isPrimitiveAddKind(const std::string &kind) {
@@ -3073,6 +3210,20 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
           result.metadata["inverse.line"] = inverseLine;
         }
         return result;
+      });
+
+  bus.registerHandler(
+      "debug", "debug shadow-project <node-path> <camera-path> <light-path>",
+      [&scene](std::vector<std::string> args) {
+        if (args.empty()) {
+          return makeError("usage: debug shadow-project <node-path> "
+                           "<camera-path> <light-path> [width height]");
+        }
+        if (args[0] == "shadow-project") {
+          args.erase(args.begin());
+          return shadowProjectProbe(scene, args);
+        }
+        return makeError("unknown debug action: " + args[0]);
       });
 
   bus.registerHandler(
