@@ -80,6 +80,12 @@ void test_generic_loader_produces_valid_instance() {
   REQUIRE(b == 0.8f);
   REQUIRE(shiny == 12.0f);
 
+  const auto debugShadowMode = mat->readParameterValue(
+      StringID("MaterialUBO"), StringID("debugShadowMode"));
+  REQUIRE(debugShadowMode.has_value());
+  REQUIRE(debugShadowMode->type == MaterialParameterValueType::Int);
+  REQUIRE(debugShadowMode->intValue == 0);
+
   std::cout << "  generic loader produced valid instance with correct defaults\n";
 }
 

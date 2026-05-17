@@ -28,3 +28,4 @@ parameters:
   MaterialUBO.specularIntensity: 1.0
   MaterialUBO.enableAlbedo: 0
   MaterialUBO.enableNormal: 0
+  MaterialUBO.debugShadowMode: 0

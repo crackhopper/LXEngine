@@ -289,7 +289,20 @@ static bool testBlinnPhongMaterialUboMembers(const std::filesystem::path &vertPa
     return false;
   }
 
-  // 4.6 non-UBO bindings have empty members (check sampler2D bindings)
+  // 4.6 debugShadowMode: Int diagnostic switch for shadow sampling.
+  const auto *debugShadowMode =
+      findMember(materialBinding->get(), "debugShadowMode");
+  if (!debugShadowMode) {
+    std::cerr << "  FAIL: debugShadowMode member missing\n";
+    return false;
+  }
+  if (debugShadowMode->type != ShaderPropertyType::Int) {
+    std::cerr << "  FAIL: debugShadowMode expected Int, got "
+              << shaderPropertyTypeName(debugShadowMode->type) << "\n";
+    return false;
+  }
+
+  // 4.7 non-UBO bindings have empty members (check sampler2D bindings)
   for (const auto &b : bindings) {
     if (b.type == ShaderPropertyType::Texture2D && !b.members.empty()) {
       std::cerr << "  FAIL: Texture2D binding '" << b.name

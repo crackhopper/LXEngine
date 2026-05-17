@@ -42,7 +42,7 @@ layout(set = 2, binding = 0) uniform MaterialUBO {
     float specularIntensity;
     int enableAlbedo;
     int enableNormal;
-    int padding;
+    int debugShadowMode;
 } material;
 
 #ifdef USE_UV
@@ -154,6 +154,10 @@ void main() {
     vec3 V = normalize(camera.eyePos - vWorldPos);
     float diff = max(dot(N, L), 0.0);
     float shadowVisibility = sampleShadowMap(vWorldPos, N, L);
+    if (material.debugShadowMode == 1) {
+        outColor = vec4(vec3(shadowVisibility), 1.0);
+        return;
+    }
     float shadowStrength = clamp(sceneLight.shadowParams.z, 0.0, 1.0);
     float directVisibility = mix(1.0, shadowVisibility, shadowStrength);
     vec3 diffuse = diff * sceneLight.color.rgb;
