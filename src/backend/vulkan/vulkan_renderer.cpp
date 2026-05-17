@@ -495,7 +495,8 @@ public:
     auto cmd = m_cmdBufferMgr->allocateBuffer();
     cmd->begin();
 
-    const bool skipGuiFrame = expEnvEnabled("LX_RENDER_SKIP_GUI_FRAME");
+    const bool skipGuiFrame = expEnvEnabled("LX_RENDER_SKIP_GUI_FRAME") ||
+                              m_pendingScreenDump.has_value();
 
     bool swapchainRenderPassActive = false;
     bool guiFrameActive = false;
@@ -825,13 +826,20 @@ private:
     if (!m_scene) {
       return nullptr;
     }
+    LX_core::DirectionalLightSharedPtr fallback;
     for (const auto &light : m_scene->getLights()) {
       if (auto directional =
               std::dynamic_pointer_cast<LX_core::DirectionalLight>(light)) {
-        return directional;
+        if (!fallback && directional->supportsPass(LX_core::Pass_Shadow)) {
+          fallback = directional;
+        }
+        if (directional->supportsPass(LX_core::Pass_Shadow) &&
+            directional->getSceneNode()) {
+          return directional;
+        }
       }
     }
-    return nullptr;
+    return fallback;
   }
 
   std::optional<std::reference_wrapper<LX_core::CameraComponent>>
