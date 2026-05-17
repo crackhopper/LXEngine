@@ -1,6 +1,7 @@
 #include "core/rhi/index_buffer.hpp"
 #include "core/asset/material_instance.hpp"
 #include "core/asset/mesh.hpp"
+#include "core/frame_graph/render_target.hpp"
 #include "core/pipeline/pipeline_key.hpp"
 #include "core/asset/shader.hpp"
 #include "core/asset/skeleton.hpp"
@@ -193,6 +194,38 @@ void testToDebugStringSmoke() {
   std::cout << "  debug: " << s << "\n";
 }
 
+void testPipelineKeyIncludesTargetSignature() {
+  auto f = Fixture::make();
+  auto node = SceneNode::create("pipeline_identity_target_node");
+  node->addComponent<MeshComponent>(f.mesh);
+  node->addComponent<MaterialComponent>(f.material);
+
+  const StringID objectSig = node->getPipelineSignature(Pass_Forward);
+  const StringID materialSig = f.material->getPipelineSignature(Pass_Forward);
+
+  const auto swapchain =
+      RenderTargetDesc::swapchain(ImageFormat::BGRA8, ImageFormat::D32Float);
+  const auto offscreen = RenderTargetDesc::offscreenColor(ImageFormat::RGBA8);
+  const auto depthOnly = RenderTargetDesc::offscreenDepth(ImageFormat::D32Float);
+
+  const PipelineKey kSwap =
+      PipelineKey::build(objectSig, materialSig, swapchain.getPipelineSignature());
+  const PipelineKey kOff =
+      PipelineKey::build(objectSig, materialSig, offscreen.getPipelineSignature());
+  const PipelineKey kDepth =
+      PipelineKey::build(objectSig, materialSig, depthOnly.getPipelineSignature());
+
+  EXPECT(kSwap != kOff, "swapchain and offscreen targets must not collide");
+  EXPECT(kSwap != kDepth, "swapchain and depth-only targets must not collide");
+  EXPECT(kOff != kDepth, "offscreen color and depth-only targets must not collide");
+
+  const std::string debug = GlobalStringTable::get().toDebugString(kSwap.id);
+  EXPECT(debug.find("TargetRender(") != std::string::npos,
+         "debug string must contain TargetRender(, got: " + debug);
+  EXPECT(debug.find("RenderTarget:role=swapchain") != std::string::npos,
+         "debug string must include render target signature, got: " + debug);
+}
+
 } // namespace
 
 int main() {
@@ -204,6 +237,7 @@ int main() {
   testSkeletonPresenceDoesNotProduceDifferentKey();
   testDifferentPassProducesDifferentKey();
   testToDebugStringSmoke();
+  testPipelineKeyIncludesTargetSignature();
 
   if (failures > 0) {
     std::cerr << "FAILED: " << failures << " assertion(s)\n";

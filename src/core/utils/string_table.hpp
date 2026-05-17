@@ -35,6 +35,7 @@ enum class TypeTag : u8 {
   MaterialPassDefinition,
   MaterialRender,
   ObjectRender,
+  TargetRender,
   PipelineKey,
 };
 

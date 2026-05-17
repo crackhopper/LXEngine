@@ -30,6 +30,8 @@ std::string_view tagName(TypeTag tag) {
     return "MaterialRender";
   case TypeTag::ObjectRender:
     return "ObjectRender";
+  case TypeTag::TargetRender:
+    return "TargetRender";
   case TypeTag::PipelineKey:
     return "PipelineKey";
   }

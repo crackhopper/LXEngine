@@ -1,6 +1,7 @@
 #pragma once
 #include "core/pipeline/pipeline_key.hpp"
 #include "core/asset/shader.hpp"
+#include "core/frame_graph/render_target.hpp"
 #include "core/math/ray.hpp"
 #include "core/scene/scene_events.hpp"
 #include "core/scene/components/camera_component.hpp"
@@ -34,7 +35,7 @@ using ShaderPtr = IShaderSharedPtr;
 
 字段拆分体现两个边界：
 
-- `shaderInfo / pipelineKey / pass`：决定走哪条 pipeline，是 pipeline cache 的 key 来源
+- `shaderInfo / pipelineKey / pass / target`：决定走哪条 pipeline，是 pipeline cache 的 key 来源
 - `vertexBuffer / indexBuffer / drawData / descriptorResources`：决定这次 draw 的数据来源
 - `material`：保留材质句柄是为了 `PipelineBuildDesc::fromRenderingItem` 反查 render state
   和 owned binding 表，而不是 backend 直接读它
@@ -53,6 +54,9 @@ struct RenderingItem {
   std::vector<IGpuResourceSharedPtr> descriptorResources; // 材质 + skeleton 等资源
 
   StringID pass;
+  RenderTargetDesc target;
+  StringID objectSignature;
+  StringID materialSignature;
   PipelineKey pipelineKey;
 };
 

@@ -542,8 +542,9 @@ void SceneNode::rebuildValidatedCache() {
     data.indexBuffer = getIndexBuffer();
     data.descriptorResources = std::move(descriptorResources);
     data.objectSignature = getPipelineSignature(pass);
-    data.pipelineKey = PipelineKey::build(
-        data.objectSignature, material->getPipelineSignature(pass));
+    data.materialSignature = material->getPipelineSignature(pass);
+    data.pipelineKey = PipelineKey::build(data.objectSignature,
+                                          data.materialSignature);
     m_validatedPasses[pass] = std::move(data);
   }
 }

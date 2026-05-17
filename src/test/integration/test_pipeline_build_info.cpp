@@ -76,9 +76,20 @@ private:
   std::vector<VertexInputAttribute> m_vertexInputs;
 };
 
+SceneNodeSharedPtr makeCameraNodeWithTarget(const RenderTarget &target) {
+  static int cameraCounter = 0;
+  auto node = SceneNode::create("pipeline_build_info_camera_" +
+                                std::to_string(++cameraCounter));
+  auto camera = node->addComponent<CameraComponent>();
+  camera->get().setTarget(target);
+  camera->get().updateMatrices();
+  return node;
+}
+
 RenderingItem
 buildItem(PrimitiveTopology topo = PrimitiveTopology::TriangleList,
-          std::vector<VertexInputAttribute> vertexInputs = {}) {
+          std::vector<VertexInputAttribute> vertexInputs = {},
+          const RenderTarget &target = {}) {
   std::vector<ShaderResourceBinding> bindings = {
       ShaderResourceBinding{"CameraUBO",
                             0,
@@ -145,8 +156,8 @@ buildItem(PrimitiveTopology topo = PrimitiveTopology::TriangleList,
   node->addComponent<MeshComponent>(mesh);
   node->addComponent<MaterialComponent>(material);
   auto scene = Scene::create(node);
-  scene->addCamera(LX_test::makeDefaultCameraNodeWithTarget());
-  return LX_test::firstItemFromScene(*scene, Pass_Forward);
+  scene->addCamera(makeCameraNodeWithTarget(target));
+  return LX_test::firstItemFromScene(*scene, Pass_Forward, target);
 }
 
 // ---------------------------------------------------------------------------
@@ -203,6 +214,16 @@ void testFromRenderingItemIsDeterministic() {
   EXPECT(a.key == b.key, "deterministic key");
   EXPECT(a.bindings.size() == b.bindings.size(), "deterministic bindings size");
   EXPECT(a.topology == b.topology, "deterministic topology");
+}
+
+void testFromRenderingItemPreservesTargetDesc() {
+  const auto targetDesc = RenderTargetDesc::offscreenDepth(ImageFormat::D32Float);
+  const RenderTarget target{targetDesc};
+  auto item = buildItem(PrimitiveTopology::TriangleList, {}, target);
+  auto info = PipelineBuildDesc::fromRenderingItem(item);
+
+  EXPECT(item.target == targetDesc, "rendering item should carry target desc");
+  EXPECT(info.target == targetDesc, "build desc should preserve target desc");
 }
 
 void testFromRenderingItemFiltersVertexLayoutToShaderInputs() {
@@ -274,6 +295,7 @@ int main() {
   testFromRenderingItemTopology();
   testFromRenderingItemRenderStateFromMaterial();
   testFromRenderingItemIsDeterministic();
+  testFromRenderingItemPreservesTargetDesc();
   testFromRenderingItemFiltersVertexLayoutToShaderInputs();
 
   if (failures > 0) {

@@ -507,6 +507,46 @@ void testCollectAcrossMultiplePasses() {
          "same pipeline key across two passes dedupes to 1 info");
 }
 
+void testFrameGraphKeepsDifferentTargetsAsDifferentBuildDescs() {
+  auto r = makeRenderable();
+  auto scene = Scene::create(r);
+
+  const auto targetA =
+      RenderTargetDesc::swapchain(ImageFormat::BGRA8, ImageFormat::D32Float);
+  const auto targetB = RenderTargetDesc::offscreenColor(ImageFormat::RGBA8);
+
+  scene->addCamera(makeCameraWithTarget(RenderTarget{targetA}));
+  scene->addCamera(makeCameraWithTarget(RenderTarget{targetB}));
+
+  FrameGraph fg;
+  fg.addPass(FramePass{Pass_Forward, targetA, {}});
+  fg.addPass(FramePass{Pass_Forward, targetB, {}});
+  fg.buildFromScene(*scene);
+
+  const auto infos = fg.collectAllPipelineBuildDescs();
+  EXPECT(infos.size() == 2,
+         "same object/material on different targets should keep two build descs");
+}
+
+void testFrameGraphDedupesExactSameTargetBuildDescs() {
+  auto r = makeRenderable();
+  auto scene = Scene::create(r);
+
+  auto target =
+      RenderTargetDesc::swapchain(ImageFormat::BGRA8, ImageFormat::D32Float);
+  target.sampleCount = 4;
+  scene->addCamera(makeCameraWithTarget(RenderTarget{target}));
+
+  FrameGraph fg;
+  fg.addPass(FramePass{Pass_Forward, target, {}});
+  fg.addPass(FramePass{Pass_Forward, target, {}});
+  fg.buildFromScene(*scene);
+
+  const auto infos = fg.collectAllPipelineBuildDescs();
+  EXPECT(infos.size() == 1,
+         "same object/material on exact same target should dedupe");
+}
+
 void testVisibilityMaskFiltersRenderables() {
   const RenderTarget target{ImageFormat::BGRA8, ImageFormat::D32Float, 2};
 
@@ -523,8 +563,8 @@ void testVisibilityMaskFiltersRenderables() {
   const auto &items = fg.getPasses()[0].queue.getItems();
   EXPECT(items.size() == 1, "only mask-visible renderable enters queue");
   if (items.size() == 1) {
-    EXPECT(items[0].pipelineKey ==
-               visible->getValidatedPassData(Pass_Forward)->get().pipelineKey,
+    const auto &validated = visible->getValidatedPassData(Pass_Forward)->get();
+    EXPECT(items[0].objectSignature == validated.objectSignature,
            "visible renderable survives mask culling");
   }
 }
@@ -619,6 +659,8 @@ int main() {
   testFrameGraphCompileReportsUnnamedWrite();
   testBuildFromSceneIsIdempotent();
   testCollectAcrossMultiplePasses();
+  testFrameGraphKeepsDifferentTargetsAsDifferentBuildDescs();
+  testFrameGraphDedupesExactSameTargetBuildDescs();
   testPassFilterExcludesNonMatching();
   testMultiPassRebuildIsIdempotent();
   testMultiCameraTargetFilter();

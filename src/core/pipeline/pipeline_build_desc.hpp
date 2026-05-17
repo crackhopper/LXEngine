@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/frame_graph/render_target.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/asset/material_instance.hpp"
 #include "core/pipeline/pipeline_key.hpp"
@@ -41,6 +42,7 @@ identity。这样前端的 SceneNode/RenderQueue 负责把 draw 事实准备好�
 */
 struct PipelineBuildDesc {
   PipelineKey key;
+  RenderTargetDesc target;
   std::vector<ShaderStageCode> stages;
   std::vector<ShaderResourceBinding> bindings;
   VertexLayout vertexLayout;

@@ -66,6 +66,7 @@ struct ValidatedRenderablePassData {
   IGpuResourceSharedPtr indexBuffer;
   std::vector<IGpuResourceSharedPtr> descriptorResources;
   StringID objectSignature;
+  StringID materialSignature;
   PipelineKey pipelineKey;
 };
 

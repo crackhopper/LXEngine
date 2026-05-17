@@ -66,6 +66,7 @@ PipelineBuildDesc::fromRenderingItem(const RenderingItem &item) {
 
   PipelineBuildDesc info;
   info.key = item.pipelineKey;
+  info.target = item.target;
   info.stages = item.shaderInfo->getAllStages();
   info.bindings = item.shaderInfo->getReflectionBindings();
 

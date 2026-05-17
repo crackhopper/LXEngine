@@ -10,12 +10,13 @@ namespace LX_core {
 vertex layout 的副本，而是要求调用方先把 object-side 和 material-side 的结构事实
 各自归约成 signature，再在这里做最后一次 compose。
 
-当前形状是：
+当前 queue build 之后的完整形状是：
 
 ```text
 PipelineKey(
   ObjectRender(mesh signature),
-  MaterialRender(material pass signature)
+  MaterialRender(material pass signature),
+  TargetRender(render target signature)
 )
 ```
 
@@ -38,6 +39,8 @@ struct PipelineKey {
   /// `IRenderable::getPipelineSignature(pass)` 与
   /// `MaterialInstance::getPipelineSignature(pass)` 先各自组装结构化签名，再传入本函数。
   static PipelineKey build(StringID objectSig, StringID materialSig);
+  static PipelineKey build(StringID objectSig, StringID materialSig,
+                           StringID targetSig);
 };
 
 } // namespace LX_core

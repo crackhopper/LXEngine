@@ -29,6 +29,8 @@ RenderingItem makeItemFromValidatedData(const ValidatedRenderablePassData &data)
   item.shaderInfo = data.shaderInfo;
   item.material = data.material;
   item.pass = data.pass;
+  item.objectSignature = data.objectSignature;
+  item.materialSignature = data.materialSignature;
   item.pipelineKey = data.pipelineKey;
   return item;
 }
@@ -82,6 +84,10 @@ void RenderQueue::buildFromScene(const Scene &scene, StringID pass,
       continue;
 
     RenderingItem item = makeItemFromValidatedData(validated->get());
+    item.target = target.toDesc();
+    item.pipelineKey =
+        PipelineKey::build(item.objectSignature, item.materialSignature,
+                           item.target.getPipelineSignature());
 
     item.descriptorResources.insert(item.descriptorResources.end(),
                                     sceneResources.begin(),
