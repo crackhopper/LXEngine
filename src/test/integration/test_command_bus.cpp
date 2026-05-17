@@ -675,6 +675,9 @@ void testBuiltinAddRemoveSetCommands() {
   const CommandResult setLightDirection =
       fixture.bus.dispatch("set /dir_light.direction 0 -1 0");
   EXPECT(setLightDirection.ok, "set light direction succeeds");
+  EXPECT(setLightDirection.metadata.find("scene.rebuild") !=
+             setLightDirection.metadata.end(),
+         "set light direction requests shadow cascade rebuild");
 
   const CommandResult setLightColor =
       fixture.bus.dispatch("set /dir_light.color 0.2 0.4 0.6");
@@ -689,10 +692,16 @@ void testBuiltinAddRemoveSetCommands() {
   const CommandResult setLightShadowDistance =
       fixture.bus.dispatch("set /dir_light.shadowDistance 120");
   EXPECT(setLightShadowDistance.ok, "set light shadow distance succeeds");
+  EXPECT(setLightShadowDistance.metadata.find("scene.rebuild") !=
+             setLightShadowDistance.metadata.end(),
+         "set shadowDistance requests shadow cascade rebuild");
   const CommandResult setLightShadowCascadeCount =
       fixture.bus.dispatch("set /dir_light.shadowCascadeCount 2");
   EXPECT(setLightShadowCascadeCount.ok,
          "set light shadow cascade count succeeds");
+  EXPECT(setLightShadowCascadeCount.metadata.find("scene.rebuild") !=
+             setLightShadowCascadeCount.metadata.end(),
+         "set shadowCascadeCount requests shadow cascade rebuild");
   const auto dirLight = std::dynamic_pointer_cast<DirectionalLight>(
       fixture.scene->getLights().front());
   EXPECT(nearlyEqual(dirLight->getDirection().x, 0.0f) &&

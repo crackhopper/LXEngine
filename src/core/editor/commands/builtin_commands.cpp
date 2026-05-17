@@ -1918,8 +1918,10 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
     } else {
       return makeError("field not available on node: direction");
     }
-    return makeOk("direction updated",
-                  "{\"value\":" + makeVec3Json(*value) + "}");
+    CommandResult result =
+        makeOk("direction updated", "{\"value\":" + makeVec3Json(*value) + "}");
+    result.metadata["scene.rebuild"] = "true";
+    return result;
   }
   if (field == "light.color" || field == "color") {
     if (args.size() != valueStartIndex + 3) {
@@ -1998,9 +2000,11 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
       return makeError("invalid float for set shadowDistance");
     }
     directional->setShadowDistance(*value);
-    return makeOk(
+    CommandResult result = makeOk(
         "shadowDistance updated",
         "{\"value\":" + formatFloat(directional->getShadowDistance()) + "}");
+    result.metadata["scene.rebuild"] = "true";
+    return result;
   }
   if (field == "light.shadowCascadeCount" || field == "shadowCascadeCount") {
     if (args.size() != valueStartIndex + 1) {
@@ -2015,8 +2019,11 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
       return makeError("invalid unsigned for set shadowCascadeCount");
     }
     directional->setShadowCascadeCount(*value);
-    return makeOk("shadowCascadeCount updated",
-                  makeUnsignedJson(directional->getShadowCascadeCount()));
+    CommandResult result = makeOk(
+        "shadowCascadeCount updated",
+        makeUnsignedJson(directional->getShadowCascadeCount()));
+    result.metadata["scene.rebuild"] = "true";
+    return result;
   }
   if (field == "light.castsShadow" || field == "castsShadow") {
     if (args.size() != valueStartIndex + 1) {
