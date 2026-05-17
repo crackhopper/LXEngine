@@ -26,7 +26,7 @@ passes:
   Shadow:
     shader: shadow_depth_only
     renderState:
-      cullMode: Back
+      cullMode: Front
       depthTest: true
       depthWrite: true
 

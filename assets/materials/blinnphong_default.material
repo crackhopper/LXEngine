@@ -9,7 +9,7 @@ variantRules:
 passes:
   Forward:
     renderState:
-      cullMode: Back
+      cullMode: Front
       depthTest: true
       depthWrite: true
   Shadow:

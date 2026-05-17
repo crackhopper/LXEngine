@@ -351,7 +351,7 @@ void test_textured_character_material_has_projected_shadow_pass() {
   REQUIRE(mat->getPassShader(Pass_Shadow)->getShaderName() ==
           "shadow_depth_only");
   REQUIRE(!mat->getPassRenderState(Pass_Shadow).blendEnable);
-  REQUIRE(mat->getPassRenderState(Pass_Shadow).cullMode == CullMode::Back);
+  REQUIRE(mat->getPassRenderState(Pass_Shadow).cullMode == CullMode::Front);
   REQUIRE(mat->getPassRenderState(Pass_Shadow).depthWriteEnable);
 
   std::cout << "  textured character material exposes depth Shadow pass\n";
