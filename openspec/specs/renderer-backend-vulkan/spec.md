@@ -108,10 +108,19 @@ The VulkanTexture SHALL support:
 - Staging buffer for pixel data transfer
 - Image layout transitions using pipeline barriers
 - Creating image views for shader access
+- Creating sampled color or depth/stencil attachments for FrameGraph resources via `createForAttachment(...)`, validating that requested usage bits are compatible with the image format and aspect mask
 
 #### Scenario: Texture creation from pixel data
 - **WHEN** Creating a 2D texture with 256x256 RGBA pixels
 - **THEN** Texture SHALL be created with VkFormat VK_FORMAT_R8G8B8A8_UNORM and image layout transitioned to VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+
+#### Scenario: Sampled depth attachment creation
+- **WHEN** `VulkanTexture::createForAttachment(...)` is called for `VK_FORMAT_D32_SFLOAT` with depth-stencil attachment usage plus sampled usage and depth aspect
+- **THEN** a valid image, image view, and sampler are created for later shader sampling
+
+#### Scenario: Invalid attachment usage is rejected
+- **WHEN** `VulkanTexture::createForAttachment(...)` is called with color attachment usage for a depth format
+- **THEN** the call throws a clear runtime error instead of creating an invalid Vulkan image
 
 ### Requirement: VulkanShader shall load SPIR-V shader modules
 
@@ -213,7 +222,7 @@ The VulkanPipeline SHALL consume a `LX_core::PipelineBuildDesc` (from the `pipel
 - Building `VkDescriptorSetLayout`s from `buildInfo.bindings` (reflected `ShaderResourceBinding` list) — one layout per distinct `set` number, each layout populated from the `(binding, type, stageFlags)` of every `ShaderResourceBinding` whose `set` matches
 - Creating a pipeline layout with the derived descriptor set layouts and the `buildInfo.pushConstant` range
 - Defining vertex input state from `buildInfo.vertexLayout`
-- Configuring rasterization, input assembly, viewport, depth stencil, color blending from `buildInfo.renderState` and `buildInfo.topology`
+- Configuring rasterization, input assembly, viewport, depth stencil, and color blending from `buildInfo.renderState`, `buildInfo.topology`, and `buildInfo.target`
 - Creating the final `VkPipeline` via `vkCreateGraphicsPipelines`
 
 The pipeline class SHALL NOT accept any legacy `PipelineSlotDetails` vector and SHALL NOT key descriptor layout construction on hardcoded slot enums.
@@ -222,6 +231,10 @@ The pipeline class SHALL NOT accept any legacy `PipelineSlotDetails` vector and 
 
 - **WHEN** A caller invokes pipeline creation with a `PipelineBuildDesc` whose `bindings` contains a UBO at set 0 binding 0, a sampler at set 2 binding 1, and whose `vertexLayout` includes position+normal+uv
 - **THEN** The constructed `VulkanPipeline` exposes exactly the descriptor set layouts and vertex input attributes described by the build info, with no reference to any shader-name lookup table
+
+#### Scenario: Depth-only pipeline has no color attachment state
+- **WHEN** A caller invokes pipeline creation with `buildInfo.target` equal to `RenderTargetDesc::offscreenDepth(ImageFormat::D32Float)`
+- **THEN** the color blend attachment count is zero and the pipeline is compatible with a depth-only render pass
 
 ### Requirement: toImageFormat translates VkFormat to core ImageFormat
 The Vulkan backend SHALL provide `LX_core::ImageFormat toImageFormat(VkFormat)` as the reverse of `VkFormat toVkFormat(LX_core::ImageFormat)`. The translation is the backend's side of the core/backend format boundary — core code SHALL NOT reference `VkFormat` and SHALL NOT need to know about this function.
@@ -254,20 +267,25 @@ The VulkanRenderer SHALL implement:
   - Store the scene pointer
   - Derive the swapchain `RenderTarget` via a backend helper `makeSwapchainTarget()` that reads `device->getSurfaceFormat()` and `device->getDepthFormat()` and converts via `toImageFormat(VkFormat)`. The resulting `RenderTarget` SHALL have a real non-default `colorFormat` and `depthFormat`.
   - Before building the frame graph, iterate `scene->getCameras()` and call `cam->setTarget(swapchainTarget)` on every camera whose `getTarget().has_value() == false`. This backfill SHALL happen before `m_frameGraph.buildFromScene(*scene)`.
-  - Reset `m_frameGraph` to a fresh instance on each `initScene` call, then call `m_frameGraph.addPass(FramePass{Pass_Forward, swapchainTarget, {}})` (additional passes MAY be added in future changes).
+  - Reset `m_frameGraph` to a fresh instance on each `initScene` call.
+  - Add a minimal offscreen depth pass before the swapchain passes: `Pass_Shadow` targets `RenderTargetDesc::offscreenDepth(swapchainTarget.depthFormat)` and writes `shadow.depth`.
+  - Add `Pass_Forward` targeting the swapchain desc, reading `shadow.depth` as a sampled frame-graph resource, and writing `swapchain.color` plus `swapchain.depth`.
+  - Add the swapchain debug-overlay pass after the forward pass. The overlay pass MAY have an empty queue and no frame-graph resource writes.
   - Call `m_frameGraph.buildFromScene(*scene)` so every `FramePass::queue` is populated via `RenderQueue::buildFromScene(scene, pass.name, pass.target)`.
+  - Call `m_frameGraph.compile()` and throw the compiled graph's `errorText()` if it is invalid.
+  - Reset per-compiled-pass offscreen framebuffer storage and clear stale frame-graph attachments after a successful compile.
   - Iterate `m_frameGraph.getPasses() × pass.queue.getItems()` to sync every item's vertex / index / descriptor resources and initialize `objectInfo` push-constants.
   - Call `resourceManager->preloadPipelines(m_frameGraph.collectAllPipelineBuildDescs())`.
   - SHALL NOT side-channel-inject any camera or light UBO into `RenderingItem::descriptorResources`. Scene-level UBOs flow through `Scene::getSceneLevelResources(pass, target)` merged inside `RenderQueue::buildFromScene`.
 - `uploadData()`: Iterate `m_frameGraph.getPasses() × pass.queue.getItems()` and `syncResource` every item's vertex buffer, index buffer, and descriptor resources.
-- `draw()`: Acquire image, record commands, iterate `m_frameGraph.getPasses() × pass.queue.getItems()` binding the pipeline/resources and calling `cmd->drawItem(item)` for each, submit, present.
+- `draw()`: Acquire image, record commands, iterate compiled frame-graph passes in order, create/transition offscreen attachments for offscreen passes, begin each pass's compatible render pass/framebuffer, iterate the matching `m_frameGraph.getPasses()[i].queue.getItems()` binding the pipeline/resources and calling `cmd->drawItem(item)` for each, transition offscreen writes to shader-read layout, submit, present.
 - Resolving the bound graphics pipeline using `RenderingItem::pipelineKey` and the resource manager pipeline cache on each draw.
 
-The `VulkanRenderer::Impl` class SHALL hold the `FrameGraph` as a member whose lifetime matches the scene binding. The `Impl` class SHALL NOT hold a cached single `RenderingItem` member.
+The `VulkanRenderer::Impl` class SHALL hold both `FrameGraph` and `CompiledFrameGraph` members whose lifetime matches the scene binding. The `Impl` class SHALL NOT hold a cached single `RenderingItem` member.
 
 #### Scenario: Triangle rendering loop
 - **WHEN** Renderer has initialized with a scene containing one `SceneNode` and one `Camera` whose target is `nullopt`
-- **THEN** `initScene` derives the swapchain target, backfills the camera's target to it, builds the frame graph with one pass whose target equals the backfilled camera target, and `draw()` iterates the one pass × one item path calling `acquireNextImage` / `beginCommandBuffer` / `beginRenderPass` / `bindPipeline` / `bindResources` / `drawItem` / `endRenderPass` / `endCommandBuffer` / `queueSubmit` / `present`
+- **THEN** `initScene` derives the swapchain target, backfills the camera's target to it, builds and compiles the frame graph, and `draw()` executes the compiled pass order using compatible render passes and framebuffers before submit/present
 
 #### Scenario: Backfill happens before buildFromScene
 - **WHEN** a scene has a camera with `getTarget().has_value() == false` and `initScene(scene)` is called
@@ -279,7 +297,15 @@ The `VulkanRenderer::Impl` class SHALL hold the `FrameGraph` as a member whose l
 
 #### Scenario: No side-channel UBO injection
 - **WHEN** `initScene(scene)` is called on a scene with one camera (nullopt target, backfilled by initScene) and one directional light whose pass mask includes Forward
-- **THEN** each resulting `RenderingItem` in `m_frameGraph.getPasses()[0].queue` carries the camera UBO and the light UBO in its `descriptorResources`, produced entirely by `RenderQueue::buildFromScene` via `Scene::getSceneLevelResources(Pass_Forward, swapchainTarget)`. No code inside `VulkanRenderer::Impl::initScene` manually pushes UBOs into any item.
+- **THEN** each resulting `RenderingItem` in the `Pass_Forward` queue carries the camera UBO and the light UBO in its `descriptorResources`, produced entirely by `RenderQueue::buildFromScene` via `Scene::getSceneLevelResources(Pass_Forward, swapchainTarget)`. No code inside `VulkanRenderer::Impl::initScene` manually pushes UBOs into any item.
+
+#### Scenario: Offscreen depth pass executes before swapchain pass
+- **WHEN** `initScene(scene)` succeeds and the scene has a renderable supporting `Pass_Shadow` and `Pass_Forward`
+- **THEN** the compiled frame graph contains at least the shadow depth pass before the forward pass, `draw()` renders the offscreen depth pass first, transitions `shadow.depth` to shader-read layout, and then records the forward swapchain pass
+
+#### Scenario: Submit failure consumes acquired semaphore
+- **WHEN** image acquire succeeds but queue submission fails after the per-frame fence has been reset
+- **THEN** the renderer submits a recovery command that waits on the acquired image semaphore and signals the in-flight fence, or marks the swapchain for rebuild if recovery submission also fails
 
 ### Requirement: VulkanResourceManager shall map IGpuResource to Vulkan objects
 
@@ -289,6 +315,8 @@ The VulkanResourceManager SHALL support:
 - Maintaining map of IGpuResource* to created Vulkan objects
 - Initializing render pass with correct formats
 - Delegating pipeline caching to a standalone `LX_core::backend::PipelineCache` instance (see the `pipeline-cache` capability). The resource manager SHALL NOT store the pipeline map directly; the legacy `getOrCreateRenderPipeline(item)` helper, if retained, SHALL be a thin forward to `PipelineCache::getOrCreate(PipelineBuildDesc::fromRenderingItem(item), renderPass)`
+- Creating, looking up, and clearing per-frame FrameGraph attachments keyed by resource name plus frame-in-flight index
+- Rejecting FrameGraph attachment reuse when requested format, aspect, extent, or usage is incompatible with the existing attachment
 
 #### Scenario: Resource mapping for vertex buffer
 - **WHEN** `initScene` iterates `m_frameGraph.getPasses() × pass.queue.getItems()` and encounters a vertex buffer `IGpuResource`
@@ -298,6 +326,14 @@ The VulkanResourceManager SHALL support:
 
 - **WHEN** draw logic requests a pipeline for a `PipelineKey` present in the cache
 - **THEN** the request resolves via `PipelineCache::find` and no code path references `VulkanResourceManager::m_pipelines` (which SHALL not exist after this change)
+
+#### Scenario: FrameGraph attachment is per frame in flight
+- **WHEN** `createOrGetFrameGraphAttachment(StringID("shadow.depth"), extent, format, aspect, usage)` is called for two different frame indices
+- **THEN** the resource manager stores two independent attachments so in-flight frames do not alias the same writable image
+
+#### Scenario: FrameGraph attachment reuse mismatch is rejected
+- **WHEN** an existing `shadow.depth` attachment for the current frame has one format/aspect/extent/usage and a later request asks for an incompatible shape
+- **THEN** the resource manager throws a runtime error containing the resource name
 
 ### Requirement: Integration tests shall verify each module independently
 

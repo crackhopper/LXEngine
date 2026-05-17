@@ -145,4 +145,18 @@ pipeline identity 需要能区分 depth-only、swapchain color/depth、未来 MR
 
 ## 实施状态
 
-未开始。v0.1.1 的第一项 active requirement。
+已实现。
+
+完成内容：
+
+- Core 层新增 `RenderTargetDesc`、FrameGraph read/write resource declaration、`CompiledFrameGraph` 与 `FrameGraph::compile()`。
+- `RenderQueue` / `RenderingItem` / `PipelineBuildDesc` / `PipelineKey` 已把 target signature 纳入 pipeline identity，可区分 depth-only、swapchain、offscreen color 等目标形状。
+- Vulkan backend 已支持 sampled attachment 创建、FrameGraph attachment registry、offscreen pass framebuffer、depth-only render pass / pipeline、graphics queue 内 image layout barrier。
+- `VulkanRenderer::initScene()` 现在构建并编译最小 FrameGraph：`Pass_Shadow` 写 `shadow.depth`，`Pass_Forward` 读取 `shadow.depth` 并写 swapchain color/depth，debug overlay 保留在最终 swapchain pass 组。
+- 已补充 OpenSpec 合同：`frame-graph`、`pipeline-key`、`pipeline-build-desc`、`pipeline-cache`、`renderer-backend-vulkan`。
+
+验证摘要：
+
+- Core / pipeline focused tests：`test_frame_graph`、`test_pipeline_identity`、`test_pipeline_build_info`、`test_scene_node_validation`。
+- Vulkan focused tests（通过 `xvfb-run -a`）：`test_vulkan_texture`、`test_vulkan_framebuffer`、`test_vulkan_command_buffer`、`test_vulkan_pipeline`、`test_vulkan_resource_manager`、`test_vulkan_frame_graph`。
+- `test_pipeline_cache` 在无视频设备直接运行时允许以 `No available video device` 跳过；在 Xvfb 环境中用于真实 Vulkan/swapchain smoke。

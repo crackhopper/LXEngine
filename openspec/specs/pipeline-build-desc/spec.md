@@ -8,6 +8,7 @@ Define the current `PipelineBuildDesc` contract as the backend-facing bundle of 
 The system SHALL provide `LX_core::PipelineBuildDesc`, a core-layer struct that aggregates all data a backend needs to construct a graphics pipeline. It MUST contain at minimum:
 
 - `PipelineKey key` — identity produced by the `pipeline-key` capability
+- `RenderTargetDesc target` — target shape used when constructing the render pass / framebuffer compatible pipeline
 - `std::vector<ShaderStageCode> stages` — SPIR-V bytecode for every shader stage
 - `std::vector<ShaderResourceBinding> bindings` — descriptor binding reflection (set/binding/type/name/stage/members)
 - `VertexLayout vertexLayout`
@@ -31,6 +32,10 @@ The struct MUST be backend-agnostic: no Vulkan symbols in its definition. Backen
 #### Scenario: Key matches input
 - **WHEN** `fromRenderingItem(item)` is evaluated
 - **THEN** the returned `PipelineBuildDesc::key` equals `item.pipelineKey`
+
+#### Scenario: Target matches input
+- **WHEN** `fromRenderingItem(item)` is evaluated for an item targeting `RenderTargetDesc::offscreenDepth(ImageFormat::D32Float)`
+- **THEN** the returned `PipelineBuildDesc::target` equals that depth-only target description
 
 #### Scenario: Factory is deterministic
 - **WHEN** `fromRenderingItem` is called twice on the same `RenderingItem`

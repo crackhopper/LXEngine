@@ -19,7 +19,7 @@ The Vulkan backend SHALL provide `LX_core::backend::PipelineCache` as a dedicate
 - **THEN** it returns `std::nullopt` and the cache size is unchanged
 
 ### Requirement: PipelineCache::getOrCreate builds, caches, and warns on miss
-`PipelineCache::getOrCreate(const PipelineBuildDesc &info, VkRenderPass renderPass)` SHALL return a `VulkanPipeline &` whose lifetime is owned by the cache. On cache hit (`info.key` already present) it returns the existing instance. On cache miss it MUST build a new `VulkanPipeline` from `info` against `renderPass`, store it in the cache, and emit a warning-level log message identifying the key (e.g., via `GlobalStringTable::toDebugString(info.key.id)`) so runtime misses are diagnosable.
+`PipelineCache::getOrCreate(const PipelineBuildDesc &info, VkRenderPass renderPass)` SHALL return a `VulkanPipeline &` whose lifetime is owned by the cache. On cache hit (`info.key` already present) it returns the existing instance. On cache miss it MUST build a new `VulkanPipeline` from `info` against a render pass compatible with `info.target`, store it in the cache, and emit a warning-level log message identifying the key (e.g., via `GlobalStringTable::toDebugString(info.key.id)`) so runtime misses are diagnosable.
 
 #### Scenario: Miss then hit
 - **WHEN** `getOrCreate(info, rp)` is called twice for the same `info.key`
@@ -28,16 +28,22 @@ The Vulkan backend SHALL provide `LX_core::backend::PipelineCache` as a dedicate
 ### Requirement: PipelineCache::preload builds all inputs up-front without warnings
 `PipelineCache::preload(const std::vector<PipelineBuildDesc> &infos, VkRenderPass renderPass)` SHALL iterate `infos` and call `getOrCreate` for each entry, with the cache-miss warning suppressed because preloading is the expected first-build path. After `preload` returns, every `info.key` in the input vector SHALL be findable via `find(...)`.
 
+Backend owners that preload a heterogeneous frame graph SHALL group or dispatch each `PipelineBuildDesc` to a render pass compatible with `info.target` before calling `PipelineCache::preload`. In the Vulkan backend, `VulkanResourceManager::preloadPipelines(...)` SHALL use `getRenderPass(info.target)` for each build desc.
+
 #### Scenario: Preload warms every key
 - **WHEN** `preload({info1, info2, info3}, rp)` is called against an empty cache
 - **THEN** `find(info1.key)`, `find(info2.key)`, `find(info3.key)` all return non-empty optionals and no miss warning is emitted
+
+#### Scenario: Resource manager preloads target-compatible render passes
+- **WHEN** `VulkanResourceManager::preloadPipelines({depthInfo, forwardInfo})` receives one depth-only target and one swapchain target
+- **THEN** each pipeline is created against the `VkRenderPass` returned by `getRenderPass(info.target)` for that build desc
 
 #### Scenario: Preload is idempotent
 - **WHEN** `preload` is called twice with overlapping inputs
 - **THEN** the second call does not rebuild already-present entries
 
 ### Requirement: FrameGraph-driven preload is the primary path
-The `VulkanRenderer` or equivalent frame-loop owner SHALL, during scene initialization, build a `FrameGraph` from the scene, call `FrameGraph::collectAllPipelineBuildDescs()`, and pass the result to `PipelineCache::preload(...)`. Runtime misses (new material introduced mid-frame) SHALL still be handled by `getOrCreate` as a fallback with a warning log.
+The `VulkanRenderer` or equivalent frame-loop owner SHALL, during scene initialization, build and compile a `FrameGraph` from the scene, call `FrameGraph::collectAllPipelineBuildDescs()`, and pass the result to backend preload. Runtime misses (new material introduced mid-frame) SHALL still be handled by `getOrCreate` as a fallback with a warning log.
 
 #### Scenario: initScene triggers preload
 - **WHEN** `VulkanRenderer::initScene(scenePtr)` runs

@@ -11,16 +11,33 @@ The system SHALL provide `LX_core::ImageFormat`, a `uint8_t`-backed enum coverin
 - **WHEN** `toVkFormat(ImageFormat::BGRA8)` is called in the Vulkan backend
 - **THEN** it returns `VK_FORMAT_B8G8R8A8_UNORM` (or the equivalent project-chosen BGRA8 variant)
 
-### Requirement: RenderTarget describes a render pass attachment set
-`LX_core::RenderTarget` SHALL be a core-layer struct containing at minimum `ImageFormat colorFormat`, `ImageFormat depthFormat`, and `uint8_t sampleCount`. It SHALL expose a stable `size_t getHash() const` suitable for use as an `unordered_map` key. `RenderTarget` membership SHALL NOT be part of `PipelineKey` at this stage of the project; the field is reserved for future multi-target support.
+### Requirement: RenderTargetDesc describes a render pass attachment shape
+`LX_core::RenderTargetDesc` SHALL be a core-layer struct describing render-target shape without owning backend resources. It SHALL contain at minimum `RenderTargetRole role`, optional `ImageFormat colorFormat`, optional `ImageFormat depthFormat`, `uint8_t sampleCount`, and `uint32_t layerCount`. It SHALL expose `swapchain(color, depth)`, `offscreenColor(color)`, and `offscreenDepth(depth)` factories, field-wise equality, a stable `size_t getHash() const`, and `StringID getPipelineSignature() const`.
+
+`RenderTargetDesc` SHALL NOT contain Vulkan image, image-view, framebuffer, or render-pass handles. Backend code SHALL bind a compiled target description to concrete resources during frame execution.
 
 #### Scenario: Default target
-- **WHEN** a default-constructed `RenderTarget` is inspected
+- **WHEN** a default-constructed `RenderTargetDesc` is inspected
 - **THEN** it has a reasonable default (project picks — e.g., `BGRA8 + D32Float + sampleCount=1`) that matches today's forward pass
 
+#### Scenario: Depth-only target
+- **WHEN** `RenderTargetDesc::offscreenDepth(ImageFormat::D32Float)` is called
+- **THEN** the returned desc has role `Offscreen`, no color attachment, a `D32Float` depth attachment, one sample, and one layer
+
 #### Scenario: Hash distinguishes different targets
-- **WHEN** two `RenderTarget` values differ only in `sampleCount`
+- **WHEN** two `RenderTargetDesc` values differ only in `sampleCount`
 - **THEN** their `getHash()` values SHALL differ
+
+#### Scenario: Pipeline signature distinguishes target shape
+- **WHEN** one desc is a swapchain color/depth target and another desc is an offscreen depth-only target
+- **THEN** `getPipelineSignature()` returns distinct `StringID` values
+
+### Requirement: RenderTarget remains a compatibility value for scene target matching
+`LX_core::RenderTarget` SHALL remain available as the camera / scene matching value. It SHALL preserve role, color/depth attachment presence, color/depth formats, sample count, and layer count, and SHALL provide conversion to and from `RenderTargetDesc`. Its equality and hash SHALL be derived from the full `RenderTargetDesc`, not only from the legacy color/depth/sample fields.
+
+#### Scenario: RenderTarget preserves offscreen depth-only shape
+- **WHEN** `RenderTarget target{RenderTargetDesc::offscreenDepth(ImageFormat::D32Float)}`
+- **THEN** `target.toDesc()` equals the original offscreen depth-only description
 
 ### Requirement: RenderQueue collects and deduplicates pipeline build infos
 `LX_core::RenderQueue` SHALL provide `void addItem(RenderingItem)`, `void sort()` (ordering by `PipelineKey` to reduce pipeline switches), `const std::vector<RenderingItem> &getItems() const`, and `std::vector<PipelineBuildDesc> collectUniquePipelineBuildDescs() const`. Deduplication MUST be performed by `PipelineKey` equality; items with the same key MUST contribute exactly one `PipelineBuildDesc` to the result.
@@ -33,25 +50,31 @@ The system SHALL provide `LX_core::ImageFormat`, a `uint8_t`-backed enum coverin
 - **WHEN** `sort()` is called on a queue that contains interleaved items
 - **THEN** items sharing the same `pipelineKey` are contiguous in `getItems()` afterward
 
-### Requirement: FrameGraph models one pass per output target
-`LX_core::FrameGraph` SHALL contain a sequence of `FramePass` entries. `FramePass` SHALL have at least `StringID name` (matching REQ-007 pass constants `Pass_Forward` / `Pass_Shadow` / `Pass_Deferred`), `RenderTarget target`, and `RenderQueue queue`. The `name` field MUST be `StringID`, not `std::string`, to align with `RenderQueue::buildFromScene(scene, pass)` and `IRenderable::supportsPass(pass)`.
+### Requirement: FrameGraph models ordered passes with resource declarations
+`LX_core::FrameGraph` SHALL contain a sequence of `FramePass` entries. `FramePass` SHALL have at least `StringID name` (matching REQ-007 pass constants such as `Pass_Forward`, `Pass_Shadow`, `Pass_Deferred`, and `Pass_DebugOverlay`), `RenderTargetDesc target`, `RenderQueue queue`, `std::vector<FrameGraphRead> reads`, and `std::vector<FrameGraphWrite> writes`. The `name` field MUST be `StringID`, not `std::string`, to align with `RenderQueue::buildFromScene(scene, pass)` and `IRenderable::supportsPass(pass)`.
+
+`FrameGraphResourceRef` SHALL identify writable frame resources by stable `StringID name` plus `FrameGraphAttachmentKind` (`Color` or `Depth`). `FrameGraphRead::sampled(resourceName)` SHALL express a sampled-image dependency on a resource written by an earlier pass. Pass declaration order SHALL be the v1 execution order; the system SHALL NOT perform automatic pass reordering.
 
 #### Scenario: FramePass name is a StringID
 - **WHEN** a `FramePass` is constructed with `Pass_Forward`
 - **THEN** `pass.name == Pass_Forward` compares true and does not allocate a new string
+
+#### Scenario: Shadow pass writes a depth resource
+- **WHEN** a `FramePass` is constructed for `Pass_Shadow` with target `RenderTargetDesc::offscreenDepth(ImageFormat::D32Float)` and a write `FrameGraphResourceRef::depthAttachment(StringID("shadow.depth"))`
+- **THEN** the pass describes a depth-only offscreen writer without carrying backend image objects
 
 ### Requirement: RenderQueue builds items from a Scene per pass
 `LX_core::RenderQueue::buildFromScene(const Scene &scene, StringID pass, const RenderTarget &target)` SHALL construct the queue's `RenderingItem` set from the scene. The method SHALL:
 1. Call `clearItems()`.
 2. Retrieve `scene.getSceneLevelResources(pass, target)` once before iterating renderables.
 3. For each `IRenderableSharedPtr` in `scene.getRenderables()`, skip null pointers and skip renderables for which `renderable->supportsPass(pass)` returns `false`.
-4. For each remaining renderable, consume its already-validated structural result for `pass` and construct a `RenderingItem` from that cached data, filling `vertexBuffer`, `indexBuffer`, `objectInfo`, `descriptorResources`, `shaderInfo`, `passMask`, `pass`, `material`, and `pipelineKey`.
+4. For each remaining renderable, consume its already-validated structural result for `pass` and construct a `RenderingItem` from that cached data, filling `vertexBuffer`, `indexBuffer`, `objectInfo`, `descriptorResources`, `shaderInfo`, `passMask`, `pass`, `target`, `material`, and `pipelineKey`.
 5. Append the scene-level resources from step 2 to each item's `descriptorResources`, after the renderable's own resources.
 6. Push each item into `m_items` and call `sort()` at the end.
 
 `RenderQueue` MUST NOT perform first-time mesh/material/skeleton legality checks, variant interpretation, or structural descriptor validation during queue build. Those responsibilities belong to the validated renderable model.
 
-Renderable participation is decided by pass alone (via `supportsPass(pass)`); the `target` parameter is passed through purely for the scene-level-resource query.
+Renderable participation is decided by pass alone (via `supportsPass(pass)`). The `target` parameter is also recorded on each `RenderingItem` and participates in the final target-aware `PipelineKey`.
 
 The REQ-008 two-argument `buildFromScene(scene, pass)` overload SHALL NOT coexist with this signature.
 
@@ -62,6 +85,10 @@ The REQ-008 two-argument `buildFromScene(scene, pass)` overload SHALL NOT coexis
 #### Scenario: Queue consumes validated entry without revalidating
 - **WHEN** a `SceneNode` already has a validated forward-pass cache entry and `buildFromScene(scene, Pass_Forward, target)` is called
 - **THEN** `RenderQueue` builds the item from that cached structural result and only appends scene-level resources for `target`
+
+#### Scenario: Queue includes target in pipeline identity
+- **WHEN** the same renderable is queued for a swapchain target and for an offscreen depth-only target
+- **THEN** the resulting `RenderingItem::pipelineKey` values differ because the target signature is included
 
 ### Requirement: IRenderable supportsPass filter predicate
 `IRenderable` SHALL declare `virtual bool supportsPass(StringID pass) const`. The primary implementation, `SceneNode`, SHALL answer from the material instance's pass-enable state and the node's pass-level validated-entry cache. `supportsPass(pass)` MUST return `false` for unknown, absent, or disabled passes and MUST NOT trigger ad-hoc structural revalidation while answering the query.
@@ -99,10 +126,10 @@ The REQ-008 parameterless `getSceneLevelResources()` overload SHALL NOT coexist 
 - **THEN** the returned vector is empty
 
 ### Requirement: FrameGraph buildFromScene populates queues per pass
-`FrameGraph::buildFromScene(const Scene &)` SHALL iterate every configured `FramePass` in the frame graph and for each pass SHALL call `pass.queue.buildFromScene(scene, pass.name, pass.target)`. The method SHALL NOT construct `RenderingItem`s itself. Multiple calls in sequence are idempotent — each call rebuilds every queue from scratch.
+`FrameGraph::buildFromScene(const Scene &)` SHALL iterate every configured `FramePass` in the frame graph and for each pass SHALL call `pass.queue.buildFromScene(scene, pass.name, RenderTarget{pass.target})`. The method SHALL NOT construct `RenderingItem`s itself. Multiple calls in sequence are idempotent — each call rebuilds every queue from scratch.
 
 #### Scenario: Populating a single forward pass with target-scoped camera
-- **WHEN** `FrameGraph` contains one `FramePass{Pass_Forward, swapchainTarget, {}}` and a scene whose single camera has been backfilled to `swapchainTarget` and whose renderable supports `Pass_Forward`
+- **WHEN** `FrameGraph` contains one `FramePass{Pass_Forward, swapchainDesc, {}}` and a scene whose single camera has been backfilled to `RenderTarget{swapchainDesc}` and whose renderable supports `Pass_Forward`
 - **THEN** after `buildFromScene(scene)`, the forward pass's `queue.getItems()` contains exactly one item whose `descriptorResources` includes the camera's UBO
 
 #### Scenario: FramePass target is threaded through to the queue
@@ -114,15 +141,38 @@ The REQ-008 parameterless `getSceneLevelResources()` overload SHALL NOT coexist 
 - **THEN** every pass's queue contains the same items after the second call as after the first (items are not duplicated)
 
 ### Requirement: FrameGraph collectAllPipelineBuildDescs deduplicates across passes
-`FrameGraph::collectAllPipelineBuildDescs()` SHALL iterate every pass's `RenderQueue`, concatenate each queue's `collectUniquePipelineBuildDescs()`, and deduplicate the combined set by `PipelineKey`. The returned vector is the input to the backend's pipeline preload step.
+`FrameGraph::collectAllPipelineBuildDescs()` SHALL iterate every pass's `RenderQueue`, concatenate each queue's `collectUniquePipelineBuildDescs()`, and deduplicate the combined set by target-aware `PipelineKey`. The returned vector is the input to the backend's pipeline preload step.
 
 #### Scenario: Duplicate across passes collapses to one
-- **WHEN** the same mesh+material appears in two passes whose `PipelineKey` values are identical (e.g., a trivial pass remapping)
+- **WHEN** the same mesh+material appears in two passes whose object, material, and target signatures produce identical `PipelineKey` values
 - **THEN** `collectAllPipelineBuildDescs()` returns exactly one `PipelineBuildDesc` for it
 
 #### Scenario: Different passes keep distinct entries
-- **WHEN** the same mesh+material appears under `Pass_Forward` and `Pass_Shadow` with distinct per-pass render state
+- **WHEN** the same mesh+material appears under `Pass_Forward` and `Pass_Shadow` with distinct per-pass render state or target descriptions
 - **THEN** `collectAllPipelineBuildDescs()` returns two distinct `PipelineBuildDesc` entries
+
+### Requirement: FrameGraph compile validates ordered resource flow
+`FrameGraph::compile()` SHALL produce a `CompiledFrameGraph` containing one `CompiledFrameGraphPass` per declared pass in declaration order. Each compiled pass SHALL preserve `name`, `target`, `reads`, and `writes`.
+
+The compile step SHALL validate the v1 ordered resource graph:
+
+1. Every `FrameGraphRead` MUST reference a resource written by an earlier pass.
+2. Every `FrameGraphWrite` MUST name a non-empty resource.
+3. A resource name MUST NOT be written more than once in the graph.
+
+`CompiledFrameGraph::isValid()` SHALL report whether any compile errors were found. `getErrors()` and `errorText()` SHALL expose human-readable diagnostics. Error text MUST include the pass name and resource name when a resource-specific validation fails.
+
+#### Scenario: Color write then sampled read compiles
+- **WHEN** pass A writes `test.color` as a color attachment and pass B reads `test.color` as sampled input
+- **THEN** `compile()` returns a valid `CompiledFrameGraph` with two passes in the original order
+
+#### Scenario: Missing sampled read reports pass and resource
+- **WHEN** a pass reads `missing.depth` and no earlier pass writes that resource
+- **THEN** `compile()` is invalid and `errorText()` contains both the pass name and `missing.depth`
+
+#### Scenario: Duplicate write reports pass and resource
+- **WHEN** two passes both write `shared.color`
+- **THEN** `compile()` is invalid and `errorText()` contains the later pass name and `shared.color`
 
 ### Requirement: Scene exposes a renderable collection
 `LX_core::Scene` SHALL provide `const std::vector<IRenderableSharedPtr> &getRenderables() const` returning every renderable currently part of the scene. The previously single `IRenderableSharedPtr mesh` member SHALL be replaced (or wrapped) by a `std::vector<IRenderableSharedPtr> m_renderables` member so `FrameGraph::buildFromScene` can iterate.
