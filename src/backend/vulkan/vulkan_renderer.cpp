@@ -492,7 +492,8 @@ public:
     const VkResult submitResult =
         vkQueueSubmit(m_device->getGraphicsQueue(), 1, &submitInfo, fence);
     if (submitResult != VK_SUCCESS) {
-      signalFenceAfterFailedSubmit(fence);
+      consumeAcquireSemaphoreAndSignalFenceAfterFailedSubmit(
+          waitSemaphores[0], waitStages[0], fence);
       std::cerr << "[VulkanRenderer] vkQueueSubmit failed with VkResult="
                 << static_cast<int>(submitResult) << std::endl;
       return;
@@ -594,20 +595,26 @@ private:
     }
   }
 
-  void signalFenceAfterFailedSubmit(VkFence fence) const {
+  void consumeAcquireSemaphoreAndSignalFenceAfterFailedSubmit(
+      VkSemaphore imageAvailableSemaphore, VkPipelineStageFlags waitStage,
+      VkFence fence) {
     // The per-frame fence is reset immediately before queue submission. If the
     // real submit fails, the next acquire would block forever on that
-    // unsignaled fence. Submit empty work with the same fence to restore the
-    // swapchain's "no frame in flight" contract.
-    VkSubmitInfo emptySubmit{};
-    emptySubmit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    // unsignaled fence. The acquired image semaphore is already signaled, so
+    // the recovery submit must wait on it before this frame slot can be reused.
+    VkSubmitInfo recoverySubmit{};
+    recoverySubmit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    recoverySubmit.waitSemaphoreCount = 1;
+    recoverySubmit.pWaitSemaphores = &imageAvailableSemaphore;
+    recoverySubmit.pWaitDstStageMask = &waitStage;
     const VkResult recoveryResult =
-        vkQueueSubmit(m_device->getGraphicsQueue(), 1, &emptySubmit, fence);
+        vkQueueSubmit(m_device->getGraphicsQueue(), 1, &recoverySubmit, fence);
     if (recoveryResult != VK_SUCCESS) {
       std::cerr
-          << "[VulkanRenderer] failed to re-signal in-flight fence after "
-             "submit failure; VkResult="
+          << "[VulkanRenderer] failed to consume acquired semaphore and "
+             "re-signal in-flight fence after submit failure; VkResult="
           << static_cast<int>(recoveryResult) << std::endl;
+      m_swapchainNeedsRebuild = true;
     }
   }
 
