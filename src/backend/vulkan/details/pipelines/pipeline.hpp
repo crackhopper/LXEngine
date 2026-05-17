@@ -9,8 +9,8 @@
  * `topology`, and push constant range from `pushConstant`.
  */
 
-#include "core/pipeline/pipeline_build_desc.hpp"
 #include "core/asset/shader.hpp"
+#include "core/pipeline/pipeline_build_desc.hpp"
 #include "core/rhi/vertex_buffer.hpp"
 #include <vulkan/vulkan.h>
 #include <array>
@@ -78,6 +78,7 @@ protected:
   std::vector<LX_core::ShaderStageCode> m_stages;
   std::vector<LX_core::ShaderResourceBinding> m_bindings;
   VertexLayout m_vertexLayout;
+  RenderTargetDesc m_target;
   RenderState m_renderState;
   PrimitiveTopology m_topology = PrimitiveTopology::TriangleList;
   PushConstantRange m_pushConstant;

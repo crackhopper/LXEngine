@@ -367,7 +367,8 @@ VulkanFrameGraphAttachment &
 VulkanResourceManager::createOrGetFrameGraphAttachment(
     StringID name, VkExtent2D extent, VkFormat format,
     VkImageAspectFlags aspect, VkImageUsageFlags usage) {
-  auto it = m_frameGraphAttachments.find(name);
+  const VulkanFrameGraphAttachmentKey key{name, m_currentFrameIndex};
+  auto it = m_frameGraphAttachments.find(key);
   if (it != m_frameGraphAttachments.end()) {
     const auto &attachment = it->second;
     if (attachment.format != format || attachment.aspect != aspect ||
@@ -378,8 +379,8 @@ VulkanResourceManager::createOrGetFrameGraphAttachment(
           GlobalStringTable::get().getName(name.id);
       throw std::runtime_error(
           "Frame graph attachment reuse mismatch for resource '" +
-          resourceName +
-          "'; format/aspect/extent must match and requested usage must be a "
+          resourceName + "' frame " + std::to_string(m_currentFrameIndex) +
+          "; format/aspect/extent must match and requested usage must be a "
           "subset of existing usage");
     }
     return it->second;
@@ -395,14 +396,15 @@ VulkanResourceManager::createOrGetFrameGraphAttachment(
   attachment.extent = extent;
 
   auto [insertedIt, inserted] =
-      m_frameGraphAttachments.emplace(name, std::move(attachment));
+      m_frameGraphAttachments.emplace(key, std::move(attachment));
   (void)inserted;
   return insertedIt->second;
 }
 
 std::optional<std::reference_wrapper<VulkanFrameGraphAttachment>>
 VulkanResourceManager::getFrameGraphAttachment(StringID name) {
-  auto it = m_frameGraphAttachments.find(name);
+  const VulkanFrameGraphAttachmentKey key{name, m_currentFrameIndex};
+  auto it = m_frameGraphAttachments.find(key);
   if (it == m_frameGraphAttachments.end()) {
     return std::nullopt;
   }
@@ -415,9 +417,14 @@ void VulkanResourceManager::updateFrameGraphAttachmentLayout(
   if (!attachment.has_value()) {
     const std::string &resourceName = GlobalStringTable::get().getName(name.id);
     throw std::runtime_error("Missing frame graph attachment '" + resourceName +
-                             "'");
+                             "' for frame " +
+                             std::to_string(m_currentFrameIndex));
   }
   attachment->get().currentLayout = layout;
+}
+
+void VulkanResourceManager::clearFrameGraphAttachments() {
+  m_frameGraphAttachments.clear();
 }
 
 } // namespace LX_core::backend

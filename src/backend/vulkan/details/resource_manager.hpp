@@ -44,6 +44,24 @@ struct VulkanFrameGraphAttachment {
   VkExtent2D extent{};
 };
 
+struct VulkanFrameGraphAttachmentKey {
+  StringID name;
+  u32 frameIndex = 0;
+
+  bool operator==(const VulkanFrameGraphAttachmentKey &other) const {
+    return name == other.name && frameIndex == other.frameIndex;
+  }
+
+  struct Hash {
+    usize operator()(const VulkanFrameGraphAttachmentKey &key) const {
+      usize hash = StringID::Hash{}(key.name);
+      hash ^= static_cast<usize>(key.frameIndex) + 0x9e3779b9u + (hash << 6u) +
+              (hash >> 2u);
+      return hash;
+    }
+  };
+};
+
 class VulkanResourceManager;
 using VulkanResourceManagerUniquePtr = std::unique_ptr<VulkanResourceManager>;
 class VulkanResourceManager {
@@ -101,6 +119,7 @@ public:
   std::optional<std::reference_wrapper<VulkanFrameGraphAttachment>>
   getFrameGraphAttachment(StringID name);
   void updateFrameGraphAttachmentLayout(StringID name, VkImageLayout layout);
+  void clearFrameGraphAttachments();
 
 private:
   std::shared_ptr<VulkanAnyResource>
@@ -119,7 +138,8 @@ private:
   std::unique_ptr<PipelineCache> m_pipelineCache;
   std::unordered_map<usize, std::unique_ptr<VulkanRenderPass>>
       m_frameGraphRenderPasses;
-  std::unordered_map<StringID, VulkanFrameGraphAttachment>
+  std::unordered_map<VulkanFrameGraphAttachmentKey, VulkanFrameGraphAttachment,
+                     VulkanFrameGraphAttachmentKey::Hash>
       m_frameGraphAttachments;
 };
 

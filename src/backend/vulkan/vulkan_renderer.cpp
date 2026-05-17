@@ -17,6 +17,7 @@
 #include "details/resource_manager.hpp"
 #include <functional>
 #include <iostream>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -115,6 +116,40 @@ VkAccessFlags attachmentWriteAccess(FrameGraphAttachmentKind kind) {
 VkImageAspectFlags attachmentAspect(FrameGraphAttachmentKind kind) {
   return kind == FrameGraphAttachmentKind::Color ? VK_IMAGE_ASPECT_COLOR_BIT
                                                  : VK_IMAGE_ASPECT_DEPTH_BIT;
+}
+
+std::optional<std::reference_wrapper<const LX_core::FrameGraphWrite>>
+findWriteForKind(const LX_core::CompiledFrameGraphPass &pass,
+                 LX_core::FrameGraphAttachmentKind kind) {
+  std::optional<std::reference_wrapper<const LX_core::FrameGraphWrite>> found;
+  for (const auto &write : pass.writes) {
+    if (write.resource.kind != kind) {
+      continue;
+    }
+    if (found.has_value()) {
+      throw std::runtime_error(
+          "Frame graph pass declares duplicate writes for one attachment kind");
+    }
+    found = std::cref(write);
+  }
+  return found;
+}
+
+void validateOffscreenWritesMatchTarget(
+    const LX_core::CompiledFrameGraphPass &pass) {
+  const auto colorWrite =
+      findWriteForKind(pass, LX_core::FrameGraphAttachmentKind::Color);
+  const auto depthWrite =
+      findWriteForKind(pass, LX_core::FrameGraphAttachmentKind::Depth);
+
+  if (pass.target.colorFormat.has_value() != colorWrite.has_value()) {
+    throw std::runtime_error(
+        "Frame graph offscreen pass color write does not match target");
+  }
+  if (pass.target.depthFormat.has_value() != depthWrite.has_value()) {
+    throw std::runtime_error(
+        "Frame graph offscreen pass depth write does not match target");
+  }
 }
 
 } // namespace
@@ -243,8 +278,8 @@ public:
     if (!m_compiledFrameGraph.isValid()) {
       throw std::runtime_error(m_compiledFrameGraph.errorText());
     }
-    m_offscreenFramebuffers.clear();
-    m_offscreenFramebuffers.resize(m_compiledFrameGraph.getPasses().size());
+    m_resourceManager->clearFrameGraphAttachments();
+    resetOffscreenFramebuffers();
 
     // Initial resource sync for every item across every pass in the FrameGraph.
     // SceneNode::getValidatedPassData() has already synced each per-draw model
@@ -357,11 +392,17 @@ public:
     bool swapchainRenderPassActive = false;
     bool guiFrameActive = false;
     const usize finalSwapchainPassIndex = findFinalSwapchainPassIndex();
+    const usize finalSwapchainGroupStartIndex =
+        findFinalSwapchainGroupStartIndex(finalSwapchainPassIndex);
 
     const auto &compiledPasses = m_compiledFrameGraph.getPasses();
     for (usize passIndex = 0; passIndex < compiledPasses.size(); ++passIndex) {
       const auto &compiledPass = compiledPasses[passIndex];
       if (compiledPass.target.role == LX_core::RenderTargetRole::Swapchain) {
+        const bool isFinalSwapchainGroup =
+            finalSwapchainPassIndex != compiledPasses.size() &&
+            passIndex >= finalSwapchainGroupStartIndex &&
+            passIndex <= finalSwapchainPassIndex;
         if (!swapchainRenderPassActive) {
           auto &renderPass = m_resourceManager->getRenderPass();
           cmd->beginRenderPass(
@@ -383,7 +424,7 @@ public:
 
         drawPassQueue(passIndex, *cmd);
 
-        if (passIndex == finalSwapchainPassIndex) {
+        if (!isFinalSwapchainGroup || passIndex == finalSwapchainPassIndex) {
           if (guiFrameActive) {
             m_gui.endFrame(cmd->getHandle());
             guiFrameActive = false;
@@ -403,12 +444,13 @@ public:
         swapchainRenderPassActive = false;
       }
 
-      const VkExtent2D passExtent =
-          prepareOffscreenPass(passIndex, compiledPass, extent, *cmd);
+      const VkExtent2D passExtent = prepareOffscreenPass(
+          passIndex, currentFrameIndex, compiledPass, extent, *cmd);
       auto &renderPass = m_resourceManager->getRenderPass(compiledPass.target);
-      cmd->beginRenderPass(renderPass.getHandle(),
-                           m_offscreenFramebuffers[passIndex]->getHandle(),
-                           passExtent, renderPass.getClearValues());
+      cmd->beginRenderPass(
+          renderPass.getHandle(),
+          m_offscreenFramebuffers[passIndex][currentFrameIndex]->getHandle(),
+          passExtent, renderPass.getClearValues());
       cmd->setViewport(passExtent.width, passExtent.height);
       cmd->setScissor(passExtent.width, passExtent.height);
       drawPassQueue(passIndex, *cmd);
@@ -506,6 +548,26 @@ private:
     return passes.size();
   }
 
+  usize findFinalSwapchainGroupStartIndex(usize finalSwapchainPassIndex) const {
+    const auto &passes = m_compiledFrameGraph.getPasses();
+    if (finalSwapchainPassIndex >= passes.size()) {
+      return passes.size();
+    }
+
+    usize start = finalSwapchainPassIndex;
+    while (start > 0 && passes[start - 1].target.role ==
+                            LX_core::RenderTargetRole::Swapchain) {
+      --start;
+    }
+
+    // Legacy VkRenderPass cannot preserve forward color for debug/GUI overlay
+    // if we end and begin again with the current clear/load contract. Only the
+    // final contiguous swapchain run is intentionally grouped under one active
+    // VkRenderPass; offscreen passes and non-final swapchain passes remain
+    // one begin/end per compiled pass.
+    return start;
+  }
+
   void drawPassQueue(usize passIndex, VulkanCommandBuffer &cmd) {
     if (passIndex >= m_frameGraph.getPasses().size()) {
       return;
@@ -516,6 +578,14 @@ private:
       cmd.bindPipeline(pipeline);
       cmd.bindResources(*m_resourceManager, pipeline, item);
       cmd.drawItem(item);
+    }
+  }
+
+  void resetOffscreenFramebuffers() {
+    m_offscreenFramebuffers.clear();
+    m_offscreenFramebuffers.resize(m_compiledFrameGraph.getPasses().size());
+    for (auto &passFramebuffers : m_offscreenFramebuffers) {
+      passFramebuffers.resize(kMaxFramesInFlight);
     }
   }
 
@@ -569,7 +639,7 @@ private:
     attachment.currentLayout = newLayout;
   }
 
-  VkExtent2D prepareOffscreenPass(usize passIndex,
+  VkExtent2D prepareOffscreenPass(usize passIndex, u32 currentFrameIndex,
                                   const LX_core::CompiledFrameGraphPass &pass,
                                   VkExtent2D fallbackExtent,
                                   VulkanCommandBuffer &cmd) {
@@ -577,18 +647,13 @@ private:
       return fallbackExtent;
     }
 
-    std::vector<VkImageView> attachments;
-    attachments.reserve(pass.writes.size());
-    for (const auto &write : pass.writes) {
-      const auto kind = write.resource.kind;
-      const auto format = kind == LX_core::FrameGraphAttachmentKind::Color
-                              ? pass.target.colorFormat
-                              : pass.target.depthFormat;
-      if (!format.has_value()) {
-        throw std::runtime_error(
-            "Frame graph pass writes attachment kind missing from target");
-      }
+    validateOffscreenWritesMatchTarget(pass);
 
+    std::vector<VkImageView> attachments;
+    attachments.reserve(2);
+    const auto appendAttachment = [&](const LX_core::FrameGraphWrite &write,
+                                      LX_core::ImageFormat format) {
+      const auto kind = write.resource.kind;
       const VkImageUsageFlags usage =
           kind == LX_core::FrameGraphAttachmentKind::Color
               ? (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
@@ -596,18 +661,30 @@ private:
               : (VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
                  VK_IMAGE_USAGE_SAMPLED_BIT);
       auto &attachment = m_resourceManager->createOrGetFrameGraphAttachment(
-          write.resource.name, fallbackExtent, toVkFormat(*format),
+          write.resource.name, fallbackExtent, toVkFormat(format),
           attachmentAspect(kind), usage);
       transitionFrameGraphAttachment(
           write.resource, attachmentWriteLayout(kind),
           attachmentWriteStage(kind), attachmentWriteAccess(kind), cmd);
       attachments.push_back(attachment.texture->getImageView());
+    };
+
+    if (pass.target.colorFormat.has_value()) {
+      const auto write =
+          findWriteForKind(pass, LX_core::FrameGraphAttachmentKind::Color);
+      appendAttachment(write->get(), *pass.target.colorFormat);
+    }
+    if (pass.target.depthFormat.has_value()) {
+      const auto write =
+          findWriteForKind(pass, LX_core::FrameGraphAttachmentKind::Depth);
+      appendAttachment(write->get(), *pass.target.depthFormat);
     }
 
-    if (!m_offscreenFramebuffers[passIndex]) {
+    auto &framebuffer = m_offscreenFramebuffers[passIndex][currentFrameIndex];
+    if (!framebuffer) {
       auto &renderPass = m_resourceManager->getRenderPass(pass.target);
-      m_offscreenFramebuffers[passIndex] = VulkanFrameBuffer::create(
-          *m_device, renderPass.getHandle(), attachments, fallbackExtent);
+      framebuffer = VulkanFrameBuffer::create(*m_device, renderPass.getHandle(),
+                                              attachments, fallbackExtent);
     }
     return fallbackExtent;
   }
@@ -636,8 +713,8 @@ private:
     if (!m_swapchain->rebuild(m_resourceManager->getRenderPass())) {
       return;
     }
-    m_offscreenFramebuffers.clear();
-    m_offscreenFramebuffers.resize(m_compiledFrameGraph.getPasses().size());
+    m_resourceManager->clearFrameGraphAttachments();
+    resetOffscreenFramebuffers();
     m_swapchainNeedsRebuild = false;
     m_gui.updateSwapchainImageCount(m_swapchain->getImageCount());
   }
@@ -673,7 +750,8 @@ private:
   SceneSharedPtr m_scene = nullptr;
   LX_core::FrameGraph m_frameGraph{};
   LX_core::CompiledFrameGraph m_compiledFrameGraph{};
-  std::vector<std::unique_ptr<VulkanFrameBuffer>> m_offscreenFramebuffers;
+  std::vector<std::vector<std::unique_ptr<VulkanFrameBuffer>>>
+      m_offscreenFramebuffers;
   u32 m_frameIndex = 0;
   usize m_initSceneCallCount = 0;
   bool m_swapchainNeedsRebuild = false;

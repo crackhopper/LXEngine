@@ -4,11 +4,10 @@
 #include <optional>
 #include <vector>
 
-// 注意：在Dynamic Rendering时代，framebuffer和renderpass都是不需要的。
-// 我们的项目从 vulkan tutorial 比较老的版本迁移过来，因此还用了这些旧特性；
-// TODO: 后续迭代到设计 FrameGraph/RenderGraph 的时候，启用Dynamic
-// Rendering。不再使用这个文件的内容。
-// 因此这里的文件和流程，我们简单封装。不暴露太多依赖。
+// FrameGraph v1 still uses legacy VkRenderPass/VkFramebuffer objects as the
+// backend attachment contract. Dynamic Rendering is a future backend cleanup,
+// not the current execution path, so this wrapper remains active for both
+// swapchain and offscreen frame-graph passes.
 
 namespace LX_core {
 namespace backend {

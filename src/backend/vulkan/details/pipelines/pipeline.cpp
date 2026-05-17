@@ -1,7 +1,7 @@
 #include "pipeline.hpp"
+#include "core/utils/env.hpp"
 #include "../descriptors/descriptor_manager.hpp"
 #include "../device.hpp"
-#include "core/utils/env.hpp"
 #include <algorithm>
 #include <cstring>
 #include <stdexcept>
@@ -143,7 +143,7 @@ VulkanPipeline::VulkanPipeline(Token, VulkanDevice &device,
                                const PipelineBuildDesc &buildInfo)
     : m_device(device), m_deviceHandle(device.getLogicalDevice()),
       m_stages(buildInfo.stages), m_bindings(buildInfo.bindings),
-      m_vertexLayout(buildInfo.vertexLayout),
+      m_vertexLayout(buildInfo.vertexLayout), m_target(buildInfo.target),
       m_renderState(buildInfo.renderState), m_topology(buildInfo.topology),
       m_pushConstant(buildInfo.pushConstant) {}
 
@@ -199,7 +199,8 @@ VkPipelineViewportStateCreateInfo VulkanPipeline::getViewportStateCreateInfo() {
   viewportState.scissorCount = 1;
 
   m_viewport.x = static_cast<float>(m_offset.x);
-  m_viewport.y = static_cast<float>(m_offset.y + static_cast<int>(m_extent.height));
+  m_viewport.y =
+      static_cast<float>(m_offset.y + static_cast<int>(m_extent.height));
   m_viewport.width = static_cast<float>(m_extent.width);
   m_viewport.height = -static_cast<float>(m_extent.height);
   m_viewport.minDepth = 0.0f;
@@ -257,8 +258,9 @@ VulkanPipeline::getDepthStencilStateCreateInfo() {
       !disableDepth && m_renderState.depthTestEnable ? VK_TRUE : VK_FALSE;
   depthStencil.depthWriteEnable =
       !disableDepth && m_renderState.depthWriteEnable ? VK_TRUE : VK_FALSE;
-  depthStencil.depthCompareOp =
-      disableDepth ? VK_COMPARE_OP_ALWAYS : compareOpToVk(m_renderState.depthOp);
+  depthStencil.depthCompareOp = disableDepth
+                                    ? VK_COMPARE_OP_ALWAYS
+                                    : compareOpToVk(m_renderState.depthOp);
   depthStencil.depthBoundsTestEnable = VK_FALSE;
   return depthStencil;
 }
@@ -286,8 +288,13 @@ VulkanPipeline::getColorBlendStateCreateInfo() {
   colorBlending.sType =
       VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
   colorBlending.logicOpEnable = VK_FALSE;
-  colorBlending.attachmentCount = 1;
-  colorBlending.pAttachments = &m_colorBlendAttachment;
+  if (m_target.colorFormat.has_value()) {
+    colorBlending.attachmentCount = 1;
+    colorBlending.pAttachments = &m_colorBlendAttachment;
+  } else {
+    colorBlending.attachmentCount = 0;
+    colorBlending.pAttachments = nullptr;
+  }
   return colorBlending;
 }
 
