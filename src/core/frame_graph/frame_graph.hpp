@@ -3,11 +3,30 @@
 #include "core/frame_graph/render_target.hpp"
 #include "core/frame_graph/render_queue.hpp"
 #include "core/utils/string_table.hpp"
+#include <string>
 #include <vector>
 
 namespace LX_core {
 
 class Scene; // forward decl
+
+struct FrameGraphResourceRef {
+  StringID name;
+  FrameGraphAttachmentKind kind = FrameGraphAttachmentKind::Color;
+
+  static FrameGraphResourceRef colorAttachment(StringID name);
+  static FrameGraphResourceRef depthAttachment(StringID name);
+};
+
+struct FrameGraphRead {
+  StringID resource;
+
+  static FrameGraphRead sampled(StringID resource);
+};
+
+struct FrameGraphWrite {
+  FrameGraphResourceRef resource;
+};
 
 /*
 @source_analysis.section FramePass：三元组 (name, target, queue)
@@ -32,6 +51,29 @@ struct FramePass {
   StringID name;
   RenderTarget target;
   RenderQueue queue;
+  std::vector<FrameGraphRead> reads;
+  std::vector<FrameGraphWrite> writes;
+};
+
+struct CompiledFrameGraphPass {
+  StringID name;
+  RenderTargetDesc target;
+  std::vector<FrameGraphRead> reads;
+  std::vector<FrameGraphWrite> writes;
+};
+
+class CompiledFrameGraph {
+public:
+  [[nodiscard]] bool isValid() const;
+  [[nodiscard]] const std::vector<std::string> &getErrors() const;
+  [[nodiscard]] std::string errorText() const;
+  [[nodiscard]] const std::vector<CompiledFrameGraphPass> &getPasses() const;
+
+private:
+  friend class FrameGraph;
+
+  std::vector<CompiledFrameGraphPass> m_passes;
+  std::vector<std::string> m_errors;
 };
 
 /*
@@ -57,6 +99,8 @@ public:
   void addPass(FramePass pass);
 
   void buildFromScene(const Scene &scene);
+
+  [[nodiscard]] CompiledFrameGraph compile() const;
 
   std::vector<PipelineBuildDesc> collectAllPipelineBuildDescs() const;
 

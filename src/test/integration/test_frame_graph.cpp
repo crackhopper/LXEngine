@@ -204,6 +204,79 @@ void testFramePassNameIsStringID() {
   EXPECT(p.name == Pass_Forward, "FramePass.name is a StringID compared by id");
 }
 
+void testFrameGraphCompileAcceptsColorWriteThenSampleRead() {
+  const auto offscreen =
+      FrameGraphResourceRef::colorAttachment(StringID("test.color"));
+  const auto swapColor =
+      FrameGraphResourceRef::colorAttachment(StringID("swapchain.color"));
+  const auto swapDepth =
+      FrameGraphResourceRef::depthAttachment(StringID("swapchain.depth"));
+
+  FrameGraph graph;
+  graph.addPass(FramePass{Pass_Forward,
+                          RenderTargetDesc::offscreenColor(ImageFormat::RGBA8),
+                          {},
+                          {},
+                          {FrameGraphWrite{offscreen}}});
+  graph.addPass(FramePass{Pass_DebugOverlay,
+                          RenderTargetDesc::swapchain(ImageFormat::BGRA8,
+                                                      ImageFormat::D32Float),
+                          {},
+                          {FrameGraphRead::sampled(offscreen.name)},
+                          {FrameGraphWrite{swapColor},
+                           FrameGraphWrite{swapDepth}}});
+
+  const auto compiled = graph.compile();
+  EXPECT(compiled.isValid(), "compile should accept write then sampled read");
+  EXPECT(compiled.getPasses().size() == 2, "compiled pass count should be 2");
+}
+
+void testFrameGraphCompileReportsMissingRead() {
+  FrameGraph graph;
+  graph.addPass(FramePass{Pass_Forward,
+                          RenderTargetDesc::swapchain(ImageFormat::BGRA8,
+                                                      ImageFormat::D32Float),
+                          {},
+                          {FrameGraphRead::sampled(StringID("missing.depth"))},
+                          {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
+                              StringID("swapchain.color"))}}});
+
+  const auto compiled = graph.compile();
+  EXPECT(!compiled.isValid(), "compile should reject missing resource read");
+  const std::string errors = compiled.errorText();
+  EXPECT(errors.find("Forward") != std::string::npos,
+         "error should include pass name");
+  EXPECT(errors.find("missing.depth") != std::string::npos,
+         "error should include resource name");
+}
+
+void testFrameGraphCompileReportsDuplicateWrite() {
+  const auto duplicate =
+      FrameGraphResourceRef::colorAttachment(StringID("shared.color"));
+
+  FrameGraph graph;
+  graph.addPass(FramePass{Pass_Forward,
+                          RenderTargetDesc::offscreenColor(ImageFormat::RGBA8),
+                          {},
+                          {},
+                          {FrameGraphWrite{duplicate}}});
+  graph.addPass(FramePass{Pass_DebugOverlay,
+                          RenderTargetDesc::offscreenColor(ImageFormat::RGBA8),
+                          {},
+                          {},
+                          {FrameGraphWrite{duplicate}}});
+
+  const auto compiled = graph.compile();
+  EXPECT(!compiled.isValid(), "compile should reject duplicate resource write");
+  const std::string errors = compiled.errorText();
+  EXPECT(errors.find("DebugOverlay") != std::string::npos,
+         "error should include pass name");
+  EXPECT(errors.find("shared.color") != std::string::npos,
+         "error should include resource name");
+  EXPECT(errors.find("duplicate") != std::string::npos,
+         "error should include duplicate write reason");
+}
+
 void testBuildFromSceneIsIdempotent() {
   auto r = makeRenderable();
   auto scene = makeSceneWithDefaultCamera(r);
@@ -453,6 +526,9 @@ int main() {
   testDuplicateRenderablesDedupe();
   testDifferentVariantKeepsTwo();
   testFramePassNameIsStringID();
+  testFrameGraphCompileAcceptsColorWriteThenSampleRead();
+  testFrameGraphCompileReportsMissingRead();
+  testFrameGraphCompileReportsDuplicateWrite();
   testBuildFromSceneIsIdempotent();
   testCollectAcrossMultiplePasses();
   testPassFilterExcludesNonMatching();
