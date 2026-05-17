@@ -9,6 +9,7 @@
 ### 调试事件复盘
 
 - [2026-05 — lxe_editor resize 偶发黑屏 / 闪烁（NVIDIA Optimus + dGPU）](2026-05-resize-blackscreen.md)
+- [2026-05 — Shadow culling、接触白边与星点闪烁](2026-05-shadow-cull-peter-panning.md)
 
 ### 从复盘衍生的技术解释
 

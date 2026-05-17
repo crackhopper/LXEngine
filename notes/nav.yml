@@ -123,6 +123,7 @@ nav:
   - Debug 复盘:
       - 总览: debug/index.md
       - 2026-05 resize 偶发黑屏 / 闪烁: debug/2026-05-resize-blackscreen.md
+      - 2026-05 Shadow cull 与白边: debug/2026-05-shadow-cull-peter-panning.md
       - "Vulkan Present Mode: FIFO vs MAILBOX": debug/fifo-vs-mailbox.md
   - FAQ:
       - faq/README.md
