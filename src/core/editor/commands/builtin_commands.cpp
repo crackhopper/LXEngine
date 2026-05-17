@@ -612,13 +612,13 @@ void setLightCastsShadow(const LightBaseSharedPtr &light,
   return direction.normalized();
 }
 
-void syncLightSpatialProperties(Scene &scene, const SceneNodeSharedPtr &node) {
+bool syncLightSpatialProperties(Scene &scene, const SceneNodeSharedPtr &node) {
   if (!node) {
-    return;
+    return false;
   }
   const auto light = scene.getLight(*node);
   if (!light) {
-    return;
+    return false;
   }
   if (const auto directional =
           std::dynamic_pointer_cast<DirectionalLight>(light)) {
@@ -627,6 +627,7 @@ void syncLightSpatialProperties(Scene &scene, const SceneNodeSharedPtr &node) {
   } else if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
     spot->setDirection(lightForwardDirection(*node, spot->getDirection()));
   }
+  return true;
 }
 
 [[nodiscard]] std::optional<bool> parseBoolToken(const std::string &text) {
@@ -2385,19 +2386,24 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
 
         if (nodes->size() == 1) {
           (*nodes)[0]->setTranslation(*value);
-          syncLightSpatialProperties(scene, (*nodes)[0]);
+          const bool touchedLight =
+              syncLightSpatialProperties(scene, (*nodes)[0]);
           CommandResult result =
               makeOk("moved " + (*nodes)[0]->getPath() + " to (" +
                          formatFloat(value->x) + ", " + formatFloat(value->y) +
                          ", " + formatFloat(value->z) + ")",
                      makeVec3Json(*value));
           result.metadata["inverse.line"] = inverseLines.front();
+          if (touchedLight) {
+            result.metadata["scene.rebuild"] = "true";
+          }
           return result;
         }
 
+        bool touchedLight = false;
         for (const auto &node : *nodes) {
           node->setTranslation(node->getTranslation() + *value);
-          syncLightSpatialProperties(scene, node);
+          touchedLight = syncLightSpatialProperties(scene, node) || touchedLight;
         }
 
         CommandResult result = makeOk(
@@ -2406,6 +2412,9 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
                 formatFloat(value->z) + ")",
             makeVec3Json(*value));
         result.metadata["inverse.line"] = joinLines(inverseLines);
+        if (touchedLight) {
+          result.metadata["scene.rebuild"] = "true";
+        }
         return result;
       });
 
@@ -2437,6 +2446,7 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
 
         std::vector<std::string> inverseLines;
         inverseLines.reserve(nodes->size());
+        bool touchedLight = false;
         for (const auto &node : *nodes) {
           const Vec3f before = quatToEulerDegrees(node->getRotation());
           inverseLines.push_back("rotate " + quoteToken(node->getPath()) + " " +
@@ -2448,7 +2458,7 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
           } else {
             node->setRotation((rotation * node->getRotation()).normalized());
           }
-          syncLightSpatialProperties(scene, node);
+          touchedLight = syncLightSpatialProperties(scene, node) || touchedLight;
         }
 
         CommandResult result = makeOk(
@@ -2458,6 +2468,9 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
             makeQuatJson(rotation));
         result.metadata["inverse.line"] =
             nodes->size() == 1 ? inverseLines.front() : joinLines(inverseLines);
+        if (touchedLight) {
+          result.metadata["scene.rebuild"] = "true";
+        }
         return result;
       });
 

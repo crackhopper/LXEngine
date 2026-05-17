@@ -856,9 +856,28 @@ void testTransformCommandsDriveAttachedLightSpatialState() {
   EXPECT(enableShadow.ok,
          "directional light shadow participation can be enabled");
 
+  if (dirNode != nullptr) {
+    dirNode->setRotation(
+        Quatf::fromAxisAngle(Vec3f{1.0f, 0.0f, 0.0f},
+                             130.0f * kPi / 180.0f)
+            .normalized());
+    (void)fixture.scene->getSceneLevelResources(Pass_Forward, RenderTarget{});
+    const auto legacyDirLight = fixture.scene->getDirectionalLight(*dirNode);
+    const Vec3f legacyPropertyDir =
+        legacyDirLight ? legacyDirLight->getDirection() : Vec3f{};
+    const Vec4f legacyUboDir =
+        fixture.scene->getSceneLightsUBO()->param.directional[1].direction;
+    EXPECT(nearlyEqual(legacyUboDir.x, legacyPropertyDir.x) &&
+               nearlyEqual(legacyUboDir.y, legacyPropertyDir.y) &&
+               nearlyEqual(legacyUboDir.z, legacyPropertyDir.z),
+           "pre-existing node rotation must not desync light UBO direction");
+  }
+
   const CommandResult rotateDir =
       fixture.bus.dispatch("rotate /key_light 0 90 0");
   EXPECT(rotateDir.ok, "rotate directional light succeeds");
+  EXPECT(rotateDir.metadata.find("scene.rebuild") != rotateDir.metadata.end(),
+         "rotating an attached directional light requests shadow cascade rebuild");
   const CommandResult getDirection =
       fixture.bus.dispatch("get /key_light.light.direction");
   EXPECT(getDirection.ok, "rotated directional light direction can be read");

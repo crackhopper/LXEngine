@@ -47,19 +47,6 @@ void collectSubtreeSnapshots(const SceneNodeSharedPtr &node,
   return nullptr;
 }
 
-[[nodiscard]] Vec3f lightDirectionFromNodeRotation(
-    const SceneNodeSharedPtr &node, const Vec3f &fallback) {
-  if (!node) {
-    return fallback;
-  }
-  const Transform world = Transform::fromMat4(node->getWorldTransform());
-  Vec3f direction = world.rotation.rotate(Vec3f{0.0f, 0.0f, -1.0f});
-  if (direction.length2() <= 1e-6f) {
-    return fallback;
-  }
-  return direction.normalized();
-}
-
 } // namespace
 
 /*
@@ -213,10 +200,8 @@ Scene::getSceneLevelResources(StringID pass, const RenderTarget &target) const {
                   << MaxDirectionalLights << "\n";
         continue;
       }
-      const auto node = directionalLight->getSceneNode();
       auto &entry = m_sceneLightsUbo->param.directional[directionalCount++];
-      const Vec3f direction =
-          lightDirectionFromNodeRotation(node, directionalLight->getDirection());
+      const Vec3f direction = directionalLight->getDirection();
       const Vec3f color = directionalLight->getColor();
       entry.direction = Vec4f{direction.x, direction.y, direction.z, 0.0f};
       entry.colorIntensity =
@@ -249,8 +234,7 @@ Scene::getSceneLevelResources(StringID pass, const RenderTarget &target) const {
       const Vec3f position =
           node ? Transform::fromMat4(node->getWorldTransform()).translation
                : Vec3f{};
-      const Vec3f direction =
-          lightDirectionFromNodeRotation(node, spotLight->getDirection());
+      const Vec3f direction = spotLight->getDirection();
       const Vec3f color = spotLight->getColor();
       auto &entry = m_sceneLightsUbo->param.spot[spotCount++];
       entry.positionRange =
