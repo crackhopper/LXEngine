@@ -650,10 +650,14 @@ void registerLxeEditorCommands(LX_core::CommandBus &bus,
       });
 
   bus.registerHandler(
-      "scene", "scene open <name-or-path> | scene save [args]",
+      "scene",
+      "scene open <name-or-path> | scene import <source-path> <scene-id> | "
+      "scene save [args]",
       [sceneCommand](std::vector<std::string> args) {
         if (args.empty()) {
-          return makeError("usage: scene open <name-or-path> | scene save [args]");
+          return makeError(
+              "usage: scene open <name-or-path> | scene import <source-path> "
+              "<scene-id> | scene save [args]");
         }
         if (args[0] == "load") {
           return makeError("scene command removed; use scene open");
@@ -663,6 +667,7 @@ void registerLxeEditorCommands(LX_core::CommandBus &bus,
         }
         LX_core::CommandResult result = sceneCommand(args);
         if ((args[0] == "open" || args[0] == "new" ||
+             args[0] == "import" ||
              args[0] == "duplicate") &&
             result.ok) {
           clearUndoRedoOnSuccess(result);

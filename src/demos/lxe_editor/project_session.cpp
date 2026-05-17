@@ -651,6 +651,53 @@ ProjectCommandResult ProjectSession::duplicateScene(
   }
 }
 
+ProjectCommandResult ProjectSession::importScene(const std::string &sourcePath,
+                                                 const std::string &sceneId) {
+  if (!hasProject()) {
+    return makeResult(false, "no project is open");
+  }
+  if (!isValidNewSceneId(sceneId)) {
+    return makeResult(false, "invalid scene id: " + sceneId, {},
+                      m_currentProject->id);
+  }
+  if (sceneIdExists(*m_currentProject, sceneId)) {
+    return makeResult(false, "scene already exists: " + sceneId, {},
+                      m_currentProject->id);
+  }
+
+  try {
+    const auto sourceScenePath = absoluteNormal(sourcePath);
+    if (!std::filesystem::exists(sourceScenePath) ||
+        !std::filesystem::is_regular_file(sourceScenePath)) {
+      return makeResult(false, "scene source file not found", sourceScenePath,
+                        m_currentProject->id);
+    }
+
+    const auto relativePath =
+        (std::filesystem::path("scenes") / (sceneId + ".scene.yaml"))
+            .lexically_normal();
+    if (!isContainedRelativePath(*m_projectRoot, relativePath)) {
+      return makeResult(false, "scene target path escapes project root", {},
+                        m_currentProject->id);
+    }
+    const auto targetPath = *m_projectRoot / relativePath;
+    if (std::filesystem::exists(targetPath)) {
+      return makeResult(false, "scene file already exists", targetPath,
+                        m_currentProject->id);
+    }
+
+    std::filesystem::create_directories(targetPath.parent_path());
+    std::filesystem::copy_file(sourceScenePath, targetPath);
+    m_currentProject->scenes.push_back({sceneId, relativePath});
+    m_currentProject->activeScene = relativePath;
+    m_dirty = true;
+    return makeResult(true, "scene imported", targetPath,
+                      m_currentProject->id);
+  } catch (const std::exception &ex) {
+    return makeResult(false, ex.what(), {}, m_currentProject->id);
+  }
+}
+
 ProjectCommandResult ProjectSession::removeScene(const std::string &sceneId) {
   if (!hasProject()) {
     return makeResult(false, "no project is open");

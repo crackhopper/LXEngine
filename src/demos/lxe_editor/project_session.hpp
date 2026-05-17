@@ -36,6 +36,8 @@ public:
   [[nodiscard]] ProjectCommandResult newScene(const std::string &sceneId);
   [[nodiscard]] ProjectCommandResult duplicateScene(
       const std::string &sourceSceneId, const std::string &newSceneId);
+  [[nodiscard]] ProjectCommandResult importScene(const std::string &sourcePath,
+                                                 const std::string &sceneId);
   [[nodiscard]] ProjectCommandResult removeScene(const std::string &sceneId);
 
 private:

@@ -587,6 +587,30 @@ void testDuplicateSceneSuccessAndRejectsDuplicateIdAndPath() {
          "duplicateScene should reject duplicate target path");
 }
 
+void testImportSceneCopiesExternalSceneAndRegistersIt() {
+  const auto root = makeTempRoot("lx_project_session_import_scene");
+  demo::ProjectSession session = makeSession(root);
+  EXPECT(session.initProject("empty", "Import Test").ok,
+         "project init should succeed");
+  const auto sourceScene = root / "external" / "saved.scene.yaml";
+  writeFile(sourceScene, "scene:\n  name: Imported\nnodes: []\n");
+
+  const auto result = session.importScene(sourceScene.string(), "imported");
+
+  EXPECT(result.ok, "importScene should accept an external scene file");
+  EXPECT(session.currentProject()->scenes.size() == 2,
+         "importScene should add scene entry");
+  EXPECT(session.currentProject()->activeScene ==
+             std::filesystem::path("scenes/imported.scene.yaml"),
+         "importScene should activate imported scene");
+  EXPECT(std::filesystem::exists(*session.projectRoot() /
+                                 "scenes/imported.scene.yaml"),
+         "importScene should copy scene file into project");
+  EXPECT(session.dirty(), "importScene should mark project dirty");
+  EXPECT(!session.openScene(sourceScene.string()).ok,
+         "openScene should still reject unregistered external paths");
+}
+
 void testSceneOpenRejectsPathOutsideProjectRoot() {
   const auto root = makeTempRoot("lx_project_session_scene_escape");
   demo::ProjectSession session = makeSession(root);
@@ -685,6 +709,7 @@ int main() {
   testSceneDuplicateRejectsSymlinkedScenesDirectoryEscape();
   testSceneIdsUsePortableWhitelist();
   testDuplicateSceneSuccessAndRejectsDuplicateIdAndPath();
+  testImportSceneCopiesExternalSceneAndRegistersIt();
   testSceneOpenRejectsPathOutsideProjectRoot();
   testSceneOpenRejectsUnregisteredContainedPath();
   testRemoveSceneSuccessAndRejectsActiveOrLastScene();

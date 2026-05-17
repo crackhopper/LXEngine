@@ -611,6 +611,20 @@ LxeEditorSession::handleSceneCommand(const std::vector<std::string> &args) {
     }
     return makeCommandOk(duplicated.message, duplicated.structuredJson);
   }
+  if (args[0] == "import") {
+    if (args.size() != 3) {
+      return makeCommandError("usage: scene import <source-path> <scene-id>");
+    }
+    const auto imported = m_projectSession.importScene(args[1], args[2]);
+    if (!imported.ok) {
+      return makeCommandError(imported.message);
+    }
+    const auto queued = queueActiveSceneOpen();
+    if (!queued.ok) {
+      return makeCommandError(queued.message);
+    }
+    return makeCommandOk(imported.message, imported.structuredJson);
+  }
   if (args[0] == "remove") {
     if (args.size() != 2) {
       return makeCommandError("usage: scene remove <scene-id>");
@@ -624,7 +638,8 @@ LxeEditorSession::handleSceneCommand(const std::vector<std::string> &args) {
   return makeCommandError(
       "usage: scene list | scene open <scene-id-or-path> | scene save | "
       "scene new <scene-id> | scene duplicate <source-id> <new-id> | "
-      "scene remove <scene-id> | scene status");
+      "scene import <source-path> <scene-id> | scene remove <scene-id> | "
+      "scene status");
 }
 
 std::string LxeEditorSession::projectSummaryJson() const {
