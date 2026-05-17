@@ -8,7 +8,8 @@ namespace LX_core {
 @source_analysis.section PipelineKey：pipeline 身份的最终句柄
 `PipelineKey` 故意只包一个结构化 `StringID`。它不保存 shader、render state、
 vertex layout 的副本，而是要求调用方先把 object-side 和 material-side 的结构事实
-各自归约成 signature，再在这里做最后一次 compose。
+各自归约成 signature，并在 RenderQueue 已知 render target 时把 target signature
+一起传入这里做最后一次 compose。
 
 当前 queue build 之后的完整形状是：
 
@@ -35,10 +36,12 @@ struct PipelineKey {
     }
   };
 
-  /// 两级 compose：object signature + material signature。调用方通过
-  /// `IRenderable::getPipelineSignature(pass)` 与
-  /// `MaterialInstance::getPipelineSignature(pass)` 先各自组装结构化签名，再传入本函数。
   static PipelineKey build(StringID objectSig, StringID materialSig);
+
+  /// 三级 compose：object signature + material signature + target signature。
+  /// 调用方通过 `IRenderable::getPipelineSignature(pass)`、
+  /// `MaterialInstance::getPipelineSignature(pass)` 与
+  /// `RenderTargetDesc::getPipelineSignature()` 组装结构化签名，再传入本函数。
   static PipelineKey build(StringID objectSig, StringID materialSig,
                            StringID targetSig);
 };

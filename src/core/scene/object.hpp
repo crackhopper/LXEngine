@@ -5,10 +5,9 @@
 #include "core/frame_graph/pass.hpp"
 #include "core/math/mat.hpp"
 #include "core/math/transform.hpp"
-#include "core/pipeline/pipeline_key.hpp"
 #include "core/rhi/gpu_resource.hpp"
-#include "core/scene/component.hpp"
 #include "core/scene/camera.hpp"
+#include "core/scene/component.hpp"
 #include "core/scene/scene_events.hpp"
 #include "core/scene/visibility_mask.hpp"
 #include <algorithm>
@@ -67,7 +66,6 @@ struct ValidatedRenderablePassData {
   std::vector<IGpuResourceSharedPtr> descriptorResources;
   StringID objectSignature;
   StringID materialSignature;
-  PipelineKey pipelineKey;
 };
 
 class IRenderable {
@@ -86,7 +84,8 @@ public:
   virtual std::string getNodeName() const = 0;
   virtual StringID getDebugId() const { return StringID{}; }
 
-  virtual std::optional<std::reference_wrapper<const ValidatedRenderablePassData>>
+  virtual std::optional<
+      std::reference_wrapper<const ValidatedRenderablePassData>>
   getValidatedPassData(StringID pass) const = 0;
 };
 

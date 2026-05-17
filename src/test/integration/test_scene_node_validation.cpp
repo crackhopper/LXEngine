@@ -116,7 +116,8 @@ struct VertexPosNormalUvOnly {
   }
 };
 
-template <typename TVertex> MeshSharedPtr makeMesh(std::vector<TVertex> vertices) {
+template <typename TVertex>
+MeshSharedPtr makeMesh(std::vector<TVertex> vertices) {
   BoundingBox bounds;
   for (const auto &vertex : vertices) {
     bounds.merge(vertex.pos);
@@ -127,27 +128,26 @@ template <typename TVertex> MeshSharedPtr makeMesh(std::vector<TVertex> vertices
 }
 
 MeshSharedPtr makeMeshWithSkinningInputs() {
-  return makeMesh<VertexPosNormalUvBone>(
-      std::vector<VertexPosNormalUvBone>{
-          VertexPosNormalUvBone{{0, 0, 0},
-                                {0, 1, 0},
-                                {0, 0},
-                                {1, 0, 0, 1},
-                                {0, 0, 0, 0},
-                                {1, 0, 0, 0}},
-          VertexPosNormalUvBone{{1, 0, 0},
-                                {0, 1, 0},
-                                {1, 0},
-                                {1, 0, 0, 1},
-                                {0, 0, 0, 0},
-                                {1, 0, 0, 0}},
-          VertexPosNormalUvBone{{0, 1, 0},
-                                {0, 1, 0},
-                                {0, 1},
-                                {1, 0, 0, 1},
-                                {0, 0, 0, 0},
-                                {1, 0, 0, 0}},
-      });
+  return makeMesh<VertexPosNormalUvBone>(std::vector<VertexPosNormalUvBone>{
+      VertexPosNormalUvBone{{0, 0, 0},
+                            {0, 1, 0},
+                            {0, 0},
+                            {1, 0, 0, 1},
+                            {0, 0, 0, 0},
+                            {1, 0, 0, 0}},
+      VertexPosNormalUvBone{{1, 0, 0},
+                            {0, 1, 0},
+                            {1, 0},
+                            {1, 0, 0, 1},
+                            {0, 0, 0, 0},
+                            {1, 0, 0, 0}},
+      VertexPosNormalUvBone{{0, 1, 0},
+                            {0, 1, 0},
+                            {0, 1},
+                            {1, 0, 0, 1},
+                            {0, 0, 0, 0},
+                            {1, 0, 0, 0}},
+  });
 }
 
 MeshSharedPtr makeMeshWithoutSkinningInputs() {
@@ -172,10 +172,9 @@ MeshSharedPtr makeMeshPositionOnly() {
 }
 
 MeshSharedPtr makeMeshWithVertexColorOnly() {
-  return makeMesh<VertexPosColorOnly>(
-      {{{0, 0, 0}, {1, 0, 0, 1}},
-       {{1, 0, 0}, {0, 1, 0, 1}},
-       {{0, 1, 0}, {0, 0, 1, 1}}});
+  return makeMesh<VertexPosColorOnly>({{{0, 0, 0}, {1, 0, 0, 1}},
+                                       {{1, 0, 0}, {0, 1, 0, 1}},
+                                       {{0, 1, 0}, {0, 0, 1, 1}}});
 }
 
 MeshSharedPtr makeMeshWithUvOnly() {
@@ -185,16 +184,13 @@ MeshSharedPtr makeMeshWithUvOnly() {
 
 MeshSharedPtr makeMeshWithNormalOnly() {
   return makeMesh<VertexPosNormalOnly>(
-      {{{0, 0, 0}, {0, 1, 0}},
-       {{1, 0, 0}, {0, 1, 0}},
-       {{0, 1, 0}, {0, 1, 0}}});
+      {{{0, 0, 0}, {0, 1, 0}}, {{1, 0, 0}, {0, 1, 0}}, {{0, 1, 0}, {0, 1, 0}}});
 }
 
 MeshSharedPtr makeMeshWithNormalAndUvOnly() {
-  return makeMesh<VertexPosNormalUvOnly>(
-      {{{0, 0, 0}, {0, 1, 0}, {0, 0}},
-       {{1, 0, 0}, {0, 1, 0}, {1, 0}},
-       {{0, 1, 0}, {0, 1, 0}, {0, 1}}});
+  return makeMesh<VertexPosNormalUvOnly>({{{0, 0, 0}, {0, 1, 0}, {0, 0}},
+                                          {{1, 0, 0}, {0, 1, 0}, {1, 0}},
+                                          {{0, 1, 0}, {0, 1, 0}, {0, 1}}});
 }
 
 SkeletonSharedPtr makeSkeleton() {
@@ -229,38 +225,36 @@ MaterialInstanceSharedPtr makeMaterialFromYaml(const std::string &yamlContent) {
 }
 
 MaterialInstanceSharedPtr makeMaterial(bool skinning) {
-  std::string yaml =
-      "shader: blinnphong_0\n"
-      "variants:\n"
-      "  USE_LIGHTING: true\n"
-      "  USE_SKINNING: " + std::string(skinning ? "true" : "false") + "\n"
-      "variantRules:\n"
-      "  - requires: [USE_SKINNING]\n"
-      "    depends: [USE_LIGHTING]\n"
-      "passes:\n"
-      "  Forward:\n"
-      "    renderState:\n"
-      "      depthTest: true\n";
+  std::string yaml = "shader: blinnphong_0\n"
+                     "variants:\n"
+                     "  USE_LIGHTING: true\n"
+                     "  USE_SKINNING: " +
+                     std::string(skinning ? "true" : "false") +
+                     "\n"
+                     "variantRules:\n"
+                     "  - requires: [USE_SKINNING]\n"
+                     "    depends: [USE_LIGHTING]\n"
+                     "passes:\n"
+                     "  Forward:\n"
+                     "    renderState:\n"
+                     "      depthTest: true\n";
   return makeMaterialFromYaml(yaml);
 }
 
-MaterialInstanceSharedPtr
-makeMaterial(std::vector<ShaderVariant> variants) {
-  std::string yaml =
-      "shader: blinnphong_0\n"
-      "variants:\n";
+MaterialInstanceSharedPtr makeMaterial(std::vector<ShaderVariant> variants) {
+  std::string yaml = "shader: blinnphong_0\n"
+                     "variants:\n";
   for (const auto &v : variants)
     yaml += "  " + v.macroName + ": " + (v.enabled ? "true" : "false") + "\n";
-  yaml +=
-      "variantRules:\n"
-      "  - requires: [USE_NORMAL_MAP]\n"
-      "    depends: [USE_LIGHTING, USE_UV]\n"
-      "  - requires: [USE_SKINNING]\n"
-      "    depends: [USE_LIGHTING]\n"
-      "passes:\n"
-      "  Forward:\n"
-      "    renderState:\n"
-      "      depthTest: true\n";
+  yaml += "variantRules:\n"
+          "  - requires: [USE_NORMAL_MAP]\n"
+          "    depends: [USE_LIGHTING, USE_UV]\n"
+          "  - requires: [USE_SKINNING]\n"
+          "    depends: [USE_LIGHTING]\n"
+          "passes:\n"
+          "  Forward:\n"
+          "    renderState:\n"
+          "      depthTest: true\n";
   return makeMaterialFromYaml(yaml);
 }
 
@@ -274,9 +268,7 @@ bool hasBinding(const std::vector<IGpuResourceSharedPtr> &resources,
   return false;
 }
 
-bool commandExitedSuccessfully(int code) {
-  return code == 0;
-}
+bool commandExitedSuccessfully(int code) { return code == 0; }
 
 SceneNodeSharedPtr makeNode(const std::string &nodeName, MeshSharedPtr mesh,
                             MaterialInstanceSharedPtr material,
@@ -310,7 +302,8 @@ Vec3f transformPoint(const Mat4f &transform, const Vec3f &point = Vec3f{}) {
   return (transform * Vec4f{point.x, point.y, point.z, 1.0f}).toVec3();
 }
 
-const PerDrawLayoutBase &readPerDrawLayout(const PerDrawDataSharedPtr &drawData) {
+const PerDrawLayoutBase &
+readPerDrawLayout(const PerDrawDataSharedPtr &drawData) {
   return *reinterpret_cast<const PerDrawLayoutBase *>(drawData->rawData());
 }
 
@@ -326,8 +319,8 @@ findItemByDrawData(const RenderQueue &queue,
 }
 
 void triggerDuplicateMeshComponentAssert() {
-  auto node =
-      makeNode("dup_component", makeMeshWithSkinningInputs(), makeMaterial(false));
+  auto node = makeNode("dup_component", makeMeshWithSkinningInputs(),
+                       makeMaterial(false));
   node->addComponent<MeshComponent>(makeMeshWithSkinningInputs());
 }
 
@@ -388,8 +381,8 @@ void testComponentAttachRemoveAndListOrder() {
 
 void testRemovingMaterialComponentDetachesPassListener() {
   auto material = makeMaterial(false);
-  auto node = makeNode("node_remove_material", makeMeshWithSkinningInputs(),
-                       material);
+  auto node =
+      makeNode("node_remove_material", makeMeshWithSkinningInputs(), material);
   EXPECT(node->supportsPass(Pass_Forward),
          "node should start valid before removing material component");
 
@@ -401,8 +394,9 @@ void testRemovingMaterialComponentDetachesPassListener() {
          "node without material component should not support forward pass");
 
   material->setPassEnabled(Pass_Forward, false);
-  EXPECT(!node->getValidatedPassData(Pass_Forward).has_value(),
-         "removed material listener should leave cache empty after pass change");
+  EXPECT(
+      !node->getValidatedPassData(Pass_Forward).has_value(),
+      "removed material listener should leave cache empty after pass change");
 }
 
 void testDuplicateComponentTypeTriggersProgrammerError(const char *argv0) {
@@ -491,7 +485,8 @@ void testSceneDestructionDetachesSceneNodesFromMaterialListener() {
 
   {
     auto scene = Scene::create("TemporaryScene", node);
-    EXPECT(node->supportsPass(Pass_Forward), "scene-owned node starts validated");
+    EXPECT(node->supportsPass(Pass_Forward),
+           "scene-owned node starts validated");
     EXPECT(node->getAttachedScene() != nullptr,
            "scene-owned node reports attached scene before destruction");
   }
@@ -511,8 +506,8 @@ void testSceneDestructionDetachesSceneNodesFromMaterialListener() {
 }
 
 void testSceneNodeHierarchyPropagatesWorldTransform() {
-  auto parent =
-      makeNode("node_parent", makeMeshWithSkinningInputs(), makeMaterial(false));
+  auto parent = makeNode("node_parent", makeMeshWithSkinningInputs(),
+                         makeMaterial(false));
   auto child =
       makeNode("node_child", makeMeshWithSkinningInputs(), makeMaterial(false));
 
@@ -580,7 +575,8 @@ void testHierarchyChangesDirtyChildPerDrawModel() {
   parent->setTranslation(Vec3f{5.0f, -2.0f, 0.0f});
   const auto &after = readPerDrawLayout(child->getPerDrawData());
   EXPECT(nearlyEqualVec3(transformPoint(after.model), Vec3f{5.0f, -1.0f, 0.0f}),
-         "changing parent transform should dirty and refresh child per-draw model");
+         "changing parent transform should dirty and refresh child per-draw "
+         "model");
 }
 
 void testParentedCameraFollowsHierarchyTranslation() {
@@ -605,9 +601,11 @@ void testParentedCameraFollowsHierarchyTranslation() {
   parent->setTranslation(Vec3f{4.0f, -1.0f, 8.0f});
 
   const Vec3f expectedDelta{3.0f, -3.0f, 5.0f};
-  EXPECT(nearlyEqualVec3(camera->get().getEyePosition(), eyeBefore + expectedDelta),
+  EXPECT(nearlyEqualVec3(camera->get().getEyePosition(),
+                         eyeBefore + expectedDelta),
          "camera eye should follow parent world translation");
-  EXPECT(nearlyEqualVec3(camera->get().getLookTarget(), targetBefore + expectedDelta),
+  EXPECT(nearlyEqualVec3(camera->get().getLookTarget(),
+                         targetBefore + expectedDelta),
          "camera look target should follow parent world translation");
 }
 
@@ -677,9 +675,10 @@ void testOrdinaryMaterialWritesDoNotChangeValidatedPassState() {
 }
 
 void testOptionalSampledResourcesDoNotBlockValidation() {
-  auto material = makeMaterial({ShaderVariant{"USE_UV", true},
-                                ShaderVariant{"USE_LIGHTING", false}});
-  auto node = makeNode("node_optional_textures", makeMeshWithUvOnly(), material);
+  auto material = makeMaterial(
+      {ShaderVariant{"USE_UV", true}, ShaderVariant{"USE_LIGHTING", false}});
+  auto node =
+      makeNode("node_optional_textures", makeMeshWithUvOnly(), material);
 
   EXPECT(node->supportsPass(Pass_Forward),
          "optional sampled resources should not be required structurally");
@@ -694,7 +693,7 @@ void testOptionalSampledResourcesDoNotBlockValidation() {
   }
 }
 
-void testSkinningVariantChangesPipelineKeyAndAddsBones() {
+void testSkinningVariantChangesPipelineSignaturesAndAddsBones() {
   auto mesh = makeMeshWithSkinningInputs();
   auto baseNode = makeNode("node_unskinned", mesh, makeMaterial(false));
   auto skinnedNode =
@@ -705,8 +704,11 @@ void testSkinningVariantChangesPipelineKeyAndAddsBones() {
   EXPECT(baseData.has_value(), "unskinned validated data exists");
   EXPECT(skinnedData.has_value(), "skinned validated data exists");
   if (baseData && skinnedData) {
-    EXPECT(baseData->get().pipelineKey != skinnedData->get().pipelineKey,
-           "variant difference should change pipeline key");
+    EXPECT(baseData->get().objectSignature !=
+                   skinnedData->get().objectSignature ||
+               baseData->get().materialSignature !=
+                   skinnedData->get().materialSignature,
+           "variant difference should change object or material signature");
     EXPECT(hasBinding(skinnedData->get().descriptorResources, "Bones"),
            "skinned validated entry should include Bones resource");
   }
@@ -724,11 +726,15 @@ void testRenderQueueConsumesValidatedSceneNode() {
   auto validated = node->getValidatedPassData(Pass_Forward);
   EXPECT(validated.has_value(), "validated entry should still exist");
   if (!queue.getItems().empty() && validated) {
-    EXPECT(queue.getItems()[0].pipelineKey == validated->get().pipelineKey,
-           "queue should reuse SceneNode validated pipeline key");
-    EXPECT(queue.getItems()[0].descriptorResources.size() >=
-               validated->get().descriptorResources.size(),
-           "scene-level resources should be appended after validated resources");
+    const PipelineKey expectedKey = PipelineKey::build(
+        validated->get().objectSignature, validated->get().materialSignature,
+        RenderTarget{}.toDesc().getPipelineSignature());
+    EXPECT(queue.getItems()[0].pipelineKey == expectedKey,
+           "queue should compose target-aware pipeline key");
+    EXPECT(
+        queue.getItems()[0].descriptorResources.size() >=
+            validated->get().descriptorResources.size(),
+        "scene-level resources should be appended after validated resources");
   }
 }
 
@@ -755,8 +761,9 @@ void testRenderQueueUsesHierarchyDerivedWorldTransform() {
          "queue should carry the child per-draw data pointer");
   if (childItem) {
     const auto &layout = readPerDrawLayout(childItem->get().drawData);
-    EXPECT(nearlyEqualVec3(transformPoint(layout.model), Vec3f{4.0f, 2.0f, 0.0f}),
-           "queue draw data should use hierarchy-derived child world transform");
+    EXPECT(
+        nearlyEqualVec3(transformPoint(layout.model), Vec3f{4.0f, 2.0f, 0.0f}),
+        "queue draw data should use hierarchy-derived child world transform");
   }
 }
 
@@ -808,8 +815,8 @@ void testProgrammerErrorsThrowLogicError() {
 
   threw = false;
   try {
-    auto node = makeNode("bad_lighting", makeMeshPositionOnly(),
-                         makeMaterial(false));
+    auto node =
+        makeNode("bad_lighting", makeMeshPositionOnly(), makeMaterial(false));
     (void)node;
   } catch (const std::logic_error &) {
     threw = true;
@@ -818,11 +825,10 @@ void testProgrammerErrorsThrowLogicError() {
 
   threw = false;
   try {
-    auto node = makeNode(
-        "bad_normal_map", makeMeshWithNormalAndUvOnly(),
-        makeMaterial({ShaderVariant{"USE_UV", true},
-                      ShaderVariant{"USE_LIGHTING", true},
-                      ShaderVariant{"USE_NORMAL_MAP", true}}));
+    auto node = makeNode("bad_normal_map", makeMeshWithNormalAndUvOnly(),
+                         makeMaterial({ShaderVariant{"USE_UV", true},
+                                       ShaderVariant{"USE_LIGHTING", true},
+                                       ShaderVariant{"USE_NORMAL_MAP", true}}));
     (void)node;
   } catch (const std::logic_error &) {
     threw = true;
@@ -880,7 +886,7 @@ int main(int argc, char **argv) {
   testCameraLookAtPreservesExactTargetDistance();
   testOrdinaryMaterialWritesDoNotChangeValidatedPassState();
   testOptionalSampledResourcesDoNotBlockValidation();
-  testSkinningVariantChangesPipelineKeyAndAddsBones();
+  testSkinningVariantChangesPipelineSignaturesAndAddsBones();
   testRenderQueueConsumesValidatedSceneNode();
   testRenderQueueUsesHierarchyDerivedWorldTransform();
   testSceneAssignsStableDebugId();

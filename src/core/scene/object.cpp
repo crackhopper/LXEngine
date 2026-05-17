@@ -1,9 +1,9 @@
 #include "object.hpp"
-#include "scene.hpp"
 #include "core/asset/shader_binding_ownership.hpp"
 #include "core/scene/components/material_component.hpp"
 #include "core/scene/components/mesh_component.hpp"
 #include "core/scene/components/skeleton_component.hpp"
+#include "scene.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -46,13 +46,11 @@ std::string variantsDebugString(const ShaderProgramSet &programSet) {
   return first ? "(none)" : oss.str();
 }
 
-[[noreturn]] void fatalValidation(const SceneNode &node, StringID pass,
-                                  const MaterialInstance &material,
-                                  const ShaderProgramSet &programSet,
-                                  const std::string &reason,
-                                  std::optional<std::reference_wrapper<
-                                      const VertexLayout>> layout =
-                                      std::nullopt) {
+[[noreturn]] void fatalValidation(
+    const SceneNode &node, StringID pass, const MaterialInstance &material,
+    const ShaderProgramSet &programSet, const std::string &reason,
+    std::optional<std::reference_wrapper<const VertexLayout>> layout =
+        std::nullopt) {
   std::ostringstream oss;
   oss << "SceneNodeValidation node=" << node.getNodeName()
       << " pass=" << GlobalStringTable::get().toDebugString(pass)
@@ -235,9 +233,7 @@ void SceneNode::setParentInternal(const SharedPtr &parent,
   }
 }
 
-void SceneNode::clearParent() {
-  clearParentInternal(true);
-}
+void SceneNode::clearParent() { clearParentInternal(true); }
 
 void SceneNode::clearParentInternal(const bool emitHierarchyEvent) {
   if (m_parent.expired()) {
@@ -321,8 +317,7 @@ StringID SceneNode::getPipelineSignature(StringID pass) const {
 
 bool SceneNode::supportsPass(StringID pass) const {
   const auto materialComponent = getMaterialComponent(*this);
-  return materialComponent &&
-         materialComponent->get().getMaterialInstance() &&
+  return materialComponent && materialComponent->get().getMaterialInstance() &&
          materialComponent->get().getMaterialInstance()->isPassEnabled(pass) &&
          m_validatedPasses.find(pass) != m_validatedPasses.end();
 }
@@ -460,8 +455,7 @@ void SceneNode::rebuildValidatedCache() {
 
     const bool usesSkinning =
         entry.shaderProgram.hasEnabledVariant("USE_SKINNING");
-    const bool hasBonesBinding =
-        shader->findBinding("Bones").has_value();
+    const bool hasBonesBinding = shader->findBinding("Bones").has_value();
 
     if (usesSkinning != hasBonesBinding) {
       fatalValidation(*this, pass, *material, entry.shaderProgram,
@@ -511,8 +505,8 @@ void SceneNode::rebuildValidatedCache() {
           fatalValidation(*this, pass, *material, entry.shaderProgram,
                           "missing Bones resource", std::cref(layout));
         }
-        descriptorResources.push_back(std::static_pointer_cast<IGpuResource>(
-            skeleton->getUBO()));
+        descriptorResources.push_back(
+            std::static_pointer_cast<IGpuResource>(skeleton->getUBO()));
         continue;
       }
 
@@ -543,8 +537,6 @@ void SceneNode::rebuildValidatedCache() {
     data.descriptorResources = std::move(descriptorResources);
     data.objectSignature = getPipelineSignature(pass);
     data.materialSignature = material->getPipelineSignature(pass);
-    data.pipelineKey = PipelineKey::build(data.objectSignature,
-                                          data.materialSignature);
     m_validatedPasses[pass] = std::move(data);
   }
 }
@@ -556,7 +548,9 @@ void SceneNode::clearComponents() {
   m_components.clear();
 }
 
-void SceneNode::attachToScene(const std::weak_ptr<Scene> &scene) { m_scene = scene; }
+void SceneNode::attachToScene(const std::weak_ptr<Scene> &scene) {
+  m_scene = scene;
+}
 
 void SceneNode::detachFromScene() { m_scene.reset(); }
 
@@ -626,8 +620,8 @@ std::string SceneNode::sanitizeName(std::string name) {
   bool mutated = false;
   for (char &c : name) {
     const unsigned char uc = static_cast<unsigned char>(c);
-    const bool allowed = std::isalnum(uc) != 0 || c == '_' || c == '-' ||
-                         c == '.';
+    const bool allowed =
+        std::isalnum(uc) != 0 || c == '_' || c == '-' || c == '.';
     if (!allowed) {
       c = '_';
       mutated = true;
