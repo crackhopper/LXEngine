@@ -418,7 +418,10 @@ LX_core::CommandResult LxeEditorSession::saveActiveProjectScene() {
     }
     m_editorData.lastProject = m_projectSession.projectRoot();
     persistEditorData();
-    return makeCommandOk("saved project scene " + activePath->string(),
+    const auto projectFile =
+        (*m_projectSession.projectRoot() / "project.yaml").lexically_normal();
+    return makeCommandOk("saved project " + projectFile.string() +
+                             " and scene " + activePath->string(),
                          "{\"path\":\"" + jsonEscape(activePath->string()) +
                              "\",\"project\":" + projectSummaryJson() + "}");
   } catch (const std::exception &e) {
@@ -456,18 +459,26 @@ LxeEditorSession::handleProjectCommand(const std::vector<std::string> &args) {
     ProjectCatalog catalog(resolveRuntimePath("data/projects"));
     catalog.refresh();
     std::ostringstream oss;
+    std::ostringstream message;
+    message << "projects:";
     oss << "{\"projects\":[";
     const auto &entries = catalog.entries();
+    if (entries.empty()) {
+      message << " <none>";
+    }
     for (usize i = 0; i < entries.size(); ++i) {
       if (i != 0) {
         oss << ',';
       }
+      message << "\n- " << entries[i].id << " (" << entries[i].displayName
+              << "): "
+              << (entries[i].path / "project.yaml").lexically_normal().string();
       oss << "{\"id\":\"" << jsonEscape(entries[i].id)
           << "\",\"displayName\":\"" << jsonEscape(entries[i].displayName)
           << "\",\"path\":\"" << jsonEscape(entries[i].path.string()) << "\"}";
     }
     oss << "]}";
-    return makeCommandOk("listed projects", oss.str());
+    return makeCommandOk(message.str(), oss.str());
   }
   if (args[0] == "init") {
     if (args.size() < 2) {

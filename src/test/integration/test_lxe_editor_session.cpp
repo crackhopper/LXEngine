@@ -440,6 +440,87 @@ void testProjectCloseAfterLoadedSceneUpdatesEngineLoop() {
   cleanupProject("editor_session_close_loaded");
 }
 
+void testProjectListMessageIncludesProjectIdsAndPaths() {
+  const bool initialized = initializeRuntimeAssetRoot();
+  EXPECT(initialized,
+         "runtime asset root should initialize for project list message test");
+  if (!initialized) {
+    return;
+  }
+  cleanupProject("editor_session_list_alpha");
+  cleanupProject("editor_session_list_beta");
+
+  LX_core::EditorState editorState;
+  LX_demo::lxe_editor::CameraRig rig;
+  LX_demo::lxe_editor::UiOverlay ui;
+  LX_demo::lxe_editor::LxeEditorSession session(rig, ui, editorState);
+  session.initialize();
+
+  EXPECT(session.commandBus()
+             .dispatch("project init empty editor_session_list_alpha")
+             .ok,
+         "first project init should succeed");
+  EXPECT(session.commandBus().dispatch("project close").ok,
+         "project close before second init should succeed");
+  EXPECT(session.commandBus()
+             .dispatch("project init empty editor_session_list_beta")
+             .ok,
+         "second project init should succeed");
+
+  const auto listResult = session.commandBus().dispatch("project list");
+
+  EXPECT(listResult.ok, "project list should succeed");
+  EXPECT(listResult.message.find("editor_session_list_alpha") !=
+             std::string::npos,
+         "project list message should include first project id");
+  EXPECT(listResult.message.find("editor_session_list_beta") !=
+             std::string::npos,
+         "project list message should include second project id");
+  EXPECT(listResult.message.find("project.yaml") != std::string::npos,
+         "project list message should include project file paths");
+
+  cleanupProject("editor_session_list_alpha");
+  cleanupProject("editor_session_list_beta");
+}
+
+void testProjectSaveMessageIncludesProjectAndScenePaths() {
+  const bool initialized = initializeRuntimeAssetRoot();
+  EXPECT(initialized,
+         "runtime asset root should initialize for project save message test");
+  if (!initialized) {
+    return;
+  }
+  cleanupProject("editor_session_save_message");
+
+  LX_core::EditorState editorState;
+  LX_demo::lxe_editor::CameraRig rig;
+  LX_demo::lxe_editor::UiOverlay ui;
+  LX_demo::lxe_editor::LxeEditorSession session(rig, ui, editorState);
+  session.initialize();
+
+  EXPECT(session.commandBus()
+             .dispatch("project init empty editor_session_save_message")
+             .ok,
+         "project init should queue scene open");
+
+  auto window = std::make_shared<FakeWindow>();
+  auto renderer = std::make_shared<FakeRenderer>();
+  LX_core::gpu::EngineLoop loop;
+  loop.initialize(window, renderer);
+  session.flushPendingSceneOpen(loop);
+
+  const auto saveResult = session.commandBus().dispatch("project save");
+
+  EXPECT(saveResult.ok, "project save should succeed");
+  EXPECT(saveResult.message.find("project.yaml") != std::string::npos,
+         "project save message should include project.yaml path");
+  EXPECT(saveResult.message.find("scenes/main.scene.yaml") !=
+             std::string::npos,
+         "project save message should include active scene path");
+
+  cleanupProject("editor_session_save_message");
+}
+
 void testEditorDoesNotCreateCameraOrLightHelperNodes() {
   const bool initialized = initializeRuntimeAssetRoot();
   EXPECT(initialized,
@@ -579,6 +660,8 @@ int main() {
   testStartupClosesProjectWhenLastProjectSceneCannotLoad();
   testProjectCloseCancelsPendingSceneOpen();
   testProjectCloseAfterLoadedSceneUpdatesEngineLoop();
+  testProjectListMessageIncludesProjectIdsAndPaths();
+  testProjectSaveMessageIncludesProjectAndScenePaths();
   testEditorDoesNotCreateCameraOrLightHelperNodes();
   testRecordingCommandControlsSessionRecorder();
   testSceneSaveLoadRoundTripsEditorSidecarState();
