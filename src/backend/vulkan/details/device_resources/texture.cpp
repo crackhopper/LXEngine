@@ -62,6 +62,19 @@ void validateImageAspect(VkFormat format, VkImageAspectFlags aspectMask) {
   }
 }
 
+void validateAttachmentUsage(VkFormat format, VkImageUsageFlags usage) {
+  if ((usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0 &&
+      formatHasColorAspect(format)) {
+    throw std::runtime_error(
+        "Attachment usage depth-stencil is incompatible with color format");
+  }
+  if ((usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) != 0 &&
+      !formatHasColorAspect(format)) {
+    throw std::runtime_error(
+        "Attachment usage color is incompatible with depth/stencil format");
+  }
+}
+
 class VulkanTextureCleanupGuard {
 public:
   VulkanTextureCleanupGuard(VkDevice device, VkImage &image,
@@ -276,6 +289,11 @@ void VulkanTexture::transitionLayout(VulkanCommandBuffer &cmd,
                                      VkImageLayout newLayout,
                                      VkPipelineStageFlags pipelineStage,
                                      VkImageAspectFlags aspectMask) {
+  if (oldLayout != m_currentLayout) {
+    throw std::runtime_error(
+        "Texture old layout does not match current layout");
+  }
+
   VkAccessFlags srcAccessMask = 0;
   VkAccessFlags dstAccessMask = 0;
   VkPipelineStageFlags sourceStage = 0;
@@ -306,6 +324,12 @@ void VulkanTexture::transitionLayout(VulkanCommandBuffer &cmd,
                     VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
     sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
     destinationStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+  } else if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED &&
+             newLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
+    srcAccessMask = 0;
+    dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+    destinationStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
   } else if (oldLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL &&
              newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
     srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
@@ -367,6 +391,7 @@ VulkanTextureUniquePtr VulkanTexture::createForAttachment(
     VulkanDevice &device, u32 width, u32 height,
     VkFormat format,
     VkImageUsageFlags usage, VkImageAspectFlags aspectMask) {
+  validateAttachmentUsage(format, usage);
   return std::make_unique<VulkanTexture>(Token{}, device, width, height, format,
                                          usage, aspectMask);
 }

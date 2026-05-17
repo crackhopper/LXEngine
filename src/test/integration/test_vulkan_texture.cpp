@@ -83,14 +83,27 @@ int main() {
       return 1;
     }
 
-    cmdMgr->beginFrame(0);
-    auto transitionCmd = cmdMgr->allocateBuffer();
-    transitionCmd->begin();
+    auto transitionCmd = cmdMgr->beginSingleTimeCommands();
     auto sampledColorAttachment =
         LX_core::backend::VulkanTexture::createForAttachment(
             *device, 64, 64, VK_FORMAT_R8G8B8A8_UNORM,
             VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
             VK_IMAGE_ASPECT_COLOR_BIT);
+    try {
+      sampledColorAttachment->transitionLayout(
+          *transitionCmd, VK_IMAGE_LAYOUT_UNDEFINED,
+          VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+          VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+    } catch (const std::runtime_error &e) {
+      std::cerr << "Color attachment layout transition was rejected: "
+                << e.what() << "\n";
+      return 1;
+    }
+    if (sampledColorAttachment->getCurrentLayout() !=
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
+      std::cerr << "Color attachment layout transition failed\n";
+      return 1;
+    }
     sampledColorAttachment->transitionLayout(
         *transitionCmd, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
@@ -102,6 +115,16 @@ int main() {
     }
 
     sampledAttachment->transitionLayout(
+        *transitionCmd, VK_IMAGE_LAYOUT_UNDEFINED,
+        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
+        VK_IMAGE_ASPECT_DEPTH_BIT);
+    if (sampledAttachment->getCurrentLayout() !=
+        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
+      std::cerr << "Depth attachment layout transition failed\n";
+      return 1;
+    }
+    sampledAttachment->transitionLayout(
         *transitionCmd, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_IMAGE_ASPECT_DEPTH_BIT);
@@ -111,9 +134,34 @@ int main() {
       return 1;
     }
 
-    bool unsupportedTransitionRejected = false;
+    bool mismatchedOldLayoutRejected = false;
     try {
       sampledColorAttachment->transitionLayout(
+          *transitionCmd, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+          VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+          VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+    } catch (const std::runtime_error &e) {
+      mismatchedOldLayoutRejected =
+          std::string(e.what()).find("current layout") != std::string::npos;
+    }
+    if (!mismatchedOldLayoutRejected) {
+      std::cerr << "Mismatched texture old layout was not rejected\n";
+      return 1;
+    }
+    if (sampledColorAttachment->getCurrentLayout() !=
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+      std::cerr << "Rejected old-layout mismatch changed the texture layout\n";
+      return 1;
+    }
+
+    bool unsupportedTransitionRejected = false;
+    auto unsupportedTransitionAttachment =
+        LX_core::backend::VulkanTexture::createForAttachment(
+            *device, 64, 64, VK_FORMAT_R8G8B8A8_UNORM,
+            VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+            VK_IMAGE_ASPECT_COLOR_BIT);
+    try {
+      unsupportedTransitionAttachment->transitionLayout(
           *transitionCmd, VK_IMAGE_LAYOUT_UNDEFINED,
           VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
           VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
@@ -126,18 +174,19 @@ int main() {
       std::cerr << "Unsupported texture layout transition was not rejected\n";
       return 1;
     }
-    if (sampledColorAttachment->getCurrentLayout() !=
-        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+    if (unsupportedTransitionAttachment->getCurrentLayout() !=
+        VK_IMAGE_LAYOUT_UNDEFINED) {
       std::cerr << "Rejected transition changed the texture layout\n";
       return 1;
     }
-    transitionCmd->end();
+    cmdMgr->endSingleTimeCommands(std::move(transitionCmd),
+                                  device->getGraphicsQueue());
 
     bool invalidAspectRejected = false;
     try {
       (void)LX_core::backend::VulkanTexture::createForAttachment(
           *device, 32, 32, VK_FORMAT_R8G8B8A8_UNORM,
-          VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+          VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
           VK_IMAGE_ASPECT_DEPTH_BIT);
     } catch (const std::runtime_error &e) {
       invalidAspectRejected =
@@ -145,6 +194,36 @@ int main() {
     }
     if (!invalidAspectRejected) {
       std::cerr << "Invalid color format/depth aspect attachment was not rejected clearly\n";
+      return 1;
+    }
+
+    bool colorFormatDepthUsageRejected = false;
+    try {
+      (void)LX_core::backend::VulkanTexture::createForAttachment(
+          *device, 32, 32, VK_FORMAT_R8G8B8A8_UNORM,
+          VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+          VK_IMAGE_ASPECT_COLOR_BIT);
+    } catch (const std::runtime_error &e) {
+      colorFormatDepthUsageRejected =
+          std::string(e.what()).find("usage") != std::string::npos;
+    }
+    if (!colorFormatDepthUsageRejected) {
+      std::cerr << "Color format with depth attachment usage was not rejected\n";
+      return 1;
+    }
+
+    bool depthFormatColorUsageRejected = false;
+    try {
+      (void)LX_core::backend::VulkanTexture::createForAttachment(
+          *device, 32, 32, VK_FORMAT_D32_SFLOAT,
+          VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+          VK_IMAGE_ASPECT_DEPTH_BIT);
+    } catch (const std::runtime_error &e) {
+      depthFormatColorUsageRejected =
+          std::string(e.what()).find("usage") != std::string::npos;
+    }
+    if (!depthFormatColorUsageRejected) {
+      std::cerr << "Depth format with color attachment usage was not rejected\n";
       return 1;
     }
 
