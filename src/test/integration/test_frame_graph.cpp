@@ -274,6 +274,18 @@ void testFrameGraphCompilePreservesTargetDescriptions() {
   }
 }
 
+void testRenderTargetToDescUsesMutatedLegacyFields() {
+  RenderTarget target;
+  target.colorFormat = ImageFormat::RGBA8;
+  target.depthFormat = ImageFormat::D24UnormS8;
+
+  const auto desc = target.toDesc();
+  EXPECT(desc.colorFormat == ImageFormat::RGBA8,
+         "toDesc should preserve mutated legacy colorFormat");
+  EXPECT(desc.depthFormat == ImageFormat::D24UnormS8,
+         "toDesc should preserve mutated legacy depthFormat");
+}
+
 void testFrameGraphCompileReportsMissingRead() {
   FrameGraph graph;
   graph.addPass(FramePass{Pass_Forward,
@@ -601,6 +613,7 @@ int main() {
   testFramePassNameIsStringID();
   testFrameGraphCompileAcceptsColorWriteThenSampleRead();
   testFrameGraphCompilePreservesTargetDescriptions();
+  testRenderTargetToDescUsesMutatedLegacyFields();
   testFrameGraphCompileReportsMissingRead();
   testFrameGraphCompileReportsDuplicateWrite();
   testFrameGraphCompileReportsUnnamedWrite();

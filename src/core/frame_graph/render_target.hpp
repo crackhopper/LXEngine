@@ -93,15 +93,16 @@ struct RenderTargetDesc {
 /*
 @source_analysis.section RenderTarget：旧 target 轴的兼容外壳
 `FramePass` 已经用 `RenderTargetDesc` 保存完整 target 形状，但当前 scene/camera
-筛选接口仍接收 `RenderTarget`。因此 `RenderTarget` 现在是兼容外壳：保留旧的
-`colorFormat` / `depthFormat` / `sampleCount` 字段给既有调用点使用，同时额外保存
-role、可空 attachment 和 layerCount，让 `matchesTarget` / `toDesc` 不会把
-offscreen 或 depth-only target 误还原成默认 swapchain target。
+筛选接口仍接收 `RenderTarget`。因此 `RenderTarget` 现在是兼容外壳：旧的
+`colorFormat` / `depthFormat` / `sampleCount` 字段仍是 present attachment 的
+格式来源，额外的 presence bit、role 和 layerCount 只补足旧结构表达不了的语义。
+这样既有代码直接写 `target.colorFormat` / `target.depthFormat` 时不会被 `toDesc`
+忽略，offscreen/depth-only target 也不会被误还原成默认 swapchain target。
 */
 struct RenderTarget {
   RenderTargetRole role = RenderTargetRole::Swapchain;
-  std::optional<ImageFormat> colorAttachmentFormat = ImageFormat::BGRA8;
-  std::optional<ImageFormat> depthAttachmentFormat = ImageFormat::D32Float;
+  bool hasColorAttachment = true;
+  bool hasDepthAttachment = true;
   ImageFormat colorFormat = ImageFormat::BGRA8;
   ImageFormat depthFormat = ImageFormat::D32Float;
   u8 sampleCount = 1;
@@ -109,11 +110,10 @@ struct RenderTarget {
 
   RenderTarget() = default;
   RenderTarget(ImageFormat color, ImageFormat depth, u8 samples)
-      : colorAttachmentFormat(color), depthAttachmentFormat(depth),
-        colorFormat(color), depthFormat(depth), sampleCount(samples) {}
+      : colorFormat(color), depthFormat(depth), sampleCount(samples) {}
   RenderTarget(const RenderTargetDesc &desc)
-      : role(desc.role), colorAttachmentFormat(desc.colorFormat),
-        depthAttachmentFormat(desc.depthFormat),
+      : role(desc.role), hasColorAttachment(desc.colorFormat.has_value()),
+        hasDepthAttachment(desc.depthFormat.has_value()),
         colorFormat(desc.colorFormat.value_or(ImageFormat::BGRA8)),
         depthFormat(desc.depthFormat.value_or(ImageFormat::D32Float)),
         sampleCount(desc.sampleCount), layerCount(desc.layerCount) {}
@@ -121,8 +121,12 @@ struct RenderTarget {
   RenderTargetDesc toDesc() const {
     RenderTargetDesc desc;
     desc.role = role;
-    desc.colorFormat = colorAttachmentFormat;
-    desc.depthFormat = depthAttachmentFormat;
+    desc.colorFormat =
+        hasColorAttachment ? std::optional<ImageFormat>{colorFormat}
+                           : std::nullopt;
+    desc.depthFormat =
+        hasDepthAttachment ? std::optional<ImageFormat>{depthFormat}
+                           : std::nullopt;
     desc.sampleCount = sampleCount;
     desc.layerCount = layerCount;
     return desc;
@@ -142,7 +146,7 @@ struct RenderTarget {
 @source_analysis.section operator==：按完整描述比较 target 轴
 `RenderTarget::operator==` 被 `Camera::matchesTarget` 用作 target 轴判定。比较
 必须走 `toDesc()`，否则从 `RenderTargetDesc` 降级到兼容类型时会丢失
-offscreen/depth-only 的 role、null attachment 和 layerCount 语义。
+offscreen/depth-only 的 role、attachment presence 和 layerCount 语义。
 */
 
 } // namespace LX_core
