@@ -9,13 +9,13 @@ variantRules:
 passes:
   Forward:
     renderState:
-      cullMode: Front
+      cullMode: Back
       depthTest: true
       depthWrite: true
   Shadow:
     shader: shadow_depth_only
     renderState:
-      cullMode: Back
+      cullMode: Front
       depthTest: true
       depthWrite: true
 
