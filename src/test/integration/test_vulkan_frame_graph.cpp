@@ -15,6 +15,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <cmath>
 #include <string>
 
 namespace {
@@ -101,7 +102,23 @@ LX_core::SceneSharedPtr makeFrameGraphScene() {
       LX_core::RenderTarget{LX_core::RenderTargetDesc::offscreenDepth(
           LX_core::ImageFormat::D32Float)});
   scene->addCamera(shadowCamera);
+
+  auto lightNode = LX_core::SceneNode::create("frame_graph_light");
+  lightNode->setName("frame_graph_light");
+  scene->addRenderable(lightNode);
+  scene->attachLight(lightNode, std::make_shared<LX_core::DirectionalLight>());
   return scene;
+}
+
+bool matricesNearlyEqual(const LX_core::Mat4f &a, const LX_core::Mat4f &b) {
+  for (int row = 0; row < 4; ++row) {
+    for (int col = 0; col < 4; ++col) {
+      if (std::abs(a(row, col) - b(row, col)) > 1e-4f) {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
 } // namespace
@@ -130,7 +147,8 @@ int main() {
         LX_core::backend::VulkanRenderer::Token{});
     renderer->initialize(window, "TestVulkanFrameGraph");
     phase = Phase::RendererInitialized;
-    renderer->initScene(makeFrameGraphScene());
+    auto scene = makeFrameGraphScene();
+    renderer->initScene(scene);
     phase = Phase::SceneInitialized;
 
     if (renderer->compiledFrameGraphPassCount() < 5) {
@@ -140,6 +158,28 @@ int main() {
     }
 
     renderer->uploadData();
+    const auto light =
+        std::dynamic_pointer_cast<LX_core::DirectionalLight>(
+            scene->getLights().front());
+    if (!light) {
+      std::cerr << "frame graph scene should have a directional light\n";
+      return 1;
+    }
+    const auto cascadeBeforeCameraMove =
+        light->getDirectionalUBO()->param.cascadeViewProj[0];
+    auto activeCamera =
+        scene->getCameras().front()->getComponent<LX_core::CameraComponent>();
+    activeCamera->get().lookAt({8.0f, 5.0f, 8.0f}, {0.0f, 0.0f, 0.0f},
+                               {0.0f, 1.0f, 0.0f});
+    renderer->uploadData();
+    const auto cascadeAfterCameraMove =
+        light->getDirectionalUBO()->param.cascadeViewProj[0];
+    if (matricesNearlyEqual(cascadeBeforeCameraMove, cascadeAfterCameraMove)) {
+      std::cerr << "directional shadow cascade should update when active "
+                   "camera moves before upload\n";
+      return 1;
+    }
+
     for (int i = 0; i < 4; ++i) {
       renderer->draw();
     }

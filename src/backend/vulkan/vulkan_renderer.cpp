@@ -422,6 +422,8 @@ public:
   }
 
   void uploadData() {
+    updateDirectionalLightCascades();
+
     const u32 currentFrameIndex = m_frameIndex % kMaxFramesInFlight;
     m_resourceManager->beginFrame(currentFrameIndex);
     bool requiresSharedBufferSync = false;
@@ -814,6 +816,7 @@ public:
     const auto previousTarget = cameraComponent.getTarget();
     cameraComponent.setTarget(target);
     cameraComponent.updateMatrices();
+    updateDirectionalLightCascadesForCamera(cameraComponent);
     auto sceneResources = m_scene->getSceneLevelResources(pass, target);
     cameraComponent.setTarget(previousTarget);
 
@@ -1060,12 +1063,20 @@ private:
   }
 
   void updateDirectionalLightCascades() {
-    const auto light = mainDirectionalLight();
     auto camera = mainCameraComponent();
-    if (!light || !camera.has_value()) {
+    if (!camera.has_value()) {
       return;
     }
-    light->updateShadowCascadesForCamera(camera->get());
+    updateDirectionalLightCascadesForCamera(camera->get());
+  }
+
+  void updateDirectionalLightCascadesForCamera(
+      const LX_core::CameraComponent &camera) {
+    const auto light = mainDirectionalLight();
+    if (!light) {
+      return;
+    }
+    light->updateShadowCascadesForCamera(camera);
   }
 
   void prepareShadowCascadePass(usize passIndex) {
