@@ -182,6 +182,20 @@ void testTransformWarnsOnNegativeScaleRepair() {
          "negative-scale repair flips Y/Z positive");
 }
 
+void testOrthographicDepthZeroToOneMapsExplicitDepthRange() {
+  const Mat4f proj =
+      Mat4f::orthographicDepthZeroToOne(-2.0f, 2.0f, -3.0f, 3.0f, -8.0f,
+                                        -2.0f);
+
+  const Vec4f nearPoint = proj * Vec4f{0.0f, 0.0f, -8.0f, 1.0f};
+  const Vec4f farPoint = proj * Vec4f{0.0f, 0.0f, -2.0f, 1.0f};
+
+  EXPECT(approx(nearPoint.z / nearPoint.w, 0.0f),
+         "zero-to-one orthographic projection maps near depth to 0");
+  EXPECT(approx(farPoint.z / farPoint.w, 1.0f),
+         "zero-to-one orthographic projection maps far depth to 1");
+}
+
 void testVecFloatHashUsesBitCastReference() {
   const Vec3f v{1.25f, -0.0f, std::numeric_limits<f32>::infinity()};
   const usize actual = Vec3f::Hash{}(v);
@@ -212,6 +226,7 @@ int main() {
   testTransformStrictTrsRoundTrip();
   testTransformWarnsOnShearInput();
   testTransformWarnsOnNegativeScaleRepair();
+  testOrthographicDepthZeroToOneMapsExplicitDepthRange();
   testVecFloatHashUsesBitCastReference();
   testVecDoubleHashUsesBitCastReference();
 

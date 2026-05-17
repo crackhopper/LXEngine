@@ -176,6 +176,22 @@ template <typename T> struct Mat4T {
     return r;
   }
 
+  static Mat4T orthographicDepthZeroToOne(T l, T rgt, T b, T t, T n, T f) {
+    Mat4T r{};
+
+    r.m[0][0] = 2 / (rgt - l);
+    r.m[1][1] = 2 / (t - b);
+    r.m[2][2] = 1 / (f - n);
+
+    r.m[3][0] = -(rgt + l) / (rgt - l);
+    r.m[3][1] = -(t + b) / (t - b);
+    r.m[3][2] = -n / (f - n);
+
+    r.m[3][3] = 1;
+
+    return r;
+  }
+
   // -------------------------
   // LookAt
   // -------------------------

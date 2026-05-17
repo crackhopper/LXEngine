@@ -105,7 +105,7 @@ float sampleShadowMap(vec3 worldPos, vec3 normal, vec3 lightDir) {
     vec4 lightSpacePos =
         sceneLight.cascadeViewProj[cascadeIndex] * vec4(worldPos, 1.0);
     vec3 projCoords = lightSpacePos.xyz / lightSpacePos.w;
-    projCoords = projCoords * 0.5 + 0.5;
+    projCoords.xy = projCoords.xy * 0.5 + 0.5;
     if (projCoords.x < 0.0 || projCoords.x > 1.0 ||
         projCoords.y < 0.0 || projCoords.y > 1.0 ||
         projCoords.z < 0.0 || projCoords.z > 1.0) {
