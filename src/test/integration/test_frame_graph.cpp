@@ -1,24 +1,25 @@
-#include "core/rhi/gpu_resource.hpp"
-#include "core/frame_graph/render_target.hpp"
-#include "core/rhi/index_buffer.hpp"
 #include "core/asset/material_instance.hpp"
 #include "core/asset/mesh.hpp"
-#include "core/pipeline/pipeline_build_desc.hpp"
 #include "core/asset/shader.hpp"
-#include "core/rhi/vertex_buffer.hpp"
 #include "core/frame_graph/frame_graph.hpp"
-#include "core/scene/light.hpp"
+#include "core/frame_graph/pass.hpp"
+#include "core/frame_graph/render_queue.hpp"
+#include "core/frame_graph/render_target.hpp"
+#include "core/pipeline/pipeline_build_desc.hpp"
+#include "core/rhi/gpu_resource.hpp"
+#include "core/rhi/index_buffer.hpp"
+#include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/components/camera_component.hpp"
 #include "core/scene/components/material_component.hpp"
 #include "core/scene/components/mesh_component.hpp"
+#include "core/scene/light.hpp"
 #include "core/scene/object.hpp"
-#include "core/frame_graph/pass.hpp"
-#include "core/frame_graph/render_queue.hpp"
 #include "core/scene/scene.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/string_table.hpp"
 #include "scene_test_helpers.hpp"
 
+#include <cmath>
 #include <iostream>
 #include <memory>
 #include <vector>
@@ -37,6 +38,21 @@ int failures = 0;
       ++failures;                                                              \
     }                                                                          \
   } while (0)
+
+bool approx(float a, float b, float epsilon = 0.001f) {
+  return std::abs(a - b) <= epsilon;
+}
+
+bool approxMatrix(const Mat4f &a, const Mat4f &b, float epsilon = 0.001f) {
+  for (int row = 0; row < 4; ++row) {
+    for (int col = 0; col < 4; ++col) {
+      if (!approx(a(row, col), b(row, col), epsilon)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
 
 // ---------------------------------------------------------------------------
 // Fakes
@@ -114,8 +130,8 @@ makeRenderableWithMask(VisibilityLayerMask mask,
 // Helpers for REQ-009 scenarios.
 SceneNodeSharedPtr makeCameraWithTarget(const RenderTarget &target) {
   static int cameraCounter = 0;
-  auto node = SceneNode::create("fg_camera_target_" +
-                                std::to_string(++cameraCounter));
+  auto node =
+      SceneNode::create("fg_camera_target_" + std::to_string(++cameraCounter));
   auto camera = node->addComponent<CameraComponent>();
   camera->get().setTarget(target);
   camera->get().updateMatrices();
@@ -144,9 +160,10 @@ makeLightWithPasses(std::initializer_list<StringID> passes) {
   return light;
 }
 
-SceneNodeSharedPtr attachLightNode(const SceneSharedPtr &scene,
-                                   const std::shared_ptr<DirectionalLight> &light,
-                                   const std::string &name) {
+SceneNodeSharedPtr
+attachLightNode(const SceneSharedPtr &scene,
+                const std::shared_ptr<DirectionalLight> &light,
+                const std::string &name) {
   auto node = SceneNode::create(name + "_node");
   node->setName(name);
   scene->addRenderable(node);
@@ -154,7 +171,8 @@ SceneNodeSharedPtr attachLightNode(const SceneSharedPtr &scene,
   return node;
 }
 
-SceneSharedPtr makeSceneWithDefaultCamera(const SceneNodeSharedPtr &root = nullptr) {
+SceneSharedPtr
+makeSceneWithDefaultCamera(const SceneNodeSharedPtr &root = nullptr) {
   auto scene = Scene::create(root);
   scene->addCamera(LX_test::makeDefaultCameraNodeWithTarget());
   return scene;
@@ -228,13 +246,12 @@ void testFrameGraphCompileAcceptsColorWriteThenSampleRead() {
                           {},
                           {},
                           {FrameGraphWrite{offscreen}}});
-  graph.addPass(FramePass{Pass_DebugOverlay,
-                          RenderTargetDesc::swapchain(ImageFormat::BGRA8,
-                                                      ImageFormat::D32Float),
-                          {},
-                          {FrameGraphRead::sampled(offscreen.name)},
-                          {FrameGraphWrite{swapColor},
-                           FrameGraphWrite{swapDepth}}});
+  graph.addPass(FramePass{
+      Pass_DebugOverlay,
+      RenderTargetDesc::swapchain(ImageFormat::BGRA8, ImageFormat::D32Float),
+      {},
+      {FrameGraphRead::sampled(offscreen.name)},
+      {FrameGraphWrite{swapColor}, FrameGraphWrite{swapDepth}}});
 
   const auto compiled = graph.compile();
   EXPECT(compiled.isValid(), "compile should accept write then sampled read");
@@ -246,11 +263,12 @@ void testFrameGraphCompilePreservesSampledReadBindingName() {
       FrameGraphResourceRef::depthAttachment(StringID("shadow.cascade0"));
 
   FrameGraph graph;
-  graph.addPass(FramePass{Pass_Shadow,
-                          RenderTargetDesc::offscreenDepth(ImageFormat::D32Float),
-                          {},
-                          {},
-                          {FrameGraphWrite{shadowDepth}}});
+  graph.addPass(
+      FramePass{Pass_Shadow,
+                RenderTargetDesc::offscreenDepth(ImageFormat::D32Float),
+                {},
+                {},
+                {FrameGraphWrite{shadowDepth}}});
   graph.addPass(FramePass{
       Pass_Forward,
       RenderTargetDesc::swapchain(ImageFormat::BGRA8, ImageFormat::D32Float),
@@ -297,6 +315,42 @@ void testDirectionalLightCascadeSplitsUpdateFromCamera() {
   light.updateShadowCascadesForCamera(camera->get(), 0.5f);
   EXPECT(light.getCascadeSplits().x != firstSplit,
          "cascade split should update when camera near plane changes");
+}
+
+void testDirectionalShadowDebugViewRecreatesCascadeMatrix() {
+  auto cameraNode = SceneNode::create("shadow_camera");
+  auto camera = cameraNode->addComponent<CameraComponent>();
+  camera->get().setNearPlane(0.5f);
+  camera->get().setFarPlane(100.0f);
+  camera->get().setFovY(55.0f);
+  camera->get().setAspect(1.7f);
+  camera->get().lookAt({4.0f, 3.0f, 9.0f}, {0.0f, 0.7f, 0.0f},
+                       {0.0f, 1.0f, 0.0f});
+
+  DirectionalLight light;
+  light.setShadowCascadeCount(1);
+  light.setShadowDistance(80.0f);
+  light.updateShadowCascadesForCamera(camera->get(), 0.5f);
+
+  const auto debugView = light.getShadowCascadeDebugView(0);
+  EXPECT(debugView.has_value(), "cascade debug view should be available");
+  if (!debugView.has_value()) {
+    return;
+  }
+
+  auto debugCameraNode = SceneNode::create("shadow_debug_camera");
+  auto debugCamera = debugCameraNode->addComponent<CameraComponent>();
+  debugCamera->get().applyProjectionState(
+      CameraType::Orthographic, 45.0f, 1.0f, debugView->nearPlane,
+      debugView->farPlane, debugView->left, debugView->right, debugView->bottom,
+      debugView->top);
+  debugCamera->get().lookAt(debugView->eye, debugView->target, debugView->up);
+
+  const Mat4f debugViewProj =
+      debugCamera->get().getProjMatrix() * debugCamera->get().getViewMatrix();
+  EXPECT(approxMatrix(debugViewProj,
+                      light.getDirectionalUBO()->param.cascadeViewProj[0]),
+         "debug light-view camera must recreate the shadow cascade matrix");
 }
 
 void testFrameGraphCompilePreservesTargetDescriptions() {
@@ -356,13 +410,13 @@ void testRenderTargetToDescUsesMutatedLegacyFields() {
 
 void testFrameGraphCompileReportsMissingRead() {
   FrameGraph graph;
-  graph.addPass(FramePass{Pass_Forward,
-                          RenderTargetDesc::swapchain(ImageFormat::BGRA8,
-                                                      ImageFormat::D32Float),
-                          {},
-                          {FrameGraphRead::sampled(StringID("missing.depth"))},
-                          {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
-                              StringID("swapchain.color"))}}});
+  graph.addPass(FramePass{
+      Pass_Forward,
+      RenderTargetDesc::swapchain(ImageFormat::BGRA8, ImageFormat::D32Float),
+      {},
+      {FrameGraphRead::sampled(StringID("missing.depth"))},
+      {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
+          StringID("swapchain.color"))}}});
 
   const auto compiled = graph.compile();
   EXPECT(!compiled.isValid(), "compile should reject missing resource read");
@@ -402,13 +456,12 @@ void testFrameGraphCompileReportsDuplicateWrite() {
 
 void testFrameGraphCompileReportsUnnamedWrite() {
   FrameGraph graph;
-  graph.addPass(FramePass{
-      Pass_Forward,
-      RenderTargetDesc::offscreenColor(ImageFormat::RGBA8),
-      {},
-      {},
-      {FrameGraphWrite{
-          FrameGraphResourceRef{StringID{}, FrameGraphAttachmentKind::Color}}}});
+  graph.addPass(FramePass{Pass_Forward,
+                          RenderTargetDesc::offscreenColor(ImageFormat::RGBA8),
+                          {},
+                          {},
+                          {FrameGraphWrite{FrameGraphResourceRef{
+                              StringID{}, FrameGraphAttachmentKind::Color}}}});
 
   const auto compiled = graph.compile();
   EXPECT(!compiled.isValid(), "compile should reject unnamed resource write");
@@ -459,17 +512,17 @@ void testShadowQueueUsesFallbackVisibilityWhenNoShadowCamera() {
   scene->addCamera(LX_test::makeDefaultCameraNodeWithTarget());
 
   FrameGraph fg;
-  fg.addPass(FramePass{
-      Pass_Shadow,
-      RenderTargetDesc::offscreenDepth(ImageFormat::D32Float),
-      {},
-      {},
-      {FrameGraphWrite{FrameGraphResourceRef::depthAttachment(
-          StringID("shadow.depth"))}}});
+  fg.addPass(FramePass{Pass_Shadow,
+                       RenderTargetDesc::offscreenDepth(ImageFormat::D32Float),
+                       {},
+                       {},
+                       {FrameGraphWrite{FrameGraphResourceRef::depthAttachment(
+                           StringID("shadow.depth"))}}});
   fg.buildFromScene(*scene);
 
   EXPECT(fg.getPasses()[0].queue.getItems().size() == 1,
-         "Shadow pass should include caster even without a target-matching camera");
+         "Shadow pass should include caster even without a target-matching "
+         "camera");
 }
 
 void testMultiCameraTargetFilter() {
@@ -541,18 +594,17 @@ void testNullOptCameraBeforeAndAfterFill() {
   auto scene = Scene::create(makeRenderable());
   scene->addCamera(testCam);
 
-  auto resBefore =
-      scene->getSceneLevelResources(Pass_Forward, customTarget);
+  auto resBefore = scene->getSceneLevelResources(Pass_Forward, customTarget);
   EXPECT(resBefore.empty(),
          "nullopt camera excludes camera and Scene has no hidden light");
 
   testCam->getComponent<CameraComponent>()->get().setTarget(customTarget);
 
-  auto resAfter =
-      scene->getSceneLevelResources(Pass_Forward, customTarget);
+  auto resAfter = scene->getSceneLevelResources(Pass_Forward, customTarget);
   EXPECT(resAfter.size() == 1, "after setTarget(customTarget): camera UBO");
 
-  EXPECT(testCam->getComponent<CameraComponent>()->get().matchesTarget(customTarget),
+  EXPECT(testCam->getComponent<CameraComponent>()->get().matchesTarget(
+             customTarget),
          "testCam->matchesTarget(customTarget) after setTarget");
 }
 
@@ -608,8 +660,9 @@ void testFrameGraphKeepsDifferentTargetsAsDifferentBuildDescs() {
   fg.buildFromScene(*scene);
 
   const auto infos = fg.collectAllPipelineBuildDescs();
-  EXPECT(infos.size() == 2,
-         "same object/material on different targets should keep two build descs");
+  EXPECT(
+      infos.size() == 2,
+      "same object/material on different targets should keep two build descs");
 }
 
 void testFrameGraphDedupesExactSameTargetBuildDescs() {
@@ -680,9 +733,10 @@ void testVisibilityFilteringKeepsSceneResources() {
   scene->addRenderable(hidden);
   scene->addCamera(makeCameraWithTargetAndMask(target, 0x1u));
 
-  const auto sceneResources = scene->getSceneLevelResources(Pass_Forward, target);
-  EXPECT(sceneResources.size() == 1,
-         "camera resources remain target-driven even when one renderable is hidden");
+  const auto sceneResources =
+      scene->getSceneLevelResources(Pass_Forward, target);
+  EXPECT(sceneResources.size() == 1, "camera resources remain target-driven "
+                                     "even when one renderable is hidden");
 
   FrameGraph fg;
   fg.addPass(FramePass{Pass_Forward, target, {}});
@@ -744,8 +798,8 @@ void testInactiveCameraIsIgnoredForResourcesAndMasks() {
   scene->addCamera(inactiveCamera);
 
   const auto resources = scene->getSceneLevelResources(Pass_Forward, target);
-  EXPECT(resources.size() == 1,
-         "inactive camera should be excluded while active camera resource remains");
+  EXPECT(resources.size() == 1, "inactive camera should be excluded while "
+                                "active camera resource remains");
 
   EXPECT(scene->getCombinedCameraCullingMask(target) == 0x1u,
          "inactive camera mask should not contribute to combined culling mask");
@@ -791,6 +845,7 @@ int main() {
   testFrameGraphCompileAcceptsColorWriteThenSampleRead();
   testFrameGraphCompilePreservesSampledReadBindingName();
   testDirectionalLightCascadeSplitsUpdateFromCamera();
+  testDirectionalShadowDebugViewRecreatesCascadeMatrix();
   testFrameGraphCompilePreservesTargetDescriptions();
   testRenderTargetToDescUsesMutatedLegacyFields();
   testFrameGraphCompileReportsMissingRead();

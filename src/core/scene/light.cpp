@@ -310,18 +310,17 @@ void DirectionalLight::updateShadowCascadesForCamera(
     const Mat4f proj = Mat4f::orthographicDepthZeroToOne(
         minX, maxX, minY, maxY, maxZ + radius, minZ - radius);
     m_ubo->param.cascadeViewProj[cascadeIndex] = proj * view;
-    m_shadowCascadeDebugViews[cascadeIndex] =
-        DirectionalShadowCascadeDebugView{
-            .eye = lightEye,
-            .target = center,
-            .up = lightUp,
-            .left = minX,
-            .right = maxX,
-            .bottom = minY,
-            .top = maxY,
-            .nearPlane = 0.1f,
-            .farPlane = std::max(1.0f, (maxZ + radius) - (minZ - radius)),
-        };
+    m_shadowCascadeDebugViews[cascadeIndex] = DirectionalShadowCascadeDebugView{
+        .eye = lightEye,
+        .target = center,
+        .up = lightUp,
+        .left = minX,
+        .right = maxX,
+        .bottom = minY,
+        .top = maxY,
+        .nearPlane = -(maxZ + radius),
+        .farPlane = -(minZ - radius),
+    };
     m_shadowCascadeDebugViewValid[cascadeIndex] = true;
     previousSplit = split;
   }
@@ -399,8 +398,8 @@ void DirectionalLight::updateShadowViewProjection() {
   const Vec3f target{0.0f, 0.0f, 0.0f};
   const Vec3f eye = target - dir * 10.0f;
   const Mat4f view = Mat4f::lookAt(eye, target, up);
-  const Mat4f proj = Mat4f::orthographicDepthZeroToOne(
-      -10.0f, 10.0f, -10.0f, 10.0f, -0.1f, -30.0f);
+  const Mat4f proj = Mat4f::orthographicDepthZeroToOne(-10.0f, 10.0f, -10.0f,
+                                                       10.0f, -0.1f, -30.0f);
   m_ubo->param.shadowViewProj = proj * view;
   for (u32 i = 0; i < MaxShadowCascades; ++i) {
     m_ubo->param.cascadeViewProj[i] = m_ubo->param.shadowViewProj;
