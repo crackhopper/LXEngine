@@ -132,7 +132,7 @@ RenderQueue 只负责 *单个 pass* 内的收口。跨 pass 的两件事都在 `
 
 ## REQ-042-a 落地后会变什么
 
-[`REQ-042-a`](../../../../requirements/042-a-frame-graph-v1-resource-target-pass-execution.md) 收口
+[`REQ-042-a`](../../../../requirements/finished/042-a-frame-graph-v1-resource-target-pass-execution.md) 收口
 `RenderTarget` 拆分为 `RenderTargetDesc`（intern-friendly 形状）+ `RenderTarget`
 （持有 desc + IGpuResource 句柄 + extent）后，本页几个核心契约会同步变化：
 

@@ -143,6 +143,6 @@ Shadow depth target 和 swapchain forward target 不是同一种 render target s
 ## 继续阅读
 
 - [项目目录结构](project-layout.md)
+- [FrameGraph、Render Target 与 Shadow](framegraph-render-target-shadow.md)
 - [Shadow 阶段教程](../tutorial/shadow-era/index.md)
-- [多 Pass 如何变成 Draw](../concepts/material/pass-rendering-flow.md)
 - [Vulkan Backend](../subsystems/vulkan-backend.md)

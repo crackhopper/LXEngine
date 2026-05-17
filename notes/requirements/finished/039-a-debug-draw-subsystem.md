@@ -179,7 +179,7 @@ void main() { o_color = v_color; }
 
 ### REQ-042 兼容预留
 
-`Pass_DebugOverlay` 的 `FramePass` 在 R6 实施时按当前 RenderTarget API 写（沿用占位 `RenderTarget` 三字段）。[REQ-042-a](../042-a-frame-graph-v1-resource-target-pass-execution.md) 实施时，会把 `FramePass` 的 target 字段从 `RenderTarget` 拆为 `RenderTargetDesc + RenderTarget` 或等价 desc / binding 分层；届时本 REQ 的 `Pass_DebugOverlay` 注册路径同步更新（仅改字段类型，不改 pass 语义）。DebugDraw 的 vertex / shader / pipeline 协议（R3 / R6 / R7）与 attachment 形状解耦，REQ-042-a 升级对 DebugDraw 内部数据流透明。
+`Pass_DebugOverlay` 的 `FramePass` 在 R6 实施时按当前 RenderTarget API 写（沿用占位 `RenderTarget` 三字段）。[REQ-042-a](042-a-frame-graph-v1-resource-target-pass-execution.md) 实施时，会把 `FramePass` 的 target 字段从 `RenderTarget` 拆为 `RenderTargetDesc + RenderTarget` 或等价 desc / binding 分层；届时本 REQ 的 `Pass_DebugOverlay` 注册路径同步更新（仅改字段类型，不改 pass 语义）。DebugDraw 的 vertex / shader / pipeline 协议（R3 / R6 / R7）与 attachment 形状解耦，REQ-042-a 升级对 DebugDraw 内部数据流透明。
 
 ## 依赖
 

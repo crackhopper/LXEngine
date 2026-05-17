@@ -133,7 +133,7 @@ core 层 FrameGraph 的名字与业界惯例略有偏差 — 读者第一次看�
 
 ## REQ-042-a 落地后会变什么
 
-[`REQ-042-a`](../../../../requirements/042-a-frame-graph-v1-resource-target-pass-execution.md) 对
+[`REQ-042-a`](../../../../requirements/finished/042-a-frame-graph-v1-resource-target-pass-execution.md) 对
 本页的影响主要落在 `FramePass::target` 字段类型与下游签名透传：
 
 - **`FramePass::target` 字段类型**：从 `RenderTarget` 改为 `RenderTargetDesc`。

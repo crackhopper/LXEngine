@@ -58,6 +58,7 @@ nav:
   - 概念与设计:
       - 总览: concepts-design/index.md
       - 架构总览: concepts-design/architecture.md
+      - FrameGraph 与 Shadow: concepts-design/framegraph-render-target-shadow.md
       - 术语概念: concepts-design/glossary.md
       - 项目目录结构: concepts-design/project-layout.md
       - 资产系统:

@@ -180,7 +180,7 @@ queue 不需要知道 SceneNode 内部 cache 形态，scene 也不需要知道 q
 
 ## REQ-042 落地后会变什么
 
-[`REQ-042`](../../../../requirements/042-a-frame-graph-v1-resource-target-pass-execution.md) 把
+[`REQ-042`](../../../../requirements/finished/042-a-frame-graph-v1-resource-target-pass-execution.md) 把
 `RenderTarget` 拆为 `RenderTargetDesc`（形状） + `RenderTarget`（持 desc + 句柄
 + extent）后，本页的 target 轴叙事会同步变化：
 

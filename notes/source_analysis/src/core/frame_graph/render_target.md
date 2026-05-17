@@ -57,7 +57,7 @@ REQ-042-a 落地后，这个 `==` 会被 `RenderTargetDesc::operator==` 取代�
 - 当前 `RenderTarget` 是早期占位实现，不是设计成果
 - target 轴在工程实际数据上几乎没有真实筛选 — 因为只有一种默认
   RenderTarget 在跑
-- 真正的设计在 [REQ-042-a: FrameGraph v1 resource / target / pass execution](../../../../requirements/042-a-frame-graph-v1-resource-target-pass-execution.md) 收口
+- 真正的设计在 [REQ-042-a: FrameGraph v1 resource / target / pass execution](../../../../requirements/finished/042-a-frame-graph-v1-resource-target-pass-execution.md) 收口
 
 读到这里如果想知道"为什么不直接改代码改成熟"，请先读 REQ-042-a — 它把
 descriptor / binding 的拆分、字段表、interning 路径、Camera 绑定语义、跨子系统

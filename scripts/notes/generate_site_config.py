@@ -238,18 +238,18 @@ def write_index(req_files: list[Path]) -> None:
     REQ_DIR.mkdir(parents=True, exist_ok=True)
     index_path = REQ_DIR / "index.md"
 
-    if index_path.is_file():
-        return
-
     lines = [
         "# 需求（进行中）",
         "",
         "本目录由 `scripts/notes/generate_site_config.py` 自动生成，列出 `notes/requirements/` 下尚未归档的需求文档；文件名编号即建议实施顺序，一个 REQ 文件只覆盖一个连续实施周期。",
         "",
     ]
-    for p in req_files:
-        title = extract_title(p, p.stem)
-        lines.append(f"- [{title}]({p.name})")
+    if req_files:
+        for p in req_files:
+            title = extract_title(p, p.stem)
+            lines.append(f"- [{title}]({p.name})")
+    else:
+        lines.append("当前没有进行中的需求文档。")
     lines.append("")
     write_text_if_changed(index_path, "\n".join(lines))
 

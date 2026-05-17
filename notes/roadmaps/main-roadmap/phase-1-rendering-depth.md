@@ -26,15 +26,15 @@
 | Task-based pass build / command recording | 未实现 |
 | Async compute / timeline semaphore 正式抽象 | 未实现，当前 Vulkan 仍用 fence + binary semaphore |
 
-## v0.1.1 active 实施顺序
+## v0.1.1 已归档实施顺序
 
 | 顺序 | REQ | 主题 | 说明 |
 |---|---|---|---|
-| 1 | [REQ-042-a](../../requirements/042-a-frame-graph-v1-resource-target-pass-execution.md) | FrameGraph v1 基础 | `RenderTargetDesc`、offscreen target、resource 声明、同 queue barrier、pass execution |
-| 2 | [REQ-042-b](../../requirements/042-b-directional-shadow-map-depth-pass.md) | Directional shadow map | 单 directional shadow map + depth-only pipeline |
-| 3 | [REQ-042-c](../../requirements/042-c-cascaded-shadow-maps.md) | Cascaded Shadow Maps | 让 directional shadow 可用到大场景 |
-| 4 | [REQ-043-a](../../requirements/043-a-shadow-era-tutorial-support.md) | Shadow 阶段教程支撑 | 完成 shadow/CSM 后补教程场景和说明 |
-| 5 | [REQ-043-b](../../requirements/043-b-architecture-concepts-mermaid.md) | 架构概念文档展开 | 用 Mermaid 和模块归属表解释 v0.1.1 后的架构 |
+| 1 | [REQ-042-a](../../requirements/finished/042-a-frame-graph-v1-resource-target-pass-execution.md) | FrameGraph v1 基础 | `RenderTargetDesc`、offscreen target、resource 声明、同 queue barrier、pass execution |
+| 2 | [REQ-042-b](../../requirements/finished/042-b-directional-shadow-map-depth-pass.md) | Directional shadow map | 单 directional shadow map + depth-only pipeline |
+| 3 | [REQ-042-c](../../requirements/finished/042-c-cascaded-shadow-maps.md) | Cascaded Shadow Maps | 让 directional shadow 可用到大场景 |
+| 4 | [REQ-043-a](../../requirements/finished/043-a-shadow-era-tutorial-support.md) | Shadow 阶段教程支撑 | 完成 shadow/CSM 后补教程场景和说明 |
+| 5 | [REQ-043-b](../../requirements/finished/043-b-architecture-concepts-mermaid.md) | 架构概念文档展开 | 用 Mermaid 和模块归属表解释 v0.1.1 后的架构 |
 
 ## v0.1.1 后的 pending 队列
 
@@ -92,7 +92,7 @@ FrameGraph v1 完成后，`Forward` 不再直接写 swapchain，而是写 HDR sc
 
 ## REQ-103 · Shadow Pass + Depth-only Pipeline
 
-> Active 映射：[REQ-042-b](../../requirements/042-b-directional-shadow-map-depth-pass.md)。本 heading 保留旧 anchor 供研究文档引用。
+> Finished 映射：[REQ-042-b](../../requirements/finished/042-b-directional-shadow-map-depth-pass.md)。本 heading 保留旧 anchor 供研究文档引用。
 
 Shadow 是第一个真正验证多 pass 的功能：
 
@@ -117,7 +117,7 @@ Forward pass:
 
 ## REQ-104 · Cascaded Shadow Maps
 
-> Active 映射：[REQ-042-c](../../requirements/042-c-cascaded-shadow-maps.md)。本 heading 保留旧 anchor 供研究文档引用。
+> Finished 映射：[REQ-042-c](../../requirements/finished/042-c-cascaded-shadow-maps.md)。本 heading 保留旧 anchor 供研究文档引用。
 
 单 shadow map 只能证明链路，CSM 才能让方向光阴影在测试场景里可用：
 

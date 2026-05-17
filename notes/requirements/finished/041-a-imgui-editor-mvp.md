@@ -160,7 +160,7 @@ void renderOverlay(ImDrawList* dl, const Camera &editorCam, const Scene &scene, 
 
 ## 边界与约束
 
-- v1 **不**做 picture-in-picture 预览（依赖 [REQ-042-a](../042-a-frame-graph-v1-resource-target-pass-execution.md) FrameGraph / RenderTarget 重写；R6 选择 `Camera::m_active` 方案绕开此依赖）
+- v1 **不**做 picture-in-picture 预览（依赖 [REQ-042-a](042-a-frame-graph-v1-resource-target-pass-execution.md) FrameGraph / RenderTarget 重写；R6 选择 `Camera::m_active` 方案绕开此依赖）
 - v1 **不**做文件对话框 asset browser（用命令 `add mesh <path>` 替代）
 - v1 **不**做多选 / 框选（单选 only）；移到 [REQ-041-c](041-c-editor-multi-select.md)
 - v1 **不**做 undo / redo UI（命令总线 history 字段已存）；逻辑挂在 [REQ-041-b](041-b-command-bus-v2.md)，UI 接入在 `REQ-041-d`（待创建）
@@ -171,7 +171,7 @@ void renderOverlay(ImDrawList* dl, const Camera &editorCam, const Scene &scene, 
 
 ### REQ-042 兼容预留
 
-R6 引入的 `Camera::m_active` 与 [REQ-042-a](../042-a-frame-graph-v1-resource-target-pass-execution.md) 升级的 `Camera::m_target` 在数据模型上**完全解耦**：前者表达"是否参与渲染"（编辑器 / 游戏相机互斥），后者表达"渲染到哪个 attachment 形状"（多 swapchain / MRT 路径）。REQ-042-a 后置实施时不影响 `m_active` 的语义；本 REQ 也不抢 `m_target` 的迁移工作。两者按 *正交字段* 设计，REQ-042-a 升级落地后只需把"非活跃 camera 不渲染"的过滤条件保持基于 `m_active`，无返工。
+R6 引入的 `Camera::m_active` 与 [REQ-042-a](042-a-frame-graph-v1-resource-target-pass-execution.md) 升级的 `Camera::m_target` 在数据模型上**完全解耦**：前者表达"是否参与渲染"（编辑器 / 游戏相机互斥），后者表达"渲染到哪个 attachment 形状"（多 swapchain / MRT 路径）。REQ-042-a 后置实施时不影响 `m_active` 的语义；本 REQ 也不抢 `m_target` 的迁移工作。两者按 *正交字段* 设计，REQ-042-a 升级落地后只需把"非活跃 camera 不渲染"的过滤条件保持基于 `m_active`，无返工。
 
 ## 依赖
 
@@ -188,7 +188,7 @@ R6 引入的 `Camera::m_active` 与 [REQ-042-a](../042-a-frame-graph-v1-resource
 
 - 编辑器 v2 polish 一族（041-b ~ 041-f）— 命令总线 v2、多选 / 框选、undo·redo UI、节点 Rename / Duplicate、菜单栏 / 工具栏 / 主题；详见上方 split 头注
 - **Phase 1.6 MCP shim**：基于本 REQ + [REQ-040-a](finished/040-a-editor-command-bus.md) 的命令总线起一个 stdio MCP server。外部 AI 控制编辑器 = MCP 客户端 dispatch_command 工具
-- **[REQ-042-a](../042-a-frame-graph-v1-resource-target-pass-execution.md) FrameGraph / RenderTarget 重写**完成后：把 F 键全屏预览升级为 picture-in-picture 视口（同帧并排渲染编辑器相机 + 游戏相机）
+- **[REQ-042-a](042-a-frame-graph-v1-resource-target-pass-execution.md) FrameGraph / RenderTarget 重写**完成后：把 F 键全屏预览升级为 picture-in-picture 视口（同帧并排渲染编辑器相机 + 游戏相机）
 - **REQ-109 PointLight + SpotLight** 落地后：在 viewport_overlay 加几行调用 `DebugDraw::wireSphere` / `cone`，point/spot 影响范围一次性接通
 - **Phase 9 Web 编辑器**：本 REQ 的 4 面板 + 命令总线接口直接搬到浏览器；UI 重写为 Vue，命令空间完全复用
 
