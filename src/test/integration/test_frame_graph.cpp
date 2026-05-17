@@ -251,16 +251,16 @@ void testMultiCameraTargetFilter() {
   scene->addCamera(camB);
 
   auto resA = scene->getSceneLevelResources(Pass_Forward, targetA);
-  EXPECT(resA.size() == 2,
-         "Forward×targetA: camA UBO + default light UBO (2 entries)");
+  EXPECT(resA.size() == 3,
+         "Forward×targetA: camA UBO + default light UBO + SceneLightsUBO");
 
-  // For targetB: only camB + default light.
+  // For targetB: only camB + default light + aggregated scene lights.
   auto resB = scene->getSceneLevelResources(Pass_Forward, targetB);
-  EXPECT(resB.size() == 2,
-         "Forward×targetB: camB UBO + default light UBO (2 entries)");
+  EXPECT(resB.size() == 3,
+         "Forward×targetB: camB UBO + default light UBO + SceneLightsUBO");
 
   // Cross-check camera UBO identity: camA's UBO should be in resA but not resB.
-  if (resA.size() == 2 && resB.size() == 2) {
+  if (resA.size() == 3 && resB.size() == 3) {
     const auto camAUbo = std::dynamic_pointer_cast<IGpuResource>(
         camA->getComponent<CameraComponent>()->get().getUBO());
     EXPECT(resA[0] == camAUbo, "resA[0] is camA's UBO");
@@ -281,12 +281,12 @@ void testMultiLightPassFilter() {
   scene->addLight(lightBoth);
 
   auto resForward = scene->getSceneLevelResources(Pass_Forward, RenderTarget{});
-  EXPECT(resForward.size() == 4,
-         "Pass_Forward: 1 cam + default light + lightForward + lightBoth = 4");
+  EXPECT(resForward.size() == 5,
+         "Pass_Forward: 1 cam + 3 directional LightUBOs + SceneLightsUBO");
 
   auto resShadow = scene->getSceneLevelResources(Pass_Shadow, RenderTarget{});
-  EXPECT(resShadow.size() == 3,
-         "Pass_Shadow: 1 cam + lightShadow + lightBoth = 3");
+  EXPECT(resShadow.size() == 4,
+         "Pass_Shadow: 1 cam + 2 directional LightUBOs + SceneLightsUBO");
 }
 
 void testNullOptCameraBeforeAndAfterFill() {
@@ -300,15 +300,15 @@ void testNullOptCameraBeforeAndAfterFill() {
 
   auto resBefore =
       scene->getSceneLevelResources(Pass_Forward, customTarget);
-  EXPECT(resBefore.size() == 1,
-         "nullopt camera does not match customTarget (1 default-light only)");
+  EXPECT(resBefore.size() == 2,
+         "nullopt camera excludes camera, leaving default LightUBO + SceneLightsUBO");
 
   testCam->getComponent<CameraComponent>()->get().setTarget(customTarget);
 
   auto resAfter =
       scene->getSceneLevelResources(Pass_Forward, customTarget);
-  EXPECT(resAfter.size() == 2,
-         "after setTarget(customTarget): testCam UBO + default light = 2");
+  EXPECT(resAfter.size() == 3,
+         "after setTarget(customTarget): camera + default LightUBO + SceneLightsUBO");
 
   EXPECT(testCam->getComponent<CameraComponent>()->get().matchesTarget(customTarget),
          "testCam->matchesTarget(customTarget) after setTarget");
@@ -399,8 +399,8 @@ void testVisibilityFilteringKeepsSceneResources() {
   scene->addCamera(makeCameraWithTargetAndMask(target, 0x1u));
 
   const auto sceneResources = scene->getSceneLevelResources(Pass_Forward, target);
-  EXPECT(sceneResources.size() == 2,
-         "camera resources remain target-driven even when one renderable is hidden");
+  EXPECT(sceneResources.size() == 3,
+         "camera and light resources remain target-driven even when one renderable is hidden");
 
   FrameGraph fg;
   fg.addPass(FramePass{Pass_Forward, target, {}});
@@ -429,8 +429,8 @@ void testInactiveCameraIsIgnoredForResourcesAndMasks() {
   scene->addCamera(inactiveCamera);
 
   const auto resources = scene->getSceneLevelResources(Pass_Forward, target);
-  EXPECT(resources.size() == 2,
-         "inactive camera should be excluded from scene-level resource collection");
+  EXPECT(resources.size() == 3,
+         "inactive camera should be excluded while active camera and light resources remain");
 
   EXPECT(scene->getCombinedCameraCullingMask(target) == 0x1u,
          "inactive camera mask should not contribute to combined culling mask");
