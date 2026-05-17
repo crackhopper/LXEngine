@@ -188,8 +188,6 @@ TARGETS = [
             """\
             这一页从
             [src/core/frame_graph/render_target.hpp](../../../../../src/core/frame_graph/render_target.hpp)
-            和它的实现
-            [src/core/frame_graph/render_target.cpp](../../../../../src/core/frame_graph/render_target.cpp)
             出发，关注的不是"它有哪几个字段"，而是：为什么 `RenderTarget` 被刻意做成
             一个不持有句柄、不参与 PipelineKey 的薄 POD，以及它怎么作为 REQ-009 两轴
             筛选里的 *target 轴* 在 Scene、Camera、RenderQueue 之间穿过。
@@ -200,9 +198,6 @@ TARGETS = [
             的匹配判断跟着 backend 状态一起抖。
             """
         ).strip(),
-        related_sources=(
-            "src/core/frame_graph/render_target.cpp",
-        ),
         nav_order=550,
     ),
     SourceAnalysisTarget(
@@ -274,6 +269,50 @@ TARGETS = [
             """
         ).strip(),
         nav_order=400,
+    ),
+    SourceAnalysisTarget(
+        source="src/core/utils/string_table.hpp",
+        output="notes/source_analysis/src/core/utils/string_table.md",
+        title="GlobalStringTable：字符串驻留与结构化身份树",
+        intro=textwrap.dedent(
+            """\
+            这一页从
+            [src/core/utils/string_table.hpp](../../../../../src/core/utils/string_table.hpp)
+            出发，解释为什么 LXEngine 不只把字符串压成整数，还要支持
+            `compose / decompose / toDebugString` 这一组结构化身份 API。
+
+            可以先带着一个问题阅读：`PipelineKey` 为什么不是一段拼出来的字符串？
+            答案是，pipeline identity 需要同时满足 hot path 上的整数比较、
+            cache key 的稳定性，以及调试时能展开 object/material/pass 结构树。
+            """
+        ).strip(),
+        nav_order=700,
+    ),
+    SourceAnalysisTarget(
+        source="src/core/pipeline/pipeline_key.hpp",
+        output="notes/source_analysis/src/core/pipeline/pipeline_identity.md",
+        title="Pipeline Identity：从结构签名到构建输入",
+        intro=textwrap.dedent(
+            """\
+            这一页从
+            [src/core/pipeline/pipeline_key.hpp](../../../../../src/core/pipeline/pipeline_key.hpp)
+            和
+            [src/core/pipeline/pipeline_build_desc.hpp](../../../../../src/core/pipeline/pipeline_build_desc.hpp)
+            出发，解释 pipeline identity 的两层分工：
+            `PipelineKey` 负责回答“是不是同一条 pipeline”，`PipelineBuildDesc`
+            负责回答“如果要创建它，backend 需要哪些输入”。
+
+            可以先带着一个问题阅读：为什么 `RenderingItem` 已经有 shader、material、
+            vertex buffer，还要额外保存 `pipelineKey`？答案是，渲染提交和 pipeline
+            预构建都需要一个稳定、可哈希、可调试的 identity，而不是每次临时比较所有字段。
+            """
+        ).strip(),
+        related_sources=(
+            "src/core/pipeline/pipeline_key.cpp",
+            "src/core/pipeline/pipeline_build_desc.hpp",
+            "src/core/pipeline/pipeline_build_desc.cpp",
+        ),
+        nav_order=720,
     ),
 ]
 

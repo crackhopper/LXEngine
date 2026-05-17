@@ -188,7 +188,7 @@ clear <path>.nodeMaterial.<binding>.<member>
 - [REQ-041-e](041-e-scene-authoring-inspector-material-and-visibility.md) — 先建立 materialUri 与节点级 baseColor 覆盖
 - [REQ-041-f](041-f-scene-authoring-node-rename-duplicate.md) — 复制节点时需要复制节点级材质覆盖
 - [REQ-041-g](041-g-rtr-light-experiment-foundation.md) — 实验材质可以选择使用新的多光源 scene-owned 数据合同
-- `openspec/specs/material-asset-loader/spec.md` 与 `notes/subsystems/material-system.md` — 通用 `.material` loader 与默认参数
+- `openspec/specs/material-asset-loader/spec.md` 与 `notes/concepts/material/index.md` — 通用 `.material` loader 与默认参数
 
 ## 后续工作
 

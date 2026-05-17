@@ -6,7 +6,7 @@
 
 ## 深入阅读
 
-- [场景对象](../concepts/scene/index.md)：从使用者视角展开 `Scene` / `SceneNode` / `ValidatedRenderablePassData`，解释它们如何服务 `preloadPipeline` 和 `drawcall`
+- [场景系统](../scene-system/index.md)：从使用者视角展开 `Scene` / `SceneNode` / Component / `ValidatedRenderablePassData`，解释它们如何服务 `preloadPipeline` 和 `drawcall`
 
 ## 它解决什么问题
 
@@ -112,6 +112,6 @@
 
 ## 关联文档
 
-- `notes/subsystems/frame-graph.md`
-- `notes/subsystems/material-system.md`
-- `notes/subsystems/pipeline-identity.md`
+- `notes/source_analysis/src/core/frame_graph/frame_graph.md`
+- `notes/concepts/material/index.md`
+- `notes/source_analysis/src/core/pipeline/pipeline_identity.md`

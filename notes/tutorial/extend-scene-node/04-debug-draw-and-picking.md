@@ -33,7 +33,7 @@ debugDraw:
   boundsPolicy: payload.size            # -> picking bounds source
 ```
 
-这仍然是未来目标格式，由 [REQ-042-c](../../requirements/042-c-tutorial-custom-scene-node-registry.md) 跟踪。当前教程用它帮助我们理解“payload、debug draw、picking bounds”之间的关系。
+这仍然是未来目标格式，由 [REQ-042-c](../../requirements/pending/042-c-tutorial-custom-scene-node-registry.md) 跟踪。当前教程用它帮助我们理解“payload、debug draw、picking bounds”之间的关系。
 
 ## 验证清单
 

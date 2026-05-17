@@ -1,5 +1,7 @@
 # REQ-042-b: 教程支撑 — Editor toolbar 与 command 扩展注册入口
 
+> 2026-05-17：本需求已从 active 队列移入 pending。v0.1.1 active 队列先收敛到 FrameGraph v1、Directional Shadow、CSM、教程支撑和架构文档展开；本扩展注册模型等待 v0.1.1 完成后重新排序。
+
 ## 背景
 
 当前 `lxe_editor` 已经采用 command-first 设计：toolbar、Inspector、API 和 MCP 诊断通道最终复用 `CommandBus`。这适合教学“按钮只是遥控器，命令总线才是线路”。
@@ -82,4 +84,4 @@ HTTP/WebSocket/MCP 诊断通道可以查询 command 列表和 toolbar action 列
 
 ## 实施状态
 
-未开始。当前仅作为教程中“未来顺滑工作流”的支撑需求。
+Pending，未开始。当前仅作为教程中“未来顺滑工作流”的后续支撑需求。

@@ -49,6 +49,6 @@
 
 ## 关联文档
 
-- `notes/subsystems/pipeline-identity.md`
+- `notes/source_analysis/src/core/pipeline/pipeline_identity.md`
 - `notes/subsystems/scene.md`
 - `openspec/specs/mesh-loading/spec.md`

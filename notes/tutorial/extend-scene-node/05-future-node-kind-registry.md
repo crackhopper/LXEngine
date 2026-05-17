@@ -2,7 +2,7 @@
 
 未来的 node kind registry 像道具说明卡：它说明这种节点叫什么、保存哪些 payload、运行时怎样创建、Inspector 显示哪些字段、怎样画 debug helper、怎样被选择和复制。这样新增节点时，我们不必在 editor 多处手工接线。
 
-> 这一章描述的是未来教程目标，由 [REQ-042-c](../../requirements/042-c-tutorial-custom-scene-node-registry.md) 跟踪。当前仓库还没有完整 custom scene node kind 注册入口。
+> 这一章描述的是未来教程目标，由 [REQ-042-c](../../requirements/pending/042-c-tutorial-custom-scene-node-registry.md) 跟踪。当前仓库还没有完整 custom scene node kind 注册入口。
 
 ## 未来 metadata 形状
 

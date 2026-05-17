@@ -1,108 +1,57 @@
-# 资产如何进入引擎
+# 资产系统：文件、URI 与序列化边界
 
-这篇文档讨论的不是“文件系统长什么样”这么窄的问题，而是更前面的一层：我们怎样把磁盘上的模型、纹理、材质信息和骨骼资源带进运行时，并把它们接到 scene 与渲染路径里。
+资产系统像一间档案室。这里关心的不是一个节点在运行时怎样参与渲染，而是文件放在哪里、文件里写什么、URI 怎样指向别的文件、反序列化后交给哪个系统继续处理。
 
-对一个虽然小、但希望完整的渲染引擎来说，资产系统就是最靠前的一层入口。它回答的是三个连续的问题：
+这一组文档讲当前代码里的资产文件入口，而不是一个还不存在的统一 `AssetManager`。我们把重点放在 `assets/` 目录、`.scene.yaml`、`.material`、`asset.yaml` manifest、模型/贴图文件，以及它们的序列化/反序列化边界。
 
-- 资源在磁盘上以什么形式存在
-- loader 会把它们变成什么运行时对象
-- 这些对象最后如何进入 `SceneNode`、材质和 pipeline 链路
+## 我们先把资产看成三层文件合同
 
-## 从文件到运行时对象
+一个资产从磁盘进入 editor，大致会经过三层：
 
-当前项目里还没有一个统一的 `AssetManager`。所谓“资产系统”，更准确地说，是一组已经可以被引擎加载和消费的资源类型，以及围绕它们建立起来的 loader 约定。
+| 层 | 类比 | 当前代码里的对象或文件 | 资产系统回答的问题 |
+|---|---|---|---|
+| 定位 | 档案室地址 | `assets/`、`LX_RUNTIME_ROOT`、`resolveRuntimePath()` | 文件从哪里找 |
+| 文件格式 | 表单 | `.scene.yaml`、`.material`、`asset.yaml`、`.obj`、`.gltf`、`.png` | 文件里允许写什么 |
+| 反序列化入口 | 登记员 | `SceneDocument`、`loadGenericMaterial()`、`BuiltinAssetCatalog`、mesh/texture loader | 文件被读成什么中间对象 |
 
-现在最核心的资产有四类：
+场景运行时对象的含义放在 [场景系统](../../scene-system/index.md) 里讲。资产系统只讲 `.scene.yaml` 作为文件怎样保存节点、组件、相机、光源和可渲染对象引用。
 
-- 网格对象：`Mesh`、`VertexBuffer`、`IndexBuffer`
-- 纹理资源：image + sampler 的运行时包装
-- 材质相关资源：`MaterialTemplate`、`MaterialInstance` 以及 loader 产物
-- 骨骼资源：`Skeleton` 和 `SkeletonData`
+## 当前系统里有哪些资产
 
-这些对象本身不是场景，也不会自己参与 draw。它们更像“被 scene 引用的原材料”。
+当前仓库里的常用资产可以这样理解：
 
-## 这一层解决什么问题
+| 资产类型 | 常见位置 | 反序列化入口 | 交给谁继续解释 |
+|---|---|---|---|
+| 模型 | `assets/models/**/*.obj`、`assets/models/**/*.gltf`、`assets/models/**/*.glb` | OBJ/glTF mesh loader | [场景系统：可渲染对象](../../scene-system/renderable-object.md) |
+| 纹理 | `assets/textures/**`、模型包内贴图 | `TextureLoader` | 材质实例或内置模型装配 |
+| 材质 | `assets/materials/*.material` | `loadGenericMaterial()` | [材质系统](../material/index.md) |
+| Shader | `assets/shaders/glsl/*.vert/.frag` | shader compiler / reflector | 材质系统 |
+| 内置模型 manifest | `assets/models/builtin/**/asset.yaml` | `BuiltinAssetCatalog` | editor palette 与场景插入流程 |
+| 场景 | `assets/scenes/*.scene.yaml`、project 下的 `scenes/*.scene.yaml` | `SceneDocument` | [场景系统](../../scene-system/index.md) |
+| project template | `assets/project_templates/**` | project 初始化流程 | project / scene 打开流程 |
 
-资产系统解决的是“怎么把磁盘上的内容稳定地带进引擎”这个问题。
+## 阅读顺序
 
-如果没有这一层，我们只能在代码里手写顶点数组、手动创建纹理、手动拼材质；这样做可以支撑最小 demo，但不足以支撑真正的引擎使用。
+建议按下面顺序读。这个顺序从“文件在哪里”开始，然后进入“文件如何变成运行时对象”，最后解释场景和内置资产这两个更接近 editor 的入口。
 
-有了这层之后，我们可以稳定地做几件事：
+1. [资产根与目录](runtime-root-and-layout.md)：我们怎样找到 `assets/`，以及当前目录约定是什么。
+2. [模型、纹理和材质如何接入](model-texture-material-flow.md)：模型/纹理/material 文件如何被 loader 读取。
+3. [场景也是资产](scene-assets.md)：`.scene.yaml` 如何序列化节点、组件和资源 URI。
+4. [内置资产目录](builtin-catalog.md)：`asset.yaml` manifest 如何让 editor 发现可插入模型。
 
-- 准备 `assets/` 目录里的模型、纹理和测试资源
-- 用 loader 把它们转换成运行时对象
-- 把这些对象交给 [场景对象](../scene/index.md) 或 [材质系统](../material/index.md)
-- 再由 [材质系统里的 Pipeline 说明](../material/what-is-pipeline.md) 决定它们如何参与 pipeline 身份与构建
+## 和其他系统的边界
 
-## 网格对象在这里扮演什么角色
+资产系统只负责“文件在哪里、文件里写什么、怎样读成文档或资源对象”。它不负责决定 draw 顺序，也不负责解释 `SceneNode`、camera、light 的运行时语义。
 
-如果只是想把一份几何数据变成可渲染输入，最终接触到的通常还是 `Mesh`。
+| 问题 | 资产系统回答 | 继续阅读 |
+|---|---|---|
+| 文件从哪里找 | runtime asset root 与相对路径约定 | [资产根与目录](runtime-root-and-layout.md) |
+| 一个 `.scene.yaml` 保存了什么 | `SceneDocument` / `SceneNodeDocument` 的 YAML 表面 | [场景也是资产](scene-assets.md) |
+| 文档怎样变成运行时节点 | 不在资产系统内展开 | [场景系统](../../scene-system/index.md) |
+| 一个 `.material` 怎样被场景引用 | `material.uri` -> `loadGenericMaterial()` -> `MaterialInstance` | [模型、纹理和材质如何接入](model-texture-material-flow.md) |
+| 材质为什么有 pass，pipeline identity 如何确认 | 不在资产系统内展开 | [材质系统](../material/index.md) |
+| mesh 为什么会影响 pipeline | mesh 提供顶点输入签名，细节属于 pipeline/material 链路 | [材质系统：什么是 Pipeline](../material/what-is-pipeline.md) |
 
-在这个项目里，`Mesh` 不是场景节点，而是一个很轻的几何资源对象。它主要做三件事：
+## 继续阅读
 
-- 组合 `VertexBuffer` 和 `IndexBuffer`
-- 提供顶点布局、索引数、拓扑等查询接口
-- 通过 `getPipelineSignature(pass)` 把几何结构贡献给 pipeline identity
-
-最直接的使用方式是：
-
-```cpp
-auto vb = VertexBuffer<VertexPos>::create({
-    {{0.0f, 0.0f, 0.0f}},
-    {{1.0f, 0.0f, 0.0f}},
-    {{0.0f, 1.0f, 0.0f}},
-});
-auto ib = IndexBuffer::create({0, 1, 2});
-auto mesh = Mesh::create(vb, ib);
-
-auto node = SceneNode::create("triangle", mesh, material, nullptr);
-```
-
-这里有一个很实用的边界：
-
-- `Mesh` 负责几何输入
-- `MaterialInstance` 负责 shader / pass / 参数
-- `SceneNode` 负责把它们组织成真正可参与渲染的对象
-
-## 材质、纹理和模型在入口上怎样汇合
-
-如果走的是更接近真实场景的路径，通常会先加载纹理，再用具体 loader 创建材质实例。
-
-例如当前比较成熟的入口是 `loadBlinnPhongMaterial()`。它会把 shader、pass、默认参数和纹理入口收敛成一个可直接挂到对象上的 `MaterialInstance`。
-
-OBJ / GLTF loader 也已经存在，因此我们不一定要自己手写顶点数组。当前这条模型资产路径的状态是：
-
-- OBJ 路径已经能稳定生成运行时 mesh
-- GLTF 路径已经能承载 PBR 相关元数据
-- 但“把 glTF 里的材质语义完整桥接成引擎内材质实例”还没有完全收口
-
-## 现在这套系统做到哪了
-
-可以把现状理解成三层：
-
-- 已实现：`assets/` 目录约定与测试资产基线、OBJ / GLTF mesh loader、texture loading、`Skeleton` 资源、显式 runtime asset root helper（旧 `cdToWhereAssetsExist()` 保留为 fallback）
-- 已实现：GLTF 已经不只是几何输入，还带上了 PBR 材质元数据
-- 已实现：通用 `.material` loader 可以承载 shader / pass / 默认参数 / 默认资源
-- 尚未实现：IBL 资源作为正式资产接入 scene
-
-当前资产相关合同主要下沉到 specs 与 subsystem 文档：
-
-- `openspec/specs/asset-directory-convention/spec.md`
-- `openspec/specs/asset-path-helper/spec.md`
-- `openspec/specs/mesh-loading/spec.md`
-- `openspec/specs/material-asset-loader/spec.md`
-- `notes/subsystems/material-system.md`
-
-## 往实现层再走一步
-
-往下看时，当前实现大致是这样分的：
-
-- mesh / texture / skeleton 这些运行时资源在 `core` 层定义稳定类型
-- loader 主要在 `infra` 层，把磁盘格式转换成 `core` 层对象
-- scene 和 material 再去消费这些对象，形成真正的 draw 输入
-
-继续展开时，可以参考：
-
-- [`../../subsystems/geometry.md`](../../subsystems/geometry.md)
-- [`../../subsystems/material-system.md`](../../subsystems/material-system.md)
-- [`../../subsystems/skeleton.md`](../../subsystems/skeleton.md)
+从 [资产根与目录](runtime-root-and-layout.md) 开始，我们先把“仓库地址”讲清楚。只要路径模型稳定，后面的模型、材质和场景装配就不会混在一起。

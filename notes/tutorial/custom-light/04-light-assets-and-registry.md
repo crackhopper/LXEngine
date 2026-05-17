@@ -2,7 +2,7 @@
 
 未来的 light asset 可以像“灯具型号卡”：它记录一个 light kind 的默认颜色、强度、范围和 editor 展示方式。注册表则像剧院设备清单，editor 和 runtime 通过它认识有哪些灯具可以创建。
 
-> 这一章描述的是未来教程目标，由 [REQ-042-a](../../requirements/042-a-tutorial-light-asset-and-custom-light-registry.md) 跟踪。当前仓库还没有完整 light asset / registry 工作流。
+> 这一章描述的是未来教程目标，由 [REQ-042-a](../../requirements/pending/042-a-tutorial-light-asset-and-custom-light-registry.md) 跟踪。当前仓库还没有完整 light asset / registry 工作流。
 
 ## 未来心智模型
 

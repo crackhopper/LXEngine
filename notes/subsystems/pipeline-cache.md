@@ -50,5 +50,5 @@
 ## 关联文档
 
 - `openspec/specs/pipeline-cache/spec.md`
-- `notes/subsystems/pipeline-identity.md`
-- `notes/subsystems/frame-graph.md`
+- `notes/source_analysis/src/core/pipeline/pipeline_identity.md`
+- `notes/source_analysis/src/core/frame_graph/frame_graph.md`

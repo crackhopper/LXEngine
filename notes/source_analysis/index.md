@@ -1,6 +1,6 @@
 # 源码分析
 
-这个目录放的是“贴着真实源码读”的笔记。和 `notes/subsystems/` 相比，它不试图先讲完整子系统，再落到代码；这里更关心某个头文件、某个类、某组实现细节为什么会这样组织。
+这个目录放的是“贴着真实源码读”的笔记。和 `notes/concepts/` 的高层概念与设计不同，它不试图先讲完整主题，再落到代码；这里更关心某个头文件、某个类、某组实现细节为什么会这样组织。
 
 我们把这套笔记做成了一个轻量的 literate workflow：
 
@@ -34,10 +34,13 @@
 - [RenderTarget：attachment 形状如何成为 target 匹配键](src/core/frame_graph/render_target.md)
 - [RenderQueue：把 scene × pass 收口成可消费的 draw 列表](src/core/frame_graph/render_queue.md)
 - [FrameGraph：把 scene 翻译成按 pass 组织的 RenderingItem 列表](src/core/frame_graph/frame_graph.md)
+- [GlobalStringTable：字符串驻留与结构化身份树](src/core/utils/string_table.md)
+- [Pipeline Identity：从结构签名到构建输入](src/core/pipeline/pipeline_identity.md)
 
 配套阅读：
 
-- [资源上传](../subsystems/resource-upload.md)：解释 `IGpuResource` 进入 backend 后，什么时候真正上传、由谁触发、buffer / texture 路径怎样分流
+- [MaterialInstance：运行时状态](../concepts/material/material-instance.md)：先建立材质实例的概念，再回到源码分析看实现边界
+- [多 Pass 材质怎样变成 Draw](../concepts/material/pass-rendering-flow.md)：先理解 queue / item / pass 的高层流向，再读 RenderQueue / FrameGraph 源码分析
 
 ## 更新方式
 
@@ -49,6 +52,5 @@
 
 ## 继续阅读
 
-- [材质系统](../subsystems/material-system.md)
 - [MaterialInstance：运行时状态](../concepts/material/material-instance.md)
-- [资源上传](../subsystems/resource-upload.md)
+- [多 Pass 材质怎样变成 Draw](../concepts/material/pass-rendering-flow.md)

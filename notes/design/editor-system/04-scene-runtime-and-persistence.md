@@ -15,6 +15,18 @@ Editor 里的持久化像整理一个工作室：project 文件夹决定“我�
 
 这样组织后，`scene open main` 的含义很明确：只在当前 project 里找 `main` 这个 scene。
 
+## 文件层和运行时层不要混在一起
+
+同一个“场景”在 editor 里至少有三种形态：
+
+| 形态 | 对象/文件 | 什么时候使用 |
+|---|---|---|
+| 持久化文件 | `*.scene.yaml` | 保存、复制、project 管理 |
+| 文档对象 | `SceneDocument` | 反序列化字段、捕获保存字段 |
+| 运行时对象 | `Scene` / `SceneNode` / components | 每帧 update、picking、render queue |
+
+`SceneRuntime` 的价值就在于让这三层有明确转换点。UI 不应该直接把 YAML 当作 runtime scene，renderer 也不应该直接理解 scene 文件格式。
+
 ## project_template 如何变成 project
 
 `project_template` 是只读样板。`ProjectSession::initProject(...)` 从 `assets/project_templates/<type>/project_template.yaml` 读取模板，复制模板声明的 `copy` roots，再写出新的 `project.yaml`。
@@ -43,6 +55,19 @@ copy:
 
 `scene open` 会先让 `ProjectSession` 解析 project 内的 scene，再由 `LxeEditorSession` 加载 pending runtime。真正切换 runtime scene 的动作发生在下一次 `flushPendingSceneOpen(...)`，这样命令 handler 不需要在主循环正在使用 scene 时直接替换对象。
 
+## pending runtime 是为了避开半帧切换
+
+`scene open` 不会在 command handler 里立刻替换 `EngineLoop` 正在使用的 scene。当前流程是：
+
+| 时刻 | 动作 |
+|---|---|
+| command handler | `ProjectSession` 切换 active scene，并把新 scene 读成 `m_pendingRuntime` |
+| 下一个 update tick | `flushPendingSceneOpen(loop)` 调用 `loop.startScene(nextRuntime.scene())` |
+| start 成功 | 替换 `m_runtime`，重新 `rebuildBindings()` |
+| start 失败 | 恢复旧 scene，并在 Console 输出错误 |
+
+这让 project metadata、runtime scene、panel binding 不会在一帧中处于互相不一致的状态。
+
 ## project save 与 scene save 的边界
 
 保存边界按“文件层级”划分：
@@ -69,7 +94,14 @@ copy:
 
 这些文件服务本机 editor 体验，不进入 scene 文档，也不应该被当成 project 内容同步。
 
+## Roadmap 中的 AssetRegistry 还没有接管 editor 持久化
+
+Phase 3 设想了 GUID、`.meta`、热重载和统一导入入口。当前 editor 已经有显式 runtime root、project、scene YAML 和内置 asset manifest，但还没有真正的 AssetRegistry / GUID handle / hot reload。
+
+因此当前设计文档只按路径和 URI 解释持久化。后续若要把 project/scene 从路径引用升级为 GUID 引用，需要先落地 [REQ-044-c](../../requirements/pending/044-c-editor-asset-registry-and-hot-reload-bridge.md)。
+
 ## 继续阅读
 
 - [主循环与对象归属](01-main-loop-and-ownership.md)
 - [API、事件与录制如何观察 editor](05-api-recording-and-observation.md)
+- [Roadmap 边界：哪些是未来能力](06-roadmap-boundaries.md)

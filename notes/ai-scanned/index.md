@@ -27,5 +27,5 @@
 ## 继续阅读
 
 - [C++ Style Guide](../../openspec/specs/cpp-style-guide/spec.md)
-- [Architecture](../architecture.md)
+- [Architecture](../concepts-design/architecture.md)
 - [VulkanBackend](../subsystems/vulkan-backend.md)

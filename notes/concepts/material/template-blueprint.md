@@ -1,93 +1,86 @@
 # 模板与 Pass：材质的结构定义
 
-## 什么是 MaterialTemplate
+`MaterialTemplate` 是材质系统里的菜谱。它不保存“这一次 baseColor 是多少”这类运行时值，只保存“这道菜有哪些步骤，每一步用什么 shader 和 render state，每一步暴露哪些材质资源槽位”。
 
-`MaterialTemplate` 是材质的菜谱。它不保存运行时参数值，只回答三个结构性问题：
+这条边界很重要：同一张菜谱可以做出很多道菜。多个 `MaterialInstance` 可以共享一个 `MaterialTemplate`，但每个 instance 有自己的参数字节、纹理对象和 pass 启用状态。
 
-- 这个材质支持哪些 pass（Forward? Shadow? 两者都有？）
-- 每个 pass 用什么 shader、开了哪些 variants、什么 render state
-- 每个 pass 的 shader 反射出了哪些材质侧 binding
+## Template 先定义结构
 
-一个 template 可以对应多个 instance。就像同一张菜谱可以做出很多道菜，只是每道菜的调料用量不同。
+`MaterialTemplate` 当前回答三类结构问题：
 
-代码入口：[material_template.hpp](../../../src/core/asset/material_template.hpp)
+| 问题 | 代码入口 | 当前含义 |
+|---|---|---|
+| 有哪些 pass | `setPassDefinition(pass, definition)` | 以 `StringID` 保存 `Forward`、`Shadow` 等 pass |
+| 每个 pass 怎么画 | `MaterialPassDefinition` | 包含 `ShaderProgramSet` 和 `RenderState` |
+| 材质自己拥有哪些 binding | `rebuildMaterialInterface()` | 从 shader reflection 过滤 system-owned binding 后建立 canonical 表 |
 
-## 什么是 MaterialPassDefinition
+`MaterialPassDefinition` 是菜谱里的一个步骤：
 
-如果 template 是菜谱，`MaterialPassDefinition` 就是菜谱里的一个步骤。
+| 字段 | 影响 |
+|---|---|
+| `shaderProgram.shaderName` | 决定逻辑 shader 家族，例如 `blinnphong_0` |
+| `shaderProgram.variants` | 决定编译宏组合，并进入 pipeline signature |
+| `shaderProgram.shader` | 持有已编译 shader 和 reflection 结果 |
+| `renderState` | 决定 cull/depth/blend 等固定功能状态，并进入 pipeline signature |
 
-一个渲染 pass（比如 Forward 或 Shadow）需要知道三件事：
+## Canonical binding 是模板的核心账本
 
-| 字段 | 含义 | 类比 |
-|------|------|------|
-| `renderState` | 光栅化、深度测试、混合模式 | 这一步用什么火候 |
-| `shaderSet` | shader 名 + variants + 编译后的 shader 对象 | 这一步用什么工具 |
-| `bindingCache` | 这个 pass 的 shader 反射出来的所有 binding | 这一步需要哪些原料 |
+shader reflection 会返回所有 descriptor binding，但材质并不拥有全部 binding。`MaterialTemplate::rebuildMaterialInterface()` 会先过滤系统保留名字，然后把 material-owned binding 收束成一张 canonical 表：
 
-每个 pass 的 shader 可以不同（比如 Shadow pass 用简化版 shader），因此它们的 `bindingCache` 也各自独立。
-
-代码入口：[material_pass_definition.hpp](../../../src/core/asset/material_pass_definition.hpp)
-
-## Template 如何知道哪些 binding 归材质
-
-调用 `buildBindingCache()` 时，template 会从每个 pass 的 shader 反射中提取 binding 列表，然后用 `isSystemOwnedBinding()` 过滤：
-
-- `CameraUBO`、`LightUBO`、`Bones` → 归系统，跳过
-- 其余 → 归材质，收入该 pass 的 material-owned binding 列表
-
-结果按 pass 分组保存在 `m_passMaterialBindings` 中。这保证了 binding 信息始终带着 pass 作用域——不同 pass 的同名 binding 不会互相覆盖。
-
-需要跨 pass 查找 binding 时（比如 `setTexture(id, tex)` 验证类型），调用 `findMaterialBinding(id)`。它遍历所有 pass 的 material-owned bindings 返回第一个匹配项；如果同名 binding 在不同 pass 间类型不一致，会 assert。
-
-## 在 YAML 中对应什么
-
-用 `.material` 文件创建材质时，YAML 里的 `passes` 块直接对应 template 里的 pass 定义：
-
-```yaml
-shader: blinnphong_0                # 全局默认 shader
-
-passes:
-  Forward:                          # → template.setPass(Pass_Forward, ...)
-    shader: blinnphong_0            # 可选：per-pass shader 覆盖全局
-    renderState:                    # → MaterialPassDefinition.renderState
-      cullMode: Back
-      depthTest: true
-    variants:                       # → MaterialPassDefinition.shaderSet.variants
-      USE_NORMAL_MAP: true
-  Shadow:                           # → template.setPass(Pass_Shadow, ...)
-    shader: shadow_depth_only       # Shadow pass 可以用完全不同的 shader
-    renderState:
-      depthTest: true
-      depthWrite: true
+```text
+shader reflection bindings
+  -> 过滤 CameraUBO / LightUBO / SceneLightsUBO / Bones
+  -> 按 StringID(binding.name) 建 canonical material binding
+  -> 为每个 pass 保存本 pass 使用的 binding id 列表
 ```
 
-每个 pass 可以指定自己的 `shader`，覆盖顶层全局默认。这样不同 pass 可以使用完全不同的 shader 源文件。如果 YAML 里省略 `passes`，loader 默认创建一个 Forward pass 使用全局 shader。
+这让 template 成为材质接口的真值来源。`MaterialInstance` 不需要重新扫描所有 pass，也不需要猜一个 binding 的类型；它只消费 template 已经归并好的 canonical binding。
 
-## Template 和 Instance 的边界
+## 同名 binding 必须跨 pass 一致
 
-Template 决定**能力上限**，instance 决定**运行时实际状态**：
+如果两个 pass 都声明了 `MaterialUBO`，它们必须在结构上是同一个契约：
 
-| 属于 template | 属于 instance |
-|--------------|--------------|
-| 支持哪些 pass | 启用了哪些 pass |
-| 每个 pass 的 shader 和 variants | 参数值（UBO 字节） |
-| render state | 纹理资源 |
-| 反射出的 binding 结构 | per-pass 参数覆写 |
+| 被比较的字段 | 为什么必须一致 |
+|---|---|
+| `type` | instance 要知道这是 UBO、SSBO 还是 texture |
+| `descriptorCount` | descriptor layout 不能同名不同数组长度 |
+| `set` / `binding` | backend 绑定位置必须稳定 |
+| `size` | buffer 字节大小必须一致 |
+| `members` | `setParameter(binding, member)` 要按同一套 offset 写入 |
 
-这条边界也是共享 instance、scene 重验证和 pipeline 身份分离的基础。
+一旦不一致，`MaterialTemplate::rebuildMaterialInterface()` 会直接 fail-fast。也就是说，跨 pass 的 binding 归并不是 instance 的补救逻辑，而是 template 构建阶段的结构校验。
 
-## 关键 API
+## YAML pass 映射到模板
 
-| 方法 | 作用 |
-|------|------|
-| `setPass(pass, definition)` | 注册一个 pass |
-| `getEntry(pass)` | 取某个 pass 的定义 |
-| `buildBindingCache()` | 构建 per-pass material-owned binding 列表 |
-| `getMaterialBindings(pass)` | 取某个 pass 的 material-owned bindings |
-| `findMaterialBinding(id)` | 跨 pass 按名字查找 binding |
-| `getPipelinePassSignature(pass)` | 导出某个 pass 的结构签名（用于 pipeline identity） |
+```yaml
+shader: rtr_experiment_template       # -> ShaderProgramSet.shaderName 默认值
 
-## 继续阅读
+passes:
+  Forward:                            # -> MaterialTemplate::setPassDefinition(StringID("Forward"), ...)
+    renderState:                      # -> MaterialPassDefinition.renderState
+      cullMode: Back                  # -> RenderState.cullMode
+      depthTest: true                 # -> RenderState.depthTestEnable
+      depthWrite: true                # -> RenderState.depthWriteEnable
+```
 
-- 蓝图里的 shader 到底是什么：[shader.md](shader.md)
-- 蓝图为什么会直接影响 pipeline：[template-and-pipeline.md](template-and-pipeline.md)
+如果 `.material` 没有写 `passes`，loader 会创建一个默认 `Pass_Forward`。如果写了多个 pass，每个 pass 都会单独编译 shader、反射 binding，并最终进入同一个 template。
+
+## Template 不保存什么
+
+| 不属于 Template | 属于哪里 |
+|---|---|
+| `MaterialUBO.baseColor` 的当前值 | `MaterialInstance` 的 `ParameterBuffer` |
+| `albedoMap` 当前绑定哪张纹理 | `MaterialInstance::m_textureBindingsByName` |
+| 某个实例是否关闭了 `Forward` pass | `MaterialInstance::m_enabledPasses` |
+| scene camera/light/skeleton 资源 | scene、camera、light、skeleton 系统 |
+| Vulkan pipeline 对象 | backend pipeline cache |
+
+## 我们已经学会了什么
+
+`MaterialTemplate` 是结构层：它把 pass、shader variants、render state 和 material-owned binding 接口统一起来。template 构建成功后，instance 才能稳定地按 binding name 写参数、按 pass 取资源。
+
+## 下一步
+
+- [Shader 在材质中的角色](shader.md)
+- [MaterialInstance：运行时状态](material-instance.md)
+- [模板如何影响 Pipeline](template-and-pipeline.md)

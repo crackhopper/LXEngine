@@ -124,7 +124,7 @@ class CameraComponent final : public IComponent {
 
 ### REQ-042 兼容预留
 
-本 REQ **完全不动** `CameraComponent::m_data.target` 字段与 `matchesTarget` 接口签名。[REQ-042 R6](../042-render-target-desc-and-target.md) 后置到 Phase 1.5 完工后、Phase 1 REQ-103 之前实施时，会把 `m_data.target` 类型从 `std::optional<RenderTarget>` 升级为 `std::optional<RenderTargetDesc>`、把 `matchesTarget` 改为比 desc 形状兼容。本 REQ 的"camera-as-component"接入与 m_target 升级在数据模型上正交（一个管"位置/朝向 + 数据归属"，一个管"渲染到哪个 attachment 形状"），无字段冲突，无 ABI 变化的迁移负担。
+本 REQ **完全不动** `CameraComponent::m_data.target` 字段与 `matchesTarget` 接口签名。[REQ-042-a](../042-a-frame-graph-v1-resource-target-pass-execution.md) 后置到 Phase 1.5 完工后、v0.1.1 FrameGraph v1 实施时，会把 `m_data.target` 类型从 `std::optional<RenderTarget>` 升级为 `std::optional<RenderTargetDesc>` 或等价 target 描述、把 `matchesTarget` 改为比 desc 形状兼容。本 REQ 的"camera-as-component"接入与 m_target 升级在数据模型上正交（一个管"位置/朝向 + 数据归属"，一个管"渲染到哪个 attachment 形状"），无字段冲突，无 ABI 变化的迁移负担。
 
 ## 依赖
 

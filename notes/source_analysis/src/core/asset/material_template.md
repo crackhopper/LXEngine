@@ -148,12 +148,12 @@ descriptor 类型支持范围、以及运行时实例需要面对的 binding 集
 
 读这个头文件时，最容易混在一起的是下面两层数据：
 
-- `m_passes`：每个 pass 的完整结构定义，保留 shader、render state 和 pass 本地反射缓存
-- `m_passMaterialBindings`：从完整定义里再筛出来的“材质实例可写 binding 视图”
+- `m_passDefinitions`：每个 pass 的完整结构定义，保留 shader program 和 render state
+- `m_canonicalMaterialBindings` / `m_materialBindingIdsByPass`：从各 pass 的反射结果里筛出来的 canonical material binding 表和 per-pass 使用视图
 
-这两层不能互相替代。只有 `m_passes` 才足够表达 pass 身份；
-只有 `m_passMaterialBindings` 才足够直接回答 `MaterialInstance`
-“我需要为这个 pass 准备哪些材质侧 descriptor resource”。
+这两层不能互相替代。只有 `m_passDefinitions` 才足够表达 pass 身份；
+只有 canonical binding 表才足够直接回答 `MaterialInstance`
+“我需要准备哪些材质侧运行时资源，以及每个 pass 会使用其中哪一部分”。
 
 ## 为什么这一页要聚合多个源码文件
 
@@ -181,9 +181,8 @@ descriptor 类型支持范围、以及运行时实例需要面对的 binding 集
 错误语义就会变成“某个实例不能工作”；而这里真正想表达的是
 “这份材质模板本身就不是一个自洽的结构定义”。
 
-所以 `checkCrossPassBindingConsistency()` 放在 template 里更合适：
-它在共享蓝图形成时就把问题拦下，不让后续实例、scene 校验和 backend
-继续建立在一份含糊契约上。
+所以一致性检查放在 `rebuildMaterialInterface()` 里更合适：它在共享蓝图形成时
+就把问题拦下，不让后续实例、scene 校验和 backend 继续建立在一份含糊契约上。
 
 ## 和 `MaterialInstance` 的分工
 
@@ -198,4 +197,4 @@ descriptor 类型支持范围、以及运行时实例需要面对的 binding 集
 ## 推荐的后续阅读
 
 - [MaterialInstance：从模板到运行时账本](material_instance.md)
-- [材质系统](../../../../subsystems/material-system.md)
+- [材质系统总览](../../../../concepts/material/index.md)

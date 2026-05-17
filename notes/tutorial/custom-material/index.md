@@ -31,7 +31,7 @@
 ## 相关深入文档
 
 - [材质系统概念](../../concepts/material/index.md)
-- [Material System 子系统](../../subsystems/material-system.md)
+- [材质系统总览](../../concepts/material/index.md)
 
 ## 下一步
 

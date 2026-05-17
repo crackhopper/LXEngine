@@ -1,5 +1,7 @@
 # REQ-043: 内置 OBJ 资产的材质槽与 MTL 颜色支持
 
+> 2026-05-17：本需求已从 active 队列移入 pending。它仍是资产质量修补项，但不是 v0.1.1 FrameGraph / Shadow / CSM 主线的前置。
+
 ## 背景
 
 第一批内置模型资产已经保留 OBJ、MTL 和贴图文件。当前编辑器能把带 `map_Kd`
@@ -82,5 +84,5 @@ asset manifest 或 scene document 中恢复材质槽。
 
 ## 实施状态
 
-未开始。当前已完成的是内置资产保留 MTL/贴图文件，并对单贴图资产做
+Pending，未开始。当前已完成的是内置资产保留 MTL/贴图文件，并对单贴图资产做
 `albedoMap` 绑定；多材质槽和纯 `Kd` 颜色仍需要本需求补齐。

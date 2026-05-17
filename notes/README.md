@@ -36,13 +36,14 @@
 - [GetStarted](get-started.md)：给第一次进入项目的人预留的快速起步入口。
 - [Tutorial](tutorial/index.md)：按系列学习启动项目、自定义材质、自定义灯光、扩展编辑器和扩展场景节点。
 - [概念 / 资产系统](concepts/assets/index.md)：理解引擎当前能加载哪些资源，以及网格对象、纹理、材质怎样进入运行时。
-- [概念 / 场景对象](concepts/scene/index.md)：从使用者视角理解 `Scene` / `SceneNode` 与场景组织方式。
+- [场景系统](scene-system/index.md)：从使用者视角理解 `Scene` / `SceneNode` / Component 与场景组织方式。
 - [概念 / 材质系统 / 什么是 Pipeline](concepts/material/what-is-pipeline.md)：先理解 pipeline 是怎样成为一套可复用渲染结构的。
 - [概念 / 引擎循环](concepts/engine-loop.md)：面向使用者理解 `EngineLoop` 的职责边界和接入方式。
-- [设计 / 架构总览](architecture.md)：三层结构、资源生命周期、场景启动与每帧工作流。
-- [设计 / 术语概念](glossary.md)：项目自造词与关键对象的一句话定义。
-- [设计 / 项目目录结构](project-layout.md)：仓库分层、主目录职责、事实来源。
-- [设计 / 子系统](subsystems/index.md)：逐个模块看 shader、material、frame graph、scene、backend。
+- [概念与设计](concepts-design/index.md)：建立阅读地图，区分当前实现、设计解释和 roadmap。
+- [概念与设计 / 架构总览](concepts-design/architecture.md)：三层结构、资源生命周期、场景启动与每帧工作流。
+- [概念与设计 / 术语概念](concepts-design/glossary.md)：项目自造词与关键对象的一句话定义。
+- [概念与设计 / 项目目录结构](concepts-design/project-layout.md)：仓库分层、主目录职责、事实来源。
+- [源码分析](source_analysis/index.md)：贴着真实源码看 shader、material、frame graph、pipeline identity 等实现边界。
 - [实现技巧](impl_tricks/index.md)：从现有代码里抽取出来的通用 trick / 手法 / 小范式。
 - [Roadmap](roadmaps/README.md)：从当前基座走向 AI Native 小型游戏引擎的阶段规划。
 - [相关工具](tools/index.md)：`notes` 站点如何生成、如何索引、如何本地预览。

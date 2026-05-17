@@ -47,5 +47,5 @@ Core 层的问题不多，但有几条都比较硬。一条是数学实现本身
 ## 继续阅读
 
 - [Scene](../subsystems/scene.md)
-- [String Interning](../subsystems/string-interning.md)
+- [String Interning](../source_analysis/src/core/utils/string_table.md)
 - [C++ Style Guide](../../openspec/specs/cpp-style-guide/spec.md)

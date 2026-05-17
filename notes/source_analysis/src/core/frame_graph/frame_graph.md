@@ -31,10 +31,10 @@ core 层这层"frame graph"只承担"per-pass per-scene 预构建"的薄壳角�
 
 `FramePass` 把三件本来分散的事打包成一个结构体：
 
-- `name`：StringID，匹配当前 `Pass_*` 常量；它是这条 pass 在 scene-level
+- `name`：StringID，匹配 REQ-007 的 `Pass_*` 常量；它是这条 pass 在 scene-level
   资源筛选、material pass 选择、shader 变体合并里的统一身份
 - `target`：这条 pass 的输出形状。当前类型是 `RenderTarget`（占位实现，详见
-  `render_target.md`），REQ-042 落地后会改为 `RenderTargetDesc`
+  `render_target.md`），REQ-042-a 落地后会改为 `RenderTargetDesc`
 - `queue`：这条 pass 内部的 RenderingItem 收口（见 `render_queue.md`）
 
 之所以打包而不是让 `FrameGraph` 持有三个并行 vector，是因为这三个字段在每条
@@ -53,7 +53,7 @@ scene-level 资源；分开存就要在 `FrameGraph` 里维护"i-th name 对应 
 
 - 持有 `vector<FramePass>`：通过 `addPass` 累加，顺序即提交顺序
 - 在 `buildFromScene` 时按 pass 顺序逐个调用 `RenderQueue::buildFromScene`，
-  把 `pass.target` 透传下去（target 轴的入口）
+  把 `pass.target` 透传下去（REQ-009 target 轴的入口）
 
 注意它 *不* 做 pass 间依赖分析、不做 pass reorder、不做 attachment 复用 —
 这些都是 backend 渲染图（render graph）的职责。core 层的 FrameGraph 只是
@@ -71,7 +71,7 @@ scene-level 资源；分开存就要在 `FrameGraph` 里维护"i-th name 对应 
 画到哪种 target"两个参数从 FramePass 解包后透传给 RenderQueue。
 
 这种"FrameGraph 不做语义、只做调度"的写法把"pass × scene"二维问题摊成
-一维循环。每一条 pass 的 RenderQueue 内部独立完成两轴筛选，
+一维循环。每一条 pass 的 RenderQueue 内部独立完成 REQ-009 两轴筛选，
 FrameGraph 只负责保证 *每条 pass 都被处理一次* 这一条简单不变量。
 
 调用语义上这是重建而非增量：每次 `buildFromScene` 都触发每个 queue 的
@@ -94,7 +94,7 @@ FrameGraph 只负责保证 *每条 pass 都被处理一次* 这一条简单不�
 让它去做全局判定会破坏单 pass 收口的封装。两层各自只看自己的视角，
 FrameGraph 这一层只看到"队列已去重的输出"再做最少整理。
 
-REQ-042 R5 落地后，`PipelineKey` 变三级 compose（含 targetSig）；本函数代码
+REQ-042-a 落地后，`PipelineKey` 会纳入 target identity；本函数代码
 不需要变，但跨 pass 重复 PipelineKey 的概率会进一步降低 — 不同 target
 的 pass 在 PipelineKey 上自动不重叠。
 
@@ -131,9 +131,9 @@ frame_graph 子目录里的三个源码分析页对应三个抽象层，从底�
 core 层 FrameGraph 的名字与业界惯例略有偏差 — 读者第一次看到容易期待
 依赖分析 / 自动 alias，需要主动调整预期。
 
-## REQ-042 落地后会变什么
+## REQ-042-a 落地后会变什么
 
-[`REQ-042`](../../../../requirements/042-render-target-desc-and-target.md) 对
+[`REQ-042-a`](../../../../requirements/042-a-frame-graph-v1-resource-target-pass-execution.md) 对
 本页的影响主要落在 `FramePass::target` 字段类型与下游签名透传：
 
 - **`FramePass::target` 字段类型**：从 `RenderTarget` 改为 `RenderTargetDesc`。
@@ -143,13 +143,13 @@ core 层 FrameGraph 的名字与业界惯例略有偏差 — 读者第一次看�
   pass.target)` 中第三个参数从 `RenderTarget` 改为 `RenderTargetDesc`，与
   RenderQueue / Scene 的下游接口签名同步。
 - **`collectAllPipelineBuildDescs` 行为不变但语义增强**：本函数代码本身
-  不需要修改；但 REQ-042 R5 让 `PipelineKey` 包含 `targetSig` 后，跨 pass
+  不需要修改；但 REQ-042-a 让 `PipelineKey` 包含 target identity 后，跨 pass
   重复 PipelineKey 的概率会进一步降低 — 不同 target 的 pass 在 PipelineKey
   上自动不重叠，外层去重命中率下降，但这是显式化"pipeline 与 attachment
   format 强绑"的硬约束，不是缺陷。
 - **binding 层 attachment 的归属**：`FramePass` 仍然不持有具体 attachment
-  句柄；REQ-042 把 `RenderTarget`（binding 层）的所有权放到 backend / 调用
+  句柄；REQ-042-a 把 `RenderTarget`（binding 层）的所有权放到 backend / 调用
   方手里，`FramePass` 只通过 desc 描述"要画进什么形状"。
 
-也就是说，REQ-042 让 FramePass 的字段类型变更，但 FrameGraph 的调度结构
+也就是说，REQ-042-a 让 FramePass 的字段类型变更，但 FrameGraph 的调度结构
 和职责切分都保持不变。

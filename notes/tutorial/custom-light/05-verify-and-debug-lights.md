@@ -26,7 +26,7 @@
 
 Debug draw 像舞台平面图：它不替代真实照明，但能让我们看见光源的方向、范围和 cone。对 light 教程来说，debug draw 很重要，因为许多 light bug 不是“灯坏了”，而是“灯朝向不对”或“范围太小”。
 
-未来 custom light registry 会要求每个 light kind 声明 `debugShape`，这部分同样由 [REQ-042-a](../../requirements/042-a-tutorial-light-asset-and-custom-light-registry.md) 跟踪。
+未来 custom light registry 会要求每个 light kind 声明 `debugShape`，这部分同样由 [REQ-042-a](../../requirements/pending/042-a-tutorial-light-asset-and-custom-light-registry.md) 跟踪。
 
 ## 我们已经学会了什么
 

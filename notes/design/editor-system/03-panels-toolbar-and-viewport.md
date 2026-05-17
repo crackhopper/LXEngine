@@ -36,6 +36,17 @@ toolbar 中有两类按钮。第一类只是切换 UI 本地模式，第二类�
 
 这里的边界很实际：纯 UI 表示可以留在 `UiOverlay`，会影响场景、状态、录制或远程观察的行为要走 CommandBus。
 
+## 创建 palette 是当前最明显的手写 UI 区域
+
+Toolbar 里当前直接写了两组 palette：
+
+| palette | 当前条目 | 点击后走向 |
+|---|---|---|
+| primitive | Cube / Sphere / Plane / Cylinder / Cone | `dispatchCreatePaletteItem("primitive:...", ...)` |
+| scene object | Directional Light / Point Light / Spot Light / Camera | `dispatchCreatePaletteItem("light:..." / "camera:...", ...)` |
+
+这能满足当前 editor，但还不是未来的扩展模型。未来我们希望这些条目来自 command / node / light registry，让新增一种对象时不必同时改 toolbar、command handler、Inspector 和 scene runtime。相关需求分散在 [REQ-042-a](../../requirements/pending/042-a-tutorial-light-asset-and-custom-light-registry.md)、[REQ-042-b](../../requirements/pending/042-b-tutorial-editor-extension-registry.md)、[REQ-042-c](../../requirements/pending/042-c-tutorial-custom-scene-node-registry.md)。
+
 ## 面板怎样复用同一条命令线
 
 | 面板 | 典型行为 | 命令连接 |
@@ -63,6 +74,18 @@ toolbar 中有两类按钮。第一类只是切换 UI 本地模式，第二类�
 Preview 模式表示我们临时切到 gameplay camera 预览。当前 UI 会在 preview 时抑制主场景视图点击、`Esc` 取消选择、`Delete` 删除节点，并禁用 toolbar 里的编辑按钮。原因很简单：preview 期间鼠标和键盘更像 gameplay 输入，不能误改 editor state。
 
 这个规则同时出现在 `UiOverlay::handleHotkeys()`、toolbar disabled 状态和 scene interaction 路径里。它是 editor 模式状态影响 UI 行为的例子。
+
+## 初学者读 UI 代码时先找 dispatch 点
+
+ImGui 代码会有大量按钮、layout 和 tooltip。读设计时更有价值的是找三个点：
+
+| 读代码时找什么 | 意义 |
+|---|---|
+| `dispatch(...)` / `dispatchScript(...)` | 这个 UI 行为会进入 CommandBus |
+| 直接写 `EditorState` / `UiOverlay` 字段 | 这个行为只是 editor 本地状态 |
+| callback 调用 `SceneRuntime` | 这个面板需要读写 scene document/runtime 的同步状态 |
+
+这样读 `SceneTreePanel`、`InspectorPanel`、`ViewportOverlay` 时，我们不会被 ImGui 细节淹没。
 
 ## 继续阅读
 

@@ -120,6 +120,6 @@
 如果你想继续往外层追，可以接着看：
 
 - `notes/subsystems/geometry.md`：解释更完整的几何资源语义，以及不同顶点类型怎样进入项目
-- `notes/subsystems/pipeline-identity.md`：解释 `MeshRender` 最终怎样进入 `PipelineKey`
+- `notes/source_analysis/src/core/pipeline/pipeline_identity.md`：解释 `MeshRender` 最终怎样进入 `PipelineKey`
 
 这一页只贴着源码解释“几何接口形状”本身，不展开 mesh loader、scene 组织或 backend buffer 上传的全流程。

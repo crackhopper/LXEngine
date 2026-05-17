@@ -1,60 +1,104 @@
-# 模板如何影响 Pipeline
+# 材质模板为什么会影响 Pipeline
 
-## 核心结论
+`MaterialTemplate` 像菜谱里的工艺说明：同样的食材，如果一步要求烘烤、另一步要求油炸，厨房设备配置就不同。材质模板保存的 shader、variants 和 render state 正是这些“会改变设备配置”的信息，所以它会进入 pipeline identity。
 
-`MaterialTemplate` 直接影响 pipeline identity，因为它保存了会改变渲染结构的东西：
+## Signature 链路
 
-- pass 定义
-- shader name + enabled variants
-- render state
+当前材质侧 signature 的链路是：
 
-这些任何一项变化，`PipelineKey` 就可能变化，引擎就需要一条不同的 pipeline。
+```text
+ShaderProgramSet::getPipelineSignature()
+  = compose(shaderName, enabled variants)
 
-## Pipeline Signature 链路
+RenderState::getPipelineSignature()
+  = compose(cull, depth test/write/op, blend factors)
 
-影响通过 signature 链条传递：
+MaterialPassDefinition::getPipelineSignature()
+  = compose(shaderProgramSig, renderStateSig)
 
+MaterialTemplate::getPipelineSignature(pass)
+  = passDefinition.getPipelineSignature()
+
+MaterialInstance::getPipelineSignature(pass)
+  = compose(MaterialRender, templatePassSig)
+
+PipelineKey::build(objectSig, materialSig)
 ```
-MaterialPassDefinition.getPipelineSignature()
-  = compose(shaderSet.getPipelineSignature(), renderState.getPipelineSignature())
-        ↓
-MaterialTemplate.getPipelinePassSignature(pass)
-        ↓
-MaterialInstance.getPipelineSignature(pass)
-        ↓
-PipelineKey.build(objectSignature, materialSignature)
+
+`MaterialInstance` 在这里没有把参数值放进去。它只是把 template 的 pass signature 包成 material render signature。
+
+## 材质字段和 pipeline 的关系
+
+| 材质侧内容 | 当前是否影响 pipeline identity | 说明 |
+|---|---|---|
+| `shader` | 是 | shader basename 进入 `ShaderProgramSet` signature |
+| enabled `variants` | 是 | enabled macro 名排序后进入 signature |
+| pass `renderState` | 是 | cull/depth/blend 进入 `RenderState` signature |
+| pass 名 | 间接影响 | queue 按 pass 选择对应 definition；signature 来自该 pass definition |
+| `parameters` 值 | 否 | 写入 `ParameterBuffer` |
+| `resources` 纹理 | 否 | 写入 descriptor resource |
+| pass enable | 否 | 决定是否为该 pass 产出 item |
+| system-owned UBO 内容 | 否 | scene-level resource 数据变化 |
+
+这张表是写材质时最常用的判断准则：如果改动改变的是“画法结构”，通常影响 pipeline；如果只是“给同一画法换数据”，通常不影响。
+
+## Variant 不是参数
+
+```yaml
+variants:
+  USE_LIGHTING: true
 ```
 
-所以 template 不是"间接影响 pipeline"——它通过 pass signature 直接进入材质侧身份。
+`USE_LIGHTING` 会决定 GLSL 预处理后的代码形状。它可能改变 vertex input、fragment varying、descriptor binding，甚至 shader stage 内部逻辑。因此当前实现把 enabled variants 放入 pipeline signature。
 
-## 什么会切 Pipeline，什么不会
+与之相对：
 
-把 template 和 instance 分层的直接收益：结构变化和值变化分开了。
+```yaml
+parameters:
+  MaterialUBO.enableAlbedo: 1
+```
 
-| 会切 pipeline（template/pass 级） | 不会切 pipeline（instance 级） |
-|------|------|
-| shader name | `setFloat` / `setVec3` |
-| enabled variants | `setTexture` |
-| render state（cull / depth / blend） | `syncGpuData()` |
-| pass 定义变化 | per-pass 参数覆写 |
+`enableAlbedo` 是运行时 buffer 值。它不会重新编译 shader，也不会改变 pipeline key。
 
-这也是为什么 variants 固定在 template/pass 上，而不允许 instance 运行时随便改——改了就意味着 pipeline identity 变了。
+## RenderState 属于 pass，不属于 instance
 
-## 和 Scene 校验的关系
+`RenderState` 当前在 `MaterialPassDefinition` 里：
 
-`SceneNode` 为每个 enabled pass 重建 validated 数据时，会同时取：
+```yaml
+passes:
+  Forward:
+    renderState:
+      cullMode: None
+      depthTest: true
+      depthWrite: true
+      blendEnable: false
+```
 
-- mesh 的 `getPipelineSignature(pass)` — object 侧
-- material 的 `getPipelineSignature(pass)` — 材质侧
+这意味着同一个 template 的所有 instance 共享该 pass 的 render state。如果我们需要同一个 shader 和参数结构但不同 blend/cull 配置，当前应通过不同 material/template 或不同 pass 定义表达，而不是在 instance 上动态切换 render state。
 
-然后调用 `PipelineKey::build(...)` 得到这个 pass 下的 pipeline identity。
+## MaterialTemplate 不是 PipelineCache
 
-这意味着 template 里每个 pass 的定义，不只是给 backend 最后创建 pipeline 用的。它在 scene 前端就已经决定了：
+`MaterialTemplate` 只负责生成稳定 signature 和提供 build desc 所需的 shader/render state 信息。真正持有 pipeline 生命周期的是 backend `PipelineCache`：
 
-- 这个对象在某个 pass 下是否合法
-- 这个对象在某个 pass 下会不会和别的对象复用同一条 pipeline
+| 层 | 负责什么 |
+|---|---|
+| `MaterialTemplate` | pass 结构、shader program、render state、material interface |
+| `SceneNode` | 组合 mesh/material，生成 per-pass `PipelineKey` |
+| `FrameGraph` / `RenderQueue` | 汇总 draw items 和 unique build desc |
+| backend `PipelineCache` | 按 `PipelineKey` 创建、保存、查找 pipeline 对象 |
 
-## 继续阅读
+## Roadmap 中哪些关系会变化
 
-- Pipeline identity 系统：[../../subsystems/pipeline-identity.md](../../subsystems/pipeline-identity.md)
-- 先读 Pipeline 导入文档：[what-is-pipeline.md](what-is-pipeline.md)
+未来 bindless / ubershader 方向可能把部分材质特性从 variants 下沉为 uniform branch 或 bindless slot。那会减少某些 material feature 对 pipeline identity 的影响。
+
+但这仍然是未实施设计。当前代码里，enabled variants 仍然进入 pipeline signature；descriptor layout 仍来自 shader reflection；`MaterialInstance` 仍按 pass 返回传统 descriptor resources。
+
+## 我们已经学会了什么
+
+材质模板影响 pipeline，是因为它保存了 shader 程序选择和固定功能状态。材质实例的大部分数据只影响 draw 使用的数据，不影响 pipeline 身份。判断一个改动是否会触发 pipeline 差异，要看它是否改变 shader/render state/mesh layout 这类结构事实。
+
+## 下一步
+
+- [什么是 Pipeline](what-is-pipeline.md)
+- [未来路线：Bindless、Variants 与 FrameGraph](future-roadmap.md)
+- [Pipeline cache 子系统](../../subsystems/pipeline-cache.md)

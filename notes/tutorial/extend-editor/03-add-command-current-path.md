@@ -39,7 +39,7 @@
 
 ## 未来会怎样变简单
 
-[REQ-042-b](../../requirements/042-b-tutorial-editor-extension-registry.md) 计划让 command 有 metadata。未来教程会先声明 command schema，再绑定 handler，completion、API 查询和 toolbar action 都能读取同一份 metadata。
+[REQ-042-b](../../requirements/pending/042-b-tutorial-editor-extension-registry.md) 计划让 command 有 metadata。未来教程会先声明 command schema，再绑定 handler，completion、API 查询和 toolbar action 都能读取同一份 metadata。
 
 ## 我们已经学会了什么
 

@@ -1,105 +1,99 @@
 # MaterialInstance：运行时状态
 
-如果 `MaterialTemplate` 是菜谱，`MaterialInstance` 就是端上桌的那道菜。它是 scene、render queue 和 backend 真正持有的材质对象。
+如果 `MaterialTemplate` 是菜谱，`MaterialInstance` 就是这一次真正端上桌的菜。它不重新定义 pass，不决定 shader 编译，也不直接创建 pipeline；它只记录“这个实例现在用哪些参数、哪些纹理、哪些 pass 参与渲染”。
 
-## 它保存了什么
+## Instance 保存的状态
 
-| 字段 | 职责 |
-|------|------|
-| `m_template` | 指向所属的菜谱 |
-| `m_bufferSlots` | `ParameterBuffer` 集合；每个 material-owned UBO/SSBO 一个 canonical buffer binding |
-| `m_textures` | canonical 纹理资源 |
-| `m_enabledPasses` | 当前启用的 pass 子集 |
-| `m_passStateListeners` | pass 开关变化时通知 scene 的回调 |
+| 字段 | 当前职责 |
+|---|---|
+| `m_template` | 指向共享的 `MaterialTemplate` |
+| `m_parameterBuffersByName` | 每个 material-owned UBO/SSBO 一个 `ParameterBuffer` |
+| `m_textureBindingsByName` | 每个 material-owned texture binding 一个 `CombinedTextureSampler` |
+| `m_enabledPasses` | 当前实例启用的 pass 集合 |
+| `m_passStateListeners` | pass 启用状态变化时通知外层重建结构缓存 |
 
-## 参数槽位是怎样构造出来的
+instance 构造时会遍历 template 的 canonical material binding 表。只有 `UniformBuffer` 和 `StorageBuffer` 会创建 `ParameterBuffer`；texture binding 只有在 `.material resources` 或代码调用 `setTexture()` 后才有实际资源。
 
-Instance 构造时，从 enabled pass 的 shader 反射里收集所有 material-owned buffer binding：
+## 参数写入按 binding.member 定位
 
-1. 遍历每个 enabled pass 的 `getMaterialBindings(pass)`
-2. 对 `UniformBuffer` 和 `StorageBuffer` 类型的 binding 创建一个 `ParameterBuffer`
-3. 每个参数槽位自己持有 byte buffer（零初始化）、dirty 状态，以及 `IGpuResource` 行为
-4. 同名 buffer binding 跨 pass 必须布局一致，否则 assert
-
-不支持的 descriptor 类型（如 standalone `Sampler`）会直接 FATAL。
-
-## 写参数：两种方式
-
-**推荐方式**——按 binding 名 + member 名精确定位：
-
-```cpp
-mat->setParameter(StringID("MaterialUBO"), StringID("roughness"), 0.5f);
-```
-
-**便利方式**——只按 member 名（单 buffer 时自动定位，多 buffer 时 assert）：
-
-```cpp
-mat->setFloat(StringID("roughness"), 0.5f);
-```
-
-底层都走同一条路径：定位参数槽位 → 查反射 member → 验证类型 → `memcpy` 到 offset。
-
-纹理绑定：
-
-```cpp
-mat->setTexture(StringID("albedoMap"), textureSampler);
-```
-
-## 为什么没有 Per-Pass 写接口
-
-现在 `MaterialInstance` 明确只保存一份 canonical 参数/资源集合。
-
-- `setParameter(...)` 永远修改这份 canonical 数据
-- `setTexture(...)` 永远修改这份 canonical 数据
-- pass 只声明“我使用哪些 binding”，不会再持有自己的参数副本
-
-如果确实需要不同 pass 下出现不同值，这不再通过 override 实现，而应该：
-
-- 使用不同 binding 名
-- 或拆成不同 `MaterialInstance`
-
-## Pass 开关：为什么是结构变化
-
-```cpp
-mat->setPassEnabled(Pass_Shadow, false);
-```
-
-pass 开关和普通参数写入不同——它影响的不只是 draw 值，而是：
-
-- 这个对象参加哪些 pass
-- SceneNode 需要校验哪些 pass
-- descriptor 资源的 pass 维度视图
-
-因此 pass 开关变化会通过 listener 通知 scene，触发引用该材质的节点重验证。`setFloat` / `setTexture` / `syncGpuData()` 不走这条传播链。
-
-## Descriptor 资源的收集
-
-`getDescriptorResources(pass)` 按目标 pass 的反射 bindings 收集材质资源：
-
-1. 枚举该 pass 的 material-owned bindings
-2. buffer binding → 从 canonical 参数槽位里按 binding 名取资源
-3. 纹理 binding → 从 canonical 纹理表里按 binding 名取资源
-4. 按 `(set << 16 | binding)` 排序输出
-
-这意味着不同 pass 看到的是“同一份实例数据的不同使用子集”，而不是各自持有一份独立运行时状态。
-
-## 和 YAML 的对应
+当前 `.material parameters` 和 editor material override 都使用同一种 key：
 
 ```yaml
-parameters:                          # → 全局参数槽位默认值
-  MaterialUBO.baseColor: [0.8, 0.8, 0.8]
-  MaterialUBO.shininess: 12.0
-
-resources:                           # → 全局默认纹理
-  albedoMap: white
-
-passes:
-  Forward:
-    renderState:
-      depthTest: true
+parameters:
+  MaterialUBO.surfaceColor: [0.8, 0.35, 0.25] # -> setParameter("MaterialUBO", "surfaceColor", Vec3f)
+  MaterialUBO.mixAmount: 0.35                 # -> setParameter("MaterialUBO", "mixAmount", float)
+  MaterialUBO.mode: 0                         # -> setParameter("MaterialUBO", "mode", int)
 ```
 
-## 继续阅读
+`MaterialInstance` 不靠字符串拼接猜 offset。它先通过 `getParameterBufferLayout(bindingName)` 找到 reflected `ShaderResourceBinding`，再根据 member 的类型和 offset 写入 `ParameterBuffer`。
 
-- 代码入口：[material_instance.hpp](../../../src/core/asset/material_instance.hpp)
-- 实现层设计：[../../subsystems/material-system.md](../../subsystems/material-system.md)
+| API | 当前用途 |
+|---|---|
+| `setParameter(binding, member, float/int/Vec3/Vec4)` | 写入 UBO/SSBO 成员 |
+| `setParameterValue(binding, member, value)` | editor/runtime override 的统一入口 |
+| `findParameterMember(binding, member)` | 按 reflection 查询成员是否存在和类型 |
+| `readParameterValue(binding, member)` | 复制 instance 数据或 editor 读取当前值 |
+| `syncGpuData()` | 把 pending parameter writes 标记为 dirty，等待 backend 上传 |
+
+参数值变化不会改变 pipeline。它只是改变 buffer 字节内容。
+
+## 纹理绑定按 canonical binding 名保存
+
+```yaml
+resources:
+  albedoMap: white      # -> placeholder texture
+  normalMap: normal     # -> placeholder texture
+```
+
+loader 会先确认 `albedoMap` / `normalMap` 是 shader reflection 中的 material-owned texture binding，然后调用 `MaterialInstance::setTexture()`。如果值是 `white`、`black`、`normal`，走内置占位纹理；否则按 material 文件所在目录相对路径或运行时路径加载真实图片。
+
+`resources` 不负责 UBO/SSBO，也不负责系统资源。材质 UBO 默认值走 `parameters`，系统 UBO 走 scene/camera/light/skeleton 注入。
+
+## getDescriptorResources(pass) 是 pass-aware 的
+
+一个 instance 可能有多组 canonical binding，但某个 pass 只使用其中一部分。`getDescriptorResources(pass)` 会：
+
+1. 从 template 读取本 pass 的 material binding id 列表。
+2. 对 buffer binding 找 `ParameterBuffer`。
+3. 对 texture binding 找 `CombinedTextureSampler`。
+4. 按 `set/binding` 排序后返回给 scene validation / backend。
+
+缺失 texture 不会在这个函数里直接补齐；真正的缺失检查发生在 `SceneNode::rebuildValidatedCache()`。那里会遍历 shader reflection，确认每个需要的 material-owned resource 都能在 descriptor resources 里找到。
+
+## pass enable 是结构状态
+
+新建 instance 时，template 里定义的所有 pass 默认启用。调用 `setPassEnabled(pass, false)` 会让这个实例跳过该 pass。
+
+这和普通参数不同：
+
+| 改动 | 是否改变 pipeline key | 是否改变 draw 是否存在 |
+|---|---|---|
+| 改 `MaterialUBO.baseColor` | 否 | 否 |
+| 改 `albedoMap` 绑定 | 否 | 否 |
+| 关闭 `Forward` pass | 否，key 本身不变 | 是，该 pass 跳过 `RenderingItem` 生成 |
+| 换另一个 template/shader | 是 | 可能改变 |
+
+因此 pass enable 变化会通知外层重建 `SceneNode` 的 validated cache。
+
+## Scene 文件里的材质覆盖
+
+`lxe_editor` 加载 scene 时，会先通过 `loadGenericMaterial(uri)` 得到一个新的 `MaterialInstance`，再按顺序应用 material-level override 和 node-level override：
+
+```text
+loadGenericMaterial(uri)
+  -> apply materialOverrides
+  -> apply nodeMaterialOverrides
+  -> syncGpuData()
+```
+
+override 仍然要经过 reflection 校验：binding/member 必须存在，值类型要能匹配或被允许地转换。
+
+## 我们已经学会了什么
+
+`MaterialInstance` 是运行时账本。它把 template 给出的 canonical binding 接口填上具体值，并按 pass 输出 descriptor resources。它能改变 draw 使用的数据，也能关闭某些 pass，但普通参数和纹理更新不会改变 pipeline identity。
+
+## 下一步
+
+- [多 Pass 材质怎样变成 Draw](pass-rendering-flow.md)
+- [模板如何影响 Pipeline](template-and-pipeline.md)
+- [MaterialInstance 源码分析](../../source_analysis/src/core/asset/material_instance.md)

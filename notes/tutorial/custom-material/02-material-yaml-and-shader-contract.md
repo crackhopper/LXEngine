@@ -1,6 +1,6 @@
 # 02 YAML 与 Shader 合同
 
-`.material` 和 GLSL 之间像一份点菜单和厨房备料单：菜单上写了 `warmColor`，厨房里也必须真的有这个参数，否则服务员找不到该把值送到哪里。
+`.material` 和 GLSL 之间像一份点菜单和厨房备料单：菜单上写了 `surfaceColor`，厨房里也必须真的有这个参数，否则服务员找不到该把值送到哪里。
 
 ## YAML 和 shader 必须签同一份合同
 
@@ -9,8 +9,8 @@ Shader reflection 会读取 SPIR-V，告诉引擎：
 | 信息 | 例子 |
 |---|---|
 | uniform block 名 | `MaterialUBO` / `GoochParams` |
-| block 内字段 | `warmColor` / `coolColor` |
-| descriptor 名 | `SceneLightsUBO` |
+| block 内字段 | `surfaceColor` / `accentColor` |
+| descriptor 名 | `MaterialUBO` / `LightUBO` |
 | vertex input | `inPosition` / `inNormal` |
 
 `.material` 的职责是把这些名字填上默认值。
@@ -33,14 +33,22 @@ passes:
     renderState:                       # -> MaterialPassDefinition.renderState
       cullMode: Back
 parameters:
-  MaterialUBO.baseColor: [0.8, 0.7, 0.4, 1.0] # -> MaterialInstance parameter write
-  MaterialUBO.warmColor: [1.0, 0.8, 0.25, 1.0]
-  MaterialUBO.coolColor: [0.1, 0.25, 0.8, 1.0]
-resources:
-  SceneLightsUBO: system               # -> system-owned binding, scene 提供
+  MaterialUBO.surfaceColor: [0.8, 0.35, 0.25] # -> MaterialInstance parameter write
+  MaterialUBO.accentColor: [0.15, 0.4, 0.95, 1.0]
+  MaterialUBO.mixAmount: 0.35
+  MaterialUBO.mode: 0
 ```
 
-如果 shader 里没有 `MaterialUBO.warmColor`，loader 就不应该假装能写成功。反射校验就是这里的安全网。
+如果 shader 里没有 `MaterialUBO.surfaceColor`，loader 就不应该假装能写成功。反射校验就是这里的安全网。
+
+`resources` 只表示材质自己拥有的纹理默认值，不表示“shader 可见的所有资源”。`rtr_experiment_template` 当前没有材质侧纹理，所以示例不写 `resources`。如果某个 shader 反射出 material-owned `Texture2D albedoMap`，才可以写：
+
+```yaml
+resources:
+  albedoMap: white                     # -> MaterialInstance::setTexture(...)；仅限材质侧纹理 binding
+```
+
+`CameraUBO`、`LightUBO`、`SceneLightsUBO`、`Bones` 这类 system-owned binding 由 scene、light 或 skeleton 路径提供，不能写进 `.material resources`。
 
 ## 当前和未来的边界
 

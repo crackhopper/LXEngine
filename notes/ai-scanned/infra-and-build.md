@@ -57,4 +57,4 @@
 
 - [Backend Vulkan 扫描](backend-vulkan.md)
 - [Window System Spec](../../openspec/specs/window-system/spec.md)
-- [Shader System](../subsystems/shader-system.md)
+- [Shader 反射源码分析](../source_analysis/src/core/asset/shader.md)

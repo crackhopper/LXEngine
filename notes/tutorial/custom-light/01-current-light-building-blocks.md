@@ -33,13 +33,13 @@
 | GPU 合同 | `SceneLightsUBO` | 固定布局传给 shader |
 | Shader 读取 | `scene_lights_ubo.glsl` | GLSL 按同一布局读取 light 数组 |
 
-我们在任何一层改字段，都要考虑后面几层是否理解这个字段。光源系统最容易出错的地方，不是单个参数写错，而是 C++、scene YAML、editor、shader 四边没有对齐。
+我们在任何一层改字段，都要考虑后面几层是否理解这个字段。光源这条链路最容易出错的地方，不是单个参数写错，而是 C++、scene YAML、editor、shader 四边没有对齐。
 
 ## 当前边界
 
 当前底座对三类内置光源比较明确，但“新增一种完全不同的 light kind”还没有稳定注册入口。新增类型时需要同时修改 light 数据、scene document、runtime 收集、command 补全、Inspector、debug draw 和 shader 逻辑。
 
-这个边界会在 [REQ-042-a](../../requirements/042-a-tutorial-light-asset-and-custom-light-registry.md) 中被整理成可教学的注册表模型。
+这个边界会在 [REQ-042-a](../../requirements/pending/042-a-tutorial-light-asset-and-custom-light-registry.md) 中被整理成可教学的注册表模型。
 
 ## 我们已经学会了什么
 

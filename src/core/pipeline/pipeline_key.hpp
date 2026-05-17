@@ -4,10 +4,24 @@
 
 namespace LX_core {
 
-/// PipelineKey 是 pipeline identity 的句柄：一个结构化 `StringID`，
-/// 由 `GlobalStringTable::compose(TypeTag::PipelineKey, {objSig, matSig})`
-/// 生成。 调用 `GlobalStringTable::toDebugString(key.id)`
-/// 可以还原出完整的人类可读 pipeline tree，用于日志和调试断言。
+/*
+@source_analysis.section PipelineKey：pipeline 身份的最终句柄
+`PipelineKey` 故意只包一个结构化 `StringID`。它不保存 shader、render state、
+vertex layout 的副本，而是要求调用方先把 object-side 和 material-side 的结构事实
+各自归约成 signature，再在这里做最后一次 compose。
+
+当前形状是：
+
+```text
+PipelineKey(
+  ObjectRender(mesh signature),
+  MaterialRender(material pass signature)
+)
+```
+
+这样 cache lookup 的键很小，调试时又可以通过
+`GlobalStringTable::toDebugString(key.id)` 展开整棵树。
+*/
 struct PipelineKey {
   StringID id;
 

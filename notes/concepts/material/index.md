@@ -1,37 +1,51 @@
-# 材质系统总览
+# 材质系统总览：从一份 .material 到一次 draw
 
-几何告诉引擎"这个东西长什么形状"，材质告诉引擎"这个东西该怎么渲染"：用哪组 shader、跑哪些 pass、什么 render state、提供哪些参数和纹理。
+材质系统负责回答一个渲染对象“应该怎样被画出来”：用哪份 shader、跑哪些 pass、固定功能状态是什么、哪些参数和纹理由材质提供，哪些数据由场景系统注入。
 
-一句话概括当前设计：
-
-> `MaterialTemplate` 是菜谱——规定了一道菜要哪些步骤（pass）和食材类型（shader / variants / render state）。`MaterialInstance` 是上桌的那道菜——填入了具体的调料用量（参数值）和实际食材（纹理）。
+我们可以把它想成厨房出菜流程：`.material` 文件是一张点菜单，`GenericMaterialLoader` 按菜单准备菜谱和默认配料；`MaterialTemplate` 是菜谱，规定有哪些步骤；`MaterialInstance` 是这一次真正端上桌的菜，保存具体调料和食材；`RenderQueue` 则把每一道菜在每个步骤里的出菜顺序排好。
 
 ## 核心对象
 
-| 对象 | 职责 | 类比 |
-|------|------|------|
-| `MaterialTemplate` | 定义有哪些 pass，每个 pass 的 shader、variants、render state | 菜谱 |
-| `MaterialPassDefinition` | 单个 pass 的完整配置（shader + render state + 反射 binding 缓存） | 菜谱里的一个步骤 |
-| `MaterialInstance` | 运行时参数值、纹理资源、pass 开关 | 上桌的菜 |
-| `ShaderProgramSet` | 把 shader 名、variants 和编译后的 shader 打包成一个值对象 | 步骤里标注的"用哪把刀、什么火候" |
+| 对象 | 当前职责 | 类比 |
+|---|---|---|
+| `.material` | 声明 shader、variants、passes、默认参数和默认纹理 | 点菜单 |
+| `GenericMaterialLoader` | 读取 YAML、编译 shader、反射 binding、创建 template 和 instance | 后厨备料 |
+| `MaterialTemplate` | 定义 pass 结构、canonical material binding interface、pipeline signature | 菜谱 |
+| `MaterialPassDefinition` | 单个 pass 的 shader program 和 render state | 菜谱里的一个步骤 |
+| `MaterialInstance` | 保存参数字节、纹理资源、pass 启用状态 | 上桌的菜 |
+| `SceneNode` | 把 mesh + material 校验成 per-pass `ValidatedRenderablePassData` | 出菜前质检 |
+| `RenderingItem` | 某个对象在某个 pass 下的一次 draw | 一张出菜单 |
+| `PipelineKey` | 判断 draw 能否复用同一条 pipeline 的结构化身份 | 厨房设备配置号 |
 
-另外三个支撑组件：
+## 建议阅读顺序
 
-- **`shader_binding_ownership`** — 区分哪些 binding 归系统（`CameraUBO`、`LightUBO`、`Bones`），哪些归材质
-- **`GenericMaterialLoader`** — 从 `.material` 直接创建完整材质，不用写 C++
-- **`PlaceholderTextures`** — 内置 1×1 占位纹理（`white`、`black`、`normal`）
+1. [从 .material 到 MaterialInstance](file-to-instance.md)：先看资产文件如何进入运行时对象。
+2. [模板与 Pass：材质的结构定义](template-blueprint.md)：理解 `MaterialTemplate` 为什么是结构真值来源。
+3. [Shader 在材质中的角色](shader.md)：看 shader reflection 如何决定参数、纹理和系统资源边界。
+4. [MaterialInstance：运行时状态](material-instance.md)：看参数写入、纹理绑定、pass enable 如何保存。
+5. [多 Pass 材质怎样变成 Draw](pass-rendering-flow.md)：把 scene validation、RenderQueue、FrameGraph 串起来。
+6. [什么是 Pipeline](what-is-pipeline.md)：建立 pipeline identity 的基本模型。
+7. [模板如何影响 Pipeline](template-and-pipeline.md)：细分哪些材质变化会改变 pipeline，哪些不会。
+8. [创建与排错自定义材质](custom-template.md)：把前面的概念落到 authoring 流程。
+9. [未来路线：Bindless、Variants 与 FrameGraph](future-roadmap.md)：只讨论 roadmap，全部标注为尚未实施。
 
-## 阅读顺序
+这个顺序刻意把 pipeline 放到后面。对新人来说，先知道数据从文件走到 instance，再理解一个 pass 如何变成 draw，最后再讨论“哪些结构会要求不同 pipeline”，会更接近代码实际执行顺序。
 
-1. [模板与 Pass：材质的结构定义](template-blueprint.md) — 先理解"菜谱"
-2. [Shader 在材质中的角色](shader.md) — 理解反射、variants 和 binding 归属
-3. [什么是 Pipeline](what-is-pipeline.md) — 先把“渲染结构的复用单位”理解清楚
-4. [模板如何影响 Pipeline](template-and-pipeline.md) — 再看模板里的哪些部分会进入 pipeline
-5. [MaterialInstance：运行时状态](material-instance.md) — 理解参数写入、资源绑定和 pass 开关
-6. [创建自定义材质](custom-template.md) — YAML 路径和 C++ 路径
+## 当前边界先记住
+
+| 问题 | 当前答案 |
+|---|---|
+| 一个材质能有多个 pass 吗 | 可以，`MaterialTemplate` 以 `StringID pass` 保存多份 `MaterialPassDefinition` |
+| 一个 draw 属于几个 pass | 一个 `RenderingItem` 只属于一个 pass；多 pass 材质会在不同 queue 里产生不同 item |
+| `.material resources` 能写系统 UBO 吗 | 不能；它只写 material-owned texture binding 的默认值 |
+| 参数值会影响 pipeline 吗 | 不会；参数写入 `ParameterBuffer`，不进入 `PipelineKey` |
+| variants 会影响 pipeline 吗 | 会；enabled variants 进入 `ShaderProgramSet::getPipelineSignature()` |
+| 当前 FrameGraph 会自动分析资源依赖吗 | 不会；当前只按 `FramePass` 顺序构建 per-pass queue |
+| bindless 是否已经实现 | 尚未实现；当前仍是传统 descriptor resource 路径 |
 
 ## 权威参考
 
-- [`../../subsystems/material-system.md`](../../subsystems/material-system.md) — 实现层设计文档
-- `openspec/specs/material-system/spec.md` — 材质系统 spec
-- `openspec/specs/material-asset-loader/spec.md` — 通用 loader spec
+- [MaterialTemplate 源码分析](../../source_analysis/src/core/asset/material_template.md)
+- [MaterialInstance 源码分析](../../source_analysis/src/core/asset/material_instance.md)
+- [RenderQueue 源码分析](../../source_analysis/src/core/frame_graph/render_queue.md)
+- `openspec/specs/material-system/spec.md`

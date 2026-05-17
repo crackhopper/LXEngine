@@ -33,7 +33,7 @@
 |---|---|---|
 | 操作现有节点 | 当前可用 | select、move、rename、copy、paste、remove、save/load 已有路径 |
 | 手工扩展一种节点语义 | 当前可讲原理 | 需要同步 scene document、runtime、Inspector、command、debug draw |
-| custom node kind registry | 未来能力 | 由 [REQ-042-c](../../requirements/042-c-tutorial-custom-scene-node-registry.md) 跟踪 |
+| custom node kind registry | 未来能力 | 由 [REQ-042-c](../../requirements/pending/042-c-tutorial-custom-scene-node-registry.md) 跟踪 |
 
 我们先学当前节点操作，是为了理解 registry 不是“新增一个配置文件”，而是把 editor 已有操作需要的规则集中起来。
 

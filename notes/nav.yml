@@ -41,30 +41,40 @@ nav:
           - 当前触点: tutorial/extend-scene-node/03-current-custom-node-touchpoints.md
           - Debug draw 与 picking: tutorial/extend-scene-node/04-debug-draw-and-picking.md
           - 未来节点注册表: tutorial/extend-scene-node/05-future-node-kind-registry.md
-  - 概念:
+  - 场景系统:
+      - 总览: scene-system/index.md
+      - 文档到 Runtime: scene-system/document-runtime-flow.md
+      - Node 节点: scene-system/node.md
+      - Component 组件: scene-system/component.md
+      - 相机: scene-system/camera.md
+      - 光源: scene-system/light.md
+      - 可渲染对象: scene-system/renderable-object.md
+  - 概念与设计:
+      - 总览: concepts-design/index.md
+      - 架构总览: concepts-design/architecture.md
+      - 术语概念: concepts-design/glossary.md
+      - 项目目录结构: concepts-design/project-layout.md
       - 资产系统:
           - concepts/assets/index.md
-      - 场景对象:
-          - concepts/scene/index.md
+          - 资产根与目录: concepts/assets/runtime-root-and-layout.md
+          - 模型、纹理和材质: concepts/assets/model-texture-material-flow.md
+          - 场景也是资产: concepts/assets/scene-assets.md
+          - 内置资产目录: concepts/assets/builtin-catalog.md
       - 材质系统:
           - concepts/material/index.md
-          - 材质模板：一张蓝图如何描述多个 Pass: concepts/material/template-blueprint.md
-          - Shader 在材质系统里扮演什么角色: concepts/material/shader.md
+          - 文件到实例: concepts/material/file-to-instance.md
+          - 模板与 Pass: concepts/material/template-blueprint.md
+          - Shader 与绑定: concepts/material/shader.md
+          - 实例状态: concepts/material/material-instance.md
+          - 多 Pass 如何变成 Draw: concepts/material/pass-rendering-flow.md
           - 什么是 Pipeline: concepts/material/what-is-pipeline.md
           - 材质模板为什么会影响 Pipeline: concepts/material/template-and-pipeline.md
-          - 材质实例如何承接运行时状态: concepts/material/material-instance.md
-          - 怎样定义自己的材质模板: concepts/material/custom-template.md
-      - 相机系统:
-          - concepts/camera/index.md
+          - 创建与排错: concepts/material/custom-template.md
+          - 未来路线: concepts/material/future-roadmap.md
+      - 相机细节:
           - 一次点击怎样穿过像素、NDC 和 Vulkan: concepts/camera/pixel-ndc-vulkan.md
-      - 光源系统:
-          - concepts/light/index.md
       - 引擎循环:
           - concepts/engine-loop.md
-  - 设计:
-      - 架构总览: architecture.md
-      - 术语概念: glossary.md
-      - 项目目录结构: project-layout.md
       - Editor System:
           - 总览: design/editor-system/index.md
           - 主循环与对象归属: design/editor-system/01-main-loop-and-ownership.md
@@ -72,20 +82,7 @@ nav:
           - 面板与 Toolbar: design/editor-system/03-panels-toolbar-and-viewport.md
           - SceneRuntime 与持久化: design/editor-system/04-scene-runtime-and-persistence.md
           - API 与录制观察: design/editor-system/05-api-recording-and-observation.md
-      - 子系统:
-          - subsystems/index.md
-          - Engine Loop: subsystems/engine-loop.md
-          - Frame Graph: subsystems/frame-graph.md
-          - Scene: subsystems/scene.md
-          - Pipeline Identity: subsystems/pipeline-identity.md
-          - Pipeline Cache: subsystems/pipeline-cache.md
-          - Shader System: subsystems/shader-system.md
-          - Material System: subsystems/material-system.md
-          - Resource Upload: subsystems/resource-upload.md
-          - Geometry: subsystems/geometry.md
-          - Skeleton: subsystems/skeleton.md
-          - String Interning: subsystems/string-interning.md
-          - Vulkan Backend: subsystems/vulkan-backend.md
+          - Roadmap 边界: design/editor-system/06-roadmap-boundaries.md
   - 源码分析:
       - source_analysis/index.md
       - "@source_analysis"

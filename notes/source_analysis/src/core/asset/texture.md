@@ -86,7 +86,7 @@ MaterialInstance 侧真正用来绑定的，是下面的 `CombinedTextureSampler
 具体上传时机和 Vulkan 对象由 backend 自己决定。配套阅读：
 
 - [IGpuResource：core 层的 GPU 资源统一契约](../rhi/gpu_resource.md)
-- [资源上传](../../../subsystems/resource-upload.md)
+- [资源上传](../../../../subsystems/resource-upload.md)
 
 ## 它和材质系统的关系
 
@@ -97,7 +97,7 @@ MaterialInstance 侧真正用来绑定的，是下面的 `CombinedTextureSampler
 想把这一点接到更外层的材质运行时，可以继续读：
 
 - [MaterialInstance：从模板到运行时账本](material_instance.md)
-- [材质系统](../../../subsystems/material-system.md)
+- [材质系统总览](../../../../concepts/material/index.md)
 
 这一页只回答“纹理这个资源类在 core 层为什么长成现在这个样子”，不展开 loader、
 mipmap 生成或 backend 上传的全流程。

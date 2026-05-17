@@ -1,6 +1,6 @@
 # 需求文档目录约定
 
-本目录存放**进行中**的需求文档（in-flight REQs）。已落地需求归档到 `finished/`。自动生成的导航索引在 `index.md`（由 `scripts/notes/generate_site_config.py` 维护，不要手编）。
+本目录存放**进行中**的需求文档（in-flight REQs）。已落地需求归档到 `finished/`，已确认后置但仍有价值的需求放到 `pending/`。自动生成的导航索引在 `index.md`（由 `scripts/notes/generate_site_config.py` 维护，不要手编）。
 
 > 自动生成的 `index.md` 与本手写 `README.md` 各司其职：前者列出所有进行中的 REQ 文件名 + 标题，后者解释**约定**与提供**实施顺序快照**。
 
@@ -30,13 +30,37 @@
    - 同步更新所有引用
    - OpenSpec 历史 change 已清理；不要依赖 `openspec/changes/archive/` 作为当前事实来源
 
-7. **`finished/` 只保留近期工作记录**：已归档需求的文件号是当时完成顺序的快照，**不**回溯重排。`finished/` 不是永久历史库；过时需求应下沉到 subsystem / concept / roadmap / spec，目录内原则上只保留最近约 10 个仍有直接协作价值的需求。
+7. **`pending/` 表示后续候选，不是 active**：当某个需求仍有价值但不属于当前连续实施周期，把它移到 `pending/`，并在文档顶部和“实施状态”说明后置原因。`pending/` 中的编号是历史锚点，不参与 active 目录的实施顺序。
 
-8. **speculative 候选编号用字母**：研究文档中的“未来 REQ”用字母占位（`REQ-A`、`REQ-B` ...），不要占用数字号。数字号留给真正落地到 `notes/requirements/` 的文件。
+8. **`finished/` 只保留近期工作记录**：已归档需求的文件号是当时完成顺序的快照，**不**回溯重排。`finished/` 不是永久历史库；过时需求应下沉到 subsystem / concept / roadmap / spec，目录内原则上只保留最近约 10 个仍有直接协作价值的需求。
 
-## 当前 pending REQ（实施顺序快照，2026-05-14）
+9. **speculative 候选编号用字母**：研究文档中的“未来 REQ”用字母占位（`REQ-A`、`REQ-B` ...），不要占用数字号。数字号留给真正落地到 `notes/requirements/` 的文件。
 
-当前没有 active REQ。`041-d` 到 `041-h` 已完成验证并归档到 `finished/`，本轮场景作者链路与 RTR 第五章实验底座进入已落地状态。
+## 当前 active REQ（实施顺序快照，2026-05-17）
+
+当前 active REQ 是 v0.1.1 的目标队列。它先收敛到 FrameGraph v1、Directional Shadow、CSM，再补教程支撑和架构概念文档；HDR/Post、PBR 完整管线、G-Buffer/Deferred、Task-based 并行、Web Editor、Engine CLI/MCP、AssetRegistry 热重载均不在本轮 active 队列内。
+
+| REQ | 主题 | 实施窗口 |
+|---|---|---|
+| `REQ-042-a` | FrameGraph v1 resource / target / pass execution | v0.1.1 多 pass 共同前置，未开始 |
+| `REQ-042-b` | Directional shadow map 与 depth-only pass | 第一个真实 multiple pass，未开始 |
+| `REQ-042-c` | Cascaded Shadow Maps | 近期渲染能力截止点，未开始 |
+| `REQ-043-a` | Shadow 阶段教程支撑 | 完成 CSM 后补教程所需能力，未开始 |
+| `REQ-043-b` | 架构概念文档展开与 Mermaid 图 | 完成上面能力后解释系统模块归属，未开始 |
+
+## 当前 pending REQ（后续候选，2026-05-17）
+
+以下需求已从 active 队列移入 `pending/`，避免 v0.1.1 开发同时引入过多方向：
+
+| REQ | 主题 | 后置原因 |
+|---|---|---|
+| `REQ-042-a` | 光源资产与自定义光源注册入口 | 教程扩展 API，不是 shadow/CSM 前置 |
+| `REQ-042-b` | Editor toolbar 与 command 扩展注册入口 | 教程扩展 API，不是 shadow/CSM 前置 |
+| `REQ-042-c` | 自定义场景节点类型注册入口 | 教程扩展 API，不是 shadow/CSM 前置 |
+| `REQ-043` | 内置 OBJ 资产材质槽与 MTL 颜色支持 | 资产质量修补，不是 v0.1.1 主线前置 |
+| `REQ-044-a` | Web Editor Shell 与 IPC 合同 | Phase 9 后续 |
+| `REQ-044-b` | Engine CLI / MCP / Agent 入口 | Phase 10 后续 |
+| `REQ-044-c` | Editor AssetRegistry 与热重载桥接 | Phase 3 后续 |
 
 ## 本轮删除的 active REQ（2026-05-11）
 
@@ -51,7 +75,9 @@
 
 ## 历史
 
+- 2026-05-17：按 v0.1.1 目标重整 active 队列。新增 `REQ-042-a/b/c` 收口 FrameGraph v1、Directional Shadow、CSM；新增 `REQ-043-a/b` 收口 shadow 阶段教程支撑与架构概念文档展开。原教程扩展、OBJ 材质槽、Web Editor、Engine CLI/MCP、AssetRegistry 热重载需求移入 `pending/`。
 - 2026-05-14：`REQ-041-d` 到 `REQ-041-h` 完成验证并归档到 `finished/`。`lxe_editor` 已具备测试场景 primitive/camera/light 创建、Inspector 材质/可见性编辑、节点复制、typed light、RTR 实验材质模板与节点级参数覆盖。
+- 2026-05-16：补充 `REQ-044-a/b/c`，把概念与设计文档中引用的 Web Editor、engine MCP/CLI/agent、AssetRegistry/热重载 roadmap 内容明确标注为未实施需求；这些需求在 2026-05-17 已移入 `pending/`。
 - 2026-05-14：按当前代码复核 active REQ，补充每个需求的“当前代码对照”，澄清已存在的 camera / directional light / Inspector / helper overlay 基础能力与仍待实现的 scene authoring 能力边界。
 - 2026-05-13：清理 `finished/`，删除 `REQ-034` 及以前的过时归档，只保留近期 10 个需求（`REQ-035` 到 `REQ-041-c`）。仍有价值的上下文下沉到 concept / subsystem / roadmap / spec，未完成存疑点记录到 `tmp/notes/unfinished-finished-requirements.md`。
 - 2026-05-11：按当前代码与目标重整 active REQ。删除 `041-g`~`041-j`，并把保留需求改写为面向测试场景搭建的 `041-d` / `041-e` / `041-f`。
@@ -64,6 +90,7 @@
 
 ## 相关
 
-- `index.md`：自动生成的 pending REQ 列表（导航用）
+- `index.md`：自动生成的 active REQ 列表（导航用）
+- `pending/`：已后置但仍保留的后续候选
 - `finished/`：归档需求（按时间快照不重排）
 - `notes/roadmaps/`：跨 REQ 的优先路径与阶段编排

@@ -10,6 +10,16 @@ namespace LX_core {
 
 namespace {
 
+/*
+@source_analysis.section filterVertexLayoutToShaderInputs：让 pipeline 只声明 shader 真正读取的输入
+Mesh 的 vertex layout 可能包含 shader 当前 pass 不读取的属性。pipeline 创建时如果把所有
+属性都照搬进去，会让同一个 mesh 在不同 shader/pass 下的 vertex input state 过宽，也会增加
+“shader 没声明但 pipeline 填了”的噪声。
+
+这里按 shader reflection 得到的 vertex inputs 过滤 layout，只保留当前 shader 需要的
+location/type。前置校验已经在 `SceneNode` 做过；这里的 assert 是为了保证
+`PipelineBuildDesc::fromRenderingItem` 只消费已经通过验证的 item。
+*/
 VertexLayout filterVertexLayoutToShaderInputs(const VertexLayout &layout,
                                               const IShader &shader) {
   const auto &shaderInputs = shader.getVertexInputs();

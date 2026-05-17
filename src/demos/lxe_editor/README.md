@@ -211,39 +211,60 @@ server. `lxe_editor` publishes only its editor HTTP/WebSocket discovery in
 MCP URL into runtime state.
 
 - Repo-local Codex config: `.codex/config.toml`
-- Manager MCP endpoint: `http://127.0.0.1:3880/mcp` by default
+- Manager MCP endpoint: `http://127.0.0.1:3880/mcp` by default (`LXE_MANAGER_PORT`
+  overrides the port in both `enable_mcp --local` and the background `start_mcp`
+  it launches)
 - Bearer token env var: `LXE_MANAGER_MCP_BEARER_TOKEN`
 - Editor runtime discovery file: `data/lxe_editor/runtime_state.yaml`
 - Editor runtime discovery content: editor HTTP/WS host, port, token, and
   process metadata only
 
-Start the local manager in one terminal:
-
-```sh
-scripts/lxe_manager/start_mcp.sh
-```
-
-Then point Codex at it from another terminal:
+From the repo root, configure Codex and bring up a matching local manager
+(`start_mcp.sh` runs in the background with the same bearer token). **Use
+`source`**, not `./…`, so `LXE_MANAGER_MCP_BEARER_TOKEN` stays in the shell that
+launches Codex:
 
 ```sh
 cd /home/lixiang/proj/LXEngine
-source scripts/lxe_manager/enable_mcp.sh --local --token '<token-from-manager-output>'
+source scripts/lxe_manager/enable_mcp.sh --local
 codex
 ```
 
-That helper rewrites `.codex/config.toml` to register `lxe_manager` at
-`http://127.0.0.1:3880/mcp` and exports `LXE_MANAGER_MCP_BEARER_TOKEN` for Codex.
-Use `--endpoint 'http://host:port/mcp'` for a non-default URL, or `--token` alone
-to keep the URL already in config. Legacy wrappers `scripts/lxe_editor/use_local_mcp.sh`
-still work if you set `LXE_MANAGER_MCP_BEARER_TOKEN` first (optional
-`LXE_MANAGER_URL` for a custom endpoint).
+With `--local` and no `--token`, the helper generates a token, exports
+`LXE_MANAGER_MCP_BEARER_TOKEN` in the current shell, prints an `export ...` line
+on stderr (for other shells), and updates `.codex/config.toml` for
+`http://127.0.0.1:<port>/mcp`. If that port is already listening, it **stops**
+those listeners (`fuser` or `lsof`), then runs `scripts/lxe_manager/start_mcp.sh`
+in the background with the same token. Use `--no-start-manager` to only rewrite
+config and export the token (tests, or you start `start_mcp.sh` yourself). Pass
+`--token` if you want a known value instead of a fresh secret.
+
+Stop only the local MCP listener without touching Codex config (no `source` needed):
+
+```sh
+./scripts/lxe_manager/enable_mcp.sh --stop-manager
+```
+
+(`LXE_MANAGER_PORT` selects the port; same as `--local`.) Do not combine
+`--stop-manager` with `--local`.
+
+That helper rewrites `.codex/config.toml` to register `lxe_manager` at the local
+URL. Use `--endpoint 'http://host:port/mcp' --token '<token>'` for a non-default
+URL, or `--token` alone to keep the URL already in config.
 
 PowerShell:
 
 ```powershell
-scripts/lxe_manager/enable_mcp.ps1 -Local -Token "<token-from-manager-output>"
+scripts/lxe_manager/enable_mcp.ps1 -Local
 codex
 ```
+
+(`-Token` is optional with `-Local`; `-NoStartManager` matches
+`--no-start-manager`. `-StopManager` stops the listener only, like
+`./enable_mcp.sh --stop-manager`.)
+
+You can still run `scripts/lxe_manager/start_mcp.sh` directly in a terminal when
+debugging; use the same `LXE_MANAGER_MCP_BEARER_TOKEN` as in the Codex shell, or rely on manager-generated output and pass `--token` into `enable_mcp`.
 
 To point Codex at a remote manager:
 
@@ -274,11 +295,14 @@ codex
 
 The helper writes the manager URL into `.codex/config.toml` and exports
 `LXE_MANAGER_MCP_BEARER_TOKEN` only in the current shell, without committing
-secrets to the repo. Alternatively:
-`export LXE_MANAGER_MCP_BEARER_TOKEN=<token>; source scripts/lxe_editor/use_remote_mcp.sh http://manager.example.com:3880/mcp`.
+secrets to the repo. For a remote endpoint, use
+`source scripts/lxe_manager/enable_mcp.sh --endpoint 'http://manager.example.com:3880/mcp' --token '<token>'`.
 
-`lxe_manager` prints `bearerToken` during startup. Pass that value to
-`enable_mcp` as `--token` (or `-Token` in PowerShell).
+`lxe_manager` prints `bearerToken` during startup when it auto-generates one
+without a shared env. With `enable_mcp.sh --local`, the token is generated once,
+exported for Codex, and passed into the background `start_mcp.sh`, so client and
+server stay aligned. You can still pass an explicit `--token` (or `-Token`) to
+use a value from manager output instead.
 See `notes/tools/lxe-manager-mcp.md` for the full service guide.
 
 Current MCP surface:

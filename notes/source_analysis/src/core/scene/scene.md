@@ -9,13 +9,13 @@
 [src/core/scene/scene.cpp](../../../../../src/core/scene/scene.cpp)
 出发，关注的不是 API 列表，而是 `Scene` 为什么是一层薄壳：
 把结构验证下放给 `SceneNode`、把 draw 组装下放给 `RenderQueue`，
-自己只保留 nodeName 唯一性、editor/command 的路径 root 与查找、
-shared material 重验证传播，以及 scene-level 资源的两轴筛选这些无法下放的事情。
+自己只保留 nodeName 唯一性、shared material 重验证传播、
+以及 scene-level 资源的两轴筛选这三件无法下放的事情。
 
-可以先带着一个问题阅读：为什么 `Scene` 的容器是平铺的、但 camera 却不再是
-独立对象？答案是当前 component model 的收口方向：hierarchy、path lookup、
-inspector/command routing 都已经落在 `SceneNode` 上，camera 也必须回到 node-local
-component，`Scene` 自己只保留注册、筛选和 scene-level 资源聚合这些全场景才能决定的事。
+可以先带着一个问题阅读：为什么 `Scene` 的容器是平铺的、构造时还要硬塞
+一个默认 Camera 和 DirectionalLight？答案是 REQ-009 — 让那些不走完整
+`VulkanRenderer::initScene` 的纯 core/test 路径仍然能拿到非空的
+scene-level 资源，同时把 hierarchy/可见性等可选维度整体下推给 SceneNode。
 
 源码入口：[scene.hpp](../../../../src/core/scene/scene.hpp)
 
@@ -43,24 +43,15 @@ component，`Scene` 自己只保留注册、筛选和 scene-level 资源聚合�
 descriptorResources 的列表已经合并了"renderable 自带"和"scene-level 追加"两段，
 顺序固定 — backend 按 binding name 命中，不依赖位置。
 
-### Scene：扁平容器与 camera-node 注册
+### Scene：扁平容器与默认 seed
 
 Scene 是一层薄壳：三个平铺 vector（renderables / cameras / lights）+ 一个 sceneName。
 它不维护层级（节点之间的 parent/child 关系挂在 SceneNode 上）、不做 z-sort、不持有
- render state。这种扁平 ownership 让"哪些对象属于这一帧"是可枚举的事实，而不是
+render state。这种扁平 ownership 让"哪些对象属于这一帧"是可枚举的事实，而不是
 需要遍历某种隐式树才能复原的状态。
 
-`Scene` 现在只 seed 一个默认 `DirectionalLight`；默认 camera 不再存在。camera 要通过
-`SceneNode + CameraComponent` 显式注册进 `m_cameras`。这让 camera 自然获得：
-
-- hierarchy / reparenting 语义
-- `findByPath()` 可达性
-- editor 与 demo 共用的 node transform 身份
-
-代价是：那些依赖 scene-level camera UBO 的 core/test 路径，必须自己创建一个带
-`CameraComponent` 的节点并设置可匹配的 `RenderTarget`。如果 camera 还停留在
-`nullopt target`，`matchesTarget()` 就会一直失败，`getSceneLevelResources()`
-也不会返回这台 camera 的 UBO。
+构造时仍然 seed 一个 DirectionalLight，方便那些不走完整 renderer 初始化的测试路径。
+camera 不再单独 seed；测试和 demo 需要显式注册 camera-bearing SceneNode。
 
 `enable_shared_from_this` 的存在是为了在 `addRenderable` 里给挂进来的 SceneNode 写
 弱反向引用 `weak_from_this()`，让 shared material 重验证传播能从 node 找回 scene。
@@ -88,12 +79,12 @@ scene 上吗" 用 `m_scene.lock() != nullptr` 就能给出确定答案，不会�
 普通参数写入（`setFloat` / `setTexture`）走 GPU 资源 dirty 路径，结构没变，
 不会触发这条传播。换句话说：这里只处理"pass 拓扑改变"这一件结构性事件。
 
-### getSceneLevelResources：camera-node×target 与 light×pass 两轴筛选
+### getSceneLevelResources：camera×target 与 light×pass 两轴筛选
 
-这条路径的核心设计：camera 按 target 选，light 按 pass 选 — 两条规则有意拆开，
+REQ-009 的核心设计：camera 按 target 选，light 按 pass 选 — 两条规则有意拆开，
 不合并成"同时过 pass 和 target"。原因来自身份的不同：
 
-- camera 的身份是"画到哪个 target"，与 pass 无关。同一个 `CameraComponent` 在 forward、
+- camera 的身份是"画到哪个 target"，与 pass 无关。同一个 camera 在 forward、
   depth-prepass、GUI 这三个写入同一 target 的 pass 里都该出现，pipeline 不同
   但相机 UBO 是同一份。
 - light 的身份是"参与哪些 pass"，与 target 无关。一个 DirectionalLight 在所有
@@ -104,10 +95,6 @@ scene 上吗" 用 `m_scene.lock() != nullptr` 就能给出确定答案，不会�
 per-renderable descriptor 列表末尾 — backend 按 binding name 命中，不依赖位置。
 空返回是合法的（pass 没有任何 light 参与时常见），调用方不应该把空当作错误。
 
-component 化之后，这里多了一层显式解包：`Scene` 先枚举已注册的 camera nodes，
-再从每个 node 取 `CameraComponent`。inactive camera 会在这一层直接被跳过，不需要
-从 scene 注销节点，也不会破坏 path identity。
-
 ### getCombinedCameraCullingMask：可见性裁剪与资源筛选解耦
 
 queue 用这个合并 mask 决定 renderable 是否进入当前 queue（按位与 visibilityMask
@@ -117,7 +104,7 @@ queue 用这个合并 mask 决定 renderable 是否进入当前 queue（按位�
 - 资源筛选：决定 CameraUBO / LightUBO 是否进入 descriptor 表
 - mask 合并：决定 renderable 是否参与 draw
 
-两条路径解耦的结果是：即使 mask 把所有 renderable 都裁掉，camera UBO 还是会被
+两条路径解耦的结果是：即使 mask 把所有 renderable 都裁掉，CameraUBO 还是会被
 绑定 — pass 的 fixed-function 阶段仍然依赖它，下一帧重新出现时 backend 不需要
 重建 binding。"这一帧没东西画" 不会反向撤销 scene-level 资源契约。
 
@@ -193,7 +180,7 @@ queue 不需要知道 SceneNode 内部 cache 形态，scene 也不需要知道 q
 
 ## REQ-042 落地后会变什么
 
-[`REQ-042`](../../../../requirements/042-render-target-desc-and-target.md) 把
+[`REQ-042`](../../../../requirements/042-a-frame-graph-v1-resource-target-pass-execution.md) 把
 `RenderTarget` 拆为 `RenderTargetDesc`（形状） + `RenderTarget`（持 desc + 句柄
 + extent）后，本页的 target 轴叙事会同步变化：
 

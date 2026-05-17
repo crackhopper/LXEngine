@@ -32,7 +32,7 @@
 |---|---|---|
 | 使用现有 command | 当前可用 | command console、toolbar、API、MCP 复用 `CommandBus` |
 | 新增内置 command / toolbar 按钮 | 当前可做 | 需要改 C++ handler、UI、补全和测试 |
-| extension registry | 未来能力 | 由 [REQ-042-b](../../requirements/042-b-tutorial-editor-extension-registry.md) 跟踪 |
+| extension registry | 未来能力 | 由 [REQ-042-b](../../requirements/pending/042-b-tutorial-editor-extension-registry.md) 跟踪 |
 
 未来 metadata 只有在我们理解 command-first 的当前价值后才有意义：它不是绕过 C++ handler，而是让命令说明、按钮说明、补全和 API schema 读同一份信息。
 

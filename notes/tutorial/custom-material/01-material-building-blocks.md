@@ -45,7 +45,7 @@ node override 不在 template / instance 的结构边界里。它保存在 scene
 | 路径 | 读它的原因 |
 |---|---|
 | `notes/concepts/material/index.md` | 从概念层理解 template / instance |
-| `notes/subsystems/material-system.md` | 当前实现形状 |
+| `notes/source_analysis/src/core/asset/material_template.md` / `material_instance.md` | 当前实现形状 |
 | `src/core/asset/material_template.hpp` | template 的 C++ 表达 |
 | `src/core/asset/material_instance.hpp` | instance 的 C++ 表达 |
 | `src/infra/material_loader/generic_material_loader.cpp` | YAML 到 runtime 的桥 |

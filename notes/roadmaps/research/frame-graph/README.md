@@ -64,6 +64,6 @@ LX 离教科书形态还有 6 个 REQ 的距离；离工业级再加几个量级
 
 - *Mastering Graphics Programming with Vulkan* · Chapter 4 · "Implementing a Frame Graph"
 - LX 当前源码导读：`notes/source_analysis/src/core/frame_graph/`（`frame_graph.md` / `render_queue.md` / `render_target.md`）
-- LX REQ-042 草稿：[`notes/requirements/042-render-target-desc-and-target.md`](../../../requirements/042-render-target-desc-and-target.md)
+- LX REQ-042 草稿：[`notes/requirements/042-a-frame-graph-v1-resource-target-pass-execution.md`](../../../requirements/042-a-frame-graph-v1-resource-target-pass-execution.md)
 - Frostbite GDC 2017 talk: "FrameGraph: Extensible Rendering Architecture in Frostbite"
 - Unreal Engine RDG（Render Dependency Graph）官方文档

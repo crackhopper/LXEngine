@@ -150,6 +150,6 @@ instance 负责“这一帧真正要喂给 backend 的实例数据是什么”�
 
 ## 继续阅读
 
-- [材质系统](../../../../subsystems/material-system.md)
+- [材质系统总览](../../../../concepts/material/index.md)
 - [MaterialInstance：运行时状态](../../../../concepts/material/material-instance.md)
 - [material_instance.cpp](../../../../../src/core/asset/material_instance.cpp)

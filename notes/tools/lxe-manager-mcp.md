@@ -69,17 +69,36 @@ scripts/lxe_manager/start_mcp.ps1 0.0.0.0 3880
 
 ```bash
 cd /home/lixiang/proj/LXEngine
-source scripts/lxe_manager/enable_mcp.sh --local --token "<token-from-manager-output>"
+# 必须用 source，不能用 ./enable_mcp.sh（子 shell 里的 export Codex 看不到）
+source scripts/lxe_manager/enable_mcp.sh --local
 codex
 ```
+
+`--local` 可省略 `--token`：脚本生成 token、写入当前 shell 的
+`LXE_MANAGER_MCP_BEARER_TOKEN`，在 stderr 打印 `export LXE_MANAGER_MCP_BEARER_TOKEN=...`，
+更新 `.codex/config.toml` 中的本机 URL。若本机 MCP 端口（`LXE_MANAGER_PORT`，默认
+3880）已被占用，会先用 `fuser` / `lsof` **结束监听进程**，再后台启动
+`start_mcp.sh` 并传入**同一 token**。若只想改配置、自己起 manager，用
+`--no-start-manager`。
+
+仅关闭本机 manager、不改 `.codex/config.toml`（**不必** `source`）：
+
+```bash
+./scripts/lxe_manager/enable_mcp.sh --stop-manager
+```
+
+`--stop-manager` 不要与 `--local` 同用。
 
 PowerShell:
 
 ```powershell
 cd C:\path\to\LXEngine
-scripts/lxe_manager/enable_mcp.ps1 -Local -Token "<token-from-manager-output>"
+scripts/lxe_manager/enable_mcp.ps1 -Local
 codex
 ```
+
+`-Local` 时 `-Token` 可选；`-NoStartManager` 对应 `--no-start-manager`；
+`-StopManager` 仅停止监听（与上面的 `--stop-manager` 一致）。
 
 远程 Codex 客户端：
 

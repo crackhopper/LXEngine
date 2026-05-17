@@ -31,7 +31,7 @@
 |---|---|---|
 | 使用 Directional / Point / Spot | 当前可用 | `SceneNodeDocument.light.kind`、command bus 与 runtime 都能处理 |
 | 新增 C++ light kind | 当前可讲原理 | 需要同步修改多处代码，不是稳定扩展 API |
-| light preset / custom light registry | 未来能力 | 由 [REQ-042-a](../../requirements/042-a-tutorial-light-asset-and-custom-light-registry.md) 跟踪 |
+| light preset / custom light registry | 未来能力 | 由 [REQ-042-a](../../requirements/pending/042-a-tutorial-light-asset-and-custom-light-registry.md) 跟踪 |
 
 我们先学习当前三类 light，是为了知道 registry 要解决什么痛点。否则未来 YAML 看起来会像凭空出现的配置格式，而不是对当前手工链路的整理。
 

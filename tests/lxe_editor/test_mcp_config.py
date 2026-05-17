@@ -113,7 +113,7 @@ class ManagerMcpConfigTest(unittest.TestCase):
         self.write_existing_config()
         script = self.repo_root / "scripts" / "lxe_manager" / "enable_mcp.sh"
         command = (
-            f"source '{script}' --local --token 'secret' >/dev/null && "
+            f"source '{script}' --local --no-start-manager --token 'secret' >/dev/null && "
             f"cat '{self.config_path}'"
         )
         result = subprocess.run(
@@ -136,11 +136,78 @@ class ManagerMcpConfigTest(unittest.TestCase):
             output,
         )
 
+    def test_enable_mcp_sh_requires_source_not_execution(self) -> None:
+        script = self.repo_root / "scripts" / "lxe_manager" / "enable_mcp.sh"
+        result = subprocess.run(
+            ["bash", str(script), "--local", "--no-start-manager"],
+            check=False,
+            capture_output=True,
+            text=True,
+            env={**os.environ, "LXE_EDITOR_CODEX_CONFIG_PATH": str(self.config_path)},
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("must be sourced", result.stderr)
+
+    def test_enable_mcp_sh_stop_manager_ok_without_source_when_port_free(self) -> None:
+        script = self.repo_root / "scripts" / "lxe_manager" / "enable_mcp.sh"
+        result = subprocess.run(
+            ["bash", str(script), "--stop-manager"],
+            check=False,
+            capture_output=True,
+            text=True,
+            env={**os.environ, "LXE_MANAGER_PORT": "57999"},
+        )
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertIn("free", result.stderr.lower())
+
+    def test_enable_mcp_sh_rejects_stop_manager_with_local(self) -> None:
+        script = self.repo_root / "scripts" / "lxe_manager" / "enable_mcp.sh"
+        result = subprocess.run(
+            ["bash", "-lc", f"source '{script}' --local --stop-manager --no-start-manager"],
+            check=False,
+            capture_output=True,
+            text=True,
+            env={
+                **os.environ,
+                "LXE_EDITOR_CODEX_CONFIG_PATH": str(self.config_path),
+            },
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("cannot be combined", result.stderr)
+
+    def test_enable_mcp_sh_local_generates_token_when_omitted(self) -> None:
+        self.write_existing_config()
+        script = self.repo_root / "scripts" / "lxe_manager" / "enable_mcp.sh"
+        command = (
+            f"source '{script}' --local --no-start-manager >/dev/null; "
+            f"printf '%s\\n' \"$LXE_MANAGER_MCP_BEARER_TOKEN\"; "
+            f"cat '{self.config_path}'"
+        )
+        result = subprocess.run(
+            ["bash", "-lc", command],
+            check=True,
+            capture_output=True,
+            text=True,
+            env={
+                **os.environ,
+                "LXE_EDITOR_CODEX_CONFIG_PATH": str(self.config_path),
+            },
+        )
+
+        lines = result.stdout.splitlines()
+        token = lines[0]
+        config_body = "\n".join(lines[1:])
+        self.assertGreater(len(token), 20, token)
+        self.assertIn('model = "gpt-test"', config_body)
+        self.assertIn('url = "http://127.0.0.1:3880/mcp"', config_body)
+        self.assertIn("export LXE_MANAGER_MCP_BEARER_TOKEN=", result.stderr)
+        self.assertIn(token, result.stderr)
+
     def test_enable_mcp_sh_removes_legacy_editor_table(self) -> None:
         self.write_existing_legacy_editor_config()
         script = self.repo_root / "scripts" / "lxe_manager" / "enable_mcp.sh"
         subprocess.run(
-            ["bash", "-lc", f"source '{script}' --local --token 'x' >/dev/null"],
+            ["bash", "-lc", f"source '{script}' --local --no-start-manager >/dev/null"],
             check=True,
             capture_output=True,
             text=True,
@@ -154,41 +221,6 @@ class ManagerMcpConfigTest(unittest.TestCase):
         self.assertIn('model = "gpt-test"', output)
         self.assertIn("[mcp_servers.other]", output)
         self.assertIn("[mcp_servers.lxe_manager]", output)
-        self.assertNotIn("[mcp_servers.lxe_editor]", output)
-        self.assertNotIn("stale.example.com", output)
-        self.assertNotIn("LXE_EDITOR_MCP_BEARER_TOKEN", output)
-
-    def test_legacy_editor_local_mcp_script_delegates_to_manager_config(self) -> None:
-        self.write_runtime_state(
-            f"""
-            version: 1
-            mcpUrl: http://stale.example.com/mcp
-            tokenFile: {self.token_path}
-            """
-        )
-        self.write_existing_config()
-        script = self.repo_root / "scripts" / "lxe_editor" / "use_local_mcp.sh"
-        command = (
-            f"source '{script}' >/dev/null && "
-            f"cat '{self.config_path}'"
-        )
-        result = subprocess.run(
-            ["bash", "-lc", command],
-            check=True,
-            capture_output=True,
-            text=True,
-            env={
-                **os.environ,
-                "LXE_EDITOR_CODEX_CONFIG_PATH": str(self.config_path),
-                "LXE_EDITOR_RUNTIME_ROOT": str(self.runtime_root),
-                "LXE_MANAGER_URL": "http://127.0.0.1:4999/mcp",
-                "LXE_MANAGER_MCP_BEARER_TOKEN": "wrapper-token",
-            },
-        )
-
-        output = result.stdout
-        self.assertIn("[mcp_servers.lxe_manager]", output)
-        self.assertIn('url = "http://127.0.0.1:4999/mcp"', output)
         self.assertNotIn("[mcp_servers.lxe_editor]", output)
         self.assertNotIn("stale.example.com", output)
         self.assertNotIn("LXE_EDITOR_MCP_BEARER_TOKEN", output)
@@ -286,61 +318,11 @@ class ManagerMcpConfigTest(unittest.TestCase):
 
         self.assertNotEqual(result.returncode, 0)
 
-    def test_legacy_editor_remote_mcp_script_uses_manager_env_token(self) -> None:
-        script = self.repo_root / "scripts" / "lxe_editor" / "use_remote_mcp.sh"
-        command = (
-            f"source '{script}' 'https://manager.example.com/mcp' >/dev/null && "
-            "printf '%s\n' \"$LXE_MANAGER_MCP_BEARER_TOKEN\" && "
-            "printf '%s\n' \"${LXE_EDITOR_MCP_BEARER_TOKEN-unset}\" && "
-            f"cat '{self.config_path}'"
-        )
-        env = {
-            **os.environ,
-            "LXE_EDITOR_CODEX_CONFIG_PATH": str(self.config_path),
-            "LXE_MANAGER_MCP_BEARER_TOKEN": "remote-token",
-        }
-        env.pop("LXE_EDITOR_MCP_BEARER_TOKEN", None)
-        result = subprocess.run(
-            ["bash", "-lc", command],
-            check=True,
-            capture_output=True,
-            text=True,
-            env=env,
-        )
-
-        output = result.stdout
-        self.assertIn("remote-token", output)
-        self.assertIn("unset", output)
-        self.assertIn("[mcp_servers.lxe_manager]", output)
-        self.assertIn('url = "https://manager.example.com/mcp"', output)
-        self.assertNotIn("[mcp_servers.lxe_editor]", output)
-        self.assertNotIn("LXE_EDITOR_MCP_BEARER_TOKEN", output)
-
-    def test_legacy_editor_remote_mcp_script_rejects_extra_arguments(self) -> None:
-        script = self.repo_root / "scripts" / "lxe_editor" / "use_remote_mcp.sh"
-        result = subprocess.run(
-            [
-                "bash",
-                "-lc",
-                f"source '{script}' 'https://manager.example.com/mcp' 'remote-token'",
-            ],
-            check=False,
-            capture_output=True,
-            text=True,
-            env={
-                **os.environ,
-                "LXE_EDITOR_CODEX_CONFIG_PATH": str(self.config_path),
-            },
-        )
-
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("usage", result.stderr)
-
     def test_enable_mcp_sh_replaces_existing_crlf_manager_table(self) -> None:
         self.write_existing_crlf_manager_config()
         script = self.repo_root / "scripts" / "lxe_manager" / "enable_mcp.sh"
         subprocess.run(
-            ["bash", "-lc", f"source '{script}' --local --token 'z' >/dev/null"],
+            ["bash", "-lc", f"source '{script}' --local --no-start-manager >/dev/null"],
             check=True,
             capture_output=True,
             text=True,
@@ -384,7 +366,7 @@ class ManagerMcpConfigTest(unittest.TestCase):
             f"""
             set +e +u +o pipefail
             before="$(set -o | awk '/errexit|nounset|pipefail/ {{print $1 "=" $2}}' | sort)"
-            source '{script}' --local --token 'x' >/dev/null
+            source '{script}' --local --no-start-manager >/dev/null
             after="$(set -o | awk '/errexit|nounset|pipefail/ {{print $1 "=" $2}}' | sort)"
             printf 'before:%s\\nafter:%s\\n' "$before" "$after"
             """
@@ -412,19 +394,6 @@ class ManagerMcpConfigTest(unittest.TestCase):
             "nounset=off",
             "pipefail=off",
         ])
-
-    def test_legacy_editor_mcp_scripts_do_not_reference_removed_runtime_keys(self) -> None:
-        for script_name in (
-            "use_local_mcp.sh",
-            "use_remote_mcp.sh",
-            "use_local_mcp.ps1",
-            "use_remote_mcp.ps1",
-        ):
-            script = self.repo_root / "scripts" / "lxe_editor" / script_name
-            text = script.read_text(encoding="utf-8")
-            self.assertNotIn("mcpUrl", text, script_name)
-            self.assertNotIn("mcp_servers.lxe_editor", text, script_name)
-            self.assertNotIn("LXE_EDITOR_MCP_BEARER_TOKEN", text, script_name)
 
     def test_manager_start_wrappers_delegate_restart_logic_to_node_supervisor(self) -> None:
         powershell_script = (
@@ -506,37 +475,6 @@ class ManagerMcpConfigTest(unittest.TestCase):
         )
 
     @unittest.skipUnless(shutil.which("pwsh"), "pwsh not available")
-    def test_legacy_editor_remote_mcp_powershell_rejects_extra_arguments(self) -> None:
-        script = self.repo_root / "scripts" / "lxe_editor" / "use_remote_mcp.ps1"
-        result = subprocess.run(
-            [
-                "pwsh",
-                "-NoProfile",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-File",
-                str(script),
-                "https://manager.example.com/mcp",
-                "remote-token",
-            ],
-            check=False,
-            capture_output=True,
-            text=True,
-            env={
-                **os.environ,
-                "LXE_EDITOR_CODEX_CONFIG_PATH": str(self.config_path),
-                "LXE_MANAGER_MCP_BEARER_TOKEN": "env-token",
-            },
-        )
-
-        self.assertNotEqual(result.returncode, 0)
-        combined = result.stderr + result.stdout
-        self.assertTrue(
-            "usage" in combined.lower() or "argument" in combined.lower(),
-            combined,
-        )
-
-    @unittest.skipUnless(shutil.which("pwsh"), "pwsh not available")
     def test_enable_mcp_powershell_replaces_existing_crlf_manager_table(self) -> None:
         self.write_existing_crlf_manager_config()
         script = self.repo_root / "scripts" / "lxe_manager" / "enable_mcp.ps1"
@@ -549,8 +487,7 @@ class ManagerMcpConfigTest(unittest.TestCase):
                 "-File",
                 str(script),
                 "-Local",
-                "-Token",
-                "z",
+                "-NoStartManager",
             ],
             check=True,
             capture_output=True,

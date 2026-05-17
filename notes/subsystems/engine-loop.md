@@ -146,7 +146,7 @@ App / Demo
 
 ## 关联文档
 
-- `notes/architecture.md`
+- `notes/concepts-design/architecture.md`
 - `notes/subsystems/vulkan-backend.md`
 - `notes/tutorial/05-app-main.md`
 - `src/core/gpu/engine_loop.hpp`

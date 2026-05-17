@@ -1,5 +1,7 @@
 # REQ-042-a: 教程支撑 — 光源资产与自定义光源注册入口
 
+> 2026-05-17：本需求已从 active 队列移入 pending。v0.1.1 active 队列先收敛到 FrameGraph v1、Directional Shadow、CSM、教程支撑和架构文档展开；本扩展注册模型等待 v0.1.1 完成后重新排序。
+
 ## 背景
 
 `v0.1.0` 已经具备 `DirectionalLight`、`PointLight`、`SpotLight`、`SceneLightsUBO`、`SceneDocument.light.kind` 与 `lxe_editor` 作者入口。我们已经能教新人如何使用现有三类光源，也能解释新增 C++ 光源大致要碰哪些模块。
@@ -84,4 +86,4 @@ Toolbar / CommandBus 创建 light 时不再硬编码三类光源列表，而是�
 
 ## 实施状态
 
-未开始。当前仅作为教程中“未来顺滑工作流”的支撑需求。
+Pending，未开始。当前仅作为教程中“未来顺滑工作流”的后续支撑需求。

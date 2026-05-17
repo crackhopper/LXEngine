@@ -91,8 +91,10 @@ nodeName: primitive_cube_1        # -> SceneNode::getNodeName()
 name: Cube                        # -> SceneNode::getName(), editor path 显示
 transform:                        # -> LX_core::Transform
   translation: [0.0, 0.5, 0.0]
-meshUri: builtin://lxe_editor/primitives/cube
-materialUri: assets/materials/rtr_experiment_template.material
+mesh:
+  uri: builtin://lxe_editor/primitives/cube
+material:
+  uri: assets/materials/rtr_experiment_template.material
 ```
 
 我们不需要一开始记住所有字段。先记住：scene file 负责保存场景内容，project file 负责把这些 scene 组织成一个工作单元。

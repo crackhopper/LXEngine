@@ -46,5 +46,5 @@
 ## 关联文档
 
 - `notes/subsystems/scene.md`
-- `notes/subsystems/material-system.md`
-- `notes/subsystems/pipeline-identity.md`
+- `notes/concepts/material/index.md`
+- `notes/source_analysis/src/core/pipeline/pipeline_identity.md`

@@ -18,9 +18,9 @@
 
 | 未来路径 | Requirement |
 |---|---|
-| 光源资产与自定义光源注册 | [REQ-042-a](../requirements/042-a-tutorial-light-asset-and-custom-light-registry.md) |
-| toolbar / command 扩展注册 | [REQ-042-b](../requirements/042-b-tutorial-editor-extension-registry.md) |
-| 自定义场景节点注册 | [REQ-042-c](../requirements/042-c-tutorial-custom-scene-node-registry.md) |
+| 光源资产与自定义光源注册 | [REQ-042-a](../requirements/pending/042-a-tutorial-light-asset-and-custom-light-registry.md) |
+| toolbar / command 扩展注册 | [REQ-042-b](../requirements/pending/042-b-tutorial-editor-extension-registry.md) |
+| 自定义场景节点注册 | [REQ-042-c](../requirements/pending/042-c-tutorial-custom-scene-node-registry.md) |
 
 凡是教程描述当前还没有的顺滑工作流，都会明确链接到 active requirement。这样我们能讲清楚设计方向，同时不把未来能力伪装成当前已经存在的 API。
 
@@ -34,4 +34,4 @@
 | 想改 editor 操作入口 | 启动项目 04 + 扩展编辑器 |
 | 想新增一种场景对象 | 启动项目 03/04 + 扩展场景节点 |
 
-我们不要求一开始理解所有底层 Vulkan 细节。先把一条链路跑通，再回头读 [概念](../concepts/scene/index.md) 和 [子系统设计](../subsystems/index.md)，会更稳。
+我们不要求一开始理解所有底层 Vulkan 细节。先把一条链路跑通，再回头读 [场景系统](../scene-system/index.md) 和 [源码分析](../source_analysis/index.md)，会更稳。

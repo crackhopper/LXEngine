@@ -2,7 +2,7 @@
 
 未来的 editor extension registry 像一张遥控器说明书：每个 command 写清楚名字、参数和是否可撤销；每个 toolbar action 写清楚按钮、图标和点击后 dispatch 的命令。这样 UI、补全、API 和测试都能读同一份说明书。
 
-> 这一章描述的是未来教程目标，由 [REQ-042-b](../../requirements/042-b-tutorial-editor-extension-registry.md) 跟踪。当前仓库还没有完整 command / toolbar metadata 注册入口。
+> 这一章描述的是未来教程目标，由 [REQ-042-b](../../requirements/pending/042-b-tutorial-editor-extension-registry.md) 跟踪。当前仓库还没有完整 command / toolbar metadata 注册入口。
 
 ## 未来 command metadata
 

@@ -1,66 +1,89 @@
 # Shader 在材质中的角色
 
-## Shader 不只是 GPU 程序
+在材质系统里，shader 不只是 GPU 上要执行的程序。它更像一份合同：它声明需要哪些顶点输入、哪些 descriptor binding、哪些宏变体会改变代码形状。材质系统通过这份合同决定 template 接口、instance 资源和 pipeline identity。
 
-在材质系统里，shader 不只是"给 GPU 跑的代码"。它同时是一份**结构合同**：
+## ShaderProgramSet 把逻辑名、变体和编译结果放在一起
 
-- **反射 bindings** 告诉系统这个 shader 需要哪些 descriptor 资源（UBO、纹理等）
-- **vertex inputs** 告诉系统这个 shader 需要 mesh 提供哪些顶点属性
-- **shader name + variants** 参与 pipeline identity 和 pipeline signature
+`MaterialPassDefinition` 不直接保存一个裸 shader 文件路径，而是保存 `ShaderProgramSet`：
 
-所以材质系统关心的不是"一个 .spv 文件"，而是"名字 + variants + 编译结果 + 反射信息"的整体。
+| 字段 | 当前作用 |
+|---|---|
+| `shaderName` | `.material shader:` 或 pass 内 `shader:` 指向的 basename |
+| `variants` | 当前 pass 启用的宏组合，例如 `USE_LIGHTING: true` |
+| `shader` | `CompiledShader`，里面有 stage bytecode、reflection bindings、vertex inputs |
 
-## 三层 Shader 对象
+`shaderName + enabled variants` 会进入 `ShaderProgramSet::getPipelineSignature()`。所以开启一个 variant 不只是改参数，它会生成不同 shader 程序，也会影响 pipeline identity。
 
-| 对象 | 层 | 职责 |
-|------|---|------|
-| `IShader` | core 接口 | 暴露 stages、reflection bindings、vertex inputs、binding 查询 |
-| `CompiledShader` | infra 实现 | 承接 `ShaderCompiler` 编译和 `ShaderReflector` 反射的结果 |
-| `ShaderProgramSet` | 材质值对象 | 把 shader 名、enabled variants 和 `IShaderSharedPtr` 打包，嵌入 `MaterialPassDefinition` |
+## Reflection 是 shader 合同的机器可读版本
 
-`ShaderProgramSet` 是材质系统真正和 pass 绑定的入口。它一头连着 loader 的编译结果，一头连着 pipeline signature。
+`GenericMaterialLoader` 编译 `assets/shaders/glsl/<shader>.vert/.frag` 后，会调用 `ShaderReflector` 得到两类结构信息：
 
-## 反射 binding 与归属合同
+| Reflection 输出 | 被谁使用 | 用途 |
+|---|---|---|
+| `ShaderResourceBinding` | `MaterialTemplate` / `SceneNode` / backend | descriptor binding 名字、set/binding、类型、buffer member 布局 |
+| `VertexInputAttribute` | `SceneNode` / `PipelineBuildDesc` | 校验 mesh vertex layout，并过滤 pipeline vertex input state |
 
-shader 反射出的 bindings 分为两类：
+例如 `rtr_experiment_template.frag` 里的 `MaterialUBO` 会变成一个 material-owned UBO binding：
 
-| 归属 | 判定方式 | 例子 | 谁提供资源 |
-|------|---------|------|-----------|
-| 系统保留 | `isSystemOwnedBinding()` 返回 true | `CameraUBO`、`LightUBO`、`Bones` | Scene / Skeleton |
-| 材质所有 | 其余所有 binding | `MaterialUBO`、`albedoMap`、`SurfaceParams` | MaterialInstance |
-
-这个合同定义在 `shader_binding_ownership.hpp`。保留名字集是固定的三个，扩展需要新 spec。
-
-如果 shader 声明了一个保留名字但类型不对（比如 `CameraUBO` 声明为 `Texture2D`），SceneNode 验证时会 FATAL——这是 shader authoring error。
-
-## 哪些 binding 是"必须绑定"的
-
-对于材质侧 binding：
-
-- **buffer 类型**（`UniformBuffer`、`StorageBuffer`）是结构性必需的——shader 需要一块内存来读参数，MaterialInstance 构造时会自动创建对应的 buffer slot
-- **纹理类型**（`Texture2D`、`TextureCube`）不一定必须绑定——shader 可以通过运行时参数（如 `enableAlbedo`）控制是否真的采样
-
-例如 `blinnphong_0.frag` 里的 `albedoMap` 和 `normalMap` 就是可选的 sampled resource。缺省未绑定不会导致 SceneNode 判非法。
-
-## Shader 的完整路径
-
-1. Loader 决定 shader 名和 variants（来自 YAML 或 C++ 代码）
-2. `ShaderCompiler` 编译 GLSL → SPIR-V
-3. `ShaderReflector` 反射出 binding 列表和 vertex input 列表
-4. `CompiledShader` 承接编译和反射结果
-5. `ShaderProgramSet` 把名字、variants 和 shader 绑在一起
-6. `MaterialPassDefinition` 把 `ShaderProgramSet` 作为某个 pass 的 shader 配置
-
-在 YAML 材质文件里，对应关系是：
-
-```yaml
-shader: blinnphong_0        # → shader 名，用来定位 .vert / .frag
-variants:                    # → ShaderProgramSet.variants
-  USE_LIGHTING: true
-  USE_UV: true
+```glsl
+layout(set = 1, binding = 0) uniform MaterialUBO {
+    vec3 surfaceColor;
+    float mixAmount;
+    vec4 accentColor;
+    int mode;
+} material;
 ```
 
-## 继续阅读
+loader 反射出 `surfaceColor`、`mixAmount`、`accentColor`、`mode` 的类型和 offset 后，`.material parameters` 才能按 `MaterialUBO.mode` 这种 key 写入。
 
-- shader 反射接口：[shader.hpp](../../../src/core/asset/shader.hpp)
-- shader 系统设计文档：[../../subsystems/shader-system.md](../../subsystems/shader-system.md)
+## Binding ownership 把材质资源和系统资源分开
+
+同一份 shader 里可能同时使用材质参数、相机、光照、骨骼。当前代码用名字表划分所有权：
+
+| Binding 名字 | 归属 | 期望类型 | 当前来源 |
+|---|---|---|---|
+| `CameraUBO` | system-owned | `UniformBuffer` | camera / scene-level resource |
+| `LightUBO` | system-owned | `UniformBuffer` | legacy/simple light path |
+| `SceneLightsUBO` | system-owned | `UniformBuffer` | scene light collection |
+| `Bones` | renderable/system-owned | `UniformBuffer` | `SkeletonComponent` |
+| 其他名字 | material-owned | UBO/SSBO/Texture2D/TextureCube | `MaterialInstance` |
+
+`MaterialTemplate::rebuildMaterialInterface()` 会跳过 system-owned binding，只把剩下的 material-owned binding 放进 canonical 表。`SceneNode::rebuildValidatedCache()` 还会检查系统保留名字的 descriptor 类型是否正确，例如 `CameraUBO` 不能被 shader 写成 texture。
+
+## resources 字段只对应材质纹理
+
+`.material resources` 很容易被误解成“shader 里能访问的所有资源声明”。当前实现不是这样：
+
+```yaml
+resources:
+  albedoMap: white        # -> MaterialInstance::setTexture(StringID("albedoMap"), ...)
+```
+
+它只能给 material-owned `Texture2D` / `TextureCube` binding 设置默认纹理。`CameraUBO`、`SceneLightsUBO`、`Bones` 这些系统名字不应该写在这里。它们由 scene/camera/light/skeleton 路径注入，并在 draw 进入 `RenderQueue` 前拼到 descriptor resources 里。
+
+## Variants 是 pass 级 shader 结构
+
+```yaml
+shader: blinnphong_0
+
+variants:
+  USE_LIGHTING: true      # -> 全局默认 variant
+  USE_UV: true
+
+passes:
+  Forward:
+    variants:
+      USE_NORMAL_MAP: false # -> 与全局 variants 合并后编译本 pass shader
+```
+
+当前 loader 会把全局 variants 和 pass 内 variants 合并，再编译每个 pass 的 shader。`variantRules` 可以声明依赖关系，例如 `USE_NORMAL_MAP` 需要 `USE_LIGHTING` 和 `USE_UV` 同时开启。
+
+## 我们已经学会了什么
+
+shader 在材质系统里提供两类事实：一类是可执行代码，另一类是 reflection 合同。template 用合同建立 binding 接口，instance 用合同写参数和纹理，pipeline 用 shader 名和 enabled variants 建身份。
+
+## 下一步
+
+- [从 .material 到 MaterialInstance](file-to-instance.md)
+- [MaterialInstance：运行时状态](material-instance.md)
+- [源码分析：Shader](../../source_analysis/src/core/asset/shader.md)

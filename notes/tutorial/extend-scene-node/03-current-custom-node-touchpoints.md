@@ -28,7 +28,7 @@
 | duplicate policy | 复制时 payload 是否深拷贝 |
 | API summary | 远程诊断怎样看见它 |
 
-这就是 [REQ-042-c](../../requirements/042-c-tutorial-custom-scene-node-registry.md) 要收束的问题。
+这就是 [REQ-042-c](../../requirements/pending/042-c-tutorial-custom-scene-node-registry.md) 要收束的问题。
 
 ## 当前能保持的原则
 

@@ -34,7 +34,7 @@
 
 当前三类 light 是内置形状，代码可以直接写死分支。自定义 light 则需要一个集中登记处，像剧院的设备清单：登记一次，灯控台、舞台图和调试工具都能查到它。
 
-[REQ-042-a](../../requirements/042-a-tutorial-light-asset-and-custom-light-registry.md) 计划把这些分散知识收束成 light kind registry。未来教程会从“注册一种 light”开始，而不是让新人同时追七个模块。
+[REQ-042-a](../../requirements/pending/042-a-tutorial-light-asset-and-custom-light-registry.md) 计划把这些分散知识收束成 light kind registry。未来教程会从“注册一种 light”开始，而不是让新人同时追七个模块。
 
 ## 我们已经学会了什么
 

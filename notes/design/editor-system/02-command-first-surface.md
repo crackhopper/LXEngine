@@ -17,6 +17,21 @@ CommandBus 像工作台下面的一条中线。toolbar、Inspector、Scene Tree�
 
 `CommandResult` 不只返回成功与否，还能带 `structured` JSON 和 metadata。metadata 是 session 后处理的关键，例如 scene rebuild、camera resync、quit、undo/redo 清理策略。
 
+## 一行命令包含三种信息
+
+命令行像一张小工单。它既要给人能读懂，也要让 API/recording 能稳定复用。
+
+```text
+set material /helmet MaterialUBO.baseColor 0.8 0.7 0.4
+│   │        │       │                     └─ 参数值
+│   │        │       └─ 参数路径 / 字段
+│   │        └─ scene node path
+│   └─ 子命令
+└─ verb
+```
+
+当前 parser 仍是轻量文本协议，不是完整 shell。设计上我们优先让命令足够稳定、可补全、可录制，而不是追求复杂表达式。
+
 ## 两类命令在哪里注册
 
 当前 editor 命令分成两层：
@@ -53,9 +68,22 @@ CommandBus 不直接拥有 `EngineLoop`，所以一些全局副作用由 session
 
 这让 handler 保持局部：它描述“发生了什么”，session 决定这些结果如何作用到主循环。
 
+## structured JSON 给机器看，message 给人看
+
+`CommandResult` 同时服务 Console 和远程工具：
+
+| 字段 | 读者 | 当前用途 |
+|---|---|---|
+| `ok` | 人和机器 | 判断命令是否成功 |
+| `message` | 人 | Console / 日志里的简短反馈 |
+| `structured` | 机器 | API、MCP、测试读取的 JSON payload |
+| `metadata` | session / bus | dirty、rebuild、inverse、undo/redo 策略 |
+
+这也是为什么 command-first 比“UI 直接改对象”更适合后续 Web Editor 和 agent：同一条命令天然带有人类反馈、机器反馈和后处理信号。
+
 ## 当前边界
 
-当前 command metadata 已经有 `brief`、`inverse`、`mutatesState` 等基础，但 toolbar action 还没有统一 metadata registry。toolbar 按钮仍在 `UiOverlay` 中手写，future registry 由 [REQ-042-b](../../requirements/042-b-tutorial-editor-extension-registry.md) 跟踪。
+当前 command metadata 已经有 `brief`、`inverse`、`mutatesState` 等基础，但 toolbar action 还没有统一 metadata registry。toolbar 按钮仍在 `UiOverlay` 中手写，future registry 由 [REQ-042-b](../../requirements/pending/042-b-tutorial-editor-extension-registry.md) 跟踪。
 
 ## 继续阅读
 

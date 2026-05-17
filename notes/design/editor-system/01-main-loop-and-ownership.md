@@ -16,6 +16,18 @@
 
 这里的关键是：renderer 不直接知道 toolbar 或 Inspector 的业务规则。UI 每帧被 draw callback 调用，真正的 editor 行为在 session 绑定的命令、panel 和 runtime 对象里。
 
+## 外壳和工作台之间有一条清楚的边界
+
+`main.cpp` 更像进程外壳，`LxeEditorSession` 更像工作台内部。两者的边界可以这样看：
+
+| 问题 | `main.cpp` 负责 | `LxeEditorSession` 负责 |
+|---|---|---|
+| 进程怎样启动 | 解析环境、创建窗口/renderer/API server | 不负责 |
+| 当前 scene 是谁 | 把 session scene 交给 `EngineLoop` | 创建、加载、替换 runtime scene |
+| UI 每帧什么时候画 | 注册 renderer draw UI callback | 给 `UiOverlay` 提供 panel、state、commands |
+| API 怎样拿到状态 | 创建 API service，并接 hooks | 提供 project、scene、toolbar、recording 状态 |
+| command 结果如何影响 loop | 在 update hook 中调用 session polling | 从 command metadata 推导 dirty/rebuild/quit |
+
 ## Session 是 editor 内部的组合根
 
 `LxeEditorSession` 持有 editor 内部的主要状态：
@@ -45,6 +57,19 @@
 7. 调用 `UiOverlay::attach(...)`，把 rig、bus、state、config、panels 和 callbacks 接到 UI。
 
 这就是 editor 系统最重要的因果关系：scene runtime 改变后，所有引用 scene 的 UI 和 interaction 对象都要重新接到新 scene 上。
+
+## 为什么 CommandBus 不跟着 scene 一起重建
+
+`rebuildBindings()` 会复用已有 `CommandBus`，再重新注册 handler。这样 Console history、API 观察和 undo/redo 这类命令层状态不会因为 scene runtime 切换而丢失；但 handler 捕获的 `Scene`、`SceneRuntime`、panel callback 会更新到新对象。
+
+这是一条很重要的 ownership 规则：
+
+| 对象 | scene 切换后怎样处理 | 原因 |
+|---|---|---|
+| `SceneRuntime` | 替换 | 当前运行场景已经变了 |
+| panels / interaction controller | 重建 | 它们持有当前 scene 或 runtime callback |
+| `CommandBus` | 保留 bus，更新 handler | 命令历史和外部入口应该连续 |
+| `EditorState` | 保留对象，重绑 camera/selection | preview、selection 等状态要按新 scene 修正 |
 
 ## 主循环每帧做什么
 

@@ -56,8 +56,7 @@ while (running) {
 
 `EngineLoop` 自己不生产渲染数据，它主要协调别的系统：
 
-- [场景对象](scene/index.md)：提供当前 scene 及其结构
-- [相机系统](camera/index.md) / [光源系统](light/index.md)：在 update 阶段被修改
+- [场景系统](../scene-system/index.md)：提供当前 scene、节点、组件、相机和光源结构
 - [材质系统](material/index.md)：普通参数更新在每帧路径里推进
 - [材质系统里的 Pipeline 说明](material/what-is-pipeline.md)：需要结构性重建时，应该走显式 rebuild，而不是混入普通 update
 
@@ -74,5 +73,5 @@ while (running) {
 
 继续展开时，可以参考：
 
-- [`../architecture.md`](../architecture.md)
+- [架构总览](../concepts-design/architecture.md)
 - [`../subsystems/engine-loop.md`](../subsystems/engine-loop.md)

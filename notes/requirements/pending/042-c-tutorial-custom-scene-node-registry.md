@@ -1,5 +1,7 @@
 # REQ-042-c: 教程支撑 — 自定义场景节点类型注册入口
 
+> 2026-05-17：本需求已从 active 队列移入 pending。v0.1.1 active 队列先收敛到 FrameGraph v1、Directional Shadow、CSM、教程支撑和架构文档展开；本扩展注册模型等待 v0.1.1 完成后重新排序。
+
 ## 背景
 
 当前 `SceneNode` 已经具备 transform、path、component、picking、DebugDraw helper、rename、duplicate、scene document capture/load 等基础。我们可以教学“一个节点要兼容编辑器操作，需要同时满足运行时、文档、命令和可视化合同”。
@@ -87,4 +89,4 @@
 
 ## 实施状态
 
-未开始。当前仅作为教程中“未来顺滑工作流”的支撑需求。
+Pending，未开始。当前仅作为教程中“未来顺滑工作流”的后续支撑需求。

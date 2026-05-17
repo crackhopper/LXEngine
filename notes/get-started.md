@@ -73,5 +73,5 @@ glslc --version
 
 - [Tutorial 总览](tutorial/index.md)
 - [v0.1.0 CHANGELOG](releases/v0.1.0/CHANGELOG.md)
-- [Scene 子系统](subsystems/scene.md)
-- [Material System 子系统](subsystems/material-system.md)
+- [场景系统](scene-system/index.md)
+- [材质系统总览](concepts/material/index.md)

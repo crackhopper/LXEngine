@@ -13,9 +13,17 @@ namespace LX_core {
 
 struct StringID;
 
-/// TypeTag 标注一条 StringID 是叶子字符串还是某类结构化 compose 结果。
-/// 叶子字符串（Intern / getOrCreateID）走 TypeTag::String；
-/// 结构化 ID（compose）按具体类别标注。
+/*
+@source_analysis.section TypeTag：让 StringID 不只是“压缩字符串”
+`StringID` 最初只是把字符串压成整数，方便比较和做 map key。Pipeline identity
+需要的不是单个名字，而是一棵可追踪的结构树：比如
+`PipelineKey(ObjectRender(...), MaterialRender(...))`。
+
+`TypeTag` 就是这棵树每个节点的类别标签。叶子字符串走 `TypeTag::String`；
+`compose(...)` 生成的结构化 ID 会记录自己的 tag 和子字段。这样我们既能保留
+整数比较的速度，又能在日志里用 `toDebugString()` 还原出“这个 pipeline key
+到底由哪些结构组成”。
+*/
 enum class TypeTag : u8 {
   String = 0,
   ShaderProgram,
@@ -30,17 +38,20 @@ enum class TypeTag : u8 {
   PipelineKey,
 };
 
-/// GlobalStringTable 是全局字符串 intern 表。
-///
-/// 两类 API：
-///   1. 叶子字符串：getOrCreateID / Intern — 把普通字符串映射到 uint32 id
-///   2. 结构化 ID：compose / decompose / toDebugString — 把若干子 StringID 按
-///   TypeTag
-///      结构化 intern 成一个新的 StringID，支持反向解构和人类可读渲染
-///
-/// Intern(string_view) 与 StringID(const std::string&) 隐式构造语义等价，
-/// 专为结构化代码路径（嵌套 compose 参数包）提供无歧义的显式入口；
-/// 普通代码继续用 StringID 隐式构造。
+/*
+@source_analysis.section GlobalStringTable：叶子 intern 与结构化 compose 共用一张表
+`GlobalStringTable` 同时服务两种需求：
+
+- 叶子名字：`StringID("Forward")`、`StringID("MaterialUBO")`
+- 结构身份：`compose(TypeTag::PipelineKey, {objectSig, materialSig})`
+
+这两类 ID 共用同一套整数空间和线程保护，因此上层不需要区分“普通字符串 ID”
+和“结构化 ID”的存储方式。区别只存在于可选的 `m_composedEntries` 元数据里：
+叶子没有子字段，结构化 ID 可以 `decompose()`，也可以递归 `toDebugString()`。
+
+这对渲染系统很关键：hot path 里仍然只比较 `uint32_t`，而调试 pipeline identity
+时又能展开结构树，不必维护一套平行的 debug 字符串。
+*/
 class GlobalStringTable {
 public:
   static GlobalStringTable &get();
