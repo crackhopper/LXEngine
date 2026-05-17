@@ -104,6 +104,27 @@ readNodeBaseColor(const LX_core::SceneNodeSharedPtr& node) {
   return color;
 }
 
+[[nodiscard]] bool nodeForwardPassHasDescriptor(
+    LX_core::SceneNode* node, const LX_core::StringID& bindingName) {
+  if (node == nullptr) {
+    return false;
+  }
+  const auto materialComponent =
+      node->getComponent<LX_core::MaterialComponent>();
+  if (!materialComponent.has_value() ||
+      !materialComponent->get().getMaterialInstance()) {
+    return false;
+  }
+  const auto resources = materialComponent->get()
+                             .getMaterialInstance()
+                             ->getDescriptorResources(LX_core::Pass_Forward);
+  return std::any_of(resources.begin(), resources.end(),
+                     [&](const auto& resource) {
+                       return resource &&
+                              resource->getBindingName() == bindingName;
+                     });
+}
+
 void testRuntimeCreatesEmptyScene() {
   demo::SceneRuntime runtime;
   runtime.createEmptyScene();
@@ -1315,6 +1336,58 @@ void testProjectAssetMaterialOverridesRuntimeAssetMaterial() {
   }
 }
 
+void testBuiltinModelMaterialUriKeepsCatalogAlbedoTexture() {
+  const std::filesystem::path path =
+      makeTempPath("lx_scene_runtime_builtin_model_texture.yaml");
+  writeSceneFile(
+      path,
+      "scene:\n"
+      "  name: Builtin Model Texture\n"
+      "  gameplayCameraPath: /game_cam\n"
+      "nodes:\n"
+      "  - nodeName: game_camera\n"
+      "    name: game_cam\n"
+      "    transform:\n"
+      "      translation: [0.0, 2.0, 6.0]\n"
+      "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+      "      scale: [1.0, 1.0, 1.0]\n"
+      "    visibilityMask: 4294967295\n"
+      "    camera:\n"
+      "      eye: [0.0, 2.0, 6.0]\n"
+      "      target: [0.0, 0.0, 0.0]\n"
+      "      up: [0.0, 1.0, 0.0]\n"
+      "      type: perspective\n"
+      "      fovY: 45.0\n"
+      "      aspect: 1.7777778\n"
+      "      nearPlane: 0.1\n"
+      "      farPlane: 1000.0\n"
+      "      left: -1.0\n"
+      "      right: 1.0\n"
+      "      bottom: -1.0\n"
+      "      top: 1.0\n"
+      "      cullingMask: 4294967295\n"
+      "  - nodeName: model_characters_blocky_a\n"
+      "    name: Blocky_Character_A\n"
+      "    transform:\n"
+      "      translation: [0.0, 0.0, 0.0]\n"
+      "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+      "      scale: [1.0, 1.0, 1.0]\n"
+      "    visibilityMask: 4294967295\n"
+      "    mesh:\n"
+      "      uri: assets/models/builtin/characters/characters_blocky_a/model.obj\n"
+      "    material:\n"
+      "      uri: assets/materials/blinnphong_textured.material\n");
+
+  demo::SceneRuntime runtime;
+  runtime.loadFromDocumentPath(path);
+
+  auto* character = runtime.scene()->findByPath("/Blocky_Character_A");
+  EXPECT(character != nullptr, "builtin model scene should load character node");
+  EXPECT(nodeForwardPassHasDescriptor(character, LX_core::StringID("albedoMap")),
+         "builtin model reload with materialUri should keep catalog albedoMap "
+         "binding");
+}
+
 } // namespace
 
 int main() {
@@ -1337,6 +1410,7 @@ int main() {
   testBuiltinPrimitiveScenePayloadRoundTrips();
   testBuiltinPrimitiveBaseColorGetterUsesRuntimeMaterialValue();
   testProjectAssetMaterialOverridesRuntimeAssetMaterial();
+  testBuiltinModelMaterialUriKeepsCatalogAlbedoTexture();
 
   if (failures != 0) {
     std::cerr << "test_scene_runtime failed with " << failures

@@ -488,6 +488,26 @@ loadMaterialForSceneNode(const std::vector<std::filesystem::path> &assetRoots,
   return material;
 }
 
+[[nodiscard]] LX_core::MaterialInstanceSharedPtr loadModelMaterialForSceneNode(
+    const std::vector<std::filesystem::path> &assetRoots,
+    const std::string &uri, const std::string &albedoTextureUri,
+    const MaterialOverrideState &materialOverrides,
+    const MaterialOverrideState &nodeOverrides) {
+  const std::filesystem::path materialPath =
+      resolveProjectAssetPath(assetRoots, uri)
+          .value_or(std::filesystem::path(uri));
+  auto material = LX_infra::loadGenericMaterial(materialPath);
+  if (!material) {
+    throw std::runtime_error("failed to load material: " + uri);
+  }
+  bindModelAlbedoTexture(material, albedoTextureUri);
+  applyBaseColorIfSupported(material, materialOverrides.baseColor);
+  applyGenericMaterialOverrides(material, materialOverrides);
+  applyBaseColorIfSupported(material, nodeOverrides.baseColor);
+  applyGenericMaterialOverrides(material, nodeOverrides);
+  return material;
+}
+
 [[nodiscard]] std::filesystem::path
 normalizeDocumentPath(const std::filesystem::path &path) {
   if (path.empty()) {
@@ -662,9 +682,12 @@ buildRenderableNodeFromDocument(
       if (nodeDocument.materialUri.has_value() ||
           !nodeDocument.nodeMaterialOverrides.empty() ||
           !nodeDocument.materialOverrides.empty()) {
-        materialComponent->get().setMaterialInstance(loadMaterialForSceneNode(
-            assetRoots, materialUri, nodeDocument.materialOverrides,
-            nodeDocument.nodeMaterialOverrides));
+        materialComponent->get().setMaterialInstance(
+            loadModelMaterialForSceneNode(
+                assetRoots, materialUri,
+                asset ? asset->albedoTextureUri : std::string{},
+                nodeDocument.materialOverrides,
+                nodeDocument.nodeMaterialOverrides));
       }
     }
     return node;

@@ -4,6 +4,7 @@
 // Blinn-Phong material system. Intentionally not lowered into src/infra/;
 // this is transitional until a full PBR material loader lands.
 
+#include "core/asset/material_instance.hpp"
 #include "core/scene/object.hpp"
 #include "core/scene/visibility_mask.hpp"
 
@@ -31,5 +32,8 @@ LX_core::SceneNodeSharedPtr buildBuiltinPrimitiveNode(std::string_view meshUri,
 LX_core::SceneNodeSharedPtr
 buildModelAssetNode(std::string_view meshUri, std::string_view materialUri,
                     std::string_view albedoTextureUri, std::string nodeName);
+
+void bindModelAlbedoTexture(LX_core::MaterialInstanceSharedPtr material,
+                            std::string_view albedoTextureUri);
 
 } // namespace LX_demo::lxe_editor

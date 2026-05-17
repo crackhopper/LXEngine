@@ -527,6 +527,38 @@ LX_core::SceneNodeSharedPtr buildBuiltinPrimitiveNode(std::string_view meshUri,
                             std::move(material));
 }
 
+void bindModelAlbedoTexture(LX_core::MaterialInstanceSharedPtr material,
+                            std::string_view albedoTextureUri) {
+  if (!material || albedoTextureUri.empty() || !material->getTemplate()) {
+    return;
+  }
+  if (!material->getTemplate()
+           ->findCanonicalMaterialBinding(StringID("albedoMap"))
+           .has_value()) {
+    return;
+  }
+
+  const StringID materialUbo("MaterialUBO");
+  const StringID enableAlbedo("enableAlbedo");
+  const bool hasEnableAlbedo =
+      material->findParameterMember(materialUbo, enableAlbedo).has_value();
+  try {
+    auto sampler =
+        loadCombinedTexture(resolveRuntimePath(std::string(albedoTextureUri)));
+    material->setTexture(StringID("albedoMap"), std::move(sampler));
+    if (hasEnableAlbedo) {
+      material->setParameter(materialUbo, enableAlbedo, 1);
+    }
+  } catch (const std::exception &e) {
+    std::cerr << "[lxe_editor] model albedo texture load failed (" << e.what()
+              << "); falling back to flat color\n";
+    if (hasEnableAlbedo) {
+      material->setParameter(materialUbo, enableAlbedo, 0);
+    }
+  }
+  material->syncGpuData();
+}
+
 LX_core::SceneNodeSharedPtr
 buildModelAssetNode(std::string_view meshUri, std::string_view materialUri,
                     std::string_view albedoTextureUri, std::string nodeName) {
