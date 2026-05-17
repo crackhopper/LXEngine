@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <initializer_list>
 #include <memory>
+#include <optional>
 #include <unordered_set>
 #include <vector>
 
@@ -75,6 +76,18 @@ private:
   StringID m_bindingName;
 };
 using DirectionalLightDataSharedPtr = std::shared_ptr<DirectionalLightData>;
+
+struct DirectionalShadowCascadeDebugView final {
+  Vec3f eye;
+  Vec3f target;
+  Vec3f up;
+  float left = -1.0f;
+  float right = 1.0f;
+  float bottom = -1.0f;
+  float top = 1.0f;
+  float nearPlane = 0.1f;
+  float farPlane = 100.0f;
+};
 
 inline constexpr u32 MaxDirectionalLights = 4;
 inline constexpr u32 MaxPointLights = 16;
@@ -146,6 +159,8 @@ public:
   void setShadowDistance(float distance);
   void updateShadowCascadesForCamera(const CameraComponent &camera,
                                      float splitLambda = 0.5f);
+  [[nodiscard]] std::optional<DirectionalShadowCascadeDebugView>
+  getShadowCascadeDebugView(u32 cascadeIndex) const;
   void setActiveShadowCascade(u32 cascadeIndex);
 
   void attachToSceneNode(const std::weak_ptr<Scene> &scene,
@@ -167,6 +182,9 @@ private:
 
   DirectionalLightDataSharedPtr m_ubo;
   Vec3f m_pendingDirection{0.0f, 0.0f, -1.0f};
+  DirectionalShadowCascadeDebugView
+      m_shadowCascadeDebugViews[MaxShadowCascades];
+  bool m_shadowCascadeDebugViewValid[MaxShadowCascades] = {};
   float m_shadowDistance = 80.0f;
   std::unordered_set<StringID, StringID::Hash> m_supportedPasses;
   std::weak_ptr<Scene> m_scene;

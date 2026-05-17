@@ -238,6 +238,10 @@ void DirectionalLight::updateShadowCascadesForCamera(
       setComponent(m_ubo->param.cascadeSplits, cascadeIndex, farPlane);
       m_ubo->param.cascadeViewProj[cascadeIndex] =
           m_ubo->param.cascadeViewProj[cascadeCount - 1u];
+      m_shadowCascadeDebugViews[cascadeIndex] =
+          m_shadowCascadeDebugViews[cascadeCount - 1u];
+      m_shadowCascadeDebugViewValid[cascadeIndex] =
+          m_shadowCascadeDebugViewValid[cascadeCount - 1u];
       continue;
     }
 
@@ -306,12 +310,34 @@ void DirectionalLight::updateShadowCascadesForCamera(
     const Mat4f proj = Mat4f::orthographicDepthZeroToOne(
         minX, maxX, minY, maxY, maxZ + radius, minZ - radius);
     m_ubo->param.cascadeViewProj[cascadeIndex] = proj * view;
+    m_shadowCascadeDebugViews[cascadeIndex] =
+        DirectionalShadowCascadeDebugView{
+            .eye = lightEye,
+            .target = center,
+            .up = lightUp,
+            .left = minX,
+            .right = maxX,
+            .bottom = minY,
+            .top = maxY,
+            .nearPlane = 0.1f,
+            .farPlane = std::max(1.0f, (maxZ + radius) - (minZ - radius)),
+        };
+    m_shadowCascadeDebugViewValid[cascadeIndex] = true;
     previousSplit = split;
   }
 
   setActiveShadowCascade(0);
   m_ubo->setDirty();
   emitLightPropertyChanged();
+}
+
+std::optional<DirectionalShadowCascadeDebugView>
+DirectionalLight::getShadowCascadeDebugView(const u32 cascadeIndex) const {
+  if (cascadeIndex >= MaxShadowCascades ||
+      !m_shadowCascadeDebugViewValid[cascadeIndex]) {
+    return std::nullopt;
+  }
+  return m_shadowCascadeDebugViews[cascadeIndex];
 }
 
 void DirectionalLight::setActiveShadowCascade(u32 cascadeIndex) {

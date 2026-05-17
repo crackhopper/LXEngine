@@ -1479,17 +1479,6 @@ void copyActiveCameraPose(Scene &scene, EditorState &editorState,
   node.setTranslation(source.getEyePosition());
 }
 
-[[nodiscard]] Vec3f lightDirectionForDebugCamera(const LightBaseSharedPtr &light) {
-  if (const auto directional =
-          std::dynamic_pointer_cast<DirectionalLight>(light)) {
-    return directional->getDirection();
-  }
-  if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
-    return spot->getDirection();
-  }
-  return Vec3f{0.0f, 0.0f, -1.0f};
-}
-
 [[nodiscard]] CommandResult activateCameraNode(Scene &scene,
                                                EditorState &editorState,
                                                const SceneNodeSharedPtr &node) {
@@ -1524,6 +1513,10 @@ void copyActiveCameraPose(Scene &scene, EditorState &editorState,
   if (!light) {
     return makeError("node is not a light: " + lightPath);
   }
+  const auto directionalLight = std::dynamic_pointer_cast<DirectionalLight>(light);
+  if (!directionalLight) {
+    return makeError("light-view currently requires a directional light");
+  }
 
   const std::string displayName =
       cameraName.empty()
@@ -1549,43 +1542,36 @@ void copyActiveCameraPose(Scene &scene, EditorState &editorState,
     return makeError("light debug camera path is not a camera: " + path);
   }
 
-  Vec3f direction = lightDirectionForDebugCamera(light);
-  if (direction.length2() <= 1e-6f) {
-    direction = Vec3f{0.0f, 0.0f, -1.0f};
-  }
-  direction = direction.normalized();
-
-  Vec3f target{0.0f, 0.6f, 0.0f};
   if (const SceneNodeSharedPtr active = editorState.resolveActiveCamera(scene)) {
     if (const auto activeCamera = active->getComponent<CameraComponent>();
         activeCamera.has_value()) {
-      target = activeCamera->get().getLookTarget(10.0f);
+      directionalLight->updateShadowCascadesForCamera(activeCamera->get());
     }
   }
-  const Vec3f eye = target - direction * 20.0f;
-  Vec3f up{0.0f, 1.0f, 0.0f};
-  if (std::abs(direction.dot(up)) > 0.95f) {
-    up = Vec3f{1.0f, 0.0f, 0.0f};
+  const auto cascadeView = directionalLight->getShadowCascadeDebugView(0);
+  if (!cascadeView.has_value()) {
+    return makeError("directional light has no shadow cascade debug view");
   }
 
-  camera->get().applyProjectionState(CameraType::Orthographic, 45.0f, 1.0f,
-                                     0.1f, 100.0f, -10.0f, 10.0f, -10.0f,
-                                     10.0f);
+  camera->get().applyProjectionState(
+      CameraType::Orthographic, 45.0f, 1.0f, cascadeView->nearPlane,
+      cascadeView->farPlane, cascadeView->left, cascadeView->right,
+      cascadeView->bottom, cascadeView->top);
   camera->get().setTarget(RenderTarget{});
   camera->get().setCullingMask(Layer_All & ~Layer_EditorOverlay);
-  camera->get().lookAt(eye, target, up);
+  camera->get().lookAt(cascadeView->eye, cascadeView->target, cascadeView->up);
   camera->get().updateMatrices();
 
-  CommandResult result = activateCameraNode(scene, editorState, cameraNode);
-  if (!result.ok) {
-    return result;
-  }
-  result.message = "light debug camera active";
+  CommandResult result;
+  result.ok = true;
+  result.message = "light debug camera updated";
   result.structured =
       "{\"path\":\"" + jsonEscape(cameraNode->getPath()) +
-      "\",\"lightPath\":\"" + jsonEscape(lightPath) + "\",\"eye\":" +
-      makeVec3Json(eye) + ",\"target\":" + makeVec3Json(target) +
-      ",\"direction\":" + makeVec3Json(direction) + "}";
+      "\",\"lightPath\":\"" + jsonEscape(lightPath) +
+      "\",\"cascade\":0,\"eye\":" + makeVec3Json(cascadeView->eye) +
+      ",\"target\":" + makeVec3Json(cascadeView->target) +
+      ",\"up\":" + makeVec3Json(cascadeView->up) + "}";
+  result.metadata["scene.rebuild"] = "true";
   return result;
 }
 
