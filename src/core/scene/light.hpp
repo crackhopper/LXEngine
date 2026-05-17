@@ -16,6 +16,7 @@ namespace LX_core {
 
 class Scene;
 class SceneNode;
+class CameraComponent;
 
 /// Abstract base for all light types. A concrete light contributes (a) pass
 /// participation rules owned by the light itself and (b) an optional data
@@ -46,6 +47,8 @@ public:
 
 using LightBaseSharedPtr = std::shared_ptr<LightBase>;
 
+inline constexpr u32 MaxShadowCascades = 4;
+
 struct alignas(16) DirectionalLightData : public IGpuResource {
   explicit DirectionalLightData(StringID bindingName = StringID("LightUBO"))
       : m_bindingName(bindingName) {}
@@ -53,6 +56,8 @@ struct alignas(16) DirectionalLightData : public IGpuResource {
     Vec4f dir;
     Vec4f color;
     Mat4f shadowViewProj;
+    Mat4f cascadeViewProj[MaxShadowCascades];
+    Vec4f cascadeSplits;
     Vec4f shadowParams;
   };
   Param param;
@@ -131,6 +136,8 @@ public:
   [[nodiscard]] float getIntensity() const;
   [[nodiscard]] Mat4f getShadowViewProj() const;
   [[nodiscard]] Vec4f getShadowParams() const;
+  [[nodiscard]] Vec4f getCascadeSplits() const;
+  [[nodiscard]] u32 getShadowCascadeCount() const;
   [[nodiscard]] std::shared_ptr<SceneNode> getSceneNode() const override;
   void setDirection(const Vec3f &direction);
   void setColor(const Vec3f &color);
@@ -138,6 +145,11 @@ public:
   void setShadowMapSize(float size);
   void setShadowBias(float bias);
   void setShadowStrength(float strength);
+  void setShadowCascadeCount(u32 count);
+  void setShadowDistance(float distance);
+  void updateShadowCascadesForCamera(const CameraComponent &camera,
+                                     float splitLambda = 0.5f);
+  void setActiveShadowCascade(u32 cascadeIndex);
 
   void attachToSceneNode(const std::weak_ptr<Scene> &scene,
                          const std::weak_ptr<SceneNode> &node) override;
@@ -157,6 +169,7 @@ private:
   void emitLightPropertyChanged() const;
 
   DirectionalLightDataSharedPtr m_ubo;
+  float m_shadowDistance = 80.0f;
   std::unordered_set<StringID, StringID::Hash> m_supportedPasses;
   std::weak_ptr<Scene> m_scene;
   std::weak_ptr<SceneNode> m_node;

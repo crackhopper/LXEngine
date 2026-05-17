@@ -15,9 +15,6 @@ layout(location = 3) in vec3 vWorldNormal;
 #ifdef USE_NORMAL_MAP
 layout(location = 4) in mat3 vTBN;
 #endif
-#ifdef USE_LIGHTING
-layout(location = 7) in vec4 vLightSpacePos;
-#endif
 
 layout(push_constant) uniform ObjectPC {
     mat4 model;
@@ -28,9 +25,14 @@ layout(set = 0, binding = 0) uniform LightUBO {
     vec4 dir;
     vec4 color;
     mat4 shadowViewProj;
+    mat4 cascadeViewProj[4];
+    vec4 cascadeSplits;
     vec4 shadowParams;
 } sceneLight;
-layout(set = 0, binding = 1) uniform sampler2D ShadowMap;
+layout(set = 0, binding = 1) uniform sampler2D ShadowMap0;
+layout(set = 0, binding = 2) uniform sampler2D ShadowMap1;
+layout(set = 0, binding = 3) uniform sampler2D ShadowMap2;
+layout(set = 0, binding = 4) uniform sampler2D ShadowMap3;
 #endif
 
 layout(set = 2, binding = 0) uniform MaterialUBO {
@@ -74,7 +76,34 @@ vec3 computeBaseColor() {
 }
 
 #ifdef USE_LIGHTING
-float sampleShadowMap(vec4 lightSpacePos, vec3 normal, vec3 lightDir) {
+float sampleShadowTexture(int cascadeIndex, vec2 uv) {
+    if (cascadeIndex == 0) {
+        return texture(ShadowMap0, uv).r;
+    }
+    if (cascadeIndex == 1) {
+        return texture(ShadowMap1, uv).r;
+    }
+    if (cascadeIndex == 2) {
+        return texture(ShadowMap2, uv).r;
+    }
+    return texture(ShadowMap3, uv).r;
+}
+
+int selectCascade(float viewDepth) {
+    int cascadeCount = int(clamp(sceneLight.shadowParams.w, 1.0, 4.0));
+    for (int i = 0; i < cascadeCount; ++i) {
+        if (viewDepth <= sceneLight.cascadeSplits[i]) {
+            return i;
+        }
+    }
+    return cascadeCount - 1;
+}
+
+float sampleShadowMap(vec3 worldPos, vec3 normal, vec3 lightDir) {
+    float viewDepth = abs((camera.view * vec4(worldPos, 1.0)).z);
+    int cascadeIndex = selectCascade(viewDepth);
+    vec4 lightSpacePos =
+        sceneLight.cascadeViewProj[cascadeIndex] * vec4(worldPos, 1.0);
     vec3 projCoords = lightSpacePos.xyz / lightSpacePos.w;
     projCoords = projCoords * 0.5 + 0.5;
     if (projCoords.x < 0.0 || projCoords.x > 1.0 ||
@@ -85,12 +114,12 @@ float sampleShadowMap(vec4 lightSpacePos, vec3 normal, vec3 lightDir) {
 
     float baseBias = max(sceneLight.shadowParams.y, 0.0005);
     float slopeBias = max(baseBias * (1.0 - dot(normal, lightDir)), baseBias);
-    vec2 texelSize = 1.0 / vec2(textureSize(ShadowMap, 0));
+    vec2 texelSize = vec2(1.0 / max(sceneLight.shadowParams.x, 1.0));
     float visibility = 0.0;
     for (int x = -1; x <= 1; ++x) {
         for (int y = -1; y <= 1; ++y) {
-            float closestDepth =
-                texture(ShadowMap, projCoords.xy + vec2(x, y) * texelSize).r;
+            float closestDepth = sampleShadowTexture(
+                cascadeIndex, projCoords.xy + vec2(x, y) * texelSize);
             visibility += (projCoords.z - slopeBias) <= closestDepth ? 1.0 : 0.0;
         }
     }
@@ -124,7 +153,7 @@ void main() {
     vec3 L = normalize(-sceneLight.dir.xyz);
     vec3 V = normalize(camera.eyePos - vWorldPos);
     float diff = max(dot(N, L), 0.0);
-    float shadowVisibility = sampleShadowMap(vLightSpacePos, N, L);
+    float shadowVisibility = sampleShadowMap(vWorldPos, N, L);
     float shadowStrength = clamp(sceneLight.shadowParams.z, 0.0, 1.0);
     float directVisibility = mix(1.0, shadowVisibility, shadowStrength);
     vec3 diffuse = diff * sceneLight.color.rgb;

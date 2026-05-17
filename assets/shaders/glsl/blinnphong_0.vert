@@ -15,6 +15,8 @@ layout(set = 0, binding = 0) uniform LightUBO {
     vec4 dir;
     vec4 color;
     mat4 shadowViewProj;
+    mat4 cascadeViewProj[4];
+    vec4 cascadeSplits;
     vec4 shadowParams;
 } sceneLight;
 #endif
@@ -60,9 +62,6 @@ layout(location = 3) out vec3 vWorldNormal;
 #ifdef USE_NORMAL_MAP
 layout(location = 4) out mat3 vTBN;
 #endif
-#ifdef USE_LIGHTING
-layout(location = 7) out vec4 vLightSpacePos;
-#endif
 
 void main() {
     mat4 skinMatrix = mat4(1.0);
@@ -81,7 +80,6 @@ void main() {
 
 #ifdef USE_LIGHTING
     vWorldPos = worldPos.xyz;
-    vLightSpacePos = sceneLight.shadowViewProj * worldPos;
 #endif
 #ifdef USE_UV
     vUV = inUV;

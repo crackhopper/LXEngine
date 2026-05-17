@@ -233,7 +233,7 @@ void testFrameGraphCompileAcceptsColorWriteThenSampleRead() {
 
 void testFrameGraphCompilePreservesSampledReadBindingName() {
   const auto shadowDepth =
-      FrameGraphResourceRef::depthAttachment(StringID("shadow.depth"));
+      FrameGraphResourceRef::depthAttachment(StringID("shadow.cascade0"));
 
   FrameGraph graph;
   graph.addPass(FramePass{Pass_Shadow,
@@ -245,7 +245,7 @@ void testFrameGraphCompilePreservesSampledReadBindingName() {
       Pass_Forward,
       RenderTargetDesc::swapchain(ImageFormat::BGRA8, ImageFormat::D32Float),
       {},
-      {FrameGraphRead::sampled(shadowDepth.name, StringID("ShadowMap"))},
+      {FrameGraphRead::sampled(shadowDepth.name, StringID("ShadowMap0"))},
       {}});
 
   const auto compiled = graph.compile();
@@ -254,9 +254,39 @@ void testFrameGraphCompilePreservesSampledReadBindingName() {
   if (compiled.getPasses().size() == 2 &&
       !compiled.getPasses()[1].reads.empty()) {
     EXPECT(compiled.getPasses()[1].reads[0].bindingName ==
-               StringID("ShadowMap"),
+               StringID("ShadowMap0"),
            "sampled read should preserve descriptor binding name");
   }
+}
+
+void testDirectionalLightCascadeSplitsUpdateFromCamera() {
+  auto cameraNode = SceneNode::create("csm_camera");
+  auto camera = cameraNode->addComponent<CameraComponent>();
+  camera->get().setNearPlane(0.5f);
+  camera->get().setFarPlane(120.0f);
+  camera->get().setFovY(60.0f);
+  camera->get().setAspect(1.5f);
+  cameraNode->setTranslation({0.0f, 2.0f, 8.0f});
+  camera->get().lookAt({0.0f, 2.0f, 8.0f}, {0.0f, 0.0f, 0.0f},
+                       {0.0f, 1.0f, 0.0f});
+
+  DirectionalLight light;
+  light.setShadowCascadeCount(4);
+  light.setShadowDistance(80.0f);
+  light.updateShadowCascadesForCamera(camera->get(), 0.5f);
+
+  const auto splits = light.getCascadeSplits();
+  EXPECT(light.getShadowCascadeCount() == 4, "cascade count should be 4");
+  EXPECT(splits.x > camera->get().getNearPlane(), "split 0 after near");
+  EXPECT(splits.x < splits.y && splits.y < splits.z && splits.z < splits.w,
+         "cascade splits should be strictly increasing");
+  EXPECT(splits.w <= 80.001f, "last split should respect shadow distance");
+
+  const auto firstSplit = splits.x;
+  camera->get().setNearPlane(2.0f);
+  light.updateShadowCascadesForCamera(camera->get(), 0.5f);
+  EXPECT(light.getCascadeSplits().x != firstSplit,
+         "cascade split should update when camera near plane changes");
 }
 
 void testFrameGraphCompilePreservesTargetDescriptions() {
@@ -700,6 +730,7 @@ int main() {
   testFramePassNameIsStringID();
   testFrameGraphCompileAcceptsColorWriteThenSampleRead();
   testFrameGraphCompilePreservesSampledReadBindingName();
+  testDirectionalLightCascadeSplitsUpdateFromCamera();
   testFrameGraphCompilePreservesTargetDescriptions();
   testRenderTargetToDescUsesMutatedLegacyFields();
   testFrameGraphCompileReportsMissingRead();

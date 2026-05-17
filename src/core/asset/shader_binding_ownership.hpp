@@ -32,6 +32,10 @@ inline constexpr std::string_view kSystemOwnedBindings[] = {
     "LightUBO",
     "SceneLightsUBO",
     "ShadowMap",
+    "ShadowMap0",
+    "ShadowMap1",
+    "ShadowMap2",
+    "ShadowMap3",
     "Bones",
 };
 
@@ -64,7 +68,8 @@ getExpectedTypeForSystemBinding(std::string_view name) {
     return ShaderPropertyType::UniformBuffer;
   if (name == "SceneLightsUBO")
     return ShaderPropertyType::UniformBuffer;
-  if (name == "ShadowMap")
+  if (name == "ShadowMap" || name == "ShadowMap0" || name == "ShadowMap1" ||
+      name == "ShadowMap2" || name == "ShadowMap3")
     return ShaderPropertyType::Texture2D;
   if (name == "Bones")
     return ShaderPropertyType::UniformBuffer;

@@ -268,8 +268,9 @@ The VulkanRenderer SHALL implement:
   - Derive the swapchain `RenderTarget` via a backend helper `makeSwapchainTarget()` that reads `device->getSurfaceFormat()` and `device->getDepthFormat()` and converts via `toImageFormat(VkFormat)`. The resulting `RenderTarget` SHALL have a real non-default `colorFormat` and `depthFormat`.
   - Before building the frame graph, iterate `scene->getCameras()` and call `cam->setTarget(swapchainTarget)` on every camera whose `getTarget().has_value() == false`. This backfill SHALL happen before `m_frameGraph.buildFromScene(*scene)`.
   - Reset `m_frameGraph` to a fresh instance on each `initScene` call.
-  - Add a minimal offscreen depth pass before the swapchain passes: `Pass_Shadow` targets `RenderTargetDesc::offscreenDepth(swapchainTarget.depthFormat)` and writes `shadow.depth`.
-  - Add `Pass_Forward` targeting the swapchain desc, reading `shadow.depth` as a sampled frame-graph resource bound as `ShadowMap`, and writing `swapchain.color` plus `swapchain.depth`.
+  - Add four offscreen depth passes before the swapchain passes: each `Pass_Shadow` targets `RenderTargetDesc::offscreenDepth(swapchainTarget.depthFormat)` and writes one of `shadow.cascade0` through `shadow.cascade3`.
+  - Add `Pass_Forward` targeting the swapchain desc, reading the four cascade depth resources as `ShadowMap0` through `ShadowMap3`, and writing `swapchain.color` plus `swapchain.depth`.
+  - Update the main directional light's cascade split / light-view-projection data from the active camera before building the frame graph.
   - Add the swapchain debug-overlay pass after the forward pass. The overlay pass MAY have an empty queue and no frame-graph resource writes.
   - Call `m_frameGraph.buildFromScene(*scene)` so every `FramePass::queue` is populated via `RenderQueue::buildFromScene(scene, pass.name, pass.target)`.
   - Call `m_frameGraph.compile()` and throw the compiled graph's `errorText()` if it is invalid.
@@ -300,9 +301,9 @@ The `VulkanRenderer::Impl` class SHALL hold both `FrameGraph` and `CompiledFrame
 - **WHEN** `initScene(scene)` is called on a scene with one camera (nullopt target, backfilled by initScene) and one directional light whose pass mask includes Forward
 - **THEN** each resulting `RenderingItem` in the `Pass_Forward` queue carries the camera UBO and the light UBO in its `descriptorResources`, produced entirely by `RenderQueue::buildFromScene` via `Scene::getSceneLevelResources(Pass_Forward, swapchainTarget)`. No code inside `VulkanRenderer::Impl::initScene` manually pushes UBOs into any item.
 
-#### Scenario: Offscreen depth pass executes before swapchain pass
+#### Scenario: Cascaded offscreen depth passes execute before swapchain pass
 - **WHEN** `initScene(scene)` succeeds and the scene has a renderable supporting `Pass_Shadow` and `Pass_Forward`
-- **THEN** the compiled frame graph contains at least the shadow depth pass before the forward pass, `draw()` renders the offscreen depth pass first, transitions `shadow.depth` to shader-read layout, and then records the forward swapchain pass
+- **THEN** the compiled frame graph contains four shadow depth passes before the forward pass, `draw()` renders each cascade depth pass first, transitions every `shadow.cascade*` resource to shader-read layout, and then records the forward swapchain pass
 
 #### Scenario: Submit failure consumes acquired semaphore
 - **WHEN** image acquire succeeds but queue submission fails after the per-frame fence has been reset
@@ -338,8 +339,8 @@ The VulkanResourceManager SHALL support:
 - **THEN** the resource manager throws a runtime error containing the resource name
 
 #### Scenario: ShadowMap descriptor resolves current frame attachment
-- **WHEN** `VulkanCommandBuffer::bindResources()` sees a reflected `ShadowMap` sampler backed by a `FrameGraphSampledResource("shadow.depth", "ShadowMap")`
-- **THEN** it resolves `shadow.depth` from the current frame's `VulkanResourceManager` attachment registry and writes a combined image sampler descriptor from that attachment's image view and sampler
+- **WHEN** `VulkanCommandBuffer::bindResources()` sees a reflected `ShadowMap2` sampler backed by a `FrameGraphSampledResource("shadow.cascade2", "ShadowMap2")`
+- **THEN** it resolves `shadow.cascade2` from the current frame's `VulkanResourceManager` attachment registry and writes a combined image sampler descriptor from that attachment's image view and sampler
 
 ### Requirement: Integration tests shall verify each module independently
 

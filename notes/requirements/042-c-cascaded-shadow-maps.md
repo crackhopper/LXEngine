@@ -112,4 +112,19 @@ Forward shader 需要：
 
 ## 实施状态
 
-未开始。v0.1.1 的第三项 active requirement，也是近期渲染能力截止点。
+已实现。
+
+完成内容：
+
+- Directional light UBO 扩展为 4 cascade：`cascadeViewProj[4]`、`cascadeSplits`、`shadowParams.w` cascade count，并保留 `shadowViewProj` 供当前 shadow pass 使用。
+- 基于主 camera near/far、FOV、aspect、方向光方向计算稳定 split 与每 cascade light view-projection；支持 shadow distance 和 split lambda。
+- Vulkan FrameGraph 现在创建 4 个 `Pass_Shadow` depth pass，分别写 `shadow.cascade0..3`，Forward pass 读取 `ShadowMap0..3`。
+- Shadow pass 复用同一 depth-only pipeline；renderer 在每个 cascade pass 前切换 active cascade matrix 并同步 LightUBO。
+- Forward `blinnphong_0` shader 按 view-space depth 选择 cascade，采样对应 depth texture，并继续使用 bias + 3x3 PCF。
+- Debug/inspection 首版通过 `DirectionalLight::getCascadeSplits()`、`getShadowParams()` 与测试断言暴露 split/count。
+
+验证摘要：
+
+- `test_frame_graph` 覆盖 cascade split 稳定性、camera near/far 更新、sampled read binding name、shadow queue。
+- `test_vulkan_frame_graph` 在 Xvfb 下验证 4 cascade shadow passes、每 cascade/per-frame depth attachment 与 forward sampling descriptor。
+- Focused shader/material/renderer tests 已覆盖 `CompileShaders`、`test_generic_material_loader`、`test_scene_node_validation`、Vulkan command/resource/pipeline/frame-graph smoke。

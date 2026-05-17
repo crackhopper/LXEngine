@@ -133,9 +133,9 @@ int main() {
     renderer->initScene(makeFrameGraphScene());
     phase = Phase::SceneInitialized;
 
-    if (renderer->compiledFrameGraphPassCount() < 2) {
-      std::cerr << "compiled frame graph should contain offscreen + swapchain "
-                   "passes\n";
+    if (renderer->compiledFrameGraphPassCount() < 5) {
+      std::cerr << "compiled frame graph should contain four shadow cascades "
+                   "+ swapchain passes\n";
       return 1;
     }
 
@@ -144,9 +144,9 @@ int main() {
       renderer->draw();
     }
 
-    if (renderer->frameGraphAttachmentCount() < 3) {
-      std::cerr << "offscreen frame graph attachment should be allocated per "
-                   "in-flight frame\n";
+    if (renderer->frameGraphAttachmentCount() < 12) {
+      std::cerr << "CSM depth attachments should be allocated per cascade and "
+                   "per in-flight frame\n";
       return 1;
     }
 

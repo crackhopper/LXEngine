@@ -3,6 +3,7 @@
 #include "core/frame_graph/pass.hpp"
 #include "core/rhi/gpu_resource.hpp"
 #include "core/scene/components/camera_component.hpp"
+#include "core/scene/light.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/string_table.hpp"
 #include "infra/gui/gui.hpp"
@@ -238,29 +239,34 @@ public:
     const auto swapchainDesc = swapchainTarget.toDesc();
     const auto shadowTarget =
         LX_core::RenderTargetDesc::offscreenDepth(swapchainTarget.depthFormat);
-    const auto shadowDepth = LX_core::FrameGraphResourceRef::depthAttachment(
-        LX_core::StringID("shadow.depth"));
+    updateDirectionalLightCascades();
     const auto swapchainColor = LX_core::FrameGraphResourceRef::colorAttachment(
         LX_core::StringID("swapchain.color"));
     const auto swapchainDepth = LX_core::FrameGraphResourceRef::depthAttachment(
         LX_core::StringID("swapchain.depth"));
 
-    // Configure the FrameGraph. REQ-042-a wires a minimal offscreen depth pass
-    // before the existing swapchain passes; it creates/exercises the execution
-    // resource path without implementing shadow shading.
     m_frameGraph = LX_core::FrameGraph{}; // Fresh graph on every initScene.
-    m_frameGraph.addPass(
-        LX_core::FramePass{LX_core::Pass_Shadow,
-                           shadowTarget,
-                           {},
-                           {},
-                           {LX_core::FrameGraphWrite{shadowDepth}}});
+    std::vector<LX_core::FrameGraphRead> shadowReads;
+    shadowReads.reserve(LX_core::MaxShadowCascades);
+    for (u32 cascadeIndex = 0; cascadeIndex < LX_core::MaxShadowCascades;
+         ++cascadeIndex) {
+      const auto shadowDepth = LX_core::FrameGraphResourceRef::depthAttachment(
+          LX_core::StringID("shadow.cascade" + std::to_string(cascadeIndex)));
+      m_frameGraph.addPass(
+          LX_core::FramePass{LX_core::Pass_Shadow,
+                             shadowTarget,
+                             {},
+                             {},
+                             {LX_core::FrameGraphWrite{shadowDepth}}});
+      shadowReads.push_back(LX_core::FrameGraphRead::sampled(
+          shadowDepth.name,
+          LX_core::StringID("ShadowMap" + std::to_string(cascadeIndex))));
+    }
     m_frameGraph.addPass(
         LX_core::FramePass{LX_core::Pass_Forward,
                            swapchainDesc,
                            {},
-                           {LX_core::FrameGraphRead::sampled(
-                               shadowDepth.name, LX_core::StringID("ShadowMap"))},
+                           shadowReads,
                            {LX_core::FrameGraphWrite{swapchainColor},
                             LX_core::FrameGraphWrite{swapchainDepth}}});
     m_frameGraph.addPass(LX_core::FramePass{
@@ -447,6 +453,7 @@ public:
         swapchainRenderPassActive = false;
       }
 
+      prepareShadowCascadePass(passIndex);
       const VkExtent2D passExtent = prepareOffscreenPass(
           passIndex, currentFrameIndex, compiledPass, extent, *cmd);
       auto &renderPass = m_resourceManager->getRenderPass(compiledPass.target);
@@ -587,6 +594,67 @@ private:
       cmd.bindResources(*m_resourceManager, pipeline, item);
       cmd.drawItem(item);
     }
+  }
+
+  LX_core::DirectionalLightSharedPtr mainDirectionalLight() const {
+    if (!m_scene) {
+      return nullptr;
+    }
+    for (const auto &light : m_scene->getLights()) {
+      if (auto directional =
+              std::dynamic_pointer_cast<LX_core::DirectionalLight>(light)) {
+        return directional;
+      }
+    }
+    return nullptr;
+  }
+
+  std::optional<std::reference_wrapper<LX_core::CameraComponent>>
+  mainCameraComponent() const {
+    if (!m_scene) {
+      return std::nullopt;
+    }
+    for (const auto &cameraNode : m_scene->getCameras()) {
+      if (!cameraNode) {
+        continue;
+      }
+      auto camera = cameraNode->getComponent<LX_core::CameraComponent>();
+      if (camera && camera->get().isActive()) {
+        return camera->get();
+      }
+    }
+    return std::nullopt;
+  }
+
+  void updateDirectionalLightCascades() {
+    const auto light = mainDirectionalLight();
+    auto camera = mainCameraComponent();
+    if (!light || !camera.has_value()) {
+      return;
+    }
+    light->updateShadowCascadesForCamera(camera->get());
+  }
+
+  void prepareShadowCascadePass(usize passIndex) {
+    if (passIndex >= m_compiledFrameGraph.getPasses().size()) {
+      return;
+    }
+    const auto &pass = m_compiledFrameGraph.getPasses()[passIndex];
+    if (pass.name != LX_core::Pass_Shadow) {
+      return;
+    }
+    const auto light = mainDirectionalLight();
+    if (!light) {
+      return;
+    }
+    u32 cascadeIndex = 0;
+    for (usize i = 0; i < passIndex; ++i) {
+      if (m_compiledFrameGraph.getPasses()[i].name == LX_core::Pass_Shadow) {
+        ++cascadeIndex;
+      }
+    }
+    light->setActiveShadowCascade(cascadeIndex);
+    m_resourceManager->syncResource(*m_cmdBufferMgr, light->getUBO());
   }
 
   void attachFrameGraphSampledResources() {

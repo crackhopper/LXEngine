@@ -53,7 +53,7 @@ The system SHALL provide `LX_core::ImageFormat`, a `uint8_t`-backed enum coverin
 ### Requirement: FrameGraph models ordered passes with resource declarations
 `LX_core::FrameGraph` SHALL contain a sequence of `FramePass` entries. `FramePass` SHALL have at least `StringID name` (matching REQ-007 pass constants such as `Pass_Forward`, `Pass_Shadow`, `Pass_Deferred`, and `Pass_DebugOverlay`), `RenderTargetDesc target`, `RenderQueue queue`, `std::vector<FrameGraphRead> reads`, and `std::vector<FrameGraphWrite> writes`. The `name` field MUST be `StringID`, not `std::string`, to align with `RenderQueue::buildFromScene(scene, pass)` and `IRenderable::supportsPass(pass)`.
 
-`FrameGraphResourceRef` SHALL identify writable frame resources by stable `StringID name` plus `FrameGraphAttachmentKind` (`Color` or `Depth`). `FrameGraphRead::sampled(resourceName, bindingName)` SHALL express a sampled-image dependency on a resource written by an earlier pass and MAY preserve the shader descriptor binding name (for example `ShadowMap`) used by backend descriptor routing. Pass declaration order SHALL be the v1 execution order; the system SHALL NOT perform automatic pass reordering.
+`FrameGraphResourceRef` SHALL identify writable frame resources by stable `StringID name` plus `FrameGraphAttachmentKind` (`Color` or `Depth`). `FrameGraphRead::sampled(resourceName, bindingName)` SHALL express a sampled-image dependency on a resource written by an earlier pass and MAY preserve the shader descriptor binding name (for example `ShadowMap0`) used by backend descriptor routing. Pass declaration order SHALL be the v1 execution order; the system SHALL NOT perform automatic pass reordering.
 
 `FrameGraphSampledResource` SHALL implement `IGpuResource` for sampled frame-graph reads. It SHALL carry the frame-graph resource name plus shader binding name, report `ResourceType::Special`, and MUST NOT be uploaded through normal CPU texture synchronization.
 
@@ -65,9 +65,9 @@ The system SHALL provide `LX_core::ImageFormat`, a `uint8_t`-backed enum coverin
 - **WHEN** a `FramePass` is constructed for `Pass_Shadow` with target `RenderTargetDesc::offscreenDepth(ImageFormat::D32Float)` and a write `FrameGraphResourceRef::depthAttachment(StringID("shadow.depth"))`
 - **THEN** the pass describes a depth-only offscreen writer without carrying backend image objects
 
-#### Scenario: Forward pass reads shadow map by binding name
-- **WHEN** `FrameGraphRead::sampled(StringID("shadow.depth"), StringID("ShadowMap"))` is compiled on the forward pass
-- **THEN** the compiled pass preserves both the resource name and binding name so the backend can bind the current-frame `shadow.depth` attachment to the `ShadowMap` sampler
+#### Scenario: Forward pass reads cascaded shadow maps by binding name
+- **WHEN** forward pass reads `shadow.cascade0` through `shadow.cascade3` as sampled resources with binding names `ShadowMap0` through `ShadowMap3`
+- **THEN** the compiled pass preserves each resource name and binding name so the backend can bind current-frame cascade attachments to the matching shader samplers
 
 ### Requirement: RenderQueue builds items from a Scene per pass
 `LX_core::RenderQueue::buildFromScene(const Scene &scene, StringID pass, const RenderTarget &target)` SHALL construct the queue's `RenderingItem` set from the scene. The method SHALL:
