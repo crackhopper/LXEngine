@@ -58,7 +58,13 @@ nav:
   - 概念与设计:
       - 总览: concepts-design/index.md
       - 架构总览: concepts-design/architecture.md
-      - FrameGraph 与 Shadow: concepts-design/framegraph-render-target-shadow.md
+      - 渲染管线:
+          - 总览: concepts-design/rendering-pipeline/index.md
+          - FrameGraph: concepts-design/rendering-pipeline/framegraph.md
+          - Render Target: concepts-design/rendering-pipeline/render-target.md
+          - Shadow Pass: concepts-design/rendering-pipeline/shadow-pass.md
+          - CSM: concepts-design/rendering-pipeline/cascaded-shadow-maps.md
+          - RenderQueue: concepts-design/rendering-pipeline/render-queue.md
       - 术语概念: concepts-design/glossary.md
       - 项目目录结构: concepts-design/project-layout.md
       - 资产系统:

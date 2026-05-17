@@ -71,7 +71,7 @@
 
 ## 历史
 
-- 2026-05-17：`REQ-042-a/b/c` 与 `REQ-043-a/b` 完成验证并归档到 `finished/`；active 队列清空，新增概念文档 `notes/concepts-design/framegraph-render-target-shadow.md` 解释 FrameGraph、Render Target、Shadow Pass 与 CSM。
+- 2026-05-17：`REQ-042-a/b/c` 与 `REQ-043-a/b` 完成验证并归档到 `finished/`；active 队列清空，新增 `notes/concepts-design/rendering-pipeline/` 概念章节解释 FrameGraph、Render Target、Shadow Pass、CSM 与 RenderQueue。
 - 2026-05-17：按 v0.1.1 目标重整 active 队列。新增 `REQ-042-a/b/c` 收口 FrameGraph v1、Directional Shadow、CSM；新增 `REQ-043-a/b` 收口 shadow 阶段教程支撑与架构概念文档展开。原教程扩展、OBJ 材质槽、Web Editor、Engine CLI/MCP、AssetRegistry 热重载需求移入 `pending/`。
 - 2026-05-14：`REQ-041-d` 到 `REQ-041-h` 完成验证并归档到 `finished/`。`lxe_editor` 已具备测试场景 primitive/camera/light 创建、Inspector 材质/可见性编辑、节点复制、typed light、RTR 实验材质模板与节点级参数覆盖。
 - 2026-05-16：补充 `REQ-044-a/b/c`，把概念与设计文档中引用的 Web Editor、engine MCP/CLI/agent、AssetRegistry/热重载 roadmap 内容明确标注为未实施需求；这些需求在 2026-05-17 已移入 `pending/`。

@@ -17,7 +17,7 @@
 ## 阅读顺序
 
 1. [架构总览](architecture.md)：先看三层结构，以及 FrameGraph / shadow / CSM 到 GPU submit 的主链路。
-2. [FrameGraph、Render Target 与 Shadow](framegraph-render-target-shadow.md)：再把 FrameGraph、RenderTarget、Shadow pass、CSM 的当前数据流拆开理解。
+2. [渲染管线](rendering-pipeline/index.md)：再按 FrameGraph、RenderTarget、Shadow pass、CSM、RenderQueue 的顺序拆开当前多 pass 数据流。
 3. [项目目录结构](project-layout.md)：再看文件放在哪里，哪些目录是事实来源。
 4. [术语表](glossary.md)：遇到项目自造词时回查。
 5. [资产系统](../concepts/assets/index.md)：理解文件、URI、序列化和 loader 边界。
