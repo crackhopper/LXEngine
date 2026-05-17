@@ -184,11 +184,11 @@ void testTransformWarnsOnNegativeScaleRepair() {
 
 void testOrthographicDepthZeroToOneMapsExplicitDepthRange() {
   const Mat4f proj =
-      Mat4f::orthographicDepthZeroToOne(-2.0f, 2.0f, -3.0f, 3.0f, -8.0f,
-                                        -2.0f);
+      Mat4f::orthographicDepthZeroToOne(-2.0f, 2.0f, -3.0f, 3.0f, -2.0f,
+                                        -8.0f);
 
-  const Vec4f nearPoint = proj * Vec4f{0.0f, 0.0f, -8.0f, 1.0f};
-  const Vec4f farPoint = proj * Vec4f{0.0f, 0.0f, -2.0f, 1.0f};
+  const Vec4f nearPoint = proj * Vec4f{0.0f, 0.0f, -2.0f, 1.0f};
+  const Vec4f farPoint = proj * Vec4f{0.0f, 0.0f, -8.0f, 1.0f};
 
   EXPECT(approx(nearPoint.z / nearPoint.w, 0.0f),
          "zero-to-one orthographic projection maps near depth to 0");
