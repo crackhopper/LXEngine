@@ -231,6 +231,49 @@ void testFrameGraphCompileAcceptsColorWriteThenSampleRead() {
   EXPECT(compiled.getPasses().size() == 2, "compiled pass count should be 2");
 }
 
+void testFrameGraphCompilePreservesTargetDescriptions() {
+  auto offscreenColor = RenderTargetDesc::offscreenColor(ImageFormat::RGBA8);
+  offscreenColor.sampleCount = 2;
+  offscreenColor.layerCount = 3;
+
+  auto depthOnly = RenderTargetDesc::offscreenDepth(ImageFormat::D32Float);
+  depthOnly.sampleCount = 4;
+  depthOnly.layerCount = 6;
+
+  FrameGraph graph;
+  graph.addPass(FramePass{Pass_Forward, offscreenColor, {}});
+  graph.addPass(FramePass{Pass_Shadow, depthOnly, {}});
+
+  const auto compiled = graph.compile();
+  EXPECT(compiled.isValid(), "compile should accept target-only passes");
+  EXPECT(compiled.getPasses().size() == 2, "compiled pass count should be 2");
+  if (compiled.getPasses().size() == 2) {
+    const auto &compiledColor = compiled.getPasses()[0].target;
+    EXPECT(compiledColor.role == RenderTargetRole::Offscreen,
+           "offscreen color role should be preserved");
+    EXPECT(compiledColor.colorFormat == ImageFormat::RGBA8,
+           "offscreen color format should be preserved");
+    EXPECT(!compiledColor.depthFormat.has_value(),
+           "offscreen color target should preserve null depth attachment");
+    EXPECT(compiledColor.sampleCount == 2,
+           "offscreen color sample count should be preserved");
+    EXPECT(compiledColor.layerCount == 3,
+           "offscreen color layer count should be preserved");
+
+    const auto &compiledDepth = compiled.getPasses()[1].target;
+    EXPECT(compiledDepth.role == RenderTargetRole::Offscreen,
+           "depth-only role should be preserved");
+    EXPECT(!compiledDepth.colorFormat.has_value(),
+           "depth-only target should preserve null color attachment");
+    EXPECT(compiledDepth.depthFormat == ImageFormat::D32Float,
+           "depth-only format should be preserved");
+    EXPECT(compiledDepth.sampleCount == 4,
+           "depth-only sample count should be preserved");
+    EXPECT(compiledDepth.layerCount == 6,
+           "depth-only layer count should be preserved");
+  }
+}
+
 void testFrameGraphCompileReportsMissingRead() {
   FrameGraph graph;
   graph.addPass(FramePass{Pass_Forward,
@@ -527,6 +570,7 @@ int main() {
   testDifferentVariantKeepsTwo();
   testFramePassNameIsStringID();
   testFrameGraphCompileAcceptsColorWriteThenSampleRead();
+  testFrameGraphCompilePreservesTargetDescriptions();
   testFrameGraphCompileReportsMissingRead();
   testFrameGraphCompileReportsDuplicateWrite();
   testBuildFromSceneIsIdempotent();

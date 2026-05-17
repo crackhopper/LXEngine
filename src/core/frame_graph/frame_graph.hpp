@@ -34,8 +34,8 @@ struct FrameGraphWrite {
 
 - `name`：StringID，匹配 REQ-007 的 `Pass_*` 常量；它是这条 pass 在 scene-level
   资源筛选、material pass 选择、shader 变体合并里的统一身份
-- `target`：这条 pass 的输出形状。当前类型是 `RenderTarget`（占位实现，详见
-  `render_target.md`），REQ-042 落地后会改为 `RenderTargetDesc`
+- `target`：这条 pass 的输出形状，使用 `RenderTargetDesc` 保留 offscreen /
+  depth-only 等结构性描述；旧的 scene camera matching 边界再转回 `RenderTarget`
 - `queue`：这条 pass 内部的 RenderingItem 收口（见 `render_queue.md`）
 
 之所以打包而不是让 `FrameGraph` 持有三个并行 vector，是因为这三个字段在每条
@@ -49,7 +49,7 @@ scene-level 资源；分开存就要在 `FrameGraph` 里维护"i-th name 对应 
 */
 struct FramePass {
   StringID name;
-  RenderTarget target;
+  RenderTargetDesc target;
   RenderQueue queue;
   std::vector<FrameGraphRead> reads;
   std::vector<FrameGraphWrite> writes;

@@ -49,7 +49,7 @@ void FrameGraph::buildFromScene(const Scene &scene) {
   // can apply per-target camera filtering. Each FramePass already carries its
   // own target; FrameGraph simply threads it through.
   for (auto &pass : m_passes) {
-    pass.queue.buildFromScene(scene, pass.name, pass.target);
+    pass.queue.buildFromScene(scene, pass.name, RenderTarget{pass.target});
   }
 }
 
@@ -89,8 +89,8 @@ CompiledFrameGraph FrameGraph::compile() const {
       available.insert(write.resource.name);
     }
 
-    out.m_passes.push_back(CompiledFrameGraphPass{
-        pass.name, pass.target.toDesc(), pass.reads, pass.writes});
+    out.m_passes.push_back(
+        CompiledFrameGraphPass{pass.name, pass.target, pass.reads, pass.writes});
   }
 
   return out;
