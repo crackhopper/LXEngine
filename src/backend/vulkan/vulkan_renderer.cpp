@@ -1010,20 +1010,16 @@ private:
     if (!m_scene) {
       return nullptr;
     }
-    LX_core::DirectionalLightSharedPtr fallback;
     for (const auto &light : m_scene->getLights()) {
       if (auto directional =
               std::dynamic_pointer_cast<LX_core::DirectionalLight>(light)) {
-        if (!fallback && directional->supportsPass(LX_core::Pass_Shadow)) {
-          fallback = directional;
-        }
         if (directional->supportsPass(LX_core::Pass_Shadow) &&
             directional->getSceneNode()) {
           return directional;
         }
       }
     }
-    return fallback;
+    return nullptr;
   }
 
   std::optional<std::reference_wrapper<LX_core::CameraComponent>>

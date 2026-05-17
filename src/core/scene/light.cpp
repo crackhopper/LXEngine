@@ -30,6 +30,51 @@ void setComponent(Vec4f &v, u32 index, float value) {
   }
 }
 
+[[nodiscard]] Vec3f lightDirectionFromNode(const SceneNode &node) {
+  return Transform::fromMat4(node.getWorldTransform())
+      .rotation.rotate(Vec3f{0.0f, 0.0f, -1.0f})
+      .normalized();
+}
+
+[[nodiscard]] Quatf worldRotationForLightDirection(Vec3f direction) {
+  if (direction.length2() <= 1e-6f) {
+    direction = Vec3f{0.0f, 0.0f, -1.0f};
+  }
+  const Vec3f forward = direction.normalized();
+  Vec3f up{0.0f, 1.0f, 0.0f};
+  if (std::abs(forward.dot(up)) > 0.95f) {
+    up = Vec3f{1.0f, 0.0f, 0.0f};
+  }
+  const Vec3f back = (-forward).normalized();
+  const Vec3f right = up.cross(back).normalized();
+  const Vec3f correctedUp = back.cross(right).normalized();
+
+  Mat4f world = Mat4f::identity();
+  world(0, 0) = right.x;
+  world(1, 0) = right.y;
+  world(2, 0) = right.z;
+  world(0, 1) = correctedUp.x;
+  world(1, 1) = correctedUp.y;
+  world(2, 1) = correctedUp.z;
+  world(0, 2) = back.x;
+  world(1, 2) = back.y;
+  world(2, 2) = back.z;
+  return Transform::fromMat4(world).rotation.normalized();
+}
+
+void rotateLightNodeToDirection(SceneNode &node, const Vec3f &direction) {
+  const Quatf worldRotation = worldRotationForLightDirection(direction);
+  if (const auto parent = node.getParent()) {
+    const Transform parentWorld =
+        Transform::fromMat4(parent->getWorldTransform());
+    node.setRotation(
+        (parentWorld.rotation.conjugate().normalized() * worldRotation)
+            .normalized());
+    return;
+  }
+  node.setRotation(worldRotation);
+}
+
 void emitLightPropertyChanged(const std::weak_ptr<Scene> &weakScene,
                               const std::weak_ptr<SceneNode> &weakNode) {
   const auto scene = weakScene.lock();
@@ -60,7 +105,10 @@ DirectionalLight::DirectionalLight()
 }
 
 Vec3f DirectionalLight::getDirection() const {
-  return Vec3f{m_ubo->param.dir.x, m_ubo->param.dir.y, m_ubo->param.dir.z};
+  if (const auto node = m_node.lock()) {
+    return lightDirectionFromNode(*node);
+  }
+  return Vec3f{0.0f, 0.0f, -1.0f};
 }
 
 Vec3f DirectionalLight::getColor() const {
@@ -94,7 +142,13 @@ std::shared_ptr<SceneNode> DirectionalLight::getSceneNode() const {
 }
 
 void DirectionalLight::setDirection(const Vec3f &direction) {
-  m_ubo->param.dir = Vec4f{direction.x, direction.y, direction.z, 0.0f};
+  if (const auto node = m_node.lock()) {
+    rotateLightNodeToDirection(*node, direction);
+  } else {
+    m_pendingDirection = direction;
+  }
+  const Vec3f resolved = getDirection();
+  m_ubo->param.dir = Vec4f{resolved.x, resolved.y, resolved.z, 0.0f};
   updateShadowViewProjection();
   m_ubo->setDirty();
   emitLightPropertyChanged();
@@ -164,6 +218,7 @@ void DirectionalLight::updateShadowCascadesForCamera(
     lightDir = Vec3f{0.35f, -1.0f, 0.25f};
   }
   lightDir = lightDir.normalized();
+  m_ubo->param.dir = Vec4f{lightDir.x, lightDir.y, lightDir.z, 0.0f};
 
   Vec3f lightUp{0.0f, 1.0f, 0.0f};
   if (std::abs(lightDir.dot(lightUp)) > 0.95f) {
@@ -269,6 +324,13 @@ void DirectionalLight::attachToSceneNode(const std::weak_ptr<Scene> &scene,
                                          const std::weak_ptr<SceneNode> &node) {
   m_scene = scene;
   m_node = node;
+  if (const auto attached = m_node.lock()) {
+    rotateLightNodeToDirection(*attached, m_pendingDirection);
+    const Vec3f resolved = getDirection();
+    m_ubo->param.dir = Vec4f{resolved.x, resolved.y, resolved.z, 0.0f};
+    updateShadowViewProjection();
+    m_ubo->setDirty();
+  }
 }
 
 void DirectionalLight::detachFromSceneNode() {
@@ -388,7 +450,12 @@ void PointLight::emitLightPropertyChanged() const {
 
 SpotLight::SpotLight() : m_supportedPasses({Pass_Forward, Pass_Deferred}) {}
 
-Vec3f SpotLight::getDirection() const { return m_direction; }
+Vec3f SpotLight::getDirection() const {
+  if (const auto node = m_node.lock()) {
+    return lightDirectionFromNode(*node);
+  }
+  return Vec3f{0.0f, 0.0f, -1.0f};
+}
 
 Vec3f SpotLight::getColor() const { return m_color; }
 
@@ -406,6 +473,9 @@ std::shared_ptr<SceneNode> SpotLight::getSceneNode() const {
 
 void SpotLight::setDirection(const Vec3f &direction) {
   m_direction = direction;
+  if (const auto node = m_node.lock()) {
+    rotateLightNodeToDirection(*node, direction);
+  }
   emitLightPropertyChanged();
 }
 
@@ -441,6 +511,9 @@ void SpotLight::attachToSceneNode(const std::weak_ptr<Scene> &scene,
                                   const std::weak_ptr<SceneNode> &node) {
   m_scene = scene;
   m_node = node;
+  if (const auto attached = m_node.lock()) {
+    rotateLightNodeToDirection(*attached, m_direction);
+  }
 }
 
 void SpotLight::detachFromSceneNode() {

@@ -1479,6 +1479,116 @@ void copyActiveCameraPose(Scene &scene, EditorState &editorState,
   node.setTranslation(source.getEyePosition());
 }
 
+[[nodiscard]] Vec3f lightDirectionForDebugCamera(const LightBaseSharedPtr &light) {
+  if (const auto directional =
+          std::dynamic_pointer_cast<DirectionalLight>(light)) {
+    return directional->getDirection();
+  }
+  if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
+    return spot->getDirection();
+  }
+  return Vec3f{0.0f, 0.0f, -1.0f};
+}
+
+[[nodiscard]] CommandResult activateCameraNode(Scene &scene,
+                                               EditorState &editorState,
+                                               const SceneNodeSharedPtr &node) {
+  if (!node || !node->getComponent<CameraComponent>().has_value()) {
+    return makeError("node is not a camera");
+  }
+  editorState.setEditorCamera(node);
+  editorState.setPreviewEnabled(false);
+  const SceneNodeSharedPtr activeCamera = editorState.syncActiveCamera(scene);
+  CommandResult result =
+      makeOk("camera active",
+             "{\"activePath\":\"" +
+                 jsonEscape(activeCamera ? activeCamera->getPath()
+                                         : std::string{}) +
+                 "\"}");
+  result.metadata["scene.rebuild"] = "true";
+  result.metadata["editor_camera.resync"] = "true";
+  return result;
+}
+
+[[nodiscard]] CommandResult makeLightDebugCamera(Scene &scene,
+                                                 EditorState &editorState,
+                                                 BuiltinCommandState &state,
+                                                 const std::string &lightPath,
+                                                 const std::string &cameraName) {
+  SceneNode *lightNode = nullptr;
+  const CommandResult found = requireNode(scene, lightPath, lightNode);
+  if (!found.ok) {
+    return found;
+  }
+  const auto light = scene.getLight(*lightNode);
+  if (!light) {
+    return makeError("node is not a light: " + lightPath);
+  }
+
+  const std::string displayName =
+      cameraName.empty()
+          ? sanitizeSceneNodeDisplayName(lightNode->getName() + "_light_view")
+          : sanitizeSceneNodeDisplayName(cameraName);
+  const std::string path = "/" + displayName;
+  SceneNodeSharedPtr cameraNode;
+  if (SceneNode *existing = scene.findByPath(path)) {
+    cameraNode = existing->shared_from_this();
+  } else {
+    cameraNode = SceneNode::create(makeUniqueNodeName(
+        scene, state, "light_debug_camera_node"));
+    cameraNode->setName(displayName);
+    const auto camera = cameraNode->addComponent<CameraComponent>();
+    if (!camera.has_value()) {
+      return makeError("failed to add light debug camera component");
+    }
+    scene.addCamera(cameraNode);
+  }
+
+  auto camera = cameraNode->getComponent<CameraComponent>();
+  if (!camera.has_value()) {
+    return makeError("light debug camera path is not a camera: " + path);
+  }
+
+  Vec3f direction = lightDirectionForDebugCamera(light);
+  if (direction.length2() <= 1e-6f) {
+    direction = Vec3f{0.0f, 0.0f, -1.0f};
+  }
+  direction = direction.normalized();
+
+  Vec3f target{0.0f, 0.6f, 0.0f};
+  if (const SceneNodeSharedPtr active = editorState.resolveActiveCamera(scene)) {
+    if (const auto activeCamera = active->getComponent<CameraComponent>();
+        activeCamera.has_value()) {
+      target = activeCamera->get().getLookTarget(10.0f);
+    }
+  }
+  const Vec3f eye = target - direction * 20.0f;
+  Vec3f up{0.0f, 1.0f, 0.0f};
+  if (std::abs(direction.dot(up)) > 0.95f) {
+    up = Vec3f{1.0f, 0.0f, 0.0f};
+  }
+
+  camera->get().applyProjectionState(CameraType::Orthographic, 45.0f, 1.0f,
+                                     0.1f, 100.0f, -10.0f, 10.0f, -10.0f,
+                                     10.0f);
+  camera->get().setTarget(RenderTarget{});
+  camera->get().setCullingMask(Layer_All & ~Layer_EditorOverlay);
+  camera->get().lookAt(eye, target, up);
+  camera->get().updateMatrices();
+
+  CommandResult result = activateCameraNode(scene, editorState, cameraNode);
+  if (!result.ok) {
+    return result;
+  }
+  result.message = "light debug camera active";
+  result.structured =
+      "{\"path\":\"" + jsonEscape(cameraNode->getPath()) +
+      "\",\"lightPath\":\"" + jsonEscape(lightPath) + "\",\"eye\":" +
+      makeVec3Json(eye) + ",\"target\":" + makeVec3Json(target) +
+      ",\"direction\":" + makeVec3Json(direction) + "}";
+  return result;
+}
+
 [[nodiscard]] bool isPrimitiveAddKind(const std::string &kind) {
   return kind == "primitive:cube" || kind == "primitive:sphere" ||
          kind == "primitive:plane" || kind == "primitive:cylinder" ||
@@ -2971,13 +3081,32 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
   bus.registerHandler(
       "cam",
       CommandMetadata{
-          "cam (control|look-at|reset|reset-editor-to-game|fov ...)",
+          "cam (active|light-view|control|look-at|reset|reset-editor-to-game|fov ...)",
           inverseFromMetadata(), true},
-      [&scene, &editorState, sceneIoContext](std::vector<std::string> args) {
+      [&scene, &editorState, state, sceneIoContext](std::vector<std::string> args) {
         if (args.empty()) {
           return makeError(
-              "usage: cam (control|look-at|reset|reset-editor-to-game|fov "
+              "usage: cam (active|light-view|control|look-at|reset|reset-editor-to-game|fov "
               "...)");
+        }
+        if (args[0] == "active") {
+          if (args.size() != 2) {
+            return makeError("usage: cam active <camera-path>");
+          }
+          SceneNode *node = nullptr;
+          const CommandResult found = requireNode(scene, args[1], node);
+          if (!found.ok) {
+            return found;
+          }
+          return activateCameraNode(scene, editorState, node->shared_from_this());
+        }
+        if (args[0] == "light-view") {
+          if (args.size() < 2 || args.size() > 3) {
+            return makeError("usage: cam light-view <light-path> [camera-name]");
+          }
+          return makeLightDebugCamera(scene, editorState, *state, args[1],
+                                      args.size() == 3 ? args[2]
+                                                       : std::string{});
         }
         if (args[0] == "control") {
           if (!sceneIoContext.cameraControl) {

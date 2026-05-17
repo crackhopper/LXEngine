@@ -838,7 +838,9 @@ void testBuiltinCreatesAndEditsTypedLights() {
     const auto outer =
         fixture.bus.dispatch("set /spot_key.light.outerConeDegrees 30");
     EXPECT(inner.ok && outer.ok, "set spot cone fields succeeds");
-    EXPECT(nearlyEqual(spot->getDirection().z, -1.0f) &&
+    const Vec3f expectedDirection = Vec3f{0.0f, -0.5f, -1.0f}.normalized();
+    EXPECT(nearlyEqual(spot->getDirection().y, expectedDirection.y) &&
+               nearlyEqual(spot->getDirection().z, expectedDirection.z) &&
                nearlyEqual(spot->getInnerConeDegrees(), 15.0f) &&
                nearlyEqual(spot->getOuterConeDegrees(), 30.0f),
            "spot light fields should update runtime state");

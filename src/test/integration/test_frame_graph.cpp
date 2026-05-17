@@ -144,6 +144,16 @@ makeLightWithPasses(std::initializer_list<StringID> passes) {
   return light;
 }
 
+SceneNodeSharedPtr attachLightNode(const SceneSharedPtr &scene,
+                                   const std::shared_ptr<DirectionalLight> &light,
+                                   const std::string &name) {
+  auto node = SceneNode::create(name + "_node");
+  node->setName(name);
+  scene->addRenderable(node);
+  scene->attachLight(node, light);
+  return node;
+}
+
 SceneSharedPtr makeSceneWithDefaultCamera(const SceneNodeSharedPtr &root = nullptr) {
   auto scene = Scene::create(root);
   scene->addCamera(LX_test::makeDefaultCameraNodeWithTarget());
@@ -509,9 +519,9 @@ void testMultiLightPassFilter() {
 
   auto scene = Scene::create(makeRenderable());
   scene->addCamera(LX_test::makeDefaultCameraNodeWithTarget());
-  scene->addLight(lightForward);
-  scene->addLight(lightShadow);
-  scene->addLight(lightBoth);
+  attachLightNode(scene, lightForward, "forward_light");
+  attachLightNode(scene, lightShadow, "shadow_light");
+  attachLightNode(scene, lightBoth, "both_light");
 
   auto resForward = scene->getSceneLevelResources(Pass_Forward, RenderTarget{});
   EXPECT(resForward.size() == 4,
@@ -754,7 +764,7 @@ void testEditorProjectedShadowPassKeepsCharacterCaster() {
   auto scene = Scene::create(caster);
   scene->addCamera(LX_test::makeDefaultCameraNodeWithTarget());
   auto light = makeLightWithPasses({Pass_Forward, Pass_Shadow});
-  scene->addLight(light);
+  attachLightNode(scene, light, "shadow_light");
 
   FrameGraph fg;
   fg.addPass(FramePass{Pass_Forward, RenderTarget{}, {}});

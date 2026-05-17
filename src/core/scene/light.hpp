@@ -166,6 +166,7 @@ private:
   void emitLightPropertyChanged() const;
 
   DirectionalLightDataSharedPtr m_ubo;
+  Vec3f m_pendingDirection{0.0f, 0.0f, -1.0f};
   float m_shadowDistance = 80.0f;
   std::unordered_set<StringID, StringID::Hash> m_supportedPasses;
   std::weak_ptr<Scene> m_scene;

@@ -190,6 +190,8 @@ Scene::getSceneLevelResources(StringID pass, const RenderTarget &target) const {
   for (const auto &light : m_lights) {
     if (!light)
       continue;
+    if (!light->getSceneNode())
+      continue;
     if (!light->supportsPass(pass))
       continue;
     hasSceneLights = true;
