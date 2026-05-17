@@ -1,11 +1,11 @@
 #pragma once
 
-#include "core/rhi/gpu_resource.hpp"
 #include "core/pipeline/pipeline_build_desc.hpp"
 #include "core/pipeline/pipeline_key.hpp"
+#include "core/rhi/gpu_resource.hpp"
 #include "core/utils/string_table.hpp"
-#include "pipelines/pipeline_cache.hpp"
 #include "pipelines/pipeline.hpp"
+#include "pipelines/pipeline_cache.hpp"
 #include <functional>
 #include <memory>
 #include <optional>
@@ -78,6 +78,7 @@ public:
   std::optional<std::reference_wrapper<VulkanTexture>>
   getTexture(ResourceCacheIdentity identity);
   VulkanRenderPass &getRenderPass();
+  VulkanRenderPass &getRenderPass(const RenderTargetDesc &target);
 
   /// Delegates to the embedded PipelineCache. Kept for backward compatibility
   /// with tests and the renderer hot path; prefers a preloaded cache.
@@ -89,10 +90,14 @@ public:
 
   PipelineCache &getPipelineCache() { return *m_pipelineCache; }
   usize getCachedResourceCount() const { return m_gpuResources.size(); }
+  usize getFrameGraphAttachmentCount() const {
+    return m_frameGraphAttachments.size();
+  }
 
-  VulkanFrameGraphAttachment &createOrGetFrameGraphAttachment(
-      StringID name, VkExtent2D extent, VkFormat format,
-      VkImageAspectFlags aspect, VkImageUsageFlags usage);
+  VulkanFrameGraphAttachment &
+  createOrGetFrameGraphAttachment(StringID name, VkExtent2D extent,
+                                  VkFormat format, VkImageAspectFlags aspect,
+                                  VkImageUsageFlags usage);
   std::optional<std::reference_wrapper<VulkanFrameGraphAttachment>>
   getFrameGraphAttachment(StringID name);
   void updateFrameGraphAttachmentLayout(StringID name, VkImageLayout layout);
@@ -112,6 +117,8 @@ private:
 
   std::unique_ptr<VulkanRenderPass> m_renderPass;
   std::unique_ptr<PipelineCache> m_pipelineCache;
+  std::unordered_map<usize, std::unique_ptr<VulkanRenderPass>>
+      m_frameGraphRenderPasses;
   std::unordered_map<StringID, VulkanFrameGraphAttachment>
       m_frameGraphAttachments;
 };

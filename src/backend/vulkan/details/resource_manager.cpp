@@ -1,19 +1,19 @@
 #include "resource_manager.hpp"
-#include "core/rhi/image_format.hpp"
-#include "core/rhi/index_buffer.hpp"
-#include "core/pipeline/pipeline_build_desc.hpp"
 #include "core/asset/shader.hpp"
 #include "core/asset/texture.hpp"
+#include "core/pipeline/pipeline_build_desc.hpp"
+#include "core/rhi/image_format.hpp"
+#include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/scene.hpp"
-#include "commands/command_buffer_manager.hpp"
-#include "pipelines/graphics_shader_program.hpp"
-#include "render_objects/render_pass.hpp"
-#include "device_resources/buffer.hpp"
-#include "device_resources/texture.hpp"
-#include "device.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/string_table.hpp"
+#include "commands/command_buffer_manager.hpp"
+#include "device.hpp"
+#include "device_resources/buffer.hpp"
+#include "device_resources/texture.hpp"
+#include "pipelines/graphics_shader_program.hpp"
+#include "render_objects/render_pass.hpp"
 #include <cstdint>
 #include <functional>
 #include <iostream>
@@ -96,9 +96,10 @@ bufferHandleToken(const std::shared_ptr<VulkanAnyResource> &gpuRes) {
   return std::nullopt;
 }
 
-void logCameraUploadIfChanged(
-    std::string_view reason, const IGpuResourceSharedPtr &cpuRes,
-    const std::shared_ptr<VulkanAnyResource> &gpuRes, u32 currentFrameIndex) {
+void logCameraUploadIfChanged(std::string_view reason,
+                              const IGpuResourceSharedPtr &cpuRes,
+                              const std::shared_ptr<VulkanAnyResource> &gpuRes,
+                              u32 currentFrameIndex) {
   if (!expRendererDebugEnabled() || !cpuRes) {
     return;
   }
@@ -121,8 +122,7 @@ void logCameraUploadIfChanged(
   };
   static std::unordered_map<ResourceCacheIdentity, UploadLogEntry> logged;
 
-  const usize dataHash =
-      hashBytes(cpuRes->getRawData(), cpuRes->getByteSize());
+  const usize dataHash = hashBytes(cpuRes->getRawData(), cpuRes->getByteSize());
   const usize handleToken = bufferHandleToken(gpuRes).value_or(0);
   const UploadLogState next{dataHash, handleToken};
   auto &entry = logged[cpuRes->getBackendCacheIdentity()];
@@ -131,11 +131,9 @@ void logCameraUploadIfChanged(
   }
 
   std::cerr << "[RendererDebug] syncResource: " << reason
-            << " frameSlot=" << currentFrameIndex
-            << " name=" << name
+            << " frameSlot=" << currentFrameIndex << " name=" << name
             << " identity=" << cpuRes->getBackendCacheIdentity()
-            << " byteSize=" << cpuRes->getByteSize()
-            << " dataHash=" << dataHash
+            << " byteSize=" << cpuRes->getByteSize() << " dataHash=" << dataHash
             << " bufferToken=" << handleToken << std::endl;
 }
 } // namespace
@@ -322,16 +320,47 @@ VulkanRenderPass &VulkanResourceManager::getRenderPass() {
   return *m_renderPass;
 }
 
+VulkanRenderPass &
+VulkanResourceManager::getRenderPass(const RenderTargetDesc &target) {
+  if (target.role == RenderTargetRole::Swapchain) {
+    return *m_renderPass;
+  }
+
+  const usize hash = target.getHash();
+  auto it = m_frameGraphRenderPasses.find(hash);
+  if (it != m_frameGraphRenderPasses.end()) {
+    return *it->second;
+  }
+
+  std::optional<VkFormat> colorFormat;
+  std::optional<VkFormat> depthFormat;
+  if (target.colorFormat.has_value()) {
+    colorFormat = toVkFormat(*target.colorFormat);
+  }
+  if (target.depthFormat.has_value()) {
+    depthFormat = toVkFormat(*target.depthFormat);
+  }
+
+  auto renderPass =
+      VulkanRenderPass::create(m_device, colorFormat, depthFormat, false);
+  auto [insertedIt, inserted] =
+      m_frameGraphRenderPasses.emplace(hash, std::move(renderPass));
+  (void)inserted;
+  return *insertedIt->second;
+}
+
 VulkanPipeline &VulkanResourceManager::getOrCreateRenderPipeline(
     const LX_core::RenderingItem &item) {
   return m_pipelineCache->getOrCreate(
       LX_core::PipelineBuildDesc::fromRenderingItem(item),
-      m_renderPass->getHandle());
+      getRenderPass(item.target).getHandle());
 }
 
 void VulkanResourceManager::preloadPipelines(
     const std::vector<LX_core::PipelineBuildDesc> &infos) {
-  m_pipelineCache->preload(infos, m_renderPass->getHandle());
+  for (const auto &info : infos) {
+    m_pipelineCache->preload({info}, getRenderPass(info.target).getHandle());
+  }
 }
 
 VulkanFrameGraphAttachment &
@@ -385,8 +414,8 @@ void VulkanResourceManager::updateFrameGraphAttachmentLayout(
   auto attachment = getFrameGraphAttachment(name);
   if (!attachment.has_value()) {
     const std::string &resourceName = GlobalStringTable::get().getName(name.id);
-    throw std::runtime_error("Missing frame graph attachment '" +
-                             resourceName + "'");
+    throw std::runtime_error("Missing frame graph attachment '" + resourceName +
+                             "'");
   }
   attachment->get().currentLayout = layout;
 }

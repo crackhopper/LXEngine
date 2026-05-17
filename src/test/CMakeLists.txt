@@ -7,6 +7,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_vulkan_swapchain
   test_vulkan_framebuffer
   test_vulkan_pipeline
+  test_vulkan_frame_graph
   test_vulkan_texture
   test_vulkan_shader
   test_vulkan_resource_manager
@@ -69,6 +70,7 @@ set(TEST_VIDEO_DEVICE_EXE_LIST
   test_vulkan_swapchain
   test_vulkan_framebuffer
   test_vulkan_pipeline
+  test_vulkan_frame_graph
   test_vulkan_texture
   test_vulkan_shader
   test_vulkan_resource_manager
@@ -146,6 +148,11 @@ endif()
 if(USE_SDL AND TARGET test_vulkan_renderer_memory_probe)
   target_compile_definitions(test_vulkan_renderer_memory_probe PRIVATE USE_SDL=1)
   target_link_libraries(test_vulkan_renderer_memory_probe PRIVATE imgui)
+endif()
+
+if(USE_SDL AND TARGET test_vulkan_frame_graph)
+  target_compile_definitions(test_vulkan_frame_graph PRIVATE USE_SDL=1)
+  target_link_libraries(test_vulkan_frame_graph PRIVATE imgui)
 endif()
 
 if(TARGET test_command_bus)

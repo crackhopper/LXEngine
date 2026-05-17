@@ -31,6 +31,8 @@ public:
 
   [[nodiscard]] usize cachedResourceCount() const;
   [[nodiscard]] usize frameGraphItemCount() const;
+  [[nodiscard]] usize compiledFrameGraphPassCount() const;
+  [[nodiscard]] usize frameGraphAttachmentCount() const;
   [[nodiscard]] usize initSceneCallCount() const;
 
 private:

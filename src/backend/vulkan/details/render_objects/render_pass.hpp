@@ -1,7 +1,8 @@
 #pragma once
-#include <memory>
-#include <vector>
 #include <vulkan/vulkan.h>
+#include <memory>
+#include <optional>
+#include <vector>
 
 // 注意：在Dynamic Rendering时代，framebuffer和renderpass都是不需要的。
 // 我们的项目从 vulkan tutorial 比较老的版本迁移过来，因此还用了这些旧特性；
@@ -20,28 +21,44 @@ class VulkanRenderPass {
   struct Token {};
 
 public:
-  VulkanRenderPass(Token, VulkanDevice &device, VkFormat colorFormat, VkFormat depthFormat);
+  VulkanRenderPass(Token, VulkanDevice &device,
+                   std::optional<VkFormat> colorFormat,
+                   std::optional<VkFormat> depthFormat,
+                   bool presentColorFinalLayout);
   ~VulkanRenderPass();
 
-  static std::unique_ptr<VulkanRenderPass> create(VulkanDevice &device,
-                                                  VkFormat colorFormat,
-                                                  VkFormat depthFormat) {
-    return std::make_unique<VulkanRenderPass>(Token{}, device, colorFormat, depthFormat);
+  static std::unique_ptr<VulkanRenderPass>
+  create(VulkanDevice &device, VkFormat colorFormat, VkFormat depthFormat) {
+    return std::make_unique<VulkanRenderPass>(
+        Token{}, device, std::optional<VkFormat>{colorFormat},
+        std::optional<VkFormat>{depthFormat}, true);
+  }
+
+  static std::unique_ptr<VulkanRenderPass>
+  create(VulkanDevice &device, std::optional<VkFormat> colorFormat,
+         std::optional<VkFormat> depthFormat, bool presentColorFinalLayout) {
+    return std::make_unique<VulkanRenderPass>(
+        Token{}, device, colorFormat, depthFormat, presentColorFinalLayout);
   }
 
   void setClearColor(float r, float g, float b, float a);
 
   VkRenderPass getHandle() const { return m_renderPass; }
-  const std::vector<VkClearValue> &getClearValues() const { return m_clearValues; }
+  const std::vector<VkClearValue> &getClearValues() const {
+    return m_clearValues;
+  }
   VkFormat getDepthFormat() const { return m_depthFormat; }
+  bool hasColorAttachment() const { return m_hasColorAttachment; }
+  bool hasDepthAttachment() const { return m_hasDepthAttachment; }
 
 private:
   VulkanDevice &m_device;
   VkRenderPass m_renderPass = VK_NULL_HANDLE;
   VkFormat m_depthFormat = VK_FORMAT_UNDEFINED;
-  std::vector<VkClearValue> m_clearValues{2}; // 0: Color, 1: Depth
+  bool m_hasColorAttachment = false;
+  bool m_hasDepthAttachment = false;
+  std::vector<VkClearValue> m_clearValues;
 };
-
 
 } // namespace backend
 } // namespace LX_core
