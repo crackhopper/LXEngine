@@ -78,16 +78,18 @@ private:
 
 /*
 @source_analysis.section FrameGraph：加载期预构建的 per-pass 调度器
-`FrameGraph` 是把 scene 翻译成"按 pass 组织的 RenderingItem 列表"的入口。
-它本身只做两件事：
+`FrameGraph` 是把 scene 翻译成"按 pass 组织的 RenderingItem 列表"并校验
+pass 间资源声明的入口。它的核心职责包括：
 
 - 持有 `vector<FramePass>`：通过 `addPass` 累加，顺序即提交顺序
 - 在 `buildFromScene` 时按 pass 顺序逐个调用 `RenderQueue::buildFromScene`，
-  把 `pass.target` 透传下去（REQ-009 target 轴的入口）
+  把 `pass.target` 经 `RenderTarget` 兼容外壳透传下去（REQ-009 target 轴的入口）
+- 在 `compile` 时按声明顺序校验 read/write 资源：read 只能引用此前 pass 写过
+  的资源，write 不能重名，也不能写 unnamed resource
 
-注意它 *不* 做 pass 间依赖分析、不做 pass reorder、不做 attachment 复用 —
-这些都是 backend 渲染图（render graph）的职责。core 层的 FrameGraph 只是
-"per-pass per-scene 预构建"的薄壳：决定哪些 RenderingItem 进哪条 queue。
+注意它仍然不做 pass reorder、不做 attachment 复用，也不持有 backend attachment
+资源；这些都留给 backend 执行层。core 层这里只提供声明顺序的最小资源图和
+per-pass queue 预构建。
 
 跨 pass 唯一的协调动作是 `collectAllPipelineBuildDescs`：在所有 queue 输出
 的 PipelineBuildDesc 上做一次全局 PipelineKey 去重，避免相同 pipeline 在
@@ -114,8 +116,8 @@ private:
 /*
 @source_analysis.section buildFromScene：把 pass × scene 二维问题摊成一维循环
 `FrameGraph::buildFromScene` 的实现核心是一行循环：每条 pass 上调用
-`pass.queue.buildFromScene(scene, pass.name, pass.target)`，把"哪条 pass、
-画到哪种 target"两个参数从 FramePass 解包后透传给 RenderQueue。
+`pass.queue.buildFromScene(scene, pass.name, RenderTarget{pass.target})`，把
+"哪条 pass、画到哪种 target"两个参数从 FramePass 解包后透传给 RenderQueue。
 
 这种"FrameGraph 不做语义、只做调度"的写法把"pass × scene"二维问题摊成
 一维循环。每一条 pass 的 RenderQueue 内部独立完成 REQ-009 两轴筛选，

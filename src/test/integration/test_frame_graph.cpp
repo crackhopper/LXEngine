@@ -403,6 +403,17 @@ void testMultiCameraTargetFilter() {
   }
 }
 
+void testOffscreenDepthTargetDoesNotMatchDefaultCamera() {
+  auto scene = makeSceneWithDefaultCamera(makeRenderable());
+
+  const auto depthOnly =
+      RenderTarget{RenderTargetDesc::offscreenDepth(ImageFormat::D32Float)};
+  const auto resources = scene->getSceneLevelResources(Pass_Forward, depthOnly);
+
+  EXPECT(resources.size() == 2,
+         "offscreen depth target excludes default swapchain camera resources");
+}
+
 void testMultiLightPassFilter() {
   // REQ-009: light filtered by supportsPass.
   auto lightForward = makeLightWithPasses({Pass_Forward});
@@ -598,6 +609,7 @@ int main() {
   testPassFilterExcludesNonMatching();
   testMultiPassRebuildIsIdempotent();
   testMultiCameraTargetFilter();
+  testOffscreenDepthTargetDoesNotMatchDefaultCamera();
   testMultiLightPassFilter();
   testNullOptCameraBeforeAndAfterFill();
   testVisibilityMaskFiltersRenderables();
