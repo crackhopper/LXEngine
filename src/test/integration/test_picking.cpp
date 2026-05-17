@@ -162,6 +162,24 @@ void testCameraComponentPickRayUsesOwnerPose() {
          "orthographic ray direction stays forward");
 }
 
+void testOrthographicCameraProjectionUsesVulkanDepthRange() {
+  auto cameraNode = SceneNode::create("ortho_projection_camera");
+  auto camera = cameraNode->addComponent<CameraComponent>();
+  camera->get().setProjectionType(CameraType::Orthographic);
+  camera->get().setOrthographicBounds(-1.0f, 1.0f, -1.0f, 1.0f);
+  camera->get().setNearPlane(0.5f);
+  camera->get().setFarPlane(10.0f);
+
+  const Mat4f proj = camera->get().getProjMatrix();
+  const Vec4f nearPoint = proj * Vec4f{0.0f, 0.0f, -0.5f, 1.0f};
+  const Vec4f farPoint = proj * Vec4f{0.0f, 0.0f, -10.0f, 1.0f};
+
+  EXPECT(approx(nearPoint.z / nearPoint.w, 0.0f),
+         "orthographic near plane maps to Vulkan depth 0");
+  EXPECT(approx(farPoint.z / farPoint.w, 1.0f),
+         "orthographic far plane maps to Vulkan depth 1");
+}
+
 } // namespace
 
 int main() {
@@ -171,6 +189,7 @@ int main() {
   testScenePickReturnsNearestHitAndRespectsLayerMask();
   testScenePickSkipsInvalidBounds();
   testCameraComponentPickRayUsesOwnerPose();
+  testOrthographicCameraProjectionUsesVulkanDepthRange();
 
   if (failures > 0) {
     std::cerr << "FAILED: " << failures << " assertion(s)\n";

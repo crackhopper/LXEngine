@@ -292,8 +292,8 @@ Mat4f CameraComponent::getProjMatrix(float aspectOverride) const {
     return Mat4f::perspective(m_fovY * kDegToRad, projectionAspect,
                               m_nearPlane, m_farPlane);
   }
-  return Mat4f::orthographic(m_left, m_right, m_bottom, m_top, m_nearPlane,
-                             m_farPlane);
+  return Mat4f::orthographicDepthZeroToOne(
+      m_left, m_right, m_bottom, m_top, -m_nearPlane, -m_farPlane);
 }
 
 Ray CameraComponent::pickRay(const Vec2f &screenPixel,
