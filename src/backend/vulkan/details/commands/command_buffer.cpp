@@ -5,6 +5,7 @@
 #include "../device_resources/texture.hpp"
 #include "../device.hpp"
 #include "../resource_manager.hpp"
+#include "core/frame_graph/frame_graph.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/string_table.hpp"
 #include <array>
@@ -291,6 +292,24 @@ void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
                                  : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
       } else if (b.type == LX_core::ShaderPropertyType::Texture2D ||
                  b.type == LX_core::ShaderPropertyType::TextureCube) {
+        if (const auto frameGraphResource =
+                std::dynamic_pointer_cast<LX_core::FrameGraphSampledResource>(
+                    cpuRes)) {
+          auto attachmentOpt = resourceManager.getFrameGraphAttachment(
+              frameGraphResource->getResourceName());
+          if (!attachmentOpt) {
+            logMissingDescriptorBindingOnce(item, b);
+            continue;
+          }
+          auto &attachment = attachmentOpt->get();
+          VkDescriptorImageInfo imageInfo =
+              attachment.texture->getDescriptorInfo();
+          logDescriptorImageBindingIfChanged(item, b, cpuRes, imageInfo);
+          setPtr->updateImage(b.binding, imageInfo,
+                              VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+          continue;
+        }
+
         auto textureOpt =
             resourceManager.getTexture(cpuRes->getBackendCacheIdentity());
         if (!textureOpt)

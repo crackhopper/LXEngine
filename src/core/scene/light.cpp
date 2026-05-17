@@ -4,6 +4,7 @@
 #include "core/scene/scene.hpp"
 
 #include <algorithm>
+#include <cmath>
 
 namespace LX_core {
 namespace {
@@ -29,7 +30,12 @@ void emitLightPropertyChanged(const std::weak_ptr<Scene> &weakScene,
 
 DirectionalLight::DirectionalLight()
     : m_ubo(std::make_shared<DirectionalLightData>()),
-      m_supportedPasses({Pass_Forward, Pass_Deferred}) {}
+      m_supportedPasses({Pass_Forward, Pass_Deferred, Pass_Shadow}) {
+  m_ubo->param.dir = Vec4f{0.35f, -1.0f, 0.25f, 0.0f};
+  m_ubo->param.color = Vec4f{1.0f, 0.98f, 0.9f, 1.0f};
+  m_ubo->param.shadowParams = Vec4f{1024.0f, 0.004f, 0.45f, 0.0f};
+  updateShadowViewProjection();
+}
 
 Vec3f DirectionalLight::getDirection() const {
   return Vec3f{m_ubo->param.dir.x, m_ubo->param.dir.y, m_ubo->param.dir.z};
@@ -43,12 +49,21 @@ float DirectionalLight::getIntensity() const {
   return m_ubo->param.color.w;
 }
 
+Mat4f DirectionalLight::getShadowViewProj() const {
+  return m_ubo->param.shadowViewProj;
+}
+
+Vec4f DirectionalLight::getShadowParams() const {
+  return m_ubo->param.shadowParams;
+}
+
 std::shared_ptr<SceneNode> DirectionalLight::getSceneNode() const {
   return m_node.lock();
 }
 
 void DirectionalLight::setDirection(const Vec3f &direction) {
   m_ubo->param.dir = Vec4f{direction.x, direction.y, direction.z, 0.0f};
+  updateShadowViewProjection();
   m_ubo->setDirty();
   emitLightPropertyChanged();
 }
@@ -63,6 +78,27 @@ void DirectionalLight::setColor(const Vec3f &color) {
 
 void DirectionalLight::setIntensity(const float intensity) {
   m_ubo->param.color.w = intensity;
+  m_ubo->setDirty();
+  emitLightPropertyChanged();
+}
+
+void DirectionalLight::setShadowMapSize(float size) {
+  if (size < 1.0f) {
+    size = 1.0f;
+  }
+  m_ubo->param.shadowParams.x = size;
+  m_ubo->setDirty();
+  emitLightPropertyChanged();
+}
+
+void DirectionalLight::setShadowBias(float bias) {
+  m_ubo->param.shadowParams.y = std::max(0.0f, bias);
+  m_ubo->setDirty();
+  emitLightPropertyChanged();
+}
+
+void DirectionalLight::setShadowStrength(float strength) {
+  m_ubo->param.shadowParams.z = std::clamp(strength, 0.0f, 1.0f);
   m_ubo->setDirty();
   emitLightPropertyChanged();
 }
@@ -95,6 +131,27 @@ void DirectionalLight::setSupportedPasses(
 
 void DirectionalLight::setSupportedPasses(const std::vector<StringID> &passes) {
   m_supportedPasses = {passes.begin(), passes.end()};
+}
+
+void DirectionalLight::updateShadowViewProjection() {
+  Vec3f dir = getDirection();
+  if (std::abs(dir.x) < 1e-5f && std::abs(dir.y) < 1e-5f &&
+      std::abs(dir.z) < 1e-5f) {
+    dir = Vec3f{0.35f, -1.0f, 0.25f};
+  }
+  dir = dir.normalized();
+
+  Vec3f up{0.0f, 1.0f, 0.0f};
+  if (std::abs(dir.dot(up)) > 0.95f) {
+    up = Vec3f{0.0f, 0.0f, 1.0f};
+  }
+
+  const Vec3f target{0.0f, 0.0f, 0.0f};
+  const Vec3f eye = target - dir * 10.0f;
+  const Mat4f view = Mat4f::lookAt(eye, target, up);
+  const Mat4f proj = Mat4f::orthographic(-10.0f, 10.0f, -10.0f, 10.0f, 0.1f,
+                                         30.0f);
+  m_ubo->param.shadowViewProj = proj * view;
 }
 
 void DirectionalLight::emitLightPropertyChanged() const {

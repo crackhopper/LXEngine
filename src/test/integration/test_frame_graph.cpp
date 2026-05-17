@@ -231,6 +231,34 @@ void testFrameGraphCompileAcceptsColorWriteThenSampleRead() {
   EXPECT(compiled.getPasses().size() == 2, "compiled pass count should be 2");
 }
 
+void testFrameGraphCompilePreservesSampledReadBindingName() {
+  const auto shadowDepth =
+      FrameGraphResourceRef::depthAttachment(StringID("shadow.depth"));
+
+  FrameGraph graph;
+  graph.addPass(FramePass{Pass_Shadow,
+                          RenderTargetDesc::offscreenDepth(ImageFormat::D32Float),
+                          {},
+                          {},
+                          {FrameGraphWrite{shadowDepth}}});
+  graph.addPass(FramePass{
+      Pass_Forward,
+      RenderTargetDesc::swapchain(ImageFormat::BGRA8, ImageFormat::D32Float),
+      {},
+      {FrameGraphRead::sampled(shadowDepth.name, StringID("ShadowMap"))},
+      {}});
+
+  const auto compiled = graph.compile();
+  EXPECT(compiled.isValid(), "compile should accept shadow read");
+  EXPECT(compiled.getPasses().size() == 2, "compiled pass count should be 2");
+  if (compiled.getPasses().size() == 2 &&
+      !compiled.getPasses()[1].reads.empty()) {
+    EXPECT(compiled.getPasses()[1].reads[0].bindingName ==
+               StringID("ShadowMap"),
+           "sampled read should preserve descriptor binding name");
+  }
+}
+
 void testFrameGraphCompilePreservesTargetDescriptions() {
   auto offscreenColor = RenderTargetDesc::offscreenColor(ImageFormat::RGBA8);
   offscreenColor.sampleCount = 2;
@@ -385,6 +413,25 @@ void testPassFilterExcludesNonMatching() {
          "Shadow pass: only rA supports shadow");
 }
 
+void testShadowQueueUsesFallbackVisibilityWhenNoShadowCamera() {
+  auto rA = makeRenderable("fake_fg_shadow_a", {}, true);
+  auto scene = Scene::create(rA);
+  scene->addCamera(LX_test::makeDefaultCameraNodeWithTarget());
+
+  FrameGraph fg;
+  fg.addPass(FramePass{
+      Pass_Shadow,
+      RenderTargetDesc::offscreenDepth(ImageFormat::D32Float),
+      {},
+      {},
+      {FrameGraphWrite{FrameGraphResourceRef::depthAttachment(
+          StringID("shadow.depth"))}}});
+  fg.buildFromScene(*scene);
+
+  EXPECT(fg.getPasses()[0].queue.getItems().size() == 1,
+         "Shadow pass should include caster even without a target-matching camera");
+}
+
 void testMultiCameraTargetFilter() {
   // REQ-009: camera filtered by target in getSceneLevelResources.
   const RenderTarget targetA{ImageFormat::BGRA8, ImageFormat::D32Float, 2};
@@ -443,8 +490,8 @@ void testMultiLightPassFilter() {
          "Pass_Forward: 1 cam + 3 directional LightUBOs + SceneLightsUBO");
 
   auto resShadow = scene->getSceneLevelResources(Pass_Shadow, RenderTarget{});
-  EXPECT(resShadow.size() == 4,
-         "Pass_Shadow: 1 cam + 2 directional LightUBOs + SceneLightsUBO");
+  EXPECT(resShadow.size() == 5,
+         "Pass_Shadow: 1 cam + 3 directional LightUBOs + SceneLightsUBO");
 }
 
 void testNullOptCameraBeforeAndAfterFill() {
@@ -652,6 +699,7 @@ int main() {
   testDifferentVariantKeepsTwo();
   testFramePassNameIsStringID();
   testFrameGraphCompileAcceptsColorWriteThenSampleRead();
+  testFrameGraphCompilePreservesSampledReadBindingName();
   testFrameGraphCompilePreservesTargetDescriptions();
   testRenderTargetToDescUsesMutatedLegacyFields();
   testFrameGraphCompileReportsMissingRead();
@@ -662,6 +710,7 @@ int main() {
   testFrameGraphKeepsDifferentTargetsAsDifferentBuildDescs();
   testFrameGraphDedupesExactSameTargetBuildDescs();
   testPassFilterExcludesNonMatching();
+  testShadowQueueUsesFallbackVisibilityWhenNoShadowCamera();
   testMultiPassRebuildIsIdempotent();
   testMultiCameraTargetFilter();
   testOffscreenDepthTargetDoesNotMatchDefaultCamera();

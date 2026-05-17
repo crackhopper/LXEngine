@@ -269,10 +269,11 @@ The VulkanRenderer SHALL implement:
   - Before building the frame graph, iterate `scene->getCameras()` and call `cam->setTarget(swapchainTarget)` on every camera whose `getTarget().has_value() == false`. This backfill SHALL happen before `m_frameGraph.buildFromScene(*scene)`.
   - Reset `m_frameGraph` to a fresh instance on each `initScene` call.
   - Add a minimal offscreen depth pass before the swapchain passes: `Pass_Shadow` targets `RenderTargetDesc::offscreenDepth(swapchainTarget.depthFormat)` and writes `shadow.depth`.
-  - Add `Pass_Forward` targeting the swapchain desc, reading `shadow.depth` as a sampled frame-graph resource, and writing `swapchain.color` plus `swapchain.depth`.
+  - Add `Pass_Forward` targeting the swapchain desc, reading `shadow.depth` as a sampled frame-graph resource bound as `ShadowMap`, and writing `swapchain.color` plus `swapchain.depth`.
   - Add the swapchain debug-overlay pass after the forward pass. The overlay pass MAY have an empty queue and no frame-graph resource writes.
   - Call `m_frameGraph.buildFromScene(*scene)` so every `FramePass::queue` is populated via `RenderQueue::buildFromScene(scene, pass.name, pass.target)`.
   - Call `m_frameGraph.compile()` and throw the compiled graph's `errorText()` if it is invalid.
+  - Append a `FrameGraphSampledResource` to each item in a pass whose compiled sampled read declares a shader binding name.
   - Reset per-compiled-pass offscreen framebuffer storage and clear stale frame-graph attachments after a successful compile.
   - Iterate `m_frameGraph.getPasses() × pass.queue.getItems()` to sync every item's vertex / index / descriptor resources and initialize `objectInfo` push-constants.
   - Call `resourceManager->preloadPipelines(m_frameGraph.collectAllPipelineBuildDescs())`.
@@ -317,6 +318,7 @@ The VulkanResourceManager SHALL support:
 - Delegating pipeline caching to a standalone `LX_core::backend::PipelineCache` instance (see the `pipeline-cache` capability). The resource manager SHALL NOT store the pipeline map directly; the legacy `getOrCreateRenderPipeline(item)` helper, if retained, SHALL be a thin forward to `PipelineCache::getOrCreate(PipelineBuildDesc::fromRenderingItem(item), renderPass)`
 - Creating, looking up, and clearing per-frame FrameGraph attachments keyed by resource name plus frame-in-flight index
 - Rejecting FrameGraph attachment reuse when requested format, aspect, extent, or usage is incompatible with the existing attachment
+- Ignoring `ResourceType::Special` resources during normal upload; those resources are bound by specialized command-recording paths instead of uploaded as CPU buffers or textures
 
 #### Scenario: Resource mapping for vertex buffer
 - **WHEN** `initScene` iterates `m_frameGraph.getPasses() × pass.queue.getItems()` and encounters a vertex buffer `IGpuResource`
@@ -334,6 +336,10 @@ The VulkanResourceManager SHALL support:
 #### Scenario: FrameGraph attachment reuse mismatch is rejected
 - **WHEN** an existing `shadow.depth` attachment for the current frame has one format/aspect/extent/usage and a later request asks for an incompatible shape
 - **THEN** the resource manager throws a runtime error containing the resource name
+
+#### Scenario: ShadowMap descriptor resolves current frame attachment
+- **WHEN** `VulkanCommandBuffer::bindResources()` sees a reflected `ShadowMap` sampler backed by a `FrameGraphSampledResource("shadow.depth", "ShadowMap")`
+- **THEN** it resolves `shadow.depth` from the current frame's `VulkanResourceManager` attachment registry and writes a combined image sampler descriptor from that attachment's image view and sampler
 
 ### Requirement: Integration tests shall verify each module independently
 

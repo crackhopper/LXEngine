@@ -123,4 +123,19 @@ Forward shader 需要采样 shadow map：
 
 ## 实施状态
 
-未开始。v0.1.1 的第二项 active requirement。
+已实现。
+
+完成内容：
+
+- 新增 `shadow_depth_only.vert/.frag`，并让 `blinnphong_default.material` 与 `blinnphong_lit.material` 定义 `Shadow` pass。
+- `DirectionalLightData` 现在携带 `shadowViewProj` 与 `shadowParams`，默认主方向光参与 `Forward / Deferred / Shadow`。
+- Forward `blinnphong_0` shader 采样 `ShadowMap`，使用 hard shadow + 3x3 PCF、bias 与 shadow strength。
+- FrameGraph sampled read 可携带 descriptor binding name；Vulkan renderer 将 `shadow.depth` 作为 `FrameGraphSampledResource` 注入 forward pass items。
+- Vulkan descriptor 绑定在 forward command recording 时把 `ShadowMap` 解析为当前 frame 的 `shadow.depth` attachment，避免把 offscreen attachment 当普通 CPU texture 上传。
+- `Pass_Shadow` queue 沿用 pass-aware material 机制；无 target-matching camera 时使用 shadow caster fallback visibility mask。
+
+验证摘要：
+
+- 构建：`CompileShaders`、`test_generic_material_loader`、`test_frame_graph`、`test_vulkan_frame_graph` 以及相关 focused targets。
+- Core / asset tests：`test_shader_compiler`、`test_generic_material_loader`、`test_material_instance`、`test_frame_graph`、`test_scene_node_validation`、`test_pipeline_build_info`、`test_pipeline_identity`。
+- Vulkan tests（`xvfb-run -a`）：`test_vulkan_texture`、`test_vulkan_framebuffer`、`test_vulkan_command_buffer`、`test_vulkan_pipeline`、`test_vulkan_resource_manager`、`test_vulkan_frame_graph`。

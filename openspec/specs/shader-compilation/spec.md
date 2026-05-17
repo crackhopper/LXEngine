@@ -48,6 +48,13 @@ ShaderCompiler SHALL produce a `ShaderStageCode` struct for each compiled stage,
 - **WHEN** both `.vert` and `.frag` sources are compiled successfully
 - **THEN** two `ShaderStageCode` entries are returned: one with `ShaderStage::Vertex` and one with `ShaderStage::Fragment`
 
+### Requirement: Built-in directional shadow shaders compile
+The built-in `shadow_depth_only` shader family SHALL provide both `shadow_depth_only.vert` and `shadow_depth_only.frag`. The vertex shader SHALL transform mesh positions by the engine-wide model push constant and `LightUBO.shadowViewProj`. The fragment shader MAY be empty because the pass writes depth only.
+
+#### Scenario: Compile depth-only shadow shader
+- **WHEN** the shader compiler builds `assets/shaders/glsl/shadow_depth_only.vert` and `.frag`
+- **THEN** compilation succeeds and returns vertex plus fragment stage bytecode suitable for a depth-only render target
+
 ### Requirement: CompiledShader fulfills IShader interface
 `CompiledShader` SHALL implement `IShader` and MUST be constructible from compiled `ShaderStageCode` entries and reflection bindings. It SHALL provide `getAllStages()`, `getReflectionBindings()`, `findBinding()`, and `getProgramHash()`.
 

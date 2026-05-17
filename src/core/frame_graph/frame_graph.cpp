@@ -15,8 +15,9 @@ FrameGraphResourceRef FrameGraphResourceRef::depthAttachment(StringID name) {
   return FrameGraphResourceRef{name, FrameGraphAttachmentKind::Depth};
 }
 
-FrameGraphRead FrameGraphRead::sampled(StringID resource) {
-  return FrameGraphRead{resource};
+FrameGraphRead FrameGraphRead::sampled(StringID resource,
+                                       StringID bindingName) {
+  return FrameGraphRead{resource, bindingName};
 }
 
 bool CompiledFrameGraph::isValid() const { return m_errors.empty(); }

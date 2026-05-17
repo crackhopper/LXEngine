@@ -2,6 +2,7 @@
 
 #include "core/frame_graph/render_target.hpp"
 #include "core/frame_graph/render_queue.hpp"
+#include "core/rhi/gpu_resource.hpp"
 #include "core/utils/string_table.hpp"
 #include <string>
 #include <vector>
@@ -20,8 +21,10 @@ struct FrameGraphResourceRef {
 
 struct FrameGraphRead {
   StringID resource;
+  StringID bindingName;
 
-  static FrameGraphRead sampled(StringID resource);
+  static FrameGraphRead sampled(StringID resource,
+                                StringID bindingName = StringID{});
 };
 
 struct FrameGraphWrite {
@@ -60,6 +63,22 @@ struct CompiledFrameGraphPass {
   RenderTargetDesc target;
   std::vector<FrameGraphRead> reads;
   std::vector<FrameGraphWrite> writes;
+};
+
+class FrameGraphSampledResource final : public IGpuResource {
+public:
+  FrameGraphSampledResource(StringID resourceName, StringID bindingName)
+      : m_resourceName(resourceName), m_bindingName(bindingName) {}
+
+  ResourceType getType() const override { return ResourceType::Special; }
+  const void *getRawData() const override { return nullptr; }
+  u32 getByteSize() const override { return 0; }
+  StringID getBindingName() const override { return m_bindingName; }
+  StringID getResourceName() const { return m_resourceName; }
+
+private:
+  StringID m_resourceName;
+  StringID m_bindingName;
 };
 
 class CompiledFrameGraph {

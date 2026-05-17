@@ -29,6 +29,7 @@ public:
   void sort();
 
   const std::vector<RenderingItem> &getItems() const { return m_items; }
+  std::vector<RenderingItem> &getItems() { return m_items; }
 
   std::vector<PipelineBuildDesc> collectUniquePipelineBuildDescs() const;
 

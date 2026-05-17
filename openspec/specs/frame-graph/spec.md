@@ -53,7 +53,9 @@ The system SHALL provide `LX_core::ImageFormat`, a `uint8_t`-backed enum coverin
 ### Requirement: FrameGraph models ordered passes with resource declarations
 `LX_core::FrameGraph` SHALL contain a sequence of `FramePass` entries. `FramePass` SHALL have at least `StringID name` (matching REQ-007 pass constants such as `Pass_Forward`, `Pass_Shadow`, `Pass_Deferred`, and `Pass_DebugOverlay`), `RenderTargetDesc target`, `RenderQueue queue`, `std::vector<FrameGraphRead> reads`, and `std::vector<FrameGraphWrite> writes`. The `name` field MUST be `StringID`, not `std::string`, to align with `RenderQueue::buildFromScene(scene, pass)` and `IRenderable::supportsPass(pass)`.
 
-`FrameGraphResourceRef` SHALL identify writable frame resources by stable `StringID name` plus `FrameGraphAttachmentKind` (`Color` or `Depth`). `FrameGraphRead::sampled(resourceName)` SHALL express a sampled-image dependency on a resource written by an earlier pass. Pass declaration order SHALL be the v1 execution order; the system SHALL NOT perform automatic pass reordering.
+`FrameGraphResourceRef` SHALL identify writable frame resources by stable `StringID name` plus `FrameGraphAttachmentKind` (`Color` or `Depth`). `FrameGraphRead::sampled(resourceName, bindingName)` SHALL express a sampled-image dependency on a resource written by an earlier pass and MAY preserve the shader descriptor binding name (for example `ShadowMap`) used by backend descriptor routing. Pass declaration order SHALL be the v1 execution order; the system SHALL NOT perform automatic pass reordering.
+
+`FrameGraphSampledResource` SHALL implement `IGpuResource` for sampled frame-graph reads. It SHALL carry the frame-graph resource name plus shader binding name, report `ResourceType::Special`, and MUST NOT be uploaded through normal CPU texture synchronization.
 
 #### Scenario: FramePass name is a StringID
 - **WHEN** a `FramePass` is constructed with `Pass_Forward`
@@ -62,6 +64,10 @@ The system SHALL provide `LX_core::ImageFormat`, a `uint8_t`-backed enum coverin
 #### Scenario: Shadow pass writes a depth resource
 - **WHEN** a `FramePass` is constructed for `Pass_Shadow` with target `RenderTargetDesc::offscreenDepth(ImageFormat::D32Float)` and a write `FrameGraphResourceRef::depthAttachment(StringID("shadow.depth"))`
 - **THEN** the pass describes a depth-only offscreen writer without carrying backend image objects
+
+#### Scenario: Forward pass reads shadow map by binding name
+- **WHEN** `FrameGraphRead::sampled(StringID("shadow.depth"), StringID("ShadowMap"))` is compiled on the forward pass
+- **THEN** the compiled pass preserves both the resource name and binding name so the backend can bind the current-frame `shadow.depth` attachment to the `ShadowMap` sampler
 
 ### Requirement: RenderQueue builds items from a Scene per pass
 `LX_core::RenderQueue::buildFromScene(const Scene &scene, StringID pass, const RenderTarget &target)` SHALL construct the queue's `RenderingItem` set from the scene. The method SHALL:
@@ -76,6 +82,8 @@ The system SHALL provide `LX_core::ImageFormat`, a `uint8_t`-backed enum coverin
 
 Renderable participation is decided by pass alone (via `supportsPass(pass)`). The `target` parameter is also recorded on each `RenderingItem` and participates in the final target-aware `PipelineKey`.
 
+For `Pass_Shadow`, if no camera matches the offscreen shadow target and the combined target visibility mask is zero, `RenderQueue` SHALL use `VisibilityMask_All` as the shadow caster visibility mask. This lets shadow-map generation proceed from light data without requiring a camera object that represents the light view in the scene.
+
 The REQ-008 two-argument `buildFromScene(scene, pass)` overload SHALL NOT coexist with this signature.
 
 #### Scenario: Queue rebuilt from scratch on each call
@@ -89,6 +97,10 @@ The REQ-008 two-argument `buildFromScene(scene, pass)` overload SHALL NOT coexis
 #### Scenario: Queue includes target in pipeline identity
 - **WHEN** the same renderable is queued for a swapchain target and for an offscreen depth-only target
 - **THEN** the resulting `RenderingItem::pipelineKey` values differ because the target signature is included
+
+#### Scenario: Shadow queue can build without target-matching camera
+- **WHEN** a renderable supports `Pass_Shadow`, the configured pass target is an offscreen depth target, and no camera matches that target
+- **THEN** `RenderQueue::buildFromScene(scene, Pass_Shadow, target)` still includes the renderable if its own visibility mask is non-zero
 
 ### Requirement: IRenderable supportsPass filter predicate
 `IRenderable` SHALL declare `virtual bool supportsPass(StringID pass) const`. The primary implementation, `SceneNode`, SHALL answer from the material instance's pass-enable state and the node's pass-level validated-entry cache. `supportsPass(pass)` MUST return `false` for unknown, absent, or disabled passes and MUST NOT trigger ad-hoc structural revalidation while answering the query.
@@ -114,15 +126,15 @@ An empty return value is a valid result — some `(pass, target)` combinations l
 The REQ-008 parameterless `getSceneLevelResources()` overload SHALL NOT coexist with this signature.
 
 #### Scenario: Camera UBO filtered by target
-- **WHEN** a scene has two cameras `camA` / `camB` with distinct targets `targetA` / `targetB`, no light in the scene supports `Pass_Shadow`, and `scene.getSceneLevelResources(Pass_Shadow, targetA)` is called
+- **WHEN** a scene has two cameras `camA` / `camB` with distinct targets `targetA` / `targetB`, all lights have been configured to exclude `Pass_Shadow`, and `scene.getSceneLevelResources(Pass_Shadow, targetA)` is called
 - **THEN** the returned vector contains exactly `camA->getUBO()` (camB is excluded, and no light is added because none supports `Pass_Shadow`)
 
 #### Scenario: Light UBO filtered by pass mask
-- **WHEN** a scene contains the constructor-seeded default directional light (`Forward | Deferred`), plus three additional lights — one with pass mask `Forward` only, one with `Shadow` only, and one with `Forward | Shadow` — and one camera matching `RenderTarget{}`, and `getSceneLevelResources(Pass_Forward, RenderTarget{})` is called
+- **WHEN** a scene contains the constructor-seeded default directional light (`Forward | Deferred | Shadow`), plus three additional lights — one with pass mask `Forward` only, one with `Shadow` only, and one with `Forward | Shadow` — and one camera matching `RenderTarget{}`, and `getSceneLevelResources(Pass_Forward, RenderTarget{})` is called
 - **THEN** the returned vector contains exactly four elements in order: the camera UBO, the default directional light's UBO, the `Forward`-only light's UBO, and the `Forward | Shadow` light's UBO. The `Shadow`-only light is excluded.
 
 #### Scenario: Empty result for no matching resources
-- **WHEN** a scene has one camera with target X, no light in the scene supports `Pass_Shadow`, and `getSceneLevelResources(Pass_Shadow, target Y)` is called (where X ≠ Y)
+- **WHEN** a scene has one camera with target X, all lights have been configured to exclude `Pass_Shadow`, and `getSceneLevelResources(Pass_Shadow, target Y)` is called (where X ≠ Y)
 - **THEN** the returned vector is empty
 
 ### Requirement: FrameGraph buildFromScene populates queues per pass

@@ -181,10 +181,6 @@ void test_per_pass_shader_override() {
     return;
   }
 
-  // Both passes use blinnphong_0 but with different variants,
-  // simulating the common case where shadow uses a stripped-down shader.
-  // (We use the same shader family since we only have blinnphong_0 in the
-  // repo, but the per-pass shader field is exercised.)
   auto matPath = root / "assets" / "materials" / "test_per_pass_shader.material";
   {
     std::ofstream out(matPath);
@@ -203,7 +199,7 @@ void test_per_pass_shader_override() {
            "    variants:\n"
            "      USE_LIGHTING: true\n"
            "  Shadow:\n"
-           "    shader: blinnphong_0\n";
+           "    shader: shadow_depth_only\n";
   }
 
   auto prev = fs::current_path();
@@ -219,6 +215,7 @@ void test_per_pass_shader_override() {
   // Both passes should have shader info.
   REQUIRE(mat->getPassShader(Pass_Forward) != nullptr);
   REQUIRE(mat->getPassShader(Pass_Shadow) != nullptr);
+  REQUIRE(mat->getDescriptorResources(Pass_Shadow).empty());
 
   std::cout << "  per-pass shader override works\n";
 }

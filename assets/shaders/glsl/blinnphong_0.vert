@@ -10,6 +10,15 @@ layout(set = 1, binding = 0) uniform CameraUBO {
     vec3 eyePos;
 } camera;
 
+#ifdef USE_LIGHTING
+layout(set = 0, binding = 0) uniform LightUBO {
+    vec4 dir;
+    vec4 color;
+    mat4 shadowViewProj;
+    vec4 shadowParams;
+} sceneLight;
+#endif
+
 #ifdef USE_SKINNING
 layout(set = 3, binding = 0) uniform Bones {
     mat4 bones[128];
@@ -51,6 +60,9 @@ layout(location = 3) out vec3 vWorldNormal;
 #ifdef USE_NORMAL_MAP
 layout(location = 4) out mat3 vTBN;
 #endif
+#ifdef USE_LIGHTING
+layout(location = 7) out vec4 vLightSpacePos;
+#endif
 
 void main() {
     mat4 skinMatrix = mat4(1.0);
@@ -69,6 +81,7 @@ void main() {
 
 #ifdef USE_LIGHTING
     vWorldPos = worldPos.xyz;
+    vLightSpacePos = sceneLight.shadowViewProj * worldPos;
 #endif
 #ifdef USE_UV
     vUV = inUV;

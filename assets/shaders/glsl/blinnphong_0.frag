@@ -15,6 +15,9 @@ layout(location = 3) in vec3 vWorldNormal;
 #ifdef USE_NORMAL_MAP
 layout(location = 4) in mat3 vTBN;
 #endif
+#ifdef USE_LIGHTING
+layout(location = 7) in vec4 vLightSpacePos;
+#endif
 
 layout(push_constant) uniform ObjectPC {
     mat4 model;
@@ -24,7 +27,10 @@ layout(push_constant) uniform ObjectPC {
 layout(set = 0, binding = 0) uniform LightUBO {
     vec4 dir;
     vec4 color;
+    mat4 shadowViewProj;
+    vec4 shadowParams;
 } sceneLight;
+layout(set = 0, binding = 1) uniform sampler2D ShadowMap;
 #endif
 
 layout(set = 2, binding = 0) uniform MaterialUBO {
@@ -67,6 +73,31 @@ vec3 computeBaseColor() {
     return baseCol;
 }
 
+#ifdef USE_LIGHTING
+float sampleShadowMap(vec4 lightSpacePos, vec3 normal, vec3 lightDir) {
+    vec3 projCoords = lightSpacePos.xyz / lightSpacePos.w;
+    projCoords = projCoords * 0.5 + 0.5;
+    if (projCoords.x < 0.0 || projCoords.x > 1.0 ||
+        projCoords.y < 0.0 || projCoords.y > 1.0 ||
+        projCoords.z < 0.0 || projCoords.z > 1.0) {
+        return 1.0;
+    }
+
+    float baseBias = max(sceneLight.shadowParams.y, 0.0005);
+    float slopeBias = max(baseBias * (1.0 - dot(normal, lightDir)), baseBias);
+    vec2 texelSize = 1.0 / vec2(textureSize(ShadowMap, 0));
+    float visibility = 0.0;
+    for (int x = -1; x <= 1; ++x) {
+        for (int y = -1; y <= 1; ++y) {
+            float closestDepth =
+                texture(ShadowMap, projCoords.xy + vec2(x, y) * texelSize).r;
+            visibility += (projCoords.z - slopeBias) <= closestDepth ? 1.0 : 0.0;
+        }
+    }
+    return visibility / 9.0;
+}
+#endif
+
 void main() {
     vec3 baseCol = computeBaseColor();
 
@@ -93,11 +124,14 @@ void main() {
     vec3 L = normalize(-sceneLight.dir.xyz);
     vec3 V = normalize(camera.eyePos - vWorldPos);
     float diff = max(dot(N, L), 0.0);
+    float shadowVisibility = sampleShadowMap(vLightSpacePos, N, L);
+    float shadowStrength = clamp(sceneLight.shadowParams.z, 0.0, 1.0);
+    float directVisibility = mix(1.0, shadowVisibility, shadowStrength);
     vec3 diffuse = diff * sceneLight.color.rgb;
     vec3 H = normalize(L + V);
     float spec = pow(max(dot(N, H), 0.0), material.shininess);
     vec3 specular = spec * sceneLight.color.rgb * material.specularIntensity;
-    finalColor += (baseCol * diffuse) + specular;
+    finalColor += ((baseCol * diffuse) + specular) * directVisibility;
 
     outColor = vec4(finalColor, 1.0);
 #endif

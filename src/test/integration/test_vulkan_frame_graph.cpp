@@ -38,6 +38,8 @@ LX_core::MaterialInstanceSharedPtr loadFrameGraphDepthMaterial() {
   {
     std::ofstream out(materialPath);
     out << "shader: blinnphong_0\n\n"
+           "variants:\n"
+           "  USE_LIGHTING: true\n\n"
            "parameters:\n"
            "  MaterialUBO.baseColor: [0.8, 0.8, 0.8]\n"
            "  MaterialUBO.shininess: 12.0\n"
@@ -52,7 +54,7 @@ LX_core::MaterialInstanceSharedPtr loadFrameGraphDepthMaterial() {
            "      depthTest: true\n"
            "      depthWrite: true\n"
            "  Shadow:\n"
-           "    shader: blinnphong_0\n"
+           "    shader: shadow_depth_only\n"
            "    renderState:\n"
            "      cullMode: Front\n"
            "      depthTest: true\n"

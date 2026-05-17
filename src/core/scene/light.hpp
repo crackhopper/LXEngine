@@ -1,6 +1,7 @@
 #pragma once
 #include "core/rhi/gpu_resource.hpp"
 #include "core/math/bounds.hpp"
+#include "core/math/mat.hpp"
 #include "core/math/vec.hpp"
 #include "core/frame_graph/pass.hpp"
 #include "core/utils/string_table.hpp"
@@ -51,6 +52,8 @@ struct alignas(16) DirectionalLightData : public IGpuResource {
   struct Param {
     Vec4f dir;
     Vec4f color;
+    Mat4f shadowViewProj;
+    Vec4f shadowParams;
   };
   Param param;
   static constexpr u32 ResourceSize = sizeof(Param);
@@ -119,18 +122,22 @@ using SceneLightsDataSharedPtr = std::shared_ptr<SceneLightsData>;
 
 class DirectionalLight : public LightBase {
 public:
-  /// Default supported passes: Forward + Deferred. Shadow participation is
-  /// opt-in because a directional light only writes the shadow map when
-  /// explicitly configured as a shadow caster.
+  /// Default supported passes: Forward + Deferred + Shadow. The first
+  /// directional light acts as the v0.1.1 main shadow caster.
   DirectionalLight();
 
   [[nodiscard]] Vec3f getDirection() const;
   [[nodiscard]] Vec3f getColor() const;
   [[nodiscard]] float getIntensity() const;
+  [[nodiscard]] Mat4f getShadowViewProj() const;
+  [[nodiscard]] Vec4f getShadowParams() const;
   [[nodiscard]] std::shared_ptr<SceneNode> getSceneNode() const override;
   void setDirection(const Vec3f &direction);
   void setColor(const Vec3f &color);
   void setIntensity(float intensity);
+  void setShadowMapSize(float size);
+  void setShadowBias(float bias);
+  void setShadowStrength(float strength);
 
   void attachToSceneNode(const std::weak_ptr<Scene> &scene,
                          const std::weak_ptr<SceneNode> &node) override;
@@ -146,6 +153,7 @@ public:
   void setSupportedPasses(const std::vector<StringID> &passes);
 
 private:
+  void updateShadowViewProjection();
   void emitLightPropertyChanged() const;
 
   DirectionalLightDataSharedPtr m_ubo;

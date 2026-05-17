@@ -158,6 +158,10 @@ void VulkanResourceManager::syncResource(
   if (!cpuRes)
     return;
 
+  if (cpuRes->getType() == ResourceType::Special) {
+    return;
+  }
+
   const ResourceCacheIdentity identity = cpuRes->getBackendCacheIdentity();
   m_activeResourceIds.insert(identity);
 

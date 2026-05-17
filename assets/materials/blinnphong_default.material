@@ -12,6 +12,12 @@ passes:
       cullMode: Back
       depthTest: true
       depthWrite: true
+  Shadow:
+    shader: shadow_depth_only
+    renderState:
+      cullMode: Front
+      depthTest: true
+      depthWrite: true
 
 parameters:
   MaterialUBO.baseColor: [0.8, 0.8, 0.8]

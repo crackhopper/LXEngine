@@ -35,6 +35,10 @@ Parameter keys SHALL use `bindingName.memberName` format consistent with the `se
 - **WHEN** a material file specifies `shader: shadow_depth_only` under `passes.Shadow`
 - **THEN** the Shadow pass compiles and uses `shadow_depth_only.vert/.frag` while other passes use the global shader
 
+#### Scenario: Built-in Blinn-Phong shadow pass
+- **WHEN** `assets/materials/blinnphong_lit.material` or `assets/materials/blinnphong_default.material` is loaded
+- **THEN** the resulting material defines both a `Forward` pass using `blinnphong_0` and a `Shadow` pass using `shadow_depth_only`
+
 ### Requirement: Generic material loader
 The system SHALL provide a `loadGenericMaterial(materialPath)` function that:
 

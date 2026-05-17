@@ -256,6 +256,10 @@ Only pass enable/disable mutations are structural changes within `MaterialInstan
 - **WHEN** a shader declares `CameraUBO`, `MaterialUBO`, and `albedoMap` bindings and the template is built with one forward pass
 - **THEN** `getPassMaterialBindingIds(Pass_Forward)` returns only the ids for `MaterialUBO` and `albedoMap`, not `CameraUBO`
 
+#### Scenario: ShadowMap is system-owned
+- **WHEN** a forward shader declares `LightUBO`, `ShadowMap`, and `MaterialUBO`
+- **THEN** `getPassMaterialBindingIds(Pass_Forward)` excludes `LightUBO` and `ShadowMap` and includes only material-owned bindings such as `MaterialUBO`
+
 #### Scenario: Different passes may have different material bindings
 - **WHEN** a forward pass shader declares `MaterialUBO` and `albedoMap`, and a shadow pass shader declares only `MaterialUBO`
 - **THEN** `getPassMaterialBindingIds(Pass_Forward)` includes both, and `getPassMaterialBindingIds(Pass_Shadow)` includes only `MaterialUBO`

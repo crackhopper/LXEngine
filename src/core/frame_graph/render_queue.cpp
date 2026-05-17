@@ -69,8 +69,10 @@ void RenderQueue::buildFromScene(const Scene &scene, StringID pass,
 
   // REQ-009: target-filtered scene-level resources.
   auto sceneResources = scene.getSceneLevelResources(pass, target);
-  const VisibilityLayerMask visibleMask =
-      scene.getCombinedCameraCullingMask(target);
+  VisibilityLayerMask visibleMask = scene.getCombinedCameraCullingMask(target);
+  if (visibleMask == 0 && pass == Pass_Shadow) {
+    visibleMask = VisibilityMask_All;
+  }
 
   for (const auto &renderable : scene.getRenderables()) {
     if (!renderable)

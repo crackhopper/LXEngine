@@ -259,7 +259,8 @@ public:
         LX_core::FramePass{LX_core::Pass_Forward,
                            swapchainDesc,
                            {},
-                           {LX_core::FrameGraphRead::sampled(shadowDepth.name)},
+                           {LX_core::FrameGraphRead::sampled(
+                               shadowDepth.name, LX_core::StringID("ShadowMap"))},
                            {LX_core::FrameGraphWrite{swapchainColor},
                             LX_core::FrameGraphWrite{swapchainDepth}}});
     m_frameGraph.addPass(LX_core::FramePass{
@@ -278,6 +279,7 @@ public:
     if (!m_compiledFrameGraph.isValid()) {
       throw std::runtime_error(m_compiledFrameGraph.errorText());
     }
+    attachFrameGraphSampledResources();
     resetOffscreenFramebuffers();
     m_resourceManager->clearFrameGraphAttachments();
 
@@ -584,6 +586,24 @@ private:
       cmd.bindPipeline(pipeline);
       cmd.bindResources(*m_resourceManager, pipeline, item);
       cmd.drawItem(item);
+    }
+  }
+
+  void attachFrameGraphSampledResources() {
+    const auto &compiledPasses = m_compiledFrameGraph.getPasses();
+    auto &graphPasses = m_frameGraph.getPasses();
+    const usize passCount = std::min(compiledPasses.size(), graphPasses.size());
+    for (usize passIndex = 0; passIndex < passCount; ++passIndex) {
+      for (const auto &read : compiledPasses[passIndex].reads) {
+        if (read.bindingName == LX_core::StringID{}) {
+          continue;
+        }
+        auto resource = std::make_shared<LX_core::FrameGraphSampledResource>(
+            read.resource, read.bindingName);
+        for (auto &item : graphPasses[passIndex].queue.getItems()) {
+          item.descriptorResources.push_back(resource);
+        }
+      }
     }
   }
 
