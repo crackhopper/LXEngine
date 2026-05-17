@@ -868,8 +868,7 @@ void testTransformCommandsDriveAttachedLightSpatialState() {
 
   if (dirNode != nullptr) {
     dirNode->setRotation(
-        Quatf::fromAxisAngle(Vec3f{1.0f, 0.0f, 0.0f},
-                             130.0f * kPi / 180.0f)
+        Quatf::fromAxisAngle(Vec3f{1.0f, 0.0f, 0.0f}, 130.0f * kPi / 180.0f)
             .normalized());
     (void)fixture.scene->getSceneLevelResources(Pass_Forward, RenderTarget{});
     const auto legacyDirLight = fixture.scene->getDirectionalLight(*dirNode);
@@ -886,8 +885,9 @@ void testTransformCommandsDriveAttachedLightSpatialState() {
   const CommandResult rotateDir =
       fixture.bus.dispatch("rotate /key_light 0 90 0");
   EXPECT(rotateDir.ok, "rotate directional light succeeds");
-  EXPECT(rotateDir.metadata.find("scene.rebuild") != rotateDir.metadata.end(),
-         "rotating an attached directional light requests shadow cascade rebuild");
+  EXPECT(
+      rotateDir.metadata.find("scene.rebuild") != rotateDir.metadata.end(),
+      "rotating an attached directional light requests shadow cascade rebuild");
   const CommandResult getDirection =
       fixture.bus.dispatch("get /key_light.light.direction");
   EXPECT(getDirection.ok, "rotated directional light direction can be read");
@@ -895,7 +895,8 @@ void testTransformCommandsDriveAttachedLightSpatialState() {
   EXPECT(rotatedDirLight != nullptr,
          "rotated directional light runtime instance should remain attached");
   const Vec3f propertyDir = rotatedDirLight->getDirection();
-  EXPECT(nearlyEqual(propertyDir.x, -1.0f) && nearlyEqual(propertyDir.y, 0.0f) &&
+  EXPECT(nearlyEqual(propertyDir.x, -1.0f) &&
+             nearlyEqual(propertyDir.y, 0.0f) &&
              nearlyEqual(propertyDir.z, 0.0f),
          "directional light direction property follows node rotation");
   (void)fixture.scene->getSceneLevelResources(Pass_Forward, RenderTarget{});
@@ -949,6 +950,28 @@ void testBuiltinCamAndPreviewCommands() {
                  camLookAt.metadata.end() &&
              camLookAt.metadata.at("editor_camera.resync") == "true",
          "cam look-at requests camera rig state resync");
+
+  const CommandResult camOrtho =
+      fixture.bus.dispatch("cam projection orthographic");
+  EXPECT(camOrtho.ok, "cam projection orthographic succeeds");
+  EXPECT(fixture.camera->getProjectionType() == CameraType::Orthographic,
+         "cam projection orthographic updates active camera type");
+  EXPECT(
+      fixture.camera->getLeft() < 0.0f && fixture.camera->getRight() > 0.0f &&
+          fixture.camera->getBottom() < 0.0f && fixture.camera->getTop() > 0.0f,
+      "cam projection orthographic fits bounds around current view center");
+  EXPECT(camOrtho.metadata.find("scene.rebuild") != camOrtho.metadata.end() &&
+             camOrtho.metadata.at("scene.rebuild") == "true",
+         "cam projection orthographic requests scene rebuild");
+  EXPECT(camOrtho.metadata.find("editor_camera.resync") !=
+                 camOrtho.metadata.end() &&
+             camOrtho.metadata.at("editor_camera.resync") == "true",
+         "cam projection orthographic requests camera rig state resync");
+
+  const CommandResult camPerspective = fixture.bus.dispatch("cam perspective");
+  EXPECT(camPerspective.ok, "cam perspective succeeds");
+  EXPECT(fixture.camera->getProjectionType() == CameraType::Perspective,
+         "cam perspective restores active camera projection type");
 
   const CommandResult camReset = fixture.bus.dispatch("cam reset");
   EXPECT(camReset.ok, "cam reset succeeds");

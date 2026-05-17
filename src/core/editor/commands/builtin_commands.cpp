@@ -10,6 +10,7 @@
 #include "core/scene/object.hpp"
 #include "core/scene/scene.hpp"
 
+#include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <iomanip>
@@ -661,7 +662,11 @@ completeComponentTypes(const CompletionContext &context) {
 [[nodiscard]] std::vector<std::string>
 completeCamActions(const CompletionContext &context) {
   static const std::vector<std::string> kActions = {
-      "control", "fov", "look-at", "reset", "reset-editor-to-game"};
+      "active",      "control",
+      "fov",         "light-view",
+      "look-at",     "ortho",
+      "perspective", "projection",
+      "reset",       "reset-editor-to-game"};
   std::vector<std::string> matches;
   for (const auto &action : kActions) {
     if (action.rfind(context.partialToken, 0) == 0) {
@@ -1488,22 +1493,20 @@ void copyActiveCameraPose(Scene &scene, EditorState &editorState,
   editorState.setEditorCamera(node);
   editorState.setPreviewEnabled(false);
   const SceneNodeSharedPtr activeCamera = editorState.syncActiveCamera(scene);
-  CommandResult result =
-      makeOk("camera active",
-             "{\"activePath\":\"" +
-                 jsonEscape(activeCamera ? activeCamera->getPath()
-                                         : std::string{}) +
-                 "\"}");
+  CommandResult result = makeOk(
+      "camera active",
+      "{\"activePath\":\"" +
+          jsonEscape(activeCamera ? activeCamera->getPath() : std::string{}) +
+          "\"}");
   result.metadata["scene.rebuild"] = "true";
   result.metadata["editor_camera.resync"] = "true";
   return result;
 }
 
-[[nodiscard]] CommandResult makeLightDebugCamera(Scene &scene,
-                                                 EditorState &editorState,
-                                                 BuiltinCommandState &state,
-                                                 const std::string &lightPath,
-                                                 const std::string &cameraName) {
+[[nodiscard]] CommandResult
+makeLightDebugCamera(Scene &scene, EditorState &editorState,
+                     BuiltinCommandState &state, const std::string &lightPath,
+                     const std::string &cameraName) {
   SceneNode *lightNode = nullptr;
   const CommandResult found = requireNode(scene, lightPath, lightNode);
   if (!found.ok) {
@@ -1513,7 +1516,8 @@ void copyActiveCameraPose(Scene &scene, EditorState &editorState,
   if (!light) {
     return makeError("node is not a light: " + lightPath);
   }
-  const auto directionalLight = std::dynamic_pointer_cast<DirectionalLight>(light);
+  const auto directionalLight =
+      std::dynamic_pointer_cast<DirectionalLight>(light);
   if (!directionalLight) {
     return makeError("light-view currently requires a directional light");
   }
@@ -1527,8 +1531,8 @@ void copyActiveCameraPose(Scene &scene, EditorState &editorState,
   if (SceneNode *existing = scene.findByPath(path)) {
     cameraNode = existing->shared_from_this();
   } else {
-    cameraNode = SceneNode::create(makeUniqueNodeName(
-        scene, state, "light_debug_camera_node"));
+    cameraNode = SceneNode::create(
+        makeUniqueNodeName(scene, state, "light_debug_camera_node"));
     cameraNode->setName(displayName);
     const auto camera = cameraNode->addComponent<CameraComponent>();
     if (!camera.has_value()) {
@@ -1542,7 +1546,8 @@ void copyActiveCameraPose(Scene &scene, EditorState &editorState,
     return makeError("light debug camera path is not a camera: " + path);
   }
 
-  if (const SceneNodeSharedPtr active = editorState.resolveActiveCamera(scene)) {
+  if (const SceneNodeSharedPtr active =
+          editorState.resolveActiveCamera(scene)) {
     if (const auto activeCamera = active->getComponent<CameraComponent>();
         activeCamera.has_value()) {
       directionalLight->updateShadowCascadesForCamera(activeCamera->get());
@@ -1571,6 +1576,43 @@ void copyActiveCameraPose(Scene &scene, EditorState &editorState,
       "\",\"cascade\":0,\"eye\":" + makeVec3Json(cascadeView->eye) +
       ",\"target\":" + makeVec3Json(cascadeView->target) +
       ",\"up\":" + makeVec3Json(cascadeView->up) + "}";
+  result.metadata["scene.rebuild"] = "true";
+  return result;
+}
+
+[[nodiscard]] CommandResult setActiveCameraProjection(CameraComponent &camera,
+                                                      const CameraType type) {
+  CommandResult result;
+  result.metadata["inverse.line"] =
+      std::string("cam projection ") +
+      (camera.getProjectionType() == CameraType::Perspective ? "perspective"
+                                                             : "orthographic");
+
+  if (type == CameraType::Orthographic) {
+    const Vec3f eye = camera.getEyePosition();
+    const float distance =
+        std::max(0.001f, (camera.getLookTarget() - eye).length());
+    const float halfHeight =
+        std::tan(camera.getFovY() * kDegToRad * 0.5f) * distance;
+    const float halfWidth = halfHeight * std::max(0.001f, camera.getAspect());
+    camera.setOrthographicBounds(-halfWidth, halfWidth, -halfHeight,
+                                 halfHeight);
+    camera.setProjectionType(CameraType::Orthographic);
+    result.ok = true;
+    result.message = "camera projection = orthographic";
+    result.structured = "{\"value\":\"orthographic\",\"left\":" +
+                        formatFloat(camera.getLeft()) +
+                        ",\"right\":" + formatFloat(camera.getRight()) +
+                        ",\"bottom\":" + formatFloat(camera.getBottom()) +
+                        ",\"top\":" + formatFloat(camera.getTop()) + "}";
+  } else {
+    camera.setProjectionType(CameraType::Perspective);
+    result.ok = true;
+    result.message = "camera projection = perspective";
+    result.structured = "{\"value\":\"perspective\"}";
+  }
+
+  result.metadata["editor_camera.resync"] = "true";
   result.metadata["scene.rebuild"] = "true";
   return result;
 }
@@ -2115,9 +2157,9 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
       return makeError("invalid unsigned for set shadowCascadeCount");
     }
     directional->setShadowCascadeCount(*value);
-    CommandResult result = makeOk(
-        "shadowCascadeCount updated",
-        makeUnsignedJson(directional->getShadowCascadeCount()));
+    CommandResult result =
+        makeOk("shadowCascadeCount updated",
+               makeUnsignedJson(directional->getShadowCascadeCount()));
     result.metadata["scene.rebuild"] = "true";
     return result;
   }
@@ -2506,7 +2548,8 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
         bool touchedLight = false;
         for (const auto &node : *nodes) {
           node->setTranslation(node->getTranslation() + *value);
-          touchedLight = syncLightSpatialProperties(scene, node) || touchedLight;
+          touchedLight =
+              syncLightSpatialProperties(scene, node) || touchedLight;
         }
 
         CommandResult result = makeOk(
@@ -2561,7 +2604,8 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
           } else {
             node->setRotation((rotation * node->getRotation()).normalized());
           }
-          touchedLight = syncLightSpatialProperties(scene, node) || touchedLight;
+          touchedLight =
+              syncLightSpatialProperties(scene, node) || touchedLight;
         }
 
         CommandResult result = makeOk(
@@ -3066,14 +3110,17 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
 
   bus.registerHandler(
       "cam",
-      CommandMetadata{
-          "cam (active|light-view|control|look-at|reset|reset-editor-to-game|fov ...)",
-          inverseFromMetadata(), true},
-      [&scene, &editorState, state, sceneIoContext](std::vector<std::string> args) {
+      CommandMetadata{"cam "
+                      "(active|light-view|control|projection|ortho|perspective|"
+                      "look-at|reset|reset-editor-to-game|fov ...)",
+                      inverseFromMetadata(), true},
+      [&scene, &editorState, state,
+       sceneIoContext](std::vector<std::string> args) {
         if (args.empty()) {
           return makeError(
-              "usage: cam (active|light-view|control|look-at|reset|reset-editor-to-game|fov "
-              "...)");
+              "usage: cam "
+              "(active|light-view|control|projection|ortho|perspective|look-at|"
+              "reset|reset-editor-to-game|fov ...)");
         }
         if (args[0] == "active") {
           if (args.size() != 2) {
@@ -3084,11 +3131,13 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
           if (!found.ok) {
             return found;
           }
-          return activateCameraNode(scene, editorState, node->shared_from_this());
+          return activateCameraNode(scene, editorState,
+                                    node->shared_from_this());
         }
         if (args[0] == "light-view") {
           if (args.size() < 2 || args.size() > 3) {
-            return makeError("usage: cam light-view <light-path> [camera-name]");
+            return makeError(
+                "usage: cam light-view <light-path> [camera-name]");
           }
           return makeLightDebugCamera(scene, editorState, *state, args[1],
                                       args.size() == 3 ? args[2]
@@ -3105,6 +3154,35 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
           return makeError("no camera available");
         }
 
+        if (args[0] == "projection") {
+          if (args.size() != 2) {
+            return makeError(
+                "usage: cam projection <perspective|orthographic>");
+          }
+          if (args[1] == "perspective") {
+            return setActiveCameraProjection(camera->get(),
+                                             CameraType::Perspective);
+          }
+          if (args[1] == "orthographic" || args[1] == "ortho") {
+            return setActiveCameraProjection(camera->get(),
+                                             CameraType::Orthographic);
+          }
+          return makeError("invalid projection for cam projection");
+        }
+        if (args[0] == "ortho") {
+          if (args.size() != 1) {
+            return makeError("usage: cam ortho");
+          }
+          return setActiveCameraProjection(camera->get(),
+                                           CameraType::Orthographic);
+        }
+        if (args[0] == "perspective") {
+          if (args.size() != 1) {
+            return makeError("usage: cam perspective");
+          }
+          return setActiveCameraProjection(camera->get(),
+                                           CameraType::Perspective);
+        }
         if (args[0] == "reset") {
           camera->get().lookAt(Vec3f{0.0f, 0.0f, 3.0f}, Vec3f{0.0f, 0.0f, 0.0f},
                                Vec3f{0.0f, 1.0f, 0.0f});
