@@ -44,6 +44,7 @@ public:
 
   void drawFrame(const LX_core::Vec2f &windowSize);
   void handleHotkeys(LX_core::IInputState &input);
+  void reloadLayoutFromConfig();
   [[nodiscard]] EditorMode currentEditorMode() const;
   [[nodiscard]] CameraControlMode currentCameraControlMode() const;
   [[nodiscard]] SelectionNavigationMode selectionNavigationMode() const;
@@ -98,6 +99,7 @@ private:
   bool m_prevFDown = false;
   bool m_prevEscapeDown = false;
   bool m_prevDeleteDown = false;
+  bool m_prevDisplayNextDown = false;
   bool m_prevWDown = false;
   bool m_prevEDown = false;
   bool m_prevRDown = false;

@@ -547,6 +547,7 @@ void registerLxeEditorCommands(LX_core::CommandBus &bus,
   auto displayConfigGetJson = context.displayConfigGetJson;
   auto displayConfigSet = context.displayConfigSet;
   auto displaySelect = context.displaySelect;
+  auto displayNext = context.displayNext;
   interaction->setDebugLoggingHooks(context.debugEnabled,
                                     context.appendConsoleDebugLine);
 
@@ -563,9 +564,10 @@ void registerLxeEditorCommands(LX_core::CommandBus &bus,
   bus.registerHandler(
       "display",
       "display list|active|config get <key|active|default>|config set "
-      "<key|default> <json-or-yaml-patch>|select <key>",
+      "<key|default> <json-or-yaml-patch>|select <key>|next",
       [displayListJson, displayActiveJson, displayConfigGetJson,
-       displayConfigSet, displaySelect](std::vector<std::string> args) {
+       displayConfigSet, displaySelect,
+       displayNext](std::vector<std::string> args) {
         if (args.size() == 1 && args[0] == "list") {
           if (!displayListJson) {
             return makeError("display list unavailable");
@@ -627,9 +629,20 @@ void registerLxeEditorCommands(LX_core::CommandBus &bus,
             return makeDisplayHookError(error);
           }
         }
+        if (args.size() == 1 && args[0] == "next") {
+          if (!displayNext) {
+            return makeError("display next unavailable");
+          }
+          try {
+            std::string structured = displayNext();
+            return makeDisplayResult("display switched", std::move(structured));
+          } catch (const std::exception &error) {
+            return makeDisplayHookError(error);
+          }
+        }
         return makeError(
             "usage: display list|active|config get <key|active|default>|config "
-            "set <key|default> <json-or-yaml-patch>|select <key>");
+            "set <key|default> <json-or-yaml-patch>|select <key>|next");
       });
 
   bus.registerHandler(
@@ -990,7 +1003,7 @@ void registerLxeEditorCommands(LX_core::CommandBus &bus,
   bus.registerCompleter("display", 0,
                         [](const LX_core::CompletionContext &context) {
                           static const std::vector<std::string> kActions = {
-                              "list", "active", "config", "select"};
+                              "list", "active", "config", "select", "next"};
                           std::vector<std::string> out;
                           for (const auto &action : kActions) {
                             if (action.rfind(context.partialToken, 0) == 0) {

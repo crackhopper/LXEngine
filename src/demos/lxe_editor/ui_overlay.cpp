@@ -331,6 +331,12 @@ bool UiOverlay::consumeConfigDirty() {
   return dirty;
 }
 
+void UiOverlay::reloadLayoutFromConfig() {
+  syncPanelOpenStatesFromConfig();
+  applyUiFontScale();
+  m_initialLayoutApplied = false;
+}
+
 void UiOverlay::dispatchCreatePaletteItem(std::string_view kind,
                                           std::string_view displayName) {
   if (!m_commandBus) {
@@ -535,6 +541,11 @@ void UiOverlay::syncPanelOpenStatesFromConfig() {
       panel) {
     m_preferencesVisible = panel->get().visible;
   }
+  if (const auto panel =
+          findEditorWindowLayout(m_editorConfig->get(), "Builtin Assets");
+      panel) {
+    m_builtinAssetsVisible = panel->get().visible;
+  }
 }
 
 void UiOverlay::ensureInitialPanelLayouts() {
@@ -572,6 +583,9 @@ void UiOverlay::ensureInitialPanelLayouts() {
   ensurePanelLayout("Preferences",
                     PanelDefaults{340.0f, 120.0f, 360.0f, 160.0f, false},
                     m_preferencesVisible);
+  ensurePanelLayout("Builtin Assets",
+                    PanelDefaults{304.0f, 84.0f, 360.0f, 420.0f, false},
+                    m_builtinAssetsVisible);
 }
 
 void UiOverlay::applyPanelLayout(std::string_view id,
@@ -673,6 +687,17 @@ void UiOverlay::handleHotkeys(LX_core::IInputState &input) {
     }
   }
   m_prevDeleteDown = deleteDown;
+
+  const bool ctrlDown = input.isKeyDown(LX_core::KeyCode::LCtrl) ||
+                        input.isKeyDown(LX_core::KeyCode::RCtrl);
+  const bool shiftDown = input.isKeyDown(LX_core::KeyCode::LShift) ||
+                         input.isKeyDown(LX_core::KeyCode::RShift);
+  const bool displayNextDown =
+      ctrlDown && shiftDown && input.isKeyDown(LX_core::KeyCode::D);
+  if (displayNextDown && !m_prevDisplayNextDown && m_commandBus) {
+    (void)m_commandBus->get().dispatch("display next");
+  }
+  m_prevDisplayNextDown = displayNextDown;
 
   if (m_viewportOverlay) {
     const bool wDown = input.isKeyDown(LX_core::KeyCode::W);

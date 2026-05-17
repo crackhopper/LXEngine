@@ -1323,6 +1323,41 @@ void testPreviewModeSuppressesHotkeyDeselectAndRemove() {
   ImGui::DestroyContext();
 }
 
+void testDisplayNextHotkeyDispatchesCommandOnce() {
+  if (!setupMinimalImGui()) {
+    std::cout << "[SKIP] lxe_editor display hotkey test (font atlas "
+                 "unavailable)\n";
+    ImGui::DestroyContext();
+    return;
+  }
+
+  UiHarness harness;
+  LX_core::MockInputState input;
+  input.setKeyDown(LX_core::KeyCode::LCtrl, true);
+  input.setKeyDown(LX_core::KeyCode::LShift, true);
+  input.setKeyDown(LX_core::KeyCode::D, true);
+
+  harness.ui.handleHotkeys(input);
+  harness.ui.handleHotkeys(input);
+
+  EXPECT(harness.bus.history().size() == 1,
+         "display next hotkey should dispatch once while held");
+  if (!harness.bus.history().empty()) {
+    EXPECT(harness.bus.history().front().line == "display next",
+           "display next hotkey should dispatch the shared display command");
+  }
+
+  input.setKeyDown(LX_core::KeyCode::D, false);
+  harness.ui.handleHotkeys(input);
+  input.setKeyDown(LX_core::KeyCode::D, true);
+  harness.ui.handleHotkeys(input);
+
+  EXPECT(harness.bus.history().size() == 2,
+         "display next hotkey should dispatch again after key release");
+
+  ImGui::DestroyContext();
+}
+
 void testToolbarIsRecoverableFromPersistedHiddenState() {
   namespace fs = std::filesystem;
 
@@ -1363,6 +1398,47 @@ void testToolbarIsRecoverableFromPersistedHiddenState() {
   ImGui::EndFrame();
   ImGui::DestroyContext();
   fs::remove_all(tempRoot);
+}
+
+void testBuiltinAssetsVisibilityRestoresFromPersistedLayout() {
+  if (!setupMinimalImGui()) {
+    std::cout << "[SKIP] lxe_editor builtin assets visibility test (font atlas "
+                 "unavailable)\n";
+    ImGui::DestroyContext();
+    return;
+  }
+
+  UiHarness harness;
+  harness.config.layoutWindows.push_back(
+      LX_demo::lxe_editor::EditorWindowLayout{
+          .id = "Builtin Assets",
+          .visible = false,
+          .collapsed = false,
+          .x = 304,
+          .y = 84,
+          .width = 360,
+          .height = 420,
+      });
+  harness.ui.attach(harness.rig, harness.bus, harness.editorState,
+                    harness.config, harness.viewportOverlay,
+                    harness.sceneTreePanel, harness.inspectorPanel,
+                    harness.consolePanel);
+
+  ImGui::NewFrame();
+  harness.ui.drawFrame({1280.0f, 720.0f});
+
+  ImGuiWindow *builtinAssets = ImGui::FindWindowByName("Builtin Assets");
+  const auto persistedBuiltinAssets =
+      LX_demo::lxe_editor::findEditorWindowLayout(harness.config,
+                                                  "Builtin Assets");
+  EXPECT(builtinAssets == nullptr,
+         "hidden builtin assets layout should keep the panel closed");
+  EXPECT(persistedBuiltinAssets.has_value() &&
+             !persistedBuiltinAssets->get().visible,
+         "builtin assets visibility should remain hidden in editor config");
+
+  ImGui::EndFrame();
+  ImGui::DestroyContext();
 }
 
 void testUiFontScaleDoesNotCompoundAcrossReattach() {
@@ -1676,7 +1752,9 @@ int main() {
   testLoadOrCreateDoesNotOverwriteInvalidYaml();
   testLoadOrCreateDoesNotOverwriteUnsupportedVersion();
   testPreviewModeSuppressesHotkeyDeselectAndRemove();
+  testDisplayNextHotkeyDispatchesCommandOnce();
   testToolbarIsRecoverableFromPersistedHiddenState();
+  testBuiltinAssetsVisibilityRestoresFromPersistedLayout();
   testUiFontScaleDoesNotCompoundAcrossReattach();
   testInvalidConfigFallsBackToDefaults();
   testEditorDataRoundTripsHistory();

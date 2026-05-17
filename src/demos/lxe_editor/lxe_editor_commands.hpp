@@ -43,6 +43,7 @@ struct LxeEditorCommandContext final {
   using DisplayConfigSetFn =
       std::function<std::string(std::string_view, std::string_view)>;
   using DisplaySelectFn = std::function<std::string(std::string_view)>;
+  using DisplayNextFn = std::function<std::string()>;
 
   LX_core::EditorState &editorState;
   LX_core::Scene &scene;
@@ -68,6 +69,7 @@ struct LxeEditorCommandContext final {
   DisplayConfigGetJsonFn displayConfigGetJson;
   DisplayConfigSetFn displayConfigSet;
   DisplaySelectFn displaySelect;
+  DisplayNextFn displayNext;
 };
 
 void registerLxeEditorCommands(LX_core::CommandBus &bus,

@@ -50,6 +50,7 @@ public:
     std::function<std::string(std::string_view, std::string_view)>
         displayConfigSet;
     std::function<std::string(std::string_view)> displaySelect;
+    std::function<std::string()> displayNext;
   };
 
   struct RenderDebugCommandHooks final {

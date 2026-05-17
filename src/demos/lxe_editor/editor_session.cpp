@@ -1003,6 +1003,7 @@ void LxeEditorSession::rebuildBindings(
           .displayConfigGetJson = m_displayCommandHooks.displayConfigGetJson,
           .displayConfigSet = m_displayCommandHooks.displayConfigSet,
           .displaySelect = m_displayCommandHooks.displaySelect,
+          .displayNext = m_displayCommandHooks.displayNext,
       });
   m_commandBus->registerHandler(
       "render", "render debug dump <target> [camera-path] [path]",

@@ -757,6 +757,7 @@ int main(int argc, char **argv) {
 
     const LX_core::DisplayInfo &startupDisplay = displays[*startupDisplayIndex];
     displayConfig.activeDisplay = startupDisplay.key;
+    std::string currentDisplayKey = startupDisplay.key;
     demo::EditorConfigDocument editorConfig =
         configState.composeEffectiveConfig(displayConfig, startupDisplay.key);
     if (!editorConfig.windowPlacement.has_value()) {
@@ -785,26 +786,87 @@ int main(int argc, char **argv) {
         .displayListJson =
             [&]() {
               return displayListJson(displays, displayConfig,
-                                     startupDisplay.key);
+                                     currentDisplayKey);
             },
         .displayActiveJson =
-            [&]() { return displayActiveJson(startupDisplay.key); },
+            [&]() { return displayActiveJson(currentDisplayKey); },
         .displayConfigGetJson =
             [&](std::string_view key) {
               return displayConfigGetJson(configState, displayConfig,
-                                          startupDisplay.key, key);
+                                          currentDisplayKey, key);
             },
         .displayConfigSet =
             [&](std::string_view key, std::string_view patch) {
               return displayConfigSetJson(configState, displays, displayConfig,
                                           session.editorConfig(),
-                                          startupDisplay.key, key, patch);
+                                          currentDisplayKey, key, patch);
             },
         .displaySelect =
             [&](std::string_view key) {
               return displaySelectJson(configState, displays, displayConfig,
                                        session.editorConfig(),
-                                       startupDisplay.key, key);
+                                       currentDisplayKey, key);
+            },
+        .displayNext =
+            [&]() {
+              if (displays.size() <= 1) {
+                return std::string(
+                    "{\"ok\":false,\"error\":\"no alternate display "
+                    "available\"}");
+              }
+
+              session.editorConfig().windowPlacement = window->getPlacement();
+              displayConfig.activeDisplay = currentDisplayKey;
+              if (!configState.saveDisplayDocument(displayConfig,
+                                                   currentDisplayKey,
+                                                   session.editorConfig())) {
+                return std::string(
+                    "{\"ok\":false,\"error\":\"failed to save current display "
+                    "config\"}");
+              }
+              displayConfig = configState.loadOrCreateForDisplays(displays);
+
+              auto currentIt = std::find_if(
+                  displays.begin(), displays.end(),
+                  [&](const LX_core::DisplayInfo &display) {
+                    return display.key == currentDisplayKey;
+                  });
+              if (currentIt == displays.end()) {
+                currentIt = displays.begin();
+              }
+              const usize currentIndex =
+                  static_cast<usize>(std::distance(displays.begin(),
+                                                   currentIt));
+              const usize nextIndex = (currentIndex + 1) % displays.size();
+              const LX_core::DisplayInfo &nextDisplay = displays[nextIndex];
+
+              demo::EditorConfigDocument nextConfig =
+                  configState.composeEffectiveConfig(displayConfig,
+                                                     nextDisplay.key);
+              if (!nextConfig.windowPlacement.has_value()) {
+                nextConfig.windowPlacement =
+                    LX_core::makeDefaultWindowPlacementForDisplay(
+                        nextDisplay, kWindowWidth, kWindowHeight);
+              }
+              window->applyPlacement(*nextConfig.windowPlacement);
+              nextConfig.windowPlacement = window->getPlacement();
+              session.editorConfig() = nextConfig;
+              ui.reloadLayoutFromConfig();
+              currentDisplayKey = nextDisplay.key;
+
+              displayConfig.activeDisplay = currentDisplayKey;
+              if (!configState.saveDisplayDocument(displayConfig,
+                                                   currentDisplayKey,
+                                                   session.editorConfig())) {
+                return std::string(
+                    "{\"ok\":false,\"error\":\"failed to save next display "
+                    "config\"}");
+              }
+              displayConfig = configState.loadOrCreateForDisplays(displays);
+
+              return "{\"ok\":true,\"activeDisplay\":\"" +
+                     demo::apiJsonEscape(currentDisplayKey) +
+                     "\",\"applied\":true,\"restartRequired\":false}";
             },
     };
     demo::LxeEditorSession::RenderDebugCommandHooks renderDebugCommandHooks{
@@ -959,7 +1021,7 @@ int main(int argc, char **argv) {
       session.editorConfig().windowPlacement = window->getPlacement();
       if (ui.consumeConfigDirty()) {
         (void)saveDisplayDocumentPreservingActive(
-            configState, displays, displayConfig, startupDisplay.key,
+            configState, displays, displayConfig, currentDisplayKey,
             session.editorConfig());
       }
     });
@@ -1069,7 +1131,7 @@ int main(int argc, char **argv) {
     apiServer.stop();
     session.editorConfig().windowPlacement = window->getPlacement();
     (void)saveDisplayDocumentPreservingActive(configState, displays,
-                                              displayConfig, startupDisplay.key,
+                                              displayConfig, currentDisplayKey,
                                               session.editorConfig());
     session.persistEditorData();
     renderer->shutdown();

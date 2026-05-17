@@ -163,6 +163,7 @@ void testDisplayCommandsReturnStructuredHookJson() {
   std::string capturedSetKey;
   std::string capturedSetPatch;
   std::string capturedSelectKey;
+  bool displayNextCalled = false;
   registerLxeEditorCommands(
       fixture.bus,
       LxeEditorCommandContext{
@@ -207,6 +208,12 @@ void testDisplayCommandsReturnStructuredHookJson() {
                 capturedSelectKey = std::string(key);
                 return "{\"ok\":true,\"restartRequired\":true,"
                        "\"source\":\"command-select-hook\"}";
+              },
+          .displayNext =
+              [&displayNextCalled]() {
+                displayNextCalled = true;
+                return "{\"ok\":true,\"activeDisplay\":\"display-b\","
+                       "\"source\":\"command-next-hook\"}";
               },
       });
 
@@ -255,6 +262,15 @@ void testDisplayCommandsReturnStructuredHookJson() {
   EXPECT(select.structuredJson.find("\"restartRequired\":true") !=
              std::string::npos,
          "display select should return restartRequired structured JSON");
+
+  const ApiCommandResponse next = fixture.service->executeCommand(
+      ApiCommandRequest{.line = "display next"});
+  EXPECT(next.ok, "display next should succeed through registered command");
+  EXPECT(displayNextCalled,
+         "display next should call the registered next-display hook");
+  EXPECT(next.structuredJson.find("\"activeDisplay\":\"display-b\"") !=
+             std::string::npos,
+         "display next should return structured next-display hook JSON");
 }
 
 void testRecordingToolsRecordMcpCommand() {
