@@ -382,6 +382,7 @@ if(TARGET test_scene_runtime)
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/builtin_asset_catalog.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_builder.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_camera_state.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/project_document.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_document.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_runtime.cpp
   )

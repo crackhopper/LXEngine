@@ -53,7 +53,15 @@ int failures = 0;
 
 void writeSceneFile(const std::filesystem::path &path,
                     const std::string &body) {
+  std::filesystem::create_directories(path.parent_path());
   std::ofstream out(path);
+  out << body;
+}
+
+void writeTextFile(const std::filesystem::path &path,
+                   const std::string &body) {
+  std::filesystem::create_directories(path.parent_path());
+  std::ofstream out(path, std::ios::binary | std::ios::trunc);
   out << body;
 }
 
@@ -1165,6 +1173,148 @@ void testBuiltinPrimitiveScenePayloadRoundTrips() {
          "save should preserve builtin primitive material URI");
 }
 
+void testBuiltinPrimitiveBaseColorGetterUsesRuntimeMaterialValue() {
+  const auto inputPath =
+      makeTempPath("lx_scene_runtime_primitive_material_value.scene.yaml");
+  writeSceneFile(inputPath,
+                 "scene:\n"
+                 "  name: Primitive Material Value\n"
+                 "  gameplayCameraPath: /game_cam\n"
+                 "nodes:\n"
+                 "  - nodeName: game_camera\n"
+                 "    name: game_cam\n"
+                 "    transform:\n"
+                 "      translation: [0.0, 2.0, 6.0]\n"
+                 "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                 "      scale: [1.0, 1.0, 1.0]\n"
+                 "    visibilityMask: 4294967295\n"
+                 "    camera:\n"
+                 "      eye: [0.0, 2.0, 6.0]\n"
+                 "      target: [0.0, 0.0, 0.0]\n"
+                 "      up: [0.0, 1.0, 0.0]\n"
+                 "      type: perspective\n"
+                 "      fovY: 45.0\n"
+                 "      aspect: 1.7777778\n"
+                 "      nearPlane: 0.1\n"
+                 "      farPlane: 1000.0\n"
+                 "      left: -1.0\n"
+                 "      right: 1.0\n"
+                 "      bottom: -1.0\n"
+                 "      top: 1.0\n"
+                 "      cullingMask: 4294967295\n"
+                 "  - nodeName: primitive_plane_node\n"
+                 "    name: Plane\n"
+                 "    transform:\n"
+                 "      translation: [0.0, 0.0, 0.0]\n"
+                 "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                 "      scale: [1.0, 1.0, 1.0]\n"
+                 "    visibilityMask: 4294967295\n"
+                 "    mesh:\n"
+                 "      uri: builtin://lxe_editor/primitives/plane\n");
+
+  demo::SceneRuntime runtime;
+  runtime.loadFromDocumentPath(inputPath);
+
+  const auto color = runtime.nodeMaterialBaseColorForNode("/Plane");
+  EXPECT(color.has_value(),
+         "primitive plane should expose a baseColor editor value");
+  if (color.has_value()) {
+    expectNear(color->x, 0.72f,
+               "baseColor getter should read the runtime material red value");
+    expectNear(color->y, 0.74f,
+               "baseColor getter should read the runtime material green value");
+    expectNear(color->z, 0.78f,
+               "baseColor getter should read the runtime material blue value");
+  }
+}
+
+void testProjectAssetMaterialOverridesRuntimeAssetMaterial() {
+  const auto projectRoot =
+      std::filesystem::temp_directory_path() /
+      "lx_scene_runtime_project_asset_override";
+  std::filesystem::remove_all(projectRoot);
+  writeTextFile(projectRoot / "project.yaml",
+                "schema: lxe.project.v1\n"
+                "id: project_asset_override\n"
+                "displayName: Project Asset Override\n"
+                "activeScene: scenes/main.scene.yaml\n"
+                "scenes:\n"
+                "  - id: main\n"
+                "    path: scenes/main.scene.yaml\n"
+                "assetRoots:\n"
+                "  - assets\n");
+  writeTextFile(projectRoot / "assets/materials/blinnphong_lit.material",
+                "shader: blinnphong_0\n"
+                "variants:\n"
+                "  USE_LIGHTING: true\n"
+                "passes:\n"
+                "  Forward:\n"
+                "    renderState:\n"
+                "      cullMode: Back\n"
+                "      depthTest: true\n"
+                "      depthWrite: true\n"
+                "parameters:\n"
+                "  MaterialUBO.baseColor: [0.1, 0.2, 0.9]\n"
+                "  MaterialUBO.shininess: 12.0\n"
+                "  MaterialUBO.specularIntensity: 1.0\n"
+                "  MaterialUBO.enableAlbedo: 0\n"
+                "  MaterialUBO.enableNormal: 0\n");
+  writeSceneFile(projectRoot / "scenes/main.scene.yaml",
+                 "scene:\n"
+                 "  name: Project Asset Override\n"
+                 "  gameplayCameraPath: /game_cam\n"
+                 "nodes:\n"
+                 "  - nodeName: game_camera\n"
+                 "    name: game_cam\n"
+                 "    transform:\n"
+                 "      translation: [0.0, 2.0, 6.0]\n"
+                 "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                 "      scale: [1.0, 1.0, 1.0]\n"
+                 "    visibilityMask: 4294967295\n"
+                 "    camera:\n"
+                 "      eye: [0.0, 2.0, 6.0]\n"
+                 "      target: [0.0, 0.0, 0.0]\n"
+                 "      up: [0.0, 1.0, 0.0]\n"
+                 "      type: perspective\n"
+                 "      fovY: 45.0\n"
+                 "      aspect: 1.7777778\n"
+                 "      nearPlane: 0.1\n"
+                 "      farPlane: 1000.0\n"
+                 "      left: -1.0\n"
+                 "      right: 1.0\n"
+                 "      bottom: -1.0\n"
+                 "      top: 1.0\n"
+                 "      cullingMask: 4294967295\n"
+                 "  - nodeName: primitive_plane_node\n"
+                 "    name: Plane\n"
+                 "    transform:\n"
+                 "      translation: [0.0, 0.0, 0.0]\n"
+                 "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                 "      scale: [1.0, 1.0, 1.0]\n"
+                 "    visibilityMask: 4294967295\n"
+                 "    mesh:\n"
+                 "      uri: builtin://lxe_editor/primitives/plane\n"
+                 "    material:\n"
+                 "      uri: assets/materials/blinnphong_lit.material\n");
+
+  demo::SceneRuntime runtime;
+  runtime.loadFromDocumentPath(projectRoot / "scenes/main.scene.yaml");
+
+  const auto plane = runtime.scene()->findByPath("/Plane");
+  const auto color = readNodeBaseColor(plane ? plane->shared_from_this()
+                                             : LX_core::SceneNodeSharedPtr{});
+  EXPECT(color.has_value(),
+         "project-local material should produce readable baseColor");
+  if (color.has_value()) {
+    expectNear(color->x, 0.1f,
+               "project asset material should override runtime asset red");
+    expectNear(color->y, 0.2f,
+               "project asset material should override runtime asset green");
+    expectNear(color->z, 0.9f,
+               "project asset material should override runtime asset blue");
+  }
+}
+
 } // namespace
 
 int main() {
@@ -1185,6 +1335,8 @@ int main() {
   testGenericNodeMaterialParameterOverrideRoundTrips();
   testGroundMeshWindingMatchesUpwardNormal();
   testBuiltinPrimitiveScenePayloadRoundTrips();
+  testBuiltinPrimitiveBaseColorGetterUsesRuntimeMaterialValue();
+  testProjectAssetMaterialOverridesRuntimeAssetMaterial();
 
   if (failures != 0) {
     std::cerr << "test_scene_runtime failed with " << failures

@@ -8,6 +8,7 @@
 #include "infra/material_loader/generic_material_loader.hpp"
 #include "demos/lxe_editor/builtin_asset_catalog.hpp"
 #include "demos/lxe_editor/editor_camera_state.hpp"
+#include "demos/lxe_editor/project_document.hpp"
 #include "demos/lxe_editor/scene_builder.hpp"
 #include "demos/lxe_editor/scene_document.hpp"
 
@@ -45,10 +46,90 @@ constexpr const char *kDefaultHelmetMaterial =
 struct SceneRuntimeData final {
   std::optional<std::filesystem::path> documentPath;
   SceneDocument document;
+  std::vector<std::filesystem::path> assetRoots;
   LX_core::SceneSharedPtr scene;
   LX_core::SceneNodeSharedPtr editorCameraNode;
   LX_core::SceneNodeSharedPtr gameCameraNode;
 };
+
+[[nodiscard]] bool pathStartsWith(const std::filesystem::path &path,
+                                  const std::filesystem::path &prefix) {
+  auto pathIt = path.begin();
+  auto prefixIt = prefix.begin();
+  for (; prefixIt != prefix.end(); ++prefixIt, ++pathIt) {
+    if (pathIt == path.end() || *pathIt != *prefixIt) {
+      return false;
+    }
+  }
+  return true;
+}
+
+[[nodiscard]] std::filesystem::path absoluteNormal(
+    const std::filesystem::path &path) {
+  return std::filesystem::absolute(path).lexically_normal();
+}
+
+[[nodiscard]] std::filesystem::path stripLeadingAssetsComponent(
+    const std::filesystem::path &uri) {
+  std::filesystem::path stripped;
+  bool skipped = false;
+  for (const auto &component : uri) {
+    if (!skipped && component.generic_string() == "assets") {
+      skipped = true;
+      continue;
+    }
+    stripped /= component;
+  }
+  return skipped ? stripped : uri;
+}
+
+[[nodiscard]] std::optional<std::filesystem::path>
+resolveProjectAssetPath(const std::vector<std::filesystem::path> &assetRoots,
+                        const std::filesystem::path &uri) {
+  if (uri.empty() || uri.is_absolute()) {
+    return std::nullopt;
+  }
+  const std::filesystem::path assetRelative = stripLeadingAssetsComponent(uri);
+  for (const auto &assetRoot : assetRoots) {
+    const std::filesystem::path candidate =
+        (assetRoot / assetRelative).lexically_normal();
+    if (std::filesystem::exists(candidate)) {
+      return candidate;
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::vector<std::filesystem::path>
+discoverProjectAssetRoots(const std::filesystem::path &scenePath) {
+  std::vector<std::filesystem::path> roots;
+  std::filesystem::path probe = scenePath.parent_path();
+  while (!probe.empty()) {
+    const std::filesystem::path projectPath = probe / "project.yaml";
+    if (std::filesystem::exists(projectPath)) {
+      const ProjectDocument project = loadProjectDocument(projectPath);
+      const std::filesystem::path projectRoot = absoluteNormal(probe);
+      for (const auto &assetRoot : project.assetRoots) {
+        if (assetRoot.empty() || assetRoot.is_absolute()) {
+          continue;
+        }
+        const std::filesystem::path resolved =
+            (projectRoot / assetRoot).lexically_normal();
+        if (pathStartsWith(resolved, projectRoot) &&
+            std::filesystem::exists(resolved)) {
+          roots.push_back(resolved);
+        }
+      }
+      return roots;
+    }
+    const auto parent = probe.parent_path();
+    if (parent == probe) {
+      break;
+    }
+    probe = parent;
+  }
+  return roots;
+}
 
 [[nodiscard]] bool isRuntimeDebugDrawNodeName(const std::string &nodeName) {
   return nodeName.rfind(RuntimeDebugDrawNodePrefix, 0) == 0;
@@ -389,10 +470,14 @@ void applyGenericMaterialOverrides(
 }
 
 [[nodiscard]] LX_core::MaterialInstanceSharedPtr
-loadMaterialForSceneNode(const std::string &uri,
+loadMaterialForSceneNode(const std::vector<std::filesystem::path> &assetRoots,
+                         const std::string &uri,
                          const MaterialOverrideState &materialOverrides,
                          const MaterialOverrideState &nodeOverrides) {
-  auto material = LX_infra::loadGenericMaterial(uri);
+  const std::filesystem::path materialPath =
+      resolveProjectAssetPath(assetRoots, uri)
+          .value_or(std::filesystem::path(uri));
+  auto material = LX_infra::loadGenericMaterial(materialPath);
   if (!material) {
     throw std::runtime_error("failed to load material: " + uri);
   }
@@ -493,7 +578,9 @@ makeCameraNode(const std::string &nodeName, const std::string &displayName,
 }
 
 [[nodiscard]] LX_core::SceneNodeSharedPtr
-buildRenderableNodeFromDocument(const SceneNodeDocument &nodeDocument) {
+buildRenderableNodeFromDocument(
+    const SceneNodeDocument &nodeDocument,
+    const std::vector<std::filesystem::path> &assetRoots) {
   if (!nodeDocument.meshUri.has_value()) {
     return LX_core::SceneNode::create(nodeDocument.nodeName);
   }
@@ -509,7 +596,8 @@ buildRenderableNodeFromDocument(const SceneNodeDocument &nodeDocument) {
           !nodeDocument.nodeMaterialOverrides.empty() ||
           !nodeDocument.materialOverrides.empty()) {
         materialComponent->get().setMaterialInstance(
-            loadMaterialForSceneNode(uri, nodeDocument.materialOverrides,
+            loadMaterialForSceneNode(assetRoots, uri,
+                                     nodeDocument.materialOverrides,
                                      nodeDocument.nodeMaterialOverrides));
       } else {
         applyBaseColorIfSupported(
@@ -533,7 +621,8 @@ buildRenderableNodeFromDocument(const SceneNodeDocument &nodeDocument) {
           !nodeDocument.nodeMaterialOverrides.empty() ||
           !nodeDocument.materialOverrides.empty()) {
         materialComponent->get().setMaterialInstance(
-            loadMaterialForSceneNode(uri, nodeDocument.materialOverrides,
+            loadMaterialForSceneNode(assetRoots, uri,
+                                     nodeDocument.materialOverrides,
                                      nodeDocument.nodeMaterialOverrides));
       }
     }
@@ -551,7 +640,8 @@ buildRenderableNodeFromDocument(const SceneNodeDocument &nodeDocument) {
           !nodeDocument.nodeMaterialOverrides.empty() ||
           !nodeDocument.materialOverrides.empty()) {
         materialComponent->get().setMaterialInstance(
-            loadMaterialForSceneNode(uri, nodeDocument.materialOverrides,
+            loadMaterialForSceneNode(assetRoots, uri,
+                                     nodeDocument.materialOverrides,
                                      nodeDocument.nodeMaterialOverrides));
       }
     }
@@ -573,7 +663,7 @@ buildRenderableNodeFromDocument(const SceneNodeDocument &nodeDocument) {
           !nodeDocument.nodeMaterialOverrides.empty() ||
           !nodeDocument.materialOverrides.empty()) {
         materialComponent->get().setMaterialInstance(loadMaterialForSceneNode(
-            materialUri, nodeDocument.materialOverrides,
+            assetRoots, materialUri, nodeDocument.materialOverrides,
             nodeDocument.nodeMaterialOverrides));
       }
     }
@@ -654,7 +744,7 @@ void buildSceneNodesRecursive(
                                                     : nodeDocument.name,
                           nodeDocument.camera->cullingMask);
   } else {
-    node = buildRenderableNodeFromDocument(nodeDocument);
+    node = buildRenderableNodeFromDocument(nodeDocument, runtime->assetRoots);
   }
 
   applyNodeIdentityAndTransform(*node, nodeDocument);
@@ -703,10 +793,12 @@ void buildSceneNodesRecursive(
 
 [[nodiscard]] std::shared_ptr<SceneRuntimeData>
 buildRuntimeFromDocument(const SceneDocument &document,
-                         const std::optional<std::filesystem::path> &path) {
+                         const std::optional<std::filesystem::path> &path,
+                         std::vector<std::filesystem::path> assetRoots = {}) {
   auto runtime = std::make_shared<SceneRuntimeData>();
   runtime->documentPath = path;
   runtime->document = document;
+  runtime->assetRoots = std::move(assetRoots);
   runtime->scene = LX_core::Scene::create(document.sceneName(), nullptr);
 
   while (!runtime->scene->getLights().empty()) {
@@ -1015,7 +1107,8 @@ void SceneRuntime::createEmptyScene() {
 void SceneRuntime::loadFromDocumentPath(const std::filesystem::path &path) {
   const std::filesystem::path normalizedPath = normalizeDocumentPath(path);
   const SceneDocument document = loadSceneDocument(normalizedPath);
-  m_impl = buildRuntimeFromDocument(document, normalizedPath);
+  m_impl = buildRuntimeFromDocument(document, normalizedPath,
+                                    discoverProjectAssetRoots(normalizedPath));
 }
 
 void SceneRuntime::saveToCurrentDocumentPath() {
@@ -1069,17 +1162,28 @@ SceneRuntime::materialUriForNode(const std::string &path) const {
 std::optional<LX_core::Vec3f>
 SceneRuntime::nodeMaterialBaseColorForNode(const std::string &path) const {
   const auto runtime = requireRuntimeData(m_impl);
-  const auto *documentNode = findDocumentNodeForRuntimePath(*runtime, path);
-  if (!documentNode) {
+  if (!runtime->scene) {
     return std::nullopt;
   }
-  if (documentNode->nodeMaterialOverrides.baseColor.has_value()) {
-    return documentNode->nodeMaterialOverrides.baseColor;
+  LX_core::SceneNode *node = runtime->scene->findByPath(path);
+  if (!node) {
+    return std::nullopt;
   }
-  if (documentNode->materialOverrides.baseColor.has_value()) {
-    return documentNode->materialOverrides.baseColor;
+  const auto materialComponent =
+      node->getComponent<LX_core::MaterialComponent>();
+  if (!materialComponent.has_value() ||
+      !materialComponent->get().getMaterialInstance()) {
+    return std::nullopt;
   }
-  return LX_core::Vec3f{0.8f, 0.8f, 0.8f};
+  const auto value =
+      materialComponent->get().getMaterialInstance()->readParameterValue(
+          LX_core::StringID("MaterialUBO"), LX_core::StringID("baseColor"));
+  if (!value.has_value() ||
+      value->type != LX_core::MaterialParameterValueType::Vec3) {
+    return std::nullopt;
+  }
+  return LX_core::Vec3f{value->vectorValue.x, value->vectorValue.y,
+                        value->vectorValue.z};
 }
 
 bool SceneRuntime::nodeMaterialBaseColorEditable(
@@ -1197,7 +1301,8 @@ SceneRuntime::setNodeMaterialUri(const std::string &path,
 
   try {
     auto material =
-        loadMaterialForSceneNode(uri, documentNode->materialOverrides,
+        loadMaterialForSceneNode(runtime->assetRoots, uri,
+                                 documentNode->materialOverrides,
                                  documentNode->nodeMaterialOverrides);
     auto materialComponent = node->getComponent<LX_core::MaterialComponent>();
     if (materialComponent.has_value()) {
@@ -1238,7 +1343,8 @@ SceneRuntime::setNodeMaterialBaseColor(const std::string &path,
     MaterialOverrideState nodeOverrides = documentNode->nodeMaterialOverrides;
     nodeOverrides.baseColor = color;
     auto material = loadMaterialForSceneNode(
-        uri, documentNode->materialOverrides, nodeOverrides);
+        runtime->assetRoots, uri, documentNode->materialOverrides,
+        nodeOverrides);
     if (!materialHasBaseColor(material)) {
       return makeCommandError(
           "material does not expose MaterialUBO.baseColor: " + uri);
@@ -1289,7 +1395,8 @@ LX_core::CommandResult SceneRuntime::setNodeMaterialParameter(
     MaterialOverrideState nodeOverrides = documentNode->nodeMaterialOverrides;
     nodeOverrides.parameters[key] = value;
     auto material = loadMaterialForSceneNode(
-        uri, documentNode->materialOverrides, nodeOverrides);
+        runtime->assetRoots, uri, documentNode->materialOverrides,
+        nodeOverrides);
     const auto reflectedMember = material->findParameterMember(
         LX_core::StringID(binding), LX_core::StringID(member));
     if (!reflectedMember.has_value()) {
@@ -1339,7 +1446,8 @@ SceneRuntime::clearNodeMaterialParameter(const std::string &path,
       MaterialOverrideState nodeOverrides = documentNode->nodeMaterialOverrides;
       nodeOverrides.baseColor.reset();
       auto material = loadMaterialForSceneNode(
-          uri, documentNode->materialOverrides, nodeOverrides);
+          runtime->assetRoots, uri, documentNode->materialOverrides,
+          nodeOverrides);
       materialComponent->get().setMaterialInstance(std::move(material));
       documentNode->materialUri = uri;
       documentNode->nodeMaterialOverrides = std::move(nodeOverrides);
@@ -1361,7 +1469,8 @@ SceneRuntime::clearNodeMaterialParameter(const std::string &path,
     MaterialOverrideState nodeOverrides = documentNode->nodeMaterialOverrides;
     nodeOverrides.parameters.erase(key);
     auto material = loadMaterialForSceneNode(
-        uri, documentNode->materialOverrides, nodeOverrides);
+        runtime->assetRoots, uri, documentNode->materialOverrides,
+        nodeOverrides);
     materialComponent->get().setMaterialInstance(std::move(material));
     documentNode->materialUri = uri;
     documentNode->nodeMaterialOverrides = std::move(nodeOverrides);
@@ -1428,7 +1537,7 @@ SceneRuntime::applyMaterialOverride(const std::string &path,
             candidateDocument->nodeMaterialOverrides.baseColor;
         try {
           auto material = loadMaterialForSceneNode(
-              uri, candidateDocument->materialOverrides,
+              runtime->assetRoots, uri, candidateDocument->materialOverrides,
               MaterialOverrideState{.baseColor = effectiveNodeOverride});
           materialComponent->get().setMaterialInstance(std::move(material));
           ++updatedRuntimeNodes;
