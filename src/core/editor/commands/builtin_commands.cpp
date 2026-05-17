@@ -3213,17 +3213,17 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
       });
 
   bus.registerHandler(
-      "debug", "debug shadow-project <node-path> <camera-path> <light-path>",
+      "probe", "probe shadow-project <node-path> <camera-path> <light-path>",
       [&scene](std::vector<std::string> args) {
         if (args.empty()) {
-          return makeError("usage: debug shadow-project <node-path> "
+          return makeError("usage: probe shadow-project <node-path> "
                            "<camera-path> <light-path> [width height]");
         }
         if (args[0] == "shadow-project") {
           args.erase(args.begin());
           return shadowProjectProbe(scene, args);
         }
-        return makeError("unknown debug action: " + args[0]);
+        return makeError("unknown probe action: " + args[0]);
       });
 
   bus.registerHandler(
