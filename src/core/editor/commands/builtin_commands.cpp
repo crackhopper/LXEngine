@@ -883,6 +883,15 @@ findActiveCamera(Scene &scene, EditorState &editorState) {
     return makeOk("shadowStrength = " + formatFloat(value),
                   "{\"value\":" + formatFloat(value) + "}");
   }
+  if (field == "light.shadowBias" || field == "shadowBias") {
+    const auto directional = resolveDirectionalLight(node);
+    if (!directional) {
+      return makeError("field not available on node: shadowBias");
+    }
+    const float value = directional->getShadowParams().y;
+    return makeOk("shadowBias = " + formatFloat(value),
+                  "{\"value\":" + formatFloat(value) + "}");
+  }
   if (field == "light.shadowDistance" || field == "shadowDistance") {
     const auto directional = resolveDirectionalLight(node);
     if (!directional) {
@@ -1182,6 +1191,12 @@ parseMaterialParameterValue(const ShaderPropertyType type,
     return "set " + quoteToken(path + ".light.intensity") + " " +
            formatFloat(value);
   }
+  if ((field == "light.shadowBias" || field == "shadowBias") &&
+      std::dynamic_pointer_cast<DirectionalLight>(light)) {
+    const auto directional = std::dynamic_pointer_cast<DirectionalLight>(light);
+    return "set " + quoteToken(path + ".light.shadowBias") + " " +
+           formatFloat(directional->getShadowParams().y);
+  }
   if ((field == "light.castsShadow" || field == "castsShadow") && light) {
     return "set " + quoteToken(path + ".light.castsShadow") + " " +
            (light->supportsPass(Pass_Shadow) ? "true" : "false");
@@ -1296,6 +1311,7 @@ completeScenePaths(const Scene &scene, const CompletionContext &context) {
       fields.push_back("light.direction");
     }
     if (std::dynamic_pointer_cast<DirectionalLight>(light)) {
+      fields.push_back("light.shadowBias");
       fields.push_back("light.shadowCascadeCount");
       fields.push_back("light.shadowDistance");
       fields.push_back("light.shadowStrength");
@@ -2294,6 +2310,23 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
     return makeOk(
         "shadowStrength updated",
         "{\"value\":" + formatFloat(directional->getShadowParams().z) + "}");
+  }
+  if (field == "light.shadowBias" || field == "shadowBias") {
+    if (args.size() != valueStartIndex + 1) {
+      return makeError("usage: set <path>.light.shadowBias <value>");
+    }
+    const auto directional = resolveDirectionalLight(node);
+    if (!directional) {
+      return makeError("field not available on node: shadowBias");
+    }
+    const auto value = parseFloat(args[valueStartIndex]);
+    if (!value) {
+      return makeError("invalid float for set shadowBias");
+    }
+    directional->setShadowBias(*value);
+    return makeOk(
+        "shadowBias updated",
+        "{\"value\":" + formatFloat(directional->getShadowParams().y) + "}");
   }
   if (field == "light.shadowDistance" || field == "shadowDistance") {
     if (args.size() != valueStartIndex + 1) {

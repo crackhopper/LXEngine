@@ -229,6 +229,7 @@ InspectorPanel::Snapshot InspectorPanel::makeSnapshot() const {
       snapshot.lightColor = directional->getColor();
       snapshot.lightIntensity = directional->getIntensity();
       snapshot.lightShadowStrength = directional->getShadowParams().z;
+      snapshot.lightShadowBias = directional->getShadowParams().y;
       snapshot.lightShadowDistance = directional->getShadowDistance();
       snapshot.lightShadowCascadeCount = directional->getShadowCascadeCount();
     } else if (const auto point =
@@ -448,6 +449,7 @@ void InspectorPanel::syncDraftFromSnapshot(const Snapshot &snapshot) {
   m_lightColorDraft = snapshot.lightColor;
   m_lightIntensityDraft = snapshot.lightIntensity;
   m_lightShadowStrengthDraft = snapshot.lightShadowStrength;
+  m_lightShadowBiasDraft = snapshot.lightShadowBias;
   m_lightShadowDistanceDraft = snapshot.lightShadowDistance;
   m_lightShadowCascadeCountDraft = snapshot.lightShadowCascadeCount;
   copyToBuffer(formatMask(snapshot.visibilityMask), m_visibilityMaskBuffer);
@@ -737,6 +739,16 @@ void InspectorPanel::drawSelection(const Snapshot &snapshot) {
       if (ImGui::IsItemDeactivatedAfterEdit()) {
         const CommandResult result = dispatchSetFloat(
             snapshot.path, "light.shadowStrength", m_lightShadowStrengthDraft);
+        if (result.ok) {
+          refreshDrafts();
+        }
+      }
+
+      ImGui::DragFloat("Shadow Bias", &m_lightShadowBiasDraft, 0.001f, 0.0f,
+                       10.0f, "%.4f");
+      if (ImGui::IsItemDeactivatedAfterEdit()) {
+        const CommandResult result = dispatchSetFloat(
+            snapshot.path, "light.shadowBias", m_lightShadowBiasDraft);
         if (result.ok) {
           refreshDrafts();
         }

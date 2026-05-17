@@ -79,12 +79,12 @@ struct Fixture {
     scene->addRenderable(cube);
     scene->addRenderable(lightNode);
     scene->addCamera(cameraNode);
-    auto dirLight = std::dynamic_pointer_cast<LX_core::DirectionalLight>(
-        scene->getLights().front());
+    auto dirLight = std::make_shared<LX_core::DirectionalLight>();
     scene->attachLight(lightNode, dirLight);
     dirLight->setDirection({-0.3f, -1.0f, -0.5f});
     dirLight->setColor({0.9f, 0.8f, 0.7f});
     dirLight->setIntensity(2.5f);
+    dirLight->setShadowBias(0.005f);
     LX_core::registerBuiltinCommands(bus, editorState, *scene);
   }
 };
@@ -208,12 +208,14 @@ void testSnapshotForLightNode() {
   fixture.editorState.select({fixture.lightNode});
 
   const auto snapshot = panel.makeSnapshot();
+  const LX_core::Vec3f expectedDirection =
+      LX_core::Vec3f{-0.3f, -1.0f, -0.5f}.normalized();
   EXPECT(snapshot.hasSelection, "light node snapshot should have selection");
   EXPECT(snapshot.hasLight, "light node should report directional light fields");
   EXPECT(snapshot.path == "/dir_light", "light node path should match");
-  EXPECT(nearlyEqual(snapshot.lightDirection.x, -0.3f) &&
-             nearlyEqual(snapshot.lightDirection.y, -1.0f) &&
-             nearlyEqual(snapshot.lightDirection.z, -0.5f),
+  EXPECT(nearlyEqual(snapshot.lightDirection.x, expectedDirection.x) &&
+             nearlyEqual(snapshot.lightDirection.y, expectedDirection.y) &&
+             nearlyEqual(snapshot.lightDirection.z, expectedDirection.z),
          "light direction should match scene light");
   EXPECT(nearlyEqual(snapshot.lightColor.x, 0.9f) &&
              nearlyEqual(snapshot.lightColor.y, 0.8f) &&
@@ -221,6 +223,8 @@ void testSnapshotForLightNode() {
          "light color should match scene light");
   EXPECT(nearlyEqual(snapshot.lightIntensity, 2.5f),
          "light intensity should match scene light");
+  EXPECT(nearlyEqual(snapshot.lightShadowBias, 0.005f),
+         "light shadow bias should match scene light");
 }
 
 void testSnapshotForRenamedLightNodeUsesExactAttachedLight() {
@@ -240,11 +244,13 @@ void testSnapshotForRenamedLightNodeUsesExactAttachedLight() {
   fixture.editorState.select({fixture.lightNode});
 
   const auto snapshot = panel.makeSnapshot();
+  const LX_core::Vec3f expectedDirection =
+      LX_core::Vec3f{-0.3f, -1.0f, -0.5f}.normalized();
   EXPECT(snapshot.hasLight, "renamed light node should still report light fields");
   EXPECT(snapshot.path == "/sun", "renamed light node path should match");
-  EXPECT(nearlyEqual(snapshot.lightDirection.x, -0.3f) &&
-             nearlyEqual(snapshot.lightDirection.y, -1.0f) &&
-             nearlyEqual(snapshot.lightDirection.z, -0.5f),
+  EXPECT(nearlyEqual(snapshot.lightDirection.x, expectedDirection.x) &&
+             nearlyEqual(snapshot.lightDirection.y, expectedDirection.y) &&
+             nearlyEqual(snapshot.lightDirection.z, expectedDirection.z),
          "renamed light snapshot should keep the exact attached light direction");
   EXPECT(nearlyEqual(snapshot.lightIntensity, 2.5f),
          "renamed light snapshot should keep the exact attached light intensity");

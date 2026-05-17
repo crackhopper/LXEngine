@@ -688,6 +688,9 @@ void testBuiltinAddRemoveSetCommands() {
   const CommandResult setLightShadowStrength =
       fixture.bus.dispatch("set /dir_light.shadowStrength 0.8");
   EXPECT(setLightShadowStrength.ok, "set light shadow strength succeeds");
+  const CommandResult setLightShadowBias =
+      fixture.bus.dispatch("set /dir_light.shadowBias 0.005");
+  EXPECT(setLightShadowBias.ok, "set light shadow bias succeeds");
   const CommandResult setLightShadowDistance =
       fixture.bus.dispatch("set /dir_light.shadowDistance 120");
   EXPECT(setLightShadowDistance.ok, "set light shadow distance succeeds");
@@ -714,6 +717,8 @@ void testBuiltinAddRemoveSetCommands() {
          "set color/intensity updates scene light");
   EXPECT(nearlyEqual(dirLight->getShadowParams().z, 0.8f),
          "set shadowStrength updates scene light");
+  EXPECT(nearlyEqual(dirLight->getShadowParams().y, 0.005f),
+         "set shadowBias updates scene light");
   EXPECT(nearlyEqual(dirLight->getShadowDistance(), 120.0f),
          "set shadowDistance updates scene light");
   EXPECT(dirLight->getShadowCascadeCount() == 2u,

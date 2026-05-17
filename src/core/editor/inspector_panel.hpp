@@ -60,6 +60,7 @@ public:
     Vec3f lightColor{1.0f, 1.0f, 1.0f};
     float lightIntensity = 1.0f;
     float lightShadowStrength = 0.45f;
+    float lightShadowBias = 0.02f;
     float lightShadowDistance = 80.0f;
     u32 lightShadowCascadeCount = MaxShadowCascades;
     float lightRange = 5.0f;
@@ -137,6 +138,7 @@ private:
   Vec3f m_lightColorDraft{1.0f, 1.0f, 1.0f};
   float m_lightIntensityDraft = 1.0f;
   float m_lightShadowStrengthDraft = 0.45f;
+  float m_lightShadowBiasDraft = 0.02f;
   float m_lightShadowDistanceDraft = 80.0f;
   u32 m_lightShadowCascadeCountDraft = MaxShadowCascades;
   std::array<char, 256> m_visibilityMaskBuffer{};
