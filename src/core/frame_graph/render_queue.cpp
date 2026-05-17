@@ -65,14 +65,22 @@ RenderQueue::collectUniquePipelineBuildDescs() const {
 
 void RenderQueue::buildFromScene(const Scene &scene, StringID pass,
                                  const RenderTarget &target) {
-  clearItems();
-
   // REQ-009: target-filtered scene-level resources.
   auto sceneResources = scene.getSceneLevelResources(pass, target);
   VisibilityLayerMask visibleMask = scene.getCombinedCameraCullingMask(target);
   if (visibleMask == 0 && pass == Pass_Shadow) {
     visibleMask = VisibilityMask_All;
   }
+
+  buildFromSceneWithOverrides(scene, pass, target, std::move(sceneResources),
+                              visibleMask);
+}
+
+void RenderQueue::buildFromSceneWithOverrides(
+    const Scene &scene, StringID pass, const RenderTarget &target,
+    std::vector<IGpuResourceSharedPtr> sceneResources,
+    VisibilityLayerMask visibleMask) {
+  clearItems();
 
   for (const auto &renderable : scene.getRenderables()) {
     if (!renderable)

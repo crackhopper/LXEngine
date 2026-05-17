@@ -54,9 +54,9 @@ public:
 
   struct RenderDebugCommandHooks final {
     std::function<RenderDebugDumpResult(
-        std::string_view, const std::filesystem::path &,
+        std::string_view, const std::optional<std::string> &,
         const std::filesystem::path &)>
-        dumpFrameGraphAttachment;
+        dumpRenderTarget;
   };
 
   LxeEditorSession(CameraRig &rig, UiOverlay &ui,

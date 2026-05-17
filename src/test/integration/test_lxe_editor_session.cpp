@@ -659,20 +659,21 @@ void testRenderDebugDumpCommandUsesRegisteredHook() {
   LX_demo::lxe_editor::LxeEditorSession session(rig, ui, editorState);
 
   std::string capturedAttachment;
+  std::optional<std::string> capturedCameraPath;
   std::optional<std::filesystem::path> capturedPath;
   session.initialize(
       {},
       LX_demo::lxe_editor::LxeEditorSession::RenderDebugCommandHooks{
-          .dumpFrameGraphAttachment =
+          .dumpRenderTarget =
               [&](std::string_view attachment,
-                  const std::filesystem::path &path,
-                  const std::filesystem::path &screenPath) {
+                  const std::optional<std::string> &cameraPath,
+                  const std::filesystem::path &path) {
                 capturedAttachment = std::string(attachment);
+                capturedCameraPath = cameraPath;
                 capturedPath = path;
                 return LX_demo::lxe_editor::LxeEditorSession::
                     RenderDebugDumpResult{
                     .path = path,
-                    .screenPath = screenPath,
                     .width = 1024,
                     .height = 1024,
                     .format = "D32_SFLOAT",
@@ -693,9 +694,17 @@ void testRenderDebugDumpCommandUsesRegisteredHook() {
   EXPECT(dump.structured.find("\"path\":\"data/debug/dump/shadow_cascade0.bmp\"") !=
              std::string::npos,
          "render debug dump should return the output path in JSON");
-  EXPECT(dump.structured.find("\"screenPath\":\"data/debug/dump/shadow_cascade0-screen.bmp\"") !=
-             std::string::npos,
-         "render debug dump should return the paired screen output path");
+  EXPECT(dump.structured.find("\"screenPath\"") == std::string::npos,
+         "render debug dump should not add a swapchain screenshot path");
+
+  const auto passDump = session.commandBus().dispatch(
+      "render debug dump Forward /editor_cam data/debug/dump/forward.bmp");
+  EXPECT(passDump.ok, "render debug dump should accept a pass camera path");
+  EXPECT(capturedAttachment == "Forward",
+         "render debug dump should forward the pass target");
+  EXPECT(capturedCameraPath.has_value() &&
+             *capturedCameraPath == "/editor_cam",
+         "render debug dump should forward the optional camera path");
 
   const auto defaultDump =
       session.commandBus().dispatch("render debug dump shadow.cascade0");

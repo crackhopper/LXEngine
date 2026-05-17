@@ -104,6 +104,18 @@ std::string sanitizeAttachmentName(std::string_view name) {
   return out.empty() ? "attachment" : out;
 }
 
+LX_core::StringID passIdFromDebugName(std::string_view passName) {
+  if (passName == "Forward" || passName == "forward") {
+    return LX_core::Pass_Forward;
+  }
+  if (passName == "DebugOverlay" || passName == "debugOverlay" ||
+      passName == "debug_overlay") {
+    return LX_core::Pass_DebugOverlay;
+  }
+  throw std::runtime_error("unsupported debug render target pass: " +
+                           std::string(passName));
+}
+
 void writeLe16(std::ostream &out, u16 value) {
   out.put(static_cast<char>(value & 0xffu));
   out.put(static_cast<char>((value >> 8u) & 0xffu));
@@ -696,8 +708,7 @@ public:
         std::filesystem::path("data/debug/dump") /
         (std::to_string(timestamp) + "-" +
          sanitizeAttachmentName(attachmentName) + ".bmp"));
-    const std::filesystem::path screenPath = requestedScreenPath.value_or(
-        path.parent_path() / (path.stem().generic_string() + "-screen.bmp"));
+    (void)requestedScreenPath;
 
     auto readback = VulkanBuffer::create(
         *m_device, byteSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
@@ -759,14 +770,184 @@ public:
     readback->unmap();
 
     writeBmp24File(path, width, height, bgrPixels);
-    m_pendingScreenDump = PendingScreenDump{.path = screenPath};
 
     return VulkanRenderer::FrameGraphAttachmentDumpResult{
         .path = path,
-        .screenPath = screenPath,
+        .screenPath = {},
         .width = width,
         .height = height,
         .format = vkFormatName(attachment.format),
+    };
+  }
+
+  VulkanRenderer::FrameGraphAttachmentDumpResult dumpDebugRenderTarget(
+      std::string_view passName,
+      const std::optional<std::string> &cameraPath,
+      const std::optional<std::filesystem::path> &requestedPath) {
+    if (!m_resourceManager || !m_cmdBufferMgr || !m_device || !m_swapchain ||
+        !m_scene) {
+      throw std::runtime_error("renderer is not initialized");
+    }
+
+    const StringID pass = passIdFromDebugName(passName);
+    auto camera = cameraForDebugDump(cameraPath);
+    if (!camera.has_value()) {
+      throw std::runtime_error("debug render target camera not found");
+    }
+
+    const auto timestamp =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch())
+            .count();
+    const std::filesystem::path path = requestedPath.value_or(
+        std::filesystem::path("data/debug/dump") /
+        (std::to_string(timestamp) + "-" + sanitizeAttachmentName(passName) +
+         ".bmp"));
+
+    LX_core::RenderTargetDesc targetDesc;
+    targetDesc.role = LX_core::RenderTargetRole::Offscreen;
+    targetDesc.colorFormat = LX_core::ImageFormat::BGRA8;
+    targetDesc.depthFormat = LX_core::ImageFormat::D32Float;
+    const LX_core::RenderTarget target{targetDesc};
+
+    auto &cameraComponent = camera->get();
+    const auto previousTarget = cameraComponent.getTarget();
+    cameraComponent.setTarget(target);
+    cameraComponent.updateMatrices();
+    auto sceneResources = m_scene->getSceneLevelResources(pass, target);
+    cameraComponent.setTarget(previousTarget);
+
+    if (pass == LX_core::Pass_Forward) {
+      for (u32 cascadeIndex = 0; cascadeIndex < LX_core::MaxShadowCascades;
+           ++cascadeIndex) {
+        const auto shadowDepth = LX_core::FrameGraphResourceRef::depthAttachment(
+            LX_core::StringID("shadow.cascade" +
+                              std::to_string(cascadeIndex)));
+        sceneResources.push_back(
+            std::make_shared<LX_core::FrameGraphSampledResource>(
+                shadowDepth.name,
+                LX_core::StringID("ShadowMap" + std::to_string(cascadeIndex))));
+      }
+    }
+
+    LX_core::RenderQueue queue;
+    queue.buildFromSceneWithOverrides(
+        *m_scene, pass, target, std::move(sceneResources),
+        cameraComponent.getCullingMask() & ~LX_core::Layer_EditorOverlay);
+    if (queue.getItems().empty()) {
+      throw std::runtime_error("debug render target produced no draw items");
+    }
+
+    for (auto &item : queue.getItems()) {
+      m_resourceManager->syncResource(*m_cmdBufferMgr, item.vertexBuffer);
+      m_resourceManager->syncResource(*m_cmdBufferMgr, item.indexBuffer);
+      for (auto &cpuRes : item.descriptorResources) {
+        m_resourceManager->syncResource(*m_cmdBufferMgr, cpuRes);
+      }
+    }
+    m_resourceManager->preloadPipelines(queue.collectUniquePipelineBuildDescs());
+
+    const VkExtent2D extent = m_swapchain->getExtent();
+    const auto colorRef = LX_core::FrameGraphResourceRef::colorAttachment(
+        LX_core::StringID("debug.dump.color." + std::to_string(timestamp)));
+    const auto depthRef = LX_core::FrameGraphResourceRef::depthAttachment(
+        LX_core::StringID("debug.dump.depth." + std::to_string(timestamp)));
+
+    const VkDeviceSize byteSize =
+        static_cast<VkDeviceSize>(extent.width) *
+        static_cast<VkDeviceSize>(extent.height) * 4u;
+    auto readback = VulkanBuffer::create(
+        *m_device, byteSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+    m_device->waitIdle();
+    auto cmd = m_cmdBufferMgr->beginSingleTimeCommands();
+
+    auto &colorAttachment = m_resourceManager->createOrGetFrameGraphAttachment(
+        colorRef.name, extent, VK_FORMAT_B8G8R8A8_UNORM,
+        VK_IMAGE_ASPECT_COLOR_BIT,
+        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+            VK_IMAGE_USAGE_SAMPLED_BIT);
+    auto &depthAttachment = m_resourceManager->createOrGetFrameGraphAttachment(
+        depthRef.name, extent, VK_FORMAT_D32_SFLOAT, VK_IMAGE_ASPECT_DEPTH_BIT,
+        VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
+            VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
+
+    transitionFrameGraphAttachment(colorRef,
+                                   VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                                   VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, *cmd);
+    transitionFrameGraphAttachment(
+        depthRef, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+            VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, *cmd);
+
+    std::vector<VkImageView> attachments{
+        colorAttachment.texture->getImageView(),
+        depthAttachment.texture->getImageView(),
+    };
+    auto &renderPass = m_resourceManager->getRenderPass(targetDesc);
+    auto framebuffer = VulkanFrameBuffer::create(
+        *m_device, renderPass.getHandle(), attachments, extent);
+
+    cmd->beginRenderPass(renderPass.getHandle(), framebuffer->getHandle(),
+                         extent, renderPass.getClearValues());
+    cmd->setViewport(extent.width, extent.height);
+    cmd->setScissor(extent.width, extent.height);
+    for (auto &item : queue.getItems()) {
+      auto &pipeline = m_resourceManager->getOrCreateRenderPipeline(item);
+      cmd->bindPipeline(pipeline);
+      cmd->bindResources(*m_resourceManager, pipeline, item);
+      cmd->drawItem(item);
+    }
+    cmd->endRenderPass();
+
+    transitionFrameGraphAttachment(colorRef,
+                                   VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                                   VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                   VK_ACCESS_TRANSFER_READ_BIT, *cmd);
+    VkBufferImageCopy region{};
+    region.bufferOffset = 0;
+    region.bufferRowLength = 0;
+    region.bufferImageHeight = 0;
+    region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    region.imageSubresource.mipLevel = 0;
+    region.imageSubresource.baseArrayLayer = 0;
+    region.imageSubresource.layerCount = 1;
+    region.imageOffset = {0, 0, 0};
+    region.imageExtent = {extent.width, extent.height, 1};
+    vkCmdCopyImageToBuffer(cmd->getHandle(),
+                           colorAttachment.texture->getHandle(),
+                           VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                           readback->getHandle(), 1, &region);
+    m_cmdBufferMgr->endSingleTimeCommands(std::move(cmd),
+                                          m_device->getGraphicsQueue());
+
+    const auto *rgba = static_cast<const unsigned char *>(readback->map());
+    std::vector<unsigned char> bgrPixels;
+    bgrPixels.reserve(static_cast<usize>(extent.width) *
+                      static_cast<usize>(extent.height) * 3u);
+    for (u32 y = 0; y < extent.height; ++y) {
+      for (u32 x = 0; x < extent.width; ++x) {
+        const usize i =
+            (static_cast<usize>(y) * extent.width + static_cast<usize>(x)) *
+            4u;
+        bgrPixels.push_back(rgba[i + 0u]);
+        bgrPixels.push_back(rgba[i + 1u]);
+        bgrPixels.push_back(rgba[i + 2u]);
+      }
+    }
+    readback->unmap();
+
+    writeBmp24File(path, extent.width, extent.height, bgrPixels);
+    return VulkanRenderer::FrameGraphAttachmentDumpResult{
+        .path = path,
+        .screenPath = {},
+        .width = extent.width,
+        .height = extent.height,
+        .format = vkFormatName(VK_FORMAT_B8G8R8A8_UNORM),
     };
   }
 
@@ -857,6 +1038,25 @@ private:
       }
     }
     return std::nullopt;
+  }
+
+  std::optional<std::reference_wrapper<LX_core::CameraComponent>>
+  cameraForDebugDump(const std::optional<std::string> &cameraPath) const {
+    if (!m_scene) {
+      return std::nullopt;
+    }
+    if (cameraPath.has_value() && !cameraPath->empty()) {
+      LX_core::SceneNode *node = m_scene->findByPath(*cameraPath);
+      if (!node) {
+        return std::nullopt;
+      }
+      auto camera = node->getComponent<LX_core::CameraComponent>();
+      if (!camera) {
+        return std::nullopt;
+      }
+      return camera->get();
+    }
+    return mainCameraComponent();
   }
 
   void updateDirectionalLightCascades() {
@@ -1257,6 +1457,13 @@ VulkanRenderer::dumpFrameGraphAttachment(
     const std::optional<std::filesystem::path> &path,
     const std::optional<std::filesystem::path> &screenPath) {
   return p_impl->dumpFrameGraphAttachment(attachmentName, path, screenPath);
+}
+
+VulkanRenderer::FrameGraphAttachmentDumpResult
+VulkanRenderer::dumpDebugRenderTarget(
+    std::string_view passName, const std::optional<std::string> &cameraPath,
+    const std::optional<std::filesystem::path> &path) {
+  return p_impl->dumpDebugRenderTarget(passName, cameraPath, path);
 }
 
 } // namespace LX_core::backend

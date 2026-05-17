@@ -90,8 +90,7 @@ struct CommandFixture {
 
     lightNode->setName("dir_light");
     scene->addRenderable(lightNode);
-    scene->attachLight(lightNode, std::dynamic_pointer_cast<DirectionalLight>(
-                                      scene->getLights().front()));
+    scene->attachLight(lightNode, std::make_shared<DirectionalLight>());
 
     registerBuiltinCommands(bus, editorState, *scene);
   }

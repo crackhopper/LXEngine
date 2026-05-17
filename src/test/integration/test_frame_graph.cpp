@@ -475,16 +475,14 @@ void testMultiCameraTargetFilter() {
   scene->addCamera(camB);
 
   auto resA = scene->getSceneLevelResources(Pass_Forward, targetA);
-  EXPECT(resA.size() == 3,
-         "Forward×targetA: camA UBO + default light UBO + SceneLightsUBO");
+  EXPECT(resA.size() == 1, "Forward targetA: camA UBO only");
 
-  // For targetB: only camB + default light + aggregated scene lights.
+  // For targetB: only camB.
   auto resB = scene->getSceneLevelResources(Pass_Forward, targetB);
-  EXPECT(resB.size() == 3,
-         "Forward×targetB: camB UBO + default light UBO + SceneLightsUBO");
+  EXPECT(resB.size() == 1, "Forward targetB: camB UBO only");
 
   // Cross-check camera UBO identity: camA's UBO should be in resA but not resB.
-  if (resA.size() == 3 && resB.size() == 3) {
+  if (resA.size() == 1 && resB.size() == 1) {
     const auto camAUbo = std::dynamic_pointer_cast<IGpuResource>(
         camA->getComponent<CameraComponent>()->get().getUBO());
     EXPECT(resA[0] == camAUbo, "resA[0] is camA's UBO");
@@ -499,7 +497,7 @@ void testOffscreenDepthTargetDoesNotMatchDefaultCamera() {
       RenderTarget{RenderTargetDesc::offscreenDepth(ImageFormat::D32Float)};
   const auto resources = scene->getSceneLevelResources(Pass_Forward, depthOnly);
 
-  EXPECT(resources.size() == 2,
+  EXPECT(resources.empty(),
          "offscreen depth target excludes default swapchain camera resources");
 }
 
@@ -516,12 +514,12 @@ void testMultiLightPassFilter() {
   scene->addLight(lightBoth);
 
   auto resForward = scene->getSceneLevelResources(Pass_Forward, RenderTarget{});
-  EXPECT(resForward.size() == 5,
-         "Pass_Forward: 1 cam + 3 directional LightUBOs + SceneLightsUBO");
+  EXPECT(resForward.size() == 4,
+         "Pass_Forward: 1 cam + 2 matching LightUBOs + SceneLightsUBO");
 
   auto resShadow = scene->getSceneLevelResources(Pass_Shadow, RenderTarget{});
-  EXPECT(resShadow.size() == 5,
-         "Pass_Shadow: 1 cam + 3 directional LightUBOs + SceneLightsUBO");
+  EXPECT(resShadow.size() == 4,
+         "Pass_Shadow: 1 cam + 2 matching LightUBOs + SceneLightsUBO");
 }
 
 void testNullOptCameraBeforeAndAfterFill() {
@@ -535,15 +533,14 @@ void testNullOptCameraBeforeAndAfterFill() {
 
   auto resBefore =
       scene->getSceneLevelResources(Pass_Forward, customTarget);
-  EXPECT(resBefore.size() == 2,
-         "nullopt camera excludes camera, leaving default LightUBO + SceneLightsUBO");
+  EXPECT(resBefore.empty(),
+         "nullopt camera excludes camera and Scene has no hidden light");
 
   testCam->getComponent<CameraComponent>()->get().setTarget(customTarget);
 
   auto resAfter =
       scene->getSceneLevelResources(Pass_Forward, customTarget);
-  EXPECT(resAfter.size() == 3,
-         "after setTarget(customTarget): camera + default LightUBO + SceneLightsUBO");
+  EXPECT(resAfter.size() == 1, "after setTarget(customTarget): camera UBO");
 
   EXPECT(testCam->getComponent<CameraComponent>()->get().matchesTarget(customTarget),
          "testCam->matchesTarget(customTarget) after setTarget");
@@ -674,8 +671,8 @@ void testVisibilityFilteringKeepsSceneResources() {
   scene->addCamera(makeCameraWithTargetAndMask(target, 0x1u));
 
   const auto sceneResources = scene->getSceneLevelResources(Pass_Forward, target);
-  EXPECT(sceneResources.size() == 3,
-         "camera and light resources remain target-driven even when one renderable is hidden");
+  EXPECT(sceneResources.size() == 1,
+         "camera resources remain target-driven even when one renderable is hidden");
 
   FrameGraph fg;
   fg.addPass(FramePass{Pass_Forward, target, {}});
@@ -687,6 +684,39 @@ void testVisibilityFilteringKeepsSceneResources() {
     EXPECT(items[0].descriptorResources.size() == sceneResources.size(),
            "visible item still receives full scene-level resources");
   }
+}
+
+void testRenderQueueDebugOverrideUsesExplicitResourcesAndLayerMask() {
+  auto visible = makeRenderableWithMask(Layer_Default, "debug_visible");
+  auto overlay = makeRenderableWithMask(Layer_EditorOverlay, "debug_overlay");
+  auto scene = Scene::create("debug_override");
+  scene->addRenderable(visible);
+  scene->addRenderable(overlay);
+
+  auto cameraNode = makeCameraWithTarget(RenderTarget{});
+  const auto camera = cameraNode->getComponent<CameraComponent>();
+  scene->addCamera(cameraNode);
+
+  RenderQueue queue;
+  queue.buildFromSceneWithOverrides(
+      *scene, Pass_Forward,
+      RenderTarget{RenderTargetDesc::offscreenColor(ImageFormat::BGRA8)},
+      {camera->get().getUBO()}, Layer_All & ~Layer_EditorOverlay);
+
+  EXPECT(queue.getItems().size() == 1,
+         "debug render target should render only layers allowed by override");
+  EXPECT(!queue.getItems().empty() &&
+             std::find(queue.getItems().front().descriptorResources.begin(),
+                       queue.getItems().front().descriptorResources.end(),
+                       camera->get().getUBO()) !=
+                 queue.getItems().front().descriptorResources.end(),
+         "debug render target should use explicit camera resources");
+}
+
+void testSceneCreateDoesNotSeedHiddenLight() {
+  auto scene = Scene::create("no_implicit_light");
+  EXPECT(scene->getLights().empty(),
+         "core Scene should not create hidden non-node lights");
 }
 
 void testInactiveCameraIsIgnoredForResourcesAndMasks() {
@@ -704,8 +734,8 @@ void testInactiveCameraIsIgnoredForResourcesAndMasks() {
   scene->addCamera(inactiveCamera);
 
   const auto resources = scene->getSceneLevelResources(Pass_Forward, target);
-  EXPECT(resources.size() == 3,
-         "inactive camera should be excluded while active camera and light resources remain");
+  EXPECT(resources.size() == 1,
+         "inactive camera should be excluded while active camera resource remains");
 
   EXPECT(scene->getCombinedCameraCullingMask(target) == 0x1u,
          "inactive camera mask should not contribute to combined culling mask");
@@ -770,6 +800,8 @@ int main() {
   testVisibilityMaskFiltersRenderables();
   testVisibilityMaskOrsMatchingCameraMasks();
   testVisibilityFilteringKeepsSceneResources();
+  testRenderQueueDebugOverrideUsesExplicitResourcesAndLayerMask();
+  testSceneCreateDoesNotSeedHiddenLight();
   testInactiveCameraIsIgnoredForResourcesAndMasks();
   testEditorProjectedShadowPassKeepsCharacterCaster();
 

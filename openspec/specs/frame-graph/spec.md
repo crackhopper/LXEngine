@@ -130,8 +130,8 @@ The REQ-008 parameterless `getSceneLevelResources()` overload SHALL NOT coexist 
 - **THEN** the returned vector contains exactly `camA->getUBO()` (camB is excluded, and no light is added because none supports `Pass_Shadow`)
 
 #### Scenario: Light UBO filtered by pass mask
-- **WHEN** a scene contains the constructor-seeded default directional light (`Forward | Deferred | Shadow`), plus three additional lights — one with pass mask `Forward` only, one with `Shadow` only, and one with `Forward | Shadow` — and one camera matching `RenderTarget{}`, and `getSceneLevelResources(Pass_Forward, RenderTarget{})` is called
-- **THEN** the returned vector contains exactly four elements in order: the camera UBO, the default directional light's UBO, the `Forward`-only light's UBO, and the `Forward | Shadow` light's UBO. The `Shadow`-only light is excluded.
+- **WHEN** a scene contains three explicit lights — one with pass mask `Forward` only, one with `Shadow` only, and one with `Forward | Shadow` — and one camera matching `RenderTarget{}`, and `getSceneLevelResources(Pass_Forward, RenderTarget{})` is called
+- **THEN** the returned vector contains exactly four elements in order: the camera UBO, the `Forward`-only light's UBO, the `Forward | Shadow` light's UBO, and the aggregated `SceneLightsUBO`. The `Shadow`-only light is excluded.
 
 #### Scenario: Empty result for no matching resources
 - **WHEN** a scene has one camera with target X, all lights have been configured to exclude `Pass_Shadow`, and `getSceneLevelResources(Pass_Shadow, target Y)` is called (where X ≠ Y)

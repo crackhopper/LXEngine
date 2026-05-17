@@ -299,7 +299,7 @@ void testViewportOverlayRotateCommitDrivesDirectionalLight() {
   (void)fixture.scene->getSceneLevelResources(LX_core::Pass_Forward,
                                               LX_core::RenderTarget{});
   const LX_core::Vec4f dir =
-      fixture.scene->getSceneLightsUBO()->param.directional[1].direction;
+      fixture.scene->getSceneLightsUBO()->param.directional[0].direction;
   EXPECT(std::abs(dir.x + 1.0f) <= 1e-4f && std::abs(dir.y) <= 1e-4f &&
              std::abs(dir.z) <= 1e-4f,
          "gizmo rotate commit updates directional light direction");

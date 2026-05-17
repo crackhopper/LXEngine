@@ -808,14 +808,21 @@ int main(int argc, char **argv) {
             },
     };
     demo::LxeEditorSession::RenderDebugCommandHooks renderDebugCommandHooks{
-        .dumpFrameGraphAttachment =
+        .dumpRenderTarget =
             [vulkanRenderer](
-                std::string_view attachmentName,
-                const std::filesystem::path &path,
-                const std::filesystem::path &screenPath) {
+                std::string_view targetName,
+                const std::optional<std::string> &cameraPath,
+                const std::filesystem::path &path) {
+              const std::string target{targetName};
               const auto dumped =
-                  vulkanRenderer->dumpFrameGraphAttachment(attachmentName, path,
-                                                           screenPath);
+                  target == "Forward" || target == "forward" ||
+                          target == "DebugOverlay" ||
+                          target == "debugOverlay" ||
+                          target == "debug_overlay"
+                      ? vulkanRenderer->dumpDebugRenderTarget(targetName,
+                                                              cameraPath, path)
+                      : vulkanRenderer->dumpFrameGraphAttachment(targetName,
+                                                                 path);
               return demo::LxeEditorSession::RenderDebugDumpResult{
                   .path = dumped.path,
                   .screenPath = dumped.screenPath,

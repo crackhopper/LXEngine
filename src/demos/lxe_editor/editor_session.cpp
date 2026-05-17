@@ -1005,33 +1005,44 @@ void LxeEditorSession::rebuildBindings(
           .displaySelect = m_displayCommandHooks.displaySelect,
       });
   m_commandBus->registerHandler(
-      "render", "render debug dump <attachment-name> [path]",
+      "render", "render debug dump <target> [camera-path] [path]",
       [this](std::vector<std::string> args) {
         if (args.size() < 3 || args[0] != "debug" || args[1] != "dump" ||
-            args.size() > 4) {
+            args.size() > 5) {
           return makeCommandError(
-              "usage: render debug dump <attachment-name> [path]");
+              "usage: render debug dump <target> [camera-path] [path]");
         }
-        if (!m_renderDebugCommandHooks.dumpFrameGraphAttachment) {
+        if (!m_renderDebugCommandHooks.dumpRenderTarget) {
           return makeCommandError("render debug dump unavailable");
         }
 
-        const std::filesystem::path outputPath =
-            args.size() == 4 ? std::filesystem::path(args[3])
-                             : defaultDumpPathForTarget(args[2]);
-        const std::filesystem::path screenPath =
-            pairedScreenDumpPath(outputPath);
+        const bool targetIsPass = args[2] == "Forward" ||
+                                  args[2] == "forward" ||
+                                  args[2] == "DebugOverlay" ||
+                                  args[2] == "debugOverlay" ||
+                                  args[2] == "debug_overlay";
+        std::optional<std::string> cameraPath;
+        std::filesystem::path outputPath = defaultDumpPathForTarget(args[2]);
+        if (args.size() == 4 && targetIsPass) {
+          cameraPath = args[3];
+        } else if (args.size() == 4) {
+          outputPath = std::filesystem::path(args[3]);
+        } else if (args.size() == 5) {
+          cameraPath = args[3];
+          outputPath = std::filesystem::path(args[4]);
+        }
         try {
           const RenderDebugDumpResult dump =
-              m_renderDebugCommandHooks.dumpFrameGraphAttachment(args[2],
-                                                                 outputPath,
-                                                                 screenPath);
+              m_renderDebugCommandHooks.dumpRenderTarget(args[2], cameraPath,
+                                                         outputPath);
           std::ostringstream structured;
           structured << "{\"path\":\""
-                     << jsonEscape(dump.path.generic_string())
-                     << "\",\"screenPath\":\""
-                     << jsonEscape(dump.screenPath.generic_string())
-                     << "\",\"width\":" << dump.width
+                     << jsonEscape(dump.path.generic_string()) << "\"";
+          if (!dump.screenPath.empty()) {
+            structured << ",\"screenPath\":\""
+                       << jsonEscape(dump.screenPath.generic_string()) << "\"";
+          }
+          structured << ",\"width\":" << dump.width
                      << ",\"height\":" << dump.height << ",\"format\":\""
                      << jsonEscape(dump.format) << "\"}";
           return makeCommandOk(

@@ -61,14 +61,13 @@ struct RenderingItem {
 };
 
 /*
-@source_analysis.section Scene：扁平容器与默认 seed
+@source_analysis.section Scene：扁平容器
 Scene 是一层薄壳：三个平铺 vector（renderables / cameras / lights）+ 一个 sceneName。
 它不维护层级（节点之间的 parent/child 关系挂在 SceneNode 上）、不做 z-sort、不持有
 render state。这种扁平 ownership 让"哪些对象属于这一帧"是可枚举的事实，而不是
 需要遍历某种隐式树才能复原的状态。
 
-构造时仍然 seed 一个 DirectionalLight，方便那些不走完整 renderer 初始化的测试路径。
-camera 不再单独 seed；测试和 demo 需要显式注册 camera-bearing SceneNode。
+Scene 本身不隐式创建 camera 或 light；测试和 demo 需要显式注册带组件的 SceneNode。
 
 `enable_shared_from_this` 的存在是为了在 `addRenderable` 里给挂进来的 SceneNode 写
 弱反向引用 `weak_from_this()`，让 shared material 重验证传播能从 node 找回 scene。
@@ -82,7 +81,6 @@ public:
     if (m_sceneName.empty()) {
       m_sceneName = "Scene";
     }
-    m_lights.push_back(std::make_shared<DirectionalLight>());
   }
   ~Scene();
 
