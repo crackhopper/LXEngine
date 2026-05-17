@@ -343,12 +343,15 @@ VulkanResourceManager::createOrGetFrameGraphAttachment(
     const auto &attachment = it->second;
     if (attachment.format != format || attachment.aspect != aspect ||
         attachment.extent.width != extent.width ||
-        attachment.extent.height != extent.height) {
+        attachment.extent.height != extent.height ||
+        (attachment.usage & usage) != usage) {
       const std::string &resourceName =
           GlobalStringTable::get().getName(name.id);
       throw std::runtime_error(
           "Frame graph attachment reuse mismatch for resource '" +
-          resourceName + "'");
+          resourceName +
+          "'; format/aspect/extent must match and requested usage must be a "
+          "subset of existing usage");
     }
     return it->second;
   }
@@ -358,6 +361,7 @@ VulkanResourceManager::createOrGetFrameGraphAttachment(
       m_device, extent.width, extent.height, format, usage, aspect);
   attachment.format = format;
   attachment.aspect = aspect;
+  attachment.usage = usage;
   attachment.currentLayout = attachment.texture->getCurrentLayout();
   attachment.extent = extent;
 

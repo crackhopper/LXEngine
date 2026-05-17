@@ -6,6 +6,7 @@
 #include "core/utils/string_table.hpp"
 #include "pipelines/pipeline_cache.hpp"
 #include "pipelines/pipeline.hpp"
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string_view>
@@ -38,6 +39,7 @@ struct VulkanFrameGraphAttachment {
   std::unique_ptr<VulkanTexture> texture;
   VkFormat format = VK_FORMAT_UNDEFINED;
   VkImageAspectFlags aspect = 0;
+  VkImageUsageFlags usage = 0;
   VkImageLayout currentLayout = VK_IMAGE_LAYOUT_UNDEFINED;
   VkExtent2D extent{};
 };

@@ -6,6 +6,8 @@
 #include "core/utils/env.hpp"
 
 #include <iostream>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 int main() {
@@ -78,6 +80,71 @@ int main() {
     }
     if (sampledAttachment->getSampler() == VK_NULL_HANDLE) {
       std::cerr << "Sampled attachment sampler is null\n";
+      return 1;
+    }
+
+    cmdMgr->beginFrame(0);
+    auto transitionCmd = cmdMgr->allocateBuffer();
+    transitionCmd->begin();
+    auto sampledColorAttachment =
+        LX_core::backend::VulkanTexture::createForAttachment(
+            *device, 64, 64, VK_FORMAT_R8G8B8A8_UNORM,
+            VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+            VK_IMAGE_ASPECT_COLOR_BIT);
+    sampledColorAttachment->transitionLayout(
+        *transitionCmd, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+    if (sampledColorAttachment->getCurrentLayout() !=
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+      std::cerr << "Color sampled attachment layout transition failed\n";
+      return 1;
+    }
+
+    sampledAttachment->transitionLayout(
+        *transitionCmd, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_IMAGE_ASPECT_DEPTH_BIT);
+    if (sampledAttachment->getCurrentLayout() !=
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+      std::cerr << "Depth sampled attachment layout transition failed\n";
+      return 1;
+    }
+
+    bool unsupportedTransitionRejected = false;
+    try {
+      sampledColorAttachment->transitionLayout(
+          *transitionCmd, VK_IMAGE_LAYOUT_UNDEFINED,
+          VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+          VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+    } catch (const std::runtime_error &e) {
+      unsupportedTransitionRejected =
+          std::string(e.what()).find("Unsupported layout transition") !=
+          std::string::npos;
+    }
+    if (!unsupportedTransitionRejected) {
+      std::cerr << "Unsupported texture layout transition was not rejected\n";
+      return 1;
+    }
+    if (sampledColorAttachment->getCurrentLayout() !=
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+      std::cerr << "Rejected transition changed the texture layout\n";
+      return 1;
+    }
+    transitionCmd->end();
+
+    bool invalidAspectRejected = false;
+    try {
+      (void)LX_core::backend::VulkanTexture::createForAttachment(
+          *device, 32, 32, VK_FORMAT_R8G8B8A8_UNORM,
+          VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+          VK_IMAGE_ASPECT_DEPTH_BIT);
+    } catch (const std::runtime_error &e) {
+      invalidAspectRejected =
+          std::string(e.what()).find("Image aspect") != std::string::npos;
+    }
+    if (!invalidAspectRejected) {
+      std::cerr << "Invalid color format/depth aspect attachment was not rejected clearly\n";
       return 1;
     }
 

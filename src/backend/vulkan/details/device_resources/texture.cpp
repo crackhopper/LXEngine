@@ -2,11 +2,107 @@
 #include "../commands/command_buffer.hpp"
 #include "../device.hpp"
 #include "buffer.hpp"
-#include <iostream>
 #include <stdexcept>
 
 namespace LX_core {
 namespace backend {
+
+namespace {
+bool formatHasDepthAspect(VkFormat format) {
+  switch (format) {
+  case VK_FORMAT_D16_UNORM:
+  case VK_FORMAT_X8_D24_UNORM_PACK32:
+  case VK_FORMAT_D32_SFLOAT:
+  case VK_FORMAT_D16_UNORM_S8_UINT:
+  case VK_FORMAT_D24_UNORM_S8_UINT:
+  case VK_FORMAT_D32_SFLOAT_S8_UINT:
+    return true;
+  default:
+    return false;
+  }
+}
+
+bool formatHasStencilAspect(VkFormat format) {
+  switch (format) {
+  case VK_FORMAT_S8_UINT:
+  case VK_FORMAT_D16_UNORM_S8_UINT:
+  case VK_FORMAT_D24_UNORM_S8_UINT:
+  case VK_FORMAT_D32_SFLOAT_S8_UINT:
+    return true;
+  default:
+    return false;
+  }
+}
+
+bool formatHasColorAspect(VkFormat format) {
+  return !formatHasDepthAspect(format) && !formatHasStencilAspect(format);
+}
+
+void validateImageAspect(VkFormat format, VkImageAspectFlags aspectMask) {
+  constexpr VkImageAspectFlags kSupportedAspects =
+      VK_IMAGE_ASPECT_COLOR_BIT | VK_IMAGE_ASPECT_DEPTH_BIT |
+      VK_IMAGE_ASPECT_STENCIL_BIT;
+  if (aspectMask == 0) {
+    throw std::runtime_error("Image aspect mask must not be empty");
+  }
+  if ((aspectMask & ~kSupportedAspects) != 0) {
+    throw std::runtime_error("Image aspect mask contains unsupported bits");
+  }
+  if ((aspectMask & VK_IMAGE_ASPECT_COLOR_BIT) != 0 &&
+      !formatHasColorAspect(format)) {
+    throw std::runtime_error("Image aspect color is incompatible with format");
+  }
+  if ((aspectMask & VK_IMAGE_ASPECT_DEPTH_BIT) != 0 &&
+      !formatHasDepthAspect(format)) {
+    throw std::runtime_error("Image aspect depth is incompatible with format");
+  }
+  if ((aspectMask & VK_IMAGE_ASPECT_STENCIL_BIT) != 0 &&
+      !formatHasStencilAspect(format)) {
+    throw std::runtime_error("Image aspect stencil is incompatible with format");
+  }
+}
+
+class VulkanTextureCleanupGuard {
+public:
+  VulkanTextureCleanupGuard(VkDevice device, VkImage &image,
+                            VkDeviceMemory &memory, VkImageView &imageView,
+                            VkSampler &sampler)
+      : m_device(device), m_image(image), m_memory(memory),
+        m_imageView(imageView), m_sampler(sampler) {}
+
+  ~VulkanTextureCleanupGuard() {
+    if (!m_active || m_device == VK_NULL_HANDLE) {
+      return;
+    }
+    if (m_sampler != VK_NULL_HANDLE) {
+      vkDestroySampler(m_device, m_sampler, nullptr);
+      m_sampler = VK_NULL_HANDLE;
+    }
+    if (m_imageView != VK_NULL_HANDLE) {
+      vkDestroyImageView(m_device, m_imageView, nullptr);
+      m_imageView = VK_NULL_HANDLE;
+    }
+    if (m_image != VK_NULL_HANDLE) {
+      vkDestroyImage(m_device, m_image, nullptr);
+      m_image = VK_NULL_HANDLE;
+    }
+    if (m_memory != VK_NULL_HANDLE) {
+      vkFreeMemory(m_device, m_memory, nullptr);
+      m_memory = VK_NULL_HANDLE;
+    }
+  }
+
+  void release() { m_active = false; }
+
+private:
+  VkDevice m_device = VK_NULL_HANDLE;
+  VkImage &m_image;
+  VkDeviceMemory &m_memory;
+  VkImageView &m_imageView;
+  VkSampler &m_sampler;
+  bool m_active = true;
+};
+} // namespace
 
 VulkanTexture::VulkanTexture(Token, VulkanDevice &device,
                              u32 width, u32 height,
@@ -14,6 +110,10 @@ VulkanTexture::VulkanTexture(Token, VulkanDevice &device,
                              VkImageUsageFlags usage, VkFilter filter)
     : m_device(device.getLogicalDevice()), m_width(width), m_height(height),
       m_format(format), m_usage(usage) {
+  validateImageAspect(format, VK_IMAGE_ASPECT_COLOR_BIT);
+  VulkanTextureCleanupGuard cleanup(m_device, m_image, m_memory, m_imageView,
+                                    m_sampler);
+
   // Create image
   VkImageCreateInfo imageInfo{};
   imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -54,6 +154,7 @@ VulkanTexture::VulkanTexture(Token, VulkanDevice &device,
   // Create image view and sampler
   createImageView(VK_IMAGE_ASPECT_COLOR_BIT);
   createSampler(filter, VK_SAMPLER_ADDRESS_MODE_REPEAT);
+  cleanup.release();
 }
 
 VulkanTexture::VulkanTexture(Token, VulkanDevice &device,
@@ -63,6 +164,10 @@ VulkanTexture::VulkanTexture(Token, VulkanDevice &device,
                              VkImageAspectFlags aspectMask)
     : m_device(device.getLogicalDevice()), m_width(width), m_height(height),
       m_format(format), m_usage(usage) {
+  validateImageAspect(format, aspectMask);
+  VulkanTextureCleanupGuard cleanup(m_device, m_image, m_memory, m_imageView,
+                                    m_sampler);
+
   VkImageCreateInfo imageInfo{};
   imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
   imageInfo.imageType = VK_IMAGE_TYPE_2D;
@@ -102,6 +207,7 @@ VulkanTexture::VulkanTexture(Token, VulkanDevice &device,
   if ((usage & VK_IMAGE_USAGE_SAMPLED_BIT) != 0) {
     createSampler(VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
   }
+  cleanup.release();
 }
 
 VulkanTexture::~VulkanTexture() {
@@ -170,10 +276,59 @@ void VulkanTexture::transitionLayout(VulkanCommandBuffer &cmd,
                                      VkImageLayout newLayout,
                                      VkPipelineStageFlags pipelineStage,
                                      VkImageAspectFlags aspectMask) {
+  VkAccessFlags srcAccessMask = 0;
+  VkAccessFlags dstAccessMask = 0;
+  VkPipelineStageFlags sourceStage = 0;
+  VkPipelineStageFlags destinationStage = 0;
+
+  if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED &&
+      newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+    srcAccessMask = 0;
+    dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+    destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+  } else if (oldLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL &&
+             newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+    srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    sourceStage = pipelineStage;
+    destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+  } else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL &&
+             newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+    srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+    destinationStage = pipelineStage;
+  } else if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED &&
+             newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
+    srcAccessMask = 0;
+    dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+                    VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+    destinationStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+  } else if (oldLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL &&
+             newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+    srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    sourceStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+                  VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+    destinationStage = pipelineStage;
+  } else if (oldLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL &&
+             newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+    srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    sourceStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    destinationStage = pipelineStage;
+  } else {
+    throw std::runtime_error("Unsupported layout transition");
+  }
+
   VkImageMemoryBarrier barrier{};
   barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
   barrier.oldLayout = oldLayout;
   barrier.newLayout = newLayout;
+  barrier.srcAccessMask = srcAccessMask;
+  barrier.dstAccessMask = dstAccessMask;
   barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
   barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
   barrier.image = m_image;
@@ -182,39 +337,6 @@ void VulkanTexture::transitionLayout(VulkanCommandBuffer &cmd,
   barrier.subresourceRange.levelCount = 1;
   barrier.subresourceRange.baseArrayLayer = 0;
   barrier.subresourceRange.layerCount = 1;
-
-  VkPipelineStageFlags sourceStage;
-  VkPipelineStageFlags destinationStage;
-
-  if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED &&
-      newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
-    barrier.srcAccessMask = 0;
-    barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-    destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-  } else if (oldLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL &&
-             newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
-    barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
-    barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    sourceStage = pipelineStage;
-    destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-  } else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL &&
-             newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
-    barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-    sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-    destinationStage = pipelineStage;
-  } else if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED &&
-             newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
-    barrier.srcAccessMask = 0;
-    barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
-                            VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-
-    sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-    destinationStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-  } else {
-    std::cerr << "Warning: Unsupported layout transition!" << std::endl;
-  }
 
   vkCmdPipelineBarrier(cmd.getHandle(), sourceStage, destinationStage, 0, 0,
                        nullptr, 0, nullptr, 1, &barrier);

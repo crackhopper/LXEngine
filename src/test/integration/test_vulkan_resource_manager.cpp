@@ -25,6 +25,8 @@
 #include <algorithm>
 #include <new>
 #include <iostream>
+#include <stdexcept>
+#include <string>
 #include <type_traits>
 
 namespace {
@@ -332,6 +334,29 @@ int main() {
     if (!foundFrameGraphDepth ||
         &foundFrameGraphDepth->get() != &frameGraphDepth) {
       std::cerr << "Frame graph attachment lookup failed\n";
+      return 1;
+    }
+    if ((frameGraphDepth.usage & VK_IMAGE_USAGE_SAMPLED_BIT) == 0) {
+      std::cerr << "Frame graph attachment usage metadata did not retain SAMPLED\n";
+      return 1;
+    }
+
+    (void)resourceManager->createOrGetFrameGraphAttachment(
+        LX_core::StringID("test.color"), frameGraphExtent,
+        surfaceFormat.format, VK_IMAGE_ASPECT_COLOR_BIT,
+        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
+    bool usageMismatchRejected = false;
+    try {
+      (void)resourceManager->createOrGetFrameGraphAttachment(
+          LX_core::StringID("test.color"), frameGraphExtent,
+          surfaceFormat.format, VK_IMAGE_ASPECT_COLOR_BIT,
+          VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
+    } catch (const std::runtime_error &e) {
+      usageMismatchRejected =
+          std::string(e.what()).find("usage") != std::string::npos;
+    }
+    if (!usageMismatchRejected) {
+      std::cerr << "Frame graph attachment usage mismatch was not rejected\n";
       return 1;
     }
 
