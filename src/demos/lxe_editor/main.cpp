@@ -807,7 +807,22 @@ int main(int argc, char **argv) {
                                        startupDisplay.key, key);
             },
     };
-    session.initialize(displayCommandHooks);
+    demo::LxeEditorSession::RenderDebugCommandHooks renderDebugCommandHooks{
+        .dumpFrameGraphAttachment =
+            [vulkanRenderer](
+                std::string_view attachmentName,
+                const std::optional<std::filesystem::path> &path) {
+              const auto dumped =
+                  vulkanRenderer->dumpFrameGraphAttachment(attachmentName, path);
+              return demo::LxeEditorSession::RenderDebugDumpResult{
+                  .path = dumped.path,
+                  .width = dumped.width,
+                  .height = dumped.height,
+                  .format = dumped.format,
+              };
+            },
+    };
+    session.initialize(displayCommandHooks, renderDebugCommandHooks);
     ClosePromptState closePrompt;
     demo::ApiTokenState apiTokenState(resolveRuntimePath("data/lxe_editor"));
     const std::string apiToken =

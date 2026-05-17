@@ -153,8 +153,11 @@ LxeEditorSession::LxeEditorSession(CameraRig &rig, UiOverlay &ui,
 
 LxeEditorSession::~LxeEditorSession() = default;
 
-void LxeEditorSession::initialize(DisplayCommandHooks displayCommandHooks) {
+void LxeEditorSession::initialize(
+    DisplayCommandHooks displayCommandHooks,
+    RenderDebugCommandHooks renderDebugCommandHooks) {
   m_displayCommandHooks = std::move(displayCommandHooks);
+  m_renderDebugCommandHooks = std::move(renderDebugCommandHooks);
   m_editorData = m_editorDataState.load();
   std::optional<EditorSceneStateDocument> editorSceneState;
   bool loadedRuntime = false;
@@ -970,6 +973,39 @@ void LxeEditorSession::rebuildBindings(
           .displayConfigGetJson = m_displayCommandHooks.displayConfigGetJson,
           .displayConfigSet = m_displayCommandHooks.displayConfigSet,
           .displaySelect = m_displayCommandHooks.displaySelect,
+      });
+  m_commandBus->registerHandler(
+      "render", "render debug dump <attachment-name> [path]",
+      [this](std::vector<std::string> args) {
+        if (args.size() < 3 || args[0] != "debug" || args[1] != "dump" ||
+            args.size() > 4) {
+          return makeCommandError(
+              "usage: render debug dump <attachment-name> [path]");
+        }
+        if (!m_renderDebugCommandHooks.dumpFrameGraphAttachment) {
+          return makeCommandError("render debug dump unavailable");
+        }
+
+        std::optional<std::filesystem::path> outputPath;
+        if (args.size() == 4) {
+          outputPath = std::filesystem::path(args[3]);
+        }
+        try {
+          const RenderDebugDumpResult dump =
+              m_renderDebugCommandHooks.dumpFrameGraphAttachment(args[2],
+                                                                 outputPath);
+          std::ostringstream structured;
+          structured << "{\"path\":\""
+                     << jsonEscape(dump.path.generic_string())
+                     << "\",\"width\":" << dump.width
+                     << ",\"height\":" << dump.height << ",\"format\":\""
+                     << jsonEscape(dump.format) << "\"}";
+          return makeCommandOk(
+              "render target dumped: " + dump.path.generic_string(),
+              structured.str());
+        } catch (const std::exception &e) {
+          return makeCommandError(e.what());
+        }
       });
 
   m_ui.attach(

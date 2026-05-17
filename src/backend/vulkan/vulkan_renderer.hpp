@@ -1,7 +1,12 @@
 #pragma once
 #include "core/rhi/renderer.hpp"
+#include "core/platform/types.hpp"
+#include <filesystem>
 #include <functional>
 #include <memory>
+#include <optional>
+#include <string>
+#include <string_view>
 #include <vector>
 
 namespace LX_core::backend {
@@ -10,6 +15,13 @@ class VulkanRenderer;
 using VulkanRendererUniquePtr = std::unique_ptr<VulkanRenderer>;
 class VulkanRenderer : public gpu::Renderer {
 public:
+  struct FrameGraphAttachmentDumpResult final {
+    std::filesystem::path path;
+    u32 width = 0;
+    u32 height = 0;
+    std::string format;
+  };
+
   struct Token {};
   explicit VulkanRenderer(Token token);
   ~VulkanRenderer() override;
@@ -34,6 +46,9 @@ public:
   [[nodiscard]] usize compiledFrameGraphPassCount() const;
   [[nodiscard]] usize frameGraphAttachmentCount() const;
   [[nodiscard]] usize initSceneCallCount() const;
+  FrameGraphAttachmentDumpResult dumpFrameGraphAttachment(
+      std::string_view attachmentName,
+      const std::optional<std::filesystem::path> &path = std::nullopt);
 
 private:
   std::unique_ptr<VulkanRendererImpl> p_impl;

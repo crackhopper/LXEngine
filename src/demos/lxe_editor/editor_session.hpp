@@ -35,6 +35,13 @@ class SceneInteractionController;
 
 class LxeEditorSession final {
 public:
+  struct RenderDebugDumpResult final {
+    std::filesystem::path path;
+    u32 width = 0;
+    u32 height = 0;
+    std::string format;
+  };
+
   struct DisplayCommandHooks final {
     std::function<std::string()> displayListJson;
     std::function<std::string()> displayActiveJson;
@@ -44,11 +51,18 @@ public:
     std::function<std::string(std::string_view)> displaySelect;
   };
 
+  struct RenderDebugCommandHooks final {
+    std::function<RenderDebugDumpResult(
+        std::string_view, const std::optional<std::filesystem::path> &)>
+        dumpFrameGraphAttachment;
+  };
+
   LxeEditorSession(CameraRig &rig, UiOverlay &ui,
                    LX_core::EditorState &editorState);
   ~LxeEditorSession();
 
-  void initialize(DisplayCommandHooks displayCommandHooks = {});
+  void initialize(DisplayCommandHooks displayCommandHooks = {},
+                  RenderDebugCommandHooks renderDebugCommandHooks = {});
 
   [[nodiscard]] LX_core::SceneSharedPtr scene() const;
   [[nodiscard]] LX_core::CameraComponent &editorCamera() const;
@@ -110,6 +124,7 @@ private:
   EditorDataDocument m_editorData;
   RecordingController m_recording;
   DisplayCommandHooks m_displayCommandHooks;
+  RenderDebugCommandHooks m_renderDebugCommandHooks;
   LX_core::Vec2f m_windowSize{1280.0f, 720.0f};
   usize m_bindingsGeneration = 0;
   bool m_debugEnabled = false;

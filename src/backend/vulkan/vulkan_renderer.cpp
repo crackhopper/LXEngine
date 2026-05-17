@@ -11,11 +11,16 @@
 #include "details/commands/command_buffer_manager.hpp"
 #include "details/descriptors/descriptor_manager.hpp"
 #include "details/device.hpp"
+#include "details/device_resources/buffer.hpp"
 #include "details/device_resources/texture.hpp"
 #include "details/render_objects/framebuffer.hpp"
 #include "details/render_objects/render_pass.hpp"
 #include "details/render_objects/swapchain.hpp"
 #include "details/resource_manager.hpp"
+#include <algorithm>
+#include <chrono>
+#include <filesystem>
+#include <fstream>
 #include <functional>
 #include <iostream>
 #include <optional>
@@ -69,6 +74,34 @@ VkFormat toVkFormat(LX_core::ImageFormat format) {
     return VK_FORMAT_D32_SFLOAT_S8_UINT;
   }
   throw std::runtime_error("Unsupported ImageFormat");
+}
+
+std::string vkFormatName(VkFormat format) {
+  switch (format) {
+  case VK_FORMAT_D32_SFLOAT:
+    return "D32_SFLOAT";
+  case VK_FORMAT_D24_UNORM_S8_UINT:
+    return "D24_UNORM_S8_UINT";
+  case VK_FORMAT_D32_SFLOAT_S8_UINT:
+    return "D32_SFLOAT_S8_UINT";
+  case VK_FORMAT_R8G8B8A8_UNORM:
+    return "R8G8B8A8_UNORM";
+  case VK_FORMAT_B8G8R8A8_UNORM:
+    return "B8G8R8A8_UNORM";
+  default:
+    return "VkFormat(" + std::to_string(static_cast<int>(format)) + ")";
+  }
+}
+
+std::string sanitizeAttachmentName(std::string_view name) {
+  std::string out;
+  out.reserve(name.size());
+  for (const char c : name) {
+    const bool safe = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                      (c >= '0' && c <= '9') || c == '-' || c == '_';
+    out.push_back(safe ? c : '_');
+  }
+  return out.empty() ? "attachment" : out;
 }
 } // namespace
 
@@ -552,6 +585,125 @@ public:
     return m_initSceneCallCount;
   }
 
+  VulkanRenderer::FrameGraphAttachmentDumpResult dumpFrameGraphAttachment(
+      std::string_view attachmentName,
+      const std::optional<std::filesystem::path> &requestedPath) {
+    if (!m_resourceManager || !m_cmdBufferMgr || !m_device) {
+      throw std::runtime_error("renderer is not initialized");
+    }
+
+    const StringID attachmentId{std::string(attachmentName)};
+    auto attachmentOpt =
+        m_resourceManager->getFrameGraphAttachment(attachmentId);
+    if (!attachmentOpt.has_value()) {
+      throw std::runtime_error("frame graph attachment not available: " +
+                               std::string(attachmentName));
+    }
+    auto &attachment = attachmentOpt->get();
+    if (attachment.format != VK_FORMAT_D32_SFLOAT) {
+      throw std::runtime_error("render debug dump only supports D32_SFLOAT "
+                               "depth attachments for now; got " +
+                               vkFormatName(attachment.format));
+    }
+
+    const u32 width = attachment.extent.width;
+    const u32 height = attachment.extent.height;
+    const VkDeviceSize byteSize =
+        static_cast<VkDeviceSize>(width) * static_cast<VkDeviceSize>(height) *
+        sizeof(float);
+    if (width == 0 || height == 0 || byteSize == 0) {
+      throw std::runtime_error("frame graph attachment has empty extent: " +
+                               std::string(attachmentName));
+    }
+
+    const auto timestamp =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch())
+            .count();
+    const std::filesystem::path path = requestedPath.value_or(
+        std::filesystem::path("data/debug/render_targets") /
+        (std::to_string(timestamp) + "-" +
+         sanitizeAttachmentName(attachmentName) + ".pgm"));
+
+    auto readback = VulkanBuffer::create(
+        *m_device, byteSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+    m_device->waitIdle();
+    const VkImageLayout previousLayout = attachment.currentLayout;
+    auto cmd = m_cmdBufferMgr->beginSingleTimeCommands();
+    transitionFrameGraphAttachment(
+        LX_core::FrameGraphResourceRef{attachmentId,
+                                       LX_core::FrameGraphAttachmentKind::Depth},
+        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_ACCESS_TRANSFER_READ_BIT, *cmd);
+
+    VkBufferImageCopy region{};
+    region.bufferOffset = 0;
+    region.bufferRowLength = 0;
+    region.bufferImageHeight = 0;
+    region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    region.imageSubresource.mipLevel = 0;
+    region.imageSubresource.baseArrayLayer = 0;
+    region.imageSubresource.layerCount = 1;
+    region.imageOffset = {0, 0, 0};
+    region.imageExtent = {width, height, 1};
+    vkCmdCopyImageToBuffer(cmd->getHandle(), attachment.texture->getHandle(),
+                           VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                           readback->getHandle(), 1, &region);
+
+    const bool restoreShaderRead =
+        previousLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    transitionFrameGraphAttachment(
+        LX_core::FrameGraphResourceRef{attachmentId,
+                                       LX_core::FrameGraphAttachmentKind::Depth},
+        previousLayout,
+        restoreShaderRead ? VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT
+                          : (VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+                             VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT),
+        restoreShaderRead ? VK_ACCESS_SHADER_READ_BIT
+                          : VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+        *cmd);
+    m_cmdBufferMgr->endSingleTimeCommands(std::move(cmd),
+                                          m_device->getGraphicsQueue());
+
+    const auto *depthPixels = static_cast<const float *>(readback->map());
+    std::vector<unsigned char> pgmPixels;
+    pgmPixels.reserve(static_cast<usize>(width) * static_cast<usize>(height));
+    for (u32 y = 0; y < height; ++y) {
+      for (u32 x = 0; x < width; ++x) {
+        const float depth = std::clamp(
+            depthPixels[static_cast<usize>(y) * width + x], 0.0f, 1.0f);
+        pgmPixels.push_back(static_cast<unsigned char>(depth * 255.0f));
+      }
+    }
+    readback->unmap();
+
+    if (!path.parent_path().empty()) {
+      std::filesystem::create_directories(path.parent_path());
+    }
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    if (!out) {
+      throw std::runtime_error("failed to open render target dump file: " +
+                               path.string());
+    }
+    out << "P5\n" << width << " " << height << "\n255\n";
+    out.write(reinterpret_cast<const char *>(pgmPixels.data()),
+              static_cast<std::streamsize>(pgmPixels.size()));
+    if (!out) {
+      throw std::runtime_error("failed to write render target dump file: " +
+                               path.string());
+    }
+
+    return VulkanRenderer::FrameGraphAttachmentDumpResult{
+        .path = path,
+        .width = width,
+        .height = height,
+        .format = vkFormatName(attachment.format),
+    };
+  }
+
 private:
   usize findFinalSwapchainPassIndex() const {
     const auto &passes = m_compiledFrameGraph.getPasses();
@@ -735,6 +887,10 @@ private:
       srcStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
                  VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
       srcAccess = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    } else if (attachment.currentLayout ==
+               VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) {
+      srcStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+      srcAccess = VK_ACCESS_TRANSFER_READ_BIT;
     }
 
     VkImageMemoryBarrier barrier{};
@@ -774,9 +930,9 @@ private:
       const VkImageUsageFlags usage =
           kind == LX_core::FrameGraphAttachmentKind::Color
               ? (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
-                 VK_IMAGE_USAGE_SAMPLED_BIT)
+                 VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT)
               : (VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
-                 VK_IMAGE_USAGE_SAMPLED_BIT);
+                 VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
       auto &attachment = m_resourceManager->createOrGetFrameGraphAttachment(
           write.resource.name, fallbackExtent, toVkFormat(format),
           attachmentAspect(kind), usage);
@@ -917,6 +1073,13 @@ usize VulkanRenderer::frameGraphAttachmentCount() const {
 
 usize VulkanRenderer::initSceneCallCount() const {
   return p_impl->initSceneCallCount();
+}
+
+VulkanRenderer::FrameGraphAttachmentDumpResult
+VulkanRenderer::dumpFrameGraphAttachment(
+    std::string_view attachmentName,
+    const std::optional<std::filesystem::path> &path) {
+  return p_impl->dumpFrameGraphAttachment(attachmentName, path);
 }
 
 } // namespace LX_core::backend
