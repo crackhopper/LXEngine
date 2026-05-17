@@ -171,6 +171,11 @@ The demo SHALL register its UI drawing function through `LX_core::backend::Vulka
 - **WHEN** the user drags the Directional Light `color` widget
 - **THEN** `light.ubo->isDirty()` SHALL be set to `true` within that frame and the next rendered frame SHALL reflect the new light color
 
+#### Scenario: Editing directional shadow parameters changes shadow data
+
+- **WHEN** the user edits Directional Light shadow strength, shadow distance, or cascade count through the Inspector or CommandBus
+- **THEN** the attached `DirectionalLight` SHALL update the matching shadow parameter, mark its UBO dirty, and preserve the values when the scene is saved and reloaded
+
 ### Requirement: Demo README
 
 `src/demos/lxe_editor/README.md` SHALL contain, at minimum, these sections:

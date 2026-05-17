@@ -1,9 +1,9 @@
 #pragma once
-#include "core/rhi/gpu_resource.hpp"
+#include "core/frame_graph/pass.hpp"
 #include "core/math/bounds.hpp"
 #include "core/math/mat.hpp"
 #include "core/math/vec.hpp"
-#include "core/frame_graph/pass.hpp"
+#include "core/rhi/gpu_resource.hpp"
 #include "core/utils/string_table.hpp"
 
 #include <cstdint>
@@ -67,13 +67,9 @@ struct alignas(16) DirectionalLightData : public IGpuResource {
     return ResourceType::UniformBuffer;
   }
   virtual const void *getRawData() const override { return &param; }
-  virtual u32 getByteSize() const override {
-    return ResourceSize;
-  }
+  virtual u32 getByteSize() const override { return ResourceSize; }
 
-  StringID getBindingName() const override {
-    return m_bindingName;
-  }
+  StringID getBindingName() const override { return m_bindingName; }
 
 private:
   StringID m_bindingName;
@@ -136,6 +132,7 @@ public:
   [[nodiscard]] float getIntensity() const;
   [[nodiscard]] Mat4f getShadowViewProj() const;
   [[nodiscard]] Vec4f getShadowParams() const;
+  [[nodiscard]] float getShadowDistance() const;
   [[nodiscard]] Vec4f getCascadeSplits() const;
   [[nodiscard]] u32 getShadowCascadeCount() const;
   [[nodiscard]] std::shared_ptr<SceneNode> getSceneNode() const override;

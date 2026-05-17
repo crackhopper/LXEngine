@@ -1,6 +1,6 @@
 # 光源：绑定到节点的 scene-level 光照数据
 
-光源像挂在舞台上的灯具。节点决定灯具在场景里的身份和位置，light 对象决定颜色、强度、方向、范围和它参加哪些 pass。
+光源像挂在舞台上的灯具。节点决定灯具在场景里的身份和位置，light 对象决定颜色、强度、方向、范围和它参加哪些 pass。v0.1.1 中，第一盏 directional light 还承担 CSM 主光源角色。
 
 ## 当前光源对象
 
@@ -21,9 +21,21 @@ light:                         # -> LightNodeState
   direction: [-0.3, -1.0, -0.5]
   color: [1.0, 0.98, 0.9]
   intensity: 1.0
+  shadowStrength: 0.7          # -> DirectionalLight::setShadowStrength()
+  shadowDistance: 80.0         # -> DirectionalLight::setShadowDistance()
+  shadowCascadeCount: 4        # -> DirectionalLight::setShadowCascadeCount()
 ```
 
 运行时装配时，`SceneRuntime` 会创建对应 light，并通过 `Scene::attachLight(node, light)` 绑定到节点。
+
+## Directional shadow 数据
+
+| 字段 | 当前作用 |
+|---|---|
+| `DirectionalLightData.shadowViewProj` | 当前 shadow pass 的 light-space 矩阵 |
+| `DirectionalLightData.cascadeViewProj[4]` | Forward shader 采样 CSM 时使用的四个矩阵 |
+| `DirectionalLightData.cascadeSplits` | 相机 view-space 的 cascade 切分点 |
+| `DirectionalLightData.shadowParams` | shadow map size、bias、strength、cascade count |
 
 ## 继续阅读
 

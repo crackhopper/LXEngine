@@ -12,6 +12,12 @@ nav:
           - 加载与保存场景: tutorial/start-project/03-load-and-save-scene.md
           - 基础编辑: tutorial/start-project/04-basic-authoring.md
           - 启动排错: tutorial/start-project/05-troubleshooting.md
+      - Shadow 阶段:
+          - 总览: tutorial/shadow-era/index.md
+          - 打开场景: tutorial/shadow-era/01-open-shadow-scene.md
+          - Shadow pass: tutorial/shadow-era/02-shadow-pass-flow.md
+          - CSM 读取: tutorial/shadow-era/03-csm-reading-path.md
+          - 调参与边界: tutorial/shadow-era/04-shadow-tuning-and-limits.md
       - 自定义材质:
           - 总览: tutorial/custom-material/index.md
           - 材质积木: tutorial/custom-material/01-material-building-blocks.md

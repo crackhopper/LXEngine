@@ -64,12 +64,11 @@ Vec3f DirectionalLight::getDirection() const {
 }
 
 Vec3f DirectionalLight::getColor() const {
-  return Vec3f{m_ubo->param.color.x, m_ubo->param.color.y, m_ubo->param.color.z};
+  return Vec3f{m_ubo->param.color.x, m_ubo->param.color.y,
+               m_ubo->param.color.z};
 }
 
-float DirectionalLight::getIntensity() const {
-  return m_ubo->param.color.w;
-}
+float DirectionalLight::getIntensity() const { return m_ubo->param.color.w; }
 
 Mat4f DirectionalLight::getShadowViewProj() const {
   return m_ubo->param.shadowViewProj;
@@ -78,6 +77,8 @@ Mat4f DirectionalLight::getShadowViewProj() const {
 Vec4f DirectionalLight::getShadowParams() const {
   return m_ubo->param.shadowParams;
 }
+
+float DirectionalLight::getShadowDistance() const { return m_shadowDistance; }
 
 Vec4f DirectionalLight::getCascadeSplits() const {
   return m_ubo->param.cascadeSplits;
@@ -153,9 +154,8 @@ void DirectionalLight::updateShadowCascadesForCamera(
   splitLambda = std::clamp(splitLambda, 0.0f, 1.0f);
   const u32 cascadeCount = getShadowCascadeCount();
   const float nearPlane = std::max(0.001f, camera.getNearPlane());
-  const float farPlane =
-      std::max(nearPlane + 0.001f,
-               std::min(camera.getFarPlane(), m_shadowDistance));
+  const float farPlane = std::max(
+      nearPlane + 0.001f, std::min(camera.getFarPlane(), m_shadowDistance));
   const float clipRange = farPlane - nearPlane;
 
   Vec3f lightDir = getDirection();
@@ -248,9 +248,8 @@ void DirectionalLight::updateShadowCascadesForCamera(
       maxY = std::ceil(maxY / texelSize) * texelSize;
     }
 
-    const Mat4f proj =
-        Mat4f::orthographic(minX, maxX, minY, maxY, minZ - radius,
-                            maxZ + radius);
+    const Mat4f proj = Mat4f::orthographic(minX, maxX, minY, maxY,
+                                           minZ - radius, maxZ + radius);
     m_ubo->param.cascadeViewProj[cascadeIndex] = proj * view;
     previousSplit = split;
   }
@@ -312,8 +311,8 @@ void DirectionalLight::updateShadowViewProjection() {
   const Vec3f target{0.0f, 0.0f, 0.0f};
   const Vec3f eye = target - dir * 10.0f;
   const Mat4f view = Mat4f::lookAt(eye, target, up);
-  const Mat4f proj = Mat4f::orthographic(-10.0f, 10.0f, -10.0f, 10.0f, 0.1f,
-                                         30.0f);
+  const Mat4f proj =
+      Mat4f::orthographic(-10.0f, 10.0f, -10.0f, 10.0f, 0.1f, 30.0f);
   m_ubo->param.shadowViewProj = proj * view;
   for (u32 i = 0; i < MaxShadowCascades; ++i) {
     m_ubo->param.cascadeViewProj[i] = m_ubo->param.shadowViewProj;
@@ -374,7 +373,8 @@ BoundingBox PointLight::getDebugLocalBounds() const {
                      Vec3f{radius, radius, radius}};
 }
 
-void PointLight::setSupportedPasses(const std::initializer_list<StringID> passes) {
+void PointLight::setSupportedPasses(
+    const std::initializer_list<StringID> passes) {
   m_supportedPasses = {passes.begin(), passes.end()};
 }
 
@@ -458,7 +458,8 @@ BoundingBox SpotLight::getDebugLocalBounds() const {
                      Vec3f{radius, radius, radius}};
 }
 
-void SpotLight::setSupportedPasses(const std::initializer_list<StringID> passes) {
+void SpotLight::setSupportedPasses(
+    const std::initializer_list<StringID> passes) {
   m_supportedPasses = {passes.begin(), passes.end()};
 }
 

@@ -1,9 +1,10 @@
 #pragma once
 
 #include "core/asset/material_instance.hpp"
-#include "core/math/vec.hpp"
 #include "core/math/transform.hpp"
+#include "core/math/vec.hpp"
 #include "core/scene/camera.hpp"
+#include "core/scene/light.hpp"
 #include "core/scene/visibility_mask.hpp"
 #include "demos/lxe_editor/editor_camera_state.hpp"
 
@@ -29,8 +30,8 @@ struct CameraNodeState final {
   float right = 1.0f;
   float bottom = -1.0f;
   float top = 1.0f;
-  LX_core::VisibilityLayerMask cullingMask = LX_core::Layer_All &
-                                             ~LX_core::Layer_EditorOverlay;
+  LX_core::VisibilityLayerMask cullingMask =
+      LX_core::Layer_All & ~LX_core::Layer_EditorOverlay;
 };
 
 enum class LightKind {
@@ -44,6 +45,9 @@ struct LightNodeState final {
   LX_core::Vec3f direction{-0.3f, -1.0f, -0.5f};
   LX_core::Vec3f color{1.0f, 0.98f, 0.9f};
   float intensity = 1.0f;
+  float shadowStrength = 0.45f;
+  float shadowDistance = 80.0f;
+  u32 shadowCascadeCount = LX_core::MaxShadowCascades;
   float range = 5.0f;
   float innerConeDegrees = 20.0f;
   float outerConeDegrees = 35.0f;
@@ -76,28 +80,28 @@ struct SceneNodeDocument final {
 class SceneDocument final {
 public:
   SceneDocument() = default;
-  SceneDocument(const SceneDocument& other);
-  SceneDocument(SceneDocument&&) noexcept = default;
-  SceneDocument& operator=(const SceneDocument& other);
-  SceneDocument& operator=(SceneDocument&&) noexcept = default;
+  SceneDocument(const SceneDocument &other);
+  SceneDocument(SceneDocument &&) noexcept = default;
+  SceneDocument &operator=(const SceneDocument &other);
+  SceneDocument &operator=(SceneDocument &&) noexcept = default;
   ~SceneDocument() = default;
 
-  const std::string& sceneName() const;
+  const std::string &sceneName() const;
   void setSceneName(std::string sceneName);
   void setGameplayCameraPath(std::string path);
-  const std::string& gameplayCameraPath() const;
-  SceneNodeDocument& mutableRootNode();
-  const SceneNodeDocument& rootNode() const;
+  const std::string &gameplayCameraPath() const;
+  SceneNodeDocument &mutableRootNode();
+  const SceneNodeDocument &rootNode() const;
   bool hasEditorCamera() const;
-  const EditorCameraState& editorCamera() const;
-  void setEditorCamera(const EditorCameraState& state);
+  const EditorCameraState &editorCamera() const;
+  void setEditorCamera(const EditorCameraState &state);
 
 private:
   std::shared_ptr<void> m_impl;
 };
 
-SceneDocument loadSceneDocument(const std::filesystem::path& path);
-void saveSceneDocument(const std::filesystem::path& path,
-                       const SceneDocument& document);
+SceneDocument loadSceneDocument(const std::filesystem::path &path);
+void saveSceneDocument(const std::filesystem::path &path,
+                       const SceneDocument &document);
 
 } // namespace LX_demo::lxe_editor

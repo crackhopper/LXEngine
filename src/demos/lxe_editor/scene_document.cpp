@@ -13,7 +13,7 @@
 namespace LX_demo::lxe_editor {
 namespace {
 
-constexpr const char* kDefaultRootNodeName = "scene_root";
+constexpr const char *kDefaultRootNodeName = "scene_root";
 
 [[nodiscard]] SceneNodeDocument makeDefaultRootNode() {
   SceneNodeDocument rootNode;
@@ -30,8 +30,8 @@ struct SceneDocumentData final {
   SceneDocumentData() : rootNode(makeDefaultRootNode()) {}
 };
 
-[[nodiscard]] LX_core::Vec3f loadVec3(const YAML::Node& node,
-                                      const char* fieldName) {
+[[nodiscard]] LX_core::Vec3f loadVec3(const YAML::Node &node,
+                                      const char *fieldName) {
   if (!node || !node.IsSequence() || node.size() != 3) {
     throw std::runtime_error(std::string("expected vec3 sequence for ") +
                              fieldName);
@@ -41,13 +41,13 @@ struct SceneDocumentData final {
                         node[2].as<float>()};
 }
 
-void saveVec3(YAML::Emitter& out, const LX_core::Vec3f& value) {
+void saveVec3(YAML::Emitter &out, const LX_core::Vec3f &value) {
   out << YAML::Flow << YAML::BeginSeq << value.x << value.y << value.z
       << YAML::EndSeq;
 }
 
 [[nodiscard]] LX_core::MaterialParameterValue
-loadMaterialParameterValue(const YAML::Node& node, const char* fieldName) {
+loadMaterialParameterValue(const YAML::Node &node, const char *fieldName) {
   LX_core::MaterialParameterValue value;
   if (node.IsScalar()) {
     const std::string scalar = node.Scalar();
@@ -66,8 +66,8 @@ loadMaterialParameterValue(const YAML::Node& node, const char* fieldName) {
   }
   if (node.size() == 3) {
     value.type = LX_core::MaterialParameterValueType::Vec3;
-    value.vectorValue = LX_core::Vec4f{
-        node[0].as<float>(), node[1].as<float>(), node[2].as<float>(), 0.0f};
+    value.vectorValue = LX_core::Vec4f{node[0].as<float>(), node[1].as<float>(),
+                                       node[2].as<float>(), 0.0f};
     return value;
   }
   if (node.size() == 4) {
@@ -81,8 +81,8 @@ loadMaterialParameterValue(const YAML::Node& node, const char* fieldName) {
                            fieldName);
 }
 
-void saveMaterialParameterValue(YAML::Emitter& out,
-                                const LX_core::MaterialParameterValue& value) {
+void saveMaterialParameterValue(YAML::Emitter &out,
+                                const LX_core::MaterialParameterValue &value) {
   switch (value.type) {
   case LX_core::MaterialParameterValueType::Float:
     out << value.floatValue;
@@ -102,8 +102,8 @@ void saveMaterialParameterValue(YAML::Emitter& out,
   }
 }
 
-[[nodiscard]] LX_core::Quatf loadQuat(const YAML::Node& node,
-                                      const char* fieldName) {
+[[nodiscard]] LX_core::Quatf loadQuat(const YAML::Node &node,
+                                      const char *fieldName) {
   if (!node || !node.IsSequence() || node.size() != 4) {
     throw std::runtime_error(std::string("expected quat sequence for ") +
                              fieldName);
@@ -113,12 +113,12 @@ void saveMaterialParameterValue(YAML::Emitter& out,
       .normalized();
 }
 
-void saveQuat(YAML::Emitter& out, const LX_core::Quatf& value) {
+void saveQuat(YAML::Emitter &out, const LX_core::Quatf &value) {
   out << YAML::Flow << YAML::BeginSeq << value.w << value.v.x << value.v.y
       << value.v.z << YAML::EndSeq;
 }
 
-[[nodiscard]] CameraNodeState loadCameraState(const YAML::Node& node) {
+[[nodiscard]] CameraNodeState loadCameraState(const YAML::Node &node) {
   CameraNodeState state;
   state.eye = loadVec3(node["eye"], "nodes[].camera.eye");
   state.target = loadVec3(node["target"], "nodes[].camera.target");
@@ -143,7 +143,7 @@ void saveQuat(YAML::Emitter& out, const LX_core::Quatf& value) {
   return state;
 }
 
-void saveCameraState(YAML::Emitter& out, const CameraNodeState& state) {
+void saveCameraState(YAML::Emitter &out, const CameraNodeState &state) {
   out << YAML::Key << "camera" << YAML::Value << YAML::BeginMap;
   out << YAML::Key << "eye" << YAML::Value;
   saveVec3(out, state.eye);
@@ -166,7 +166,7 @@ void saveCameraState(YAML::Emitter& out, const CameraNodeState& state) {
   out << YAML::EndMap;
 }
 
-[[nodiscard]] LightKind loadLightKind(const YAML::Node& node) {
+[[nodiscard]] LightKind loadLightKind(const YAML::Node &node) {
   const std::string kind = node.as<std::string>();
   if (kind == "Directional") {
     return LightKind::Directional;
@@ -180,7 +180,7 @@ void saveCameraState(YAML::Emitter& out, const CameraNodeState& state) {
   throw std::runtime_error("unsupported light kind: " + kind);
 }
 
-[[nodiscard]] const char* lightKindName(const LightKind kind) {
+[[nodiscard]] const char *lightKindName(const LightKind kind) {
   switch (kind) {
   case LightKind::Directional:
     return "Directional";
@@ -193,16 +193,27 @@ void saveCameraState(YAML::Emitter& out, const CameraNodeState& state) {
 }
 
 [[nodiscard]] LightNodeState
-loadLegacyDirectionalLightState(const YAML::Node& node) {
+loadLegacyDirectionalLightState(const YAML::Node &node) {
   LightNodeState state;
   state.kind = LightKind::Directional;
-  state.direction = loadVec3(node["direction"], "nodes[].directionalLight.direction");
+  state.direction =
+      loadVec3(node["direction"], "nodes[].directionalLight.direction");
   state.color = loadVec3(node["color"], "nodes[].directionalLight.color");
   state.intensity = node["intensity"].as<float>();
+  if (const auto shadowStrength = node["shadowStrength"]; shadowStrength) {
+    state.shadowStrength = shadowStrength.as<float>();
+  }
+  if (const auto shadowDistance = node["shadowDistance"]; shadowDistance) {
+    state.shadowDistance = shadowDistance.as<float>();
+  }
+  if (const auto shadowCascadeCount = node["shadowCascadeCount"];
+      shadowCascadeCount) {
+    state.shadowCascadeCount = shadowCascadeCount.as<u32>();
+  }
   return state;
 }
 
-[[nodiscard]] LightNodeState loadLightState(const YAML::Node& node) {
+[[nodiscard]] LightNodeState loadLightState(const YAML::Node &node) {
   LightNodeState state;
   state.kind = loadLightKind(node["kind"]);
   if (state.kind == LightKind::Directional || state.kind == LightKind::Spot) {
@@ -210,6 +221,18 @@ loadLegacyDirectionalLightState(const YAML::Node& node) {
   }
   state.color = loadVec3(node["color"], "nodes[].light.color");
   state.intensity = node["intensity"].as<float>();
+  if (state.kind == LightKind::Directional) {
+    if (const auto shadowStrength = node["shadowStrength"]; shadowStrength) {
+      state.shadowStrength = shadowStrength.as<float>();
+    }
+    if (const auto shadowDistance = node["shadowDistance"]; shadowDistance) {
+      state.shadowDistance = shadowDistance.as<float>();
+    }
+    if (const auto shadowCascadeCount = node["shadowCascadeCount"];
+        shadowCascadeCount) {
+      state.shadowCascadeCount = shadowCascadeCount.as<u32>();
+    }
+  }
   if (state.kind == LightKind::Point || state.kind == LightKind::Spot) {
     state.range = node["range"].as<float>();
   }
@@ -220,7 +243,7 @@ loadLegacyDirectionalLightState(const YAML::Node& node) {
   return state;
 }
 
-void saveLightState(YAML::Emitter& out, const LightNodeState& state) {
+void saveLightState(YAML::Emitter &out, const LightNodeState &state) {
   out << YAML::Key << "light" << YAML::Value << YAML::BeginMap;
   out << YAML::Key << "kind" << YAML::Value << lightKindName(state.kind);
   if (state.kind == LightKind::Directional || state.kind == LightKind::Spot) {
@@ -230,6 +253,12 @@ void saveLightState(YAML::Emitter& out, const LightNodeState& state) {
   out << YAML::Key << "color" << YAML::Value;
   saveVec3(out, state.color);
   out << YAML::Key << "intensity" << YAML::Value << state.intensity;
+  if (state.kind == LightKind::Directional) {
+    out << YAML::Key << "shadowStrength" << YAML::Value << state.shadowStrength;
+    out << YAML::Key << "shadowDistance" << YAML::Value << state.shadowDistance;
+    out << YAML::Key << "shadowCascadeCount" << YAML::Value
+        << state.shadowCascadeCount;
+  }
   if (state.kind == LightKind::Point || state.kind == LightKind::Spot) {
     out << YAML::Key << "range" << YAML::Value << state.range;
   }
@@ -242,8 +271,8 @@ void saveLightState(YAML::Emitter& out, const LightNodeState& state) {
   out << YAML::EndMap;
 }
 
-[[nodiscard]] MaterialOverrideState loadMaterialOverrideState(
-    const YAML::Node& node, const char* fieldName) {
+[[nodiscard]] MaterialOverrideState
+loadMaterialOverrideState(const YAML::Node &node, const char *fieldName) {
   MaterialOverrideState state;
   if (!node) {
     return state;
@@ -261,17 +290,16 @@ void saveLightState(YAML::Emitter& out, const LightNodeState& state) {
     }
     if (parameterKey.find('.') == std::string::npos) {
       throw std::runtime_error(std::string(fieldName) +
-                               " key must use binding.member: " +
-                               parameterKey);
+                               " key must use binding.member: " + parameterKey);
     }
-    state.parameters.emplace(
-        parameterKey, loadMaterialParameterValue(it->second, fieldName));
+    state.parameters.emplace(parameterKey,
+                             loadMaterialParameterValue(it->second, fieldName));
   }
   return state;
 }
 
-void saveMaterialOverrideState(YAML::Emitter& out, const char* key,
-                               const MaterialOverrideState& state) {
+void saveMaterialOverrideState(YAML::Emitter &out, const char *key,
+                               const MaterialOverrideState &state) {
   if (state.empty()) {
     return;
   }
@@ -294,23 +322,22 @@ void saveMaterialOverrideState(YAML::Emitter& out, const char* key,
 }
 
 [[nodiscard]] std::optional<EditorCameraState>
-loadEditorCamera(const YAML::Node& node) {
+loadEditorCamera(const YAML::Node &node) {
   if (!node) {
     return std::nullopt;
   }
 
   return EditorCameraState{
       .position = loadVec3(node["position"], "editor.editorCamera.position"),
-      .rotationEulerDeg =
-          loadVec3(node["rotationEulerDeg"],
-                   "editor.editorCamera.rotationEulerDeg"),
+      .rotationEulerDeg = loadVec3(node["rotationEulerDeg"],
+                                   "editor.editorCamera.rotationEulerDeg"),
       .fovY = node["fovY"].as<float>(),
       .nearPlane = node["nearPlane"].as<float>(),
       .farPlane = node["farPlane"].as<float>(),
   };
 }
 
-void saveEditorCamera(YAML::Emitter& out, const EditorCameraState& state) {
+void saveEditorCamera(YAML::Emitter &out, const EditorCameraState &state) {
   out << YAML::Key << "editor" << YAML::Value << YAML::BeginMap;
   out << YAML::Key << "editorCamera" << YAML::Value << YAML::BeginMap;
   out << YAML::Key << "position" << YAML::Value;
@@ -324,7 +351,7 @@ void saveEditorCamera(YAML::Emitter& out, const EditorCameraState& state) {
   out << YAML::EndMap;
 }
 
-[[nodiscard]] SceneNodeDocument loadNodeDocument(const YAML::Node& node) {
+[[nodiscard]] SceneNodeDocument loadNodeDocument(const YAML::Node &node) {
   SceneNodeDocument entry;
   entry.nodeName =
       node["nodeName"] ? node["nodeName"].as<std::string>() : std::string{};
@@ -365,23 +392,22 @@ void saveEditorCamera(YAML::Emitter& out, const EditorCameraState& state) {
              legacyLightNode) {
     entry.light = loadLegacyDirectionalLightState(legacyLightNode);
   }
-  if (const auto childrenNode = node["children"];
-      childrenNode) {
+  if (const auto childrenNode = node["children"]; childrenNode) {
     if (!childrenNode.IsSequence()) {
       throw std::runtime_error("scene document children must be a sequence");
     }
     entry.children.reserve(childrenNode.size());
-    for (const auto& childNode : childrenNode) {
+    for (const auto &childNode : childrenNode) {
       entry.children.push_back(loadNodeDocument(childNode));
     }
   }
   return entry;
 }
 
-void validateExplicitRootNode(const SceneNodeDocument& rootNode) {
+void validateExplicitRootNode(const SceneNodeDocument &rootNode) {
   if (rootNode.nodeName != kDefaultRootNodeName) {
-    throw std::runtime_error(
-        "scene document root identity must use canonical nodeName 'scene_root'");
+    throw std::runtime_error("scene document root identity must use canonical "
+                             "nodeName 'scene_root'");
   }
   if (!rootNode.name.empty() || !rootNode.parentPath.empty()) {
     throw std::runtime_error(
@@ -389,14 +415,13 @@ void validateExplicitRootNode(const SceneNodeDocument& rootNode) {
   }
   if (rootNode.meshUri.has_value() || rootNode.materialUri.has_value() ||
       !rootNode.nodeMaterialOverrides.empty() ||
-      !rootNode.materialOverrides.empty() ||
-      rootNode.camera.has_value() || rootNode.light.has_value()) {
-    throw std::runtime_error(
-        "scene document root payload is unsupported");
+      !rootNode.materialOverrides.empty() || rootNode.camera.has_value() ||
+      rootNode.light.has_value()) {
+    throw std::runtime_error("scene document root payload is unsupported");
   }
 }
 
-void saveNodeDocument(YAML::Emitter& out, const SceneNodeDocument& node) {
+void saveNodeDocument(YAML::Emitter &out, const SceneNodeDocument &node) {
   out << YAML::BeginMap;
   out << YAML::Key << "nodeName" << YAML::Value << node.nodeName;
   out << YAML::Key << "name" << YAML::Value << node.name;
@@ -430,7 +455,7 @@ void saveNodeDocument(YAML::Emitter& out, const SceneNodeDocument& node) {
   }
   if (!node.children.empty()) {
     out << YAML::Key << "children" << YAML::Value << YAML::BeginSeq;
-    for (const auto& child : node.children) {
+    for (const auto &child : node.children) {
       saveNodeDocument(out, child);
     }
     out << YAML::EndSeq;
@@ -461,14 +486,14 @@ void saveNodeDocument(YAML::Emitter& out, const SceneNodeDocument& node) {
   return segments;
 }
 
-[[nodiscard]] SceneNodeDocument* findNodeByPath(SceneNodeDocument& rootNode,
-                                                const std::string& path) {
+[[nodiscard]] SceneNodeDocument *findNodeByPath(SceneNodeDocument &rootNode,
+                                                const std::string &path) {
   const auto segments = splitPathSegments(path);
-  SceneNodeDocument* current = &rootNode;
-  for (const auto& segment : segments) {
+  SceneNodeDocument *current = &rootNode;
+  for (const auto &segment : segments) {
     auto childIt = std::find_if(
         current->children.begin(), current->children.end(),
-        [&segment](const SceneNodeDocument& child) {
+        [&segment](const SceneNodeDocument &child) {
           return child.name == segment || child.nodeName == segment;
         });
     if (childIt == current->children.end()) {
@@ -479,23 +504,23 @@ void saveNodeDocument(YAML::Emitter& out, const SceneNodeDocument& node) {
   return current;
 }
 
-[[nodiscard]] std::string canonicalPathSegment(const SceneNodeDocument& node) {
+[[nodiscard]] std::string canonicalPathSegment(const SceneNodeDocument &node) {
   return node.name.empty() ? node.nodeName : node.name;
 }
 
-[[nodiscard]] std::string canonicalizePath(const SceneNodeDocument& rootNode,
-                                           const std::string& path) {
+[[nodiscard]] std::string canonicalizePath(const SceneNodeDocument &rootNode,
+                                           const std::string &path) {
   const auto segments = splitPathSegments(path);
   if (segments.empty()) {
     return "/";
   }
 
-  const SceneNodeDocument* current = &rootNode;
+  const SceneNodeDocument *current = &rootNode;
   std::string canonicalPath;
-  for (const auto& segment : segments) {
+  for (const auto &segment : segments) {
     const auto childIt = std::find_if(
         current->children.begin(), current->children.end(),
-        [&segment](const SceneNodeDocument& child) {
+        [&segment](const SceneNodeDocument &child) {
           return child.name == segment || child.nodeName == segment;
         });
     if (childIt == current->children.end()) {
@@ -519,7 +544,8 @@ normalizeLegacyNodes(std::vector<SceneNodeDocument> flatNodes) {
     for (auto it = flatNodes.begin(); it != flatNodes.end();) {
       const std::string normalizedParentPath =
           it->parentPath.empty() ? "/" : it->parentPath;
-      SceneNodeDocument* parent = findNodeByPath(rootNode, normalizedParentPath);
+      SceneNodeDocument *parent =
+          findNodeByPath(rootNode, normalizedParentPath);
       if (parent == nullptr) {
         ++it;
         continue;
@@ -541,14 +567,14 @@ normalizeLegacyNodes(std::vector<SceneNodeDocument> flatNodes) {
 
 } // namespace
 
-SceneDocument::SceneDocument(const SceneDocument& other) {
+SceneDocument::SceneDocument(const SceneDocument &other) {
   if (other.m_impl) {
     m_impl = std::make_shared<SceneDocumentData>(
         *std::static_pointer_cast<const SceneDocumentData>(other.m_impl));
   }
 }
 
-SceneDocument& SceneDocument::operator=(const SceneDocument& other) {
+SceneDocument &SceneDocument::operator=(const SceneDocument &other) {
   if (this == &other) {
     return *this;
   }
@@ -563,7 +589,7 @@ SceneDocument& SceneDocument::operator=(const SceneDocument& other) {
   return *this;
 }
 
-const std::string& SceneDocument::sceneName() const {
+const std::string &SceneDocument::sceneName() const {
   static const std::string kDefaultSceneName = "Scene";
   if (!m_impl) {
     return kDefaultSceneName;
@@ -587,7 +613,7 @@ void SceneDocument::setGameplayCameraPath(std::string path) {
       std::move(path);
 }
 
-const std::string& SceneDocument::gameplayCameraPath() const {
+const std::string &SceneDocument::gameplayCameraPath() const {
   static const std::string kDefaultGameplayCameraPath = "/game_cam";
   if (!m_impl) {
     return kDefaultGameplayCameraPath;
@@ -596,14 +622,14 @@ const std::string& SceneDocument::gameplayCameraPath() const {
       ->gameplayCameraPath;
 }
 
-SceneNodeDocument& SceneDocument::mutableRootNode() {
+SceneNodeDocument &SceneDocument::mutableRootNode() {
   if (!m_impl) {
     m_impl = std::make_shared<SceneDocumentData>();
   }
   return std::static_pointer_cast<SceneDocumentData>(m_impl)->rootNode;
 }
 
-const SceneNodeDocument& SceneDocument::rootNode() const {
+const SceneNodeDocument &SceneDocument::rootNode() const {
   static const SceneNodeDocument kDefaultRootNode = makeDefaultRootNode();
   if (!m_impl) {
     return kDefaultRootNode;
@@ -612,16 +638,15 @@ const SceneNodeDocument& SceneDocument::rootNode() const {
 }
 
 bool SceneDocument::hasEditorCamera() const {
-  return m_impl &&
-         std::static_pointer_cast<const SceneDocumentData>(m_impl)
-             ->editorCamera.has_value();
+  return m_impl && std::static_pointer_cast<const SceneDocumentData>(m_impl)
+                       ->editorCamera.has_value();
 }
 
-const EditorCameraState& SceneDocument::editorCamera() const {
+const EditorCameraState &SceneDocument::editorCamera() const {
   if (!m_impl) {
     throw std::runtime_error("scene document has no editor camera");
   }
-  const auto& state =
+  const auto &state =
       std::static_pointer_cast<const SceneDocumentData>(m_impl)->editorCamera;
   if (!state.has_value()) {
     throw std::runtime_error("scene document has no editor camera");
@@ -629,14 +654,14 @@ const EditorCameraState& SceneDocument::editorCamera() const {
   return *state;
 }
 
-void SceneDocument::setEditorCamera(const EditorCameraState& state) {
+void SceneDocument::setEditorCamera(const EditorCameraState &state) {
   if (!m_impl) {
     m_impl = std::make_shared<SceneDocumentData>();
   }
   std::static_pointer_cast<SceneDocumentData>(m_impl)->editorCamera = state;
 }
 
-SceneDocument loadSceneDocument(const std::filesystem::path& path) {
+SceneDocument loadSceneDocument(const std::filesystem::path &path) {
   const YAML::Node root = YAML::LoadFile(path.string());
 
   SceneDocument document;
@@ -662,7 +687,7 @@ SceneDocument loadSceneDocument(const std::filesystem::path& path) {
              nodesNode && nodesNode.IsSequence()) {
     std::vector<SceneNodeDocument> flatNodes;
     flatNodes.reserve(nodesNode.size());
-    for (const auto& node : nodesNode) {
+    for (const auto &node : nodesNode) {
       flatNodes.push_back(loadNodeDocument(node));
     }
     document.mutableRootNode() = normalizeLegacyNodes(std::move(flatNodes));
@@ -680,8 +705,8 @@ SceneDocument loadSceneDocument(const std::filesystem::path& path) {
   return document;
 }
 
-void saveSceneDocument(const std::filesystem::path& path,
-                       const SceneDocument& document) {
+void saveSceneDocument(const std::filesystem::path &path,
+                       const SceneDocument &document) {
   validateExplicitRootNode(document.rootNode());
 
   if (const auto parentPath = path.parent_path(); !parentPath.empty()) {

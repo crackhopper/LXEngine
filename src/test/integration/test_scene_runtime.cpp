@@ -14,7 +14,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <algorithm>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -58,8 +57,7 @@ void writeSceneFile(const std::filesystem::path &path,
   out << body;
 }
 
-void writeTextFile(const std::filesystem::path &path,
-                   const std::string &body) {
+void writeTextFile(const std::filesystem::path &path, const std::string &body) {
   std::filesystem::create_directories(path.parent_path());
   std::ofstream out(path, std::ios::binary | std::ios::trunc);
   out << body;
@@ -75,7 +73,7 @@ void expectNear(const float lhs, const float rhs, const char *msg,
 }
 
 [[nodiscard]] std::optional<LX_core::Vec3f>
-readNodeBaseColor(const LX_core::SceneNodeSharedPtr& node) {
+readNodeBaseColor(const LX_core::SceneNodeSharedPtr &node) {
   if (!node) {
     return std::nullopt;
   }
@@ -93,19 +91,20 @@ readNodeBaseColor(const LX_core::SceneNodeSharedPtr& node) {
   }
   const auto memberIt = std::find_if(
       layout->get().members.begin(), layout->get().members.end(),
-      [](const auto& member) { return member.name == "baseColor"; });
+      [](const auto &member) { return member.name == "baseColor"; });
   if (memberIt == layout->get().members.end()) {
     return std::nullopt;
   }
-  const auto& bytes =
+  const auto &bytes =
       material->getParameterBufferBytes(LX_core::StringID("MaterialUBO"));
   LX_core::Vec3f color{};
   std::memcpy(&color, bytes.data() + memberIt->offset, sizeof(float) * 3);
   return color;
 }
 
-[[nodiscard]] bool nodeForwardPassHasDescriptor(
-    LX_core::SceneNode* node, const LX_core::StringID& bindingName) {
+[[nodiscard]] bool
+nodeForwardPassHasDescriptor(LX_core::SceneNode *node,
+                             const LX_core::StringID &bindingName) {
   if (node == nullptr) {
     return false;
   }
@@ -115,14 +114,13 @@ readNodeBaseColor(const LX_core::SceneNodeSharedPtr& node) {
       !materialComponent->get().getMaterialInstance()) {
     return false;
   }
-  const auto resources = materialComponent->get()
-                             .getMaterialInstance()
-                             ->getDescriptorResources(LX_core::Pass_Forward);
-  return std::any_of(resources.begin(), resources.end(),
-                     [&](const auto& resource) {
-                       return resource &&
-                              resource->getBindingName() == bindingName;
-                     });
+  const auto resources =
+      materialComponent->get().getMaterialInstance()->getDescriptorResources(
+          LX_core::Pass_Forward);
+  return std::any_of(
+      resources.begin(), resources.end(), [&](const auto &resource) {
+        return resource && resource->getBindingName() == bindingName;
+      });
 }
 
 void testRuntimeCreatesEmptyScene() {
@@ -295,63 +293,62 @@ void testRuntimeDoesNotCreateCameraHelperVisualAtStaleTransform() {
 void testRuntimeLoadsTypedPointAndSpotLights() {
   const std::filesystem::path path =
       makeTempPath("lx_scene_runtime_typed_lights.yaml");
-  writeSceneFile(path,
-                 "scene:\n"
-                 "  name: typed_light_scene\n"
-                 "  gameplayCameraPath: /game_cam\n"
-                 "nodes:\n"
-                 "  - nodeName: game_camera\n"
-                 "    name: game_cam\n"
-                 "    transform:\n"
-                 "      translation: [0.0, 2.0, 6.0]\n"
-                 "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
-                 "      scale: [1.0, 1.0, 1.0]\n"
-                 "    visibilityMask: 4294967295\n"
-                 "    camera:\n"
-                 "      eye: [0.0, 2.0, 6.0]\n"
-                 "      target: [0.0, 0.0, 0.0]\n"
-                 "      up: [0.0, 1.0, 0.0]\n"
-                 "      type: perspective\n"
-                 "      fovY: 45.0\n"
-                 "      aspect: 1.7777778\n"
-                 "      nearPlane: 0.1\n"
-                 "      farPlane: 1000.0\n"
-                 "      left: -1.0\n"
-                 "      right: 1.0\n"
-                 "      bottom: -1.0\n"
-                 "      top: 1.0\n"
-                 "      cullingMask: 4294967295\n"
-                 "  - nodeName: point_node\n"
-                 "    name: point\n"
-                 "    transform:\n"
-                 "      translation: [1.0, 2.0, 3.0]\n"
-                 "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
-                 "      scale: [1.0, 1.0, 1.0]\n"
-                 "    light:\n"
-                 "      kind: Point\n"
-                 "      color: [0.8, 0.7, 0.6]\n"
-                 "      intensity: 2.0\n"
-                 "      range: 6.0\n"
-                 "  - nodeName: spot_node\n"
-                 "    name: spot\n"
-                 "    transform:\n"
-                 "      translation: [0.0, 3.0, 1.0]\n"
-                 "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
-                 "      scale: [1.0, 1.0, 1.0]\n"
-                 "    light:\n"
-                 "      kind: Spot\n"
-                 "      direction: [0.0, -0.5, -1.0]\n"
-                 "      color: [0.7, 0.8, 1.0]\n"
-                 "      intensity: 3.0\n"
-                 "      range: 8.0\n"
-                 "      innerConeDegrees: 20.0\n"
-                 "      outerConeDegrees: 35.0\n");
+  writeSceneFile(path, "scene:\n"
+                       "  name: typed_light_scene\n"
+                       "  gameplayCameraPath: /game_cam\n"
+                       "nodes:\n"
+                       "  - nodeName: game_camera\n"
+                       "    name: game_cam\n"
+                       "    transform:\n"
+                       "      translation: [0.0, 2.0, 6.0]\n"
+                       "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                       "      scale: [1.0, 1.0, 1.0]\n"
+                       "    visibilityMask: 4294967295\n"
+                       "    camera:\n"
+                       "      eye: [0.0, 2.0, 6.0]\n"
+                       "      target: [0.0, 0.0, 0.0]\n"
+                       "      up: [0.0, 1.0, 0.0]\n"
+                       "      type: perspective\n"
+                       "      fovY: 45.0\n"
+                       "      aspect: 1.7777778\n"
+                       "      nearPlane: 0.1\n"
+                       "      farPlane: 1000.0\n"
+                       "      left: -1.0\n"
+                       "      right: 1.0\n"
+                       "      bottom: -1.0\n"
+                       "      top: 1.0\n"
+                       "      cullingMask: 4294967295\n"
+                       "  - nodeName: point_node\n"
+                       "    name: point\n"
+                       "    transform:\n"
+                       "      translation: [1.0, 2.0, 3.0]\n"
+                       "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                       "      scale: [1.0, 1.0, 1.0]\n"
+                       "    light:\n"
+                       "      kind: Point\n"
+                       "      color: [0.8, 0.7, 0.6]\n"
+                       "      intensity: 2.0\n"
+                       "      range: 6.0\n"
+                       "  - nodeName: spot_node\n"
+                       "    name: spot\n"
+                       "    transform:\n"
+                       "      translation: [0.0, 3.0, 1.0]\n"
+                       "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                       "      scale: [1.0, 1.0, 1.0]\n"
+                       "    light:\n"
+                       "      kind: Spot\n"
+                       "      direction: [0.0, -0.5, -1.0]\n"
+                       "      color: [0.7, 0.8, 1.0]\n"
+                       "      intensity: 3.0\n"
+                       "      range: 8.0\n"
+                       "      innerConeDegrees: 20.0\n"
+                       "      outerConeDegrees: 35.0\n");
 
   demo::SceneRuntime runtime;
   runtime.loadFromDocumentPath(path);
 
-  auto* pointNode = runtime.scene()->findByPath("/point");
-  auto* spotNode = runtime.scene()->findByPath("/spot");
+  auto *pointNode = runtime.scene()->findByPath("/point");
+  auto *spotNode = runtime.scene()->findByPath("/spot");
   EXPECT(pointNode != nullptr && spotNode != nullptr,
          "typed light nodes should load");
   if (pointNode != nullptr && spotNode != nullptr) {
@@ -366,15 +363,18 @@ void testRuntimeLoadsTypedPointAndSpotLights() {
   const auto resources = runtime.scene()->getSceneLevelResources(
       LX_core::Pass_Forward, LX_core::RenderTarget{});
   LX_core::SceneLightsDataSharedPtr sceneLights;
-  for (const auto& resource : resources) {
-    if (resource && resource->getBindingName() ==
-                        LX_core::StringID("SceneLightsUBO")) {
-      sceneLights = std::dynamic_pointer_cast<LX_core::SceneLightsData>(resource);
+  for (const auto &resource : resources) {
+    if (resource &&
+        resource->getBindingName() == LX_core::StringID("SceneLightsUBO")) {
+      sceneLights =
+          std::dynamic_pointer_cast<LX_core::SceneLightsData>(resource);
     }
   }
-  EXPECT(sceneLights != nullptr, "scene resources should expose SceneLightsUBO");
+  EXPECT(sceneLights != nullptr,
+         "scene resources should expose SceneLightsUBO");
   if (sceneLights != nullptr) {
-    EXPECT(sceneLights->param.counts.x == 0 && sceneLights->param.counts.y == 1 &&
+    EXPECT(sceneLights->param.counts.x == 0 &&
+               sceneLights->param.counts.y == 1 &&
                sceneLights->param.counts.z == 1,
            "SceneLightsUBO should count typed point and spot lights");
   }
@@ -686,43 +686,42 @@ void testRuntimeSavePreservesDuplicatedDocumentPayloads() {
       makeTempPath("lx_scene_runtime_duplicate_payload_input.yaml");
   const std::filesystem::path savePath =
       makeTempPath("lx_scene_runtime_duplicate_payload_output.yaml");
-  writeSceneFile(inputPath,
-                 "scene:\n"
-                 "  name: duplicate_payload_scene\n"
-                 "  gameplayCameraPath: /game_cam\n"
-                 "nodes:\n"
-                 "  - nodeName: game_camera\n"
-                 "    name: game_cam\n"
-                 "    transform:\n"
-                 "      translation: [0.0, 2.0, 6.0]\n"
-                 "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
-                 "      scale: [1.0, 1.0, 1.0]\n"
-                 "    visibilityMask: 4294967295\n"
-                 "    camera:\n"
-                 "      eye: [0.0, 2.0, 6.0]\n"
-                 "      target: [0.0, 0.0, 0.0]\n"
-                 "      up: [0.0, 1.0, 0.0]\n"
-                 "      type: perspective\n"
-                 "      fovY: 45.0\n"
-                 "      aspect: 1.7777778\n"
-                 "      nearPlane: 0.1\n"
-                 "      farPlane: 1000.0\n"
-                 "      left: -1.0\n"
-                 "      right: 1.0\n"
-                 "      bottom: -1.0\n"
-                 "      top: 1.0\n"
-                 "      cullingMask: 4294967295\n"
-                 "  - nodeName: cube_node\n"
-                 "    name: cube\n"
-                 "    transform:\n"
-                 "      translation: [1.0, 0.0, 0.0]\n"
-                 "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
-                 "      scale: [1.0, 1.0, 1.0]\n"
-                 "    visibilityMask: 7\n"
-                 "    mesh:\n"
-                 "      uri: test://mesh/cube\n"
-                 "    material:\n"
-                 "      uri: test://material/red\n");
+  writeSceneFile(inputPath, "scene:\n"
+                            "  name: duplicate_payload_scene\n"
+                            "  gameplayCameraPath: /game_cam\n"
+                            "nodes:\n"
+                            "  - nodeName: game_camera\n"
+                            "    name: game_cam\n"
+                            "    transform:\n"
+                            "      translation: [0.0, 2.0, 6.0]\n"
+                            "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                            "      scale: [1.0, 1.0, 1.0]\n"
+                            "    visibilityMask: 4294967295\n"
+                            "    camera:\n"
+                            "      eye: [0.0, 2.0, 6.0]\n"
+                            "      target: [0.0, 0.0, 0.0]\n"
+                            "      up: [0.0, 1.0, 0.0]\n"
+                            "      type: perspective\n"
+                            "      fovY: 45.0\n"
+                            "      aspect: 1.7777778\n"
+                            "      nearPlane: 0.1\n"
+                            "      farPlane: 1000.0\n"
+                            "      left: -1.0\n"
+                            "      right: 1.0\n"
+                            "      bottom: -1.0\n"
+                            "      top: 1.0\n"
+                            "      cullingMask: 4294967295\n"
+                            "  - nodeName: cube_node\n"
+                            "    name: cube\n"
+                            "    transform:\n"
+                            "      translation: [1.0, 0.0, 0.0]\n"
+                            "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                            "      scale: [1.0, 1.0, 1.0]\n"
+                            "    visibilityMask: 7\n"
+                            "    mesh:\n"
+                            "      uri: test://mesh/cube\n"
+                            "    material:\n"
+                            "      uri: test://material/red\n");
 
   demo::SceneRuntime runtime;
   runtime.loadFromDocumentPath(inputPath);
@@ -738,8 +737,8 @@ void testRuntimeSavePreservesDuplicatedDocumentPayloads() {
   runtime.saveToDocumentPath(savePath);
   const demo::SceneDocument saved = demo::loadSceneDocument(savePath);
 
-  const demo::SceneNodeDocument* copied = nullptr;
-  for (const auto& child : saved.rootNode().children) {
+  const demo::SceneNodeDocument *copied = nullptr;
+  for (const auto &child : saved.rootNode().children) {
     if (child.name == "cube.copy") {
       copied = &child;
       break;
@@ -763,32 +762,31 @@ void testRuntimeSaveSyncsRenamedGameplayCameraPath() {
       makeTempPath("lx_scene_runtime_rename_gameplay_camera_input.yaml");
   const std::filesystem::path savePath =
       makeTempPath("lx_scene_runtime_rename_gameplay_camera_output.yaml");
-  writeSceneFile(inputPath,
-                 "scene:\n"
-                 "  name: rename_gameplay_camera_scene\n"
-                 "  gameplayCameraPath: /game_cam\n"
-                 "nodes:\n"
-                 "  - nodeName: game_camera\n"
-                 "    name: game_cam\n"
-                 "    transform:\n"
-                 "      translation: [0.0, 2.0, 6.0]\n"
-                 "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
-                 "      scale: [1.0, 1.0, 1.0]\n"
-                 "    visibilityMask: 4294967295\n"
-                 "    camera:\n"
-                 "      eye: [0.0, 2.0, 6.0]\n"
-                 "      target: [0.0, 0.0, 0.0]\n"
-                 "      up: [0.0, 1.0, 0.0]\n"
-                 "      type: perspective\n"
-                 "      fovY: 45.0\n"
-                 "      aspect: 1.7777778\n"
-                 "      nearPlane: 0.1\n"
-                 "      farPlane: 1000.0\n"
-                 "      left: -1.0\n"
-                 "      right: 1.0\n"
-                 "      bottom: -1.0\n"
-                 "      top: 1.0\n"
-                 "      cullingMask: 4294967295\n");
+  writeSceneFile(inputPath, "scene:\n"
+                            "  name: rename_gameplay_camera_scene\n"
+                            "  gameplayCameraPath: /game_cam\n"
+                            "nodes:\n"
+                            "  - nodeName: game_camera\n"
+                            "    name: game_cam\n"
+                            "    transform:\n"
+                            "      translation: [0.0, 2.0, 6.0]\n"
+                            "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                            "      scale: [1.0, 1.0, 1.0]\n"
+                            "    visibilityMask: 4294967295\n"
+                            "    camera:\n"
+                            "      eye: [0.0, 2.0, 6.0]\n"
+                            "      target: [0.0, 0.0, 0.0]\n"
+                            "      up: [0.0, 1.0, 0.0]\n"
+                            "      type: perspective\n"
+                            "      fovY: 45.0\n"
+                            "      aspect: 1.7777778\n"
+                            "      nearPlane: 0.1\n"
+                            "      farPlane: 1000.0\n"
+                            "      left: -1.0\n"
+                            "      right: 1.0\n"
+                            "      bottom: -1.0\n"
+                            "      top: 1.0\n"
+                            "      cullingMask: 4294967295\n");
 
   demo::SceneRuntime runtime;
   runtime.loadFromDocumentPath(inputPath);
@@ -984,7 +982,7 @@ void testRuntimeMaterialUriAndBaseColorOverridesRoundTrip() {
     expectNear(colorA->y, 0.3f,
                "node override should update only selected node green");
     expectNear(colorB->x, 0.8f,
-         "node override should not mutate sibling material red");
+               "node override should not mutate sibling material red");
   }
 
   const auto apply = runtime.applyMaterialOverride("/ground_a", "baseColor");
@@ -994,14 +992,16 @@ void testRuntimeMaterialUriAndBaseColorOverridesRoundTrip() {
   const demo::SceneDocument saved = demo::loadSceneDocument(savePath);
   EXPECT(saved.rootNode().children.size() == 3,
          "saved material scene should keep all root children");
-  const auto& savedGroundA = saved.rootNode().children[1];
-  const auto& savedGroundB = saved.rootNode().children[2];
+  const auto &savedGroundA = saved.rootNode().children[1];
+  const auto &savedGroundB = saved.rootNode().children[2];
   EXPECT(savedGroundA.nodeMaterialOverrides.baseColor.has_value(),
          "node-level override should persist on selected node");
   EXPECT(savedGroundA.materialOverrides.baseColor.has_value(),
-         "applied material override should persist on selected node material config");
+         "applied material override should persist on selected node material "
+         "config");
   EXPECT(savedGroundB.materialOverrides.baseColor.has_value(),
-         "applied material override should persist on same-URI sibling material config");
+         "applied material override should persist on same-URI sibling "
+         "material config");
 }
 
 void testGenericNodeMaterialParameterOverrideRoundTrips() {
@@ -1009,54 +1009,55 @@ void testGenericNodeMaterialParameterOverrideRoundTrips() {
       makeTempPath("lx_scene_runtime_generic_material_input.yaml");
   const std::filesystem::path savePath =
       makeTempPath("lx_scene_runtime_generic_material_output.yaml");
-  writeSceneFile(inputPath,
-                 "scene:\n"
-                 "  name: rtr_material_scene\n"
-                 "  gameplayCameraPath: /game_cam\n"
-                 "nodes:\n"
-                 "  - nodeName: game_camera\n"
-                 "    name: game_cam\n"
-                 "    transform:\n"
-                 "      translation: [0.0, 2.0, 6.0]\n"
-                 "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
-                 "      scale: [1.0, 1.0, 1.0]\n"
-                 "    visibilityMask: 4294967295\n"
-                 "    camera:\n"
-                 "      eye: [0.0, 2.0, 6.0]\n"
-                 "      target: [0.0, 0.0, 0.0]\n"
-                 "      up: [0.0, 1.0, 0.0]\n"
-                 "      type: perspective\n"
-                 "      fovY: 45.0\n"
-                 "      aspect: 1.7777778\n"
-                 "      nearPlane: 0.1\n"
-                 "      farPlane: 1000.0\n"
-                 "      left: -1.0\n"
-                 "      right: 1.0\n"
-                 "      bottom: -1.0\n"
-                 "      top: 1.0\n"
-                 "      cullingMask: 4294967295\n"
-                 "  - nodeName: primitive_cube_node\n"
-                 "    name: cube_a\n"
-                 "    transform:\n"
-                 "      translation: [0.0, 0.0, 0.0]\n"
-                 "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
-                 "      scale: [1.0, 1.0, 1.0]\n"
-                 "    visibilityMask: 4294967295\n"
-                 "    mesh:\n"
-                 "      uri: builtin://lxe_editor/primitives/cube\n"
-                 "    material:\n"
-                 "      uri: assets/materials/rtr_experiment_template.material\n"
-                 "  - nodeName: primitive_sphere_node\n"
-                 "    name: sphere_b\n"
-                 "    transform:\n"
-                 "      translation: [2.0, 0.0, 0.0]\n"
-                 "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
-                 "      scale: [1.0, 1.0, 1.0]\n"
-                 "    visibilityMask: 4294967295\n"
-                 "    mesh:\n"
-                 "      uri: builtin://lxe_editor/primitives/sphere\n"
-                 "    material:\n"
-                 "      uri: assets/materials/rtr_experiment_template.material\n");
+  writeSceneFile(
+      inputPath,
+      "scene:\n"
+      "  name: rtr_material_scene\n"
+      "  gameplayCameraPath: /game_cam\n"
+      "nodes:\n"
+      "  - nodeName: game_camera\n"
+      "    name: game_cam\n"
+      "    transform:\n"
+      "      translation: [0.0, 2.0, 6.0]\n"
+      "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+      "      scale: [1.0, 1.0, 1.0]\n"
+      "    visibilityMask: 4294967295\n"
+      "    camera:\n"
+      "      eye: [0.0, 2.0, 6.0]\n"
+      "      target: [0.0, 0.0, 0.0]\n"
+      "      up: [0.0, 1.0, 0.0]\n"
+      "      type: perspective\n"
+      "      fovY: 45.0\n"
+      "      aspect: 1.7777778\n"
+      "      nearPlane: 0.1\n"
+      "      farPlane: 1000.0\n"
+      "      left: -1.0\n"
+      "      right: 1.0\n"
+      "      bottom: -1.0\n"
+      "      top: 1.0\n"
+      "      cullingMask: 4294967295\n"
+      "  - nodeName: primitive_cube_node\n"
+      "    name: cube_a\n"
+      "    transform:\n"
+      "      translation: [0.0, 0.0, 0.0]\n"
+      "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+      "      scale: [1.0, 1.0, 1.0]\n"
+      "    visibilityMask: 4294967295\n"
+      "    mesh:\n"
+      "      uri: builtin://lxe_editor/primitives/cube\n"
+      "    material:\n"
+      "      uri: assets/materials/rtr_experiment_template.material\n"
+      "  - nodeName: primitive_sphere_node\n"
+      "    name: sphere_b\n"
+      "    transform:\n"
+      "      translation: [2.0, 0.0, 0.0]\n"
+      "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+      "      scale: [1.0, 1.0, 1.0]\n"
+      "    visibilityMask: 4294967295\n"
+      "    mesh:\n"
+      "      uri: builtin://lxe_editor/primitives/sphere\n"
+      "    material:\n"
+      "      uri: assets/materials/rtr_experiment_template.material\n");
 
   demo::SceneRuntime runtime;
   runtime.loadFromDocumentPath(inputPath);
@@ -1064,8 +1065,8 @@ void testGenericNodeMaterialParameterOverrideRoundTrips() {
   LX_core::MaterialParameterValue value;
   value.type = LX_core::MaterialParameterValueType::Float;
   value.floatValue = 0.75f;
-  const auto set = runtime.setNodeMaterialParameter(
-      "/cube_a", "MaterialUBO", "mixAmount", value);
+  const auto set = runtime.setNodeMaterialParameter("/cube_a", "MaterialUBO",
+                                                    "mixAmount", value);
   EXPECT(set.ok, "setting generic node material parameter should succeed");
 
   const auto cubeValue = runtime.nodeMaterialParameterForNode(
@@ -1087,8 +1088,8 @@ void testGenericNodeMaterialParameterOverrideRoundTrips() {
 
   runtime.saveToDocumentPath(savePath);
   const demo::SceneDocument saved = demo::loadSceneDocument(savePath);
-  const auto& savedCube = saved.rootNode().children[1];
-  const auto& savedSphere = saved.rootNode().children[2];
+  const auto &savedCube = saved.rootNode().children[1];
+  const auto &savedSphere = saved.rootNode().children[2];
   EXPECT(savedCube.nodeMaterialOverrides.parameters.count(
              "MaterialUBO.mixAmount") == 1,
          "generic node material override should persist to scene document");
@@ -1250,9 +1251,8 @@ void testBuiltinPrimitiveBaseColorGetterUsesRuntimeMaterialValue() {
 }
 
 void testProjectAssetMaterialOverridesRuntimeAssetMaterial() {
-  const auto projectRoot =
-      std::filesystem::temp_directory_path() /
-      "lx_scene_runtime_project_asset_override";
+  const auto projectRoot = std::filesystem::temp_directory_path() /
+                           "lx_scene_runtime_project_asset_override";
   std::filesystem::remove_all(projectRoot);
   writeTextFile(projectRoot / "project.yaml",
                 "schema: lxe.project.v1\n"
@@ -1340,52 +1340,107 @@ void testBuiltinModelMaterialUriKeepsCatalogAlbedoTexture() {
   const std::filesystem::path path =
       makeTempPath("lx_scene_runtime_builtin_model_texture.yaml");
   writeSceneFile(
-      path,
-      "scene:\n"
-      "  name: Builtin Model Texture\n"
-      "  gameplayCameraPath: /game_cam\n"
-      "nodes:\n"
-      "  - nodeName: game_camera\n"
-      "    name: game_cam\n"
-      "    transform:\n"
-      "      translation: [0.0, 2.0, 6.0]\n"
-      "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
-      "      scale: [1.0, 1.0, 1.0]\n"
-      "    visibilityMask: 4294967295\n"
-      "    camera:\n"
-      "      eye: [0.0, 2.0, 6.0]\n"
-      "      target: [0.0, 0.0, 0.0]\n"
-      "      up: [0.0, 1.0, 0.0]\n"
-      "      type: perspective\n"
-      "      fovY: 45.0\n"
-      "      aspect: 1.7777778\n"
-      "      nearPlane: 0.1\n"
-      "      farPlane: 1000.0\n"
-      "      left: -1.0\n"
-      "      right: 1.0\n"
-      "      bottom: -1.0\n"
-      "      top: 1.0\n"
-      "      cullingMask: 4294967295\n"
-      "  - nodeName: model_characters_blocky_a\n"
-      "    name: Blocky_Character_A\n"
-      "    transform:\n"
-      "      translation: [0.0, 0.0, 0.0]\n"
-      "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
-      "      scale: [1.0, 1.0, 1.0]\n"
-      "    visibilityMask: 4294967295\n"
-      "    mesh:\n"
-      "      uri: assets/models/builtin/characters/characters_blocky_a/model.obj\n"
-      "    material:\n"
-      "      uri: assets/materials/blinnphong_textured.material\n");
+      path, "scene:\n"
+            "  name: Builtin Model Texture\n"
+            "  gameplayCameraPath: /game_cam\n"
+            "nodes:\n"
+            "  - nodeName: game_camera\n"
+            "    name: game_cam\n"
+            "    transform:\n"
+            "      translation: [0.0, 2.0, 6.0]\n"
+            "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+            "      scale: [1.0, 1.0, 1.0]\n"
+            "    visibilityMask: 4294967295\n"
+            "    camera:\n"
+            "      eye: [0.0, 2.0, 6.0]\n"
+            "      target: [0.0, 0.0, 0.0]\n"
+            "      up: [0.0, 1.0, 0.0]\n"
+            "      type: perspective\n"
+            "      fovY: 45.0\n"
+            "      aspect: 1.7777778\n"
+            "      nearPlane: 0.1\n"
+            "      farPlane: 1000.0\n"
+            "      left: -1.0\n"
+            "      right: 1.0\n"
+            "      bottom: -1.0\n"
+            "      top: 1.0\n"
+            "      cullingMask: 4294967295\n"
+            "  - nodeName: model_characters_blocky_a\n"
+            "    name: Blocky_Character_A\n"
+            "    transform:\n"
+            "      translation: [0.0, 0.0, 0.0]\n"
+            "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+            "      scale: [1.0, 1.0, 1.0]\n"
+            "    visibilityMask: 4294967295\n"
+            "    mesh:\n"
+            "      uri: "
+            "assets/models/builtin/characters/characters_blocky_a/model.obj\n"
+            "    material:\n"
+            "      uri: assets/materials/blinnphong_textured.material\n");
 
   demo::SceneRuntime runtime;
   runtime.loadFromDocumentPath(path);
 
-  auto* character = runtime.scene()->findByPath("/Blocky_Character_A");
-  EXPECT(character != nullptr, "builtin model scene should load character node");
-  EXPECT(nodeForwardPassHasDescriptor(character, LX_core::StringID("albedoMap")),
-         "builtin model reload with materialUri should keep catalog albedoMap "
-         "binding");
+  auto *character = runtime.scene()->findByPath("/Blocky_Character_A");
+  EXPECT(character != nullptr,
+         "builtin model scene should load character node");
+  EXPECT(
+      nodeForwardPassHasDescriptor(character, LX_core::StringID("albedoMap")),
+      "builtin model reload with materialUri should keep catalog albedoMap "
+      "binding");
+}
+
+void testShadowTutorialSceneLoadsSavesAndReloads() {
+  const std::filesystem::path path = std::filesystem::current_path() /
+                                     "assets" / "scenes" /
+                                     "shadow_tutorial.scene.yaml";
+  EXPECT(std::filesystem::exists(path),
+         "shadow tutorial scene asset should exist");
+  if (!std::filesystem::exists(path)) {
+    return;
+  }
+
+  demo::SceneRuntime runtime;
+  runtime.loadFromDocumentPath(path);
+
+  EXPECT(runtime.scene()->findByPath("/ground_receiver") != nullptr,
+         "shadow tutorial should load receiver node");
+  EXPECT(runtime.scene()->findByPath("/cube_caster") != nullptr,
+         "shadow tutorial should load caster node");
+  auto *lightNode = runtime.scene()->findByPath("/dir_light");
+  EXPECT(lightNode != nullptr, "shadow tutorial should load directional light");
+  const auto light = lightNode != nullptr
+                         ? runtime.scene()->getDirectionalLight(*lightNode)
+                         : nullptr;
+  EXPECT(light != nullptr, "shadow tutorial should attach directional light");
+  if (light != nullptr) {
+    expectNear(light->getShadowParams().z, 0.7f, "shadow strength should load");
+    EXPECT(light->getShadowCascadeCount() == 4u,
+           "shadow cascade count should load");
+  }
+
+  const std::filesystem::path savePath =
+      makeTempPath("lx_shadow_tutorial_roundtrip.scene.yaml");
+  runtime.saveToDocumentPath(savePath);
+  demo::SceneRuntime reloaded;
+  reloaded.loadFromDocumentPath(savePath);
+  EXPECT(reloaded.scene()->findByPath("/ground_receiver") != nullptr,
+         "shadow tutorial receiver should reload after save");
+  EXPECT(reloaded.scene()->findByPath("/cube_caster") != nullptr,
+         "shadow tutorial caster should reload after save");
+  auto *reloadedLightNode = reloaded.scene()->findByPath("/dir_light");
+  const auto reloadedLight =
+      reloadedLightNode != nullptr
+          ? reloaded.scene()->getDirectionalLight(*reloadedLightNode)
+          : nullptr;
+  EXPECT(reloadedLight != nullptr,
+         "shadow tutorial directional light should reload after save");
+  if (reloadedLight != nullptr) {
+    expectNear(reloadedLight->getShadowParams().z, 0.7f,
+               "shadow strength should round trip through runtime save");
+    EXPECT(reloadedLight->getShadowCascadeCount() == 4u,
+           "shadow cascade count should round trip through runtime save");
+  }
 }
 
 } // namespace
@@ -1411,6 +1466,7 @@ int main() {
   testBuiltinPrimitiveBaseColorGetterUsesRuntimeMaterialValue();
   testProjectAssetMaterialOverridesRuntimeAssetMaterial();
   testBuiltinModelMaterialUriKeepsCatalogAlbedoTexture();
+  testShadowTutorialSceneLoadsSavesAndReloads();
 
   if (failures != 0) {
     std::cerr << "test_scene_runtime failed with " << failures

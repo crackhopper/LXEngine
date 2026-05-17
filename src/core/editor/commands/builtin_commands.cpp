@@ -45,6 +45,9 @@ struct DirectionalLightClipboardState final {
   Vec3f direction{-0.3f, -1.0f, -0.5f};
   Vec3f color{1.0f, 0.98f, 0.9f};
   float intensity = 1.0f;
+  float shadowStrength = 0.45f;
+  float shadowDistance = 80.0f;
+  u32 shadowCascadeCount = MaxShadowCascades;
 };
 
 struct NodeClipboardEntry final {
@@ -802,6 +805,33 @@ findActiveCamera(Scene &scene, EditorState &editorState) {
     return makeOk("intensity = " + formatFloat(value),
                   "{\"value\":" + formatFloat(value) + "}");
   }
+  if (field == "light.shadowStrength" || field == "shadowStrength") {
+    const auto directional = resolveDirectionalLight(node);
+    if (!directional) {
+      return makeError("field not available on node: shadowStrength");
+    }
+    const float value = directional->getShadowParams().z;
+    return makeOk("shadowStrength = " + formatFloat(value),
+                  "{\"value\":" + formatFloat(value) + "}");
+  }
+  if (field == "light.shadowDistance" || field == "shadowDistance") {
+    const auto directional = resolveDirectionalLight(node);
+    if (!directional) {
+      return makeError("field not available on node: shadowDistance");
+    }
+    const float value = directional->getShadowDistance();
+    return makeOk("shadowDistance = " + formatFloat(value),
+                  "{\"value\":" + formatFloat(value) + "}");
+  }
+  if (field == "light.shadowCascadeCount" || field == "shadowCascadeCount") {
+    const auto directional = resolveDirectionalLight(node);
+    if (!directional) {
+      return makeError("field not available on node: shadowCascadeCount");
+    }
+    const u32 value = directional->getShadowCascadeCount();
+    return makeOk("shadowCascadeCount = " + std::to_string(value),
+                  makeUnsignedJson(value));
+  }
   if (field == "light.range" || field == "range") {
     const auto light = resolveLight(node);
     if (const auto point = std::dynamic_pointer_cast<PointLight>(light)) {
@@ -1426,6 +1456,9 @@ captureDirectionalLightClipboardState(const DirectionalLight &light) {
       .direction = light.getDirection(),
       .color = light.getColor(),
       .intensity = light.getIntensity(),
+      .shadowStrength = light.getShadowParams().z,
+      .shadowDistance = light.getShadowDistance(),
+      .shadowCascadeCount = light.getShadowCascadeCount(),
   };
 }
 
@@ -1507,6 +1540,9 @@ void applyDirectionalLightClipboardState(
   light.setDirection(state.direction);
   light.setColor(state.color);
   light.setIntensity(state.intensity);
+  light.setShadowStrength(state.shadowStrength);
+  light.setShadowDistance(state.shadowDistance);
+  light.setShadowCascadeCount(state.shadowCascadeCount);
 }
 
 [[nodiscard]] SceneNodeSharedPtr
@@ -1853,6 +1889,56 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
     }
     return makeOk("intensity updated",
                   "{\"value\":" + formatFloat(*value) + "}");
+  }
+  if (field == "light.shadowStrength" || field == "shadowStrength") {
+    if (args.size() != valueStartIndex + 1) {
+      return makeError("usage: set <path>.light.shadowStrength <value>");
+    }
+    const auto directional = resolveDirectionalLight(node);
+    if (!directional) {
+      return makeError("field not available on node: shadowStrength");
+    }
+    const auto value = parseFloat(args[valueStartIndex]);
+    if (!value) {
+      return makeError("invalid float for set shadowStrength");
+    }
+    directional->setShadowStrength(*value);
+    return makeOk(
+        "shadowStrength updated",
+        "{\"value\":" + formatFloat(directional->getShadowParams().z) + "}");
+  }
+  if (field == "light.shadowDistance" || field == "shadowDistance") {
+    if (args.size() != valueStartIndex + 1) {
+      return makeError("usage: set <path>.light.shadowDistance <value>");
+    }
+    const auto directional = resolveDirectionalLight(node);
+    if (!directional) {
+      return makeError("field not available on node: shadowDistance");
+    }
+    const auto value = parseFloat(args[valueStartIndex]);
+    if (!value) {
+      return makeError("invalid float for set shadowDistance");
+    }
+    directional->setShadowDistance(*value);
+    return makeOk(
+        "shadowDistance updated",
+        "{\"value\":" + formatFloat(directional->getShadowDistance()) + "}");
+  }
+  if (field == "light.shadowCascadeCount" || field == "shadowCascadeCount") {
+    if (args.size() != valueStartIndex + 1) {
+      return makeError("usage: set <path>.light.shadowCascadeCount <u32>");
+    }
+    const auto directional = resolveDirectionalLight(node);
+    if (!directional) {
+      return makeError("field not available on node: shadowCascadeCount");
+    }
+    const auto value = parseUnsigned(args[valueStartIndex]);
+    if (!value) {
+      return makeError("invalid unsigned for set shadowCascadeCount");
+    }
+    directional->setShadowCascadeCount(*value);
+    return makeOk("shadowCascadeCount updated",
+                  makeUnsignedJson(directional->getShadowCascadeCount()));
   }
   if (field == "light.range" || field == "range") {
     if (args.size() != valueStartIndex + 1) {

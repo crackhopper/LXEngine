@@ -64,13 +64,13 @@ struct SceneRuntimeData final {
   return true;
 }
 
-[[nodiscard]] std::filesystem::path absoluteNormal(
-    const std::filesystem::path &path) {
+[[nodiscard]] std::filesystem::path
+absoluteNormal(const std::filesystem::path &path) {
   return std::filesystem::absolute(path).lexically_normal();
 }
 
-[[nodiscard]] std::filesystem::path stripLeadingAssetsComponent(
-    const std::filesystem::path &uri) {
+[[nodiscard]] std::filesystem::path
+stripLeadingAssetsComponent(const std::filesystem::path &uri) {
   std::filesystem::path stripped;
   bool skipped = false;
   for (const auto &component : uri) {
@@ -597,8 +597,7 @@ makeCameraNode(const std::string &nodeName, const std::string &displayName,
   return document;
 }
 
-[[nodiscard]] LX_core::SceneNodeSharedPtr
-buildRenderableNodeFromDocument(
+[[nodiscard]] LX_core::SceneNodeSharedPtr buildRenderableNodeFromDocument(
     const SceneNodeDocument &nodeDocument,
     const std::vector<std::filesystem::path> &assetRoots) {
   if (!nodeDocument.meshUri.has_value()) {
@@ -615,10 +614,9 @@ buildRenderableNodeFromDocument(
       if (nodeDocument.materialUri.has_value() ||
           !nodeDocument.nodeMaterialOverrides.empty() ||
           !nodeDocument.materialOverrides.empty()) {
-        materialComponent->get().setMaterialInstance(
-            loadMaterialForSceneNode(assetRoots, uri,
-                                     nodeDocument.materialOverrides,
-                                     nodeDocument.nodeMaterialOverrides));
+        materialComponent->get().setMaterialInstance(loadMaterialForSceneNode(
+            assetRoots, uri, nodeDocument.materialOverrides,
+            nodeDocument.nodeMaterialOverrides));
       } else {
         applyBaseColorIfSupported(
             materialComponent->get().getMaterialInstance(),
@@ -640,10 +638,9 @@ buildRenderableNodeFromDocument(
       if (nodeDocument.materialUri.has_value() ||
           !nodeDocument.nodeMaterialOverrides.empty() ||
           !nodeDocument.materialOverrides.empty()) {
-        materialComponent->get().setMaterialInstance(
-            loadMaterialForSceneNode(assetRoots, uri,
-                                     nodeDocument.materialOverrides,
-                                     nodeDocument.nodeMaterialOverrides));
+        materialComponent->get().setMaterialInstance(loadMaterialForSceneNode(
+            assetRoots, uri, nodeDocument.materialOverrides,
+            nodeDocument.nodeMaterialOverrides));
       }
     }
     return node;
@@ -659,10 +656,9 @@ buildRenderableNodeFromDocument(
       if (nodeDocument.materialUri.has_value() ||
           !nodeDocument.nodeMaterialOverrides.empty() ||
           !nodeDocument.materialOverrides.empty()) {
-        materialComponent->get().setMaterialInstance(
-            loadMaterialForSceneNode(assetRoots, uri,
-                                     nodeDocument.materialOverrides,
-                                     nodeDocument.nodeMaterialOverrides));
+        materialComponent->get().setMaterialInstance(loadMaterialForSceneNode(
+            assetRoots, uri, nodeDocument.materialOverrides,
+            nodeDocument.nodeMaterialOverrides));
       }
     }
     return node;
@@ -683,11 +679,11 @@ buildRenderableNodeFromDocument(
           !nodeDocument.nodeMaterialOverrides.empty() ||
           !nodeDocument.materialOverrides.empty()) {
         materialComponent->get().setMaterialInstance(
-            loadModelMaterialForSceneNode(
-                assetRoots, materialUri,
-                asset ? asset->albedoTextureUri : std::string{},
-                nodeDocument.materialOverrides,
-                nodeDocument.nodeMaterialOverrides));
+            loadModelMaterialForSceneNode(assetRoots, materialUri,
+                                          asset ? asset->albedoTextureUri
+                                                : std::string{},
+                                          nodeDocument.materialOverrides,
+                                          nodeDocument.nodeMaterialOverrides));
       }
     }
     return node;
@@ -725,6 +721,9 @@ void configureDirectionalLight(LX_core::DirectionalLight &light,
   light.setDirection(state.direction);
   light.setColor(state.color);
   light.setIntensity(state.intensity);
+  light.setShadowStrength(state.shadowStrength);
+  light.setShadowDistance(state.shadowDistance);
+  light.setShadowCascadeCount(state.shadowCascadeCount);
 }
 
 void configurePointLight(LX_core::PointLight &light,
@@ -990,6 +989,9 @@ captureDirectionalLightState(const LX_core::DirectionalLight &light) {
       .direction = light.getDirection(),
       .color = light.getColor(),
       .intensity = light.getIntensity(),
+      .shadowStrength = light.getShadowParams().z,
+      .shadowDistance = light.getShadowDistance(),
+      .shadowCascadeCount = light.getShadowCascadeCount(),
   };
 }
 
@@ -1323,10 +1325,9 @@ SceneRuntime::setNodeMaterialUri(const std::string &path,
   }
 
   try {
-    auto material =
-        loadMaterialForSceneNode(runtime->assetRoots, uri,
-                                 documentNode->materialOverrides,
-                                 documentNode->nodeMaterialOverrides);
+    auto material = loadMaterialForSceneNode(
+        runtime->assetRoots, uri, documentNode->materialOverrides,
+        documentNode->nodeMaterialOverrides);
     auto materialComponent = node->getComponent<LX_core::MaterialComponent>();
     if (materialComponent.has_value()) {
       materialComponent->get().setMaterialInstance(std::move(material));
@@ -1365,9 +1366,9 @@ SceneRuntime::setNodeMaterialBaseColor(const std::string &path,
   try {
     MaterialOverrideState nodeOverrides = documentNode->nodeMaterialOverrides;
     nodeOverrides.baseColor = color;
-    auto material = loadMaterialForSceneNode(
-        runtime->assetRoots, uri, documentNode->materialOverrides,
-        nodeOverrides);
+    auto material = loadMaterialForSceneNode(runtime->assetRoots, uri,
+                                             documentNode->materialOverrides,
+                                             nodeOverrides);
     if (!materialHasBaseColor(material)) {
       return makeCommandError(
           "material does not expose MaterialUBO.baseColor: " + uri);
@@ -1417,9 +1418,9 @@ LX_core::CommandResult SceneRuntime::setNodeMaterialParameter(
   try {
     MaterialOverrideState nodeOverrides = documentNode->nodeMaterialOverrides;
     nodeOverrides.parameters[key] = value;
-    auto material = loadMaterialForSceneNode(
-        runtime->assetRoots, uri, documentNode->materialOverrides,
-        nodeOverrides);
+    auto material = loadMaterialForSceneNode(runtime->assetRoots, uri,
+                                             documentNode->materialOverrides,
+                                             nodeOverrides);
     const auto reflectedMember = material->findParameterMember(
         LX_core::StringID(binding), LX_core::StringID(member));
     if (!reflectedMember.has_value()) {
@@ -1468,9 +1469,9 @@ SceneRuntime::clearNodeMaterialParameter(const std::string &path,
     try {
       MaterialOverrideState nodeOverrides = documentNode->nodeMaterialOverrides;
       nodeOverrides.baseColor.reset();
-      auto material = loadMaterialForSceneNode(
-          runtime->assetRoots, uri, documentNode->materialOverrides,
-          nodeOverrides);
+      auto material = loadMaterialForSceneNode(runtime->assetRoots, uri,
+                                               documentNode->materialOverrides,
+                                               nodeOverrides);
       materialComponent->get().setMaterialInstance(std::move(material));
       documentNode->materialUri = uri;
       documentNode->nodeMaterialOverrides = std::move(nodeOverrides);
@@ -1491,9 +1492,9 @@ SceneRuntime::clearNodeMaterialParameter(const std::string &path,
   try {
     MaterialOverrideState nodeOverrides = documentNode->nodeMaterialOverrides;
     nodeOverrides.parameters.erase(key);
-    auto material = loadMaterialForSceneNode(
-        runtime->assetRoots, uri, documentNode->materialOverrides,
-        nodeOverrides);
+    auto material = loadMaterialForSceneNode(runtime->assetRoots, uri,
+                                             documentNode->materialOverrides,
+                                             nodeOverrides);
     materialComponent->get().setMaterialInstance(std::move(material));
     documentNode->materialUri = uri;
     documentNode->nodeMaterialOverrides = std::move(nodeOverrides);

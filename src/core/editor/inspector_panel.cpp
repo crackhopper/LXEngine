@@ -228,6 +228,9 @@ InspectorPanel::Snapshot InspectorPanel::makeSnapshot() const {
       snapshot.lightDirection = directional->getDirection();
       snapshot.lightColor = directional->getColor();
       snapshot.lightIntensity = directional->getIntensity();
+      snapshot.lightShadowStrength = directional->getShadowParams().z;
+      snapshot.lightShadowDistance = directional->getShadowDistance();
+      snapshot.lightShadowCascadeCount = directional->getShadowCascadeCount();
     } else if (const auto point =
                    std::dynamic_pointer_cast<PointLight>(light)) {
       snapshot.lightKind = "Point";
@@ -444,6 +447,9 @@ void InspectorPanel::syncDraftFromSnapshot(const Snapshot &snapshot) {
   m_lightDirectionDraft = snapshot.lightDirection;
   m_lightColorDraft = snapshot.lightColor;
   m_lightIntensityDraft = snapshot.lightIntensity;
+  m_lightShadowStrengthDraft = snapshot.lightShadowStrength;
+  m_lightShadowDistanceDraft = snapshot.lightShadowDistance;
+  m_lightShadowCascadeCountDraft = snapshot.lightShadowCascadeCount;
   copyToBuffer(formatMask(snapshot.visibilityMask), m_visibilityMaskBuffer);
   copyToBuffer(formatMask(snapshot.cameraCullingMask),
                m_cameraCullingMaskBuffer);
@@ -722,6 +728,42 @@ void InspectorPanel::drawSelection(const Snapshot &snapshot) {
           snapshot.path, "light.intensity", m_lightIntensityDraft);
       if (result.ok) {
         refreshDrafts();
+      }
+    }
+
+    if (snapshot.lightKind == "Directional") {
+      ImGui::DragFloat("Shadow Strength", &m_lightShadowStrengthDraft, 0.01f,
+                       0.0f, 1.0f);
+      if (ImGui::IsItemDeactivatedAfterEdit()) {
+        const CommandResult result = dispatchSetFloat(
+            snapshot.path, "light.shadowStrength", m_lightShadowStrengthDraft);
+        if (result.ok) {
+          refreshDrafts();
+        }
+      }
+
+      ImGui::DragFloat("Shadow Distance", &m_lightShadowDistanceDraft, 1.0f,
+                       1.0f, 1000.0f);
+      if (ImGui::IsItemDeactivatedAfterEdit()) {
+        const CommandResult result = dispatchSetFloat(
+            snapshot.path, "light.shadowDistance", m_lightShadowDistanceDraft);
+        if (result.ok) {
+          refreshDrafts();
+        }
+      }
+
+      int cascadeCountDraft = static_cast<int>(m_lightShadowCascadeCountDraft);
+      ImGui::SliderInt("Shadow Cascades", &cascadeCountDraft, 1,
+                       static_cast<int>(MaxShadowCascades));
+      if (ImGui::IsItemDeactivatedAfterEdit()) {
+        m_lightShadowCascadeCountDraft = static_cast<u32>(std::clamp(
+            cascadeCountDraft, 1, static_cast<int>(MaxShadowCascades)));
+        const CommandResult result =
+            dispatchSetUnsigned(snapshot.path, "light.shadowCascadeCount",
+                                m_lightShadowCascadeCountDraft);
+        if (result.ok) {
+          refreshDrafts();
+        }
       }
     }
 

@@ -11,9 +11,9 @@
 #include "core/scene/components/mesh_component.hpp"
 #include "core/scene/object.hpp"
 #include "core/scene/scene.hpp"
+#include "demos/lxe_editor/lxe_editor_commands.hpp"
 #include "demos/lxe_editor/scene_interaction_controller.hpp"
 #include "demos/lxe_editor/scene_view_rect.hpp"
-#include "demos/lxe_editor/lxe_editor_commands.hpp"
 #include "demos/lxe_editor/ui_overlay.hpp"
 
 #include <imgui.h>
@@ -35,7 +35,8 @@ constexpr float kPi = 3.14159265358979323846f;
 constexpr float kFloatEps = 1e-4f;
 const std::string kLegacySourceKey = std::string("source") + "Kind";
 const std::string kLegacyAdminOnLine = std::string("admin ") + "on";
-const std::string kRemovedSceneCommandLine = std::string("scene ") + "load main";
+const std::string kRemovedSceneCommandLine =
+    std::string("scene ") + "load main";
 
 int failures = 0;
 
@@ -89,9 +90,8 @@ struct CommandFixture {
 
     lightNode->setName("dir_light");
     scene->addRenderable(lightNode);
-    scene->attachLight(
-        lightNode,
-        std::dynamic_pointer_cast<DirectionalLight>(scene->getLights().front()));
+    scene->attachLight(lightNode, std::dynamic_pointer_cast<DirectionalLight>(
+                                      scene->getLights().front()));
 
     registerBuiltinCommands(bus, editorState, *scene);
   }
@@ -105,8 +105,8 @@ struct SceneViewerCommandFixture {
   bool debugEnabled = false;
   int editMode =
       static_cast<int>(LX_demo::lxe_editor::UiOverlay::EditorMode::Selection);
-  int cameraControlMode =
-      static_cast<int>(LX_demo::lxe_editor::UiOverlay::CameraControlMode::Orbit);
+  int cameraControlMode = static_cast<int>(
+      LX_demo::lxe_editor::UiOverlay::CameraControlMode::Orbit);
   std::optional<std::string> documentPath =
       std::string("data/projects/demo/scenes/test.scene.yaml");
   std::vector<std::vector<std::string>> projectCommands;
@@ -121,7 +121,7 @@ struct SceneViewerCommandFixture {
         base.bus, base.editorState, *base.scene,
         LX_core::SceneIoContext{
             .cameraControl =
-                [this](const std::vector<std::string>& args) {
+                [this](const std::vector<std::string> &args) {
                   if (args.size() != 2) {
                     return LX_core::CommandResult{
                         false, "usage: cam control (orbit|freefly|status)", {}};
@@ -134,9 +134,9 @@ struct SceneViewerCommandFixture {
                                         CameraControlMode::FreeFly)
                             ? "freefly"
                             : "orbit";
-                    LX_core::CommandResult result{
-                        true, "camera " + camera,
-                        "{\"camera\":\"" + camera + "\"}"};
+                    LX_core::CommandResult result{true, "camera " + camera,
+                                                  "{\"camera\":\"" + camera +
+                                                      "\"}"};
                     result.metadata[std::string(
                         LX_core::kCommandResultClearRedoOnSuccessMetadataKey)] =
                         "false";
@@ -152,19 +152,17 @@ struct SceneViewerCommandFixture {
                   const int previous = cameraControlMode;
                   cameraControlMode =
                       args[1] == "orbit"
-                          ? static_cast<int>(
-                                LX_demo::lxe_editor::UiOverlay::
-                                    CameraControlMode::Orbit)
-                          : static_cast<int>(
-                                LX_demo::lxe_editor::UiOverlay::
-                                    CameraControlMode::FreeFly);
-                  LX_core::CommandResult result{
-                      true, "camera " + args[1],
-                      "{\"camera\":\"" + args[1] + "\"}"};
+                          ? static_cast<int>(LX_demo::lxe_editor::UiOverlay::
+                                                 CameraControlMode::Orbit)
+                          : static_cast<int>(LX_demo::lxe_editor::UiOverlay::
+                                                 CameraControlMode::FreeFly);
+                  LX_core::CommandResult result{true, "camera " + args[1],
+                                                "{\"camera\":\"" + args[1] +
+                                                    "\"}"};
                   result.metadata["inverse.line"] =
-                      previous == static_cast<int>(
-                                      LX_demo::lxe_editor::UiOverlay::
-                                          CameraControlMode::FreeFly)
+                      previous ==
+                              static_cast<int>(LX_demo::lxe_editor::UiOverlay::
+                                                   CameraControlMode::FreeFly)
                           ? "cam control freefly"
                           : "cam control orbit";
                   return result;
@@ -179,25 +177,22 @@ struct SceneViewerCommandFixture {
             .getEditMode = [this]() { return editMode; },
             .setEditMode = [this](const int modeCode) { editMode = modeCode; },
             .getCameraControlMode = [this]() { return cameraControlMode; },
-            .setCameraControlMode = [this](const int modeCode) {
-              cameraControlMode = modeCode;
-            },
+            .setCameraControlMode =
+                [this](const int modeCode) { cameraControlMode = modeCode; },
             .sceneViewRect = [this]() { return rect; },
             .dirty = [this]() { return dirty; },
             .debugEnabled = [this]() { return debugEnabled; },
-            .setDebugEnabled = [this](const bool enabled) {
-              debugEnabled = enabled;
-            },
+            .setDebugEnabled =
+                [this](const bool enabled) { debugEnabled = enabled; },
             .runtimeScenePath = [this]() { return documentPath; },
             .projectCommand =
-                [this](const std::vector<std::string>& args) {
+                [this](const std::vector<std::string> &args) {
                   projectCommands.push_back(args);
-                  return LX_core::CommandResult{
-                      true, "project",
-                      "{\"projectCommand\":\"ok\"}"};
+                  return LX_core::CommandResult{true, "project",
+                                                "{\"projectCommand\":\"ok\"}"};
                 },
             .sceneCommand =
-                [this](const std::vector<std::string>& args) {
+                [this](const std::vector<std::string> &args) {
                   sceneCommands.push_back(args);
                   if (args.size() == 2 && args[0] == "load" &&
                       args[1] == "main") {
@@ -206,9 +201,8 @@ struct SceneViewerCommandFixture {
                         std::string("scene ") + "load removed; use scene open",
                         {}};
                   }
-                  return LX_core::CommandResult{
-                      true, "scene",
-                      "{\"sceneCommand\":\"ok\"}"};
+                  return LX_core::CommandResult{true, "scene",
+                                                "{\"sceneCommand\":\"ok\"}"};
                 },
             .projectSummaryJson = [this]() { return projectSummary; },
             .persistedHistory = []() { return std::vector<std::string>{}; },
@@ -226,13 +220,13 @@ struct SceneViewerPickFixture {
   LX_core::SceneNodeSharedPtr gameCameraNode =
       LX_core::SceneNode::create("game_cam_node");
   LX_core::SceneNodeSharedPtr targetNode = LX_core::SceneNode::create("cube");
-  LX_demo::lxe_editor::SceneInteractionController interaction{
-      bus, editorState, *scene};
+  LX_demo::lxe_editor::SceneInteractionController interaction{bus, editorState,
+                                                              *scene};
   bool debugEnabled = false;
   int editMode =
       static_cast<int>(LX_demo::lxe_editor::UiOverlay::EditorMode::Selection);
-  int cameraControlMode =
-      static_cast<int>(LX_demo::lxe_editor::UiOverlay::CameraControlMode::Orbit);
+  int cameraControlMode = static_cast<int>(
+      LX_demo::lxe_editor::UiOverlay::CameraControlMode::Orbit);
   LX_demo::lxe_editor::SceneViewRect rect{
       .x = 0.0f, .y = 0.0f, .width = 800.0f, .height = 600.0f};
 
@@ -265,30 +259,28 @@ struct SceneViewerPickFixture {
             .getEditMode = [this]() { return editMode; },
             .setEditMode = [this](const int modeCode) { editMode = modeCode; },
             .getCameraControlMode = [this]() { return cameraControlMode; },
-            .setCameraControlMode = [this](const int modeCode) {
-              cameraControlMode = modeCode;
-            },
+            .setCameraControlMode =
+                [this](const int modeCode) { cameraControlMode = modeCode; },
             .sceneViewRect = [this]() { return rect; },
             .dirty = []() { return false; },
             .debugEnabled = [this]() { return debugEnabled; },
-            .setDebugEnabled = [this](const bool enabled) {
-              debugEnabled = enabled;
-            },
+            .setDebugEnabled =
+                [this](const bool enabled) { debugEnabled = enabled; },
             .runtimeScenePath = []() { return std::optional<std::string>{}; },
             .projectCommand =
-                [](const std::vector<std::string>&) {
-                  return LX_core::CommandResult{
-                      true, "project", {}};
+                [](const std::vector<std::string> &) {
+                  return LX_core::CommandResult{true, "project", {}};
                 },
             .sceneCommand =
-                [](const std::vector<std::string>&) {
-                  return LX_core::CommandResult{
-                      true, "scene", {}};
+                [](const std::vector<std::string> &) {
+                  return LX_core::CommandResult{true, "scene", {}};
                 },
             .projectSummaryJson = []() { return std::string("{}"); },
             .persistedHistory = []() { return std::vector<std::string>{}; },
             .appendConsoleDebugLine =
-                [this](std::string_view line) { consolePanel.appendSystemLine(line); },
+                [this](std::string_view line) {
+                  consolePanel.appendSystemLine(line);
+                },
         });
   }
 };
@@ -296,12 +288,11 @@ struct SceneViewerPickFixture {
 void testDispatchRecordsHistoryAndPreservesQuotedToken() {
   CommandBus bus;
   std::vector<std::string> capturedArgs;
-  bus.registerHandler(
-      "select", "select <path>",
-      [&](std::vector<std::string> args) {
-        capturedArgs = std::move(args);
-        return CommandResult{true, "selected", {}};
-      });
+  bus.registerHandler("select", "select <path>",
+                      [&](std::vector<std::string> args) {
+                        capturedArgs = std::move(args);
+                        return CommandResult{true, "selected", {}};
+                      });
 
   const CommandResult result = bus.dispatch("select \"node with spaces\"");
   EXPECT(result.ok, "quoted dispatch succeeds");
@@ -318,12 +309,11 @@ void testDispatchRecordsHistoryAndPreservesQuotedToken() {
 void testEscapesReachHandler() {
   CommandBus bus;
   std::vector<std::string> capturedArgs;
-  bus.registerHandler(
-      "echo", "echo <text>",
-      [&](std::vector<std::string> args) {
-        capturedArgs = std::move(args);
-        return CommandResult{true, "ok", {}};
-      });
+  bus.registerHandler("echo", "echo <text>",
+                      [&](std::vector<std::string> args) {
+                        capturedArgs = std::move(args);
+                        return CommandResult{true, "ok", {}};
+                      });
 
   const CommandResult result =
       bus.dispatch("echo \"line1\\nline2\\\\tail\\\"quote\"");
@@ -350,11 +340,10 @@ void testUnknownVerbAndParseErrorsStayInBand() {
 
 void testHandlerExceptionBecomesFailedResult() {
   CommandBus bus;
-  bus.registerHandler(
-      "boom", "boom",
-      [](std::vector<std::string>) -> CommandResult {
-        throw std::runtime_error("boom");
-      });
+  bus.registerHandler("boom", "boom",
+                      [](std::vector<std::string>) -> CommandResult {
+                        throw std::runtime_error("boom");
+                      });
 
   const CommandResult result = bus.dispatch("boom");
   EXPECT(!result.ok, "exception path returns failure");
@@ -366,17 +355,17 @@ void testDispatchScriptSkipsCommentsAndContinuesAfterFailure() {
   CommandBus bus;
   int echoCount = 0;
   bus.registerHandler(
-      "echo", "echo <text>",
-      [&](std::vector<std::string> args) {
+      "echo", "echo <text>", [&](std::vector<std::string> args) {
         ++echoCount;
-        return CommandResult{true, args.empty() ? std::string{} : args.front(), {}};
+        return CommandResult{
+            true, args.empty() ? std::string{} : args.front(), {}};
       });
-  bus.registerHandler(
-      "fail", "fail",
-      [](std::vector<std::string>) { return CommandResult{false, "failed", {}}; });
+  bus.registerHandler("fail", "fail", [](std::vector<std::string>) {
+    return CommandResult{false, "failed", {}};
+  });
 
-  const std::vector<CommandResult> results = bus.dispatchScript(
-      "# comment\n\n echo first\nfail\necho second\n");
+  const std::vector<CommandResult> results =
+      bus.dispatchScript("# comment\n\n echo first\nfail\necho second\n");
   EXPECT(results.size() == 3, "script returns one result per non-comment line");
   EXPECT(results[0].ok, "first script command succeeds");
   EXPECT(!results[1].ok, "middle script command may fail");
@@ -390,18 +379,14 @@ void testNestedDispatchesShareTopLevelDispatchIdentity() {
   std::optional<u64> outerActiveDispatchId;
   std::optional<u64> innerActiveDispatchId;
 
-  bus.registerHandler(
-      "inner", "inner",
-      [&](std::vector<std::string>) {
-        innerActiveDispatchId = bus.activeTopLevelDispatchId();
-        return CommandResult{true, "inner ok", {}, {}};
-      });
-  bus.registerHandler(
-      "outer", "outer",
-      [&](std::vector<std::string>) {
-        outerActiveDispatchId = bus.activeTopLevelDispatchId();
-        return bus.dispatch("inner");
-      });
+  bus.registerHandler("inner", "inner", [&](std::vector<std::string>) {
+    innerActiveDispatchId = bus.activeTopLevelDispatchId();
+    return CommandResult{true, "inner ok", {}, {}};
+  });
+  bus.registerHandler("outer", "outer", [&](std::vector<std::string>) {
+    outerActiveDispatchId = bus.activeTopLevelDispatchId();
+    return bus.dispatch("inner");
+  });
 
   const CommandResult result = bus.dispatch("outer");
   EXPECT(result.ok, "nested dispatch test should succeed");
@@ -413,7 +398,8 @@ void testNestedDispatchesShareTopLevelDispatchIdentity() {
          "nested dispatches should share one top-level dispatch id");
   EXPECT(bus.history().size() == 2,
          "nested dispatch test should record both inner and outer commands");
-  EXPECT(bus.history()[0].topLevelDispatchId == bus.history()[1].topLevelDispatchId,
+  EXPECT(bus.history()[0].topLevelDispatchId ==
+             bus.history()[1].topLevelDispatchId,
          "nested history entries should share one top-level dispatch id");
   EXPECT(!bus.activeTopLevelDispatchId().has_value(),
          "active top-level dispatch id should clear after dispatch returns");
@@ -462,7 +448,8 @@ void testEditorStateUsesWeakSelection() {
          "selectRemove erases requested node only");
 
   node.reset();
-  EXPECT(state.getSelected().empty(), "expired selected nodes drop from live snapshot");
+  EXPECT(state.getSelected().empty(),
+         "expired selected nodes drop from live snapshot");
   EXPECT(!state.getPrimarySelected().has_value(),
          "expired selected nodes clear primary selection view");
 
@@ -486,19 +473,22 @@ void testBuiltinHelpSelectAndDeselect() {
 
   const CommandResult helpAll = fixture.bus.dispatch("help");
   EXPECT(helpAll.ok, "help succeeds");
-  EXPECT(helpAll.message.find("move - move <path> <x> <y> <z>") != std::string::npos,
+  EXPECT(helpAll.message.find("move - move <path> <x> <y> <z>") !=
+             std::string::npos,
          "help lists registered builtin commands");
   EXPECT(helpAll.structured.find("\"verbs\"") != std::string::npos,
          "help returns structured verb list");
 
   const CommandResult select = fixture.bus.dispatch("select /world/cube");
   EXPECT(select.ok, "select succeeds for existing path");
-  EXPECT(fixture.editorState.getSelected().size() == 1 && fixture.editorState.getSelected()[0] == fixture.cube,
+  EXPECT(fixture.editorState.getSelected().size() == 1 &&
+             fixture.editorState.getSelected()[0] == fixture.cube,
          "select updates EditorState");
 
   const CommandResult deselect = fixture.bus.dispatch("deselect");
   EXPECT(deselect.ok, "deselect succeeds");
-  EXPECT(fixture.editorState.getSelected().empty(), "deselect clears EditorState");
+  EXPECT(fixture.editorState.getSelected().empty(),
+         "deselect clears EditorState");
 }
 
 void testBuiltinTransformCommandsAndGet() {
@@ -506,29 +496,32 @@ void testBuiltinTransformCommandsAndGet() {
 
   const CommandResult move = fixture.bus.dispatch("move /world/cube 1 2 3");
   EXPECT(move.ok, "move succeeds");
-  EXPECT(nearlyEqual(fixture.cube->getTranslation().x, 1.0f)
-             && nearlyEqual(fixture.cube->getTranslation().y, 2.0f)
-             && nearlyEqual(fixture.cube->getTranslation().z, 3.0f),
+  EXPECT(nearlyEqual(fixture.cube->getTranslation().x, 1.0f) &&
+             nearlyEqual(fixture.cube->getTranslation().y, 2.0f) &&
+             nearlyEqual(fixture.cube->getTranslation().z, 3.0f),
          "move updates translation");
 
-  const CommandResult scaleUniform = fixture.bus.dispatch("scale /world/cube 2");
+  const CommandResult scaleUniform =
+      fixture.bus.dispatch("scale /world/cube 2");
   EXPECT(scaleUniform.ok, "uniform scale succeeds");
-  EXPECT(nearlyEqual(fixture.cube->getScale().x, 2.0f)
-             && nearlyEqual(fixture.cube->getScale().y, 2.0f)
-             && nearlyEqual(fixture.cube->getScale().z, 2.0f),
+  EXPECT(nearlyEqual(fixture.cube->getScale().x, 2.0f) &&
+             nearlyEqual(fixture.cube->getScale().y, 2.0f) &&
+             nearlyEqual(fixture.cube->getScale().z, 2.0f),
          "uniform scale updates all axes");
 
-  const CommandResult rotate = fixture.bus.dispatch("rotate /world/cube 90 0 0");
+  const CommandResult rotate =
+      fixture.bus.dispatch("rotate /world/cube 90 0 0");
   EXPECT(rotate.ok, "rotate succeeds");
   const Quatf expected =
       Quatf::fromAxisAngle(Vec3f{1.0f, 0.0f, 0.0f}, kPi * 0.5f).normalized();
-  EXPECT(nearlyEqual(fixture.cube->getRotation().w, expected.w)
-             && nearlyEqual(fixture.cube->getRotation().v.x, expected.v.x)
-             && nearlyEqual(fixture.cube->getRotation().v.y, expected.v.y)
-             && nearlyEqual(fixture.cube->getRotation().v.z, expected.v.z),
+  EXPECT(nearlyEqual(fixture.cube->getRotation().w, expected.w) &&
+             nearlyEqual(fixture.cube->getRotation().v.x, expected.v.x) &&
+             nearlyEqual(fixture.cube->getRotation().v.y, expected.v.y) &&
+             nearlyEqual(fixture.cube->getRotation().v.z, expected.v.z),
          "rotate writes quaternion converted from degrees");
 
-  const CommandResult getTranslation = fixture.bus.dispatch("get /world/cube.translation");
+  const CommandResult getTranslation =
+      fixture.bus.dispatch("get /world/cube.translation");
   EXPECT(getTranslation.ok, "get translation succeeds");
   EXPECT(getTranslation.structured.find("\"x\":1") != std::string::npos,
          "get translation returns structured vector payload");
@@ -570,7 +563,8 @@ void testBuiltinCommandErrors() {
   EXPECT(badSelect.message == "node not found: /missing",
          "select missing node returns explicit error");
 
-  const CommandResult badMove = fixture.bus.dispatch("move /world/cube nope 0 0");
+  const CommandResult badMove =
+      fixture.bus.dispatch("move /world/cube nope 0 0");
   EXPECT(!badMove.ok, "move fails on invalid float");
   EXPECT(badMove.message == "invalid float for move",
          "move invalid float error is stable");
@@ -596,13 +590,13 @@ void testBuiltinCommandErrors() {
          "help unknown command uses same not-found wording");
 }
 
-
-
 void testBuiltinAddRemoveSetCommands() {
   CommandFixture fixture;
   std::vector<LX_core::SceneEvent> runtimeEvents;
-  auto subscription = fixture.scene->events().subscribe(
-      [&](const LX_core::SceneEvent &event) { runtimeEvents.push_back(event); });
+  auto subscription =
+      fixture.scene->events().subscribe([&](const LX_core::SceneEvent &event) {
+        runtimeEvents.push_back(event);
+      });
 
   const CommandResult selectResult = fixture.bus.dispatch("select /world/cube");
   EXPECT(selectResult.ok, "select before add commands succeeds");
@@ -633,7 +627,8 @@ void testBuiltinAddRemoveSetCommands() {
   EXPECT(!runtimeEvents.empty(), "set fov should emit a runtime event");
   EXPECT(runtimeEvents.size() == 1,
          "set fov should emit exactly one camera-properties runtime event");
-  EXPECT(runtimeEvents.back().type == LX_core::SceneEventType::SceneNodeChanged &&
+  EXPECT(runtimeEvents.back().type ==
+                 LX_core::SceneEventType::SceneNodeChanged &&
              runtimeEvents.back().path == "/camera_main" &&
              runtimeEvents.back().aspects.size() == 1 &&
              runtimeEvents.back().aspects.front() ==
@@ -654,7 +649,8 @@ void testBuiltinAddRemoveSetCommands() {
   EXPECT(fixture.cube->getVisibilityLayerMask() == 255u,
          "set visibilityMask updates node visibility");
 
-  const CommandResult setNear = fixture.bus.dispatch("set /camera_main.near 0.5");
+  const CommandResult setNear =
+      fixture.bus.dispatch("set /camera_main.near 0.5");
   EXPECT(setNear.ok, "set near succeeds");
   EXPECT(nearlyEqual(fixture.camera->getNearPlane(), 0.5f),
          "set near updates camera");
@@ -687,6 +683,16 @@ void testBuiltinAddRemoveSetCommands() {
   const CommandResult setLightIntensity =
       fixture.bus.dispatch("set /dir_light.intensity 3.5");
   EXPECT(setLightIntensity.ok, "set light intensity succeeds");
+  const CommandResult setLightShadowStrength =
+      fixture.bus.dispatch("set /dir_light.shadowStrength 0.8");
+  EXPECT(setLightShadowStrength.ok, "set light shadow strength succeeds");
+  const CommandResult setLightShadowDistance =
+      fixture.bus.dispatch("set /dir_light.shadowDistance 120");
+  EXPECT(setLightShadowDistance.ok, "set light shadow distance succeeds");
+  const CommandResult setLightShadowCascadeCount =
+      fixture.bus.dispatch("set /dir_light.shadowCascadeCount 2");
+  EXPECT(setLightShadowCascadeCount.ok,
+         "set light shadow cascade count succeeds");
   const auto dirLight = std::dynamic_pointer_cast<DirectionalLight>(
       fixture.scene->getLights().front());
   EXPECT(nearlyEqual(dirLight->getDirection().x, 0.0f) &&
@@ -698,6 +704,12 @@ void testBuiltinAddRemoveSetCommands() {
              nearlyEqual(dirLight->getColor().z, 0.6f) &&
              nearlyEqual(dirLight->getIntensity(), 3.5f),
          "set color/intensity updates scene light");
+  EXPECT(nearlyEqual(dirLight->getShadowParams().z, 0.8f),
+         "set shadowStrength updates scene light");
+  EXPECT(nearlyEqual(dirLight->getShadowDistance(), 120.0f),
+         "set shadowDistance updates scene light");
+  EXPECT(dirLight->getShadowCascadeCount() == 2u,
+         "set shadowCascadeCount updates scene light");
 
   fixture.lightNode->setName("sun");
   auto fillNode = SceneNode::create("fill_light_node");
@@ -718,9 +730,10 @@ void testBuiltinAddRemoveSetCommands() {
   EXPECT(nearlyEqual(fillLight->getIntensity(), 1.25f),
          "renamed light command should not mutate other scene lights");
   EXPECT(!runtimeEvents.empty(), "set intensity should emit a runtime event");
-  EXPECT(runtimeEvents.size() == 1,
-         "renamed light set should emit exactly one light-properties runtime event");
-  EXPECT(runtimeEvents.back().type == LX_core::SceneEventType::SceneNodeChanged &&
+  EXPECT(runtimeEvents.size() == 1, "renamed light set should emit exactly one "
+                                    "light-properties runtime event");
+  EXPECT(runtimeEvents.back().type ==
+                 LX_core::SceneEventType::SceneNodeChanged &&
              runtimeEvents.back().path == "/sun" &&
              runtimeEvents.back().aspects.size() == 1 &&
              runtimeEvents.back().aspects.front() ==
@@ -745,7 +758,8 @@ void testBuiltinAddRemoveSetCommands() {
   leaf->setParent(branch);
   fixture.scene->addRenderable(leaf);
 
-  const SceneNodeSharedPtr branchCamera = SceneNode::create("node_branch_camera");
+  const SceneNodeSharedPtr branchCamera =
+      SceneNode::create("node_branch_camera");
   branchCamera->setName("branch_cam");
   branchCamera->addComponent<CameraComponent>();
   branchCamera->setParent(branch);
@@ -753,12 +767,14 @@ void testBuiltinAddRemoveSetCommands() {
 
   EXPECT(fixture.scene->findByPath("/world/cube/branch/leaf") == leaf.get(),
          "subtree leaf exists before removal");
-  EXPECT(fixture.scene->findByPath("/world/cube/branch/branch_cam") == branchCamera.get(),
+  EXPECT(fixture.scene->findByPath("/world/cube/branch/branch_cam") ==
+             branchCamera.get(),
          "subtree camera exists before removal");
   EXPECT(fixture.scene->getCameras().size() == 2,
          "subtree camera is registered before removal");
 
-  const CommandResult removeBranch = fixture.bus.dispatch("remove /world/cube/branch");
+  const CommandResult removeBranch =
+      fixture.bus.dispatch("remove /world/cube/branch");
   EXPECT(removeBranch.ok, "remove subtree root succeeds");
   EXPECT(fixture.scene->findByPath("/world/cube/branch") == nullptr,
          "removed subtree root no longer resolves");
@@ -780,9 +796,10 @@ void testBuiltinAddRemoveSetCommands() {
 void testBuiltinCreatesAndEditsTypedLights() {
   CommandFixture fixture;
 
-  const CommandResult addPoint = fixture.bus.dispatch("add light:point point_fill");
+  const CommandResult addPoint =
+      fixture.bus.dispatch("add light:point point_fill");
   EXPECT(addPoint.ok, "add point light succeeds");
-  auto* pointNode = fixture.scene->findByPath("/point_fill");
+  auto *pointNode = fixture.scene->findByPath("/point_fill");
   EXPECT(pointNode != nullptr, "point light node should exist");
   if (pointNode != nullptr) {
     const auto point = fixture.scene->getPointLight(*pointNode);
@@ -800,7 +817,7 @@ void testBuiltinCreatesAndEditsTypedLights() {
 
   const CommandResult addSpot = fixture.bus.dispatch("add light:spot spot_key");
   EXPECT(addSpot.ok, "add spot light succeeds");
-  auto* spotNode = fixture.scene->findByPath("/spot_key");
+  auto *spotNode = fixture.scene->findByPath("/spot_key");
   EXPECT(spotNode != nullptr, "spot light node should exist");
   if (spotNode != nullptr) {
     const auto spot = fixture.scene->getSpotLight(*spotNode);
@@ -828,7 +845,7 @@ void testBuiltinCamAndPreviewCommands() {
   EXPECT(nearlyEqual(fixture.camera->getFovY(), 80.0f),
          "cam fov updates active camera");
   EXPECT(camFov.metadata.find("editor_camera.resync") !=
-             camFov.metadata.end() &&
+                 camFov.metadata.end() &&
              camFov.metadata.at("editor_camera.resync") == "true",
          "cam fov requests camera rig state resync");
 
@@ -840,7 +857,7 @@ void testBuiltinCamAndPreviewCommands() {
              nearlyEqual(fixture.camera->getEyePosition().z, 3.0f),
          "cam look-at updates camera position");
   EXPECT(camLookAt.metadata.find("editor_camera.resync") !=
-             camLookAt.metadata.end() &&
+                 camLookAt.metadata.end() &&
              camLookAt.metadata.at("editor_camera.resync") == "true",
          "cam look-at requests camera rig state resync");
 
@@ -849,17 +866,19 @@ void testBuiltinCamAndPreviewCommands() {
   EXPECT(nearlyEqual(fixture.camera->getEyePosition().z, 3.0f),
          "cam reset restores default eye distance");
   EXPECT(camReset.metadata.find("editor_camera.resync") !=
-             camReset.metadata.end() &&
+                 camReset.metadata.end() &&
              camReset.metadata.at("editor_camera.resync") == "true",
          "cam reset requests camera rig state resync");
 
-  const SceneNodeSharedPtr editorCameraNode = SceneNode::create("node_editor_camera");
+  const SceneNodeSharedPtr editorCameraNode =
+      SceneNode::create("node_editor_camera");
   editorCameraNode->setName("editor_cam");
   auto editorCamera = editorCameraNode->addComponent<CameraComponent>();
   editorCameraNode->setTranslation({1.0f, 2.0f, 3.0f});
   fixture.scene->addCamera(editorCameraNode);
 
-  const SceneNodeSharedPtr gameCameraNode = SceneNode::create("node_game_camera");
+  const SceneNodeSharedPtr gameCameraNode =
+      SceneNode::create("node_game_camera");
   gameCameraNode->setName("game_cam");
   auto gameCamera = gameCameraNode->addComponent<CameraComponent>();
   gameCameraNode->setTranslation({7.0f, 8.0f, 9.0f});
@@ -875,9 +894,10 @@ void testBuiltinCamAndPreviewCommands() {
   EXPECT(nearlyEqual(editorCamera->get().getEyePosition().x, 7.0f) &&
              nearlyEqual(editorCamera->get().getEyePosition().y, 8.0f) &&
              nearlyEqual(editorCamera->get().getEyePosition().z, 9.0f),
-         "cam reset-editor-to-game copies the preview camera pose onto the editor camera");
+         "cam reset-editor-to-game copies the preview camera pose onto the "
+         "editor camera");
   EXPECT(camResetToGame.metadata.find("editor_camera.resync") !=
-             camResetToGame.metadata.end() &&
+                 camResetToGame.metadata.end() &&
              camResetToGame.metadata.at("editor_camera.resync") == "true",
          "cam reset-editor-to-game requests camera rig state resync");
 
@@ -885,18 +905,20 @@ void testBuiltinCamAndPreviewCommands() {
   EXPECT(previewOn.ok, "preview on succeeds");
   EXPECT(fixture.editorState.isPreviewEnabled(),
          "preview on updates editor state");
-  EXPECT(previewOn.metadata.find("scene.rebuild") != previewOn.metadata.end() &&
-             previewOn.metadata.at("scene.rebuild") == "true",
-         "preview on requests scene rebuild so active camera resources refresh");
+  EXPECT(
+      previewOn.metadata.find("scene.rebuild") != previewOn.metadata.end() &&
+          previewOn.metadata.at("scene.rebuild") == "true",
+      "preview on requests scene rebuild so active camera resources refresh");
 
   const CommandResult previewToggle = fixture.bus.dispatch("preview toggle");
   EXPECT(previewToggle.ok, "preview toggle succeeds");
   EXPECT(!fixture.editorState.isPreviewEnabled(),
          "preview toggle flips editor state");
   EXPECT(previewToggle.metadata.find("scene.rebuild") !=
-             previewToggle.metadata.end() &&
+                 previewToggle.metadata.end() &&
              previewToggle.metadata.at("scene.rebuild") == "true",
-         "preview toggle requests scene rebuild so active camera resources refresh");
+         "preview toggle requests scene rebuild so active camera resources "
+         "refresh");
 }
 
 void testBuiltinRemainingCommandErrors() {
@@ -949,14 +971,17 @@ void testProjectAndSceneCommandsUseRegisteredCallbacks() {
   EXPECT(sceneOpen.ok,
          "scene open should route through project-scoped handler");
 
-  const CommandResult removedSceneCommand = fixture.base.bus.dispatch(kRemovedSceneCommandLine);
+  const CommandResult removedSceneCommand =
+      fixture.base.bus.dispatch(kRemovedSceneCommandLine);
   EXPECT(!removedSceneCommand.ok, "removed scene command should fail");
   EXPECT(removedSceneCommand.message.find("scene open") != std::string::npos ||
-             removedSceneCommand.message.find("unknown command") != std::string::npos,
+             removedSceneCommand.message.find("unknown command") !=
+                 std::string::npos,
          "removed scene command should not be a compatibility alias");
 
   EXPECT(fixture.projectCommands.size() == 3 &&
-             fixture.projectCommands[0] == std::vector<std::string>{"templates"} &&
+             fixture.projectCommands[0] ==
+                 std::vector<std::string>{"templates"} &&
              fixture.projectCommands[1] ==
                  std::vector<std::string>({"init", "empty", "demo"}) &&
              fixture.projectCommands[2] ==
@@ -979,17 +1004,20 @@ void testRemovedSceneCommandReportsGuidanceWithoutSceneCallback() {
           .editorState = base.editorState,
           .scene = *base.scene,
           .interaction = interaction,
-          .getEditMode = []() {
-            return static_cast<int>(
-                LX_demo::lxe_editor::UiOverlay::EditorMode::Selection);
-          },
+          .getEditMode =
+              []() {
+                return static_cast<int>(
+                    LX_demo::lxe_editor::UiOverlay::EditorMode::Selection);
+              },
           .setEditMode = [](int) {},
-          .getCameraControlMode = []() {
-            return static_cast<int>(
-                LX_demo::lxe_editor::UiOverlay::CameraControlMode::Orbit);
-          },
+          .getCameraControlMode =
+              []() {
+                return static_cast<int>(
+                    LX_demo::lxe_editor::UiOverlay::CameraControlMode::Orbit);
+              },
           .setCameraControlMode = [](int) {},
-          .sceneViewRect = []() { return LX_demo::lxe_editor::SceneViewRect{}; },
+          .sceneViewRect =
+              []() { return LX_demo::lxe_editor::SceneViewRect{}; },
           .dirty = []() { return false; },
           .debugEnabled = []() { return false; },
           .setDebugEnabled = [](bool) {},
@@ -998,7 +1026,8 @@ void testRemovedSceneCommandReportsGuidanceWithoutSceneCallback() {
           .persistedHistory = []() { return std::vector<std::string>{}; },
       });
 
-  const CommandResult removedSceneCommand = base.bus.dispatch(kRemovedSceneCommandLine);
+  const CommandResult removedSceneCommand =
+      base.bus.dispatch(kRemovedSceneCommandLine);
   EXPECT(!removedSceneCommand.ok,
          "removed scene command should fail without scene callback");
   EXPECT(removedSceneCommand.message.find("scene open") != std::string::npos,
@@ -1009,7 +1038,8 @@ void testAdminCommandsRequireRegisteredCallbacks() {
   CommandFixture fixture;
 
   const CommandResult onResult = fixture.bus.dispatch(kLegacyAdminOnLine);
-  EXPECT(!onResult.ok, "legacy admin command should fail before callback wiring");
+  EXPECT(!onResult.ok,
+         "legacy admin command should fail before callback wiring");
   EXPECT(onResult.message.find("unknown command: admin") != std::string::npos,
          "legacy admin command should not be registered without callbacks");
 
@@ -1027,17 +1057,20 @@ void testAdminCommandsUseRegisteredCallbacks() {
   bool adminEnabled = false;
 
   SceneIoContext sceneIo{
-      .setAdmin = [&](const bool enabled) {
-        adminEnabled = enabled;
-        return CommandResult{true, enabled ? "admin enabled" : "admin disabled",
-                             enabled ? "{\"permission\":\"admin\"}"
-                                     : "{\"permission\":\"user\"}"};
-      },
-      .adminStatus = [&]() {
-        return CommandResult{true, adminEnabled ? "admin" : "user",
-                             adminEnabled ? "{\"permission\":\"admin\"}"
-                                          : "{\"permission\":\"user\"}"};
-      }};
+      .setAdmin =
+          [&](const bool enabled) {
+            adminEnabled = enabled;
+            return CommandResult{true,
+                                 enabled ? "admin enabled" : "admin disabled",
+                                 enabled ? "{\"permission\":\"admin\"}"
+                                         : "{\"permission\":\"user\"}"};
+          },
+      .adminStatus =
+          [&]() {
+            return CommandResult{true, adminEnabled ? "admin" : "user",
+                                 adminEnabled ? "{\"permission\":\"admin\"}"
+                                              : "{\"permission\":\"user\"}"};
+          }};
   registerBuiltinCommands(bus, editorState, *scene, sceneIo);
 
   const CommandResult onResult = bus.dispatch(kLegacyAdminOnLine);
@@ -1091,7 +1124,8 @@ void testSceneOpenClearsRedoHistory() {
 
   const CommandResult openRedoResult =
       redoFixture.base.bus.dispatch("scene open reloaded");
-  EXPECT(openRedoResult.ok, "scene open should succeed with redo history present");
+  EXPECT(openRedoResult.ok,
+         "scene open should succeed with redo history present");
   EXPECT(!redoFixture.base.bus.canRedo(),
          "successful scene open should clear stale redo history");
 
@@ -1148,7 +1182,8 @@ void testSceneSavePreservesRedoHistory() {
 
   const CommandResult saveRedoResult =
       redoFixture.base.bus.dispatch("scene save snapshot");
-  EXPECT(saveRedoResult.ok, "scene save should succeed with redo history present");
+  EXPECT(saveRedoResult.ok,
+         "scene save should succeed with redo history present");
   EXPECT(redoFixture.base.bus.canRedo(),
          "successful scene save should preserve redo history");
 }
@@ -1197,9 +1232,11 @@ void testSceneViewerModeAndStateCommands() {
              std::string::npos,
          "camera command should return camera payload");
 
-  const CommandResult selectResult = fixture.base.bus.dispatch("select /world/cube");
+  const CommandResult selectResult =
+      fixture.base.bus.dispatch("select /world/cube");
   EXPECT(selectResult.ok, "select setup for state summary should succeed");
-  const CommandResult summaryResult = fixture.base.bus.dispatch("state summary");
+  const CommandResult summaryResult =
+      fixture.base.bus.dispatch("state summary");
   EXPECT(summaryResult.ok, "state summary should succeed");
   EXPECT(summaryResult.structured.find("\"sceneName\"") != std::string::npos,
          "state summary should include scene name");
@@ -1220,7 +1257,8 @@ void testSceneViewerModeAndStateCommands() {
   EXPECT(selectionResult.structured.find("/world/cube") != std::string::npos,
          "state selection should include selected path");
 
-  const CommandResult camerasResult = fixture.base.bus.dispatch("state cameras");
+  const CommandResult camerasResult =
+      fixture.base.bus.dispatch("state cameras");
   EXPECT(camerasResult.ok, "state cameras should succeed");
   EXPECT(camerasResult.structured.find("\"editor\"") != std::string::npos,
          "state cameras should include editor camera payload");
@@ -1232,7 +1270,8 @@ void testSceneViewerModeAndStateCommands() {
   EXPECT(sceneResult.structured.find("permission") == std::string::npos,
          "state scene should not include scene-source permission");
 
-  const CommandResult toolbarResult = fixture.base.bus.dispatch("state toolbar");
+  const CommandResult toolbarResult =
+      fixture.base.bus.dispatch("state toolbar");
   EXPECT(toolbarResult.ok, "state toolbar should succeed");
   EXPECT(toolbarResult.structured.find("\"mode\":\"selection\"") !=
              std::string::npos,
@@ -1286,7 +1325,8 @@ void testStateSummarySanitizesProjectJson() {
   EXPECT(emptyArrayResult.structured.find("\"project\":{\"scenes\":[]}") !=
              std::string::npos,
          "empty array project json value should be preserved");
-  EXPECT(emptyArrayResult.structured.find(kLegacySourceKey) == std::string::npos,
+  EXPECT(emptyArrayResult.structured.find(kLegacySourceKey) ==
+             std::string::npos,
          "empty array project summary should not add source kind");
 
   fixture.projectSummary = "{\"templates\":[\"empty\"]}";
@@ -1297,7 +1337,8 @@ void testStateSummarySanitizesProjectJson() {
   EXPECT(stringArrayResult.structured.find(
              "\"project\":{\"templates\":[\"empty\"]}") != std::string::npos,
          "string array project json value should be preserved");
-  EXPECT(stringArrayResult.structured.find(kLegacySourceKey) == std::string::npos,
+  EXPECT(stringArrayResult.structured.find(kLegacySourceKey) ==
+             std::string::npos,
          "string array project summary should not add source kind");
 
   fixture.projectSummary = "null";
@@ -1309,8 +1350,10 @@ void testStateSummarySanitizesProjectJson() {
          "null project summary should not add source kind");
 
   fixture.projectSummary = "not json";
-  const CommandResult invalidResult = fixture.base.bus.dispatch("state summary");
-  EXPECT(invalidResult.ok, "state summary should tolerate invalid project json");
+  const CommandResult invalidResult =
+      fixture.base.bus.dispatch("state summary");
+  EXPECT(invalidResult.ok,
+         "state summary should tolerate invalid project json");
   EXPECT(invalidResult.structured.find("\"project\":null") != std::string::npos,
          "invalid project json should fall back to null");
   EXPECT(invalidResult.structured.find(kLegacySourceKey) == std::string::npos,
@@ -1333,10 +1376,11 @@ void testStateSummarySanitizesProjectJson() {
       fixture.base.bus.dispatch("state summary");
   EXPECT(missingValueResult.ok,
          "state summary should tolerate missing project json values");
-  EXPECT(missingValueResult.structured.find("\"project\":null") !=
-             std::string::npos,
-         "project json ending with a colon before object close should fall back "
-         "to null");
+  EXPECT(
+      missingValueResult.structured.find("\"project\":null") !=
+          std::string::npos,
+      "project json ending with a colon before object close should fall back "
+      "to null");
   EXPECT(missingValueResult.structured.find(kLegacySourceKey) ==
              std::string::npos,
          "missing value project summary should not add source kind");
@@ -1380,13 +1424,15 @@ void testSceneViewerDebugCommandsUpdateSummaryAndToolbarState() {
   EXPECT(enable.structured.find("\"debugEnabled\":true") != std::string::npos,
          "debug on should report enabled state");
 
-  const CommandResult summaryResult = fixture.base.bus.dispatch("state summary");
+  const CommandResult summaryResult =
+      fixture.base.bus.dispatch("state summary");
   EXPECT(summaryResult.ok, "state summary should still succeed after debug on");
   EXPECT(summaryResult.structured.find("\"debugEnabled\":true") !=
              std::string::npos,
          "state summary should surface debug state");
 
-  const CommandResult toolbarResult = fixture.base.bus.dispatch("state toolbar");
+  const CommandResult toolbarResult =
+      fixture.base.bus.dispatch("state toolbar");
   EXPECT(toolbarResult.ok, "state toolbar should succeed after debug on");
   EXPECT(toolbarResult.structured.find("\"debugEnabled\":true") !=
              std::string::npos,
@@ -1394,8 +1440,7 @@ void testSceneViewerDebugCommandsUpdateSummaryAndToolbarState() {
 
   const CommandResult disable = fixture.base.bus.dispatch("debug off");
   EXPECT(disable.ok, "debug off should succeed");
-  EXPECT(disable.structured.find("\"debugEnabled\":false") !=
-             std::string::npos,
+  EXPECT(disable.structured.find("\"debugEnabled\":false") != std::string::npos,
          "debug off should report disabled state");
 }
 
@@ -1437,7 +1482,8 @@ void testSceneViewerPickDebugLogsArePrintedToConsole() {
   EXPECT(enable.ok, "debug on should succeed before pick logging");
 
   const CommandResult result = fixture.bus.dispatch("pick 400 300");
-  EXPECT(result.ok, "pick command should succeed while debug logging is enabled");
+  EXPECT(result.ok,
+         "pick command should succeed while debug logging is enabled");
 
   const std::string consoleText = fixture.consolePanel.displayedText();
   EXPECT(consoleText.find("pick_debug") != std::string::npos,
@@ -1462,14 +1508,14 @@ void testConsolePanelFormatsCommandAndResultWithNewPrompts() {
   const std::string consoleText = panel.displayedText();
   const std::string resultMessage = fixture.bus.history().back().result.message;
 
-  EXPECT(fixture.editorState.getSelected().size() == 1 && fixture.editorState.getSelected()[0] == fixture.cube,
+  EXPECT(fixture.editorState.getSelected().size() == 1 &&
+             fixture.editorState.getSelected()[0] == fixture.cube,
          "panel submit routes through builtin command bus");
   EXPECT(panel.displayedEntries().size() == 1,
          "panel display shows newly executed command");
   EXPECT(consoleText.find("> select /world/cube") != std::string::npos,
          "displayedText should render commands with the new prompt prefix");
-  EXPECT(consoleText.find('\n' + resultMessage) !=
-             std::string::npos,
+  EXPECT(consoleText.find('\n' + resultMessage) != std::string::npos,
          "displayedText should render result text without a prompt prefix");
   EXPECT(consoleText.find("< select /world/cube") == std::string::npos,
          "legacy command prefix should be removed");
@@ -1487,14 +1533,16 @@ void testSceneViewerPickDebugLogsAttachToNewestCommandEntry() {
   const CommandResult pick = fixture.bus.dispatch("pick 400 300");
   EXPECT(pick.ok, "pick command should succeed while debug logging is enabled");
   const CommandResult listNodes = fixture.bus.dispatch("list nodes");
-  EXPECT(listNodes.ok, "later visible command should succeed after pick logging");
+  EXPECT(listNodes.ok,
+         "later visible command should succeed after pick logging");
 
   const std::string consoleText = fixture.consolePanel.displayedText();
   const usize pickCommandPos = consoleText.find("> pick 400 300");
   const usize pickResultPos = consoleText.find(pick.message, pickCommandPos);
   const usize debugPos = consoleText.find("pick_debug", pickResultPos);
   const usize laterCommandPos = consoleText.find("> list nodes", debugPos);
-  const usize laterResultPos = consoleText.find(listNodes.message, laterCommandPos);
+  const usize laterResultPos =
+      consoleText.find(listNodes.message, laterCommandPos);
 
   EXPECT(pickCommandPos != std::string::npos,
          "pick command should remain visible in console output");
@@ -1508,8 +1556,9 @@ void testSceneViewerPickDebugLogsAttachToNewestCommandEntry() {
          "later command result should remain visible in console output");
   EXPECT(pickCommandPos < pickResultPos && pickResultPos < debugPos,
          "pick debug output should appear after the owning command result");
-  EXPECT(debugPos < laterCommandPos && laterCommandPos < laterResultPos,
-         "pick debug output should stay attached before the later command block");
+  EXPECT(
+      debugPos < laterCommandPos && laterCommandPos < laterResultPos,
+      "pick debug output should stay attached before the later command block");
 }
 
 void testConsoleClearDropsOldDebugAttachmentsFromVisibleOutput() {
@@ -1544,11 +1593,12 @@ void testConsoleClearDropsOldDebugAttachmentsFromVisibleOutput() {
   EXPECT(afterNewPick.find("pick_debug") != std::string::npos,
          "newly attached debug output should be visible after clear");
   const usize commandPos = afterNewPick.find("> pick 400 300");
-  const usize resultPos =
-      afterNewPick.find(fixture.bus.history().back().result.message, commandPos);
+  const usize resultPos = afterNewPick.find(
+      fixture.bus.history().back().result.message, commandPos);
   const usize debugPos = afterNewPick.find("pick_debug", commandPos);
   EXPECT(commandPos < resultPos && resultPos < debugPos,
-         "newly attached debug output should follow the new visible command result");
+         "newly attached debug output should follow the new visible command "
+         "result");
   EXPECT(fixture.bus.history().size() > historySizeBeforeClear,
          "history keeps full record after clearDisplay");
 }
@@ -1562,10 +1612,10 @@ void testConsoleSystemLinesStayOrphanedWithoutVisibleOwner() {
 
   const std::string orphanOnlyText = panel.displayedText();
   EXPECT(orphanOnlyText.find("orphan line") != std::string::npos,
-         "system line should be visible immediately without a visible command owner");
+         "system line should be visible immediately without a visible command "
+         "owner");
   EXPECT(panel.displayedEntries().empty(),
          "orphan system line should not create a synthetic history entry");
-
 }
 
 void testConsoleSystemLinesDoNotRetroactivelyAttachAfterClear() {
@@ -1588,7 +1638,8 @@ void testConsoleSystemLinesDoNotRetroactivelyAttachAfterClear() {
          "new command result should still render after orphan system output");
   EXPECT(orphanPos != std::string::npos,
          "orphan system line should remain visible after a later command");
-  EXPECT(afterCommandText.find(helpResult + "\norphan line") == std::string::npos,
+  EXPECT(afterCommandText.find(helpResult + "\norphan line") ==
+             std::string::npos,
          "orphan system line should not migrate into the later command block");
 }
 
@@ -1611,8 +1662,9 @@ void testConsoleLateSystemLinesAttachToNewestVisibleEntry() {
          "late-line test should keep the owning result visible");
   EXPECT(lateLinePos != std::string::npos,
          "late system line should remain visible");
-  EXPECT(helpCommandPos < helpResultPos && helpResultPos < lateLinePos,
-         "late system line should render under the newest visible command result");
+  EXPECT(
+      helpCommandPos < helpResultPos && helpResultPos < lateLinePos,
+      "late system line should render under the newest visible command result");
   EXPECT(consoleText.find(helpResult + "\n\nlate line") == std::string::npos,
          "late system line should not render as a separate orphan block");
 }
@@ -1621,17 +1673,13 @@ void testConsoleInDispatchSystemLinesDoNotDependOnResultMatchingOrReadTiming() {
   CommandBus bus;
   ConsolePanel panel(bus);
 
-  bus.registerHandler(
-      "emit", "emit",
-      [&](std::vector<std::string>) {
-        panel.appendSystemLine("owned line");
-        return CommandResult{true, "same result", {}, {}};
-      });
-  bus.registerHandler(
-      "same", "same",
-      [](std::vector<std::string>) {
-        return CommandResult{true, "same result", {}, {}};
-      });
+  bus.registerHandler("emit", "emit", [&](std::vector<std::string>) {
+    panel.appendSystemLine("owned line");
+    return CommandResult{true, "same result", {}, {}};
+  });
+  bus.registerHandler("same", "same", [](std::vector<std::string>) {
+    return CommandResult{true, "same result", {}, {}};
+  });
 
   panel.submitLine("emit");
   EXPECT(bus.history().size() == 1,
@@ -1650,16 +1698,18 @@ void testConsoleInDispatchSystemLinesDoNotDependOnResultMatchingOrReadTiming() {
          "first command should remain visible in collision regression");
   EXPECT(emitResultPos != std::string::npos,
          "first result should remain visible in collision regression");
-  EXPECT(ownedLinePos != std::string::npos,
-         "in-dispatch system line should remain visible in collision regression");
+  EXPECT(
+      ownedLinePos != std::string::npos,
+      "in-dispatch system line should remain visible in collision regression");
   EXPECT(sameCommandPos != std::string::npos,
          "second command should remain visible in collision regression");
   EXPECT(sameResultPos != std::string::npos,
          "second result should remain visible in collision regression");
   EXPECT(emitCommandPos < emitResultPos && emitResultPos < ownedLinePos,
          "in-dispatch system line should stay under the owning command result");
-  EXPECT(ownedLinePos < sameCommandPos && sameCommandPos < sameResultPos,
-         "in-dispatch system line should not migrate to a later colliding result");
+  EXPECT(
+      ownedLinePos < sameCommandPos && sameCommandPos < sameResultPos,
+      "in-dispatch system line should not migrate to a later colliding result");
 }
 
 void testHistorylessUndoConsoleLinesStayVisible() {
@@ -1668,20 +1718,19 @@ void testHistorylessUndoConsoleLinesStayVisible() {
   bool enabled = false;
 
   bus.registerHandler(
-      "toggle", CommandMetadata{
-                    .brief = "toggle",
-                    .inverse =
-                        [](const ParsedCommand &, const CommandResult &) {
-                          return std::optional<std::string>{"toggle_inverse"};
-                        },
-                    .mutatesState = true},
+      "toggle",
+      CommandMetadata{.brief = "toggle",
+                      .inverse =
+                          [](const ParsedCommand &, const CommandResult &) {
+                            return std::optional<std::string>{"toggle_inverse"};
+                          },
+                      .mutatesState = true},
       [&](std::vector<std::string>) {
         enabled = !enabled;
         return CommandResult{true, enabled ? "enabled" : "disabled", {}, {}};
       });
   bus.registerHandler(
-      "toggle_inverse", "toggle_inverse",
-      [&](std::vector<std::string>) {
+      "toggle_inverse", "toggle_inverse", [&](std::vector<std::string>) {
         panel.appendSystemLine("undo line");
         enabled = !enabled;
         return CommandResult{true, enabled ? "enabled" : "disabled", {}, {}};
@@ -1709,7 +1758,8 @@ void testHistorylessUndoConsoleLinesStayVisible() {
   EXPECT(undoLinePos != std::string::npos,
          "historyless undo system line should remain visible");
   EXPECT(toggleCommandPos < toggleResultPos && toggleResultPos < undoLinePos,
-         "historyless undo system line should attach through the visible late/orphan path");
+         "historyless undo system line should attach through the visible "
+         "late/orphan path");
 }
 
 void testConsolePanelBrowseAndAutocomplete() {
@@ -1785,8 +1835,9 @@ void testConsoleInputControllerCompletionBehaviors() {
 
   controller.setInputText("r");
   controller.autocomplete();
-  EXPECT(controller.inputText() == "r",
-         "ambiguous completion with unchanged prefix should keep original input");
+  EXPECT(
+      controller.inputText() == "r",
+      "ambiguous completion with unchanged prefix should keep original input");
   const std::string helper = controller.helperOutputText();
   EXPECT(helper.find("remove") != std::string::npos,
          "ambiguous completion should list remove candidate");
@@ -1832,14 +1883,14 @@ void testConsoleInputControllerCallbackEvents() {
   EXPECT(controller.inputText() == "select ",
          "history callback should restore draft after returning past newest");
 
-  EXPECT(controller.handleCallbackEvent(ImGuiInputTextFlags_CallbackCharFilter, 0,
-                                        '\n') == 1,
+  EXPECT(controller.handleCallbackEvent(ImGuiInputTextFlags_CallbackCharFilter,
+                                        0, '\n') == 1,
          "char filter should reject newline insertion");
-  EXPECT(controller.handleCallbackEvent(ImGuiInputTextFlags_CallbackCharFilter, 0,
-                                        '\r') == 1,
+  EXPECT(controller.handleCallbackEvent(ImGuiInputTextFlags_CallbackCharFilter,
+                                        0, '\r') == 1,
          "char filter should reject carriage return insertion");
-  EXPECT(controller.handleCallbackEvent(ImGuiInputTextFlags_CallbackCharFilter, 0,
-                                        'a') == 0,
+  EXPECT(controller.handleCallbackEvent(ImGuiInputTextFlags_CallbackCharFilter,
+                                        0, 'a') == 0,
          "char filter should allow ordinary characters");
 }
 
@@ -1894,7 +1945,8 @@ void testConsolePanelShouldSubmitPlainEnterOnly() {
 void testConsolePanelUsesSingleLineHistoryCompatibleInputFlags() {
   const ImGuiInputTextFlags flags = ConsolePanel::inputTextFlags();
   EXPECT((flags & ImGuiInputTextFlags_EnterReturnsTrue) != 0,
-         "single-line console input should use EnterReturnsTrue for reliable submit");
+         "single-line console input should use EnterReturnsTrue for reliable "
+         "submit");
   EXPECT((flags & ImGuiInputTextFlags_CallbackHistory) != 0,
          "console input should keep history callback support");
   EXPECT((flags & ImGuiInputTextFlags_CallbackCompletion) != 0,
@@ -1902,7 +1954,8 @@ void testConsolePanelUsesSingleLineHistoryCompatibleInputFlags() {
   EXPECT((flags & ImGuiInputTextFlags_CallbackCharFilter) != 0,
          "console input should keep character filtering support");
   EXPECT(!ConsolePanel::usesMultilineInput(),
-         "console input widget must remain single-line when history callbacks are enabled");
+         "console input widget must remain single-line when history callbacks "
+         "are enabled");
 }
 
 void testConsoleInputControllerSyncsCallbackBufferAfterCompletionAndHistory() {
@@ -1944,8 +1997,8 @@ void testConsoleInputControllerSyncsCallbackBufferAfterCompletionAndHistory() {
   historyData.Buf = historyBuffer.data();
   historyData.BufSize = static_cast<int>(historyBuffer.size());
 
-  (void)controller.handleCallbackEvent(historyData.EventFlag, historyData.EventKey,
-                                       historyData.EventChar);
+  (void)controller.handleCallbackEvent(
+      historyData.EventFlag, historyData.EventKey, historyData.EventChar);
   controller.syncCallbackBuffer(historyData);
   EXPECT(std::string(historyData.Buf) == "list nodes",
          "callback sync should copy history text into ImGui buffer");
@@ -1991,8 +2044,9 @@ void testConsoleInputControllerSanitizesMultilineSubmitToSingleLine() {
          "multiline widget submit should still dispatch one logical command");
   EXPECT(fixture.bus.history().back().result.ok,
          "sanitized multiline submit should succeed");
-  EXPECT(fixture.bus.history().back().line == "select /world/cube",
-         "sanitized multiline submit should collapse embedded newlines to spaces");
+  EXPECT(
+      fixture.bus.history().back().line == "select /world/cube",
+      "sanitized multiline submit should collapse embedded newlines to spaces");
   EXPECT(controller.persistedHistory().size() == 1,
          "persisted history should record sanitized multiline submit");
   EXPECT(controller.persistedHistory().back() == "select /world/cube",

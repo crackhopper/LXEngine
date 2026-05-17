@@ -4,7 +4,7 @@
 
 ## 当前三类灯已经够用，为什么还要谈 custom light
 
-内置三类灯能覆盖很多基础场景，但教程要讲“扩展灯光”时，会立刻遇到重复劳动：新增 light kind 不只是加一个 C++ struct，还要同步 scene document、runtime 收集、Inspector、command、debug helper 和 shader 合同。这个系列先让我们看懂当前三类灯怎么走完整链路，再把重复劳动收束成未来 registry 需求。
+内置三类灯能覆盖很多基础场景，其中 directional light 也是当前 shadow / CSM 主光源。但教程要讲“扩展灯光”时，会立刻遇到重复劳动：新增 light kind 不只是加一个 C++ struct，还要同步 scene document、runtime 收集、Inspector、command、debug helper 和 shader 合同。这个系列先让我们看懂当前三类灯怎么走完整链路，再把重复劳动收束成未来 registry 需求。
 
 ## 光源链路中的核心对象
 

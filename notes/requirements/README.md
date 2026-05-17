@@ -42,11 +42,11 @@
 
 | REQ | 主题 | 实施窗口 |
 |---|---|---|
-| `REQ-042-a` | FrameGraph v1 resource / target / pass execution | v0.1.1 多 pass 共同前置，未开始 |
-| `REQ-042-b` | Directional shadow map 与 depth-only pass | 第一个真实 multiple pass，未开始 |
-| `REQ-042-c` | Cascaded Shadow Maps | 近期渲染能力截止点，未开始 |
-| `REQ-043-a` | Shadow 阶段教程支撑 | 完成 CSM 后补教程所需能力，未开始 |
-| `REQ-043-b` | 架构概念文档展开与 Mermaid 图 | 完成上面能力后解释系统模块归属，未开始 |
+| `REQ-042-a` | FrameGraph v1 resource / target / pass execution | 已实现 |
+| `REQ-042-b` | Directional shadow map 与 depth-only pass | 已实现 |
+| `REQ-042-c` | Cascaded Shadow Maps | 已实现 |
+| `REQ-043-a` | Shadow 阶段教程支撑 | 已实现 |
+| `REQ-043-b` | 架构概念文档展开与 Mermaid 图 | 已实现 |
 
 ## 当前 pending REQ（后续候选，2026-05-17）
 

@@ -98,4 +98,20 @@
 
 ## 实施状态
 
-未开始。v0.1.1 中排在 CSM 之后。
+已实现。
+
+落地内容：
+
+- 新增 `assets/scenes/shadow_tutorial.scene.yaml`，包含固定 camera、ground receiver、cube caster、directional light，并使用支持 `Forward` + `Shadow` pass 的 `blinnphong_lit.material`。
+- 为 directional light 增加 shadow strength、shadow distance、cascade count 的 scene YAML 持久化、CommandBus set/get、Inspector 控件和 runtime round trip。
+- 新增 `notes/tutorial/shadow-era/` 教程线，并在 `notes/nav.yml`、`notes/tutorial/index.md` 中接入。
+- 在教程中明确 light registry、command / toolbar registry、custom scene node registry、Web Editor、Engine CLI/MCP、AssetRegistry / hot reload 仍是 pending 能力。
+
+验证：
+
+- `cmake --build build --target test_scene_document test_scene_runtime test_command_bus test_inspector_panel`
+- `build/src/test/test_scene_document`
+- `build/src/test/test_scene_runtime`
+- `build/src/test/test_command_bus`
+- `build/src/test/test_inspector_panel`
+- `scripts/notes/serve_site.sh --build`

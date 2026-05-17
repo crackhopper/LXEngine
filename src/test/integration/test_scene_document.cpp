@@ -20,14 +20,14 @@ int failures = 0;
     }                                                                          \
   } while (0)
 
-[[nodiscard]] std::filesystem::path makeTempPath(const char* filename) {
+[[nodiscard]] std::filesystem::path makeTempPath(const char *filename) {
   return std::filesystem::temp_directory_path() / filename;
 }
 
-[[nodiscard]] const demo::SceneNodeDocument*
-findChildByName(const demo::SceneNodeDocument& parent,
+[[nodiscard]] const demo::SceneNodeDocument *
+findChildByName(const demo::SceneNodeDocument &parent,
                 std::string_view nodeName) {
-  for (const auto& child : parent.children) {
+  for (const auto &child : parent.children) {
     if (child.nodeName == nodeName) {
       return &child;
     }
@@ -35,10 +35,10 @@ findChildByName(const demo::SceneNodeDocument& parent,
   return nullptr;
 }
 
-[[nodiscard]] const demo::SceneNodeDocument*
-findChildByNodeName(const demo::SceneNodeDocument& parent,
+[[nodiscard]] const demo::SceneNodeDocument *
+findChildByNodeName(const demo::SceneNodeDocument &parent,
                     std::string_view nodeName) {
-  for (const auto& child : parent.children) {
+  for (const auto &child : parent.children) {
     if (child.nodeName == nodeName) {
       return &child;
     }
@@ -46,7 +46,7 @@ findChildByNodeName(const demo::SceneNodeDocument& parent,
   return nullptr;
 }
 
-[[nodiscard]] std::string readFile(const std::filesystem::path& path) {
+[[nodiscard]] std::string readFile(const std::filesystem::path &path) {
   std::ifstream in(path);
   return std::string(std::istreambuf_iterator<char>(in),
                      std::istreambuf_iterator<char>());
@@ -137,20 +137,22 @@ void testLoadExplicitRootSceneDocumentReadsGameAndEditorCamera() {
          "explicit root node should load");
   EXPECT(doc.rootNode().children.size() == 1,
          "explicit root should own top-level nodes");
-  const demo::SceneNodeDocument* world = findChildByName(doc.rootNode(), "world_root");
+  const demo::SceneNodeDocument *world =
+      findChildByName(doc.rootNode(), "world_root");
   EXPECT(world != nullptr, "world should exist under root");
   if (world == nullptr) {
     return;
   }
   EXPECT(world->children.size() == 3, "world children should load");
-  const demo::SceneNodeDocument* gameCamera = findChildByName(*world, "game_camera");
+  const demo::SceneNodeDocument *gameCamera =
+      findChildByName(*world, "game_camera");
   EXPECT(gameCamera != nullptr, "camera child should load");
   if (gameCamera == nullptr) {
     return;
   }
   EXPECT(gameCamera->camera.has_value(), "camera node should load");
   EXPECT(gameCamera->camera->eye.y == 2.0f, "camera eye should load");
-  const demo::SceneNodeDocument* ground = findChildByName(*world, "ground");
+  const demo::SceneNodeDocument *ground = findChildByName(*world, "ground");
   EXPECT(ground != nullptr, "ground child should load");
   if (ground == nullptr) {
     return;
@@ -158,7 +160,8 @@ void testLoadExplicitRootSceneDocumentReadsGameAndEditorCamera() {
   EXPECT(ground->meshUri.has_value(), "mesh uri should load");
   EXPECT(*ground->meshUri == "builtin://lxe_editor/ground_mesh",
          "mesh uri should survive load");
-  const demo::SceneNodeDocument* light = findChildByName(*world, "dir_light_node");
+  const demo::SceneNodeDocument *light =
+      findChildByName(*world, "dir_light_node");
   EXPECT(light != nullptr, "directional light child should load");
   if (light == nullptr) {
     return;
@@ -166,8 +169,7 @@ void testLoadExplicitRootSceneDocumentReadsGameAndEditorCamera() {
   EXPECT(light->light.has_value(), "directional light should load");
   EXPECT(light->light->kind == demo::LightKind::Directional,
          "legacy directional light should migrate to typed kind");
-  EXPECT(light->light->color.y == 0.98f,
-         "directional light color should load");
+  EXPECT(light->light->color.y == 0.98f, "directional light color should load");
   EXPECT(doc.hasEditorCamera(), "editor camera metadata should load");
   EXPECT(doc.editorCamera().position.x == 5.0f, "editor camera x should load");
   EXPECT(doc.editorCamera().rotationEulerDeg.y == 90.0f,
@@ -222,14 +224,16 @@ void testLoadLegacySceneDocumentNormalizesUnderExplicitRoot() {
   const demo::SceneDocument doc = demo::loadSceneDocument(path);
   EXPECT(doc.rootNode().children.size() == 1,
          "legacy load should normalize top-level nodes under explicit root");
-  const demo::SceneNodeDocument* world = findChildByName(doc.rootNode(), "world_root");
+  const demo::SceneNodeDocument *world =
+      findChildByName(doc.rootNode(), "world_root");
   EXPECT(world != nullptr, "legacy world should normalize under root");
   if (world == nullptr) {
     return;
   }
   EXPECT(world->children.size() == 1,
          "legacy child links should normalize recursively");
-  const demo::SceneNodeDocument* gameCamera = findChildByName(*world, "game_camera");
+  const demo::SceneNodeDocument *gameCamera =
+      findChildByName(*world, "game_camera");
   EXPECT(gameCamera != nullptr, "legacy camera should normalize under world");
 }
 
@@ -274,16 +278,18 @@ void testLoadLegacySceneDocumentNormalizesNodeNameBasedParentPaths() {
   out.close();
 
   const demo::SceneDocument doc = demo::loadSceneDocument(path);
-  const demo::SceneNodeDocument* world =
+  const demo::SceneNodeDocument *world =
       findChildByNodeName(doc.rootNode(), "node_world");
-  EXPECT(world != nullptr, "legacy nodeName path should resolve top-level parent");
+  EXPECT(world != nullptr,
+         "legacy nodeName path should resolve top-level parent");
   if (world == nullptr) {
     return;
   }
-  const demo::SceneNodeDocument* gameCamera =
+  const demo::SceneNodeDocument *gameCamera =
       findChildByNodeName(*world, "game_camera");
-  EXPECT(gameCamera != nullptr,
-         "legacy nodeName-based parent path should normalize under explicit root");
+  EXPECT(
+      gameCamera != nullptr,
+      "legacy nodeName-based parent path should normalize under explicit root");
 }
 
 void testLoadMalformedExplicitRootDocumentFailsClearly() {
@@ -300,11 +306,14 @@ void testLoadMalformedExplicitRootDocumentFailsClearly() {
   bool threw = false;
   try {
     (void)demo::loadSceneDocument(path);
-  } catch (const std::runtime_error& error) {
-    threw = std::string_view(error.what()).find("root") != std::string_view::npos;
+  } catch (const std::runtime_error &error) {
+    threw =
+        std::string_view(error.what()).find("root") != std::string_view::npos;
   }
 
-  EXPECT(threw, "malformed explicit-root documents should fail with root-specific error");
+  EXPECT(
+      threw,
+      "malformed explicit-root documents should fail with root-specific error");
 }
 
 void testLoadExplicitRootDocumentRejectsUnsupportedRootPayload() {
@@ -325,14 +334,15 @@ void testLoadExplicitRootDocumentRejectsUnsupportedRootPayload() {
   bool threw = false;
   try {
     (void)demo::loadSceneDocument(path);
-  } catch (const std::runtime_error& error) {
+  } catch (const std::runtime_error &error) {
     const std::string_view message(error.what());
     threw = message.find("root") != std::string_view::npos &&
             message.find("payload") != std::string_view::npos;
   }
 
-  EXPECT(threw,
-         "explicit-root documents should reject unsupported root payload fields");
+  EXPECT(
+      threw,
+      "explicit-root documents should reject unsupported root payload fields");
 }
 
 void testLoadExplicitRootDocumentRejectsNonCanonicalRootIdentity() {
@@ -351,7 +361,7 @@ void testLoadExplicitRootDocumentRejectsNonCanonicalRootIdentity() {
   bool threw = false;
   try {
     (void)demo::loadSceneDocument(path);
-  } catch (const std::runtime_error& error) {
+  } catch (const std::runtime_error &error) {
     const std::string_view message(error.what());
     threw = message.find("root") != std::string_view::npos &&
             message.find("identity") != std::string_view::npos;
@@ -365,7 +375,7 @@ void testSaveSceneDocumentWritesExplicitRootCanonicalFormat() {
   demo::SceneDocument doc;
   doc.setSceneName("lxe_editor");
   doc.setGameplayCameraPath("/world/game_cam");
-  auto& root = doc.mutableRootNode();
+  auto &root = doc.mutableRootNode();
   root.nodeName = "scene_root";
 
   demo::SceneNodeDocument world{
@@ -375,11 +385,12 @@ void testSaveSceneDocumentWritesExplicitRootCanonicalFormat() {
   world.children.push_back(demo::SceneNodeDocument{
       .nodeName = "game_camera",
       .name = "game_cam",
-      .transform = {
-          .translation = {1.0f, 2.0f, 3.0f},
-          .rotation = LX_core::Quatf{1.0f, 0.0f, 0.0f, 0.0f},
-          .scale = {1.0f, 1.0f, 1.0f},
-      },
+      .transform =
+          {
+              .translation = {1.0f, 2.0f, 3.0f},
+              .rotation = LX_core::Quatf{1.0f, 0.0f, 0.0f, 0.0f},
+              .scale = {1.0f, 1.0f, 1.0f},
+          },
       .camera =
           demo::CameraNodeState{
               .eye = {1.0f, 2.0f, 3.0f},
@@ -395,7 +406,8 @@ void testSaveSceneDocumentWritesExplicitRootCanonicalFormat() {
       .nodeName = "helmet",
       .name = "helmet",
       .meshUri = std::string("assets/models/damaged_helmet/DamagedHelmet.gltf"),
-      .materialUri = std::string("assets/materials/blinnphong_textured.material"),
+      .materialUri =
+          std::string("assets/materials/blinnphong_textured.material"),
       .nodeMaterialOverrides =
           demo::MaterialOverrideState{
               .baseColor = LX_core::Vec3f{0.8f, 0.2f, 0.2f},
@@ -408,11 +420,11 @@ void testSaveSceneDocumentWritesExplicitRootCanonicalFormat() {
       .materialOverrides =
           demo::MaterialOverrideState{
               .baseColor = LX_core::Vec3f{0.4f, 0.5f, 0.6f},
-              .parameters =
-                  {{"MaterialUBO.mode",
-                    LX_core::MaterialParameterValue{
-                        .type = LX_core::MaterialParameterValueType::Int,
-                        .intValue = 1}}},
+              .parameters = {{"MaterialUBO.mode",
+                              LX_core::MaterialParameterValue{
+                                  .type =
+                                      LX_core::MaterialParameterValueType::Int,
+                                  .intValue = 1}}},
           },
   });
   world.children.push_back(demo::SceneNodeDocument{
@@ -452,7 +464,7 @@ void testSaveSceneDocumentWritesExplicitRootCanonicalFormat() {
          "gameplay camera path should survive round trip");
   EXPECT(loaded.rootNode().children.size() == 1,
          "explicit root should survive round trip");
-  const demo::SceneNodeDocument* loadedWorld =
+  const demo::SceneNodeDocument *loadedWorld =
       findChildByName(loaded.rootNode(), "world_root");
   EXPECT(loadedWorld != nullptr, "world should survive round trip");
   if (loadedWorld == nullptr) {
@@ -460,7 +472,7 @@ void testSaveSceneDocumentWritesExplicitRootCanonicalFormat() {
   }
   EXPECT(loadedWorld->children.size() == 3,
          "world children should survive round trip");
-  const demo::SceneNodeDocument* loadedCamera =
+  const demo::SceneNodeDocument *loadedCamera =
       findChildByName(*loadedWorld, "game_camera");
   EXPECT(loadedCamera != nullptr, "camera node should survive round trip");
   if (loadedCamera == nullptr) {
@@ -472,7 +484,7 @@ void testSaveSceneDocumentWritesExplicitRootCanonicalFormat() {
          "camera eye should survive round trip");
   EXPECT(loadedCamera->camera->nearPlane == 0.5f,
          "camera near plane should survive round trip");
-  const demo::SceneNodeDocument* loadedHelmet =
+  const demo::SceneNodeDocument *loadedHelmet =
       findChildByName(*loadedWorld, "helmet");
   EXPECT(loadedHelmet != nullptr, "helmet should survive round trip");
   if (loadedHelmet == nullptr) {
@@ -500,14 +512,14 @@ void testSaveSceneDocumentWritesExplicitRootCanonicalFormat() {
   EXPECT(loadedHelmet->nodeMaterialOverrides.parameters.count(
              "MaterialUBO.mixAmount") == 1,
          "generic node material parameter should survive round trip");
-  EXPECT(loadedHelmet->nodeMaterialOverrides.parameters.at(
-             "MaterialUBO.mixAmount").type ==
-             LX_core::MaterialParameterValueType::Float,
-         "generic node material float type should survive round trip");
+  EXPECT(
+      loadedHelmet->nodeMaterialOverrides.parameters.at("MaterialUBO.mixAmount")
+              .type == LX_core::MaterialParameterValueType::Float,
+      "generic node material float type should survive round trip");
   EXPECT(loadedHelmet->materialOverrides.parameters.count("MaterialUBO.mode") ==
              1,
          "generic material-side int parameter should survive round trip");
-  const demo::SceneNodeDocument* loadedLight =
+  const demo::SceneNodeDocument *loadedLight =
       findChildByName(*loadedWorld, "dir_light_node");
   EXPECT(loadedLight != nullptr, "light should survive round trip");
   if (loadedLight == nullptr) {
@@ -536,7 +548,7 @@ void testSaveSceneDocumentWritesExplicitRootCanonicalFormat() {
 void testSaveSceneDocumentRejectsUnsupportedRootPayload() {
   demo::SceneDocument doc;
   doc.setSceneName("lxe_editor");
-  auto& root = doc.mutableRootNode();
+  auto &root = doc.mutableRootNode();
   root.nodeName = "scene_root";
   root.meshUri = std::string("builtin://lxe_editor/ground_mesh");
 
@@ -546,7 +558,7 @@ void testSaveSceneDocumentRejectsUnsupportedRootPayload() {
   bool threw = false;
   try {
     demo::saveSceneDocument(path, doc);
-  } catch (const std::runtime_error& error) {
+  } catch (const std::runtime_error &error) {
     const std::string_view message(error.what());
     threw = message.find("root") != std::string_view::npos &&
             message.find("payload") != std::string_view::npos;
@@ -558,7 +570,7 @@ void testSaveSceneDocumentRejectsUnsupportedRootPayload() {
 
 void testSceneDocumentRoundTripsTypedLightPayloads() {
   demo::SceneDocument doc;
-  auto& root = doc.mutableRootNode();
+  auto &root = doc.mutableRootNode();
   root.children.push_back(demo::SceneNodeDocument{
       .nodeName = "sun_node",
       .name = "sun",
@@ -611,6 +623,13 @@ void testSceneDocumentRoundTripsTypedLightPayloads() {
   EXPECT(loaded.rootNode().children[0].light->kind ==
              demo::LightKind::Directional,
          "directional kind should round trip");
+  EXPECT(loaded.rootNode().children[0].light->shadowStrength == 0.45f,
+         "default shadow strength should round trip");
+  EXPECT(loaded.rootNode().children[0].light->shadowDistance == 80.0f,
+         "default shadow distance should round trip");
+  EXPECT(loaded.rootNode().children[0].light->shadowCascadeCount ==
+             LX_core::MaxShadowCascades,
+         "default shadow cascade count should round trip");
   EXPECT(loaded.rootNode().children[1].light->kind == demo::LightKind::Point &&
              loaded.rootNode().children[1].light->range == 6.0f,
          "point light range should round trip");
@@ -619,10 +638,48 @@ void testSceneDocumentRoundTripsTypedLightPayloads() {
          "spot cone should round trip");
 }
 
+void testShadowTutorialSceneAssetLoads() {
+  const std::filesystem::path path = std::filesystem::current_path() /
+                                     "assets" / "scenes" /
+                                     "shadow_tutorial.scene.yaml";
+  EXPECT(std::filesystem::exists(path),
+         "shadow tutorial scene asset should exist");
+  if (!std::filesystem::exists(path)) {
+    return;
+  }
+
+  const demo::SceneDocument doc = demo::loadSceneDocument(path);
+  EXPECT(doc.sceneName() == "Shadow Tutorial",
+         "shadow tutorial scene name should load");
+  EXPECT(doc.gameplayCameraPath() == "/game_cam",
+         "shadow tutorial gameplay camera should load");
+  const auto *camera = findChildByNodeName(doc.rootNode(), "game_camera");
+  const auto *receiver = findChildByNodeName(doc.rootNode(), "shadow_receiver");
+  const auto *caster = findChildByNodeName(doc.rootNode(), "shadow_caster");
+  const auto *light = findChildByNodeName(doc.rootNode(), "dir_light_node");
+  EXPECT(camera != nullptr && camera->camera.has_value(),
+         "shadow tutorial should contain a fixed camera");
+  EXPECT(receiver != nullptr && receiver->meshUri.has_value() &&
+             receiver->materialUri.has_value(),
+         "shadow tutorial should contain a materialized receiver");
+  EXPECT(caster != nullptr && caster->meshUri.has_value() &&
+             caster->materialUri.has_value(),
+         "shadow tutorial should contain a materialized caster");
+  EXPECT(light != nullptr && light->light.has_value() &&
+             light->light->kind == demo::LightKind::Directional,
+         "shadow tutorial should contain a directional light");
+  if (light != nullptr && light->light.has_value()) {
+    EXPECT(light->light->shadowStrength == 0.7f,
+           "shadow tutorial light should load shadow strength");
+    EXPECT(light->light->shadowCascadeCount == 4u,
+           "shadow tutorial light should load cascade count");
+  }
+}
+
 void testSaveSceneDocumentRejectsNonCanonicalRootIdentity() {
   demo::SceneDocument doc;
   doc.setSceneName("lxe_editor");
-  auto& root = doc.mutableRootNode();
+  auto &root = doc.mutableRootNode();
   root.nodeName = "custom_root";
   root.name = "root";
 
@@ -632,14 +689,13 @@ void testSaveSceneDocumentRejectsNonCanonicalRootIdentity() {
   bool threw = false;
   try {
     demo::saveSceneDocument(path, doc);
-  } catch (const std::runtime_error& error) {
+  } catch (const std::runtime_error &error) {
     const std::string_view message(error.what());
     threw = message.find("root") != std::string_view::npos &&
             message.find("identity") != std::string_view::npos;
   }
 
-  EXPECT(threw,
-         "save should reject non-canonical explicit-root identity");
+  EXPECT(threw, "save should reject non-canonical explicit-root identity");
 }
 
 } // namespace
@@ -653,6 +709,7 @@ int main() {
   testLoadExplicitRootDocumentRejectsNonCanonicalRootIdentity();
   testSaveSceneDocumentWritesExplicitRootCanonicalFormat();
   testSceneDocumentRoundTripsTypedLightPayloads();
+  testShadowTutorialSceneAssetLoads();
   testSaveSceneDocumentRejectsUnsupportedRootPayload();
   testSaveSceneDocumentRejectsNonCanonicalRootIdentity();
 

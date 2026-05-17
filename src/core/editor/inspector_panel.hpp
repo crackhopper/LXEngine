@@ -3,6 +3,7 @@
 #include "core/asset/material_instance.hpp"
 #include "core/editor/command_bus.hpp"
 #include "core/math/vec.hpp"
+#include "core/scene/light.hpp"
 #include "core/scene/scene_events.hpp"
 
 #include <array>
@@ -27,7 +28,8 @@ struct MaterialParameterEditorValue final {
 };
 
 struct InspectorMaterialCallbacks {
-  std::function<std::optional<std::string>(const std::string &path)> materialUri;
+  std::function<std::optional<std::string>(const std::string &path)>
+      materialUri;
   std::function<std::optional<Vec3f>(const std::string &path)> nodeBaseColor;
   std::function<bool(const std::string &path)> canEditBaseColor;
   std::function<std::vector<std::string>()> presets;
@@ -57,6 +59,9 @@ public:
     Vec3f lightDirection{0.0f, -1.0f, 0.0f};
     Vec3f lightColor{1.0f, 1.0f, 1.0f};
     float lightIntensity = 1.0f;
+    float lightShadowStrength = 0.45f;
+    float lightShadowDistance = 80.0f;
+    u32 lightShadowCascadeCount = MaxShadowCascades;
     float lightRange = 5.0f;
     float lightInnerConeDegrees = 20.0f;
     float lightOuterConeDegrees = 35.0f;
@@ -83,17 +88,15 @@ public:
   [[nodiscard]] CommandResult dispatchSetVec3(std::string_view path,
                                               std::string_view field,
                                               const Vec3f &value);
-  [[nodiscard]] CommandResult dispatchSetFloat(std::string_view path,
-                                               std::string_view field,
-                                               float value);
-  [[nodiscard]] CommandResult dispatchSetUnsigned(std::string_view path,
-                                                  std::string_view field,
-                                                  u32 value);
+  [[nodiscard]] CommandResult
+  dispatchSetFloat(std::string_view path, std::string_view field, float value);
+  [[nodiscard]] CommandResult
+  dispatchSetUnsigned(std::string_view path, std::string_view field, u32 value);
   [[nodiscard]] CommandResult dispatchSetToken(std::string_view path,
                                                std::string_view field,
                                                std::string_view value);
-  [[nodiscard]] CommandResult dispatchApplyMaterialOverride(
-      std::string_view path, std::string_view field);
+  [[nodiscard]] CommandResult
+  dispatchApplyMaterialOverride(std::string_view path, std::string_view field);
   [[nodiscard]] static std::vector<std::string>
   discoverExperimentMaterialCandidates(
       const std::filesystem::path &materialsDir);
@@ -133,6 +136,9 @@ private:
   Vec3f m_lightDirectionDraft{0.0f, -1.0f, 0.0f};
   Vec3f m_lightColorDraft{1.0f, 1.0f, 1.0f};
   float m_lightIntensityDraft = 1.0f;
+  float m_lightShadowStrengthDraft = 0.45f;
+  float m_lightShadowDistanceDraft = 80.0f;
+  u32 m_lightShadowCascadeCountDraft = MaxShadowCascades;
   std::array<char, 256> m_visibilityMaskBuffer{};
   std::array<char, 256> m_cameraCullingMaskBuffer{};
   std::array<char, 512> m_materialUriBuffer{};
