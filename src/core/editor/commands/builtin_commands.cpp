@@ -1743,11 +1743,15 @@ shadowProjectProbe(Scene &scene, const std::vector<std::string> &args) {
   const Mat4f cameraViewProj =
       camera->get().getProjMatrix() * camera->get().getViewMatrix();
   const Mat4f shadowViewProj = light->getShadowViewProj();
+  const Mat4f cascade0ViewProj =
+      light->getDirectionalUBO()->param.cascadeViewProj[0];
   std::ostringstream json;
   json << "{\"nodePath\":\"" << jsonEscape(args[0]) << "\",\"cameraPath\":\""
        << jsonEscape(args[1]) << "\",\"lightPath\":\"" << jsonEscape(args[2])
        << "\",\"width\":" << width << ",\"height\":" << height << ",\"camera\":"
        << projectedBoundsJson(worldCorners, cameraViewProj, width, height)
+       << ",\"cascade0\":"
+       << projectedBoundsJson(worldCorners, cascade0ViewProj, width, height)
        << ",\"shadow\":"
        << projectedBoundsJson(worldCorners, shadowViewProj, width, height)
        << "}";
