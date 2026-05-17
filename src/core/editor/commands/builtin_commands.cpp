@@ -1546,6 +1546,7 @@ makeLightDebugCamera(Scene &scene, EditorState &editorState,
     }
     scene.addCamera(cameraNode);
   }
+  (void)editorState.syncActiveCamera(scene);
 
   auto camera = cameraNode->getComponent<CameraComponent>();
   if (!camera.has_value()) {

@@ -929,6 +929,8 @@ void testTransformCommandsDriveAttachedLightSpatialState() {
 
 void testBuiltinCamAndPreviewCommands() {
   CommandFixture fixture;
+  fixture.editorState.setEditorCamera(fixture.cameraNode);
+  (void)fixture.editorState.syncActiveCamera(*fixture.scene);
 
   const CommandResult camFov = fixture.bus.dispatch("cam fov 80");
   EXPECT(camFov.ok, "cam fov succeeds");
@@ -972,6 +974,22 @@ void testBuiltinCamAndPreviewCommands() {
   EXPECT(camPerspective.ok, "cam perspective succeeds");
   EXPECT(fixture.camera->getProjectionType() == CameraType::Perspective,
          "cam perspective restores active camera projection type");
+
+  const CommandResult lightView =
+      fixture.bus.dispatch("cam light-view /dir_light probe_light_view");
+  EXPECT(lightView.ok, "cam light-view succeeds");
+  auto *lightViewNode = fixture.scene->findByPath("/probe_light_view");
+  EXPECT(lightViewNode != nullptr, "cam light-view creates a camera node");
+  if (lightViewNode != nullptr) {
+    const auto lightViewCamera = lightViewNode->getComponent<CameraComponent>();
+    EXPECT(lightViewCamera.has_value(),
+           "cam light-view node has a camera component");
+    EXPECT(lightViewCamera.has_value() && !lightViewCamera->get().isActive(),
+           "cam light-view camera is not marked active unless explicitly "
+           "activated");
+  }
+  EXPECT(fixture.camera->isActive(),
+         "cam light-view preserves the editor active camera component");
 
   const CommandResult camReset = fixture.bus.dispatch("cam reset");
   EXPECT(camReset.ok, "cam reset succeeds");
