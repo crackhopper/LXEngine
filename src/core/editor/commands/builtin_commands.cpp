@@ -599,6 +599,36 @@ void setLightCastsShadow(const LightBaseSharedPtr &light,
   }
 }
 
+[[nodiscard]] Vec3f lightForwardDirection(const SceneNode &node,
+                                          const Vec3f &fallback) {
+  const Transform world = Transform::fromMat4(node.getWorldTransform());
+  Vec3f direction = world.rotation.rotate(Vec3f{0.0f, 0.0f, -1.0f});
+  if (direction.length2() <= 1e-6f) {
+    direction = fallback;
+  }
+  if (direction.length2() <= 1e-6f) {
+    return Vec3f{0.0f, 0.0f, -1.0f};
+  }
+  return direction.normalized();
+}
+
+void syncLightSpatialProperties(Scene &scene, const SceneNodeSharedPtr &node) {
+  if (!node) {
+    return;
+  }
+  const auto light = scene.getLight(*node);
+  if (!light) {
+    return;
+  }
+  if (const auto directional =
+          std::dynamic_pointer_cast<DirectionalLight>(light)) {
+    directional->setDirection(
+        lightForwardDirection(*node, directional->getDirection()));
+  } else if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
+    spot->setDirection(lightForwardDirection(*node, spot->getDirection()));
+  }
+}
+
 [[nodiscard]] std::optional<bool> parseBoolToken(const std::string &text) {
   const std::string value = lowerCopy(text);
   if (value == "true" || value == "1" || value == "on" || value == "yes") {
@@ -2355,6 +2385,7 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
 
         if (nodes->size() == 1) {
           (*nodes)[0]->setTranslation(*value);
+          syncLightSpatialProperties(scene, (*nodes)[0]);
           CommandResult result =
               makeOk("moved " + (*nodes)[0]->getPath() + " to (" +
                          formatFloat(value->x) + ", " + formatFloat(value->y) +
@@ -2366,6 +2397,7 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
 
         for (const auto &node : *nodes) {
           node->setTranslation(node->getTranslation() + *value);
+          syncLightSpatialProperties(scene, node);
         }
 
         CommandResult result = makeOk(
@@ -2416,6 +2448,7 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
           } else {
             node->setRotation((rotation * node->getRotation()).normalized());
           }
+          syncLightSpatialProperties(scene, node);
         }
 
         CommandResult result = makeOk(

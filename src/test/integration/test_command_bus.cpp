@@ -859,6 +859,16 @@ void testTransformCommandsDriveAttachedLightSpatialState() {
   const CommandResult rotateDir =
       fixture.bus.dispatch("rotate /key_light 0 90 0");
   EXPECT(rotateDir.ok, "rotate directional light succeeds");
+  const CommandResult getDirection =
+      fixture.bus.dispatch("get /key_light.light.direction");
+  EXPECT(getDirection.ok, "rotated directional light direction can be read");
+  const auto rotatedDirLight = fixture.scene->getDirectionalLight(*dirNode);
+  EXPECT(rotatedDirLight != nullptr,
+         "rotated directional light runtime instance should remain attached");
+  const Vec3f propertyDir = rotatedDirLight->getDirection();
+  EXPECT(nearlyEqual(propertyDir.x, -1.0f) && nearlyEqual(propertyDir.y, 0.0f) &&
+             nearlyEqual(propertyDir.z, 0.0f),
+         "directional light direction property follows node rotation");
   (void)fixture.scene->getSceneLevelResources(Pass_Forward, RenderTarget{});
   const Vec4f dir =
       fixture.scene->getSceneLightsUBO()->param.directional[1].direction;
