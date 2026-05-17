@@ -59,6 +59,7 @@ struct alignas(16) DirectionalLightData : public IGpuResource {
     Mat4f shadowViewProj;
     Mat4f cascadeViewProj[MaxShadowCascades];
     Vec4f cascadeSplits;
+    Vec4f cascadeDepthRanges;
     Vec4f shadowParams;
   };
   Param param;

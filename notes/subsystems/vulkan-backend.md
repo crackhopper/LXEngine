@@ -34,6 +34,48 @@
 - `kMaxFramesInFlight` 在 `VulkanRenderer` 内部只有一个定义，初始化路径和 draw 路径共用同一来源
 - Vulkan viewport 现在固定使用单一约定：`x=0`、`y=h`、`width=w`、`height=-h`，runtime 使用这套固定配置
 
+## 阴影调试复盘
+
+方向光阴影像一台临时搬到灯光方向上的正交相机：我们先用 active camera 的视锥决定要覆盖的世界范围，再从灯光方向渲染一张深度图，Forward pass 里的像素再拿自己的世界坐标回到这张深度图里查深度。
+
+这次阴影位置不匹配的根因不在 shader，也不在 cull mode，而在 CPU 侧矩阵链路里。`CameraComponent` 的 view matrix 走 node transform / quaternion 路径，而 directional shadow cascade 走 `Mat4f::lookAt(...)`。`lookAt` 当时把相机基向量按错误的行列位置写入矩阵；在项目的列主序乘法约定下，这会让 shadow pass 使用的 light view 与我们用 debug camera 看到的 light view 不一致。
+
+最后用一个很小的证据闭环定位问题：
+
+| 证据 | 说明 |
+|---|---|
+| `probe shadow-project <node> <camera> <light>` 投影同一个 cube 的 8 个端点 | 把 camera、cascade0、shadow、debugView 四条矩阵路径放在同一张像素坐标表里比较 |
+| light-view debug camera 的正交参数与 cascade debug view 一致 | 说明不是 ortho bounds / near / far 本身错 |
+| 修复前 cube 端点在 camera 路径和 cascade 路径里的像素位置不同 | 说明错误发生在 view matrix 或矩阵布局，而不是 shadow map 采样 |
+| `Mat4T::lookAt` 的 basis-row 测试先失败，修复后通过 | 把根因收敛到共享数学函数，而不是 Vulkan pass 录制 |
+| 修复后 probe 中 camera / cascade0 / shadow / debugView 的端点投影一致 | 说明 shadow map 使用的矩阵已经能被 light-view camera 复现 |
+
+这里有一个维护边界需要记住：`cam light-view` 创建的是调试相机，它只用于观察 directional shadow cascade 的相机参数，不应该抢占 editor 的 active camera。active camera 的当前事实由 `CameraComponent::isActive()` 表达，EditorState 只负责在 preview/editor 模式切换时把这个状态同步到 scene。
+
+### 动态移动 editor camera 时的白色区域
+
+当前每帧的顺序是：
+
+```text
+EngineLoop::tickFrame()
+  updateHook()                 # editor camera / rig 更新
+  renderer.uploadData()        # DirectionalLight::updateShadowCascadesForCamera(active camera)
+  renderer.draw()              # Shadow pass -> Forward pass
+```
+
+因此，active camera 移动后，directional light cascade 和 shadow map 会在同一帧重新计算。调试时可以用两步确认：
+
+```text
+probe shadow-project /cube_caster /editor_cam /dir_light 1920 1009
+render debug dump shadow.cascade0 data/debug/dump/<name>.bmp
+```
+
+如果移动相机后 probe 里的 `debugViewParams` 改变，并且新的 `shadow.cascade0` dump 也改变，就说明 shadow map 已经随 active camera 更新。Forward 里某些区域变白，通常不是“没有实时读取 shadow map”，而是当前 shadow volume 只按 active camera 视锥拟合：落到 shadow map UV 之外的像素会按 shader 里的边界规则返回 `1.0`，也就是无阴影。这个行为在 `assets/shaders/glsl/blinnphong_0.frag` 的 `sampleShadowMap(...)` 里收口。
+
+立方体穿过平面、并且斜着摆放时，接触边缘还会放大 bias 问题。当前 `shadowBias` 按世界空间距离解释，CPU 在 `DirectionalLight::updateShadowCascadesForCamera(...)` 中为每个 cascade 写入 `cascadeDepthRanges`，shader 再把 world bias 除以当前 cascade 的 light-depth range，得到真正用于深度比较的 normalized bias。这样 `Shadow Distance` 变大时，bias 不会按固定 normalized 深度把阴影推离接触点。
+
+后续要让移动相机时阴影更稳定，我们需要在 shadow volume 策略上继续收敛，例如为 simple shadow map 提供固定世界范围，或在相机视锥 bounds 上加入可见接收面与离屏 caster 的扩展范围。这个问题属于 shadow coverage 策略，不是这次 `lookAt` 矩阵修复的同一层。
+
 ## 屏幕坐标约定
 
 当前 backend 统一采用一套固定 viewport Y 约定：

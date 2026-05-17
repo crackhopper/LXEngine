@@ -27,6 +27,7 @@ layout(set = 0, binding = 0) uniform LightUBO {
     mat4 shadowViewProj;
     mat4 cascadeViewProj[4];
     vec4 cascadeSplits;
+    vec4 cascadeDepthRanges;
     vec4 shadowParams;
 } sceneLight;
 layout(set = 0, binding = 1) uniform sampler2D ShadowMap0;
@@ -115,15 +116,18 @@ float sampleShadowMap(vec3 worldPos, vec3 normal, vec3 lightDir) {
         return 1.0;
     }
 
-    float baseBias = max(sceneLight.shadowParams.y, 0.0005);
-    float slopeBias = max(baseBias * (1.0 - dot(normal, lightDir)), baseBias);
+    float cascadeDepthRange = max(sceneLight.cascadeDepthRanges[cascadeIndex], 0.001);
+    float worldBias = max(sceneLight.shadowParams.y, 0.0);
+    float ndotl = clamp(dot(normal, lightDir), 0.0, 1.0);
+    float slopeBias = worldBias * (1.0 - ndotl) * 0.5;
+    float depthBias = (worldBias + slopeBias) / cascadeDepthRange;
     vec2 texelSize = vec2(1.0 / max(sceneLight.shadowParams.x, 1.0));
     float visibility = 0.0;
     for (int x = -1; x <= 1; ++x) {
         for (int y = -1; y <= 1; ++y) {
             float closestDepth = sampleShadowTexture(
                 cascadeIndex, projCoords.xy + vec2(x, y) * texelSize);
-            visibility += (projCoords.z - slopeBias) <= closestDepth ? 1.0 : 0.0;
+            visibility += (projCoords.z - depthBias) <= closestDepth ? 1.0 : 0.0;
         }
     }
     return visibility / 9.0;

@@ -353,6 +353,35 @@ void testDirectionalShadowDebugViewRecreatesCascadeMatrix() {
          "debug light-view camera must recreate the shadow cascade matrix");
 }
 
+void testDirectionalShadowCascadeStoresLightDepthRange() {
+  auto cameraNode = SceneNode::create("shadow_range_camera");
+  auto camera = cameraNode->addComponent<CameraComponent>();
+  camera->get().setNearPlane(0.5f);
+  camera->get().setFarPlane(100.0f);
+  camera->get().setFovY(55.0f);
+  camera->get().setAspect(1.7f);
+  camera->get().lookAt({4.0f, 3.0f, 9.0f}, {0.0f, 0.7f, 0.0f},
+                       {0.0f, 1.0f, 0.0f});
+
+  DirectionalLight light;
+  light.setShadowCascadeCount(1);
+  light.setShadowDistance(80.0f);
+  light.updateShadowCascadesForCamera(camera->get(), 0.5f);
+
+  const auto debugView = light.getShadowCascadeDebugView(0);
+  EXPECT(debugView.has_value(), "cascade debug view should be available");
+  if (!debugView.has_value()) {
+    return;
+  }
+
+  const float expectedRange =
+      std::abs(debugView->farPlane - debugView->nearPlane);
+  const float storedRange =
+      light.getDirectionalUBO()->param.cascadeDepthRanges.x;
+  EXPECT(approx(storedRange, expectedRange, 0.001f),
+         "cascade depth range should match the light-view depth span");
+}
+
 void testFrameGraphCompilePreservesTargetDescriptions() {
   auto offscreenColor = RenderTargetDesc::offscreenColor(ImageFormat::RGBA8);
   offscreenColor.sampleCount = 2;
@@ -846,6 +875,7 @@ int main() {
   testFrameGraphCompilePreservesSampledReadBindingName();
   testDirectionalLightCascadeSplitsUpdateFromCamera();
   testDirectionalShadowDebugViewRecreatesCascadeMatrix();
+  testDirectionalShadowCascadeStoresLightDepthRange();
   testFrameGraphCompilePreservesTargetDescriptions();
   testRenderTargetToDescUsesMutatedLegacyFields();
   testFrameGraphCompileReportsMissingRead();

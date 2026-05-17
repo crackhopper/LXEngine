@@ -30,6 +30,19 @@ void setComponent(Vec4f &v, u32 index, float value) {
   }
 }
 
+[[nodiscard]] float getComponent(const Vec4f &v, u32 index) {
+  switch (index) {
+  case 0:
+    return v.x;
+  case 1:
+    return v.y;
+  case 2:
+    return v.z;
+  default:
+    return v.w;
+  }
+}
+
 [[nodiscard]] Vec3f lightDirectionFromNode(const SceneNode &node) {
   return Transform::fromMat4(node.getWorldTransform())
       .rotation.rotate(Vec3f{0.0f, 0.0f, -1.0f})
@@ -100,7 +113,7 @@ DirectionalLight::DirectionalLight()
   m_ubo->param.dir = Vec4f{0.35f, -1.0f, 0.25f, 0.0f};
   m_ubo->param.color = Vec4f{1.0f, 0.98f, 0.9f, 1.0f};
   m_ubo->param.shadowParams =
-      Vec4f{1024.0f, 0.004f, 0.45f, static_cast<float>(MaxShadowCascades)};
+      Vec4f{1024.0f, 0.02f, 0.45f, static_cast<float>(MaxShadowCascades)};
   updateShadowViewProjection();
 }
 
@@ -236,6 +249,9 @@ void DirectionalLight::updateShadowCascadesForCamera(
   for (u32 cascadeIndex = 0; cascadeIndex < MaxShadowCascades; ++cascadeIndex) {
     if (cascadeIndex >= cascadeCount) {
       setComponent(m_ubo->param.cascadeSplits, cascadeIndex, farPlane);
+      setComponent(m_ubo->param.cascadeDepthRanges, cascadeIndex,
+                   getComponent(m_ubo->param.cascadeDepthRanges,
+                                cascadeCount - 1u));
       m_ubo->param.cascadeViewProj[cascadeIndex] =
           m_ubo->param.cascadeViewProj[cascadeCount - 1u];
       m_shadowCascadeDebugViews[cascadeIndex] =
@@ -310,6 +326,8 @@ void DirectionalLight::updateShadowCascadesForCamera(
     const Mat4f proj = Mat4f::orthographicDepthZeroToOne(
         minX, maxX, minY, maxY, maxZ + radius, minZ - radius);
     m_ubo->param.cascadeViewProj[cascadeIndex] = proj * view;
+    setComponent(m_ubo->param.cascadeDepthRanges, cascadeIndex,
+                 std::max(0.001f, (maxZ + radius) - (minZ - radius)));
     m_shadowCascadeDebugViews[cascadeIndex] = DirectionalShadowCascadeDebugView{
         .eye = lightEye,
         .target = center,
@@ -405,6 +423,7 @@ void DirectionalLight::updateShadowViewProjection() {
     m_ubo->param.cascadeViewProj[i] = m_ubo->param.shadowViewProj;
     setComponent(m_ubo->param.cascadeSplits, i,
                  10.0f * static_cast<float>(i + 1u));
+    setComponent(m_ubo->param.cascadeDepthRanges, i, 29.9f);
   }
 }
 

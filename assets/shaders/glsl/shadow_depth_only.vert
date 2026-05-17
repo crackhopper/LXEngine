@@ -10,6 +10,7 @@ layout(set = 0, binding = 0) uniform LightUBO {
     mat4 shadowViewProj;
     mat4 cascadeViewProj[4];
     vec4 cascadeSplits;
+    vec4 cascadeDepthRanges;
     vec4 shadowParams;
 } sceneLight;
 
