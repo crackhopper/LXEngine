@@ -1746,6 +1746,16 @@ shadowProjectProbe(Scene &scene, const std::vector<std::string> &args) {
   const Mat4f shadowViewProj = light->getShadowViewProj();
   const Mat4f cascade0ViewProj =
       light->getDirectionalUBO()->param.cascadeViewProj[0];
+  std::optional<Mat4f> debugViewProj;
+  const auto debugView = light->getShadowCascadeDebugView(0);
+  if (debugView.has_value()) {
+    const Mat4f view =
+        Mat4f::lookAt(debugView->eye, debugView->target, debugView->up);
+    const Mat4f proj = Mat4f::orthographicDepthZeroToOne(
+        debugView->left, debugView->right, debugView->bottom, debugView->top,
+        -debugView->nearPlane, -debugView->farPlane);
+    debugViewProj = proj * view;
+  }
   std::ostringstream json;
   json << "{\"nodePath\":\"" << jsonEscape(args[0]) << "\",\"cameraPath\":\""
        << jsonEscape(args[1]) << "\",\"lightPath\":\"" << jsonEscape(args[2])
@@ -1754,8 +1764,12 @@ shadowProjectProbe(Scene &scene, const std::vector<std::string> &args) {
        << ",\"cascade0\":"
        << projectedBoundsJson(worldCorners, cascade0ViewProj, width, height)
        << ",\"shadow\":"
-       << projectedBoundsJson(worldCorners, shadowViewProj, width, height)
-       << "}";
+       << projectedBoundsJson(worldCorners, shadowViewProj, width, height);
+  if (debugViewProj.has_value()) {
+    json << ",\"debugView\":"
+         << projectedBoundsJson(worldCorners, *debugViewProj, width, height);
+  }
+  json << "}";
   return makeOk("shadow project probe", json.str());
 }
 
