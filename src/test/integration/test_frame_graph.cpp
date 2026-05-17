@@ -320,6 +320,25 @@ void testFrameGraphCompileReportsDuplicateWrite() {
          "error should include duplicate write reason");
 }
 
+void testFrameGraphCompileReportsUnnamedWrite() {
+  FrameGraph graph;
+  graph.addPass(FramePass{
+      Pass_Forward,
+      RenderTargetDesc::offscreenColor(ImageFormat::RGBA8),
+      {},
+      {},
+      {FrameGraphWrite{
+          FrameGraphResourceRef{StringID{}, FrameGraphAttachmentKind::Color}}}});
+
+  const auto compiled = graph.compile();
+  EXPECT(!compiled.isValid(), "compile should reject unnamed resource write");
+  const std::string errors = compiled.errorText();
+  EXPECT(errors.find("Forward") != std::string::npos,
+         "error should include pass name");
+  EXPECT(errors.find("unnamed resource") != std::string::npos,
+         "error should include unnamed write reason");
+}
+
 void testBuildFromSceneIsIdempotent() {
   auto r = makeRenderable();
   auto scene = makeSceneWithDefaultCamera(r);
@@ -573,6 +592,7 @@ int main() {
   testFrameGraphCompilePreservesTargetDescriptions();
   testFrameGraphCompileReportsMissingRead();
   testFrameGraphCompileReportsDuplicateWrite();
+  testFrameGraphCompileReportsUnnamedWrite();
   testBuildFromSceneIsIdempotent();
   testCollectAcrossMultiplePasses();
   testPassFilterExcludesNonMatching();
