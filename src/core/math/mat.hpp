@@ -1,15 +1,18 @@
 #pragma once
-#include "core/platform/types.hpp"
 #include "core/math/vec.hpp"
+#include "core/platform/types.hpp"
 #include <cassert>
 #include <cmath>
 
 namespace LX_core {
 
-template <typename T> using Vec3T = Vec3<T>;
-template <typename T> using Vec4T = Vec4<T>;
+template <typename T>
+using Vec3T = Vec3<T>;
+template <typename T>
+using Vec4T = Vec4<T>;
 
-template <typename T> struct Mat4T {
+template <typename T>
+struct Mat4T {
   // column-major: m[column][row]
   T m[4][4];
 
@@ -48,7 +51,8 @@ template <typename T> struct Mat4T {
   // -------------------------
   // Matrix * vector
   // -------------------------
-  template <typename U> Vec4T<U> operator*(const Vec4T<U> &v) const {
+  template <typename U>
+  Vec4T<U> operator*(const Vec4T<U> &v) const {
     Vec4T<U> r;
 
     r.x = m[0][0] * v.x + m[1][0] * v.y + m[2][0] * v.z + m[3][0] * v.w;
@@ -204,13 +208,13 @@ template <typename T> struct Mat4T {
     Mat4T r;
 
     r.m[0][0] = x.x;
-    r.m[0][1] = x.y;
-    r.m[0][2] = x.z;
-    r.m[1][0] = y.x;
+    r.m[1][0] = x.y;
+    r.m[2][0] = x.z;
+    r.m[0][1] = y.x;
     r.m[1][1] = y.y;
-    r.m[1][2] = y.z;
-    r.m[2][0] = z.x;
-    r.m[2][1] = z.y;
+    r.m[2][1] = y.z;
+    r.m[0][2] = z.x;
+    r.m[1][2] = z.y;
     r.m[2][2] = z.z;
 
     r.m[3][0] = -x.dot(eye);

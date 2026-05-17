@@ -27,9 +27,7 @@ int failures = 0;
 
 constexpr f32 kEps = 1e-5f;
 
-bool approx(f32 a, f32 b, f32 eps = kEps) {
-  return std::fabs(a - b) <= eps;
-}
+bool approx(f32 a, f32 b, f32 eps = kEps) { return std::fabs(a - b) <= eps; }
 
 bool approxVec3(const Vec3f &a, const Vec3f &b, f32 eps = kEps) {
   return approx(a.x, b.x, eps) && approx(a.y, b.y, eps) &&
@@ -162,9 +160,8 @@ void testTransformStrictTrsRoundTrip() {
 void testTransformWarnsOnShearInput() {
   Mat4f sheared = Mat4f::identity();
   sheared(0, 1) = 0.5f;
-  const std::string warning = captureStderr([&]() {
-    (void)Transform::fromMat4(sheared);
-  });
+  const std::string warning =
+      captureStderr([&]() { (void)Transform::fromMat4(sheared); });
   EXPECT(warning.find("[WARN] Transform::fromMat4") != std::string::npos,
          "sheared matrix must emit warning");
 }
@@ -172,9 +169,8 @@ void testTransformWarnsOnShearInput() {
 void testTransformWarnsOnNegativeScaleRepair() {
   const Mat4f reflected = Mat4f::scale(Vec3f{1.0f, -2.0f, 3.0f});
   Transform actual;
-  const std::string warning = captureStderr([&]() {
-    actual = Transform::fromMat4(reflected);
-  });
+  const std::string warning =
+      captureStderr([&]() { actual = Transform::fromMat4(reflected); });
   EXPECT(warning.find("[WARN] Transform::fromMat4") != std::string::npos,
          "negative-scale repair must emit warning");
   EXPECT(actual.scale.x < 0.0f, "negative-scale repair keeps X negative");
@@ -184,8 +180,7 @@ void testTransformWarnsOnNegativeScaleRepair() {
 
 void testOrthographicDepthZeroToOneMapsExplicitDepthRange() {
   const Mat4f proj =
-      Mat4f::orthographicDepthZeroToOne(-2.0f, 2.0f, -3.0f, 3.0f, -2.0f,
-                                        -8.0f);
+      Mat4f::orthographicDepthZeroToOne(-2.0f, 2.0f, -3.0f, 3.0f, -2.0f, -8.0f);
 
   const Vec4f nearPoint = proj * Vec4f{0.0f, 0.0f, -2.0f, 1.0f};
   const Vec4f farPoint = proj * Vec4f{0.0f, 0.0f, -8.0f, 1.0f};
@@ -194,6 +189,29 @@ void testOrthographicDepthZeroToOneMapsExplicitDepthRange() {
          "zero-to-one orthographic projection maps near depth to 0");
   EXPECT(approx(farPoint.z / farPoint.w, 1.0f),
          "zero-to-one orthographic projection maps far depth to 1");
+}
+
+void testLookAtProjectsOntoCameraBasisRows() {
+  const Vec3f eye{-40.3449f, 54.0027f, 8.07277f};
+  const Vec3f target{-5.70521f, 3.96952f, 14.7778f};
+  const Vec3f up{0.0f, 1.0f, 0.0f};
+  const Vec3f worldPoint{-2.63263f, -1.27167f, 1.57357f};
+
+  const Vec3f back = (eye - target).normalized();
+  const Vec3f right = up.cross(back).normalized();
+  const Vec3f correctedUp = back.cross(right);
+  const Vec3f delta = worldPoint - eye;
+
+  const Mat4f view = Mat4f::lookAt(eye, target, up);
+  const Vec4f viewPoint =
+      view * Vec4f{worldPoint.x, worldPoint.y, worldPoint.z, 1.0f};
+
+  EXPECT(approx(viewPoint.x, right.dot(delta), 0.001f),
+         "lookAt x must project onto camera right");
+  EXPECT(approx(viewPoint.y, correctedUp.dot(delta), 0.001f),
+         "lookAt y must project onto camera up");
+  EXPECT(approx(viewPoint.z, back.dot(delta), 0.001f),
+         "lookAt z must project onto camera back");
 }
 
 void testVecFloatHashUsesBitCastReference() {
@@ -227,6 +245,7 @@ int main() {
   testTransformWarnsOnShearInput();
   testTransformWarnsOnNegativeScaleRepair();
   testOrthographicDepthZeroToOneMapsExplicitDepthRange();
+  testLookAtProjectsOntoCameraBasisRows();
   testVecFloatHashUsesBitCastReference();
   testVecDoubleHashUsesBitCastReference();
 
