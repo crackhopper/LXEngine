@@ -278,8 +278,8 @@ public:
     if (!m_compiledFrameGraph.isValid()) {
       throw std::runtime_error(m_compiledFrameGraph.errorText());
     }
-    m_resourceManager->clearFrameGraphAttachments();
     resetOffscreenFramebuffers();
+    m_resourceManager->clearFrameGraphAttachments();
 
     // Initial resource sync for every item across every pass in the FrameGraph.
     // SceneNode::getValidatedPassData() has already synced each per-draw model
@@ -414,7 +414,8 @@ public:
           swapchainRenderPassActive = true;
         }
 
-        if (passIndex == finalSwapchainPassIndex && !skipGuiFrame) {
+        if (isFinalSwapchainGroup &&
+            passIndex == finalSwapchainGroupStartIndex && !skipGuiFrame) {
           m_gui.beginFrame();
           guiFrameActive = true;
           if (m_drawUiCallback) {
@@ -488,8 +489,12 @@ public:
 
     VkFence fence = m_swapchain->getInFlightFence(currentFrameIndex);
     vkResetFences(m_device->getLogicalDevice(), 1, &fence);
-    if (vkQueueSubmit(m_device->getGraphicsQueue(), 1, &submitInfo, fence) !=
-        VK_SUCCESS) {
+    const VkResult submitResult =
+        vkQueueSubmit(m_device->getGraphicsQueue(), 1, &submitInfo, fence);
+    if (submitResult != VK_SUCCESS) {
+      signalFenceAfterFailedSubmit(fence);
+      std::cerr << "[VulkanRenderer] vkQueueSubmit failed with VkResult="
+                << static_cast<int>(submitResult) << std::endl;
       return;
     }
 
@@ -586,6 +591,23 @@ private:
     m_offscreenFramebuffers.resize(m_compiledFrameGraph.getPasses().size());
     for (auto &passFramebuffers : m_offscreenFramebuffers) {
       passFramebuffers.resize(kMaxFramesInFlight);
+    }
+  }
+
+  void signalFenceAfterFailedSubmit(VkFence fence) const {
+    // The per-frame fence is reset immediately before queue submission. If the
+    // real submit fails, the next acquire would block forever on that
+    // unsignaled fence. Submit empty work with the same fence to restore the
+    // swapchain's "no frame in flight" contract.
+    VkSubmitInfo emptySubmit{};
+    emptySubmit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    const VkResult recoveryResult =
+        vkQueueSubmit(m_device->getGraphicsQueue(), 1, &emptySubmit, fence);
+    if (recoveryResult != VK_SUCCESS) {
+      std::cerr
+          << "[VulkanRenderer] failed to re-signal in-flight fence after "
+             "submit failure; VkResult="
+          << static_cast<int>(recoveryResult) << std::endl;
     }
   }
 
@@ -713,8 +735,8 @@ private:
     if (!m_swapchain->rebuild(m_resourceManager->getRenderPass())) {
       return;
     }
-    m_resourceManager->clearFrameGraphAttachments();
     resetOffscreenFramebuffers();
+    m_resourceManager->clearFrameGraphAttachments();
     m_swapchainNeedsRebuild = false;
     m_gui.updateSwapchainImageCount(m_swapchain->getImageCount());
   }
