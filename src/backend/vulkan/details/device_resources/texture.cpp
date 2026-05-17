@@ -13,7 +13,7 @@ VulkanTexture::VulkanTexture(Token, VulkanDevice &device,
                              VkFormat format,
                              VkImageUsageFlags usage, VkFilter filter)
     : m_device(device.getLogicalDevice()), m_width(width), m_height(height),
-      m_format(format) {
+      m_format(format), m_usage(usage) {
   // Create image
   VkImageCreateInfo imageInfo{};
   imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -53,7 +53,7 @@ VulkanTexture::VulkanTexture(Token, VulkanDevice &device,
 
   // Create image view and sampler
   createImageView(VK_IMAGE_ASPECT_COLOR_BIT);
-  createSampler(filter);
+  createSampler(filter, VK_SAMPLER_ADDRESS_MODE_REPEAT);
 }
 
 VulkanTexture::VulkanTexture(Token, VulkanDevice &device,
@@ -62,7 +62,7 @@ VulkanTexture::VulkanTexture(Token, VulkanDevice &device,
                              VkImageUsageFlags usage,
                              VkImageAspectFlags aspectMask)
     : m_device(device.getLogicalDevice()), m_width(width), m_height(height),
-      m_format(format) {
+      m_format(format), m_usage(usage) {
   VkImageCreateInfo imageInfo{};
   imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
   imageInfo.imageType = VK_IMAGE_TYPE_2D;
@@ -99,6 +99,9 @@ VulkanTexture::VulkanTexture(Token, VulkanDevice &device,
   vkBindImageMemory(m_device, m_image, m_memory, 0);
 
   createImageView(aspectMask);
+  if ((usage & VK_IMAGE_USAGE_SAMPLED_BIT) != 0) {
+    createSampler(VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+  }
 }
 
 VulkanTexture::~VulkanTexture() {
@@ -140,14 +143,15 @@ void VulkanTexture::createImageView(VkImageAspectFlags aspectMask) {
   }
 }
 
-void VulkanTexture::createSampler(VkFilter filter) {
+void VulkanTexture::createSampler(VkFilter filter,
+                                  VkSamplerAddressMode addressMode) {
   VkSamplerCreateInfo samplerInfo{};
   samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
   samplerInfo.magFilter = filter;
   samplerInfo.minFilter = filter;
-  samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-  samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-  samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+  samplerInfo.addressModeU = addressMode;
+  samplerInfo.addressModeV = addressMode;
+  samplerInfo.addressModeW = addressMode;
   samplerInfo.anisotropyEnable = VK_FALSE;
   samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
   samplerInfo.unnormalizedCoordinates = VK_FALSE;

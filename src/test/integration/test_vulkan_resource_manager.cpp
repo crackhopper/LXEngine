@@ -305,6 +305,36 @@ int main() {
     resourceManager->initializeRenderPassAndPipeline(surfaceFormat,
                                                      depthFormat);
 
+    const VkExtent2D frameGraphExtent{64, 64};
+    auto &frameGraphDepth =
+        resourceManager->createOrGetFrameGraphAttachment(
+            LX_core::StringID("test.depth"), frameGraphExtent, depthFormat,
+            device->getDepthAspectMask(),
+            VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
+                VK_IMAGE_USAGE_SAMPLED_BIT);
+    if (frameGraphDepth.texture->getImageView() == VK_NULL_HANDLE) {
+      std::cerr << "Frame graph attachment image view was not created\n";
+      return 1;
+    }
+    if (frameGraphDepth.texture->getSampler() == VK_NULL_HANDLE) {
+      std::cerr << "Frame graph sampled attachment sampler was not created\n";
+      return 1;
+    }
+    if (frameGraphDepth.format != depthFormat ||
+        frameGraphDepth.extent.width != frameGraphExtent.width ||
+        frameGraphDepth.extent.height != frameGraphExtent.height ||
+        frameGraphDepth.currentLayout != VK_IMAGE_LAYOUT_UNDEFINED) {
+      std::cerr << "Frame graph attachment metadata mismatch\n";
+      return 1;
+    }
+    auto foundFrameGraphDepth = resourceManager->getFrameGraphAttachment(
+        LX_core::StringID("test.depth"));
+    if (!foundFrameGraphDepth ||
+        &foundFrameGraphDepth->get() != &frameGraphDepth) {
+      std::cerr << "Frame graph attachment lookup failed\n";
+      return 1;
+    }
+
     using V = LX_core::VertexPosNormalUvBone;
     auto vertexBufferPtr = LX_core::VertexBuffer<V>::create({
         V({-5.0f, 5.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f},

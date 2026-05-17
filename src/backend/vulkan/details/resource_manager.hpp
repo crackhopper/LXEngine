@@ -3,6 +3,7 @@
 #include "core/rhi/gpu_resource.hpp"
 #include "core/pipeline/pipeline_build_desc.hpp"
 #include "core/pipeline/pipeline_key.hpp"
+#include "core/utils/string_table.hpp"
 #include "pipelines/pipeline_cache.hpp"
 #include "pipelines/pipeline.hpp"
 #include <memory>
@@ -32,6 +33,14 @@ using VulkanTextureUniquePtr = std::unique_ptr<VulkanTexture>;
 
 using VulkanAnyResource =
     std::variant<VulkanBufferUniquePtr, VulkanTextureUniquePtr>;
+
+struct VulkanFrameGraphAttachment {
+  std::unique_ptr<VulkanTexture> texture;
+  VkFormat format = VK_FORMAT_UNDEFINED;
+  VkImageAspectFlags aspect = 0;
+  VkImageLayout currentLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+  VkExtent2D extent{};
+};
 
 class VulkanResourceManager;
 using VulkanResourceManagerUniquePtr = std::unique_ptr<VulkanResourceManager>;
@@ -79,6 +88,13 @@ public:
   PipelineCache &getPipelineCache() { return *m_pipelineCache; }
   usize getCachedResourceCount() const { return m_gpuResources.size(); }
 
+  VulkanFrameGraphAttachment &createOrGetFrameGraphAttachment(
+      StringID name, VkExtent2D extent, VkFormat format,
+      VkImageAspectFlags aspect, VkImageUsageFlags usage);
+  std::optional<std::reference_wrapper<VulkanFrameGraphAttachment>>
+  getFrameGraphAttachment(StringID name);
+  void updateFrameGraphAttachmentLayout(StringID name, VkImageLayout layout);
+
 private:
   std::shared_ptr<VulkanAnyResource>
   createGpuResource(const IGpuResourceSharedPtr &cpuRes);
@@ -94,6 +110,8 @@ private:
 
   std::unique_ptr<VulkanRenderPass> m_renderPass;
   std::unique_ptr<PipelineCache> m_pipelineCache;
+  std::unordered_map<StringID, VulkanFrameGraphAttachment>
+      m_frameGraphAttachments;
 };
 
 } // namespace LX_core::backend

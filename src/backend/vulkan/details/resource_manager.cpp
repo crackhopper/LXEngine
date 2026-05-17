@@ -334,4 +334,57 @@ void VulkanResourceManager::preloadPipelines(
   m_pipelineCache->preload(infos, m_renderPass->getHandle());
 }
 
+VulkanFrameGraphAttachment &
+VulkanResourceManager::createOrGetFrameGraphAttachment(
+    StringID name, VkExtent2D extent, VkFormat format,
+    VkImageAspectFlags aspect, VkImageUsageFlags usage) {
+  auto it = m_frameGraphAttachments.find(name);
+  if (it != m_frameGraphAttachments.end()) {
+    const auto &attachment = it->second;
+    if (attachment.format != format || attachment.aspect != aspect ||
+        attachment.extent.width != extent.width ||
+        attachment.extent.height != extent.height) {
+      const std::string &resourceName =
+          GlobalStringTable::get().getName(name.id);
+      throw std::runtime_error(
+          "Frame graph attachment reuse mismatch for resource '" +
+          resourceName + "'");
+    }
+    return it->second;
+  }
+
+  VulkanFrameGraphAttachment attachment;
+  attachment.texture = VulkanTexture::createForAttachment(
+      m_device, extent.width, extent.height, format, usage, aspect);
+  attachment.format = format;
+  attachment.aspect = aspect;
+  attachment.currentLayout = attachment.texture->getCurrentLayout();
+  attachment.extent = extent;
+
+  auto [insertedIt, inserted] =
+      m_frameGraphAttachments.emplace(name, std::move(attachment));
+  (void)inserted;
+  return insertedIt->second;
+}
+
+std::optional<std::reference_wrapper<VulkanFrameGraphAttachment>>
+VulkanResourceManager::getFrameGraphAttachment(StringID name) {
+  auto it = m_frameGraphAttachments.find(name);
+  if (it == m_frameGraphAttachments.end()) {
+    return std::nullopt;
+  }
+  return std::ref(it->second);
+}
+
+void VulkanResourceManager::updateFrameGraphAttachmentLayout(
+    StringID name, VkImageLayout layout) {
+  auto attachment = getFrameGraphAttachment(name);
+  if (!attachment.has_value()) {
+    const std::string &resourceName = GlobalStringTable::get().getName(name.id);
+    throw std::runtime_error("Missing frame graph attachment '" +
+                             resourceName + "'");
+  }
+  attachment->get().currentLayout = layout;
+}
+
 } // namespace LX_core::backend

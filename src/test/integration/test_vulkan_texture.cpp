@@ -68,6 +68,19 @@ int main() {
       return 1;
     }
 
+    auto sampledAttachment = LX_core::backend::VulkanTexture::createForAttachment(
+        *device, 256, 256, VK_FORMAT_D32_SFLOAT,
+        VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+        VK_IMAGE_ASPECT_DEPTH_BIT);
+    if (sampledAttachment->getImageView() == VK_NULL_HANDLE) {
+      std::cerr << "Sampled attachment image view is null\n";
+      return 1;
+    }
+    if (sampledAttachment->getSampler() == VK_NULL_HANDLE) {
+      std::cerr << "Sampled attachment sampler is null\n";
+      return 1;
+    }
+
     return 0;
   } catch (const std::exception &e) {
     std::cerr << "SKIP VulkanTexture test: " << e.what() << "\n";

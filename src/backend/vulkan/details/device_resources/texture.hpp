@@ -47,7 +47,9 @@ public:
 
   VkImage getHandle() const { return m_image; }
   VkImageView getImageView() const { return m_imageView; }
+  VkSampler getSampler() const { return m_sampler; }
   VkImageLayout getCurrentLayout() const { return m_currentLayout; }
+  VkImageUsageFlags getUsage() const { return m_usage; }
 
   void transitionLayout(VulkanCommandBuffer &cmd, VkImageLayout oldLayout,
                         VkImageLayout newLayout, VkPipelineStageFlags pipelineStage,
@@ -61,7 +63,7 @@ public:
 
 private:
   void createImageView(VkImageAspectFlags aspectMask);
-  void createSampler(VkFilter filter);
+  void createSampler(VkFilter filter, VkSamplerAddressMode addressMode);
 
   VkDevice m_device = VK_NULL_HANDLE;
   VkImage m_image = VK_NULL_HANDLE;
@@ -69,6 +71,7 @@ private:
   VkImageView m_imageView = VK_NULL_HANDLE;
   VkSampler m_sampler = VK_NULL_HANDLE;
   VkFormat m_format = VK_FORMAT_UNDEFINED;
+  VkImageUsageFlags m_usage = 0;
   u32 m_width = 0;
   u32 m_height = 0;
   VkImageLayout m_currentLayout = VK_IMAGE_LAYOUT_UNDEFINED;
