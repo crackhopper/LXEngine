@@ -106,6 +106,9 @@ float sampleShadowMap(vec3 worldPos, vec3 normal, vec3 lightDir) {
         sceneLight.cascadeViewProj[cascadeIndex] * vec4(worldPos, 1.0);
     vec3 projCoords = lightSpacePos.xyz / lightSpacePos.w;
     projCoords.xy = projCoords.xy * 0.5 + 0.5;
+    // Shadow pass uses Vulkan's negative-height viewport convention, so the
+    // rendered depth texture is Y-flipped relative to clip-space UVs.
+    projCoords.y = 1.0 - projCoords.y;
     if (projCoords.x < 0.0 || projCoords.x > 1.0 ||
         projCoords.y < 0.0 || projCoords.y > 1.0 ||
         projCoords.z < 0.0 || projCoords.z > 1.0) {
