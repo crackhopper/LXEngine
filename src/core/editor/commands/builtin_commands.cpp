@@ -1759,7 +1759,21 @@ shadowProjectProbe(Scene &scene, const std::vector<std::string> &args) {
   std::ostringstream json;
   json << "{\"nodePath\":\"" << jsonEscape(args[0]) << "\",\"cameraPath\":\""
        << jsonEscape(args[1]) << "\",\"lightPath\":\"" << jsonEscape(args[2])
-       << "\",\"width\":" << width << ",\"height\":" << height << ",\"camera\":"
+       << "\",\"width\":" << width << ",\"height\":" << height
+       << ",\"cameraParams\":{\"left\":" << camera->get().getLeft()
+       << ",\"right\":" << camera->get().getRight()
+       << ",\"bottom\":" << camera->get().getBottom()
+       << ",\"top\":" << camera->get().getTop()
+       << ",\"near\":" << camera->get().getNearPlane()
+       << ",\"far\":" << camera->get().getFarPlane() << "}";
+  if (debugView.has_value()) {
+    json << ",\"debugViewParams\":{\"left\":" << debugView->left
+         << ",\"right\":" << debugView->right
+         << ",\"bottom\":" << debugView->bottom << ",\"top\":" << debugView->top
+         << ",\"near\":" << debugView->nearPlane
+         << ",\"far\":" << debugView->farPlane << "}";
+  }
+  json << ",\"camera\":"
        << projectedBoundsJson(worldCorners, cameraViewProj, width, height)
        << ",\"cascade0\":"
        << projectedBoundsJson(worldCorners, cascade0ViewProj, width, height)
