@@ -51,6 +51,9 @@ notes/temporary/index.md
 # local editor / scene workspace data
 data/
 
+# local implementation worktrees
+.worktrees/
+
 # lxe_manager local Node tooling
 /tools/lxe_manager/node_modules/
 /tools/lxe_manager/dist/
