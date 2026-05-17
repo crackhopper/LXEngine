@@ -10,13 +10,13 @@
 
 | 类型 | 含义 | 例子 |
 |---|---|---|
-| 当前实现 | 当前代码已经存在，可以按源码验证 | `SceneNode` component、`CommandBus`、`.scene.yaml` |
+| 当前实现 | 当前代码已经存在，可以按源码验证 | `SceneNode` component、`CommandBus`、Shadow/CSM FrameGraph |
 | 设计解释 | 对当前实现的概念化说明 | 为什么 `core / infra / backend` 分层 |
-| Roadmap / 未实施 | 未来方向，必须标注对应 requirement | Web Editor、engine-level MCP、AssetRegistry |
+| Roadmap / 未实施 | 未来方向，必须标注对应 requirement | Web Editor、engine-level MCP、AssetRegistry、HDR/Post、G-Buffer |
 
 ## 阅读顺序
 
-1. [架构总览](architecture.md)：先看三层结构，以及 scene 到 draw 的主链路。
+1. [架构总览](architecture.md)：先看三层结构，以及 FrameGraph / shadow / CSM 到 GPU submit 的主链路。
 2. [项目目录结构](project-layout.md)：再看文件放在哪里，哪些目录是事实来源。
 3. [术语表](glossary.md)：遇到项目自造词时回查。
 4. [资产系统](../concepts/assets/index.md)：理解文件、URI、序列化和 loader 边界。
@@ -31,7 +31,7 @@
 | `notes/concepts-design/` | 总览、目录结构、术语等跨系统地图 | 单个子系统的长篇细节 |
 | `notes/concepts/` | 资产、材质、引擎循环等概念页 | 源码逐行分析 |
 | `notes/scene-system/` | 场景系统的节点、组件、相机、光源、可渲染对象 | 资产文件格式细节 |
-| `notes/design/` | Editor 等跨模块设计说明 | 已过期草稿 |
+| `notes/design/` | Editor 等跨模块设计说明 | 临时草稿 |
 | `notes/source_analysis/` | 贴源码的实现解析 | 面向新人建立概念的第一入口 |
 | `notes/requirements/` | 未实施或正在实施的需求 | 已经落地的长期设计解释 |
 

@@ -15,7 +15,7 @@
 - `VulkanSwapchain` 负责 swapchain image、depth、framebuffer、同步对象
 - `VulkanResourceManager` 负责 CPU 资源镜像与 pipeline cache
 - `VulkanCommandBuffer` 在 draw 阶段汇合 pipeline、descriptor、vertex/index buffer 和 push constants
-- `VulkanRendererImpl` 现在只是 `VulkanRenderer` 的私有实现对象，不再作为第二层 renderer 继承边界存在
+- `VulkanRendererImpl` 现在只是 `VulkanRenderer` 的私有实现对象，renderer 继承边界由 `VulkanRenderer` 对外承担
 
 ## 当前实现最重要的约束
 
@@ -26,17 +26,17 @@
 - 如果没跑在桌面或 `Xvfb` 下，这类测试通常会以 `No available video device` 明确 skip；先排环境，再排 renderer 逻辑
 - 物理设备选择现在按“先判定功能是否满足，再按设备类型偏好排序”处理；独显优先，但集显/虚拟 GPU 只要满足队列、扩展和 surface 要求也允许启动
 - descriptor 路由按 binding name，不按硬编码 slot 枚举
-- scene-level UBO 已经在 queue 构建阶段合并好，backend 不再补注入
+- scene-level UBO 已经在 queue 构建阶段合并好，backend 按 `RenderingItem` 中的资源录制 descriptor
 - `VulkanResourceManager` 不直接持有旧式 pipeline map，而是委托给 `PipelineCache`
-- `VulkanResourceManager` 现在按 `IGpuResource::getBackendCacheIdentity()` 做 cache key，不再把 CPU 对象地址当成资源身份
+- `VulkanResourceManager` 现在按 `IGpuResource::getBackendCacheIdentity()` 做 cache key，资源身份来自显式 backend cache identity
 - GPU 资源缓存带短暂闲置宽限期：资源漏同步一帧不会立刻销毁重建，但长期不用仍会被 `collectGarbage()` 回收
-- `FrameGraph` 当前只接了 `Pass_Forward`，但 renderer 的遍历方式已经是按多 pass 组织
+- `FrameGraph` 当前执行 4 个 `Pass_Shadow` cascade，再执行 `Pass_Forward` 和需要的 debug / overlay 路径
 - `kMaxFramesInFlight` 在 `VulkanRenderer` 内部只有一个定义，初始化路径和 draw 路径共用同一来源
-- Vulkan viewport 现在固定使用单一约定：`x=0`、`y=h`、`width=w`、`height=-h`，runtime 不再读取 `LX_RENDER_FLIP_VIEWPORT_Y`
+- Vulkan viewport 现在固定使用单一约定：`x=0`、`y=h`、`width=w`、`height=-h`，runtime 使用这套固定配置
 
 ## 屏幕坐标约定
 
-当前 backend 不再提供“运行时翻转 viewport Y”的分支。我们统一采用一套固定约定：
+当前 backend 统一采用一套固定 viewport Y 约定：
 
 | 层级 | 当前约定 | 代码入口 |
 |---|---|---|
@@ -44,7 +44,7 @@
 | NDC | 围绕屏幕中心的 `[-1, 1]` 归一化坐标；项目采用 OpenGL 风格屏幕语义：上方像素对应正 `y`，下方像素对应负 `y`；`z` 落在 Vulkan 风格 `0..1` 深度链路 | `CameraComponent::pickRay()` / `getProjMatrix()` |
 | Vulkan viewport | `VkViewport{0, h, width, -height, 0, 1}`，把 clip/NDC 的 `+Y` 映射到屏幕上方 | `details/commands/command_buffer.cpp` |
 
-这样做的结果是：CPU 侧的 pick / project 公式继续使用“上正下负”的 OpenGL 风格 NDC，GPU 侧只在 viewport 这一个固定位置完成落屏 Y 翻转；不再允许某个运行时环境变量再插入第二次镜像。
+这样做的结果是：CPU 侧的 pick / project 公式继续使用“上正下负”的 OpenGL 风格 NDC，GPU 侧只在 viewport 这一个固定位置完成落屏 Y 翻转；运行时环境变量不会插入第二次镜像。
 
 ## 从哪里进入源码
 

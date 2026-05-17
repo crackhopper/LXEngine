@@ -24,7 +24,7 @@ LXEngine/
 |---|---|---|
 | `src/core/` | 平台无关核心 | scene、asset、material、frame graph、pipeline、RHI 接口、input、time |
 | `src/infra/` | 工程工具层 | shader compiler/reflector、mesh/texture/material loader、window、ImGui |
-| `src/backend/vulkan/` | Vulkan 后端 | device、swapchain、resource manager、descriptor、pipeline、command buffer |
+| `src/backend/vulkan/` | Vulkan 后端 | device、swapchain、FrameGraph attachment、descriptor、pipeline、command buffer |
 | `src/demos/lxe_editor/` | 当前交互 editor | project、scene runtime、UI、API、recording、commands |
 | `src/test/integration/` | 集成测试 | shader、material、scene、pipeline、resource、editor 相关测试 |
 
@@ -34,7 +34,7 @@ LXEngine/
 |---|---|
 | `asset/` | `Mesh`、`Texture`、`MaterialTemplate`、`MaterialInstance`、`Shader`、`Skeleton` |
 | `scene/` | `Scene`、`SceneNode`、components、camera、light、controller |
-| `frame_graph/` | `FrameGraph`、`FramePass`、`RenderQueue`、`RenderTarget` |
+| `frame_graph/` | `FrameGraph`、`FramePass`、`RenderQueue`、`RenderTarget`、read/write resource 声明 |
 | `pipeline/` | `PipelineKey`、`PipelineBuildDesc` |
 | `rhi/` | renderer 接口、GPU resource、buffer、vertex layout |
 | `gpu/` | `EngineLoop` |
@@ -57,11 +57,11 @@ LXEngine/
 | 目录 | 当前用途 |
 |---|---|
 | `assets/materials/` | `.material` 文件 |
-| `assets/shaders/glsl/` | GLSL 源和当前仓库内的 `.spv` |
+| `assets/shaders/glsl/` | GLSL 源和当前仓库内的 `.spv`，包括 forward 与 depth-only shadow shader |
 | `assets/models/` | 示例模型、测试模型、内置模型包 |
 | `assets/models/builtin/` | 内置模型 manifest 和低面元资产 |
 | `assets/textures/` | 独立贴图 |
-| `assets/env/` | HDR 环境贴图 |
+| `assets/env/` | 环境贴图资产；资产存在不等于 HDR/Post 管线已经实现 |
 | `assets/scenes/` | 仓库自带 scene |
 | `assets/project_templates/` | 新建 project 的只读模板 |
 

@@ -132,4 +132,16 @@ v0.1.1 之后，如果 HDR/Post、G-Buffer 或 Task-based pass build 进入 acti
 
 ## 实施状态
 
-未开始。v0.1.1 中排在 shadow / CSM 与教程支撑之后。
+已实现。
+
+落地内容：
+
+- 重写 `notes/concepts-design/architecture.md`，补充三层依赖图、runtime render flow、shadow / CSM resource flow、pipeline identity flow 和模块 ownership 表。
+- 更新 `notes/concepts-design/index.md`、`notes/concepts-design/project-layout.md`，把 FrameGraph / shadow / CSM 的当前事实纳入入口说明。
+- 修正 `notes/subsystems/vulkan-backend.md`、`notes/concepts/material/pass-rendering-flow.md`、`notes/scene-system/light.md` 中与 shadow-era 相关的事实。
+- 文档中将 HDR/Post、PBR 完整管线、G-Buffer/Deferred、task-based pass build、Web Editor、Engine CLI/MCP、AssetRegistry / hot reload 标注为 pending 或未实现边界。
+
+验证：
+
+- `scripts/notes/serve_site.sh --build`
+- `rg -n "你|不再|旧的|已经去掉|已过期" notes/tutorial/shadow-era notes/concepts-design/architecture.md notes/concepts-design/index.md notes/concepts-design/project-layout.md notes/scene-system/light.md notes/subsystems/vulkan-backend.md notes/concepts/material/pass-rendering-flow.md`

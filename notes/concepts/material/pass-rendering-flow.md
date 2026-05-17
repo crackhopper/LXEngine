@@ -56,7 +56,7 @@ FramePass(name = Shadow, target = ...)
 
 入队时，queue 会把 scene-level resources 追加到 item 的 `descriptorResources` 末尾。材质资源在前，scene/camera/light 资源在后；backend 按 binding name 和 descriptor binding 匹配，不靠这个顺序表达语义。
 
-## FrameGraph 当前只是按顺序构建 queue
+## FrameGraph 当前按顺序构建 queue，并校验资源读写
 
 当前 `FrameGraph` 是一个轻量 per-pass 调度器：
 
@@ -70,10 +70,11 @@ FrameGraph::buildFromScene(scene)
 
 | 已实现 | 未实现 |
 |---|---|
-| 按 `FramePass` 顺序构建每个 pass 的 queue | 自动分析资源依赖 |
+| 按 `FramePass` 顺序构建每个 pass 的 queue | 自动重排 pass |
 | 把 pass name 和 target 传给 `RenderQueue` | 拓扑排序 |
 | 汇总所有 queue 的 `PipelineBuildDesc` 并按 `PipelineKey` 去重 | 自动 barrier / semaphore 推导 |
-| 保持 pass 提交顺序来自外层构建顺序 | attachment aliasing / render graph compile |
+| 记录 `FrameGraphRead` / `FrameGraphWrite` 并在 compile 阶段校验先写后读 | attachment aliasing |
+| 保持 pass 提交顺序来自外层构建顺序 | task-based render graph execution |
 
 因此，“被依赖的 pass 先执行、FrameGraph 根据资源边建立同步”是 roadmap 方向，不是当前实现。当前代码里 pass 顺序由创建 `FrameGraph` 时加入 `FramePass` 的顺序决定。
 
