@@ -665,12 +665,14 @@ void testRenderDebugDumpCommandUsesRegisteredHook() {
       LX_demo::lxe_editor::LxeEditorSession::RenderDebugCommandHooks{
           .dumpFrameGraphAttachment =
               [&](std::string_view attachment,
-                  const std::optional<std::filesystem::path> &path) {
+                  const std::filesystem::path &path,
+                  const std::filesystem::path &screenPath) {
                 capturedAttachment = std::string(attachment);
                 capturedPath = path;
                 return LX_demo::lxe_editor::LxeEditorSession::
                     RenderDebugDumpResult{
-                    .path = path.value_or("data/debug/render_targets/out.pgm"),
+                    .path = path,
+                    .screenPath = screenPath,
                     .width = 1024,
                     .height = 1024,
                     .format = "D32_SFLOAT",
@@ -679,18 +681,31 @@ void testRenderDebugDumpCommandUsesRegisteredHook() {
       });
 
   const auto dump = session.commandBus().dispatch(
-      "render debug dump shadow.cascade0 data/debug/shadow_cascade0.pgm");
+      "render debug dump shadow.cascade0 data/debug/dump/shadow_cascade0.bmp");
 
   EXPECT(dump.ok, "render debug dump should succeed when hook is registered");
   EXPECT(capturedAttachment == "shadow.cascade0",
          "render debug dump should forward the attachment name");
   EXPECT(capturedPath.has_value() &&
              capturedPath->generic_string() ==
-                 "data/debug/shadow_cascade0.pgm",
+                 "data/debug/dump/shadow_cascade0.bmp",
          "render debug dump should forward the optional output path");
-  EXPECT(dump.structured.find("\"path\":\"data/debug/shadow_cascade0.pgm\"") !=
+  EXPECT(dump.structured.find("\"path\":\"data/debug/dump/shadow_cascade0.bmp\"") !=
              std::string::npos,
          "render debug dump should return the output path in JSON");
+  EXPECT(dump.structured.find("\"screenPath\":\"data/debug/dump/shadow_cascade0-screen.bmp\"") !=
+             std::string::npos,
+         "render debug dump should return the paired screen output path");
+
+  const auto defaultDump =
+      session.commandBus().dispatch("render debug dump shadow.cascade0");
+  EXPECT(defaultDump.ok, "render debug dump should create a default path");
+  EXPECT(defaultDump.structured.find("\"path\":\"data/debug/dump/") !=
+             std::string::npos,
+         "render debug dump should default to the short dump directory");
+  EXPECT(defaultDump.structured.find("shadow_cascade0.bmp") !=
+             std::string::npos,
+         "render debug dump should derive the target name in the default path");
 
   LX_demo::lxe_editor::LxeEditorSession unavailableSession(rig, ui,
                                                            editorState);

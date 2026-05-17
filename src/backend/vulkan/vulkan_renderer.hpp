@@ -17,6 +17,7 @@ class VulkanRenderer : public gpu::Renderer {
 public:
   struct FrameGraphAttachmentDumpResult final {
     std::filesystem::path path;
+    std::filesystem::path screenPath;
     u32 width = 0;
     u32 height = 0;
     std::string format;
@@ -48,7 +49,8 @@ public:
   [[nodiscard]] usize initSceneCallCount() const;
   FrameGraphAttachmentDumpResult dumpFrameGraphAttachment(
       std::string_view attachmentName,
-      const std::optional<std::filesystem::path> &path = std::nullopt);
+      const std::optional<std::filesystem::path> &path = std::nullopt,
+      const std::optional<std::filesystem::path> &screenPath = std::nullopt);
 
 private:
   std::unique_ptr<VulkanRendererImpl> p_impl;

@@ -103,6 +103,73 @@ std::string sanitizeAttachmentName(std::string_view name) {
   }
   return out.empty() ? "attachment" : out;
 }
+
+void writeLe16(std::ostream &out, u16 value) {
+  out.put(static_cast<char>(value & 0xffu));
+  out.put(static_cast<char>((value >> 8u) & 0xffu));
+}
+
+void writeLe32(std::ostream &out, u32 value) {
+  out.put(static_cast<char>(value & 0xffu));
+  out.put(static_cast<char>((value >> 8u) & 0xffu));
+  out.put(static_cast<char>((value >> 16u) & 0xffu));
+  out.put(static_cast<char>((value >> 24u) & 0xffu));
+}
+
+void writeBmp24Header(std::ostream &out, u32 width, u32 height,
+                      u32 pixelBytes) {
+  constexpr u32 fileHeaderBytes = 14;
+  constexpr u32 dibHeaderBytes = 40;
+  writeLe16(out, 0x4d42u);
+  writeLe32(out, fileHeaderBytes + dibHeaderBytes + pixelBytes);
+  writeLe16(out, 0);
+  writeLe16(out, 0);
+  writeLe32(out, fileHeaderBytes + dibHeaderBytes);
+
+  writeLe32(out, dibHeaderBytes);
+  writeLe32(out, width);
+  writeLe32(out, height);
+  writeLe16(out, 1);
+  writeLe16(out, 24);
+  writeLe32(out, 0);
+  writeLe32(out, pixelBytes);
+  writeLe32(out, 2835);
+  writeLe32(out, 2835);
+  writeLe32(out, 0);
+  writeLe32(out, 0);
+}
+
+void writeBmp24File(const std::filesystem::path &path, u32 width, u32 height,
+                    const std::vector<unsigned char> &bgrPixels) {
+  if (!path.parent_path().empty()) {
+    std::filesystem::create_directories(path.parent_path());
+  }
+  const u32 rowBytes = width * 3u;
+  const u32 paddedRowBytes = (rowBytes + 3u) & ~3u;
+  const u32 paddingBytes = paddedRowBytes - rowBytes;
+  const u32 pixelBytes = paddedRowBytes * height;
+
+  std::ofstream out(path, std::ios::binary | std::ios::trunc);
+  if (!out) {
+    throw std::runtime_error("failed to open render target dump file: " +
+                             path.string());
+  }
+  writeBmp24Header(out, width, height, pixelBytes);
+  for (u32 y = 0; y < height; ++y) {
+    const u32 srcY = height - 1u - y;
+    const usize rowStart = static_cast<usize>(srcY) * width * 3u;
+    for (u32 x = 0; x < rowBytes; ++x) {
+      out.put(static_cast<char>(bgrPixels[rowStart + x]));
+    }
+    for (u32 p = 0; p < paddingBytes; ++p) {
+      out.put('\0');
+    }
+  }
+  if (!out) {
+    throw std::runtime_error("failed to write render target dump file: " +
+                             path.string());
+  }
+}
 } // namespace
 
 namespace LX_core::backend {
@@ -507,6 +574,7 @@ public:
       }
       cmd->endRenderPass();
     }
+    recordPendingScreenDump(imageIndex, extent, *cmd);
     cmd->end();
 
     VkSemaphore waitSemaphores[] = {
@@ -540,6 +608,8 @@ public:
                 << static_cast<int>(submitResult) << std::endl;
       return;
     }
+
+    writeCompletedScreenDumpIfNeeded(fence);
 
     VkResult presentResult = m_swapchain->present(imageIndex);
     if (presentResult == VK_ERROR_OUT_OF_DATE_KHR ||
@@ -587,7 +657,8 @@ public:
 
   VulkanRenderer::FrameGraphAttachmentDumpResult dumpFrameGraphAttachment(
       std::string_view attachmentName,
-      const std::optional<std::filesystem::path> &requestedPath) {
+      const std::optional<std::filesystem::path> &requestedPath,
+      const std::optional<std::filesystem::path> &requestedScreenPath) {
     if (!m_resourceManager || !m_cmdBufferMgr || !m_device) {
       throw std::runtime_error("renderer is not initialized");
     }
@@ -621,9 +692,11 @@ public:
             std::chrono::system_clock::now().time_since_epoch())
             .count();
     const std::filesystem::path path = requestedPath.value_or(
-        std::filesystem::path("data/debug/render_targets") /
+        std::filesystem::path("data/debug/dump") /
         (std::to_string(timestamp) + "-" +
-         sanitizeAttachmentName(attachmentName) + ".pgm"));
+         sanitizeAttachmentName(attachmentName) + ".bmp"));
+    const std::filesystem::path screenPath = requestedScreenPath.value_or(
+        path.parent_path() / (path.stem().generic_string() + "-screen.bmp"));
 
     auto readback = VulkanBuffer::create(
         *m_device, byteSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
@@ -669,35 +742,27 @@ public:
                                           m_device->getGraphicsQueue());
 
     const auto *depthPixels = static_cast<const float *>(readback->map());
-    std::vector<unsigned char> pgmPixels;
-    pgmPixels.reserve(static_cast<usize>(width) * static_cast<usize>(height));
+    std::vector<unsigned char> bgrPixels;
+    bgrPixels.reserve(static_cast<usize>(width) * static_cast<usize>(height) *
+                      3u);
     for (u32 y = 0; y < height; ++y) {
       for (u32 x = 0; x < width; ++x) {
         const float depth = std::clamp(
             depthPixels[static_cast<usize>(y) * width + x], 0.0f, 1.0f);
-        pgmPixels.push_back(static_cast<unsigned char>(depth * 255.0f));
+        const auto gray = static_cast<unsigned char>(depth * 255.0f);
+        bgrPixels.push_back(gray);
+        bgrPixels.push_back(gray);
+        bgrPixels.push_back(gray);
       }
     }
     readback->unmap();
 
-    if (!path.parent_path().empty()) {
-      std::filesystem::create_directories(path.parent_path());
-    }
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
-    if (!out) {
-      throw std::runtime_error("failed to open render target dump file: " +
-                               path.string());
-    }
-    out << "P5\n" << width << " " << height << "\n255\n";
-    out.write(reinterpret_cast<const char *>(pgmPixels.data()),
-              static_cast<std::streamsize>(pgmPixels.size()));
-    if (!out) {
-      throw std::runtime_error("failed to write render target dump file: " +
-                               path.string());
-    }
+    writeBmp24File(path, width, height, bgrPixels);
+    m_pendingScreenDump = PendingScreenDump{.path = screenPath};
 
     return VulkanRenderer::FrameGraphAttachmentDumpResult{
         .path = path,
+        .screenPath = screenPath,
         .width = width,
         .height = height,
         .format = vkFormatName(attachment.format),
@@ -705,6 +770,14 @@ public:
   }
 
 private:
+  struct PendingScreenDump final {
+    std::filesystem::path path;
+    VulkanBufferUniquePtr readback;
+    u32 width = 0;
+    u32 height = 0;
+    VkFormat format = VK_FORMAT_UNDEFINED;
+  };
+
   usize findFinalSwapchainPassIndex() const {
     const auto &passes = m_compiledFrameGraph.getPasses();
     for (usize i = passes.size(); i > 0; --i) {
@@ -976,6 +1049,100 @@ private:
     }
   }
 
+  void recordPendingScreenDump(u32 imageIndex, VkExtent2D extent,
+                               VulkanCommandBuffer &cmd) {
+    if (!m_pendingScreenDump.has_value()) {
+      return;
+    }
+    auto &dump = *m_pendingScreenDump;
+    dump.width = extent.width;
+    dump.height = extent.height;
+    dump.format = m_swapchain->getImageFormat();
+    const VkDeviceSize byteSize =
+        static_cast<VkDeviceSize>(extent.width) *
+        static_cast<VkDeviceSize>(extent.height) * 4u;
+    dump.readback = VulkanBuffer::create(
+        *m_device, byteSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+    VkImageMemoryBarrier toTransfer{};
+    toTransfer.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    toTransfer.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    toTransfer.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    toTransfer.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    toTransfer.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    toTransfer.image = m_swapchain->getImage(imageIndex);
+    toTransfer.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    toTransfer.subresourceRange.baseMipLevel = 0;
+    toTransfer.subresourceRange.levelCount = 1;
+    toTransfer.subresourceRange.baseArrayLayer = 0;
+    toTransfer.subresourceRange.layerCount = 1;
+    toTransfer.srcAccessMask = 0;
+    toTransfer.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    cmd.pipelineBarrier(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                        VK_PIPELINE_STAGE_TRANSFER_BIT, toTransfer);
+
+    VkBufferImageCopy region{};
+    region.bufferOffset = 0;
+    region.bufferRowLength = 0;
+    region.bufferImageHeight = 0;
+    region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    region.imageSubresource.mipLevel = 0;
+    region.imageSubresource.baseArrayLayer = 0;
+    region.imageSubresource.layerCount = 1;
+    region.imageOffset = {0, 0, 0};
+    region.imageExtent = {extent.width, extent.height, 1};
+    vkCmdCopyImageToBuffer(cmd.getHandle(), m_swapchain->getImage(imageIndex),
+                           VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                           dump.readback->getHandle(), 1, &region);
+
+    VkImageMemoryBarrier toPresent = toTransfer;
+    toPresent.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    toPresent.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    toPresent.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    toPresent.dstAccessMask = 0;
+    cmd.pipelineBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT,
+                        VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, toPresent);
+  }
+
+  void writeCompletedScreenDumpIfNeeded(VkFence fence) {
+    if (!m_pendingScreenDump.has_value() ||
+        !m_pendingScreenDump->readback) {
+      return;
+    }
+
+    auto dump = std::move(*m_pendingScreenDump);
+    m_pendingScreenDump.reset();
+    vkWaitForFences(m_device->getLogicalDevice(), 1, &fence, VK_TRUE,
+                    UINT64_MAX);
+
+    const auto *rgba = static_cast<const unsigned char *>(dump.readback->map());
+    std::vector<unsigned char> bgrPixels;
+    bgrPixels.reserve(static_cast<usize>(dump.width) *
+                      static_cast<usize>(dump.height) * 3u);
+    const bool sourceIsBgra =
+        dump.format == VK_FORMAT_B8G8R8A8_UNORM ||
+        dump.format == VK_FORMAT_B8G8R8A8_SRGB;
+    for (u32 y = 0; y < dump.height; ++y) {
+      for (u32 x = 0; x < dump.width; ++x) {
+        const usize i =
+            (static_cast<usize>(y) * dump.width + static_cast<usize>(x)) * 4u;
+        if (sourceIsBgra) {
+          bgrPixels.push_back(rgba[i + 0u]);
+          bgrPixels.push_back(rgba[i + 1u]);
+          bgrPixels.push_back(rgba[i + 2u]);
+        } else {
+          bgrPixels.push_back(rgba[i + 2u]);
+          bgrPixels.push_back(rgba[i + 1u]);
+          bgrPixels.push_back(rgba[i + 0u]);
+        }
+      }
+    }
+    dump.readback->unmap();
+    writeBmp24File(dump.path, dump.width, dump.height, bgrPixels);
+  }
+
   void rebuildSwapchain() {
     // A zero-sized window (minimized, or mid-drag) produces an invalid
     // swapchain. Let draw() retry later when the window has real size.
@@ -1030,6 +1197,7 @@ private:
   bool m_swapchainNeedsRebuild = false;
   infra::Gui m_gui{};
   std::function<void()> m_drawUiCallback{};
+  std::optional<PendingScreenDump> m_pendingScreenDump;
 };
 
 VulkanRenderer::VulkanRenderer(Token)
@@ -1078,8 +1246,9 @@ usize VulkanRenderer::initSceneCallCount() const {
 VulkanRenderer::FrameGraphAttachmentDumpResult
 VulkanRenderer::dumpFrameGraphAttachment(
     std::string_view attachmentName,
-    const std::optional<std::filesystem::path> &path) {
-  return p_impl->dumpFrameGraphAttachment(attachmentName, path);
+    const std::optional<std::filesystem::path> &path,
+    const std::optional<std::filesystem::path> &screenPath) {
+  return p_impl->dumpFrameGraphAttachment(attachmentName, path, screenPath);
 }
 
 } // namespace LX_core::backend

@@ -16,6 +16,7 @@
 #include "demos/lxe_editor/scene_builder.hpp"
 #include "demos/lxe_editor/scene_interaction_controller.hpp"
 
+#include <chrono>
 #include <exception>
 #include <functional>
 #include <optional>
@@ -34,6 +35,35 @@
 
 namespace LX_demo::lxe_editor {
 namespace {
+
+[[nodiscard]] std::string sanitizeDumpName(std::string_view name) {
+  std::string out;
+  out.reserve(name.size());
+  for (const char c : name) {
+    const bool safe = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                      (c >= '0' && c <= '9') || c == '-' || c == '_';
+    out.push_back(safe ? c : '_');
+  }
+  return out.empty() ? "target" : out;
+}
+
+[[nodiscard]] std::filesystem::path pairedScreenDumpPath(
+    const std::filesystem::path &targetPath) {
+  const auto parent = targetPath.parent_path();
+  const std::string stem = targetPath.stem().generic_string();
+  return parent / (stem + "-screen.bmp");
+}
+
+[[nodiscard]] std::filesystem::path defaultDumpPathForTarget(
+    std::string_view targetName) {
+  const auto timestamp =
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::system_clock::now().time_since_epoch())
+          .count();
+  return std::filesystem::path("data/debug/dump") /
+         (std::to_string(timestamp) + "-" + sanitizeDumpName(targetName) +
+          ".bmp");
+}
 
 [[nodiscard]] std::string jsonEscape(const std::string &text) {
   std::string out;
@@ -986,17 +1016,21 @@ void LxeEditorSession::rebuildBindings(
           return makeCommandError("render debug dump unavailable");
         }
 
-        std::optional<std::filesystem::path> outputPath;
-        if (args.size() == 4) {
-          outputPath = std::filesystem::path(args[3]);
-        }
+        const std::filesystem::path outputPath =
+            args.size() == 4 ? std::filesystem::path(args[3])
+                             : defaultDumpPathForTarget(args[2]);
+        const std::filesystem::path screenPath =
+            pairedScreenDumpPath(outputPath);
         try {
           const RenderDebugDumpResult dump =
               m_renderDebugCommandHooks.dumpFrameGraphAttachment(args[2],
-                                                                 outputPath);
+                                                                 outputPath,
+                                                                 screenPath);
           std::ostringstream structured;
           structured << "{\"path\":\""
                      << jsonEscape(dump.path.generic_string())
+                     << "\",\"screenPath\":\""
+                     << jsonEscape(dump.screenPath.generic_string())
                      << "\",\"width\":" << dump.width
                      << ",\"height\":" << dump.height << ",\"format\":\""
                      << jsonEscape(dump.format) << "\"}";

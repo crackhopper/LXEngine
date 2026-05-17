@@ -177,7 +177,8 @@ void VulkanSwapchain::createInternal(const VkSurfaceCapabilitiesKHR &capabilitie
   createInfo.imageColorSpace = m_device.getSurfaceFormat().colorSpace;
   createInfo.imageExtent = m_extent;
   createInfo.imageArrayLayers = 1;
-  createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+  createInfo.imageUsage =
+      VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 
   u32 graphicsIdx = m_device.getGraphicsQueueFamilyIndex();
   u32 presentIdx = m_device.getPresentQueueFamilyIndex();

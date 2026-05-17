@@ -37,6 +37,7 @@ class LxeEditorSession final {
 public:
   struct RenderDebugDumpResult final {
     std::filesystem::path path;
+    std::filesystem::path screenPath;
     u32 width = 0;
     u32 height = 0;
     std::string format;
@@ -53,7 +54,8 @@ public:
 
   struct RenderDebugCommandHooks final {
     std::function<RenderDebugDumpResult(
-        std::string_view, const std::optional<std::filesystem::path> &)>
+        std::string_view, const std::filesystem::path &,
+        const std::filesystem::path &)>
         dumpFrameGraphAttachment;
   };
 

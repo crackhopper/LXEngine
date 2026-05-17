@@ -811,11 +811,14 @@ int main(int argc, char **argv) {
         .dumpFrameGraphAttachment =
             [vulkanRenderer](
                 std::string_view attachmentName,
-                const std::optional<std::filesystem::path> &path) {
+                const std::filesystem::path &path,
+                const std::filesystem::path &screenPath) {
               const auto dumped =
-                  vulkanRenderer->dumpFrameGraphAttachment(attachmentName, path);
+                  vulkanRenderer->dumpFrameGraphAttachment(attachmentName, path,
+                                                           screenPath);
               return demo::LxeEditorSession::RenderDebugDumpResult{
                   .path = dumped.path,
+                  .screenPath = dumped.screenPath,
                   .width = dumped.width,
                   .height = dumped.height,
                   .format = dumped.format,
