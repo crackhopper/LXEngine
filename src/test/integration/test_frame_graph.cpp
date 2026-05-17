@@ -719,6 +719,26 @@ void testInactiveCameraIsIgnoredForResourcesAndMasks() {
          "inactive camera should not widen renderable visibility filtering");
 }
 
+void testEditorProjectedShadowPassKeepsCharacterCaster() {
+  auto caster = makeRenderable("shadow_character", {}, true);
+  auto scene = Scene::create(caster);
+  scene->addCamera(LX_test::makeDefaultCameraNodeWithTarget());
+  auto light = makeLightWithPasses({Pass_Forward, Pass_Shadow});
+  scene->addLight(light);
+
+  FrameGraph fg;
+  fg.addPass(FramePass{Pass_Forward, RenderTarget{}, {}});
+  fg.addPass(FramePass{Pass_Shadow, RenderTarget{}, {}});
+  fg.buildFromScene(*scene);
+
+  EXPECT(fg.getPasses()[0].name == Pass_Forward,
+         "Forward pass renders before projected shadows");
+  EXPECT(fg.getPasses()[1].name == Pass_Shadow,
+         "Shadow pass renders as overlay after Forward");
+  EXPECT(fg.getPasses()[1].queue.getItems().size() == 1,
+         "character caster appears in Shadow queue");
+}
+
 } // namespace
 
 int main() {
@@ -751,6 +771,7 @@ int main() {
   testVisibilityMaskOrsMatchingCameraMasks();
   testVisibilityFilteringKeepsSceneResources();
   testInactiveCameraIsIgnoredForResourcesAndMasks();
+  testEditorProjectedShadowPassKeepsCharacterCaster();
 
   if (failures > 0) {
     std::cerr << "FAILED: " << failures << " assertion(s)\n";

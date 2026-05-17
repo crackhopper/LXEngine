@@ -326,6 +326,30 @@ void test_vector_parameters_load_without_aliasing_yaml_nodes() {
   std::cout << "  vector parameters survive YAML iteration safely\n";
 }
 
+void test_textured_character_material_has_projected_shadow_pass() {
+  std::cout << "\n-- test_textured_character_material_has_projected_shadow_pass --\n";
+  auto root = findProjectRoot();
+  if (root.empty()) {
+    std::cerr << "  SETUP: project root not found; skipping\n";
+    return;
+  }
+
+  auto prev = fs::current_path();
+  fs::current_path(root);
+  auto mat = loadGenericMaterial("assets/materials/blinnphong_textured.material");
+  fs::current_path(prev);
+
+  REQUIRE(mat != nullptr);
+  REQUIRE(mat->isPassEnabled(Pass_Shadow));
+  REQUIRE(mat->getPassShader(Pass_Shadow) != nullptr);
+  REQUIRE(mat->getPassShader(Pass_Shadow)->getShaderName() ==
+          "shadow_depth_only");
+  REQUIRE(!mat->getPassRenderState(Pass_Shadow).blendEnable);
+  REQUIRE(mat->getPassRenderState(Pass_Shadow).depthWriteEnable);
+
+  std::cout << "  textured character material exposes depth Shadow pass\n";
+}
+
 void test_placeholder_textures() {
   std::cout << "\n-- test_placeholder_textures --\n";
 
@@ -366,6 +390,7 @@ int main() {
   test_per_pass_shader_override();
   test_canonical_parameters_shared_across_passes();
   test_vector_parameters_load_without_aliasing_yaml_nodes();
+  test_textured_character_material_has_projected_shadow_pass();
 
   std::cout << "\n========================================\n";
   if (s_failures == 0) {

@@ -583,6 +583,33 @@ resolveDirectionalLight(SceneNode &node) {
   return {};
 }
 
+void setLightCastsShadow(const LightBaseSharedPtr &light,
+                         const bool castsShadow) {
+  std::vector<StringID> passes{Pass_Forward, Pass_Deferred};
+  if (castsShadow) {
+    passes.push_back(Pass_Shadow);
+  }
+  if (const auto directional =
+          std::dynamic_pointer_cast<DirectionalLight>(light)) {
+    directional->setSupportedPasses(passes);
+  } else if (const auto point = std::dynamic_pointer_cast<PointLight>(light)) {
+    point->setSupportedPasses(passes);
+  } else if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
+    spot->setSupportedPasses(passes);
+  }
+}
+
+[[nodiscard]] std::optional<bool> parseBoolToken(const std::string &text) {
+  const std::string value = lowerCopy(text);
+  if (value == "true" || value == "1" || value == "on" || value == "yes") {
+    return true;
+  }
+  if (value == "false" || value == "0" || value == "off" || value == "no") {
+    return false;
+  }
+  return std::nullopt;
+}
+
 [[nodiscard]] std::vector<std::string> listComponentTypes() {
   return {"camera:perspective", "light:directional", "light:point",
           "light:spot",         "primitive:cone",    "primitive:cube",
@@ -831,6 +858,16 @@ findActiveCamera(Scene &scene, EditorState &editorState) {
     const u32 value = directional->getShadowCascadeCount();
     return makeOk("shadowCascadeCount = " + std::to_string(value),
                   makeUnsignedJson(value));
+  }
+  if (field == "light.castsShadow" || field == "castsShadow") {
+    const auto light = resolveLight(node);
+    if (!light) {
+      return makeError("field not available on node: castsShadow");
+    }
+    const bool value = light->supportsPass(Pass_Shadow);
+    return makeOk(std::string("castsShadow = ") + (value ? "true" : "false"),
+                  std::string("{\"value\":") + (value ? "true" : "false") +
+                      "}");
   }
   if (field == "light.range" || field == "range") {
     const auto light = resolveLight(node);
@@ -1103,6 +1140,10 @@ parseMaterialParameterValue(const ShaderPropertyType type,
     return "set " + quoteToken(path + ".light.intensity") + " " +
            formatFloat(value);
   }
+  if ((field == "light.castsShadow" || field == "castsShadow") && light) {
+    return "set " + quoteToken(path + ".light.castsShadow") + " " +
+           (light->supportsPass(Pass_Shadow) ? "true" : "false");
+  }
   if ((field == "light.range" || field == "range") && light) {
     if (const auto point = std::dynamic_pointer_cast<PointLight>(light)) {
       return "set " + quoteToken(path + ".light.range") + " " +
@@ -1204,12 +1245,18 @@ completeScenePaths(const Scene &scene, const CompletionContext &context) {
     fields.push_back("projection");
   }
   if (const auto light = resolveLight(node)) {
+    fields.push_back("light.castsShadow");
     fields.push_back("light.color");
     fields.push_back("light.intensity");
     fields.push_back("light.kind");
     if (std::dynamic_pointer_cast<DirectionalLight>(light) ||
         std::dynamic_pointer_cast<SpotLight>(light)) {
       fields.push_back("light.direction");
+    }
+    if (std::dynamic_pointer_cast<DirectionalLight>(light)) {
+      fields.push_back("light.shadowCascadeCount");
+      fields.push_back("light.shadowDistance");
+      fields.push_back("light.shadowStrength");
     }
     if (std::dynamic_pointer_cast<PointLight>(light) ||
         std::dynamic_pointer_cast<SpotLight>(light)) {
@@ -1939,6 +1986,23 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
     directional->setShadowCascadeCount(*value);
     return makeOk("shadowCascadeCount updated",
                   makeUnsignedJson(directional->getShadowCascadeCount()));
+  }
+  if (field == "light.castsShadow" || field == "castsShadow") {
+    if (args.size() != valueStartIndex + 1) {
+      return makeError("usage: set <path>.light.castsShadow <true|false>");
+    }
+    const auto light = resolveLight(node);
+    if (!light) {
+      return makeError("field not available on node: castsShadow");
+    }
+    const auto value = parseBoolToken(args[valueStartIndex]);
+    if (!value.has_value()) {
+      return makeError("invalid bool for set castsShadow");
+    }
+    setLightCastsShadow(light, *value);
+    return makeOk(std::string("castsShadow updated"),
+                  std::string("{\"value\":") + (*value ? "true" : "false") +
+                      "}");
   }
   if (field == "light.range" || field == "range") {
     if (args.size() != valueStartIndex + 1) {

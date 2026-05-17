@@ -837,6 +837,56 @@ void testBuiltinCreatesAndEditsTypedLights() {
   }
 }
 
+void testTransformCommandsDriveAttachedLightSpatialState() {
+  CommandFixture fixture;
+
+  const CommandResult addDirectional =
+      fixture.bus.dispatch("add light:directional key_light");
+  EXPECT(addDirectional.ok, "add directional light succeeds");
+  auto *dirNode = fixture.scene->findByPath("/key_light");
+  EXPECT(dirNode != nullptr, "directional light node should exist");
+  if (dirNode != nullptr) {
+    const auto dirLight = fixture.scene->getDirectionalLight(*dirNode);
+    EXPECT(dirLight != nullptr,
+           "directional light runtime instance should attach");
+  }
+
+  const CommandResult enableShadow =
+      fixture.bus.dispatch("set /key_light.light.castsShadow true");
+  EXPECT(enableShadow.ok,
+         "directional light shadow participation can be enabled");
+
+  const CommandResult rotateDir =
+      fixture.bus.dispatch("rotate /key_light 0 90 0");
+  EXPECT(rotateDir.ok, "rotate directional light succeeds");
+  (void)fixture.scene->getSceneLevelResources(Pass_Forward, RenderTarget{});
+  const Vec4f dir =
+      fixture.scene->getSceneLightsUBO()->param.directional[1].direction;
+  EXPECT(nearlyEqual(dir.x, -1.0f) && nearlyEqual(dir.y, 0.0f) &&
+             nearlyEqual(dir.z, 0.0f),
+         "directional light UBO direction follows node rotation");
+
+  auto shadowResources =
+      fixture.scene->getSceneLevelResources(Pass_Shadow, RenderTarget{});
+  EXPECT(!shadowResources.empty(),
+         "enabled shadow-casting light contributes resources to Shadow pass");
+
+  const CommandResult addPoint =
+      fixture.bus.dispatch("add light:point fill_point");
+  EXPECT(addPoint.ok, "add point light succeeds");
+  auto *pointNode = fixture.scene->findByPath("/fill_point");
+  EXPECT(pointNode != nullptr, "point light node should exist");
+  const CommandResult movePoint =
+      fixture.bus.dispatch("move /fill_point 3 4 5");
+  EXPECT(movePoint.ok, "move point light succeeds");
+  (void)fixture.scene->getSceneLevelResources(Pass_Forward, RenderTarget{});
+  const Vec4f point =
+      fixture.scene->getSceneLightsUBO()->param.point[0].positionRange;
+  EXPECT(nearlyEqual(point.x, 3.0f) && nearlyEqual(point.y, 4.0f) &&
+             nearlyEqual(point.z, 5.0f),
+         "point light UBO position follows node translation");
+}
+
 void testBuiltinCamAndPreviewCommands() {
   CommandFixture fixture;
 
@@ -2096,6 +2146,7 @@ int main() {
   testBuiltinCommandErrors();
   testBuiltinAddRemoveSetCommands();
   testBuiltinCreatesAndEditsTypedLights();
+  testTransformCommandsDriveAttachedLightSpatialState();
   testBuiltinCamAndPreviewCommands();
   testBuiltinRemainingCommandErrors();
   testProjectAndSceneCommandsUseRegisteredCallbacks();

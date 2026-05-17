@@ -17,6 +17,7 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 
+#include <cmath>
 #include <iostream>
 
 namespace {
@@ -279,6 +280,31 @@ void testViewportOverlayGizmoModeHotkeysAndCommitPath() {
          "translate commit records move command");
 }
 
+void testViewportOverlayRotateCommitDrivesDirectionalLight() {
+  Fixture fixture;
+  auto lightNode = LX_core::SceneNode::create("key_light_node");
+  lightNode->setName("key_light");
+  fixture.scene->addRenderable(lightNode);
+  auto light = std::make_shared<LX_core::DirectionalLight>();
+  fixture.scene->attachLight(lightNode, light);
+
+  LX_core::ViewportOverlay overlay(fixture.bus, fixture.editorState,
+                                   *fixture.scene);
+  overlay.setGizmoOperation(LX_core::ViewportOverlay::GizmoOperation::Rotate);
+
+  LX_core::GizmoTransformComponents components;
+  components.rotationEulerDegrees = {0.0f, 90.0f, 0.0f};
+  const auto result = overlay.dispatchGizmoCommit("/key_light", components);
+  EXPECT(result.ok, "rotate gizmo commit succeeds for light");
+  (void)fixture.scene->getSceneLevelResources(LX_core::Pass_Forward,
+                                              LX_core::RenderTarget{});
+  const LX_core::Vec4f dir =
+      fixture.scene->getSceneLightsUBO()->param.directional[1].direction;
+  EXPECT(std::abs(dir.x + 1.0f) <= 1e-4f && std::abs(dir.y) <= 1e-4f &&
+             std::abs(dir.z) <= 1e-4f,
+         "gizmo rotate commit updates directional light direction");
+}
+
 void testViewportOverlayMultiSelectionCommitAppliesSharedDelta() {
   Fixture fixture;
   fixture.cube->setTranslation({2.0f, 0.0f, 0.0f});
@@ -460,6 +486,7 @@ int main() {
   testEditorStateSyncsActiveCameraAcrossPreviewToggle();
   testViewportOverlaySnapshotAndCommandEntry();
   testViewportOverlayGizmoModeHotkeysAndCommitPath();
+  testViewportOverlayRotateCommitDrivesDirectionalLight();
   testViewportOverlayMultiSelectionCommitAppliesSharedDelta();
   testViewportOverlayEnqueueDebugDrawTracksPreviewVisibility();
   testViewportOverlayBoxSelectionReplaceSelectsIntersectingMeshes();

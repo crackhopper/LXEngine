@@ -1,0 +1,4 @@
+interface:
+  display_name: "LXE Help"
+  short_description: "Summarize available LXEngine skills"
+  default_prompt: "Use $lxe-help to explain the available LXEngine skills and which one fits my task."
