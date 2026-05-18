@@ -86,6 +86,7 @@ nav:
           - FrameGraph: concepts-design/rendering-pipeline/framegraph.md
           - Render Target: concepts-design/rendering-pipeline/render-target.md
           - Shadow Pass: concepts-design/rendering-pipeline/shadow-pass.md
+          - Plane 与薄盒阴影: concepts-design/rendering-pipeline/plane-vs-thin-box-shadow.md
           - CSM: concepts-design/rendering-pipeline/cascaded-shadow-maps.md
           - RenderQueue: concepts-design/rendering-pipeline/render-queue.md
       - 编辑器系统:

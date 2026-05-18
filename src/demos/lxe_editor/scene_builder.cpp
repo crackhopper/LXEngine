@@ -361,16 +361,56 @@ MeshSharedPtr buildCubeMesh() {
 }
 
 MeshSharedPtr buildPlaneMesh() {
+  constexpr float half = 0.5f;
+  constexpr float top = 0.0f;
+  constexpr float bottom = -0.02f;
+
   std::vector<VertexPosNormalUvBone> verts;
-  verts.reserve(4);
-  const Vec3f up{0.0f, 1.0f, 0.0f};
-  appendVertex(verts, {-0.5f, 0.0f, -0.5f}, up);
-  appendVertex(verts, {0.5f, 0.0f, -0.5f}, up);
-  appendVertex(verts, {0.5f, 0.0f, 0.5f}, up);
-  appendVertex(verts, {-0.5f, 0.0f, 0.5f}, up);
+  std::vector<u32> indices;
+  verts.reserve(24);
+  indices.reserve(36);
+
+  const Vec3f normals[] = {{0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, -1.0f},
+                           {1.0f, 0.0f, 0.0f}, {-1.0f, 0.0f, 0.0f},
+                           {0.0f, 1.0f, 0.0f}, {0.0f, -1.0f, 0.0f}};
+  const Vec3f faces[][4] = {
+      {{-half, bottom, half},
+       {half, bottom, half},
+       {half, top, half},
+       {-half, top, half}},
+      {{half, bottom, -half},
+       {-half, bottom, -half},
+       {-half, top, -half},
+       {half, top, -half}},
+      {{half, bottom, half},
+       {half, bottom, -half},
+       {half, top, -half},
+       {half, top, half}},
+      {{-half, bottom, -half},
+       {-half, bottom, half},
+       {-half, top, half},
+       {-half, top, -half}},
+      {{-half, top, half},
+       {half, top, half},
+       {half, top, -half},
+       {-half, top, -half}},
+      {{-half, bottom, -half},
+       {half, bottom, -half},
+       {half, bottom, half},
+       {-half, bottom, half}},
+  };
+  for (u32 f = 0; f < 6; ++f) {
+    const u32 base = static_cast<u32>(verts.size());
+    for (u32 i = 0; i < 4; ++i) {
+      appendVertex(verts, faces[f][i], normals[f]);
+    }
+    indices.insert(indices.end(),
+                   {base, base + 1, base + 2, base, base + 2, base + 3});
+  }
+
   return makeMesh(
-      std::move(verts), {0, 2, 1, 0, 3, 2},
-      LX_core::BoundingBox{{-0.5f, 0.0f, -0.5f}, {0.5f, 0.0f, 0.5f}});
+      std::move(verts), std::move(indices),
+      LX_core::BoundingBox{{-half, bottom, -half}, {half, top, half}});
 }
 
 MeshSharedPtr buildSphereMesh() {

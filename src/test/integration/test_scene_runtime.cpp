@@ -1134,6 +1134,44 @@ void testGroundMeshWindingMatchesUpwardNormal() {
          "ground winding should match the upward normal convention");
 }
 
+void testBuiltinPrimitivePlaneIsThinBox() {
+  const auto plane = demo::buildBuiltinPrimitiveNode(
+      "builtin://lxe_editor/primitives/plane", "primitive_plane_node");
+  const auto meshComponent = plane->getComponent<LX_core::MeshComponent>();
+  EXPECT(meshComponent.has_value(),
+         "primitive plane should have a mesh component");
+  if (!meshComponent.has_value()) {
+    return;
+  }
+
+  const auto &mesh = meshComponent->get().getMesh();
+  expectNear(mesh->bounds.min.x, -0.5f,
+             "primitive plane thin box should keep half-width min x");
+  expectNear(mesh->bounds.max.x, 0.5f,
+             "primitive plane thin box should keep half-width max x");
+  expectNear(mesh->bounds.min.z, -0.5f,
+             "primitive plane thin box should keep half-depth min z");
+  expectNear(mesh->bounds.max.z, 0.5f,
+             "primitive plane thin box should keep half-depth max z");
+  expectNear(mesh->bounds.max.y, 0.0f,
+             "primitive plane top surface should stay at local y=0");
+  expectNear(mesh->bounds.min.y, -0.02f,
+             "primitive plane should extend downward as a thin box");
+
+  EXPECT(mesh->vertexBuffer != nullptr,
+         "primitive plane thin box should have a vertex buffer");
+  if (mesh->vertexBuffer) {
+    EXPECT(mesh->vertexBuffer->getVertexCount() == 24,
+           "primitive plane thin box should use per-face vertices");
+  }
+  EXPECT(mesh->indexBuffer != nullptr,
+         "primitive plane thin box should have an index buffer");
+  if (mesh->indexBuffer) {
+    EXPECT(mesh->indexBuffer->indexCount() == 36,
+           "primitive plane thin box should use six faces");
+  }
+}
+
 void testBuiltinPrimitiveScenePayloadRoundTrips() {
   const std::filesystem::path inputPath =
       makeTempPath("lx_scene_runtime_builtin_primitive_input.yaml");
@@ -1462,6 +1500,7 @@ int main() {
   testRuntimeMaterialUriAndBaseColorOverridesRoundTrip();
   testGenericNodeMaterialParameterOverrideRoundTrips();
   testGroundMeshWindingMatchesUpwardNormal();
+  testBuiltinPrimitivePlaneIsThinBox();
   testBuiltinPrimitiveScenePayloadRoundTrips();
   testBuiltinPrimitiveBaseColorGetterUsesRuntimeMaterialValue();
   testProjectAssetMaterialOverridesRuntimeAssetMaterial();
