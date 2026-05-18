@@ -162,6 +162,8 @@ public:
                                      float splitLambda = 0.5f);
   [[nodiscard]] std::optional<DirectionalShadowCascadeDebugView>
   getShadowCascadeDebugView(u32 cascadeIndex) const;
+  [[nodiscard]] DirectionalLightDataSharedPtr
+  makeShadowCascadeUBOSnapshot(u32 cascadeIndex) const;
   void setActiveShadowCascade(u32 cascadeIndex);
 
   void attachToSceneNode(const std::weak_ptr<Scene> &scene,

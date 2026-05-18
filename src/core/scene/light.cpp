@@ -357,6 +357,16 @@ DirectionalLight::getShadowCascadeDebugView(const u32 cascadeIndex) const {
   return m_shadowCascadeDebugViews[cascadeIndex];
 }
 
+DirectionalLightDataSharedPtr
+DirectionalLight::makeShadowCascadeUBOSnapshot(u32 cascadeIndex) const {
+  cascadeIndex = std::min(cascadeIndex, getShadowCascadeCount() - 1u);
+  auto snapshot = std::make_shared<DirectionalLightData>();
+  snapshot->param = m_ubo->param;
+  snapshot->param.shadowViewProj = m_ubo->param.cascadeViewProj[cascadeIndex];
+  snapshot->setDirty();
+  return snapshot;
+}
+
 void DirectionalLight::setActiveShadowCascade(u32 cascadeIndex) {
   cascadeIndex = std::min(cascadeIndex, getShadowCascadeCount() - 1u);
   m_ubo->param.shadowViewProj = m_ubo->param.cascadeViewProj[cascadeIndex];

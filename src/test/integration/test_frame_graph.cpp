@@ -382,6 +382,47 @@ void testDirectionalShadowCascadeStoresLightDepthRange() {
          "cascade depth range should match the light-view depth span");
 }
 
+void testDirectionalShadowCascadeUboSnapshotIsStable() {
+  auto cameraNode = SceneNode::create("shadow_snapshot_camera");
+  auto camera = cameraNode->addComponent<CameraComponent>();
+  camera->get().setNearPlane(0.5f);
+  camera->get().setFarPlane(100.0f);
+  camera->get().setFovY(55.0f);
+  camera->get().setAspect(1.7f);
+  camera->get().lookAt({4.0f, 3.0f, 9.0f}, {0.0f, 0.7f, 0.0f},
+                       {0.0f, 1.0f, 0.0f});
+
+  DirectionalLight light;
+  light.setShadowCascadeCount(4);
+  light.setShadowDistance(80.0f);
+  light.updateShadowCascadesForCamera(camera->get(), 0.5f);
+
+  const auto cascade0 = light.makeShadowCascadeUBOSnapshot(0);
+  const auto cascade3 = light.makeShadowCascadeUBOSnapshot(3);
+
+  EXPECT(cascade0 != nullptr, "cascade 0 snapshot should exist");
+  EXPECT(cascade3 != nullptr, "cascade 3 snapshot should exist");
+  EXPECT(cascade0->getBindingName() == StringID("LightUBO"),
+         "snapshot should bind as LightUBO for shadow shaders");
+  EXPECT(cascade0->getBackendCacheIdentity() !=
+             light.getDirectionalUBO()->getBackendCacheIdentity(),
+         "snapshot should not overwrite the main directional light UBO");
+  EXPECT(cascade0->getBackendCacheIdentity() !=
+             cascade3->getBackendCacheIdentity(),
+         "each cascade snapshot needs an independent GPU buffer");
+  EXPECT(approxMatrix(cascade0->param.shadowViewProj,
+                      light.getDirectionalUBO()->param.cascadeViewProj[0]),
+         "cascade 0 snapshot should use cascade 0 matrix");
+  EXPECT(approxMatrix(cascade3->param.shadowViewProj,
+                      light.getDirectionalUBO()->param.cascadeViewProj[3]),
+         "cascade 3 snapshot should use cascade 3 matrix");
+
+  const Mat4f stableCascade0 = cascade0->param.shadowViewProj;
+  light.setActiveShadowCascade(3);
+  EXPECT(approxMatrix(cascade0->param.shadowViewProj, stableCascade0),
+         "snapshot must remain stable after active cascade changes");
+}
+
 void testFrameGraphCompilePreservesTargetDescriptions() {
   auto offscreenColor = RenderTargetDesc::offscreenColor(ImageFormat::RGBA8);
   offscreenColor.sampleCount = 2;
@@ -898,6 +939,7 @@ int main() {
   testDirectionalLightCascadeSplitsUpdateFromCamera();
   testDirectionalShadowDebugViewRecreatesCascadeMatrix();
   testDirectionalShadowCascadeStoresLightDepthRange();
+  testDirectionalShadowCascadeUboSnapshotIsStable();
   testFrameGraphCompilePreservesTargetDescriptions();
   testRenderTargetToDescUsesMutatedLegacyFields();
   testFrameGraphCompileReportsMissingRead();

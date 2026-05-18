@@ -392,6 +392,8 @@ public:
     //   - sorts by PipelineKey
     // There is no more side-channel camera/light UBO injection here.
     m_frameGraph.buildFromScene(*m_scene);
+    rebuildShadowCascadeUboSnapshots();
+    bindShadowCascadeUboSnapshots();
 
     m_compiledFrameGraph = m_frameGraph.compile();
     if (!m_compiledFrameGraph.isValid()) {
@@ -1067,6 +1069,7 @@ private:
       return;
     }
     light->updateShadowCascadesForCamera(camera);
+    refreshShadowCascadeUboSnapshots(*light);
   }
 
   void prepareShadowCascadePass(usize passIndex) {
@@ -1087,8 +1090,75 @@ private:
         ++cascadeIndex;
       }
     }
-    light->setActiveShadowCascade(cascadeIndex);
-    m_resourceManager->syncResource(*m_cmdBufferMgr, light->getUBO());
+    if (cascadeIndex < m_shadowCascadeUboSnapshots.size() &&
+        m_shadowCascadeUboSnapshots[cascadeIndex]) {
+      m_resourceManager->syncResource(*m_cmdBufferMgr,
+                                      m_shadowCascadeUboSnapshots[cascadeIndex]);
+    }
+  }
+
+  void rebuildShadowCascadeUboSnapshots() {
+    m_shadowCascadeUboSnapshots.clear();
+    const auto light = mainDirectionalLight();
+    if (!light) {
+      return;
+    }
+    m_shadowCascadeUboSnapshots.reserve(LX_core::MaxShadowCascades);
+    for (u32 cascadeIndex = 0; cascadeIndex < LX_core::MaxShadowCascades;
+         ++cascadeIndex) {
+      m_shadowCascadeUboSnapshots.push_back(
+          light->makeShadowCascadeUBOSnapshot(cascadeIndex));
+    }
+  }
+
+  void refreshShadowCascadeUboSnapshots(const LX_core::DirectionalLight &light) {
+    if (m_shadowCascadeUboSnapshots.empty()) {
+      return;
+    }
+    for (u32 cascadeIndex = 0; cascadeIndex < LX_core::MaxShadowCascades;
+         ++cascadeIndex) {
+      if (cascadeIndex >= m_shadowCascadeUboSnapshots.size() ||
+          !m_shadowCascadeUboSnapshots[cascadeIndex]) {
+        continue;
+      }
+      m_shadowCascadeUboSnapshots[cascadeIndex]->param =
+          light.getDirectionalUBO()->param;
+      m_shadowCascadeUboSnapshots[cascadeIndex]->param.shadowViewProj =
+          light.getDirectionalUBO()->param.cascadeViewProj[cascadeIndex];
+      m_shadowCascadeUboSnapshots[cascadeIndex]->setDirty();
+    }
+  }
+
+  void bindShadowCascadeUboSnapshots() {
+    const auto light = mainDirectionalLight();
+    if (!light || m_shadowCascadeUboSnapshots.empty()) {
+      return;
+    }
+
+    const auto mainLightIdentity = light->getUBO()->getBackendCacheIdentity();
+    u32 cascadeIndex = 0;
+    for (auto &pass : m_frameGraph.getPasses()) {
+      if (pass.name != LX_core::Pass_Shadow) {
+        continue;
+      }
+      if (cascadeIndex >= m_shadowCascadeUboSnapshots.size()) {
+        break;
+      }
+      const auto &snapshot = m_shadowCascadeUboSnapshots[cascadeIndex];
+      if (!snapshot) {
+        ++cascadeIndex;
+        continue;
+      }
+      for (auto &item : pass.queue.getItems()) {
+        for (auto &resource : item.descriptorResources) {
+          if (resource &&
+              resource->getBackendCacheIdentity() == mainLightIdentity) {
+            resource = snapshot;
+          }
+        }
+      }
+      ++cascadeIndex;
+    }
   }
 
   void attachFrameGraphSampledResources() {
@@ -1403,6 +1473,8 @@ private:
   infra::Gui m_gui{};
   std::function<void()> m_drawUiCallback{};
   std::optional<PendingScreenDump> m_pendingScreenDump;
+  std::vector<LX_core::DirectionalLightDataSharedPtr>
+      m_shadowCascadeUboSnapshots;
 };
 
 VulkanRenderer::VulkanRenderer(Token)
