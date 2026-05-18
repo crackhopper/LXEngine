@@ -100,8 +100,38 @@ int selectCascade(float viewDepth) {
     return cascadeCount - 1;
 }
 
+float viewDepthForWorldPos(vec3 worldPos) {
+    return max(0.0, -(camera.view * vec4(worldPos, 1.0)).z);
+}
+
+bool isInsideShadowDistance(float viewDepth) {
+    int cascadeCount = int(clamp(sceneLight.shadowParams.w, 1.0, 4.0));
+    return viewDepth <= sceneLight.cascadeSplits[cascadeCount - 1];
+}
+
+vec3 cascadeDebugColor(vec3 worldPos) {
+    float viewDepth = viewDepthForWorldPos(worldPos);
+    if (!isInsideShadowDistance(viewDepth)) {
+        return vec3(1.0);
+    }
+    int cascadeIndex = selectCascade(viewDepth);
+    if (cascadeIndex == 0) {
+        return vec3(0.95, 0.20, 0.18);
+    }
+    if (cascadeIndex == 1) {
+        return vec3(0.18, 0.75, 0.25);
+    }
+    if (cascadeIndex == 2) {
+        return vec3(0.20, 0.45, 1.0);
+    }
+    return vec3(0.95, 0.75, 0.15);
+}
+
 float sampleShadowMap(vec3 worldPos, vec3 normal, vec3 lightDir) {
-    float viewDepth = abs((camera.view * vec4(worldPos, 1.0)).z);
+    float viewDepth = viewDepthForWorldPos(worldPos);
+    if (!isInsideShadowDistance(viewDepth)) {
+        return 1.0;
+    }
     int cascadeIndex = selectCascade(viewDepth);
     vec4 lightSpacePos =
         sceneLight.cascadeViewProj[cascadeIndex] * vec4(worldPos, 1.0);
@@ -160,6 +190,10 @@ void main() {
     vec3 L = normalize(-sceneLight.dir.xyz);
     vec3 V = normalize(camera.eyePos - vWorldPos);
     float diff = max(dot(N, L), 0.0);
+    if (material.debugShadowMode == 2) {
+        outColor = vec4(cascadeDebugColor(vWorldPos), 1.0);
+        return;
+    }
     float shadowVisibility = sampleShadowMap(vWorldPos, N, L);
     if (material.debugShadowMode == 1) {
         outColor = vec4(vec3(shadowVisibility), 1.0);
