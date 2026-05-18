@@ -4,6 +4,8 @@ import {
   type Server,
   type ServerResponse,
 } from "node:http";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { basename, extname, resolve, sep } from "node:path";
 import type { ToolArguments, ToolHandler, ToolResult } from "./types.js";
 
 interface EditorClientSurface {
@@ -86,6 +88,8 @@ export function createToolHandlers(input: {
   editorOps: EditorOpsSurface;
   editorClient?: EditorClientSurface;
   editorClientProvider?: EditorClientProvider;
+  fileRoot?: string;
+  imageBackupRoot?: string;
   managerOps?: ManagerOpsSurface;
   workspaceOps: WorkspaceOpsSurface;
 }): Record<string, ToolHandler> {
@@ -180,6 +184,13 @@ export function createToolHandlers(input: {
       withEditorClient((editorClient) =>
         editorClient.displaySelect(readString(args, "key")),
       ),
+    debug_image_read: async (args) =>
+      readDebugImageTool(args, {
+        fileRoot: input.fileRoot ?? process.cwd(),
+        imageBackupRoot:
+          input.imageBackupRoot ??
+          resolve(input.fileRoot ?? process.cwd(), "data/debug/mcp_image_cache"),
+      }),
     "ops.repo_pull": async () => guarded("ops.repo_pull", () => input.workspaceOps.repoPull()),
     "ops.build_configure": async (args) =>
       guarded("ops.build_configure", () =>
@@ -464,8 +475,8 @@ async function toolJson(
     return undefined;
   }
   const result = await handler(args);
-  const text = result.content[0]?.text;
-  return typeof text === "string" ? JSON.parse(text) : undefined;
+  const first = result.content[0];
+  return first?.type === "text" ? JSON.parse(first.text) : undefined;
 }
 
 const DASHBOARD_ALLOWED_TOOLS = new Set([
@@ -587,6 +598,245 @@ function jsonText(value: unknown): ToolResult {
   return {
     content: [{ type: "text", text: JSON.stringify(value) }],
   };
+}
+
+async function readDebugImageTool(
+  args: ToolArguments,
+  options: { fileRoot: string; imageBackupRoot: string },
+): Promise<ToolResult> {
+  const requestedPath = readString(args, "path");
+  const maxEdge = clampInteger(optionalNumber(args, "maxEdge") ?? 160, 32, 800);
+  const maxBase64Bytes = clampInteger(
+    optionalNumber(args, "maxBytes") ?? 100_000,
+    10_000,
+    1_000_000,
+  );
+  const sourcePath = resolveWorkspacePath(options.fileRoot, requestedPath);
+  const sourceBytes = await readFile(sourcePath);
+  const ext = extname(sourcePath).toLowerCase();
+
+  let outputBytes: Buffer;
+  let mimeType: string;
+  let originalSize: { width?: number; height?: number } = {};
+  let outputSize: { width?: number; height?: number } = {};
+  let resized = false;
+
+  if (ext === ".bmp") {
+    const decoded = decodeBmp24Or32(sourceBytes);
+    originalSize = { width: decoded.width, height: decoded.height };
+    const targetSize = fitWithinEdge(decoded.width, decoded.height, maxEdge);
+    resized = targetSize.width !== decoded.width || targetSize.height !== decoded.height;
+    outputBytes = encodeBmp24(
+      resizeRgbNearest(decoded, targetSize.width, targetSize.height),
+    );
+    outputSize = targetSize;
+    mimeType = "image/bmp";
+  } else if (ext === ".png" || ext === ".jpg" || ext === ".jpeg") {
+    outputBytes = sourceBytes;
+    mimeType = ext === ".png" ? "image/png" : "image/jpeg";
+  } else {
+    throw new Error(`unsupported debug image format: ${ext || "(none)"}`);
+  }
+
+  let encoded = outputBytes.toString("base64");
+  if (encoded.length > maxBase64Bytes && ext === ".bmp") {
+    const decoded = decodeBmp24Or32(sourceBytes);
+    for (const edge of [128, 96, 64, 48, 32]) {
+      if (edge >= maxEdge) {
+        continue;
+      }
+      const targetSize = fitWithinEdge(decoded.width, decoded.height, edge);
+      outputBytes = encodeBmp24(
+        resizeRgbNearest(decoded, targetSize.width, targetSize.height),
+      );
+      outputSize = targetSize;
+      resized = true;
+      encoded = outputBytes.toString("base64");
+      if (encoded.length <= maxBase64Bytes) {
+        break;
+      }
+    }
+  }
+  if (encoded.length > maxBase64Bytes) {
+    throw new Error(
+      `debug image is too large after compression: ${encoded.length} bytes base64`,
+    );
+  }
+
+  const backupPath = await writeDebugImageBackup(
+    options.imageBackupRoot,
+    requestedPath,
+    outputBytes,
+    mimeType,
+  );
+  const metadata = {
+    ok: true,
+    path: requestedPath,
+    backupPath,
+    original: {
+      ...originalSize,
+      bytes: sourceBytes.byteLength,
+    },
+    output: {
+      ...outputSize,
+      bytes: outputBytes.byteLength,
+      base64Bytes: encoded.length,
+      mimeType,
+      resized,
+      maxEdge,
+    },
+  };
+  return {
+    content: [
+      { type: "image", mimeType, data: encoded },
+      { type: "text", text: JSON.stringify(metadata) },
+    ],
+  };
+}
+
+function clampInteger(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, Math.floor(value)));
+}
+
+function resolveWorkspacePath(root: string, requestedPath: string): string {
+  const resolvedRoot = resolve(root);
+  const resolvedPath = resolve(resolvedRoot, requestedPath);
+  if (resolvedPath !== resolvedRoot && !resolvedPath.startsWith(resolvedRoot + sep)) {
+    throw new Error(`path escapes file root: ${requestedPath}`);
+  }
+  return resolvedPath;
+}
+
+interface DecodedRgbImage {
+  width: number;
+  height: number;
+  rgb: Buffer;
+}
+
+function decodeBmp24Or32(bytes: Buffer): DecodedRgbImage {
+  if (bytes.length < 54 || bytes.toString("ascii", 0, 2) !== "BM") {
+    throw new Error("invalid BMP image");
+  }
+  const pixelOffset = bytes.readUInt32LE(10);
+  const dibSize = bytes.readUInt32LE(14);
+  if (dibSize < 40) {
+    throw new Error("unsupported BMP DIB header");
+  }
+  const width = bytes.readInt32LE(18);
+  const rawHeight = bytes.readInt32LE(22);
+  const planes = bytes.readUInt16LE(26);
+  const bitsPerPixel = bytes.readUInt16LE(28);
+  const compression = bytes.readUInt32LE(30);
+  if (planes !== 1 || compression !== 0 || width <= 0 || rawHeight === 0) {
+    throw new Error("unsupported BMP layout");
+  }
+  if (bitsPerPixel !== 24 && bitsPerPixel !== 32) {
+    throw new Error(`unsupported BMP bit depth: ${bitsPerPixel}`);
+  }
+  const height = Math.abs(rawHeight);
+  const bytesPerPixel = bitsPerPixel / 8;
+  const rowStride = Math.ceil((width * bytesPerPixel) / 4) * 4;
+  if (pixelOffset + rowStride * height > bytes.length) {
+    throw new Error("truncated BMP pixel data");
+  }
+  const rgb = Buffer.alloc(width * height * 3);
+  const topDown = rawHeight < 0;
+  for (let y = 0; y < height; ++y) {
+    const sourceY = topDown ? y : height - 1 - y;
+    const sourceRow = pixelOffset + sourceY * rowStride;
+    for (let x = 0; x < width; ++x) {
+      const source = sourceRow + x * bytesPerPixel;
+      const dest = (y * width + x) * 3;
+      rgb[dest] = bytes[source + 2];
+      rgb[dest + 1] = bytes[source + 1];
+      rgb[dest + 2] = bytes[source];
+    }
+  }
+  return { width, height, rgb };
+}
+
+function fitWithinEdge(
+  width: number,
+  height: number,
+  maxEdge: number,
+): { width: number; height: number } {
+  const largest = Math.max(width, height);
+  if (largest <= maxEdge) {
+    return { width, height };
+  }
+  const scale = maxEdge / largest;
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale)),
+  };
+}
+
+function resizeRgbNearest(
+  image: DecodedRgbImage,
+  width: number,
+  height: number,
+): DecodedRgbImage {
+  if (image.width === width && image.height === height) {
+    return image;
+  }
+  const rgb = Buffer.alloc(width * height * 3);
+  for (let y = 0; y < height; ++y) {
+    const sourceY = Math.min(image.height - 1, Math.floor((y * image.height) / height));
+    for (let x = 0; x < width; ++x) {
+      const sourceX = Math.min(image.width - 1, Math.floor((x * image.width) / width));
+      const source = (sourceY * image.width + sourceX) * 3;
+      const dest = (y * width + x) * 3;
+      rgb[dest] = image.rgb[source];
+      rgb[dest + 1] = image.rgb[source + 1];
+      rgb[dest + 2] = image.rgb[source + 2];
+    }
+  }
+  return { width, height, rgb };
+}
+
+function encodeBmp24(image: DecodedRgbImage): Buffer {
+  const rowStride = Math.ceil((image.width * 3) / 4) * 4;
+  const pixelBytes = rowStride * image.height;
+  const fileSize = 54 + pixelBytes;
+  const bytes = Buffer.alloc(fileSize);
+  bytes.write("BM", 0, "ascii");
+  bytes.writeUInt32LE(fileSize, 2);
+  bytes.writeUInt32LE(54, 10);
+  bytes.writeUInt32LE(40, 14);
+  bytes.writeInt32LE(image.width, 18);
+  bytes.writeInt32LE(image.height, 22);
+  bytes.writeUInt16LE(1, 26);
+  bytes.writeUInt16LE(24, 28);
+  bytes.writeUInt32LE(pixelBytes, 34);
+  for (let y = 0; y < image.height; ++y) {
+    const destY = image.height - 1 - y;
+    const destRow = 54 + destY * rowStride;
+    for (let x = 0; x < image.width; ++x) {
+      const source = (y * image.width + x) * 3;
+      const dest = destRow + x * 3;
+      bytes[dest] = image.rgb[source + 2];
+      bytes[dest + 1] = image.rgb[source + 1];
+      bytes[dest + 2] = image.rgb[source];
+    }
+  }
+  return bytes;
+}
+
+async function writeDebugImageBackup(
+  backupRoot: string,
+  requestedPath: string,
+  bytes: Buffer,
+  mimeType: string,
+): Promise<string> {
+  await mkdir(backupRoot, { recursive: true });
+  const extension = mimeType === "image/png" ? ".png" : mimeType === "image/jpeg" ? ".jpg" : ".bmp";
+  const safeName = basename(requestedPath).replace(/[^A-Za-z0-9_.-]/g, "_");
+  const backupPath = resolve(
+    backupRoot,
+    `${Date.now()}-${safeName.replace(/\.[^.]+$/, "")}-mcp${extension}`,
+  );
+  await writeFile(backupPath, bytes);
+  return backupPath;
 }
 
 function jsonTextWithPostResponseAction(

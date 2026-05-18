@@ -162,6 +162,7 @@ history 或进程列表里。
 | `recording_replay` / `recording_probe` | 回放录制并在失败点读取 summary、selection、cameras、toolbar 等状态 |
 | `display_list` / `display_active` | 读取 editor display profile 列表和当前启动绑定 display |
 | `display_config_get` / `display_config_set` / `display_select` | 读取、修改 display default/override，并设置下次启动 display |
+| `debug_image_read` | 读取远端调试图片，默认缩到最长边 160px、base64 低于 100KB，并把实际发送的小图备份到 `data/debug/mcp_image_cache/` |
 | `lxe-editor://summary` 等资源 | 暴露 editor 状态快照 |
 
 录制能力以调试复现为目标，不追求逐帧输入确定性。第一版主要记录语义命令和

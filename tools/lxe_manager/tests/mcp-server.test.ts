@@ -1,4 +1,7 @@
 import { createServer, type Server } from "node:http";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createMcpHttpServer,
@@ -31,6 +34,31 @@ function close(server: Server): Promise<void> {
       resolve();
     });
   });
+}
+
+function makeBmp24(width: number, height: number): Buffer {
+  const rowStride = Math.ceil((width * 3) / 4) * 4;
+  const pixelBytes = rowStride * height;
+  const fileSize = 54 + pixelBytes;
+  const buffer = Buffer.alloc(fileSize);
+  buffer.write("BM", 0, "ascii");
+  buffer.writeUInt32LE(fileSize, 2);
+  buffer.writeUInt32LE(54, 10);
+  buffer.writeUInt32LE(40, 14);
+  buffer.writeInt32LE(width, 18);
+  buffer.writeInt32LE(height, 22);
+  buffer.writeUInt16LE(1, 26);
+  buffer.writeUInt16LE(24, 28);
+  buffer.writeUInt32LE(pixelBytes, 34);
+  for (let y = 0; y < height; ++y) {
+    for (let x = 0; x < width; ++x) {
+      const offset = 54 + y * rowStride + x * 3;
+      buffer[offset] = x % 256;
+      buffer[offset + 1] = y % 256;
+      buffer[offset + 2] = (x + y) % 256;
+    }
+  }
+  return buffer;
 }
 
 describe("mcp tool handlers", () => {
@@ -171,10 +199,41 @@ describe("mcp tool handlers", () => {
     );
   });
 
+  it("returns a compact image content block for debug images", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lxe-manager-image-"));
+    const imagePath = join(root, "debug.bmp");
+    await writeFile(imagePath, makeBmp24(640, 480));
+    const handlers = createToolHandlers({ ...makeInput(), fileRoot: root });
+
+    const result = await handlers.debug_image_read({
+      path: "debug.bmp",
+    });
+
+    expect(result.content).toHaveLength(2);
+    expect(result.content[0]).toMatchObject({
+      type: "image",
+      mimeType: "image/bmp",
+    });
+    expect(result.content[0].type === "image" && result.content[0].data.length)
+      .toBeLessThan(100_000);
+    const metadata =
+      result.content[1].type === "text" ? JSON.parse(result.content[1].text) : {};
+    expect(metadata).toMatchObject({
+        ok: true,
+        path: "debug.bmp",
+        original: { width: 640, height: 480 },
+        output: { width: 160, height: 120, mimeType: "image/bmp" },
+      });
+    await expect(readFile(metadata.backupPath)).resolves.toEqual(
+      Buffer.from(result.content[0].type === "image" ? result.content[0].data : "", "base64"),
+    );
+  });
+
   it("exposes the accepted tool surface", () => {
     const handlers = createToolHandlers(makeInput());
 
     expect(Object.keys(handlers).sort()).toEqual([
+      "debug_image_read",
       "display_active",
       "display_config_get",
       "display_config_set",
