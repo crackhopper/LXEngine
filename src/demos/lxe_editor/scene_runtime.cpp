@@ -386,6 +386,23 @@ makeMaterialValueJson(const LX_core::MaterialParameterValue &value) {
   return kDefaultGroundMaterial;
 }
 
+[[nodiscard]] bool shouldForceReceiverOnlyMesh(const std::string &meshUri) {
+  return meshUri == "builtin://lxe_editor/primitives/plane" ||
+         isBuiltinPatchMeshUri(meshUri);
+}
+
+void applyReceiverOnlyMeshMaterialPolicy(
+    const SceneNodeDocument &node,
+    const LX_core::MaterialInstanceSharedPtr &material) {
+  if (!node.meshUri.has_value() || !material ||
+      !shouldForceReceiverOnlyMesh(*node.meshUri)) {
+    return;
+  }
+  if (material->isPassEnabled(LX_core::Pass_Shadow)) {
+    material->setPassEnabled(LX_core::Pass_Shadow, false);
+  }
+}
+
 [[nodiscard]] bool
 documentNodeHasMaterialSurface(const SceneNodeDocument &node) {
   return node.meshUri.has_value() || node.materialUri.has_value();
@@ -684,10 +701,7 @@ makeCameraNode(const std::string &nodeName, const std::string &displayName,
         auto material = loadMaterialForSceneNode(
             assetRoots, uri, nodeDocument.materialOverrides,
             nodeDocument.nodeMaterialOverrides);
-        if (*nodeDocument.meshUri == "builtin://lxe_editor/primitives/plane" &&
-            material && material->isPassEnabled(LX_core::Pass_Shadow)) {
-          material->setPassEnabled(LX_core::Pass_Shadow, false);
-        }
+        applyReceiverOnlyMeshMaterialPolicy(nodeDocument, material);
         materialComponent->get().setMaterialInstance(std::move(material));
       }
     }
@@ -707,9 +721,7 @@ makeCameraNode(const std::string &nodeName, const std::string &displayName,
         auto material = loadMaterialForSceneNode(
             assetRoots, uri, nodeDocument.materialOverrides,
             nodeDocument.nodeMaterialOverrides);
-        if (material && material->isPassEnabled(LX_core::Pass_Shadow)) {
-          material->setPassEnabled(LX_core::Pass_Shadow, false);
-        }
+        applyReceiverOnlyMeshMaterialPolicy(nodeDocument, material);
         materialComponent->get().setMaterialInstance(std::move(material));
       }
     }
@@ -1383,6 +1395,7 @@ SceneRuntime::setNodeMaterialUri(const std::string &path,
     auto material = loadMaterialForSceneNode(
         runtime->assetRoots, uri, documentNode->materialOverrides,
         documentNode->nodeMaterialOverrides);
+    applyReceiverOnlyMeshMaterialPolicy(*documentNode, material);
     auto materialComponent = node->getComponent<LX_core::MaterialComponent>();
     if (materialComponent.has_value()) {
       materialComponent->get().setMaterialInstance(std::move(material));
@@ -1428,6 +1441,7 @@ SceneRuntime::setNodeMaterialBaseColor(const std::string &path,
       return makeCommandError(
           "material does not expose MaterialUBO.baseColor: " + uri);
     }
+    applyReceiverOnlyMeshMaterialPolicy(*documentNode, material);
     materialComponent->get().setMaterialInstance(std::move(material));
     documentNode->materialUri = uri;
     documentNode->nodeMaterialOverrides = nodeOverrides;
@@ -1481,6 +1495,7 @@ LX_core::CommandResult SceneRuntime::setNodeMaterialParameter(
     if (!reflectedMember.has_value()) {
       return makeCommandError("material parameter not found: " + key);
     }
+    applyReceiverOnlyMeshMaterialPolicy(*documentNode, material);
     materialComponent->get().setMaterialInstance(std::move(material));
     documentNode->materialUri = uri;
     documentNode->nodeMaterialOverrides = std::move(nodeOverrides);
@@ -1527,6 +1542,7 @@ SceneRuntime::clearNodeMaterialParameter(const std::string &path,
       auto material = loadMaterialForSceneNode(runtime->assetRoots, uri,
                                                documentNode->materialOverrides,
                                                nodeOverrides);
+      applyReceiverOnlyMeshMaterialPolicy(*documentNode, material);
       materialComponent->get().setMaterialInstance(std::move(material));
       documentNode->materialUri = uri;
       documentNode->nodeMaterialOverrides = std::move(nodeOverrides);
@@ -1550,6 +1566,7 @@ SceneRuntime::clearNodeMaterialParameter(const std::string &path,
     auto material = loadMaterialForSceneNode(runtime->assetRoots, uri,
                                              documentNode->materialOverrides,
                                              nodeOverrides);
+    applyReceiverOnlyMeshMaterialPolicy(*documentNode, material);
     materialComponent->get().setMaterialInstance(std::move(material));
     documentNode->materialUri = uri;
     documentNode->nodeMaterialOverrides = std::move(nodeOverrides);
@@ -1618,6 +1635,7 @@ SceneRuntime::applyMaterialOverride(const std::string &path,
           auto material = loadMaterialForSceneNode(
               runtime->assetRoots, uri, candidateDocument->materialOverrides,
               MaterialOverrideState{.baseColor = effectiveNodeOverride});
+          applyReceiverOnlyMeshMaterialPolicy(*candidateDocument, material);
           materialComponent->get().setMaterialInstance(std::move(material));
           ++updatedRuntimeNodes;
         } catch (const std::exception &error) {
