@@ -162,11 +162,18 @@ history 或进程列表里。
 | `recording_replay` / `recording_probe` | 回放录制并在失败点读取 summary、selection、cameras、toolbar 等状态 |
 | `display_list` / `display_active` | 读取 editor display profile 列表和当前启动绑定 display |
 | `display_config_get` / `display_config_set` / `display_select` | 读取、修改 display default/override，并设置下次启动 display |
-| `debug_image_read` | 读取远端调试图片，默认缩到最长边 160px、base64 低于 100KB，并把实际发送的小图备份到 `data/debug/mcp_image_cache/` |
+| `debug_image_prepare` | 先把远端调试图片缩成待传输小图，默认最长边 160px、base64 低于 100KB，只返回元数据和备份路径，不直接发送图片内容 |
+| `debug_image_read` | 读取 `debug_image_prepare` 生成的小图；兼容直接传 `path` 的旧用法，但调试流程应优先走 prepare、用户确认、read 三步 |
 | `lxe-editor://summary` 等资源 | 暴露 editor 状态快照 |
 
 录制能力以调试复现为目标，不追求逐帧输入确定性。第一版主要记录语义命令和
 MCP 来源操作；后续可以在 editor 内部继续扩展 toolbar、pick、drag 和输入摘要。
+
+调试图片读取默认分两步。Codex 先调用 `debug_image_prepare`，manager 会在远端读取
+原图、生成最长边受限的小图，并把这份待发送图保存到
+`data/debug/mcp_image_cache/`。Codex 只把元数据和 `backupPath` 告诉用户；用户确认
+这就是要看的图之后，再调用 `debug_image_read` 并传入同一个 `preparedPath`。这样
+用户和 Codex 看到的是完全同一份小图，也避免未确认时把图片内容直接塞进上下文。
 
 ## Codex Skill 套装
 

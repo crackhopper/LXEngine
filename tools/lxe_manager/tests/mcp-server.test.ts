@@ -219,20 +219,65 @@ describe("mcp tool handlers", () => {
     const metadata =
       result.content[1].type === "text" ? JSON.parse(result.content[1].text) : {};
     expect(metadata).toMatchObject({
-        ok: true,
-        path: "debug.bmp",
-        original: { width: 640, height: 480 },
-        output: { width: 160, height: 120, mimeType: "image/bmp" },
-      });
+      ok: true,
+      path: "debug.bmp",
+      original: { width: 640, height: 480 },
+      output: { width: 160, height: 120, mimeType: "image/bmp" },
+    });
     await expect(readFile(metadata.backupPath)).resolves.toEqual(
       Buffer.from(result.content[0].type === "image" ? result.content[0].data : "", "base64"),
     );
+  });
+
+  it("prepares a compact debug image before it is read", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lxe-manager-image-"));
+    const imagePath = join(root, "debug.bmp");
+    await writeFile(imagePath, makeBmp24(640, 480));
+    const handlers = createToolHandlers({ ...makeInput(), fileRoot: root });
+
+    const prepared = await handlers.debug_image_prepare({
+      path: "debug.bmp",
+      maxEdge: 96,
+    });
+
+    expect(prepared.content).toHaveLength(1);
+    expect(prepared.content[0].type).toBe("text");
+    const metadata =
+      prepared.content[0].type === "text" ? JSON.parse(prepared.content[0].text) : {};
+    expect(metadata).toMatchObject({
+      ok: true,
+      path: "debug.bmp",
+      original: { width: 640, height: 480 },
+      output: { width: 96, height: 72, mimeType: "image/bmp" },
+    });
+    const preparedBytes = await readFile(metadata.backupPath);
+
+    const read = await handlers.debug_image_read({
+      preparedPath: metadata.backupPath,
+    });
+
+    expect(read.content[0].type).toBe("image");
+    expect(
+      Buffer.from(
+        read.content[0].type === "image" ? read.content[0].data : "",
+        "base64",
+      ),
+    ).toEqual(preparedBytes);
+    const readMetadata =
+      read.content[1].type === "text" ? JSON.parse(read.content[1].text) : {};
+    expect(readMetadata).toMatchObject({
+      ok: true,
+      prepared: true,
+      backupPath: metadata.backupPath,
+      output: { bytes: preparedBytes.byteLength, mimeType: "image/bmp" },
+    });
   });
 
   it("exposes the accepted tool surface", () => {
     const handlers = createToolHandlers(makeInput());
 
     expect(Object.keys(handlers).sort()).toEqual([
+      "debug_image_prepare",
       "debug_image_read",
       "display_active",
       "display_config_get",

@@ -184,6 +184,13 @@ export function createToolHandlers(input: {
       withEditorClient((editorClient) =>
         editorClient.displaySelect(readString(args, "key")),
       ),
+    debug_image_prepare: async (args) =>
+      prepareDebugImageTool(args, {
+        fileRoot: input.fileRoot ?? process.cwd(),
+        imageBackupRoot:
+          input.imageBackupRoot ??
+          resolve(input.fileRoot ?? process.cwd(), "data/debug/mcp_image_cache"),
+      }),
     debug_image_read: async (args) =>
       readDebugImageTool(args, {
         fileRoot: input.fileRoot ?? process.cwd(),
@@ -604,6 +611,91 @@ async function readDebugImageTool(
   args: ToolArguments,
   options: { fileRoot: string; imageBackupRoot: string },
 ): Promise<ToolResult> {
+  const preparedPath = optionalString(args, "preparedPath");
+  if (preparedPath !== undefined) {
+    return readPreparedDebugImageTool(args, options, preparedPath);
+  }
+  const prepared = await prepareDebugImage(args, options);
+  const encoded = prepared.outputBytes.toString("base64");
+  return {
+    content: [
+      { type: "image", mimeType: prepared.metadata.output.mimeType, data: encoded },
+      { type: "text", text: JSON.stringify(prepared.metadata) },
+    ],
+  };
+}
+
+async function prepareDebugImageTool(
+  args: ToolArguments,
+  options: { fileRoot: string; imageBackupRoot: string },
+): Promise<ToolResult> {
+  const prepared = await prepareDebugImage(args, options);
+  return jsonText(prepared.metadata);
+}
+
+async function readPreparedDebugImageTool(
+  args: ToolArguments,
+  options: { fileRoot: string; imageBackupRoot: string },
+  preparedPath: string,
+): Promise<ToolResult> {
+  const maxBase64Bytes = clampInteger(
+    optionalNumber(args, "maxBytes") ?? 100_000,
+    10_000,
+    1_000_000,
+  );
+  const sourcePath = resolvePreparedImagePath(options, preparedPath);
+  const outputBytes = await readFile(sourcePath);
+  const mimeType = mimeTypeForPath(sourcePath);
+  if (!mimeType) {
+    throw new Error(
+      `unsupported prepared debug image format: ${extname(sourcePath) || "(none)"}`,
+    );
+  }
+  const encoded = outputBytes.toString("base64");
+  if (encoded.length > maxBase64Bytes) {
+    throw new Error(
+      `prepared debug image is too large: ${encoded.length} bytes base64`,
+    );
+  }
+  const metadata = {
+    ok: true as const,
+    prepared: true,
+    backupPath: sourcePath,
+    output: {
+      bytes: outputBytes.byteLength,
+      base64Bytes: encoded.length,
+      mimeType,
+    },
+  };
+  return {
+    content: [
+      { type: "image", mimeType, data: encoded },
+      { type: "text", text: JSON.stringify(metadata) },
+    ],
+  };
+}
+
+async function prepareDebugImage(
+  args: ToolArguments,
+  options: { fileRoot: string; imageBackupRoot: string },
+): Promise<{
+  outputBytes: Buffer;
+  metadata: {
+    ok: true;
+    path: string;
+    backupPath: string;
+    original: { width?: number; height?: number; bytes: number };
+    output: {
+      width?: number;
+      height?: number;
+      bytes: number;
+      base64Bytes: number;
+      mimeType: string;
+      resized: boolean;
+      maxEdge: number;
+    };
+  };
+}> {
   const requestedPath = readString(args, "path");
   const maxEdge = clampInteger(optionalNumber(args, "maxEdge") ?? 160, 32, 800);
   const maxBase64Bytes = clampInteger(
@@ -670,7 +762,7 @@ async function readDebugImageTool(
     mimeType,
   );
   const metadata = {
-    ok: true,
+    ok: true as const,
     path: requestedPath,
     backupPath,
     original: {
@@ -686,12 +778,7 @@ async function readDebugImageTool(
       maxEdge,
     },
   };
-  return {
-    content: [
-      { type: "image", mimeType, data: encoded },
-      { type: "text", text: JSON.stringify(metadata) },
-    ],
-  };
+  return { outputBytes, metadata };
 }
 
 function clampInteger(value: number, min: number, max: number): number {
@@ -705,6 +792,36 @@ function resolveWorkspacePath(root: string, requestedPath: string): string {
     throw new Error(`path escapes file root: ${requestedPath}`);
   }
   return resolvedPath;
+}
+
+function resolvePreparedImagePath(
+  options: { fileRoot: string; imageBackupRoot: string },
+  preparedPath: string,
+): string {
+  const resolvedRoot = resolve(options.fileRoot);
+  const resolvedBackupRoot = resolve(options.imageBackupRoot);
+  const resolvedPath = resolve(resolvedRoot, preparedPath);
+  if (
+    resolvedPath !== resolvedBackupRoot &&
+    !resolvedPath.startsWith(resolvedBackupRoot + sep)
+  ) {
+    throw new Error(`preparedPath is outside image backup root: ${preparedPath}`);
+  }
+  return resolvedPath;
+}
+
+function mimeTypeForPath(path: string): string | undefined {
+  const ext = extname(path).toLowerCase();
+  if (ext === ".bmp") {
+    return "image/bmp";
+  }
+  if (ext === ".png") {
+    return "image/png";
+  }
+  if (ext === ".jpg" || ext === ".jpeg") {
+    return "image/jpeg";
+  }
+  return undefined;
 }
 
 interface DecodedRgbImage {
