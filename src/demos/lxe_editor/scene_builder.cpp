@@ -633,6 +633,10 @@ LX_core::SceneNodeSharedPtr buildBuiltinPrimitiveNode(std::string_view meshUri,
                                                       std::string nodeName) {
   auto mesh = buildPrimitiveMesh(meshUri);
   auto material = makePrimitiveMaterial();
+  if (meshUri == "builtin://lxe_editor/primitives/plane" && material &&
+      material->isPassEnabled(LX_core::Pass_Shadow)) {
+    material->setPassEnabled(LX_core::Pass_Shadow, false);
+  }
   return makeRenderableNode(nodeName.c_str(), std::move(mesh),
                             std::move(material));
 }

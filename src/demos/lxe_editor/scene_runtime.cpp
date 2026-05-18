@@ -662,9 +662,14 @@ makeCameraNode(const std::string &nodeName, const std::string &displayName,
       if (nodeDocument.materialUri.has_value() ||
           !nodeDocument.nodeMaterialOverrides.empty() ||
           !nodeDocument.materialOverrides.empty()) {
-        materialComponent->get().setMaterialInstance(loadMaterialForSceneNode(
+        auto material = loadMaterialForSceneNode(
             assetRoots, uri, nodeDocument.materialOverrides,
-            nodeDocument.nodeMaterialOverrides));
+            nodeDocument.nodeMaterialOverrides);
+        if (*nodeDocument.meshUri == "builtin://lxe_editor/primitives/plane" &&
+            material && material->isPassEnabled(LX_core::Pass_Shadow)) {
+          material->setPassEnabled(LX_core::Pass_Shadow, false);
+        }
+        materialComponent->get().setMaterialInstance(std::move(material));
       }
     }
     return node;
