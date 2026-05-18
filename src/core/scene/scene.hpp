@@ -1,13 +1,13 @@
 #pragma once
-#include "core/pipeline/pipeline_key.hpp"
 #include "core/asset/shader.hpp"
+#include "core/frame_graph/pass.hpp"
 #include "core/frame_graph/render_target.hpp"
 #include "core/math/ray.hpp"
-#include "core/scene/scene_events.hpp"
+#include "core/pipeline/pipeline_key.hpp"
 #include "core/scene/components/camera_component.hpp"
 #include "core/scene/light.hpp"
 #include "core/scene/object.hpp"
-#include "core/frame_graph/pass.hpp"
+#include "core/scene/scene_events.hpp"
 #include <exception>
 #include <iostream>
 #include <memory>
@@ -29,29 +29,33 @@ using ShaderPtr = IShaderSharedPtr;
 
 /*
 @source_analysis.section RenderingItem：一帧 draw 的最小稳定记录
-这个结构体定义在 scene.hpp 而不是 queue.hpp，是因为它描述的是 backend 真正消费的契约，
-而不是 queue 的内部状态。任何把"一个 renderable 在某个 pass 下要画一次"翻译成
-"backend 提交单元"的代码路径，都收口到这个结构体上。
+这个结构体定义在 scene.hpp 而不是 queue.hpp，是因为它描述的是 backend
+真正消费的契约， 而不是 queue 的内部状态。任何把"一个 renderable 在某个 pass
+下要画一次"翻译成 "backend 提交单元"的代码路径，都收口到这个结构体上。
 
 字段拆分体现两个边界：
 
-- `shaderInfo / pipelineKey / pass / target`：决定走哪条 pipeline，是 pipeline cache 的 key 来源
-- `vertexBuffer / indexBuffer / drawData / descriptorResources`：决定这次 draw 的数据来源
-- `material`：保留材质句柄是为了 `PipelineBuildDesc::fromRenderingItem` 反查 render state
-  和 owned binding 表，而不是 backend 直接读它
+- `shaderInfo / pipelineKey / pass / target`：决定走哪条 pipeline，是 pipeline
+cache 的 key 来源
+- `vertexBuffer / indexBuffer / drawData / descriptorResources`：决定这次 draw
+的数据来源
+- `material`：保留材质句柄是为了 `PipelineBuildDesc::fromRenderingItem` 反查
+render state 和 owned binding 表，而不是 backend 直接读它
 
 descriptorResources 的列表已经合并了"renderable 自带"和"scene-level 追加"两段，
 顺序固定 — backend 按 binding name 命中，不依赖位置。
 */
 struct RenderingItem {
   ShaderPtr shaderInfo;
-  MaterialInstanceSharedPtr material; // 材质句柄 — 用于 PipelineBuildDesc::fromRenderingItem
+  MaterialInstanceSharedPtr
+      material; // 材质句柄 — 用于 PipelineBuildDesc::fromRenderingItem
 
   PerDrawDataSharedPtr drawData;
   IGpuResourceSharedPtr vertexBuffer;
   IGpuResourceSharedPtr indexBuffer;
 
-  std::vector<IGpuResourceSharedPtr> descriptorResources; // 材质 + skeleton 等资源
+  std::vector<IGpuResourceSharedPtr>
+      descriptorResources; // 材质 + skeleton 等资源
 
   StringID pass;
   RenderTargetDesc target;
@@ -62,29 +66,33 @@ struct RenderingItem {
 
 /*
 @source_analysis.section Scene：扁平容器
-Scene 是一层薄壳：三个平铺 vector（renderables / cameras / lights）+ 一个 sceneName。
-它不维护层级（节点之间的 parent/child 关系挂在 SceneNode 上）、不做 z-sort、不持有
-render state。这种扁平 ownership 让"哪些对象属于这一帧"是可枚举的事实，而不是
-需要遍历某种隐式树才能复原的状态。
+Scene 是一层薄壳：三个平铺 vector（renderables / cameras / lights）+ 一个
+sceneName。 它不维护层级（节点之间的 parent/child 关系挂在 SceneNode 上）、不做
+z-sort、不持有 render state。这种扁平 ownership
+让"哪些对象属于这一帧"是可枚举的事实，而不是 需要遍历某种隐式树才能复原的状态。
 
-Scene 本身不隐式创建 camera 或 light；测试和 demo 需要显式注册带组件的 SceneNode。
+Scene 本身不隐式创建 camera 或 light；测试和 demo 需要显式注册带组件的
+SceneNode。
 
-`enable_shared_from_this` 的存在是为了在 `addRenderable` 里给挂进来的 SceneNode 写
-弱反向引用 `weak_from_this()`，让 shared material 重验证传播能从 node 找回 scene。
+`enable_shared_from_this` 的存在是为了在 `addRenderable` 里给挂进来的 SceneNode
+写 弱反向引用 `weak_from_this()`，让 shared material 重验证传播能从 node 找回
+scene。
 */
 class Scene : public std::enable_shared_from_this<Scene> {
 public:
   using SharedPtr = std::shared_ptr<Scene>;
 
   explicit Scene(std::string sceneName)
-      : m_sceneName(std::move(sceneName)), m_rootNode(SceneNode::createPathRoot()) {
+      : m_sceneName(std::move(sceneName)),
+        m_rootNode(SceneNode::createPathRoot()) {
     if (m_sceneName.empty()) {
       m_sceneName = "Scene";
     }
   }
   ~Scene();
 
-  static auto create(std::string sceneName, IRenderableSharedPtr mesh = nullptr) {
+  static auto create(std::string sceneName,
+                     IRenderableSharedPtr mesh = nullptr) {
     auto scene = std::make_shared<Scene>(std::move(sceneName));
     if (mesh) {
       scene->addRenderable(std::move(mesh));
@@ -130,9 +138,9 @@ public:
         if (!existing)
           continue;
         if (existing->getNodeName() == r->getNodeName()) {
-          detail::throwProgrammerLogicError("Scene duplicate nodeName in scene '" +
-                                            m_sceneName + "': " +
-                                            r->getNodeName());
+          detail::throwProgrammerLogicError(
+              "Scene duplicate nodeName in scene '" + m_sceneName +
+              "': " + r->getNodeName());
         }
       }
       if (node) {
@@ -158,9 +166,9 @@ public:
         if (!existing)
           continue;
         if (existing->getNodeName() == r->getNodeName()) {
-          detail::throwProgrammerLogicError("Scene duplicate nodeName in scene '" +
-                                            m_sceneName + "': " +
-                                            r->getNodeName());
+          detail::throwProgrammerLogicError(
+              "Scene duplicate nodeName in scene '" + m_sceneName +
+              "': " + r->getNodeName());
         }
       }
       if (node) {
@@ -176,10 +184,17 @@ public:
 
   void addCamera(const SceneNodeSharedPtr &cameraNode);
   void removeCamera(const SceneNodeSharedPtr &cameraNode);
-  const std::vector<SceneNodeSharedPtr> &getCameras() const { return m_cameras; }
+  const std::vector<SceneNodeSharedPtr> &getCameras() const {
+    return m_cameras;
+  }
+  [[nodiscard]] SceneNodeSharedPtr getActiveCamera() const;
+  void setActiveCamera(const SceneNodeSharedPtr &cameraNode);
 
-  void addLight(LightBaseSharedPtr light) { m_lights.push_back(std::move(light)); }
-  void attachLight(const SceneNodeSharedPtr &node, const LightBaseSharedPtr &light);
+  void addLight(LightBaseSharedPtr light) {
+    m_lights.push_back(std::move(light));
+  }
+  void attachLight(const SceneNodeSharedPtr &node,
+                   const LightBaseSharedPtr &light);
   [[nodiscard]] LightBaseSharedPtr getLight(const SceneNode &node) const;
   [[nodiscard]] DirectionalLightSharedPtr
   getDirectionalLight(const SceneNode &node) const;
@@ -209,13 +224,15 @@ public:
   /// return is valid.
   std::vector<IGpuResourceSharedPtr>
   getSceneLevelResources(StringID pass, const RenderTarget &target) const;
-  VisibilityLayerMask getCombinedCameraCullingMask(
-      const RenderTarget &target) const;
+  VisibilityLayerMask
+  getCombinedCameraCullingMask(const RenderTarget &target) const;
   [[nodiscard]] BoundingBox getPickBounds(const SceneNode &node) const;
-  std::optional<PickHit> pick(
-      const Ray &ray,
-      VisibilityLayerMask layerMask = VisibilityMask_All) const;
-  [[nodiscard]] const SceneNodeSharedPtr &getRootNode() const { return m_rootNode; }
+  std::optional<PickHit>
+  pick(const Ray &ray,
+       VisibilityLayerMask layerMask = VisibilityMask_All) const;
+  [[nodiscard]] const SceneNodeSharedPtr &getRootNode() const {
+    return m_rootNode;
+  }
   [[nodiscard]] std::vector<SceneNodeSharedPtr> getRootNodes() const;
 
 private:

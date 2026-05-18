@@ -5,6 +5,7 @@
 #include "core/editor/editor_state.hpp"
 #include "core/math/quat.hpp"
 #include "core/scene/components/camera_component.hpp"
+#include "core/scene/components/mesh_component.hpp"
 #include "core/scene/object.hpp"
 #include "core/scene/scene.hpp"
 
@@ -449,6 +450,9 @@ ViewportOverlay::gatherBoxSelectionPaths(const Vec2f &dragStart,
   for (const auto &renderable : m_scene.getRenderables()) {
     const auto node = std::dynamic_pointer_cast<SceneNode>(renderable);
     if (!node) {
+      continue;
+    }
+    if (!node->getComponent<MeshComponent>().has_value()) {
       continue;
     }
     const BoundingBox bounds = m_scene.getPickBounds(*node);

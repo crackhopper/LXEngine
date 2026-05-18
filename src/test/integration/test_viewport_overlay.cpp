@@ -130,6 +130,19 @@ void testEditorStateSyncsActiveCameraAcrossPreviewToggle() {
   EXPECT(!fixture.gameCamera->isActive(), "preview camera deactivates");
 }
 
+void testEditorStateResolvesSynchronizedActiveCameraComponent() {
+  Fixture fixture;
+
+  fixture.editorCamera->setActive(false);
+  fixture.gameCamera->setActive(true);
+
+  const auto activeCamera =
+      fixture.editorState.resolveActiveCamera(*fixture.scene);
+  EXPECT(
+      activeCamera && activeCamera.get() == fixture.gameCameraNode.get(),
+      "active camera resolution should use the synchronized component state");
+}
+
 void testViewportOverlaySnapshotAndCommandEntry() {
   Fixture fixture;
   fixture.editorState.select({fixture.cube});
@@ -484,6 +497,7 @@ void testViewportOverlayClearsCaptureStateWhenEditorCameraHasNoComponent() {
 int main() {
   expSetEnvVK();
   testEditorStateSyncsActiveCameraAcrossPreviewToggle();
+  testEditorStateResolvesSynchronizedActiveCameraComponent();
   testViewportOverlaySnapshotAndCommandEntry();
   testViewportOverlayGizmoModeHotkeysAndCommitPath();
   testViewportOverlayRotateCommitDrivesDirectionalLight();

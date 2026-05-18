@@ -5,6 +5,40 @@
 
 namespace LX_core {
 
+namespace {
+
+[[nodiscard]] SceneNodeSharedPtr
+resolveRequestedEditorCamera(const EditorState &editorState,
+                             const Scene &scene) {
+  SceneNodeSharedPtr preferred = editorState.isPreviewEnabled()
+                                     ? editorState.getPreviewCamera()
+                                     : editorState.getEditorCamera();
+  if (preferred && preferred->getComponent<CameraComponent>().has_value()) {
+    return preferred;
+  }
+
+  const SceneNodeSharedPtr fallbackEditor = editorState.getEditorCamera();
+  if (fallbackEditor &&
+      fallbackEditor->getComponent<CameraComponent>().has_value()) {
+    return fallbackEditor;
+  }
+
+  const SceneNodeSharedPtr fallbackPreview = editorState.getPreviewCamera();
+  if (fallbackPreview &&
+      fallbackPreview->getComponent<CameraComponent>().has_value()) {
+    return fallbackPreview;
+  }
+
+  for (const auto &cameraNode : scene.getCameras()) {
+    if (cameraNode && cameraNode->getComponent<CameraComponent>().has_value()) {
+      return cameraNode;
+    }
+  }
+  return {};
+}
+
+} // namespace
+
 bool EditorState::containsNode(
     const std::vector<std::weak_ptr<SceneNode>> &selection,
     const SceneNodeSharedPtr &node) {
@@ -13,7 +47,8 @@ bool EditorState::containsNode(
   }
 
   for (const auto &entry : selection) {
-    if (const auto locked = entry.lock(); locked && locked.get() == node.get()) {
+    if (const auto locked = entry.lock();
+        locked && locked.get() == node.get()) {
       return true;
     }
   }
@@ -80,55 +115,39 @@ void EditorState::setPreviewEnabled(const bool enabled) {
   m_previewEnabled = enabled;
 }
 
-void EditorState::togglePreviewEnabled() { m_previewEnabled = !m_previewEnabled; }
+void EditorState::togglePreviewEnabled() {
+  m_previewEnabled = !m_previewEnabled;
+}
 
 bool EditorState::isPreviewEnabled() const { return m_previewEnabled; }
 
 } // namespace LX_core
 
-void LX_core::EditorState::setEditorCamera(const SceneNodeSharedPtr &node) { m_editorCamera = node; }
-
-void LX_core::EditorState::setPreviewCamera(const SceneNodeSharedPtr &node) { m_previewCamera = node; }
-
-LX_core::SceneNodeSharedPtr LX_core::EditorState::getEditorCamera() const { return m_editorCamera.lock(); }
-
-LX_core::SceneNodeSharedPtr LX_core::EditorState::getPreviewCamera() const { return m_previewCamera.lock(); }
-
-LX_core::SceneNodeSharedPtr LX_core::EditorState::resolveActiveCamera(const Scene &scene) const {
-  SceneNodeSharedPtr preferred = isPreviewEnabled() ? getPreviewCamera() : getEditorCamera();
-  if (preferred && preferred->getComponent<CameraComponent>().has_value()) {
-    return preferred;
-  }
-
-  const SceneNodeSharedPtr fallbackEditor = getEditorCamera();
-  if (fallbackEditor && fallbackEditor->getComponent<CameraComponent>().has_value()) {
-    return fallbackEditor;
-  }
-
-  const SceneNodeSharedPtr fallbackPreview = getPreviewCamera();
-  if (fallbackPreview && fallbackPreview->getComponent<CameraComponent>().has_value()) {
-    return fallbackPreview;
-  }
-
-  for (const auto &cameraNode : scene.getCameras()) {
-    if (cameraNode && cameraNode->getComponent<CameraComponent>().has_value()) {
-      return cameraNode;
-    }
-  }
-  return {};
+void LX_core::EditorState::setEditorCamera(const SceneNodeSharedPtr &node) {
+  m_editorCamera = node;
 }
 
-LX_core::SceneNodeSharedPtr LX_core::EditorState::syncActiveCamera(Scene &scene) const {
-  const SceneNodeSharedPtr activeNode = resolveActiveCamera(scene);
-  for (const auto &cameraNode : scene.getCameras()) {
-    if (!cameraNode) {
-      continue;
-    }
-    auto camera = cameraNode->getComponent<CameraComponent>();
-    if (!camera.has_value()) {
-      continue;
-    }
-    camera->get().setActive(activeNode && cameraNode.get() == activeNode.get());
-  }
+void LX_core::EditorState::setPreviewCamera(const SceneNodeSharedPtr &node) {
+  m_previewCamera = node;
+}
+
+LX_core::SceneNodeSharedPtr LX_core::EditorState::getEditorCamera() const {
+  return m_editorCamera.lock();
+}
+
+LX_core::SceneNodeSharedPtr LX_core::EditorState::getPreviewCamera() const {
+  return m_previewCamera.lock();
+}
+
+LX_core::SceneNodeSharedPtr
+LX_core::EditorState::resolveActiveCamera(const Scene &scene) const {
+  return scene.getActiveCamera();
+}
+
+LX_core::SceneNodeSharedPtr
+LX_core::EditorState::syncActiveCamera(Scene &scene) const {
+  const SceneNodeSharedPtr activeNode =
+      resolveRequestedEditorCamera(*this, scene);
+  scene.setActiveCamera(activeNode);
   return activeNode;
 }

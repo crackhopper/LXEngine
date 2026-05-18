@@ -694,9 +694,9 @@ public:
 
     const u32 width = attachment.extent.width;
     const u32 height = attachment.extent.height;
-    const VkDeviceSize byteSize =
-        static_cast<VkDeviceSize>(width) * static_cast<VkDeviceSize>(height) *
-        sizeof(float);
+    const VkDeviceSize byteSize = static_cast<VkDeviceSize>(width) *
+                                  static_cast<VkDeviceSize>(height) *
+                                  sizeof(float);
     if (width == 0 || height == 0 || byteSize == 0) {
       throw std::runtime_error("frame graph attachment has empty extent: " +
                                std::string(attachmentName));
@@ -721,8 +721,8 @@ public:
     const VkImageLayout previousLayout = attachment.currentLayout;
     auto cmd = m_cmdBufferMgr->beginSingleTimeCommands();
     transitionFrameGraphAttachment(
-        LX_core::FrameGraphResourceRef{attachmentId,
-                                       LX_core::FrameGraphAttachmentKind::Depth},
+        LX_core::FrameGraphResourceRef{
+            attachmentId, LX_core::FrameGraphAttachmentKind::Depth},
         VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT,
         VK_ACCESS_TRANSFER_READ_BIT, *cmd);
 
@@ -743,8 +743,8 @@ public:
     const bool restoreShaderRead =
         previousLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     transitionFrameGraphAttachment(
-        LX_core::FrameGraphResourceRef{attachmentId,
-                                       LX_core::FrameGraphAttachmentKind::Depth},
+        LX_core::FrameGraphResourceRef{
+            attachmentId, LX_core::FrameGraphAttachmentKind::Depth},
         previousLayout,
         restoreShaderRead ? VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT
                           : (VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
@@ -783,8 +783,7 @@ public:
   }
 
   VulkanRenderer::FrameGraphAttachmentDumpResult dumpDebugRenderTarget(
-      std::string_view passName,
-      const std::optional<std::string> &cameraPath,
+      std::string_view passName, const std::optional<std::string> &cameraPath,
       const std::optional<std::filesystem::path> &requestedPath) {
     if (!m_resourceManager || !m_cmdBufferMgr || !m_device || !m_swapchain ||
         !m_scene) {
@@ -801,10 +800,10 @@ public:
         std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::system_clock::now().time_since_epoch())
             .count();
-    const std::filesystem::path path = requestedPath.value_or(
-        std::filesystem::path("data/debug/dump") /
-        (std::to_string(timestamp) + "-" + sanitizeAttachmentName(passName) +
-         ".bmp"));
+    const std::filesystem::path path =
+        requestedPath.value_or(std::filesystem::path("data/debug/dump") /
+                               (std::to_string(timestamp) + "-" +
+                                sanitizeAttachmentName(passName) + ".bmp"));
 
     LX_core::RenderTargetDesc targetDesc;
     targetDesc.role = LX_core::RenderTargetRole::Offscreen;
@@ -823,9 +822,9 @@ public:
     if (pass == LX_core::Pass_Forward) {
       for (u32 cascadeIndex = 0; cascadeIndex < LX_core::MaxShadowCascades;
            ++cascadeIndex) {
-        const auto shadowDepth = LX_core::FrameGraphResourceRef::depthAttachment(
-            LX_core::StringID("shadow.cascade" +
-                              std::to_string(cascadeIndex)));
+        const auto shadowDepth =
+            LX_core::FrameGraphResourceRef::depthAttachment(LX_core::StringID(
+                "shadow.cascade" + std::to_string(cascadeIndex)));
         sceneResources.push_back(
             std::make_shared<LX_core::FrameGraphSampledResource>(
                 shadowDepth.name,
@@ -848,7 +847,8 @@ public:
         m_resourceManager->syncResource(*m_cmdBufferMgr, cpuRes);
       }
     }
-    m_resourceManager->preloadPipelines(queue.collectUniquePipelineBuildDescs());
+    m_resourceManager->preloadPipelines(
+        queue.collectUniquePipelineBuildDescs());
 
     const VkExtent2D extent = m_swapchain->getExtent();
     const auto colorRef = LX_core::FrameGraphResourceRef::colorAttachment(
@@ -856,9 +856,8 @@ public:
     const auto depthRef = LX_core::FrameGraphResourceRef::depthAttachment(
         LX_core::StringID("debug.dump.depth." + std::to_string(timestamp)));
 
-    const VkDeviceSize byteSize =
-        static_cast<VkDeviceSize>(extent.width) *
-        static_cast<VkDeviceSize>(extent.height) * 4u;
+    const VkDeviceSize byteSize = static_cast<VkDeviceSize>(extent.width) *
+                                  static_cast<VkDeviceSize>(extent.height) * 4u;
     auto readback = VulkanBuffer::create(
         *m_device, byteSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
@@ -877,10 +876,10 @@ public:
         VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
             VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
 
-    transitionFrameGraphAttachment(colorRef,
-                                   VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                                   VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, *cmd);
+    transitionFrameGraphAttachment(
+        colorRef, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, *cmd);
     transitionFrameGraphAttachment(
         depthRef, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
         VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
@@ -907,10 +906,9 @@ public:
     }
     cmd->endRenderPass();
 
-    transitionFrameGraphAttachment(colorRef,
-                                   VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                                   VK_PIPELINE_STAGE_TRANSFER_BIT,
-                                   VK_ACCESS_TRANSFER_READ_BIT, *cmd);
+    transitionFrameGraphAttachment(
+        colorRef, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT, *cmd);
     VkBufferImageCopy region{};
     region.bufferOffset = 0;
     region.bufferRowLength = 0;
@@ -935,8 +933,7 @@ public:
     for (u32 y = 0; y < extent.height; ++y) {
       for (u32 x = 0; x < extent.width; ++x) {
         const usize i =
-            (static_cast<usize>(y) * extent.width + static_cast<usize>(x)) *
-            4u;
+            (static_cast<usize>(y) * extent.width + static_cast<usize>(x)) * 4u;
         bgrPixels.push_back(rgba[i + 0u]);
         bgrPixels.push_back(rgba[i + 1u]);
         bgrPixels.push_back(rgba[i + 2u]);
@@ -1027,12 +1024,9 @@ private:
     if (!m_scene) {
       return std::nullopt;
     }
-    for (const auto &cameraNode : m_scene->getCameras()) {
-      if (!cameraNode) {
-        continue;
-      }
+    if (const auto cameraNode = m_scene->getActiveCamera()) {
       auto camera = cameraNode->getComponent<LX_core::CameraComponent>();
-      if (camera && camera->get().isActive()) {
+      if (camera.has_value()) {
         return camera->get();
       }
     }
@@ -1138,10 +1132,9 @@ private:
     const VkResult recoveryResult =
         vkQueueSubmit(m_device->getGraphicsQueue(), 1, &recoverySubmit, fence);
     if (recoveryResult != VK_SUCCESS) {
-      std::cerr
-          << "[VulkanRenderer] failed to consume acquired semaphore and "
-             "re-signal in-flight fence after submit failure; VkResult="
-          << static_cast<int>(recoveryResult) << std::endl;
+      std::cerr << "[VulkanRenderer] failed to consume acquired semaphore and "
+                   "re-signal in-flight fence after submit failure; VkResult="
+                << static_cast<int>(recoveryResult) << std::endl;
       m_swapchainNeedsRebuild = true;
     }
   }
@@ -1273,9 +1266,8 @@ private:
     dump.width = extent.width;
     dump.height = extent.height;
     dump.format = m_swapchain->getImageFormat();
-    const VkDeviceSize byteSize =
-        static_cast<VkDeviceSize>(extent.width) *
-        static_cast<VkDeviceSize>(extent.height) * 4u;
+    const VkDeviceSize byteSize = static_cast<VkDeviceSize>(extent.width) *
+                                  static_cast<VkDeviceSize>(extent.height) * 4u;
     dump.readback = VulkanBuffer::create(
         *m_device, byteSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
@@ -1322,8 +1314,7 @@ private:
   }
 
   void writeCompletedScreenDumpIfNeeded(VkFence fence) {
-    if (!m_pendingScreenDump.has_value() ||
-        !m_pendingScreenDump->readback) {
+    if (!m_pendingScreenDump.has_value() || !m_pendingScreenDump->readback) {
       return;
     }
 
@@ -1336,9 +1327,8 @@ private:
     std::vector<unsigned char> bgrPixels;
     bgrPixels.reserve(static_cast<usize>(dump.width) *
                       static_cast<usize>(dump.height) * 3u);
-    const bool sourceIsBgra =
-        dump.format == VK_FORMAT_B8G8R8A8_UNORM ||
-        dump.format == VK_FORMAT_B8G8R8A8_SRGB;
+    const bool sourceIsBgra = dump.format == VK_FORMAT_B8G8R8A8_UNORM ||
+                              dump.format == VK_FORMAT_B8G8R8A8_SRGB;
     for (u32 y = 0; y < dump.height; ++y) {
       for (u32 x = 0; x < dump.width; ++x) {
         const usize i =

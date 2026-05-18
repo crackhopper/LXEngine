@@ -34,12 +34,14 @@ void collectSubtreeSnapshots(const SceneNodeSharedPtr &node,
 }
 
 [[nodiscard]] SceneNodeSharedPtr findRenderableNodeByAddress(
-    const std::vector<IRenderableSharedPtr> &renderables, const SceneNode *node) {
+    const std::vector<IRenderableSharedPtr> &renderables,
+    const SceneNode *node) {
   if (!node) {
     return nullptr;
   }
   for (const auto &renderable : renderables) {
-    const auto renderableNode = std::dynamic_pointer_cast<SceneNode>(renderable);
+    const auto renderableNode =
+        std::dynamic_pointer_cast<SceneNode>(renderable);
     if (renderableNode && renderableNode.get() == node) {
       return renderableNode;
     }
@@ -130,7 +132,8 @@ std::string Scene::dumpTree() const {
 普通参数写入（`setFloat` / `setTexture`）走 GPU 资源 dirty 路径，结构没变，
 不会触发这条传播。换句话说：这里只处理"pass 拓扑改变"这一件结构性事件。
 */
-void Scene::revalidateNodesUsing(const MaterialInstanceSharedPtr &materialInstance) {
+void Scene::revalidateNodesUsing(
+    const MaterialInstanceSharedPtr &materialInstance) {
   if (!materialInstance)
     return;
   for (const auto &renderable : m_renderables) {
@@ -146,9 +149,9 @@ void Scene::revalidateNodesUsing(const MaterialInstanceSharedPtr &materialInstan
 }
 
 /*
-@source_analysis.section getSceneLevelResources：camera×target 与 light×pass 两轴筛选
-REQ-009 的核心设计：camera 按 target 选，light 按 pass 选 — 两条规则有意拆开，
-不合并成"同时过 pass 和 target"。原因来自身份的不同：
+@source_analysis.section getSceneLevelResources：camera×target 与 light×pass
+两轴筛选 REQ-009 的核心设计：camera 按 target 选，light 按 pass 选 —
+两条规则有意拆开， 不合并成"同时过 pass 和 target"。原因来自身份的不同：
 
 - camera 的身份是"画到哪个 target"，与 pass 无关。同一个 camera 在 forward、
   depth-prepass、GUI 这三个写入同一 target 的 pass 里都该出现，pipeline 不同
@@ -241,9 +244,8 @@ Scene::getSceneLevelResources(StringID pass, const RenderTarget &target) const {
       auto &entry = m_sceneLightsUbo->param.spot[spotCount++];
       entry.positionRange =
           Vec4f{position.x, position.y, position.z, spotLight->getRange()};
-      entry.directionCone =
-          Vec4f{direction.x, direction.y, direction.z,
-                spotLight->getOuterConeDegrees()};
+      entry.directionCone = Vec4f{direction.x, direction.y, direction.z,
+                                  spotLight->getOuterConeDegrees()};
       entry.colorIntensity =
           Vec4f{color.x, color.y, color.z, spotLight->getIntensity()};
     }
@@ -313,8 +315,8 @@ BoundingBox Scene::getPickBounds(const SceneNode &node) const {
   return light->getDebugLocalBounds().transformed(node.getWorldTransform());
 }
 
-std::optional<Scene::PickHit>
-Scene::pick(const Ray &ray, VisibilityLayerMask layerMask) const {
+std::optional<Scene::PickHit> Scene::pick(const Ray &ray,
+                                          VisibilityLayerMask layerMask) const {
   std::optional<PickHit> bestHit;
   for (const auto &renderable : m_renderables) {
     const auto node = std::dynamic_pointer_cast<SceneNode>(renderable);
@@ -411,7 +413,6 @@ void Scene::appendTreeLines(const SceneNode &node, std::string prefix,
   }
 }
 
-
 void Scene::removeRenderable(const SceneNodeSharedPtr &node) {
   if (!node) {
     return;
@@ -463,7 +464,8 @@ void Scene::removeRenderable(const SceneNodeSharedPtr &node) {
       m_renderables.end());
 
   std::vector<LightBaseSharedPtr> removedLights;
-  for (auto lightIt = m_lightsByNode.begin(); lightIt != m_lightsByNode.end();) {
+  for (auto lightIt = m_lightsByNode.begin();
+       lightIt != m_lightsByNode.end();) {
     if (removedNodeIds.find(lightIt->first) == removedNodeIds.end()) {
       ++lightIt;
       continue;
@@ -504,25 +506,56 @@ void Scene::addCamera(const SceneNodeSharedPtr &cameraNode) {
         "Scene::addCamera requires a SceneNode with CameraComponent");
   }
 
-  const auto exists = std::find_if(
-      m_cameras.begin(), m_cameras.end(),
-      [&cameraNode](const SceneNodeSharedPtr &candidate) {
-        return candidate.get() == cameraNode.get();
-      });
+  const auto exists =
+      std::find_if(m_cameras.begin(), m_cameras.end(),
+                   [&cameraNode](const SceneNodeSharedPtr &candidate) {
+                     return candidate.get() == cameraNode.get();
+                   });
   if (exists != m_cameras.end()) {
     return;
   }
 
-  const auto renderableExists = std::find_if(
-      m_renderables.begin(), m_renderables.end(),
-      [&cameraNode](const IRenderableSharedPtr &candidate) {
-        return candidate.get() == cameraNode.get();
-      });
+  const auto renderableExists =
+      std::find_if(m_renderables.begin(), m_renderables.end(),
+                   [&cameraNode](const IRenderableSharedPtr &candidate) {
+                     return candidate.get() == cameraNode.get();
+                   });
   if (renderableExists == m_renderables.end()) {
     addRenderable(cameraNode);
   }
 
   m_cameras.push_back(cameraNode);
+}
+
+SceneNodeSharedPtr Scene::getActiveCamera() const {
+  for (const auto &cameraNode : m_cameras) {
+    if (!cameraNode) {
+      continue;
+    }
+    const auto camera = cameraNode->getComponent<CameraComponent>();
+    if (camera.has_value() && camera->get().isActive()) {
+      return cameraNode;
+    }
+  }
+  return {};
+}
+
+void Scene::setActiveCamera(const SceneNodeSharedPtr &cameraNode) {
+  if (cameraNode && !cameraNode->getComponent<CameraComponent>().has_value()) {
+    detail::throwProgrammerLogicError(
+        "Scene::setActiveCamera requires a SceneNode with CameraComponent");
+  }
+
+  for (const auto &candidate : m_cameras) {
+    if (!candidate) {
+      continue;
+    }
+    auto camera = candidate->getComponent<CameraComponent>();
+    if (!camera.has_value()) {
+      continue;
+    }
+    camera->get().setActive(cameraNode && candidate.get() == cameraNode.get());
+  }
 }
 
 void Scene::removeCamera(const SceneNodeSharedPtr &cameraNode) {
@@ -565,7 +598,8 @@ LightBaseSharedPtr Scene::getLight(const SceneNode &node) const {
   return lightIt->second;
 }
 
-DirectionalLightSharedPtr Scene::getDirectionalLight(const SceneNode &node) const {
+DirectionalLightSharedPtr
+Scene::getDirectionalLight(const SceneNode &node) const {
   return std::dynamic_pointer_cast<DirectionalLight>(getLight(node));
 }
 
@@ -601,12 +635,14 @@ void Scene::removeLight(const LightBaseSharedPtr &light) {
   }
 
   std::vector<SceneNodeSharedPtr> affectedNodes;
-  for (auto lightIt = m_lightsByNode.begin(); lightIt != m_lightsByNode.end();) {
+  for (auto lightIt = m_lightsByNode.begin();
+       lightIt != m_lightsByNode.end();) {
     if (lightIt->second != light) {
       ++lightIt;
       continue;
     }
-    if (const auto node = findRenderableNodeByAddress(m_renderables, lightIt->first)) {
+    if (const auto node =
+            findRenderableNodeByAddress(m_renderables, lightIt->first)) {
       affectedNodes.push_back(node);
     }
     lightIt = m_lightsByNode.erase(lightIt);
@@ -614,12 +650,11 @@ void Scene::removeLight(const LightBaseSharedPtr &light) {
 
   light->detachFromSceneNode();
 
-  m_lights.erase(
-      std::remove_if(m_lights.begin(), m_lights.end(),
-                     [&light](const LightBaseSharedPtr &candidate) {
-                       return candidate == light;
-                     }),
-      m_lights.end());
+  m_lights.erase(std::remove_if(m_lights.begin(), m_lights.end(),
+                                [&light](const LightBaseSharedPtr &candidate) {
+                                  return candidate == light;
+                                }),
+                 m_lights.end());
 
   for (const auto &node : affectedNodes) {
     node->emitRuntimeNodeChanged(SceneNodeAspect::RenderableStructure);
