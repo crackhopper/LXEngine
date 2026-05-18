@@ -35,6 +35,7 @@ const editorClientProvider = createEditorClient;
 const handlers = createToolHandlers({
   editorOps: new EditorOps(processSupervisor, config),
   editorClientProvider,
+  fileRoot: config.repoRoot,
   managerOps: new ManagerOps(),
   workspaceOps: new WorkspaceOps(processSupervisor, {
     repoRoot: config.repoRoot,
