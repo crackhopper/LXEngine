@@ -1157,6 +1157,8 @@ void testBuiltinPrimitivePlaneIsThinBox() {
              "primitive plane top surface should stay at local y=0");
   expectNear(mesh->bounds.min.y, -0.02f,
              "primitive plane should extend downward as a thin box");
+  EXPECT(mesh->isClosedVolume(),
+         "primitive plane thin box should be marked as closed volume");
 
   EXPECT(mesh->vertexBuffer != nullptr,
          "primitive plane thin box should have a vertex buffer");
@@ -1170,6 +1172,101 @@ void testBuiltinPrimitivePlaneIsThinBox() {
     EXPECT(mesh->indexBuffer->indexCount() == 36,
            "primitive plane thin box should use six faces");
   }
+}
+
+void testBuiltinPatchMeshesAreOpenReceiversOnly() {
+  const auto patch = demo::buildBuiltinPatchNode(
+      "builtin://lxe_editor/patches/square", "patch_square_node");
+  const auto meshComponent = patch->getComponent<LX_core::MeshComponent>();
+  EXPECT(meshComponent.has_value(), "patch should have a mesh component");
+  if (meshComponent.has_value()) {
+    const auto &mesh = meshComponent->get().getMesh();
+    EXPECT(!mesh->isClosedVolume(), "patch mesh should be marked non-closed");
+    expectNear(mesh->bounds.max.y, 0.0f,
+               "patch top surface should lie on local y=0");
+    expectNear(mesh->bounds.min.y, 0.0f,
+               "patch should have no thickness");
+  }
+
+  const auto materialComponent =
+      patch->getComponent<LX_core::MaterialComponent>();
+  EXPECT(materialComponent.has_value(), "patch should have a material");
+  if (materialComponent.has_value()) {
+    const auto &material = materialComponent->get().getMaterialInstance();
+    EXPECT(material != nullptr, "patch material should exist");
+    if (material) {
+      EXPECT(material->isPassEnabled(LX_core::Pass_Forward),
+             "patch should render in Forward pass");
+      EXPECT(!material->isPassEnabled(LX_core::Pass_Shadow),
+             "patch should not cast shadows");
+    }
+  }
+}
+
+void testBuiltinPatchScenePayloadRoundTrips() {
+  const std::filesystem::path inputPath =
+      makeTempPath("lx_scene_runtime_builtin_patch_input.yaml");
+  const std::filesystem::path savePath =
+      makeTempPath("lx_scene_runtime_builtin_patch_output.yaml");
+  writeSceneFile(inputPath,
+                 "scene:\n"
+                 "  name: patch_scene\n"
+                 "  gameplayCameraPath: /game_cam\n"
+                 "nodes:\n"
+                 "  - nodeName: game_camera\n"
+                 "    name: game_cam\n"
+                 "    transform:\n"
+                 "      translation: [0.0, 2.0, 6.0]\n"
+                 "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                 "      scale: [1.0, 1.0, 1.0]\n"
+                 "    visibilityMask: 4294967295\n"
+                 "    camera:\n"
+                 "      eye: [0.0, 2.0, 6.0]\n"
+                 "      target: [0.0, 0.0, 0.0]\n"
+                 "      up: [0.0, 1.0, 0.0]\n"
+                 "      type: perspective\n"
+                 "      fovY: 45.0\n"
+                 "      aspect: 1.7777778\n"
+                 "      nearPlane: 0.1\n"
+                 "      farPlane: 1000.0\n"
+                 "      left: -1.0\n"
+                 "      right: 1.0\n"
+                 "      bottom: -1.0\n"
+                 "      top: 1.0\n"
+                 "      cullingMask: 4294967295\n"
+                 "  - nodeName: patch_square_node\n"
+                 "    name: Square\n"
+                 "    transform:\n"
+                 "      translation: [0.0, 0.0, 0.0]\n"
+                 "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                 "      scale: [1.0, 1.0, 1.0]\n"
+                 "    visibilityMask: 4294967295\n"
+                 "    mesh:\n"
+                 "      uri: builtin://lxe_editor/patches/square\n");
+
+  demo::SceneRuntime runtime;
+  runtime.loadFromDocumentPath(inputPath);
+  auto *patch = runtime.scene()->findByPath("/Square");
+  EXPECT(patch != nullptr, "builtin patch should load as a scene node");
+  if (patch != nullptr) {
+    const auto materialComponent =
+        patch->getComponent<LX_core::MaterialComponent>();
+    EXPECT(materialComponent.has_value(), "patch should load material");
+    if (materialComponent.has_value()) {
+      const auto &material = materialComponent->get().getMaterialInstance();
+      EXPECT(material != nullptr, "patch material should exist after load");
+      if (material) {
+        EXPECT(!material->isPassEnabled(LX_core::Pass_Shadow),
+               "loaded patch should not cast shadows");
+      }
+    }
+  }
+
+  runtime.saveToDocumentPath(savePath);
+  const std::string savedText = readFile(savePath);
+  EXPECT(savedText.find("builtin://lxe_editor/patches/square") !=
+             std::string::npos,
+         "save should preserve builtin patch mesh URI");
 }
 
 void testBuiltinPrimitiveScenePayloadRoundTrips() {
@@ -1501,6 +1598,8 @@ int main() {
   testGenericNodeMaterialParameterOverrideRoundTrips();
   testGroundMeshWindingMatchesUpwardNormal();
   testBuiltinPrimitivePlaneIsThinBox();
+  testBuiltinPatchMeshesAreOpenReceiversOnly();
+  testBuiltinPatchScenePayloadRoundTrips();
   testBuiltinPrimitiveScenePayloadRoundTrips();
   testBuiltinPrimitiveBaseColorGetterUsesRuntimeMaterialValue();
   testProjectAssetMaterialOverridesRuntimeAssetMaterial();

@@ -2,6 +2,7 @@
 
 #include "core/asset/material_instance.hpp"
 #include "core/asset/mesh.hpp"
+#include "core/frame_graph/pass.hpp"
 #include "core/asset/texture.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
@@ -301,10 +302,11 @@ MeshSharedPtr loadModelMesh(std::string_view meshUri) {
 
 MeshSharedPtr makeMesh(std::vector<VertexPosNormalUvBone> verts,
                        std::vector<u32> indices,
-                       const LX_core::BoundingBox &bounds) {
+                       const LX_core::BoundingBox &bounds,
+                       const bool closedVolume = true) {
   auto vb = VertexBuffer<VertexPosNormalUvBone>::create(std::move(verts));
   auto ib = IndexBuffer::create(std::move(indices));
-  return Mesh::create(vb, ib, bounds);
+  return Mesh::create(vb, ib, bounds, closedVolume);
 }
 
 void appendVertex(std::vector<VertexPosNormalUvBone> &verts, const Vec3f &pos,
@@ -413,6 +415,61 @@ MeshSharedPtr buildPlaneMesh() {
       LX_core::BoundingBox{{-half, bottom, -half}, {half, top, half}});
 }
 
+MeshSharedPtr buildTrianglePatchMesh() {
+  std::vector<VertexPosNormalUvBone> verts;
+  verts.reserve(3);
+  const Vec3f up{0.0f, 1.0f, 0.0f};
+  appendVertex(verts, {0.0f, 0.0f, 0.5f}, up, Vec2f{0.5f, 1.0f});
+  appendVertex(verts, {-0.5f, 0.0f, -0.5f}, up, Vec2f{0.0f, 0.0f});
+  appendVertex(verts, {0.5f, 0.0f, -0.5f}, up, Vec2f{1.0f, 0.0f});
+  return makeMesh(
+      std::move(verts), {0, 2, 1},
+      LX_core::BoundingBox{{-0.5f, 0.0f, -0.5f}, {0.5f, 0.0f, 0.5f}},
+      false);
+}
+
+MeshSharedPtr buildSquarePatchMesh() {
+  std::vector<VertexPosNormalUvBone> verts;
+  verts.reserve(4);
+  const Vec3f up{0.0f, 1.0f, 0.0f};
+  appendVertex(verts, {-0.5f, 0.0f, -0.5f}, up, Vec2f{0.0f, 0.0f});
+  appendVertex(verts, {0.5f, 0.0f, -0.5f}, up, Vec2f{1.0f, 0.0f});
+  appendVertex(verts, {0.5f, 0.0f, 0.5f}, up, Vec2f{1.0f, 1.0f});
+  appendVertex(verts, {-0.5f, 0.0f, 0.5f}, up, Vec2f{0.0f, 1.0f});
+  return makeMesh(
+      std::move(verts), {0, 2, 1, 0, 3, 2},
+      LX_core::BoundingBox{{-0.5f, 0.0f, -0.5f}, {0.5f, 0.0f, 0.5f}},
+      false);
+}
+
+MeshSharedPtr buildCirclePatchMesh() {
+  constexpr u32 segments = 48;
+  constexpr float pi = 3.14159265358979323846f;
+  std::vector<VertexPosNormalUvBone> verts;
+  std::vector<u32> indices;
+  verts.reserve(segments + 1);
+  indices.reserve(segments * 3);
+
+  const Vec3f up{0.0f, 1.0f, 0.0f};
+  appendVertex(verts, {0.0f, 0.0f, 0.0f}, up, Vec2f{0.5f, 0.5f});
+  for (u32 i = 0; i < segments; ++i) {
+    const float t = static_cast<float>(i) / static_cast<float>(segments);
+    const float phi = t * 2.0f * pi;
+    const float x = std::cos(phi) * 0.5f;
+    const float z = std::sin(phi) * 0.5f;
+    appendVertex(verts, {x, 0.0f, z}, up, Vec2f{x + 0.5f, z + 0.5f});
+  }
+  for (u32 i = 0; i < segments; ++i) {
+    const u32 next = (i + 1u) % segments;
+    indices.insert(indices.end(), {0u, next + 1u, i + 1u});
+  }
+
+  return makeMesh(
+      std::move(verts), std::move(indices),
+      LX_core::BoundingBox{{-0.5f, 0.0f, -0.5f}, {0.5f, 0.0f, 0.5f}},
+      false);
+}
+
 MeshSharedPtr buildSphereMesh() {
   constexpr u32 rings = 12;
   constexpr u32 segments = 24;
@@ -504,6 +561,19 @@ MeshSharedPtr buildPrimitiveMesh(std::string_view meshUri) {
   throw std::runtime_error("[lxe_editor] unknown builtin primitive mesh URI");
 }
 
+MeshSharedPtr buildPatchMesh(std::string_view meshUri) {
+  if (meshUri == "builtin://lxe_editor/patches/triangle") {
+    return buildTrianglePatchMesh();
+  }
+  if (meshUri == "builtin://lxe_editor/patches/square") {
+    return buildSquarePatchMesh();
+  }
+  if (meshUri == "builtin://lxe_editor/patches/circle") {
+    return buildCirclePatchMesh();
+  }
+  throw std::runtime_error("[lxe_editor] unknown builtin patch mesh URI");
+}
+
 MeshSharedPtr buildGroundMesh() {
   const float half = 20.0f; // 40m x 40m — wide enough to give visual context
   const float groundY = 0.0f;
@@ -563,6 +633,17 @@ LX_core::SceneNodeSharedPtr buildBuiltinPrimitiveNode(std::string_view meshUri,
                                                       std::string nodeName) {
   auto mesh = buildPrimitiveMesh(meshUri);
   auto material = makePrimitiveMaterial();
+  return makeRenderableNode(nodeName.c_str(), std::move(mesh),
+                            std::move(material));
+}
+
+LX_core::SceneNodeSharedPtr buildBuiltinPatchNode(std::string_view meshUri,
+                                                  std::string nodeName) {
+  auto mesh = buildPatchMesh(meshUri);
+  auto material = makePrimitiveMaterial();
+  if (material && material->isPassEnabled(LX_core::Pass_Shadow)) {
+    material->setPassEnabled(LX_core::Pass_Shadow, false);
+  }
   return makeRenderableNode(nodeName.c_str(), std::move(mesh),
                             std::move(material));
 }

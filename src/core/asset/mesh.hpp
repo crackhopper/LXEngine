@@ -19,9 +19,11 @@ namespace LX_core {
 - 顶点布局是什么
 - 图元怎样组装
 - CPU / backend 都要面对的原始 buffer 在哪里
+- 这个 mesh 是否是有内部体积的封闭体
 
 材质、shader variant、pass enable 这些都不属于 `Mesh`。这样 mesh 才能被多个材质、
 多个 scene node 复用，而不会把几何身份和材质身份混成一个缓存键。
+`closedVolume` 也保持在几何层，因为它描述的是 mesh 拓扑语义，不是某个材质参数。
 */
 class Mesh {
   struct Token {};
@@ -34,10 +36,11 @@ public:
   BoundingBox bounds;
 
   static SharedPtr create(VertexBufferSharedPtr vb, IndexBufferSharedPtr ib,
-                          BoundingBox bounds = {}) {
+                          BoundingBox bounds = {},
+                          bool closedVolume = true) {
     assert(vb && ib);
-    return SharedPtr(
-        new Mesh(Token{}, std::move(vb), std::move(ib), std::move(bounds)));
+    return SharedPtr(new Mesh(Token{}, std::move(vb), std::move(ib),
+                              std::move(bounds), closedVolume));
   }
 
 /*
@@ -67,11 +70,15 @@ public:
     return vertexBuffer->getLayout();
   }
 
+  [[nodiscard]] bool isClosedVolume() const { return m_closedVolume; }
+
 private:
   Mesh(Token, VertexBufferSharedPtr vb, IndexBufferSharedPtr ib,
-       BoundingBox meshBounds)
+       BoundingBox meshBounds, bool closedVolume)
       : vertexBuffer(std::move(vb)), indexBuffer(std::move(ib)),
-        bounds(std::move(meshBounds)) {}
+        bounds(std::move(meshBounds)), m_closedVolume(closedVolume) {}
+
+  bool m_closedVolume = true;
 };
 
 using MeshSharedPtr = std::shared_ptr<Mesh>;

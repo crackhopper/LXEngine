@@ -831,6 +831,19 @@ void LxeEditorSession::rebuildBindings(
                     return makeCommandError(e.what());
                   }
                 }
+                if (kind.rfind("patch:", 0) == 0) {
+                  const std::string shape =
+                      kind.substr(std::string("patch:").size());
+                  const std::string meshUri =
+                      "builtin://lxe_editor/patches/" + shape;
+                  try {
+                    outNode = buildBuiltinPatchNode(meshUri, nodeName);
+                    outNode->setName(displayName);
+                    return makeCommandOk("created " + kind);
+                  } catch (const std::exception &e) {
+                    return makeCommandError(e.what());
+                  }
+                }
                 if (kind.rfind("primitive:", 0) != 0) {
                   return makeCommandError("unsupported create kind: " + kind);
                 }

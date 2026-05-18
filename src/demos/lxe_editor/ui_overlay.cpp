@@ -228,6 +228,15 @@ void drawResetIcon(ImDrawList &drawList, const ImVec2 min, const ImVec2 max,
   if (kind == "primitive:plane") {
     return "Plane";
   }
+  if (kind == "patch:triangle") {
+    return "Triangle";
+  }
+  if (kind == "patch:square") {
+    return "Square";
+  }
+  if (kind == "patch:circle") {
+    return "Circle";
+  }
   if (kind == "primitive:cylinder") {
     return "Cylinder";
   }
@@ -824,6 +833,11 @@ void UiOverlay::drawToolbarPanel() {
       {"Cylinder", "primitive:cylinder", "Cylinder"},
       {"Cone", "primitive:cone", "Cone"},
   }};
+  static constexpr std::array<CreatePaletteItem, 3> kPatchItems = {{
+      {"Triangle", "patch:triangle", "Triangle"},
+      {"Square", "patch:square", "Square"},
+      {"Circle", "patch:circle", "Circle"},
+  }};
   static constexpr std::array<CreatePaletteItem, 4> kSceneObjectItems = {{
       {"Directional Light", "light:directional", "Directional Light"},
       {"Point Light", "light:point", "Point Light"},
@@ -840,6 +854,16 @@ void UiOverlay::drawToolbarPanel() {
       ImGui::SameLine();
     }
     const auto &item = kPrimitiveItems[i];
+    if (drawCreatePaletteButton(item)) {
+      dispatchCreatePaletteItem(item.kind, item.name);
+    }
+  }
+  ImGui::TextUnformatted("Patches");
+  for (usize i = 0; i < kPatchItems.size(); ++i) {
+    if (i != 0) {
+      ImGui::SameLine();
+    }
+    const auto &item = kPatchItems[i];
     if (drawCreatePaletteButton(item)) {
       dispatchCreatePaletteItem(item.kind, item.name);
     }

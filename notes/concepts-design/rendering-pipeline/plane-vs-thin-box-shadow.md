@@ -13,6 +13,8 @@ Shadow map 像一张从灯光方向拍摄的深度底片。现实里的地板不
 
 当前 Blinn-Phong 的 Shadow pass 使用 `Front` culling。这个设置依赖一个隐含假设：参与 shadow map 的物体最好是封闭体。封闭体有“正面”和“背面”的几何厚度；单面 plane 没有这个厚度，所以它在不同 cull 策略下会表现得很极端。
 
+当前 `Mesh` 会用 `isClosedVolume()` 标记这个拓扑语义。薄 box plane 是封闭体；`patch:triangle`、`patch:square`、`patch:circle` 是纯面片，标记为非封闭。
+
 ## 白边和星点来自两种相反压力
 
 阴影调试里常见的两个问题方向相反：
@@ -46,6 +48,18 @@ mesh:
 transform:
   translation: [0.0, 0.0, 0.0]               # -> top surface stays at y=0
 ```
+
+## 纯面片是另一类对象
+
+我们仍然保留非封闭几何。Toolbar 中的 `Patches` 行提供：
+
+| Patch | Mesh URI | Shadow 语义 |
+|---|---|---|
+| Triangle | `builtin://lxe_editor/patches/triangle` | 非封闭，只走 Forward，不进入 Shadow pass |
+| Square | `builtin://lxe_editor/patches/square` | 非封闭，只走 Forward，不进入 Shadow pass |
+| Circle | `builtin://lxe_editor/patches/circle` | 非封闭，只走 Forward，不进入 Shadow pass |
+
+这些 patch 可以显示、可以接收其他封闭 caster 的阴影，但默认不 cast shadow。原因正是这次阴影问题暴露出来的事实：单面面片既作为 caster 又作为 receiver 时，最容易让同一张面在 shadow map 和 Forward pass 中互相比较，产生 acne 和闪烁。
 
 ## 为什么不是简单调 bias
 

@@ -29,6 +29,12 @@ LX_core::SceneNodeSharedPtr buildGroundNode();
 LX_core::SceneNodeSharedPtr buildBuiltinPrimitiveNode(std::string_view meshUri,
                                                       std::string nodeName);
 
+// Builds a non-closed surface patch. Patch nodes render in Forward but do not
+// cast shadows by default, because a single surface has no stable front/back
+// volume for Shadow pass self-occlusion.
+LX_core::SceneNodeSharedPtr buildBuiltinPatchNode(std::string_view meshUri,
+                                                  std::string nodeName);
+
 LX_core::SceneNodeSharedPtr
 buildModelAssetNode(std::string_view meshUri, std::string_view materialUri,
                     std::string_view albedoTextureUri, std::string nodeName);

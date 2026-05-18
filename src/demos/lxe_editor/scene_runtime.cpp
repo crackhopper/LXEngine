@@ -35,6 +35,7 @@ constexpr const char *LegacyCameraHelperNodeName = "helper_camera";
 constexpr const char *LegacyLightHelperNodeName = "helper_light";
 constexpr const char *BuiltinPrimitivePrefix =
     "builtin://lxe_editor/primitives/";
+constexpr const char *BuiltinPatchPrefix = "builtin://lxe_editor/patches/";
 constexpr const char *BuiltinPrimitiveMaterial =
     "assets/materials/blinnphong_lit.material";
 constexpr const char *BuiltinModelPrefix = "assets/models/builtin/";
@@ -154,6 +155,10 @@ isRuntimeDebugDrawNode(const LX_core::SceneNodeSharedPtr &node) {
   return uri.rfind(BuiltinPrimitivePrefix, 0) == 0;
 }
 
+[[nodiscard]] bool isBuiltinPatchMeshUri(const std::string &uri) {
+  return uri.rfind(BuiltinPatchPrefix, 0) == 0;
+}
+
 [[nodiscard]] bool isBuiltinModelMeshUri(const std::string &uri) {
   return uri.rfind(BuiltinModelPrefix, 0) == 0;
 }
@@ -176,6 +181,25 @@ primitiveUriFromNodeName(const std::string &nodeName) {
     return std::nullopt;
   }
   return std::string(BuiltinPrimitivePrefix) + shape;
+}
+
+[[nodiscard]] std::optional<std::string>
+patchUriFromNodeName(const std::string &nodeName) {
+  constexpr const char *prefix = "patch_";
+  constexpr const char *suffix = "_node";
+  if (nodeName.rfind(prefix, 0) != 0) {
+    return std::nullopt;
+  }
+  const usize begin = std::string_view(prefix).size();
+  const usize suffixPos = nodeName.find(suffix, begin);
+  if (suffixPos == std::string::npos || suffixPos == begin) {
+    return std::nullopt;
+  }
+  const std::string shape = nodeName.substr(begin, suffixPos - begin);
+  if (shape != "triangle" && shape != "square" && shape != "circle") {
+    return std::nullopt;
+  }
+  return std::string(BuiltinPatchPrefix) + shape;
 }
 
 [[nodiscard]] std::optional<std::string>
@@ -664,6 +688,28 @@ makeCameraNode(const std::string &nodeName, const std::string &displayName,
     return node;
   }
 
+  if (isBuiltinPatchMeshUri(*nodeDocument.meshUri)) {
+    auto node = buildBuiltinPatchNode(*nodeDocument.meshUri,
+                                      nodeDocument.nodeName);
+    if (auto materialComponent =
+            node->getComponent<LX_core::MaterialComponent>();
+        materialComponent.has_value()) {
+      const std::string uri = normalizeMaterialUri(nodeDocument);
+      if (nodeDocument.materialUri.has_value() ||
+          !nodeDocument.nodeMaterialOverrides.empty() ||
+          !nodeDocument.materialOverrides.empty()) {
+        auto material = loadMaterialForSceneNode(
+            assetRoots, uri, nodeDocument.materialOverrides,
+            nodeDocument.nodeMaterialOverrides);
+        if (material && material->isPassEnabled(LX_core::Pass_Shadow)) {
+          material->setPassEnabled(LX_core::Pass_Shadow, false);
+        }
+        materialComponent->get().setMaterialInstance(std::move(material));
+      }
+    }
+    return node;
+  }
+
   if (isBuiltinModelMeshUri(*nodeDocument.meshUri)) {
     const std::string materialUri = normalizeMaterialUri(nodeDocument);
     const BuiltinAssetCatalog builtinAssets = loadBuiltinAssetCatalog();
@@ -1053,6 +1099,9 @@ captureSceneDocument(const std::shared_ptr<SceneRuntimeData> &runtime) {
     } else if (const auto primitiveUri =
                    primitiveUriFromNodeName(node->getNodeName())) {
       entry.meshUri = *primitiveUri;
+      entry.materialUri = BuiltinPrimitiveMaterial;
+    } else if (const auto patchUri = patchUriFromNodeName(node->getNodeName())) {
+      entry.meshUri = *patchUri;
       entry.materialUri = BuiltinPrimitiveMaterial;
     } else if (const auto assetId =
                    modelAssetIdFromNodeName(node->getNodeName())) {

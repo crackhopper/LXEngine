@@ -100,6 +100,15 @@ void appendUniquePath(std::vector<std::string> &paths, std::string_view path) {
   if (kind == "primitive:plane") {
     return "Plane";
   }
+  if (kind == "patch:triangle") {
+    return "Triangle";
+  }
+  if (kind == "patch:square") {
+    return "Square";
+  }
+  if (kind == "patch:circle") {
+    return "Circle";
+  }
   if (kind == "primitive:cylinder") {
     return "Cylinder";
   }

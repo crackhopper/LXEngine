@@ -650,7 +650,8 @@ bool syncLightSpatialProperties(Scene &scene, const SceneNodeSharedPtr &node) {
 
 [[nodiscard]] std::vector<std::string> listComponentTypes() {
   return {"camera:perspective", "light:directional", "light:point",
-          "light:spot",         "primitive:cone",    "primitive:cube",
+          "light:spot",         "patch:circle",      "patch:square",
+          "patch:triangle",     "primitive:cone",    "primitive:cube",
           "primitive:cylinder", "primitive:plane",   "primitive:sphere"};
 }
 
@@ -1809,6 +1810,11 @@ shadowProjectProbe(Scene &scene, const std::vector<std::string> &args) {
          kind == "primitive:cone";
 }
 
+[[nodiscard]] bool isPatchAddKind(const std::string &kind) {
+  return kind == "patch:triangle" || kind == "patch:square" ||
+         kind == "patch:circle";
+}
+
 [[nodiscard]] bool isModelAddKind(const std::string &kind) {
   return kind.rfind("model:", 0) == 0 &&
          kind.size() > std::string("model:").size();
@@ -2886,7 +2892,8 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
       CommandMetadata{
           "add "
           "(primitive:cube|primitive:sphere|primitive:plane|"
-          "primitive:cylinder|primitive:cone|light:directional|"
+          "primitive:cylinder|primitive:cone|patch:triangle|patch:square|"
+          "patch:circle|light:directional|"
           "light:point|light:spot|camera:perspective|model:<id>) <name> "
           "[parentPath] [x y z]",
           inverseFromMetadata(), true},
@@ -2933,25 +2940,30 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
         }
 
         const bool primitiveKind = isPrimitiveAddKind(kind);
+        const bool patchKind = isPatchAddKind(kind);
         const bool modelKind = isModelAddKind(kind);
         const bool cameraKind = kind == "camera:perspective";
         const bool lightKind = kind == "light:directional" ||
                                kind == "light:point" || kind == "light:spot";
-        if (!primitiveKind && !modelKind && !cameraKind && !lightKind) {
+        if (!primitiveKind && !patchKind && !modelKind && !cameraKind &&
+            !lightKind) {
           return makeError("unknown add target: " + kind);
         }
 
         const std::string nodeNameBase =
             primitiveKind
                 ? "primitive_" + primitiveNameFromKind(kind) + "_node"
-                : (modelKind ? "model_" + modelAssetIdFromKind(kind) + "_node"
-                             : (cameraKind ? "camera_node"
-                                           : lightKindName + "_light_node"));
+                : (patchKind
+                       ? "patch_" + primitiveNameFromKind(kind) + "_node"
+                       : (modelKind
+                              ? "model_" + modelAssetIdFromKind(kind) + "_node"
+                              : (cameraKind ? "camera_node"
+                                            : lightKindName + "_light_node")));
         const std::string nodeName =
             makeUniqueNodeName(scene, *state, nodeNameBase);
 
         SceneNodeSharedPtr node;
-        if (primitiveKind || modelKind) {
+        if (primitiveKind || patchKind || modelKind) {
           if (!createNode) {
             return makeError("node creation is unavailable");
           }
@@ -2980,7 +2992,7 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
         }
 
         const std::string stashId = allocateStashId(*state);
-        if (primitiveKind || modelKind) {
+        if (primitiveKind || patchKind || modelKind) {
           scene.addRenderable(node);
         } else if (cameraKind) {
           const auto camera = node->addComponent<CameraComponent>();
