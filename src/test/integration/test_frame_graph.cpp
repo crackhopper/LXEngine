@@ -806,6 +806,28 @@ void testRenderQueueDebugOverrideUsesExplicitResourcesAndLayerMask() {
          "debug render target should use explicit camera resources");
 }
 
+void testDebugOnlyRenderableIsOverlayOnly() {
+  auto regular = makeRenderableWithMask(Layer_Default, "regular_renderable");
+  auto debugOnly = makeRenderableWithMask(Layer_Default, "debug_only_renderable");
+  debugOnly->setDebugOnlyRenderable(true);
+
+  auto scene = Scene::create("debug_only_filter");
+  scene->addRenderable(regular);
+  scene->addRenderable(debugOnly);
+  scene->addCamera(makeCameraWithTargetAndMask(RenderTarget{}, Layer_All));
+
+  RenderQueue forwardQueue;
+  forwardQueue.buildFromScene(*scene, Pass_Forward, RenderTarget{});
+  EXPECT(forwardQueue.getItems().size() == 1,
+         "debug-only renderables must be excluded from normal passes");
+
+  RenderQueue overlayQueue;
+  overlayQueue.buildFromScene(*scene, Pass_DebugOverlay, RenderTarget{});
+  EXPECT(overlayQueue.getItems().empty(),
+         "debug-only flag should not force unsupported overlay materials into "
+         "DebugOverlay");
+}
+
 void testSceneCreateDoesNotSeedHiddenLight() {
   auto scene = Scene::create("no_implicit_light");
   EXPECT(scene->getLights().empty(),
@@ -896,6 +918,7 @@ int main() {
   testVisibilityMaskOrsMatchingCameraMasks();
   testVisibilityFilteringKeepsSceneResources();
   testRenderQueueDebugOverrideUsesExplicitResourcesAndLayerMask();
+  testDebugOnlyRenderableIsOverlayOnly();
   testSceneCreateDoesNotSeedHiddenLight();
   testInactiveCameraIsIgnoredForResourcesAndMasks();
   testEditorProjectedShadowPassKeepsCharacterCaster();

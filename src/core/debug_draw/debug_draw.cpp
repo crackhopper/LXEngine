@@ -293,6 +293,7 @@ BucketState &ensureBucket(VisibilityLayerMask mask) {
   bucket.mesh = Mesh::create(bucket.vertexBuffer, bucket.indexBuffer);
   bucket.node = SceneNode::create(
       "debug_draw_" + std::to_string(static_cast<u32>(mask)));
+  bucket.node->setDebugOnlyRenderable(true);
   bucket.node->setVisibilityLayerMask(mask);
   bucket.node->addComponent<MeshComponent>(bucket.mesh);
   bucket.node->addComponent<MaterialComponent>(ensureMaterial());

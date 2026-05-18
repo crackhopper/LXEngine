@@ -559,6 +559,14 @@ void SceneNode::setVisibilityLayerMask(const VisibilityLayerMask mask) {
   emitRuntimeNodeChanged(SceneNodeAspect::Visibility);
 }
 
+void SceneNode::setDebugOnlyRenderable(const bool value) {
+  if (m_debugOnlyRenderable == value) {
+    return;
+  }
+  m_debugOnlyRenderable = value;
+  emitRuntimeNodeChanged(SceneNodeAspect::RenderableStructure);
+}
+
 void SceneNode::warnIfSiblingNameIsDuplicated() const {
   if (m_isPathRoot || m_name.empty()) {
     return;

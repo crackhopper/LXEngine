@@ -153,14 +153,24 @@ float sampleShadowMap(vec3 worldPos, vec3 normal, vec3 lightDir) {
     float depthBias = (worldBias + slopeBias) / cascadeDepthRange;
     vec2 texelSize = vec2(1.0 / max(sceneLight.shadowParams.x, 1.0));
     float visibility = 0.0;
+    float sampleCount = 0.0;
     for (int x = -1; x <= 1; ++x) {
         for (int y = -1; y <= 1; ++y) {
+            vec2 sampleUv = projCoords.xy + vec2(x, y) * texelSize;
+            if (sampleUv.x < 0.0 || sampleUv.x > 1.0 ||
+                sampleUv.y < 0.0 || sampleUv.y > 1.0) {
+                continue;
+            }
             float closestDepth = sampleShadowTexture(
-                cascadeIndex, projCoords.xy + vec2(x, y) * texelSize);
+                cascadeIndex, sampleUv);
             visibility += (projCoords.z - depthBias) <= closestDepth ? 1.0 : 0.0;
+            sampleCount += 1.0;
         }
     }
-    return visibility / 9.0;
+    if (sampleCount <= 0.0) {
+        return 1.0;
+    }
+    return visibility / sampleCount;
 }
 #endif
 

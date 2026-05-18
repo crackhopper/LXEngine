@@ -74,6 +74,14 @@ void testDebugDrawBucketDoesNotEnterEditableSceneTree() {
 
   EXPECT(DebugDraw::testing::hasRenderable(Layer_EditorOverlay),
          "debug draw should still create a renderable bucket");
+  bool foundDebugOnlyBucket = false;
+  for (const auto &renderable : scene->getRenderables()) {
+    if (renderable && renderable->getNodeName().rfind("debug_draw_", 0) == 0) {
+      foundDebugOnlyBucket = renderable->isDebugOnlyRenderable();
+    }
+  }
+  EXPECT(foundDebugOnlyBucket,
+         "debug draw bucket should be marked debug-only at renderable level");
   EXPECT(scene->findByPath("/debug_draw_2147483648") == nullptr,
          "debug draw bucket should not be addressable as an editable scene node");
   EXPECT(scene->dumpTree().find("debug_draw_") == std::string::npos,

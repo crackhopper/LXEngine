@@ -85,6 +85,8 @@ void RenderQueue::buildFromSceneWithOverrides(
   for (const auto &renderable : scene.getRenderables()) {
     if (!renderable)
       continue;
+    if (renderable->isDebugOnlyRenderable() && pass != Pass_DebugOverlay)
+      continue;
     if (!renderable->supportsPass(pass))
       continue;
     if ((renderable->getVisibilityLayerMask() & visibleMask) == 0)
