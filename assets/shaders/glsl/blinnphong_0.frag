@@ -127,12 +127,7 @@ vec3 cascadeDebugColor(vec3 worldPos) {
     return vec3(0.95, 0.75, 0.15);
 }
 
-float sampleShadowMap(vec3 worldPos, vec3 normal, vec3 lightDir) {
-    float viewDepth = viewDepthForWorldPos(worldPos);
-    if (!isInsideShadowDistance(viewDepth)) {
-        return 1.0;
-    }
-    int cascadeIndex = selectCascade(viewDepth);
+float sampleShadowCascade(int cascadeIndex, vec3 worldPos, vec3 normal, vec3 lightDir) {
     vec4 lightSpacePos =
         sceneLight.cascadeViewProj[cascadeIndex] * vec4(worldPos, 1.0);
     vec3 projCoords = lightSpacePos.xyz / lightSpacePos.w;
@@ -171,6 +166,37 @@ float sampleShadowMap(vec3 worldPos, vec3 normal, vec3 lightDir) {
         return 1.0;
     }
     return visibility / sampleCount;
+}
+
+float sampleShadowMap(vec3 worldPos, vec3 normal, vec3 lightDir) {
+    float viewDepth = viewDepthForWorldPos(worldPos);
+    if (!isInsideShadowDistance(viewDepth)) {
+        return 1.0;
+    }
+
+    int cascadeIndex = selectCascade(viewDepth);
+    float visibility =
+        sampleShadowCascade(cascadeIndex, worldPos, normal, lightDir);
+
+    int cascadeCount = int(clamp(sceneLight.shadowParams.w, 1.0, 4.0));
+    if (cascadeIndex >= cascadeCount - 1) {
+        return visibility;
+    }
+
+    float splitEnd = sceneLight.cascadeSplits[cascadeIndex];
+    float splitStart =
+        cascadeIndex == 0 ? 0.0 : sceneLight.cascadeSplits[cascadeIndex - 1];
+    float splitRange = max(splitEnd - splitStart, 0.001);
+    float blendWidth = clamp(splitRange * 0.15, 0.25, 3.0);
+    float blendStart = splitEnd - blendWidth;
+    if (viewDepth <= blendStart) {
+        return visibility;
+    }
+
+    float nextVisibility =
+        sampleShadowCascade(cascadeIndex + 1, worldPos, normal, lightDir);
+    float blend = smoothstep(blendStart, splitEnd, viewDepth);
+    return mix(visibility, nextVisibility, blend);
 }
 #endif
 
