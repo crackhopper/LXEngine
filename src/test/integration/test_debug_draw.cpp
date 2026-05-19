@@ -3,6 +3,7 @@
 #include "core/frame_graph/render_queue.hpp"
 #include "core/scene/components/camera_component.hpp"
 #include "core/scene/scene.hpp"
+#include "infra/material_loader/generic_material_loader.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/filesystem_tools.hpp"
 
@@ -43,8 +44,15 @@ usize buildOverlayQueueItemCount(Scene &scene) {
   return queue.getItems().size();
 }
 
+std::vector<RenderingItem> buildOverlayQueueItems(Scene &scene) {
+  RenderQueue queue;
+  queue.buildFromScene(scene, Pass_DebugOverlay, RenderTarget{});
+  return queue.getItems();
+}
+
 void resetForScene(const SceneSharedPtr &scene) {
   DebugDraw::reset();
+  DebugDraw::setMaterialProvider({});
   DebugDraw::attachScene(scene);
 }
 
@@ -86,6 +94,32 @@ void testDebugDrawBucketDoesNotEnterEditableSceneTree() {
          "debug draw bucket should not be addressable as an editable scene node");
   EXPECT(scene->dumpTree().find("debug_draw_") == std::string::npos,
          "debug draw bucket should not appear in the scene tree");
+}
+
+void testDebugDrawUsesInjectedMaterialAsset() {
+  auto scene = makeSceneWithCamera(Layer_All);
+  resetForScene(scene);
+
+  auto material =
+      LX_infra::loadGenericMaterial("assets/materials/debug_line.material");
+  int providerCalls = 0;
+  DebugDraw::setMaterialProvider([&, material] {
+    ++providerCalls;
+    return material;
+  });
+
+  DebugDraw::beginFrame();
+  DebugDraw::drawLine({0, 0, 0}, {1, 0, 0});
+  DebugDraw::endFrame();
+
+  const auto items = buildOverlayQueueItems(*scene);
+  EXPECT(providerCalls == 1,
+         "debug draw should request the injected material once");
+  EXPECT(items.size() == 1, "debug draw should produce one overlay item");
+  if (!items.empty()) {
+    EXPECT(items[0].material == material,
+           "debug draw render item should use injected material asset");
+  }
 }
 
 void testWireSphereSegmentsMatchThreeGreatCircles() {
@@ -343,6 +377,7 @@ int main() {
 
   testDrawLineFlushesSixVertices();
   testDebugDrawBucketDoesNotEnterEditableSceneTree();
+  testDebugDrawUsesInjectedMaterialAsset();
   testWireSphereSegmentsMatchThreeGreatCircles();
   testFrustumProducesTwelveLines();
   testOverlayHiddenFromGameCameraMask();

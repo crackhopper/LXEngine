@@ -127,6 +127,20 @@ LX_core::RenderState parseRenderState(const YAML::Node &node) {
   LX_core::RenderState rs;
   if (!node || !node.IsMap())
     return rs;
+  const auto parseBlendFactor = [](const YAML::Node &value,
+                                   const char *field) {
+    const auto s = value.as<std::string>();
+    if (s == "Zero")
+      return LX_core::BlendFactor::Zero;
+    if (s == "One")
+      return LX_core::BlendFactor::One;
+    if (s == "SrcAlpha")
+      return LX_core::BlendFactor::SrcAlpha;
+    if (s == "OneMinusSrcAlpha")
+      return LX_core::BlendFactor::OneMinusSrcAlpha;
+    fatalLoader(std::string("unknown renderState.") + field +
+                " blend factor '" + s + "'");
+  };
   if (auto v = node["cullMode"]) {
     auto s = v.as<std::string>();
     if (s == "None")
@@ -142,6 +156,10 @@ LX_core::RenderState parseRenderState(const YAML::Node &node) {
     rs.depthWriteEnable = v.as<bool>();
   if (auto v = node["blendEnable"])
     rs.blendEnable = v.as<bool>();
+  if (auto v = node["srcBlend"])
+    rs.srcBlend = parseBlendFactor(v, "srcBlend");
+  if (auto v = node["dstBlend"])
+    rs.dstBlend = parseBlendFactor(v, "dstBlend");
   return rs;
 }
 

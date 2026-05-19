@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <functional>
 #include <iostream>
 #include <memory>
 #include <optional>
@@ -140,6 +141,11 @@ struct State {
 State &state() {
   static State s;
   return s;
+}
+
+std::function<MaterialInstanceSharedPtr()> &materialProvider() {
+  static std::function<MaterialInstanceSharedPtr()> provider;
+  return provider;
 }
 
 Vec3f transformPoint(const Mat4f &matrix, const Vec3f &point) {
@@ -273,7 +279,18 @@ MaterialInstanceSharedPtr createMaterial() {
 MaterialInstanceSharedPtr ensureMaterial() {
   auto &s = state();
   if (!s.material) {
-    s.material = createMaterial();
+    if (auto &provider = materialProvider()) {
+      s.material = provider();
+      if (!s.material) {
+        throw std::runtime_error("DebugDraw material provider returned null");
+      }
+      if (!s.material->isPassEnabled(Pass_DebugOverlay)) {
+        throw std::runtime_error(
+            "DebugDraw material provider must return a DebugOverlay material");
+      }
+    } else {
+      s.material = createMaterial();
+    }
   }
   return s.material;
 }
@@ -483,6 +500,12 @@ void attachScene(SceneSharedPtr scene) {
   }
   s = State{};
   s.scene = std::move(scene);
+}
+
+void setMaterialProvider(
+    std::function<MaterialInstanceSharedPtr()> provider) {
+  materialProvider() = std::move(provider);
+  state().material.reset();
 }
 
 void beginFrame() {

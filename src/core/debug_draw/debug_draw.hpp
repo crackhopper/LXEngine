@@ -4,9 +4,11 @@
 #include "core/math/mat.hpp"
 #include "core/math/quat.hpp"
 #include "core/math/vec.hpp"
+#include "core/asset/material_instance.hpp"
 #include "core/scene/scene.hpp"
 #include "core/scene/visibility_mask.hpp"
 
+#include <functional>
 #include <memory>
 
 namespace LX_core::DebugDraw {
@@ -33,6 +35,8 @@ private:
 
 void reset();
 void attachScene(SceneSharedPtr scene);
+void setMaterialProvider(
+    std::function<MaterialInstanceSharedPtr()> materialProvider);
 
 void beginFrame();
 bool endFrame();

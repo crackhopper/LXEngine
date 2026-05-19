@@ -5,6 +5,7 @@
 //   -> EngineLoop -> ImGui editor panels / overlay -> run().
 
 #include "backend/vulkan/vulkan_renderer.hpp"
+#include "core/debug_draw/debug_draw.hpp"
 #include "core/editor/command_bus.hpp"
 #include "core/editor/commands/builtin_commands.hpp"
 #include "core/editor/console_panel.hpp"
@@ -16,6 +17,7 @@
 #include "core/scene/components/camera_component.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/filesystem_tools.hpp"
+#include "infra/material_loader/generic_material_loader.hpp"
 #include "infra/window/window.hpp"
 
 #include "api_token_state.hpp"
@@ -1028,6 +1030,10 @@ int main(int argc, char **argv) {
 
     EngineLoop loop;
     loop.initialize(window, renderer);
+    LX_core::DebugDraw::setMaterialProvider([] {
+      return LX_infra::loadGenericMaterial(
+          "assets/materials/debug_line.material");
+    });
     loop.startScene(session.scene());
 
     ui.attachClock(loop.getClock());

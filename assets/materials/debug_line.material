@@ -1,0 +1,11 @@
+shader: debug_line
+
+passes:
+  DebugOverlay:
+    renderState:
+      cullMode: None
+      depthTest: true
+      depthWrite: false
+      blendEnable: true
+      srcBlend: SrcAlpha
+      dstBlend: OneMinusSrcAlpha

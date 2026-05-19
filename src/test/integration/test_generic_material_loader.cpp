@@ -369,6 +369,36 @@ void test_mesh_debug_material_loads() {
   std::cout << "  mesh_debug.material loads through generic material path\n";
 }
 
+void test_debug_line_material_loads() {
+  std::cout << "\n-- test_debug_line_material_loads --\n";
+  auto root = findProjectRoot();
+  if (root.empty()) {
+    std::cerr << "  SETUP: project root not found; skipping\n";
+    return;
+  }
+
+  MaterialInstanceSharedPtr mat;
+  {
+    ScopedCurrentPath currentPath(root);
+    mat = loadGenericMaterial(root / "assets" / "materials" /
+                              "debug_line.material");
+  }
+
+  REQUIRE(mat != nullptr);
+  REQUIRE(mat->isPassEnabled(Pass_DebugOverlay));
+  REQUIRE(mat->getPassShader(Pass_DebugOverlay) != nullptr);
+
+  const auto renderState = mat->getPassRenderState(Pass_DebugOverlay);
+  REQUIRE(renderState.cullMode == CullMode::None);
+  REQUIRE(renderState.depthTestEnable);
+  REQUIRE(!renderState.depthWriteEnable);
+  REQUIRE(renderState.blendEnable);
+  REQUIRE(renderState.srcBlend == BlendFactor::SrcAlpha);
+  REQUIRE(renderState.dstBlend == BlendFactor::OneMinusSrcAlpha);
+
+  std::cout << "  debug_line.material loads through generic material path\n";
+}
+
 bool meshOverlayColorRejectedWithMessage(const fs::path &root,
                                          const std::string &colorYaml) {
   const auto matPath = makeTempMaterialPath("invalid_mesh_overlay_color");
@@ -832,6 +862,7 @@ int main() {
   test_invalid_shading_model_rejected();
   test_mesh_overlay_material_metadata_loads();
   test_mesh_debug_material_loads();
+  test_debug_line_material_loads();
   test_invalid_mesh_overlay_color_rejected_with_loader_error();
   test_invalid_mesh_overlay_enabled_rejected_with_loader_error();
   test_mesh_overlay_requires_color_binding();
