@@ -232,6 +232,53 @@ void test_invalid_shading_model_rejected() {
   std::cout << "  invalid shadingModel rejected\n";
 }
 
+void test_mesh_overlay_material_metadata_loads() {
+  std::cout << "\n-- test_mesh_overlay_material_metadata_loads --\n";
+  auto root = findProjectRoot();
+  if (root.empty()) {
+    std::cerr << "  SETUP: project root not found; skipping\n";
+    return;
+  }
+
+  const auto matPath =
+      root / "assets" / "materials" / "test_mesh_overlay_metadata.material";
+  {
+    std::ofstream out(matPath);
+    out << "shader: blinnphong_0\n"
+           "meshOverlay:\n"
+           "  enabled: true\n"
+           "  color: [0.1, 0.2, 0.3, 1.0]\n"
+           "parameters:\n"
+           "  MaterialUBO.baseColor: [0.7, 0.7, 0.7]\n"
+           "  MaterialUBO.shininess: 12.0\n"
+           "  MaterialUBO.specularIntensity: 1.0\n"
+           "  MaterialUBO.enableAlbedo: 0\n"
+           "  MaterialUBO.enableNormal: 0\n"
+           "  MaterialUBO.debugShadowMode: 0\n";
+  }
+
+  auto prev = fs::current_path();
+  fs::current_path(root);
+  auto mat = loadGenericMaterial(matPath);
+  fs::current_path(prev);
+  fs::remove(matPath);
+
+  REQUIRE(mat != nullptr);
+  const auto tmpl = mat->getTemplate();
+  REQUIRE(tmpl != nullptr);
+  const auto passDef = tmpl->getPassDefinition(Pass_Forward);
+  REQUIRE(passDef.has_value());
+
+  const auto &meshOverlay = passDef->get().meshOverlay;
+  REQUIRE(meshOverlay.enabled);
+  REQUIRE(meshOverlay.color.x == 0.1f);
+  REQUIRE(meshOverlay.color.y == 0.2f);
+  REQUIRE(meshOverlay.color.z == 0.3f);
+  REQUIRE(meshOverlay.color.w == 1.0f);
+
+  std::cout << "  meshOverlay metadata loads into Pass_Forward\n";
+}
+
 void test_pbr_example_material_loads() {
   std::cout << "\n-- test_pbr_example_material_loads --\n";
   auto root = findProjectRoot();
@@ -587,6 +634,7 @@ int main() {
   test_default_shading_model_stays_smooth();
   test_smooth_shading_model_overrides_flat_variant();
   test_invalid_shading_model_rejected();
+  test_mesh_overlay_material_metadata_loads();
   test_pbr_example_material_loads();
   test_rtr_experiment_template_material_loads();
   test_rtr_shadertoy_quantum_core_material_loads();

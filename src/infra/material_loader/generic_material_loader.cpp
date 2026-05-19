@@ -64,6 +64,27 @@ LX_core::ShadingModel parseShadingModel(const YAML::Node &node) {
   fatalLoader("unknown shadingModel '" + value + "'");
 }
 
+LX_core::MeshOverlayState parseMeshOverlay(const YAML::Node &node) {
+  LX_core::MeshOverlayState state;
+  if (!node || !node.IsDefined() || node.IsNull())
+    return state;
+
+  if (!node.IsMap())
+    fatalLoader("meshOverlay must be a map");
+
+  if (auto enabled = node["enabled"])
+    state.enabled = enabled.as<bool>();
+
+  if (auto color = node["color"]) {
+    const auto values = color.as<std::vector<float>>();
+    if (values.size() != 4)
+      fatalLoader("meshOverlay.color requires 4 values");
+    state.color = LX_core::Vec4f{values[0], values[1], values[2], values[3]};
+  }
+
+  return state;
+}
+
 void upsertVariant(std::vector<LX_core::ShaderVariant> &variants,
                    const std::string &macroName, bool enabled) {
   for (auto &variant : variants) {
@@ -432,6 +453,7 @@ loadGenericMaterial(const fs::path &materialPath) {
   YAML::Node passesNode;
   YAML::Node variantRulesNode;
   YAML::Node shadingModelNode;
+  YAML::Node meshOverlayNode;
 
   for (auto it = root.begin(); it != root.end(); ++it) {
     const auto key = it->first.as<std::string>();
@@ -449,6 +471,8 @@ loadGenericMaterial(const fs::path &materialPath) {
       variantRulesNode = YAML::Clone(it->second);
     else if (key == "shadingModel")
       shadingModelNode = YAML::Clone(it->second);
+    else if (key == "meshOverlay")
+      meshOverlayNode = YAML::Clone(it->second);
   }
 
   if (globalShaderName.empty())
@@ -456,6 +480,7 @@ loadGenericMaterial(const fs::path &materialPath) {
                 resolvedMaterialPath.string());
 
   const auto globalShadingModel = parseShadingModel(shadingModelNode);
+  const auto globalMeshOverlay = parseMeshOverlay(meshOverlayNode);
 
   // 2. Find shader directory.
   const fs::path materialDir = resolvedMaterialPath.parent_path();
@@ -504,6 +529,7 @@ loadGenericMaterial(const fs::path &materialPath) {
       auto cp = compilePassShader(LX_core::StringID(passName), passShader,
                                   variants, renderState, shaderDir);
       cp.shadingModel = globalShadingModel;
+      cp.meshOverlay = globalMeshOverlay;
       cp.parameters = std::move(passParamsNode);
       cp.resources = std::move(passResourcesNode);
       compiledPasses.push_back(std::move(cp));
@@ -516,6 +542,7 @@ loadGenericMaterial(const fs::path &materialPath) {
     auto cp = compilePassShader(LX_core::Pass_Forward, globalShaderName,
                                 variants, LX_core::RenderState{}, shaderDir);
     cp.shadingModel = globalShadingModel;
+    cp.meshOverlay = globalMeshOverlay;
     compiledPasses.push_back(std::move(cp));
   }
 
