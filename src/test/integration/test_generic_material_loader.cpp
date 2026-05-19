@@ -9,6 +9,8 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <stdexcept>
+#include <string>
 
 using namespace LX_core;
 using namespace LX_infra;
@@ -277,6 +279,49 @@ void test_mesh_overlay_material_metadata_loads() {
   REQUIRE(meshOverlay.color.w == 1.0f);
 
   std::cout << "  meshOverlay metadata loads into Pass_Forward\n";
+}
+
+bool meshOverlayColorRejectedWithMessage(const fs::path &root,
+                                         const std::string &colorYaml) {
+  const auto matPath =
+      root / "assets" / "materials" / "test_invalid_mesh_overlay_color.material";
+  {
+    std::ofstream out(matPath);
+    out << "shader: blinnphong_0\n"
+           "meshOverlay:\n"
+           "  enabled: true\n"
+        << "  color: " << colorYaml << "\n";
+  }
+
+  bool rejected = false;
+  const auto prev = fs::current_path();
+  try {
+    fs::current_path(root);
+    (void)loadGenericMaterial(matPath);
+  } catch (const std::logic_error &error) {
+    rejected =
+        std::string(error.what()).find("meshOverlay.color requires 4 values") !=
+        std::string::npos;
+  }
+  fs::current_path(prev);
+  fs::remove(matPath);
+  return rejected;
+}
+
+void test_invalid_mesh_overlay_color_rejected_with_loader_error() {
+  std::cout
+      << "\n-- test_invalid_mesh_overlay_color_rejected_with_loader_error --\n";
+  auto root = findProjectRoot();
+  if (root.empty()) {
+    std::cerr << "  SETUP: project root not found; skipping\n";
+    return;
+  }
+
+  REQUIRE(meshOverlayColorRejectedWithMessage(root, "[1.0, 2.0, 3.0]"));
+  REQUIRE(meshOverlayColorRejectedWithMessage(root, "1.0"));
+  REQUIRE(meshOverlayColorRejectedWithMessage(root, "[1.0, nope, 3.0, 4.0]"));
+
+  std::cout << "  invalid meshOverlay.color rejected through loader error\n";
 }
 
 void test_pbr_example_material_loads() {
@@ -635,6 +680,7 @@ int main() {
   test_smooth_shading_model_overrides_flat_variant();
   test_invalid_shading_model_rejected();
   test_mesh_overlay_material_metadata_loads();
+  test_invalid_mesh_overlay_color_rejected_with_loader_error();
   test_pbr_example_material_loads();
   test_rtr_experiment_template_material_loads();
   test_rtr_shadertoy_quantum_core_material_loads();

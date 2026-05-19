@@ -76,9 +76,19 @@ LX_core::MeshOverlayState parseMeshOverlay(const YAML::Node &node) {
     state.enabled = enabled.as<bool>();
 
   if (auto color = node["color"]) {
-    const auto values = color.as<std::vector<float>>();
-    if (values.size() != 4)
+    if (!color.IsSequence() || color.size() != 4)
       fatalLoader("meshOverlay.color requires 4 values");
+    std::vector<float> values;
+    values.reserve(4);
+    for (const auto &component : color) {
+      if (!component.IsScalar())
+        fatalLoader("meshOverlay.color requires 4 values");
+      try {
+        values.push_back(component.as<float>());
+      } catch (const YAML::Exception &) {
+        fatalLoader("meshOverlay.color requires 4 values");
+      }
+    }
     state.color = LX_core::Vec4f{values[0], values[1], values[2], values[3]};
   }
 
