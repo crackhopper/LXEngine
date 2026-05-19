@@ -327,6 +327,46 @@ void test_mesh_overlay_material_metadata_loads() {
   std::cout << "  meshOverlay metadata loads into Pass_Forward\n";
 }
 
+void test_mesh_debug_material_loads() {
+  std::cout << "\n-- test_mesh_debug_material_loads --\n";
+  auto root = findProjectRoot();
+  if (root.empty()) {
+    std::cerr << "  SETUP: project root not found; skipping\n";
+    return;
+  }
+
+  MaterialInstanceSharedPtr mat;
+  {
+    ScopedCurrentPath currentPath(root);
+    mat = loadGenericMaterial(root / "assets" / "materials" /
+                              "mesh_debug.material");
+  }
+
+  REQUIRE(mat != nullptr);
+  REQUIRE(mat->getPassShader(Pass_Forward) != nullptr);
+  REQUIRE(mat->findParameterMember(StringID("MeshOverlayUBO"),
+                                   StringID("color"))
+              .has_value());
+  REQUIRE(passHasEnabledVariant(mat, Pass_Forward, "USE_FLAT_SHADING"));
+
+  const auto tmpl = mat->getTemplate();
+  REQUIRE(tmpl != nullptr);
+  const auto passDef = tmpl->getPassDefinition(Pass_Forward);
+  REQUIRE(passDef.has_value());
+  REQUIRE(passDef->get().meshOverlay.enabled);
+
+  const auto color =
+      mat->readParameterValue(StringID("MeshOverlayUBO"), StringID("color"));
+  REQUIRE(color.has_value());
+  REQUIRE(color->type == MaterialParameterValueType::Vec4);
+  REQUIRE(color->vectorValue.x == 0.0f);
+  REQUIRE(color->vectorValue.y == 0.0f);
+  REQUIRE(color->vectorValue.z == 0.0f);
+  REQUIRE(color->vectorValue.w == 1.0f);
+
+  std::cout << "  mesh_debug.material loads through generic material path\n";
+}
+
 bool meshOverlayColorRejectedWithMessage(const fs::path &root,
                                          const std::string &colorYaml) {
   const auto matPath = makeTempMaterialPath("invalid_mesh_overlay_color");
@@ -757,6 +797,7 @@ int main() {
   test_smooth_shading_model_overrides_flat_variant();
   test_invalid_shading_model_rejected();
   test_mesh_overlay_material_metadata_loads();
+  test_mesh_debug_material_loads();
   test_invalid_mesh_overlay_color_rejected_with_loader_error();
   test_invalid_mesh_overlay_enabled_rejected_with_loader_error();
   test_pbr_example_material_loads();

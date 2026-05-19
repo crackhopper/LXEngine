@@ -592,6 +592,44 @@ static bool testShadertoyQuantumCoreContract(
   return true;
 }
 
+static bool testMeshDebugShaderContract(
+    const std::filesystem::path &shaderDir) {
+  std::cout << "\n========================================\n";
+  std::cout << "  Test: Mesh debug shader contract\n";
+  std::cout << "========================================\n";
+
+  const auto vertPath = shaderDir / "mesh_debug.vert";
+  const auto fragPath = shaderDir / "mesh_debug.frag";
+  auto compileResult = ShaderCompiler::compileProgram(vertPath, fragPath, {});
+  if (!compileResult.success) {
+    std::cerr << "  COMPILE FAILED: " << compileResult.errorMessage << "\n";
+    return false;
+  }
+
+  const auto bindings = ShaderReflector::reflect(compileResult.stages);
+  const auto bindingIt =
+      std::find_if(bindings.begin(), bindings.end(), [](const auto &binding) {
+        return binding.name == "MeshOverlayUBO";
+      });
+  if (bindingIt == bindings.end()) {
+    std::cerr << "  FAIL: MeshOverlayUBO binding missing\n";
+    return false;
+  }
+  if (bindingIt->type != ShaderPropertyType::UniformBuffer) {
+    std::cerr << "  FAIL: MeshOverlayUBO should be a uniform buffer\n";
+    return false;
+  }
+
+  const auto *color = findMember(*bindingIt, "color");
+  if (!color || color->type != ShaderPropertyType::Vec4) {
+    std::cerr << "  FAIL: MeshOverlayUBO.color Vec4 member missing\n";
+    return false;
+  }
+
+  std::cout << "  PASS: mesh debug shader reflects overlay color\n";
+  return true;
+}
+
 int main(int argc, char *argv[]) {
   expSetEnvVK();
   // Determine shader directory
@@ -658,6 +696,8 @@ int main(int argc, char *argv[]) {
   }
 
   if (!testShadertoyQuantumCoreContract(shaderDir))
+    ++failures;
+  if (!testMeshDebugShaderContract(shaderDir))
     ++failures;
 
   std::cout << "\n========================================\n";
