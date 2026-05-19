@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/asset/material_instance.hpp"
 #include "core/frame_graph/render_target.hpp"
 #include "core/frame_graph/render_queue.hpp"
 #include "core/rhi/gpu_resource.hpp"
@@ -31,6 +32,11 @@ struct FrameGraphWrite {
   FrameGraphResourceRef resource;
 };
 
+enum class FramePassKind {
+  RenderQueue,
+  FullscreenProcedural,
+};
+
 /*
 @source_analysis.section FramePass：三元组 (name, target, queue)
 `FramePass` 把三件本来分散的事打包成一个结构体：
@@ -56,6 +62,8 @@ struct FramePass {
   RenderQueue queue;
   std::vector<FrameGraphRead> reads;
   std::vector<FrameGraphWrite> writes;
+  FramePassKind kind = FramePassKind::RenderQueue;
+  MaterialInstanceSharedPtr fullscreenMaterial;
 };
 
 struct CompiledFrameGraphPass {
@@ -63,6 +71,8 @@ struct CompiledFrameGraphPass {
   RenderTargetDesc target;
   std::vector<FrameGraphRead> reads;
   std::vector<FrameGraphWrite> writes;
+  FramePassKind kind = FramePassKind::RenderQueue;
+  MaterialInstanceSharedPtr fullscreenMaterial;
 };
 
 class FrameGraphSampledResource final : public IGpuResource {

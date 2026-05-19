@@ -271,6 +271,10 @@ LxeEditorSession::runtimeScenePath() const {
   return m_runtime.documentPath();
 }
 
+SceneRuntime &LxeEditorSession::runtime() { return m_runtime; }
+
+const SceneRuntime &LxeEditorSession::runtime() const { return m_runtime; }
+
 std::optional<std::string> LxeEditorSession::currentProjectId() const {
   const auto &project = m_projectSession.currentProject();
   if (!project.has_value()) {

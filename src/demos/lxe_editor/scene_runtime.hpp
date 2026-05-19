@@ -48,6 +48,9 @@ public:
                                const std::string& member) const;
   [[nodiscard]] std::vector<RuntimeMaterialParameterValue>
   nodeMaterialParametersForNode(const std::string& path) const;
+  std::vector<std::string>
+  updateProceduralMaterials(float totalTime,
+                            const LX_core::Vec2f& resolution);
   LX_core::CommandResult setNodeMaterialUri(const std::string& path,
                                             const std::string& uri);
   LX_core::CommandResult setNodeMaterialBaseColor(

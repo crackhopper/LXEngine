@@ -1097,6 +1097,101 @@ void testGenericNodeMaterialParameterOverrideRoundTrips() {
          "sibling should not receive generic material override");
 }
 
+void testProceduralRuntimeParameterStreamUpdatesMaterialOnly() {
+  const std::filesystem::path inputPath =
+      makeTempPath("lx_scene_runtime_procedural_stream.scene.yaml");
+  writeSceneFile(
+      inputPath,
+      "scene:\n"
+      "  name: procedural_stream\n"
+      "  gameplayCameraPath: /game_cam\n"
+      "nodes:\n"
+      "  - nodeName: game_camera\n"
+      "    name: game_cam\n"
+      "    transform:\n"
+      "      translation: [0.0, 2.0, 6.0]\n"
+      "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+      "      scale: [1.0, 1.0, 1.0]\n"
+      "    visibilityMask: 4294967295\n"
+      "    camera:\n"
+      "      eye: [0.0, 2.0, 6.0]\n"
+      "      target: [0.0, 0.0, 0.0]\n"
+      "      up: [0.0, 1.0, 0.0]\n"
+      "      type: perspective\n"
+      "      fovY: 45.0\n"
+      "      aspect: 1.7777778\n"
+      "      nearPlane: 0.1\n"
+      "      farPlane: 1000.0\n"
+      "      left: -1.0\n"
+      "      right: 1.0\n"
+      "      bottom: -1.0\n"
+      "      top: 1.0\n"
+      "      cullingMask: 4294967295\n"
+      "  - nodeName: quantum_core_node\n"
+      "    name: quantum_core\n"
+      "    transform:\n"
+      "      translation: [0.0, 0.0, 0.0]\n"
+      "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+      "      scale: [3.0, 3.0, 3.0]\n"
+      "    visibilityMask: 4294967295\n"
+      "    mesh:\n"
+      "      uri: builtin://lxe_editor/patches/square\n"
+      "    material:\n"
+      "      uri: assets/materials/rtr_shadertoy_quantum_core.material\n"
+      "    proceduralMaterial:\n"
+      "      enabled: true\n"
+      "      binding: ShadertoyUBO\n"
+      "      timeMember: time\n"
+      "      resolutionMember: resolution\n"
+      "      audioBandsMember: audioBands\n"
+      "      audioChannelBinding: iChannel0\n");
+
+  demo::SceneRuntime runtime;
+  runtime.loadFromDocumentPath(inputPath);
+
+  const auto diagnostics =
+      runtime.updateProceduralMaterials(12.5f, LX_core::Vec2f{1920.0f, 1080.0f});
+  EXPECT(diagnostics.empty(),
+         "procedural runtime update should not produce diagnostics");
+
+  const auto time = runtime.nodeMaterialParameterForNode(
+      "/quantum_core", "ShadertoyUBO", "time");
+  const auto resolution = runtime.nodeMaterialParameterForNode(
+      "/quantum_core", "ShadertoyUBO", "resolution");
+  auto *node = runtime.scene()->findByPath("/quantum_core");
+  EXPECT(nodeForwardPassHasDescriptor(node, LX_core::StringID("iChannel0")),
+         "procedural runtime should bind generated iChannel0 texture");
+  EXPECT(time.has_value() && time->type == LX_core::MaterialParameterValueType::Float,
+         "procedural runtime should write time");
+  if (time.has_value()) {
+    expectNear(time->floatValue, 12.5f,
+               "procedural runtime time should match update input");
+  }
+  EXPECT(resolution.has_value() &&
+             resolution->type == LX_core::MaterialParameterValueType::Vec4,
+         "procedural runtime should write Vec4 resolution");
+  if (resolution.has_value()) {
+    expectNear(resolution->vectorValue.x, 1920.0f,
+               "procedural resolution width should match");
+    expectNear(resolution->vectorValue.y, 1080.0f,
+               "procedural resolution height should match");
+    expectNear(resolution->vectorValue.z, 1.0f / 1920.0f,
+               "procedural inverse width should match", 0.00001f);
+    expectNear(resolution->vectorValue.w, 1.0f / 1080.0f,
+               "procedural inverse height should match", 0.00001f);
+  }
+
+  const std::filesystem::path savePath =
+      makeTempPath("lx_scene_runtime_procedural_stream_saved.scene.yaml");
+  runtime.saveToDocumentPath(savePath);
+  const demo::SceneDocument saved = demo::loadSceneDocument(savePath);
+  const auto &savedNode = saved.rootNode().children[1];
+  EXPECT(savedNode.nodeMaterialOverrides.parameters.empty(),
+         "runtime procedural update should not persist as node overrides");
+  EXPECT(savedNode.proceduralMaterial.enabled,
+         "procedural opt-in should persist after runtime save");
+}
+
 void testGroundMeshWindingMatchesUpwardNormal() {
   const auto ground = demo::buildGroundNode();
   const auto meshComponent = ground->getComponent<LX_core::MeshComponent>();
@@ -1730,6 +1825,7 @@ int main() {
   testRuntimeSaveOmitsLegacyEditorHelperNodes();
   testRuntimeMaterialUriAndBaseColorOverridesRoundTrip();
   testGenericNodeMaterialParameterOverrideRoundTrips();
+  testProceduralRuntimeParameterStreamUpdatesMaterialOnly();
   testGroundMeshWindingMatchesUpwardNormal();
   testBuiltinPrimitivePlaneIsThinBox();
   testBuiltinPatchMeshesAreOpenReceiversOnly();

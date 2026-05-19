@@ -82,6 +82,8 @@ public:
   findParameterMember(StringID bindingName, StringID memberName) const;
 
   void setTexture(StringID bindingName, CombinedTextureSamplerSharedPtr tex);
+  [[nodiscard]] CombinedTextureSamplerSharedPtr
+  getTexture(StringID bindingName) const;
 
   void syncGpuData();
 

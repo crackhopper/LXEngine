@@ -2,6 +2,7 @@
 #include "core/rhi/gpu_resource.hpp"
 #include "core/platform/types.hpp"
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -20,6 +21,23 @@ struct TextureDesc {
   TextureFormat format = TextureFormat::RGBA8;
 };
 
+inline usize textureBytesPerPixel(TextureFormat format) {
+  switch (format) {
+  case TextureFormat::RGBA8:
+    return 4;
+  case TextureFormat::RGB8:
+    return 3;
+  case TextureFormat::R8:
+    return 1;
+  }
+  return 0;
+}
+
+inline usize expectedTextureByteCount(const TextureDesc &desc) {
+  return static_cast<usize>(desc.width) * static_cast<usize>(desc.height) *
+         textureBytesPerPixel(desc.format);
+}
+
 /*
 @source_analysis.section Texture：CPU 侧的薄图像资源容器
 `Texture` 故意只承担一件事：把图像的结构描述和原始像素字节捆在一起。它不是 GPU
@@ -37,15 +55,27 @@ MaterialInstance 侧真正用来绑定的，是下面的 `CombinedTextureSampler
 class Texture {
 public:
   Texture(const TextureDesc &desc, std::vector<u8> &&data)
-      : m_desc(desc), m_data(std::move(data)) {}
+      : m_desc(desc), m_data(std::move(data)) {
+    validateSize(m_data.size());
+  }
 
   const TextureDesc &desc() const { return m_desc; }
   const void *data() const { return m_data.data(); }
   usize size() const { return m_data.size(); }
 
-  void update(const std::vector<u8> &data) { m_data = data; }
+  void update(const std::vector<u8> &data) {
+    validateSize(data.size());
+    m_data = data;
+  }
 
 private:
+  void validateSize(usize byteCount) const {
+    const usize expected = expectedTextureByteCount(m_desc);
+    if (byteCount != expected) {
+      throw std::runtime_error("texture byte count mismatch");
+    }
+  }
+
   TextureDesc m_desc;
   std::vector<u8> m_data; // CPU 内存图像数据
 };

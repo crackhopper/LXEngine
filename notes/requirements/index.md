@@ -2,4 +2,10 @@
 
 本目录由 `scripts/notes/generate_site_config.py` 自动生成，列出 `notes/requirements/` 下尚未归档的需求文档；文件名编号即建议实施顺序，一个 REQ 文件只覆盖一个连续实施周期。
 
-当前没有进行中的需求文档。
+## 当前需求
+
+| 文件 | 状态 |
+|---|---|
+| [045-a-procedural-shader-gallery-foundation.md](045-a-procedural-shader-gallery-foundation.md) | 已实施第一版，待归档 |
+| [045-b-procedural-runtime-parameter-stream.md](045-b-procedural-runtime-parameter-stream.md) | 部分实施 |
+| [045-c-procedural-audio-and-framegraph-integration.md](045-c-procedural-audio-and-framegraph-integration.md) | 已实施第一版，待归档 |

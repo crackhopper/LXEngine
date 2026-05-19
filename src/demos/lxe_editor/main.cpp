@@ -1084,6 +1084,10 @@ int main(int argc, char **argv) {
         session.gameCamera().setAspect(aspect);
       }
       session.gameCamera().updateMatrices();
+      (void)session.runtime().updateProceduralMaterials(
+          static_cast<float>(clock.totalTime()),
+          LX_core::Vec2f{static_cast<float>(windowWidth),
+                         static_cast<float>(windowHeight)});
 
       const demo::SceneInputEditMode inputMode =
           demo::SceneInputEditMode::Selection;

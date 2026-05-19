@@ -408,6 +408,14 @@ void testSaveSceneDocumentWritesExplicitRootCanonicalFormat() {
       .meshUri = std::string("assets/models/damaged_helmet/DamagedHelmet.gltf"),
       .materialUri =
           std::string("assets/materials/blinnphong_textured.material"),
+      .proceduralMaterial =
+          demo::ProceduralMaterialState{
+              .enabled = true,
+              .binding = "ShadertoyUBO",
+              .timeMember = "time",
+              .resolutionMember = "resolution",
+              .audioBandsMember = "audioBands",
+          },
       .nodeMaterialOverrides =
           demo::MaterialOverrideState{
               .baseColor = LX_core::Vec3f{0.8f, 0.2f, 0.2f},
@@ -497,6 +505,17 @@ void testSaveSceneDocumentWritesExplicitRootCanonicalFormat() {
          "mesh uri should round trip");
   EXPECT(loadedHelmet->materialUri.has_value(),
          "material uri should survive round trip");
+  EXPECT(loadedHelmet->proceduralMaterial.enabled,
+         "procedural material opt-in should survive round trip");
+  EXPECT(loadedHelmet->proceduralMaterial.binding == "ShadertoyUBO",
+         "procedural material binding should round trip");
+  EXPECT(loadedHelmet->proceduralMaterial.timeMember == "time",
+         "procedural material time member should round trip");
+  EXPECT(loadedHelmet->proceduralMaterial.resolutionMember == "resolution",
+         "procedural material resolution member should round trip");
+  EXPECT(loadedHelmet->proceduralMaterial.audioBandsMember.has_value() &&
+             *loadedHelmet->proceduralMaterial.audioBandsMember == "audioBands",
+         "procedural material audio member should round trip");
   EXPECT(loadedHelmet->nodeMaterialOverrides.baseColor.has_value(),
          "node baseColor override should survive round trip");
   EXPECT(loadedHelmet->nodeMaterialOverrides.baseColor->x == 0.8f &&

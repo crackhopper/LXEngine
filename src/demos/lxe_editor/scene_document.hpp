@@ -62,6 +62,17 @@ struct MaterialOverrideState final {
   }
 };
 
+struct ProceduralMaterialState final {
+  bool enabled = false;
+  std::string binding = "ShadertoyUBO";
+  std::string timeMember = "time";
+  std::string resolutionMember = "resolution";
+  std::optional<std::string> audioBandsMember = "audioBands";
+  std::optional<std::string> audioChannelBinding = "iChannel0";
+
+  [[nodiscard]] bool empty() const { return !enabled; }
+};
+
 struct SceneNodeDocument final {
   std::string nodeName;
   std::string name;
@@ -70,6 +81,7 @@ struct SceneNodeDocument final {
   LX_core::VisibilityLayerMask visibilityMask = LX_core::VisibilityMask_All;
   std::optional<std::string> meshUri;
   std::optional<std::string> materialUri;
+  ProceduralMaterialState proceduralMaterial;
   MaterialOverrideState nodeMaterialOverrides;
   MaterialOverrideState materialOverrides;
   std::optional<CameraNodeState> camera;

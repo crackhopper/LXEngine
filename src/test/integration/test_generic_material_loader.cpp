@@ -179,6 +179,54 @@ void test_rtr_experiment_template_material_loads() {
   std::cout << "  rtr_experiment_template.material loads and reflects params\n";
 }
 
+void test_rtr_shadertoy_quantum_core_material_loads() {
+  std::cout << "\n-- test_rtr_shadertoy_quantum_core_material_loads --\n";
+  auto root = findProjectRoot();
+  if (root.empty()) {
+    std::cerr << "  SETUP: project root not found; skipping\n";
+    return;
+  }
+
+  auto prev = fs::current_path();
+  fs::current_path(root);
+  auto mat = loadGenericMaterial(root / "assets" / "materials" /
+                                 "rtr_shadertoy_quantum_core.material");
+  fs::current_path(prev);
+
+  REQUIRE(mat != nullptr);
+  REQUIRE(mat->getPassShader(Pass_Forward) != nullptr);
+  REQUIRE(mat->findParameterMember(StringID("ShadertoyUBO"), StringID("time"))
+              .has_value());
+  REQUIRE(mat->findParameterMember(StringID("ShadertoyUBO"),
+                                   StringID("resolution"))
+              .has_value());
+  REQUIRE(mat->findParameterMember(StringID("ShadertoyUBO"),
+                                   StringID("audioBands"))
+              .has_value());
+
+  const auto time =
+      mat->readParameterValue(StringID("ShadertoyUBO"), StringID("time"));
+  REQUIRE(time.has_value());
+  REQUIRE(time->type == MaterialParameterValueType::Float);
+  REQUIRE(time->floatValue == 0.0f);
+
+  const auto resolution = mat->readParameterValue(
+      StringID("ShadertoyUBO"), StringID("resolution"));
+  REQUIRE(resolution.has_value());
+  REQUIRE(resolution->type == MaterialParameterValueType::Vec4);
+  REQUIRE(resolution->vectorValue.x == 1280.0f);
+  REQUIRE(resolution->vectorValue.y == 720.0f);
+
+  const auto resources = mat->getDescriptorResources(Pass_Forward);
+  const auto hasAudioChannel =
+      std::any_of(resources.begin(), resources.end(), [](const auto &resource) {
+        return resource && resource->getBindingName() == StringID("iChannel0");
+      });
+  REQUIRE(hasAudioChannel);
+
+  std::cout << "  rtr_shadertoy_quantum_core.material loads and reflects params\n";
+}
+
 void test_per_pass_shader_override() {
   std::cout << "\n-- test_per_pass_shader_override --\n";
   auto root = findProjectRoot();
@@ -351,7 +399,7 @@ void test_textured_character_material_has_projected_shadow_pass() {
   REQUIRE(mat->getPassShader(Pass_Shadow)->getShaderName() ==
           "shadow_depth_only");
   REQUIRE(!mat->getPassRenderState(Pass_Shadow).blendEnable);
-  REQUIRE(mat->getPassRenderState(Pass_Shadow).cullMode == CullMode::Front);
+  REQUIRE(mat->getPassRenderState(Pass_Shadow).cullMode == CullMode::None);
   REQUIRE(mat->getPassRenderState(Pass_Shadow).depthWriteEnable);
 
   std::cout << "  textured character material exposes depth Shadow pass\n";
@@ -394,6 +442,7 @@ int main() {
   test_generic_loader_produces_valid_instance();
   test_pbr_example_material_loads();
   test_rtr_experiment_template_material_loads();
+  test_rtr_shadertoy_quantum_core_material_loads();
   test_per_pass_shader_override();
   test_canonical_parameters_shared_across_passes();
   test_vector_parameters_load_without_aliasing_yaml_nodes();

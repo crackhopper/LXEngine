@@ -321,6 +321,70 @@ void saveMaterialOverrideState(YAML::Emitter &out, const char *key,
   out << YAML::EndMap;
 }
 
+[[nodiscard]] ProceduralMaterialState
+loadProceduralMaterialState(const YAML::Node &node, const char *fieldName) {
+  ProceduralMaterialState state;
+  if (!node) {
+    return state;
+  }
+  if (!node.IsMap()) {
+    throw std::runtime_error(std::string("expected map for ") + fieldName);
+  }
+  if (const auto enabled = node["enabled"]; enabled) {
+    state.enabled = enabled.as<bool>();
+  }
+  if (const auto binding = node["binding"]; binding) {
+    state.binding = binding.as<std::string>();
+  }
+  if (const auto timeMember = node["timeMember"]; timeMember) {
+    state.timeMember = timeMember.as<std::string>();
+  }
+  if (const auto resolutionMember = node["resolutionMember"];
+      resolutionMember) {
+    state.resolutionMember = resolutionMember.as<std::string>();
+  }
+  if (const auto audioBandsMember = node["audioBandsMember"];
+      audioBandsMember) {
+    const std::string value = audioBandsMember.as<std::string>();
+    state.audioBandsMember = value.empty() ? std::nullopt
+                                           : std::optional<std::string>(value);
+  }
+  if (const auto audioChannelBinding = node["audioChannelBinding"];
+      audioChannelBinding) {
+    const std::string value = audioChannelBinding.as<std::string>();
+    state.audioChannelBinding =
+        value.empty() ? std::nullopt : std::optional<std::string>(value);
+  }
+  if (state.binding.empty() || state.timeMember.empty() ||
+      state.resolutionMember.empty()) {
+    throw std::runtime_error(std::string(fieldName) +
+                             " binding/time/resolution members must be non-empty");
+  }
+  return state;
+}
+
+void saveProceduralMaterialState(YAML::Emitter &out,
+                                 const ProceduralMaterialState &state) {
+  if (state.empty()) {
+    return;
+  }
+  out << YAML::Key << "proceduralMaterial" << YAML::Value << YAML::BeginMap;
+  out << YAML::Key << "enabled" << YAML::Value << state.enabled;
+  out << YAML::Key << "binding" << YAML::Value << state.binding;
+  out << YAML::Key << "timeMember" << YAML::Value << state.timeMember;
+  out << YAML::Key << "resolutionMember" << YAML::Value
+      << state.resolutionMember;
+  if (state.audioBandsMember.has_value()) {
+    out << YAML::Key << "audioBandsMember" << YAML::Value
+        << *state.audioBandsMember;
+  }
+  if (state.audioChannelBinding.has_value()) {
+    out << YAML::Key << "audioChannelBinding" << YAML::Value
+        << *state.audioChannelBinding;
+  }
+  out << YAML::EndMap;
+}
+
 [[nodiscard]] std::optional<EditorCameraState>
 loadEditorCamera(const YAML::Node &node) {
   if (!node) {
@@ -379,6 +443,8 @@ void saveEditorCamera(YAML::Emitter &out, const EditorCameraState &state) {
       materialNode && materialNode["uri"]) {
     entry.materialUri = materialNode["uri"].as<std::string>();
   }
+  entry.proceduralMaterial = loadProceduralMaterialState(
+      node["proceduralMaterial"], "nodes[].proceduralMaterial");
   entry.nodeMaterialOverrides = loadMaterialOverrideState(
       node["nodeMaterialOverrides"], "nodes[].nodeMaterialOverrides");
   entry.materialOverrides = loadMaterialOverrideState(
@@ -414,6 +480,7 @@ void validateExplicitRootNode(const SceneNodeDocument &rootNode) {
         "scene document root identity must use empty name and no parentPath");
   }
   if (rootNode.meshUri.has_value() || rootNode.materialUri.has_value() ||
+      !rootNode.proceduralMaterial.empty() ||
       !rootNode.nodeMaterialOverrides.empty() ||
       !rootNode.materialOverrides.empty() || rootNode.camera.has_value() ||
       rootNode.light.has_value()) {
@@ -444,6 +511,7 @@ void saveNodeDocument(YAML::Emitter &out, const SceneNodeDocument &node) {
     out << YAML::Key << "uri" << YAML::Value << *node.materialUri;
     out << YAML::EndMap;
   }
+  saveProceduralMaterialState(out, node.proceduralMaterial);
   saveMaterialOverrideState(out, "nodeMaterialOverrides",
                             node.nodeMaterialOverrides);
   saveMaterialOverrideState(out, "materialOverrides", node.materialOverrides);

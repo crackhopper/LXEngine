@@ -222,6 +222,15 @@ void MaterialInstance::setTexture(StringID bindingName,
   m_textureBindingsByName[bindingName] = std::move(tex);
 }
 
+CombinedTextureSamplerSharedPtr
+MaterialInstance::getTexture(StringID bindingName) const {
+  const auto it = m_textureBindingsByName.find(bindingName);
+  if (it == m_textureBindingsByName.end()) {
+    return nullptr;
+  }
+  return it->second;
+}
+
 /*****************************************************************
  * GPU sync
  *****************************************************************/

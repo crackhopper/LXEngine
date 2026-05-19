@@ -1,5 +1,6 @@
 #include "demos/lxe_editor/scene_runtime.hpp"
 
+#include "core/asset/audio_spectrum_texture.hpp"
 #include "core/scene/components/camera_component.hpp"
 #include "core/scene/components/material_component.hpp"
 #include "core/scene/components/mesh_component.hpp"
@@ -14,6 +15,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <filesystem>
 #include <functional>
 #include <iomanip>
@@ -366,6 +368,9 @@ makeMaterialValueJson(const LX_core::MaterialParameterValue &value) {
   if (std::find(presets.begin(), presets.end(), uri) != presets.end()) {
     return true;
   }
+  if (uri == "assets/materials/rtr_shadertoy_quantum_core.material") {
+    return true;
+  }
   const auto rtrUris = discoverRtrMaterialUris();
   return std::find(rtrUris.begin(), rtrUris.end(), uri) != rtrUris.end();
 }
@@ -510,11 +515,33 @@ void applyGenericMaterialOverrides(
   material->syncGpuData();
 }
 
+void configureProceduralMaterialResources(
+    const LX_core::MaterialInstanceSharedPtr &material,
+    const ProceduralMaterialState &state) {
+  if (!material || !state.enabled || !state.audioChannelBinding.has_value()) {
+    return;
+  }
+  const LX_core::StringID bindingId(*state.audioChannelBinding);
+  const auto canonical = material->getTemplate()
+                             ? material->getTemplate()
+                                   ->findCanonicalMaterialBinding(bindingId)
+                             : std::nullopt;
+  if (!canonical.has_value() ||
+      canonical->get().type != LX_core::ShaderPropertyType::Texture2D) {
+    return;
+  }
+
+  LX_core::AudioSpectrumTexture audio(bindingId);
+  material->setTexture(bindingId, audio.sampler());
+}
+
 [[nodiscard]] LX_core::MaterialInstanceSharedPtr
 loadMaterialForSceneNode(const std::vector<std::filesystem::path> &assetRoots,
                          const std::string &uri,
                          const MaterialOverrideState &materialOverrides,
-                         const MaterialOverrideState &nodeOverrides) {
+                         const MaterialOverrideState &nodeOverrides,
+                         const ProceduralMaterialState &proceduralMaterial =
+                             ProceduralMaterialState{}) {
   const std::filesystem::path materialPath =
       resolveProjectAssetPath(assetRoots, uri)
           .value_or(std::filesystem::path(uri));
@@ -526,6 +553,7 @@ loadMaterialForSceneNode(const std::vector<std::filesystem::path> &assetRoots,
   applyGenericMaterialOverrides(material, materialOverrides);
   applyBaseColorIfSupported(material, nodeOverrides.baseColor);
   applyGenericMaterialOverrides(material, nodeOverrides);
+  configureProceduralMaterialResources(material, proceduralMaterial);
   return material;
 }
 
@@ -533,7 +561,9 @@ loadMaterialForSceneNode(const std::vector<std::filesystem::path> &assetRoots,
     const std::vector<std::filesystem::path> &assetRoots,
     const std::string &uri, const std::string &albedoTextureUri,
     const MaterialOverrideState &materialOverrides,
-    const MaterialOverrideState &nodeOverrides) {
+    const MaterialOverrideState &nodeOverrides,
+    const ProceduralMaterialState &proceduralMaterial =
+        ProceduralMaterialState{}) {
   const std::filesystem::path materialPath =
       resolveProjectAssetPath(assetRoots, uri)
           .value_or(std::filesystem::path(uri));
@@ -546,6 +576,7 @@ loadMaterialForSceneNode(const std::vector<std::filesystem::path> &assetRoots,
   applyGenericMaterialOverrides(material, materialOverrides);
   applyBaseColorIfSupported(material, nodeOverrides.baseColor);
   applyGenericMaterialOverrides(material, nodeOverrides);
+  configureProceduralMaterialResources(material, proceduralMaterial);
   return material;
 }
 
@@ -654,10 +685,12 @@ makeCameraNode(const std::string &nodeName, const std::string &displayName,
       const std::string uri = normalizeMaterialUri(nodeDocument);
       if (nodeDocument.materialUri.has_value() ||
           !nodeDocument.nodeMaterialOverrides.empty() ||
-          !nodeDocument.materialOverrides.empty()) {
+          !nodeDocument.materialOverrides.empty() ||
+          nodeDocument.proceduralMaterial.enabled) {
         materialComponent->get().setMaterialInstance(loadMaterialForSceneNode(
             assetRoots, uri, nodeDocument.materialOverrides,
-            nodeDocument.nodeMaterialOverrides));
+            nodeDocument.nodeMaterialOverrides,
+            nodeDocument.proceduralMaterial));
       } else {
         applyBaseColorIfSupported(
             materialComponent->get().getMaterialInstance(),
@@ -678,10 +711,12 @@ makeCameraNode(const std::string &nodeName, const std::string &displayName,
       const std::string uri = normalizeMaterialUri(nodeDocument);
       if (nodeDocument.materialUri.has_value() ||
           !nodeDocument.nodeMaterialOverrides.empty() ||
-          !nodeDocument.materialOverrides.empty()) {
+          !nodeDocument.materialOverrides.empty() ||
+          nodeDocument.proceduralMaterial.enabled) {
         auto material = loadMaterialForSceneNode(
             assetRoots, uri, nodeDocument.materialOverrides,
-            nodeDocument.nodeMaterialOverrides);
+            nodeDocument.nodeMaterialOverrides,
+            nodeDocument.proceduralMaterial);
         materialComponent->get().setMaterialInstance(std::move(material));
       }
     }
@@ -697,10 +732,12 @@ makeCameraNode(const std::string &nodeName, const std::string &displayName,
       const std::string uri = normalizeMaterialUri(nodeDocument);
       if (nodeDocument.materialUri.has_value() ||
           !nodeDocument.nodeMaterialOverrides.empty() ||
-          !nodeDocument.materialOverrides.empty()) {
+          !nodeDocument.materialOverrides.empty() ||
+          nodeDocument.proceduralMaterial.enabled) {
         auto material = loadMaterialForSceneNode(
             assetRoots, uri, nodeDocument.materialOverrides,
-            nodeDocument.nodeMaterialOverrides);
+            nodeDocument.nodeMaterialOverrides,
+            nodeDocument.proceduralMaterial);
         applyReceiverOnlyMeshMaterialPolicy(nodeDocument, material);
         materialComponent->get().setMaterialInstance(std::move(material));
       }
@@ -717,10 +754,12 @@ makeCameraNode(const std::string &nodeName, const std::string &displayName,
       const std::string uri = normalizeMaterialUri(nodeDocument);
       if (nodeDocument.materialUri.has_value() ||
           !nodeDocument.nodeMaterialOverrides.empty() ||
-          !nodeDocument.materialOverrides.empty()) {
+          !nodeDocument.materialOverrides.empty() ||
+          nodeDocument.proceduralMaterial.enabled) {
         auto material = loadMaterialForSceneNode(
             assetRoots, uri, nodeDocument.materialOverrides,
-            nodeDocument.nodeMaterialOverrides);
+            nodeDocument.nodeMaterialOverrides,
+            nodeDocument.proceduralMaterial);
         applyReceiverOnlyMeshMaterialPolicy(nodeDocument, material);
         materialComponent->get().setMaterialInstance(std::move(material));
       }
@@ -741,13 +780,15 @@ makeCameraNode(const std::string &nodeName, const std::string &displayName,
         materialComponent.has_value()) {
       if (nodeDocument.materialUri.has_value() ||
           !nodeDocument.nodeMaterialOverrides.empty() ||
-          !nodeDocument.materialOverrides.empty()) {
+          !nodeDocument.materialOverrides.empty() ||
+          nodeDocument.proceduralMaterial.enabled) {
         materialComponent->get().setMaterialInstance(
             loadModelMaterialForSceneNode(assetRoots, materialUri,
                                           asset ? asset->albedoTextureUri
                                                 : std::string{},
                                           nodeDocument.materialOverrides,
-                                          nodeDocument.nodeMaterialOverrides));
+                                          nodeDocument.nodeMaterialOverrides,
+                                          nodeDocument.proceduralMaterial));
       }
     }
     return node;
@@ -1106,6 +1147,7 @@ captureSceneDocument(const std::shared_ptr<SceneRuntimeData> &runtime) {
       entry.visibilityMask = existing->visibilityMask;
       entry.meshUri = existing->meshUri;
       entry.materialUri = existing->materialUri;
+      entry.proceduralMaterial = existing->proceduralMaterial;
       entry.nodeMaterialOverrides = existing->nodeMaterialOverrides;
       entry.materialOverrides = existing->materialOverrides;
     } else if (node->getName() == "helmet") {
@@ -1168,6 +1210,7 @@ captureSceneDocument(const std::shared_ptr<SceneRuntimeData> &runtime) {
     rootEntry.visibilityMask = rootNode->getVisibilityLayerMask();
     rootEntry.meshUri.reset();
     rootEntry.materialUri.reset();
+    rootEntry.proceduralMaterial = ProceduralMaterialState{};
     rootEntry.nodeMaterialOverrides = MaterialOverrideState{};
     rootEntry.materialOverrides = MaterialOverrideState{};
     rootEntry.camera.reset();
@@ -1374,6 +1417,132 @@ SceneRuntime::nodeMaterialParametersForNode(const std::string &path) const {
   return out;
 }
 
+std::vector<std::string>
+SceneRuntime::updateProceduralMaterials(const float totalTime,
+                                        const LX_core::Vec2f &resolution) {
+  std::vector<std::string> diagnostics;
+  const auto runtime = requireRuntimeData(m_impl);
+  if (!runtime->scene) {
+    diagnostics.push_back("scene runtime is not loaded");
+    return diagnostics;
+  }
+
+  const auto writeRequiredFloat =
+      [&](LX_core::MaterialInstance &material,
+          const ProceduralMaterialState &state, const std::string &path) {
+        const auto member = material.findParameterMember(
+            LX_core::StringID(state.binding), LX_core::StringID(state.timeMember));
+        if (!member.has_value()) {
+          diagnostics.push_back("procedural time member missing on " + path +
+                                ": " + state.binding + "." +
+                                state.timeMember);
+          return;
+        }
+        if (member->get().type != LX_core::ShaderPropertyType::Float) {
+          diagnostics.push_back("procedural time member is not Float on " +
+                                path + ": " + state.binding + "." +
+                                state.timeMember);
+          return;
+        }
+        material.setParameter(LX_core::StringID(state.binding),
+                              LX_core::StringID(state.timeMember), totalTime);
+      };
+
+  const auto writeRequiredResolution =
+      [&](LX_core::MaterialInstance &material,
+          const ProceduralMaterialState &state, const std::string &path) {
+        const auto member = material.findParameterMember(
+            LX_core::StringID(state.binding),
+            LX_core::StringID(state.resolutionMember));
+        if (!member.has_value()) {
+          diagnostics.push_back("procedural resolution member missing on " +
+                                path + ": " + state.binding + "." +
+                                state.resolutionMember);
+          return;
+        }
+        if (member->get().type != LX_core::ShaderPropertyType::Vec4) {
+          diagnostics.push_back("procedural resolution member is not Vec4 on " +
+                                path + ": " + state.binding + "." +
+                                state.resolutionMember);
+          return;
+        }
+        const float width = std::max(resolution.x, 1.0f);
+        const float height = std::max(resolution.y, 1.0f);
+        material.setParameter(LX_core::StringID(state.binding),
+                              LX_core::StringID(state.resolutionMember),
+                              LX_core::Vec4f{width, height, 1.0f / width,
+                                             1.0f / height});
+      };
+
+  const auto writeOptionalAudioBands =
+      [&](LX_core::MaterialInstance &material,
+          const ProceduralMaterialState &state) {
+        if (!state.audioBandsMember.has_value()) {
+          return;
+        }
+        const auto member = material.findParameterMember(
+            LX_core::StringID(state.binding),
+            LX_core::StringID(*state.audioBandsMember));
+        if (!member.has_value()) {
+          return;
+        }
+        if (member->get().type != LX_core::ShaderPropertyType::Vec4) {
+          diagnostics.push_back("procedural audioBands member is not Vec4: " +
+                                state.binding + "." +
+                                *state.audioBandsMember);
+          return;
+        }
+        const float bass = 0.45f + 0.25f * std::sin(totalTime * 1.7f);
+        const float mid = 0.35f + 0.20f * std::sin(totalTime * 2.3f + 0.4f);
+        material.setParameter(LX_core::StringID(state.binding),
+                              LX_core::StringID(*state.audioBandsMember),
+                              LX_core::Vec4f{bass, mid, 0.0f, 0.0f});
+      };
+
+  const auto writeOptionalAudioChannel =
+      [&](LX_core::MaterialInstance &material,
+          const ProceduralMaterialState &state) {
+        if (!state.audioChannelBinding.has_value()) {
+          return;
+        }
+        const LX_core::StringID bindingId(*state.audioChannelBinding);
+        const auto sampler = material.getTexture(bindingId);
+        if (!sampler || !sampler->texture()) {
+          return;
+        }
+        sampler->update(LX_core::AudioSpectrumTexture::makeFakePixels(
+            sampler->texture()->desc().width, totalTime));
+      };
+
+  forEachRuntimeNode(
+      runtime->scene->getRootNode(), [&](LX_core::SceneNode &node) {
+        auto *documentNode =
+            findDocumentNodeByName(runtime->document.mutableRootNode(),
+                                   node.getNodeName());
+        if (!documentNode || !documentNode->proceduralMaterial.enabled) {
+          return;
+        }
+        const auto materialComponent =
+            node.getComponent<LX_core::MaterialComponent>();
+        if (!materialComponent.has_value() ||
+            !materialComponent->get().getMaterialInstance()) {
+          diagnostics.push_back("procedural node has no material: " +
+                                node.getPath());
+          return;
+        }
+        auto material = materialComponent->get().getMaterialInstance();
+        writeRequiredFloat(*material, documentNode->proceduralMaterial,
+                           node.getPath());
+        writeRequiredResolution(*material, documentNode->proceduralMaterial,
+                                node.getPath());
+        writeOptionalAudioBands(*material, documentNode->proceduralMaterial);
+        writeOptionalAudioChannel(*material, documentNode->proceduralMaterial);
+        material->syncGpuData();
+      });
+
+  return diagnostics;
+}
+
 LX_core::CommandResult
 SceneRuntime::setNodeMaterialUri(const std::string &path,
                                  const std::string &uri) {
@@ -1394,7 +1563,8 @@ SceneRuntime::setNodeMaterialUri(const std::string &path,
   try {
     auto material = loadMaterialForSceneNode(
         runtime->assetRoots, uri, documentNode->materialOverrides,
-        documentNode->nodeMaterialOverrides);
+        documentNode->nodeMaterialOverrides,
+        documentNode->proceduralMaterial);
     applyReceiverOnlyMeshMaterialPolicy(*documentNode, material);
     auto materialComponent = node->getComponent<LX_core::MaterialComponent>();
     if (materialComponent.has_value()) {
@@ -1436,7 +1606,8 @@ SceneRuntime::setNodeMaterialBaseColor(const std::string &path,
     nodeOverrides.baseColor = color;
     auto material = loadMaterialForSceneNode(runtime->assetRoots, uri,
                                              documentNode->materialOverrides,
-                                             nodeOverrides);
+                                             nodeOverrides,
+                                             documentNode->proceduralMaterial);
     if (!materialHasBaseColor(material)) {
       return makeCommandError(
           "material does not expose MaterialUBO.baseColor: " + uri);
@@ -1489,7 +1660,8 @@ LX_core::CommandResult SceneRuntime::setNodeMaterialParameter(
     nodeOverrides.parameters[key] = value;
     auto material = loadMaterialForSceneNode(runtime->assetRoots, uri,
                                              documentNode->materialOverrides,
-                                             nodeOverrides);
+                                             nodeOverrides,
+                                             documentNode->proceduralMaterial);
     const auto reflectedMember = material->findParameterMember(
         LX_core::StringID(binding), LX_core::StringID(member));
     if (!reflectedMember.has_value()) {
@@ -1541,7 +1713,8 @@ SceneRuntime::clearNodeMaterialParameter(const std::string &path,
       nodeOverrides.baseColor.reset();
       auto material = loadMaterialForSceneNode(runtime->assetRoots, uri,
                                                documentNode->materialOverrides,
-                                               nodeOverrides);
+                                               nodeOverrides,
+                                               documentNode->proceduralMaterial);
       applyReceiverOnlyMeshMaterialPolicy(*documentNode, material);
       materialComponent->get().setMaterialInstance(std::move(material));
       documentNode->materialUri = uri;
@@ -1565,7 +1738,8 @@ SceneRuntime::clearNodeMaterialParameter(const std::string &path,
     nodeOverrides.parameters.erase(key);
     auto material = loadMaterialForSceneNode(runtime->assetRoots, uri,
                                              documentNode->materialOverrides,
-                                             nodeOverrides);
+                                             nodeOverrides,
+                                             documentNode->proceduralMaterial);
     applyReceiverOnlyMeshMaterialPolicy(*documentNode, material);
     materialComponent->get().setMaterialInstance(std::move(material));
     documentNode->materialUri = uri;
@@ -1634,7 +1808,8 @@ SceneRuntime::applyMaterialOverride(const std::string &path,
         try {
           auto material = loadMaterialForSceneNode(
               runtime->assetRoots, uri, candidateDocument->materialOverrides,
-              MaterialOverrideState{.baseColor = effectiveNodeOverride});
+              MaterialOverrideState{.baseColor = effectiveNodeOverride},
+              candidateDocument->proceduralMaterial);
           applyReceiverOnlyMeshMaterialPolicy(*candidateDocument, material);
           materialComponent->get().setMaterialInstance(std::move(material));
           ++updatedRuntimeNodes;

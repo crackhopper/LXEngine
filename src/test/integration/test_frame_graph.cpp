@@ -287,6 +287,41 @@ void testFrameGraphCompilePreservesSampledReadBindingName() {
   }
 }
 
+void testFrameGraphCompilePreservesFullscreenProceduralPass() {
+  auto material = MaterialInstance::create(MaterialTemplate::create("fullscreen"));
+  FramePass pass{
+      Pass_DebugOverlay,
+      RenderTargetDesc::offscreenColor(ImageFormat::RGBA8),
+      {},
+      {FrameGraphRead::sampled(StringID("scene.color"), StringID("SceneColor"))},
+      {FrameGraphWrite{
+          FrameGraphResourceRef::colorAttachment(StringID("procedural.color"))}}};
+  pass.kind = FramePassKind::FullscreenProcedural;
+  pass.fullscreenMaterial = material;
+
+  FrameGraph graph;
+  graph.addPass(FramePass{Pass_Forward,
+                          RenderTargetDesc::offscreenColor(ImageFormat::RGBA8),
+                          {},
+                          {},
+                          {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
+                              StringID("scene.color"))}}});
+  graph.addPass(std::move(pass));
+
+  const auto compiled = graph.compile();
+  EXPECT(compiled.isValid(),
+         "compile should accept fullscreen procedural pass after scene color");
+  EXPECT(compiled.getPasses().size() == 2, "compiled pass count should be 2");
+  if (compiled.getPasses().size() == 2) {
+    EXPECT(compiled.getPasses()[1].kind ==
+               FramePassKind::FullscreenProcedural,
+           "fullscreen pass kind should be preserved");
+    EXPECT(compiled.getPasses()[1].reads[0].bindingName ==
+               StringID("SceneColor"),
+           "fullscreen pass sampled binding should be preserved");
+  }
+}
+
 void testDirectionalLightCascadeSplitsUpdateFromCamera() {
   auto cameraNode = SceneNode::create("csm_camera");
   auto camera = cameraNode->addComponent<CameraComponent>();
@@ -936,6 +971,7 @@ int main() {
   testFramePassNameIsStringID();
   testFrameGraphCompileAcceptsColorWriteThenSampleRead();
   testFrameGraphCompilePreservesSampledReadBindingName();
+  testFrameGraphCompilePreservesFullscreenProceduralPass();
   testDirectionalLightCascadeSplitsUpdateFromCamera();
   testDirectionalShadowDebugViewRecreatesCascadeMatrix();
   testDirectionalShadowCascadeStoresLightDepthRange();

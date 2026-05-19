@@ -493,6 +493,63 @@ static bool testBlinnPhongRuntimeFallbacks(const std::filesystem::path &fragPath
   return true;
 }
 
+static bool testShadertoyQuantumCoreContract(
+    const std::filesystem::path &shaderDir) {
+  std::cout << "\n========================================\n";
+  std::cout << "  Test: Shadertoy quantum core contract\n";
+  std::cout << "========================================\n";
+
+  const auto vertPath = shaderDir / "rtr_shadertoy_quantum_core.vert";
+  const auto fragPath = shaderDir / "rtr_shadertoy_quantum_core.frag";
+  auto compileResult = ShaderCompiler::compileProgram(vertPath, fragPath, {});
+  if (!compileResult.success) {
+    std::cerr << "  COMPILE FAILED: " << compileResult.errorMessage << "\n";
+    return false;
+  }
+
+  const auto bindings = ShaderReflector::reflect(compileResult.stages);
+  const auto bindingIt =
+      std::find_if(bindings.begin(), bindings.end(), [](const auto &binding) {
+        return binding.name == "ShadertoyUBO";
+      });
+  if (bindingIt == bindings.end()) {
+    std::cerr << "  FAIL: ShadertoyUBO binding missing\n";
+    return false;
+  }
+  if (bindingIt->type != ShaderPropertyType::UniformBuffer) {
+    std::cerr << "  FAIL: ShadertoyUBO should be a uniform buffer\n";
+    return false;
+  }
+
+  const auto *time = findMember(*bindingIt, "time");
+  const auto *resolution = findMember(*bindingIt, "resolution");
+  const auto *audioBands = findMember(*bindingIt, "audioBands");
+  if (!time || time->type != ShaderPropertyType::Float) {
+    std::cerr << "  FAIL: ShadertoyUBO.time Float member missing\n";
+    return false;
+  }
+  if (!resolution || resolution->type != ShaderPropertyType::Vec4) {
+    std::cerr << "  FAIL: ShadertoyUBO.resolution Vec4 member missing\n";
+    return false;
+  }
+  if (!audioBands || audioBands->type != ShaderPropertyType::Vec4) {
+    std::cerr << "  FAIL: ShadertoyUBO.audioBands Vec4 member missing\n";
+    return false;
+  }
+  const auto channelIt =
+      std::find_if(bindings.begin(), bindings.end(), [](const auto &binding) {
+        return binding.name == "iChannel0";
+      });
+  if (channelIt == bindings.end() ||
+      channelIt->type != ShaderPropertyType::Texture2D) {
+    std::cerr << "  FAIL: iChannel0 Texture2D binding missing\n";
+    return false;
+  }
+
+  std::cout << "  PASS: Shadertoy quantum core shader reflects runtime params\n";
+  return true;
+}
+
 int main(int argc, char *argv[]) {
   expSetEnvVK();
   // Determine shader directory
@@ -555,6 +612,9 @@ int main(int argc, char *argv[]) {
     std::cerr << "  SKIP: blinnphong_0 shaders not found at " << shaderDir
               << "\n";
   }
+
+  if (!testShadertoyQuantumCoreContract(shaderDir))
+    ++failures;
 
   std::cout << "\n========================================\n";
   if (failures == 0) {

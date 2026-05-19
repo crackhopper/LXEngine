@@ -82,6 +82,8 @@ public:
   [[nodiscard]] const RecordingController &recording() const;
   [[nodiscard]] std::optional<std::filesystem::path>
   runtimeScenePath() const;
+  [[nodiscard]] SceneRuntime &runtime();
+  [[nodiscard]] const SceneRuntime &runtime() const;
   [[nodiscard]] std::optional<std::string> currentProjectId() const;
   [[nodiscard]] std::optional<std::string> currentProjectDisplayName() const;
   [[nodiscard]] std::optional<std::string> currentProjectActiveScene() const;
