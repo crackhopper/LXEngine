@@ -5,6 +5,7 @@
 #include "infra/material_loader/generic_material_loader.hpp"
 #include "infra/texture_loader/placeholder_textures.hpp"
 
+#include <chrono>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -81,6 +82,17 @@ fs::path findProjectRoot() {
   return {};
 }
 
+fs::path makeTempMaterialPath(const std::string &name) {
+  static int counter = 0;
+  const auto now = std::chrono::steady_clock::now().time_since_epoch();
+  const auto timestamp =
+      std::chrono::duration_cast<std::chrono::nanoseconds>(now).count();
+  const auto filename = "LXEngine_test_material_" +
+                        std::to_string(timestamp) + "_" +
+                        std::to_string(counter++) + "_" + name + ".material";
+  return fs::temp_directory_path() / filename;
+}
+
 bool passHasEnabledVariant(const MaterialInstanceSharedPtr &mat, StringID pass,
                            const std::string &macroName) {
   const auto tmpl = mat ? mat->getTemplate() : nullptr;
@@ -154,8 +166,7 @@ void test_flat_shading_model_enables_variant() {
     return;
   }
 
-  const auto matPath =
-      root / "assets" / "materials" / "test_flat_shading_model.material";
+  const auto matPath = makeTempMaterialPath("flat_shading_model");
   ScopedTempFile tempFile(matPath);
   {
     std::ofstream out(matPath);
@@ -210,8 +221,7 @@ void test_smooth_shading_model_overrides_flat_variant() {
     return;
   }
 
-  const auto matPath =
-      root / "assets" / "materials" / "test_smooth_overrides_flat.material";
+  const auto matPath = makeTempMaterialPath("smooth_overrides_flat");
   ScopedTempFile tempFile(matPath);
   {
     std::ofstream out(matPath);
@@ -248,8 +258,7 @@ void test_invalid_shading_model_rejected() {
     return;
   }
 
-  const auto matPath =
-      root / "assets" / "materials" / "test_invalid_shading_model.material";
+  const auto matPath = makeTempMaterialPath("invalid_shading_model");
   ScopedTempFile tempFile(matPath);
   {
     std::ofstream out(matPath);
@@ -279,8 +288,7 @@ void test_mesh_overlay_material_metadata_loads() {
     return;
   }
 
-  const auto matPath =
-      root / "assets" / "materials" / "test_mesh_overlay_metadata.material";
+  const auto matPath = makeTempMaterialPath("mesh_overlay_metadata");
   ScopedTempFile tempFile(matPath);
   {
     std::ofstream out(matPath);
@@ -321,8 +329,7 @@ void test_mesh_overlay_material_metadata_loads() {
 
 bool meshOverlayColorRejectedWithMessage(const fs::path &root,
                                          const std::string &colorYaml) {
-  const auto matPath =
-      root / "assets" / "materials" / "test_invalid_mesh_overlay_color.material";
+  const auto matPath = makeTempMaterialPath("invalid_mesh_overlay_color");
   ScopedTempFile tempFile(matPath);
   {
     std::ofstream out(matPath);
@@ -369,8 +376,7 @@ void test_invalid_mesh_overlay_enabled_rejected_with_loader_error() {
     return;
   }
 
-  const auto matPath = root / "assets" / "materials" /
-                       "test_invalid_mesh_overlay_enabled.material";
+  const auto matPath = makeTempMaterialPath("invalid_mesh_overlay_enabled");
   ScopedTempFile tempFile(matPath);
   {
     std::ofstream out(matPath);
@@ -538,7 +544,7 @@ void test_per_pass_shader_override() {
     return;
   }
 
-  auto matPath = root / "assets" / "materials" / "test_per_pass_shader.material";
+  auto matPath = makeTempMaterialPath("per_pass_shader");
   ScopedTempFile tempFile(matPath);
   {
     std::ofstream out(matPath);
@@ -586,7 +592,7 @@ void test_canonical_parameters_shared_across_passes() {
     return;
   }
 
-  auto matPath = root / "assets" / "materials" / "test_pass_override.material";
+  auto matPath = makeTempMaterialPath("pass_override");
   ScopedTempFile tempFile(matPath);
   {
     std::ofstream out(matPath);
@@ -641,7 +647,7 @@ void test_vector_parameters_load_without_aliasing_yaml_nodes() {
     return;
   }
 
-  auto matPath = root / "assets" / "materials" / "test_vector_params.material";
+  auto matPath = makeTempMaterialPath("vector_params");
   ScopedTempFile tempFile(matPath);
   {
     std::ofstream out(matPath);
