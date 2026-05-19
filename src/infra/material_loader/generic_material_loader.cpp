@@ -77,8 +77,8 @@ void upsertVariant(std::vector<LX_core::ShaderVariant> &variants,
 
 void applyShadingModelVariants(std::vector<LX_core::ShaderVariant> &variants,
                                LX_core::ShadingModel shadingModel) {
-  if (shadingModel == LX_core::ShadingModel::Flat)
-    upsertVariant(variants, "USE_FLAT_SHADING", true);
+  upsertVariant(variants, "USE_FLAT_SHADING",
+                shadingModel == LX_core::ShadingModel::Flat);
 }
 
 /*****************************************************************

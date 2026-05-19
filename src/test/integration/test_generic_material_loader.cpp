@@ -162,6 +162,43 @@ void test_default_shading_model_stays_smooth() {
   std::cout << "  missing shadingModel defaults to Smooth\n";
 }
 
+void test_smooth_shading_model_overrides_flat_variant() {
+  std::cout << "\n-- test_smooth_shading_model_overrides_flat_variant --\n";
+  auto root = findProjectRoot();
+  if (root.empty()) {
+    std::cerr << "  SETUP: project root not found; skipping\n";
+    return;
+  }
+
+  const auto matPath =
+      root / "assets" / "materials" / "test_smooth_overrides_flat.material";
+  {
+    std::ofstream out(matPath);
+    out << "shader: blinnphong_0\n"
+           "shadingModel: Smooth\n"
+           "variants:\n"
+           "  USE_FLAT_SHADING: true\n"
+           "parameters:\n"
+           "  MaterialUBO.baseColor: [0.7, 0.7, 0.7]\n"
+           "  MaterialUBO.shininess: 12.0\n"
+           "  MaterialUBO.specularIntensity: 1.0\n"
+           "  MaterialUBO.enableAlbedo: 0\n"
+           "  MaterialUBO.enableNormal: 0\n"
+           "  MaterialUBO.debugShadowMode: 0\n";
+  }
+
+  auto prev = fs::current_path();
+  fs::current_path(root);
+  auto mat = loadGenericMaterial(matPath);
+  fs::current_path(prev);
+  fs::remove(matPath);
+
+  REQUIRE(mat != nullptr);
+  REQUIRE(!passHasEnabledVariant(mat, Pass_Forward, "USE_FLAT_SHADING"));
+
+  std::cout << "  shadingModel Smooth disables USE_FLAT_SHADING\n";
+}
+
 void test_invalid_shading_model_rejected() {
   std::cout << "\n-- test_invalid_shading_model_rejected --\n";
   auto root = findProjectRoot();
@@ -548,6 +585,7 @@ int main() {
   test_generic_loader_produces_valid_instance();
   test_flat_shading_model_enables_variant();
   test_default_shading_model_stays_smooth();
+  test_smooth_shading_model_overrides_flat_variant();
   test_invalid_shading_model_rejected();
   test_pbr_example_material_loads();
   test_rtr_experiment_template_material_loads();
