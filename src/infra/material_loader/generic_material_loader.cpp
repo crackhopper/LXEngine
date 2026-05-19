@@ -51,6 +51,36 @@ mergeVariants(const YAML::Node &globalNode, const YAML::Node &passNode) {
   return result;
 }
 
+LX_core::ShadingModel parseShadingModel(const YAML::Node &node) {
+  if (!node || !node.IsDefined() || node.IsNull())
+    return LX_core::ShadingModel::Smooth;
+
+  const auto value = node.as<std::string>();
+  if (value == "Smooth")
+    return LX_core::ShadingModel::Smooth;
+  if (value == "Flat")
+    return LX_core::ShadingModel::Flat;
+
+  fatalLoader("unknown shadingModel '" + value + "'");
+}
+
+void upsertVariant(std::vector<LX_core::ShaderVariant> &variants,
+                   const std::string &macroName, bool enabled) {
+  for (auto &variant : variants) {
+    if (variant.macroName == macroName) {
+      variant.enabled = enabled;
+      return;
+    }
+  }
+  variants.push_back({macroName, enabled});
+}
+
+void applyShadingModelVariants(std::vector<LX_core::ShaderVariant> &variants,
+                               LX_core::ShadingModel shadingModel) {
+  if (shadingModel == LX_core::ShadingModel::Flat)
+    upsertVariant(variants, "USE_FLAT_SHADING", true);
+}
+
 /*****************************************************************
  * RenderState parsing
  *****************************************************************/
@@ -327,6 +357,8 @@ struct CompiledPass {
   std::string shaderName;
   std::vector<LX_core::ShaderVariant> variants;
   LX_core::RenderState renderState;
+  LX_core::ShadingModel shadingModel = LX_core::ShadingModel::Smooth;
+  LX_core::MeshOverlayState meshOverlay;
   std::shared_ptr<CompiledShader> shader;
   YAML::Node parameters;
   YAML::Node resources;
@@ -399,6 +431,7 @@ loadGenericMaterial(const fs::path &materialPath) {
   YAML::Node globalResourcesNode;
   YAML::Node passesNode;
   YAML::Node variantRulesNode;
+  YAML::Node shadingModelNode;
 
   for (auto it = root.begin(); it != root.end(); ++it) {
     const auto key = it->first.as<std::string>();
@@ -414,11 +447,15 @@ loadGenericMaterial(const fs::path &materialPath) {
       passesNode = YAML::Clone(it->second);
     else if (key == "variantRules")
       variantRulesNode = YAML::Clone(it->second);
+    else if (key == "shadingModel")
+      shadingModelNode = YAML::Clone(it->second);
   }
 
   if (globalShaderName.empty())
     fatalLoader("missing required 'shader' field in " +
                 resolvedMaterialPath.string());
+
+  const auto globalShadingModel = parseShadingModel(shadingModelNode);
 
   // 2. Find shader directory.
   const fs::path materialDir = resolvedMaterialPath.parent_path();
@@ -460,11 +497,13 @@ loadGenericMaterial(const fs::path &materialPath) {
       }
 
       auto variants = mergeVariants(globalVariantsNode, passVariantsNode);
+      applyShadingModelVariants(variants, globalShadingModel);
       validateVariantRules(variantRules, variants, "pass " + passName);
       auto renderState = parseRenderState(passRenderStateNode);
 
       auto cp = compilePassShader(LX_core::StringID(passName), passShader,
                                   variants, renderState, shaderDir);
+      cp.shadingModel = globalShadingModel;
       cp.parameters = std::move(passParamsNode);
       cp.resources = std::move(passResourcesNode);
       compiledPasses.push_back(std::move(cp));
@@ -472,9 +511,11 @@ loadGenericMaterial(const fs::path &materialPath) {
   } else {
     // No passes block → single Forward pass with global shader.
     auto variants = mergeVariants(globalVariantsNode, YAML::Node());
+    applyShadingModelVariants(variants, globalShadingModel);
     validateVariantRules(variantRules, variants, "pass Forward (default)");
     auto cp = compilePassShader(LX_core::Pass_Forward, globalShaderName,
                                 variants, LX_core::RenderState{}, shaderDir);
+    cp.shadingModel = globalShadingModel;
     compiledPasses.push_back(std::move(cp));
   }
 
@@ -523,6 +564,8 @@ loadGenericMaterial(const fs::path &materialPath) {
     LX_core::MaterialPassDefinition entry;
     entry.shaderProgram = programSet;
     entry.renderState = cp.renderState;
+    entry.shadingModel = cp.shadingModel;
+    entry.meshOverlay = cp.meshOverlay;
     tmpl->setPassDefinition(cp.passId, std::move(entry));
   }
   tmpl->rebuildMaterialInterface();

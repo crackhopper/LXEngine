@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/asset/shader.hpp"
+#include "core/math/vec.hpp"
 #include "core/utils/string_table.hpp"
 
 #include <cstdint>
@@ -14,6 +15,18 @@ namespace LX_core {
 enum class CullMode : u8 { None, Front, Back };
 enum class CompareOp : u8 { Less, LessEqual, Greater, Equal, Always };
 enum class BlendFactor : u8 { Zero, One, SrcAlpha, OneMinusSrcAlpha };
+enum class ShadingModel : u8 { Smooth, Flat };
+
+struct MeshOverlayState {
+  bool enabled = false;
+  Vec4f color{0.0f, 0.0f, 0.0f, 1.0f};
+
+  bool operator==(const MeshOverlayState &rhs) const {
+    return enabled == rhs.enabled && color.x == rhs.color.x &&
+           color.y == rhs.color.y && color.z == rhs.color.z &&
+           color.w == rhs.color.w;
+  }
+};
 
 inline const char *toString(CullMode m) {
   switch (m) {
@@ -55,6 +68,16 @@ inline const char *toString(BlendFactor f) {
     return "OneMinusSrcAlpha";
   }
   return "BlendUnknown";
+}
+
+inline const char *toString(ShadingModel model) {
+  switch (model) {
+  case ShadingModel::Smooth:
+    return "Smooth";
+  case ShadingModel::Flat:
+    return "Flat";
+  }
+  return "ShadingUnknown";
 }
 
 /*
@@ -114,14 +137,18 @@ struct RenderState {
 struct MaterialPassDefinition {
   RenderState renderState;
   ShaderProgramSet shaderProgram;
+  ShadingModel shadingModel = ShadingModel::Smooth;
+  MeshOverlayState meshOverlay;
 
   StringID getPipelineSignature() const {
+    auto &tbl = GlobalStringTable::get();
     StringID fields[] = {
         shaderProgram.getPipelineSignature(),
         renderState.getPipelineSignature(),
+        tbl.Intern(toString(shadingModel)),
+        tbl.Intern(meshOverlay.enabled ? "MeshOverlay" : "NoMeshOverlay"),
     };
-    return GlobalStringTable::get().compose(TypeTag::MaterialPassDefinition,
-                                            fields);
+    return tbl.compose(TypeTag::MaterialPassDefinition, fields);
   }
 };
 

@@ -42,6 +42,24 @@ fs::path findProjectRoot() {
   return {};
 }
 
+bool passHasEnabledVariant(const MaterialInstanceSharedPtr &mat, StringID pass,
+                           const std::string &macroName) {
+  const auto tmpl = mat ? mat->getTemplate() : nullptr;
+  if (!tmpl) {
+    return false;
+  }
+  const auto passDef = tmpl->getPassDefinition(pass);
+  if (!passDef.has_value()) {
+    return false;
+  }
+  for (const auto &variant : passDef->get().shaderProgram.variants) {
+    if (variant.macroName == macroName) {
+      return variant.enabled;
+    }
+  }
+  return false;
+}
+
 void test_generic_loader_produces_valid_instance() {
   std::cout << "\n-- test_generic_loader_produces_valid_instance --\n";
   auto root = findProjectRoot();
@@ -87,6 +105,94 @@ void test_generic_loader_produces_valid_instance() {
   REQUIRE(debugShadowMode->intValue == 0);
 
   std::cout << "  generic loader produced valid instance with correct defaults\n";
+}
+
+void test_flat_shading_model_enables_variant() {
+  std::cout << "\n-- test_flat_shading_model_enables_variant --\n";
+  auto root = findProjectRoot();
+  if (root.empty()) {
+    std::cerr << "  SETUP: project root not found; skipping\n";
+    return;
+  }
+
+  const auto matPath =
+      root / "assets" / "materials" / "test_flat_shading_model.material";
+  {
+    std::ofstream out(matPath);
+    out << "shader: blinnphong_0\n"
+           "shadingModel: Flat\n"
+           "parameters:\n"
+           "  MaterialUBO.baseColor: [0.7, 0.7, 0.7]\n"
+           "  MaterialUBO.shininess: 12.0\n"
+           "  MaterialUBO.specularIntensity: 1.0\n"
+           "  MaterialUBO.enableAlbedo: 0\n"
+           "  MaterialUBO.enableNormal: 0\n"
+           "  MaterialUBO.debugShadowMode: 0\n";
+  }
+
+  auto prev = fs::current_path();
+  fs::current_path(root);
+  auto mat = loadGenericMaterial(matPath);
+  fs::current_path(prev);
+  fs::remove(matPath);
+
+  REQUIRE(mat != nullptr);
+  REQUIRE(passHasEnabledVariant(mat, Pass_Forward, "USE_FLAT_SHADING"));
+
+  std::cout << "  shadingModel Flat enables USE_FLAT_SHADING\n";
+}
+
+void test_default_shading_model_stays_smooth() {
+  std::cout << "\n-- test_default_shading_model_stays_smooth --\n";
+  auto root = findProjectRoot();
+  if (root.empty()) {
+    std::cerr << "  SETUP: project root not found; skipping\n";
+    return;
+  }
+
+  auto prev = fs::current_path();
+  fs::current_path(root);
+  auto mat = loadGenericMaterial(root / "assets" / "materials" /
+                                 "blinnphong_lit.material");
+  fs::current_path(prev);
+
+  REQUIRE(mat != nullptr);
+  REQUIRE(!passHasEnabledVariant(mat, Pass_Forward, "USE_FLAT_SHADING"));
+
+  std::cout << "  missing shadingModel defaults to Smooth\n";
+}
+
+void test_invalid_shading_model_rejected() {
+  std::cout << "\n-- test_invalid_shading_model_rejected --\n";
+  auto root = findProjectRoot();
+  if (root.empty()) {
+    std::cerr << "  SETUP: project root not found; skipping\n";
+    return;
+  }
+
+  const auto matPath =
+      root / "assets" / "materials" / "test_invalid_shading_model.material";
+  {
+    std::ofstream out(matPath);
+    out << "shader: blinnphong_0\n"
+           "shadingModel: Banana\n";
+  }
+
+  bool rejected = false;
+  auto prev = fs::current_path();
+  try {
+    fs::current_path(root);
+    (void)loadGenericMaterial(matPath);
+  } catch (const std::logic_error &error) {
+    rejected =
+        std::string(error.what()).find("unknown shadingModel") !=
+        std::string::npos;
+  }
+  fs::current_path(prev);
+  fs::remove(matPath);
+
+  REQUIRE(rejected);
+  std::cout << "  invalid shadingModel rejected\n";
 }
 
 void test_pbr_example_material_loads() {
@@ -440,6 +546,9 @@ int main() {
   expSetEnvVK();
   test_placeholder_textures();
   test_generic_loader_produces_valid_instance();
+  test_flat_shading_model_enables_variant();
+  test_default_shading_model_stays_smooth();
+  test_invalid_shading_model_rejected();
   test_pbr_example_material_loads();
   test_rtr_experiment_template_material_loads();
   test_rtr_shadertoy_quantum_core_material_loads();
