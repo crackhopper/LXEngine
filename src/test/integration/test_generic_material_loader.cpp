@@ -292,17 +292,10 @@ void test_mesh_overlay_material_metadata_loads() {
   ScopedTempFile tempFile(matPath);
   {
     std::ofstream out(matPath);
-    out << "shader: blinnphong_0\n"
+    out << "shader: mesh_debug\n"
            "meshOverlay:\n"
            "  enabled: true\n"
-           "  color: [0.1, 0.2, 0.3, 1.0]\n"
-           "parameters:\n"
-           "  MaterialUBO.baseColor: [0.7, 0.7, 0.7]\n"
-           "  MaterialUBO.shininess: 12.0\n"
-           "  MaterialUBO.specularIntensity: 1.0\n"
-           "  MaterialUBO.enableAlbedo: 0\n"
-           "  MaterialUBO.enableNormal: 0\n"
-           "  MaterialUBO.debugShadowMode: 0\n";
+           "  color: [0.1, 0.2, 0.3, 1.0]\n";
   }
 
   MaterialInstanceSharedPtr mat;
@@ -324,7 +317,16 @@ void test_mesh_overlay_material_metadata_loads() {
   REQUIRE(meshOverlay.color.z == 0.3f);
   REQUIRE(meshOverlay.color.w == 1.0f);
 
-  std::cout << "  meshOverlay metadata loads into Pass_Forward\n";
+  const auto color =
+      mat->readParameterValue(StringID("MeshOverlayUBO"), StringID("color"));
+  REQUIRE(color.has_value());
+  REQUIRE(color->type == MaterialParameterValueType::Vec4);
+  REQUIRE(color->vectorValue.x == 0.1f);
+  REQUIRE(color->vectorValue.y == 0.2f);
+  REQUIRE(color->vectorValue.z == 0.3f);
+  REQUIRE(color->vectorValue.w == 1.0f);
+
+  std::cout << "  meshOverlay metadata drives MeshOverlayUBO.color\n";
 }
 
 void test_mesh_debug_material_loads() {
@@ -436,6 +438,38 @@ void test_invalid_mesh_overlay_enabled_rejected_with_loader_error() {
 
   REQUIRE(rejected);
   std::cout << "  invalid meshOverlay.enabled rejected through loader error\n";
+}
+
+void test_mesh_overlay_requires_color_binding() {
+  std::cout << "\n-- test_mesh_overlay_requires_color_binding --\n";
+  auto root = findProjectRoot();
+  if (root.empty()) {
+    std::cerr << "  SETUP: project root not found; skipping\n";
+    return;
+  }
+
+  const auto matPath = makeTempMaterialPath("invalid_mesh_overlay_contract");
+  ScopedTempFile tempFile(matPath);
+  {
+    std::ofstream out(matPath);
+    out << "shader: blinnphong_0\n"
+           "meshOverlay:\n"
+           "  enabled: true\n"
+           "  color: [0.1, 0.2, 0.3, 1.0]\n";
+  }
+
+  bool rejected = false;
+  try {
+    ScopedCurrentPath currentPath(root);
+    (void)loadGenericMaterial(matPath);
+  } catch (const std::logic_error &error) {
+    rejected =
+        std::string(error.what()).find("MeshOverlayUBO.color") !=
+        std::string::npos;
+  }
+
+  REQUIRE(rejected);
+  std::cout << "  meshOverlay shader contract rejected missing color binding\n";
 }
 
 void test_pbr_example_material_loads() {
@@ -800,6 +834,7 @@ int main() {
   test_mesh_debug_material_loads();
   test_invalid_mesh_overlay_color_rejected_with_loader_error();
   test_invalid_mesh_overlay_enabled_rejected_with_loader_error();
+  test_mesh_overlay_requires_color_binding();
   test_pbr_example_material_loads();
   test_rtr_experiment_template_material_loads();
   test_rtr_shadertoy_quantum_core_material_loads();

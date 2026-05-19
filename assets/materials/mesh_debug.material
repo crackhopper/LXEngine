@@ -10,6 +10,3 @@ passes:
       cullMode: None
       depthTest: true
       depthWrite: false
-
-parameters:
-  MeshOverlayUBO.color: [0.0, 0.0, 0.0, 1.0]

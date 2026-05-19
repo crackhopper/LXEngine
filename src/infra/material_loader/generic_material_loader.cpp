@@ -386,6 +386,21 @@ void validateVariantRules(
   }
 }
 
+bool hasMeshOverlayColorBinding(const LX_core::IShader &shader) {
+  const auto binding = shader.findBinding("MeshOverlayUBO");
+  if (!binding ||
+      binding->get().type != LX_core::ShaderPropertyType::UniformBuffer) {
+    return false;
+  }
+  for (const auto &member : binding->get().members) {
+    if (member.name == "color" &&
+        member.type == LX_core::ShaderPropertyType::Vec4) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /*****************************************************************
  * Shader compilation helper
  *****************************************************************/
@@ -582,6 +597,11 @@ loadGenericMaterial(const fs::path &materialPath) {
                                        resolvedMaterialPath.string());
 
   for (const auto &cp : compiledPasses) {
+    if (cp.meshOverlay.enabled && !hasMeshOverlayColorBinding(*cp.shader)) {
+      fatalLoader(resolvedMaterialPath.string() + " pass=" +
+                  LX_core::GlobalStringTable::get().toDebugString(cp.passId) +
+                  ": meshOverlay.enabled requires MeshOverlayUBO.color vec4");
+    }
     if (cp.parameters && cp.parameters.IsMap()) {
       fatalLoader(resolvedMaterialPath.string() + " pass=" + cp.shaderName +
                   ": pass-scoped parameters are no longer supported; "
@@ -622,6 +642,12 @@ loadGenericMaterial(const fs::path &materialPath) {
     applyParameters(*mat, globalParamsNode);
   if (globalResourcesNode.IsMap())
     applyResources(*mat, globalResourcesNode, materialDir);
+  for (const auto &cp : compiledPasses) {
+    if (cp.meshOverlay.enabled) {
+      mat->setParameter(LX_core::StringID("MeshOverlayUBO"),
+                        LX_core::StringID("color"), cp.meshOverlay.color);
+    }
+  }
 
   mat->syncGpuData();
   return mat;
