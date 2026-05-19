@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cctype>
+#include <cstring>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
@@ -85,6 +86,28 @@ bool requiresRenderableOwnedResource(const ShaderResourceBinding &binding) {
   // intentionally left unset and gated by shader parameters.
   return binding.type == ShaderPropertyType::UniformBuffer ||
          binding.type == ShaderPropertyType::StorageBuffer;
+}
+
+StringID makeObjectPipelineSignature(const VertexBufferSharedPtr &vertexBuffer,
+                                     PrimitiveTopology topology) {
+  StringID meshFields[] = {
+      vertexBuffer->getPipelineSignature(),
+      topologyPipelineSignature(topology),
+  };
+  const StringID meshSignature =
+      GlobalStringTable::get().compose(TypeTag::MeshRender, meshFields);
+  StringID objectFields[] = {meshSignature};
+  return GlobalStringTable::get().compose(TypeTag::ObjectRender,
+                                          objectFields);
+}
+
+std::vector<u32> copyIndexBufferData(const IndexBuffer &indexBuffer) {
+  std::vector<u32> indices(indexBuffer.indexCount());
+  if (!indices.empty()) {
+    std::memcpy(indices.data(), indexBuffer.getRawData(),
+                indices.size() * sizeof(u32));
+  }
+  return indices;
 }
 
 std::optional<std::reference_wrapper<const MeshComponent>>
@@ -310,7 +333,23 @@ StringID SceneNode::getPipelineSignature(StringID pass) const {
   const auto meshComponent = getMeshComponent(*this);
   if (!meshComponent || !meshComponent->get().getMesh())
     return StringID{};
-  StringID meshSig = meshComponent->get().getMesh()->getPipelineSignature(pass);
+  const MeshSharedPtr mesh = meshComponent->get().getMesh();
+  const auto materialComponent = getMaterialComponent(*this);
+  bool usesMeshOverlay = false;
+  if (materialComponent && materialComponent->get().getMaterialInstance() &&
+      materialComponent->get().getMaterialInstance()->getTemplate()) {
+    const auto entry = materialComponent->get()
+                           .getMaterialInstance()
+                           ->getTemplate()
+                           ->getPassDefinition(pass);
+    usesMeshOverlay = entry && entry->get().meshOverlay.enabled;
+  }
+  if (usesMeshOverlay) {
+    return makeObjectPipelineSignature(mesh->vertexBuffer,
+                                       PrimitiveTopology::LineList);
+  }
+
+  StringID meshSig = mesh->getPipelineSignature(pass);
   StringID fields[] = {meshSig};
   return GlobalStringTable::get().compose(TypeTag::ObjectRender, fields);
 }
@@ -537,6 +576,27 @@ void SceneNode::rebuildValidatedCache() {
     data.descriptorResources = std::move(descriptorResources);
     data.objectSignature = getPipelineSignature(pass);
     data.materialSignature = material->getPipelineSignature(pass);
+
+    if (entry.meshOverlay.enabled) {
+      if (mesh->indexBuffer->getTopology() != PrimitiveTopology::TriangleList) {
+        fatalValidation(*this, pass, *material, entry.shaderProgram,
+                        "meshOverlay requires triangle-list source geometry",
+                        std::cref(layout));
+      }
+      if (mesh->indexBuffer->indexCount() % 3 != 0) {
+        fatalValidation(*this, pass, *material, entry.shaderProgram,
+                        "meshOverlay source index count is not triangular",
+                        std::cref(layout));
+      }
+
+      auto overlayIndices = makeUniqueTriangleEdgeLineIndices(
+          copyIndexBufferData(*mesh->indexBuffer));
+      auto overlayIndexBuffer = IndexBuffer::create(
+          std::move(overlayIndices), PrimitiveTopology::LineList);
+      data.indexBuffer =
+          std::static_pointer_cast<IGpuResource>(overlayIndexBuffer);
+    }
+
     m_validatedPasses[pass] = std::move(data);
   }
 }

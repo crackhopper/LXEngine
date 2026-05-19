@@ -127,6 +127,31 @@ makeRenderableWithMask(VisibilityLayerMask mask,
   return node;
 }
 
+std::shared_ptr<SceneNode> makeMeshOverlayRenderable() {
+  auto vb = VertexBuffer<VertexPos>::create(
+      std::vector<VertexPos>{{{0, 0, 0}}, {{1, 0, 0}}, {{0, 1, 0}}});
+  auto ib = IndexBuffer::create({0, 1, 2});
+  auto mesh = Mesh::create(vb, ib, BoundingBox{{0, 0, 0}, {1, 1, 0}});
+
+  auto shader = std::make_shared<FakeShader>();
+  auto tmpl = MaterialTemplate::create("mesh_overlay_test");
+
+  ShaderProgramSet ps;
+  ps.shaderName = "mesh_overlay_test";
+  ps.shader = shader;
+
+  MaterialPassDefinition entry;
+  entry.shaderProgram = ps;
+  entry.renderState = RenderState{};
+  entry.meshOverlay.enabled = true;
+  tmpl->setPassDefinition(Pass_Forward, std::move(entry));
+
+  auto node = SceneNode::create("fg_mesh_overlay_node");
+  node->addComponent<MeshComponent>(mesh);
+  node->addComponent<MaterialComponent>(MaterialInstance::create(tmpl));
+  return node;
+}
+
 // Helpers for REQ-009 scenarios.
 SceneNodeSharedPtr makeCameraWithTarget(const RenderTarget &target) {
   static int cameraCounter = 0;
@@ -225,6 +250,47 @@ void testDifferentVariantKeepsTwo() {
   auto infos = fg.collectAllPipelineBuildDescs();
   EXPECT(infos.size() == 2,
          "different variants keep two distinct PipelineBuildDesc");
+}
+
+void testMeshOverlayMaterialPassUsesLineListGeometry() {
+  auto node = makeMeshOverlayRenderable();
+  auto scene = makeSceneWithDefaultCamera(node);
+
+  FrameGraph fg;
+  fg.addPass(FramePass{Pass_Forward, {}, {}});
+  fg.buildFromScene(*scene);
+
+  const auto &items = fg.getPasses()[0].queue.getItems();
+  EXPECT(items.size() == 1, "mesh overlay renderable should enter queue");
+  if (items.empty()) {
+    return;
+  }
+
+  auto indexBuffer = std::dynamic_pointer_cast<IndexBuffer>(
+      items[0].indexBuffer);
+  EXPECT(indexBuffer != nullptr, "mesh overlay item should keep index buffer");
+  if (indexBuffer) {
+    EXPECT(indexBuffer->getTopology() == PrimitiveTopology::LineList,
+           "mesh overlay should draw derived line-list edges");
+    EXPECT(indexBuffer->indexCount() == 6,
+           "single triangle overlay should emit three line segments");
+  }
+
+  const auto passData = node->getValidatedPassData(Pass_Forward);
+  EXPECT(passData.has_value(), "mesh overlay pass should stay validated");
+  if (passData) {
+    EXPECT(passData->get().objectSignature ==
+               node->getPipelineSignature(Pass_Forward),
+           "validated object signature should match public renderable "
+           "signature");
+  }
+
+  const auto infos = fg.collectAllPipelineBuildDescs();
+  EXPECT(infos.size() == 1, "mesh overlay should produce one build desc");
+  if (!infos.empty()) {
+    EXPECT(infos[0].topology == PrimitiveTopology::LineList,
+           "mesh overlay pipeline build desc should use line topology");
+  }
 }
 
 void testFramePassNameIsStringID() {
@@ -968,6 +1034,7 @@ int main() {
   testSingleRenderableSinglePass();
   testDuplicateRenderablesDedupe();
   testDifferentVariantKeepsTwo();
+  testMeshOverlayMaterialPassUsesLineListGeometry();
   testFramePassNameIsStringID();
   testFrameGraphCompileAcceptsColorWriteThenSampleRead();
   testFrameGraphCompilePreservesSampledReadBindingName();

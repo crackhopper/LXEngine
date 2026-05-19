@@ -1074,6 +1074,25 @@ void testRuntimeCanAssignMeshDebugMaterial() {
   EXPECT(materialUri.has_value() &&
              *materialUri == "assets/materials/mesh_debug.material",
          "runtime should report mesh_debug material after assignment");
+
+  auto *cube = runtime.scene()->findByPath("/cube");
+  EXPECT(cube != nullptr, "cube node should remain present");
+  if (cube) {
+    const auto passData = cube->getValidatedPassData(LX_core::Pass_Forward);
+    EXPECT(passData.has_value(),
+           "mesh_debug material should validate through the normal pass path");
+    if (passData) {
+      auto indexBuffer = std::dynamic_pointer_cast<LX_core::IndexBuffer>(
+          passData->get().indexBuffer);
+      EXPECT(indexBuffer != nullptr,
+             "mesh_debug material should keep an index buffer");
+      if (indexBuffer) {
+        EXPECT(indexBuffer->getTopology() ==
+                   LX_core::PrimitiveTopology::LineList,
+               "mesh_debug material should render derived mesh edges");
+      }
+    }
+  }
 }
 
 void testRuntimeMaterialPresetsExcludeInvalidFixtures() {
