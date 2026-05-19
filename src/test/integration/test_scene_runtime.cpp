@@ -63,6 +63,23 @@ void writeTextFile(const std::filesystem::path &path, const std::string &body) {
   out << body;
 }
 
+class ScopedFileCleanup {
+public:
+  explicit ScopedFileCleanup(std::filesystem::path path)
+      : m_path(std::move(path)) {}
+
+  ScopedFileCleanup(const ScopedFileCleanup &) = delete;
+  ScopedFileCleanup &operator=(const ScopedFileCleanup &) = delete;
+
+  ~ScopedFileCleanup() {
+    std::error_code error;
+    std::filesystem::remove(m_path, error);
+  }
+
+private:
+  std::filesystem::path m_path;
+};
+
 void expectNear(const float lhs, const float rhs, const char *msg,
                 const float epsilon = 0.001f) {
   if (std::abs(lhs - rhs) > epsilon) {
@@ -1060,6 +1077,12 @@ void testRuntimeCanAssignMeshDebugMaterial() {
 }
 
 void testRuntimeMaterialPresetsExcludeInvalidFixtures() {
+  const std::filesystem::path hiddenMaterialPath =
+      std::filesystem::path("assets/materials") /
+      ".lxe_hidden_material_preset_test.material";
+  ScopedFileCleanup hiddenMaterialCleanup(hiddenMaterialPath);
+  writeTextFile(hiddenMaterialPath, "shader: blinnphong_0\n");
+
   demo::SceneRuntime runtime;
   const auto presets = runtime.materialPresets();
   const auto containsPreset = [&presets](const std::string &uri) {
@@ -1073,6 +1096,9 @@ void testRuntimeMaterialPresetsExcludeInvalidFixtures() {
       "material presets should exclude invalid no-light normal-map fixture");
   EXPECT(!containsPreset("assets/materials/test_invalid_normal_no_uv.material"),
          "material presets should exclude invalid no-uv normal-map fixture");
+  EXPECT(!containsPreset(
+             "assets/materials/.lxe_hidden_material_preset_test.material"),
+         "material presets should exclude hidden material files");
 }
 
 void testGenericNodeMaterialParameterOverrideRoundTrips() {
