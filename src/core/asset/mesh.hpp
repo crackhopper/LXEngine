@@ -6,6 +6,7 @@
 #include <cassert>
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 namespace LX_core {
 
@@ -82,5 +83,8 @@ private:
 };
 
 using MeshSharedPtr = std::shared_ptr<Mesh>;
+
+std::vector<u32>
+makeUniqueTriangleEdgeLineIndices(const std::vector<u32> &triangleIndices);
 
 } // namespace LX_core

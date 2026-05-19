@@ -23,6 +23,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_pipeline_cache
   test_engine_loop
   test_debug_draw
+  test_mesh_debug_geometry
   test_generic_material_loader
   test_material_variant_rules
   test_assets_layout
