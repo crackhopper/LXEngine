@@ -198,6 +198,27 @@ float sampleShadowMap(vec3 worldPos, vec3 normal, vec3 lightDir) {
     float blend = smoothstep(blendStart, splitEnd, viewDepth);
     return mix(visibility, nextVisibility, blend);
 }
+
+vec3 computeSmoothNormal() {
+#ifdef USE_NORMAL_MAP
+    mat3 tbn = vTBN;
+    tbn[0] = normalize(tbn[0]);
+    tbn[1] = normalize(tbn[1]);
+    tbn[2] = normalize(tbn[2]);
+    vec3 normal = tbn[2];
+    if (material.enableNormal == 1) {
+        vec3 normalSample = texture(normalMap, vUV).rgb * 2.0 - 1.0;
+        normal = normalize(tbn * normalSample);
+    }
+    return normal;
+#else
+    return normalize(vWorldNormal);
+#endif
+}
+
+vec3 computeFlatNormal() {
+    return normalize(cross(dFdx(vWorldPos), dFdy(vWorldPos)));
+}
 #endif
 
 void main() {
@@ -207,18 +228,10 @@ void main() {
     outColor = vec4(baseCol, 1.0);
     return;
 #else
-#ifdef USE_NORMAL_MAP
-    mat3 tbn = vTBN;
-    tbn[0] = normalize(tbn[0]);
-    tbn[1] = normalize(tbn[1]);
-    tbn[2] = normalize(tbn[2]);
-    vec3 N = tbn[2];
-    if (material.enableNormal == 1) {
-        vec3 normalSample = texture(normalMap, vUV).rgb * 2.0 - 1.0;
-        N = normalize(tbn * normalSample);
-    }
+#ifdef USE_FLAT_SHADING
+    vec3 N = computeFlatNormal();
 #else
-    vec3 N = normalize(vWorldNormal);
+    vec3 N = computeSmoothNormal();
 #endif
     vec3 ambient = baseCol * 0.1;
     vec3 finalColor = ambient;

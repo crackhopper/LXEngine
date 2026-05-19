@@ -428,6 +428,48 @@ static bool testBlinnPhongVariantVertexInputs(
   return true;
 }
 
+static bool
+testBlinnPhongFlatShadingVariant(const std::filesystem::path &shaderDir) {
+  std::cout << "\n========================================\n";
+  std::cout << "  Test: BlinnPhong flat shading variant\n";
+  std::cout << "========================================\n";
+
+  const auto vertPath = shaderDir / "blinnphong_0.vert";
+  const auto fragPath = shaderDir / "blinnphong_0.frag";
+  const std::vector<ShaderVariant> variants = {
+      {"USE_LIGHTING", true},
+      {"USE_FLAT_SHADING", true},
+  };
+
+  auto compileResult =
+      ShaderCompiler::compileProgram(vertPath, fragPath, variants);
+  if (!compileResult.success) {
+    std::cerr << "  COMPILE FAILED: " << compileResult.errorMessage << "\n";
+    return false;
+  }
+
+  const auto bindings = ShaderReflector::reflect(compileResult.stages);
+  if (bindings.empty()) {
+    std::cerr << "  FAIL: flat shading variant reflected no bindings\n";
+    return false;
+  }
+
+  bool hasMaterialUbo = false;
+  for (const auto &binding : bindings) {
+    if (binding.name == "MaterialUBO") {
+      hasMaterialUbo = true;
+      break;
+    }
+  }
+  if (!hasMaterialUbo) {
+    std::cerr << "  FAIL: MaterialUBO binding missing\n";
+    return false;
+  }
+
+  std::cout << "  PASS: flat shading variant compiles and reflects MaterialUBO\n";
+  return true;
+}
+
 static std::string readTextFile(const std::filesystem::path &path) {
   std::ifstream ifs(path);
   std::stringstream buffer;
@@ -603,6 +645,8 @@ int main(int argc, char *argv[]) {
     if (!testBlinnPhongMaterialUboMembers(blinnVert, blinnFrag))
       ++failures;
     if (!testBlinnPhongVariantVertexInputs(blinnVert, blinnFrag))
+      ++failures;
+    if (!testBlinnPhongFlatShadingVariant(shaderDir))
       ++failures;
     if (!testBlinnPhongPushConstantAbi(blinnVert, blinnFrag))
       ++failures;
