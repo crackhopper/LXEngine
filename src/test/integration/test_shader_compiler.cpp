@@ -619,6 +619,11 @@ static bool testMeshDebugShaderContract(
     std::cerr << "  FAIL: MeshOverlayUBO should be a uniform buffer\n";
     return false;
   }
+  if (bindingIt->set != 1 || bindingIt->binding != 0) {
+    std::cerr << "  FAIL: MeshOverlayUBO expected set=1 binding=0, got set="
+              << bindingIt->set << " binding=" << bindingIt->binding << "\n";
+    return false;
+  }
 
   const auto *color = findMember(*bindingIt, "color");
   if (!color || color->type != ShaderPropertyType::Vec4) {
