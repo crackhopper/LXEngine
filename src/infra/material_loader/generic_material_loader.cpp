@@ -72,8 +72,15 @@ LX_core::MeshOverlayState parseMeshOverlay(const YAML::Node &node) {
   if (!node.IsMap())
     fatalLoader("meshOverlay must be a map");
 
-  if (auto enabled = node["enabled"])
-    state.enabled = enabled.as<bool>();
+  if (auto enabled = node["enabled"]) {
+    if (!enabled.IsScalar())
+      fatalLoader("meshOverlay.enabled requires a boolean");
+    try {
+      state.enabled = enabled.as<bool>();
+    } catch (const YAML::Exception &) {
+      fatalLoader("meshOverlay.enabled requires a boolean");
+    }
+  }
 
   if (auto color = node["color"]) {
     if (!color.IsSequence() || color.size() != 4)

@@ -324,6 +324,40 @@ void test_invalid_mesh_overlay_color_rejected_with_loader_error() {
   std::cout << "  invalid meshOverlay.color rejected through loader error\n";
 }
 
+void test_invalid_mesh_overlay_enabled_rejected_with_loader_error() {
+  std::cout
+      << "\n-- test_invalid_mesh_overlay_enabled_rejected_with_loader_error --\n";
+  auto root = findProjectRoot();
+  if (root.empty()) {
+    std::cerr << "  SETUP: project root not found; skipping\n";
+    return;
+  }
+
+  const auto matPath = root / "assets" / "materials" /
+                       "test_invalid_mesh_overlay_enabled.material";
+  {
+    std::ofstream out(matPath);
+    out << "shader: blinnphong_0\n"
+           "meshOverlay: { enabled: nope }\n";
+  }
+
+  bool rejected = false;
+  const auto prev = fs::current_path();
+  try {
+    fs::current_path(root);
+    (void)loadGenericMaterial(matPath);
+  } catch (const std::logic_error &error) {
+    rejected = std::string(error.what())
+                   .find("meshOverlay.enabled requires a boolean") !=
+               std::string::npos;
+  }
+  fs::current_path(prev);
+  fs::remove(matPath);
+
+  REQUIRE(rejected);
+  std::cout << "  invalid meshOverlay.enabled rejected through loader error\n";
+}
+
 void test_pbr_example_material_loads() {
   std::cout << "\n-- test_pbr_example_material_loads --\n";
   auto root = findProjectRoot();
@@ -681,6 +715,7 @@ int main() {
   test_invalid_shading_model_rejected();
   test_mesh_overlay_material_metadata_loads();
   test_invalid_mesh_overlay_color_rejected_with_loader_error();
+  test_invalid_mesh_overlay_enabled_rejected_with_loader_error();
   test_pbr_example_material_loads();
   test_rtr_experiment_template_material_loads();
   test_rtr_shadertoy_quantum_core_material_loads();
