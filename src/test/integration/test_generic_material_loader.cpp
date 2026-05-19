@@ -11,6 +11,8 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <system_error>
+#include <utility>
 
 using namespace LX_core;
 using namespace LX_infra;
@@ -30,6 +32,41 @@ int s_failures = 0;
   } while (0)
 
 namespace fs = std::filesystem;
+
+class ScopedCurrentPath {
+public:
+  explicit ScopedCurrentPath(const fs::path &path)
+      : m_previous(fs::current_path()) {
+    fs::current_path(path);
+  }
+
+  ~ScopedCurrentPath() {
+    std::error_code ec;
+    fs::current_path(m_previous, ec);
+  }
+
+  ScopedCurrentPath(const ScopedCurrentPath &) = delete;
+  ScopedCurrentPath &operator=(const ScopedCurrentPath &) = delete;
+
+private:
+  fs::path m_previous;
+};
+
+class ScopedTempFile {
+public:
+  explicit ScopedTempFile(fs::path path) : m_path(std::move(path)) {}
+
+  ~ScopedTempFile() {
+    std::error_code ec;
+    fs::remove(m_path, ec);
+  }
+
+  ScopedTempFile(const ScopedTempFile &) = delete;
+  ScopedTempFile &operator=(const ScopedTempFile &) = delete;
+
+private:
+  fs::path m_path;
+};
 
 fs::path findProjectRoot() {
   fs::path cwd = fs::current_path();
@@ -119,6 +156,7 @@ void test_flat_shading_model_enables_variant() {
 
   const auto matPath =
       root / "assets" / "materials" / "test_flat_shading_model.material";
+  ScopedTempFile tempFile(matPath);
   {
     std::ofstream out(matPath);
     out << "shader: blinnphong_0\n"
@@ -132,11 +170,11 @@ void test_flat_shading_model_enables_variant() {
            "  MaterialUBO.debugShadowMode: 0\n";
   }
 
-  auto prev = fs::current_path();
-  fs::current_path(root);
-  auto mat = loadGenericMaterial(matPath);
-  fs::current_path(prev);
-  fs::remove(matPath);
+  MaterialInstanceSharedPtr mat;
+  {
+    ScopedCurrentPath currentPath(root);
+    mat = loadGenericMaterial(matPath);
+  }
 
   REQUIRE(mat != nullptr);
   REQUIRE(passHasEnabledVariant(mat, Pass_Forward, "USE_FLAT_SHADING"));
@@ -174,6 +212,7 @@ void test_smooth_shading_model_overrides_flat_variant() {
 
   const auto matPath =
       root / "assets" / "materials" / "test_smooth_overrides_flat.material";
+  ScopedTempFile tempFile(matPath);
   {
     std::ofstream out(matPath);
     out << "shader: blinnphong_0\n"
@@ -189,11 +228,11 @@ void test_smooth_shading_model_overrides_flat_variant() {
            "  MaterialUBO.debugShadowMode: 0\n";
   }
 
-  auto prev = fs::current_path();
-  fs::current_path(root);
-  auto mat = loadGenericMaterial(matPath);
-  fs::current_path(prev);
-  fs::remove(matPath);
+  MaterialInstanceSharedPtr mat;
+  {
+    ScopedCurrentPath currentPath(root);
+    mat = loadGenericMaterial(matPath);
+  }
 
   REQUIRE(mat != nullptr);
   REQUIRE(!passHasEnabledVariant(mat, Pass_Forward, "USE_FLAT_SHADING"));
@@ -211,6 +250,7 @@ void test_invalid_shading_model_rejected() {
 
   const auto matPath =
       root / "assets" / "materials" / "test_invalid_shading_model.material";
+  ScopedTempFile tempFile(matPath);
   {
     std::ofstream out(matPath);
     out << "shader: blinnphong_0\n"
@@ -218,17 +258,14 @@ void test_invalid_shading_model_rejected() {
   }
 
   bool rejected = false;
-  auto prev = fs::current_path();
   try {
-    fs::current_path(root);
+    ScopedCurrentPath currentPath(root);
     (void)loadGenericMaterial(matPath);
   } catch (const std::logic_error &error) {
     rejected =
         std::string(error.what()).find("unknown shadingModel") !=
         std::string::npos;
   }
-  fs::current_path(prev);
-  fs::remove(matPath);
 
   REQUIRE(rejected);
   std::cout << "  invalid shadingModel rejected\n";
@@ -244,6 +281,7 @@ void test_mesh_overlay_material_metadata_loads() {
 
   const auto matPath =
       root / "assets" / "materials" / "test_mesh_overlay_metadata.material";
+  ScopedTempFile tempFile(matPath);
   {
     std::ofstream out(matPath);
     out << "shader: blinnphong_0\n"
@@ -259,11 +297,11 @@ void test_mesh_overlay_material_metadata_loads() {
            "  MaterialUBO.debugShadowMode: 0\n";
   }
 
-  auto prev = fs::current_path();
-  fs::current_path(root);
-  auto mat = loadGenericMaterial(matPath);
-  fs::current_path(prev);
-  fs::remove(matPath);
+  MaterialInstanceSharedPtr mat;
+  {
+    ScopedCurrentPath currentPath(root);
+    mat = loadGenericMaterial(matPath);
+  }
 
   REQUIRE(mat != nullptr);
   const auto tmpl = mat->getTemplate();
@@ -285,6 +323,7 @@ bool meshOverlayColorRejectedWithMessage(const fs::path &root,
                                          const std::string &colorYaml) {
   const auto matPath =
       root / "assets" / "materials" / "test_invalid_mesh_overlay_color.material";
+  ScopedTempFile tempFile(matPath);
   {
     std::ofstream out(matPath);
     out << "shader: blinnphong_0\n"
@@ -294,17 +333,14 @@ bool meshOverlayColorRejectedWithMessage(const fs::path &root,
   }
 
   bool rejected = false;
-  const auto prev = fs::current_path();
   try {
-    fs::current_path(root);
+    ScopedCurrentPath currentPath(root);
     (void)loadGenericMaterial(matPath);
   } catch (const std::logic_error &error) {
     rejected =
         std::string(error.what()).find("meshOverlay.color requires 4 values") !=
         std::string::npos;
   }
-  fs::current_path(prev);
-  fs::remove(matPath);
   return rejected;
 }
 
@@ -335,6 +371,7 @@ void test_invalid_mesh_overlay_enabled_rejected_with_loader_error() {
 
   const auto matPath = root / "assets" / "materials" /
                        "test_invalid_mesh_overlay_enabled.material";
+  ScopedTempFile tempFile(matPath);
   {
     std::ofstream out(matPath);
     out << "shader: blinnphong_0\n"
@@ -342,17 +379,14 @@ void test_invalid_mesh_overlay_enabled_rejected_with_loader_error() {
   }
 
   bool rejected = false;
-  const auto prev = fs::current_path();
   try {
-    fs::current_path(root);
+    ScopedCurrentPath currentPath(root);
     (void)loadGenericMaterial(matPath);
   } catch (const std::logic_error &error) {
     rejected = std::string(error.what())
                    .find("meshOverlay.enabled requires a boolean") !=
                std::string::npos;
   }
-  fs::current_path(prev);
-  fs::remove(matPath);
 
   REQUIRE(rejected);
   std::cout << "  invalid meshOverlay.enabled rejected through loader error\n";
@@ -505,6 +539,7 @@ void test_per_pass_shader_override() {
   }
 
   auto matPath = root / "assets" / "materials" / "test_per_pass_shader.material";
+  ScopedTempFile tempFile(matPath);
   {
     std::ofstream out(matPath);
     out << "shader: blinnphong_0\n\n"
@@ -525,11 +560,11 @@ void test_per_pass_shader_override() {
            "    shader: shadow_depth_only\n";
   }
 
-  auto prev = fs::current_path();
-  fs::current_path(root);
-  auto mat = loadGenericMaterial(matPath);
-  fs::current_path(prev);
-  fs::remove(matPath);
+  MaterialInstanceSharedPtr mat;
+  {
+    ScopedCurrentPath currentPath(root);
+    mat = loadGenericMaterial(matPath);
+  }
 
   REQUIRE(mat != nullptr);
   REQUIRE(mat->isPassEnabled(Pass_Forward));
@@ -552,6 +587,7 @@ void test_canonical_parameters_shared_across_passes() {
   }
 
   auto matPath = root / "assets" / "materials" / "test_pass_override.material";
+  ScopedTempFile tempFile(matPath);
   {
     std::ofstream out(matPath);
     out << "shader: blinnphong_0\n\n"
@@ -571,11 +607,11 @@ void test_canonical_parameters_shared_across_passes() {
            "      depthTest: true\n";
   }
 
-  auto prev = fs::current_path();
-  fs::current_path(root);
-  auto mat = loadGenericMaterial(matPath);
-  fs::current_path(prev);
-  fs::remove(matPath);
+  MaterialInstanceSharedPtr mat;
+  {
+    ScopedCurrentPath currentPath(root);
+    mat = loadGenericMaterial(matPath);
+  }
 
   REQUIRE(mat != nullptr);
 
@@ -606,6 +642,7 @@ void test_vector_parameters_load_without_aliasing_yaml_nodes() {
   }
 
   auto matPath = root / "assets" / "materials" / "test_vector_params.material";
+  ScopedTempFile tempFile(matPath);
   {
     std::ofstream out(matPath);
     out << "shader: pbr\n\n"
@@ -618,11 +655,11 @@ void test_vector_parameters_load_without_aliasing_yaml_nodes() {
             "  albedoMap: white\n";
   }
 
-  auto prev = fs::current_path();
-  fs::current_path(root);
-  auto mat = loadGenericMaterial(matPath);
-  fs::current_path(prev);
-  fs::remove(matPath);
+  MaterialInstanceSharedPtr mat;
+  {
+    ScopedCurrentPath currentPath(root);
+    mat = loadGenericMaterial(matPath);
+  }
 
   REQUIRE(mat != nullptr);
 
