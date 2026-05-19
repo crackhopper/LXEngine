@@ -340,6 +340,11 @@ makeMaterialValueJson(const LX_core::MaterialParameterValue &value) {
   return kPresets;
 }
 
+[[nodiscard]] bool isEditorAssignableMaterialFilename(
+    const std::string &filename) {
+  return !filename.starts_with(".") && !filename.starts_with("test_");
+}
+
 [[nodiscard]] std::vector<std::string> discoverMaterialAssetUris() {
   std::vector<std::string> uris;
   const std::filesystem::path materialsDir =
@@ -355,7 +360,8 @@ makeMaterialValueJson(const LX_core::MaterialParameterValue &value) {
     }
     const auto path = entry.path();
     const std::string filename = path.filename().string();
-    if (path.extension() == ".material") {
+    if (path.extension() == ".material" &&
+        isEditorAssignableMaterialFilename(filename)) {
       uris.push_back("assets/materials/" + filename);
     }
   }

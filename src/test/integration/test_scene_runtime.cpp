@@ -1059,6 +1059,22 @@ void testRuntimeCanAssignMeshDebugMaterial() {
          "runtime should report mesh_debug material after assignment");
 }
 
+void testRuntimeMaterialPresetsExcludeInvalidFixtures() {
+  demo::SceneRuntime runtime;
+  const auto presets = runtime.materialPresets();
+  const auto containsPreset = [&presets](const std::string &uri) {
+    return std::find(presets.begin(), presets.end(), uri) != presets.end();
+  };
+
+  EXPECT(containsPreset("assets/materials/mesh_debug.material"),
+         "mesh_debug material should remain discoverable");
+  EXPECT(
+      !containsPreset("assets/materials/test_invalid_normal_no_light.material"),
+      "material presets should exclude invalid no-light normal-map fixture");
+  EXPECT(!containsPreset("assets/materials/test_invalid_normal_no_uv.material"),
+         "material presets should exclude invalid no-uv normal-map fixture");
+}
+
 void testGenericNodeMaterialParameterOverrideRoundTrips() {
   const std::filesystem::path inputPath =
       makeTempPath("lx_scene_runtime_generic_material_input.yaml");
@@ -1879,6 +1895,7 @@ int main() {
   testRuntimeSaveOmitsDebugDrawRuntimeNodes();
   testRuntimeSaveOmitsLegacyEditorHelperNodes();
   testRuntimeMaterialUriAndBaseColorOverridesRoundTrip();
+  testRuntimeMaterialPresetsExcludeInvalidFixtures();
   testRuntimeCanAssignMeshDebugMaterial();
   testGenericNodeMaterialParameterOverrideRoundTrips();
   testProceduralRuntimeParameterStreamUpdatesMaterialOnly();
