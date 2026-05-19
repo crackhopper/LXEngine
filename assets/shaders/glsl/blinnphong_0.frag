@@ -217,7 +217,17 @@ vec3 computeSmoothNormal() {
 }
 
 vec3 computeFlatNormal() {
-    return normalize(cross(dFdx(vWorldPos), dFdy(vWorldPos)));
+    vec3 fallback = normalize(vWorldNormal);
+    vec3 flatNormal = cross(dFdx(vWorldPos), dFdy(vWorldPos));
+    float len2 = dot(flatNormal, flatNormal);
+    if (len2 < 1e-10) {
+        return fallback;
+    }
+    flatNormal = flatNormal * inversesqrt(len2);
+    if (dot(flatNormal, fallback) < 0.0) {
+        flatNormal = -flatNormal;
+    }
+    return flatNormal;
 }
 #endif
 
