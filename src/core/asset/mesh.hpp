@@ -84,6 +84,11 @@ private:
 
 using MeshSharedPtr = std::shared_ptr<Mesh>;
 
+/// Builds deterministic line-list indices from triangle-list indices.
+/// Input size must be a multiple of 3; otherwise throws std::logic_error.
+/// Triangle edges are treated as undirected, canonicalized to ascending
+/// endpoints, deduplicated when shared, and emitted in first encounter order
+/// for deterministic line-list drawing.
 std::vector<u32>
 makeUniqueTriangleEdgeLineIndices(const std::vector<u32> &triangleIndices);
 
