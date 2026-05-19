@@ -1004,6 +1004,61 @@ void testRuntimeMaterialUriAndBaseColorOverridesRoundTrip() {
          "material config");
 }
 
+void testRuntimeCanAssignMeshDebugMaterial() {
+  const std::filesystem::path inputPath =
+      makeTempPath("lx_scene_runtime_mesh_debug_material_input.yaml");
+
+  writeSceneFile(inputPath,
+                 "scene:\n"
+                 "  name: mesh_debug_material_scene\n"
+                 "  gameplayCameraPath: /game_cam\n"
+                 "nodes:\n"
+                 "  - nodeName: game_camera\n"
+                 "    name: game_cam\n"
+                 "    transform:\n"
+                 "      translation: [0.0, 2.0, 6.0]\n"
+                 "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                 "      scale: [1.0, 1.0, 1.0]\n"
+                 "    visibilityMask: 4294967295\n"
+                 "    camera:\n"
+                 "      eye: [0.0, 2.0, 6.0]\n"
+                 "      target: [0.0, 0.0, 0.0]\n"
+                 "      up: [0.0, 1.0, 0.0]\n"
+                 "      type: perspective\n"
+                 "      fovY: 45.0\n"
+                 "      aspect: 1.7777778\n"
+                 "      nearPlane: 0.1\n"
+                 "      farPlane: 1000.0\n"
+                 "      left: -1.0\n"
+                 "      right: 1.0\n"
+                 "      bottom: -1.0\n"
+                 "      top: 1.0\n"
+                 "      cullingMask: 4294967295\n"
+                 "  - nodeName: primitive_cube_node\n"
+                 "    name: cube\n"
+                 "    transform:\n"
+                 "      translation: [0.0, 0.0, 0.0]\n"
+                 "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                 "      scale: [1.0, 1.0, 1.0]\n"
+                 "    visibilityMask: 4294967295\n"
+                 "    mesh:\n"
+                 "      uri: builtin://lxe_editor/primitives/cube\n"
+                 "    material:\n"
+                 "      uri: assets/materials/blinnphong_lit.material\n");
+
+  demo::SceneRuntime runtime;
+  runtime.loadFromDocumentPath(inputPath);
+
+  const auto result = runtime.setNodeMaterialUri(
+      "/cube", "assets/materials/mesh_debug.material");
+  EXPECT(result.ok, "assigning mesh_debug material should succeed");
+
+  const auto materialUri = runtime.materialUriForNode("/cube");
+  EXPECT(materialUri.has_value() &&
+             *materialUri == "assets/materials/mesh_debug.material",
+         "runtime should report mesh_debug material after assignment");
+}
+
 void testGenericNodeMaterialParameterOverrideRoundTrips() {
   const std::filesystem::path inputPath =
       makeTempPath("lx_scene_runtime_generic_material_input.yaml");
@@ -1824,6 +1879,7 @@ int main() {
   testRuntimeSaveOmitsDebugDrawRuntimeNodes();
   testRuntimeSaveOmitsLegacyEditorHelperNodes();
   testRuntimeMaterialUriAndBaseColorOverridesRoundTrip();
+  testRuntimeCanAssignMeshDebugMaterial();
   testGenericNodeMaterialParameterOverrideRoundTrips();
   testProceduralRuntimeParameterStreamUpdatesMaterialOnly();
   testGroundMeshWindingMatchesUpwardNormal();

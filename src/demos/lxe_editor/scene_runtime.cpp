@@ -340,7 +340,7 @@ makeMaterialValueJson(const LX_core::MaterialParameterValue &value) {
   return kPresets;
 }
 
-[[nodiscard]] std::vector<std::string> discoverRtrMaterialUris() {
+[[nodiscard]] std::vector<std::string> discoverMaterialAssetUris() {
   std::vector<std::string> uris;
   const std::filesystem::path materialsDir =
       resolveRuntimePath("assets/materials");
@@ -355,7 +355,7 @@ makeMaterialValueJson(const LX_core::MaterialParameterValue &value) {
     }
     const auto path = entry.path();
     const std::string filename = path.filename().string();
-    if (path.extension() == ".material" && filename.rfind("rtr_", 0) == 0) {
+    if (path.extension() == ".material") {
       uris.push_back("assets/materials/" + filename);
     }
   }
@@ -368,11 +368,8 @@ makeMaterialValueJson(const LX_core::MaterialParameterValue &value) {
   if (std::find(presets.begin(), presets.end(), uri) != presets.end()) {
     return true;
   }
-  if (uri == "assets/materials/rtr_shadertoy_quantum_core.material") {
-    return true;
-  }
-  const auto rtrUris = discoverRtrMaterialUris();
-  return std::find(rtrUris.begin(), rtrUris.end(), uri) != rtrUris.end();
+  const auto assetUris = discoverMaterialAssetUris();
+  return std::find(assetUris.begin(), assetUris.end(), uri) != assetUris.end();
 }
 
 [[nodiscard]] std::string normalizeMaterialUri(const SceneNodeDocument &node) {
@@ -1339,7 +1336,7 @@ bool SceneRuntime::nodeMaterialBaseColorEditable(
 
 std::vector<std::string> SceneRuntime::materialPresets() const {
   std::vector<std::string> out = materialPresetUris();
-  const auto discovered = discoverRtrMaterialUris();
+  const auto discovered = discoverMaterialAssetUris();
   out.insert(out.end(), discovered.begin(), discovered.end());
   std::sort(out.begin(), out.end());
   out.erase(std::unique(out.begin(), out.end()), out.end());
