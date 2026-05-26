@@ -196,7 +196,7 @@ void sampleEquirectHdr(const LX_core::Texture &hdrTexture,
   float u = std::atan2(direction.z, direction.x) / (2.0f * kPi) + 0.5f;
   u = u - std::floor(u);
   const float v =
-      std::acos(std::clamp(direction.y, -1.0f, 1.0f)) / kPi;
+      std::asin(std::clamp(direction.y, -1.0f, 1.0f)) / kPi + 0.5f;
 
   const float x = u * static_cast<float>(desc.width) - 0.5f;
   const float y = v * static_cast<float>(desc.height) - 0.5f;
@@ -234,7 +234,8 @@ void sampleEquirectHdr(const LX_core::Texture &hdrTexture,
 [[nodiscard]] LX_core::CombinedTextureSamplerSharedPtr
 makeHdrEquirectCubeSampler(const LX_core::TextureSharedPtr &hdrTexture,
                            LX_core::StringID bindingName, u32 baseSize,
-                           u32 mipLevels = 1) {
+                           u32 mipLevels = 1,
+                           u32 *actualMipLevels = nullptr) {
   if (!hdrTexture ||
       hdrTexture->desc().format != LX_core::TextureFormat::RGBA32Float) {
     throw std::runtime_error("expected RGBA32Float HDR environment texture");
@@ -243,6 +244,9 @@ makeHdrEquirectCubeSampler(const LX_core::TextureSharedPtr &hdrTexture,
   baseSize = std::max(baseSize, 1u);
   const u32 maxMips = LX_core::maxTextureMipLevels(baseSize, baseSize);
   mipLevels = std::clamp(mipLevels, 1u, maxMips);
+  if (actualMipLevels != nullptr) {
+    *actualMipLevels = mipLevels;
+  }
 
   LX_core::TextureDesc desc;
   desc.width = baseSize;
@@ -300,11 +304,12 @@ loadEnvironmentResources(const EnvironmentState &environment,
       makeHdrAverageCubeSampler(hdrTexture, LX_core::StringID("IrradianceMap"));
   const u32 roughnessMipCount = static_cast<u32>(
       std::max(std::round(environment.roughnessMipCount), 1.0f));
+  u32 actualPrefilterMipCount = 1u;
   resources.prefilteredRadianceCubemap = makeHdrEquirectCubeSampler(
       hdrTexture, LX_core::StringID("PrefilteredEnvMap"), 64u,
-      roughnessMipCount);
+      roughnessMipCount, &actualPrefilterMipCount);
   resources.environmentUbo = std::make_shared<LX_core::EnvironmentData>(
-      environment.intensity, environment.roughnessMipCount);
+      environment.intensity, static_cast<float>(actualPrefilterMipCount));
   return resources;
 }
 
