@@ -1231,6 +1231,50 @@ void testAdminCommandsUseRegisteredCallbacks() {
          "handler");
 }
 
+void testProceduralMaterialEnabledUsesRegisteredCallbacks() {
+  CommandFixture fixture;
+  bool enabled = false;
+
+  registerBuiltinCommands(
+      fixture.bus, fixture.editorState, *fixture.scene,
+      SceneIoContext{
+          .getProceduralMaterialEnabled =
+              [&](const std::string &path) -> std::optional<bool> {
+            EXPECT(path == "/world/cube",
+                   "procedural material getter should receive node path");
+            return enabled;
+          },
+          .setProceduralMaterialEnabled =
+              [&](const std::string &path, const bool value) {
+            EXPECT(path == "/world/cube",
+                   "procedural material setter should receive node path");
+            enabled = value;
+            return CommandResult{
+                true, "proceduralMaterial.enabled updated",
+                std::string("{\"enabled\":") + (enabled ? "true" : "false") +
+                    "}"};
+          },
+      });
+
+  const CommandResult getBefore =
+      fixture.bus.dispatch("get /world/cube.proceduralMaterial.enabled");
+  EXPECT(getBefore.ok &&
+             getBefore.structured.find("\"value\":false") !=
+                 std::string::npos,
+         "get should expose procedural material enabled state");
+
+  const CommandResult setResult =
+      fixture.bus.dispatch("set /world/cube.proceduralMaterial.enabled true");
+  EXPECT(setResult.ok && enabled,
+         "set should call procedural material enabled callback");
+  EXPECT(setResult.metadata.count("scene.rebuild") == 1,
+         "procedural opt-in change should request scene rebuild");
+
+  const CommandResult undoResult = fixture.bus.dispatch("undo");
+  EXPECT(undoResult.ok && !enabled,
+         "undo should restore previous procedural material enabled state");
+}
+
 void testSceneOpenClearsRedoHistory() {
   SceneViewerCommandFixture undoFixture;
 
@@ -2238,6 +2282,7 @@ int main() {
   testRemovedSceneCommandReportsGuidanceWithoutSceneCallback();
   testAdminCommandsRequireRegisteredCallbacks();
   testAdminCommandsUseRegisteredCallbacks();
+  testProceduralMaterialEnabledUsesRegisteredCallbacks();
   testSceneOpenClearsRedoHistory();
   testSceneSavePreservesRedoHistory();
   testCameraControlStatusPreservesRedoHistory();

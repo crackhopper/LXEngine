@@ -690,6 +690,12 @@ splitFieldPath(const std::string &text) {
       marker != std::string::npos && marker > 0) {
     return std::make_pair(text.substr(0, marker), text.substr(marker + 1));
   }
+  constexpr std::string_view kProceduralMaterialMarker =
+      ".proceduralMaterial.";
+  if (const usize marker = text.find(kProceduralMaterialMarker);
+      marker != std::string::npos && marker > 0) {
+    return std::make_pair(text.substr(0, marker), text.substr(marker + 1));
+  }
 
   constexpr std::string_view kNodeMaterialBaseColorSuffix =
       ".nodeMaterial.baseColor";
@@ -1073,6 +1079,21 @@ parseMaterialParameterValue(const ShaderPropertyType type,
                       ")",
                   "{\"value\":" + makeVec3Json(*value) + "}");
   }
+  if (field == "proceduralMaterial.enabled") {
+    if (!context.getProceduralMaterialEnabled) {
+      return makeError("material editing unavailable: procedural material "
+                       "callback is not registered");
+    }
+    const auto value = context.getProceduralMaterialEnabled(path);
+    if (!value.has_value()) {
+      return makeError("procedural material state not available on node: " +
+                       path);
+    }
+    return makeOk(std::string("proceduralMaterial.enabled = ") +
+                      (*value ? "true" : "false"),
+                  std::string("{\"value\":") + (*value ? "true" : "false") +
+                      "}");
+  }
   if (const auto target = parseNodeMaterialTarget(field); target.has_value()) {
     if (!context.getNodeMaterialParameter) {
       return makeError(
@@ -1248,6 +1269,14 @@ buildMaterialSetInverseCommand(const SceneIoContext &context,
              formatFloat(value->z);
     }
   }
+  if (field == "proceduralMaterial.enabled" &&
+      context.getProceduralMaterialEnabled) {
+    if (const auto value = context.getProceduralMaterialEnabled(path);
+        value.has_value()) {
+      return "set " + quoteToken(path + ".proceduralMaterial.enabled") + " " +
+             (*value ? "true" : "false");
+    }
+  }
   if (const auto target = parseNodeMaterialTarget(field);
       target.has_value() && context.getNodeMaterialParameter) {
     const auto value =
@@ -1328,6 +1357,7 @@ completeScenePaths(const Scene &scene, const CompletionContext &context) {
   }
   fields.push_back("materialUri");
   fields.push_back("nodeMaterial.baseColor");
+  fields.push_back("proceduralMaterial.enabled");
   std::sort(fields.begin(), fields.end());
   return fields;
 }
@@ -2483,6 +2513,21 @@ setMaterialField(const SceneIoContext &context, const std::string &path,
     }
     return context.setNodeMaterialBaseColor(path, *value);
   }
+  if (field == "proceduralMaterial.enabled") {
+    if (args.size() != valueStartIndex + 1) {
+      return makeError(
+          "usage: set <path>.proceduralMaterial.enabled <true|false>");
+    }
+    if (!context.setProceduralMaterialEnabled) {
+      return makeError("material editing unavailable: procedural material "
+                       "callback is not registered");
+    }
+    const auto value = parseBoolToken(args[valueStartIndex]);
+    if (!value.has_value()) {
+      return makeError("invalid bool for set proceduralMaterial.enabled");
+    }
+    return context.setProceduralMaterialEnabled(path, *value);
+  }
   if (const auto target = parseNodeMaterialTarget(field); target.has_value()) {
     if (!context.getNodeMaterialParameter ||
         !context.setNodeMaterialParameter) {
@@ -3192,7 +3237,8 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
         if (!found.ok) {
           return found;
         }
-        if (field == "materialUri" || field.rfind("nodeMaterial.", 0) == 0) {
+        if (field == "materialUri" || field.rfind("nodeMaterial.", 0) == 0 ||
+            field == "proceduralMaterial.enabled") {
           return getMaterialField(materialContext, nodePath, field);
         }
         return getField(*node, field);
@@ -3226,7 +3272,8 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
         }
         const std::string oldName = node->getName();
         const bool materialField =
-            field == "materialUri" || field.rfind("nodeMaterial.", 0) == 0;
+            field == "materialUri" || field.rfind("nodeMaterial.", 0) == 0 ||
+            field == "proceduralMaterial.enabled";
         const std::string inverseLine =
             materialField ? buildMaterialSetInverseCommand(materialContext,
                                                            nodePath, field)

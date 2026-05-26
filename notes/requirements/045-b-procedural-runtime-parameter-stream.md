@@ -107,9 +107,18 @@ Runtime 参数可以被 Inspector 显示为当前值，但不应默认保存为 
 
 ## 实施状态
 
-部分实施。已完成 scene document opt-in、`SceneRuntime::updateProceduralMaterials(...)`、`lxe_editor` 主循环调用、`time` / `resolution` / fake `audioBands` 写入，以及“不写回 `nodeMaterialOverrides`”的测试。`test_scene_runtime` 现在还覆盖 required runtime 参数类型不匹配会返回稳定诊断，并且不会把当前帧写入保存成 `nodeMaterialOverrides`。
+已完成。
 
-尚未完成：
+完成内容：
 
-- Inspector 中把 runtime 参数以只读当前值形式区分展示。
-- CommandBus 开关 `proceduralMaterial` opt-in 的显式命令。
+- scene document opt-in、`SceneRuntime::updateProceduralMaterials(...)`、`lxe_editor` 主循环调用、`time` / `resolution` / fake `audioBands` 写入。
+- Runtime 参数更新不写回 `nodeMaterialOverrides`；required runtime 参数类型不匹配会返回稳定诊断。
+- `SceneRuntime::nodeMaterialParametersForNode(...)` 会把 `proceduralMaterial` 管理的 `time` / `resolution` / `audioBands` 标记为 runtime-owned，Inspector 以 disabled 控件展示这些当前值，不把它们当作作者覆盖入口。
+- CommandBus 支持 `get/set <path>.proceduralMaterial.enabled`，可显式开关 procedural runtime opt-in，并通过 undo 恢复上一次状态。
+
+验证命令：
+
+- `cmake --build build --target test_command_bus test_inspector_panel test_scene_runtime lxe_editor -j2`
+- `./build/src/test/test_command_bus`
+- `./build/src/test/test_inspector_panel`
+- `./build/src/test/test_scene_runtime`

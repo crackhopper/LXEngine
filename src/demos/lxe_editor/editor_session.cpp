@@ -879,6 +879,15 @@ void LxeEditorSession::rebuildBindings(
               [this](const std::string &path, const LX_core::Vec3f &color) {
                 return m_runtime.setNodeMaterialBaseColor(path, color);
               },
+          .getProceduralMaterialEnabled =
+              [this](const std::string &path) {
+                return m_runtime.proceduralMaterialEnabledForNode(path);
+              },
+          .setProceduralMaterialEnabled =
+              [this](const std::string &path, const bool enabled) {
+                return m_runtime.setNodeProceduralMaterialEnabled(path,
+                                                                  enabled);
+              },
           .getNodeMaterialParameter =
               [this](const std::string &path, const std::string &binding,
                      const std::string &member) {
@@ -924,6 +933,10 @@ void LxeEditorSession::rebuildBindings(
               [this](const std::string &path) {
                 return m_runtime.nodeMaterialBaseColorEditable(path);
               },
+          .proceduralMaterialEnabled =
+              [this](const std::string &path) {
+                return m_runtime.proceduralMaterialEnabledForNode(path);
+              },
           .presets = [this]() { return m_runtime.materialPresets(); },
           .materialParameters =
               [this](const std::string &path) {
@@ -935,7 +948,8 @@ void LxeEditorSession::rebuildBindings(
                   out.push_back(LX_core::MaterialParameterEditorValue{
                       .binding = value.binding,
                       .member = value.member,
-                      .value = value.value});
+                      .value = value.value,
+                      .runtimeOwned = value.runtimeOwned});
                 }
                 return out;
               },

@@ -25,6 +25,7 @@ struct MaterialParameterEditorValue final {
   std::string binding;
   std::string member;
   MaterialParameterValue value;
+  bool runtimeOwned = false;
 };
 
 struct InspectorMaterialCallbacks {
@@ -32,6 +33,8 @@ struct InspectorMaterialCallbacks {
       materialUri;
   std::function<std::optional<Vec3f>(const std::string &path)> nodeBaseColor;
   std::function<bool(const std::string &path)> canEditBaseColor;
+  std::function<std::optional<bool>(const std::string &path)>
+      proceduralMaterialEnabled;
   std::function<std::vector<std::string>()> presets;
   std::function<std::vector<MaterialParameterEditorValue>(
       const std::string &path)>
@@ -74,6 +77,8 @@ public:
     bool hasNodeBaseColorOverride = false;
     Vec3f nodeBaseColorOverride{0.8f, 0.8f, 0.8f};
     bool canEditBaseColor = false;
+    bool hasProceduralMaterialEnabled = false;
+    bool proceduralMaterialEnabled = false;
     std::vector<std::string> materialPresets;
     std::vector<MaterialParameterEditorValue> materialParameters;
   };

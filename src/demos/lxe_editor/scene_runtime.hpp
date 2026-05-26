@@ -17,6 +17,7 @@ struct RuntimeMaterialParameterValue final {
   std::string binding;
   std::string member;
   LX_core::MaterialParameterValue value;
+  bool runtimeOwned = false;
 };
 
 class SceneRuntime final {
@@ -48,6 +49,8 @@ public:
                                const std::string& member) const;
   [[nodiscard]] std::vector<RuntimeMaterialParameterValue>
   nodeMaterialParametersForNode(const std::string& path) const;
+  [[nodiscard]] std::optional<bool>
+  proceduralMaterialEnabledForNode(const std::string& path) const;
   std::vector<std::string>
   updateProceduralMaterials(float totalTime,
                             const LX_core::Vec2f& resolution);
@@ -62,6 +65,8 @@ public:
   LX_core::CommandResult clearNodeMaterialParameter(
       const std::string& path, const std::string& binding,
       const std::string& member);
+  LX_core::CommandResult
+  setNodeProceduralMaterialEnabled(const std::string& path, bool enabled);
   LX_core::CommandResult applyMaterialOverride(const std::string& path,
                                                const std::string& field);
 

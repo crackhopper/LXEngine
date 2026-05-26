@@ -136,11 +136,33 @@ void testSnapshotIncludesMaterialCallbacks() {
           },
           .canEditBaseColor =
               [](const std::string& path) { return path == "/world/cube"; },
+          .proceduralMaterialEnabled =
+              [](const std::string& path) -> std::optional<bool> {
+            return path == "/world/cube" ? std::optional<bool>(true)
+                                         : std::nullopt;
+          },
           .presets =
               []() {
                 return std::vector<std::string>{
                     "assets/materials/blinnphong_lit.material",
                     "assets/materials/blinnphong_default.material"};
+              },
+          .materialParameters =
+              [](const std::string& path) {
+                if (path != "/world/cube") {
+                  return std::vector<LX_core::MaterialParameterEditorValue>{};
+                }
+                return std::vector<LX_core::MaterialParameterEditorValue>{
+                    LX_core::MaterialParameterEditorValue{
+                        .binding = "ShadertoyUBO",
+                        .member = "time",
+                        .value =
+                            LX_core::MaterialParameterValue{
+                                .type =
+                                    LX_core::MaterialParameterValueType::Float,
+                                .floatValue = 3.0f,
+                            },
+                        .runtimeOwned = true}};
               },
       });
   fixture.editorState.select({fixture.cube});
@@ -158,8 +180,14 @@ void testSnapshotIncludesMaterialCallbacks() {
          "snapshot should expose callback node baseColor value");
   EXPECT(snapshot.canEditBaseColor,
          "snapshot should expose baseColor editability");
+  EXPECT(snapshot.hasProceduralMaterialEnabled &&
+             snapshot.proceduralMaterialEnabled,
+         "snapshot should expose procedural runtime opt-in");
   EXPECT(snapshot.materialPresets.size() == 2,
          "snapshot should expose material preset list");
+  EXPECT(snapshot.materialParameters.size() == 1 &&
+             snapshot.materialParameters[0].runtimeOwned,
+         "snapshot should distinguish runtime-owned material parameters");
 }
 
 void testExperimentMaterialCandidateDiscovery() {

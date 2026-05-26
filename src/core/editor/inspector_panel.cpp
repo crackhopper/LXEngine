@@ -270,6 +270,14 @@ InspectorPanel::Snapshot InspectorPanel::makeSnapshot() const {
     snapshot.canEditBaseColor =
         m_materialCallbacks.canEditBaseColor(snapshot.path);
   }
+  if (m_materialCallbacks.proceduralMaterialEnabled) {
+    if (const auto enabled =
+            m_materialCallbacks.proceduralMaterialEnabled(snapshot.path);
+        enabled.has_value()) {
+      snapshot.hasProceduralMaterialEnabled = true;
+      snapshot.proceduralMaterialEnabled = *enabled;
+    }
+  }
   if (m_materialCallbacks.presets) {
     snapshot.materialPresets = m_materialCallbacks.presets();
   }
@@ -588,6 +596,18 @@ void InspectorPanel::drawSelection(const Snapshot &snapshot) {
       }
     }
 
+    if (snapshot.hasProceduralMaterialEnabled) {
+      bool enabled = snapshot.proceduralMaterialEnabled;
+      if (ImGui::Checkbox("Procedural Runtime", &enabled)) {
+        const CommandResult result = m_commandBus.dispatch(
+            "set " + quoteToken(snapshot.path + ".proceduralMaterial.enabled") +
+            " " + std::string(enabled ? "true" : "false"));
+        if (result.ok) {
+          refreshDrafts();
+        }
+      }
+    }
+
     if (snapshot.canEditBaseColor) {
       const bool baseColorChanged =
           ImGui::ColorEdit3("Base Color Override", m_nodeBaseColorDraft.data);
@@ -619,27 +639,41 @@ void InspectorPanel::drawSelection(const Snapshot &snapshot) {
       const std::string label = parameter.binding + "." + parameter.member;
       MaterialParameterValue value = parameter.value;
       bool changed = false;
+      if (parameter.runtimeOwned) {
+        ImGui::BeginDisabled();
+      }
       switch (value.type) {
       case MaterialParameterValueType::Float:
-        changed = ImGui::InputFloat(label.c_str(), &value.floatValue);
+        changed = ImGui::InputFloat(
+            (parameter.runtimeOwned ? label + " [runtime]" : label).c_str(),
+            &value.floatValue);
         break;
       case MaterialParameterValueType::Int:
-        changed = ImGui::InputInt(label.c_str(), &value.intValue);
+        changed = ImGui::InputInt(
+            (parameter.runtimeOwned ? label + " [runtime]" : label).c_str(),
+            &value.intValue);
         break;
       case MaterialParameterValueType::Vec3: {
         float data[3] = {value.vectorValue.x, value.vectorValue.y,
                          value.vectorValue.z};
-        changed = ImGui::DragFloat3(label.c_str(), data, 0.01f);
+        changed = ImGui::DragFloat3(
+            (parameter.runtimeOwned ? label + " [runtime]" : label).c_str(),
+            data, 0.01f);
         value.vectorValue = Vec4f{data[0], data[1], data[2], 0.0f};
         break;
       }
       case MaterialParameterValueType::Vec4: {
         float data[4] = {value.vectorValue.x, value.vectorValue.y,
                          value.vectorValue.z, value.vectorValue.w};
-        changed = ImGui::DragFloat4(label.c_str(), data, 0.01f);
+        changed = ImGui::DragFloat4(
+            (parameter.runtimeOwned ? label + " [runtime]" : label).c_str(),
+            data, 0.01f);
         value.vectorValue = Vec4f{data[0], data[1], data[2], data[3]};
         break;
       }
+      }
+      if (parameter.runtimeOwned) {
+        ImGui::EndDisabled();
       }
       if (changed && ImGui::IsItemDeactivatedAfterEdit()) {
         const CommandResult result = m_commandBus.dispatch(

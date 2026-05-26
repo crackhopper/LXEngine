@@ -1660,6 +1660,20 @@ SceneRuntime::nodeMaterialParametersForNode(const std::string &path) const {
   if (!material->getTemplate()) {
     return out;
   }
+  const auto *documentNode = findDocumentNodeForRuntimePath(*runtime, path);
+  const auto isRuntimeOwned = [&](const std::string &binding,
+                                  const std::string &member) {
+    if (!documentNode || !documentNode->proceduralMaterial.enabled) {
+      return false;
+    }
+    const ProceduralMaterialState &state = documentNode->proceduralMaterial;
+    if (binding != state.binding) {
+      return false;
+    }
+    return member == state.timeMember || member == state.resolutionMember ||
+           (state.audioBandsMember.has_value() &&
+            member == *state.audioBandsMember);
+  };
   for (const auto &[bindingId, binding] :
        material->getTemplate()->getCanonicalMaterialBindings()) {
     if (binding.type != LX_core::ShaderPropertyType::UniformBuffer &&
@@ -1679,13 +1693,26 @@ SceneRuntime::nodeMaterialParametersForNode(const std::string &path) const {
         continue;
       }
       out.push_back(RuntimeMaterialParameterValue{
-          .binding = binding.name, .member = member.name, .value = *value});
+          .binding = binding.name,
+          .member = member.name,
+          .value = *value,
+          .runtimeOwned = isRuntimeOwned(binding.name, member.name)});
     }
   }
   std::sort(out.begin(), out.end(), [](const auto &a, const auto &b) {
     return a.binding + "." + a.member < b.binding + "." + b.member;
   });
   return out;
+}
+
+std::optional<bool>
+SceneRuntime::proceduralMaterialEnabledForNode(const std::string &path) const {
+  const auto runtime = requireRuntimeData(m_impl);
+  const auto *documentNode = findDocumentNodeForRuntimePath(*runtime, path);
+  if (!documentNode || !documentNodeHasMaterialSurface(*documentNode)) {
+    return std::nullopt;
+  }
+  return documentNode->proceduralMaterial.enabled;
 }
 
 std::vector<std::string>
@@ -2021,6 +2048,49 @@ SceneRuntime::clearNodeMaterialParameter(const std::string &path,
                        "{\"path\":\"" + jsonEscape(path) + "\",\"binding\":\"" +
                            jsonEscape(binding) + "\",\"member\":\"" +
                            jsonEscape(member) + "\"}");
+}
+
+LX_core::CommandResult
+SceneRuntime::setNodeProceduralMaterialEnabled(const std::string &path,
+                                               const bool enabled) {
+  const auto runtime = requireRuntimeData(m_impl);
+  auto *documentNode = findDocumentNodeForRuntimePath(*runtime, path);
+  if (!documentNode) {
+    return makeCommandError("scene document node not found: " + path);
+  }
+  if (!documentNodeHasMaterialSurface(*documentNode)) {
+    return makeCommandError("node has no material surface: " + path);
+  }
+  LX_core::SceneNode *node = runtime->scene->findByPath(path);
+  if (!node) {
+    return makeCommandError("node not found: " + path);
+  }
+  auto materialComponent = node->getComponent<LX_core::MaterialComponent>();
+  if (!materialComponent.has_value()) {
+    return makeCommandError("node has no material component: " + path);
+  }
+
+  const std::string uri = normalizeMaterialUri(*documentNode);
+  try {
+    ProceduralMaterialState proceduralState = documentNode->proceduralMaterial;
+    proceduralState.enabled = enabled;
+    auto material = loadEffectiveMaterialForSceneNode(
+        runtime->assetRoots, *documentNode, uri, documentNode->materialOverrides,
+        documentNode->nodeMaterialOverrides, proceduralState);
+    applyReceiverOnlyMeshMaterialPolicy(*documentNode, material);
+    materialComponent->get().setMaterialInstance(std::move(material));
+    documentNode->materialUri = uri;
+    documentNode->proceduralMaterial = std::move(proceduralState);
+  } catch (const std::exception &error) {
+    return makeCommandError(
+        std::string("failed to set proceduralMaterial.enabled: ") +
+        error.what());
+  }
+
+  return makeCommandOk(
+      std::string("proceduralMaterial.enabled updated"),
+      "{\"path\":\"" + jsonEscape(path) +
+          "\",\"enabled\":" + (enabled ? "true" : "false") + "}");
 }
 
 LX_core::CommandResult

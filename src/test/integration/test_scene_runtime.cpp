@@ -1328,6 +1328,25 @@ void testProceduralRuntimeParameterStreamUpdatesMaterialOnly() {
     expectNear(resolution->vectorValue.w, 1.0f / 1080.0f,
                "procedural inverse height should match", 0.00001f);
   }
+  const auto materialParameters =
+      runtime.nodeMaterialParametersForNode("/quantum_core");
+  const auto runtimeTime = std::find_if(
+      materialParameters.begin(), materialParameters.end(), [](const auto &p) {
+        return p.binding == "ShadertoyUBO" && p.member == "time";
+      });
+  const auto runtimeResolution = std::find_if(
+      materialParameters.begin(), materialParameters.end(), [](const auto &p) {
+        return p.binding == "ShadertoyUBO" && p.member == "resolution";
+      });
+  EXPECT(runtimeTime != materialParameters.end() && runtimeTime->runtimeOwned,
+         "procedural time should be marked as runtime-owned for Inspector");
+  EXPECT(runtimeResolution != materialParameters.end() &&
+             runtimeResolution->runtimeOwned,
+         "procedural resolution should be marked as runtime-owned for "
+         "Inspector");
+  EXPECT(runtime.proceduralMaterialEnabledForNode("/quantum_core")
+             .value_or(false),
+         "runtime should expose procedural opt-in state");
 
   const std::filesystem::path savePath =
       makeTempPath("lx_scene_runtime_procedural_stream_saved.scene.yaml");
@@ -1338,6 +1357,32 @@ void testProceduralRuntimeParameterStreamUpdatesMaterialOnly() {
          "runtime procedural update should not persist as node overrides");
   EXPECT(savedNode.proceduralMaterial.enabled,
          "procedural opt-in should persist after runtime save");
+
+  const auto disableResult =
+      runtime.setNodeProceduralMaterialEnabled("/quantum_core", false);
+  EXPECT(disableResult.ok, "runtime should disable procedural opt-in");
+  EXPECT(!runtime.proceduralMaterialEnabledForNode("/quantum_core")
+              .value_or(true),
+         "runtime should expose disabled procedural opt-in state");
+  const auto disabledParameters =
+      runtime.nodeMaterialParametersForNode("/quantum_core");
+  const auto disabledTime =
+      std::find_if(disabledParameters.begin(), disabledParameters.end(),
+                   [](const auto &p) {
+                     return p.binding == "ShadertoyUBO" && p.member == "time";
+                   });
+  EXPECT(disabledTime != disabledParameters.end() &&
+             !disabledTime->runtimeOwned,
+         "disabled procedural opt-in should make time editable again");
+
+  const std::filesystem::path disabledSavePath =
+      makeTempPath("lx_scene_runtime_procedural_stream_disabled.scene.yaml");
+  runtime.saveToDocumentPath(disabledSavePath);
+  const demo::SceneDocument disabledSaved =
+      demo::loadSceneDocument(disabledSavePath);
+  const auto &disabledSavedNode = disabledSaved.rootNode().children[1];
+  EXPECT(!disabledSavedNode.proceduralMaterial.enabled,
+         "disabled procedural opt-in should persist to scene document");
 }
 
 void testProceduralRuntimeParameterTypeMismatchReportsDiagnostic() {
@@ -2132,8 +2177,20 @@ void testBuiltinHelmetDefaultMaterialKeepsPbrBridgeOnReload() {
   const auto editedAlbedoDesc =
       nodeTextureDesc(runtime.scene()->findByPath("/helmet"),
                       LX_core::StringID("albedoMap"));
+  const auto editedAoDesc =
+      nodeTextureDesc(runtime.scene()->findByPath("/helmet"),
+                      LX_core::StringID("aoMap"));
+  const auto editedEmissiveDesc =
+      nodeTextureDesc(runtime.scene()->findByPath("/helmet"),
+                      LX_core::StringID("emissiveMap"));
   EXPECT(editedAlbedoDesc.has_value() && editedAlbedoDesc->width > 1u,
          "helmet parameter edit should not replace glTF albedo with "
+         "placeholder texture");
+  EXPECT(editedAoDesc.has_value() && editedAoDesc->width > 1u,
+         "helmet parameter edit should not replace glTF AO with placeholder "
+         "texture");
+  EXPECT(editedEmissiveDesc.has_value() && editedEmissiveDesc->width > 1u,
+         "helmet parameter edit should not replace glTF emissive with "
          "placeholder texture");
 
   const std::filesystem::path savePath =
@@ -2145,8 +2202,21 @@ void testBuiltinHelmetDefaultMaterialKeepsPbrBridgeOnReload() {
   auto *reloadedHelmet = reloaded.scene()->findByPath("/helmet");
   const auto reloadedAlbedoDesc =
       nodeTextureDesc(reloadedHelmet, LX_core::StringID("albedoMap"));
+  const auto reloadedMrDesc =
+      nodeTextureDesc(reloadedHelmet, LX_core::StringID("metallicRoughnessMap"));
+  const auto reloadedAoDesc =
+      nodeTextureDesc(reloadedHelmet, LX_core::StringID("aoMap"));
+  const auto reloadedEmissiveDesc =
+      nodeTextureDesc(reloadedHelmet, LX_core::StringID("emissiveMap"));
   EXPECT(reloadedAlbedoDesc.has_value() && reloadedAlbedoDesc->width > 1u,
          "saved default helmet material should reload through glTF PBR bridge");
+  EXPECT(reloadedMrDesc.has_value() && reloadedMrDesc->width > 1u,
+         "saved default helmet material should reload real glTF MR texture");
+  EXPECT(reloadedAoDesc.has_value() && reloadedAoDesc->width > 1u,
+         "saved default helmet material should reload real glTF AO texture");
+  EXPECT(reloadedEmissiveDesc.has_value() && reloadedEmissiveDesc->width > 1u,
+         "saved default helmet material should reload real glTF emissive "
+         "texture");
 }
 
 void testShadowTutorialSceneLoadsSavesAndReloads() {

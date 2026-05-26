@@ -38,6 +38,10 @@ struct SceneIoContext {
       std::function<std::optional<Vec3f>(const std::string &path)>;
   using SetVec3FieldFn =
       std::function<CommandResult(const std::string &path, const Vec3f &value)>;
+  using GetBoolFieldFn =
+      std::function<std::optional<bool>(const std::string &path)>;
+  using SetBoolFieldFn =
+      std::function<CommandResult(const std::string &path, bool value)>;
   using ApplyMaterialOverrideFn = std::function<CommandResult(
       const std::string &path, const std::string &field)>;
   using GetMaterialParameterFn =
@@ -63,6 +67,8 @@ struct SceneIoContext {
   SetStringFieldFn setMaterialUri;
   GetVec3FieldFn getNodeMaterialBaseColor;
   SetVec3FieldFn setNodeMaterialBaseColor;
+  GetBoolFieldFn getProceduralMaterialEnabled;
+  SetBoolFieldFn setProceduralMaterialEnabled;
   GetMaterialParameterFn getNodeMaterialParameter;
   SetMaterialParameterFn setNodeMaterialParameter;
   ClearMaterialParameterFn clearNodeMaterialParameter;
