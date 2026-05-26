@@ -119,7 +119,7 @@ procedural shader 的参数继续属于 material-owned binding。
 
 ## 实施状态
 
-已实施第一版。当前已有 `rtr_shadertoy_quantum_core` shader/material 资产、`procedural_shader_gallery.scene.yaml` gallery 场景、`proceduralMaterial` scene document opt-in、运行时参数流入口，以及 shader/material/document/runtime 集成测试。
+已实施第一版。当前已有 `rtr_shadertoy_quantum_core` shader/material 资产、`procedural_shader_gallery.scene.yaml` gallery 场景、`proceduralMaterial` scene document opt-in、运行时参数流入口，以及 shader/material/document/runtime 集成测试。`test_scene_runtime` 现在显式覆盖 `assets/materials/rtr_shadertoy_quantum_core.material` 会出现在 `materialPresets()` 候选中，同时保留无效 fixture 与隐藏 material 的过滤行为。
 
 验证命令：
 

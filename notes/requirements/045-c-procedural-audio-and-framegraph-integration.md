@@ -117,7 +117,7 @@ procedural pass 可以读取 FrameGraph 中早前 pass 写出的资源。
 
 ## 实施状态
 
-Completed，2026-05-19。
+Audio channel 与 dynamic texture 路径已完成，2026-05-19。Fullscreen procedural 的旧 FrameGraph 表达是过渡实现；标准 HDR/post-process 迁移将在 `REQ-046-a` 中删除或替换这条旧分支，而不是继续扩展 `FramePassKind::FullscreenProcedural`。
 
 已落地：
 
@@ -126,9 +126,9 @@ Completed，2026-05-19。
 - procedural scene metadata：`proceduralMaterial.audioChannelBinding` 可在 scene YAML 中声明并 round-trip。
 - editor runtime：加载 procedural 节点材质时自动替换 `iChannel0`，每帧更新 `time`、`resolution`、`audioBands` 和 fake audio texture。
 - `rtr_shadertoy_quantum_core`：shader/material 反射并绑定 `iChannel0`。
-- FrameGraph：新增 `FramePassKind::FullscreenProcedural` 和 `fullscreenMaterial` 元数据，compile 保留 sampled input 与 fullscreen procedural pass 声明。
+- FrameGraph：当前仍保留 `FramePassKind::FullscreenProcedural` 和 `fullscreenMaterial` 元数据，compile 保留 sampled input 与 fullscreen procedural pass 声明；后续由 `REQ-046-a` 迁移到标准 post-process pass。
 
 首版边界：
 
-- fullscreen procedural pass 目前完成 core/framegraph 表达与 pipeline 预备合同，backend 实际 fullscreen draw 执行留给后续 pass executor 工作。
+- fullscreen procedural pass 目前只完成 core/framegraph 过渡表达与 pipeline 预备合同；backend 实际 fullscreen draw 不在旧分支继续补完，改由 `REQ-046-a` 的标准 post-process 迁移处理。
 - history ping-pong 目前通过显式 read/write 资源模型预留表达，不做自动资源轮转。

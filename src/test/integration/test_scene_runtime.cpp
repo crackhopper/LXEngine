@@ -1111,6 +1111,9 @@ void testRuntimeMaterialPresetsExcludeInvalidFixtures() {
   EXPECT(containsPreset("assets/materials/mesh_debug.material"),
          "mesh_debug material should remain discoverable");
   EXPECT(
+      containsPreset("assets/materials/rtr_shadertoy_quantum_core.material"),
+      "procedural material should be available as a material preset");
+  EXPECT(
       !containsPreset("assets/materials/test_invalid_normal_no_light.material"),
       "material presets should exclude invalid no-light normal-map fixture");
   EXPECT(!containsPreset("assets/materials/test_invalid_normal_no_uv.material"),
@@ -1306,6 +1309,93 @@ void testProceduralRuntimeParameterStreamUpdatesMaterialOnly() {
          "runtime procedural update should not persist as node overrides");
   EXPECT(savedNode.proceduralMaterial.enabled,
          "procedural opt-in should persist after runtime save");
+}
+
+void testProceduralRuntimeParameterTypeMismatchReportsDiagnostic() {
+  const std::filesystem::path inputPath =
+      makeTempPath("lx_scene_runtime_procedural_type_mismatch.scene.yaml");
+  writeSceneFile(
+      inputPath,
+      "scene:\n"
+      "  name: procedural_type_mismatch\n"
+      "  gameplayCameraPath: /game_cam\n"
+      "nodes:\n"
+      "  - nodeName: game_camera\n"
+      "    name: game_cam\n"
+      "    transform:\n"
+      "      translation: [0.0, 2.0, 6.0]\n"
+      "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+      "      scale: [1.0, 1.0, 1.0]\n"
+      "    visibilityMask: 4294967295\n"
+      "    camera:\n"
+      "      eye: [0.0, 2.0, 6.0]\n"
+      "      target: [0.0, 0.0, 0.0]\n"
+      "      up: [0.0, 1.0, 0.0]\n"
+      "      type: perspective\n"
+      "      fovY: 45.0\n"
+      "      aspect: 1.7777778\n"
+      "      nearPlane: 0.1\n"
+      "      farPlane: 1000.0\n"
+      "      left: -1.0\n"
+      "      right: 1.0\n"
+      "      bottom: -1.0\n"
+      "      top: 1.0\n"
+      "      cullingMask: 4294967295\n"
+      "  - nodeName: quantum_core_node\n"
+      "    name: quantum_core\n"
+      "    transform:\n"
+      "      translation: [0.0, 0.0, 0.0]\n"
+      "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+      "      scale: [3.0, 3.0, 3.0]\n"
+      "    visibilityMask: 4294967295\n"
+      "    mesh:\n"
+      "      uri: builtin://lxe_editor/patches/square\n"
+      "    material:\n"
+      "      uri: assets/materials/rtr_shadertoy_quantum_core.material\n"
+      "    proceduralMaterial:\n"
+      "      enabled: true\n"
+      "      binding: ShadertoyUBO\n"
+      "      timeMember: audioBands\n"
+      "      resolutionMember: resolution\n"
+      "      audioBandsMember: ''\n"
+      "      audioChannelBinding: iChannel0\n");
+
+  demo::SceneRuntime runtime;
+  runtime.loadFromDocumentPath(inputPath);
+
+  const auto before = runtime.nodeMaterialParameterForNode(
+      "/quantum_core", "ShadertoyUBO", "audioBands");
+  const auto diagnostics =
+      runtime.updateProceduralMaterials(42.0f, LX_core::Vec2f{640.0f, 360.0f});
+  const auto after = runtime.nodeMaterialParameterForNode(
+      "/quantum_core", "ShadertoyUBO", "audioBands");
+
+  EXPECT(std::find(diagnostics.begin(), diagnostics.end(),
+                   "procedural time member is not Float on /quantum_core: "
+                   "ShadertoyUBO.audioBands") != diagnostics.end(),
+         "procedural time type mismatch should report a stable diagnostic");
+  EXPECT(before.has_value() && after.has_value() &&
+             before->type == LX_core::MaterialParameterValueType::Vec4 &&
+             after->type == LX_core::MaterialParameterValueType::Vec4,
+         "type mismatch should not write the configured time member");
+  if (before.has_value() && after.has_value()) {
+    expectNear(before->vectorValue.x, after->vectorValue.x,
+               "type mismatch should preserve audioBands.x");
+    expectNear(before->vectorValue.y, after->vectorValue.y,
+               "type mismatch should preserve audioBands.y");
+    expectNear(before->vectorValue.z, after->vectorValue.z,
+               "type mismatch should preserve audioBands.z");
+    expectNear(before->vectorValue.w, after->vectorValue.w,
+               "type mismatch should preserve audioBands.w");
+  }
+
+  const std::filesystem::path savePath =
+      makeTempPath("lx_scene_runtime_procedural_type_mismatch_saved.scene.yaml");
+  runtime.saveToDocumentPath(savePath);
+  const demo::SceneDocument saved = demo::loadSceneDocument(savePath);
+  const auto &savedNode = saved.rootNode().children[1];
+  EXPECT(savedNode.nodeMaterialOverrides.parameters.empty(),
+         "type mismatch diagnostic should not create node material overrides");
 }
 
 void testGroundMeshWindingMatchesUpwardNormal() {
@@ -1944,6 +2034,7 @@ int main() {
   testRuntimeCanAssignMeshDebugMaterial();
   testGenericNodeMaterialParameterOverrideRoundTrips();
   testProceduralRuntimeParameterStreamUpdatesMaterialOnly();
+  testProceduralRuntimeParameterTypeMismatchReportsDiagnostic();
   testGroundMeshWindingMatchesUpwardNormal();
   testBuiltinPrimitivePlaneIsThinBox();
   testBuiltinPatchMeshesAreOpenReceiversOnly();
