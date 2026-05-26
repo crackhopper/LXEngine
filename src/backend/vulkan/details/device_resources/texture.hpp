@@ -14,6 +14,25 @@ class VulkanDevice;
 class VulkanTexture;
 using VulkanTextureUniquePtr = std::unique_ptr<VulkanTexture>;
 
+class VulkanImageView final {
+public:
+  VulkanImageView(VkDevice device, VkImageView imageView);
+  ~VulkanImageView();
+
+  VulkanImageView(const VulkanImageView &) = delete;
+  VulkanImageView &operator=(const VulkanImageView &) = delete;
+  VulkanImageView(VulkanImageView &&other) noexcept;
+  VulkanImageView &operator=(VulkanImageView &&other) noexcept;
+
+  VkImageView getHandle() const { return m_imageView; }
+
+private:
+  void destroy();
+
+  VkDevice m_device = VK_NULL_HANDLE;
+  VkImageView m_imageView = VK_NULL_HANDLE;
+};
+
 class VulkanTexture {
   struct Token {};
 
@@ -60,6 +79,10 @@ public:
   VkSampler getSampler() const { return m_sampler; }
   VkImageLayout getCurrentLayout() const { return m_currentLayout; }
   VkImageUsageFlags getUsage() const { return m_usage; }
+  VulkanImageView createSubresourceView(
+      VkImageAspectFlags aspectMask, u32 baseMipLevel, u32 levelCount,
+      u32 baseArrayLayer, u32 layerCount,
+      VkImageViewType viewType = VK_IMAGE_VIEW_TYPE_2D) const;
 
   void transitionLayout(VulkanCommandBuffer &cmd, VkImageLayout oldLayout,
                         VkImageLayout newLayout, VkPipelineStageFlags pipelineStage,

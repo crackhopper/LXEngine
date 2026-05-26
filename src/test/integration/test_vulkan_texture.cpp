@@ -98,6 +98,36 @@ int main() {
       std::cerr << "Cubemap shape metadata was not preserved\n";
       return 1;
     }
+    auto cubeFaceMipView = cubeTexture->createSubresourceView(
+        VK_IMAGE_ASPECT_COLOR_BIT, 1, 1, 4, 1);
+    if (cubeFaceMipView.getHandle() == VK_NULL_HANDLE) {
+      std::cerr << "Cubemap face/mip image view is null\n";
+      return 1;
+    }
+    bool outOfBoundsMipViewRejected = false;
+    try {
+      (void)cubeTexture->createSubresourceView(VK_IMAGE_ASPECT_COLOR_BIT, 3,
+                                               1, 0, 1);
+    } catch (const std::runtime_error &e) {
+      outOfBoundsMipViewRejected =
+          std::string(e.what()).find("mip range") != std::string::npos;
+    }
+    if (!outOfBoundsMipViewRejected) {
+      std::cerr << "Out-of-bounds cubemap mip view was not rejected\n";
+      return 1;
+    }
+    bool outOfBoundsLayerViewRejected = false;
+    try {
+      (void)cubeTexture->createSubresourceView(VK_IMAGE_ASPECT_COLOR_BIT, 0,
+                                               1, 6, 1);
+    } catch (const std::runtime_error &e) {
+      outOfBoundsLayerViewRejected =
+          std::string(e.what()).find("layer range") != std::string::npos;
+    }
+    if (!outOfBoundsLayerViewRejected) {
+      std::cerr << "Out-of-bounds cubemap layer view was not rejected\n";
+      return 1;
+    }
 
     bool invalidCubeRejected = false;
     try {

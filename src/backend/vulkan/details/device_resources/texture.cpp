@@ -145,6 +145,36 @@ private:
 };
 } // namespace
 
+VulkanImageView::VulkanImageView(VkDevice device, VkImageView imageView)
+    : m_device(device), m_imageView(imageView) {}
+
+VulkanImageView::~VulkanImageView() { destroy(); }
+
+VulkanImageView::VulkanImageView(VulkanImageView &&other) noexcept
+    : m_device(other.m_device), m_imageView(other.m_imageView) {
+  other.m_device = VK_NULL_HANDLE;
+  other.m_imageView = VK_NULL_HANDLE;
+}
+
+VulkanImageView &VulkanImageView::operator=(
+    VulkanImageView &&other) noexcept {
+  if (this != &other) {
+    destroy();
+    m_device = other.m_device;
+    m_imageView = other.m_imageView;
+    other.m_device = VK_NULL_HANDLE;
+    other.m_imageView = VK_NULL_HANDLE;
+  }
+  return *this;
+}
+
+void VulkanImageView::destroy() {
+  if (m_device != VK_NULL_HANDLE && m_imageView != VK_NULL_HANDLE) {
+    vkDestroyImageView(m_device, m_imageView, nullptr);
+    m_imageView = VK_NULL_HANDLE;
+  }
+}
+
 VulkanTexture::VulkanTexture(Token, VulkanDevice &device,
                              u32 width, u32 height,
                              VkFormat format,
@@ -347,6 +377,44 @@ void VulkanTexture::createImageView(VkImageAspectFlags aspectMask) {
       VK_SUCCESS) {
     throw std::runtime_error("Failed to create image view!");
   }
+}
+
+VulkanImageView VulkanTexture::createSubresourceView(
+    VkImageAspectFlags aspectMask, u32 baseMipLevel, u32 levelCount,
+    u32 baseArrayLayer, u32 layerCount, VkImageViewType viewType) const {
+  validateImageAspect(m_format, aspectMask);
+  if (levelCount == 0 || layerCount == 0) {
+    throw std::runtime_error(
+        "Texture subresource view level and layer counts must be non-zero");
+  }
+  if (baseMipLevel >= m_mipLevels ||
+      levelCount > m_mipLevels - baseMipLevel) {
+    throw std::runtime_error(
+        "Texture subresource view mip range is out of bounds");
+  }
+  if (baseArrayLayer >= m_arrayLayers ||
+      layerCount > m_arrayLayers - baseArrayLayer) {
+    throw std::runtime_error(
+        "Texture subresource view layer range is out of bounds");
+  }
+
+  VkImageViewCreateInfo viewInfo{};
+  viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+  viewInfo.image = m_image;
+  viewInfo.viewType = viewType;
+  viewInfo.format = m_format;
+  viewInfo.subresourceRange.aspectMask = aspectMask;
+  viewInfo.subresourceRange.baseMipLevel = baseMipLevel;
+  viewInfo.subresourceRange.levelCount = levelCount;
+  viewInfo.subresourceRange.baseArrayLayer = baseArrayLayer;
+  viewInfo.subresourceRange.layerCount = layerCount;
+
+  VkImageView imageView = VK_NULL_HANDLE;
+  if (vkCreateImageView(m_device, &viewInfo, nullptr, &imageView) !=
+      VK_SUCCESS) {
+    throw std::runtime_error("Failed to create texture subresource image view");
+  }
+  return VulkanImageView(m_device, imageView);
 }
 
 void VulkanTexture::createSampler(VkFilter filter,
