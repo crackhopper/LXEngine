@@ -3,12 +3,41 @@
 #include "backend/vulkan/details/device_resources/texture.hpp"
 #include "backend/vulkan/details/ibl_bake_renderer.hpp"
 #include "backend/vulkan/details/resource_manager.hpp"
+#include "core/asset/texture.hpp"
 #include "core/utils/env.hpp"
 #include "infra/window/window.hpp"
 
 #include <vulkan/vulkan.h>
 
 #include <iostream>
+#include <vector>
+
+namespace {
+
+LX_core::CombinedTextureSamplerSharedPtr makeTestEnvironmentMap() {
+  LX_core::TextureDesc desc;
+  desc.width = 4;
+  desc.height = 2;
+  desc.format = LX_core::TextureFormat::RGBA32Float;
+  std::vector<u8> bytes(desc.width * desc.height * 4u * sizeof(float));
+  auto *pixels = reinterpret_cast<float *>(bytes.data());
+  for (u32 y = 0; y < desc.height; ++y) {
+    for (u32 x = 0; x < desc.width; ++x) {
+      const usize base = static_cast<usize>(y * desc.width + x) * 4u;
+      pixels[base + 0u] = 0.5f + static_cast<float>(x) * 0.25f;
+      pixels[base + 1u] = 0.25f + static_cast<float>(y) * 0.5f;
+      pixels[base + 2u] = 1.5f;
+      pixels[base + 3u] = 1.0f;
+    }
+  }
+  auto sampler = std::make_shared<LX_core::CombinedTextureSampler>(
+      std::make_shared<LX_core::Texture>(desc, std::move(bytes)));
+  sampler->setBindingName(LX_core::StringID("EquirectangularMap"));
+  sampler->setDirty();
+  return sampler;
+}
+
+} // namespace
 
 int main() {
   expSetEnvVK();
@@ -27,6 +56,7 @@ int main() {
     LX_core::backend::IblBakeRenderer baker(*device, *resourceManager,
                                             *cmdBufferMgr);
     const auto result = baker.bakeStaticEnvironment({
+        .equirectangularMap = makeTestEnvironmentMap(),
         .skyboxSize = 16,
         .irradianceSize = 8,
         .prefilterSize = 16,

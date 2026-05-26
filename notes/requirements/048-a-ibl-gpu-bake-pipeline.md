@@ -138,11 +138,11 @@ IBL 不能在每个 fragment 中直接对整张 HDR 环境图积分。Filament �
 - VulkanResourceManager 已提供 cubemap bake attachment 入口，可按稳定 name 创建/复用带 mip chain 的 cube texture，并缓存 face/mip subresource image view，供后续 bake executor 组装 framebuffer。
 - 新增 Vulkan IBL bake executor 骨架，可创建并写入 `SkyboxMap`、`IrradianceMap`、`PrefilteredEnvMap` cubemap 和 `BrdfLut` 2D LUT；bake 结果已 alias 到 ResourceManager 常规 texture lookup，后续 descriptor 绑定可直接消费 baked GPU texture。
 - `BrdfLut` 已改为执行 `ibl_brdf_lut` fullscreen shader 生成，并通过 Vulkan IBL bake 测试 readback 验证输出非空。
+- Vulkan IBL bake executor 已接入真实 shader draw 路径：显式输入 `EquirectangularMap`，逐 face 执行 `equirect_to_cubemap` 生成 `SkyboxMap`，再以 baked skybox 为输入执行 `ibl_irradiance_convolve` 与 `ibl_prefilter_env` 写入 `IrradianceMap` 和 `PrefilteredEnvMap` mip chain。
+- bake executor 已补充 `CaptureViewUBO`、`PrefilterUBO`、cubemap face/mip framebuffer 复用和子资源 layout tracking；`test_vulkan_ibl_bake` 使用显式 RGBA32F equirectangular 测试贴图验证 skybox / prefilter / BRDF LUT readback 非空，并确认 bake 输出可被常规 descriptor lookup 消费。
 - FrameGraph attachment dump 已支持 color/HDR attachment，可把 `scene.hdrColor` 这类 RGBA16F 目标 tone map 到 BMP 供人工验证。
 - `SceneRuntime` 已提供 CPU 侧 equirectangular HDR -> 方向性 cubemap 过渡路径：`SkyboxMap` 生成 64x64 cubemap，`PrefilteredEnvMap` 按 `roughnessMipCount` 分配 mip chain；`IrradianceMap` 仍使用 HDR 平均辐射近似。该路径用于让 `REQ-049-a` / `REQ-050-a` 在 GPU bake 完成前先消费真实方向数据。
 
 仍待落地：
 
-- Vulkan IBL bake executor 仍需把 cubemap clear-pass 骨架升级为实际 shader bake，用 equirect/cubemap shader 替换当前占位写入。
-- GPU irradiance convolution、specular prefilter importance sampling shader 执行仍待接入。
 - cubemap face / BRDF LUT dump 与方向验证。

@@ -2,6 +2,7 @@
 
 #include "core/asset/material_instance.hpp"
 #include "core/asset/material_template.hpp"
+#include "core/math/mat.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/scene.hpp"
@@ -16,9 +17,12 @@
 #include "resource_manager.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <numeric>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -27,6 +31,16 @@ namespace LX_core::backend {
 namespace {
 
 constexpr VkFormat kBakeFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+constexpr float kPi = 3.14159265358979323846f;
+
+usize cubemapLayoutKey(StringID resourceName, u32 mipLevel, u32 faceLayer) {
+  usize hash = StringID::Hash{}(resourceName);
+  hash ^= static_cast<usize>(mipLevel) + 0x9e3779b9u + (hash << 6u) +
+          (hash >> 2u);
+  hash ^= static_cast<usize>(faceLayer) + 0x9e3779b9u + (hash << 6u) +
+          (hash >> 2u);
+  return hash;
+}
 
 void transitionSubresource(VkCommandBuffer cmd, VkImage image,
                            VkImageLayout oldLayout, VkImageLayout newLayout,
@@ -101,6 +115,59 @@ std::vector<ShaderStageCode> loadBakeShaderStages(const std::string &name) {
   };
 }
 
+ShaderResourceBinding textureBinding(const char *name, u32 binding,
+                                     ShaderPropertyType type) {
+  return ShaderResourceBinding{name, 0, binding, type, 1, 0, 0,
+                               ShaderStage::Fragment, {}};
+}
+
+ShaderResourceBinding captureViewBinding() {
+  return ShaderResourceBinding{
+      "CaptureViewUBO",
+      0,
+      1,
+      ShaderPropertyType::UniformBuffer,
+      1,
+      sizeof(Mat4f),
+      0,
+      ShaderStage::Vertex,
+      {StructMemberInfo{"viewProj", ShaderPropertyType::Mat4, 0, 64}}};
+}
+
+ShaderResourceBinding prefilterBinding() {
+  return ShaderResourceBinding{
+      "PrefilterUBO",
+      0,
+      2,
+      ShaderPropertyType::UniformBuffer,
+      1,
+      16,
+      0,
+      ShaderStage::Fragment,
+      {StructMemberInfo{"roughness", ShaderPropertyType::Float, 0, 4},
+       StructMemberInfo{"sourceMipCount", ShaderPropertyType::Float, 4, 4},
+       StructMemberInfo{"sampleCount", ShaderPropertyType::Float, 8, 4},
+       StructMemberInfo{"padding", ShaderPropertyType::Float, 12, 4}}};
+}
+
+std::vector<ShaderResourceBinding>
+bakeShaderBindings(const std::string &shaderName) {
+  if (shaderName == "equirect_to_cubemap") {
+    return {textureBinding("EquirectangularMap", 0,
+                           ShaderPropertyType::Texture2D),
+            captureViewBinding()};
+  }
+  if (shaderName == "ibl_irradiance_convolve") {
+    return {textureBinding("SkyboxMap", 0, ShaderPropertyType::TextureCube),
+            captureViewBinding()};
+  }
+  if (shaderName == "ibl_prefilter_env") {
+    return {textureBinding("SkyboxMap", 0, ShaderPropertyType::TextureCube),
+            captureViewBinding(), prefilterBinding()};
+  }
+  return {};
+}
+
 class BakeShader final : public IShader {
 public:
   BakeShader(std::string shaderName,
@@ -145,10 +212,102 @@ private:
   std::vector<ShaderResourceBinding> m_bindings;
 };
 
-RenderingItem makeFullscreenBakeItem(const std::string &shaderName,
-                                     const RenderTargetDesc &target) {
-  auto shader = std::make_shared<BakeShader>(shaderName,
-                                             std::vector<ShaderResourceBinding>{});
+class CaptureViewResource final : public IGpuResource {
+public:
+  explicit CaptureViewResource(Mat4f value) : m_value(value) { setDirty(); }
+
+  void setViewProj(const Mat4f &value) {
+    m_value = value;
+    setDirty();
+  }
+
+  ResourceType getType() const override { return ResourceType::UniformBuffer; }
+  const void *getRawData() const override { return &m_value; }
+  u32 getByteSize() const override { return sizeof(Mat4f); }
+  StringID getBindingName() const override {
+    return StringID("CaptureViewUBO");
+  }
+
+private:
+  Mat4f m_value = Mat4f::identity();
+};
+
+struct alignas(16) PrefilterParams {
+  float roughness = 0.0f;
+  float sourceMipCount = 1.0f;
+  float sampleCount = 64.0f;
+  float padding = 0.0f;
+};
+
+class PrefilterResource final : public IGpuResource {
+public:
+  explicit PrefilterResource(PrefilterParams value) : m_value(value) {
+    setDirty();
+  }
+
+  void setParams(PrefilterParams value) {
+    m_value = value;
+    setDirty();
+  }
+
+  ResourceType getType() const override { return ResourceType::UniformBuffer; }
+  const void *getRawData() const override { return &m_value; }
+  u32 getByteSize() const override { return sizeof(PrefilterParams); }
+  StringID getBindingName() const override { return StringID("PrefilterUBO"); }
+
+private:
+  PrefilterParams m_value{};
+};
+
+CombinedTextureSamplerSharedPtr createDefaultEquirectangularMap() {
+  TextureDesc desc;
+  desc.width = 4;
+  desc.height = 2;
+  desc.format = TextureFormat::RGBA32Float;
+  std::vector<u8> bytes(desc.width * desc.height * 4u * sizeof(float), 0);
+  auto *pixels = reinterpret_cast<float *>(bytes.data());
+  for (u32 y = 0; y < desc.height; ++y) {
+    for (u32 x = 0; x < desc.width; ++x) {
+      const usize base = static_cast<usize>(y * desc.width + x) * 4u;
+      pixels[base + 0u] = static_cast<float>(x + 1u) / desc.width;
+      pixels[base + 1u] = static_cast<float>(y + 1u) / desc.height;
+      pixels[base + 2u] = 1.0f - pixels[base + 0u] * 0.5f;
+      pixels[base + 3u] = 1.0f;
+    }
+  }
+  auto sampler =
+      std::make_shared<CombinedTextureSampler>(std::make_shared<Texture>(
+          desc, std::move(bytes)));
+  sampler->setBindingName(StringID("EquirectangularMap"));
+  sampler->setDirty();
+  return sampler;
+}
+
+std::array<Mat4f, 6> captureViewProjections() {
+  const Mat4f projection = Mat4f::perspective(kPi * 0.5f, 1.0f, 0.1f, 10.0f);
+  const Vec3f origin{0.0f, 0.0f, 0.0f};
+  return {
+      projection * Mat4f::lookAt(origin, Vec3f{1.0f, 0.0f, 0.0f},
+                                 Vec3f{0.0f, -1.0f, 0.0f}),
+      projection * Mat4f::lookAt(origin, Vec3f{-1.0f, 0.0f, 0.0f},
+                                 Vec3f{0.0f, -1.0f, 0.0f}),
+      projection * Mat4f::lookAt(origin, Vec3f{0.0f, 1.0f, 0.0f},
+                                 Vec3f{0.0f, 0.0f, 1.0f}),
+      projection * Mat4f::lookAt(origin, Vec3f{0.0f, -1.0f, 0.0f},
+                                 Vec3f{0.0f, 0.0f, -1.0f}),
+      projection * Mat4f::lookAt(origin, Vec3f{0.0f, 0.0f, 1.0f},
+                                 Vec3f{0.0f, -1.0f, 0.0f}),
+      projection * Mat4f::lookAt(origin, Vec3f{0.0f, 0.0f, -1.0f},
+                                 Vec3f{0.0f, -1.0f, 0.0f}),
+  };
+}
+
+RenderingItem makeBakeItem(const std::string &shaderName,
+                           const RenderTargetDesc &target,
+                           std::vector<IGpuResourceSharedPtr> resources,
+                           u32 indexCount) {
+  auto shader =
+      std::make_shared<BakeShader>(shaderName, bakeShaderBindings(shaderName));
   auto tmpl = MaterialTemplate::create(shaderName);
   ShaderProgramSet shaderProgram;
   shaderProgram.shaderName = shaderName;
@@ -169,19 +328,25 @@ RenderingItem makeFullscreenBakeItem(const std::string &shaderName,
   item.shaderInfo = shader;
   item.material = material;
   item.vertexBuffer = VertexBuffer<VertexPos>::create(
-      std::vector<VertexPos>{{{0.0f, 0.0f, 0.0f}},
-                             {{0.0f, 0.0f, 0.0f}},
-                             {{0.0f, 0.0f, 0.0f}}});
-  item.indexBuffer = IndexBuffer::create({0u, 1u, 2u});
-  item.descriptorResources = material->getDescriptorResources(Pass_PostProcess);
+      std::vector<VertexPos>(std::max(indexCount, 1u)));
+  std::vector<u32> indices(indexCount);
+  std::iota(indices.begin(), indices.end(), 0u);
+  item.indexBuffer = IndexBuffer::create(std::move(indices));
+  item.descriptorResources = std::move(resources);
   item.pass = Pass_PostProcess;
   item.target = target;
-  item.objectSignature = StringID("IblBakeFullscreenTriangle");
+  item.objectSignature = StringID(indexCount == 36u ? "IblBakeCube"
+                                                    : "IblBakeFullscreen");
   item.materialSignature = material->getPipelineSignature(item.pass);
   item.pipelineKey = PipelineKey::build(item.objectSignature,
                                         item.materialSignature,
                                         item.target.getPipelineSignature());
   return item;
+}
+
+RenderingItem makeFullscreenBakeItem(const std::string &shaderName,
+                                     const RenderTargetDesc &target) {
+  return makeBakeItem(shaderName, target, {}, 3u);
 }
 
 } // namespace
@@ -214,10 +379,13 @@ IblBakeRenderer::bakeStaticEnvironment(const IblBakeSettings &settings) {
       VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
           VK_IMAGE_USAGE_SAMPLED_BIT);
 
-  clearCubemap(StringID("SkyboxMap"), settings.skyboxSize, 1, 0.25f);
-  clearCubemap(StringID("IrradianceMap"), settings.irradianceSize, 1, 0.5f);
-  clearCubemap(StringID("PrefilteredEnvMap"), settings.prefilterSize,
-               settings.prefilterMipCount, 0.75f);
+  const auto environmentMap = settings.equirectangularMap
+                                  ? settings.equirectangularMap
+                                  : createDefaultEquirectangularMap();
+  renderEquirectToCubemap(environmentMap, settings.skyboxSize);
+  transitionCubemapToShaderRead(StringID("SkyboxMap"), 1);
+  renderIrradianceCubemap(settings.irradianceSize);
+  renderPrefilterCubemap(settings.prefilterSize, settings.prefilterMipCount);
   clearBrdfLut(settings.brdfLutSize);
 
   IblBakeResult result{
@@ -285,6 +453,265 @@ void IblBakeRenderer::clearCubemap(StringID resourceName, u32 baseSize,
                                            m_device.getGraphicsQueue());
 }
 
+VkImageLayout IblBakeRenderer::getTrackedCubemapLayout(StringID resourceName,
+                                                       u32 mipLevel,
+                                                       u32 faceLayer) const {
+  const auto it =
+      m_cubemapLayouts.find(cubemapLayoutKey(resourceName, mipLevel, faceLayer));
+  if (it == m_cubemapLayouts.end()) {
+    return VK_IMAGE_LAYOUT_UNDEFINED;
+  }
+  return it->second;
+}
+
+void IblBakeRenderer::setTrackedCubemapLayout(StringID resourceName,
+                                              u32 mipLevel, u32 faceLayer,
+                                              VkImageLayout layout) {
+  m_cubemapLayouts[cubemapLayoutKey(resourceName, mipLevel, faceLayer)] =
+      layout;
+}
+
+void IblBakeRenderer::transitionCubemapToShaderRead(StringID resourceName,
+                                                    u32 mipLevels) {
+  auto attachmentOpt = m_resourceManager.getCubemapBakeAttachment(resourceName);
+  if (!attachmentOpt.has_value()) {
+    throw std::runtime_error("missing cubemap bake attachment");
+  }
+  auto &attachment = attachmentOpt->get();
+  auto cmd = m_cmdBufferManager.beginSingleTimeCommands();
+  for (u32 mip = 0; mip < mipLevels; ++mip) {
+    for (u32 face = 0; face < 6u; ++face) {
+      const VkImageLayout oldLayout =
+          getTrackedCubemapLayout(resourceName, mip, face);
+      if (oldLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+        continue;
+      }
+      transitionSubresource(cmd->getHandle(), attachment.texture->getHandle(),
+                            oldLayout,
+                            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                            VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                            VK_ACCESS_SHADER_READ_BIT,
+                            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, mip, face);
+      setTrackedCubemapLayout(resourceName, mip, face,
+                              VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    }
+  }
+  m_cmdBufferManager.endSingleTimeCommands(std::move(cmd),
+                                           m_device.getGraphicsQueue());
+}
+
+void IblBakeRenderer::renderEquirectToCubemap(
+    const CombinedTextureSamplerSharedPtr &source, u32 skyboxSize) {
+  auto attachmentOpt =
+      m_resourceManager.getCubemapBakeAttachment(StringID("SkyboxMap"));
+  if (!attachmentOpt.has_value()) {
+    throw std::runtime_error("missing skybox bake attachment");
+  }
+  auto &attachment = attachmentOpt->get();
+  auto renderPass = VulkanRenderPass::create(
+      m_device, std::optional<VkFormat>{attachment.format}, std::nullopt,
+      false);
+  RenderTargetDesc target =
+      RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float);
+  auto captureView =
+      std::make_shared<CaptureViewResource>(captureViewProjections()[0]);
+  auto item = makeBakeItem(
+      "equirect_to_cubemap", target,
+      {std::static_pointer_cast<IGpuResource>(source),
+       std::static_pointer_cast<IGpuResource>(captureView)},
+      36u);
+
+  m_resourceManager.syncResource(m_cmdBufferManager, item.vertexBuffer);
+  m_resourceManager.syncResource(m_cmdBufferManager, item.indexBuffer);
+  m_resourceManager.syncResource(m_cmdBufferManager, source);
+  m_resourceManager.syncResource(m_cmdBufferManager, captureView);
+  auto &pipeline = m_resourceManager.getOrCreateRenderPipeline(item);
+
+  const auto viewProjections = captureViewProjections();
+  for (u32 face = 0; face < 6u; ++face) {
+    captureView->setViewProj(viewProjections[face]);
+    m_resourceManager.syncResource(m_cmdBufferManager, captureView);
+    auto &view = m_resourceManager.getOrCreateCubemapBakeSubresourceView(
+        StringID("SkyboxMap"), 0, face);
+    auto framebuffer = VulkanFrameBuffer::create(
+        m_device, renderPass->getHandle(),
+        std::vector<VkImageView>{view.getHandle()},
+        VkExtent2D{skyboxSize, skyboxSize});
+    auto cmd = m_cmdBufferManager.beginSingleTimeCommands();
+    transitionSubresource(cmd->getHandle(), attachment.texture->getHandle(),
+                          getTrackedCubemapLayout(StringID("SkyboxMap"), 0,
+                                                  face),
+                          VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 0,
+                          VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                          VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                          VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0,
+                          face);
+    auto clearValues = renderPass->getClearValues();
+    clearValues[0].color = {0.0f, 0.0f, 0.0f, 1.0f};
+    cmd->beginRenderPass(renderPass->getHandle(), framebuffer->getHandle(),
+                         VkExtent2D{skyboxSize, skyboxSize}, clearValues);
+    cmd->setViewport(skyboxSize, skyboxSize);
+    cmd->setScissor(skyboxSize, skyboxSize);
+    cmd->bindPipeline(pipeline);
+    cmd->bindResources(m_resourceManager, pipeline, item);
+    cmd->drawItem(item);
+    cmd->endRenderPass();
+    m_cmdBufferManager.endSingleTimeCommands(std::move(cmd),
+                                             m_device.getGraphicsQueue());
+    setTrackedCubemapLayout(StringID("SkyboxMap"), 0, face,
+                            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+  }
+}
+
+void IblBakeRenderer::renderIrradianceCubemap(u32 irradianceSize) {
+  auto attachmentOpt =
+      m_resourceManager.getCubemapBakeAttachment(StringID("IrradianceMap"));
+  if (!attachmentOpt.has_value()) {
+    throw std::runtime_error("missing irradiance bake attachment");
+  }
+  auto &attachment = attachmentOpt->get();
+  auto renderPass = VulkanRenderPass::create(
+      m_device, std::optional<VkFormat>{attachment.format}, std::nullopt,
+      false);
+  RenderTargetDesc target =
+      RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float);
+  auto skybox =
+      std::make_shared<BakedTextureResource>(StringID("SkyboxMap"),
+                                             StringID("SkyboxMap"));
+  m_resourceManager.aliasCubemapBakeTextureResource(skybox,
+                                                   StringID("SkyboxMap"));
+  auto captureView =
+      std::make_shared<CaptureViewResource>(captureViewProjections()[0]);
+  auto item = makeBakeItem(
+      "ibl_irradiance_convolve", target,
+      {std::static_pointer_cast<IGpuResource>(skybox),
+       std::static_pointer_cast<IGpuResource>(captureView)},
+      36u);
+
+  m_resourceManager.syncResource(m_cmdBufferManager, item.vertexBuffer);
+  m_resourceManager.syncResource(m_cmdBufferManager, item.indexBuffer);
+  m_resourceManager.syncResource(m_cmdBufferManager, captureView);
+  auto &pipeline = m_resourceManager.getOrCreateRenderPipeline(item);
+
+  const auto viewProjections = captureViewProjections();
+  for (u32 face = 0; face < 6u; ++face) {
+    captureView->setViewProj(viewProjections[face]);
+    m_resourceManager.syncResource(m_cmdBufferManager, captureView);
+    auto &view = m_resourceManager.getOrCreateCubemapBakeSubresourceView(
+        StringID("IrradianceMap"), 0, face);
+    auto framebuffer = VulkanFrameBuffer::create(
+        m_device, renderPass->getHandle(),
+        std::vector<VkImageView>{view.getHandle()},
+        VkExtent2D{irradianceSize, irradianceSize});
+    auto cmd = m_cmdBufferManager.beginSingleTimeCommands();
+    transitionSubresource(cmd->getHandle(), attachment.texture->getHandle(),
+                          getTrackedCubemapLayout(StringID("IrradianceMap"), 0,
+                                                  face),
+                          VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 0,
+                          VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                          VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                          VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0,
+                          face);
+    auto clearValues = renderPass->getClearValues();
+    clearValues[0].color = {0.0f, 0.0f, 0.0f, 1.0f};
+    cmd->beginRenderPass(renderPass->getHandle(), framebuffer->getHandle(),
+                         VkExtent2D{irradianceSize, irradianceSize},
+                         clearValues);
+    cmd->setViewport(irradianceSize, irradianceSize);
+    cmd->setScissor(irradianceSize, irradianceSize);
+    cmd->bindPipeline(pipeline);
+    cmd->bindResources(m_resourceManager, pipeline, item);
+    cmd->drawItem(item);
+    cmd->endRenderPass();
+    m_cmdBufferManager.endSingleTimeCommands(std::move(cmd),
+                                             m_device.getGraphicsQueue());
+    setTrackedCubemapLayout(StringID("IrradianceMap"), 0, face,
+                            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+  }
+}
+
+void IblBakeRenderer::renderPrefilterCubemap(u32 prefilterSize,
+                                             u32 mipLevels) {
+  auto attachmentOpt =
+      m_resourceManager.getCubemapBakeAttachment(StringID("PrefilteredEnvMap"));
+  if (!attachmentOpt.has_value()) {
+    throw std::runtime_error("missing prefilter bake attachment");
+  }
+  auto &attachment = attachmentOpt->get();
+  auto renderPass = VulkanRenderPass::create(
+      m_device, std::optional<VkFormat>{attachment.format}, std::nullopt,
+      false);
+  RenderTargetDesc target =
+      RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float);
+  auto skybox =
+      std::make_shared<BakedTextureResource>(StringID("SkyboxMap"),
+                                             StringID("SkyboxMap"));
+  m_resourceManager.aliasCubemapBakeTextureResource(skybox,
+                                                   StringID("SkyboxMap"));
+  auto captureView =
+      std::make_shared<CaptureViewResource>(captureViewProjections()[0]);
+  auto prefilter = std::make_shared<PrefilterResource>(
+      PrefilterParams{0.0f, static_cast<float>(mipLevels), 64.0f, 0.0f});
+  auto item = makeBakeItem(
+      "ibl_prefilter_env", target,
+      {std::static_pointer_cast<IGpuResource>(skybox),
+       std::static_pointer_cast<IGpuResource>(captureView),
+       std::static_pointer_cast<IGpuResource>(prefilter)},
+      36u);
+
+  m_resourceManager.syncResource(m_cmdBufferManager, item.vertexBuffer);
+  m_resourceManager.syncResource(m_cmdBufferManager, item.indexBuffer);
+  m_resourceManager.syncResource(m_cmdBufferManager, captureView);
+  m_resourceManager.syncResource(m_cmdBufferManager, prefilter);
+  auto &pipeline = m_resourceManager.getOrCreateRenderPipeline(item);
+
+  const auto viewProjections = captureViewProjections();
+  for (u32 mip = 0; mip < mipLevels; ++mip) {
+    const u32 extentValue = mipExtent(prefilterSize, mip);
+    const float roughness =
+        mipLevels <= 1u ? 0.0f
+                        : static_cast<float>(mip) /
+                              static_cast<float>(mipLevels - 1u);
+    prefilter->setParams(
+        PrefilterParams{roughness, static_cast<float>(mipLevels), 64.0f,
+                        0.0f});
+    m_resourceManager.syncResource(m_cmdBufferManager, prefilter);
+    for (u32 face = 0; face < 6u; ++face) {
+      captureView->setViewProj(viewProjections[face]);
+      m_resourceManager.syncResource(m_cmdBufferManager, captureView);
+      auto &view = m_resourceManager.getOrCreateCubemapBakeSubresourceView(
+          StringID("PrefilteredEnvMap"), mip, face);
+      auto framebuffer = VulkanFrameBuffer::create(
+          m_device, renderPass->getHandle(),
+          std::vector<VkImageView>{view.getHandle()},
+          VkExtent2D{extentValue, extentValue});
+      auto cmd = m_cmdBufferManager.beginSingleTimeCommands();
+      transitionSubresource(
+          cmd->getHandle(), attachment.texture->getHandle(),
+          getTrackedCubemapLayout(StringID("PrefilteredEnvMap"), mip, face),
+          VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 0,
+          VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+          VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+          VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, mip, face);
+      auto clearValues = renderPass->getClearValues();
+      clearValues[0].color = {0.0f, 0.0f, 0.0f, 1.0f};
+      cmd->beginRenderPass(renderPass->getHandle(), framebuffer->getHandle(),
+                           VkExtent2D{extentValue, extentValue}, clearValues);
+      cmd->setViewport(extentValue, extentValue);
+      cmd->setScissor(extentValue, extentValue);
+      cmd->bindPipeline(pipeline);
+      cmd->bindResources(m_resourceManager, pipeline, item);
+      cmd->drawItem(item);
+      cmd->endRenderPass();
+      m_cmdBufferManager.endSingleTimeCommands(std::move(cmd),
+                                               m_device.getGraphicsQueue());
+      setTrackedCubemapLayout(StringID("PrefilteredEnvMap"), mip, face,
+                              VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    }
+  }
+}
+
 void IblBakeRenderer::clearBrdfLut(u32 size) {
   auto attachmentOpt = m_resourceManager.getFrameGraphAttachment(
       StringID("BrdfLut"));
@@ -342,16 +769,29 @@ bool IblBakeRenderer::debugReadbackCubemapFaceHasData(StringID resourceName,
                                 static_cast<VkDeviceSize>(extent) * 8u;
   auto readback = VulkanBuffer::create(
       m_device, byteSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
           VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
   auto cmd = m_cmdBufferManager.beginSingleTimeCommands();
+  const VkImageLayout oldLayout =
+      getTrackedCubemapLayout(resourceName, mipLevel, faceLayer);
+  VkAccessFlags srcAccess = 0;
+  VkPipelineStageFlags srcStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+  if (oldLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
+    srcAccess = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    srcStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+  } else if (oldLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+    srcAccess = VK_ACCESS_SHADER_READ_BIT;
+    srcStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+  } else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) {
+    srcAccess = VK_ACCESS_TRANSFER_READ_BIT;
+    srcStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+  }
   transitionSubresource(cmd->getHandle(), attachment.texture->getHandle(),
-                        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                        oldLayout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                        srcAccess,
                         VK_ACCESS_TRANSFER_READ_BIT,
-                        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                        VK_PIPELINE_STAGE_TRANSFER_BIT, mipLevel, faceLayer);
+                        srcStage, VK_PIPELINE_STAGE_TRANSFER_BIT, mipLevel,
+                        faceLayer);
 
   VkBufferImageCopy region{};
   region.bufferOffset = 0;
@@ -368,6 +808,8 @@ bool IblBakeRenderer::debugReadbackCubemapFaceHasData(StringID resourceName,
                          readback->getHandle(), 1, &region);
   m_cmdBufferManager.endSingleTimeCommands(std::move(cmd),
                                            m_device.getGraphicsQueue());
+  setTrackedCubemapLayout(resourceName, mipLevel, faceLayer,
+                          VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 
   const void *mapped = readback->map();
   const bool hasData = bufferHasNonZeroByte(mapped, byteSize);

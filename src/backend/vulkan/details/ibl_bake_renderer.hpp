@@ -1,9 +1,13 @@
 #pragma once
 
+#include "core/asset/texture.hpp"
 #include "core/rhi/gpu_resource.hpp"
 #include "core/utils/string_table.hpp"
 
 #include <memory>
+#include <unordered_map>
+
+#include <vulkan/vulkan.h>
 
 namespace LX_core::backend {
 
@@ -12,6 +16,7 @@ class VulkanDevice;
 class VulkanResourceManager;
 
 struct IblBakeSettings {
+  CombinedTextureSamplerSharedPtr equirectangularMap;
   u32 skyboxSize = 64;
   u32 irradianceSize = 32;
   u32 prefilterSize = 64;
@@ -56,11 +61,21 @@ public:
 private:
   void clearCubemap(StringID resourceName, u32 baseSize, u32 mipLevels,
                     float seed);
+  void renderEquirectToCubemap(const CombinedTextureSamplerSharedPtr &source,
+                               u32 skyboxSize);
+  void renderIrradianceCubemap(u32 irradianceSize);
+  void renderPrefilterCubemap(u32 prefilterSize, u32 mipLevels);
   void clearBrdfLut(u32 size);
+  void transitionCubemapToShaderRead(StringID resourceName, u32 mipLevels);
+  VkImageLayout getTrackedCubemapLayout(StringID resourceName, u32 mipLevel,
+                                        u32 faceLayer) const;
+  void setTrackedCubemapLayout(StringID resourceName, u32 mipLevel,
+                               u32 faceLayer, VkImageLayout layout);
 
   VulkanDevice &m_device;
   VulkanResourceManager &m_resourceManager;
   VulkanCommandBufferManager &m_cmdBufferManager;
+  std::unordered_map<usize, VkImageLayout> m_cubemapLayouts;
 };
 
 } // namespace LX_core::backend
