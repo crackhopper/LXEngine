@@ -659,6 +659,12 @@ static bool testPostProcessShaderContract(
     std::cerr << "  FAIL: SceneColor Texture2D binding missing\n";
     return false;
   }
+  if (sceneColor->set != 0 || sceneColor->binding != 0) {
+    std::cerr << "  FAIL: SceneColor expected set=0 binding=0, got set="
+              << sceneColor->set << " binding=" << sceneColor->binding
+              << "\n";
+    return false;
+  }
 
   const auto postUbo =
       std::find_if(bindings.begin(), bindings.end(), [](const auto &binding) {
@@ -669,6 +675,13 @@ static bool testPostProcessShaderContract(
     std::cerr << "  FAIL: PostProcessUBO uniform buffer missing\n";
     return false;
   }
+  if (postUbo->set != 0 || postUbo->binding != 1 || postUbo->size != 16) {
+    std::cerr << "  FAIL: PostProcessUBO expected set=0 binding=1 size=16, "
+                 "got set="
+              << postUbo->set << " binding=" << postUbo->binding
+              << " size=" << postUbo->size << "\n";
+    return false;
+  }
   const auto *exposure = findMember(*postUbo, "exposure");
   const auto *mode = findMember(*postUbo, "toneMappingMode");
   const auto *gamma = findMember(*postUbo, "gamma");
@@ -677,16 +690,32 @@ static bool testPostProcessShaderContract(
     std::cerr << "  FAIL: PostProcessUBO.exposure Float member missing\n";
     return false;
   }
+  if (exposure->offset != 0 || exposure->size != 4) {
+    std::cerr << "  FAIL: PostProcessUBO.exposure layout mismatch\n";
+    return false;
+  }
   if (!mode || mode->type != ShaderPropertyType::Int) {
     std::cerr << "  FAIL: PostProcessUBO.toneMappingMode Int member missing\n";
+    return false;
+  }
+  if (mode->offset != 4 || mode->size != 4) {
+    std::cerr << "  FAIL: PostProcessUBO.toneMappingMode layout mismatch\n";
     return false;
   }
   if (!gamma || gamma->type != ShaderPropertyType::Float) {
     std::cerr << "  FAIL: PostProcessUBO.gamma Float member missing\n";
     return false;
   }
+  if (gamma->offset != 8 || gamma->size != 4) {
+    std::cerr << "  FAIL: PostProcessUBO.gamma layout mismatch\n";
+    return false;
+  }
   if (!bloomIntensity || bloomIntensity->type != ShaderPropertyType::Float) {
     std::cerr << "  FAIL: PostProcessUBO.bloomIntensity Float member missing\n";
+    return false;
+  }
+  if (bloomIntensity->offset != 12 || bloomIntensity->size != 4) {
+    std::cerr << "  FAIL: PostProcessUBO.bloomIntensity layout mismatch\n";
     return false;
   }
 

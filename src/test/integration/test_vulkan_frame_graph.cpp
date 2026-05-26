@@ -159,7 +159,7 @@ int main() {
     const auto passNames = renderer->compiledFrameGraphPassNames();
     if (passNames.size() != 7) {
       std::cerr << "compiled frame graph should contain exactly four shadow "
-                   "cascades, Forward, DebugOverlay, and PostProcess\n";
+                   "cascades, Forward, PostProcess, and DebugOverlay\n";
       return 1;
     }
     for (usize i = 0; i < 4; ++i) {
