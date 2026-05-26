@@ -1,10 +1,17 @@
 #include "vulkan_renderer.hpp"
+#include "core/asset/material_instance.hpp"
+#include "core/asset/material_pass_definition.hpp"
+#include "core/asset/material_template.hpp"
 #include "core/frame_graph/frame_graph.hpp"
 #include "core/frame_graph/pass.hpp"
+#include "core/rhi/index_buffer.hpp"
 #include "core/rhi/gpu_resource.hpp"
+#include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/components/camera_component.hpp"
 #include "core/scene/light.hpp"
 #include "core/utils/env.hpp"
+#include "core/utils/filesystem_tools.hpp"
+#include "core/utils/hash.hpp"
 #include "core/utils/string_table.hpp"
 #include "infra/gui/gui.hpp"
 #include "infra/window/window.hpp"
@@ -19,6 +26,7 @@
 #include "details/resource_manager.hpp"
 #include <algorithm>
 #include <chrono>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -28,6 +36,107 @@
 #include <string>
 #include <vector>
 namespace {
+constexpr const char *kPostProcessShaderName = "post_process";
+
+class PostProcessShader final : public LX_core::IShader {
+public:
+  explicit PostProcessShader(std::vector<LX_core::ShaderStageCode> stages)
+      : m_stages(std::move(stages)) {
+    m_bindings.push_back(LX_core::ShaderResourceBinding{
+        "SceneColor", 0, 0, LX_core::ShaderPropertyType::Texture2D, 1, 0, 0,
+        LX_core::ShaderStage::Fragment, {}});
+    m_bindings.push_back(LX_core::ShaderResourceBinding{
+        "PostProcessUBO",
+        0,
+        1,
+        LX_core::ShaderPropertyType::UniformBuffer,
+        1,
+        16,
+        0,
+        LX_core::ShaderStage::Fragment,
+        {LX_core::StructMemberInfo{"exposure", LX_core::ShaderPropertyType::Float,
+                                   0, 4},
+         LX_core::StructMemberInfo{"toneMappingMode",
+                                   LX_core::ShaderPropertyType::Int, 4, 4},
+         LX_core::StructMemberInfo{"gamma", LX_core::ShaderPropertyType::Float,
+                                   8, 4},
+         LX_core::StructMemberInfo{"bloomIntensity",
+                                   LX_core::ShaderPropertyType::Float, 12, 4}}});
+  }
+
+  const std::vector<LX_core::ShaderStageCode> &getAllStages() const override {
+    return m_stages;
+  }
+
+  const std::vector<LX_core::ShaderResourceBinding> &
+  getReflectionBindings() const override {
+    return m_bindings;
+  }
+
+  std::optional<std::reference_wrapper<const LX_core::ShaderResourceBinding>>
+  findBinding(u32 set, u32 binding) const override {
+    for (const auto &candidate : m_bindings) {
+      if (candidate.set == set && candidate.binding == binding) {
+        return std::cref(candidate);
+      }
+    }
+    return std::nullopt;
+  }
+
+  std::optional<std::reference_wrapper<const LX_core::ShaderResourceBinding>>
+  findBinding(const std::string &name) const override {
+    for (const auto &candidate : m_bindings) {
+      if (candidate.name == name) {
+        return std::cref(candidate);
+      }
+    }
+    return std::nullopt;
+  }
+
+  usize getProgramHash() const override {
+    usize hash = 0;
+    for (const auto &stage : m_stages) {
+      LX_core::hash_combine(hash, static_cast<u32>(stage.stage));
+      LX_core::hash_combine(hash, stage.bytecode.size());
+      for (const auto word : stage.bytecode) {
+        LX_core::hash_combine(hash, word);
+      }
+    }
+    return hash;
+  }
+
+  std::string getShaderName() const override { return kPostProcessShaderName; }
+
+private:
+  std::vector<LX_core::ShaderStageCode> m_stages;
+  std::vector<LX_core::ShaderResourceBinding> m_bindings;
+};
+
+LX_core::ShaderStageCode loadShaderStage(const std::string &shaderName,
+                                         const char *suffix,
+                                         LX_core::ShaderStage stage) {
+  const auto bytes =
+      readFile((getRuntimeShaderBinaryDir() / (shaderName + "." + suffix))
+                   .string());
+  if ((bytes.size() % sizeof(u32)) != 0) {
+    throw std::runtime_error("shader bytecode size is not 4-byte aligned: " +
+                             shaderName + "." + suffix);
+  }
+
+  LX_core::ShaderStageCode code;
+  code.stage = stage;
+  code.bytecode.resize(bytes.size() / sizeof(u32));
+  std::memcpy(code.bytecode.data(), bytes.data(), bytes.size());
+  return code;
+}
+
+std::vector<LX_core::ShaderStageCode>
+loadGraphicsShaderStages(const std::string &shaderName) {
+  return {loadShaderStage(shaderName, "vert.spv", LX_core::ShaderStage::Vertex),
+          loadShaderStage(shaderName, "frag.spv",
+                          LX_core::ShaderStage::Fragment)};
+}
+
 /// REQ-009: reverse of resource_manager.cpp's toVkFormat(ImageFormat).
 /// Only covers the swapchain-relevant VkFormats. Unknown inputs fall back to
 /// RGBA8 and log a debug warning rather than throwing — initScene must be
@@ -427,6 +536,9 @@ public:
     //   - sorts by PipelineKey
     // There is no more side-channel camera/light UBO injection here.
     m_frameGraph.buildFromScene(*m_scene);
+    rebuildDebugOverlayQueueWithForwardCameraResources(forwardHdrDesc,
+                                                       swapchainDesc);
+    addStandardPostProcessItem(swapchainDesc);
     rebuildShadowCascadeUboSnapshots();
     bindShadowCascadeUboSnapshots();
 
@@ -1047,6 +1159,90 @@ private:
       cmd.bindPipeline(pipeline);
       cmd.bindResources(*m_resourceManager, pipeline, item);
       cmd.drawItem(item);
+    }
+  }
+
+  LX_core::MaterialInstanceSharedPtr createStandardPostProcessMaterial() {
+    auto shader = std::make_shared<PostProcessShader>(
+        loadGraphicsShaderStages(kPostProcessShaderName));
+
+    auto tmpl = LX_core::MaterialTemplate::create(kPostProcessShaderName);
+    LX_core::ShaderProgramSet shaderProgram;
+    shaderProgram.shaderName = kPostProcessShaderName;
+    shaderProgram.shader = shader;
+
+    LX_core::MaterialPassDefinition passDefinition;
+    passDefinition.shaderProgram = shaderProgram;
+    passDefinition.renderState.cullMode = LX_core::CullMode::None;
+    passDefinition.renderState.depthTestEnable = false;
+    passDefinition.renderState.depthWriteEnable = false;
+    passDefinition.renderState.blendEnable = false;
+    tmpl->setPassDefinition(LX_core::Pass_PostProcess,
+                            std::move(passDefinition));
+    tmpl->rebuildMaterialInterface();
+
+    auto material = LX_core::MaterialInstance::create(std::move(tmpl));
+    material->setParameter(LX_core::StringID("PostProcessUBO"),
+                           LX_core::StringID("exposure"), 1.0f);
+    material->setParameter(LX_core::StringID("PostProcessUBO"),
+                           LX_core::StringID("toneMappingMode"), 0);
+    material->setParameter(LX_core::StringID("PostProcessUBO"),
+                           LX_core::StringID("gamma"), 2.2f);
+    material->setParameter(LX_core::StringID("PostProcessUBO"),
+                           LX_core::StringID("bloomIntensity"), 0.0f);
+    material->syncGpuData();
+    return material;
+  }
+
+  void addStandardPostProcessItem(const LX_core::RenderTargetDesc &target) {
+    auto material = createStandardPostProcessMaterial();
+    LX_core::RenderingItem item;
+    item.shaderInfo = material->getPassShader(LX_core::Pass_PostProcess);
+    item.material = material;
+    item.vertexBuffer = LX_core::VertexBuffer<LX_core::VertexPos>::create(
+        std::vector<LX_core::VertexPos>{{{0.0f, 0.0f, 0.0f}},
+                                        {{0.0f, 0.0f, 0.0f}},
+                                        {{0.0f, 0.0f, 0.0f}}});
+    item.indexBuffer = LX_core::IndexBuffer::create({0u, 1u, 2u});
+    item.descriptorResources =
+        material->getDescriptorResources(LX_core::Pass_PostProcess);
+    item.pass = LX_core::Pass_PostProcess;
+    item.target = target;
+    item.objectSignature = LX_core::StringID("PostProcessFullscreenTriangle");
+    item.materialSignature =
+        material->getPipelineSignature(LX_core::Pass_PostProcess);
+    item.pipelineKey =
+        LX_core::PipelineKey::build(item.objectSignature, item.materialSignature,
+                                    item.target.getPipelineSignature());
+
+    for (auto &pass : m_frameGraph.getPasses()) {
+      if (pass.name == LX_core::Pass_PostProcess) {
+        pass.queue.addItem(std::move(item));
+        pass.queue.sort();
+        return;
+      }
+    }
+  }
+
+  void rebuildDebugOverlayQueueWithForwardCameraResources(
+      const LX_core::RenderTargetDesc &forwardTarget,
+      const LX_core::RenderTargetDesc &debugTarget) {
+    if (!m_scene) {
+      return;
+    }
+    const LX_core::RenderTarget forwardRenderTarget{forwardTarget};
+    const LX_core::RenderTarget debugRenderTarget{debugTarget};
+    auto sceneResources = m_scene->getSceneLevelResources(
+        LX_core::Pass_DebugOverlay, forwardRenderTarget);
+    const auto visibleMask =
+        m_scene->getCombinedCameraCullingMask(forwardRenderTarget);
+    for (auto &pass : m_frameGraph.getPasses()) {
+      if (pass.name == LX_core::Pass_DebugOverlay) {
+        pass.queue.buildFromSceneWithOverrides(
+            *m_scene, LX_core::Pass_DebugOverlay, debugRenderTarget,
+            std::move(sceneResources), visibleMask);
+        return;
+      }
     }
   }
 

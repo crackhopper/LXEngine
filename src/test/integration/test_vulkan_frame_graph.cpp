@@ -157,8 +157,20 @@ int main() {
       return 1;
     }
     const auto passNames = renderer->compiledFrameGraphPassNames();
-    if (passNames.size() < 7 || passNames[4] != "Forward" ||
-        passNames[5] != "PostProcess" || passNames[6] != "DebugOverlay") {
+    if (passNames.size() != 7) {
+      std::cerr << "compiled frame graph should contain exactly four shadow "
+                   "cascades, Forward, DebugOverlay, and PostProcess\n";
+      return 1;
+    }
+    for (usize i = 0; i < 4; ++i) {
+      if (passNames[i] != "Shadow") {
+        std::cerr << "compiled frame graph should begin with four Shadow "
+                     "passes\n";
+        return 1;
+      }
+    }
+    if (passNames[4] != "Forward" || passNames[5] != "PostProcess" ||
+        passNames[6] != "DebugOverlay") {
       std::cerr << "compiled frame graph should end with Forward -> "
                    "PostProcess -> DebugOverlay\n";
       return 1;

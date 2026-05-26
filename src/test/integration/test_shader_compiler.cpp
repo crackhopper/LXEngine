@@ -635,6 +635,66 @@ static bool testMeshDebugShaderContract(
   return true;
 }
 
+static bool testPostProcessShaderContract(
+    const std::filesystem::path &shaderDir) {
+  std::cout << "\n========================================\n";
+  std::cout << "  Test: Post-process shader contract\n";
+  std::cout << "========================================\n";
+
+  const auto vertPath = shaderDir / "post_process.vert";
+  const auto fragPath = shaderDir / "post_process.frag";
+  auto compileResult = ShaderCompiler::compileProgram(vertPath, fragPath, {});
+  if (!compileResult.success) {
+    std::cerr << "  COMPILE FAILED: " << compileResult.errorMessage << "\n";
+    return false;
+  }
+
+  const auto bindings = ShaderReflector::reflect(compileResult.stages);
+  const auto sceneColor =
+      std::find_if(bindings.begin(), bindings.end(), [](const auto &binding) {
+        return binding.name == "SceneColor";
+      });
+  if (sceneColor == bindings.end() ||
+      sceneColor->type != ShaderPropertyType::Texture2D) {
+    std::cerr << "  FAIL: SceneColor Texture2D binding missing\n";
+    return false;
+  }
+
+  const auto postUbo =
+      std::find_if(bindings.begin(), bindings.end(), [](const auto &binding) {
+        return binding.name == "PostProcessUBO";
+      });
+  if (postUbo == bindings.end() ||
+      postUbo->type != ShaderPropertyType::UniformBuffer) {
+    std::cerr << "  FAIL: PostProcessUBO uniform buffer missing\n";
+    return false;
+  }
+  const auto *exposure = findMember(*postUbo, "exposure");
+  const auto *mode = findMember(*postUbo, "toneMappingMode");
+  const auto *gamma = findMember(*postUbo, "gamma");
+  const auto *bloomIntensity = findMember(*postUbo, "bloomIntensity");
+  if (!exposure || exposure->type != ShaderPropertyType::Float) {
+    std::cerr << "  FAIL: PostProcessUBO.exposure Float member missing\n";
+    return false;
+  }
+  if (!mode || mode->type != ShaderPropertyType::Int) {
+    std::cerr << "  FAIL: PostProcessUBO.toneMappingMode Int member missing\n";
+    return false;
+  }
+  if (!gamma || gamma->type != ShaderPropertyType::Float) {
+    std::cerr << "  FAIL: PostProcessUBO.gamma Float member missing\n";
+    return false;
+  }
+  if (!bloomIntensity || bloomIntensity->type != ShaderPropertyType::Float) {
+    std::cerr << "  FAIL: PostProcessUBO.bloomIntensity Float member missing\n";
+    return false;
+  }
+
+  std::cout << "  PASS: post-process shader reflects SceneColor and tone "
+               "mapping params\n";
+  return true;
+}
+
 int main(int argc, char *argv[]) {
   expSetEnvVK();
   // Determine shader directory
@@ -703,6 +763,8 @@ int main(int argc, char *argv[]) {
   if (!testShadertoyQuantumCoreContract(shaderDir))
     ++failures;
   if (!testMeshDebugShaderContract(shaderDir))
+    ++failures;
+  if (!testPostProcessShaderContract(shaderDir))
     ++failures;
 
   std::cout << "\n========================================\n";
