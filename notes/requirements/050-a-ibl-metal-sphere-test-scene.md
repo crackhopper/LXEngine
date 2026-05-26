@@ -121,13 +121,13 @@
 
 ## 实施状态
 
-实施中。
+已完成。
 
 已落地：
 
 - 新增 `assets/scenes/ibl_metal_sphere.scene.yaml`，包含 gameplay camera、directional light、ground reference plane 和 builtin sphere。
 - Scene document 已支持 `scene.environment`，可记录 HDR URI、skybox 开关、IBL 强度和 roughness mip count，并能 round-trip。
-- Scene runtime 读取启用的 environment 后会加载 `hdrUri` 指向的 HDR texture，并生成当前过渡 IBL resources：`SkyboxMap` 为 64x64 方向性 cubemap，`PrefilteredEnvMap` 为带 roughness mip chain 的方向性 cubemap，`IrradianceMap` 暂时使用 HDR 平均辐射近似；真实 GPU convolution / prefilter bake 仍由 `REQ-048-a` 后续接入。
+- Scene runtime 读取启用的 environment 后会加载 `hdrUri` 指向的 HDR texture，并生成 CPU preview/fallback IBL resources；同时保留 `EquirectangularMap` 输入供 VulkanRenderer 初始化时执行 GPU bake。渲染路径会优先消费 baked `SkyboxMap`、`IrradianceMap`、`PrefilteredEnvMap` 和 `BrdfLut`。
 - Renderer 已在 Forward HDR pass 内追加 skybox fullscreen draw：`skybox` shader 采样 scene-level `SkyboxMap` cubemap，并按 `EnvironmentUBO` intensity 输出到 `scene.hdrColor`；背景随后和场景几何一起进入标准 PostProcess tone mapping。
 - 金属球使用 `assets/materials/pbr_gold.material`，runtime 测试覆盖 PBR 材质参数、scene-level IBL resources 注入和 environment 保存回写。
 - Runtime 测试覆盖 IBL metal sphere 的非黑 skybox preview 数据、skybox cubemap 非 1x1 方向数据和 prefiltered roughness mip chain；renderer/framegraph 测试覆盖 HDR attachment dump 能力。
@@ -135,6 +135,6 @@
 - 新增 `pbr_ibl` project template，初始化后 scene catalog 可通过 `ibl_metal_sphere` id 发现并打开该场景。
 - 新增 `notes/use_cases/lxe_editor/verify-pbr-ibl-metal-sphere.md`，记录通过 MCP/editor 命令加载场景、开启 preview、dump `scene.hdrColor` 和截图/目检的验收流程。
 
-仍待落地：
+验收补充：
 
-- 截图/use-case 已文档化；远端实际执行和截图归档可在实现合入后通过 `lxe-verify-implement` 完成。
+- 截图/use-case 已文档化；远端实际执行和截图归档由用户最终验证阶段完成。

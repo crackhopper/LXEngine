@@ -1,6 +1,7 @@
 #include "backend/vulkan/vulkan_renderer.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
+#include "core/scene/ibl_environment.hpp"
 #include "core/scene/components/material_component.hpp"
 #include "core/scene/components/mesh_component.hpp"
 #include "core/scene/components/skeleton_component.hpp"
@@ -110,6 +111,34 @@ LX_core::SceneSharedPtr makeFrameGraphScene() {
   return scene;
 }
 
+LX_core::IblEnvironmentResources makeSmallIblEnvironmentResources() {
+  LX_core::TextureDesc desc;
+  desc.width = 4;
+  desc.height = 2;
+  desc.format = LX_core::TextureFormat::RGBA32Float;
+  std::vector<u8> bytes(desc.width * desc.height * 4u * sizeof(float));
+  auto *pixels = reinterpret_cast<float *>(bytes.data());
+  for (u32 y = 0; y < desc.height; ++y) {
+    for (u32 x = 0; x < desc.width; ++x) {
+      const usize base = static_cast<usize>(y * desc.width + x) * 4u;
+      pixels[base + 0u] = 0.2f + static_cast<float>(x) * 0.2f;
+      pixels[base + 1u] = 0.4f + static_cast<float>(y) * 0.3f;
+      pixels[base + 2u] = 1.2f;
+      pixels[base + 3u] = 1.0f;
+    }
+  }
+  LX_core::IblEnvironmentResources resources;
+  resources.equirectangularMap =
+      std::make_shared<LX_core::CombinedTextureSampler>(
+          std::make_shared<LX_core::Texture>(desc, std::move(bytes)));
+  resources.equirectangularMap->setBindingName(
+      LX_core::StringID("EquirectangularMap"));
+  resources.equirectangularMap->setDirty();
+  resources.environmentUbo =
+      std::make_shared<LX_core::EnvironmentData>(0.0f, 4.0f);
+  return resources;
+}
+
 bool matricesNearlyEqual(const LX_core::Mat4f &a, const LX_core::Mat4f &b) {
   for (int row = 0; row < 4; ++row) {
     for (int col = 0; col < 4; ++col) {
@@ -148,8 +177,18 @@ int main() {
     renderer->initialize(window, "TestVulkanFrameGraph");
     phase = Phase::RendererInitialized;
     auto scene = makeFrameGraphScene();
+    scene->setIblEnvironmentResources(makeSmallIblEnvironmentResources());
     renderer->initScene(scene);
     phase = Phase::SceneInitialized;
+    const auto iblAfterInit = scene->getIblEnvironmentResourceSet();
+    if (!iblAfterInit.bakedSkyboxCubemap ||
+        !iblAfterInit.bakedIrradianceCubemap ||
+        !iblAfterInit.bakedPrefilteredRadianceCubemap ||
+        !iblAfterInit.bakedBrdfLut) {
+      std::cerr << "renderer initScene should replace equirectangular IBL "
+                   "input with baked GPU resources\n";
+      return 1;
+    }
 
     if (renderer->compiledFrameGraphPassCount() < 5) {
       std::cerr << "compiled frame graph should contain four shadow cascades "

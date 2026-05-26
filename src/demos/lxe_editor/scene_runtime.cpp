@@ -297,6 +297,11 @@ loadEnvironmentResources(const EnvironmentState &environment,
   const auto hdrPath =
       resolveRuntimeOrProjectAssetPath(assetRoots, environment.hdrUri);
   const auto hdrTexture = infra::TextureLoader::loadHdrTexture(hdrPath);
+  resources.equirectangularMap =
+      std::make_shared<LX_core::CombinedTextureSampler>(hdrTexture);
+  resources.equirectangularMap->setBindingName(
+      LX_core::StringID("EquirectangularMap"));
+  resources.equirectangularMap->setDirty();
   resources.skyboxCubemap =
       makeHdrEquirectCubeSampler(hdrTexture, LX_core::StringID("SkyboxMap"),
                                  64u, 1u);

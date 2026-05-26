@@ -20,6 +20,7 @@
 #include "details/device.hpp"
 #include "details/device_resources/buffer.hpp"
 #include "details/device_resources/texture.hpp"
+#include "details/ibl_bake_renderer.hpp"
 #include "details/render_objects/framebuffer.hpp"
 #include "details/render_objects/render_pass.hpp"
 #include "details/render_objects/swapchain.hpp"
@@ -713,6 +714,38 @@ public:
     return t;
   }
 
+  void bakeSceneIblEnvironmentIfNeeded() {
+    if (!m_scene) {
+      return;
+    }
+    auto resources = m_scene->getIblEnvironmentResourceSet();
+    if (!resources.equirectangularMap || resources.bakedSkyboxCubemap) {
+      return;
+    }
+
+    LX_core::backend::IblBakeRenderer baker(*m_device, *m_resourceManager,
+                                            *m_cmdBufferMgr);
+    const u32 prefilterMipCount = std::max(
+        1u, static_cast<u32>(std::round(
+                resources.environmentUbo
+                    ? resources.environmentUbo->getPrefilteredMipCount()
+                    : 1.0f)));
+    const auto baked = baker.bakeStaticEnvironment({
+        .equirectangularMap = resources.equirectangularMap,
+        .skyboxSize = 64,
+        .irradianceSize = 32,
+        .prefilterSize = 64,
+        .prefilterMipCount = prefilterMipCount,
+        .brdfLutSize = 128,
+    });
+
+    resources.bakedSkyboxCubemap = baked.skybox;
+    resources.bakedIrradianceCubemap = baked.irradiance;
+    resources.bakedPrefilteredRadianceCubemap = baked.prefiltered;
+    resources.bakedBrdfLut = baked.brdfLut;
+    m_scene->setIblEnvironmentResources(std::move(resources));
+  }
+
   void initScene(SceneSharedPtr _scene) {
     ++m_initSceneCallCount;
     if (m_swapchain) {
@@ -756,6 +789,7 @@ public:
     }
 
     updateDirectionalLightCascades();
+    bakeSceneIblEnvironmentIfNeeded();
     auto &forwardRenderPass = m_resourceManager->getRenderPass(forwardHdrDesc);
     forwardRenderPass.setClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
@@ -1633,7 +1667,12 @@ private:
       return;
     }
     const auto iblResources = m_scene->getIblEnvironmentResourceSet();
-    if (!iblResources.skyboxCubemap || !iblResources.environmentUbo ||
+    const auto skyboxResource = iblResources.bakedSkyboxCubemap
+                                    ? iblResources.bakedSkyboxCubemap
+                                    : std::static_pointer_cast<
+                                          LX_core::IGpuResource>(
+                                          iblResources.skyboxCubemap);
+    if (!skyboxResource || !iblResources.environmentUbo ||
         iblResources.environmentUbo->getIblIntensity() <= 0.0f) {
       return;
     }
@@ -1655,7 +1694,7 @@ private:
     item.descriptorResources.insert(item.descriptorResources.end(),
                                     sceneResources.begin(),
                                     sceneResources.end());
-    item.descriptorResources.push_back(iblResources.skyboxCubemap);
+    item.descriptorResources.push_back(skyboxResource);
     item.descriptorResources.push_back(iblResources.environmentUbo);
     item.pass = LX_core::Pass_Forward;
     item.target = target;

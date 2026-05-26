@@ -45,6 +45,11 @@ struct IblEnvironmentResources {
   CombinedTextureSamplerSharedPtr irradianceCubemap;
   CombinedTextureSamplerSharedPtr prefilteredRadianceCubemap;
   CombinedTextureSamplerSharedPtr brdfLut;
+  CombinedTextureSamplerSharedPtr equirectangularMap;
+  IGpuResourceSharedPtr bakedSkyboxCubemap;
+  IGpuResourceSharedPtr bakedIrradianceCubemap;
+  IGpuResourceSharedPtr bakedPrefilteredRadianceCubemap;
+  IGpuResourceSharedPtr bakedBrdfLut;
   EnvironmentDataSharedPtr environmentUbo;
 };
 

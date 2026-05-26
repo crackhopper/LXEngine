@@ -118,11 +118,11 @@ PBR + IBL 涉及资源、FrameGraph、材质、shader、scene 和 post-process �
 
 ## 实施状态
 
-实施中。
+已完成。
 
 已落地：
 
 - 新增 `notes/tutorial/pbr-ibl/` 教程组，覆盖 metal sphere scene、资源/binding 边界、HDR Post 流程、验证与排错。
 - `notes/nav.yml` 和 `notes/tutorial/index.md` 已加入 PBR + IBL 教程入口。
-- 教程明确区分当前可用能力、CPU 过渡 equirectangular cubemap IBL、Forward HDR skybox 背景、以及仍待 `REQ-048-a` 接入的真实 GPU convolution / prefilter bake。
+- 教程已更新为当前实现事实：SceneRuntime 保留 CPU preview/fallback 与 `EquirectangularMap` 输入，VulkanRenderer 在 `initScene()` 阶段执行 GPU IBL bake，Forward HDR skybox 背景与 PBR material 均优先消费 baked scene-level IBL resources。
 - `scripts/notes/serve_site.sh --build` 已通过；输出中仍有仓库既有历史链接 warning，但本教程与导航能构建进站点。

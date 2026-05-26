@@ -63,12 +63,12 @@ PBR shader 还声明这组 scene-level binding：
 
 | Shader | 作用 | 当前状态 |
 |---|---|---|
-| `equirect_to_cubemap` | HDR equirectangular 转 skybox cubemap | shader 合同已测试 |
-| `ibl_irradiance_convolve` | 生成 diffuse irradiance cubemap | shader 合同已测试 |
-| `ibl_prefilter_env` | 生成 roughness mip prefiltered cubemap | shader 合同已测试 |
-| `ibl_brdf_lut` | 生成 BRDF LUT | shader 合同已测试 |
+| `equirect_to_cubemap` | HDR equirectangular 转 skybox cubemap | renderer bake 已执行 |
+| `ibl_irradiance_convolve` | 生成 diffuse irradiance cubemap | renderer bake 已执行 |
+| `ibl_prefilter_env` | 生成 roughness mip prefiltered cubemap | renderer bake 已执行 |
+| `ibl_brdf_lut` | 生成 BRDF LUT | renderer bake 已执行 |
 
-真实 GPU bake 执行、cubemap face/mip attachment 和 debug dump 仍属于 [REQ-048-a](../../requirements/048-a-ibl-gpu-bake-pipeline.md) 的后续切片。
+GPU bake executor 会创建 cubemap face/mip attachment，执行上述 shader，并把结果 alias 成可被 descriptor lookup 消费的 scene-level resources；`test_vulkan_ibl_bake` 和 `test_vulkan_frame_graph` 覆盖这条路径。
 
 ## 下一步
 

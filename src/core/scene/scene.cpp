@@ -280,16 +280,24 @@ IblEnvironmentResources Scene::getIblEnvironmentResourceSet() const {
 std::vector<IGpuResourceSharedPtr> Scene::getIblEnvironmentResources() const {
   std::vector<IGpuResourceSharedPtr> out;
   const auto resources = getIblEnvironmentResourceSet();
-  if (resources.skyboxCubemap) {
+  if (resources.bakedSkyboxCubemap) {
+    out.push_back(resources.bakedSkyboxCubemap);
+  } else if (resources.skyboxCubemap) {
     out.push_back(resources.skyboxCubemap);
   }
-  if (resources.irradianceCubemap) {
+  if (resources.bakedIrradianceCubemap) {
+    out.push_back(resources.bakedIrradianceCubemap);
+  } else if (resources.irradianceCubemap) {
     out.push_back(resources.irradianceCubemap);
   }
-  if (resources.prefilteredRadianceCubemap) {
+  if (resources.bakedPrefilteredRadianceCubemap) {
+    out.push_back(resources.bakedPrefilteredRadianceCubemap);
+  } else if (resources.prefilteredRadianceCubemap) {
     out.push_back(resources.prefilteredRadianceCubemap);
   }
-  if (resources.brdfLut) {
+  if (resources.bakedBrdfLut) {
+    out.push_back(resources.bakedBrdfLut);
+  } else if (resources.brdfLut) {
     out.push_back(resources.brdfLut);
   }
   if (resources.environmentUbo) {

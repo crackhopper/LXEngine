@@ -26,7 +26,7 @@ scene:
   environment:                              # -> EnvironmentState
     enabled: true                           # -> SceneRuntime 设置 scene-level IBL resources
     hdrUri: assets/env/studio_small_03_2k.hdr
-    skyboxEnabled: true                     # -> 当前记录配置；方向性 skybox 渲染仍在接入中
+    skyboxEnabled: true                     # -> Forward skybox 背景采样 baked SkyboxMap
     intensity: 1.0                          # -> EnvironmentData.intensity
     roughnessMipCount: 5.0                  # -> EnvironmentData.roughnessMipCount
 ```
@@ -42,7 +42,7 @@ scene:
     uri: assets/materials/pbr_gold.material
 ```
 
-运行时加载时，`SceneRuntime::loadFromDocumentPath(...)` 读取 `scene.environment`，加载 `hdrUri` 指向的 HDR texture，并通过 CPU 过渡路径生成 scene-level IBL resources：`SkyboxMap` 是 64x64 方向性 cubemap，`PrefilteredEnvMap` 带 roughness mip chain，`IrradianceMap` 仍是 HDR 平均辐射近似。当前这不是最终 bake 质量，但金属球已经能从 HDR 输入得到非 1x1 的环境方向数据；真实 GPU convolution / prefilter bake 会由 `REQ-048-a` 接上。
+运行时加载时，`SceneRuntime::loadFromDocumentPath(...)` 读取 `scene.environment`，加载 `hdrUri` 指向的 HDR texture，并保留两类资源：一类是 CPU preview/fallback cubemap，另一类是绑定名为 `EquirectangularMap` 的 HDR 输入。VulkanRenderer 初始化 scene 时会把这份 equirectangular 输入交给 GPU bake pipeline，生成 baked `SkyboxMap`、`IrradianceMap`、`PrefilteredEnvMap` 和 `BrdfLut`，后续 PBR draw item 会优先消费 baked resources。
 
 ## 在 editor 中打开
 
@@ -76,7 +76,7 @@ scene open ibl_metal_sphere
 
 ## 当前能看到什么
 
-在真实 GPU bake 接入前，场景已经能稳定打开并进入 PBR + IBL binding 链路；金属球会采样 CPU 过渡生成的 prefiltered cubemap，背景会通过 Forward HDR 的 skybox draw 采样同一份方向性 `SkyboxMap`。我们判断当前切片是否正确，优先看 runtime/FrameGraph 事实，并结合截图确认背景方向性和金属反射是否一致。
+场景已经能稳定打开并进入 PBR + IBL binding 链路；金属球会采样 renderer baked prefiltered cubemap，背景会通过 Forward HDR 的 skybox draw 采样同一份 baked `SkyboxMap`。我们判断当前切片是否正确，优先看 runtime/FrameGraph 事实，并结合截图确认背景方向性和金属反射是否一致。
 
 ## 下一步
 

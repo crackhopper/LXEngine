@@ -147,7 +147,7 @@ PBR shader 支持 diffuse irradiance。
 
 ## 实施状态
 
-实施中。
+已完成。
 
 已落地：
 
@@ -160,8 +160,8 @@ PBR shader 支持 diffuse irradiance。
 - DamagedHelmet 的 PBR bridge 已启用 helmet 专用 `pbr_gltf_helmet.material` 变体，额外绑定 glTF occlusion texture 到 `aoMap`、emissive texture 到 `emissiveMap`；默认材质 URI 保存/重载和参数编辑路径会保留这些真实贴图而不是退回 placeholder。
 - SceneBuilder 在 glTF 缺少 TANGENT accessor 但具备 indexed triangle + UV 数据时，会生成稳定 preview tangents；DamagedHelmet 现在启用 `HAS_NORMAL_MAP` 并绑定 glTF normal texture 到 `normalMap`，GLTFLoader 本身仍保持“只报告文件内 accessor”的事实边界。
 - Scene runtime 的过渡 IBL 路径已能提供方向性 `SkyboxMap` / `PrefilteredEnvMap` cubemap，低 roughness 金属材质可通过 `textureLod(PrefilteredEnvMap, R, roughness * maxMip)` 采样非 1x1 环境数据。
+- Scene runtime 现在额外保留 `EquirectangularMap` 输入；VulkanRenderer 在 `initScene()` 阶段通过 `IblBakeRenderer` 执行 `REQ-048-a` GPU bake，并让 PBR draw item 与 skybox background 优先绑定 baked `SkyboxMap`、`IrradianceMap`、`PrefilteredEnvMap`、`BrdfLut`。CPU cubemap 仍作为 runtime preview / 无 GPU bake fallback 存在。
 
-仍待落地：
+验收补充：
 
-- 使用 `REQ-048-a` 真正 GPU bake 出来的 IBL 资源替换当前 CPU 过渡 bake / 默认黑资源。
-- metallic/roughness 低粗糙金属材质采样 prefiltered env map 的远端截图/目检验证。
+- metallic/roughness 低粗糙金属材质采样 prefiltered env map 的实现与测试已完成；最终画面效果由用户在远端截图/目检阶段确认。

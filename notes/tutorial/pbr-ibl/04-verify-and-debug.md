@@ -53,15 +53,13 @@ render debug dump Forward /game_cam data/debug/dump/ibl-forward.bmp
 | 反射方向不对 | cubemap face orientation；真实 bake 接入后需要 dump cubemap face 对照 HDR 方向 |
 | 没有 bloom | `VulkanRenderer::PostProcessSettings::bloomEnabled`、threshold、`bloomIntensity` |
 | Headless 环境无法截图 | 使用 `xvfb-run -a`；如果仍失败，按测试输出中的 Vulkan/video device skip 原因排查 |
-| 只看到固定 ambient | 检查 scene 是否启用 environment，以及 `PrefilteredEnvMap` 是否为非 1x1 cubemap；`IrradianceMap` 当前仍是平均辐射近似 |
+| 只看到固定 ambient | 检查 scene 是否启用 environment、renderer 是否完成 GPU bake，以及 `PrefilteredEnvMap` 是否绑定 baked mip chain |
 
 ## 当前未完成但应该怎样接
 
 | 缺口 | 正确接入点 |
 |---|---|
-| HDR equirectangular GPU bake | `REQ-048-a` 的 GPU bake pipeline；当前 runtime 使用 CPU 过渡 cubemap |
-| skybox 背景 | scene environment 使用同一份 baked skybox cubemap |
-| cubemap / BRDF LUT dump | Vulkan cubemap face / texture dump |
+| cubemap / BRDF LUT dump | Vulkan cubemap face / texture dump 可继续扩展为文件化验收 |
 | local reflection probe | 独立 requirement，不放进当前场景教程默认能力 |
 
 ## 继续阅读
