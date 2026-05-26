@@ -361,6 +361,58 @@ int main() {
       return 1;
     }
 
+    const VkExtent2D cubemapBakeExtent{64, 64};
+    auto &cubemapBakeAttachment =
+        resourceManager->createOrGetCubemapBakeAttachment(
+            LX_core::StringID("test.ibl.prefilter"), cubemapBakeExtent,
+            VK_FORMAT_R16G16B16A16_SFLOAT, 4,
+            VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+                VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+                VK_IMAGE_USAGE_SAMPLED_BIT);
+    if (!cubemapBakeAttachment.texture ||
+        cubemapBakeAttachment.texture->getImageView() == VK_NULL_HANDLE ||
+        cubemapBakeAttachment.texture->getMipLevels() != 4u ||
+        cubemapBakeAttachment.texture->getArrayLayers() != 6u) {
+      std::cerr << "Cubemap bake attachment texture was not created correctly\n";
+      return 1;
+    }
+    if (cubemapBakeAttachment.baseExtent.width != cubemapBakeExtent.width ||
+        cubemapBakeAttachment.baseExtent.height != cubemapBakeExtent.height ||
+        cubemapBakeAttachment.format != VK_FORMAT_R16G16B16A16_SFLOAT) {
+      std::cerr << "Cubemap bake attachment metadata mismatch\n";
+      return 1;
+    }
+    auto &faceMipView =
+        resourceManager->getOrCreateCubemapBakeSubresourceView(
+            LX_core::StringID("test.ibl.prefilter"), 2, 5);
+    if (faceMipView.getHandle() == VK_NULL_HANDLE) {
+      std::cerr << "Cubemap bake face/mip view was not created\n";
+      return 1;
+    }
+    auto &sameFaceMipView =
+        resourceManager->getOrCreateCubemapBakeSubresourceView(
+            LX_core::StringID("test.ibl.prefilter"), 2, 5);
+    if (&sameFaceMipView != &faceMipView) {
+      std::cerr << "Cubemap bake face/mip view was not cached\n";
+      return 1;
+    }
+    bool cubemapMismatchRejected = false;
+    try {
+      (void)resourceManager->createOrGetCubemapBakeAttachment(
+          LX_core::StringID("test.ibl.prefilter"), cubemapBakeExtent,
+          VK_FORMAT_R16G16B16A16_SFLOAT, 5,
+          VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+              VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+              VK_IMAGE_USAGE_SAMPLED_BIT);
+    } catch (const std::runtime_error &e) {
+      cubemapMismatchRejected =
+          std::string(e.what()).find("mips") != std::string::npos;
+    }
+    if (!cubemapMismatchRejected) {
+      std::cerr << "Cubemap bake attachment mip mismatch was not rejected\n";
+      return 1;
+    }
+
     using V = LX_core::VertexPosNormalUvBone;
     auto vertexBufferPtr = LX_core::VertexBuffer<V>::create({
         V({-5.0f, 5.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f},

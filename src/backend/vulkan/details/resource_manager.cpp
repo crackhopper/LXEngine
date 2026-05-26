@@ -26,6 +26,11 @@ namespace {
 constexpr ResourceCacheIdentity kInactiveFrameGracePeriod = 2;
 constexpr int kDebugBurstFrames = 3;
 
+usize cubemapSubresourceKey(u32 mipLevel, u32 faceLayer) {
+  return (static_cast<usize>(mipLevel) << 32u) |
+         static_cast<usize>(faceLayer);
+}
+
 VkFormat toVkFormat(TextureFormat format) {
   switch (format) {
   case TextureFormat::RGBA8:
@@ -441,6 +446,89 @@ void VulkanResourceManager::updateFrameGraphAttachmentLayout(
 
 void VulkanResourceManager::clearFrameGraphAttachments() {
   m_frameGraphAttachments.clear();
+}
+
+VulkanCubemapBakeAttachment &
+VulkanResourceManager::createOrGetCubemapBakeAttachment(
+    StringID name, VkExtent2D baseExtent, VkFormat format, u32 mipLevels,
+    VkImageUsageFlags usage) {
+  if (baseExtent.width == 0 || baseExtent.height == 0 || mipLevels == 0) {
+    throw std::runtime_error(
+        "Cubemap bake attachment requires non-zero extent and mip count");
+  }
+
+  auto it = m_cubemapBakeAttachments.find(name);
+  if (it != m_cubemapBakeAttachments.end()) {
+    const auto &attachment = it->second;
+    if (attachment.format != format ||
+        attachment.baseExtent.width != baseExtent.width ||
+        attachment.baseExtent.height != baseExtent.height ||
+        attachment.mipLevels != mipLevels ||
+        (attachment.usage & usage) != usage) {
+      const std::string &resourceName =
+          GlobalStringTable::get().getName(name.id);
+      throw std::runtime_error(
+          "Cubemap bake attachment reuse mismatch for resource '" +
+          resourceName +
+          "'; format/extent/mips must match and requested usage must be a "
+          "subset of existing usage");
+    }
+    return it->second;
+  }
+
+  VulkanCubemapBakeAttachment attachment;
+  attachment.texture = VulkanTexture::createCube(m_device, baseExtent.width,
+                                                 baseExtent.height, format,
+                                                 usage, mipLevels,
+                                                 VK_FILTER_LINEAR);
+  attachment.format = format;
+  attachment.usage = usage;
+  attachment.baseExtent = baseExtent;
+  attachment.mipLevels = mipLevels;
+
+  auto [insertedIt, inserted] =
+      m_cubemapBakeAttachments.emplace(name, std::move(attachment));
+  (void)inserted;
+  return insertedIt->second;
+}
+
+std::optional<std::reference_wrapper<VulkanCubemapBakeAttachment>>
+VulkanResourceManager::getCubemapBakeAttachment(StringID name) {
+  auto it = m_cubemapBakeAttachments.find(name);
+  if (it == m_cubemapBakeAttachments.end()) {
+    return std::nullopt;
+  }
+  return std::ref(it->second);
+}
+
+VulkanImageView &VulkanResourceManager::getOrCreateCubemapBakeSubresourceView(
+    StringID name, u32 mipLevel, u32 faceLayer) {
+  auto attachmentOpt = getCubemapBakeAttachment(name);
+  if (!attachmentOpt.has_value()) {
+    const std::string &resourceName = GlobalStringTable::get().getName(name.id);
+    throw std::runtime_error("Missing cubemap bake attachment '" +
+                             resourceName + "'");
+  }
+  auto &attachment = attachmentOpt->get();
+  if (mipLevel >= attachment.mipLevels || faceLayer >= 6u) {
+    const std::string &resourceName = GlobalStringTable::get().getName(name.id);
+    throw std::runtime_error("Cubemap bake subresource out of range for '" +
+                             resourceName + "'");
+  }
+
+  const usize key = cubemapSubresourceKey(mipLevel, faceLayer);
+  auto viewIt = attachment.subresourceViews.find(key);
+  if (viewIt != attachment.subresourceViews.end()) {
+    return *viewIt->second;
+  }
+
+  auto view = std::make_unique<VulkanImageView>(
+      attachment.texture->createSubresourceView(VK_IMAGE_ASPECT_COLOR_BIT,
+                                                mipLevel, 1, faceLayer, 1));
+  auto [insertedIt, inserted] =
+      attachment.subresourceViews.emplace(key, std::move(view));
+  (void)inserted;
+  return *insertedIt->second;
 }
 
 } // namespace LX_core::backend

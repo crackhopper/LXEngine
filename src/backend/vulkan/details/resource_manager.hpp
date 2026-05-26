@@ -26,6 +26,7 @@ class VulkanDevice;
 class VulkanCommandBufferManager;
 class VulkanRenderPass;
 class VulkanBuffer;
+class VulkanImageView;
 class VulkanTexture;
 class VulkanShader;
 
@@ -42,6 +43,16 @@ struct VulkanFrameGraphAttachment {
   VkImageUsageFlags usage = 0;
   VkImageLayout currentLayout = VK_IMAGE_LAYOUT_UNDEFINED;
   VkExtent2D extent{};
+};
+
+struct VulkanCubemapBakeAttachment {
+  std::unique_ptr<VulkanTexture> texture;
+  VkFormat format = VK_FORMAT_UNDEFINED;
+  VkImageUsageFlags usage = 0;
+  VkExtent2D baseExtent{};
+  u32 mipLevels = 1;
+  std::unordered_map<usize, std::unique_ptr<VulkanImageView>>
+      subresourceViews;
 };
 
 struct VulkanFrameGraphAttachmentKey {
@@ -111,6 +122,9 @@ public:
   usize getFrameGraphAttachmentCount() const {
     return m_frameGraphAttachments.size();
   }
+  usize getCubemapBakeAttachmentCount() const {
+    return m_cubemapBakeAttachments.size();
+  }
 
   VulkanFrameGraphAttachment &
   createOrGetFrameGraphAttachment(StringID name, VkExtent2D extent,
@@ -120,6 +134,16 @@ public:
   getFrameGraphAttachment(StringID name);
   void updateFrameGraphAttachmentLayout(StringID name, VkImageLayout layout);
   void clearFrameGraphAttachments();
+
+  VulkanCubemapBakeAttachment &
+  createOrGetCubemapBakeAttachment(StringID name, VkExtent2D baseExtent,
+                                   VkFormat format, u32 mipLevels,
+                                   VkImageUsageFlags usage);
+  std::optional<std::reference_wrapper<VulkanCubemapBakeAttachment>>
+  getCubemapBakeAttachment(StringID name);
+  VulkanImageView &getOrCreateCubemapBakeSubresourceView(StringID name,
+                                                         u32 mipLevel,
+                                                         u32 faceLayer);
 
 private:
   std::shared_ptr<VulkanAnyResource>
@@ -141,6 +165,8 @@ private:
   std::unordered_map<VulkanFrameGraphAttachmentKey, VulkanFrameGraphAttachment,
                      VulkanFrameGraphAttachmentKey::Hash>
       m_frameGraphAttachments;
+  std::unordered_map<StringID, VulkanCubemapBakeAttachment, StringID::Hash>
+      m_cubemapBakeAttachments;
 };
 
 } // namespace LX_core::backend
