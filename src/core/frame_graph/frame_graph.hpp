@@ -1,6 +1,5 @@
 #pragma once
 
-#include "core/asset/material_instance.hpp"
 #include "core/frame_graph/render_target.hpp"
 #include "core/frame_graph/render_queue.hpp"
 #include "core/rhi/gpu_resource.hpp"
@@ -32,29 +31,27 @@ struct FrameGraphWrite {
   FrameGraphResourceRef resource;
 };
 
-enum class FramePassKind {
-  RenderQueue,
-  FullscreenProcedural,
-};
-
 /*
-@source_analysis.section FramePass：三元组 (name, target, queue)
-`FramePass` 把三件本来分散的事打包成一个结构体：
+@source_analysis.section FramePass：pass 身份、target、queue 与资源流
+`FramePass` 把一条渲染 pass 的 core 层声明打包成一个结构体：
 
 - `name`：StringID，匹配 REQ-007 的 `Pass_*` 常量；它是这条 pass 在 scene-level
   资源筛选、material pass 选择、shader 变体合并里的统一身份
 - `target`：这条 pass 的输出形状，使用 `RenderTargetDesc` 保留 offscreen /
   depth-only 等结构性描述；旧的 scene camera matching 边界再转回 `RenderTarget`
 - `queue`：这条 pass 内部的 RenderingItem 收口（见 `render_queue.md`）
+- `reads` / `writes`：有序 FrameGraph 的资源流声明，例如 Forward 写
+  `scene.hdrColor`，PostProcess 再以 `SceneColor` binding 采样它
 
-之所以打包而不是让 `FrameGraph` 持有三个并行 vector，是因为这三个字段在每条
+之所以打包而不是让 `FrameGraph` 持有多个并行 vector，是因为这些字段在每条
 pass 上是强绑定的：`name` 决定 queue 怎么过滤，`target` 决定 queue 怎么注入
-scene-level 资源；分开存就要在 `FrameGraph` 里维护"i-th name 对应 i-th target"
+scene-level 资源，`reads` / `writes` 决定与前后 pass 的 attachment 依赖；分开
+存就要在 `FrameGraph` 里维护"i-th name 对应 i-th target / resource flow"
 的隐式索引，容易写出 off-by-one。
 
 注意 FramePass 不持有任何 backend 资源（renderpass / framebuffer / pipeline
-都在 backend 侧）— 它纯粹是 core 层的"这条 pass 怎么从 scene 里挑出 draw
-列表"的描述符。
+都在 backend 侧）— 它纯粹是 core 层的"这条 pass 如何选择 draw 列表，以及
+如何声明跨 pass attachment 读写"的描述符。
 */
 struct FramePass {
   StringID name;
@@ -62,8 +59,6 @@ struct FramePass {
   RenderQueue queue;
   std::vector<FrameGraphRead> reads;
   std::vector<FrameGraphWrite> writes;
-  FramePassKind kind = FramePassKind::RenderQueue;
-  MaterialInstanceSharedPtr fullscreenMaterial;
 };
 
 struct CompiledFrameGraphPass {
@@ -71,8 +66,6 @@ struct CompiledFrameGraphPass {
   RenderTargetDesc target;
   std::vector<FrameGraphRead> reads;
   std::vector<FrameGraphWrite> writes;
-  FramePassKind kind = FramePassKind::RenderQueue;
-  MaterialInstanceSharedPtr fullscreenMaterial;
 };
 
 class FrameGraphSampledResource final : public IGpuResource {

@@ -142,4 +142,17 @@ Shadow -> Forward(HDR offscreen) -> PostProcess(swapchain) -> DebugOverlay/ImGui
 
 ## 实施状态
 
-Draft，未实施。
+实施中。
+
+已落地：
+
+- 新增 `Pass_PostProcess` 作为 core pass 身份。
+- Core FrameGraph 已能表达 `Forward -> PostProcess` 的 sampled scene color 资源流。
+- 已删除 `FramePassKind::FullscreenProcedural`、`FramePass::fullscreenMaterial` 和 `CompiledFrameGraphPass::fullscreenMaterial` 旧字段。
+- `REQ-045-c` 已迁移说明：旧 fullscreen procedural 分支不继续扩展，后续统一走标准 post-process stack。
+
+仍待落地：
+
+- Forward HDR offscreen target 与 Vulkan renderer pass 顺序迁移。
+- 标准 fullscreen post executor、tone mapping、gamma 与 bloom。
+- post shader/material、pipeline build desc 与截图/framebuffer 验证。

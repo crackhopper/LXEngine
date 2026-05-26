@@ -91,9 +91,8 @@ CompiledFrameGraph FrameGraph::compile() const {
       available.insert(write.resource.name);
     }
 
-    out.m_passes.push_back(CompiledFrameGraphPass{
-        pass.name, pass.target, pass.reads, pass.writes, pass.kind,
-        pass.fullscreenMaterial});
+    out.m_passes.push_back(
+        CompiledFrameGraphPass{pass.name, pass.target, pass.reads, pass.writes});
   }
 
   return out;
