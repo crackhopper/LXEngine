@@ -83,6 +83,45 @@ int main() {
       return 1;
     }
 
+    auto cubeTexture = LX_core::backend::VulkanTexture::createCube(
+        *device, 32, 32, VK_FORMAT_R16G16B16A16_SFLOAT,
+        VK_IMAGE_USAGE_TRANSFER_DST_BIT, 3, VK_FILTER_LINEAR);
+    if (cubeTexture->getImageView() == VK_NULL_HANDLE) {
+      std::cerr << "Cubemap image view is null\n";
+      return 1;
+    }
+    if (cubeTexture->getSampler() == VK_NULL_HANDLE) {
+      std::cerr << "Cubemap sampler is null\n";
+      return 1;
+    }
+    if (cubeTexture->getArrayLayers() != 6 || cubeTexture->getMipLevels() != 3) {
+      std::cerr << "Cubemap shape metadata was not preserved\n";
+      return 1;
+    }
+
+    bool invalidCubeRejected = false;
+    try {
+      (void)LX_core::backend::VulkanTexture::createCube(
+          *device, 4, 4, VK_FORMAT_R16G16B16A16_SFLOAT,
+          VK_IMAGE_USAGE_TRANSFER_DST_BIT, 4, VK_FILTER_LINEAR);
+    } catch (const std::runtime_error &e) {
+      invalidCubeRejected =
+          std::string(e.what()).find("exceeds") != std::string::npos;
+    }
+    if (!invalidCubeRejected) {
+      std::cerr << "Cubemap with excessive mip levels was not rejected\n";
+      return 1;
+    }
+
+    auto mip2DTexture = LX_core::backend::VulkanTexture::create2D(
+        *device, 16, 8, VK_FORMAT_R8G8B8A8_UNORM,
+        VK_IMAGE_USAGE_TRANSFER_DST_BIT, 4, VK_FILTER_LINEAR);
+    if (mip2DTexture->getArrayLayers() != 1 ||
+        mip2DTexture->getMipLevels() != 4) {
+      std::cerr << "2D texture mip metadata was not preserved\n";
+      return 1;
+    }
+
     auto transitionCmd = cmdMgr->beginSingleTimeCommands();
     auto sampledColorAttachment =
         LX_core::backend::VulkanTexture::createForAttachment(

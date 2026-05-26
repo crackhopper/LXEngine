@@ -1,6 +1,7 @@
 #pragma once
 #include "core/rhi/gpu_resource.hpp"
 #include "core/platform/types.hpp"
+#include <algorithm>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -12,14 +13,36 @@ enum class TextureFormat {
   RGBA8,
   RGB8,
   R8,
-  // 以后可以扩展 HDR、Float 等
+  RGBA16Float,
+  RGBA32Float,
+};
+
+enum class TextureDimension {
+  Texture2D,
+  TextureCube,
 };
 
 struct TextureDesc {
   u32 width = 0;
   u32 height = 0;
   TextureFormat format = TextureFormat::RGBA8;
+  TextureDimension dimension = TextureDimension::Texture2D;
+  u32 mipLevels = 1;
+  u32 arrayLayers = 1;
 };
+
+inline u32 maxTextureMipLevels(u32 width, u32 height) {
+  if (width == 0 || height == 0) {
+    return 0;
+  }
+  u32 levels = 1;
+  u32 extent = std::max(width, height);
+  while (extent > 1) {
+    extent /= 2;
+    ++levels;
+  }
+  return levels;
+}
 
 inline usize textureBytesPerPixel(TextureFormat format) {
   switch (format) {
@@ -29,13 +52,49 @@ inline usize textureBytesPerPixel(TextureFormat format) {
     return 3;
   case TextureFormat::R8:
     return 1;
+  case TextureFormat::RGBA16Float:
+    return 8;
+  case TextureFormat::RGBA32Float:
+    return 16;
   }
   return 0;
 }
 
 inline usize expectedTextureByteCount(const TextureDesc &desc) {
-  return static_cast<usize>(desc.width) * static_cast<usize>(desc.height) *
-         textureBytesPerPixel(desc.format);
+  if (desc.width == 0 || desc.height == 0) {
+    throw std::runtime_error("texture dimensions must be non-zero");
+  }
+  if (desc.mipLevels == 0 || desc.arrayLayers == 0) {
+    throw std::runtime_error("texture mip levels and array layers must be non-zero");
+  }
+  if (desc.mipLevels > maxTextureMipLevels(desc.width, desc.height)) {
+    throw std::runtime_error("texture mip level count exceeds texture extent");
+  }
+  if (desc.dimension == TextureDimension::Texture2D &&
+      desc.arrayLayers != 1) {
+    throw std::runtime_error("texture 2D array layers are not supported");
+  }
+  if (desc.dimension == TextureDimension::TextureCube &&
+      desc.arrayLayers != 6) {
+    throw std::runtime_error("texture cube must have exactly 6 array layers");
+  }
+  if (desc.dimension == TextureDimension::TextureCube &&
+      desc.width != desc.height) {
+    throw std::runtime_error("texture cube must be square");
+  }
+
+  usize total = 0;
+  u32 mipWidth = desc.width;
+  u32 mipHeight = desc.height;
+  for (u32 mip = 0; mip < desc.mipLevels; ++mip) {
+    total += static_cast<usize>(std::max(mipWidth, 1u)) *
+             static_cast<usize>(std::max(mipHeight, 1u)) *
+             textureBytesPerPixel(desc.format) *
+             static_cast<usize>(desc.arrayLayers);
+    mipWidth = std::max(mipWidth / 2u, 1u);
+    mipHeight = std::max(mipHeight / 2u, 1u);
+  }
+  return total;
 }
 
 /*

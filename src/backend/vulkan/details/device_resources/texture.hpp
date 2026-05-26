@@ -35,10 +35,20 @@ public:
                                            format, usage, filter);
   }
 
+  static VulkanTextureUniquePtr create2D(
+      VulkanDevice &device, u32 width, u32 height, VkFormat format,
+      VkImageUsageFlags usage, u32 mipLevels = 1,
+      VkFilter filter = VK_FILTER_LINEAR);
+
   static VulkanTextureUniquePtr createForAttachment(
       VulkanDevice &device, u32 width, u32 height,
       VkFormat format, VkImageUsageFlags usage,
       VkImageAspectFlags aspectMask);
+
+  static VulkanTextureUniquePtr createCube(
+      VulkanDevice &device, u32 width, u32 height, VkFormat format,
+      VkImageUsageFlags usage, u32 mipLevels = 1,
+      VkFilter filter = VK_FILTER_LINEAR);
 
   // 用于 Descriptor Set 绑定的信息
   VkDescriptorImageInfo getDescriptorInfo() const {
@@ -59,9 +69,17 @@ public:
   VkFormat getFormat() const { return m_format; }
   u32 getWidth() const { return m_width; }
   u32 getHeight() const { return m_height; }
+  u32 getMipLevels() const { return m_mipLevels; }
+  u32 getArrayLayers() const { return m_arrayLayers; }
   VkDeviceMemory getMemory() const { return m_memory; }
 
 private:
+  VulkanTexture(Token, VulkanDevice &device, u32 width, u32 height,
+                VkFormat format, VkImageUsageFlags usage,
+                VkImageAspectFlags aspectMask, u32 mipLevels, u32 arrayLayers,
+                VkImageViewType viewType, VkImageCreateFlags flags,
+                VkFilter filter, VkSamplerAddressMode addressMode);
+
   void createImageView(VkImageAspectFlags aspectMask);
   void createSampler(VkFilter filter, VkSamplerAddressMode addressMode);
 
@@ -74,6 +92,9 @@ private:
   VkImageUsageFlags m_usage = 0;
   u32 m_width = 0;
   u32 m_height = 0;
+  u32 m_mipLevels = 1;
+  u32 m_arrayLayers = 1;
+  VkImageViewType m_viewType = VK_IMAGE_VIEW_TYPE_2D;
   VkImageLayout m_currentLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 };
 

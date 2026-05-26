@@ -120,10 +120,11 @@ IBL bake 需要从 `assets/env/studio_small_03_2k.hdr` 这类 equirectangular HD
 已落地：
 
 - `ImageFormat::RGBA16Float` 已作为 HDR render-target format 进入 core/backend 映射，可供 `REQ-046-a` 的 `scene.hdrColor` 使用。
+- `TextureDesc` 已表达 `RGBA16Float` / `RGBA32Float`、`Texture2D` / `TextureCube`、mipLevels 和 arrayLayers；byte-count 校验会覆盖 mip 与 cube faces。
+- HDR loader 已能读取 `assets/env/studio_small_03_2k.hdr` 并输出 `RGBA32Float` CPU texture。
+- VulkanTexture 已有 cubemap 创建入口，使用 6 array layers、cube-compatible image 和 cube image view。
 
 仍待落地：
 
-- `TextureDesc` 的 HDR/cubemap/mip/layer 资源形状。
-- HDR `.hdr` loader。
-- Vulkan texture cubemap image/view/upload 与 mip 支撑。
+- Vulkan cubemap 多 mip / 多 layer upload 的完整 copy region 支撑。
 - `TextureCube` reflection 到 material-owned cube descriptor 的端到端测试。

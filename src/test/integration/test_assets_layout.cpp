@@ -1,5 +1,6 @@
 #include "core/utils/filesystem_tools.hpp"
 #include "core/utils/env.hpp"
+#include "infra/texture_loader/texture_loader.hpp"
 
 #include <cstdlib>
 #include <filesystem>
@@ -30,6 +31,18 @@ void testHdrEnvironmentMap() {
   auto saved = std::filesystem::current_path();
   bool ok = cdToWhereAssetsExist("env/studio_small_03_2k.hdr");
   EXPECT(ok, "studio_small_03_2k.hdr must be found");
+  if (ok) {
+    const auto texture = infra::TextureLoader::loadHdrTexture(
+        std::filesystem::current_path() / "assets" / "env" /
+        "studio_small_03_2k.hdr");
+    EXPECT(texture != nullptr, "HDR loader should return a texture");
+    EXPECT(texture->desc().format == LX_core::TextureFormat::RGBA32Float,
+           "HDR loader should produce RGBA32Float data");
+    EXPECT(texture->desc().width > 0 && texture->desc().height > 0,
+           "HDR loader should preserve positive dimensions");
+    EXPECT(texture->size() == LX_core::expectedTextureByteCount(texture->desc()),
+           "HDR loader byte count should match TextureDesc");
+  }
   std::filesystem::current_path(saved);
 }
 

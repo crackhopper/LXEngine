@@ -6,6 +6,7 @@
 #include "backend/vulkan/details/render_objects/render_pass.hpp"
 #include "backend/vulkan/details/resource_manager.hpp"
 #include "core/debug_draw/debug_draw.hpp"
+#include "core/asset/texture.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/components/material_component.hpp"
@@ -375,6 +376,62 @@ int main() {
     resourceManager->syncResource(*cmdBufferMgr, vertexBufferPtr);
     resourceManager->syncResource(*cmdBufferMgr, indexBufferPtr);
     resourceManager->collectGarbage();
+
+    LX_core::TextureDesc hdrDesc;
+    hdrDesc.width = 2;
+    hdrDesc.height = 2;
+    hdrDesc.format = LX_core::TextureFormat::RGBA32Float;
+    auto hdrSampler = std::make_shared<LX_core::CombinedTextureSampler>(
+        std::make_shared<LX_core::Texture>(
+            hdrDesc, std::vector<u8>(LX_core::expectedTextureByteCount(hdrDesc))));
+    const auto hdrIdentity = hdrSampler->getBackendCacheIdentity();
+    resourceManager->syncResource(*cmdBufferMgr, hdrSampler);
+    auto hdrGpuTexture = resourceManager->getTexture(hdrIdentity);
+    if (!hdrGpuTexture || hdrGpuTexture->get().getFormat() !=
+                              VK_FORMAT_R32G32B32A32_SFLOAT) {
+      std::cerr << "HDR sampler did not upload as RGBA32F Vulkan texture\n";
+      return 1;
+    }
+
+    LX_core::TextureDesc mip2DDesc;
+    mip2DDesc.width = 4;
+    mip2DDesc.height = 4;
+    mip2DDesc.format = LX_core::TextureFormat::RGBA8;
+    mip2DDesc.mipLevels = 3;
+    auto mip2DSampler = std::make_shared<LX_core::CombinedTextureSampler>(
+        std::make_shared<LX_core::Texture>(
+            mip2DDesc,
+            std::vector<u8>(LX_core::expectedTextureByteCount(mip2DDesc))));
+    const auto mip2DIdentity = mip2DSampler->getBackendCacheIdentity();
+    resourceManager->syncResource(*cmdBufferMgr, mip2DSampler);
+    auto mip2DGpuTexture = resourceManager->getTexture(mip2DIdentity);
+    if (!mip2DGpuTexture || mip2DGpuTexture->get().getArrayLayers() != 1 ||
+        mip2DGpuTexture->get().getMipLevels() != 3) {
+      std::cerr << "2D sampler did not preserve Vulkan mip shape\n";
+      return 1;
+    }
+
+    LX_core::TextureDesc cubeDesc;
+    cubeDesc.width = 4;
+    cubeDesc.height = 4;
+    cubeDesc.format = LX_core::TextureFormat::RGBA16Float;
+    cubeDesc.dimension = LX_core::TextureDimension::TextureCube;
+    cubeDesc.mipLevels = 3;
+    cubeDesc.arrayLayers = 6;
+    auto cubeSampler = std::make_shared<LX_core::CombinedTextureSampler>(
+        std::make_shared<LX_core::Texture>(
+            cubeDesc,
+            std::vector<u8>(LX_core::expectedTextureByteCount(cubeDesc))));
+    const auto cubeIdentity = cubeSampler->getBackendCacheIdentity();
+    resourceManager->syncResource(*cmdBufferMgr, cubeSampler);
+    auto cubeGpuTexture = resourceManager->getTexture(cubeIdentity);
+    if (!cubeGpuTexture || cubeGpuTexture->get().getFormat() !=
+                               VK_FORMAT_R16G16B16A16_SFLOAT ||
+        cubeGpuTexture->get().getArrayLayers() != 6 ||
+        cubeGpuTexture->get().getMipLevels() != 3) {
+      std::cerr << "Cubemap sampler did not preserve Vulkan texture shape\n";
+      return 1;
+    }
 
     auto meshPtr = LX_core::Mesh::create(
         vertexBufferPtr, indexBufferPtr,

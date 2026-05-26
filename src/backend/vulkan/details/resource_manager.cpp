@@ -34,6 +34,10 @@ VkFormat toVkFormat(TextureFormat format) {
     return VK_FORMAT_R8G8B8_UNORM;
   case TextureFormat::R8:
     return VK_FORMAT_R8_UNORM;
+  case TextureFormat::RGBA16Float:
+    return VK_FORMAT_R16G16B16A16_SFLOAT;
+  case TextureFormat::RGBA32Float:
+    return VK_FORMAT_R32G32B32A32_SFLOAT;
   default:
     throw std::runtime_error("Unsupported TextureFormat");
   }
@@ -227,8 +231,14 @@ VulkanResourceManager::createGpuResource(const IGpuResourceSharedPtr &cpuRes) {
     const VkFormat vkFormat = toVkFormat(desc.format);
     VkImageUsageFlags usage =
         VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-    return std::make_shared<VulkanAnyResource>(VulkanTexture::create(
-        m_device, desc.width, desc.height, vkFormat, usage, VK_FILTER_LINEAR));
+    if (desc.dimension == TextureDimension::TextureCube) {
+      return std::make_shared<VulkanAnyResource>(VulkanTexture::createCube(
+          m_device, desc.width, desc.height, vkFormat, usage, desc.mipLevels,
+          VK_FILTER_LINEAR));
+    }
+    return std::make_shared<VulkanAnyResource>(VulkanTexture::create2D(
+        m_device, desc.width, desc.height, vkFormat, usage, desc.mipLevels,
+        VK_FILTER_LINEAR));
   }
 
   default:
