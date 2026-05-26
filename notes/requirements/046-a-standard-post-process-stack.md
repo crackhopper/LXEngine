@@ -151,9 +151,9 @@ Shadow -> Forward(HDR offscreen) -> PostProcess(swapchain) -> DebugOverlay/ImGui
 - 已删除 `FramePassKind::FullscreenProcedural`、`FramePass::fullscreenMaterial` 和 `CompiledFrameGraphPass::fullscreenMaterial` 旧字段。
 - `REQ-045-c` 已迁移说明：旧 fullscreen procedural 分支不继续扩展，后续统一走标准 post-process stack。
 - Vulkan backend 已具备 `RGBA16Float` render-target format 映射，debug render-target pass name 也能解析 `PostProcess`。
+- Vulkan renderer 的 scene 初始化已改为四个 shadow cascades 后接 `Forward -> PostProcess -> DebugOverlay`，Forward 写 `scene.hdrColor` / `scene.depth`，PostProcess 写 `swapchain.color`。
 
 仍待落地：
 
-- Forward HDR offscreen target 与 Vulkan renderer pass 顺序迁移。
 - 标准 fullscreen post executor、tone mapping、gamma 与 bloom。
 - post shader/material、pipeline build desc 与截图/framebuffer 验证。

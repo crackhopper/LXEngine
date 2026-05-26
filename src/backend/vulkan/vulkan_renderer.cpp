@@ -342,10 +342,9 @@ public:
     }
     m_scene = _scene;
 
-    // REQ-009: compute the swapchain target once, use it for both:
-    //   1. Backfilling any nullopt camera's m_target (before buildFromScene).
-    //   2. Wiring up FramePass.target so getSceneLevelResources(pass, target)
-    //      can match the camera on the filter side.
+    // REQ-009 / REQ-046: compute the swapchain target once, then migrate
+    // default scene cameras to the HDR forward target before buildFromScene so
+    // scene-level CameraUBO resources still attach to the Forward queue.
     const LX_core::RenderTarget swapchainTarget = makeSwapchainTarget();
     for (const auto &cameraNode : m_scene->getCameras()) {
       if (!cameraNode) {
@@ -359,13 +358,32 @@ public:
     }
 
     const auto swapchainDesc = swapchainTarget.toDesc();
+    LX_core::RenderTargetDesc forwardHdrDesc;
+    forwardHdrDesc.role = LX_core::RenderTargetRole::Offscreen;
+    forwardHdrDesc.colorFormat = LX_core::ImageFormat::RGBA16Float;
+    forwardHdrDesc.depthFormat = swapchainTarget.depthFormat;
     const auto shadowTarget =
         LX_core::RenderTargetDesc::offscreenDepth(swapchainTarget.depthFormat);
+
+    for (const auto &cameraNode : m_scene->getCameras()) {
+      if (!cameraNode) {
+        continue;
+      }
+      const auto cameraComponent =
+          cameraNode->getComponent<LX_core::CameraComponent>();
+      if (cameraComponent && cameraComponent->get().getTarget().has_value() &&
+          *cameraComponent->get().getTarget() == swapchainTarget) {
+        cameraComponent->get().setTarget(LX_core::RenderTarget{forwardHdrDesc});
+      }
+    }
+
     updateDirectionalLightCascades();
+    const auto sceneHdrColor = LX_core::FrameGraphResourceRef::colorAttachment(
+        LX_core::StringID("scene.hdrColor"));
+    const auto sceneDepth = LX_core::FrameGraphResourceRef::depthAttachment(
+        LX_core::StringID("scene.depth"));
     const auto swapchainColor = LX_core::FrameGraphResourceRef::colorAttachment(
         LX_core::StringID("swapchain.color"));
-    const auto swapchainDepth = LX_core::FrameGraphResourceRef::depthAttachment(
-        LX_core::StringID("swapchain.depth"));
 
     m_frameGraph = LX_core::FrameGraph{}; // Fresh graph on every initScene.
     std::vector<LX_core::FrameGraphRead> shadowReads;
@@ -386,11 +404,18 @@ public:
     }
     m_frameGraph.addPass(
         LX_core::FramePass{LX_core::Pass_Forward,
-                           swapchainDesc,
+                           forwardHdrDesc,
                            {},
                            shadowReads,
-                           {LX_core::FrameGraphWrite{swapchainColor},
-                            LX_core::FrameGraphWrite{swapchainDepth}}});
+                           {LX_core::FrameGraphWrite{sceneHdrColor},
+                            LX_core::FrameGraphWrite{sceneDepth}}});
+    m_frameGraph.addPass(LX_core::FramePass{
+        LX_core::Pass_PostProcess,
+        swapchainDesc,
+        {},
+        {LX_core::FrameGraphRead::sampled(sceneHdrColor.name,
+                                          LX_core::StringID("SceneColor"))},
+        {LX_core::FrameGraphWrite{swapchainColor}}});
     m_frameGraph.addPass(LX_core::FramePass{
         LX_core::Pass_DebugOverlay, swapchainDesc, {}, {}, {}});
 
@@ -671,6 +696,16 @@ public:
 
   [[nodiscard]] usize compiledFrameGraphPassCount() const {
     return m_compiledFrameGraph.getPasses().size();
+  }
+
+  [[nodiscard]] std::vector<std::string> compiledFrameGraphPassNames() const {
+    std::vector<std::string> names;
+    const auto &passes = m_compiledFrameGraph.getPasses();
+    names.reserve(passes.size());
+    for (const auto &pass : passes) {
+      names.push_back(LX_core::GlobalStringTable::get().getName(pass.name.id));
+    }
+    return names;
   }
 
   [[nodiscard]] usize frameGraphAttachmentCount() const {
@@ -1520,6 +1555,10 @@ usize VulkanRenderer::frameGraphItemCount() const {
 
 usize VulkanRenderer::compiledFrameGraphPassCount() const {
   return p_impl->compiledFrameGraphPassCount();
+}
+
+std::vector<std::string> VulkanRenderer::compiledFrameGraphPassNames() const {
+  return p_impl->compiledFrameGraphPassNames();
 }
 
 usize VulkanRenderer::frameGraphAttachmentCount() const {

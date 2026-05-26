@@ -45,6 +45,7 @@ public:
   [[nodiscard]] usize cachedResourceCount() const;
   [[nodiscard]] usize frameGraphItemCount() const;
   [[nodiscard]] usize compiledFrameGraphPassCount() const;
+  [[nodiscard]] std::vector<std::string> compiledFrameGraphPassNames() const;
   [[nodiscard]] usize frameGraphAttachmentCount() const;
   [[nodiscard]] usize initSceneCallCount() const;
   FrameGraphAttachmentDumpResult dumpFrameGraphAttachment(

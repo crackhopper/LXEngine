@@ -156,6 +156,13 @@ int main() {
                    "+ swapchain passes\n";
       return 1;
     }
+    const auto passNames = renderer->compiledFrameGraphPassNames();
+    if (passNames.size() < 7 || passNames[4] != "Forward" ||
+        passNames[5] != "PostProcess" || passNames[6] != "DebugOverlay") {
+      std::cerr << "compiled frame graph should end with Forward -> "
+                   "PostProcess -> DebugOverlay\n";
+      return 1;
+    }
 
     renderer->uploadData();
     const auto light =
