@@ -269,14 +269,17 @@ void Scene::setIblEnvironmentResources(IblEnvironmentResources resources) {
       completeIblEnvironmentResources(std::move(resources));
 }
 
-std::vector<IGpuResourceSharedPtr> Scene::getIblEnvironmentResources() const {
+IblEnvironmentResources Scene::getIblEnvironmentResourceSet() const {
   if (!m_iblEnvironmentResources.has_value()) {
     m_iblEnvironmentResources =
         completeIblEnvironmentResources(IblEnvironmentResources{});
   }
+  return *m_iblEnvironmentResources;
+}
 
+std::vector<IGpuResourceSharedPtr> Scene::getIblEnvironmentResources() const {
   std::vector<IGpuResourceSharedPtr> out;
-  const auto &resources = *m_iblEnvironmentResources;
+  const auto resources = getIblEnvironmentResourceSet();
   if (resources.irradianceCubemap) {
     out.push_back(resources.irradianceCubemap);
   }

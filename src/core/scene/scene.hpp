@@ -209,6 +209,7 @@ public:
     return m_sceneLightsUbo;
   }
   void setIblEnvironmentResources(IblEnvironmentResources resources);
+  [[nodiscard]] IblEnvironmentResources getIblEnvironmentResourceSet() const;
   [[nodiscard]] std::vector<IGpuResourceSharedPtr>
   getIblEnvironmentResources() const;
   const std::string &getSceneName() const { return m_sceneName; }

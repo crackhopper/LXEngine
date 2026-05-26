@@ -128,10 +128,12 @@
 - 新增 `assets/scenes/ibl_metal_sphere.scene.yaml`，包含 gameplay camera、directional light、ground reference plane 和 builtin sphere。
 - Scene document 已支持 `scene.environment`，可记录 HDR URI、skybox 开关、IBL 强度和 roughness mip count，并能 round-trip。
 - Scene runtime 读取启用的 environment 后会加载 `hdrUri` 指向的 HDR texture，并用 HDR 平均辐射值生成临时 1x1 cubemap IBL resources；真实 cubemap face/mip bake 仍由 `REQ-048-a` 后续接入。
+- Renderer 初始化 Forward HDR pass 时会从 scene-level skybox cubemap 读取第一像素，按 `EnvironmentUBO` intensity 设置 `scene.hdrColor` 的清屏色，作为当前阶段的 equivalent environment preview；该预览走标准 PostProcess tone mapping。
 - 金属球使用 `assets/materials/pbr_gold.material`，runtime 测试覆盖 PBR 材质参数、scene-level IBL resources 注入和 environment 保存回写。
+- Runtime 测试覆盖 IBL metal sphere 的非黑 skybox preview 数据，renderer/framegraph 测试覆盖 HDR attachment dump 能力。
 - 新增 `pbr_ibl` project template，初始化后 scene catalog 可通过 `ibl_metal_sphere` id 发现并打开该场景。
 
 仍待落地：
 
-- skybox 背景渲染仍待接入实际 cubemap environment texture。
-- 截图/use-case 验证和 framebuffer dump 验收路径仍待补齐。
+- 方向性 skybox 背景仍待接入实际 cubemap face texture；当前只提供 HDR 平均色环境预览，不能用于检查反射方向。
+- 截图/use-case 验证仍待补齐。

@@ -2279,6 +2279,19 @@ void testIblMetalSphereSceneLoadsAndInjectsIblResources() {
   EXPECT(hdrIblHasEnergy,
          "IBL metal sphere should derive non-black IBL data from HDR input");
 
+  const auto iblResources = runtime.scene()->getIblEnvironmentResourceSet();
+  bool skyboxPreviewHasEnergy = false;
+  if (iblResources.skyboxCubemap && iblResources.skyboxCubemap->texture() &&
+      iblResources.skyboxCubemap->texture()->desc().format ==
+          LX_core::TextureFormat::RGBA32Float) {
+    const auto *pixels = static_cast<const float *>(
+        iblResources.skyboxCubemap->texture()->data());
+    skyboxPreviewHasEnergy =
+        pixels[0] > 0.0f || pixels[1] > 0.0f || pixels[2] > 0.0f;
+  }
+  EXPECT(skyboxPreviewHasEnergy,
+         "IBL metal sphere should expose non-black skybox preview data");
+
   const std::filesystem::path savePath =
       makeTempPath("lx_ibl_metal_sphere_roundtrip.scene.yaml");
   runtime.saveToDocumentPath(savePath);

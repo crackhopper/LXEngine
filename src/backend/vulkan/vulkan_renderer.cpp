@@ -297,6 +297,73 @@ float halfToFloat(u16 value) {
                     static_cast<int>(exponent) - 15);
 }
 
+float sanitizeHdrClearValue(float value) {
+  if (!std::isfinite(value)) {
+    return 0.0f;
+  }
+  return std::max(value, 0.0f);
+}
+
+std::optional<LX_core::Vec4f>
+sampleFirstTexelAsLinearRgba(const LX_core::Texture &texture) {
+  const auto &desc = texture.desc();
+  if (desc.width == 0 || desc.height == 0 || texture.data() == nullptr) {
+    return std::nullopt;
+  }
+
+  switch (desc.format) {
+  case LX_core::TextureFormat::RGBA8: {
+    const auto *pixels = static_cast<const u8 *>(texture.data());
+    return LX_core::Vec4f{static_cast<float>(pixels[0]) / 255.0f,
+                          static_cast<float>(pixels[1]) / 255.0f,
+                          static_cast<float>(pixels[2]) / 255.0f,
+                          static_cast<float>(pixels[3]) / 255.0f};
+  }
+  case LX_core::TextureFormat::RGB8: {
+    const auto *pixels = static_cast<const u8 *>(texture.data());
+    return LX_core::Vec4f{static_cast<float>(pixels[0]) / 255.0f,
+                          static_cast<float>(pixels[1]) / 255.0f,
+                          static_cast<float>(pixels[2]) / 255.0f, 1.0f};
+  }
+  case LX_core::TextureFormat::R8: {
+    const auto *pixels = static_cast<const u8 *>(texture.data());
+    const float value = static_cast<float>(pixels[0]) / 255.0f;
+    return LX_core::Vec4f{value, value, value, 1.0f};
+  }
+  case LX_core::TextureFormat::RGBA16Float: {
+    const auto *pixels = static_cast<const u16 *>(texture.data());
+    return LX_core::Vec4f{halfToFloat(pixels[0]), halfToFloat(pixels[1]),
+                          halfToFloat(pixels[2]), halfToFloat(pixels[3])};
+  }
+  case LX_core::TextureFormat::RGBA32Float: {
+    const auto *pixels = static_cast<const float *>(texture.data());
+    return LX_core::Vec4f{pixels[0], pixels[1], pixels[2], pixels[3]};
+  }
+  }
+  return std::nullopt;
+}
+
+std::optional<LX_core::Vec4f>
+environmentPreviewClearColor(const LX_core::Scene &scene) {
+  const auto resources = scene.getIblEnvironmentResourceSet();
+  if (!resources.skyboxCubemap || !resources.skyboxCubemap->texture() ||
+      !resources.environmentUbo) {
+    return std::nullopt;
+  }
+  const float intensity = resources.environmentUbo->getIblIntensity();
+  if (intensity <= 0.0f) {
+    return std::nullopt;
+  }
+  const auto color = sampleFirstTexelAsLinearRgba(
+      *resources.skyboxCubemap->texture());
+  if (!color.has_value()) {
+    return std::nullopt;
+  }
+  return LX_core::Vec4f{sanitizeHdrClearValue(color->x * intensity),
+                        sanitizeHdrClearValue(color->y * intensity),
+                        sanitizeHdrClearValue(color->z * intensity), 1.0f};
+}
+
 unsigned char linearToDebugByte(float value) {
   if (!std::isfinite(value)) {
     value = 0.0f;
@@ -719,6 +786,14 @@ public:
     }
 
     updateDirectionalLightCascades();
+    auto &forwardRenderPass = m_resourceManager->getRenderPass(forwardHdrDesc);
+    if (const auto clearColor = environmentPreviewClearColor(*m_scene)) {
+      forwardRenderPass.setClearColor(clearColor->x, clearColor->y,
+                                      clearColor->z, clearColor->w);
+    } else {
+      forwardRenderPass.setClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    }
+
     const auto sceneHdrColor = LX_core::FrameGraphResourceRef::colorAttachment(
         LX_core::StringID("scene.hdrColor"));
     const auto sceneDepth = LX_core::FrameGraphResourceRef::depthAttachment(
