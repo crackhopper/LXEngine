@@ -8,10 +8,11 @@
 |---|---|---|
 | 1 | [启动项目](start-project/index.md) | 把工程构建起来，打开 editor，加载和保存场景 |
 | 2 | [Shadow 阶段](shadow-era/index.md) | 打开 shadow / CSM 场景，理解多 pass 写读关系 |
-| 3 | [自定义材质](custom-material/index.md) | 理解材质系统，并写一个 Gooch shader |
-| 4 | [自定义灯光](custom-light/index.md) | 理解当前 light 底座和未来 custom light 工作流 |
-| 5 | [扩展编辑器](extend-editor/index.md) | 理解 toolbar 与 command bus 如何配合 |
-| 6 | [扩展场景节点](extend-scene-node/index.md) | 理解一种新节点如何兼容 editor 全流程 |
+| 3 | [PBR + IBL](pbr-ibl/index.md) | 打开 HDR/PBR/IBL 金属球场景，理解 scene-level IBL resources |
+| 4 | [自定义材质](custom-material/index.md) | 理解材质系统，并写一个 Gooch shader |
+| 5 | [自定义灯光](custom-light/index.md) | 理解当前 light 底座和未来 custom light 工作流 |
+| 6 | [扩展编辑器](extend-editor/index.md) | 理解 toolbar 与 command bus 如何配合 |
+| 7 | [扩展场景节点](extend-scene-node/index.md) | 理解一种新节点如何兼容 editor 全流程 |
 
 前三条学习线偏当前实践：构建、启动、保存场景、观察 shadow/CSM、写材质、在 editor 验证。后三条学习线会同时讲“当前手工路径”和“未来应该沉淀成扩展点的路径”。
 
@@ -31,6 +32,7 @@
 |---|---|
 | 只想先跑起来 | 启动项目 01 到 03 |
 | 想理解 v0.1.1 的 shadow 主线 | 启动项目全部 + Shadow 阶段全部 |
+| 想理解 PBR + IBL 的当前闭环 | 启动项目全部 + PBR + IBL 全部 |
 | 想做一个能看见的材质实验 | 启动项目全部 + 自定义材质全部 |
 | 想理解 light 和 shader 的连接 | Shadow 阶段 02/03 + 自定义材质 01/02 + 自定义灯光 01/02/05 |
 | 想改 editor 操作入口 | 启动项目 04 + 扩展编辑器 |

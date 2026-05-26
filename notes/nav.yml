@@ -18,6 +18,12 @@ nav:
           - Shadow pass: tutorial/shadow-era/02-shadow-pass-flow.md
           - CSM 读取: tutorial/shadow-era/03-csm-reading-path.md
           - 调参与边界: tutorial/shadow-era/04-shadow-tuning-and-limits.md
+      - PBR + IBL:
+          - 总览: tutorial/pbr-ibl/index.md
+          - 金属球场景: tutorial/pbr-ibl/01-metal-sphere-scene.md
+          - 资源与绑定: tutorial/pbr-ibl/02-resource-and-shader-contract.md
+          - HDR Post 流程: tutorial/pbr-ibl/03-hdr-post-process-flow.md
+          - 验证与排错: tutorial/pbr-ibl/04-verify-and-debug.md
       - 自定义材质:
           - 总览: tutorial/custom-material/index.md
           - 材质积木: tutorial/custom-material/01-material-building-blocks.md
