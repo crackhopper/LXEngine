@@ -153,8 +153,9 @@ Shadow -> Forward(HDR offscreen) -> PostProcess(swapchain) -> DebugOverlay/ImGui
 - Vulkan backend 已具备 `RGBA16Float` render-target format 映射，debug render-target pass name 也能解析 `PostProcess`。
 - Vulkan renderer 的 scene 初始化已改为四个 shadow cascades 后接 `Forward -> PostProcess -> DebugOverlay`，Forward 写 `scene.hdrColor` / `scene.depth`，PostProcess 采样 `scene.hdrColor` 并输出 swapchain；DebugOverlay 继续在 post 之后运行，同时复用 forward camera resources 避免 camera target 迁移后队列为空。
 - 已新增标准 backend-owned fullscreen triangle post executor，不依赖 scene node/mesh component/transform；post shader 支持 `SceneColor`、exposure、ACES/Reinhard mode、gamma 和 bloomIntensity 参数。
+- 已新增 full-res bloom v1 链路：`BloomThreshold -> BloomBlurH -> BloomBlurV -> PostProcess`。Bloom threshold 读取 `scene.hdrColor`，两段 blur 使用 ping-pong offscreen RGBA16Float 资源，PostProcess 读取 `BloomColor` 并在 tone mapping 前按 `bloomIntensity` 合成。
+- Vulkan renderer 已提供 `PostProcessSettings` 配置面，demo/test 入口可在 `initScene()` 前关闭 bloom；关闭后编译出的 FrameGraph 回到 `Forward -> PostProcess -> DebugOverlay`，但 post shader descriptor 合约保持稳定。
 
 仍待落地：
 
-- bloom pass 编排与 blur/composite。
 - 截图/framebuffer 验证 tone mapping 输出不是未映射 HDR 值。

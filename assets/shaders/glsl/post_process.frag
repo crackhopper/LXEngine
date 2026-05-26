@@ -12,6 +12,8 @@ layout(set = 0, binding = 1) uniform PostProcessUBO {
     float bloomIntensity;
 } postProcess;
 
+layout(set = 0, binding = 2) uniform sampler2D BloomColor;
+
 vec3 reinhardToneMap(vec3 color) {
     return color / (color + vec3(1.0));
 }
@@ -27,7 +29,9 @@ vec3 acesToneMap(vec3 color) {
 }
 
 void main() {
-    vec3 hdr = texture(SceneColor, vUV).rgb * max(postProcess.exposure, 0.0);
+    vec3 hdr = texture(SceneColor, vUV).rgb;
+    hdr += texture(BloomColor, vUV).rgb * max(postProcess.bloomIntensity, 0.0);
+    hdr *= max(postProcess.exposure, 0.0);
     vec3 mapped = postProcess.toneMappingMode == 1
                       ? reinhardToneMap(hdr)
                       : acesToneMap(hdr);

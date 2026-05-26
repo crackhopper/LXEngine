@@ -418,6 +418,71 @@ void testFrameGraphCompileAcceptsPostProcessSceneColorFlow() {
   }
 }
 
+void testFrameGraphCompileAcceptsBloomPostProcessChain() {
+  FrameGraph graph;
+  const auto hdr =
+      FrameGraphResourceRef::colorAttachment(StringID("scene.hdrColor"));
+  const auto threshold =
+      FrameGraphResourceRef::colorAttachment(StringID("bloom.threshold"));
+  const auto blurH =
+      FrameGraphResourceRef::colorAttachment(StringID("bloom.blurH"));
+  const auto blur =
+      FrameGraphResourceRef::colorAttachment(StringID("bloom.blur"));
+  const auto swapchain =
+      FrameGraphResourceRef::colorAttachment(StringID("swapchain.color"));
+
+  graph.addPass(FramePass{
+      Pass_Forward,
+      RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
+      {},
+      {},
+      {FrameGraphWrite{hdr}}});
+  graph.addPass(FramePass{
+      Pass_BloomThreshold,
+      RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
+      {},
+      {FrameGraphRead::sampled(hdr.name, StringID("SceneColor"))},
+      {FrameGraphWrite{threshold}}});
+  graph.addPass(FramePass{
+      Pass_BloomBlurH,
+      RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
+      {},
+      {FrameGraphRead::sampled(threshold.name, StringID("BloomSource"))},
+      {FrameGraphWrite{blurH}}});
+  graph.addPass(FramePass{
+      Pass_BloomBlurV,
+      RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
+      {},
+      {FrameGraphRead::sampled(blurH.name, StringID("BloomSource"))},
+      {FrameGraphWrite{blur}}});
+  graph.addPass(FramePass{
+      Pass_PostProcess,
+      RenderTargetDesc::swapchain(ImageFormat::BGRA8, ImageFormat::D32Float),
+      {},
+      {FrameGraphRead::sampled(hdr.name, StringID("SceneColor")),
+       FrameGraphRead::sampled(blur.name, StringID("BloomColor"))},
+      {FrameGraphWrite{swapchain}}});
+
+  auto compiled = graph.compile();
+  EXPECT(compiled.isValid(), "bloom post-process chain should compile");
+  EXPECT(compiled.getPasses().size() == 5,
+         "bloom post-process chain should preserve pass count");
+  if (compiled.getPasses().size() == 5) {
+    EXPECT(compiled.getPasses()[1].reads[0].bindingName ==
+               StringID("SceneColor"),
+           "BloomThreshold should read scene HDR as SceneColor");
+    EXPECT(compiled.getPasses()[2].reads[0].bindingName ==
+               StringID("BloomSource"),
+           "BloomBlurH should read threshold as BloomSource");
+    EXPECT(compiled.getPasses()[3].reads[0].bindingName ==
+               StringID("BloomSource"),
+           "BloomBlurV should read horizontal blur as BloomSource");
+    EXPECT(compiled.getPasses()[4].reads[1].bindingName ==
+               StringID("BloomColor"),
+           "PostProcess should composite BloomColor");
+  }
+}
+
 void testDirectionalLightCascadeSplitsUpdateFromCamera() {
   auto cameraNode = SceneNode::create("csm_camera");
   auto camera = cameraNode->addComponent<CameraComponent>();
@@ -1156,6 +1221,7 @@ int main() {
   testFrameGraphCompileAcceptsColorWriteThenSampleRead();
   testFrameGraphCompilePreservesSampledReadBindingName();
   testFrameGraphCompileAcceptsPostProcessSceneColorFlow();
+  testFrameGraphCompileAcceptsBloomPostProcessChain();
   testDirectionalLightCascadeSplitsUpdateFromCamera();
   testDirectionalShadowDebugViewRecreatesCascadeMatrix();
   testDirectionalShadowCascadeStoresLightDepthRange();

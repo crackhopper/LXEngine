@@ -37,32 +37,17 @@
 #include <vector>
 namespace {
 constexpr const char *kPostProcessShaderName = "post_process";
+constexpr const char *kBloomThresholdShaderName = "bloom_threshold";
+constexpr const char *kBloomBlurHShaderName = "bloom_blur_h";
+constexpr const char *kBloomBlurVShaderName = "bloom_blur_v";
 
-class PostProcessShader final : public LX_core::IShader {
+class StaticFullscreenShader final : public LX_core::IShader {
 public:
-  explicit PostProcessShader(std::vector<LX_core::ShaderStageCode> stages)
-      : m_stages(std::move(stages)) {
-    m_bindings.push_back(LX_core::ShaderResourceBinding{
-        "SceneColor", 0, 0, LX_core::ShaderPropertyType::Texture2D, 1, 0, 0,
-        LX_core::ShaderStage::Fragment, {}});
-    m_bindings.push_back(LX_core::ShaderResourceBinding{
-        "PostProcessUBO",
-        0,
-        1,
-        LX_core::ShaderPropertyType::UniformBuffer,
-        1,
-        16,
-        0,
-        LX_core::ShaderStage::Fragment,
-        {LX_core::StructMemberInfo{"exposure", LX_core::ShaderPropertyType::Float,
-                                   0, 4},
-         LX_core::StructMemberInfo{"toneMappingMode",
-                                   LX_core::ShaderPropertyType::Int, 4, 4},
-         LX_core::StructMemberInfo{"gamma", LX_core::ShaderPropertyType::Float,
-                                   8, 4},
-         LX_core::StructMemberInfo{"bloomIntensity",
-                                   LX_core::ShaderPropertyType::Float, 12, 4}}});
-  }
+  StaticFullscreenShader(std::string shaderName,
+                         std::vector<LX_core::ShaderStageCode> stages,
+                         std::vector<LX_core::ShaderResourceBinding> bindings)
+      : m_shaderName(std::move(shaderName)), m_stages(std::move(stages)),
+        m_bindings(std::move(bindings)) {}
 
   const std::vector<LX_core::ShaderStageCode> &getAllStages() const override {
     return m_stages;
@@ -105,12 +90,74 @@ public:
     return hash;
   }
 
-  std::string getShaderName() const override { return kPostProcessShaderName; }
+  std::string getShaderName() const override { return m_shaderName; }
 
 private:
+  std::string m_shaderName;
   std::vector<LX_core::ShaderStageCode> m_stages;
   std::vector<LX_core::ShaderResourceBinding> m_bindings;
 };
+
+std::vector<LX_core::ShaderResourceBinding> postProcessBindings() {
+  return {
+      LX_core::ShaderResourceBinding{"SceneColor", 0, 0,
+                                     LX_core::ShaderPropertyType::Texture2D, 1,
+                                     0, 0, LX_core::ShaderStage::Fragment, {}},
+      LX_core::ShaderResourceBinding{
+          "PostProcessUBO",
+          0,
+          1,
+          LX_core::ShaderPropertyType::UniformBuffer,
+          1,
+          16,
+          0,
+          LX_core::ShaderStage::Fragment,
+          {LX_core::StructMemberInfo{"exposure",
+                                     LX_core::ShaderPropertyType::Float, 0, 4},
+           LX_core::StructMemberInfo{"toneMappingMode",
+                                     LX_core::ShaderPropertyType::Int, 4, 4},
+           LX_core::StructMemberInfo{"gamma",
+                                     LX_core::ShaderPropertyType::Float, 8, 4},
+           LX_core::StructMemberInfo{"bloomIntensity",
+                                     LX_core::ShaderPropertyType::Float, 12,
+                                     4}}},
+      LX_core::ShaderResourceBinding{"BloomColor", 0, 2,
+                                     LX_core::ShaderPropertyType::Texture2D, 1,
+                                     0, 0, LX_core::ShaderStage::Fragment, {}},
+  };
+}
+
+std::vector<LX_core::ShaderResourceBinding> bloomThresholdBindings() {
+  return {
+      LX_core::ShaderResourceBinding{"SceneColor", 0, 0,
+                                     LX_core::ShaderPropertyType::Texture2D, 1,
+                                     0, 0, LX_core::ShaderStage::Fragment, {}},
+      LX_core::ShaderResourceBinding{
+          "BloomThresholdUBO",
+          0,
+          1,
+          LX_core::ShaderPropertyType::UniformBuffer,
+          1,
+          16,
+          0,
+          LX_core::ShaderStage::Fragment,
+          {LX_core::StructMemberInfo{"threshold",
+                                     LX_core::ShaderPropertyType::Float, 0, 4},
+           LX_core::StructMemberInfo{"softKnee",
+                                     LX_core::ShaderPropertyType::Float, 4, 4},
+           LX_core::StructMemberInfo{"enabled",
+                                     LX_core::ShaderPropertyType::Float, 8, 4},
+           LX_core::StructMemberInfo{"padding",
+                                     LX_core::ShaderPropertyType::Float, 12,
+                                     4}}},
+  };
+}
+
+std::vector<LX_core::ShaderResourceBinding> bloomBlurBindings() {
+  return {LX_core::ShaderResourceBinding{
+      "BloomSource", 0, 0, LX_core::ShaderPropertyType::Texture2D, 1, 0, 0,
+      LX_core::ShaderStage::Fragment, {}}};
+}
 
 LX_core::ShaderStageCode loadShaderStage(const std::string &shaderName,
                                          const char *suffix,
@@ -222,6 +269,18 @@ std::string sanitizeAttachmentName(std::string_view name) {
 LX_core::StringID passIdFromDebugName(std::string_view passName) {
   if (passName == "Forward" || passName == "forward") {
     return LX_core::Pass_Forward;
+  }
+  if (passName == "BloomThreshold" || passName == "bloomThreshold" ||
+      passName == "bloom_threshold") {
+    return LX_core::Pass_BloomThreshold;
+  }
+  if (passName == "BloomBlurH" || passName == "bloomBlurH" ||
+      passName == "bloom_blur_h") {
+    return LX_core::Pass_BloomBlurH;
+  }
+  if (passName == "BloomBlurV" || passName == "bloomBlurV" ||
+      passName == "bloom_blur_v") {
+    return LX_core::Pass_BloomBlurV;
   }
   if (passName == "PostProcess" || passName == "postProcess" ||
       passName == "post_process") {
@@ -431,6 +490,14 @@ public:
     m_gui.init(guiParams);
   }
   void shutdown() { destroy(); }
+  void setPostProcessSettings(
+      const VulkanRenderer::PostProcessSettings &settings) {
+    m_postProcessSettings = settings;
+  }
+  [[nodiscard]] const VulkanRenderer::PostProcessSettings &
+  postProcessSettings() const {
+    return m_postProcessSettings;
+  }
 
   /// REQ-009: derive the real swapchain RenderTarget from the Vulkan device's
   /// chosen surface format + depth format. This is the value that gets plugged
@@ -491,6 +558,12 @@ public:
         LX_core::StringID("scene.hdrColor"));
     const auto sceneDepth = LX_core::FrameGraphResourceRef::depthAttachment(
         LX_core::StringID("scene.depth"));
+    const auto bloomThreshold = LX_core::FrameGraphResourceRef::colorAttachment(
+        LX_core::StringID("bloom.threshold"));
+    const auto bloomBlurH = LX_core::FrameGraphResourceRef::colorAttachment(
+        LX_core::StringID("bloom.blurH"));
+    const auto bloomBlur = LX_core::FrameGraphResourceRef::colorAttachment(
+        LX_core::StringID("bloom.blur"));
     const auto swapchainColor = LX_core::FrameGraphResourceRef::colorAttachment(
         LX_core::StringID("swapchain.color"));
 
@@ -518,12 +591,42 @@ public:
                            shadowReads,
                            {LX_core::FrameGraphWrite{sceneHdrColor},
                             LX_core::FrameGraphWrite{sceneDepth}}});
+    if (m_postProcessSettings.bloomEnabled) {
+      m_frameGraph.addPass(LX_core::FramePass{
+          LX_core::Pass_BloomThreshold,
+          LX_core::RenderTargetDesc::offscreenColor(
+              LX_core::ImageFormat::RGBA16Float),
+          {},
+          {LX_core::FrameGraphRead::sampled(sceneHdrColor.name,
+                                            LX_core::StringID("SceneColor"))},
+          {LX_core::FrameGraphWrite{bloomThreshold}}});
+      m_frameGraph.addPass(LX_core::FramePass{
+          LX_core::Pass_BloomBlurH,
+          LX_core::RenderTargetDesc::offscreenColor(
+              LX_core::ImageFormat::RGBA16Float),
+          {},
+          {LX_core::FrameGraphRead::sampled(bloomThreshold.name,
+                                            LX_core::StringID("BloomSource"))},
+          {LX_core::FrameGraphWrite{bloomBlurH}}});
+      m_frameGraph.addPass(LX_core::FramePass{
+          LX_core::Pass_BloomBlurV,
+          LX_core::RenderTargetDesc::offscreenColor(
+              LX_core::ImageFormat::RGBA16Float),
+          {},
+          {LX_core::FrameGraphRead::sampled(bloomBlurH.name,
+                                            LX_core::StringID("BloomSource"))},
+          {LX_core::FrameGraphWrite{bloomBlur}}});
+    }
+    const auto postBloomInput =
+        m_postProcessSettings.bloomEnabled ? bloomBlur.name : sceneHdrColor.name;
     m_frameGraph.addPass(LX_core::FramePass{
         LX_core::Pass_PostProcess,
         swapchainDesc,
         {},
         {LX_core::FrameGraphRead::sampled(sceneHdrColor.name,
-                                          LX_core::StringID("SceneColor"))},
+                                          LX_core::StringID("SceneColor")),
+         LX_core::FrameGraphRead::sampled(postBloomInput,
+                                          LX_core::StringID("BloomColor"))},
         {LX_core::FrameGraphWrite{swapchainColor}}});
     m_frameGraph.addPass(LX_core::FramePass{
         LX_core::Pass_DebugOverlay, swapchainDesc, {}, {}, {}});
@@ -538,6 +641,13 @@ public:
     m_frameGraph.buildFromScene(*m_scene);
     rebuildDebugOverlayQueueWithForwardCameraResources(forwardHdrDesc,
                                                        swapchainDesc);
+    if (m_postProcessSettings.bloomEnabled) {
+      addBloomThresholdItem();
+      addBloomBlurItem(LX_core::Pass_BloomBlurH, kBloomBlurHShaderName,
+                       "BloomBlurHFullscreenTriangle");
+      addBloomBlurItem(LX_core::Pass_BloomBlurV, kBloomBlurVShaderName,
+                       "BloomBlurVFullscreenTriangle");
+    }
     addStandardPostProcessItem(swapchainDesc);
     rebuildShadowCascadeUboSnapshots();
     bindShadowCascadeUboSnapshots();
@@ -1163,8 +1273,9 @@ private:
   }
 
   LX_core::MaterialInstanceSharedPtr createStandardPostProcessMaterial() {
-    auto shader = std::make_shared<PostProcessShader>(
-        loadGraphicsShaderStages(kPostProcessShaderName));
+    auto shader = std::make_shared<StaticFullscreenShader>(
+        kPostProcessShaderName, loadGraphicsShaderStages(kPostProcessShaderName),
+        postProcessBindings());
 
     auto tmpl = LX_core::MaterialTemplate::create(kPostProcessShaderName);
     LX_core::ShaderProgramSet shaderProgram;
@@ -1189,39 +1300,122 @@ private:
     material->setParameter(LX_core::StringID("PostProcessUBO"),
                            LX_core::StringID("gamma"), 2.2f);
     material->setParameter(LX_core::StringID("PostProcessUBO"),
-                           LX_core::StringID("bloomIntensity"), 0.0f);
+                           LX_core::StringID("bloomIntensity"),
+                           m_postProcessSettings.bloomEnabled
+                               ? m_postProcessSettings.bloomIntensity
+                               : 0.0f);
     material->syncGpuData();
     return material;
   }
 
-  void addStandardPostProcessItem(const LX_core::RenderTargetDesc &target) {
-    auto material = createStandardPostProcessMaterial();
+  LX_core::MaterialInstanceSharedPtr createBloomThresholdMaterial() {
+    auto shader = std::make_shared<StaticFullscreenShader>(
+        kBloomThresholdShaderName,
+        loadGraphicsShaderStages(kBloomThresholdShaderName),
+        bloomThresholdBindings());
+
+    auto tmpl = LX_core::MaterialTemplate::create(kBloomThresholdShaderName);
+    LX_core::ShaderProgramSet shaderProgram;
+    shaderProgram.shaderName = kBloomThresholdShaderName;
+    shaderProgram.shader = shader;
+
+    LX_core::MaterialPassDefinition passDefinition;
+    passDefinition.shaderProgram = shaderProgram;
+    passDefinition.renderState.cullMode = LX_core::CullMode::None;
+    passDefinition.renderState.depthTestEnable = false;
+    passDefinition.renderState.depthWriteEnable = false;
+    passDefinition.renderState.blendEnable = false;
+    tmpl->setPassDefinition(LX_core::Pass_BloomThreshold,
+                            std::move(passDefinition));
+    tmpl->rebuildMaterialInterface();
+
+    auto material = LX_core::MaterialInstance::create(std::move(tmpl));
+    material->setParameter(LX_core::StringID("BloomThresholdUBO"),
+                           LX_core::StringID("threshold"),
+                           m_postProcessSettings.bloomThreshold);
+    material->setParameter(LX_core::StringID("BloomThresholdUBO"),
+                           LX_core::StringID("softKnee"),
+                           m_postProcessSettings.bloomSoftKnee);
+    material->setParameter(LX_core::StringID("BloomThresholdUBO"),
+                           LX_core::StringID("enabled"), 1.0f);
+    material->setParameter(LX_core::StringID("BloomThresholdUBO"),
+                           LX_core::StringID("padding"), 0.0f);
+    material->syncGpuData();
+    return material;
+  }
+
+  LX_core::MaterialInstanceSharedPtr createBloomBlurMaterial(
+      LX_core::StringID pass, const char *shaderName) {
+    auto shader = std::make_shared<StaticFullscreenShader>(
+        shaderName, loadGraphicsShaderStages(shaderName), bloomBlurBindings());
+
+    auto tmpl = LX_core::MaterialTemplate::create(shaderName);
+    LX_core::ShaderProgramSet shaderProgram;
+    shaderProgram.shaderName = shaderName;
+    shaderProgram.shader = shader;
+
+    LX_core::MaterialPassDefinition passDefinition;
+    passDefinition.shaderProgram = shaderProgram;
+    passDefinition.renderState.cullMode = LX_core::CullMode::None;
+    passDefinition.renderState.depthTestEnable = false;
+    passDefinition.renderState.depthWriteEnable = false;
+    passDefinition.renderState.blendEnable = false;
+    tmpl->setPassDefinition(pass, std::move(passDefinition));
+    tmpl->rebuildMaterialInterface();
+    auto material = LX_core::MaterialInstance::create(std::move(tmpl));
+    material->syncGpuData();
+    return material;
+  }
+
+  void addFullscreenMaterialItem(LX_core::StringID pass,
+                                 const LX_core::RenderTargetDesc &target,
+                                 LX_core::MaterialInstanceSharedPtr material,
+                                 const char *objectSignature) {
     LX_core::RenderingItem item;
-    item.shaderInfo = material->getPassShader(LX_core::Pass_PostProcess);
+    item.shaderInfo = material->getPassShader(pass);
     item.material = material;
     item.vertexBuffer = LX_core::VertexBuffer<LX_core::VertexPos>::create(
         std::vector<LX_core::VertexPos>{{{0.0f, 0.0f, 0.0f}},
                                         {{0.0f, 0.0f, 0.0f}},
                                         {{0.0f, 0.0f, 0.0f}}});
     item.indexBuffer = LX_core::IndexBuffer::create({0u, 1u, 2u});
-    item.descriptorResources =
-        material->getDescriptorResources(LX_core::Pass_PostProcess);
-    item.pass = LX_core::Pass_PostProcess;
+    item.descriptorResources = material->getDescriptorResources(pass);
+    item.pass = pass;
     item.target = target;
-    item.objectSignature = LX_core::StringID("PostProcessFullscreenTriangle");
-    item.materialSignature =
-        material->getPipelineSignature(LX_core::Pass_PostProcess);
+    item.objectSignature = LX_core::StringID(objectSignature);
+    item.materialSignature = material->getPipelineSignature(pass);
     item.pipelineKey =
         LX_core::PipelineKey::build(item.objectSignature, item.materialSignature,
                                     item.target.getPipelineSignature());
 
     for (auto &pass : m_frameGraph.getPasses()) {
-      if (pass.name == LX_core::Pass_PostProcess) {
+      if (pass.name == item.pass) {
         pass.queue.addItem(std::move(item));
         pass.queue.sort();
         return;
       }
     }
+  }
+
+  void addBloomThresholdItem() {
+    addFullscreenMaterialItem(
+        LX_core::Pass_BloomThreshold,
+        LX_core::RenderTargetDesc::offscreenColor(LX_core::ImageFormat::RGBA16Float),
+        createBloomThresholdMaterial(), "BloomThresholdFullscreenTriangle");
+  }
+
+  void addBloomBlurItem(LX_core::StringID pass, const char *shaderName,
+                        const char *objectSignature) {
+    addFullscreenMaterialItem(
+        pass,
+        LX_core::RenderTargetDesc::offscreenColor(LX_core::ImageFormat::RGBA16Float),
+        createBloomBlurMaterial(pass, shaderName), objectSignature);
+  }
+
+  void addStandardPostProcessItem(const LX_core::RenderTargetDesc &target) {
+    addFullscreenMaterialItem(LX_core::Pass_PostProcess, target,
+                              createStandardPostProcessMaterial(),
+                              "PostProcessFullscreenTriangle");
   }
 
   void rebuildDebugOverlayQueueWithForwardCameraResources(
@@ -1711,6 +1905,7 @@ private:
   u32 m_frameIndex = 0;
   usize m_initSceneCallCount = 0;
   bool m_swapchainNeedsRebuild = false;
+  VulkanRenderer::PostProcessSettings m_postProcessSettings{};
   infra::Gui m_gui{};
   std::function<void()> m_drawUiCallback{};
   std::optional<PendingScreenDump> m_pendingScreenDump;
@@ -1739,6 +1934,16 @@ void VulkanRenderer::draw() { p_impl->draw(); }
 
 void VulkanRenderer::setDrawUiCallback(std::function<void()> cb) {
   p_impl->setDrawUiCallback(std::move(cb));
+}
+
+void VulkanRenderer::setPostProcessSettings(
+    const PostProcessSettings &settings) {
+  p_impl->setPostProcessSettings(settings);
+}
+
+const VulkanRenderer::PostProcessSettings &
+VulkanRenderer::postProcessSettings() const {
+  return p_impl->postProcessSettings();
 }
 
 usize VulkanRenderer::cachedResourceCount() const {

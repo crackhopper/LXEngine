@@ -665,6 +665,21 @@ static bool testPostProcessShaderContract(
               << "\n";
     return false;
   }
+  const auto bloomColor =
+      std::find_if(bindings.begin(), bindings.end(), [](const auto &binding) {
+        return binding.name == "BloomColor";
+      });
+  if (bloomColor == bindings.end() ||
+      bloomColor->type != ShaderPropertyType::Texture2D) {
+    std::cerr << "  FAIL: BloomColor Texture2D binding missing\n";
+    return false;
+  }
+  if (bloomColor->set != 0 || bloomColor->binding != 2) {
+    std::cerr << "  FAIL: BloomColor expected set=0 binding=2, got set="
+              << bloomColor->set << " binding=" << bloomColor->binding
+              << "\n";
+    return false;
+  }
 
   const auto postUbo =
       std::find_if(bindings.begin(), bindings.end(), [](const auto &binding) {
@@ -721,6 +736,72 @@ static bool testPostProcessShaderContract(
 
   std::cout << "  PASS: post-process shader reflects SceneColor and tone "
                "mapping params\n";
+  return true;
+}
+
+static bool testBloomShaderContracts(const std::filesystem::path &shaderDir) {
+  std::cout << "\n========================================\n";
+  std::cout << "  Test: Bloom shader contracts\n";
+  std::cout << "========================================\n";
+
+  const auto thresholdPath = shaderDir / "bloom_threshold.frag";
+  auto thresholdResult =
+      ShaderCompiler::compileProgram(shaderDir / "bloom_threshold.vert",
+                                     thresholdPath, {});
+  if (!thresholdResult.success) {
+    std::cerr << "  COMPILE FAILED: " << thresholdResult.errorMessage << "\n";
+    return false;
+  }
+  auto bindings = ShaderReflector::reflect(thresholdResult.stages);
+  const auto sceneColor =
+      std::find_if(bindings.begin(), bindings.end(), [](const auto &binding) {
+        return binding.name == "SceneColor";
+      });
+  const auto thresholdUbo =
+      std::find_if(bindings.begin(), bindings.end(), [](const auto &binding) {
+        return binding.name == "BloomThresholdUBO";
+      });
+  if (sceneColor == bindings.end() ||
+      sceneColor->type != ShaderPropertyType::Texture2D ||
+      sceneColor->set != 0 || sceneColor->binding != 0) {
+    std::cerr << "  FAIL: Bloom threshold SceneColor binding mismatch\n";
+    return false;
+  }
+  if (thresholdUbo == bindings.end() ||
+      thresholdUbo->type != ShaderPropertyType::UniformBuffer ||
+      thresholdUbo->set != 0 || thresholdUbo->binding != 1 ||
+      thresholdUbo->size != 16) {
+    std::cerr << "  FAIL: BloomThresholdUBO binding mismatch\n";
+    return false;
+  }
+
+  for (const auto *fragName : {"bloom_blur_h.frag", "bloom_blur_v.frag"}) {
+    const auto vertName =
+        std::string(fragName).find("_h.") != std::string::npos
+            ? "bloom_blur_h.vert"
+            : "bloom_blur_v.vert";
+    auto blurResult =
+        ShaderCompiler::compileProgram(shaderDir / vertName,
+                                       shaderDir / fragName, {});
+    if (!blurResult.success) {
+      std::cerr << "  COMPILE FAILED: " << blurResult.errorMessage << "\n";
+      return false;
+    }
+    bindings = ShaderReflector::reflect(blurResult.stages);
+    const auto bloomSource =
+        std::find_if(bindings.begin(), bindings.end(), [](const auto &binding) {
+          return binding.name == "BloomSource";
+        });
+    if (bloomSource == bindings.end() ||
+        bloomSource->type != ShaderPropertyType::Texture2D ||
+        bloomSource->set != 0 || bloomSource->binding != 0) {
+      std::cerr << "  FAIL: " << fragName
+                << " BloomSource binding mismatch\n";
+      return false;
+    }
+  }
+
+  std::cout << "  PASS: bloom shaders reflect threshold and blur inputs\n";
   return true;
 }
 
@@ -899,6 +980,8 @@ int main(int argc, char *argv[]) {
   if (!testMeshDebugShaderContract(shaderDir))
     ++failures;
   if (!testPostProcessShaderContract(shaderDir))
+    ++failures;
+  if (!testBloomShaderContracts(shaderDir))
     ++failures;
   if (!testTextureCubeReflectionContract(shaderDir))
     ++failures;

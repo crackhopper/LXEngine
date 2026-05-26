@@ -157,9 +157,10 @@ int main() {
       return 1;
     }
     const auto passNames = renderer->compiledFrameGraphPassNames();
-    if (passNames.size() != 7) {
+    if (passNames.size() != 10) {
       std::cerr << "compiled frame graph should contain exactly four shadow "
-                   "cascades, Forward, PostProcess, and DebugOverlay\n";
+                   "cascades, Forward, bloom passes, PostProcess, and "
+                   "DebugOverlay\n";
       return 1;
     }
     for (usize i = 0; i < 4; ++i) {
@@ -169,10 +170,29 @@ int main() {
         return 1;
       }
     }
-    if (passNames[4] != "Forward" || passNames[5] != "PostProcess" ||
-        passNames[6] != "DebugOverlay") {
+    if (passNames[4] != "Forward" || passNames[5] != "BloomThreshold" ||
+        passNames[6] != "BloomBlurH" || passNames[7] != "BloomBlurV" ||
+        passNames[8] != "PostProcess" || passNames[9] != "DebugOverlay") {
       std::cerr << "compiled frame graph should end with Forward -> "
+                   "BloomThreshold -> BloomBlurH -> BloomBlurV -> "
                    "PostProcess -> DebugOverlay\n";
+      return 1;
+    }
+
+    auto postSettings = renderer->postProcessSettings();
+    postSettings.bloomEnabled = false;
+    renderer->setPostProcessSettings(postSettings);
+    renderer->initScene(scene);
+    const auto noBloomPassNames = renderer->compiledFrameGraphPassNames();
+    if (noBloomPassNames.size() != 7) {
+      std::cerr << "disabling bloom should remove the three bloom passes\n";
+      return 1;
+    }
+    if (noBloomPassNames[4] != "Forward" ||
+        noBloomPassNames[5] != "PostProcess" ||
+        noBloomPassNames[6] != "DebugOverlay") {
+      std::cerr << "disabling bloom should keep Forward -> PostProcess -> "
+                   "DebugOverlay order\n";
       return 1;
     }
 

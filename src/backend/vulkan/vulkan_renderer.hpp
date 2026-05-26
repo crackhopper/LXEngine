@@ -15,6 +15,13 @@ class VulkanRenderer;
 using VulkanRendererUniquePtr = std::unique_ptr<VulkanRenderer>;
 class VulkanRenderer : public gpu::Renderer {
 public:
+  struct PostProcessSettings final {
+    bool bloomEnabled = true;
+    float bloomIntensity = 0.25f;
+    float bloomThreshold = 1.0f;
+    float bloomSoftKnee = 0.5f;
+  };
+
   struct FrameGraphAttachmentDumpResult final {
     std::filesystem::path path;
     std::filesystem::path screenPath;
@@ -41,6 +48,8 @@ public:
   // between Gui::beginFrame() and scene draw calls. Replace semantics; pass
   // an empty std::function to clear. Not lifted to the gpu::Renderer base.
   void setDrawUiCallback(std::function<void()> cb);
+  void setPostProcessSettings(const PostProcessSettings &settings);
+  [[nodiscard]] const PostProcessSettings &postProcessSettings() const;
 
   [[nodiscard]] usize cachedResourceCount() const;
   [[nodiscard]] usize frameGraphItemCount() const;
