@@ -1,9 +1,12 @@
 #include "core/debug_draw/debug_draw.hpp"
+#include "core/asset/texture.hpp"
 #include "core/editor/command_bus.hpp"
 #include "core/editor/commands/builtin_commands.hpp"
 #include "core/editor/editor_state.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
+#include "core/frame_graph/pass.hpp"
+#include "core/frame_graph/render_queue.hpp"
 #include "core/scene/components/camera_component.hpp"
 #include "core/scene/components/material_component.hpp"
 #include "core/scene/components/mesh_component.hpp"
@@ -2013,6 +2016,107 @@ void testShadowTutorialSceneLoadsSavesAndReloads() {
   }
 }
 
+void testIblMetalSphereSceneLoadsAndInjectsIblResources() {
+  const std::filesystem::path path = std::filesystem::current_path() /
+                                     "assets" / "scenes" /
+                                     "ibl_metal_sphere.scene.yaml";
+  EXPECT(std::filesystem::exists(path),
+         "IBL metal sphere scene asset should exist");
+  if (!std::filesystem::exists(path)) {
+    return;
+  }
+
+  demo::SceneRuntime runtime;
+  runtime.loadFromDocumentPath(path);
+  EXPECT(runtime.scene()->findByPath("/metal_sphere") != nullptr,
+         "IBL metal sphere scene should load the metal sphere node");
+  EXPECT(runtime.scene()->findByPath("/ground_reference") != nullptr,
+         "IBL metal sphere scene should load the ground reference node");
+  auto *sphereNode = runtime.scene()->findByPath("/metal_sphere");
+  if (sphereNode == nullptr) {
+    return;
+  }
+
+  const auto materialComponent =
+      sphereNode->getComponent<LX_core::MaterialComponent>();
+  EXPECT(materialComponent.has_value(),
+         "IBL metal sphere should have a material component");
+  if (materialComponent.has_value()) {
+    const auto material = materialComponent->get().getMaterialInstance();
+    EXPECT(material && material->getTemplate() &&
+               material->getTemplate()->getName() == "pbr",
+           "IBL metal sphere should use the PBR material template");
+    const auto metallic = runtime.nodeMaterialParameterForNode(
+        "/metal_sphere", "MaterialUBO", "metallicFactor");
+    const auto roughness = runtime.nodeMaterialParameterForNode(
+        "/metal_sphere", "MaterialUBO", "roughnessFactor");
+    EXPECT(metallic.has_value() && metallic->floatValue == 1.0f,
+           "IBL metal sphere should be fully metallic");
+    EXPECT(roughness.has_value() && roughness->floatValue <= 0.3f,
+           "IBL metal sphere should use low roughness");
+  }
+
+  LX_core::RenderQueue queue;
+  queue.buildFromScene(*runtime.scene(), LX_core::Pass_Forward,
+                       LX_core::RenderTarget{});
+  bool sawPbrSphere = false;
+  bool hasIrradiance = false;
+  bool hasPrefilter = false;
+  bool hasBrdf = false;
+  bool hasEnvironment = false;
+  bool hdrIblHasEnergy = false;
+  const auto sphereDebugId = sphereNode->getDebugId();
+  for (const auto &item : queue.getItems()) {
+    if (item.debugId != sphereDebugId) {
+      continue;
+    }
+    sawPbrSphere = true;
+    for (const auto &resource : item.descriptorResources) {
+      if (!resource) {
+        continue;
+      }
+      const auto binding = resource->getBindingName();
+      hasIrradiance =
+          hasIrradiance || binding == LX_core::StringID("IrradianceMap");
+      hasPrefilter =
+          hasPrefilter || binding == LX_core::StringID("PrefilteredEnvMap");
+      hasBrdf = hasBrdf || binding == LX_core::StringID("BrdfLut");
+      hasEnvironment =
+          hasEnvironment || binding == LX_core::StringID("EnvironmentUBO");
+      if (binding == LX_core::StringID("IrradianceMap")) {
+        const auto sampler =
+            std::dynamic_pointer_cast<LX_core::CombinedTextureSampler>(
+                resource);
+        if (sampler && sampler->texture() &&
+            sampler->texture()->desc().format ==
+                LX_core::TextureFormat::RGBA32Float) {
+          const auto *pixels =
+              static_cast<const float *>(sampler->texture()->data());
+          hdrIblHasEnergy = pixels[0] > 0.0f || pixels[1] > 0.0f ||
+                            pixels[2] > 0.0f;
+        }
+      }
+    }
+  }
+
+  EXPECT(sawPbrSphere, "IBL metal sphere should produce a forward draw item");
+  EXPECT(hasIrradiance && hasPrefilter && hasBrdf && hasEnvironment,
+         "IBL metal sphere draw item should receive scene-level IBL resources");
+  EXPECT(hdrIblHasEnergy,
+         "IBL metal sphere should derive non-black IBL data from HDR input");
+
+  const std::filesystem::path savePath =
+      makeTempPath("lx_ibl_metal_sphere_roundtrip.scene.yaml");
+  runtime.saveToDocumentPath(savePath);
+  const demo::SceneDocument saved = demo::loadSceneDocument(savePath);
+  EXPECT(saved.hasEnvironment(),
+         "IBL metal sphere environment should persist through runtime save");
+  if (saved.hasEnvironment()) {
+    EXPECT(saved.environment().hdrUri == "assets/env/studio_small_03_2k.hdr",
+           "IBL metal sphere HDR URI should persist through runtime save");
+  }
+}
+
 } // namespace
 
 int main() {
@@ -2046,6 +2150,7 @@ int main() {
   testProjectAssetMaterialOverridesRuntimeAssetMaterial();
   testBuiltinModelMaterialUriKeepsCatalogAlbedoTexture();
   testShadowTutorialSceneLoadsSavesAndReloads();
+  testIblMetalSphereSceneLoadsAndInjectsIblResources();
 
   if (failures != 0) {
     std::cerr << "test_scene_runtime failed with " << failures

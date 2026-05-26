@@ -375,6 +375,13 @@ void testSaveSceneDocumentWritesExplicitRootCanonicalFormat() {
   demo::SceneDocument doc;
   doc.setSceneName("lxe_editor");
   doc.setGameplayCameraPath("/world/game_cam");
+  doc.setEnvironment(demo::EnvironmentState{
+      .enabled = true,
+      .hdrUri = "assets/env/studio_small_03_2k.hdr",
+      .skyboxEnabled = true,
+      .intensity = 1.25f,
+      .roughnessMipCount = 6.0f,
+  });
   auto &root = doc.mutableRootNode();
   root.nodeName = "scene_root";
 
@@ -470,6 +477,21 @@ void testSaveSceneDocumentWritesExplicitRootCanonicalFormat() {
          "scene name should survive round trip");
   EXPECT(loaded.gameplayCameraPath() == "/world/game_cam",
          "gameplay camera path should survive round trip");
+  EXPECT(loaded.hasEnvironment(),
+         "scene environment should survive round trip");
+  if (loaded.hasEnvironment()) {
+    EXPECT(loaded.environment().enabled,
+           "scene environment enabled flag should round trip");
+    EXPECT(loaded.environment().hdrUri ==
+               "assets/env/studio_small_03_2k.hdr",
+           "scene environment HDR URI should round trip");
+    EXPECT(loaded.environment().skyboxEnabled,
+           "scene environment skybox flag should round trip");
+    EXPECT(loaded.environment().intensity == 1.25f,
+           "scene environment intensity should round trip");
+    EXPECT(loaded.environment().roughnessMipCount == 6.0f,
+           "scene environment roughness mip count should round trip");
+  }
   EXPECT(loaded.rootNode().children.size() == 1,
          "explicit root should survive round trip");
   const demo::SceneNodeDocument *loadedWorld =
@@ -695,6 +717,52 @@ void testShadowTutorialSceneAssetLoads() {
   }
 }
 
+void testIblMetalSphereSceneAssetLoads() {
+  const std::filesystem::path path = std::filesystem::current_path() /
+                                     "assets" / "scenes" /
+                                     "ibl_metal_sphere.scene.yaml";
+  EXPECT(std::filesystem::exists(path),
+         "IBL metal sphere scene asset should exist");
+  if (!std::filesystem::exists(path)) {
+    return;
+  }
+
+  const demo::SceneDocument doc = demo::loadSceneDocument(path);
+  EXPECT(doc.sceneName() == "IBL Metal Sphere",
+         "IBL metal sphere scene name should load");
+  EXPECT(doc.gameplayCameraPath() == "/game_cam",
+         "IBL metal sphere gameplay camera should load");
+  EXPECT(doc.hasEnvironment(),
+         "IBL metal sphere should declare scene environment");
+  if (doc.hasEnvironment()) {
+    EXPECT(doc.environment().enabled,
+           "IBL metal sphere environment should be enabled");
+    EXPECT(doc.environment().hdrUri == "assets/env/studio_small_03_2k.hdr",
+           "IBL metal sphere should reference the studio HDR asset");
+    EXPECT(doc.environment().skyboxEnabled,
+           "IBL metal sphere should request skybox preview");
+  }
+
+  const auto *camera = findChildByNodeName(doc.rootNode(), "game_camera");
+  const auto *ground = findChildByNodeName(doc.rootNode(), "ibl_ground");
+  const auto *sphere = findChildByNodeName(doc.rootNode(), "ibl_metal_sphere");
+  const auto *light = findChildByNodeName(doc.rootNode(), "dir_light_node");
+  EXPECT(camera != nullptr && camera->camera.has_value(),
+         "IBL metal sphere should contain a fixed camera");
+  EXPECT(ground != nullptr && ground->meshUri.has_value() &&
+             *ground->meshUri == "builtin://lxe_editor/primitives/plane",
+         "IBL metal sphere should contain a ground reference plane");
+  EXPECT(sphere != nullptr && sphere->meshUri.has_value() &&
+             *sphere->meshUri == "builtin://lxe_editor/primitives/sphere",
+         "IBL metal sphere should use the builtin sphere primitive");
+  EXPECT(sphere != nullptr && sphere->materialUri.has_value() &&
+             *sphere->materialUri == "assets/materials/pbr_gold.material",
+         "IBL metal sphere should use the PBR gold material");
+  EXPECT(light != nullptr && light->light.has_value() &&
+             light->light->kind == demo::LightKind::Directional,
+         "IBL metal sphere should contain a directional light");
+}
+
 void testSaveSceneDocumentRejectsNonCanonicalRootIdentity() {
   demo::SceneDocument doc;
   doc.setSceneName("lxe_editor");
@@ -729,6 +797,7 @@ int main() {
   testSaveSceneDocumentWritesExplicitRootCanonicalFormat();
   testSceneDocumentRoundTripsTypedLightPayloads();
   testShadowTutorialSceneAssetLoads();
+  testIblMetalSphereSceneAssetLoads();
   testSaveSceneDocumentRejectsUnsupportedRootPayload();
   testSaveSceneDocumentRejectsNonCanonicalRootIdentity();
 

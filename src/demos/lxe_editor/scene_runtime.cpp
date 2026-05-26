@@ -4,9 +4,11 @@
 #include "core/scene/components/camera_component.hpp"
 #include "core/scene/components/material_component.hpp"
 #include "core/scene/components/mesh_component.hpp"
+#include "core/scene/ibl_environment.hpp"
 #include "core/scene/light.hpp"
 #include "core/utils/filesystem_tools.hpp"
 #include "infra/material_loader/generic_material_loader.hpp"
+#include "infra/texture_loader/texture_loader.hpp"
 #include "demos/lxe_editor/builtin_asset_catalog.hpp"
 #include "demos/lxe_editor/editor_camera_state.hpp"
 #include "demos/lxe_editor/project_document.hpp"
@@ -101,6 +103,88 @@ resolveProjectAssetPath(const std::vector<std::filesystem::path> &assetRoots,
     }
   }
   return std::nullopt;
+}
+
+[[nodiscard]] std::filesystem::path
+resolveRuntimeOrProjectAssetPath(
+    const std::vector<std::filesystem::path> &assetRoots,
+    const std::filesystem::path &uri) {
+  if (uri.empty()) {
+    throw std::runtime_error("asset uri is empty");
+  }
+  if (uri.is_absolute()) {
+    return uri;
+  }
+  if (const auto projectPath = resolveProjectAssetPath(assetRoots, uri);
+      projectPath.has_value()) {
+    return *projectPath;
+  }
+  return resolveRuntimePath(uri);
+}
+
+[[nodiscard]] LX_core::CombinedTextureSamplerSharedPtr
+makeHdrAverageCubeSampler(const LX_core::TextureSharedPtr &hdrTexture,
+                          LX_core::StringID bindingName) {
+  if (!hdrTexture ||
+      hdrTexture->desc().format != LX_core::TextureFormat::RGBA32Float) {
+    throw std::runtime_error("expected RGBA32Float HDR environment texture");
+  }
+  const usize pixelCount = static_cast<usize>(hdrTexture->desc().width) *
+                           static_cast<usize>(hdrTexture->desc().height);
+  if (pixelCount == 0) {
+    throw std::runtime_error("HDR environment texture has no pixels");
+  }
+
+  const auto *pixels = static_cast<const float *>(hdrTexture->data());
+  float average[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+  for (usize i = 0; i < pixelCount; ++i) {
+    average[0] += pixels[i * 4 + 0];
+    average[1] += pixels[i * 4 + 1];
+    average[2] += pixels[i * 4 + 2];
+  }
+  average[0] /= static_cast<float>(pixelCount);
+  average[1] /= static_cast<float>(pixelCount);
+  average[2] /= static_cast<float>(pixelCount);
+
+  LX_core::TextureDesc desc;
+  desc.width = 1;
+  desc.height = 1;
+  desc.format = LX_core::TextureFormat::RGBA32Float;
+  desc.dimension = LX_core::TextureDimension::TextureCube;
+  desc.arrayLayers = 6;
+
+  std::vector<float> cubePixels(6u * 4u);
+  for (usize face = 0; face < 6; ++face) {
+    cubePixels[face * 4 + 0] = average[0];
+    cubePixels[face * 4 + 1] = average[1];
+    cubePixels[face * 4 + 2] = average[2];
+    cubePixels[face * 4 + 3] = average[3];
+  }
+  std::vector<u8> bytes(LX_core::expectedTextureByteCount(desc));
+  std::memcpy(bytes.data(), cubePixels.data(), bytes.size());
+
+  auto sampler = std::make_shared<LX_core::CombinedTextureSampler>(
+      std::make_shared<LX_core::Texture>(desc, std::move(bytes)));
+  sampler->setBindingName(bindingName);
+  return sampler;
+}
+
+[[nodiscard]] LX_core::IblEnvironmentResources
+loadEnvironmentResources(const EnvironmentState &environment,
+                         const std::vector<std::filesystem::path> &assetRoots) {
+  LX_core::IblEnvironmentResources resources;
+  const auto hdrPath =
+      resolveRuntimeOrProjectAssetPath(assetRoots, environment.hdrUri);
+  const auto hdrTexture = infra::TextureLoader::loadHdrTexture(hdrPath);
+  resources.skyboxCubemap =
+      makeHdrAverageCubeSampler(hdrTexture, LX_core::StringID("SkyboxMap"));
+  resources.irradianceCubemap = makeHdrAverageCubeSampler(
+      hdrTexture, LX_core::StringID("IrradianceMap"));
+  resources.prefilteredRadianceCubemap = makeHdrAverageCubeSampler(
+      hdrTexture, LX_core::StringID("PrefilteredEnvMap"));
+  resources.environmentUbo = std::make_shared<LX_core::EnvironmentData>(
+      environment.intensity, environment.roughnessMipCount);
+  return resources;
 }
 
 [[nodiscard]] std::vector<std::filesystem::path>
@@ -930,6 +1014,10 @@ buildRuntimeFromDocument(const SceneDocument &document,
   runtime->document = document;
   runtime->assetRoots = std::move(assetRoots);
   runtime->scene = LX_core::Scene::create(document.sceneName(), nullptr);
+  if (document.hasEnvironment() && document.environment().enabled) {
+    runtime->scene->setIblEnvironmentResources(
+        loadEnvironmentResources(document.environment(), runtime->assetRoots));
+  }
 
   while (!runtime->scene->getLights().empty()) {
     runtime->scene->removeLight(runtime->scene->getLights().front());
@@ -1134,6 +1222,9 @@ captureSceneDocument(const std::shared_ptr<SceneRuntimeData> &runtime) {
   document.setGameplayCameraPath(runtime->gameCameraNode
                                      ? runtime->gameCameraNode->getPath()
                                      : "/game_cam");
+  if (runtime->document.hasEnvironment()) {
+    document.setEnvironment(runtime->document.environment());
+  }
   const BuiltinAssetCatalog builtinAssets = loadBuiltinAssetCatalog();
 
   auto captureNode =

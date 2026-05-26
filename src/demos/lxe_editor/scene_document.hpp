@@ -73,6 +73,16 @@ struct ProceduralMaterialState final {
   [[nodiscard]] bool empty() const { return !enabled; }
 };
 
+struct EnvironmentState final {
+  bool enabled = false;
+  std::string hdrUri;
+  bool skyboxEnabled = true;
+  float intensity = 1.0f;
+  float roughnessMipCount = 5.0f;
+
+  [[nodiscard]] bool empty() const { return !enabled && hdrUri.empty(); }
+};
+
 struct SceneNodeDocument final {
   std::string nodeName;
   std::string name;
@@ -102,6 +112,9 @@ public:
   void setSceneName(std::string sceneName);
   void setGameplayCameraPath(std::string path);
   const std::string &gameplayCameraPath() const;
+  bool hasEnvironment() const;
+  const EnvironmentState &environment() const;
+  void setEnvironment(EnvironmentState state);
   SceneNodeDocument &mutableRootNode();
   const SceneNodeDocument &rootNode() const;
   bool hasEditorCamera() const;

@@ -112,6 +112,7 @@ void RenderQueue::buildFromSceneWithOverrides(
 
     RenderingItem item = makeItemFromValidatedData(validated->get());
     item.target = target.toDesc();
+    item.debugId = renderable->getDebugId();
     item.pipelineKey =
         PipelineKey::build(item.objectSignature, item.materialSignature,
                            item.target.getPipelineSignature());

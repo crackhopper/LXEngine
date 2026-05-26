@@ -1,0 +1,7 @@
+schema: lxe.project_template.v1
+id: pbr_ibl
+displayName: PBR IBL
+defaultScene: scenes/ibl_metal_sphere.scene.yaml
+copy:
+  - scenes/
+  - assets/

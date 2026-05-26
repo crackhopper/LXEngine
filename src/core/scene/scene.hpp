@@ -60,6 +60,7 @@ struct RenderingItem {
 
   StringID pass;
   RenderTargetDesc target;
+  StringID debugId;
   StringID objectSignature;
   StringID materialSignature;
   PipelineKey pipelineKey;

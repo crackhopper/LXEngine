@@ -104,6 +104,34 @@ void testInitCopiesTemplateAndOpensDefaultScene() {
          "project should record source template");
 }
 
+void testPbrIblTemplateRegistersMetalSphereScene() {
+  const auto root = makeTempRoot("lx_project_session_pbr_ibl");
+  demo::ProjectSession session = makeSession(root);
+
+  const auto result = session.initProject("pbr_ibl", "IBL Project");
+
+  EXPECT(result.ok, "PBR IBL project init should succeed");
+  EXPECT(session.hasProject(), "PBR IBL project should open");
+  EXPECT(session.currentProject().has_value(),
+         "PBR IBL project should expose project document");
+  EXPECT(session.activeScenePath().has_value(),
+         "PBR IBL project should expose active scene");
+  EXPECT(std::filesystem::exists(*session.projectRoot() /
+                                 "scenes/ibl_metal_sphere.scene.yaml"),
+         "PBR IBL template should copy metal sphere scene");
+
+  const auto &document = *session.currentProject();
+  EXPECT(document.activeScene ==
+             std::filesystem::path("scenes/ibl_metal_sphere.scene.yaml"),
+         "PBR IBL template should open the metal sphere scene by default");
+  EXPECT(document.scenes.size() == 1,
+         "PBR IBL template should register one scene");
+  EXPECT(document.scenes[0].id == "ibl_metal_sphere",
+         "PBR IBL scene catalog should expose ibl_metal_sphere id");
+  EXPECT(session.openScene("ibl_metal_sphere").ok,
+         "registered PBR IBL scene should open by id");
+}
+
 void testInitEmptyProjectNameUsesTemplateIdForAllocation() {
   const auto root = makeTempRoot("lx_project_session_init_empty_name");
   demo::ProjectSession session = makeSession(root);
@@ -690,6 +718,7 @@ void testProjectCloseReturnsToNoProjectState() {
 int main() {
   testSaveFailsWithoutOpenProject();
   testInitCopiesTemplateAndOpensDefaultScene();
+  testPbrIblTemplateRegistersMetalSphereScene();
   testInitEmptyProjectNameUsesTemplateIdForAllocation();
   testInitRejectsTemplateCopyRootTraversal();
   testInitRejectsTemplateAbsoluteCopyRoot();

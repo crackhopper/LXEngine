@@ -24,6 +24,7 @@ constexpr const char *kDefaultRootNodeName = "scene_root";
 struct SceneDocumentData final {
   std::string sceneName = "Scene";
   std::string gameplayCameraPath = "/game_cam";
+  std::optional<EnvironmentState> environment;
   SceneNodeDocument rootNode;
   std::optional<EditorCameraState> editorCamera;
 
@@ -385,6 +386,52 @@ void saveProceduralMaterialState(YAML::Emitter &out,
   out << YAML::EndMap;
 }
 
+[[nodiscard]] EnvironmentState loadEnvironmentState(const YAML::Node &node) {
+  EnvironmentState state;
+  if (!node) {
+    return state;
+  }
+  if (!node.IsMap()) {
+    throw std::runtime_error("expected map for scene.environment");
+  }
+  if (const auto enabled = node["enabled"]; enabled) {
+    state.enabled = enabled.as<bool>();
+  }
+  if (const auto hdrUri = node["hdrUri"]; hdrUri) {
+    state.hdrUri = hdrUri.as<std::string>();
+  }
+  if (const auto skyboxEnabled = node["skyboxEnabled"]; skyboxEnabled) {
+    state.skyboxEnabled = skyboxEnabled.as<bool>();
+  }
+  if (const auto intensity = node["intensity"]; intensity) {
+    state.intensity = intensity.as<float>();
+  }
+  if (const auto roughnessMipCount = node["roughnessMipCount"];
+      roughnessMipCount) {
+    state.roughnessMipCount = roughnessMipCount.as<float>();
+  }
+  if (state.enabled && state.hdrUri.empty()) {
+    throw std::runtime_error(
+        "scene.environment.hdrUri must be non-empty when enabled");
+  }
+  return state;
+}
+
+void saveEnvironmentState(YAML::Emitter &out,
+                          const EnvironmentState &state) {
+  if (state.empty()) {
+    return;
+  }
+  out << YAML::Key << "environment" << YAML::Value << YAML::BeginMap;
+  out << YAML::Key << "enabled" << YAML::Value << state.enabled;
+  out << YAML::Key << "hdrUri" << YAML::Value << state.hdrUri;
+  out << YAML::Key << "skyboxEnabled" << YAML::Value << state.skyboxEnabled;
+  out << YAML::Key << "intensity" << YAML::Value << state.intensity;
+  out << YAML::Key << "roughnessMipCount" << YAML::Value
+      << state.roughnessMipCount;
+  out << YAML::EndMap;
+}
+
 [[nodiscard]] std::optional<EditorCameraState>
 loadEditorCamera(const YAML::Node &node) {
   if (!node) {
@@ -690,6 +737,31 @@ const std::string &SceneDocument::gameplayCameraPath() const {
       ->gameplayCameraPath;
 }
 
+bool SceneDocument::hasEnvironment() const {
+  return m_impl && std::static_pointer_cast<const SceneDocumentData>(m_impl)
+                       ->environment.has_value();
+}
+
+const EnvironmentState &SceneDocument::environment() const {
+  if (!m_impl) {
+    throw std::runtime_error("scene document has no environment");
+  }
+  const auto &state =
+      std::static_pointer_cast<const SceneDocumentData>(m_impl)->environment;
+  if (!state.has_value()) {
+    throw std::runtime_error("scene document has no environment");
+  }
+  return *state;
+}
+
+void SceneDocument::setEnvironment(EnvironmentState state) {
+  if (!m_impl) {
+    m_impl = std::make_shared<SceneDocumentData>();
+  }
+  std::static_pointer_cast<SceneDocumentData>(m_impl)->environment =
+      std::move(state);
+}
+
 SceneNodeDocument &SceneDocument::mutableRootNode() {
   if (!m_impl) {
     m_impl = std::make_shared<SceneDocumentData>();
@@ -742,6 +814,11 @@ SceneDocument loadSceneDocument(const std::filesystem::path &path) {
         gameplayCameraPathNode) {
       document.setGameplayCameraPath(gameplayCameraPathNode.as<std::string>());
     }
+    const EnvironmentState environment =
+        loadEnvironmentState(sceneNode["environment"]);
+    if (!environment.empty()) {
+      document.setEnvironment(environment);
+    }
   }
 
   if (const YAML::Node rootNode = root["root"]; rootNode.IsDefined()) {
@@ -788,6 +865,9 @@ void saveSceneDocument(const std::filesystem::path &path,
   out << YAML::Key << "name" << YAML::Value << document.sceneName();
   out << YAML::Key << "gameplayCameraPath" << YAML::Value
       << document.gameplayCameraPath();
+  if (document.hasEnvironment()) {
+    saveEnvironmentState(out, document.environment());
+  }
   out << YAML::EndMap;
 
   out << YAML::Key << "root" << YAML::Value;
