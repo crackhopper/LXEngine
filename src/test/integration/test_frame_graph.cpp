@@ -308,7 +308,8 @@ void testFrameGraphCompileAcceptsColorWriteThenSampleRead() {
 
   FrameGraph graph;
   graph.addPass(FramePass{Pass_Forward,
-                          RenderTargetDesc::offscreenColor(ImageFormat::RGBA8),
+                          RenderTargetDesc::offscreenColor(
+                              ImageFormat::RGBA16Float),
                           {},
                           {},
                           {FrameGraphWrite{offscreen}}});

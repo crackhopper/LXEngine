@@ -40,6 +40,8 @@ LX_core::ImageFormat toImageFormat(VkFormat format) {
   case VK_FORMAT_R8G8B8A8_SRGB:
   case VK_FORMAT_R8G8B8A8_UNORM:
     return LX_core::ImageFormat::RGBA8;
+  case VK_FORMAT_R16G16B16A16_SFLOAT:
+    return LX_core::ImageFormat::RGBA16Float;
   case VK_FORMAT_R8_UNORM:
     return LX_core::ImageFormat::R8;
   case VK_FORMAT_D32_SFLOAT:
@@ -62,6 +64,8 @@ VkFormat toVkFormat(LX_core::ImageFormat format) {
   switch (format) {
   case LX_core::ImageFormat::RGBA8:
     return VK_FORMAT_R8G8B8A8_UNORM;
+  case LX_core::ImageFormat::RGBA16Float:
+    return VK_FORMAT_R16G16B16A16_SFLOAT;
   case LX_core::ImageFormat::BGRA8:
     return VK_FORMAT_B8G8R8A8_UNORM;
   case LX_core::ImageFormat::R8:
@@ -86,6 +90,8 @@ std::string vkFormatName(VkFormat format) {
     return "D32_SFLOAT_S8_UINT";
   case VK_FORMAT_R8G8B8A8_UNORM:
     return "R8G8B8A8_UNORM";
+  case VK_FORMAT_R16G16B16A16_SFLOAT:
+    return "R16G16B16A16_SFLOAT";
   case VK_FORMAT_B8G8R8A8_UNORM:
     return "B8G8R8A8_UNORM";
   default:
@@ -107,6 +113,10 @@ std::string sanitizeAttachmentName(std::string_view name) {
 LX_core::StringID passIdFromDebugName(std::string_view passName) {
   if (passName == "Forward" || passName == "forward") {
     return LX_core::Pass_Forward;
+  }
+  if (passName == "PostProcess" || passName == "postProcess" ||
+      passName == "post_process") {
+    return LX_core::Pass_PostProcess;
   }
   if (passName == "DebugOverlay" || passName == "debugOverlay" ||
       passName == "debug_overlay") {

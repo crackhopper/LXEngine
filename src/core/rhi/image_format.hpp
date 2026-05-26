@@ -8,6 +8,7 @@ namespace LX_core {
 /// backend). Core code MUST NOT reference backend-specific format types.
 enum class ImageFormat : u8 {
   RGBA8,
+  RGBA16Float,
   BGRA8,
   R8,
   D32Float,

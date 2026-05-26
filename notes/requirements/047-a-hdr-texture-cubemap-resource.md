@@ -115,4 +115,15 @@ IBL bake 需要从 `assets/env/studio_small_03_2k.hdr` 这类 equirectangular HD
 
 ## 实施状态
 
-Draft，未实施。
+实施中。
+
+已落地：
+
+- `ImageFormat::RGBA16Float` 已作为 HDR render-target format 进入 core/backend 映射，可供 `REQ-046-a` 的 `scene.hdrColor` 使用。
+
+仍待落地：
+
+- `TextureDesc` 的 HDR/cubemap/mip/layer 资源形状。
+- HDR `.hdr` loader。
+- Vulkan texture cubemap image/view/upload 与 mip 支撑。
+- `TextureCube` reflection 到 material-owned cube descriptor 的端到端测试。

@@ -147,9 +147,10 @@ Shadow -> Forward(HDR offscreen) -> PostProcess(swapchain) -> DebugOverlay/ImGui
 已落地：
 
 - 新增 `Pass_PostProcess` 作为 core pass 身份。
-- Core FrameGraph 已能表达 `Forward -> PostProcess` 的 sampled scene color 资源流。
+- Core FrameGraph 已能表达 `Forward(RGBA16Float scene.hdrColor) -> PostProcess(SceneColor sampled read) -> swapchain.color` 资源流。
 - 已删除 `FramePassKind::FullscreenProcedural`、`FramePass::fullscreenMaterial` 和 `CompiledFrameGraphPass::fullscreenMaterial` 旧字段。
 - `REQ-045-c` 已迁移说明：旧 fullscreen procedural 分支不继续扩展，后续统一走标准 post-process stack。
+- Vulkan backend 已具备 `RGBA16Float` render-target format 映射，debug render-target pass name 也能解析 `PostProcess`。
 
 仍待落地：
 
