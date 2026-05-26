@@ -37,6 +37,14 @@ layout(set = 1, binding = 2) uniform sampler2D normalMap;
 layout(set = 1, binding = 3) uniform sampler2D metallicRoughnessMap;
 #endif
 
+#ifdef HAS_AO_MAP
+layout(set = 1, binding = 4) uniform sampler2D aoMap;
+#endif
+
+#ifdef HAS_EMISSIVE_MAP
+layout(set = 1, binding = 5) uniform sampler2D emissiveMap;
+#endif
+
 // Light
 layout(set = 2, binding = 0) uniform LightUBO {
     vec4 direction;
@@ -100,6 +108,12 @@ void main() {
     metallic *= mr.b;
     roughness *= mr.g;
 #endif
+    roughness = clamp(roughness, 0.04, 1.0);
+
+    float ao = material.ao;
+#ifdef HAS_AO_MAP
+    ao *= texture(aoMap, vUV).r;
+#endif
 
     // Normal
     vec3 N = normalize(vNormal);
@@ -131,7 +145,7 @@ void main() {
     vec3 Lo = (kD * albedo.rgb / PI + specular) * light.color.rgb * NdotL;
 
     // Ambient
-    vec3 ambient = vec3(0.03) * albedo.rgb * material.ao;
+    vec3 ambient = vec3(0.03) * albedo.rgb * ao;
     float iblIntensity = max(environment.params.x, 0.0);
     if (iblIntensity > 0.0) {
         float NdotV = max(dot(N, V), 0.0);
@@ -148,10 +162,13 @@ void main() {
         vec2 brdf = texture(BrdfLut, vec2(NdotV, roughness)).rg;
         vec3 specularIbl = prefilteredColor * (F_ibl * brdf.x + brdf.y);
 
-        ambient = (kD_ibl * diffuse + specularIbl) * material.ao * iblIntensity;
+        ambient = (kD_ibl * diffuse + specularIbl) * ao * iblIntensity;
     }
 
     vec3 color = ambient + Lo;
+#ifdef HAS_EMISSIVE_MAP
+    color += texture(emissiveMap, vUV).rgb;
+#endif
 
     outColor = vec4(color, albedo.a);
 }

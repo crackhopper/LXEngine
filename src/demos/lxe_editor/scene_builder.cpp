@@ -167,48 +167,39 @@ loadCombinedTexture(const std::filesystem::path &path) {
   return std::make_shared<CombinedTextureSampler>(std::move(tex));
 }
 
-// Bridge GLTFPbrMaterial → a Blinn-Phong material. The `.material` variant
-// is chosen so the compiled shader actually exposes the bindings we touch:
-// `blinnphong_textured.material` enables USE_LIGHTING + USE_UV, so
-// `albedoMap` exists; `blinnphong_lit.material` is the no-texture fallback.
-// Loading a variant that #ifdef's a binding out and then calling setTexture
-// on it trips an internal assert in MaterialInstance.
-//
-// Other PBR textures (metallic/roughness, normal, occlusion, emissive) are
-// read from glTF but intentionally unbound — the Blinn-Phong shader doesn't
-// consume them; full PBR is a downstream REQ.
 MaterialInstanceSharedPtr
 makeHelmetMaterial(const infra::GLTFPbrMaterial &pbr,
                    const std::filesystem::path &gltfDir) {
-  constexpr const char *kTexturedMaterial =
-      "assets/materials/blinnphong_textured.material";
-  constexpr const char *kFallbackMaterial =
-      "assets/materials/blinnphong_lit.material";
-
-  const bool hasBaseColor = !pbr.baseColorTexture.empty();
-  const char *assetPath = hasBaseColor ? kTexturedMaterial : kFallbackMaterial;
-
-  auto mat = LX_infra::loadGenericMaterial(assetPath);
+  auto mat = LX_infra::loadGenericMaterial("assets/materials/pbr_gltf.material");
   if (!mat) {
-    throw std::runtime_error(std::string("[lxe_editor] failed to load ") +
-                             assetPath);
+    throw std::runtime_error(
+        "[lxe_editor] failed to load assets/materials/pbr_gltf.material");
   }
 
-  // DamagedHelmet.gltf declares no TANGENT accessor — keep normal mapping off
-  // so the placeholder tangent is never sampled.
-  mat->setParameter(StringID("MaterialUBO"), StringID("enableNormal"), 0);
+  mat->setParameter(StringID("MaterialUBO"), StringID("baseColorFactor"),
+                    pbr.baseColorFactor);
+  mat->setParameter(StringID("MaterialUBO"), StringID("metallicFactor"),
+                    pbr.metallicFactor);
+  mat->setParameter(StringID("MaterialUBO"), StringID("roughnessFactor"),
+                    pbr.roughnessFactor);
 
-  if (hasBaseColor) {
+  if (!pbr.baseColorTexture.empty()) {
     try {
       auto sampler = loadCombinedTexture(gltfDir / pbr.baseColorTexture);
       mat->setTexture(StringID("albedoMap"), std::move(sampler));
-      mat->setParameter(StringID("MaterialUBO"), StringID("enableAlbedo"), 1);
     } catch (const std::exception &e) {
       std::cerr << "[lxe_editor] baseColor texture load failed (" << e.what()
                 << "); falling back to flat color\n";
-      // The textured variant is already loaded; keep enableAlbedo=0 so the
-      // shader skips the (still-legal) sampler binding.
-      mat->setParameter(StringID("MaterialUBO"), StringID("enableAlbedo"), 0);
+    }
+  }
+  if (!pbr.metallicRoughnessTexture.empty()) {
+    try {
+      auto sampler =
+          loadCombinedTexture(gltfDir / pbr.metallicRoughnessTexture);
+      mat->setTexture(StringID("metallicRoughnessMap"), std::move(sampler));
+    } catch (const std::exception &e) {
+      std::cerr << "[lxe_editor] metallicRoughness texture load failed ("
+                << e.what() << "); falling back to scalar factors\n";
     }
   }
 

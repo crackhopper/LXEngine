@@ -155,9 +155,11 @@ PBR shader 支持 diffuse irradiance。
 - PBR shader 已声明 scene/system-owned IBL binding：`IrradianceMap`、`PrefilteredEnvMap`、`BrdfLut`、`EnvironmentUBO`。
 - system-owned binding contract 已覆盖上述 IBL 资源，`.material resources` 不负责提供它们。
 - RenderQueue 已按 shader 反射结果为消费 IBL 的 draw item 追加 scene-level IBL resources；未配置真实 IBL 时使用黑色 cubemap、黑色 BRDF LUT 和 `iblIntensity=0` 的默认资源，避免 descriptor 缺失和默认场景崩溃。
+- PBR shader/material-owned texture set 已覆盖 `albedoMap`、`normalMap`、`metallicRoughnessMap`、`aoMap`、`emissiveMap` 的反射合同；当前 `pbr_gold.material` 默认只启用 albedo，避免未提供切线或资源时访问不存在贴图。
+- `builtin://lxe_editor/helmet` 已从临时 Blinn-Phong bridge 切换到 PBR material bridge：绑定 glTF baseColor 与 metallicRoughness texture，写入 baseColor / metallic / roughness scalar；DamagedHelmet 缺少 tangent 时不启用 normal map。
 
 仍待落地：
 
 - 使用 `REQ-048-a` 真正 bake 出来的 IBL 资源替换默认黑资源。
-- 完整 material-owned PBR texture set（AO/emissive 等）和 glTF PBR bridge。
+- AO/emissive 的 glTF bridge 仍需等 PBR material 资源默认策略和素材验证补齐后启用。
 - metallic/roughness 低粗糙金属材质采样 prefiltered env map 的视觉验证。

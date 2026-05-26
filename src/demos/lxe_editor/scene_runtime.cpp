@@ -46,7 +46,7 @@ constexpr const char *BuiltinModelPrefix = "assets/models/builtin/";
 constexpr const char *kDefaultGroundMaterial =
     "assets/materials/blinnphong_lit.material";
 constexpr const char *kDefaultHelmetMaterial =
-    "assets/materials/blinnphong_textured.material";
+    "assets/materials/pbr_gltf.material";
 
 struct SceneRuntimeData final {
   std::optional<std::filesystem::path> documentPath;

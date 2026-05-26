@@ -1,8 +1,8 @@
 #pragma once
 
-// REQ-019: demo-local glue that bridges GLTFLoader output and the current
-// Blinn-Phong material system. Intentionally not lowered into src/infra/;
-// this is transitional until a full PBR material loader lands.
+// Demo-local glue that bridges GLTFLoader output and editor/runtime scene
+// nodes. Intentionally not lowered into src/infra/ because it still owns
+// lxe_editor-specific built-in asset choices.
 
 #include "core/asset/material_instance.hpp"
 #include "core/scene/object.hpp"
@@ -16,9 +16,9 @@ namespace LX_demo::lxe_editor {
 
 inline constexpr LX_core::VisibilityLayerMask Layer_EditorHelper = 1u << 30;
 
-// Loads DamagedHelmet.gltf, bridges its PBR texture metadata into the
-// existing blinnphong_0 material, and returns a SceneNode ready to attach to
-// a Scene. Throws std::runtime_error on failure.
+// Loads DamagedHelmet.gltf, bridges its PBR texture metadata into the PBR
+// material contract, and returns a SceneNode ready to attach to a Scene.
+// Throws std::runtime_error on failure.
 LX_core::SceneNodeSharedPtr
 buildHelmetNode(const std::filesystem::path &gltfPath);
 

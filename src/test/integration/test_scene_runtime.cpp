@@ -143,6 +143,19 @@ nodeForwardPassHasDescriptor(LX_core::SceneNode *node,
       });
 }
 
+[[nodiscard]] LX_core::MaterialInstanceSharedPtr
+nodeMaterialInstance(LX_core::SceneNode *node) {
+  if (node == nullptr) {
+    return nullptr;
+  }
+  const auto materialComponent =
+      node->getComponent<LX_core::MaterialComponent>();
+  if (!materialComponent.has_value()) {
+    return nullptr;
+  }
+  return materialComponent->get().getMaterialInstance();
+}
+
 void testRuntimeCreatesEmptyScene() {
   demo::SceneRuntime runtime;
   runtime.createEmptyScene();
@@ -1963,6 +1976,72 @@ void testBuiltinModelMaterialUriKeepsCatalogAlbedoTexture() {
       "binding");
 }
 
+void testBuiltinHelmetUsesPbrMaterialBridge() {
+  const std::filesystem::path path =
+      makeTempPath("lx_scene_runtime_builtin_helmet_pbr.yaml");
+  writeSceneFile(path, "scene:\n"
+                       "  name: Builtin Helmet PBR\n"
+                       "  gameplayCameraPath: /game_cam\n"
+                       "nodes:\n"
+                       "  - nodeName: game_camera\n"
+                       "    name: game_cam\n"
+                       "    transform:\n"
+                       "      translation: [0.0, 2.0, 6.0]\n"
+                       "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                       "      scale: [1.0, 1.0, 1.0]\n"
+                       "    visibilityMask: 4294967295\n"
+                       "    camera:\n"
+                       "      eye: [0.0, 2.0, 6.0]\n"
+                       "      target: [0.0, 0.0, 0.0]\n"
+                       "      up: [0.0, 1.0, 0.0]\n"
+                       "      type: perspective\n"
+                       "      fovY: 45.0\n"
+                       "      aspect: 1.7777778\n"
+                       "      nearPlane: 0.1\n"
+                       "      farPlane: 1000.0\n"
+                       "      left: -1.0\n"
+                       "      right: 1.0\n"
+                       "      bottom: -1.0\n"
+                       "      top: 1.0\n"
+                       "      cullingMask: 4294967295\n"
+                       "  - nodeName: helmet\n"
+                       "    name: helmet\n"
+                       "    transform:\n"
+                       "      translation: [0.0, 0.0, 0.0]\n"
+                       "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                       "      scale: [1.0, 1.0, 1.0]\n"
+                       "    visibilityMask: 4294967295\n"
+                       "    mesh:\n"
+                       "      uri: builtin://lxe_editor/helmet\n");
+
+  demo::SceneRuntime runtime;
+  runtime.loadFromDocumentPath(path);
+
+  auto *helmet = runtime.scene()->findByPath("/helmet");
+  EXPECT(helmet != nullptr, "builtin helmet scene should load helmet node");
+  const auto material = nodeMaterialInstance(helmet);
+  EXPECT(material && material->getTemplate() &&
+             material->getTemplate()->getName() == "pbr",
+         "builtin helmet should bridge glTF metadata to PBR material");
+  EXPECT(
+      nodeForwardPassHasDescriptor(helmet, LX_core::StringID("albedoMap")),
+      "builtin helmet PBR bridge should bind baseColor texture");
+  EXPECT(nodeForwardPassHasDescriptor(
+             helmet, LX_core::StringID("metallicRoughnessMap")),
+         "builtin helmet PBR bridge should bind metallicRoughness texture");
+  EXPECT(
+      !nodeForwardPassHasDescriptor(helmet, LX_core::StringID("normalMap")),
+      "builtin helmet should not enable normal map without tangent accessor");
+  const auto metallic = runtime.nodeMaterialParameterForNode(
+      "/helmet", "MaterialUBO", "metallicFactor");
+  const auto roughness = runtime.nodeMaterialParameterForNode(
+      "/helmet", "MaterialUBO", "roughnessFactor");
+  EXPECT(metallic.has_value() && metallic->floatValue >= 0.0f,
+         "builtin helmet should expose glTF metallic scalar");
+  EXPECT(roughness.has_value() && roughness->floatValue >= 0.0f,
+         "builtin helmet should expose glTF roughness scalar");
+}
+
 void testShadowTutorialSceneLoadsSavesAndReloads() {
   const std::filesystem::path path = std::filesystem::current_path() /
                                      "assets" / "scenes" /
@@ -2149,6 +2228,7 @@ int main() {
   testBuiltinPrimitiveBaseColorGetterUsesRuntimeMaterialValue();
   testProjectAssetMaterialOverridesRuntimeAssetMaterial();
   testBuiltinModelMaterialUriKeepsCatalogAlbedoTexture();
+  testBuiltinHelmetUsesPbrMaterialBridge();
   testShadowTutorialSceneLoadsSavesAndReloads();
   testIblMetalSphereSceneLoadsAndInjectsIblResources();
 

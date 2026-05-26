@@ -958,7 +958,14 @@ static bool testPbrIblContract(const std::filesystem::path &vertPath,
   const auto prefiltered = findBinding("PrefilteredEnvMap");
   const auto brdf = findBinding("BrdfLut");
   const auto environment = findBinding("EnvironmentUBO");
+  const auto albedoMap = findBinding("albedoMap");
 
+  if (albedoMap == bindings.end() ||
+      albedoMap->type != ShaderPropertyType::Texture2D ||
+      albedoMap->set != 1 || albedoMap->binding != 1) {
+    std::cerr << "  FAIL: albedoMap Texture2D set=1 binding=1 missing\n";
+    return false;
+  }
   if (irradiance == bindings.end() ||
       irradiance->type != ShaderPropertyType::TextureCube ||
       irradiance->set != 3 || irradiance->binding != 0) {
@@ -986,6 +993,45 @@ static bool testPbrIblContract(const std::filesystem::path &vertPath,
   }
 
   std::cout << "  PASS: PBR outputs HDR and reflects IBL bindings\n";
+  return true;
+}
+
+static bool testPbrMaterialTextureSetContract(
+    const std::filesystem::path &vertPath, const std::filesystem::path &fragPath) {
+  std::cout << "  Test: PBR material-owned texture set contract\n";
+  auto compileResult = ShaderCompiler::compileProgram(
+      vertPath, fragPath,
+      {{"HAS_NORMAL_MAP", true},
+       {"HAS_METALLIC_ROUGHNESS", true},
+       {"HAS_AO_MAP", true},
+       {"HAS_EMISSIVE_MAP", true}});
+  if (!compileResult.success) {
+    std::cerr << "  COMPILE FAILED: " << compileResult.errorMessage << "\n";
+    return false;
+  }
+
+  const auto bindings = ShaderReflector::reflect(compileResult.stages);
+  const auto expectTexture = [&](const std::string &name, u32 binding) {
+    const auto it = std::find_if(bindings.begin(), bindings.end(),
+                                 [&](const auto &candidate) {
+                                   return candidate.name == name;
+                                 });
+    if (it == bindings.end() || it->type != ShaderPropertyType::Texture2D ||
+        it->set != 1 || it->binding != binding) {
+      std::cerr << "  FAIL: " << name << " Texture2D set=1 binding="
+                << binding << " missing\n";
+      return false;
+    }
+    return true;
+  };
+
+  if (!expectTexture("albedoMap", 1) || !expectTexture("normalMap", 2) ||
+      !expectTexture("metallicRoughnessMap", 3) ||
+      !expectTexture("aoMap", 4) || !expectTexture("emissiveMap", 5)) {
+    return false;
+  }
+
+  std::cout << "  PASS: PBR reflects material-owned texture set\n";
   return true;
 }
 
@@ -1035,6 +1081,8 @@ int main(int argc, char *argv[]) {
                                {"HAS_METALLIC_ROUGHNESS", true}}))
     ++failures;
   if (!testPbrIblContract(vertPath, fragPath))
+    ++failures;
+  if (!testPbrMaterialTextureSetContract(vertPath, fragPath))
     ++failures;
 
   // Test 4: BlinnPhong MaterialUBO member reflection (REQ-004)
