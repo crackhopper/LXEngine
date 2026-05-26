@@ -78,6 +78,10 @@ int main() {
       std::cerr << "Baked BRDF LUT resource is not descriptor-addressable\n";
       return 1;
     }
+    if (!baker.debugReadbackBrdfLutHasData(16)) {
+      std::cerr << "BRDF LUT shader output readback is empty\n";
+      return 1;
+    }
 
     return 0;
   } catch (const std::exception &e) {

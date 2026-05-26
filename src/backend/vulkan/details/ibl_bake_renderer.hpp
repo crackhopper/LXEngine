@@ -51,6 +51,7 @@ public:
 
   bool debugReadbackCubemapFaceHasData(StringID resourceName, u32 mipLevel,
                                        u32 faceLayer, u32 extent);
+  bool debugReadbackBrdfLutHasData(u32 extent);
 
 private:
   void clearCubemap(StringID resourceName, u32 baseSize, u32 mipLevels,
