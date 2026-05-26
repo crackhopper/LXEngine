@@ -42,7 +42,8 @@ bool shaderConsumesIbl(const ShaderPtr &shader) {
   }
   for (const auto &binding : shader->getReflectionBindings()) {
     const std::string_view name(binding.name);
-    if (name == "IrradianceMap" || name == "PrefilteredEnvMap" ||
+    if (name == "SkyboxMap" || name == "IrradianceMap" ||
+        name == "PrefilteredEnvMap" ||
         name == "BrdfLut" || name == "EnvironmentUBO") {
       return true;
     }

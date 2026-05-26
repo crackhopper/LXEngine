@@ -76,7 +76,7 @@ scene open ibl_metal_sphere
 
 ## 当前能看到什么
 
-在真实 GPU bake/skybox 接入前，场景已经能稳定打开并进入 PBR + IBL binding 链路；金属球会采样 CPU 过渡生成的 prefiltered cubemap，背景仍是单色 environment preview。我们判断当前切片是否正确，优先看 runtime/FrameGraph 事实，而不是只看截图。
+在真实 GPU bake 接入前，场景已经能稳定打开并进入 PBR + IBL binding 链路；金属球会采样 CPU 过渡生成的 prefiltered cubemap，背景会通过 Forward HDR 的 skybox draw 采样同一份方向性 `SkyboxMap`。我们判断当前切片是否正确，优先看 runtime/FrameGraph 事实，并结合截图确认背景方向性和金属反射是否一致。
 
 ## 下一步
 

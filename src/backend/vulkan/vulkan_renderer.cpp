@@ -42,6 +42,7 @@ constexpr const char *kPostProcessShaderName = "post_process";
 constexpr const char *kBloomThresholdShaderName = "bloom_threshold";
 constexpr const char *kBloomBlurHShaderName = "bloom_blur_h";
 constexpr const char *kBloomBlurVShaderName = "bloom_blur_v";
+constexpr const char *kSkyboxShaderName = "skybox";
 
 class StaticFullscreenShader final : public LX_core::IShader {
 public:
@@ -126,6 +127,42 @@ std::vector<LX_core::ShaderResourceBinding> postProcessBindings() {
       LX_core::ShaderResourceBinding{"BloomColor", 0, 2,
                                      LX_core::ShaderPropertyType::Texture2D, 1,
                                      0, 0, LX_core::ShaderStage::Fragment, {}},
+  };
+}
+
+std::vector<LX_core::ShaderResourceBinding> skyboxBindings() {
+  return {
+      LX_core::ShaderResourceBinding{
+          "CameraUBO",
+          0,
+          0,
+          LX_core::ShaderPropertyType::UniformBuffer,
+          1,
+          LX_core::CameraData::ResourceSize,
+          0,
+          LX_core::ShaderStage::Vertex | LX_core::ShaderStage::Fragment,
+          {LX_core::StructMemberInfo{"view", LX_core::ShaderPropertyType::Mat4,
+                                     0, 64},
+           LX_core::StructMemberInfo{"proj", LX_core::ShaderPropertyType::Mat4,
+                                     64, 64},
+           LX_core::StructMemberInfo{"eyePos", LX_core::ShaderPropertyType::Vec3,
+                                     128, 12}}},
+      LX_core::ShaderResourceBinding{"SkyboxMap", 1, 0,
+                                     LX_core::ShaderPropertyType::TextureCube,
+                                     1, 0, 0, LX_core::ShaderStage::Fragment,
+                                     {}},
+      LX_core::ShaderResourceBinding{
+          "EnvironmentUBO",
+          2,
+          0,
+          LX_core::ShaderPropertyType::UniformBuffer,
+          1,
+          sizeof(LX_core::EnvironmentData::Param),
+          0,
+          LX_core::ShaderStage::Fragment,
+          {LX_core::StructMemberInfo{"params",
+                                     LX_core::ShaderPropertyType::Vec4, 0,
+                                     16}}},
   };
 }
 
@@ -295,73 +332,6 @@ float halfToFloat(u16 value) {
   return signScale *
          std::ldexp(1.0f + static_cast<float>(mantissa) / 1024.0f,
                     static_cast<int>(exponent) - 15);
-}
-
-float sanitizeHdrClearValue(float value) {
-  if (!std::isfinite(value)) {
-    return 0.0f;
-  }
-  return std::max(value, 0.0f);
-}
-
-std::optional<LX_core::Vec4f>
-sampleFirstTexelAsLinearRgba(const LX_core::Texture &texture) {
-  const auto &desc = texture.desc();
-  if (desc.width == 0 || desc.height == 0 || texture.data() == nullptr) {
-    return std::nullopt;
-  }
-
-  switch (desc.format) {
-  case LX_core::TextureFormat::RGBA8: {
-    const auto *pixels = static_cast<const u8 *>(texture.data());
-    return LX_core::Vec4f{static_cast<float>(pixels[0]) / 255.0f,
-                          static_cast<float>(pixels[1]) / 255.0f,
-                          static_cast<float>(pixels[2]) / 255.0f,
-                          static_cast<float>(pixels[3]) / 255.0f};
-  }
-  case LX_core::TextureFormat::RGB8: {
-    const auto *pixels = static_cast<const u8 *>(texture.data());
-    return LX_core::Vec4f{static_cast<float>(pixels[0]) / 255.0f,
-                          static_cast<float>(pixels[1]) / 255.0f,
-                          static_cast<float>(pixels[2]) / 255.0f, 1.0f};
-  }
-  case LX_core::TextureFormat::R8: {
-    const auto *pixels = static_cast<const u8 *>(texture.data());
-    const float value = static_cast<float>(pixels[0]) / 255.0f;
-    return LX_core::Vec4f{value, value, value, 1.0f};
-  }
-  case LX_core::TextureFormat::RGBA16Float: {
-    const auto *pixels = static_cast<const u16 *>(texture.data());
-    return LX_core::Vec4f{halfToFloat(pixels[0]), halfToFloat(pixels[1]),
-                          halfToFloat(pixels[2]), halfToFloat(pixels[3])};
-  }
-  case LX_core::TextureFormat::RGBA32Float: {
-    const auto *pixels = static_cast<const float *>(texture.data());
-    return LX_core::Vec4f{pixels[0], pixels[1], pixels[2], pixels[3]};
-  }
-  }
-  return std::nullopt;
-}
-
-std::optional<LX_core::Vec4f>
-environmentPreviewClearColor(const LX_core::Scene &scene) {
-  const auto resources = scene.getIblEnvironmentResourceSet();
-  if (!resources.skyboxCubemap || !resources.skyboxCubemap->texture() ||
-      !resources.environmentUbo) {
-    return std::nullopt;
-  }
-  const float intensity = resources.environmentUbo->getIblIntensity();
-  if (intensity <= 0.0f) {
-    return std::nullopt;
-  }
-  const auto color = sampleFirstTexelAsLinearRgba(
-      *resources.skyboxCubemap->texture());
-  if (!color.has_value()) {
-    return std::nullopt;
-  }
-  return LX_core::Vec4f{sanitizeHdrClearValue(color->x * intensity),
-                        sanitizeHdrClearValue(color->y * intensity),
-                        sanitizeHdrClearValue(color->z * intensity), 1.0f};
 }
 
 unsigned char linearToDebugByte(float value) {
@@ -787,12 +757,7 @@ public:
 
     updateDirectionalLightCascades();
     auto &forwardRenderPass = m_resourceManager->getRenderPass(forwardHdrDesc);
-    if (const auto clearColor = environmentPreviewClearColor(*m_scene)) {
-      forwardRenderPass.setClearColor(clearColor->x, clearColor->y,
-                                      clearColor->z, clearColor->w);
-    } else {
-      forwardRenderPass.setClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    }
+    forwardRenderPass.setClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
     const auto sceneHdrColor = LX_core::FrameGraphResourceRef::colorAttachment(
         LX_core::StringID("scene.hdrColor"));
@@ -879,6 +844,7 @@ public:
     //   - sorts by PipelineKey
     // There is no more side-channel camera/light UBO injection here.
     m_frameGraph.buildFromScene(*m_scene);
+    addSkyboxBackgroundItem(forwardHdrDesc);
     rebuildDebugOverlayQueueWithForwardCameraResources(forwardHdrDesc,
                                                        swapchainDesc);
     if (m_postProcessSettings.bloomEnabled) {
@@ -1585,6 +1551,32 @@ private:
     return material;
   }
 
+  LX_core::MaterialInstanceSharedPtr createSkyboxBackgroundMaterial() {
+    auto shader = std::make_shared<StaticFullscreenShader>(
+        kSkyboxShaderName, loadGraphicsShaderStages(kSkyboxShaderName),
+        skyboxBindings());
+
+    auto tmpl = LX_core::MaterialTemplate::create(kSkyboxShaderName);
+    LX_core::ShaderProgramSet shaderProgram;
+    shaderProgram.shaderName = kSkyboxShaderName;
+    shaderProgram.shader = shader;
+
+    LX_core::MaterialPassDefinition passDefinition;
+    passDefinition.shaderProgram = std::move(shaderProgram);
+    passDefinition.renderState.cullMode = LX_core::CullMode::None;
+    passDefinition.renderState.depthTestEnable = true;
+    passDefinition.renderState.depthWriteEnable = false;
+    passDefinition.renderState.depthOp = LX_core::CompareOp::LessEqual;
+    passDefinition.renderState.blendEnable = false;
+    tmpl->setPassDefinition(LX_core::Pass_Forward,
+                            std::move(passDefinition));
+    tmpl->rebuildMaterialInterface();
+
+    auto material = LX_core::MaterialInstance::create(std::move(tmpl));
+    material->syncGpuData();
+    return material;
+  }
+
   void addFullscreenMaterialItem(LX_core::StringID pass,
                                  const LX_core::RenderTargetDesc &target,
                                  LX_core::MaterialInstanceSharedPtr material,
@@ -1634,6 +1626,52 @@ private:
     addFullscreenMaterialItem(LX_core::Pass_PostProcess, target,
                               createStandardPostProcessMaterial(),
                               "PostProcessFullscreenTriangle");
+  }
+
+  void addSkyboxBackgroundItem(const LX_core::RenderTargetDesc &target) {
+    if (!m_scene) {
+      return;
+    }
+    const auto iblResources = m_scene->getIblEnvironmentResourceSet();
+    if (!iblResources.skyboxCubemap || !iblResources.environmentUbo ||
+        iblResources.environmentUbo->getIblIntensity() <= 0.0f) {
+      return;
+    }
+
+    const auto material = createSkyboxBackgroundMaterial();
+    LX_core::RenderingItem item;
+    item.shaderInfo = material->getPassShader(LX_core::Pass_Forward);
+    item.material = material;
+    item.vertexBuffer = LX_core::VertexBuffer<LX_core::VertexPos>::create(
+        std::vector<LX_core::VertexPos>{{{0.0f, 0.0f, 0.0f}},
+                                        {{0.0f, 0.0f, 0.0f}},
+                                        {{0.0f, 0.0f, 0.0f}}});
+    item.indexBuffer = LX_core::IndexBuffer::create({0u, 1u, 2u});
+    item.descriptorResources =
+        material->getDescriptorResources(LX_core::Pass_Forward);
+    const LX_core::RenderTarget renderTarget{target};
+    auto sceneResources =
+        m_scene->getSceneLevelResources(LX_core::Pass_Forward, renderTarget);
+    item.descriptorResources.insert(item.descriptorResources.end(),
+                                    sceneResources.begin(),
+                                    sceneResources.end());
+    item.descriptorResources.push_back(iblResources.skyboxCubemap);
+    item.descriptorResources.push_back(iblResources.environmentUbo);
+    item.pass = LX_core::Pass_Forward;
+    item.target = target;
+    item.objectSignature = LX_core::StringID("SkyboxFullscreenTriangle");
+    item.materialSignature = material->getPipelineSignature(item.pass);
+    item.pipelineKey =
+        LX_core::PipelineKey::build(item.objectSignature, item.materialSignature,
+                                    item.target.getPipelineSignature());
+
+    for (auto &pass : m_frameGraph.getPasses()) {
+      if (pass.name == LX_core::Pass_Forward) {
+        pass.queue.addItem(std::move(item));
+        pass.queue.sort();
+        return;
+      }
+    }
   }
 
   void rebuildDebugOverlayQueueWithForwardCameraResources(

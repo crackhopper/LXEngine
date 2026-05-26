@@ -39,6 +39,7 @@ inline constexpr std::string_view kSystemOwnedBindings[] = {
     "SceneColor",
     "BloomSource",
     "BloomColor",
+    "SkyboxMap",
     "IrradianceMap",
     "PrefilteredEnvMap",
     "BrdfLut",
@@ -82,7 +83,8 @@ getExpectedTypeForSystemBinding(std::string_view name) {
     return ShaderPropertyType::Texture2D;
   if (name == "BloomSource" || name == "BloomColor")
     return ShaderPropertyType::Texture2D;
-  if (name == "IrradianceMap" || name == "PrefilteredEnvMap")
+  if (name == "SkyboxMap" || name == "IrradianceMap" ||
+      name == "PrefilteredEnvMap")
     return ShaderPropertyType::TextureCube;
   if (name == "BrdfLut")
     return ShaderPropertyType::Texture2D;

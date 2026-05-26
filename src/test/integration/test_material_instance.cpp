@@ -389,6 +389,7 @@ void test_isSystemOwnedBinding_classification() {
   REQUIRE(isSystemOwnedBinding("SceneLightsUBO") == true);
   REQUIRE(isSystemOwnedBinding("BloomSource") == true);
   REQUIRE(isSystemOwnedBinding("BloomColor") == true);
+  REQUIRE(isSystemOwnedBinding("SkyboxMap") == true);
   REQUIRE(isSystemOwnedBinding("IrradianceMap") == true);
   REQUIRE(isSystemOwnedBinding("PrefilteredEnvMap") == true);
   REQUIRE(isSystemOwnedBinding("BrdfLut") == true);
@@ -399,6 +400,8 @@ void test_isSystemOwnedBinding_classification() {
   REQUIRE(isSystemOwnedBinding("albedoMap") == false);
   REQUIRE(isSystemOwnedBinding("") == false);
   REQUIRE(getExpectedTypeForSystemBinding("IrradianceMap") ==
+          ShaderPropertyType::TextureCube);
+  REQUIRE(getExpectedTypeForSystemBinding("SkyboxMap") ==
           ShaderPropertyType::TextureCube);
   REQUIRE(getExpectedTypeForSystemBinding("BloomSource") ==
           ShaderPropertyType::Texture2D);

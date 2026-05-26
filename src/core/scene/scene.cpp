@@ -280,6 +280,9 @@ IblEnvironmentResources Scene::getIblEnvironmentResourceSet() const {
 std::vector<IGpuResourceSharedPtr> Scene::getIblEnvironmentResources() const {
   std::vector<IGpuResourceSharedPtr> out;
   const auto resources = getIblEnvironmentResourceSet();
+  if (resources.skyboxCubemap) {
+    out.push_back(resources.skyboxCubemap);
+  }
   if (resources.irradianceCubemap) {
     out.push_back(resources.irradianceCubemap);
   }

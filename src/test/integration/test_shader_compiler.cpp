@@ -882,6 +882,23 @@ static bool testIblBakeShaderContracts(
     return false;
   }
 
+  auto skybox = ShaderCompiler::compileProgram(shaderDir / "skybox.vert",
+                                               shaderDir / "skybox.frag", {});
+  if (!skybox.success) {
+    std::cerr << "  COMPILE FAILED: " << skybox.errorMessage << "\n";
+    return false;
+  }
+  bindings = ShaderReflector::reflect(skybox.stages);
+  if (!expectBinding(bindings, "CameraUBO", ShaderPropertyType::UniformBuffer,
+                     0, 0) ||
+      !expectBinding(bindings, "SkyboxMap", ShaderPropertyType::TextureCube, 1,
+                     0) ||
+      !expectBinding(bindings, "EnvironmentUBO",
+                     ShaderPropertyType::UniformBuffer, 2, 0)) {
+    std::cerr << "  FAIL: skybox background bindings mismatch\n";
+    return false;
+  }
+
   std::cout << "  PASS: IBL bake shaders compile and expose expected inputs\n";
   return true;
 }

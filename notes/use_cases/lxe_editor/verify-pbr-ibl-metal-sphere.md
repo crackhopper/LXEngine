@@ -58,7 +58,7 @@ PostProcess 链路。它面向实现验收，不是逐像素截图基准。
 - `state summary` 显示 runtime scene 已加载完成，而不只是 project 文档切换。
 - `scene.hdrColor` dump 文件存在且非空。
 - 画面中能看到金属球和地面参考物。
-- 背景不是纯黑；当前实现允许它是 HDR 平均色环境预览，不要求方向性 skybox。
+- 背景不是纯黑，并且应显示来自 `SkyboxMap` 的方向性环境背景，而不是单色清屏预览。
 - 金属球不是纯黑、纯白或无光照 flat color。
 
 ## 失败排查
