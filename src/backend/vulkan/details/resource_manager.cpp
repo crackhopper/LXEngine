@@ -500,7 +500,22 @@ void VulkanResourceManager::updateFrameGraphAttachmentLayout(
 }
 
 void VulkanResourceManager::clearFrameGraphAttachments() {
-  m_frameGraphAttachments.clear();
+  for (auto it = m_frameGraphAttachments.begin();
+       it != m_frameGraphAttachments.end();) {
+    bool isAliased = false;
+    for (const auto &[_, alias] : m_textureAliases) {
+      if (alias.kind == VulkanTextureAliasKind::FrameGraphAttachment &&
+          alias.resourceName == it->first.name) {
+        isAliased = true;
+        break;
+      }
+    }
+    if (isAliased) {
+      ++it;
+    } else {
+      it = m_frameGraphAttachments.erase(it);
+    }
+  }
 }
 
 VulkanCubemapBakeAttachment &
