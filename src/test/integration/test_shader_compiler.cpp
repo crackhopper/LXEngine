@@ -805,6 +805,87 @@ static bool testBloomShaderContracts(const std::filesystem::path &shaderDir) {
   return true;
 }
 
+static bool testIblBakeShaderContracts(
+    const std::filesystem::path &shaderDir) {
+  std::cout << "\n========================================\n";
+  std::cout << "  Test: IBL bake shader contracts\n";
+  std::cout << "========================================\n";
+
+  const auto expectBinding =
+      [](const std::vector<ShaderResourceBinding> &bindings,
+         const std::string &name, ShaderPropertyType type, u32 set,
+         u32 binding) {
+        const auto it =
+            std::find_if(bindings.begin(), bindings.end(),
+                         [&](const auto &candidate) {
+                           return candidate.name == name;
+                         });
+        return it != bindings.end() && it->type == type && it->set == set &&
+               it->binding == binding;
+      };
+
+  auto equirect = ShaderCompiler::compileProgram(
+      shaderDir / "equirect_to_cubemap.vert",
+      shaderDir / "equirect_to_cubemap.frag", {});
+  if (!equirect.success) {
+    std::cerr << "  COMPILE FAILED: " << equirect.errorMessage << "\n";
+    return false;
+  }
+  auto bindings = ShaderReflector::reflect(equirect.stages);
+  if (!expectBinding(bindings, "EquirectangularMap",
+                     ShaderPropertyType::Texture2D, 0, 0) ||
+      !expectBinding(bindings, "CaptureViewUBO",
+                     ShaderPropertyType::UniformBuffer, 0, 1)) {
+    std::cerr << "  FAIL: equirect_to_cubemap bindings mismatch\n";
+    return false;
+  }
+
+  auto irradiance = ShaderCompiler::compileProgram(
+      shaderDir / "ibl_irradiance_convolve.vert",
+      shaderDir / "ibl_irradiance_convolve.frag", {});
+  if (!irradiance.success) {
+    std::cerr << "  COMPILE FAILED: " << irradiance.errorMessage << "\n";
+    return false;
+  }
+  bindings = ShaderReflector::reflect(irradiance.stages);
+  if (!expectBinding(bindings, "SkyboxMap", ShaderPropertyType::TextureCube, 0,
+                     0) ||
+      !expectBinding(bindings, "CaptureViewUBO",
+                     ShaderPropertyType::UniformBuffer, 0, 1)) {
+    std::cerr << "  FAIL: irradiance bake bindings mismatch\n";
+    return false;
+  }
+
+  auto prefilter = ShaderCompiler::compileProgram(
+      shaderDir / "ibl_prefilter_env.vert",
+      shaderDir / "ibl_prefilter_env.frag", {});
+  if (!prefilter.success) {
+    std::cerr << "  COMPILE FAILED: " << prefilter.errorMessage << "\n";
+    return false;
+  }
+  bindings = ShaderReflector::reflect(prefilter.stages);
+  if (!expectBinding(bindings, "SkyboxMap", ShaderPropertyType::TextureCube, 0,
+                     0) ||
+      !expectBinding(bindings, "CaptureViewUBO",
+                     ShaderPropertyType::UniformBuffer, 0, 1) ||
+      !expectBinding(bindings, "PrefilterUBO",
+                     ShaderPropertyType::UniformBuffer, 0, 2)) {
+    std::cerr << "  FAIL: prefilter bake bindings mismatch\n";
+    return false;
+  }
+
+  auto brdf = ShaderCompiler::compileProgram(shaderDir / "ibl_brdf_lut.vert",
+                                             shaderDir / "ibl_brdf_lut.frag",
+                                             {});
+  if (!brdf.success) {
+    std::cerr << "  COMPILE FAILED: " << brdf.errorMessage << "\n";
+    return false;
+  }
+
+  std::cout << "  PASS: IBL bake shaders compile and expose expected inputs\n";
+  return true;
+}
+
 static bool testTextureCubeReflectionContract(
     const std::filesystem::path &shaderDir) {
   std::cout << "\n========================================\n";
@@ -984,6 +1065,8 @@ int main(int argc, char *argv[]) {
   if (!testBloomShaderContracts(shaderDir))
     ++failures;
   if (!testTextureCubeReflectionContract(shaderDir))
+    ++failures;
+  if (!testIblBakeShaderContracts(shaderDir))
     ++failures;
 
   std::cout << "\n========================================\n";

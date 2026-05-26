@@ -127,4 +127,15 @@ IBL 不能在每个 fragment 中直接对整张 HDR 环境图积分。Filament �
 
 ## 实施状态
 
-Draft，未实施。
+实施中。
+
+已落地：
+
+- IBL scene-level resource model 已补充 `skyboxCubemap`，并保持 `SkyboxMap`、`IrradianceMap`、`PrefilteredEnvMap`、`BrdfLut`、`EnvironmentUBO` 这些稳定 binding name。
+- 已新增 IBL bake shader 合同：equirectangular HDR -> cubemap、irradiance convolution、prefiltered environment、BRDF LUT。当前先锁定 shader 编译和 descriptor ABI。
+
+仍待落地：
+
+- Vulkan renderable cubemap/mip-chain attachment API。
+- GPU bake pass 执行、baked VulkanTexture adoption/register 路径。
+- cubemap face / BRDF LUT dump 与方向验证。

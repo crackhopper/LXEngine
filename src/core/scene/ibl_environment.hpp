@@ -41,6 +41,7 @@ struct alignas(16) EnvironmentData final : public IGpuResource {
 using EnvironmentDataSharedPtr = std::shared_ptr<EnvironmentData>;
 
 struct IblEnvironmentResources {
+  CombinedTextureSamplerSharedPtr skyboxCubemap;
   CombinedTextureSamplerSharedPtr irradianceCubemap;
   CombinedTextureSamplerSharedPtr prefilteredRadianceCubemap;
   CombinedTextureSamplerSharedPtr brdfLut;
@@ -70,6 +71,9 @@ inline TextureSharedPtr createNeutralBrdfLutTexture() {
 
 inline IblEnvironmentResources createDefaultIblEnvironmentResources() {
   IblEnvironmentResources resources;
+  resources.skyboxCubemap =
+      std::make_shared<CombinedTextureSampler>(createBlackCubeTexture());
+  resources.skyboxCubemap->setBindingName(StringID("SkyboxMap"));
   resources.irradianceCubemap =
       std::make_shared<CombinedTextureSampler>(createBlackCubeTexture());
   resources.irradianceCubemap->setBindingName(StringID("IrradianceMap"));
@@ -87,6 +91,11 @@ inline IblEnvironmentResources createDefaultIblEnvironmentResources() {
 inline IblEnvironmentResources
 completeIblEnvironmentResources(IblEnvironmentResources resources) {
   auto defaults = createDefaultIblEnvironmentResources();
+  if (!resources.skyboxCubemap) {
+    resources.skyboxCubemap = defaults.skyboxCubemap;
+  } else {
+    resources.skyboxCubemap->setBindingName(StringID("SkyboxMap"));
+  }
   if (!resources.irradianceCubemap) {
     resources.irradianceCubemap = defaults.irradianceCubemap;
   } else {
