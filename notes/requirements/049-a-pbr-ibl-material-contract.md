@@ -157,10 +157,11 @@ PBR shader 支持 diffuse irradiance。
 - RenderQueue 已按 shader 反射结果为消费 IBL 的 draw item 追加 scene-level IBL resources；未配置真实 IBL 时使用黑色 cubemap、黑色 BRDF LUT 和 `iblIntensity=0` 的默认资源，避免 descriptor 缺失和默认场景崩溃。
 - PBR shader/material-owned texture set 已覆盖 `albedoMap`、`normalMap`、`metallicRoughnessMap`、`aoMap`、`emissiveMap` 的反射合同；当前 `pbr_gold.material` 默认只启用 albedo，避免未提供切线或资源时访问不存在贴图。
 - `builtin://lxe_editor/helmet` 已从临时 Blinn-Phong bridge 切换到 PBR material bridge：绑定 glTF baseColor 与 metallicRoughness texture，写入 baseColor / metallic / roughness scalar；DamagedHelmet 缺少 tangent 时不启用 normal map。
+- DamagedHelmet 的 PBR bridge 已启用 helmet 专用 `pbr_gltf_helmet.material` 变体，额外绑定 glTF occlusion texture 到 `aoMap`、emissive texture 到 `emissiveMap`；默认材质 URI 保存/重载和参数编辑路径会保留这些真实贴图而不是退回 placeholder。
 - Scene runtime 的过渡 IBL 路径已能提供方向性 `SkyboxMap` / `PrefilteredEnvMap` cubemap，低 roughness 金属材质可通过 `textureLod(PrefilteredEnvMap, R, roughness * maxMip)` 采样非 1x1 环境数据。
 
 仍待落地：
 
 - 使用 `REQ-048-a` 真正 GPU bake 出来的 IBL 资源替换当前 CPU 过渡 bake / 默认黑资源。
-- AO/emissive 的 glTF bridge 仍需等 PBR material 资源默认策略和素材验证补齐后启用。
+- normal map 的 glTF bridge 仍需等待切线数据可用或稳定 tangent generation 策略；当前 DamagedHelmet 缺少 tangent 时保持关闭，避免错误法线空间。
 - metallic/roughness 低粗糙金属材质采样 prefiltered env map 的远端截图/目检验证。

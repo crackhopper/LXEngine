@@ -2042,6 +2042,10 @@ void testBuiltinHelmetUsesPbrMaterialBridge() {
   EXPECT(nodeForwardPassHasDescriptor(
              helmet, LX_core::StringID("metallicRoughnessMap")),
          "builtin helmet PBR bridge should bind metallicRoughness texture");
+  EXPECT(nodeForwardPassHasDescriptor(helmet, LX_core::StringID("aoMap")),
+         "builtin helmet PBR bridge should bind occlusion texture");
+  EXPECT(nodeForwardPassHasDescriptor(helmet, LX_core::StringID("emissiveMap")),
+         "builtin helmet PBR bridge should bind emissive texture");
   EXPECT(
       !nodeForwardPassHasDescriptor(helmet, LX_core::StringID("normalMap")),
       "builtin helmet should not enable normal map without tangent accessor");
@@ -2103,11 +2107,19 @@ void testBuiltinHelmetDefaultMaterialKeepsPbrBridgeOnReload() {
       nodeTextureDesc(helmet, LX_core::StringID("albedoMap"));
   const auto mrDesc =
       nodeTextureDesc(helmet, LX_core::StringID("metallicRoughnessMap"));
+  const auto aoDesc = nodeTextureDesc(helmet, LX_core::StringID("aoMap"));
+  const auto emissiveDesc =
+      nodeTextureDesc(helmet, LX_core::StringID("emissiveMap"));
   EXPECT(albedoDesc.has_value() && albedoDesc->width > 1u,
          "explicit default helmet material should keep real glTF albedo "
          "texture instead of white placeholder");
   EXPECT(mrDesc.has_value() && mrDesc->width > 1u,
          "explicit default helmet material should keep real glTF MR texture");
+  EXPECT(aoDesc.has_value() && aoDesc->width > 1u,
+         "explicit default helmet material should keep real glTF AO texture");
+  EXPECT(emissiveDesc.has_value() && emissiveDesc->width > 1u,
+         "explicit default helmet material should keep real glTF emissive "
+         "texture");
 
   const auto parameterResult = runtime.setNodeMaterialParameter(
       "/helmet", "MaterialUBO", "roughnessFactor",

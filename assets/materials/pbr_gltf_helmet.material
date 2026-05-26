@@ -1,0 +1,30 @@
+shader: pbr
+
+variants:
+  HAS_METALLIC_ROUGHNESS: true
+  HAS_NORMAL_MAP: false
+  HAS_AO_MAP: true
+  HAS_EMISSIVE_MAP: true
+
+variantRules:
+  - requires: [HAS_NORMAL_MAP]
+    depends: [HAS_METALLIC_ROUGHNESS]
+
+passes:
+  Forward:
+    renderState:
+      cullMode: Back
+      depthTest: true
+      depthWrite: true
+
+parameters:
+  MaterialUBO.baseColorFactor: [1.0, 1.0, 1.0, 1.0]
+  MaterialUBO.metallicFactor: 1.0
+  MaterialUBO.roughnessFactor: 1.0
+  MaterialUBO.ao: 1.0
+
+resources:
+  albedoMap: white
+  metallicRoughnessMap: white
+  aoMap: white
+  emissiveMap: black

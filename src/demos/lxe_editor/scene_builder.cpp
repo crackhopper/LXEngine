@@ -170,10 +170,16 @@ loadCombinedTexture(const std::filesystem::path &path) {
 MaterialInstanceSharedPtr
 makeHelmetMaterialFromPbr(const infra::GLTFPbrMaterial &pbr,
                           const std::filesystem::path &gltfDir) {
-  auto mat = LX_infra::loadGenericMaterial("assets/materials/pbr_gltf.material");
+  const bool hasAoMap = !pbr.occlusionTexture.empty();
+  const bool hasEmissiveMap = !pbr.emissiveTexture.empty();
+  const char *materialPath =
+      hasAoMap || hasEmissiveMap
+          ? "assets/materials/pbr_gltf_helmet.material"
+          : "assets/materials/pbr_gltf.material";
+  auto mat = LX_infra::loadGenericMaterial(materialPath);
   if (!mat) {
-    throw std::runtime_error(
-        "[lxe_editor] failed to load assets/materials/pbr_gltf.material");
+    throw std::runtime_error("[lxe_editor] failed to load " +
+                             std::string(materialPath));
   }
 
   mat->setParameter(StringID("MaterialUBO"), StringID("baseColorFactor"),
@@ -200,6 +206,24 @@ makeHelmetMaterialFromPbr(const infra::GLTFPbrMaterial &pbr,
     } catch (const std::exception &e) {
       std::cerr << "[lxe_editor] metallicRoughness texture load failed ("
                 << e.what() << "); falling back to scalar factors\n";
+    }
+  }
+  if (hasAoMap) {
+    try {
+      auto sampler = loadCombinedTexture(gltfDir / pbr.occlusionTexture);
+      mat->setTexture(StringID("aoMap"), std::move(sampler));
+    } catch (const std::exception &e) {
+      std::cerr << "[lxe_editor] occlusion texture load failed (" << e.what()
+                << "); falling back to material AO scalar\n";
+    }
+  }
+  if (hasEmissiveMap) {
+    try {
+      auto sampler = loadCombinedTexture(gltfDir / pbr.emissiveTexture);
+      mat->setTexture(StringID("emissiveMap"), std::move(sampler));
+    } catch (const std::exception &e) {
+      std::cerr << "[lxe_editor] emissive texture load failed (" << e.what()
+                << "); falling back to no emissive texture\n";
     }
   }
 
