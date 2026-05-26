@@ -168,8 +168,8 @@ loadCombinedTexture(const std::filesystem::path &path) {
 }
 
 MaterialInstanceSharedPtr
-makeHelmetMaterial(const infra::GLTFPbrMaterial &pbr,
-                   const std::filesystem::path &gltfDir) {
+makeHelmetMaterialFromPbr(const infra::GLTFPbrMaterial &pbr,
+                          const std::filesystem::path &gltfDir) {
   auto mat = LX_infra::loadGenericMaterial("assets/materials/pbr_gltf.material");
   if (!mat) {
     throw std::runtime_error(
@@ -609,9 +609,16 @@ buildHelmetNode(const std::filesystem::path &gltfPath) {
 
   auto mesh = buildMeshFromGltf(loader);
   auto material =
-      makeHelmetMaterial(loader.getMaterial(), gltfPath.parent_path());
+      makeHelmetMaterialFromPbr(loader.getMaterial(), gltfPath.parent_path());
 
   return makeRenderableNode("helmet", std::move(mesh), std::move(material));
+}
+
+LX_core::MaterialInstanceSharedPtr
+buildHelmetMaterial(const std::filesystem::path &gltfPath) {
+  infra::GLTFLoader loader;
+  loader.load(gltfPath.string());
+  return makeHelmetMaterialFromPbr(loader.getMaterial(), gltfPath.parent_path());
 }
 
 LX_core::SceneNodeSharedPtr buildGroundNode() {

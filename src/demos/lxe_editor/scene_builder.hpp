@@ -22,6 +22,11 @@ inline constexpr LX_core::VisibilityLayerMask Layer_EditorHelper = 1u << 30;
 LX_core::SceneNodeSharedPtr
 buildHelmetNode(const std::filesystem::path &gltfPath);
 
+// Loads the same bridge-backed PBR material used by buildHelmetNode without
+// replacing an existing node mesh or transform.
+LX_core::MaterialInstanceSharedPtr
+buildHelmetMaterial(const std::filesystem::path &gltfPath);
+
 // Builds a 20m x 20m XZ ground plane (y = 0) with the Blinn-Phong material,
 // albedo sampling disabled. Returns a SceneNode ready to attach.
 LX_core::SceneNodeSharedPtr buildGroundNode();

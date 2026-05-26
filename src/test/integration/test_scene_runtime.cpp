@@ -156,6 +156,19 @@ nodeMaterialInstance(LX_core::SceneNode *node) {
   return materialComponent->get().getMaterialInstance();
 }
 
+[[nodiscard]] std::optional<LX_core::TextureDesc>
+nodeTextureDesc(LX_core::SceneNode *node, const LX_core::StringID &binding) {
+  const auto material = nodeMaterialInstance(node);
+  if (!material) {
+    return std::nullopt;
+  }
+  const auto sampler = material->getTexture(binding);
+  if (!sampler || !sampler->texture()) {
+    return std::nullopt;
+  }
+  return sampler->texture()->desc();
+}
+
 void testRuntimeCreatesEmptyScene() {
   demo::SceneRuntime runtime;
   runtime.createEmptyScene();
@@ -2042,6 +2055,88 @@ void testBuiltinHelmetUsesPbrMaterialBridge() {
          "builtin helmet should expose glTF roughness scalar");
 }
 
+void testBuiltinHelmetDefaultMaterialKeepsPbrBridgeOnReload() {
+  const std::filesystem::path path =
+      makeTempPath("lx_scene_runtime_builtin_helmet_default_pbr.yaml");
+  writeSceneFile(path, "scene:\n"
+                       "  name: Builtin Helmet Saved PBR\n"
+                       "  gameplayCameraPath: /game_cam\n"
+                       "nodes:\n"
+                       "  - nodeName: game_camera\n"
+                       "    name: game_cam\n"
+                       "    transform:\n"
+                       "      translation: [0.0, 2.0, 6.0]\n"
+                       "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                       "      scale: [1.0, 1.0, 1.0]\n"
+                       "    visibilityMask: 4294967295\n"
+                       "    camera:\n"
+                       "      eye: [0.0, 2.0, 6.0]\n"
+                       "      target: [0.0, 0.0, 0.0]\n"
+                       "      up: [0.0, 1.0, 0.0]\n"
+                       "      type: perspective\n"
+                       "      fovY: 45.0\n"
+                       "      aspect: 1.7777778\n"
+                       "      nearPlane: 0.1\n"
+                       "      farPlane: 1000.0\n"
+                       "      left: -1.0\n"
+                       "      right: 1.0\n"
+                       "      bottom: -1.0\n"
+                       "      top: 1.0\n"
+                       "      cullingMask: 4294967295\n"
+                       "  - nodeName: helmet\n"
+                       "    name: helmet\n"
+                       "    transform:\n"
+                       "      translation: [0.0, 0.0, 0.0]\n"
+                       "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                       "      scale: [1.0, 1.0, 1.0]\n"
+                       "    visibilityMask: 4294967295\n"
+                       "    mesh:\n"
+                       "      uri: builtin://lxe_editor/helmet\n"
+                       "    material:\n"
+                       "      uri: assets/materials/pbr_gltf.material\n");
+
+  demo::SceneRuntime runtime;
+  runtime.loadFromDocumentPath(path);
+
+  auto *helmet = runtime.scene()->findByPath("/helmet");
+  const auto albedoDesc =
+      nodeTextureDesc(helmet, LX_core::StringID("albedoMap"));
+  const auto mrDesc =
+      nodeTextureDesc(helmet, LX_core::StringID("metallicRoughnessMap"));
+  EXPECT(albedoDesc.has_value() && albedoDesc->width > 1u,
+         "explicit default helmet material should keep real glTF albedo "
+         "texture instead of white placeholder");
+  EXPECT(mrDesc.has_value() && mrDesc->width > 1u,
+         "explicit default helmet material should keep real glTF MR texture");
+
+  const auto parameterResult = runtime.setNodeMaterialParameter(
+      "/helmet", "MaterialUBO", "roughnessFactor",
+      LX_core::MaterialParameterValue{
+          .type = LX_core::MaterialParameterValueType::Float,
+          .floatValue = 0.42f,
+      });
+  EXPECT(parameterResult.ok,
+         "helmet default material parameter edit should preserve bridge path");
+  const auto editedAlbedoDesc =
+      nodeTextureDesc(runtime.scene()->findByPath("/helmet"),
+                      LX_core::StringID("albedoMap"));
+  EXPECT(editedAlbedoDesc.has_value() && editedAlbedoDesc->width > 1u,
+         "helmet parameter edit should not replace glTF albedo with "
+         "placeholder texture");
+
+  const std::filesystem::path savePath =
+      makeTempPath("lx_scene_runtime_builtin_helmet_default_pbr_saved.yaml");
+  runtime.saveToDocumentPath(savePath);
+
+  demo::SceneRuntime reloaded;
+  reloaded.loadFromDocumentPath(savePath);
+  auto *reloadedHelmet = reloaded.scene()->findByPath("/helmet");
+  const auto reloadedAlbedoDesc =
+      nodeTextureDesc(reloadedHelmet, LX_core::StringID("albedoMap"));
+  EXPECT(reloadedAlbedoDesc.has_value() && reloadedAlbedoDesc->width > 1u,
+         "saved default helmet material should reload through glTF PBR bridge");
+}
+
 void testShadowTutorialSceneLoadsSavesAndReloads() {
   const std::filesystem::path path = std::filesystem::current_path() /
                                      "assets" / "scenes" /
@@ -2229,6 +2324,7 @@ int main() {
   testProjectAssetMaterialOverridesRuntimeAssetMaterial();
   testBuiltinModelMaterialUriKeepsCatalogAlbedoTexture();
   testBuiltinHelmetUsesPbrMaterialBridge();
+  testBuiltinHelmetDefaultMaterialKeepsPbrBridgeOnReload();
   testShadowTutorialSceneLoadsSavesAndReloads();
   testIblMetalSphereSceneLoadsAndInjectsIblResources();
 
