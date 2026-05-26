@@ -475,10 +475,16 @@ std::optional<std::reference_wrapper<VulkanFrameGraphAttachment>>
 VulkanResourceManager::getFrameGraphAttachment(StringID name) {
   const VulkanFrameGraphAttachmentKey key{name, m_currentFrameIndex};
   auto it = m_frameGraphAttachments.find(key);
-  if (it == m_frameGraphAttachments.end()) {
-    return std::nullopt;
+  if (it != m_frameGraphAttachments.end()) {
+    return std::ref(it->second);
   }
-  return std::ref(it->second);
+
+  for (auto &[candidateKey, attachment] : m_frameGraphAttachments) {
+    if (candidateKey.name == name) {
+      return std::ref(attachment);
+    }
+  }
+  return std::nullopt;
 }
 
 void VulkanResourceManager::updateFrameGraphAttachmentLayout(

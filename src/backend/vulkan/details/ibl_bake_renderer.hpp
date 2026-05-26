@@ -66,6 +66,7 @@ private:
   void renderIrradianceCubemap(u32 irradianceSize);
   void renderPrefilterCubemap(u32 prefilterSize, u32 mipLevels);
   void clearBrdfLut(u32 size);
+  void transitionBrdfLutToShaderRead();
   void transitionCubemapToShaderRead(StringID resourceName, u32 mipLevels);
   VkImageLayout getTrackedCubemapLayout(StringID resourceName, u32 mipLevel,
                                         u32 faceLayer) const;

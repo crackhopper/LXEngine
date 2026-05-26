@@ -385,8 +385,12 @@ IblBakeRenderer::bakeStaticEnvironment(const IblBakeSettings &settings) {
   renderEquirectToCubemap(environmentMap, settings.skyboxSize);
   transitionCubemapToShaderRead(StringID("SkyboxMap"), 1);
   renderIrradianceCubemap(settings.irradianceSize);
+  transitionCubemapToShaderRead(StringID("IrradianceMap"), 1);
   renderPrefilterCubemap(settings.prefilterSize, settings.prefilterMipCount);
+  transitionCubemapToShaderRead(StringID("PrefilteredEnvMap"),
+                                settings.prefilterMipCount);
   clearBrdfLut(settings.brdfLutSize);
+  transitionBrdfLutToShaderRead();
 
   IblBakeResult result{
       .skybox = std::make_shared<BakedTextureResource>(StringID("SkyboxMap"),
@@ -756,6 +760,38 @@ void IblBakeRenderer::clearBrdfLut(u32 size) {
   attachment.currentLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 }
 
+void IblBakeRenderer::transitionBrdfLutToShaderRead() {
+  auto attachmentOpt = m_resourceManager.getFrameGraphAttachment(
+      StringID("BrdfLut"));
+  if (!attachmentOpt.has_value()) {
+    throw std::runtime_error("missing BRDF LUT bake attachment");
+  }
+  auto &attachment = attachmentOpt->get();
+  if (attachment.currentLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+    return;
+  }
+
+  VkAccessFlags srcAccess = 0;
+  VkPipelineStageFlags srcStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+  if (attachment.currentLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
+    srcAccess = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    srcStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+  } else if (attachment.currentLayout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) {
+    srcAccess = VK_ACCESS_TRANSFER_READ_BIT;
+    srcStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+  }
+
+  auto cmd = m_cmdBufferManager.beginSingleTimeCommands();
+  transitionTexture2D(cmd->getHandle(), attachment.texture->getHandle(),
+                      attachment.currentLayout,
+                      VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, srcAccess,
+                      VK_ACCESS_SHADER_READ_BIT, srcStage,
+                      VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+  m_cmdBufferManager.endSingleTimeCommands(std::move(cmd),
+                                           m_device.getGraphicsQueue());
+  attachment.currentLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+}
+
 bool IblBakeRenderer::debugReadbackCubemapFaceHasData(StringID resourceName,
                                                       u32 mipLevel,
                                                       u32 faceLayer,
@@ -831,12 +867,20 @@ bool IblBakeRenderer::debugReadbackBrdfLutHasData(u32 extent) {
       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
           VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
   auto cmd = m_cmdBufferManager.beginSingleTimeCommands();
+  VkAccessFlags srcAccess = 0;
+  VkPipelineStageFlags srcStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+  if (attachment.currentLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
+    srcAccess = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    srcStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+  } else if (attachment.currentLayout ==
+             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+    srcAccess = VK_ACCESS_SHADER_READ_BIT;
+    srcStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+  }
   transitionTexture2D(cmd->getHandle(), attachment.texture->getHandle(),
-                      VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                      VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                      VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-                      VK_ACCESS_TRANSFER_READ_BIT,
-                      VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                      attachment.currentLayout,
+                      VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, srcAccess,
+                      VK_ACCESS_TRANSFER_READ_BIT, srcStage,
                       VK_PIPELINE_STAGE_TRANSFER_BIT);
   VkBufferImageCopy region{};
   region.bufferOffset = 0;
@@ -853,6 +897,7 @@ bool IblBakeRenderer::debugReadbackBrdfLutHasData(u32 extent) {
                          readback->getHandle(), 1, &region);
   m_cmdBufferManager.endSingleTimeCommands(std::move(cmd),
                                            m_device.getGraphicsQueue());
+  attachment.currentLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
 
   const void *mapped = readback->map();
   const bool hasData = bufferHasNonZeroByte(mapped, byteSize);
