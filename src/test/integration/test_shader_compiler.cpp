@@ -724,6 +724,41 @@ static bool testPostProcessShaderContract(
   return true;
 }
 
+static bool testTextureCubeReflectionContract(
+    const std::filesystem::path &shaderDir) {
+  std::cout << "\n========================================\n";
+  std::cout << "  Test: TextureCube reflection contract\n";
+  std::cout << "========================================\n";
+
+  const auto vertPath = shaderDir / "texture_cube_probe.vert";
+  const auto fragPath = shaderDir / "texture_cube_probe.frag";
+  auto compileResult = ShaderCompiler::compileProgram(vertPath, fragPath, {});
+  if (!compileResult.success) {
+    std::cerr << "  COMPILE FAILED: " << compileResult.errorMessage << "\n";
+    return false;
+  }
+
+  const auto bindings = ShaderReflector::reflect(compileResult.stages);
+  const auto environment =
+      std::find_if(bindings.begin(), bindings.end(), [](const auto &binding) {
+        return binding.name == "EnvironmentMap";
+      });
+  if (environment == bindings.end() ||
+      environment->type != ShaderPropertyType::TextureCube) {
+    std::cerr << "  FAIL: EnvironmentMap TextureCube binding missing\n";
+    return false;
+  }
+  if (environment->set != 1 || environment->binding != 0) {
+    std::cerr << "  FAIL: EnvironmentMap expected set=1 binding=0, got set="
+              << environment->set << " binding=" << environment->binding
+              << "\n";
+    return false;
+  }
+
+  std::cout << "  PASS: samplerCube reflects as TextureCube\n";
+  return true;
+}
+
 int main(int argc, char *argv[]) {
   expSetEnvVK();
   // Determine shader directory
@@ -794,6 +829,8 @@ int main(int argc, char *argv[]) {
   if (!testMeshDebugShaderContract(shaderDir))
     ++failures;
   if (!testPostProcessShaderContract(shaderDir))
+    ++failures;
+  if (!testTextureCubeReflectionContract(shaderDir))
     ++failures;
 
   std::cout << "\n========================================\n";
