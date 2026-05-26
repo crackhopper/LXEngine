@@ -60,6 +60,10 @@ bool approxMatrix(const Mat4f &a, const Mat4f &b, float epsilon = 0.001f) {
 
 class FakeShader : public IShader {
 public:
+  void setBindings(std::vector<ShaderResourceBinding> bindings) {
+    m_bindings = std::move(bindings);
+  }
+
   const std::vector<ShaderStageCode> &getAllStages() const override {
     return m_stages;
   }
@@ -124,6 +128,30 @@ makeRenderableWithMask(VisibilityLayerMask mask,
                        const std::string &shaderName = "fake_fg") {
   auto node = makeRenderable(shaderName);
   node->setVisibilityLayerMask(mask);
+  return node;
+}
+
+std::shared_ptr<SceneNode> makeIblRenderable() {
+  auto node = makeRenderable("fake_fg_ibl");
+  auto materialComponent = node->getComponent<MaterialComponent>();
+  if (!materialComponent) {
+    return node;
+  }
+  auto material = materialComponent->get().getMaterialInstance();
+  auto shader = std::dynamic_pointer_cast<FakeShader>(
+      material->getPassShader(Pass_Forward));
+  if (shader) {
+    shader->setBindings({
+        ShaderResourceBinding{"IrradianceMap", 3, 0,
+                              ShaderPropertyType::TextureCube},
+        ShaderResourceBinding{"PrefilteredEnvMap", 3, 1,
+                              ShaderPropertyType::TextureCube},
+        ShaderResourceBinding{"BrdfLut", 3, 2,
+                              ShaderPropertyType::Texture2D},
+        ShaderResourceBinding{"EnvironmentUBO", 3, 3,
+                              ShaderPropertyType::UniformBuffer, 1, 16},
+    });
+  }
   return node;
 }
 
@@ -923,6 +951,93 @@ void testVisibilityFilteringKeepsSceneResources() {
   }
 }
 
+void testIblResourcesInjectOnlyForIblShaderItems() {
+  auto regular = makeRenderable("regular_no_ibl");
+  auto ibl = makeIblRenderable();
+  auto scene = Scene::create("ibl_injection");
+  scene->addRenderable(regular);
+  scene->addRenderable(ibl);
+  scene->addCamera(makeCameraWithTargetAndMask(RenderTarget{}, Layer_All));
+
+  RenderQueue queue;
+  queue.buildFromScene(*scene, Pass_Forward, RenderTarget{});
+
+  bool sawRegular = false;
+  bool sawIbl = false;
+  for (const auto &item : queue.getItems()) {
+    const bool itemConsumesIbl =
+        std::any_of(item.shaderInfo->getReflectionBindings().begin(),
+                    item.shaderInfo->getReflectionBindings().end(),
+                    [](const auto &binding) {
+                      return binding.name == "IrradianceMap";
+                    });
+    bool hasIrradiance = false;
+    bool hasPrefilter = false;
+    bool hasBrdf = false;
+    bool hasEnvironment = false;
+    for (const auto &resource : item.descriptorResources) {
+      if (!resource) {
+        continue;
+      }
+      const auto binding = resource->getBindingName();
+      hasIrradiance = hasIrradiance || binding == StringID("IrradianceMap");
+      hasPrefilter = hasPrefilter || binding == StringID("PrefilteredEnvMap");
+      hasBrdf = hasBrdf || binding == StringID("BrdfLut");
+      hasEnvironment = hasEnvironment || binding == StringID("EnvironmentUBO");
+    }
+
+    if (!itemConsumesIbl) {
+      sawRegular = true;
+      EXPECT(!hasIrradiance && !hasPrefilter && !hasBrdf && !hasEnvironment,
+             "regular shader should not receive IBL resources");
+    }
+    if (itemConsumesIbl) {
+      sawIbl = true;
+      EXPECT(hasIrradiance && hasPrefilter && hasBrdf && hasEnvironment,
+             "IBL shader should receive all scene-level IBL resources");
+    }
+  }
+
+  EXPECT(sawRegular, "regular item should be present");
+  EXPECT(sawIbl, "IBL item should be present");
+}
+
+void testPartialIblResourcesAreCompletedBeforeInjection() {
+  auto ibl = makeIblRenderable();
+  auto scene = Scene::create("partial_ibl_injection");
+  scene->addRenderable(ibl);
+  scene->addCamera(makeCameraWithTargetAndMask(RenderTarget{}, Layer_All));
+
+  IblEnvironmentResources partial;
+  partial.environmentUbo = std::make_shared<EnvironmentData>(1.0f, 5.0f);
+  scene->setIblEnvironmentResources(std::move(partial));
+
+  RenderQueue queue;
+  queue.buildFromScene(*scene, Pass_Forward, RenderTarget{});
+  EXPECT(queue.getItems().size() == 1,
+         "partial IBL scene should still render the IBL item");
+  if (queue.getItems().empty()) {
+    return;
+  }
+
+  bool hasIrradiance = false;
+  bool hasPrefilter = false;
+  bool hasBrdf = false;
+  bool hasEnvironment = false;
+  for (const auto &resource : queue.getItems().front().descriptorResources) {
+    if (!resource) {
+      continue;
+    }
+    const auto binding = resource->getBindingName();
+    hasIrradiance = hasIrradiance || binding == StringID("IrradianceMap");
+    hasPrefilter = hasPrefilter || binding == StringID("PrefilteredEnvMap");
+    hasBrdf = hasBrdf || binding == StringID("BrdfLut");
+    hasEnvironment = hasEnvironment || binding == StringID("EnvironmentUBO");
+  }
+  EXPECT(hasIrradiance && hasPrefilter && hasBrdf && hasEnvironment,
+         "partial IBL config should be completed with safe default resources");
+}
+
 void testRenderQueueDebugOverrideUsesExplicitResourcesAndLayerMask() {
   auto visible = makeRenderableWithMask(Layer_Default, "debug_visible");
   auto overlay = makeRenderableWithMask(Layer_EditorOverlay, "debug_overlay");
@@ -1064,6 +1179,8 @@ int main() {
   testVisibilityMaskFiltersRenderables();
   testVisibilityMaskOrsMatchingCameraMasks();
   testVisibilityFilteringKeepsSceneResources();
+  testIblResourcesInjectOnlyForIblShaderItems();
+  testPartialIblResourcesAreCompletedBeforeInjection();
   testRenderQueueDebugOverrideUsesExplicitResourcesAndLayerMask();
   testDebugOnlyRenderableIsOverlayOnly();
   testSceneCreateDoesNotSeedHiddenLight();

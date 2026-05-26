@@ -5,6 +5,7 @@
 #include "core/math/ray.hpp"
 #include "core/pipeline/pipeline_key.hpp"
 #include "core/scene/components/camera_component.hpp"
+#include "core/scene/ibl_environment.hpp"
 #include "core/scene/light.hpp"
 #include "core/scene/object.hpp"
 #include "core/scene/scene_events.hpp"
@@ -206,6 +207,9 @@ public:
   [[nodiscard]] SceneLightsDataSharedPtr getSceneLightsUBO() const {
     return m_sceneLightsUbo;
   }
+  void setIblEnvironmentResources(IblEnvironmentResources resources);
+  [[nodiscard]] std::vector<IGpuResourceSharedPtr>
+  getIblEnvironmentResources() const;
   const std::string &getSceneName() const { return m_sceneName; }
   struct PickHit {
     SceneNodeSharedPtr node;
@@ -250,6 +254,7 @@ private:
   std::unordered_map<const SceneNode *, LightBaseSharedPtr> m_lightsByNode;
   mutable SceneLightsDataSharedPtr m_sceneLightsUbo =
       std::make_shared<SceneLightsData>();
+  mutable std::optional<IblEnvironmentResources> m_iblEnvironmentResources;
   SceneEventHub m_events;
 };
 

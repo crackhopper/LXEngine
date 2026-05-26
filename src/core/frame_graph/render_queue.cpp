@@ -4,6 +4,7 @@
 #include "core/scene/scene.hpp"
 
 #include <algorithm>
+#include <string_view>
 #include <unordered_set>
 
 namespace LX_core {
@@ -33,6 +34,20 @@ RenderingItem makeItemFromValidatedData(const ValidatedRenderablePassData &data)
   item.objectSignature = data.objectSignature;
   item.materialSignature = data.materialSignature;
   return item;
+}
+
+bool shaderConsumesIbl(const ShaderPtr &shader) {
+  if (!shader) {
+    return false;
+  }
+  for (const auto &binding : shader->getReflectionBindings()) {
+    const std::string_view name(binding.name);
+    if (name == "IrradianceMap" || name == "PrefilteredEnvMap" ||
+        name == "BrdfLut" || name == "EnvironmentUBO") {
+      return true;
+    }
+  }
+  return false;
 }
 
 } // namespace
@@ -104,6 +119,12 @@ void RenderQueue::buildFromSceneWithOverrides(
     item.descriptorResources.insert(item.descriptorResources.end(),
                                     sceneResources.begin(),
                                     sceneResources.end());
+    if (shaderConsumesIbl(item.shaderInfo)) {
+      auto iblResources = scene.getIblEnvironmentResources();
+      item.descriptorResources.insert(item.descriptorResources.end(),
+                                      iblResources.begin(),
+                                      iblResources.end());
+    }
 
     m_items.push_back(std::move(item));
   }

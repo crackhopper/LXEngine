@@ -759,6 +759,74 @@ static bool testTextureCubeReflectionContract(
   return true;
 }
 
+static bool testPbrIblContract(const std::filesystem::path &vertPath,
+                               const std::filesystem::path &fragPath) {
+  std::cout << "\n========================================\n";
+  std::cout << "  Test: PBR IBL contract\n";
+  std::cout << "========================================\n";
+
+  std::string fragSource;
+  {
+    std::ifstream in(fragPath);
+    fragSource.assign(std::istreambuf_iterator<char>(in),
+                      std::istreambuf_iterator<char>());
+  }
+  if (fragSource.find("color = color / (color + vec3(1.0))") !=
+          std::string::npos ||
+      fragSource.find("pow(color, vec3(1.0 / 2.2))") != std::string::npos) {
+    std::cerr << "  FAIL: PBR shader still performs final tone/gamma mapping\n";
+    return false;
+  }
+
+  auto compileResult = ShaderCompiler::compileProgram(vertPath, fragPath, {});
+  if (!compileResult.success) {
+    std::cerr << "  COMPILE FAILED: " << compileResult.errorMessage << "\n";
+    return false;
+  }
+
+  const auto bindings = ShaderReflector::reflect(compileResult.stages);
+  const auto findBinding = [&](const std::string &name) {
+    return std::find_if(bindings.begin(), bindings.end(),
+                        [&](const auto &binding) {
+                          return binding.name == name;
+                        });
+  };
+
+  const auto irradiance = findBinding("IrradianceMap");
+  const auto prefiltered = findBinding("PrefilteredEnvMap");
+  const auto brdf = findBinding("BrdfLut");
+  const auto environment = findBinding("EnvironmentUBO");
+
+  if (irradiance == bindings.end() ||
+      irradiance->type != ShaderPropertyType::TextureCube ||
+      irradiance->set != 3 || irradiance->binding != 0) {
+    std::cerr << "  FAIL: IrradianceMap TextureCube set=3 binding=0 missing\n";
+    return false;
+  }
+  if (prefiltered == bindings.end() ||
+      prefiltered->type != ShaderPropertyType::TextureCube ||
+      prefiltered->set != 3 || prefiltered->binding != 1) {
+    std::cerr
+        << "  FAIL: PrefilteredEnvMap TextureCube set=3 binding=1 missing\n";
+    return false;
+  }
+  if (brdf == bindings.end() || brdf->type != ShaderPropertyType::Texture2D ||
+      brdf->set != 3 || brdf->binding != 2) {
+    std::cerr << "  FAIL: BrdfLut Texture2D set=3 binding=2 missing\n";
+    return false;
+  }
+  if (environment == bindings.end() ||
+      environment->type != ShaderPropertyType::UniformBuffer ||
+      environment->set != 3 || environment->binding != 3 ||
+      environment->size != 16) {
+    std::cerr << "  FAIL: EnvironmentUBO set=3 binding=3 size=16 missing\n";
+    return false;
+  }
+
+  std::cout << "  PASS: PBR outputs HDR and reflects IBL bindings\n";
+  return true;
+}
+
 int main(int argc, char *argv[]) {
   expSetEnvVK();
   // Determine shader directory
@@ -803,6 +871,8 @@ int main(int argc, char *argv[]) {
   if (!testVariantCombination(vertPath, fragPath, "PBR + All Variants",
                               {{"HAS_NORMAL_MAP", true},
                                {"HAS_METALLIC_ROUGHNESS", true}}))
+    ++failures;
+  if (!testPbrIblContract(vertPath, fragPath))
     ++failures;
 
   // Test 4: BlinnPhong MaterialUBO member reflection (REQ-004)

@@ -43,6 +43,13 @@ layout(set = 2, binding = 0) uniform LightUBO {
     vec4 color;
 } light;
 
+layout(set = 3, binding = 0) uniform samplerCube IrradianceMap;
+layout(set = 3, binding = 1) uniform samplerCube PrefilteredEnvMap;
+layout(set = 3, binding = 2) uniform sampler2D BrdfLut;
+layout(set = 3, binding = 3) uniform EnvironmentUBO {
+    vec4 params; // x: IBL intensity, y: prefiltered mip count
+} environment;
+
 const float PI = 3.14159265359;
 
 // ---------- PBR functions ----------
@@ -73,6 +80,11 @@ float geometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
 
 vec3 fresnelSchlick(float cosTheta, vec3 F0) {
     return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
+vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness) {
+    return F0 + (max(vec3(1.0 - roughness), F0) - F0) *
+                pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
 void main() {
@@ -120,13 +132,26 @@ void main() {
 
     // Ambient
     vec3 ambient = vec3(0.03) * albedo.rgb * material.ao;
+    float iblIntensity = max(environment.params.x, 0.0);
+    if (iblIntensity > 0.0) {
+        float NdotV = max(dot(N, V), 0.0);
+        vec3 F_ibl = fresnelSchlickRoughness(NdotV, F0, roughness);
+        vec3 kD_ibl = (vec3(1.0) - F_ibl) * (1.0 - metallic);
+
+        vec3 irradiance = texture(IrradianceMap, N).rgb;
+        vec3 diffuse = irradiance * albedo.rgb;
+
+        vec3 R = reflect(-V, N);
+        float maxMip = max(environment.params.y - 1.0, 0.0);
+        vec3 prefilteredColor =
+            textureLod(PrefilteredEnvMap, R, roughness * maxMip).rgb;
+        vec2 brdf = texture(BrdfLut, vec2(NdotV, roughness)).rg;
+        vec3 specularIbl = prefilteredColor * (F_ibl * brdf.x + brdf.y);
+
+        ambient = (kD_ibl * diffuse + specularIbl) * material.ao * iblIntensity;
+    }
 
     vec3 color = ambient + Lo;
-
-    // Tone mapping (Reinhard)
-    color = color / (color + vec3(1.0));
-    // Gamma correction
-    color = pow(color, vec3(1.0 / 2.2));
 
     outColor = vec4(color, albedo.a);
 }

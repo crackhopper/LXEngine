@@ -264,6 +264,34 @@ Scene::getSceneLevelResources(StringID pass, const RenderTarget &target) const {
   return out;
 }
 
+void Scene::setIblEnvironmentResources(IblEnvironmentResources resources) {
+  m_iblEnvironmentResources =
+      completeIblEnvironmentResources(std::move(resources));
+}
+
+std::vector<IGpuResourceSharedPtr> Scene::getIblEnvironmentResources() const {
+  if (!m_iblEnvironmentResources.has_value()) {
+    m_iblEnvironmentResources =
+        completeIblEnvironmentResources(IblEnvironmentResources{});
+  }
+
+  std::vector<IGpuResourceSharedPtr> out;
+  const auto &resources = *m_iblEnvironmentResources;
+  if (resources.irradianceCubemap) {
+    out.push_back(resources.irradianceCubemap);
+  }
+  if (resources.prefilteredRadianceCubemap) {
+    out.push_back(resources.prefilteredRadianceCubemap);
+  }
+  if (resources.brdfLut) {
+    out.push_back(resources.brdfLut);
+  }
+  if (resources.environmentUbo) {
+    out.push_back(resources.environmentUbo);
+  }
+  return out;
+}
+
 /*
 @source_analysis.section getCombinedCameraCullingMask：可见性裁剪与资源筛选解耦
 queue 用这个合并 mask 决定 renderable 是否进入当前 queue（按位与 visibilityMask

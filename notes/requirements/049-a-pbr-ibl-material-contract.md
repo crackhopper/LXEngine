@@ -147,4 +147,17 @@ PBR shader 支持 diffuse irradiance。
 
 ## 实施状态
 
-Draft，未实施。
+实施中。
+
+已落地：
+
+- `pbr.frag` 已移除 shader-local tone mapping/gamma，Forward 输出保持线性 HDR。
+- PBR shader 已声明 scene/system-owned IBL binding：`IrradianceMap`、`PrefilteredEnvMap`、`BrdfLut`、`EnvironmentUBO`。
+- system-owned binding contract 已覆盖上述 IBL 资源，`.material resources` 不负责提供它们。
+- RenderQueue 已按 shader 反射结果为消费 IBL 的 draw item 追加 scene-level IBL resources；未配置真实 IBL 时使用黑色 cubemap、黑色 BRDF LUT 和 `iblIntensity=0` 的默认资源，避免 descriptor 缺失和默认场景崩溃。
+
+仍待落地：
+
+- 使用 `REQ-048-a` 真正 bake 出来的 IBL 资源替换默认黑资源。
+- 完整 material-owned PBR texture set（AO/emissive 等）和 glTF PBR bridge。
+- metallic/roughness 低粗糙金属材质采样 prefiltered env map 的视觉验证。

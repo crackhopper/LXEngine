@@ -2,6 +2,7 @@
 #include "core/asset/shader.hpp"
 #include "core/asset/shader_binding_ownership.hpp"
 #include "core/frame_graph/pass.hpp"
+#include "core/scene/ibl_environment.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/string_table.hpp"
 #include "infra/material_loader/generic_material_loader.hpp"
@@ -386,12 +387,43 @@ void test_isSystemOwnedBinding_classification() {
   REQUIRE(isSystemOwnedBinding("CameraUBO") == true);
   REQUIRE(isSystemOwnedBinding("LightUBO") == true);
   REQUIRE(isSystemOwnedBinding("SceneLightsUBO") == true);
+  REQUIRE(isSystemOwnedBinding("BloomSource") == true);
+  REQUIRE(isSystemOwnedBinding("BloomColor") == true);
+  REQUIRE(isSystemOwnedBinding("IrradianceMap") == true);
+  REQUIRE(isSystemOwnedBinding("PrefilteredEnvMap") == true);
+  REQUIRE(isSystemOwnedBinding("BrdfLut") == true);
+  REQUIRE(isSystemOwnedBinding("EnvironmentUBO") == true);
   REQUIRE(isSystemOwnedBinding("Bones") == true);
   REQUIRE(isSystemOwnedBinding("MaterialUBO") == false);
   REQUIRE(isSystemOwnedBinding("SurfaceParams") == false);
   REQUIRE(isSystemOwnedBinding("albedoMap") == false);
   REQUIRE(isSystemOwnedBinding("") == false);
+  REQUIRE(getExpectedTypeForSystemBinding("IrradianceMap") ==
+          ShaderPropertyType::TextureCube);
+  REQUIRE(getExpectedTypeForSystemBinding("BloomSource") ==
+          ShaderPropertyType::Texture2D);
+  REQUIRE(getExpectedTypeForSystemBinding("BloomColor") ==
+          ShaderPropertyType::Texture2D);
+  REQUIRE(getExpectedTypeForSystemBinding("PrefilteredEnvMap") ==
+          ShaderPropertyType::TextureCube);
+  REQUIRE(getExpectedTypeForSystemBinding("BrdfLut") ==
+          ShaderPropertyType::Texture2D);
+  REQUIRE(getExpectedTypeForSystemBinding("EnvironmentUBO") ==
+          ShaderPropertyType::UniformBuffer);
   std::cout << "  ownership classification correct\n";
+}
+
+void test_environment_data_setters_mark_dirty() {
+  std::cout << "\n-- test_environment_data_setters_mark_dirty --\n";
+  EnvironmentData data;
+  REQUIRE(data.getIblIntensity() == 0.0f);
+  REQUIRE(data.getPrefilteredMipCount() == 1.0f);
+  REQUIRE(!data.isDirty());
+  data.setParams(2.0f, 6.0f);
+  REQUIRE(data.isDirty());
+  REQUIRE(data.getIblIntensity() == 2.0f);
+  REQUIRE(data.getPrefilteredMipCount() == 6.0f);
+  std::cout << "  environment setters mark dirty\n";
 }
 
 void test_material_instance_with_non_MaterialUBO_name() {
@@ -591,6 +623,7 @@ int main(int argc, char **argv) {
   test_render_state_is_pass_aware();
   test_non_structural_writes_do_not_notify_pass_listeners();
   test_isSystemOwnedBinding_classification();
+  test_environment_data_setters_mark_dirty();
   test_material_instance_with_non_MaterialUBO_name();
   test_multi_buffer_setParameter();
   test_pass_aware_descriptor_resources();
