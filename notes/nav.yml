@@ -120,6 +120,7 @@ nav:
   - Use Cases:
       - use_cases/index.md
       - lxe_editor 复杂场景录制: use_cases/lxe_editor/record-complex-scene-edit.md
+      - lxe_editor PBR IBL 金属球验证: use_cases/lxe_editor/verify-pbr-ibl-metal-sphere.md
   - 临时笔记:
       - temporary/index.md
       - "@temporary"

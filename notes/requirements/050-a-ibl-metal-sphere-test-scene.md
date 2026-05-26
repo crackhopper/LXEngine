@@ -132,8 +132,9 @@
 - 金属球使用 `assets/materials/pbr_gold.material`，runtime 测试覆盖 PBR 材质参数、scene-level IBL resources 注入和 environment 保存回写。
 - Runtime 测试覆盖 IBL metal sphere 的非黑 skybox preview 数据，renderer/framegraph 测试覆盖 HDR attachment dump 能力。
 - 新增 `pbr_ibl` project template，初始化后 scene catalog 可通过 `ibl_metal_sphere` id 发现并打开该场景。
+- 新增 `notes/use_cases/lxe_editor/verify-pbr-ibl-metal-sphere.md`，记录通过 MCP/editor 命令加载场景、开启 preview、dump `scene.hdrColor` 和截图/目检的验收流程。
 
 仍待落地：
 
 - 方向性 skybox 背景仍待接入实际 cubemap face texture；当前只提供 HDR 平均色环境预览，不能用于检查反射方向。
-- 截图/use-case 验证仍待补齐。
+- 截图/use-case 已文档化；远端实际执行和截图归档可在实现合入后通过 `lxe-verify-implement` 完成。
