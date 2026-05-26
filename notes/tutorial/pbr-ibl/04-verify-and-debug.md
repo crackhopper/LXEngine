@@ -34,15 +34,15 @@ xvfb-run -a ./build/src/test/test_vulkan_frame_graph
 ./src/demos/lxe_editor/lxe_editor
 ```
 
-在 Console 中打开 project 内场景后，当前可用的 dump 入口主要用于
-debug render target pass。FrameGraph color/HDR attachment dump 和 cubemap face
-dump 还在 `REQ-048-a` / `REQ-050-a` 后续工作中，不要把它当成已可用能力。
+在 Console 中打开 project 内场景后，可以 dump 当前 FrameGraph attachment
+或 debug render target pass。HDR attachment 会以调试用 tone mapping 写成 BMP。
 
 ```text
+render debug dump scene.hdrColor data/debug/dump/ibl-hdr-color.bmp
 render debug dump Forward /game_cam data/debug/dump/ibl-forward.bmp
 ```
 
-`render debug dump <target> [camera-path] [path]` 由 editor session 转到 Vulkan renderer。若目标是 debug render target pass，可用 pass 名和 camera path。当前不要用 `scene.hdrColor`、`swapchain.color` 或 cubemap face 作为教程步骤中的验证命令；这些目标需要等 color attachment / cubemap dump 能力落地后再补。
+`render debug dump <target> [camera-path] [path]` 由 editor session 转到 Vulkan renderer。若目标是 FrameGraph attachment，可用 `scene.hdrColor` 这样的 attachment 名；若目标是 debug render target pass，可用 pass 名和 camera path。当前不要用 `swapchain.color` 或 cubemap face 作为教程步骤中的验证命令；这些目标需要等 swapchain/cubemap dump 能力落地后再补。
 
 ## 常见问题
 
@@ -61,7 +61,7 @@ render debug dump Forward /game_cam data/debug/dump/ibl-forward.bmp
 |---|---|
 | HDR equirectangular 真实 bake | `REQ-048-a` 的 GPU bake pipeline |
 | skybox 背景 | scene environment 使用同一份 baked skybox cubemap |
-| cubemap / BRDF LUT dump | Vulkan attachment/cubemap face dump |
+| cubemap / BRDF LUT dump | Vulkan cubemap face / texture dump |
 | local reflection probe | 独立 requirement，不放进当前场景教程默认能力 |
 
 ## 继续阅读

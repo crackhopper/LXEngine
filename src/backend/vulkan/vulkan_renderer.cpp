@@ -26,11 +26,13 @@
 #include "details/resource_manager.hpp"
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <functional>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -248,11 +250,174 @@ std::string vkFormatName(VkFormat format) {
     return "R8G8B8A8_UNORM";
   case VK_FORMAT_R16G16B16A16_SFLOAT:
     return "R16G16B16A16_SFLOAT";
+  case VK_FORMAT_R32G32B32A32_SFLOAT:
+    return "R32G32B32A32_SFLOAT";
   case VK_FORMAT_B8G8R8A8_UNORM:
     return "B8G8R8A8_UNORM";
   default:
     return "VkFormat(" + std::to_string(static_cast<int>(format)) + ")";
   }
+}
+
+VkDeviceSize dumpByteSize(VkFormat format, u32 width, u32 height) {
+  const VkDeviceSize pixelCount = static_cast<VkDeviceSize>(width) *
+                                  static_cast<VkDeviceSize>(height);
+  switch (format) {
+  case VK_FORMAT_D32_SFLOAT:
+  case VK_FORMAT_R8G8B8A8_UNORM:
+  case VK_FORMAT_B8G8R8A8_UNORM:
+    return pixelCount * 4u;
+  case VK_FORMAT_R16G16B16A16_SFLOAT:
+    return pixelCount * 8u;
+  case VK_FORMAT_R32G32B32A32_SFLOAT:
+    return pixelCount * 16u;
+  default:
+    throw std::runtime_error("render debug dump does not support " +
+                             vkFormatName(format));
+  }
+}
+
+float halfToFloat(u16 value) {
+  const u16 sign = static_cast<u16>((value >> 15u) & 0x1u);
+  const u16 exponent = static_cast<u16>((value >> 10u) & 0x1fu);
+  const u16 mantissa = static_cast<u16>(value & 0x03ffu);
+  const float signScale = sign == 0 ? 1.0f : -1.0f;
+  if (exponent == 0) {
+    if (mantissa == 0) {
+      return signScale * 0.0f;
+    }
+    return signScale * std::ldexp(static_cast<float>(mantissa), -24);
+  }
+  if (exponent == 31) {
+    return mantissa == 0 ? signScale * std::numeric_limits<float>::infinity()
+                         : std::numeric_limits<float>::quiet_NaN();
+  }
+  return signScale *
+         std::ldexp(1.0f + static_cast<float>(mantissa) / 1024.0f,
+                    static_cast<int>(exponent) - 15);
+}
+
+unsigned char linearToDebugByte(float value) {
+  if (!std::isfinite(value)) {
+    value = 0.0f;
+  }
+  value = std::max(value, 0.0f);
+  const float mapped = value / (1.0f + value);
+  return static_cast<unsigned char>(std::clamp(mapped, 0.0f, 1.0f) * 255.0f);
+}
+
+std::vector<unsigned char> makeBmpPixelsFromDump(
+    VkFormat format, u32 width, u32 height, const void *mappedData) {
+  std::vector<unsigned char> bgrPixels;
+  bgrPixels.reserve(static_cast<usize>(width) * static_cast<usize>(height) *
+                    3u);
+
+  if (format == VK_FORMAT_D32_SFLOAT) {
+    const auto *depthPixels = static_cast<const float *>(mappedData);
+    for (u32 y = 0; y < height; ++y) {
+      for (u32 x = 0; x < width; ++x) {
+        const float depth = std::clamp(
+            depthPixels[static_cast<usize>(y) * width + x], 0.0f, 1.0f);
+        const auto gray = static_cast<unsigned char>(depth * 255.0f);
+        bgrPixels.push_back(gray);
+        bgrPixels.push_back(gray);
+        bgrPixels.push_back(gray);
+      }
+    }
+    return bgrPixels;
+  }
+
+  if (format == VK_FORMAT_R8G8B8A8_UNORM ||
+      format == VK_FORMAT_B8G8R8A8_UNORM) {
+    const auto *rgba = static_cast<const unsigned char *>(mappedData);
+    for (u32 y = 0; y < height; ++y) {
+      for (u32 x = 0; x < width; ++x) {
+        const usize i =
+            (static_cast<usize>(y) * width + static_cast<usize>(x)) * 4u;
+        if (format == VK_FORMAT_B8G8R8A8_UNORM) {
+          bgrPixels.push_back(rgba[i + 0u]);
+          bgrPixels.push_back(rgba[i + 1u]);
+          bgrPixels.push_back(rgba[i + 2u]);
+        } else {
+          bgrPixels.push_back(rgba[i + 2u]);
+          bgrPixels.push_back(rgba[i + 1u]);
+          bgrPixels.push_back(rgba[i + 0u]);
+        }
+      }
+    }
+    return bgrPixels;
+  }
+
+  if (format == VK_FORMAT_R16G16B16A16_SFLOAT) {
+    const auto *pixels = static_cast<const u16 *>(mappedData);
+    for (u32 y = 0; y < height; ++y) {
+      for (u32 x = 0; x < width; ++x) {
+        const usize i =
+            (static_cast<usize>(y) * width + static_cast<usize>(x)) * 4u;
+        bgrPixels.push_back(linearToDebugByte(halfToFloat(pixels[i + 2u])));
+        bgrPixels.push_back(linearToDebugByte(halfToFloat(pixels[i + 1u])));
+        bgrPixels.push_back(linearToDebugByte(halfToFloat(pixels[i + 0u])));
+      }
+    }
+    return bgrPixels;
+  }
+
+  if (format == VK_FORMAT_R32G32B32A32_SFLOAT) {
+    const auto *pixels = static_cast<const float *>(mappedData);
+    for (u32 y = 0; y < height; ++y) {
+      for (u32 x = 0; x < width; ++x) {
+        const usize i =
+            (static_cast<usize>(y) * width + static_cast<usize>(x)) * 4u;
+        bgrPixels.push_back(linearToDebugByte(pixels[i + 2u]));
+        bgrPixels.push_back(linearToDebugByte(pixels[i + 1u]));
+        bgrPixels.push_back(linearToDebugByte(pixels[i + 0u]));
+      }
+    }
+    return bgrPixels;
+  }
+
+  throw std::runtime_error("render debug dump does not support " +
+                           vkFormatName(format));
+}
+
+VkPipelineStageFlags dumpRestoreStage(VkImageLayout layout,
+                                      VkImageAspectFlags aspect) {
+  if (layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+    return VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+  }
+  if (layout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
+    return VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+  }
+  if (layout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
+    return VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+           VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+  }
+  if (layout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) {
+    return VK_PIPELINE_STAGE_TRANSFER_BIT;
+  }
+  return (aspect & VK_IMAGE_ASPECT_COLOR_BIT) != 0
+             ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+             : (VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+                VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT);
+}
+
+VkAccessFlags dumpRestoreAccess(VkImageLayout layout,
+                                VkImageAspectFlags aspect) {
+  if (layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+    return VK_ACCESS_SHADER_READ_BIT;
+  }
+  if (layout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
+    return VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+  }
+  if (layout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
+    return VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+  }
+  if (layout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) {
+    return VK_ACCESS_TRANSFER_READ_BIT;
+  }
+  return (aspect & VK_IMAGE_ASPECT_COLOR_BIT) != 0
+             ? VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+             : VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 }
 
 std::string sanitizeAttachmentName(std::string_view name) {
@@ -955,17 +1120,11 @@ public:
                                std::string(attachmentName));
     }
     auto &attachment = attachmentOpt->get();
-    if (attachment.format != VK_FORMAT_D32_SFLOAT) {
-      throw std::runtime_error("render debug dump only supports D32_SFLOAT "
-                               "depth attachments for now; got " +
-                               vkFormatName(attachment.format));
-    }
 
     const u32 width = attachment.extent.width;
     const u32 height = attachment.extent.height;
-    const VkDeviceSize byteSize = static_cast<VkDeviceSize>(width) *
-                                  static_cast<VkDeviceSize>(height) *
-                                  sizeof(float);
+    const VkDeviceSize byteSize =
+        dumpByteSize(attachment.format, width, height);
     if (width == 0 || height == 0 || byteSize == 0) {
       throw std::runtime_error("frame graph attachment has empty extent: " +
                                std::string(attachmentName));
@@ -988,10 +1147,13 @@ public:
 
     m_device->waitIdle();
     const VkImageLayout previousLayout = attachment.currentLayout;
+    const auto attachmentKind =
+        (attachment.aspect & VK_IMAGE_ASPECT_COLOR_BIT) != 0
+            ? LX_core::FrameGraphAttachmentKind::Color
+            : LX_core::FrameGraphAttachmentKind::Depth;
     auto cmd = m_cmdBufferMgr->beginSingleTimeCommands();
     transitionFrameGraphAttachment(
-        LX_core::FrameGraphResourceRef{
-            attachmentId, LX_core::FrameGraphAttachmentKind::Depth},
+        LX_core::FrameGraphResourceRef{attachmentId, attachmentKind},
         VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT,
         VK_ACCESS_TRANSFER_READ_BIT, *cmd);
 
@@ -999,7 +1161,7 @@ public:
     region.bufferOffset = 0;
     region.bufferRowLength = 0;
     region.bufferImageHeight = 0;
-    region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    region.imageSubresource.aspectMask = attachment.aspect;
     region.imageSubresource.mipLevel = 0;
     region.imageSubresource.baseArrayLayer = 0;
     region.imageSubresource.layerCount = 1;
@@ -1009,35 +1171,16 @@ public:
                            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                            readback->getHandle(), 1, &region);
 
-    const bool restoreShaderRead =
-        previousLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     transitionFrameGraphAttachment(
-        LX_core::FrameGraphResourceRef{
-            attachmentId, LX_core::FrameGraphAttachmentKind::Depth},
-        previousLayout,
-        restoreShaderRead ? VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT
-                          : (VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
-                             VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT),
-        restoreShaderRead ? VK_ACCESS_SHADER_READ_BIT
-                          : VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-        *cmd);
+        LX_core::FrameGraphResourceRef{attachmentId, attachmentKind},
+        previousLayout, dumpRestoreStage(previousLayout, attachment.aspect),
+        dumpRestoreAccess(previousLayout, attachment.aspect), *cmd);
     m_cmdBufferMgr->endSingleTimeCommands(std::move(cmd),
                                           m_device->getGraphicsQueue());
 
-    const auto *depthPixels = static_cast<const float *>(readback->map());
-    std::vector<unsigned char> bgrPixels;
-    bgrPixels.reserve(static_cast<usize>(width) * static_cast<usize>(height) *
-                      3u);
-    for (u32 y = 0; y < height; ++y) {
-      for (u32 x = 0; x < width; ++x) {
-        const float depth = std::clamp(
-            depthPixels[static_cast<usize>(y) * width + x], 0.0f, 1.0f);
-        const auto gray = static_cast<unsigned char>(depth * 255.0f);
-        bgrPixels.push_back(gray);
-        bgrPixels.push_back(gray);
-        bgrPixels.push_back(gray);
-      }
-    }
+    const void *mapped = readback->map();
+    std::vector<unsigned char> bgrPixels =
+        makeBmpPixelsFromDump(attachment.format, width, height, mapped);
     readback->unmap();
 
     writeBmp24File(path, width, height, bgrPixels);

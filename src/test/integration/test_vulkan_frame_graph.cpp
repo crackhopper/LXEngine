@@ -229,6 +229,23 @@ int main() {
       return 1;
     }
 
+    const auto hdrDumpPath =
+        std::filesystem::temp_directory_path() / "lxe_scene_hdr_color_dump.bmp";
+    std::filesystem::remove(hdrDumpPath);
+    const auto hdrDump =
+        renderer->dumpFrameGraphAttachment("scene.hdrColor", hdrDumpPath);
+    if (hdrDump.format != "R16G16B16A16_SFLOAT") {
+      std::cerr << "scene.hdrColor dump should preserve HDR attachment format\n";
+      return 1;
+    }
+    if (hdrDump.width == 0 || hdrDump.height == 0 ||
+        !std::filesystem::exists(hdrDumpPath) ||
+        std::filesystem::file_size(hdrDumpPath) <= 54u) {
+      std::cerr << "scene.hdrColor dump should write a non-empty BMP\n";
+      return 1;
+    }
+    std::filesystem::remove(hdrDumpPath);
+
     renderer->shutdown();
     return 0;
   } catch (const std::exception &e) {
