@@ -36,13 +36,18 @@
 
 9. **speculative 候选编号用字母**：研究文档中的“未来 REQ”用字母占位（`REQ-A`、`REQ-B` ...），不要占用数字号。数字号留给真正落地到 `notes/requirements/` 的文件。
 
-## 当前 active REQ（实施顺序快照，2026-05-17）
+## 当前 active REQ（实施顺序快照，2026-05-26）
 
-当前没有 active REQ。v0.1.1 的目标队列已归档到 `finished/`：FrameGraph v1、Directional Shadow、CSM、Shadow 阶段教程支撑和架构概念文档展开均已完成；HDR/Post、PBR 完整管线、G-Buffer/Deferred、Task-based 并行、Web Editor、Engine CLI/MCP、AssetRegistry 热重载仍在 pending 或后续 roadmap。
+当前 active 队列进入 HDR/Post + PBR/IBL 主线。v0.1.1 的目标队列已归档到 `finished/`：FrameGraph v1、Directional Shadow、CSM、Shadow 阶段教程支撑和架构概念文档展开均已完成。
 
 | REQ | 主题 | 实施窗口 |
 |---|---|---|
-| 无 | - | - |
+| `REQ-046-a` | 标准后处理栈 | HDR/Post 前置 |
+| `REQ-047-a` | HDR Texture 与 Cubemap Resource | IBL 资源前置 |
+| `REQ-048-a` | IBL GPU Bake Pipeline | 静态环境 IBL bake |
+| `REQ-049-a` | PBR IBL Material Contract | PBR 材质消费 IBL |
+| `REQ-050-a` | IBL Metal Sphere Test Scene | 可视化验收场景 |
+| `REQ-051-a` | PBR IBL Tutorial | 教程收口 |
 
 ## 当前 pending REQ（后续候选，2026-05-17）
 
@@ -71,6 +76,7 @@
 
 ## 历史
 
+- 2026-05-26：新增 `REQ-046-a` 到 `REQ-051-a`，建立 HDR/Post、HDR texture/cubemap、IBL GPU bake、PBR IBL material、金属球测试场景和教程主线；新主线槽位默认从 `NNN-a` 起步，后续同槽位补充再使用 `NNN-b` / `NNN-c`。
 - 2026-05-17：`REQ-042-a/b/c` 与 `REQ-043-a/b` 完成验证并归档到 `finished/`；active 队列清空，新增 `notes/concepts-design/rendering-pipeline/` 概念章节解释 FrameGraph、Render Target、Shadow Pass、CSM 与 RenderQueue。
 - 2026-05-17：按 v0.1.1 目标重整 active 队列。新增 `REQ-042-a/b/c` 收口 FrameGraph v1、Directional Shadow、CSM；新增 `REQ-043-a/b` 收口 shadow 阶段教程支撑与架构概念文档展开。原教程扩展、OBJ 材质槽、Web Editor、Engine CLI/MCP、AssetRegistry 热重载需求移入 `pending/`。
 - 2026-05-14：`REQ-041-d` 到 `REQ-041-h` 完成验证并归档到 `finished/`。`lxe_editor` 已具备测试场景 primitive/camera/light 创建、Inspector 材质/可见性编辑、节点复制、typed light、RTR 实验材质模板与节点级参数覆盖。
