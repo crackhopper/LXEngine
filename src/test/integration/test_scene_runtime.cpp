@@ -2091,9 +2091,8 @@ void testBuiltinHelmetUsesPbrMaterialBridge() {
          "builtin helmet PBR bridge should bind occlusion texture");
   EXPECT(nodeForwardPassHasDescriptor(helmet, LX_core::StringID("emissiveMap")),
          "builtin helmet PBR bridge should bind emissive texture");
-  EXPECT(
-      !nodeForwardPassHasDescriptor(helmet, LX_core::StringID("normalMap")),
-      "builtin helmet should not enable normal map without tangent accessor");
+  EXPECT(nodeForwardPassHasDescriptor(helmet, LX_core::StringID("normalMap")),
+         "builtin helmet should generate tangents and bind normal texture");
   const auto metallic = runtime.nodeMaterialParameterForNode(
       "/helmet", "MaterialUBO", "metallicFactor");
   const auto roughness = runtime.nodeMaterialParameterForNode(

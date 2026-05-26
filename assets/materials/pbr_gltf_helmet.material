@@ -2,7 +2,7 @@ shader: pbr
 
 variants:
   HAS_METALLIC_ROUGHNESS: true
-  HAS_NORMAL_MAP: false
+  HAS_NORMAL_MAP: true
   HAS_AO_MAP: true
   HAS_EMISSIVE_MAP: true
 
@@ -25,6 +25,7 @@ parameters:
 
 resources:
   albedoMap: white
+  normalMap: white
   metallicRoughnessMap: white
   aoMap: white
   emissiveMap: black

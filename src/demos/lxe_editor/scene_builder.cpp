@@ -54,11 +54,67 @@ void warnOnce(bool &flag, const char *msg) {
   }
 }
 
-// Build a VertexPosNormalUvBone buffer from a loaded GLTFLoader. Tangents get
-// a controlled placeholder (1, 0, 0, 1) when absent — REQ-011 explicitly
-// forbids MikkTSpace-style generation, and the blinnphong path we target
-// stays on enableNormal=0 when tangents are unavailable so the placeholder is
-// never sampled.
+std::vector<Vec4f> generateTangents(const std::vector<Vec3f> &positions,
+                                    const std::vector<Vec3f> &normals,
+                                    const std::vector<Vec2f> &uvs,
+                                    const std::vector<u32> &indices) {
+  std::vector<Vec3f> tangentSums(positions.size(), Vec3f{0.0f, 0.0f, 0.0f});
+  std::vector<Vec3f> bitangentSums(positions.size(), Vec3f{0.0f, 0.0f, 0.0f});
+
+  for (usize i = 0; i + 2u < indices.size(); i += 3u) {
+    const u32 i0 = indices[i + 0u];
+    const u32 i1 = indices[i + 1u];
+    const u32 i2 = indices[i + 2u];
+    if (i0 >= positions.size() || i1 >= positions.size() ||
+        i2 >= positions.size() || i0 >= uvs.size() || i1 >= uvs.size() ||
+        i2 >= uvs.size()) {
+      continue;
+    }
+
+    const Vec3f edge1 = positions[i1] - positions[i0];
+    const Vec3f edge2 = positions[i2] - positions[i0];
+    const Vec2f deltaUv1 = uvs[i1] - uvs[i0];
+    const Vec2f deltaUv2 = uvs[i2] - uvs[i0];
+    const float determinant =
+        deltaUv1.x * deltaUv2.y - deltaUv1.y * deltaUv2.x;
+    if (std::abs(determinant) < 1e-6f) {
+      continue;
+    }
+
+    const float r = 1.0f / determinant;
+    const Vec3f tangent = (edge1 * deltaUv2.y - edge2 * deltaUv1.y) * r;
+    const Vec3f bitangent = (edge2 * deltaUv1.x - edge1 * deltaUv2.x) * r;
+    tangentSums[i0] += tangent;
+    tangentSums[i1] += tangent;
+    tangentSums[i2] += tangent;
+    bitangentSums[i0] += bitangent;
+    bitangentSums[i1] += bitangent;
+    bitangentSums[i2] += bitangent;
+  }
+
+  std::vector<Vec4f> generated;
+  generated.reserve(positions.size());
+  const Vec3f fallbackTangent{1.0f, 0.0f, 0.0f};
+  for (usize i = 0; i < positions.size(); ++i) {
+    const Vec3f normal =
+        i < normals.size() ? normals[i].normalized() : Vec3f{0.0f, 1.0f, 0.0f};
+    Vec3f tangent = tangentSums[i] - normal * normal.dot(tangentSums[i]);
+    if (tangent.length2() <= 1e-8f) {
+      tangent = fallbackTangent;
+    } else {
+      tangent = tangent.normalized();
+    }
+    const float sign =
+        normal.cross(tangent).dot(bitangentSums[i]) < 0.0f ? -1.0f : 1.0f;
+    generated.emplace_back(tangent.x, tangent.y, tangent.z, sign);
+  }
+  return generated;
+}
+
+// Build a VertexPosNormalUvBone buffer from a loaded GLTFLoader. GLTFLoader
+// still reports only file-authored TANGENT accessors; this scene-builder layer
+// may generate tangents for editor PBR preview when UVs and indexed triangles
+// are available.
 MeshSharedPtr buildMeshFromGltf(const infra::GLTFLoader &loader) {
   const auto &positions = loader.getPositions();
   const auto &normals = loader.getNormals();
@@ -85,9 +141,12 @@ MeshSharedPtr buildMeshFromGltf(const infra::GLTFLoader &loader) {
   }
   if (tangents.empty()) {
     warnOnce(warnedTangents,
-             "glTF has no TANGENT stream; using placeholder {1,0,0,1} "
-             "(normal mapping stays off)");
+             "glTF has no TANGENT stream; generating preview tangents");
   }
+  const std::vector<Vec4f> generatedTangents =
+      tangents.empty() && !uvs.empty()
+          ? generateTangents(positions, normals, uvs, indices)
+          : std::vector<Vec4f>{};
 
   std::vector<VertexPosNormalUvBone> verts;
   verts.reserve(positions.size());
@@ -101,7 +160,10 @@ MeshSharedPtr buildMeshFromGltf(const infra::GLTFLoader &loader) {
   for (usize i = 0; i < positions.size(); ++i) {
     const Vec3f n = i < normals.size() ? normals[i] : fallbackNormal;
     const Vec2f uv = i < uvs.size() ? uvs[i] : fallbackUv;
-    const Vec4f t = i < tangents.size() ? tangents[i] : fallbackTangent;
+    const Vec4f t = i < tangents.size()
+                        ? tangents[i]
+                        : (i < generatedTangents.size() ? generatedTangents[i]
+                                                        : fallbackTangent);
     verts.emplace_back(positions[i], n, uv, t, zeroBones, zeroWeights);
   }
 
@@ -172,8 +234,9 @@ makeHelmetMaterialFromPbr(const infra::GLTFPbrMaterial &pbr,
                           const std::filesystem::path &gltfDir) {
   const bool hasAoMap = !pbr.occlusionTexture.empty();
   const bool hasEmissiveMap = !pbr.emissiveTexture.empty();
+  const bool hasNormalMap = !pbr.normalTexture.empty();
   const char *materialPath =
-      hasAoMap || hasEmissiveMap
+      hasNormalMap || hasAoMap || hasEmissiveMap
           ? "assets/materials/pbr_gltf_helmet.material"
           : "assets/materials/pbr_gltf.material";
   auto mat = LX_infra::loadGenericMaterial(materialPath);
@@ -206,6 +269,15 @@ makeHelmetMaterialFromPbr(const infra::GLTFPbrMaterial &pbr,
     } catch (const std::exception &e) {
       std::cerr << "[lxe_editor] metallicRoughness texture load failed ("
                 << e.what() << "); falling back to scalar factors\n";
+    }
+  }
+  if (hasNormalMap) {
+    try {
+      auto sampler = loadCombinedTexture(gltfDir / pbr.normalTexture);
+      mat->setTexture(StringID("normalMap"), std::move(sampler));
+    } catch (const std::exception &e) {
+      std::cerr << "[lxe_editor] normal texture load failed (" << e.what()
+                << "); falling back to geometry normals\n";
     }
   }
   if (hasAoMap) {
