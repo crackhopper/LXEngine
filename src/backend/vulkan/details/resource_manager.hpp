@@ -73,6 +73,16 @@ struct VulkanFrameGraphAttachmentKey {
   };
 };
 
+enum class VulkanTextureAliasKind {
+  CubemapBake,
+  FrameGraphAttachment,
+};
+
+struct VulkanTextureAlias {
+  VulkanTextureAliasKind kind = VulkanTextureAliasKind::CubemapBake;
+  StringID resourceName;
+};
+
 class VulkanResourceManager;
 using VulkanResourceManagerUniquePtr = std::unique_ptr<VulkanResourceManager>;
 class VulkanResourceManager {
@@ -106,6 +116,10 @@ public:
   getBuffer(ResourceCacheIdentity identity);
   std::optional<std::reference_wrapper<VulkanTexture>>
   getTexture(ResourceCacheIdentity identity);
+  void aliasCubemapBakeTextureResource(const IGpuResourceSharedPtr &cpuRes,
+                                       StringID attachmentName);
+  void aliasFrameGraphTextureResource(const IGpuResourceSharedPtr &cpuRes,
+                                      StringID attachmentName);
   VulkanRenderPass &getRenderPass();
   VulkanRenderPass &getRenderPass(const RenderTargetDesc &target);
 
@@ -167,6 +181,8 @@ private:
       m_frameGraphAttachments;
   std::unordered_map<StringID, VulkanCubemapBakeAttachment, StringID::Hash>
       m_cubemapBakeAttachments;
+  std::unordered_map<ResourceCacheIdentity, VulkanTextureAlias>
+      m_textureAliases;
 };
 
 } // namespace LX_core::backend

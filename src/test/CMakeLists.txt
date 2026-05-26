@@ -11,6 +11,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_vulkan_texture
   test_vulkan_shader
   test_vulkan_resource_manager
+  test_vulkan_ibl_bake
   test_vulkan_device_selection
   test_string_table
   test_material_instance
@@ -76,6 +77,7 @@ set(TEST_VIDEO_DEVICE_EXE_LIST
   test_vulkan_texture
   test_vulkan_shader
   test_vulkan_resource_manager
+  test_vulkan_ibl_bake
   test_pipeline_cache
   test_imgui_overlay
   test_vulkan_renderer_memory_probe

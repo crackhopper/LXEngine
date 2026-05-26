@@ -174,6 +174,10 @@ void VulkanResourceManager::syncResource(
   }
 
   const ResourceCacheIdentity identity = cpuRes->getBackendCacheIdentity();
+  if (m_textureAliases.find(identity) != m_textureAliases.end()) {
+    m_activeResourceIds.insert(identity);
+    return;
+  }
   m_activeResourceIds.insert(identity);
 
   auto it = m_gpuResources.find(identity);
@@ -334,7 +338,52 @@ VulkanResourceManager::getBuffer(ResourceCacheIdentity handle) {
 
 std::optional<std::reference_wrapper<VulkanTexture>>
 VulkanResourceManager::getTexture(ResourceCacheIdentity handle) {
+  if (const auto aliasIt = m_textureAliases.find(handle);
+      aliasIt != m_textureAliases.end()) {
+    if (aliasIt->second.kind == VulkanTextureAliasKind::CubemapBake) {
+      auto attachment = getCubemapBakeAttachment(aliasIt->second.resourceName);
+      if (attachment.has_value() && attachment->get().texture) {
+        return std::ref(*attachment->get().texture);
+      }
+    } else {
+      auto attachment = getFrameGraphAttachment(aliasIt->second.resourceName);
+      if (attachment.has_value() && attachment->get().texture) {
+        return std::ref(*attachment->get().texture);
+      }
+    }
+    return std::nullopt;
+  }
   GET_RESOURCE_IMPL(VulkanTexture, VulkanTextureUniquePtr);
+}
+
+void VulkanResourceManager::aliasCubemapBakeTextureResource(
+    const IGpuResourceSharedPtr &cpuRes, StringID attachmentName) {
+  if (!cpuRes) {
+    throw std::runtime_error("Cannot alias a null texture resource");
+  }
+  if (!getCubemapBakeAttachment(attachmentName).has_value()) {
+    const std::string &resourceName =
+        GlobalStringTable::get().getName(attachmentName.id);
+    throw std::runtime_error("Missing cubemap bake attachment '" +
+                             resourceName + "'");
+  }
+  m_textureAliases[cpuRes->getBackendCacheIdentity()] =
+      VulkanTextureAlias{VulkanTextureAliasKind::CubemapBake, attachmentName};
+}
+
+void VulkanResourceManager::aliasFrameGraphTextureResource(
+    const IGpuResourceSharedPtr &cpuRes, StringID attachmentName) {
+  if (!cpuRes) {
+    throw std::runtime_error("Cannot alias a null texture resource");
+  }
+  if (!getFrameGraphAttachment(attachmentName).has_value()) {
+    const std::string &resourceName =
+        GlobalStringTable::get().getName(attachmentName.id);
+    throw std::runtime_error("Missing frame graph texture attachment '" +
+                             resourceName + "'");
+  }
+  m_textureAliases[cpuRes->getBackendCacheIdentity()] = VulkanTextureAlias{
+      VulkanTextureAliasKind::FrameGraphAttachment, attachmentName};
 }
 
 VulkanRenderPass &VulkanResourceManager::getRenderPass() {
