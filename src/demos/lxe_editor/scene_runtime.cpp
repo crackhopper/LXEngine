@@ -169,6 +169,123 @@ makeHdrAverageCubeSampler(const LX_core::TextureSharedPtr &hdrTexture,
   return sampler;
 }
 
+[[nodiscard]] LX_core::Vec3f cubeFaceDirection(const u32 face, const float u,
+                                               const float v) {
+  switch (face) {
+  case 0:
+    return LX_core::Vec3f{1.0f, -v, -u}.normalized();
+  case 1:
+    return LX_core::Vec3f{-1.0f, -v, u}.normalized();
+  case 2:
+    return LX_core::Vec3f{u, 1.0f, v}.normalized();
+  case 3:
+    return LX_core::Vec3f{u, -1.0f, -v}.normalized();
+  case 4:
+    return LX_core::Vec3f{u, -v, 1.0f}.normalized();
+  default:
+    return LX_core::Vec3f{-u, -v, -1.0f}.normalized();
+  }
+}
+
+void sampleEquirectHdr(const LX_core::Texture &hdrTexture,
+                       const LX_core::Vec3f &direction, float *outRgba) {
+  constexpr float kPi = 3.14159265358979323846f;
+  const auto &desc = hdrTexture.desc();
+  const auto *pixels = static_cast<const float *>(hdrTexture.data());
+
+  float u = std::atan2(direction.z, direction.x) / (2.0f * kPi) + 0.5f;
+  u = u - std::floor(u);
+  const float v =
+      std::acos(std::clamp(direction.y, -1.0f, 1.0f)) / kPi;
+
+  const float x = u * static_cast<float>(desc.width) - 0.5f;
+  const float y = v * static_cast<float>(desc.height) - 0.5f;
+  const i32 x0 = static_cast<i32>(std::floor(x));
+  const i32 y0 = static_cast<i32>(std::floor(y));
+  const float tx = x - static_cast<float>(x0);
+  const float ty = y - static_cast<float>(y0);
+
+  auto pixelAt = [&](i32 px, i32 py, u32 channel) {
+    const i32 wrappedX =
+        (px % static_cast<i32>(desc.width) + static_cast<i32>(desc.width)) %
+        static_cast<i32>(desc.width);
+    const i32 clampedY =
+        std::clamp(py, 0, static_cast<i32>(desc.height) - 1);
+    const usize index =
+        (static_cast<usize>(clampedY) * desc.width +
+         static_cast<usize>(wrappedX)) *
+            4u +
+        channel;
+    return pixels[index];
+  };
+
+  for (u32 channel = 0; channel < 4; ++channel) {
+    const float c00 = pixelAt(x0, y0, channel);
+    const float c10 = pixelAt(x0 + 1, y0, channel);
+    const float c01 = pixelAt(x0, y0 + 1, channel);
+    const float c11 = pixelAt(x0 + 1, y0 + 1, channel);
+    const float cx0 = c00 * (1.0f - tx) + c10 * tx;
+    const float cx1 = c01 * (1.0f - tx) + c11 * tx;
+    outRgba[channel] = cx0 * (1.0f - ty) + cx1 * ty;
+  }
+  outRgba[3] = 1.0f;
+}
+
+[[nodiscard]] LX_core::CombinedTextureSamplerSharedPtr
+makeHdrEquirectCubeSampler(const LX_core::TextureSharedPtr &hdrTexture,
+                           LX_core::StringID bindingName, u32 baseSize,
+                           u32 mipLevels = 1) {
+  if (!hdrTexture ||
+      hdrTexture->desc().format != LX_core::TextureFormat::RGBA32Float) {
+    throw std::runtime_error("expected RGBA32Float HDR environment texture");
+  }
+
+  baseSize = std::max(baseSize, 1u);
+  const u32 maxMips = LX_core::maxTextureMipLevels(baseSize, baseSize);
+  mipLevels = std::clamp(mipLevels, 1u, maxMips);
+
+  LX_core::TextureDesc desc;
+  desc.width = baseSize;
+  desc.height = baseSize;
+  desc.format = LX_core::TextureFormat::RGBA32Float;
+  desc.dimension = LX_core::TextureDimension::TextureCube;
+  desc.mipLevels = mipLevels;
+  desc.arrayLayers = 6;
+
+  std::vector<float> cubePixels;
+  cubePixels.reserve(LX_core::expectedTextureByteCount(desc) / sizeof(float));
+  for (u32 mip = 0; mip < mipLevels; ++mip) {
+    const u32 mipSize = std::max(baseSize >> mip, 1u);
+    for (u32 face = 0; face < 6u; ++face) {
+      for (u32 y = 0; y < mipSize; ++y) {
+        for (u32 x = 0; x < mipSize; ++x) {
+          const float u =
+              (2.0f * (static_cast<float>(x) + 0.5f) /
+               static_cast<float>(mipSize)) -
+              1.0f;
+          const float v =
+              (2.0f * (static_cast<float>(y) + 0.5f) /
+               static_cast<float>(mipSize)) -
+              1.0f;
+          float rgba[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+          sampleEquirectHdr(*hdrTexture, cubeFaceDirection(face, u, v), rgba);
+          cubePixels.push_back(rgba[0]);
+          cubePixels.push_back(rgba[1]);
+          cubePixels.push_back(rgba[2]);
+          cubePixels.push_back(rgba[3]);
+        }
+      }
+    }
+  }
+
+  std::vector<u8> bytes(LX_core::expectedTextureByteCount(desc));
+  std::memcpy(bytes.data(), cubePixels.data(), bytes.size());
+  auto sampler = std::make_shared<LX_core::CombinedTextureSampler>(
+      std::make_shared<LX_core::Texture>(desc, std::move(bytes)));
+  sampler->setBindingName(bindingName);
+  return sampler;
+}
+
 [[nodiscard]] LX_core::IblEnvironmentResources
 loadEnvironmentResources(const EnvironmentState &environment,
                          const std::vector<std::filesystem::path> &assetRoots) {
@@ -177,11 +294,15 @@ loadEnvironmentResources(const EnvironmentState &environment,
       resolveRuntimeOrProjectAssetPath(assetRoots, environment.hdrUri);
   const auto hdrTexture = infra::TextureLoader::loadHdrTexture(hdrPath);
   resources.skyboxCubemap =
-      makeHdrAverageCubeSampler(hdrTexture, LX_core::StringID("SkyboxMap"));
-  resources.irradianceCubemap = makeHdrAverageCubeSampler(
-      hdrTexture, LX_core::StringID("IrradianceMap"));
-  resources.prefilteredRadianceCubemap = makeHdrAverageCubeSampler(
-      hdrTexture, LX_core::StringID("PrefilteredEnvMap"));
+      makeHdrEquirectCubeSampler(hdrTexture, LX_core::StringID("SkyboxMap"),
+                                 64u, 1u);
+  resources.irradianceCubemap =
+      makeHdrAverageCubeSampler(hdrTexture, LX_core::StringID("IrradianceMap"));
+  const u32 roughnessMipCount = static_cast<u32>(
+      std::max(std::round(environment.roughnessMipCount), 1.0f));
+  resources.prefilteredRadianceCubemap = makeHdrEquirectCubeSampler(
+      hdrTexture, LX_core::StringID("PrefilteredEnvMap"), 64u,
+      roughnessMipCount);
   resources.environmentUbo = std::make_shared<LX_core::EnvironmentData>(
       environment.intensity, environment.roughnessMipCount);
   return resources;

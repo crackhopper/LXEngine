@@ -26,7 +26,7 @@ scene:
   environment:                              # -> EnvironmentState
     enabled: true                           # -> SceneRuntime 设置 scene-level IBL resources
     hdrUri: assets/env/studio_small_03_2k.hdr
-    skyboxEnabled: true                     # -> 当前记录配置；真实 skybox 渲染仍在接入中
+    skyboxEnabled: true                     # -> 当前记录配置；方向性 skybox 渲染仍在接入中
     intensity: 1.0                          # -> EnvironmentData.intensity
     roughnessMipCount: 5.0                  # -> EnvironmentData.roughnessMipCount
 ```
@@ -42,7 +42,7 @@ scene:
     uri: assets/materials/pbr_gold.material
 ```
 
-运行时加载时，`SceneRuntime::loadFromDocumentPath(...)` 读取 `scene.environment`，加载 `hdrUri` 指向的 HDR texture，并用 HDR 平均辐射值生成临时 1x1 cubemap IBL resources。当前这不是最终 bake 质量，只是让金属球确实从 HDR 输入得到非黑环境光；真实 cubemap face/mip bake 会由 `REQ-048-a` 接上。
+运行时加载时，`SceneRuntime::loadFromDocumentPath(...)` 读取 `scene.environment`，加载 `hdrUri` 指向的 HDR texture，并通过 CPU 过渡路径生成 scene-level IBL resources：`SkyboxMap` 是 64x64 方向性 cubemap，`PrefilteredEnvMap` 带 roughness mip chain，`IrradianceMap` 仍是 HDR 平均辐射近似。当前这不是最终 bake 质量，但金属球已经能从 HDR 输入得到非 1x1 的环境方向数据；真实 GPU convolution / prefilter bake 会由 `REQ-048-a` 接上。
 
 ## 在 editor 中打开
 
@@ -76,7 +76,7 @@ scene open ibl_metal_sphere
 
 ## 当前能看到什么
 
-在真实 GPU bake/skybox 接入前，场景已经能稳定打开并进入 PBR + IBL binding 链路；金属球的环境反射强度仍受默认 IBL resources 限制。我们判断当前切片是否正确，优先看 runtime/FrameGraph 事实，而不是只看截图。
+在真实 GPU bake/skybox 接入前，场景已经能稳定打开并进入 PBR + IBL binding 链路；金属球会采样 CPU 过渡生成的 prefiltered cubemap，背景仍是单色 environment preview。我们判断当前切片是否正确，优先看 runtime/FrameGraph 事实，而不是只看截图。
 
 ## 下一步
 

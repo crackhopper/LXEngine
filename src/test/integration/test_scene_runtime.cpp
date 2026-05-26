@@ -2284,6 +2284,8 @@ void testIblMetalSphereSceneLoadsAndInjectsIblResources() {
   if (iblResources.skyboxCubemap && iblResources.skyboxCubemap->texture() &&
       iblResources.skyboxCubemap->texture()->desc().format ==
           LX_core::TextureFormat::RGBA32Float) {
+    EXPECT(iblResources.skyboxCubemap->texture()->desc().width > 1u,
+           "IBL skybox preview should preserve directional cubemap data");
     const auto *pixels = static_cast<const float *>(
         iblResources.skyboxCubemap->texture()->data());
     skyboxPreviewHasEnergy =
@@ -2291,6 +2293,12 @@ void testIblMetalSphereSceneLoadsAndInjectsIblResources() {
   }
   EXPECT(skyboxPreviewHasEnergy,
          "IBL metal sphere should expose non-black skybox preview data");
+  EXPECT(iblResources.prefilteredRadianceCubemap &&
+             iblResources.prefilteredRadianceCubemap->texture() &&
+             iblResources.prefilteredRadianceCubemap->texture()
+                     ->desc()
+                     .mipLevels >= 5u,
+         "IBL prefiltered env resource should expose roughness mips");
 
   const std::filesystem::path savePath =
       makeTempPath("lx_ibl_metal_sphere_roundtrip.scene.yaml");

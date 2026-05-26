@@ -124,5 +124,5 @@ PBR + IBL 涉及资源、FrameGraph、材质、shader、scene 和 post-process �
 
 - 新增 `notes/tutorial/pbr-ibl/` 教程组，覆盖 metal sphere scene、资源/binding 边界、HDR Post 流程、验证与排错。
 - `notes/nav.yml` 和 `notes/tutorial/index.md` 已加入 PBR + IBL 教程入口。
-- 教程明确区分当前可用能力、临时 HDR 平均 cubemap IBL、以及仍待 `REQ-048-a` 接入的真实 cubemap bake / skybox。
+- 教程明确区分当前可用能力、CPU 过渡 equirectangular cubemap IBL、以及仍待 `REQ-048-a` 接入的真实 GPU convolution / prefilter bake 和方向性 skybox。
 - `scripts/notes/serve_site.sh --build` 已通过；输出中仍有仓库既有历史链接 warning，但本教程与导航能构建进站点。
