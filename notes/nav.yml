@@ -44,7 +44,8 @@ nav:
           - 运行 CLI: tutorial/offline-renderer/01-run-offline-renderer.md
           - EXR 与 PNG 输出: tutorial/offline-renderer/02-output-and-exr-viewers.md
           - 实现结构: tutorial/offline-renderer/03-implementation-flow.md
-          - Path Tracing: tutorial/offline-renderer/04-implement-path-tracing.md
+          - 源码阅读路线: tutorial/offline-renderer/04-code-reading-guide.md
+          - Path Tracing: tutorial/offline-renderer/05-implement-path-tracing.md
       - 扩展场景节点:
           - 总览: tutorial/extend-scene-node/index.md
           - SceneNode 模型: tutorial/extend-scene-node/01-scene-node-model.md

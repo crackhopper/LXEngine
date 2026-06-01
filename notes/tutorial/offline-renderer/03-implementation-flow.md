@@ -118,4 +118,4 @@ TinyEXR 和 stb_image_write 只出现在 writer 实现文件里；`core`、scene
 
 ## 下一步
 
-继续读 [实现自己的 Path Tracing](04-implement-path-tracing.md)，我们会沿着这条流水线逐步扩展 integrator，而不是重写整个 backend。
+继续读 [源码阅读路线](04-code-reading-guide.md)，我们会把上面的流水线落实到具体文件、函数和测试，再进入 [实现自己的 Path Tracing](05-implement-path-tracing.md)。

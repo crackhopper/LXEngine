@@ -22,7 +22,8 @@ Offline renderer 像一间独立的渲染实验室：editor 和 realtime rendere
 1. [运行离线渲染器](01-run-offline-renderer.md)：从构建、profile、命令行输出开始，先确认链路能跑。
 2. [EXR 与 PNG 输出](02-output-and-exr-viewers.md)：理解输出文件、tone mapping 和 EXR 查看工具配置。
 3. [实现结构](03-implementation-flow.md)：按代码路径理解 scene、IR、GPU buffer、compute、readback 和 writer 如何连接。
-4. [实现自己的 Path Tracing](04-implement-path-tracing.md)：理解需要扩展哪些 IR、buffer、shader 和测试点。
+4. [源码阅读路线](04-code-reading-guide.md)：按“命令入口 → 场景 IR → GPU buffer → compute shader → 输出文件”的顺序读代码，建立可调试的心智模型。
+5. [实现自己的 Path Tracing](05-implement-path-tracing.md)：理解需要扩展哪些 IR、buffer、shader 和测试点。
 
 ## 当前边界
 

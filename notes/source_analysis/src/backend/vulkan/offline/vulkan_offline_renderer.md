@@ -131,4 +131,4 @@ closest-hit 查询、shadow ray 查询和后续 path tracing 的基础空间索�
 这个页面解释的是已经落地的 MVP 管线。更完整的分步实现结构在
 [Offline Renderer / 实现结构](../../../../../tutorial/offline-renderer/03-implementation-flow.md)，
 真正实现自定义 path tracing 时，入口教程在
-[Offline Renderer / Path Tracing](../../../../../tutorial/offline-renderer/04-implement-path-tracing.md)。
+[Offline Renderer / Path Tracing](../../../../../tutorial/offline-renderer/05-implement-path-tracing.md)。
