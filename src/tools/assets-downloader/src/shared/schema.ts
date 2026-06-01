@@ -1,9 +1,9 @@
 import { z } from "zod";
 
-export const assetKindSchema = z.enum(["environment", "model", "material", "scene", "course-asset"]);
-export const categoryIdSchema = z.enum(["hdri", "model", "material", "scene", "course-asset"]);
+export const assetKindSchema = z.enum(["environment", "model", "material", "scene", "course-asset", "point-cloud"]);
+export const categoryIdSchema = z.enum(["hdri", "model", "material", "scene", "course-asset", "point-cloud"]);
 export const licenseStatusSchema = z.enum(["verified", "user_confirmed", "blocked", "unknown"]);
-export const outputKindSchema = z.enum(["environment", "model", "material", "manual"]);
+export const outputKindSchema = z.enum(["environment", "model", "material", "point-cloud", "manual"]);
 
 export const recipeSchema = z.object({
   outputKind: outputKindSchema,

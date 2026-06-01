@@ -1,6 +1,6 @@
 # REQ-053-b: Assets Downloader 外部资源下载与导入工具
 
-> 2026-06-01 新增：本 REQ 定义独立 TypeScript + React 项目 `assets-downloader`，用于从外部资源站点下载、导入、转换资产，并整理成 `lxe-editor` 可识别的 cache 资产。当前仍在讨论中，未开始。
+> 2026-06-01 更新：`assets-downloader` 已落地为独立 TypeScript + React 项目，当前支持本地 Web UI、Fastify API、catalog、preview plan、手动 import job、cache metadata、HDR/GLB/PBR 材质整理，以及 PLY 点云/3DGS 源文件 cache 导入。复杂归档解压、editor 完整 Asset Browser 和 EXR/PNG 输出仍由后续需求推进。
 
 ## 背景
 
@@ -149,6 +149,7 @@ UI 至少包含：
 | `environment` | HDRI / EXR / HDR environment | `converted/environment.exr` 或 `converted/environment.hdr` |
 | `model` | glTF / GLB model | `converted/model.glb` |
 | `material` | PBR texture set | `converted/material.yaml` + `converted/textures/*` |
+| `point-cloud` | PLY 点云 / 3DGS splat source | `converted/point_cloud.ply` + `converted/point_cloud.asset.yaml` |
 
 要求：
 
@@ -156,6 +157,7 @@ UI 至少包含：
 - `material.yaml` 至少记录 baseColor、normal、metallicRoughness、ao、emissive 纹理路径和 color space。
 - 首版不做 mesh 拓扑重写。
 - 首版不做 texture compression。
+- 首版点云导入只复制 PLY 并生成 manifest，不解析或重排 Gaussian splat。
 - 首版不自动把 pbrt/Mitsuba/Tungsten/GAMES 复杂场景转换成 LXEngine `.scene.yaml`。
 - 对 pbrt/Mitsuba/Tungsten/GAMES 资产，首版只要求下载、license、cache metadata 和 manual import notes。
 
@@ -299,6 +301,7 @@ cache://<source>/<asset-id>/<variant>/<relative-converted-path>
 ```text
 cache://polyhaven/studio_small_03/2k-hdr/converted/environment.exr
 cache://ambientcg/wood_floor_001/1k/converted/textures/basecolor.png
+cache://voxel51-gaussian-splatting/train_iteration_7000/iteration-7000/converted/point_cloud.ply
 ```
 
 要求：
@@ -359,6 +362,7 @@ assets-downloader 不直接编辑最终场景。它提供 cache 资产，`lxe-ed
 | Bitterli rendering resources | `https://benedikt-bitterli.me/resources/` | 渲染研究常用场景，含 Mitsuba/pbrt/Tungsten 格式和显式 license |
 | McGuire CG Archive | `https://casual-effects.com/data` | Sponza、Bistro、San Miguel 等研究常用模型索引，逐项确认 license |
 | GAMES101/GAMES202 course assets | 课程作业仓库或课程页面 | 可选 catalog source；必须逐项确认课程资源许可和再分发限制 |
+| Voxel51 Gaussian Splatting | `https://huggingface.co/datasets/Voxel51/gaussian_splatting` | 3DGS / 点云 PLY 样例资产，当前推荐 train iteration 7000 |
 
 对于 pbrt/Mitsuba/Tungsten 格式场景，首版可先支持“记录、下载、cache 整理和手动说明”，转换到 LXEngine scene 的能力作为后续扩展。
 
@@ -423,4 +427,17 @@ assets-downloader 不直接编辑最终场景。它提供 cache 资产，`lxe-ed
 
 ## 实施状态
 
-讨论中，未开始。
+已实现首版 MVP：
+
+- `src/tools/assets-downloader/` 已提供 React + Vite UI、Fastify backend、共享 zod schema、catalog 和 cache metadata。
+- `pnpm --dir src/tools/assets-downloader dev` 可启动本地工具。
+- `pnpm --dir src/tools/assets-downloader test` 覆盖 catalog、preview plan、license gate、cache import 和 PLY 点云 manifest。
+- `pnpm --dir src/tools/assets-downloader build` 可生成前端 production bundle。
+- 3DGS train PLY 不进入 git；通过 `voxel51-gaussian-splatting/train_iteration_7000/iteration-7000` cache 资产管理。
+
+未完成范围：
+
+- 归档自动解压。
+- editor 端完整 Asset Browser。
+- pbrt/Mitsuba/Tungsten/GAMES scene 自动转换。
+- 资产缩略图、标签搜索和热重载。

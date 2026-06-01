@@ -123,3 +123,26 @@ sources:
       - id: course-asset
         name: Course asset
         recommended: []
+  - id: voxel51-gaussian-splatting
+    name: Voxel51 Gaussian Splatting
+    url: https://huggingface.co/datasets/Voxel51/gaussian_splatting
+    description: Public 3D Gaussian Splatting PLY datasets for point-cloud and splat rendering experiments.
+    licensePolicy: Catalog entries use the license declared by the Hugging Face dataset card.
+    categories:
+      - id: point-cloud
+        name: Point cloud / 3DGS PLY
+        recommended:
+          - id: train_iteration_7000
+            displayName: Train point cloud, iteration 7000
+            url: https://huggingface.co/datasets/Voxel51/gaussian_splatting/resolve/main/FO_dataset/train/point_cloud/iteration_7000/point_cloud.ply
+            sourceUrl: https://huggingface.co/datasets/Voxel51/gaussian_splatting
+            expectedLicense: Apache-2.0
+            licenseStatus: verified
+            licenseUrl: https://huggingface.co/datasets/Voxel51/gaussian_splatting
+            kind: point-cloud
+            variants: [iteration-7000]
+            recipe:
+              outputKind: point-cloud
+              downloadStrategy: direct-url
+              conversion: copy-ply-point-cloud
+            manualNotes: Imports the 183 MB GraphDeco-style 3DGS PLY into cache. Use the converted point_cloud.ply cache URI in a scene.

@@ -47,4 +47,20 @@ describe("import planner", () => {
     expect(confirmed.licenseStatus).toBe("user_confirmed");
     expect(confirmed.importAllowed).toBe(true);
   });
+
+  it("plans point-cloud outputs for PLY assets", async () => {
+    const catalog = await loadCatalog();
+
+    const plan = createImportPreviewPlan(catalog, {
+      url: "https://huggingface.co/datasets/Voxel51/gaussian_splatting/resolve/main/FO_dataset/train/point_cloud/iteration_7000/point_cloud.ply"
+    });
+
+    expect(plan.kind).toBe("point-cloud");
+    expect(plan.sourceId).toBe("voxel51-gaussian-splatting");
+    expect(plan.assetId).toBe("train_iteration_7000");
+    expect(plan.variant).toBe("iteration-7000");
+    expect(plan.filesToWrite).toContain("converted/point_cloud.ply");
+    expect(plan.filesToWrite).toContain("converted/point_cloud.asset.yaml");
+    expect(plan.cacheUriBase).toBe("cache://voxel51-gaussian-splatting/train_iteration_7000/iteration-7000");
+  });
 });

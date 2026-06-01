@@ -13,6 +13,9 @@ export async function writeConvertedOutputs(plan: ImportPreviewPlan, rawFilePath
     case "model":
       await writeModel(plan, rawFilePath);
       return;
+    case "point-cloud":
+      await writePointCloud(plan, rawFilePath);
+      return;
     case "material":
       await writeMaterial(plan, rawFilePath);
       return;
@@ -34,6 +37,29 @@ async function writeModel(plan: ImportPreviewPlan, rawFilePath: string): Promise
   const outputPath = path.join(plan.cachePath, "converted", "model.glb");
   await fs.mkdir(path.dirname(outputPath), { recursive: true });
   await fs.copyFile(rawFilePath, outputPath);
+}
+
+async function writePointCloud(plan: ImportPreviewPlan, rawFilePath: string): Promise<void> {
+  const convertedDir = path.join(plan.cachePath, "converted");
+  await fs.mkdir(convertedDir, { recursive: true });
+  await fs.copyFile(rawFilePath, path.join(convertedDir, "point_cloud.ply"));
+
+  const manifest = {
+    kind: "point-cloud",
+    format: "ply",
+    role: "gaussian-splat-source",
+    source: {
+      url: plan.url,
+      license: plan.licenseName
+    },
+    outputs: {
+      ply: buildCacheUri(plan.sourceId, plan.assetId, plan.variant, "converted/point_cloud.ply")
+    },
+    sceneUsage: {
+      gaussianSplatUri: buildCacheUri(plan.sourceId, plan.assetId, plan.variant, "converted/point_cloud.ply")
+    }
+  };
+  await fs.writeFile(path.join(convertedDir, "point_cloud.asset.yaml"), YAML.stringify(manifest), "utf8");
 }
 
 async function writeMaterial(plan: ImportPreviewPlan, rawFilePath: string): Promise<void> {

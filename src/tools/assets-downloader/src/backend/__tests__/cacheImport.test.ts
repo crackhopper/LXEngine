@@ -66,10 +66,57 @@ describe("cache import", () => {
     expect(material.metallicRoughness.metallicChannel).toBe("b");
     expect(material.emissive.texture).toBeNull();
   });
+
+  it("imports a user-confirmed PLY point cloud fixture and writes a cache manifest", async () => {
+    const cacheRoot = await mkdtemp(path.join(os.tmpdir(), "lxe-assets-cache-"));
+    vi.stubEnv("LXENGINE_ASSET_CACHE", cacheRoot);
+    const catalog = await loadCatalog();
+    const request = {
+      url: plyFixtureUrl(),
+      sourceId: "voxel51-gaussian-splatting",
+      assetId: "fixture_point_cloud",
+      variant: "test",
+      kind: "point-cloud" as const,
+      userConfirmedLicense: {
+        licenseName: "Fixture License",
+        licenseUrl: "https://example.com/license",
+        confirmationSource: "unit test"
+      }
+    };
+    const plan = createImportPreviewPlan(catalog, request);
+    const jobs = new JobStore();
+    const job = jobs.start(plan, request);
+    const completed = await waitForJob(jobs, job.id);
+
+    expect(completed.error).toBeUndefined();
+    expect(completed.status).toBe("completed");
+    const assets = await listCacheAssets(cacheRoot);
+    expect(assets).toHaveLength(1);
+    expect(assets[0].kind).toBe("point-cloud");
+    expect(assets[0].convertedOutputs.some((output) => output.uri.endsWith("/converted/point_cloud.ply"))).toBe(true);
+
+    const manifestPath = path.join(
+      cacheRoot,
+      "voxel51-gaussian-splatting",
+      "fixture_point_cloud",
+      "test",
+      "converted",
+      "point_cloud.asset.yaml"
+    );
+    const manifest = YAML.parse(await fs.readFile(manifestPath, "utf8"));
+    expect(manifest.kind).toBe("point-cloud");
+    expect(manifest.sceneUsage.gaussianSplatUri).toBe(
+      "cache://voxel51-gaussian-splatting/fixture_point_cloud/test/converted/point_cloud.ply"
+    );
+  });
 });
 
 function fixtureUrl(): string {
   return new URL("fixtures/tiny.bin", import.meta.url).toString();
+}
+
+function plyFixtureUrl(): string {
+  return new URL("fixtures/tiny.ply", import.meta.url).toString();
 }
 
 async function waitForJob(jobs: JobStore, id: string) {

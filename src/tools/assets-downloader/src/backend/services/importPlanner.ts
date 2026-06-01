@@ -102,6 +102,9 @@ function inferKind(url: string): OutputKind {
   if (lower.endsWith(".glb") || lower.endsWith(".gltf")) {
     return "model";
   }
+  if (lower.endsWith(".ply")) {
+    return "point-cloud";
+  }
   if (lower.includes("pbrt") || lower.includes("mitsuba") || lower.includes("tungsten")) {
     return "manual";
   }
@@ -114,6 +117,8 @@ function plannedConvertedPaths(kind: OutputKind, url: string): string[] {
       return [url.toLowerCase().endsWith(".exr") ? "converted/environment.exr" : "converted/environment.hdr"];
     case "model":
       return ["converted/model.glb"];
+    case "point-cloud":
+      return ["converted/point_cloud.ply", "converted/point_cloud.asset.yaml"];
     case "material":
       return [
         "converted/material.yaml",
@@ -130,6 +135,9 @@ function plannedConvertedPaths(kind: OutputKind, url: string): string[] {
 function manualNotesForKind(kind: OutputKind): string {
   if (kind === "manual") {
     return "Downloaded and indexed only. First version does not convert complex scene formats into LXEngine scenes.";
+  }
+  if (kind === "point-cloud") {
+    return "Converted output preserves the source PLY and adds a small manifest. Scene files should reference converted/point_cloud.ply through cache://.";
   }
   return "Converted output uses first-version copy or material manifest generation.";
 }

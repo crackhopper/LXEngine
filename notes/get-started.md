@@ -52,6 +52,40 @@ artifacts/offline/smoke.rgba32f
 
 当前 `.rgba32f` 是调试输出：每个像素 RGBA 四个 32-bit float，仍不是 EXR/PNG。我们先用它验证 compute dispatch、BVH、readback 和有限值；可查看图片输出由后续 `REQ-055-a` 补齐。
 
+## 启动 Assets Downloader
+
+Assets Downloader 是本地资产管理工作台：我们用它下载外部 HDRI、模型、PBR 材质和 PLY 点云，把大文件整理进 `.asset_cache/`，场景文件只保存 `cache://` URI。
+
+从仓库根目录执行：
+
+```bash
+corepack pnpm --dir src/tools/assets-downloader install
+corepack pnpm --dir src/tools/assets-downloader dev
+```
+
+默认会启动：
+
+| 服务 | 地址 |
+|---|---|
+| React UI | `http://127.0.0.1:5173/` |
+| Fastify API | `http://127.0.0.1:4731/` |
+
+3DGS train PLY 不进入 git。我们在 UI 中选择 `Voxel51 Gaussian Splatting` 数据源，使用 `Train point cloud, iteration 7000` 推荐项导入后，会得到：
+
+```text
+.asset_cache/voxel51-gaussian-splatting/train_iteration_7000/iteration-7000/
+  source.yaml
+  raw/source.bin
+  converted/point_cloud.ply
+  converted/point_cloud.asset.yaml
+```
+
+后续 scene 应引用：
+
+```text
+cache://voxel51-gaussian-splatting/train_iteration_7000/iteration-7000/converted/point_cloud.ply
+```
+
 ## 环境准备
 
 Linux 上至少需要：
