@@ -4,6 +4,7 @@
 #include "core/math/bounds.hpp"
 #include "core/math/ray.hpp"
 #include "core/math/transform.hpp"
+#include "core/platform/types.hpp"
 #include "core/scene/camera.hpp"
 #include "core/scene/component.hpp"
 
@@ -68,7 +69,8 @@ public:
   BoundingBox getDebugLocalBounds() const;
 
   Mat4f getViewMatrix() const;
-  Mat4f getProjMatrix(float aspectOverride = 0.0f) const;
+  Mat4f getProjMatrix(float aspectOverride = 0.0f,
+                      GraphicsAPI api = GraphicsAPI::Vulkan) const;
   Ray pickRay(const Vec2f &screenPixel, const Vec2f &viewportSize) const;
   void updateMatrices();
 

@@ -22,6 +22,18 @@
 
 这样我们在浏览 `notes/source_analysis/` 时，能直接沿着源码目录去找对应分析，不需要再维护一套独立命名体系。
 
+## 建议阅读路径
+
+源码分析更像按源码目录摆放的剖面图。第一次读时，我们可以按“数据结构先行、渲染流随后、最后进入 backend/offline”的顺序：
+
+| 顺序 | 关注点 | 页面 |
+|---|---|---|
+| 1 | GPU 资源最小公共契约 | [IGpuResource](src/core/rhi/gpu_resource.md) |
+| 2 | asset / material / texture 如何变成渲染输入 | [Mesh](src/core/asset/mesh.md)、[Shader](src/core/asset/shader.md)、[MaterialTemplate](src/core/asset/material_template.md)、[MaterialInstance](src/core/asset/material_instance.md)、[Texture](src/core/asset/texture.md) |
+| 3 | scene 与 frame graph 怎样收口 draw item | [Scene](src/core/scene/scene.md)、[RenderTarget](src/core/frame_graph/render_target.md)、[RenderQueue](src/core/frame_graph/render_queue.md)、[FrameGraph](src/core/frame_graph/frame_graph.md) |
+| 4 | pipeline identity 为什么只看结构差异 | [Pipeline Identity](src/core/pipeline/pipeline_identity.md) |
+| 5 | 离线渲染如何从 scene IR 进入 Vulkan compute | [Vulkan Offline Renderer](src/backend/vulkan/offline/vulkan_offline_renderer.md) |
+
 当前入口：
 
 - [IGpuResource：core 层的 GPU 资源统一契约](src/core/rhi/gpu_resource.md)
@@ -36,6 +48,7 @@
 - [FrameGraph：把 scene 翻译成按 pass 组织的 RenderingItem 列表](src/core/frame_graph/frame_graph.md)
 - [GlobalStringTable：字符串驻留与结构化身份树](src/core/utils/string_table.md)
 - [Pipeline Identity：从结构签名到构建输入](src/core/pipeline/pipeline_identity.md)
+- [Vulkan Offline Renderer：从 Scene IR 到 Compute Readback](src/backend/vulkan/offline/vulkan_offline_renderer.md)
 
 配套阅读：
 
@@ -54,3 +67,4 @@
 
 - [MaterialInstance：运行时状态](../concepts/material/material-instance.md)
 - [多 Pass 材质怎样变成 Draw](../concepts/material/pass-rendering-flow.md)
+- [Offline Renderer 教程](../tutorial/offline-renderer/index.md)

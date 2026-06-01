@@ -27,37 +27,42 @@ core 层这层"frame graph"只承担"per-pass per-scene 预构建"的薄壳角�
 
 源码位置：[frame_graph.hpp](../../../../src/core/frame_graph/frame_graph.hpp)
 
-### FramePass：三元组 (name, target, queue)
+### FramePass：pass 身份、target、queue 与资源流
 
-`FramePass` 把三件本来分散的事打包成一个结构体：
+`FramePass` 把一条渲染 pass 的 core 层声明打包成一个结构体：
 
 - `name`：StringID，匹配 REQ-007 的 `Pass_*` 常量；它是这条 pass 在 scene-level
   资源筛选、material pass 选择、shader 变体合并里的统一身份
-- `target`：这条 pass 的输出形状。当前类型是 `RenderTarget`（占位实现，详见
-  `render_target.md`），REQ-042-a 落地后会改为 `RenderTargetDesc`
+- `target`：这条 pass 的输出形状，使用 `RenderTargetDesc` 保留 offscreen /
+  depth-only 等结构性描述；旧的 scene camera matching 边界再转回 `RenderTarget`
 - `queue`：这条 pass 内部的 RenderingItem 收口（见 `render_queue.md`）
+- `reads` / `writes`：有序 FrameGraph 的资源流声明，例如 Forward 写
+  `scene.hdrColor`，PostProcess 再以 `SceneColor` binding 采样它
 
-之所以打包而不是让 `FrameGraph` 持有三个并行 vector，是因为这三个字段在每条
+之所以打包而不是让 `FrameGraph` 持有多个并行 vector，是因为这些字段在每条
 pass 上是强绑定的：`name` 决定 queue 怎么过滤，`target` 决定 queue 怎么注入
-scene-level 资源；分开存就要在 `FrameGraph` 里维护"i-th name 对应 i-th target"
+scene-level 资源，`reads` / `writes` 决定与前后 pass 的 attachment 依赖；分开
+存就要在 `FrameGraph` 里维护"i-th name 对应 i-th target / resource flow"
 的隐式索引，容易写出 off-by-one。
 
 注意 FramePass 不持有任何 backend 资源（renderpass / framebuffer / pipeline
-都在 backend 侧）— 它纯粹是 core 层的"这条 pass 怎么从 scene 里挑出 draw
-列表"的描述符。
+都在 backend 侧）— 它纯粹是 core 层的"这条 pass 如何选择 draw 列表，以及
+如何声明跨 pass attachment 读写"的描述符。
 
 ### FrameGraph：加载期预构建的 per-pass 调度器
 
-`FrameGraph` 是把 scene 翻译成"按 pass 组织的 RenderingItem 列表"的入口。
-它本身只做两件事：
+`FrameGraph` 是把 scene 翻译成"按 pass 组织的 RenderingItem 列表"并校验
+pass 间资源声明的入口。它的核心职责包括：
 
 - 持有 `vector<FramePass>`：通过 `addPass` 累加，顺序即提交顺序
 - 在 `buildFromScene` 时按 pass 顺序逐个调用 `RenderQueue::buildFromScene`，
-  把 `pass.target` 透传下去（REQ-009 target 轴的入口）
+  把 `pass.target` 经 `RenderTarget` 兼容外壳透传下去（REQ-009 target 轴的入口）
+- 在 `compile` 时按声明顺序校验 read/write 资源：read 只能引用此前 pass 写过
+  的资源，write 不能重名，也不能写 unnamed resource
 
-注意它 *不* 做 pass 间依赖分析、不做 pass reorder、不做 attachment 复用 —
-这些都是 backend 渲染图（render graph）的职责。core 层的 FrameGraph 只是
-"per-pass per-scene 预构建"的薄壳：决定哪些 RenderingItem 进哪条 queue。
+注意它仍然不做 pass reorder、不做 attachment 复用，也不持有 backend attachment
+资源；这些都留给 backend 执行层。core 层这里只提供声明顺序的最小资源图和
+per-pass queue 预构建。
 
 跨 pass 唯一的协调动作是 `collectAllPipelineBuildDescs`：在所有 queue 输出
 的 PipelineBuildDesc 上做一次全局 PipelineKey 去重，避免相同 pipeline 在
@@ -67,8 +72,8 @@ scene-level 资源；分开存就要在 `FrameGraph` 里维护"i-th name 对应 
 ### buildFromScene：把 pass × scene 二维问题摊成一维循环
 
 `FrameGraph::buildFromScene` 的实现核心是一行循环：每条 pass 上调用
-`pass.queue.buildFromScene(scene, pass.name, pass.target)`，把"哪条 pass、
-画到哪种 target"两个参数从 FramePass 解包后透传给 RenderQueue。
+`pass.queue.buildFromScene(scene, pass.name, RenderTarget{pass.target})`，把
+"哪条 pass、画到哪种 target"两个参数从 FramePass 解包后透传给 RenderQueue。
 
 这种"FrameGraph 不做语义、只做调度"的写法把"pass × scene"二维问题摊成
 一维循环。每一条 pass 的 RenderQueue 内部独立完成 REQ-009 两轴筛选，
@@ -94,7 +99,7 @@ FrameGraph 只负责保证 *每条 pass 都被处理一次* 这一条简单不�
 让它去做全局判定会破坏单 pass 收口的封装。两层各自只看自己的视角，
 FrameGraph 这一层只看到"队列已去重的输出"再做最少整理。
 
-REQ-042-a 落地后，`PipelineKey` 会纳入 target identity；本函数代码
+REQ-042 R5 落地后，`PipelineKey` 变三级 compose（含 targetSig）；本函数代码
 不需要变，但跨 pass 重复 PipelineKey 的概率会进一步降低 — 不同 target
 的 pass 在 PipelineKey 上自动不重叠。
 

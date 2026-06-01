@@ -1,11 +1,11 @@
-#include "demos/lxe_editor/editor_camera_state.hpp"
+#include "infra/scene_io/scene_document.hpp"
 
 #include "core/math/quat.hpp"
 #include "core/math/transform.hpp"
 
 #include <cmath>
 
-namespace LX_demo::lxe_editor {
+namespace LX_infra::scene_io {
 namespace {
 
 constexpr float kPi = 3.14159265358979323846f;
@@ -75,4 +75,4 @@ void EditorCameraState::applyToCamera(LX_core::CameraComponent& camera) const {
   camera.setFarPlane(farPlane);
 }
 
-} // namespace LX_demo::lxe_editor
+} // namespace LX_infra::scene_io

@@ -301,7 +301,12 @@ void VulkanDevice::createSurface() {
 }
 
 void VulkanDevice::findSurfaceDepthFormat() {
-  m_surfaceFormat = findBestSurfaceFormat(m_physicalDevice, m_surface);
+  if (m_surface != VK_NULL_HANDLE) {
+    m_surfaceFormat = findBestSurfaceFormat(m_physicalDevice, m_surface);
+  } else {
+    m_surfaceFormat = {VK_FORMAT_R8G8B8A8_UNORM,
+                       VK_COLOR_SPACE_SRGB_NONLINEAR_KHR};
+  }
   m_depthFormat = findSupportedFormat(
       {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT,
        VK_FORMAT_D24_UNORM_S8_UINT}, // 具体创建深度纹理图的时候，需要根据选择的格式来设置
@@ -331,6 +336,22 @@ void VulkanDevice::initialize(WindowSharedPtr window, const char *appName,
       // VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
       // VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
   };
+  pickPhysicalDevice();
+  findSurfaceDepthFormat();
+  createLogicalDevice();
+}
+
+void VulkanDevice::initializeHeadless(
+    const char *appName, ApiVersion32 appVersion, const char *engineName,
+    ApiVersion32 engineVersion, ApiVersion32 apiVersion,
+    std::vector<const char *> validationLayers) {
+  m_window = nullptr;
+  m_validationLayers = validationLayers;
+  m_instanceExtensions = {};
+  m_extent = {1, 1};
+
+  createInstance(appName, appVersion, engineName, engineVersion, apiVersion);
+  m_deviceExtensions = {};
   pickPhysicalDevice();
   findSurfaceDepthFormat();
   createLogicalDevice();
@@ -419,6 +440,7 @@ void VulkanDevice::createInstance(const char *appName, ApiVersion32 appVersion,
 
 VulkanDevice::QueueFamilyIndices
 VulkanDevice::findQueueFamilies(VkPhysicalDevice device) {
+  QueueFamilyIndices indices{};
 
   // 1. 获取该显卡支持的所有队列族数量
   u32 queueFamilyCount = 0;
@@ -433,24 +455,60 @@ VulkanDevice::findQueueFamilies(VkPhysicalDevice device) {
   for (const auto &queueFamily : queueFamilies) {
     // 检查是否支持图形渲染 (Graphics)
     if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-      m_queueIndices.graphicsFamily = i;
+      indices.graphicsFamily = i;
     }
 
-    // 检查是否支持显示 (Present)
-    // 注意：这需要 Surface 参与，因为有的显卡能画图但不能接显示器
-    VkBool32 presentSupport = false;
-    vkGetPhysicalDeviceSurfaceSupportKHR(device, i, m_surface, &presentSupport);
-    if (presentSupport) {
-      m_queueIndices.presentFamily = i;
+    if (m_surface != VK_NULL_HANDLE) {
+      // 检查是否支持显示 (Present)
+      // 注意：这需要 Surface 参与，因为有的显卡能画图但不能接显示器
+      VkBool32 presentSupport = false;
+      vkGetPhysicalDeviceSurfaceSupportKHR(device, i, m_surface,
+                                           &presentSupport);
+      if (presentSupport) {
+        indices.presentFamily = i;
+      }
+    } else if (indices.graphicsFamily.has_value()) {
+      indices.presentFamily = indices.graphicsFamily;
     }
 
-    if (m_queueIndices.isComplete()) {
+    if (indices.isComplete(m_surface != VK_NULL_HANDLE)) {
       break; // 找齐了就撤
     }
     i++;
   }
 
-  return m_queueIndices;
+  return indices;
+}
+
+VulkanDevice::QueueFamilyIndices
+VulkanDevice::findHeadlessQueueFamilies(VkPhysicalDevice device) {
+  QueueFamilyIndices indices;
+  u32 queueFamilyCount = 0;
+  vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
+
+  std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+  vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount,
+                                           queueFamilies.data());
+
+  for (u32 i = 0; i < queueFamilies.size(); ++i) {
+    const VkQueueFlags flags = queueFamilies[i].queueFlags;
+    if ((flags & VK_QUEUE_GRAPHICS_BIT) != 0 &&
+        (flags & VK_QUEUE_COMPUTE_BIT) != 0) {
+      indices.graphicsFamily = i;
+      indices.presentFamily = i;
+      return indices;
+    }
+  }
+
+  for (u32 i = 0; i < queueFamilies.size(); ++i) {
+    if ((queueFamilies[i].queueFlags & VK_QUEUE_COMPUTE_BIT) != 0) {
+      indices.graphicsFamily = i;
+      indices.presentFamily = i;
+      return indices;
+    }
+  }
+
+  return indices;
 }
 
 bool VulkanDevice::checkDeviceExtensionSupport(
@@ -488,7 +546,16 @@ bool VulkanDevice::isDeviceSuitable(
       checkDeviceExtensionSupport(device, extensionsRequired);
 
   // 3. 适用性只由功能完备性决定，设备类型只影响偏好排序
-  return queueIndices.isComplete() && extensionsSupported;
+  return queueIndices.isComplete(m_surface != VK_NULL_HANDLE) &&
+         extensionsSupported;
+}
+
+bool VulkanDevice::isHeadlessDeviceSuitable(
+    VkPhysicalDevice device, std::vector<const char *> extensionsRequired) {
+  const QueueFamilyIndices queueIndices = findHeadlessQueueFamilies(device);
+  const bool extensionsSupported =
+      checkDeviceExtensionSupport(device, extensionsRequired);
+  return queueIndices.isGraphicsComplete() && extensionsSupported;
 }
 
 void VulkanDevice::pickPhysicalDevice() {
@@ -510,7 +577,11 @@ void VulkanDevice::pickPhysicalDevice() {
 
   int bestScore = -1;
   for (const auto &device : devices) {
-    if (!isDeviceSuitable(device, m_deviceExtensions)) {
+    const bool suitable =
+        m_surface == VK_NULL_HANDLE
+            ? isHeadlessDeviceSuitable(device, m_deviceExtensions)
+            : isDeviceSuitable(device, m_deviceExtensions);
+    if (!suitable) {
       continue;
     }
 
@@ -528,8 +599,12 @@ void VulkanDevice::pickPhysicalDevice() {
     throw std::runtime_error("Failed to find a suitable GPU!");
   }
 
-  m_queueIndices = findQueueFamilies(m_physicalDevice);
-  if (!m_queueIndices.isComplete()) {
+  m_queueIndices = m_surface == VK_NULL_HANDLE
+                       ? findHeadlessQueueFamilies(m_physicalDevice)
+                       : findQueueFamilies(m_physicalDevice);
+  if (!m_queueIndices.isGraphicsComplete() ||
+      (m_surface != VK_NULL_HANDLE &&
+       !m_queueIndices.isComplete(/*requirePresent=*/true))) {
     throw std::runtime_error("Failed to find required queue families!");
   }
   VkPhysicalDeviceProperties properties;
@@ -551,15 +626,15 @@ void VulkanDevice::createLogicalDevice() {
   vkGetPhysicalDeviceQueueFamilyProperties(m_physicalDevice, &queueFamilyCount,
                                            queueFamilies.data());
 
-  if (!m_queueIndices.isComplete()) {
+  if (!m_queueIndices.isGraphicsComplete()) {
     throw std::runtime_error("Failed to find required queue families!");
   }
 
   // Use a set to ensure unique queue families
-  std::set<u32> uniqueQueueFamilies = {
-      getGraphicsQueueFamilyIndex(),
-      getPresentQueueFamilyIndex(),
-  };
+  std::set<u32> uniqueQueueFamilies = {getGraphicsQueueFamilyIndex()};
+  if (m_surface != VK_NULL_HANDLE) {
+    uniqueQueueFamilies.insert(getPresentQueueFamilyIndex());
+  }
 
   std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
   float queuePriority = 1.0f;
@@ -604,7 +679,11 @@ void VulkanDevice::createLogicalDevice() {
   // Get queue handles
   vkGetDeviceQueue(m_device, getGraphicsQueueFamilyIndex(), 0,
                    &m_graphicsQueue);
-  vkGetDeviceQueue(m_device, getPresentQueueFamilyIndex(), 0, &m_presentQueue);
+  if (m_surface != VK_NULL_HANDLE) {
+    vkGetDeviceQueue(m_device, getPresentQueueFamilyIndex(), 0, &m_presentQueue);
+  } else {
+    m_presentQueue = m_graphicsQueue;
+  }
 
   // Create descriptor manager with device reference
   m_descriptorManager = VulkanDescriptorManager::create(*this);

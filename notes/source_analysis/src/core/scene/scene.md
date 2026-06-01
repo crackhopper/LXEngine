@@ -29,32 +29,35 @@ scene-level 资源，同时把 hierarchy/可见性等可选维度整体下推给
 
 ### RenderingItem：一帧 draw 的最小稳定记录
 
-这个结构体定义在 scene.hpp 而不是 queue.hpp，是因为它描述的是 backend 真正消费的契约，
-而不是 queue 的内部状态。任何把"一个 renderable 在某个 pass 下要画一次"翻译成
-"backend 提交单元"的代码路径，都收口到这个结构体上。
+这个结构体定义在 scene.hpp 而不是 queue.hpp，是因为它描述的是 backend
+真正消费的契约， 而不是 queue 的内部状态。任何把"一个 renderable 在某个 pass
+下要画一次"翻译成 "backend 提交单元"的代码路径，都收口到这个结构体上。
 
 字段拆分体现两个边界：
 
-- `shaderInfo / pipelineKey / pass`：决定走哪条 pipeline，是 pipeline cache 的 key 来源
-- `vertexBuffer / indexBuffer / drawData / descriptorResources`：决定这次 draw 的数据来源
-- `material`：保留材质句柄是为了 `PipelineBuildDesc::fromRenderingItem` 反查 render state
-  和 owned binding 表，而不是 backend 直接读它
+- `shaderInfo / pipelineKey / pass / target`：决定走哪条 pipeline，是 pipeline
+cache 的 key 来源
+- `vertexBuffer / indexBuffer / drawData / descriptorResources`：决定这次 draw
+的数据来源
+- `material`：保留材质句柄是为了 `PipelineBuildDesc::fromRenderingItem` 反查
+render state 和 owned binding 表，而不是 backend 直接读它
 
 descriptorResources 的列表已经合并了"renderable 自带"和"scene-level 追加"两段，
 顺序固定 — backend 按 binding name 命中，不依赖位置。
 
-### Scene：扁平容器与默认 seed
+### Scene：扁平容器
 
-Scene 是一层薄壳：三个平铺 vector（renderables / cameras / lights）+ 一个 sceneName。
-它不维护层级（节点之间的 parent/child 关系挂在 SceneNode 上）、不做 z-sort、不持有
-render state。这种扁平 ownership 让"哪些对象属于这一帧"是可枚举的事实，而不是
-需要遍历某种隐式树才能复原的状态。
+Scene 是一层薄壳：三个平铺 vector（renderables / cameras / lights）+ 一个
+sceneName。 它不维护层级（节点之间的 parent/child 关系挂在 SceneNode 上）、不做
+z-sort、不持有 render state。这种扁平 ownership
+让"哪些对象属于这一帧"是可枚举的事实，而不是 需要遍历某种隐式树才能复原的状态。
 
-构造时仍然 seed 一个 DirectionalLight，方便那些不走完整 renderer 初始化的测试路径。
-camera 不再单独 seed；测试和 demo 需要显式注册 camera-bearing SceneNode。
+Scene 本身不隐式创建 camera 或 light；测试和 demo 需要显式注册带组件的
+SceneNode。
 
-`enable_shared_from_this` 的存在是为了在 `addRenderable` 里给挂进来的 SceneNode 写
-弱反向引用 `weak_from_this()`，让 shared material 重验证传播能从 node 找回 scene。
+`enable_shared_from_this` 的存在是为了在 `addRenderable` 里给挂进来的 SceneNode
+写 弱反向引用 `weak_from_this()`，让 shared material 重验证传播能从 node 找回
+scene。
 
 ## scene.cpp
 
@@ -79,10 +82,10 @@ scene 上吗" 用 `m_scene.lock() != nullptr` 就能给出确定答案，不会�
 普通参数写入（`setFloat` / `setTexture`）走 GPU 资源 dirty 路径，结构没变，
 不会触发这条传播。换句话说：这里只处理"pass 拓扑改变"这一件结构性事件。
 
-### getSceneLevelResources：camera×target 与 light×pass 两轴筛选
+### getSceneLevelResources：camera×target 与 light×pass
 
-REQ-009 的核心设计：camera 按 target 选，light 按 pass 选 — 两条规则有意拆开，
-不合并成"同时过 pass 和 target"。原因来自身份的不同：
+两轴筛选 REQ-009 的核心设计：camera 按 target 选，light 按 pass 选 —
+两条规则有意拆开， 不合并成"同时过 pass 和 target"。原因来自身份的不同：
 
 - camera 的身份是"画到哪个 target"，与 pass 无关。同一个 camera 在 forward、
   depth-prepass、GUI 这三个写入同一 target 的 pass 里都该出现，pipeline 不同

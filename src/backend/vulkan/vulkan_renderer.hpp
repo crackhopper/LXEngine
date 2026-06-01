@@ -1,6 +1,7 @@
 #pragma once
 #include "core/rhi/renderer.hpp"
 #include "core/platform/types.hpp"
+#include "vulkan_renderer_types.hpp"
 #include <filesystem>
 #include <functional>
 #include <memory>
@@ -10,25 +11,13 @@
 #include <vector>
 
 namespace LX_core::backend {
-class VulkanRendererImpl;
+class VulkanRealtimeRenderer;
 class VulkanRenderer;
 using VulkanRendererUniquePtr = std::unique_ptr<VulkanRenderer>;
 class VulkanRenderer : public gpu::Renderer {
 public:
-  struct PostProcessSettings final {
-    bool bloomEnabled = true;
-    float bloomIntensity = 0.25f;
-    float bloomThreshold = 1.0f;
-    float bloomSoftKnee = 0.5f;
-  };
-
-  struct FrameGraphAttachmentDumpResult final {
-    std::filesystem::path path;
-    std::filesystem::path screenPath;
-    u32 width = 0;
-    u32 height = 0;
-    std::string format;
-  };
+  using PostProcessSettings = VulkanPostProcessSettings;
+  using FrameGraphAttachmentDumpResult = VulkanFrameGraphAttachmentDumpResult;
 
   struct Token {};
   explicit VulkanRenderer(Token token);
@@ -67,7 +56,7 @@ public:
       const std::optional<std::filesystem::path> &path = std::nullopt);
 
 private:
-  std::unique_ptr<VulkanRendererImpl> p_impl;
+  std::unique_ptr<VulkanRealtimeRenderer> p_realtime;
 };
 
 } // namespace LX_core::backend

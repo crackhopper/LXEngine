@@ -378,8 +378,10 @@ std::optional<Scene::PickHit> Scene::pick(const Ray &ray,
     if (!hitDistance.has_value()) {
       continue;
     }
-    if (*hitDistance <= 1e-4f && getLight(*node) &&
-        !node->getWorldBounds().isValid()) {
+    const bool isDebugOnlyBounds =
+        !node->getWorldBounds().isValid() &&
+        (getLight(*node) || node->getComponent<CameraComponent>());
+    if (*hitDistance <= 1e-4f && isDebugOnlyBounds) {
       continue;
     }
 

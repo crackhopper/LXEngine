@@ -191,6 +191,53 @@ void testOrthographicDepthZeroToOneMapsExplicitDepthRange() {
          "zero-to-one orthographic projection maps far depth to 1");
 }
 
+void testPerspectiveProjectionFollowsBackendClipConvention() {
+  const f32 fovY = std::acos(-1.0f) * 0.5f;
+  const Mat4f glProj =
+      Mat4f::perspective(fovY, 1.0f, 0.5f, 10.0f, GraphicsAPI::OpenGL);
+  const Mat4f vkProj =
+      Mat4f::perspective(fovY, 1.0f, 0.5f, 10.0f, GraphicsAPI::Vulkan);
+
+  const Vec3f glTop = (glProj * Vec4f{0.0f, 1.0f, -1.0f, 1.0f}).toVec3();
+  const Vec3f vkTop = (vkProj * Vec4f{0.0f, 1.0f, -1.0f, 1.0f}).toVec3();
+  const Vec3f glNear = (glProj * Vec4f{0.0f, 0.0f, -0.5f, 1.0f}).toVec3();
+  const Vec3f vkNear = (vkProj * Vec4f{0.0f, 0.0f, -0.5f, 1.0f}).toVec3();
+  const Vec3f glFar = (glProj * Vec4f{0.0f, 0.0f, -10.0f, 1.0f}).toVec3();
+  const Vec3f vkFar = (vkProj * Vec4f{0.0f, 0.0f, -10.0f, 1.0f}).toVec3();
+
+  EXPECT(glTop.y > 0.0f, "OpenGL projection keeps camera-space +Y upward");
+  EXPECT(vkTop.y < 0.0f, "Vulkan projection flips clip-space Y");
+  EXPECT(approx(glNear.z, -1.0f), "OpenGL projection maps near depth to -1");
+  EXPECT(approx(glFar.z, 1.0f), "OpenGL projection maps far depth to 1");
+  EXPECT(approx(vkNear.z, 0.0f), "Vulkan projection maps near depth to 0");
+  EXPECT(approx(vkFar.z, 1.0f), "Vulkan projection maps far depth to 1");
+}
+
+void testOrthographicProjectionFollowsBackendClipConvention() {
+  const Mat4f glProj = Mat4f::orthographic(-1.0f, 1.0f, -1.0f, 1.0f, 0.5f,
+                                           10.0f, GraphicsAPI::OpenGL);
+  const Mat4f vkProj = Mat4f::orthographic(-1.0f, 1.0f, -1.0f, 1.0f, 0.5f,
+                                           10.0f, GraphicsAPI::Vulkan);
+
+  const Vec3f glTop = (glProj * Vec4f{0.0f, 1.0f, -1.0f, 1.0f}).toVec3();
+  const Vec3f vkTop = (vkProj * Vec4f{0.0f, 1.0f, -1.0f, 1.0f}).toVec3();
+  const Vec3f glNear = (glProj * Vec4f{0.0f, 0.0f, -0.5f, 1.0f}).toVec3();
+  const Vec3f vkNear = (vkProj * Vec4f{0.0f, 0.0f, -0.5f, 1.0f}).toVec3();
+  const Vec3f glFar = (glProj * Vec4f{0.0f, 0.0f, -10.0f, 1.0f}).toVec3();
+  const Vec3f vkFar = (vkProj * Vec4f{0.0f, 0.0f, -10.0f, 1.0f}).toVec3();
+
+  EXPECT(glTop.y > 0.0f, "OpenGL orthographic projection keeps +Y upward");
+  EXPECT(vkTop.y < 0.0f, "Vulkan orthographic projection flips clip-space Y");
+  EXPECT(approx(glNear.z, -1.0f),
+         "OpenGL orthographic projection maps near depth to -1");
+  EXPECT(approx(glFar.z, 1.0f),
+         "OpenGL orthographic projection maps far depth to 1");
+  EXPECT(approx(vkNear.z, 0.0f),
+         "Vulkan orthographic projection maps near depth to 0");
+  EXPECT(approx(vkFar.z, 1.0f),
+         "Vulkan orthographic projection maps far depth to 1");
+}
+
 void testLookAtProjectsOntoCameraBasisRows() {
   const Vec3f eye{-40.3449f, 54.0027f, 8.07277f};
   const Vec3f target{-5.70521f, 3.96952f, 14.7778f};
@@ -245,6 +292,8 @@ int main() {
   testTransformWarnsOnShearInput();
   testTransformWarnsOnNegativeScaleRepair();
   testOrthographicDepthZeroToOneMapsExplicitDepthRange();
+  testPerspectiveProjectionFollowsBackendClipConvention();
+  testOrthographicProjectionFollowsBackendClipConvention();
   testLookAtProjectsOntoCameraBasisRows();
   testVecFloatHashUsesBitCastReference();
   testVecDoubleHashUsesBitCastReference();

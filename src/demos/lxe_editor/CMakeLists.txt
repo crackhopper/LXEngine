@@ -58,11 +58,9 @@ add_executable(lxe_editor
   editor_config_state.cpp
   editor_data_state.cpp
   editor_log_file.cpp
-  editor_camera_state.cpp
   editor_scene_state.cpp
   runtime_state.cpp
   scene_builder.cpp
-  scene_document.cpp
   scene_interaction_controller.cpp
   scene_input_routing.cpp
   scene_view_rect.cpp

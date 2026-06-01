@@ -137,9 +137,31 @@ struct Mat4T {
   }
 
   // -------------------------
-  // Perspective (Vulkan style)
+  // Perspective
   // -------------------------
-  static Mat4T perspective(T fovYRad, T aspect, T zNear, T zFar) {
+  static Mat4T perspectiveOpenGL(T fovYRad, T aspect, T zNear, T zFar) {
+    Mat4T r;
+    for (int c = 0; c < 4; ++c) {
+      for (int row = 0; row < 4; ++row) {
+        r.m[c][row] = T(0);
+      }
+    }
+
+    T f = T(1) / std::tan(fovYRad / 2);
+
+    r.m[0][0] = f / aspect;
+    r.m[1][1] = f;
+
+    r.m[2][2] = -(zFar + zNear) / (zFar - zNear);
+    r.m[2][3] = -1;
+
+    r.m[3][2] = -(T(2) * zFar * zNear) / (zFar - zNear);
+    r.m[3][3] = 0;
+
+    return r;
+  }
+
+  static Mat4T perspectiveDepthZeroToOne(T fovYRad, T aspect, T zNear, T zFar) {
     Mat4T r;
     for (int c = 0; c < 4; ++c) {
       for (int row = 0; row < 4; ++row) {
@@ -159,6 +181,23 @@ struct Mat4T {
     r.m[3][3] = 0;
 
     return r;
+  }
+
+  static Mat4T perspective(T fovYRad, T aspect, T zNear, T zFar,
+                           GraphicsAPI api) {
+    if (api == GraphicsAPI::OpenGL) {
+      return perspectiveOpenGL(fovYRad, aspect, zNear, zFar);
+    }
+
+    Mat4T r = perspectiveDepthZeroToOne(fovYRad, aspect, zNear, zFar);
+    if (api == GraphicsAPI::Vulkan) {
+      r.m[1][1] = -r.m[1][1];
+    }
+    return r;
+  }
+
+  static Mat4T perspective(T fovYRad, T aspect, T zNear, T zFar) {
+    return perspective(fovYRad, aspect, zNear, zFar, GraphicsAPI::Vulkan);
   }
 
   // -------------------------
@@ -193,6 +232,18 @@ struct Mat4T {
 
     r.m[3][3] = 1;
 
+    return r;
+  }
+
+  static Mat4T orthographic(T l, T rgt, T b, T t, T n, T f, GraphicsAPI api) {
+    if (api == GraphicsAPI::OpenGL) {
+      return orthographic(l, rgt, b, t, n, f);
+    }
+
+    Mat4T r = orthographicDepthZeroToOne(l, rgt, b, t, -n, -f);
+    if (api == GraphicsAPI::Vulkan) {
+      r.m[1][1] = -r.m[1][1];
+    }
     return r;
   }
 

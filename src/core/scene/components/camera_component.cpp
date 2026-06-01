@@ -12,10 +12,11 @@ namespace {
 constexpr float kDegToRad = 3.14159265358979323846f / 180.0f;
 
 float safeScaleComponent(float value) {
-  return std::abs(value) <= std::numeric_limits<float>::epsilon() ? 1.0f : value;
+  return std::abs(value) <= std::numeric_limits<float>::epsilon() ? 1.0f
+                                                                  : value;
 }
 
-[[nodiscard]] Mat4f invertMatrix(const Mat4f& matrix) {
+[[nodiscard]] Mat4f invertMatrix(const Mat4f &matrix) {
   float m[16] = {};
   for (int row = 0; row < 4; ++row) {
     for (int col = 0; col < 4; ++col) {
@@ -24,57 +25,40 @@ float safeScaleComponent(float value) {
   }
 
   float inv[16] = {};
-  inv[0] = m[5] * m[10] * m[15] - m[5] * m[11] * m[14] -
-           m[9] * m[6] * m[15] + m[9] * m[7] * m[14] +
-           m[13] * m[6] * m[11] - m[13] * m[7] * m[10];
-  inv[4] = -m[4] * m[10] * m[15] + m[4] * m[11] * m[14] +
-           m[8] * m[6] * m[15] - m[8] * m[7] * m[14] -
-           m[12] * m[6] * m[11] + m[12] * m[7] * m[10];
-  inv[8] = m[4] * m[9] * m[15] - m[4] * m[11] * m[13] -
-           m[8] * m[5] * m[15] + m[8] * m[7] * m[13] +
-           m[12] * m[5] * m[11] - m[12] * m[7] * m[9];
-  inv[12] = -m[4] * m[9] * m[14] + m[4] * m[10] * m[13] +
-            m[8] * m[5] * m[14] - m[8] * m[6] * m[13] -
-            m[12] * m[5] * m[10] + m[12] * m[6] * m[9];
-  inv[1] = -m[1] * m[10] * m[15] + m[1] * m[11] * m[14] +
-           m[9] * m[2] * m[15] - m[9] * m[3] * m[14] -
-           m[13] * m[2] * m[11] + m[13] * m[3] * m[10];
-  inv[5] = m[0] * m[10] * m[15] - m[0] * m[11] * m[14] -
-           m[8] * m[2] * m[15] + m[8] * m[3] * m[14] +
-           m[12] * m[2] * m[11] - m[12] * m[3] * m[10];
-  inv[9] = -m[0] * m[9] * m[15] + m[0] * m[11] * m[13] +
-           m[8] * m[1] * m[15] - m[8] * m[3] * m[13] -
-           m[12] * m[1] * m[11] + m[12] * m[3] * m[9];
-  inv[13] = m[0] * m[9] * m[14] - m[0] * m[10] * m[13] -
-            m[8] * m[1] * m[14] + m[8] * m[2] * m[13] +
-            m[12] * m[1] * m[10] - m[12] * m[2] * m[9];
-  inv[2] = m[1] * m[6] * m[15] - m[1] * m[7] * m[14] -
-           m[5] * m[2] * m[15] + m[5] * m[3] * m[14] +
-           m[13] * m[2] * m[7] - m[13] * m[3] * m[6];
-  inv[6] = -m[0] * m[6] * m[15] + m[0] * m[7] * m[14] +
-           m[4] * m[2] * m[15] - m[4] * m[3] * m[14] -
-           m[12] * m[2] * m[7] + m[12] * m[3] * m[6];
-  inv[10] = m[0] * m[5] * m[15] - m[0] * m[7] * m[13] -
-            m[4] * m[1] * m[15] + m[4] * m[3] * m[13] +
-            m[12] * m[1] * m[7] - m[12] * m[3] * m[5];
-  inv[14] = -m[0] * m[5] * m[14] + m[0] * m[6] * m[13] +
-            m[4] * m[1] * m[14] - m[4] * m[2] * m[13] -
-            m[12] * m[1] * m[6] + m[12] * m[2] * m[5];
-  inv[3] = -m[1] * m[6] * m[11] + m[1] * m[7] * m[10] +
-           m[5] * m[2] * m[11] - m[5] * m[3] * m[10] -
-           m[9] * m[2] * m[7] + m[9] * m[3] * m[6];
-  inv[7] = m[0] * m[6] * m[11] - m[0] * m[7] * m[10] -
-           m[4] * m[2] * m[11] + m[4] * m[3] * m[10] +
-           m[8] * m[2] * m[7] - m[8] * m[3] * m[6];
-  inv[11] = -m[0] * m[5] * m[11] + m[0] * m[7] * m[9] +
-            m[4] * m[1] * m[11] - m[4] * m[3] * m[9] -
-            m[8] * m[1] * m[7] + m[8] * m[3] * m[5];
-  inv[15] = m[0] * m[5] * m[10] - m[0] * m[6] * m[9] -
-            m[4] * m[1] * m[10] + m[4] * m[2] * m[9] +
-            m[8] * m[1] * m[6] - m[8] * m[2] * m[5];
+  inv[0] = m[5] * m[10] * m[15] - m[5] * m[11] * m[14] - m[9] * m[6] * m[15] +
+           m[9] * m[7] * m[14] + m[13] * m[6] * m[11] - m[13] * m[7] * m[10];
+  inv[4] = -m[4] * m[10] * m[15] + m[4] * m[11] * m[14] + m[8] * m[6] * m[15] -
+           m[8] * m[7] * m[14] - m[12] * m[6] * m[11] + m[12] * m[7] * m[10];
+  inv[8] = m[4] * m[9] * m[15] - m[4] * m[11] * m[13] - m[8] * m[5] * m[15] +
+           m[8] * m[7] * m[13] + m[12] * m[5] * m[11] - m[12] * m[7] * m[9];
+  inv[12] = -m[4] * m[9] * m[14] + m[4] * m[10] * m[13] + m[8] * m[5] * m[14] -
+            m[8] * m[6] * m[13] - m[12] * m[5] * m[10] + m[12] * m[6] * m[9];
+  inv[1] = -m[1] * m[10] * m[15] + m[1] * m[11] * m[14] + m[9] * m[2] * m[15] -
+           m[9] * m[3] * m[14] - m[13] * m[2] * m[11] + m[13] * m[3] * m[10];
+  inv[5] = m[0] * m[10] * m[15] - m[0] * m[11] * m[14] - m[8] * m[2] * m[15] +
+           m[8] * m[3] * m[14] + m[12] * m[2] * m[11] - m[12] * m[3] * m[10];
+  inv[9] = -m[0] * m[9] * m[15] + m[0] * m[11] * m[13] + m[8] * m[1] * m[15] -
+           m[8] * m[3] * m[13] - m[12] * m[1] * m[11] + m[12] * m[3] * m[9];
+  inv[13] = m[0] * m[9] * m[14] - m[0] * m[10] * m[13] - m[8] * m[1] * m[14] +
+            m[8] * m[2] * m[13] + m[12] * m[1] * m[10] - m[12] * m[2] * m[9];
+  inv[2] = m[1] * m[6] * m[15] - m[1] * m[7] * m[14] - m[5] * m[2] * m[15] +
+           m[5] * m[3] * m[14] + m[13] * m[2] * m[7] - m[13] * m[3] * m[6];
+  inv[6] = -m[0] * m[6] * m[15] + m[0] * m[7] * m[14] + m[4] * m[2] * m[15] -
+           m[4] * m[3] * m[14] - m[12] * m[2] * m[7] + m[12] * m[3] * m[6];
+  inv[10] = m[0] * m[5] * m[15] - m[0] * m[7] * m[13] - m[4] * m[1] * m[15] +
+            m[4] * m[3] * m[13] + m[12] * m[1] * m[7] - m[12] * m[3] * m[5];
+  inv[14] = -m[0] * m[5] * m[14] + m[0] * m[6] * m[13] + m[4] * m[1] * m[14] -
+            m[4] * m[2] * m[13] - m[12] * m[1] * m[6] + m[12] * m[2] * m[5];
+  inv[3] = -m[1] * m[6] * m[11] + m[1] * m[7] * m[10] + m[5] * m[2] * m[11] -
+           m[5] * m[3] * m[10] - m[9] * m[2] * m[7] + m[9] * m[3] * m[6];
+  inv[7] = m[0] * m[6] * m[11] - m[0] * m[7] * m[10] - m[4] * m[2] * m[11] +
+           m[4] * m[3] * m[10] + m[8] * m[2] * m[7] - m[8] * m[3] * m[6];
+  inv[11] = -m[0] * m[5] * m[11] + m[0] * m[7] * m[9] + m[4] * m[1] * m[11] -
+            m[4] * m[3] * m[9] - m[8] * m[1] * m[7] + m[8] * m[3] * m[5];
+  inv[15] = m[0] * m[5] * m[10] - m[0] * m[6] * m[9] - m[4] * m[1] * m[10] +
+            m[4] * m[2] * m[9] + m[8] * m[1] * m[6] - m[8] * m[2] * m[5];
 
-  float det =
-      m[0] * inv[0] + m[1] * inv[4] + m[2] * inv[8] + m[3] * inv[12];
+  float det = m[0] * inv[0] + m[1] * inv[4] + m[2] * inv[8] + m[3] * inv[12];
   if (std::abs(det) < 1e-8f) {
     return Mat4f::identity();
   }
@@ -89,13 +73,15 @@ float safeScaleComponent(float value) {
   return result;
 }
 
-Transform toLocalFromWorld(const SceneNode &node, const Transform &worldTransform) {
+Transform toLocalFromWorld(const SceneNode &node,
+                           const Transform &worldTransform) {
   auto parent = node.getParent();
   if (!parent) {
     return worldTransform.normalized();
   }
 
-  const Transform parentWorld = Transform::fromMat4(parent->getWorldTransform());
+  const Transform parentWorld =
+      Transform::fromMat4(parent->getWorldTransform());
   const Quatf invParentRotation = parentWorld.rotation.conjugate().normalized();
 
   Vec3f delta = worldTransform.translation - parentWorld.translation;
@@ -124,9 +110,9 @@ Transform makeWorldLookAt(const Vec3f &eye, const Vec3f &target,
   Vec3f back = (-forward).normalized();
   Vec3f right = up.cross(back);
   if (right.length2() <= std::numeric_limits<float>::epsilon()) {
-    const Vec3f fallbackUp =
-        std::abs(forward.y) > 0.99f ? Vec3f{1.0f, 0.0f, 0.0f}
-                                    : Vec3f{0.0f, 1.0f, 0.0f};
+    const Vec3f fallbackUp = std::abs(forward.y) > 0.99f
+                                 ? Vec3f{1.0f, 0.0f, 0.0f}
+                                 : Vec3f{0.0f, 1.0f, 0.0f};
     right = fallbackUp.cross(back);
   }
   right = right.normalized();
@@ -200,15 +186,10 @@ void CameraComponent::setOrthographicBounds(const float leftValue,
   notifyOwnerRuntimeAspectChange(SceneNodeAspect::CameraProperties);
 }
 
-void CameraComponent::applyProjectionState(const CameraType projectionType,
-                                           const float fovY,
-                                           const float aspect,
-                                           const float nearPlane,
-                                           const float farPlane,
-                                           const float leftValue,
-                                           const float rightValue,
-                                           const float bottomValue,
-                                           const float topValue) {
+void CameraComponent::applyProjectionState(
+    const CameraType projectionType, const float fovY, const float aspect,
+    const float nearPlane, const float farPlane, const float leftValue,
+    const float rightValue, const float bottomValue, const float topValue) {
   m_type = projectionType;
   m_fovY = fovY;
   m_aspect = aspect;
@@ -252,12 +233,14 @@ Vec3f CameraComponent::getEyePosition() const {
 }
 
 Vec3f CameraComponent::getForwardVector() const {
-  return getOwnerWorldTransform().rotation.rotate(Vec3f{0.0f, 0.0f, -1.0f})
+  return getOwnerWorldTransform()
+      .rotation.rotate(Vec3f{0.0f, 0.0f, -1.0f})
       .normalized();
 }
 
 Vec3f CameraComponent::getUpVector() const {
-  return getOwnerWorldTransform().rotation.rotate(Vec3f{0.0f, 1.0f, 0.0f})
+  return getOwnerWorldTransform()
+      .rotation.rotate(Vec3f{0.0f, 1.0f, 0.0f})
       .normalized();
 }
 
@@ -285,15 +268,16 @@ Mat4f CameraComponent::getViewMatrix() const {
   return viewTransform.toMat4();
 }
 
-Mat4f CameraComponent::getProjMatrix(float aspectOverride) const {
+Mat4f CameraComponent::getProjMatrix(float aspectOverride,
+                                     GraphicsAPI api) const {
   const float projectionAspect =
       aspectOverride > 0.0f ? aspectOverride : m_aspect;
   if (m_type == CameraType::Perspective) {
-    return Mat4f::perspective(m_fovY * kDegToRad, projectionAspect,
-                              m_nearPlane, m_farPlane);
+    return Mat4f::perspective(m_fovY * kDegToRad, projectionAspect, m_nearPlane,
+                              m_farPlane, api);
   }
-  return Mat4f::orthographicDepthZeroToOne(
-      m_left, m_right, m_bottom, m_top, -m_nearPlane, -m_farPlane);
+  return Mat4f::orthographic(m_left, m_right, m_bottom, m_top, m_nearPlane,
+                             m_farPlane, api);
 }
 
 Ray CameraComponent::pickRay(const Vec2f &screenPixel,
@@ -306,7 +290,7 @@ Ray CameraComponent::pickRay(const Vec2f &screenPixel,
   if (m_type == CameraType::Perspective) {
     const float projectionAspect = viewportWidth / viewportHeight;
     const Mat4f viewProj =
-        getProjMatrix(projectionAspect) * getViewMatrix();
+        getProjMatrix(projectionAspect, GraphicsAPI::OpenGL) * getViewMatrix();
     const Mat4f invViewProj = invertMatrix(viewProj);
     const Vec3f farPoint =
         (invViewProj * Vec4f{ndcX, ndcY, 1.0f, 1.0f}).toVec3();
@@ -347,8 +331,10 @@ void CameraComponent::setPosition(const Vec3f &position) {
   auto &node = ownerNode->get();
   auto local = node.getLocalTransform();
   if (auto parent = node.getParent()) {
-    const Transform parentWorld = Transform::fromMat4(parent->getWorldTransform());
-    const Quatf invParentRotation = parentWorld.rotation.conjugate().normalized();
+    const Transform parentWorld =
+        Transform::fromMat4(parent->getWorldTransform());
+    const Quatf invParentRotation =
+        parentWorld.rotation.conjugate().normalized();
     Vec3f delta = position - parentWorld.translation;
     delta.x /= safeScaleComponent(parentWorld.scale.x);
     delta.y /= safeScaleComponent(parentWorld.scale.y);

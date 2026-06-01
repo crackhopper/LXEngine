@@ -1,13 +1,13 @@
 #include "command_buffer.hpp"
-#include "../descriptors/descriptor_manager.hpp"
-#include "../pipelines/pipeline.hpp"
-#include "../device_resources/buffer.hpp"
-#include "../device_resources/texture.hpp"
-#include "../device.hpp"
-#include "../resource_manager.hpp"
 #include "core/frame_graph/frame_graph.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/string_table.hpp"
+#include "../descriptors/descriptor_manager.hpp"
+#include "../device.hpp"
+#include "../device_resources/buffer.hpp"
+#include "../device_resources/texture.hpp"
+#include "../pipelines/pipeline.hpp"
+#include "../resource_manager.hpp"
 #include <array>
 #include <functional>
 #include <sstream>
@@ -20,9 +20,9 @@ namespace LX_core::backend {
 VkViewport makeVulkanViewport(u32 width, u32 height) {
   VkViewport viewport{};
   viewport.x = 0.0f;
-  viewport.y = static_cast<float>(height);
+  viewport.y = 0.0f;
   viewport.width = static_cast<float>(width);
-  viewport.height = -static_cast<float>(height);
+  viewport.height = static_cast<float>(height);
   viewport.minDepth = 0.0f;
   viewport.maxDepth = 1.0f;
   return viewport;
@@ -114,8 +114,7 @@ void logMissingDescriptorBindingOnce(const RenderingItem &item,
 
   std::cerr << "[RendererDebug] bindResources: missing binding name="
             << binding.name << " set=" << binding.set
-            << " binding=" << binding.binding
-            << " pass="
+            << " binding=" << binding.binding << " pass="
             << LX_core::GlobalStringTable::get().getName(item.pass.id)
             << " pipelineKey=" << item.pipelineKey.id.id << std::endl;
 }
@@ -162,8 +161,8 @@ void logDescriptorBufferBindingIfChanged(
             << LX_core::GlobalStringTable::get().getName(item.pass.id)
             << " pipelineKey=" << item.pipelineKey.id.id
             << " identity=" << next.identity
-            << " bufferToken=" << next.bufferToken
-            << " range=" << next.range << std::endl;
+            << " bufferToken=" << next.bufferToken << " range=" << next.range
+            << std::endl;
 }
 
 void logDescriptorImageBindingIfChanged(

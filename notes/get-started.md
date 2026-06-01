@@ -10,6 +10,7 @@
 | 验证 shader 编译 | `ninja test_shader_compiler && ./src/test/test_shader_compiler` |
 | 构建编辑器 | `ninja lxe_editor` |
 | 启动编辑器 | `./src/demos/lxe_editor/lxe_editor` |
+| 构建离线渲染器 | `ninja lxe_offline_render test_offline_scene_compiler test_offline_gpu_scene` |
 
 如果我们只想确认机器环境是否正常，先跑 `test_shader_compiler`。它不需要窗口和 GPU 交互，能最快暴露 `shaderc`、`glslc`、SPIRV-Cross 和 shader 文件路径问题。
 
@@ -22,6 +23,34 @@
 | `test_shader_compiler` | 验证 shader 编译和反射链路 |
 | `test_render_triangle` | 验证窗口、Vulkan backend、最小 draw loop |
 | `lxe_editor` | 学习场景、材质、光源、编辑器命令和保存/加载 |
+| `lxe_offline_render` | 读取 scene profile，运行 headless Vulkan compute 离线渲染 MVP |
+
+## 跑通 Offline Renderer MVP
+
+离线渲染器像一间独立实验室：我们仍然用 editor/scene YAML 搭场景，但渲染时不创建窗口和 swapchain，而是从命令行把 scene 编译成 `OfflineSceneIR`，再通过 Vulkan compute 输出线性 float 图。
+
+从仓库根目录执行：
+
+```bash
+cmake -S . -B build -G Ninja
+cmake --build build --target CompileShaders lxe_offline_render test_offline_scene_compiler test_offline_gpu_scene test_vulkan_offline_renderer -j2
+ctest --test-dir build --output-on-failure -R 'test_offline_scene_compiler|test_offline_gpu_scene|test_vulkan_offline_renderer|test_offline_render_cli'
+./build/src/tools/lxe_offline_render/lxe_offline_render \
+  --scene assets/scenes/ibl_metal_sphere.scene.yaml \
+  --profile mvp \
+  --samples 1 \
+  --width 64 \
+  --height 64 \
+  --out artifacts/offline/smoke
+```
+
+成功后会生成：
+
+```text
+artifacts/offline/smoke.rgba32f
+```
+
+当前 `.rgba32f` 是调试输出：每个像素 RGBA 四个 32-bit float，仍不是 EXR/PNG。我们先用它验证 compute dispatch、BVH、readback 和有限值；可查看图片输出由后续 `REQ-055-a` 补齐。
 
 ## 环境准备
 
@@ -50,6 +79,7 @@ glslc --version
 |---|---|---|
 | 启动项目 | 安装、构建、启动 editor、加载和保存场景 | [Tutorial / 启动项目](tutorial/start-project/index.md) |
 | 自定义材质 | `.material`、shader、参数、Gooch shader、editor 验证 | [Tutorial / 自定义材质](tutorial/custom-material/index.md) |
+| Offline Renderer | scene profile、headless Vulkan compute、path tracing 扩展点 | [Tutorial / Offline Renderer](tutorial/offline-renderer/index.md) |
 | 自定义灯光 | 当前 light 底座、scene YAML、未来 light asset / custom light 扩展 | [Tutorial / 自定义灯光](tutorial/custom-light/index.md) |
 | 扩展编辑器 | toolbar 按钮、command、undo/API/MCP 复用 | [Tutorial / 扩展编辑器](tutorial/extend-editor/index.md) |
 | 扩展场景节点 | 新 node kind、保存/加载、DebugDraw、兼容 editor 操作 | [Tutorial / 扩展场景节点](tutorial/extend-scene-node/index.md) |

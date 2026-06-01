@@ -9,6 +9,7 @@ LXEngine 的架构可以先想成一座工厂：`core` 画产品蓝图，`infra`
 | `core` | 蓝图室 | `src/core/` | 平台无关的 scene、material、frame graph、pipeline identity、RHI 接口 |
 | `infra` | 工具间 | `src/infra/` | shader 编译反射、mesh/texture/material loader、window、ImGui 接入 |
 | `backend` | Vulkan 车间 | `src/backend/vulkan/` | device、resource upload、attachment、descriptor、pipeline、command buffer、present |
+| `offline` | 离线实验室 | `src/core/offline/`, `src/infra/offline/`, `src/backend/vulkan/offline/` | scene profile、OfflineSceneIR、headless compute renderer、readback |
 | `editor` | 集成工作台 | `src/demos/lxe_editor/` | project/scene runtime、UI、CommandBus、API/recording |
 
 ```mermaid
@@ -16,11 +17,15 @@ flowchart TD
     core["src/core\n平台无关蓝图"]
     infra["src/infra\n加载器与工具"]
     backend["src/backend/vulkan\nVulkan 实现"]
+    offline["offline renderer\nSceneIR + Vulkan compute"]
     editor["src/demos/lxe_editor\n交互工作台"]
 
     infra --> core
     backend --> core
     backend --> infra
+    offline --> core
+    offline --> infra
+    backend --> offline
     editor --> core
     editor --> infra
     editor --> backend
@@ -129,14 +134,41 @@ Shadow depth target 和 swapchain forward target 不是同一种 render target s
 | Editor | `src/demos/lxe_editor/` | project/scene runtime、ImGui UI、CommandBus、API/recording 集成 | 新渲染层、engine-level MCP |
 | Notes / Requirements | `notes/`, `openspec/specs/` | 当前能力解释、future/pending 标注、文档导航 | 单独证明实现，最终仍以 `src/` 和 specs 为准 |
 
+## Realtime 与 Offline 是两条渲染入口
+
+实时视口像工作台上的即时预览；离线渲染像旁边的实验仪器。它们读取同一份 scene/asset 事实，但执行目标不同：realtime 追求交互帧率和 swapchain present，offline 追求可复现实验、ground truth 对比和 path tracing 迭代。
+
+```mermaid
+flowchart TD
+    yaml[".scene.yaml\nscene + offlineRender profiles"]
+    sceneio["infra/scene_io\nSceneDocument"]
+    realtime["lxe_editor + VulkanRealtimeRenderer\nFrameGraph / swapchain"]
+    compiler["infra/offline\nOfflineSceneCompiler"]
+    ir["core/offline\nOfflineSceneIR"]
+    gpu["backend/vulkan/offline\nGpuSceneBuilder + BVH"]
+    compute["VulkanOfflineRenderer\ncompute dispatch"]
+    dump[".rgba32f readback"]
+
+    yaml --> sceneio
+    sceneio --> realtime
+    sceneio --> compiler
+    compiler --> ir
+    ir --> gpu
+    gpu --> compute
+    compute --> dump
+```
+
+当前 offline MVP 的命令入口是 `src/tools/lxe_offline_render/lxe_offline_render`。它不依赖 editor UI，只复用 scene 文档、路径解析、core math/offline IR 和 Vulkan 基础设施。
+
 ## 当前能力和 pending 边界
 
 | 领域 | 当前事实 | Pending 边界 |
 |---|---|---|
 | FrameGraph | 显式 pass 顺序、read/write 声明、compile 校验、per-pass queue | task-based build、自动重排、aliasing |
 | Shadow / CSM | 4 个 directional shadow cascade，forward 读取 `ShadowMap0..3` | shadow debug visualization 仍可继续扩展 |
-| Forward output | forward pass 写 `swapchain.color/depth` | HDR/Post 的 `scene.hdrColor -> post -> swapchain` 还未实现 |
-| Material / lighting | Blinn-Phong + shadow pass、基础 PBR 材质资产存在 | PBR 完整管线和 IBL 不是当前事实 |
+| Forward output | forward HDR scene color、post process、bloom 和 swapchain 输出链路 | 更完整的 post stack 和调试 dump 仍可扩展 |
+| Material / lighting | Blinn-Phong、shadow pass、PBR + scene-level IBL 资源合同、金属球验证场景 | 更完整的 PBR texture set 和 local probe |
+| Offline renderer | scene profile、OfflineSceneIR、Vulkan compute primary-ray MVP、`.rgba32f` readback | EXR/PNG、真实 HDR environment sampling、多 bounce path tracing |
 | Deferred | 存在 `Pass_Deferred` 常量和方向 | G-Buffer / Deferred renderer 还未实现 |
 | Editor integration | ImGui editor、CommandBus、API/recording | Web Editor、engine-level CLI/MCP、AssetRegistry/hot reload 仍在 pending |
 
@@ -145,4 +177,5 @@ Shadow depth target 和 swapchain forward target 不是同一种 render target s
 - [项目目录结构](project-layout.md)
 - [渲染管线](rendering-pipeline/index.md)
 - [Shadow 阶段教程](../tutorial/shadow-era/index.md)
+- [Offline Renderer 教程](../tutorial/offline-renderer/index.md)
 - [Vulkan Backend](../subsystems/vulkan-backend.md)

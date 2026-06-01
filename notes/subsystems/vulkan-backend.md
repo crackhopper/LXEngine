@@ -32,7 +32,7 @@
 - GPU 资源缓存带短暂闲置宽限期：资源漏同步一帧不会立刻销毁重建，但长期不用仍会被 `collectGarbage()` 回收
 - `FrameGraph` 当前执行 4 个 `Pass_Shadow` cascade，再执行 `Pass_Forward` 和需要的 debug / overlay 路径
 - `kMaxFramesInFlight` 在 `VulkanRenderer` 内部只有一个定义，初始化路径和 draw 路径共用同一来源
-- Vulkan viewport 现在固定使用单一约定：`x=0`、`y=h`、`width=w`、`height=-h`，runtime 使用这套固定配置
+- Vulkan viewport 现在固定使用正高度：`x=0`、`y=0`、`width=w`、`height=h`；Vulkan 需要的 Y 翻转由 camera projection matrix 承担
 
 ## 阴影调试复盘
 
@@ -78,15 +78,16 @@ render debug dump shadow.cascade0 data/debug/dump/<name>.bmp
 
 ## 屏幕坐标约定
 
-当前 backend 统一采用一套固定 viewport Y 约定：
+当前 backend 统一采用一套 backend projection 约定：
 
 | 层级 | 当前约定 | 代码入口 |
 |---|---|---|
 | editor / 屏幕像素 | 左上角原点，`x` 向右，`y` 向下 | `SceneInteractionController` / `ViewportOverlay` |
-| NDC | 围绕屏幕中心的 `[-1, 1]` 归一化坐标；项目采用 OpenGL 风格屏幕语义：上方像素对应正 `y`，下方像素对应负 `y`；`z` 落在 Vulkan 风格 `0..1` 深度链路 | `CameraComponent::pickRay()` / `getProjMatrix()` |
-| Vulkan viewport | `VkViewport{0, h, width, -height, 0, 1}`，把 clip/NDC 的 `+Y` 映射到屏幕上方 | `details/commands/command_buffer.cpp` |
+| CPU 交互 NDC | OpenGL 风格屏幕语义：上方像素对应正 `y`，下方像素对应负 `y` | `CameraComponent::pickRay()` / overlay project |
+| Vulkan camera projection | 投影矩阵内翻转 `Y`，并输出 `0..1` 深度 | `CameraComponent::getProjMatrix(..., GraphicsAPI::Vulkan)` |
+| Vulkan viewport | `VkViewport{0, 0, width, height, 0, 1}`，只负责正高度 framebuffer 映射 | `details/commands/command_buffer.cpp` |
 
-这样做的结果是：CPU 侧的 pick / project 公式继续使用“上正下负”的 OpenGL 风格 NDC，GPU 侧只在 viewport 这一个固定位置完成落屏 Y 翻转；运行时环境变量不会插入第二次镜像。
+这样做的结果是：CPU 侧的 pick / project 公式继续使用“上正下负”的 OpenGL 风格 NDC，GPU 侧由 Vulkan projection matrix 完成后端适配；viewport 不再插入第二次镜像。
 
 ## 从哪里进入源码
 

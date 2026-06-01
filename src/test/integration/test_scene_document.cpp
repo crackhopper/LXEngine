@@ -679,6 +679,102 @@ void testSceneDocumentRoundTripsTypedLightPayloads() {
          "spot cone should round trip");
 }
 
+void testSceneDocumentRoundTripsOfflineRenderProfilesAndOfflineSubtrees() {
+  const std::filesystem::path path =
+      makeTempPath("lx_scene_document_offline_render.yaml");
+
+  std::ofstream out(path);
+  out << "scene:\n"
+         "  name: offline profile scene\n"
+         "  gameplayCameraPath: /game_cam\n"
+         "  environment:\n"
+         "    enabled: true\n"
+         "    hdrUri: cache://polyhaven/studio_small_03/2k-hdr/converted/environment.exr\n"
+         "  offlineRender:\n"
+         "    defaultProfile: reference\n"
+         "    profiles:\n"
+         "      preview:\n"
+         "        backend: vulkan-compute\n"
+         "        integrator: primary-ray\n"
+         "        width: 512\n"
+         "        height: 512\n"
+         "        samples: 1\n"
+         "        maxDepth: 1\n"
+         "        seed: 1\n"
+         "        outputFormat: exr-png\n"
+         "      reference:\n"
+         "        backend: vulkan-compute\n"
+         "        integrator: path-tracing\n"
+         "        width: 1920\n"
+         "        height: 1080\n"
+         "        samples: 64\n"
+         "        maxDepth: 4\n"
+         "        seed: 7\n"
+         "        outputFormat: exr-png\n"
+         "        futureField:\n"
+         "          enabled: true\n"
+         "root:\n"
+         "  nodeName: scene_root\n"
+         "  name: ''\n"
+         "  transform:\n"
+         "    translation: [0.0, 0.0, 0.0]\n"
+         "    rotation: [1.0, 0.0, 0.0, 0.0]\n"
+         "    scale: [1.0, 1.0, 1.0]\n"
+         "  visibilityMask: 4294967295\n"
+         "  children:\n"
+         "    - nodeName: dir_light_node\n"
+         "      name: dir_light\n"
+         "      transform:\n"
+         "        translation: [0.0, 0.0, 0.0]\n"
+         "        rotation: [1.0, 0.0, 0.0, 0.0]\n"
+         "        scale: [1.0, 1.0, 1.0]\n"
+         "      visibilityMask: 4294967295\n"
+         "      light:\n"
+         "        kind: Directional\n"
+         "        direction: [-0.3, -1.0, -0.5]\n"
+         "        color: [1.0, 0.98, 0.9]\n"
+         "        intensity: 1.0\n"
+         "        offline:\n"
+         "          sampleWeight: 1.0\n";
+  out.close();
+
+  const demo::SceneDocument doc = demo::loadSceneDocument(path);
+  EXPECT(doc.hasOfflineRenderProfiles(),
+         "offlineRender profiles should load");
+  const auto &profiles = doc.offlineRenderProfiles();
+  EXPECT(profiles.defaultProfile == "reference",
+         "default offline profile should load");
+  EXPECT(profiles.profiles.at("reference").integrator == "path-tracing",
+         "reference integrator should load");
+  EXPECT(profiles.profiles.at("reference").samples == 64u,
+         "reference samples should load");
+  EXPECT(profiles.profiles.at("reference").extensionYamlByField.count(
+             "futureField") == 1,
+         "unknown profile fields should be retained explicitly");
+  EXPECT(doc.environment().hdrUri.find("cache://polyhaven/") == 0,
+         "cache URI should remain a URI string");
+
+  const auto *light = findChildByNodeName(doc.rootNode(), "dir_light_node");
+  EXPECT(light != nullptr && light->light.has_value(),
+         "light node should load");
+  EXPECT(light != nullptr && light->light->offlineYaml.has_value(),
+         "light offline subtree should be retained");
+
+  const std::filesystem::path savedPath =
+      makeTempPath("lx_scene_document_offline_render_saved.yaml");
+  demo::saveSceneDocument(savedPath, doc);
+  const std::string savedText = readFile(savedPath);
+  EXPECT(savedText.find("offlineRender:") != std::string::npos,
+         "offlineRender should save");
+  EXPECT(savedText.find("futureField:") != std::string::npos,
+         "unknown profile extension should save");
+  EXPECT(savedText.find("sampleWeight") != std::string::npos,
+         "object offline subtree should save");
+  EXPECT(savedText.find("cache://polyhaven/studio_small_03") !=
+             std::string::npos,
+         "cache URI should save without expansion");
+}
+
 void testShadowTutorialSceneAssetLoads() {
   const std::filesystem::path path = std::filesystem::current_path() /
                                      "assets" / "scenes" /
@@ -761,6 +857,12 @@ void testIblMetalSphereSceneAssetLoads() {
   EXPECT(light != nullptr && light->light.has_value() &&
              light->light->kind == demo::LightKind::Directional,
          "IBL metal sphere should contain a directional light");
+  EXPECT(doc.hasOfflineRenderProfiles(),
+         "IBL metal sphere should declare offline render profiles");
+  if (doc.hasOfflineRenderProfiles()) {
+    EXPECT(doc.offlineRenderProfiles().profiles.count("mvp") == 1,
+           "IBL metal sphere should include an mvp offline profile");
+  }
 }
 
 void testSaveSceneDocumentRejectsNonCanonicalRootIdentity() {
@@ -796,6 +898,7 @@ int main() {
   testLoadExplicitRootDocumentRejectsNonCanonicalRootIdentity();
   testSaveSceneDocumentWritesExplicitRootCanonicalFormat();
   testSceneDocumentRoundTripsTypedLightPayloads();
+  testSceneDocumentRoundTripsOfflineRenderProfilesAndOfflineSubtrees();
   testShadowTutorialSceneAssetLoads();
   testIblMetalSphereSceneAssetLoads();
   testSaveSceneDocumentRejectsUnsupportedRootPayload();

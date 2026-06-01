@@ -24,6 +24,10 @@ nav:
           - 资源与绑定: tutorial/pbr-ibl/02-resource-and-shader-contract.md
           - HDR Post 流程: tutorial/pbr-ibl/03-hdr-post-process-flow.md
           - 验证与排错: tutorial/pbr-ibl/04-verify-and-debug.md
+      - Offline Renderer:
+          - 总览: tutorial/offline-renderer/index.md
+          - 运行 CLI: tutorial/offline-renderer/01-run-offline-renderer.md
+          - Path Tracing: tutorial/offline-renderer/02-implement-path-tracing.md
       - 自定义材质:
           - 总览: tutorial/custom-material/index.md
           - 材质积木: tutorial/custom-material/01-material-building-blocks.md
@@ -95,6 +99,7 @@ nav:
           - Plane 与薄盒阴影: concepts-design/rendering-pipeline/plane-vs-thin-box-shadow.md
           - CSM: concepts-design/rendering-pipeline/cascaded-shadow-maps.md
           - RenderQueue: concepts-design/rendering-pipeline/render-queue.md
+          - 3DGS PLY: concepts-design/rendering-pipeline/3dgs-ply-rendering.md
       - 编辑器系统:
           - 总览: design/editor-system/index.md
           - 主循环与对象归属: design/editor-system/01-main-loop-and-ownership.md

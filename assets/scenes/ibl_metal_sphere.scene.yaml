@@ -7,6 +7,36 @@ scene:
     skyboxEnabled: true
     intensity: 1.0
     roughnessMipCount: 5.0
+  offlineRender:
+    defaultProfile: preview
+    profiles:
+      preview:
+        backend: vulkan-compute
+        integrator: primary-ray
+        width: 512
+        height: 512
+        samples: 1
+        maxDepth: 1
+        seed: 1
+        outputFormat: exr-png
+      mvp:
+        backend: vulkan-compute
+        integrator: primary-ray
+        width: 1024
+        height: 576
+        samples: 4
+        maxDepth: 1
+        seed: 1
+        outputFormat: exr-png
+      reference:
+        backend: vulkan-compute
+        integrator: path-tracing
+        width: 1920
+        height: 1080
+        samples: 64
+        maxDepth: 4
+        seed: 1
+        outputFormat: exr-png
 root:
   nodeName: scene_root
   name: ''

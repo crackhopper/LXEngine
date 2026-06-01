@@ -12,6 +12,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_vulkan_shader
   test_vulkan_resource_manager
   test_vulkan_ibl_bake
+  test_vulkan_offline_renderer
   test_vulkan_device_selection
   test_string_table
   test_material_instance
@@ -62,6 +63,9 @@ set(TEST_INTEGRATION_EXE_LIST
   test_lxe_editor_memory_probe
   test_lxe_editor_recording
   test_gltf_loader
+  test_offline_render_cli
+  test_offline_scene_compiler
+  test_offline_gpu_scene
 
   # test_render_sphere
   # test_render_model
@@ -243,7 +247,6 @@ if(TARGET test_lxe_editor_session)
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/camera_rig.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_config_state.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_data_state.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_camera_state.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_scene_state.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_build_info.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_commands.cpp
@@ -252,7 +255,6 @@ if(TARGET test_lxe_editor_session)
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/project_session.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/recording_controller.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_builder.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_document.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_interaction_controller.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_input_routing.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_runtime.cpp
@@ -309,7 +311,6 @@ if(TARGET test_lxe_editor_memory_probe)
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/camera_rig.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_config_state.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_data_state.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_camera_state.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_scene_state.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_build_info.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_commands.cpp
@@ -318,7 +319,6 @@ if(TARGET test_lxe_editor_memory_probe)
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/project_session.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/recording_controller.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_builder.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_document.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_interaction_controller.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_input_routing.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_runtime.cpp
@@ -340,10 +340,12 @@ if(TARGET test_lxe_editor_recording)
   )
 endif()
 
+if(TARGET test_offline_render_cli)
+  target_link_libraries(test_offline_render_cli PRIVATE lxe_offline_render_cli)
+endif()
+
 if(TARGET test_scene_document)
   target_sources(test_scene_document PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_camera_state.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_document.cpp
   )
   target_include_directories(test_scene_document PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/..
@@ -392,9 +394,7 @@ if(TARGET test_scene_runtime)
   target_sources(test_scene_runtime PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/builtin_asset_catalog.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_builder.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_camera_state.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/project_document.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_document.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_runtime.cpp
   )
   target_include_directories(test_scene_runtime PRIVATE

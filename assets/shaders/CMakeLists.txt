@@ -18,10 +18,11 @@ file(COPY "${GLSL_INPUT_DIR}/" DESTINATION "${SHADER_OUTPUT_DIR}")
 
 file(GLOB GLSL_VERT_FILES "${GLSL_INPUT_DIR}/*.vert")
 file(GLOB GLSL_FRAG_FILES "${GLSL_INPUT_DIR}/*.frag")
+file(GLOB GLSL_COMP_FILES "${GLSL_INPUT_DIR}/*.comp")
 
 set(SPV_FILES "")
 
-foreach(SHADER_FILE ${GLSL_VERT_FILES} ${GLSL_FRAG_FILES})
+foreach(SHADER_FILE ${GLSL_VERT_FILES} ${GLSL_FRAG_FILES} ${GLSL_COMP_FILES})
   get_filename_component(FILE_NAME "${SHADER_FILE}" NAME)
 
   if(FILE_NAME MATCHES "^(.+)\\.vert$")
@@ -30,6 +31,9 @@ foreach(SHADER_FILE ${GLSL_VERT_FILES} ${GLSL_FRAG_FILES})
   elseif(FILE_NAME MATCHES "^(.+)\\.frag$")
     set(SHADER_NAME "${CMAKE_MATCH_1}")
     set(OUTPUT_SPV "${SHADER_OUTPUT_DIR}/${SHADER_NAME}.frag.spv")
+  elseif(FILE_NAME MATCHES "^(.+)\\.comp$")
+    set(SHADER_NAME "${CMAKE_MATCH_1}")
+    set(OUTPUT_SPV "${SHADER_OUTPUT_DIR}/${SHADER_NAME}.comp.spv")
   else()
     message(FATAL_ERROR "Unrecognized shader filename: ${FILE_NAME}")
   endif()

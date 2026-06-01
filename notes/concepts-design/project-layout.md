@@ -25,8 +25,10 @@ LXEngine/
 | `src/core/` | 平台无关核心 | scene、asset、material、frame graph、pipeline、RHI 接口、input、time |
 | `src/infra/` | 工程工具层 | shader compiler/reflector、mesh/texture/material loader、window、ImGui |
 | `src/backend/vulkan/` | Vulkan 后端 | device、swapchain、FrameGraph attachment、descriptor、pipeline、command buffer |
+| `src/backend/vulkan/offline/` | Vulkan 离线后端 | headless compute renderer、GPU scene packing、BVH、readback |
 | `src/demos/lxe_editor/` | 当前交互 editor | project、scene runtime、UI、API、recording、commands |
 | `src/test/integration/` | 集成测试 | shader、material、scene、pipeline、resource、editor 相关测试 |
+| `src/tools/` | 独立工具 | `lxe_offline_render` CLI、`assets-downloader` React/TS 工具 |
 
 ### `src/core/` 的当前子区
 
@@ -35,6 +37,7 @@ LXEngine/
 | `asset/` | `Mesh`、`Texture`、`MaterialTemplate`、`MaterialInstance`、`Shader`、`Skeleton` |
 | `scene/` | `Scene`、`SceneNode`、components、camera、light、controller |
 | `frame_graph/` | `FrameGraph`、`FramePass`、`RenderQueue`、`RenderTarget`、read/write resource 声明 |
+| `offline/` | `OfflineRenderProfile`、`OfflineSceneIR`、离线 readback image |
 | `pipeline/` | `PipelineKey`、`PipelineBuildDesc` |
 | `rhi/` | renderer 接口、GPU resource、buffer、vertex layout |
 | `gpu/` | `EngineLoop` |
@@ -47,6 +50,8 @@ LXEngine/
 |---|---|
 | `material_loader/` | `.material` YAML loader |
 | `mesh_loader/` | OBJ / glTF loader |
+| `offline/` | scene 文档到 `OfflineSceneIR` 的 compiler、cache/project URI resolver |
+| `scene_io/` | `.scene.yaml` 文档读写，供 editor 与 offline CLI 共用 |
 | `shader_compiler/` | shaderc 编译与 SPIRV-Cross 反射 |
 | `texture_loader/` | stb image 纹理加载与 placeholder textures |
 | `window/` | SDL3 / GLFW window 和 SDL3 input |
@@ -57,13 +62,22 @@ LXEngine/
 | 目录 | 当前用途 |
 |---|---|
 | `assets/materials/` | `.material` 文件 |
-| `assets/shaders/glsl/` | GLSL 源和当前仓库内的 `.spv`，包括 forward 与 depth-only shadow shader |
+| `assets/shaders/glsl/` | GLSL 源和当前仓库内的 `.spv`，包括 forward、shadow、post、IBL bake、offline compute shader |
 | `assets/models/` | 示例模型、测试模型、内置模型包 |
 | `assets/models/builtin/` | 内置模型 manifest 和低面元资产 |
 | `assets/textures/` | 独立贴图 |
 | `assets/env/` | 环境贴图资产；资产存在不等于 HDR/Post 管线已经实现 |
 | `assets/scenes/` | 仓库自带 scene |
 | `assets/project_templates/` | 新建 project 的只读模板 |
+
+## src/tools/ 是引擎外的实验工具层
+
+| 工具 | 入口 | 当前用途 |
+|---|---|---|
+| `lxe_offline_render` | `src/tools/lxe_offline_render/` | 读取 `.scene.yaml` 与 `scene.offlineRender` profile，运行 Vulkan compute 离线渲染 MVP |
+| `assets-downloader` | `src/tools/assets-downloader/` | React + TypeScript 页面，管理外部资产下载、license、cache URI 和导入缓存 |
+
+这两个工具都服务于“场景资产可以被 editor 使用，也可以被离线 renderer 使用”的同一条路线。它们不应该反向依赖 `src/demos/lxe_editor/` 的 UI 状态；共享边界放在 `infra/scene_io`、`infra/offline`、`core/offline` 和 project/cache 路径约定上。
 
 文件格式和 URI 细节见 [资产系统](../concepts/assets/index.md)。
 
@@ -100,3 +114,4 @@ Roadmap 可以说明方向，但不能证明能力已经实现。是否实现要
 - [架构总览](architecture.md)
 - [术语表](glossary.md)
 - [源码分析入口](../source_analysis/index.md)
+- [Offline Renderer 教程](../tutorial/offline-renderer/index.md)

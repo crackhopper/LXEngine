@@ -1789,7 +1789,8 @@ shadowProjectProbe(Scene &scene, const std::vector<std::string> &args) {
   }
 
   const Mat4f cameraViewProj =
-      camera->get().getProjMatrix() * camera->get().getViewMatrix();
+      camera->get().getProjMatrix(0.0f, GraphicsAPI::OpenGL) *
+      camera->get().getViewMatrix();
   const Mat4f shadowViewProj = light->getShadowViewProj();
   const Mat4f cascade0ViewProj =
       light->getDirectionalUBO()->param.cascadeViewProj[0];

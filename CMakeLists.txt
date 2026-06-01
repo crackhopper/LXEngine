@@ -67,8 +67,6 @@ if(TARGET imgui)
   target_link_libraries(${CORE_LIB} PRIVATE imgui)
 endif()
 
-add_subdirectory(src/test)
-
 # REQ-019: demo executables (default ON). Not registered with CTest.
 option(LX_BUILD_DEMOS "Build demo executables" ON)
 if(LX_BUILD_DEMOS)
@@ -112,6 +110,8 @@ lx_sync_asset_subdir("scenes")
 
 # 引入 shader 编译 target
 add_subdirectory(assets/shaders)
+add_subdirectory(src/tools)
+add_subdirectory(src/test)
 
 # -------------------------------
 # Bootstrap / env-probe executable

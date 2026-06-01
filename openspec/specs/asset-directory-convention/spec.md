@@ -22,6 +22,7 @@ The `assets/` directory SHALL contain the following test assets:
 | viking_room.obj | `assets/models/viking_room/` | 兼容旧 demo |
 | viking_room.png | `assets/textures/viking_room/` | 兼容旧 demo |
 | studio_small_03_2k.hdr | `assets/env/` | IBL 环境贴图输入 |
+| 3DGS Train Sample | `assets/models/3dgs_train_sample/` | 3D Gaussian Splatting PLY 渲染验收样例 |
 
 #### Scenario: All baseline assets present
 - **WHEN** a developer lists the contents of `assets/`
@@ -32,22 +33,33 @@ The `assets/` directory SHALL contain the following test assets:
 - **THEN** the directory SHALL contain `DamagedHelmet.gltf`, `DamagedHelmet.bin`, and associated texture files
 
 ### Requirement: Total asset size budget
-The total size of all files under `assets/` SHALL NOT exceed 100 MB.
+The total size of all files under `assets/` SHALL NOT exceed 300 MB. The
+larger budget exists to carry one representative 3D Gaussian Splatting source
+PLY fixture in addition to the mesh/HDR baseline.
 
 #### Scenario: Size within budget
 - **WHEN** the total size of `assets/` is computed
-- **THEN** the result SHALL be less than or equal to 100 MB
+- **THEN** the result SHALL be less than or equal to 300 MB
+
+### Requirement: Repository submitted-size budget
+The submitted repository size SHALL stay under 800 MB for normal checkout
+content plus `.git` object storage. Local ignored outputs such as `build*`,
+`.site`, `.cache`, and `.worktrees` SHALL NOT be counted in this budget.
+
+#### Scenario: Repository checkout stays within budget
+- **WHEN** ignored local build and preview outputs are excluded
+- **THEN** the working tree plus `.git` storage SHALL remain less than 800 MB
 
 #### Scenario: Stanford Bunny causes budget overflow
-- **WHEN** adding Stanford Bunny would cause total size to exceed 100 MB
+- **WHEN** adding Stanford Bunny would cause total size to exceed 300 MB
 - **THEN** the implementation SHALL first try a lighter representation, and if still exceeding, remove bunny and document the reason in README.md
 
 ### Requirement: Asset trimming priority
-DamagedHelmet, Sponza, studio_small_03_2k.hdr, and viking_room assets SHALL NOT be removed under any trimming scenario. Stanford Bunny is the first candidate for removal.
+DamagedHelmet, Sponza, studio_small_03_2k.hdr, viking_room assets, and the 3DGS Train Sample SHALL NOT be removed under any trimming scenario. Stanford Bunny is the first candidate for removal.
 
 #### Scenario: Trimming preserves core assets
-- **WHEN** trimming is required to meet the 100 MB budget
-- **THEN** DamagedHelmet, Sponza, HDR, and viking_room SHALL remain; only Stanford Bunny MAY be removed
+- **WHEN** trimming is required to meet the 300 MB budget
+- **THEN** DamagedHelmet, Sponza, HDR, viking_room, and 3DGS Train Sample SHALL remain; only Stanford Bunny MAY be removed
 
 ### Requirement: Old root directories removed
 After migration, the root-level `models/` and `textures/` directories SHALL be deleted. All references SHALL point to `assets/`.
@@ -75,7 +87,7 @@ Each top-level asset directory (e.g., `assets/models/damaged_helmet/`) SHALL con
 - **THEN** the listed total size SHALL match the actual size of `assets/`
 
 ### Requirement: Prohibited assets
-The repository SHALL NOT include 4K or higher HDR files, Bistro, Cornell Box, or other large scenes beyond the baseline.
+The repository SHALL NOT include 4K or higher HDR files, Bistro, Cornell Box, or other large mesh/HDR scenes beyond the baseline. The only large scene exception is the single 3DGS Train Sample PLY fixture listed in the baseline table.
 
 #### Scenario: No 4K HDR present
 - **WHEN** scanning `assets/` for HDR files

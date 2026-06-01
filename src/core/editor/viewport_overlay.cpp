@@ -220,7 +220,8 @@ void drawDirectionalLightDebug(const SceneNode &node,
 void drawPointLightDebug(const SceneNode &node, const PointLight &light) {
   const Vec3f origin =
       Transform::fromMat4(node.getWorldTransform()).translation;
-  DebugDraw::wireSphere(origin, light.getRange(), lightDebugColor(light.getColor()));
+  DebugDraw::wireSphere(origin, light.getRange(),
+                        lightDebugColor(light.getColor()));
 }
 
 void drawSpotLightDebug(const SceneNode &node, const SpotLight &light) {
@@ -444,7 +445,8 @@ ViewportOverlay::gatherBoxSelectionPaths(const Vec2f &dragStart,
 
   const Mat4f viewProj =
       editorCamera->get().getProjMatrix(
-          viewportSize.y > 0.0f ? viewportSize.x / viewportSize.y : 1.0f) *
+          viewportSize.y > 0.0f ? viewportSize.x / viewportSize.y : 1.0f,
+          GraphicsAPI::OpenGL) *
       editorCamera->get().getViewMatrix();
   std::vector<std::string> paths;
   for (const auto &renderable : m_scene.getRenderables()) {
@@ -569,7 +571,8 @@ void ViewportOverlay::enqueueDebugDraw() const {
       continue;
     }
     const Mat4f viewProj =
-        camera->get().getProjMatrix() * camera->get().getViewMatrix();
+        camera->get().getProjMatrix(0.0f, GraphicsAPI::OpenGL) *
+        camera->get().getViewMatrix();
     DebugDraw::frustum(viewProj, DebugDraw::Color::white());
   }
 
@@ -689,7 +692,8 @@ void ViewportOverlay::drawSceneOverlay(
   float view[16] = {};
   float projection[16] = {};
   GizmoAdapter::toFloat16(editorCamera->get().getViewMatrix(), view);
-  GizmoAdapter::toFloat16(editorCamera->get().getProjMatrix(), projection);
+  GizmoAdapter::toFloat16(
+      editorCamera->get().getProjMatrix(0.0f, GraphicsAPI::OpenGL), projection);
 
   bool changed = false;
   bool usingNow = false;

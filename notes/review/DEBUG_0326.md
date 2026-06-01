@@ -85,7 +85,7 @@ vkCreatePipelineLayout(...);
 | `LX_RENDER_DEBUG_CLEAR=1` | 清除色改为蓝色 |
 | `LX_RENDER_DISABLE_CULL=1` | 关闭背面剔除 |
 | `LX_RENDER_DISABLE_DEPTH=1` | 关闭深度测试 |
-| `LX_RENDER_FLIP_VIEWPORT_Y=1` | 翻转视口 Y 轴 |
+| `LX_RENDER_FLIP_VIEWPORT_Y=1` | 历史调试项；当前主路径由 Vulkan 投影矩阵翻转 Y，viewport 使用正高度 |
 
 **收获**: 蓝色清除色生效证明了 swapchain → render pass → framebuffer → present 链路正常。问题锁定在**绘制命令未产生可见输出**。
 
@@ -220,4 +220,3 @@ vkCmdSetScissor(rawCmd, 0, 1, &scissor);
 
 vkCmdDraw(rawCmd, 3, 1, 0, 0);
 ```
-

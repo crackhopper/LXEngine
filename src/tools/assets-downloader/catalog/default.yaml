@@ -1,0 +1,125 @@
+schemaVersion: 1
+sources:
+  - id: polyhaven
+    name: Poly Haven
+    url: https://polyhaven.com/
+    description: CC0 HDRI and texture source for environment maps.
+    licensePolicy: Default catalog entries must be CC0.
+    categories:
+      - id: hdri
+        name: HDRI
+        recommended:
+          - id: studio_small_03
+            displayName: Studio Small 03
+            url: https://polyhaven.com/a/studio_small_03
+            sourceUrl: https://polyhaven.com/a/studio_small_03
+            expectedLicense: CC0
+            licenseStatus: verified
+            licenseUrl: https://polyhaven.com/license
+            kind: environment
+            variants: [2k-hdr, 4k-exr]
+            recipe:
+              outputKind: environment
+              downloadStrategy: direct-url
+              conversion: copy-environment
+            manualNotes: Import a direct HDR/EXR download URL if the landing page is not downloadable.
+  - id: ambientcg
+    name: ambientCG
+    url: https://ambientcg.com/
+    description: CC0 PBR material and texture sets.
+    licensePolicy: Default catalog entries must be CC0.
+    categories:
+      - id: material
+        name: Material
+        recommended:
+          - id: wood_floor_001
+            displayName: Wood Floor 001
+            url: https://ambientcg.com/view?id=WoodFloor001
+            sourceUrl: https://ambientcg.com/view?id=WoodFloor001
+            expectedLicense: CC0
+            licenseStatus: verified
+            licenseUrl: https://ambientcg.com/license
+            kind: material
+            variants: [1k]
+            recipe:
+              outputKind: material
+              downloadStrategy: direct-url
+              conversion: pbr-texture-set
+            manualNotes: Import a direct ZIP or texture URL from the asset page.
+  - id: khronos-gltf-sample-assets
+    name: Khronos glTF Sample Assets
+    url: https://github.com/KhronosGroup/glTF-Sample-Assets
+    description: glTF and GLB model corpus for importer and PBR checks.
+    licensePolicy: Licenses are per asset; only verified entries are importable by default.
+    categories:
+      - id: model
+        name: Model
+        recommended:
+          - id: damaged_helmet
+            displayName: Damaged Helmet
+            url: https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DamagedHelmet
+            sourceUrl: https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DamagedHelmet
+            expectedLicense: CC0
+            licenseStatus: verified
+            licenseUrl: https://github.com/KhronosGroup/glTF-Sample-Assets/blob/main/Models/DamagedHelmet/README.md
+            kind: model
+            variants: [glb]
+            recipe:
+              outputKind: model
+              downloadStrategy: direct-url
+              conversion: copy-gltf
+            manualNotes: Import the raw .glb URL for first-version conversion.
+  - id: gltf-sample-viewer
+    name: glTF Sample Viewer
+    url: https://github.khronos.org/glTF-Sample-Viewer-Release/
+    description: Reference viewer for checking glTF PBR appearance.
+    licensePolicy: Navigation-only source; import sample assets through the Khronos catalog entry.
+    categories:
+      - id: course-asset
+        name: Reference
+        recommended: []
+  - id: pbrt-v4-scenes
+    name: pbrt-v4 scenes
+    url: https://github.com/mmp/pbrt-v4-scenes
+    description: Complex rendering research scenes with per-scene licenses.
+    licensePolicy: Manual review required before local import.
+    categories:
+      - id: scene
+        name: Scene
+        recommended: []
+  - id: pbrt-resources
+    name: pbrt resources
+    url: https://www.pbrt.org/resources
+    description: Official pbrt resource index.
+    licensePolicy: Manual review required before local import.
+    categories:
+      - id: scene
+        name: Scene
+        recommended: []
+  - id: bitterli
+    name: Bitterli rendering resources
+    url: https://benedikt-bitterli.me/resources/
+    description: Rendering research scenes in Mitsuba, pbrt, and Tungsten formats.
+    licensePolicy: Manual review required before local import.
+    categories:
+      - id: scene
+        name: Scene
+        recommended: []
+  - id: mcguire-cg-archive
+    name: McGuire CG Archive
+    url: https://casual-effects.com/data
+    description: Common research models including Sponza, Bistro, and San Miguel.
+    licensePolicy: Manual review required before local import.
+    categories:
+      - id: model
+        name: Model
+        recommended: []
+  - id: games-course-assets
+    name: GAMES101/GAMES202 course assets
+    url: https://www.bilibili.com/video/BV1X7411F744/
+    description: Course-related assets; local installation only unless license permits reuse.
+    licensePolicy: Never verified by default; users must provide local license confirmation.
+    categories:
+      - id: course-asset
+        name: Course asset
+        recommended: []

@@ -37,6 +37,13 @@ public:
                   ApiVersion32 apiVersion = VK_API_VERSION_1_3,
                   std::vector<const char *> validationLayers = {
                       "VK_LAYER_KHRONOS_validation"});
+  void initializeHeadless(const char *appName,
+                          ApiVersion32 appVersion = VK_MAKE_VERSION(1, 0, 0),
+                          const char *engineName = "LX",
+                          ApiVersion32 engineVersion = VK_MAKE_VERSION(1, 0, 0),
+                          ApiVersion32 apiVersion = VK_API_VERSION_1_3,
+                          std::vector<const char *> validationLayers = {
+                              "VK_LAYER_KHRONOS_validation"});
   void shutdown();
 
   // --- 句柄获取 (只读) ---
@@ -105,13 +112,18 @@ private:
     std::optional<u32> presentFamily;  // 屏幕显示队列（Surface）
 
     // 辅助函数：判断我们需要的队列是否都找齐了
-    bool isComplete() const {
-      return graphicsFamily.has_value() && presentFamily.has_value();
+    bool isComplete(bool requirePresent) const {
+      return graphicsFamily.has_value() &&
+             (!requirePresent || presentFamily.has_value());
     }
+    bool isGraphicsComplete() const { return graphicsFamily.has_value(); }
   };
   QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
+  QueueFamilyIndices findHeadlessQueueFamilies(VkPhysicalDevice device);
   bool isDeviceSuitable(VkPhysicalDevice device,
                         std::vector<const char *> extensionsRequired);
+  bool isHeadlessDeviceSuitable(VkPhysicalDevice device,
+                                std::vector<const char *> extensionsRequired);
   bool
   checkDeviceExtensionSupport(VkPhysicalDevice device,
                               std::vector<const char *> extensionsRequired);

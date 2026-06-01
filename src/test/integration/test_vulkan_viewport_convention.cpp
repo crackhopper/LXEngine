@@ -16,18 +16,18 @@ int failures = 0;
     }                                                                          \
   } while (0)
 
-void testViewportUsesNegativeHeightToPreserveOpenGlStyleNdcY() {
+void testViewportUsesPositiveHeightBecauseProjectionOwnsBackendYFlip() {
   setenv("LX_RENDER_FLIP_VIEWPORT_Y", "1", 1);
 
   const VkViewport viewport =
       LX_core::backend::makeVulkanViewport(1920u, 1008u);
 
   EXPECT(viewport.x == 0.0f, "viewport x should stay at the left edge");
-  EXPECT(viewport.y == 1008.0f,
-         "negative-height viewport should anchor y at the lower edge");
+  EXPECT(viewport.y == 0.0f, "viewport y should stay at the top edge");
   EXPECT(viewport.width == 1920.0f, "viewport width should match input width");
-  EXPECT(viewport.height == -1008.0f,
-         "viewport height should be negative to flip clip-space y once");
+  EXPECT(
+      viewport.height == 1008.0f,
+      "viewport height should be positive because Vulkan projection flips y");
   EXPECT(viewport.minDepth == 0.0f, "viewport minDepth should stay zero");
   EXPECT(viewport.maxDepth == 1.0f, "viewport maxDepth should stay one");
 
@@ -37,7 +37,7 @@ void testViewportUsesNegativeHeightToPreserveOpenGlStyleNdcY() {
 } // namespace
 
 int main() {
-  testViewportUsesNegativeHeightToPreserveOpenGlStyleNdcY();
+  testViewportUsesPositiveHeightBecauseProjectionOwnsBackendYFlip();
   if (failures != 0) {
     return 1;
   }

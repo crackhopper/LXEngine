@@ -28,6 +28,12 @@ Makefile
 .env
 .site/
 .cache/
+.asset_cache/
+artifacts/
+
+# Large locally imported/sample assets stay outside Git. Use assets-downloader
+# cache or local project assets when rendering these scenes.
+assets/models/3dgs_train_sample/point_cloud.ply
 
 # mkdocs notes 预览生成物（由 scripts/_gen_notes_site.py 产生）
 mkdocs.gen.yml
@@ -57,3 +63,7 @@ data/
 # lxe_manager local Node tooling
 /tools/lxe_manager/node_modules/
 /tools/lxe_manager/dist/
+
+# assets-downloader local Node tooling and build output
+/src/tools/assets-downloader/node_modules/
+/src/tools/assets-downloader/dist/

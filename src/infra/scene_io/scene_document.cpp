@@ -1,4 +1,4 @@
-#include "demos/lxe_editor/scene_document.hpp"
+#include "infra/scene_io/scene_document.hpp"
 
 #include "yaml-cpp/yaml.h"
 
@@ -8,9 +8,11 @@
 #include <memory>
 #include <optional>
 #include <stdexcept>
+#include <string>
+#include <string_view>
 #include <utility>
 
-namespace LX_demo::lxe_editor {
+namespace LX_infra::scene_io {
 namespace {
 
 constexpr const char *kDefaultRootNodeName = "scene_root";
@@ -25,11 +27,71 @@ struct SceneDocumentData final {
   std::string sceneName = "Scene";
   std::string gameplayCameraPath = "/game_cam";
   std::optional<EnvironmentState> environment;
+  std::optional<LX_core::offline::OfflineRenderProfiles>
+      offlineRenderProfiles;
   SceneNodeDocument rootNode;
   std::optional<EditorCameraState> editorCamera;
 
   SceneDocumentData() : rootNode(makeDefaultRootNode()) {}
 };
+
+[[nodiscard]] std::string dumpYamlNode(const YAML::Node &node) {
+  YAML::Emitter out;
+  out << node;
+  return out.c_str();
+}
+
+void emitRawYamlNode(YAML::Emitter &out, const std::string &yamlText) {
+  out << YAML::Load(yamlText);
+}
+
+[[nodiscard]] bool hasPrefix(std::string_view value,
+                             std::string_view prefix) {
+  return value.size() >= prefix.size() &&
+         value.substr(0, prefix.size()) == prefix;
+}
+
+void validateSceneAssetUriInternal(const std::string &uri,
+                                   const char *fieldName) {
+  if (uri.empty()) {
+    throw std::runtime_error(std::string(fieldName) + " must be non-empty");
+  }
+  if (uri.find(".asset_cache/") != std::string::npos ||
+      uri.find(".asset_cache\\") != std::string::npos) {
+    throw std::runtime_error(std::string(fieldName) +
+                             " must use cache:// instead of .asset_cache");
+  }
+  if (!hasPrefix(uri, "cache://")) {
+    return;
+  }
+
+  const std::string path = uri.substr(std::string("cache://").size());
+  usize segmentCount = 0;
+  bool previousSlash = true;
+  for (const char ch : path) {
+    if (ch == '\\') {
+      throw std::runtime_error(std::string(fieldName) +
+                               " cache URI must use forward slashes");
+    }
+    if (ch == '/') {
+      if (previousSlash) {
+        throw std::runtime_error(std::string(fieldName) +
+                                 " cache URI contains an empty segment");
+      }
+      previousSlash = true;
+      continue;
+    }
+    if (previousSlash) {
+      ++segmentCount;
+    }
+    previousSlash = false;
+  }
+  if (previousSlash || segmentCount < 4) {
+    throw std::runtime_error(std::string(fieldName) +
+                             " cache URI must be cache://source/asset-id/"
+                             "variant/relative-path");
+  }
+}
 
 [[nodiscard]] LX_core::Vec3f loadVec3(const YAML::Node &node,
                                       const char *fieldName) {
@@ -144,7 +206,8 @@ void saveQuat(YAML::Emitter &out, const LX_core::Quatf &value) {
   return state;
 }
 
-void saveCameraState(YAML::Emitter &out, const CameraNodeState &state) {
+void saveCameraState(YAML::Emitter &out, const CameraNodeState &state,
+                     const std::optional<std::string> &offlineYaml) {
   out << YAML::Key << "camera" << YAML::Value << YAML::BeginMap;
   out << YAML::Key << "eye" << YAML::Value;
   saveVec3(out, state.eye);
@@ -164,6 +227,10 @@ void saveCameraState(YAML::Emitter &out, const CameraNodeState &state) {
   out << YAML::Key << "bottom" << YAML::Value << state.bottom;
   out << YAML::Key << "top" << YAML::Value << state.top;
   out << YAML::Key << "cullingMask" << YAML::Value << state.cullingMask;
+  if (offlineYaml.has_value()) {
+    out << YAML::Key << "offline" << YAML::Value;
+    emitRawYamlNode(out, *offlineYaml);
+  }
   out << YAML::EndMap;
 }
 
@@ -211,6 +278,9 @@ loadLegacyDirectionalLightState(const YAML::Node &node) {
       shadowCascadeCount) {
     state.shadowCascadeCount = shadowCascadeCount.as<u32>();
   }
+  if (const auto offlineNode = node["offline"]; offlineNode) {
+    state.offlineYaml = dumpYamlNode(offlineNode);
+  }
   return state;
 }
 
@@ -241,6 +311,9 @@ loadLegacyDirectionalLightState(const YAML::Node &node) {
     state.innerConeDegrees = node["innerConeDegrees"].as<float>();
     state.outerConeDegrees = node["outerConeDegrees"].as<float>();
   }
+  if (const auto offlineNode = node["offline"]; offlineNode) {
+    state.offlineYaml = dumpYamlNode(offlineNode);
+  }
   return state;
 }
 
@@ -268,6 +341,10 @@ void saveLightState(YAML::Emitter &out, const LightNodeState &state) {
         << state.innerConeDegrees;
     out << YAML::Key << "outerConeDegrees" << YAML::Value
         << state.outerConeDegrees;
+  }
+  if (state.offlineYaml.has_value()) {
+    out << YAML::Key << "offline" << YAML::Value;
+    emitRawYamlNode(out, *state.offlineYaml);
   }
   out << YAML::EndMap;
 }
@@ -399,6 +476,7 @@ void saveProceduralMaterialState(YAML::Emitter &out,
   }
   if (const auto hdrUri = node["hdrUri"]; hdrUri) {
     state.hdrUri = hdrUri.as<std::string>();
+    validateSceneAssetUriInternal(state.hdrUri, "scene.environment.hdrUri");
   }
   if (const auto skyboxEnabled = node["skyboxEnabled"]; skyboxEnabled) {
     state.skyboxEnabled = skyboxEnabled.as<bool>();
@@ -415,6 +493,135 @@ void saveProceduralMaterialState(YAML::Emitter &out,
         "scene.environment.hdrUri must be non-empty when enabled");
   }
   return state;
+}
+
+[[nodiscard]] LX_core::offline::OfflineRenderProfile
+loadOfflineRenderProfile(const YAML::Node &node, const std::string &name) {
+  if (!node || !node.IsMap()) {
+    throw std::runtime_error("scene.offlineRender.profiles." + name +
+                             " must be a map");
+  }
+
+  LX_core::offline::OfflineRenderProfile profile;
+  for (auto it = node.begin(); it != node.end(); ++it) {
+    const std::string key = it->first.as<std::string>();
+    const YAML::Node value = it->second;
+    if (key == "backend") {
+      profile.backend = value.as<std::string>();
+    } else if (key == "integrator") {
+      profile.integrator = value.as<std::string>();
+    } else if (key == "width") {
+      profile.width = value.as<u32>();
+    } else if (key == "height") {
+      profile.height = value.as<u32>();
+    } else if (key == "samples") {
+      profile.samples = value.as<u32>();
+    } else if (key == "maxDepth") {
+      profile.maxDepth = value.as<u32>();
+    } else if (key == "seed") {
+      profile.seed = value.as<u32>();
+    } else if (key == "outputFormat") {
+      profile.outputFormat = value.as<std::string>();
+    } else {
+      profile.extensionYamlByField.emplace(key, dumpYamlNode(value));
+    }
+  }
+
+  if (profile.backend != "vulkan-compute") {
+    throw std::runtime_error("unsupported offline render backend in profile " +
+                             name + ": " + profile.backend);
+  }
+  if (profile.integrator != "primary-ray" &&
+      profile.integrator != "path-tracing" &&
+      profile.integrator != "probe-bake") {
+    throw std::runtime_error(
+        "unsupported offline render integrator in profile " + name + ": " +
+        profile.integrator);
+  }
+  if (profile.outputFormat != "exr-png") {
+    throw std::runtime_error(
+        "unsupported offline render outputFormat in profile " + name + ": " +
+        profile.outputFormat);
+  }
+  if (profile.width == 0 || profile.height == 0 || profile.samples == 0 ||
+      profile.maxDepth == 0) {
+    throw std::runtime_error("offline render profile " + name +
+                             " width/height/samples/maxDepth must be positive");
+  }
+  return profile;
+}
+
+[[nodiscard]] LX_core::offline::OfflineRenderProfiles
+loadOfflineRenderProfiles(const YAML::Node &node) {
+  if (!node) {
+    return {};
+  }
+  if (!node.IsMap()) {
+    throw std::runtime_error("scene.offlineRender must be a map");
+  }
+
+  LX_core::offline::OfflineRenderProfiles profiles;
+  if (const auto defaultProfile = node["defaultProfile"]; defaultProfile) {
+    profiles.defaultProfile = defaultProfile.as<std::string>();
+  }
+  const auto profileMap = node["profiles"];
+  if (!profileMap || !profileMap.IsMap()) {
+    throw std::runtime_error("scene.offlineRender.profiles must be a map");
+  }
+  for (auto it = profileMap.begin(); it != profileMap.end(); ++it) {
+    const std::string name = it->first.as<std::string>();
+    profiles.profiles.emplace(name, loadOfflineRenderProfile(it->second, name));
+  }
+  if (profiles.profiles.find(profiles.defaultProfile) ==
+      profiles.profiles.end()) {
+    throw std::runtime_error(
+        "scene.offlineRender.defaultProfile does not name an existing profile: " +
+        profiles.defaultProfile);
+  }
+  return profiles;
+}
+
+void saveOfflineRenderProfile(
+    YAML::Emitter &out,
+    const LX_core::offline::OfflineRenderProfile &profile) {
+  out << YAML::BeginMap;
+  out << YAML::Key << "backend" << YAML::Value << profile.backend;
+  out << YAML::Key << "integrator" << YAML::Value << profile.integrator;
+  out << YAML::Key << "width" << YAML::Value << profile.width;
+  out << YAML::Key << "height" << YAML::Value << profile.height;
+  out << YAML::Key << "samples" << YAML::Value << profile.samples;
+  out << YAML::Key << "maxDepth" << YAML::Value << profile.maxDepth;
+  out << YAML::Key << "seed" << YAML::Value << profile.seed;
+  out << YAML::Key << "outputFormat" << YAML::Value << profile.outputFormat;
+  for (const auto &[key, yamlText] : profile.extensionYamlByField) {
+    out << YAML::Key << key << YAML::Value;
+    emitRawYamlNode(out, yamlText);
+  }
+  out << YAML::EndMap;
+}
+
+void saveOfflineRenderProfiles(
+    YAML::Emitter &out,
+    const LX_core::offline::OfflineRenderProfiles &profiles) {
+  if (profiles.empty()) {
+    return;
+  }
+  out << YAML::Key << "offlineRender" << YAML::Value << YAML::BeginMap;
+  out << YAML::Key << "defaultProfile" << YAML::Value
+      << profiles.defaultProfile;
+  out << YAML::Key << "profiles" << YAML::Value << YAML::BeginMap;
+  std::vector<std::string> profileNames;
+  profileNames.reserve(profiles.profiles.size());
+  for (const auto &[name, _] : profiles.profiles) {
+    profileNames.push_back(name);
+  }
+  std::sort(profileNames.begin(), profileNames.end());
+  for (const auto &name : profileNames) {
+    out << YAML::Key << name << YAML::Value;
+    saveOfflineRenderProfile(out, profiles.profiles.at(name));
+  }
+  out << YAML::EndMap;
+  out << YAML::EndMap;
 }
 
 void saveEnvironmentState(YAML::Emitter &out,
@@ -485,10 +692,18 @@ void saveEditorCamera(YAML::Emitter &out, const EditorCameraState &state) {
   }
   if (const auto meshNode = node["mesh"]; meshNode && meshNode["uri"]) {
     entry.meshUri = meshNode["uri"].as<std::string>();
+    validateSceneAssetUriInternal(*entry.meshUri, "nodes[].mesh.uri");
+    if (const auto offlineNode = meshNode["offline"]; offlineNode) {
+      entry.meshOfflineYaml = dumpYamlNode(offlineNode);
+    }
   }
   if (const auto materialNode = node["material"];
       materialNode && materialNode["uri"]) {
     entry.materialUri = materialNode["uri"].as<std::string>();
+    validateSceneAssetUriInternal(*entry.materialUri, "nodes[].material.uri");
+    if (const auto offlineNode = materialNode["offline"]; offlineNode) {
+      entry.materialOfflineYaml = dumpYamlNode(offlineNode);
+    }
   }
   entry.proceduralMaterial = loadProceduralMaterialState(
       node["proceduralMaterial"], "nodes[].proceduralMaterial");
@@ -498,6 +713,9 @@ void saveEditorCamera(YAML::Emitter &out, const EditorCameraState &state) {
       node["materialOverrides"], "nodes[].materialOverrides");
   if (const auto cameraNode = node["camera"]; cameraNode) {
     entry.camera = loadCameraState(cameraNode);
+    if (const auto offlineNode = cameraNode["offline"]; offlineNode) {
+      entry.cameraOfflineYaml = dumpYamlNode(offlineNode);
+    }
   }
   if (const auto lightNode = node["light"]; lightNode) {
     entry.light = loadLightState(lightNode);
@@ -514,6 +732,9 @@ void saveEditorCamera(YAML::Emitter &out, const EditorCameraState &state) {
       entry.children.push_back(loadNodeDocument(childNode));
     }
   }
+  if (const auto offlineNode = node["offline"]; offlineNode) {
+    entry.offlineYaml = dumpYamlNode(offlineNode);
+  }
   return entry;
 }
 
@@ -526,11 +747,14 @@ void validateExplicitRootNode(const SceneNodeDocument &rootNode) {
     throw std::runtime_error(
         "scene document root identity must use empty name and no parentPath");
   }
-  if (rootNode.meshUri.has_value() || rootNode.materialUri.has_value() ||
+  if (rootNode.meshUri.has_value() || rootNode.meshOfflineYaml.has_value() ||
+      rootNode.materialUri.has_value() ||
+      rootNode.materialOfflineYaml.has_value() ||
       !rootNode.proceduralMaterial.empty() ||
       !rootNode.nodeMaterialOverrides.empty() ||
       !rootNode.materialOverrides.empty() || rootNode.camera.has_value() ||
-      rootNode.light.has_value()) {
+      rootNode.cameraOfflineYaml.has_value() || rootNode.light.has_value() ||
+      rootNode.offlineYaml.has_value()) {
     throw std::runtime_error("scene document root payload is unsupported");
   }
 }
@@ -551,11 +775,19 @@ void saveNodeDocument(YAML::Emitter &out, const SceneNodeDocument &node) {
   if (node.meshUri.has_value()) {
     out << YAML::Key << "mesh" << YAML::Value << YAML::BeginMap;
     out << YAML::Key << "uri" << YAML::Value << *node.meshUri;
+    if (node.meshOfflineYaml.has_value()) {
+      out << YAML::Key << "offline" << YAML::Value;
+      emitRawYamlNode(out, *node.meshOfflineYaml);
+    }
     out << YAML::EndMap;
   }
   if (node.materialUri.has_value()) {
     out << YAML::Key << "material" << YAML::Value << YAML::BeginMap;
     out << YAML::Key << "uri" << YAML::Value << *node.materialUri;
+    if (node.materialOfflineYaml.has_value()) {
+      out << YAML::Key << "offline" << YAML::Value;
+      emitRawYamlNode(out, *node.materialOfflineYaml);
+    }
     out << YAML::EndMap;
   }
   saveProceduralMaterialState(out, node.proceduralMaterial);
@@ -563,10 +795,14 @@ void saveNodeDocument(YAML::Emitter &out, const SceneNodeDocument &node) {
                             node.nodeMaterialOverrides);
   saveMaterialOverrideState(out, "materialOverrides", node.materialOverrides);
   if (node.camera.has_value()) {
-    saveCameraState(out, *node.camera);
+    saveCameraState(out, *node.camera, node.cameraOfflineYaml);
   }
   if (node.light.has_value()) {
     saveLightState(out, *node.light);
+  }
+  if (node.offlineYaml.has_value()) {
+    out << YAML::Key << "offline" << YAML::Value;
+    emitRawYamlNode(out, *node.offlineYaml);
   }
   if (!node.children.empty()) {
     out << YAML::Key << "children" << YAML::Value << YAML::BeginSeq;
@@ -762,6 +998,34 @@ void SceneDocument::setEnvironment(EnvironmentState state) {
       std::move(state);
 }
 
+bool SceneDocument::hasOfflineRenderProfiles() const {
+  return m_impl && std::static_pointer_cast<const SceneDocumentData>(m_impl)
+                       ->offlineRenderProfiles.has_value();
+}
+
+const LX_core::offline::OfflineRenderProfiles &
+SceneDocument::offlineRenderProfiles() const {
+  if (!m_impl) {
+    throw std::runtime_error("scene document has no offline render profiles");
+  }
+  const auto &profiles =
+      std::static_pointer_cast<const SceneDocumentData>(m_impl)
+          ->offlineRenderProfiles;
+  if (!profiles.has_value()) {
+    throw std::runtime_error("scene document has no offline render profiles");
+  }
+  return *profiles;
+}
+
+void SceneDocument::setOfflineRenderProfiles(
+    LX_core::offline::OfflineRenderProfiles profiles) {
+  if (!m_impl) {
+    m_impl = std::make_shared<SceneDocumentData>();
+  }
+  std::static_pointer_cast<SceneDocumentData>(m_impl)->offlineRenderProfiles =
+      std::move(profiles);
+}
+
 SceneNodeDocument &SceneDocument::mutableRootNode() {
   if (!m_impl) {
     m_impl = std::make_shared<SceneDocumentData>();
@@ -819,6 +1083,11 @@ SceneDocument loadSceneDocument(const std::filesystem::path &path) {
     if (!environment.empty()) {
       document.setEnvironment(environment);
     }
+    if (const YAML::Node offlineRenderNode = sceneNode["offlineRender"];
+        offlineRenderNode) {
+      document.setOfflineRenderProfiles(
+          loadOfflineRenderProfiles(offlineRenderNode));
+    }
   }
 
   if (const YAML::Node rootNode = root["root"]; rootNode.IsDefined()) {
@@ -868,6 +1137,9 @@ void saveSceneDocument(const std::filesystem::path &path,
   if (document.hasEnvironment()) {
     saveEnvironmentState(out, document.environment());
   }
+  if (document.hasOfflineRenderProfiles()) {
+    saveOfflineRenderProfiles(out, document.offlineRenderProfiles());
+  }
   out << YAML::EndMap;
 
   out << YAML::Key << "root" << YAML::Value;
@@ -887,4 +1159,20 @@ void saveSceneDocument(const std::filesystem::path &path,
   stream << out.c_str() << '\n';
 }
 
-} // namespace LX_demo::lxe_editor
+bool isValidCacheUri(const std::string &uri) {
+  try {
+    if (!hasPrefix(uri, "cache://")) {
+      return false;
+    }
+    validateSceneAssetUriInternal(uri, "cache URI");
+    return true;
+  } catch (const std::runtime_error &) {
+    return false;
+  }
+}
+
+void validateSceneAssetUri(const std::string &uri, const char *fieldName) {
+  validateSceneAssetUriInternal(uri, fieldName);
+}
+
+} // namespace LX_infra::scene_io

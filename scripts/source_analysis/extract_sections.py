@@ -314,6 +314,30 @@ TARGETS = [
         ),
         nav_order=720,
     ),
+    SourceAnalysisTarget(
+        source="src/backend/vulkan/offline/vulkan_offline_renderer.hpp",
+        output="notes/source_analysis/src/backend/vulkan/offline/vulkan_offline_renderer.md",
+        title="Vulkan Offline Renderer：从 Scene IR 到 Compute Readback",
+        intro=textwrap.dedent(
+            """\
+            这一页把 offline renderer 当成一条独立实验管线来读，入口是
+            [src/backend/vulkan/offline/vulkan_offline_renderer.hpp](../../../../../../src/backend/vulkan/offline/vulkan_offline_renderer.hpp)。
+            关注的问题是：为什么离线渲染不直接复用 realtime FrameGraph，而是先把
+            scene 文档编译成 `OfflineSceneIR`，再打包成 compute shader 的 storage buffer。
+
+            可以先带着一个问题阅读：我们要怎样在不创建 swapchain 的情况下，从同一份
+            `.scene.yaml` 得到一张可复现实验图？答案就在 `OfflineSceneCompiler`、
+            `GpuSceneBuilder`、`ComputeBvhBuilder` 和 `VulkanOfflineRenderer` 的分层里。
+            """
+        ).strip(),
+        related_sources=(
+            "src/core/offline/offline_scene.hpp",
+            "src/infra/offline/offline_scene_compiler.hpp",
+            "src/backend/vulkan/offline/gpu_scene_builder.hpp",
+            "src/backend/vulkan/offline/compute_bvh_builder.hpp",
+        ),
+        nav_order=900,
+    ),
 ]
 
 

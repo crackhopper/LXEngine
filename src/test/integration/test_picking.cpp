@@ -47,8 +47,9 @@ MeshSharedPtr makeUnitSquareMesh() {
   return Mesh::create(vb, ib, BoundingBox{{0, 0, 0}, {1, 1, 0}});
 }
 
-SceneNodeSharedPtr makeBoundedNode(const std::string &name, const Vec3f &translation,
-                                   VisibilityLayerMask mask = VisibilityMask_All) {
+SceneNodeSharedPtr
+makeBoundedNode(const std::string &name, const Vec3f &translation,
+                VisibilityLayerMask mask = VisibilityMask_All) {
   auto node = SceneNode::create(name);
   node->addComponent<MeshComponent>(makeUnitSquareMesh());
   node->setTranslation(translation);
@@ -85,9 +86,9 @@ void testIntersectRayBoxInsideAndMissCases() {
 void testSceneNodeWorldBoundsFollowTransform() {
   auto node = makeBoundedNode("rotated_box", {3.0f, 4.0f, 0.0f});
   node->setScale({2.0f, 3.0f, 1.0f});
-  node->setRotation(
-      Quatf::fromAxisAngle(Vec3f{0.0f, 0.0f, 1.0f}, 3.14159265358979323846f * 0.5f)
-          .normalized());
+  node->setRotation(Quatf::fromAxisAngle(Vec3f{0.0f, 0.0f, 1.0f},
+                                         3.14159265358979323846f * 0.5f)
+                        .normalized());
 
   const BoundingBox localBounds = node->getLocalBounds();
   const BoundingBox worldBounds = node->getWorldBounds();
@@ -173,11 +174,23 @@ void testOrthographicCameraProjectionUsesVulkanDepthRange() {
   const Mat4f proj = camera->get().getProjMatrix();
   const Vec4f nearPoint = proj * Vec4f{0.0f, 0.0f, -0.5f, 1.0f};
   const Vec4f farPoint = proj * Vec4f{0.0f, 0.0f, -10.0f, 1.0f};
+  const Vec4f topPoint = proj * Vec4f{0.0f, 1.0f, -1.0f, 1.0f};
 
   EXPECT(approx(nearPoint.z / nearPoint.w, 0.0f),
          "orthographic near plane maps to Vulkan depth 0");
   EXPECT(approx(farPoint.z / farPoint.w, 1.0f),
          "orthographic far plane maps to Vulkan depth 1");
+  EXPECT(topPoint.y / topPoint.w < 0.0f,
+         "default camera projection uses Vulkan clip-space Y flip");
+
+  const Mat4f openGlProj =
+      camera->get().getProjMatrix(0.0f, GraphicsAPI::OpenGL);
+  const Vec4f openGlNearPoint = openGlProj * Vec4f{0.0f, 0.0f, -0.5f, 1.0f};
+  const Vec4f openGlTopPoint = openGlProj * Vec4f{0.0f, 1.0f, -1.0f, 1.0f};
+  EXPECT(approx(openGlNearPoint.z / openGlNearPoint.w, -1.0f),
+         "OpenGL camera projection maps near plane to depth -1");
+  EXPECT(openGlTopPoint.y / openGlTopPoint.w > 0.0f,
+         "OpenGL camera projection keeps clip-space +Y upward");
 }
 
 } // namespace

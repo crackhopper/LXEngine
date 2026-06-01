@@ -294,8 +294,8 @@ void testMeshOverlayMaterialPassUsesLineListGeometry() {
     return;
   }
 
-  auto indexBuffer = std::dynamic_pointer_cast<IndexBuffer>(
-      items[0].indexBuffer);
+  auto indexBuffer =
+      std::dynamic_pointer_cast<IndexBuffer>(items[0].indexBuffer);
   EXPECT(indexBuffer != nullptr, "mesh overlay item should keep index buffer");
   if (indexBuffer) {
     EXPECT(indexBuffer->getTopology() == PrimitiveTopology::LineList,
@@ -543,7 +543,8 @@ void testDirectionalShadowDebugViewRecreatesCascadeMatrix() {
   debugCamera->get().lookAt(debugView->eye, debugView->target, debugView->up);
 
   const Mat4f debugViewProj =
-      debugCamera->get().getProjMatrix() * debugCamera->get().getViewMatrix();
+      debugCamera->get().getProjMatrix(0.0f, GraphicsAPI::DirectX) *
+      debugCamera->get().getViewMatrix();
   EXPECT(approxMatrix(debugViewProj,
                       light.getDirectionalUBO()->param.cascadeViewProj[0]),
          "debug light-view camera must recreate the shadow cascade matrix");
@@ -1132,7 +1133,8 @@ void testRenderQueueDebugOverrideUsesExplicitResourcesAndLayerMask() {
 
 void testDebugOnlyRenderableIsOverlayOnly() {
   auto regular = makeRenderableWithMask(Layer_Default, "regular_renderable");
-  auto debugOnly = makeRenderableWithMask(Layer_Default, "debug_only_renderable");
+  auto debugOnly =
+      makeRenderableWithMask(Layer_Default, "debug_only_renderable");
   debugOnly->setDebugOnlyRenderable(true);
 
   auto scene = Scene::create("debug_only_filter");

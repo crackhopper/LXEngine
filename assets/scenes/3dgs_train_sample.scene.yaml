@@ -1,0 +1,58 @@
+scene:
+  name: 3dgs_train_sample
+  gameplayCameraPath: /game_cam
+root:
+  nodeName: scene_root
+  children:
+    - nodeName: game_camera
+      name: game_cam
+      transform:
+        translation: [0.0, 1.2, 4.5]
+        rotation: [1.0, 0.0, 0.0, 0.0]
+        scale: [1.0, 1.0, 1.0]
+      visibilityMask: 4294967295
+      camera:
+        eye: [0.0, 1.2, 4.5]
+        target: [0.0, 0.6, 0.0]
+        up: [0.0, 1.0, 0.0]
+        type: perspective
+        fovY: 50.0
+        aspect: 1.7777778
+        nearPlane: 0.02
+        farPlane: 1000.0
+        left: -1.0
+        right: 1.0
+        bottom: -1.0
+        top: 1.0
+        cullingMask: 4294967294
+    - nodeName: train_splats
+      name: train_splats
+      transform:
+        translation: [0.0, 0.0, 0.0]
+        rotation: [1.0, 0.0, 0.0, 0.0]
+        scale: [1.0, 1.0, 1.0]
+      visibilityMask: 4294967295
+      mesh:
+        uri: assets/models/3dgs_train_sample/point_cloud.ply
+    - nodeName: key_light
+      name: key_light
+      transform:
+        translation: [0.0, 0.0, 0.0]
+        rotation: [1.0, 0.0, 0.0, 0.0]
+        scale: [1.0, 1.0, 1.0]
+      visibilityMask: 4294967295
+      light:
+        kind: Directional
+        direction: [-0.3, -1.0, -0.4]
+        color: [1.0, 0.98, 0.9]
+        intensity: 0.25
+        shadowStrength: 0.0
+        shadowDistance: 80.0
+        shadowCascadeCount: 1
+editor:
+  editorCamera:
+    position: [0.0, 1.2, 4.5]
+    rotationEulerDeg: [0.0, 0.0, 0.0]
+    fovY: 50.0
+    nearPlane: 0.02
+    farPlane: 1000.0

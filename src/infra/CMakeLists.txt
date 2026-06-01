@@ -330,6 +330,8 @@ set(INFRA_LIB LX_Infra CACHE INTERNAL "Infra library name")
 # Explicitly list source files to avoid picking up example files and unwanted backends
 set(INFRA_SOURCES
     material_loader/generic_material_loader.cpp
+    scene_io/editor_camera_state.cpp
+    scene_io/scene_document.cpp
     gui/imgui_gui.cpp
     gui/debug_ui.cpp
     texture_loader/texture_loader.cpp
@@ -340,6 +342,8 @@ set(INFRA_SOURCES
     shader_compiler/shader_compiler.cpp
     shader_compiler/shader_reflector.cpp
     shader_compiler/compiled_shader.cpp
+    offline/offline_asset_resolver.cpp
+    offline/offline_scene_compiler.cpp
 )
 
 # Add window implementation based on backend

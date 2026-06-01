@@ -1,19 +1,19 @@
 #include "core/asset/mesh.hpp"
+#include "core/debug_draw/debug_draw.hpp"
 #include "core/editor/command_bus.hpp"
 #include "core/editor/commands/builtin_commands.hpp"
 #include "core/editor/editor_state.hpp"
 #include "core/input/mock_input_state.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
-#include "core/debug_draw/debug_draw.hpp"
 #include "core/scene/components/camera_component.hpp"
 #include "core/scene/components/mesh_component.hpp"
+#include "core/scene/light.hpp"
 #include "core/scene/object.hpp"
 #include "core/scene/scene.hpp"
-#include "core/scene/light.hpp"
 #include "core/utils/env.hpp"
-#include "demos/lxe_editor/scene_interaction_controller.hpp"
 #include "demos/lxe_editor/scene_input_routing.hpp"
+#include "demos/lxe_editor/scene_interaction_controller.hpp"
 #include "demos/lxe_editor/scene_view_rect.hpp"
 #include "demos/lxe_editor/selection_camera_input.hpp"
 
@@ -42,35 +42,36 @@ constexpr float kEps = 2e-3f;
   return std::fabs(a - b) <= eps;
 }
 
-[[nodiscard]] bool approx(const LX_core::Vec2f& a, const LX_core::Vec2f& b,
+[[nodiscard]] bool approx(const LX_core::Vec2f &a, const LX_core::Vec2f &b,
                           const float eps = kEps) {
   return approx(a.x, b.x, eps) && approx(a.y, b.y, eps);
 }
 
-[[nodiscard]] std::optional<LX_core::Vec2f> projectWorldPointToViewport(
-    const LX_core::Vec3f& worldPoint, LX_core::CameraComponent& camera,
-    const LX_core::Vec2f& viewportSize) {
+[[nodiscard]] std::optional<LX_core::Vec2f>
+projectWorldPointToViewport(const LX_core::Vec3f &worldPoint,
+                            LX_core::CameraComponent &camera,
+                            const LX_core::Vec2f &viewportSize) {
   const LX_core::Mat4f viewProj =
-      camera.getProjMatrix() * camera.getViewMatrix();
+      camera.getProjMatrix(0.0f, GraphicsAPI::OpenGL) * camera.getViewMatrix();
   const LX_core::Vec4f clip =
       viewProj * LX_core::Vec4f{worldPoint.x, worldPoint.y, worldPoint.z, 1.0f};
   if (std::abs(clip.w) <= 1e-6f || clip.w <= 0.0f) {
     return std::nullopt;
   }
   const LX_core::Vec3f ndc = clip.toVec3();
-  return LX_core::Vec2f{
-      (ndc.x * 0.5f + 0.5f) * viewportSize.x - 0.5f,
-      (1.0f - (ndc.y * 0.5f + 0.5f)) * viewportSize.y - 0.5f};
+  return LX_core::Vec2f{(ndc.x * 0.5f + 0.5f) * viewportSize.x - 0.5f,
+                        (1.0f - (ndc.y * 0.5f + 0.5f)) * viewportSize.y - 0.5f};
 }
 
-[[nodiscard]] std::optional<float> extractJsonFloatField(
-    const std::string& text, const std::string& anchor,
-    const std::string& fieldName) {
+[[nodiscard]] std::optional<float>
+extractJsonFloatField(const std::string &text, const std::string &anchor,
+                      const std::string &fieldName) {
   const std::size_t anchorStart = text.find(anchor);
   if (anchorStart == std::string::npos) {
     return std::nullopt;
   }
-  const std::size_t fieldStart = text.find(fieldName, anchorStart + anchor.size());
+  const std::size_t fieldStart =
+      text.find(fieldName, anchorStart + anchor.size());
   if (fieldStart == std::string::npos) {
     return std::nullopt;
   }
@@ -94,7 +95,8 @@ LX_core::MeshSharedPtr makeUnitSquareMesh() {
   auto vb = LX_core::VertexBuffer<LX_core::VertexPos>::create(
       std::vector<LX_core::VertexPos>{{{0, 0, 0}}, {{1, 0, 0}}, {{0, 1, 0}}});
   auto ib = LX_core::IndexBuffer::create({0, 1, 2});
-  return LX_core::Mesh::create(vb, ib, LX_core::BoundingBox{{0, 0, 0}, {1, 1, 0}});
+  return LX_core::Mesh::create(vb, ib,
+                               LX_core::BoundingBox{{0, 0, 0}, {1, 1, 0}});
 }
 
 struct Fixture final {
@@ -106,11 +108,11 @@ struct Fixture final {
   LX_core::SceneNodeSharedPtr gameCameraNode =
       LX_core::SceneNode::create("game_cam_node");
   LX_core::SceneNodeSharedPtr targetNode = LX_core::SceneNode::create("cube");
-  LX_core::SceneNodeSharedPtr lightNode = LX_core::SceneNode::create("dir_light_node");
+  LX_core::SceneNodeSharedPtr lightNode =
+      LX_core::SceneNode::create("dir_light_node");
   LX_demo::lxe_editor::SceneInteractionController controller;
 
-  Fixture()
-      : controller(bus, editorState, *scene) {
+  Fixture() : controller(bus, editorState, *scene) {
     targetNode->setName("cube");
     targetNode->addComponent<LX_core::MeshComponent>(makeUnitSquareMesh());
     targetNode->setTranslation({-0.5f, -0.5f, -5.0f});
@@ -128,7 +130,8 @@ struct Fixture final {
 
     lightNode->setName("dir_light");
     scene->addRenderable(lightNode);
-    scene->attachLight(lightNode, std::make_shared<LX_core::DirectionalLight>());
+    scene->attachLight(lightNode,
+                       std::make_shared<LX_core::DirectionalLight>());
 
     editorState.setEditorCamera(editorCameraNode);
     editorState.setPreviewCamera(gameCameraNode);
@@ -152,10 +155,11 @@ void testPickRayProjectionRoundTripsBackToOriginalViewportPixel() {
   const LX_core::Vec2f viewportSize{1920.0f, 1008.0f};
   const LX_core::Vec2f screenPixel{1097.0f, 341.0f};
 
-  const LX_core::Ray ray = editorCamera->get().pickRay(screenPixel, viewportSize);
+  const LX_core::Ray ray =
+      editorCamera->get().pickRay(screenPixel, viewportSize);
   const LX_core::Vec3f worldPoint = ray.origin + ray.direction * 5.0f;
-  const auto projected =
-      projectWorldPointToViewport(worldPoint, editorCamera->get(), viewportSize);
+  const auto projected = projectWorldPointToViewport(
+      worldPoint, editorCamera->get(), viewportSize);
   EXPECT(projected.has_value(),
          "point on pick ray should remain projectable through the same camera");
   if (!projected.has_value()) {
@@ -168,13 +172,14 @@ void testPickRayProjectionRoundTripsBackToOriginalViewportPixel() {
               << ") expected=(" << screenPixel.x << ", " << screenPixel.y
               << ")\n";
   }
-  EXPECT(approx(projected->x, screenPixel.x) &&
-             approx(projected->y, screenPixel.y),
-         "point sampled from pick ray should project back to the original pixel");
+  EXPECT(
+      approx(projected->x, screenPixel.x) &&
+          approx(projected->y, screenPixel.y),
+      "point sampled from pick ray should project back to the original pixel");
 }
 
-void runSceneViewerMainPathSelectionStep(Fixture& fixture,
-                                         LX_core::MockInputState& input,
+void runSceneViewerMainPathSelectionStep(Fixture &fixture,
+                                         LX_core::MockInputState &input,
                                          const bool wantsKeyboard,
                                          const bool wantsMouse,
                                          const bool gizmoConsumesMouse) {
@@ -182,8 +187,8 @@ void runSceneViewerMainPathSelectionStep(Fixture& fixture,
           fixture.editorState.isPreviewEnabled(), wantsMouse,
           gizmoConsumesMouse,
           LX_demo::lxe_editor::SceneInputEditMode::Selection)) {
-    fixture.controller.updateSelectionMode(
-        input, LX_core::Vec2f{800.0f, 600.0f});
+    fixture.controller.updateSelectionMode(input,
+                                           LX_core::Vec2f{800.0f, 600.0f});
   } else {
     fixture.controller.cancelPendingSelectionClick(input);
   }
@@ -192,9 +197,8 @@ void runSceneViewerMainPathSelectionStep(Fixture& fixture,
 
 void testSceneInteractionSelectsHitNodeOnClick() {
   Fixture fixture;
-  const auto result =
-      fixture.controller.dispatchPickingClick(LX_core::Vec2f{400.0f, 300.0f},
-                                             LX_core::Vec2f{800.0f, 600.0f});
+  const auto result = fixture.controller.dispatchPickingClick(
+      LX_core::Vec2f{400.0f, 300.0f}, LX_core::Vec2f{800.0f, 600.0f});
   EXPECT(result.ok, "selection click should succeed");
 
   const auto selected = fixture.editorState.getSelected();
@@ -208,9 +212,8 @@ void testSceneInteractionSelectsLightNodeViaDebugBounds() {
   fixture.targetNode->setTranslation({100.0f, 100.0f, -5.0f});
   fixture.lightNode->setTranslation({0.0f, 0.0f, -5.0f});
 
-  const auto result =
-      fixture.controller.dispatchPickingClick(LX_core::Vec2f{400.0f, 300.0f},
-                                             LX_core::Vec2f{800.0f, 600.0f});
+  const auto result = fixture.controller.dispatchPickingClick(
+      LX_core::Vec2f{400.0f, 300.0f}, LX_core::Vec2f{800.0f, 600.0f});
   EXPECT(result.ok, "light debug bounds should be pickable");
 
   const auto selected = fixture.editorState.getSelected();
@@ -221,9 +224,8 @@ void testSceneInteractionSelectsLightNodeViaDebugBounds() {
 void testSceneInteractionDeselectsOnMiss() {
   Fixture fixture;
   fixture.editorState.select({fixture.targetNode});
-  const auto result =
-      fixture.controller.dispatchPickingClick(LX_core::Vec2f{799.0f, 0.0f},
-                                             LX_core::Vec2f{800.0f, 600.0f});
+  const auto result = fixture.controller.dispatchPickingClick(
+      LX_core::Vec2f{799.0f, 0.0f}, LX_core::Vec2f{800.0f, 600.0f});
   EXPECT(result.ok, "miss click should still dispatch");
   EXPECT(fixture.editorState.getSelected().empty(),
          "miss click should deselect");
@@ -307,7 +309,8 @@ void testSuppressedSelectionFrameCancelsArmedClick() {
   runSceneViewerMainPathSelectionStep(fixture, input, false, false, false);
 
   EXPECT(fixture.bus.history().empty(),
-         "suppressed frame should cancel the armed press instead of leaking a stale pick");
+         "suppressed frame should cancel the armed press instead of leaking a "
+         "stale pick");
   EXPECT(fixture.editorState.getSelected().empty(),
          "suppressed click should leave selection unchanged");
 }
@@ -321,8 +324,8 @@ void testSelectionDragDispatchesBoxSelectionOnRelease() {
   bool capturedCtrl = false;
   bool capturedShift = false;
   fixture.controller.setBoxSelectionDispatch(
-      [&](const LX_core::Vec2f& dragStart, const LX_core::Vec2f& dragEnd,
-          const LX_demo::lxe_editor::SceneViewRect& sceneViewRect,
+      [&](const LX_core::Vec2f &dragStart, const LX_core::Vec2f &dragEnd,
+          const LX_demo::lxe_editor::SceneViewRect &sceneViewRect,
           const bool ctrlHeld, const bool shiftHeld) {
         boxSelectionDispatched = true;
         capturedStart = sceneViewRect.localPixel(dragStart);
@@ -373,7 +376,8 @@ void testPreviewModeSuppressesSelectionInMainPath() {
   runSceneViewerMainPathSelectionStep(fixture, input, false, false, false);
 
   EXPECT(fixture.editorState.getSelected().empty(),
-         "preview mode should suppress selection clicks in the lxe_editor main path");
+         "preview mode should suppress selection clicks in the lxe_editor main "
+         "path");
   EXPECT(fixture.bus.history().empty(),
          "preview mode should not dispatch selection commands");
 }
@@ -391,7 +395,8 @@ void testSelectionModeAllowsMousePickingWhileKeyboardIsCaptured() {
 
   const auto selected = fixture.editorState.getSelected();
   EXPECT(selected.size() == 1 && selected.front() == fixture.targetNode,
-         "selection mode should still pick when only keyboard is captured elsewhere");
+         "selection mode should still pick when only keyboard is captured "
+         "elsewhere");
 }
 
 void testSelectionModeStillAllowsCameraRigRouting() {
@@ -399,9 +404,9 @@ void testSelectionModeStillAllowsCameraRigRouting() {
              false, false, false,
              LX_demo::lxe_editor::SceneInputEditMode::Selection),
          "selection mode should still process selection clicks");
-  EXPECT(LX_demo::lxe_editor::shouldProcessCameraRig(
-             false, false, false, false),
-         "selection mode should still allow camera rig updates");
+  EXPECT(
+      LX_demo::lxe_editor::shouldProcessCameraRig(false, false, false, false),
+      "selection mode should still allow camera rig updates");
 }
 
 void testSelectionRoutingIsSuppressedByGizmoMouse() {
@@ -412,15 +417,16 @@ void testSelectionRoutingIsSuppressedByGizmoMouse() {
 }
 
 void testCameraRoutingIsSuppressedByGizmoMouse() {
-  EXPECT(!LX_demo::lxe_editor::shouldProcessCameraRig(
-             false, false, false, true),
-         "gizmo hover/use should suppress camera rig routing");
+  EXPECT(
+      !LX_demo::lxe_editor::shouldProcessCameraRig(false, false, false, true),
+      "gizmo hover/use should suppress camera rig routing");
 }
 
 void testCameraRoutingRunsInSelectionModeWithoutPreviewOrUiCapture() {
-  EXPECT(LX_demo::lxe_editor::shouldProcessCameraRig(
-             false, false, false, false),
-         "camera rig should run in selection mode when preview and UI capture are off");
+  EXPECT(
+      LX_demo::lxe_editor::shouldProcessCameraRig(false, false, false, false),
+      "camera rig should run in selection mode when preview and UI capture are "
+      "off");
 }
 
 void testPreviewSuppressesSelectionAndCameraRouting() {
@@ -428,9 +434,9 @@ void testPreviewSuppressesSelectionAndCameraRouting() {
              true, false, false,
              LX_demo::lxe_editor::SceneInputEditMode::Selection),
          "preview should suppress selection routing");
-  EXPECT(!LX_demo::lxe_editor::shouldProcessCameraRig(
-             true, false, false, false),
-         "preview should suppress camera rig routing");
+  EXPECT(
+      !LX_demo::lxe_editor::shouldProcessCameraRig(true, false, false, false),
+      "preview should suppress camera rig routing");
 }
 
 void testSelectionCameraInputOrbitMapsRightMouseToLeftOnly() {
@@ -490,21 +496,22 @@ void testSelectionDebugStateTracksHitPointAndSelection() {
   LX_core::DebugDraw::attachScene(fixture.scene);
   LX_core::DebugDraw::beginFrame();
 
-  const auto result =
-      fixture.controller.dispatchPickingClick(LX_core::Vec2f{400.0f, 300.0f},
-                                             LX_core::Vec2f{800.0f, 600.0f});
-  EXPECT(result.ok, "selection click should succeed before drawing debug state");
+  const auto result = fixture.controller.dispatchPickingClick(
+      LX_core::Vec2f{400.0f, 300.0f}, LX_core::Vec2f{800.0f, 600.0f});
+  EXPECT(result.ok,
+         "selection click should succeed before drawing debug state");
 
   fixture.controller.enqueueDebugDraw();
   EXPECT(LX_core::DebugDraw::testing::queuedLineCount() > 0,
          "selection debug draw should emit AABB and hit marker geometry");
   const auto marker = fixture.controller.lastHitPoint();
-  EXPECT(marker.has_value(), "successful selection click should record hit point");
+  EXPECT(marker.has_value(),
+         "successful selection click should record hit point");
 
-  const auto miss =
-      fixture.controller.dispatchPickingClick(LX_core::Vec2f{799.0f, 0.0f},
-                                             LX_core::Vec2f{800.0f, 600.0f});
-  EXPECT(miss.ok, "miss click should still dispatch before clearing debug state");
+  const auto miss = fixture.controller.dispatchPickingClick(
+      LX_core::Vec2f{799.0f, 0.0f}, LX_core::Vec2f{800.0f, 600.0f});
+  EXPECT(miss.ok,
+         "miss click should still dispatch before clearing debug state");
   EXPECT(!fixture.controller.lastHitPoint().has_value(),
          "miss click should clear the stored hit point");
 
@@ -548,10 +555,10 @@ void testSelectionDebugProjectionRoundTripsBackToClickedPixel() {
       LX_core::Vec2f{projectedTargetCenter->x, projectedTargetCenter->y}, rect);
   EXPECT(result.ok, "projected target-center click should succeed");
 
-  const auto projectedX = extractJsonFloatField(
-      debugLine, "\"projectedPixel\":{", "\"x\":");
-  const auto projectedY = extractJsonFloatField(
-      debugLine, "\"projectedPixel\":{", "\"y\":");
+  const auto projectedX =
+      extractJsonFloatField(debugLine, "\"projectedPixel\":{", "\"x\":");
+  const auto projectedY =
+      extractJsonFloatField(debugLine, "\"projectedPixel\":{", "\"y\":");
   if (!(projectedX.has_value() && projectedY.has_value() &&
         approx(*projectedX, projectedTargetCenter->x, 1e-2f) &&
         approx(*projectedY, projectedTargetCenter->y, 1e-2f))) {
@@ -560,7 +567,8 @@ void testSelectionDebugProjectionRoundTripsBackToClickedPixel() {
   EXPECT(projectedX.has_value() && projectedY.has_value() &&
              approx(*projectedX, projectedTargetCenter->x, 1e-2f) &&
              approx(*projectedY, projectedTargetCenter->y, 1e-2f),
-         "debug reprojection should match the clicked pixel for a hit on the pick ray");
+         "debug reprojection should match the clicked pixel for a hit on the "
+         "pick ray");
 }
 
 void testSelectionDebugUsesNegativeNdcYForLowerScreenPixels() {
@@ -592,10 +600,10 @@ void testSelectionDebugUsesNegativeNdcYForLowerScreenPixels() {
   const auto result =
       fixture.controller.dispatchPickingClick(lowerScreenPixel, rect);
   EXPECT(result.ok, "lower-screen selection click should succeed");
-  const auto screenNdcX = extractJsonFloatField(
-      debugLine, "\"screenNdc\":{", "\"x\":");
-  const auto screenNdcY = extractJsonFloatField(
-      debugLine, "\"screenNdc\":{", "\"y\":");
+  const auto screenNdcX =
+      extractJsonFloatField(debugLine, "\"screenNdc\":{", "\"x\":");
+  const auto screenNdcY =
+      extractJsonFloatField(debugLine, "\"screenNdc\":{", "\"y\":");
   EXPECT(screenNdcX.has_value(),
          "debug line should include the screen NDC x component");
   EXPECT(screenNdcY.has_value(),
@@ -630,7 +638,8 @@ void testEditorModeDrawsCameraAndLightDebugHelpers() {
   fixture.controller.enqueueDebugDraw();
 
   EXPECT(LX_core::DebugDraw::testing::queuedLineCount() >= 15,
-         "editor mode should draw camera frustum and directional-light debug lines");
+         "editor mode should draw camera frustum and directional-light debug "
+         "lines");
   LX_core::DebugDraw::endFrame();
 }
 
@@ -642,8 +651,9 @@ void testEditorDebugHelpersCanBeSuppressedDuringGizmoDrag() {
 
   fixture.controller.enqueueDebugDraw(true);
 
-  EXPECT(LX_core::DebugDraw::testing::queuedLineCount() == 0,
-         "gizmo drag frames should suppress stale editor debug helper geometry");
+  EXPECT(
+      LX_core::DebugDraw::testing::queuedLineCount() == 0,
+      "gizmo drag frames should suppress stale editor debug helper geometry");
   LX_core::DebugDraw::endFrame();
 }
 

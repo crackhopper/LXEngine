@@ -17,8 +17,8 @@ namespace {
 
 constexpr float kSelectionDragThresholdPx = 4.0f;
 
-[[nodiscard]] LX_core::BoundingBox expandedBounds(
-    const LX_core::BoundingBox& bounds, const float padding) {
+[[nodiscard]] LX_core::BoundingBox
+expandedBounds(const LX_core::BoundingBox &bounds, const float padding) {
   if (!bounds.isValid()) {
     return bounds;
   }
@@ -27,8 +27,8 @@ constexpr float kSelectionDragThresholdPx = 4.0f;
       bounds.max + LX_core::Vec3f{padding, padding, padding}};
 }
 
-void drawDirectionalLightDebug(const LX_core::SceneNode& node,
-                               const LX_core::DirectionalLight& light) {
+void drawDirectionalLightDebug(const LX_core::SceneNode &node,
+                               const LX_core::DirectionalLight &light) {
   LX_core::Vec3f direction = light.getDirection();
   if (direction.length2() <= 1e-6f) {
     direction = LX_core::Vec3f{0.0f, -1.0f, 0.0f};
@@ -38,18 +38,18 @@ void drawDirectionalLightDebug(const LX_core::SceneNode& node,
   const LX_core::Vec3f origin =
       LX_core::Transform::fromMat4(node.getWorldTransform()).translation;
   constexpr float kLightDebugRadius = 0.16f;
-  LX_core::DebugDraw::wireOctahedron(
-      origin, kLightDebugRadius, LX_core::DebugDraw::Color::yellow());
+  LX_core::DebugDraw::wireOctahedron(origin, kLightDebugRadius,
+                                     LX_core::DebugDraw::Color::yellow());
   LX_core::DebugDraw::arrow(origin, origin + direction * 2.0f,
                             LX_core::DebugDraw::Color::yellow());
 }
 
-[[nodiscard]] LX_core::Vec4f lightDebugColor(const LX_core::Vec3f& color) {
+[[nodiscard]] LX_core::Vec4f lightDebugColor(const LX_core::Vec3f &color) {
   return LX_core::Vec4f{color.x, color.y, color.z, 1.0f};
 }
 
-void drawLightDebug(const LX_core::SceneNode& node,
-                    const LX_core::LightBaseSharedPtr& light) {
+void drawLightDebug(const LX_core::SceneNode &node,
+                    const LX_core::LightBaseSharedPtr &light) {
   if (const auto directional =
           std::dynamic_pointer_cast<LX_core::DirectionalLight>(light)) {
     drawDirectionalLightDebug(node, *directional);
@@ -57,7 +57,8 @@ void drawLightDebug(const LX_core::SceneNode& node,
   }
   const LX_core::Vec3f origin =
       LX_core::Transform::fromMat4(node.getWorldTransform()).translation;
-  if (const auto point = std::dynamic_pointer_cast<LX_core::PointLight>(light)) {
+  if (const auto point =
+          std::dynamic_pointer_cast<LX_core::PointLight>(light)) {
     LX_core::DebugDraw::wireSphere(origin, point->getRange(),
                                    lightDebugColor(point->getColor()));
     return;
@@ -82,23 +83,25 @@ void drawLightDebug(const LX_core::SceneNode& node,
   return oss.str();
 }
 
-[[nodiscard]] std::string makeVec2Json(const LX_core::Vec2f& value) {
-  return std::string("{\"x\":") + formatFloat(value.x) + ",\"y\":" +
-         formatFloat(value.y) + "}";
+[[nodiscard]] std::string makeVec2Json(const LX_core::Vec2f &value) {
+  return std::string("{\"x\":") + formatFloat(value.x) +
+         ",\"y\":" + formatFloat(value.y) + "}";
 }
 
-[[nodiscard]] std::string makeVec3Json(const LX_core::Vec3f& value) {
-  return std::string("{\"x\":") + formatFloat(value.x) + ",\"y\":" +
-         formatFloat(value.y) + ",\"z\":" + formatFloat(value.z) + "}";
+[[nodiscard]] std::string makeVec3Json(const LX_core::Vec3f &value) {
+  return std::string("{\"x\":") + formatFloat(value.x) +
+         ",\"y\":" + formatFloat(value.y) + ",\"z\":" + formatFloat(value.z) +
+         "}";
 }
 
-[[nodiscard]] LX_core::Vec2f screenPixelToNdc(const LX_core::Vec2f& screenPixel,
-                                              const LX_core::Vec2f& viewportSize) {
+[[nodiscard]] LX_core::Vec2f
+screenPixelToNdc(const LX_core::Vec2f &screenPixel,
+                 const LX_core::Vec2f &viewportSize) {
   const float viewportWidth = viewportSize.x > 0.0f ? viewportSize.x : 1.0f;
   const float viewportHeight = viewportSize.y > 0.0f ? viewportSize.y : 1.0f;
-  return LX_core::Vec2f{
-      ((screenPixel.x + 0.5f) / viewportWidth) * 2.0f - 1.0f,
-      1.0f - ((screenPixel.y + 0.5f) / viewportHeight) * 2.0f};
+  return LX_core::Vec2f{((screenPixel.x + 0.5f) / viewportWidth) * 2.0f - 1.0f,
+                        1.0f -
+                            ((screenPixel.y + 0.5f) / viewportHeight) * 2.0f};
 }
 
 struct ProjectedPoint final {
@@ -106,9 +109,10 @@ struct ProjectedPoint final {
   LX_core::Vec2f pixel{0.0f, 0.0f};
 };
 
-[[nodiscard]] std::optional<ProjectedPoint> projectPointToViewport(
-    const LX_core::Vec3f& worldPoint, const LX_core::Mat4f& viewProj,
-    const LX_core::Vec2f& viewportSize) {
+[[nodiscard]] std::optional<ProjectedPoint>
+projectPointToViewport(const LX_core::Vec3f &worldPoint,
+                       const LX_core::Mat4f &viewProj,
+                       const LX_core::Vec2f &viewportSize) {
   const LX_core::Vec4f clip =
       viewProj * LX_core::Vec4f{worldPoint.x, worldPoint.y, worldPoint.z, 1.0f};
   if (std::abs(clip.w) <= 1e-6f || clip.w <= 0.0f) {
@@ -118,15 +122,16 @@ struct ProjectedPoint final {
   const LX_core::Vec3f ndc3 = clip.toVec3();
   return ProjectedPoint{
       .ndc = LX_core::Vec2f{ndc3.x, ndc3.y},
-      .pixel = LX_core::Vec2f{
-          (ndc3.x * 0.5f + 0.5f) * viewportSize.x - 0.5f,
-          (1.0f - (ndc3.y * 0.5f + 0.5f)) * viewportSize.y - 0.5f}};
+      .pixel = LX_core::Vec2f{(ndc3.x * 0.5f + 0.5f) * viewportSize.x - 0.5f,
+                              (1.0f - (ndc3.y * 0.5f + 0.5f)) * viewportSize.y -
+                                  0.5f}};
 }
 
-[[nodiscard]] std::string makePickDebugLine(const LX_core::Vec2f& localPixel,
-                                            const LX_core::Vec2f& clickNdc,
-                                            const std::optional<LX_core::Vec3f>& hitWorld,
-                                            const std::optional<ProjectedPoint>& projected) {
+[[nodiscard]] std::string
+makePickDebugLine(const LX_core::Vec2f &localPixel,
+                  const LX_core::Vec2f &clickNdc,
+                  const std::optional<LX_core::Vec3f> &hitWorld,
+                  const std::optional<ProjectedPoint> &projected) {
   std::ostringstream oss;
   oss << "pick_debug {\"screenPixel\":" << makeVec2Json(localPixel)
       << ",\"screenNdc\":" << makeVec2Json(clickNdc)
@@ -156,8 +161,8 @@ struct ProjectedPoint final {
 } // namespace
 
 SceneInteractionController::SceneInteractionController(
-    LX_core::CommandBus& commandBus, LX_core::EditorState& editorState,
-    LX_core::Scene& scene)
+    LX_core::CommandBus &commandBus, LX_core::EditorState &editorState,
+    LX_core::Scene &scene)
     : m_commandBus(commandBus), m_editorState(editorState), m_scene(scene) {}
 
 void SceneInteractionController::setDebugLoggingHooks(
@@ -177,22 +182,22 @@ void SceneInteractionController::setBoxSelectionDispatch(
 }
 
 LX_core::CommandResult SceneInteractionController::dispatchPickingClick(
-    const LX_core::Vec2f& screenPixel, const LX_core::Vec2f& viewportSize) {
-  return dispatchPickingClick(
-      screenPixel,
-      SceneViewRect{.x = 0.0f,
-                    .y = 0.0f,
-                    .width = viewportSize.x,
-                    .height = viewportSize.y});
+    const LX_core::Vec2f &screenPixel, const LX_core::Vec2f &viewportSize) {
+  return dispatchPickingClick(screenPixel,
+                              SceneViewRect{.x = 0.0f,
+                                            .y = 0.0f,
+                                            .width = viewportSize.x,
+                                            .height = viewportSize.y});
 }
 
 LX_core::CommandResult SceneInteractionController::dispatchPickingClick(
-    const LX_core::Vec2f& screenPixel, const SceneViewRect& sceneViewRect) {
+    const LX_core::Vec2f &screenPixel, const SceneViewRect &sceneViewRect) {
   if (!sceneViewRect.isValid()) {
     return LX_core::CommandResult{false, "invalid scene view rect", {}, {}};
   }
   if (!sceneViewRect.contains(screenPixel)) {
-    return LX_core::CommandResult{false, "click outside scene view rect", {}, {}};
+    return LX_core::CommandResult{
+        false, "click outside scene view rect", {}, {}};
   }
 
   const auto editorCameraNode = m_editorState.getEditorCamera();
@@ -203,14 +208,14 @@ LX_core::CommandResult SceneInteractionController::dispatchPickingClick(
   const auto editorCamera =
       editorCameraNode->getComponent<LX_core::CameraComponent>();
   if (!editorCamera.has_value()) {
-    return LX_core::CommandResult{false, "editor camera missing component", {},
-                                  {}};
+    return LX_core::CommandResult{
+        false, "editor camera missing component", {}, {}};
   }
 
   const LX_core::Vec2f localPixel = sceneViewRect.localPixel(screenPixel);
   const LX_core::Vec2f viewportSize = sceneViewRect.size();
-  const LX_core::Ray ray = editorCamera->get().pickRay(
-      localPixel, viewportSize);
+  const LX_core::Ray ray =
+      editorCamera->get().pickRay(localPixel, viewportSize);
   const auto hit =
       m_scene.pick(ray, LX_core::Layer_All & ~LX_core::Layer_EditorOverlay);
   const bool debugEnabled = m_debugEnabled && m_debugEnabled();
@@ -221,13 +226,14 @@ LX_core::CommandResult SceneInteractionController::dispatchPickingClick(
     hitWorld = ray.origin + ray.direction * hit->distance;
     const float projectionAspect =
         viewportSize.y > 0.0f ? viewportSize.x / viewportSize.y : 1.0f;
-    const LX_core::Mat4f viewProj =
-        editorCamera->get().getProjMatrix(projectionAspect) *
-        editorCamera->get().getViewMatrix();
+    const LX_core::Mat4f viewProj = editorCamera->get().getProjMatrix(
+                                        projectionAspect, GraphicsAPI::OpenGL) *
+                                    editorCamera->get().getViewMatrix();
     projected = projectPointToViewport(*hitWorld, viewProj, viewportSize);
   }
   if (debugEnabled && m_appendDebugLine) {
-    m_appendDebugLine(makePickDebugLine(localPixel, clickNdc, hitWorld, projected));
+    m_appendDebugLine(
+        makePickDebugLine(localPixel, clickNdc, hitWorld, projected));
   }
   if (hit.has_value() && hit->node) {
     LX_core::SceneNodeSharedPtr selectedNode = hit->node;
@@ -248,18 +254,16 @@ LX_core::CommandResult SceneInteractionController::dispatchPickingClick(
 }
 
 void SceneInteractionController::updateSelectionMode(
-    LX_core::IInputState& input, const LX_core::Vec2f& viewportSize) {
-  updateSelectionMode(
-      input, SceneViewRect{.x = 0.0f,
-                           .y = 0.0f,
-                           .width = viewportSize.x,
-                           .height = viewportSize.y});
+    LX_core::IInputState &input, const LX_core::Vec2f &viewportSize) {
+  updateSelectionMode(input, SceneViewRect{.x = 0.0f,
+                                           .y = 0.0f,
+                                           .width = viewportSize.x,
+                                           .height = viewportSize.y});
 }
 
 void SceneInteractionController::updateSelectionMode(
-    LX_core::IInputState& input, const SceneViewRect& sceneViewRect) {
-  const bool leftDown =
-      input.isMouseButtonDown(LX_core::MouseButton::Left);
+    LX_core::IInputState &input, const SceneViewRect &sceneViewRect) {
+  const bool leftDown = input.isMouseButtonDown(LX_core::MouseButton::Left);
   if (leftDown && !m_prevLeftDown) {
     m_leftPressArmed = true;
     m_leftPressStart = input.getMousePosition();
@@ -273,8 +277,8 @@ void SceneInteractionController::updateSelectionMode(
                             input.isKeyDown(LX_core::KeyCode::RCtrl);
       const bool shiftHeld = input.isKeyDown(LX_core::KeyCode::LShift) ||
                              input.isKeyDown(LX_core::KeyCode::RShift);
-      (void)m_dispatchBoxSelection(m_leftPressStart, releasePoint, sceneViewRect,
-                                   ctrlHeld, shiftHeld);
+      (void)m_dispatchBoxSelection(m_leftPressStart, releasePoint,
+                                   sceneViewRect, ctrlHeld, shiftHeld);
     } else {
       (void)dispatchPickingClick(releasePoint, sceneViewRect);
     }
@@ -286,7 +290,7 @@ void SceneInteractionController::updateSelectionMode(
 }
 
 void SceneInteractionController::cancelPendingSelectionClick(
-    const LX_core::IInputState& input) {
+    const LX_core::IInputState &input) {
   m_leftPressArmed = false;
   m_leftPressStart = input.getMousePosition();
   m_prevLeftDown = input.isMouseButtonDown(LX_core::MouseButton::Left);
@@ -299,7 +303,7 @@ void SceneInteractionController::enqueueDebugDraw(
   }
 
   const auto primarySelected = m_editorState.getPrimarySelected();
-  for (const auto& selected : m_editorState.getSelected()) {
+  for (const auto &selected : m_editorState.getSelected()) {
     if (!selected) {
       continue;
     }
@@ -311,7 +315,8 @@ void SceneInteractionController::enqueueDebugDraw(
     const bool primary = primarySelected.has_value() &&
                          &primarySelected->get() == selected.get();
     if (primary) {
-      LX_core::DebugDraw::wireBox(bounds, LX_core::Vec4f{0.2f, 1.0f, 1.0f, 1.0f});
+      LX_core::DebugDraw::wireBox(bounds,
+                                  LX_core::Vec4f{0.2f, 1.0f, 1.0f, 1.0f});
       LX_core::DebugDraw::wireBox(expandedBounds(bounds, 0.02f),
                                   LX_core::Vec4f{0.2f, 1.0f, 1.0f, 1.0f});
     } else {
@@ -320,7 +325,7 @@ void SceneInteractionController::enqueueDebugDraw(
   }
 
   if (!m_lastHitMarker.has_value()) {
-    for (const auto& cameraNode : m_scene.getCameras()) {
+    for (const auto &cameraNode : m_scene.getCameras()) {
       if (!cameraNode || cameraNode == m_editorState.getEditorCamera()) {
         continue;
       }
@@ -329,12 +334,14 @@ void SceneInteractionController::enqueueDebugDraw(
         continue;
       }
       const LX_core::Mat4f viewProj =
-          camera->get().getProjMatrix() * camera->get().getViewMatrix();
+          camera->get().getProjMatrix(0.0f, GraphicsAPI::OpenGL) *
+          camera->get().getViewMatrix();
       LX_core::DebugDraw::frustum(viewProj, LX_core::DebugDraw::Color::white());
     }
 
-    for (const auto& renderable : m_scene.getRenderables()) {
-      const auto node = std::dynamic_pointer_cast<LX_core::SceneNode>(renderable);
+    for (const auto &renderable : m_scene.getRenderables()) {
+      const auto node =
+          std::dynamic_pointer_cast<LX_core::SceneNode>(renderable);
       if (!node) {
         continue;
       }
@@ -347,7 +354,7 @@ void SceneInteractionController::enqueueDebugDraw(
     return;
   }
 
-  for (const auto& cameraNode : m_scene.getCameras()) {
+  for (const auto &cameraNode : m_scene.getCameras()) {
     if (!cameraNode || cameraNode == m_editorState.getEditorCamera()) {
       continue;
     }
@@ -356,11 +363,12 @@ void SceneInteractionController::enqueueDebugDraw(
       continue;
     }
     const LX_core::Mat4f viewProj =
-        camera->get().getProjMatrix() * camera->get().getViewMatrix();
+        camera->get().getProjMatrix(0.0f, GraphicsAPI::OpenGL) *
+        camera->get().getViewMatrix();
     LX_core::DebugDraw::frustum(viewProj, LX_core::DebugDraw::Color::white());
   }
 
-  for (const auto& renderable : m_scene.getRenderables()) {
+  for (const auto &renderable : m_scene.getRenderables()) {
     const auto node = std::dynamic_pointer_cast<LX_core::SceneNode>(renderable);
     if (!node) {
       continue;
@@ -375,7 +383,7 @@ void SceneInteractionController::enqueueDebugDraw(
   const auto selected = m_editorState.getSelected();
   const bool markerStillSelected =
       std::any_of(selected.begin(), selected.end(),
-                  [this](const LX_core::SceneNodeSharedPtr& node) {
+                  [this](const LX_core::SceneNodeSharedPtr &node) {
                     const auto markerNode = m_lastHitMarker->node.lock();
                     return node && markerNode && node.get() == markerNode.get();
                   });
@@ -394,7 +402,7 @@ std::optional<LX_core::Vec3f> SceneInteractionController::lastHitPoint() const {
   const auto selected = m_editorState.getSelected();
   const bool markerStillSelected =
       std::any_of(selected.begin(), selected.end(),
-                  [this](const LX_core::SceneNodeSharedPtr& node) {
+                  [this](const LX_core::SceneNodeSharedPtr &node) {
                     const auto markerNode = m_lastHitMarker->node.lock();
                     return node && markerNode && node.get() == markerNode.get();
                   });
