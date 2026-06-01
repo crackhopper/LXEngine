@@ -40,7 +40,19 @@ Disallowed shapes:
 - **Upstream:** https://github.com/nothings/stb
 - **License:** MIT / public domain (see each header)
 - **Consumers:** `src/infra/texture_loader/texture_loader.cpp` (holds
-  `#define STB_IMAGE_IMPLEMENTATION`)
+  `#define STB_IMAGE_IMPLEMENTATION`),
+  `src/infra/offline/offline_image_writer.cpp` (holds
+  `#define STB_IMAGE_WRITE_IMPLEMENTATION`)
+
+### `include/tinyexr` — OpenEXR image writer
+
+- **Shape:** vendored headers from TinyEXR release branch
+- **Upstream:** https://github.com/syoyo/tinyexr
+- **License:** BSD-style TinyEXR/OpenEXR notices (see `tinyexr.h`)
+- **Consumers:** `src/infra/offline/offline_image_writer.cpp` (holds
+  `#define TINYEXR_IMPLEMENTATION`)
+- **Notes:** Used only by the offline image writer so renderer core, scene
+  compiler, and GPU packing code do not depend on EXR-specific headers.
 
 ### `include/tinyobjloader` — Wavefront OBJ parser
 

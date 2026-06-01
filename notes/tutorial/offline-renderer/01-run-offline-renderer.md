@@ -1,6 +1,6 @@
-# 运行离线渲染器：从 Scene Profile 到 `.rgba32f`
+# 运行离线渲染器：从 Scene Profile 到 EXR/PNG
 
-离线渲染器的第一步不是追求画面最终质量，而是确认实验管线稳定：同一份 scene 能被 editor 保存，也能被 CLI 编译成离线 IR，再通过 Vulkan compute 输出一张线性 HDR 调试图。
+离线渲染器的第一步不是追求画面最终质量，而是确认实验管线稳定：同一份 scene 能被 editor 保存，也能被 CLI 编译成离线 IR，再通过 Vulkan compute 输出一张线性 HDR 图，并同时保存 EXR、PNG preview、metadata 和 raw readback。
 
 ## 构建目标
 
@@ -8,8 +8,8 @@
 
 ```bash
 cmake -S . -B build -G Ninja
-cmake --build build --target CompileShaders lxe_offline_render test_offline_scene_compiler test_offline_gpu_scene test_vulkan_offline_renderer -j2
-ctest --test-dir build --output-on-failure -R 'test_offline_scene_compiler|test_offline_gpu_scene|test_vulkan_offline_renderer|test_offline_render_cli'
+cmake --build build --target CompileShaders lxe_offline_render test_offline_image_writer test_offline_scene_compiler test_offline_gpu_scene test_vulkan_offline_renderer -j2
+ctest --test-dir build --output-on-failure -R 'test_offline_image_writer|test_offline_scene_compiler|test_offline_gpu_scene|test_vulkan_offline_renderer|test_offline_render_cli'
 ```
 
 | 目标 | 验证内容 |
@@ -18,6 +18,7 @@ ctest --test-dir build --output-on-failure -R 'test_offline_scene_compiler|test_
 | `test_offline_scene_compiler` | scene YAML 能编译成 `OfflineSceneIR` |
 | `test_offline_gpu_scene` | IR 能打包成 GPU buffer，并构建 BVH |
 | `test_vulkan_offline_renderer` | headless Vulkan renderer 能初始化 |
+| `test_offline_image_writer` | readback 能写成 EXR、PNG、JSON 和 raw dump |
 | `test_offline_render_cli` | CLI 参数和 profile override 行为稳定 |
 
 ## Scene Profile 是实验参数单
@@ -38,7 +39,7 @@ scene:
         samples: 1
         maxDepth: 1
         seed: 1
-        outputFormat: exr-png     # -> 当前 CLI 仍写 .rgba32f 调试输出
+        outputFormat: exr-png     # -> CLI 写 .exr / .png / .json / .rgba32f
       reference:
         backend: vulkan-compute
         integrator: path-tracing  # -> 预留给后续 path tracing shader
@@ -67,10 +68,13 @@ CLI 参数可以覆盖 profile 中的宽高、samples 和输出路径。这样�
 成功时 CLI 会打印所选 Vulkan device、最终尺寸、samples 和中心像素值，并生成：
 
 ```text
+artifacts/offline/smoke.exr
+artifacts/offline/smoke.png
+artifacts/offline/smoke.json
 artifacts/offline/smoke.rgba32f
 ```
 
-`.rgba32f` 是调试格式：每个像素四个 32-bit float，顺序为 RGBA，数据是线性 HDR 值。它适合自动测试和后续 EXR 写入模块，不适合作为长期人工看图格式。REQ-055-a 会把 readback 接到 EXR/PNG 输出；在那之前，我们主要用 CLI 成功、文件大小、中心像素有限值和后续测试来确认链路。
+`.exr` 是主输出，保存 scene-linear HDR beauty RGBA；`.png` 是同一份 readback 经 ACES tone mapping 和 gamma 2.2 处理后的预览图；`.json` 记录 scene、profile、samples、max depth、seed、git commit 和输出文件；`.rgba32f` 是调试格式，每个像素四个 32-bit float，顺序为 RGBA。
 
 ## 数据流
 
@@ -83,7 +87,7 @@ artifacts/offline/smoke.rgba32f
 | GPU 打包 | `GpuSceneBuilder` | triangle、material、camera params buffer |
 | BVH 构建 | `ComputeBvhBuilder` | `GpuBvhNode` + 重排后的 triangle buffer |
 | Compute 执行 | `backend::offline::VulkanOfflineRenderer` | `OfflineReadbackImage` |
-| 文件输出 | `lxe_offline_render` CLI | `.rgba32f` |
+| 文件输出 | `OfflineImageWriter` | `.exr` / `.png` / `.json` / `.rgba32f` |
 
 ## 和 Realtime Renderer 的边界
 
@@ -103,11 +107,11 @@ artifacts/offline/smoke.rgba32f
 | 找不到 compute shader SPIR-V | 先跑 `cmake --build build --target CompileShaders`；CLI 会从 `build/assets/shaders/glsl/` 查找离线 compute shader |
 | 没有 Vulkan 物理设备 | 在 Linux headless 环境确认 Vulkan loader / llvmpipe / 驱动可用 |
 | 画面全黑或中心像素为 0 | 检查 scene 是否有 camera、mesh、directional light；再跑 `test_offline_scene_compiler` |
-| 输出文件打不开 | 当前是 raw `.rgba32f`，不是 EXR/PNG；等输出模块落地后再用普通图像工具看图 |
+| EXR 打不开 | 先看同 basename 的 `.png`；再确认我们使用支持 OpenEXR 的图像查看器 |
+| PNG 过亮或过暗 | 当前 preview 使用 exposure 1.0、ACES、gamma 2.2；EXR 不做 tone mapping |
 
 ## 继续阅读
 
-- [实现自己的 Path Tracing](02-implement-path-tracing.md)
+- [EXR 与 PNG 输出](02-output-and-exr-viewers.md)
+- [实现结构](03-implementation-flow.md)
 - [PBR + IBL 金属球场景](../pbr-ibl/01-metal-sphere-scene.md)
-- [场景文档到 Runtime](../../scene-system/document-runtime-flow.md)
-- [REQ-055-a](../../requirements/055-a-offline-output-exr-and-png.md)

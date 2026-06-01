@@ -12,22 +12,6 @@ nav:
           - 加载与保存场景: tutorial/start-project/03-load-and-save-scene.md
           - 基础编辑: tutorial/start-project/04-basic-authoring.md
           - 启动排错: tutorial/start-project/05-troubleshooting.md
-      - Shadow 阶段:
-          - 总览: tutorial/shadow-era/index.md
-          - 打开场景: tutorial/shadow-era/01-open-shadow-scene.md
-          - Shadow pass: tutorial/shadow-era/02-shadow-pass-flow.md
-          - CSM 读取: tutorial/shadow-era/03-csm-reading-path.md
-          - 调参与边界: tutorial/shadow-era/04-shadow-tuning-and-limits.md
-      - PBR + IBL:
-          - 总览: tutorial/pbr-ibl/index.md
-          - 金属球场景: tutorial/pbr-ibl/01-metal-sphere-scene.md
-          - 资源与绑定: tutorial/pbr-ibl/02-resource-and-shader-contract.md
-          - HDR Post 流程: tutorial/pbr-ibl/03-hdr-post-process-flow.md
-          - 验证与排错: tutorial/pbr-ibl/04-verify-and-debug.md
-      - Offline Renderer:
-          - 总览: tutorial/offline-renderer/index.md
-          - 运行 CLI: tutorial/offline-renderer/01-run-offline-renderer.md
-          - Path Tracing: tutorial/offline-renderer/02-implement-path-tracing.md
       - 自定义材质:
           - 总览: tutorial/custom-material/index.md
           - 材质积木: tutorial/custom-material/01-material-building-blocks.md
@@ -43,13 +27,24 @@ nav:
           - C++ 扩展光源: tutorial/custom-light/03-extend-light-in-cpp.md
           - 光源资产与注册表: tutorial/custom-light/04-light-assets-and-registry.md
           - 验证与调试光源: tutorial/custom-light/05-verify-and-debug-lights.md
-      - 扩展编辑器:
-          - 总览: tutorial/extend-editor/index.md
-          - CommandBus 模型: tutorial/extend-editor/01-command-bus-model.md
-          - 当前内置命令: tutorial/extend-editor/02-read-current-commands.md
-          - 增加命令: tutorial/extend-editor/03-add-command-current-path.md
-          - 增加 toolbar 按钮: tutorial/extend-editor/04-add-toolbar-button-current-path.md
-          - 未来扩展注册表: tutorial/extend-editor/05-future-extension-registry.md
+      - Shadow 阶段:
+          - 总览: tutorial/shadow-era/index.md
+          - 打开场景: tutorial/shadow-era/01-open-shadow-scene.md
+          - Shadow pass: tutorial/shadow-era/02-shadow-pass-flow.md
+          - CSM 读取: tutorial/shadow-era/03-csm-reading-path.md
+          - 调参与边界: tutorial/shadow-era/04-shadow-tuning-and-limits.md
+      - PBR + IBL:
+          - 总览: tutorial/pbr-ibl/index.md
+          - 金属球场景: tutorial/pbr-ibl/01-metal-sphere-scene.md
+          - 资源与绑定: tutorial/pbr-ibl/02-resource-and-shader-contract.md
+          - HDR Post 流程: tutorial/pbr-ibl/03-hdr-post-process-flow.md
+          - 验证与排错: tutorial/pbr-ibl/04-verify-and-debug.md
+      - Offline Renderer:
+          - 总览: tutorial/offline-renderer/index.md
+          - 运行 CLI: tutorial/offline-renderer/01-run-offline-renderer.md
+          - EXR 与 PNG 输出: tutorial/offline-renderer/02-output-and-exr-viewers.md
+          - 实现结构: tutorial/offline-renderer/03-implementation-flow.md
+          - Path Tracing: tutorial/offline-renderer/04-implement-path-tracing.md
       - 扩展场景节点:
           - 总览: tutorial/extend-scene-node/index.md
           - SceneNode 模型: tutorial/extend-scene-node/01-scene-node-model.md
@@ -57,6 +52,13 @@ nav:
           - 当前触点: tutorial/extend-scene-node/03-current-custom-node-touchpoints.md
           - Debug draw 与 picking: tutorial/extend-scene-node/04-debug-draw-and-picking.md
           - 未来节点注册表: tutorial/extend-scene-node/05-future-node-kind-registry.md
+      - 扩展编辑器:
+          - 总览: tutorial/extend-editor/index.md
+          - CommandBus 模型: tutorial/extend-editor/01-command-bus-model.md
+          - 当前内置命令: tutorial/extend-editor/02-read-current-commands.md
+          - 增加命令: tutorial/extend-editor/03-add-command-current-path.md
+          - 增加 toolbar 按钮: tutorial/extend-editor/04-add-toolbar-button-current-path.md
+          - 未来扩展注册表: tutorial/extend-editor/05-future-extension-registry.md
   - 场景系统:
       - 总览: scene-system/index.md
       - 文档到 Runtime: scene-system/document-runtime-flow.md

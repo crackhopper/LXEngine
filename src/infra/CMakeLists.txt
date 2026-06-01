@@ -343,6 +343,7 @@ set(INFRA_SOURCES
     shader_compiler/shader_reflector.cpp
     shader_compiler/compiled_shader.cpp
     offline/offline_asset_resolver.cpp
+    offline/offline_image_writer.cpp
     offline/offline_scene_compiler.cpp
 )
 

@@ -33,8 +33,8 @@
 
 ```bash
 cmake -S . -B build -G Ninja
-cmake --build build --target CompileShaders lxe_offline_render test_offline_scene_compiler test_offline_gpu_scene test_vulkan_offline_renderer -j2
-ctest --test-dir build --output-on-failure -R 'test_offline_scene_compiler|test_offline_gpu_scene|test_vulkan_offline_renderer|test_offline_render_cli'
+cmake --build build --target CompileShaders lxe_offline_render test_offline_image_writer test_offline_scene_compiler test_offline_gpu_scene test_vulkan_offline_renderer -j2
+ctest --test-dir build --output-on-failure -R 'test_offline_image_writer|test_offline_scene_compiler|test_offline_gpu_scene|test_vulkan_offline_renderer|test_offline_render_cli'
 ./build/src/tools/lxe_offline_render/lxe_offline_render \
   --scene assets/scenes/ibl_metal_sphere.scene.yaml \
   --profile mvp \
@@ -47,10 +47,13 @@ ctest --test-dir build --output-on-failure -R 'test_offline_scene_compiler|test_
 成功后会生成：
 
 ```text
+artifacts/offline/smoke.exr
+artifacts/offline/smoke.png
+artifacts/offline/smoke.json
 artifacts/offline/smoke.rgba32f
 ```
 
-当前 `.rgba32f` 是调试输出：每个像素 RGBA 四个 32-bit float，仍不是 EXR/PNG。我们先用它验证 compute dispatch、BVH、readback 和有限值；可查看图片输出由后续 `REQ-055-a` 补齐。
+`.exr` 是 scene-linear HDR 主输出，`.png` 是 tone-mapped preview，`.json` 记录 scene/profile/git 等复现信息，`.rgba32f` 是调试输出：每个像素 RGBA 四个 32-bit float。
 
 ## 启动 Assets Downloader
 

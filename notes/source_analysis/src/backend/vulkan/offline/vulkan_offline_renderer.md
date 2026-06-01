@@ -10,7 +10,8 @@ scene 文档编译成 `OfflineSceneIR`，再打包成 compute shader 的 storage
 
 可以先带着一个问题阅读：我们要怎样在不创建 swapchain 的情况下，从同一份
 `.scene.yaml` 得到一张可复现实验图？答案就在 `OfflineSceneCompiler`、
-`GpuSceneBuilder`、`ComputeBvhBuilder` 和 `VulkanOfflineRenderer` 的分层里。
+`GpuSceneBuilder`、`ComputeBvhBuilder`、`VulkanOfflineRenderer` 和
+`OfflineImageWriter` 的分层里。
 
 源码入口：[vulkan_offline_renderer.hpp](../../../../../src/backend/vulkan/offline/vulkan_offline_renderer.hpp)
 
@@ -114,6 +115,7 @@ closest-hit 查询、shadow ray 查询和后续 path tracing 的基础空间索�
 | 5 | `src/backend/vulkan/offline/compute_bvh_builder.*` | triangle 如何获得可遍历 BVH |
 | 6 | `src/backend/vulkan/offline/vulkan_offline_renderer.*` | pipeline、descriptor、dispatch、readback 如何连起来 |
 | 7 | `assets/shaders/glsl/offline_primary_ray.comp` | 当前 integrator 如何生成相机 ray、遍历 BVH、计算直接光和环境 |
+| 8 | `src/infra/offline/offline_image_writer.*` | readback 如何写成 EXR、PNG、JSON 和 raw dump |
 
 ## 当前 MVP 的关键边界
 
@@ -123,8 +125,10 @@ closest-hit 查询、shadow ray 查询和后续 path tracing 的基础空间索�
 | CPU global triangle BVH | 实例层 BVH、更好的 split、GPU build |
 | baseColor / metallic / roughness / emissive 常量材质 | albedo/normal/metallicRoughness/AO/emissive 纹理 |
 | 程序化 environment color | HDR environment 纹理采样与 importance sampling |
-| `.rgba32f` raw readback | EXR/PNG writer、AOV、variance 输出 |
+| EXR/PNG/JSON/raw 输出 | AOV、variance、multipart EXR |
 | primary ray + direct directional light + 简单反射 | 多 bounce path tracing、MIS、Russian roulette |
 
-这个页面解释的是已经落地的 MVP 管线。真正实现自定义 path tracing 时，入口教程在
-[Offline Renderer / Path Tracing](../../../../../tutorial/offline-renderer/02-implement-path-tracing.md)。
+这个页面解释的是已经落地的 MVP 管线。更完整的分步实现结构在
+[Offline Renderer / 实现结构](../../../../../tutorial/offline-renderer/03-implementation-flow.md)，
+真正实现自定义 path tracing 时，入口教程在
+[Offline Renderer / Path Tracing](../../../../../tutorial/offline-renderer/04-implement-path-tracing.md)。

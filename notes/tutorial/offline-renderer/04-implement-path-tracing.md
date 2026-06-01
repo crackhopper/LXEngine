@@ -35,7 +35,7 @@
 
 | 阶段 | 目标 | 验收方式 |
 |---|---|---|
-| 1 | 新增 `offline_path_tracing.comp`，仍输出 primary-ray 同等结果 | CLI 能通过 `integrator: path-tracing` 跑出 `.rgba32f` |
+| 1 | 新增 `offline_path_tracing.comp`，仍输出 primary-ray 同等结果 | CLI 能通过 `integrator: path-tracing` 跑出 `.exr` / `.png` |
 | 2 | 加 per-sample RNG 和 path throughput loop | 同一 seed 输出稳定，不同 samples 中心像素有限 |
 | 3 | 实现 diffuse cosine sampling | 灰色地面能看到环境间接光趋势 |
 | 4 | 接入 directional light 的 next-event estimation | 有光源时噪声低于纯 BSDF 采样 |

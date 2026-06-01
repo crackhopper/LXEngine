@@ -1,6 +1,6 @@
 # REQ-055-a: Offline Output EXR 与 PNG
 
-> 2026-06-01 新增：本 REQ 定义离线渲染输出格式。EXR 是主输出，PNG 是 tone-mapped preview。当前仍在讨论中，未开始。
+> 2026-06-01 更新：本 REQ 的 MVP 已实现。`lxe_offline_render` 现在从同一份 linear float readback 写出 scene-linear EXR、tone-mapped PNG、JSON metadata 和 `.rgba32f` 调试 dump。
 
 ## 背景
 
@@ -172,4 +172,18 @@ CLI `--out` 语义：
 
 ## 实施状态
 
-讨论中，未开始。
+MVP 已实现：
+
+- `src/infra/offline/offline_image_writer.*` 提供 `OfflineImageWriter`。
+- EXR 使用 TinyEXR，写出 RGBA half float scene-linear beauty。
+- PNG 使用 stb_image_write，CPU 侧执行 exposure 1.0、ACES、gamma 2.2 preview。
+- CLI `--out` 支持 basename、带扩展名路径和已存在目录。
+- sidecar JSON 记录 scene path、scene name、camera path、profile、width/height、samples、max depth、seed、output format、EXR storage、PNG tone mapping 和 git dirty 状态。
+- `.rgba32f` 继续写出，作为底层 readback 调试文件。
+- `test_offline_image_writer` 覆盖 2x2 EXR/PNG/JSON/raw 输出、PNG signature、EXR magic、目录输出 basename 和 tone mapping。
+
+未完成范围：
+
+- AOV / variance / multipart EXR。
+- UI 中打开 PNG preview 或输出目录。
+- 可配置 tone mapping CLI 参数。
