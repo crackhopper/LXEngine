@@ -730,6 +730,21 @@ loadRenderProfileDocument(const YAML::Node &sceneNode) {
     return {};
   }
 
+  if (offlineRenderNode && offlineRenderNode["defaultProfile"]) {
+    throw std::runtime_error(
+        "scene.offlineRender.defaultProfile is no longer supported; use "
+        "scene.defaultOutputProfile and scene.offlineRender.profile");
+  }
+  if (offlineRenderNode && offlineRenderNode["backend"]) {
+    throw std::runtime_error(
+        "scene.offlineRender.backend is no longer supported");
+  }
+  if (offlineRenderNode && offlineRenderNode["maxDepth"]) {
+    throw std::runtime_error(
+        "scene.offlineRender.maxDepth is no longer supported; use "
+        "scene.offlineRender.maxBounce");
+  }
+
   if (!outputProfilesNode || !outputProfilesNode.IsMap() ||
       outputProfilesNode.size() == 0) {
     throw std::runtime_error("scene.outputProfiles must be a non-empty map");

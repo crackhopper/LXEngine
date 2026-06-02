@@ -811,12 +811,6 @@ void testOldOfflineRenderDefaultProfileRejected() {
   expectMinimalSceneRejected(
       "lx_scene_old_default_profile.yaml",
       "  name: old default profile test\n"
-      "  defaultOutputProfile: preview\n"
-      "  outputProfiles:\n"
-      "    preview:\n"
-      "      camera: /game_cam\n"
-      "      width: 64\n"
-      "      height: 36\n"
       "  offlineRender:\n"
       "    defaultProfile: preview\n",
       "scene.offlineRender.defaultProfile");
