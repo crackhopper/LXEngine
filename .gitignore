@@ -61,8 +61,8 @@ data/
 .worktrees/
 
 # lxe_manager local Node tooling
-/tools/lxe_manager/node_modules/
-/tools/lxe_manager/dist/
+/src/tools/lxe_manager/node_modules/
+/src/tools/lxe_manager/dist/
 
 # assets-downloader local Node tooling and build output
 /src/tools/assets-downloader/node_modules/

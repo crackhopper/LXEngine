@@ -176,11 +176,7 @@ startedAt: 2026-05-13-120000
       if (req.url === "/api/build") {
         res.writeHead(200, { "content-type": "application/json" });
         res.end(
-          JSON.stringify({
-            gitCommit: "0123456789abcdef",
-            gitCommitShort: "0123456789ab",
-            gitDirty: false,
-          }),
+          JSON.stringify({ buildInfo: "lxe_editor 0.1.0-dev (0123456789ab, Debug, Linux-x64)" }),
         );
         return;
       }
@@ -209,11 +205,7 @@ startedAt: 2026-05-13-120000
     });
     await expect(client.getSelection()).resolves.toEqual({ selectedNodeId: 7 });
     await expect(client.getCameras()).resolves.toEqual({ active: "editor_cam" });
-    await expect(client.buildInfo()).resolves.toEqual({
-      gitCommit: "0123456789abcdef",
-      gitCommitShort: "0123456789ab",
-      gitDirty: false,
-    });
+    await expect(client.buildInfo()).resolves.toEqual({ buildInfo: "lxe_editor 0.1.0-dev (0123456789ab, Debug, Linux-x64)" });
     await expect(client.pick(4, 8)).resolves.toEqual({ hit: true });
     expect(requests.map((request) => request.url)).toEqual([
       "/api/state/summary",

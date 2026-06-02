@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { getCache, getJob, getSources, previewImport, startImport } from "./api";
+import { getBuildInfo, getCache, getJob, getSources, previewImport, startImport } from "./api";
 import type { CacheAssetMetadata, Catalog, ImportJob, ImportPreviewPlan, RecommendedAsset, Source } from "../shared/schema";
 import "./styles.css";
 
@@ -12,6 +12,7 @@ export function App() {
   const [preview, setPreview] = useState<ImportPreviewPlan>();
   const [job, setJob] = useState<ImportJob>();
   const [cacheAssets, setCacheAssets] = useState<CacheAssetMetadata[]>([]);
+  const [buildInfo, setBuildInfo] = useState<string>("unknown");
   const [error, setError] = useState<string>();
 
   useEffect(() => {
@@ -20,6 +21,9 @@ export function App() {
         setCatalog(loaded);
         setActiveSourceId(loaded.sources[0]?.id);
       })
+      .catch((caught: Error) => setError(caught.message));
+    void getBuildInfo()
+      .then((loaded) => setBuildInfo(loaded.buildInfo))
       .catch((caught: Error) => setError(caught.message));
     void refreshCache();
   }, []);
@@ -97,6 +101,7 @@ export function App() {
     <main className="shell">
       <aside className="sources" aria-label="Data source navigation">
         <h1>Assets Downloader</h1>
+        <p className="build-info">{buildInfo}</p>
         <nav>
           {catalog?.sources.map((candidate) => (
             <button

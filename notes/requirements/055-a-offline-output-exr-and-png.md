@@ -34,7 +34,7 @@ EXR 适合保存 scene-linear HDR float 数据和未来 AOV；PNG 适合快速�
 - 首版至少保存 beauty RGBA。
 - 内部 accumulation buffer 可使用 `RGBA32F`。
 - 写出可选择 half float 或 float；首版默认 half float 可接受，但必须记录策略。
-- 输出 metadata 至少包含 scene path、camera path、profile、sample count、max depth、seed、git commit 或 build id。
+- 输出 metadata 至少包含 scene path、camera path、profile、sample count、max depth、seed 和 build id。
 
 ### R2: PNG preview 输出
 
@@ -178,7 +178,7 @@ MVP 已实现：
 - EXR 使用 TinyEXR，写出 RGBA half float scene-linear beauty。
 - PNG 使用 stb_image_write，CPU 侧执行 exposure 1.0、ACES、gamma 2.2 preview。
 - CLI `--out` 支持 basename、带扩展名路径和已存在目录。
-- sidecar JSON 记录 scene path、scene name、camera path、profile、width/height、samples、max depth、seed、output format、EXR storage、PNG tone mapping 和 git dirty 状态。
+- sidecar JSON 记录 scene path、scene name、camera path、profile、width/height、samples、max depth、seed、output format、EXR storage、PNG tone mapping 和合成后的 `buildInfo` 字符串。
 - `.rgba32f` 继续写出，作为底层 readback 调试文件。
 - `test_offline_image_writer` 覆盖 2x2 EXR/PNG/JSON/raw 输出、PNG signature、EXR magic、目录输出 basename 和 tone mapping。
 

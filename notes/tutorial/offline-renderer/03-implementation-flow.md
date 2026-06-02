@@ -88,7 +88,7 @@ Offline renderer 像一条离线实验流水线：editor 产出场景说明书�
 | `job` | scene/profile/camera/output path |
 | `image` | Vulkan readback 得到的线性 RGBA float |
 | `scenePath` / `profileName` | metadata 复现信息 |
-| `gitCommit` / `gitDirty` | build identity |
+| `buildInfo` | 合成后的二进制版本标签 |
 | `toneMapping` | PNG preview 的 exposure、mode、gamma |
 
 写出策略：

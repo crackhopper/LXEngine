@@ -28,3 +28,4 @@
 - [REQ-063-b: 3DGS Vulkan Splat Pass](063-b-3dgs-vulkan-splat-pass.md)
 - [REQ-064-a: 3DGS Editor Scene Validation](064-a-3dgs-editor-scene-validation.md)
 - [REQ-065-a: 3DGS System Design And Tutorial](065-a-3dgs-system-design-and-tutorial.md)
+- [REQ-066-a: BuildInfo 与输出产物溯源](066-a-build-info-and-artifact-provenance.md)

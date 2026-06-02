@@ -18,13 +18,14 @@
 
 1. [架构总览](architecture.md)：先看三层结构，以及 FrameGraph / shadow / CSM 到 GPU submit 的主链路。
 2. [项目目录结构](project-layout.md)：再看文件放在哪里，哪些目录是事实来源。
-3. [术语表](glossary.md)：遇到项目自造词时回查。
-4. [资产系统](../concepts/assets/index.md)：理解文件、URI、序列化和 loader 边界。
-5. [场景系统](../scene-system/index.md)：理解 scene、node、component、camera、light、renderable。
-6. [材质系统](../concepts/material/index.md)：理解 material pass、pipeline identity 和未来 bindless 方向。
-7. [引擎循环](../concepts/engine-loop.md)：理解一帧如何驱动 window、scene、renderer 和 GUI。
-8. [渲染管线](rendering-pipeline/index.md)：在前面概念齐备后，再按 FrameGraph、RenderTarget、Shadow pass、CSM、RenderQueue 的顺序拆开当前多 pass 数据流。
-9. [编辑器系统](../design/editor-system/index.md)：理解 `lxe_editor` 如何把 UI、CommandBus、SceneRuntime、API 串起来。
+3. [BuildInfo](build-info.md)：理解二进制版本标签如何进入 CLI、API、录制和离线输出 metadata。
+4. [术语表](glossary.md)：遇到项目自造词时回查。
+5. [资产系统](../concepts/assets/index.md)：理解文件、URI、序列化和 loader 边界。
+6. [场景系统](../scene-system/index.md)：理解 scene、node、component、camera、light、renderable。
+7. [材质系统](../concepts/material/index.md)：理解 material pass、pipeline identity 和未来 bindless 方向。
+8. [引擎循环](../concepts/engine-loop.md)：理解一帧如何驱动 window、scene、renderer 和 GUI。
+9. [渲染管线](rendering-pipeline/index.md)：在前面概念齐备后，再按 FrameGraph、RenderTarget、Shadow pass、CSM、RenderQueue 的顺序拆开当前多 pass 数据流。
+10. [编辑器系统](../design/editor-system/index.md)：理解 `lxe_editor` 如何把 UI、CommandBus、SceneRuntime、API 串起来。
 
 ## 当前章节结构
 
@@ -41,4 +42,5 @@
 
 - [架构总览](architecture.md)
 - [项目目录结构](project-layout.md)
+- [BuildInfo](build-info.md)
 - [Roadmap](../roadmaps/README.md)

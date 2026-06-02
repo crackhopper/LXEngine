@@ -1,5 +1,6 @@
 #include "backend/vulkan/offline/vulkan_offline_renderer.hpp"
 #include "core/offline/offline_render_profile.hpp"
+#include "infra/build_info/build_info.hpp"
 #include "infra/offline/offline_image_writer.hpp"
 #include "infra/offline/offline_asset_resolver.hpp"
 #include "infra/offline/offline_scene_compiler.hpp"
@@ -16,14 +17,6 @@
 
 namespace {
 
-#ifndef LXE_OFFLINE_GIT_COMMIT
-#define LXE_OFFLINE_GIT_COMMIT "unknown"
-#endif
-
-#ifndef LXE_OFFLINE_GIT_DIRTY
-#define LXE_OFFLINE_GIT_DIRTY 0
-#endif
-
 [[nodiscard]] std::vector<std::string> collectArgs(int argc, char **argv) {
   std::vector<std::string> args;
   args.reserve(static_cast<usize>(std::max(argc - 1, 0)));
@@ -33,7 +26,7 @@ namespace {
       throw std::runtime_error(
           "usage: lxe_offline_render --scene SCENE [--camera PATH] "
           "[--profile NAME] [--width N] [--height N] [--samples N] "
-          "[--max-depth N] [--seed N] [--out PATH]");
+          "[--max-depth N] [--seed N] [--out PATH] [--version]");
     }
     args.push_back(arg);
   }
@@ -44,8 +37,16 @@ namespace {
 
 int main(int argc, char **argv) {
   try {
-    const auto args = LX_tools::offline_render::parseOfflineRenderCliArguments(
-        collectArgs(argc, argv));
+    const std::vector<std::string> rawArgs = collectArgs(argc, argv);
+    const std::string buildInfo =
+        LX_infra::currentBuildInfoString("lxe_offline_render");
+    if (std::find(rawArgs.begin(), rawArgs.end(), "--version") !=
+        rawArgs.end()) {
+      std::cout << buildInfo << '\n';
+      return 0;
+    }
+    const auto args =
+        LX_tools::offline_render::parseOfflineRenderCliArguments(rawArgs);
     const auto document = LX_infra::scene_io::loadSceneDocument(args.scenePath);
     LX_core::offline::OfflineRenderProfiles profiles =
         document.hasOfflineRenderProfiles()
@@ -82,8 +83,7 @@ int main(int argc, char **argv) {
     outputRequest.image = image;
     outputRequest.scenePath = args.scenePath;
     outputRequest.profileName = resolved.profileName;
-    outputRequest.gitCommit = LXE_OFFLINE_GIT_COMMIT;
-    outputRequest.gitDirty = LXE_OFFLINE_GIT_DIRTY != 0;
+    outputRequest.buildInfo = buildInfo;
     const auto outputs =
         LX_infra::offline::writeOfflineImageOutputs(outputRequest);
     const usize center =

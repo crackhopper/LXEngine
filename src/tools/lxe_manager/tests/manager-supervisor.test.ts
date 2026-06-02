@@ -20,9 +20,9 @@ describe("manager supervisor", () => {
     const child = fakeChild(101);
     const spawnProcess = vi.fn(() => child);
     const supervisor = new ManagerSupervisor({
-      managerDir: "/repo/tools/lxe_manager",
+      managerDir: "/repo/src/tools/lxe_manager",
       managerArgs: ["--host", "0.0.0.0", "--port", "3880"],
-      supervisorScript: "/repo/tools/lxe_manager/src/supervisor.ts",
+      supervisorScript: "/repo/src/tools/lxe_manager/src/supervisor.ts",
       spawnProcess,
       exit: vi.fn(),
       log: vi.fn(),
@@ -42,7 +42,7 @@ describe("manager supervisor", () => {
         "3880",
       ],
       expect.objectContaining({
-        cwd: "/repo/tools/lxe_manager",
+        cwd: "/repo/src/tools/lxe_manager",
         stdio: ["ignore", "pipe", "pipe"],
       }) as SpawnOptions,
     );
@@ -57,9 +57,9 @@ describe("manager supervisor", () => {
       .mockReturnValueOnce(restartedChild);
     const exit = vi.fn();
     const supervisor = new ManagerSupervisor({
-      managerDir: "/repo/tools/lxe_manager",
+      managerDir: "/repo/src/tools/lxe_manager",
       managerArgs: ["--host", "0.0.0.0"],
-      supervisorScript: "/repo/tools/lxe_manager/src/supervisor.ts",
+      supervisorScript: "/repo/src/tools/lxe_manager/src/supervisor.ts",
       nodeExecArgv: ["--import", "tsx"],
       spawnProcess,
       exit,
@@ -80,7 +80,7 @@ describe("manager supervisor", () => {
         "0.0.0.0",
       ],
       expect.objectContaining({
-        cwd: "/repo/tools/lxe_manager",
+        cwd: "/repo/src/tools/lxe_manager",
         stdio: ["ignore", "pipe", "pipe"],
       }) as SpawnOptions,
     );
@@ -92,9 +92,9 @@ describe("manager supervisor", () => {
     const spawnProcess = vi.fn(() => child);
     const exit = vi.fn();
     const supervisor = new ManagerSupervisor({
-      managerDir: "/repo/tools/lxe_manager",
+      managerDir: "/repo/src/tools/lxe_manager",
       managerArgs: [],
-      supervisorScript: "/repo/tools/lxe_manager/src/supervisor.ts",
+      supervisorScript: "/repo/src/tools/lxe_manager/src/supervisor.ts",
       spawnProcess,
       exit,
       log: vi.fn(),

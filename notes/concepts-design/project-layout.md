@@ -28,7 +28,7 @@ LXEngine/
 | `src/backend/vulkan/offline/` | Vulkan 离线后端 | headless compute renderer、GPU scene packing、BVH、readback |
 | `src/demos/lxe_editor/` | 当前交互 editor | project、scene runtime、UI、API、recording、commands |
 | `src/test/integration/` | 集成测试 | shader、material、scene、pipeline、resource、editor 相关测试 |
-| `src/tools/` | 独立工具 | `lxe_offline_render` CLI、`assets-downloader` React/TS 工具 |
+| `src/tools/` | 独立工具 | `lxe_offline_render` CLI、`lxe_manager` MCP 服务、`assets-downloader` React/TS 工具、Node 共享包 |
 
 ### `src/core/` 的当前子区
 
@@ -48,6 +48,7 @@ LXEngine/
 
 | 子目录 | 放什么 |
 |---|---|
+| `build_info/` | C++ 二进制 BuildInfo 字符串和 JSON，供 editor、offline renderer、输出 metadata 复用 |
 | `material_loader/` | `.material` YAML loader |
 | `mesh_loader/` | OBJ / glTF loader |
 | `offline/` | scene 文档到 `OfflineSceneIR` 的 compiler、cache/project URI resolver |
@@ -75,7 +76,9 @@ LXEngine/
 | 工具 | 入口 | 当前用途 |
 |---|---|---|
 | `lxe_offline_render` | `src/tools/lxe_offline_render/` | 读取 `.scene.yaml` 与 `scene.offlineRender` profile，运行 Vulkan compute 离线渲染 MVP |
+| `lxe_manager` | `src/tools/lxe_manager/` | 给 Codex 使用的 MCP 服务，管理 editor 进程、构建、日志和远端操作 |
 | `assets-downloader` | `src/tools/assets-downloader/` | React + TypeScript 页面，管理外部资产下载、license、cache URI 和导入缓存 |
+| `@lxe/build-info` | `src/tools/share/build-info/` | Node 工具共享 BuildInfo 字符串生成 |
 
 这两个工具都服务于“场景资产可以被 editor 使用，也可以被离线 renderer 使用”的同一条路线。它们不应该反向依赖 `src/demos/lxe_editor/` 的 UI 状态；共享边界放在 `infra/scene_io`、`infra/offline`、`core/offline` 和 project/cache 路径约定上。
 

@@ -16,6 +16,9 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/windows_msvc_env.cmake")
 # 项目名称
 project(Renderer LANGUAGES C CXX)
 
+set(LX_PROJECT_VERSION "0.1.0-dev" CACHE STRING
+    "LXEngine project version embedded into build metadata")
+
 # set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 enable_testing()

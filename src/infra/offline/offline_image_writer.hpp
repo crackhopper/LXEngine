@@ -20,8 +20,7 @@ struct OfflineImageOutputRequest final {
   LX_core::offline::OfflineReadbackImage image;
   std::filesystem::path scenePath;
   std::string profileName;
-  std::string gitCommit = "unknown";
-  bool gitDirty = false;
+  std::string buildInfo = "unknown";
   OfflineToneMappingSettings toneMapping;
   bool writeRawRgba32f = true;
 };

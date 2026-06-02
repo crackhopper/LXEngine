@@ -22,8 +22,8 @@ bearer token，也可以用环境变量或参数提供固定 token。
 
 ```bash
 cd /home/lixiang/proj/LXEngine
-npm --prefix tools/lxe_manager install
-npm --prefix tools/lxe_manager run build
+npm --prefix src/tools/lxe_manager install
+npm --prefix src/tools/lxe_manager run build
 ```
 
 本机访问：
@@ -220,7 +220,7 @@ supervisor 是 manager MCP server 的父进程，负责拉起
 `node --import tsx ./src/index.ts`。`ops.manager_restart` 的语义是让当前
 manager child 在返回响应后以退出码 `75` 退出；supervisor 看到 `75` 后会启动
 新版 supervisor 并退出，由新版 supervisor 拉起新版 manager child。这样
-`tools/lxe_manager/src/` 里的 manager 与 supervisor 代码更新都能在一次
+`src/tools/lxe_manager/src/` 里的 manager 与 supervisor 代码更新都能在一次
 `ops.manager_restart` 后生效。
 
 遇到 manager 重启后无法连接时，先看 `data/lxe_manager/mcp.log`，确认是否出现

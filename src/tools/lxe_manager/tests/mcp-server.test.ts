@@ -97,11 +97,7 @@ describe("mcp tool handlers", () => {
         getCameras: vi.fn(async () => ({ active: "editor_cam" })),
         getToolbar: vi.fn(async () => ({ activeTool: "select" })),
         getScene: vi.fn(async () => ({ nodes: [{ id: 7, name: "Cube" }] })),
-        buildInfo: vi.fn(async () => ({
-          gitCommit: "0123456789abcdef",
-          gitCommitShort: "0123456789ab",
-          gitDirty: false,
-        })),
+        buildInfo: vi.fn(async () => ({ buildInfo: "lxe_editor 0.1.0-dev (0123456789ab, Debug, Linux-x64)" })),
         pick: vi.fn(async () => ({ hit: true })),
         command: vi.fn(async () => ({ ok: true })),
         waitFor: vi.fn(async () => ({ found: true })),
@@ -406,11 +402,7 @@ describe("mcp tool handlers", () => {
 
   it("routes new editor and ops tools to their handlers", async () => {
     const health = vi.fn(async () => ({ ok: true }));
-    const buildInfo = vi.fn(async () => ({
-      gitCommit: "0123456789abcdef",
-      gitCommitShort: "0123456789ab",
-      gitDirty: false,
-    }));
+    const buildInfo = vi.fn(async () => ({ buildInfo: "lxe_editor 0.1.0-dev (0123456789ab, Debug, Linux-x64)" }));
     const getSelection = vi.fn(async () => ({ selectedNodeId: 7 }));
     const getCameras = vi.fn(async () => ({ active: "editor_cam" }));
     const pick = vi.fn(async () => ({ hit: true }));
@@ -730,7 +722,11 @@ describe("mcp tool handlers", () => {
   it("serves tools/list and tools/call over HTTP JSON-RPC at /mcp", async () => {
     const handlers = createToolHandlers(makeInput());
     const resources = createResourceHandlers(makeInput().editorClient);
-    server = createMcpHttpServer({ handlers, resources });
+    server = createMcpHttpServer({
+      handlers,
+      resources,
+      buildInfo: "lxe_manager 0.1.0-dev (test, Node v1, linux-x64)",
+    });
     const port = await listen(server);
     const response = await fetch(`http://127.0.0.1:${port}/mcp`, {
       method: "POST",
@@ -832,7 +828,11 @@ describe("mcp tool handlers", () => {
   it("advertises tools and resources capabilities during initialize", async () => {
     const handlers = createToolHandlers(makeInput());
     const resources = createResourceHandlers(makeInput().editorClient);
-    server = createMcpHttpServer({ handlers, resources });
+    server = createMcpHttpServer({
+      handlers,
+      resources,
+      buildInfo: "lxe_manager 0.1.0-dev (test, Node v1, linux-x64)",
+    });
     const port = await listen(server);
     const response = await fetch(`http://127.0.0.1:${port}/mcp`, {
       method: "POST",
@@ -851,6 +851,9 @@ describe("mcp tool handlers", () => {
         capabilities: {
           tools: {},
           resources: {},
+        },
+        serverInfo: {
+          buildInfo: "lxe_manager 0.1.0-dev (test, Node v1, linux-x64)",
         },
       },
     });
@@ -895,6 +898,7 @@ describe("mcp tool handlers", () => {
       handlers,
       resources,
       bearerToken: "secret",
+      buildInfo: "lxe_manager 0.1.0-dev (test, Node v1, linux-x64)",
       dashboard: {
         startedAt: "2026-05-14T00:00:00.000Z",
         host: "127.0.0.1",
@@ -917,6 +921,7 @@ describe("mcp tool handlers", () => {
       handlers,
       resources,
       bearerToken: "secret",
+      buildInfo: "lxe_manager 0.1.0-dev (test, Node v1, linux-x64)",
       dashboard: {
         startedAt: "2026-05-14T00:00:00.000Z",
         host: "127.0.0.1",
@@ -938,6 +943,7 @@ describe("mcp tool handlers", () => {
         startedAt: "2026-05-14T00:00:00.000Z",
         host: "127.0.0.1",
         port: 3880,
+        buildInfo: "lxe_manager 0.1.0-dev (test, Node v1, linux-x64)",
         toolCount: Object.keys(handlers).length,
       },
       editor: { running: true, pid: 123 },

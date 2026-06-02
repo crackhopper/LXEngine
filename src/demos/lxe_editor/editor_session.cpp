@@ -10,11 +10,11 @@
 #include "core/scene/components/camera_component.hpp"
 #include "core/utils/filesystem_tools.hpp"
 #include "demos/lxe_editor/builtin_asset_catalog.hpp"
-#include "demos/lxe_editor/lxe_editor_build_info.hpp"
 #include "demos/lxe_editor/lxe_editor_commands.hpp"
 #include "demos/lxe_editor/project_catalog.hpp"
 #include "demos/lxe_editor/scene_builder.hpp"
 #include "demos/lxe_editor/scene_interaction_controller.hpp"
+#include "infra/build_info/build_info.hpp"
 
 #include <chrono>
 #include <exception>
@@ -1028,7 +1028,8 @@ void LxeEditorSession::rebuildBindings(
               -> std::optional<std::reference_wrapper<RecordingController>> {
             return m_recording;
           },
-          .buildInfoJson = []() { return toJson(currentLxeEditorBuildInfo()); },
+          .buildInfoJson =
+              []() { return LX_infra::currentBuildInfoJson("lxe_editor"); },
           .displayListJson = m_displayCommandHooks.displayListJson,
           .displayActiveJson = m_displayCommandHooks.displayActiveJson,
           .displayConfigGetJson = m_displayCommandHooks.displayConfigGetJson,

@@ -44,6 +44,7 @@
 - [概念与设计 / 架构总览](concepts-design/architecture.md)：三层结构、资源生命周期、场景启动与每帧工作流。
 - [概念与设计 / 术语概念](concepts-design/glossary.md)：项目自造词与关键对象的一句话定义。
 - [概念与设计 / 项目目录结构](concepts-design/project-layout.md)：仓库分层、主目录职责、事实来源。
+- [概念与设计 / BuildInfo](concepts-design/build-info.md)：理解二进制版本标签、离线输出 metadata 和 editor 录制如何追溯构建来源。
 - [源码分析](source_analysis/index.md)：贴着真实源码看 shader、material、frame graph、pipeline identity、offline renderer 等实现边界。
 - [实现技巧](impl_tricks/index.md)：从现有代码里抽取出来的通用 trick / 手法 / 小范式。
 - [Roadmap](roadmaps/README.md)：从当前基座走向 AI Native 小型游戏引擎的阶段规划。

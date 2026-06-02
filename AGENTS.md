@@ -142,6 +142,7 @@ Use these when you need architecture context:
 - `notes/get-started.md`
 - `notes/concepts-design/architecture.md`
 - `notes/concepts-design/project-layout.md`
+- `notes/concepts-design/build-info.md`
 - `notes/source_analysis/index.md`
 - `notes/concepts/material/index.md`
 - `notes/concepts/material/file-to-instance.md`

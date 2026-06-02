@@ -314,6 +314,7 @@ export function createMcpHttpServer(input: {
   resources?: ResourceHandlers;
   bearerToken?: string;
   dashboard?: DashboardConfig;
+  buildInfo?: string;
 }): Server {
   return createServer(async (request, response) => {
     if (await handleDashboardRequest(input, request, response)) {
@@ -348,6 +349,7 @@ export function createMcpHttpServer(input: {
         input.handlers,
         rpcRequest,
         input.resources,
+        input.buildInfo,
       );
       if (!rpcResponse) {
         response.writeHead(202);
@@ -373,6 +375,7 @@ async function handleDashboardRequest(
     handlers: Record<string, ToolHandler>;
     bearerToken?: string;
     dashboard?: DashboardConfig;
+    buildInfo?: string;
   },
   request: IncomingMessage,
   response: ServerResponse,
@@ -454,6 +457,7 @@ async function handleDashboardRequest(
 async function dashboardStatus(input: {
   handlers: Record<string, ToolHandler>;
   dashboard?: DashboardConfig;
+  buildInfo?: string;
 }): Promise<unknown> {
   const startedAt = input.dashboard?.startedAt ?? new Date(0).toISOString();
   const host = input.dashboard?.host ?? "";
@@ -463,6 +467,7 @@ async function dashboardStatus(input: {
       startedAt,
       host,
       port,
+      buildInfo: input.buildInfo ?? "unknown",
       toolCount: Object.keys(input.handlers).length,
     },
     editor: await toolJson(input.handlers, "ops.editor_status", {}),
@@ -502,6 +507,7 @@ export async function handleJsonRpcRequest(
   handlers: Record<string, ToolHandler>,
   request: JsonRpcRequest,
   resources?: ResourceHandlers,
+  buildInfo = "unknown",
 ): Promise<JsonRpcResponse | undefined> {
   const isNotification = request.id === undefined;
   const id: JsonRpcId = isNotification ? null : (request.id ?? null);
@@ -514,7 +520,7 @@ export async function handleJsonRpcRequest(
       return rpcResult(id, {
         protocolVersion: "2024-11-05",
         capabilities: { tools: {}, resources: {} },
-        serverInfo: { name: "lxe_manager", version: "0.1.0" },
+        serverInfo: { name: "lxe_manager", version: "0.1.0", buildInfo },
       });
     case "ping":
       return rpcResult(id, {});

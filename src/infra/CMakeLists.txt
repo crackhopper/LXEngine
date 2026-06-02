@@ -329,6 +329,7 @@ set(INFRA_LIB LX_Infra CACHE INTERNAL "Infra library name")
 
 # Explicitly list source files to avoid picking up example files and unwanted backends
 set(INFRA_SOURCES
+    build_info/build_info.cpp
     material_loader/generic_material_loader.cpp
     scene_io/editor_camera_state.cpp
     scene_io/scene_document.cpp
@@ -356,6 +357,30 @@ endif()
 
 add_library(${INFRA_LIB} ${INFRA_SOURCES})
 
+if(CMAKE_CONFIGURATION_TYPES)
+  set(LXE_BUILD_TYPE "$<CONFIG>")
+elseif(CMAKE_BUILD_TYPE)
+  set(LXE_BUILD_TYPE "${CMAKE_BUILD_TYPE}")
+else()
+  set(LXE_BUILD_TYPE "Default")
+endif()
+set(LXE_BUILD_PLATFORM "${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
+
+set(LXE_BUILD_INFO_GENERATED_HEADER
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/infra/build_info/generated_build_info.hpp")
+add_custom_target(lx_generate_build_info
+  COMMAND ${CMAKE_COMMAND}
+          -D "SOURCE_DIR=${CMAKE_SOURCE_DIR}"
+          -D "OUTPUT_FILE=${LXE_BUILD_INFO_GENERATED_HEADER}"
+          -D "PROJECT_VERSION=${LX_PROJECT_VERSION}"
+          -D "BUILD_TYPE=${LXE_BUILD_TYPE}"
+          -D "PLATFORM=${LXE_BUILD_PLATFORM}"
+          -P "${CMAKE_SOURCE_DIR}/cmake/generate_build_info.cmake"
+  BYPRODUCTS "${LXE_BUILD_INFO_GENERATED_HEADER}"
+  VERBATIM
+)
+add_dependencies(${INFRA_LIB} lx_generate_build_info)
+
 target_link_libraries(${INFRA_LIB}
   PRIVATE
   ${CORE_LIB}
@@ -377,6 +402,8 @@ elseif(SPIRV_CROSS_CORE_LIB)
 endif()
 
 target_include_directories(${INFRA_LIB} PRIVATE external/include)
+target_include_directories(${INFRA_LIB} PRIVATE
+  "${CMAKE_CURRENT_BINARY_DIR}/generated")
 if(SHADERC_INCLUDE_DIR AND NOT "${SHADERC_INCLUDE_DIR}" STREQUAL "")
   target_include_directories(${INFRA_LIB} PRIVATE ${SHADERC_INCLUDE_DIR})
 endif()

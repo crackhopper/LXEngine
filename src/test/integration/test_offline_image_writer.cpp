@@ -55,7 +55,7 @@ void testWritesExrPngJsonAndRaw() {
   LX_infra::offline::OfflineImageOutputRequest request;
   request.scenePath = "assets/scenes/ibl_metal_sphere.scene.yaml";
   request.profileName = "mvp";
-  request.gitCommit = "test";
+  request.buildInfo = "test-binary 0.1.0-dev (test-dirty, Debug, Linux-x86_64)";
   request.job.outputPath = dir / "beauty";
   request.job.scene.name = "writer_test";
   request.job.cameraPath = "/game_cam";
@@ -92,6 +92,9 @@ void testWritesExrPngJsonAndRaw() {
          "metadata should describe EXR storage");
   EXPECT(text.find("\"toneMapping\": \"aces\"") != std::string::npos,
          "metadata should describe PNG tone mapping");
+  EXPECT(text.find("\"buildInfo\": \"test-binary 0.1.0-dev") !=
+             std::string::npos,
+         "metadata should record composed build info string");
 }
 
 void testDirectoryOutUsesRenderBasename() {

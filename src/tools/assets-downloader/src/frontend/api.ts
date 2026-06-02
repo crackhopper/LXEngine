@@ -4,6 +4,10 @@ export async function getSources(): Promise<Catalog> {
   return requestJson<Catalog>("/api/sources");
 }
 
+export async function getBuildInfo(): Promise<{ buildInfo: string }> {
+  return requestJson<{ buildInfo: string }>("/api/build-info");
+}
+
 export async function previewImport(body: ImportPreviewRequest): Promise<ImportPreviewPlan> {
   return requestJson<ImportPreviewPlan>("/api/import/preview", {
     method: "POST",

@@ -20,7 +20,7 @@ Offline renderer 的输出像一份实验记录：EXR 保存原始测量值，PN
 |---|---|---|
 | `smoke.exr` | scene-linear RGBA half float | 主结果、后续 AOV/数值分析 |
 | `smoke.png` | ACES + gamma 2.2 后的 8-bit RGBA | 人工快速看图、文档截图 |
-| `smoke.json` | scene/profile/git/output metadata | 复现实验参数 |
+| `smoke.json` | scene/profile/buildInfo/output metadata | 复现实验参数 |
 | `smoke.rgba32f` | raw RGBA32F readback | 调试 buffer、简单二进制检查 |
 
 `--out` 可以指向 basename，也可以指向已存在目录：

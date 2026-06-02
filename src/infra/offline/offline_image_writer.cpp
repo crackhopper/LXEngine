@@ -182,10 +182,7 @@ void writeMetadata(const std::filesystem::path &path,
   stream << "    \"exposure\": " << request.toneMapping.exposure << ",\n";
   stream << "    \"gamma\": " << request.toneMapping.gamma << "\n";
   stream << "  },\n";
-  stream << "  \"git\": {\n";
-  stream << "    \"commit\": \"" << jsonEscape(request.gitCommit) << "\",\n";
-  stream << "    \"dirty\": " << (request.gitDirty ? "true" : "false") << "\n";
-  stream << "  },\n";
+  stream << "  \"buildInfo\": \"" << jsonEscape(request.buildInfo) << "\",\n";
   stream << "  \"files\": {\n";
   stream << "    \"exr\": \"" << jsonEscape(result.exrPath.string()) << "\",\n";
   stream << "    \"png\": \"" << jsonEscape(result.pngPath.string()) << "\",\n";

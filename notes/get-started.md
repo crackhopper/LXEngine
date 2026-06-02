@@ -53,7 +53,7 @@ artifacts/offline/smoke.json
 artifacts/offline/smoke.rgba32f
 ```
 
-`.exr` 是 scene-linear HDR 主输出，`.png` 是 tone-mapped preview，`.json` 记录 scene/profile/git 等复现信息，`.rgba32f` 是调试输出：每个像素 RGBA 四个 32-bit float。
+`.exr` 是 scene-linear HDR 主输出，`.png` 是 tone-mapped preview，`.json` 记录 scene/profile/buildInfo 等复现信息，`.rgba32f` 是调试输出：每个像素 RGBA 四个 32-bit float。
 
 ## 启动 Assets Downloader
 

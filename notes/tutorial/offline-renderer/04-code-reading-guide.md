@@ -235,7 +235,7 @@ src/test/integration/test_offline_image_writer.cpp
 |---|---|---|
 | `.exr` | RGBA half float，scene-linear | 保留 HDR 原始渲染结果 |
 | `.png` | ACES-like tone mapping + gamma 的 8-bit 预览 | 快速看画面 |
-| `.json` | scene/profile/git/output metadata | 复现实验 |
+| `.json` | scene/profile/buildInfo/output metadata | 复现实验 |
 | `.rgba32f` | 原始 float dump | 调试 readback |
 
 读 `toneMapLinearToSrgb8()` 时要记住：它只影响 PNG，不改变 EXR。EXR 是我们以后做 ground truth、误差比较、HDR 检查的主文件。

@@ -298,24 +298,20 @@ void testRecordingToolsRecordMcpCommand() {
          "recording should include command line");
   EXPECT(activeRecording.find("\"build\":{") != std::string::npos,
          "recording metadata should include build identity");
-  EXPECT(activeRecording.find("\"gitCommit\"") != std::string::npos,
-         "recording build identity should include git commit field");
+  EXPECT(activeRecording.find("\"buildInfo\"") != std::string::npos,
+         "recording build identity should include composed buildInfo string");
 }
 
-void testBuildInfoExposesGitIdentityFields() {
+void testBuildInfoExposesComposedIdentityString() {
   Fixture fixture;
 
   const std::string buildInfo = fixture.service->buildInfo();
-  EXPECT(buildInfo.find("\"gitCommit\"") != std::string::npos,
-         "build info should include gitCommit");
-  EXPECT(buildInfo.find("\"gitCommitShort\"") != std::string::npos,
-         "build info should include gitCommitShort");
-  EXPECT(buildInfo.find("\"gitDirty\"") != std::string::npos,
-         "build info should include gitDirty");
-  EXPECT(buildInfo.find("\"buildType\"") != std::string::npos,
-         "build info should include buildType");
-  EXPECT(buildInfo.find("\"builtAt\"") != std::string::npos,
-         "build info should include builtAt");
+  EXPECT(buildInfo.find("\"buildInfo\"") != std::string::npos,
+         "build info should include composed buildInfo string");
+  EXPECT(buildInfo.find("\"gitCommit\"") == std::string::npos,
+         "build info should not expose split git fields");
+  EXPECT(buildInfo.find("\"buildType\"") == std::string::npos,
+         "build info should not expose split build fields");
 }
 
 void testDisplayApiMethodsUseHooks() {
@@ -1131,7 +1127,7 @@ int main() {
   testApiServiceReplacementPreservesPendingRuntimeSceneEvents();
   testApiServiceReplacementPreservesEventStateForDeferredActiveSceneChanged();
   testRecordingToolsRecordMcpCommand();
-  testBuildInfoExposesGitIdentityFields();
+  testBuildInfoExposesComposedIdentityString();
   testDisplayApiMethodsUseHooks();
   testDisplayApiMethodsReturnErrorsWhenHooksMissing();
   testApiTokenStatePersistsSingleGeneratedToken();

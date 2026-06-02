@@ -4,7 +4,7 @@ param(
 )
 
 $RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-$ManagerDir = Join-Path $RepoRoot "tools/lxe_manager"
+$ManagerDir = Join-Path $RepoRoot "src/tools/lxe_manager"
 $PackageJson = Join-Path $ManagerDir "package.json"
 $LogFile = if ($env:LXE_MANAGER_MCP_LOG_FILE) {
     $env:LXE_MANAGER_MCP_LOG_FILE

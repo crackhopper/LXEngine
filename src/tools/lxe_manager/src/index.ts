@@ -1,3 +1,4 @@
+import { currentBuildInfoString } from "@lxe/build-info";
 import { parseManagerCliOptions } from "./cli.js";
 import { defaultRepoRoot, resolveManagerConfig } from "./config.js";
 import { EditorClient } from "./editor/editor-client.js";
@@ -16,6 +17,10 @@ import type { ResourceThresholds } from "./process/resource-guardian.js";
 const cliOptions = parseManagerCliOptions(process.argv.slice(2));
 const startedAt = new Date().toISOString();
 const repoRoot = cliOptions.repoRoot ?? defaultRepoRoot();
+const buildInfo = currentBuildInfoString({
+  binaryName: "lxe_manager",
+  repoRoot,
+});
 const runtimeRoot = cliOptions.runtimeRoot ?? repoRoot;
 const editorExecutable = cliOptions.editorExecutable;
 
@@ -52,6 +57,7 @@ const server = createMcpHttpServer({
     host: cliOptions.host,
     port: cliOptions.port,
   },
+  buildInfo,
 });
 
 server.listen(cliOptions.port, cliOptions.host, () => {
@@ -66,6 +72,7 @@ server.listen(cliOptions.port, cliOptions.host, () => {
         bearerToken: cliOptions.bearerToken,
         bearerTokenGenerated: cliOptions.bearerTokenGenerated,
         config,
+        buildInfo,
         editorApi: "dynamic",
         tools: Object.keys(handlers).sort(),
       },

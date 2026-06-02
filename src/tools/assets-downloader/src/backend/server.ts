@@ -1,5 +1,6 @@
 import cors from "@fastify/cors";
 import Fastify, { FastifyError } from "fastify";
+import { currentBuildInfoJson } from "@lxe/build-info";
 import {
   importPreviewRequestSchema,
   importStartRequestSchema
@@ -12,6 +13,7 @@ import { loadCatalog } from "./services/sourceRegistry";
 export async function buildServer() {
   const app = Fastify({ logger: false });
   const jobs = new JobStore();
+  const buildInfo = currentBuildInfoJson({ binaryName: "assets-downloader" });
 
   await app.register(cors, {
     origin: ["http://127.0.0.1:5173", "http://localhost:5173"]
@@ -19,6 +21,10 @@ export async function buildServer() {
 
   app.get("/api/sources", async () => {
     return loadCatalog();
+  });
+
+  app.get("/api/build-info", async () => {
+    return buildInfo;
   });
 
   app.post("/api/import/preview", async (request, reply) => {

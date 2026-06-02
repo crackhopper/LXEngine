@@ -1,7 +1,7 @@
 #include "demos/lxe_editor/lxe_editor_api_service.hpp"
 
 #include "core/scene/components/camera_component.hpp"
-#include "demos/lxe_editor/lxe_editor_build_info.hpp"
+#include "infra/build_info/build_info.hpp"
 
 #include <algorithm>
 #include <exception>
@@ -218,7 +218,7 @@ LxeEditorApiService::executeCommand(const ApiCommandRequest &request) {
 }
 
 std::string LxeEditorApiService::buildInfo() const {
-  return toJson(currentLxeEditorBuildInfo());
+  return LX_infra::currentBuildInfoJson("lxe_editor");
 }
 
 std::string LxeEditorApiService::recordingStatus() const {

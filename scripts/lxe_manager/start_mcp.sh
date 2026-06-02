@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-manager_dir="${repo_root}/tools/lxe_manager"
+manager_dir="${repo_root}/src/tools/lxe_manager"
 
 if [ ! -f "${manager_dir}/package.json" ]; then
   echo "lxe_manager MCP start failed: package.json not found under ${manager_dir}" >&2

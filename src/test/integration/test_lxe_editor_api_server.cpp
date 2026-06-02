@@ -576,16 +576,14 @@ void testHttpBuildInfoRequiresTokenAndReturnsIdentity() {
       pumpUntilRead(*fixture.service, fixture.server.get(), authorized);
   EXPECT(response.find("200 OK") != std::string::npos,
          "build info should return HTTP 200");
-  EXPECT(response.find("\"gitCommit\"") != std::string::npos,
-         "build info should include gitCommit");
-  EXPECT(response.find("\"gitCommitShort\"") != std::string::npos,
-         "build info should include gitCommitShort");
-  EXPECT(response.find("\"gitDirty\"") != std::string::npos,
-         "build info should include gitDirty");
-  EXPECT(response.find("\"buildType\"") != std::string::npos,
-         "build info should include buildType");
-  EXPECT(response.find("\"builtAt\"") != std::string::npos,
-         "build info should include builtAt");
+  EXPECT(response.find("\"buildInfo\"") != std::string::npos,
+         "build info should include composed buildInfo string");
+  EXPECT(response.find("\"gitCommit\"") == std::string::npos,
+         "build info should not expose split git fields");
+  EXPECT(response.find("\"buildType\"") == std::string::npos,
+         "build info should not expose split build fields");
+  EXPECT(response.find("\"builtAt\"") == std::string::npos,
+         "build info should not expose split build timestamp");
   closeSocket(authorized);
 }
 

@@ -55,7 +55,15 @@ a {
 
 .sources h1 {
   font-size: 22px;
-  margin: 0 0 20px;
+  margin: 0 0 8px;
+}
+
+.build-info {
+  color: #a8b3c2;
+  font-size: 12px;
+  line-height: 1.35;
+  margin: 0 0 18px;
+  overflow-wrap: anywhere;
 }
 
 .sources nav {

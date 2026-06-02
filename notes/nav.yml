@@ -73,6 +73,7 @@ nav:
       - 架构总览: concepts-design/architecture.md
       - 术语概念: concepts-design/glossary.md
       - 项目目录结构: concepts-design/project-layout.md
+      - BuildInfo: concepts-design/build-info.md
       - 资产系统:
           - concepts/assets/index.md
           - 资产根与目录: concepts/assets/runtime-root-and-layout.md

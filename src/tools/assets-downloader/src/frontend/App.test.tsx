@@ -37,6 +37,9 @@ describe("App", () => {
       if (url === "/api/cache") {
         return jsonResponse({ assets: [] });
       }
+      if (url === "/api/build-info") {
+        return jsonResponse({ buildInfo: "assets-downloader 0.1.0-dev (test, Node v1, linux-x64)" });
+      }
       return jsonResponse({ error: "unexpected" }, false);
     }));
   });
@@ -49,6 +52,7 @@ describe("App", () => {
     expect(screen.getByText("Studio Small 03")).toBeTruthy();
     expect(screen.getByText("verified · CC0")).toBeTruthy();
     expect(screen.getByText("Cache Browser")).toBeTruthy();
+    expect(screen.getByText(/assets-downloader 0.1.0-dev/)).toBeTruthy();
   });
 });
 
