@@ -71,22 +71,16 @@ root:
       name: game_cam
       transform:
         translation: [0.0, 1.7, 5.0]
-        rotation: [1.0, 0.0, 0.0, 0.0]
+        rotation: [0.996038, -0.088929, 0.0, 0.0]
         scale: [1.0, 1.0, 1.0]
       visibilityMask: 4294967295
       camera:
-        eye: [0.0, 1.7, 5.0]
-        target: [0.0, 0.8, 0.0]
-        up: [0.0, 1.0, 0.0]
         type: perspective
         fovY: 42.0
         aspect: 1.7777778
         nearPlane: 0.1
         farPlane: 120.0
-        left: -1.0
-        right: 1.0
-        bottom: -1.0
-        top: 1.0
+        focusDistance: 5.080354
         cullingMask: 4294967295
     - nodeName: ibl_ground
       name: ground_reference

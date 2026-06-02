@@ -112,25 +112,3 @@ lx_sync_asset_subdir("scenes")
 add_subdirectory(assets/shaders)
 add_subdirectory(src/tools)
 add_subdirectory(src/test)
-
-# -------------------------------
-# Bootstrap / env-probe executable
-# Not the primary demo entrypoint. The user-facing integration demo lives at
-# src/demos/lxe_editor/ as lxe_editor.
-# -------------------------------
-add_executable(${PROJECT_NAME} "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp")
-target_link_libraries(${PROJECT_NAME} 
-  PRIVATE 
-  ${CORE_LIB}
-  ${INFRA_LIB}
-  ${GRAPHICS_LIB}
-)
-add_dependencies(${PROJECT_NAME} CompileShaders)
-if (WIN32)
-# -------------------------------
-# Windows 特殊：定义宏
-# 关闭MSVC的安全警告，例如，用 strcpy_s 替代 strcpy，用 scanf_s 替代 scanf
-# 提高可移植性
-# -------------------------------
-  target_compile_definitions(${PROJECT_NAME} PRIVATE "_CRT_SECURE_NO_WARNINGS")
-endif()

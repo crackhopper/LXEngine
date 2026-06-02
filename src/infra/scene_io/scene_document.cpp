@@ -3,6 +3,7 @@
 #include "yaml-cpp/yaml.h"
 
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -16,6 +17,7 @@ namespace LX_infra::scene_io {
 namespace {
 
 constexpr const char *kDefaultRootNodeName = "scene_root";
+constexpr float kPi = 3.14159265358979323846f;
 
 [[nodiscard]] SceneNodeDocument makeDefaultRootNode() {
   SceneNodeDocument rootNode;
@@ -104,6 +106,54 @@ void validateSceneAssetUriInternal(const std::string &uri,
                         node[2].as<float>()};
 }
 
+[[nodiscard]] std::optional<LX_core::Vec3f> loadOptionalVec3(
+    const YAML::Node &node, const char *fieldName) {
+  if (!node) {
+    return std::nullopt;
+  }
+  return loadVec3(node, fieldName);
+}
+
+[[nodiscard]] LX_core::Transform makeWorldLookAtTransform(
+    const LX_core::Vec3f &eye, const LX_core::Vec3f &target,
+    const LX_core::Vec3f &upHint) {
+  LX_core::Vec3f forward = (target - eye).normalized();
+  if (forward.length2() <= 1e-8f) {
+    forward = LX_core::Vec3f{0.0f, 0.0f, -1.0f};
+  }
+
+  LX_core::Vec3f up = upHint.normalized();
+  if (up.length2() <= 1e-8f) {
+    up = LX_core::Vec3f{0.0f, 1.0f, 0.0f};
+  }
+
+  const LX_core::Vec3f back = (-forward).normalized();
+  LX_core::Vec3f right = up.cross(back);
+  if (right.length2() <= 1e-8f) {
+    const LX_core::Vec3f fallbackUp =
+        std::abs(forward.y) > 0.99f ? LX_core::Vec3f{1.0f, 0.0f, 0.0f}
+                                    : LX_core::Vec3f{0.0f, 1.0f, 0.0f};
+    right = fallbackUp.cross(back);
+  }
+  right = right.normalized();
+  const LX_core::Vec3f correctedUp = back.cross(right).normalized();
+
+  LX_core::Mat4f world = LX_core::Mat4f::identity();
+  world(0, 0) = right.x;
+  world(1, 0) = right.y;
+  world(2, 0) = right.z;
+  world(0, 1) = correctedUp.x;
+  world(1, 1) = correctedUp.y;
+  world(2, 1) = correctedUp.z;
+  world(0, 2) = back.x;
+  world(1, 2) = back.y;
+  world(2, 2) = back.z;
+  world(0, 3) = eye.x;
+  world(1, 3) = eye.y;
+  world(2, 3) = eye.z;
+  return LX_core::Transform::fromMat4(world).normalized();
+}
+
 void saveVec3(YAML::Emitter &out, const LX_core::Vec3f &value) {
   out << YAML::Flow << YAML::BeginSeq << value.x << value.y << value.z
       << YAML::EndSeq;
@@ -183,9 +233,6 @@ void saveQuat(YAML::Emitter &out, const LX_core::Quatf &value) {
 
 [[nodiscard]] CameraNodeState loadCameraState(const YAML::Node &node) {
   CameraNodeState state;
-  state.eye = loadVec3(node["eye"], "nodes[].camera.eye");
-  state.target = loadVec3(node["target"], "nodes[].camera.target");
-  state.up = loadVec3(node["up"], "nodes[].camera.up");
   if (const auto typeNode = node["type"]; typeNode) {
     const std::string type = typeNode.as<std::string>();
     if (type == "orthographic") {
@@ -198,10 +245,21 @@ void saveQuat(YAML::Emitter &out, const LX_core::Quatf &value) {
   state.aspect = node["aspect"].as<float>();
   state.nearPlane = node["nearPlane"].as<float>();
   state.farPlane = node["farPlane"].as<float>();
-  state.left = node["left"].as<float>();
-  state.right = node["right"].as<float>();
-  state.bottom = node["bottom"].as<float>();
-  state.top = node["top"].as<float>();
+  if (const auto orthographicHeight = node["orthographicHeight"];
+      orthographicHeight) {
+    state.orthographicHeight = orthographicHeight.as<float>();
+  } else if (node["top"] && node["bottom"]) {
+    state.orthographicHeight =
+        std::abs(node["top"].as<float>() - node["bottom"].as<float>());
+  }
+  if (const auto focusDistance = node["focusDistance"]; focusDistance) {
+    state.focusDistance = focusDistance.as<float>();
+  } else if (node["eye"] && node["target"]) {
+    state.focusDistance =
+        (loadVec3(node["target"], "nodes[].camera.target") -
+         loadVec3(node["eye"], "nodes[].camera.eye"))
+            .length();
+  }
   state.cullingMask = node["cullingMask"].as<LX_core::VisibilityLayerMask>();
   return state;
 }
@@ -209,12 +267,6 @@ void saveQuat(YAML::Emitter &out, const LX_core::Quatf &value) {
 void saveCameraState(YAML::Emitter &out, const CameraNodeState &state,
                      const std::optional<std::string> &offlineYaml) {
   out << YAML::Key << "camera" << YAML::Value << YAML::BeginMap;
-  out << YAML::Key << "eye" << YAML::Value;
-  saveVec3(out, state.eye);
-  out << YAML::Key << "target" << YAML::Value;
-  saveVec3(out, state.target);
-  out << YAML::Key << "up" << YAML::Value;
-  saveVec3(out, state.up);
   out << YAML::Key << "type" << YAML::Value
       << (state.type == LX_core::CameraType::Orthographic ? "orthographic"
                                                           : "perspective");
@@ -222,10 +274,11 @@ void saveCameraState(YAML::Emitter &out, const CameraNodeState &state,
   out << YAML::Key << "aspect" << YAML::Value << state.aspect;
   out << YAML::Key << "nearPlane" << YAML::Value << state.nearPlane;
   out << YAML::Key << "farPlane" << YAML::Value << state.farPlane;
-  out << YAML::Key << "left" << YAML::Value << state.left;
-  out << YAML::Key << "right" << YAML::Value << state.right;
-  out << YAML::Key << "bottom" << YAML::Value << state.bottom;
-  out << YAML::Key << "top" << YAML::Value << state.top;
+  if (state.type == LX_core::CameraType::Orthographic) {
+    out << YAML::Key << "orthographicHeight" << YAML::Value
+        << state.orthographicHeight;
+  }
+  out << YAML::Key << "focusDistance" << YAML::Value << state.focusDistance;
   out << YAML::Key << "cullingMask" << YAML::Value << state.cullingMask;
   if (offlineYaml.has_value()) {
     out << YAML::Key << "offline" << YAML::Value;
@@ -712,7 +765,20 @@ void saveEditorCamera(YAML::Emitter &out, const EditorCameraState &state) {
   entry.materialOverrides = loadMaterialOverrideState(
       node["materialOverrides"], "nodes[].materialOverrides");
   if (const auto cameraNode = node["camera"]; cameraNode) {
+    const auto legacyEye =
+        loadOptionalVec3(cameraNode["eye"], "nodes[].camera.eye");
+    const auto legacyTarget =
+        loadOptionalVec3(cameraNode["target"], "nodes[].camera.target");
+    const auto legacyUp =
+        loadOptionalVec3(cameraNode["up"], "nodes[].camera.up");
     entry.camera = loadCameraState(cameraNode);
+    if (legacyEye.has_value() && legacyTarget.has_value()) {
+      LX_core::Transform cameraTransform = makeWorldLookAtTransform(
+          *legacyEye, *legacyTarget,
+          legacyUp.value_or(LX_core::Vec3f{0.0f, 1.0f, 0.0f}));
+      cameraTransform.scale = entry.transform.scale;
+      entry.transform = cameraTransform;
+    }
     if (const auto offlineNode = cameraNode["offline"]; offlineNode) {
       entry.cameraOfflineYaml = dumpYamlNode(offlineNode);
     }

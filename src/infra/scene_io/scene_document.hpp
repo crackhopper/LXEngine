@@ -37,18 +37,13 @@ struct EditorCameraState final {
 };
 
 struct CameraNodeState final {
-  LX_core::Vec3f eye{0.0f, 0.0f, 0.0f};
-  LX_core::Vec3f target{0.0f, 0.0f, 0.0f};
-  LX_core::Vec3f up{0.0f, 1.0f, 0.0f};
   LX_core::CameraType type = LX_core::CameraType::Perspective;
   float fovY = 45.0f;
   float aspect = 16.0f / 9.0f;
   float nearPlane = 0.1f;
   float farPlane = 1000.0f;
-  float left = -1.0f;
-  float right = 1.0f;
-  float bottom = -1.0f;
-  float top = 1.0f;
+  float orthographicHeight = 2.0f;
+  float focusDistance = 1.0f;
   LX_core::VisibilityLayerMask cullingMask =
       LX_core::Layer_All & ~LX_core::Layer_EditorOverlay;
 };

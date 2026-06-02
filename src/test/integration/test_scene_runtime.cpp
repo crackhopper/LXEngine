@@ -719,10 +719,10 @@ void testRuntimeSaveRoundTripsExpandedSceneDocument() {
          "save should persist root child hierarchy");
   EXPECT(saved.rootNode().children[0].camera.has_value(),
          "save should persist runtime gameplay camera state");
-  expectNear(saved.rootNode().children[0].camera->eye.x, 7.0f,
-             "save should persist camera eye x");
-  expectNear(saved.rootNode().children[0].camera->target.z, 2.0f,
-             "save should persist exact camera target z");
+  expectNear(saved.rootNode().children[0].transform.translation.x, 7.0f,
+             "save should persist camera node translation x");
+  expectNear(saved.rootNode().children[0].camera->focusDistance, 7.0f,
+             "save should persist camera focus distance");
   expectNear(saved.editorCamera().position.x, 4.0f,
              "save should persist editor camera x");
 }

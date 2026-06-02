@@ -156,11 +156,20 @@ void visitNode(const OfflineAssetResolver &resolver, const SceneNodeDocument &no
   const Mat4f world = parentWorld * node.transform.toMat4();
 
   if (node.camera.has_value() && (cameraPath.empty() || cameraPath == path)) {
+    const Vec3f eye =
+        LX_core::offline::transformPoint(world, Vec3f{0.0f, 0.0f, 0.0f});
+    const Vec3f forward =
+        LX_core::offline::transformVector(world, Vec3f{0.0f, 0.0f, -1.0f})
+            .normalized();
+    const Vec3f up =
+        LX_core::offline::transformVector(world, Vec3f{0.0f, 1.0f, 0.0f})
+            .normalized();
     scene.cameraPath = path;
     scene.camera.path = path;
-    scene.camera.eye = node.camera->eye;
-    scene.camera.target = node.camera->target;
-    scene.camera.up = node.camera->up;
+    scene.camera.eye = eye;
+    scene.camera.target =
+        eye + forward * std::max(node.camera->focusDistance, 1.0f);
+    scene.camera.up = up;
     scene.camera.fovYDegrees = node.camera->fovY;
     scene.camera.aspect = node.camera->aspect;
     scene.camera.nearPlane = node.camera->nearPlane;

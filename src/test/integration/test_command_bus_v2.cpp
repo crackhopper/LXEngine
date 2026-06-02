@@ -122,7 +122,7 @@ void testCompleterReturnsScenePathCandidates() {
          "set field completer should return full common prefix");
 
   const CompletionResult getPathCompletion =
-      fixture.bus.complete("get /camera_main.p");
+      fixture.bus.complete("get /camera_main.proj");
   EXPECT(getPathCompletion.candidates.size() == 1 &&
              getPathCompletion.candidates[0] == "/camera_main.projection",
          "get completer should share editable field path completion");

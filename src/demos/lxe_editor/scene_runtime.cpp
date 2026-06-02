@@ -901,6 +901,46 @@ makeCameraNode(const std::string &nodeName, const std::string &displayName,
   return name.empty() ? fallback : name;
 }
 
+[[nodiscard]] LX_core::Quatf lookAtRotation(const LX_core::Vec3f &eye,
+                                            const LX_core::Vec3f &target,
+                                            const LX_core::Vec3f &upHint) {
+  LX_core::Vec3f forward = (target - eye).normalized();
+  if (forward.length2() <= 1e-8f) {
+    forward = LX_core::Vec3f{0.0f, 0.0f, -1.0f};
+  }
+  LX_core::Vec3f up = upHint.normalized();
+  if (up.length2() <= 1e-8f) {
+    up = LX_core::Vec3f{0.0f, 1.0f, 0.0f};
+  }
+  const LX_core::Vec3f back = (-forward).normalized();
+  LX_core::Vec3f right = up.cross(back);
+  if (right.length2() <= 1e-8f) {
+    const LX_core::Vec3f fallbackUp =
+        std::abs(forward.y) > 0.99f ? LX_core::Vec3f{1.0f, 0.0f, 0.0f}
+                                    : LX_core::Vec3f{0.0f, 1.0f, 0.0f};
+    right = fallbackUp.cross(back);
+  }
+  right = right.normalized();
+  const LX_core::Vec3f correctedUp = back.cross(right).normalized();
+
+  LX_core::Mat4f world = LX_core::Mat4f::identity();
+  world(0, 0) = right.x;
+  world(1, 0) = right.y;
+  world(2, 0) = right.z;
+  world(0, 1) = correctedUp.x;
+  world(1, 1) = correctedUp.y;
+  world(2, 1) = correctedUp.z;
+  world(0, 2) = back.x;
+  world(1, 2) = back.y;
+  world(2, 2) = back.z;
+  return LX_core::Transform::fromMat4(world).rotation.normalized();
+}
+
+[[nodiscard]] float focusDistance(const LX_core::Vec3f &eye,
+                                  const LX_core::Vec3f &target) {
+  return std::max((target - eye).length(), 1.0f);
+}
+
 [[nodiscard]] SceneDocument makeEmptySceneDocument() {
   SceneDocument document;
   document.setSceneName("Scene");
@@ -910,19 +950,17 @@ makeCameraNode(const std::string &nodeName, const std::string &displayName,
   SceneNodeDocument gameCameraNode;
   gameCameraNode.nodeName = "game_camera";
   gameCameraNode.name = "game_cam";
+  gameCameraNode.transform.translation = {0.0f, 2.0f, 6.0f};
+  gameCameraNode.transform.rotation =
+      lookAtRotation({0.0f, 2.0f, 6.0f}, {0.0f, 0.0f, 0.0f},
+                     {0.0f, 1.0f, 0.0f});
   gameCameraNode.camera = CameraNodeState{
-      .eye = {0.0f, 2.0f, 6.0f},
-      .target = {0.0f, 0.0f, 0.0f},
-      .up = {0.0f, 1.0f, 0.0f},
       .type = LX_core::CameraType::Perspective,
       .fovY = 45.0f,
       .aspect = 16.0f / 9.0f,
       .nearPlane = 0.1f,
       .farPlane = 1000.0f,
-      .left = -1.0f,
-      .right = 1.0f,
-      .bottom = -1.0f,
-      .top = 1.0f,
+      .focusDistance = focusDistance({0.0f, 2.0f, 6.0f}, {0.0f, 0.0f, 0.0f}),
       .cullingMask = LX_core::Layer_All & ~LX_core::Layer_EditorOverlay &
                      ~Layer_EditorHelper,
   };
@@ -1076,18 +1114,15 @@ void applyNodeIdentityAndTransform(LX_core::SceneNode &node,
 void applyCameraState(LX_core::SceneNode &node,
                       LX_core::CameraComponent &camera,
                       const CameraNodeState &state) {
+  const float halfOrthoHeight = std::max(state.orthographicHeight, 0.001f) * 0.5f;
+  const float halfOrthoWidth = halfOrthoHeight * std::max(state.aspect, 0.001f);
   camera.applyProjectionState(state.type, state.fovY, state.aspect,
-                              state.nearPlane, state.farPlane, state.left,
-                              state.right, state.bottom, state.top);
+                              state.nearPlane, state.farPlane, -halfOrthoWidth,
+                              halfOrthoWidth, -halfOrthoHeight,
+                              halfOrthoHeight);
   camera.setTarget(LX_core::RenderTarget{});
   camera.setCullingMask(state.cullingMask & ~Layer_EditorHelper);
-  camera.lookAt(state.eye, state.target, state.up);
-  auto local = node.getLocalTransform();
-  local.translation = state.eye;
-  local.scale = state.type == LX_core::CameraType::Perspective
-                    ? node.getLocalTransform().scale
-                    : local.scale;
-  node.setLocalTransform(local);
+  camera.updateMatrices();
 }
 
 void configureDirectionalLight(LX_core::DirectionalLight &light,
@@ -1343,19 +1378,18 @@ findDocumentNodeByNameOrCopySource(const SceneNodeDocument &node,
 
 [[nodiscard]] CameraNodeState
 captureCameraState(const LX_core::CameraComponent &camera) {
+  const float orthographicHeight =
+      std::max(camera.getTop() - camera.getBottom(), 0.001f);
+  const LX_core::Vec3f eye = camera.getEyePosition();
+  const LX_core::Vec3f target = camera.getLookTarget();
   return CameraNodeState{
-      .eye = camera.getEyePosition(),
-      .target = camera.getLookTarget(),
-      .up = camera.getUpVector(),
       .type = camera.getProjectionType(),
       .fovY = camera.getFovY(),
       .aspect = camera.getAspect(),
       .nearPlane = camera.getNearPlane(),
       .farPlane = camera.getFarPlane(),
-      .left = camera.getLeft(),
-      .right = camera.getRight(),
-      .bottom = camera.getBottom(),
-      .top = camera.getTop(),
+      .orthographicHeight = orthographicHeight,
+      .focusDistance = focusDistance(eye, target),
       .cullingMask = camera.getCullingMask(),
   };
 }

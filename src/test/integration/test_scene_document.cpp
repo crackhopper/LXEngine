@@ -151,7 +151,10 @@ void testLoadExplicitRootSceneDocumentReadsGameAndEditorCamera() {
     return;
   }
   EXPECT(gameCamera->camera.has_value(), "camera node should load");
-  EXPECT(gameCamera->camera->eye.y == 2.0f, "camera eye should load");
+  EXPECT(gameCamera->transform.translation.y == 2.0f,
+         "legacy camera eye should migrate into node transform");
+  EXPECT(gameCamera->camera->focusDistance > 6.0f,
+         "legacy camera target should migrate into focus distance");
   const demo::SceneNodeDocument *ground = findChildByName(*world, "ground");
   EXPECT(ground != nullptr, "ground child should load");
   if (ground == nullptr) {
@@ -400,13 +403,11 @@ void testSaveSceneDocumentWritesExplicitRootCanonicalFormat() {
           },
       .camera =
           demo::CameraNodeState{
-              .eye = {1.0f, 2.0f, 3.0f},
-              .target = {0.0f, 0.0f, 0.0f},
-              .up = {0.0f, 1.0f, 0.0f},
               .fovY = 55.0f,
               .aspect = 1.5f,
               .nearPlane = 0.5f,
               .farPlane = 250.0f,
+              .focusDistance = 3.75f,
           },
   });
   world.children.push_back(demo::SceneNodeDocument{
@@ -471,6 +472,15 @@ void testSaveSceneDocumentWritesExplicitRootCanonicalFormat() {
          "canonical save should write explicit root");
   EXPECT(savedText.find("\nnodes:\n") == std::string::npos,
          "canonical save should not write legacy flat nodes");
+  EXPECT(savedText.find("\n            eye:") == std::string::npos &&
+             savedText.find("\n            target:") == std::string::npos &&
+             savedText.find("\n            up:") == std::string::npos,
+         "canonical save should keep camera pose on node transform");
+  EXPECT(savedText.find("\n            left:") == std::string::npos &&
+             savedText.find("\n            right:") == std::string::npos &&
+             savedText.find("\n            bottom:") == std::string::npos &&
+             savedText.find("\n            top:") == std::string::npos,
+         "canonical perspective camera should not write frustum bounds");
 
   const demo::SceneDocument loaded = demo::loadSceneDocument(path);
   EXPECT(loaded.sceneName() == "lxe_editor",
@@ -510,10 +520,12 @@ void testSaveSceneDocumentWritesExplicitRootCanonicalFormat() {
   }
   EXPECT(loadedCamera->camera.has_value(),
          "camera payload should survive round trip");
-  EXPECT(loadedCamera->camera->eye.x == 1.0f,
-         "camera eye should survive round trip");
+  EXPECT(loadedCamera->transform.translation.x == 1.0f,
+         "camera node transform should survive round trip");
   EXPECT(loadedCamera->camera->nearPlane == 0.5f,
          "camera near plane should survive round trip");
+  EXPECT(loadedCamera->camera->focusDistance == 3.75f,
+         "camera focus distance should survive round trip");
   const demo::SceneNodeDocument *loadedHelmet =
       findChildByName(*loadedWorld, "helmet");
   EXPECT(loadedHelmet != nullptr, "helmet should survive round trip");

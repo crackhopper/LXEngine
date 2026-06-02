@@ -12,7 +12,7 @@ assets/scenes/ibl_metal_sphere.scene.yaml
 
 | 节点 | 角色 | 关键字段 |
 |---|---|---|
-| `game_camera` | 固定观察视角 | `camera.eye` / `camera.target` |
+| `game_camera` | 固定观察视角 | node `transform` + `camera.fovY` / `camera.aspect` |
 | `ground_reference` | 灰色参考地面 | `mesh.uri: builtin://lxe_editor/primitives/plane` |
 | `metal_sphere` | PBR + IBL 验收对象 | `mesh.uri: builtin://lxe_editor/primitives/sphere` |
 | `dir_light` | 保留直射光对比 | `light.kind: Directional` |

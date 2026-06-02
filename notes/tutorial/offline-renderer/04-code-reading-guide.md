@@ -80,7 +80,7 @@ src/infra/offline/offline_scene_compiler.cpp
 | `scene.gameplayCameraPath` | `OfflineSceneIR.cameraPath` | 没传 `--camera` 时选择默认相机 |
 | `scene.environment` | `OfflineEnvironmentIR` | 当前 shader 用环境强度和程序化天空色；HDR 纹理采样还没接入 |
 | `scene.offlineRender.profiles` | `OfflineRenderProfile` | 宽高、samples、maxDepth、seed、outputFormat |
-| `camera` 节点 | `OfflineCameraIR` | eye、target、up、fov、aspect |
+| camera node `transform` + `camera` 参数 | `OfflineCameraIR` | transform 推导 eye/forward/up，camera 提供 fov、aspect、near/far |
 | `mesh.uri` | `OfflineMeshIR` + `OfflineInstanceIR` | 当前 MVP 支持内置 plane / sphere |
 | `material.uri` + overrides | `OfflineMaterialIR` | baseColor、metallic、roughness、emissive |
 | `light.kind: Directional` | `OfflineDirectionalLightIR` | 当前取方向光参与直接光和阴影测试 |

@@ -14,22 +14,16 @@ root:
       name: game_cam
       transform:
         translation: [4.0, 3.0, 6.0]
-        rotation: [1.0, 0.0, 0.0, 0.0]
+        rotation: [0.944769, -0.153091, 0.286053, 0.046352]
         scale: [1.0, 1.0, 1.0]
       visibilityMask: 4294967295
       camera:
-        eye: [4.0, 3.0, 6.0]
-        target: [0.0, 0.6, 0.0]
-        up: [0.0, 1.0, 0.0]
         type: perspective
         fovY: 45.0
         aspect: 1.7777778
         nearPlane: 0.1
         farPlane: 120.0
-        left: -1.0
-        right: 1.0
-        bottom: -1.0
-        top: 1.0
+        focusDistance: 7.6
         cullingMask: 4294967295
     - nodeName: shadow_receiver
       name: ground_receiver

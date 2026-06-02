@@ -14,7 +14,7 @@ assets/scenes/shadow_tutorial.scene.yaml
 
 | 节点 | 角色 | 关键字段 |
 |---|---|---|
-| `game_camera` | 固定观察视角 | `camera.eye` / `camera.target` |
+| `game_camera` | 固定观察视角 | node `transform` + `camera.fovY` / `camera.aspect` |
 | `ground_receiver` | 地面接收阴影 | `mesh.uri: builtin://lxe_editor/primitives/plane` |
 | `cube_caster` | 物体投射阴影 | `mesh.uri: builtin://lxe_editor/primitives/cube` |
 | `dir_light` | 主 directional light | `light.shadowStrength` / `light.shadowDistance` / `light.shadowCascadeCount` |
