@@ -60,6 +60,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_lxe_editor_log_file
   test_lxe_editor_layout
   test_lxe_editor_interaction
+  test_realtime_render_profile_commands
   test_lxe_editor_session
   test_lxe_editor_api_service
   test_lxe_editor_api_server
@@ -189,6 +190,19 @@ if(TARGET test_command_bus)
     ${CMAKE_CURRENT_SOURCE_DIR}/..
   )
   target_link_libraries(test_command_bus PRIVATE imgui yaml-cpp::yaml-cpp)
+endif()
+
+if(TARGET test_realtime_render_profile_commands)
+  target_sources(test_realtime_render_profile_commands PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_interaction_controller.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_commands.cpp
+    ${LXE_EDITOR_COMMAND_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/recording_controller.cpp
+  )
+  target_include_directories(test_realtime_render_profile_commands PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/..
+  )
+  target_link_libraries(test_realtime_render_profile_commands PRIVATE imgui yaml-cpp::yaml-cpp)
 endif()
 
 # debug_ui smoke test needs access to the imgui header
