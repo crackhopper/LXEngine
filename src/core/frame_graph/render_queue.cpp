@@ -97,6 +97,7 @@ void RenderQueue::buildFromSceneWithOverrides(
     std::vector<IGpuResourceSharedPtr> sceneResources,
     VisibilityLayerMask visibleMask) {
   clearItems();
+  [[maybe_unused]] const auto snapshot = scene.buildRenderSceneSnapshot();
 
   for (const auto &renderable : scene.getRenderables()) {
     if (!renderable)

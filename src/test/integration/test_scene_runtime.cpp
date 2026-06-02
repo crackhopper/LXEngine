@@ -1481,29 +1481,31 @@ void testGroundMeshWindingMatchesUpwardNormal() {
   }
 
   const auto &mesh = meshComponent->get().getMesh();
-  expectNear(mesh->bounds.getCenter().y, 0.0f,
+  const auto &bounds = mesh->getBounds();
+  expectNear(bounds.getCenter().y, 0.0f,
              "ground mesh pivot should sit on the plane center");
-  expectNear(mesh->bounds.min.y, 0.0f,
+  expectNear(bounds.min.y, 0.0f,
              "ground mesh local min y should match pivot height");
-  expectNear(mesh->bounds.max.y, 0.0f,
+  expectNear(bounds.max.y, 0.0f,
              "ground mesh local max y should match pivot height");
   const auto *vertexBuffer =
       dynamic_cast<LX_core::VertexBuffer<LX_core::VertexPosNormalUvBone> *>(
-          mesh->vertexBuffer.get());
+          mesh->getVertexBuffer().get());
   EXPECT(vertexBuffer != nullptr,
          "ground mesh should use VertexPosNormalUvBone vertices");
-  EXPECT(mesh->indexBuffer != nullptr,
+  const auto &indexBuffer = mesh->getIndexBuffer();
+  EXPECT(indexBuffer != nullptr,
          "ground mesh should have an index buffer");
-  if (!mesh->indexBuffer) {
+  if (!indexBuffer) {
     return;
   }
-  EXPECT(mesh->indexBuffer->getTopology() ==
+  EXPECT(indexBuffer->getTopology() ==
              LX_core::PrimitiveTopology::TriangleList,
          "ground should be a triangle-list mesh");
-  EXPECT(mesh->indexBuffer->indexCount() == 6,
+  EXPECT(indexBuffer->indexCount() == 6,
          "ground should use two triangles");
   const auto *indices =
-      static_cast<const u32 *>(mesh->indexBuffer->getRawData());
+      static_cast<const u32 *>(indexBuffer->getRawData());
   EXPECT(indices[0] == 0 && indices[1] == 2 && indices[2] == 1 &&
              indices[3] == 0 && indices[4] == 3 && indices[5] == 2,
          "ground winding should match the upward normal convention");
@@ -1520,31 +1522,34 @@ void testBuiltinPrimitivePlaneIsThinBox() {
   }
 
   const auto &mesh = meshComponent->get().getMesh();
-  expectNear(mesh->bounds.min.x, -0.5f,
+  const auto &bounds = mesh->getBounds();
+  expectNear(bounds.min.x, -0.5f,
              "primitive plane thin box should keep half-width min x");
-  expectNear(mesh->bounds.max.x, 0.5f,
+  expectNear(bounds.max.x, 0.5f,
              "primitive plane thin box should keep half-width max x");
-  expectNear(mesh->bounds.min.z, -0.5f,
+  expectNear(bounds.min.z, -0.5f,
              "primitive plane thin box should keep half-depth min z");
-  expectNear(mesh->bounds.max.z, 0.5f,
+  expectNear(bounds.max.z, 0.5f,
              "primitive plane thin box should keep half-depth max z");
-  expectNear(mesh->bounds.max.y, 0.0f,
+  expectNear(bounds.max.y, 0.0f,
              "primitive plane top surface should stay at local y=0");
-  expectNear(mesh->bounds.min.y, -0.02f,
+  expectNear(bounds.min.y, -0.02f,
              "primitive plane should extend downward as a thin box");
   EXPECT(mesh->isClosedVolume(),
          "primitive plane thin box should be marked as closed volume");
 
-  EXPECT(mesh->vertexBuffer != nullptr,
+  const auto &vertexBuffer = mesh->getVertexBuffer();
+  EXPECT(vertexBuffer != nullptr,
          "primitive plane thin box should have a vertex buffer");
-  if (mesh->vertexBuffer) {
-    EXPECT(mesh->vertexBuffer->getVertexCount() == 24,
+  if (vertexBuffer) {
+    EXPECT(vertexBuffer->getVertexCount() == 24,
            "primitive plane thin box should use per-face vertices");
   }
-  EXPECT(mesh->indexBuffer != nullptr,
+  const auto &indexBuffer = mesh->getIndexBuffer();
+  EXPECT(indexBuffer != nullptr,
          "primitive plane thin box should have an index buffer");
-  if (mesh->indexBuffer) {
-    EXPECT(mesh->indexBuffer->indexCount() == 36,
+  if (indexBuffer) {
+    EXPECT(indexBuffer->indexCount() == 36,
            "primitive plane thin box should use six faces");
   }
 }
@@ -1557,9 +1562,10 @@ void testBuiltinPatchMeshesAreOpenReceiversOnly() {
   if (meshComponent.has_value()) {
     const auto &mesh = meshComponent->get().getMesh();
     EXPECT(!mesh->isClosedVolume(), "patch mesh should be marked non-closed");
-    expectNear(mesh->bounds.max.y, 0.0f,
+    const auto &bounds = mesh->getBounds();
+    expectNear(bounds.max.y, 0.0f,
                "patch top surface should lie on local y=0");
-    expectNear(mesh->bounds.min.y, 0.0f,
+    expectNear(bounds.min.y, 0.0f,
                "patch should have no thickness");
   }
 

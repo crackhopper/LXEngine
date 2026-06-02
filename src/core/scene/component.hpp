@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/scene/scene_resource_table.hpp"
+
 #include <cstddef>
 #include <functional>
 #include <optional>
@@ -47,6 +49,18 @@ protected:
 
 private:
   std::optional<std::reference_wrapper<SceneNode>> m_owner;
+};
+
+class IRenderableComponent : public IComponent {
+public:
+  ~IRenderableComponent() override = default;
+
+  bool affectsRenderableStructure() const override { return true; }
+  [[nodiscard]] virtual ObjectHandle getObjectHandle() const = 0;
+  virtual void setObjectHandle(ObjectHandle handle) = 0;
+
+protected:
+  IRenderableComponent() = default;
 };
 
 } // namespace LX_core

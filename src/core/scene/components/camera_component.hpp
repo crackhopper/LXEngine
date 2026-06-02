@@ -7,6 +7,7 @@
 #include "core/platform/types.hpp"
 #include "core/scene/camera.hpp"
 #include "core/scene/component.hpp"
+#include "core/scene/scene_resource_table.hpp"
 
 #include <optional>
 
@@ -21,6 +22,8 @@ public:
   }
 
   CameraDataSharedPtr getUBO() const { return m_ubo; }
+  [[nodiscard]] CameraHandle getCameraHandle() const { return m_cameraHandle; }
+  void setCameraHandle(CameraHandle handle) { m_cameraHandle = handle; }
 
   [[nodiscard]] CameraType getProjectionType() const { return m_type; }
   void setProjectionType(CameraType projectionType);
@@ -94,6 +97,7 @@ private:
   std::optional<RenderTarget> m_target;
   VisibilityLayerMask m_cullingMask = Layer_All & ~Layer_EditorOverlay;
   bool m_active = true;
+  CameraHandle m_cameraHandle;
 };
 
 } // namespace LX_core

@@ -206,7 +206,7 @@ BoundingBox SceneNode::getLocalBounds() const {
   if (!meshComponent || !meshComponent->get().getMesh()) {
     return {};
   }
-  return meshComponent->get().getMesh()->bounds;
+  return meshComponent->get().getMesh()->getBounds();
 }
 
 BoundingBox SceneNode::getWorldBounds() const {
@@ -292,7 +292,7 @@ IGpuResourceSharedPtr SceneNode::getVertexBuffer() const {
     return nullptr;
   }
   return std::static_pointer_cast<IGpuResource>(
-      meshComponent->get().getMesh()->vertexBuffer);
+      meshComponent->get().getMesh()->getVertexBuffer());
 }
 
 IGpuResourceSharedPtr SceneNode::getIndexBuffer() const {
@@ -301,7 +301,7 @@ IGpuResourceSharedPtr SceneNode::getIndexBuffer() const {
     return nullptr;
   }
   return std::static_pointer_cast<IGpuResource>(
-      meshComponent->get().getMesh()->indexBuffer);
+      meshComponent->get().getMesh()->getIndexBuffer());
 }
 
 std::vector<IGpuResourceSharedPtr>
@@ -345,7 +345,7 @@ StringID SceneNode::getPipelineSignature(StringID pass) const {
     usesMeshOverlay = entry && entry->get().meshOverlay.enabled;
   }
   if (usesMeshOverlay) {
-    return makeObjectPipelineSignature(mesh->vertexBuffer,
+    return makeObjectPipelineSignature(mesh->getVertexBuffer(),
                                        PrimitiveTopology::LineList);
   }
 
@@ -578,19 +578,20 @@ void SceneNode::rebuildValidatedCache() {
     data.materialSignature = material->getPipelineSignature(pass);
 
     if (entry.meshOverlay.enabled) {
-      if (mesh->indexBuffer->getTopology() != PrimitiveTopology::TriangleList) {
+      if (mesh->getIndexBuffer()->getTopology() !=
+          PrimitiveTopology::TriangleList) {
         fatalValidation(*this, pass, *material, entry.shaderProgram,
                         "meshOverlay requires triangle-list source geometry",
                         std::cref(layout));
       }
-      if (mesh->indexBuffer->indexCount() % 3 != 0) {
+      if (mesh->getIndexBuffer()->indexCount() % 3 != 0) {
         fatalValidation(*this, pass, *material, entry.shaderProgram,
                         "meshOverlay source index count is not triangular",
                         std::cref(layout));
       }
 
       auto overlayIndices = makeUniqueTriangleEdgeLineIndices(
-          copyIndexBufferData(*mesh->indexBuffer));
+          copyIndexBufferData(*mesh->getIndexBuffer()));
       auto overlayIndexBuffer = IndexBuffer::create(
           std::move(overlayIndices), PrimitiveTopology::LineList);
       data.indexBuffer =

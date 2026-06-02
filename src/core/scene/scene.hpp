@@ -8,7 +8,9 @@
 #include "core/scene/ibl_environment.hpp"
 #include "core/scene/light.hpp"
 #include "core/scene/object.hpp"
+#include "core/scene/scene_resource_table.hpp"
 #include "core/scene/scene_events.hpp"
+#include <algorithm>
 #include <exception>
 #include <iostream>
 #include <memory>
@@ -152,6 +154,7 @@ public:
         }
         node->setSceneDebugId(
             StringID(m_sceneName + "/" + node->getNodeName()));
+        registerNodeResources(*node);
         node->warnIfSiblingNameIsDuplicated();
       }
     }
@@ -177,6 +180,7 @@ public:
         node->attachToScene(weak_from_this());
         node->setSceneDebugId(
             StringID(m_sceneName + "/" + node->getNodeName()));
+        registerNodeResources(*node);
       }
     }
     m_renderables.push_back(std::move(r));
@@ -193,7 +197,15 @@ public:
   void setActiveCamera(const SceneNodeSharedPtr &cameraNode);
 
   void addLight(LightBaseSharedPtr light) {
-    m_lights.push_back(std::move(light));
+    if (!light) {
+      return;
+    }
+    if (m_lightHandles.find(light.get()) == m_lightHandles.end()) {
+      m_lightHandles[light.get()] = m_resources.registerLight(light);
+    }
+    if (std::find(m_lights.begin(), m_lights.end(), light) == m_lights.end()) {
+      m_lights.push_back(std::move(light));
+    }
   }
   void attachLight(const SceneNodeSharedPtr &node,
                    const LightBaseSharedPtr &light);
@@ -223,6 +235,11 @@ public:
   void revalidateNodesUsing(const MaterialInstanceSharedPtr &materialInstance);
   [[nodiscard]] SceneEventHub &events() { return m_events; }
   [[nodiscard]] const SceneEventHub &events() const { return m_events; }
+  [[nodiscard]] SceneResourceTable &resources() { return m_resources; }
+  [[nodiscard]] const SceneResourceTable &resources() const {
+    return m_resources;
+  }
+  [[nodiscard]] RenderSceneSnapshot buildRenderSceneSnapshot() const;
 
   /// REQ-009 two-axis filter form: camera by matchesTarget(target), light by
   /// supportsPass(pass). Returns camera data resources first, then light data
@@ -248,15 +265,20 @@ private:
   static void appendPaths(const SceneNode &node, std::vector<std::string> &out);
   static void appendTreeLines(const SceneNode &node, std::string prefix,
                               bool isLast, std::string &out);
+  void registerNodeResources(SceneNode &node);
+  void releaseNodeResources(SceneNode &node);
+  void syncNodeResourceState(SceneNode &node) const;
   std::string m_sceneName;
   SceneNodeSharedPtr m_rootNode;
   std::vector<IRenderableSharedPtr> m_renderables;
   std::vector<SceneNodeSharedPtr> m_cameras;
   std::vector<LightBaseSharedPtr> m_lights;
   std::unordered_map<const SceneNode *, LightBaseSharedPtr> m_lightsByNode;
+  std::unordered_map<const LightBase *, LightHandle> m_lightHandles;
   mutable SceneLightsDataSharedPtr m_sceneLightsUbo =
       std::make_shared<SceneLightsData>();
   mutable std::optional<IblEnvironmentResources> m_iblEnvironmentResources;
+  mutable SceneResourceTable m_resources;
   SceneEventHub m_events;
 };
 

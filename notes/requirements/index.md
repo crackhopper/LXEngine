@@ -29,3 +29,5 @@
 - [REQ-064-a: 3DGS Editor Scene Validation](064-a-3dgs-editor-scene-validation.md)
 - [REQ-065-a: 3DGS System Design And Tutorial](065-a-3dgs-system-design-and-tutorial.md)
 - [REQ-066-a: BuildInfo 与输出产物溯源](066-a-build-info-and-artifact-provenance.md)
+- [REQ-067-a: SceneResourceTable 与 Bindless-Ready 资源模型](067-a-scene-resource-table-bindless-ready-resource-model.md)
+- [REQ-067-b: Offline Renderer 迁移到共享资源模型](067-b-offline-renderer-shared-resource-model-migration.md)

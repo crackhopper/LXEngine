@@ -335,7 +335,7 @@ void rebuildBucketCapacity(BucketState &bucket,
   bucket.vertexBuffer = VertexBuffer<DebugLineVertex>::create({});
   bucket.indexBuffer = IndexBuffer::create({}, PrimitiveTopology::LineList);
   bucket.mesh = Mesh::create(bucket.vertexBuffer, bucket.indexBuffer);
-  bucket.mesh->bounds = BoundingBox{};
+  bucket.mesh->setBounds(BoundingBox{});
 
   const auto meshComponent = bucket.node->getComponent<MeshComponent>();
   if (!meshComponent.has_value()) {
@@ -374,7 +374,7 @@ void updateBucket(BucketState &bucket,
       padVerticesToCapacity(vertices, bucket.reservedVertexCount));
   bucket.indexBuffer->update(makeDegenerateLineIndices(
       requiredIndexCount, bucket.reservedVertexCount, bucket.reservedIndexCount));
-  bucket.mesh->bounds = computeBounds(vertices);
+  bucket.mesh->setBounds(computeBounds(vertices));
   bucket.flushedVertexCount = requiredVertexCount;
 }
 

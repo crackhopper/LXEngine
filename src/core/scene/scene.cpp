@@ -1,6 +1,7 @@
 #include "scene.hpp"
 #include "core/scene/components/camera_component.hpp"
 #include "core/scene/components/material_component.hpp"
+#include "core/scene/components/mesh_component.hpp"
 
 #include <algorithm>
 #include <sstream>
@@ -47,6 +48,32 @@ void collectSubtreeSnapshots(const SceneNodeSharedPtr &node,
     }
   }
   return nullptr;
+}
+
+[[nodiscard]] CameraResource makeCameraResource(
+    const CameraComponent &cameraComponent) {
+  return CameraResource{
+      .view = cameraComponent.getViewMatrix(),
+      .proj = cameraComponent.getProjMatrix(),
+      .cullingMask = cameraComponent.getCullingMask(),
+      .active = cameraComponent.isActive(),
+  };
+}
+
+[[nodiscard]] ObjectResource makeObjectResource(
+    const SceneNode &node, MeshHandle meshHandle,
+    MaterialHandle materialHandle) {
+  ObjectResource object;
+  object.mesh = meshHandle;
+  object.material = materialHandle;
+  object.objectToWorld = node.getWorldTransform();
+  object.worldToObject = Mat4f::identity();
+  object.worldBounds = node.getWorldBounds();
+  object.visibilityMask = node.getVisibilityLayerMask();
+  object.debugId = node.getDebugId();
+  object.visible = true;
+  object.debugOnly = node.isDebugOnlyRenderable();
+  return object;
 }
 
 } // namespace
@@ -357,6 +384,17 @@ BoundingBox Scene::getPickBounds(const SceneNode &node) const {
   return light->getDebugLocalBounds().transformed(node.getWorldTransform());
 }
 
+RenderSceneSnapshot Scene::buildRenderSceneSnapshot() const {
+  for (const auto &renderable : m_renderables) {
+    auto node = std::dynamic_pointer_cast<SceneNode>(renderable);
+    if (!node) {
+      continue;
+    }
+    syncNodeResourceState(*node);
+  }
+  return m_resources.buildSnapshot();
+}
+
 std::optional<Scene::PickHit> Scene::pick(const Ray &ray,
                                           VisibilityLayerMask layerMask) const {
   std::optional<PickHit> bestHit;
@@ -524,6 +562,10 @@ void Scene::removeRenderable(const SceneNodeSharedPtr &node) {
     removeLight(light);
   }
 
+  for (const auto &removedNode : removedNodes) {
+    releaseNodeResources(*removedNode.node);
+  }
+
   node->clearParentInternal(false);
   for (const auto &removedNode : removedNodes) {
     removedNode.node->detachFromScene();
@@ -568,6 +610,12 @@ void Scene::addCamera(const SceneNodeSharedPtr &cameraNode) {
     addRenderable(cameraNode);
   }
 
+  auto cameraComponent = cameraNode->getComponent<CameraComponent>();
+  if (cameraComponent.has_value()) {
+    const CameraHandle cameraHandle =
+        m_resources.registerCamera(makeCameraResource(cameraComponent->get()));
+    cameraComponent->get().setCameraHandle(cameraHandle);
+  }
   m_cameras.push_back(cameraNode);
 }
 
@@ -694,6 +742,12 @@ void Scene::removeLight(const LightBaseSharedPtr &light) {
 
   light->detachFromSceneNode();
 
+  const auto lightHandleIt = m_lightHandles.find(light.get());
+  if (lightHandleIt != m_lightHandles.end()) {
+    m_resources.release(lightHandleIt->second);
+    m_lightHandles.erase(lightHandleIt);
+  }
+
   m_lights.erase(std::remove_if(m_lights.begin(), m_lights.end(),
                                 [&light](const LightBaseSharedPtr &candidate) {
                                   return candidate == light;
@@ -702,6 +756,101 @@ void Scene::removeLight(const LightBaseSharedPtr &light) {
 
   for (const auto &node : affectedNodes) {
     node->emitRuntimeNodeChanged(SceneNodeAspect::RenderableStructure);
+  }
+}
+
+void Scene::registerNodeResources(SceneNode &node) {
+  MeshHandle meshHandle;
+  if (auto meshComponent = node.getComponent<MeshComponent>()) {
+    const auto &mesh = meshComponent->get().getMesh();
+    if (mesh) {
+      if (mesh->getGeometryStorage()) {
+        meshComponent->get().setGeometryStorageHandle(
+            m_resources.registerGeometryStorage(mesh->getGeometryStorage()));
+      }
+      meshHandle = m_resources.registerMesh(mesh);
+      meshComponent->get().setMeshHandle(meshHandle);
+    }
+  }
+
+  MaterialHandle materialHandle;
+  if (auto materialComponent = node.getComponent<MaterialComponent>()) {
+    const auto &material = materialComponent->get().getMaterialInstance();
+    if (material) {
+      materialHandle = m_resources.registerMaterial(material);
+      materialComponent->get().setMaterialHandle(materialHandle);
+    }
+  }
+
+  if (meshHandle.isValid() && materialHandle.isValid()) {
+    if (auto meshComponent = node.getComponent<MeshComponent>()) {
+      meshComponent->get().setObjectHandle(
+          m_resources.registerObject(
+              makeObjectResource(node, meshHandle, materialHandle)));
+    }
+  }
+}
+
+void Scene::releaseNodeResources(SceneNode &node) {
+  if (auto cameraComponent = node.getComponent<CameraComponent>()) {
+    const CameraHandle cameraHandle = cameraComponent->get().getCameraHandle();
+    if (cameraHandle.isValid()) {
+      m_resources.release(cameraHandle);
+      cameraComponent->get().setCameraHandle({});
+    }
+  }
+
+  if (auto meshComponent = node.getComponent<MeshComponent>()) {
+    const ObjectHandle objectHandle = meshComponent->get().getObjectHandle();
+    if (objectHandle.isValid()) {
+      m_resources.release(objectHandle);
+      meshComponent->get().setObjectHandle({});
+    }
+    const GeometryStorageHandle geometryHandle =
+        meshComponent->get().getGeometryStorageHandle();
+    if (geometryHandle.isValid()) {
+      m_resources.release(geometryHandle);
+      meshComponent->get().setGeometryStorageHandle({});
+    }
+    const MeshHandle meshHandle = meshComponent->get().getMeshHandle();
+    if (meshHandle.isValid()) {
+      m_resources.release(meshHandle);
+      meshComponent->get().setMeshHandle({});
+    }
+  }
+
+  if (auto materialComponent = node.getComponent<MaterialComponent>()) {
+    const MaterialHandle materialHandle =
+        materialComponent->get().getMaterialHandle();
+    if (materialHandle.isValid()) {
+      m_resources.release(materialHandle);
+      materialComponent->get().setMaterialHandle({});
+    }
+  }
+}
+
+void Scene::syncNodeResourceState(SceneNode &node) const {
+  if (auto meshComponent = node.getComponent<MeshComponent>()) {
+    const ObjectHandle objectHandle = meshComponent->get().getObjectHandle();
+    if (objectHandle.isValid()) {
+      const MeshHandle meshHandle = meshComponent->get().getMeshHandle();
+      MaterialHandle materialHandle;
+      if (auto materialComponent = node.getComponent<MaterialComponent>()) {
+        materialHandle = materialComponent->get().getMaterialHandle();
+      }
+      if (meshHandle.isValid() && materialHandle.isValid()) {
+        m_resources.updateObject(
+            objectHandle, makeObjectResource(node, meshHandle, materialHandle));
+      }
+    }
+  }
+
+  if (auto cameraComponent = node.getComponent<CameraComponent>()) {
+    const CameraHandle cameraHandle = cameraComponent->get().getCameraHandle();
+    if (cameraHandle.isValid()) {
+      m_resources.updateCamera(cameraHandle,
+                               makeCameraResource(cameraComponent->get()));
+    }
   }
 }
 

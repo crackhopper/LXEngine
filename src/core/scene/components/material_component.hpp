@@ -2,6 +2,7 @@
 
 #include "core/asset/material_instance.hpp"
 #include "core/scene/component.hpp"
+#include "core/scene/scene_resource_table.hpp"
 
 namespace LX_core {
 
@@ -18,6 +19,10 @@ public:
 
   const MaterialInstanceSharedPtr &getMaterialInstance() const { return m_material; }
   void setMaterialInstance(MaterialInstanceSharedPtr material);
+  [[nodiscard]] MaterialHandle getMaterialHandle() const {
+    return m_materialHandle;
+  }
+  void setMaterialHandle(MaterialHandle handle) { m_materialHandle = handle; }
 
 protected:
   void onAttached() override;
@@ -29,6 +34,7 @@ private:
   void revalidateOwnerForPassChange() const;
 
   MaterialInstanceSharedPtr m_material;
+  MaterialHandle m_materialHandle;
   u64 m_passListenerId = 0;
 };
 
