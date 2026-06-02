@@ -558,7 +558,8 @@ bool saveDisplayDocumentPreservingActive(
 displayConfigSetJson(demo::EditorConfigState &configState,
                      const std::vector<LX_core::DisplayInfo> &displays,
                      demo::EditorDisplayConfigDocument &document,
-                     const demo::EditorConfigDocument &currentEffectiveConfig,
+                     demo::EditorConfigDocument &currentEffectiveConfig,
+                     LX_core::Window &window,
                      std::string_view activeDisplayKey, std::string_view key,
                      std::string_view patchText) {
   try {
@@ -584,8 +585,16 @@ displayConfigSetJson(demo::EditorConfigState &configState,
                                              activeDisplayKey, effective)) {
       return "{\"ok\":false,\"error\":\"failed to save editor_config.yaml\"}";
     }
+    const bool applied = key == "default" || key == activeDisplayKey;
+    if (applied) {
+      currentEffectiveConfig = effective;
+      if (effective.windowPlacement.has_value()) {
+        window.applyPlacement(*effective.windowPlacement);
+      }
+    }
     return "{\"ok\":true,\"key\":\"" + demo::apiJsonEscape(key) +
-           "\",\"saved\":true}";
+           "\",\"saved\":true,\"applied\":" +
+           std::string(applied ? "true" : "false") + "}";
   } catch (const std::exception &error) {
     return "{\"ok\":false,\"error\":\"" + demo::apiJsonEscape(error.what()) +
            "\"}";
@@ -800,7 +809,7 @@ int main(int argc, char **argv) {
         .displayConfigSet =
             [&](std::string_view key, std::string_view patch) {
               return displayConfigSetJson(configState, displays, displayConfig,
-                                          session.editorConfig(),
+                                          session.editorConfig(), *window,
                                           currentDisplayKey, key, patch);
             },
         .displaySelect =
