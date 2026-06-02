@@ -691,7 +691,96 @@ void testSceneDocumentRoundTripsTypedLightPayloads() {
          "spot cone should round trip");
 }
 
-void testSceneDocumentRoundTripsOfflineRenderProfilesAndOfflineSubtrees() {
+void testOutputProfilesRoundTrip() {
+  const std::filesystem::path path =
+      makeTempPath("lx_scene_output_profiles.yaml");
+  std::ofstream out(path);
+  out << "scene:\n"
+         "  name: output profile test\n"
+         "  gameplayCameraPath: /game_cam\n"
+         "  defaultOutputProfile: preview\n"
+         "  outputProfiles:\n"
+         "    preview:\n"
+         "      camera: /game_cam\n"
+         "      width: 64\n"
+         "      height: 36\n"
+         "      outputFormat: exr-png\n"
+         "      outDir: artifacts/compare\n"
+         "      cameraOverrides:\n"
+         "        fovY: 42.0\n"
+         "        nearPlane: 0.1\n"
+         "        farPlane: 80.0\n"
+         "        focusDistance: 5.0\n"
+         "  offlineRender:\n"
+         "    integrator: primary-ray\n"
+         "    samples: 1\n"
+         "    maxBounce: 1\n"
+         "    seed: 7\n"
+         "    profile: preview\n"
+         "    shadows: false\n"
+         "root:\n"
+         "  nodeName: scene_root\n"
+         "  name: ''\n"
+         "  transform:\n"
+         "    translation: [0.0, 0.0, 0.0]\n"
+         "    rotation: [1.0, 0.0, 0.0, 0.0]\n"
+         "    scale: [1.0, 1.0, 1.0]\n"
+         "  visibilityMask: 4294967295\n";
+  out.close();
+
+  const auto doc = LX_infra::scene_io::loadSceneDocument(path);
+  EXPECT(doc.hasRenderProfileDocument(), "render profile document should load");
+  const auto &profiles = doc.renderProfileDocument();
+  EXPECT(profiles.defaultOutputProfile == "preview", "default profile");
+  EXPECT(profiles.outputProfiles.at("preview").width == 64u, "width");
+  EXPECT(profiles.outputProfiles.at("preview").cameraOverrides.fovY == 42.0f,
+         "camera override fov");
+  EXPECT(profiles.offline.maxBounce == 1u, "maxBounce");
+  EXPECT(profiles.offline.shadows == false, "shadow flag");
+
+  const std::filesystem::path saved =
+      makeTempPath("lx_scene_output_profiles_saved.yaml");
+  LX_infra::scene_io::saveSceneDocument(saved, doc);
+  const std::string savedText = readFile(saved);
+  EXPECT(savedText.find("outputProfiles:") != std::string::npos,
+         "saved new outputProfiles");
+  EXPECT(savedText.find("maxBounce: 1") != std::string::npos,
+         "saved maxBounce");
+}
+
+void testOldOfflineRenderProfilesRejected() {
+  const std::filesystem::path path =
+      makeTempPath("lx_scene_old_offline_profiles.yaml");
+  std::ofstream out(path);
+  out << "scene:\n"
+         "  name: old profile test\n"
+         "  offlineRender:\n"
+         "    defaultProfile: preview\n"
+         "    profiles:\n"
+         "      preview:\n"
+         "        width: 64\n"
+         "        height: 36\n"
+         "root:\n"
+         "  nodeName: scene_root\n"
+         "  name: ''\n"
+         "  transform:\n"
+         "    translation: [0.0, 0.0, 0.0]\n"
+         "    rotation: [1.0, 0.0, 0.0, 0.0]\n"
+         "    scale: [1.0, 1.0, 1.0]\n"
+         "  visibilityMask: 4294967295\n";
+  out.close();
+
+  bool rejected = false;
+  try {
+    (void)LX_infra::scene_io::loadSceneDocument(path);
+  } catch (const std::exception &e) {
+    rejected = std::string(e.what()).find("scene.offlineRender.profiles") !=
+               std::string::npos;
+  }
+  EXPECT(rejected, "old offlineRender.profiles should be rejected");
+}
+
+void testSceneDocumentRoundTripsRenderProfileDocumentAndOfflineSubtrees() {
   const std::filesystem::path path =
       makeTempPath("lx_scene_document_offline_render.yaml");
 
@@ -702,29 +791,31 @@ void testSceneDocumentRoundTripsOfflineRenderProfilesAndOfflineSubtrees() {
          "  environment:\n"
          "    enabled: true\n"
          "    hdrUri: cache://polyhaven/studio_small_03/2k-hdr/converted/environment.exr\n"
+         "  defaultOutputProfile: reference\n"
+         "  outputProfiles:\n"
+         "    preview:\n"
+         "      camera: /game_cam\n"
+         "      width: 512\n"
+         "      height: 512\n"
+         "      outputFormat: exr-png\n"
+         "      outDir: artifacts/offline/preview\n"
+         "    reference:\n"
+         "      camera: /game_cam\n"
+         "      width: 1920\n"
+         "      height: 1080\n"
+         "      outputFormat: exr-png\n"
+         "      outDir: artifacts/offline/reference\n"
+         "      futureField:\n"
+         "        enabled: true\n"
          "  offlineRender:\n"
-         "    defaultProfile: reference\n"
-         "    profiles:\n"
-         "      preview:\n"
-         "        backend: vulkan-compute\n"
-         "        integrator: primary-ray\n"
-         "        width: 512\n"
-         "        height: 512\n"
-         "        samples: 1\n"
-         "        maxDepth: 1\n"
-         "        seed: 1\n"
-         "        outputFormat: exr-png\n"
-         "      reference:\n"
-         "        backend: vulkan-compute\n"
-         "        integrator: path-tracing\n"
-         "        width: 1920\n"
-         "        height: 1080\n"
-         "        samples: 64\n"
-         "        maxDepth: 4\n"
-         "        seed: 7\n"
-         "        outputFormat: exr-png\n"
-         "        futureField:\n"
-         "          enabled: true\n"
+         "    integrator: path-tracing\n"
+         "    samples: 64\n"
+         "    maxBounce: 4\n"
+         "    seed: 7\n"
+         "    profile: reference\n"
+         "    shadows: true\n"
+         "    offlineFutureField:\n"
+         "      enabled: true\n"
          "root:\n"
          "  nodeName: scene_root\n"
          "  name: ''\n"
@@ -751,18 +842,22 @@ void testSceneDocumentRoundTripsOfflineRenderProfilesAndOfflineSubtrees() {
   out.close();
 
   const demo::SceneDocument doc = demo::loadSceneDocument(path);
-  EXPECT(doc.hasOfflineRenderProfiles(),
-         "offlineRender profiles should load");
-  const auto &profiles = doc.offlineRenderProfiles();
-  EXPECT(profiles.defaultProfile == "reference",
-         "default offline profile should load");
-  EXPECT(profiles.profiles.at("reference").integrator == "path-tracing",
-         "reference integrator should load");
-  EXPECT(profiles.profiles.at("reference").samples == 64u,
-         "reference samples should load");
-  EXPECT(profiles.profiles.at("reference").extensionYamlByField.count(
+  EXPECT(doc.hasRenderProfileDocument(),
+         "render profile document should load");
+  const auto &profiles = doc.renderProfileDocument();
+  EXPECT(profiles.defaultOutputProfile == "reference",
+         "default output profile should load");
+  EXPECT(profiles.outputProfiles.at("reference").width == 1920u,
+         "reference width should load");
+  EXPECT(profiles.outputProfiles.at("reference").extensionYamlByField.count(
              "futureField") == 1,
-         "unknown profile fields should be retained explicitly");
+         "unknown output profile fields should be retained explicitly");
+  EXPECT(profiles.offline.integrator == "path-tracing",
+         "offline integrator should load");
+  EXPECT(profiles.offline.samples == 64u, "offline samples should load");
+  EXPECT(profiles.offline.maxBounce == 4u, "offline maxBounce should load");
+  EXPECT(profiles.offline.extensionYamlByField.count("offlineFutureField") == 1,
+         "unknown offlineRender fields should be retained explicitly");
   EXPECT(doc.environment().hdrUri.find("cache://polyhaven/") == 0,
          "cache URI should remain a URI string");
 
@@ -778,8 +873,12 @@ void testSceneDocumentRoundTripsOfflineRenderProfilesAndOfflineSubtrees() {
   const std::string savedText = readFile(savedPath);
   EXPECT(savedText.find("offlineRender:") != std::string::npos,
          "offlineRender should save");
+  EXPECT(savedText.find("outputProfiles:") != std::string::npos,
+         "outputProfiles should save");
   EXPECT(savedText.find("futureField:") != std::string::npos,
-         "unknown profile extension should save");
+         "unknown output profile extension should save");
+  EXPECT(savedText.find("offlineFutureField:") != std::string::npos,
+         "unknown offlineRender extension should save");
   EXPECT(savedText.find("sampleWeight") != std::string::npos,
          "object offline subtree should save");
   EXPECT(savedText.find("cache://polyhaven/studio_small_03") !=
@@ -869,11 +968,11 @@ void testIblMetalSphereSceneAssetLoads() {
   EXPECT(light != nullptr && light->light.has_value() &&
              light->light->kind == demo::LightKind::Directional,
          "IBL metal sphere should contain a directional light");
-  EXPECT(doc.hasOfflineRenderProfiles(),
-         "IBL metal sphere should declare offline render profiles");
-  if (doc.hasOfflineRenderProfiles()) {
-    EXPECT(doc.offlineRenderProfiles().profiles.count("mvp") == 1,
-           "IBL metal sphere should include an mvp offline profile");
+  EXPECT(doc.hasRenderProfileDocument(),
+         "IBL metal sphere should declare render profiles");
+  if (doc.hasRenderProfileDocument()) {
+    EXPECT(doc.renderProfileDocument().outputProfiles.count("mvp") == 1,
+           "IBL metal sphere should include an mvp output profile");
   }
 }
 
@@ -910,7 +1009,9 @@ int main() {
   testLoadExplicitRootDocumentRejectsNonCanonicalRootIdentity();
   testSaveSceneDocumentWritesExplicitRootCanonicalFormat();
   testSceneDocumentRoundTripsTypedLightPayloads();
-  testSceneDocumentRoundTripsOfflineRenderProfilesAndOfflineSubtrees();
+  testOutputProfilesRoundTrip();
+  testOldOfflineRenderProfilesRejected();
+  testSceneDocumentRoundTripsRenderProfileDocumentAndOfflineSubtrees();
   testShadowTutorialSceneAssetLoads();
   testIblMetalSphereSceneAssetLoads();
   testSaveSceneDocumentRejectsUnsupportedRootPayload();

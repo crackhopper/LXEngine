@@ -29,8 +29,7 @@ struct SceneDocumentData final {
   std::string sceneName = "Scene";
   std::string gameplayCameraPath = "/game_cam";
   std::optional<EnvironmentState> environment;
-  std::optional<LX_core::offline::OfflineRenderProfiles>
-      offlineRenderProfiles;
+  std::optional<LX_core::offline::RenderProfileDocument> renderProfileDocument;
   SceneNodeDocument rootNode;
   std::optional<EditorCameraState> editorCamera;
 
@@ -548,104 +547,267 @@ void saveProceduralMaterialState(YAML::Emitter &out,
   return state;
 }
 
-[[nodiscard]] LX_core::offline::OfflineRenderProfile
-loadOfflineRenderProfile(const YAML::Node &node, const std::string &name) {
+[[nodiscard]] LX_core::offline::OutputCameraOverrides
+loadOutputCameraOverrides(const YAML::Node &node,
+                          const std::string &profileName) {
+  if (!node) {
+    return {};
+  }
+  if (!node.IsMap()) {
+    throw std::runtime_error("scene.outputProfiles." + profileName +
+                             ".cameraOverrides must be a map");
+  }
+
+  LX_core::offline::OutputCameraOverrides overrides;
+  for (auto it = node.begin(); it != node.end(); ++it) {
+    const std::string key = it->first.as<std::string>();
+    const YAML::Node value = it->second;
+    if (key == "fovY") {
+      overrides.fovY = value.as<float>();
+    } else if (key == "aspect") {
+      overrides.aspect = value.as<float>();
+    } else if (key == "nearPlane") {
+      overrides.nearPlane = value.as<float>();
+    } else if (key == "farPlane") {
+      overrides.farPlane = value.as<float>();
+    } else if (key == "focusDistance") {
+      overrides.focusDistance = value.as<float>();
+    } else if (key == "orthographicHeight") {
+      overrides.orthographicHeight = value.as<float>();
+    } else if (key == "cullingMask") {
+      overrides.cullingMask = value.as<u32>();
+    } else {
+      throw std::runtime_error("unsupported camera override field in output "
+                               "profile " +
+                               profileName + ": " + key);
+    }
+  }
+  return overrides;
+}
+
+[[nodiscard]] LX_core::offline::OutputProfile
+loadOutputProfile(const YAML::Node &node, const std::string &name) {
   if (!node || !node.IsMap()) {
-    throw std::runtime_error("scene.offlineRender.profiles." + name +
+    throw std::runtime_error("scene.outputProfiles." + name +
                              " must be a map");
   }
 
-  LX_core::offline::OfflineRenderProfile profile;
+  LX_core::offline::OutputProfile profile;
   for (auto it = node.begin(); it != node.end(); ++it) {
     const std::string key = it->first.as<std::string>();
     const YAML::Node value = it->second;
     if (key == "backend") {
-      profile.backend = value.as<std::string>();
-    } else if (key == "integrator") {
-      profile.integrator = value.as<std::string>();
+      throw std::runtime_error("scene.outputProfiles." + name +
+                               ".backend is no longer supported");
+    }
+    if (key == "maxDepth") {
+      throw std::runtime_error("scene.outputProfiles." + name +
+                               ".maxDepth is no longer supported; use "
+                               "scene.offlineRender.maxBounce");
+    }
+    if (key == "profiles") {
+      throw std::runtime_error("scene.outputProfiles." + name +
+                               ".profiles is no longer supported");
+    }
+    if (key == "camera") {
+      profile.cameraPath = value.as<std::string>();
     } else if (key == "width") {
       profile.width = value.as<u32>();
     } else if (key == "height") {
       profile.height = value.as<u32>();
-    } else if (key == "samples") {
-      profile.samples = value.as<u32>();
-    } else if (key == "maxDepth") {
-      profile.maxDepth = value.as<u32>();
-    } else if (key == "seed") {
-      profile.seed = value.as<u32>();
     } else if (key == "outputFormat") {
       profile.outputFormat = value.as<std::string>();
+    } else if (key == "outDir") {
+      profile.outDir = value.as<std::string>();
+    } else if (key == "cameraOverrides") {
+      profile.cameraOverrides = loadOutputCameraOverrides(value, name);
     } else {
       profile.extensionYamlByField.emplace(key, dumpYamlNode(value));
     }
   }
 
-  if (profile.backend != "vulkan-compute") {
-    throw std::runtime_error("unsupported offline render backend in profile " +
-                             name + ": " + profile.backend);
+  if (profile.cameraPath.empty()) {
+    throw std::runtime_error("output profile " + name +
+                             " camera must be non-empty");
   }
-  if (profile.integrator != "primary-ray" &&
-      profile.integrator != "path-tracing" &&
-      profile.integrator != "probe-bake") {
-    throw std::runtime_error(
-        "unsupported offline render integrator in profile " + name + ": " +
-        profile.integrator);
+  if (profile.width == 0 || profile.height == 0) {
+    throw std::runtime_error("output profile " + name +
+                             " width/height must be positive");
   }
-  if (profile.outputFormat != "exr-png") {
+  if (profile.outputFormat != "png" && profile.outputFormat != "exr-png") {
     throw std::runtime_error(
-        "unsupported offline render outputFormat in profile " + name + ": " +
+        "unsupported outputFormat in output profile " + name + ": " +
         profile.outputFormat);
-  }
-  if (profile.width == 0 || profile.height == 0 || profile.samples == 0 ||
-      profile.maxDepth == 0) {
-    throw std::runtime_error("offline render profile " + name +
-                             " width/height/samples/maxDepth must be positive");
   }
   return profile;
 }
 
-[[nodiscard]] LX_core::offline::OfflineRenderProfiles
-loadOfflineRenderProfiles(const YAML::Node &node) {
+[[nodiscard]] LX_core::offline::OfflineRenderSettings
+loadOfflineRenderSettings(const YAML::Node &node) {
   if (!node) {
-    return {};
+    return LX_core::offline::makeDefaultOfflineRenderSettings();
   }
   if (!node.IsMap()) {
     throw std::runtime_error("scene.offlineRender must be a map");
   }
 
-  LX_core::offline::OfflineRenderProfiles profiles;
-  if (const auto defaultProfile = node["defaultProfile"]; defaultProfile) {
-    profiles.defaultProfile = defaultProfile.as<std::string>();
+  LX_core::offline::OfflineRenderSettings settings =
+      LX_core::offline::makeDefaultOfflineRenderSettings();
+  for (auto it = node.begin(); it != node.end(); ++it) {
+    const std::string key = it->first.as<std::string>();
+    const YAML::Node value = it->second;
+    if (key == "profiles") {
+      throw std::runtime_error(
+          "scene.offlineRender.profiles is no longer supported; use "
+          "scene.outputProfiles plus scene.offlineRender");
+    }
+    if (key == "backend") {
+      throw std::runtime_error(
+          "scene.offlineRender.backend is no longer supported");
+    }
+    if (key == "maxDepth") {
+      throw std::runtime_error(
+          "scene.offlineRender.maxDepth is no longer supported; use "
+          "scene.offlineRender.maxBounce");
+    }
+    if (key == "integrator") {
+      settings.integrator = value.as<std::string>();
+    } else if (key == "samples") {
+      settings.samples = value.as<u32>();
+    } else if (key == "maxBounce") {
+      settings.maxBounce = value.as<u32>();
+    } else if (key == "seed") {
+      settings.seed = value.as<u32>();
+    } else if (key == "profile") {
+      settings.profileName = value.as<std::string>();
+    } else if (key == "shadows") {
+      settings.shadows = value.as<bool>();
+    } else {
+      settings.extensionYamlByField.emplace(key, dumpYamlNode(value));
+    }
   }
-  const auto profileMap = node["profiles"];
-  if (!profileMap || !profileMap.IsMap()) {
-    throw std::runtime_error("scene.offlineRender.profiles must be a map");
+
+  if (settings.integrator != "primary-ray" &&
+      settings.integrator != "path-tracing" &&
+      settings.integrator != "probe-bake") {
+    throw std::runtime_error("unsupported offline render integrator: " +
+                             settings.integrator);
   }
-  for (auto it = profileMap.begin(); it != profileMap.end(); ++it) {
-    const std::string name = it->first.as<std::string>();
-    profiles.profiles.emplace(name, loadOfflineRenderProfile(it->second, name));
+  if (settings.samples == 0 || settings.maxBounce == 0) {
+    throw std::runtime_error("offlineRender samples/maxBounce must be positive");
   }
-  if (profiles.profiles.find(profiles.defaultProfile) ==
-      profiles.profiles.end()) {
-    throw std::runtime_error(
-        "scene.offlineRender.defaultProfile does not name an existing profile: " +
-        profiles.defaultProfile);
-  }
-  return profiles;
+  return settings;
 }
 
-void saveOfflineRenderProfile(
+[[nodiscard]] LX_core::offline::RenderProfileDocument
+loadRenderProfileDocument(const YAML::Node &sceneNode) {
+  if (!sceneNode) {
+    return {};
+  }
+
+  if (const YAML::Node offlineRenderNode = sceneNode["offlineRender"];
+      offlineRenderNode && offlineRenderNode["profiles"]) {
+    throw std::runtime_error(
+        "scene.offlineRender.profiles is no longer supported; use "
+        "scene.outputProfiles plus scene.offlineRender");
+  }
+
+  const YAML::Node outputProfilesNode = sceneNode["outputProfiles"];
+  const YAML::Node offlineRenderNode = sceneNode["offlineRender"];
+  const YAML::Node defaultOutputProfileNode = sceneNode["defaultOutputProfile"];
+  if (!outputProfilesNode && !offlineRenderNode && !defaultOutputProfileNode) {
+    return {};
+  }
+
+  if (!outputProfilesNode || !outputProfilesNode.IsMap() ||
+      outputProfilesNode.size() == 0) {
+    throw std::runtime_error("scene.outputProfiles must be a non-empty map");
+  }
+
+  LX_core::offline::RenderProfileDocument document;
+  if (defaultOutputProfileNode) {
+    document.defaultOutputProfile = defaultOutputProfileNode.as<std::string>();
+  }
+  for (auto it = outputProfilesNode.begin(); it != outputProfilesNode.end();
+       ++it) {
+    const std::string name = it->first.as<std::string>();
+    if (name.empty()) {
+      throw std::runtime_error("scene.outputProfiles contains an empty name");
+    }
+    document.outputProfiles.emplace(name, loadOutputProfile(it->second, name));
+  }
+  if (document.outputProfiles.find(document.defaultOutputProfile) ==
+      document.outputProfiles.end()) {
+    throw std::runtime_error(
+        "scene.defaultOutputProfile does not name an existing output profile: " +
+        document.defaultOutputProfile);
+  }
+
+  document.offline = loadOfflineRenderSettings(offlineRenderNode);
+  if (document.offline.profileName.empty()) {
+    document.offline.profileName = document.defaultOutputProfile;
+  }
+  if (document.outputProfiles.find(document.offline.profileName) ==
+      document.outputProfiles.end()) {
+    throw std::runtime_error(
+        "scene.offlineRender.profile does not name an existing output profile: " +
+        document.offline.profileName);
+  }
+  return document;
+}
+
+[[nodiscard]] bool hasOutputCameraOverrides(
+    const LX_core::offline::OutputCameraOverrides &overrides) {
+  return overrides.fovY.has_value() || overrides.aspect.has_value() ||
+         overrides.nearPlane.has_value() || overrides.farPlane.has_value() ||
+         overrides.focusDistance.has_value() ||
+         overrides.orthographicHeight.has_value() ||
+         overrides.cullingMask.has_value();
+}
+
+void saveOutputCameraOverrides(
     YAML::Emitter &out,
-    const LX_core::offline::OfflineRenderProfile &profile) {
+    const LX_core::offline::OutputCameraOverrides &overrides) {
   out << YAML::BeginMap;
-  out << YAML::Key << "backend" << YAML::Value << profile.backend;
-  out << YAML::Key << "integrator" << YAML::Value << profile.integrator;
+  if (overrides.fovY.has_value()) {
+    out << YAML::Key << "fovY" << YAML::Value << *overrides.fovY;
+  }
+  if (overrides.aspect.has_value()) {
+    out << YAML::Key << "aspect" << YAML::Value << *overrides.aspect;
+  }
+  if (overrides.nearPlane.has_value()) {
+    out << YAML::Key << "nearPlane" << YAML::Value << *overrides.nearPlane;
+  }
+  if (overrides.farPlane.has_value()) {
+    out << YAML::Key << "farPlane" << YAML::Value << *overrides.farPlane;
+  }
+  if (overrides.focusDistance.has_value()) {
+    out << YAML::Key << "focusDistance" << YAML::Value
+        << *overrides.focusDistance;
+  }
+  if (overrides.orthographicHeight.has_value()) {
+    out << YAML::Key << "orthographicHeight" << YAML::Value
+        << *overrides.orthographicHeight;
+  }
+  if (overrides.cullingMask.has_value()) {
+    out << YAML::Key << "cullingMask" << YAML::Value
+        << *overrides.cullingMask;
+  }
+  out << YAML::EndMap;
+}
+
+void saveOutputProfile(YAML::Emitter &out,
+                       const LX_core::offline::OutputProfile &profile) {
+  out << YAML::BeginMap;
+  out << YAML::Key << "camera" << YAML::Value << profile.cameraPath;
   out << YAML::Key << "width" << YAML::Value << profile.width;
   out << YAML::Key << "height" << YAML::Value << profile.height;
-  out << YAML::Key << "samples" << YAML::Value << profile.samples;
-  out << YAML::Key << "maxDepth" << YAML::Value << profile.maxDepth;
-  out << YAML::Key << "seed" << YAML::Value << profile.seed;
   out << YAML::Key << "outputFormat" << YAML::Value << profile.outputFormat;
+  out << YAML::Key << "outDir" << YAML::Value << profile.outDir.string();
+  if (hasOutputCameraOverrides(profile.cameraOverrides)) {
+    out << YAML::Key << "cameraOverrides" << YAML::Value;
+    saveOutputCameraOverrides(out, profile.cameraOverrides);
+  }
   for (const auto &[key, yamlText] : profile.extensionYamlByField) {
     out << YAML::Key << key << YAML::Value;
     emitRawYamlNode(out, yamlText);
@@ -653,27 +815,38 @@ void saveOfflineRenderProfile(
   out << YAML::EndMap;
 }
 
-void saveOfflineRenderProfiles(
+void saveRenderProfileDocument(
     YAML::Emitter &out,
-    const LX_core::offline::OfflineRenderProfiles &profiles) {
-  if (profiles.empty()) {
+    const LX_core::offline::RenderProfileDocument &document) {
+  if (document.empty()) {
     return;
   }
-  out << YAML::Key << "offlineRender" << YAML::Value << YAML::BeginMap;
-  out << YAML::Key << "defaultProfile" << YAML::Value
-      << profiles.defaultProfile;
-  out << YAML::Key << "profiles" << YAML::Value << YAML::BeginMap;
+  out << YAML::Key << "defaultOutputProfile" << YAML::Value
+      << document.defaultOutputProfile;
+  out << YAML::Key << "outputProfiles" << YAML::Value << YAML::BeginMap;
   std::vector<std::string> profileNames;
-  profileNames.reserve(profiles.profiles.size());
-  for (const auto &[name, _] : profiles.profiles) {
+  profileNames.reserve(document.outputProfiles.size());
+  for (const auto &[name, _] : document.outputProfiles) {
     profileNames.push_back(name);
   }
   std::sort(profileNames.begin(), profileNames.end());
   for (const auto &name : profileNames) {
     out << YAML::Key << name << YAML::Value;
-    saveOfflineRenderProfile(out, profiles.profiles.at(name));
+    saveOutputProfile(out, document.outputProfiles.at(name));
   }
   out << YAML::EndMap;
+  out << YAML::Key << "offlineRender" << YAML::Value << YAML::BeginMap;
+  out << YAML::Key << "integrator" << YAML::Value
+      << document.offline.integrator;
+  out << YAML::Key << "samples" << YAML::Value << document.offline.samples;
+  out << YAML::Key << "maxBounce" << YAML::Value << document.offline.maxBounce;
+  out << YAML::Key << "seed" << YAML::Value << document.offline.seed;
+  out << YAML::Key << "profile" << YAML::Value << document.offline.profileName;
+  out << YAML::Key << "shadows" << YAML::Value << document.offline.shadows;
+  for (const auto &[key, yamlText] : document.offline.extensionYamlByField) {
+    out << YAML::Key << key << YAML::Value;
+    emitRawYamlNode(out, yamlText);
+  }
   out << YAML::EndMap;
 }
 
@@ -1064,31 +1237,31 @@ void SceneDocument::setEnvironment(EnvironmentState state) {
       std::move(state);
 }
 
-bool SceneDocument::hasOfflineRenderProfiles() const {
+bool SceneDocument::hasRenderProfileDocument() const {
   return m_impl && std::static_pointer_cast<const SceneDocumentData>(m_impl)
-                       ->offlineRenderProfiles.has_value();
+                       ->renderProfileDocument.has_value();
 }
 
-const LX_core::offline::OfflineRenderProfiles &
-SceneDocument::offlineRenderProfiles() const {
+const LX_core::offline::RenderProfileDocument &
+SceneDocument::renderProfileDocument() const {
   if (!m_impl) {
-    throw std::runtime_error("scene document has no offline render profiles");
+    throw std::runtime_error("scene document has no render profile document");
   }
   const auto &profiles =
       std::static_pointer_cast<const SceneDocumentData>(m_impl)
-          ->offlineRenderProfiles;
+          ->renderProfileDocument;
   if (!profiles.has_value()) {
-    throw std::runtime_error("scene document has no offline render profiles");
+    throw std::runtime_error("scene document has no render profile document");
   }
   return *profiles;
 }
 
-void SceneDocument::setOfflineRenderProfiles(
-    LX_core::offline::OfflineRenderProfiles profiles) {
+void SceneDocument::setRenderProfileDocument(
+    LX_core::offline::RenderProfileDocument profiles) {
   if (!m_impl) {
     m_impl = std::make_shared<SceneDocumentData>();
   }
-  std::static_pointer_cast<SceneDocumentData>(m_impl)->offlineRenderProfiles =
+  std::static_pointer_cast<SceneDocumentData>(m_impl)->renderProfileDocument =
       std::move(profiles);
 }
 
@@ -1149,10 +1322,10 @@ SceneDocument loadSceneDocument(const std::filesystem::path &path) {
     if (!environment.empty()) {
       document.setEnvironment(environment);
     }
-    if (const YAML::Node offlineRenderNode = sceneNode["offlineRender"];
-        offlineRenderNode) {
-      document.setOfflineRenderProfiles(
-          loadOfflineRenderProfiles(offlineRenderNode));
+    LX_core::offline::RenderProfileDocument renderProfiles =
+        loadRenderProfileDocument(sceneNode);
+    if (!renderProfiles.empty()) {
+      document.setRenderProfileDocument(std::move(renderProfiles));
     }
   }
 
@@ -1203,8 +1376,8 @@ void saveSceneDocument(const std::filesystem::path &path,
   if (document.hasEnvironment()) {
     saveEnvironmentState(out, document.environment());
   }
-  if (document.hasOfflineRenderProfiles()) {
-    saveOfflineRenderProfiles(out, document.offlineRenderProfiles());
+  if (document.hasRenderProfileDocument()) {
+    saveRenderProfileDocument(out, document.renderProfileDocument());
   }
   out << YAML::EndMap;
 

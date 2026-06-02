@@ -7,36 +7,33 @@ scene:
     skyboxEnabled: true
     intensity: 1.0
     roughnessMipCount: 5.0
+  defaultOutputProfile: preview
+  outputProfiles:
+    preview:
+      camera: /game_cam
+      width: 512
+      height: 512
+      outputFormat: exr-png
+      outDir: artifacts/offline/preview
+    mvp:
+      camera: /game_cam
+      width: 1024
+      height: 576
+      outputFormat: exr-png
+      outDir: artifacts/offline/mvp
+    reference:
+      camera: /game_cam
+      width: 1920
+      height: 1080
+      outputFormat: exr-png
+      outDir: artifacts/offline/reference
   offlineRender:
-    defaultProfile: preview
-    profiles:
-      preview:
-        backend: vulkan-compute
-        integrator: primary-ray
-        width: 512
-        height: 512
-        samples: 1
-        maxDepth: 1
-        seed: 1
-        outputFormat: exr-png
-      mvp:
-        backend: vulkan-compute
-        integrator: primary-ray
-        width: 1024
-        height: 576
-        samples: 4
-        maxDepth: 1
-        seed: 1
-        outputFormat: exr-png
-      reference:
-        backend: vulkan-compute
-        integrator: path-tracing
-        width: 1920
-        height: 1080
-        samples: 64
-        maxDepth: 4
-        seed: 1
-        outputFormat: exr-png
+    integrator: primary-ray
+    samples: 1
+    maxBounce: 1
+    seed: 1
+    profile: preview
+    shadows: true
 root:
   nodeName: scene_root
   name: ''

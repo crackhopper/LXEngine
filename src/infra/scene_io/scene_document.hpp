@@ -134,10 +134,10 @@ public:
   bool hasEnvironment() const;
   const EnvironmentState &environment() const;
   void setEnvironment(EnvironmentState state);
-  bool hasOfflineRenderProfiles() const;
-  const LX_core::offline::OfflineRenderProfiles &offlineRenderProfiles() const;
-  void setOfflineRenderProfiles(
-      LX_core::offline::OfflineRenderProfiles profiles);
+  bool hasRenderProfileDocument() const;
+  const LX_core::offline::RenderProfileDocument &renderProfileDocument() const;
+  void setRenderProfileDocument(
+      LX_core::offline::RenderProfileDocument profiles);
   SceneNodeDocument &mutableRootNode();
   const SceneNodeDocument &rootNode() const;
   bool hasEditorCamera() const;
