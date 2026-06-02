@@ -16,6 +16,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_vulkan_device_selection
   test_build_info
   test_string_table
+  test_tone_mapping
   test_material_instance
   test_audio_spectrum_texture
   test_pipeline_identity

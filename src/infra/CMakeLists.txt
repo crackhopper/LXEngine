@@ -340,6 +340,7 @@ set(INFRA_SOURCES
     mesh_loader/obj_mesh_loader.cpp
     mesh_loader/gltf_mesh_loader.cpp
     mesh_loader/cgltf_impl.cpp
+    image/rgba_image_io.cpp
     shader_compiler/shader_compiler.cpp
     shader_compiler/shader_reflector.cpp
     shader_compiler/compiled_shader.cpp

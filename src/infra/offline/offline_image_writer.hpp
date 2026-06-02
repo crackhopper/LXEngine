@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/image/tone_mapping.hpp"
 #include "core/offline/offline_scene.hpp"
 
 #include <filesystem>
@@ -7,13 +8,8 @@
 
 namespace LX_infra::offline {
 
-enum class OfflineToneMappingMode { Aces, Reinhard };
-
-struct OfflineToneMappingSettings final {
-  float exposure = 1.0f;
-  float gamma = 2.2f;
-  OfflineToneMappingMode mode = OfflineToneMappingMode::Aces;
-};
+using OfflineToneMappingMode = LX_core::image::ToneMappingMode;
+using OfflineToneMappingSettings = LX_core::image::ToneMappingSettings;
 
 struct OfflineImageOutputRequest final {
   LX_core::offline::OfflineRenderJob job;

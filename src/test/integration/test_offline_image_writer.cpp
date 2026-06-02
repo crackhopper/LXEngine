@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <string>
 
 namespace {
@@ -99,6 +100,23 @@ void testWritesExrPngJsonAndRaw() {
          "metadata should record composed build info string");
 }
 
+void testWritesPngWithNanAlpha() {
+  const std::filesystem::path dir = makeTempDir() / "nan_alpha";
+  LX_infra::offline::OfflineImageOutputRequest request;
+  request.job.outputPath = dir / "beauty";
+  request.job.output.width = 1;
+  request.job.output.height = 1;
+  request.image.width = 1;
+  request.image.height = 1;
+  request.image.rgba = {
+      0.25f, 0.5f, 1.0f, std::numeric_limits<float>::quiet_NaN(),
+  };
+
+  const auto result = LX_infra::offline::writeOfflineImageOutputs(request);
+  EXPECT(std::filesystem::exists(result.pngPath),
+         "NaN alpha image should still write PNG");
+}
+
 void testDirectoryOutUsesRenderBasename() {
   const std::filesystem::path dir = makeTempDir() / "nested";
   std::filesystem::create_directories(dir);
@@ -155,6 +173,7 @@ void testExplicitOutputPathOverridesOutputProfileOutDir() {
 int main() {
   testToneMappingMatchesAcesPreview();
   testWritesExrPngJsonAndRaw();
+  testWritesPngWithNanAlpha();
   testDirectoryOutUsesRenderBasename();
   testDefaultOutUsesOutputProfileOutDir();
   testExplicitOutputPathOverridesOutputProfileOutDir();
