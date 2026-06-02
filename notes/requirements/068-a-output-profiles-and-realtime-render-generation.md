@@ -408,3 +408,12 @@ realtime/offline 对比所使用的基础 shader 公式 SHALL 共享语义。
 1. schema / CLI / scene assets migration：完成 `outputProfiles`、`offlineRender.maxBounce`、CLI override 和旧 schema fail-fast。
 2. editor realtime profile output：先拆分 command 注册文件，再实现 `realtime-render ls/run`、Codex-callable CLI/API 和三路输出。
 3. realtime/offline comparison：增加受控对比 scene、shadow toggle / feature override、EXR compare helper，并把它纳入本地验证流程。
+
+## 当前实施状态
+
+- 已完成 `outputProfiles` schema、scene migration、offline CLI `--profile` / `--max-bounce`、旧 `--max-depth` 拒绝和旧 `offlineRender.profiles` fail-fast。
+- 已完成 editor command 拆分，以及 `realtime-render ls` / `realtime-render run <profile>` 命令。
+- 已完成 realtime profile offscreen generation 的首版输出：`render-linear.exr`、`render-cpu_srgb.png` 和 `render.json`。
+- 已完成 Codex-callable 本地 wrapper：`src/tools/lxe_realtime_render/lxe_realtime_render.py`。该入口启动本机 `lxe_editor --api-enable`，导入 scene，执行 `realtime-render run <profile>`，校验输出文件和 metadata，然后关闭它启动的 editor 进程。
+- 尚未完成 realtime `pipeline_srgb.png` readback；当前 metadata 中 `pipelineSrgbStatus` 标记为 unavailable。
+- 尚未完成 realtime/offline EXR 数值对比工具和受控对比 scene；后续应继续完成 T8。

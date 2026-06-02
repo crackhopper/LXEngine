@@ -1,1 +1,2 @@
 add_subdirectory(lxe_offline_render)
+add_subdirectory(lxe_realtime_render)
