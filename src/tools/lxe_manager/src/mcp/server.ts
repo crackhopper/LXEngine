@@ -55,6 +55,15 @@ interface EditorOpsSurface {
   restart: () => Promise<unknown>;
   status: () => Promise<unknown>;
   logs: () => Promise<unknown>;
+  configureWindow: (input: {
+    key: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    maximized?: boolean;
+    uiFontScale?: number;
+  }) => Promise<unknown>;
 }
 
 interface WorkspaceOpsSurface {
@@ -216,6 +225,18 @@ export function createToolHandlers(input: {
     "ops.editor_restart": async () => jsonText(await input.editorOps.restart()),
     "ops.editor_status": async () => jsonText(await input.editorOps.status()),
     "ops.editor_logs": async () => jsonText(await input.editorOps.logs()),
+    "ops.editor_configure_window": async (args) =>
+      jsonText(
+        await input.editorOps.configureWindow({
+          key: readString(args, "key"),
+          x: readNumber(args, "x"),
+          y: readNumber(args, "y"),
+          width: readNumber(args, "width"),
+          height: readNumber(args, "height"),
+          maximized: optionalBoolean(args, "maximized"),
+          uiFontScale: optionalNumber(args, "uiFontScale"),
+        }),
+      ),
     "ops.manager_restart": async () => {
       if (!input.managerOps) {
         return errorText(

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdtempSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
@@ -222,6 +222,37 @@ describe("editor ops", () => {
     } finally {
       await close(server);
     }
+  });
+
+  it("writes stopped-editor window configuration to editor_config.yaml", async () => {
+    const fixture = tempConfig();
+    const supervisor = {
+      isProcessRunning: vi.fn(() => false),
+    } as unknown as ProcessSupervisor;
+    const ops = new EditorOps(supervisor, fixture.config);
+
+    const result = await ops.configureWindow({
+      key: "sdl:0:Display:2560x1368:1.50",
+      x: 80,
+      y: 60,
+      width: 1280,
+      height: 820,
+      maximized: false,
+      uiFontScale: 1,
+    });
+
+    const document = JSON.parse(readFileSync(result.path, "utf8"));
+    expect(document.version).toBe(2);
+    expect(document.activeDisplay).toBe("sdl:0:Display:2560x1368:1.50");
+    expect(document.displayProfiles[0].overrides.window).toEqual({
+      x: 80,
+      y: 60,
+      width: 1280,
+      height: 820,
+      maximized: false,
+    });
+    expect(document.displayProfiles[0].overrides.layout.windows.length).toBeGreaterThan(0);
+    expect(document.displayProfiles[0].overrides.preferences.uiFontScale).toBe(1);
   });
 
   it("does not fall back to captured detached logs when editor log file is missing", async () => {

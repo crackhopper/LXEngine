@@ -1,7 +1,7 @@
 import type { ManagerConfig } from "../config.js";
 import type { ProcessSupervisor } from "../process/process-supervisor.js";
 import { discoverReachableEditorClientConfig } from "../editor/runtime-state.js";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 export interface EditorStatus {
@@ -11,6 +11,25 @@ export interface EditorStatus {
 
 export interface EditorLogs {
   text: string;
+  message: string;
+}
+
+export interface EditorWindowConfigInput {
+  key: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  maximized?: boolean;
+  uiFontScale?: number;
+}
+
+export interface EditorWindowConfigResult {
+  ok: boolean;
+  path: string;
+  key: string;
+  window: Required<Omit<EditorWindowConfigInput, "key" | "uiFontScale">>;
+  uiFontScale: number;
   message: string;
 }
 
@@ -127,6 +146,61 @@ export class EditorOps {
     };
   }
 
+  async configureWindow(
+    input: EditorWindowConfigInput,
+  ): Promise<EditorWindowConfigResult> {
+    const configPath = path.join(
+      this.config.runtimeRoot,
+      "data",
+      "lxe_editor",
+      "editor_config.yaml",
+    );
+    const window = {
+      x: input.x,
+      y: input.y,
+      width: input.width,
+      height: input.height,
+      maximized: input.maximized ?? false,
+    };
+    const uiFontScale = input.uiFontScale ?? 1.0;
+    const document = {
+      version: 2,
+      activeDisplay: input.key,
+      displayDefault: {
+        version: 1,
+        layout: { windows: [] },
+        preferences: { uiFontScale: 1.0 },
+      },
+      displayProfiles: [
+        {
+          key: input.key,
+          label: input.key,
+          available: false,
+          overrides: {
+            window,
+            layout: {
+              windows: defaultCompactLayout(),
+            },
+            preferences: { uiFontScale },
+          },
+        },
+      ],
+    };
+
+    mkdirSync(path.dirname(configPath), { recursive: true });
+    writeFileSync(configPath, `${JSON.stringify(document, null, 2)}\n`, "utf8");
+
+    return {
+      ok: true,
+      path: configPath,
+      key: input.key,
+      window,
+      uiFontScale,
+      message:
+        "editor_config.yaml was written; restart lxe_editor to apply native window placement",
+    };
+  }
+
   private async resolveReachableEditorPid(): Promise<number | undefined> {
     if (this.editorPid && this.supervisor.isProcessRunning(this.editorPid)) {
       return this.editorPid;
@@ -176,4 +250,80 @@ export class EditorOps {
     }
     return { running: false };
   }
+}
+
+function defaultCompactLayout(): Array<{
+  id: string;
+  visible?: boolean;
+  collapsed?: boolean;
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+}> {
+  return [
+    {
+      id: "Builtin Assets",
+      visible: true,
+      collapsed: true,
+      x: 10,
+      y: 40,
+      width: 320,
+      height: 21,
+    },
+    {
+      id: "Command Console",
+      visible: true,
+      collapsed: false,
+      x: 12,
+      y: 72,
+      width: 390,
+      height: 360,
+    },
+    {
+      id: "Help",
+      visible: true,
+      collapsed: true,
+      x: 900,
+      y: 710,
+      width: 360,
+      height: 21,
+    },
+    {
+      id: "Inspector",
+      visible: true,
+      collapsed: false,
+      x: 900,
+      y: 80,
+      width: 360,
+      height: 620,
+    },
+    {
+      id: "Scene Tree",
+      visible: true,
+      collapsed: false,
+      x: 12,
+      y: 450,
+      width: 420,
+      height: 280,
+    },
+    {
+      id: "Stats",
+      visible: true,
+      collapsed: false,
+      x: 900,
+      y: 20,
+      width: 360,
+      height: 60,
+    },
+    {
+      id: "Toolbar",
+      visible: true,
+      collapsed: true,
+      x: 450,
+      y: 710,
+      width: 420,
+      height: 21,
+    },
+  ];
 }

@@ -88,6 +88,7 @@ describe("mcp tool handlers", () => {
         restart: vi.fn(async () => ({ running: true, pid: 456 })),
         status: vi.fn(async () => ({ running: true, pid: 123 })),
         logs: vi.fn(async () => ({ stdout: "", stderr: "" })),
+        configureWindow: vi.fn(async () => ({ ok: true })),
         ...overrides.editorOps,
       },
       editorClient: {
@@ -298,6 +299,7 @@ describe("mcp tool handlers", () => {
       "ops.build_configure",
       "ops.build_state",
       "ops.build_target",
+      "ops.editor_configure_window",
       "ops.editor_logs",
       "ops.editor_restart",
       "ops.editor_start",
@@ -415,6 +417,7 @@ describe("mcp tool handlers", () => {
     const stop = vi.fn(async () => ({ running: false }));
     const restart = vi.fn(async () => ({ running: true, pid: 654 }));
     const logs = vi.fn(async () => ({ stdout: "out", stderr: "err" }));
+    const configureWindow = vi.fn(async () => ({ ok: true }));
     const managerRestart = vi.fn(async () => ({
       accepted: true,
       message: "manager restart scheduled; reconnect to the MCP endpoint",
@@ -432,7 +435,7 @@ describe("mcp tool handlers", () => {
           command,
           waitFor,
         },
-        editorOps: { start, stop, restart, logs },
+        editorOps: { start, stop, restart, logs, configureWindow },
         managerOps: { restart: managerRestart },
         workspaceOps: { buildConfigure, buildTarget, buildState },
       }),
@@ -458,6 +461,15 @@ describe("mcp tool handlers", () => {
     await handlers["ops.editor_stop"]({});
     await handlers["ops.editor_restart"]({});
     await handlers["ops.editor_logs"]({});
+    await handlers["ops.editor_configure_window"]({
+      key: "desktop",
+      x: 80,
+      y: 60,
+      width: 1280,
+      height: 820,
+      maximized: false,
+      uiFontScale: 1,
+    });
     await expect(handlers["ops.manager_restart"]({})).resolves.toEqual({
       content: [
         {
@@ -481,6 +493,15 @@ describe("mcp tool handlers", () => {
     expect(stop).toHaveBeenCalledOnce();
     expect(restart).toHaveBeenCalledOnce();
     expect(logs).toHaveBeenCalledOnce();
+    expect(configureWindow).toHaveBeenCalledWith({
+      key: "desktop",
+      x: 80,
+      y: 60,
+      width: 1280,
+      height: 820,
+      maximized: false,
+      uiFontScale: 1,
+    });
     expect(managerRestart).toHaveBeenCalledOnce();
   });
 
