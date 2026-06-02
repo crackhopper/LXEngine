@@ -146,6 +146,16 @@ foreach(TEST_EXE ${TEST_INTEGRATION_EXE_LIST})
   # )
 endforeach()
 
+set(LXE_EDITOR_COMMAND_SOURCES
+  ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/commands/display_commands.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/commands/lxe_editor_command_helpers.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/commands/project_commands.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/commands/realtime_render_commands.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/commands/recording_commands.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/commands/render_debug_commands.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/commands/scene_project_commands.cpp
+)
+
 # SDL input test needs USE_SDL define and SDL3 headers
 if(USE_SDL AND TARGET test_sdl_input)
   target_compile_definitions(test_sdl_input PRIVATE USE_SDL=1)
@@ -172,6 +182,7 @@ if(TARGET test_command_bus)
   target_sources(test_command_bus PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_interaction_controller.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_commands.cpp
+    ${LXE_EDITOR_COMMAND_SOURCES}
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/recording_controller.cpp
   )
   target_include_directories(test_command_bus PRIVATE
@@ -254,6 +265,7 @@ if(TARGET test_lxe_editor_session)
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_data_state.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_scene_state.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_commands.cpp
+    ${LXE_EDITOR_COMMAND_SOURCES}
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/project_catalog.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/project_document.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/project_session.cpp
@@ -277,6 +289,7 @@ if(TARGET test_lxe_editor_api_service)
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_api_service.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/api_token_state.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_commands.cpp
+    ${LXE_EDITOR_COMMAND_SOURCES}
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/recording_controller.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_interaction_controller.cpp
   )
@@ -315,6 +328,7 @@ if(TARGET test_lxe_editor_memory_probe)
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_data_state.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_scene_state.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_commands.cpp
+    ${LXE_EDITOR_COMMAND_SOURCES}
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/project_catalog.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/project_document.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/project_session.cpp

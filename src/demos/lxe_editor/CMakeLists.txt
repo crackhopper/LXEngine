@@ -25,6 +25,13 @@ add_executable(lxe_editor
   scene_interaction_controller.cpp
   scene_input_routing.cpp
   scene_view_rect.cpp
+  commands/display_commands.cpp
+  commands/lxe_editor_command_helpers.cpp
+  commands/project_commands.cpp
+  commands/realtime_render_commands.cpp
+  commands/recording_commands.cpp
+  commands/render_debug_commands.cpp
+  commands/scene_project_commands.cpp
   lxe_editor_commands.cpp
   scene_runtime.cpp
   ui_overlay.cpp
