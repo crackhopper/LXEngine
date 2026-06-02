@@ -27,12 +27,13 @@ void testRaySceneUsesSharedIndexedResourcesAndBuildsBvh() {
       LX_infra::offline::OfflineAssetResolver(scenePath)};
   const auto scene = compiler.compileFile(scenePath, "/game_cam");
 
-  LX_core::offline::OfflineRenderProfile profile;
-  profile.width = 64;
-  profile.height = 64;
-  profile.samples = 1;
+  LX_core::offline::OutputProfile output;
+  output.width = 64;
+  output.height = 64;
+  LX_core::offline::OfflineRenderSettings offline;
+  offline.samples = 1;
   LX_core::offline::OfflineRaySceneBuilder sceneBuilder;
-  auto rayScene = sceneBuilder.build(scene, profile);
+  auto rayScene = sceneBuilder.build(scene, output, offline);
 
   EXPECT(!rayScene.vertices.empty(), "ray scene should contain shared vertices");
   EXPECT(!rayScene.indices.empty(), "ray scene should contain shared indices");
@@ -72,7 +73,7 @@ void testRayLayoutContract() {
          "OfflineMaterialRecord std430 contract should stay stable");
   EXPECT(sizeof(LX_core::offline::OfflineBvhNode) == 32,
          "OfflineBvhNode std430 contract should stay stable");
-  EXPECT(sizeof(LX_core::offline::OfflineSceneParams) == 128,
+  EXPECT(sizeof(LX_core::offline::OfflineSceneParams) == 144,
          "OfflineSceneParams std430 contract should stay stable");
 }
 
@@ -92,11 +93,12 @@ void testIndexedVertexNormalsArePreserved() {
   });
   scene.instances.push_back(LX_core::offline::OfflineInstanceIR{});
 
-  LX_core::offline::OfflineRenderProfile profile;
-  profile.width = 16;
-  profile.height = 16;
+  LX_core::offline::OutputProfile output;
+  output.width = 16;
+  output.height = 16;
   LX_core::offline::OfflineRaySceneBuilder builder;
-  const auto rayScene = builder.build(scene, profile);
+  const auto rayScene =
+      builder.build(scene, output, LX_core::offline::OfflineRenderSettings{});
 
   EXPECT(rayScene.vertices.size() == 3,
          "single triangle should keep three shared vertex records");

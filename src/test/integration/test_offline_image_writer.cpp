@@ -54,16 +54,16 @@ void testWritesExrPngJsonAndRaw() {
   const std::filesystem::path dir = makeTempDir();
   LX_infra::offline::OfflineImageOutputRequest request;
   request.scenePath = "assets/scenes/ibl_metal_sphere.scene.yaml";
-  request.profileName = "mvp";
   request.buildInfo = "test-binary 0.1.0-dev (test-dirty, Debug, Linux-x86_64)";
   request.job.outputPath = dir / "beauty";
   request.job.scene.name = "writer_test";
-  request.job.cameraPath = "/game_cam";
-  request.job.profile.width = 2;
-  request.job.profile.height = 2;
-  request.job.profile.samples = 4;
-  request.job.profile.maxDepth = 2;
-  request.job.profile.seed = 9;
+  request.job.profileName = "mvp";
+  request.job.output.cameraPath = "/game_cam";
+  request.job.output.width = 2;
+  request.job.output.height = 2;
+  request.job.offline.samples = 4;
+  request.job.offline.maxBounce = 2;
+  request.job.offline.seed = 9;
   request.image.width = 2;
   request.image.height = 2;
   request.image.rgba = {
@@ -92,6 +92,8 @@ void testWritesExrPngJsonAndRaw() {
          "metadata should describe EXR storage");
   EXPECT(text.find("\"toneMapping\": \"aces\"") != std::string::npos,
          "metadata should describe PNG tone mapping");
+  EXPECT(text.find("\"profile\": \"mvp\"") != std::string::npos,
+         "metadata should record job profile name");
   EXPECT(text.find("\"buildInfo\": \"test-binary 0.1.0-dev") !=
              std::string::npos,
          "metadata should record composed build info string");
@@ -102,8 +104,8 @@ void testDirectoryOutUsesRenderBasename() {
   std::filesystem::create_directories(dir);
   LX_infra::offline::OfflineImageOutputRequest request;
   request.job.outputPath = dir;
-  request.job.profile.width = 1;
-  request.job.profile.height = 1;
+  request.job.output.width = 1;
+  request.job.output.height = 1;
   request.image.width = 1;
   request.image.height = 1;
   request.image.rgba = {0.0f, 0.0f, 0.0f, 1.0f};
@@ -115,12 +117,47 @@ void testDirectoryOutUsesRenderBasename() {
          "directory output uses render.png");
 }
 
+void testDefaultOutUsesOutputProfileOutDir() {
+  const std::filesystem::path outDir = makeTempDir() / "profile_out";
+  LX_infra::offline::OfflineImageOutputRequest request;
+  request.job.scene.name = "writer_test";
+  request.job.profileName = "mvp";
+  request.job.output.outDir = outDir;
+  request.job.output.width = 1;
+  request.job.output.height = 1;
+  request.image.width = 1;
+  request.image.height = 1;
+  request.image.rgba = {0.0f, 0.0f, 0.0f, 1.0f};
+
+  const auto result = LX_infra::offline::writeOfflineImageOutputs(request);
+  EXPECT(result.exrPath == outDir / "render.exr",
+         "default output path should use output profile outDir");
+}
+
+void testExplicitOutputPathOverridesOutputProfileOutDir() {
+  const std::filesystem::path dir = makeTempDir() / "override";
+  LX_infra::offline::OfflineImageOutputRequest request;
+  request.job.outputPath = dir / "beauty.png";
+  request.job.output.outDir = "artifacts/offline/mvp";
+  request.job.output.width = 1;
+  request.job.output.height = 1;
+  request.image.width = 1;
+  request.image.height = 1;
+  request.image.rgba = {0.0f, 0.0f, 0.0f, 1.0f};
+
+  const auto result = LX_infra::offline::writeOfflineImageOutputs(request);
+  EXPECT(result.exrPath == dir / "beauty.exr",
+         "explicit output path should override output profile outDir");
+}
+
 } // namespace
 
 int main() {
   testToneMappingMatchesAcesPreview();
   testWritesExrPngJsonAndRaw();
   testDirectoryOutUsesRenderBasename();
+  testDefaultOutUsesOutputProfileOutDir();
+  testExplicitOutputPathOverridesOutputProfileOutDir();
   if (failures != 0) {
     std::cerr << "test_offline_image_writer failed with " << failures
               << " failure(s)\n";

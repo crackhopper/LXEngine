@@ -19,7 +19,6 @@ struct OfflineImageOutputRequest final {
   LX_core::offline::OfflineRenderJob job;
   LX_core::offline::OfflineReadbackImage image;
   std::filesystem::path scenePath;
-  std::string profileName;
   std::string buildInfo = "unknown";
   OfflineToneMappingSettings toneMapping;
   bool writeRawRgba32f = true;

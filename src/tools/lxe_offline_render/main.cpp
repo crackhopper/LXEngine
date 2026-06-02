@@ -17,18 +17,22 @@
 
 namespace {
 
+[[nodiscard]] constexpr const char *usageText() {
+  return "usage: lxe_offline_render --scene SCENE "
+         "[--profile NAME] [--width N] [--height N] [--samples N] "
+         "[--max-bounce N] [--seed N] [--out PATH] [--version]";
+}
+
+[[nodiscard]] bool hasHelpArg(const std::vector<std::string> &args) {
+  return std::find(args.begin(), args.end(), "--help") != args.end() ||
+         std::find(args.begin(), args.end(), "-h") != args.end();
+}
+
 [[nodiscard]] std::vector<std::string> collectArgs(int argc, char **argv) {
   std::vector<std::string> args;
   args.reserve(static_cast<usize>(std::max(argc - 1, 0)));
   for (int i = 1; i < argc; ++i) {
-    const std::string arg = argv[i];
-    if (arg == "--help" || arg == "-h") {
-      throw std::runtime_error(
-          "usage: lxe_offline_render --scene SCENE [--camera PATH] "
-          "[--profile NAME] [--width N] [--height N] [--samples N] "
-          "[--max-depth N] [--seed N] [--out PATH] [--version]");
-    }
-    args.push_back(arg);
+    args.push_back(argv[i]);
   }
   return args;
 }
@@ -38,6 +42,10 @@ namespace {
 int main(int argc, char **argv) {
   try {
     const std::vector<std::string> rawArgs = collectArgs(argc, argv);
+    if (hasHelpArg(rawArgs)) {
+      std::cout << usageText() << '\n';
+      return 0;
+    }
     const std::string buildInfo =
         LX_infra::currentBuildInfoString("lxe_offline_render");
     if (std::find(rawArgs.begin(), rawArgs.end(), "--version") !=
@@ -48,25 +56,26 @@ int main(int argc, char **argv) {
     const auto args =
         LX_tools::offline_render::parseOfflineRenderCliArguments(rawArgs);
     const auto document = LX_infra::scene_io::loadSceneDocument(args.scenePath);
-    LX_core::offline::OfflineRenderProfiles profiles =
-        document.hasOfflineRenderProfiles()
-            ? document.offlineRenderProfiles()
-            : LX_core::offline::makeDefaultOfflineRenderProfiles();
-    auto resolved =
-        LX_core::offline::resolveOfflineRenderProfile(profiles, args.overrides);
+    const auto profiles =
+        document.hasRenderProfileDocument()
+            ? document.renderProfileDocument()
+            : LX_core::offline::makeDefaultRenderProfileDocument();
+    const auto resolved =
+        LX_core::offline::resolveRenderProfileDocument(profiles, args.overrides);
 
     LX_infra::offline::OfflineAssetResolver resolver(args.scenePath);
     LX_infra::offline::OfflineSceneCompiler compiler(resolver);
-    auto scene = compiler.compile(document, args.cameraPath);
+    auto scene = compiler.compile(document, resolved.output.cameraPath);
     for (const auto &warning : scene.warnings) {
       std::cerr << "[offline warning] " << warning << '\n';
     }
 
     LX_core::offline::OfflineRenderJob job;
     job.scene = std::move(scene);
-    job.profile = resolved.profile;
+    job.output = resolved.output;
+    job.offline = resolved.offline;
+    job.profileName = resolved.profileName;
     job.outputPath = resolved.outputPath.value_or("");
-    job.cameraPath = args.cameraPath;
 
     LX_core::backend::offline::VulkanOfflineRenderer renderer;
     const auto image = renderer.render(job);
@@ -82,7 +91,6 @@ int main(int argc, char **argv) {
     outputRequest.job = job;
     outputRequest.image = image;
     outputRequest.scenePath = args.scenePath;
-    outputRequest.profileName = resolved.profileName;
     outputRequest.buildInfo = buildInfo;
     const auto outputs =
         LX_infra::offline::writeOfflineImageOutputs(outputRequest);
@@ -90,7 +98,7 @@ int main(int argc, char **argv) {
         (static_cast<usize>(image.height / 2) * image.width + image.width / 2) *
         4;
     std::cout << "lxe_offline_render completed " << image.width << "x"
-              << image.height << " samples=" << job.profile.samples
+              << image.height << " samples=" << job.offline.samples
               << " center=(" << image.rgba[center + 0] << ", "
               << image.rgba[center + 1] << ", " << image.rgba[center + 2]
               << ") exr=" << outputs.exrPath.string()

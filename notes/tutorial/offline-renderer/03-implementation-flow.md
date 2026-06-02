@@ -8,7 +8,7 @@ Offline renderer 像一条离线实验流水线：editor 产出场景说明书�
 |---|---|---|---|
 | CLI 参数 | `src/tools/lxe_offline_render/offline_render_cli.*` | `--scene` / `--profile` / overrides | `OfflineRenderCliOptions` |
 | Scene 读取 | `src/infra/scene_io/scene_document.*` | `.scene.yaml` | `SceneDocument` |
-| Profile 选择 | `src/core/offline/offline_render_profile.*` | `scene.offlineRender` + CLI overrides | `ResolvedOfflineRenderProfile` |
+| Profile 选择 | `src/core/offline/offline_render_profile.*` | `scene.outputProfiles` + `scene.offlineRender` + CLI overrides | `ResolvedRenderProfile` |
 | IR 编译 | `src/infra/offline/offline_scene_compiler.*` | `SceneDocument` | `OfflineSceneIR` |
 | Ray scene 打包 | `src/core/offline/offline_ray_scene.*` | `OfflineSceneIR` + `SceneResourceTable` snapshot | vertex/index/mesh/primitive/object/material/params buffers |
 | BVH 构建 | `src/core/offline/offline_ray_scene.*` | primitive buffer + shared vertex/index | `OfflineBvhNode` + reordered primitives |
@@ -30,11 +30,11 @@ Offline renderer 像一条离线实验流水线：editor 产出场景说明书�
 
 ## SceneDocument 到 OfflineSceneIR
 
-`OfflineSceneCompiler` 的任务是“裁剪”：实时 scene 文档包含 editor camera、节点层级、可见性、mesh/material URI、light 和 environment。离线 renderer 不需要 editor 操作状态，也不需要 realtime draw item，所以 compiler 把可离线计算的字段整理进 `OfflineSceneIR`。
+`OfflineSceneCompiler` 的任务是“裁剪”：实时 scene 文档包含 editor camera、节点层级、可见性、mesh/material URI、light 和 environment。离线 renderer 不需要 editor 操作状态，也不需要 realtime draw item，所以 compiler 使用被选中 `OutputProfile.cameraPath` 找到离线相机，并把可离线计算的字段整理进 `OfflineSceneIR`。
 
 | Scene 文档信息 | Offline IR |
 |---|---|
-| `scene.gameplayCameraPath` / `--camera` | `OfflineCameraIR` |
+| selected `OutputProfile.cameraPath` | `OfflineCameraIR` |
 | mesh node + transform | `OfflineInstanceIR` + `OfflineMeshIR` |
 | material URI / fallback parameters | `OfflineMaterialIR` |
 | directional light | `OfflineDirectionalLightIR` |
@@ -90,7 +90,7 @@ Offline renderer 像一条离线实验流水线：editor 产出场景说明书�
 |---|---|
 | `job` | scene/profile/camera/output path |
 | `image` | Vulkan readback 得到的线性 RGBA float |
-| `scenePath` / `profileName` | metadata 复现信息 |
+| `scenePath` / `job.profileName` | metadata 复现信息 |
 | `buildInfo` | 合成后的二进制版本标签 |
 | `toneMapping` | PNG preview 的 exposure、mode、gamma |
 

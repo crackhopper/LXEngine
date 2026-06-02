@@ -45,7 +45,7 @@ src/tools/lxe_offline_render/offline_render_cli.hpp
 src/tools/lxe_offline_render/offline_render_cli.cpp
 ```
 
-`offline_render_cli.cpp` 只做命令行解析。它把 `--scene`、`--profile`、`--width`、`--height`、`--samples`、`--max-depth`、`--seed` 和 `--out` 整理进 `OfflineRenderCliOptions`。这里不读 mesh，不创建 Vulkan，也不写 EXR。
+`offline_render_cli.cpp` 只做命令行解析。它把 `--scene`、`--profile`、`--width`、`--height`、`--samples`、`--max-bounce`、`--seed` 和 `--out` 整理进 `OfflineRenderCliOptions`。这里不读 mesh，不创建 Vulkan，也不写 EXR。
 
 `main.cpp` 是编排层。它的阅读重点是调用顺序：
 
@@ -53,7 +53,7 @@ src/tools/lxe_offline_render/offline_render_cli.cpp
 |---|---|---|
 | `parseOfflineRenderCliArguments()` | 把命令行变成结构化 overrides | `offline_render_cli.cpp` |
 | `loadSceneDocument()` | 把 `.scene.yaml` 读成 scene 文档 | `src/infra/scene_io/scene_document.*` |
-| `resolveOfflineRenderProfile()` | 合并 scene profile 和 CLI overrides | `src/core/offline/offline_render_profile.*` |
+| `resolveRenderProfileDocument()` | 合并 scene output profile、offline settings 和 CLI overrides | `src/core/offline/offline_render_profile.*` |
 | `compiler.compile()` | 把 scene 文档裁剪成离线 IR | `offline_scene_compiler.cpp` |
 | `renderer.render()` | 执行 headless Vulkan compute | `vulkan_offline_renderer.cpp` |
 | `writeOfflineImageOutputs()` | 写 EXR / PNG / JSON / raw | `offline_image_writer.cpp` |
@@ -77,9 +77,10 @@ src/infra/offline/offline_scene_compiler.cpp
 
 | YAML 字段 | 当前进入哪里 | 说明 |
 |---|---|---|
-| `scene.gameplayCameraPath` | `OfflineSceneIR.cameraPath` | 没传 `--camera` 时选择默认相机 |
+| selected `OutputProfile.cameraPath` | `OfflineSceneIR.cameraPath` | `--profile` 选择 output profile 后，相机从 profile 进入 compiler |
 | `scene.environment` | `OfflineEnvironmentIR` | 当前 shader 用环境强度和程序化天空色；HDR 纹理采样还没接入 |
-| `scene.offlineRender.profiles` | `OfflineRenderProfile` | 宽高、samples、maxDepth、seed、outputFormat |
+| `scene.outputProfiles` | `OutputProfile` | 相机、宽高、outputFormat、outDir |
+| `scene.offlineRender` | `OfflineRenderSettings` | integrator、samples、maxBounce、seed、profile、shadows |
 | camera node `transform` + `camera` 参数 | `OfflineCameraIR` | transform 推导 eye/forward/up，camera 提供 fov、aspect、near/far |
 | `mesh.uri` | `OfflineMeshIR` + `OfflineInstanceIR` | 当前 MVP 支持内置 plane / sphere |
 | `material.uri` + overrides | `OfflineMaterialIR` | baseColor、metallic、roughness、emissive |
@@ -118,7 +119,7 @@ src/test/integration/test_offline_gpu_scene.cpp
 | `OfflinePrimitiveRecord` | `PrimitiveRecord` | index offset、mesh/material/object index |
 | `OfflineObjectRecord` | `ObjectRecord` | object/world transform、bounds、visibility |
 | `OfflineMaterialRecord` | `Material` | baseColor、metallic、roughness、emissive |
-| `OfflineSceneParams` | `ParamsBuffer` | 相机 basis、尺寸、samples、seed、光照和环境参数 |
+| `OfflineSceneParams` | `ParamsBuffer` | 相机 basis、尺寸、samples、seed、maxBounce、shadow 开关、光照和环境参数 |
 
 读 `OfflineRaySceneBuilder::build()` 时，关注四件事：
 

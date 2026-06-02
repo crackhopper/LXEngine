@@ -84,7 +84,11 @@ layout(std430, binding = 7) readonly buffer ParamsBuffer {
   uint primitiveCount;
   uint bvhNodeCount;
   uint materialCount;
+  uint maxBounce;
+  uint shadowsEnabled;
   uint pad0;
+  uint pad1;
+  uint pad2;
 } params;
 
 layout(std430, binding = 8) writeonly buffer OutputBuffer {
@@ -254,7 +258,8 @@ vec3 shade(vec3 origin, vec3 dir) {
   float shadowT;
   vec3 shadowN;
   uint shadowMat;
-  bool occluded = traceScene(hitPos + normal * 0.002, toLight, 1.0e30,
+  bool occluded = params.shadowsEnabled != 0u &&
+                  traceScene(hitPos + normal * 0.002, toLight, 1.0e30,
                              shadowT, shadowN, shadowMat);
   float visibility = occluded ? 0.0 : 1.0;
 

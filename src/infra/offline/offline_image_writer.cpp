@@ -74,12 +74,11 @@ namespace {
 
 [[nodiscard]] std::filesystem::path makeDefaultBasePath(
     const OfflineImageOutputRequest &request) {
-  const std::string sceneName =
-      request.job.scene.name.empty() ? "scene" : request.job.scene.name;
-  const std::string profileName =
-      request.profileName.empty() ? "profile" : request.profileName;
-  return std::filesystem::path("artifacts") / "offline" / sceneName /
-         profileName / "render";
+  const std::filesystem::path outDir =
+      request.job.output.outDir.empty()
+          ? std::filesystem::path("artifacts")
+          : request.job.output.outDir;
+  return outDir / "render";
 }
 
 [[nodiscard]] std::filesystem::path resolveBasePath(
@@ -168,14 +167,17 @@ void writeMetadata(const std::filesystem::path &path,
   stream << "{\n";
   stream << "  \"scenePath\": \"" << jsonEscape(request.scenePath.string()) << "\",\n";
   stream << "  \"sceneName\": \"" << jsonEscape(request.job.scene.name) << "\",\n";
-  stream << "  \"cameraPath\": \"" << jsonEscape(request.job.cameraPath) << "\",\n";
-  stream << "  \"profile\": \"" << jsonEscape(request.profileName) << "\",\n";
+  stream << "  \"cameraPath\": \""
+         << jsonEscape(request.job.output.cameraPath) << "\",\n";
+  stream << "  \"profile\": \""
+         << jsonEscape(request.job.profileName) << "\",\n";
   stream << "  \"width\": " << request.image.width << ",\n";
   stream << "  \"height\": " << request.image.height << ",\n";
-  stream << "  \"samples\": " << request.job.profile.samples << ",\n";
-  stream << "  \"maxDepth\": " << request.job.profile.maxDepth << ",\n";
-  stream << "  \"seed\": " << request.job.profile.seed << ",\n";
-  stream << "  \"outputFormat\": \"" << jsonEscape(request.job.profile.outputFormat) << "\",\n";
+  stream << "  \"samples\": " << request.job.offline.samples << ",\n";
+  stream << "  \"maxBounce\": " << request.job.offline.maxBounce << ",\n";
+  stream << "  \"seed\": " << request.job.offline.seed << ",\n";
+  stream << "  \"outputFormat\": \""
+         << jsonEscape(request.job.output.outputFormat) << "\",\n";
   stream << "  \"exrStorage\": \"rgba-half-scene-linear\",\n";
   stream << "  \"pngPreview\": {\n";
   stream << "    \"toneMapping\": \"" << modeName(request.toneMapping.mode) << "\",\n";

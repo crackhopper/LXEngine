@@ -45,7 +45,8 @@ parseOfflineRenderCliArguments(const std::vector<std::string> &args) {
     if (arg == "--scene") {
       options.scenePath = requireValue(args, i, arg);
     } else if (arg == "--camera") {
-      options.cameraPath = requireValue(args, i, arg);
+      throw std::runtime_error(
+          "--camera was removed; select the camera through --profile");
     } else if (arg == "--profile") {
       options.overrides.profileName = requireValue(args, i, arg);
     } else if (arg == "--width") {
@@ -57,9 +58,12 @@ parseOfflineRenderCliArguments(const std::vector<std::string> &args) {
     } else if (arg == "--samples") {
       options.overrides.samples =
           parsePositiveU32(requireValue(args, i, arg), arg);
-    } else if (arg == "--max-depth") {
-      options.overrides.maxDepth =
+    } else if (arg == "--max-bounce") {
+      options.overrides.maxBounce =
           parsePositiveU32(requireValue(args, i, arg), arg);
+    } else if (arg == "--max-depth") {
+      throw std::runtime_error(
+          "--max-depth was removed; use --max-bounce instead");
     } else if (arg == "--seed") {
       options.overrides.seed =
           parsePositiveU32(requireValue(args, i, arg), arg);
@@ -75,16 +79,16 @@ parseOfflineRenderCliArguments(const std::vector<std::string> &args) {
   return options;
 }
 
-LX_core::offline::ResolvedOfflineRenderProfile
-loadResolvedOfflineRenderProfile(const OfflineRenderCliOptions &options) {
+LX_core::offline::ResolvedRenderProfile
+loadResolvedRenderProfile(const OfflineRenderCliOptions &options) {
   const LX_infra::scene_io::SceneDocument document =
       LX_infra::scene_io::loadSceneDocument(options.scenePath);
-  const LX_core::offline::OfflineRenderProfiles profiles =
-      document.hasOfflineRenderProfiles()
-          ? document.offlineRenderProfiles()
-          : LX_core::offline::OfflineRenderProfiles{};
-  return LX_core::offline::resolveOfflineRenderProfile(profiles,
-                                                       options.overrides);
+  const LX_core::offline::RenderProfileDocument profiles =
+      document.hasRenderProfileDocument()
+          ? document.renderProfileDocument()
+          : LX_core::offline::makeDefaultRenderProfileDocument();
+  return LX_core::offline::resolveRenderProfileDocument(profiles,
+                                                        options.overrides);
 }
 
 } // namespace LX_tools::offline_render

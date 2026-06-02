@@ -8,7 +8,7 @@
 
 ```bash
 cmake -S . -B build -G Ninja
-cmake --build build --target CompileShaders lxe_offline_render test_offline_image_writer test_offline_scene_compiler test_offline_gpu_scene test_vulkan_offline_renderer -j2
+cmake --build build --target CompileShaders lxe_offline_render test_offline_render_cli test_offline_image_writer test_offline_scene_compiler test_offline_gpu_scene test_vulkan_offline_renderer -j2
 ctest --test-dir build --output-on-failure -R 'test_offline_image_writer|test_offline_scene_compiler|test_offline_gpu_scene|test_vulkan_offline_renderer|test_offline_render_cli'
 ```
 
@@ -21,37 +21,37 @@ ctest --test-dir build --output-on-failure -R 'test_offline_image_writer|test_of
 | `test_offline_image_writer` | readback 能写成 EXR、PNG、JSON 和 raw dump |
 | `test_offline_render_cli` | CLI 参数和 profile override 行为稳定 |
 
-## Scene Profile 是实验参数单
+## Output Profile 是输出参数单
 
-`assets/scenes/ibl_metal_sphere.scene.yaml` 里有 `scene.offlineRender`。这段配置不会影响 editor 的实时视口，它只告诉离线 CLI 选择什么 backend、integrator、分辨率、采样数和输出格式。
+`assets/scenes/ibl_metal_sphere.scene.yaml` 里有 `scene.outputProfiles` 和单个 `scene.offlineRender`。这些配置不会影响 editor 的实时视口：`OutputProfile` 负责相机、分辨率、输出格式和 `outDir`，`OfflineRenderSettings` 负责 integrator、samples、maxBounce、seed 和 shadow 开关。CLI 的 `--profile` 选择一个 output profile；相机来自被选中的 output profile。
 
 ```yaml
 scene:
   gameplayCameraPath: /game_cam
+  defaultOutputProfile: preview   # -> CLI 不传 --profile 时使用
+  outputProfiles:
+    preview:                      # -> LX_core::offline::OutputProfile
+      camera: /game_cam
+      width: 512
+      height: 512
+      outputFormat: exr-png       # -> CLI 写 .exr / .png / .json / .rgba32f
+      outDir: artifacts/offline/preview
+    mvp:
+      camera: /game_cam
+      width: 1024
+      height: 576
+      outputFormat: exr-png
+      outDir: artifacts/offline/mvp
   offlineRender:                  # -> LX_core::offline::OfflineRenderSettings
-    defaultProfile: preview       # -> CLI 不传 --profile 时使用
-    profiles:
-      preview:
-        backend: vulkan-compute   # -> 当前唯一可执行 backend
-        integrator: primary-ray   # -> assets/shaders/glsl/offline_primary_ray.comp
-        width: 512
-        height: 512
-        samples: 1
-        maxDepth: 1
-        seed: 1
-        outputFormat: exr-png     # -> CLI 写 .exr / .png / .json / .rgba32f
-      reference:
-        backend: vulkan-compute
-        integrator: path-tracing  # -> 预留给后续 path tracing shader
-        width: 1920
-        height: 1080
-        samples: 64
-        maxDepth: 4
-        seed: 1
-        outputFormat: exr-png
+    integrator: primary-ray       # -> assets/shaders/glsl/offline_primary_ray.comp
+    samples: 1
+    maxBounce: 1
+    seed: 1
+    profile: preview
+    shadows: true
 ```
 
-CLI 参数可以覆盖 profile 中的宽高、samples 和输出路径。这样我们可以保留高质量 `reference` profile，同时在开发阶段用小图快速 smoke。
+CLI 参数可以覆盖被选中 output profile 的宽高，以及 `OfflineRenderSettings` 里的 samples、maxBounce、seed 和输出路径。`--out` 显式覆盖 profile 的 `outDir`；不传 `--out` 时，输出写到所选 `OutputProfile.outDir` 下的 `render.*`。
 
 ## 跑一次最小 Smoke
 
@@ -62,6 +62,7 @@ CLI 参数可以覆盖 profile 中的宽高、samples 和输出路径。这样�
   --samples 1 \
   --width 64 \
   --height 64 \
+  --max-bounce 1 \
   --out artifacts/offline/smoke
 ```
 
@@ -74,14 +75,14 @@ artifacts/offline/smoke.json
 artifacts/offline/smoke.rgba32f
 ```
 
-`.exr` 是主输出，保存 scene-linear HDR beauty RGBA；`.png` 是同一份 readback 经 ACES tone mapping 和 gamma 2.2 处理后的预览图；`.json` 记录 scene、profile、samples、max depth、seed、合成后的 `buildInfo` 和输出文件；`.rgba32f` 是调试格式，每个像素四个 32-bit float，顺序为 RGBA。
+`.exr` 是主输出，保存 scene-linear HDR beauty RGBA；`.png` 是同一份 readback 经 ACES tone mapping 和 gamma 2.2 处理后的预览图；`.json` 记录 scene、profile、samples、maxBounce、seed、合成后的 `buildInfo` 和输出文件；`.rgba32f` 是调试格式，每个像素四个 32-bit float，顺序为 RGBA。
 
 ## 数据流
 
 | 阶段 | 代码入口 | 输出 |
 |---|---|---|
 | 读取 scene | `LX_infra::scene_io::SceneDocument` | editor scene 文档 |
-| 选择 profile | `OfflineRenderProfile` | 宽高、samples、integrator 等参数 |
+| 选择 profile | `OutputProfile` + `OfflineRenderSettings` | 相机、宽高、输出目录、samples、integrator 等参数 |
 | 编译离线 IR | `LX_infra::offline::OfflineSceneCompiler` | `OfflineSceneIR` |
 | 资产解析 | `OfflineAssetResolver` | `builtin://` / `cache://` / project path 的本地路径 |
 | Ray scene 打包 | `OfflineRaySceneBuilder` | vertex、index、mesh、primitive、object、material、camera params buffer |

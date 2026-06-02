@@ -284,7 +284,7 @@ struct VulkanOfflineRenderer::Impl final {
 
     LX_core::offline::OfflineRaySceneBuilder sceneBuilder;
     LX_core::offline::OfflineRayScene rayScene =
-        sceneBuilder.build(job.scene, job.profile);
+        sceneBuilder.build(job.scene, job.output, job.offline);
 
     const VkBufferUsageFlags storageUsage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
     const VkMemoryPropertyFlags hostMemory =
@@ -324,8 +324,8 @@ struct VulkanOfflineRenderer::Impl final {
                              sizeof(LX_core::offline::OfflineSceneParams),
                              storageUsage, hostMemory);
     const VkDeviceSize outputSize =
-        static_cast<VkDeviceSize>(job.profile.width) *
-        static_cast<VkDeviceSize>(job.profile.height) * sizeof(Vec4f);
+        static_cast<VkDeviceSize>(job.output.width) *
+        static_cast<VkDeviceSize>(job.output.height) * sizeof(Vec4f);
     auto outputBuffer =
         VulkanBuffer::create(*device, outputSize, storageUsage, hostMemory);
 
@@ -391,8 +391,8 @@ struct VulkanOfflineRenderer::Impl final {
     vkCmdBindPipeline(cmd->getHandle(), VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
     vkCmdBindDescriptorSets(cmd->getHandle(), VK_PIPELINE_BIND_POINT_COMPUTE,
                             pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
-    vkCmdDispatch(cmd->getHandle(), (job.profile.width + 7) / 8,
-                  (job.profile.height + 7) / 8, 1);
+    vkCmdDispatch(cmd->getHandle(), (job.output.width + 7) / 8,
+                  (job.output.height + 7) / 8, 1);
     VkMemoryBarrier barrier{};
     barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
     barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
@@ -404,8 +404,8 @@ struct VulkanOfflineRenderer::Impl final {
                                           device->getGraphicsQueue());
 
     LX_core::offline::OfflineReadbackImage image;
-    image.width = job.profile.width;
-    image.height = job.profile.height;
+    image.width = job.output.width;
+    image.height = job.output.height;
     image.rgba.resize(image.pixelCount() * 4);
     void *mapped = outputBuffer->map();
     std::memcpy(image.rgba.data(), mapped,

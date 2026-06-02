@@ -238,7 +238,8 @@ u32 buildNode(OfflineRayScene &scene, u32 first, u32 count) {
 }
 
 [[nodiscard]] OfflineSceneParams buildParams(const OfflineSceneIR &scene,
-                                             const OfflineRenderProfile &profile,
+                                             const OutputProfile &output,
+                                             const OfflineRenderSettings &offline,
                                              u32 materialCount) {
   const auto &camera = scene.camera;
   Vec3f forward = (camera.target - camera.eye).normalized();
@@ -251,9 +252,9 @@ u32 buildNode(OfflineRayScene &scene, u32 first, u32 count) {
   }
   const Vec3f up = right.cross(forward).normalized();
   const float aspect =
-      profile.height == 0
+      output.height == 0
           ? camera.aspect
-          : static_cast<float>(profile.width) / static_cast<float>(profile.height);
+          : static_cast<float>(output.width) / static_cast<float>(output.height);
   const float tanHalfFov =
       std::tan(camera.fovYDegrees * (kPi / 180.0f) * 0.5f);
 
@@ -270,11 +271,13 @@ u32 buildNode(OfflineRayScene &scene, u32 first, u32 count) {
   params.lightColorEnvironment =
       Vec4f{light.color.x, light.color.y, light.color.z,
             scene.environment.enabled ? scene.environment.intensity : 0.35f};
-  params.width = profile.width;
-  params.height = profile.height;
-  params.samples = profile.samples;
-  params.seed = profile.seed;
+  params.width = output.width;
+  params.height = output.height;
+  params.samples = offline.samples;
+  params.seed = offline.seed;
   params.materialCount = materialCount;
+  params.maxBounce = offline.maxBounce;
+  params.shadowsEnabled = offline.shadows ? 1u : 0u;
   return params;
 }
 
@@ -291,7 +294,8 @@ void OfflineBvhBuilder::build(OfflineRayScene &scene) const {
 }
 
 OfflineRayScene OfflineRaySceneBuilder::build(
-    const OfflineSceneIR &scene, const OfflineRenderProfile &profile) const {
+    const OfflineSceneIR &scene, const OutputProfile &output,
+    const OfflineRenderSettings &offline) const {
   if (scene.materials.empty()) {
     throw std::runtime_error("offline ray scene requires at least one material");
   }
@@ -429,7 +433,8 @@ OfflineRayScene OfflineRaySceneBuilder::build(
     throw std::runtime_error("offline ray scene has no visible primitives");
   }
 
-  out.params = buildParams(scene, profile, static_cast<u32>(out.materials.size()));
+  out.params =
+      buildParams(scene, output, offline, static_cast<u32>(out.materials.size()));
   OfflineBvhBuilder{}.build(out);
   return out;
 }

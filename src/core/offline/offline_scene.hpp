@@ -91,9 +91,10 @@ struct OfflineSceneIR final {
 
 struct OfflineRenderJob final {
   OfflineSceneIR scene;
-  OfflineRenderProfile profile;
+  OutputProfile output;
+  OfflineRenderSettings offline;
+  std::string profileName;
   std::filesystem::path outputPath;
-  std::string cameraPath;
 };
 
 struct OfflineReadbackImage final {

@@ -61,7 +61,11 @@ struct alignas(16) OfflineSceneParams final {
   u32 primitiveCount = 0;
   u32 bvhNodeCount = 0;
   u32 materialCount = 0;
+  u32 maxBounce = 1;
+  u32 shadowsEnabled = 1;
   u32 pad0 = 0;
+  u32 pad1 = 0;
+  u32 pad2 = 0;
 };
 
 struct alignas(16) OfflineBvhNode final {
@@ -90,7 +94,8 @@ public:
 class OfflineRaySceneBuilder final {
 public:
   [[nodiscard]] OfflineRayScene build(const OfflineSceneIR &scene,
-                                      const OfflineRenderProfile &profile) const;
+                                      const OutputProfile &output,
+                                      const OfflineRenderSettings &offline) const;
 };
 
 static_assert(sizeof(OfflineVertexRecord) == 64);
@@ -98,7 +103,7 @@ static_assert(sizeof(OfflineMeshRecord) == 16);
 static_assert(sizeof(OfflinePrimitiveRecord) == 16);
 static_assert(sizeof(OfflineObjectRecord) == 176);
 static_assert(sizeof(OfflineMaterialRecord) == 48);
-static_assert(sizeof(OfflineSceneParams) == 128);
+static_assert(sizeof(OfflineSceneParams) == 144);
 static_assert(sizeof(OfflineBvhNode) == 32);
 
 } // namespace LX_core::offline

@@ -21,7 +21,7 @@
 
 | 层 | 当前文件 | 修改原因 |
 |---|---|---|
-| Profile | `src/core/offline/offline_render_profile.*` | 识别 `integrator: path-tracing`、`maxDepth`、`seed` 等参数 |
+| Profile | `src/core/offline/offline_render_profile.*` | 识别 `integrator: path-tracing`、`maxBounce`、`seed` 等参数 |
 | Scene IR | `src/core/offline/offline_scene.*` | 增加 path tracing 需要的材质、纹理、光源字段 |
 | Asset resolve | `src/infra/offline/offline_asset_resolver.*` | 把 `cache://`、HDR、texture 路径解析到本地文件 |
 | Scene compile | `src/infra/offline/offline_scene_compiler.*` | 从 scene YAML / material YAML 收集离线材质数据 |
@@ -86,7 +86,7 @@ vec3 tracePath(vec3 origin, vec3 dir, uint pixelIndex, uint sampleIndex) {
   vec3 throughput = vec3(1.0);
   uint rng = params.seed ^ (pixelIndex * 9781u) ^ (sampleIndex * 6271u);
 
-  for (uint depth = 0u; depth < params.maxDepth; ++depth) {
+  for (uint depth = 0u; depth < params.maxBounce; ++depth) {
     Hit hit = traceClosest(origin, dir);
     if (!hit.valid) {
       radiance += throughput * sampleEnvironment(dir, rng);
@@ -138,7 +138,7 @@ Path tracing 的图像测试不要一开始追求逐像素 golden。随机采样
 | 不建议 | 原因 | 更合适的做法 |
 |---|---|---|
 | 直接复用 realtime draw item | 它绑定了 pass、pipeline key、可见性和实时材质假设 | 从 scene YAML 编译独立 `OfflineSceneIR` |
-| 把 path tracing 参数塞进 realtime renderer | 实时和离线的生命周期、输出目标不同 | 放在 `scene.offlineRender.profiles` |
+| 把 path tracing 参数塞进 realtime renderer | 实时和离线的生命周期、输出目标不同 | 放在单个 `scene.offlineRender`；相机、尺寸和输出目录放在 `scene.outputProfiles` |
 | 一开始接 bindless | 当前需求明确不做 bindless，且会放大架构风险 | 先用显式 descriptor buffer |
 | 先做复杂 UI | integrator 还在变，UI 会过早固化接口 | 先用 CLI 和 scene profile 固定实验合同 |
 
