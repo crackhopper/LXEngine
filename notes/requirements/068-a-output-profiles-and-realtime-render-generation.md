@@ -28,6 +28,7 @@
 5. `realtime-render run` 按 output profile 创建实时离屏 render target，而不是 dump swapchain。
 6. realtime 输出同时保留 linear、CPU tone-mapped sRGB、pipeline sRGB 三路结果。
 7. 拆分现有大型 editor command 注册文件，为新增命令提供可检索的落点。
+8. 提供 Codex 可直接调用的 CLI/API 验证入口，能在本地生成 realtime/offline 输出并对比 EXR 数据。
 
 ## 需求
 
@@ -217,6 +218,85 @@ src/demos/lxe_editor/commands/
 
 拆分 SHALL 先做搬迁和等价测试，再添加新命令。
 
+### R9: Codex-callable realtime render API / CLI
+
+realtime profile generation SHALL 暴露一个 Codex 可直接调用的入口。这个入口 MAY 是独立 CLI，也 MAY 是稳定 editor API / MCP command wrapper，但必须满足：
+
+- 不需要人工点击 UI。
+- 可指定 scene path 和 output profile。
+- 可从命令行或 MCP 获得 structured JSON 结果。
+- JSON 结果包含 `linear.exr`、`cpu_srgb.png`、`pipeline_srgb.png` 的绝对或工程相对路径。
+- 失败时返回明确错误，而不是只写 editor console。
+
+建议 CLI 形式：
+
+```bash
+lxe_realtime_render \
+  --scene assets/scenes/ibl_metal_sphere.scene.yaml \
+  --profile preview
+```
+
+若首版复用 managed editor，则 MCP/HTTP command SHALL 能等价执行：
+
+```text
+realtime-render run preview
+```
+
+并且 Codex SHALL 能通过该返回结果定位输出文件。
+
+### R10: Realtime/offline EXR comparison
+
+需求实现后 SHALL 支持一个本地验证流程：
+
+1. 用同一 scene 和 output profile 运行 realtime profile generation，生成 `linear.exr`。
+2. 用 `lxe_offline_render` 运行同一 scene 和 output profile，生成 offline linear EXR。
+3. 用测试工具或 CLI 对两个 EXR 做数值对比。
+
+比较工具 SHALL 输出至少以下指标：
+
+| Metric | Meaning |
+|---|---|
+| `meanAbsError` | RGB 平均绝对误差 |
+| `maxAbsError` | RGB 最大绝对误差 |
+| `rmse` | RGB 均方根误差 |
+| `pixelCount` | 参与比较的像素数 |
+
+首版比较 SHALL 支持设置容差，并在超出容差时 fail-fast。
+
+为了让比较有意义，参与对比的 profile / scene SHALL 满足：
+
+- output profile 使用同一 camera、同一分辨率、同一 scene 材质。
+- offlineRender 使用 `samples: 1`、`maxBounce: 1`，或一个能与 realtime 公式直接对齐的配置。
+- realtime 和 offline 使用一致的 direct lighting / BRDF 公式。
+- shadow MAY 通过配置开关关闭；如果开启，realtime 和 offline shadow 采样策略必须明确记录，否则不作为数值对比验收目标。
+- 用于对比的测试 scene SHOULD 使用简单、稳定的材质参数，避免 texture filtering、IBL mip、随机采样等因素掩盖基础公式差异。
+
+如需引入 shadow 开关，建议放在 `offlineRender` 或 compare profile 的明确字段中，例如：
+
+```yaml
+scene:
+  offlineRender:
+    integrator: primary-ray
+    samples: 1
+    maxBounce: 1
+    seed: 1
+    profile: preview
+    shadows: false
+```
+
+realtime path SHALL 提供等价的 profile generation override 或 render feature toggle，确保对比时两个路径使用同一光照项集合。
+
+### R11: Shared shading formula for comparison
+
+realtime/offline 对比所使用的基础 shader 公式 SHALL 共享语义。
+
+要求：
+
+- realtime shader 中 direct lighting / BRDF 的核心公式 SHOULD 抽成 shader include 或可复用 helper。
+- offline compute shader SHALL 使用等价公式，或在文档和测试中列出允许差异。
+- 对比测试 scene 的材质参数 SHALL 选择能稳定暴露公式差异的值，例如固定 baseColor、metallic、roughness、emissive。
+- 如果 offline ray tracing 临时关闭 shadow，realtime pipeline 也 SHALL 在 profile generation 中关闭对应 shadow contribution。
+
 ## 测试
 
 ### T1: Scene schema parsing
@@ -258,14 +338,30 @@ src/demos/lxe_editor/commands/
 - 现有 lxe_editor project/scene/render debug/display/recording 命令仍能 dispatch。
 - 新拆分文件不会引入循环依赖。
 
+### T7: Codex-callable render generation
+
+- CLI/API 能在无人工 UI 操作下生成 realtime profile outputs。
+- 返回 structured JSON，并包含三路输出路径。
+- Codex 能读取输出文件并用于后续比较。
+
+### T8: Realtime/offline EXR comparison
+
+- 同一 scene/profile 可分别生成 realtime `linear.exr` 和 offline EXR。
+- 比较工具输出 `meanAbsError`、`maxAbsError`、`rmse`、`pixelCount`。
+- 在简单对比 scene 上，关闭 shadow 且使用 `samples=1` / `maxBounce=1` 时，误差低于需求定义的容差。
+- 如果开启 shadow 或更复杂材质，测试必须明确标记为 visual/regression comparison，而不是基础数值等价验收。
+
 ## 修改范围
 
 - `src/core/offline/offline_render_profile.*`
 - `src/infra/scene_io/scene_document.*`
 - `src/tools/lxe_offline_render/`
+- `src/tools/lxe_realtime_render/` 或 editor API / MCP command wrapper
 - `src/infra/offline/offline_image_writer.*`
+- realtime/offline EXR comparison helper 或测试工具
 - `src/core/` 或 `src/infra/` 的 CPU tone mapping helper
 - `assets/shaders/glsl/common/`
+- realtime/offline shared shading include / helper
 - realtime renderer / render target readback 相关 backend 代码
 - `src/core/editor/commands/`
 - `src/demos/lxe_editor/commands/`
@@ -281,6 +377,7 @@ src/demos/lxe_editor/commands/
 - 本 REQ 不要求 camera transform override。
 - 本 REQ 不要求 UI 面板编辑 output profile；命令和 YAML 先行。
 - 本 REQ 不要求 ordinary viewport 每帧都写 linear SSBO；只要求 profile generation 可启用。
+- 本 REQ 的 EXR 数值对比只要求在受控 scene/profile 下成立；复杂 IBL、shadow、texture filtering 和随机采样可作为后续更宽松的 visual/regression 对比。
 
 ## 依赖
 
@@ -299,5 +396,5 @@ src/demos/lxe_editor/commands/
 建议拆成两个实现提交：
 
 1. schema / CLI / scene assets migration：完成 `outputProfiles`、`offlineRender.maxBounce`、CLI override 和旧 schema fail-fast。
-2. editor realtime profile output：先拆分 command 注册文件，再实现 `realtime-render ls/run` 和三路输出。
-
+2. editor realtime profile output：先拆分 command 注册文件，再实现 `realtime-render ls/run`、Codex-callable CLI/API 和三路输出。
+3. realtime/offline comparison：增加受控对比 scene、shadow toggle / feature override、EXR compare helper，并把它纳入本地验证流程。
