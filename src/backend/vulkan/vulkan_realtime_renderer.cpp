@@ -1698,6 +1698,7 @@ public:
             VK_IMAGE_ASPECT_DEPTH_BIT,
             VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
                 VK_IMAGE_USAGE_SAMPLED_BIT);
+    std::unique_ptr<VulkanFrameBuffer> shadowFallbackFramebuffer;
     transitionFrameGraphAttachment(
         shadowFallbackRef, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
         VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
@@ -1711,7 +1712,7 @@ public:
           resourceManager().getRenderPass(shadowFallbackDesc);
       std::vector<VkImageView> shadowFallbackViews{
           shadowFallbackAttachment.texture->getImageView()};
-      auto shadowFallbackFramebuffer = VulkanFrameBuffer::create(
+      shadowFallbackFramebuffer = VulkanFrameBuffer::create(
           device(), shadowFallbackRenderPass.getHandle(), shadowFallbackViews,
           VkExtent2D{1, 1});
       cmd->beginRenderPass(shadowFallbackRenderPass.getHandle(),
