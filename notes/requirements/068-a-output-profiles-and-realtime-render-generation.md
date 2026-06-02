@@ -131,7 +131,7 @@ realtime-render run <profile>
 
 - 读取当前 active scene document 的 `outputProfiles`。
 - 返回 profile 名、camera、width、height、outputFormat、outDir。
-- 在 structured JSON 中返回完整列表，方便 MCP 和网页侧读取。
+- 在 structured JSON 中返回完整列表，方便本地 CLI/API 和网页侧读取。
 
 `realtime-render run <profile>` SHALL：
 
@@ -218,15 +218,24 @@ src/demos/lxe_editor/commands/
 
 拆分 SHALL 先做搬迁和等价测试，再添加新命令。
 
-### R9: Codex-callable realtime render API / CLI
+### R9: Codex-callable local realtime render API / CLI
 
-realtime profile generation SHALL 暴露一个 Codex 可直接调用的入口。这个入口 MAY 是独立 CLI，也 MAY 是稳定 editor API / MCP command wrapper，但必须满足：
+realtime profile generation SHALL 暴露一个 Codex 可直接调用的本地入口。该入口 SHALL NOT 依赖 MCP，因为 MCP server 可能运行在用户机器而不是 Codex 执行环境中。
+
+可接受入口：
+
+- 独立 CLI，例如 `lxe_realtime_render`。
+- 本地进程控制 wrapper：启动本机 `lxe_editor`，通过本机 HTTP/API/command endpoint 执行 `realtime-render run <profile>`，然后关闭该 `lxe_editor` 进程。
+
+入口必须满足：
 
 - 不需要人工点击 UI。
 - 可指定 scene path 和 output profile。
-- 可从命令行或 MCP 获得 structured JSON 结果。
+- 可从命令行或本机 API 获得 structured JSON 结果。
 - JSON 结果包含 `linear.exr`、`cpu_srgb.png`、`pipeline_srgb.png` 的绝对或工程相对路径。
 - 失败时返回明确错误，而不是只写 editor console。
+- 如果入口启动了 `lxe_editor`，无论成功或失败，结束时都必须关闭它启动的 editor 进程。
+- 入口不得关闭用户已经手动打开、且不是该入口启动的 editor 进程。
 
 建议 CLI 形式：
 
@@ -236,13 +245,13 @@ lxe_realtime_render \
   --profile preview
 ```
 
-若首版复用 managed editor，则 MCP/HTTP command SHALL 能等价执行：
+若首版复用本机 editor 进程，则本地 API/HTTP command SHALL 能等价执行：
 
 ```text
 realtime-render run preview
 ```
 
-并且 Codex SHALL 能通过该返回结果定位输出文件。
+并且 Codex SHALL 能通过该返回结果定位输出文件。Codex 本地验证流程 SHALL 使用上述 CLI/API，不依赖 MCP。
 
 ### R10: Realtime/offline EXR comparison
 
@@ -343,6 +352,7 @@ realtime/offline 对比所使用的基础 shader 公式 SHALL 共享语义。
 - CLI/API 能在无人工 UI 操作下生成 realtime profile outputs。
 - 返回 structured JSON，并包含三路输出路径。
 - Codex 能读取输出文件并用于后续比较。
+- 如果测试启动了 `lxe_editor`，测试结束后对应进程已关闭。
 
 ### T8: Realtime/offline EXR comparison
 
@@ -356,7 +366,7 @@ realtime/offline 对比所使用的基础 shader 公式 SHALL 共享语义。
 - `src/core/offline/offline_render_profile.*`
 - `src/infra/scene_io/scene_document.*`
 - `src/tools/lxe_offline_render/`
-- `src/tools/lxe_realtime_render/` 或 editor API / MCP command wrapper
+- `src/tools/lxe_realtime_render/` 或本地 editor process/API wrapper
 - `src/infra/offline/offline_image_writer.*`
 - realtime/offline EXR comparison helper 或测试工具
 - `src/core/` 或 `src/infra/` 的 CPU tone mapping helper
