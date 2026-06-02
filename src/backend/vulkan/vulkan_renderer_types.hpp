@@ -25,6 +25,7 @@ struct VulkanRealtimeProfileOutputResult final {
   std::filesystem::path linearExrPath;
   std::filesystem::path cpuSrgbPngPath;
   std::filesystem::path pipelineSrgbPngPath;
+  std::filesystem::path depthDebugPath;
   std::filesystem::path metadataPath;
   u32 width = 0;
   u32 height = 0;

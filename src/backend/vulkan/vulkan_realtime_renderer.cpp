@@ -266,6 +266,129 @@ LX_core::offline::OfflineReadbackImage makeRgba32fImageFromDump(
                            vkFormatName(format));
 }
 
+struct ProjectedBoundsDebug final {
+  std::string nodeName;
+  std::string objectSignature;
+  u32 indexCount = 0;
+  bool valid = false;
+  float minX = 0.0f;
+  float minY = 0.0f;
+  float maxX = 0.0f;
+  float maxY = 0.0f;
+};
+
+struct RealtimeProfileDebugInfo final {
+  float profileAspect = 0.0f;
+  float cameraAspect = 0.0f;
+  u32 cameraResourceCount = 0;
+  u32 drawItemCount = 0;
+  VkExtent2D viewportExtent{};
+  LX_core::Mat4f cameraView = LX_core::Mat4f::identity();
+  LX_core::Mat4f cameraProj = LX_core::Mat4f::identity();
+  std::vector<ProjectedBoundsDebug> projectedBounds;
+};
+
+void writeMat4Json(std::ostream &out, const LX_core::Mat4f &matrix) {
+  out << "[";
+  for (int row = 0; row < 4; ++row) {
+    if (row > 0) {
+      out << ", ";
+    }
+    out << "[";
+    for (int col = 0; col < 4; ++col) {
+      if (col > 0) {
+        out << ", ";
+      }
+      out << matrix(row, col);
+    }
+    out << "]";
+  }
+  out << "]";
+}
+
+[[nodiscard]] u32 countCameraResources(
+    const std::vector<LX_core::IGpuResourceSharedPtr> &resources) {
+  u32 count = 0;
+  const LX_core::StringID cameraBinding("CameraUBO");
+  for (const auto &resource : resources) {
+    if (resource && resource->getBindingName() == cameraBinding) {
+      ++count;
+    }
+  }
+  return count;
+}
+
+[[nodiscard]] std::optional<LX_core::Mat4f>
+extractModelMatrix(const LX_core::PerDrawDataSharedPtr &drawData) {
+  if (!drawData || drawData->byteSize() < sizeof(LX_core::Mat4f)) {
+    return std::nullopt;
+  }
+  LX_core::Mat4f model = LX_core::Mat4f::identity();
+  std::memcpy(&model, drawData->rawData(), sizeof(model));
+  return model;
+}
+
+[[nodiscard]] ProjectedBoundsDebug makeProjectedBoundsDebug(
+    const LX_core::IRenderable &renderable, const LX_core::RenderingItem &item,
+    const LX_core::Mat4f &viewProj, u32 width, u32 height) {
+  ProjectedBoundsDebug out;
+  out.nodeName = renderable.getNodeName();
+  out.objectSignature =
+      LX_core::GlobalStringTable::get().getName(item.objectSignature.id);
+  out.indexCount = item.indexBuffer ? item.indexBuffer->getByteSize() / sizeof(u32) : 0;
+
+  auto modelOpt = extractModelMatrix(item.drawData);
+  if (!modelOpt.has_value()) {
+    return out;
+  }
+  const auto &sceneNode = dynamic_cast<const LX_core::SceneNode &>(renderable);
+  const LX_core::BoundingBox localBounds = sceneNode.getLocalBounds();
+  if (!localBounds.isValid()) {
+    return out;
+  }
+
+  const LX_core::Mat4f model = *modelOpt;
+  const LX_core::Mat4f mvp = viewProj * model;
+  const LX_core::Vec4f corners[8] = {
+      {localBounds.min.x, localBounds.min.y, localBounds.min.z, 1.0f},
+      {localBounds.max.x, localBounds.min.y, localBounds.min.z, 1.0f},
+      {localBounds.min.x, localBounds.max.y, localBounds.min.z, 1.0f},
+      {localBounds.max.x, localBounds.max.y, localBounds.min.z, 1.0f},
+      {localBounds.min.x, localBounds.min.y, localBounds.max.z, 1.0f},
+      {localBounds.max.x, localBounds.min.y, localBounds.max.z, 1.0f},
+      {localBounds.min.x, localBounds.max.y, localBounds.max.z, 1.0f},
+      {localBounds.max.x, localBounds.max.y, localBounds.max.z, 1.0f},
+  };
+
+  float minX = std::numeric_limits<float>::infinity();
+  float minY = std::numeric_limits<float>::infinity();
+  float maxX = -std::numeric_limits<float>::infinity();
+  float maxY = -std::numeric_limits<float>::infinity();
+  for (const auto &corner : corners) {
+    const LX_core::Vec4f clip = mvp * corner;
+    if (std::abs(clip.w) <= std::numeric_limits<float>::epsilon()) {
+      continue;
+    }
+    const float ndcX = clip.x / clip.w;
+    const float ndcY = clip.y / clip.w;
+    const float px = (ndcX * 0.5f + 0.5f) * static_cast<float>(width);
+    const float py = (ndcY * 0.5f + 0.5f) * static_cast<float>(height);
+    minX = std::min(minX, px);
+    minY = std::min(minY, py);
+    maxX = std::max(maxX, px);
+    maxY = std::max(maxY, py);
+  }
+  if (std::isfinite(minX) && std::isfinite(minY) && std::isfinite(maxX) &&
+      std::isfinite(maxY)) {
+    out.valid = true;
+    out.minX = minX;
+    out.minY = minY;
+    out.maxX = maxX;
+    out.maxY = maxY;
+  }
+  return out;
+}
+
 [[nodiscard]] std::string jsonEscape(std::string_view text) {
   std::string out;
   out.reserve(text.size());
@@ -304,7 +427,8 @@ LX_core::offline::OfflineReadbackImage makeRgba32fImageFromDump(
 void writeRealtimeProfileMetadata(
     const std::filesystem::path &path,
     const LX_core::backend::VulkanRealtimeProfileOutputResult &result,
-    std::string_view pipelineStatus) {
+    std::string_view pipelineStatus,
+    const RealtimeProfileDebugInfo &debugInfo) {
   std::filesystem::create_directories(path.parent_path());
   std::ofstream out(path, std::ios::binary | std::ios::trunc);
   if (!out.is_open()) {
@@ -320,8 +444,43 @@ void writeRealtimeProfileMetadata(
       << jsonEscape(result.cpuSrgbPngPath.generic_string()) << "\",\n"
       << "  \"pipelineSrgbPngPath\": \""
       << jsonEscape(result.pipelineSrgbPngPath.generic_string()) << "\",\n"
+      << "  \"depthDebugPath\": \""
+      << jsonEscape(result.depthDebugPath.generic_string()) << "\",\n"
       << "  \"pipelineSrgbStatus\": \"" << jsonEscape(pipelineStatus)
-      << "\"\n"
+      << "\",\n"
+      << "  \"debug\": {\n"
+      << "    \"profileAspect\": " << debugInfo.profileAspect << ",\n"
+      << "    \"cameraAspect\": " << debugInfo.cameraAspect << ",\n"
+      << "    \"cameraResourceCount\": " << debugInfo.cameraResourceCount
+      << ",\n"
+      << "    \"drawItemCount\": " << debugInfo.drawItemCount << ",\n"
+      << "    \"viewportExtent\": {\"width\": "
+      << debugInfo.viewportExtent.width << ", \"height\": "
+      << debugInfo.viewportExtent.height << "},\n"
+      << "    \"cameraView\": ";
+  writeMat4Json(out, debugInfo.cameraView);
+  out << ",\n"
+      << "    \"cameraProj\": ";
+  writeMat4Json(out, debugInfo.cameraProj);
+  out << ",\n"
+      << "    \"projectedBounds\": [\n";
+  for (usize i = 0; i < debugInfo.projectedBounds.size(); ++i) {
+    const auto &bounds = debugInfo.projectedBounds[i];
+    out << "      {\"node\": \"" << jsonEscape(bounds.nodeName)
+        << "\", \"objectSignature\": \""
+        << jsonEscape(bounds.objectSignature) << "\", \"indexCount\": "
+        << bounds.indexCount << ", \"valid\": "
+        << (bounds.valid ? "true" : "false") << ", \"minX\": "
+        << bounds.minX << ", \"minY\": " << bounds.minY
+        << ", \"maxX\": " << bounds.maxX << ", \"maxY\": "
+        << bounds.maxY << "}";
+    if (i + 1 < debugInfo.projectedBounds.size()) {
+      out << ",";
+    }
+    out << "\n";
+  }
+  out << "    ]\n"
+      << "  }\n"
       << "}\n";
 }
 
@@ -1457,6 +1616,12 @@ public:
 
     auto sceneResources =
         m_scene->getSceneLevelResources(LX_core::Pass_Forward, target);
+    RealtimeProfileDebugInfo debugInfo;
+    debugInfo.profileAspect = profileAspect;
+    debugInfo.cameraAspect = camera.getAspect();
+    debugInfo.cameraView = camera.getUBO()->param.view;
+    debugInfo.cameraProj = camera.getUBO()->param.proj;
+    debugInfo.cameraResourceCount = countCameraResources(sceneResources);
 
     const std::string attachmentPrefix =
         "realtime.profile." + basePath.generic_string() + "." +
@@ -1479,6 +1644,23 @@ public:
     if (queue.getItems().empty()) {
       throw std::runtime_error("realtime profile output produced no draw items");
     }
+    debugInfo.drawItemCount = static_cast<u32>(queue.getItems().size());
+    const LX_core::Mat4f viewProj =
+        camera.getUBO()->param.proj * camera.getUBO()->param.view;
+    for (const auto &renderable : m_scene->getRenderables()) {
+      if (!renderable) {
+        continue;
+      }
+      const LX_core::StringID debugId = renderable->getDebugId();
+      for (const auto &item : queue.getItems()) {
+        if (item.debugId != debugId) {
+          continue;
+        }
+        debugInfo.projectedBounds.push_back(makeProjectedBoundsDebug(
+            *renderable, item, viewProj, output.width, output.height));
+        break;
+      }
+    }
     for (auto &item : queue.getItems()) {
       resourceManager().syncResource(commandBufferManager(), item.vertexBuffer);
       resourceManager().syncResource(commandBufferManager(), item.indexBuffer);
@@ -1499,6 +1681,12 @@ public:
         dumpByteSize(colorFormat, output.width, output.height);
     auto readback = VulkanBuffer::create(
         device(), byteSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    const VkDeviceSize depthByteSize =
+        dumpByteSize(VK_FORMAT_D32_SFLOAT, output.width, output.height);
+    auto depthReadback = VulkanBuffer::create(
+        device(), depthByteSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
@@ -1564,6 +1752,7 @@ public:
     auto &renderPass = resourceManager().getRenderPass(targetDesc);
     auto framebuffer = VulkanFrameBuffer::create(
         device(), renderPass.getHandle(), attachments, extent);
+    debugInfo.viewportExtent = extent;
     cmd->beginRenderPass(renderPass.getHandle(), framebuffer->getHandle(),
                          extent, renderPass.getClearValues());
     cmd->setViewport(extent.width, extent.height);
@@ -1593,6 +1782,23 @@ public:
                            colorAttachment.texture->getHandle(),
                            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                            readback->getHandle(), 1, &region);
+    transitionFrameGraphAttachment(
+        depthRef, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT, *cmd);
+    VkBufferImageCopy depthRegion{};
+    depthRegion.bufferOffset = 0;
+    depthRegion.bufferRowLength = 0;
+    depthRegion.bufferImageHeight = 0;
+    depthRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    depthRegion.imageSubresource.mipLevel = 0;
+    depthRegion.imageSubresource.baseArrayLayer = 0;
+    depthRegion.imageSubresource.layerCount = 1;
+    depthRegion.imageOffset = {0, 0, 0};
+    depthRegion.imageExtent = {extent.width, extent.height, 1};
+    vkCmdCopyImageToBuffer(cmd->getHandle(),
+                           depthAttachment.texture->getHandle(),
+                           VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                           depthReadback->getHandle(), 1, &depthRegion);
     commandBufferManager().endSingleTimeCommands(std::move(cmd),
                                                  device().getGraphicsQueue());
 
@@ -1611,6 +1817,7 @@ public:
         .linearExrPath = outputDir / (outputStem + "-linear.exr"),
         .cpuSrgbPngPath = outputDir / (outputStem + "-cpu_srgb.png"),
         .pipelineSrgbPngPath = {},
+        .depthDebugPath = outputDir / (outputStem + "-depth.bmp"),
         .metadataPath = outputDir / (outputStem + ".json"),
         .width = output.width,
         .height = output.height,
@@ -1623,9 +1830,16 @@ public:
             .gamma = 2.2f,
             .mode = LX_core::image::ToneMappingMode::Aces,
         });
+    const void *mappedDepth = depthReadback->map();
+    std::vector<unsigned char> depthBgrPixels = makeBmpPixelsFromDump(
+        VK_FORMAT_D32_SFLOAT, output.width, output.height, mappedDepth);
+    depthReadback->unmap();
+    writeBmp24File(result.depthDebugPath, output.width, output.height,
+                   depthBgrPixels);
     writeRealtimeProfileMetadata(result.metadataPath, result,
                                  "unavailable: pipeline sRGB readback is not "
-                                 "implemented in this path");
+                                 "implemented in this path",
+                                 debugInfo);
     return result;
   }
 
