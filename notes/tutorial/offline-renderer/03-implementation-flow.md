@@ -1,6 +1,6 @@
 # Offline Renderer 实现结构：从 Scene 到 Image Writer
 
-Offline renderer 像一条离线实验流水线：editor 产出场景说明书，compiler 把说明书整理成标准样品，GPU builder 把样品装进 buffer，Vulkan compute 执行实验，image writer 把结果保存成可复现记录。
+Offline renderer 像一条离线实验流水线：editor 产出场景说明书，compiler 把说明书整理成标准样品，ray scene builder 把样品装进共享资源表和 indexed buffer，Vulkan compute 执行实验，image writer 把结果保存成可复现记录。
 
 ## 总体流水线
 
@@ -10,8 +10,8 @@ Offline renderer 像一条离线实验流水线：editor 产出场景说明书�
 | Scene 读取 | `src/infra/scene_io/scene_document.*` | `.scene.yaml` | `SceneDocument` |
 | Profile 选择 | `src/core/offline/offline_render_profile.*` | `scene.offlineRender` + CLI overrides | `ResolvedOfflineRenderProfile` |
 | IR 编译 | `src/infra/offline/offline_scene_compiler.*` | `SceneDocument` | `OfflineSceneIR` |
-| GPU 打包 | `src/backend/vulkan/offline/gpu_scene_builder.*` | `OfflineSceneIR` | triangle/material/camera params |
-| BVH 构建 | `src/backend/vulkan/offline/compute_bvh_builder.*` | triangle buffer | `GpuBvhNode` + reordered triangles |
+| Ray scene 打包 | `src/core/offline/offline_ray_scene.*` | `OfflineSceneIR` + `SceneResourceTable` snapshot | vertex/index/mesh/primitive/object/material/params buffers |
+| BVH 构建 | `src/core/offline/offline_ray_scene.*` | primitive buffer + shared vertex/index | `OfflineBvhNode` + reordered primitives |
 | Compute 执行 | `src/backend/vulkan/offline/vulkan_offline_renderer.*` | GPU buffers + shader | `OfflineReadbackImage` |
 | 文件写出 | `src/infra/offline/offline_image_writer.*` | linear RGBA float | EXR / PNG / JSON / raw |
 
@@ -43,16 +43,19 @@ Offline renderer 像一条离线实验流水线：editor 产出场景说明书�
 
 资产路径统一通过 `OfflineAssetResolver` 处理。内置资产、项目相对路径和 `cache://` URI 都在这一层收敛为本地文件路径。
 
-## GPU Buffer 合同
+## Ray Buffer 合同
 
-`GpuSceneBuilder` 把 IR 变成 shader storage buffer。这里最重要的是 C++ 与 GLSL 的布局一致。
+`OfflineRaySceneBuilder` 先把 IR 中的 mesh 注册为 `GeometryStorage` / `MeshBuffer`，再通过 `SceneResourceTable` snapshot 导出 shader storage buffer。这里最重要的是 C++ 与 GLSL 的布局一致，同时保留 vertex/index/object/material 的索引关系。
 
 | C++ struct | GLSL struct | 用途 |
 |---|---|---|
-| `GpuTriangle` | `Triangle` | 三角形位置、法线、材质索引 |
-| `GpuMaterial` | `Material` | baseColor、metallic、roughness、emissive |
-| `GpuBvhNode` | `BvhNode` | bounds 和 child/triangle range |
-| `GpuCameraParams` | `CameraParams` | 相机 basis、尺寸、samples、light、environment |
+| `OfflineVertexRecord` | `VertexRecord` | position、normal、uv、tangent |
+| `OfflineMeshRecord` | `MeshRecord` | vertex/index offset 与 geometry index |
+| `OfflinePrimitiveRecord` | `PrimitiveRecord` | index offset、mesh/material/object index |
+| `OfflineObjectRecord` | `ObjectRecord` | object/world transform、bounds、visibility |
+| `OfflineMaterialRecord` | `Material` | baseColor、metallic、roughness、emissive |
+| `OfflineBvhNode` | `BvhNode` | bounds 和 child/primitive range |
+| `OfflineSceneParams` | `ParamsBuffer` | 相机 basis、尺寸、samples、light、environment |
 
 每次我们新增材质字段、光源 buffer、纹理索引或 AOV，都必须同步修改：
 
@@ -60,7 +63,7 @@ Offline renderer 像一条离线实验流水线：editor 产出场景说明书�
 |---|---|
 | `OfflineSceneIR` | CPU 侧表达能力 |
 | `OfflineSceneCompiler` | 从 scene/material 文件采集数据 |
-| `GpuSceneBuilder` | 打包成 GPU buffer |
+| `OfflineRaySceneBuilder` | 注册共享资源并打包成 indexed GPU buffer |
 | GLSL compute shader | 按同一 layout 读取 |
 | `test_offline_gpu_scene` | 固定 layout 和基础数据 |
 
@@ -109,12 +112,12 @@ TinyEXR 和 stb_image_write 只出现在 writer 实现文件里；`core`、scene
 | 增加 exposure CLI 参数 | `offline_render_cli.*` + `OfflineToneMappingSettings` |
 | 增加 AOV 输出 | `OfflineReadbackImage` 或新的 AOV buffer + `OfflineImageWriter` |
 | 切换 integrator shader | `VulkanOfflineRenderer::loadComputeShader()` 周边 pipeline 选择 |
-| 支持 HDR environment sampling | `OfflineSceneCompiler` + `GpuSceneBuilder` + descriptor layout |
+| 支持 HDR environment sampling | `OfflineSceneCompiler` + `OfflineRaySceneBuilder` + descriptor layout |
 | 输出 multipart EXR | 保持 `OfflineImageWriter` API，替换 writer 内部 TinyEXR 调用 |
 
 ## 我们已经学会了什么
 
-我们已经把 offline renderer 拆成了八段：CLI、scene document、profile、IR compiler、GPU packing、BVH、compute renderer、image writer。每一段都有清晰输入输出，所以后续实现 path tracing 时，可以明确知道应该改哪一层。
+我们已经把 offline renderer 拆成了八段：CLI、scene document、profile、IR compiler、ray scene packing、BVH、compute renderer、image writer。每一段都有清晰输入输出，所以后续实现 path tracing 时，可以明确知道应该改哪一层。
 
 ## 下一步
 

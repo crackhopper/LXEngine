@@ -280,4 +280,16 @@ BVH 概念 SHALL 保留，并迁移到 backend-agnostic core/offline 层。新�
 
 ## 实施状态
 
-Draft，未实施。
+2026-06-02 已完成首版迁移：
+
+- 新增 `src/core/offline/offline_ray_scene.*`，把 `OfflineSceneIR` 注册到 `SceneResourceTable`，再从 snapshot 导出 vertex/index/mesh/primitive/object/material/BVH/params buffers。
+- 删除 `src/backend/vulkan/offline/gpu_scene_builder.*` 和 `compute_bvh_builder.*`，backend offline 目录只保留 Vulkan compute 执行器。
+- `offline_primary_ray.comp` 已从 flat triangle buffer 改为 indexed primitive contract，并用 barycentric 插值 normal / uv。
+- `VulkanOfflineRenderer` 已改为上传 9 个 storage buffer：vertex、index、mesh、primitive、object、material、BVH、params、output。
+- offline compute pipeline 保留显式 descriptor layout，但启动时会用 `ShaderReflector` 校验 SPIR-V 的 descriptor set、binding、名称、类型、stage visibility 和可反射 block size。
+- `test_offline_gpu_scene` 已改为验证 shared indexed buffers、primitive BVH、std430 record size 和 per-vertex normal 保留。
+- 已通过 `lxe_offline_render` 32x32 smoke，现有 scene YAML 仍可渲染。
+
+当前保留边界：
+
+- `OfflineSceneCompiler` 仍先产 `OfflineMaterialIR` 常量；`OfflineMaterialRecord` 已在 core/offline 层生成，但还没有完全接入 realtime `MaterialInstance` 参数表和 texture table。

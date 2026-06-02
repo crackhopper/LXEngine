@@ -2,15 +2,33 @@
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
-struct Triangle {
-  vec4 v0;
-  vec4 v1;
-  vec4 v2;
+struct VertexRecord {
+  vec4 position;
   vec4 normal;
+  vec4 uvTangentSign;
+  vec4 tangent;
+};
+
+struct MeshRecord {
+  uint vertexOffset;
+  uint indexOffset;
+  uint indexCount;
+  uint geometryIndex;
+};
+
+struct PrimitiveRecord {
+  uint indexOffset;
+  uint meshIndex;
   uint materialIndex;
   uint objectIndex;
-  uint pad0;
-  uint pad1;
+};
+
+struct ObjectRecord {
+  mat4 objectToWorld;
+  mat4 worldToObject;
+  vec4 boundsMin;
+  vec4 boundsMax;
+  uvec4 flags;
 };
 
 struct Material {
@@ -24,19 +42,35 @@ struct BvhNode {
   vec4 boundsMaxTriCount;
 };
 
-layout(std430, binding = 0) readonly buffer Triangles {
-  Triangle triangles[];
+layout(std430, binding = 0) readonly buffer Vertices {
+  VertexRecord vertices[];
 };
 
-layout(std430, binding = 1) readonly buffer Materials {
+layout(std430, binding = 1) readonly buffer Indices {
+  uint indices[];
+};
+
+layout(std430, binding = 2) readonly buffer Meshes {
+  MeshRecord meshes[];
+};
+
+layout(std430, binding = 3) readonly buffer Primitives {
+  PrimitiveRecord primitives[];
+};
+
+layout(std430, binding = 4) readonly buffer Objects {
+  ObjectRecord objects[];
+};
+
+layout(std430, binding = 5) readonly buffer Materials {
   Material materials[];
 };
 
-layout(std430, binding = 2) readonly buffer BvhNodes {
+layout(std430, binding = 6) readonly buffer BvhNodes {
   BvhNode bvhNodes[];
 };
 
-layout(std430, binding = 3) readonly buffer ParamsBuffer {
+layout(std430, binding = 7) readonly buffer ParamsBuffer {
   vec4 eye;
   vec4 cameraRight;
   vec4 cameraUp;
@@ -47,13 +81,13 @@ layout(std430, binding = 3) readonly buffer ParamsBuffer {
   uint height;
   uint samples;
   uint seed;
-  uint triangleCount;
+  uint primitiveCount;
   uint bvhNodeCount;
   uint materialCount;
   uint pad0;
 } params;
 
-layout(std430, binding = 4) writeonly buffer OutputBuffer {
+layout(std430, binding = 8) writeonly buffer OutputBuffer {
   vec4 pixels[];
 };
 
@@ -79,11 +113,30 @@ vec3 environmentColor(vec3 dir) {
          max(params.lightColorEnvironment.w, 0.05);
 }
 
-bool intersectTriangle(vec3 origin, vec3 dir, Triangle tri, out float t,
-                       out vec3 normal) {
-  vec3 v0 = tri.v0.xyz;
-  vec3 v1 = tri.v1.xyz;
-  vec3 v2 = tri.v2.xyz;
+struct HitAttributes {
+  vec3 normal;
+  vec2 uv;
+  uint materialIndex;
+};
+
+vec3 transformPoint(mat4 m, vec3 p) {
+  vec4 value = m * vec4(p, 1.0);
+  return value.xyz / max(value.w, 1.0e-8);
+}
+
+bool intersectPrimitive(vec3 origin, vec3 dir, PrimitiveRecord primitive,
+                        out float t, out HitAttributes attributes) {
+  MeshRecord mesh = meshes[primitive.meshIndex];
+  ObjectRecord object = objects[primitive.objectIndex];
+  uint i0 = indices[primitive.indexOffset + 0u];
+  uint i1 = indices[primitive.indexOffset + 1u];
+  uint i2 = indices[primitive.indexOffset + 2u];
+  VertexRecord a = vertices[mesh.vertexOffset + i0];
+  VertexRecord b = vertices[mesh.vertexOffset + i1];
+  VertexRecord c = vertices[mesh.vertexOffset + i2];
+  vec3 v0 = transformPoint(object.objectToWorld, a.position.xyz);
+  vec3 v1 = transformPoint(object.objectToWorld, b.position.xyz);
+  vec3 v2 = transformPoint(object.objectToWorld, c.position.xyz);
   vec3 e1 = v1 - v0;
   vec3 e2 = v2 - v0;
   vec3 p = cross(dir, e2);
@@ -106,10 +159,17 @@ bool intersectTriangle(vec3 origin, vec3 dir, Triangle tri, out float t,
   if (t <= 0.0005) {
     return false;
   }
-  normal = normalize(tri.normal.xyz);
+  vec3 localNormal =
+      normalize(a.normal.xyz * (1.0 - u - v) + b.normal.xyz * u +
+                c.normal.xyz * v);
+  vec3 normal = normalize(transpose(mat3(object.worldToObject)) * localNormal);
   if (dot(normal, dir) > 0.0) {
     normal = -normal;
   }
+  attributes.normal = normal;
+  attributes.uv = a.uvTangentSign.xy * (1.0 - u - v) +
+                  b.uvTangentSign.xy * u + c.uvTangentSign.xy * v;
+  attributes.materialIndex = primitive.materialIndex;
   return true;
 }
 
@@ -150,18 +210,19 @@ bool traceScene(vec3 origin, vec3 dir, float maxT, out float hitT,
     if (isLeaf) {
       uint triCount = packedNodeData & ~BVH_LEAF_NODE_FLAG;
       for (uint i = 0u; i < triCount; ++i) {
-        uint triIndex = leftFirst + i;
-        if (triIndex >= params.triangleCount) {
+        uint primitiveIndex = leftFirst + i;
+        if (primitiveIndex >= params.primitiveCount) {
           continue;
         }
         float t;
-        vec3 n;
-        if (intersectTriangle(origin, dir, triangles[triIndex], t, n) &&
+        HitAttributes attributes;
+        if (intersectPrimitive(origin, dir, primitives[primitiveIndex], t,
+                               attributes) &&
             t < hitT) {
           hit = true;
           hitT = t;
-          hitNormal = n;
-          materialIndex = triangles[triIndex].materialIndex;
+          hitNormal = attributes.normal;
+          materialIndex = attributes.materialIndex;
         }
       }
     } else {

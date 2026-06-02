@@ -26,8 +26,8 @@ main.cpp
   -> scene_document
   -> offline_render_profile
   -> OfflineSceneCompiler
-  -> GpuSceneBuilder
-  -> ComputeBvhBuilder
+  -> OfflineRaySceneBuilder
+  -> OfflineBvhBuilder
   -> VulkanOfflineRenderer
   -> offline_primary_ray.comp
   -> OfflineImageWriter
@@ -103,24 +103,27 @@ src/infra/offline/offline_scene_compiler.cpp
 然后读：
 
 ```text
-src/backend/vulkan/offline/gpu_scene_builder.hpp
-src/backend/vulkan/offline/gpu_scene_builder.cpp
+src/core/offline/offline_ray_scene.hpp
+src/core/offline/offline_ray_scene.cpp
 assets/shaders/glsl/offline_primary_ray.comp
 src/test/integration/test_offline_gpu_scene.cpp
 ```
 
-`GpuSceneBuilder` 把 `OfflineSceneIR` 打包成 shader storage buffer。这里最重要的不是算法，而是 layout 合同。
+`OfflineRaySceneBuilder` 把 `OfflineSceneIR` 注册进 `SceneResourceTable`，再导出 shader storage buffer。这里最重要的不是算法，而是 layout 合同和索引关系。
 
 | C++ 结构 | GLSL 结构 | 当前用途 |
 |---|---|---|
-| `GpuTriangle` | `Triangle` | 世界空间三角形、法线、材质索引、对象索引 |
-| `GpuMaterial` | `Material` | baseColor、metallic、roughness、emissive |
-| `GpuCameraParams` | `ParamsBuffer` | 相机 basis、尺寸、samples、seed、光照和环境参数 |
+| `OfflineVertexRecord` | `VertexRecord` | position、normal、uv、tangent |
+| `OfflineMeshRecord` | `MeshRecord` | vertex/index offset 与 geometry index |
+| `OfflinePrimitiveRecord` | `PrimitiveRecord` | index offset、mesh/material/object index |
+| `OfflineObjectRecord` | `ObjectRecord` | object/world transform、bounds、visibility |
+| `OfflineMaterialRecord` | `Material` | baseColor、metallic、roughness、emissive |
+| `OfflineSceneParams` | `ParamsBuffer` | 相机 basis、尺寸、samples、seed、光照和环境参数 |
 
-读 `GpuSceneBuilder::build()` 时，关注四件事：
+读 `OfflineRaySceneBuilder::build()` 时，关注四件事：
 
-1. 它把每个 instance 的 mesh 顶点乘上 `worldTransform`，所以 shader 里看到的是世界空间三角形。
-2. 它把材质常量压进 `GpuMaterial`，目前还没有纹理 descriptor。
+1. 它把 mesh 注册为 `GeometryStorage` / `MeshBuffer`，shader 通过 index 查顶点。
+2. 它把材质常量压进 `OfflineMaterialRecord`，目前还没有纹理 descriptor。
 3. 它根据 camera 的 eye/target/up/fov 计算 `cameraRight`、`cameraUp`、`cameraForward`。
 4. 它只取第一个 directional light，写入 `lightDirectionIntensity` 和 `lightColorEnvironment`。
 
@@ -131,25 +134,25 @@ src/test/integration/test_offline_gpu_scene.cpp
 继续读：
 
 ```text
-src/backend/vulkan/offline/compute_bvh_builder.hpp
-src/backend/vulkan/offline/compute_bvh_builder.cpp
+src/core/offline/offline_ray_scene.hpp
+src/core/offline/offline_ray_scene.cpp
 assets/shaders/glsl/offline_primary_ray.comp
 ```
 
-`ComputeBvhBuilder` 当前在 CPU 上构建一棵紧凑 BVH，再把节点上传给 compute shader。它不是最终的高性能加速结构，但已经让 MVP 有了 closest-hit 查询和 shadow ray 查询。
+`OfflineBvhBuilder` 当前在 CPU 上为 primitive buffer 构建一棵紧凑 BVH，再把节点上传给 compute shader。它不是最终的高性能加速结构，但已经让 MVP 有了 closest-hit 查询和 shadow ray 查询。
 
 阅读时重点看两个约定：
 
 | 约定 | 作用 |
 |---|---|
-| `GpuBvhNode` 固定 32 字节 | 保持 C++ / GLSL 节点布局一致 |
+| `OfflineBvhNode` 固定 32 字节 | 保持 C++ / GLSL 节点布局一致 |
 | `BVH_LEAF_NODE_FLAG` | shader 用它区分内部节点和叶子节点 |
 
 shader 里的 `traceScene()` 会：
 
 1. 从根节点开始。
 2. 用 `intersectAabb()` 判断 ray 是否进入节点 bounds。
-3. 如果是叶子节点，遍历其中三角形并调用 `intersectTriangle()`。
+3. 如果是叶子节点，遍历其中 primitive，并通过 mesh/index/vertex 调用相交逻辑。
 4. 如果是内部节点，把左右子节点压入固定大小 stack。
 5. 返回最近命中的 `hitT`、normal 和 materialIndex。
 
@@ -171,10 +174,10 @@ src/backend/vulkan/offline/vulkan_offline_renderer.cpp
 | 步骤 | 代码动作 | 理解方式 |
 |---|---|---|
 | `ensurePipeline()` | 创建 descriptor layout、pipeline layout、compute pipeline、descriptor pool | 准备实验仪器 |
-| `GpuSceneBuilder::build()` | 把 IR 打成 triangle/material/camera params | 装入实验样品 |
-| `ComputeBvhBuilder::build()` | 生成 BVH 节点和重排三角形 | 建立空间索引 |
-| 创建 `VulkanBuffer` | triangle/material/bvh/params/output 都是 storage buffer | 准备 shader 可读写内存 |
-| `vkUpdateDescriptorSets()` | 绑定 5 个 buffer 到 binding 0..4 | 对齐 GLSL binding |
+| `OfflineRaySceneBuilder::build()` | 把 IR 打成 indexed ray buffers | 装入实验样品 |
+| `OfflineBvhBuilder::build()` | 生成 BVH 节点并重排 primitives | 建立空间索引 |
+| 创建 `VulkanBuffer` | vertex/index/mesh/primitive/object/material/bvh/params/output 都是 storage buffer | 准备 shader 可读写内存 |
+| `vkUpdateDescriptorSets()` | 绑定 9 个 buffer 到 binding 0..8 | 对齐 GLSL binding |
 | `vkCmdDispatch()` | 按 8x8 workgroup 覆盖整张图 | 每个 invocation 计算一个像素 |
 | `vkCmdPipelineBarrier()` | compute 写完后允许 host read | GPU/CPU 同步边界 |
 | `map()` + `memcpy()` | 读回 `OfflineReadbackImage.rgba` | 得到 CPU 可写文件的 float 图 |
@@ -183,11 +186,15 @@ src/backend/vulkan/offline/vulkan_offline_renderer.cpp
 
 | Binding | Buffer |
 |---|---|
-| 0 | triangles |
-| 1 | materials |
-| 2 | bvh nodes |
-| 3 | params |
-| 4 | output pixels |
+| 0 | vertices |
+| 1 | indices |
+| 2 | meshes |
+| 3 | primitives |
+| 4 | objects |
+| 5 | materials |
+| 6 | bvh nodes |
+| 7 | params |
+| 8 | output pixels |
 
 如果以后新增纹理、light array、AOV 或 accumulation buffer，descriptor set layout、GLSL binding、测试都要一起变。
 
@@ -274,7 +281,7 @@ ctest --test-dir build --output-on-failure \
 | `requires --scene` / unknown option | `offline_render_cli.cpp` |
 | camera not found | scene YAML 的 `gameplayCameraPath` 和 node path |
 | unsupported mesh | `OfflineSceneCompiler::makeBuiltinMesh()` 当前支持范围 |
-| no visible triangles | instance visibility、mesh indices、GPU scene builder |
+| no visible primitives | instance visibility、mesh indices、ray scene builder |
 | failed to find offline compute shader SPIR-V | shader 编译产物和运行工作目录 |
 | readback empty / non-finite | shader 输出、buffer 大小、barrier/readback |
 | EXR/PNG 写出失败 | `OfflineImageWriter` 和输出目录权限 |

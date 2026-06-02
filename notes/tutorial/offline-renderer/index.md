@@ -11,8 +11,8 @@ Offline renderer 像一间独立的渲染实验室：editor 和 realtime rendere
 | `scene.offlineRender` | 在 scene YAML 里声明离线 profile | 实验参数单 |
 | `OfflineSceneCompiler` | 把 editor scene 文档编译成离线 IR | 把布景清单整理成实验输入 |
 | `OfflineSceneIR` | 离线渲染器消费的 CPU 场景表示 | 标准化样品 |
-| `GpuSceneBuilder` | 把 IR 打包成 std430 GPU buffer 数据 | 装入实验仪器的托盘 |
-| `ComputeBvhBuilder` | 构建当前 compute shader 可遍历的 BVH | 空间索引目录 |
+| `OfflineRaySceneBuilder` | 把 IR 注册到共享资源表，再导出 indexed ray buffers | 装入实验仪器的托盘 |
+| `OfflineBvhBuilder` | 基于 primitive / vertex / index 关系构建 BVH | 空间索引目录 |
 | `backend::offline::VulkanOfflineRenderer` | headless Vulkan compute 执行器 | 实验仪器本体 |
 | `offline_primary_ray.comp` | 当前 integrator shader | 第一版实验程序 |
 | `OfflineImageWriter` | 写出 EXR / PNG / JSON / raw dump | 实验记录员 |

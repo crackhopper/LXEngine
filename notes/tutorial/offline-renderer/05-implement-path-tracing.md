@@ -9,8 +9,8 @@
 | 步骤 | 当前行为 | Path tracing 会怎样扩展 |
 |---|---|---|
 | 生成相机 ray | 每个像素按 `samples` 做 jitter | 保留，并增加 deterministic sequence / blue noise 入口 |
-| 遍历 BVH | 显式栈遍历 `GpuBvhNode` | 保留，后续可替换为更好的 BVH / Vulkan RT |
-| 命中三角形 | 取 triangle normal 和 material index | 增加插值 normal、uv、tangent、texture sampling |
+| 遍历 BVH | 显式栈遍历 `OfflineBvhNode` | 保留，后续可替换为更好的 BVH / Vulkan RT |
+| 命中三角形 | 通过 primitive -> mesh -> index -> vertex 查询 | 扩展 texture sampling、tangent space 和更完整 hit record |
 | 直接光 | 只算一个 directional light | 扩成 light sampling + MIS |
 | 环境 | 程序化 sky color 和简单反射 | 改成 HDR environment importance sampling |
 | 输出 | 写线性 `vec4` | 保留线性 HDR，后续附加 AOV / variance |
@@ -25,8 +25,8 @@
 | Scene IR | `src/core/offline/offline_scene.*` | 增加 path tracing 需要的材质、纹理、光源字段 |
 | Asset resolve | `src/infra/offline/offline_asset_resolver.*` | 把 `cache://`、HDR、texture 路径解析到本地文件 |
 | Scene compile | `src/infra/offline/offline_scene_compiler.*` | 从 scene YAML / material YAML 收集离线材质数据 |
-| GPU packing | `src/backend/vulkan/offline/gpu_scene_builder.*` | 保持 C++ struct 和 GLSL std430 layout 一致 |
-| BVH | `src/backend/vulkan/offline/compute_bvh_builder.*` | 增加更好的 split 或实例层 BVH 时从这里开始 |
+| Ray scene packing | `src/core/offline/offline_ray_scene.*` | 保持 C++ struct 和 GLSL std430 layout 一致 |
+| BVH | `src/core/offline/offline_ray_scene.*` | 增加更好的 split 或实例层 BVH 时从这里开始 |
 | Vulkan compute | `src/backend/vulkan/offline/vulkan_offline_renderer.*` | 新增 descriptor、pipeline、shader 选择和 dispatch 参数 |
 | Shader | `assets/shaders/glsl/*.comp` | 实现真正的 path tracing integrator |
 | CLI | `src/tools/lxe_offline_render/main.cpp` | 选择 profile、输出文件、打印验证信息 |
@@ -50,14 +50,14 @@
 离线 renderer 使用 std430 storage buffer。C++ 和 GLSL 的结构体必须同时改，并用测试固定大小。
 
 ```cpp
-// src/backend/vulkan/offline/gpu_scene_builder.hpp
-struct alignas(16) GpuMaterial final {
+// src/core/offline/offline_ray_scene.hpp
+struct alignas(16) OfflineMaterialRecord final {
   Vec4f baseColor;  // -> GLSL Material.baseColor
   Vec4f params;     // -> x metallic, y roughness, later z/w flags
   Vec4f emissive;   // -> GLSL Material.emissive
 };
 
-static_assert(sizeof(GpuMaterial) == 48);
+static_assert(sizeof(OfflineMaterialRecord) == 48);
 ```
 
 ```glsl
@@ -71,8 +71,8 @@ struct Material {
 
 | 改动类型 | 必须同步的位置 |
 |---|---|
-| 新增材质参数 | `GpuMaterial`、GLSL `Material`、`GpuSceneBuilder`、`test_offline_gpu_scene` |
-| 新增 texture index | `OfflineMaterialIR`、`GpuMaterial`、descriptor layout、shader sampling |
+| 新增材质参数 | `OfflineMaterialRecord`、GLSL `Material`、`OfflineRaySceneBuilder`、`test_offline_gpu_scene` |
+| 新增 texture index | `OfflineMaterialIR`、`OfflineMaterialRecord`、descriptor layout、shader sampling |
 | 新增 light buffer | `OfflineSceneIR`、GPU light struct、descriptor layout、shader light loop |
 | 新增 output AOV | `VulkanOfflineRenderer` descriptor、CLI 输出模块、测试文件大小 |
 
@@ -126,7 +126,7 @@ vec3 tracePath(vec3 origin, vec3 dir, uint pixelIndex, uint sampleIndex) {
 | 测试 | 应覆盖的风险 |
 |---|---|
 | `test_offline_scene_compiler` | scene/profile/light/material 字段没有被丢掉 |
-| `test_offline_gpu_scene` | std430 大小、triangle/material/light buffer 合同稳定 |
+| `test_offline_gpu_scene` | std430 大小、primitive/material/light buffer 合同稳定 |
 | `test_vulkan_offline_renderer` | headless Vulkan 初始化和 renderer 生命周期稳定 |
 | CLI smoke | shader、descriptor、dispatch、readback 能跑完整链路 |
 | 小尺寸 golden / statistics | 固定 seed 下中心像素、平均亮度、NaN/Inf 检查稳定 |

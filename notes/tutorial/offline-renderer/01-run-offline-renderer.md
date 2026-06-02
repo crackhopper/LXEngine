@@ -84,8 +84,8 @@ artifacts/offline/smoke.rgba32f
 | 选择 profile | `OfflineRenderProfile` | 宽高、samples、integrator 等参数 |
 | 编译离线 IR | `LX_infra::offline::OfflineSceneCompiler` | `OfflineSceneIR` |
 | 资产解析 | `OfflineAssetResolver` | `builtin://` / `cache://` / project path 的本地路径 |
-| GPU 打包 | `GpuSceneBuilder` | triangle、material、camera params buffer |
-| BVH 构建 | `ComputeBvhBuilder` | `GpuBvhNode` + 重排后的 triangle buffer |
+| Ray scene 打包 | `OfflineRaySceneBuilder` | vertex、index、mesh、primitive、object、material、camera params buffer |
+| BVH 构建 | `OfflineBvhBuilder` | `OfflineBvhNode` + 重排后的 primitive buffer |
 | Compute 执行 | `backend::offline::VulkanOfflineRenderer` | `OfflineReadbackImage` |
 | 文件输出 | `OfflineImageWriter` | `.exr` / `.png` / `.json` / `.rgba32f` |
 

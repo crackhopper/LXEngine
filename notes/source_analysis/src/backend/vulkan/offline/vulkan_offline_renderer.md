@@ -6,11 +6,11 @@
 这一页把 offline renderer 当成一条独立实验管线来读，入口是
 [src/backend/vulkan/offline/vulkan_offline_renderer.hpp](../../../../../../src/backend/vulkan/offline/vulkan_offline_renderer.hpp)。
 关注的问题是：为什么离线渲染不直接复用 realtime FrameGraph，而是先把
-scene 文档编译成 `OfflineSceneIR`，再打包成 compute shader 的 storage buffer。
+scene 文档编译成 `OfflineSceneIR`，再通过共享资源表打包成 compute shader 的 indexed storage buffer。
 
 可以先带着一个问题阅读：我们要怎样在不创建 swapchain 的情况下，从同一份
 `.scene.yaml` 得到一张可复现实验图？答案就在 `OfflineSceneCompiler`、
-`GpuSceneBuilder`、`ComputeBvhBuilder`、`VulkanOfflineRenderer` 和
+`OfflineRaySceneBuilder`、`OfflineBvhBuilder`、`VulkanOfflineRenderer` 和
 `OfflineImageWriter` 的分层里。
 
 源码入口：[vulkan_offline_renderer.hpp](../../../../../src/backend/vulkan/offline/vulkan_offline_renderer.hpp)
@@ -18,9 +18,8 @@ scene 文档编译成 `OfflineSceneIR`，再打包成 compute shader 的 storage
 关联源码：
 
 - [offline_scene.hpp](../../../../src/core/offline/offline_scene.hpp)
+- [offline_ray_scene.hpp](../../../../src/core/offline/offline_ray_scene.hpp)
 - [offline_scene_compiler.hpp](../../../../src/infra/offline/offline_scene_compiler.hpp)
-- [gpu_scene_builder.hpp](../../../../../src/backend/vulkan/offline/gpu_scene_builder.hpp)
-- [compute_bvh_builder.hpp](../../../../../src/backend/vulkan/offline/compute_bvh_builder.hpp)
 
 ## vulkan_offline_renderer.hpp
 
@@ -30,7 +29,7 @@ scene 文档编译成 `OfflineSceneIR`，再打包成 compute shader 的 storage
 
 `VulkanOfflineRenderer` 是离线渲染实验场当前的 Vulkan 后端入口。它接收
 `OfflineRenderJob`，内部初始化 headless `VulkanDevice`，创建 compute pipeline，
-上传 triangle/material/BVH/camera buffer，dispatch compute shader，再把线性
+上传 indexed ray scene/material/BVH/camera buffer，dispatch compute shader，再把线性
 float RGBA readback 回 CPU。
 
 它故意不复用 realtime `FrameGraph`、swapchain 和 draw item，因为离线 renderer 的
@@ -68,30 +67,26 @@ editor 状态，而是把可见 mesh instance、材质参数、相机、方向�
 compiler/resolver 到 IR 的这条输入链路，而不是让 Vulkan offline renderer
 反向读取 editor 数据结构。
 
-## gpu_scene_builder.hpp
+## offline_ray_scene.hpp
 
-源码位置：[gpu_scene_builder.hpp](../../../../../src/backend/vulkan/offline/gpu_scene_builder.hpp)
+源码位置：[offline_ray_scene.hpp](../../../../src/core/offline/offline_ray_scene.hpp)
 
-### GpuSceneBuilder 固定 C++ 与 GLSL 的 buffer 合同
+### OfflineRaySceneBuilder 固定共享资源到 shader buffer 的合同
 
-`GpuSceneBuilder` 把 `OfflineSceneIR` 打包成 compute shader 可以直接读取的
-std430 storage buffer 数据。这里的结构体大小通过 `static_assert` 固定，
-因为 `assets/shaders/glsl/offline_primary_ray.comp` 会按相同字段顺序解释这些
-buffer。
+`OfflineRaySceneBuilder` 把 `OfflineSceneIR` 注册进 `SceneResourceTable`，再从
+snapshot 导出 compute shader 可以直接读取的 std430 storage buffer。它保留
+vertex/index/mesh/primitive/object/material 的索引关系，ray hit 后可以用
+barycentric 坐标插值 normal 和 uv。
 
 这层也是未来 path tracing 扩展最容易出错的边界：新增材质参数、纹理索引、
 light buffer 或 AOV 输出时，必须同步修改 C++ struct、GLSL struct、descriptor
 layout 和 `test_offline_gpu_scene` 的 layout contract。
 
-## compute_bvh_builder.hpp
+### OfflineBvhBuilder 是当前 shader 的 primitive 遍历索引
 
-源码位置：[compute_bvh_builder.hpp](../../../../../src/backend/vulkan/offline/compute_bvh_builder.hpp)
-
-### Compute BVH 是当前 shader 的遍历索引
-
-`ComputeBvhBuilder` 在 CPU 上为 triangle buffer 构建一棵紧凑 BVH，然后把节点
+`OfflineBvhBuilder` 在 CPU 上为 primitive buffer 构建一棵紧凑 BVH，然后把节点
 上传给 compute shader。当前节点布局把 bounds、left/first 和 packed
-right/triCount 放进两个 `vec4`，保持 32 字节 std430 合同。
+right/primitiveCount 放进两个 `vec4`，保持 32 字节 std430 合同。
 
 这不是最终高性能加速结构，而是 MVP 的可验证起点。它让离线 renderer 先拥有
 closest-hit 查询、shadow ray 查询和后续 path tracing 的基础空间索引；未来可以
@@ -111,8 +106,8 @@ closest-hit 查询、shadow ray 查询和后续 path tracing 的基础空间索�
 | 1 | `src/tools/lxe_offline_render/main.cpp` | CLI 如何选择 scene、profile、camera 和输出路径 |
 | 2 | `src/infra/scene_io/scene_document.*` | `.scene.yaml` 如何被解析成共享文档 |
 | 3 | `src/infra/offline/offline_scene_compiler.*` | editor scene 文档如何被裁剪成离线 IR |
-| 4 | `src/backend/vulkan/offline/gpu_scene_builder.*` | IR 如何被打包成 shader storage buffer |
-| 5 | `src/backend/vulkan/offline/compute_bvh_builder.*` | triangle 如何获得可遍历 BVH |
+| 4 | `src/core/offline/offline_ray_scene.*` | IR 如何注册到共享资源表并打包成 indexed shader storage buffer |
+| 5 | `src/core/offline/offline_ray_scene.*` | primitive 如何获得可遍历 BVH |
 | 6 | `src/backend/vulkan/offline/vulkan_offline_renderer.*` | pipeline、descriptor、dispatch、readback 如何连起来 |
 | 7 | `assets/shaders/glsl/offline_primary_ray.comp` | 当前 integrator 如何生成相机 ray、遍历 BVH、计算直接光和环境 |
 | 8 | `src/infra/offline/offline_image_writer.*` | readback 如何写成 EXR、PNG、JSON 和 raw dump |
@@ -122,7 +117,7 @@ closest-hit 查询、shadow ray 查询和后续 path tracing 的基础空间索�
 | 已经实现 | 后续扩展 |
 |---|---|
 | headless Vulkan device 和 compute dispatch | Vulkan hardware ray tracing pipeline |
-| CPU global triangle BVH | 实例层 BVH、更好的 split、GPU build |
+| CPU primitive BVH | 实例层 BVH、更好的 split、GPU build |
 | baseColor / metallic / roughness / emissive 常量材质 | albedo/normal/metallicRoughness/AO/emissive 纹理 |
 | 程序化 environment color | HDR environment 纹理采样与 importance sampling |
 | EXR/PNG/JSON/raw 输出 | AOV、variance、multipart EXR |
