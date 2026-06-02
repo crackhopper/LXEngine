@@ -31,3 +31,4 @@
 - [REQ-066-a: BuildInfo 与输出产物溯源](066-a-build-info-and-artifact-provenance.md)
 - [REQ-067-a: SceneResourceTable 与 Bindless-Ready 资源模型](067-a-scene-resource-table-bindless-ready-resource-model.md)
 - [REQ-067-b: Offline Renderer 迁移到共享资源模型](067-b-offline-renderer-shared-resource-model-migration.md)
+- [REQ-068-a: Output Profiles 与 Realtime Render 生成](068-a-output-profiles-and-realtime-render-generation.md)
