@@ -1,3 +1,5 @@
+#include "backend/vulkan/vulkan_renderer.hpp"
+#include "backend/vulkan/vulkan_realtime_renderer.hpp"
 #include "core/editor/command_bus.hpp"
 #include "core/editor/editor_state.hpp"
 #include "core/offline/offline_render_profile.hpp"
@@ -12,6 +14,8 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -140,11 +144,54 @@ void testRealtimeProfileOutputHelpersBuildStableJson() {
   EXPECT(escapedJson.find("\\u0001") != std::string::npos,
          "result JSON should escape non-whitespace control characters");
 }
+
+void testVulkanRealtimeProfileOutputApiShape() {
+  using LX_core::backend::VulkanRealtimeProfileOutputResult;
+  using LX_core::backend::VulkanRealtimeRenderer;
+  using LX_core::backend::VulkanRenderer;
+
+  static_assert(std::is_same_v<
+                decltype(std::declval<VulkanRenderer &>()
+                             .generateRealtimeProfileOutput(
+                                 std::declval<LX_core::SceneSharedPtr>(),
+                                 std::declval<
+                                     const LX_core::offline::OutputProfile &>(),
+                                 std::declval<const std::filesystem::path &>())),
+                VulkanRealtimeProfileOutputResult>);
+  static_assert(std::is_same_v<
+                decltype(std::declval<VulkanRealtimeRenderer &>()
+                             .generateRealtimeProfileOutput(
+                                 std::declval<LX_core::SceneSharedPtr>(),
+                                 std::declval<
+                                     const LX_core::offline::OutputProfile &>(),
+                                 std::declval<const std::filesystem::path &>())),
+                VulkanRealtimeProfileOutputResult>);
+
+  VulkanRealtimeProfileOutputResult result{
+      .linearExrPath = "linear.exr",
+      .cpuSrgbPngPath = "cpu_srgb.png",
+      .pipelineSrgbPngPath = {},
+      .metadataPath = "render.json",
+      .width = 64,
+      .height = 32,
+  };
+  EXPECT(result.linearExrPath.filename() == "linear.exr",
+         "result exposes linear EXR path");
+  EXPECT(result.cpuSrgbPngPath.filename() == "cpu_srgb.png",
+         "result exposes CPU sRGB PNG path");
+  EXPECT(result.pipelineSrgbPngPath.empty(),
+         "pipeline sRGB PNG can be unavailable without a fake path");
+  EXPECT(result.metadataPath.filename() == "render.json",
+         "result exposes metadata path");
+  EXPECT(result.width == 64 && result.height == 32,
+         "result exposes output extent");
+}
 } // namespace
 
 int main() {
   testRealtimeRenderLsAndRun();
   testRealtimeProfileOutputHelpersBuildStableJson();
+  testVulkanRealtimeProfileOutputApiShape();
   if (failures != 0) {
     std::cerr << "test_realtime_render_profile_commands failed with "
               << failures << " failure(s)\n";

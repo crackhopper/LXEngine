@@ -75,4 +75,11 @@ VulkanRenderer::dumpDebugRenderTarget(
   return p_realtime->dumpDebugRenderTarget(passName, cameraPath, path);
 }
 
+VulkanRealtimeProfileOutputResult VulkanRenderer::generateRealtimeProfileOutput(
+    SceneSharedPtr scene, const LX_core::offline::OutputProfile &output,
+    const std::filesystem::path &basePath) {
+  return p_realtime->generateRealtimeProfileOutput(std::move(scene), output,
+                                                   basePath);
+}
+
 } // namespace LX_core::backend

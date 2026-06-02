@@ -1,4 +1,5 @@
 #pragma once
+#include "core/offline/offline_render_profile.hpp"
 #include "core/rhi/renderer.hpp"
 #include "core/platform/types.hpp"
 #include "vulkan_renderer_types.hpp"
@@ -54,6 +55,9 @@ public:
       std::string_view passName,
       const std::optional<std::string> &cameraPath = std::nullopt,
       const std::optional<std::filesystem::path> &path = std::nullopt);
+  VulkanRealtimeProfileOutputResult generateRealtimeProfileOutput(
+      SceneSharedPtr scene, const LX_core::offline::OutputProfile &output,
+      const std::filesystem::path &basePath);
 
 private:
   std::unique_ptr<VulkanRealtimeRenderer> p_realtime;

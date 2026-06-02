@@ -6,6 +6,8 @@
 #include "core/asset/material_template.hpp"
 #include "core/frame_graph/frame_graph.hpp"
 #include "core/frame_graph/pass.hpp"
+#include "core/image/tone_mapping.hpp"
+#include "core/offline/offline_scene.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/gpu_resource.hpp"
 #include "core/rhi/vertex_buffer.hpp"
@@ -15,6 +17,7 @@
 #include "core/utils/filesystem_tools.hpp"
 #include "core/utils/hash.hpp"
 #include "core/utils/string_table.hpp"
+#include "infra/image/rgba_image_io.hpp"
 #include "infra/gui/gui.hpp"
 #include "infra/window/window.hpp"
 #include "details/commands/command_buffer_manager.hpp"
@@ -39,6 +42,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 namespace {
 constexpr const char *kBloomBlurHShaderName = "bloom_blur_h";
@@ -236,6 +240,89 @@ std::vector<unsigned char> makeBmpPixelsFromDump(
 
   throw std::runtime_error("render debug dump does not support " +
                            vkFormatName(format));
+}
+
+LX_core::offline::OfflineReadbackImage makeRgba32fImageFromDump(
+    VkFormat format, u32 width, u32 height, const void *mappedData) {
+  LX_core::offline::OfflineReadbackImage image;
+  image.width = width;
+  image.height = height;
+  image.rgba.resize(static_cast<usize>(width) * static_cast<usize>(height) *
+                    4u);
+
+  if (format == VK_FORMAT_R16G16B16A16_SFLOAT) {
+    const auto *pixels = static_cast<const u16 *>(mappedData);
+    for (usize i = 0; i < image.pixelCount() * 4u; ++i) {
+      image.rgba[i] = halfToFloat(pixels[i]);
+    }
+    return image;
+  }
+  if (format == VK_FORMAT_R32G32B32A32_SFLOAT) {
+    const auto *pixels = static_cast<const float *>(mappedData);
+    std::copy(pixels, pixels + image.rgba.size(), image.rgba.begin());
+    return image;
+  }
+  throw std::runtime_error("realtime profile output does not support " +
+                           vkFormatName(format));
+}
+
+[[nodiscard]] std::string jsonEscape(std::string_view text) {
+  std::string out;
+  out.reserve(text.size());
+  for (const unsigned char c : text) {
+    switch (c) {
+    case '\\':
+      out += "\\\\";
+      break;
+    case '"':
+      out += "\\\"";
+      break;
+    case '\n':
+      out += "\\n";
+      break;
+    case '\r':
+      out += "\\r";
+      break;
+    case '\t':
+      out += "\\t";
+      break;
+    default:
+      if (c < 0x20u) {
+        constexpr char kHex[] = "0123456789ABCDEF";
+        out += "\\u00";
+        out.push_back(kHex[(c >> 4u) & 0x0fu]);
+        out.push_back(kHex[c & 0x0fu]);
+      } else {
+        out.push_back(static_cast<char>(c));
+      }
+      break;
+    }
+  }
+  return out;
+}
+
+void writeRealtimeProfileMetadata(
+    const std::filesystem::path &path,
+    const LX_core::backend::VulkanRealtimeProfileOutputResult &result,
+    std::string_view pipelineStatus) {
+  std::filesystem::create_directories(path.parent_path());
+  std::ofstream out(path, std::ios::binary | std::ios::trunc);
+  if (!out.is_open()) {
+    throw std::runtime_error("failed to open realtime profile metadata " +
+                             path.string());
+  }
+  out << "{\n"
+      << "  \"width\": " << result.width << ",\n"
+      << "  \"height\": " << result.height << ",\n"
+      << "  \"linearExrPath\": \""
+      << jsonEscape(result.linearExrPath.generic_string()) << "\",\n"
+      << "  \"cpuSrgbPngPath\": \""
+      << jsonEscape(result.cpuSrgbPngPath.generic_string()) << "\",\n"
+      << "  \"pipelineSrgbPngPath\": \""
+      << jsonEscape(result.pipelineSrgbPngPath.generic_string()) << "\",\n"
+      << "  \"pipelineSrgbStatus\": \"" << jsonEscape(pipelineStatus)
+      << "\"\n"
+      << "}\n";
 }
 
 VkPipelineStageFlags dumpRestoreStage(VkImageLayout layout,
@@ -1263,6 +1350,285 @@ public:
     };
   }
 
+  VulkanRealtimeProfileOutputResult generateRealtimeProfileOutput(
+      SceneSharedPtr scene, const LX_core::offline::OutputProfile &output,
+      const std::filesystem::path &basePath) {
+    if (!m_foundation || !m_swapchain) {
+      throw std::runtime_error("renderer is not initialized");
+    }
+    if (!scene) {
+      throw std::runtime_error("realtime profile output requires a scene");
+    }
+    if (output.width == 0 || output.height == 0) {
+      throw std::runtime_error("realtime profile output extent must be positive");
+    }
+    const SceneSharedPtr previousScene = m_scene;
+    m_scene = std::move(scene);
+    struct RendererSceneRestore final {
+      Impl &renderer;
+      SceneSharedPtr scene;
+      ~RendererSceneRestore() {
+        renderer.m_scene = std::move(scene);
+        renderer.updateDirectionalLightCascades();
+      }
+    } sceneRestore{.renderer = *this, .scene = previousScene};
+
+    LX_core::SceneNode *cameraNode = m_scene->findByPath(output.cameraPath);
+    if (!cameraNode) {
+      throw std::runtime_error("realtime profile camera not found: " +
+                               output.cameraPath);
+    }
+    auto cameraOpt = cameraNode->getComponent<LX_core::CameraComponent>();
+    if (!cameraOpt.has_value()) {
+      throw std::runtime_error("realtime profile path is not a camera: " +
+                               output.cameraPath);
+    }
+    auto &camera = cameraOpt->get();
+
+    struct CameraRestore final {
+      LX_core::CameraComponent &camera;
+      std::optional<LX_core::RenderTarget> target;
+      LX_core::CameraType projectionType;
+      float fovY;
+      float aspect;
+      float nearPlane;
+      float farPlane;
+      float left;
+      float right;
+      float bottom;
+      float top;
+      LX_core::VisibilityLayerMask cullingMask;
+      ~CameraRestore() {
+        camera.setTarget(target);
+        camera.applyProjectionState(projectionType, fovY, aspect, nearPlane,
+                                    farPlane, left, right, bottom, top);
+        camera.setCullingMask(cullingMask);
+        camera.updateMatrices();
+      }
+    } restore{
+        .camera = camera,
+        .target = camera.getTarget(),
+        .projectionType = camera.getProjectionType(),
+        .fovY = camera.getFovY(),
+        .aspect = camera.getAspect(),
+        .nearPlane = camera.getNearPlane(),
+        .farPlane = camera.getFarPlane(),
+        .left = camera.getLeft(),
+        .right = camera.getRight(),
+        .bottom = camera.getBottom(),
+        .top = camera.getTop(),
+        .cullingMask = camera.getCullingMask(),
+    };
+
+    const float profileAspect =
+        static_cast<float>(output.width) / static_cast<float>(output.height);
+    camera.setAspect(output.cameraOverrides.aspect.value_or(profileAspect));
+    const float resolvedAspect = camera.getAspect();
+    if (output.cameraOverrides.fovY.has_value()) {
+      camera.setFovY(*output.cameraOverrides.fovY);
+    }
+    if (output.cameraOverrides.nearPlane.has_value()) {
+      camera.setNearPlane(*output.cameraOverrides.nearPlane);
+    }
+    if (output.cameraOverrides.farPlane.has_value()) {
+      camera.setFarPlane(*output.cameraOverrides.farPlane);
+    }
+    if (output.cameraOverrides.cullingMask.has_value()) {
+      camera.setCullingMask(*output.cameraOverrides.cullingMask);
+    }
+    if (camera.getProjectionType() == LX_core::CameraType::Orthographic) {
+      const float currentHeight = std::max(camera.getTop() - camera.getBottom(),
+                                           0.0001f);
+      const float orthoHeight =
+          output.cameraOverrides.orthographicHeight.value_or(currentHeight);
+      const float orthoWidth = orthoHeight * resolvedAspect;
+      camera.setOrthographicBounds(-orthoWidth * 0.5f, orthoWidth * 0.5f,
+                                   -orthoHeight * 0.5f, orthoHeight * 0.5f);
+    }
+
+    LX_core::RenderTargetDesc targetDesc;
+    targetDesc.role = LX_core::RenderTargetRole::Offscreen;
+    targetDesc.colorFormat = LX_core::ImageFormat::RGBA16Float;
+    targetDesc.depthFormat = LX_core::ImageFormat::D32Float;
+    const LX_core::RenderTarget target{targetDesc};
+    camera.setTarget(target);
+    camera.updateMatrices();
+    updateDirectionalLightCascadesForCamera(camera);
+
+    auto sceneResources =
+        m_scene->getSceneLevelResources(LX_core::Pass_Forward, target);
+
+    const std::string attachmentPrefix =
+        "realtime.profile." + basePath.generic_string() + "." +
+        std::to_string(output.width) + "x" + std::to_string(output.height);
+    const auto shadowFallbackRef =
+        LX_core::FrameGraphResourceRef::depthAttachment(
+            LX_core::StringID(attachmentPrefix + ".shadowFallback"));
+    for (u32 cascadeIndex = 0; cascadeIndex < LX_core::MaxShadowCascades;
+         ++cascadeIndex) {
+      sceneResources.push_back(
+          std::make_shared<LX_core::FrameGraphSampledResource>(
+              shadowFallbackRef.name,
+              LX_core::StringID("ShadowMap" + std::to_string(cascadeIndex))));
+    }
+
+    LX_core::RenderQueue queue;
+    queue.buildFromSceneWithOverrides(
+        *m_scene, LX_core::Pass_Forward, target, std::move(sceneResources),
+        camera.getCullingMask() & ~LX_core::Layer_EditorOverlay);
+    if (queue.getItems().empty()) {
+      throw std::runtime_error("realtime profile output produced no draw items");
+    }
+    for (auto &item : queue.getItems()) {
+      resourceManager().syncResource(commandBufferManager(), item.vertexBuffer);
+      resourceManager().syncResource(commandBufferManager(), item.indexBuffer);
+      for (auto &cpuRes : item.descriptorResources) {
+        resourceManager().syncResource(commandBufferManager(), cpuRes);
+      }
+    }
+    resourceManager().preloadPipelines(
+        queue.collectUniquePipelineBuildDescs());
+
+    const VkExtent2D extent{output.width, output.height};
+    const auto colorRef = LX_core::FrameGraphResourceRef::colorAttachment(
+        LX_core::StringID(attachmentPrefix + ".color"));
+    const auto depthRef = LX_core::FrameGraphResourceRef::depthAttachment(
+        LX_core::StringID(attachmentPrefix + ".depth"));
+    const VkFormat colorFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+    const VkDeviceSize byteSize =
+        dumpByteSize(colorFormat, output.width, output.height);
+    auto readback = VulkanBuffer::create(
+        device(), byteSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+    device().waitIdle();
+    auto cmd = commandBufferManager().beginSingleTimeCommands();
+    auto &shadowFallbackAttachment =
+        resourceManager().createOrGetFrameGraphAttachment(
+            shadowFallbackRef.name, VkExtent2D{1, 1}, VK_FORMAT_D32_SFLOAT,
+            VK_IMAGE_ASPECT_DEPTH_BIT,
+            VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
+                VK_IMAGE_USAGE_SAMPLED_BIT);
+    transitionFrameGraphAttachment(
+        shadowFallbackRef, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+            VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, *cmd);
+    {
+      LX_core::RenderTargetDesc shadowFallbackDesc =
+          LX_core::RenderTargetDesc::offscreenDepth(
+              LX_core::ImageFormat::D32Float);
+      auto &shadowFallbackRenderPass =
+          resourceManager().getRenderPass(shadowFallbackDesc);
+      std::vector<VkImageView> shadowFallbackViews{
+          shadowFallbackAttachment.texture->getImageView()};
+      auto shadowFallbackFramebuffer = VulkanFrameBuffer::create(
+          device(), shadowFallbackRenderPass.getHandle(), shadowFallbackViews,
+          VkExtent2D{1, 1});
+      cmd->beginRenderPass(shadowFallbackRenderPass.getHandle(),
+                           shadowFallbackFramebuffer->getHandle(),
+                           VkExtent2D{1, 1},
+                           shadowFallbackRenderPass.getClearValues());
+      cmd->setViewport(1, 1);
+      cmd->setScissor(1, 1);
+      cmd->endRenderPass();
+    }
+    transitionFrameGraphAttachment(
+        shadowFallbackRef, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT, *cmd);
+
+    auto &colorAttachment = resourceManager().createOrGetFrameGraphAttachment(
+        colorRef.name, extent, colorFormat, VK_IMAGE_ASPECT_COLOR_BIT,
+        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+            VK_IMAGE_USAGE_SAMPLED_BIT);
+    auto &depthAttachment = resourceManager().createOrGetFrameGraphAttachment(
+        depthRef.name, extent, VK_FORMAT_D32_SFLOAT, VK_IMAGE_ASPECT_DEPTH_BIT,
+        VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
+            VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
+
+    transitionFrameGraphAttachment(
+        colorRef, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, *cmd);
+    transitionFrameGraphAttachment(
+        depthRef, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+            VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, *cmd);
+
+    std::vector<VkImageView> attachments{
+        colorAttachment.texture->getImageView(),
+        depthAttachment.texture->getImageView(),
+    };
+    auto &renderPass = resourceManager().getRenderPass(targetDesc);
+    auto framebuffer = VulkanFrameBuffer::create(
+        device(), renderPass.getHandle(), attachments, extent);
+    cmd->beginRenderPass(renderPass.getHandle(), framebuffer->getHandle(),
+                         extent, renderPass.getClearValues());
+    cmd->setViewport(extent.width, extent.height);
+    cmd->setScissor(extent.width, extent.height);
+    for (auto &item : queue.getItems()) {
+      auto &pipeline = resourceManager().getOrCreateRenderPipeline(item);
+      cmd->bindPipeline(pipeline);
+      cmd->bindResources(resourceManager(), pipeline, item);
+      cmd->drawItem(item);
+    }
+    cmd->endRenderPass();
+
+    transitionFrameGraphAttachment(
+        colorRef, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT, *cmd);
+    VkBufferImageCopy region{};
+    region.bufferOffset = 0;
+    region.bufferRowLength = 0;
+    region.bufferImageHeight = 0;
+    region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    region.imageSubresource.mipLevel = 0;
+    region.imageSubresource.baseArrayLayer = 0;
+    region.imageSubresource.layerCount = 1;
+    region.imageOffset = {0, 0, 0};
+    region.imageExtent = {extent.width, extent.height, 1};
+    vkCmdCopyImageToBuffer(cmd->getHandle(),
+                           colorAttachment.texture->getHandle(),
+                           VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                           readback->getHandle(), 1, &region);
+    commandBufferManager().endSingleTimeCommands(std::move(cmd),
+                                                 device().getGraphicsQueue());
+
+    const void *mapped = readback->map();
+    LX_core::offline::OfflineReadbackImage image =
+        makeRgba32fImageFromDump(colorFormat, output.width, output.height,
+                                 mapped);
+    readback->unmap();
+
+    const std::filesystem::path outputDir = basePath.parent_path();
+    std::filesystem::create_directories(outputDir);
+    const std::string outputStem =
+        basePath.filename().empty() ? std::string("render")
+                                    : basePath.filename().generic_string();
+    VulkanRealtimeProfileOutputResult result{
+        .linearExrPath = outputDir / (outputStem + "-linear.exr"),
+        .cpuSrgbPngPath = outputDir / (outputStem + "-cpu_srgb.png"),
+        .pipelineSrgbPngPath = {},
+        .metadataPath = outputDir / (outputStem + ".json"),
+        .width = output.width,
+        .height = output.height,
+    };
+    LX_infra::image::writeRgba32fExr(result.linearExrPath, image);
+    LX_infra::image::writeToneMappedPng(
+        result.cpuSrgbPngPath, image,
+        LX_core::image::ToneMappingSettings{
+            .exposure = 1.0f,
+            .gamma = 2.2f,
+            .mode = LX_core::image::ToneMappingMode::Aces,
+        });
+    writeRealtimeProfileMetadata(result.metadataPath, result,
+                                 "unavailable: pipeline sRGB readback is not "
+                                 "implemented in this path");
+    return result;
+  }
+
 private:
   struct PendingScreenDump final {
     std::filesystem::path path;
@@ -1982,6 +2348,14 @@ VulkanRealtimeRenderer::dumpDebugRenderTarget(
     std::string_view passName, const std::optional<std::string> &cameraPath,
     const std::optional<std::filesystem::path> &path) {
   return p_impl->dumpDebugRenderTarget(passName, cameraPath, path);
+}
+
+VulkanRealtimeProfileOutputResult
+VulkanRealtimeRenderer::generateRealtimeProfileOutput(
+    SceneSharedPtr scene, const LX_core::offline::OutputProfile &output,
+    const std::filesystem::path &basePath) {
+  return p_impl->generateRealtimeProfileOutput(std::move(scene), output,
+                                               basePath);
 }
 
 } // namespace LX_core::backend

@@ -905,7 +905,28 @@ int main(int argc, char **argv) {
               };
             },
     };
-    session.initialize(displayCommandHooks, renderDebugCommandHooks);
+    demo::LxeEditorSession::RealtimeRenderProfileHooks
+        realtimeRenderProfileHooks{
+            .generate =
+                [vulkanRenderer](
+                    LX_core::SceneSharedPtr scene,
+                    const demo::RealtimeProfileOutputRequest &request) {
+                  const auto generated =
+                      vulkanRenderer->generateRealtimeProfileOutput(
+                          std::move(scene), request.output,
+                          request.outputBasePath);
+                  return demo::RealtimeProfileOutputResult{
+                      .linearExrPath = generated.linearExrPath,
+                      .cpuSrgbPngPath = generated.cpuSrgbPngPath,
+                      .pipelineSrgbPngPath = generated.pipelineSrgbPngPath,
+                      .metadataPath = generated.metadataPath,
+                      .width = generated.width,
+                      .height = generated.height,
+                  };
+                },
+        };
+    session.initialize(displayCommandHooks, renderDebugCommandHooks,
+                       realtimeRenderProfileHooks);
     ClosePromptState closePrompt;
     demo::ApiTokenState apiTokenState(resolveRuntimePath("data/lxe_editor"));
     const std::string apiToken =

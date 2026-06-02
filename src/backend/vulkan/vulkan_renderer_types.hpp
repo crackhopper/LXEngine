@@ -21,4 +21,13 @@ struct VulkanFrameGraphAttachmentDumpResult final {
   std::string format;
 };
 
+struct VulkanRealtimeProfileOutputResult final {
+  std::filesystem::path linearExrPath;
+  std::filesystem::path cpuSrgbPngPath;
+  std::filesystem::path pipelineSrgbPngPath;
+  std::filesystem::path metadataPath;
+  u32 width = 0;
+  u32 height = 0;
+};
+
 } // namespace LX_core::backend
