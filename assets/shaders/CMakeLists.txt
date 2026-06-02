@@ -5,6 +5,10 @@
 #   <build>/assets/shaders/glsl/<shaderName>.vert.spv
 #   <build>/assets/shaders/glsl/<shaderName>.frag.spv
 
+if(POLICY CMP0116)
+  cmake_policy(SET CMP0116 NEW)
+endif()
+
 find_program(GLSLC_EXECUTABLE
   NAMES glslc
   HINTS $ENV{VULKAN_SDK}/Bin $ENV{VULKAN_SDK}/x86_64/bin
@@ -39,13 +43,18 @@ foreach(SHADER_FILE ${GLSL_VERT_FILES} ${GLSL_FRAG_FILES} ${GLSL_COMP_FILES})
   endif()
 
   list(APPEND SPV_FILES "${OUTPUT_SPV}")
+  set(OUTPUT_DEPFILE "${OUTPUT_SPV}.d")
 
   add_custom_command(
     OUTPUT "${OUTPUT_SPV}"
     COMMAND "${GLSLC_EXECUTABLE}"
+            -I "${GLSL_INPUT_DIR}"
+            -MD
+            -MF "${OUTPUT_DEPFILE}"
             -o "${OUTPUT_SPV}"
             "${SHADER_FILE}"
     DEPENDS "${SHADER_FILE}"
+    DEPFILE "${OUTPUT_DEPFILE}"
     COMMENT "Compiling shader: ${FILE_NAME} -> ${OUTPUT_SPV}"
     VERBATIM
   )
