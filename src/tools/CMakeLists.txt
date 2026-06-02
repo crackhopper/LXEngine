@@ -1,2 +1,3 @@
+add_subdirectory(lxe_compare_exr)
 add_subdirectory(lxe_offline_render)
 add_subdirectory(lxe_realtime_render)

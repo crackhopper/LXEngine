@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <cstdlib>
 #include <fstream>
 #include <stdexcept>
 #include <string>
@@ -34,6 +35,38 @@ void writeRgba32fExr(const std::filesystem::path &path,
     }
     throw std::runtime_error(message);
   }
+}
+
+LX_core::offline::OfflineReadbackImage
+readRgba32fExr(const std::filesystem::path &path) {
+  const char *error = nullptr;
+  float *pixels = nullptr;
+  int width = 0;
+  int height = 0;
+  const int result =
+      LoadEXR(&pixels, &width, &height, path.string().c_str(), &error);
+  if (result != TINYEXR_SUCCESS) {
+    std::string message = "failed to read EXR " + path.string();
+    if (error != nullptr) {
+      message += ": ";
+      message += error;
+      FreeEXRErrorMessage(error);
+    }
+    throw std::runtime_error(message);
+  }
+  if (pixels == nullptr || width <= 0 || height <= 0) {
+    std::free(pixels);
+    throw std::runtime_error("EXR readback had invalid dimensions " +
+                             path.string());
+  }
+
+  LX_core::offline::OfflineReadbackImage image;
+  image.width = static_cast<u32>(width);
+  image.height = static_cast<u32>(height);
+  const usize valueCount = image.pixelCount() * 4u;
+  image.rgba.assign(pixels, pixels + valueCount);
+  std::free(pixels);
+  return image;
 }
 
 void writeToneMappedPng(const std::filesystem::path &path,

@@ -1,4 +1,5 @@
 #include "infra/offline/offline_image_writer.hpp"
+#include "infra/image/rgba_image_io.hpp"
 
 #include <cmath>
 #include <filesystem>
@@ -34,6 +35,10 @@ int failures = 0;
   std::filesystem::remove_all(dir);
   std::filesystem::create_directories(dir);
   return dir;
+}
+
+[[nodiscard]] bool approx(float lhs, float rhs, float tolerance) {
+  return std::abs(lhs - rhs) <= tolerance;
 }
 
 void testToneMappingMatchesAcesPreview() {
@@ -84,6 +89,14 @@ void testWritesExrPngJsonAndRaw() {
   EXPECT(hasPrefix(result.pngPath, "\x89PNG\r\n\x1a\n"), "PNG signature should match");
   EXPECT(std::filesystem::file_size(result.rawPath) == 2u * 2u * 4u * sizeof(float),
          "raw dump size should match RGBA32F");
+
+  const auto exr = LX_infra::image::readRgba32fExr(result.exrPath);
+  EXPECT(exr.width == 2 && exr.height == 2, "EXR readback dimensions");
+  EXPECT(exr.rgba.size() == request.image.rgba.size(),
+         "EXR readback RGBA size");
+  EXPECT(approx(exr.rgba[4], 1.0f, 0.001f), "EXR red channel readback");
+  EXPECT(approx(exr.rgba[5], 0.5f, 0.001f), "EXR green channel readback");
+  EXPECT(approx(exr.rgba[6], 0.25f, 0.001f), "EXR blue channel readback");
 
   std::ifstream metadata(result.metadataPath);
   const std::string text((std::istreambuf_iterator<char>(metadata)),
