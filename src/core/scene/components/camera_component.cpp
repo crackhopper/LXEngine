@@ -4,73 +4,15 @@
 
 #include <cmath>
 #include <limits>
+#include <utility>
 
 namespace LX_core {
 
 namespace {
 
-constexpr float kDegToRad = 3.14159265358979323846f / 180.0f;
-
 float safeScaleComponent(float value) {
   return std::abs(value) <= std::numeric_limits<float>::epsilon() ? 1.0f
                                                                   : value;
-}
-
-[[nodiscard]] Mat4f invertMatrix(const Mat4f &matrix) {
-  float m[16] = {};
-  for (int row = 0; row < 4; ++row) {
-    for (int col = 0; col < 4; ++col) {
-      m[row * 4 + col] = matrix(row, col);
-    }
-  }
-
-  float inv[16] = {};
-  inv[0] = m[5] * m[10] * m[15] - m[5] * m[11] * m[14] - m[9] * m[6] * m[15] +
-           m[9] * m[7] * m[14] + m[13] * m[6] * m[11] - m[13] * m[7] * m[10];
-  inv[4] = -m[4] * m[10] * m[15] + m[4] * m[11] * m[14] + m[8] * m[6] * m[15] -
-           m[8] * m[7] * m[14] - m[12] * m[6] * m[11] + m[12] * m[7] * m[10];
-  inv[8] = m[4] * m[9] * m[15] - m[4] * m[11] * m[13] - m[8] * m[5] * m[15] +
-           m[8] * m[7] * m[13] + m[12] * m[5] * m[11] - m[12] * m[7] * m[9];
-  inv[12] = -m[4] * m[9] * m[14] + m[4] * m[10] * m[13] + m[8] * m[5] * m[14] -
-            m[8] * m[6] * m[13] - m[12] * m[5] * m[10] + m[12] * m[6] * m[9];
-  inv[1] = -m[1] * m[10] * m[15] + m[1] * m[11] * m[14] + m[9] * m[2] * m[15] -
-           m[9] * m[3] * m[14] - m[13] * m[2] * m[11] + m[13] * m[3] * m[10];
-  inv[5] = m[0] * m[10] * m[15] - m[0] * m[11] * m[14] - m[8] * m[2] * m[15] +
-           m[8] * m[3] * m[14] + m[12] * m[2] * m[11] - m[12] * m[3] * m[10];
-  inv[9] = -m[0] * m[9] * m[15] + m[0] * m[11] * m[13] + m[8] * m[1] * m[15] -
-           m[8] * m[3] * m[13] - m[12] * m[1] * m[11] + m[12] * m[3] * m[9];
-  inv[13] = m[0] * m[9] * m[14] - m[0] * m[10] * m[13] - m[8] * m[1] * m[14] +
-            m[8] * m[2] * m[13] + m[12] * m[1] * m[10] - m[12] * m[2] * m[9];
-  inv[2] = m[1] * m[6] * m[15] - m[1] * m[7] * m[14] - m[5] * m[2] * m[15] +
-           m[5] * m[3] * m[14] + m[13] * m[2] * m[7] - m[13] * m[3] * m[6];
-  inv[6] = -m[0] * m[6] * m[15] + m[0] * m[7] * m[14] + m[4] * m[2] * m[15] -
-           m[4] * m[3] * m[14] - m[12] * m[2] * m[7] + m[12] * m[3] * m[6];
-  inv[10] = m[0] * m[5] * m[15] - m[0] * m[7] * m[13] - m[4] * m[1] * m[15] +
-            m[4] * m[3] * m[13] + m[12] * m[1] * m[7] - m[12] * m[3] * m[5];
-  inv[14] = -m[0] * m[5] * m[14] + m[0] * m[6] * m[13] + m[4] * m[1] * m[14] -
-            m[4] * m[2] * m[13] - m[12] * m[1] * m[6] + m[12] * m[2] * m[5];
-  inv[3] = -m[1] * m[6] * m[11] + m[1] * m[7] * m[10] + m[5] * m[2] * m[11] -
-           m[5] * m[3] * m[10] - m[9] * m[2] * m[7] + m[9] * m[3] * m[6];
-  inv[7] = m[0] * m[6] * m[11] - m[0] * m[7] * m[10] - m[4] * m[2] * m[11] +
-           m[4] * m[3] * m[10] + m[8] * m[2] * m[7] - m[8] * m[3] * m[6];
-  inv[11] = -m[0] * m[5] * m[11] + m[0] * m[7] * m[9] + m[4] * m[1] * m[11] -
-            m[4] * m[3] * m[9] - m[8] * m[1] * m[7] + m[8] * m[3] * m[5];
-  inv[15] = m[0] * m[5] * m[10] - m[0] * m[6] * m[9] - m[4] * m[1] * m[10] +
-            m[4] * m[2] * m[9] + m[8] * m[1] * m[6] - m[8] * m[2] * m[5];
-
-  float det = m[0] * inv[0] + m[1] * inv[4] + m[2] * inv[8] + m[3] * inv[12];
-  if (std::abs(det) < 1e-8f) {
-    return Mat4f::identity();
-  }
-
-  det = 1.0f / det;
-  Mat4f result{};
-  for (int row = 0; row < 4; ++row) {
-    for (int col = 0; col < 4; ++col) {
-      result(row, col) = inv[row * 4 + col] * det;
-    }
-  }
-  return result;
 }
 
 Transform toLocalFromWorld(const SceneNode &node,
@@ -256,69 +198,61 @@ BoundingBox CameraComponent::getDebugLocalBounds() const {
                      Vec3f{radius, radius, radius}};
 }
 
-Mat4f CameraComponent::getViewMatrix() const {
-  const Transform worldTransform = getOwnerWorldTransform();
-  const Quatf inverseRotation =
-      worldTransform.rotation.conjugate().normalized();
-  Transform viewTransform;
-  viewTransform.translation =
-      inverseRotation.rotate(-worldTransform.translation);
-  viewTransform.rotation = inverseRotation;
-  viewTransform.scale = Vec3f{1.0f, 1.0f, 1.0f};
-  return viewTransform.toMat4();
+CameraPose CameraComponent::getPose() const {
+  return makeCameraPose(getEyePosition(), getForwardVector(), getUpVector());
+}
+
+CameraProjection CameraComponent::getProjection() const {
+  return CameraProjection{
+      .type = m_type,
+      .fovYDegrees = m_fovY,
+      .aspect = m_aspect,
+      .nearPlane = m_nearPlane,
+      .farPlane = m_farPlane,
+      .left = m_left,
+      .right = m_right,
+      .bottom = m_bottom,
+      .top = m_top,
+  };
+}
+
+CameraSnapshot CameraComponent::getSnapshot(std::string path) const {
+  return CameraSnapshot{
+      .path = std::move(path),
+      .pose = getPose(),
+      .projection = getProjection(),
+      .cullingMask = m_cullingMask,
+      .active = m_active,
+  };
 }
 
 Mat4f CameraComponent::getProjMatrix(float aspectOverride,
                                      GraphicsAPI api) const {
-  const float projectionAspect =
-      aspectOverride > 0.0f ? aspectOverride : m_aspect;
-  if (m_type == CameraType::Perspective) {
-    return Mat4f::perspective(m_fovY * kDegToRad, projectionAspect, m_nearPlane,
-                              m_farPlane, api);
+  CameraProjection projection = getProjection();
+  if (aspectOverride > 0.0f) {
+    projection.aspect = aspectOverride;
   }
-  return Mat4f::orthographic(m_left, m_right, m_bottom, m_top, m_nearPlane,
-                             m_farPlane, api);
+  return makeCameraProjectionMatrix(projection, api);
+}
+
+Mat4f CameraComponent::getViewMatrix() const {
+  return makeCameraViewMatrix(getPose());
 }
 
 Ray CameraComponent::pickRay(const Vec2f &screenPixel,
                              const Vec2f &viewportSize) const {
   const float viewportWidth = viewportSize.x > 0.0f ? viewportSize.x : 1.0f;
   const float viewportHeight = viewportSize.y > 0.0f ? viewportSize.y : 1.0f;
-  const float ndcX = ((screenPixel.x + 0.5f) / viewportWidth) * 2.0f - 1.0f;
-  const float ndcY = 1.0f - ((screenPixel.y + 0.5f) / viewportHeight) * 2.0f;
-
-  if (m_type == CameraType::Perspective) {
-    const float projectionAspect = viewportWidth / viewportHeight;
-    const Mat4f viewProj =
-        getProjMatrix(projectionAspect, GraphicsAPI::OpenGL) * getViewMatrix();
-    const Mat4f invViewProj = invertMatrix(viewProj);
-    const Vec3f farPoint =
-        (invViewProj * Vec4f{ndcX, ndcY, 1.0f, 1.0f}).toVec3();
-    const Vec3f eye = getEyePosition();
-    return Ray{eye, (farPoint - eye).normalized()};
-  }
-
-  const Transform worldTransform = getOwnerWorldTransform();
-  const Vec3f eye = worldTransform.translation;
-  const Vec3f rightAxis =
-      worldTransform.rotation.rotate(Vec3f{1.0f, 0.0f, 0.0f}).normalized();
-  const Vec3f upAxis =
-      worldTransform.rotation.rotate(Vec3f{0.0f, 1.0f, 0.0f}).normalized();
-  const Vec3f forwardAxis = getForwardVector();
-  const float halfWidth = 0.5f * (m_right - m_left);
-  const float halfHeight = 0.5f * (m_top - m_bottom);
-  const float centerX = 0.5f * (m_left + m_right);
-  const float centerY = 0.5f * (m_bottom + m_top);
-  const Vec3f origin = eye + rightAxis * (centerX + ndcX * halfWidth) +
-                       upAxis * (centerY + ndcY * halfHeight) +
-                       forwardAxis * m_nearPlane;
-  return Ray{origin, forwardAxis};
+  CameraProjection projection = getProjection();
+  projection.aspect = viewportWidth / viewportHeight;
+  return makeCameraRay(getPose(), projection, screenPixel, viewportSize);
 }
 
 void CameraComponent::updateMatrices() {
-  m_ubo->param.eyePos = getEyePosition();
-  m_ubo->param.view = getViewMatrix();
-  m_ubo->param.proj = getProjMatrix();
+  const CameraSnapshot snapshot = getSnapshot();
+  m_ubo->param.eyePos = snapshot.pose.eye;
+  m_ubo->param.view = makeCameraViewMatrix(snapshot.pose);
+  m_ubo->param.proj = makeCameraProjectionMatrix(snapshot.projection);
   m_ubo->setDirty();
 }
 

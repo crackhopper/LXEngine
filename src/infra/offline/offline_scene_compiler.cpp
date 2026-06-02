@@ -2,6 +2,7 @@
 
 #include "yaml-cpp/yaml.h"
 
+#include <algorithm>
 #include <cmath>
 #include <stdexcept>
 #include <unordered_map>
@@ -12,7 +13,6 @@ namespace {
 using LX_core::Mat4f;
 using LX_core::Vec2f;
 using LX_core::Vec3f;
-using LX_core::offline::OfflineCameraIR;
 using LX_core::offline::OfflineDirectionalLightIR;
 using LX_core::offline::OfflineInstanceIR;
 using LX_core::offline::OfflineMaterialIR;
@@ -195,16 +195,29 @@ void visitNode(const OfflineAssetResolver &resolver, const SceneNodeDocument &no
     const Vec3f up =
         LX_core::offline::transformVector(world, Vec3f{0.0f, 1.0f, 0.0f})
             .normalized();
+    const float halfOrthoHeight =
+        std::max(node.camera->orthographicHeight, 0.001f) * 0.5f;
+    const float halfOrthoWidth =
+        halfOrthoHeight * std::max(node.camera->aspect, 0.001f);
     scene.cameraPath = path;
-    scene.camera.path = path;
-    scene.camera.eye = eye;
-    scene.camera.target =
-        eye + forward * std::max(node.camera->focusDistance, 1.0f);
-    scene.camera.up = up;
-    scene.camera.fovYDegrees = node.camera->fovY;
-    scene.camera.aspect = node.camera->aspect;
-    scene.camera.nearPlane = node.camera->nearPlane;
-    scene.camera.farPlane = node.camera->farPlane;
+    scene.camera = LX_core::CameraSnapshot{
+        .path = path,
+        .pose = LX_core::makeCameraPose(eye, forward, up),
+        .projection =
+            LX_core::CameraProjection{
+                .type = node.camera->type,
+                .fovYDegrees = node.camera->fovY,
+                .aspect = node.camera->aspect,
+                .nearPlane = node.camera->nearPlane,
+                .farPlane = node.camera->farPlane,
+                .left = -halfOrthoWidth,
+                .right = halfOrthoWidth,
+                .bottom = -halfOrthoHeight,
+                .top = halfOrthoHeight,
+            },
+        .cullingMask = node.camera->cullingMask,
+        .active = true,
+    };
   }
 
   if (node.light.has_value()) {

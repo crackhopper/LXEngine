@@ -3,12 +3,14 @@
 #include "infra/offline/offline_scene_compiler.hpp"
 #include "infra/scene_io/scene_document.hpp"
 
+#include <cmath>
 #include <filesystem>
 #include <iostream>
 
 namespace {
 
 int failures = 0;
+constexpr float kEps = 1.0e-5f;
 
 #define EXPECT(cond, msg)                                                      \
   do {                                                                         \
@@ -110,11 +112,41 @@ void testIndexedVertexNormalsArePreserved() {
          "per-vertex normals should be preserved for barycentric interpolation");
 }
 
+void testOutputProfileAspectDrivesOfflineCameraFrame() {
+  LX_core::offline::OfflineSceneIR scene;
+  scene.name = "camera aspect";
+  scene.camera.projection.aspect = 16.0f / 9.0f;
+  scene.materials.push_back({});
+  scene.meshes.push_back(LX_core::offline::OfflineMeshIR{
+      .name = "triangle",
+      .vertices =
+          {
+              {{0.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
+              {{1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
+              {{0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f}},
+          },
+      .indices = {0, 1, 2},
+  });
+  scene.instances.push_back(LX_core::offline::OfflineInstanceIR{});
+
+  LX_core::offline::OutputProfile output;
+  output.width = 128;
+  output.height = 128;
+  LX_core::offline::OfflineRaySceneBuilder builder;
+  const auto rayScene =
+      builder.build(scene, output, LX_core::offline::OfflineRenderSettings{});
+
+  EXPECT(std::abs(std::abs(rayScene.params.cameraRight.x) -
+                  std::abs(rayScene.params.cameraUp.y)) < kEps,
+         "square output profile should produce symmetric camera ray frame");
+}
+
 } // namespace
 
 int main() {
   testRayLayoutContract();
   testIndexedVertexNormalsArePreserved();
+  testOutputProfileAspectDrivesOfflineCameraFrame();
   testRaySceneUsesSharedIndexedResourcesAndBuildsBvh();
   if (failures != 0) {
     std::cerr << "test_offline_gpu_scene failed with " << failures

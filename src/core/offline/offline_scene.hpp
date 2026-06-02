@@ -4,6 +4,7 @@
 #include "core/math/vec.hpp"
 #include "core/offline/offline_render_profile.hpp"
 #include "core/platform/types.hpp"
+#include "core/scene/camera.hpp"
 
 #include <filesystem>
 #include <optional>
@@ -22,17 +23,6 @@ namespace LX_core::offline {
 `RenderingItem`。它把 `.scene.yaml` 中能够离线计算的事实收敛成稳定数据，
 让 CPU compiler、GPU packing、path tracing shader 和输出模块可以独立演进。
 */
-struct OfflineCameraIR final {
-  std::string path;
-  Vec3f eye{0.0f, 1.7f, 5.0f};
-  Vec3f target{0.0f, 0.8f, 0.0f};
-  Vec3f up{0.0f, 1.0f, 0.0f};
-  float fovYDegrees = 45.0f;
-  float aspect = 16.0f / 9.0f;
-  float nearPlane = 0.1f;
-  float farPlane = 1000.0f;
-};
-
 struct OfflineMaterialIR final {
   std::string name;
   std::string materialModel = "pbr-metallic-roughness";
@@ -80,7 +70,7 @@ struct OfflineEnvironmentIR final {
 struct OfflineSceneIR final {
   std::string name;
   std::string cameraPath;
-  OfflineCameraIR camera;
+  CameraSnapshot camera;
   OfflineEnvironmentIR environment;
   std::vector<OfflineMaterialIR> materials;
   std::vector<OfflineMeshIR> meshes;

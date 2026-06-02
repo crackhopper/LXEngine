@@ -1,5 +1,6 @@
 #include "core/offline/offline_render_profile.hpp"
 
+#include <algorithm>
 #include <stdexcept>
 #include <utility>
 
@@ -74,6 +75,41 @@ ResolvedRenderProfile resolveRenderProfileDocument(
       .offline = std::move(offline),
       .outputPath = overrides.outputPath,
   };
+}
+
+CameraProjection resolveOutputCameraProjection(const CameraProjection &base,
+                                               const OutputProfile &output) {
+  CameraProjection projection = base;
+  const float outputAspect =
+      output.height == 0
+          ? projection.aspect
+          : static_cast<float>(output.width) / static_cast<float>(output.height);
+  projection.aspect = output.cameraOverrides.aspect.value_or(outputAspect);
+  if (output.cameraOverrides.fovY.has_value()) {
+    projection.fovYDegrees = *output.cameraOverrides.fovY;
+  }
+  if (output.cameraOverrides.nearPlane.has_value()) {
+    projection.nearPlane = *output.cameraOverrides.nearPlane;
+  }
+  if (output.cameraOverrides.farPlane.has_value()) {
+    projection.farPlane = *output.cameraOverrides.farPlane;
+  }
+
+  if (projection.type == CameraType::Orthographic) {
+    const float centerX = 0.5f * (projection.left + projection.right);
+    const float centerY = 0.5f * (projection.bottom + projection.top);
+    const float currentHeight =
+        std::max(projection.top - projection.bottom, 0.0001f);
+    const float height =
+        output.cameraOverrides.orthographicHeight.value_or(currentHeight);
+    const float width = height * std::max(projection.aspect, 0.0001f);
+    projection.left = centerX - width * 0.5f;
+    projection.right = centerX + width * 0.5f;
+    projection.bottom = centerY - height * 0.5f;
+    projection.top = centerY + height * 0.5f;
+  }
+
+  return projection;
 }
 
 } // namespace LX_core::offline

@@ -710,7 +710,6 @@ void testOutputProfilesRoundTrip() {
          "        fovY: 42.0\n"
          "        nearPlane: 0.1\n"
          "        farPlane: 80.0\n"
-         "        focusDistance: 5.0\n"
          "  offlineRender:\n"
          "    integrator: primary-ray\n"
          "    samples: 1\n"

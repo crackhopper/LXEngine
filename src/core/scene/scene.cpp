@@ -52,11 +52,12 @@ void collectSubtreeSnapshots(const SceneNodeSharedPtr &node,
 
 [[nodiscard]] CameraResource makeCameraResource(
     const CameraComponent &cameraComponent) {
+  const CameraSnapshot snapshot = cameraComponent.getSnapshot();
   return CameraResource{
-      .view = cameraComponent.getViewMatrix(),
-      .proj = cameraComponent.getProjMatrix(),
-      .cullingMask = cameraComponent.getCullingMask(),
-      .active = cameraComponent.isActive(),
+      .view = makeCameraViewMatrix(snapshot.pose),
+      .proj = makeCameraProjectionMatrix(snapshot.projection),
+      .cullingMask = snapshot.cullingMask,
+      .active = snapshot.active,
   };
 }
 

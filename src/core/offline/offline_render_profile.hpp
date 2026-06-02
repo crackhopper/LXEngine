@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/platform/types.hpp"
+#include "core/scene/camera.hpp"
 
 #include <filesystem>
 #include <map>
@@ -15,7 +16,6 @@ struct OutputCameraOverrides final {
   std::optional<float> aspect;
   std::optional<float> nearPlane;
   std::optional<float> farPlane;
-  std::optional<float> focusDistance;
   std::optional<float> orthographicHeight;
   std::optional<u32> cullingMask;
 };
@@ -73,5 +73,7 @@ struct ResolvedRenderProfile final {
 [[nodiscard]] ResolvedRenderProfile resolveRenderProfileDocument(
     const RenderProfileDocument &document,
     const RenderProfileCliOverrides &overrides);
+[[nodiscard]] CameraProjection resolveOutputCameraProjection(
+    const CameraProjection &base, const OutputProfile &output);
 
 } // namespace LX_core::offline

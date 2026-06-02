@@ -10,6 +10,7 @@
 #include "core/scene/scene_resource_table.hpp"
 
 #include <optional>
+#include <string>
 
 namespace LX_core {
 
@@ -70,6 +71,9 @@ public:
   Vec3f getUpVector() const;
   Vec3f getLookTarget(float distance = 1.0f) const;
   BoundingBox getDebugLocalBounds() const;
+  CameraPose getPose() const;
+  CameraProjection getProjection() const;
+  CameraSnapshot getSnapshot(std::string path = {}) const;
 
   Mat4f getViewMatrix() const;
   Mat4f getProjMatrix(float aspectOverride = 0.0f,

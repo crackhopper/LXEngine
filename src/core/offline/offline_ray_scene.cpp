@@ -242,30 +242,18 @@ u32 buildNode(OfflineRayScene &scene, u32 first, u32 count) {
                                              const OfflineRenderSettings &offline,
                                              u32 materialCount) {
   const auto &camera = scene.camera;
-  Vec3f forward = (camera.target - camera.eye).normalized();
-  if (forward.length2() == 0.0f) {
-    forward = Vec3f{0.0f, 0.0f, -1.0f};
-  }
-  Vec3f right = forward.cross(camera.up).normalized();
-  if (right.length2() == 0.0f) {
-    right = Vec3f{1.0f, 0.0f, 0.0f};
-  }
-  const Vec3f up = right.cross(forward).normalized();
-  const float aspect =
-      output.height == 0
-          ? camera.aspect
-          : static_cast<float>(output.width) / static_cast<float>(output.height);
-  const float tanHalfFov =
-      std::tan(camera.fovYDegrees * (kPi / 180.0f) * 0.5f);
+  const CameraProjection projection =
+      resolveOutputCameraProjection(camera.projection, output);
+  const CameraRayFrame rayFrame = makeCameraRayFrame(camera.pose, projection);
 
   const auto light =
       scene.directionalLights.empty() ? OfflineDirectionalLightIR{}
                                       : scene.directionalLights.front();
   OfflineSceneParams params;
-  params.eye = vec4(camera.eye, 0.0f);
-  params.cameraRight = vec4(right * (tanHalfFov * aspect), 0.0f);
-  params.cameraUp = vec4(up * tanHalfFov, 0.0f);
-  params.cameraForward = vec4(forward, 0.0f);
+  params.eye = vec4(rayFrame.eye, 0.0f);
+  params.cameraRight = vec4(rayFrame.right, 0.0f);
+  params.cameraUp = vec4(rayFrame.up, 0.0f);
+  params.cameraForward = vec4(rayFrame.forward, 0.0f);
   params.lightDirectionIntensity =
       vec4(light.direction.normalized(), light.intensity);
   params.lightColorEnvironment =

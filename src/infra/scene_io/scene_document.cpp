@@ -570,8 +570,6 @@ loadOutputCameraOverrides(const YAML::Node &node,
       overrides.nearPlane = value.as<float>();
     } else if (key == "farPlane") {
       overrides.farPlane = value.as<float>();
-    } else if (key == "focusDistance") {
-      overrides.focusDistance = value.as<float>();
     } else if (key == "orthographicHeight") {
       overrides.orthographicHeight = value.as<float>();
     } else if (key == "cullingMask") {
@@ -792,7 +790,6 @@ loadRenderProfileDocument(const YAML::Node &sceneNode) {
     const LX_core::offline::OutputCameraOverrides &overrides) {
   return overrides.fovY.has_value() || overrides.aspect.has_value() ||
          overrides.nearPlane.has_value() || overrides.farPlane.has_value() ||
-         overrides.focusDistance.has_value() ||
          overrides.orthographicHeight.has_value() ||
          overrides.cullingMask.has_value();
 }
@@ -812,10 +809,6 @@ void saveOutputCameraOverrides(
   }
   if (overrides.farPlane.has_value()) {
     out << YAML::Key << "farPlane" << YAML::Value << *overrides.farPlane;
-  }
-  if (overrides.focusDistance.has_value()) {
-    out << YAML::Key << "focusDistance" << YAML::Value
-        << *overrides.focusDistance;
   }
   if (overrides.orthographicHeight.has_value()) {
     out << YAML::Key << "orthographicHeight" << YAML::Value

@@ -52,7 +52,6 @@ scene:
         fovY: 42.0
         nearPlane: 0.1
         farPlane: 120.0
-        focusDistance: 5.0
 
   offlineRender:
     integrator: primary-ray
@@ -73,7 +72,7 @@ scene:
 | `outDir` | 输出目录，默认 `artifacts` |
 | `cameraOverrides` | 可选 camera component 参数覆盖，不覆盖 transform |
 
-`cameraOverrides` SHALL 只覆盖 camera component 参数，例如 `fovY`、`aspect`、`nearPlane`、`farPlane`、`focusDistance`、`orthographicHeight`、`cullingMask`。它 SHALL NOT 覆盖 camera node transform。
+`cameraOverrides` SHALL 只覆盖 camera projection 参数，例如 `fovY`、`aspect`、`nearPlane`、`farPlane`、`orthographicHeight`、`cullingMask`。它 SHALL NOT 覆盖 camera node transform。
 
 旧 `scene.offlineRender.profiles` SHALL 不再作为兼容路径保留。读取到旧 schema 时 SHALL fail-fast，并给出明确迁移诊断。
 

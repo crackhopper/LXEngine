@@ -1581,28 +1581,16 @@ public:
 
     const float profileAspect =
         static_cast<float>(output.width) / static_cast<float>(output.height);
-    camera.setAspect(output.cameraOverrides.aspect.value_or(profileAspect));
-    const float resolvedAspect = camera.getAspect();
-    if (output.cameraOverrides.fovY.has_value()) {
-      camera.setFovY(*output.cameraOverrides.fovY);
-    }
-    if (output.cameraOverrides.nearPlane.has_value()) {
-      camera.setNearPlane(*output.cameraOverrides.nearPlane);
-    }
-    if (output.cameraOverrides.farPlane.has_value()) {
-      camera.setFarPlane(*output.cameraOverrides.farPlane);
-    }
+    const LX_core::CameraProjection outputProjection =
+        LX_core::offline::resolveOutputCameraProjection(camera.getProjection(),
+                                                        output);
+    camera.applyProjectionState(
+        outputProjection.type, outputProjection.fovYDegrees,
+        outputProjection.aspect, outputProjection.nearPlane,
+        outputProjection.farPlane, outputProjection.left, outputProjection.right,
+        outputProjection.bottom, outputProjection.top);
     if (output.cameraOverrides.cullingMask.has_value()) {
       camera.setCullingMask(*output.cameraOverrides.cullingMask);
-    }
-    if (camera.getProjectionType() == LX_core::CameraType::Orthographic) {
-      const float currentHeight = std::max(camera.getTop() - camera.getBottom(),
-                                           0.0001f);
-      const float orthoHeight =
-          output.cameraOverrides.orthographicHeight.value_or(currentHeight);
-      const float orthoWidth = orthoHeight * resolvedAspect;
-      camera.setOrthographicBounds(-orthoWidth * 0.5f, orthoWidth * 0.5f,
-                                   -orthoHeight * 0.5f, orthoHeight * 0.5f);
     }
 
     LX_core::RenderTargetDesc targetDesc;
