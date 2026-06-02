@@ -65,6 +65,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_lxe_editor_memory_probe
   test_lxe_editor_recording
   test_gltf_loader
+  test_output_profile_resolution
   test_offline_render_cli
   test_offline_image_writer
   test_offline_scene_compiler
@@ -341,6 +342,16 @@ endif()
 
 if(TARGET test_offline_render_cli)
   target_link_libraries(test_offline_render_cli PRIVATE lxe_offline_render_cli)
+endif()
+
+if(TARGET test_output_profile_resolution)
+  set_property(TARGET test_output_profile_resolution PROPERTY LINK_LIBRARIES "")
+  target_sources(test_output_profile_resolution PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../core/offline/offline_render_profile.cpp
+  )
+  target_include_directories(test_output_profile_resolution PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../core/..
+  )
 endif()
 
 if(TARGET test_scene_document)

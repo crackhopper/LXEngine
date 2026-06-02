@@ -1,53 +1,77 @@
 #include "core/offline/offline_render_profile.hpp"
 
 #include <stdexcept>
+#include <utility>
 
 namespace LX_core::offline {
 
-OfflineRenderProfile makeDefaultOfflineRenderProfile() {
-  return OfflineRenderProfile{};
+OutputProfile makeDefaultOutputProfile() {
+  return OutputProfile{};
 }
 
-OfflineRenderProfiles makeDefaultOfflineRenderProfiles() {
-  OfflineRenderProfiles profiles;
-  profiles.defaultProfile = "preview";
-  profiles.profiles.emplace("preview", makeDefaultOfflineRenderProfile());
-  return profiles;
+OfflineRenderSettings makeDefaultOfflineRenderSettings() {
+  return OfflineRenderSettings{};
 }
 
-ResolvedOfflineRenderProfile resolveOfflineRenderProfile(
-    const OfflineRenderProfiles &profiles,
-    const OfflineRenderCliOverrides &overrides) {
-  const OfflineRenderProfiles effectiveProfiles =
-      profiles.empty() ? makeDefaultOfflineRenderProfiles() : profiles;
-  const std::string profileName =
-      overrides.profileName.value_or(effectiveProfiles.defaultProfile);
-  const auto profileIt = effectiveProfiles.profiles.find(profileName);
-  if (profileIt == effectiveProfiles.profiles.end()) {
-    throw std::runtime_error("offline render profile not found: " +
-                             profileName);
+RenderProfileDocument makeDefaultRenderProfileDocument() {
+  RenderProfileDocument document;
+  document.defaultOutputProfile = "preview";
+  document.outputProfiles.emplace("preview", makeDefaultOutputProfile());
+  document.offline = makeDefaultOfflineRenderSettings();
+  document.offline.profileName = document.defaultOutputProfile;
+  return document;
+}
+
+ResolvedRenderProfile resolveRenderProfileDocument(
+    const RenderProfileDocument &document,
+    const RenderProfileCliOverrides &overrides) {
+  // A default-constructed core document represents the built-in preview setup;
+  // scene loading validates explicit YAML documents before reaching this point.
+  const RenderProfileDocument effective =
+      document.empty() ? makeDefaultRenderProfileDocument() : document;
+
+  OfflineRenderSettings offline = effective.offline;
+  if (overrides.profileName.has_value()) {
+    offline.profileName = *overrides.profileName;
+  } else if (offline.profileName.empty()) {
+    offline.profileName = effective.defaultOutputProfile;
   }
 
-  OfflineRenderProfile resolved = profileIt->second;
+  const auto profileIt = effective.outputProfiles.find(offline.profileName);
+  if (profileIt == effective.outputProfiles.end()) {
+    throw std::runtime_error("output profile not found: " +
+                             offline.profileName);
+  }
+
+  OutputProfile output = profileIt->second;
   if (overrides.width.has_value()) {
-    resolved.width = *overrides.width;
+    output.width = *overrides.width;
   }
   if (overrides.height.has_value()) {
-    resolved.height = *overrides.height;
+    output.height = *overrides.height;
   }
   if (overrides.samples.has_value()) {
-    resolved.samples = *overrides.samples;
+    offline.samples = *overrides.samples;
   }
-  if (overrides.maxDepth.has_value()) {
-    resolved.maxDepth = *overrides.maxDepth;
+  if (overrides.maxBounce.has_value()) {
+    offline.maxBounce = *overrides.maxBounce;
   }
   if (overrides.seed.has_value()) {
-    resolved.seed = *overrides.seed;
+    offline.seed = *overrides.seed;
   }
 
-  return ResolvedOfflineRenderProfile{
-      .profileName = profileName,
-      .profile = std::move(resolved),
+  if (output.width == 0 || output.height == 0) {
+    throw std::runtime_error("output profile " + offline.profileName +
+                             " width/height must be positive");
+  }
+  if (offline.samples == 0 || offline.maxBounce == 0) {
+    throw std::runtime_error("offlineRender samples/maxBounce must be positive");
+  }
+
+  return ResolvedRenderProfile{
+      .profileName = offline.profileName,
+      .output = std::move(output),
+      .offline = std::move(offline),
       .outputPath = overrides.outputPath,
   };
 }
