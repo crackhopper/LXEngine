@@ -15,6 +15,7 @@ add_executable(lxe_editor
   project_catalog.cpp
   project_document.cpp
   project_session.cpp
+  realtime_render_profile.cpp
   recording_controller.cpp
   editor_config_state.cpp
   editor_data_state.cpp

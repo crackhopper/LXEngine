@@ -196,6 +196,7 @@ if(TARGET test_realtime_render_profile_commands)
   target_sources(test_realtime_render_profile_commands PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_interaction_controller.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_commands.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/realtime_render_profile.cpp
     ${LXE_EDITOR_COMMAND_SOURCES}
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/recording_controller.cpp
   )
@@ -283,6 +284,7 @@ if(TARGET test_lxe_editor_session)
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/project_catalog.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/project_document.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/project_session.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/realtime_render_profile.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/recording_controller.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_builder.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_interaction_controller.cpp

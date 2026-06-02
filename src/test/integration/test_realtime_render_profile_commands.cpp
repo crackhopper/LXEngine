@@ -1,10 +1,13 @@
 #include "core/editor/command_bus.hpp"
 #include "core/editor/editor_state.hpp"
+#include "core/offline/offline_render_profile.hpp"
 #include "core/scene/scene.hpp"
 #include "demos/lxe_editor/lxe_editor_commands.hpp"
+#include "demos/lxe_editor/realtime_render_profile.hpp"
 #include "demos/lxe_editor/scene_interaction_controller.hpp"
 #include "demos/lxe_editor/scene_view_rect.hpp"
 
+#include <filesystem>
 #include <iostream>
 #include <optional>
 #include <string>
@@ -79,10 +82,69 @@ void testRealtimeRenderLsAndRun() {
   EXPECT(run.structured.find("linear.exr") != std::string::npos,
          "run returns output paths");
 }
+
+void testRealtimeProfileOutputHelpersBuildStableJson() {
+  LX_core::offline::OutputProfile output;
+  output.width = 320;
+  output.height = 180;
+  output.outDir = "artifacts/offline/preview";
+
+  const std::filesystem::path base =
+      LX_demo::lxe_editor::makeRealtimeProfileOutputBasePath(
+          "Scene/One", "preview:fast", output);
+  EXPECT(base.generic_string() ==
+             "artifacts/offline/preview/realtime/Scene%2FOne/"
+             "preview%3Afast/render",
+         "base path should include encoded realtime scene and profile "
+         "components");
+  const std::filesystem::path distinctBase =
+      LX_demo::lxe_editor::makeRealtimeProfileOutputBasePath(
+          "Scene/One", "preview/fast", output);
+  EXPECT(distinctBase != base,
+         "encoded profile path components should avoid sanitizer collisions");
+
+  const std::string json =
+      LX_demo::lxe_editor::realtimeProfileOutputResultJson(
+          "preview:fast",
+          LX_demo::lxe_editor::RealtimeProfileOutputResult{
+              .linearExrPath = base.parent_path() / "linear.exr",
+              .cpuSrgbPngPath = base.parent_path() / "cpu.png",
+              .pipelineSrgbPngPath = base.parent_path() / "pipeline.png",
+              .metadataPath = base.parent_path() / "render.json",
+              .width = output.width,
+              .height = output.height,
+          });
+
+  EXPECT(json.find("\"profile\":\"preview:fast\"") != std::string::npos,
+         "result JSON should include escaped profile name");
+  EXPECT(json.find("\"width\":320") != std::string::npos,
+         "result JSON should include width");
+  EXPECT(json.find("\"height\":180") != std::string::npos,
+         "result JSON should include height");
+  EXPECT(json.find("\"linearExrPath\"") != std::string::npos,
+         "result JSON should include linear EXR key");
+  EXPECT(json.find("pipeline.png") != std::string::npos,
+         "result JSON should include pipeline PNG path");
+
+  const std::string escapedJson =
+      LX_demo::lxe_editor::realtimeProfileOutputResultJson(
+          std::string("bad") + static_cast<char>(0x01) + "profile",
+          LX_demo::lxe_editor::RealtimeProfileOutputResult{
+              .linearExrPath = base.parent_path() / "linear.exr",
+              .cpuSrgbPngPath = base.parent_path() / "cpu.png",
+              .pipelineSrgbPngPath = base.parent_path() / "pipeline.png",
+              .metadataPath = base.parent_path() / "render.json",
+              .width = output.width,
+              .height = output.height,
+          });
+  EXPECT(escapedJson.find("\\u0001") != std::string::npos,
+         "result JSON should escape non-whitespace control characters");
+}
 } // namespace
 
 int main() {
   testRealtimeRenderLsAndRun();
+  testRealtimeProfileOutputHelpersBuildStableJson();
   if (failures != 0) {
     std::cerr << "test_realtime_render_profile_commands failed with "
               << failures << " failure(s)\n";

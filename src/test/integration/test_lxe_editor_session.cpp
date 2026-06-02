@@ -7,6 +7,7 @@
 #include "core/scene/components/mesh_component.hpp"
 #include "core/utils/filesystem_tools.hpp"
 #include "demos/lxe_editor/editor_scene_state.hpp"
+#include "demos/lxe_editor/realtime_render_profile.hpp"
 
 #include <cmath>
 #include <filesystem>
@@ -725,6 +726,200 @@ void testRenderDebugDumpCommandUsesRegisteredHook() {
          "render debug dump should fail clearly when no hook is registered");
 }
 
+void testRealtimeRenderListUsesCurrentSceneOutputProfiles() {
+  const bool initialized = initializeRuntimeAssetRoot();
+  EXPECT(initialized,
+         "runtime asset root should initialize for realtime profile list test");
+  if (!initialized) {
+    return;
+  }
+  cleanupProject("editor_session_realtime_list");
+
+  LX_core::EditorState editorState;
+  LX_demo::lxe_editor::CameraRig rig;
+  LX_demo::lxe_editor::UiOverlay ui;
+  LX_demo::lxe_editor::LxeEditorSession session(rig, ui, editorState);
+  session.initialize();
+
+  EXPECT(session.commandBus()
+             .dispatch("project init pbr_ibl editor_session_realtime_list")
+             .ok,
+         "project init should load a scene with output profiles");
+
+  auto window = std::make_shared<FakeWindow>();
+  auto renderer = std::make_shared<FakeRenderer>();
+  LX_core::gpu::EngineLoop loop;
+  loop.initialize(window, renderer);
+  session.flushPendingSceneOpen(loop);
+
+  const auto list = session.commandBus().dispatch("realtime-render ls");
+
+  EXPECT(list.ok, "realtime-render ls should succeed");
+  EXPECT(list.structured.find("\"defaultOutputProfile\":\"preview\"") !=
+             std::string::npos,
+         "list JSON should include the current scene default output profile");
+  EXPECT(list.structured.find("\"name\":\"preview\"") != std::string::npos,
+         "list JSON should include preview profile");
+  EXPECT(list.structured.find("\"name\":\"mvp\"") != std::string::npos,
+         "list JSON should include mvp profile");
+  EXPECT(list.structured.find("\"width\":1024") != std::string::npos,
+         "list JSON should include resolved profile dimensions");
+  EXPECT(list.structured.find("\"outDir\":\"artifacts/offline/mvp\"") !=
+             std::string::npos,
+         "list JSON should include profile output directory");
+
+  cleanupProject("editor_session_realtime_list");
+}
+
+void testRealtimeRenderListUsesDefaultProfilesForSceneWithoutProfiles() {
+  const bool initialized = initializeRuntimeAssetRoot();
+  EXPECT(initialized,
+         "runtime asset root should initialize for realtime fallback test");
+  if (!initialized) {
+    return;
+  }
+
+  LX_core::EditorState editorState;
+  LX_demo::lxe_editor::CameraRig rig;
+  LX_demo::lxe_editor::UiOverlay ui;
+  LX_demo::lxe_editor::LxeEditorSession session(rig, ui, editorState);
+  session.initialize();
+
+  const auto list = session.commandBus().dispatch("realtime-render ls");
+
+  EXPECT(list.ok,
+         "realtime-render ls should succeed for a scene without profiles");
+  EXPECT(list.structured.find("\"defaultOutputProfile\":\"preview\"") !=
+             std::string::npos,
+         "fallback list JSON should include the built-in default profile");
+  EXPECT(list.structured.find("\"name\":\"preview\"") != std::string::npos,
+         "fallback list JSON should include preview");
+  EXPECT(list.structured.find("\"width\":512") != std::string::npos,
+         "fallback list JSON should include the default width");
+  EXPECT(list.structured.find("\"outDir\":\"artifacts\"") !=
+             std::string::npos,
+         "fallback list JSON should include the default output directory");
+}
+
+void testRealtimeRenderRunCallsHookAndReturnsStructuredOutput() {
+  const bool initialized = initializeRuntimeAssetRoot();
+  EXPECT(initialized,
+         "runtime asset root should initialize for realtime profile run test");
+  if (!initialized) {
+    return;
+  }
+  cleanupProject("editor_session_realtime_run");
+
+  LX_core::EditorState editorState;
+  LX_demo::lxe_editor::CameraRig rig;
+  LX_demo::lxe_editor::UiOverlay ui;
+  LX_demo::lxe_editor::LxeEditorSession session(rig, ui, editorState);
+
+  bool hookCalled = false;
+  LX_core::SceneSharedPtr capturedScene;
+  LX_demo::lxe_editor::RealtimeProfileOutputRequest capturedRequest;
+  session.initialize(
+      {}, {},
+      LX_demo::lxe_editor::LxeEditorSession::RealtimeRenderProfileHooks{
+          .generate =
+              [&](LX_core::SceneSharedPtr scene,
+                  const LX_demo::lxe_editor::RealtimeProfileOutputRequest
+                      &request) {
+                hookCalled = true;
+                capturedScene = std::move(scene);
+                capturedRequest = request;
+                const std::filesystem::path base = request.outputBasePath;
+                return LX_demo::lxe_editor::RealtimeProfileOutputResult{
+                    .linearExrPath = base.parent_path() / "linear.exr",
+                    .cpuSrgbPngPath = base.parent_path() / "cpu.png",
+                    .pipelineSrgbPngPath =
+                        base.parent_path() / "pipeline.png",
+                    .metadataPath = base.parent_path() / "render.json",
+                    .width = request.output.width,
+                    .height = request.output.height,
+                };
+              },
+      });
+
+  EXPECT(session.commandBus()
+             .dispatch("project init pbr_ibl editor_session_realtime_run")
+             .ok,
+         "project init should load a scene with output profiles");
+
+  auto window = std::make_shared<FakeWindow>();
+  auto renderer = std::make_shared<FakeRenderer>();
+  LX_core::gpu::EngineLoop loop;
+  loop.initialize(window, renderer);
+  session.flushPendingSceneOpen(loop);
+
+  const auto run = session.commandBus().dispatch("realtime-render run mvp");
+
+  EXPECT(run.ok, "realtime-render run should succeed with a hook");
+  EXPECT(hookCalled, "realtime-render run should call the generate hook");
+  EXPECT(capturedScene == session.scene(),
+         "generate hook should receive the current scene");
+  EXPECT(capturedRequest.sceneName == "IBL Metal Sphere",
+         "generate hook should receive the scene name");
+  EXPECT(capturedRequest.profileName == "mvp",
+         "generate hook should receive the selected profile name");
+  EXPECT(capturedRequest.output.width == 1024 &&
+             capturedRequest.output.height == 576,
+         "generate hook should receive the resolved output profile");
+  EXPECT(capturedRequest.outputBasePath.generic_string() ==
+             "artifacts/offline/mvp/realtime/IBL%20Metal%20Sphere/mvp/render",
+         "generate hook should receive the stable realtime output base path");
+  EXPECT(run.structured.find("\"profile\":\"mvp\"") != std::string::npos,
+         "run JSON should include the profile name");
+  EXPECT(run.structured.find("\"width\":1024") != std::string::npos,
+         "run JSON should include width");
+  EXPECT(run.structured.find("linear.exr") != std::string::npos,
+         "run JSON should include linear EXR path");
+  EXPECT(run.structured.find("cpu.png") != std::string::npos,
+         "run JSON should include CPU sRGB PNG path");
+  EXPECT(run.structured.find("pipeline.png") != std::string::npos,
+         "run JSON should include pipeline sRGB PNG path");
+  EXPECT(run.structured.find("render.json") != std::string::npos,
+         "run JSON should include metadata path");
+
+  cleanupProject("editor_session_realtime_run");
+}
+
+void testRealtimeRenderRunFailsWithoutHook() {
+  const bool initialized = initializeRuntimeAssetRoot();
+  EXPECT(initialized,
+         "runtime asset root should initialize for realtime no-hook test");
+  if (!initialized) {
+    return;
+  }
+  cleanupProject("editor_session_realtime_no_hook");
+
+  LX_core::EditorState editorState;
+  LX_demo::lxe_editor::CameraRig rig;
+  LX_demo::lxe_editor::UiOverlay ui;
+  LX_demo::lxe_editor::LxeEditorSession session(rig, ui, editorState);
+  session.initialize();
+
+  EXPECT(session.commandBus()
+             .dispatch("project init pbr_ibl editor_session_realtime_no_hook")
+             .ok,
+         "project init should load a scene with output profiles");
+
+  auto window = std::make_shared<FakeWindow>();
+  auto renderer = std::make_shared<FakeRenderer>();
+  LX_core::gpu::EngineLoop loop;
+  loop.initialize(window, renderer);
+  session.flushPendingSceneOpen(loop);
+
+  const auto run = session.commandBus().dispatch("realtime-render run preview");
+
+  EXPECT(!run.ok, "realtime-render run should fail without a hook");
+  EXPECT(run.message.find("realtime render output hook unavailable") !=
+             std::string::npos,
+         "run failure should explain that no output hook is configured");
+
+  cleanupProject("editor_session_realtime_no_hook");
+}
+
 } // namespace
 
 int main() {
@@ -739,6 +934,10 @@ int main() {
   testRecordingCommandControlsSessionRecorder();
   testSceneSaveLoadRoundTripsEditorSidecarState();
   testRenderDebugDumpCommandUsesRegisteredHook();
+  testRealtimeRenderListUsesCurrentSceneOutputProfiles();
+  testRealtimeRenderListUsesDefaultProfilesForSceneWithoutProfiles();
+  testRealtimeRenderRunCallsHookAndReturnsStructuredOutput();
+  testRealtimeRenderRunFailsWithoutHook();
 
   if (failures != 0) {
     std::cerr << failures << " lxe_editor session test(s) failed\n";

@@ -10,6 +10,7 @@
 #include "demos/lxe_editor/editor_scene_state.hpp"
 #include "demos/lxe_editor/project_session.hpp"
 #include "demos/lxe_editor/recording_controller.hpp"
+#include "demos/lxe_editor/realtime_render_profile.hpp"
 #include "demos/lxe_editor/scene_runtime.hpp"
 #include "demos/lxe_editor/ui_overlay.hpp"
 
@@ -60,12 +61,19 @@ public:
         dumpRenderTarget;
   };
 
+  struct RealtimeRenderProfileHooks final {
+    std::function<RealtimeProfileOutputResult(
+        LX_core::SceneSharedPtr, const RealtimeProfileOutputRequest &)>
+        generate;
+  };
+
   LxeEditorSession(CameraRig &rig, UiOverlay &ui,
                    LX_core::EditorState &editorState);
   ~LxeEditorSession();
 
   void initialize(DisplayCommandHooks displayCommandHooks = {},
-                  RenderDebugCommandHooks renderDebugCommandHooks = {});
+                  RenderDebugCommandHooks renderDebugCommandHooks = {},
+                  RealtimeRenderProfileHooks realtimeRenderProfileHooks = {});
 
   [[nodiscard]] LX_core::SceneSharedPtr scene() const;
   [[nodiscard]] LX_core::CameraComponent &editorCamera() const;
@@ -103,6 +111,9 @@ private:
   handleSceneCommand(const std::vector<std::string> &args);
   [[nodiscard]] LX_core::CommandResult queueActiveSceneOpen();
   [[nodiscard]] LX_core::CommandResult saveActiveProjectScene();
+  [[nodiscard]] std::string realtimeRenderProfilesJson() const;
+  [[nodiscard]] LX_core::CommandResult
+  runRealtimeRenderProfile(std::string_view profileName);
   [[nodiscard]] std::string projectSummaryJson() const;
   [[nodiscard]] EditorSceneStateDocument captureEditorSceneState() const;
   void applyEditorSceneState(const EditorSceneStateDocument &state);
@@ -130,6 +141,7 @@ private:
   RecordingController m_recording;
   DisplayCommandHooks m_displayCommandHooks;
   RenderDebugCommandHooks m_renderDebugCommandHooks;
+  RealtimeRenderProfileHooks m_realtimeRenderProfileHooks;
   LX_core::Vec2f m_windowSize{1280.0f, 720.0f};
   usize m_bindingsGeneration = 0;
   bool m_debugEnabled = false;

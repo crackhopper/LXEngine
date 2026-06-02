@@ -7,6 +7,7 @@
 #include "core/editor/scene_tree_panel.hpp"
 #include "core/editor/viewport_overlay.hpp"
 #include "core/gpu/engine_loop.hpp"
+#include "core/offline/offline_render_profile.hpp"
 #include "core/scene/components/camera_component.hpp"
 #include "core/utils/filesystem_tools.hpp"
 #include "demos/lxe_editor/builtin_asset_catalog.hpp"
@@ -19,6 +20,8 @@
 #include <chrono>
 #include <exception>
 #include <functional>
+#include <iomanip>
+#include <map>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
@@ -68,7 +71,8 @@ namespace {
 [[nodiscard]] std::string jsonEscape(const std::string &text) {
   std::string out;
   out.reserve(text.size());
-  for (const char c : text) {
+  std::ostringstream escapedControl;
+  for (const unsigned char c : text) {
     switch (c) {
     case '\\':
       out += "\\\\";
@@ -86,7 +90,15 @@ namespace {
       out += "\\t";
       break;
     default:
-      out.push_back(c);
+      if (c < 0x20u) {
+        escapedControl.str({});
+        escapedControl.clear();
+        escapedControl << "\\u" << std::hex << std::setw(4)
+                       << std::setfill('0') << static_cast<int>(c);
+        out += escapedControl.str();
+      } else {
+        out.push_back(static_cast<char>(c));
+      }
       break;
     }
   }
@@ -185,9 +197,11 @@ LxeEditorSession::~LxeEditorSession() = default;
 
 void LxeEditorSession::initialize(
     DisplayCommandHooks displayCommandHooks,
-    RenderDebugCommandHooks renderDebugCommandHooks) {
+    RenderDebugCommandHooks renderDebugCommandHooks,
+    RealtimeRenderProfileHooks realtimeRenderProfileHooks) {
   m_displayCommandHooks = std::move(displayCommandHooks);
   m_renderDebugCommandHooks = std::move(renderDebugCommandHooks);
+  m_realtimeRenderProfileHooks = std::move(realtimeRenderProfileHooks);
   m_editorData = m_editorDataState.load();
   std::optional<EditorSceneStateDocument> editorSceneState;
   bool loadedRuntime = false;
@@ -461,6 +475,72 @@ LX_core::CommandResult LxeEditorSession::saveActiveProjectScene() {
                              " and scene " + activePath->string(),
                          "{\"path\":\"" + jsonEscape(activePath->string()) +
                              "\",\"project\":" + projectSummaryJson() + "}");
+  } catch (const std::exception &e) {
+    return makeCommandError(e.what());
+  }
+}
+
+std::string LxeEditorSession::realtimeRenderProfilesJson() const {
+  const SceneDocument &document = m_runtime.document();
+  const LX_core::offline::RenderProfileDocument profiles =
+      document.hasRenderProfileDocument()
+          ? document.renderProfileDocument()
+          : LX_core::offline::makeDefaultRenderProfileDocument();
+
+  std::map<std::string, LX_core::offline::OutputProfile> orderedProfiles(
+      profiles.outputProfiles.begin(), profiles.outputProfiles.end());
+
+  std::ostringstream oss;
+  oss << "{\"sceneName\":\"" << jsonEscape(document.sceneName())
+      << "\",\"defaultOutputProfile\":\""
+      << jsonEscape(profiles.defaultOutputProfile) << "\",\"profiles\":[";
+  usize index = 0;
+  for (const auto &[name, profile] : orderedProfiles) {
+    if (index++ != 0) {
+      oss << ',';
+    }
+    oss << "{\"name\":\"" << jsonEscape(name) << "\",\"camera\":\""
+        << jsonEscape(profile.cameraPath) << "\",\"width\":" << profile.width
+        << ",\"height\":" << profile.height << ",\"outputFormat\":\""
+        << jsonEscape(profile.outputFormat) << "\",\"outDir\":\""
+        << jsonEscape(profile.outDir.generic_string()) << "\"}";
+  }
+  oss << "]}";
+  return oss.str();
+}
+
+LX_core::CommandResult
+LxeEditorSession::runRealtimeRenderProfile(std::string_view profileName) {
+  if (!m_realtimeRenderProfileHooks.generate) {
+    return makeCommandError("realtime render output hook unavailable");
+  }
+
+  try {
+    const SceneDocument &document = m_runtime.document();
+    const LX_core::offline::RenderProfileDocument profiles =
+        document.hasRenderProfileDocument()
+            ? document.renderProfileDocument()
+            : LX_core::offline::makeDefaultRenderProfileDocument();
+    const LX_core::offline::ResolvedRenderProfile resolved =
+        LX_core::offline::resolveRenderProfileDocument(
+            profiles,
+            LX_core::offline::RenderProfileCliOverrides{
+                .profileName = std::string(profileName),
+            });
+    RealtimeProfileOutputRequest request{
+        .scenePath = m_runtime.documentPath().value_or(std::filesystem::path{}),
+        .sceneName = document.sceneName(),
+        .profileName = resolved.profileName,
+        .output = resolved.output,
+        .outputBasePath = makeRealtimeProfileOutputBasePath(
+            document.sceneName(), resolved.profileName, resolved.output),
+    };
+    const RealtimeProfileOutputResult result =
+        m_realtimeRenderProfileHooks.generate(m_runtime.scene(), request);
+    return makeCommandOk(
+        "realtime render profile generated: " +
+            result.metadataPath.generic_string(),
+        realtimeProfileOutputResultJson(resolved.profileName, result));
   } catch (const std::exception &e) {
     return makeCommandError(e.what());
   }
@@ -1036,6 +1116,12 @@ void LxeEditorSession::rebuildBindings(
           .displayConfigSet = m_displayCommandHooks.displayConfigSet,
           .displaySelect = m_displayCommandHooks.displaySelect,
           .displayNext = m_displayCommandHooks.displayNext,
+          .realtimeRenderListJson =
+              [this]() { return realtimeRenderProfilesJson(); },
+          .realtimeRenderRun =
+              [this](std::string_view profileName) {
+                return runRealtimeRenderProfile(profileName);
+              },
       });
   m_commandBus->registerHandler(
       "render", "render debug dump <target> [camera-path] [path]",

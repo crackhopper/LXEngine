@@ -1441,6 +1441,9 @@ captureSceneDocument(const std::shared_ptr<SceneRuntimeData> &runtime) {
   if (runtime->document.hasEnvironment()) {
     document.setEnvironment(runtime->document.environment());
   }
+  if (runtime->document.hasRenderProfileDocument()) {
+    document.setRenderProfileDocument(runtime->document.renderProfileDocument());
+  }
   const BuiltinAssetCatalog builtinAssets = loadBuiltinAssetCatalog();
 
   auto captureNode =
@@ -1576,6 +1579,10 @@ void SceneRuntime::saveToDocumentPath(const std::filesystem::path &path) {
 std::optional<std::filesystem::path> SceneRuntime::documentPath() const {
   const auto runtime = requireRuntimeData(m_impl);
   return runtime->documentPath;
+}
+
+const SceneDocument &SceneRuntime::document() const {
+  return requireRuntimeData(m_impl)->document;
 }
 
 LX_core::SceneSharedPtr SceneRuntime::scene() const {
