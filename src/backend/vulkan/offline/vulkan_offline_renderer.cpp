@@ -20,28 +20,23 @@ namespace {
 
 [[nodiscard]] std::vector<char> loadComputeShader() {
   constexpr const char *shaderFile = "offline_primary_ray.comp.spv";
-  std::string shaderPath = getShaderPath("offline_primary_ray", "comp.spv");
-  if (shaderPath.empty()) {
-    std::filesystem::path probe = std::filesystem::current_path();
-    for (int i = 0; i < 8 && shaderPath.empty(); ++i) {
-      const std::filesystem::path buildShaderPath =
-          probe / "build" / "assets" / "shaders" / "glsl" / shaderFile;
-      if (std::filesystem::exists(buildShaderPath)) {
-        shaderPath = buildShaderPath.string();
-        break;
-      }
-      const std::filesystem::path localBuildShaderPath =
-          probe / "assets" / "shaders" / "glsl" / shaderFile;
-      if (std::filesystem::exists(localBuildShaderPath)) {
-        shaderPath = localBuildShaderPath.string();
-        break;
-      }
-      const auto parent = probe.parent_path();
-      if (parent == probe) {
-        break;
-      }
-      probe = parent;
+  std::string shaderPath;
+  std::filesystem::path probe = std::filesystem::current_path();
+  for (int i = 0; i < 8 && shaderPath.empty(); ++i) {
+    const std::filesystem::path buildShaderPath =
+        probe / "build" / "assets" / "shaders" / "glsl" / shaderFile;
+    if (std::filesystem::exists(buildShaderPath)) {
+      shaderPath = buildShaderPath.string();
+      break;
     }
+    const auto parent = probe.parent_path();
+    if (parent == probe) {
+      break;
+    }
+    probe = parent;
+  }
+  if (shaderPath.empty()) {
+    shaderPath = getShaderPath("offline_primary_ray", "comp.spv");
   }
   if (shaderPath.empty()) {
     throw std::runtime_error("failed to find offline compute shader SPIR-V");

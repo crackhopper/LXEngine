@@ -693,6 +693,8 @@ loadOfflineRenderSettings(const YAML::Node &node) {
       settings.profileName = value.as<std::string>();
     } else if (key == "shadows") {
       settings.shadows = value.as<bool>();
+    } else if (key == "compareMode") {
+      settings.compareMode = value.as<std::string>();
     } else {
       settings.extensionYamlByField.emplace(key, dumpYamlNode(value));
     }
@@ -706,6 +708,10 @@ loadOfflineRenderSettings(const YAML::Node &node) {
   }
   if (settings.samples == 0 || settings.maxBounce == 0) {
     throw std::runtime_error("offlineRender samples/maxBounce must be positive");
+  }
+  if (settings.compareMode != "shaded" && settings.compareMode != "albedo") {
+    throw std::runtime_error("unsupported offlineRender compareMode: " +
+                             settings.compareMode);
   }
   return settings;
 }
@@ -869,6 +875,10 @@ void saveRenderProfileDocument(
   out << YAML::Key << "seed" << YAML::Value << document.offline.seed;
   out << YAML::Key << "profile" << YAML::Value << document.offline.profileName;
   out << YAML::Key << "shadows" << YAML::Value << document.offline.shadows;
+  if (document.offline.compareMode != "shaded") {
+    out << YAML::Key << "compareMode" << YAML::Value
+        << document.offline.compareMode;
+  }
   for (const auto &[key, yamlText] : document.offline.extensionYamlByField) {
     out << YAML::Key << key << YAML::Value;
     emitRawYamlNode(out, yamlText);

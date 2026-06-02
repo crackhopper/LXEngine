@@ -416,5 +416,6 @@ realtime/offline 对比所使用的基础 shader 公式 SHALL 共享语义。
 - 已完成 realtime profile offscreen generation 的首版输出：`render-linear.exr`、`render-cpu_srgb.png` 和 `render.json`。
 - 已完成 Codex-callable 本地 wrapper：`src/tools/lxe_realtime_render/lxe_realtime_render.py`。该入口启动本机 `lxe_editor --api-enable`，导入 scene，执行 `realtime-render run <profile>`，校验输出文件和 metadata，然后关闭它启动的 editor 进程。
 - 已完成 EXR 读取和比较入口：`LX_infra::image::readRgba32fExr` 与 `src/tools/lxe_compare_exr/`。比较工具输出 `meanAbsError`、`maxAbsError`、`rmse`、`pixelCount`，并支持可选阈值失败返回码。
+- 已完成受控 realtime/offline 对比 scene：`assets/scenes/realtime_offline_compare_flat.scene.yaml`。该 scene 使用 `offlineRender.compareMode: albedo` 和稳定的黑色 lit material，使 realtime/offline linear EXR 在零阈值下通过 `test_realtime_offline_compare_flat`。
 - 尚未完成 realtime `pipeline_srgb.png` readback；当前 metadata 中 `pipelineSrgbStatus` 标记为 unavailable。
-- 尚未完成 realtime/offline 受控对比 scene、shadow/feature override 和阈值验收；当前工具已能比较 IBL scene 的 realtime/offline EXR，但该 scene 不作为数值等价验收目标。
+- 尚未完成复杂 BRDF/IBL/shadow 的数值等价；IBL scene 仍只适合作为 visual/regression comparison，不作为基础数值等价验收目标。

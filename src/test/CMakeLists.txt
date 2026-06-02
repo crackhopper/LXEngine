@@ -129,7 +129,25 @@ function(lx_register_python_ctest test_name)
   )
 endfunction()
 
+add_test(
+  NAME test_realtime_offline_compare_flat
+  COMMAND
+    ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_realtime_offline_compare_flat.py
+    --source-dir ${CMAKE_SOURCE_DIR}
+    --binary-dir ${CMAKE_BINARY_DIR}
+)
+set_tests_properties(test_realtime_offline_compare_flat PROPERTIES
+  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  LABELS "auto;requires_video_device"
+)
+
 add_custom_target(BuildTest)
+add_dependencies(BuildTest
+  lxe_compare_exr
+  lxe_offline_render
+  lxe_realtime_render
+)
 foreach(TEST_EXE ${TEST_INTEGRATION_EXE_LIST})
   add_executable(${TEST_EXE} integration/${TEST_EXE}.cpp)
   target_link_libraries(${TEST_EXE}
@@ -348,6 +366,7 @@ if(TARGET test_lxe_editor_memory_probe)
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/project_catalog.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/project_document.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/project_session.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/realtime_render_profile.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/recording_controller.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_builder.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_interaction_controller.cpp

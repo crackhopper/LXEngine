@@ -37,6 +37,7 @@ struct OfflineRenderSettings final {
   u32 seed = 1;
   std::string profileName;
   bool shadows = true;
+  std::string compareMode = "shaded";
   std::map<std::string, std::string> extensionYamlByField;
 };
 

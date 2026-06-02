@@ -86,7 +86,7 @@ layout(std430, binding = 7) readonly buffer ParamsBuffer {
   uint materialCount;
   uint maxBounce;
   uint shadowsEnabled;
-  uint pad0;
+  uint compareMode;
   uint pad1;
   uint pad2;
 } params;
@@ -244,11 +244,17 @@ vec3 shade(vec3 origin, vec3 dir) {
   vec3 normal;
   uint matIndex;
   if (!traceScene(origin, dir, 1.0e30, hitT, normal, matIndex)) {
+    if (params.compareMode == 1u) {
+      return vec3(0.0);
+    }
     return environmentColor(dir);
   }
 
   Material material = materials[min(matIndex, params.materialCount - 1u)];
   vec3 baseColor = material.baseColor.rgb;
+  if (params.compareMode == 1u) {
+    return baseColor;
+  }
   float metallic = clamp(material.params.x, 0.0, 1.0);
   float roughness = clamp(material.params.y, 0.03, 1.0);
   vec3 hitPos = origin + dir * hitT;

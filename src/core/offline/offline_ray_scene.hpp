@@ -63,7 +63,7 @@ struct alignas(16) OfflineSceneParams final {
   u32 materialCount = 0;
   u32 maxBounce = 1;
   u32 shadowsEnabled = 1;
-  u32 pad0 = 0;
+  u32 compareMode = 0;
   u32 pad1 = 0;
   u32 pad2 = 0;
 };

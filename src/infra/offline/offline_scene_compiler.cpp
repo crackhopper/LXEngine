@@ -54,6 +54,36 @@ constexpr float kPi = 3.14159265358979323846f;
   return node ? node.as<float>() : fallback;
 }
 
+void applyMaterialParameterMap(
+    OfflineMaterialIR &material,
+    const std::unordered_map<std::string, LX_core::MaterialParameterValue>
+        &params) {
+  if (const auto it = params.find("MaterialUBO.baseColor");
+      it != params.end() &&
+      it->second.type == LX_core::MaterialParameterValueType::Vec3) {
+    material.baseColor =
+        Vec3f{it->second.vectorValue.x, it->second.vectorValue.y,
+              it->second.vectorValue.z};
+  }
+  if (const auto it = params.find("MaterialUBO.baseColorFactor");
+      it != params.end() &&
+      it->second.type == LX_core::MaterialParameterValueType::Vec4) {
+    material.baseColor =
+        Vec3f{it->second.vectorValue.x, it->second.vectorValue.y,
+              it->second.vectorValue.z};
+  }
+  if (const auto it = params.find("MaterialUBO.metallicFactor");
+      it != params.end() &&
+      it->second.type == LX_core::MaterialParameterValueType::Float) {
+    material.metallic = it->second.floatValue;
+  }
+  if (const auto it = params.find("MaterialUBO.roughnessFactor");
+      it != params.end() &&
+      it->second.type == LX_core::MaterialParameterValueType::Float) {
+    material.roughness = it->second.floatValue;
+  }
+}
+
 [[nodiscard]] OfflineMaterialIR loadMaterial(
     const OfflineAssetResolver &resolver, const std::optional<std::string> &uri,
     const LX_infra::scene_io::MaterialOverrideState &nodeOverride,
@@ -92,6 +122,7 @@ constexpr float kPi = 3.14159265358979323846f;
   if (nodeOverride.baseColor.has_value()) {
     material.baseColor = *nodeOverride.baseColor;
   }
+  applyMaterialParameterMap(material, nodeOverride.parameters);
   material.roughness = std::max(0.03f, material.roughness);
   return material;
 }

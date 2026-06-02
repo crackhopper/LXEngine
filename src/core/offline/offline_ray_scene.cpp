@@ -278,6 +278,7 @@ u32 buildNode(OfflineRayScene &scene, u32 first, u32 count) {
   params.materialCount = materialCount;
   params.maxBounce = offline.maxBounce;
   params.shadowsEnabled = offline.shadows ? 1u : 0u;
+  params.compareMode = offline.compareMode == "albedo" ? 1u : 0u;
   return params;
 }
 

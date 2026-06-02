@@ -718,6 +718,7 @@ void testOutputProfilesRoundTrip() {
          "    seed: 7\n"
          "    profile: preview\n"
          "    shadows: false\n"
+         "    compareMode: albedo\n"
          "root:\n"
          "  nodeName: scene_root\n"
          "  name: ''\n"
@@ -737,6 +738,7 @@ void testOutputProfilesRoundTrip() {
          "camera override fov");
   EXPECT(profiles.offline.maxBounce == 1u, "maxBounce");
   EXPECT(profiles.offline.shadows == false, "shadow flag");
+  EXPECT(profiles.offline.compareMode == "albedo", "compare mode");
 
   const std::filesystem::path saved =
       makeTempPath("lx_scene_output_profiles_saved.yaml");
@@ -746,6 +748,8 @@ void testOutputProfilesRoundTrip() {
          "saved new outputProfiles");
   EXPECT(savedText.find("maxBounce: 1") != std::string::npos,
          "saved maxBounce");
+  EXPECT(savedText.find("compareMode: albedo") != std::string::npos,
+         "saved compareMode");
 }
 
 void testOldOfflineRenderProfilesRejected() {
