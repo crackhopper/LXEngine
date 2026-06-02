@@ -780,6 +780,87 @@ void testOldOfflineRenderProfilesRejected() {
   EXPECT(rejected, "old offlineRender.profiles should be rejected");
 }
 
+void expectMinimalSceneRejected(const char *filename,
+                                const std::string &sceneFields,
+                                const std::string &expectedErrorSubstring) {
+  const std::filesystem::path path = makeTempPath(filename);
+  std::ofstream out(path);
+  out << "scene:\n"
+      << sceneFields
+      << "root:\n"
+         "  nodeName: scene_root\n"
+         "  name: ''\n"
+         "  transform:\n"
+         "    translation: [0.0, 0.0, 0.0]\n"
+         "    rotation: [1.0, 0.0, 0.0, 0.0]\n"
+         "    scale: [1.0, 1.0, 1.0]\n"
+         "  visibilityMask: 4294967295\n";
+  out.close();
+
+  bool rejected = false;
+  try {
+    (void)LX_infra::scene_io::loadSceneDocument(path);
+  } catch (const std::exception &e) {
+    rejected =
+        std::string(e.what()).find(expectedErrorSubstring) != std::string::npos;
+  }
+  EXPECT(rejected, expectedErrorSubstring.c_str());
+}
+
+void testOldOfflineRenderDefaultProfileRejected() {
+  expectMinimalSceneRejected(
+      "lx_scene_old_default_profile.yaml",
+      "  name: old default profile test\n"
+      "  defaultOutputProfile: preview\n"
+      "  outputProfiles:\n"
+      "    preview:\n"
+      "      camera: /game_cam\n"
+      "      width: 64\n"
+      "      height: 36\n"
+      "  offlineRender:\n"
+      "    defaultProfile: preview\n",
+      "scene.offlineRender.defaultProfile");
+}
+
+void testOutputProfileSamplesRejected() {
+  expectMinimalSceneRejected(
+      "lx_scene_output_profile_samples.yaml",
+      "  name: output profile stale samples test\n"
+      "  defaultOutputProfile: preview\n"
+      "  outputProfiles:\n"
+      "    preview:\n"
+      "      camera: /game_cam\n"
+      "      width: 64\n"
+      "      height: 36\n"
+      "      samples: 1\n"
+      "  offlineRender:\n"
+      "    profile: preview\n",
+      "scene.outputProfiles.preview.samples");
+}
+
+void testOfflineRenderProfileMustReferenceOutputProfile() {
+  expectMinimalSceneRejected(
+      "lx_scene_bad_offline_profile_reference.yaml",
+      "  name: bad offline profile reference test\n"
+      "  defaultOutputProfile: preview\n"
+      "  outputProfiles:\n"
+      "    preview:\n"
+      "      camera: /game_cam\n"
+      "      width: 64\n"
+      "      height: 36\n"
+      "  offlineRender:\n"
+      "    profile: missing\n",
+      "scene.offlineRender.profile");
+}
+
+void testExplicitEmptyOutputProfilesRejected() {
+  expectMinimalSceneRejected(
+      "lx_scene_empty_output_profiles.yaml",
+      "  name: empty output profiles test\n"
+      "  outputProfiles: {}\n",
+      "scene.outputProfiles must be a non-empty map");
+}
+
 void testSceneDocumentRoundTripsRenderProfileDocumentAndOfflineSubtrees() {
   const std::filesystem::path path =
       makeTempPath("lx_scene_document_offline_render.yaml");
@@ -1011,6 +1092,10 @@ int main() {
   testSceneDocumentRoundTripsTypedLightPayloads();
   testOutputProfilesRoundTrip();
   testOldOfflineRenderProfilesRejected();
+  testOldOfflineRenderDefaultProfileRejected();
+  testOutputProfileSamplesRejected();
+  testOfflineRenderProfileMustReferenceOutputProfile();
+  testExplicitEmptyOutputProfilesRejected();
   testSceneDocumentRoundTripsRenderProfileDocumentAndOfflineSubtrees();
   testShadowTutorialSceneAssetLoads();
   testIblMetalSphereSceneAssetLoads();

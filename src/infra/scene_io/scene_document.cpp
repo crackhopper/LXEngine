@@ -600,6 +600,12 @@ loadOutputProfile(const YAML::Node &node, const std::string &name) {
       throw std::runtime_error("scene.outputProfiles." + name +
                                ".backend is no longer supported");
     }
+    if (key == "integrator" || key == "samples" || key == "seed" ||
+        key == "maxBounce") {
+      throw std::runtime_error("scene.outputProfiles." + name + "." + key +
+                               " is no longer supported; offline render "
+                               "settings belong under scene.offlineRender");
+    }
     if (key == "maxDepth") {
       throw std::runtime_error("scene.outputProfiles." + name +
                                ".maxDepth is no longer supported; use "
@@ -660,6 +666,11 @@ loadOfflineRenderSettings(const YAML::Node &node) {
       throw std::runtime_error(
           "scene.offlineRender.profiles is no longer supported; use "
           "scene.outputProfiles plus scene.offlineRender");
+    }
+    if (key == "defaultProfile") {
+      throw std::runtime_error(
+          "scene.offlineRender.defaultProfile is no longer supported; use "
+          "scene.defaultOutputProfile and scene.offlineRender.profile");
     }
     if (key == "backend") {
       throw std::runtime_error(
