@@ -3,6 +3,7 @@ build/
 build-*/
 !src/tools/share/build-info/
 !src/tools/share/build-info/**
+/src/tools/share/build-info/node_modules/
 
 # External: ignore docs, examples, tests
 external/**/docs/
