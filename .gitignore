@@ -1,6 +1,8 @@
 # Build output
 build/
 build-*/
+!src/tools/share/build-info/
+!src/tools/share/build-info/**
 
 # External: ignore docs, examples, tests
 external/**/docs/
