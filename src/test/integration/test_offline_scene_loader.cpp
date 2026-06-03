@@ -139,6 +139,45 @@ void testBuiltinSphereUsesSharedPrimitiveMesh() {
          "offline loader should expose shared builtin mesh indices");
 }
 
+void testPlainGltfHelmetLoadsToSceneResourceTable() {
+  LX_infra::scene_io::SceneDocument document;
+  document.setSceneName("offline plain glTF helmet");
+  document.setGameplayCameraPath("/game_cam");
+
+  auto &root = document.mutableRootNode();
+  root.children.push_back(
+      makeCameraNode("game_cam", LX_core::Vec3f{0.0f, 2.0f, 6.0f}, 45.0f,
+                     0xffffffffu));
+
+  LX_infra::scene_io::SceneNodeDocument helmet;
+  helmet.nodeName = "helmet";
+  helmet.name = "helmet";
+  helmet.meshUri = "assets/models/damaged_helmet/DamagedHelmet.gltf";
+  root.children.push_back(std::move(helmet));
+
+  LX_infra::offline::OfflineSceneLoader loader{
+      LX_infra::offline::OfflineAssetResolver(std::filesystem::current_path() /
+                                              "assets" / "scenes" /
+                                              "warning_fixture.scene.yaml")};
+
+  bool loadedWithoutBuiltinOnlyRejection = false;
+  try {
+    const auto loaded = loader.load(document, "/game_cam");
+    loadedWithoutBuiltinOnlyRejection = true;
+    EXPECT(loaded.table.objectCount() > 0,
+           "plain glTF helmet should register an offline object");
+    EXPECT(loaded.table.materialCount() > 0,
+           "plain glTF helmet should register a shared PBR material");
+  } catch (const std::exception &ex) {
+    const std::string message = ex.what();
+    EXPECT(message.find("offline MVP only supports shared builtin primitive "
+                        "meshes") == std::string::npos,
+           "plain glTF helmet should not hit the old builtin-only rejection");
+  }
+  EXPECT(loadedWithoutBuiltinOnlyRejection,
+         "plain glTF helmet should load through OfflineSceneLoader");
+}
+
 void testBuiltinSphereWindingMatchesOutwardNormals() {
   const auto sphere =
       LX_core::buildBuiltinPrimitiveMesh("builtin://lxe_editor/primitives/sphere");
@@ -323,6 +362,7 @@ void testOrthographicCameraProjectionMetadataSurvivesLoading() {
 int main() {
   testIblMetalSphereLoadsToSceneResourceTable();
   testBuiltinSphereUsesSharedPrimitiveMesh();
+  testPlainGltfHelmetLoadsToSceneResourceTable();
   testBuiltinSphereWindingMatchesOutwardNormals();
   testSelectedCameraObjectStateAndWarnings();
   testOrthographicCameraProjectionMetadataSurvivesLoading();

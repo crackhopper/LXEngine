@@ -5,8 +5,10 @@
 #include "core/scene/camera.hpp"
 #include "core/scene/light.hpp"
 #include "infra/material_loader/generic_material_loader.hpp"
+#include "infra/scene_asset/gltf_scene_asset_loader.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <filesystem>
 #include <memory>
@@ -43,6 +45,7 @@ constexpr const char *kDefaultMaterialUri =
 struct RegisteredMesh final {
   MeshHandle mesh;
   MeshBufferSharedPtr meshBuffer;
+  MaterialInstanceSharedPtr defaultMaterial;
 };
 
 [[nodiscard]] std::string displayName(const SceneNodeDocument &node) {
@@ -53,6 +56,15 @@ struct RegisteredMesh final {
     return node.nodeName;
   }
   return "node";
+}
+
+[[nodiscard]] bool isGltfMeshUri(const std::string &uri) {
+  std::string extension = std::filesystem::path(uri).extension().string();
+  std::transform(extension.begin(), extension.end(), extension.begin(),
+                 [](const unsigned char c) {
+                   return static_cast<char>(std::tolower(c));
+                 });
+  return extension == ".gltf" || extension == ".glb";
 }
 
 [[nodiscard]] std::string joinPath(const std::string &parent,
@@ -324,20 +336,36 @@ void applyMaterialOverrides(const MaterialInstanceSharedPtr &material,
   return table.registerLight(std::move(light));
 }
 
-RegisteredMesh registerBuiltinMesh(
-    SceneResourceTable &table, const std::string &meshUri,
+RegisteredMesh registerMeshUri(
+    SceneResourceTable &table, const OfflineAssetResolver &resolver,
+    const std::string &meshUri,
     std::unordered_map<std::string, RegisteredMesh> &meshByUri) {
   if (const auto it = meshByUri.find(meshUri); it != meshByUri.end()) {
     return it->second;
   }
 
-  auto mesh = LX_core::buildBuiltinPrimitiveMesh(meshUri);
+  MeshBufferSharedPtr mesh;
+  MaterialInstanceSharedPtr defaultMaterial;
+  if (LX_core::isBuiltinPrimitiveMeshUri(meshUri)) {
+    mesh = LX_core::buildBuiltinPrimitiveMesh(meshUri);
+  } else if (isGltfMeshUri(meshUri)) {
+    auto asset =
+        LX_infra::scene_asset::loadGltfSceneAsset(resolver.resolve(meshUri));
+    mesh = std::move(asset.mesh);
+    defaultMaterial = std::move(asset.material);
+  } else {
+    throw std::runtime_error("offline scene loader only supports shared "
+                             "builtin primitive meshes and glTF meshes: " +
+                             meshUri);
+  }
+
   const auto geometryStorageHandle =
       table.registerGeometryStorage(mesh->getGeometryStorage());
   (void)geometryStorageHandle;
   RegisteredMesh registered{
       .mesh = table.registerMesh(mesh),
       .meshBuffer = std::move(mesh),
+      .defaultMaterial = std::move(defaultMaterial),
   };
   meshByUri.emplace(meshUri, registered);
   return registered;
@@ -380,25 +408,28 @@ void visitNode(const OfflineAssetResolver &resolver,
 
   if (node.meshUri.has_value()) {
     const std::string &meshUri = *node.meshUri;
-    if (!LX_core::isBuiltinPrimitiveMeshUri(meshUri)) {
-      throw std::runtime_error("offline MVP only supports shared builtin "
-                               "primitive meshes; unsupported mesh at " +
-                               path + ": " + meshUri);
-    }
     const RegisteredMesh mesh =
-        registerBuiltinMesh(state.loaded.table, meshUri, state.meshByUri);
+        registerMeshUri(state.loaded.table, resolver, meshUri, state.meshByUri);
 
     const std::string materialKey =
-        node.materialUri.value_or("default") + "|" + path;
+        node.materialUri.value_or(mesh.defaultMaterial ? meshUri : "default") +
+        "|" + path;
     MaterialHandle materialHandle;
     if (const auto it = state.materialByKey.find(materialKey);
         it != state.materialByKey.end()) {
       materialHandle = it->second;
     } else {
-      auto material = loadMaterialInstance(
-          resolver, node.materialUri, node.materialOverrides,
-          node.nodeMaterialOverrides, state.materialCache,
-          state.loaded.warnings);
+      MaterialInstanceSharedPtr material;
+      if (!node.materialUri.has_value() && mesh.defaultMaterial) {
+        material = mesh.defaultMaterial->cloneInstanceData();
+        applyMaterialOverrides(material, node.materialOverrides);
+        applyMaterialOverrides(material, node.nodeMaterialOverrides);
+      } else {
+        material = loadMaterialInstance(
+            resolver, node.materialUri, node.materialOverrides,
+            node.nodeMaterialOverrides, state.materialCache,
+            state.loaded.warnings);
+      }
       materialHandle = state.loaded.table.registerMaterial(std::move(material));
       state.materialByKey.emplace(materialKey, materialHandle);
     }

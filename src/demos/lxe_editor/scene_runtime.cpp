@@ -8,6 +8,7 @@
 #include "core/scene/light.hpp"
 #include "core/utils/filesystem_tools.hpp"
 #include "infra/material_loader/generic_material_loader.hpp"
+#include "infra/scene_asset/gltf_scene_asset_loader.hpp"
 #include "infra/texture_loader/texture_loader.hpp"
 #include "demos/lxe_editor/builtin_asset_catalog.hpp"
 #include "demos/lxe_editor/editor_camera_state.hpp"
@@ -378,6 +379,15 @@ isRuntimeDebugDrawNode(const LX_core::SceneNodeSharedPtr &node) {
 
 [[nodiscard]] bool isBuiltinModelMeshUri(const std::string &uri) {
   return uri.rfind(BuiltinModelPrefix, 0) == 0;
+}
+
+[[nodiscard]] bool isGltfMeshUri(const std::string &uri) {
+  std::string extension = std::filesystem::path(uri).extension().string();
+  std::transform(extension.begin(), extension.end(), extension.begin(),
+                 [](const unsigned char c) {
+                   return static_cast<char>(std::tolower(c));
+                 });
+  return extension == ".gltf" || extension == ".glb";
 }
 
 [[nodiscard]] std::optional<std::string>
@@ -799,8 +809,10 @@ loadEffectiveMaterialForSceneNode(
     const ProceduralMaterialState &proceduralMaterial =
         ProceduralMaterialState{}) {
   if (isDefaultHelmetBridgeMaterial(nodeDocument, uri)) {
-    auto material = buildHelmetMaterial(resolveRuntimePath(
-        "assets/models/damaged_helmet/DamagedHelmet.gltf"));
+    auto material = LX_infra::scene_asset::loadGltfSceneAsset(
+                        resolveRuntimePath(
+                            "assets/models/damaged_helmet/DamagedHelmet.gltf"))
+                        .material;
     applyMaterialStateOverrides(material, materialOverrides, nodeOverrides,
                                 proceduralMaterial);
     return material;
@@ -887,6 +899,15 @@ makeCameraNode(const std::string &nodeName, const std::string &displayName,
   }
   camera->get().setTarget(LX_core::RenderTarget{});
   camera->get().setCullingMask(cullingMask);
+  return node;
+}
+
+[[nodiscard]] LX_core::SceneNodeSharedPtr makeRenderableNode(
+    const std::string &nodeName, LX_core::MeshSharedPtr mesh,
+    LX_core::MaterialInstanceSharedPtr material) {
+  auto node = LX_core::SceneNode::create(nodeName);
+  node->addComponent<LX_core::MeshComponent>(std::move(mesh));
+  node->addComponent<LX_core::MaterialComponent>(std::move(material));
   return node;
 }
 
@@ -988,32 +1009,23 @@ makeCameraNode(const std::string &nodeName, const std::string &displayName,
   }
 
   if (*nodeDocument.meshUri == "builtin://lxe_editor/helmet") {
-    auto node = buildHelmetNode(
-        resolveRuntimePath("assets/models/damaged_helmet/DamagedHelmet.gltf"));
-    if (auto materialComponent =
-            node->getComponent<LX_core::MaterialComponent>();
-        materialComponent.has_value()) {
-      const std::string uri = normalizeMaterialUri(nodeDocument);
-      if (shouldReplaceBuiltinBridgeMaterial(nodeDocument, uri)) {
-        materialComponent->get().setMaterialInstance(
-            loadEffectiveMaterialForSceneNode(assetRoots, nodeDocument, uri));
-      } else if (!nodeDocument.nodeMaterialOverrides.empty() ||
-          !nodeDocument.materialOverrides.empty() ||
-          nodeDocument.proceduralMaterial.enabled) {
-        applyEffectiveMaterialStateToExisting(
-            materialComponent->get().getMaterialInstance(),
-            nodeDocument.materialOverrides, nodeDocument.nodeMaterialOverrides,
-            nodeDocument.proceduralMaterial);
-      } else {
-        applyBaseColorIfSupported(
-            materialComponent->get().getMaterialInstance(),
-            nodeDocument.materialOverrides.baseColor);
-        applyBaseColorIfSupported(
-            materialComponent->get().getMaterialInstance(),
-            nodeDocument.nodeMaterialOverrides.baseColor);
-      }
+    const std::filesystem::path helmetPath =
+        resolveRuntimePath("assets/models/damaged_helmet/DamagedHelmet.gltf");
+    const std::string materialUri = normalizeMaterialUri(nodeDocument);
+    if (shouldReplaceBuiltinBridgeMaterial(nodeDocument, materialUri)) {
+      auto meshAsset = LX_infra::scene_asset::loadGltfMeshAsset(helmetPath);
+      return makeRenderableNode(
+          nodeDocument.nodeName, std::move(meshAsset.mesh),
+          loadEffectiveMaterialForSceneNode(assetRoots, nodeDocument,
+                                            materialUri));
     }
-    return node;
+
+    auto asset = LX_infra::scene_asset::loadGltfSceneAsset(helmetPath);
+    applyEffectiveMaterialStateToExisting(
+        asset.material, nodeDocument.materialOverrides,
+        nodeDocument.nodeMaterialOverrides, nodeDocument.proceduralMaterial);
+    return makeRenderableNode(nodeDocument.nodeName, std::move(asset.mesh),
+                              std::move(asset.material));
   }
 
   if (*nodeDocument.meshUri == "builtin://lxe_editor/ground_mesh") {
@@ -1032,6 +1044,26 @@ makeCameraNode(const std::string &nodeName, const std::string &displayName,
       }
     }
     return node;
+  }
+
+  if (isGltfMeshUri(*nodeDocument.meshUri)) {
+    const std::filesystem::path meshPath =
+        resolveRuntimeOrProjectAssetPath(assetRoots, *nodeDocument.meshUri);
+    if (nodeDocument.materialUri.has_value()) {
+      auto meshAsset = LX_infra::scene_asset::loadGltfMeshAsset(meshPath);
+      const std::string materialUri = normalizeMaterialUri(nodeDocument);
+      return makeRenderableNode(
+          nodeDocument.nodeName, std::move(meshAsset.mesh),
+          loadEffectiveMaterialForSceneNode(assetRoots, nodeDocument,
+                                            materialUri));
+    }
+
+    auto asset = LX_infra::scene_asset::loadGltfSceneAsset(meshPath);
+    applyEffectiveMaterialStateToExisting(
+        asset.material, nodeDocument.materialOverrides,
+        nodeDocument.nodeMaterialOverrides, nodeDocument.proceduralMaterial);
+    return makeRenderableNode(nodeDocument.nodeName, std::move(asset.mesh),
+                              std::move(asset.material));
   }
 
   if (isBuiltinPrimitiveMeshUri(*nodeDocument.meshUri)) {
