@@ -126,6 +126,22 @@ MeshBufferSharedPtr makeOffsetMeshBuffer() {
                                         {1.0f, 1.0f, 0.0f}});
 }
 
+MeshBufferSharedPtr makeInvalidIndexRangeMeshBuffer() {
+  auto vertices = std::vector<TestVertex>{
+      {{-10.0f, -10.0f, 0.0f}},
+      {{0.0f, 0.0f, 0.0f}},
+      {{1.0f, 0.0f, 0.0f}},
+      {{0.0f, 1.0f, 0.0f}},
+  };
+  auto indices = std::vector<u32>{0, 2, 3};
+  auto vb = VertexBuffer<TestVertex>::create(std::move(vertices));
+  auto ib = IndexBuffer::create(std::move(indices));
+  auto storage = GeometryStorage::create(vb, ib);
+  return MeshBuffer::create(storage, 1, 0, 3, 3,
+                            BoundingBox{{0.0f, 0.0f, 0.0f},
+                                        {1.0f, 1.0f, 0.0f}});
+}
+
 MaterialInstanceSharedPtr makeGpuRecordMaterial() {
   ShaderResourceBinding binding;
   binding.name = "MaterialUBO";
@@ -352,6 +368,9 @@ void testSceneResourceTableUploadViewTracksGeneration() {
   object.material = material;
   object.worldBounds = BoundingBox{{0.0f, 0.0f, 0.0f},
                                    {1.0f, 1.0f, 0.0f}};
+  object.visibilityMask = 0x12345678u;
+  object.debugOnly = true;
+  object.debugId = StringID("scene_gpu_record_object");
   const auto objectHandle = table.registerObject(object);
 
   const auto firstView = table.buildUploadView();
@@ -362,6 +381,12 @@ void testSceneResourceTableUploadViewTracksGeneration() {
          "object GPU record should reference mesh index");
   EXPECT(firstView.objects.front().materialIndex == material.index,
          "object GPU record should reference material index");
+  EXPECT(firstView.objects.front().visibilityMask == 0x12345678u,
+         "object GPU record should preserve visibility mask");
+  EXPECT(firstView.objects.front().flags == 1,
+         "object GPU record should preserve flags separately from mask");
+  EXPECT(firstView.objects.front().debugId == object.debugId.id,
+         "object GPU record should preserve debug id separately from mask");
   EXPECT(firstView.materials.size() == 1,
          "upload view should expose one material");
   EXPECT(firstView.materials.front().baseColor.x == 0.25f &&
@@ -379,6 +404,33 @@ void testSceneResourceTableUploadViewTracksGeneration() {
          "object update should advance upload generation");
   EXPECT(secondView.objects.front().visible == 0,
          "object visibility should reach GPU record");
+}
+
+void testSceneResourceTableUploadViewCachesUnchangedGeneration() {
+  SceneResourceTable table;
+  const auto mesh = table.registerMesh(makeMeshBuffer());
+  const auto material = table.registerMaterial(makeGpuRecordMaterial());
+  ObjectResource object;
+  object.mesh = mesh;
+  object.material = material;
+  object.worldBounds = BoundingBox{{0.0f, 0.0f, 0.0f},
+                                   {1.0f, 1.0f, 0.0f}};
+  const auto objectHandle = table.registerObject(object);
+
+  const auto firstView = table.buildUploadView();
+  const auto secondView = table.buildUploadView();
+  EXPECT(table.isAlive(objectHandle),
+         "test setup should keep cached-view object alive");
+  EXPECT(secondView.generation == firstView.generation,
+         "unchanged upload view should keep generation");
+  EXPECT(secondView.vertices.data() == firstView.vertices.data(),
+         "unchanged upload view should reuse cached vertex span");
+  EXPECT(secondView.indices.data() == firstView.indices.data(),
+         "unchanged upload view should reuse cached index span");
+  EXPECT(secondView.objects.data() == firstView.objects.data(),
+         "unchanged upload view should reuse cached object span");
+  EXPECT(secondView.primitives.data() == firstView.primitives.data(),
+         "unchanged upload view should reuse cached primitive span");
 }
 
 void testSceneResourceTableUploadViewUsesCompactRecordIndices() {
@@ -580,6 +632,35 @@ void testSceneResourceTableUploadViewRebasesOffsetMeshIndices() {
   }
 }
 
+void testSceneResourceTableUploadViewSkipsInvalidMeshIndexRanges() {
+  SceneResourceTable table;
+  const auto mesh = table.registerMesh(makeInvalidIndexRangeMeshBuffer());
+  const auto material = table.registerMaterial(makeGpuRecordMaterial());
+
+  ObjectResource object;
+  object.mesh = mesh;
+  object.material = material;
+  object.worldBounds = BoundingBox{{0.0f, 0.0f, 0.0f},
+                                   {1.0f, 1.0f, 0.0f}};
+  const auto objectHandle = table.registerObject(object);
+
+  const auto view = table.buildUploadView();
+  EXPECT(table.isAlive(objectHandle),
+         "test setup should keep object with invalid mesh slice alive");
+  EXPECT(view.meshes.empty(),
+         "invalid mesh index range should not emit a mesh record");
+  EXPECT(view.vertices.empty(),
+         "invalid mesh index range should not emit vertices");
+  EXPECT(view.indices.empty(),
+         "invalid mesh index range should not emit indices");
+  EXPECT(view.objects.empty(),
+         "invalid mesh index range should not emit dependent object records");
+  EXPECT(view.primitives.empty(),
+         "invalid mesh index range should not emit dependent primitive records");
+  EXPECT(view.materials.size() == 1,
+         "invalid mesh index range should not suppress independent materials");
+}
+
 } // namespace
 
 int main() {
@@ -589,11 +670,13 @@ int main() {
   testSceneRegistersCameraAndLightResources();
   testSceneGpuRecordLayoutContract();
   testSceneResourceTableUploadViewTracksGeneration();
+  testSceneResourceTableUploadViewCachesUnchangedGeneration();
   testSceneResourceTableUploadViewUsesCompactRecordIndices();
   testSceneResourceTableUploadViewSkipsObjectsWithReleasedDependencies();
   testSceneResourceTableUploadViewSkipsObjectsWithStaleDependencies();
   testSceneResourceTableUploadViewEmitsPrimitivePerTriangle();
   testSceneResourceTableUploadViewRebasesOffsetMeshIndices();
+  testSceneResourceTableUploadViewSkipsInvalidMeshIndexRanges();
 
   if (s_failures != 0) {
     std::cerr << "test_scene_resource_table failed: " << s_failures

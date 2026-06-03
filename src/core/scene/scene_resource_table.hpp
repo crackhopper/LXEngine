@@ -167,6 +167,10 @@ public:
   [[nodiscard]] usize objectCount() const;
   [[nodiscard]] usize cameraCount() const;
   [[nodiscard]] RenderSceneSnapshot buildSnapshot() const;
+  // Returned spans are backed by this table's cached GPU record storage.
+  // The view is valid until the next mutating SceneResourceTable call or the
+  // next buildUploadView() call that rebuilds for a newer generation. Repeated
+  // calls without mutations return spans over the same cached records.
   [[nodiscard]] SceneResourceTableUploadView buildUploadView() const;
 
 private:
@@ -209,6 +213,7 @@ private:
   std::vector<Entry<ObjectResource>> m_objects;
   std::vector<Entry<CameraResource>> m_cameras;
   u64 m_generation = 0;
+  mutable u64 m_builtUploadGeneration = u64_max;
   mutable std::vector<SceneGpuVertexRecord> m_gpuVertices;
   mutable std::vector<u32> m_gpuIndices;
   mutable std::vector<SceneGpuMeshRecord> m_gpuMeshes;

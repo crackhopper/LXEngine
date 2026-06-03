@@ -6,10 +6,8 @@
 #include "core/scene/components/camera_component.hpp"
 #include "core/scene/light.hpp"
 
-#include <array>
 #include <cassert>
 #include <cstring>
-#include <optional>
 #include <utility>
 
 namespace LX_core {
@@ -154,95 +152,40 @@ void appendMeshGeometryRecords(const MeshBuffer &mesh,
   }
 }
 
-template <usize BindingCount, usize MemberCount>
-[[nodiscard]] std::optional<MaterialParameterValue> readFirstMaterialParameter(
-    const MaterialInstance &material,
-    const std::array<const char *, BindingCount> &bindingNames,
-    const std::array<const char *, MemberCount> &memberNames) {
-  for (const auto *bindingName : bindingNames) {
-    const StringID bindingId(bindingName);
-    for (const auto *memberName : memberNames) {
-      auto value = material.readParameterValue(bindingId, StringID(memberName));
-      if (value.has_value()) {
-        return value;
-      }
+[[nodiscard]] bool isMeshSliceValid(const MeshBuffer &mesh) {
+  const auto &vertexBuffer = *mesh.getVertexBuffer();
+  const auto &indexBuffer = *mesh.getIndexBuffer();
+  const u32 vertexOffset = mesh.getVertexOffset();
+  const u32 vertexCount = mesh.getVertexCount();
+  const u32 indexOffset = mesh.getIndexOffset();
+  const u32 indexCount = mesh.getIndexCount();
+  if (vertexBuffer.getRawData() == nullptr || indexBuffer.getRawData() == nullptr ||
+      vertexBuffer.getLayout().getStride() == 0 || vertexCount == 0 ||
+      indexCount == 0 || indexCount % 3 != 0) {
+    return false;
+  }
+
+  const auto totalVertexCount = vertexBuffer.getVertexCount();
+  if (vertexOffset > totalVertexCount ||
+      static_cast<usize>(vertexCount) > totalVertexCount - vertexOffset) {
+    return false;
+  }
+
+  const auto totalIndexCount = indexBuffer.indexCount();
+  if (indexOffset > totalIndexCount ||
+      static_cast<usize>(indexCount) > totalIndexCount - indexOffset) {
+    return false;
+  }
+
+  const auto *rawIndices = static_cast<const u32 *>(indexBuffer.getRawData());
+  const u32 vertexEnd = vertexOffset + vertexCount;
+  for (u32 i = 0; i < indexCount; ++i) {
+    const u32 index = rawIndices[indexOffset + i];
+    if (index < vertexOffset || index >= vertexEnd) {
+      return false;
     }
   }
-  return std::nullopt;
-}
-
-[[nodiscard]] Vec4f materialValueAsColor(const MaterialParameterValue &value,
-                                         Vec4f fallback) {
-  switch (value.type) {
-  case MaterialParameterValueType::Vec3:
-    return {value.vectorValue.x, value.vectorValue.y, value.vectorValue.z,
-            fallback.w};
-  case MaterialParameterValueType::Vec4:
-    return value.vectorValue;
-  case MaterialParameterValueType::Float:
-    return {value.floatValue, value.floatValue, value.floatValue, fallback.w};
-  case MaterialParameterValueType::Int:
-    return {static_cast<f32>(value.intValue), static_cast<f32>(value.intValue),
-            static_cast<f32>(value.intValue), fallback.w};
-  }
-  return fallback;
-}
-
-[[nodiscard]] f32 materialValueAsFloat(const MaterialParameterValue &value,
-                                       const f32 fallback) {
-  switch (value.type) {
-  case MaterialParameterValueType::Float:
-    return value.floatValue;
-  case MaterialParameterValueType::Int:
-    return static_cast<f32>(value.intValue);
-  case MaterialParameterValueType::Vec3:
-  case MaterialParameterValueType::Vec4:
-    return value.vectorValue.x;
-  }
-  return fallback;
-}
-
-[[nodiscard]] SceneGpuMaterialRecord
-makeGpuMaterialRecord(const MaterialInstance &material) {
-  SceneGpuMaterialRecord record;
-  constexpr std::array kMaterialBindings{"MaterialUBO", "SurfaceParams"};
-
-  if (const auto value = readFirstMaterialParameter(
-          material, kMaterialBindings,
-          std::array{"baseColor", "baseColorFactor", "surfaceColor"})) {
-    record.baseColor = materialValueAsColor(*value, record.baseColor);
-  }
-
-  if (const auto value = readFirstMaterialParameter(
-          material, kMaterialBindings,
-          std::array{"metallicFactor", "metallic"})) {
-    record.pbrParams.x = materialValueAsFloat(*value, record.pbrParams.x);
-  }
-  if (const auto value = readFirstMaterialParameter(
-          material, kMaterialBindings,
-          std::array{"roughnessFactor", "roughness"})) {
-    record.pbrParams.y = materialValueAsFloat(*value, record.pbrParams.y);
-  }
-  if (const auto value = readFirstMaterialParameter(
-          material, kMaterialBindings, std::array{"specularIntensity"})) {
-    record.pbrParams.z = materialValueAsFloat(*value, record.pbrParams.z);
-  }
-  if (const auto value = readFirstMaterialParameter(
-          material, kMaterialBindings, std::array{"ambientIntensity", "ao"})) {
-    record.pbrParams.w = materialValueAsFloat(*value, record.pbrParams.w);
-  }
-
-  if (const auto value = readFirstMaterialParameter(
-          material, kMaterialBindings,
-          std::array{"emissive", "emissiveFactor"})) {
-    record.emissive = materialValueAsColor(*value, record.emissive);
-  }
-  if (const auto value = readFirstMaterialParameter(
-          material, kMaterialBindings, std::array{"shininess"})) {
-    record.emissive.w = materialValueAsFloat(*value, record.emissive.w);
-  }
-
-  return record;
+  return true;
 }
 
 } // namespace
@@ -676,6 +619,22 @@ RenderSceneSnapshot SceneResourceTable::buildSnapshot() const {
 }
 
 SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
+  const auto makeView = [this]() {
+    return SceneResourceTableUploadView{
+        .generation = m_generation,
+        .vertices = m_gpuVertices,
+        .indices = m_gpuIndices,
+        .meshes = m_gpuMeshes,
+        .primitives = m_gpuPrimitives,
+        .objects = m_gpuObjects,
+        .materials = m_gpuMaterials,
+    };
+  };
+
+  if (m_builtUploadGeneration == m_generation) {
+    return makeView();
+  }
+
   m_gpuVertices.clear();
   m_gpuIndices.clear();
   m_gpuMeshes.clear();
@@ -692,6 +651,9 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
     }
 
     const auto &mesh = *entry.resource;
+    if (!isMeshSliceValid(mesh)) {
+      continue;
+    }
     const SceneGpuMeshRecord record{
         .vertexOffset = static_cast<u32>(m_gpuVertices.size()),
         .indexOffset = static_cast<u32>(m_gpuIndices.size()),
@@ -717,7 +679,7 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
         .generation = entry.generation,
         .uploadIndex = static_cast<u32>(m_gpuMaterials.size()),
     };
-    m_gpuMaterials.push_back(makeGpuMaterialRecord(*entry.resource));
+    m_gpuMaterials.push_back(toGpuMaterialRecord(*entry.resource));
   }
 
   m_gpuObjects.reserve(aliveCount(m_objects));
@@ -745,7 +707,9 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
     objectRecord.meshIndex = meshRecordIndex;
     objectRecord.materialIndex = materialRecordIndex;
     objectRecord.visible = object.visible ? 1u : 0u;
+    objectRecord.flags = object.debugOnly ? 1u : 0u;
     objectRecord.visibilityMask = object.visibilityMask;
+    objectRecord.debugId = object.debugId.id;
     m_gpuObjects.push_back(objectRecord);
 
     const auto &meshRecord = m_gpuMeshes[meshRecordIndex];
@@ -761,15 +725,8 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
     }
   }
 
-  return SceneResourceTableUploadView{
-      .generation = m_generation,
-      .vertices = m_gpuVertices,
-      .indices = m_gpuIndices,
-      .meshes = m_gpuMeshes,
-      .primitives = m_gpuPrimitives,
-      .objects = m_gpuObjects,
-      .materials = m_gpuMaterials,
-  };
+  m_builtUploadGeneration = m_generation;
+  return makeView();
 }
 
 } // namespace LX_core

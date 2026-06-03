@@ -9,6 +9,8 @@
 
 namespace LX_core {
 
+class MaterialInstance;
+
 struct alignas(16) SceneGpuVertexRecord final {
   Vec4f position{};
   Vec4f normal{};
@@ -33,16 +35,14 @@ struct alignas(16) SceneGpuPrimitiveRecord final {
 struct alignas(16) SceneGpuObjectRecord final {
   std::array<Vec4f, 4> objectToWorld{};
   std::array<Vec4f, 4> worldToObject{};
-  Vec4f boundsMin{};
-  Vec4f boundsMax{};
+  Vec3f boundsMin{};
+  Vec3f boundsMax{};
   u32 meshIndex = 0;
   u32 materialIndex = 0;
   u32 visible = 1;
-  union {
-    u32 visibilityMask = 0xffffffffu;
-    u32 flags;
-    u32 debugId;
-  };
+  u32 flags = 0;
+  u32 visibilityMask = 0xffffffffu;
+  u32 debugId = 0;
 };
 
 struct alignas(16) SceneGpuMaterialRecord final {
@@ -79,8 +79,10 @@ struct alignas(16) SceneGpuFrameParams final {
 };
 
 [[nodiscard]] std::array<Vec4f, 4> toGpuRows(const Mat4f &matrix);
-[[nodiscard]] Vec4f toGpuBoundsMin(const BoundingBox &bounds);
-[[nodiscard]] Vec4f toGpuBoundsMax(const BoundingBox &bounds);
+[[nodiscard]] Vec3f toGpuBoundsMin(const BoundingBox &bounds);
+[[nodiscard]] Vec3f toGpuBoundsMax(const BoundingBox &bounds);
+[[nodiscard]] SceneGpuMaterialRecord
+toGpuMaterialRecord(const MaterialInstance &material);
 
 static_assert(sizeof(SceneGpuVertexRecord) == 64);
 static_assert(sizeof(SceneGpuMeshRecord) == 16);
