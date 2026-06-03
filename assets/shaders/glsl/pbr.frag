@@ -1,5 +1,7 @@
 #version 450
 
+#include "common/pbr.glsl"
+
 layout(location = 0) in vec3 vWorldPos;
 layout(location = 1) in vec3 vNormal;
 layout(location = 2) in vec2 vUV;
@@ -58,43 +60,6 @@ layout(set = 3, binding = 3) uniform EnvironmentUBO {
     vec4 params; // x: IBL intensity, y: prefiltered mip count
 } environment;
 
-const float PI = 3.14159265359;
-
-// ---------- PBR functions ----------
-
-float distributionGGX(vec3 N, vec3 H, float roughness) {
-    float a = roughness * roughness;
-    float a2 = a * a;
-    float NdotH = max(dot(N, H), 0.0);
-    float NdotH2 = NdotH * NdotH;
-
-    float denom = NdotH2 * (a2 - 1.0) + 1.0;
-    denom = PI * denom * denom;
-    return a2 / max(denom, 0.0001);
-}
-
-float geometrySchlickGGX(float NdotV, float roughness) {
-    float r = roughness + 1.0;
-    float k = (r * r) / 8.0;
-    return NdotV / (NdotV * (1.0 - k) + k);
-}
-
-float geometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
-    float NdotV = max(dot(N, V), 0.0);
-    float NdotL = max(dot(N, L), 0.0);
-    return geometrySchlickGGX(NdotV, roughness) *
-           geometrySchlickGGX(NdotL, roughness);
-}
-
-vec3 fresnelSchlick(float cosTheta, vec3 F0) {
-    return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
-}
-
-vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness) {
-    return F0 + (max(vec3(1.0 - roughness), F0) - F0) *
-                pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
-}
-
 void main() {
     // Base color
     vec4 albedo = texture(albedoMap, vUV) * material.baseColorFactor;
@@ -125,31 +90,30 @@ void main() {
 
     vec3 V = normalize(camera.eyePos - vWorldPos);
     vec3 L = normalize(-light.direction.xyz);
-    vec3 H = normalize(V + L);
 
-    // F0: reflectance at normal incidence
-    vec3 F0 = mix(vec3(0.04), albedo.rgb, metallic);
+    LxPbrDirectInput pbrInput;
+    pbrInput.baseColor = albedo.rgb;
+    pbrInput.normal = N;
+    pbrInput.viewDir = V;
+    pbrInput.lightDir = L;
+    pbrInput.lightColor = light.color.rgb;
+    pbrInput.metallic = metallic;
+    pbrInput.roughness = roughness;
+    pbrInput.ao = ao;
+    pbrInput.emissive = vec3(0.0);
+#ifdef HAS_EMISSIVE_MAP
+    pbrInput.emissive = texture(emissiveMap, vUV).rgb;
+#endif
 
-    // Cook-Torrance BRDF
-    float NDF = distributionGGX(N, H, roughness);
-    float G = geometrySmith(N, V, L, roughness);
-    vec3 F = fresnelSchlick(max(dot(H, V), 0.0), F0);
-
-    vec3 numerator = NDF * G * F;
-    float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
-    vec3 specular = numerator / denominator;
-
-    vec3 kD = (vec3(1.0) - F) * (1.0 - metallic);
-
-    float NdotL = max(dot(N, L), 0.0);
-    vec3 Lo = (kD * albedo.rgb / PI + specular) * light.color.rgb * NdotL;
+    vec3 Lo = lxPbrDirectLight(pbrInput);
+    vec3 F0 = lxPbrF0(albedo.rgb, metallic);
 
     // Ambient
-    vec3 ambient = vec3(0.03) * albedo.rgb * ao;
+    vec3 ambient = lxPbrFallbackAmbient(pbrInput);
     float iblIntensity = max(environment.params.x, 0.0);
     if (iblIntensity > 0.0) {
         float NdotV = max(dot(N, V), 0.0);
-        vec3 F_ibl = fresnelSchlickRoughness(NdotV, F0, roughness);
+        vec3 F_ibl = lxFresnelSchlickRoughness(NdotV, F0, roughness);
         vec3 kD_ibl = (vec3(1.0) - F_ibl) * (1.0 - metallic);
 
         vec3 irradiance = texture(IrradianceMap, N).rgb;
@@ -166,9 +130,7 @@ void main() {
     }
 
     vec3 color = ambient + Lo;
-#ifdef HAS_EMISSIVE_MAP
-    color += texture(emissiveMap, vUV).rgb;
-#endif
+    color += lxPbrEmissive(pbrInput);
 
     outColor = vec4(color, albedo.a);
 }

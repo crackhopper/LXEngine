@@ -1056,6 +1056,19 @@ static bool testPbrMaterialTextureSetContract(
   return true;
 }
 
+static bool testPbrFragmentUsesSharedCommon(
+    const std::filesystem::path &fragPath) {
+  std::cout << "  Test: PBR fragment uses shared common\n";
+  const auto source = readTextFile(fragPath);
+  if (source.find("#include \"common/pbr.glsl\"") == std::string::npos) {
+    std::cerr << "  FAIL: pbr.frag should include shared PBR common\n";
+    return false;
+  }
+
+  std::cout << "  PASS: PBR fragment includes shared common\n";
+  return true;
+}
+
 int main(int argc, char *argv[]) {
   expSetEnvVK();
   // Determine shader directory
@@ -1104,6 +1117,8 @@ int main(int argc, char *argv[]) {
   if (!testPbrIblContract(vertPath, fragPath))
     ++failures;
   if (!testPbrMaterialTextureSetContract(vertPath, fragPath))
+    ++failures;
+  if (!testPbrFragmentUsesSharedCommon(fragPath))
     ++failures;
 
   // Test 4: BlinnPhong MaterialUBO member reflection (REQ-004)
