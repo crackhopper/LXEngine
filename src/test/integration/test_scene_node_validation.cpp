@@ -720,7 +720,7 @@ void testRenderWorkQueueConsumesValidatedSceneNode() {
   auto scene = Scene::create("SceneQueue", node);
   scene->addCamera(LX_test::makeDefaultCameraNodeWithTarget());
   RenderWorkQueue queue;
-  queue.buildFromScene(*scene, Pass_Forward, RenderTarget{});
+  queue.build(LX_core::RenderWorkBuildContext::realtime(*scene), Pass_Forward, RenderTarget{});
 
   EXPECT(queue.getItems().size() == 1, "queue should consume one SceneNode");
   auto validated = node->getValidatedPassData(Pass_Forward);
@@ -752,7 +752,7 @@ void testRenderWorkQueueUsesHierarchyDerivedWorldTransform() {
   scene->addCamera(LX_test::makeDefaultCameraNodeWithTarget());
 
   RenderWorkQueue queue;
-  queue.buildFromScene(*scene, Pass_Forward, RenderTarget{});
+  queue.build(LX_core::RenderWorkBuildContext::realtime(*scene), Pass_Forward, RenderTarget{});
 
   EXPECT(queue.getItems().size() == 2,
          "queue should include both parent and child renderables");

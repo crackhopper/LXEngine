@@ -2,6 +2,7 @@
 
 #include "core/frame_graph/render_target.hpp"
 #include "core/frame_graph/render_queue.hpp"
+#include "core/frame_graph/render_work_build_context.hpp"
 #include "core/rhi/gpu_resource.hpp"
 #include "core/utils/string_table.hpp"
 #include <string>
@@ -104,7 +105,7 @@ private:
 pass 间资源声明的入口。它的核心职责包括：
 
 - 持有 `vector<FramePass>`：通过 `addPass` 累加，顺序即提交顺序
-- 在 `buildFromScene` 时按 pass 顺序逐个调用 `RenderWorkQueue::buildFromScene`，
+- 在 `build` 时按 pass 顺序逐个调用 `RenderWorkQueue::build`，
   把 `pass.target` 经 `RenderTarget` 兼容外壳透传下去（REQ-009 target 轴的入口）
 - 在 `compile` 时按声明顺序校验 read/write 资源：read 只能引用此前 pass 写过
   的资源，write 不能重名，也不能写 unnamed resource
@@ -122,7 +123,7 @@ class FrameGraph {
 public:
   void addPass(FramePass pass);
 
-  void buildFromScene(const Scene &scene);
+  void build(const RenderWorkBuildContext &context);
 
   [[nodiscard]] CompiledFrameGraph compile() const;
 
@@ -136,16 +137,16 @@ private:
 };
 
 /*
-@source_analysis.section buildFromScene：把 pass × scene 二维问题摊成一维循环
-`FrameGraph::buildFromScene` 的实现核心是一行循环：每条 pass 上调用
-`pass.queue.buildFromScene(scene, pass.name, RenderTarget{pass.target})`，把
+@source_analysis.section build：把 pass × scene 二维问题摊成一维循环
+`FrameGraph::build` 的实现核心是一行循环：每条 pass 上调用
+`pass.queue.build(context, pass.name, RenderTarget{pass.target})`，把
 "哪条 pass、画到哪种 target"两个参数从 FramePass 解包后透传给 RenderWorkQueue。
 
 这种"FrameGraph 不做语义、只做调度"的写法把"pass × scene"二维问题摊成
 一维循环。每一条 pass 的 RenderWorkQueue 内部独立完成 REQ-009 两轴筛选，
 FrameGraph 只负责保证 *每条 pass 都被处理一次* 这一条简单不变量。
 
-调用语义上这是重建而非增量：每次 `buildFromScene` 都触发每个 queue 的
+调用语义上这是重建而非增量：每次 `build` 都触发每个 queue 的
 `clearItems()` + 重新填入，符合 RenderWorkQueue 自身的"重建语义优先于增量
 正确性"约定。
 */

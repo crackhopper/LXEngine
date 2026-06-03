@@ -63,7 +63,7 @@ int main() {
         LX_core::Skeleton::create({}));
     auto scene = LX_core::Scene::create(node);
     scene->addCamera(LX_test::makeDefaultCameraNodeWithTarget());
-    // RenderWorkQueue::buildFromScene internally merges scene.getSceneLevelResources(pass, target),
+    // RenderWorkQueue::build internally merges scene.getSceneLevelResources(pass, target),
     // so the item already carries camera + light UBOs — no side-channel injection.
     auto item = LX_test::firstItemFromScene(*scene, LX_core::Pass_Forward);
 
@@ -108,7 +108,7 @@ int main() {
     // FrameGraph-driven collection should also produce exactly this one info.
     LX_core::FrameGraph fg;
     fg.addPass(LX_core::FramePass{LX_core::Pass_Forward, {}, {}});
-    fg.buildFromScene(*scene);
+    fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
     auto infos = fg.collectAllPipelineBuildDescs();
     if (infos.size() != 1) {
       std::cerr << "FAIL: frame graph produced " << infos.size()

@@ -40,13 +40,13 @@ SceneSharedPtr makeSceneWithCamera(VisibilityLayerMask mask) {
 
 usize buildOverlayQueueItemCount(Scene &scene) {
   RenderWorkQueue queue;
-  queue.buildFromScene(scene, Pass_DebugOverlay, RenderTarget{});
+  queue.build(LX_core::RenderWorkBuildContext::realtime(scene), Pass_DebugOverlay, RenderTarget{});
   return queue.getItems().size();
 }
 
 std::vector<RenderWorkItem> buildOverlayQueueItems(Scene &scene) {
   RenderWorkQueue queue;
-  queue.buildFromScene(scene, Pass_DebugOverlay, RenderTarget{});
+  queue.build(LX_core::RenderWorkBuildContext::realtime(scene), Pass_DebugOverlay, RenderTarget{});
   return queue.getItems();
 }
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/pipeline/pipeline_build_desc.hpp"
+#include "core/frame_graph/render_work_build_context.hpp"
 #include "core/scene/scene.hpp"
 #include <vector>
 
@@ -14,7 +15,7 @@ RenderWorkQueue 是 per-pass 的，不是全局的 — 每个 `FramePass` 自己
 "按 pipelineKey 聚合" 的语义在跨 pass 时丢失。
 
 它在数据流里的位置只有两个：
-- 写入侧：`buildFromScene` 在加载期 / 重建期把当前 scene × pass 翻译成 RenderWorkItem 列表
+- 写入侧：`build` 在加载期 / 重建期把当前 scene × pass 翻译成 RenderWorkItem 列表
 - 读出侧：backend 拿 `getItems()` 提交 draw，预构建拿 `collectUniquePipelineBuildDescs()` 去重
 
 队列只对 RenderWorkItem 做了"按 pipelineKey 聚合 + 去重"两件事，不参与材质验证、
@@ -33,9 +34,9 @@ public:
 
   std::vector<PipelineBuildDesc> collectUniquePipelineBuildDescs() const;
 
-  void buildFromScene(const Scene &scene, StringID pass,
-                      const RenderTarget &target);
-  void buildFromSceneWithOverrides(
+  void build(const RenderWorkBuildContext &context, StringID pass,
+             const RenderTarget &target);
+  void buildRealtime(
       const Scene &scene, StringID pass, const RenderTarget &target,
       std::vector<IGpuResourceSharedPtr> sceneResources,
       VisibilityLayerMask visibleMask);
@@ -47,7 +48,7 @@ private:
 /*
 @source_analysis.section sort：按 pipelineKey 稳定聚合
 `RenderWorkQueue::sort` 使用 `stable_sort` 而不是 `sort` 是有意的：当两个 RenderWorkItem
-的 pipelineKey 相同时，它们在 `m_items` 里的相对顺序保留 `buildFromScene` 时
+的 pipelineKey 相同时，它们在 `m_items` 里的相对顺序保留 `build` 时
 `scene.getRenderables()` 的入场顺序，让 backend 看到的同 pipeline draw 序列是确定的，
 便于 frame-to-frame 对比和回放。
 
@@ -67,8 +68,8 @@ RenderWorkItem 共用同一条 pipeline，没必要重复构建。
 */
 
 /*
-@source_analysis.section buildFromScene：REQ-009 两轴筛选与 scene-level 资源拼接
-`RenderWorkQueue::buildFromScene` 是 RenderWorkQueue 唯一面向 Scene 的入口，也是把
+@source_analysis.section build：REQ-009 两轴筛选与 scene-level 资源拼接
+`RenderWorkQueue::build` 是 RenderWorkQueue 唯一面向 Scene 的入口，也是把
 "scene 视角" 翻译成 "pass 视角" 的收口点。三步固定流程：
 
 1. 取 scene-level 资源：`scene.getSceneLevelResources(pass, target)` — 这一步本身
@@ -82,7 +83,7 @@ RenderWorkItem 共用同一条 pipeline，没必要重复构建。
 顺序是 "renderable 自带在前、scene-level 在后"，但 backend 按 binding name 命中，
 不依赖位置；这里固定顺序只是为了让日志和断言可重现。
 
-最后调用一次 `sort()`，把队列变成 backend 直接消费的形态。`buildFromScene` 自身
+最后调用一次 `sort()`，把队列变成 backend 直接消费的形态。`build` 自身
 不做增量 — 每次调用都先 `clearItems()`，重建语义优先于增量正确性。
 */
 

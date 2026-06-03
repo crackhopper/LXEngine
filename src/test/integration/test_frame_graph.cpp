@@ -243,7 +243,7 @@ void testSingleRenderableSinglePass() {
 
   FrameGraph fg;
   fg.addPass(FramePass{Pass_Forward, {}, {}});
-  fg.buildFromScene(*scene);
+  fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
 
   auto infos = fg.collectAllPipelineBuildDescs();
   EXPECT(infos.size() == 1, "single renderable → 1 build info");
@@ -259,7 +259,7 @@ void testDuplicateRenderablesDedupe() {
 
   FrameGraph fg;
   fg.addPass(FramePass{Pass_Forward, {}, {}});
-  fg.buildFromScene(*scene);
+  fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
 
   EXPECT(fg.getPasses()[0].queue.getItems().size() == 2, "two items in queue");
   auto infos = fg.collectAllPipelineBuildDescs();
@@ -275,7 +275,7 @@ void testDifferentVariantKeepsTwo() {
 
   FrameGraph fg;
   fg.addPass(FramePass{Pass_Forward, {}, {}});
-  fg.buildFromScene(*scene);
+  fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
 
   auto infos = fg.collectAllPipelineBuildDescs();
   EXPECT(infos.size() == 2,
@@ -288,7 +288,7 @@ void testMeshOverlayMaterialPassUsesLineListGeometry() {
 
   FrameGraph fg;
   fg.addPass(FramePass{Pass_Forward, {}, {}});
-  fg.buildFromScene(*scene);
+  fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
 
   const auto &items = fg.getPasses()[0].queue.getItems();
   EXPECT(items.size() == 1, "mesh overlay renderable should enter queue");
@@ -766,12 +766,11 @@ void testBuildFromSceneIsIdempotent() {
   FrameGraph fg;
   fg.addPass(FramePass{Pass_Forward, {}, {}});
 
-  fg.buildFromScene(*scene);
-  fg.buildFromScene(
-      *scene); // second call should clear + refill, not accumulate
+  fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
+  fg.build(LX_core::RenderWorkBuildContext::realtime(*scene)); // second call should clear + refill, not accumulate
 
   EXPECT(fg.getPasses()[0].queue.getItems().size() == 1,
-         "buildFromScene clears previous items on re-entry");
+         "build clears previous items on re-entry");
 }
 
 void testPassFilterExcludesNonMatching() {
@@ -784,7 +783,7 @@ void testPassFilterExcludesNonMatching() {
   FrameGraph fg;
   fg.addPass(FramePass{Pass_Forward, {}, {}});
   fg.addPass(FramePass{Pass_Shadow, {}, {}});
-  fg.buildFromScene(*scene);
+  fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
 
   const auto &passes = fg.getPasses();
   EXPECT(passes.size() == 2, "two passes configured");
@@ -806,7 +805,7 @@ void testShadowQueueUsesFallbackVisibilityWhenNoShadowCamera() {
                        {},
                        {FrameGraphWrite{FrameGraphResourceRef::depthAttachment(
                            StringID("shadow.depth"))}}});
-  fg.buildFromScene(*scene);
+  fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
 
   EXPECT(fg.getPasses()[0].queue.getItems().size() == 1,
          "Shadow pass should include caster even without a target-matching "
@@ -905,8 +904,8 @@ void testMultiPassRebuildIsIdempotent() {
   FrameGraph fg;
   fg.addPass(FramePass{Pass_Forward, {}, {}});
   fg.addPass(FramePass{Pass_Shadow, {}, {}});
-  fg.buildFromScene(*scene);
-  fg.buildFromScene(*scene); // second call must clear + refill, not accumulate.
+  fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
+  fg.build(LX_core::RenderWorkBuildContext::realtime(*scene)); // second call must clear + refill, not accumulate.
 
   const auto &passes = fg.getPasses();
   EXPECT(passes[0].queue.getItems().size() == 2,
@@ -924,7 +923,7 @@ void testCollectAcrossMultiplePasses() {
   // Same pass name repeated would produce identical PipelineKey for the same
   // template; exercise the cross-pass dedup path by adding the same pass twice.
   fg.addPass(FramePass{Pass_Forward, {}, {}});
-  fg.buildFromScene(*scene);
+  fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
 
   auto infos = fg.collectAllPipelineBuildDescs();
   EXPECT(infos.size() == 1,
@@ -945,7 +944,7 @@ void testFrameGraphKeepsDifferentTargetsAsDifferentBuildDescs() {
   FrameGraph fg;
   fg.addPass(FramePass{Pass_Forward, targetA, {}});
   fg.addPass(FramePass{Pass_Forward, targetB, {}});
-  fg.buildFromScene(*scene);
+  fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
 
   const auto infos = fg.collectAllPipelineBuildDescs();
   EXPECT(
@@ -965,7 +964,7 @@ void testFrameGraphDedupesExactSameTargetBuildDescs() {
   FrameGraph fg;
   fg.addPass(FramePass{Pass_Forward, target, {}});
   fg.addPass(FramePass{Pass_Forward, target, {}});
-  fg.buildFromScene(*scene);
+  fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
 
   const auto infos = fg.collectAllPipelineBuildDescs();
   EXPECT(infos.size() == 1,
@@ -983,7 +982,7 @@ void testVisibilityMaskFiltersRenderables() {
 
   FrameGraph fg;
   fg.addPass(FramePass{Pass_Forward, target, {}});
-  fg.buildFromScene(*scene);
+  fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
 
   const auto &items = fg.getPasses()[0].queue.getItems();
   EXPECT(items.size() == 1, "only mask-visible renderable enters queue");
@@ -1006,7 +1005,7 @@ void testVisibilityMaskOrsMatchingCameraMasks() {
 
   FrameGraph fg;
   fg.addPass(FramePass{Pass_Forward, target, {}});
-  fg.buildFromScene(*scene);
+  fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
 
   EXPECT(fg.getPasses()[0].queue.getItems().size() == 2,
          "matching cameras OR culling masks before renderable filtering");
@@ -1028,7 +1027,7 @@ void testVisibilityFilteringKeepsSceneResources() {
 
   FrameGraph fg;
   fg.addPass(FramePass{Pass_Forward, target, {}});
-  fg.buildFromScene(*scene);
+  fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
 
   const auto &items = fg.getPasses()[0].queue.getItems();
   EXPECT(items.size() == 1, "hidden renderable stays filtered");
@@ -1047,7 +1046,7 @@ void testIblResourcesInjectOnlyForIblShaderItems() {
   scene->addCamera(makeCameraWithTargetAndMask(RenderTarget{}, Layer_All));
 
   RenderWorkQueue queue;
-  queue.buildFromScene(*scene, Pass_Forward, RenderTarget{});
+  queue.build(LX_core::RenderWorkBuildContext::realtime(*scene), Pass_Forward, RenderTarget{});
 
   bool sawRegular = false;
   bool sawIbl = false;
@@ -1133,7 +1132,7 @@ void testPartialIblResourcesAreCompletedBeforeInjection() {
   scene->setIblEnvironmentResources(std::move(partial));
 
   RenderWorkQueue queue;
-  queue.buildFromScene(*scene, Pass_Forward, RenderTarget{});
+  queue.build(LX_core::RenderWorkBuildContext::realtime(*scene), Pass_Forward, RenderTarget{});
   EXPECT(queue.getItems().size() == 1,
          "partial IBL scene should still render the IBL item");
   if (queue.getItems().empty()) {
@@ -1170,7 +1169,7 @@ void testRenderWorkQueueDebugOverrideUsesExplicitResourcesAndLayerMask() {
   scene->addCamera(cameraNode);
 
   RenderWorkQueue queue;
-  queue.buildFromSceneWithOverrides(
+  queue.buildRealtime(
       *scene, Pass_Forward,
       RenderTarget{RenderTargetDesc::offscreenColor(ImageFormat::BGRA8)},
       {camera->get().getUBO()}, Layer_All & ~Layer_EditorOverlay);
@@ -1197,12 +1196,12 @@ void testDebugOnlyRenderableIsOverlayOnly() {
   scene->addCamera(makeCameraWithTargetAndMask(RenderTarget{}, Layer_All));
 
   RenderWorkQueue forwardQueue;
-  forwardQueue.buildFromScene(*scene, Pass_Forward, RenderTarget{});
+  forwardQueue.build(LX_core::RenderWorkBuildContext::realtime(*scene), Pass_Forward, RenderTarget{});
   EXPECT(forwardQueue.getItems().size() == 1,
          "debug-only renderables must be excluded from normal passes");
 
   RenderWorkQueue overlayQueue;
-  overlayQueue.buildFromScene(*scene, Pass_DebugOverlay, RenderTarget{});
+  overlayQueue.build(LX_core::RenderWorkBuildContext::realtime(*scene), Pass_DebugOverlay, RenderTarget{});
   EXPECT(overlayQueue.getItems().empty(),
          "debug-only flag should not force unsupported overlay materials into "
          "DebugOverlay");
@@ -1237,7 +1236,7 @@ void testInactiveCameraIsIgnoredForResourcesAndMasks() {
 
   FrameGraph fg;
   fg.addPass(FramePass{Pass_Forward, target, {}});
-  fg.buildFromScene(*scene);
+  fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
 
   const auto &items = fg.getPasses()[0].queue.getItems();
   EXPECT(items.size() == 1,
@@ -1254,7 +1253,7 @@ void testEditorProjectedShadowPassKeepsCharacterCaster() {
   FrameGraph fg;
   fg.addPass(FramePass{Pass_Forward, RenderTarget{}, {}});
   fg.addPass(FramePass{Pass_Shadow, RenderTarget{}, {}});
-  fg.buildFromScene(*scene);
+  fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
 
   EXPECT(fg.getPasses()[0].name == Pass_Forward,
          "Forward pass renders before projected shadows");

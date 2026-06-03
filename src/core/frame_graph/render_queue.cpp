@@ -1,6 +1,8 @@
 #include "core/frame_graph/render_queue.hpp"
 
 #include "core/asset/mesh.hpp"
+#include "core/offline/offline_render_job.hpp"
+#include "core/frame_graph/pass.hpp"
 #include "core/scene/scene.hpp"
 
 #include <algorithm>
@@ -14,13 +16,13 @@ namespace {
 /*
 @source_analysis.section makeItemFromValidatedData：把 validated 结构数据翻译成 RenderWorkItem
 这是一个 anonymous-namespace 内的纯字段拷贝函数，存在的理由是把"翻译"这件事
-和"过滤 + 入队"分开：`buildFromScene` 只关心条件判断和 sceneResources 追加，
+和"过滤 + 入队"分开：`build` 只关心条件判断和 sceneResources 追加，
 逐字段拷贝从这里走。
 
 不做合并、不做校验，因为 `ValidatedRenderablePassData` 的命名已经承诺了
 "pass-level validation 已经完成"。这里把 pass 内可验证的结构事实转成 backend
 消费的 `RenderWorkItem`；target-dependent 的 `pipelineKey` 不在 validated
-数据里缓存，而是在 `buildFromScene` 拿到 target 后再组合。
+数据里缓存，而是在 `build` 拿到 target 后再组合。
 */
 RenderWorkItem makeItemFromValidatedData(const ValidatedRenderablePassData &data) {
   RenderWorkItem item;
@@ -68,6 +70,21 @@ void RenderWorkQueue::sort() {
                    });
 }
 
+RenderWorkItem makeOfflineComputeItem(const offline::OfflineRenderJob &job,
+                                      StringID pass,
+                                      const RenderTarget &target) {
+  RenderWorkItem item;
+  item.domain = RenderDomain::Offline;
+  item.kind = RenderWorkKind::ComputeDispatch;
+  item.pass = pass;
+  item.target = target.toDesc();
+  item.compute.groupCountX = (job.output.width + 7u) / 8u;
+  item.compute.groupCountY = (job.output.height + 7u) / 8u;
+  item.compute.groupCountZ = 1u;
+  item.debugId = StringID("OfflineRayTraceDispatch");
+  return item;
+}
+
 std::vector<PipelineBuildDesc>
 RenderWorkQueue::collectUniquePipelineBuildDescs() const {
   std::unordered_set<PipelineKey, PipelineKey::Hash> seen;
@@ -81,8 +98,18 @@ RenderWorkQueue::collectUniquePipelineBuildDescs() const {
   return out;
 }
 
-void RenderWorkQueue::buildFromScene(const Scene &scene, StringID pass,
-                                 const RenderTarget &target) {
+void RenderWorkQueue::build(const RenderWorkBuildContext &context,
+                            StringID pass, const RenderTarget &target) {
+  if (context.domain() == RenderDomain::Offline) {
+    clearItems();
+    if (pass == Pass_OfflineRayTrace) {
+      m_items.push_back(
+          makeOfflineComputeItem(context.offlineJob(), pass, target));
+    }
+    return;
+  }
+
+  const Scene &scene = context.realtimeScene();
   // REQ-009: target-filtered scene-level resources.
   auto sceneResources = scene.getSceneLevelResources(pass, target);
   VisibilityLayerMask visibleMask = scene.getCombinedCameraCullingMask(target);
@@ -90,11 +117,10 @@ void RenderWorkQueue::buildFromScene(const Scene &scene, StringID pass,
     visibleMask = VisibilityMask_All;
   }
 
-  buildFromSceneWithOverrides(scene, pass, target, std::move(sceneResources),
-                              visibleMask);
+  buildRealtime(scene, pass, target, std::move(sceneResources), visibleMask);
 }
 
-void RenderWorkQueue::buildFromSceneWithOverrides(
+void RenderWorkQueue::buildRealtime(
     const Scene &scene, StringID pass, const RenderTarget &target,
     std::vector<IGpuResourceSharedPtr> sceneResources,
     VisibilityLayerMask visibleMask) {

@@ -882,7 +882,7 @@ public:
     m_scene = _scene;
 
     // REQ-009 / REQ-046: compute the swapchain target once, then migrate
-    // default scene cameras to the HDR forward target before buildFromScene so
+    // default scene cameras to the HDR forward target before build so
     // scene-level CameraUBO resources still attach to the Forward queue.
     const LX_core::RenderTarget swapchainTarget = makeSwapchainTarget();
     for (const auto &cameraNode : m_scene->getCameras()) {
@@ -998,14 +998,14 @@ public:
     m_frameGraph.addPass(LX_core::FramePass{
         LX_core::Pass_DebugOverlay, swapchainDesc, {}, {}, {}});
 
-    // RenderWorkQueue::buildFromScene (invoked per pass below) internally:
+    // RenderWorkQueue::build (invoked per pass below) internally:
     //   - filters renderables by supportsPass(pass)
     //   - merges scene.getSceneLevelResources(pass, target) (camera UBO
     //   filtered by
     //     target, light UBO filtered by pass mask)
     //   - sorts by PipelineKey
     // There is no more side-channel camera/light UBO injection here.
-    m_frameGraph.buildFromScene(*m_scene);
+    m_frameGraph.build(LX_core::RenderWorkBuildContext::realtime(*m_scene));
     addSkyboxBackgroundItem(forwardHdrDesc);
     rebuildDebugOverlayQueueWithForwardCameraResources(forwardHdrDesc,
                                                        swapchainDesc);
@@ -1426,7 +1426,7 @@ public:
     }
 
     LX_core::RenderWorkQueue queue;
-    queue.buildFromSceneWithOverrides(
+    queue.buildRealtime(
         *m_scene, pass, target, std::move(sceneResources),
         cameraComponent.getCullingMask() & ~LX_core::Layer_EditorOverlay);
     if (queue.getItems().empty()) {
@@ -1633,7 +1633,7 @@ public:
     }
 
     LX_core::RenderWorkQueue queue;
-    queue.buildFromSceneWithOverrides(
+    queue.buildRealtime(
         *m_scene, LX_core::Pass_Forward, target, std::move(sceneResources),
         outputCullingMask & ~LX_core::Layer_EditorOverlay);
     if (queue.getItems().empty()) {
@@ -2010,7 +2010,7 @@ private:
         m_scene->getCombinedCameraCullingMask(forwardRenderTarget);
     for (auto &pass : m_frameGraph.getPasses()) {
       if (pass.name == LX_core::Pass_DebugOverlay) {
-        pass.queue.buildFromSceneWithOverrides(
+        pass.queue.buildRealtime(
             *m_scene, LX_core::Pass_DebugOverlay, debugRenderTarget,
             std::move(sceneResources), visibleMask);
         return;

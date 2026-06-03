@@ -22,7 +22,7 @@ class CameraComponent;
 /// Abstract base for all light types. A concrete light contributes (a) pass
 /// participation rules owned by the light itself and (b) an optional data
 /// resource to feed shaders. Runtime filtering in
-/// RenderWorkQueue::buildFromScene / Scene::getSceneLevelResources goes through
+/// RenderWorkQueue::build / Scene::getSceneLevelResources goes through
 /// this interface.
 class LightBase {
 public:

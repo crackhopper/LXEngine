@@ -414,8 +414,9 @@ struct SoftwareComputeOfflineIntegrator::Impl final {
   [[nodiscard]] LX_core::offline::OfflineReadbackImage
   render(const LX_core::offline::OfflineRenderJob &job) {
     LX_core::offline::validateOfflineRenderJob(job);
-    const FrameGraph renderGraph =
-        LX_core::offline::buildOfflineRenderWorkGraph(job);
+    FrameGraph renderGraph =
+        LX_core::offline::createOfflineRenderFrameGraph(job.output);
+    renderGraph.build(LX_core::RenderWorkBuildContext::offline(job));
     const CompiledFrameGraph compiledGraph = renderGraph.compile();
     if (!compiledGraph.isValid()) {
       throw std::runtime_error(compiledGraph.errorText());

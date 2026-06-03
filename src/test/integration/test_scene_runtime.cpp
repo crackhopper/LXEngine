@@ -2318,8 +2318,7 @@ void testIblMetalSphereSceneLoadsAndInjectsIblResources() {
   }
 
   LX_core::RenderWorkQueue queue;
-  queue.buildFromScene(*runtime.scene(), LX_core::Pass_Forward,
-                       LX_core::RenderTarget{});
+  queue.build(LX_core::RenderWorkBuildContext::realtime(*runtime.scene()), LX_core::Pass_Forward, LX_core::RenderTarget{});
   bool sawPbrSphere = false;
   bool hasIrradiance = false;
   bool hasPrefilter = false;

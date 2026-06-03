@@ -1,5 +1,6 @@
 #include "core/asset/material_instance.hpp"
 #include "core/asset/shader.hpp"
+#include "core/frame_graph/render_work_build_context.hpp"
 #include "core/offline/offline_render_job.hpp"
 #include "core/offline/offline_render_work_graph.hpp"
 #include "core/offline/offline_render_validation.hpp"
@@ -437,7 +438,8 @@ void testOfflineRenderWorkGraphBuildsRayTracePass() {
   job.output.width = 17;
   job.output.height = 9;
 
-  const FrameGraph graph = offline::buildOfflineRenderWorkGraph(job);
+  FrameGraph graph = offline::createOfflineRenderFrameGraph(job.output);
+  graph.build(LX_core::RenderWorkBuildContext::offline(job));
   EXPECT(graph.getPasses().size() == 1,
          "offline default graph should have one ray trace pass");
   if (graph.getPasses().empty()) {

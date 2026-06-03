@@ -46,12 +46,12 @@ void FrameGraph::addPass(FramePass pass) {
   m_passes.push_back(std::move(pass));
 }
 
-void FrameGraph::buildFromScene(const Scene &scene) {
+void FrameGraph::build(const RenderWorkBuildContext &context) {
   // REQ-009: delegate with pass.target so Scene::getSceneLevelResources
   // can apply per-target camera filtering. Each FramePass already carries its
   // own target; FrameGraph simply threads it through.
   for (auto &pass : m_passes) {
-    pass.queue.buildFromScene(scene, pass.name, RenderTarget{pass.target});
+    pass.queue.build(context, pass.name, RenderTarget{pass.target});
   }
 }
 

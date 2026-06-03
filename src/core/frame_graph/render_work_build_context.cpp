@@ -1,0 +1,46 @@
+#include "core/frame_graph/render_work_build_context.hpp"
+
+#include "core/offline/offline_render_job.hpp"
+
+#include <stdexcept>
+
+namespace LX_core {
+
+RenderWorkBuildContext
+RenderWorkBuildContext::realtime(const Scene &scene) {
+  return RenderWorkBuildContext(std::cref(scene));
+}
+
+RenderWorkBuildContext
+RenderWorkBuildContext::offline(const offline::OfflineRenderJob &job) {
+  return RenderWorkBuildContext(std::cref(job));
+}
+
+RenderDomain RenderWorkBuildContext::domain() const {
+  if (std::holds_alternative<RealtimeSource>(m_source)) {
+    return RenderDomain::Realtime;
+  }
+  return RenderDomain::Offline;
+}
+
+const Scene &RenderWorkBuildContext::realtimeScene() const {
+  if (const auto *scene = std::get_if<RealtimeSource>(&m_source)) {
+    return scene->get();
+  }
+  throw std::logic_error("RenderWorkBuildContext does not hold a realtime scene");
+}
+
+const offline::OfflineRenderJob &RenderWorkBuildContext::offlineJob() const {
+  if (const auto *job = std::get_if<OfflineSource>(&m_source)) {
+    return job->get();
+  }
+  throw std::logic_error("RenderWorkBuildContext does not hold an offline job");
+}
+
+RenderWorkBuildContext::RenderWorkBuildContext(RealtimeSource scene)
+    : m_source(scene) {}
+
+RenderWorkBuildContext::RenderWorkBuildContext(OfflineSource job)
+    : m_source(job) {}
+
+} // namespace LX_core

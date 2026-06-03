@@ -23,7 +23,7 @@ inline LX_core::RenderWorkItem
 firstItemFromScene(LX_core::Scene &scene, LX_core::StringID pass,
                    const LX_core::RenderTarget &target = {}) {
   LX_core::RenderWorkQueue q;
-  q.buildFromScene(scene, pass, target);
+  q.build(LX_core::RenderWorkBuildContext::realtime(scene), pass, target);
   assert(!q.getItems().empty() &&
          "scene produced no items for pass/target");
   return q.getItems().front();
