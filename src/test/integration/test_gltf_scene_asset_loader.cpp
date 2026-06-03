@@ -4,7 +4,6 @@
 #include "core/utils/filesystem_tools.hpp"
 
 #include <cstdlib>
-#include <filesystem>
 #include <iostream>
 
 namespace {
