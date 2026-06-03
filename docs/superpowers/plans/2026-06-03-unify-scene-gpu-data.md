@@ -819,7 +819,7 @@ git commit -m "refactor: use unified scene records in offline shader"
 - Modify: `src/test/integration/test_realtime_offline_compare_flat.py`
 - Modify: scene fixtures only if their YAML references removed fields
 
-- [ ] **Step 1: Add CLI regression for software-compute**
+- [x] **Step 1: Add CLI regression for software-compute**
 
 In `test_offline_render_cli.cpp`, add or update a case that parses a profile with:
 
@@ -831,13 +831,13 @@ render:
 
 Assert the resolved job uses `software-compute`, renders a non-empty image, and fails clearly for `integrator: hardware-ray-tracing`.
 
-- [ ] **Step 2: Run CLI regression**
+- [x] **Step 2: Run CLI regression**
 
 Run: `ninja -C build test_offline_render_cli && ./build/src/test/test_offline_render_cli`
 
 Expected: CLI tests pass.
 
-- [ ] **Step 3: Run offline render smoke**
+- [x] **Step 3: Run offline render smoke**
 
 Run:
 
@@ -848,13 +848,13 @@ ninja -C build lxe_offline_render lxe_compare_exr
 
 Expected: command completes, prints finite center pixel values, and writes EXR/PNG outputs.
 
-- [ ] **Step 4: Run realtime/offline comparison**
+- [x] **Step 4: Run realtime/offline comparison**
 
 Run: `xvfb-run -a ctest --test-dir build --output-on-failure -R test_realtime_offline_compare_flat`
 
 Expected: comparison passes within the existing threshold.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/test/integration/test_offline_render_cli.cpp src/test/integration/test_realtime_offline_compare_flat.py

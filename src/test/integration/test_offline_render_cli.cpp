@@ -1,7 +1,16 @@
+#include "backend/vulkan/offline/vulkan_offline_renderer.hpp"
+#include "core/offline/offline_render_validation.hpp"
+#include "infra/offline/offline_asset_resolver.hpp"
+#include "infra/offline/offline_scene_loader.hpp"
+#include "infra/scene_io/scene_document.hpp"
 #include "tools/lxe_offline_render/offline_render_cli.hpp"
 
+#include <cmath>
+#include <exception>
+#include <filesystem>
 #include <iostream>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -65,12 +74,63 @@ void testCliRejectsCamera() {
   EXPECT(rejected, "--camera should be rejected");
 }
 
+void testSoftwareComputeProfileRendersAndRejectsHardwareRt() {
+  const std::filesystem::path scenePath =
+      "assets/scenes/realtime_offline_compare_diagnostic.scene.yaml";
+  const auto document = LX_infra::scene_io::loadSceneDocument(scenePath);
+  const auto resolved = LX_core::offline::resolveRenderProfileDocument(
+      document.renderProfileDocument(),
+      LX_core::offline::RenderProfileCliOverrides{
+          .profileName = std::string("preview"),
+          .width = 8u,
+          .height = 8u,
+          .samples = 1u,
+      });
+  EXPECT(resolved.offline.integrator == "software-compute",
+         "diagnostic scene should use software-compute integrator");
+
+  LX_infra::offline::OfflineAssetResolver resolver(scenePath);
+  LX_infra::offline::OfflineSceneLoader loader(resolver);
+  auto loaded = loader.load(document, resolved.output.cameraPath);
+
+  LX_core::offline::OfflineRenderJob job;
+  job.scene = std::move(loaded.table);
+  job.output = resolved.output;
+  job.offline = resolved.offline;
+  job.profileName = resolved.profileName;
+
+  LX_core::offline::validateOfflineRenderJob(job);
+  LX_core::backend::offline::VulkanOfflineRenderer renderer;
+  const auto image = renderer.render(job);
+  EXPECT(image.width == 8u && image.height == 8u,
+         "software-compute render should use overridden dimensions");
+  EXPECT(!image.rgba.empty(), "software-compute render should produce pixels");
+  bool finite = true;
+  for (const float value : image.rgba) {
+    finite = finite && std::isfinite(value);
+  }
+  EXPECT(finite, "software-compute render should produce finite pixels");
+
+  job.offline.integrator = "hardware-ray-tracing";
+  bool rejected = false;
+  try {
+    (void)renderer.render(job);
+  } catch (const std::exception &error) {
+    rejected =
+        std::string(error.what()).find("unsupported offline integrator: "
+                                      "hardware-ray-tracing") !=
+        std::string::npos;
+  }
+  EXPECT(rejected, "hardware-ray-tracing should fail clearly until implemented");
+}
+
 } // namespace
 
 int main() {
   testCliParsesOfflineOverrides();
   testCliRejectsMaxDepth();
   testCliRejectsCamera();
+  testSoftwareComputeProfileRendersAndRejectsHardwareRt();
   if (failures != 0) {
     std::cerr << "test_offline_render_cli failed with " << failures
               << " failure(s)\n";
