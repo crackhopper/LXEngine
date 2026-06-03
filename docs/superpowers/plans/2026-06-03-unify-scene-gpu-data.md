@@ -920,7 +920,7 @@ git commit -m "docs: record unified scene gpu data break changes"
 **Files:**
 - All files touched by previous tasks.
 
-- [ ] **Step 1: Verify no removed APIs remain in source**
+- [x] **Step 1: Verify no removed APIs remain in source**
 
 Run:
 
@@ -930,7 +930,7 @@ rg -n "OfflineSceneIR|OfflineRayScene|OfflineRaySceneBuilder|OfflineBvhBuilder|O
 
 Expected: no matches.
 
-- [ ] **Step 2: Build primary targets**
+- [x] **Step 2: Build primary targets**
 
 Run:
 
@@ -941,19 +941,19 @@ ninja -C build lxe_editor lxe_offline_render BuildTest
 
 Expected: all targets build.
 
-- [ ] **Step 3: Run headless tests**
+- [x] **Step 3: Run headless tests**
 
 Run: `ctest --test-dir build --output-on-failure -L auto -LE requires_video_device`
 
 Expected: all headless tests pass.
 
-- [ ] **Step 4: Run video-device comparison tests**
+- [x] **Step 4: Run video-device comparison tests**
 
 Run: `xvfb-run -a ctest --test-dir build --output-on-failure -L requires_video_device`
 
 Expected: all video-device tests pass, including `test_realtime_offline_compare_flat`.
 
-- [ ] **Step 5: Inspect worktree**
+- [x] **Step 5: Inspect worktree**
 
 Run:
 
@@ -964,7 +964,7 @@ git log --oneline -n 10
 
 Expected: worktree clean after the final commit, and recent commits match the task commits above.
 
-- [ ] **Step 6: Final commit for verification drift**
+- [x] **Step 6: Final commit for verification drift**
 
 If verification required small fixes, commit them:
 

@@ -298,7 +298,15 @@ LX_core::CameraComponent &LxeEditorSession::gameCamera() const {
       .get();
 }
 
-bool LxeEditorSession::isDirty() const { return m_projectSession.dirty(); }
+bool LxeEditorSession::isDirty() const {
+  return isSceneDirty() || isProjectDirty();
+}
+
+bool LxeEditorSession::isSceneDirty() const { return m_sceneDirty; }
+
+bool LxeEditorSession::isProjectDirty() const {
+  return m_projectSession.dirty();
+}
 
 void LxeEditorSession::setWindowSize(const LX_core::Vec2f &size) {
   m_windowSize = size;
@@ -435,6 +443,7 @@ void LxeEditorSession::flushPendingSceneOpen(LX_core::gpu::EngineLoop &loop) {
   }
 
   m_runtime = std::move(nextRuntime);
+  m_sceneDirty = false;
   (void)nextScenePath;
   rebuildBindings(std::move(nextEditorSceneState));
 }
@@ -447,7 +456,7 @@ void LxeEditorSession::pollCommandHistory(LX_core::gpu::EngineLoop &loop) {
   while (m_lastObservedHistoryIndex < history.size()) {
     const auto &entry = history[m_lastObservedHistoryIndex++];
     if (entry.result.ok && commandMarksSceneDirty(entry.line)) {
-      m_projectSession.setDirty(true);
+      m_sceneDirty = true;
     }
     if (entry.result.ok && commandRequestsSceneRebuild(entry.result)) {
       loop.requestSceneRebuild();
@@ -511,6 +520,7 @@ LX_core::CommandResult LxeEditorSession::saveActiveProjectScene() {
   try {
     m_runtime.saveToDocumentPath(*activePath);
     saveEditorSceneStateForScenePath(*activePath, captureEditorSceneState());
+    m_sceneDirty = false;
     const auto saved = m_projectSession.saveProject();
     if (!saved.ok) {
       return makeCommandError(saved.message);
@@ -1123,7 +1133,7 @@ void LxeEditorSession::rebuildBindings(
               },
           .sceneViewRect =
               [this]() { return m_ui.sceneViewRect(m_windowSize); },
-          .dirty = [this]() { return m_projectSession.dirty(); },
+          .dirty = [this]() { return isDirty(); },
           .debugEnabled = [this]() { return m_debugEnabled; },
           .setDebugEnabled =
               [this](const bool enabled) { m_debugEnabled = enabled; },

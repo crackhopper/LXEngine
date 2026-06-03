@@ -102,6 +102,9 @@ int main() {
     auto scene = LX_core::Scene::create(node);
     auto cameraNode = LX_test::makeDefaultCameraNodeWithTarget();
     scene->addCamera(cameraNode);
+    auto lightNode = LX_core::SceneNode::create("command_buffer_light");
+    scene->addRenderable(lightNode);
+    scene->attachLight(lightNode, std::make_shared<LX_core::DirectionalLight>());
 
     auto camera = cameraNode->getComponent<LX_core::CameraComponent>();
     auto dirLight = std::dynamic_pointer_cast<LX_core::DirectionalLight>(

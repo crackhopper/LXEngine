@@ -457,9 +457,53 @@ void writeMinimalScene(const std::filesystem::path &path,
   out << YAML::BeginMap;
   out << YAML::Key << "scene" << YAML::Value << YAML::BeginMap;
   out << YAML::Key << "name" << YAML::Value << sceneId;
+  out << YAML::Key << "gameplayCameraPath" << YAML::Value << "/game_cam";
   out << YAML::EndMap;
-  out << YAML::Key << "nodes" << YAML::Value << YAML::BeginSeq
+  out << YAML::Key << "nodes" << YAML::Value << YAML::BeginSeq;
+  out << YAML::BeginMap;
+  out << YAML::Key << "nodeName" << YAML::Value << "game_camera";
+  out << YAML::Key << "name" << YAML::Value << "game_cam";
+  out << YAML::Key << "transform" << YAML::Value << YAML::BeginMap;
+  out << YAML::Key << "translation" << YAML::Value << YAML::Flow
+      << YAML::BeginSeq << 0.0f << 2.0f << 6.0f << YAML::EndSeq;
+  out << YAML::Key << "rotation" << YAML::Value << YAML::Flow
+      << YAML::BeginSeq << 0.987087f << -0.160182f << 0.0f << 0.0f
       << YAML::EndSeq;
+  out << YAML::Key << "scale" << YAML::Value << YAML::Flow << YAML::BeginSeq
+      << 1.0f << 1.0f << 1.0f << YAML::EndSeq;
+  out << YAML::EndMap;
+  out << YAML::Key << "visibilityMask" << YAML::Value << 4294967295u;
+  out << YAML::Key << "camera" << YAML::Value << YAML::BeginMap;
+  out << YAML::Key << "type" << YAML::Value << "perspective";
+  out << YAML::Key << "fovY" << YAML::Value << 45.0f;
+  out << YAML::Key << "aspect" << YAML::Value << 1.7777778f;
+  out << YAML::Key << "nearPlane" << YAML::Value << 0.1f;
+  out << YAML::Key << "farPlane" << YAML::Value << 1000.0f;
+  out << YAML::Key << "focusDistance" << YAML::Value << 6.324555f;
+  out << YAML::Key << "cullingMask" << YAML::Value << 4294967295u;
+  out << YAML::EndMap;
+  out << YAML::EndMap;
+  out << YAML::BeginMap;
+  out << YAML::Key << "nodeName" << YAML::Value << "dir_light_node";
+  out << YAML::Key << "name" << YAML::Value << "dir_light";
+  out << YAML::Key << "transform" << YAML::Value << YAML::BeginMap;
+  out << YAML::Key << "translation" << YAML::Value << YAML::Flow
+      << YAML::BeginSeq << 0.0f << 0.0f << 0.0f << YAML::EndSeq;
+  out << YAML::Key << "rotation" << YAML::Value << YAML::Flow
+      << YAML::BeginSeq << 1.0f << 0.0f << 0.0f << 0.0f << YAML::EndSeq;
+  out << YAML::Key << "scale" << YAML::Value << YAML::Flow << YAML::BeginSeq
+      << 1.0f << 1.0f << 1.0f << YAML::EndSeq;
+  out << YAML::EndMap;
+  out << YAML::Key << "visibilityMask" << YAML::Value << 4294967295u;
+  out << YAML::Key << "directionalLight" << YAML::Value << YAML::BeginMap;
+  out << YAML::Key << "direction" << YAML::Value << YAML::Flow
+      << YAML::BeginSeq << -0.3f << -1.0f << -0.5f << YAML::EndSeq;
+  out << YAML::Key << "color" << YAML::Value << YAML::Flow << YAML::BeginSeq
+      << 1.0f << 0.98f << 0.9f << YAML::EndSeq;
+  out << YAML::Key << "intensity" << YAML::Value << 1.0f;
+  out << YAML::EndMap;
+  out << YAML::EndMap;
+  out << YAML::EndSeq;
   out << YAML::EndMap;
 
   std::ofstream file(path, std::ios::out | std::ios::binary | std::ios::trunc);

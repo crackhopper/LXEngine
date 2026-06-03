@@ -969,7 +969,7 @@ int main(int argc, char **argv) {
               [&]() {
                 return demo::ApiSceneSummary{
                     .sceneName = session.scene()->getSceneName(),
-                    .dirty = session.isDirty(),
+                    .dirty = session.isSceneDirty(),
                 };
               },
           .projectSummary =
@@ -986,7 +986,7 @@ int main(int argc, char **argv) {
                 .id = *projectId,
                 .displayName = *projectDisplayName,
                 .path = projectRoot->string(),
-                .dirty = session.isDirty(),
+                .dirty = session.isProjectDirty(),
                 .activeScene = *projectActiveScene,
             };
           },

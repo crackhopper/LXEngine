@@ -120,7 +120,7 @@ class SceneIoBlackBoxTest(unittest.TestCase):
         self.assertFalse(state["scene"]["dirty"])
 
         new_response = self.harness.client.command("scene new blackbox_aux")
-        self.assertTrue(new_response["ok"])
+        self.assertTrue(new_response["ok"], new_response)
         state = self.harness.client.wait_for(
             lambda: (
                 result
@@ -167,7 +167,7 @@ class SceneIoBlackBoxTest(unittest.TestCase):
         self.assertFalse(scene_state["dirty"])
 
         list_response = self.harness.client.command("scene list")
-        self.assertTrue(list_response["ok"])
+        self.assertTrue(list_response["ok"], list_response)
         scenes = self.harness.client.decode_structured_json(list_response)
         self.assertIn("main", {entry["id"] for entry in scenes["scenes"]})
 

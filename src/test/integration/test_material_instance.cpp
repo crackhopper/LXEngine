@@ -73,10 +73,12 @@ private:
 std::filesystem::path findShaderDir() {
   std::filesystem::path cwd = std::filesystem::current_path();
   for (int i = 0; i < 4; ++i) {
-    auto candidate = cwd / "shaders" / "glsl";
-    if (std::filesystem::exists(candidate / "blinnphong_0.vert") &&
-        std::filesystem::exists(candidate / "blinnphong_0.frag"))
-      return candidate;
+    for (const auto &candidate :
+         {cwd / "assets" / "shaders" / "glsl", cwd / "shaders" / "glsl"}) {
+      if (std::filesystem::exists(candidate / "blinnphong_0.vert") &&
+          std::filesystem::exists(candidate / "blinnphong_0.frag"))
+        return candidate;
+    }
     auto parent = cwd.parent_path();
     if (parent == cwd)
       break;

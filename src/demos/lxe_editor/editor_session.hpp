@@ -80,6 +80,8 @@ public:
   [[nodiscard]] SceneInteractionController &sceneInteraction() const;
   [[nodiscard]] LX_core::CameraComponent &gameCamera() const;
   [[nodiscard]] bool isDirty() const;
+  [[nodiscard]] bool isSceneDirty() const;
+  [[nodiscard]] bool isProjectDirty() const;
   void setWindowSize(const LX_core::Vec2f &size);
   [[nodiscard]] EditorConfigDocument &editorConfig();
   [[nodiscard]] LX_core::CommandBus &commandBus() const;
@@ -144,6 +146,7 @@ private:
   RealtimeRenderProfileHooks m_realtimeRenderProfileHooks;
   LX_core::Vec2f m_windowSize{1280.0f, 720.0f};
   usize m_bindingsGeneration = 0;
+  bool m_sceneDirty = false;
   bool m_debugEnabled = false;
 };
 

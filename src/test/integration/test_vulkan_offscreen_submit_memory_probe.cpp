@@ -160,6 +160,9 @@ void testOffscreenSubmitProbe() {
     auto scene = LX_core::Scene::create(node);
     auto cameraNode = LX_test::makeDefaultCameraNodeWithTarget();
     scene->addCamera(cameraNode);
+    auto lightNode = LX_core::SceneNode::create("offscreen_probe_light");
+    scene->addRenderable(lightNode);
+    scene->attachLight(lightNode, std::make_shared<LX_core::DirectionalLight>());
 
     const auto camera = cameraNode->getComponent<LX_core::CameraComponent>();
     const auto dirLight = std::dynamic_pointer_cast<LX_core::DirectionalLight>(
