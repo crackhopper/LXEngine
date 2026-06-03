@@ -12,7 +12,6 @@
 #include "core/utils/filesystem_tools.hpp"
 #include "core/utils/string_table.hpp"
 #include "infra/material_loader/generic_material_loader.hpp"
-#include "infra/mesh_loader/gltf_mesh_loader.hpp"
 #include "infra/mesh_loader/obj_mesh_loader.hpp"
 #include "infra/scene_asset/gltf_scene_asset_loader.hpp"
 #include "infra/texture_loader/texture_loader.hpp"
@@ -40,139 +39,12 @@ using LX_core::StringID;
 using LX_core::Texture;
 using LX_core::TextureDesc;
 using LX_core::TextureFormat;
-using LX_core::TextureSharedPtr;
 using LX_core::Vec2f;
 using LX_core::Vec3f;
 using LX_core::Vec4f;
 using LX_core::Vec4i;
 using LX_core::VertexBuffer;
 using LX_core::VertexPosNormalUvBone;
-
-// One-shot warning so we don't spam stderr when geometry is missing a stream.
-void warnOnce(bool &flag, const char *msg) {
-  if (!flag) {
-    std::cerr << "[lxe_editor] " << msg << "\n";
-    flag = true;
-  }
-}
-
-std::vector<Vec4f> generateTangents(const std::vector<Vec3f> &positions,
-                                    const std::vector<Vec3f> &normals,
-                                    const std::vector<Vec2f> &uvs,
-                                    const std::vector<u32> &indices) {
-  std::vector<Vec3f> tangentSums(positions.size(), Vec3f{0.0f, 0.0f, 0.0f});
-  std::vector<Vec3f> bitangentSums(positions.size(), Vec3f{0.0f, 0.0f, 0.0f});
-
-  for (usize i = 0; i + 2u < indices.size(); i += 3u) {
-    const u32 i0 = indices[i + 0u];
-    const u32 i1 = indices[i + 1u];
-    const u32 i2 = indices[i + 2u];
-    if (i0 >= positions.size() || i1 >= positions.size() ||
-        i2 >= positions.size() || i0 >= uvs.size() || i1 >= uvs.size() ||
-        i2 >= uvs.size()) {
-      continue;
-    }
-
-    const Vec3f edge1 = positions[i1] - positions[i0];
-    const Vec3f edge2 = positions[i2] - positions[i0];
-    const Vec2f deltaUv1 = uvs[i1] - uvs[i0];
-    const Vec2f deltaUv2 = uvs[i2] - uvs[i0];
-    const float determinant =
-        deltaUv1.x * deltaUv2.y - deltaUv1.y * deltaUv2.x;
-    if (std::abs(determinant) < 1e-6f) {
-      continue;
-    }
-
-    const float r = 1.0f / determinant;
-    const Vec3f tangent = (edge1 * deltaUv2.y - edge2 * deltaUv1.y) * r;
-    const Vec3f bitangent = (edge2 * deltaUv1.x - edge1 * deltaUv2.x) * r;
-    tangentSums[i0] += tangent;
-    tangentSums[i1] += tangent;
-    tangentSums[i2] += tangent;
-    bitangentSums[i0] += bitangent;
-    bitangentSums[i1] += bitangent;
-    bitangentSums[i2] += bitangent;
-  }
-
-  std::vector<Vec4f> generated;
-  generated.reserve(positions.size());
-  const Vec3f fallbackTangent{1.0f, 0.0f, 0.0f};
-  for (usize i = 0; i < positions.size(); ++i) {
-    const Vec3f normal =
-        i < normals.size() ? normals[i].normalized() : Vec3f{0.0f, 1.0f, 0.0f};
-    Vec3f tangent = tangentSums[i] - normal * normal.dot(tangentSums[i]);
-    if (tangent.length2() <= 1e-8f) {
-      tangent = fallbackTangent;
-    } else {
-      tangent = tangent.normalized();
-    }
-    const float sign =
-        normal.cross(tangent).dot(bitangentSums[i]) < 0.0f ? -1.0f : 1.0f;
-    generated.emplace_back(tangent.x, tangent.y, tangent.z, sign);
-  }
-  return generated;
-}
-
-// Build a VertexPosNormalUvBone buffer from a loaded GLTFLoader. GLTFLoader
-// still reports only file-authored TANGENT accessors; this scene-builder layer
-// may generate tangents for editor PBR preview when UVs and indexed triangles
-// are available.
-MeshSharedPtr buildMeshFromGltf(const infra::GLTFLoader &loader) {
-  const auto &positions = loader.getPositions();
-  const auto &normals = loader.getNormals();
-  const auto &uvs = loader.getTexCoords();
-  const auto &tangents = loader.getTangents();
-  const auto &indices = loader.getIndices();
-
-  if (positions.empty()) {
-    throw std::runtime_error(
-        "[lxe_editor] GLTFLoader returned empty positions");
-  }
-  if (indices.empty()) {
-    throw std::runtime_error("[lxe_editor] GLTFLoader returned empty indices");
-  }
-
-  static bool warnedNormals = false;
-  static bool warnedUvs = false;
-  static bool warnedTangents = false;
-  if (normals.empty()) {
-    warnOnce(warnedNormals, "glTF has no NORMAL stream; using {0,1,0}");
-  }
-  if (uvs.empty()) {
-    warnOnce(warnedUvs, "glTF has no TEXCOORD_0 stream; using {0,0}");
-  }
-  if (tangents.empty()) {
-    warnOnce(warnedTangents,
-             "glTF has no TANGENT stream; generating preview tangents");
-  }
-  const std::vector<Vec4f> generatedTangents =
-      tangents.empty() && !uvs.empty()
-          ? generateTangents(positions, normals, uvs, indices)
-          : std::vector<Vec4f>{};
-
-  std::vector<VertexPosNormalUvBone> verts;
-  verts.reserve(positions.size());
-
-  const Vec3f fallbackNormal{0.0f, 1.0f, 0.0f};
-  const Vec2f fallbackUv{0.0f, 0.0f};
-  const Vec4f fallbackTangent{1.0f, 0.0f, 0.0f, 1.0f};
-  const Vec4i zeroBones{0, 0, 0, 0};
-  const Vec4f zeroWeights{0.0f, 0.0f, 0.0f, 0.0f};
-
-  for (usize i = 0; i < positions.size(); ++i) {
-    const Vec3f n = i < normals.size() ? normals[i] : fallbackNormal;
-    const Vec2f uv = i < uvs.size() ? uvs[i] : fallbackUv;
-    const Vec4f t = i < tangents.size()
-                        ? tangents[i]
-                        : (i < generatedTangents.size() ? generatedTangents[i]
-                                                        : fallbackTangent);
-    verts.emplace_back(positions[i], n, uv, t, zeroBones, zeroWeights);
-  }
-
-  auto vb = VertexBuffer<VertexPosNormalUvBone>::create(std::move(verts));
-  auto ib = IndexBuffer::create(std::vector<u32>(indices));
-  return Mesh::create(vb, ib, loader.getBounds());
-}
 
 MeshSharedPtr buildMeshFromObj(const infra::ObjLoader &loader) {
   const auto &positions = loader.getPositions();
@@ -307,9 +179,7 @@ MeshSharedPtr loadModelMesh(std::string_view meshUri) {
     return buildMeshFromObj(loader);
   }
   if (extension == ".gltf" || extension == ".glb") {
-    infra::GLTFLoader loader;
-    loader.load(path.string());
-    return buildMeshFromGltf(loader);
+    return LX_infra::scene_asset::loadGltfSceneAsset(path).mesh;
   }
   throw std::runtime_error("[lxe_editor] unsupported model asset extension: " +
                            path.string());
