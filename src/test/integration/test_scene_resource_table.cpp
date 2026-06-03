@@ -482,6 +482,42 @@ void testSceneResourceTableUploadViewSkipsObjectsWithReleasedDependencies() {
          "upload view should skip primitives whose mesh or material was released");
 }
 
+void testSceneResourceTableUploadViewSkipsObjectsWithStaleDependencies() {
+  SceneResourceTable table;
+  const auto staleMesh = table.registerMesh(makeMeshBuffer());
+  const auto staleMaterial = table.registerMaterial(makeGpuRecordMaterial());
+
+  ObjectResource staleObject;
+  staleObject.mesh = staleMesh;
+  staleObject.material = staleMaterial;
+  staleObject.worldBounds = BoundingBox{{0.0f, 0.0f, 0.0f},
+                                        {1.0f, 1.0f, 0.0f}};
+  const auto staleObjectHandle = table.registerObject(staleObject);
+
+  table.release(staleMesh);
+  table.release(staleMaterial);
+  const auto replacementMesh = table.registerMesh(makeMeshBuffer());
+  const auto replacementMaterial = table.registerMaterial(makeGpuRecordMaterial());
+
+  const auto view = table.buildUploadView();
+  EXPECT(table.isAlive(staleObjectHandle),
+         "test setup should keep object with stale dependencies alive");
+  EXPECT(replacementMesh.index == staleMesh.index &&
+             replacementMesh.generation != staleMesh.generation,
+         "test setup should reuse mesh slot with a new generation");
+  EXPECT(replacementMaterial.index == staleMaterial.index &&
+             replacementMaterial.generation != staleMaterial.generation,
+         "test setup should reuse material slot with a new generation");
+  EXPECT(view.meshes.size() == 1,
+         "upload view should expose replacement live mesh record");
+  EXPECT(view.materials.size() == 1,
+         "upload view should expose replacement live material record");
+  EXPECT(view.objects.empty(),
+         "upload view should skip object with stale mesh/material handles");
+  EXPECT(view.primitives.empty(),
+         "upload view should skip primitive with stale mesh/material handles");
+}
+
 void testSceneResourceTableUploadViewEmitsPrimitivePerTriangle() {
   SceneResourceTable table;
   const auto mesh = table.registerMesh(makeTwoTriangleMeshBuffer());
@@ -555,6 +591,7 @@ int main() {
   testSceneResourceTableUploadViewTracksGeneration();
   testSceneResourceTableUploadViewUsesCompactRecordIndices();
   testSceneResourceTableUploadViewSkipsObjectsWithReleasedDependencies();
+  testSceneResourceTableUploadViewSkipsObjectsWithStaleDependencies();
   testSceneResourceTableUploadViewEmitsPrimitivePerTriangle();
   testSceneResourceTableUploadViewRebasesOffsetMeshIndices();
 

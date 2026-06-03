@@ -25,6 +25,24 @@ namespace {
   return next == 0 ? 1 : next;
 }
 
+struct CompactRecordIndex final {
+  u32 generation = 0;
+  u32 uploadIndex = u32_max;
+};
+
+[[nodiscard]] u32 findCompactRecordIndex(
+    const std::vector<CompactRecordIndex> &indices,
+    const ResourceHandleBase &handle) {
+  if (!handle.isValid() || handle.index >= indices.size()) {
+    return u32_max;
+  }
+  const auto &entry = indices[handle.index];
+  if (entry.generation != handle.generation) {
+    return u32_max;
+  }
+  return entry.uploadIndex;
+}
+
 [[nodiscard]] const VertexLayoutItem *
 findVertexLayoutItem(const VertexLayout &layout, const char *name,
                      const u32 fallbackLocation) {
@@ -665,7 +683,7 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
   m_gpuObjects.clear();
   m_gpuMaterials.clear();
 
-  std::vector<u32> meshIndexToGpuRecord(m_meshes.size(), u32_max);
+  std::vector<CompactRecordIndex> meshIndexToGpuRecord(m_meshes.size());
 
   for (u32 i = 0; i < m_meshes.size(); ++i) {
     const auto &entry = m_meshes[i];
@@ -681,18 +699,24 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
         .geometryIndex = i,
     };
     appendMeshGeometryRecords(mesh, m_gpuVertices, m_gpuIndices);
-    meshIndexToGpuRecord[i] = static_cast<u32>(m_gpuMeshes.size());
+    meshIndexToGpuRecord[i] = CompactRecordIndex{
+        .generation = entry.generation,
+        .uploadIndex = static_cast<u32>(m_gpuMeshes.size()),
+    };
     m_gpuMeshes.push_back(record);
   }
 
   m_gpuMaterials.reserve(aliveCount(m_materials));
-  std::vector<u32> materialIndexToGpuRecord(m_materials.size(), u32_max);
+  std::vector<CompactRecordIndex> materialIndexToGpuRecord(m_materials.size());
   for (u32 i = 0; i < m_materials.size(); ++i) {
     const auto &entry = m_materials[i];
     if (entry.state != SceneResourceEntryState::Alive || !entry.resource) {
       continue;
     }
-    materialIndexToGpuRecord[i] = static_cast<u32>(m_gpuMaterials.size());
+    materialIndexToGpuRecord[i] = CompactRecordIndex{
+        .generation = entry.generation,
+        .uploadIndex = static_cast<u32>(m_gpuMaterials.size()),
+    };
     m_gpuMaterials.push_back(makeGpuMaterialRecord(*entry.resource));
   }
 
@@ -704,14 +728,10 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
     }
 
     const auto &object = *entry.resource;
-    u32 meshRecordIndex = u32_max;
-    if (object.mesh.index < meshIndexToGpuRecord.size()) {
-      meshRecordIndex = meshIndexToGpuRecord[object.mesh.index];
-    }
-    u32 materialRecordIndex = u32_max;
-    if (object.material.index < materialIndexToGpuRecord.size()) {
-      materialRecordIndex = materialIndexToGpuRecord[object.material.index];
-    }
+    const u32 meshRecordIndex =
+        findCompactRecordIndex(meshIndexToGpuRecord, object.mesh);
+    const u32 materialRecordIndex =
+        findCompactRecordIndex(materialIndexToGpuRecord, object.material);
     if (meshRecordIndex == u32_max || materialRecordIndex == u32_max) {
       continue;
     }
