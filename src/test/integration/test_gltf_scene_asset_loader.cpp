@@ -21,8 +21,8 @@ bool hasTexture(const LX_core::MaterialInstanceSharedPtr &material,
 }
 
 void testDamagedHelmetSharedAssetLoadsFullPbr() {
-  const bool found = LX_core::cdToWhereAssetsExist(
-      "models/damaged_helmet/DamagedHelmet.gltf");
+  const bool found =
+      cdToWhereAssetsExist("models/damaged_helmet/DamagedHelmet.gltf");
   expect(found, "DamagedHelmet asset root must be discoverable");
 
   const auto result = LX_infra::scene_asset::loadGltfSceneAsset(

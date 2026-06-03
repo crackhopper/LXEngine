@@ -331,6 +331,7 @@ set(INFRA_LIB LX_Infra CACHE INTERNAL "Infra library name")
 set(INFRA_SOURCES
     build_info/build_info.cpp
     material_loader/generic_material_loader.cpp
+    scene_asset/gltf_scene_asset_loader.cpp
     scene_io/editor_camera_state.cpp
     scene_io/scene_document.cpp
     gui/imgui_gui.cpp

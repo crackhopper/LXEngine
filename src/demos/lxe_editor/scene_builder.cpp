@@ -14,6 +14,7 @@
 #include "infra/material_loader/generic_material_loader.hpp"
 #include "infra/mesh_loader/gltf_mesh_loader.hpp"
 #include "infra/mesh_loader/obj_mesh_loader.hpp"
+#include "infra/scene_asset/gltf_scene_asset_loader.hpp"
 #include "infra/texture_loader/texture_loader.hpp"
 
 #include <cmath>
@@ -230,80 +231,6 @@ loadCombinedTexture(const std::filesystem::path &path) {
   return std::make_shared<CombinedTextureSampler>(std::move(tex));
 }
 
-MaterialInstanceSharedPtr
-makeHelmetMaterialFromPbr(const infra::GLTFPbrMaterial &pbr,
-                          const std::filesystem::path &gltfDir) {
-  const bool hasAoMap = !pbr.occlusionTexture.empty();
-  const bool hasEmissiveMap = !pbr.emissiveTexture.empty();
-  const bool hasNormalMap = !pbr.normalTexture.empty();
-  const char *materialPath =
-      hasNormalMap || hasAoMap || hasEmissiveMap
-          ? "assets/materials/pbr_gltf_helmet.material"
-          : "assets/materials/pbr_gltf.material";
-  auto mat = LX_infra::loadGenericMaterial(materialPath);
-  if (!mat) {
-    throw std::runtime_error("[lxe_editor] failed to load " +
-                             std::string(materialPath));
-  }
-
-  mat->setParameter(StringID("MaterialUBO"), StringID("baseColorFactor"),
-                    pbr.baseColorFactor);
-  mat->setParameter(StringID("MaterialUBO"), StringID("metallicFactor"),
-                    pbr.metallicFactor);
-  mat->setParameter(StringID("MaterialUBO"), StringID("roughnessFactor"),
-                    pbr.roughnessFactor);
-
-  if (!pbr.baseColorTexture.empty()) {
-    try {
-      auto sampler = loadCombinedTexture(gltfDir / pbr.baseColorTexture);
-      mat->setTexture(StringID("albedoMap"), std::move(sampler));
-    } catch (const std::exception &e) {
-      std::cerr << "[lxe_editor] baseColor texture load failed (" << e.what()
-                << "); falling back to flat color\n";
-    }
-  }
-  if (!pbr.metallicRoughnessTexture.empty()) {
-    try {
-      auto sampler =
-          loadCombinedTexture(gltfDir / pbr.metallicRoughnessTexture);
-      mat->setTexture(StringID("metallicRoughnessMap"), std::move(sampler));
-    } catch (const std::exception &e) {
-      std::cerr << "[lxe_editor] metallicRoughness texture load failed ("
-                << e.what() << "); falling back to scalar factors\n";
-    }
-  }
-  if (hasNormalMap) {
-    try {
-      auto sampler = loadCombinedTexture(gltfDir / pbr.normalTexture);
-      mat->setTexture(StringID("normalMap"), std::move(sampler));
-    } catch (const std::exception &e) {
-      std::cerr << "[lxe_editor] normal texture load failed (" << e.what()
-                << "); falling back to geometry normals\n";
-    }
-  }
-  if (hasAoMap) {
-    try {
-      auto sampler = loadCombinedTexture(gltfDir / pbr.occlusionTexture);
-      mat->setTexture(StringID("aoMap"), std::move(sampler));
-    } catch (const std::exception &e) {
-      std::cerr << "[lxe_editor] occlusion texture load failed (" << e.what()
-                << "); falling back to material AO scalar\n";
-    }
-  }
-  if (hasEmissiveMap) {
-    try {
-      auto sampler = loadCombinedTexture(gltfDir / pbr.emissiveTexture);
-      mat->setTexture(StringID("emissiveMap"), std::move(sampler));
-    } catch (const std::exception &e) {
-      std::cerr << "[lxe_editor] emissive texture load failed (" << e.what()
-                << "); falling back to no emissive texture\n";
-    }
-  }
-
-  mat->syncGpuData();
-  return mat;
-}
-
 MaterialInstanceSharedPtr makeGroundMaterial() {
   auto mat =
       LX_infra::loadGenericMaterial("assets/materials/blinnphong_lit.material");
@@ -510,21 +437,14 @@ makeRenderableNode(const char *nodeName, MeshSharedPtr mesh,
 
 LX_core::SceneNodeSharedPtr
 buildHelmetNode(const std::filesystem::path &gltfPath) {
-  infra::GLTFLoader loader;
-  loader.load(gltfPath.string());
-
-  auto mesh = buildMeshFromGltf(loader);
-  auto material =
-      makeHelmetMaterialFromPbr(loader.getMaterial(), gltfPath.parent_path());
-
-  return makeRenderableNode("helmet", std::move(mesh), std::move(material));
+  auto asset = LX_infra::scene_asset::loadGltfSceneAsset(gltfPath);
+  return makeRenderableNode("helmet", std::move(asset.mesh),
+                            std::move(asset.material));
 }
 
 LX_core::MaterialInstanceSharedPtr
 buildHelmetMaterial(const std::filesystem::path &gltfPath) {
-  infra::GLTFLoader loader;
-  loader.load(gltfPath.string());
-  return makeHelmetMaterialFromPbr(loader.getMaterial(), gltfPath.parent_path());
+  return LX_infra::scene_asset::loadGltfSceneAsset(gltfPath).material;
 }
 
 LX_core::SceneNodeSharedPtr buildGroundNode() {
