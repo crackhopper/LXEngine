@@ -6,13 +6,15 @@
 
 **Architecture:** `RenderingItem` becomes `RenderWorkItem`, meaning one pipeline-compatible GPU work submission. `RenderQueue` becomes `RenderWorkQueue`, meaning one pass's ordered work list. Raster-specific data moves into `RasterDrawWorkPayload`, and realtime upload becomes an explicit `RenderUploadPlan` path while preserving current rendering behavior.
 
+**Cleanup Rule:** This is a clean replacement. Do not add compatibility aliases, wrapper overloads, or old/new dual paths. After each task, callers must use the new names and payloads directly. Retired source names and old upload loops are removed in the same implementation cycle.
+
 **Tech Stack:** C++20, Vulkan, existing frame graph/render queue code, Ninja/CTest.
 
 ---
 
 ## File Structure
 
-- Modify `src/core/scene/scene.hpp`: rename `RenderingItem` to `RenderWorkItem`; add `RenderDomain`, `RenderWorkKind`, and `RasterDrawWorkPayload`; keep raster convenience accessors during migration only if needed by focused call sites.
+- Modify `src/core/scene/scene.hpp`: rename `RenderingItem` to `RenderWorkItem`; add `RenderDomain`, `RenderWorkKind`, and `RasterDrawWorkPayload`; remove old top-level raster fields.
 - Modify `src/core/frame_graph/pass.hpp`: add `Pass_OfflineRayTrace`.
 - Modify `src/core/frame_graph/render_queue.hpp/.cpp`: rename `RenderQueue` to `RenderWorkQueue`; build `RenderWorkItem` with `RasterDrawWorkPayload`.
 - Modify `src/core/frame_graph/frame_graph.hpp/.cpp`: update pass queue type and APIs to `RenderWorkQueue`.
@@ -344,9 +346,10 @@ git commit -m "feat: add render upload plan"
 - Modify: `src/backend/vulkan/details/ibl_bake_renderer.cpp`
 - Modify: Vulkan-focused tests if needed
 
-- [ ] **Step 1: Replace inline item resource sync loops**
+- [ ] **Step 1: Replace queue resource sync loops**
 
-For each realtime draw path that currently does:
+For each realtime draw path that currently syncs resources from work items,
+delete the inline sync logic:
 
 ```cpp
 resourceManager().syncResource(commandBufferManager(), item.raster.vertexBuffer);
@@ -356,19 +359,19 @@ for (auto &cpuRes : item.descriptorResources) {
 }
 ```
 
-replace with:
+replace it with one upload plan for the whole queue:
 
 ```cpp
-RenderWorkQueue queue;
-queue.addItem(item);
 const RenderUploadPlan uploadPlan = buildRenderUploadPlan(queue);
 for (const auto &resource : uploadPlan.resources) {
   resourceManager().syncResource(commandBufferManager(), resource);
 }
 ```
 
-For existing pass queues, prefer building one upload plan for the whole queue
-instead of one plan per item.
+Do not keep a fallback path that manually syncs `raster.vertexBuffer`,
+`raster.indexBuffer`, `raster.drawData`, or `descriptorResources` next to the
+upload plan. `RenderUploadPlan` becomes the only realtime resource sync entry
+for queued work.
 
 - [ ] **Step 2: Keep execution unchanged**
 
@@ -566,8 +569,7 @@ Run:
 rg -n "RenderingItem|RenderQueue|drawItem\\(" src
 ```
 
-Expected: no matches except documentation that intentionally explains the old
-name, if any.
+Expected: no source matches.
 
 - [ ] **Step 2: Build primary targets**
 

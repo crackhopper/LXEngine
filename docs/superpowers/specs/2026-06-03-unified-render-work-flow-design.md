@@ -16,6 +16,11 @@ The shared flow should make the renderer easier to reason about without forcing
 realtime raster, offline compute tracing, and future hardware ray tracing to use
 the same low-level execution model.
 
+The implementation is a clean replacement, not a compatibility bridge. Once the
+new work-flow types and upload plan are introduced, the old `RenderingItem`,
+`RenderQueue`, top-level raster fields, and ad-hoc per-item upload loops are
+removed from source instead of kept as parallel paths.
+
 ## Core Semantics
 
 `RenderingItem` is renamed and redefined as `RenderWorkItem`.
@@ -128,6 +133,10 @@ The first implementation is intentionally structural:
 This scope does not implement hardware RT or bindless. It only keeps the
 interfaces broad enough that future changes can add specialized work payloads
 and upload plans without re-splitting realtime and offline flow.
+
+No compatibility aliases or old-path wrappers are introduced. If a caller still
+uses the retired names or old top-level raster fields after the migration, that
+caller is updated or deleted in the same change.
 
 ## Testing
 
