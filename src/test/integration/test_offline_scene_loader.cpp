@@ -8,6 +8,9 @@
 #include <cmath>
 #include <filesystem>
 #include <iostream>
+#include <optional>
+#include <string>
+#include <utility>
 
 namespace {
 
@@ -44,6 +47,47 @@ bool matrixNearly(const LX_core::Mat4f &lhs, const LX_core::Mat4f &rhs,
   return true;
 }
 
+class ScopedFileMove {
+public:
+  ScopedFileMove(std::filesystem::path source, std::filesystem::path target)
+      : m_source(std::move(source)), m_target(std::move(target)) {
+    std::error_code error;
+    std::filesystem::remove(m_target, error);
+    error.clear();
+    std::filesystem::rename(m_source, m_target, error);
+    m_moved = !error;
+    if (error) {
+      std::cerr << "[FAIL] " << __FUNCTION__ << ":" << __LINE__
+                << " failed to move fixture asset: " << error.message()
+                << '\n';
+      ++failures;
+    }
+  }
+
+  ScopedFileMove(const ScopedFileMove &) = delete;
+  ScopedFileMove &operator=(const ScopedFileMove &) = delete;
+
+  ~ScopedFileMove() {
+    if (!m_moved) {
+      return;
+    }
+    std::error_code error;
+    std::filesystem::rename(m_target, m_source, error);
+    if (error) {
+      std::cerr << "[FAIL] ScopedFileMove failed to restore fixture asset: "
+                << error.message() << '\n';
+      ++failures;
+    }
+  }
+
+  [[nodiscard]] bool moved() const { return m_moved; }
+
+private:
+  std::filesystem::path m_source;
+  std::filesystem::path m_target;
+  bool m_moved = false;
+};
+
 LX_infra::scene_io::SceneNodeDocument makeCameraNode(
     std::string name, LX_core::Vec3f translation, float fovY,
     LX_core::VisibilityLayerMask cullingMask) {
@@ -59,6 +103,27 @@ LX_infra::scene_io::SceneNodeDocument makeCameraNode(
       .cullingMask = cullingMask,
   };
   return node;
+}
+
+LX_infra::scene_io::SceneDocument makePlainGltfHelmetDocument(
+    std::optional<std::string> materialUri = std::nullopt) {
+  LX_infra::scene_io::SceneDocument document;
+  document.setSceneName("offline plain glTF helmet");
+  document.setGameplayCameraPath("/game_cam");
+
+  auto &root = document.mutableRootNode();
+  root.children.push_back(
+      makeCameraNode("game_cam", LX_core::Vec3f{0.0f, 2.0f, 6.0f}, 45.0f,
+                     0xffffffffu));
+
+  LX_infra::scene_io::SceneNodeDocument helmet;
+  helmet.nodeName = "helmet";
+  helmet.name = "helmet";
+  helmet.meshUri = "assets/models/damaged_helmet/DamagedHelmet.gltf";
+  helmet.materialUri = std::move(materialUri);
+  root.children.push_back(std::move(helmet));
+
+  return document;
 }
 
 LX_infra::scene_io::SceneDocument makeWarningSceneDocument() {
@@ -140,21 +205,6 @@ void testBuiltinSphereUsesSharedPrimitiveMesh() {
 }
 
 void testPlainGltfHelmetLoadsToSceneResourceTable() {
-  LX_infra::scene_io::SceneDocument document;
-  document.setSceneName("offline plain glTF helmet");
-  document.setGameplayCameraPath("/game_cam");
-
-  auto &root = document.mutableRootNode();
-  root.children.push_back(
-      makeCameraNode("game_cam", LX_core::Vec3f{0.0f, 2.0f, 6.0f}, 45.0f,
-                     0xffffffffu));
-
-  LX_infra::scene_io::SceneNodeDocument helmet;
-  helmet.nodeName = "helmet";
-  helmet.name = "helmet";
-  helmet.meshUri = "assets/models/damaged_helmet/DamagedHelmet.gltf";
-  root.children.push_back(std::move(helmet));
-
   LX_infra::offline::OfflineSceneLoader loader{
       LX_infra::offline::OfflineAssetResolver(std::filesystem::current_path() /
                                               "assets" / "scenes" /
@@ -162,7 +212,7 @@ void testPlainGltfHelmetLoadsToSceneResourceTable() {
 
   bool loadedWithoutBuiltinOnlyRejection = false;
   try {
-    const auto loaded = loader.load(document, "/game_cam");
+    const auto loaded = loader.load(makePlainGltfHelmetDocument(), "/game_cam");
     loadedWithoutBuiltinOnlyRejection = true;
     EXPECT(loaded.table.objectCount() > 0,
            "plain glTF helmet should register an offline object");
@@ -176,6 +226,52 @@ void testPlainGltfHelmetLoadsToSceneResourceTable() {
   }
   EXPECT(loadedWithoutBuiltinOnlyRejection,
          "plain glTF helmet should load through OfflineSceneLoader");
+}
+
+void testPlainGltfHelmetExplicitMaterialDoesNotLoadPbrBridgeMaterial() {
+  const std::filesystem::path materialPath =
+      std::filesystem::current_path() / "assets" / "materials" /
+      "pbr_gltf_helmet.material";
+  const std::filesystem::path hiddenMaterialPath =
+      materialPath.parent_path() /
+      ".pbr_gltf_helmet.material.offline_explicit_test_hidden";
+  ScopedFileMove hidePbrMaterial(materialPath, hiddenMaterialPath);
+  if (!hidePbrMaterial.moved()) {
+    return;
+  }
+
+  LX_infra::offline::OfflineSceneLoader loader{
+      LX_infra::offline::OfflineAssetResolver(std::filesystem::current_path() /
+                                              "assets" / "scenes" /
+                                              "warning_fixture.scene.yaml")};
+
+  try {
+    const auto loaded = loader.load(
+        makePlainGltfHelmetDocument("assets/materials/blinnphong_lit.material"),
+        "/game_cam");
+    EXPECT(loaded.table.objectCount() > 0,
+           "explicit-material glTF helmet should register an offline object");
+    EXPECT(loaded.table.materialCount() > 0,
+           "explicit-material glTF helmet should register a material");
+    const auto uploadView = loaded.table.buildUploadView();
+    const auto hasBlinnPhongRecord = std::any_of(
+        uploadView.materials.begin(), uploadView.materials.end(),
+        [](const auto &material) {
+          return nearly(material.baseColor,
+                        LX_core::Vec4f{0.8f, 0.8f, 0.8f, 1.0f}) &&
+                 nearly(material.pbrParams.z, 1.0f) &&
+                 nearly(material.emissive.w, 12.0f);
+        });
+    EXPECT(hasBlinnPhongRecord,
+           "explicit glTF material should use blinnphong_lit material "
+           "parameters instead of glTF PBR metadata");
+  } catch (const std::exception &ex) {
+    std::cerr << "[FAIL] " << __FUNCTION__ << ":" << __LINE__
+              << " explicit-material glTF helmet should not load hidden PBR "
+                 "bridge material: "
+              << ex.what() << '\n';
+    ++failures;
+  }
 }
 
 void testBuiltinSphereWindingMatchesOutwardNormals() {
@@ -363,6 +459,7 @@ int main() {
   testIblMetalSphereLoadsToSceneResourceTable();
   testBuiltinSphereUsesSharedPrimitiveMesh();
   testPlainGltfHelmetLoadsToSceneResourceTable();
+  testPlainGltfHelmetExplicitMaterialDoesNotLoadPbrBridgeMaterial();
   testBuiltinSphereWindingMatchesOutwardNormals();
   testSelectedCameraObjectStateAndWarnings();
   testOrthographicCameraProjectionMetadataSurvivesLoading();

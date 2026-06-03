@@ -338,9 +338,15 @@ void applyMaterialOverrides(const MaterialInstanceSharedPtr &material,
 
 RegisteredMesh registerMeshUri(
     SceneResourceTable &table, const OfflineAssetResolver &resolver,
-    const std::string &meshUri,
+    const std::string &meshUri, const bool loadDefaultMaterial,
     std::unordered_map<std::string, RegisteredMesh> &meshByUri) {
   if (const auto it = meshByUri.find(meshUri); it != meshByUri.end()) {
+    if (loadDefaultMaterial && !it->second.defaultMaterial &&
+        isGltfMeshUri(meshUri)) {
+      auto asset =
+          LX_infra::scene_asset::loadGltfSceneAsset(resolver.resolve(meshUri));
+      it->second.defaultMaterial = std::move(asset.material);
+    }
     return it->second;
   }
 
@@ -349,10 +355,16 @@ RegisteredMesh registerMeshUri(
   if (LX_core::isBuiltinPrimitiveMeshUri(meshUri)) {
     mesh = LX_core::buildBuiltinPrimitiveMesh(meshUri);
   } else if (isGltfMeshUri(meshUri)) {
-    auto asset =
-        LX_infra::scene_asset::loadGltfSceneAsset(resolver.resolve(meshUri));
-    mesh = std::move(asset.mesh);
-    defaultMaterial = std::move(asset.material);
+    if (loadDefaultMaterial) {
+      auto asset =
+          LX_infra::scene_asset::loadGltfSceneAsset(resolver.resolve(meshUri));
+      mesh = std::move(asset.mesh);
+      defaultMaterial = std::move(asset.material);
+    } else {
+      auto asset =
+          LX_infra::scene_asset::loadGltfMeshAsset(resolver.resolve(meshUri));
+      mesh = std::move(asset.mesh);
+    }
   } else {
     throw std::runtime_error("offline scene loader only supports shared "
                              "builtin primitive meshes and glTF meshes: " +
@@ -409,7 +421,8 @@ void visitNode(const OfflineAssetResolver &resolver,
   if (node.meshUri.has_value()) {
     const std::string &meshUri = *node.meshUri;
     const RegisteredMesh mesh =
-        registerMeshUri(state.loaded.table, resolver, meshUri, state.meshByUri);
+        registerMeshUri(state.loaded.table, resolver, meshUri,
+                        !node.materialUri.has_value(), state.meshByUri);
 
     const std::string materialKey =
         node.materialUri.value_or(mesh.defaultMaterial ? meshUri : "default") +
