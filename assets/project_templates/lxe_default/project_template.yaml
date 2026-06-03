@@ -1,0 +1,19 @@
+schema: lxe.project_template.v1
+id: lxe_default
+displayName: LXE Default
+defaultScene: scenes/lxe_editor.scene.yaml
+copy:
+  - scenes/
+scenes:
+  - id: 3dgs_train_sample
+    path: scenes/3dgs_train_sample.scene.yaml
+  - id: ibl_metal_sphere
+    path: scenes/ibl_metal_sphere.scene.yaml
+  - id: lxe_editor
+    path: scenes/lxe_editor.scene.yaml
+  - id: procedural_shader_gallery
+    path: scenes/procedural_shader_gallery.scene.yaml
+  - id: realtime_offline_compare_diagnostic
+    path: scenes/realtime_offline_compare_diagnostic.scene.yaml
+  - id: shadow_tutorial
+    path: scenes/shadow_tutorial.scene.yaml

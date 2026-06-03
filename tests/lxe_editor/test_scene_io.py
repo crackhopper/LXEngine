@@ -24,6 +24,77 @@ class SceneIoBlackBoxTest(unittest.TestCase):
     def tearDownClass(cls) -> None:
         cls.harness.close()
 
+    def test_default_project_opens_builtin_scenes_by_id(self) -> None:
+        open_project = self.harness.client.command("project open lxe_default")
+        self.assertTrue(open_project["ok"], open_project)
+        state = self.harness.client.wait_for(
+            lambda: (
+                result
+                if (
+                    result := self.harness.client.get_state()
+                )["project"]
+                and result["project"]["id"] == "lxe_default"
+                and result["project"]["activeScene"]
+                == "scenes/lxe_editor.scene.yaml"
+                and result["scene"]["sceneName"] == "lxe_editor"
+                else None
+            )
+        )
+        self.assertFalse(state["scene"]["dirty"])
+
+        list_response = self.harness.client.command("scene list")
+        self.assertTrue(list_response["ok"], list_response)
+        scenes = self.harness.client.decode_structured_json(list_response)
+        scene_ids = {entry["id"] for entry in scenes["scenes"]}
+        self.assertIn("realtime_offline_compare_diagnostic", scene_ids)
+        self.assertIn("ibl_metal_sphere", scene_ids)
+        self.assertIn("lxe_editor", scene_ids)
+
+        diagnostic_open = self.harness.client.command(
+            "scene open realtime_offline_compare_diagnostic"
+        )
+        self.assertTrue(diagnostic_open["ok"], diagnostic_open)
+        self.harness.client.wait_for(
+            lambda: (
+                result
+                if (
+                    result := self.harness.client.get_state()
+                )["project"]["activeScene"]
+                == "scenes/realtime_offline_compare_diagnostic.scene.yaml"
+                and result["scene"]["sceneName"]
+                == "Realtime Offline Compare Diagnostic"
+                else None
+            )
+        )
+
+        ibl_open = self.harness.client.command("scene open ibl_metal_sphere")
+        self.assertTrue(ibl_open["ok"], ibl_open)
+        self.harness.client.wait_for(
+            lambda: (
+                result
+                if (
+                    result := self.harness.client.get_state()
+                )["project"]["activeScene"]
+                == "scenes/ibl_metal_sphere.scene.yaml"
+                and result["scene"]["sceneName"] == "IBL Metal Sphere"
+                else None
+            )
+        )
+
+        editor_open = self.harness.client.command("scene open lxe_editor")
+        self.assertTrue(editor_open["ok"], editor_open)
+        self.harness.client.wait_for(
+            lambda: (
+                result
+                if (
+                    result := self.harness.client.get_state()
+                )["project"]["activeScene"]
+                == "scenes/lxe_editor.scene.yaml"
+                and result["scene"]["sceneName"] == "lxe_editor"
+                else None
+            )
+        )
+
     def test_project_init_scene_list_open_and_save(self) -> None:
         project_id = f"blackbox_scene_io_{uuid.uuid4().hex[:8]}"
 

@@ -1,5 +1,6 @@
 #include "demos/lxe_editor/editor_session.hpp"
 
+#include "core/debug_draw/debug_draw.hpp"
 #include "core/editor/console_panel.hpp"
 #include "core/gpu/engine_loop.hpp"
 #include "core/input/dummy_input_state.hpp"
@@ -343,17 +344,125 @@ void testStartupClosesProjectWhenLastProjectSceneCannotLoad() {
   LX_demo::lxe_editor::LxeEditorSession session(rig, ui, editorState);
   session.initialize();
 
-  EXPECT(!session.currentProjectId().has_value(),
-         "startup should close a project whose active scene cannot load");
-  EXPECT(!session.runtimeScenePath().has_value(),
-         "startup fallback should leave an unsaved empty runtime scene");
+  EXPECT(session.currentProjectId() == std::optional<std::string>("lxe_default"),
+         "startup should fall back to the default project when last project "
+         "cannot load");
+  EXPECT(session.currentProjectActiveScene() ==
+             std::optional<std::string>("scenes/lxe_editor.scene.yaml"),
+         "default project fallback should open the lxe_editor scene");
+  EXPECT(session.runtimeScenePath().has_value(),
+         "default project fallback should load a saved runtime scene");
   const auto status = session.commandBus().dispatch("project status");
-  EXPECT(status.ok && status.structured == "null",
-         "project status should report no open project after startup fallback");
-  EXPECT(readTextFile(editorDataPath).find("lastProject") == std::string::npos,
-         "startup fallback should clear the broken lastProject entry");
+  EXPECT(status.ok &&
+             status.structured.find("\"id\":\"lxe_default\"") !=
+                 std::string::npos,
+         "project status should report the default project after startup "
+         "fallback");
+  EXPECT(readTextFile(editorDataPath).find("lxe_default") !=
+             std::string::npos,
+         "startup fallback should persist the default project as lastProject");
 
   cleanupProject("editor_session_broken_start");
+  cleanupProject("lxe_default");
+}
+
+void testStartupWithoutLastProjectOpensDefaultProject() {
+  const bool initialized = initializeRuntimeAssetRoot();
+  EXPECT(initialized,
+         "runtime asset root should initialize for default startup test");
+  if (!initialized) {
+    return;
+  }
+
+  cleanupProject("lxe_default");
+  const std::filesystem::path editorDataPath =
+      resolveRuntimePath("data/lxe_editor/editor_data.yaml");
+  ScopedFileBackup editorDataBackup(editorDataPath);
+  std::filesystem::remove(editorDataPath);
+
+  LX_core::EditorState editorState;
+  LX_demo::lxe_editor::CameraRig rig;
+  LX_demo::lxe_editor::UiOverlay ui;
+  LX_demo::lxe_editor::LxeEditorSession session(rig, ui, editorState);
+  session.initialize();
+
+  EXPECT(session.currentProjectId() == std::optional<std::string>("lxe_default"),
+         "startup without lastProject should open lxe_default");
+  EXPECT(session.currentProjectActiveScene() ==
+             std::optional<std::string>("scenes/lxe_editor.scene.yaml"),
+         "startup default project should use lxe_editor as active scene");
+  EXPECT(session.runtimeScenePath().has_value(),
+         "startup default project should load a runtime scene");
+  if (session.runtimeScenePath().has_value()) {
+    EXPECT(session.runtimeScenePath()->filename() == "lxe_editor.scene.yaml",
+           "startup default runtime should load lxe_editor scene");
+  }
+  EXPECT(session.scene()->findByPath("/game_cam") != nullptr,
+         "startup default scene should contain the game camera");
+  EXPECT(readTextFile(editorDataPath).find("lxe_default") !=
+             std::string::npos,
+         "startup default project should be persisted as lastProject");
+
+  cleanupProject("lxe_default");
+}
+
+void testSceneOpenClearsSelectionAndDebugDrawState() {
+  const bool initialized = initializeRuntimeAssetRoot();
+  EXPECT(initialized,
+         "runtime asset root should initialize for reload cleanup test");
+  if (!initialized) {
+    return;
+  }
+
+  cleanupProject("lxe_default");
+
+  LX_core::EditorState editorState;
+  LX_demo::lxe_editor::CameraRig rig;
+  LX_demo::lxe_editor::UiOverlay ui;
+  LX_demo::lxe_editor::LxeEditorSession session(rig, ui, editorState);
+  session.initialize();
+
+  auto window = std::make_shared<FakeWindow>();
+  auto renderer = std::make_shared<FakeRenderer>();
+  LX_core::gpu::EngineLoop loop;
+  loop.initialize(window, renderer);
+  loop.startScene(session.scene());
+
+  auto *helmet = session.scene()->findByPath("/helmet");
+  EXPECT(helmet != nullptr, "default lxe_editor scene should have helmet");
+  if (!helmet) {
+    cleanupProject("lxe_default");
+    return;
+  }
+  editorState.select({helmet->shared_from_this()});
+  EXPECT(!editorState.getSelected().empty(),
+         "test should start with an active selection");
+
+  LX_core::DebugDraw::reset();
+  LX_core::DebugDraw::attachScene(session.scene());
+  LX_core::DebugDraw::beginFrame();
+  LX_core::DebugDraw::drawLine({0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f});
+  (void)LX_core::DebugDraw::endFrame();
+  EXPECT(LX_core::DebugDraw::testing::hasRenderable(
+             LX_core::Layer_EditorOverlay),
+         "test should start with debug draw renderable attached");
+
+  const auto open = session.commandBus().dispatch("scene open ibl_metal_sphere");
+  EXPECT(open.ok, "scene open should queue another default-project scene");
+  session.flushPendingSceneOpen(loop);
+
+  EXPECT(editorState.getSelected().empty(),
+         "scene open reload should clear stale selection");
+  EXPECT(session.runtimeScenePath().has_value() &&
+             session.runtimeScenePath()->filename() ==
+                 "ibl_metal_sphere.scene.yaml",
+         "scene open reload should load the requested scene");
+  EXPECT(!LX_core::DebugDraw::testing::hasRenderable(
+             LX_core::Layer_EditorOverlay),
+         "scene open reload should clear old debug draw renderables");
+
+  LX_core::DebugDraw::reset();
+  cleanupProject("lxe_default");
 }
 
 void testProjectCloseCancelsPendingSceneOpen() {
@@ -926,6 +1035,8 @@ int main() {
   testProjectSceneOpenPreservesEditorCommandHistoryAndConsole();
   testSceneOpenFailureKeepsEditorRunningAndCurrentScene();
   testStartupClosesProjectWhenLastProjectSceneCannotLoad();
+  testStartupWithoutLastProjectOpensDefaultProject();
+  testSceneOpenClearsSelectionAndDebugDrawState();
   testProjectCloseCancelsPendingSceneOpen();
   testProjectCloseAfterLoadedSceneUpdatesEngineLoop();
   testProjectListMessageIncludesProjectIdsAndPaths();

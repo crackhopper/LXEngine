@@ -1,0 +1,50 @@
+scene:
+  name: lxe_editor
+  gameplayCameraPath: /game_cam
+nodes:
+  - nodeName: game_camera
+    name: game_cam
+    transform:
+      translation: [0.0, 2.0, 6.0]
+      rotation: [0.987087, -0.160182, 0.0, 0.0]
+      scale: [1.0, 1.0, 1.0]
+    visibilityMask: 4294967295
+    camera:
+      type: perspective
+      fovY: 45.0
+      aspect: 1.7777778
+      nearPlane: 0.1
+      farPlane: 1000.0
+      focusDistance: 6.324555
+      cullingMask: 4294967294
+  - nodeName: helmet
+    name: helmet
+    transform:
+      translation: [0.0, 0.0, 0.0]
+      rotation: [1.0, 0.0, 0.0, 0.0]
+      scale: [1.0, 1.0, 1.0]
+    visibilityMask: 4294967295
+    mesh:
+      uri: builtin://lxe_editor/helmet
+  - nodeName: ground
+    name: ground
+    transform:
+      translation: [0.0, 0.0, 0.0]
+      rotation: [1.0, 0.0, 0.0, 0.0]
+      scale: [1.0, 1.0, 1.0]
+    visibilityMask: 4294967295
+    mesh:
+      uri: builtin://lxe_editor/ground_mesh
+    material:
+      uri: builtin://lxe_editor/ground_material
+  - nodeName: dir_light_node
+    name: dir_light
+    transform:
+      translation: [0.0, 0.0, 0.0]
+      rotation: [1.0, 0.0, 0.0, 0.0]
+      scale: [1.0, 1.0, 1.0]
+    visibilityMask: 4294967295
+    directionalLight:
+      direction: [-0.3, -1.0, -0.5]
+      color: [1.0, 0.98, 0.9]
+      intensity: 1.0

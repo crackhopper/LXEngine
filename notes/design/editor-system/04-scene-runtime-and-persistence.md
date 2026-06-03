@@ -81,7 +81,7 @@ copy:
 
 ## 启动时如何恢复 lastProject
 
-`EditorDataDocument::lastProject` 记录上次打开的 project 路径。启动时，`LxeEditorSession::initialize()` 会尝试打开这个 project；如果失败或没有记录，就创建一个空 runtime scene，让 editor 仍然能启动。
+`EditorDataDocument::lastProject` 记录上次打开的 project 路径。启动时，`LxeEditorSession::initialize()` 会尝试打开这个 project；如果失败或没有记录，我们会打开内置 `lxe_default` project。这个默认 project 的 active scene 是 `scenes/lxe_editor.scene.yaml`，同时注册内置诊断场景，所以远程诊断可以从 `project open lxe_default` 和 `scene open <scene-id>` 开始，而不需要临时 `scene import`。
 
 本地 editor 文件分工如下：
 

@@ -334,6 +334,76 @@ resolveRegisteredScenePath(const std::filesystem::path &projectRoot,
   return isRegularFileNoSymlink(projectPath / document.defaultScene);
 }
 
+[[nodiscard]] std::vector<ProjectSceneEntry>
+templateSceneEntries(const ProjectTemplateDocument &document) {
+  if (!document.scenes.empty()) {
+    std::vector<ProjectSceneEntry> scenes;
+    scenes.reserve(document.scenes.size());
+    for (const auto &scene : document.scenes) {
+      scenes.push_back({scene.id, scene.path.lexically_normal()});
+    }
+    return scenes;
+  }
+
+  const auto defaultScenePath = document.defaultScene.lexically_normal();
+  return {{sceneIdFromPath(defaultScenePath), defaultScenePath}};
+}
+
+[[nodiscard]] bool validateTemplateSceneList(
+    const ProjectTemplateDocument &document,
+    const std::vector<ProjectSceneEntry> &scenes) {
+  if (scenes.empty()) {
+    return false;
+  }
+
+  bool defaultSceneRegistered = false;
+  std::vector<std::string> sceneIds;
+  sceneIds.reserve(scenes.size());
+  for (const auto &scene : scenes) {
+    if (!isValidNewSceneId(scene.id) || scene.path.empty()) {
+      return false;
+    }
+    if (scene.path.lexically_normal() ==
+        document.defaultScene.lexically_normal()) {
+      defaultSceneRegistered = true;
+    }
+    if (std::find(sceneIds.begin(), sceneIds.end(), scene.id) !=
+        sceneIds.end()) {
+      return false;
+    }
+    sceneIds.push_back(scene.id);
+  }
+  return defaultSceneRegistered;
+}
+
+[[nodiscard]] bool validateTemplateSceneSources(
+    const std::filesystem::path &templatePath,
+    const ProjectTemplateDocument &document,
+    const std::vector<ProjectSceneEntry> &scenes) {
+  if (!validateTemplateSceneList(document, scenes)) {
+    return false;
+  }
+  for (const auto &scene : scenes) {
+    if (!isContainedRelativePath(templatePath, scene.path) ||
+        !isRegularFileNoSymlink(templatePath / scene.path)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+[[nodiscard]] bool validateCopiedTemplateScenes(
+    const std::filesystem::path &projectPath,
+    const std::vector<ProjectSceneEntry> &scenes) {
+  for (const auto &scene : scenes) {
+    if (!isContainedRelativePath(projectPath, scene.path) ||
+        !isRegularFileNoSymlink(projectPath / scene.path)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 void cleanupProjectPath(const std::filesystem::path &projectPath) {
   std::error_code ec;
   std::filesystem::remove_all(projectPath, ec);
@@ -460,8 +530,11 @@ ProjectSession::initProject(const std::string &templateId,
                                                          : templateId;
     const auto projectPath = allocateProjectPath(m_projectsRoot, allocationName);
 
+    const auto templateScenes = templateSceneEntries(templateDocument);
     if (!validateTemplateDefaultSceneSource(templateEntry->path,
-                                            templateDocument)) {
+                                            templateDocument) ||
+        !validateTemplateSceneSources(templateEntry->path, templateDocument,
+                                      templateScenes)) {
       return makeResult(false, "invalid template default scene", projectPath);
     }
 
@@ -470,7 +543,8 @@ ProjectSession::initProject(const std::string &templateId,
       cleanupProjectPath(projectPath);
       return makeResult(false, "failed to copy project template", projectPath);
     }
-    if (!validateCopiedDefaultScene(projectPath, templateDocument)) {
+    if (!validateCopiedDefaultScene(projectPath, templateDocument) ||
+        !validateCopiedTemplateScenes(projectPath, templateScenes)) {
       cleanupProjectPath(projectPath);
       return makeResult(false, "copied template default scene is invalid",
                         projectPath);
@@ -481,8 +555,7 @@ ProjectSession::initProject(const std::string &templateId,
     document.id = makeProjectSlug(allocationName);
     document.displayName = displayName;
     document.activeScene = defaultScenePath;
-    document.scenes.push_back(
-        {sceneIdFromPath(defaultScenePath), defaultScenePath});
+    document.scenes = templateScenes;
     for (const auto &copyRoot : templateDocument.copyRoots) {
       const auto normalized = copyRoot.lexically_normal();
       if (!normalized.empty() && normalized.begin()->generic_string() ==

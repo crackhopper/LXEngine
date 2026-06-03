@@ -18,6 +18,7 @@ struct ProjectTemplateDocument final {
   std::string displayName;
   std::filesystem::path defaultScene;
   std::vector<std::filesystem::path> copyRoots;
+  std::vector<ProjectSceneEntry> scenes;
 };
 
 struct ProjectDocument final {

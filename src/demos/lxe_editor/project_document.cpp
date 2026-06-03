@@ -135,6 +135,7 @@ loadProjectTemplateDocument(const std::filesystem::path &path) {
   document.displayName = requireString(root["displayName"], "displayName");
   document.defaultScene = requirePath(root["defaultScene"], "defaultScene");
   document.copyRoots = loadPathSequence(root["copy"], "copy");
+  document.scenes = loadSceneEntries(root["scenes"]);
   return document;
 }
 

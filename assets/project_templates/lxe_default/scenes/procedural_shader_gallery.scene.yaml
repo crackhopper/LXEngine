@@ -1,0 +1,56 @@
+scene:
+  name: Procedural Shader Gallery
+  gameplayCameraPath: /game_cam
+root:
+  nodeName: scene_root
+  name: ''
+  transform:
+    translation: [0.0, 0.0, 0.0]
+    rotation: [1.0, 0.0, 0.0, 0.0]
+    scale: [1.0, 1.0, 1.0]
+  visibilityMask: 4294967295
+  children:
+    - nodeName: game_camera
+      name: game_cam
+      transform:
+        translation: [0.0, 0.0, 4.0]
+        rotation: [1.0, 0.0, 0.0, 0.0]
+        scale: [1.0, 1.0, 1.0]
+      visibilityMask: 4294967295
+      camera:
+        type: perspective
+        fovY: 45.0
+        aspect: 1.7777778
+        nearPlane: 0.1
+        farPlane: 100.0
+        focusDistance: 4.0
+        cullingMask: 4294967295
+    - nodeName: quantum_core_node
+      name: quantum_core
+      transform:
+        translation: [0.0, 0.0, 0.0]
+        rotation: [1.0, 0.0, 0.0, 0.0]
+        scale: [3.0, 3.0, 3.0]
+      visibilityMask: 4294967295
+      mesh:
+        uri: builtin://lxe_editor/patches/square
+      material:
+        uri: assets/materials/rtr_shadertoy_quantum_core.material
+      proceduralMaterial:
+        enabled: true
+        binding: ShadertoyUBO
+        timeMember: time
+        resolutionMember: resolution
+        audioBandsMember: audioBands
+    - nodeName: dir_light_node
+      name: dir_light
+      transform:
+        translation: [0.0, 0.0, 0.0]
+        rotation: [1.0, 0.0, 0.0, 0.0]
+        scale: [1.0, 1.0, 1.0]
+      visibilityMask: 4294967295
+      light:
+        kind: Directional
+        direction: [-0.3, -1.0, -0.5]
+        color: [1.0, 0.98, 0.9]
+        intensity: 1.0

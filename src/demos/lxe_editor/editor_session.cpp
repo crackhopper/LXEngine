@@ -39,6 +39,8 @@
 namespace LX_demo::lxe_editor {
 namespace {
 
+constexpr const char *kDefaultProjectId = "lxe_default";
+
 [[nodiscard]] std::string sanitizeDumpName(std::string_view name) {
   std::string out;
   out.reserve(name.size());
@@ -183,6 +185,13 @@ requireCameraComponent(const LX_core::SceneNodeSharedPtr &node,
   return camera->get();
 }
 
+void removeDefaultProjectDirectory() {
+  std::error_code ec;
+  std::filesystem::remove_all(resolveRuntimePath("data/projects") /
+                                  kDefaultProjectId,
+                              ec);
+}
+
 } // namespace
 
 LxeEditorSession::LxeEditorSession(CameraRig &rig, UiOverlay &ui,
@@ -227,7 +236,46 @@ void LxeEditorSession::initialize(
       m_editorData.lastProject.reset();
       (void)m_editorDataState.save(m_editorData);
     }
-    m_runtime.createEmptyScene();
+    auto openedDefault = m_projectSession.openProject(kDefaultProjectId);
+    if (!openedDefault.ok) {
+      openedDefault = m_projectSession.initProject(kDefaultProjectId,
+                                                   std::nullopt);
+    }
+    if (openedDefault.ok) {
+      if (const auto activePath = m_projectSession.activeScenePath();
+          activePath.has_value()) {
+        try {
+          m_runtime.loadFromDocumentPath(*activePath);
+          editorSceneState = loadEditorSceneStateIfPresent(*activePath);
+          loadedRuntime = true;
+        } catch (const std::exception &) {
+          (void)m_projectSession.closeProject();
+          removeDefaultProjectDirectory();
+          const auto rebuiltDefault =
+              m_projectSession.initProject(kDefaultProjectId, std::nullopt);
+          if (rebuiltDefault.ok) {
+            if (const auto rebuiltActivePath =
+                    m_projectSession.activeScenePath();
+                rebuiltActivePath.has_value()) {
+              try {
+                m_runtime.loadFromDocumentPath(*rebuiltActivePath);
+                editorSceneState =
+                    loadEditorSceneStateIfPresent(*rebuiltActivePath);
+                loadedRuntime = true;
+              } catch (const std::exception &) {
+                loadedRuntime = false;
+              }
+            }
+          }
+        }
+      }
+    }
+    if (loadedRuntime) {
+      m_editorData.lastProject = m_projectSession.projectRoot();
+      (void)m_editorDataState.save(m_editorData);
+    } else {
+      m_runtime.createEmptyScene();
+    }
   }
   rebuildBindings(std::move(editorSceneState));
 }

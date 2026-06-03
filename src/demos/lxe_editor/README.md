@@ -86,11 +86,15 @@ when the editor saves configuration, that launched display becomes the saved
 ## Scene document behavior
 
 - Startup opens the last project recorded in `data/lxe_editor/editor_data.yaml`
-  when possible. If there is no last project, the editor begins with an empty
-  unsaved scene.
+  when possible. If there is no last project, or the recorded project cannot
+  load, the editor opens the built-in `lxe_default` project and its
+  `lxe_editor` scene.
 - Project templates live under `assets/project_templates/` and are read-only.
   `project init <template-id> [project-name]` copies a template into
   `data/projects/` and opens the project's active scene.
+- The `lxe_default` template registers the built-in scenes copied from
+  `assets/project_templates/lxe_default/scenes/`, including diagnostic scenes
+  such as `realtime_offline_compare_diagnostic`.
 - A project can contain multiple scenes. Scene ids and scene paths are resolved
   only inside the current project.
 - Editor chrome persists locally under `data/lxe_editor/`:

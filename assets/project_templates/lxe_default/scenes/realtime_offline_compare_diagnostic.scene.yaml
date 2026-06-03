@@ -1,0 +1,94 @@
+scene:
+  name: Realtime Offline Compare Diagnostic
+  gameplayCameraPath: /game_cam
+  environment:
+    enabled: false
+    intensity: 0.0
+    skyboxEnabled: false
+  defaultOutputProfile: preview
+  outputProfiles:
+    preview:
+      camera: /game_cam
+      width: 128
+      height: 128
+      outputFormat: exr-png
+      outDir: artifacts/compare/diagnostic
+      backgroundColor: [0.0, 0.0, 0.0]
+  offlineRender:
+    integrator: primary-ray
+    samples: 1
+    maxBounce: 1
+    seed: 1
+    profile: preview
+    shadows: false
+    compareMode: shaded
+root:
+  nodeName: scene_root
+  name: ''
+  transform:
+    translation: [0.0, 0.0, 0.0]
+    rotation: [1.0, 0.0, 0.0, 0.0]
+    scale: [1.0, 1.0, 1.0]
+  visibilityMask: 4294967295
+  children:
+    - nodeName: game_camera
+      name: game_cam
+      transform:
+        translation: [0.0, 1.4, 4.2]
+        rotation: [0.994522, -0.104528, 0.0, 0.0]
+        scale: [1.0, 1.0, 1.0]
+      visibilityMask: 4294967295
+      camera:
+        type: perspective
+        fovY: 42.0
+        aspect: 1.0
+        nearPlane: 0.1
+        farPlane: 20.0
+        cullingMask: 4294967295
+    - nodeName: compare_sphere
+      name: compare_sphere
+      transform:
+        translation: [0.0, 0.55, 0.0]
+        rotation: [1.0, 0.0, 0.0, 0.0]
+        scale: [1.4, 1.4, 1.4]
+      visibilityMask: 4294967295
+      mesh:
+        uri: builtin://lxe_editor/primitives/sphere
+      material:
+        uri: assets/materials/blinnphong_lit.material
+      nodeMaterialOverrides:
+        MaterialUBO.baseColor: [0.8, 0.8, 0.8]
+        MaterialUBO.shininess: 12.0
+        MaterialUBO.specularIntensity: 0.0
+        MaterialUBO.ambientIntensity: 0.0
+    - nodeName: compare_plane
+      name: compare_plane
+      transform:
+        translation: [0.0, -0.15, 0.0]
+        rotation: [1.0, 0.0, 0.0, 0.0]
+        scale: [7.0, 1.0, 7.0]
+      visibilityMask: 4294967295
+      mesh:
+        uri: builtin://lxe_editor/primitives/plane
+      material:
+        uri: assets/materials/blinnphong_lit.material
+      nodeMaterialOverrides:
+        MaterialUBO.baseColor: [0.45, 0.45, 0.45]
+        MaterialUBO.shininess: 12.0
+        MaterialUBO.specularIntensity: 0.0
+        MaterialUBO.ambientIntensity: 0.0
+    - nodeName: compare_key_light
+      name: compare_key_light
+      transform:
+        translation: [0.0, 4.0, 4.0]
+        rotation: [1.0, 0.0, 0.0, 0.0]
+        scale: [1.0, 1.0, 1.0]
+      visibilityMask: 4294967295
+      light:
+        kind: Directional
+        direction: [-0.35, -1.0, -0.25]
+        color: [1.0, 1.0, 1.0]
+        intensity: 1.0
+        shadowStrength: 0.0
+        shadowDistance: 80.0
+        shadowCascadeCount: 1

@@ -42,6 +42,16 @@ void writeFile(const std::filesystem::path &path, const std::string &text) {
   out << text;
 }
 
+[[nodiscard]] bool projectHasSceneId(const demo::ProjectDocument &document,
+                                     const std::string &sceneId) {
+  for (const auto &scene : document.scenes) {
+    if (scene.id == sceneId) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void testSaveFailsWithoutOpenProject() {
   const auto root = makeTempRoot("lx_project_session_save_none");
   demo::ProjectSession session = makeSession(root);
@@ -130,6 +140,98 @@ void testPbrIblTemplateRegistersMetalSphereScene() {
          "PBR IBL scene catalog should expose ibl_metal_sphere id");
   EXPECT(session.openScene("ibl_metal_sphere").ok,
          "registered PBR IBL scene should open by id");
+}
+
+void testTemplateCanRegisterMultipleScenes() {
+  const auto root = makeTempRoot("lx_project_session_template_multi_scene");
+  const auto templateRoot = root / "templates";
+  writeFile(templateRoot / "multi/project_template.yaml",
+            "schema: lxe.project_template.v1\n"
+            "id: multi\n"
+            "displayName: Multi Scene\n"
+            "defaultScene: scenes/main.scene.yaml\n"
+            "copy:\n"
+            "  - scenes/\n"
+            "scenes:\n"
+            "  - id: main\n"
+            "    path: scenes/main.scene.yaml\n"
+            "  - id: diagnostic\n"
+            "    path: scenes/diagnostic.scene.yaml\n");
+  writeFile(templateRoot / "multi/scenes/main.scene.yaml",
+            "scene:\n  name: Main\nnodes: []\n");
+  writeFile(templateRoot / "multi/scenes/diagnostic.scene.yaml",
+            "scene:\n  name: Diagnostic\nnodes: []\n");
+  demo::ProjectSession session = makeSession(templateRoot, root / "projects");
+
+  const auto result = session.initProject("multi", std::nullopt);
+
+  EXPECT(result.ok, "multi-scene template init should succeed");
+  EXPECT(session.hasProject(), "multi-scene template should open a project");
+  EXPECT(session.currentProject().has_value(),
+         "multi-scene template should expose project document");
+  const auto &document = *session.currentProject();
+  EXPECT(document.scenes.size() == 2,
+         "multi-scene template should register every listed scene");
+  EXPECT(document.scenes[0].id == "main",
+         "first template scene id should round trip");
+  EXPECT(document.scenes[1].id == "diagnostic",
+         "second template scene id should round trip");
+  EXPECT(document.activeScene == std::filesystem::path("scenes/main.scene.yaml"),
+         "template default scene should remain active");
+  EXPECT(session.openScene("diagnostic").ok,
+         "registered non-default template scene should open by id");
+  EXPECT(session.currentProject()->activeScene ==
+             std::filesystem::path("scenes/diagnostic.scene.yaml"),
+         "opening registered template scene should update active scene");
+}
+
+void testLxeDefaultTemplateRegistersBuiltinScenes() {
+  const auto root = makeTempRoot("lx_project_session_lxe_default");
+  demo::ProjectSession session = makeSession(root);
+
+  const auto result = session.initProject("lxe_default", std::nullopt);
+
+  EXPECT(result.ok, "lxe_default project init should succeed");
+  EXPECT(session.hasProject(), "lxe_default init should open a project");
+  EXPECT(session.currentProject().has_value(),
+         "lxe_default init should expose project document");
+  EXPECT(session.projectRoot().has_value(),
+         "lxe_default init should expose project root");
+  if (!result.ok || !session.currentProject().has_value() ||
+      !session.projectRoot().has_value()) {
+    return;
+  }
+  const auto &document = *session.currentProject();
+  EXPECT(document.id == "lxe_default",
+         "lxe_default project should keep the template id");
+  EXPECT(document.displayName == "LXE Default",
+         "lxe_default project should expose default display name");
+  EXPECT(document.activeScene ==
+             std::filesystem::path("scenes/lxe_editor.scene.yaml"),
+         "lxe_default should start on lxe_editor scene");
+
+  const std::vector<std::string> expectedSceneIds = {
+      "3dgs_train_sample",
+      "ibl_metal_sphere",
+      "lxe_editor",
+      "procedural_shader_gallery",
+      "realtime_offline_compare_diagnostic",
+      "shadow_tutorial"};
+  for (const auto &sceneId : expectedSceneIds) {
+    EXPECT(projectHasSceneId(document, sceneId),
+           "lxe_default should register built-in scene id");
+    EXPECT(std::filesystem::exists(*session.projectRoot() / "scenes" /
+                                   (sceneId + ".scene.yaml")),
+           "lxe_default should copy registered built-in scene file");
+  }
+  EXPECT(document.scenes.size() == expectedSceneIds.size(),
+         "lxe_default should register exactly the expected built-in scenes");
+  EXPECT(session.openScene("realtime_offline_compare_diagnostic").ok,
+         "diagnostic scene should open by id");
+  EXPECT(session.currentProject()->activeScene ==
+             std::filesystem::path(
+                 "scenes/realtime_offline_compare_diagnostic.scene.yaml"),
+         "diagnostic scene should become active");
 }
 
 void testInitEmptyProjectNameUsesTemplateIdForAllocation() {
@@ -719,6 +821,8 @@ int main() {
   testSaveFailsWithoutOpenProject();
   testInitCopiesTemplateAndOpensDefaultScene();
   testPbrIblTemplateRegistersMetalSphereScene();
+  testTemplateCanRegisterMultipleScenes();
+  testLxeDefaultTemplateRegistersBuiltinScenes();
   testInitEmptyProjectNameUsesTemplateIdForAllocation();
   testInitRejectsTemplateCopyRootTraversal();
   testInitRejectsTemplateAbsoluteCopyRoot();

@@ -77,8 +77,9 @@
 
 ## lxe_editor 场景工作流
 
-- `lxe_editor` 启动时优先打开 `data/lxe_editor/editor_data.yaml` 记录的 last project；没有可用 project 时进入空 runtime scene。
+- `lxe_editor` 启动时优先打开 `data/lxe_editor/editor_data.yaml` 记录的 last project；没有可用 project 或 active scene 无法加载时，会打开内置 `lxe_default` project。
 - 只读项目模板放在 `assets/project_templates/`。`project init <type> [name]` 会把模板复制到 `data/projects/`，生成可写 project。
+- `lxe_default` 模板注册内置 scenes，包括 `lxe_editor`、`ibl_metal_sphere` 和 `realtime_offline_compare_diagnostic`。诊断命令可以先 `project open lxe_default`，再 `scene open <scene-id>`。
 - project 可以包含多个 scene。`project.yaml` 记录 scene 列表、active scene 和 asset roots。
 - `scene list` 只列出当前 project 注册的 scenes。
 - `scene open <id-or-path>` 只在当前 project 内解析 scene，并在下一次 update tick 切换 runtime。
