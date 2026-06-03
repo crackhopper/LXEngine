@@ -3,6 +3,8 @@
 #include "core/scene/components/camera_component.hpp"
 #include "core/scene/components/material_component.hpp"
 #include "core/scene/components/mesh_component.hpp"
+#include "core/frame_graph/pass.hpp"
+#include "core/asset/shader.hpp"
 #include "core/scene/light.hpp"
 #include "core/scene/object.hpp"
 #include "core/scene/scene.hpp"
@@ -40,6 +42,47 @@ struct TestVertex final {
   }
 };
 
+class FakeShader final : public IShader {
+public:
+  explicit FakeShader(std::vector<ShaderResourceBinding> bindings)
+      : m_bindings(std::move(bindings)) {}
+
+  const std::vector<ShaderStageCode> &getAllStages() const override {
+    return m_stages;
+  }
+
+  const std::vector<ShaderResourceBinding> &
+  getReflectionBindings() const override {
+    return m_bindings;
+  }
+
+  std::optional<std::reference_wrapper<const ShaderResourceBinding>>
+  findBinding(u32 set, u32 binding) const override {
+    for (const auto &item : m_bindings) {
+      if (item.set == set && item.binding == binding) {
+        return std::cref(item);
+      }
+    }
+    return std::nullopt;
+  }
+
+  std::optional<std::reference_wrapper<const ShaderResourceBinding>>
+  findBinding(const std::string &name) const override {
+    for (const auto &item : m_bindings) {
+      if (item.name == name) {
+        return std::cref(item);
+      }
+    }
+    return std::nullopt;
+  }
+
+  usize getProgramHash() const override { return 0; }
+
+private:
+  std::vector<ShaderStageCode> m_stages;
+  std::vector<ShaderResourceBinding> m_bindings;
+};
+
 MeshBufferSharedPtr makeMeshBuffer() {
   auto vertices = std::vector<TestVertex>{
       {{0.0f, 0.0f, 0.0f}},
@@ -51,6 +94,38 @@ MeshBufferSharedPtr makeMeshBuffer() {
   auto ib = IndexBuffer::create(std::move(indices));
   return MeshBuffer::create(vb, ib, BoundingBox{{0.0f, 0.0f, 0.0f},
                                                 {1.0f, 1.0f, 0.0f}});
+}
+
+MaterialInstanceSharedPtr makeGpuRecordMaterial() {
+  ShaderResourceBinding binding;
+  binding.name = "MaterialUBO";
+  binding.set = 2;
+  binding.binding = 0;
+  binding.type = ShaderPropertyType::UniformBuffer;
+  binding.size = 32;
+  binding.members = {
+      {"baseColor", ShaderPropertyType::Vec4, 0, 16},
+      {"roughnessFactor", ShaderPropertyType::Float, 16, 4},
+  };
+
+  auto shader =
+      std::make_shared<FakeShader>(std::vector<ShaderResourceBinding>{binding});
+  auto materialTemplate = MaterialTemplate::create("scene_gpu_records");
+  ShaderProgramSet shaderSet;
+  shaderSet.shaderName = "scene_gpu_records";
+  shaderSet.shader = shader;
+  MaterialPassDefinition passDefinition;
+  passDefinition.shaderProgram = std::move(shaderSet);
+  passDefinition.renderState = RenderState{};
+  materialTemplate->setPassDefinition(Pass_Forward, std::move(passDefinition));
+  materialTemplate->rebuildMaterialInterface();
+
+  auto material = MaterialInstance::create(materialTemplate);
+  material->setParameter(StringID("MaterialUBO"), StringID("baseColor"),
+                         Vec4f{0.25f, 0.5f, 0.75f, 0.9f});
+  material->setParameter(StringID("MaterialUBO"), StringID("roughnessFactor"),
+                         0.35f);
+  return material;
 }
 
 void testGeometryStorageAndMeshBufferContract() {
@@ -241,9 +316,7 @@ void testSceneGpuRecordLayoutContract() {
 void testSceneResourceTableUploadViewTracksGeneration() {
   SceneResourceTable table;
   const auto mesh = table.registerMesh(makeMeshBuffer());
-  const auto material =
-      table.registerMaterial(MaterialInstance::create(
-          MaterialTemplate::create("scene_gpu_records")));
+  const auto material = table.registerMaterial(makeGpuRecordMaterial());
   ObjectResource object;
   object.mesh = mesh;
   object.material = material;
@@ -259,6 +332,15 @@ void testSceneResourceTableUploadViewTracksGeneration() {
          "object GPU record should reference mesh index");
   EXPECT(firstView.objects.front().materialIndex == material.index,
          "object GPU record should reference material index");
+  EXPECT(firstView.materials.size() == 1,
+         "upload view should expose one material");
+  EXPECT(firstView.materials.front().baseColor.x == 0.25f &&
+             firstView.materials.front().baseColor.y == 0.5f &&
+             firstView.materials.front().baseColor.z == 0.75f &&
+             firstView.materials.front().baseColor.w == 0.9f,
+         "material base color should reach GPU record");
+  EXPECT(firstView.materials.front().pbrParams.y == 0.35f,
+         "material roughness scalar should reach GPU record");
 
   object.visible = false;
   table.updateObject(objectHandle, object);
