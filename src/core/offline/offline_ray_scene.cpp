@@ -299,10 +299,11 @@ OfflineRayScene OfflineRaySceneBuilder::build(
         .baseColor =
             Vec4f{material.baseColor.x, material.baseColor.y, material.baseColor.z,
                   1.0f},
-        .params = Vec4f{material.metallic, material.roughness, 0.0f, 0.0f},
+        .params = Vec4f{material.metallic, material.roughness,
+                        material.specularIntensity, material.ambientIntensity},
         .emissive =
             Vec4f{material.emissive.x, material.emissive.y, material.emissive.z,
-                  0.0f},
+                  material.shininess},
     });
   }
 

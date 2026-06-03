@@ -161,8 +161,9 @@ void test_ubo_buffer_sized_from_reflection() {
   const auto &buf = mat->getParameterBufferBytes();
   REQUIRE(!buf.empty());
   REQUIRE(mat->getParameterBufferLayout().has_value());
-  // blinnphong_0 MaterialUBO: vec3(12) + float(4) + float(4) + 3*int(12) = 32
-  REQUIRE(buf.size() == 32);
+  // blinnphong_0 MaterialUBO:
+  // vec3(12) + shininess(4) + specular(4) + ambient(4) + 3*int(12) = 36
+  REQUIRE(buf.size() == 36);
   std::cout << "  buffer size = " << buf.size() << "\n";
 }
 
@@ -202,19 +203,23 @@ void test_setFloat_and_setInt_at_reflected_offsets() {
 
   mat->setParameter(StringID("MaterialUBO"), StringID("specularIntensity"),
                     2.5f);
+  mat->setParameter(StringID("MaterialUBO"), StringID("ambientIntensity"),
+                    0.0f);
   mat->setParameter(StringID("MaterialUBO"), StringID("enableAlbedo"), 1);
   mat->setParameter(StringID("MaterialUBO"), StringID("enableNormal"), 0);
 
   const auto &buf = mat->getParameterBufferBytes();
-  float spec = 0.0f;
+  float spec = 0.0f, ambient = -1.0f;
   i32 ea = -1, en = -1;
   std::memcpy(&spec, buf.data() + 16, sizeof(float));
-  std::memcpy(&ea, buf.data() + 20, sizeof(i32));
-  std::memcpy(&en, buf.data() + 24, sizeof(i32));
+  std::memcpy(&ambient, buf.data() + 20, sizeof(float));
+  std::memcpy(&ea, buf.data() + 24, sizeof(i32));
+  std::memcpy(&en, buf.data() + 28, sizeof(i32));
   REQUIRE(spec == 2.5f);
+  REQUIRE(ambient == 0.0f);
   REQUIRE(ea == 1);
   REQUIRE(en == 0);
-  std::cout << "  specularIntensity=2.5, enableAlbedo=1, enableNormal=0 OK\n";
+  std::cout << "  specularIntensity=2.5, ambientIntensity=0, enableAlbedo=1, enableNormal=0 OK\n";
 }
 
 void test_descriptor_resources_stable_ubo_identity() {
@@ -228,7 +233,7 @@ void test_descriptor_resources_stable_ubo_identity() {
   REQUIRE(!b.empty());
   REQUIRE(a[0].get() == b[0].get());
   REQUIRE(a[0]->getType() == ResourceType::UniformBuffer);
-  REQUIRE(a[0]->getByteSize() == 32);
+  REQUIRE(a[0]->getByteSize() == 36);
   std::cout << "  UBO IGpuResource identity stable\n";
 }
 

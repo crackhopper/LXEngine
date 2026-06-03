@@ -525,13 +525,17 @@ static bool testBlinnPhongRuntimeFallbacks(const std::filesystem::path &fragPath
     std::cerr << "  FAIL: normal-map sampling is no longer gated by enableNormal\n";
     return false;
   }
-  if (fragSource.find("vec3 ambient = baseCol * 0.1;") ==
+  if (fragSource.find("baseCol * material.ambientIntensity") ==
       std::string::npos) {
-    std::cerr << "  FAIL: ambient fallback term missing from lit path\n";
+    std::cerr << "  FAIL: BlinnPhong ambient should be material controlled\n";
+    return false;
+  }
+  if (fragSource.find("baseCol * 0.1") != std::string::npos) {
+    std::cerr << "  FAIL: BlinnPhong ambient should not be hard-coded\n";
     return false;
   }
 
-  std::cout << "  PASS: runtime texture fallbacks and ambient term preserved\n";
+  std::cout << "  PASS: runtime texture fallbacks and material ambient term preserved\n";
   return true;
 }
 

@@ -139,15 +139,17 @@ void test_generic_loader_produces_valid_instance() {
   const auto &buf = mat->getParameterBufferBytes();
   REQUIRE(!buf.empty());
 
-  float r = 0, g = 0, b = 0, shiny = 0;
+  float r = 0, g = 0, b = 0, shiny = 0, ambient = -1.0f;
   std::memcpy(&r, buf.data() + 0, sizeof(float));
   std::memcpy(&g, buf.data() + 4, sizeof(float));
   std::memcpy(&b, buf.data() + 8, sizeof(float));
   std::memcpy(&shiny, buf.data() + 12, sizeof(float));
+  std::memcpy(&ambient, buf.data() + 20, sizeof(float));
   REQUIRE(r == 0.8f);
   REQUIRE(g == 0.8f);
   REQUIRE(b == 0.8f);
   REQUIRE(shiny == 12.0f);
+  REQUIRE(ambient == 0.0f);
 
   const auto debugShadowMode = mat->readParameterValue(
       StringID("MaterialUBO"), StringID("debugShadowMode"));

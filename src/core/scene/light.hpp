@@ -184,7 +184,7 @@ private:
   void emitLightPropertyChanged() const;
 
   DirectionalLightDataSharedPtr m_ubo;
-  Vec3f m_pendingDirection{0.0f, 0.0f, -1.0f};
+  Vec3f m_pendingDirection{0.35f, -1.0f, 0.25f};
   DirectionalShadowCascadeDebugView
       m_shadowCascadeDebugViews[MaxShadowCascades];
   bool m_shadowCascadeDebugViewValid[MaxShadowCascades] = {};

@@ -41,6 +41,7 @@ layout(set = 2, binding = 0) uniform MaterialUBO {
     float shininess;
 
     float specularIntensity;
+    float ambientIntensity;
     int enableAlbedo;
     int enableNormal;
     int debugShadowMode;
@@ -243,7 +244,7 @@ void main() {
 #else
     vec3 N = computeSmoothNormal();
 #endif
-    vec3 ambient = baseCol * 0.1;
+    vec3 ambient = baseCol * material.ambientIntensity;
     vec3 finalColor = ambient;
 
     vec3 L = normalize(-sceneLight.dir.xyz);

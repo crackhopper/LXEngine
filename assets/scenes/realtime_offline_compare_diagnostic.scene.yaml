@@ -60,6 +60,7 @@ root:
         MaterialUBO.baseColor: [0.8, 0.8, 0.8]
         MaterialUBO.shininess: 12.0
         MaterialUBO.specularIntensity: 0.0
+        MaterialUBO.ambientIntensity: 0.0
     - nodeName: compare_plane
       name: compare_plane
       transform:
@@ -75,6 +76,7 @@ root:
         MaterialUBO.baseColor: [0.45, 0.45, 0.45]
         MaterialUBO.shininess: 12.0
         MaterialUBO.specularIntensity: 0.0
+        MaterialUBO.ambientIntensity: 0.0
     - nodeName: compare_key_light
       name: compare_key_light
       transform:

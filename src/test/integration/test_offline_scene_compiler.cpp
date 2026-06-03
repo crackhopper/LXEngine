@@ -3,6 +3,7 @@
 #include "infra/offline/offline_scene_compiler.hpp"
 #include "infra/scene_io/scene_document.hpp"
 
+#include <algorithm>
 #include <filesystem>
 #include <iostream>
 
@@ -64,11 +65,45 @@ void testBuiltinSphereUsesSharedPrimitiveMesh() {
          "offline sphere should use the shared builtin sphere indices");
 }
 
+void testBuiltinSphereWindingMatchesOutwardNormals() {
+  const auto sphere =
+      LX_core::buildBuiltinPrimitiveMesh("builtin://lxe_editor/primitives/sphere");
+  const auto *vertices =
+      dynamic_cast<const LX_core::VertexBuffer<LX_core::VertexPosNormalUvBone> *>(
+          sphere->getVertexBuffer().get());
+  EXPECT(vertices != nullptr, "builtin sphere should expose typed vertices");
+  if (vertices == nullptr) {
+    return;
+  }
+  const auto *indices =
+      static_cast<const u32 *>(sphere->getIndexBuffer()->getRawData());
+  const auto *vertexData =
+      static_cast<const LX_core::VertexPosNormalUvBone *>(vertices->getRawData());
+
+  bool checkedTriangle = false;
+  for (u32 i = 0; i + 2 < sphere->getIndexCount(); i += 3) {
+    const auto &a = vertexData[indices[i + 0]];
+    const auto &b = vertexData[indices[i + 1]];
+    const auto &c = vertexData[indices[i + 2]];
+    const LX_core::Vec3f faceNormal = (b.pos - a.pos).cross(c.pos - a.pos);
+    if (faceNormal.length2() <= 1.0e-8f) {
+      continue;
+    }
+    const LX_core::Vec3f averageNormal =
+        (a.normal + b.normal + c.normal).normalized();
+    EXPECT(faceNormal.dot(averageNormal) > 0.0f,
+           "builtin sphere triangle winding should match outward normals");
+    checkedTriangle = true;
+  }
+  EXPECT(checkedTriangle, "builtin sphere winding test should inspect triangles");
+}
+
 } // namespace
 
 int main() {
   testIblMetalSphereCompilesToOfflineIr();
   testBuiltinSphereUsesSharedPrimitiveMesh();
+  testBuiltinSphereWindingMatchesOutwardNormals();
   if (failures != 0) {
     std::cerr << "test_offline_scene_compiler failed with " << failures
               << " failure(s)\n";

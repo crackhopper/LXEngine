@@ -147,7 +147,7 @@ void appendVertex(std::vector<VertexPosNormalUvBone> &verts, const Vec3f &pos,
     for (u32 s = 0; s < segments; ++s) {
       const u32 a = r * (segments + 1) + s;
       const u32 b = a + segments + 1;
-      indices.insert(indices.end(), {a, b, a + 1, a + 1, b, b + 1});
+      indices.insert(indices.end(), {a, a + 1, b, a + 1, b + 1, b});
     }
   }
   return makeMesh(

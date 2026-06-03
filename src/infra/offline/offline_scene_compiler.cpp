@@ -85,6 +85,21 @@ void applyMaterialParameterMap(
       it->second.type == LX_core::MaterialParameterValueType::Float) {
     material.roughness = it->second.floatValue;
   }
+  if (const auto it = params.find("MaterialUBO.specularIntensity");
+      it != params.end() &&
+      it->second.type == LX_core::MaterialParameterValueType::Float) {
+    material.specularIntensity = it->second.floatValue;
+  }
+  if (const auto it = params.find("MaterialUBO.ambientIntensity");
+      it != params.end() &&
+      it->second.type == LX_core::MaterialParameterValueType::Float) {
+    material.ambientIntensity = it->second.floatValue;
+  }
+  if (const auto it = params.find("MaterialUBO.shininess");
+      it != params.end() &&
+      it->second.type == LX_core::MaterialParameterValueType::Float) {
+    material.shininess = it->second.floatValue;
+  }
 }
 
 [[nodiscard]] OfflineMaterialIR loadMaterial(
@@ -107,6 +122,12 @@ void applyMaterialParameterMap(
             parseFloat(params["MaterialUBO.metallicFactor"], material.metallic);
         material.roughness =
             parseFloat(params["MaterialUBO.roughnessFactor"], material.roughness);
+        material.specularIntensity = parseFloat(
+            params["MaterialUBO.specularIntensity"], material.specularIntensity);
+        material.ambientIntensity = parseFloat(
+            params["MaterialUBO.ambientIntensity"], material.ambientIntensity);
+        material.shininess =
+            parseFloat(params["MaterialUBO.shininess"], material.shininess);
       }
       if (const YAML::Node resources = root["resources"]; resources) {
         if (const YAML::Node albedo = resources["albedoMap"]; albedo) {

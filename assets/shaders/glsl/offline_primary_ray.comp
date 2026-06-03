@@ -254,7 +254,9 @@ vec3 shade(vec3 origin, vec3 dir) {
     return baseColor;
   }
   float metallic = clamp(material.params.x, 0.0, 1.0);
-  float roughness = clamp(material.params.y, 0.03, 1.0);
+  float specularIntensity = max(material.params.z, 0.0);
+  float ambientIntensity = max(material.params.w, 0.0);
+  float shininess = max(material.emissive.w, 1.0);
   vec3 hitPos = origin + dir * hitT;
   vec3 toLight = normalize(-params.lightDirectionIntensity.xyz);
   float ndotl = max(dot(normal, toLight), 0.0);
@@ -274,13 +276,11 @@ vec3 shade(vec3 origin, vec3 dir) {
   vec3 viewDir = normalize(-dir);
   vec3 halfDir = normalize(toLight + viewDir);
   float ndoth = max(dot(normal, halfDir), 0.0);
-  float specPower = mix(32.0, 256.0, 1.0 - roughness);
-  vec3 f0 = mix(vec3(0.04), baseColor, metallic);
-  vec3 specular = f0 * pow(ndoth, specPower) * ndotl * visibility * lightColor;
+  vec3 specular =
+      pow(ndoth, shininess) * specularIntensity * visibility * lightColor;
 
   vec3 reflection = environmentColor(reflect(dir, normal));
-  vec3 ambient = mix(baseColor * environmentColor(normal) * 0.18,
-                    reflection, metallic);
+  vec3 ambient = mix(baseColor * ambientIntensity, reflection, metallic);
   return ambient + diffuse * (1.0 - metallic * 0.65) + specular +
          material.emissive.rgb;
 }

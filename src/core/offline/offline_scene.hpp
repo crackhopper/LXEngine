@@ -30,6 +30,9 @@ struct OfflineMaterialIR final {
   std::optional<std::string> albedoTextureRef;
   float metallic = 0.0f;
   float roughness = 0.5f;
+  float specularIntensity = 0.0f;
+  float ambientIntensity = 0.0f;
+  float shininess = 32.0f;
   Vec3f emissive{0.0f, 0.0f, 0.0f};
 };
 

@@ -513,6 +513,25 @@ void testDirectionalLightCascadeSplitsUpdateFromCamera() {
          "cascade split should update when camera near plane changes");
 }
 
+void testDirectionalLightPendingDirectionUpdatesUboBeforeAttach() {
+  DirectionalLight light;
+  const Vec3f requested{-0.35f, -1.0f, -0.25f};
+  const Vec3f expected = requested.normalized();
+
+  light.setDirection(requested);
+
+  const Vec3f direction = light.getDirection();
+  EXPECT(approx(direction.x, expected.x, 0.001f) &&
+             approx(direction.y, expected.y, 0.001f) &&
+             approx(direction.z, expected.z, 0.001f),
+         "unattached directional light should report pending direction");
+  const auto ubo = light.getDirectionalUBO();
+  EXPECT(approx(ubo->param.dir.x, expected.x, 0.001f) &&
+             approx(ubo->param.dir.y, expected.y, 0.001f) &&
+             approx(ubo->param.dir.z, expected.z, 0.001f),
+         "unattached directional light UBO should store pending direction");
+}
+
 void testDirectionalShadowDebugViewRecreatesCascadeMatrix() {
   auto cameraNode = SceneNode::create("shadow_camera");
   auto camera = cameraNode->addComponent<CameraComponent>();
@@ -1225,6 +1244,7 @@ int main() {
   testFrameGraphCompileAcceptsPostProcessSceneColorFlow();
   testFrameGraphCompileAcceptsBloomPostProcessChain();
   testDirectionalLightCascadeSplitsUpdateFromCamera();
+  testDirectionalLightPendingDirectionUpdatesUboBeforeAttach();
   testDirectionalShadowDebugViewRecreatesCascadeMatrix();
   testDirectionalShadowCascadeStoresLightDepthRange();
   testDirectionalShadowCascadeUboSnapshotIsStable();

@@ -26,6 +26,7 @@ parameters:
   MaterialUBO.baseColor: [0.8, 0.8, 0.8]
   MaterialUBO.shininess: 12.0
   MaterialUBO.specularIntensity: 1.0
+  MaterialUBO.ambientIntensity: 0.0
   MaterialUBO.enableAlbedo: 0
   MaterialUBO.enableNormal: 0
   MaterialUBO.debugShadowMode: 0

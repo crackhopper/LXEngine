@@ -141,12 +141,42 @@ void testOutputProfileAspectDrivesOfflineCameraFrame() {
          "square output profile should produce symmetric camera ray frame");
 }
 
+void testDiagnosticBlinnPhongMaterialParamsReachOfflineRecords() {
+  const std::filesystem::path scenePath =
+      std::filesystem::current_path() / "assets" / "scenes" /
+      "realtime_offline_compare_diagnostic.scene.yaml";
+  LX_infra::offline::OfflineSceneCompiler compiler{
+      LX_infra::offline::OfflineAssetResolver(scenePath)};
+  const auto scene = compiler.compileFile(scenePath, "/game_cam");
+
+  LX_core::offline::OutputProfile output;
+  output.width = 128;
+  output.height = 128;
+  LX_core::offline::OfflineRenderSettings offline;
+  offline.samples = 1;
+  offline.compareMode = "shaded";
+  LX_core::offline::OfflineRaySceneBuilder builder;
+  const auto rayScene = builder.build(scene, output, offline);
+
+  EXPECT(rayScene.materials.size() >= 2,
+         "diagnostic scene should keep sphere and plane materials separate");
+  for (const auto &material : rayScene.materials) {
+    EXPECT(std::abs(material.params.z - 0.0f) < kEps,
+           "diagnostic specularIntensity should reach offline material record");
+    EXPECT(std::abs(material.params.w - 0.0f) < kEps,
+           "diagnostic ambientIntensity should reach offline material record");
+    EXPECT(std::abs(material.emissive.w - 12.0f) < kEps,
+           "diagnostic shininess should reach offline material record");
+  }
+}
+
 } // namespace
 
 int main() {
   testRayLayoutContract();
   testIndexedVertexNormalsArePreserved();
   testOutputProfileAspectDrivesOfflineCameraFrame();
+  testDiagnosticBlinnPhongMaterialParamsReachOfflineRecords();
   testRaySceneUsesSharedIndexedResourcesAndBuildsBvh();
   if (failures != 0) {
     std::cerr << "test_offline_gpu_scene failed with " << failures

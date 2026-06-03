@@ -281,8 +281,10 @@ struct RealtimeProfileDebugInfo final {
   float profileAspect = 0.0f;
   float cameraAspect = 0.0f;
   u32 cameraResourceCount = 0;
+  u32 lightResourceCount = 0;
   u32 drawItemCount = 0;
   VkExtent2D viewportExtent{};
+  LX_core::Vec4f lightDirection{};
   LX_core::Mat4f cameraView = LX_core::Mat4f::identity();
   LX_core::Mat4f cameraProj = LX_core::Mat4f::identity();
   std::vector<ProjectedBoundsDebug> projectedBounds;
@@ -316,6 +318,34 @@ void writeMat4Json(std::ostream &out, const LX_core::Mat4f &matrix) {
     }
   }
   return count;
+}
+
+[[nodiscard]] u32 countLightResources(
+    const std::vector<LX_core::IGpuResourceSharedPtr> &resources) {
+  u32 count = 0;
+  const LX_core::StringID lightBinding("LightUBO");
+  for (const auto &resource : resources) {
+    if (resource && resource->getBindingName() == lightBinding) {
+      ++count;
+    }
+  }
+  return count;
+}
+
+[[nodiscard]] LX_core::Vec4f findLightDirection(
+    const std::vector<LX_core::IGpuResourceSharedPtr> &resources) {
+  const LX_core::StringID lightBinding("LightUBO");
+  for (const auto &resource : resources) {
+    if (!resource || resource->getBindingName() != lightBinding ||
+        resource->getByteSize() < sizeof(LX_core::DirectionalLightData::Param)) {
+      continue;
+    }
+    const auto *param =
+        static_cast<const LX_core::DirectionalLightData::Param *>(
+            resource->getRawData());
+    return param->dir;
+  }
+  return {};
 }
 
 [[nodiscard]] std::optional<LX_core::Mat4f>
@@ -453,6 +483,11 @@ void writeRealtimeProfileMetadata(
       << "    \"cameraAspect\": " << debugInfo.cameraAspect << ",\n"
       << "    \"cameraResourceCount\": " << debugInfo.cameraResourceCount
       << ",\n"
+      << "    \"lightResourceCount\": " << debugInfo.lightResourceCount
+      << ",\n"
+      << "    \"lightDirection\": [" << debugInfo.lightDirection.x << ", "
+      << debugInfo.lightDirection.y << ", " << debugInfo.lightDirection.z
+      << ", " << debugInfo.lightDirection.w << "],\n"
       << "    \"drawItemCount\": " << debugInfo.drawItemCount << ",\n"
       << "    \"viewportExtent\": {\"width\": "
       << debugInfo.viewportExtent.width << ", \"height\": "
@@ -1586,6 +1621,8 @@ public:
     debugInfo.cameraView = outputCameraUbo->param.view;
     debugInfo.cameraProj = outputCameraUbo->param.proj;
     debugInfo.cameraResourceCount = countCameraResources(sceneResources);
+    debugInfo.lightResourceCount = countLightResources(sceneResources);
+    debugInfo.lightDirection = findLightDirection(sceneResources);
 
     const std::string attachmentPrefix =
         "realtime.profile." + basePath.generic_string() + "." +

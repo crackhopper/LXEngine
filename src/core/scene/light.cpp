@@ -110,7 +110,9 @@ void emitLightPropertyChanged(const std::weak_ptr<Scene> &weakScene,
 DirectionalLight::DirectionalLight()
     : m_ubo(std::make_shared<DirectionalLightData>()),
       m_supportedPasses({Pass_Forward, Pass_Deferred, Pass_Shadow}) {
-  m_ubo->param.dir = Vec4f{0.35f, -1.0f, 0.25f, 0.0f};
+  const Vec3f defaultDirection = m_pendingDirection.normalized();
+  m_ubo->param.dir =
+      Vec4f{defaultDirection.x, defaultDirection.y, defaultDirection.z, 0.0f};
   m_ubo->param.color = Vec4f{1.0f, 0.98f, 0.9f, 1.0f};
   m_ubo->param.shadowParams =
       Vec4f{1024.0f, 0.02f, 0.45f, static_cast<float>(MaxShadowCascades)};
@@ -121,7 +123,10 @@ Vec3f DirectionalLight::getDirection() const {
   if (const auto node = m_node.lock()) {
     return lightDirectionFromNode(*node);
   }
-  return Vec3f{0.0f, 0.0f, -1.0f};
+  if (m_pendingDirection.length2() <= 1e-6f) {
+    return Vec3f{0.0f, 0.0f, -1.0f};
+  }
+  return m_pendingDirection.normalized();
 }
 
 Vec3f DirectionalLight::getColor() const {
