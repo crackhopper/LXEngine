@@ -67,6 +67,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_lxe_editor_memory_probe
   test_lxe_editor_recording
   test_gltf_loader
+  test_gltf_scene_asset_loader
   test_output_profile_resolution
   test_lxe_compare_exr_metrics
   test_offline_render_cli
