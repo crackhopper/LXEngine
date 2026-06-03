@@ -1542,73 +1542,49 @@ public:
       throw std::runtime_error("realtime profile path is not a camera: " +
                                output.cameraPath);
     }
-    auto &camera = cameraOpt->get();
-
-    struct CameraRestore final {
-      LX_core::CameraComponent &camera;
-      std::optional<LX_core::RenderTarget> target;
-      LX_core::CameraType projectionType;
-      float fovY;
-      float aspect;
-      float nearPlane;
-      float farPlane;
-      float left;
-      float right;
-      float bottom;
-      float top;
-      LX_core::VisibilityLayerMask cullingMask;
-      ~CameraRestore() {
-        camera.setTarget(target);
-        camera.applyProjectionState(projectionType, fovY, aspect, nearPlane,
-                                    farPlane, left, right, bottom, top);
-        camera.setCullingMask(cullingMask);
-        camera.updateMatrices();
-      }
-    } restore{
-        .camera = camera,
-        .target = camera.getTarget(),
-        .projectionType = camera.getProjectionType(),
-        .fovY = camera.getFovY(),
-        .aspect = camera.getAspect(),
-        .nearPlane = camera.getNearPlane(),
-        .farPlane = camera.getFarPlane(),
-        .left = camera.getLeft(),
-        .right = camera.getRight(),
-        .bottom = camera.getBottom(),
-        .top = camera.getTop(),
-        .cullingMask = camera.getCullingMask(),
-    };
+    const auto &camera = cameraOpt->get();
 
     const float profileAspect =
         static_cast<float>(output.width) / static_cast<float>(output.height);
+    const LX_core::CameraSnapshot sourceCamera =
+        camera.getSnapshot(output.cameraPath);
     const LX_core::CameraProjection outputProjection =
-        LX_core::offline::resolveOutputCameraProjection(camera.getProjection(),
+        LX_core::offline::resolveOutputCameraProjection(sourceCamera.projection,
                                                         output);
-    camera.applyProjectionState(
-        outputProjection.type, outputProjection.fovYDegrees,
-        outputProjection.aspect, outputProjection.nearPlane,
-        outputProjection.farPlane, outputProjection.left, outputProjection.right,
-        outputProjection.bottom, outputProjection.top);
-    if (output.cameraOverrides.cullingMask.has_value()) {
-      camera.setCullingMask(*output.cameraOverrides.cullingMask);
-    }
+    const LX_core::VisibilityLayerMask outputCullingMask =
+        output.cameraOverrides.cullingMask.value_or(sourceCamera.cullingMask);
+
+    auto outputCameraUbo = std::make_shared<LX_core::CameraData>();
+    outputCameraUbo->param.eyePos = sourceCamera.pose.eye;
+    outputCameraUbo->param.view =
+        LX_core::makeCameraViewMatrix(sourceCamera.pose);
+    outputCameraUbo->param.proj =
+        LX_core::makeCameraProjectionMatrix(outputProjection);
+    outputCameraUbo->setDirty();
 
     LX_core::RenderTargetDesc targetDesc;
     targetDesc.role = LX_core::RenderTargetRole::Offscreen;
     targetDesc.colorFormat = LX_core::ImageFormat::RGBA16Float;
     targetDesc.depthFormat = LX_core::ImageFormat::D32Float;
     const LX_core::RenderTarget target{targetDesc};
-    camera.setTarget(target);
-    camera.updateMatrices();
-    updateDirectionalLightCascadesForCamera(camera);
 
     auto sceneResources =
         m_scene->getSceneLevelResources(LX_core::Pass_Forward, target);
+    const LX_core::StringID cameraBinding("CameraUBO");
+    sceneResources.erase(
+        std::remove_if(
+            sceneResources.begin(), sceneResources.end(),
+            [cameraBinding](const LX_core::IGpuResourceSharedPtr &res) {
+              return res && res->getBindingName() == cameraBinding;
+            }),
+        sceneResources.end());
+    sceneResources.push_back(
+        std::static_pointer_cast<LX_core::IGpuResource>(outputCameraUbo));
     RealtimeProfileDebugInfo debugInfo;
     debugInfo.profileAspect = profileAspect;
-    debugInfo.cameraAspect = camera.getAspect();
-    debugInfo.cameraView = camera.getUBO()->param.view;
-    debugInfo.cameraProj = camera.getUBO()->param.proj;
+    debugInfo.cameraAspect = outputProjection.aspect;
+    debugInfo.cameraView = outputCameraUbo->param.view;
+    debugInfo.cameraProj = outputCameraUbo->param.proj;
     debugInfo.cameraResourceCount = countCameraResources(sceneResources);
 
     const std::string attachmentPrefix =
@@ -1628,13 +1604,13 @@ public:
     LX_core::RenderQueue queue;
     queue.buildFromSceneWithOverrides(
         *m_scene, LX_core::Pass_Forward, target, std::move(sceneResources),
-        camera.getCullingMask() & ~LX_core::Layer_EditorOverlay);
+        outputCullingMask & ~LX_core::Layer_EditorOverlay);
     if (queue.getItems().empty()) {
       throw std::runtime_error("realtime profile output produced no draw items");
     }
     debugInfo.drawItemCount = static_cast<u32>(queue.getItems().size());
     const LX_core::Mat4f viewProj =
-        camera.getUBO()->param.proj * camera.getUBO()->param.view;
+        outputCameraUbo->param.proj * outputCameraUbo->param.view;
     for (const auto &renderable : m_scene->getRenderables()) {
       if (!renderable) {
         continue;
