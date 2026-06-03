@@ -685,10 +685,12 @@ void testSceneResourceTableUploadViewEmitsPrimitivePerTriangle() {
   }
 }
 
-void testSceneResourceTableUploadViewRebasesOffsetMeshIndices() {
+void testSceneResourceTableUploadViewPacksGlobalCompactVertexIndices() {
   SceneResourceTable table;
+  const auto baseMesh = table.registerMesh(makeMeshBuffer());
   const auto mesh = table.registerMesh(makeOffsetMeshBuffer());
   const auto material = table.registerMaterial(makeGpuRecordMaterial());
+  (void)baseMesh;
 
   ObjectResource object;
   object.mesh = mesh;
@@ -700,14 +702,18 @@ void testSceneResourceTableUploadViewRebasesOffsetMeshIndices() {
   const auto view = table.buildUploadView();
   EXPECT(table.isAlive(objectHandle),
          "test setup should keep offset mesh object alive");
-  EXPECT(view.vertices.size() == 3,
-         "offset mesh should upload only the compact vertex slice");
-  EXPECT(view.indices.size() == 3,
-         "offset mesh should upload only the compact index slice");
-  if (view.indices.size() == 3) {
-    EXPECT(view.indices[0] == 0 && view.indices[1] == 1 &&
-               view.indices[2] == 2,
-           "offset mesh indices should be rebased into compact vertex span");
+  EXPECT(view.vertices.size() == 6,
+         "upload view should keep vertices from both compact mesh slices");
+  EXPECT(view.indices.size() == 6,
+         "upload view should keep indices from both compact mesh slices");
+  if (view.indices.size() == 6) {
+    EXPECT(view.indices[3] == 3 && view.indices[4] == 4 &&
+               view.indices[5] == 5,
+           "offset mesh indices should point directly into compact vertex span");
+  }
+  if (!view.primitives.empty()) {
+    EXPECT(view.primitives[0].indexOffset == 3,
+           "offset mesh primitive should point at its global index slice");
   }
 }
 
@@ -784,7 +790,7 @@ int main() {
   testSceneResourceTableUploadViewSkipsObjectsWithReleasedDependencies();
   testSceneResourceTableUploadViewSkipsObjectsWithStaleDependencies();
   testSceneResourceTableUploadViewEmitsPrimitivePerTriangle();
-  testSceneResourceTableUploadViewRebasesOffsetMeshIndices();
+  testSceneResourceTableUploadViewPacksGlobalCompactVertexIndices();
   testSceneResourceTableUploadViewSkipsInvalidMeshIndexRanges();
   testSceneResourceTableUploadViewSkipsUnsupportedMeshTopology();
 

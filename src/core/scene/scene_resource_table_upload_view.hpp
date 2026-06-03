@@ -14,6 +14,7 @@ namespace LX_core {
 struct SceneResourceTableUploadView final {
   u64 tableGeneration = 0;
   std::span<const SceneGpuVertexRecord> vertices;
+  // Indices are global compact indices into vertices, not mesh-local indices.
   std::span<const u32> indices;
   std::span<const SceneGpuMeshRecord> meshes;
   std::span<const SceneGpuPrimitiveRecord> primitives;

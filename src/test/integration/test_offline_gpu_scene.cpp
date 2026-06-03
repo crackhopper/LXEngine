@@ -53,18 +53,20 @@ MeshBufferSharedPtr makeMeshBuffer() {
                                                 {1.0f, 1.0f, 0.0f}});
 }
 
-MeshBufferSharedPtr makeTwoTriangleMeshBuffer() {
+MeshBufferSharedPtr makeOffsetMeshBuffer() {
   auto vertices = std::vector<TestVertex>{
+      {{-10.0f, -10.0f, 0.0f}},
       {{0.0f, 0.0f, 0.0f}},
       {{1.0f, 0.0f, 0.0f}},
       {{0.0f, 1.0f, 0.0f}},
-      {{1.0f, 1.0f, 0.0f}},
   };
-  auto indices = std::vector<u32>{0, 1, 2, 2, 1, 3};
+  auto indices = std::vector<u32>{1, 2, 3};
   auto vb = VertexBuffer<TestVertex>::create(std::move(vertices));
   auto ib = IndexBuffer::create(std::move(indices));
-  return MeshBuffer::create(vb, ib, BoundingBox{{0.0f, 0.0f, 0.0f},
-                                                {1.0f, 1.0f, 0.0f}});
+  auto storage = GeometryStorage::create(vb, ib);
+  return MeshBuffer::create(storage, 1, 0, 3, 3,
+                            BoundingBox{{0.0f, 0.0f, 0.0f},
+                                        {1.0f, 1.0f, 0.0f}});
 }
 
 void testSoftwareBvhBuildsFromSceneResourceTable() {
@@ -104,12 +106,12 @@ void testSoftwareBvhThrowsForEmptyPrimitiveList() {
 
 void testSoftwareBvhUsesCompactUploadIndicesAndObjectTransform() {
   SceneResourceTable table;
-  const auto releasedMesh = table.registerMesh(makeMeshBuffer());
-  const auto liveMesh = table.registerMesh(makeTwoTriangleMeshBuffer());
+  const auto baseMesh = table.registerMesh(makeMeshBuffer());
+  const auto liveMesh = table.registerMesh(makeOffsetMeshBuffer());
   const auto material =
       table.registerMaterial(MaterialInstance::create(
           MaterialTemplate::create("software_bvh_transform_material")));
-  table.release(releasedMesh);
+  (void)baseMesh;
 
   Mat4f objectToWorld = Mat4f::translate(Vec3f{2.0f, 3.0f, 4.0f});
   ObjectResource object;
@@ -122,9 +124,9 @@ void testSoftwareBvhUsesCompactUploadIndicesAndObjectTransform() {
   (void)objectHandle;
 
   const SceneSoftwareBvh bvh = SceneSoftwareBvh::build(table.buildUploadView());
-  EXPECT(bvh.primitiveCount() == 2,
-         "two indexed triangles should produce two BVH primitives");
-  EXPECT(bvh.primitives().front().meshIndex == 0,
+  EXPECT(bvh.primitiveCount() == 1,
+         "one indexed offset triangle should produce one BVH primitive");
+  EXPECT(bvh.primitives().front().meshIndex == 1,
          "BVH should preserve compact mesh upload index");
   EXPECT(bvh.nodes().front().boundsMinLeftFirst.x == 2.0f,
          "root bounds should include object-space vertices transformed to world");

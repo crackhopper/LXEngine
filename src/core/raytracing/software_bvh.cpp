@@ -63,13 +63,11 @@ gpuPrimitive(const SceneResourceTableUploadView &scene,
     const SceneResourceTableUploadView &scene,
     const SceneSoftwareBvhPrimitive &primitive) {
   const SceneGpuPrimitiveRecord &gpuRecord = gpuPrimitive(scene, primitive);
-  const SceneGpuMeshRecord &mesh = scene.meshes[gpuRecord.meshIndex];
   const SceneGpuObjectRecord &object = scene.objects[gpuRecord.objectIndex];
   Bounds bounds;
   for (u32 i = 0; i < 3; ++i) {
     const u32 index = scene.indices[gpuRecord.indexOffset + i];
-    const SceneGpuVertexRecord &vertex =
-        scene.vertices[mesh.vertexOffset + index];
+    const SceneGpuVertexRecord &vertex = scene.vertices[index];
     bounds.include(transformPoint(object.objectToWorld,
                                   vertex.position.toVec3()));
   }

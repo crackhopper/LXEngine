@@ -122,6 +122,7 @@ findVertexLayoutItem(const VertexLayout &layout, const char *name,
 }
 
 void appendMeshGeometryRecords(const MeshBuffer &mesh,
+                               const u32 uploadVertexOffset,
                                std::vector<SceneGpuVertexRecord> &vertices,
                                std::vector<u32> &indices) {
   const auto &vertexBuffer = *mesh.getVertexBuffer();
@@ -147,7 +148,8 @@ void appendMeshGeometryRecords(const MeshBuffer &mesh,
     const u32 firstVertex = mesh.getVertexOffset();
     indices.reserve(indices.size() + indexCount);
     for (u32 i = 0; i < indexCount; ++i) {
-      indices.push_back(rawIndices[firstIndex + i] - firstVertex);
+      indices.push_back(uploadVertexOffset + rawIndices[firstIndex + i] -
+                        firstVertex);
     }
   }
 }
@@ -660,7 +662,8 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
         .indexCount = mesh.getIndexCount(),
         .geometryIndex = i,
     };
-    appendMeshGeometryRecords(mesh, m_gpuVertices, m_gpuIndices);
+    appendMeshGeometryRecords(mesh, record.vertexOffset, m_gpuVertices,
+                              m_gpuIndices);
     meshIndexToGpuRecord[i] = CompactRecordIndex{
         .generation = entry.generation,
         .uploadIndex = static_cast<u32>(m_gpuMeshes.size()),
