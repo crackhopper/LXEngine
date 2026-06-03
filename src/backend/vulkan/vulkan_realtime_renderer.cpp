@@ -1718,8 +1718,13 @@ public:
     auto framebuffer = VulkanFrameBuffer::create(
         device(), renderPass.getHandle(), attachments, extent);
     debugInfo.viewportExtent = extent;
+    auto clearValues = renderPass.getClearValues();
+    if (!clearValues.empty()) {
+      clearValues[0].color = {output.backgroundColor.x, output.backgroundColor.y,
+                              output.backgroundColor.z, 1.0f};
+    }
     cmd->beginRenderPass(renderPass.getHandle(), framebuffer->getHandle(),
-                         extent, renderPass.getClearValues());
+                         extent, clearValues);
     cmd->setViewport(extent.width, extent.height);
     cmd->setScissor(extent.width, extent.height);
     for (auto &item : queue.getItems()) {

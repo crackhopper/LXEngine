@@ -706,6 +706,7 @@ void testOutputProfilesRoundTrip() {
          "      height: 36\n"
          "      outputFormat: exr-png\n"
          "      outDir: artifacts/compare\n"
+         "      backgroundColor: [0.1, 0.2, 0.3]\n"
          "      cameraOverrides:\n"
          "        fovY: 42.0\n"
          "        nearPlane: 0.1\n"
@@ -733,6 +734,10 @@ void testOutputProfilesRoundTrip() {
   const auto &profiles = doc.renderProfileDocument();
   EXPECT(profiles.defaultOutputProfile == "preview", "default profile");
   EXPECT(profiles.outputProfiles.at("preview").width == 64u, "width");
+  EXPECT(profiles.outputProfiles.at("preview").backgroundColor.x == 0.1f &&
+             profiles.outputProfiles.at("preview").backgroundColor.y == 0.2f &&
+             profiles.outputProfiles.at("preview").backgroundColor.z == 0.3f,
+         "background color");
   EXPECT(profiles.outputProfiles.at("preview").cameraOverrides.fovY == 42.0f,
          "camera override fov");
   EXPECT(profiles.offline.maxBounce == 1u, "maxBounce");
@@ -745,6 +750,8 @@ void testOutputProfilesRoundTrip() {
   const std::string savedText = readFile(saved);
   EXPECT(savedText.find("outputProfiles:") != std::string::npos,
          "saved new outputProfiles");
+  EXPECT(savedText.find("backgroundColor:") != std::string::npos,
+         "saved backgroundColor");
   EXPECT(savedText.find("maxBounce: 1") != std::string::npos,
          "saved maxBounce");
   EXPECT(savedText.find("compareMode: albedo") != std::string::npos,

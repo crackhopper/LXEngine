@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/platform/types.hpp"
+#include "core/math/vec.hpp"
 #include "core/scene/camera.hpp"
 
 #include <filesystem>
@@ -26,6 +27,7 @@ struct OutputProfile final {
   u32 height = 512;
   std::string outputFormat = "exr-png";
   std::filesystem::path outDir = "artifacts";
+  Vec3f backgroundColor{0.0f, 0.0f, 0.0f};
   OutputCameraOverrides cameraOverrides;
   std::map<std::string, std::string> extensionYamlByField;
 };

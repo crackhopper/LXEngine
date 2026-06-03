@@ -13,6 +13,7 @@ scene:
       height: 128
       outputFormat: exr-png
       outDir: artifacts/compare/diagnostic
+      backgroundColor: [0.0, 0.0, 0.0]
   offlineRender:
     integrator: primary-ray
     samples: 1
@@ -20,7 +21,7 @@ scene:
     seed: 1
     profile: preview
     shadows: false
-    compareMode: albedo
+    compareMode: shaded
 root:
   nodeName: scene_root
   name: ''

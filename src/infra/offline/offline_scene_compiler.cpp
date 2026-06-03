@@ -1,9 +1,13 @@
 #include "infra/offline/offline_scene_compiler.hpp"
 
+#include "core/asset/builtin_meshes.hpp"
+#include "core/asset/mesh.hpp"
 #include "yaml-cpp/yaml.h"
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
+#include <cstring>
 #include <stdexcept>
 #include <unordered_map>
 
@@ -11,6 +15,7 @@ namespace LX_infra::offline {
 namespace {
 
 using LX_core::Mat4f;
+using LX_core::MeshBuffer;
 using LX_core::Vec2f;
 using LX_core::Vec3f;
 using LX_core::offline::OfflineDirectionalLightIR;
@@ -21,8 +26,6 @@ using LX_core::offline::OfflineSceneIR;
 using LX_core::offline::OfflineVertexIR;
 using LX_infra::scene_io::LightKind;
 using LX_infra::scene_io::SceneNodeDocument;
-
-constexpr float kPi = 3.14159265358979323846f;
 
 [[nodiscard]] std::string displayName(const SceneNodeDocument &node) {
   if (!node.name.empty()) {
@@ -127,55 +130,62 @@ void applyMaterialParameterMap(
   return material;
 }
 
-void appendPlane(OfflineMeshIR &mesh) {
-  mesh.vertices = {
-      {{-0.5f, 0.0f, -0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
-      {{0.5f, 0.0f, -0.5f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
-      {{0.5f, 0.0f, 0.5f}, {0.0f, 1.0f, 0.0f}, {1.0f, 1.0f}},
-      {{-0.5f, 0.0f, 0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f}},
-  };
-  mesh.indices = {0, 1, 2, 0, 2, 3};
-}
-
-void appendSphere(OfflineMeshIR &mesh) {
-  constexpr u32 latSegments = 16;
-  constexpr u32 lonSegments = 32;
-  for (u32 y = 0; y <= latSegments; ++y) {
-    const float v = static_cast<float>(y) / static_cast<float>(latSegments);
-    const float theta = v * kPi;
-    for (u32 x = 0; x <= lonSegments; ++x) {
-      const float u = static_cast<float>(x) / static_cast<float>(lonSegments);
-      const float phi = u * 2.0f * kPi;
-      Vec3f normal{std::sin(theta) * std::cos(phi), std::cos(theta),
-                   std::sin(theta) * std::sin(phi)};
-      mesh.vertices.push_back({normal * 0.5f, normal.normalized(), {u, v}});
+[[nodiscard]] u32 findOffset(const LX_core::VertexLayout &layout,
+                             const char *name) {
+  for (const auto &item : layout.getItems()) {
+    if (item.name == name) {
+      return item.offset;
     }
   }
-  const u32 stride = lonSegments + 1;
-  for (u32 y = 0; y < latSegments; ++y) {
-    for (u32 x = 0; x < lonSegments; ++x) {
-      const u32 i0 = y * stride + x;
-      const u32 i1 = i0 + 1;
-      const u32 i2 = i0 + stride;
-      const u32 i3 = i2 + 1;
-      mesh.indices.insert(mesh.indices.end(), {i0, i2, i1, i1, i2, i3});
-    }
-  }
+  throw std::runtime_error(std::string("builtin mesh missing vertex attribute: ") +
+                           name);
 }
 
-[[nodiscard]] OfflineMeshIR makeBuiltinMesh(const std::string &uri) {
+template <typename T>
+[[nodiscard]] T readAttribute(const std::byte *vertex, u32 offset) {
+  T value{};
+  std::memcpy(&value, vertex + offset, sizeof(T));
+  return value;
+}
+
+[[nodiscard]] OfflineMeshIR makeOfflineMeshFromSharedMesh(
+    const std::string &uri, const MeshBuffer &source) {
+  const auto &vertexBuffer = *source.getVertexBuffer();
+  const auto &indexBuffer = *source.getIndexBuffer();
+  const auto &layout = vertexBuffer.getLayout();
+  const u32 posOffset = findOffset(layout, "inPos");
+  const u32 normalOffset = findOffset(layout, "inNormal");
+  const u32 uvOffset = findOffset(layout, "inUV");
+  const auto *vertexBytes =
+      static_cast<const std::byte *>(vertexBuffer.getRawData());
+
   OfflineMeshIR mesh;
   mesh.name = uri;
   mesh.sourceUri = uri;
-  if (uri == "builtin://lxe_editor/primitives/plane") {
-    appendPlane(mesh);
-    return mesh;
+  mesh.vertices.reserve(source.getVertexCount());
+  for (u32 i = 0; i < source.getVertexCount(); ++i) {
+    const std::byte *vertex =
+        vertexBytes + static_cast<usize>(source.getVertexOffset() + i) *
+                          layout.getStride();
+    mesh.vertices.push_back(OfflineVertexIR{
+        .position = readAttribute<Vec3f>(vertex, posOffset),
+        .normal = readAttribute<Vec3f>(vertex, normalOffset).normalized(),
+        .uv = readAttribute<Vec2f>(vertex, uvOffset),
+    });
   }
-  if (uri == "builtin://lxe_editor/primitives/sphere") {
-    appendSphere(mesh);
-    return mesh;
+
+  const auto *indices = static_cast<const u32 *>(indexBuffer.getRawData());
+  mesh.indices.reserve(source.getIndexCount());
+  const u32 indexEnd = source.getIndexOffset() + source.getIndexCount();
+  for (u32 i = source.getIndexOffset(); i < indexEnd; ++i) {
+    mesh.indices.push_back(indices[i] - source.getVertexOffset());
   }
-  throw std::runtime_error("unsupported builtin offline mesh: " + uri);
+  return mesh;
+}
+
+[[nodiscard]] OfflineMeshIR makeBuiltinMesh(const std::string &uri) {
+  return makeOfflineMeshFromSharedMesh(
+      uri, *LX_core::buildBuiltinPrimitiveMesh(uri));
 }
 
 void visitNode(const OfflineAssetResolver &resolver, const SceneNodeDocument &node,
@@ -235,8 +245,8 @@ void visitNode(const OfflineAssetResolver &resolver, const SceneNodeDocument &no
 
   if (node.meshUri.has_value()) {
     const std::string &meshUri = *node.meshUri;
-    if (meshUri.rfind("builtin://lxe_editor/primitives/", 0) != 0) {
-      throw std::runtime_error("offline MVP only supports builtin sphere/plane; unsupported mesh at " +
+    if (!LX_core::isBuiltinPrimitiveMeshUri(meshUri)) {
+      throw std::runtime_error("offline MVP only supports shared builtin primitive meshes; unsupported mesh at " +
                                path + ": " + meshUri);
     }
     u32 meshIndex = 0;

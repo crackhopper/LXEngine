@@ -75,7 +75,7 @@ void testRayLayoutContract() {
          "OfflineMaterialRecord std430 contract should stay stable");
   EXPECT(sizeof(LX_core::offline::OfflineBvhNode) == 32,
          "OfflineBvhNode std430 contract should stay stable");
-  EXPECT(sizeof(LX_core::offline::OfflineSceneParams) == 144,
+  EXPECT(sizeof(LX_core::offline::OfflineSceneParams) == 160,
          "OfflineSceneParams std430 contract should stay stable");
 }
 

@@ -259,6 +259,9 @@ u32 buildNode(OfflineRayScene &scene, u32 first, u32 count) {
   params.lightColorEnvironment =
       Vec4f{light.color.x, light.color.y, light.color.z,
             scene.environment.enabled ? scene.environment.intensity : 0.35f};
+  params.backgroundColor =
+      Vec4f{output.backgroundColor.x, output.backgroundColor.y,
+            output.backgroundColor.z, 1.0f};
   params.width = output.width;
   params.height = output.height;
   params.samples = offline.samples;

@@ -54,6 +54,7 @@ struct alignas(16) OfflineSceneParams final {
   Vec4f cameraForward{};
   Vec4f lightDirectionIntensity{};
   Vec4f lightColorEnvironment{};
+  Vec4f backgroundColor{};
   u32 width = 0;
   u32 height = 0;
   u32 samples = 1;
@@ -103,7 +104,7 @@ static_assert(sizeof(OfflineMeshRecord) == 16);
 static_assert(sizeof(OfflinePrimitiveRecord) == 16);
 static_assert(sizeof(OfflineObjectRecord) == 176);
 static_assert(sizeof(OfflineMaterialRecord) == 48);
-static_assert(sizeof(OfflineSceneParams) == 144);
+static_assert(sizeof(OfflineSceneParams) == 160);
 static_assert(sizeof(OfflineBvhNode) == 32);
 
 } // namespace LX_core::offline

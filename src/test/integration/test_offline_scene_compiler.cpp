@@ -1,3 +1,4 @@
+#include "core/asset/builtin_meshes.hpp"
 #include "infra/offline/offline_asset_resolver.hpp"
 #include "infra/offline/offline_scene_compiler.hpp"
 #include "infra/scene_io/scene_document.hpp"
@@ -37,10 +38,37 @@ void testIblMetalSphereCompilesToOfflineIr() {
          "IR should preserve mesh references instead of flattening early");
 }
 
+void testBuiltinSphereUsesSharedPrimitiveMesh() {
+  const std::filesystem::path scenePath =
+      std::filesystem::current_path() / "assets" / "scenes" /
+      "realtime_offline_compare_diagnostic.scene.yaml";
+  const auto document = LX_infra::scene_io::loadSceneDocument(scenePath);
+  LX_infra::offline::OfflineSceneCompiler compiler{
+      LX_infra::offline::OfflineAssetResolver(scenePath)};
+  const auto scene = compiler.compile(document, "/game_cam");
+
+  const auto sphere = std::find_if(
+      scene.meshes.begin(), scene.meshes.end(), [](const auto &mesh) {
+        return mesh.sourceUri == "builtin://lxe_editor/primitives/sphere";
+      });
+  EXPECT(sphere != scene.meshes.end(), "builtin sphere mesh should compile");
+  if (sphere == scene.meshes.end()) {
+    return;
+  }
+
+  const auto shared =
+      LX_core::buildBuiltinPrimitiveMesh("builtin://lxe_editor/primitives/sphere");
+  EXPECT(sphere->vertices.size() == shared->getVertexCount(),
+         "offline sphere should use the shared builtin sphere vertices");
+  EXPECT(sphere->indices.size() == shared->getIndexCount(),
+         "offline sphere should use the shared builtin sphere indices");
+}
+
 } // namespace
 
 int main() {
   testIblMetalSphereCompilesToOfflineIr();
+  testBuiltinSphereUsesSharedPrimitiveMesh();
   if (failures != 0) {
     std::cerr << "test_offline_scene_compiler failed with " << failures
               << " failure(s)\n";
