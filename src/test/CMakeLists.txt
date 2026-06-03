@@ -70,6 +70,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_output_profile_resolution
   test_lxe_compare_exr_metrics
   test_offline_render_cli
+  test_offline_integrator_selection
   test_offline_image_writer
   test_offline_scene_loader
   test_offline_gpu_scene

@@ -2,16 +2,14 @@
 
 #include "core/offline/offline_render_job.hpp"
 
-#include <memory>
-
 namespace LX_core::backend::offline {
 
 /*
-@source_analysis.section VulkanOfflineRenderer 是 headless compute 执行器
+@source_analysis.section VulkanOfflineRenderer 是离线积分器协调入口
 `VulkanOfflineRenderer` 是离线渲染实验场当前的 Vulkan 后端入口。它接收
-`OfflineRenderJob`，内部初始化 headless `VulkanDevice`，创建 compute pipeline，
-上传 triangle/material/BVH/camera buffer，dispatch compute shader，再把线性
-float RGBA readback 回 CPU。
+`OfflineRenderJob`，先做 core 层 job 校验，再根据显式 integrator 名称选择离线
+积分器。具体 headless Vulkan device、compute pipeline、buffer 上传、dispatch 和
+readback 生命周期由被选中的 integrator 管理。
 
 它故意不复用 realtime `FrameGraph`、swapchain 和 draw item，因为离线 renderer 的
 目标是可复现实验、ground truth 对比和 path tracing 迭代。共享点放在更低层：
@@ -28,10 +26,6 @@ public:
 
   [[nodiscard]] LX_core::offline::OfflineReadbackImage
   render(const LX_core::offline::OfflineRenderJob &job);
-
-private:
-  struct Impl;
-  std::unique_ptr<Impl> m_impl;
 };
 
 } // namespace LX_core::backend::offline

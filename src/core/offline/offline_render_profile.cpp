@@ -68,6 +68,9 @@ ResolvedRenderProfile resolveRenderProfileDocument(
   if (offline.samples == 0 || offline.maxBounce == 0) {
     throw std::runtime_error("offlineRender samples/maxBounce must be positive");
   }
+  if (offline.integrator.empty()) {
+    throw std::runtime_error("offlineRender integrator must not be empty");
+  }
 
   return ResolvedRenderProfile{
       .profileName = offline.profileName,

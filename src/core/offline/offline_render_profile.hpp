@@ -33,7 +33,7 @@ struct OutputProfile final {
 };
 
 struct OfflineRenderSettings final {
-  std::string integrator = "primary-ray";
+  std::string integrator = "software-compute";
   u32 samples = 1;
   u32 maxBounce = 1;
   u32 seed = 1;
