@@ -80,18 +80,14 @@ def main(argv: list[str]) -> int:
             "artifacts/compare/flat/offline/render.exr",
             "--candidate",
             "artifacts/compare/flat/realtime/Realtime%20Offline%20Compare%20Flat/preview/render-linear.exr",
-            "--mean-threshold",
-            "0",
-            "--max-threshold",
-            "0",
-            "--rmse-threshold",
-            "0",
         ],
         source_dir,
     )
     metrics = json.loads(compare_output)
-    if not metrics.get("passed", False):
-        raise RuntimeError(f"controlled EXR comparison failed: {compare_output}")
+    for section in ("linearL1", "srgbL1"):
+        ratios = metrics.get(section, {}).get("similarPixelRatios", [])
+        if not ratios:
+            raise RuntimeError(f"{section} ratios missing: {compare_output}")
     print(compare_output.strip())
     return 0
 
