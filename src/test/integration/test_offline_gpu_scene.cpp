@@ -1,6 +1,7 @@
 #include "core/asset/material_instance.hpp"
 #include "core/asset/shader.hpp"
 #include "core/offline/offline_render_job.hpp"
+#include "core/offline/offline_render_work_graph.hpp"
 #include "core/offline/offline_render_validation.hpp"
 #include "core/asset/mesh.hpp"
 #include "core/raytracing/software_bvh.hpp"
@@ -424,6 +425,44 @@ void expectInvalidOfflineJobThrows(
   };
 }
 
+[[nodiscard]] offline::OfflineRenderJob makeRenderableJobWithCamera() {
+  offline::OfflineRenderJob job = makeRenderableJobWithoutCamera();
+  const auto camera = job.scene.registerCamera(makeValidationCameraResource());
+  (void)camera;
+  return job;
+}
+
+void testOfflineRenderWorkGraphBuildsRayTracePass() {
+  offline::OfflineRenderJob job = makeRenderableJobWithCamera();
+  job.output.width = 17;
+  job.output.height = 9;
+
+  const FrameGraph graph = offline::buildOfflineRenderWorkGraph(job);
+  EXPECT(graph.getPasses().size() == 1,
+         "offline default graph should have one ray trace pass");
+  if (graph.getPasses().empty()) {
+    return;
+  }
+
+  const FramePass &pass = graph.getPasses().front();
+  EXPECT(pass.name == Pass_OfflineRayTrace,
+         "offline graph pass should use OfflineRayTrace identity");
+  EXPECT(pass.queue.getItems().size() == 1,
+         "offline ray trace pass should submit one compute work item");
+  if (pass.queue.getItems().empty()) {
+    return;
+  }
+
+  const RenderWorkItem &item = pass.queue.getItems().front();
+  EXPECT(item.domain == RenderDomain::Offline,
+         "offline work item should mark offline domain");
+  EXPECT(item.kind == RenderWorkKind::ComputeDispatch,
+         "offline ray trace pass should execute as compute dispatch");
+  EXPECT(item.compute.groupCountX == 3 && item.compute.groupCountY == 2 &&
+             item.compute.groupCountZ == 1,
+         "offline dispatch groups should round output dimensions to 8x8 groups");
+}
+
 void testOfflineRenderJobValidationRejectsZeroDimensions() {
   offline::OfflineRenderJob job = makeRenderableJobWithoutCamera();
   job.output.width = 0;
@@ -452,6 +491,7 @@ int main() {
   testOfflineRenderJobValidationRejectsZeroDimensions();
   testOfflineRenderJobValidationRejectsMissingCamera();
   testOfflineRenderJobValidationRejectsNonRenderableScene();
+  testOfflineRenderWorkGraphBuildsRayTracePass();
   testSoftwareBvhThrowsForEmptyPrimitiveList();
   testSoftwareBvhBuildsFromSceneResourceTable();
   testSoftwareBvhUsesCompactUploadIndicesAndObjectTransform();

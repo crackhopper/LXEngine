@@ -3,6 +3,7 @@
 #include "backend/vulkan/details/commands/command_buffer_manager.hpp"
 #include "backend/vulkan/details/device.hpp"
 #include "backend/vulkan/details/device_resources/buffer.hpp"
+#include "core/offline/offline_render_work_graph.hpp"
 #include "core/offline/offline_render_validation.hpp"
 #include "core/raytracing/software_bvh.hpp"
 #include "core/scene/camera.hpp"
@@ -413,6 +414,26 @@ struct SoftwareComputeOfflineIntegrator::Impl final {
   [[nodiscard]] LX_core::offline::OfflineReadbackImage
   render(const LX_core::offline::OfflineRenderJob &job) {
     LX_core::offline::validateOfflineRenderJob(job);
+    const FrameGraph renderGraph =
+        LX_core::offline::buildOfflineRenderWorkGraph(job);
+    const CompiledFrameGraph compiledGraph = renderGraph.compile();
+    if (!compiledGraph.isValid()) {
+      throw std::runtime_error(compiledGraph.errorText());
+    }
+    if (renderGraph.getPasses().empty()) {
+      throw std::runtime_error("offline render graph has no passes");
+    }
+    const FramePass &rayTracePass = renderGraph.getPasses().front();
+    if (rayTracePass.queue.getItems().empty()) {
+      throw std::runtime_error("offline ray trace pass has no work item");
+    }
+    const RenderWorkItem &workItem = rayTracePass.queue.getItems().front();
+    if (workItem.domain != RenderDomain::Offline ||
+        workItem.kind != RenderWorkKind::ComputeDispatch) {
+      throw std::runtime_error(
+          "offline ray trace pass must produce offline compute work");
+    }
+
     const SceneResourceTableUploadView uploadView = job.scene.buildUploadView();
     validateUploadView(uploadView);
     const SceneSoftwareBvh bvh = SceneSoftwareBvh::build(uploadView);
@@ -503,8 +524,9 @@ struct SoftwareComputeOfflineIntegrator::Impl final {
                       pipeline);
     vkCmdBindDescriptorSets(cmd->getHandle(), VK_PIPELINE_BIND_POINT_COMPUTE,
                             pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
-    vkCmdDispatch(cmd->getHandle(), (job.output.width + 7) / 8,
-                  (job.output.height + 7) / 8, 1);
+    vkCmdDispatch(cmd->getHandle(), workItem.compute.groupCountX,
+                  workItem.compute.groupCountY,
+                  workItem.compute.groupCountZ);
     VkMemoryBarrier barrier{};
     barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
     barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
