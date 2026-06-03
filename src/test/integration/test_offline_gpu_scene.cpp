@@ -1,13 +1,14 @@
 #include "core/asset/material_instance.hpp"
+#include "core/asset/mesh.hpp"
 #include "core/asset/shader.hpp"
 #include "core/frame_graph/render_work_build_context.hpp"
 #include "core/offline/offline_render_job.hpp"
-#include "core/offline/offline_render_work_graph.hpp"
 #include "core/offline/offline_render_validation.hpp"
-#include "core/asset/mesh.hpp"
+#include "core/offline/offline_render_work_graph.hpp"
 #include "core/raytracing/software_bvh.hpp"
 #include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/scene_resource_table.hpp"
+#include "infra/shader_compiler/compiled_shader.hpp"
 #include "infra/shader_compiler/shader_compiler.hpp"
 #include "infra/shader_compiler/shader_reflector.hpp"
 
@@ -32,7 +33,7 @@ constexpr u32 LeafNodeFlag = 0x80000000u;
   do {                                                                         \
     if (!(cond)) {                                                             \
       std::cerr << "[FAIL] " << __FUNCTION__ << ":" << __LINE__ << " " << msg  \
-                << " (" #cond ")\n";                                          \
+                << " (" #cond ")\n";                                           \
       ++failures;                                                              \
     }                                                                          \
   } while (0)
@@ -58,8 +59,8 @@ MeshBufferSharedPtr makeMeshBuffer() {
   auto indices = std::vector<u32>{0, 1, 2};
   auto vb = VertexBuffer<TestVertex>::create(std::move(vertices));
   auto ib = IndexBuffer::create(std::move(indices));
-  return MeshBuffer::create(vb, ib, BoundingBox{{0.0f, 0.0f, 0.0f},
-                                                {1.0f, 1.0f, 0.0f}});
+  return MeshBuffer::create(
+      vb, ib, BoundingBox{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 0.0f}});
 }
 
 MeshBufferSharedPtr makeOffsetMeshBuffer() {
@@ -73,9 +74,8 @@ MeshBufferSharedPtr makeOffsetMeshBuffer() {
   auto vb = VertexBuffer<TestVertex>::create(std::move(vertices));
   auto ib = IndexBuffer::create(std::move(indices));
   auto storage = GeometryStorage::create(vb, ib);
-  return MeshBuffer::create(storage, 1, 0, 3, 3,
-                            BoundingBox{{0.0f, 0.0f, 0.0f},
-                                        {1.0f, 1.0f, 0.0f}});
+  return MeshBuffer::create(
+      storage, 1, 0, 3, 3, BoundingBox{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 0.0f}});
 }
 
 [[nodiscard]] u32 packedU32(float value) { return std::bit_cast<u32>(value); }
@@ -137,7 +137,8 @@ void testOfflineShaderUsesUnifiedSceneBuffers() {
     return;
   }
 
-  const auto bindings = LX_infra::ShaderReflector::reflect(compileResult.stages);
+  const auto bindings =
+      LX_infra::ShaderReflector::reflect(compileResult.stages);
   EXPECT(hasStorageBuffer(bindings, "SceneVertices"),
          "offline shader should use unified SceneVertices SSBO");
   EXPECT(hasStorageBuffer(bindings, "SceneIndices"),
@@ -240,8 +241,8 @@ void expectBvhBuildThrows(const SceneResourceTableUploadView &view,
   try {
     (void)SceneSoftwareBvh::build(view);
   } catch (const std::runtime_error &error) {
-    threw = std::string(error.what()).find(messageFragment) !=
-            std::string::npos;
+    threw =
+        std::string(error.what()).find(messageFragment) != std::string::npos;
   }
   EXPECT(threw, "malformed software BVH upload view should fail clearly");
 }
@@ -249,14 +250,12 @@ void expectBvhBuildThrows(const SceneResourceTableUploadView &view,
 void testSoftwareBvhBuildsFromSceneResourceTable() {
   SceneResourceTable table;
   const auto mesh = table.registerMesh(makeMeshBuffer());
-  const auto material =
-      table.registerMaterial(MaterialInstance::create(
-          MaterialTemplate::create("software_bvh_material")));
+  const auto material = table.registerMaterial(MaterialInstance::create(
+      MaterialTemplate::create("software_bvh_material")));
   ObjectResource object;
   object.mesh = mesh;
   object.material = material;
-  object.worldBounds = BoundingBox{{0.0f, 0.0f, 0.0f},
-                                   {1.0f, 1.0f, 0.0f}};
+  object.worldBounds = BoundingBox{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 0.0f}};
   const auto objectHandle = table.registerObject(object);
   (void)objectHandle;
 
@@ -284,9 +283,8 @@ void testSoftwareBvhUsesCompactUploadIndicesAndObjectTransform() {
   SceneResourceTable table;
   const auto baseMesh = table.registerMesh(makeMeshBuffer());
   const auto liveMesh = table.registerMesh(makeOffsetMeshBuffer());
-  const auto material =
-      table.registerMaterial(MaterialInstance::create(
-          MaterialTemplate::create("software_bvh_transform_material")));
+  const auto material = table.registerMaterial(MaterialInstance::create(
+      MaterialTemplate::create("software_bvh_transform_material")));
   (void)baseMesh;
 
   Mat4f objectToWorld = Mat4f::translate(Vec3f{2.0f, 3.0f, 4.0f});
@@ -294,8 +292,7 @@ void testSoftwareBvhUsesCompactUploadIndicesAndObjectTransform() {
   object.mesh = liveMesh;
   object.material = material;
   object.objectToWorld = objectToWorld;
-  object.worldBounds = BoundingBox{{2.0f, 3.0f, 4.0f},
-                                   {3.0f, 4.0f, 4.0f}};
+  object.worldBounds = BoundingBox{{2.0f, 3.0f, 4.0f}, {3.0f, 4.0f, 4.0f}};
   const auto objectHandle = table.registerObject(object);
   (void)objectHandle;
 
@@ -304,8 +301,9 @@ void testSoftwareBvhUsesCompactUploadIndicesAndObjectTransform() {
          "one indexed offset triangle should produce one BVH primitive");
   EXPECT(bvh.primitives().front().meshIndex == 1,
          "BVH should preserve compact mesh upload index");
-  EXPECT(bvh.nodes().front().boundsMinLeftFirst.x == 2.0f,
-         "root bounds should include object-space vertices transformed to world");
+  EXPECT(
+      bvh.nodes().front().boundsMinLeftFirst.x == 2.0f,
+      "root bounds should include object-space vertices transformed to world");
   EXPECT(bvh.nodes().front().boundsMinLeftFirst.y == 3.0f,
          "root bounds should include translated y minimum");
   EXPECT(bvh.nodes().front().boundsMinLeftFirst.z == 4.0f,
@@ -357,8 +355,8 @@ void testSoftwareBvhLeafRangesReferenceReorderedPrimitives() {
     EXPECT(count > 0, "leaf should reference at least one primitive");
     EXPECT(static_cast<usize>(first) + count <= bvh.primitives().size(),
            "leaf primitive range should stay inside reordered primitive array");
-    for (u32 i = 0; i < count &&
-                    static_cast<usize>(first) + i < bvh.primitives().size();
+    for (u32 i = 0;
+         i < count && static_cast<usize>(first) + i < bvh.primitives().size();
          ++i) {
       const auto primitive = bvh.primitives()[first + i];
       EXPECT(primitive.primitiveIndex < visited.size(),
@@ -381,15 +379,14 @@ void testSoftwareBvhLayoutContract() {
          "SceneSoftwareBvhPrimitive should only store derived BVH references");
 }
 
-void expectInvalidOfflineJobThrows(
-    const offline::OfflineRenderJob &job,
-    const std::string &messageFragment) {
+void expectInvalidOfflineJobThrows(const offline::OfflineRenderJob &job,
+                                   const std::string &messageFragment) {
   bool threw = false;
   try {
     offline::validateOfflineRenderJob(job);
   } catch (const std::runtime_error &error) {
-    threw = std::string(error.what()).find(messageFragment) !=
-            std::string::npos;
+    threw =
+        std::string(error.what()).find(messageFragment) != std::string::npos;
   }
   EXPECT(threw, "invalid offline render job should fail before Vulkan setup");
 }
@@ -399,23 +396,21 @@ void expectInvalidOfflineJobThrows(
   job.output.width = 1;
   job.output.height = 1;
   const auto mesh = job.scene.registerMesh(makeMeshBuffer());
-  const auto material =
-      job.scene.registerMaterial(MaterialInstance::create(
-          MaterialTemplate::create("offline_validation_material")));
+  const auto material = job.scene.registerMaterial(MaterialInstance::create(
+      MaterialTemplate::create("offline_validation_material")));
   ObjectResource object;
   object.mesh = mesh;
   object.material = material;
-  object.worldBounds = BoundingBox{{0.0f, 0.0f, 0.0f},
-                                   {1.0f, 1.0f, 0.0f}};
+  object.worldBounds = BoundingBox{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 0.0f}};
   const auto objectHandle = job.scene.registerObject(object);
   (void)objectHandle;
   return job;
 }
 
 [[nodiscard]] CameraResource makeValidationCameraResource() {
-  const CameraPose pose = makeCameraPose(Vec3f{0.0f, 0.0f, 3.0f},
-                                         Vec3f{0.0f, 0.0f, -1.0f},
-                                         Vec3f{0.0f, 1.0f, 0.0f});
+  const CameraPose pose =
+      makeCameraPose(Vec3f{0.0f, 0.0f, 3.0f}, Vec3f{0.0f, 0.0f, -1.0f},
+                     Vec3f{0.0f, 1.0f, 0.0f});
   const CameraProjection projection;
   return CameraResource{
       .pose = pose,
@@ -460,9 +455,38 @@ void testOfflineRenderWorkGraphBuildsRayTracePass() {
          "offline work item should mark offline domain");
   EXPECT(item.kind == RenderWorkKind::ComputeDispatch,
          "offline ray trace pass should execute as compute dispatch");
-  EXPECT(item.compute.groupCountX == 3 && item.compute.groupCountY == 2 &&
-             item.compute.groupCountZ == 1,
-         "offline dispatch groups should round output dimensions to 8x8 groups");
+  EXPECT(!item.shaderInfo,
+         "legacy offline build without shader should not silently invent one");
+  EXPECT(
+      item.compute.groupCountX == 3 && item.compute.groupCountY == 2 &&
+          item.compute.groupCountZ == 1,
+      "offline dispatch groups should round output dimensions to 8x8 groups");
+}
+
+void testOfflineRenderWorkGraphCanCarryComputeShader() {
+  offline::OfflineRenderJob job = makeRenderableJobWithCamera();
+  auto compileResult =
+      LX_infra::ShaderCompiler::compileFile(findOfflineShaderSourcePath());
+  const auto shader = std::make_shared<LX_infra::CompiledShader>(
+      std::move(compileResult.stages),
+      LX_infra::ShaderReflector::reflect(compileResult.stages));
+  EXPECT(shader != nullptr, "offline shader should compile for graph build");
+  if (!shader) {
+    return;
+  }
+
+  FrameGraph graph = offline::createOfflineRenderFrameGraph(job.output);
+  graph.build(LX_core::RenderWorkBuildContext::offline(job, shader));
+  EXPECT(!graph.getPasses().empty(),
+         "offline graph should have pass when built with shader");
+  if (graph.getPasses().empty() ||
+      graph.getPasses().front().queue.getItems().empty()) {
+    return;
+  }
+  const RenderWorkItem &item =
+      graph.getPasses().front().queue.getItems().front();
+  EXPECT(item.shaderInfo == shader,
+         "offline work item should carry compute shader from build context");
 }
 
 void testOfflineRenderJobValidationRejectsZeroDimensions() {
@@ -494,6 +518,7 @@ int main() {
   testOfflineRenderJobValidationRejectsMissingCamera();
   testOfflineRenderJobValidationRejectsNonRenderableScene();
   testOfflineRenderWorkGraphBuildsRayTracePass();
+  testOfflineRenderWorkGraphCanCarryComputeShader();
   testSoftwareBvhThrowsForEmptyPrimitiveList();
   testSoftwareBvhBuildsFromSceneResourceTable();
   testSoftwareBvhUsesCompactUploadIndicesAndObjectTransform();

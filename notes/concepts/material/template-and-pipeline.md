@@ -84,7 +84,7 @@ passes:
 |---|---|
 | `MaterialTemplate` | pass 结构、shader program、render state、material interface |
 | `SceneNode` | 组合 mesh/material，生成 per-pass `PipelineKey` |
-| `FrameGraph` / `RenderQueue` | 汇总 draw items 和 unique build desc |
+| `FrameGraph` / `RenderWorkQueue` | 汇总 work items 和 unique build desc |
 | backend `PipelineCache` | 按 `PipelineKey` 创建、保存、查找 pipeline 对象 |
 
 ## Roadmap 中哪些关系会变化

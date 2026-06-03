@@ -4,8 +4,9 @@
 #include "core/pipeline/pipeline_key.hpp"
 #include "core/rhi/gpu_resource.hpp"
 #include "core/utils/string_table.hpp"
-#include "pipelines/pipeline.hpp"
+#include "pipelines/graphics_pipeline.hpp"
 #include "pipelines/pipeline_cache.hpp"
+#include "pipelines/pipeline_ref.hpp"
 #include <functional>
 #include <memory>
 #include <optional>
@@ -51,8 +52,7 @@ struct VulkanCubemapBakeAttachment {
   VkImageUsageFlags usage = 0;
   VkExtent2D baseExtent{};
   u32 mipLevels = 1;
-  std::unordered_map<usize, std::unique_ptr<VulkanImageView>>
-      subresourceViews;
+  std::unordered_map<usize, std::unique_ptr<VulkanImageView>> subresourceViews;
 };
 
 struct VulkanFrameGraphAttachmentKey {
@@ -123,9 +123,7 @@ public:
   VulkanRenderPass &getRenderPass();
   VulkanRenderPass &getRenderPass(const RenderTargetDesc &target);
 
-  /// Delegates to the embedded PipelineCache. Kept for backward compatibility
-  /// with tests and the renderer hot path; prefers a preloaded cache.
-  VulkanPipeline &getOrCreateRenderPipeline(const LX_core::RenderWorkItem &item);
+  VulkanPipelineRef getOrCreatePipeline(const LX_core::RenderWorkItem &item);
 
   /// Bulk preload — intended to be called once per scene init from the
   /// VulkanRenderer after building a FrameGraph.

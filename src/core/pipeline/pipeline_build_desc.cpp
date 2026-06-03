@@ -11,14 +11,15 @@ namespace LX_core {
 namespace {
 
 /*
-@source_analysis.section filterVertexLayoutToShaderInputs：让 pipeline 只声明 shader 真正读取的输入
-Mesh 的 vertex layout 可能包含 shader 当前 pass 不读取的属性。pipeline 创建时如果把所有
-属性都照搬进去，会让同一个 mesh 在不同 shader/pass 下的 vertex input state 过宽，也会增加
-“shader 没声明但 pipeline 填了”的噪声。
+@source_analysis.section filterVertexLayoutToShaderInputs：让 pipeline 只声明
+shader 真正读取的输入 Mesh 的 vertex layout 可能包含 shader 当前 pass
+不读取的属性。pipeline 创建时如果把所有 属性都照搬进去，会让同一个 mesh 在不同
+shader/pass 下的 vertex input state 过宽，也会增加 “shader 没声明但 pipeline
+填了”的噪声。
 
-这里按 shader reflection 得到的 vertex inputs 过滤 layout，只保留当前 shader 需要的
-location/type。前置校验已经在 `SceneNode` 做过；这里的 assert 是为了保证
-`PipelineBuildDesc::fromRenderWorkItem` 只消费已经通过验证的 raster draw
+这里按 shader reflection 得到的 vertex inputs 过滤 layout，只保留当前 shader
+需要的 location/type。前置校验已经在 `SceneNode` 做过；这里的 assert 是为了保证
+`PipelineBuildDesc::fromRenderWorkItem` 只消费已经通过验证的 raster / compute
 work item。
 */
 VertexLayout filterVertexLayoutToShaderInputs(const VertexLayout &layout,
@@ -56,8 +57,26 @@ VertexLayout filterVertexLayoutToShaderInputs(const VertexLayout &layout,
 
 PipelineBuildDesc
 PipelineBuildDesc::fromRenderWorkItem(const RenderWorkItem &item) {
+  if (item.kind == RenderWorkKind::ComputeDispatch) {
+    assert(item.shaderInfo &&
+           "PipelineBuildDesc::fromRenderWorkItem: compute shaderInfo "
+           "required");
+    PipelineBuildDesc info;
+    info.type = PipelineBuildType::Compute;
+    info.key = item.pipelineKey;
+    info.target = item.target;
+    info.stages = item.shaderInfo->getAllStages();
+    info.bindings = item.shaderInfo->getReflectionBindings();
+    info.pushConstant = PushConstantRange{};
+    info.pushConstant.size = 0;
+    info.pushConstant.stageFlagsMask =
+        static_cast<ShaderStageMask32>(ShaderStage::Compute);
+    return info;
+  }
+
   const auto &raster = item.raster;
-  assert(item.kind == RenderWorkKind::RasterDraw &&
+  assert((item.kind == RenderWorkKind::RasterDraw ||
+          item.kind == RenderWorkKind::RasterBatch) &&
          "PipelineBuildDesc::fromRenderWorkItem: raster draw item required");
   assert(item.shaderInfo &&
          "PipelineBuildDesc::fromRenderWorkItem: shaderInfo required");
@@ -69,6 +88,7 @@ PipelineBuildDesc::fromRenderWorkItem(const RenderWorkItem &item) {
          "PipelineBuildDesc::fromRenderWorkItem: material required");
 
   PipelineBuildDesc info;
+  info.type = PipelineBuildType::Graphics;
   info.key = item.pipelineKey;
   info.target = item.target;
   info.stages = item.shaderInfo->getAllStages();
@@ -77,8 +97,8 @@ PipelineBuildDesc::fromRenderWorkItem(const RenderWorkItem &item) {
   auto vb = std::dynamic_pointer_cast<IVertexBuffer>(raster.vertexBuffer);
   assert(vb && "PipelineBuildDesc::fromRenderWorkItem: vertex buffer is not "
                "IVertexBuffer");
-  info.vertexLayout = filterVertexLayoutToShaderInputs(vb->getLayout(),
-                                                       *item.shaderInfo);
+  info.vertexLayout =
+      filterVertexLayoutToShaderInputs(vb->getLayout(), *item.shaderInfo);
 
   auto ib = std::dynamic_pointer_cast<IndexBuffer>(raster.indexBuffer);
   assert(

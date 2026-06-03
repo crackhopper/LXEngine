@@ -1,6 +1,6 @@
 # Scene
 
-> Scene 负责持有 renderables、camera、light，并为 `RenderQueue` 提供 scene-level 资源。真正的 draw item 组装已经从“现场拼装”改成“消费 `SceneNode` 预验证结果”。
+> Scene 负责持有 renderables、camera、light，并为 `RenderWorkQueue` 提供 scene-level 资源。真正的 work item 组装消费 `SceneNode` 预验证结果。
 >
 > 相关 spec: `openspec/specs/scene-node-validation/spec.md` + `openspec/specs/frame-graph/spec.md` + `openspec/specs/pipeline-signature/spec.md`
 
@@ -22,7 +22,7 @@
 - `transform hierarchy`：`SceneNode` 额外维护 `Transform` 形式的 `localTransform`、派生 `Mat4f worldTransform`、可选 parent 和 child 关系；scene 仍然平铺持有 renderable，hierarchy 只负责空间组合。
 - `scene root`：`Scene` 内部持有一个真实的显式 root 节点；`findByPath("/")` 返回它，真实 top-level 节点作为 root 的 children，路径仍然形如 `/world`。
 - `ValidatedRenderablePassData`：`pass -> validated entry` 缓存项，保存 queue 需要的稳定结构结果。
-- `RenderingItem`：一次 draw 的完整上下文，字段仍是 `shaderInfo`、`material`、`drawData`、`vertexBuffer`、`indexBuffer`、`descriptorResources`、`pass`、`pipelineKey`。
+- `RenderWorkItem`：一次 pipeline work 的完整上下文，字段包括 `domain`、`kind`、`shaderInfo`、`material`、`raster` / `compute` payload、`descriptorResources`、`pass`、`target`、`pipelineKey`。
 - `SceneResourceTable`：scene 级 GPU 数据合同，统一持有 mesh、material、object、camera、light 等资源 handle，并通过 `buildUploadView()` 导出 `SceneGpu*` 记录供 realtime/bindless/offline 路径消费。
 - `SceneSoftwareBvh`：从 `SceneResourceTableUploadView` 派生的软件 ray tracing 加速结构，只保存 BVH 节点和 primitive 重排引用，不拥有第二份 scene 数据。
 - `visibility mask`：`SceneNode` 自身携带的 layer bitmask；camera 持有独立 `cullingMask`，queue 构建时做交集判断。
@@ -34,9 +34,9 @@
 3. `Scene::addRenderable(node)` 检查同一 scene 内 `nodeName` 唯一，为 `SceneNode` 写入 `sceneName/nodeName` 的调试 `StringID`，并接管 shared `MaterialInstance` 的 pass-state 传播。
 4. 编辑器/命令路径走 `SceneNode::setName/getPath` 和 `Scene::findByPath/dumpTree`；这条路径名字与 `nodeName` 解耦，不参与渲染身份。
 5. 如果节点挂在 parent 下，`SceneNode` 会按 `parent.world * local.toMat4()` 懒更新自身 `worldTransform`，并把结果写回 `PerDrawData.model`。
-6. `RenderQueue::buildFromScene(scene, pass, target)` 先取一次 `scene.getSceneLevelResources(pass, target)`。
+6. `RenderWorkQueue::build(context, pass, target)` 先通过 realtime context 取一次 `scene.getSceneLevelResources(pass, target)`。
 7. queue 先收集当前 `target` 下所有匹配 camera 的 `cullingMask` 并做按位 OR；renderable 只有在 `visibilityMask & combinedCameraMask != 0` 时才继续参与当前 queue。
-8. queue 把 scene-level 资源追加到 descriptor 列表末尾，生成 `RenderingItem` 并排序。
+8. queue 把 scene-level 资源追加到 descriptor 列表末尾，生成 `RenderWorkItem` 并排序。
 9. 需要 SSBO/bindless/offline 数据时，调用方从 `SceneResourceTable::buildUploadView()` 取得只读上传视图；软件 BVH、离线 compute integrator 和后续硬件 RT adapter 都从这份视图派生数据。
 
 ## 关键约束
@@ -113,7 +113,7 @@
 
 - 想改结构性校验：看 `src/core/scene/object.cpp` 里的 `rebuildValidatedCache()`。
 - 想改 scene-level 资源筛选：看 `Scene::getSceneLevelResources()`。
-- 想改 camera/renderable 可见性过滤：看 `Scene::getCombinedCameraCullingMask()` 和 `RenderQueue::buildFromScene()`。
+- 想改 camera/renderable 可见性过滤：看 `Scene::getCombinedCameraCullingMask()` 和 `RenderWorkQueue::build()`。
 - 想改 shared material 的结构传播、nodeName 唯一性、路径 root / `findByPath()` / `dumpTree()`：看 `Scene::addRenderable()`、`Scene::findByPath()`、`Scene::dumpTree()`、`Scene::revalidateNodesUsing(...)`，以及 `src/core/scene/components/material_component.cpp`。
 
 ## 关联文档

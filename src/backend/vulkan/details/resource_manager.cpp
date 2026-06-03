@@ -27,8 +27,7 @@ constexpr ResourceCacheIdentity kInactiveFrameGracePeriod = 2;
 constexpr int kDebugBurstFrames = 3;
 
 usize cubemapSubresourceKey(u32 mipLevel, u32 faceLayer) {
-  return (static_cast<usize>(mipLevel) << 32u) |
-         static_cast<usize>(faceLayer);
+  return (static_cast<usize>(mipLevel) << 32u) | static_cast<usize>(faceLayer);
 }
 
 VkFormat toVkFormat(TextureFormat format) {
@@ -247,13 +246,13 @@ VulkanResourceManager::createGpuResource(const IGpuResourceSharedPtr &cpuRes) {
     VkImageUsageFlags usage =
         VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
     if (desc.dimension == TextureDimension::TextureCube) {
-      return std::make_shared<VulkanAnyResource>(VulkanTexture::createCube(
-          m_device, desc.width, desc.height, vkFormat, usage, desc.mipLevels,
-          VK_FILTER_LINEAR));
+      return std::make_shared<VulkanAnyResource>(
+          VulkanTexture::createCube(m_device, desc.width, desc.height, vkFormat,
+                                    usage, desc.mipLevels, VK_FILTER_LINEAR));
     }
-    return std::make_shared<VulkanAnyResource>(VulkanTexture::create2D(
-        m_device, desc.width, desc.height, vkFormat, usage, desc.mipLevels,
-        VK_FILTER_LINEAR));
+    return std::make_shared<VulkanAnyResource>(
+        VulkanTexture::create2D(m_device, desc.width, desc.height, vkFormat,
+                                usage, desc.mipLevels, VK_FILTER_LINEAR));
   }
 
   default:
@@ -425,17 +424,25 @@ VulkanResourceManager::getRenderPass(const RenderTargetDesc &target) {
   return *insertedIt->second;
 }
 
-VulkanPipeline &VulkanResourceManager::getOrCreateRenderPipeline(
+VulkanPipelineRef VulkanResourceManager::getOrCreatePipeline(
     const LX_core::RenderWorkItem &item) {
-  return m_pipelineCache->getOrCreate(
-      LX_core::PipelineBuildDesc::fromRenderWorkItem(item),
-      getRenderPass(item.target).getHandle());
+  LX_core::PipelineBuildDesc info =
+      LX_core::PipelineBuildDesc::fromRenderWorkItem(item);
+  const VkRenderPass renderPass =
+      info.type == LX_core::PipelineBuildType::Graphics
+          ? getRenderPass(info.target).getHandle()
+          : VK_NULL_HANDLE;
+  return m_pipelineCache->getOrCreatePipeline(info, renderPass);
 }
 
 void VulkanResourceManager::preloadPipelines(
     const std::vector<LX_core::PipelineBuildDesc> &infos) {
   for (const auto &info : infos) {
-    m_pipelineCache->preload({info}, getRenderPass(info.target).getHandle());
+    const VkRenderPass renderPass =
+        info.type == LX_core::PipelineBuildType::Graphics
+            ? getRenderPass(info.target).getHandle()
+            : VK_NULL_HANDLE;
+    m_pipelineCache->preload({info}, renderPass);
   }
 }
 
@@ -553,10 +560,9 @@ VulkanResourceManager::createOrGetCubemapBakeAttachment(
   }
 
   VulkanCubemapBakeAttachment attachment;
-  attachment.texture = VulkanTexture::createCube(m_device, baseExtent.width,
-                                                 baseExtent.height, format,
-                                                 usage, mipLevels,
-                                                 VK_FILTER_LINEAR);
+  attachment.texture =
+      VulkanTexture::createCube(m_device, baseExtent.width, baseExtent.height,
+                                format, usage, mipLevels, VK_FILTER_LINEAR);
   attachment.format = format;
   attachment.usage = usage;
   attachment.baseExtent = baseExtent;

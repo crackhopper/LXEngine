@@ -8,7 +8,7 @@
 
 - 统一 mesh、vertex buffer、index buffer 的抽象。
 - 让 vertex layout 成为 pipeline identity 的一部分。
-- 让 backend 能从 `RenderingItem` 里还原构建 pipeline 所需的输入布局。
+- 让 backend 能从 `RenderWorkItem` 里还原构建 graphics pipeline 所需的输入布局。
 
 ## 核心对象
 
@@ -24,7 +24,7 @@
 2. `Mesh::create(vb, ib)`。
 3. `SceneNode` 持有 mesh（`IRenderable` 当前唯一具体实现）。
 4. `mesh->getPipelineSignature(pass)` 贡献 object-side signature。
-5. `PipelineBuildDesc::fromRenderingItem(item)` 读回 layout 和 topology。
+5. `PipelineBuildDesc::fromRenderWorkItem(item)` 读回 layout 和 topology。
 
 ## 关键约束
 
@@ -37,7 +37,7 @@
 ## 当前实现边界
 
 - `Mesh::getPipelineSignature(pass)` 当前直接组合 `vertexBuffer->getPipelineSignature()` 和 `indexBuffer->getPipelineSignature()`，最终 compose 成 `TypeTag::MeshRender`。
-- `PipelineBuildDesc::fromRenderingItem(...)` 实际读取 layout 的方式不是通过 `Mesh`，而是把 `item.vertexBuffer` 动态转成 `IVertexBuffer`，把 `item.indexBuffer` 动态转成 `IndexBuffer` 后直接取 `getLayout()` 和 `getTopology()`。
+- `PipelineBuildDesc::fromRenderWorkItem(...)` 实际读取 layout 的方式不是通过 `Mesh`，而是把 `item.raster.vertexBuffer` 动态转成 `IVertexBuffer`，把 `item.raster.indexBuffer` 动态转成 `IndexBuffer` 后直接取 `getLayout()` 和 `getTopology()`。
 - `IndexBuffer` 现在直接承担两件事：暴露索引字节，以及暴露 topology 供 pipeline 装配使用。
 - 常用顶点类型目前直接定义在 `vertex_buffer.hpp`，例如 `VertexPos`、`VertexPBR`、`VertexPosNormalUvBone`。
 

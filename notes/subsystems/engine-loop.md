@@ -18,7 +18,7 @@ while (running) {
 
 这能跑，但有三个问题：
 
-- 场景启动和每帧执行容易混在一起看，进而误解 `initScene/buildFromScene/preloadPipelines` 是 per-frame 路径。
+- 场景启动和每帧执行容易混在一起看，进而误解 `initScene/FrameGraph::build/preloadPipelines` 是 per-frame 路径。
 - 每个 demo / tutorial 都要自己决定 update hook 放在哪里，时间推进在什么时候发生。
 - 如果同一个 loop 对象被复用，scene / clock / update hook 的生命周期没有统一 owner。
 
@@ -74,7 +74,7 @@ EngineLoop::startScene(scene)
 
 - swapchain target 派生
 - camera target backfill
-- `FrameGraph::buildFromScene(...)`
+- `FrameGraph::build(...)`
 - pipeline preload
 
 ### 执行一帧

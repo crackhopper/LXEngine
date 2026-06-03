@@ -24,7 +24,7 @@
 6. [场景系统](../scene-system/index.md)：理解 scene、node、component、camera、light、renderable。
 7. [材质系统](../concepts/material/index.md)：理解 material pass、pipeline identity 和未来 bindless 方向。
 8. [引擎循环](../concepts/engine-loop.md)：理解一帧如何驱动 window、scene、renderer 和 GUI。
-9. [渲染管线](rendering-pipeline/index.md)：在前面概念齐备后，再按 FrameGraph、RenderTarget、Shadow pass、CSM、RenderQueue 的顺序拆开当前多 pass 数据流。
+9. [渲染管线](rendering-pipeline/index.md)：在前面概念齐备后，再按 FrameGraph、RenderWork、RenderTarget、Shadow pass、CSM 的顺序拆开当前多 pass 数据流。
 10. [编辑器系统](../design/editor-system/index.md)：理解 `lxe_editor` 如何把 UI、CommandBus、SceneRuntime、API 串起来。
 
 ## 当前章节结构

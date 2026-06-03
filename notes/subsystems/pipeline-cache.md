@@ -12,17 +12,22 @@
 
 ## 核心对象
 
-- `find(key)`：只查，不建。
-- `getOrCreate(desc, renderPass)`：查不到就建，并打 warning。
-- `preload(descs, renderPass)`：批量预构建，不打 warning。
-- `m_cache`：`std::unordered_map<PipelineKey, VulkanPipelineUniquePtr, PipelineKey::Hash>`，由 cache 自己拥有 pipeline 生命周期。
+| 对象 / API | 当前职责 |
+|---|---|
+| `find(key)` | 只查 graphics cache，不创建 |
+| `getOrCreate(desc, renderPass)` | 创建或返回 `VulkanGraphicsPipeline&`，输入必须是 graphics desc |
+| `getOrCreateCompute(desc)` | 创建或返回 `VulkanComputePipeline&`，输入必须是 compute desc |
+| `getOrCreatePipeline(desc, renderPass)` | 按 `PipelineBuildType` 返回 `VulkanPipelineRef` |
+| `preload(descs, renderPass)` | 批量预构建 graphics / compute pipeline，不打 warning |
+| `m_cache` | `std::unordered_map<PipelineKey, VulkanGraphicsPipelineUniquePtr, PipelineKey::Hash>` |
+| `m_computeCache` | `std::unordered_map<PipelineKey, VulkanComputePipelineUniquePtr, PipelineKey::Hash>` |
 
 ## 典型数据流
 
 1. `FrameGraph` 收集 `PipelineBuildDesc`。
 2. `PipelineCache::preload(...)` 预构建。
 3. `VulkanResourceManager::preloadPipelines(...)` 只是转发到 `PipelineCache::preload(...)`。
-4. draw 时 `VulkanResourceManager::getOrCreateRenderPipeline(item)` 直接调用 `PipelineCache::getOrCreate(...)`。
+4. 执行 `RenderWorkItem` 时，`VulkanResourceManager::getOrCreatePipeline(item)` 从 item 派生 build desc，再调用 `PipelineCache::getOrCreatePipeline(...)`。
 5. 如果 preload 漏了，运行时 miss 会现场补建并打印 warning。
 
 ## 关键约束
@@ -31,13 +36,15 @@
 - `getOrCreate` miss 时必须可观测，方便排查 preload 漏项。
 - `preload` 必须幂等。
 - `PipelineKey` 和 `PipelineBuildDesc` 分工明确，不能混用。
-- `getOrCreate(...)` 命中时直接返回缓存里的 `VulkanPipeline&`；miss 时先构建 `VulkanShaderGraphicsPipeline`，再把 `unique_ptr` 放进 `m_cache`。
-- `preload(...)` 当前不是单独的构建路径，而是通过一个 `m_suppressMissWarning` 标志临时关闭日志，然后循环调用 `getOrCreate(...)`。
+- `getOrCreate(...)` 命中时直接返回缓存里的 `VulkanGraphicsPipeline&`；miss 时先构建 `VulkanShaderGraphicsPipeline`，再把 `unique_ptr` 放进 `m_cache`。
+- `getOrCreateCompute(...)` 命中时直接返回缓存里的 `VulkanComputePipeline&`；miss 时创建 compute pipeline，再放进 `m_computeCache`。
+- `getOrCreatePipeline(...)` 是统一入口，返回 `VulkanPipelineRef`，让 command buffer 在 bind 阶段再分发 graphics / compute。
+- `preload(...)` 当前不是单独的构建路径，而是通过一个 `m_suppressMissWarning` 标志临时关闭日志，然后循环调用 `getOrCreatePipeline(...)`。
 
 ## 当前实现边界
 
-- `find(...)` 已实现，但当前 renderer 热路径没有先查 `find()` 再 fallback，而是直接走 `getOrCreate(...)`。
-- `VulkanResourceManager` 仍保留 `getOrCreateRenderPipeline(item)` 这个旧入口，但它已经只是对 `PipelineCache` 的转发层。
+- `find(...)` 已实现，但当前 renderer 热路径没有先查 `find()` 再 fallback，而是直接走 `getOrCreatePipeline(...)`。
+- `VulkanResourceManager` 对外暴露统一的 `getOrCreatePipeline(item)`，不再区分 graphics-only 和 compute-only 调用入口。
 - miss 日志会打印 `GlobalStringTable::toDebugString(info.key.id)`，用于定位是哪一类 pipeline 没被 preload 到。
 - 当前并没有单独的 eviction / LRU / 容量上限逻辑；cache 生命周期就是 renderer 生命周期内常驻。
 

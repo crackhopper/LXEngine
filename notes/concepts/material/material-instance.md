@@ -70,7 +70,7 @@ loader 会先确认 `albedoMap` / `normalMap` 是 shader reflection 中的 mater
 |---|---|---|
 | 改 `MaterialUBO.baseColor` | 否 | 否 |
 | 改 `albedoMap` 绑定 | 否 | 否 |
-| 关闭 `Forward` pass | 否，key 本身不变 | 是，该 pass 跳过 `RenderingItem` 生成 |
+| 关闭 `Forward` pass | 否，key 本身不变 | 是，该 pass 跳过 `RenderWorkItem` 生成 |
 | 换另一个 template/shader | 是 | 可能改变 |
 
 因此 pass enable 变化会通知外层重建 `SceneNode` 的 validated cache。

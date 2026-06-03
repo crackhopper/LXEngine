@@ -66,7 +66,7 @@ resources:
   albedoMap: white        # -> MaterialInstance::setTexture(StringID("albedoMap"), ...)
 ```
 
-它只能给 material-owned `Texture2D` / `TextureCube` binding 设置默认纹理。`CameraUBO`、`SceneLightsUBO`、`Bones` 这些系统名字不应该写在这里。它们由 scene/camera/light/skeleton 路径注入，并在 draw 进入 `RenderQueue` 前拼到 descriptor resources 里。
+它只能给 material-owned `Texture2D` / `TextureCube` binding 设置默认纹理。`CameraUBO`、`SceneLightsUBO`、`Bones` 这些系统名字不应该写在这里。它们由 scene/camera/light/skeleton 路径提供，并在 `RenderWorkQueue::build(...)` 生成 work item 时拼到 descriptor resources 里。
 
 ## Variants 是 pass 级 shader 结构
 

@@ -80,6 +80,6 @@ graph.addPass(FramePass{Pass_Forward,
 ## 继续阅读
 
 - [Render Target：Pass 的输出形状](render-target.md)
-- [RenderQueue：把 Scene 收敛成 Draw 列表](render-queue.md)
+- [RenderWorkQueue：把 Scene 收敛成 Work 列表](render-queue.md)
 - [FrameGraph 源码分析](../../source_analysis/src/core/frame_graph/frame_graph.md)
 - [REQ-042-a](../../requirements/finished/042-a-frame-graph-v1-resource-target-pass-execution.md)

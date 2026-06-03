@@ -14,17 +14,18 @@ namespace LX_core {
 namespace {
 
 /*
-@source_analysis.section makeItemFromValidatedData：把 validated 结构数据翻译成 RenderWorkItem
-这是一个 anonymous-namespace 内的纯字段拷贝函数，存在的理由是把"翻译"这件事
-和"过滤 + 入队"分开：`build` 只关心条件判断和 sceneResources 追加，
-逐字段拷贝从这里走。
+@source_analysis.section makeItemFromValidatedData：把 validated 结构数据翻译成
+RenderWorkItem 这是一个 anonymous-namespace
+内的纯字段拷贝函数，存在的理由是把"翻译"这件事 和"过滤 + 入队"分开：`build`
+只关心条件判断和 sceneResources 追加， 逐字段拷贝从这里走。
 
 不做合并、不做校验，因为 `ValidatedRenderablePassData` 的命名已经承诺了
 "pass-level validation 已经完成"。这里把 pass 内可验证的结构事实转成 backend
 消费的 `RenderWorkItem`；target-dependent 的 `pipelineKey` 不在 validated
 数据里缓存，而是在 `build` 拿到 target 后再组合。
 */
-RenderWorkItem makeItemFromValidatedData(const ValidatedRenderablePassData &data) {
+RenderWorkItem
+makeItemFromValidatedData(const ValidatedRenderablePassData &data) {
   RenderWorkItem item;
   item.domain = RenderDomain::Realtime;
   item.kind = RenderWorkKind::RasterDraw;
@@ -47,8 +48,8 @@ bool shaderConsumesIbl(const ShaderPtr &shader) {
   for (const auto &binding : shader->getReflectionBindings()) {
     const std::string_view name(binding.name);
     if (name == "SkyboxMap" || name == "IrradianceMap" ||
-        name == "PrefilteredEnvMap" ||
-        name == "BrdfLut" || name == "EnvironmentUBO") {
+        name == "PrefilteredEnvMap" || name == "BrdfLut" ||
+        name == "EnvironmentUBO") {
       return true;
     }
   }
@@ -71,8 +72,8 @@ void RenderWorkQueue::sort() {
 }
 
 RenderWorkItem makeOfflineComputeItem(const offline::OfflineRenderJob &job,
-                                      StringID pass,
-                                      const RenderTarget &target) {
+                                      StringID pass, const RenderTarget &target,
+                                      IShaderSharedPtr shader) {
   offline::OfflineSceneStorageResources storageResources =
       offline::buildOfflineSceneStorageResources(job);
   RenderWorkItem item;
@@ -83,8 +84,14 @@ RenderWorkItem makeOfflineComputeItem(const offline::OfflineRenderJob &job,
   item.compute.groupCountX = (job.output.width + 7u) / 8u;
   item.compute.groupCountY = (job.output.height + 7u) / 8u;
   item.compute.groupCountZ = 1u;
+  item.shaderInfo = std::move(shader);
   item.descriptorResources = std::move(storageResources.descriptorResources);
   item.debugId = StringID("OfflineRayTraceDispatch");
+  item.objectSignature = StringID("OfflineSceneGpuData");
+  item.materialSignature = StringID("OfflinePrimaryRayCompute");
+  item.pipelineKey =
+      PipelineKey::build(item.objectSignature, item.materialSignature,
+                         item.target.getPipelineSignature());
   return item;
 }
 
@@ -106,8 +113,8 @@ void RenderWorkQueue::build(const RenderWorkBuildContext &context,
   if (context.domain() == RenderDomain::Offline) {
     clearItems();
     if (pass == Pass_OfflineRayTrace) {
-      m_items.push_back(
-          makeOfflineComputeItem(context.offlineJob(), pass, target));
+      m_items.push_back(makeOfflineComputeItem(
+          context.offlineJob(), pass, target, context.offlineShader()));
     }
     return;
   }
@@ -162,8 +169,7 @@ void RenderWorkQueue::buildRealtime(
     if (shaderConsumesIbl(item.shaderInfo)) {
       auto iblResources = scene.getIblEnvironmentResources();
       item.descriptorResources.insert(item.descriptorResources.end(),
-                                      iblResources.begin(),
-                                      iblResources.end());
+                                      iblResources.begin(), iblResources.end());
     }
 
     m_items.push_back(std::move(item));

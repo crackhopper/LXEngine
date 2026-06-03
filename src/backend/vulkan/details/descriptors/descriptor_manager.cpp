@@ -1,7 +1,7 @@
 #include "descriptor_manager.hpp"
-#include "../device.hpp"
-#include "core/utils/hash.hpp"
 #include "core/utils/env.hpp"
+#include "core/utils/hash.hpp"
+#include "../device.hpp"
 #include <array>
 #include <iostream>
 #include <stdexcept>
@@ -11,7 +11,7 @@
 namespace LX_core {
 namespace backend {
 
-// Defined in pipeline.cpp — reused here so descriptor layout creation
+// Defined in graphics_pipeline.cpp — reused here so descriptor layout creation
 // mirrors the mapping pipeline layout uses.
 VkDescriptorType toVkDescriptorType(LX_core::ShaderPropertyType t);
 VkShaderStageFlags toVkShaderStageFlags(LX_core::ShaderStage mask);
@@ -32,8 +32,7 @@ bool DescriptorLayoutKey::operator==(const DescriptorLayoutKey &other) const {
   return true;
 }
 
-usize
-DescriptorLayoutHasher::operator()(const DescriptorLayoutKey &key) const {
+usize DescriptorLayoutHasher::operator()(const DescriptorLayoutKey &key) const {
   usize res = 0;
   for (const auto &b : key.bindings) {
     usize bindingHash = 0;
@@ -60,8 +59,7 @@ DescriptorSet::~DescriptorSet() {
 }
 
 // --- 更新 Buffer 资源 ---
-void DescriptorSet::updateBuffer(u32 binding,
-                                 VkDescriptorBufferInfo bufferInfo,
+void DescriptorSet::updateBuffer(u32 binding, VkDescriptorBufferInfo bufferInfo,
                                  VkDescriptorType type) {
   VkWriteDescriptorSet descriptorWrite{};
   descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -78,8 +76,7 @@ void DescriptorSet::updateBuffer(u32 binding,
 }
 
 // --- 更新 Image/Sampler 资源 ---
-void DescriptorSet::updateImage(u32 binding,
-                                VkDescriptorImageInfo imageInfo,
+void DescriptorSet::updateImage(u32 binding, VkDescriptorImageInfo imageInfo,
                                 VkDescriptorType type) {
   VkWriteDescriptorSet descriptorWrite{};
   descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -204,8 +201,8 @@ VkDevice VulkanDescriptorManager::getDeviceHandle() const {
 
 namespace {
 usize countFreeDescriptorSets(
-    const std::unordered_map<VkDescriptorSetLayout, std::vector<VkDescriptorSet>>
-        &freeSets) {
+    const std::unordered_map<VkDescriptorSetLayout,
+                             std::vector<VkDescriptorSet>> &freeSets) {
   usize count = 0;
   for (const auto &[layout, sets] : freeSets) {
     (void)layout;
@@ -238,7 +235,8 @@ usize VulkanDescriptorManager::getFreeSetCount(const u32 frameIndex) const {
   return countFreeDescriptorSets(m_frameContexts[frameIndex].freeSets);
 }
 
-usize VulkanDescriptorManager::getPendingReturnCount(const u32 frameIndex) const {
+usize VulkanDescriptorManager::getPendingReturnCount(
+    const u32 frameIndex) const {
   if (frameIndex >= m_frameContexts.size()) {
     return 0;
   }
@@ -361,8 +359,8 @@ void VulkanDescriptorManager::beginFrame(u32 currentFrameIndex) {
     if (shouldLogBurst(next, entry.state, entry.remainingFrames)) {
       std::cerr << "[RendererDebug] descriptors: beginFrame frame="
                 << m_currentFrameIndex << " pendingBefore=" << pendingBefore
-                << " freeBefore=" << freeBefore
-                << " freeAfter=" << freeAfter << std::endl;
+                << " freeBefore=" << freeBefore << " freeAfter=" << freeAfter
+                << std::endl;
     }
   }
 }

@@ -13,7 +13,7 @@
 | Debug / 诊断 | `debug_line`、`mesh_debug`、`minimal`、`texture_cube_probe` | debug draw、overlay、resize 诊断或 cubemap probe |
 | HDR 后处理 | `skybox`、`bloom_threshold`、`bloom_blur_h`、`bloom_blur_v`、`post_process` | `VulkanPostProcessBuilder` 手动装配 fullscreen material |
 | IBL bake | `equirect_to_cubemap`、`ibl_irradiance_convolve`、`ibl_prefilter_env`、`ibl_brdf_lut` | `IblBakeRenderer` 手动创建 bake draw |
-| Offline compute | `offline_primary_ray` | `VulkanOfflineRenderer` 读取 `.comp.spv` 并校验 descriptor 合同 |
+| Offline compute | `offline_primary_ray` | `createOfflinePrimaryRayShader()` 包装为 `IShader`，再经 offline `RenderWorkItem` 进入 compute pipeline |
 | 共享片段 | `scene_lights_ubo.glsl` | GLSL include 片段，声明 scene lights UBO 结构 |
 
 ## 材质 Forward Shader
@@ -94,7 +94,7 @@ IBL bake shader 像把一张全景灯光照片加工成几种棚灯工具：先�
 |---|---|---|---|
 | `offline_primary_ray` | `offline_primary_ray.comp` | 离线 renderer 的 camera ray compute shader；遍历 BVH、求三角形交点、做直接光/环境/简化高光着色，写入输出像素 buffer | set 0 binding 0..8 的 SSBO 合同 |
 
-`offline_primary_ray.comp` 不走 graphics pipeline。它用 `local_size_x = 8, local_size_y = 8` 分块调度，每个 invocation 对应一个像素采样。C++ 侧的 `software-compute` integrator 会反射 `.comp.spv`，并校验九个 binding 是否存在：`SceneVertices`、`SceneIndices`、`SceneMeshes`、`ScenePrimitives`、`SceneObjects`、`SceneMaterials`、`SceneBvhNodes`、`SceneFrameParams`、`OutputPixels`。这里的合同比普通材质更像数据表 schema：字段顺序和 buffer 布局必须和 `core/scene` 里的 `SceneGpu*` CPU 结构保持一致。
+`offline_primary_ray.comp` 不走 graphics pipeline。它用 `local_size_x = 8, local_size_y = 8` 分块调度，每个 invocation 对应一个像素采样。C++ 侧的 `createOfflinePrimaryRayShader()` 会反射 `.comp.spv`，并校验九个 binding 是否存在：`SceneVertices`、`SceneIndices`、`SceneMeshes`、`ScenePrimitives`、`SceneObjects`、`SceneMaterials`、`SceneBvhNodes`、`SceneFrameParams`、`OutputPixels`。随后 `RenderWorkQueue` 为 `Pass_OfflineRayTrace` 生成 `ComputeDispatch` 类型的 `RenderWorkItem`，再由 `PipelineBuildDesc::fromRenderWorkItem` 和 `PipelineCache` 创建 compute pipeline。这里的合同比普通材质更像数据表 schema：字段顺序和 buffer 布局必须和 `core/scene` 里的 `SceneGpu*` CPU 结构保持一致。
 
 ## 共享 GLSL 片段
 
@@ -114,11 +114,11 @@ IBL bake shader 像把一张全景灯光照片加工成几种棚灯工具：先�
 | 新增 system-owned binding | `shader_binding_ownership.hpp`、renderer 注入资源、descriptor set/binding |
 | 新增 variant 宏 | `.material variants`、`variantRules`、pipeline signature 和测试 fixture |
 | 修改 post/IBL fullscreen binding | `VulkanPostProcessBuilder` 或 `IblBakeRenderer` 的手写 reflection binding |
-| 修改 compute SSBO schema | `VulkanOfflineRenderer` descriptor 校验和 `core/offline` CPU 数据结构 |
+| 修改 compute SSBO schema | `createOfflinePrimaryRayShader()` descriptor 校验、`RenderWorkQueue` offline item 构建和 `core/offline` CPU 数据结构 |
 
 ## 我们已经学会了什么
 
-内置 shader 不是一堆彼此无关的 GLSL 文件，而是几条渲染流水线上的合同集合。材质 shader 通过 reflection 连接 `.material`；post 和 IBL bake shader 由 renderer 手写 binding；offline compute shader 用 SSBO schema 连接 CPU 离线场景数据。读 shader 时，我们先判断它在哪条流水线上工作，再检查它要求 C++ 提供哪些资源。
+内置 shader 不是一堆彼此无关的 GLSL 文件，而是几条渲染流水线上的合同集合。材质 shader 通过 reflection 连接 `.material`；post 和 IBL bake shader 由 renderer 手写 binding；offline compute shader 用 SSBO schema 连接 CPU 离线场景数据，并通过同一套 `RenderWorkItem` / `PipelineCache` 路径执行。读 shader 时，我们先判断它在哪条流水线上工作，再检查它要求 C++ 提供哪些资源。
 
 ## 下一步
 

@@ -9,7 +9,6 @@
 #include "core/utils/env.hpp"
 #include "core/utils/filesystem_tools.hpp"
 #include "infra/material_loader/generic_material_loader.hpp"
-#include "core/utils/filesystem_tools.hpp"
 #include "infra/window/window.hpp"
 
 #include "scene_test_helpers.hpp"
@@ -50,7 +49,8 @@ int main() {
     auto meshPtr = LX_core::Mesh::create(
         vertexBufferPtr, indexBufferPtr,
         LX_core::BoundingBox{{-5.0f, -5.0f, 0.0f}, {5.0f, 5.0f, 0.0f}});
-    auto material = LX_infra::loadGenericMaterial("assets/materials/blinnphong_default.material");
+    auto material = LX_infra::loadGenericMaterial(
+        "assets/materials/blinnphong_default.material");
     auto node = LX_core::SceneNode::create("vulkan_pipeline_node");
     node->addComponent<LX_core::MeshComponent>(meshPtr);
     node->addComponent<LX_core::MaterialComponent>(material);
@@ -60,16 +60,18 @@ int main() {
     scene->addCamera(LX_test::makeDefaultCameraNodeWithTarget());
     auto item = LX_test::firstItemFromScene(*scene, LX_core::Pass_Forward);
 
-    auto &pipeline = resourceManager->getOrCreateRenderPipeline(item);
+    auto pipeline = resourceManager->getOrCreatePipeline(item);
 
-    if (pipeline.getHandle() == VK_NULL_HANDLE) {
+    const VkPipeline pipelineHandle =
+        std::visit([](auto ref) { return ref.get().getHandle(); }, pipeline);
+    if (pipelineHandle == VK_NULL_HANDLE) {
       std::cerr << "VkPipeline handle is null\n";
       return 1;
     }
 
     return 0;
   } catch (const std::exception &e) {
-    std::cerr << "SKIP VulkanPipeline test: " << e.what() << "\n";
+    std::cerr << "SKIP VulkanGraphicsPipeline test: " << e.what() << "\n";
     return 0;
   }
 }

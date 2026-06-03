@@ -1,7 +1,7 @@
 #pragma once
 
 /**
- * VulkanPipeline — reflection-driven graphics pipeline.
+ * VulkanGraphicsPipeline — reflection-driven graphics pipeline.
  *
  * Consumes a `LX_core::PipelineBuildDesc` end-to-end: SPIR-V bytecode from
  * `stages`, descriptor set layouts from `bindings`, vertex input from
@@ -23,17 +23,17 @@ namespace backend {
 
 class VulkanDevice;
 
-class VulkanPipeline;
-using VulkanPipelineUniquePtr = std::unique_ptr<VulkanPipeline>;
+class VulkanGraphicsPipeline;
+using VulkanGraphicsPipelineUniquePtr = std::unique_ptr<VulkanGraphicsPipeline>;
 
-class VulkanPipeline {
+class VulkanGraphicsPipeline {
 protected:
   struct Token {};
 
 public:
-  explicit VulkanPipeline(Token, VulkanDevice &device,
-                          const PipelineBuildDesc &buildInfo);
-  virtual ~VulkanPipeline();
+  explicit VulkanGraphicsPipeline(Token, VulkanDevice &device,
+                                  const PipelineBuildDesc &buildInfo);
+  virtual ~VulkanGraphicsPipeline();
 
   virtual std::string getPipelineId() const { return {}; }
   virtual std::string getShaderName() const { return {}; }

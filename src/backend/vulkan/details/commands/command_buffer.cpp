@@ -6,7 +6,8 @@
 #include "../device.hpp"
 #include "../device_resources/buffer.hpp"
 #include "../device_resources/texture.hpp"
-#include "../pipelines/pipeline.hpp"
+#include "../pipelines/compute_pipeline.hpp"
+#include "../pipelines/graphics_pipeline.hpp"
 #include "../resource_manager.hpp"
 #include <array>
 #include <functional>
@@ -14,6 +15,7 @@
 #include <stdexcept>
 #include <unordered_map>
 #include <unordered_set>
+#include <variant>
 
 namespace LX_core::backend {
 
@@ -215,7 +217,7 @@ void logDescriptorImageBindingIfChanged(
 }
 } // namespace
 
-void VulkanCommandBuffer::bindPipeline(VulkanPipeline &pipeline) {
+void VulkanCommandBuffer::bindPipeline(VulkanGraphicsPipeline &pipeline) {
   vkCmdBindPipeline(m_handle, VK_PIPELINE_BIND_POINT_GRAPHICS,
                     pipeline.getHandle());
   m_pipelineLayout = pipeline.getLayout();
@@ -225,9 +227,25 @@ void VulkanCommandBuffer::bindPipeline(VulkanPipeline &pipeline) {
   m_pushConstants.size = pcr.size;
 }
 
-void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
-                                        VulkanPipeline &pipeline,
-                                        const RenderWorkItem &item) {
+void VulkanCommandBuffer::bindPipeline(VulkanComputePipeline &pipeline) {
+  vkCmdBindPipeline(m_handle, VK_PIPELINE_BIND_POINT_COMPUTE,
+                    pipeline.getHandle());
+  m_pipelineLayout = pipeline.getLayout();
+  const auto &pcr = pipeline.getPushConstantRange();
+  m_pushConstants.stageFlags = pushConstantStageMaskToVk(pcr.stageFlagsMask);
+  m_pushConstants.offset = pcr.offset;
+  m_pushConstants.size = pcr.size;
+}
+
+void VulkanCommandBuffer::bindPipeline(VulkanPipelineRef pipeline) {
+  std::visit([this](auto ref) { bindPipeline(ref.get()); }, pipeline);
+}
+
+void VulkanCommandBuffer::bindResourcesWithLayout(
+    VulkanResourceManager &resourceManager,
+    const std::vector<ShaderResourceBinding> &bindings,
+    const VkPipelineLayout pipelineLayout, const VkPipelineBindPoint bindPoint,
+    const RenderWorkItem &item) {
   auto &descriptorMgr = m_device.getDescriptorManager();
 
   // Build a name→resource map from the item's descriptorResources so backend
@@ -247,7 +265,7 @@ void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
   // Group reflection bindings by descriptor set index.
   std::unordered_map<u32, std::vector<LX_core::ShaderResourceBinding>>
       setGroups;
-  for (const auto &b : pipeline.getBindings()) {
+  for (const auto &b : bindings) {
     setGroups[b.set].push_back(b);
   }
 
@@ -323,17 +341,16 @@ void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
     }
 
     VkDescriptorSet setHandle = setPtr->getHandle();
-    vkCmdBindDescriptorSets(m_handle, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            pipeline.getLayout(), setIndex, 1, &setHandle, 0,
-                            nullptr);
+    vkCmdBindDescriptorSets(m_handle, bindPoint, pipelineLayout, setIndex, 1,
+                            &setHandle, 0, nullptr);
     allocatedSets.push_back(std::move(setPtr));
   }
 
   const auto &raster = item.raster;
 
   if (raster.vertexBuffer) {
-    auto vbOpt =
-        resourceManager.getBuffer(raster.vertexBuffer->getBackendCacheIdentity());
+    auto vbOpt = resourceManager.getBuffer(
+        raster.vertexBuffer->getBackendCacheIdentity());
     if (vbOpt) {
       VkBuffer vbHandle = vbOpt->get().getHandle();
       VkDeviceSize offsets[] = {0};
@@ -342,8 +359,8 @@ void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
   }
 
   if (raster.indexBuffer) {
-    auto ibOpt =
-        resourceManager.getBuffer(raster.indexBuffer->getBackendCacheIdentity());
+    auto ibOpt = resourceManager.getBuffer(
+        raster.indexBuffer->getBackendCacheIdentity());
     if (ibOpt) {
       vkCmdBindIndexBuffer(m_handle, ibOpt->get().getHandle(), 0,
                            VK_INDEX_TYPE_UINT32);
@@ -357,6 +374,30 @@ void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
   }
 }
 
+void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
+                                        VulkanGraphicsPipeline &pipeline,
+                                        const RenderWorkItem &item) {
+  bindResourcesWithLayout(resourceManager, pipeline.getBindings(),
+                          pipeline.getLayout(), VK_PIPELINE_BIND_POINT_GRAPHICS,
+                          item);
+}
+
+void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
+                                        VulkanComputePipeline &pipeline,
+                                        const RenderWorkItem &item) {
+  bindResourcesWithLayout(resourceManager, pipeline.getBindings(),
+                          pipeline.getLayout(), VK_PIPELINE_BIND_POINT_COMPUTE,
+                          item);
+}
+
+void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
+                                        VulkanPipelineRef pipeline,
+                                        const RenderWorkItem &item) {
+  std::visit([this, &resourceManager, &item](
+                 auto ref) { bindResources(resourceManager, ref.get(), item); },
+             pipeline);
+}
+
 void VulkanCommandBuffer::executeRasterDrawItem(const RenderWorkItem &item) {
   if (item.kind != RenderWorkKind::RasterDraw &&
       item.kind != RenderWorkKind::RasterBatch) {
@@ -368,9 +409,9 @@ void VulkanCommandBuffer::executeRasterDrawItem(const RenderWorkItem &item) {
     return;
   }
 
-  const usize indexCount = raster.indexCount != 0
-                               ? raster.indexCount
-                               : raster.indexBuffer->getByteSize() / sizeof(u32);
+  const usize indexCount =
+      raster.indexCount != 0 ? raster.indexCount
+                             : raster.indexBuffer->getByteSize() / sizeof(u32);
   if (indexCount == 0) {
     return;
   }

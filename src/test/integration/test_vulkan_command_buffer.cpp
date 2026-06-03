@@ -1,26 +1,25 @@
 #include "backend/vulkan/details/commands/command_buffer_manager.hpp"
 #include "backend/vulkan/details/descriptors/descriptor_manager.hpp"
+#include "backend/vulkan/details/device.hpp"
+#include "backend/vulkan/details/device_resources/texture.hpp"
 #include "backend/vulkan/details/render_objects/framebuffer.hpp"
 #include "backend/vulkan/details/render_objects/render_pass.hpp"
-#include "backend/vulkan/details/device_resources/texture.hpp"
-#include "backend/vulkan/details/device.hpp"
 #include "backend/vulkan/details/resource_manager.hpp"
 #include "core/frame_graph/render_upload_plan.hpp"
 #include "core/rhi/gpu_resource.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
-#include "core/scene/components/material_component.hpp"
 #include "core/scene/components/camera_component.hpp"
+#include "core/scene/components/material_component.hpp"
 #include "core/scene/components/mesh_component.hpp"
 #include "core/scene/components/skeleton_component.hpp"
 #include "core/scene/scene.hpp"
 #include "core/utils/env.hpp"
 
-#include "scene_test_helpers.hpp"
 #include "core/utils/filesystem_tools.hpp"
 #include "infra/material_loader/generic_material_loader.hpp"
-#include "core/utils/filesystem_tools.hpp"
 #include "infra/window/window.hpp"
+#include "scene_test_helpers.hpp"
 
 #include <vulkan/vulkan.h>
 
@@ -89,7 +88,8 @@ int main() {
         vertexBufferPtr, indexBufferPtr,
         LX_core::BoundingBox{{-5.0f, -5.0f, 0.0f}, {5.0f, 5.0f, 0.0f}});
 
-    auto material = LX_infra::loadGenericMaterial("assets/materials/blinnphong_default.material");
+    auto material = LX_infra::loadGenericMaterial(
+        "assets/materials/blinnphong_default.material");
     material->setParameter(LX_core::StringID("MaterialUBO"),
                            LX_core::StringID("enableNormal"),
                            0); // avoid normal texture
@@ -105,7 +105,8 @@ int main() {
     scene->addCamera(cameraNode);
     auto lightNode = LX_core::SceneNode::create("command_buffer_light");
     scene->addRenderable(lightNode);
-    scene->attachLight(lightNode, std::make_shared<LX_core::DirectionalLight>());
+    scene->attachLight(lightNode,
+                       std::make_shared<LX_core::DirectionalLight>());
 
     auto camera = cameraNode->getComponent<LX_core::CameraComponent>();
     auto dirLight = std::dynamic_pointer_cast<LX_core::DirectionalLight>(
@@ -145,8 +146,10 @@ int main() {
     }
     resourceManager->collectGarbage();
 
-    auto &pipeline = resourceManager->getOrCreateRenderPipeline(renderItem);
-    if (pipeline.getHandle() == VK_NULL_HANDLE) {
+    auto pipeline = resourceManager->getOrCreatePipeline(renderItem);
+    const VkPipeline pipelineHandle =
+        std::visit([](auto ref) { return ref.get().getHandle(); }, pipeline);
+    if (pipelineHandle == VK_NULL_HANDLE) {
       std::cerr << "Pipeline not created correctly\n";
       return 1;
     }
@@ -182,7 +185,8 @@ int main() {
       return total;
     };
 
-    const usize initialDescriptorFootprint = descriptorFootprint(maxFrameInFlight);
+    const usize initialDescriptorFootprint =
+        descriptorFootprint(maxFrameInFlight);
     for (u32 frame = 0; frame < 600; ++frame) {
       const u32 frameIndex = frame % maxFrameInFlight;
       cmdBufferMgr->beginFrame(frameIndex);
@@ -203,11 +207,12 @@ int main() {
       vkEndCommandBuffer(loopCmd->getHandle());
     }
 
-    const usize finalDescriptorFootprint = descriptorFootprint(maxFrameInFlight);
+    const usize finalDescriptorFootprint =
+        descriptorFootprint(maxFrameInFlight);
     if (finalDescriptorFootprint > initialDescriptorFootprint + 16) {
       std::cerr << "Descriptor footprint grew unexpectedly: initial="
-                << initialDescriptorFootprint << " final="
-                << finalDescriptorFootprint << "\n";
+                << initialDescriptorFootprint
+                << " final=" << finalDescriptorFootprint << "\n";
       return 1;
     }
 

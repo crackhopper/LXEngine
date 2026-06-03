@@ -1,6 +1,4 @@
 #include "vulkan_realtime_renderer.hpp"
-#include "vulkan_renderer_foundation.hpp"
-#include "vulkan_post_process_builder.hpp"
 #include "core/asset/material_instance.hpp"
 #include "core/asset/material_pass_definition.hpp"
 #include "core/asset/material_template.hpp"
@@ -9,8 +7,8 @@
 #include "core/frame_graph/render_upload_plan.hpp"
 #include "core/image/tone_mapping.hpp"
 #include "core/offline/offline_render_job.hpp"
-#include "core/rhi/index_buffer.hpp"
 #include "core/rhi/gpu_resource.hpp"
+#include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/components/camera_component.hpp"
 #include "core/scene/light.hpp"
@@ -18,8 +16,8 @@
 #include "core/utils/filesystem_tools.hpp"
 #include "core/utils/hash.hpp"
 #include "core/utils/string_table.hpp"
-#include "infra/image/rgba_image_io.hpp"
 #include "infra/gui/gui.hpp"
+#include "infra/image/rgba_image_io.hpp"
 #include "infra/window/window.hpp"
 #include "details/commands/command_buffer_manager.hpp"
 #include "details/descriptors/descriptor_manager.hpp"
@@ -31,6 +29,8 @@
 #include "details/render_objects/render_pass.hpp"
 #include "details/render_objects/swapchain.hpp"
 #include "details/resource_manager.hpp"
+#include "vulkan_post_process_builder.hpp"
+#include "vulkan_renderer_foundation.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -123,8 +123,8 @@ std::string vkFormatName(VkFormat format) {
 }
 
 VkDeviceSize dumpByteSize(VkFormat format, u32 width, u32 height) {
-  const VkDeviceSize pixelCount = static_cast<VkDeviceSize>(width) *
-                                  static_cast<VkDeviceSize>(height);
+  const VkDeviceSize pixelCount =
+      static_cast<VkDeviceSize>(width) * static_cast<VkDeviceSize>(height);
   switch (format) {
   case VK_FORMAT_D32_SFLOAT:
   case VK_FORMAT_R8G8B8A8_UNORM:
@@ -155,9 +155,8 @@ float halfToFloat(u16 value) {
     return mantissa == 0 ? signScale * std::numeric_limits<float>::infinity()
                          : std::numeric_limits<float>::quiet_NaN();
   }
-  return signScale *
-         std::ldexp(1.0f + static_cast<float>(mantissa) / 1024.0f,
-                    static_cast<int>(exponent) - 15);
+  return signScale * std::ldexp(1.0f + static_cast<float>(mantissa) / 1024.0f,
+                                static_cast<int>(exponent) - 15);
 }
 
 unsigned char linearToDebugByte(float value) {
@@ -169,8 +168,9 @@ unsigned char linearToDebugByte(float value) {
   return static_cast<unsigned char>(std::clamp(mapped, 0.0f, 1.0f) * 255.0f);
 }
 
-std::vector<unsigned char> makeBmpPixelsFromDump(
-    VkFormat format, u32 width, u32 height, const void *mappedData) {
+std::vector<unsigned char> makeBmpPixelsFromDump(VkFormat format, u32 width,
+                                                 u32 height,
+                                                 const void *mappedData) {
   std::vector<unsigned char> bgrPixels;
   bgrPixels.reserve(static_cast<usize>(width) * static_cast<usize>(height) *
                     3u);
@@ -243,8 +243,9 @@ std::vector<unsigned char> makeBmpPixelsFromDump(
                            vkFormatName(format));
 }
 
-LX_core::offline::OfflineReadbackImage makeRgba32fImageFromDump(
-    VkFormat format, u32 width, u32 height, const void *mappedData) {
+LX_core::offline::OfflineReadbackImage
+makeRgba32fImageFromDump(VkFormat format, u32 width, u32 height,
+                         const void *mappedData) {
   LX_core::offline::OfflineReadbackImage image;
   image.width = width;
   image.height = height;
@@ -338,7 +339,8 @@ void writeMat4Json(std::ostream &out, const LX_core::Mat4f &matrix) {
   const LX_core::StringID lightBinding("LightUBO");
   for (const auto &resource : resources) {
     if (!resource || resource->getBindingName() != lightBinding ||
-        resource->getByteSize() < sizeof(LX_core::DirectionalLightData::Param)) {
+        resource->getByteSize() <
+            sizeof(LX_core::DirectionalLightData::Param)) {
       continue;
     }
     const auto *param =
@@ -366,7 +368,9 @@ extractModelMatrix(const LX_core::PerDrawDataSharedPtr &drawData) {
   out.nodeName = renderable.getNodeName();
   out.objectSignature =
       LX_core::GlobalStringTable::get().getName(item.objectSignature.id);
-  out.indexCount = item.raster.indexBuffer ? item.raster.indexBuffer->getByteSize() / sizeof(u32) : 0;
+  out.indexCount = item.raster.indexBuffer
+                       ? item.raster.indexBuffer->getByteSize() / sizeof(u32)
+                       : 0;
 
   auto modelOpt = extractModelMatrix(item.raster.drawData);
   if (!modelOpt.has_value()) {
@@ -477,22 +481,20 @@ void writeRealtimeProfileMetadata(
       << jsonEscape(result.pipelineSrgbPngPath.generic_string()) << "\",\n"
       << "  \"depthDebugPath\": \""
       << jsonEscape(result.depthDebugPath.generic_string()) << "\",\n"
-      << "  \"pipelineSrgbStatus\": \"" << jsonEscape(pipelineStatus)
-      << "\",\n"
+      << "  \"pipelineSrgbStatus\": \"" << jsonEscape(pipelineStatus) << "\",\n"
       << "  \"debug\": {\n"
       << "    \"profileAspect\": " << debugInfo.profileAspect << ",\n"
       << "    \"cameraAspect\": " << debugInfo.cameraAspect << ",\n"
       << "    \"cameraResourceCount\": " << debugInfo.cameraResourceCount
       << ",\n"
-      << "    \"lightResourceCount\": " << debugInfo.lightResourceCount
-      << ",\n"
+      << "    \"lightResourceCount\": " << debugInfo.lightResourceCount << ",\n"
       << "    \"lightDirection\": [" << debugInfo.lightDirection.x << ", "
       << debugInfo.lightDirection.y << ", " << debugInfo.lightDirection.z
       << ", " << debugInfo.lightDirection.w << "],\n"
       << "    \"drawItemCount\": " << debugInfo.drawItemCount << ",\n"
       << "    \"viewportExtent\": {\"width\": "
-      << debugInfo.viewportExtent.width << ", \"height\": "
-      << debugInfo.viewportExtent.height << "},\n"
+      << debugInfo.viewportExtent.width
+      << ", \"height\": " << debugInfo.viewportExtent.height << "},\n"
       << "    \"cameraView\": ";
   writeMat4Json(out, debugInfo.cameraView);
   out << ",\n"
@@ -503,13 +505,12 @@ void writeRealtimeProfileMetadata(
   for (usize i = 0; i < debugInfo.projectedBounds.size(); ++i) {
     const auto &bounds = debugInfo.projectedBounds[i];
     out << "      {\"node\": \"" << jsonEscape(bounds.nodeName)
-        << "\", \"objectSignature\": \""
-        << jsonEscape(bounds.objectSignature) << "\", \"indexCount\": "
-        << bounds.indexCount << ", \"valid\": "
-        << (bounds.valid ? "true" : "false") << ", \"minX\": "
-        << bounds.minX << ", \"minY\": " << bounds.minY
-        << ", \"maxX\": " << bounds.maxX << ", \"maxY\": "
-        << bounds.maxY << "}";
+        << "\", \"objectSignature\": \"" << jsonEscape(bounds.objectSignature)
+        << "\", \"indexCount\": " << bounds.indexCount
+        << ", \"valid\": " << (bounds.valid ? "true" : "false")
+        << ", \"minX\": " << bounds.minX << ", \"minY\": " << bounds.minY
+        << ", \"maxX\": " << bounds.maxX << ", \"maxY\": " << bounds.maxY
+        << "}";
     if (i + 1 < debugInfo.projectedBounds.size()) {
       out << ",";
     }
@@ -774,8 +775,7 @@ public:
     guiParams.instance = device().getInstance();
     guiParams.physicalDevice = device().getPhysicalDevice();
     guiParams.device = device().getLogicalDevice();
-    guiParams.graphicsQueueFamilyIndex =
-        device().getGraphicsQueueFamilyIndex();
+    guiParams.graphicsQueueFamilyIndex = device().getGraphicsQueueFamilyIndex();
     guiParams.presentQueueFamilyIndex = device().getPresentQueueFamilyIndex();
     guiParams.graphicsQueue = device().getGraphicsQueue();
     guiParams.presentQueue = device().getPresentQueue();
@@ -786,12 +786,10 @@ public:
     m_gui.init(guiParams);
   }
   void shutdown() { destroy(); }
-  void setPostProcessSettings(
-      const VulkanPostProcessSettings &settings) {
+  void setPostProcessSettings(const VulkanPostProcessSettings &settings) {
     m_postProcessSettings = settings;
   }
-  [[nodiscard]] const VulkanPostProcessSettings &
-  postProcessSettings() const {
+  [[nodiscard]] const VulkanPostProcessSettings &postProcessSettings() const {
     return m_postProcessSettings;
   }
 
@@ -817,8 +815,7 @@ public:
     }
   }
 
-  [[nodiscard]] bool
-  uploadPlanRequiresSharedHostBufferSync(
+  [[nodiscard]] bool uploadPlanRequiresSharedHostBufferSync(
       const LX_core::RenderWorkQueue &queue) const {
     const LX_core::RenderUploadPlan uploadPlan =
         LX_core::buildRenderUploadPlan(queue);
@@ -984,8 +981,9 @@ public:
                                             LX_core::StringID("BloomSource"))},
           {LX_core::FrameGraphWrite{bloomBlur}}});
     }
-    const auto postBloomInput =
-        m_postProcessSettings.bloomEnabled ? bloomBlur.name : sceneHdrColor.name;
+    const auto postBloomInput = m_postProcessSettings.bloomEnabled
+                                    ? bloomBlur.name
+                                    : sceneHdrColor.name;
     m_frameGraph.addPass(LX_core::FramePass{
         LX_core::Pass_PostProcess,
         swapchainDesc,
@@ -1037,7 +1035,7 @@ public:
     resourceManager().collectGarbage();
 
     // Pre-build every pipeline the scene needs. Runtime cache misses still
-    // work via getOrCreateRenderPipeline(item) but emit a warning log.
+    // work via getOrCreatePipeline(item) but emit a warning log.
     auto infos = m_frameGraph.collectAllPipelineBuildDescs();
     resourceManager().preloadPipelines(infos);
   }
@@ -1277,8 +1275,7 @@ public:
   }
 
   [[nodiscard]] usize frameGraphAttachmentCount() const {
-    return m_foundation ? resourceManager().getFrameGraphAttachmentCount()
-                             : 0;
+    return m_foundation ? resourceManager().getFrameGraphAttachmentCount() : 0;
   }
 
   [[nodiscard]] usize initSceneCallCount() const {
@@ -1357,7 +1354,7 @@ public:
         previousLayout, dumpRestoreStage(previousLayout, attachment.aspect),
         dumpRestoreAccess(previousLayout, attachment.aspect), *cmd);
     commandBufferManager().endSingleTimeCommands(std::move(cmd),
-                                          device().getGraphicsQueue());
+                                                 device().getGraphicsQueue());
 
     const void *mapped = readback->map();
     std::vector<unsigned char> bgrPixels =
@@ -1378,8 +1375,7 @@ public:
   VulkanFrameGraphAttachmentDumpResult dumpDebugRenderTarget(
       std::string_view passName, const std::optional<std::string> &cameraPath,
       const std::optional<std::filesystem::path> &requestedPath) {
-    if (!m_foundation || !m_swapchain ||
-        !m_scene) {
+    if (!m_foundation || !m_swapchain || !m_scene) {
       throw std::runtime_error("renderer is not initialized");
     }
 
@@ -1436,8 +1432,7 @@ public:
     }
 
     syncRenderUploadPlan(queue);
-    resourceManager().preloadPipelines(
-        queue.collectUniquePipelineBuildDescs());
+    resourceManager().preloadPipelines(queue.collectUniquePipelineBuildDescs());
 
     const VkExtent2D extent = m_swapchain->getExtent();
     const auto colorRef = LX_core::FrameGraphResourceRef::colorAttachment(
@@ -1488,7 +1483,7 @@ public:
     cmd->setViewport(extent.width, extent.height);
     cmd->setScissor(extent.width, extent.height);
     for (auto &item : queue.getItems()) {
-      auto &pipeline = resourceManager().getOrCreateRenderPipeline(item);
+      auto pipeline = resourceManager().getOrCreatePipeline(item);
       cmd->bindPipeline(pipeline);
       cmd->bindResources(resourceManager(), pipeline, item);
       cmd->executeWorkItem(item);
@@ -1513,7 +1508,7 @@ public:
                            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                            readback->getHandle(), 1, &region);
     commandBufferManager().endSingleTimeCommands(std::move(cmd),
-                                          device().getGraphicsQueue());
+                                                 device().getGraphicsQueue());
 
     const auto *rgba = static_cast<const unsigned char *>(readback->map());
     std::vector<unsigned char> bgrPixels;
@@ -1540,9 +1535,10 @@ public:
     };
   }
 
-  VulkanRealtimeProfileOutputResult generateRealtimeProfileOutput(
-      SceneSharedPtr scene, const LX_core::offline::OutputProfile &output,
-      const std::filesystem::path &basePath) {
+  VulkanRealtimeProfileOutputResult
+  generateRealtimeProfileOutput(SceneSharedPtr scene,
+                                const LX_core::offline::OutputProfile &output,
+                                const std::filesystem::path &basePath) {
     if (!m_foundation || !m_swapchain) {
       throw std::runtime_error("renderer is not initialized");
     }
@@ -1550,7 +1546,8 @@ public:
       throw std::runtime_error("realtime profile output requires a scene");
     }
     if (output.width == 0 || output.height == 0) {
-      throw std::runtime_error("realtime profile output extent must be positive");
+      throw std::runtime_error(
+          "realtime profile output extent must be positive");
     }
     const SceneSharedPtr previousScene = m_scene;
     m_scene = std::move(scene);
@@ -1640,7 +1637,8 @@ public:
                     outputCullingMask & ~LX_core::Layer_EditorOverlay),
                 LX_core::Pass_Forward, target);
     if (queue.getItems().empty()) {
-      throw std::runtime_error("realtime profile output produced no draw items");
+      throw std::runtime_error(
+          "realtime profile output produced no draw items");
     }
     debugInfo.drawItemCount = static_cast<u32>(queue.getItems().size());
     const LX_core::Mat4f viewProj =
@@ -1660,8 +1658,7 @@ public:
       }
     }
     syncRenderUploadPlan(queue);
-    resourceManager().preloadPipelines(
-        queue.collectUniquePipelineBuildDescs());
+    resourceManager().preloadPipelines(queue.collectUniquePipelineBuildDescs());
 
     const VkExtent2D extent{output.width, output.height};
     const auto colorRef = LX_core::FrameGraphResourceRef::colorAttachment(
@@ -1748,7 +1745,8 @@ public:
     debugInfo.viewportExtent = extent;
     auto clearValues = renderPass.getClearValues();
     if (!clearValues.empty()) {
-      clearValues[0].color = {output.backgroundColor.x, output.backgroundColor.y,
+      clearValues[0].color = {output.backgroundColor.x,
+                              output.backgroundColor.y,
                               output.backgroundColor.z, 1.0f};
     }
     cmd->beginRenderPass(renderPass.getHandle(), framebuffer->getHandle(),
@@ -1756,7 +1754,7 @@ public:
     cmd->setViewport(extent.width, extent.height);
     cmd->setScissor(extent.width, extent.height);
     for (auto &item : queue.getItems()) {
-      auto &pipeline = resourceManager().getOrCreateRenderPipeline(item);
+      auto pipeline = resourceManager().getOrCreatePipeline(item);
       cmd->bindPipeline(pipeline);
       cmd->bindResources(resourceManager(), pipeline, item);
       cmd->executeWorkItem(item);
@@ -1801,16 +1799,15 @@ public:
                                                  device().getGraphicsQueue());
 
     const void *mapped = readback->map();
-    LX_core::offline::OfflineReadbackImage image =
-        makeRgba32fImageFromDump(colorFormat, output.width, output.height,
-                                 mapped);
+    LX_core::offline::OfflineReadbackImage image = makeRgba32fImageFromDump(
+        colorFormat, output.width, output.height, mapped);
     readback->unmap();
 
     const std::filesystem::path outputDir = basePath.parent_path();
     std::filesystem::create_directories(outputDir);
-    const std::string outputStem =
-        basePath.filename().empty() ? std::string("render")
-                                    : basePath.filename().generic_string();
+    const std::string outputStem = basePath.filename().empty()
+                                       ? std::string("render")
+                                       : basePath.filename().generic_string();
     VulkanRealtimeProfileOutputResult result{
         .linearExrPath = outputDir / (outputStem + "-linear.exr"),
         .cpuSrgbPngPath = outputDir / (outputStem + "-cpu_srgb.png"),
@@ -1886,7 +1883,7 @@ private:
     }
 
     for (auto &item : m_frameGraph.getPasses()[passIndex].queue.getItems()) {
-      auto &pipeline = resourceManager().getOrCreateRenderPipeline(item);
+      auto pipeline = resourceManager().getOrCreatePipeline(item);
       cmd.bindPipeline(pipeline);
       cmd.bindResources(resourceManager(), pipeline, item);
       cmd.executeWorkItem(item);
@@ -1900,19 +1897,20 @@ private:
     LX_core::RenderWorkItem item;
     item.shaderInfo = material->getPassShader(pass);
     item.material = material;
-    item.raster.vertexBuffer = LX_core::VertexBuffer<LX_core::VertexPos>::create(
-        std::vector<LX_core::VertexPos>{{{0.0f, 0.0f, 0.0f}},
-                                        {{0.0f, 0.0f, 0.0f}},
-                                        {{0.0f, 0.0f, 0.0f}}});
+    item.raster.vertexBuffer =
+        LX_core::VertexBuffer<LX_core::VertexPos>::create(
+            std::vector<LX_core::VertexPos>{{{0.0f, 0.0f, 0.0f}},
+                                            {{0.0f, 0.0f, 0.0f}},
+                                            {{0.0f, 0.0f, 0.0f}}});
     item.raster.indexBuffer = LX_core::IndexBuffer::create({0u, 1u, 2u});
     item.descriptorResources = material->getDescriptorResources(pass);
     item.pass = pass;
     item.target = target;
     item.objectSignature = LX_core::StringID(objectSignature);
     item.materialSignature = material->getPipelineSignature(pass);
-    item.pipelineKey =
-        LX_core::PipelineKey::build(item.objectSignature, item.materialSignature,
-                                    item.target.getPipelineSignature());
+    item.pipelineKey = LX_core::PipelineKey::build(
+        item.objectSignature, item.materialSignature,
+        item.target.getPipelineSignature());
 
     for (auto &pass : m_frameGraph.getPasses()) {
       if (pass.name == item.pass) {
@@ -1925,19 +1923,21 @@ private:
 
   void addBloomThresholdItem() {
     VulkanPostProcessBuilder builder(m_postProcessSettings);
-    addFullscreenMaterialItem(
-        LX_core::Pass_BloomThreshold,
-        LX_core::RenderTargetDesc::offscreenColor(LX_core::ImageFormat::RGBA16Float),
-        builder.createBloomThresholdMaterial(), "BloomThresholdFullscreenTriangle");
+    addFullscreenMaterialItem(LX_core::Pass_BloomThreshold,
+                              LX_core::RenderTargetDesc::offscreenColor(
+                                  LX_core::ImageFormat::RGBA16Float),
+                              builder.createBloomThresholdMaterial(),
+                              "BloomThresholdFullscreenTriangle");
   }
 
   void addBloomBlurItem(LX_core::StringID pass, const char *shaderName,
                         const char *objectSignature) {
     VulkanPostProcessBuilder builder(m_postProcessSettings);
-    addFullscreenMaterialItem(
-        pass,
-        LX_core::RenderTargetDesc::offscreenColor(LX_core::ImageFormat::RGBA16Float),
-        builder.createBloomBlurMaterial(pass, shaderName), objectSignature);
+    addFullscreenMaterialItem(pass,
+                              LX_core::RenderTargetDesc::offscreenColor(
+                                  LX_core::ImageFormat::RGBA16Float),
+                              builder.createBloomBlurMaterial(pass, shaderName),
+                              objectSignature);
   }
 
   void addStandardPostProcessItem(const LX_core::RenderTargetDesc &target) {
@@ -1952,11 +1952,11 @@ private:
       return;
     }
     const auto iblResources = m_scene->getIblEnvironmentResourceSet();
-    const auto skyboxResource = iblResources.bakedSkyboxCubemap
-                                    ? iblResources.bakedSkyboxCubemap
-                                    : std::static_pointer_cast<
-                                          LX_core::IGpuResource>(
-                                          iblResources.skyboxCubemap);
+    const auto skyboxResource =
+        iblResources.bakedSkyboxCubemap
+            ? iblResources.bakedSkyboxCubemap
+            : std::static_pointer_cast<LX_core::IGpuResource>(
+                  iblResources.skyboxCubemap);
     if (!skyboxResource || !iblResources.environmentUbo ||
         iblResources.environmentUbo->getIblIntensity() <= 0.0f) {
       return;
@@ -1967,10 +1967,11 @@ private:
     LX_core::RenderWorkItem item;
     item.shaderInfo = material->getPassShader(LX_core::Pass_Forward);
     item.material = material;
-    item.raster.vertexBuffer = LX_core::VertexBuffer<LX_core::VertexPos>::create(
-        std::vector<LX_core::VertexPos>{{{0.0f, 0.0f, 0.0f}},
-                                        {{0.0f, 0.0f, 0.0f}},
-                                        {{0.0f, 0.0f, 0.0f}}});
+    item.raster.vertexBuffer =
+        LX_core::VertexBuffer<LX_core::VertexPos>::create(
+            std::vector<LX_core::VertexPos>{{{0.0f, 0.0f, 0.0f}},
+                                            {{0.0f, 0.0f, 0.0f}},
+                                            {{0.0f, 0.0f, 0.0f}}});
     item.raster.indexBuffer = LX_core::IndexBuffer::create({0u, 1u, 2u});
     item.descriptorResources =
         material->getDescriptorResources(LX_core::Pass_Forward);
@@ -1986,9 +1987,9 @@ private:
     item.target = target;
     item.objectSignature = LX_core::StringID("SkyboxFullscreenTriangle");
     item.materialSignature = material->getPipelineSignature(item.pass);
-    item.pipelineKey =
-        LX_core::PipelineKey::build(item.objectSignature, item.materialSignature,
-                                    item.target.getPipelineSignature());
+    item.pipelineKey = LX_core::PipelineKey::build(
+        item.objectSignature, item.materialSignature,
+        item.target.getPipelineSignature());
 
     for (auto &pass : m_frameGraph.getPasses()) {
       if (pass.name == LX_core::Pass_Forward) {
@@ -2109,7 +2110,7 @@ private:
     if (cascadeIndex < m_shadowCascadeUboSnapshots.size() &&
         m_shadowCascadeUboSnapshots[cascadeIndex]) {
       resourceManager().syncResource(commandBufferManager(),
-                                      m_shadowCascadeUboSnapshots[cascadeIndex]);
+                                     m_shadowCascadeUboSnapshots[cascadeIndex]);
     }
   }
 
@@ -2127,7 +2128,8 @@ private:
     }
   }
 
-  void refreshShadowCascadeUboSnapshots(const LX_core::DirectionalLight &light) {
+  void
+  refreshShadowCascadeUboSnapshots(const LX_core::DirectionalLight &light) {
     if (m_shadowCascadeUboSnapshots.empty()) {
       return;
     }
@@ -2486,7 +2488,6 @@ private:
   std::vector<LX_core::DirectionalLightDataSharedPtr>
       m_shadowCascadeUboSnapshots;
 };
-
 
 VulkanRealtimeRenderer::VulkanRealtimeRenderer()
     : p_impl(std::make_unique<Impl>()) {}

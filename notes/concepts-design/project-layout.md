@@ -36,7 +36,7 @@ LXEngine/
 |---|---|
 | `asset/` | `Mesh`、`Texture`、`MaterialTemplate`、`MaterialInstance`、`Shader`、`Skeleton` |
 | `scene/` | `Scene`、`SceneNode`、components、camera、light、controller |
-| `frame_graph/` | `FrameGraph`、`FramePass`、`RenderQueue`、`RenderTarget`、read/write resource 声明 |
+| `frame_graph/` | `FrameGraph`、`FramePass`、`RenderWorkQueue`、`RenderWorkItem`、`RenderTarget`、read/write resource 声明 |
 | `offline/` | `OfflineRenderProfile`、`SceneResourceTable`、离线 readback image |
 | `pipeline/` | `PipelineKey`、`PipelineBuildDesc` |
 | `rhi/` | renderer 接口、GPU resource、buffer、vertex layout |

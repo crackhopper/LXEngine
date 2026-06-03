@@ -38,13 +38,13 @@ const auto shadowTarget =
 
 ## camera target matching 仍走 core 类型
 
-`Scene::getSceneLevelResources(pass, target)` 和 `RenderQueue::buildFromScene(scene, pass, target)` 会把 target 传给 scene/camera/light 过滤逻辑。当前 target 的职责不是持有 GPU 资源，而是让 scene-level resources 能按输出形状匹配。
+`Scene::getSceneLevelResources(pass, target)` 和 `RenderWorkQueue::build(context, pass, target)` 会把 target 传给 scene/camera/light 过滤逻辑。当前 target 的职责不是持有 GPU 资源，而是让 scene-level resources 能按输出形状匹配。
 
 | 调用点 | target 的作用 |
 |---|---|
 | `Camera::matchesTarget` | 判断 camera 是否服务于当前 pass target |
 | `Scene::getSceneLevelResources` | 按 pass 和 target 收集 camera/light UBO |
-| `RenderQueue::buildFromScene` | 生成带 target identity 的 `RenderingItem` |
+| `RenderWorkQueue::build` | 生成带 target identity 的 `RenderWorkItem` |
 | `PipelineBuildDesc::target` | 让 pipeline cache 区分 attachment 形状 |
 
 这个分层让 FrameGraph 可以描述“要写什么”，Scene 可以回答“哪些资源适合这道 pass”，Backend 再负责“怎样在 GPU 上实现”。
@@ -52,6 +52,6 @@ const auto shadowTarget =
 ## 继续阅读
 
 - [FrameGraph：一帧的 Pass 排程表](framegraph.md)
-- [RenderQueue：把 Scene 收敛成 Draw 列表](render-queue.md)
+- [RenderWorkQueue：把 Scene 收敛成 Work 列表](render-queue.md)
 - [RenderTarget 源码分析](../../source_analysis/src/core/frame_graph/render_target.md)
 - [Pipeline identity 源码分析](../../source_analysis/src/core/pipeline/pipeline_identity.md)

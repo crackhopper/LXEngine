@@ -13,7 +13,7 @@
 ## 先记住三层角色
 
 - `IGpuResource`：CPU 侧资源适配接口，提供类型、字节、大小、binding 名和 dirty 状态。
-- `VulkanRenderer`：决定“这一轮要同步哪些资源”，遍历 `FrameGraph` 中的 `RenderingItem`。
+- `VulkanRenderer`：决定“这一轮要同步哪些资源”，遍历 `FrameGraph` 中的 `RenderWorkItem`。
 - `VulkanResourceManager`：把 CPU 资源句柄映射成实际的 Vulkan GPU 对象，并负责创建、更新和回收。
 
 所以“上传”不是由某个资源自己主动完成，而是 renderer 在固定时机遍历场景后，由 resource manager 统一执行。
@@ -77,9 +77,9 @@
 - `item.indexBuffer`
 - `item.descriptorResources`
 
-这件事很重要，因为它说明 backend 并不自己重新理解 scene / material / camera 的业务结构；它只消费 `RenderingItem` 已经整理好的资源集合。
+这件事很重要，因为它说明 backend 并不自己重新理解 scene / material / camera 的业务结构；它只消费 `RenderWorkItem` 已经整理好的资源集合。
 
-也就是说，资源上传的“输入边界”就是 `RenderingItem`。
+也就是说，资源上传的“输入边界”就是 `RenderWorkItem`。
 
 ## Buffer 上传路径
 
@@ -137,7 +137,7 @@ texture 路径比 buffer 多了一层 staging，流程是：
 1. 调用 `MaterialInstance::setParameter(...)`
 2. 对应的 `ParameterBuffer::buffer` 被写入，并记内部 dirty
 3. `MaterialInstance::syncGpuData()` 把这些槽位转成 `IGpuResource::setDirty()`
-4. 该资源通过 `SceneNode` / `RenderingItem` 进入 `descriptorResources`
+4. 该资源通过 `SceneNode` / `RenderWorkItem` 进入 `descriptorResources`
 5. `VulkanRenderer::uploadData()` 遍历到它，并调用 `resourceManager->syncResource(...)`
 6. `VulkanResourceManager` 发现它已存在且 dirty，于是更新对应 `VulkanBuffer`
 
@@ -149,7 +149,7 @@ texture 路径比 buffer 多了一层 staging，流程是：
 - buffer 路径优先简单正确，没有全面上 device-local + staging 优化。
 - texture 路径已经使用 staging，但仍是立即提交、立即等待。
 - GPU 资源缓存按“本轮活跃句柄”保留，不做长期资源驻留策略。
-- resource manager 不理解高层业务语义，它只处理 `IGpuResource` 和 `RenderingItem` 给出的集合。
+- resource manager 不理解高层业务语义，它只处理 `IGpuResource` 和 `RenderWorkItem` 给出的集合。
 
 ## 从哪里继续读
 

@@ -6,8 +6,7 @@
 
 namespace LX_core {
 
-RenderWorkBuildContext
-RenderWorkBuildContext::realtime(const Scene &scene) {
+RenderWorkBuildContext RenderWorkBuildContext::realtime(const Scene &scene) {
   return RenderWorkBuildContext(std::cref(scene));
 }
 
@@ -23,6 +22,12 @@ RenderWorkBuildContext::offline(const offline::OfflineRenderJob &job) {
   return RenderWorkBuildContext(std::cref(job));
 }
 
+RenderWorkBuildContext
+RenderWorkBuildContext::offline(const offline::OfflineRenderJob &job,
+                                IShaderSharedPtr shader) {
+  return RenderWorkBuildContext(std::cref(job), std::move(shader));
+}
+
 RenderDomain RenderWorkBuildContext::domain() const {
   if (std::holds_alternative<RealtimeSource>(m_source)) {
     return RenderDomain::Realtime;
@@ -34,7 +39,8 @@ const Scene &RenderWorkBuildContext::realtimeScene() const {
   if (const auto *scene = std::get_if<RealtimeSource>(&m_source)) {
     return scene->get();
   }
-  throw std::logic_error("RenderWorkBuildContext does not hold a realtime scene");
+  throw std::logic_error(
+      "RenderWorkBuildContext does not hold a realtime scene");
 }
 
 bool RenderWorkBuildContext::hasRealtimeOverrides() const {
@@ -63,6 +69,13 @@ const offline::OfflineRenderJob &RenderWorkBuildContext::offlineJob() const {
   throw std::logic_error("RenderWorkBuildContext does not hold an offline job");
 }
 
+IShaderSharedPtr RenderWorkBuildContext::offlineShader() const {
+  if (domain() != RenderDomain::Offline) {
+    throw std::logic_error("RenderWorkBuildContext does not hold offline data");
+  }
+  return m_offlineShader;
+}
+
 RenderWorkBuildContext::RenderWorkBuildContext(RealtimeSource scene)
     : m_source(scene) {}
 
@@ -74,5 +87,9 @@ RenderWorkBuildContext::RenderWorkBuildContext(
 
 RenderWorkBuildContext::RenderWorkBuildContext(OfflineSource job)
     : m_source(job) {}
+
+RenderWorkBuildContext::RenderWorkBuildContext(OfflineSource job,
+                                               IShaderSharedPtr shader)
+    : m_source(job), m_offlineShader(std::move(shader)) {}
 
 } // namespace LX_core

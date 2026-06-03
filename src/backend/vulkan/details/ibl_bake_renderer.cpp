@@ -12,7 +12,7 @@
 #include "device.hpp"
 #include "device_resources/buffer.hpp"
 #include "device_resources/texture.hpp"
-#include "pipelines/pipeline.hpp"
+#include "pipelines/graphics_pipeline.hpp"
 #include "render_objects/framebuffer.hpp"
 #include "render_objects/render_pass.hpp"
 #include "resource_manager.hpp"
@@ -36,10 +36,10 @@ constexpr float kPi = 3.14159265358979323846f;
 
 usize cubemapLayoutKey(StringID resourceName, u32 mipLevel, u32 faceLayer) {
   usize hash = StringID::Hash{}(resourceName);
-  hash ^= static_cast<usize>(mipLevel) + 0x9e3779b9u + (hash << 6u) +
-          (hash >> 2u);
-  hash ^= static_cast<usize>(faceLayer) + 0x9e3779b9u + (hash << 6u) +
-          (hash >> 2u);
+  hash ^=
+      static_cast<usize>(mipLevel) + 0x9e3779b9u + (hash << 6u) + (hash >> 2u);
+  hash ^=
+      static_cast<usize>(faceLayer) + 0x9e3779b9u + (hash << 6u) + (hash >> 2u);
   return hash;
 }
 
@@ -118,8 +118,8 @@ std::vector<ShaderStageCode> loadBakeShaderStages(const std::string &name) {
 
 ShaderResourceBinding textureBinding(const char *name, u32 binding,
                                      ShaderPropertyType type) {
-  return ShaderResourceBinding{name, 0, binding, type, 1, 0, 0,
-                               ShaderStage::Fragment, {}};
+  return ShaderResourceBinding{
+      name, 0, binding, type, 1, 0, 0, ShaderStage::Fragment, {}};
 }
 
 ShaderResourceBinding captureViewBinding() {
@@ -154,9 +154,9 @@ ShaderResourceBinding prefilterBinding() {
 std::vector<ShaderResourceBinding>
 bakeShaderBindings(const std::string &shaderName) {
   if (shaderName == "equirect_to_cubemap") {
-    return {textureBinding("EquirectangularMap", 0,
-                           ShaderPropertyType::Texture2D),
-            captureViewBinding()};
+    return {
+        textureBinding("EquirectangularMap", 0, ShaderPropertyType::Texture2D),
+        captureViewBinding()};
   }
   if (shaderName == "ibl_irradiance_convolve") {
     return {textureBinding("SkyboxMap", 0, ShaderPropertyType::TextureCube),
@@ -276,9 +276,8 @@ CombinedTextureSamplerSharedPtr createDefaultEquirectangularMap() {
       pixels[base + 3u] = 1.0f;
     }
   }
-  auto sampler =
-      std::make_shared<CombinedTextureSampler>(std::make_shared<Texture>(
-          desc, std::move(bytes)));
+  auto sampler = std::make_shared<CombinedTextureSampler>(
+      std::make_shared<Texture>(desc, std::move(bytes)));
   sampler->setBindingName(StringID("EquirectangularMap"));
   sampler->setDirty();
   return sampler;
@@ -304,9 +303,9 @@ std::array<Mat4f, 6> captureViewProjections() {
 }
 
 RenderWorkItem makeBakeItem(const std::string &shaderName,
-                           const RenderTargetDesc &target,
-                           std::vector<IGpuResourceSharedPtr> resources,
-                           u32 indexCount) {
+                            const RenderTargetDesc &target,
+                            std::vector<IGpuResourceSharedPtr> resources,
+                            u32 indexCount) {
   auto shader =
       std::make_shared<BakeShader>(shaderName, bakeShaderBindings(shaderName));
   auto tmpl = MaterialTemplate::create(shaderName);
@@ -336,17 +335,17 @@ RenderWorkItem makeBakeItem(const std::string &shaderName,
   item.descriptorResources = std::move(resources);
   item.pass = Pass_PostProcess;
   item.target = target;
-  item.objectSignature = StringID(indexCount == 36u ? "IblBakeCube"
-                                                    : "IblBakeFullscreen");
+  item.objectSignature =
+      StringID(indexCount == 36u ? "IblBakeCube" : "IblBakeFullscreen");
   item.materialSignature = material->getPipelineSignature(item.pass);
-  item.pipelineKey = PipelineKey::build(item.objectSignature,
-                                        item.materialSignature,
-                                        item.target.getPipelineSignature());
+  item.pipelineKey =
+      PipelineKey::build(item.objectSignature, item.materialSignature,
+                         item.target.getPipelineSignature());
   return item;
 }
 
 RenderWorkItem makeFullscreenBakeItem(const std::string &shaderName,
-                                     const RenderTargetDesc &target) {
+                                      const RenderTargetDesc &target) {
   return makeBakeItem(shaderName, target, {}, 3u);
 }
 
@@ -371,12 +370,13 @@ IblBakeRenderer::IblBakeRenderer(VulkanDevice &device,
 
 IblBakeResult
 IblBakeRenderer::bakeStaticEnvironment(const IblBakeSettings &settings) {
-  const VkImageUsageFlags cubeUsage =
-      VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
-      VK_IMAGE_USAGE_SAMPLED_BIT;
+  const VkImageUsageFlags cubeUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+                                      VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+                                      VK_IMAGE_USAGE_SAMPLED_BIT;
   m_resourceManager.createOrGetCubemapBakeAttachment(
-      StringID("SkyboxMap"), VkExtent2D{settings.skyboxSize, settings.skyboxSize},
-      kBakeFormat, 1, cubeUsage);
+      StringID("SkyboxMap"),
+      VkExtent2D{settings.skyboxSize, settings.skyboxSize}, kBakeFormat, 1,
+      cubeUsage);
   m_resourceManager.createOrGetCubemapBakeAttachment(
       StringID("IrradianceMap"),
       VkExtent2D{settings.irradianceSize, settings.irradianceSize}, kBakeFormat,
@@ -386,8 +386,9 @@ IblBakeRenderer::bakeStaticEnvironment(const IblBakeSettings &settings) {
       VkExtent2D{settings.prefilterSize, settings.prefilterSize}, kBakeFormat,
       settings.prefilterMipCount, cubeUsage);
   m_resourceManager.createOrGetFrameGraphAttachment(
-      StringID("BrdfLut"), VkExtent2D{settings.brdfLutSize, settings.brdfLutSize},
-      kBakeFormat, VK_IMAGE_ASPECT_COLOR_BIT,
+      StringID("BrdfLut"),
+      VkExtent2D{settings.brdfLutSize, settings.brdfLutSize}, kBakeFormat,
+      VK_IMAGE_ASPECT_COLOR_BIT,
       VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
           VK_IMAGE_USAGE_SAMPLED_BIT);
 
@@ -415,13 +416,13 @@ IblBakeRenderer::bakeStaticEnvironment(const IblBakeSettings &settings) {
                                                         StringID("BrdfLut")),
   };
   m_resourceManager.aliasCubemapBakeTextureResource(result.skybox,
-                                                   StringID("SkyboxMap"));
+                                                    StringID("SkyboxMap"));
   m_resourceManager.aliasCubemapBakeTextureResource(result.irradiance,
-                                                   StringID("IrradianceMap"));
+                                                    StringID("IrradianceMap"));
   m_resourceManager.aliasCubemapBakeTextureResource(
       result.prefiltered, StringID("PrefilteredEnvMap"));
   m_resourceManager.aliasFrameGraphTextureResource(result.brdfLut,
-                                                  StringID("BrdfLut"));
+                                                   StringID("BrdfLut"));
   return result;
 }
 
@@ -441,20 +442,18 @@ void IblBakeRenderer::clearCubemap(StringID resourceName, u32 baseSize,
     const u32 extentValue = mipExtent(baseSize, mip);
     const VkExtent2D extent{extentValue, extentValue};
     for (u32 face = 0; face < 6u; ++face) {
-      auto &view =
-          m_resourceManager.getOrCreateCubemapBakeSubresourceView(resourceName,
-                                                                  mip, face);
+      auto &view = m_resourceManager.getOrCreateCubemapBakeSubresourceView(
+          resourceName, mip, face);
       auto framebuffer = VulkanFrameBuffer::create(
           m_device, renderPass->getHandle(),
           std::vector<VkImageView>{view.getHandle()}, extent);
 
-      transitionSubresource(cmd->getHandle(), attachment.texture->getHandle(),
-                            VK_IMAGE_LAYOUT_UNDEFINED,
-                            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 0,
-                            VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-                            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, mip,
-                            face);
+      transitionSubresource(
+          cmd->getHandle(), attachment.texture->getHandle(),
+          VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+          0, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+          VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+          VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, mip, face);
       auto clearValues = renderPass->getClearValues();
       const float faceValue = static_cast<float>(face + 1u) / 6.0f;
       const float mipValue =
@@ -472,8 +471,8 @@ void IblBakeRenderer::clearCubemap(StringID resourceName, u32 baseSize,
 VkImageLayout IblBakeRenderer::getTrackedCubemapLayout(StringID resourceName,
                                                        u32 mipLevel,
                                                        u32 faceLayer) const {
-  const auto it =
-      m_cubemapLayouts.find(cubemapLayoutKey(resourceName, mipLevel, faceLayer));
+  const auto it = m_cubemapLayouts.find(
+      cubemapLayoutKey(resourceName, mipLevel, faceLayer));
   if (it == m_cubemapLayouts.end()) {
     return VK_IMAGE_LAYOUT_UNDEFINED;
   }
@@ -503,8 +502,7 @@ void IblBakeRenderer::transitionCubemapToShaderRead(StringID resourceName,
         continue;
       }
       transitionSubresource(cmd->getHandle(), attachment.texture->getHandle(),
-                            oldLayout,
-                            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                            oldLayout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                             VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
                             VK_ACCESS_SHADER_READ_BIT,
                             VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
@@ -532,14 +530,14 @@ void IblBakeRenderer::renderEquirectToCubemap(
       RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float);
   auto captureView =
       std::make_shared<CaptureViewResource>(captureViewProjections()[0]);
-  auto item = makeBakeItem(
-      "equirect_to_cubemap", target,
-      {std::static_pointer_cast<IGpuResource>(source),
-       std::static_pointer_cast<IGpuResource>(captureView)},
-      36u);
+  auto item =
+      makeBakeItem("equirect_to_cubemap", target,
+                   {std::static_pointer_cast<IGpuResource>(source),
+                    std::static_pointer_cast<IGpuResource>(captureView)},
+                   36u);
 
   syncBakeItemResources(m_resourceManager, m_cmdBufferManager, item);
-  auto &pipeline = m_resourceManager.getOrCreateRenderPipeline(item);
+  auto pipeline = m_resourceManager.getOrCreatePipeline(item);
 
   const auto viewProjections = captureViewProjections();
   for (u32 face = 0; face < 6u; ++face) {
@@ -547,19 +545,17 @@ void IblBakeRenderer::renderEquirectToCubemap(
     m_resourceManager.syncResource(m_cmdBufferManager, captureView);
     auto &view = m_resourceManager.getOrCreateCubemapBakeSubresourceView(
         StringID("SkyboxMap"), 0, face);
-    auto framebuffer = VulkanFrameBuffer::create(
-        m_device, renderPass->getHandle(),
-        std::vector<VkImageView>{view.getHandle()},
-        VkExtent2D{skyboxSize, skyboxSize});
+    auto framebuffer =
+        VulkanFrameBuffer::create(m_device, renderPass->getHandle(),
+                                  std::vector<VkImageView>{view.getHandle()},
+                                  VkExtent2D{skyboxSize, skyboxSize});
     auto cmd = m_cmdBufferManager.beginSingleTimeCommands();
-    transitionSubresource(cmd->getHandle(), attachment.texture->getHandle(),
-                          getTrackedCubemapLayout(StringID("SkyboxMap"), 0,
-                                                  face),
-                          VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 0,
-                          VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-                          VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                          VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0,
-                          face);
+    transitionSubresource(
+        cmd->getHandle(), attachment.texture->getHandle(),
+        getTrackedCubemapLayout(StringID("SkyboxMap"), 0, face),
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 0,
+        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, face);
     auto clearValues = renderPass->getClearValues();
     clearValues[0].color = {0.0f, 0.0f, 0.0f, 1.0f};
     cmd->beginRenderPass(renderPass->getHandle(), framebuffer->getHandle(),
@@ -589,21 +585,20 @@ void IblBakeRenderer::renderIrradianceCubemap(u32 irradianceSize) {
       false);
   RenderTargetDesc target =
       RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float);
-  auto skybox =
-      std::make_shared<BakedTextureResource>(StringID("SkyboxMap"),
-                                             StringID("SkyboxMap"));
+  auto skybox = std::make_shared<BakedTextureResource>(StringID("SkyboxMap"),
+                                                       StringID("SkyboxMap"));
   m_resourceManager.aliasCubemapBakeTextureResource(skybox,
-                                                   StringID("SkyboxMap"));
+                                                    StringID("SkyboxMap"));
   auto captureView =
       std::make_shared<CaptureViewResource>(captureViewProjections()[0]);
-  auto item = makeBakeItem(
-      "ibl_irradiance_convolve", target,
-      {std::static_pointer_cast<IGpuResource>(skybox),
-       std::static_pointer_cast<IGpuResource>(captureView)},
-      36u);
+  auto item =
+      makeBakeItem("ibl_irradiance_convolve", target,
+                   {std::static_pointer_cast<IGpuResource>(skybox),
+                    std::static_pointer_cast<IGpuResource>(captureView)},
+                   36u);
 
   syncBakeItemResources(m_resourceManager, m_cmdBufferManager, item);
-  auto &pipeline = m_resourceManager.getOrCreateRenderPipeline(item);
+  auto pipeline = m_resourceManager.getOrCreatePipeline(item);
 
   const auto viewProjections = captureViewProjections();
   for (u32 face = 0; face < 6u; ++face) {
@@ -611,19 +606,17 @@ void IblBakeRenderer::renderIrradianceCubemap(u32 irradianceSize) {
     m_resourceManager.syncResource(m_cmdBufferManager, captureView);
     auto &view = m_resourceManager.getOrCreateCubemapBakeSubresourceView(
         StringID("IrradianceMap"), 0, face);
-    auto framebuffer = VulkanFrameBuffer::create(
-        m_device, renderPass->getHandle(),
-        std::vector<VkImageView>{view.getHandle()},
-        VkExtent2D{irradianceSize, irradianceSize});
+    auto framebuffer =
+        VulkanFrameBuffer::create(m_device, renderPass->getHandle(),
+                                  std::vector<VkImageView>{view.getHandle()},
+                                  VkExtent2D{irradianceSize, irradianceSize});
     auto cmd = m_cmdBufferManager.beginSingleTimeCommands();
-    transitionSubresource(cmd->getHandle(), attachment.texture->getHandle(),
-                          getTrackedCubemapLayout(StringID("IrradianceMap"), 0,
-                                                  face),
-                          VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 0,
-                          VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-                          VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                          VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0,
-                          face);
+    transitionSubresource(
+        cmd->getHandle(), attachment.texture->getHandle(),
+        getTrackedCubemapLayout(StringID("IrradianceMap"), 0, face),
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 0,
+        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, face);
     auto clearValues = renderPass->getClearValues();
     clearValues[0].color = {0.0f, 0.0f, 0.0f, 1.0f};
     cmd->beginRenderPass(renderPass->getHandle(), framebuffer->getHandle(),
@@ -642,8 +635,7 @@ void IblBakeRenderer::renderIrradianceCubemap(u32 irradianceSize) {
   }
 }
 
-void IblBakeRenderer::renderPrefilterCubemap(u32 prefilterSize,
-                                             u32 mipLevels) {
+void IblBakeRenderer::renderPrefilterCubemap(u32 prefilterSize, u32 mipLevels) {
   auto attachmentOpt =
       m_resourceManager.getCubemapBakeAttachment(StringID("PrefilteredEnvMap"));
   if (!attachmentOpt.has_value()) {
@@ -655,45 +647,42 @@ void IblBakeRenderer::renderPrefilterCubemap(u32 prefilterSize,
       false);
   RenderTargetDesc target =
       RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float);
-  auto skybox =
-      std::make_shared<BakedTextureResource>(StringID("SkyboxMap"),
-                                             StringID("SkyboxMap"));
+  auto skybox = std::make_shared<BakedTextureResource>(StringID("SkyboxMap"),
+                                                       StringID("SkyboxMap"));
   m_resourceManager.aliasCubemapBakeTextureResource(skybox,
-                                                   StringID("SkyboxMap"));
+                                                    StringID("SkyboxMap"));
   auto captureView =
       std::make_shared<CaptureViewResource>(captureViewProjections()[0]);
   auto prefilter = std::make_shared<PrefilterResource>(
       PrefilterParams{0.0f, static_cast<float>(mipLevels), 64.0f, 0.0f});
-  auto item = makeBakeItem(
-      "ibl_prefilter_env", target,
-      {std::static_pointer_cast<IGpuResource>(skybox),
-       std::static_pointer_cast<IGpuResource>(captureView),
-       std::static_pointer_cast<IGpuResource>(prefilter)},
-      36u);
+  auto item = makeBakeItem("ibl_prefilter_env", target,
+                           {std::static_pointer_cast<IGpuResource>(skybox),
+                            std::static_pointer_cast<IGpuResource>(captureView),
+                            std::static_pointer_cast<IGpuResource>(prefilter)},
+                           36u);
 
   syncBakeItemResources(m_resourceManager, m_cmdBufferManager, item);
-  auto &pipeline = m_resourceManager.getOrCreateRenderPipeline(item);
+  auto pipeline = m_resourceManager.getOrCreatePipeline(item);
 
   const auto viewProjections = captureViewProjections();
   for (u32 mip = 0; mip < mipLevels; ++mip) {
     const u32 extentValue = mipExtent(prefilterSize, mip);
     const float roughness =
-        mipLevels <= 1u ? 0.0f
-                        : static_cast<float>(mip) /
-                              static_cast<float>(mipLevels - 1u);
+        mipLevels <= 1u
+            ? 0.0f
+            : static_cast<float>(mip) / static_cast<float>(mipLevels - 1u);
     prefilter->setParams(
-        PrefilterParams{roughness, static_cast<float>(mipLevels), 64.0f,
-                        0.0f});
+        PrefilterParams{roughness, static_cast<float>(mipLevels), 64.0f, 0.0f});
     m_resourceManager.syncResource(m_cmdBufferManager, prefilter);
     for (u32 face = 0; face < 6u; ++face) {
       captureView->setViewProj(viewProjections[face]);
       m_resourceManager.syncResource(m_cmdBufferManager, captureView);
       auto &view = m_resourceManager.getOrCreateCubemapBakeSubresourceView(
           StringID("PrefilteredEnvMap"), mip, face);
-      auto framebuffer = VulkanFrameBuffer::create(
-          m_device, renderPass->getHandle(),
-          std::vector<VkImageView>{view.getHandle()},
-          VkExtent2D{extentValue, extentValue});
+      auto framebuffer =
+          VulkanFrameBuffer::create(m_device, renderPass->getHandle(),
+                                    std::vector<VkImageView>{view.getHandle()},
+                                    VkExtent2D{extentValue, extentValue});
       auto cmd = m_cmdBufferManager.beginSingleTimeCommands();
       transitionSubresource(
           cmd->getHandle(), attachment.texture->getHandle(),
@@ -721,8 +710,8 @@ void IblBakeRenderer::renderPrefilterCubemap(u32 prefilterSize,
 }
 
 void IblBakeRenderer::clearBrdfLut(u32 size) {
-  auto attachmentOpt = m_resourceManager.getFrameGraphAttachment(
-      StringID("BrdfLut"));
+  auto attachmentOpt =
+      m_resourceManager.getFrameGraphAttachment(StringID("BrdfLut"));
   if (!attachmentOpt.has_value()) {
     throw std::runtime_error("missing BRDF LUT bake attachment");
   }
@@ -735,19 +724,18 @@ void IblBakeRenderer::clearBrdfLut(u32 size) {
       std::vector<VkImageView>{attachment.texture->getImageView()},
       VkExtent2D{size, size});
 
-  RenderTargetDesc target = RenderTargetDesc::offscreenColor(
-      ImageFormat::RGBA16Float);
+  RenderTargetDesc target =
+      RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float);
   auto item = makeFullscreenBakeItem("ibl_brdf_lut", target);
   syncBakeItemResources(m_resourceManager, m_cmdBufferManager, item);
-  auto &pipeline = m_resourceManager.getOrCreateRenderPipeline(item);
+  auto pipeline = m_resourceManager.getOrCreatePipeline(item);
 
   auto cmd = m_cmdBufferManager.beginSingleTimeCommands();
-  transitionTexture2D(cmd->getHandle(), attachment.texture->getHandle(),
-                      VK_IMAGE_LAYOUT_UNDEFINED,
-                      VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 0,
-                      VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-                      VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                      VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+  transitionTexture2D(
+      cmd->getHandle(), attachment.texture->getHandle(),
+      VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 0,
+      VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+      VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
   auto clearValues = renderPass->getClearValues();
   clearValues[0].color = {0.0f, 0.0f, 0.0f, 1.0f};
   cmd->beginRenderPass(renderPass->getHandle(), framebuffer->getHandle(),
@@ -764,8 +752,8 @@ void IblBakeRenderer::clearBrdfLut(u32 size) {
 }
 
 void IblBakeRenderer::transitionBrdfLutToShaderRead() {
-  auto attachmentOpt = m_resourceManager.getFrameGraphAttachment(
-      StringID("BrdfLut"));
+  auto attachmentOpt =
+      m_resourceManager.getFrameGraphAttachment(StringID("BrdfLut"));
   if (!attachmentOpt.has_value()) {
     throw std::runtime_error("missing BRDF LUT bake attachment");
   }
@@ -806,10 +794,10 @@ bool IblBakeRenderer::debugReadbackCubemapFaceHasData(StringID resourceName,
   auto &attachment = attachmentOpt->get();
   const VkDeviceSize byteSize = static_cast<VkDeviceSize>(extent) *
                                 static_cast<VkDeviceSize>(extent) * 8u;
-  auto readback = VulkanBuffer::create(
-      m_device, byteSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-          VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+  auto readback =
+      VulkanBuffer::create(m_device, byteSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                           VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                               VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
   auto cmd = m_cmdBufferManager.beginSingleTimeCommands();
   const VkImageLayout oldLayout =
       getTrackedCubemapLayout(resourceName, mipLevel, faceLayer);
@@ -827,10 +815,8 @@ bool IblBakeRenderer::debugReadbackCubemapFaceHasData(StringID resourceName,
   }
   transitionSubresource(cmd->getHandle(), attachment.texture->getHandle(),
                         oldLayout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                        srcAccess,
-                        VK_ACCESS_TRANSFER_READ_BIT,
-                        srcStage, VK_PIPELINE_STAGE_TRANSFER_BIT, mipLevel,
-                        faceLayer);
+                        srcAccess, VK_ACCESS_TRANSFER_READ_BIT, srcStage,
+                        VK_PIPELINE_STAGE_TRANSFER_BIT, mipLevel, faceLayer);
 
   VkBufferImageCopy region{};
   region.bufferOffset = 0;
@@ -857,18 +843,18 @@ bool IblBakeRenderer::debugReadbackCubemapFaceHasData(StringID resourceName,
 }
 
 bool IblBakeRenderer::debugReadbackBrdfLutHasData(u32 extent) {
-  auto attachmentOpt = m_resourceManager.getFrameGraphAttachment(
-      StringID("BrdfLut"));
+  auto attachmentOpt =
+      m_resourceManager.getFrameGraphAttachment(StringID("BrdfLut"));
   if (!attachmentOpt.has_value()) {
     return false;
   }
   auto &attachment = attachmentOpt->get();
   const VkDeviceSize byteSize = static_cast<VkDeviceSize>(extent) *
                                 static_cast<VkDeviceSize>(extent) * 8u;
-  auto readback = VulkanBuffer::create(
-      m_device, byteSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-          VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+  auto readback =
+      VulkanBuffer::create(m_device, byteSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                           VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                               VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
   auto cmd = m_cmdBufferManager.beginSingleTimeCommands();
   VkAccessFlags srcAccess = 0;
   VkPipelineStageFlags srcStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
@@ -880,11 +866,10 @@ bool IblBakeRenderer::debugReadbackBrdfLutHasData(u32 extent) {
     srcAccess = VK_ACCESS_SHADER_READ_BIT;
     srcStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
   }
-  transitionTexture2D(cmd->getHandle(), attachment.texture->getHandle(),
-                      attachment.currentLayout,
-                      VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, srcAccess,
-                      VK_ACCESS_TRANSFER_READ_BIT, srcStage,
-                      VK_PIPELINE_STAGE_TRANSFER_BIT);
+  transitionTexture2D(
+      cmd->getHandle(), attachment.texture->getHandle(),
+      attachment.currentLayout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, srcAccess,
+      VK_ACCESS_TRANSFER_READ_BIT, srcStage, VK_PIPELINE_STAGE_TRANSFER_BIT);
   VkBufferImageCopy region{};
   region.bufferOffset = 0;
   region.bufferRowLength = 0;

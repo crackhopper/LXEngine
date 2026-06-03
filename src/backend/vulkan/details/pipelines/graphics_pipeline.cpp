@@ -1,4 +1,4 @@
-#include "pipeline.hpp"
+#include "graphics_pipeline.hpp"
 #include "core/utils/env.hpp"
 #include "../descriptors/descriptor_manager.hpp"
 #include "../device.hpp"
@@ -139,15 +139,15 @@ VkShaderStageFlags toVkShaderStageFlags(ShaderStage mask) {
   return shaderStageMaskToVk(mask);
 }
 
-VulkanPipeline::VulkanPipeline(Token, VulkanDevice &device,
-                               const PipelineBuildDesc &buildInfo)
+VulkanGraphicsPipeline::VulkanGraphicsPipeline(
+    Token, VulkanDevice &device, const PipelineBuildDesc &buildInfo)
     : m_device(device), m_deviceHandle(device.getLogicalDevice()),
       m_stages(buildInfo.stages), m_bindings(buildInfo.bindings),
       m_vertexLayout(buildInfo.vertexLayout), m_target(buildInfo.target),
       m_renderState(buildInfo.renderState), m_topology(buildInfo.topology),
       m_pushConstant(buildInfo.pushConstant) {}
 
-VulkanPipeline::~VulkanPipeline() {
+VulkanGraphicsPipeline::~VulkanGraphicsPipeline() {
   if (m_deviceHandle != VK_NULL_HANDLE) {
     if (m_vertShader)
       vkDestroyShaderModule(m_deviceHandle, m_vertShader, nullptr);
@@ -161,7 +161,7 @@ VulkanPipeline::~VulkanPipeline() {
 }
 
 VkPipelineInputAssemblyStateCreateInfo
-VulkanPipeline::getInputAssemblyStateCreateInfo() {
+VulkanGraphicsPipeline::getInputAssemblyStateCreateInfo() {
   VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
   inputAssembly.sType =
       VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
@@ -171,7 +171,7 @@ VulkanPipeline::getInputAssemblyStateCreateInfo() {
 }
 
 VkPipelineShaderStageCreateInfo
-VulkanPipeline::getVertexShaderStageCreateInfo() {
+VulkanGraphicsPipeline::getVertexShaderStageCreateInfo() {
   VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
   vertShaderStageInfo.sType =
       VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -182,7 +182,7 @@ VulkanPipeline::getVertexShaderStageCreateInfo() {
 }
 
 VkPipelineShaderStageCreateInfo
-VulkanPipeline::getFragmentShaderStageCreateInfo() {
+VulkanGraphicsPipeline::getFragmentShaderStageCreateInfo() {
   VkPipelineShaderStageCreateInfo fragShaderStageInfo{};
   fragShaderStageInfo.sType =
       VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -192,7 +192,8 @@ VulkanPipeline::getFragmentShaderStageCreateInfo() {
   return fragShaderStageInfo;
 }
 
-VkPipelineViewportStateCreateInfo VulkanPipeline::getViewportStateCreateInfo() {
+VkPipelineViewportStateCreateInfo
+VulkanGraphicsPipeline::getViewportStateCreateInfo() {
   VkPipelineViewportStateCreateInfo viewportState{};
   viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
   viewportState.viewportCount = 1;
@@ -213,7 +214,8 @@ VkPipelineViewportStateCreateInfo VulkanPipeline::getViewportStateCreateInfo() {
   return viewportState;
 }
 
-VkPipelineDynamicStateCreateInfo VulkanPipeline::getDynamicStateCreateInfo() {
+VkPipelineDynamicStateCreateInfo
+VulkanGraphicsPipeline::getDynamicStateCreateInfo() {
   VkPipelineDynamicStateCreateInfo dynamicState{};
   dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
   dynamicState.dynamicStateCount = static_cast<u32>(m_dynamicStates.size());
@@ -222,7 +224,7 @@ VkPipelineDynamicStateCreateInfo VulkanPipeline::getDynamicStateCreateInfo() {
 }
 
 VkPipelineRasterizationStateCreateInfo
-VulkanPipeline::getRasterizerStateCreateInfo() {
+VulkanGraphicsPipeline::getRasterizerStateCreateInfo() {
   VkPipelineRasterizationStateCreateInfo rasterizer{};
   rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
   rasterizer.depthClampEnable = VK_FALSE;
@@ -238,7 +240,7 @@ VulkanPipeline::getRasterizerStateCreateInfo() {
 }
 
 VkPipelineMultisampleStateCreateInfo
-VulkanPipeline::getMultisampleStateCreateInfo() {
+VulkanGraphicsPipeline::getMultisampleStateCreateInfo() {
   VkPipelineMultisampleStateCreateInfo multisampling{};
   multisampling.sType =
       VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
@@ -248,7 +250,7 @@ VulkanPipeline::getMultisampleStateCreateInfo() {
 }
 
 VkPipelineDepthStencilStateCreateInfo
-VulkanPipeline::getDepthStencilStateCreateInfo() {
+VulkanGraphicsPipeline::getDepthStencilStateCreateInfo() {
   VkPipelineDepthStencilStateCreateInfo depthStencil{};
   depthStencil.sType =
       VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
@@ -265,7 +267,7 @@ VulkanPipeline::getDepthStencilStateCreateInfo() {
 }
 
 VkPipelineColorBlendStateCreateInfo
-VulkanPipeline::getColorBlendStateCreateInfo() {
+VulkanGraphicsPipeline::getColorBlendStateCreateInfo() {
   m_colorBlendAttachment = {};
   m_colorBlendAttachment.colorWriteMask =
       VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
@@ -298,7 +300,7 @@ VulkanPipeline::getColorBlendStateCreateInfo() {
 }
 
 VkPipelineVertexInputStateCreateInfo
-VulkanPipeline::getVertexInputStateCreateInfo() {
+VulkanGraphicsPipeline::getVertexInputStateCreateInfo() {
   const VertexLayout &layout = m_vertexLayout;
   const auto &items = layout.getItems();
 
@@ -338,7 +340,7 @@ VulkanPipeline::getVertexInputStateCreateInfo() {
   return vertexInputInfo;
 }
 
-VkPipeline VulkanPipeline::buildGraphicsPpl(VkRenderPass renderPass) {
+VkPipeline VulkanGraphicsPipeline::buildGraphicsPpl(VkRenderPass renderPass) {
   VkPipelineShaderStageCreateInfo stages[2]{};
   stages[0] = getVertexShaderStageCreateInfo();
   stages[1] = getFragmentShaderStageCreateInfo();
@@ -384,7 +386,7 @@ VkPipeline VulkanPipeline::buildGraphicsPpl(VkRenderPass renderPass) {
   return m_pipeline;
 }
 
-void VulkanPipeline::loadShaders() {
+void VulkanGraphicsPipeline::loadShaders() {
   auto createModule = [&](const std::vector<u32> &bytecode) {
     VkShaderModuleCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
@@ -407,7 +409,7 @@ void VulkanPipeline::loadShaders() {
   }
 }
 
-void VulkanPipeline::createLayout() {
+void VulkanGraphicsPipeline::createLayout() {
   auto &descriptorMgr = m_device.getDescriptorManager();
 
   std::unordered_map<u32, std::vector<LX_core::ShaderResourceBinding>>

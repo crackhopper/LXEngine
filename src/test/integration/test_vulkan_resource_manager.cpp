@@ -1,12 +1,12 @@
 #include "backend/vulkan/details/commands/command_buffer_manager.hpp"
-#include "backend/vulkan/details/device_resources/texture.hpp"
-#include "backend/vulkan/details/device_resources/buffer.hpp"
 #include "backend/vulkan/details/device.hpp"
+#include "backend/vulkan/details/device_resources/buffer.hpp"
+#include "backend/vulkan/details/device_resources/texture.hpp"
 #include "backend/vulkan/details/render_objects/framebuffer.hpp"
 #include "backend/vulkan/details/render_objects/render_pass.hpp"
 #include "backend/vulkan/details/resource_manager.hpp"
-#include "core/debug_draw/debug_draw.hpp"
 #include "core/asset/texture.hpp"
+#include "core/debug_draw/debug_draw.hpp"
 #include "core/frame_graph/render_upload_plan.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
@@ -17,7 +17,6 @@
 #include "core/utils/env.hpp"
 #include "core/utils/filesystem_tools.hpp"
 #include "infra/material_loader/generic_material_loader.hpp"
-#include "core/utils/filesystem_tools.hpp"
 #include "infra/window/window.hpp"
 
 #include "scene_test_helpers.hpp"
@@ -25,11 +24,21 @@
 #include <vulkan/vulkan.h>
 
 #include <algorithm>
-#include <new>
 #include <iostream>
+#include <new>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
+#include <utility>
+
+static_assert(
+    std::variant_size_v<
+        decltype(std::declval<LX_core::backend::VulkanResourceManager &>()
+                     .getOrCreatePipeline(
+                         std::declval<const LX_core::RenderWorkItem &>()))> ==
+        2,
+    "VulkanResourceManager must expose one pipeline resolution entry for "
+    "graphics and compute work items");
 
 namespace {
 
@@ -40,9 +49,7 @@ struct TestUniformResource final : public LX_core::IGpuResource {
     return LX_core::ResourceType::UniformBuffer;
   }
   const void *getRawData() const override { return &value; }
-  u32 getByteSize() const override {
-    return sizeof(value);
-  }
+  u32 getByteSize() const override { return sizeof(value); }
 
   u32 value = 0;
 };
@@ -82,10 +89,10 @@ void syncRenderWorkItemResources(
   resourceManager.collectGarbage();
 }
 
-LX_core::RenderWorkItem syncDebugOverlayItem(
-    LX_core::backend::VulkanResourceManager &resourceManager,
-    LX_core::backend::VulkanCommandBufferManager &cmdBufferMgr,
-    LX_core::Scene &scene) {
+LX_core::RenderWorkItem
+syncDebugOverlayItem(LX_core::backend::VulkanResourceManager &resourceManager,
+                     LX_core::backend::VulkanCommandBufferManager &cmdBufferMgr,
+                     LX_core::Scene &scene) {
   auto item = LX_test::firstItemFromScene(scene, LX_core::Pass_DebugOverlay);
   syncRenderWorkItemResources(resourceManager, cmdBufferMgr, item);
   return item;
@@ -97,8 +104,10 @@ bool drawDebugOverlayItem(
     LX_core::backend::VulkanCommandBufferManager &cmdBufferMgr,
     const LX_core::RenderWorkItem &item) {
   auto &renderPass = resourceManager.getRenderPass();
-  auto &pipeline = resourceManager.getOrCreateRenderPipeline(item);
-  if (pipeline.getHandle() == VK_NULL_HANDLE) {
+  auto pipeline = resourceManager.getOrCreatePipeline(item);
+  const VkPipeline pipelineHandle =
+      std::visit([](auto ref) { return ref.get().getHandle(); }, pipeline);
+  if (pipelineHandle == VK_NULL_HANDLE) {
     std::cerr << "DebugDraw overlay pipeline was not created\n";
     return false;
   }
@@ -109,8 +118,7 @@ bool drawDebugOverlayItem(
       VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
   auto depthTex = LX_core::backend::VulkanTexture::createForAttachment(
       device, extent.width, extent.height, device.getDepthFormat(),
-      VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-      device.getDepthAspectMask());
+      VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, device.getDepthAspectMask());
   std::vector<VkImageView> attachments = {colorTex->getImageView(),
                                           depthTex->getImageView()};
   auto framebuffer = LX_core::backend::VulkanFrameBuffer::create(
@@ -167,9 +175,12 @@ bool verifyDebugDrawGrowthSync(
     std::cerr << "Initial DebugDraw Vulkan buffers were not created\n";
     return false;
   }
-  if (smallVkVertex->get().getSize() != smallItem.raster.vertexBuffer->getByteSize() ||
-      smallVkIndex->get().getSize() != smallItem.raster.indexBuffer->getByteSize()) {
-    std::cerr << "Initial DebugDraw GPU buffer sizes do not match CPU resources\n";
+  if (smallVkVertex->get().getSize() !=
+          smallItem.raster.vertexBuffer->getByteSize() ||
+      smallVkIndex->get().getSize() !=
+          smallItem.raster.indexBuffer->getByteSize()) {
+    std::cerr
+        << "Initial DebugDraw GPU buffer sizes do not match CPU resources\n";
     return false;
   }
   if (!initialSceneDirty) {
@@ -216,14 +227,18 @@ bool verifyDebugDrawGrowthSync(
     std::cerr << "Grown DebugDraw Vulkan buffers were not created\n";
     return false;
   }
-  if (grownVkVertex->get().getSize() != grownItem.raster.vertexBuffer->getByteSize() ||
-      grownVkIndex->get().getSize() != grownItem.raster.indexBuffer->getByteSize()) {
-    std::cerr << "Grown DebugDraw GPU buffer sizes do not match CPU resources\n";
+  if (grownVkVertex->get().getSize() !=
+          grownItem.raster.vertexBuffer->getByteSize() ||
+      grownVkIndex->get().getSize() !=
+          grownItem.raster.indexBuffer->getByteSize()) {
+    std::cerr
+        << "Grown DebugDraw GPU buffer sizes do not match CPU resources\n";
     return false;
   }
   if (grownVkVertex->get().getHandle() == smallVertexHandle ||
       grownVkIndex->get().getHandle() == smallIndexHandle) {
-    std::cerr << "Grown DebugDraw buffers reused stale undersized Vulkan handles\n";
+    std::cerr
+        << "Grown DebugDraw buffers reused stale undersized Vulkan handles\n";
     return false;
   }
   if (!drawDebugOverlayItem(device, resourceManager, cmdBufferMgr, grownItem)) {
@@ -250,11 +265,13 @@ bool verifyDebugDrawGrowthSync(
           LX_core::Layer_EditorOverlay);
   if (retainedVertexIdentity != grownVertexIdentity ||
       retainedIndexIdentity != grownIndexIdentity) {
-    std::cerr << "Within-capacity DebugDraw frame unexpectedly replaced CPU identities\n";
+    std::cerr << "Within-capacity DebugDraw frame unexpectedly replaced CPU "
+                 "identities\n";
     return false;
   }
   if (retainedSceneDirty) {
-    std::cerr << "Within-capacity DebugDraw frame should not mark scene dirty\n";
+    std::cerr
+        << "Within-capacity DebugDraw frame should not mark scene dirty\n";
     return false;
   }
 
@@ -265,14 +282,18 @@ bool verifyDebugDrawGrowthSync(
     std::cerr << "Retained DebugDraw Vulkan buffers were not found\n";
     return false;
   }
-  if (retainedVkVertex->get().getSize() != grownItem.raster.vertexBuffer->getByteSize() ||
-      retainedVkIndex->get().getSize() != grownItem.raster.indexBuffer->getByteSize()) {
-    std::cerr << "Within-capacity DebugDraw GPU sizes no longer match retained CPU capacity\n";
+  if (retainedVkVertex->get().getSize() !=
+          grownItem.raster.vertexBuffer->getByteSize() ||
+      retainedVkIndex->get().getSize() !=
+          grownItem.raster.indexBuffer->getByteSize()) {
+    std::cerr << "Within-capacity DebugDraw GPU sizes no longer match retained "
+                 "CPU capacity\n";
     return false;
   }
   if (retainedVkVertex->get().getHandle() != grownVkVertex->get().getHandle() ||
       retainedVkIndex->get().getHandle() != grownVkIndex->get().getHandle()) {
-    std::cerr << "Within-capacity DebugDraw frame should reuse grown Vulkan buffers\n";
+    std::cerr << "Within-capacity DebugDraw frame should reuse grown Vulkan "
+                 "buffers\n";
     return false;
   }
   if (!drawDebugOverlayItem(device, resourceManager, cmdBufferMgr, grownItem)) {
@@ -312,12 +333,11 @@ int main() {
                                                      depthFormat);
 
     const VkExtent2D frameGraphExtent{64, 64};
-    auto &frameGraphDepth =
-        resourceManager->createOrGetFrameGraphAttachment(
-            LX_core::StringID("test.depth"), frameGraphExtent, depthFormat,
-            device->getDepthAspectMask(),
-            VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
-                VK_IMAGE_USAGE_SAMPLED_BIT);
+    auto &frameGraphDepth = resourceManager->createOrGetFrameGraphAttachment(
+        LX_core::StringID("test.depth"), frameGraphExtent, depthFormat,
+        device->getDepthAspectMask(),
+        VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
+            VK_IMAGE_USAGE_SAMPLED_BIT);
     if (frameGraphDepth.texture->getImageView() == VK_NULL_HANDLE) {
       std::cerr << "Frame graph attachment image view was not created\n";
       return 1;
@@ -341,14 +361,14 @@ int main() {
       return 1;
     }
     if ((frameGraphDepth.usage & VK_IMAGE_USAGE_SAMPLED_BIT) == 0) {
-      std::cerr << "Frame graph attachment usage metadata did not retain SAMPLED\n";
+      std::cerr
+          << "Frame graph attachment usage metadata did not retain SAMPLED\n";
       return 1;
     }
 
     (void)resourceManager->createOrGetFrameGraphAttachment(
-        LX_core::StringID("test.color"), frameGraphExtent,
-        surfaceFormat.format, VK_IMAGE_ASPECT_COLOR_BIT,
-        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
+        LX_core::StringID("test.color"), frameGraphExtent, surfaceFormat.format,
+        VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
     bool usageMismatchRejected = false;
     try {
       (void)resourceManager->createOrGetFrameGraphAttachment(
@@ -370,13 +390,13 @@ int main() {
             LX_core::StringID("test.ibl.prefilter"), cubemapBakeExtent,
             VK_FORMAT_R16G16B16A16_SFLOAT, 4,
             VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
-                VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
-                VK_IMAGE_USAGE_SAMPLED_BIT);
+                VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
     if (!cubemapBakeAttachment.texture ||
         cubemapBakeAttachment.texture->getImageView() == VK_NULL_HANDLE ||
         cubemapBakeAttachment.texture->getMipLevels() != 4u ||
         cubemapBakeAttachment.texture->getArrayLayers() != 6u) {
-      std::cerr << "Cubemap bake attachment texture was not created correctly\n";
+      std::cerr
+          << "Cubemap bake attachment texture was not created correctly\n";
       return 1;
     }
     if (cubemapBakeAttachment.baseExtent.width != cubemapBakeExtent.width ||
@@ -385,9 +405,8 @@ int main() {
       std::cerr << "Cubemap bake attachment metadata mismatch\n";
       return 1;
     }
-    auto &faceMipView =
-        resourceManager->getOrCreateCubemapBakeSubresourceView(
-            LX_core::StringID("test.ibl.prefilter"), 2, 5);
+    auto &faceMipView = resourceManager->getOrCreateCubemapBakeSubresourceView(
+        LX_core::StringID("test.ibl.prefilter"), 2, 5);
     if (faceMipView.getHandle() == VK_NULL_HANDLE) {
       std::cerr << "Cubemap bake face/mip view was not created\n";
       return 1;
@@ -405,8 +424,7 @@ int main() {
           LX_core::StringID("test.ibl.prefilter"), cubemapBakeExtent,
           VK_FORMAT_R16G16B16A16_SFLOAT, 5,
           VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
-              VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
-              VK_IMAGE_USAGE_SAMPLED_BIT);
+              VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
     } catch (const std::runtime_error &e) {
       cubemapMismatchRejected =
           std::string(e.what()).find("mips") != std::string::npos;
@@ -438,12 +456,13 @@ int main() {
     hdrDesc.format = LX_core::TextureFormat::RGBA32Float;
     auto hdrSampler = std::make_shared<LX_core::CombinedTextureSampler>(
         std::make_shared<LX_core::Texture>(
-            hdrDesc, std::vector<u8>(LX_core::expectedTextureByteCount(hdrDesc))));
+            hdrDesc,
+            std::vector<u8>(LX_core::expectedTextureByteCount(hdrDesc))));
     const auto hdrIdentity = hdrSampler->getBackendCacheIdentity();
     resourceManager->syncResource(*cmdBufferMgr, hdrSampler);
     auto hdrGpuTexture = resourceManager->getTexture(hdrIdentity);
-    if (!hdrGpuTexture || hdrGpuTexture->get().getFormat() !=
-                              VK_FORMAT_R32G32B32A32_SFLOAT) {
+    if (!hdrGpuTexture ||
+        hdrGpuTexture->get().getFormat() != VK_FORMAT_R32G32B32A32_SFLOAT) {
       std::cerr << "HDR sampler did not upload as RGBA32F Vulkan texture\n";
       return 1;
     }
@@ -480,8 +499,8 @@ int main() {
     const auto cubeIdentity = cubeSampler->getBackendCacheIdentity();
     resourceManager->syncResource(*cmdBufferMgr, cubeSampler);
     auto cubeGpuTexture = resourceManager->getTexture(cubeIdentity);
-    if (!cubeGpuTexture || cubeGpuTexture->get().getFormat() !=
-                               VK_FORMAT_R16G16B16A16_SFLOAT ||
+    if (!cubeGpuTexture ||
+        cubeGpuTexture->get().getFormat() != VK_FORMAT_R16G16B16A16_SFLOAT ||
         cubeGpuTexture->get().getArrayLayers() != 6 ||
         cubeGpuTexture->get().getMipLevels() != 3) {
       std::cerr << "Cubemap sampler did not preserve Vulkan texture shape\n";
@@ -491,7 +510,8 @@ int main() {
     auto meshPtr = LX_core::Mesh::create(
         vertexBufferPtr, indexBufferPtr,
         LX_core::BoundingBox{{-5.0f, -5.0f, 0.0f}, {5.0f, 5.0f, 0.0f}});
-    auto material = LX_infra::loadGenericMaterial("assets/materials/blinnphong_default.material");
+    auto material = LX_infra::loadGenericMaterial(
+        "assets/materials/blinnphong_default.material");
     auto node = LX_core::SceneNode::create("vulkan_resource_node");
     node->addComponent<LX_core::MeshComponent>(meshPtr);
     node->addComponent<LX_core::MaterialComponent>(material);
@@ -500,8 +520,10 @@ int main() {
     auto scene = LX_core::Scene::create(node);
     scene->addCamera(LX_test::makeDefaultCameraNodeWithTarget());
     auto item = LX_test::firstItemFromScene(*scene, LX_core::Pass_Forward);
-    auto &pipeline = resourceManager->getOrCreateRenderPipeline(item);
-    if (pipeline.getHandle() == VK_NULL_HANDLE) {
+    auto pipeline = resourceManager->getOrCreatePipeline(item);
+    const VkPipeline pipelineHandle =
+        std::visit([](auto ref) { return ref.get().getHandle(); }, pipeline);
+    if (pipelineHandle == VK_NULL_HANDLE) {
       std::cerr << "Pipeline not created correctly\n";
       return 1;
     }
@@ -537,7 +559,8 @@ int main() {
     resourceManager->collectGarbage();
     auto tempBuffer1 = resourceManager->getBuffer(tempIdentity);
     if (!tempBuffer1 || tempBuffer1->get().getHandle() != tempHandle0) {
-      std::cerr << "Temporarily unused resource was not retained across grace frame\n";
+      std::cerr << "Temporarily unused resource was not retained across grace "
+                   "frame\n";
       return 1;
     }
 
@@ -545,23 +568,25 @@ int main() {
     resourceManager->collectGarbage();
     auto tempBuffer2 = resourceManager->getBuffer(tempIdentity);
     if (!tempBuffer2 || tempBuffer2->get().getHandle() != tempHandle0) {
-      std::cerr << "Resync after one inactive frame should reuse same GPU buffer\n";
+      std::cerr
+          << "Resync after one inactive frame should reuse same GPU buffer\n";
       return 1;
     }
 
     resourceManager->collectGarbage();
     resourceManager->collectGarbage();
     if (resourceManager->getBuffer(tempIdentity)) {
-      std::cerr << "Temp resource should be evicted after inactivity grace period\n";
+      std::cerr
+          << "Temp resource should be evicted after inactivity grace period\n";
       return 1;
     }
 
-    using ReusedStorage =
-        std::aligned_storage_t<sizeof(TestUniformResource),
-                               alignof(TestUniformResource)>;
+    using ReusedStorage = std::aligned_storage_t<sizeof(TestUniformResource),
+                                                 alignof(TestUniformResource)>;
     ReusedStorage reusedStorage;
 
-    auto reusedA = makePlacementShared<TestUniformResource>(&reusedStorage, 11u);
+    auto reusedA =
+        makePlacementShared<TestUniformResource>(&reusedStorage, 11u);
     const auto reusedIdentityA = reusedA->getBackendCacheIdentity();
     resourceManager->syncResource(*cmdBufferMgr, reusedA);
     resourceManager->collectGarbage();
@@ -574,14 +599,16 @@ int main() {
     auto firstAddress = reusedA.get();
     reusedA.reset();
 
-    auto reusedB = makePlacementShared<TestUniformResource>(&reusedStorage, 22u);
+    auto reusedB =
+        makePlacementShared<TestUniformResource>(&reusedStorage, 22u);
     const auto reusedIdentityB = reusedB->getBackendCacheIdentity();
     if (reusedB.get() != firstAddress) {
       std::cerr << "Placement test did not reuse the same CPU address\n";
       return 1;
     }
     if (reusedIdentityA == reusedIdentityB) {
-      std::cerr << "Stable backend identity unexpectedly reused across objects\n";
+      std::cerr
+          << "Stable backend identity unexpectedly reused across objects\n";
       return 1;
     }
 

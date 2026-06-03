@@ -6,14 +6,15 @@ namespace LX_core::backend {
 VulkanShaderGraphicsPipeline::VulkanShaderGraphicsPipeline(
     Token t, VulkanDevice &device, const PipelineBuildDesc &buildInfo,
     std::string shaderName)
-    : VulkanPipeline(t, device, buildInfo),
+    : VulkanGraphicsPipeline(t, device, buildInfo),
       m_shaderName(std::move(shaderName)) {}
 
-VulkanPipelineUniquePtr VulkanShaderGraphicsPipeline::create(
+VulkanGraphicsPipelineUniquePtr VulkanShaderGraphicsPipeline::create(
     VulkanDevice &device, const PipelineBuildDesc &buildInfo,
     VkRenderPass renderPass, std::string shaderName) {
-  auto pipeline = VulkanPipelineUniquePtr(new VulkanShaderGraphicsPipeline(
-      Token{}, device, buildInfo, std::move(shaderName)));
+  auto pipeline =
+      VulkanGraphicsPipelineUniquePtr(new VulkanShaderGraphicsPipeline(
+          Token{}, device, buildInfo, std::move(shaderName)));
   pipeline->loadShaders();
   pipeline->createLayout();
   pipeline->buildGraphicsPpl(renderPass);

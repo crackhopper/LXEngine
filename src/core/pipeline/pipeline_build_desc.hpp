@@ -1,10 +1,10 @@
 #pragma once
 
-#include "core/frame_graph/render_target.hpp"
-#include "core/rhi/index_buffer.hpp"
 #include "core/asset/material_instance.hpp"
-#include "core/pipeline/pipeline_key.hpp"
 #include "core/asset/shader.hpp"
+#include "core/frame_graph/render_target.hpp"
+#include "core/pipeline/pipeline_key.hpp"
+#include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
 #include <cstdint>
 #include <vector>
@@ -12,6 +12,12 @@
 namespace LX_core {
 
 struct RenderWorkItem; // forward decl
+
+enum class PipelineBuildType {
+  Graphics,
+  Compute,
+  RayTracing,
+};
 
 /*
 @source_analysis.section PushConstantRange：当前固定 ABI 的占位描述
@@ -38,10 +44,11 @@ struct PushConstantRange {
 “如果这条 pipeline 还没建，backend 需要哪些输入”。
 
 它从一个已经校验好的 `RenderWorkItem` 派生，不重新判断材质是否合法，也不重新推导
-identity。这样前端的 SceneNode/RenderWorkQueue 负责把 draw 事实准备好，backend 只负责把
-这些事实翻译成 Vulkan pipeline 创建参数。
+identity。这样前端的 SceneNode/RenderWorkQueue 负责把 draw 事实准备好，backend
+只负责把 这些事实翻译成 Vulkan pipeline 创建参数。
 */
 struct PipelineBuildDesc {
+  PipelineBuildType type = PipelineBuildType::Graphics;
   PipelineKey key;
   RenderTargetDesc target;
   std::vector<ShaderStageCode> stages;
@@ -52,8 +59,8 @@ struct PipelineBuildDesc {
   PushConstantRange pushConstant;
 
   /// Derive a complete PipelineBuildDesc from a fully-built RenderWorkItem.
-  /// Requires a raster draw work item with shader, material, vertex, and index
-  /// resources.
+  /// Graphics items require shader, material, vertex, and index resources.
+  /// Compute items require shader stages and descriptor bindings only.
   static PipelineBuildDesc fromRenderWorkItem(const RenderWorkItem &item);
 };
 

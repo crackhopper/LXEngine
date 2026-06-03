@@ -32,11 +32,9 @@ public:
 
   VkDescriptorSet getHandle() const { return m_set; }
 
-  void updateBuffer(u32 binding,
-                    VkDescriptorBufferInfo bufferInfo,
+  void updateBuffer(u32 binding, VkDescriptorBufferInfo bufferInfo,
                     VkDescriptorType type);
-  void updateImage(u32 binding,
-                   VkDescriptorImageInfo imageInfo,
+  void updateImage(u32 binding, VkDescriptorImageInfo imageInfo,
                    VkDescriptorType type);
   void updateBatch(const std::vector<DescriptorUpdateInfo> &updates);
 
@@ -61,7 +59,8 @@ public:
 };
 
 class VulkanDescriptorManager;
-using VulkanDescriptorManagerUniquePtr = std::unique_ptr<VulkanDescriptorManager>;
+using VulkanDescriptorManagerUniquePtr =
+    std::unique_ptr<VulkanDescriptorManager>;
 
 class VulkanDescriptorManager {
 public:
@@ -112,7 +111,7 @@ private:
   struct Config {
     u32 uniformCount = 16;
     u32 samplerCount = 16;
-    u32 storageCount = 8;
+    u32 storageCount = 32;
     u32 maxSets = 64;
   } m_config;
 };

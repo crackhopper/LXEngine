@@ -1,7 +1,8 @@
 #pragma once
 #include "core/scene/scene.hpp"
-#include "../pipelines/pipeline.hpp"
 #include "../device.hpp"
+#include "../pipelines/graphics_pipeline.hpp"
+#include "../pipelines/pipeline_ref.hpp"
 #include <vulkan/vulkan.h>
 #include <memory>
 #include <vector>
@@ -11,6 +12,7 @@ namespace LX_core::backend {
 [[nodiscard]] VkViewport makeVulkanViewport(u32 width, u32 height);
 
 class VulkanResourceManager;
+class VulkanComputePipeline;
 
 class VulkanCommandBuffer {
 public:
@@ -31,10 +33,18 @@ public:
   void setViewport(u32 width, u32 height);
   void setScissor(u32 width, u32 height);
 
-  void bindPipeline(VulkanPipeline &pipeline);
+  void bindPipeline(VulkanGraphicsPipeline &pipeline);
+  void bindPipeline(VulkanComputePipeline &pipeline);
+  void bindPipeline(VulkanPipelineRef pipeline);
 
   void bindResources(VulkanResourceManager &resourceManager,
-                     VulkanPipeline &pipeline, const RenderWorkItem &item);
+                     VulkanGraphicsPipeline &pipeline,
+                     const RenderWorkItem &item);
+  void bindResources(VulkanResourceManager &resourceManager,
+                     VulkanComputePipeline &pipeline,
+                     const RenderWorkItem &item);
+  void bindResources(VulkanResourceManager &resourceManager,
+                     VulkanPipelineRef pipeline, const RenderWorkItem &item);
 
   void executeWorkItem(const RenderWorkItem &item);
 
@@ -71,6 +81,12 @@ public:
   }
 
 private:
+  void
+  bindResourcesWithLayout(VulkanResourceManager &resourceManager,
+                          const std::vector<ShaderResourceBinding> &bindings,
+                          VkPipelineLayout pipelineLayout,
+                          VkPipelineBindPoint bindPoint,
+                          const RenderWorkItem &item);
   void executeRasterDrawItem(const RenderWorkItem &item);
   void executeComputeDispatchItem(const RenderWorkItem &item);
 

@@ -6,8 +6,8 @@
 #include "backend/vulkan/details/render_objects/render_pass.hpp"
 #include "backend/vulkan/details/resource_manager.hpp"
 #include "core/asset/mesh.hpp"
-#include "core/frame_graph/render_upload_plan.hpp"
 #include "core/asset/skeleton.hpp"
+#include "core/frame_graph/render_upload_plan.hpp"
 #include "core/rhi/gpu_resource.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
@@ -43,12 +43,12 @@ int skipped = 0;
   } while (0)
 
 [[nodiscard]] bool shouldRunProbe() {
-  const char* value = std::getenv("LX_RUN_MEMORY_PROBE");
+  const char *value = std::getenv("LX_RUN_MEMORY_PROBE");
   return value && *value && std::string(value) != "0";
 }
 
 [[nodiscard]] usize requestedFrameCount(const usize fallback) {
-  const char* value = std::getenv("LX_MEMORY_PROBE_FRAMES");
+  const char *value = std::getenv("LX_MEMORY_PROBE_FRAMES");
   if (!value || !*value) {
     return fallback;
   }
@@ -61,7 +61,7 @@ int skipped = 0;
 }
 
 [[nodiscard]] bool submitEnabled() {
-  const char* value = std::getenv("LX_OFFSCREEN_PROBE_MODE");
+  const char *value = std::getenv("LX_OFFSCREEN_PROBE_MODE");
   return !(value && std::string_view(value) == "record_only");
 }
 
@@ -118,9 +118,10 @@ void testOffscreenSubmitProbe() {
         *device, maxFrameInFlight, device->getGraphicsQueueFamilyIndex());
     auto resourceManager =
         LX_core::backend::VulkanResourceManager::create(*device);
-    resourceManager->initializeRenderPassAndPipeline(surfaceFormat, depthFormat);
+    resourceManager->initializeRenderPassAndPipeline(surfaceFormat,
+                                                     depthFormat);
 
-    auto& renderPass = resourceManager->getRenderPass();
+    auto &renderPass = resourceManager->getRenderPass();
     const VkExtent2D extent{64, 64};
     auto colorTex = LX_core::backend::VulkanTexture::createForAttachment(
         *device, extent.width, extent.height, surfaceFormat.format,
@@ -163,7 +164,8 @@ void testOffscreenSubmitProbe() {
     scene->addCamera(cameraNode);
     auto lightNode = LX_core::SceneNode::create("offscreen_probe_light");
     scene->addRenderable(lightNode);
-    scene->attachLight(lightNode, std::make_shared<LX_core::DirectionalLight>());
+    scene->attachLight(lightNode,
+                       std::make_shared<LX_core::DirectionalLight>());
 
     const auto camera = cameraNode->getComponent<LX_core::CameraComponent>();
     const auto dirLight = std::dynamic_pointer_cast<LX_core::DirectionalLight>(
@@ -197,8 +199,10 @@ void testOffscreenSubmitProbe() {
     }
     resourceManager->collectGarbage();
 
-    auto& pipeline = resourceManager->getOrCreateRenderPipeline(renderItem);
-    if (pipeline.getHandle() == VK_NULL_HANDLE) {
+    auto pipeline = resourceManager->getOrCreatePipeline(renderItem);
+    const VkPipeline pipelineHandle =
+        std::visit([](auto ref) { return ref.get().getHandle(); }, pipeline);
+    if (pipelineHandle == VK_NULL_HANDLE) {
       std::cerr << "Pipeline not created correctly\n";
       ++failures;
       return;
@@ -259,12 +263,10 @@ void testOffscreenSubmitProbe() {
 
     const usize growthKb = peakRss - *startRss;
     std::cout << "[probe] offscreen_" << (doSubmit ? "submit" : "record_only")
-              << " frames=" << frameCount
-              << " start=" << *startRss
-              << " peak=" << peakRss
-              << " end=" << *endRss
+              << " frames=" << frameCount << " start=" << *startRss
+              << " peak=" << peakRss << " end=" << *endRss
               << " growth_kb=" << growthKb << "\n";
-  } catch (const std::exception& e) {
+  } catch (const std::exception &e) {
     std::cout << "[SKIP] vulkan_offscreen_submit_memory_probe (exception: "
               << e.what() << ")\n";
     ++skipped;

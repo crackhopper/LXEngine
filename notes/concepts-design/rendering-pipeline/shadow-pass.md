@@ -2,7 +2,7 @@
 
 Shadow pass 可以想成从灯光方向拍一张黑白深度底片。它不关心物体颜色，只记录“从光源看过去，哪个表面更近”。Forward pass 之后用这张底片判断当前像素是否被挡住。
 
-当前内置 lit 材质同时声明 `Forward` 和 `Shadow` pass。同一个 renderable 因此会进入不同 pass 的 `RenderQueue`，分别用不同 shader、target 和 render state 提交。
+当前内置 lit 材质同时声明 `Forward` 和 `Shadow` pass。同一个 renderable 因此会进入不同 pass 的 `RenderWorkQueue`，分别用不同 shader、target 和 render state 提交。
 
 ## 材质文件把 shadow pass 声明出来
 
