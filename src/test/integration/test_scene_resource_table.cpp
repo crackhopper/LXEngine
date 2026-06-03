@@ -523,6 +523,17 @@ void testPbrTextureIndicesEnterUploadView() {
          "AO texture index should be assigned");
   EXPECT(upload.materials[0].emissiveTexture != u32_max,
          "emissive texture index should be assigned");
+  EXPECT(upload.materials[0].baseColor.x == 1.0f &&
+             upload.materials[0].baseColor.y == 1.0f &&
+             upload.materials[0].baseColor.z == 1.0f &&
+             upload.materials[0].baseColor.w == 1.0f,
+         "DamagedHelmet baseColorFactor should enter the GPU material record");
+  EXPECT(upload.materials[0].pbrParams.x == 1.0f,
+         "DamagedHelmet metallicFactor should enter the GPU material record");
+  EXPECT(upload.materials[0].pbrParams.y == 1.0f,
+         "DamagedHelmet roughnessFactor should enter the GPU material record");
+  EXPECT(upload.materials[0].pbrParams.w == 1.0f,
+         "DamagedHelmet AO scalar should enter the GPU material record");
 
   const auto rebuiltUpload = table.buildUploadView();
   EXPECT(rebuiltUpload.textures.size() == 5,
