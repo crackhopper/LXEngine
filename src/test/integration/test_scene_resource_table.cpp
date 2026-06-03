@@ -351,6 +351,67 @@ void testSceneResourceTableUploadViewTracksGeneration() {
          "object visibility should reach GPU record");
 }
 
+void testSceneResourceTableUploadViewUsesCompactRecordIndices() {
+  SceneResourceTable table;
+  const auto releasedMesh = table.registerMesh(makeMeshBuffer());
+  const auto liveMesh = table.registerMesh(makeMeshBuffer());
+  const auto releasedMaterial = table.registerMaterial(makeGpuRecordMaterial());
+  const auto liveMaterial = table.registerMaterial(makeGpuRecordMaterial());
+
+  ObjectResource releasedObject;
+  releasedObject.mesh = releasedMesh;
+  releasedObject.material = releasedMaterial;
+  releasedObject.worldBounds = BoundingBox{{0.0f, 0.0f, 0.0f},
+                                           {1.0f, 1.0f, 0.0f}};
+  const auto releasedObjectHandle = table.registerObject(releasedObject);
+
+  ObjectResource liveObject;
+  liveObject.mesh = liveMesh;
+  liveObject.material = liveMaterial;
+  liveObject.worldBounds = BoundingBox{{2.0f, 0.0f, 0.0f},
+                                       {3.0f, 1.0f, 0.0f}};
+  const auto liveObjectHandle = table.registerObject(liveObject);
+
+  table.release(releasedObjectHandle);
+  table.release(releasedMesh);
+  table.release(releasedMaterial);
+
+  const auto view = table.buildUploadView();
+  EXPECT(liveMesh.index == 1, "test setup should leave live mesh in slot 1");
+  EXPECT(liveMaterial.index == 1,
+         "test setup should leave live material in slot 1");
+  EXPECT(liveObjectHandle.index == 1,
+         "test setup should leave live object in slot 1");
+  EXPECT(view.meshes.size() == 1, "upload view should compact live meshes");
+  EXPECT(view.materials.size() == 1,
+         "upload view should compact live materials");
+  EXPECT(view.objects.size() == 1, "upload view should compact live objects");
+  EXPECT(view.primitives.size() == 1,
+         "upload view should emit one live primitive");
+
+  EXPECT(view.objects.front().meshIndex < view.meshes.size(),
+         "object mesh index should point inside compact mesh span");
+  EXPECT(view.objects.front().meshIndex == 0,
+         "object mesh index should use compact mesh record position");
+  EXPECT(view.objects.front().materialIndex < view.materials.size(),
+         "object material index should point inside compact material span");
+  EXPECT(view.objects.front().materialIndex == 0,
+         "object material index should use compact material record position");
+
+  EXPECT(view.primitives.front().meshIndex < view.meshes.size(),
+         "primitive mesh index should point inside compact mesh span");
+  EXPECT(view.primitives.front().meshIndex == 0,
+         "primitive mesh index should use compact mesh record position");
+  EXPECT(view.primitives.front().materialIndex < view.materials.size(),
+         "primitive material index should point inside compact material span");
+  EXPECT(view.primitives.front().materialIndex == 0,
+         "primitive material index should use compact material record position");
+  EXPECT(view.primitives.front().objectIndex < view.objects.size(),
+         "primitive object index should point inside compact object span");
+  EXPECT(view.primitives.front().objectIndex == 0,
+         "primitive object index should use compact object record position");
+}
+
 } // namespace
 
 int main() {
@@ -360,6 +421,7 @@ int main() {
   testSceneRegistersCameraAndLightResources();
   testSceneGpuRecordLayoutContract();
   testSceneResourceTableUploadViewTracksGeneration();
+  testSceneResourceTableUploadViewUsesCompactRecordIndices();
 
   if (s_failures != 0) {
     std::cerr << "test_scene_resource_table failed: " << s_failures

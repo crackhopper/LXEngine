@@ -685,10 +685,13 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
   }
 
   m_gpuMaterials.reserve(aliveCount(m_materials));
-  for (const auto &entry : m_materials) {
+  std::vector<u32> materialIndexToGpuRecord(m_materials.size(), u32_max);
+  for (u32 i = 0; i < m_materials.size(); ++i) {
+    const auto &entry = m_materials[i];
     if (entry.state != SceneResourceEntryState::Alive || !entry.resource) {
       continue;
     }
+    materialIndexToGpuRecord[i] = static_cast<u32>(m_gpuMaterials.size());
     m_gpuMaterials.push_back(makeGpuMaterialRecord(*entry.resource));
   }
 
@@ -700,27 +703,34 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
     }
 
     const auto &object = *entry.resource;
+    u32 meshRecordIndex = u32_max;
+    if (object.mesh.index < meshIndexToGpuRecord.size()) {
+      meshRecordIndex = meshIndexToGpuRecord[object.mesh.index];
+    }
+    u32 materialRecordIndex = u32_max;
+    if (object.material.index < materialIndexToGpuRecord.size()) {
+      materialRecordIndex = materialIndexToGpuRecord[object.material.index];
+    }
+    const u32 objectRecordIndex = static_cast<u32>(m_gpuObjects.size());
+
     SceneGpuObjectRecord objectRecord;
     objectRecord.objectToWorld = toGpuRows(object.objectToWorld);
     objectRecord.worldToObject = toGpuRows(object.worldToObject);
     objectRecord.boundsMin = toGpuBoundsMin(object.worldBounds);
     objectRecord.boundsMax = toGpuBoundsMax(object.worldBounds);
-    objectRecord.meshIndex = object.mesh.index;
-    objectRecord.materialIndex = object.material.index;
+    objectRecord.meshIndex = meshRecordIndex;
+    objectRecord.materialIndex = materialRecordIndex;
     objectRecord.visible = object.visible ? 1u : 0u;
     objectRecord.visibilityMask = object.visibilityMask;
     m_gpuObjects.push_back(objectRecord);
 
     SceneGpuPrimitiveRecord primitiveRecord;
-    if (object.mesh.index < meshIndexToGpuRecord.size()) {
-      const u32 gpuMeshIndex = meshIndexToGpuRecord[object.mesh.index];
-      if (gpuMeshIndex != u32_max && gpuMeshIndex < m_gpuMeshes.size()) {
-        primitiveRecord.indexOffset = m_gpuMeshes[gpuMeshIndex].indexOffset;
-      }
+    if (meshRecordIndex != u32_max && meshRecordIndex < m_gpuMeshes.size()) {
+      primitiveRecord.indexOffset = m_gpuMeshes[meshRecordIndex].indexOffset;
     }
-    primitiveRecord.meshIndex = object.mesh.index;
-    primitiveRecord.materialIndex = object.material.index;
-    primitiveRecord.objectIndex = i;
+    primitiveRecord.meshIndex = meshRecordIndex;
+    primitiveRecord.materialIndex = materialRecordIndex;
+    primitiveRecord.objectIndex = objectRecordIndex;
     m_gpuPrimitives.push_back(primitiveRecord);
   }
 
