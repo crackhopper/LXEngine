@@ -9,6 +9,12 @@
 
 namespace LX_infra::scene_asset {
 
+struct GltfMeshAssetLoadResult final {
+  LX_core::MeshSharedPtr mesh;
+  bool generatedTangents = false;
+  std::vector<std::string> warnings;
+};
+
 struct GltfSceneAssetLoadResult final {
   LX_core::MeshSharedPtr mesh;
   LX_core::MaterialInstanceSharedPtr material;
@@ -16,6 +22,9 @@ struct GltfSceneAssetLoadResult final {
   bool normalMapEnabled = false;
   std::vector<std::string> warnings;
 };
+
+[[nodiscard]] GltfMeshAssetLoadResult
+loadGltfMeshAsset(const std::filesystem::path &gltfPath);
 
 [[nodiscard]] GltfSceneAssetLoadResult
 loadGltfSceneAsset(const std::filesystem::path &gltfPath);

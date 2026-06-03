@@ -179,7 +179,7 @@ MeshSharedPtr loadModelMesh(std::string_view meshUri) {
     return buildMeshFromObj(loader);
   }
   if (extension == ".gltf" || extension == ".glb") {
-    return LX_infra::scene_asset::loadGltfSceneAsset(path).mesh;
+    return LX_infra::scene_asset::loadGltfMeshAsset(path).mesh;
   }
   throw std::runtime_error("[lxe_editor] unsupported model asset extension: " +
                            path.string());

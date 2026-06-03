@@ -34,6 +34,11 @@ using LX_core::Vec4i;
 using LX_core::VertexBuffer;
 using LX_core::VertexPosNormalUvBone;
 
+[[nodiscard]] std::filesystem::path
+resolveGltfPath(const std::filesystem::path &gltfPath) {
+  return gltfPath.is_absolute() ? gltfPath : ::resolveRuntimePath(gltfPath);
+}
+
 [[nodiscard]] std::vector<Vec4f>
 generateTangents(const std::vector<Vec3f> &positions,
                  const std::vector<Vec3f> &normals,
@@ -110,8 +115,8 @@ loadCombinedTexture(const std::filesystem::path &path) {
   return std::make_shared<CombinedTextureSampler>(std::move(texture));
 }
 
-[[nodiscard]] MeshSharedPtr buildMeshFromGltf(const infra::GLTFLoader &loader,
-                                              bool &generatedTangents) {
+[[nodiscard]] GltfMeshAssetLoadResult
+buildMeshFromGltf(const infra::GLTFLoader &loader) {
   const auto &positions = loader.getPositions();
   const auto &normals = loader.getNormals();
   const auto &uvs = loader.getTexCoords();
@@ -121,10 +126,25 @@ loadCombinedTexture(const std::filesystem::path &path) {
     throw std::runtime_error("glTF asset has empty mesh geometry");
   }
 
+  GltfMeshAssetLoadResult result;
+  if (normals.empty()) {
+    result.warnings.push_back("glTF has no NORMAL stream; using {0,1,0}");
+  }
+  if (uvs.empty()) {
+    result.warnings.push_back("glTF has no TEXCOORD_0 stream; using {0,0}");
+  }
+
   std::vector<Vec4f> generated;
   if (authoredTangents.empty() && !uvs.empty()) {
     generated = generateTangents(positions, normals, uvs, indices);
-    generatedTangents = !generated.empty();
+    result.generatedTangents = !generated.empty();
+    if (result.generatedTangents) {
+      result.warnings.push_back(
+          "glTF has no TANGENT stream; generated tangents");
+    }
+  } else if (authoredTangents.empty()) {
+    result.warnings.push_back(
+        "glTF has no TANGENT stream and no UVs; using fallback tangent");
   }
 
   std::vector<VertexPosNormalUvBone> vertices;
@@ -149,7 +169,9 @@ loadCombinedTexture(const std::filesystem::path &path) {
   auto vertexBuffer =
       VertexBuffer<VertexPosNormalUvBone>::create(std::move(vertices));
   auto indexBuffer = IndexBuffer::create(std::vector<u32>(indices));
-  return LX_core::Mesh::create(vertexBuffer, indexBuffer, loader.getBounds());
+  result.mesh =
+      LX_core::Mesh::create(vertexBuffer, indexBuffer, loader.getBounds());
+  return result;
 }
 
 void bindTextureIfPresent(MaterialInstanceSharedPtr &material,
@@ -196,16 +218,28 @@ buildMaterialFromGltfPbr(const infra::GLTFPbrMaterial &pbr,
 
 } // namespace
 
+GltfMeshAssetLoadResult
+loadGltfMeshAsset(const std::filesystem::path &gltfPath) {
+  const std::filesystem::path resolved = resolveGltfPath(gltfPath);
+
+  infra::GLTFLoader loader;
+  loader.load(resolved.string());
+  return buildMeshFromGltf(loader);
+}
+
 GltfSceneAssetLoadResult
 loadGltfSceneAsset(const std::filesystem::path &gltfPath) {
-  const std::filesystem::path resolved =
-      gltfPath.is_absolute() ? gltfPath : ::resolveRuntimePath(gltfPath);
+  const std::filesystem::path resolved = resolveGltfPath(gltfPath);
 
   infra::GLTFLoader loader;
   loader.load(resolved.string());
 
+  const GltfMeshAssetLoadResult meshResult = buildMeshFromGltf(loader);
+
   GltfSceneAssetLoadResult result;
-  result.mesh = buildMeshFromGltf(loader, result.generatedTangents);
+  result.mesh = meshResult.mesh;
+  result.generatedTangents = meshResult.generatedTangents;
+  result.warnings = meshResult.warnings;
 
   const bool hasTangentBasis =
       !loader.getTangents().empty() || result.generatedTangents;
