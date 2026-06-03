@@ -344,7 +344,7 @@ vec3 shade(vec3 origin, vec3 dir) {
   }
   pbrInput.emissive = material.emissive.rgb;
   if (hasSceneTexture(material.emissiveTexture)) {
-    pbrInput.emissive *=
+    pbrInput.emissive =
         sampleSceneTexture(material.emissiveTexture, hit.uv).rgb;
   }
   return lxPbrDirectLight(pbrInput) + lxPbrEmissive(pbrInput);

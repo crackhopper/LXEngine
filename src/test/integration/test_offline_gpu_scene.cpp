@@ -17,7 +17,9 @@
 #include <bit>
 #include <cstddef>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -109,6 +111,16 @@ findOfflineShaderSourcePath(const char *shaderFilename) {
     probe = parent;
   }
   return {};
+}
+
+[[nodiscard]] std::string readTextFile(const std::filesystem::path &path) {
+  std::ifstream file(path);
+  if (!file) {
+    return {};
+  }
+  std::ostringstream contents;
+  contents << file.rdbuf();
+  return contents.str();
 }
 
 [[nodiscard]] bool
@@ -220,6 +232,30 @@ void testOfflinePbrDirectShaderCompiles() {
     EXPECT(sceneTextures->descriptorCount == 64,
            "SceneTextures should reserve 64 sampled texture descriptors");
   }
+}
+
+void testOfflinePbrEmissiveTextureMatchesRealtimeSemantics() {
+  const auto shaderPath =
+      findOfflineShaderSourcePath("offline_pbr_direct_ray.comp");
+  EXPECT(!shaderPath.empty(),
+         "offline PBR shader source should be discoverable for semantic test");
+  if (shaderPath.empty()) {
+    return;
+  }
+
+  const std::string shaderSource = readTextFile(shaderPath);
+  EXPECT(!shaderSource.empty(),
+         "offline PBR shader source should be readable for semantic test");
+  EXPECT(shaderSource.find(
+             "pbrInput.emissive =\n        sampleSceneTexture(material."
+             "emissiveTexture, hit.uv).rgb;") != std::string::npos,
+         "offline PBR emissive texture should use texture RGB directly to "
+         "match realtime semantics");
+  EXPECT(shaderSource.find("pbrInput.emissive *=\n        "
+                           "sampleSceneTexture(material.emissiveTexture") ==
+             std::string::npos,
+         "offline PBR emissive texture should not multiply the default zero "
+         "emissive factor");
 }
 
 [[nodiscard]] SceneGpuVertexRecord makeGpuVertex(float x, float y, float z) {
@@ -613,6 +649,7 @@ int main() {
   testSoftwareBvhLayoutContract();
   testOfflineShaderUsesUnifiedSceneBuffers();
   testOfflinePbrDirectShaderCompiles();
+  testOfflinePbrEmissiveTextureMatchesRealtimeSemantics();
   testOfflineRenderJobValidationRejectsZeroDimensions();
   testOfflineRenderJobValidationRejectsMissingCamera();
   testOfflineRenderJobValidationRejectsNonRenderableScene();
