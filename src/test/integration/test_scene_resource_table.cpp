@@ -142,6 +142,20 @@ MeshBufferSharedPtr makeInvalidIndexRangeMeshBuffer() {
                                         {1.0f, 1.0f, 0.0f}});
 }
 
+MeshBufferSharedPtr makeLineListMeshBufferWithTriangleSizedIndexCount() {
+  auto vertices = std::vector<TestVertex>{
+      {{0.0f, 0.0f, 0.0f}},
+      {{1.0f, 0.0f, 0.0f}},
+      {{0.0f, 1.0f, 0.0f}},
+      {{1.0f, 1.0f, 0.0f}},
+  };
+  auto indices = std::vector<u32>{0, 1, 1, 2, 2, 3};
+  auto vb = VertexBuffer<TestVertex>::create(std::move(vertices));
+  auto ib = IndexBuffer::create(std::move(indices), PrimitiveTopology::LineList);
+  return MeshBuffer::create(vb, ib, BoundingBox{{0.0f, 0.0f, 0.0f},
+                                                {1.0f, 1.0f, 0.0f}});
+}
+
 MaterialInstanceSharedPtr makeGpuRecordMaterial() {
   ShaderResourceBinding binding;
   binding.name = "MaterialUBO";
@@ -375,7 +389,7 @@ void testSceneGpuRecordLayoutContract() {
          "SceneGpuObjectRecord debugId offset should stay stable");
 }
 
-void testSceneResourceTableUploadViewTracksGeneration() {
+void testSceneResourceTableUploadViewTracksTableGeneration() {
   SceneResourceTable table;
   const auto mesh = table.registerMesh(makeMeshBuffer());
   const auto material = table.registerMaterial(makeGpuRecordMaterial());
@@ -390,7 +404,8 @@ void testSceneResourceTableUploadViewTracksGeneration() {
   const auto objectHandle = table.registerObject(object);
 
   const auto firstView = table.buildUploadView();
-  EXPECT(firstView.generation != 0, "upload view should expose generation");
+  EXPECT(firstView.tableGeneration != 0,
+         "upload view should expose table structure generation");
   EXPECT(firstView.meshes.size() == 1, "upload view should expose one mesh");
   EXPECT(firstView.objects.size() == 1, "upload view should expose one object");
   EXPECT(firstView.primitives.size() == 1,
@@ -418,8 +433,8 @@ void testSceneResourceTableUploadViewTracksGeneration() {
   object.visible = false;
   table.updateObject(objectHandle, object);
   const auto secondView = table.buildUploadView();
-  EXPECT(secondView.generation > firstView.generation,
-         "object update should advance upload generation");
+  EXPECT(secondView.tableGeneration > firstView.tableGeneration,
+         "object update should advance table structure generation");
   EXPECT(secondView.objects.front().visible == 0,
          "object visibility should reach GPU record");
 }
@@ -442,8 +457,8 @@ void testSceneResourceTableUploadViewReflectsMaterialMutationAfterBuild() {
   const auto secondView = table.buildUploadView();
   EXPECT(table.isAlive(objectHandle),
          "test setup should keep material mutation object alive");
-  EXPECT(secondView.generation == firstView.generation,
-         "external material mutation should not advance table generation");
+  EXPECT(secondView.tableGeneration == firstView.tableGeneration,
+         "external material mutation should not advance table structure generation");
   EXPECT(secondView.materials.size() == 1,
          "upload view should keep one material after mutation");
   EXPECT(secondView.materials.front().baseColor.x == 0.9f &&
@@ -672,6 +687,35 @@ void testSceneResourceTableUploadViewSkipsInvalidMeshIndexRanges() {
          "invalid mesh index range should not suppress independent materials");
 }
 
+void testSceneResourceTableUploadViewSkipsUnsupportedMeshTopology() {
+  SceneResourceTable table;
+  const auto mesh =
+      table.registerMesh(makeLineListMeshBufferWithTriangleSizedIndexCount());
+  const auto material = table.registerMaterial(makeGpuRecordMaterial());
+
+  ObjectResource object;
+  object.mesh = mesh;
+  object.material = material;
+  object.worldBounds = BoundingBox{{0.0f, 0.0f, 0.0f},
+                                   {1.0f, 1.0f, 0.0f}};
+  const auto objectHandle = table.registerObject(object);
+
+  const auto view = table.buildUploadView();
+  EXPECT(table.isAlive(objectHandle),
+         "test setup should keep object with unsupported topology alive");
+  EXPECT(view.meshes.empty(),
+         "non-triangle-list mesh should not emit a mesh record");
+  EXPECT(view.vertices.empty(),
+         "non-triangle-list mesh should not emit vertices");
+  EXPECT(view.indices.empty(), "non-triangle-list mesh should not emit indices");
+  EXPECT(view.objects.empty(),
+         "non-triangle-list mesh should not emit dependent object records");
+  EXPECT(view.primitives.empty(),
+         "non-triangle-list mesh should not emit primitive records");
+  EXPECT(view.materials.size() == 1,
+         "unsupported mesh topology should not suppress independent materials");
+}
+
 } // namespace
 
 int main() {
@@ -680,7 +724,7 @@ int main() {
   testSceneRegistersRenderableComponentResources();
   testSceneRegistersCameraAndLightResources();
   testSceneGpuRecordLayoutContract();
-  testSceneResourceTableUploadViewTracksGeneration();
+  testSceneResourceTableUploadViewTracksTableGeneration();
   testSceneResourceTableUploadViewReflectsMaterialMutationAfterBuild();
   testSceneResourceTableUploadViewUsesCompactRecordIndices();
   testSceneResourceTableUploadViewSkipsObjectsWithReleasedDependencies();
@@ -688,6 +732,7 @@ int main() {
   testSceneResourceTableUploadViewEmitsPrimitivePerTriangle();
   testSceneResourceTableUploadViewRebasesOffsetMeshIndices();
   testSceneResourceTableUploadViewSkipsInvalidMeshIndexRanges();
+  testSceneResourceTableUploadViewSkipsUnsupportedMeshTopology();
 
   if (s_failures != 0) {
     std::cerr << "test_scene_resource_table failed: " << s_failures

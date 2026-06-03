@@ -170,8 +170,8 @@ public:
   // Returned spans are backed by this table's cached GPU record storage.
   // The view is valid until the next mutating SceneResourceTable call or the
   // next buildUploadView() call. Resources stored in the table can be mutated
-  // through shared ownership, so buildUploadView() rebuilds records on demand
-  // even when the table generation is unchanged.
+  // through shared ownership, so buildUploadView() rebuilds records every call
+  // even when the table structure generation is unchanged.
   [[nodiscard]] SceneResourceTableUploadView buildUploadView() const;
 
 private:

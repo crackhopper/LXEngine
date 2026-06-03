@@ -159,7 +159,11 @@ void appendMeshGeometryRecords(const MeshBuffer &mesh,
   const u32 vertexCount = mesh.getVertexCount();
   const u32 indexOffset = mesh.getIndexOffset();
   const u32 indexCount = mesh.getIndexCount();
-  if (vertexBuffer.getRawData() == nullptr || indexBuffer.getRawData() == nullptr ||
+  if (indexBuffer.getTopology() != PrimitiveTopology::TriangleList) {
+    return false;
+  }
+  if (vertexBuffer.getRawData() == nullptr ||
+      indexBuffer.getRawData() == nullptr ||
       vertexBuffer.getLayout().getStride() == 0 || vertexCount == 0 ||
       indexCount == 0 || indexCount % 3 != 0) {
     return false;
@@ -621,7 +625,7 @@ RenderSceneSnapshot SceneResourceTable::buildSnapshot() const {
 SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
   const auto makeView = [this]() {
     return SceneResourceTableUploadView{
-        .generation = m_generation,
+        .tableGeneration = m_generation,
         .vertices = m_gpuVertices,
         .indices = m_gpuIndices,
         .meshes = m_gpuMeshes,
