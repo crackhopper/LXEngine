@@ -28,7 +28,6 @@ struct SoftwareComputeOfflineIntegrator::Impl final {
     commandManager = VulkanCommandBufferManager::create(
         *device, 1, device->getGraphicsQueueFamilyIndex());
     resourceManager = VulkanResourceManager::create(*device);
-    offlineShader = createOfflinePrimaryRayShader();
   }
 
   ~Impl() {
@@ -43,6 +42,8 @@ struct SoftwareComputeOfflineIntegrator::Impl final {
   [[nodiscard]] LX_core::offline::OfflineReadbackImage
   render(const LX_core::offline::OfflineRenderJob &job) {
     LX_core::offline::validateOfflineRenderJob(job);
+    const IShaderSharedPtr offlineShader =
+        createOfflineComputeShader(job.offline.shaderMode);
     FrameGraph renderGraph =
         LX_core::offline::createOfflineRenderFrameGraph(job.output);
     renderGraph.build(
@@ -80,7 +81,6 @@ struct SoftwareComputeOfflineIntegrator::Impl final {
   VulkanDeviceUniquePtr device;
   VulkanCommandBufferManagerUniquePtr commandManager;
   VulkanResourceManagerUniquePtr resourceManager;
-  IShaderSharedPtr offlineShader;
 };
 
 SoftwareComputeOfflineIntegrator::SoftwareComputeOfflineIntegrator()

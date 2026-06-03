@@ -92,11 +92,12 @@ MeshBufferSharedPtr makeOffsetMeshBuffer() {
   return packedU32(node.boundsMaxCount.w) & ~LeafNodeFlag;
 }
 
-[[nodiscard]] std::filesystem::path findOfflineShaderSourcePath() {
+[[nodiscard]] std::filesystem::path
+findOfflineShaderSourcePath(const char *shaderFilename) {
   std::filesystem::path probe = std::filesystem::current_path();
   for (int i = 0; i < 8; ++i) {
     const auto candidate =
-        probe / "assets" / "shaders" / "glsl" / "offline_primary_ray.comp";
+        probe / "assets" / "shaders" / "glsl" / shaderFilename;
     if (std::filesystem::exists(candidate)) {
       return candidate;
     }
@@ -122,7 +123,8 @@ hasStorageBuffer(const std::vector<ShaderResourceBinding> &bindings,
 }
 
 void testOfflineShaderUsesUnifiedSceneBuffers() {
-  const auto shaderPath = findOfflineShaderSourcePath();
+  const auto shaderPath =
+      findOfflineShaderSourcePath("offline_primary_ray.comp");
   EXPECT(!shaderPath.empty(),
          "offline shader source should be discoverable for reflection test");
   if (shaderPath.empty()) {
@@ -157,6 +159,31 @@ void testOfflineShaderUsesUnifiedSceneBuffers() {
          "offline shader should use unified SceneFrameParams SSBO");
   EXPECT(hasStorageBuffer(bindings, "OutputPixels"),
          "offline shader should use OutputPixels SSBO");
+}
+
+void testOfflinePbrDirectShaderCompiles() {
+  const auto shaderPath =
+      findOfflineShaderSourcePath("offline_pbr_direct_ray.comp");
+  EXPECT(!shaderPath.empty(),
+         "offline PBR shader source should be discoverable for reflection test");
+  if (shaderPath.empty()) {
+    return;
+  }
+
+  const auto compileResult = LX_infra::ShaderCompiler::compileFile(shaderPath);
+  EXPECT(compileResult.success,
+         "offline PBR direct shader should compile before reflection");
+  if (!compileResult.success) {
+    std::cerr << compileResult.errorMessage << '\n';
+    return;
+  }
+
+  const auto bindings =
+      LX_infra::ShaderReflector::reflect(compileResult.stages);
+  EXPECT(hasStorageBuffer(bindings, "SceneMaterials"),
+         "offline PBR shader should read SceneMaterials");
+  EXPECT(hasStorageBuffer(bindings, "OutputPixels"),
+         "offline PBR shader should write OutputPixels");
 }
 
 [[nodiscard]] SceneGpuVertexRecord makeGpuVertex(float x, float y, float z) {
@@ -465,8 +492,8 @@ void testOfflineRenderWorkGraphBuildsRayTracePass() {
 
 void testOfflineRenderWorkGraphCanCarryComputeShader() {
   offline::OfflineRenderJob job = makeRenderableJobWithCamera();
-  auto compileResult =
-      LX_infra::ShaderCompiler::compileFile(findOfflineShaderSourcePath());
+  auto compileResult = LX_infra::ShaderCompiler::compileFile(
+      findOfflineShaderSourcePath("offline_primary_ray.comp"));
   const auto shader = std::make_shared<LX_infra::CompiledShader>(
       std::move(compileResult.stages),
       LX_infra::ShaderReflector::reflect(compileResult.stages));
@@ -514,6 +541,7 @@ void testOfflineRenderJobValidationRejectsNonRenderableScene() {
 int main() {
   testSoftwareBvhLayoutContract();
   testOfflineShaderUsesUnifiedSceneBuffers();
+  testOfflinePbrDirectShaderCompiles();
   testOfflineRenderJobValidationRejectsZeroDimensions();
   testOfflineRenderJobValidationRejectsMissingCamera();
   testOfflineRenderJobValidationRejectsNonRenderableScene();

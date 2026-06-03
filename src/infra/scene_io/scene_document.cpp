@@ -685,6 +685,9 @@ loadOfflineRenderSettings(const YAML::Node &node) {
     }
     if (key == "integrator") {
       settings.integrator = value.as<std::string>();
+    } else if (key == "shader") {
+      settings.shaderMode =
+          LX_core::offline::offlineShaderModeFromYaml(value.as<std::string>());
     } else if (key == "samples") {
       settings.samples = value.as<u32>();
     } else if (key == "maxBounce") {
@@ -866,6 +869,12 @@ void saveRenderProfileDocument(
   out << YAML::Key << "offlineRender" << YAML::Value << YAML::BeginMap;
   out << YAML::Key << "integrator" << YAML::Value
       << document.offline.integrator;
+  if (document.offline.shaderMode !=
+      LX_core::offline::OfflineShaderMode::MvpPrimaryRay) {
+    out << YAML::Key << "shader" << YAML::Value
+        << LX_core::offline::offlineShaderModeToYaml(
+               document.offline.shaderMode);
+  }
   out << YAML::Key << "samples" << YAML::Value << document.offline.samples;
   out << YAML::Key << "maxBounce" << YAML::Value << document.offline.maxBounce;
   out << YAML::Key << "seed" << YAML::Value << document.offline.seed;

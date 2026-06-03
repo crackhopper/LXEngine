@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <stdexcept>
+#include <string>
 #include <utility>
 
 namespace LX_core::offline {
@@ -21,6 +22,26 @@ RenderProfileDocument makeDefaultRenderProfileDocument() {
   document.offline = makeDefaultOfflineRenderSettings();
   document.offline.profileName = document.defaultOutputProfile;
   return document;
+}
+
+std::string offlineShaderModeToYaml(const OfflineShaderMode mode) {
+  switch (mode) {
+  case OfflineShaderMode::MvpPrimaryRay:
+    return "mvp-primary-ray";
+  case OfflineShaderMode::PbrDirectRay:
+    return "pbr-direct-ray";
+  }
+  throw std::runtime_error("unsupported offline shader mode");
+}
+
+OfflineShaderMode offlineShaderModeFromYaml(const std::string &value) {
+  if (value == "mvp-primary-ray") {
+    return OfflineShaderMode::MvpPrimaryRay;
+  }
+  if (value == "pbr-direct-ray") {
+    return OfflineShaderMode::PbrDirectRay;
+  }
+  throw std::runtime_error("unsupported offlineRender shader: " + value);
 }
 
 ResolvedRenderProfile resolveRenderProfileDocument(

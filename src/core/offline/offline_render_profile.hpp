@@ -12,6 +12,11 @@
 
 namespace LX_core::offline {
 
+enum class OfflineShaderMode {
+  MvpPrimaryRay,
+  PbrDirectRay,
+};
+
 struct OutputCameraOverrides final {
   std::optional<float> fovY;
   std::optional<float> aspect;
@@ -34,6 +39,7 @@ struct OutputProfile final {
 
 struct OfflineRenderSettings final {
   std::string integrator = "software-compute";
+  OfflineShaderMode shaderMode = OfflineShaderMode::MvpPrimaryRay;
   u32 samples = 1;
   u32 maxBounce = 1;
   u32 seed = 1;
@@ -71,6 +77,9 @@ struct ResolvedRenderProfile final {
 [[nodiscard]] OutputProfile makeDefaultOutputProfile();
 [[nodiscard]] OfflineRenderSettings makeDefaultOfflineRenderSettings();
 [[nodiscard]] RenderProfileDocument makeDefaultRenderProfileDocument();
+[[nodiscard]] std::string offlineShaderModeToYaml(OfflineShaderMode mode);
+[[nodiscard]] OfflineShaderMode offlineShaderModeFromYaml(
+    const std::string &value);
 
 [[nodiscard]] ResolvedRenderProfile resolveRenderProfileDocument(
     const RenderProfileDocument &document,
