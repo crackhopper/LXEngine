@@ -281,6 +281,20 @@ usize SceneResourceTable::aliveCount(
   return count;
 }
 
+u32 SceneResourceTable::registerUploadTexture(
+    const CombinedTextureSamplerSharedPtr &texture) const {
+  if (!texture) {
+    return u32_max;
+  }
+  for (u32 i = 0; i < m_gpuTextures.size(); ++i) {
+    if (m_gpuTextures[i] == texture) {
+      return i;
+    }
+  }
+  m_gpuTextures.push_back(texture);
+  return static_cast<u32>(m_gpuTextures.size() - 1u);
+}
+
 void SceneResourceTable::advanceUploadGeneration() {
   m_generation = nextGeneration(m_generation);
 }
@@ -634,6 +648,7 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
         .primitives = m_gpuPrimitives,
         .objects = m_gpuObjects,
         .materials = m_gpuMaterials,
+        .textures = m_gpuTextures,
     };
   };
 
@@ -643,6 +658,7 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
   m_gpuPrimitives.clear();
   m_gpuObjects.clear();
   m_gpuMaterials.clear();
+  m_gpuTextures.clear();
 
   std::vector<CompactRecordIndex> meshIndexToGpuRecord(m_meshes.size());
 
@@ -672,6 +688,7 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
   }
 
   m_gpuMaterials.reserve(aliveCount(m_materials));
+  m_gpuTextures.reserve(aliveCount(m_materials) * 5u);
   std::vector<CompactRecordIndex> materialIndexToGpuRecord(m_materials.size());
   for (u32 i = 0; i < m_materials.size(); ++i) {
     const auto &entry = m_materials[i];
@@ -682,7 +699,18 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
         .generation = entry.generation,
         .uploadIndex = static_cast<u32>(m_gpuMaterials.size()),
     };
-    m_gpuMaterials.push_back(toGpuMaterialRecord(*entry.resource));
+    auto record = toGpuMaterialRecord(*entry.resource);
+    record.baseColorTexture =
+        registerUploadTexture(entry.resource->getTexture(StringID("albedoMap")));
+    record.normalTexture =
+        registerUploadTexture(entry.resource->getTexture(StringID("normalMap")));
+    record.metallicRoughnessTexture = registerUploadTexture(
+        entry.resource->getTexture(StringID("metallicRoughnessMap")));
+    record.aoTexture =
+        registerUploadTexture(entry.resource->getTexture(StringID("aoMap")));
+    record.emissiveTexture = registerUploadTexture(
+        entry.resource->getTexture(StringID("emissiveMap")));
+    m_gpuMaterials.push_back(record);
   }
 
   m_gpuObjects.reserve(aliveCount(m_objects));

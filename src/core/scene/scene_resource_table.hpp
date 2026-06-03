@@ -21,12 +21,10 @@ class GeometryStorage;
 class LightBase;
 class MaterialInstance;
 class MeshBuffer;
-class Texture;
 
 using GeometryStorageSharedPtr = std::shared_ptr<GeometryStorage>;
 using MeshBufferSharedPtr = std::shared_ptr<MeshBuffer>;
 using MaterialInstanceSharedPtr = std::shared_ptr<MaterialInstance>;
-using TextureSharedPtr = std::shared_ptr<Texture>;
 using LightBaseSharedPtr = std::shared_ptr<LightBase>;
 
 struct ResourceHandleBase {
@@ -207,6 +205,9 @@ private:
   template <typename Resource>
   [[nodiscard]] usize aliveCount(const std::vector<Entry<Resource>> &entries) const;
 
+  [[nodiscard]] u32
+  registerUploadTexture(const CombinedTextureSamplerSharedPtr &texture) const;
+
   void advanceUploadGeneration();
 
   std::vector<Entry<GeometryStorage>> m_geometryStorage;
@@ -223,6 +224,7 @@ private:
   mutable std::vector<SceneGpuPrimitiveRecord> m_gpuPrimitives;
   mutable std::vector<SceneGpuObjectRecord> m_gpuObjects;
   mutable std::vector<SceneGpuMaterialRecord> m_gpuMaterials;
+  mutable std::vector<CombinedTextureSamplerSharedPtr> m_gpuTextures;
 };
 
 } // namespace LX_core

@@ -51,7 +51,11 @@ struct alignas(16) SceneGpuMaterialRecord final {
   u32 baseColorTexture = 0xffffffffu;
   u32 normalTexture = 0xffffffffu;
   u32 metallicRoughnessTexture = 0xffffffffu;
+  u32 aoTexture = 0xffffffffu;
+  u32 emissiveTexture = 0xffffffffu;
   u32 flags = 0;
+  u32 reserved0 = 0;
+  u32 reserved1 = 0;
 };
 
 struct alignas(16) SceneGpuFrameParams final {
@@ -87,7 +91,7 @@ static_assert(sizeof(SceneGpuVertexRecord) == 64);
 static_assert(sizeof(SceneGpuMeshRecord) == 16);
 static_assert(sizeof(SceneGpuPrimitiveRecord) == 16);
 static_assert(sizeof(SceneGpuObjectRecord) == 176);
-static_assert(sizeof(SceneGpuMaterialRecord) == 64);
+static_assert(sizeof(SceneGpuMaterialRecord) == 80);
 static_assert(sizeof(SceneGpuFrameParams) == 176);
 static_assert(offsetof(SceneGpuObjectRecord, objectToWorld) == 0);
 static_assert(offsetof(SceneGpuObjectRecord, worldToObject) == 64);
@@ -97,5 +101,16 @@ static_assert(offsetof(SceneGpuObjectRecord, visible) == 160);
 static_assert(offsetof(SceneGpuObjectRecord, flags) == 164);
 static_assert(offsetof(SceneGpuObjectRecord, visibilityMask) == 168);
 static_assert(offsetof(SceneGpuObjectRecord, debugId) == 172);
+static_assert(offsetof(SceneGpuMaterialRecord, baseColor) == 0);
+static_assert(offsetof(SceneGpuMaterialRecord, pbrParams) == 16);
+static_assert(offsetof(SceneGpuMaterialRecord, emissive) == 32);
+static_assert(offsetof(SceneGpuMaterialRecord, baseColorTexture) == 48);
+static_assert(offsetof(SceneGpuMaterialRecord, normalTexture) == 52);
+static_assert(offsetof(SceneGpuMaterialRecord, metallicRoughnessTexture) == 56);
+static_assert(offsetof(SceneGpuMaterialRecord, aoTexture) == 60);
+static_assert(offsetof(SceneGpuMaterialRecord, emissiveTexture) == 64);
+static_assert(offsetof(SceneGpuMaterialRecord, flags) == 68);
+static_assert(offsetof(SceneGpuMaterialRecord, reserved0) == 72);
+static_assert(offsetof(SceneGpuMaterialRecord, reserved1) == 76);
 
 } // namespace LX_core

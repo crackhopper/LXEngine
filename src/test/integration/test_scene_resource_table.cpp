@@ -5,12 +5,14 @@
 #include "core/scene/components/mesh_component.hpp"
 #include "core/frame_graph/pass.hpp"
 #include "core/asset/shader.hpp"
+#include "core/utils/filesystem_tools.hpp"
 #include "core/scene/light.hpp"
 #include "core/scene/object.hpp"
 #include "core/scene/scene.hpp"
 #include "core/scene/scene_gpu_records.hpp"
 #include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/scene_resource_table.hpp"
+#include "infra/scene_asset/gltf_scene_asset_loader.hpp"
 
 #include <cstddef>
 #include <iostream>
@@ -403,7 +405,7 @@ void testSceneGpuRecordLayoutContract() {
          "SceneGpuPrimitiveRecord std430 contract should stay stable");
   EXPECT(sizeof(SceneGpuObjectRecord) == 176,
          "SceneGpuObjectRecord std430 contract should stay stable");
-  EXPECT(sizeof(SceneGpuMaterialRecord) == 64,
+  EXPECT(sizeof(SceneGpuMaterialRecord) == 80,
          "SceneGpuMaterialRecord std430 contract should stay stable");
   EXPECT(sizeof(SceneGpuFrameParams) == 176,
          "SceneGpuFrameParams std430 contract should stay stable");
@@ -423,6 +425,45 @@ void testSceneGpuRecordLayoutContract() {
          "SceneGpuObjectRecord visibilityMask offset should stay stable");
   EXPECT(offsetof(SceneGpuObjectRecord, debugId) == 172,
          "SceneGpuObjectRecord debugId offset should stay stable");
+}
+
+void testPbrTextureIndicesEnterUploadView() {
+  const bool found =
+      cdToWhereAssetsExist("models/damaged_helmet/DamagedHelmet.gltf");
+  EXPECT(found, "DamagedHelmet asset root should be discoverable");
+  if (!found) {
+    return;
+  }
+
+  const auto material = LX_infra::scene_asset::loadGltfSceneAsset(
+                            "assets/models/damaged_helmet/DamagedHelmet.gltf")
+                            .material;
+  SceneResourceTable table;
+  const auto materialHandle = table.registerMaterial(material);
+  (void)materialHandle;
+
+  const auto upload = table.buildUploadView();
+  EXPECT(!upload.materials.empty(), "upload view should contain material");
+  EXPECT(upload.textures.size() == 5,
+         "upload view should deduplicate DamagedHelmet PBR textures");
+  if (upload.materials.empty()) {
+    return;
+  }
+
+  EXPECT(upload.materials[0].baseColorTexture != u32_max,
+         "base color texture index should be assigned");
+  EXPECT(upload.materials[0].normalTexture != u32_max,
+         "normal texture index should be assigned");
+  EXPECT(upload.materials[0].metallicRoughnessTexture != u32_max,
+         "MR texture index should be assigned");
+  EXPECT(upload.materials[0].aoTexture != u32_max,
+         "AO texture index should be assigned");
+  EXPECT(upload.materials[0].emissiveTexture != u32_max,
+         "emissive texture index should be assigned");
+
+  const auto rebuiltUpload = table.buildUploadView();
+  EXPECT(rebuiltUpload.textures.size() == 5,
+         "rebuilt upload view should not accumulate stale texture entries");
 }
 
 void testSceneResourceTableUploadViewTracksTableGeneration() {
@@ -465,6 +506,14 @@ void testSceneResourceTableUploadViewTracksTableGeneration() {
          "material base color should reach GPU record");
   EXPECT(firstView.materials.front().pbrParams.y == 0.35f,
          "material roughness scalar should reach GPU record");
+  EXPECT(firstView.textures.empty(),
+         "material without sampler bindings should not upload textures");
+  EXPECT(firstView.materials.front().baseColorTexture == u32_max &&
+             firstView.materials.front().normalTexture == u32_max &&
+             firstView.materials.front().metallicRoughnessTexture == u32_max &&
+             firstView.materials.front().aoTexture == u32_max &&
+             firstView.materials.front().emissiveTexture == u32_max,
+         "material without sampler bindings should keep sentinel texture indices");
 
   object.visible = false;
   table.updateObject(objectHandle, object);
@@ -804,6 +853,7 @@ int main() {
   testSceneRegistersRenderableComponentResources();
   testSceneRegistersCameraAndLightResources();
   testSceneGpuRecordLayoutContract();
+  testPbrTextureIndicesEnterUploadView();
   testSceneResourceTableUploadViewTracksTableGeneration();
   testSceneResourceTableUploadViewReflectsMaterialMutationAfterBuild();
   testSceneResourceTableUploadViewPacksMatrixColumns();

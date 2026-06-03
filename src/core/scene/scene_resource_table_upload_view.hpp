@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/asset/texture.hpp"
 #include "core/scene/scene_gpu_records.hpp"
 
 #include <span>
@@ -20,6 +21,7 @@ struct SceneResourceTableUploadView final {
   std::span<const SceneGpuPrimitiveRecord> primitives;
   std::span<const SceneGpuObjectRecord> objects;
   std::span<const SceneGpuMaterialRecord> materials;
+  std::span<const CombinedTextureSamplerSharedPtr> textures;
 };
 
 } // namespace LX_core
