@@ -1,14 +1,18 @@
 #include "core/asset/material_instance.hpp"
+#include "core/asset/shader.hpp"
 #include "core/offline/offline_render_job.hpp"
 #include "core/offline/offline_render_validation.hpp"
 #include "core/asset/mesh.hpp"
 #include "core/raytracing/software_bvh.hpp"
 #include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/scene_resource_table.hpp"
+#include "infra/shader_compiler/shader_compiler.hpp"
+#include "infra/shader_compiler/shader_reflector.hpp"
 
 #include <array>
 #include <bit>
 #include <cstddef>
+#include <filesystem>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -84,6 +88,72 @@ MeshBufferSharedPtr makeOffsetMeshBuffer() {
 
 [[nodiscard]] u32 leafCount(const SceneSoftwareBvhNode &node) {
   return packedU32(node.boundsMaxCount.w) & ~LeafNodeFlag;
+}
+
+[[nodiscard]] std::filesystem::path findOfflineShaderSourcePath() {
+  std::filesystem::path probe = std::filesystem::current_path();
+  for (int i = 0; i < 8; ++i) {
+    const auto candidate =
+        probe / "assets" / "shaders" / "glsl" / "offline_primary_ray.comp";
+    if (std::filesystem::exists(candidate)) {
+      return candidate;
+    }
+    const auto parent = probe.parent_path();
+    if (parent == probe) {
+      break;
+    }
+    probe = parent;
+  }
+  return {};
+}
+
+[[nodiscard]] bool
+hasStorageBuffer(const std::vector<ShaderResourceBinding> &bindings,
+                 const std::string &name) {
+  for (const auto &binding : bindings) {
+    if (binding.name == name &&
+        binding.type == ShaderPropertyType::StorageBuffer) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void testOfflineShaderUsesUnifiedSceneBuffers() {
+  const auto shaderPath = findOfflineShaderSourcePath();
+  EXPECT(!shaderPath.empty(),
+         "offline shader source should be discoverable for reflection test");
+  if (shaderPath.empty()) {
+    return;
+  }
+
+  const auto compileResult = LX_infra::ShaderCompiler::compileFile(shaderPath);
+  EXPECT(compileResult.success,
+         "offline shader should compile before reflection");
+  if (!compileResult.success) {
+    std::cerr << compileResult.errorMessage << '\n';
+    return;
+  }
+
+  const auto bindings = LX_infra::ShaderReflector::reflect(compileResult.stages);
+  EXPECT(hasStorageBuffer(bindings, "SceneVertices"),
+         "offline shader should use unified SceneVertices SSBO");
+  EXPECT(hasStorageBuffer(bindings, "SceneIndices"),
+         "offline shader should use unified SceneIndices SSBO");
+  EXPECT(hasStorageBuffer(bindings, "SceneMeshes"),
+         "offline shader should use unified SceneMeshes SSBO");
+  EXPECT(hasStorageBuffer(bindings, "ScenePrimitives"),
+         "offline shader should use unified ScenePrimitives SSBO");
+  EXPECT(hasStorageBuffer(bindings, "SceneObjects"),
+         "offline shader should use unified SceneObjects SSBO");
+  EXPECT(hasStorageBuffer(bindings, "SceneMaterials"),
+         "offline shader should use unified SceneMaterials SSBO");
+  EXPECT(hasStorageBuffer(bindings, "SceneBvhNodes"),
+         "offline shader should use unified SceneBvhNodes SSBO");
+  EXPECT(hasStorageBuffer(bindings, "SceneFrameParams"),
+         "offline shader should use unified SceneFrameParams SSBO");
+  EXPECT(hasStorageBuffer(bindings, "OutputPixels"),
+         "offline shader should use OutputPixels SSBO");
 }
 
 [[nodiscard]] SceneGpuVertexRecord makeGpuVertex(float x, float y, float z) {
@@ -378,6 +448,7 @@ void testOfflineRenderJobValidationRejectsNonRenderableScene() {
 
 int main() {
   testSoftwareBvhLayoutContract();
+  testOfflineShaderUsesUnifiedSceneBuffers();
   testOfflineRenderJobValidationRejectsZeroDimensions();
   testOfflineRenderJobValidationRejectsMissingCamera();
   testOfflineRenderJobValidationRejectsNonRenderableScene();

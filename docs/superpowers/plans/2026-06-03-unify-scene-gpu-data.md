@@ -724,7 +724,7 @@ git commit -m "feat: add explicit offline integrator boundary"
 - Modify: shader reflection expectations in the integrator
 - Modify: `src/test/integration/test_offline_gpu_scene.cpp`
 
-- [ ] **Step 1: Add shader descriptor contract test**
+- [x] **Step 1: Add shader descriptor contract test**
 
 In `test_offline_gpu_scene.cpp`, include `core/asset/shader.hpp`, `infra/shader_compiler/shader_compiler.hpp`, and `infra/shader_compiler/shader_reflector.hpp`. Add helpers that compile `assets/shaders/glsl/offline_primary_ray.comp` through `ShaderCompiler::compileFile()` and assert unified binding names:
 
@@ -762,13 +762,13 @@ void testOfflineShaderUsesUnifiedSceneBuffers() {
 }
 ```
 
-- [ ] **Step 2: Run shader compile target to verify failure**
+- [x] **Step 2: Run shader compile target to verify failure**
 
 Run: `ninja -C build CompileShaders test_offline_gpu_scene`
 
 Expected: test failure because the current shader still exposes old offline buffer names.
 
-- [ ] **Step 3: Update GLSL structs and bindings**
+- [x] **Step 3: Update GLSL structs and bindings**
 
 In `offline_primary_ray.comp`, replace old `Offline*` structs with `lx`-prefixed unified records:
 
@@ -790,11 +790,11 @@ struct lxSceneMaterialRecord {
 
 Keep descriptor set numbers compatible with realtime/bindless design. Do not use macros to paper over incompatible set numbers; update C++ descriptor layout code to match the unified binding contract.
 
-- [ ] **Step 4: Update descriptor reflection validation**
+- [x] **Step 4: Update descriptor reflection validation**
 
 In `software_compute_offline_integrator.cpp`, change validation names from `Vertices`, `Meshes`, `Objects`, and `Materials` to the unified names from Step 1. Upload buffers from `SceneResourceTableUploadView`, and upload `SceneSoftwareBvh::nodes()` as the acceleration buffer.
 
-- [ ] **Step 5: Run shader and focused offline tests**
+- [x] **Step 5: Run shader and focused offline tests**
 
 Run:
 
@@ -805,7 +805,7 @@ ninja -C build CompileShaders test_offline_gpu_scene lxe_offline_render
 
 Expected: shader compiles and the GPU-scene test passes.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add assets/shaders/glsl/offline_primary_ray.comp src/backend/vulkan/offline/software_compute_offline_integrator.cpp src/test/integration/test_offline_gpu_scene.cpp
