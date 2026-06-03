@@ -44,6 +44,27 @@ struct TestVertex final {
   }
 };
 
+struct TangentVertex final {
+  Vec3f pos{};
+  Vec3f normal{};
+  Vec2f uv{};
+  Vec4f tangent{};
+
+  static const VertexLayout &getLayout() {
+    static const VertexLayout layout{
+        {{"inPos", 0, DataType::Float3, sizeof(TangentVertex),
+          offsetof(TangentVertex, pos)},
+         {"inNormal", 1, DataType::Float3, sizeof(TangentVertex),
+          offsetof(TangentVertex, normal)},
+         {"inUV", 2, DataType::Float2, sizeof(TangentVertex),
+          offsetof(TangentVertex, uv)},
+         {"inTangent", 3, DataType::Float4, sizeof(TangentVertex),
+          offsetof(TangentVertex, tangent)}},
+        sizeof(TangentVertex)};
+    return layout;
+  }
+};
+
 class FakeShader final : public IShader {
 public:
   explicit FakeShader(std::vector<ShaderResourceBinding> bindings)
@@ -154,6 +175,28 @@ MeshBufferSharedPtr makeLineListMeshBufferWithTriangleSizedIndexCount() {
   auto indices = std::vector<u32>{0, 1, 1, 2, 2, 3};
   auto vb = VertexBuffer<TestVertex>::create(std::move(vertices));
   auto ib = IndexBuffer::create(std::move(indices), PrimitiveTopology::LineList);
+  return MeshBuffer::create(vb, ib, BoundingBox{{0.0f, 0.0f, 0.0f},
+                                                {1.0f, 1.0f, 0.0f}});
+}
+
+MeshBufferSharedPtr makeTangentSignMeshBuffer() {
+  auto vertices = std::vector<TangentVertex>{
+      {{0.0f, 0.0f, 0.0f},
+       {0.0f, 0.0f, 1.0f},
+       {0.25f, 0.75f},
+       {1.0f, 0.0f, 0.0f, -1.0f}},
+      {{1.0f, 0.0f, 0.0f},
+       {0.0f, 0.0f, 1.0f},
+       {0.5f, 0.75f},
+       {1.0f, 0.0f, 0.0f, -1.0f}},
+      {{0.0f, 1.0f, 0.0f},
+       {0.0f, 0.0f, 1.0f},
+       {0.25f, 1.0f},
+       {1.0f, 0.0f, 0.0f, -1.0f}},
+  };
+  auto indices = std::vector<u32>{0, 1, 2};
+  auto vb = VertexBuffer<TangentVertex>::create(std::move(vertices));
+  auto ib = IndexBuffer::create(std::move(indices));
   return MeshBuffer::create(vb, ib, BoundingBox{{0.0f, 0.0f, 0.0f},
                                                 {1.0f, 1.0f, 0.0f}});
 }
@@ -425,6 +468,26 @@ void testSceneGpuRecordLayoutContract() {
          "SceneGpuObjectRecord visibilityMask offset should stay stable");
   EXPECT(offsetof(SceneGpuObjectRecord, debugId) == 172,
          "SceneGpuObjectRecord debugId offset should stay stable");
+}
+
+void testSceneGpuVertexRecordPacksTangentSignInUvTangentSignZ() {
+  SceneResourceTable table;
+  const auto mesh = table.registerMesh(makeTangentSignMeshBuffer());
+  (void)mesh;
+
+  const auto upload = table.buildUploadView();
+  EXPECT(upload.vertices.size() == 3,
+         "upload view should contain the authored tangent vertices");
+  if (upload.vertices.empty()) {
+    return;
+  }
+
+  EXPECT(upload.vertices[0].uvTangentSign.x == 0.25f &&
+             upload.vertices[0].uvTangentSign.y == 0.75f,
+         "upload vertex should preserve UV in uvTangentSign.xy");
+  EXPECT(upload.vertices[0].uvTangentSign.z == -1.0f,
+         "upload vertex should pack authored tangent.w sign into "
+         "uvTangentSign.z");
 }
 
 void testPbrTextureIndicesEnterUploadView() {
@@ -853,6 +916,7 @@ int main() {
   testSceneRegistersRenderableComponentResources();
   testSceneRegistersCameraAndLightResources();
   testSceneGpuRecordLayoutContract();
+  testSceneGpuVertexRecordPacksTangentSignInUvTangentSignZ();
   testPbrTextureIndicesEnterUploadView();
   testSceneResourceTableUploadViewTracksTableGeneration();
   testSceneResourceTableUploadViewReflectsMaterialMutationAfterBuild();

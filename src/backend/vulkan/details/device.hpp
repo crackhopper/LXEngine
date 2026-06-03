@@ -1,10 +1,10 @@
 #pragma once
 #include "core/platform/window.hpp"
+#include <vulkan/vulkan.h>
 #include <iterator>
 #include <memory>
 #include <optional>
 #include <vector>
-#include <vulkan/vulkan.h>
 
 namespace LX_core {
 namespace backend {
@@ -71,7 +71,8 @@ public:
   }
 
   // --- 实用工具 ---
-  u32 findMemoryTypeIndex(u32 typeFilter, VkMemoryPropertyFlags properties) const;
+  u32 findMemoryTypeIndex(u32 typeFilter,
+                          VkMemoryPropertyFlags properties) const;
   void waitIdle() const { vkDeviceWaitIdle(m_device); }
 
   /**
@@ -95,7 +96,9 @@ public:
 
   VkImageAspectFlags getDepthAspectMask() const;
 
-  static int getPhysicalDevicePreferenceScoreForTesting(VkPhysicalDeviceType type);
+  static int
+  getPhysicalDevicePreferenceScoreForTesting(VkPhysicalDeviceType type);
+
 private:
   // 内部初始化流程
   void createInstance(const char *appName, ApiVersion32 appVersion,
@@ -127,6 +130,7 @@ private:
   bool
   checkDeviceExtensionSupport(VkPhysicalDevice device,
                               std::vector<const char *> extensionsRequired);
+  bool checkRequiredDeviceFeatureSupport(VkPhysicalDevice device);
 
   // 管理器：由 Device 持有，因为它们的生命周期与 Device 一致
   std::unique_ptr<VulkanDescriptorManager> m_descriptorManager;

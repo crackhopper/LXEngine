@@ -1,5 +1,7 @@
 #version 450
 
+#extension GL_EXT_nonuniform_qualifier : require
+
 #include "common/pbr.glsl"
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
@@ -189,8 +191,8 @@ bool intersectPrimitive(vec3 origin, vec3 dir, lxScenePrimitiveRecord primitive,
       normalize(a.tangent.xyz * w + b.tangent.xyz * u + c.tangent.xyz * v);
   attributes.normal = normal;
   attributes.tangent = normalize(mat3(object.objectToWorld) * localTangent);
-  attributes.tangentSign = a.uvTangentSign.w * w + b.uvTangentSign.w * u +
-                           c.uvTangentSign.w * v;
+  attributes.tangentSign = a.uvTangentSign.z * w + b.uvTangentSign.z * u +
+                           c.uvTangentSign.z * v;
   attributes.uv =
       a.uvTangentSign.xy * w + b.uvTangentSign.xy * u + c.uvTangentSign.xy * v;
   attributes.materialIndex = primitive.materialIndex;
@@ -267,7 +269,7 @@ bool hasSceneTexture(uint textureIndex) {
 }
 
 vec4 sampleSceneTexture(uint textureIndex, vec2 uv) {
-  return texture(SceneTextures[textureIndex], uv);
+  return texture(SceneTextures[nonuniformEXT(textureIndex)], uv);
 }
 
 vec3 makeShadingNormal(lxSceneMaterialRecord material, HitAttributes hit) {

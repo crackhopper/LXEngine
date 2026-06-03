@@ -258,6 +258,41 @@ void testOfflinePbrEmissiveTextureMatchesRealtimeSemantics() {
          "emissive factor");
 }
 
+void testOfflinePbrTextureArrayUsesNonUniformIndexing() {
+  const auto shaderPath =
+      findOfflineShaderSourcePath("offline_pbr_direct_ray.comp");
+  EXPECT(!shaderPath.empty(),
+         "offline PBR shader source should be discoverable for indexing test");
+  if (shaderPath.empty()) {
+    return;
+  }
+
+  const std::string shaderSource = readTextFile(shaderPath);
+  EXPECT(shaderSource.find("GL_EXT_nonuniform_qualifier") != std::string::npos,
+         "offline PBR shader should enable nonuniform qualifier extension");
+  EXPECT(shaderSource.find("SceneTextures[nonuniformEXT(textureIndex)]") !=
+             std::string::npos,
+         "offline PBR shader should mark material texture indices nonuniform");
+}
+
+void testOfflinePbrReadsTangentSignFromUploadAbiField() {
+  const auto shaderPath =
+      findOfflineShaderSourcePath("offline_pbr_direct_ray.comp");
+  EXPECT(
+      !shaderPath.empty(),
+      "offline PBR shader source should be discoverable for tangent ABI test");
+  if (shaderPath.empty()) {
+    return;
+  }
+
+  const std::string shaderSource = readTextFile(shaderPath);
+  EXPECT(shaderSource.find("a.uvTangentSign.z * w") != std::string::npos,
+         "offline PBR shader should read tangent sign from uvTangentSign.z");
+  EXPECT(shaderSource.find("a.uvTangentSign.w * w") == std::string::npos,
+         "offline PBR shader should not read tangent sign from unused "
+         "uvTangentSign.w");
+}
+
 [[nodiscard]] SceneGpuVertexRecord makeGpuVertex(float x, float y, float z) {
   SceneGpuVertexRecord vertex;
   vertex.position = Vec4f{x, y, z, 1.0f};
@@ -650,6 +685,8 @@ int main() {
   testOfflineShaderUsesUnifiedSceneBuffers();
   testOfflinePbrDirectShaderCompiles();
   testOfflinePbrEmissiveTextureMatchesRealtimeSemantics();
+  testOfflinePbrTextureArrayUsesNonUniformIndexing();
+  testOfflinePbrReadsTangentSignFromUploadAbiField();
   testOfflineRenderJobValidationRejectsZeroDimensions();
   testOfflineRenderJobValidationRejectsMissingCamera();
   testOfflineRenderJobValidationRejectsNonRenderableScene();

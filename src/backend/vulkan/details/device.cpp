@@ -17,7 +17,6 @@ debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
               VkDebugUtilsMessageTypeFlagsEXT messageType,
               const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData,
               void *pUserData) {
-
   std::cerr << "[Vulkan Validation Layer]: " << pCallbackData->pMessage
             << std::endl;
   return VK_FALSE;
@@ -317,8 +316,7 @@ void VulkanDevice::findSurfaceDepthFormat() {
 }
 
 void VulkanDevice::initialize(WindowSharedPtr window, const char *appName,
-                              ApiVersion32 appVersion,
-                              const char *engineName,
+                              ApiVersion32 appVersion, const char *engineName,
                               ApiVersion32 engineVersion,
                               ApiVersion32 apiVersion,
                               std::vector<const char *> validationLayers) {
@@ -536,6 +534,20 @@ bool VulkanDevice::checkDeviceExtensionSupport(
   return requiredExtensions.empty();
 }
 
+bool VulkanDevice::checkRequiredDeviceFeatureSupport(VkPhysicalDevice device) {
+  VkPhysicalDeviceDescriptorIndexingFeatures descriptorIndexingFeatures{};
+  descriptorIndexingFeatures.sType =
+      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
+
+  VkPhysicalDeviceFeatures2 features{};
+  features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+  features.pNext = &descriptorIndexingFeatures;
+  vkGetPhysicalDeviceFeatures2(device, &features);
+
+  return descriptorIndexingFeatures.shaderSampledImageArrayNonUniformIndexing ==
+         VK_TRUE;
+}
+
 bool VulkanDevice::isDeviceSuitable(
     VkPhysicalDevice device, std::vector<const char *> extensionsRequired) {
   // 1. 检查队列族（是否有图形队列）
@@ -544,10 +556,11 @@ bool VulkanDevice::isDeviceSuitable(
   // 2. 检查扩展（是否支持交换链）
   bool extensionsSupported =
       checkDeviceExtensionSupport(device, extensionsRequired);
+  const bool featuresSupported = checkRequiredDeviceFeatureSupport(device);
 
   // 3. 适用性只由功能完备性决定，设备类型只影响偏好排序
   return queueIndices.isComplete(m_surface != VK_NULL_HANDLE) &&
-         extensionsSupported;
+         extensionsSupported && featuresSupported;
 }
 
 bool VulkanDevice::isHeadlessDeviceSuitable(
@@ -555,7 +568,9 @@ bool VulkanDevice::isHeadlessDeviceSuitable(
   const QueueFamilyIndices queueIndices = findHeadlessQueueFamilies(device);
   const bool extensionsSupported =
       checkDeviceExtensionSupport(device, extensionsRequired);
-  return queueIndices.isGraphicsComplete() && extensionsSupported;
+  const bool featuresSupported = checkRequiredDeviceFeatureSupport(device);
+  return queueIndices.isGraphicsComplete() && extensionsSupported &&
+         featuresSupported;
 }
 
 void VulkanDevice::pickPhysicalDevice() {
@@ -648,8 +663,15 @@ void VulkanDevice::createLogicalDevice() {
     queueCreateInfos.push_back(queueCreateInfo);
   }
 
-  // Device features (currently empty but required for future extensions)
-  VkPhysicalDeviceFeatures deviceFeatures{};
+  VkPhysicalDeviceDescriptorIndexingFeatures descriptorIndexingFeatures{};
+  descriptorIndexingFeatures.sType =
+      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
+  descriptorIndexingFeatures.shaderSampledImageArrayNonUniformIndexing =
+      VK_TRUE;
+
+  VkPhysicalDeviceFeatures2 deviceFeatures{};
+  deviceFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+  deviceFeatures.pNext = &descriptorIndexingFeatures;
 
   // Create logical device
   VkDeviceCreateInfo deviceCreateInfo{};
@@ -657,7 +679,8 @@ void VulkanDevice::createLogicalDevice() {
   deviceCreateInfo.queueCreateInfoCount =
       static_cast<u32>(queueCreateInfos.size());
   deviceCreateInfo.pQueueCreateInfos = queueCreateInfos.data();
-  deviceCreateInfo.pEnabledFeatures = &deviceFeatures;
+  deviceCreateInfo.pNext = &deviceFeatures;
+  deviceCreateInfo.pEnabledFeatures = nullptr;
 
   deviceCreateInfo.enabledExtensionCount =
       static_cast<u32>(m_deviceExtensions.size());
@@ -680,7 +703,8 @@ void VulkanDevice::createLogicalDevice() {
   vkGetDeviceQueue(m_device, getGraphicsQueueFamilyIndex(), 0,
                    &m_graphicsQueue);
   if (m_surface != VK_NULL_HANDLE) {
-    vkGetDeviceQueue(m_device, getPresentQueueFamilyIndex(), 0, &m_presentQueue);
+    vkGetDeviceQueue(m_device, getPresentQueueFamilyIndex(), 0,
+                     &m_presentQueue);
   } else {
     m_presentQueue = m_graphicsQueue;
   }
