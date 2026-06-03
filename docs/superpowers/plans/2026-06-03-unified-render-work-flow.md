@@ -44,7 +44,7 @@
 - Modify: `src/core/frame_graph/render_queue.cpp`
 - Modify: all compile-error call sites that reference `RenderingItem` or `RenderQueue`
 
-- [ ] **Step 1: Replace core type names**
+- [x] **Step 1: Replace core type names**
 
 In `src/core/scene/scene.hpp`, replace `struct RenderingItem` with:
 
@@ -102,7 +102,7 @@ In `src/core/frame_graph/pass.hpp`, add:
 inline const StringID Pass_OfflineRayTrace = StringID("OfflineRayTrace");
 ```
 
-- [ ] **Step 2: Run focused compile to expose call sites**
+- [x] **Step 2: Run focused compile to expose call sites**
 
 Run:
 
@@ -112,7 +112,7 @@ ninja -C build test_frame_graph
 
 Expected: compile failures at remaining `RenderingItem` / `RenderQueue` references.
 
-- [ ] **Step 3: Update compile-error call sites**
+- [x] **Step 3: Update compile-error call sites**
 
 Replace:
 
@@ -151,7 +151,7 @@ item.domain = RenderDomain::Realtime;
 item.kind = RenderWorkKind::RasterDraw;
 ```
 
-- [ ] **Step 4: Verify focused frame graph tests**
+- [x] **Step 4: Verify focused frame graph tests**
 
 Run:
 
@@ -161,7 +161,7 @@ ninja -C build test_frame_graph && ./build/src/test/test_frame_graph
 
 Expected: build succeeds and test passes.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core src/backend src/test
@@ -176,7 +176,7 @@ git commit -m "refactor: rename render queue work items"
 - Modify: `src/backend/vulkan/details/resource_manager.cpp`
 - Modify: affected tests
 
-- [ ] **Step 1: Add raster payload validation helper**
+- [x] **Step 1: Add raster payload validation helper**
 
 In `pipeline_build_desc.cpp`, make `PipelineBuildDesc::fromRenderingItem` become `PipelineBuildDesc::fromRenderWorkItem` and read:
 
@@ -190,7 +190,7 @@ assert(raster.indexBuffer &&
        "PipelineBuildDesc::fromRenderWorkItem: index buffer required");
 ```
 
-- [ ] **Step 2: Update command buffer execution names**
+- [x] **Step 2: Update command buffer execution names**
 
 Rename:
 
@@ -210,7 +210,7 @@ executeRasterDrawItem(const RenderWorkItem &item)
 then use `item.raster.indexCount` when non-zero, otherwise fallback to
 `item.raster.indexBuffer->getByteSize() / sizeof(u32)`.
 
-- [ ] **Step 3: Update renderer call sites**
+- [x] **Step 3: Update renderer call sites**
 
 Replace:
 
@@ -226,7 +226,7 @@ cmd->executeRasterDrawItem(item);
 cmd.executeRasterDrawItem(item);
 ```
 
-- [ ] **Step 4: Verify Vulkan command buffer focused test**
+- [x] **Step 4: Verify Vulkan command buffer focused test**
 
 Run:
 
@@ -236,7 +236,7 @@ ninja -C build test_vulkan_command_buffer && xvfb-run -a ./build/src/test/test_v
 
 Expected: test passes.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core src/backend src/test
@@ -251,7 +251,7 @@ git commit -m "refactor: isolate raster render work payload"
 - Modify: `src/core/CMakeLists.txt`
 - Modify: `src/test/integration/test_frame_graph.cpp`
 
-- [ ] **Step 1: Add failing upload-plan test**
+- [x] **Step 1: Add failing upload-plan test**
 
 Add a focused test in `test_frame_graph.cpp`:
 
@@ -279,7 +279,7 @@ void testRenderUploadPlanCollectsRasterResources() {
 
 Use existing test helpers/types in the file instead of introducing raw pointers.
 
-- [ ] **Step 2: Run focused test to verify failure**
+- [x] **Step 2: Run focused test to verify failure**
 
 Run:
 
@@ -289,7 +289,7 @@ ninja -C build test_frame_graph
 
 Expected: compile failure for missing `RenderUploadPlan`.
 
-- [ ] **Step 3: Implement upload plan**
+- [x] **Step 3: Implement upload plan**
 
 Create `render_upload_plan.hpp`:
 
@@ -318,11 +318,11 @@ Create `render_upload_plan.cpp` that iterates queue items and appends non-null
 unique resources in this order for raster work: vertex, index, draw, descriptor
 resources. Use `ResourceCacheIdentity` to deduplicate resources.
 
-- [ ] **Step 4: Add file to CMake**
+- [x] **Step 4: Add file to CMake**
 
 Add `frame_graph/render_upload_plan.cpp` to the core library source list.
 
-- [ ] **Step 5: Verify focused test**
+- [x] **Step 5: Verify focused test**
 
 Run:
 
@@ -332,7 +332,7 @@ ninja -C build test_frame_graph && ./build/src/test/test_frame_graph
 
 Expected: test passes.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/core src/test
@@ -346,7 +346,7 @@ git commit -m "feat: add render upload plan"
 - Modify: `src/backend/vulkan/details/ibl_bake_renderer.cpp`
 - Modify: Vulkan-focused tests if needed
 
-- [ ] **Step 1: Replace queue resource sync loops**
+- [x] **Step 1: Replace queue resource sync loops**
 
 For each realtime draw path that currently syncs resources from work items,
 delete the inline sync logic:
@@ -373,12 +373,12 @@ Do not keep a fallback path that manually syncs `raster.vertexBuffer`,
 upload plan. `RenderUploadPlan` becomes the only realtime resource sync entry
 for queued work.
 
-- [ ] **Step 2: Keep execution unchanged**
+- [x] **Step 2: Keep execution unchanged**
 
 Execution still binds resources and calls `executeRasterDrawItem(item)` for each
 work item.
 
-- [ ] **Step 3: Verify realtime Vulkan tests**
+- [x] **Step 3: Verify realtime Vulkan tests**
 
 Run:
 
@@ -391,7 +391,7 @@ xvfb-run -a ./build/src/test/test_vulkan_frame_graph
 
 Expected: all focused tests pass.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/backend src/test
@@ -407,7 +407,7 @@ git commit -m "refactor: make realtime uploads explicit"
 - Modify: `src/backend/vulkan/offline/software_compute_offline_integrator.cpp`
 - Modify: `src/test/integration/test_offline_gpu_scene.cpp`
 
-- [ ] **Step 1: Add failing offline graph test**
+- [x] **Step 1: Add failing offline graph test**
 
 Add this test to `src/test/integration/test_offline_gpu_scene.cpp` and call it
 from `main()`:
@@ -447,7 +447,7 @@ void testOfflineRenderWorkGraphBuildsRayTracePass() {
 Also include `core/offline/offline_render_work_graph.hpp` at the top of the
 test file.
 
-- [ ] **Step 2: Run focused test to verify failure**
+- [x] **Step 2: Run focused test to verify failure**
 
 Run:
 
@@ -457,7 +457,7 @@ ninja -C build test_offline_gpu_scene
 
 Expected: compile failure for missing `buildOfflineRenderWorkGraph`.
 
-- [ ] **Step 3: Implement offline graph builder**
+- [x] **Step 3: Implement offline graph builder**
 
 Create `src/core/offline/offline_render_work_graph.hpp`:
 
@@ -509,7 +509,7 @@ FrameGraph buildOfflineRenderWorkGraph(const OfflineRenderJob &job) {
 
 Add `offline/offline_render_work_graph.cpp` to the core library source list.
 
-- [ ] **Step 4: Use offline graph in software integrator**
+- [x] **Step 4: Use offline graph in software integrator**
 
 In `SoftwareComputeOfflineIntegrator::render`, build the offline graph before
 uploading scene packets:
@@ -537,7 +537,7 @@ const SceneGpuFrameParams frameParams =
 Use `workItem.compute.groupCountX/Y/Z` for `vkCmdDispatch`. Keep output pixels
 and descriptor layout unchanged.
 
-- [ ] **Step 5: Verify offline focused tests**
+- [x] **Step 5: Verify offline focused tests**
 
 Run:
 
@@ -549,7 +549,7 @@ ninja -C build test_offline_gpu_scene test_offline_render_cli
 
 Expected: both tests pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/core src/backend/vulkan/offline src/test
@@ -561,7 +561,7 @@ git commit -m "feat: route offline compute through render work graph"
 **Files:**
 - All touched files.
 
-- [ ] **Step 1: Search for retired names in source**
+- [x] **Step 1: Search for retired names in source**
 
 Run:
 
@@ -571,7 +571,7 @@ rg -n "RenderingItem|RenderQueue|drawItem\\(" src
 
 Expected: no source matches.
 
-- [ ] **Step 2: Build primary targets**
+- [x] **Step 2: Build primary targets**
 
 Run:
 
@@ -582,7 +582,7 @@ ninja -C build lxe_editor lxe_offline_render BuildTest
 
 Expected: all targets build.
 
-- [ ] **Step 3: Run headless tests**
+- [x] **Step 3: Run headless tests**
 
 Run:
 
@@ -592,7 +592,7 @@ ctest --test-dir build --output-on-failure -L auto -LE requires_video_device
 
 Expected: all tests pass.
 
-- [ ] **Step 4: Run video-device tests**
+- [x] **Step 4: Run video-device tests**
 
 Run:
 
@@ -602,7 +602,7 @@ xvfb-run -a ctest --test-dir build --output-on-failure -L requires_video_device
 
 Expected: all tests pass, including `test_realtime_offline_compare_flat`.
 
-- [ ] **Step 5: Inspect final git state**
+- [x] **Step 5: Inspect final git state**
 
 Run:
 
