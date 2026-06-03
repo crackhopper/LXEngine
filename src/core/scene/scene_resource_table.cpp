@@ -128,9 +128,10 @@ void appendMeshGeometryRecords(const MeshBuffer &mesh,
   if (rawIndices != nullptr) {
     const u32 firstIndex = mesh.getIndexOffset();
     const u32 indexCount = mesh.getIndexCount();
+    const u32 firstVertex = mesh.getVertexOffset();
     indices.reserve(indices.size() + indexCount);
     for (u32 i = 0; i < indexCount; ++i) {
-      indices.push_back(rawIndices[firstIndex + i]);
+      indices.push_back(rawIndices[firstIndex + i] - firstVertex);
     }
   }
 }
@@ -727,14 +728,17 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
     objectRecord.visibilityMask = object.visibilityMask;
     m_gpuObjects.push_back(objectRecord);
 
-    SceneGpuPrimitiveRecord primitiveRecord;
-    if (meshRecordIndex != u32_max && meshRecordIndex < m_gpuMeshes.size()) {
-      primitiveRecord.indexOffset = m_gpuMeshes[meshRecordIndex].indexOffset;
+    const auto &meshRecord = m_gpuMeshes[meshRecordIndex];
+    for (u32 triangleIndexOffset = 0;
+         triangleIndexOffset + 2 < meshRecord.indexCount;
+         triangleIndexOffset += 3) {
+      SceneGpuPrimitiveRecord primitiveRecord;
+      primitiveRecord.indexOffset = meshRecord.indexOffset + triangleIndexOffset;
+      primitiveRecord.meshIndex = meshRecordIndex;
+      primitiveRecord.materialIndex = materialRecordIndex;
+      primitiveRecord.objectIndex = objectRecordIndex;
+      m_gpuPrimitives.push_back(primitiveRecord);
     }
-    primitiveRecord.meshIndex = meshRecordIndex;
-    primitiveRecord.materialIndex = materialRecordIndex;
-    primitiveRecord.objectIndex = objectRecordIndex;
-    m_gpuPrimitives.push_back(primitiveRecord);
   }
 
   return SceneResourceTableUploadView{

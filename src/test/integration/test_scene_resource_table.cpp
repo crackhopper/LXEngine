@@ -96,6 +96,36 @@ MeshBufferSharedPtr makeMeshBuffer() {
                                                 {1.0f, 1.0f, 0.0f}});
 }
 
+MeshBufferSharedPtr makeTwoTriangleMeshBuffer() {
+  auto vertices = std::vector<TestVertex>{
+      {{0.0f, 0.0f, 0.0f}},
+      {{1.0f, 0.0f, 0.0f}},
+      {{0.0f, 1.0f, 0.0f}},
+      {{1.0f, 1.0f, 0.0f}},
+  };
+  auto indices = std::vector<u32>{0, 1, 2, 2, 1, 3};
+  auto vb = VertexBuffer<TestVertex>::create(std::move(vertices));
+  auto ib = IndexBuffer::create(std::move(indices));
+  return MeshBuffer::create(vb, ib, BoundingBox{{0.0f, 0.0f, 0.0f},
+                                                {1.0f, 1.0f, 0.0f}});
+}
+
+MeshBufferSharedPtr makeOffsetMeshBuffer() {
+  auto vertices = std::vector<TestVertex>{
+      {{-10.0f, -10.0f, 0.0f}},
+      {{0.0f, 0.0f, 0.0f}},
+      {{1.0f, 0.0f, 0.0f}},
+      {{0.0f, 1.0f, 0.0f}},
+  };
+  auto indices = std::vector<u32>{1, 2, 3};
+  auto vb = VertexBuffer<TestVertex>::create(std::move(vertices));
+  auto ib = IndexBuffer::create(std::move(indices));
+  auto storage = GeometryStorage::create(vb, ib);
+  return MeshBuffer::create(storage, 1, 0, 3, 3,
+                            BoundingBox{{0.0f, 0.0f, 0.0f},
+                                        {1.0f, 1.0f, 0.0f}});
+}
+
 MaterialInstanceSharedPtr makeGpuRecordMaterial() {
   ShaderResourceBinding binding;
   binding.name = "MaterialUBO";
@@ -452,6 +482,68 @@ void testSceneResourceTableUploadViewSkipsObjectsWithReleasedDependencies() {
          "upload view should skip primitives whose mesh or material was released");
 }
 
+void testSceneResourceTableUploadViewEmitsPrimitivePerTriangle() {
+  SceneResourceTable table;
+  const auto mesh = table.registerMesh(makeTwoTriangleMeshBuffer());
+  const auto material = table.registerMaterial(makeGpuRecordMaterial());
+
+  ObjectResource object;
+  object.mesh = mesh;
+  object.material = material;
+  object.worldBounds = BoundingBox{{0.0f, 0.0f, 0.0f},
+                                   {1.0f, 1.0f, 0.0f}};
+  const auto objectHandle = table.registerObject(object);
+
+  const auto view = table.buildUploadView();
+  EXPECT(table.isAlive(objectHandle),
+         "test setup should keep two-triangle object alive");
+  EXPECT(view.indices.size() == 6,
+         "two-triangle mesh should upload six indices");
+  EXPECT(view.primitives.size() == 2,
+         "two-triangle mesh should emit two primitive records");
+  if (view.primitives.size() == 2) {
+    EXPECT(view.primitives[0].indexOffset == 0,
+           "first primitive should start at first uploaded triangle");
+    EXPECT(view.primitives[1].indexOffset == 3,
+           "second primitive should start at second uploaded triangle");
+    EXPECT(view.primitives[0].meshIndex == 0 &&
+               view.primitives[1].meshIndex == 0,
+           "primitive mesh indices should use compact mesh record position");
+    EXPECT(view.primitives[0].materialIndex == 0 &&
+               view.primitives[1].materialIndex == 0,
+           "primitive material indices should use compact material record position");
+    EXPECT(view.primitives[0].objectIndex == 0 &&
+               view.primitives[1].objectIndex == 0,
+           "primitive object indices should use compact object record position");
+  }
+}
+
+void testSceneResourceTableUploadViewRebasesOffsetMeshIndices() {
+  SceneResourceTable table;
+  const auto mesh = table.registerMesh(makeOffsetMeshBuffer());
+  const auto material = table.registerMaterial(makeGpuRecordMaterial());
+
+  ObjectResource object;
+  object.mesh = mesh;
+  object.material = material;
+  object.worldBounds = BoundingBox{{0.0f, 0.0f, 0.0f},
+                                   {1.0f, 1.0f, 0.0f}};
+  const auto objectHandle = table.registerObject(object);
+
+  const auto view = table.buildUploadView();
+  EXPECT(table.isAlive(objectHandle),
+         "test setup should keep offset mesh object alive");
+  EXPECT(view.vertices.size() == 3,
+         "offset mesh should upload only the compact vertex slice");
+  EXPECT(view.indices.size() == 3,
+         "offset mesh should upload only the compact index slice");
+  if (view.indices.size() == 3) {
+    EXPECT(view.indices[0] == 0 && view.indices[1] == 1 &&
+               view.indices[2] == 2,
+           "offset mesh indices should be rebased into compact vertex span");
+  }
+}
+
 } // namespace
 
 int main() {
@@ -463,6 +555,8 @@ int main() {
   testSceneResourceTableUploadViewTracksGeneration();
   testSceneResourceTableUploadViewUsesCompactRecordIndices();
   testSceneResourceTableUploadViewSkipsObjectsWithReleasedDependencies();
+  testSceneResourceTableUploadViewEmitsPrimitivePerTriangle();
+  testSceneResourceTableUploadViewRebasesOffsetMeshIndices();
 
   if (s_failures != 0) {
     std::cerr << "test_scene_resource_table failed: " << s_failures
