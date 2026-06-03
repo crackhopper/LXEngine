@@ -363,9 +363,7 @@ struct SoftwareComputeOfflineIntegrator::Impl final {
                       pipeline);
     vkCmdBindDescriptorSets(cmd->getHandle(), VK_PIPELINE_BIND_POINT_COMPUTE,
                             pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
-    vkCmdDispatch(cmd->getHandle(), workItem.compute.groupCountX,
-                  workItem.compute.groupCountY,
-                  workItem.compute.groupCountZ);
+    cmd->executeWorkItem(workItem);
     VkMemoryBarrier barrier{};
     barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
     barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;

@@ -132,7 +132,7 @@ bool drawDebugOverlayItem(
   cmd->setScissor(extent.width, extent.height);
   cmd->bindPipeline(pipeline);
   cmd->bindResources(resourceManager, pipeline, item);
-  cmd->executeRasterDrawItem(item);
+  cmd->executeWorkItem(item);
   cmd->endRenderPass();
 
   if (vkEndCommandBuffer(cmd->getHandle()) != VK_SUCCESS) {

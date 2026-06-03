@@ -1489,7 +1489,7 @@ public:
       auto &pipeline = resourceManager().getOrCreateRenderPipeline(item);
       cmd->bindPipeline(pipeline);
       cmd->bindResources(resourceManager(), pipeline, item);
-      cmd->executeRasterDrawItem(item);
+      cmd->executeWorkItem(item);
     }
     cmd->endRenderPass();
 
@@ -1756,7 +1756,7 @@ public:
       auto &pipeline = resourceManager().getOrCreateRenderPipeline(item);
       cmd->bindPipeline(pipeline);
       cmd->bindResources(resourceManager(), pipeline, item);
-      cmd->executeRasterDrawItem(item);
+      cmd->executeWorkItem(item);
     }
     cmd->endRenderPass();
 
@@ -1886,7 +1886,7 @@ private:
       auto &pipeline = resourceManager().getOrCreateRenderPipeline(item);
       cmd.bindPipeline(pipeline);
       cmd.bindResources(resourceManager(), pipeline, item);
-      cmd.executeRasterDrawItem(item);
+      cmd.executeWorkItem(item);
     }
   }
 

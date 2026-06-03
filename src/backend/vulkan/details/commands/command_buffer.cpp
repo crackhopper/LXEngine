@@ -358,7 +358,8 @@ void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
 }
 
 void VulkanCommandBuffer::executeRasterDrawItem(const RenderWorkItem &item) {
-  if (item.kind != RenderWorkKind::RasterDraw) {
+  if (item.kind != RenderWorkKind::RasterDraw &&
+      item.kind != RenderWorkKind::RasterBatch) {
     return;
   }
 
@@ -375,6 +376,30 @@ void VulkanCommandBuffer::executeRasterDrawItem(const RenderWorkItem &item) {
   }
   vkCmdDrawIndexed(m_handle, static_cast<u32>(indexCount), raster.instanceCount,
                    raster.firstIndex, raster.vertexOffset, 0);
+}
+
+void VulkanCommandBuffer::executeComputeDispatchItem(
+    const RenderWorkItem &item) {
+  if (item.kind != RenderWorkKind::ComputeDispatch) {
+    return;
+  }
+  vkCmdDispatch(m_handle, item.compute.groupCountX, item.compute.groupCountY,
+                item.compute.groupCountZ);
+}
+
+void VulkanCommandBuffer::executeWorkItem(const RenderWorkItem &item) {
+  switch (item.kind) {
+  case RenderWorkKind::RasterDraw:
+  case RenderWorkKind::RasterBatch:
+    executeRasterDrawItem(item);
+    return;
+  case RenderWorkKind::ComputeDispatch:
+    executeComputeDispatchItem(item);
+    return;
+  case RenderWorkKind::RayTracingDispatch:
+    throw std::runtime_error("RayTracingDispatch work is not implemented");
+  }
+  throw std::runtime_error("unknown RenderWorkKind");
 }
 
 } // namespace LX_core::backend

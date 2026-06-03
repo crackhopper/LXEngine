@@ -167,7 +167,7 @@ int main() {
     cmd->bindPipeline(pipeline);
 
     cmd->bindResources(*resourceManager, pipeline, renderItem);
-    cmd->executeRasterDrawItem(renderItem);
+    cmd->executeWorkItem(renderItem);
     cmd->endRenderPass();
 
     vkEndCommandBuffer(cmd->getHandle());
@@ -198,7 +198,7 @@ int main() {
       loopCmd->setScissor(extent.width, extent.height);
       loopCmd->bindPipeline(pipeline);
       loopCmd->bindResources(*resourceManager, pipeline, renderItem);
-      loopCmd->executeRasterDrawItem(renderItem);
+      loopCmd->executeWorkItem(renderItem);
       loopCmd->endRenderPass();
       vkEndCommandBuffer(loopCmd->getHandle());
     }

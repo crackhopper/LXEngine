@@ -36,7 +36,7 @@ public:
   void bindResources(VulkanResourceManager &resourceManager,
                      VulkanPipeline &pipeline, const RenderWorkItem &item);
 
-  void executeRasterDrawItem(const RenderWorkItem &item);
+  void executeWorkItem(const RenderWorkItem &item);
 
   void copyBuffer(VkBuffer src, VkBuffer dst, VkDeviceSize size,
                   VkDeviceSize srcOffset = 0, VkDeviceSize dstOffset = 0) {
@@ -71,6 +71,9 @@ public:
   }
 
 private:
+  void executeRasterDrawItem(const RenderWorkItem &item);
+  void executeComputeDispatchItem(const RenderWorkItem &item);
+
   // Push constant info captured from the last bound pipeline. Matches the
   // engine-wide convention set in `PushConstantRange` (128 bytes,
   // vertex+fragment stages by default); populated in `bindPipeline`.
@@ -83,7 +86,7 @@ private:
   VkCommandBuffer m_handle = VK_NULL_HANDLE;
   VulkanDevice &m_device;
 
-  // Captured from the last bound pipeline; used by executeRasterDrawItem().
+  // Captured from the last bound pipeline; used by executeWorkItem().
   VkPipelineLayout m_pipelineLayout = VK_NULL_HANDLE;
   PushConstantSnapshot m_pushConstants{};
 };

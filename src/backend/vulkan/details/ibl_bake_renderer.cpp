@@ -568,7 +568,7 @@ void IblBakeRenderer::renderEquirectToCubemap(
     cmd->setScissor(skyboxSize, skyboxSize);
     cmd->bindPipeline(pipeline);
     cmd->bindResources(m_resourceManager, pipeline, item);
-    cmd->executeRasterDrawItem(item);
+    cmd->executeWorkItem(item);
     cmd->endRenderPass();
     m_cmdBufferManager.endSingleTimeCommands(std::move(cmd),
                                              m_device.getGraphicsQueue());
@@ -633,7 +633,7 @@ void IblBakeRenderer::renderIrradianceCubemap(u32 irradianceSize) {
     cmd->setScissor(irradianceSize, irradianceSize);
     cmd->bindPipeline(pipeline);
     cmd->bindResources(m_resourceManager, pipeline, item);
-    cmd->executeRasterDrawItem(item);
+    cmd->executeWorkItem(item);
     cmd->endRenderPass();
     m_cmdBufferManager.endSingleTimeCommands(std::move(cmd),
                                              m_device.getGraphicsQueue());
@@ -710,7 +710,7 @@ void IblBakeRenderer::renderPrefilterCubemap(u32 prefilterSize,
       cmd->setScissor(extentValue, extentValue);
       cmd->bindPipeline(pipeline);
       cmd->bindResources(m_resourceManager, pipeline, item);
-      cmd->executeRasterDrawItem(item);
+      cmd->executeWorkItem(item);
       cmd->endRenderPass();
       m_cmdBufferManager.endSingleTimeCommands(std::move(cmd),
                                                m_device.getGraphicsQueue());
@@ -756,7 +756,7 @@ void IblBakeRenderer::clearBrdfLut(u32 size) {
   cmd->setScissor(size, size);
   cmd->bindPipeline(pipeline);
   cmd->bindResources(m_resourceManager, pipeline, item);
-  cmd->executeRasterDrawItem(item);
+  cmd->executeWorkItem(item);
   cmd->endRenderPass();
   m_cmdBufferManager.endSingleTimeCommands(std::move(cmd),
                                            m_device.getGraphicsQueue());

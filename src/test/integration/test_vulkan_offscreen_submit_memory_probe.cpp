@@ -226,7 +226,7 @@ void testOffscreenSubmitProbe() {
       cmd->setScissor(extent.width, extent.height);
       cmd->bindPipeline(pipeline);
       cmd->bindResources(*resourceManager, pipeline, renderItem);
-      cmd->executeRasterDrawItem(renderItem);
+      cmd->executeWorkItem(renderItem);
       cmd->endRenderPass();
       cmd->end();
 
