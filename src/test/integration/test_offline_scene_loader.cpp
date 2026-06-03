@@ -5,10 +5,12 @@
 #include "infra/scene_io/scene_document.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <filesystem>
 #include <iostream>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <utility>
 
@@ -52,7 +54,21 @@ public:
   ScopedFileMove(std::filesystem::path source, std::filesystem::path target)
       : m_source(std::move(source)), m_target(std::move(target)) {
     std::error_code error;
-    std::filesystem::remove(m_target, error);
+    if (std::filesystem::exists(m_target, error)) {
+      std::cerr << "[FAIL] " << __FUNCTION__ << ":" << __LINE__
+                << " fixture hide target already exists: " << m_target
+                << '\n';
+      ++failures;
+      return;
+    }
+    error.clear();
+    if (!std::filesystem::exists(m_source, error)) {
+      std::cerr << "[FAIL] " << __FUNCTION__ << ":" << __LINE__
+                << " fixture source missing before move: " << m_source
+                << '\n';
+      ++failures;
+      return;
+    }
     error.clear();
     std::filesystem::rename(m_source, m_target, error);
     m_moved = !error;
@@ -72,6 +88,13 @@ public:
       return;
     }
     std::error_code error;
+    if (std::filesystem::exists(m_source, error)) {
+      std::cerr << "[FAIL] ScopedFileMove restore target already exists: "
+                << m_source << '\n';
+      ++failures;
+      return;
+    }
+    error.clear();
     std::filesystem::rename(m_target, m_source, error);
     if (error) {
       std::cerr << "[FAIL] ScopedFileMove failed to restore fixture asset: "
@@ -87,6 +110,60 @@ private:
   std::filesystem::path m_target;
   bool m_moved = false;
 };
+
+[[nodiscard]] std::string hiddenMaterialPrefix(
+    const std::filesystem::path &materialPath) {
+  return "." + materialPath.filename().string() +
+         ".offline_explicit_test_hidden.";
+}
+
+void restoreStaleHiddenMaterialIfNeeded(
+    const std::filesystem::path &materialPath) {
+  std::error_code error;
+  if (std::filesystem::exists(materialPath, error)) {
+    return;
+  }
+  error.clear();
+  const std::filesystem::path materialDir = materialPath.parent_path();
+  const std::string prefix = hiddenMaterialPrefix(materialPath);
+  for (const auto &entry :
+       std::filesystem::directory_iterator(materialDir, error)) {
+    if (error) {
+      break;
+    }
+    const std::string filename = entry.path().filename().string();
+    if (filename.rfind(prefix, 0) != 0) {
+      continue;
+    }
+    std::filesystem::rename(entry.path(), materialPath, error);
+    if (error) {
+      std::cerr << "[FAIL] " << __FUNCTION__ << ":" << __LINE__
+                << " failed to restore stale hidden material: "
+                << error.message() << '\n';
+      ++failures;
+    }
+    return;
+  }
+}
+
+[[nodiscard]] std::filesystem::path makeUniqueHiddenMaterialPath(
+    const std::filesystem::path &materialPath) {
+  const auto stamp = std::chrono::steady_clock::now()
+                         .time_since_epoch()
+                         .count();
+  const std::filesystem::path materialDir = materialPath.parent_path();
+  const std::string prefix = hiddenMaterialPrefix(materialPath);
+  for (u32 attempt = 0; attempt < 1024u; ++attempt) {
+    auto candidate =
+        materialDir / (prefix + std::to_string(stamp) + "." +
+                       std::to_string(attempt));
+    std::error_code error;
+    if (!std::filesystem::exists(candidate, error)) {
+      return candidate;
+    }
+  }
+  throw std::runtime_error("failed to create unique hidden material path");
+}
 
 LX_infra::scene_io::SceneNodeDocument makeCameraNode(
     std::string name, LX_core::Vec3f translation, float fovY,
@@ -232,9 +309,9 @@ void testPlainGltfHelmetExplicitMaterialDoesNotLoadPbrBridgeMaterial() {
   const std::filesystem::path materialPath =
       std::filesystem::current_path() / "assets" / "materials" /
       "pbr_gltf_helmet.material";
+  restoreStaleHiddenMaterialIfNeeded(materialPath);
   const std::filesystem::path hiddenMaterialPath =
-      materialPath.parent_path() /
-      ".pbr_gltf_helmet.material.offline_explicit_test_hidden";
+      makeUniqueHiddenMaterialPath(materialPath);
   ScopedFileMove hidePbrMaterial(materialPath, hiddenMaterialPath);
   if (!hidePbrMaterial.moved()) {
     return;
