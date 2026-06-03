@@ -1,7 +1,6 @@
 #include "backend/vulkan/offline/vulkan_offline_renderer.hpp"
 
 #include "backend/vulkan/offline/offline_integrator.hpp"
-#include "core/offline/offline_render_validation.hpp"
 
 #include <stdexcept>
 
@@ -13,7 +12,6 @@ VulkanOfflineRenderer::~VulkanOfflineRenderer() = default;
 
 LX_core::offline::OfflineReadbackImage
 VulkanOfflineRenderer::render(const LX_core::offline::OfflineRenderJob &job) {
-  LX_core::offline::validateOfflineRenderJob(job);
   if (!isOfflineIntegratorSupported(job.offline.integrator)) {
     throw std::runtime_error("unsupported offline integrator: " +
                              job.offline.integrator);

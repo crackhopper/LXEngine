@@ -478,13 +478,13 @@ git commit -m "feat: load offline scenes into scene resource table"
 - Modify: `src/tools/lxe_offline_render/main.cpp`
 - Modify: include sites found by `rg -n "offline_scene|offline_ray_scene|OfflineSceneIR|OfflineRayScene" src`
 
-- [ ] **Step 1: Write compile-removal check**
+- [x] **Step 1: Write compile-removal check**
 
 Run: `rg -n "OfflineSceneIR|OfflineRayScene|OfflineRaySceneBuilder|OfflineBvhBuilder" src`
 
 Expected before edits: references in core, backend, tests, infra, and tools. Keep the output for cleanup accounting.
 
-- [ ] **Step 2: Add new job type**
+- [x] **Step 2: Add new job type**
 
 Create `src/core/offline/offline_render_job.hpp`.
 
@@ -518,11 +518,11 @@ struct OfflineReadbackImage final {
 } // namespace LX_core::offline
 ```
 
-- [ ] **Step 3: Change includes to the new job header**
+- [x] **Step 3: Change includes to the new job header**
 
 Replace includes of `core/offline/offline_scene.hpp` used only for `OfflineRenderJob` or `OfflineReadbackImage` with `core/offline/offline_render_job.hpp`.
 
-- [ ] **Step 4: Update CLI job construction**
+- [x] **Step 4: Update CLI job construction**
 
 In `src/tools/lxe_offline_render/main.cpp`, replace compiler usage with loader usage.
 
@@ -542,7 +542,7 @@ job.profileName = resolved.profileName;
 job.outputPath = resolved.outputPath.value_or("");
 ```
 
-- [ ] **Step 5: Delete old core files**
+- [x] **Step 5: Delete old core files**
 
 Run:
 
@@ -551,13 +551,13 @@ git rm src/core/offline/offline_scene.hpp src/core/offline/offline_scene.cpp
 git rm src/core/offline/offline_ray_scene.hpp src/core/offline/offline_ray_scene.cpp
 ```
 
-- [ ] **Step 6: Run removal search**
+- [x] **Step 6: Run removal search**
 
 Run: `rg -n "OfflineSceneIR|OfflineRayScene|OfflineRaySceneBuilder|OfflineBvhBuilder|offline_scene_compiler|offline_ray_scene" src`
 
 Expected: no matches.
 
-- [ ] **Step 7: Build focused targets**
+- [x] **Step 7: Build focused targets**
 
 Run:
 
@@ -567,7 +567,7 @@ ninja -C build lxe_offline_render test_offline_scene_loader test_offline_gpu_sce
 
 Expected: all targets build.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/core/offline/offline_render_job.hpp src/core/offline/offline_render_profile.hpp src/core/offline/offline_render_profile.cpp src/tools/lxe_offline_render/main.cpp
@@ -588,7 +588,7 @@ git commit -m "refactor: remove offline-only scene data models"
 - Create: `src/test/integration/test_offline_integrator_selection.cpp`
 - Modify: `src/test/CMakeLists.txt`
 
-- [ ] **Step 1: Add failing integrator selection test**
+- [x] **Step 1: Add failing integrator selection test**
 
 Create `src/test/integration/test_offline_integrator_selection.cpp`.
 
@@ -642,13 +642,13 @@ int main() {
 
 Add `test_offline_integrator_selection` to `TEST_INTEGRATION_EXE_LIST` in `src/test/CMakeLists.txt`.
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `ninja -C build test_offline_integrator_selection`
 
 Expected: compile failure for missing `backend/vulkan/offline/offline_integrator.hpp`.
 
-- [ ] **Step 3: Add integrator interface**
+- [x] **Step 3: Add integrator interface**
 
 Create `src/backend/vulkan/offline/offline_integrator.hpp`.
 
@@ -676,15 +676,15 @@ createOfflineIntegrator(const std::string &name);
 } // namespace LX_core::backend::offline
 ```
 
-- [ ] **Step 4: Rename default integrator**
+- [x] **Step 4: Rename default integrator**
 
 In `makeDefaultOfflineRenderSettings()`, set `integrator = "software-compute"`. In profile resolution, reject an empty integrator and preserve explicit unsupported names for renderer validation.
 
-- [ ] **Step 5: Move compute dispatch into SoftwareComputeOfflineIntegrator**
+- [x] **Step 5: Move compute dispatch into SoftwareComputeOfflineIntegrator**
 
 Create `software_compute_offline_integrator.hpp/.cpp`. Move the existing compute pipeline setup, descriptor validation, upload, dispatch, and readback logic from `VulkanOfflineRenderer::Impl` into this integrator. Change the input packing to use `job.scene.buildUploadView()` and `SceneSoftwareBvh::build(view)`.
 
-- [ ] **Step 6: Make VulkanOfflineRenderer a coordinator**
+- [x] **Step 6: Make VulkanOfflineRenderer a coordinator**
 
 In `vulkan_offline_renderer.cpp`, keep device lifetime and render entry point, but select the integrator explicitly:
 
@@ -697,7 +697,7 @@ auto integrator = createOfflineIntegrator(job.offline.integrator);
 return integrator->render(job);
 ```
 
-- [ ] **Step 7: Run focused tests**
+- [x] **Step 7: Run focused tests**
 
 Run:
 
@@ -709,7 +709,7 @@ ninja -C build test_offline_integrator_selection test_offline_render_cli lxe_off
 
 Expected: tests pass; unsupported integrator path returns a clear error in CLI tests.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/backend/vulkan/offline/offline_integrator.hpp src/backend/vulkan/offline/software_compute_offline_integrator.hpp src/backend/vulkan/offline/software_compute_offline_integrator.cpp src/backend/vulkan/offline/vulkan_offline_renderer.hpp src/backend/vulkan/offline/vulkan_offline_renderer.cpp src/core/offline/offline_render_profile.hpp src/core/offline/offline_render_profile.cpp src/test/CMakeLists.txt src/test/integration/test_offline_integrator_selection.cpp

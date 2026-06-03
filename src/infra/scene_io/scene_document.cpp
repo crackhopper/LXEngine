@@ -702,11 +702,8 @@ loadOfflineRenderSettings(const YAML::Node &node) {
     }
   }
 
-  if (settings.integrator != "primary-ray" &&
-      settings.integrator != "path-tracing" &&
-      settings.integrator != "probe-bake") {
-    throw std::runtime_error("unsupported offline render integrator: " +
-                             settings.integrator);
+  if (settings.integrator.empty()) {
+    throw std::runtime_error("offlineRender integrator must not be empty");
   }
   if (settings.samples == 0 || settings.maxBounce == 0) {
     throw std::runtime_error("offlineRender samples/maxBounce must be positive");

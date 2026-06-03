@@ -14,7 +14,7 @@ scene:
       outputFormat: exr-png
       outDir: artifacts/compare/flat
   offlineRender:
-    integrator: primary-ray
+    integrator: software-compute
     samples: 1
     maxBounce: 1
     seed: 1

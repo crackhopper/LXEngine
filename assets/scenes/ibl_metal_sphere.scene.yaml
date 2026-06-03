@@ -28,7 +28,7 @@ scene:
       outputFormat: exr-png
       outDir: artifacts/offline/reference
   offlineRender:
-    integrator: primary-ray
+    integrator: software-compute
     samples: 1
     maxBounce: 1
     seed: 1

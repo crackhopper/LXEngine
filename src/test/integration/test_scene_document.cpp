@@ -712,7 +712,7 @@ void testOutputProfilesRoundTrip() {
          "        nearPlane: 0.1\n"
          "        farPlane: 80.0\n"
          "  offlineRender:\n"
-         "    integrator: primary-ray\n"
+         "    integrator: software-compute\n"
          "    samples: 1\n"
          "    maxBounce: 1\n"
          "    seed: 7\n"

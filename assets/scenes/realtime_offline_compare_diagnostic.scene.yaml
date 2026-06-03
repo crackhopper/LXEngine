@@ -15,7 +15,7 @@ scene:
       outDir: artifacts/compare/diagnostic
       backgroundColor: [0.0, 0.0, 0.0]
   offlineRender:
-    integrator: primary-ray
+    integrator: software-compute
     samples: 1
     maxBounce: 1
     seed: 1
