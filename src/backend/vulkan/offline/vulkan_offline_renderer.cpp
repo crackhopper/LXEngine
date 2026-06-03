@@ -3,20 +3,69 @@
 #include "backend/vulkan/details/commands/command_buffer_manager.hpp"
 #include "backend/vulkan/details/device.hpp"
 #include "backend/vulkan/details/device_resources/buffer.hpp"
-#include "core/offline/offline_ray_scene.hpp"
+#include "core/raytracing/software_bvh.hpp"
+#include "core/scene/camera.hpp"
+#include "core/scene/light.hpp"
+#include "core/scene/scene_resource_table_upload_view.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/filesystem_tools.hpp"
 #include "infra/shader_compiler/shader_reflector.hpp"
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstring>
 #include <filesystem>
+#include <functional>
+#include <optional>
+#include <span>
 #include <sstream>
 #include <stdexcept>
+#include <string>
+#include <typeinfo>
 #include <vector>
 
 namespace LX_core::backend::offline {
 namespace {
+
+constexpr float kDegToRad = 3.14159265358979323846f / 180.0f;
+
+struct alignas(16) ShaderMaterialRecord final {
+  Vec4f baseColor{1.0f, 1.0f, 1.0f, 1.0f};
+  Vec4f params{0.0f, 0.5f, 0.0f, 0.0f};
+  Vec4f emissive{0.0f, 0.0f, 0.0f, 0.0f};
+};
+
+struct alignas(16) ShaderSceneParams final {
+  Vec4f eye{};
+  Vec4f cameraRight{};
+  Vec4f cameraUp{};
+  Vec4f cameraForward{};
+  Vec4f lightDirectionIntensity{};
+  Vec4f lightColorEnvironment{};
+  Vec4f backgroundColor{};
+  u32 width = 0;
+  u32 height = 0;
+  u32 samples = 1;
+  u32 seed = 1;
+  u32 primitiveCount = 0;
+  u32 bvhNodeCount = 0;
+  u32 materialCount = 0;
+  u32 maxBounce = 1;
+  u32 shadowsEnabled = 1;
+  u32 compareMode = 0;
+  u32 pad1 = 0;
+  u32 pad2 = 0;
+};
+
+struct DirectionalLightParams final {
+  Vec3f direction{-0.35f, -1.0f, -0.25f};
+  Vec3f color{1.0f, 0.96f, 0.88f};
+  float intensity = 1.0f;
+};
+
+static_assert(sizeof(ShaderMaterialRecord) == 48);
+static_assert(sizeof(ShaderSceneParams) == 160);
 
 [[nodiscard]] std::vector<char> loadComputeShader() {
   constexpr const char *shaderFile = "offline_primary_ray.comp.spv";
@@ -65,6 +114,196 @@ void uploadVector(VulkanBuffer &buffer, const void *data, VkDeviceSize size) {
   buffer.uploadData(data, size);
 }
 
+template <typename T>
+[[nodiscard]] VkDeviceSize byteSize(const std::span<const T> values) {
+  return static_cast<VkDeviceSize>(sizeof(T)) *
+         static_cast<VkDeviceSize>(values.size());
+}
+
+template <typename T>
+[[nodiscard]] VkDeviceSize byteSize(const std::vector<T> &values) {
+  return static_cast<VkDeviceSize>(sizeof(T)) *
+         static_cast<VkDeviceSize>(values.size());
+}
+
+[[nodiscard]] Vec4f vec4(const Vec3f &value, const float w) {
+  return Vec4f{value.x, value.y, value.z, w};
+}
+
+[[nodiscard]] Vec3f viewRow(const Mat4f &view, const int row) {
+  return Vec3f{view(row, 0), view(row, 1), view(row, 2)};
+}
+
+[[nodiscard]] std::optional<std::reference_wrapper<const CameraResource>>
+findActiveCamera(const SceneResourceTable &scene) {
+  const RenderSceneSnapshot snapshot = scene.buildSnapshot();
+  for (const CameraHandle handle : snapshot.cameraHandles) {
+    auto camera = scene.resolve(handle);
+    if (camera.has_value() && camera->get().active) {
+      return std::cref(camera->get());
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] CameraPose poseFromViewMatrix(const Mat4f &view) {
+  const Vec3f right = viewRow(view, 0).normalized();
+  const Vec3f up = viewRow(view, 1).normalized();
+  const Vec3f backward = viewRow(view, 2).normalized();
+  const float tx = view(0, 3);
+  const float ty = view(1, 3);
+  const float tz = view(2, 3);
+  const Vec3f eye = right * -tx + up * -ty + backward * -tz;
+  return makeCameraPose(eye, backward * -1.0f, up);
+}
+
+[[nodiscard]] CameraRayFrame
+makeRayFrameFromCameraResource(const CameraResource &camera,
+                               const LX_core::offline::OutputProfile &output) {
+  const CameraPose pose = poseFromViewMatrix(camera.view);
+  const CameraPose resolvedPose = makeCameraPose(pose.eye, pose.forward, pose.up);
+  const Vec3f rightAxis =
+      resolvedPose.forward.cross(resolvedPose.up).normalized();
+
+  float verticalScale = 1.0f;
+  if (output.cameraOverrides.fovY.has_value()) {
+    verticalScale =
+        std::tan(*output.cameraOverrides.fovY * kDegToRad * 0.5f);
+  } else if (std::abs(camera.proj(1, 1)) > 1.0e-6f) {
+    verticalScale = 1.0f / std::abs(camera.proj(1, 1));
+  }
+  const float outputAspect =
+      output.height == 0
+          ? 1.0f
+          : static_cast<float>(output.width) / static_cast<float>(output.height);
+  const float aspect = output.cameraOverrides.aspect.value_or(outputAspect);
+  const float horizontalScale = verticalScale * std::max(aspect, 0.0001f);
+
+  return CameraRayFrame{
+      .eye = resolvedPose.eye,
+      .right = rightAxis * horizontalScale,
+      .up = resolvedPose.up * verticalScale,
+      .forward = resolvedPose.forward,
+  };
+}
+
+[[nodiscard]] DirectionalLightParams
+findFirstDirectionalLight(const SceneResourceTable &scene) {
+  const RenderSceneSnapshot snapshot = scene.buildSnapshot();
+  for (const LightHandle handle : snapshot.lightHandles) {
+    auto light = scene.resolve(handle);
+    if (!light.has_value()) {
+      continue;
+    }
+    try {
+      const auto &directional =
+          dynamic_cast<const DirectionalLight &>(light->get());
+      return DirectionalLightParams{
+          .direction = directional.getDirection().normalized(),
+          .color = directional.getColor(),
+          .intensity = directional.getIntensity(),
+      };
+    } catch (const std::bad_cast &) {
+    }
+  }
+  return {};
+}
+
+[[nodiscard]] std::vector<ShaderMaterialRecord> makeShaderMaterials(
+    const SceneResourceTableUploadView &uploadView) {
+  std::vector<ShaderMaterialRecord> materials;
+  materials.reserve(uploadView.materials.size());
+  for (const SceneGpuMaterialRecord &material : uploadView.materials) {
+    materials.push_back(ShaderMaterialRecord{
+        .baseColor = material.baseColor,
+        .params = material.pbrParams,
+        .emissive = material.emissive,
+    });
+  }
+  return materials;
+}
+
+[[nodiscard]] std::vector<u32>
+makeShaderLocalIndices(const SceneResourceTableUploadView &uploadView) {
+  std::vector<u32> indices(uploadView.indices.begin(), uploadView.indices.end());
+  for (const SceneGpuMeshRecord &mesh : uploadView.meshes) {
+    if (mesh.indexOffset > indices.size() ||
+        static_cast<usize>(mesh.indexCount) > indices.size() - mesh.indexOffset) {
+      throw std::runtime_error("offline upload mesh references invalid indices");
+    }
+    for (u32 i = 0; i < mesh.indexCount; ++i) {
+      u32 &index = indices[mesh.indexOffset + i];
+      if (index < mesh.vertexOffset) {
+        throw std::runtime_error(
+            "offline upload index precedes mesh vertex offset");
+      }
+      index -= mesh.vertexOffset;
+    }
+  }
+  return indices;
+}
+
+[[nodiscard]] std::vector<SceneGpuPrimitiveRecord> makeShaderPrimitives(
+    const SceneResourceTableUploadView &uploadView,
+    const SceneSoftwareBvh &bvh) {
+  std::vector<SceneGpuPrimitiveRecord> primitives;
+  primitives.reserve(bvh.primitives().size());
+  for (const SceneSoftwareBvhPrimitive &primitive : bvh.primitives()) {
+    if (primitive.primitiveIndex >= uploadView.primitives.size()) {
+      throw std::runtime_error(
+          "software BVH primitive references invalid upload primitive");
+    }
+    primitives.push_back(uploadView.primitives[primitive.primitiveIndex]);
+  }
+  return primitives;
+}
+
+[[nodiscard]] ShaderSceneParams makeShaderParams(
+    const LX_core::offline::OfflineRenderJob &job,
+    const SceneResourceTableUploadView &uploadView,
+    const SceneSoftwareBvh &bvh) {
+  const auto camera = findActiveCamera(job.scene);
+  if (!camera.has_value()) {
+    throw std::runtime_error("offline render scene has no active camera");
+  }
+  const CameraRayFrame rayFrame =
+      makeRayFrameFromCameraResource(camera->get(), job.output);
+  const DirectionalLightParams light = findFirstDirectionalLight(job.scene);
+
+  ShaderSceneParams params;
+  params.eye = vec4(rayFrame.eye, 0.0f);
+  params.cameraRight = vec4(rayFrame.right, 0.0f);
+  params.cameraUp = vec4(rayFrame.up, 0.0f);
+  params.cameraForward = vec4(rayFrame.forward, 0.0f);
+  params.lightDirectionIntensity = vec4(light.direction.normalized(),
+                                        light.intensity);
+  params.lightColorEnvironment =
+      Vec4f{light.color.x, light.color.y, light.color.z, 0.35f};
+  params.backgroundColor =
+      Vec4f{job.output.backgroundColor.x, job.output.backgroundColor.y,
+            job.output.backgroundColor.z, 1.0f};
+  params.width = job.output.width;
+  params.height = job.output.height;
+  params.samples = job.offline.samples;
+  params.seed = job.offline.seed;
+  params.primitiveCount = static_cast<u32>(bvh.primitiveCount());
+  params.bvhNodeCount = static_cast<u32>(bvh.nodes().size());
+  params.materialCount = static_cast<u32>(uploadView.materials.size());
+  params.maxBounce = job.offline.maxBounce;
+  params.shadowsEnabled = job.offline.shadows ? 1u : 0u;
+  params.compareMode = job.offline.compareMode == "albedo" ? 1u : 0u;
+  return params;
+}
+
+void validateUploadView(const SceneResourceTableUploadView &uploadView) {
+  if (uploadView.vertices.empty() || uploadView.indices.empty() ||
+      uploadView.meshes.empty() || uploadView.primitives.empty() ||
+      uploadView.objects.empty() || uploadView.materials.empty()) {
+    throw std::runtime_error(
+        "offline render scene upload view is missing renderable records");
+  }
+}
+
 [[nodiscard]] std::vector<u32> toSpirvWords(const std::vector<char> &code) {
   if (code.size() % sizeof(u32) != 0) {
     throw std::runtime_error("offline compute shader SPIR-V has invalid size");
@@ -108,8 +347,7 @@ void validateOfflineDescriptorContract(const std::vector<char> &shaderCode) {
       {4, "Objects", 0},
       {5, "Materials", 0},
       {6, "BvhNodes", 0},
-      {7, "ParamsBuffer",
-       static_cast<u32>(sizeof(LX_core::offline::OfflineSceneParams))},
+      {7, "ParamsBuffer", static_cast<u32>(sizeof(ShaderSceneParams))},
       {8, "OutputBuffer", 0},
   }};
 
@@ -277,46 +515,43 @@ struct VulkanOfflineRenderer::Impl final {
   render(const LX_core::offline::OfflineRenderJob &job) {
     ensurePipeline();
 
-    LX_core::offline::OfflineRaySceneBuilder sceneBuilder;
-    LX_core::offline::OfflineRayScene rayScene =
-        sceneBuilder.build(job.scene, job.output, job.offline);
+    const SceneResourceTableUploadView uploadView = job.scene.buildUploadView();
+    validateUploadView(uploadView);
+    const SceneSoftwareBvh bvh = SceneSoftwareBvh::build(uploadView);
+    const std::vector<u32> shaderIndices = makeShaderLocalIndices(uploadView);
+    const std::vector<SceneGpuPrimitiveRecord> shaderPrimitives =
+        makeShaderPrimitives(uploadView, bvh);
+    const std::vector<ShaderMaterialRecord> shaderMaterials =
+        makeShaderMaterials(uploadView);
+    const ShaderSceneParams params = makeShaderParams(job, uploadView, bvh);
 
     const VkBufferUsageFlags storageUsage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
     const VkMemoryPropertyFlags hostMemory =
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
         VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
     auto vertexBuffer = VulkanBuffer::create(
-        *device, sizeof(LX_core::offline::OfflineVertexRecord) *
-                     rayScene.vertices.size(),
-        storageUsage, hostMemory);
+        *device, byteSize(uploadView.vertices), storageUsage, hostMemory);
     auto indexBuffer = VulkanBuffer::create(
-        *device, sizeof(u32) * rayScene.indices.size(), storageUsage,
+        *device, byteSize(shaderIndices), storageUsage,
         hostMemory);
     auto meshBuffer = VulkanBuffer::create(
-        *device, sizeof(LX_core::offline::OfflineMeshRecord) *
-                     rayScene.meshes.size(),
-        storageUsage, hostMemory);
+        *device, byteSize(uploadView.meshes), storageUsage, hostMemory);
     auto primitiveBuffer = VulkanBuffer::create(
-        *device, sizeof(LX_core::offline::OfflinePrimitiveRecord) *
-                     rayScene.primitives.size(),
-        storageUsage, hostMemory);
+        *device, byteSize(shaderPrimitives), storageUsage, hostMemory);
     auto objectBuffer = VulkanBuffer::create(
-        *device, sizeof(LX_core::offline::OfflineObjectRecord) *
-                     rayScene.objects.size(),
+        *device, byteSize(uploadView.objects),
         storageUsage,
         hostMemory);
     auto materialBuffer = VulkanBuffer::create(
-        *device, sizeof(LX_core::offline::OfflineMaterialRecord) *
-                     rayScene.materials.size(),
+        *device, byteSize(shaderMaterials),
         storageUsage,
         hostMemory);
     auto bvhBuffer = VulkanBuffer::create(
-        *device,
-        sizeof(LX_core::offline::OfflineBvhNode) * rayScene.bvhNodes.size(),
+        *device, byteSize(bvh.nodes()),
         storageUsage, hostMemory);
     auto paramsBuffer =
         VulkanBuffer::create(*device,
-                             sizeof(LX_core::offline::OfflineSceneParams),
+                             sizeof(ShaderSceneParams),
                              storageUsage, hostMemory);
     const VkDeviceSize outputSize =
         static_cast<VkDeviceSize>(job.output.width) *
@@ -324,28 +559,19 @@ struct VulkanOfflineRenderer::Impl final {
     auto outputBuffer =
         VulkanBuffer::create(*device, outputSize, storageUsage, hostMemory);
 
-    uploadVector(*vertexBuffer, rayScene.vertices.data(),
-                 sizeof(LX_core::offline::OfflineVertexRecord) *
-                     rayScene.vertices.size());
-    uploadVector(*indexBuffer, rayScene.indices.data(),
-                 sizeof(u32) * rayScene.indices.size());
-    uploadVector(*meshBuffer, rayScene.meshes.data(),
-                 sizeof(LX_core::offline::OfflineMeshRecord) *
-                     rayScene.meshes.size());
-    uploadVector(*primitiveBuffer, rayScene.primitives.data(),
-                 sizeof(LX_core::offline::OfflinePrimitiveRecord) *
-                     rayScene.primitives.size());
-    uploadVector(*objectBuffer, rayScene.objects.data(),
-                 sizeof(LX_core::offline::OfflineObjectRecord) *
-                     rayScene.objects.size());
-    uploadVector(*materialBuffer, rayScene.materials.data(),
-                 sizeof(LX_core::offline::OfflineMaterialRecord) *
-                     rayScene.materials.size());
-    uploadVector(*bvhBuffer, rayScene.bvhNodes.data(),
-                 sizeof(LX_core::offline::OfflineBvhNode) *
-                     rayScene.bvhNodes.size());
-    uploadVector(*paramsBuffer, &rayScene.params,
-                 sizeof(LX_core::offline::OfflineSceneParams));
+    uploadVector(*vertexBuffer, uploadView.vertices.data(),
+                 byteSize(uploadView.vertices));
+    uploadVector(*indexBuffer, shaderIndices.data(), byteSize(shaderIndices));
+    uploadVector(*meshBuffer, uploadView.meshes.data(),
+                 byteSize(uploadView.meshes));
+    uploadVector(*primitiveBuffer, shaderPrimitives.data(),
+                 byteSize(shaderPrimitives));
+    uploadVector(*objectBuffer, uploadView.objects.data(),
+                 byteSize(uploadView.objects));
+    uploadVector(*materialBuffer, shaderMaterials.data(),
+                 byteSize(shaderMaterials));
+    uploadVector(*bvhBuffer, bvh.nodes().data(), byteSize(bvh.nodes()));
+    uploadVector(*paramsBuffer, &params, sizeof(ShaderSceneParams));
 
     VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
     VkDescriptorSetAllocateInfo allocInfo{};

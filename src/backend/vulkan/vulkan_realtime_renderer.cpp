@@ -7,7 +7,7 @@
 #include "core/frame_graph/frame_graph.hpp"
 #include "core/frame_graph/pass.hpp"
 #include "core/image/tone_mapping.hpp"
-#include "core/offline/offline_scene.hpp"
+#include "core/offline/offline_render_job.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/gpu_resource.hpp"
 #include "core/rhi/vertex_buffer.hpp"

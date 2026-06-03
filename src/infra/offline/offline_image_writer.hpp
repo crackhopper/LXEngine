@@ -1,7 +1,7 @@
 #pragma once
 
 #include "core/image/tone_mapping.hpp"
-#include "core/offline/offline_scene.hpp"
+#include "core/offline/offline_render_job.hpp"
 
 #include <filesystem>
 #include <string>

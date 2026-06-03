@@ -62,7 +62,6 @@ void testWritesExrPngJsonAndRaw() {
   request.scenePath = "assets/scenes/ibl_metal_sphere.scene.yaml";
   request.buildInfo = "test-binary 0.1.0-dev (test-dirty, Debug, Linux-x86_64)";
   request.job.outputPath = dir / "beauty";
-  request.job.scene.name = "writer_test";
   request.job.profileName = "mvp";
   request.job.output.cameraPath = "/game_cam";
   request.job.output.width = 2;
@@ -108,6 +107,9 @@ void testWritesExrPngJsonAndRaw() {
          "metadata should describe PNG tone mapping");
   EXPECT(text.find("\"profile\": \"mvp\"") != std::string::npos,
          "metadata should record job profile name");
+  EXPECT(text.find("\"sceneName\": \"ibl_metal_sphere.scene\"") !=
+             std::string::npos,
+         "metadata should derive scene name from scene path");
   EXPECT(text.find("\"buildInfo\": \"test-binary 0.1.0-dev") !=
              std::string::npos,
          "metadata should record composed build info string");
@@ -151,7 +153,6 @@ void testDirectoryOutUsesRenderBasename() {
 void testDefaultOutUsesOutputProfileOutDir() {
   const std::filesystem::path outDir = makeTempDir() / "profile_out";
   LX_infra::offline::OfflineImageOutputRequest request;
-  request.job.scene.name = "writer_test";
   request.job.profileName = "mvp";
   request.job.output.outDir = outDir;
   request.job.output.width = 1;

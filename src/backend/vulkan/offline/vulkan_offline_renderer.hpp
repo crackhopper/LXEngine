@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/offline/offline_scene.hpp"
+#include "core/offline/offline_render_job.hpp"
 
 #include <memory>
 

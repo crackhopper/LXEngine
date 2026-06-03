@@ -1,9 +1,9 @@
 #include "backend/vulkan/offline/vulkan_offline_renderer.hpp"
 #include "core/offline/offline_render_profile.hpp"
 #include "infra/build_info/build_info.hpp"
-#include "infra/offline/offline_image_writer.hpp"
 #include "infra/offline/offline_asset_resolver.hpp"
-#include "infra/offline/offline_scene_compiler.hpp"
+#include "infra/offline/offline_image_writer.hpp"
+#include "infra/offline/offline_scene_loader.hpp"
 #include "infra/scene_io/scene_document.hpp"
 #include "tools/lxe_offline_render/offline_render_cli.hpp"
 
@@ -64,14 +64,14 @@ int main(int argc, char **argv) {
         LX_core::offline::resolveRenderProfileDocument(profiles, args.overrides);
 
     LX_infra::offline::OfflineAssetResolver resolver(args.scenePath);
-    LX_infra::offline::OfflineSceneCompiler compiler(resolver);
-    auto scene = compiler.compile(document, resolved.output.cameraPath);
-    for (const auto &warning : scene.warnings) {
+    LX_infra::offline::OfflineSceneLoader loader(resolver);
+    auto loaded = loader.load(document, resolved.output.cameraPath);
+    for (const auto &warning : loaded.warnings) {
       std::cerr << "[offline warning] " << warning << '\n';
     }
 
     LX_core::offline::OfflineRenderJob job;
-    job.scene = std::move(scene);
+    job.scene = std::move(loaded.table);
     job.output = resolved.output;
     job.offline = resolved.offline;
     job.profileName = resolved.profileName;

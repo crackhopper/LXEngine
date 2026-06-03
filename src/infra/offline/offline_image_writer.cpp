@@ -64,6 +64,11 @@ namespace {
   return out;
 }
 
+[[nodiscard]] std::string sceneNameFromPath(const std::filesystem::path &path) {
+  const std::string stem = path.stem().string();
+  return stem.empty() ? "unknown" : stem;
+}
+
 void validateImage(const LX_core::offline::OfflineReadbackImage &image) {
   if (image.width == 0 || image.height == 0) {
     throw std::runtime_error("offline image output requires non-zero dimensions");
@@ -85,7 +90,7 @@ void writeMetadata(const std::filesystem::path &path,
   }
   stream << "{\n";
   stream << "  \"scenePath\": \"" << jsonEscape(request.scenePath.string()) << "\",\n";
-  stream << "  \"sceneName\": \"" << jsonEscape(request.job.scene.name) << "\",\n";
+  stream << "  \"sceneName\": \"" << jsonEscape(sceneNameFromPath(request.scenePath)) << "\",\n";
   stream << "  \"cameraPath\": \""
          << jsonEscape(request.job.output.cameraPath) << "\",\n";
   stream << "  \"profile\": \""
