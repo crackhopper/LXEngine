@@ -711,6 +711,9 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
     if (object.material.index < materialIndexToGpuRecord.size()) {
       materialRecordIndex = materialIndexToGpuRecord[object.material.index];
     }
+    if (meshRecordIndex == u32_max || materialRecordIndex == u32_max) {
+      continue;
+    }
     const u32 objectRecordIndex = static_cast<u32>(m_gpuObjects.size());
 
     SceneGpuObjectRecord objectRecord;

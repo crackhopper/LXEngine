@@ -412,6 +412,46 @@ void testSceneResourceTableUploadViewUsesCompactRecordIndices() {
          "primitive object index should use compact object record position");
 }
 
+void testSceneResourceTableUploadViewSkipsObjectsWithReleasedDependencies() {
+  SceneResourceTable table;
+  const auto releasedMesh = table.registerMesh(makeMeshBuffer());
+  const auto liveMesh = table.registerMesh(makeMeshBuffer());
+  const auto releasedMaterial = table.registerMaterial(makeGpuRecordMaterial());
+  const auto liveMaterial = table.registerMaterial(makeGpuRecordMaterial());
+
+  ObjectResource missingMeshObject;
+  missingMeshObject.mesh = releasedMesh;
+  missingMeshObject.material = liveMaterial;
+  missingMeshObject.worldBounds = BoundingBox{{0.0f, 0.0f, 0.0f},
+                                              {1.0f, 1.0f, 0.0f}};
+  const auto missingMeshObjectHandle = table.registerObject(missingMeshObject);
+
+  ObjectResource missingMaterialObject;
+  missingMaterialObject.mesh = liveMesh;
+  missingMaterialObject.material = releasedMaterial;
+  missingMaterialObject.worldBounds = BoundingBox{{2.0f, 0.0f, 0.0f},
+                                                 {3.0f, 1.0f, 0.0f}};
+  const auto missingMaterialObjectHandle =
+      table.registerObject(missingMaterialObject);
+
+  table.release(releasedMesh);
+  table.release(releasedMaterial);
+
+  const auto view = table.buildUploadView();
+  EXPECT(view.meshes.size() == 1,
+         "upload view should still expose independent live mesh records");
+  EXPECT(view.materials.size() == 1,
+         "upload view should still expose independent live material records");
+  EXPECT(table.isAlive(missingMeshObjectHandle),
+         "test setup should keep object with released mesh alive");
+  EXPECT(table.isAlive(missingMaterialObjectHandle),
+         "test setup should keep object with released material alive");
+  EXPECT(view.objects.empty(),
+         "upload view should skip objects whose mesh or material was released");
+  EXPECT(view.primitives.empty(),
+         "upload view should skip primitives whose mesh or material was released");
+}
+
 } // namespace
 
 int main() {
@@ -422,6 +462,7 @@ int main() {
   testSceneGpuRecordLayoutContract();
   testSceneResourceTableUploadViewTracksGeneration();
   testSceneResourceTableUploadViewUsesCompactRecordIndices();
+  testSceneResourceTableUploadViewSkipsObjectsWithReleasedDependencies();
 
   if (s_failures != 0) {
     std::cerr << "test_scene_resource_table failed: " << s_failures
