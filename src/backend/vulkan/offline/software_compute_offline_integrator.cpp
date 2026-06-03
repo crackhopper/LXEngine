@@ -3,12 +3,10 @@
 #include "backend/vulkan/details/commands/command_buffer_manager.hpp"
 #include "backend/vulkan/details/device.hpp"
 #include "backend/vulkan/details/device_resources/buffer.hpp"
+#include "backend/vulkan/details/resource_manager.hpp"
+#include "core/frame_graph/render_upload_plan.hpp"
 #include "core/offline/offline_render_work_graph.hpp"
 #include "core/offline/offline_render_validation.hpp"
-#include "core/raytracing/software_bvh.hpp"
-#include "core/scene/camera.hpp"
-#include "core/scene/light.hpp"
-#include "core/scene/scene_resource_table_upload_view.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/filesystem_tools.hpp"
 #include "infra/shader_compiler/shader_reflector.hpp"
@@ -17,23 +15,13 @@
 #include <array>
 #include <cstring>
 #include <filesystem>
-#include <functional>
-#include <optional>
-#include <span>
 #include <sstream>
 #include <stdexcept>
 #include <string>
-#include <typeinfo>
 #include <vector>
 
 namespace LX_core::backend::offline {
 namespace {
-
-struct DirectionalLightParams final {
-  Vec3f direction{-0.35f, -1.0f, -0.25f};
-  Vec3f color{1.0f, 0.96f, 0.88f};
-  float intensity = 1.0f;
-};
 
 [[nodiscard]] std::vector<char> loadComputeShader() {
   constexpr const char *shaderFile = "offline_primary_ray.comp.spv";
@@ -73,132 +61,6 @@ struct DirectionalLightParams final {
     throw std::runtime_error("failed to create offline compute shader module");
   }
   return module;
-}
-
-void uploadVector(VulkanBuffer &buffer, const void *data, VkDeviceSize size) {
-  if (size == 0) {
-    return;
-  }
-  buffer.uploadData(data, size);
-}
-
-template <typename T>
-[[nodiscard]] VkDeviceSize byteSize(const std::span<const T> values) {
-  return static_cast<VkDeviceSize>(sizeof(T)) *
-         static_cast<VkDeviceSize>(values.size());
-}
-
-template <typename T>
-[[nodiscard]] VkDeviceSize byteSize(const std::vector<T> &values) {
-  return static_cast<VkDeviceSize>(sizeof(T)) *
-         static_cast<VkDeviceSize>(values.size());
-}
-
-[[nodiscard]] Vec4f vec4(const Vec3f &value, const float w) {
-  return Vec4f{value.x, value.y, value.z, w};
-}
-
-[[nodiscard]] std::optional<std::reference_wrapper<const CameraResource>>
-findActiveCamera(const SceneResourceTable &scene) {
-  const RenderSceneSnapshot snapshot = scene.buildSnapshot();
-  for (const CameraHandle handle : snapshot.cameraHandles) {
-    auto camera = scene.resolve(handle);
-    if (camera.has_value() && camera->get().active) {
-      return std::cref(camera->get());
-    }
-  }
-  return std::nullopt;
-}
-
-[[nodiscard]] CameraRayFrame
-makeRayFrameFromCameraResource(const CameraResource &camera,
-                               const LX_core::offline::OutputProfile &output) {
-  const CameraProjection projection =
-      LX_core::offline::resolveOutputCameraProjection(camera.projection,
-                                                      output);
-  return makeCameraRayFrame(camera.pose, projection);
-}
-
-[[nodiscard]] DirectionalLightParams
-findFirstDirectionalLight(const SceneResourceTable &scene) {
-  const RenderSceneSnapshot snapshot = scene.buildSnapshot();
-  for (const LightHandle handle : snapshot.lightHandles) {
-    auto light = scene.resolve(handle);
-    if (!light.has_value()) {
-      continue;
-    }
-    try {
-      const auto &directional =
-          dynamic_cast<const DirectionalLight &>(light->get());
-      return DirectionalLightParams{
-          .direction = directional.getDirection().normalized(),
-          .color = directional.getColor(),
-          .intensity = directional.getIntensity(),
-      };
-    } catch (const std::bad_cast &) {}
-  }
-  return {};
-}
-
-[[nodiscard]] std::vector<SceneGpuPrimitiveRecord>
-makeShaderPrimitives(const SceneResourceTableUploadView &uploadView,
-                     const SceneSoftwareBvh &bvh) {
-  std::vector<SceneGpuPrimitiveRecord> primitives;
-  primitives.reserve(bvh.primitives().size());
-  for (const SceneSoftwareBvhPrimitive &primitive : bvh.primitives()) {
-    if (primitive.primitiveIndex >= uploadView.primitives.size()) {
-      throw std::runtime_error(
-          "software BVH primitive references invalid upload primitive");
-    }
-    primitives.push_back(uploadView.primitives[primitive.primitiveIndex]);
-  }
-  return primitives;
-}
-
-[[nodiscard]] SceneGpuFrameParams
-makeShaderParams(const LX_core::offline::OfflineRenderJob &job,
-                 const SceneResourceTableUploadView &uploadView,
-                 const SceneSoftwareBvh &bvh) {
-  const auto camera = findActiveCamera(job.scene);
-  if (!camera.has_value()) {
-    throw std::runtime_error("offline render scene has no active camera");
-  }
-  const CameraRayFrame rayFrame =
-      makeRayFrameFromCameraResource(camera->get(), job.output);
-  const DirectionalLightParams light = findFirstDirectionalLight(job.scene);
-
-  SceneGpuFrameParams params;
-  params.eye = vec4(rayFrame.eye, 0.0f);
-  params.cameraRight = vec4(rayFrame.right, 0.0f);
-  params.cameraUp = vec4(rayFrame.up, 0.0f);
-  params.cameraForward = vec4(rayFrame.forward, 0.0f);
-  params.lightDirectionIntensity =
-      vec4(light.direction.normalized(), light.intensity);
-  params.lightColorEnvironment =
-      Vec4f{light.color.x, light.color.y, light.color.z, 0.35f};
-  params.backgroundColor =
-      Vec4f{job.output.backgroundColor.x, job.output.backgroundColor.y,
-            job.output.backgroundColor.z, 1.0f};
-  params.width = job.output.width;
-  params.height = job.output.height;
-  params.samples = job.offline.samples;
-  params.seed = job.offline.seed;
-  params.primitiveCount = static_cast<u32>(bvh.primitiveCount());
-  params.bvhNodeCount = static_cast<u32>(bvh.nodes().size());
-  params.materialCount = static_cast<u32>(uploadView.materials.size());
-  params.maxBounce = job.offline.maxBounce;
-  params.shadowsEnabled = job.offline.shadows ? 1u : 0u;
-  params.compareMode = job.offline.compareMode == "albedo" ? 1u : 0u;
-  return params;
-}
-
-void validateUploadView(const SceneResourceTableUploadView &uploadView) {
-  if (uploadView.vertices.empty() || uploadView.indices.empty() ||
-      uploadView.meshes.empty() || uploadView.primitives.empty() ||
-      uploadView.objects.empty() || uploadView.materials.empty()) {
-    throw std::runtime_error(
-        "offline render scene upload view is missing renderable records");
-  }
 }
 
 [[nodiscard]] std::vector<u32> toSpirvWords(const std::vector<char> &code) {
@@ -310,6 +172,7 @@ struct SoftwareComputeOfflineIntegrator::Impl final {
     device->initializeHeadless("lxe_offline_render");
     commandManager = VulkanCommandBufferManager::create(
         *device, 1, device->getGraphicsQueueFamilyIndex());
+    resourceManager = VulkanResourceManager::create(*device);
   }
 
   ~Impl() {
@@ -317,6 +180,7 @@ struct SoftwareComputeOfflineIntegrator::Impl final {
       device->waitIdle();
     }
     cleanupPipeline();
+    resourceManager.reset();
     commandManager.reset();
     device.reset();
   }
@@ -435,55 +299,11 @@ struct SoftwareComputeOfflineIntegrator::Impl final {
           "offline ray trace pass must produce offline compute work");
     }
 
-    const SceneResourceTableUploadView uploadView = job.scene.buildUploadView();
-    validateUploadView(uploadView);
-    const SceneSoftwareBvh bvh = SceneSoftwareBvh::build(uploadView);
-    const std::vector<SceneGpuPrimitiveRecord> shaderPrimitives =
-        makeShaderPrimitives(uploadView, bvh);
-    const SceneGpuFrameParams params = makeShaderParams(job, uploadView, bvh);
-
     ensurePipeline();
-
-    const VkBufferUsageFlags storageUsage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-    const VkMemoryPropertyFlags hostMemory =
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-        VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-    auto vertexBuffer = VulkanBuffer::create(
-        *device, byteSize(uploadView.vertices), storageUsage, hostMemory);
-    auto indexBuffer = VulkanBuffer::create(*device, byteSize(uploadView.indices),
-                                            storageUsage, hostMemory);
-    auto meshBuffer = VulkanBuffer::create(*device, byteSize(uploadView.meshes),
-                                           storageUsage, hostMemory);
-    auto primitiveBuffer = VulkanBuffer::create(
-        *device, byteSize(shaderPrimitives), storageUsage, hostMemory);
-    auto objectBuffer = VulkanBuffer::create(
-        *device, byteSize(uploadView.objects), storageUsage, hostMemory);
-    auto materialBuffer = VulkanBuffer::create(
-        *device, byteSize(uploadView.materials), storageUsage, hostMemory);
-    auto bvhBuffer = VulkanBuffer::create(*device, byteSize(bvh.nodes()),
-                                          storageUsage, hostMemory);
-    auto paramsBuffer = VulkanBuffer::create(*device, sizeof(SceneGpuFrameParams),
-                                             storageUsage, hostMemory);
-    const VkDeviceSize outputSize =
-        static_cast<VkDeviceSize>(job.output.width) *
-        static_cast<VkDeviceSize>(job.output.height) * sizeof(Vec4f);
-    auto outputBuffer =
-        VulkanBuffer::create(*device, outputSize, storageUsage, hostMemory);
-
-    uploadVector(*vertexBuffer, uploadView.vertices.data(),
-                 byteSize(uploadView.vertices));
-    uploadVector(*indexBuffer, uploadView.indices.data(),
-                 byteSize(uploadView.indices));
-    uploadVector(*meshBuffer, uploadView.meshes.data(),
-                 byteSize(uploadView.meshes));
-    uploadVector(*primitiveBuffer, shaderPrimitives.data(),
-                 byteSize(shaderPrimitives));
-    uploadVector(*objectBuffer, uploadView.objects.data(),
-                 byteSize(uploadView.objects));
-    uploadVector(*materialBuffer, uploadView.materials.data(),
-                 byteSize(uploadView.materials));
-    uploadVector(*bvhBuffer, bvh.nodes().data(), byteSize(bvh.nodes()));
-    uploadVector(*paramsBuffer, &params, sizeof(SceneGpuFrameParams));
+    const RenderUploadPlan uploadPlan = buildRenderUploadPlan(rayTracePass.queue);
+    for (const auto &resource : uploadPlan.resources) {
+      resourceManager->syncResource(*commandManager, resource);
+    }
 
     VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
     VkDescriptorSetAllocateInfo allocInfo{};
@@ -496,17 +316,35 @@ struct SoftwareComputeOfflineIntegrator::Impl final {
       throw std::runtime_error("failed to allocate offline descriptor set");
     }
 
-    std::array<VkDescriptorBufferInfo, 9> bufferInfos{{
-        {vertexBuffer->getHandle(), 0, vertexBuffer->getSize()},
-        {indexBuffer->getHandle(), 0, indexBuffer->getSize()},
-        {meshBuffer->getHandle(), 0, meshBuffer->getSize()},
-        {primitiveBuffer->getHandle(), 0, primitiveBuffer->getSize()},
-        {objectBuffer->getHandle(), 0, objectBuffer->getSize()},
-        {materialBuffer->getHandle(), 0, materialBuffer->getSize()},
-        {bvhBuffer->getHandle(), 0, bvhBuffer->getSize()},
-        {paramsBuffer->getHandle(), 0, paramsBuffer->getSize()},
-        {outputBuffer->getHandle(), 0, outputBuffer->getSize()},
+    const std::array<StringID, 9> bindingNames{{
+        StringID("SceneVertices"), StringID("SceneIndices"),
+        StringID("SceneMeshes"), StringID("ScenePrimitives"),
+        StringID("SceneObjects"), StringID("SceneMaterials"),
+        StringID("SceneBvhNodes"), StringID("SceneFrameParams"),
+        StringID("OutputPixels"),
     }};
+    std::array<VkDescriptorBufferInfo, 9> bufferInfos{};
+    IGpuResourceSharedPtr outputPixelsResource;
+    for (u32 i = 0; i < bindingNames.size(); ++i) {
+      const auto resourceIt = std::find_if(
+          workItem.descriptorResources.begin(), workItem.descriptorResources.end(),
+          [bindingName = bindingNames[i]](const IGpuResourceSharedPtr &resource) {
+            return resource && resource->getBindingName() == bindingName;
+          });
+      if (resourceIt == workItem.descriptorResources.end()) {
+        throw std::runtime_error("offline work item missing storage buffer resource");
+      }
+      auto buffer = resourceManager->getBuffer((*resourceIt)->getBackendCacheIdentity());
+      if (!buffer.has_value()) {
+        throw std::runtime_error("offline storage buffer was not uploaded");
+      }
+      if (bindingNames[i] == StringID("OutputPixels")) {
+        outputPixelsResource = *resourceIt;
+      }
+      bufferInfos[i].buffer = buffer->get().getHandle();
+      bufferInfos[i].offset = 0;
+      bufferInfos[i].range = buffer->get().getSize();
+    }
     std::array<VkWriteDescriptorSet, 9> writes{};
     for (u32 i = 0; i < writes.size(); ++i) {
       writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -542,10 +380,18 @@ struct SoftwareComputeOfflineIntegrator::Impl final {
     image.width = job.output.width;
     image.height = job.output.height;
     image.rgba.resize(image.pixelCount() * 4);
-    void *mapped = outputBuffer->map();
+    if (!outputPixelsResource) {
+      throw std::runtime_error("offline output storage buffer missing");
+    }
+    auto outputBuffer =
+        resourceManager->getBuffer(outputPixelsResource->getBackendCacheIdentity());
+    if (!outputBuffer.has_value()) {
+      throw std::runtime_error("offline output storage buffer was not uploaded");
+    }
+    void *mapped = outputBuffer->get().map();
     std::memcpy(image.rgba.data(), mapped,
                 static_cast<usize>(image.rgba.size() * sizeof(float)));
-    outputBuffer->unmap();
+    outputBuffer->get().unmap();
 
     vkResetDescriptorPool(device->getLogicalDevice(), descriptorPool, 0);
     return image;
@@ -553,6 +399,7 @@ struct SoftwareComputeOfflineIntegrator::Impl final {
 
   VulkanDeviceUniquePtr device;
   VulkanCommandBufferManagerUniquePtr commandManager;
+  VulkanResourceManagerUniquePtr resourceManager;
   VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
   VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
   VkPipeline pipeline = VK_NULL_HANDLE;

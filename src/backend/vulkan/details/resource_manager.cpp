@@ -230,6 +230,12 @@ VulkanResourceManager::createGpuResource(const IGpuResourceSharedPtr &cpuRes) {
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
 
+  case ResourceType::StorageBuffer:
+    return std::make_shared<VulkanAnyResource>(VulkanBuffer::create(
+        m_device, cpuRes->getByteSize(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
+
   case ResourceType::CombinedImageSampler: {
     auto texCpu = std::dynamic_pointer_cast<CombinedTextureSampler>(cpuRes);
     if (!texCpu || !texCpu->texture()) {

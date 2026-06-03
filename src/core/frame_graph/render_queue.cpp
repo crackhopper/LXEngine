@@ -1,8 +1,8 @@
 #include "core/frame_graph/render_queue.hpp"
 
 #include "core/asset/mesh.hpp"
-#include "core/offline/offline_render_job.hpp"
 #include "core/frame_graph/pass.hpp"
+#include "core/offline/offline_scene_storage_resources.hpp"
 #include "core/scene/scene.hpp"
 
 #include <algorithm>
@@ -73,6 +73,8 @@ void RenderWorkQueue::sort() {
 RenderWorkItem makeOfflineComputeItem(const offline::OfflineRenderJob &job,
                                       StringID pass,
                                       const RenderTarget &target) {
+  offline::OfflineSceneStorageResources storageResources =
+      offline::buildOfflineSceneStorageResources(job);
   RenderWorkItem item;
   item.domain = RenderDomain::Offline;
   item.kind = RenderWorkKind::ComputeDispatch;
@@ -81,6 +83,7 @@ RenderWorkItem makeOfflineComputeItem(const offline::OfflineRenderJob &job,
   item.compute.groupCountX = (job.output.width + 7u) / 8u;
   item.compute.groupCountY = (job.output.height + 7u) / 8u;
   item.compute.groupCountZ = 1u;
+  item.descriptorResources = std::move(storageResources.descriptorResources);
   item.debugId = StringID("OfflineRayTraceDispatch");
   return item;
 }
