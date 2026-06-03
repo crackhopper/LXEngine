@@ -10,6 +10,7 @@
 #include <array>
 #include <cstring>
 #include <filesystem>
+#include <span>
 #include <sstream>
 #include <stdexcept>
 #include <utility>
@@ -99,36 +100,41 @@ validateOfflineDescriptorContract(
   struct ExpectedBinding {
     u32 binding = 0;
     const char *name = "";
+    ShaderPropertyType type = ShaderPropertyType::StorageBuffer;
+    u32 descriptorCount = 1;
     u32 blockSize = 0;
   };
 
   constexpr u32 kSet = 0;
   constexpr std::array<ExpectedBinding, 9> mvpExpected{{
-      {0, "SceneVertices", 0},
-      {1, "SceneIndices", 0},
-      {2, "SceneMeshes", 0},
-      {3, "ScenePrimitives", 0},
-      {4, "SceneObjects", 0},
-      {5, "SceneMaterials", 0},
-      {6, "SceneBvhNodes", 0},
-      {7, "SceneFrameParams", static_cast<u32>(sizeof(SceneGpuFrameParams))},
-      {8, "OutputPixels", 0},
+      {0, "SceneVertices"},
+      {1, "SceneIndices"},
+      {2, "SceneMeshes"},
+      {3, "ScenePrimitives"},
+      {4, "SceneObjects"},
+      {5, "SceneMaterials"},
+      {6, "SceneBvhNodes"},
+      {7, "SceneFrameParams", ShaderPropertyType::StorageBuffer, 1,
+       static_cast<u32>(sizeof(SceneGpuFrameParams))},
+      {8, "OutputPixels"},
   }};
-  constexpr std::array<ExpectedBinding, 9> pbrDirectExpected{{
-      {0, "SceneVertices", 0},
-      {1, "SceneIndices", 0},
-      {2, "SceneMeshes", 0},
-      {3, "ScenePrimitives", 0},
-      {4, "SceneObjects", 0},
-      {5, "SceneMaterials", 0},
-      {6, "SceneBvhNodes", 0},
-      {7, "SceneFrameParams", static_cast<u32>(sizeof(SceneGpuFrameParams))},
-      {8, "OutputPixels", 0},
+  constexpr std::array<ExpectedBinding, 10> pbrDirectExpected{{
+      {0, "SceneVertices"},
+      {1, "SceneIndices"},
+      {2, "SceneMeshes"},
+      {3, "ScenePrimitives"},
+      {4, "SceneObjects"},
+      {5, "SceneMaterials"},
+      {6, "SceneBvhNodes"},
+      {7, "SceneFrameParams", ShaderPropertyType::StorageBuffer, 1,
+       static_cast<u32>(sizeof(SceneGpuFrameParams))},
+      {8, "OutputPixels"},
+      {9, "SceneTextures", ShaderPropertyType::Texture2D, 64},
   }};
-  const auto &expected =
+  const std::span<const ExpectedBinding> expected =
       mode == LX_core::offline::OfflineShaderMode::PbrDirectRay
-          ? pbrDirectExpected
-          : mvpExpected;
+          ? std::span<const ExpectedBinding>{pbrDirectExpected}
+          : std::span<const ExpectedBinding>{mvpExpected};
 
   ShaderStageCode stageCode{};
   stageCode.stage = ShaderStage::Compute;
@@ -151,13 +157,13 @@ validateOfflineDescriptorContract(
           << ", reflected " << binding.name;
       throw std::runtime_error(msg.str());
     }
-    if (binding.type != ShaderPropertyType::StorageBuffer) {
+    if (binding.type != expectedBinding.type) {
       std::ostringstream msg;
       msg << "offline shader descriptor binding " << expectedBinding.binding
-          << " must be a storage buffer";
+          << " type mismatch";
       throw std::runtime_error(msg.str());
     }
-    if (binding.descriptorCount != 1) {
+    if (binding.descriptorCount != expectedBinding.descriptorCount) {
       std::ostringstream msg;
       msg << "offline shader descriptor binding " << expectedBinding.binding
           << " descriptorCount mismatch";

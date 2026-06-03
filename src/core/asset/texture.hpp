@@ -1,6 +1,6 @@
 #pragma once
-#include "core/rhi/gpu_resource.hpp"
 #include "core/platform/types.hpp"
+#include "core/rhi/gpu_resource.hpp"
 #include <algorithm>
 #include <memory>
 #include <stdexcept>
@@ -65,13 +65,13 @@ inline usize expectedTextureByteCount(const TextureDesc &desc) {
     throw std::runtime_error("texture dimensions must be non-zero");
   }
   if (desc.mipLevels == 0 || desc.arrayLayers == 0) {
-    throw std::runtime_error("texture mip levels and array layers must be non-zero");
+    throw std::runtime_error(
+        "texture mip levels and array layers must be non-zero");
   }
   if (desc.mipLevels > maxTextureMipLevels(desc.width, desc.height)) {
     throw std::runtime_error("texture mip level count exceeds texture extent");
   }
-  if (desc.dimension == TextureDimension::Texture2D &&
-      desc.arrayLayers != 1) {
+  if (desc.dimension == TextureDimension::Texture2D && desc.arrayLayers != 1) {
     throw std::runtime_error("texture 2D array layers are not supported");
   }
   if (desc.dimension == TextureDimension::TextureCube &&
@@ -164,8 +164,8 @@ static TextureSharedPtr createWhiteTexture(u32 width = 1, u32 height = 1) {
 `IGpuResource`，把 CPU 侧图像字节接进和 UBO、vertex buffer 同一条 backend
 同步 / 绑定管线。
 
-之所以 `Texture` 自己不实现 `IGpuResource`、要额外套一层 `CombinedTextureSampler`，
-原因是这两类信息的归属和生命周期并不一样：
+之所以 `Texture` 自己不实现 `IGpuResource`、要额外套一层
+`CombinedTextureSampler`， 原因是这两类信息的归属和生命周期并不一样：
 
 - `Texture` 属于资源加载侧，只要像素内容不变就可以被多处复用
 - 绑定身份（`StringID` binding name）属于材质实例侧，不同材质会把同一张纹理
@@ -210,6 +210,30 @@ private:
   StringID m_bindingName;
 };
 
-using CombinedTextureSamplerSharedPtr =
-    std::shared_ptr<CombinedTextureSampler>;
+using CombinedTextureSamplerSharedPtr = std::shared_ptr<CombinedTextureSampler>;
+
+class SampledTextureArrayResource final : public IGpuResource {
+public:
+  SampledTextureArrayResource(
+      StringID bindingName,
+      std::vector<CombinedTextureSamplerSharedPtr> textures)
+      : m_bindingName(bindingName), m_textures(std::move(textures)) {}
+
+  ResourceType getType() const override { return ResourceType::Special; }
+  const void *getRawData() const override { return nullptr; }
+  u32 getByteSize() const override { return 0; }
+  StringID getBindingName() const override { return m_bindingName; }
+
+  [[nodiscard]] const std::vector<CombinedTextureSamplerSharedPtr> &
+  textures() const {
+    return m_textures;
+  }
+
+private:
+  StringID m_bindingName;
+  std::vector<CombinedTextureSamplerSharedPtr> m_textures;
+};
+
+using SampledTextureArrayResourceSharedPtr =
+    std::shared_ptr<SampledTextureArrayResource>;
 } // namespace LX_core

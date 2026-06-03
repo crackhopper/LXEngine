@@ -107,7 +107,11 @@ layout(std430, binding = 8) writeonly buffer OutputPixels {
   vec4 pixels[];
 };
 
+layout(set = 0, binding = 9) uniform sampler2D SceneTextures[64];
+
 const uint BVH_LEAF_NODE_FLAG = 0x80000000u;
+const uint INVALID_TEXTURE_INDEX = 0xffffffffu;
+const uint SCENE_TEXTURE_COUNT = 64u;
 
 uint wangHash(uint value) {
   value = (value ^ 61u) ^ (value >> 16u);
@@ -257,6 +261,34 @@ bool traceScene(vec3 origin, vec3 dir, float maxT, out float hitT,
   return hit;
 }
 
+bool hasSceneTexture(uint textureIndex) {
+  return textureIndex != INVALID_TEXTURE_INDEX &&
+         textureIndex < SCENE_TEXTURE_COUNT;
+}
+
+vec4 sampleSceneTexture(uint textureIndex, vec2 uv) {
+  return texture(SceneTextures[textureIndex], uv);
+}
+
+vec3 makeShadingNormal(lxSceneMaterialRecord material, HitAttributes hit) {
+  vec3 N = normalize(hit.normal);
+  if (!hasSceneTexture(material.normalTexture)) {
+    return N;
+  }
+
+  vec3 T = hit.tangent - N * dot(N, hit.tangent);
+  float tangentLength = length(T);
+  if (tangentLength < 1.0e-5) {
+    return N;
+  }
+  T = T / tangentLength;
+  vec3 B = normalize(cross(N, T) * hit.tangentSign);
+  mat3 TBN = mat3(T, B, N);
+  vec3 tangentNormal =
+      sampleSceneTexture(material.normalTexture, hit.uv).xyz * 2.0 - 1.0;
+  return normalize(TBN * tangentNormal);
+}
+
 vec3 shade(vec3 origin, vec3 dir) {
   float hitT;
   HitAttributes hit;
@@ -270,12 +302,15 @@ vec3 shade(vec3 origin, vec3 dir) {
   lxSceneMaterialRecord material =
       materials[min(hit.materialIndex, params.materialCount - 1u)];
   vec3 baseColor = material.baseColor.rgb;
+  if (hasSceneTexture(material.baseColorTexture)) {
+    baseColor *= sampleSceneTexture(material.baseColorTexture, hit.uv).rgb;
+  }
   if (params.compareMode == 1u) {
     return baseColor;
   }
 
   vec3 hitPos = origin + dir * hitT;
-  vec3 N = normalize(hit.normal);
+  vec3 N = makeShadingNormal(material, hit);
   vec3 V = normalize(-dir);
   vec3 L = normalize(-params.lightDirectionIntensity.xyz);
 
@@ -295,8 +330,23 @@ vec3 shade(vec3 origin, vec3 dir) {
                         params.lightDirectionIntensity.w * visibility;
   pbrInput.metallic = clamp(material.pbrParams.x, 0.0, 1.0);
   pbrInput.roughness = clamp(material.pbrParams.y, 0.04, 1.0);
+  if (hasSceneTexture(material.metallicRoughnessTexture)) {
+    vec4 mr =
+        sampleSceneTexture(material.metallicRoughnessTexture, hit.uv);
+    pbrInput.metallic = clamp(pbrInput.metallic * mr.b, 0.0, 1.0);
+    pbrInput.roughness = clamp(pbrInput.roughness * mr.g, 0.04, 1.0);
+  }
   pbrInput.ao = clamp(material.pbrParams.w, 0.0, 1.0);
+  if (hasSceneTexture(material.aoTexture)) {
+    pbrInput.ao =
+        clamp(pbrInput.ao * sampleSceneTexture(material.aoTexture, hit.uv).r,
+              0.0, 1.0);
+  }
   pbrInput.emissive = material.emissive.rgb;
+  if (hasSceneTexture(material.emissiveTexture)) {
+    pbrInput.emissive *=
+        sampleSceneTexture(material.emissiveTexture, hit.uv).rgb;
+  }
   return lxPbrDirectLight(pbrInput) + lxPbrEmissive(pbrInput);
 }
 

@@ -1,4 +1,5 @@
 #include "command_buffer.hpp"
+#include "core/asset/texture.hpp"
 #include "core/frame_graph/frame_graph.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/string_table.hpp"
@@ -309,6 +310,41 @@ void VulkanCommandBuffer::bindResourcesWithLayout(
                                  : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
       } else if (b.type == LX_core::ShaderPropertyType::Texture2D ||
                  b.type == LX_core::ShaderPropertyType::TextureCube) {
+        if (const auto textureArray =
+                std::dynamic_pointer_cast<LX_core::SampledTextureArrayResource>(
+                    cpuRes)) {
+          const auto &textures = textureArray->textures();
+          if (textures.size() != b.descriptorCount) {
+            throw std::runtime_error(
+                "texture array resource descriptor count mismatch");
+          }
+
+          std::vector<VkDescriptorImageInfo> imageInfos;
+          imageInfos.reserve(textures.size());
+          bool complete = true;
+          for (const auto &textureResource : textures) {
+            if (!textureResource) {
+              complete = false;
+              break;
+            }
+            auto textureOpt = resourceManager.getTexture(
+                textureResource->getBackendCacheIdentity());
+            if (!textureOpt) {
+              complete = false;
+              break;
+            }
+            imageInfos.push_back(textureOpt->get().getDescriptorInfo());
+          }
+          if (!complete) {
+            logMissingDescriptorBindingOnce(item, b);
+            continue;
+          }
+
+          setPtr->updateImageArray(b.binding, imageInfos,
+                                   VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+          continue;
+        }
+
         if (const auto frameGraphResource =
                 std::dynamic_pointer_cast<LX_core::FrameGraphSampledResource>(
                     cpuRes)) {

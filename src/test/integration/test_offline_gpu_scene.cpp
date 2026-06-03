@@ -1,6 +1,7 @@
 #include "core/asset/material_instance.hpp"
 #include "core/asset/mesh.hpp"
 #include "core/asset/shader.hpp"
+#include "core/asset/texture.hpp"
 #include "core/frame_graph/render_work_build_context.hpp"
 #include "core/offline/offline_render_job.hpp"
 #include "core/offline/offline_render_validation.hpp"
@@ -122,6 +123,27 @@ hasStorageBuffer(const std::vector<ShaderResourceBinding> &bindings,
   return false;
 }
 
+[[nodiscard]] const ShaderResourceBinding *
+findBinding(const std::vector<ShaderResourceBinding> &bindings,
+            const std::string &name) {
+  for (const auto &binding : bindings) {
+    if (binding.name == name) {
+      return &binding;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] IGpuResourceSharedPtr
+findDescriptorResource(const RenderWorkItem &item, StringID bindingName) {
+  for (const IGpuResourceSharedPtr &resource : item.descriptorResources) {
+    if (resource && resource->getBindingName() == bindingName) {
+      return resource;
+    }
+  }
+  return {};
+}
+
 void testOfflineShaderUsesUnifiedSceneBuffers() {
   const auto shaderPath =
       findOfflineShaderSourcePath("offline_primary_ray.comp");
@@ -164,8 +186,9 @@ void testOfflineShaderUsesUnifiedSceneBuffers() {
 void testOfflinePbrDirectShaderCompiles() {
   const auto shaderPath =
       findOfflineShaderSourcePath("offline_pbr_direct_ray.comp");
-  EXPECT(!shaderPath.empty(),
-         "offline PBR shader source should be discoverable for reflection test");
+  EXPECT(
+      !shaderPath.empty(),
+      "offline PBR shader source should be discoverable for reflection test");
   if (shaderPath.empty()) {
     return;
   }
@@ -184,6 +207,19 @@ void testOfflinePbrDirectShaderCompiles() {
          "offline PBR shader should read SceneMaterials");
   EXPECT(hasStorageBuffer(bindings, "OutputPixels"),
          "offline PBR shader should write OutputPixels");
+
+  const ShaderResourceBinding *sceneTextures =
+      findBinding(bindings, "SceneTextures");
+  EXPECT(sceneTextures != nullptr,
+         "offline PBR shader should expose SceneTextures descriptor array");
+  if (sceneTextures != nullptr) {
+    EXPECT(sceneTextures->set == 0 && sceneTextures->binding == 9,
+           "SceneTextures should use set 0 binding 9");
+    EXPECT(sceneTextures->type == ShaderPropertyType::Texture2D,
+           "SceneTextures should reflect as a combined texture2D sampler");
+    EXPECT(sceneTextures->descriptorCount == 64,
+           "SceneTextures should reserve 64 sampled texture descriptors");
+  }
 }
 
 [[nodiscard]] SceneGpuVertexRecord makeGpuVertex(float x, float y, float z) {
@@ -516,6 +552,41 @@ void testOfflineRenderWorkGraphCanCarryComputeShader() {
          "offline work item should carry compute shader from build context");
 }
 
+void testOfflinePbrWorkItemCarriesSceneTextureArrayOnlyForPbrMode() {
+  {
+    offline::OfflineRenderJob job = makeRenderableJobWithCamera();
+    job.offline.shaderMode = offline::OfflineShaderMode::MvpPrimaryRay;
+
+    FrameGraph graph = offline::createOfflineRenderFrameGraph(job.output);
+    graph.build(LX_core::RenderWorkBuildContext::offline(job));
+
+    const RenderWorkItem &item =
+        graph.getPasses().front().queue.getItems().front();
+    EXPECT(!findDescriptorResource(item, StringID("SceneTextures")),
+           "MVP offline shader mode should not require SceneTextures");
+  }
+
+  {
+    offline::OfflineRenderJob job = makeRenderableJobWithCamera();
+    job.offline.shaderMode = offline::OfflineShaderMode::PbrDirectRay;
+
+    FrameGraph graph = offline::createOfflineRenderFrameGraph(job.output);
+    graph.build(LX_core::RenderWorkBuildContext::offline(job));
+
+    const RenderWorkItem &item =
+        graph.getPasses().front().queue.getItems().front();
+    const auto resource =
+        std::dynamic_pointer_cast<SampledTextureArrayResource>(
+            findDescriptorResource(item, StringID("SceneTextures")));
+    EXPECT(resource != nullptr,
+           "PBR direct shader mode should carry SceneTextures texture array");
+    if (resource != nullptr) {
+      EXPECT(resource->textures().size() == 64,
+             "SceneTextures should provide exactly 64 descriptor slots");
+    }
+  }
+}
+
 void testOfflineRenderJobValidationRejectsZeroDimensions() {
   offline::OfflineRenderJob job = makeRenderableJobWithoutCamera();
   job.output.width = 0;
@@ -547,6 +618,7 @@ int main() {
   testOfflineRenderJobValidationRejectsNonRenderableScene();
   testOfflineRenderWorkGraphBuildsRayTracePass();
   testOfflineRenderWorkGraphCanCarryComputeShader();
+  testOfflinePbrWorkItemCarriesSceneTextureArrayOnlyForPbrMode();
   testSoftwareBvhThrowsForEmptyPrimitiveList();
   testSoftwareBvhBuildsFromSceneResourceTable();
   testSoftwareBvhUsesCompactUploadIndicesAndObjectTransform();

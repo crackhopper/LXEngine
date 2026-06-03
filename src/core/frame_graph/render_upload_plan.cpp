@@ -1,5 +1,7 @@
 #include "core/frame_graph/render_upload_plan.hpp"
 
+#include "core/asset/texture.hpp"
+
 #include <unordered_set>
 
 namespace LX_core {
@@ -17,10 +19,9 @@ void appendUniqueResource(std::vector<IGpuResourceSharedPtr> &resources,
   resources.push_back(resource);
 }
 
-void appendUniquePushConstant(
-    std::vector<PerDrawDataSharedPtr> &pushConstants,
-    std::unordered_set<const PerDrawData *> &seen,
-    const PerDrawDataSharedPtr &pushConstant) {
+void appendUniquePushConstant(std::vector<PerDrawDataSharedPtr> &pushConstants,
+                              std::unordered_set<const PerDrawData *> &seen,
+                              const PerDrawDataSharedPtr &pushConstant) {
   if (!pushConstant) {
     return;
   }
@@ -51,6 +52,14 @@ RenderUploadPlan buildRenderUploadPlan(const RenderWorkQueue &queue) {
 
     for (const IGpuResourceSharedPtr &resource : item.descriptorResources) {
       appendUniqueResource(plan.resources, seenResources, resource);
+      if (const auto textureArray =
+              std::dynamic_pointer_cast<SampledTextureArrayResource>(
+                  resource)) {
+        for (const CombinedTextureSamplerSharedPtr &texture :
+             textureArray->textures()) {
+          appendUniqueResource(plan.resources, seenResources, texture);
+        }
+      }
     }
   }
 

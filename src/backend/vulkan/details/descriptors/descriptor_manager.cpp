@@ -92,6 +92,26 @@ void DescriptorSet::updateImage(u32 binding, VkDescriptorImageInfo imageInfo,
                          nullptr);
 }
 
+void DescriptorSet::updateImageArray(
+    u32 binding, const std::vector<VkDescriptorImageInfo> &imageInfos,
+    VkDescriptorType type) {
+  if (imageInfos.empty()) {
+    return;
+  }
+
+  VkWriteDescriptorSet descriptorWrite{};
+  descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+  descriptorWrite.dstSet = m_set;
+  descriptorWrite.dstBinding = binding;
+  descriptorWrite.dstArrayElement = 0;
+  descriptorWrite.descriptorType = type;
+  descriptorWrite.descriptorCount = static_cast<u32>(imageInfos.size());
+  descriptorWrite.pImageInfo = imageInfos.data();
+
+  vkUpdateDescriptorSets(m_manager.getDeviceHandle(), 1, &descriptorWrite, 0,
+                         nullptr);
+}
+
 void DescriptorSet::updateBatch(
     const std::vector<DescriptorUpdateInfo> &updates) {
   if (updates.empty())

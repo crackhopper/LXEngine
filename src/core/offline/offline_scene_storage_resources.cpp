@@ -17,6 +17,8 @@
 namespace LX_core::offline {
 namespace {
 
+constexpr usize kOfflineSceneTextureDescriptorCount = 64;
+
 struct DirectionalLightParams final {
   Vec3f direction{-0.35f, -1.0f, -0.25f};
   Vec3f color{1.0f, 0.96f, 0.88f};
@@ -25,7 +27,8 @@ struct DirectionalLightParams final {
 
 class OfflineStorageBufferResource final : public IGpuResource {
 public:
-  OfflineStorageBufferResource(StringID bindingName, std::vector<std::byte> bytes)
+  OfflineStorageBufferResource(StringID bindingName,
+                               std::vector<std::byte> bytes)
       : m_bindingName(bindingName), m_bytes(std::move(bytes)) {
     setDirty();
   }
@@ -69,6 +72,28 @@ IGpuResourceSharedPtr makeStorageBuffer(StringID bindingName,
                                         std::vector<std::byte> bytes) {
   return std::make_shared<OfflineStorageBufferResource>(bindingName,
                                                         std::move(bytes));
+}
+
+IGpuResourceSharedPtr makeSceneTextureArray(
+    std::span<const CombinedTextureSamplerSharedPtr> uploadTextures) {
+  if (uploadTextures.size() > kOfflineSceneTextureDescriptorCount) {
+    throw std::runtime_error("offline PBR scene texture descriptor array "
+                             "supports at most 64 textures");
+  }
+
+  auto fallback =
+      std::make_shared<CombinedTextureSampler>(createWhiteTexture());
+  std::vector<CombinedTextureSamplerSharedPtr> textures;
+  textures.reserve(kOfflineSceneTextureDescriptorCount);
+  for (const CombinedTextureSamplerSharedPtr &texture : uploadTextures) {
+    textures.push_back(texture ? texture : fallback);
+  }
+  while (textures.size() < kOfflineSceneTextureDescriptorCount) {
+    textures.push_back(fallback);
+  }
+
+  return std::make_shared<SampledTextureArrayResource>(
+      StringID("SceneTextures"), std::move(textures));
 }
 
 [[nodiscard]] Vec4f vec4(const Vec3f &value, const float w) {
@@ -181,12 +206,17 @@ buildOfflineSceneStorageResources(const OfflineRenderJob &job) {
 
   OfflineSceneStorageResources resources;
   resources.descriptorResources = {
-      makeStorageBuffer(StringID("SceneVertices"), copyBytes(uploadView.vertices)),
-      makeStorageBuffer(StringID("SceneIndices"), copyBytes(uploadView.indices)),
+      makeStorageBuffer(StringID("SceneVertices"),
+                        copyBytes(uploadView.vertices)),
+      makeStorageBuffer(StringID("SceneIndices"),
+                        copyBytes(uploadView.indices)),
       makeStorageBuffer(StringID("SceneMeshes"), copyBytes(uploadView.meshes)),
-      makeStorageBuffer(StringID("ScenePrimitives"), copyBytes(shaderPrimitives)),
-      makeStorageBuffer(StringID("SceneObjects"), copyBytes(uploadView.objects)),
-      makeStorageBuffer(StringID("SceneMaterials"), copyBytes(uploadView.materials)),
+      makeStorageBuffer(StringID("ScenePrimitives"),
+                        copyBytes(shaderPrimitives)),
+      makeStorageBuffer(StringID("SceneObjects"),
+                        copyBytes(uploadView.objects)),
+      makeStorageBuffer(StringID("SceneMaterials"),
+                        copyBytes(uploadView.materials)),
       makeStorageBuffer(StringID("SceneBvhNodes"), copyBytes(bvh.nodes())),
       makeStorageBuffer(StringID("SceneFrameParams"), copyObjectBytes(params)),
   };
@@ -197,6 +227,10 @@ buildOfflineSceneStorageResources(const OfflineRenderJob &job) {
   resources.outputPixels =
       makeStorageBuffer(StringID("OutputPixels"), zeroBytes(outputSize));
   resources.descriptorResources.push_back(resources.outputPixels);
+  if (job.offline.shaderMode == OfflineShaderMode::PbrDirectRay) {
+    resources.descriptorResources.push_back(
+        makeSceneTextureArray(uploadView.textures));
+  }
   return resources;
 }
 

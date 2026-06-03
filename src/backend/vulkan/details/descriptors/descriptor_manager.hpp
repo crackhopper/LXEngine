@@ -36,6 +36,9 @@ public:
                     VkDescriptorType type);
   void updateImage(u32 binding, VkDescriptorImageInfo imageInfo,
                    VkDescriptorType type);
+  void updateImageArray(u32 binding,
+                        const std::vector<VkDescriptorImageInfo> &imageInfos,
+                        VkDescriptorType type);
   void updateBatch(const std::vector<DescriptorUpdateInfo> &updates);
 
 private:
@@ -110,7 +113,7 @@ private:
 
   struct Config {
     u32 uniformCount = 16;
-    u32 samplerCount = 16;
+    u32 samplerCount = 256;
     u32 storageCount = 32;
     u32 maxSets = 64;
   } m_config;
