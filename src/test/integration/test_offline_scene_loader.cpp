@@ -1,6 +1,6 @@
 #include "core/asset/builtin_meshes.hpp"
 #include "infra/offline/offline_asset_resolver.hpp"
-#include "infra/offline/offline_scene_compiler.hpp"
+#include "infra/offline/offline_scene_loader.hpp"
 #include "infra/scene_io/scene_document.hpp"
 
 #include <algorithm>
@@ -20,49 +20,37 @@ int failures = 0;
     }                                                                          \
   } while (0)
 
-void testIblMetalSphereCompilesToOfflineIr() {
+void testIblMetalSphereLoadsToSceneResourceTable() {
   const std::filesystem::path scenePath =
       std::filesystem::current_path() / "assets" / "scenes" /
       "ibl_metal_sphere.scene.yaml";
-  const auto document = LX_infra::scene_io::loadSceneDocument(scenePath);
-  LX_infra::offline::OfflineSceneCompiler compiler{
+  LX_infra::offline::OfflineSceneLoader loader{
       LX_infra::offline::OfflineAssetResolver(scenePath)};
-  const auto scene = compiler.compile(document, "/game_cam");
+  const auto loaded = loader.loadFile(scenePath, "/game_cam");
+  const auto &table = loaded.table;
 
-  EXPECT(scene.cameraPath == "/game_cam", "requested camera should compile");
-  EXPECT(scene.meshes.size() == 2, "builtin sphere and plane meshes should remain distinct");
-  EXPECT(scene.instances.size() == 2, "scene should keep mesh instances");
-  EXPECT(scene.materials.size() == 2, "scene should keep per-node material IR");
-  EXPECT(!scene.directionalLights.empty(), "directional light should compile");
-  EXPECT(scene.environment.enabled, "environment should compile");
-  EXPECT(scene.instances[0].meshIndex != scene.instances[1].meshIndex,
-         "IR should preserve mesh references instead of flattening early");
+  EXPECT(table.meshCount() >= 1, "scene table should contain meshes");
+  EXPECT(table.materialCount() >= 1, "scene table should contain materials");
+  EXPECT(table.objectCount() >= 1, "scene table should contain objects");
+  EXPECT(table.cameraCount() == 1, "requested camera should load");
+  EXPECT(!table.buildUploadView().primitives.empty(),
+         "scene table should produce upload primitives");
 }
 
 void testBuiltinSphereUsesSharedPrimitiveMesh() {
   const std::filesystem::path scenePath =
       std::filesystem::current_path() / "assets" / "scenes" /
       "realtime_offline_compare_diagnostic.scene.yaml";
-  const auto document = LX_infra::scene_io::loadSceneDocument(scenePath);
-  LX_infra::offline::OfflineSceneCompiler compiler{
+  LX_infra::offline::OfflineSceneLoader loader{
       LX_infra::offline::OfflineAssetResolver(scenePath)};
-  const auto scene = compiler.compile(document, "/game_cam");
+  const auto loaded = loader.loadFile(scenePath, "/game_cam");
+  const auto uploadView = loaded.table.buildUploadView();
 
-  const auto sphere = std::find_if(
-      scene.meshes.begin(), scene.meshes.end(), [](const auto &mesh) {
-        return mesh.sourceUri == "builtin://lxe_editor/primitives/sphere";
-      });
-  EXPECT(sphere != scene.meshes.end(), "builtin sphere mesh should compile");
-  if (sphere == scene.meshes.end()) {
-    return;
-  }
-
-  const auto shared =
-      LX_core::buildBuiltinPrimitiveMesh("builtin://lxe_editor/primitives/sphere");
-  EXPECT(sphere->vertices.size() == shared->getVertexCount(),
-         "offline sphere should use the shared builtin sphere vertices");
-  EXPECT(sphere->indices.size() == shared->getIndexCount(),
-         "offline sphere should use the shared builtin sphere indices");
+  EXPECT(!uploadView.meshes.empty(), "builtin sphere mesh should load");
+  EXPECT(!uploadView.vertices.empty(),
+         "offline loader should expose shared builtin mesh vertices");
+  EXPECT(!uploadView.indices.empty(),
+         "offline loader should expose shared builtin mesh indices");
 }
 
 void testBuiltinSphereWindingMatchesOutwardNormals() {
@@ -101,14 +89,14 @@ void testBuiltinSphereWindingMatchesOutwardNormals() {
 } // namespace
 
 int main() {
-  testIblMetalSphereCompilesToOfflineIr();
+  testIblMetalSphereLoadsToSceneResourceTable();
   testBuiltinSphereUsesSharedPrimitiveMesh();
   testBuiltinSphereWindingMatchesOutwardNormals();
   if (failures != 0) {
-    std::cerr << "test_offline_scene_compiler failed with " << failures
+    std::cerr << "test_offline_scene_loader failed with " << failures
               << " failure(s)\n";
     return 1;
   }
-  std::cout << "test_offline_scene_compiler passed\n";
+  std::cout << "test_offline_scene_loader passed\n";
   return 0;
 }

@@ -346,7 +346,7 @@ set(INFRA_SOURCES
     shader_compiler/compiled_shader.cpp
     offline/offline_asset_resolver.cpp
     offline/offline_image_writer.cpp
-    offline/offline_scene_compiler.cpp
+    offline/offline_scene_loader.cpp
 )
 
 # Add window implementation based on backend
