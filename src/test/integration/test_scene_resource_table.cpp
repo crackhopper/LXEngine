@@ -6,6 +6,7 @@
 #include "core/scene/light.hpp"
 #include "core/scene/object.hpp"
 #include "core/scene/scene.hpp"
+#include "core/scene/scene_gpu_records.hpp"
 #include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/scene_resource_table.hpp"
 
@@ -222,6 +223,52 @@ void testSceneRegistersCameraAndLightResources() {
          "removed light should release light entry");
 }
 
+void testSceneGpuRecordLayoutContract() {
+  EXPECT(sizeof(SceneGpuVertexRecord) == 64,
+         "SceneGpuVertexRecord std430 contract should stay stable");
+  EXPECT(sizeof(SceneGpuMeshRecord) == 16,
+         "SceneGpuMeshRecord std430 contract should stay stable");
+  EXPECT(sizeof(SceneGpuPrimitiveRecord) == 16,
+         "SceneGpuPrimitiveRecord std430 contract should stay stable");
+  EXPECT(sizeof(SceneGpuObjectRecord) == 176,
+         "SceneGpuObjectRecord std430 contract should stay stable");
+  EXPECT(sizeof(SceneGpuMaterialRecord) == 64,
+         "SceneGpuMaterialRecord std430 contract should stay stable");
+  EXPECT(sizeof(SceneGpuFrameParams) == 176,
+         "SceneGpuFrameParams std430 contract should stay stable");
+}
+
+void testSceneResourceTableUploadViewTracksGeneration() {
+  SceneResourceTable table;
+  const auto mesh = table.registerMesh(makeMeshBuffer());
+  const auto material =
+      table.registerMaterial(MaterialInstance::create(
+          MaterialTemplate::create("scene_gpu_records")));
+  ObjectResource object;
+  object.mesh = mesh;
+  object.material = material;
+  object.worldBounds = BoundingBox{{0.0f, 0.0f, 0.0f},
+                                   {1.0f, 1.0f, 0.0f}};
+  const auto objectHandle = table.registerObject(object);
+
+  const auto firstView = table.buildUploadView();
+  EXPECT(firstView.generation != 0, "upload view should expose generation");
+  EXPECT(firstView.meshes.size() == 1, "upload view should expose one mesh");
+  EXPECT(firstView.objects.size() == 1, "upload view should expose one object");
+  EXPECT(firstView.objects.front().meshIndex == mesh.index,
+         "object GPU record should reference mesh index");
+  EXPECT(firstView.objects.front().materialIndex == material.index,
+         "object GPU record should reference material index");
+
+  object.visible = false;
+  table.updateObject(objectHandle, object);
+  const auto secondView = table.buildUploadView();
+  EXPECT(secondView.generation > firstView.generation,
+         "object update should advance upload generation");
+  EXPECT(secondView.objects.front().visible == 0,
+         "object visibility should reach GPU record");
+}
+
 } // namespace
 
 int main() {
@@ -229,6 +276,8 @@ int main() {
   testHandleGenerationInvalidatesStaleMeshHandle();
   testSceneRegistersRenderableComponentResources();
   testSceneRegistersCameraAndLightResources();
+  testSceneGpuRecordLayoutContract();
+  testSceneResourceTableUploadViewTracksGeneration();
 
   if (s_failures != 0) {
     std::cerr << "test_scene_resource_table failed: " << s_failures

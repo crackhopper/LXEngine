@@ -7,6 +7,7 @@
 #include "core/scene/light.hpp"
 
 #include <cassert>
+#include <cstring>
 #include <utility>
 
 namespace LX_core {
@@ -15,6 +16,121 @@ namespace {
 [[nodiscard]] u32 nextGeneration(const u32 current) {
   const u32 next = current + 1;
   return next == 0 ? 1 : next;
+}
+
+[[nodiscard]] u64 nextGeneration(const u64 current) {
+  const u64 next = current + 1;
+  return next == 0 ? 1 : next;
+}
+
+[[nodiscard]] const VertexLayoutItem *
+findVertexLayoutItem(const VertexLayout &layout, const char *name,
+                     const u32 fallbackLocation) {
+  for (const auto &item : layout.getItems()) {
+    if (item.name == name) {
+      return &item;
+    }
+  }
+  for (const auto &item : layout.getItems()) {
+    if (item.location == fallbackLocation) {
+      return &item;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] Vec4f readVertexAttribute(const u8 *vertex,
+                                        const VertexLayoutItem &item,
+                                        Vec4f fallback) {
+  const auto *attribute = vertex + item.offset;
+  switch (item.type) {
+  case DataType::Float1: {
+    f32 x = 0.0f;
+    std::memcpy(&x, attribute, sizeof(f32));
+    fallback.x = x;
+    return fallback;
+  }
+  case DataType::Float2: {
+    f32 values[2]{};
+    std::memcpy(values, attribute, sizeof(values));
+    fallback.x = values[0];
+    fallback.y = values[1];
+    return fallback;
+  }
+  case DataType::Float3: {
+    f32 values[3]{};
+    std::memcpy(values, attribute, sizeof(values));
+    fallback.x = values[0];
+    fallback.y = values[1];
+    fallback.z = values[2];
+    return fallback;
+  }
+  case DataType::Float4: {
+    f32 values[4]{};
+    std::memcpy(values, attribute, sizeof(values));
+    return {values[0], values[1], values[2], values[3]};
+  }
+  case DataType::Int4:
+    return fallback;
+  }
+  return fallback;
+}
+
+[[nodiscard]] SceneGpuVertexRecord makeGpuVertexRecord(
+    const u8 *vertex, const VertexLayout &layout) {
+  SceneGpuVertexRecord record;
+  record.position = {0.0f, 0.0f, 0.0f, 1.0f};
+  record.normal = {0.0f, 0.0f, 1.0f, 0.0f};
+  record.uvTangentSign = {0.0f, 0.0f, 1.0f, 0.0f};
+  record.tangent = {1.0f, 0.0f, 0.0f, 1.0f};
+
+  if (const auto *item = findVertexLayoutItem(layout, "inPos", 0)) {
+    record.position = readVertexAttribute(vertex, *item, record.position);
+    record.position.w = 1.0f;
+  }
+  if (const auto *item = findVertexLayoutItem(layout, "inNormal", 1)) {
+    record.normal = readVertexAttribute(vertex, *item, record.normal);
+    record.normal.w = 0.0f;
+  }
+  if (const auto *item = findVertexLayoutItem(layout, "inUV", 2)) {
+    record.uvTangentSign =
+        readVertexAttribute(vertex, *item, record.uvTangentSign);
+  }
+  if (const auto *item = findVertexLayoutItem(layout, "inTangent", 3)) {
+    record.tangent = readVertexAttribute(vertex, *item, record.tangent);
+    record.uvTangentSign.z = record.tangent.w;
+  }
+  return record;
+}
+
+void appendMeshGeometryRecords(const MeshBuffer &mesh,
+                               std::vector<SceneGpuVertexRecord> &vertices,
+                               std::vector<u32> &indices) {
+  const auto &vertexBuffer = *mesh.getVertexBuffer();
+  const auto &layout = vertexBuffer.getLayout();
+  const auto stride = layout.getStride();
+  const auto *rawVertices =
+      static_cast<const u8 *>(vertexBuffer.getRawData());
+  if (rawVertices != nullptr && stride != 0) {
+    const u32 firstVertex = mesh.getVertexOffset();
+    const u32 vertexCount = mesh.getVertexCount();
+    vertices.reserve(vertices.size() + vertexCount);
+    for (u32 i = 0; i < vertexCount; ++i) {
+      const auto *vertex = rawVertices + (firstVertex + i) * stride;
+      vertices.push_back(makeGpuVertexRecord(vertex, layout));
+    }
+  }
+
+  const auto &indexBuffer = *mesh.getIndexBuffer();
+  const auto *rawIndices = static_cast<const u32 *>(indexBuffer.getRawData());
+  if (rawIndices != nullptr) {
+    const u32 firstIndex = mesh.getIndexOffset();
+    const u32 indexCount = mesh.getIndexCount();
+    indices.reserve(indices.size() + indexCount);
+    for (u32 i = 0; i < indexCount; ++i) {
+      indices.push_back(rawIndices[firstIndex + i]);
+    }
+  }
 }
 
 } // namespace
@@ -104,37 +220,56 @@ usize SceneResourceTable::aliveCount(
   return count;
 }
 
+void SceneResourceTable::advanceUploadGeneration() {
+  m_generation = nextGeneration(m_generation);
+}
+
 GeometryStorageHandle SceneResourceTable::registerGeometryStorage(
     GeometryStorageSharedPtr storage) {
-  return add<GeometryStorage, GeometryStorageHandle>(m_geometryStorage,
-                                                     std::move(storage));
+  auto handle = add<GeometryStorage, GeometryStorageHandle>(m_geometryStorage,
+                                                           std::move(storage));
+  advanceUploadGeneration();
+  return handle;
 }
 
 MeshHandle SceneResourceTable::registerMesh(MeshBufferSharedPtr mesh) {
-  return add<MeshBuffer, MeshHandle>(m_meshes, std::move(mesh));
+  auto handle = add<MeshBuffer, MeshHandle>(m_meshes, std::move(mesh));
+  advanceUploadGeneration();
+  return handle;
 }
 
 MaterialHandle
 SceneResourceTable::registerMaterial(MaterialInstanceSharedPtr material) {
-  return add<MaterialInstance, MaterialHandle>(m_materials, std::move(material));
+  auto handle =
+      add<MaterialInstance, MaterialHandle>(m_materials, std::move(material));
+  advanceUploadGeneration();
+  return handle;
 }
 
 TextureHandle SceneResourceTable::registerTexture(TextureSharedPtr texture) {
-  return add<Texture, TextureHandle>(m_textures, std::move(texture));
+  auto handle = add<Texture, TextureHandle>(m_textures, std::move(texture));
+  advanceUploadGeneration();
+  return handle;
 }
 
 LightHandle SceneResourceTable::registerLight(LightBaseSharedPtr light) {
-  return add<LightBase, LightHandle>(m_lights, std::move(light));
+  auto handle = add<LightBase, LightHandle>(m_lights, std::move(light));
+  advanceUploadGeneration();
+  return handle;
 }
 
 ObjectHandle SceneResourceTable::registerObject(ObjectResource object) {
-  return add<ObjectResource, ObjectHandle>(
+  auto handle = add<ObjectResource, ObjectHandle>(
       m_objects, std::make_shared<ObjectResource>(std::move(object)));
+  advanceUploadGeneration();
+  return handle;
 }
 
 CameraHandle SceneResourceTable::registerCamera(CameraResource camera) {
-  return add<CameraResource, CameraHandle>(
+  auto handle = add<CameraResource, CameraHandle>(
       m_cameras, std::make_shared<CameraResource>(std::move(camera)));
+  advanceUploadGeneration();
+  return handle;
 }
 
 void SceneResourceTable::updateObject(ObjectHandle handle,
@@ -144,6 +279,7 @@ void SceneResourceTable::updateObject(ObjectHandle handle,
     return;
   }
   resolved->get() = std::move(object);
+  advanceUploadGeneration();
 }
 
 void SceneResourceTable::updateCamera(CameraHandle handle,
@@ -153,34 +289,63 @@ void SceneResourceTable::updateCamera(CameraHandle handle,
     return;
   }
   resolved->get() = std::move(camera);
+  advanceUploadGeneration();
 }
 
 void SceneResourceTable::release(GeometryStorageHandle handle) {
+  if (!isAlive(handle)) {
+    return;
+  }
   release<GeometryStorage, GeometryStorageHandle>(m_geometryStorage, handle);
+  advanceUploadGeneration();
 }
 
 void SceneResourceTable::release(MeshHandle handle) {
+  if (!isAlive(handle)) {
+    return;
+  }
   release<MeshBuffer, MeshHandle>(m_meshes, handle);
+  advanceUploadGeneration();
 }
 
 void SceneResourceTable::release(MaterialHandle handle) {
+  if (!isAlive(handle)) {
+    return;
+  }
   release<MaterialInstance, MaterialHandle>(m_materials, handle);
+  advanceUploadGeneration();
 }
 
 void SceneResourceTable::release(TextureHandle handle) {
+  if (!isAlive(handle)) {
+    return;
+  }
   release<Texture, TextureHandle>(m_textures, handle);
+  advanceUploadGeneration();
 }
 
 void SceneResourceTable::release(LightHandle handle) {
+  if (!isAlive(handle)) {
+    return;
+  }
   release<LightBase, LightHandle>(m_lights, handle);
+  advanceUploadGeneration();
 }
 
 void SceneResourceTable::release(ObjectHandle handle) {
+  if (!isAlive(handle)) {
+    return;
+  }
   release<ObjectResource, ObjectHandle>(m_objects, handle);
+  advanceUploadGeneration();
 }
 
 void SceneResourceTable::release(CameraHandle handle) {
+  if (!isAlive(handle)) {
+    return;
+  }
   release<CameraResource, CameraHandle>(m_cameras, handle);
+  advanceUploadGeneration();
 }
 
 std::optional<std::reference_wrapper<GeometryStorage>>
@@ -396,6 +561,85 @@ RenderSceneSnapshot SceneResourceTable::buildSnapshot() const {
   }
 
   return snapshot;
+}
+
+SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
+  m_gpuVertices.clear();
+  m_gpuIndices.clear();
+  m_gpuMeshes.clear();
+  m_gpuPrimitives.clear();
+  m_gpuObjects.clear();
+  m_gpuMaterials.clear();
+
+  std::vector<u32> meshIndexToGpuRecord(m_meshes.size(), u32_max);
+
+  for (u32 i = 0; i < m_meshes.size(); ++i) {
+    const auto &entry = m_meshes[i];
+    if (entry.state != SceneResourceEntryState::Alive || !entry.resource) {
+      continue;
+    }
+
+    const auto &mesh = *entry.resource;
+    const SceneGpuMeshRecord record{
+        .vertexOffset = static_cast<u32>(m_gpuVertices.size()),
+        .indexOffset = static_cast<u32>(m_gpuIndices.size()),
+        .indexCount = mesh.getIndexCount(),
+        .geometryIndex = i,
+    };
+    appendMeshGeometryRecords(mesh, m_gpuVertices, m_gpuIndices);
+    meshIndexToGpuRecord[i] = static_cast<u32>(m_gpuMeshes.size());
+    m_gpuMeshes.push_back(record);
+  }
+
+  m_gpuMaterials.reserve(aliveCount(m_materials));
+  for (const auto &entry : m_materials) {
+    if (entry.state != SceneResourceEntryState::Alive || !entry.resource) {
+      continue;
+    }
+    m_gpuMaterials.push_back(SceneGpuMaterialRecord{});
+  }
+
+  m_gpuObjects.reserve(aliveCount(m_objects));
+  for (u32 i = 0; i < m_objects.size(); ++i) {
+    const auto &entry = m_objects[i];
+    if (entry.state != SceneResourceEntryState::Alive || !entry.resource) {
+      continue;
+    }
+
+    const auto &object = *entry.resource;
+    SceneGpuObjectRecord objectRecord;
+    objectRecord.objectToWorld = toGpuRows(object.objectToWorld);
+    objectRecord.worldToObject = toGpuRows(object.worldToObject);
+    objectRecord.boundsMin = toGpuBoundsMin(object.worldBounds);
+    objectRecord.boundsMax = toGpuBoundsMax(object.worldBounds);
+    objectRecord.meshIndex = object.mesh.index;
+    objectRecord.materialIndex = object.material.index;
+    objectRecord.visible = object.visible ? 1u : 0u;
+    objectRecord.visibilityMask = object.visibilityMask;
+    m_gpuObjects.push_back(objectRecord);
+
+    SceneGpuPrimitiveRecord primitiveRecord;
+    if (object.mesh.index < meshIndexToGpuRecord.size()) {
+      const u32 gpuMeshIndex = meshIndexToGpuRecord[object.mesh.index];
+      if (gpuMeshIndex != u32_max && gpuMeshIndex < m_gpuMeshes.size()) {
+        primitiveRecord.indexOffset = m_gpuMeshes[gpuMeshIndex].indexOffset;
+      }
+    }
+    primitiveRecord.meshIndex = object.mesh.index;
+    primitiveRecord.materialIndex = object.material.index;
+    primitiveRecord.objectIndex = i;
+    m_gpuPrimitives.push_back(primitiveRecord);
+  }
+
+  return SceneResourceTableUploadView{
+      .generation = m_generation,
+      .vertices = m_gpuVertices,
+      .indices = m_gpuIndices,
+      .meshes = m_gpuMeshes,
+      .primitives = m_gpuPrimitives,
+      .objects = m_gpuObjects,
+      .materials = m_gpuMaterials,
+  };
 }
 
 } // namespace LX_core

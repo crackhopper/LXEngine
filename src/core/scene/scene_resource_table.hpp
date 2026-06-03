@@ -3,6 +3,8 @@
 #include "core/math/bounds.hpp"
 #include "core/math/mat.hpp"
 #include "core/platform/types.hpp"
+#include "core/scene/scene_gpu_records.hpp"
+#include "core/scene/scene_resource_table_upload_view.hpp"
 #include "core/scene/visibility_mask.hpp"
 #include "core/utils/string_table.hpp"
 
@@ -165,6 +167,7 @@ public:
   [[nodiscard]] usize objectCount() const;
   [[nodiscard]] usize cameraCount() const;
   [[nodiscard]] RenderSceneSnapshot buildSnapshot() const;
+  [[nodiscard]] SceneResourceTableUploadView buildUploadView() const;
 
 private:
   template <typename Resource>
@@ -196,6 +199,8 @@ private:
   template <typename Resource>
   [[nodiscard]] usize aliveCount(const std::vector<Entry<Resource>> &entries) const;
 
+  void advanceUploadGeneration();
+
   std::vector<Entry<GeometryStorage>> m_geometryStorage;
   std::vector<Entry<MeshBuffer>> m_meshes;
   std::vector<Entry<MaterialInstance>> m_materials;
@@ -203,6 +208,13 @@ private:
   std::vector<Entry<LightBase>> m_lights;
   std::vector<Entry<ObjectResource>> m_objects;
   std::vector<Entry<CameraResource>> m_cameras;
+  u64 m_generation = 0;
+  mutable std::vector<SceneGpuVertexRecord> m_gpuVertices;
+  mutable std::vector<u32> m_gpuIndices;
+  mutable std::vector<SceneGpuMeshRecord> m_gpuMeshes;
+  mutable std::vector<SceneGpuPrimitiveRecord> m_gpuPrimitives;
+  mutable std::vector<SceneGpuObjectRecord> m_gpuObjects;
+  mutable std::vector<SceneGpuMaterialRecord> m_gpuMaterials;
 };
 
 } // namespace LX_core
