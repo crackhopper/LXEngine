@@ -1169,10 +1169,11 @@ void testRenderWorkQueueDebugOverrideUsesExplicitResourcesAndLayerMask() {
   scene->addCamera(cameraNode);
 
   RenderWorkQueue queue;
-  queue.buildRealtime(
-      *scene, Pass_Forward,
-      RenderTarget{RenderTargetDesc::offscreenColor(ImageFormat::BGRA8)},
-      {camera->get().getUBO()}, Layer_All & ~Layer_EditorOverlay);
+  queue.build(
+      RenderWorkBuildContext::realtime(*scene, {camera->get().getUBO()},
+                                       Layer_All & ~Layer_EditorOverlay),
+      Pass_Forward,
+      RenderTarget{RenderTargetDesc::offscreenColor(ImageFormat::BGRA8)});
 
   EXPECT(queue.getItems().size() == 1,
          "debug render target should render only layers allowed by override");

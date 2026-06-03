@@ -113,6 +113,12 @@ void RenderWorkQueue::build(const RenderWorkBuildContext &context,
   }
 
   const Scene &scene = context.realtimeScene();
+  if (context.hasRealtimeOverrides()) {
+    buildRealtime(scene, pass, target, context.realtimeSceneResources(),
+                  context.realtimeVisibleMask());
+    return;
+  }
+
   // REQ-009: target-filtered scene-level resources.
   auto sceneResources = scene.getSceneLevelResources(pass, target);
   VisibilityLayerMask visibleMask = scene.getCombinedCameraCullingMask(target);

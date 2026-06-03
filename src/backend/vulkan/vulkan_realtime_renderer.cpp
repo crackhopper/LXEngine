@@ -1426,9 +1426,11 @@ public:
     }
 
     LX_core::RenderWorkQueue queue;
-    queue.buildRealtime(
-        *m_scene, pass, target, std::move(sceneResources),
-        cameraComponent.getCullingMask() & ~LX_core::Layer_EditorOverlay);
+    queue.build(
+        LX_core::RenderWorkBuildContext::realtime(
+            *m_scene, std::move(sceneResources),
+            cameraComponent.getCullingMask() & ~LX_core::Layer_EditorOverlay),
+        pass, target);
     if (queue.getItems().empty()) {
       throw std::runtime_error("debug render target produced no draw items");
     }
@@ -1633,9 +1635,10 @@ public:
     }
 
     LX_core::RenderWorkQueue queue;
-    queue.buildRealtime(
-        *m_scene, LX_core::Pass_Forward, target, std::move(sceneResources),
-        outputCullingMask & ~LX_core::Layer_EditorOverlay);
+    queue.build(LX_core::RenderWorkBuildContext::realtime(
+                    *m_scene, std::move(sceneResources),
+                    outputCullingMask & ~LX_core::Layer_EditorOverlay),
+                LX_core::Pass_Forward, target);
     if (queue.getItems().empty()) {
       throw std::runtime_error("realtime profile output produced no draw items");
     }
@@ -2010,9 +2013,9 @@ private:
         m_scene->getCombinedCameraCullingMask(forwardRenderTarget);
     for (auto &pass : m_frameGraph.getPasses()) {
       if (pass.name == LX_core::Pass_DebugOverlay) {
-        pass.queue.buildRealtime(
-            *m_scene, LX_core::Pass_DebugOverlay, debugRenderTarget,
-            std::move(sceneResources), visibleMask);
+        pass.queue.build(LX_core::RenderWorkBuildContext::realtime(
+                             *m_scene, std::move(sceneResources), visibleMask),
+                         LX_core::Pass_DebugOverlay, debugRenderTarget);
         return;
       }
     }

@@ -36,12 +36,13 @@ public:
 
   void build(const RenderWorkBuildContext &context, StringID pass,
              const RenderTarget &target);
+
+private:
   void buildRealtime(
       const Scene &scene, StringID pass, const RenderTarget &target,
       std::vector<IGpuResourceSharedPtr> sceneResources,
       VisibilityLayerMask visibleMask);
 
-private:
   std::vector<RenderWorkItem> m_items;
 };
 
