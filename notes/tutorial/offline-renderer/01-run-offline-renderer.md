@@ -1,6 +1,6 @@
 # 运行离线渲染器：从 Scene Profile 到 EXR/PNG
 
-离线渲染器的第一步不是追求画面最终质量，而是确认实验管线稳定：同一份 scene 能被 editor 保存，也能被 CLI 编译成离线 IR，再通过 Vulkan compute 输出一张线性 HDR 图，并同时保存 EXR、PNG preview、metadata 和 raw readback。
+离线渲染器的第一步不是追求画面最终质量，而是确认实验管线稳定：同一份 scene 能被 editor 保存，也能被 CLI 加载进 `SceneResourceTable`，再通过 Vulkan compute 输出一张线性 HDR 图，并同时保存 EXR、PNG preview、metadata 和 raw readback。
 
 ## 构建目标
 
@@ -8,14 +8,14 @@
 
 ```bash
 cmake -S . -B build -G Ninja
-cmake --build build --target CompileShaders lxe_offline_render test_offline_render_cli test_offline_image_writer test_offline_scene_compiler test_offline_gpu_scene test_vulkan_offline_renderer -j2
-ctest --test-dir build --output-on-failure -R 'test_offline_image_writer|test_offline_scene_compiler|test_offline_gpu_scene|test_vulkan_offline_renderer|test_offline_render_cli'
+cmake --build build --target CompileShaders lxe_offline_render test_offline_render_cli test_offline_image_writer test_offline_scene_loader test_offline_gpu_scene test_vulkan_offline_renderer -j2
+ctest --test-dir build --output-on-failure -R 'test_offline_image_writer|test_offline_scene_loader|test_offline_gpu_scene|test_vulkan_offline_renderer|test_offline_render_cli'
 ```
 
 | 目标 | 验证内容 |
 |---|---|
 | `CompileShaders` | `offline_primary_ray.comp` 被编译成 `build/assets/shaders/glsl/offline_primary_ray.comp.spv` |
-| `test_offline_scene_compiler` | scene YAML 能编译成 `OfflineSceneIR` |
+| `test_offline_scene_loader` | scene YAML 能编译成 `SceneResourceTable` |
 | `test_offline_gpu_scene` | IR 能打包成 GPU buffer，并构建 BVH |
 | `test_vulkan_offline_renderer` | headless Vulkan renderer 能初始化 |
 | `test_offline_image_writer` | readback 能写成 EXR、PNG、JSON 和 raw dump |
@@ -43,7 +43,7 @@ scene:
       outputFormat: exr-png
       outDir: artifacts/offline/mvp
   offlineRender:                  # -> LX_core::offline::OfflineRenderSettings
-    integrator: primary-ray       # -> assets/shaders/glsl/offline_primary_ray.comp
+    integrator: software-compute       # -> assets/shaders/glsl/offline_primary_ray.comp
     samples: 1
     maxBounce: 1
     seed: 1
@@ -83,11 +83,11 @@ artifacts/offline/smoke.rgba32f
 |---|---|---|
 | 读取 scene | `LX_infra::scene_io::SceneDocument` | editor scene 文档 |
 | 选择 profile | `OutputProfile` + `OfflineRenderSettings` | 相机、宽高、输出目录、samples、integrator 等参数 |
-| 编译离线 IR | `LX_infra::offline::OfflineSceneCompiler` | `OfflineSceneIR` |
+| 加载离线 scene 数据 | `LX_infra::offline::OfflineSceneLoader` | `SceneResourceTable` |
 | 资产解析 | `OfflineAssetResolver` | `builtin://` / `cache://` / project path 的本地路径 |
-| Ray scene 打包 | `OfflineRaySceneBuilder` | vertex、index、mesh、primitive、object、material、camera params buffer |
-| BVH 构建 | `OfflineBvhBuilder` | `OfflineBvhNode` + 重排后的 primitive buffer |
-| Compute 执行 | `backend::offline::VulkanOfflineRenderer` | `OfflineReadbackImage` |
+| GPU records 导出 | `SceneResourceTable::buildUploadView()` | vertex、index、mesh、primitive、object、material、camera params buffer |
+| BVH 构建 | `SceneSoftwareBvh` | `SceneSoftwareBvhNode` + 重排后的 primitive buffer |
+| Compute 执行 | `software-compute` integrator | `OfflineReadbackImage` |
 | 文件输出 | `OfflineImageWriter` | `.exr` / `.png` / `.json` / `.rgba32f` |
 
 ## 和 Realtime Renderer 的边界
@@ -107,7 +107,7 @@ artifacts/offline/smoke.rgba32f
 |---|---|
 | 找不到 compute shader SPIR-V | 先跑 `cmake --build build --target CompileShaders`；CLI 会从 `build/assets/shaders/glsl/` 查找离线 compute shader |
 | 没有 Vulkan 物理设备 | 在 Linux headless 环境确认 Vulkan loader / llvmpipe / 驱动可用 |
-| 画面全黑或中心像素为 0 | 检查 scene 是否有 camera、mesh、directional light；再跑 `test_offline_scene_compiler` |
+| 画面全黑或中心像素为 0 | 检查 scene 是否有 camera、mesh、directional light；再跑 `test_offline_scene_loader` |
 | EXR 打不开 | 先看同 basename 的 `.png`；再确认我们使用支持 OpenEXR 的图像查看器 |
 | PNG 过亮或过暗 | 当前 preview 使用 exposure 1.0、ACES、gamma 2.2；EXR 不做 tone mapping |
 

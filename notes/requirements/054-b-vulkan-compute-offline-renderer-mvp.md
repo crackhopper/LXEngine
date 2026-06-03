@@ -6,7 +6,7 @@
 
 用户明确希望第一版直接基于 Vulkan 后端，而不是 CPU path tracer。目标不是只得到图片，而是借离线 renderer 反推 backend 的 headless compute、storage buffer、readback、shader/pipeline 组织，从而提升引擎底层质量。
 
-第一版不使用 Vulkan ray tracing pipeline。它先用 CPU 构建 BVH，上传到 GPU，由 compute shader 遍历 BVH 和 triangle buffer，完成 primary ray + 简单材质 + environment 的最小渲染闭环。
+第一版不使用 Vulkan ray tracing pipeline。它先用 CPU 构建 BVH，上传到 GPU，由 compute shader 遍历 BVH 和 triangle buffer，完成 camera ray + 简单材质 + environment 的最小渲染闭环。
 
 本 REQ 依赖 `REQ-054-a` 的 renderer foundation/realtime/offline 拆分。离线渲染实现必须落在 offline renderer 路径，不应继续塞进当前 realtime `VulkanRenderer` 大类。
 
@@ -14,7 +14,7 @@
 
 1. 新增 `lxe_offline_render` CLI。
 2. Headless 创建 Vulkan device，不依赖 swapchain。
-3. 从现有 `.scene.yaml` 生成 `OfflineSceneIR`。
+3. 从现有 `.scene.yaml` 生成 `SceneResourceTable`。
 4. 编译 `GpuScene` buffer 和 BVH buffer。
 5. compute shader 写入 HDR accumulation/output buffer，并完成 CPU readback。
 6. 复用当前 IBL 金属球场景作为 demo。
@@ -46,7 +46,7 @@ lxe_offline_render \
 - 该工具不得依赖 `src/demos/lxe_editor/`；scene YAML 读取必须通过 `REQ-053-a` 下沉后的 `scene_io` / offline compiler 边界。
 - 后续同类工具可按同一约定放在 `src/tools/`，例如 `lxe_asset_bake`、`lxe_scene_validate`、`lxe_image_compare`。
 
-### R2: OfflineSceneIR
+### R2: SceneResourceTable
 
 从 runtime scene 转换出 renderer-neutral IR。
 
@@ -55,10 +55,10 @@ lxe_offline_render \
 | 层 | 模块 | 职责 |
 |---|---|---|
 | `src/core/offline/` | `offline_scene.*`、`offline_render_profile.*` | renderer-neutral IR 与 profile 数据结构 |
-| `src/infra/offline/` | `offline_scene_compiler.*`、`offline_asset_resolver.*` | `scene_io` scene document / asset loader 到 IR 的转换 |
+| `src/infra/offline/` | `offline_scene_loader.*`、`offline_asset_resolver.*` | `scene_io` scene document / asset loader 到 IR 的转换 |
 | `src/backend/vulkan/offline/` | `vulkan_offline_renderer.*`、`gpu_scene_builder.*`、`compute_bvh_builder.*` | Vulkan GpuScene、BVH、compute dispatch |
 
-`OfflineSceneIR` 不应放在 `src/demos/lxe_editor/`。editor 可以使用它，但不能拥有它；CLI 也不能反向依赖 editor demo 目录。MVP 主路径是 `.scene.yaml -> scene_io document -> OfflineSceneIR`，不要求先构建 editor runtime `Scene`。
+`SceneResourceTable` 不应放在 `src/demos/lxe_editor/`。editor 可以使用它，但不能拥有它；CLI 也不能反向依赖 editor demo 目录。MVP 主路径是 `.scene.yaml -> scene_io document -> SceneResourceTable`，不要求先构建 editor runtime `Scene`。
 
 首版至少包含：
 
@@ -74,18 +74,18 @@ lxe_offline_render \
 
 首版不支持 skeleton/skinning。
 
-OfflineSceneIR 必须保留 mesh + instance transform 的关系。MVP 可以在
+SceneResourceTable 必须保留 mesh + instance transform 的关系。MVP 可以在
 `GpuSceneBuilder` 阶段把 instance 展平为 world-space triangle / BVH buffer，
-但不能让 `OfflineSceneIR` 一开始就丢失 mesh、instance、material 之间的语义。
+但不能让 `SceneResourceTable` 一开始就丢失 mesh、instance、material 之间的语义。
 这样后续支持实例化、材质槽、bake target 和 editor 对比时仍有清晰的数据边界。
 
-### R2.1: OfflineMaterialIR
+### R2.1: MaterialInstance material parameters
 
 离线 renderer 不直接消费 realtime `MaterialInstance`、pipeline key、descriptor set
 或 shader variant。通用材质输入必须先转换成 renderer-neutral 的
-`OfflineMaterialIR`。
+`MaterialInstance material parameters`。
 
-第一版 `OfflineMaterialIR` 至少包含：
+第一版 `MaterialInstance material parameters` 至少包含：
 
 | 字段 | 含义 |
 |---|---|
@@ -123,7 +123,7 @@ OfflineSceneIR 必须保留 mesh + instance transform 的关系。MVP 可以在
 - buffer layout 在 C++ 和 GLSL 之间有稳定合同。
 - 使用 `std430` 或明确对齐规则。
 - 测试覆盖 CPU side struct size/alignment 与 shader 预期。
-- `GpuSceneBuilder` 可以为了 MVP 将 `OfflineSceneIR` 的 mesh instance 展平到
+- `GpuSceneBuilder` 可以为了 MVP 将 `SceneResourceTable` 的 mesh instance 展平到
   triangle/BVH buffer，但必须保留 object/material id，方便 debug AOV 和后续
   bake 输出定位。
 - albedo 纹理使用固定小上限 descriptor array，例如 32 或 64 张 texture。
@@ -160,7 +160,7 @@ MVP 明确不实现双层 BLAS/TLAS。首版只要求 CPU 构建 global triangle
 
 首版光照：
 
-- primary ray
+- camera ray
 - miss ray 采样 environment / skybox
 - 至少支持一个 scene `light.kind: Directional`，作为太阳或主光源
 - hit point 对 directional light 做直接光评估
@@ -205,8 +205,8 @@ MVP sampling 边界：
 | 模块 | 职责 |
 |---|---|
 | `OfflineRenderJob` | 输入参数、执行状态、输出路径 |
-| `OfflineSceneCompiler` | scene_io scene document -> OfflineSceneIR |
-| `GpuSceneBuilder` | OfflineSceneIR -> GPU buffers |
+| `OfflineSceneLoader` | scene_io scene document -> SceneResourceTable |
+| `GpuSceneBuilder` | SceneResourceTable -> GPU buffers |
 | `ComputeBvhBuilder` | CPU BVH -> GPU BVH buffer；MVP 可实现 global triangle BVH，但接口预留 BLAS/TLAS |
 | `VulkanOfflineRenderer` | headless Vulkan compute dispatch，基于 `REQ-054-a` 的 shared foundation |
 | `OfflineReadback` | 将 compute 输出 buffer / storage image read back 到 CPU linear float buffer；正式文件写出交给 `REQ-055-a` |
@@ -216,10 +216,10 @@ MVP sampling 边界：
 覆盖：
 
 - CLI 参数解析。
-- `ibl_metal_sphere.scene.yaml` 能编译成 OfflineSceneIR。
+- `ibl_metal_sphere.scene.yaml` 能编译成 SceneResourceTable。
 - builtin sphere/plane 能转换为 triangle 数据。
-- OfflineSceneIR 保留 mesh + instance + material 关系。
-- albedo/baseColor 纹理能进入 OfflineMaterialIR 并影响 GPU 输出颜色。
+- SceneResourceTable 保留 mesh + instance + material 关系。
+- albedo/baseColor 纹理能进入 MaterialInstance material parameters 并影响 GPU 输出颜色。
 - GpuSceneBuilder 能把 instance transform 正确应用到 BVH/triangle buffer。
 - BVH hit 测试可命中中心球。
 - headless compute dispatch 后 output buffer 非空。

@@ -1133,10 +1133,10 @@ Set absent texture indices to `0xffffffffu`, PBR flags to `0`, and shading model
 Run:
 
 ```bash
-ninja -C build CompileShaders test_shader_compiler test_offline_gpu_scene test_offline_scene_compiler
+ninja -C build CompileShaders test_shader_compiler test_offline_gpu_scene test_offline_scene_loader
 ./build/src/test/test_shader_compiler assets/shaders/glsl
 ./build/src/test/test_offline_gpu_scene
-./build/src/test/test_offline_scene_compiler
+./build/src/test/test_offline_scene_loader
 ```
 
 Expected: offline compute shader compiles through common modules and offline scene tests pass.
@@ -1144,7 +1144,7 @@ Expected: offline compute shader compiles through common modules and offline sce
 - [ ] **Step 10: Commit**
 
 ```bash
-git add assets/shaders/glsl/common/scene assets/shaders/glsl/common/ray assets/shaders/glsl/offline src/infra src/core src/test/integration/test_shader_compiler.cpp src/test/integration/test_offline_gpu_scene.cpp src/test/integration/test_offline_scene_compiler.cpp
+git add assets/shaders/glsl/common/scene assets/shaders/glsl/common/ray assets/shaders/glsl/offline src/infra src/core src/test/integration/test_shader_compiler.cpp src/test/integration/test_offline_gpu_scene.cpp src/test/integration/test_offline_scene_loader.cpp
 git commit -m "Share scene SSBO records with offline ray shader"
 ```
 

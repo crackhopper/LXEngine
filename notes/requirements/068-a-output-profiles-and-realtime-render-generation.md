@@ -54,7 +54,7 @@ scene:
         farPlane: 120.0
 
   offlineRender:
-    integrator: primary-ray
+    integrator: software-compute
     samples: 1
     maxBounce: 1
     seed: 1
@@ -84,7 +84,7 @@ scene:
 
 | Field | Meaning |
 |---|---|
-| `integrator` | 离线算法，例如 `primary-ray` / `path-tracing` |
+| `integrator` | 离线算法，例如 `software-compute` / `path-tracing` |
 | `samples` | 每像素采样数 |
 | `maxBounce` | path tracing 最大反弹次数，替代旧 `maxDepth` |
 | `seed` | 随机种子 |
@@ -295,7 +295,7 @@ realtime-render run preview
 ```yaml
 scene:
   offlineRender:
-    integrator: primary-ray
+    integrator: software-compute
     samples: 1
     maxBounce: 1
     seed: 1

@@ -29,7 +29,7 @@ Reflection probe 可视为一个放置在场景中的全向相机：
 
 1. 定义 reflection probe bake 的 profile schema。
 2. 定义 cubemap face 渲染、输出和 metadata 约定。
-3. 明确它如何复用 `OfflineSceneIR`、`GpuScene`、path tracing integrator 和 EXR writer。
+3. 明确它如何复用 `SceneResourceTable`、`GpuScene`、path tracing integrator 和 EXR writer。
 4. 明确未来如何回灌实时 IBL / reflection probe。
 
 ## 计划需求

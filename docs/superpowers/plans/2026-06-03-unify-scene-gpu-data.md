@@ -869,7 +869,7 @@ git commit -m "test: preserve realtime offline comparison"
 - Modify: `notes/subsystems/vulkan-backend.md`
 - Modify: `notes/concepts/material/shader.md` if shader binding docs mention the old offline path
 
-- [ ] **Step 1: Write break-change note**
+- [x] **Step 1: Write break-change note**
 
 Create `notes/requirements/2026-06-03-unified-scene-gpu-data-breaks.md`:
 
@@ -898,17 +898,17 @@ This note records accepted break changes from the cleanup that made `SceneResour
 - Realtime/offline comparison remains the output regression.
 ```
 
-- [ ] **Step 2: Update subsystem notes**
+- [x] **Step 2: Update subsystem notes**
 
 Update the scene and Vulkan backend notes to say that `SceneResourceTable` is the scene GPU data contract, `SceneSoftwareBvh` is a derived acceleration structure, and `VulkanOfflineRenderer` coordinates explicit integrators.
 
-- [ ] **Step 3: Run documentation consistency search**
+- [x] **Step 3: Run documentation consistency search**
 
 Run: `rg -n "OfflineSceneIR|OfflineRayScene|OfflineSceneCompiler|primary-ray" notes docs src`
 
 Expected: matches only in this plan, the design spec, and the break-change note. No active source or subsystem note should describe the removed path as current behavior.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add notes/requirements/2026-06-03-unified-scene-gpu-data-breaks.md notes/subsystems/scene.md notes/subsystems/vulkan-backend.md notes/concepts/material/shader.md

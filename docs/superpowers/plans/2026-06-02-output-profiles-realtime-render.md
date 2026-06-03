@@ -16,7 +16,7 @@
 
 - Modify `src/core/offline/offline_render_profile.hpp`: replace `OfflineRenderProfile` with `OutputProfile`, `OfflineRenderSettings`, and resolver result types.
 - Modify `src/core/offline/offline_render_profile.cpp`: implement defaults, output profile resolution, and offline settings overrides.
-- Modify `src/core/offline/offline_scene.hpp`: change `OfflineRenderJob.profile` to output + offline settings.
+- Modify `src/core/offline/offline_render_job.hpp`: change `OfflineRenderJob.profile` to output + offline settings.
 - Modify `src/infra/scene_io/scene_document.hpp`: expose `outputProfiles()` and `offlineRenderSettings()`.
 - Modify `src/infra/scene_io/scene_document.cpp`: parse/save new YAML schema; fail fast on old `scene.offlineRender.profiles`.
 
@@ -234,7 +234,7 @@ struct OutputProfile final {
 };
 
 struct OfflineRenderSettings final {
-  std::string integrator = "primary-ray";
+  std::string integrator = "software-compute";
   u32 samples = 1;
   u32 maxBounce = 1;
   u32 seed = 1;
@@ -408,7 +408,7 @@ void testOutputProfilesRoundTrip() {
          "        farPlane: 80.0\n"
          "        focusDistance: 5.0\n"
          "  offlineRender:\n"
-         "    integrator: primary-ray\n"
+         "    integrator: software-compute\n"
          "    samples: 1\n"
          "    maxBounce: 1\n"
          "    seed: 7\n"
@@ -556,7 +556,7 @@ defaultOutputProfile: preview
 outputProfiles:
   preview: ...
 offlineRender:
-  integrator: primary-ray
+  integrator: software-compute
   samples: 1
   maxBounce: 1
   seed: 1
@@ -574,7 +574,7 @@ offlineRender:
   profiles:
     preview:
       backend: vulkan-compute
-      integrator: primary-ray
+      integrator: software-compute
       width: 512
 ```
 
@@ -602,7 +602,7 @@ outputProfiles:
     outputFormat: exr-png
     outDir: artifacts/offline/reference
 offlineRender:
-  integrator: primary-ray
+  integrator: software-compute
   samples: 1
   maxBounce: 1
   seed: 1
@@ -643,7 +643,7 @@ git commit -m "migrate scenes to output profiles"
 ## Task 3: Update Offline CLI and Offline Render Job
 
 **Files:**
-- Modify: `src/core/offline/offline_scene.hpp`
+- Modify: `src/core/offline/offline_render_job.hpp`
 - Modify: `src/tools/lxe_offline_render/offline_render_cli.hpp`
 - Modify: `src/tools/lxe_offline_render/offline_render_cli.cpp`
 - Modify: `src/tools/lxe_offline_render/main.cpp`
@@ -732,7 +732,7 @@ Remove `--camera` parsing from offline CLI. Do not add a replacement camera over
 
 - [ ] **Step 5: Change `OfflineRenderJob` fields**
 
-In `src/core/offline/offline_scene.hpp`, replace:
+In `src/core/offline/offline_render_job.hpp`, replace:
 
 ```cpp
 OfflineRenderProfile profile;
@@ -762,7 +762,7 @@ const auto resolved =
                                                    args.overrides);
 
 LX_infra::offline::OfflineAssetResolver resolver(args.scenePath);
-LX_infra::offline::OfflineSceneCompiler compiler(resolver);
+LX_infra::offline::OfflineSceneLoader compiler(resolver);
 auto scene = compiler.compile(document, resolved.output.cameraPath);
 
 LX_core::offline::OfflineRenderJob job;
@@ -822,9 +822,9 @@ and set output request job fields from `job.output` / `job.offline`.
 Run:
 
 ```bash
-cmake --build build --target CompileShaders test_offline_render_cli test_offline_scene_compiler test_offline_gpu_scene test_vulkan_offline_renderer lxe_offline_render
+cmake --build build --target CompileShaders test_offline_render_cli test_offline_scene_loader test_offline_gpu_scene test_vulkan_offline_renderer lxe_offline_render
 ./build/src/test/test_offline_render_cli
-./build/src/test/test_offline_scene_compiler
+./build/src/test/test_offline_scene_loader
 ./build/src/test/test_offline_gpu_scene
 ./build/src/test/test_vulkan_offline_renderer
 ./build/src/tools/lxe_offline_render/lxe_offline_render \
@@ -843,7 +843,7 @@ Expected: all tests pass and CLI prints `lxe_offline_render completed`.
 - [ ] **Step 10: Commit**
 
 ```bash
-git add src/core/offline/offline_scene.hpp \
+git add src/core/offline/offline_render_job.hpp \
   src/core/offline/offline_render_profile.* \
   src/tools/lxe_offline_render \
   src/backend/vulkan/offline/vulkan_offline_renderer.cpp \
@@ -977,7 +977,7 @@ Create `src/infra/image/rgba_image_io.hpp`:
 #pragma once
 
 #include "core/image/tone_mapping.hpp"
-#include "core/offline/offline_scene.hpp"
+#include "core/offline/offline_render_job.hpp"
 
 #include <filesystem>
 
@@ -1475,7 +1475,7 @@ Create `src/demos/lxe_editor/realtime_render_profile.hpp`:
 #pragma once
 
 #include "core/offline/offline_render_profile.hpp"
-#include "core/offline/offline_scene.hpp"
+#include "core/offline/offline_render_job.hpp"
 
 #include <filesystem>
 #include <string>
@@ -1940,7 +1940,7 @@ scene:
         farPlane: 80.0
         focusDistance: 5.0
   offlineRender:
-    integrator: primary-ray
+    integrator: software-compute
     samples: 1
     maxBounce: 1
     seed: 1
@@ -2083,7 +2083,7 @@ git commit -m "add realtime offline exr comparison tool"
 - Modify: `assets/shaders/glsl/offline_primary_ray.comp`
 - Modify: realtime lighting shader files under `assets/shaders/glsl/`
 - Create: `assets/shaders/glsl/common/direct_lighting.glsl`
-- Modify: `src/core/offline/offline_ray_scene.*` if material records need stable defaults
+- Modify: `src/core/offline/scene_resource_table.* + software_bvh.*` if material records need stable defaults
 
 - [ ] **Step 1: Create shared direct lighting include**
 
@@ -2110,7 +2110,7 @@ In `assets/shaders/glsl/offline_primary_ray.comp`, include and use:
 #include "common/direct_lighting.glsl"
 ```
 
-Replace primary-ray direct diffuse term with:
+Replace software-compute direct diffuse term with:
 
 ```glsl
 vec3 direct = lxLambertDirect(material.baseColor.rgb, hitNormal, lightDir,

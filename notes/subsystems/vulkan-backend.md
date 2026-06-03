@@ -16,6 +16,7 @@
 - `VulkanResourceManager` 负责 CPU 资源镜像与 pipeline cache
 - `VulkanCommandBuffer` 在 draw 阶段汇合 pipeline、descriptor、vertex/index buffer 和 push constants
 - `VulkanRendererImpl` 现在只是 `VulkanRenderer` 的私有实现对象，renderer 继承边界由 `VulkanRenderer` 对外承担
+- `backend::offline::VulkanOfflineRenderer` 是离线路径协调入口：它按 `OfflineRenderSettings.integrator` 选择显式 integrator，当前可用实现是 `software-compute`
 
 ## 当前实现最重要的约束
 
@@ -27,6 +28,7 @@
 - 物理设备选择现在按“先判定功能是否满足，再按设备类型偏好排序”处理；独显优先，但集显/虚拟 GPU 只要满足队列、扩展和 surface 要求也允许启动
 - descriptor 路由按 binding name，不按硬编码 slot 枚举
 - scene-level UBO 已经在 queue 构建阶段合并好，backend 按 `RenderingItem` 中的资源录制 descriptor
+- 离线 compute 路径上传 `SceneResourceTableUploadView` 导出的统一 `SceneGpu*` SSBO，并把 `SceneSoftwareBvh` 作为派生加速 buffer；backend 不创建第二份 scene IR
 - `VulkanResourceManager` 不直接持有旧式 pipeline map，而是委托给 `PipelineCache`
 - `VulkanResourceManager` 现在按 `IGpuResource::getBackendCacheIdentity()` 做 cache key，资源身份来自显式 backend cache identity
 - GPU 资源缓存带短暂闲置宽限期：资源漏同步一帧不会立刻销毁重建，但长期不用仍会被 `collectGarbage()` 回收
@@ -89,6 +91,17 @@ render debug dump shadow.cascade0 data/debug/dump/<name>.bmp
 
 这样做的结果是：CPU 侧的 pick / project 公式继续使用“上正下负”的 OpenGL 风格 NDC，GPU 侧由 Vulkan projection matrix 完成后端适配；viewport 不再插入第二次镜像。
 
+## 离线 Integrator 边界
+
+离线 renderer 像一台无窗口实验设备：入口仍在 Vulkan backend，但场景数据来自 core 层统一资源表。`VulkanOfflineRenderer::render(job)` 只做显式 integrator 选择；具体执行由 `OfflineIntegrator` 实现承担。
+
+| Integrator | 当前职责 | 数据入口 |
+|---|---|---|
+| `software-compute` | 初始化 headless `VulkanDevice`，创建 compute pipeline，上传 SSBO，dispatch `offline_primary_ray.comp`，readback `OfflineReadbackImage` | `SceneResourceTableUploadView` + `SceneSoftwareBvh` |
+| `hardware-ray-tracing` | 未实现；未来应创建 BLAS/TLAS/SBT 并复用同一份 scene GPU 记录 | `SceneResourceTableUploadView` |
+
+`software-compute` 的 descriptor contract 使用统一 block 名：`SceneVertices`、`SceneIndices`、`SceneMeshes`、`ScenePrimitives`、`SceneObjects`、`SceneMaterials`、`SceneBvhNodes`、`SceneFrameParams` 和 `OutputPixels`。这些名字由 shader reflection 测试和 integrator 的 descriptor validation 同时保护。
+
 ## 从哪里进入源码
 
 - 顶层：`src/backend/vulkan/vulkan_renderer.cpp`
@@ -96,3 +109,4 @@ render debug dump shadow.cascade0 data/debug/dump/<name>.bmp
 - pipeline：`src/backend/vulkan/details/pipelines/`
 - descriptor：`src/backend/vulkan/details/descriptors/`
 - draw 命令：`src/backend/vulkan/details/commands/`
+- offline integrator：`src/backend/vulkan/offline/software_compute_offline_integrator.cpp`

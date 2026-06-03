@@ -92,9 +92,9 @@ IBL bake shader 像把一张全景灯光照片加工成几种棚灯工具：先�
 
 | Shader | 文件 | 用途 | 关键合同 |
 |---|---|---|---|
-| `offline_primary_ray` | `offline_primary_ray.comp` | 离线 renderer 的 primary ray compute shader；遍历 BVH、求三角形交点、做直接光/环境/简化高光着色，写入输出像素 buffer | set 0 binding 0..8 的 SSBO 合同 |
+| `offline_primary_ray` | `offline_primary_ray.comp` | 离线 renderer 的 camera ray compute shader；遍历 BVH、求三角形交点、做直接光/环境/简化高光着色，写入输出像素 buffer | set 0 binding 0..8 的 SSBO 合同 |
 
-`offline_primary_ray.comp` 不走 graphics pipeline。它用 `local_size_x = 8, local_size_y = 8` 分块调度，每个 invocation 对应一个像素采样。C++ 侧的 `VulkanOfflineRenderer` 会反射 `.comp.spv`，并校验九个 binding 是否存在：`Vertices`、`Indices`、`Meshes`、`Primitives`、`Objects`、`Materials`、`BvhNodes`、`ParamsBuffer`、`OutputBuffer`。这里的合同比普通材质更像数据表 schema：字段顺序和 buffer 布局必须和 `core/offline` 里的 CPU 结构保持一致。
+`offline_primary_ray.comp` 不走 graphics pipeline。它用 `local_size_x = 8, local_size_y = 8` 分块调度，每个 invocation 对应一个像素采样。C++ 侧的 `software-compute` integrator 会反射 `.comp.spv`，并校验九个 binding 是否存在：`SceneVertices`、`SceneIndices`、`SceneMeshes`、`ScenePrimitives`、`SceneObjects`、`SceneMaterials`、`SceneBvhNodes`、`SceneFrameParams`、`OutputPixels`。这里的合同比普通材质更像数据表 schema：字段顺序和 buffer 布局必须和 `core/scene` 里的 `SceneGpu*` CPU 结构保持一致。
 
 ## 共享 GLSL 片段
 

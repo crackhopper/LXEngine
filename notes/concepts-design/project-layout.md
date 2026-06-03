@@ -37,7 +37,7 @@ LXEngine/
 | `asset/` | `Mesh`、`Texture`、`MaterialTemplate`、`MaterialInstance`、`Shader`、`Skeleton` |
 | `scene/` | `Scene`、`SceneNode`、components、camera、light、controller |
 | `frame_graph/` | `FrameGraph`、`FramePass`、`RenderQueue`、`RenderTarget`、read/write resource 声明 |
-| `offline/` | `OfflineRenderProfile`、`OfflineSceneIR`、离线 readback image |
+| `offline/` | `OfflineRenderProfile`、`SceneResourceTable`、离线 readback image |
 | `pipeline/` | `PipelineKey`、`PipelineBuildDesc` |
 | `rhi/` | renderer 接口、GPU resource、buffer、vertex layout |
 | `gpu/` | `EngineLoop` |
@@ -51,7 +51,7 @@ LXEngine/
 | `build_info/` | C++ 二进制 BuildInfo 字符串和 JSON，供 editor、offline renderer、输出 metadata 复用 |
 | `material_loader/` | `.material` YAML loader |
 | `mesh_loader/` | OBJ / glTF loader |
-| `offline/` | scene 文档到 `OfflineSceneIR` 的 compiler、cache/project URI resolver |
+| `offline/` | scene 文档到 `SceneResourceTable` 的 compiler、cache/project URI resolver |
 | `scene_io/` | `.scene.yaml` 文档读写，供 editor 与 offline CLI 共用 |
 | `shader_compiler/` | shaderc 编译与 SPIRV-Cross 反射 |
 | `texture_loader/` | stb image 纹理加载与 placeholder textures |

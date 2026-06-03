@@ -23,6 +23,8 @@
 - `scene root`：`Scene` 内部持有一个真实的显式 root 节点；`findByPath("/")` 返回它，真实 top-level 节点作为 root 的 children，路径仍然形如 `/world`。
 - `ValidatedRenderablePassData`：`pass -> validated entry` 缓存项，保存 queue 需要的稳定结构结果。
 - `RenderingItem`：一次 draw 的完整上下文，字段仍是 `shaderInfo`、`material`、`drawData`、`vertexBuffer`、`indexBuffer`、`descriptorResources`、`pass`、`pipelineKey`。
+- `SceneResourceTable`：scene 级 GPU 数据合同，统一持有 mesh、material、object、camera、light 等资源 handle，并通过 `buildUploadView()` 导出 `SceneGpu*` 记录供 realtime/bindless/offline 路径消费。
+- `SceneSoftwareBvh`：从 `SceneResourceTableUploadView` 派生的软件 ray tracing 加速结构，只保存 BVH 节点和 primitive 重排引用，不拥有第二份 scene 数据。
 - `visibility mask`：`SceneNode` 自身携带的 layer bitmask；camera 持有独立 `cullingMask`，queue 构建时做交集判断。
 
 ## 典型数据流
@@ -35,6 +37,7 @@
 6. `RenderQueue::buildFromScene(scene, pass, target)` 先取一次 `scene.getSceneLevelResources(pass, target)`。
 7. queue 先收集当前 `target` 下所有匹配 camera 的 `cullingMask` 并做按位 OR；renderable 只有在 `visibilityMask & combinedCameraMask != 0` 时才继续参与当前 queue。
 8. queue 把 scene-level 资源追加到 descriptor 列表末尾，生成 `RenderingItem` 并排序。
+9. 需要 SSBO/bindless/offline 数据时，调用方从 `SceneResourceTable::buildUploadView()` 取得只读上传视图；软件 BVH、离线 compute integrator 和后续硬件 RT adapter 都从这份视图派生数据。
 
 ## 关键约束
 
@@ -74,6 +77,8 @@
 - `Scene` 构造时仍会补一个默认 directional light；camera 由调用方显式创建并挂到 scene root 下。节点一旦通过 `addRenderable()` / `addCamera()` 挂进 scene，也会拿到一个弱 back-reference，用来支持 shared material 重验证传播。
 - `src/core/scene/object.cpp` 里的 fatal 文本现在会直接带上缺失的 input 名字，例如 `missing vertex input 'inUV' at location 2`，便于把 forward variant 失败定位到具体 mesh contract。
 - `src/test/integration/test_scene_node_validation.cpp` 已经把 `missing inColor / inUV / inNormal / inTangent / inBoneIDs / inBoneWeights / Skeleton` 这些 forward-path 失败都跑成子进程死亡测试，同时覆盖了“可选 sampler 缺失不阻塞校验”的回归用例。
+- `SceneResourceTableUploadView` 是只读上传视图，不是新的 owner。它的 vertex/index/mesh/primitive/object/material/camera 记录来自 `SceneResourceTable` 当前 generation；如果资源 handle 已释放或 generation 不匹配，table 会在构建视图时跳过或拒绝 stale 依赖。
+- `SceneSoftwareBvh` 只构建加速结构。它可以为了遍历效率重排 primitive 引用，但不能复制 material/object/mesh 语义；shader 仍通过 `SceneGpuPrimitiveRecord` 回到统一 scene 记录。
 
 ## lxe_editor 场景工作流
 

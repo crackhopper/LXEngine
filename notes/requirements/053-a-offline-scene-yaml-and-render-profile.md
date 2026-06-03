@@ -29,7 +29,7 @@ scene:
     profiles:
       preview:
         backend: vulkan-compute
-        integrator: primary-ray
+        integrator: software-compute
         width: 512
         height: 512
         samples: 1
@@ -38,7 +38,7 @@ scene:
         outputFormat: exr-png
       mvp:
         backend: vulkan-compute
-        integrator: primary-ray
+        integrator: software-compute
         width: 1024
         height: 576
         samples: 4
@@ -61,7 +61,7 @@ scene:
 | 字段 | 含义 |
 |---|---|
 | `backend` | `vulkan-compute` |
-| `integrator` | `primary-ray`，后续扩展 `path-tracing` / `probe-bake` |
+| `integrator` | `software-compute`，后续扩展 `path-tracing` / `probe-bake` |
 | `width` / `height` | 输出分辨率 |
 | `samples` | 每像素 sample 数 |
 | `maxDepth` | 最大路径深度，MVP 可固定为 1 |
@@ -74,10 +74,10 @@ profile 数据结构归 `src/core/offline/offline_render_profile.*` 管理。`sc
 offline compiler 首版主路径：
 
 ```text
-.scene.yaml -> scene_io scene document -> OfflineSceneIR
+.scene.yaml -> scene_io scene document -> SceneResourceTable
 ```
 
-首版不要求先构建 editor runtime `Scene`。后续可以增加 runtime `Scene -> OfflineSceneIR`
+首版不要求先构建 editor runtime `Scene`。后续可以增加 runtime `Scene -> SceneResourceTable`
 辅助路径，但不能作为首版工具链前置。
 
 profile 分层约定：
@@ -251,7 +251,7 @@ scene YAML IO 下沉到更干净的模块。
 - `src/tools/lxe_offline_render/` 不得依赖 `src/demos/lxe_editor/`。
 - editor 与 offline CLI 共同依赖 `scene_io`。
 - editor-specific 字段或行为不得污染 offline scene parser。
-- `OfflineSceneCompiler` 首版从 `scene_io` scene document 编译 `OfflineSceneIR`，不依赖 editor runtime `SceneRuntime`。
+- `OfflineSceneLoader` 首版从 `scene_io` scene document 编译 `SceneResourceTable`，不依赖 editor runtime `SceneRuntime`。
 - 迁移后现有 editor scene save/load 行为保持不变。
 - 不允许为了快速 MVP 复制一份 scene YAML parser 到 tools。
 

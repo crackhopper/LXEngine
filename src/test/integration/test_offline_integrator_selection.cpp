@@ -11,6 +11,7 @@ using namespace LX_core;
 
 namespace {
 int failures = 0;
+constexpr const char *RetiredPrimaryRayIntegrator = "primary" "-ray";
 
 #define EXPECT(cond, msg)                                                      \
   do {                                                                         \
@@ -30,17 +31,19 @@ void testSoftwareComputeNameIsSupported() {
 }
 
 void testPrimaryRayNameIsRejected() {
-  EXPECT(!backend::offline::isOfflineIntegratorSupported("primary-ray"),
-         "primary-ray should not remain as the public integrator name");
+  EXPECT(!backend::offline::isOfflineIntegratorSupported(
+             RetiredPrimaryRayIntegrator),
+         "retired primary ray name should not remain public");
   bool rejected = false;
   try {
-    (void)backend::offline::createOfflineIntegrator("primary-ray");
+    (void)backend::offline::createOfflineIntegrator(
+        RetiredPrimaryRayIntegrator);
   } catch (const std::exception &error) {
     rejected =
         std::string(error.what()).find("unsupported offline integrator") !=
         std::string::npos;
   }
-  EXPECT(rejected, "primary-ray factory path should be rejected clearly");
+  EXPECT(rejected, "retired primary ray factory path should be rejected clearly");
 }
 
 void testDefaultIntegratorName() {

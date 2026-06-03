@@ -1,19 +1,20 @@
 # Offline Renderer：把场景送进离线实验室
 
-Offline renderer 像一间独立的渲染实验室：editor 和 realtime renderer 负责搭景、调材质、保存场景；offline renderer 读取同一份 scene，把它编译成更适合离线计算的数据，再用 Vulkan compute 跑一个可替换的 integrator。
+Offline renderer 像一间独立的渲染实验室：editor 和 realtime renderer 负责搭景、调材质、保存场景；offline renderer 读取同一份 scene，把它加载进统一的 `SceneResourceTable`，再用 Vulkan compute 跑一个可替换的 integrator。
 
-当前实现已经能从 `assets/scenes/ibl_metal_sphere.scene.yaml` 读取相机、几何、材质、方向光和环境配置，构建 CPU BVH，上传到 headless Vulkan compute pipeline，并把同一份线性 HDR readback 写成 EXR、tone-mapped PNG、JSON metadata 和 `.rgba32f` 调试图。它还不是完整 path tracer，但它已经把“场景文件 → 离线 IR → GPU buffer → compute shader → readback → 输出文件”的主链路打通了。
+当前实现已经能从 `assets/scenes/ibl_metal_sphere.scene.yaml` 读取相机、几何、材质、方向光和环境配置，构建 CPU BVH，上传到 headless Vulkan compute pipeline，并把同一份线性 HDR readback 写成 EXR、tone-mapped PNG、JSON metadata 和 `.rgba32f` 调试图。它还不是完整 path tracer，但它已经把“场景文件 → SceneResourceTable → GPU buffer → compute shader → readback → 输出文件”的主链路打通了。
 
 ## 核心对象
 
 | 对象 | 当前角色 | 实验室类比 |
 |---|---|---|
 | `scene.offlineRender` | 在 scene YAML 里声明离线 profile | 实验参数单 |
-| `OfflineSceneCompiler` | 把 editor scene 文档编译成离线 IR | 把布景清单整理成实验输入 |
-| `OfflineSceneIR` | 离线渲染器消费的 CPU 场景表示 | 标准化样品 |
-| `OfflineRaySceneBuilder` | 把 IR 注册到共享资源表，再导出 indexed ray buffers | 装入实验仪器的托盘 |
-| `OfflineBvhBuilder` | 基于 primitive / vertex / index 关系构建 BVH | 空间索引目录 |
-| `backend::offline::VulkanOfflineRenderer` | headless Vulkan compute 执行器 | 实验仪器本体 |
+| `OfflineSceneLoader` | 把 editor scene 文档加载进 `SceneResourceTable` | 把布景清单整理成标准样品 |
+| `SceneResourceTable` | 离线、实时和 bindless 共用的 scene GPU 数据合同 | 标准化样品 |
+| `SceneResourceTableUploadView` | 导出 indexed GPU records | 装入实验仪器的托盘 |
+| `SceneSoftwareBvh` | 基于 primitive / vertex / index / object 关系构建 BVH | 空间索引目录 |
+| `backend::offline::VulkanOfflineRenderer` | 选择显式 offline integrator | 实验调度台 |
+| `software-compute` | headless Vulkan compute integrator | 实验仪器本体 |
 | `offline_primary_ray.comp` | 当前 integrator shader | 第一版实验程序 |
 | `OfflineImageWriter` | 写出 EXR / PNG / JSON / raw dump | 实验记录员 |
 
@@ -35,7 +36,7 @@ Offline renderer 像一间独立的渲染实验室：editor 和 realtime rendere
 | 环境光 | 部分可用 | 当前 shader 使用程序化环境色；HDR 纹理采样仍在后续阶段 |
 | 材质 | 部分可用 | 支持 baseColor、metallic、roughness、emissive 的打包路径 |
 | 输出文件 | 可用 | 当前 CLI 写 `.exr`、`.png`、`.json` 和 `.rgba32f` |
-| 多 bounce path tracing | 未实现 | 当前 shader 是 primary-ray + 直接光 + 简单环境反射 |
+| 多 bounce path tracing | 未实现 | 当前 shader 是 software-compute + 直接光 + 简单环境反射 |
 
 ## 继续阅读
 

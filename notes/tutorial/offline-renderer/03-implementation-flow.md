@@ -1,6 +1,6 @@
 # Offline Renderer 实现结构：从 Scene 到 Image Writer
 
-Offline renderer 像一条离线实验流水线：editor 产出场景说明书，compiler 把说明书整理成标准样品，ray scene builder 把样品装进共享资源表和 indexed buffer，Vulkan compute 执行实验，image writer 把结果保存成可复现记录。
+Offline renderer 像一条离线实验流水线：editor 产出场景说明书，loader 把说明书整理进 `SceneResourceTable`，upload view 把样品装进 indexed buffer，Vulkan compute 执行实验，image writer 把结果保存成可复现记录。
 
 ## 总体流水线
 
@@ -9,13 +9,13 @@ Offline renderer 像一条离线实验流水线：editor 产出场景说明书�
 | CLI 参数 | `src/tools/lxe_offline_render/offline_render_cli.*` | `--scene` / `--profile` / overrides | `OfflineRenderCliOptions` |
 | Scene 读取 | `src/infra/scene_io/scene_document.*` | `.scene.yaml` | `SceneDocument` |
 | Profile 选择 | `src/core/offline/offline_render_profile.*` | `scene.outputProfiles` + `scene.offlineRender` + CLI overrides | `ResolvedRenderProfile` |
-| IR 编译 | `src/infra/offline/offline_scene_compiler.*` | `SceneDocument` | `OfflineSceneIR` |
-| Ray scene 打包 | `src/core/offline/offline_ray_scene.*` | `OfflineSceneIR` + `SceneResourceTable` snapshot | vertex/index/mesh/primitive/object/material/params buffers |
-| BVH 构建 | `src/core/offline/offline_ray_scene.*` | primitive buffer + shared vertex/index | `OfflineBvhNode` + reordered primitives |
-| Compute 执行 | `src/backend/vulkan/offline/vulkan_offline_renderer.*` | GPU buffers + shader | `OfflineReadbackImage` |
+| Scene 加载 | `src/infra/offline/offline_scene_loader.*` | `SceneDocument` | `SceneResourceTable` |
+| GPU records 导出 | `src/core/scene/scene_resource_table.*` | `SceneResourceTable` | `SceneResourceTableUploadView` |
+| BVH 构建 | `src/core/raytracing/software_bvh.*` | upload view primitive / vertex / index / object records | `SceneSoftwareBvhNode` + reordered primitive references |
+| Compute 执行 | `src/backend/vulkan/offline/software_compute_offline_integrator.*` | GPU buffers + shader | `OfflineReadbackImage` |
 | 文件写出 | `src/infra/offline/offline_image_writer.*` | linear RGBA float | EXR / PNG / JSON / raw |
 
-这条流水线的关键是层次分离：`core` 只定义离线 IR 和 profile；`infra` 负责 scene/asset/output 这些文件系统边界；`backend/vulkan/offline` 才拥有 Vulkan pipeline、descriptor 和 shader dispatch。
+这条流水线的关键是层次分离：`core` 只定义SceneResourceTable 和 profile；`infra` 负责 scene/asset/output 这些文件系统边界；`backend/vulkan/offline` 才拥有 Vulkan pipeline、descriptor 和 shader dispatch。
 
 ## CLI 只编排，不渲染
 
@@ -28,48 +28,49 @@ Offline renderer 像一条离线实验流水线：editor 产出场景说明书�
 
 它不直接写 EXR，也不理解 TinyEXR；这些细节封在 `OfflineImageWriter` 里。这个边界让后续 GUI、批处理或测试入口可以复用同一套 writer，而不用复制 CLI 的文件写出逻辑。
 
-## SceneDocument 到 OfflineSceneIR
+## SceneDocument 到 SceneResourceTable
 
-`OfflineSceneCompiler` 的任务是“裁剪”：实时 scene 文档包含 editor camera、节点层级、可见性、mesh/material URI、light 和 environment。离线 renderer 不需要 editor 操作状态，也不需要 realtime draw item，所以 compiler 使用被选中 `OutputProfile.cameraPath` 找到离线相机，并把可离线计算的字段整理进 `OfflineSceneIR`。
+`OfflineSceneLoader` 的任务是“裁剪”：实时 scene 文档包含 editor camera、节点层级、可见性、mesh/material URI、light 和 environment。离线 renderer 不需要 editor 操作状态，也不需要 realtime draw item，所以 loader 使用被选中 `OutputProfile.cameraPath` 找到离线相机，并把可离线计算的字段注册进 `SceneResourceTable`。
 
-| Scene 文档信息 | Offline IR |
+| Scene 文档信息 | `SceneResourceTable` 入口 |
 |---|---|
-| selected `OutputProfile.cameraPath` | `OfflineCameraIR` |
-| mesh node + transform | `OfflineInstanceIR` + `OfflineMeshIR` |
-| material URI / fallback parameters | `OfflineMaterialIR` |
-| directional light | `OfflineDirectionalLightIR` |
-| environment HDR URI | `OfflineEnvironmentIR` |
-| loader / resolver warning | `OfflineSceneIR.warnings` |
+| selected `OutputProfile.cameraPath` | `CameraResource` |
+| mesh node + transform | `MeshResource` + `ObjectResource` |
+| material URI / fallback parameters | `MaterialInstance` |
+| directional light | `LightResource` |
+| environment HDR URI | deferred scene/environment record |
+| loader / resolver warning | `OfflineSceneLoadResult.warnings` |
 
 资产路径统一通过 `OfflineAssetResolver` 处理。内置资产、项目相对路径和 `cache://` URI 都在这一层收敛为本地文件路径。
 
 ## Ray Buffer 合同
 
-`OfflineRaySceneBuilder` 先把 IR 中的 mesh 注册为 `GeometryStorage` / `MeshBuffer`，再通过 `SceneResourceTable` snapshot 导出 shader storage buffer。这里最重要的是 C++ 与 GLSL 的布局一致，同时保留 vertex/index/object/material 的索引关系。
+`SceneResourceTable::buildUploadView()` 把 table 中的 mesh、object、material 和 camera 资源导出成 shader storage buffer 可以直接消费的 `SceneGpu*` 记录。这里最重要的是 C++ 与 GLSL 的布局一致，同时保留 vertex/index/object/material 的索引关系。
 
 | C++ struct | GLSL struct | 用途 |
 |---|---|---|
-| `OfflineVertexRecord` | `VertexRecord` | position、normal、uv、tangent |
-| `OfflineMeshRecord` | `MeshRecord` | vertex/index offset 与 geometry index |
-| `OfflinePrimitiveRecord` | `PrimitiveRecord` | index offset、mesh/material/object index |
-| `OfflineObjectRecord` | `ObjectRecord` | object/world transform、bounds、visibility |
-| `OfflineMaterialRecord` | `Material` | baseColor、metallic、roughness、emissive |
-| `OfflineBvhNode` | `BvhNode` | bounds 和 child/primitive range |
-| `OfflineSceneParams` | `ParamsBuffer` | 相机 basis、尺寸、samples、light、environment |
+| `SceneGpuVertexRecord` | `lxSceneVertexRecord` | position、normal、uv、tangent |
+| `SceneGpuMeshRecord` | `lxSceneMeshRecord` | vertex/index offset 与 geometry index |
+| `SceneGpuPrimitiveRecord` | `lxScenePrimitiveRecord` | index offset、mesh/material/object index |
+| `SceneGpuObjectRecord` | `lxSceneObjectRecord` | object/world transform、bounds、visibility |
+| `SceneGpuMaterialRecord` | `lxSceneMaterialRecord` | baseColor、PBR 参数、emissive、texture flags |
+| `SceneSoftwareBvhNode` | `lxSceneBvhNode` | bounds 和 child/primitive range |
+| `SceneGpuFrameParams` | `SceneFrameParams` | 相机 basis、尺寸、samples、light、environment |
 
 每次我们新增材质字段、光源 buffer、纹理索引或 AOV，都必须同步修改：
 
 | 必改位置 | 原因 |
 |---|---|
-| `OfflineSceneIR` | CPU 侧表达能力 |
-| `OfflineSceneCompiler` | 从 scene/material 文件采集数据 |
-| `OfflineRaySceneBuilder` | 注册共享资源并打包成 indexed GPU buffer |
+| `SceneResourceTable` | CPU 侧表达能力 |
+| `OfflineSceneLoader` | 从 scene/material 文件采集数据 |
+| `SceneResourceTable::buildUploadView()` | 打包成 indexed GPU buffer |
+| `SceneSoftwareBvh` | 构建派生 BVH 节点和 primitive 重排引用 |
 | GLSL compute shader | 按同一 layout 读取 |
 | `test_offline_gpu_scene` | 固定 layout 和基础数据 |
 
 ## VulkanOfflineRenderer 的职责边界
 
-`VulkanOfflineRenderer` 是 headless compute 执行器。它初始化 headless `VulkanDevice`，创建 compute pipeline，分配 storage buffer，绑定 descriptor，dispatch `offline_primary_ray.comp`，最后把 output buffer map 回 CPU。
+`VulkanOfflineRenderer` 是 offline integrator 协调入口。当前 `software-compute` integrator 初始化 headless `VulkanDevice`，创建 compute pipeline，分配 storage buffer，绑定 descriptor，dispatch `offline_primary_ray.comp`，最后把 output buffer map 回 CPU。
 
 它复用的是低层 Vulkan 基础设施：
 
@@ -111,8 +112,8 @@ TinyEXR 和 stb_image_write 只出现在 writer 实现文件里；`core`、scene
 |---|---|
 | 增加 exposure CLI 参数 | `offline_render_cli.*` + `OfflineToneMappingSettings` |
 | 增加 AOV 输出 | `OfflineReadbackImage` 或新的 AOV buffer + `OfflineImageWriter` |
-| 切换 integrator shader | `VulkanOfflineRenderer::loadComputeShader()` 周边 pipeline 选择 |
-| 支持 HDR environment sampling | `OfflineSceneCompiler` + `OfflineRaySceneBuilder` + descriptor layout |
+| 切换 integrator shader | `OfflineIntegrator` factory + 具体 integrator pipeline 选择 |
+| 支持 HDR environment sampling | `OfflineSceneLoader` + `SceneResourceTable` + descriptor layout |
 | 输出 multipart EXR | 保持 `OfflineImageWriter` API，替换 writer 内部 TinyEXR 调用 |
 
 ## 我们已经学会了什么

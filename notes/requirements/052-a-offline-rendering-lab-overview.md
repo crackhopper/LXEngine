@@ -53,7 +53,7 @@ LXEngine 当前已经具备 Vulkan 实时渲染、FrameGraph、材质系统、HD
 - core math / ray / camera / transform
 - Vulkan device/resource/shader/pipeline 基础设施
 
-离线 renderer 可以有自己的 `OfflineSceneIR`、`GpuScene`、BVH 和 integrator，但不能另起一套长期分叉的资产格式。
+离线 renderer 可以有自己的 `SceneResourceTable`、`GpuScene`、BVH 和 integrator，但不能另起一套长期分叉的资产格式。
 
 ### R2: 第一版 backend 路线为 Vulkan compute
 
@@ -96,9 +96,9 @@ Bake asset generator 不进入当前 active 实施队列，已拆到 planned 文
 
 | 术语 | 含义 |
 |---|---|
-| `OfflineSceneIR` | renderer-neutral 的离线场景中间表示 |
+| `SceneResourceTable` | renderer-neutral 的离线场景中间表示 |
 | `GpuScene` | 上传到 Vulkan compute shader 的 buffer 布局 |
-| `Integrator` | 渲染算法，如 primary ray、path tracing、probe bake |
+| `Integrator` | 渲染算法，如 camera ray、path tracing、probe bake |
 | `AccelerationBackend` | 加速结构后端，如 compute BVH、未来 Vulkan RT |
 | `RenderProfile` | `.scene.yaml` 中的离线渲染参数集合 |
 | `AOV` | debug/analysis 输出通道，如 normal、albedo、depth |

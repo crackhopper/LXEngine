@@ -4,7 +4,7 @@
 
 ## 背景
 
-`REQ-054-b` 只要求 primary ray + 简单材质 + environment 的最小闭环。`REQ-056-a`
+`REQ-054-b` 只要求 camera ray + 简单材质 + environment 的最小闭环。`REQ-056-a`
 补齐 PBR 纹理/材质数据管线。为了成为真正可用的 ground truth，本 REQ 在这些
 数据能力之上实现更完整的 PBR BRDF、多 bounce、progressive accumulation 和
 environment importance sampling。
@@ -24,7 +24,7 @@ environment importance sampling。
 
 ### R1: Cook-Torrance PBR reference
 
-离线 shader 消费 `REQ-056-a` 写入 `OfflineMaterialIR` / GpuScene 的纹理与材质数据，
+离线 shader 消费 `REQ-056-a` 写入 `MaterialInstance material parameters` / GpuScene 的纹理与材质数据，
 并使用与 realtime PBR 对齐的 BRDF 语义：
 
 - GGX NDF

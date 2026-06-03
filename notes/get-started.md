@@ -10,7 +10,7 @@
 | 验证 shader 编译 | `ninja test_shader_compiler && ./src/test/test_shader_compiler` |
 | 构建编辑器 | `ninja lxe_editor` |
 | 启动编辑器 | `./src/demos/lxe_editor/lxe_editor` |
-| 构建离线渲染器 | `ninja lxe_offline_render test_offline_scene_compiler test_offline_gpu_scene` |
+| 构建离线渲染器 | `ninja lxe_offline_render test_offline_scene_loader test_offline_gpu_scene` |
 
 如果我们只想确认机器环境是否正常，先跑 `test_shader_compiler`。它不需要窗口和 GPU 交互，能最快暴露 `shaderc`、`glslc`、SPIRV-Cross 和 shader 文件路径问题。
 
@@ -27,14 +27,14 @@
 
 ## 跑通 Offline Renderer MVP
 
-离线渲染器像一间独立实验室：我们仍然用 editor/scene YAML 搭场景，但渲染时不创建窗口和 swapchain，而是从命令行把 scene 编译成 `OfflineSceneIR`，再通过 Vulkan compute 输出线性 float 图。
+离线渲染器像一间独立实验室：我们仍然用 editor/scene YAML 搭场景，但渲染时不创建窗口和 swapchain，而是从命令行把 scene 编译成 `SceneResourceTable`，再通过 Vulkan compute 输出线性 float 图。
 
 从仓库根目录执行：
 
 ```bash
 cmake -S . -B build -G Ninja
-cmake --build build --target CompileShaders lxe_offline_render test_offline_image_writer test_offline_scene_compiler test_offline_gpu_scene test_vulkan_offline_renderer -j2
-ctest --test-dir build --output-on-failure -R 'test_offline_image_writer|test_offline_scene_compiler|test_offline_gpu_scene|test_vulkan_offline_renderer|test_offline_render_cli'
+cmake --build build --target CompileShaders lxe_offline_render test_offline_image_writer test_offline_scene_loader test_offline_gpu_scene test_vulkan_offline_renderer -j2
+ctest --test-dir build --output-on-failure -R 'test_offline_image_writer|test_offline_scene_loader|test_offline_gpu_scene|test_vulkan_offline_renderer|test_offline_render_cli'
 ./build/src/tools/lxe_offline_render/lxe_offline_render \
   --scene assets/scenes/ibl_metal_sphere.scene.yaml \
   --profile mvp \

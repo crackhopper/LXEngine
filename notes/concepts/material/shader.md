@@ -50,6 +50,13 @@ loader 反射出 `surfaceColor`、`mixAmount`、`accentColor`、`mode` 的类型
 
 `MaterialTemplate::rebuildMaterialInterface()` 会跳过 system-owned binding，只把剩下的 material-owned binding 放进 canonical 表。`SceneNode::rebuildValidatedCache()` 还会检查系统保留名字的 descriptor 类型是否正确，例如 `CameraUBO` 不能被 shader 写成 texture。
 
+离线 compute 和后续 bindless 路径还有一类 scene-owned SSBO，它们不属于单个
+`MaterialInstance`，而是来自 `SceneResourceTableUploadView`。例如
+`offline_primary_ray.comp` 使用 `SceneVertices`、`SceneIndices`、
+`SceneMeshes`、`ScenePrimitives`、`SceneObjects`、`SceneMaterials` 和
+`SceneFrameParams`。这些 binding 描述整张 scene 的 GPU 数据合同；材质系统只负责
+把 `MaterialInstance` 参数折叠进 `SceneGpuMaterialRecord`，不直接拥有这些 SSBO。
+
 ## resources 字段只对应材质纹理
 
 `.material resources` 很容易被误解成“shader 里能访问的所有资源声明”。当前实现不是这样：

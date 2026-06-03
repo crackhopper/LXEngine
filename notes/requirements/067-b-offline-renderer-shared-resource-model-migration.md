@@ -9,7 +9,7 @@
 | 当前结构 | 位置 | 问题 |
 |---|---|---|
 | `GpuTriangle` | `gpu_scene_builder.hpp` | 复制三个世界空间顶点，只保存 face normal，丢失 vertex/index 共享关系 |
-| `GpuMaterial` | `gpu_scene_builder.hpp` | 从 `OfflineMaterialIR` 重新打包材质参数，和 `MaterialInstance` / material reflection 分叉 |
+| `GpuMaterial` | `gpu_scene_builder.hpp` | 从 `MaterialInstance material parameters` 重新打包材质参数，和 `MaterialInstance` / material reflection 分叉 |
 | `GpuCameraParams` | `gpu_scene_builder.hpp` | 相机/light 参数和 scene resource snapshot 分叉 |
 | `GpuBvhNode` / `ComputeBvhBuilder` | `compute_bvh_builder.*` | BVH 概念应保留，但当前输入依赖 `GpuTriangle`，leaf 直接指向展平后的 triangle buffer |
 | `offline_primary_ray.comp` 的 `Triangle` buffer | `assets/shaders/glsl/offline_primary_ray.comp` | shader 只能读取 flat triangle，无法按 barycentric 插值 normal / uv / tangent |
@@ -42,7 +42,7 @@ snapshot SHALL 至少能提供：
 | camera params | scene resource table camera entry |
 | light params | scene resource table light entries |
 
-若 `OfflineSceneIR` 仍作为 CLI / scene compiler 的中间输入存在，它 SHALL 先被转换或注册进 `SceneResourceTable`，再由 snapshot 进入 offline renderer。offline renderer 不 SHALL 从 `OfflineSceneIR` 直接重新拼私有 GPU scene。
+若 `SceneResourceTable` 仍作为 CLI / scene compiler 的中间输入存在，它 SHALL 先被转换或注册进 `SceneResourceTable`，再由 snapshot 进入 offline renderer。offline renderer 不 SHALL 从 `SceneResourceTable` 直接重新拼私有 GPU scene。
 
 ### R2: 删除 backend 私有 GpuSceneBuilder 基础模型
 
@@ -82,7 +82,7 @@ primitive record SHALL 表达一组三角形索引关系，而不是复制三份
 最低要求：
 
 ```cpp
-struct OfflinePrimitiveRecord {
+struct SceneGpuPrimitiveRecord {
   u32 indexOffset;
   u32 meshIndex;
   u32 materialIndex;
@@ -107,7 +107,7 @@ BVH 构建 SHALL 使用 primitive bounds / centroid：
 - 应用 object transform 后计算 world-space bounds。
 - leaf 存 primitive range 或 primitive index。
 
-BVH node layout MAY 保留当前 32-byte `vec4 + vec4` encoding，只要 leaf 指向 primitive，而不是 flat triangle。若保留 layout，命名 SHALL 去掉 Vulkan/backend 私有前缀，例如 `OfflineBvhNode`。
+BVH node layout MAY 保留当前 32-byte `vec4 + vec4` encoding，只要 leaf 指向 primitive，而不是 flat triangle。若保留 layout，命名 SHALL 去掉 Vulkan/backend 私有前缀，例如 `SceneSoftwareBvhNode`。
 
 ### R6: Shader hit 使用 barycentric 插值
 
@@ -131,7 +131,7 @@ offline material record SHALL 来自 `MaterialInstance` 或其 snapshot record�
 
 - baseColor / metallic / roughness / emissive 等参数从 reflected material parameter buffer 或 material shader record 取得。
 - texture index 从 shared texture table 取得。
-- 不从 backend 私有 `OfflineMaterialIR -> GpuMaterial` 路径重新打包长期材质数据。
+- 不从 backend 私有 `MaterialInstance material parameters -> GpuMaterial` 路径重新打包长期材质数据。
 - material record 与 realtime bindless material record 能尽量共享字段定义；确有 offline-only 字段时，用明确后缀或额外 record 扩展。
 
 ### R8: Vulkan descriptor layout 改为反射或显式校验
@@ -178,7 +178,7 @@ BVH 概念 SHALL 保留，并迁移到 backend-agnostic core/offline 层。新�
 要求：
 
 - 现有 scene YAML 仍可渲染。
-- `OfflineSceneCompiler` 可以继续把 scene YAML 编译为中间数据，但最终必须注册到 `SceneResourceTable` 或生成等价 snapshot。
+- `OfflineSceneLoader` 可以继续把 scene YAML 编译为中间数据，但最终必须注册到 `SceneResourceTable` 或生成等价 snapshot。
 - offline 输出格式、EXR/PNG 写出和 metadata 不因资源模型迁移破坏。
 
 ## 测试
@@ -282,7 +282,7 @@ BVH 概念 SHALL 保留，并迁移到 backend-agnostic core/offline 层。新�
 
 2026-06-02 已完成首版迁移：
 
-- 新增 `src/core/offline/offline_ray_scene.*`，把 `OfflineSceneIR` 注册到 `SceneResourceTable`，再从 snapshot 导出 vertex/index/mesh/primitive/object/material/BVH/params buffers。
+- 新增 `src/core/offline/scene_resource_table.* + software_bvh.*`，把 `SceneResourceTable` 注册到 `SceneResourceTable`，再从 snapshot 导出 vertex/index/mesh/primitive/object/material/BVH/params buffers。
 - 删除 `src/backend/vulkan/offline/gpu_scene_builder.*` 和 `compute_bvh_builder.*`，backend offline 目录只保留 Vulkan compute 执行器。
 - `offline_primary_ray.comp` 已从 flat triangle buffer 改为 indexed primitive contract，并用 barycentric 插值 normal / uv。
 - `VulkanOfflineRenderer` 已改为上传 9 个 storage buffer：vertex、index、mesh、primitive、object、material、BVH、params、output。
@@ -292,4 +292,4 @@ BVH 概念 SHALL 保留，并迁移到 backend-agnostic core/offline 层。新�
 
 当前保留边界：
 
-- `OfflineSceneCompiler` 仍先产 `OfflineMaterialIR` 常量；`OfflineMaterialRecord` 已在 core/offline 层生成，但还没有完全接入 realtime `MaterialInstance` 参数表和 texture table。
+- `OfflineSceneLoader` 仍先产 `MaterialInstance material parameters` 常量；`SceneGpuMaterialRecord` 已在 core/offline 层生成，但还没有完全接入 realtime `MaterialInstance` 参数表和 texture table。

@@ -9,7 +9,7 @@ LXEngine 的架构可以先想成一座工厂：`core` 画产品蓝图，`infra`
 | `core` | 蓝图室 | `src/core/` | 平台无关的 scene、material、frame graph、pipeline identity、RHI 接口 |
 | `infra` | 工具间 | `src/infra/` | shader 编译反射、mesh/texture/material loader、window、ImGui 接入 |
 | `backend` | Vulkan 车间 | `src/backend/vulkan/` | device、resource upload、attachment、descriptor、pipeline、command buffer、present |
-| `offline` | 离线实验室 | `src/core/offline/`, `src/infra/offline/`, `src/backend/vulkan/offline/` | scene profile、OfflineSceneIR、headless compute renderer、readback |
+| `offline` | 离线实验室 | `src/core/offline/`, `src/infra/offline/`, `src/backend/vulkan/offline/` | scene profile、SceneResourceTable、headless compute renderer、readback |
 | `editor` | 集成工作台 | `src/demos/lxe_editor/` | project/scene runtime、UI、CommandBus、API/recording |
 
 ```mermaid
@@ -143,8 +143,8 @@ flowchart TD
     yaml[".scene.yaml\nscene + offlineRender profiles"]
     sceneio["infra/scene_io\nSceneDocument"]
     realtime["lxe_editor + VulkanRealtimeRenderer\nFrameGraph / swapchain"]
-    compiler["infra/offline\nOfflineSceneCompiler"]
-    ir["core/offline\nOfflineSceneIR"]
+    compiler["infra/offline\nOfflineSceneLoader"]
+    ir["core/offline\nSceneResourceTable"]
     gpu["backend/vulkan/offline\nGpuSceneBuilder + BVH"]
     compute["VulkanOfflineRenderer\ncompute dispatch"]
     dump[".rgba32f readback"]
@@ -168,7 +168,7 @@ flowchart TD
 | Shadow / CSM | 4 个 directional shadow cascade，forward 读取 `ShadowMap0..3` | shadow debug visualization 仍可继续扩展 |
 | Forward output | forward HDR scene color、post process、bloom 和 swapchain 输出链路 | 更完整的 post stack 和调试 dump 仍可扩展 |
 | Material / lighting | Blinn-Phong、shadow pass、PBR + scene-level IBL 资源合同、金属球验证场景 | 更完整的 PBR texture set 和 local probe |
-| Offline renderer | scene profile、OfflineSceneIR、Vulkan compute primary-ray MVP、`.rgba32f` readback | EXR/PNG、真实 HDR environment sampling、多 bounce path tracing |
+| Offline renderer | scene profile、SceneResourceTable、Vulkan compute software-compute MVP、`.rgba32f` readback | EXR/PNG、真实 HDR environment sampling、多 bounce path tracing |
 | Deferred | 存在 `Pass_Deferred` 常量和方向 | G-Buffer / Deferred renderer 还未实现 |
 | Editor integration | ImGui editor、CommandBus、API/recording | Web Editor、engine-level CLI/MCP、AssetRegistry/hot reload 仍在 pending |
 

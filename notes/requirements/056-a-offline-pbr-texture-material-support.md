@@ -14,7 +14,7 @@
 2. 对齐实时 PBR shader 的材质数据合同。
 3. 支持 glTF 常见 PBR 纹理。
 4. 为后续 path tracing reference 打好材质数据基础。
-5. 扩展 `REQ-054-b` 定义的 `OfflineMaterialIR`，而不是绕过它。
+5. 扩展 `REQ-054-b` 定义的 `MaterialInstance material parameters`，而不是绕过它。
 6. 只负责纹理/材质数据进入 GPU，不负责提升积分器或多 bounce 渲染算法。
 
 ## 需求
@@ -37,7 +37,7 @@
 - 没有纹理时使用 material scalar/default。
 - texture 和 scalar 的组合规则与 realtime PBR 尽量一致。
 - 未支持的 texture 不能静默当成黑图，应有诊断或明确 fallback。
-- texture 引用先进入 `OfflineMaterialIR.textureRefs`，再由 `GpuSceneBuilder`
+- texture 引用先进入 `MaterialInstance material parameters.textureRefs`，再由 `GpuSceneBuilder`
   编译成 GPU texture table index。
 
 ### R2: GPU texture table
@@ -94,7 +94,7 @@ Offline GpuScene 需要可索引 texture table。
 
 - 支持 `model: pbr-metallic-roughness`。
 - 所有 texture URI 通过统一 asset resolver 解析 `cache://`。
-- color space 与 channel mapping 按 `material.yaml` 声明进入 `OfflineMaterialIR`。
+- color space 与 channel mapping 按 `material.yaml` 声明进入 `MaterialInstance material parameters`。
 - 缺失纹理使用 `defaults` 中的 scalar fallback。
 
 ### R6: 测试覆盖
@@ -102,7 +102,7 @@ Offline GpuScene 需要可索引 texture table。
 覆盖：
 
 - material texture indices 写入 GpuScene。
-- `material.yaml` 能编译成 `OfflineMaterialIR`。
+- `material.yaml` 能编译成 `MaterialInstance material parameters`。
 - baseColor texture 影响输出颜色。
 - metallicRoughness texture 影响 roughness/metallic。
 - normal map 缺 tangent 时有明确行为。
