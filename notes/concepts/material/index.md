@@ -22,12 +22,13 @@
 1. [从 .material 到 MaterialInstance](file-to-instance.md)：先看资产文件如何进入运行时对象。
 2. [模板与 Pass：材质的结构定义](template-blueprint.md)：理解 `MaterialTemplate` 为什么是结构真值来源。
 3. [Shader 在材质中的角色](shader.md)：看 shader reflection 如何决定参数、纹理和系统资源边界。
-4. [MaterialInstance：运行时状态](material-instance.md)：看参数写入、纹理绑定、pass enable 如何保存。
-5. [多 Pass 材质怎样变成 Draw](pass-rendering-flow.md)：把 scene validation、RenderQueue、FrameGraph 串起来。
-6. [什么是 Pipeline](what-is-pipeline.md)：建立 pipeline identity 的基本模型。
-7. [模板如何影响 Pipeline](template-and-pipeline.md)：细分哪些材质变化会改变 pipeline，哪些不会。
-8. [创建与排错自定义材质](custom-template.md)：把前面的概念落到 authoring 流程。
-9. [未来路线：Bindless、Variants 与 FrameGraph](future-roadmap.md)：只讨论 roadmap，全部标注为尚未实施。
+4. [内置 Shader 清单](shader-catalog.md)：逐个认识当前 GLSL shader 家族和它们所在的渲染流水线。
+5. [MaterialInstance：运行时状态](material-instance.md)：看参数写入、纹理绑定、pass enable 如何保存。
+6. [多 Pass 材质怎样变成 Draw](pass-rendering-flow.md)：把 scene validation、RenderQueue、FrameGraph 串起来。
+7. [什么是 Pipeline](what-is-pipeline.md)：建立 pipeline identity 的基本模型。
+8. [模板如何影响 Pipeline](template-and-pipeline.md)：细分哪些材质变化会改变 pipeline，哪些不会。
+9. [创建与排错自定义材质](custom-template.md)：把前面的概念落到 authoring 流程。
+10. [未来路线：Bindless、Variants 与 FrameGraph](future-roadmap.md)：只讨论 roadmap，全部标注为尚未实施。
 
 这个顺序刻意把 pipeline 放到后面。对新人来说，先知道数据从文件走到 instance，再理解一个 pass 如何变成 draw，最后再讨论“哪些结构会要求不同 pipeline”，会更接近代码实际执行顺序。
 

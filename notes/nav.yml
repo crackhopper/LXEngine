@@ -85,6 +85,7 @@ nav:
           - 文件到实例: concepts/material/file-to-instance.md
           - 模板与 Pass: concepts/material/template-blueprint.md
           - Shader 与绑定: concepts/material/shader.md
+          - 内置 Shader 清单: concepts/material/shader-catalog.md
           - 实例状态: concepts/material/material-instance.md
           - 多 Pass 如何变成 Draw: concepts/material/pass-rendering-flow.md
           - 什么是 Pipeline: concepts/material/what-is-pipeline.md

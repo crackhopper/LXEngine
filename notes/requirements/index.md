@@ -32,3 +32,6 @@
 - [REQ-067-a: SceneResourceTable 与 Bindless-Ready 资源模型](067-a-scene-resource-table-bindless-ready-resource-model.md)
 - [REQ-067-b: Offline Renderer 迁移到共享资源模型](067-b-offline-renderer-shared-resource-model-migration.md)
 - [REQ-068-a: Output Profiles 与 Realtime Render 生成](068-a-output-profiles-and-realtime-render-generation.md)
+- [REQ-069-a: Vulkan Realtime Renderer 单文件拆分](069-a-vulkan-realtime-renderer-decomposition.md)
+- [REQ-069-b: Core Editor Builtin Commands 单文件拆分](069-b-core-editor-builtin-commands-decomposition.md)
+- [REQ-069-c: LXE Editor SceneRuntime 单文件拆分](069-c-lxe-editor-scene-runtime-decomposition.md)
