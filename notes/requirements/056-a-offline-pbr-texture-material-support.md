@@ -1,153 +1,228 @@
-# REQ-056-a: Offline PBR 纹理材质支持
+# REQ-056-a: 共享 PBR 纹理材质加载与离线/实时等价验证
 
-> 2026-06-01 新增：本 REQ 紧随 MVP，补齐离线渲染质量最关键的 PBR 纹理支持。当前仍在讨论中，未开始。
+> 2026-06-04 调整：本 REQ 不再是 offline-only 材质补丁。目标改为建立一套 editor、realtime profile output、offline renderer 共同使用的 glTF/PBR 资产加载路径，并用 DamagedHelmet 做无阴影、无 IBL、无 GI 的 PBR 直接光像素级等价验证。当前仍在讨论中，未开始。
 
 ## 背景
 
-`REQ-054-b` 的 MVP 为了尽快走通 Vulkan compute 离线渲染，只支持常量 PBR 参数和简单 albedo/baseColor 纹理。但真实渲染质量高度依赖更完整的纹理集：normal、metallic/roughness、AO、emissive 都会显著影响 ground truth 的可信度。
+`REQ-054-b` 的 offline MVP 走通了 Vulkan compute 离线渲染，但当前链路仍偏诊断用途：offline scene loader 主要消费 builtin primitive，`offline_primary_ray.comp` 使用简化 shading，PBR texture set 没有通过统一 GPU texture table 进入离线 shader。
 
-因此完整纹理材质不进入 MVP，但必须作为紧随其后的需求。
+实时路径已经能在 editor/runtime 中把本地 DamagedHelmet glTF 的 PBR metadata 桥接到 `pbr_gltf_helmet.material`，覆盖 albedo、metallic/roughness、normal、AO、emissive；但这套 bridge 仍带有 demo/runtime 专属逻辑。后续 ray tracer 如果沿用另一套 offline 专用解释器，会导致“实时能加载、离线不能加载”或“同一个材质在两边含义不同”。
+
+因此本 REQ 的核心不是给 offline 单独补纹理，而是把 glTF mesh + PBR material bridge 收敛成全局共享加载逻辑，让 editor、realtime profile output 和 offline renderer 从同一份 scene asset path 到同一份 `SceneResourceTable` 数据合同。
 
 ## 目标
 
-1. Offline renderer 支持 PBR material-owned texture set。
-2. 对齐实时 PBR shader 的材质数据合同。
-3. 支持 glTF 常见 PBR 纹理。
-4. 为后续 path tracing reference 打好材质数据基础。
-5. 扩展 `REQ-054-b` 定义的 `MaterialInstance material parameters`，而不是绕过它。
-6. 只负责纹理/材质数据进入 GPU，不负责提升积分器或多 bounce 渲染算法。
+1. 建立全局共享的 glTF mesh + PBR material bridge，editor、realtime、offline 都复用它。
+2. 让 scene 中普通 glTF mesh URI 能进入 offline loader，不再只支持 builtin primitive。
+3. 支持 DamagedHelmet 完整 PBR texture set：albedo、normal、metallic/roughness、AO、emissive。
+4. 让 `SceneResourceTable` / offline upload view 能表达完整 PBR texture table index 和 scalar fallback。
+5. 抽出 shader common PBR direct-light 函数，让 realtime `pbr.frag` 和新增 offline PBR direct ray shader 使用同一套公式。
+6. 新增无 shadow、无 IBL、无 GI 的 Helmet PBR 等价场景，生成 realtime/offline linear EXR 并用 `lxe_compare_exr` 做像素级阈值比较。
+7. 保留原 offline MVP shader 和原 MVP compare/diagnostic 流程可运行，不把旧 `offline_primary_ray.comp` 直接改成新 PBR 验证 shader。
 
 ## 需求
 
-### R1: PBR texture set
+### R1: 全局唯一 glTF/PBR 加载路径
 
-支持以下 texture binding：
+glTF mesh、texture URI、PBR metadata、tangent fallback 和 material bridge 必须由共享 infra/core 路径负责。`src/demos/lxe_editor/` 不能继续维护 Helmet 专属的 PBR bridge 逻辑。
 
-| Binding | 含义 |
+要求：
+
+- scene 中 `mesh.uri: assets/models/damaged_helmet/DamagedHelmet.gltf` 必须能被 editor、realtime profile output 和 offline renderer 共同消费。
+- `builtin://lxe_editor/helmet` 可以作为兼容入口保留，但它必须委托到共享 glTF/PBR 加载路径，而不是维护第二套材质解释逻辑。
+- 共享加载路径输出 `Mesh` / `MeshBuffer`、generated tangent、`MaterialInstance`、texture bindings 和 material scalar。
+- realtime 与 offline 可以有各自 GPU 上传和 draw/dispatch 后端，但不能各自解释 glTF texture channel、material defaults、color space、sampler 策略或 shader variant。
+- 如果某个 glTF 材质字段当前不支持，必须由共享加载路径输出一致诊断；不能出现 realtime 忽略而 offline 接受，或反过来。
+
+### R2: PBR texture set 与 MaterialInstance 合同
+
+支持以下 material-owned texture binding：
+
+| Binding | 含义 | glTF 来源 |
+|---|---|---|
+| `albedoMap` | base color | `pbrMetallicRoughness.baseColorTexture` |
+| `normalMap` | tangent-space normal | `normalTexture` |
+| `metallicRoughnessMap` | glTF-style B=metallic, G=roughness | `pbrMetallicRoughness.metallicRoughnessTexture` |
+| `aoMap` | ambient occlusion | `occlusionTexture` |
+| `emissiveMap` | emissive | `emissiveTexture` |
+
+要求：
+
+- texture 必须先进入 `MaterialInstance::setTexture(StringID, CombinedTextureSamplerSharedPtr)` 所维护的 binding-name 合同。
+- scalar fallback 必须通过 `MaterialInstance` parameter buffer 表达，至少覆盖 `baseColorFactor`、`metallicFactor`、`roughnessFactor`、`ao`、`emissiveFactor`。
+- 没有纹理时使用 material scalar/default 或明确 placeholder；不能静默当成黑图。
+- DamagedHelmet 本地资产必须作为完整 PBR coverage 资产使用。它包含：
+
+| 输入 | 文件 / glTF 字段 |
 |---|---|
-| `albedoMap` | base color |
-| `normalMap` | tangent-space normal |
-| `metallicRoughnessMap` | glTF-style B=metallic, G=roughness |
-| `aoMap` | ambient occlusion |
-| `emissiveMap` | emissive |
+| Albedo | `Default_albedo.jpg`, `baseColorTexture` |
+| Metallic | `Default_metalRoughness.jpg`, B channel |
+| Roughness | `Default_metalRoughness.jpg`, G channel |
+| AO | `Default_AO.jpg`, `occlusionTexture` |
+| Normal | `Default_normal.jpg`, `normalTexture` |
+| Emissive | `Default_emissive.jpg`, `emissiveTexture` + `emissiveFactor` |
+
+### R3: Offline GPU texture table
+
+Offline GPU scene 必须能按 material index 查到完整 PBR texture table index。
 
 要求：
 
-- `albedoMap` 已在 `REQ-054-b` 提供简单支持；本 REQ 负责把它纳入完整 texture table / color space / sampler 规则。
-- 没有纹理时使用 material scalar/default。
-- texture 和 scalar 的组合规则与 realtime PBR 尽量一致。
-- 未支持的 texture 不能静默当成黑图，应有诊断或明确 fallback。
-- texture 引用先进入 `MaterialInstance material parameters.textureRefs`，再由 `GpuSceneBuilder`
-  编译成 GPU texture table index。
+- `SceneGpuMaterialRecord` 或等价 offline material record 必须表达 `baseColorTexture`、`normalTexture`、`metallicRoughnessTexture`、`aoTexture`、`emissiveTexture`。
+- texture index 缺失使用明确 sentinel 或统一 default texture。
+- compute shader 使用固定上限 descriptor array；本 REQ 不引入 bindless。
+- texture table 的填充来自 `SceneResourceTable` / `MaterialInstance` 的同一 binding-name 合同，而不是 offline 专用材质配置。
+- 缺失纹理、超过固定上限、无法上传 texture 时必须有包含 material path / texture binding / resolved path 的诊断。
 
-### R2: GPU texture table
+### R4: UV、tangent 与 normal map
 
-Offline GpuScene 需要可索引 texture table。
-
-要求：
-
-- material buffer 中存 texture index 或 sentinel。
-- compute shader 能按 material 查 texture。
-- 使用固定上限 descriptor array；不引入 bindless。
-- 支持 sampler 基本策略：linear repeat / clamp。
-- 本 REQ 的 shader 改动只验证 texture lookup 与材质参数组合，不引入 path tracing 积分器逻辑。
-
-### R3: UV 与 tangent 数据
+normal map 在 realtime 与 offline 中必须同启同禁。
 
 要求：
 
-- triangle 数据包含 UV。
-- normal map 需要 tangent basis。
-- 缺 tangent 时可以：
-  - 使用当前 SceneBuilder 的 tangent 生成能力；
-  - 或禁用 normal map 并输出诊断。
+- triangle/vertex GPU record 必须包含 UV 和 tangent basis 所需数据。
+- DamagedHelmet glTF 本身不声明 `TANGENT` accessor；共享加载路径必须在 indexed triangle + UV 数据存在时生成稳定 tangent。
+- 如果某个 glTF 缺少生成 tangent 所需数据，normal map 必须在共享加载阶段被禁用并输出诊断；不能 realtime 使用 normal map、offline 退回 vertex normal。
+- tangent handedness 必须进入 vertex data，并在 realtime shader 与 offline hit attributes 中以同一规则构造 TBN。
 
-策略必须明确，不能随机使用错误 tangent。
+### R5: Texture loading、色彩空间与 sampler
 
-### R4: Texture loading 与格式转换
-
-复用当前 texture loader。
+PBR 纹理色彩空间和 sampler 行为必须对 realtime/offline 一致。
 
 要求：
 
-- 支持 sRGB/baseColor 与 linear data 的区分。
-- normal/ORM/AO/emissive 的 color space 规则明确。
-- GPU 上传格式和 shader sampling 一致。
+- baseColor 和 emissive 按 sRGB 语义处理。
+- normal、metallicRoughness、AO 按 linear data 处理。
+- 如果当前 `TextureLoader` / Vulkan upload 暂不支持真实 sRGB image format，本 REQ 必须实现或明确统一的 shader-side decode 策略；实时与离线必须相同。
+- metallic/roughness channel mapping 固定为 glTF 规则：B=metallic，G=roughness。
+- sampler 至少支持 linear repeat；clamp/repeat 策略来自共享 material/texture metadata，不由 realtime/offline 分别硬编码。
 
-### R5: glTF PBR bridge
+### R6: Shared PBR shader common
 
-离线 renderer 必须能消费当前 editor/runtime 已经桥接的 glTF PBR 资源。
-
-至少覆盖 DamagedHelmet：
-
-- baseColor
-- metallicRoughness
-- normal
-- occlusion
-- emissive
-
-### R5.1: Cache material bridge
-
-离线材质编译器必须能消费 `REQ-053-b` 生成的 `converted/material.yaml`。
+PBR 直接光公式必须放入 shader common 库。
 
 要求：
 
-- 支持 `model: pbr-metallic-roughness`。
-- 所有 texture URI 通过统一 asset resolver 解析 `cache://`。
-- color space 与 channel mapping 按 `material.yaml` 声明进入 `MaterialInstance material parameters`。
-- 缺失纹理使用 `defaults` 中的 scalar fallback。
+- 新增或扩展 `assets/shaders/glsl/common/pbr.glsl`。
+- `pbr.frag` 和新增 offline PBR direct ray compute shader 必须 include 同一套 Cook-Torrance direct-light 函数。
+- common 函数至少覆盖：
 
-### R6: 测试覆盖
+| 输入项 | 用途 |
+|---|---|
+| baseColor | diffuse albedo / metallic F0 mix |
+| normal | NDF、geometry、Fresnel、NdotL |
+| metallic | diffuse/specular energy split |
+| roughness | GGX distribution / geometry |
+| AO | ambient or configured material occlusion term |
+| emissive | final emissive add |
+| directional light | direct lighting only |
+| camera/view direction | specular view term |
 
-覆盖：
+- 等价 compare 场景中的 shadow、IBL、GI、environment contribution 必须通过 scene/profile/offlineRender/realtime render 配置关闭，不能为 Helmet 在 shader/backend 中写硬编码分支。
+- 如果某项在特定 compare profile 中需要隔离测试，例如 emissive 归零，必须通过 scene material override 或 profile 配置实现，并另设单项测试覆盖该项。
 
-- material texture indices 写入 GpuScene。
-- `material.yaml` 能编译成 `MaterialInstance material parameters`。
-- baseColor texture 影响输出颜色。
-- metallicRoughness texture 影响 roughness/metallic。
-- normal map 缺 tangent 时有明确行为。
-- DamagedHelmet 离线编译时包含 PBR 纹理。
+### R7: Offline shader 模式与 MVP 回归
 
-### R7: Demo 2 材质资产支撑
-
-本 REQ 负责让高质量资产 demo 具备可信材质表现。
+新增 PBR direct-light offline shader 时必须保留 MVP shader。
 
 要求：
 
-- 能消费 `REQ-053-b` 下载/转换的 PBR texture set。
-- 高质量 demo scene 中至少一个模型或地面材质使用 baseColor、normal、metallic/roughness 或 AO 纹理。
-- 离线输出与禁用纹理的输出有可观察差异。
-- 缺失纹理时诊断应指向转换后的 engine path 和 cache asset id。
+- 保留现有 `offline_primary_ray.comp` 的 MVP/diagnostic 行为。
+- 新增 PBR 等价 shader，例如 `offline_pbr_direct_ray.comp`，或等价命名。
+- scene/offlineRender 配置必须能选择使用 MVP shader 还是 PBR direct shader。
+- 现有 `realtime_offline_compare_diagnostic.scene.yaml` 和相关 compare 目标必须继续可运行。
+- 新 Helmet PBR compare scene 必须使用配置选择 PBR direct path；代码里不能根据 asset name 特判。
+
+### R8: Realtime/offline PBR 等价 demo
+
+新增一个使用本地 DamagedHelmet 的等价验证 scene。
+
+要求：
+
+- scene 使用普通 glTF mesh URI：`assets/models/damaged_helmet/DamagedHelmet.gltf`。
+- scene/profile 配置关闭 shadow、IBL、GI、environment contribution。
+- scene 使用同一方向光、相机、resolution、background、material state。
+- realtime profile output 生成 linear EXR 和 PNG preview。
+- offline render 生成 linear EXR 和 PNG preview。
+- `lxe_compare_exr` 对 linear EXR 做像素级阈值比较，并作为 demo 验收目标。
+- comparison 目标输出诊断 JSON 或清晰 console summary，便于后续 ray tracer 改动判断回归。
+
+### R9: Assets downloader 兼容边界
+
+本 REQ 的主 demo 使用 repo 内置 DamagedHelmet，不依赖联网或 `.asset_cache` 状态。但共享加载路径必须与 assets downloader 的 `cache://.../converted/...` 方向兼容。
+
+要求：
+
+- `cache://` URI 仍由统一 asset resolver 解析。
+- 如果 downloader 后续产出 `converted/model.gltf`、`converted/model.glb` 或 `converted/material.yaml`，它必须走同一 glTF/PBR bridge 和 `MaterialInstance` 合同。
+- `converted/material.yaml` 的 `model: pbr-metallic-roughness`、texture URI、color space、channel mapping、defaults 应能映射到同一 material bridge。
+- 本 REQ 不要求联网下载 DamagedHelmet，也不要求 downloader 完整实现 glTF 归档拆包。
+
+### R10: 测试覆盖
+
+覆盖必须证明“共享流程”和“公式输入项不遗漏”。
+
+要求：
+
+- shared loader test：同一 glTF scene 能被 editor/runtime scene load 和 offline scene loader 消费。
+- no-dual-bridge test：editor Helmet/builtin 入口委托共享 loader，不能保留独立 PBR bridge。
+- material bridge test：DamagedHelmet 生成 PBR `MaterialInstance`，绑定 albedo、normal、metallicRoughness、AO、emissive。
+- tangent test：DamagedHelmet 缺 `TANGENT` accessor 时共享 loader 生成 tangent，并让 normal map 在 realtime/offline 同时启用。
+- offline GPU scene test：material texture indices 写入 offline texture table，缺失项使用 sentinel/default。
+- shader compile/reflection test：MVP offline shader 与 PBR direct offline shader 都能编译，descriptor contract 明确。
+- common shader test：`pbr.frag` 与 offline PBR shader 都 include shared PBR common。
+- image compare test：Helmet PBR equivalence scene 的 realtime/offline linear EXR 在固定阈值内通过。
+- per-input coverage test：baseColor、metallic、roughness、normal、AO、emissive 每一项都有测试证明它影响输出，并且 realtime/offline 的影响方向一致。
+- MVP regression test：原 offline MVP diagnostic compare 流程仍可运行。
 
 ## 修改范围
 
 - `src/core/asset/`
+- `src/core/scene/`
 - `src/infra/material_loader/`
-- `src/infra/texture_loader/`
 - `src/infra/mesh_loader/gltf_mesh_loader.*`
-- offline scene compiler / GpuScene builder
-- Vulkan compute descriptor/pipeline
+- `src/infra/offline/offline_scene_loader.*`
+- `src/infra/texture_loader/`
+- `src/demos/lxe_editor/`（删除/改造 demo-local bridge，改为调用共享 loader）
+- `src/backend/vulkan/offline/`
+- `src/backend/vulkan/` 中 realtime profile output 必需的共享输出路径
 - `assets/shaders/glsl/`
+- `assets/shaders/glsl/common/`
+- `assets/scenes/`
+- `src/tools/lxe_offline_render/`
+- `src/tools/lxe_realtime_render/`
+- `src/tools/lxe_compare_exr/` 仅在阈值或报告输出需要扩展时修改
 - tests
 
 ## 边界与约束
 
 - 本 REQ 不实现多 bounce。
-- 本 REQ 不实现 Cook-Torrance reference BRDF 的完整积分策略；该工作进入 `REQ-057-a`。
-- 本 REQ 不实现 progressive accumulation、environment importance sampling 或 AOV。
+- 本 REQ 不实现 path tracing 积分器、progressive accumulation、environment importance sampling、denoiser 或 AOV。
+- 本 REQ 不实现 GI。
+- 本 REQ 不实现 IBL 等价；IBL 在 compare scene 中必须通过配置关闭。
+- 本 REQ 不实现 shadow 等价；shadow 在 compare scene 中必须通过配置关闭。
 - 本 REQ 不实现 clear coat、transmission、subsurface、anisotropy。
-- 本 REQ 不实现 bindless texture；固定上限 descriptor array 是当前约束。
-- 本 REQ 不要求 editor UI。
+- 本 REQ 不引入 bindless texture；固定上限 descriptor array 是 offline 约束。
+- 本 REQ 不要求新增 editor UI。
+- 本 REQ 不要求联网下载资产。
+- 本 REQ 不允许为 Helmet、offline 或 realtime 维护双轨材质解释逻辑。
 
 ## 依赖
 
+- `REQ-049-a`
 - `REQ-054-a`
 - `REQ-055-a`
-- `REQ-049-a`
+- `openspec/specs/material-system/spec.md`
+- `openspec/specs/material-asset-loader/spec.md`
+- `openspec/specs/mesh-loading/spec.md`
+- `openspec/specs/texture-loading/spec.md`
+- `openspec/specs/renderer-backend-vulkan/spec.md`
 
 ## 后续工作
 
-- `REQ-057-a` 在完整 PBR path tracing 中消费这些纹理。
+- `REQ-057-a` 在完整 PBR path tracing 中消费这些共享材质、纹理和 shader common。
+- 后续 assets downloader 可在同一共享 loader 上扩展完整 glTF archive/cache conversion。
+- 后续 IBL / shadow / GI 等价测试应作为独立 REQ，不混入本 REQ 的直接光等价目标。
 
 ## 实施状态
 
