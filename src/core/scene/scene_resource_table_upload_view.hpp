@@ -9,7 +9,7 @@ namespace LX_core {
 // Non-owning view over SceneResourceTable's cached GPU records. Spans remain
 // valid until the table mutates or a later buildUploadView() call rebuilds the
 // cache. buildUploadView() rebuilds records on each call because shared mesh
-// and material resources can mutate without changing the table structure
+// and material resources can mutate without changing the table mutation
 // generation.
 struct SceneResourceTableUploadView final {
   u64 tableGeneration = 0;

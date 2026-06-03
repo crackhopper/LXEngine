@@ -700,8 +700,8 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
     const u32 objectRecordIndex = static_cast<u32>(m_gpuObjects.size());
 
     SceneGpuObjectRecord objectRecord;
-    objectRecord.objectToWorld = toGpuRows(object.objectToWorld);
-    objectRecord.worldToObject = toGpuRows(object.worldToObject);
+    objectRecord.objectToWorld = toGpuColumns(object.objectToWorld);
+    objectRecord.worldToObject = toGpuColumns(object.worldToObject);
     objectRecord.boundsMin = toGpuBoundsMin(object.worldBounds);
     objectRecord.boundsMax = toGpuBoundsMax(object.worldBounds);
     objectRecord.visible = object.visible ? 1u : 0u;

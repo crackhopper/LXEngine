@@ -171,7 +171,7 @@ public:
   // The view is valid until the next mutating SceneResourceTable call or the
   // next buildUploadView() call. Resources stored in the table can be mutated
   // through shared ownership, so buildUploadView() rebuilds records every call
-  // even when the table structure generation is unchanged.
+  // even when the table mutation generation is unchanged.
   [[nodiscard]] SceneResourceTableUploadView buildUploadView() const;
 
 private:

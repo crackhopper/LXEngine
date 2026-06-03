@@ -77,7 +77,7 @@ struct alignas(16) SceneGpuFrameParams final {
   u32 frameIndex = 0;
 };
 
-[[nodiscard]] std::array<Vec4f, 4> toGpuRows(const Mat4f &matrix);
+[[nodiscard]] std::array<Vec4f, 4> toGpuColumns(const Mat4f &matrix);
 [[nodiscard]] Vec4f toGpuBoundsMin(const BoundingBox &bounds);
 [[nodiscard]] Vec4f toGpuBoundsMax(const BoundingBox &bounds);
 [[nodiscard]] SceneGpuMaterialRecord

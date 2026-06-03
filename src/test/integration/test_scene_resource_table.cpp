@@ -298,6 +298,21 @@ void testSceneRegistersRenderableComponentResources() {
     EXPECT(syncedSnapshot.objects.front().worldBounds.getCenter().x > 1.5f,
            "scene snapshot should refresh object world bounds");
   }
+  const auto uploadView = scene->resources().buildUploadView();
+  EXPECT(uploadView.objects.size() == 1,
+         "scene upload view should keep the object after transform sync");
+  if (!uploadView.objects.empty()) {
+    EXPECT(uploadView.objects.front().objectToWorld[3].x == 2.0f &&
+               uploadView.objects.front().objectToWorld[3].y == 0.0f &&
+               uploadView.objects.front().objectToWorld[3].z == 0.0f &&
+               uploadView.objects.front().objectToWorld[3].w == 1.0f,
+           "scene upload objectToWorld should place translation in column 3");
+    EXPECT(uploadView.objects.front().worldToObject[3].x == -2.0f &&
+               uploadView.objects.front().worldToObject[3].y == 0.0f &&
+               uploadView.objects.front().worldToObject[3].z == 0.0f &&
+               uploadView.objects.front().worldToObject[3].w == 1.0f,
+           "scene upload worldToObject should carry inverse translation");
+  }
 
   scene->removeRenderable(node);
   EXPECT(!meshComponent->get().getGeometryStorageHandle().isValid(),
@@ -405,7 +420,7 @@ void testSceneResourceTableUploadViewTracksTableGeneration() {
 
   const auto firstView = table.buildUploadView();
   EXPECT(firstView.tableGeneration != 0,
-         "upload view should expose table structure generation");
+         "upload view should expose table mutation generation");
   EXPECT(firstView.meshes.size() == 1, "upload view should expose one mesh");
   EXPECT(firstView.objects.size() == 1, "upload view should expose one object");
   EXPECT(firstView.primitives.size() == 1,
@@ -434,7 +449,7 @@ void testSceneResourceTableUploadViewTracksTableGeneration() {
   table.updateObject(objectHandle, object);
   const auto secondView = table.buildUploadView();
   EXPECT(secondView.tableGeneration > firstView.tableGeneration,
-         "object update should advance table structure generation");
+         "object update should advance table mutation generation");
   EXPECT(secondView.objects.front().visible == 0,
          "object visibility should reach GPU record");
 }
@@ -458,7 +473,7 @@ void testSceneResourceTableUploadViewReflectsMaterialMutationAfterBuild() {
   EXPECT(table.isAlive(objectHandle),
          "test setup should keep material mutation object alive");
   EXPECT(secondView.tableGeneration == firstView.tableGeneration,
-         "external material mutation should not advance table structure generation");
+         "external material mutation should not advance table mutation generation");
   EXPECT(secondView.materials.size() == 1,
          "upload view should keep one material after mutation");
   EXPECT(secondView.materials.front().baseColor.x == 0.9f &&
@@ -466,6 +481,44 @@ void testSceneResourceTableUploadViewReflectsMaterialMutationAfterBuild() {
              secondView.materials.front().baseColor.z == 0.7f &&
              secondView.materials.front().baseColor.w == 0.6f,
          "upload view should reflect external material parameter mutation");
+}
+
+void testSceneResourceTableUploadViewPacksMatrixColumns() {
+  SceneResourceTable table;
+  const auto mesh = table.registerMesh(makeMeshBuffer());
+  const auto material = table.registerMaterial(makeGpuRecordMaterial());
+
+  ObjectResource object;
+  object.mesh = mesh;
+  object.material = material;
+  object.objectToWorld = Mat4f::translate({2.0f, 3.0f, 4.0f});
+  object.worldToObject = Mat4f::translate({-2.0f, -3.0f, -4.0f});
+  object.worldBounds = BoundingBox{{2.0f, 3.0f, 4.0f},
+                                   {3.0f, 4.0f, 4.0f}};
+  const auto objectHandle = table.registerObject(object);
+
+  const auto view = table.buildUploadView();
+  EXPECT(table.isAlive(objectHandle),
+         "test setup should keep translated object alive");
+  EXPECT(view.objects.size() == 1,
+         "upload view should expose translated object");
+  if (!view.objects.empty()) {
+    EXPECT(view.objects.front().objectToWorld[0].x == 1.0f &&
+               view.objects.front().objectToWorld[0].y == 0.0f &&
+               view.objects.front().objectToWorld[0].z == 0.0f &&
+               view.objects.front().objectToWorld[0].w == 0.0f,
+           "objectToWorld first GPU column should contain x basis");
+    EXPECT(view.objects.front().objectToWorld[3].x == 2.0f &&
+               view.objects.front().objectToWorld[3].y == 3.0f &&
+               view.objects.front().objectToWorld[3].z == 4.0f &&
+               view.objects.front().objectToWorld[3].w == 1.0f,
+           "objectToWorld fourth GPU column should contain translation");
+    EXPECT(view.objects.front().worldToObject[3].x == -2.0f &&
+               view.objects.front().worldToObject[3].y == -3.0f &&
+               view.objects.front().worldToObject[3].z == -4.0f &&
+               view.objects.front().worldToObject[3].w == 1.0f,
+           "worldToObject fourth GPU column should contain inverse translation");
+  }
 }
 
 void testSceneResourceTableUploadViewUsesCompactRecordIndices() {
@@ -726,6 +779,7 @@ int main() {
   testSceneGpuRecordLayoutContract();
   testSceneResourceTableUploadViewTracksTableGeneration();
   testSceneResourceTableUploadViewReflectsMaterialMutationAfterBuild();
+  testSceneResourceTableUploadViewPacksMatrixColumns();
   testSceneResourceTableUploadViewUsesCompactRecordIndices();
   testSceneResourceTableUploadViewSkipsObjectsWithReleasedDependencies();
   testSceneResourceTableUploadViewSkipsObjectsWithStaleDependencies();

@@ -4,6 +4,7 @@
 #include "core/scene/components/mesh_component.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <sstream>
 #include <unordered_set>
 #include <utility>
@@ -61,6 +62,53 @@ void collectSubtreeSnapshots(const SceneNodeSharedPtr &node,
   };
 }
 
+[[nodiscard]] Mat4f inverseAffine(const Mat4f &m) {
+  const f32 a00 = m(0, 0);
+  const f32 a01 = m(0, 1);
+  const f32 a02 = m(0, 2);
+  const f32 a10 = m(1, 0);
+  const f32 a11 = m(1, 1);
+  const f32 a12 = m(1, 2);
+  const f32 a20 = m(2, 0);
+  const f32 a21 = m(2, 1);
+  const f32 a22 = m(2, 2);
+
+  const f32 c00 = a11 * a22 - a12 * a21;
+  const f32 c01 = -(a10 * a22 - a12 * a20);
+  const f32 c02 = a10 * a21 - a11 * a20;
+  const f32 c10 = -(a01 * a22 - a02 * a21);
+  const f32 c11 = a00 * a22 - a02 * a20;
+  const f32 c12 = -(a00 * a21 - a01 * a20);
+  const f32 c20 = a01 * a12 - a02 * a11;
+  const f32 c21 = -(a00 * a12 - a02 * a10);
+  const f32 c22 = a00 * a11 - a01 * a10;
+  const f32 det = a00 * c00 + a01 * c01 + a02 * c02;
+  if (std::abs(det) < 1.0e-8f) {
+    return Mat4f::identity();
+  }
+  const f32 invDet = 1.0f / det;
+
+  Mat4f inverse = Mat4f::identity();
+  inverse(0, 0) = c00 * invDet;
+  inverse(0, 1) = c10 * invDet;
+  inverse(0, 2) = c20 * invDet;
+  inverse(1, 0) = c01 * invDet;
+  inverse(1, 1) = c11 * invDet;
+  inverse(1, 2) = c21 * invDet;
+  inverse(2, 0) = c02 * invDet;
+  inverse(2, 1) = c12 * invDet;
+  inverse(2, 2) = c22 * invDet;
+
+  const Vec3f t{m(0, 3), m(1, 3), m(2, 3)};
+  inverse(0, 3) =
+      -(inverse(0, 0) * t.x + inverse(0, 1) * t.y + inverse(0, 2) * t.z);
+  inverse(1, 3) =
+      -(inverse(1, 0) * t.x + inverse(1, 1) * t.y + inverse(1, 2) * t.z);
+  inverse(2, 3) =
+      -(inverse(2, 0) * t.x + inverse(2, 1) * t.y + inverse(2, 2) * t.z);
+  return inverse;
+}
+
 [[nodiscard]] ObjectResource makeObjectResource(
     const SceneNode &node, MeshHandle meshHandle,
     MaterialHandle materialHandle) {
@@ -68,7 +116,7 @@ void collectSubtreeSnapshots(const SceneNodeSharedPtr &node,
   object.mesh = meshHandle;
   object.material = materialHandle;
   object.objectToWorld = node.getWorldTransform();
-  object.worldToObject = Mat4f::identity();
+  object.worldToObject = inverseAffine(object.objectToWorld);
   object.worldBounds = node.getWorldBounds();
   object.visibilityMask = node.getVisibilityLayerMask();
   object.debugId = node.getDebugId();
