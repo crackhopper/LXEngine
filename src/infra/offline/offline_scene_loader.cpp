@@ -2,108 +2,47 @@
 
 #include "core/asset/builtin_meshes.hpp"
 #include "core/asset/material_instance.hpp"
-#include "core/frame_graph/pass.hpp"
 #include "core/scene/camera.hpp"
 #include "core/scene/light.hpp"
-#include "yaml-cpp/yaml.h"
+#include "infra/material_loader/generic_material_loader.hpp"
 
 #include <algorithm>
 #include <cmath>
-#include <functional>
+#include <filesystem>
 #include <memory>
 #include <optional>
 #include <stdexcept>
+#include <string>
 #include <unordered_map>
 #include <utility>
 
 namespace LX_infra::offline {
 namespace {
 
-using LX_core::BoundingBox;
 using LX_core::CameraProjection;
 using LX_core::CameraResource;
-using LX_core::GeometryStorageHandle;
 using LX_core::LightHandle;
 using LX_core::MaterialHandle;
-using LX_core::MaterialInstance;
 using LX_core::MaterialInstanceSharedPtr;
-using LX_core::MaterialPassDefinition;
-using LX_core::MaterialTemplate;
 using LX_core::Mat4f;
 using LX_core::MeshBufferSharedPtr;
 using LX_core::MeshHandle;
 using LX_core::ObjectResource;
-using LX_core::Pass_Forward;
-using LX_core::RenderState;
 using LX_core::SceneResourceTable;
-using LX_core::ShaderProgramSet;
 using LX_core::ShaderPropertyType;
-using LX_core::ShaderResourceBinding;
-using LX_core::ShaderStageCode;
 using LX_core::StringID;
-using LX_core::StructMemberInfo;
 using LX_core::Vec3f;
 using LX_core::Vec4f;
 using LX_infra::scene_io::LightKind;
 using LX_infra::scene_io::MaterialOverrideState;
 using LX_infra::scene_io::SceneNodeDocument;
 
-struct MaterialConstants final {
-  Vec4f baseColor{0.8f, 0.8f, 0.8f, 1.0f};
-  float metallic = 0.0f;
-  float roughness = 0.5f;
-  float specularIntensity = 0.0f;
-  float ambientIntensity = 0.0f;
-  float shininess = 32.0f;
-  Vec3f emissive{0.0f, 0.0f, 0.0f};
-};
+constexpr const char *kDefaultMaterialUri =
+    "assets/materials/blinnphong_default.material";
 
 struct RegisteredMesh final {
-  GeometryStorageHandle geometryStorage;
   MeshHandle mesh;
   MeshBufferSharedPtr meshBuffer;
-};
-
-class OfflineMaterialShader final : public LX_core::IShader {
-public:
-  explicit OfflineMaterialShader(std::vector<ShaderResourceBinding> bindings)
-      : m_bindings(std::move(bindings)) {}
-
-  const std::vector<ShaderStageCode> &getAllStages() const override {
-    return m_stages;
-  }
-
-  const std::vector<ShaderResourceBinding> &
-  getReflectionBindings() const override {
-    return m_bindings;
-  }
-
-  std::optional<std::reference_wrapper<const ShaderResourceBinding>>
-  findBinding(u32 set, u32 binding) const override {
-    for (const auto &item : m_bindings) {
-      if (item.set == set && item.binding == binding) {
-        return std::cref(item);
-      }
-    }
-    return std::nullopt;
-  }
-
-  std::optional<std::reference_wrapper<const ShaderResourceBinding>>
-  findBinding(const std::string &name) const override {
-    for (const auto &item : m_bindings) {
-      if (item.name == name) {
-        return std::cref(item);
-      }
-    }
-    return std::nullopt;
-  }
-
-  usize getProgramHash() const override { return 0; }
-  std::string getShaderName() const override { return "offline_scene"; }
-
-private:
-  std::vector<ShaderStageCode> m_stages;
-  std::vector<ShaderResourceBinding> m_bindings;
 };
 
 [[nodiscard]] std::string displayName(const SceneNodeDocument &node) {
@@ -186,215 +125,144 @@ private:
   return inverse;
 }
 
-[[nodiscard]] Vec3f parseVec3(const YAML::Node &node, Vec3f fallback) {
-  if (!node || !node.IsSequence() || node.size() < 3) {
-    return fallback;
+[[nodiscard]] bool splitMaterialParameterKey(const std::string &key,
+                                             std::string &binding,
+                                             std::string &member) {
+  const usize dot = key.find('.');
+  if (dot == std::string::npos || dot == 0 || dot + 1 >= key.size()) {
+    return false;
   }
-  return Vec3f{node[0].as<float>(), node[1].as<float>(), node[2].as<float>()};
+  binding = key.substr(0, dot);
+  member = key.substr(dot + 1);
+  return true;
 }
 
-[[nodiscard]] Vec4f parseVec4(const YAML::Node &node, Vec4f fallback) {
-  if (!node || !node.IsSequence() || node.size() < 3) {
-    return fallback;
+[[nodiscard]] bool
+coerceMaterialParameterValue(const ShaderPropertyType reflectedType,
+                             const LX_core::MaterialParameterValue &input,
+                             LX_core::MaterialParameterValue &output) {
+  output = input;
+  if (reflectedType == ShaderPropertyType::Float &&
+      input.type == LX_core::MaterialParameterValueType::Int) {
+    output.type = LX_core::MaterialParameterValueType::Float;
+    output.floatValue = static_cast<float>(input.intValue);
+    return true;
   }
-  return Vec4f{node[0].as<float>(), node[1].as<float>(),
-               node[2].as<float>(),
-               node.size() >= 4 ? node[3].as<float>() : fallback.w};
-}
-
-[[nodiscard]] float parseFloat(const YAML::Node &node, float fallback) {
-  return node ? node.as<float>() : fallback;
-}
-
-void applyMaterialParameter(MaterialConstants &material,
-                            const std::string &key,
-                            const LX_core::MaterialParameterValue &value) {
-  if ((key == "MaterialUBO.baseColor" ||
-       key == "MaterialUBO.surfaceColor") &&
-      value.type == LX_core::MaterialParameterValueType::Vec3) {
-    material.baseColor.x = value.vectorValue.x;
-    material.baseColor.y = value.vectorValue.y;
-    material.baseColor.z = value.vectorValue.z;
-  } else if (key == "MaterialUBO.baseColorFactor" &&
-             value.type == LX_core::MaterialParameterValueType::Vec4) {
-    material.baseColor = value.vectorValue;
-  } else if ((key == "MaterialUBO.metallicFactor" ||
-              key == "MaterialUBO.metallic") &&
-             value.type == LX_core::MaterialParameterValueType::Float) {
-    material.metallic = value.floatValue;
-  } else if ((key == "MaterialUBO.roughnessFactor" ||
-              key == "MaterialUBO.roughness") &&
-             value.type == LX_core::MaterialParameterValueType::Float) {
-    material.roughness = value.floatValue;
-  } else if (key == "MaterialUBO.specularIntensity" &&
-             value.type == LX_core::MaterialParameterValueType::Float) {
-    material.specularIntensity = value.floatValue;
-  } else if ((key == "MaterialUBO.ambientIntensity" ||
-              key == "MaterialUBO.ao") &&
-             value.type == LX_core::MaterialParameterValueType::Float) {
-    material.ambientIntensity = value.floatValue;
-  } else if (key == "MaterialUBO.shininess" &&
-             value.type == LX_core::MaterialParameterValueType::Float) {
-    material.shininess = value.floatValue;
-  } else if ((key == "MaterialUBO.emissive" ||
-              key == "MaterialUBO.emissiveFactor") &&
-             value.type == LX_core::MaterialParameterValueType::Vec3) {
-    material.emissive = {value.vectorValue.x, value.vectorValue.y,
-                         value.vectorValue.z};
+  if (reflectedType == ShaderPropertyType::Int &&
+      input.type == LX_core::MaterialParameterValueType::Float) {
+    output.type = LX_core::MaterialParameterValueType::Int;
+    output.intValue = static_cast<i32>(input.floatValue);
+    return true;
   }
+  if (reflectedType == ShaderPropertyType::Float) {
+    return input.type == LX_core::MaterialParameterValueType::Float;
+  }
+  if (reflectedType == ShaderPropertyType::Int) {
+    return input.type == LX_core::MaterialParameterValueType::Int;
+  }
+  if (reflectedType == ShaderPropertyType::Vec3) {
+    return input.type == LX_core::MaterialParameterValueType::Vec3;
+  }
+  if (reflectedType == ShaderPropertyType::Vec4) {
+    return input.type == LX_core::MaterialParameterValueType::Vec4;
+  }
+  return false;
 }
 
-void applyMaterialParameterMap(
-    MaterialConstants &material,
-    const std::unordered_map<std::string, LX_core::MaterialParameterValue>
-        &params) {
-  for (const auto &[key, value] : params) {
-    applyMaterialParameter(material, key, value);
+void applyBaseColorIfSupported(const MaterialInstanceSharedPtr &material,
+                               const std::optional<Vec3f> &color) {
+  if (!material || !color.has_value()) {
+    return;
+  }
+  const StringID materialUbo("MaterialUBO");
+  if (const auto member =
+          material->findParameterMember(materialUbo, StringID("baseColor"));
+      member.has_value() && member->get().type == ShaderPropertyType::Vec3) {
+    material->setParameter(materialUbo, StringID("baseColor"), *color);
+    material->syncGpuData();
+    return;
+  }
+  if (const auto member = material->findParameterMember(
+          materialUbo, StringID("baseColorFactor"));
+      member.has_value() && member->get().type == ShaderPropertyType::Vec4) {
+    material->setParameter(materialUbo, StringID("baseColorFactor"),
+                           Vec4f{color->x, color->y, color->z, 1.0f});
+    material->syncGpuData();
   }
 }
 
-void applyMaterialOverrides(MaterialConstants &material,
+void applyGenericMaterialOverrides(const MaterialInstanceSharedPtr &material,
+                                   const MaterialOverrideState &overrides) {
+  if (!material) {
+    return;
+  }
+  for (const auto &[key, value] : overrides.parameters) {
+    std::string binding;
+    std::string member;
+    if (!splitMaterialParameterKey(key, binding, member)) {
+      throw std::runtime_error("invalid material override key: " + key);
+    }
+    const auto reflectedMember =
+        material->findParameterMember(StringID(binding), StringID(member));
+    if (!reflectedMember.has_value()) {
+      throw std::runtime_error("material parameter not found for override: " +
+                               key);
+    }
+    LX_core::MaterialParameterValue coerced;
+    if (!coerceMaterialParameterValue(reflectedMember->get().type, value,
+                                      coerced)) {
+      throw std::runtime_error(
+          "material parameter type mismatch for override: " + key);
+    }
+    material->setParameterValue(StringID(binding), StringID(member), coerced);
+  }
+  material->syncGpuData();
+}
+
+void applyMaterialOverrides(const MaterialInstanceSharedPtr &material,
                             const MaterialOverrideState &overrides) {
-  if (overrides.baseColor.has_value()) {
-    material.baseColor.x = overrides.baseColor->x;
-    material.baseColor.y = overrides.baseColor->y;
-    material.baseColor.z = overrides.baseColor->z;
-  }
-  applyMaterialParameterMap(material, overrides.parameters);
+  applyBaseColorIfSupported(material, overrides.baseColor);
+  applyGenericMaterialOverrides(material, overrides);
 }
 
-[[nodiscard]] MaterialConstants
-loadMaterialConstants(const OfflineAssetResolver &resolver,
-                      const std::optional<std::string> &uri,
-                      const MaterialOverrideState &materialOverrides,
-                      const MaterialOverrideState &nodeOverrides,
-                      std::vector<std::string> &warnings) {
-  MaterialConstants material;
-
+[[nodiscard]] std::filesystem::path resolveMaterialPath(
+    const OfflineAssetResolver &resolver, const std::optional<std::string> &uri,
+    std::vector<std::string> &warnings) {
   if (uri.has_value()) {
     const auto materialPath = resolver.resolve(*uri);
     if (std::filesystem::exists(materialPath)) {
-      const YAML::Node root = YAML::LoadFile(materialPath.string());
-      if (const YAML::Node params = root["parameters"]; params) {
-        material.baseColor =
-            parseVec4(params["MaterialUBO.baseColor"], material.baseColor);
-        material.baseColor = parseVec4(params["MaterialUBO.baseColorFactor"],
-                                       material.baseColor);
-        material.baseColor =
-            parseVec4(params["MaterialUBO.surfaceColor"], material.baseColor);
-        material.metallic =
-            parseFloat(params["MaterialUBO.metallicFactor"], material.metallic);
-        material.metallic =
-            parseFloat(params["MaterialUBO.metallic"], material.metallic);
-        material.roughness = parseFloat(params["MaterialUBO.roughnessFactor"],
-                                        material.roughness);
-        material.roughness =
-            parseFloat(params["MaterialUBO.roughness"], material.roughness);
-        material.specularIntensity = parseFloat(
-            params["MaterialUBO.specularIntensity"], material.specularIntensity);
-        material.ambientIntensity = parseFloat(
-            params["MaterialUBO.ambientIntensity"], material.ambientIntensity);
-        material.ambientIntensity =
-            parseFloat(params["MaterialUBO.ao"], material.ambientIntensity);
-        material.shininess =
-            parseFloat(params["MaterialUBO.shininess"], material.shininess);
-        material.emissive =
-            parseVec3(params["MaterialUBO.emissive"], material.emissive);
-        material.emissive = parseVec3(params["MaterialUBO.emissiveFactor"],
-                                      material.emissive);
-      }
-    } else {
-      warnings.push_back("material asset not found, using fallback constants: " +
-                         *uri);
+      return materialPath;
     }
+    warnings.push_back("material asset not found, using fallback material: " +
+                       *uri);
+  }
+  return resolver.resolve(kDefaultMaterialUri);
+}
+
+[[nodiscard]] MaterialInstanceSharedPtr loadMaterialInstance(
+    const OfflineAssetResolver &resolver, const std::optional<std::string> &uri,
+    const MaterialOverrideState &materialOverrides,
+    const MaterialOverrideState &nodeOverrides,
+    std::unordered_map<std::string, MaterialInstanceSharedPtr> &materialCache,
+    std::vector<std::string> &warnings) {
+  const auto materialPath = resolveMaterialPath(resolver, uri, warnings);
+  const std::string cacheKey = materialPath.lexically_normal().string();
+
+  MaterialInstanceSharedPtr prototype;
+  if (const auto it = materialCache.find(cacheKey); it != materialCache.end()) {
+    prototype = it->second;
+  } else {
+    prototype = LX_infra::loadGenericMaterial(materialPath);
+    materialCache.emplace(cacheKey, prototype);
   }
 
+  auto material = prototype->cloneInstanceData();
   applyMaterialOverrides(material, materialOverrides);
   applyMaterialOverrides(material, nodeOverrides);
-  material.roughness = std::max(0.03f, material.roughness);
-  return material;
-}
-
-[[nodiscard]] std::vector<StructMemberInfo> makeMaterialUboMembers() {
-  return {
-      {"baseColorFactor", ShaderPropertyType::Vec4, 0, 16},
-      {"baseColor", ShaderPropertyType::Vec3, 0, 12},
-      {"surfaceColor", ShaderPropertyType::Vec3, 0, 12},
-      {"metallicFactor", ShaderPropertyType::Float, 16, 4},
-      {"metallic", ShaderPropertyType::Float, 16, 4},
-      {"roughnessFactor", ShaderPropertyType::Float, 20, 4},
-      {"roughness", ShaderPropertyType::Float, 20, 4},
-      {"specularIntensity", ShaderPropertyType::Float, 24, 4},
-      {"ambientIntensity", ShaderPropertyType::Float, 28, 4},
-      {"ao", ShaderPropertyType::Float, 28, 4},
-      {"shininess", ShaderPropertyType::Float, 32, 4},
-      {"emissive", ShaderPropertyType::Vec3, 36, 12},
-      {"emissiveFactor", ShaderPropertyType::Vec3, 36, 12},
-  };
-}
-
-[[nodiscard]] MaterialTemplate::SharedPtr makeOfflineMaterialTemplate() {
-  ShaderResourceBinding binding;
-  binding.name = "MaterialUBO";
-  binding.set = 2;
-  binding.binding = 0;
-  binding.type = ShaderPropertyType::UniformBuffer;
-  binding.size = 48;
-  binding.members = makeMaterialUboMembers();
-
-  auto shader = std::make_shared<OfflineMaterialShader>(
-      std::vector<ShaderResourceBinding>{binding});
-  auto materialTemplate = MaterialTemplate::create("offline_scene");
-  ShaderProgramSet shaderSet;
-  shaderSet.shaderName = "offline_scene";
-  shaderSet.shader = std::move(shader);
-  MaterialPassDefinition passDefinition;
-  passDefinition.shaderProgram = std::move(shaderSet);
-  passDefinition.renderState = RenderState{};
-  materialTemplate->setPassDefinition(Pass_Forward, std::move(passDefinition));
-  materialTemplate->rebuildMaterialInterface();
-  return materialTemplate;
-}
-
-[[nodiscard]] MaterialInstanceSharedPtr
-makeMaterialInstance(const MaterialConstants &constants) {
-  auto material = MaterialInstance::create(makeOfflineMaterialTemplate());
-  material->setParameter(StringID("MaterialUBO"), StringID("baseColorFactor"),
-                         constants.baseColor);
-  material->setParameter(StringID("MaterialUBO"), StringID("baseColor"),
-                         Vec3f{constants.baseColor.x, constants.baseColor.y,
-                               constants.baseColor.z});
-  material->setParameter(StringID("MaterialUBO"), StringID("surfaceColor"),
-                         Vec3f{constants.baseColor.x, constants.baseColor.y,
-                               constants.baseColor.z});
-  material->setParameter(StringID("MaterialUBO"), StringID("metallicFactor"),
-                         constants.metallic);
-  material->setParameter(StringID("MaterialUBO"), StringID("metallic"),
-                         constants.metallic);
-  material->setParameter(StringID("MaterialUBO"), StringID("roughnessFactor"),
-                         constants.roughness);
-  material->setParameter(StringID("MaterialUBO"), StringID("roughness"),
-                         constants.roughness);
-  material->setParameter(StringID("MaterialUBO"),
-                         StringID("specularIntensity"),
-                         constants.specularIntensity);
-  material->setParameter(StringID("MaterialUBO"),
-                         StringID("ambientIntensity"),
-                         constants.ambientIntensity);
-  material->setParameter(StringID("MaterialUBO"), StringID("ao"),
-                         constants.ambientIntensity);
-  material->setParameter(StringID("MaterialUBO"), StringID("shininess"),
-                         constants.shininess);
-  material->setParameter(StringID("MaterialUBO"), StringID("emissive"),
-                         constants.emissive);
-  material->setParameter(StringID("MaterialUBO"), StringID("emissiveFactor"),
-                         constants.emissive);
-  material->syncGpuData();
   return material;
 }
 
 [[nodiscard]] CameraResource makeCameraResource(const SceneNodeDocument &node,
-                                                const std::string &path,
                                                 const Mat4f &world) {
   const Vec3f eye = transformPoint(world, Vec3f{0.0f, 0.0f, 0.0f});
   const Vec3f forward =
@@ -462,8 +330,10 @@ RegisteredMesh registerBuiltinMesh(
   }
 
   auto mesh = LX_core::buildBuiltinPrimitiveMesh(meshUri);
+  const auto geometryStorageHandle =
+      table.registerGeometryStorage(mesh->getGeometryStorage());
+  (void)geometryStorageHandle;
   RegisteredMesh registered{
-      .geometryStorage = table.registerGeometryStorage(mesh->getGeometryStorage()),
       .mesh = table.registerMesh(mesh),
       .meshBuffer = std::move(mesh),
   };
@@ -475,6 +345,7 @@ struct LoadState final {
   OfflineLoadedScene loaded;
   std::unordered_map<std::string, RegisteredMesh> meshByUri;
   std::unordered_map<std::string, MaterialHandle> materialByKey;
+  std::unordered_map<std::string, MaterialInstanceSharedPtr> materialCache;
   bool cameraLoaded = false;
   bool directionalLightLoaded = false;
 };
@@ -489,7 +360,7 @@ void visitNode(const OfflineAssetResolver &resolver,
   if (node.camera.has_value() && !state.cameraLoaded &&
       (cameraPath.empty() || cameraPath == path)) {
     const auto cameraHandle =
-        state.loaded.table.registerCamera(makeCameraResource(node, path, world));
+        state.loaded.table.registerCamera(makeCameraResource(node, world));
     (void)cameraHandle;
     state.cameraLoaded = true;
   }
@@ -522,11 +393,11 @@ void visitNode(const OfflineAssetResolver &resolver,
         it != state.materialByKey.end()) {
       materialHandle = it->second;
     } else {
-      const MaterialConstants material = loadMaterialConstants(
+      auto material = loadMaterialInstance(
           resolver, node.materialUri, node.materialOverrides,
-          node.nodeMaterialOverrides, state.loaded.warnings);
-      materialHandle =
-          state.loaded.table.registerMaterial(makeMaterialInstance(material));
+          node.nodeMaterialOverrides, state.materialCache,
+          state.loaded.warnings);
+      materialHandle = state.loaded.table.registerMaterial(std::move(material));
       state.materialByKey.emplace(materialKey, materialHandle);
     }
 
