@@ -6,6 +6,7 @@
 #include "backend/vulkan/details/render_objects/render_pass.hpp"
 #include "backend/vulkan/details/resource_manager.hpp"
 #include "core/asset/mesh.hpp"
+#include "core/frame_graph/render_upload_plan.hpp"
 #include "core/asset/skeleton.hpp"
 #include "core/rhi/gpu_resource.hpp"
 #include "core/rhi/index_buffer.hpp"
@@ -187,10 +188,12 @@ void testOffscreenSubmitProbe() {
       renderItem.raster.drawData->update(pc);
     }
 
-    resourceManager->syncResource(*cmdBufferMgr, renderItem.raster.vertexBuffer);
-    resourceManager->syncResource(*cmdBufferMgr, renderItem.raster.indexBuffer);
-    for (auto& cpuRes : renderItem.descriptorResources) {
-      resourceManager->syncResource(*cmdBufferMgr, cpuRes);
+    LX_core::RenderWorkQueue uploadQueue;
+    uploadQueue.addItem(renderItem);
+    const LX_core::RenderUploadPlan uploadPlan =
+        LX_core::buildRenderUploadPlan(uploadQueue);
+    for (const auto &resource : uploadPlan.resources) {
+      resourceManager->syncResource(*cmdBufferMgr, resource);
     }
     resourceManager->collectGarbage();
 

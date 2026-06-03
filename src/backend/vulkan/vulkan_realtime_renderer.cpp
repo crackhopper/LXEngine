@@ -6,6 +6,7 @@
 #include "core/asset/material_template.hpp"
 #include "core/frame_graph/frame_graph.hpp"
 #include "core/frame_graph/pass.hpp"
+#include "core/frame_graph/render_upload_plan.hpp"
 #include "core/image/tone_mapping.hpp"
 #include "core/offline/offline_render_job.hpp"
 #include "core/rhi/index_buffer.hpp"
@@ -808,6 +809,27 @@ public:
     return m_foundation->commandBufferManager();
   }
 
+  void syncRenderUploadPlan(const LX_core::RenderWorkQueue &queue) {
+    const LX_core::RenderUploadPlan uploadPlan =
+        LX_core::buildRenderUploadPlan(queue);
+    for (const auto &resource : uploadPlan.resources) {
+      resourceManager().syncResource(commandBufferManager(), resource);
+    }
+  }
+
+  [[nodiscard]] bool
+  uploadPlanRequiresSharedHostBufferSync(
+      const LX_core::RenderWorkQueue &queue) const {
+    const LX_core::RenderUploadPlan uploadPlan =
+        LX_core::buildRenderUploadPlan(queue);
+    for (const auto &resource : uploadPlan.resources) {
+      if (isSharedHostBufferResource(resource)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /// REQ-009: derive the real swapchain RenderTarget from the Vulkan device's
   /// chosen surface format + depth format. This is the value that gets plugged
   /// into FramePass.target and also backfilled into any Camera whose m_target
@@ -1010,13 +1032,7 @@ public:
     // SceneNode::getValidatedPassData() has already synced each per-draw model
     // matrix from the node world transform while building the queue.
     for (auto &pass : m_frameGraph.getPasses()) {
-      for (auto &item : pass.queue.getItems()) {
-        resourceManager().syncResource(commandBufferManager(), item.raster.vertexBuffer);
-        resourceManager().syncResource(commandBufferManager(), item.raster.indexBuffer);
-        for (auto &cpuRes : item.descriptorResources) {
-          resourceManager().syncResource(commandBufferManager(), cpuRes);
-        }
-      }
+      syncRenderUploadPlan(pass.queue);
     }
     resourceManager().collectGarbage();
 
@@ -1033,19 +1049,9 @@ public:
     resourceManager().beginFrame(currentFrameIndex);
     bool requiresSharedBufferSync = false;
     for (auto &pass : m_frameGraph.getPasses()) {
-      for (auto &item : pass.queue.getItems()) {
-        requiresSharedBufferSync =
-            requiresSharedBufferSync ||
-            isSharedHostBufferResource(item.raster.vertexBuffer) ||
-            isSharedHostBufferResource(item.raster.indexBuffer);
-        for (auto &cpuRes : item.descriptorResources) {
-          requiresSharedBufferSync =
-              requiresSharedBufferSync || isSharedHostBufferResource(cpuRes);
-        }
-        if (requiresSharedBufferSync) {
-          break;
-        }
-      }
+      requiresSharedBufferSync =
+          requiresSharedBufferSync ||
+          uploadPlanRequiresSharedHostBufferSync(pass.queue);
       if (requiresSharedBufferSync) {
         break;
       }
@@ -1059,13 +1065,7 @@ public:
     }
 
     for (auto &pass : m_frameGraph.getPasses()) {
-      for (auto &item : pass.queue.getItems()) {
-        resourceManager().syncResource(commandBufferManager(), item.raster.vertexBuffer);
-        resourceManager().syncResource(commandBufferManager(), item.raster.indexBuffer);
-        for (auto &cpuRes : item.descriptorResources) {
-          resourceManager().syncResource(commandBufferManager(), cpuRes);
-        }
-      }
+      syncRenderUploadPlan(pass.queue);
     }
     resourceManager().collectGarbage();
   }
@@ -1433,13 +1433,7 @@ public:
       throw std::runtime_error("debug render target produced no draw items");
     }
 
-    for (auto &item : queue.getItems()) {
-      resourceManager().syncResource(commandBufferManager(), item.raster.vertexBuffer);
-      resourceManager().syncResource(commandBufferManager(), item.raster.indexBuffer);
-      for (auto &cpuRes : item.descriptorResources) {
-        resourceManager().syncResource(commandBufferManager(), cpuRes);
-      }
-    }
+    syncRenderUploadPlan(queue);
     resourceManager().preloadPipelines(
         queue.collectUniquePipelineBuildDescs());
 
@@ -1662,13 +1656,7 @@ public:
         break;
       }
     }
-    for (auto &item : queue.getItems()) {
-      resourceManager().syncResource(commandBufferManager(), item.raster.vertexBuffer);
-      resourceManager().syncResource(commandBufferManager(), item.raster.indexBuffer);
-      for (auto &cpuRes : item.descriptorResources) {
-        resourceManager().syncResource(commandBufferManager(), cpuRes);
-      }
-    }
+    syncRenderUploadPlan(queue);
     resourceManager().preloadPipelines(
         queue.collectUniquePipelineBuildDescs());
 

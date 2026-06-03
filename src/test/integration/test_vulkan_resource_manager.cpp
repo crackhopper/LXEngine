@@ -7,6 +7,7 @@
 #include "backend/vulkan/details/resource_manager.hpp"
 #include "core/debug_draw/debug_draw.hpp"
 #include "core/asset/texture.hpp"
+#include "core/frame_graph/render_upload_plan.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/components/material_component.hpp"
@@ -71,10 +72,12 @@ void syncRenderWorkItemResources(
     LX_core::backend::VulkanResourceManager &resourceManager,
     LX_core::backend::VulkanCommandBufferManager &cmdBufferMgr,
     const LX_core::RenderWorkItem &item) {
-  resourceManager.syncResource(cmdBufferMgr, item.raster.vertexBuffer);
-  resourceManager.syncResource(cmdBufferMgr, item.raster.indexBuffer);
-  for (const auto &cpuRes : item.descriptorResources) {
-    resourceManager.syncResource(cmdBufferMgr, cpuRes);
+  LX_core::RenderWorkQueue queue;
+  queue.addItem(item);
+  const LX_core::RenderUploadPlan uploadPlan =
+      LX_core::buildRenderUploadPlan(queue);
+  for (const auto &resource : uploadPlan.resources) {
+    resourceManager.syncResource(cmdBufferMgr, resource);
   }
   resourceManager.collectGarbage();
 }

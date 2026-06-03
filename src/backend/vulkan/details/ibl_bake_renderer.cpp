@@ -2,6 +2,7 @@
 
 #include "core/asset/material_instance.hpp"
 #include "core/asset/material_template.hpp"
+#include "core/frame_graph/render_upload_plan.hpp"
 #include "core/math/mat.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
@@ -349,6 +350,17 @@ RenderWorkItem makeFullscreenBakeItem(const std::string &shaderName,
   return makeBakeItem(shaderName, target, {}, 3u);
 }
 
+void syncBakeItemResources(VulkanResourceManager &resourceManager,
+                           VulkanCommandBufferManager &cmdBufferManager,
+                           const RenderWorkItem &item) {
+  RenderWorkQueue queue;
+  queue.addItem(item);
+  const RenderUploadPlan uploadPlan = buildRenderUploadPlan(queue);
+  for (const auto &resource : uploadPlan.resources) {
+    resourceManager.syncResource(cmdBufferManager, resource);
+  }
+}
+
 } // namespace
 
 IblBakeRenderer::IblBakeRenderer(VulkanDevice &device,
@@ -526,10 +538,7 @@ void IblBakeRenderer::renderEquirectToCubemap(
        std::static_pointer_cast<IGpuResource>(captureView)},
       36u);
 
-  m_resourceManager.syncResource(m_cmdBufferManager, item.raster.vertexBuffer);
-  m_resourceManager.syncResource(m_cmdBufferManager, item.raster.indexBuffer);
-  m_resourceManager.syncResource(m_cmdBufferManager, source);
-  m_resourceManager.syncResource(m_cmdBufferManager, captureView);
+  syncBakeItemResources(m_resourceManager, m_cmdBufferManager, item);
   auto &pipeline = m_resourceManager.getOrCreateRenderPipeline(item);
 
   const auto viewProjections = captureViewProjections();
@@ -593,9 +602,7 @@ void IblBakeRenderer::renderIrradianceCubemap(u32 irradianceSize) {
        std::static_pointer_cast<IGpuResource>(captureView)},
       36u);
 
-  m_resourceManager.syncResource(m_cmdBufferManager, item.raster.vertexBuffer);
-  m_resourceManager.syncResource(m_cmdBufferManager, item.raster.indexBuffer);
-  m_resourceManager.syncResource(m_cmdBufferManager, captureView);
+  syncBakeItemResources(m_resourceManager, m_cmdBufferManager, item);
   auto &pipeline = m_resourceManager.getOrCreateRenderPipeline(item);
 
   const auto viewProjections = captureViewProjections();
@@ -664,10 +671,7 @@ void IblBakeRenderer::renderPrefilterCubemap(u32 prefilterSize,
        std::static_pointer_cast<IGpuResource>(prefilter)},
       36u);
 
-  m_resourceManager.syncResource(m_cmdBufferManager, item.raster.vertexBuffer);
-  m_resourceManager.syncResource(m_cmdBufferManager, item.raster.indexBuffer);
-  m_resourceManager.syncResource(m_cmdBufferManager, captureView);
-  m_resourceManager.syncResource(m_cmdBufferManager, prefilter);
+  syncBakeItemResources(m_resourceManager, m_cmdBufferManager, item);
   auto &pipeline = m_resourceManager.getOrCreateRenderPipeline(item);
 
   const auto viewProjections = captureViewProjections();
@@ -734,8 +738,7 @@ void IblBakeRenderer::clearBrdfLut(u32 size) {
   RenderTargetDesc target = RenderTargetDesc::offscreenColor(
       ImageFormat::RGBA16Float);
   auto item = makeFullscreenBakeItem("ibl_brdf_lut", target);
-  m_resourceManager.syncResource(m_cmdBufferManager, item.raster.vertexBuffer);
-  m_resourceManager.syncResource(m_cmdBufferManager, item.raster.indexBuffer);
+  syncBakeItemResources(m_resourceManager, m_cmdBufferManager, item);
   auto &pipeline = m_resourceManager.getOrCreateRenderPipeline(item);
 
   auto cmd = m_cmdBufferManager.beginSingleTimeCommands();

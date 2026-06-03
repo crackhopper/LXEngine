@@ -1,9 +1,11 @@
 #include "core/asset/material_instance.hpp"
 #include "core/asset/mesh.hpp"
+#include "core/asset/parameter_buffer.hpp"
 #include "core/asset/shader.hpp"
 #include "core/frame_graph/frame_graph.hpp"
 #include "core/frame_graph/pass.hpp"
 #include "core/frame_graph/render_queue.hpp"
+#include "core/frame_graph/render_upload_plan.hpp"
 #include "core/frame_graph/render_target.hpp"
 #include "core/pipeline/pipeline_build_desc.hpp"
 #include "core/rhi/gpu_resource.hpp"
@@ -1087,6 +1089,39 @@ void testIblResourcesInjectOnlyForIblShaderItems() {
   EXPECT(sawIbl, "IBL item should be present");
 }
 
+void testRenderUploadPlanCollectsRasterResourcesAndPushConstants() {
+  RenderWorkItem item;
+  item.domain = RenderDomain::Realtime;
+  item.kind = RenderWorkKind::RasterDraw;
+  item.raster.vertexBuffer = VertexBuffer<VertexPos>::create(
+      std::vector<VertexPos>{{{0, 0, 0}}, {{1, 0, 0}}, {{0, 1, 0}}});
+  item.raster.indexBuffer = IndexBuffer::create({0u, 1u, 2u});
+  item.raster.drawData = std::make_shared<PerDrawData>();
+
+  static const ShaderResourceBinding materialBinding{
+      .name = "MaterialUBO",
+      .set = 0,
+      .binding = 0,
+      .type = ShaderPropertyType::UniformBuffer,
+      .size = 16,
+      .stageFlags = ShaderStage::Fragment,
+  };
+  auto materialUbo =
+      std::make_shared<ParameterBuffer>(StringID("MaterialUBO"),
+                                        materialBinding);
+  item.descriptorResources.push_back(materialUbo);
+  item.descriptorResources.push_back(materialUbo);
+
+  RenderWorkQueue queue;
+  queue.addItem(std::move(item));
+
+  const RenderUploadPlan plan = buildRenderUploadPlan(queue);
+  EXPECT(plan.resources.size() == 3,
+         "upload plan should include unique vertex, index, and descriptor resources");
+  EXPECT(plan.pushConstants.size() == 1,
+         "upload plan should track raster push constants separately");
+}
+
 void testPartialIblResourcesAreCompletedBeforeInjection() {
   auto ibl = makeIblRenderable();
   auto scene = Scene::create("partial_ibl_injection");
@@ -1268,6 +1303,7 @@ int main() {
   testVisibilityMaskOrsMatchingCameraMasks();
   testVisibilityFilteringKeepsSceneResources();
   testIblResourcesInjectOnlyForIblShaderItems();
+  testRenderUploadPlanCollectsRasterResourcesAndPushConstants();
   testPartialIblResourcesAreCompletedBeforeInjection();
   testRenderWorkQueueDebugOverrideUsesExplicitResourcesAndLayerMask();
   testDebugOnlyRenderableIsOverlayOnly();

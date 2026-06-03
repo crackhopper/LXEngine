@@ -5,6 +5,7 @@
 #include "backend/vulkan/details/device_resources/texture.hpp"
 #include "backend/vulkan/details/device.hpp"
 #include "backend/vulkan/details/resource_manager.hpp"
+#include "core/frame_graph/render_upload_plan.hpp"
 #include "core/rhi/gpu_resource.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
@@ -135,10 +136,12 @@ int main() {
     }
 
     // Sync all CPU-side resources to GPU.
-    resourceManager->syncResource(*cmdBufferMgr, renderItem.raster.vertexBuffer);
-    resourceManager->syncResource(*cmdBufferMgr, renderItem.raster.indexBuffer);
-    for (auto &cpuRes : renderItem.descriptorResources) {
-      resourceManager->syncResource(*cmdBufferMgr, cpuRes);
+    LX_core::RenderWorkQueue uploadQueue;
+    uploadQueue.addItem(renderItem);
+    const LX_core::RenderUploadPlan uploadPlan =
+        LX_core::buildRenderUploadPlan(uploadQueue);
+    for (const auto &resource : uploadPlan.resources) {
+      resourceManager->syncResource(*cmdBufferMgr, resource);
     }
     resourceManager->collectGarbage();
 
