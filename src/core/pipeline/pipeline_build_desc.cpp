@@ -18,7 +18,8 @@ Mesh 的 vertex layout 可能包含 shader 当前 pass 不读取的属性。pipe
 
 这里按 shader reflection 得到的 vertex inputs 过滤 layout，只保留当前 shader 需要的
 location/type。前置校验已经在 `SceneNode` 做过；这里的 assert 是为了保证
-`PipelineBuildDesc::fromRenderingItem` 只消费已经通过验证的 item。
+`PipelineBuildDesc::fromRenderWorkItem` 只消费已经通过验证的 raster draw
+work item。
 */
 VertexLayout filterVertexLayoutToShaderInputs(const VertexLayout &layout,
                                               const IShader &shader) {
@@ -41,12 +42,12 @@ VertexLayout filterVertexLayoutToShaderInputs(const VertexLayout &layout,
       continue;
     }
     assert(it->second == item.type &&
-           "PipelineBuildDesc::fromRenderingItem: shader input type mismatch");
+           "PipelineBuildDesc::fromRenderWorkItem: shader input type mismatch");
     filteredItems.push_back(item);
   }
 
   assert(filteredItems.size() == shaderInputs.size() &&
-         "PipelineBuildDesc::fromRenderingItem: filtered layout missing "
+         "PipelineBuildDesc::fromRenderWorkItem: filtered layout missing "
          "required shader inputs");
   return VertexLayout(std::move(filteredItems), layout.getStride());
 }
@@ -54,15 +55,18 @@ VertexLayout filterVertexLayoutToShaderInputs(const VertexLayout &layout,
 } // namespace
 
 PipelineBuildDesc
-PipelineBuildDesc::fromRenderingItem(const RenderingItem &item) {
+PipelineBuildDesc::fromRenderWorkItem(const RenderWorkItem &item) {
+  const auto &raster = item.raster;
+  assert(item.kind == RenderWorkKind::RasterDraw &&
+         "PipelineBuildDesc::fromRenderWorkItem: raster draw item required");
   assert(item.shaderInfo &&
-         "PipelineBuildDesc::fromRenderingItem: shaderInfo required");
-  assert(item.vertexBuffer &&
-         "PipelineBuildDesc::fromRenderingItem: vertexBuffer required");
-  assert(item.indexBuffer &&
-         "PipelineBuildDesc::fromRenderingItem: indexBuffer required");
+         "PipelineBuildDesc::fromRenderWorkItem: shaderInfo required");
+  assert(raster.vertexBuffer &&
+         "PipelineBuildDesc::fromRenderWorkItem: vertexBuffer required");
+  assert(raster.indexBuffer &&
+         "PipelineBuildDesc::fromRenderWorkItem: indexBuffer required");
   assert(item.material &&
-         "PipelineBuildDesc::fromRenderingItem: material required");
+         "PipelineBuildDesc::fromRenderWorkItem: material required");
 
   PipelineBuildDesc info;
   info.key = item.pipelineKey;
@@ -70,16 +74,16 @@ PipelineBuildDesc::fromRenderingItem(const RenderingItem &item) {
   info.stages = item.shaderInfo->getAllStages();
   info.bindings = item.shaderInfo->getReflectionBindings();
 
-  auto vb = std::dynamic_pointer_cast<IVertexBuffer>(item.vertexBuffer);
-  assert(vb && "PipelineBuildDesc::fromRenderingItem: vertex buffer is not "
+  auto vb = std::dynamic_pointer_cast<IVertexBuffer>(raster.vertexBuffer);
+  assert(vb && "PipelineBuildDesc::fromRenderWorkItem: vertex buffer is not "
                "IVertexBuffer");
   info.vertexLayout = filterVertexLayoutToShaderInputs(vb->getLayout(),
                                                        *item.shaderInfo);
 
-  auto ib = std::dynamic_pointer_cast<IndexBuffer>(item.indexBuffer);
+  auto ib = std::dynamic_pointer_cast<IndexBuffer>(raster.indexBuffer);
   assert(
       ib &&
-      "PipelineBuildDesc::fromRenderingItem: index buffer is not IndexBuffer");
+      "PipelineBuildDesc::fromRenderWorkItem: index buffer is not IndexBuffer");
   info.topology = ib->getTopology();
 
   info.renderState = item.material->getPassRenderState(item.pass);

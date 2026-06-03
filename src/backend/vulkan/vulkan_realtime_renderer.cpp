@@ -359,15 +359,15 @@ extractModelMatrix(const LX_core::PerDrawDataSharedPtr &drawData) {
 }
 
 [[nodiscard]] ProjectedBoundsDebug makeProjectedBoundsDebug(
-    const LX_core::IRenderable &renderable, const LX_core::RenderingItem &item,
+    const LX_core::IRenderable &renderable, const LX_core::RenderWorkItem &item,
     const LX_core::Mat4f &viewProj, u32 width, u32 height) {
   ProjectedBoundsDebug out;
   out.nodeName = renderable.getNodeName();
   out.objectSignature =
       LX_core::GlobalStringTable::get().getName(item.objectSignature.id);
-  out.indexCount = item.indexBuffer ? item.indexBuffer->getByteSize() / sizeof(u32) : 0;
+  out.indexCount = item.raster.indexBuffer ? item.raster.indexBuffer->getByteSize() / sizeof(u32) : 0;
 
-  auto modelOpt = extractModelMatrix(item.drawData);
+  auto modelOpt = extractModelMatrix(item.raster.drawData);
   if (!modelOpt.has_value()) {
     return out;
   }
@@ -976,7 +976,7 @@ public:
     m_frameGraph.addPass(LX_core::FramePass{
         LX_core::Pass_DebugOverlay, swapchainDesc, {}, {}, {}});
 
-    // RenderQueue::buildFromScene (invoked per pass below) internally:
+    // RenderWorkQueue::buildFromScene (invoked per pass below) internally:
     //   - filters renderables by supportsPass(pass)
     //   - merges scene.getSceneLevelResources(pass, target) (camera UBO
     //   filtered by
@@ -1011,8 +1011,8 @@ public:
     // matrix from the node world transform while building the queue.
     for (auto &pass : m_frameGraph.getPasses()) {
       for (auto &item : pass.queue.getItems()) {
-        resourceManager().syncResource(commandBufferManager(), item.vertexBuffer);
-        resourceManager().syncResource(commandBufferManager(), item.indexBuffer);
+        resourceManager().syncResource(commandBufferManager(), item.raster.vertexBuffer);
+        resourceManager().syncResource(commandBufferManager(), item.raster.indexBuffer);
         for (auto &cpuRes : item.descriptorResources) {
           resourceManager().syncResource(commandBufferManager(), cpuRes);
         }
@@ -1036,8 +1036,8 @@ public:
       for (auto &item : pass.queue.getItems()) {
         requiresSharedBufferSync =
             requiresSharedBufferSync ||
-            isSharedHostBufferResource(item.vertexBuffer) ||
-            isSharedHostBufferResource(item.indexBuffer);
+            isSharedHostBufferResource(item.raster.vertexBuffer) ||
+            isSharedHostBufferResource(item.raster.indexBuffer);
         for (auto &cpuRes : item.descriptorResources) {
           requiresSharedBufferSync =
               requiresSharedBufferSync || isSharedHostBufferResource(cpuRes);
@@ -1060,8 +1060,8 @@ public:
 
     for (auto &pass : m_frameGraph.getPasses()) {
       for (auto &item : pass.queue.getItems()) {
-        resourceManager().syncResource(commandBufferManager(), item.vertexBuffer);
-        resourceManager().syncResource(commandBufferManager(), item.indexBuffer);
+        resourceManager().syncResource(commandBufferManager(), item.raster.vertexBuffer);
+        resourceManager().syncResource(commandBufferManager(), item.raster.indexBuffer);
         for (auto &cpuRes : item.descriptorResources) {
           resourceManager().syncResource(commandBufferManager(), cpuRes);
         }
@@ -1425,7 +1425,7 @@ public:
       }
     }
 
-    LX_core::RenderQueue queue;
+    LX_core::RenderWorkQueue queue;
     queue.buildFromSceneWithOverrides(
         *m_scene, pass, target, std::move(sceneResources),
         cameraComponent.getCullingMask() & ~LX_core::Layer_EditorOverlay);
@@ -1434,8 +1434,8 @@ public:
     }
 
     for (auto &item : queue.getItems()) {
-      resourceManager().syncResource(commandBufferManager(), item.vertexBuffer);
-      resourceManager().syncResource(commandBufferManager(), item.indexBuffer);
+      resourceManager().syncResource(commandBufferManager(), item.raster.vertexBuffer);
+      resourceManager().syncResource(commandBufferManager(), item.raster.indexBuffer);
       for (auto &cpuRes : item.descriptorResources) {
         resourceManager().syncResource(commandBufferManager(), cpuRes);
       }
@@ -1495,7 +1495,7 @@ public:
       auto &pipeline = resourceManager().getOrCreateRenderPipeline(item);
       cmd->bindPipeline(pipeline);
       cmd->bindResources(resourceManager(), pipeline, item);
-      cmd->drawItem(item);
+      cmd->executeRasterDrawItem(item);
     }
     cmd->endRenderPass();
 
@@ -1638,7 +1638,7 @@ public:
               LX_core::StringID("ShadowMap" + std::to_string(cascadeIndex))));
     }
 
-    LX_core::RenderQueue queue;
+    LX_core::RenderWorkQueue queue;
     queue.buildFromSceneWithOverrides(
         *m_scene, LX_core::Pass_Forward, target, std::move(sceneResources),
         outputCullingMask & ~LX_core::Layer_EditorOverlay);
@@ -1663,8 +1663,8 @@ public:
       }
     }
     for (auto &item : queue.getItems()) {
-      resourceManager().syncResource(commandBufferManager(), item.vertexBuffer);
-      resourceManager().syncResource(commandBufferManager(), item.indexBuffer);
+      resourceManager().syncResource(commandBufferManager(), item.raster.vertexBuffer);
+      resourceManager().syncResource(commandBufferManager(), item.raster.indexBuffer);
       for (auto &cpuRes : item.descriptorResources) {
         resourceManager().syncResource(commandBufferManager(), cpuRes);
       }
@@ -1768,7 +1768,7 @@ public:
       auto &pipeline = resourceManager().getOrCreateRenderPipeline(item);
       cmd->bindPipeline(pipeline);
       cmd->bindResources(resourceManager(), pipeline, item);
-      cmd->drawItem(item);
+      cmd->executeRasterDrawItem(item);
     }
     cmd->endRenderPass();
 
@@ -1898,7 +1898,7 @@ private:
       auto &pipeline = resourceManager().getOrCreateRenderPipeline(item);
       cmd.bindPipeline(pipeline);
       cmd.bindResources(resourceManager(), pipeline, item);
-      cmd.drawItem(item);
+      cmd.executeRasterDrawItem(item);
     }
   }
 
@@ -1906,14 +1906,14 @@ private:
                                  const LX_core::RenderTargetDesc &target,
                                  LX_core::MaterialInstanceSharedPtr material,
                                  const char *objectSignature) {
-    LX_core::RenderingItem item;
+    LX_core::RenderWorkItem item;
     item.shaderInfo = material->getPassShader(pass);
     item.material = material;
-    item.vertexBuffer = LX_core::VertexBuffer<LX_core::VertexPos>::create(
+    item.raster.vertexBuffer = LX_core::VertexBuffer<LX_core::VertexPos>::create(
         std::vector<LX_core::VertexPos>{{{0.0f, 0.0f, 0.0f}},
                                         {{0.0f, 0.0f, 0.0f}},
                                         {{0.0f, 0.0f, 0.0f}}});
-    item.indexBuffer = LX_core::IndexBuffer::create({0u, 1u, 2u});
+    item.raster.indexBuffer = LX_core::IndexBuffer::create({0u, 1u, 2u});
     item.descriptorResources = material->getDescriptorResources(pass);
     item.pass = pass;
     item.target = target;
@@ -1973,14 +1973,14 @@ private:
 
     VulkanPostProcessBuilder builder(m_postProcessSettings);
     const auto material = builder.createSkyboxBackgroundMaterial();
-    LX_core::RenderingItem item;
+    LX_core::RenderWorkItem item;
     item.shaderInfo = material->getPassShader(LX_core::Pass_Forward);
     item.material = material;
-    item.vertexBuffer = LX_core::VertexBuffer<LX_core::VertexPos>::create(
+    item.raster.vertexBuffer = LX_core::VertexBuffer<LX_core::VertexPos>::create(
         std::vector<LX_core::VertexPos>{{{0.0f, 0.0f, 0.0f}},
                                         {{0.0f, 0.0f, 0.0f}},
                                         {{0.0f, 0.0f, 0.0f}}});
-    item.indexBuffer = LX_core::IndexBuffer::create({0u, 1u, 2u});
+    item.raster.indexBuffer = LX_core::IndexBuffer::create({0u, 1u, 2u});
     item.descriptorResources =
         material->getDescriptorResources(LX_core::Pass_Forward);
     const LX_core::RenderTarget renderTarget{target};

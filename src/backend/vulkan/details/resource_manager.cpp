@@ -420,9 +420,9 @@ VulkanResourceManager::getRenderPass(const RenderTargetDesc &target) {
 }
 
 VulkanPipeline &VulkanResourceManager::getOrCreateRenderPipeline(
-    const LX_core::RenderingItem &item) {
+    const LX_core::RenderWorkItem &item) {
   return m_pipelineCache->getOrCreate(
-      LX_core::PipelineBuildDesc::fromRenderingItem(item),
+      LX_core::PipelineBuildDesc::fromRenderWorkItem(item),
       getRenderPass(item.target).getHandle());
 }
 

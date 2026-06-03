@@ -307,11 +307,11 @@ readPerDrawLayout(const PerDrawDataSharedPtr &drawData) {
   return *reinterpret_cast<const PerDrawLayoutBase *>(drawData->rawData());
 }
 
-std::optional<std::reference_wrapper<const RenderingItem>>
-findItemByDrawData(const RenderQueue &queue,
+std::optional<std::reference_wrapper<const RenderWorkItem>>
+findItemByDrawData(const RenderWorkQueue &queue,
                    const PerDrawDataSharedPtr &drawData) {
   for (const auto &item : queue.getItems()) {
-    if (item.drawData == drawData) {
+    if (item.raster.drawData == drawData) {
       return std::cref(item);
     }
   }
@@ -714,12 +714,12 @@ void testSkinningVariantChangesPipelineSignaturesAndAddsBones() {
   }
 }
 
-void testRenderQueueConsumesValidatedSceneNode() {
+void testRenderWorkQueueConsumesValidatedSceneNode() {
   auto node =
       makeNode("node_queue", makeMeshWithSkinningInputs(), makeMaterial(false));
   auto scene = Scene::create("SceneQueue", node);
   scene->addCamera(LX_test::makeDefaultCameraNodeWithTarget());
-  RenderQueue queue;
+  RenderWorkQueue queue;
   queue.buildFromScene(*scene, Pass_Forward, RenderTarget{});
 
   EXPECT(queue.getItems().size() == 1, "queue should consume one SceneNode");
@@ -738,7 +738,7 @@ void testRenderQueueConsumesValidatedSceneNode() {
   }
 }
 
-void testRenderQueueUsesHierarchyDerivedWorldTransform() {
+void testRenderWorkQueueUsesHierarchyDerivedWorldTransform() {
   auto parent = makeNode("node_queue_parent", makeMeshWithSkinningInputs(),
                          makeMaterial(false));
   auto child = makeNode("node_queue_child", makeMeshWithSkinningInputs(),
@@ -751,7 +751,7 @@ void testRenderQueueUsesHierarchyDerivedWorldTransform() {
   scene->addRenderable(child);
   scene->addCamera(LX_test::makeDefaultCameraNodeWithTarget());
 
-  RenderQueue queue;
+  RenderWorkQueue queue;
   queue.buildFromScene(*scene, Pass_Forward, RenderTarget{});
 
   EXPECT(queue.getItems().size() == 2,
@@ -760,7 +760,7 @@ void testRenderQueueUsesHierarchyDerivedWorldTransform() {
   EXPECT(childItem.has_value(),
          "queue should carry the child per-draw data pointer");
   if (childItem) {
-    const auto &layout = readPerDrawLayout(childItem->get().drawData);
+    const auto &layout = readPerDrawLayout(childItem->get().raster.drawData);
     EXPECT(
         nearlyEqualVec3(transformPoint(layout.model), Vec3f{4.0f, 2.0f, 0.0f}),
         "queue draw data should use hierarchy-derived child world transform");
@@ -887,8 +887,8 @@ int main(int argc, char **argv) {
   testOrdinaryMaterialWritesDoNotChangeValidatedPassState();
   testOptionalSampledResourcesDoNotBlockValidation();
   testSkinningVariantChangesPipelineSignaturesAndAddsBones();
-  testRenderQueueConsumesValidatedSceneNode();
-  testRenderQueueUsesHierarchyDerivedWorldTransform();
+  testRenderWorkQueueConsumesValidatedSceneNode();
+  testRenderWorkQueueUsesHierarchyDerivedWorldTransform();
   testSceneAssignsStableDebugId();
   testProgrammerErrorsThrowLogicError();
 

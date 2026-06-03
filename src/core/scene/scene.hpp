@@ -30,32 +30,60 @@ namespace detail {
 
 using ShaderPtr = IShaderSharedPtr;
 
-/*
-@source_analysis.section RenderingItem：一帧 draw 的最小稳定记录
-这个结构体定义在 scene.hpp 而不是 queue.hpp，是因为它描述的是 backend
-真正消费的契约， 而不是 queue 的内部状态。任何把"一个 renderable 在某个 pass
-下要画一次"翻译成 "backend 提交单元"的代码路径，都收口到这个结构体上。
+enum class RenderDomain {
+  Realtime,
+  Offline,
+};
 
-字段拆分体现两个边界：
+enum class RenderWorkKind {
+  RasterDraw,
+  RasterBatch,
+  ComputeDispatch,
+  RayTracingDispatch,
+};
 
-- `shaderInfo / pipelineKey / pass / target`：决定走哪条 pipeline，是 pipeline
-cache 的 key 来源
-- `vertexBuffer / indexBuffer / drawData / descriptorResources`：决定这次 draw
-的数据来源
-- `material`：保留材质句柄是为了 `PipelineBuildDesc::fromRenderingItem` 反查
-render state 和 owned binding 表，而不是 backend 直接读它
-
-descriptorResources 的列表已经合并了"renderable 自带"和"scene-level 追加"两段，
-顺序固定 — backend 按 binding name 命中，不依赖位置。
-*/
-struct RenderingItem {
-  ShaderPtr shaderInfo;
-  MaterialInstanceSharedPtr
-      material; // 材质句柄 — 用于 PipelineBuildDesc::fromRenderingItem
-
+struct RasterDrawWorkPayload final {
   PerDrawDataSharedPtr drawData;
   IGpuResourceSharedPtr vertexBuffer;
   IGpuResourceSharedPtr indexBuffer;
+  u32 indexCount = 0;
+  u32 firstIndex = 0;
+  i32 vertexOffset = 0;
+  u32 instanceCount = 1;
+};
+
+struct ComputeDispatchWorkPayload final {
+  u32 groupCountX = 1;
+  u32 groupCountY = 1;
+  u32 groupCountZ = 1;
+};
+
+/*
+@source_analysis.section RenderWorkItem：一次 pipeline work 的最小稳定记录
+这个结构体定义在 scene.hpp 而不是 queue.hpp，是因为它描述的是 backend
+真正消费的契约，而不是 queue 的内部状态。任何把"一个 pass 内需要执行的一份
+GPU work"翻译成 backend 提交单元的代码路径，都收口到这个结构体上。
+
+字段拆分体现两个边界：
+
+- `domain / kind / shaderInfo / pipelineKey / pass / target`：决定走哪条
+  pipeline，以及这份 work 是 raster draw、compute dispatch 还是后续 RT work
+- `descriptorResources`：决定 pipeline-visible 资源，顺序固定但 backend 按
+  binding name 命中，不依赖位置
+- `raster / compute`：按 work kind 存放特化 payload，避免把 raster-only
+  vertex/index/drawData 当成所有 render work 的公共字段
+- `material`：保留材质句柄是为了 `PipelineBuildDesc::fromRenderWorkItem`
+  反查 render state 和 owned binding 表，而不是 backend 直接读它
+*/
+struct RenderWorkItem final {
+  RenderDomain domain = RenderDomain::Realtime;
+  RenderWorkKind kind = RenderWorkKind::RasterDraw;
+  ShaderPtr shaderInfo;
+  MaterialInstanceSharedPtr
+      material; // 材质句柄 — 用于 PipelineBuildDesc::fromRenderWorkItem
+
+  RasterDrawWorkPayload raster;
+  ComputeDispatchWorkPayload compute;
 
   std::vector<IGpuResourceSharedPtr>
       descriptorResources; // 材质 + skeleton 等资源

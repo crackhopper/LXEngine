@@ -1,7 +1,7 @@
 #pragma once
 
 // Shared helpers for integration tests that need to materialize a
-// RenderingItem from a Scene. Originally REQ-008; REQ-009 adds a target
+// RenderWorkItem from a Scene. Originally REQ-008; REQ-009 adds a target
 // parameter so the queue's scene-level-resource filter can match the
 // camera's RenderTarget.
 
@@ -17,12 +17,12 @@
 
 namespace LX_test {
 
-/// Build a local RenderQueue from `scene` for `pass` + `target` and return
-/// the first RenderingItem. Asserts the queue is non-empty. Default
-inline LX_core::RenderingItem
+/// Build a local RenderWorkQueue from `scene` for `pass` + `target` and return
+/// the first RenderWorkItem. Asserts the queue is non-empty. Default
+inline LX_core::RenderWorkItem
 firstItemFromScene(LX_core::Scene &scene, LX_core::StringID pass,
                    const LX_core::RenderTarget &target = {}) {
-  LX_core::RenderQueue q;
+  LX_core::RenderWorkQueue q;
   q.buildFromScene(scene, pass, target);
   assert(!q.getItems().empty() &&
          "scene produced no items for pass/target");

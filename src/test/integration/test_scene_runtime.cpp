@@ -2317,7 +2317,7 @@ void testIblMetalSphereSceneLoadsAndInjectsIblResources() {
            "IBL metal sphere should use low roughness");
   }
 
-  LX_core::RenderQueue queue;
+  LX_core::RenderWorkQueue queue;
   queue.buildFromScene(*runtime.scene(), LX_core::Pass_Forward,
                        LX_core::RenderTarget{});
   bool sawPbrSphere = false;

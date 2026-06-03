@@ -17,7 +17,7 @@
 #include <vulkan/vulkan.h>
 
 namespace LX_core {
-struct RenderingItem;
+struct RenderWorkItem;
 } // namespace LX_core
 
 namespace LX_core::backend {
@@ -125,7 +125,7 @@ public:
 
   /// Delegates to the embedded PipelineCache. Kept for backward compatibility
   /// with tests and the renderer hot path; prefers a preloaded cache.
-  VulkanPipeline &getOrCreateRenderPipeline(const LX_core::RenderingItem &item);
+  VulkanPipeline &getOrCreateRenderPipeline(const LX_core::RenderWorkItem &item);
 
   /// Bulk preload — intended to be called once per scene init from the
   /// VulkanRenderer after building a FrameGraph.

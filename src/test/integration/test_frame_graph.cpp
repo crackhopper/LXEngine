@@ -295,7 +295,7 @@ void testMeshOverlayMaterialPassUsesLineListGeometry() {
   }
 
   auto indexBuffer =
-      std::dynamic_pointer_cast<IndexBuffer>(items[0].indexBuffer);
+      std::dynamic_pointer_cast<IndexBuffer>(items[0].raster.indexBuffer);
   EXPECT(indexBuffer != nullptr, "mesh overlay item should keep index buffer");
   if (indexBuffer) {
     EXPECT(indexBuffer->getTopology() == PrimitiveTopology::LineList,
@@ -1044,7 +1044,7 @@ void testIblResourcesInjectOnlyForIblShaderItems() {
   scene->addRenderable(ibl);
   scene->addCamera(makeCameraWithTargetAndMask(RenderTarget{}, Layer_All));
 
-  RenderQueue queue;
+  RenderWorkQueue queue;
   queue.buildFromScene(*scene, Pass_Forward, RenderTarget{});
 
   bool sawRegular = false;
@@ -1097,7 +1097,7 @@ void testPartialIblResourcesAreCompletedBeforeInjection() {
   partial.environmentUbo = std::make_shared<EnvironmentData>(1.0f, 5.0f);
   scene->setIblEnvironmentResources(std::move(partial));
 
-  RenderQueue queue;
+  RenderWorkQueue queue;
   queue.buildFromScene(*scene, Pass_Forward, RenderTarget{});
   EXPECT(queue.getItems().size() == 1,
          "partial IBL scene should still render the IBL item");
@@ -1123,7 +1123,7 @@ void testPartialIblResourcesAreCompletedBeforeInjection() {
          "partial IBL config should be completed with safe default resources");
 }
 
-void testRenderQueueDebugOverrideUsesExplicitResourcesAndLayerMask() {
+void testRenderWorkQueueDebugOverrideUsesExplicitResourcesAndLayerMask() {
   auto visible = makeRenderableWithMask(Layer_Default, "debug_visible");
   auto overlay = makeRenderableWithMask(Layer_EditorOverlay, "debug_overlay");
   auto scene = Scene::create("debug_override");
@@ -1134,7 +1134,7 @@ void testRenderQueueDebugOverrideUsesExplicitResourcesAndLayerMask() {
   const auto camera = cameraNode->getComponent<CameraComponent>();
   scene->addCamera(cameraNode);
 
-  RenderQueue queue;
+  RenderWorkQueue queue;
   queue.buildFromSceneWithOverrides(
       *scene, Pass_Forward,
       RenderTarget{RenderTargetDesc::offscreenColor(ImageFormat::BGRA8)},
@@ -1161,12 +1161,12 @@ void testDebugOnlyRenderableIsOverlayOnly() {
   scene->addRenderable(debugOnly);
   scene->addCamera(makeCameraWithTargetAndMask(RenderTarget{}, Layer_All));
 
-  RenderQueue forwardQueue;
+  RenderWorkQueue forwardQueue;
   forwardQueue.buildFromScene(*scene, Pass_Forward, RenderTarget{});
   EXPECT(forwardQueue.getItems().size() == 1,
          "debug-only renderables must be excluded from normal passes");
 
-  RenderQueue overlayQueue;
+  RenderWorkQueue overlayQueue;
   overlayQueue.buildFromScene(*scene, Pass_DebugOverlay, RenderTarget{});
   EXPECT(overlayQueue.getItems().empty(),
          "debug-only flag should not force unsupported overlay materials into "
@@ -1269,7 +1269,7 @@ int main() {
   testVisibilityFilteringKeepsSceneResources();
   testIblResourcesInjectOnlyForIblShaderItems();
   testPartialIblResourcesAreCompletedBeforeInjection();
-  testRenderQueueDebugOverrideUsesExplicitResourcesAndLayerMask();
+  testRenderWorkQueueDebugOverrideUsesExplicitResourcesAndLayerMask();
   testDebugOnlyRenderableIsOverlayOnly();
   testSceneCreateDoesNotSeedHiddenLight();
   testInactiveCameraIsIgnoredForResourcesAndMasks();

@@ -97,7 +97,7 @@ bool shouldLogBurst(const T &next, T &state, int &remainingFrames) {
   return false;
 }
 
-void logMissingDescriptorBindingOnce(const RenderingItem &item,
+void logMissingDescriptorBindingOnce(const RenderWorkItem &item,
                                      const ShaderResourceBinding &binding) {
   if (!expRendererDebugEnabled()) {
     return;
@@ -120,7 +120,7 @@ void logMissingDescriptorBindingOnce(const RenderingItem &item,
 }
 
 void logDescriptorBufferBindingIfChanged(
-    const RenderingItem &item, const ShaderResourceBinding &binding,
+    const RenderWorkItem &item, const ShaderResourceBinding &binding,
     const IGpuResourceSharedPtr &cpuRes,
     const VkDescriptorBufferInfo &bufferInfo) {
   if (!expRendererDebugEnabled() || !cpuRes) {
@@ -166,7 +166,7 @@ void logDescriptorBufferBindingIfChanged(
 }
 
 void logDescriptorImageBindingIfChanged(
-    const RenderingItem &item, const ShaderResourceBinding &binding,
+    const RenderWorkItem &item, const ShaderResourceBinding &binding,
     const IGpuResourceSharedPtr &cpuRes,
     const VkDescriptorImageInfo &imageInfo) {
   if (!expRendererDebugEnabled() || !cpuRes) {
@@ -227,7 +227,7 @@ void VulkanCommandBuffer::bindPipeline(VulkanPipeline &pipeline) {
 
 void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
                                         VulkanPipeline &pipeline,
-                                        const RenderingItem &item) {
+                                        const RenderWorkItem &item) {
   auto &descriptorMgr = m_device.getDescriptorManager();
 
   // Build a name→resource map from the item's descriptorResources so backend
@@ -329,9 +329,11 @@ void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
     allocatedSets.push_back(std::move(setPtr));
   }
 
-  if (item.vertexBuffer) {
+  const auto &raster = item.raster;
+
+  if (raster.vertexBuffer) {
     auto vbOpt =
-        resourceManager.getBuffer(item.vertexBuffer->getBackendCacheIdentity());
+        resourceManager.getBuffer(raster.vertexBuffer->getBackendCacheIdentity());
     if (vbOpt) {
       VkBuffer vbHandle = vbOpt->get().getHandle();
       VkDeviceSize offsets[] = {0};
@@ -339,33 +341,40 @@ void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
     }
   }
 
-  if (item.indexBuffer) {
+  if (raster.indexBuffer) {
     auto ibOpt =
-        resourceManager.getBuffer(item.indexBuffer->getBackendCacheIdentity());
+        resourceManager.getBuffer(raster.indexBuffer->getBackendCacheIdentity());
     if (ibOpt) {
       vkCmdBindIndexBuffer(m_handle, ibOpt->get().getHandle(), 0,
                            VK_INDEX_TYPE_UINT32);
     }
   }
 
-  if (item.drawData && m_pushConstants.size > 0) {
+  if (raster.drawData && m_pushConstants.size > 0) {
     vkCmdPushConstants(m_handle, m_pipelineLayout, m_pushConstants.stageFlags,
                        m_pushConstants.offset, m_pushConstants.size,
-                       item.drawData->rawData());
+                       raster.drawData->rawData());
   }
 }
 
-void VulkanCommandBuffer::drawItem(const RenderingItem &item) {
-  if (!item.vertexBuffer || !item.indexBuffer) {
+void VulkanCommandBuffer::executeRasterDrawItem(const RenderWorkItem &item) {
+  if (item.kind != RenderWorkKind::RasterDraw) {
     return;
   }
 
-  // Indexed draw.
-  const usize indexCount = item.indexBuffer->getByteSize() / sizeof(u32);
+  const auto &raster = item.raster;
+  if (!raster.vertexBuffer || !raster.indexBuffer) {
+    return;
+  }
+
+  const usize indexCount = raster.indexCount != 0
+                               ? raster.indexCount
+                               : raster.indexBuffer->getByteSize() / sizeof(u32);
   if (indexCount == 0) {
     return;
   }
-  vkCmdDrawIndexed(m_handle, static_cast<u32>(indexCount), 1, 0, 0, 0);
+  vkCmdDrawIndexed(m_handle, static_cast<u32>(indexCount), raster.instanceCount,
+                   raster.firstIndex, raster.vertexOffset, 0);
 }
 
 } // namespace LX_core::backend

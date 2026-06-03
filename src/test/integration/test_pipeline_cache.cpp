@@ -63,11 +63,11 @@ int main() {
         LX_core::Skeleton::create({}));
     auto scene = LX_core::Scene::create(node);
     scene->addCamera(LX_test::makeDefaultCameraNodeWithTarget());
-    // RenderQueue::buildFromScene internally merges scene.getSceneLevelResources(pass, target),
+    // RenderWorkQueue::buildFromScene internally merges scene.getSceneLevelResources(pass, target),
     // so the item already carries camera + light UBOs — no side-channel injection.
     auto item = LX_test::firstItemFromScene(*scene, LX_core::Pass_Forward);
 
-    auto info = LX_core::PipelineBuildDesc::fromRenderingItem(item);
+    auto info = LX_core::PipelineBuildDesc::fromRenderWorkItem(item);
 
     auto &cache = resourceManager->getPipelineCache();
     auto found0 = cache.find(info.key);

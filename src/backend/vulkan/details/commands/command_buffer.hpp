@@ -34,9 +34,9 @@ public:
   void bindPipeline(VulkanPipeline &pipeline);
 
   void bindResources(VulkanResourceManager &resourceManager,
-                     VulkanPipeline &pipeline, const RenderingItem &item);
+                     VulkanPipeline &pipeline, const RenderWorkItem &item);
 
-  void drawItem(const RenderingItem &item);
+  void executeRasterDrawItem(const RenderWorkItem &item);
 
   void copyBuffer(VkBuffer src, VkBuffer dst, VkDeviceSize size,
                   VkDeviceSize srcOffset = 0, VkDeviceSize dstOffset = 0) {
@@ -83,7 +83,7 @@ private:
   VkCommandBuffer m_handle = VK_NULL_HANDLE;
   VulkanDevice &m_device;
 
-  // Captured from the last bound pipeline; used by drawItem().
+  // Captured from the last bound pipeline; used by executeRasterDrawItem().
   VkPipelineLayout m_pipelineLayout = VK_NULL_HANDLE;
   PushConstantSnapshot m_pushConstants{};
 };

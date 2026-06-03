@@ -86,7 +86,7 @@ SceneNodeSharedPtr makeCameraNodeWithTarget(const RenderTarget &target) {
   return node;
 }
 
-RenderingItem
+RenderWorkItem
 buildItem(PrimitiveTopology topo = PrimitiveTopology::TriangleList,
           std::vector<VertexInputAttribute> vertexInputs = {},
           const RenderTarget &target = {}) {
@@ -164,9 +164,9 @@ buildItem(PrimitiveTopology topo = PrimitiveTopology::TriangleList,
 // Tests
 // ---------------------------------------------------------------------------
 
-void testFromRenderingItemPopulatesBindings() {
+void testFromRenderWorkItemPopulatesBindings() {
   auto item = buildItem();
-  auto info = PipelineBuildDesc::fromRenderingItem(item);
+  auto info = PipelineBuildDesc::fromRenderWorkItem(item);
   EXPECT(info.bindings.size() == 3, "bindings.size()==3");
   if (info.bindings.size() == 3) {
     EXPECT(info.bindings[0].name == "CameraUBO", "binding 0 name");
@@ -175,31 +175,31 @@ void testFromRenderingItemPopulatesBindings() {
   }
 }
 
-void testFromRenderingItemKeyMatches() {
+void testFromRenderWorkItemKeyMatches() {
   auto item = buildItem();
-  auto info = PipelineBuildDesc::fromRenderingItem(item);
+  auto info = PipelineBuildDesc::fromRenderWorkItem(item);
   EXPECT(info.key == item.pipelineKey, "key matches item.pipelineKey");
 }
 
-void testFromRenderingItemStagesPreserved() {
+void testFromRenderWorkItemStagesPreserved() {
   auto item = buildItem();
-  auto info = PipelineBuildDesc::fromRenderingItem(item);
+  auto info = PipelineBuildDesc::fromRenderWorkItem(item);
   EXPECT(info.stages.size() == 2, "stages.size()==2");
 }
 
-void testFromRenderingItemTopology() {
+void testFromRenderWorkItemTopology() {
   auto item1 = buildItem(PrimitiveTopology::TriangleList);
-  auto info1 = PipelineBuildDesc::fromRenderingItem(item1);
+  auto info1 = PipelineBuildDesc::fromRenderWorkItem(item1);
   EXPECT(info1.topology == PrimitiveTopology::TriangleList, "topology tri");
 
   auto item2 = buildItem(PrimitiveTopology::LineList);
-  auto info2 = PipelineBuildDesc::fromRenderingItem(item2);
+  auto info2 = PipelineBuildDesc::fromRenderWorkItem(item2);
   EXPECT(info2.topology == PrimitiveTopology::LineList, "topology line");
 }
 
-void testFromRenderingItemRenderStateFromMaterial() {
+void testFromRenderWorkItemRenderStateFromMaterial() {
   auto item = buildItem();
-  auto info = PipelineBuildDesc::fromRenderingItem(item);
+  auto info = PipelineBuildDesc::fromRenderWorkItem(item);
   // MaterialInstance resolves render state from the template's pass definition.
   EXPECT(info.renderState.cullMode == CullMode::Front,
          "renderState cull comes from material");
@@ -207,26 +207,26 @@ void testFromRenderingItemRenderStateFromMaterial() {
          "renderState depthTest comes from material");
 }
 
-void testFromRenderingItemIsDeterministic() {
+void testFromRenderWorkItemIsDeterministic() {
   auto item = buildItem();
-  auto a = PipelineBuildDesc::fromRenderingItem(item);
-  auto b = PipelineBuildDesc::fromRenderingItem(item);
+  auto a = PipelineBuildDesc::fromRenderWorkItem(item);
+  auto b = PipelineBuildDesc::fromRenderWorkItem(item);
   EXPECT(a.key == b.key, "deterministic key");
   EXPECT(a.bindings.size() == b.bindings.size(), "deterministic bindings size");
   EXPECT(a.topology == b.topology, "deterministic topology");
 }
 
-void testFromRenderingItemPreservesTargetDesc() {
+void testFromRenderWorkItemPreservesTargetDesc() {
   const auto targetDesc = RenderTargetDesc::offscreenDepth(ImageFormat::D32Float);
   const RenderTarget target{targetDesc};
   auto item = buildItem(PrimitiveTopology::TriangleList, {}, target);
-  auto info = PipelineBuildDesc::fromRenderingItem(item);
+  auto info = PipelineBuildDesc::fromRenderWorkItem(item);
 
   EXPECT(item.target == targetDesc, "rendering item should carry target desc");
   EXPECT(info.target == targetDesc, "build desc should preserve target desc");
 }
 
-void testFromRenderingItemFiltersVertexLayoutToShaderInputs() {
+void testFromRenderWorkItemFiltersVertexLayoutToShaderInputs() {
   using V = VertexPosNormalUvBone;
   auto vb = VertexBuffer<V>::create({
       V({0.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f},
@@ -273,7 +273,7 @@ void testFromRenderingItemFiltersVertexLayoutToShaderInputs() {
   scene->addCamera(LX_test::makeDefaultCameraNodeWithTarget());
 
   auto item = LX_test::firstItemFromScene(*scene, Pass_Forward);
-  auto info = PipelineBuildDesc::fromRenderingItem(item);
+  auto info = PipelineBuildDesc::fromRenderWorkItem(item);
   const auto &items = info.vertexLayout.getItems();
   EXPECT(items.size() == 2, "vertex layout should drop unused attributes");
   if (items.size() == 2) {
@@ -289,14 +289,14 @@ void testFromRenderingItemFiltersVertexLayoutToShaderInputs() {
 int main() {
   expSetEnvVK();
 
-  testFromRenderingItemPopulatesBindings();
-  testFromRenderingItemKeyMatches();
-  testFromRenderingItemStagesPreserved();
-  testFromRenderingItemTopology();
-  testFromRenderingItemRenderStateFromMaterial();
-  testFromRenderingItemIsDeterministic();
-  testFromRenderingItemPreservesTargetDesc();
-  testFromRenderingItemFiltersVertexLayoutToShaderInputs();
+  testFromRenderWorkItemPopulatesBindings();
+  testFromRenderWorkItemKeyMatches();
+  testFromRenderWorkItemStagesPreserved();
+  testFromRenderWorkItemTopology();
+  testFromRenderWorkItemRenderStateFromMaterial();
+  testFromRenderWorkItemIsDeterministic();
+  testFromRenderWorkItemPreservesTargetDesc();
+  testFromRenderWorkItemFiltersVertexLayoutToShaderInputs();
 
   if (failures > 0) {
     std::cerr << "FAILED: " << failures << " assertion(s)\n";

@@ -302,7 +302,7 @@ std::array<Mat4f, 6> captureViewProjections() {
   };
 }
 
-RenderingItem makeBakeItem(const std::string &shaderName,
+RenderWorkItem makeBakeItem(const std::string &shaderName,
                            const RenderTargetDesc &target,
                            std::vector<IGpuResourceSharedPtr> resources,
                            u32 indexCount) {
@@ -324,14 +324,14 @@ RenderingItem makeBakeItem(const std::string &shaderName,
   auto material = MaterialInstance::create(std::move(tmpl));
   material->syncGpuData();
 
-  RenderingItem item;
+  RenderWorkItem item;
   item.shaderInfo = shader;
   item.material = material;
-  item.vertexBuffer = VertexBuffer<VertexPos>::create(
+  item.raster.vertexBuffer = VertexBuffer<VertexPos>::create(
       std::vector<VertexPos>(std::max(indexCount, 1u)));
   std::vector<u32> indices(indexCount);
   std::iota(indices.begin(), indices.end(), 0u);
-  item.indexBuffer = IndexBuffer::create(std::move(indices));
+  item.raster.indexBuffer = IndexBuffer::create(std::move(indices));
   item.descriptorResources = std::move(resources);
   item.pass = Pass_PostProcess;
   item.target = target;
@@ -344,7 +344,7 @@ RenderingItem makeBakeItem(const std::string &shaderName,
   return item;
 }
 
-RenderingItem makeFullscreenBakeItem(const std::string &shaderName,
+RenderWorkItem makeFullscreenBakeItem(const std::string &shaderName,
                                      const RenderTargetDesc &target) {
   return makeBakeItem(shaderName, target, {}, 3u);
 }
@@ -526,8 +526,8 @@ void IblBakeRenderer::renderEquirectToCubemap(
        std::static_pointer_cast<IGpuResource>(captureView)},
       36u);
 
-  m_resourceManager.syncResource(m_cmdBufferManager, item.vertexBuffer);
-  m_resourceManager.syncResource(m_cmdBufferManager, item.indexBuffer);
+  m_resourceManager.syncResource(m_cmdBufferManager, item.raster.vertexBuffer);
+  m_resourceManager.syncResource(m_cmdBufferManager, item.raster.indexBuffer);
   m_resourceManager.syncResource(m_cmdBufferManager, source);
   m_resourceManager.syncResource(m_cmdBufferManager, captureView);
   auto &pipeline = m_resourceManager.getOrCreateRenderPipeline(item);
@@ -559,7 +559,7 @@ void IblBakeRenderer::renderEquirectToCubemap(
     cmd->setScissor(skyboxSize, skyboxSize);
     cmd->bindPipeline(pipeline);
     cmd->bindResources(m_resourceManager, pipeline, item);
-    cmd->drawItem(item);
+    cmd->executeRasterDrawItem(item);
     cmd->endRenderPass();
     m_cmdBufferManager.endSingleTimeCommands(std::move(cmd),
                                              m_device.getGraphicsQueue());
@@ -593,8 +593,8 @@ void IblBakeRenderer::renderIrradianceCubemap(u32 irradianceSize) {
        std::static_pointer_cast<IGpuResource>(captureView)},
       36u);
 
-  m_resourceManager.syncResource(m_cmdBufferManager, item.vertexBuffer);
-  m_resourceManager.syncResource(m_cmdBufferManager, item.indexBuffer);
+  m_resourceManager.syncResource(m_cmdBufferManager, item.raster.vertexBuffer);
+  m_resourceManager.syncResource(m_cmdBufferManager, item.raster.indexBuffer);
   m_resourceManager.syncResource(m_cmdBufferManager, captureView);
   auto &pipeline = m_resourceManager.getOrCreateRenderPipeline(item);
 
@@ -626,7 +626,7 @@ void IblBakeRenderer::renderIrradianceCubemap(u32 irradianceSize) {
     cmd->setScissor(irradianceSize, irradianceSize);
     cmd->bindPipeline(pipeline);
     cmd->bindResources(m_resourceManager, pipeline, item);
-    cmd->drawItem(item);
+    cmd->executeRasterDrawItem(item);
     cmd->endRenderPass();
     m_cmdBufferManager.endSingleTimeCommands(std::move(cmd),
                                              m_device.getGraphicsQueue());
@@ -664,8 +664,8 @@ void IblBakeRenderer::renderPrefilterCubemap(u32 prefilterSize,
        std::static_pointer_cast<IGpuResource>(prefilter)},
       36u);
 
-  m_resourceManager.syncResource(m_cmdBufferManager, item.vertexBuffer);
-  m_resourceManager.syncResource(m_cmdBufferManager, item.indexBuffer);
+  m_resourceManager.syncResource(m_cmdBufferManager, item.raster.vertexBuffer);
+  m_resourceManager.syncResource(m_cmdBufferManager, item.raster.indexBuffer);
   m_resourceManager.syncResource(m_cmdBufferManager, captureView);
   m_resourceManager.syncResource(m_cmdBufferManager, prefilter);
   auto &pipeline = m_resourceManager.getOrCreateRenderPipeline(item);
@@ -706,7 +706,7 @@ void IblBakeRenderer::renderPrefilterCubemap(u32 prefilterSize,
       cmd->setScissor(extentValue, extentValue);
       cmd->bindPipeline(pipeline);
       cmd->bindResources(m_resourceManager, pipeline, item);
-      cmd->drawItem(item);
+      cmd->executeRasterDrawItem(item);
       cmd->endRenderPass();
       m_cmdBufferManager.endSingleTimeCommands(std::move(cmd),
                                                m_device.getGraphicsQueue());
@@ -734,8 +734,8 @@ void IblBakeRenderer::clearBrdfLut(u32 size) {
   RenderTargetDesc target = RenderTargetDesc::offscreenColor(
       ImageFormat::RGBA16Float);
   auto item = makeFullscreenBakeItem("ibl_brdf_lut", target);
-  m_resourceManager.syncResource(m_cmdBufferManager, item.vertexBuffer);
-  m_resourceManager.syncResource(m_cmdBufferManager, item.indexBuffer);
+  m_resourceManager.syncResource(m_cmdBufferManager, item.raster.vertexBuffer);
+  m_resourceManager.syncResource(m_cmdBufferManager, item.raster.indexBuffer);
   auto &pipeline = m_resourceManager.getOrCreateRenderPipeline(item);
 
   auto cmd = m_cmdBufferManager.beginSingleTimeCommands();
@@ -753,7 +753,7 @@ void IblBakeRenderer::clearBrdfLut(u32 size) {
   cmd->setScissor(size, size);
   cmd->bindPipeline(pipeline);
   cmd->bindResources(m_resourceManager, pipeline, item);
-  cmd->drawItem(item);
+  cmd->executeRasterDrawItem(item);
   cmd->endRenderPass();
   m_cmdBufferManager.endSingleTimeCommands(std::move(cmd),
                                            m_device.getGraphicsQueue());

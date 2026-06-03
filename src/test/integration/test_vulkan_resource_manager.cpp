@@ -67,24 +67,24 @@ LX_core::SceneSharedPtr makeOverlayScene() {
   return scene;
 }
 
-void syncRenderingItemResources(
+void syncRenderWorkItemResources(
     LX_core::backend::VulkanResourceManager &resourceManager,
     LX_core::backend::VulkanCommandBufferManager &cmdBufferMgr,
-    const LX_core::RenderingItem &item) {
-  resourceManager.syncResource(cmdBufferMgr, item.vertexBuffer);
-  resourceManager.syncResource(cmdBufferMgr, item.indexBuffer);
+    const LX_core::RenderWorkItem &item) {
+  resourceManager.syncResource(cmdBufferMgr, item.raster.vertexBuffer);
+  resourceManager.syncResource(cmdBufferMgr, item.raster.indexBuffer);
   for (const auto &cpuRes : item.descriptorResources) {
     resourceManager.syncResource(cmdBufferMgr, cpuRes);
   }
   resourceManager.collectGarbage();
 }
 
-LX_core::RenderingItem syncDebugOverlayItem(
+LX_core::RenderWorkItem syncDebugOverlayItem(
     LX_core::backend::VulkanResourceManager &resourceManager,
     LX_core::backend::VulkanCommandBufferManager &cmdBufferMgr,
     LX_core::Scene &scene) {
   auto item = LX_test::firstItemFromScene(scene, LX_core::Pass_DebugOverlay);
-  syncRenderingItemResources(resourceManager, cmdBufferMgr, item);
+  syncRenderWorkItemResources(resourceManager, cmdBufferMgr, item);
   return item;
 }
 
@@ -92,7 +92,7 @@ bool drawDebugOverlayItem(
     LX_core::backend::VulkanDevice &device,
     LX_core::backend::VulkanResourceManager &resourceManager,
     LX_core::backend::VulkanCommandBufferManager &cmdBufferMgr,
-    const LX_core::RenderingItem &item) {
+    const LX_core::RenderWorkItem &item) {
   auto &renderPass = resourceManager.getRenderPass();
   auto &pipeline = resourceManager.getOrCreateRenderPipeline(item);
   if (pipeline.getHandle() == VK_NULL_HANDLE) {
@@ -129,7 +129,7 @@ bool drawDebugOverlayItem(
   cmd->setScissor(extent.width, extent.height);
   cmd->bindPipeline(pipeline);
   cmd->bindResources(resourceManager, pipeline, item);
-  cmd->drawItem(item);
+  cmd->executeRasterDrawItem(item);
   cmd->endRenderPass();
 
   if (vkEndCommandBuffer(cmd->getHandle()) != VK_SUCCESS) {
@@ -164,8 +164,8 @@ bool verifyDebugDrawGrowthSync(
     std::cerr << "Initial DebugDraw Vulkan buffers were not created\n";
     return false;
   }
-  if (smallVkVertex->get().getSize() != smallItem.vertexBuffer->getByteSize() ||
-      smallVkIndex->get().getSize() != smallItem.indexBuffer->getByteSize()) {
+  if (smallVkVertex->get().getSize() != smallItem.raster.vertexBuffer->getByteSize() ||
+      smallVkIndex->get().getSize() != smallItem.raster.indexBuffer->getByteSize()) {
     std::cerr << "Initial DebugDraw GPU buffer sizes do not match CPU resources\n";
     return false;
   }
@@ -213,8 +213,8 @@ bool verifyDebugDrawGrowthSync(
     std::cerr << "Grown DebugDraw Vulkan buffers were not created\n";
     return false;
   }
-  if (grownVkVertex->get().getSize() != grownItem.vertexBuffer->getByteSize() ||
-      grownVkIndex->get().getSize() != grownItem.indexBuffer->getByteSize()) {
+  if (grownVkVertex->get().getSize() != grownItem.raster.vertexBuffer->getByteSize() ||
+      grownVkIndex->get().getSize() != grownItem.raster.indexBuffer->getByteSize()) {
     std::cerr << "Grown DebugDraw GPU buffer sizes do not match CPU resources\n";
     return false;
   }
@@ -255,15 +255,15 @@ bool verifyDebugDrawGrowthSync(
     return false;
   }
 
-  syncRenderingItemResources(resourceManager, cmdBufferMgr, grownItem);
+  syncRenderWorkItemResources(resourceManager, cmdBufferMgr, grownItem);
   auto retainedVkVertex = resourceManager.getBuffer(retainedVertexIdentity);
   auto retainedVkIndex = resourceManager.getBuffer(retainedIndexIdentity);
   if (!retainedVkVertex || !retainedVkIndex) {
     std::cerr << "Retained DebugDraw Vulkan buffers were not found\n";
     return false;
   }
-  if (retainedVkVertex->get().getSize() != grownItem.vertexBuffer->getByteSize() ||
-      retainedVkIndex->get().getSize() != grownItem.indexBuffer->getByteSize()) {
+  if (retainedVkVertex->get().getSize() != grownItem.raster.vertexBuffer->getByteSize() ||
+      retainedVkIndex->get().getSize() != grownItem.raster.indexBuffer->getByteSize()) {
     std::cerr << "Within-capacity DebugDraw GPU sizes no longer match retained CPU capacity\n";
     return false;
   }

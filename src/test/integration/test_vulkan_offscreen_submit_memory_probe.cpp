@@ -181,14 +181,14 @@ void testOffscreenSubmitProbe() {
 
     auto renderItem =
         LX_test::firstItemFromScene(*scene, LX_core::Pass_Forward);
-    if (renderItem.drawData) {
+    if (renderItem.raster.drawData) {
       LX_core::PerDrawLayout pc{};
       pc.model = LX_core::Mat4f::identity();
-      renderItem.drawData->update(pc);
+      renderItem.raster.drawData->update(pc);
     }
 
-    resourceManager->syncResource(*cmdBufferMgr, renderItem.vertexBuffer);
-    resourceManager->syncResource(*cmdBufferMgr, renderItem.indexBuffer);
+    resourceManager->syncResource(*cmdBufferMgr, renderItem.raster.vertexBuffer);
+    resourceManager->syncResource(*cmdBufferMgr, renderItem.raster.indexBuffer);
     for (auto& cpuRes : renderItem.descriptorResources) {
       resourceManager->syncResource(*cmdBufferMgr, cpuRes);
     }
@@ -223,7 +223,7 @@ void testOffscreenSubmitProbe() {
       cmd->setScissor(extent.width, extent.height);
       cmd->bindPipeline(pipeline);
       cmd->bindResources(*resourceManager, pipeline, renderItem);
-      cmd->drawItem(renderItem);
+      cmd->executeRasterDrawItem(renderItem);
       cmd->endRenderPass();
       cmd->end();
 

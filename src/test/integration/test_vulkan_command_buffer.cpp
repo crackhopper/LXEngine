@@ -128,15 +128,15 @@ int main() {
         LX_test::firstItemFromScene(*scene, LX_core::Pass_Forward);
 
     // Initialize push constants deterministically.
-    if (renderItem.drawData) {
+    if (renderItem.raster.drawData) {
       LX_core::PerDrawLayout pc{};
       pc.model = LX_core::Mat4f::identity();
-      renderItem.drawData->update(pc);
+      renderItem.raster.drawData->update(pc);
     }
 
     // Sync all CPU-side resources to GPU.
-    resourceManager->syncResource(*cmdBufferMgr, renderItem.vertexBuffer);
-    resourceManager->syncResource(*cmdBufferMgr, renderItem.indexBuffer);
+    resourceManager->syncResource(*cmdBufferMgr, renderItem.raster.vertexBuffer);
+    resourceManager->syncResource(*cmdBufferMgr, renderItem.raster.indexBuffer);
     for (auto &cpuRes : renderItem.descriptorResources) {
       resourceManager->syncResource(*cmdBufferMgr, cpuRes);
     }
@@ -164,7 +164,7 @@ int main() {
     cmd->bindPipeline(pipeline);
 
     cmd->bindResources(*resourceManager, pipeline, renderItem);
-    cmd->drawItem(renderItem);
+    cmd->executeRasterDrawItem(renderItem);
     cmd->endRenderPass();
 
     vkEndCommandBuffer(cmd->getHandle());
@@ -195,7 +195,7 @@ int main() {
       loopCmd->setScissor(extent.width, extent.height);
       loopCmd->bindPipeline(pipeline);
       loopCmd->bindResources(*resourceManager, pipeline, renderItem);
-      loopCmd->drawItem(renderItem);
+      loopCmd->executeRasterDrawItem(renderItem);
       loopCmd->endRenderPass();
       vkEndCommandBuffer(loopCmd->getHandle());
     }

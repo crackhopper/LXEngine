@@ -12,21 +12,23 @@ namespace LX_core {
 namespace {
 
 /*
-@source_analysis.section makeItemFromValidatedData：把 validated 结构数据翻译成 RenderingItem
+@source_analysis.section makeItemFromValidatedData：把 validated 结构数据翻译成 RenderWorkItem
 这是一个 anonymous-namespace 内的纯字段拷贝函数，存在的理由是把"翻译"这件事
 和"过滤 + 入队"分开：`buildFromScene` 只关心条件判断和 sceneResources 追加，
 逐字段拷贝从这里走。
 
 不做合并、不做校验，因为 `ValidatedRenderablePassData` 的命名已经承诺了
 "pass-level validation 已经完成"。这里把 pass 内可验证的结构事实转成 backend
-消费的 `RenderingItem`；target-dependent 的 `pipelineKey` 不在 validated
+消费的 `RenderWorkItem`；target-dependent 的 `pipelineKey` 不在 validated
 数据里缓存，而是在 `buildFromScene` 拿到 target 后再组合。
 */
-RenderingItem makeItemFromValidatedData(const ValidatedRenderablePassData &data) {
-  RenderingItem item;
-  item.vertexBuffer = data.vertexBuffer;
-  item.indexBuffer = data.indexBuffer;
-  item.drawData = data.drawData;
+RenderWorkItem makeItemFromValidatedData(const ValidatedRenderablePassData &data) {
+  RenderWorkItem item;
+  item.domain = RenderDomain::Realtime;
+  item.kind = RenderWorkKind::RasterDraw;
+  item.raster.vertexBuffer = data.vertexBuffer;
+  item.raster.indexBuffer = data.indexBuffer;
+  item.raster.drawData = data.drawData;
   item.descriptorResources = data.descriptorResources;
   item.shaderInfo = data.shaderInfo;
   item.material = data.material;
@@ -53,33 +55,33 @@ bool shaderConsumesIbl(const ShaderPtr &shader) {
 
 } // namespace
 
-void RenderQueue::addItem(RenderingItem item) {
+void RenderWorkQueue::addItem(RenderWorkItem item) {
   m_items.push_back(std::move(item));
 }
 
-void RenderQueue::clearItems() { m_items.clear(); }
+void RenderWorkQueue::clearItems() { m_items.clear(); }
 
-void RenderQueue::sort() {
+void RenderWorkQueue::sort() {
   std::stable_sort(m_items.begin(), m_items.end(),
-                   [](const RenderingItem &a, const RenderingItem &b) {
+                   [](const RenderWorkItem &a, const RenderWorkItem &b) {
                      return a.pipelineKey.id.id < b.pipelineKey.id.id;
                    });
 }
 
 std::vector<PipelineBuildDesc>
-RenderQueue::collectUniquePipelineBuildDescs() const {
+RenderWorkQueue::collectUniquePipelineBuildDescs() const {
   std::unordered_set<PipelineKey, PipelineKey::Hash> seen;
   std::vector<PipelineBuildDesc> out;
   out.reserve(m_items.size());
   for (const auto &item : m_items) {
     if (!seen.insert(item.pipelineKey).second)
       continue;
-    out.push_back(PipelineBuildDesc::fromRenderingItem(item));
+    out.push_back(PipelineBuildDesc::fromRenderWorkItem(item));
   }
   return out;
 }
 
-void RenderQueue::buildFromScene(const Scene &scene, StringID pass,
+void RenderWorkQueue::buildFromScene(const Scene &scene, StringID pass,
                                  const RenderTarget &target) {
   // REQ-009: target-filtered scene-level resources.
   auto sceneResources = scene.getSceneLevelResources(pass, target);
@@ -92,7 +94,7 @@ void RenderQueue::buildFromScene(const Scene &scene, StringID pass,
                               visibleMask);
 }
 
-void RenderQueue::buildFromSceneWithOverrides(
+void RenderWorkQueue::buildFromSceneWithOverrides(
     const Scene &scene, StringID pass, const RenderTarget &target,
     std::vector<IGpuResourceSharedPtr> sceneResources,
     VisibilityLayerMask visibleMask) {
@@ -112,7 +114,7 @@ void RenderQueue::buildFromSceneWithOverrides(
     if (!validated)
       continue;
 
-    RenderingItem item = makeItemFromValidatedData(validated->get());
+    RenderWorkItem item = makeItemFromValidatedData(validated->get());
     item.target = target.toDesc();
     item.debugId = renderable->getDebugId();
     item.pipelineKey =
