@@ -1,183 +1,153 @@
-#include "core/offline/offline_ray_scene.hpp"
-#include "infra/offline/offline_asset_resolver.hpp"
-#include "infra/offline/offline_scene_compiler.hpp"
-#include "infra/scene_io/scene_document.hpp"
+#include "core/asset/material_instance.hpp"
+#include "core/asset/mesh.hpp"
+#include "core/raytracing/software_bvh.hpp"
+#include "core/rhi/vertex_buffer.hpp"
+#include "core/scene/scene_resource_table.hpp"
 
-#include <cmath>
-#include <filesystem>
+#include <bit>
+#include <cstddef>
 #include <iostream>
+#include <stdexcept>
+#include <string>
+#include <utility>
+#include <vector>
+
+using namespace LX_core;
 
 namespace {
 
 int failures = 0;
-constexpr float kEps = 1.0e-5f;
+constexpr u32 LeafNodeFlag = 0x80000000u;
 
 #define EXPECT(cond, msg)                                                      \
   do {                                                                         \
     if (!(cond)) {                                                             \
       std::cerr << "[FAIL] " << __FUNCTION__ << ":" << __LINE__ << " " << msg  \
-                << " (" #cond ")\n";                                           \
+                << " (" #cond ")\n";                                          \
       ++failures;                                                              \
     }                                                                          \
   } while (0)
 
-void testRaySceneUsesSharedIndexedResourcesAndBuildsBvh() {
-  const std::filesystem::path scenePath =
-      std::filesystem::current_path() / "assets" / "scenes" /
-      "ibl_metal_sphere.scene.yaml";
-  LX_infra::offline::OfflineSceneCompiler compiler{
-      LX_infra::offline::OfflineAssetResolver(scenePath)};
-  const auto scene = compiler.compileFile(scenePath, "/game_cam");
+struct TestVertex final {
+  Vec3f pos{};
 
-  LX_core::offline::OutputProfile output;
-  output.width = 64;
-  output.height = 64;
-  LX_core::offline::OfflineRenderSettings offline;
-  offline.samples = 1;
-  LX_core::offline::OfflineRaySceneBuilder sceneBuilder;
-  auto rayScene = sceneBuilder.build(scene, output, offline);
-
-  EXPECT(!rayScene.vertices.empty(), "ray scene should contain shared vertices");
-  EXPECT(!rayScene.indices.empty(), "ray scene should contain shared indices");
-  EXPECT(!rayScene.primitives.empty(), "ray scene should contain primitives");
-  EXPECT(rayScene.params.primitiveCount == rayScene.primitives.size(),
-         "primitive count should match packed buffer");
-  EXPECT(rayScene.snapshot.meshHandles.size() == scene.meshes.size(),
-         "snapshot should expose shared mesh handles");
-  EXPECT(rayScene.vertices.size() < rayScene.primitives.size() * 3,
-         "indexed ray scene should not duplicate three vertices per primitive");
-
-  bool foundElevatedSphereTriangle = false;
-  for (const auto &primitive : rayScene.primitives) {
-    const auto &object = rayScene.objects.at(primitive.objectIndex);
-    if (primitive.objectIndex == 1 && object.objectToWorld[3].y > 0.1f) {
-      foundElevatedSphereTriangle = true;
-      break;
-    }
+  static const VertexLayout &getLayout() {
+    static const VertexLayout layout{
+        {{"inPos", 0, DataType::Float3, sizeof(Vec3f),
+          offsetof(TestVertex, pos)}},
+        sizeof(TestVertex)};
+    return layout;
   }
-  EXPECT(foundElevatedSphereTriangle,
-         "sphere instance transform should move primitives above the plane");
-  EXPECT(!rayScene.bvhNodes.empty(), "BVH should contain nodes");
-  EXPECT(rayScene.params.bvhNodeCount == rayScene.bvhNodes.size(),
-         "BVH node count should match params");
+};
+
+MeshBufferSharedPtr makeMeshBuffer() {
+  auto vertices = std::vector<TestVertex>{
+      {{0.0f, 0.0f, 0.0f}},
+      {{1.0f, 0.0f, 0.0f}},
+      {{0.0f, 1.0f, 0.0f}},
+  };
+  auto indices = std::vector<u32>{0, 1, 2};
+  auto vb = VertexBuffer<TestVertex>::create(std::move(vertices));
+  auto ib = IndexBuffer::create(std::move(indices));
+  return MeshBuffer::create(vb, ib, BoundingBox{{0.0f, 0.0f, 0.0f},
+                                                {1.0f, 1.0f, 0.0f}});
 }
 
-void testRayLayoutContract() {
-  EXPECT(sizeof(LX_core::offline::OfflineVertexRecord) == 64,
-         "OfflineVertexRecord std430 contract should stay stable");
-  EXPECT(sizeof(LX_core::offline::OfflineMeshRecord) == 16,
-         "OfflineMeshRecord std430 contract should stay stable");
-  EXPECT(sizeof(LX_core::offline::OfflinePrimitiveRecord) == 16,
-         "OfflinePrimitiveRecord std430 contract should stay stable");
-  EXPECT(sizeof(LX_core::offline::OfflineObjectRecord) == 176,
-         "OfflineObjectRecord std430 contract should stay stable");
-  EXPECT(sizeof(LX_core::offline::OfflineMaterialRecord) == 48,
-         "OfflineMaterialRecord std430 contract should stay stable");
-  EXPECT(sizeof(LX_core::offline::OfflineBvhNode) == 32,
-         "OfflineBvhNode std430 contract should stay stable");
-  EXPECT(sizeof(LX_core::offline::OfflineSceneParams) == 160,
-         "OfflineSceneParams std430 contract should stay stable");
+MeshBufferSharedPtr makeTwoTriangleMeshBuffer() {
+  auto vertices = std::vector<TestVertex>{
+      {{0.0f, 0.0f, 0.0f}},
+      {{1.0f, 0.0f, 0.0f}},
+      {{0.0f, 1.0f, 0.0f}},
+      {{1.0f, 1.0f, 0.0f}},
+  };
+  auto indices = std::vector<u32>{0, 1, 2, 2, 1, 3};
+  auto vb = VertexBuffer<TestVertex>::create(std::move(vertices));
+  auto ib = IndexBuffer::create(std::move(indices));
+  return MeshBuffer::create(vb, ib, BoundingBox{{0.0f, 0.0f, 0.0f},
+                                                {1.0f, 1.0f, 0.0f}});
 }
 
-void testIndexedVertexNormalsArePreserved() {
-  LX_core::offline::OfflineSceneIR scene;
-  scene.name = "normal interpolation";
-  scene.materials.push_back({});
-  scene.meshes.push_back(LX_core::offline::OfflineMeshIR{
-      .name = "triangle",
-      .vertices =
-          {
-              {{0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
-              {{1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
-              {{0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
-          },
-      .indices = {0, 1, 2},
-  });
-  scene.instances.push_back(LX_core::offline::OfflineInstanceIR{});
+void testSoftwareBvhBuildsFromSceneResourceTable() {
+  SceneResourceTable table;
+  const auto mesh = table.registerMesh(makeMeshBuffer());
+  const auto material =
+      table.registerMaterial(MaterialInstance::create(
+          MaterialTemplate::create("software_bvh_material")));
+  ObjectResource object;
+  object.mesh = mesh;
+  object.material = material;
+  object.worldBounds = BoundingBox{{0.0f, 0.0f, 0.0f},
+                                   {1.0f, 1.0f, 0.0f}};
+  const auto objectHandle = table.registerObject(object);
+  (void)objectHandle;
 
-  LX_core::offline::OutputProfile output;
-  output.width = 16;
-  output.height = 16;
-  LX_core::offline::OfflineRaySceneBuilder builder;
-  const auto rayScene =
-      builder.build(scene, output, LX_core::offline::OfflineRenderSettings{});
-
-  EXPECT(rayScene.vertices.size() == 3,
-         "single triangle should keep three shared vertex records");
-  EXPECT(rayScene.primitives.size() == 1,
-         "single triangle should produce one primitive record");
-  EXPECT(rayScene.vertices[0].normal.x == 1.0f &&
-             rayScene.vertices[1].normal.y == 1.0f &&
-             rayScene.vertices[2].normal.z == 1.0f,
-         "per-vertex normals should be preserved for barycentric interpolation");
+  const SceneSoftwareBvh bvh = SceneSoftwareBvh::build(table.buildUploadView());
+  EXPECT(!bvh.nodes().empty(), "software BVH should contain nodes");
+  EXPECT(bvh.primitiveCount() == 1,
+         "one indexed triangle should produce one BVH primitive");
+  const u32 packedRootCount =
+      std::bit_cast<u32>(bvh.nodes().front().boundsMaxCount.w);
+  EXPECT((packedRootCount & ~LeafNodeFlag) == 1,
+         "single-triangle BVH root should reference one primitive");
 }
 
-void testOutputProfileAspectDrivesOfflineCameraFrame() {
-  LX_core::offline::OfflineSceneIR scene;
-  scene.name = "camera aspect";
-  scene.camera.projection.aspect = 16.0f / 9.0f;
-  scene.materials.push_back({});
-  scene.meshes.push_back(LX_core::offline::OfflineMeshIR{
-      .name = "triangle",
-      .vertices =
-          {
-              {{0.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
-              {{1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
-              {{0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f}},
-          },
-      .indices = {0, 1, 2},
-  });
-  scene.instances.push_back(LX_core::offline::OfflineInstanceIR{});
-
-  LX_core::offline::OutputProfile output;
-  output.width = 128;
-  output.height = 128;
-  LX_core::offline::OfflineRaySceneBuilder builder;
-  const auto rayScene =
-      builder.build(scene, output, LX_core::offline::OfflineRenderSettings{});
-
-  EXPECT(std::abs(std::abs(rayScene.params.cameraRight.x) -
-                  std::abs(rayScene.params.cameraUp.y)) < kEps,
-         "square output profile should produce symmetric camera ray frame");
-}
-
-void testDiagnosticBlinnPhongMaterialParamsReachOfflineRecords() {
-  const std::filesystem::path scenePath =
-      std::filesystem::current_path() / "assets" / "scenes" /
-      "realtime_offline_compare_diagnostic.scene.yaml";
-  LX_infra::offline::OfflineSceneCompiler compiler{
-      LX_infra::offline::OfflineAssetResolver(scenePath)};
-  const auto scene = compiler.compileFile(scenePath, "/game_cam");
-
-  LX_core::offline::OutputProfile output;
-  output.width = 128;
-  output.height = 128;
-  LX_core::offline::OfflineRenderSettings offline;
-  offline.samples = 1;
-  offline.compareMode = "shaded";
-  LX_core::offline::OfflineRaySceneBuilder builder;
-  const auto rayScene = builder.build(scene, output, offline);
-
-  EXPECT(rayScene.materials.size() >= 2,
-         "diagnostic scene should keep sphere and plane materials separate");
-  for (const auto &material : rayScene.materials) {
-    EXPECT(std::abs(material.params.z - 0.0f) < kEps,
-           "diagnostic specularIntensity should reach offline material record");
-    EXPECT(std::abs(material.params.w - 0.0f) < kEps,
-           "diagnostic ambientIntensity should reach offline material record");
-    EXPECT(std::abs(material.emissive.w - 12.0f) < kEps,
-           "diagnostic shininess should reach offline material record");
+void testSoftwareBvhThrowsForEmptyPrimitiveList() {
+  bool threw = false;
+  try {
+    (void)SceneSoftwareBvh::build(SceneResourceTable{}.buildUploadView());
+  } catch (const std::runtime_error &error) {
+    threw = std::string(error.what()).find("empty primitive list") !=
+            std::string::npos;
   }
+  EXPECT(threw, "empty software BVH build should fail clearly");
+}
+
+void testSoftwareBvhUsesCompactUploadIndicesAndObjectTransform() {
+  SceneResourceTable table;
+  const auto releasedMesh = table.registerMesh(makeMeshBuffer());
+  const auto liveMesh = table.registerMesh(makeTwoTriangleMeshBuffer());
+  const auto material =
+      table.registerMaterial(MaterialInstance::create(
+          MaterialTemplate::create("software_bvh_transform_material")));
+  table.release(releasedMesh);
+
+  Mat4f objectToWorld = Mat4f::translate(Vec3f{2.0f, 3.0f, 4.0f});
+  ObjectResource object;
+  object.mesh = liveMesh;
+  object.material = material;
+  object.objectToWorld = objectToWorld;
+  object.worldBounds = BoundingBox{{2.0f, 3.0f, 4.0f},
+                                   {3.0f, 4.0f, 4.0f}};
+  const auto objectHandle = table.registerObject(object);
+  (void)objectHandle;
+
+  const SceneSoftwareBvh bvh = SceneSoftwareBvh::build(table.buildUploadView());
+  EXPECT(bvh.primitiveCount() == 2,
+         "two indexed triangles should produce two BVH primitives");
+  EXPECT(bvh.primitives().front().meshIndex == 0,
+         "BVH should preserve compact mesh upload index");
+  EXPECT(bvh.nodes().front().boundsMinLeftFirst.x == 2.0f,
+         "root bounds should include object-space vertices transformed to world");
+  EXPECT(bvh.nodes().front().boundsMinLeftFirst.y == 3.0f,
+         "root bounds should include translated y minimum");
+  EXPECT(bvh.nodes().front().boundsMinLeftFirst.z == 4.0f,
+         "root bounds should include translated z minimum");
+}
+
+void testSoftwareBvhLayoutContract() {
+  EXPECT(sizeof(SceneSoftwareBvhNode) == 32,
+         "SceneSoftwareBvhNode std430 contract should stay stable");
+  EXPECT(sizeof(SceneSoftwareBvhPrimitive) == 12,
+         "SceneSoftwareBvhPrimitive should only store derived BVH references");
 }
 
 } // namespace
 
 int main() {
-  testRayLayoutContract();
-  testIndexedVertexNormalsArePreserved();
-  testOutputProfileAspectDrivesOfflineCameraFrame();
-  testDiagnosticBlinnPhongMaterialParamsReachOfflineRecords();
-  testRaySceneUsesSharedIndexedResourcesAndBuildsBvh();
+  testSoftwareBvhLayoutContract();
+  testSoftwareBvhThrowsForEmptyPrimitiveList();
+  testSoftwareBvhBuildsFromSceneResourceTable();
+  testSoftwareBvhUsesCompactUploadIndicesAndObjectTransform();
   if (failures != 0) {
     std::cerr << "test_offline_gpu_scene failed with " << failures
               << " failure(s)\n";
