@@ -264,12 +264,23 @@ realtime-render run preview
 
 | Metric | Meaning |
 |---|---|
+| `linearL1.mean` / `linearL1.max` | 每像素 RGB linear L1 距离的平均值与最大值 |
+| `linearL1.similarPixelRatios[]` | 对多个 linear L1 阈值分别统计相似像素占比 |
+| `srgbL1.mean` / `srgbL1.max` | 两张图经过同一 CPU tone mapping + linear-to-sRGB 后的 RGB L1 距离平均值与最大值 |
+| `srgbL1.similarPixelRatios[]` | 对多个 sRGB L1 阈值分别统计相似像素占比 |
 | `meanAbsError` | RGB 平均绝对误差 |
 | `maxAbsError` | RGB 最大绝对误差 |
 | `rmse` | RGB 均方根误差 |
 | `pixelCount` | 参与比较的像素数 |
 
-首版比较 SHALL 支持设置容差，并在超出容差时 fail-fast。
+首版比较 SHALL 只输出差异统计，不内置 pass/fail 判定，也不在超出某个阈值时 fail-fast。验收由开发者根据当前 scene、材质、调试目标和输出统计人工判断。
+
+默认阈值建议：
+
+| Metric group | Thresholds |
+|---|---|
+| `linearL1` | `0.01, 0.05, 0.1, 0.4, 1.6` |
+| `srgbL1` | `0.01, 0.03, 0.05, 0.1, 0.2`，其中 L1 以每通道 8-bit 差值除以 255 后累加 |
 
 为了让比较有意义，参与对比的 profile / scene SHALL 满足：
 
@@ -356,8 +367,8 @@ realtime/offline 对比所使用的基础 shader 公式 SHALL 共享语义。
 ### T8: Realtime/offline EXR comparison
 
 - 同一 scene/profile 可分别生成 realtime `linear.exr` 和 offline EXR。
-- 比较工具输出 `meanAbsError`、`maxAbsError`、`rmse`、`pixelCount`。
-- 在简单对比 scene 上，关闭 shadow 且使用 `samples=1` / `maxBounce=1` 时，误差低于需求定义的容差。
+- 比较工具输出 `linearL1`、`srgbL1` 的多阈值 `similarPixelRatios`，并保留 `meanAbsError`、`maxAbsError`、`rmse`、`pixelCount`。
+- 在简单对比 scene 上，关闭 shadow 且使用 `samples=1` / `maxBounce=1` 时，测试只要求比较工具成功输出统计 JSON；是否验收由人工根据统计值确认。
 - 如果开启 shadow 或更复杂材质，测试必须明确标记为 visual/regression comparison，而不是基础数值等价验收。
 
 ## 修改范围

@@ -68,6 +68,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_lxe_editor_recording
   test_gltf_loader
   test_output_profile_resolution
+  test_lxe_compare_exr_metrics
   test_offline_render_cli
   test_offline_image_writer
   test_offline_scene_compiler
@@ -164,6 +165,10 @@ foreach(TEST_EXE ${TEST_INTEGRATION_EXE_LIST})
   #   RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/test/"
   # )
 endforeach()
+
+if(TARGET test_lxe_compare_exr_metrics)
+  target_link_libraries(test_lxe_compare_exr_metrics PRIVATE lxe_compare_exr_core)
+endif()
 
 set(LXE_EDITOR_COMMAND_SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/commands/display_commands.cpp
