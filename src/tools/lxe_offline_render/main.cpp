@@ -1,5 +1,6 @@
 #include "backend/vulkan/offline/vulkan_offline_renderer.hpp"
 #include "core/offline/offline_render_profile.hpp"
+#include "core/offline/offline_render_validation.hpp"
 #include "infra/build_info/build_info.hpp"
 #include "infra/offline/offline_asset_resolver.hpp"
 #include "infra/offline/offline_image_writer.hpp"
@@ -77,6 +78,7 @@ int main(int argc, char **argv) {
     job.profileName = resolved.profileName;
     job.outputPath = resolved.outputPath.value_or("");
 
+    LX_core::offline::validateOfflineRenderJob(job);
     LX_core::backend::offline::VulkanOfflineRenderer renderer;
     const auto image = renderer.render(job);
     if (image.rgba.empty()) {

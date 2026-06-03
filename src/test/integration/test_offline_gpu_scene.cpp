@@ -1,4 +1,6 @@
 #include "core/asset/material_instance.hpp"
+#include "core/offline/offline_render_job.hpp"
+#include "core/offline/offline_render_validation.hpp"
 #include "core/asset/mesh.hpp"
 #include "core/raytracing/software_bvh.hpp"
 #include "core/rhi/vertex_buffer.hpp"
@@ -307,10 +309,78 @@ void testSoftwareBvhLayoutContract() {
          "SceneSoftwareBvhPrimitive should only store derived BVH references");
 }
 
+void expectInvalidOfflineJobThrows(
+    const offline::OfflineRenderJob &job,
+    const std::string &messageFragment) {
+  bool threw = false;
+  try {
+    offline::validateOfflineRenderJob(job);
+  } catch (const std::runtime_error &error) {
+    threw = std::string(error.what()).find(messageFragment) !=
+            std::string::npos;
+  }
+  EXPECT(threw, "invalid offline render job should fail before Vulkan setup");
+}
+
+[[nodiscard]] offline::OfflineRenderJob makeRenderableJobWithoutCamera() {
+  offline::OfflineRenderJob job;
+  job.output.width = 1;
+  job.output.height = 1;
+  const auto mesh = job.scene.registerMesh(makeMeshBuffer());
+  const auto material =
+      job.scene.registerMaterial(MaterialInstance::create(
+          MaterialTemplate::create("offline_validation_material")));
+  ObjectResource object;
+  object.mesh = mesh;
+  object.material = material;
+  object.worldBounds = BoundingBox{{0.0f, 0.0f, 0.0f},
+                                   {1.0f, 1.0f, 0.0f}};
+  const auto objectHandle = job.scene.registerObject(object);
+  (void)objectHandle;
+  return job;
+}
+
+[[nodiscard]] CameraResource makeValidationCameraResource() {
+  const CameraPose pose = makeCameraPose(Vec3f{0.0f, 0.0f, 3.0f},
+                                         Vec3f{0.0f, 0.0f, -1.0f},
+                                         Vec3f{0.0f, 1.0f, 0.0f});
+  const CameraProjection projection;
+  return CameraResource{
+      .pose = pose,
+      .projection = projection,
+      .view = makeCameraViewMatrix(pose),
+      .proj = makeCameraProjectionMatrix(projection),
+      .active = true,
+  };
+}
+
+void testOfflineRenderJobValidationRejectsZeroDimensions() {
+  offline::OfflineRenderJob job = makeRenderableJobWithoutCamera();
+  job.output.width = 0;
+  expectInvalidOfflineJobThrows(job, "width/height must be positive");
+}
+
+void testOfflineRenderJobValidationRejectsMissingCamera() {
+  const offline::OfflineRenderJob job = makeRenderableJobWithoutCamera();
+  expectInvalidOfflineJobThrows(job, "active camera");
+}
+
+void testOfflineRenderJobValidationRejectsNonRenderableScene() {
+  offline::OfflineRenderJob job;
+  job.output.width = 1;
+  job.output.height = 1;
+  const auto camera = job.scene.registerCamera(makeValidationCameraResource());
+  (void)camera;
+  expectInvalidOfflineJobThrows(job, "no upload vertices");
+}
+
 } // namespace
 
 int main() {
   testSoftwareBvhLayoutContract();
+  testOfflineRenderJobValidationRejectsZeroDimensions();
+  testOfflineRenderJobValidationRejectsMissingCamera();
+  testOfflineRenderJobValidationRejectsNonRenderableScene();
   testSoftwareBvhThrowsForEmptyPrimitiveList();
   testSoftwareBvhBuildsFromSceneResourceTable();
   testSoftwareBvhUsesCompactUploadIndicesAndObjectTransform();

@@ -3,6 +3,7 @@
 #include "core/math/bounds.hpp"
 #include "core/math/mat.hpp"
 #include "core/platform/types.hpp"
+#include "core/scene/camera.hpp"
 #include "core/scene/scene_gpu_records.hpp"
 #include "core/scene/scene_resource_table_upload_view.hpp"
 #include "core/scene/visibility_mask.hpp"
@@ -63,6 +64,8 @@ struct ObjectResource final {
 };
 
 struct CameraResource final {
+  CameraPose pose;
+  CameraProjection projection;
   Mat4f view = Mat4f::identity();
   Mat4f proj = Mat4f::identity();
   VisibilityLayerMask cullingMask = VisibilityMask_All;

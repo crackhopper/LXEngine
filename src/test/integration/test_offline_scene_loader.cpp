@@ -224,6 +224,12 @@ void testSelectedCameraObjectStateAndWarnings() {
                  camera->get().proj,
                  LX_core::makeCameraProjectionMatrix(expectedProjection)),
              "selected camera projection matrix should match /cam_b settings");
+      EXPECT(camera->get().pose.eye == expectedPose.eye,
+             "selected camera pose should be retained in CameraResource");
+      EXPECT(camera->get().projection.type == LX_core::CameraType::Perspective,
+             "selected camera projection type should be retained");
+      EXPECT(nearly(camera->get().projection.fovYDegrees, 60.0f),
+             "selected camera fov should be retained");
       EXPECT(camera->get().cullingMask == 0x12345678u,
              "selected camera culling mask should load");
     }
@@ -257,6 +263,61 @@ void testSelectedCameraObjectStateAndWarnings() {
   }
 }
 
+void testOrthographicCameraProjectionMetadataSurvivesLoading() {
+  const std::filesystem::path scenePath =
+      std::filesystem::current_path() / "assets" / "scenes" /
+      "warning_fixture.scene.yaml";
+  LX_infra::offline::OfflineSceneLoader loader{
+      LX_infra::offline::OfflineAssetResolver(scenePath)};
+
+  LX_infra::scene_io::SceneDocument document;
+  document.setGameplayCameraPath("/ortho_cam");
+  auto &root = document.mutableRootNode();
+  LX_infra::scene_io::SceneNodeDocument cameraNode;
+  cameraNode.name = "ortho_cam";
+  cameraNode.transform.translation = {1.0f, 2.0f, 3.0f};
+  cameraNode.camera = LX_infra::scene_io::CameraNodeState{
+      .type = LX_core::CameraType::Orthographic,
+      .aspect = 1.5f,
+      .nearPlane = 0.5f,
+      .farPlane = 80.0f,
+      .orthographicHeight = 6.0f,
+      .cullingMask = 0x00000007u,
+  };
+  root.children.push_back(std::move(cameraNode));
+
+  LX_infra::scene_io::SceneNodeDocument cube;
+  cube.name = "cube";
+  cube.meshUri = "builtin://lxe_editor/primitives/cube";
+  root.children.push_back(std::move(cube));
+
+  auto loaded = loader.load(document, "/ortho_cam");
+  const auto snapshot = loaded.table.buildSnapshot();
+  EXPECT(snapshot.cameraHandles.size() == 1,
+         "orthographic fixture should register one camera");
+  if (snapshot.cameraHandles.empty()) {
+    return;
+  }
+  const auto camera = loaded.table.resolve(snapshot.cameraHandles.front());
+  EXPECT(camera.has_value(), "orthographic camera handle should resolve");
+  if (!camera.has_value()) {
+    return;
+  }
+
+  const auto &projection = camera->get().projection;
+  EXPECT(projection.type == LX_core::CameraType::Orthographic,
+         "CameraResource should preserve orthographic projection type");
+  EXPECT(nearly(projection.aspect, 1.5f),
+         "CameraResource should preserve orthographic aspect");
+  EXPECT(nearly(projection.left, -4.5f) && nearly(projection.right, 4.5f) &&
+             nearly(projection.bottom, -3.0f) &&
+             nearly(projection.top, 3.0f),
+         "CameraResource should preserve orthographic bounds from height");
+  const LX_core::Vec3f expectedEye{1.0f, 2.0f, 3.0f};
+  EXPECT(camera->get().pose.eye == expectedEye,
+         "CameraResource should preserve camera pose");
+}
+
 } // namespace
 
 int main() {
@@ -264,6 +325,7 @@ int main() {
   testBuiltinSphereUsesSharedPrimitiveMesh();
   testBuiltinSphereWindingMatchesOutwardNormals();
   testSelectedCameraObjectStateAndWarnings();
+  testOrthographicCameraProjectionMetadataSurvivesLoading();
   if (failures != 0) {
     std::cerr << "test_offline_scene_loader failed with " << failures
               << " failure(s)\n";

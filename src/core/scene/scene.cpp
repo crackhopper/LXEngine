@@ -55,6 +55,8 @@ void collectSubtreeSnapshots(const SceneNodeSharedPtr &node,
     const CameraComponent &cameraComponent) {
   const CameraSnapshot snapshot = cameraComponent.getSnapshot();
   return CameraResource{
+      .pose = snapshot.pose,
+      .projection = snapshot.projection,
       .view = makeCameraViewMatrix(snapshot.pose),
       .proj = makeCameraProjectionMatrix(snapshot.projection),
       .cullingMask = snapshot.cullingMask,

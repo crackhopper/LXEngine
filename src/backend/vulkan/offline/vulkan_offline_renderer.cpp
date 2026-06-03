@@ -3,6 +3,7 @@
 #include "backend/vulkan/details/commands/command_buffer_manager.hpp"
 #include "backend/vulkan/details/device.hpp"
 #include "backend/vulkan/details/device_resources/buffer.hpp"
+#include "core/offline/offline_render_validation.hpp"
 #include "core/raytracing/software_bvh.hpp"
 #include "core/scene/camera.hpp"
 #include "core/scene/light.hpp"
@@ -13,7 +14,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cmath>
 #include <cstring>
 #include <filesystem>
 #include <functional>
@@ -27,8 +27,6 @@
 
 namespace LX_core::backend::offline {
 namespace {
-
-constexpr float kDegToRad = 3.14159265358979323846f / 180.0f;
 
 struct alignas(16) ShaderMaterialRecord final {
   Vec4f baseColor{1.0f, 1.0f, 1.0f, 1.0f};
@@ -130,10 +128,6 @@ template <typename T>
   return Vec4f{value.x, value.y, value.z, w};
 }
 
-[[nodiscard]] Vec3f viewRow(const Mat4f &view, const int row) {
-  return Vec3f{view(row, 0), view(row, 1), view(row, 2)};
-}
-
 [[nodiscard]] std::optional<std::reference_wrapper<const CameraResource>>
 findActiveCamera(const SceneResourceTable &scene) {
   const RenderSceneSnapshot snapshot = scene.buildSnapshot();
@@ -146,45 +140,12 @@ findActiveCamera(const SceneResourceTable &scene) {
   return std::nullopt;
 }
 
-[[nodiscard]] CameraPose poseFromViewMatrix(const Mat4f &view) {
-  const Vec3f right = viewRow(view, 0).normalized();
-  const Vec3f up = viewRow(view, 1).normalized();
-  const Vec3f backward = viewRow(view, 2).normalized();
-  const float tx = view(0, 3);
-  const float ty = view(1, 3);
-  const float tz = view(2, 3);
-  const Vec3f eye = right * -tx + up * -ty + backward * -tz;
-  return makeCameraPose(eye, backward * -1.0f, up);
-}
-
 [[nodiscard]] CameraRayFrame
 makeRayFrameFromCameraResource(const CameraResource &camera,
                                const LX_core::offline::OutputProfile &output) {
-  const CameraPose pose = poseFromViewMatrix(camera.view);
-  const CameraPose resolvedPose = makeCameraPose(pose.eye, pose.forward, pose.up);
-  const Vec3f rightAxis =
-      resolvedPose.forward.cross(resolvedPose.up).normalized();
-
-  float verticalScale = 1.0f;
-  if (output.cameraOverrides.fovY.has_value()) {
-    verticalScale =
-        std::tan(*output.cameraOverrides.fovY * kDegToRad * 0.5f);
-  } else if (std::abs(camera.proj(1, 1)) > 1.0e-6f) {
-    verticalScale = 1.0f / std::abs(camera.proj(1, 1));
-  }
-  const float outputAspect =
-      output.height == 0
-          ? 1.0f
-          : static_cast<float>(output.width) / static_cast<float>(output.height);
-  const float aspect = output.cameraOverrides.aspect.value_or(outputAspect);
-  const float horizontalScale = verticalScale * std::max(aspect, 0.0001f);
-
-  return CameraRayFrame{
-      .eye = resolvedPose.eye,
-      .right = rightAxis * horizontalScale,
-      .up = resolvedPose.up * verticalScale,
-      .forward = resolvedPose.forward,
-  };
+  const CameraProjection projection =
+      LX_core::offline::resolveOutputCameraProjection(camera.projection, output);
+  return makeCameraRayFrame(camera.pose, projection);
 }
 
 [[nodiscard]] DirectionalLightParams
@@ -513,8 +474,7 @@ struct VulkanOfflineRenderer::Impl final {
 
   [[nodiscard]] LX_core::offline::OfflineReadbackImage
   render(const LX_core::offline::OfflineRenderJob &job) {
-    ensurePipeline();
-
+    LX_core::offline::validateOfflineRenderJob(job);
     const SceneResourceTableUploadView uploadView = job.scene.buildUploadView();
     validateUploadView(uploadView);
     const SceneSoftwareBvh bvh = SceneSoftwareBvh::build(uploadView);
@@ -524,6 +484,8 @@ struct VulkanOfflineRenderer::Impl final {
     const std::vector<ShaderMaterialRecord> shaderMaterials =
         makeShaderMaterials(uploadView);
     const ShaderSceneParams params = makeShaderParams(job, uploadView, bvh);
+
+    ensurePipeline();
 
     const VkBufferUsageFlags storageUsage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
     const VkMemoryPropertyFlags hostMemory =

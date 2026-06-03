@@ -286,6 +286,8 @@ void applyMaterialOverrides(const MaterialInstanceSharedPtr &material,
       .top = halfOrthoHeight,
   };
   return CameraResource{
+      .pose = pose,
+      .projection = projection,
       .view = LX_core::makeCameraViewMatrix(pose),
       .proj = LX_core::makeCameraProjectionMatrix(projection),
       .cullingMask = node.camera->cullingMask,

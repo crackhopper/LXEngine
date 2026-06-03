@@ -337,6 +337,14 @@ void testSceneRegistersCameraAndLightResources() {
   auto scene = Scene::create("camera_light_resource_table");
   auto cameraNode = SceneNode::create("resource_camera");
   cameraNode->addComponent<CameraComponent>();
+  auto cameraBeforeRegister = cameraNode->getComponent<CameraComponent>();
+  EXPECT(cameraBeforeRegister.has_value(),
+         "camera node should expose camera component before registration");
+  if (cameraBeforeRegister.has_value()) {
+    cameraBeforeRegister->get().applyProjectionState(
+        CameraType::Orthographic, 50.0f, 1.25f, 0.2f, 120.0f, -5.0f, 5.0f,
+        -4.0f, 4.0f);
+  }
 
   scene->addCamera(cameraNode);
 
@@ -350,6 +358,19 @@ void testSceneRegistersCameraAndLightResources() {
          "scene resource table should own one camera entry");
   EXPECT(scene->resources().resolve(cameraHandle).has_value(),
          "camera handle should resolve through scene resource table");
+  if (const auto cameraResource = scene->resources().resolve(cameraHandle);
+      cameraResource.has_value()) {
+    EXPECT(cameraResource->get().projection.type == CameraType::Orthographic,
+           "camera resource should preserve projection type");
+    EXPECT(cameraResource->get().projection.left == -5.0f &&
+               cameraResource->get().projection.right == 5.0f &&
+               cameraResource->get().projection.bottom == -4.0f &&
+               cameraResource->get().projection.top == 4.0f,
+           "camera resource should preserve orthographic bounds");
+    const Vec3f expectedForward{0.0f, 0.0f, -1.0f};
+    EXPECT(cameraResource->get().pose.forward == expectedForward,
+           "camera resource should preserve camera pose");
+  }
 
   auto light = std::make_shared<DirectionalLight>();
   scene->addLight(light);
