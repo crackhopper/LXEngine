@@ -2,6 +2,7 @@
 
 #include "core/math/vec.hpp"
 #include "core/offline/offline_render_profile.hpp"
+#include "core/offline/offline_render_validation.hpp"
 #include "core/raytracing/software_bvh.hpp"
 #include "core/scene/camera.hpp"
 #include "core/scene/light.hpp"
@@ -167,21 +168,12 @@ makeShaderParams(const OfflineRenderJob &job,
   return params;
 }
 
-void validateUploadView(const SceneResourceTableUploadView &uploadView) {
-  if (uploadView.vertices.empty() || uploadView.indices.empty() ||
-      uploadView.meshes.empty() || uploadView.primitives.empty() ||
-      uploadView.objects.empty() || uploadView.materials.empty()) {
-    throw std::runtime_error(
-        "offline render scene upload view is missing renderable records");
-  }
-}
-
 } // namespace
 
 OfflineSceneStorageResources
 buildOfflineSceneStorageResources(const OfflineRenderJob &job) {
   const SceneResourceTableUploadView uploadView = job.scene.buildUploadView();
-  validateUploadView(uploadView);
+  validateOfflineUploadView(uploadView);
   const SceneSoftwareBvh bvh = SceneSoftwareBvh::build(uploadView);
   const std::vector<SceneGpuPrimitiveRecord> shaderPrimitives =
       makeShaderPrimitives(uploadView, bvh);

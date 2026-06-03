@@ -26,7 +26,9 @@ void validateCountFitsU32(const usize count, const char *label) {
   }
 }
 
-void validateUploadView(const SceneResourceTableUploadView &uploadView) {
+} // namespace
+
+void validateOfflineUploadView(const SceneResourceTableUploadView &uploadView) {
   if (uploadView.vertices.empty()) {
     throw std::runtime_error("offline render scene has no upload vertices");
   }
@@ -54,8 +56,6 @@ void validateUploadView(const SceneResourceTableUploadView &uploadView) {
   validateCountFitsU32(uploadView.materials.size(), "material");
 }
 
-} // namespace
-
 void validateOfflineRenderJob(const OfflineRenderJob &job) {
   if (job.output.width == 0 || job.output.height == 0) {
     throw std::runtime_error(
@@ -66,7 +66,7 @@ void validateOfflineRenderJob(const OfflineRenderJob &job) {
   }
 
   const SceneResourceTableUploadView uploadView = job.scene.buildUploadView();
-  validateUploadView(uploadView);
+  validateOfflineUploadView(uploadView);
   const SceneSoftwareBvh bvh = SceneSoftwareBvh::build(uploadView);
   if (bvh.nodes().empty()) {
     throw std::runtime_error("offline render scene produced no BVH nodes");
