@@ -86,13 +86,20 @@ executor.execute(queue, uploadPlan);
 
 ## FrameGraph and Offline
 
-Offline rendering should eventually use frame-graph pass planning as realtime
-does. A software path tracing MVP can still be a single `OfflineRayTrace` pass,
-but the architecture must allow offline denoise, accumulation, debug-output,
-hardware RT build/update, and postprocess passes.
+Offline rendering uses frame-graph pass planning as realtime does. A software
+path tracing MVP can still ship with a single `OfflineRayTrace` pass, but that
+pass is represented in the same graph/queue/work-item flow. Offline multi-pass
+support is therefore a property of the shared flow, not a separate renderer
+path. Denoise, accumulation, debug-output, and postprocess passes can be added
+by declaring more offline passes that produce `RenderWorkQueue` instances.
 
 Realtime and offline may use different pass graphs. The shared contract is that
 both graphs produce `RenderWorkQueue` instances and upload plans.
+
+Hardware ray tracing and bindless are not implemented in this change. The
+shared work-item and upload-plan vocabulary must remain compatible with those
+future backends, but no BLAS/TLAS/SBT or bindless descriptor implementation is
+part of this scope.
 
 ## Material Domains
 
@@ -113,11 +120,14 @@ The first implementation is intentionally structural:
 4. Add `RenderDomain`, `RenderWorkKind`, and `RenderUploadPlan` as shared core
    concepts.
 5. Make realtime Vulkan code call an explicit upload-plan path before drawing.
-6. Keep offline software compute output behavior unchanged, but align naming and
-   planning interfaces where practical.
+6. Route offline software compute through an offline frame graph with a default
+   `OfflineRayTrace` pass that produces a compute `RenderWorkItem`.
+7. Keep offline software compute output behavior unchanged while moving it onto
+   the shared queue/upload/execute vocabulary.
 
-This scope does not require offline multi-pass frame graph execution yet. That
-comes after the common work item and upload plan vocabulary is in place.
+This scope does not implement hardware RT or bindless. It only keeps the
+interfaces broad enough that future changes can add specialized work payloads
+and upload plans without re-splitting realtime and offline flow.
 
 ## Testing
 
@@ -130,4 +140,3 @@ should cover:
   camera, light, and IBL resources from work items
 - offline render MVP still matches realtime output in the existing comparison
   test
-
