@@ -631,10 +631,6 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
     };
   };
 
-  if (m_builtUploadGeneration == m_generation) {
-    return makeView();
-  }
-
   m_gpuVertices.clear();
   m_gpuIndices.clear();
   m_gpuMeshes.clear();
@@ -704,8 +700,6 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
     objectRecord.worldToObject = toGpuRows(object.worldToObject);
     objectRecord.boundsMin = toGpuBoundsMin(object.worldBounds);
     objectRecord.boundsMax = toGpuBoundsMax(object.worldBounds);
-    objectRecord.meshIndex = meshRecordIndex;
-    objectRecord.materialIndex = materialRecordIndex;
     objectRecord.visible = object.visible ? 1u : 0u;
     objectRecord.flags = object.debugOnly ? 1u : 0u;
     objectRecord.visibilityMask = object.visibilityMask;
@@ -725,7 +719,6 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
     }
   }
 
-  m_builtUploadGeneration = m_generation;
   return makeView();
 }
 

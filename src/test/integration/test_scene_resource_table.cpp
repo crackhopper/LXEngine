@@ -357,6 +357,22 @@ void testSceneGpuRecordLayoutContract() {
          "SceneGpuMaterialRecord std430 contract should stay stable");
   EXPECT(sizeof(SceneGpuFrameParams) == 176,
          "SceneGpuFrameParams std430 contract should stay stable");
+  EXPECT(offsetof(SceneGpuObjectRecord, objectToWorld) == 0,
+         "SceneGpuObjectRecord objectToWorld offset should stay stable");
+  EXPECT(offsetof(SceneGpuObjectRecord, worldToObject) == 64,
+         "SceneGpuObjectRecord worldToObject offset should stay stable");
+  EXPECT(offsetof(SceneGpuObjectRecord, boundsMin) == 128,
+         "SceneGpuObjectRecord boundsMin offset should stay stable");
+  EXPECT(offsetof(SceneGpuObjectRecord, boundsMax) == 144,
+         "SceneGpuObjectRecord boundsMax offset should stay stable");
+  EXPECT(offsetof(SceneGpuObjectRecord, visible) == 160,
+         "SceneGpuObjectRecord visible offset should stay stable");
+  EXPECT(offsetof(SceneGpuObjectRecord, flags) == 164,
+         "SceneGpuObjectRecord flags offset should stay stable");
+  EXPECT(offsetof(SceneGpuObjectRecord, visibilityMask) == 168,
+         "SceneGpuObjectRecord visibilityMask offset should stay stable");
+  EXPECT(offsetof(SceneGpuObjectRecord, debugId) == 172,
+         "SceneGpuObjectRecord debugId offset should stay stable");
 }
 
 void testSceneResourceTableUploadViewTracksGeneration() {
@@ -377,10 +393,12 @@ void testSceneResourceTableUploadViewTracksGeneration() {
   EXPECT(firstView.generation != 0, "upload view should expose generation");
   EXPECT(firstView.meshes.size() == 1, "upload view should expose one mesh");
   EXPECT(firstView.objects.size() == 1, "upload view should expose one object");
-  EXPECT(firstView.objects.front().meshIndex == mesh.index,
-         "object GPU record should reference mesh index");
-  EXPECT(firstView.objects.front().materialIndex == material.index,
-         "object GPU record should reference material index");
+  EXPECT(firstView.primitives.size() == 1,
+         "upload view should expose one primitive");
+  EXPECT(firstView.primitives.front().meshIndex == mesh.index,
+         "primitive GPU record should reference compact mesh index");
+  EXPECT(firstView.primitives.front().materialIndex == material.index,
+         "primitive GPU record should reference compact material index");
   EXPECT(firstView.objects.front().visibilityMask == 0x12345678u,
          "object GPU record should preserve visibility mask");
   EXPECT(firstView.objects.front().flags == 1,
@@ -406,10 +424,11 @@ void testSceneResourceTableUploadViewTracksGeneration() {
          "object visibility should reach GPU record");
 }
 
-void testSceneResourceTableUploadViewCachesUnchangedGeneration() {
+void testSceneResourceTableUploadViewReflectsMaterialMutationAfterBuild() {
   SceneResourceTable table;
   const auto mesh = table.registerMesh(makeMeshBuffer());
-  const auto material = table.registerMaterial(makeGpuRecordMaterial());
+  const auto materialInstance = makeGpuRecordMaterial();
+  const auto material = table.registerMaterial(materialInstance);
   ObjectResource object;
   object.mesh = mesh;
   object.material = material;
@@ -418,19 +437,20 @@ void testSceneResourceTableUploadViewCachesUnchangedGeneration() {
   const auto objectHandle = table.registerObject(object);
 
   const auto firstView = table.buildUploadView();
+  materialInstance->setParameter(StringID("MaterialUBO"), StringID("baseColor"),
+                                 Vec4f{0.9f, 0.8f, 0.7f, 0.6f});
   const auto secondView = table.buildUploadView();
   EXPECT(table.isAlive(objectHandle),
-         "test setup should keep cached-view object alive");
+         "test setup should keep material mutation object alive");
   EXPECT(secondView.generation == firstView.generation,
-         "unchanged upload view should keep generation");
-  EXPECT(secondView.vertices.data() == firstView.vertices.data(),
-         "unchanged upload view should reuse cached vertex span");
-  EXPECT(secondView.indices.data() == firstView.indices.data(),
-         "unchanged upload view should reuse cached index span");
-  EXPECT(secondView.objects.data() == firstView.objects.data(),
-         "unchanged upload view should reuse cached object span");
-  EXPECT(secondView.primitives.data() == firstView.primitives.data(),
-         "unchanged upload view should reuse cached primitive span");
+         "external material mutation should not advance table generation");
+  EXPECT(secondView.materials.size() == 1,
+         "upload view should keep one material after mutation");
+  EXPECT(secondView.materials.front().baseColor.x == 0.9f &&
+             secondView.materials.front().baseColor.y == 0.8f &&
+             secondView.materials.front().baseColor.z == 0.7f &&
+             secondView.materials.front().baseColor.w == 0.6f,
+         "upload view should reflect external material parameter mutation");
 }
 
 void testSceneResourceTableUploadViewUsesCompactRecordIndices() {
@@ -470,15 +490,6 @@ void testSceneResourceTableUploadViewUsesCompactRecordIndices() {
   EXPECT(view.objects.size() == 1, "upload view should compact live objects");
   EXPECT(view.primitives.size() == 1,
          "upload view should emit one live primitive");
-
-  EXPECT(view.objects.front().meshIndex < view.meshes.size(),
-         "object mesh index should point inside compact mesh span");
-  EXPECT(view.objects.front().meshIndex == 0,
-         "object mesh index should use compact mesh record position");
-  EXPECT(view.objects.front().materialIndex < view.materials.size(),
-         "object material index should point inside compact material span");
-  EXPECT(view.objects.front().materialIndex == 0,
-         "object material index should use compact material record position");
 
   EXPECT(view.primitives.front().meshIndex < view.meshes.size(),
          "primitive mesh index should point inside compact mesh span");
@@ -670,7 +681,7 @@ int main() {
   testSceneRegistersCameraAndLightResources();
   testSceneGpuRecordLayoutContract();
   testSceneResourceTableUploadViewTracksGeneration();
-  testSceneResourceTableUploadViewCachesUnchangedGeneration();
+  testSceneResourceTableUploadViewReflectsMaterialMutationAfterBuild();
   testSceneResourceTableUploadViewUsesCompactRecordIndices();
   testSceneResourceTableUploadViewSkipsObjectsWithReleasedDependencies();
   testSceneResourceTableUploadViewSkipsObjectsWithStaleDependencies();

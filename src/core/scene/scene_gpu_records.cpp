@@ -66,18 +66,18 @@ std::array<Vec4f, 4> toGpuRows(const Mat4f &matrix) {
   }};
 }
 
-Vec3f toGpuBoundsMin(const BoundingBox &bounds) {
+Vec4f toGpuBoundsMin(const BoundingBox &bounds) {
   if (!bounds.isValid()) {
     return {};
   }
-  return bounds.min;
+  return {bounds.min.x, bounds.min.y, bounds.min.z, 0.0f};
 }
 
-Vec3f toGpuBoundsMax(const BoundingBox &bounds) {
+Vec4f toGpuBoundsMax(const BoundingBox &bounds) {
   if (!bounds.isValid()) {
     return {};
   }
-  return bounds.max;
+  return {bounds.max.x, bounds.max.y, bounds.max.z, 0.0f};
 }
 
 SceneGpuMaterialRecord toGpuMaterialRecord(const MaterialInstance &material) {

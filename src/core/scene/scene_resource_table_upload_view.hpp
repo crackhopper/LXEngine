@@ -7,8 +7,8 @@
 namespace LX_core {
 
 // Non-owning view over SceneResourceTable's cached GPU records. Spans remain
-// valid until the table mutates or a later buildUploadView() rebuilds the cache
-// for a newer generation.
+// valid until the table mutates or a later buildUploadView() call rebuilds the
+// cache.
 struct SceneResourceTableUploadView final {
   u64 generation = 0;
   std::span<const SceneGpuVertexRecord> vertices;

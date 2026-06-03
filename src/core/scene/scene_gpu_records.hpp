@@ -6,6 +6,7 @@
 #include "core/platform/types.hpp"
 
 #include <array>
+#include <cstddef>
 
 namespace LX_core {
 
@@ -35,10 +36,8 @@ struct alignas(16) SceneGpuPrimitiveRecord final {
 struct alignas(16) SceneGpuObjectRecord final {
   std::array<Vec4f, 4> objectToWorld{};
   std::array<Vec4f, 4> worldToObject{};
-  Vec3f boundsMin{};
-  Vec3f boundsMax{};
-  u32 meshIndex = 0;
-  u32 materialIndex = 0;
+  Vec4f boundsMin{};
+  Vec4f boundsMax{};
   u32 visible = 1;
   u32 flags = 0;
   u32 visibilityMask = 0xffffffffu;
@@ -79,8 +78,8 @@ struct alignas(16) SceneGpuFrameParams final {
 };
 
 [[nodiscard]] std::array<Vec4f, 4> toGpuRows(const Mat4f &matrix);
-[[nodiscard]] Vec3f toGpuBoundsMin(const BoundingBox &bounds);
-[[nodiscard]] Vec3f toGpuBoundsMax(const BoundingBox &bounds);
+[[nodiscard]] Vec4f toGpuBoundsMin(const BoundingBox &bounds);
+[[nodiscard]] Vec4f toGpuBoundsMax(const BoundingBox &bounds);
 [[nodiscard]] SceneGpuMaterialRecord
 toGpuMaterialRecord(const MaterialInstance &material);
 
@@ -90,5 +89,13 @@ static_assert(sizeof(SceneGpuPrimitiveRecord) == 16);
 static_assert(sizeof(SceneGpuObjectRecord) == 176);
 static_assert(sizeof(SceneGpuMaterialRecord) == 64);
 static_assert(sizeof(SceneGpuFrameParams) == 176);
+static_assert(offsetof(SceneGpuObjectRecord, objectToWorld) == 0);
+static_assert(offsetof(SceneGpuObjectRecord, worldToObject) == 64);
+static_assert(offsetof(SceneGpuObjectRecord, boundsMin) == 128);
+static_assert(offsetof(SceneGpuObjectRecord, boundsMax) == 144);
+static_assert(offsetof(SceneGpuObjectRecord, visible) == 160);
+static_assert(offsetof(SceneGpuObjectRecord, flags) == 164);
+static_assert(offsetof(SceneGpuObjectRecord, visibilityMask) == 168);
+static_assert(offsetof(SceneGpuObjectRecord, debugId) == 172);
 
 } // namespace LX_core
