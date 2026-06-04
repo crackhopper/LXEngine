@@ -16,6 +16,9 @@ passes:
       cullMode: Back
       depthTest: true
       depthWrite: true
+  OfflineRayTrace:
+    shader: offline_pbr_direct_ray
+    stage: compute
 
 parameters:
   MaterialUBO.baseColorFactor: [1.0, 1.0, 1.0, 1.0]
@@ -25,7 +28,7 @@ parameters:
 
 resources:
   albedoMap: white
-  normalMap: white
+  normalMap: normal
   metallicRoughnessMap: white
   aoMap: white
   emissiveMap: black

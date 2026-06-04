@@ -83,7 +83,7 @@ void testCliRejectsCamera() {
   return text.str();
 }
 
-void testSceneShaderModeParsesResolvesAndSaves() {
+void testSceneShaderFieldIsRejected() {
   const std::filesystem::path scenePath =
       std::filesystem::temp_directory_path() /
       "lx_offline_shader_mode_scene.yaml";
@@ -116,20 +116,15 @@ void testSceneShaderModeParsesResolvesAndSaves() {
          "  visibilityMask: 4294967295\n";
   out.close();
 
-  const auto document = LX_infra::scene_io::loadSceneDocument(scenePath);
-  const auto resolved = LX_core::offline::resolveRenderProfileDocument(
-      document.renderProfileDocument(), LX_core::offline::RenderProfileCliOverrides{});
-  EXPECT(resolved.offline.shaderMode ==
-             LX_core::offline::OfflineShaderMode::PbrDirectRay,
-         "offlineRender.shader should resolve to PBR direct mode");
-
-  const std::filesystem::path savedPath =
-      std::filesystem::temp_directory_path() /
-      "lx_offline_shader_mode_scene_saved.yaml";
-  LX_infra::scene_io::saveSceneDocument(savedPath, document);
-  const std::string savedText = readTextFile(savedPath);
-  EXPECT(savedText.find("shader: pbr-direct-ray") != std::string::npos,
-         "offlineRender.shader should save for PBR direct mode");
+  bool rejected = false;
+  try {
+    (void)LX_infra::scene_io::loadSceneDocument(scenePath);
+  } catch (const std::exception &error) {
+    rejected =
+        std::string(error.what()).find("scene.offlineRender.shader") !=
+        std::string::npos;
+  }
+  EXPECT(rejected, "offlineRender.shader should be rejected");
 }
 
 void testSoftwareComputeProfileRendersAndRejectsHardwareRt() {
@@ -146,10 +141,6 @@ void testSoftwareComputeProfileRendersAndRejectsHardwareRt() {
       });
   EXPECT(resolved.offline.integrator == "software-compute",
          "diagnostic scene should use software-compute integrator");
-  EXPECT(resolved.offline.shaderMode ==
-             LX_core::offline::OfflineShaderMode::MvpPrimaryRay,
-         "diagnostic scene should default to MVP primary ray shader");
-
   LX_infra::offline::OfflineAssetResolver resolver(scenePath);
   LX_infra::offline::OfflineSceneLoader loader(resolver);
   auto loaded = loader.load(document, resolved.output.cameraPath);
@@ -158,6 +149,7 @@ void testSoftwareComputeProfileRendersAndRejectsHardwareRt() {
   job.scene = std::move(loaded.table);
   job.output = resolved.output;
   job.offline = resolved.offline;
+  job.offlineShader = std::move(loaded.offlineShader);
   job.profileName = resolved.profileName;
 
   LX_core::offline::validateOfflineRenderJob(job);
@@ -191,7 +183,7 @@ int main() {
   testCliParsesOfflineOverrides();
   testCliRejectsMaxDepth();
   testCliRejectsCamera();
-  testSceneShaderModeParsesResolvesAndSaves();
+  testSceneShaderFieldIsRejected();
   testSoftwareComputeProfileRendersAndRejectsHardwareRt();
   if (failures != 0) {
     std::cerr << "test_offline_render_cli failed with " << failures

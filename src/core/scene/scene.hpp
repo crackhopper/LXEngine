@@ -261,6 +261,7 @@ public:
   [[nodiscard]] std::vector<std::string> listAllPaths() const;
   std::string dumpTree() const;
   void revalidateNodesUsing(const MaterialInstanceSharedPtr &materialInstance);
+  void setActiveMaterialTagForRenderables(const std::string &tag);
   [[nodiscard]] SceneEventHub &events() { return m_events; }
   [[nodiscard]] const SceneEventHub &events() const { return m_events; }
   [[nodiscard]] SceneResourceTable &resources() { return m_resources; }

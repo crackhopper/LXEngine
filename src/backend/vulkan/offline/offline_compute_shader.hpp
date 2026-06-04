@@ -1,11 +1,11 @@
 #pragma once
 
 #include "core/asset/shader.hpp"
-#include "core/offline/offline_render_profile.hpp"
+#include <string_view>
 
 namespace LX_core::backend::offline {
 
 [[nodiscard]] LX_core::IShaderSharedPtr createOfflineComputeShader(
-    LX_core::offline::OfflineShaderMode mode);
+    std::string_view shaderName);
 
 } // namespace LX_core::backend::offline

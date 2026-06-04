@@ -758,6 +758,93 @@ void testOutputProfilesRoundTrip() {
          "saved compareMode");
 }
 
+void testTaggedMaterialsAndMaterialTagsRoundTrip() {
+  const std::filesystem::path path =
+      makeTempPath("lx_scene_tagged_materials.yaml");
+  std::ofstream out(path);
+  out << "scene:\n"
+         "  name: tagged material test\n"
+         "  gameplayCameraPath: /game_cam\n"
+         "  defaultOutputProfile: highres-pbr\n"
+         "  outputProfiles:\n"
+         "    highres-pbr:\n"
+         "      camera: /game_cam\n"
+         "      width: 1024\n"
+         "      height: 1024\n"
+         "      materialTag: realtime-pbr\n"
+         "    highres-blinn-phong:\n"
+         "      camera: /game_cam\n"
+         "      width: 1024\n"
+         "      height: 1024\n"
+         "      materialTag: realtime-blinnphong\n"
+         "  offlineRender:\n"
+         "    profile: highres-pbr\n"
+         "    materialTag: offline-pbr\n"
+         "root:\n"
+         "  nodeName: scene_root\n"
+         "  name: ''\n"
+         "  transform:\n"
+         "    translation: [0.0, 0.0, 0.0]\n"
+         "    rotation: [1.0, 0.0, 0.0, 0.0]\n"
+         "    scale: [1.0, 1.0, 1.0]\n"
+         "  visibilityMask: 4294967295\n"
+         "  children:\n"
+         "    - nodeName: helmet\n"
+         "      name: helmet\n"
+         "      transform:\n"
+         "        translation: [0.0, 0.0, 0.0]\n"
+         "        rotation: [1.0, 0.0, 0.0, 0.0]\n"
+         "        scale: [1.0, 1.0, 1.0]\n"
+         "      visibilityMask: 4294967295\n"
+         "      mesh:\n"
+         "        uri: assets/models/damaged_helmet/DamagedHelmet.gltf\n"
+         "      materials:\n"
+         "        - tag: realtime-pbr\n"
+         "          source: gltf\n"
+         "          uri: assets/materials/pbr.material\n"
+         "        - tag: realtime-blinnphong\n"
+         "          uri: assets/materials/blinnphong_lit.material\n"
+         "        - tag: offline-pbr\n"
+         "          source: gltf\n"
+         "          uri: assets/materials/pbr.material\n";
+  out.close();
+
+  const auto doc = LX_infra::scene_io::loadSceneDocument(path);
+  const auto &profiles = doc.renderProfileDocument();
+  EXPECT(profiles.outputProfiles.at("highres-pbr").materialTag ==
+             "realtime-pbr",
+         "output profile materialTag should load");
+  EXPECT(profiles.outputProfiles.at("highres-blinn-phong").materialTag ==
+             "realtime-blinnphong",
+         "second output profile materialTag should load");
+  EXPECT(profiles.offline.materialTag == "offline-pbr",
+         "offline materialTag should load");
+
+  const auto *helmet = findChildByNodeName(doc.rootNode(), "helmet");
+  EXPECT(helmet != nullptr, "helmet node should load");
+  EXPECT(helmet != nullptr && helmet->materials.size() == 3,
+         "tagged material list should load");
+  EXPECT(helmet != nullptr && helmet->materials[0].tag == "realtime-pbr",
+         "first material tag should load");
+  EXPECT(helmet != nullptr && helmet->materials[0].source == "gltf",
+         "gltf material source should load");
+  EXPECT(helmet != nullptr &&
+             helmet->materials[1].uri ==
+                 "assets/materials/blinnphong_lit.material",
+         "explicit material uri should load");
+
+  const std::filesystem::path saved =
+      makeTempPath("lx_scene_tagged_materials_saved.yaml");
+  LX_infra::scene_io::saveSceneDocument(saved, doc);
+  const std::string savedText = readFile(saved);
+  EXPECT(savedText.find("materials:") != std::string::npos,
+         "tagged materials should save");
+  EXPECT(savedText.find("materialTag: realtime-pbr") != std::string::npos,
+         "output materialTag should save");
+  EXPECT(savedText.find("materialTag: offline-pbr") != std::string::npos,
+         "offline materialTag should save");
+}
+
 void testOldOfflineRenderProfilesRejected() {
   const std::filesystem::path path =
       makeTempPath("lx_scene_old_offline_profiles.yaml");
@@ -1095,6 +1182,7 @@ int main() {
   testSaveSceneDocumentWritesExplicitRootCanonicalFormat();
   testSceneDocumentRoundTripsTypedLightPayloads();
   testOutputProfilesRoundTrip();
+  testTaggedMaterialsAndMaterialTagsRoundTrip();
   testOldOfflineRenderProfilesRejected();
   testOldOfflineRenderDefaultProfileRejected();
   testOutputProfileSamplesRejected();

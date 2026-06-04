@@ -2190,7 +2190,7 @@ void testBuiltinHelmetDefaultMaterialKeepsPbrBridgeOnReload() {
                        "    mesh:\n"
                        "      uri: builtin://lxe_editor/helmet\n"
                        "    material:\n"
-                       "      uri: assets/materials/pbr_gltf.material\n");
+                       "      uri: assets/materials/pbr.material\n");
 
   demo::SceneRuntime runtime;
   runtime.loadFromDocumentPath(path);

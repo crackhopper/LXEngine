@@ -676,38 +676,21 @@ void testOfflineRenderWorkGraphCanCarryComputeShader() {
          "offline work item should carry compute shader from build context");
 }
 
-void testOfflinePbrWorkItemCarriesSceneTextureArrayOnlyForPbrMode() {
-  {
-    offline::OfflineRenderJob job = makeRenderableJobWithCamera();
-    job.offline.shaderMode = offline::OfflineShaderMode::MvpPrimaryRay;
+void testOfflineWorkItemCarriesUnifiedSceneTextureArray() {
+  offline::OfflineRenderJob job = makeRenderableJobWithCamera();
 
-    FrameGraph graph = offline::createOfflineRenderFrameGraph(job.output);
-    graph.build(LX_core::RenderWorkBuildContext::offline(job));
+  FrameGraph graph = offline::createOfflineRenderFrameGraph(job.output);
+  graph.build(LX_core::RenderWorkBuildContext::offline(job));
 
-    const RenderWorkItem &item =
-        graph.getPasses().front().queue.getItems().front();
-    EXPECT(!findDescriptorResource(item, StringID("SceneTextures")),
-           "MVP offline shader mode should not require SceneTextures");
-  }
-
-  {
-    offline::OfflineRenderJob job = makeRenderableJobWithCamera();
-    job.offline.shaderMode = offline::OfflineShaderMode::PbrDirectRay;
-
-    FrameGraph graph = offline::createOfflineRenderFrameGraph(job.output);
-    graph.build(LX_core::RenderWorkBuildContext::offline(job));
-
-    const RenderWorkItem &item =
-        graph.getPasses().front().queue.getItems().front();
-    const auto resource =
-        std::dynamic_pointer_cast<SampledTextureArrayResource>(
-            findDescriptorResource(item, StringID("SceneTextures")));
-    EXPECT(resource != nullptr,
-           "PBR direct shader mode should carry SceneTextures texture array");
-    if (resource != nullptr) {
-      EXPECT(resource->textures().size() == 64,
-             "SceneTextures should provide exactly 64 descriptor slots");
-    }
+  const RenderWorkItem &item =
+      graph.getPasses().front().queue.getItems().front();
+  const auto resource = std::dynamic_pointer_cast<SampledTextureArrayResource>(
+      findDescriptorResource(item, StringID("SceneTextures")));
+  EXPECT(resource != nullptr,
+         "offline scene storage should carry unified SceneTextures array");
+  if (resource != nullptr) {
+    EXPECT(resource->textures().size() == 64,
+           "SceneTextures should provide exactly 64 descriptor slots");
   }
 }
 
@@ -746,7 +729,7 @@ int main() {
   testOfflineRenderJobValidationRejectsNonRenderableScene();
   testOfflineRenderWorkGraphBuildsRayTracePass();
   testOfflineRenderWorkGraphCanCarryComputeShader();
-  testOfflinePbrWorkItemCarriesSceneTextureArrayOnlyForPbrMode();
+  testOfflineWorkItemCarriesUnifiedSceneTextureArray();
   testSoftwareBvhThrowsForEmptyPrimitiveList();
   testSoftwareBvhBuildsFromSceneResourceTable();
   testSoftwareBvhUsesCompactUploadIndicesAndObjectTransform();

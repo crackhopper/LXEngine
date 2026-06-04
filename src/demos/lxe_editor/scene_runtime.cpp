@@ -47,7 +47,7 @@ constexpr const char *BuiltinModelPrefix = "assets/models/builtin/";
 constexpr const char *kDefaultGroundMaterial =
     "assets/materials/blinnphong_lit.material";
 constexpr const char *kDefaultHelmetMaterial =
-    "assets/materials/pbr_gltf.material";
+    "assets/materials/pbr.material";
 
 struct SceneRuntimeData final {
   std::optional<std::filesystem::path> documentPath;
@@ -911,6 +911,55 @@ makeCameraNode(const std::string &nodeName, const std::string &displayName,
   return node;
 }
 
+[[nodiscard]] LX_core::MaterialInstanceSharedPtr loadTaggedMaterialForSceneNode(
+    const std::vector<std::filesystem::path> &assetRoots,
+    const SceneNodeDocument &nodeDocument,
+    const LX_infra::scene_io::MaterialBindingDocument &binding) {
+  LX_core::MaterialInstanceSharedPtr material;
+  if (binding.source == "gltf") {
+    if (!nodeDocument.meshUri.has_value() ||
+        !isGltfMeshUri(*nodeDocument.meshUri)) {
+      throw std::runtime_error("source: gltf material requires glTF mesh");
+    }
+    const std::filesystem::path meshPath =
+        resolveRuntimeOrProjectAssetPath(assetRoots, *nodeDocument.meshUri);
+    const std::filesystem::path pbrMaterial =
+        binding.uri.empty()
+            ? resolveRuntimePath("assets/materials/pbr.material")
+            : resolveRuntimeOrProjectAssetPath(assetRoots, binding.uri);
+    auto asset = LX_infra::scene_asset::loadGltfSceneAsset(meshPath, pbrMaterial);
+    material = std::move(asset.material);
+  } else {
+    material = loadMaterialForSceneNode(assetRoots, binding.uri,
+                                        MaterialOverrideState{},
+                                        MaterialOverrideState{});
+  }
+  applyMaterialStateOverrides(material, binding.materialOverrides,
+                              binding.nodeMaterialOverrides,
+                              ProceduralMaterialState{});
+  applyEffectiveMaterialStateToExisting(
+      material, nodeDocument.materialOverrides,
+      nodeDocument.nodeMaterialOverrides, nodeDocument.proceduralMaterial);
+  return material;
+}
+
+void attachTaggedMaterialsToNode(
+    LX_core::SceneNode &node, const SceneNodeDocument &nodeDocument,
+    const std::vector<std::filesystem::path> &assetRoots) {
+  if (nodeDocument.materials.empty()) {
+    return;
+  }
+  auto materialComponent = node.getComponent<LX_core::MaterialComponent>();
+  if (!materialComponent) {
+    return;
+  }
+  for (const auto &binding : nodeDocument.materials) {
+    materialComponent->get().setTaggedMaterial(
+        binding.tag, loadTaggedMaterialForSceneNode(assetRoots, nodeDocument,
+                                                    binding));
+  }
+}
+
 [[nodiscard]] std::string cameraPathToDisplayName(const std::string &path,
                                                   const std::string &fallback) {
   if (path.empty() || path == "/") {
@@ -1049,6 +1098,13 @@ makeCameraNode(const std::string &nodeName, const std::string &displayName,
   if (isGltfMeshUri(*nodeDocument.meshUri)) {
     const std::filesystem::path meshPath =
         resolveRuntimeOrProjectAssetPath(assetRoots, *nodeDocument.meshUri);
+    if (!nodeDocument.materials.empty()) {
+      auto meshAsset = LX_infra::scene_asset::loadGltfMeshAsset(meshPath);
+      auto node = makeRenderableNode(nodeDocument.nodeName,
+                                     std::move(meshAsset.mesh), nullptr);
+      attachTaggedMaterialsToNode(*node, nodeDocument, assetRoots);
+      return node;
+    }
     if (nodeDocument.materialUri.has_value()) {
       auto meshAsset = LX_infra::scene_asset::loadGltfMeshAsset(meshPath);
       const std::string materialUri = normalizeMaterialUri(nodeDocument);

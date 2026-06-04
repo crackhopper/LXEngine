@@ -11,16 +11,33 @@ scene:
       camera: /game_cam
       width: 192
       height: 192
+      materialTag: realtime-pbr
       outputFormat: exr-png
       outDir: artifacts/compare/helmet_pbr
       backgroundColor: [0.0, 0.0, 0.0]
+    highres-pbr:
+      camera: /game_cam
+      width: 1024
+      height: 1024
+      materialTag: realtime-pbr
+      outputFormat: exr-png
+      outDir: artifacts/compare/helmet_pbr_highres
+      backgroundColor: [0.0, 0.0, 0.0]
+    highres-blinnphong:
+      camera: /game_cam
+      width: 1024
+      height: 1024
+      materialTag: realtime-blinnphong
+      outputFormat: exr-png
+      outDir: artifacts/compare/helmet_blinnphong_highres
+      backgroundColor: [0.0, 0.0, 0.0]
   offlineRender:
     integrator: software-compute
-    shader: pbr-direct-ray
     samples: 1
     maxBounce: 1
     seed: 1
     profile: preview
+    materialTag: offline-pbr
     shadows: false
     compareMode: shaded
 root:
@@ -55,6 +72,16 @@ root:
       visibilityMask: 4294967295
       mesh:
         uri: assets/models/damaged_helmet/DamagedHelmet.gltf
+      materials:
+        - tag: offline-pbr
+          source: gltf
+          uri: assets/materials/pbr.material
+        - tag: realtime-pbr
+          source: gltf
+          uri: assets/materials/pbr.material
+        - tag: realtime-blinnphong
+          source: gltf
+          uri: assets/materials/blinnphong_textured.material
     - nodeName: compare_key_light
       name: compare_key_light
       transform:

@@ -560,7 +560,8 @@ std::string LxeEditorSession::realtimeRenderProfilesJson() const {
     oss << "{\"name\":\"" << jsonEscape(name) << "\",\"camera\":\""
         << jsonEscape(profile.cameraPath) << "\",\"width\":" << profile.width
         << ",\"height\":" << profile.height << ",\"outputFormat\":\""
-        << jsonEscape(profile.outputFormat) << "\",\"outDir\":\""
+        << jsonEscape(profile.outputFormat) << "\",\"materialTag\":\""
+        << jsonEscape(profile.materialTag) << "\",\"outDir\":\""
         << jsonEscape(profile.outDir.generic_string()) << "\"}";
   }
   oss << "]}";
@@ -585,6 +586,10 @@ LxeEditorSession::runRealtimeRenderProfile(std::string_view profileName) {
             LX_core::offline::RenderProfileCliOverrides{
                 .profileName = std::string(profileName),
             });
+    if (!resolved.output.materialTag.empty()) {
+      m_runtime.scene()->setActiveMaterialTagForRenderables(
+          resolved.output.materialTag);
+    }
     RealtimeProfileOutputRequest request{
         .scenePath = m_runtime.documentPath().value_or(std::filesystem::path{}),
         .sceneName = document.sceneName(),
@@ -1180,6 +1185,17 @@ void LxeEditorSession::rebuildBindings(
               [this](std::string_view profileName) {
                 return runRealtimeRenderProfile(profileName);
               },
+      });
+  m_commandBus->registerHandler(
+      "material-tag", "material-tag set <tag>",
+      [this](std::vector<std::string> args) {
+        if (args.size() != 2 || args[0] != "set") {
+          return makeCommandError("usage: material-tag set <tag>");
+        }
+        m_runtime.scene()->setActiveMaterialTagForRenderables(args[1]);
+        return makeCommandOk("material tag set: " + args[1],
+                             "{\"materialTag\":\"" + jsonEscape(args[1]) +
+                                 "\"}");
       });
   m_commandBus->registerHandler(
       "render", "render debug dump <target> [camera-path] [path]",

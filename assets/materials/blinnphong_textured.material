@@ -29,6 +29,9 @@ passes:
       cullMode: None
       depthTest: true
       depthWrite: true
+  OfflineRayTrace:
+    shader: offline_primary_ray
+    stage: compute
 
 parameters:
   MaterialUBO.baseColor: [1.0, 1.0, 1.0]

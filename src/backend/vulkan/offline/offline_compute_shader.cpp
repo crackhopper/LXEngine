@@ -18,31 +18,9 @@
 namespace LX_core::backend::offline {
 namespace {
 
-[[nodiscard]] const char *
-offlineShaderSourceName(const LX_core::offline::OfflineShaderMode mode) {
-  switch (mode) {
-  case LX_core::offline::OfflineShaderMode::MvpPrimaryRay:
-    return "offline_primary_ray";
-  case LX_core::offline::OfflineShaderMode::PbrDirectRay:
-    return "offline_pbr_direct_ray";
-  }
-  throw std::runtime_error("unsupported offline shader mode");
-}
-
-[[nodiscard]] const char *
-offlineShaderFileName(const LX_core::offline::OfflineShaderMode mode) {
-  switch (mode) {
-  case LX_core::offline::OfflineShaderMode::MvpPrimaryRay:
-    return "offline_primary_ray.comp.spv";
-  case LX_core::offline::OfflineShaderMode::PbrDirectRay:
-    return "offline_pbr_direct_ray.comp.spv";
-  }
-  throw std::runtime_error("unsupported offline shader mode");
-}
-
 [[nodiscard]] std::vector<char>
-loadComputeShader(const LX_core::offline::OfflineShaderMode mode) {
-  const char *shaderFile = offlineShaderFileName(mode);
+loadComputeShader(const std::string_view shaderName) {
+  const std::string shaderFile = std::string(shaderName) + ".comp.spv";
   std::string shaderPath;
   std::filesystem::path probe = std::filesystem::current_path();
   for (int i = 0; i < 8 && shaderPath.empty(); ++i) {
@@ -59,7 +37,7 @@ loadComputeShader(const LX_core::offline::OfflineShaderMode mode) {
     probe = parent;
   }
   if (shaderPath.empty()) {
-    shaderPath = getShaderPath(offlineShaderSourceName(mode), "comp.spv");
+    shaderPath = getShaderPath(std::string(shaderName), "comp.spv");
   }
   if (shaderPath.empty()) {
     throw std::runtime_error("failed to find offline compute shader SPIR-V");
@@ -95,8 +73,7 @@ findReflectedBinding(const std::vector<ShaderResourceBinding> &bindings,
 
 [[nodiscard]] std::vector<ShaderResourceBinding>
 validateOfflineDescriptorContract(
-    const std::vector<u32> &shaderCode,
-    const LX_core::offline::OfflineShaderMode mode) {
+    const std::vector<u32> &shaderCode) {
   struct ExpectedBinding {
     u32 binding = 0;
     const char *name = "";
@@ -131,15 +108,18 @@ validateOfflineDescriptorContract(
       {8, "OutputPixels"},
       {9, "SceneTextures", ShaderPropertyType::Texture2D, 64},
   }};
-  const std::span<const ExpectedBinding> expected =
-      mode == LX_core::offline::OfflineShaderMode::PbrDirectRay
-          ? std::span<const ExpectedBinding>{pbrDirectExpected}
-          : std::span<const ExpectedBinding>{mvpExpected};
-
   ShaderStageCode stageCode{};
   stageCode.stage = ShaderStage::Compute;
   stageCode.bytecode = shaderCode;
   const auto reflected = LX_infra::ShaderReflector::reflect({stageCode});
+  const bool expectsSceneTextures =
+      std::any_of(reflected.begin(), reflected.end(),
+                  [](const ShaderResourceBinding &binding) {
+                    return binding.name == "SceneTextures";
+                  });
+  const std::span<const ExpectedBinding> expected =
+      expectsSceneTextures ? std::span<const ExpectedBinding>{pbrDirectExpected}
+                           : std::span<const ExpectedBinding>{mvpExpected};
   if (reflected.size() != expected.size()) {
     std::ostringstream msg;
     msg << "offline shader descriptor count mismatch: expected "
@@ -191,12 +171,12 @@ validateOfflineDescriptorContract(
 
 class OfflineComputeShader final : public IShader {
 public:
-  explicit OfflineComputeShader(const LX_core::offline::OfflineShaderMode mode)
-      : m_shaderName(offlineShaderSourceName(mode)) {
+  explicit OfflineComputeShader(std::string shaderName)
+      : m_shaderName(std::move(shaderName)) {
     ShaderStageCode stage{};
     stage.stage = ShaderStage::Compute;
-    stage.bytecode = toSpirvWords(loadComputeShader(mode));
-    m_bindings = validateOfflineDescriptorContract(stage.bytecode, mode);
+    stage.bytecode = toSpirvWords(loadComputeShader(m_shaderName));
+    m_bindings = validateOfflineDescriptorContract(stage.bytecode);
     m_stages.push_back(std::move(stage));
   }
 
@@ -258,8 +238,8 @@ private:
 } // namespace
 
 LX_core::IShaderSharedPtr
-createOfflineComputeShader(const LX_core::offline::OfflineShaderMode mode) {
-  return std::make_shared<OfflineComputeShader>(mode);
+createOfflineComputeShader(const std::string_view shaderName) {
+  return std::make_shared<OfflineComputeShader>(std::string(shaderName));
 }
 
 } // namespace LX_core::backend::offline

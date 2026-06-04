@@ -203,6 +203,58 @@ LX_infra::scene_io::SceneDocument makePlainGltfHelmetDocument(
   return document;
 }
 
+LX_infra::scene_io::SceneDocument makeTaggedGltfHelmetDocument(
+    std::string offlineMaterialTag) {
+  LX_infra::scene_io::SceneDocument document;
+  document.setSceneName("offline tagged glTF helmet");
+  document.setGameplayCameraPath("/game_cam");
+
+  LX_core::offline::RenderProfileDocument profiles;
+  auto preview = LX_core::offline::makeDefaultOutputProfile();
+  preview.width = 64;
+  preview.height = 64;
+  preview.materialTag = "realtime-pbr";
+  profiles.outputProfiles.emplace("preview", preview);
+  profiles.defaultOutputProfile = "preview";
+  profiles.offline = LX_core::offline::makeDefaultOfflineRenderSettings();
+  profiles.offline.profileName = "preview";
+  profiles.offline.materialTag = std::move(offlineMaterialTag);
+  document.setRenderProfileDocument(std::move(profiles));
+
+  auto &root = document.mutableRootNode();
+  root.children.push_back(
+      makeCameraNode("game_cam", LX_core::Vec3f{0.0f, 2.0f, 6.0f}, 45.0f,
+                     0xffffffffu));
+
+  LX_infra::scene_io::SceneNodeDocument helmet;
+  helmet.nodeName = "helmet";
+  helmet.name = "helmet";
+  helmet.meshUri = "assets/models/damaged_helmet/DamagedHelmet.gltf";
+  helmet.materials.push_back(LX_infra::scene_io::MaterialBindingDocument{
+      .tag = "offline-pbr",
+      .uri = "assets/materials/pbr.material",
+      .source = "gltf",
+  });
+  helmet.materials.push_back(LX_infra::scene_io::MaterialBindingDocument{
+      .tag = "realtime-blinnphong",
+      .uri = "assets/materials/blinnphong_lit.material",
+  });
+  root.children.push_back(std::move(helmet));
+
+  LX_infra::scene_io::SceneNodeDocument missingTagCube;
+  missingTagCube.nodeName = "missing_tag_cube";
+  missingTagCube.name = "missing_tag_cube";
+  missingTagCube.transform.translation = {3.0f, 0.0f, 0.0f};
+  missingTagCube.meshUri = "builtin://lxe_editor/primitives/cube";
+  missingTagCube.materials.push_back(LX_infra::scene_io::MaterialBindingDocument{
+      .tag = "realtime-blinnphong",
+      .uri = "assets/materials/blinnphong_lit.material",
+  });
+  root.children.push_back(std::move(missingTagCube));
+
+  return document;
+}
+
 LX_infra::scene_io::SceneDocument makeWarningSceneDocument() {
   LX_infra::scene_io::SceneDocument document;
   document.setSceneName("offline loader warning fixture");
@@ -305,10 +357,56 @@ void testPlainGltfHelmetLoadsToSceneResourceTable() {
          "plain glTF helmet should load through OfflineSceneLoader");
 }
 
+void testOfflineSceneLoaderSelectsTaggedMaterialAndSkipsMissingTags() {
+  LX_infra::offline::OfflineSceneLoader loader{
+      LX_infra::offline::OfflineAssetResolver(std::filesystem::current_path() /
+                                              "assets" / "scenes" /
+                                              "warning_fixture.scene.yaml")};
+
+  const auto loaded =
+      loader.load(makeTaggedGltfHelmetDocument("offline-pbr"), "/game_cam");
+  const auto uploadView = loaded.table.buildUploadView();
+  EXPECT(loaded.table.objectCount() == 1,
+         "offline loader should skip objects without offline materialTag");
+  EXPECT(loaded.table.materialCount() == 1,
+         "offline loader should register only the selected tagged material");
+
+  const auto hasPbrRecord = std::any_of(
+      uploadView.materials.begin(), uploadView.materials.end(),
+      [](const auto &material) {
+        return nearly(material.pbrParams.x, 1.0f) &&
+               nearly(material.pbrParams.y, 1.0f) &&
+               nearly(material.pbrParams.w, 1.0f);
+      });
+  EXPECT(hasPbrRecord,
+         "offline materialTag should select the configured glTF PBR material");
+}
+
+void testOfflineSceneLoaderCanSelectBlinnPhongTag() {
+  LX_infra::offline::OfflineSceneLoader loader{
+      LX_infra::offline::OfflineAssetResolver(std::filesystem::current_path() /
+                                              "assets" / "scenes" /
+                                              "warning_fixture.scene.yaml")};
+
+  const auto loaded = loader.load(
+      makeTaggedGltfHelmetDocument("realtime-blinnphong"), "/game_cam");
+  const auto uploadView = loaded.table.buildUploadView();
+  const auto hasBlinnPhongRecord = std::any_of(
+      uploadView.materials.begin(), uploadView.materials.end(),
+      [](const auto &material) {
+        return nearly(material.baseColor,
+                      LX_core::Vec4f{0.8f, 0.8f, 0.8f, 1.0f}) &&
+               nearly(material.pbrParams.z, 1.0f) &&
+               nearly(material.emissive.w, 12.0f);
+      });
+  EXPECT(hasBlinnPhongRecord,
+         "offline loader should use the selected non-PBR tagged material");
+}
+
 void testPlainGltfHelmetExplicitMaterialDoesNotLoadPbrBridgeMaterial() {
   const std::filesystem::path materialPath =
       std::filesystem::current_path() / "assets" / "materials" /
-      "pbr_gltf_helmet.material";
+      "pbr.material";
   restoreStaleHiddenMaterialIfNeeded(materialPath);
   const std::filesystem::path hiddenMaterialPath =
       makeUniqueHiddenMaterialPath(materialPath);
@@ -536,6 +634,8 @@ int main() {
   testIblMetalSphereLoadsToSceneResourceTable();
   testBuiltinSphereUsesSharedPrimitiveMesh();
   testPlainGltfHelmetLoadsToSceneResourceTable();
+  testOfflineSceneLoaderSelectsTaggedMaterialAndSkipsMissingTags();
+  testOfflineSceneLoaderCanSelectBlinnPhongTag();
   testPlainGltfHelmetExplicitMaterialDoesNotLoadPbrBridgeMaterial();
   testBuiltinSphereWindingMatchesOutwardNormals();
   testSelectedCameraObjectStateAndWarnings();

@@ -226,6 +226,18 @@ void Scene::revalidateNodesUsing(
   }
 }
 
+void Scene::setActiveMaterialTagForRenderables(const std::string &tag) {
+  for (const auto &renderable : m_renderables) {
+    auto node = std::dynamic_pointer_cast<SceneNode>(renderable);
+    if (!node)
+      continue;
+    const auto materialComponent = node->getComponent<MaterialComponent>();
+    if (!materialComponent)
+      continue;
+    (void)materialComponent->get().setActiveMaterialTag(tag);
+  }
+}
+
 /*
 @source_analysis.section getSceneLevelResources：camera×target 与 light×pass
 两轴筛选 REQ-009 的核心设计：camera 按 target 选，light 按 pass 选 —

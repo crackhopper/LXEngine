@@ -45,6 +45,16 @@ inline constexpr std::string_view kSystemOwnedBindings[] = {
     "BrdfLut",
     "EnvironmentUBO",
     "Bones",
+    "SceneVertices",
+    "SceneIndices",
+    "SceneMeshes",
+    "ScenePrimitives",
+    "SceneObjects",
+    "SceneMaterials",
+    "SceneBvhNodes",
+    "SceneFrameParams",
+    "OutputPixels",
+    "SceneTextures",
 };
 
 inline bool isSystemOwnedBinding(std::string_view name) {
@@ -92,6 +102,14 @@ getExpectedTypeForSystemBinding(std::string_view name) {
     return ShaderPropertyType::UniformBuffer;
   if (name == "Bones")
     return ShaderPropertyType::UniformBuffer;
+  if (name == "SceneTextures")
+    return ShaderPropertyType::Texture2D;
+  if (name == "SceneVertices" || name == "SceneIndices" ||
+      name == "SceneMeshes" || name == "ScenePrimitives" ||
+      name == "SceneObjects" || name == "SceneMaterials" ||
+      name == "SceneBvhNodes" || name == "SceneFrameParams" ||
+      name == "OutputPixels")
+    return ShaderPropertyType::StorageBuffer;
   return std::nullopt;
 }
 

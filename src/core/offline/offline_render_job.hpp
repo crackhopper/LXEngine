@@ -2,6 +2,7 @@
 
 #include "core/offline/offline_render_profile.hpp"
 #include "core/platform/types.hpp"
+#include "core/asset/shader.hpp"
 #include "core/scene/scene_resource_table.hpp"
 
 #include <filesystem>
@@ -14,6 +15,7 @@ struct OfflineRenderJob final {
   SceneResourceTable scene;
   OutputProfile output;
   OfflineRenderSettings offline;
+  IShaderSharedPtr offlineShader;
   std::string profileName;
   std::filesystem::path outputPath;
 };

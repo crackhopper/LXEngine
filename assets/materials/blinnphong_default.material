@@ -12,6 +12,9 @@ passes:
       cullMode: Back
       depthTest: true
       depthWrite: true
+  OfflineRayTrace:
+    shader: offline_primary_ray
+    stage: compute
   Shadow:
     shader: shadow_depth_only
     renderState:

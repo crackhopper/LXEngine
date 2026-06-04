@@ -181,27 +181,73 @@ void bindTextureIfPresent(MaterialInstanceSharedPtr &material,
   if (uri.empty()) {
     return;
   }
+  if (!material->getTemplate()->findCanonicalMaterialBinding(
+          StringID(bindingName))) {
+    return;
+  }
   material->setTexture(StringID(bindingName),
                        loadCombinedTexture(gltfDir / uri));
 }
 
+void setParameterIfPresent(MaterialInstanceSharedPtr &material,
+                           const char *bindingName, const char *memberName,
+                           const float value) {
+  if (material->findParameterMember(StringID(bindingName),
+                                    StringID(memberName))) {
+    material->setParameter(StringID(bindingName), StringID(memberName), value);
+  }
+}
+
+void setParameterIfPresent(MaterialInstanceSharedPtr &material,
+                           const char *bindingName, const char *memberName,
+                           const i32 value) {
+  if (material->findParameterMember(StringID(bindingName),
+                                    StringID(memberName))) {
+    material->setParameter(StringID(bindingName), StringID(memberName), value);
+  }
+}
+
+void setParameterIfPresent(MaterialInstanceSharedPtr &material,
+                           const char *bindingName, const char *memberName,
+                           const Vec3f &value) {
+  if (material->findParameterMember(StringID(bindingName),
+                                    StringID(memberName))) {
+    material->setParameter(StringID(bindingName), StringID(memberName), value);
+  }
+}
+
+void setParameterIfPresent(MaterialInstanceSharedPtr &material,
+                           const char *bindingName, const char *memberName,
+                           const Vec4f &value) {
+  if (material->findParameterMember(StringID(bindingName),
+                                    StringID(memberName))) {
+    material->setParameter(StringID(bindingName), StringID(memberName), value);
+  }
+}
+
 [[nodiscard]] MaterialInstanceSharedPtr
-buildMaterialFromGltfPbr(const infra::GLTFPbrMaterial &pbr,
-                         const std::filesystem::path &gltfDir,
-                         const bool normalMapEnabled) {
-  auto material =
-      LX_infra::loadGenericMaterial("assets/materials/pbr_gltf_helmet.material");
+buildMaterialFromGltf(const infra::GLTFPbrMaterial &pbr,
+                      const std::filesystem::path &gltfDir,
+                      const std::filesystem::path &materialUri,
+                      const bool normalMapEnabled) {
+  auto material = LX_infra::loadGenericMaterial(materialUri);
   if (!material) {
-    throw std::runtime_error("failed to load pbr_gltf_helmet.material");
+    throw std::runtime_error("failed to load glTF target material: " +
+                             materialUri.string());
   }
 
-  material->setParameter(StringID("MaterialUBO"), StringID("baseColorFactor"),
-                         pbr.baseColorFactor);
-  material->setParameter(StringID("MaterialUBO"), StringID("metallicFactor"),
-                         pbr.metallicFactor);
-  material->setParameter(StringID("MaterialUBO"), StringID("roughnessFactor"),
-                         pbr.roughnessFactor);
-  material->setParameter(StringID("MaterialUBO"), StringID("ao"), 1.0f);
+  setParameterIfPresent(material, "MaterialUBO", "baseColorFactor",
+                        pbr.baseColorFactor);
+  setParameterIfPresent(
+      material, "MaterialUBO", "baseColor",
+      Vec3f{pbr.baseColorFactor.x, pbr.baseColorFactor.y,
+            pbr.baseColorFactor.z});
+  setParameterIfPresent(material, "MaterialUBO", "metallicFactor",
+                        pbr.metallicFactor);
+  setParameterIfPresent(material, "MaterialUBO", "roughnessFactor",
+                        pbr.roughnessFactor);
+  setParameterIfPresent(material, "MaterialUBO", "ao", 1.0f);
+  setParameterIfPresent(material, "MaterialUBO", "enableAlbedo", i32{1});
 
   bindTextureIfPresent(material, gltfDir, pbr.baseColorTexture, "albedoMap");
   bindTextureIfPresent(material, gltfDir, pbr.metallicRoughnessTexture,
@@ -229,6 +275,12 @@ loadGltfMeshAsset(const std::filesystem::path &gltfPath) {
 
 GltfSceneAssetLoadResult
 loadGltfSceneAsset(const std::filesystem::path &gltfPath) {
+  return loadGltfSceneAsset(gltfPath, "assets/materials/pbr.material");
+}
+
+GltfSceneAssetLoadResult
+loadGltfSceneAsset(const std::filesystem::path &gltfPath,
+                   const std::filesystem::path &pbrMaterialUri) {
   const std::filesystem::path resolved = resolveGltfPath(gltfPath);
 
   infra::GLTFLoader loader;
@@ -250,8 +302,9 @@ loadGltfSceneAsset(const std::filesystem::path &gltfPath) {
         "normal map disabled because tangent basis is unavailable");
   }
 
-  result.material = buildMaterialFromGltfPbr(
-      loader.getMaterial(), resolved.parent_path(), result.normalMapEnabled);
+  result.material =
+      buildMaterialFromGltf(loader.getMaterial(), resolved.parent_path(),
+                            pbrMaterialUri, result.normalMapEnabled);
   return result;
 }
 

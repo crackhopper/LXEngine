@@ -29,4 +29,8 @@ loadGltfMeshAsset(const std::filesystem::path &gltfPath);
 [[nodiscard]] GltfSceneAssetLoadResult
 loadGltfSceneAsset(const std::filesystem::path &gltfPath);
 
+[[nodiscard]] GltfSceneAssetLoadResult
+loadGltfSceneAsset(const std::filesystem::path &gltfPath,
+                   const std::filesystem::path &pbrMaterialUri);
+
 } // namespace LX_infra::scene_asset

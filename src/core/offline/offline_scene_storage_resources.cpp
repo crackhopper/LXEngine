@@ -227,10 +227,8 @@ buildOfflineSceneStorageResources(const OfflineRenderJob &job) {
   resources.outputPixels =
       makeStorageBuffer(StringID("OutputPixels"), zeroBytes(outputSize));
   resources.descriptorResources.push_back(resources.outputPixels);
-  if (job.offline.shaderMode == OfflineShaderMode::PbrDirectRay) {
-    resources.descriptorResources.push_back(
-        makeSceneTextureArray(uploadView.textures));
-  }
+  resources.descriptorResources.push_back(
+      makeSceneTextureArray(uploadView.textures));
   return resources;
 }
 

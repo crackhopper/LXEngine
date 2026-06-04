@@ -5,6 +5,16 @@ add_subdirectory(lxe_realtime_render)
 find_package(Python3 COMPONENTS Interpreter QUIET)
 
 if(Python3_Interpreter_FOUND)
+  add_custom_target(RunHelmetPbrHighresOffline
+    COMMAND $<TARGET_FILE:lxe_offline_render>
+      --scene assets/scenes/realtime_offline_compare_helmet_pbr.scene.yaml
+      --profile highres-pbr
+      --out artifacts/compare/helmet_pbr_highres/offline/render
+    DEPENDS lxe_offline_render
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    VERBATIM
+  )
+
   add_custom_target(RunHelmetPbrOfflineCompareAgainstCurrentRealtime
     COMMAND $<TARGET_FILE:lxe_offline_render>
       --scene assets/scenes/realtime_offline_compare_helmet_pbr.scene.yaml

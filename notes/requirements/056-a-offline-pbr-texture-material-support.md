@@ -1,14 +1,14 @@
 # REQ-056-a: 共享 PBR 纹理材质加载与离线/实时等价验证
 
-> 2026-06-04 调整：本 REQ 不再是 offline-only 材质补丁。目标改为建立一套 editor、realtime profile output、offline renderer 共同使用的 glTF/PBR 资产加载路径，并用 DamagedHelmet 做无阴影、无 IBL、无 GI 的 PBR 直接光像素级等价验证。当前仍在讨论中，未开始。
+> 2026-06-04 调整：本 REQ 不再是 offline-only 材质补丁。目标改为建立一套 editor、realtime profile output、offline renderer 共同使用的 glTF/PBR 资产加载路径，并用 DamagedHelmet 做无阴影、无 IBL、无 GI 的 PBR 直接光像素级等价验证。场景通过 instance 绑定多套带 tag 的材质，渲染流程按 tag 选择材质；没有对应 tag 的物体不参与该流程。
 
 ## 背景
 
 `REQ-054-b` 的 offline MVP 走通了 Vulkan compute 离线渲染，但当前链路仍偏诊断用途：offline scene loader 主要消费 builtin primitive，`offline_primary_ray.comp` 使用简化 shading，PBR texture set 没有通过统一 GPU texture table 进入离线 shader。
 
-实时路径已经能在 editor/runtime 中把本地 DamagedHelmet glTF 的 PBR metadata 桥接到 `pbr_gltf_helmet.material`，覆盖 albedo、metallic/roughness、normal、AO、emissive；但这套 bridge 仍带有 demo/runtime 专属逻辑。后续 ray tracer 如果沿用另一套 offline 专用解释器，会导致“实时能加载、离线不能加载”或“同一个材质在两边含义不同”。
+实时路径已经能在 editor/runtime 中把本地 DamagedHelmet glTF 的 PBR metadata 桥接到普通 `MaterialInstance`，覆盖 albedo、metallic/roughness、normal、AO、emissive；但如果 editor、realtime 和 offline 各自维护材质解释逻辑，后续 ray tracer 会出现“实时能加载、离线不能加载”或“同一个材质在两边含义不同”。
 
-因此本 REQ 的核心不是给 offline 单独补纹理，而是把 glTF mesh + PBR material bridge 收敛成全局共享加载逻辑，让 editor、realtime profile output 和 offline renderer 从同一份 scene asset path 到同一份 `SceneResourceTable` 数据合同。
+因此本 REQ 的核心不是给 offline 单独补纹理，而是把 glTF mesh + material bridge 收敛成全局共享加载逻辑，让 editor、realtime profile output 和 offline renderer 从同一份 scene asset path、同一组 instance material tags 到同一份 `SceneResourceTable` 数据合同。
 
 ## 目标
 
@@ -19,6 +19,7 @@
 5. 抽出 shader common PBR direct-light 函数，让 realtime `pbr.frag` 和新增 offline PBR direct ray shader 使用同一套公式。
 6. 新增无 shadow、无 IBL、无 GI 的 Helmet PBR 等价场景，生成 realtime/offline linear EXR 并用 `lxe_compare_exr` 做像素级阈值比较。
 7. 保留原 offline MVP shader 和原 MVP compare/diagnostic 流程可运行，不把旧 `offline_primary_ray.comp` 直接改成新 PBR 验证 shader。
+8. 高清 Helmet 场景绑定三套材质 tag：`offline-pbr`、`realtime-pbr`、`realtime-blinnphong`，用于输出 1024x1024 的 offline PBR、realtime PBR、realtime Blinn-Phong 对比图。
 
 ## 需求
 
@@ -61,6 +62,19 @@ glTF mesh、texture URI、PBR metadata、tangent fallback 和 material bridge �
 | AO | `Default_AO.jpg`, `occlusionTexture` |
 | Normal | `Default_normal.jpg`, `normalTexture` |
 | Emissive | `Default_emissive.jpg`, `emissiveTexture` + `emissiveFactor` |
+
+### R2.5: Instance 多材质 tag 选择
+
+一个 scene instance 可以绑定多套材质。每套材质由 `tag` 标识，渲染流程通过配置或 editor 命令选择一个 tag。
+
+要求：
+
+- scene node 的 `materials` 列表必须支持 `tag`、`uri`、`source`、`offline`、`materialOverrides` 和 `nodeMaterialOverrides`。
+- offline render profile 通过 `offlineRender.materialTag` 选择离线材质；realtime output profile 通过 `outputProfiles.<name>.materialTag` 选择实时材质。
+- `offlineRender.shader` 之类的 shader 直连配置无效，必须移除；shader 选择来自被选中 tag 对应的材质 pass。
+- editor/runtime 必须提供命令按 tag 切换当前 scene 中 renderable 的活动材质。
+- 渲染流程只收集拥有目标 tag 的物体；缺少该 tag 的物体必须从该流程排除。
+- PBR 材质只保留一套普通 `pbr.material`。材质文件名、shader 代码和 loader 都不能包含 Helmet 或 glTF 专属分支。
 
 ### R3: Offline GPU texture table
 
@@ -129,7 +143,7 @@ PBR 直接光公式必须放入 shader common 库。
 
 - 保留现有 `offline_primary_ray.comp` 的 MVP/diagnostic 行为。
 - 新增 PBR 等价 shader，例如 `offline_pbr_direct_ray.comp`，或等价命名。
-- scene/offlineRender 配置必须能选择使用 MVP shader 还是 PBR direct shader。
+- scene/offlineRender 配置必须通过 material tag 选择使用 MVP shader 还是 PBR direct shader；不能保留独立 shader mode 或 asset-name 分支。
 - 现有 `realtime_offline_compare_diagnostic.scene.yaml` 和相关 compare 目标必须继续可运行。
 - 新 Helmet PBR compare scene 必须使用配置选择 PBR direct path；代码里不能根据 asset name 特判。
 

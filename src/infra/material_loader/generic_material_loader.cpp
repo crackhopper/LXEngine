@@ -426,6 +426,7 @@ bool hasMeshOverlayColorBinding(const LX_core::IShader &shader) {
 struct CompiledPass {
   LX_core::StringID passId;
   std::string shaderName;
+  std::string stage = "raster";
   std::vector<LX_core::ShaderVariant> variants;
   LX_core::RenderState renderState;
   LX_core::ShadingModel shadingModel = LX_core::ShadingModel::Smooth;
@@ -437,31 +438,48 @@ struct CompiledPass {
 
 CompiledPass compilePassShader(const LX_core::StringID &passId,
                                const std::string &shaderName,
+                               const std::string &stage,
                                const std::vector<LX_core::ShaderVariant> &variants,
                                const LX_core::RenderState &renderState,
                                const fs::path &shaderDir) {
-  const fs::path vertPath = shaderDir / (shaderName + ".vert");
-  const fs::path fragPath = shaderDir / (shaderName + ".frag");
+  CompileResult compiled;
+  if (stage == "compute") {
+    const fs::path compPath = shaderDir / (shaderName + ".comp");
+    if (!fs::exists(compPath)) {
+      fatalLoader("compute shader file not found for '" + shaderName + "': " +
+                  compPath.string());
+    }
+    compiled = ShaderCompiler::compileFile(compPath, variants);
+  } else if (stage.empty() || stage == "raster") {
+    const fs::path vertPath = shaderDir / (shaderName + ".vert");
+    const fs::path fragPath = shaderDir / (shaderName + ".frag");
 
-  if (!fs::exists(vertPath) || !fs::exists(fragPath))
-    fatalLoader("shader files not found for '" + shaderName + "': " +
-                vertPath.string() + " / " + fragPath.string());
+    if (!fs::exists(vertPath) || !fs::exists(fragPath))
+      fatalLoader("shader files not found for '" + shaderName + "': " +
+                  vertPath.string() + " / " + fragPath.string());
 
-  auto compiled =
-      ShaderCompiler::compileProgram(vertPath, fragPath, variants);
+    compiled = ShaderCompiler::compileProgram(vertPath, fragPath, variants);
+  } else {
+    fatalLoader("unknown pass stage '" + stage + "' for shader '" + shaderName +
+                "'");
+  }
   if (!compiled.success)
     fatalLoader("shader compile failed for pass " +
                 LX_core::GlobalStringTable::get().toDebugString(passId) +
                 ": " + compiled.errorMessage);
 
   auto bindings = ShaderReflector::reflect(compiled.stages);
-  auto vertexInputs = ShaderReflector::reflectVertexInputs(compiled.stages);
+  std::vector<LX_core::VertexInputAttribute> vertexInputs;
+  if (stage.empty() || stage == "raster") {
+    vertexInputs = ShaderReflector::reflectVertexInputs(compiled.stages);
+  }
   auto shader = std::make_shared<CompiledShader>(
       std::move(compiled.stages), bindings, vertexInputs, shaderName);
 
   CompiledPass cp;
   cp.passId = passId;
   cp.shaderName = shaderName;
+  cp.stage = stage.empty() ? "raster" : stage;
   cp.variants = variants;
   cp.renderState = renderState;
   cp.shader = std::move(shader);
@@ -549,6 +567,7 @@ loadGenericMaterial(const fs::path &materialPath) {
 
       // Extract pass-level fields by iterating keys.
       std::string passShader = globalShaderName;
+      std::string passStage = "raster";
       YAML::Node passVariantsNode;
       YAML::Node passRenderStateNode;
       YAML::Node passParamsNode;
@@ -560,6 +579,8 @@ loadGenericMaterial(const fs::path &materialPath) {
           const auto k = kv->first.as<std::string>();
           if (k == "shader")
             passShader = kv->second.as<std::string>();
+          else if (k == "stage")
+            passStage = kv->second.as<std::string>();
           else if (k == "variants")
             passVariantsNode = YAML::Clone(kv->second);
           else if (k == "renderState")
@@ -577,6 +598,7 @@ loadGenericMaterial(const fs::path &materialPath) {
       auto renderState = parseRenderState(passRenderStateNode);
 
       auto cp = compilePassShader(LX_core::StringID(passName), passShader,
+                                  passStage,
                                   variants, renderState, shaderDir);
       cp.shadingModel = globalShadingModel;
       cp.meshOverlay = globalMeshOverlay;
@@ -590,6 +612,7 @@ loadGenericMaterial(const fs::path &materialPath) {
     applyShadingModelVariants(variants, globalShadingModel);
     validateVariantRules(variantRules, variants, "pass Forward (default)");
     auto cp = compilePassShader(LX_core::Pass_Forward, globalShaderName,
+                                "raster",
                                 variants, LX_core::RenderState{}, shaderDir);
     cp.shadingModel = globalShadingModel;
     cp.meshOverlay = globalMeshOverlay;

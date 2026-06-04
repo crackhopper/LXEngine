@@ -98,6 +98,15 @@ struct EnvironmentState final {
   [[nodiscard]] bool empty() const { return !enabled && hdrUri.empty(); }
 };
 
+struct MaterialBindingDocument final {
+  std::string tag;
+  std::string uri;
+  std::string source;
+  std::optional<std::string> offlineYaml;
+  MaterialOverrideState materialOverrides;
+  MaterialOverrideState nodeMaterialOverrides;
+};
+
 struct SceneNodeDocument final {
   std::string nodeName;
   std::string name;
@@ -108,6 +117,7 @@ struct SceneNodeDocument final {
   std::optional<std::string> meshOfflineYaml;
   std::optional<std::string> materialUri;
   std::optional<std::string> materialOfflineYaml;
+  std::vector<MaterialBindingDocument> materials;
   ProceduralMaterialState proceduralMaterial;
   MaterialOverrideState nodeMaterialOverrides;
   MaterialOverrideState materialOverrides;

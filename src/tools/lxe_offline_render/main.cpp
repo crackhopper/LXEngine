@@ -75,6 +75,7 @@ int main(int argc, char **argv) {
     job.scene = std::move(loaded.table);
     job.output = resolved.output;
     job.offline = resolved.offline;
+    job.offlineShader = std::move(loaded.offlineShader);
     job.profileName = resolved.profileName;
     job.outputPath = resolved.outputPath.value_or("");
 
