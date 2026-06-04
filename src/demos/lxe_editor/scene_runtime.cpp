@@ -943,21 +943,33 @@ makeCameraNode(const std::string &nodeName, const std::string &displayName,
   return material;
 }
 
-void attachTaggedMaterialsToNode(
-    LX_core::SceneNode &node, const SceneNodeDocument &nodeDocument,
+[[nodiscard]] LX_core::SceneNodeSharedPtr makeTaggedRenderableNode(
+    const std::string &nodeName, LX_core::MeshSharedPtr mesh,
+    const SceneNodeDocument &nodeDocument,
     const std::vector<std::filesystem::path> &assetRoots) {
   if (nodeDocument.materials.empty()) {
-    return;
+    throw std::logic_error("tagged renderable node requires materials");
   }
-  auto materialComponent = node.getComponent<LX_core::MaterialComponent>();
+
+  auto node = LX_core::SceneNode::create(nodeName);
+  node->addComponent<LX_core::MeshComponent>(std::move(mesh));
+
+  const auto &firstBinding = nodeDocument.materials.front();
+  auto firstMaterial =
+      loadTaggedMaterialForSceneNode(assetRoots, nodeDocument, firstBinding);
+  auto materialComponent = node->addComponent<LX_core::MaterialComponent>(
+      firstBinding.tag, std::move(firstMaterial));
   if (!materialComponent) {
-    return;
+    throw std::runtime_error("failed to attach tagged material component");
   }
-  for (const auto &binding : nodeDocument.materials) {
+
+  for (usize index = 1; index < nodeDocument.materials.size(); ++index) {
+    const auto &binding = nodeDocument.materials[index];
     materialComponent->get().setTaggedMaterial(
         binding.tag, loadTaggedMaterialForSceneNode(assetRoots, nodeDocument,
                                                     binding));
   }
+  return node;
 }
 
 [[nodiscard]] std::string cameraPathToDisplayName(const std::string &path,
@@ -1100,10 +1112,9 @@ void attachTaggedMaterialsToNode(
         resolveRuntimeOrProjectAssetPath(assetRoots, *nodeDocument.meshUri);
     if (!nodeDocument.materials.empty()) {
       auto meshAsset = LX_infra::scene_asset::loadGltfMeshAsset(meshPath);
-      auto node = makeRenderableNode(nodeDocument.nodeName,
-                                     std::move(meshAsset.mesh), nullptr);
-      attachTaggedMaterialsToNode(*node, nodeDocument, assetRoots);
-      return node;
+      return makeTaggedRenderableNode(nodeDocument.nodeName,
+                                      std::move(meshAsset.mesh), nodeDocument,
+                                      assetRoots);
     }
     if (nodeDocument.materialUri.has_value()) {
       auto meshAsset = LX_infra::scene_asset::loadGltfMeshAsset(meshPath);

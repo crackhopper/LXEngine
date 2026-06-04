@@ -13,6 +13,7 @@ class MaterialComponent final : public IComponent {
 public:
   explicit MaterialComponent(MaterialInstanceSharedPtr material)
       : m_material(std::move(material)) {}
+  MaterialComponent(std::string tag, MaterialInstanceSharedPtr material);
   ~MaterialComponent() override;
 
   ComponentTypeId getTypeId() const override {

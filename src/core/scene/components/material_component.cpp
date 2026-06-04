@@ -7,6 +7,16 @@
 
 namespace LX_core {
 
+MaterialComponent::MaterialComponent(std::string tag,
+                                     MaterialInstanceSharedPtr material) {
+  if (tag.empty()) {
+    throw std::logic_error("MaterialComponent tag must not be empty");
+  }
+  m_material = std::move(material);
+  m_activeMaterialTag = std::move(tag);
+  m_materialsByTag.emplace(m_activeMaterialTag, m_material);
+}
+
 MaterialComponent::~MaterialComponent() {
   unregisterPassStateListener();
 }
