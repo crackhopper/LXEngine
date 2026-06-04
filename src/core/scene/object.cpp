@@ -464,7 +464,10 @@ void SceneNode::rebuildValidatedCache() {
   const MeshSharedPtr mesh = meshComponent->get().getMesh();
   const MaterialInstanceSharedPtr material =
       materialComponent->get().getMaterialInstance();
-  if (!mesh || !material || !material->getTemplate()) {
+  if (!mesh || !material) {
+    return;
+  }
+  if (!material->getTemplate()) {
     throw std::logic_error("SceneNodeValidation node=" + m_nodeName +
                            " missing mesh/material template");
   }
