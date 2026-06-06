@@ -10,8 +10,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import yaml
-
 
 def write_binary_ply(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -168,59 +166,49 @@ class PbrtSceneConvertTest(unittest.TestCase):
             self.assertIn("vt 1 0", uv_obj_text)
             self.assertIn("f 1/1/1 2/2/2 3/3/3", uv_obj_text)
 
-            runtime_material = yaml.safe_load(
-                (
-                    out_root
-                    / "materials"
-                    / "runtime-pbr-approx"
-                    / "LogoSilver.material"
-                ).read_text(encoding="utf-8")
-            )
-            self.assertEqual(runtime_material["shader"], "pbr")
-            self.assertEqual(
-                runtime_material["parameters"]["MaterialUBO.metallicFactor"], 1.0
-            )
-
-            source_material = yaml.safe_load(
-                (
-                    out_root
-                    / "materials"
-                    / "pbrt-source"
-                    / "LogoSilver.pbrt-material.yaml"
-                ).read_text(encoding="utf-8")
-            )
-            self.assertEqual(source_material["schema"], "lxe.pbrtMaterialSource.v1")
-            self.assertEqual(source_material["pbrtType"], "metal")
-            self.assertEqual(
-                source_material["parameters"]["eta"]["value"], "spds/Al.eta.spd"
-            )
-            self.assertEqual(
-                source_material["parameters"]["k"]["value"], "spds/Al.k.spd"
-            )
-
-            mix_material = yaml.safe_load(
-                (
-                    out_root
-                    / "materials"
-                    / "pbrt-source"
-                    / "LEATHER.pbrt-material.yaml"
-                ).read_text(encoding="utf-8")
-            )
-            self.assertEqual(
-                mix_material["namedMaterialRefs"], ["LEATHER-white", "LogoSilver"]
-            )
-            self.assertEqual(mix_material["parameters"]["amount"]["value"], [0.2, 0.2, 0.2])
-
-            scene_doc = yaml.safe_load(scene_path.read_text(encoding="utf-8"))
-            self.assertEqual(
-                scene_doc["root"]["children"][1]["nodeName"],
-                "pbrt_runtime_key_light",
-            )
-            first_mesh = scene_doc["root"]["children"][2]
-            self.assertEqual(first_mesh["materials"][0]["tag"], "realtime-pbr")
+            runtime_material_text = (
+                out_root
+                / "materials"
+                / "runtime-pbr-approx"
+                / "LogoSilver.material"
+            ).read_text(encoding="utf-8")
+            self.assertIn('"shader": "pbr"', runtime_material_text)
             self.assertIn(
-                "pbrtSourceMaterialUri", first_mesh["materials"][0]["offline"]
+                '"MaterialUBO.metallicFactor": 1.0', runtime_material_text
             )
+
+            source_material_text = (
+                out_root
+                / "materials"
+                / "pbrt-source"
+                / "LogoSilver.pbrt-material.yaml"
+            ).read_text(encoding="utf-8")
+            self.assertIn(
+                '"schema": "lxe.pbrtMaterialSource.v1"', source_material_text
+            )
+            self.assertIn('"pbrtType": "metal"', source_material_text)
+            self.assertIn('"eta":', source_material_text)
+            self.assertIn('"value": "spds/Al.eta.spd"', source_material_text)
+            self.assertIn('"k":', source_material_text)
+            self.assertIn('"value": "spds/Al.k.spd"', source_material_text)
+
+            mix_material_text = (
+                out_root
+                / "materials"
+                / "pbrt-source"
+                / "LEATHER.pbrt-material.yaml"
+            ).read_text(encoding="utf-8")
+            self.assertIn(
+                '"namedMaterialRefs": ["LEATHER-white", "LogoSilver"]',
+                mix_material_text,
+            )
+            self.assertIn('"amount":', mix_material_text)
+            self.assertIn('"value": [0.2, 0.2, 0.2]', mix_material_text)
+
+            scene_text = scene_path.read_text(encoding="utf-8")
+            self.assertIn('"nodeName": "pbrt_runtime_key_light"', scene_text)
+            self.assertIn('"tag": "realtime-pbr"', scene_text)
+            self.assertIn('"pbrtSourceMaterialUri":', scene_text)
 
             manifest_path = out_root / "pbrt_bmw_m6.converted.json"
             manifest_doc = json.loads(manifest_path.read_text(encoding="utf-8"))

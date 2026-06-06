@@ -19,8 +19,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 
 DIRECTIVES = {
     "Film",
@@ -44,11 +42,6 @@ DIRECTIVES = {
     "Rotate",
     "ConcatTransform",
 }
-
-
-class NoAliasSafeDumper(yaml.SafeDumper):
-    def ignore_aliases(self, data: Any) -> bool:
-        return True
 
 
 @dataclass
@@ -644,16 +637,79 @@ def rel_to_repo(path: Path, repo_root: Path) -> str:
         return path.as_posix()
 
 
+def yaml_scalar(value: Any) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        if math.isfinite(value):
+            return repr(value)
+        raise ValueError(f"non-finite float cannot be written to YAML: {value}")
+    if isinstance(value, str):
+        return json.dumps(value, ensure_ascii=False)
+    raise TypeError(f"unsupported YAML scalar type: {type(value).__name__}")
+
+
+def yaml_is_scalar(value: Any) -> bool:
+    return value is None or isinstance(value, (bool, int, float, str))
+
+
+def yaml_inline(value: Any) -> str:
+    if yaml_is_scalar(value):
+        return yaml_scalar(value)
+    if isinstance(value, list) and all(yaml_is_scalar(item) for item in value):
+        return "[" + ", ".join(yaml_scalar(item) for item in value) + "]"
+    if isinstance(value, dict) and not value:
+        return "{}"
+    if isinstance(value, list) and not value:
+        return "[]"
+    raise TypeError("value cannot be emitted inline")
+
+
+def yaml_emit(value: Any, indent: int = 0) -> list[str]:
+    pad = " " * indent
+    if yaml_is_scalar(value) or (isinstance(value, list) and not value) or (
+        isinstance(value, dict) and not value
+    ):
+        return [pad + yaml_inline(value)]
+    if isinstance(value, list):
+        lines: list[str] = []
+        for item in value:
+            if yaml_is_scalar(item) or (
+                isinstance(item, (list, dict)) and not item
+            ) or (
+                isinstance(item, list)
+                and all(yaml_is_scalar(child) for child in item)
+            ):
+                lines.append(pad + "- " + yaml_inline(item))
+            else:
+                lines.append(pad + "-")
+                lines.extend(yaml_emit(item, indent + 2))
+        return lines
+    if isinstance(value, dict):
+        lines = []
+        for key, item in value.items():
+            key_text = yaml_scalar(str(key))
+            if yaml_is_scalar(item) or (
+                isinstance(item, (list, dict)) and not item
+            ) or (
+                isinstance(item, list)
+                and all(yaml_is_scalar(child) for child in item)
+            ):
+                lines.append(pad + f"{key_text}: " + yaml_inline(item))
+            else:
+                lines.append(pad + f"{key_text}:")
+                lines.extend(yaml_emit(item, indent + 2))
+        return lines
+    raise TypeError(f"unsupported YAML value type: {type(value).__name__}")
+
+
 def yaml_write(path: Path, data: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="\n") as out:
-        yaml.dump(
-            data,
-            out,
-            Dumper=NoAliasSafeDumper,
-            sort_keys=False,
-            allow_unicode=True,
-        )
+    path.write_text("\n".join(yaml_emit(data)) + "\n", encoding="utf-8")
 
 
 def compute_camera_transform(eye: list[float], target: list[float]) -> dict[str, Any]:
