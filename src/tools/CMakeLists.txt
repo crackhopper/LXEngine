@@ -1,5 +1,6 @@
 add_subdirectory(lxe_compare_exr)
 add_subdirectory(lxe_offline_render)
+add_subdirectory(lxe_pbrt_scene_convert)
 add_subdirectory(lxe_realtime_render)
 
 find_package(Python3 COMPONENTS Interpreter QUIET)

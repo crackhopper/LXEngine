@@ -145,6 +145,18 @@ set_tests_properties(test_realtime_offline_compare_flat PROPERTIES
   LABELS "auto;requires_video_device"
 )
 
+add_test(
+  NAME test_lxe_pbrt_scene_convert
+  COMMAND
+    ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_lxe_pbrt_scene_convert.py
+    --source-dir ${CMAKE_SOURCE_DIR}
+)
+set_tests_properties(test_lxe_pbrt_scene_convert PROPERTIES
+  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  LABELS "auto;headless_ok"
+)
+
 add_custom_target(BuildTest)
 add_dependencies(BuildTest
   lxe_compare_exr

@@ -1,0 +1,232 @@
+#!/usr/bin/env python3
+
+from __future__ import annotations
+
+import argparse
+import json
+import struct
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+import yaml
+
+
+def write_binary_ply(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    header = (
+        "ply\n"
+        "format binary_little_endian 1.0\n"
+        "element vertex 3\n"
+        "property float x\n"
+        "property float y\n"
+        "property float z\n"
+        "property float nx\n"
+        "property float ny\n"
+        "property float nz\n"
+        "element face 1\n"
+        "property list uint8 int vertex_indices\n"
+        "end_header\n"
+    ).encode("ascii")
+    vertices = b"".join(
+        struct.pack("<ffffff", *values)
+        for values in [
+            (0.0, 0.0, 0.0, 0.0, 0.0, 1.0),
+            (1.0, 0.0, 0.0, 0.0, 0.0, 1.0),
+            (0.0, 1.0, 0.0, 0.0, 0.0, 1.0),
+        ]
+    )
+    face = struct.pack("<Biii", 3, 0, 1, 2)
+    path.write_bytes(header + vertices + face)
+
+
+def write_binary_ply_with_uv(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    header = (
+        "ply\n"
+        "format binary_little_endian 1.0\n"
+        "element vertex 3\n"
+        "property float x\n"
+        "property float y\n"
+        "property float z\n"
+        "property float nx\n"
+        "property float ny\n"
+        "property float nz\n"
+        "property float u\n"
+        "property float v\n"
+        "element face 1\n"
+        "property list uint8 int vertex_indices\n"
+        "end_header\n"
+    ).encode("ascii")
+    vertices = b"".join(
+        struct.pack("<ffffffff", *values)
+        for values in [
+            (0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0),
+            (1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0),
+            (0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0),
+        ]
+    )
+    face = struct.pack("<Biii", 3, 0, 1, 2)
+    path.write_bytes(header + vertices + face)
+
+
+def write_fixture(root: Path) -> Path:
+    (root / "geometry").mkdir(parents=True)
+    (root / "textures").mkdir()
+    (root / "spds").mkdir()
+    (root / "bsdfs").mkdir()
+    write_binary_ply(root / "geometry" / "mesh_00001.ply")
+    write_binary_ply_with_uv(root / "geometry" / "mesh_00002.ply")
+    (root / "textures" / "sky.exr").write_bytes(b"fake-exr")
+    (root / "spds" / "Al.eta.spd").write_text("400 1.0\n", encoding="utf-8")
+    (root / "spds" / "Al.k.spd").write_text("400 2.0\n", encoding="utf-8")
+    (root / "bsdfs" / "leather.bsdf").write_bytes(b"fake-bsdf")
+    (root / "BLENDSWAP_LICENSE.txt").write_text("license\n", encoding="utf-8")
+    pbrt = root / "bmw-m6.pbrt"
+    pbrt.write_text(
+        """
+Film "image" "integer xresolution" 1400 "integer yresolution" 1000
+    "string filename" "bmw-m6.exr"
+LookAt -11 .8 5   -2 -.5 0   0 1 0
+Camera "perspective" "float fov" 30
+Sampler "sobol" "integer pixelsamples" 4096
+Integrator "path" "integer maxdepth" 10
+WorldBegin
+LightSource "infinite" "string mapname" "textures/sky.exr"
+# Scene bounds: (-1, -2, -3) - (4, 5, 6)
+MakeNamedMaterial "LogoSilver"
+        "string type" [ "metal" ]
+        "spectrum k" "spds/Al.k.spd"
+        "spectrum eta" "spds/Al.eta.spd"
+MakeNamedMaterial "LEATHER-white"
+        "string type" [ "fourier" ]
+        "string bsdffile" "bsdfs/leather.bsdf"
+MakeNamedMaterial "LEATHER"
+        "string type" "mix"
+        "string namedmaterial1" "LEATHER-white"
+        "string namedmaterial2" "LogoSilver"
+        "rgb amount" [.2 .2 .2]
+# Name "wheel"
+AttributeBegin
+    NamedMaterial "LogoSilver"
+    Shape "plymesh" "string filename" "geometry/mesh_00001.ply"
+AttributeEnd
+# Name "seat"
+AttributeBegin
+    NamedMaterial "LEATHER"
+    Shape "plymesh" "string filename" "geometry/mesh_00002.ply"
+AttributeEnd
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    return pbrt
+
+
+class PbrtSceneConvertTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--source-dir", required=True)
+        args, _ = parser.parse_known_args()
+        cls.source_dir = Path(args.source_dir)
+        tool_dir = cls.source_dir / "src" / "tools" / "lxe_pbrt_scene_convert"
+        sys.path.insert(0, str(tool_dir))
+        import lxe_pbrt_scene_convert as converter
+
+        cls.converter = converter
+
+    def test_conversion_preserves_source_material_and_writes_runtime_assets(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            fixture = tmp_path / "fixture" / "bmw-m6"
+            input_scene = write_fixture(fixture)
+            out_root = tmp_path / "repo" / "data" / "scenes" / "bmw-m6"
+            scene_path = out_root / "pbrt_bmw_m6.scene.yaml"
+            manifest = self.converter.convert_scene(
+                input_path=input_scene,
+                out_root=out_root,
+                scene_path=scene_path,
+                repo_root=tmp_path / "repo",
+            )
+
+            self.assertEqual(manifest["meshCount"], 2)
+            self.assertEqual(manifest["materialCount"], 3)
+            self.assertEqual(manifest["runtimeMaterialCount"], 3)
+            self.assertEqual(manifest["sourceMaterialCount"], 3)
+
+            obj_text = (out_root / "meshes" / "mesh_00001.obj").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn("v 1 0 0", obj_text)
+            self.assertIn("vn 0 0 1", obj_text)
+            self.assertIn("f 1//1 2//2 3//3", obj_text)
+            uv_obj_text = (out_root / "meshes" / "mesh_00002.obj").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn("vt 1 0", uv_obj_text)
+            self.assertIn("f 1/1/1 2/2/2 3/3/3", uv_obj_text)
+
+            runtime_material = yaml.safe_load(
+                (
+                    out_root
+                    / "materials"
+                    / "runtime-pbr-approx"
+                    / "LogoSilver.material"
+                ).read_text(encoding="utf-8")
+            )
+            self.assertEqual(runtime_material["shader"], "pbr")
+            self.assertEqual(
+                runtime_material["parameters"]["MaterialUBO.metallicFactor"], 1.0
+            )
+
+            source_material = yaml.safe_load(
+                (
+                    out_root
+                    / "materials"
+                    / "pbrt-source"
+                    / "LogoSilver.pbrt-material.yaml"
+                ).read_text(encoding="utf-8")
+            )
+            self.assertEqual(source_material["schema"], "lxe.pbrtMaterialSource.v1")
+            self.assertEqual(source_material["pbrtType"], "metal")
+            self.assertEqual(
+                source_material["parameters"]["eta"]["value"], "spds/Al.eta.spd"
+            )
+            self.assertEqual(
+                source_material["parameters"]["k"]["value"], "spds/Al.k.spd"
+            )
+
+            mix_material = yaml.safe_load(
+                (
+                    out_root
+                    / "materials"
+                    / "pbrt-source"
+                    / "LEATHER.pbrt-material.yaml"
+                ).read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                mix_material["namedMaterialRefs"], ["LEATHER-white", "LogoSilver"]
+            )
+            self.assertEqual(mix_material["parameters"]["amount"]["value"], [0.2, 0.2, 0.2])
+
+            scene_doc = yaml.safe_load(scene_path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                scene_doc["root"]["children"][1]["nodeName"],
+                "pbrt_runtime_key_light",
+            )
+            first_mesh = scene_doc["root"]["children"][2]
+            self.assertEqual(first_mesh["materials"][0]["tag"], "realtime-pbr")
+            self.assertIn(
+                "pbrtSourceMaterialUri", first_mesh["materials"][0]["offline"]
+            )
+
+            manifest_path = out_root / "pbrt_bmw_m6.converted.json"
+            manifest_doc = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual(manifest_doc["sourceSceneBounds"], [[-1.0, -2.0, -3.0], [4.0, 5.0, 6.0]])
+            self.assertTrue((out_root / "pbrt_bmw_m6.conversion.md").exists())
+
+
+if __name__ == "__main__":
+    unittest.main(argv=[sys.argv[0]])

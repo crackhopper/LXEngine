@@ -3,9 +3,12 @@
 #include "core/asset/builtin_meshes.hpp"
 #include "core/asset/material_instance.hpp"
 #include "core/frame_graph/pass.hpp"
+#include "core/rhi/index_buffer.hpp"
+#include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/camera.hpp"
 #include "core/scene/light.hpp"
 #include "infra/material_loader/generic_material_loader.hpp"
+#include "infra/mesh_loader/obj_mesh_loader.hpp"
 #include "infra/scene_asset/gltf_scene_asset_loader.hpp"
 
 #include <algorithm>
@@ -18,6 +21,7 @@
 #include <string>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 namespace LX_infra::offline {
 namespace {
@@ -34,8 +38,12 @@ using LX_core::ObjectResource;
 using LX_core::SceneResourceTable;
 using LX_core::ShaderPropertyType;
 using LX_core::StringID;
+using LX_core::Vec2f;
 using LX_core::Vec3f;
 using LX_core::Vec4f;
+using LX_core::Vec4i;
+using LX_core::VertexBuffer;
+using LX_core::VertexPosNormalUvBone;
 using LX_infra::scene_io::LightKind;
 using LX_infra::scene_io::MaterialBindingDocument;
 using LX_infra::scene_io::MaterialOverrideState;
@@ -67,6 +75,46 @@ struct RegisteredMesh final {
                    return static_cast<char>(std::tolower(c));
                  });
   return extension == ".gltf" || extension == ".glb";
+}
+
+[[nodiscard]] bool isObjMeshUri(const std::string &uri) {
+  std::string extension = std::filesystem::path(uri).extension().string();
+  std::transform(extension.begin(), extension.end(), extension.begin(),
+                 [](const unsigned char c) {
+                   return static_cast<char>(std::tolower(c));
+                 });
+  return extension == ".obj";
+}
+
+[[nodiscard]] MeshBufferSharedPtr buildMeshFromObj(infra::ObjLoader &loader) {
+  const auto &positions = loader.getPositions();
+  const auto &normals = loader.getNormals();
+  const auto &uvs = loader.getTexCoords();
+  const auto &indices = loader.getIndices();
+  if (positions.empty() || indices.empty()) {
+    throw std::runtime_error("OBJ asset has empty mesh geometry");
+  }
+
+  std::vector<VertexPosNormalUvBone> vertices;
+  vertices.reserve(positions.size());
+  const Vec3f fallbackNormal{0.0f, 1.0f, 0.0f};
+  const Vec2f fallbackUv{0.0f, 0.0f};
+  const Vec4f fallbackTangent{1.0f, 0.0f, 0.0f, 1.0f};
+  const Vec4i zeroBones{0, 0, 0, 0};
+  const Vec4f zeroWeights{0.0f, 0.0f, 0.0f, 0.0f};
+
+  for (usize i = 0; i < positions.size(); ++i) {
+    const Vec3f normal = i < normals.size() ? normals[i] : fallbackNormal;
+    const Vec2f uv = i < uvs.size() ? uvs[i] : fallbackUv;
+    vertices.emplace_back(positions[i], normal, uv, fallbackTangent, zeroBones,
+                          zeroWeights);
+  }
+
+  auto vertexBuffer =
+      VertexBuffer<VertexPosNormalUvBone>::create(std::move(vertices));
+  auto indexBuffer = LX_core::IndexBuffer::create(std::vector<u32>(indices));
+  return LX_core::MeshBuffer::create(vertexBuffer, indexBuffer,
+                                     loader.getBounds());
 }
 
 [[nodiscard]] std::string joinPath(const std::string &parent,
@@ -367,9 +415,13 @@ RegisteredMesh registerMeshUri(
           LX_infra::scene_asset::loadGltfMeshAsset(resolver.resolve(meshUri));
       mesh = std::move(asset.mesh);
     }
+  } else if (isObjMeshUri(meshUri)) {
+    infra::ObjLoader loader;
+    loader.load(resolver.resolve(meshUri).string());
+    mesh = buildMeshFromObj(loader);
   } else {
     throw std::runtime_error("offline scene loader only supports shared "
-                             "builtin primitive meshes and glTF meshes: " +
+                             "builtin primitive, OBJ, and glTF meshes: " +
                              meshUri);
   }
 

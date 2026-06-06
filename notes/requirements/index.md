@@ -35,4 +35,5 @@
 - [REQ-069-a: Vulkan Realtime Renderer 单文件拆分](069-a-vulkan-realtime-renderer-decomposition.md)
 - [REQ-069-b: Core Editor Builtin Commands 单文件拆分](069-b-core-editor-builtin-commands-decomposition.md)
 - [REQ-069-c: LXE Editor SceneRuntime 单文件拆分](069-c-lxe-editor-scene-runtime-decomposition.md)
+- [REQ-070-a: PBRT BMW M6 场景转换工具](070-a-pbrt-bmw-m6-conversion-tool.md)
 - [Unified Scene GPU Data Break Changes](2026-06-03-unified-scene-gpu-data-breaks.md)
