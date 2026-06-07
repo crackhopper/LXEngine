@@ -56,7 +56,7 @@ data/scenes/bmw-m6/
 
 ## 当前离线渲染 smoke
 
-当前 renderer 不支持 PBRT infinite HDR 环境光直接照亮表面，所以转换工具会额外生成一个 `pbrt_runtime_key_light` 作为 runtime approximation。原始 `LightSource "infinite"` 仍保留在 scene environment 和 manifest 中。
+当前 renderer 不支持 PBRT infinite HDR 环境光直接照亮表面，实时 editor 路径也还不能稳定加载 PBRT 的 `sky.exr`。转换工具会在 scene environment 中保留 `hdrUri`，但默认关闭 `environment.enabled` 和 `skyboxEnabled`，并额外生成一个 `pbrt_runtime_key_light` 作为 runtime approximation。原始 `LightSource "infinite"` 仍保留在 scene environment 和 manifest 中。
 
 低成本 smoke render：
 

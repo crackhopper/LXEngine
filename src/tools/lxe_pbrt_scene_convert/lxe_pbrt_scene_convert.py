@@ -823,10 +823,10 @@ def scene_yaml(
             "name": "PBRT BMW M6",
             "gameplayCameraPath": "/pbrt_camera",
             "environment": {
-                "enabled": True,
+                "enabled": False,
                 "hdrUri": env_uri,
                 "intensity": 1.0,
-                "skyboxEnabled": True,
+                "skyboxEnabled": False,
             },
             "defaultOutputProfile": "pbrt-reference",
             "outputProfiles": {
