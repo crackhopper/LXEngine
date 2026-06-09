@@ -111,6 +111,7 @@ private:
   handleProjectCommand(const std::vector<std::string> &args);
   [[nodiscard]] LX_core::CommandResult
   handleSceneCommand(const std::vector<std::string> &args);
+  [[nodiscard]] bool hasPendingSceneOpen() const;
   [[nodiscard]] LX_core::CommandResult queueActiveSceneOpen();
   [[nodiscard]] LX_core::CommandResult saveActiveProjectScene();
   [[nodiscard]] std::string realtimeRenderProfilesJson() const;
