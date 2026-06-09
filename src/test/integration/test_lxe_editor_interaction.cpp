@@ -207,6 +207,20 @@ void testSceneInteractionSelectsHitNodeOnClick() {
          "selection click should pick the mesh under the cursor");
 }
 
+void testSelectionPickingSkipsActiveEditorCameraDebugBounds() {
+  Fixture fixture;
+  fixture.editorCameraNode->setTranslation({0.0f, 0.0f, 0.0f});
+
+  const auto result = fixture.controller.dispatchPickingClick(
+      LX_core::Vec2f{400.0f, 300.0f}, LX_core::Vec2f{800.0f, 600.0f});
+  EXPECT(result.ok, "selection click should succeed");
+
+  const auto selected = fixture.editorState.getSelected();
+  EXPECT(selected.size() == 1 && selected.front() == fixture.targetNode,
+         "active editor camera debug bounds should not intercept its own "
+         "pick ray");
+}
+
 void testSceneInteractionSelectsLightNodeViaDebugBounds() {
   Fixture fixture;
   fixture.targetNode->setTranslation({100.0f, 100.0f, -5.0f});
@@ -677,6 +691,7 @@ int main() {
   expSetEnvVK();
   testPickRayProjectionRoundTripsBackToOriginalViewportPixel();
   testSceneInteractionSelectsHitNodeOnClick();
+  testSelectionPickingSkipsActiveEditorCameraDebugBounds();
   testSceneInteractionSelectsLightNodeViaDebugBounds();
   testSceneInteractionDeselectsOnMiss();
   testSelectionPickingUsesSceneViewRectInsteadOfWholeWindow();

@@ -4,6 +4,7 @@
 #include "core/frame_graph/pass.hpp"
 #include "core/frame_graph/scene_descriptor_resource_resolver.hpp"
 #include "core/offline/offline_scene_storage_resources.hpp"
+#include "core/scene/components/camera_component.hpp"
 #include "core/scene/scene.hpp"
 
 #include <algorithm>
@@ -34,10 +35,35 @@ makeItemFromValidatedData(const ValidatedRenderablePassData &data) {
   item.raster.drawData = data.drawData;
   item.shaderInfo = data.shaderInfo;
   item.renderState = data.renderState;
+  item.sortCenter = data.sortCenter;
   item.pass = data.pass;
   item.objectSignature = data.objectSignature;
   item.materialSignature = data.materialSignature;
   return item;
+}
+
+[[nodiscard]] std::optional<Vec3f>
+resolveSortCameraEye(const Scene &scene,
+                     const RenderWorkBuildContext::RealtimeOptions &options,
+                     const RenderTarget &target) {
+  if (options.cameraResource.has_value()) {
+    return options.cameraResource->pose.eye;
+  }
+
+  const RenderTarget &sceneResourceTarget =
+      options.sceneResourceTarget.value_or(target);
+  for (const auto &cameraNode : scene.getCameras()) {
+    if (!cameraNode) {
+      continue;
+    }
+    const auto camera = cameraNode->getComponent<CameraComponent>();
+    if (!camera.has_value() || !camera->get().isActive() ||
+        !camera->get().matchesTarget(sceneResourceTarget)) {
+      continue;
+    }
+    return camera->get().getEyePosition();
+  }
+  return std::nullopt;
 }
 
 } // namespace
@@ -49,8 +75,28 @@ void RenderWorkQueue::addItem(RenderWorkItem item) {
 void RenderWorkQueue::clearItems() { m_items.clear(); }
 
 void RenderWorkQueue::sort() {
+  sort(std::nullopt);
+}
+
+void RenderWorkQueue::sort(const std::optional<Vec3f> &cameraEye) {
   std::stable_sort(m_items.begin(), m_items.end(),
-                   [](const RenderWorkItem &a, const RenderWorkItem &b) {
+                   [cameraEye](const RenderWorkItem &a,
+                               const RenderWorkItem &b) {
+                     const bool aTransparent = a.renderState.blendEnable;
+                     const bool bTransparent = b.renderState.blendEnable;
+                     if (aTransparent != bTransparent) {
+                       return !aTransparent;
+                     }
+                     if (cameraEye.has_value() && aTransparent &&
+                         bTransparent) {
+                       const float aDistance =
+                           (a.sortCenter - *cameraEye).length2();
+                       const float bDistance =
+                           (b.sortCenter - *cameraEye).length2();
+                       if (aDistance != bDistance) {
+                         return aDistance > bDistance;
+                       }
+                     }
                      return a.pipelineKey.id.id < b.pipelineKey.id.id;
                    });
 }
@@ -124,13 +170,17 @@ void RenderWorkQueue::build(const RenderWorkBuildContext &context,
     visibleMask = VisibilityMask_All;
   }
 
-  buildRealtime(scene, pass, target, std::move(sceneResources), visibleMask);
+  const std::optional<Vec3f> cameraEye =
+      resolveSortCameraEye(scene, options, target);
+  buildRealtime(scene, pass, target, std::move(sceneResources), visibleMask,
+                cameraEye);
 }
 
 void RenderWorkQueue::buildRealtime(const Scene &scene, StringID pass,
                                     const RenderTarget &target,
                                     DescriptorResourceList sceneResources,
-                                    VisibilityLayerMask visibleMask) {
+                                    VisibilityLayerMask visibleMask,
+                                    std::optional<Vec3f> cameraEye) {
   clearItems();
 
   for (const auto &renderable : scene.getRenderables()) {
@@ -165,7 +215,7 @@ void RenderWorkQueue::buildRealtime(const Scene &scene, StringID pass,
     m_items.push_back(std::move(item));
   }
 
-  sort();
+  sort(cameraEye);
 }
 
 } // namespace LX_core

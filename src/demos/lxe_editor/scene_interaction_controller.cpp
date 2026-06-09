@@ -215,8 +215,11 @@ LX_core::CommandResult SceneInteractionController::dispatchPickingClick(
   const LX_core::Vec2f viewportSize = sceneViewRect.size();
   const LX_core::Ray ray =
       editorCamera->get().pickRay(localPixel, viewportSize);
-  const auto hit =
-      m_scene.pick(ray, LX_core::Layer_All & ~LX_core::Layer_EditorOverlay);
+  const auto hit = m_scene.pick(
+      ray, LX_core::Scene::PickOptions{
+               .layerMask = LX_core::Layer_All & ~LX_core::Layer_EditorOverlay,
+               .excludedNode = std::cref(*editorCameraNode),
+           });
   const bool debugEnabled = m_debugEnabled && m_debugEnabled();
   const LX_core::Vec2f clickNdc = screenPixelToNdc(localPixel, viewportSize);
   std::optional<LX_core::Vec3f> hitWorld;

@@ -65,6 +65,7 @@ struct ValidatedRenderablePassData {
   GpuResourceRef indexBuffer;
   GpuResourceRef bonesResource;
   RenderState renderState;
+  Vec3f sortCenter{0.0f, 0.0f, 0.0f};
   StringID objectSignature;
   StringID materialSignature;
 };

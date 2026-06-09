@@ -373,13 +373,22 @@ BoundingBox Scene::getPickBounds(const SceneNode &node) const {
 
 std::optional<Scene::PickHit> Scene::pick(const Ray &ray,
                                           VisibilityLayerMask layerMask) const {
+  return pick(ray, PickOptions{.layerMask = layerMask});
+}
+
+std::optional<Scene::PickHit>
+Scene::pick(const Ray &ray, const PickOptions &options) const {
   std::optional<PickHit> bestHit;
   for (const auto &renderable : m_renderables) {
     const auto node = std::dynamic_pointer_cast<SceneNode>(renderable);
     if (!node) {
       continue;
     }
-    if ((node->getVisibilityLayerMask() & layerMask) == 0) {
+    if (options.excludedNode.has_value() &&
+        node.get() == &options.excludedNode->get()) {
+      continue;
+    }
+    if ((node->getVisibilityLayerMask() & options.layerMask) == 0) {
       continue;
     }
 
@@ -395,6 +404,9 @@ std::optional<Scene::PickHit> Scene::pick(const Ray &ray,
     const bool isDebugOnlyBounds =
         !node->getWorldBounds().isValid() &&
         (getLight(*node) || node->getComponent<CameraComponent>());
+    if (isDebugOnlyBounds && worldBounds.contains(ray.origin)) {
+      continue;
+    }
     if (*hitDistance <= 1e-4f && isDebugOnlyBounds) {
       continue;
     }

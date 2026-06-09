@@ -92,7 +92,8 @@ private:
 std::shared_ptr<SceneNode>
 makeRenderable(const std::string &shaderName = "fake_fg",
                const std::vector<ShaderVariant> &variants = {},
-               bool enableShadow = false) {
+               bool enableShadow = false,
+               const RenderState &renderState = RenderState{}) {
   auto vb = VertexBuffer<VertexPos>::create(
       std::vector<VertexPos>{{{0, 0, 0}}, {{1, 0, 0}}, {{0, 1, 0}}});
   auto ib = IndexBuffer::create({0, 1, 2});
@@ -107,7 +108,7 @@ makeRenderable(const std::string &shaderName = "fake_fg",
   ps.shader = shader;
   MaterialPassDefinition entry;
   entry.shaderProgram = ps;
-  entry.renderState = RenderState{};
+  entry.renderState = renderState;
   tmpl->setPassDefinition(Pass_Forward, std::move(entry));
   MaterialPassDefinition shadowEntry;
   shadowEntry.shaderProgram = ps;
@@ -122,6 +123,18 @@ makeRenderable(const std::string &shaderName = "fake_fg",
   auto node = SceneNode::create("fg_node_" + std::to_string(++nodeCounter));
   node->addComponent<MeshComponent>(mesh);
   node->addComponent<MaterialComponent>(material);
+  return node;
+}
+
+std::shared_ptr<SceneNode> makeTransparentRenderable(const std::string &name,
+                                                     const Vec3f &translation) {
+  RenderState transparentState;
+  transparentState.depthWriteEnable = false;
+  transparentState.blendEnable = true;
+  transparentState.srcBlend = BlendFactor::SrcAlpha;
+  transparentState.dstBlend = BlendFactor::OneMinusSrcAlpha;
+  auto node = makeRenderable(name, {}, false, transparentState);
+  node->setTranslation(translation);
   return node;
 }
 
@@ -794,6 +807,37 @@ void testPassFilterExcludesNonMatching() {
          "Shadow pass: only rA supports shadow");
 }
 
+void testForwardQueueDrawsOpaqueBeforeTransparentAndSortsTransparentBackToFront() {
+  auto opaque = makeRenderable("opaque_body");
+  opaque->setTranslation({0.0f, 0.0f, -2.0f});
+  auto nearGlass = makeTransparentRenderable("near_glass", {0.0f, 0.0f, -2.0f});
+  auto farGlass = makeTransparentRenderable("far_glass", {0.0f, 0.0f, -8.0f});
+
+  auto scene = Scene::create("transparent_sort");
+  scene->addRenderable(nearGlass);
+  scene->addRenderable(opaque);
+  scene->addRenderable(farGlass);
+
+  scene->addCamera(makeCameraWithTargetAndMask(RenderTarget{}, Layer_All));
+
+  RenderWorkQueue queue;
+  queue.build(RenderWorkBuildContext::realtime(*scene), Pass_Forward,
+              RenderTarget{});
+
+  const auto &items = queue.getItems();
+  EXPECT(items.size() == 3, "opaque and both transparent items should render");
+  if (items.size() != 3) {
+    return;
+  }
+
+  EXPECT(items[0].debugId == opaque->getDebugId(),
+         "opaque item should draw before transparent items");
+  EXPECT(items[1].debugId == farGlass->getDebugId(),
+         "far transparent item should draw before near transparent item");
+  EXPECT(items[2].debugId == nearGlass->getDebugId(),
+         "near transparent item should draw last");
+}
+
 void testShadowQueueUsesFallbackVisibilityWhenNoShadowCamera() {
   auto rA = makeRenderable("fake_fg_shadow_a", {}, true);
   auto scene = Scene::create(rA);
@@ -1321,6 +1365,7 @@ int main() {
   testFrameGraphKeepsDifferentTargetsAsDifferentBuildDescs();
   testFrameGraphDedupesExactSameTargetBuildDescs();
   testPassFilterExcludesNonMatching();
+  testForwardQueueDrawsOpaqueBeforeTransparentAndSortsTransparentBackToFront();
   testShadowQueueUsesFallbackVisibilityWhenNoShadowCamera();
   testMultiPassRebuildIsIdempotent();
   testMultiCameraTargetFilter();

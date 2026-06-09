@@ -50,11 +50,12 @@ inline std::optional<float> intersectRayBox(const Ray &ray,
     return std::nullopt;
   }
 
-  if (tMax < 0.0f) {
+  if (tMax <= epsilon) {
     return std::nullopt;
   }
 
-  return tMin > epsilon ? std::optional<float>(tMin) : std::nullopt;
+  return tMin > epsilon ? std::optional<float>(tMin)
+                        : std::optional<float>(tMax);
 }
 
 } // namespace LX_core

@@ -85,8 +85,8 @@ void testIntersectRayBoxInsideAndMissCases() {
   const BoundingBox box{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}};
   const auto insideHit =
       intersectRayBox(Ray{{0.5f, 0.5f, 0.5f}, {1.0f, 0.0f, 0.0f}}, box);
-  EXPECT(!insideHit.has_value(),
-         "origin inside box is not a valid positive-t pick hit");
+  EXPECT(insideHit.has_value() && approx(*insideHit, 0.5f),
+         "origin inside box should report the first forward exit");
 
   const auto tangentHit =
       intersectRayBox(Ray{{1.0f, 2.0f, 0.5f}, {0.0f, -1.0f, 0.0f}}, box);
@@ -155,7 +155,7 @@ void testScenePickSkipsInvalidBounds() {
   EXPECT(!hit.has_value(), "nodes without valid mesh bounds are ignored");
 }
 
-void testScenePickDoesNotSelectContainingBounds() {
+void testScenePickCanSelectContainingBounds() {
   auto containingNode =
       makeBoxBoundedNode("containing_pick", {-0.5f, -0.5f, -0.5f});
   auto forwardNode = makeBoundedNode("forward_pick", {0.0f, 0.0f, -3.0f});
@@ -165,9 +165,25 @@ void testScenePickDoesNotSelectContainingBounds() {
 
   const Ray ray{{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, -1.0f}};
   const auto hit = scene->pick(ray);
+  EXPECT(hit.has_value() && hit->node.get() == containingNode.get(),
+         "pick should select containing bounds when its first visible exit is "
+         "the nearest positive-t hit");
+  EXPECT(hit.has_value() && approx(hit->distance, 0.5f),
+         "containing bounds hit distance should be the forward exit");
+}
+
+void testScenePickRejectsNearPlaneOnlyContact() {
+  auto touchingNode =
+      makeBoxBoundedNode("touching_pick", {-0.5f, -0.5f, 0.0f});
+  auto forwardNode = makeBoundedNode("forward_pick", {0.0f, 0.0f, -3.0f});
+
+  auto scene = Scene::create(touchingNode);
+  scene->addRenderable(forwardNode);
+
+  const Ray ray{{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, -1.0f}};
+  const auto hit = scene->pick(ray);
   EXPECT(hit.has_value() && hit->node.get() == forwardNode.get(),
-         "pick should ignore bounds containing the camera and choose the first "
-         "positive-t hit");
+         "near-plane-only contact should not hide the first positive-t hit");
 }
 
 void testCameraComponentPickRayUsesOwnerPose() {
@@ -176,10 +192,11 @@ void testCameraComponentPickRayUsesOwnerPose() {
   cameraNode->setTranslation({2.0f, 3.0f, 4.0f});
   camera->get().setAspect(1.0f);
   camera->get().setFovY(90.0f);
+  camera->get().setNearPlane(0.5f);
 
   const Ray perspectiveRay = camera->get().pickRay({0.0f, 0.0f}, {1.0f, 1.0f});
-  EXPECT(approxVec3(perspectiveRay.origin, Vec3f{2.0f, 3.0f, 4.0f}),
-         "perspective pick ray starts at eye position");
+  EXPECT(approxVec3(perspectiveRay.origin, Vec3f{2.0f, 3.0f, 3.5f}),
+         "perspective pick ray starts on the near plane");
   EXPECT(approxVec3(perspectiveRay.direction, Vec3f{0.0f, 0.0f, -1.0f}),
          "center perspective ray follows camera forward");
 
@@ -235,7 +252,8 @@ int main() {
   testSceneNodeWorldBoundsFollowTransform();
   testScenePickReturnsNearestHitAndRespectsLayerMask();
   testScenePickSkipsInvalidBounds();
-  testScenePickDoesNotSelectContainingBounds();
+  testScenePickCanSelectContainingBounds();
+  testScenePickRejectsNearPlaneOnlyContact();
   testCameraComponentPickRayUsesOwnerPose();
   testOrthographicCameraProjectionUsesVulkanDepthRange();
 

@@ -84,6 +84,7 @@ struct RenderWorkItem final {
   RenderWorkKind kind = RenderWorkKind::RasterDraw;
   ShaderPtr shaderInfo;
   RenderState renderState;
+  Vec3f sortCenter{0.0f, 0.0f, 0.0f};
 
   RasterDrawWorkPayload raster;
   ComputeDispatchWorkPayload compute;
@@ -277,6 +278,10 @@ public:
     SceneNodeSharedPtr node;
     float distance = 0.0f;
   };
+  struct PickOptions {
+    VisibilityLayerMask layerMask = VisibilityMask_All;
+    std::optional<std::reference_wrapper<const SceneNode>> excludedNode;
+  };
   SceneNode *findByPath(const std::string &path) const;
   [[nodiscard]] std::vector<std::string> listAllPaths() const;
   std::string dumpTree() const;
@@ -304,6 +309,8 @@ public:
   std::optional<PickHit>
   pick(const Ray &ray,
        VisibilityLayerMask layerMask = VisibilityMask_All) const;
+  std::optional<PickHit> pick(const Ray &ray,
+                              const PickOptions &options) const;
   [[nodiscard]] const SceneNodeSharedPtr &getRootNode() const {
     return m_rootNode;
   }

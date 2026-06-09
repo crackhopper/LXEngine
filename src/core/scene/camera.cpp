@@ -97,7 +97,7 @@ Ray makeCameraRay(const CameraPose &pose, const CameraProjection &projection,
   if (projection.type == CameraType::Perspective) {
     const Vec3f direction =
         (frame.forward + frame.right * ndcX + frame.up * ndcY).normalized();
-    return Ray{frame.eye, direction};
+    return Ray{frame.eye + direction * projection.nearPlane, direction};
   }
 
   const Vec3f origin = frame.eye + frame.right * ndcX + frame.up * ndcY +

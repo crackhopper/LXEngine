@@ -31,6 +31,7 @@ public:
   void clearItems();
 
   void sort();
+  void sort(const std::optional<Vec3f> &cameraEye);
 
   const std::vector<RenderWorkItem> &getItems() const { return m_items; }
   std::vector<RenderWorkItem> &getItems() { return m_items; }
@@ -44,7 +45,8 @@ private:
   void buildRealtime(const Scene &scene, StringID pass,
                      const RenderTarget &target,
                      DescriptorResourceList sceneResources,
-                     VisibilityLayerMask visibleMask);
+                     VisibilityLayerMask visibleMask,
+                     std::optional<Vec3f> cameraEye);
 
   std::vector<RenderWorkItem> m_items;
 };

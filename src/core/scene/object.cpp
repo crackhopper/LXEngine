@@ -630,6 +630,10 @@ void SceneNode::rebuildValidatedCache() {
     data.indexBuffer = getIndexBuffer();
     data.bonesResource = std::move(bonesResource);
     data.renderState = material->getPassRenderState(pass);
+    const BoundingBox worldBounds = getWorldBounds();
+    data.sortCenter = worldBounds.isValid()
+                          ? worldBounds.getCenter()
+                          : Transform::fromMat4(getWorldTransform()).translation;
     data.objectSignature = getPipelineSignature(pass);
     data.materialSignature = material->getPipelineSignature(pass);
 
