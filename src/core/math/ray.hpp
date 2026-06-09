@@ -22,10 +22,6 @@ inline std::optional<float> intersectRayBox(const Ray &ray,
     return std::nullopt;
   }
 
-  if (box.contains(ray.origin)) {
-    return 0.0f;
-  }
-
   constexpr float epsilon = 1e-8f;
   float tMin = 0.0f;
   float tMax = std::numeric_limits<float>::infinity();
@@ -58,7 +54,7 @@ inline std::optional<float> intersectRayBox(const Ray &ray,
     return std::nullopt;
   }
 
-  return tMin >= 0.0f ? std::optional<float>(tMin) : std::nullopt;
+  return tMin > epsilon ? std::optional<float>(tMin) : std::nullopt;
 }
 
 } // namespace LX_core

@@ -19,6 +19,7 @@
 #include "demos/lxe_editor/scene_document.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cctype>
 #include <cmath>
 #include <filesystem>
@@ -36,6 +37,53 @@
 
 namespace LX_demo::lxe_editor {
 namespace {
+
+using SceneLoadClock = std::chrono::steady_clock;
+
+[[nodiscard]] double elapsedMs(const SceneLoadClock::time_point begin,
+                               const SceneLoadClock::time_point end) {
+  return std::chrono::duration<double, std::milli>(end - begin).count();
+}
+
+struct SceneLoadTimingStats final {
+  double documentMs = 0.0;
+  double assetRootMs = 0.0;
+  double buildRuntimeMs = 0.0;
+  double environmentMs = 0.0;
+  double meshMs = 0.0;
+  double materialMs = 0.0;
+  double sceneRegisterMs = 0.0;
+  usize nodeCount = 0;
+  usize meshLoadCount = 0;
+  usize materialLoadCount = 0;
+};
+
+thread_local SceneLoadTimingStats *g_sceneLoadTimingStats = nullptr;
+
+struct ScopedSceneLoadTimingContext final {
+  explicit ScopedSceneLoadTimingContext(SceneLoadTimingStats &stats)
+      : previous(g_sceneLoadTimingStats) {
+    g_sceneLoadTimingStats = &stats;
+  }
+  ~ScopedSceneLoadTimingContext() { g_sceneLoadTimingStats = previous; }
+
+  SceneLoadTimingStats *previous = nullptr;
+};
+
+struct ScopedAccumulatedTimer final {
+  explicit ScopedAccumulatedTimer(double &targetMs)
+      : target(targetMs), begin(SceneLoadClock::now()) {}
+  ~ScopedAccumulatedTimer() {
+    target += elapsedMs(begin, SceneLoadClock::now());
+  }
+
+  double &target;
+  SceneLoadClock::time_point begin;
+};
+
+[[nodiscard]] std::string pathForLog(const std::filesystem::path &path) {
+  return path.generic_string();
+}
 
 constexpr const char *RuntimeDebugDrawNodePrefix = "debug_draw_";
 constexpr const char *LegacyCameraHelperNodeName = "helper_camera";
@@ -300,6 +348,10 @@ makeNeutralBrdfLutSampler() {
 [[nodiscard]] LX_core::IblEnvironmentResources
 loadEnvironmentResources(const EnvironmentState &environment,
                          const std::vector<std::filesystem::path> &assetRoots) {
+  std::optional<ScopedAccumulatedTimer> timer;
+  if (g_sceneLoadTimingStats != nullptr) {
+    timer.emplace(g_sceneLoadTimingStats->environmentMs);
+  }
   LX_core::IblEnvironmentResources resources;
   const auto hdrPath =
       resolveRuntimeOrProjectAssetPath(assetRoots, environment.hdrUri);
@@ -750,6 +802,11 @@ loadMaterialForSceneNode(const std::vector<std::filesystem::path> &assetRoots,
                          const MaterialOverrideState &nodeOverrides,
                          const ProceduralMaterialState &proceduralMaterial =
                              ProceduralMaterialState{}) {
+  std::optional<ScopedAccumulatedTimer> timer;
+  if (g_sceneLoadTimingStats != nullptr) {
+    timer.emplace(g_sceneLoadTimingStats->materialMs);
+    ++g_sceneLoadTimingStats->materialLoadCount;
+  }
   LX_infra::scene_io::MaterialBindingDocument binding;
   binding.uri = uri;
   auto material = LX_infra::scene_asset::loadSceneMaterialBinding({
@@ -828,6 +885,11 @@ loadEffectiveMaterialForSceneNode(
     const MaterialOverrideState &nodeOverrides,
     const ProceduralMaterialState &proceduralMaterial =
         ProceduralMaterialState{}) {
+  std::optional<ScopedAccumulatedTimer> timer;
+  if (g_sceneLoadTimingStats != nullptr) {
+    timer.emplace(g_sceneLoadTimingStats->materialMs);
+    ++g_sceneLoadTimingStats->materialLoadCount;
+  }
   const std::filesystem::path materialPath =
       resolveProjectAssetPath(assetRoots, uri)
           .value_or(std::filesystem::path(uri));
@@ -887,10 +949,35 @@ makeRenderableNode(const std::string &nodeName, LX_core::MeshSharedPtr mesh,
   return node;
 }
 
+[[nodiscard]] LX_infra::scene_asset::GltfMeshAssetLoadResult
+loadTimedGltfMeshAsset(const std::filesystem::path &meshPath) {
+  std::optional<ScopedAccumulatedTimer> timer;
+  if (g_sceneLoadTimingStats != nullptr) {
+    timer.emplace(g_sceneLoadTimingStats->meshMs);
+    ++g_sceneLoadTimingStats->meshLoadCount;
+  }
+  return LX_infra::scene_asset::loadGltfMeshAsset(meshPath);
+}
+
+[[nodiscard]] LX_core::MeshSharedPtr
+loadTimedSceneMeshAsset(const std::filesystem::path &meshPath) {
+  std::optional<ScopedAccumulatedTimer> timer;
+  if (g_sceneLoadTimingStats != nullptr) {
+    timer.emplace(g_sceneLoadTimingStats->meshMs);
+    ++g_sceneLoadTimingStats->meshLoadCount;
+  }
+  return LX_infra::scene_asset::loadSceneMeshAsset(meshPath);
+}
+
 [[nodiscard]] LX_core::MaterialInstanceSharedPtr loadTaggedMaterialForSceneNode(
     const std::vector<std::filesystem::path> &assetRoots,
     const SceneNodeDocument &nodeDocument,
     const LX_infra::scene_io::MaterialBindingDocument &binding) {
+  std::optional<ScopedAccumulatedTimer> timer;
+  if (g_sceneLoadTimingStats != nullptr) {
+    timer.emplace(g_sceneLoadTimingStats->materialMs);
+    ++g_sceneLoadTimingStats->materialLoadCount;
+  }
   LX_core::MaterialInstanceSharedPtr material;
   if (binding.source == "gltf") {
     material = LX_infra::scene_asset::loadSceneMaterialBinding({
@@ -1077,13 +1164,13 @@ makeTaggedRenderableNode(const std::string &nodeName,
     const std::filesystem::path meshPath =
         resolveGltfMeshPath(assetRoots, *nodeDocument.meshUri);
     if (!nodeDocument.materials.empty()) {
-      auto meshAsset = LX_infra::scene_asset::loadGltfMeshAsset(meshPath);
+      auto meshAsset = loadTimedGltfMeshAsset(meshPath);
       return makeTaggedRenderableNode(nodeDocument.nodeName,
                                       std::move(meshAsset.mesh), nodeDocument,
                                       assetRoots);
     }
     if (nodeDocument.materialUri.has_value()) {
-      auto meshAsset = LX_infra::scene_asset::loadGltfMeshAsset(meshPath);
+      auto meshAsset = loadTimedGltfMeshAsset(meshPath);
       const std::string materialUri = normalizeMaterialUri(nodeDocument);
       return makeRenderableNode(nodeDocument.nodeName,
                                 std::move(meshAsset.mesh),
@@ -1163,7 +1250,7 @@ makeTaggedRenderableNode(const std::string &nodeName,
     const std::filesystem::path meshPath =
         resolveProjectAssetPath(assetRoots, *nodeDocument.meshUri)
             .value_or(std::filesystem::path(*nodeDocument.meshUri));
-    auto mesh = LX_infra::scene_asset::loadSceneMeshAsset(meshPath);
+    auto mesh = loadTimedSceneMeshAsset(meshPath);
     if (!nodeDocument.materials.empty()) {
       return makeTaggedRenderableNode(nodeDocument.nodeName, std::move(mesh),
                                       nodeDocument, assetRoots);
@@ -1246,6 +1333,11 @@ void buildSceneNodesRecursive(
     return;
   }
 
+  if (g_sceneLoadTimingStats != nullptr) {
+    ++g_sceneLoadTimingStats->nodeCount;
+  }
+  const auto nodeBegin = SceneLoadClock::now();
+
   LX_core::SceneNodeSharedPtr node;
   if (nodeDocument.camera.has_value()) {
     node = makeCameraNode(nodeDocument.nodeName,
@@ -1265,8 +1357,16 @@ void buildSceneNodesRecursive(
     auto &camera =
         requireCameraComponent(node, nodeDocument.nodeName.c_str()).get();
     applyCameraState(*node, camera, *nodeDocument.camera);
+    std::optional<ScopedAccumulatedTimer> timer;
+    if (g_sceneLoadTimingStats != nullptr) {
+      timer.emplace(g_sceneLoadTimingStats->sceneRegisterMs);
+    }
     runtime->scene->addCamera(node);
   } else {
+    std::optional<ScopedAccumulatedTimer> timer;
+    if (g_sceneLoadTimingStats != nullptr) {
+      timer.emplace(g_sceneLoadTimingStats->sceneRegisterMs);
+    }
     runtime->scene->addRenderable(node);
   }
 
@@ -1293,6 +1393,16 @@ void buildSceneNodesRecursive(
       break;
     }
     }
+  }
+
+  const double nodeMs = elapsedMs(nodeBegin, SceneLoadClock::now());
+  if (nodeMs >= 500.0) {
+    std::cerr << "[lxe_editor][scene-load] slow node nodeName='"
+              << nodeDocument.nodeName << "' name='" << nodeDocument.name
+              << "' meshUri='"
+              << (nodeDocument.meshUri.has_value() ? *nodeDocument.meshUri
+                                                    : std::string{})
+              << "' ms=" << nodeMs << "\n";
   }
 
   for (const auto &childDocument : nodeDocument.children) {
@@ -1634,10 +1744,41 @@ void SceneRuntime::createEmptyScene() {
 }
 
 void SceneRuntime::loadFromDocumentPath(const std::filesystem::path &path) {
+  SceneLoadTimingStats timing;
+  ScopedSceneLoadTimingContext timingContext(timing);
+  const auto totalBegin = SceneLoadClock::now();
   const std::filesystem::path normalizedPath = normalizeDocumentPath(path);
-  const SceneDocument document = loadSceneDocument(normalizedPath);
-  m_impl = buildRuntimeFromDocument(document, normalizedPath,
-                                    discoverProjectAssetRoots(normalizedPath));
+  SceneDocument document;
+  {
+    const auto begin = SceneLoadClock::now();
+    document = loadSceneDocument(normalizedPath);
+    timing.documentMs = elapsedMs(begin, SceneLoadClock::now());
+  }
+  std::vector<std::filesystem::path> assetRoots;
+  {
+    const auto begin = SceneLoadClock::now();
+    assetRoots = discoverProjectAssetRoots(normalizedPath);
+    timing.assetRootMs = elapsedMs(begin, SceneLoadClock::now());
+  }
+  {
+    const auto begin = SceneLoadClock::now();
+    m_impl = buildRuntimeFromDocument(document, normalizedPath,
+                                      std::move(assetRoots));
+    timing.buildRuntimeMs = elapsedMs(begin, SceneLoadClock::now());
+  }
+  const double totalMs = elapsedMs(totalBegin, SceneLoadClock::now());
+  std::cerr << "[lxe_editor][scene-load] path='"
+            << pathForLog(normalizedPath) << "' totalMs=" << totalMs
+            << " documentMs=" << timing.documentMs
+            << " assetRootMs=" << timing.assetRootMs
+            << " buildRuntimeMs=" << timing.buildRuntimeMs
+            << " environmentMs=" << timing.environmentMs
+            << " nodeCount=" << timing.nodeCount
+            << " meshLoadCount=" << timing.meshLoadCount
+            << " meshMs=" << timing.meshMs
+            << " materialLoadCount=" << timing.materialLoadCount
+            << " materialMs=" << timing.materialMs
+            << " sceneRegisterMs=" << timing.sceneRegisterMs << "\n";
 }
 
 void SceneRuntime::saveToCurrentDocumentPath() {

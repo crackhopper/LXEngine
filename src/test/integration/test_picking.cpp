@@ -47,6 +47,13 @@ MeshSharedPtr makeUnitSquareMesh() {
   return Mesh::create(vb, ib, BoundingBox{{0, 0, 0}, {1, 1, 0}});
 }
 
+MeshSharedPtr makeUnitBoxBoundsMesh() {
+  auto vb = VertexBuffer<VertexPos>::create(
+      std::vector<VertexPos>{{{0, 0, 0}}, {{1, 1, 1}}, {{1, 0, 0}}});
+  auto ib = IndexBuffer::create({0, 1, 2});
+  return Mesh::create(vb, ib, BoundingBox{{0, 0, 0}, {1, 1, 1}});
+}
+
 SceneNodeSharedPtr
 makeBoundedNode(const std::string &name, const Vec3f &translation,
                 VisibilityLayerMask mask = VisibilityMask_All) {
@@ -54,6 +61,14 @@ makeBoundedNode(const std::string &name, const Vec3f &translation,
   node->addComponent<MeshComponent>(makeUnitSquareMesh());
   node->setTranslation(translation);
   node->setVisibilityLayerMask(mask);
+  return node;
+}
+
+SceneNodeSharedPtr makeBoxBoundedNode(const std::string &name,
+                                      const Vec3f &translation) {
+  auto node = SceneNode::create(name);
+  node->addComponent<MeshComponent>(makeUnitBoxBoundsMesh());
+  node->setTranslation(translation);
   return node;
 }
 
@@ -70,8 +85,8 @@ void testIntersectRayBoxInsideAndMissCases() {
   const BoundingBox box{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}};
   const auto insideHit =
       intersectRayBox(Ray{{0.5f, 0.5f, 0.5f}, {1.0f, 0.0f, 0.0f}}, box);
-  EXPECT(insideHit.has_value() && approx(*insideHit, 0.0f),
-         "origin inside box returns zero");
+  EXPECT(!insideHit.has_value(),
+         "origin inside box is not a valid positive-t pick hit");
 
   const auto tangentHit =
       intersectRayBox(Ray{{1.0f, 2.0f, 0.5f}, {0.0f, -1.0f, 0.0f}}, box);
@@ -81,6 +96,10 @@ void testIntersectRayBoxInsideAndMissCases() {
   const auto miss =
       intersectRayBox(Ray{{2.0f, 2.0f, 2.0f}, {1.0f, 0.0f, 0.0f}}, box);
   EXPECT(!miss.has_value(), "ray missing box returns nullopt");
+
+  const auto behind =
+      intersectRayBox(Ray{{2.0f, 0.5f, 0.5f}, {1.0f, 0.0f, 0.0f}}, box);
+  EXPECT(!behind.has_value(), "ray must not hit boxes entirely behind origin");
 }
 
 void testSceneNodeWorldBoundsFollowTransform() {
@@ -134,6 +153,21 @@ void testScenePickSkipsInvalidBounds() {
 
   const auto hit = scene->pick(Ray{{0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, -1.0f}});
   EXPECT(!hit.has_value(), "nodes without valid mesh bounds are ignored");
+}
+
+void testScenePickDoesNotSelectContainingBounds() {
+  auto containingNode =
+      makeBoxBoundedNode("containing_pick", {-0.5f, -0.5f, -0.5f});
+  auto forwardNode = makeBoundedNode("forward_pick", {0.0f, 0.0f, -3.0f});
+
+  auto scene = Scene::create(containingNode);
+  scene->addRenderable(forwardNode);
+
+  const Ray ray{{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, -1.0f}};
+  const auto hit = scene->pick(ray);
+  EXPECT(hit.has_value() && hit->node.get() == forwardNode.get(),
+         "pick should ignore bounds containing the camera and choose the first "
+         "positive-t hit");
 }
 
 void testCameraComponentPickRayUsesOwnerPose() {
@@ -201,6 +235,7 @@ int main() {
   testSceneNodeWorldBoundsFollowTransform();
   testScenePickReturnsNearestHitAndRespectsLayerMask();
   testScenePickSkipsInvalidBounds();
+  testScenePickDoesNotSelectContainingBounds();
   testCameraComponentPickRayUsesOwnerPose();
   testOrthographicCameraProjectionUsesVulkanDepthRange();
 
