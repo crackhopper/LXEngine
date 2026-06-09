@@ -28,7 +28,7 @@ float lxDistributionGGX(vec3 N, vec3 H, float roughness) {
 
   float denom = NdotH2 * (a2 - 1.0) + 1.0;
   denom = LX_PBR_PI * denom * denom;
-  return a2 / max(denom, 0.0001);
+  return a2 / max(denom, 1.0e-7);
 }
 
 float lxGeometrySchlickGGX(float NdotV, float roughness) {
@@ -92,7 +92,7 @@ vec3 lxPbrLayeredClearcoatDirectLight(LxPbrDirectInput pbr,
   vec3 V = normalize(pbr.viewDir);
   vec3 L = normalize(pbr.lightDir);
   vec3 H = normalize(V + L);
-  float coatRoughness = clamp(clearcoat.roughness, 0.0005, 1.0);
+  float coatRoughness = clamp(clearcoat.roughness, 0.04, 1.0);
 
   float NdotL = max(dot(N, L), 0.0);
   float NdotV = max(dot(N, V), 0.0);

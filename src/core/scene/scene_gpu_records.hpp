@@ -48,7 +48,7 @@ struct alignas(16) SceneGpuMaterialRecord final {
   Vec4f baseColor{1.0f, 1.0f, 1.0f, 1.0f};
   Vec4f pbrParams{0.0f, 0.5f, 0.0f, 0.0f};
   Vec4f emissive{0.0f, 0.0f, 0.0f, 0.0f};
-  Vec4f clearcoatParams{0.0f, 0.0005f, 0.0f, 0.0f};
+  Vec4f clearcoatParams{0.0f, 0.04f, 0.0f, 0.0f};
   u32 baseColorTexture = 0xffffffffu;
   u32 normalTexture = 0xffffffffu;
   u32 metallicRoughnessTexture = 0xffffffffu;

@@ -1160,6 +1160,26 @@ static bool testPbrClearcoatShaderContract(
   return true;
 }
 
+static bool testSharedPbrKeepsLowRoughnessHighlights(
+    const std::filesystem::path &shaderDir) {
+  std::cout << "  Test: shared PBR keeps low-roughness clearcoat highlights\n";
+  const auto source = readTextFile(shaderDir / "common" / "pbr.glsl");
+  if (source.find("max(denom, 0.0001)") != std::string::npos) {
+    std::cerr << "  FAIL: GGX distribution should not clamp the denominator "
+                 "to 0.0001 because that erases low-roughness clearcoat "
+                 "highlights\n";
+    return false;
+  }
+  if (source.find("1.0e-7") == std::string::npos) {
+    std::cerr << "  FAIL: GGX distribution should use the low denominator "
+                 "epsilon expected by the clearcoat contract\n";
+    return false;
+  }
+
+  std::cout << "  PASS: shared PBR preserves low-roughness highlights\n";
+  return true;
+}
+
 int main(int argc, char *argv[]) {
   expSetEnvVK();
   // Determine shader directory
@@ -1214,6 +1234,8 @@ int main(int argc, char *argv[]) {
   if (!testPbrFragmentAppliesDirectionalLightIntensity(fragPath))
     ++failures;
   if (!testPbrClearcoatShaderContract(shaderDir))
+    ++failures;
+  if (!testSharedPbrKeepsLowRoughnessHighlights(shaderDir))
     ++failures;
 
   // Test 4: BlinnPhong MaterialUBO member reflection (REQ-004)

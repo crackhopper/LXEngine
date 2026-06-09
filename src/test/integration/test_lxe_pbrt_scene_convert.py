@@ -219,7 +219,7 @@ class PbrtSceneConvertTest(unittest.TestCase):
                 car_paint_text,
             )
             self.assertIn(
-                '"MaterialUBO.clearcoatRoughness": 0.000505',
+                '"MaterialUBO.clearcoatRoughness": 0.04',
                 car_paint_text,
             )
 

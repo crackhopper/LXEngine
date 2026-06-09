@@ -505,7 +505,7 @@ def approximate_material(material: PbrtMaterial) -> tuple[dict[str, Any], list[s
     alpha = 1.0
     shader = "pbr"
     clearcoat_factor = 0.0
-    clearcoat_roughness = 0.001
+    clearcoat_roughness = 0.04
     if pbrt_type == "substrate":
         roughness = (
             first_float(material.value("uroughness"), roughness)
@@ -589,7 +589,7 @@ def approximate_material(material: PbrtMaterial) -> tuple[dict[str, Any], list[s
             0.0, min(1.0, clearcoat_factor)
         )
         doc["parameters"]["MaterialUBO.clearcoatRoughness"] = max(
-            0.0005, min(1.0, clearcoat_roughness)
+            0.04, min(1.0, clearcoat_roughness)
         )
     return doc, losses, strategy
 
