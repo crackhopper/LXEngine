@@ -960,6 +960,9 @@ public:
              LX_core::ImageFormat::RGBA16Float,
              LX_core::ImageFormat::RGBA16Float},
             swapchainTarget.depthFormat);
+    const auto deferredLightingDesc =
+        LX_core::RenderTargetDesc::offscreenColor(
+            LX_core::ImageFormat::RGBA16Float);
     if (deferredMode) {
       m_frameGraph.addPass(
           LX_core::FramePass{LX_core::Pass_Deferred,
@@ -972,8 +975,7 @@ public:
                               LX_core::FrameGraphWrite{sceneDepth}}});
       m_frameGraph.addPass(LX_core::FramePass{
           LX_core::Pass_DeferredLighting,
-          LX_core::RenderTargetDesc::offscreenColor(
-              LX_core::ImageFormat::RGBA16Float),
+          deferredLightingDesc,
           {},
           {LX_core::FrameGraphRead::sampled(
                gbufferAlbedoAlpha.name,
@@ -1047,7 +1049,7 @@ public:
     if (deferredMode) {
       rebuildPassQueueWithDefaultCameraResources(LX_core::Pass_Deferred,
                                                  gbufferDesc);
-      addDeferredLightingItem(forwardHdrDesc);
+      addDeferredLightingItem(deferredLightingDesc);
     } else {
       rebuildPassQueueWithDefaultCameraResources(LX_core::Pass_Forward,
                                                  forwardHdrDesc);
