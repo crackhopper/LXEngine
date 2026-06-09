@@ -15,6 +15,11 @@ struct LxPbrDirectInput {
   vec3 emissive;
 };
 
+struct LxPbrClearcoatInput {
+  float factor;
+  float roughness;
+};
+
 float lxDistributionGGX(vec3 N, vec3 H, float roughness) {
   float a = roughness * roughness;
   float a2 = a * a;
@@ -74,6 +79,33 @@ vec3 lxPbrDirectLight(LxPbrDirectInput pbr) {
   float NdotL = max(dot(N, L), 0.0);
   return (kD * pbr.baseColor / LX_PBR_PI + specular) *
          pbr.lightColor * NdotL;
+}
+
+vec3 lxPbrLayeredClearcoatDirectLight(LxPbrDirectInput pbr,
+                                      LxPbrClearcoatInput clearcoat) {
+  float coatFactor = clamp(clearcoat.factor, 0.0, 1.0);
+  if (coatFactor <= 0.0) {
+    return lxPbrDirectLight(pbr);
+  }
+
+  vec3 N = normalize(pbr.normal);
+  vec3 V = normalize(pbr.viewDir);
+  vec3 L = normalize(pbr.lightDir);
+  vec3 H = normalize(V + L);
+  float coatRoughness = clamp(clearcoat.roughness, 0.0005, 1.0);
+
+  float NdotL = max(dot(N, L), 0.0);
+  float NdotV = max(dot(N, V), 0.0);
+  float HdotV = max(dot(H, V), 0.0);
+  vec3 Fc = lxFresnelSchlick(HdotV, vec3(0.04));
+
+  vec3 base = lxPbrDirectLight(pbr) * (vec3(1.0) - Fc * coatFactor);
+
+  float D = lxDistributionGGX(N, H, coatRoughness);
+  float G = lxGeometrySmith(N, V, L, coatRoughness);
+  vec3 coatSpecular = (D * G * Fc) / max(4.0 * NdotV * NdotL, 0.0001);
+
+  return base + coatSpecular * pbr.lightColor * NdotL * coatFactor;
 }
 
 vec3 lxPbrEmissive(LxPbrDirectInput pbr) {

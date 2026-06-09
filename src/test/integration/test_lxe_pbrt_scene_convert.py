@@ -110,6 +110,12 @@ MakeNamedMaterial "LEATHER"
 MakeNamedMaterial "floor"
         "string type" [ "matte" ]
         "rgb Kd" [.5 .5 .5]
+MakeNamedMaterial "CarPaint"
+        "float uroughness" [0.0005]
+        "float vroughness" [0.00051]
+        "string type" [ "substrate" ]
+        "rgb Kd" [.4 .03 .03]
+        "rgb Ks" [.3 .3 .3]
 MakeNamedMaterial "WindscreenGlass"
         "string type" [ "glass" ]
 # Name "wheel"
@@ -167,9 +173,9 @@ class PbrtSceneConvertTest(unittest.TestCase):
             )
 
             self.assertEqual(manifest["meshCount"], 4)
-            self.assertEqual(manifest["materialCount"], 5)
-            self.assertEqual(manifest["runtimeMaterialCount"], 5)
-            self.assertEqual(manifest["sourceMaterialCount"], 5)
+            self.assertEqual(manifest["materialCount"], 6)
+            self.assertEqual(manifest["runtimeMaterialCount"], 6)
+            self.assertEqual(manifest["sourceMaterialCount"], 6)
 
             scene_text = scene_path.read_text(encoding="utf-8")
             self.assertIn('"enabled": false', scene_text)
@@ -199,6 +205,22 @@ class PbrtSceneConvertTest(unittest.TestCase):
             self.assertIn('"cullMode": "None"', runtime_material_text)
             self.assertIn(
                 '"MaterialUBO.metallicFactor": 1.0', runtime_material_text
+            )
+
+            car_paint_text = (
+                out_root
+                / "materials"
+                / "runtime-pbr-approx"
+                / "CarPaint.material"
+            ).read_text(encoding="utf-8")
+            self.assertIn('"shader": "pbr_clearcoat"', car_paint_text)
+            self.assertIn(
+                '"MaterialUBO.clearcoatFactor": 0.3',
+                car_paint_text,
+            )
+            self.assertIn(
+                '"MaterialUBO.clearcoatRoughness": 0.000505',
+                car_paint_text,
             )
 
             glass_material_text = (

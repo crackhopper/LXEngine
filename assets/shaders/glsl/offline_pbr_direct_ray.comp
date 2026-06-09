@@ -39,6 +39,7 @@ struct lxSceneMaterialRecord {
   vec4 baseColor;
   vec4 pbrParams;
   vec4 emissive;
+  vec4 clearcoatParams;
   uint baseColorTexture;
   uint normalTexture;
   uint metallicRoughnessTexture;
@@ -369,7 +370,11 @@ vec3 shade(vec3 origin, vec3 dir) {
     pbrInput.emissive =
         sampleSceneTexture(material.emissiveTexture, hit.uv).rgb;
   }
-  return lxPbrDirectLight(pbrInput) + lxPbrEmissive(pbrInput);
+  LxPbrClearcoatInput clearcoat;
+  clearcoat.factor = material.clearcoatParams.x;
+  clearcoat.roughness = material.clearcoatParams.y;
+  return lxPbrLayeredClearcoatDirectLight(pbrInput, clearcoat) +
+         lxPbrEmissive(pbrInput);
 }
 
 void main() {

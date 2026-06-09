@@ -395,6 +395,16 @@ void testOfflinePbrDirectShaderUsesEveryMaterialInput() {
   EXPECT(shaderSource.find("pbrInput.ao = clamp(material.pbrParams.w") !=
              std::string::npos,
          "offline PBR shader should use AO scalar factor");
+  EXPECT(shaderSource.find("vec4 clearcoatParams") != std::string::npos,
+         "offline PBR shader material record should carry clearcoat params");
+  EXPECT(shaderSource.find("material.clearcoatParams.x") != std::string::npos &&
+             shaderSource.find("material.clearcoatParams.y") !=
+                 std::string::npos,
+         "offline PBR shader should read clearcoat factor and roughness");
+  EXPECT(shaderSource.find("lxPbrLayeredClearcoatDirectLight") !=
+             std::string::npos,
+         "offline PBR shader should use the shared layered clearcoat direct "
+         "lighting helper");
   EXPECT(shaderSource.find("material.aoTexture") != std::string::npos &&
              shaderSource.find("sampleSceneTexture(material.aoTexture, "
                                "hit.uv).r") != std::string::npos,

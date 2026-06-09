@@ -124,6 +124,16 @@ SceneGpuMaterialRecord toGpuMaterialRecord(const MaterialInstance &material) {
           material, kMaterialBindings, std::array{"ambientIntensity", "ao"})) {
     record.pbrParams.w = materialValueAsFloat(*value, record.pbrParams.w);
   }
+  if (const auto value = readFirstMaterialParameter(
+          material, kMaterialBindings, std::array{"clearcoatFactor"})) {
+    record.clearcoatParams.x =
+        materialValueAsFloat(*value, record.clearcoatParams.x);
+  }
+  if (const auto value = readFirstMaterialParameter(
+          material, kMaterialBindings, std::array{"clearcoatRoughness"})) {
+    record.clearcoatParams.y =
+        materialValueAsFloat(*value, record.clearcoatParams.y);
+  }
 
   if (const auto value = readFirstMaterialParameter(
           material, kMaterialBindings,

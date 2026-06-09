@@ -503,11 +503,17 @@ def approximate_material(material: PbrtMaterial) -> tuple[dict[str, Any], list[s
     ks = as_float_list(material.value("Ks"), [0.0, 0.0, 0.0])
     roughness = first_float(material.value("roughness"), 0.7)
     alpha = 1.0
+    shader = "pbr"
+    clearcoat_factor = 0.0
+    clearcoat_roughness = 0.001
     if pbrt_type == "substrate":
         roughness = (
             first_float(material.value("uroughness"), roughness)
             + first_float(material.value("vroughness"), roughness)
         ) * 0.5
+        clearcoat_factor = max(ks) if ks else 0.0
+        clearcoat_roughness = roughness
+        shader = "pbr_clearcoat"
     metallic = 0.0
     strategy = f"{pbrt_type}-to-pbr-approx"
     losses: list[str] = []
@@ -538,7 +544,7 @@ def approximate_material(material: PbrtMaterial) -> tuple[dict[str, Any], list[s
         if specular > 0.45:
             roughness = min(roughness, 0.35)
     elif pbrt_type == "substrate":
-        losses.append("PBRT substrate layered diffuse/specular model approximated as PBR dielectric")
+        losses.append("PBRT substrate layered diffuse/specular model approximated as realtime clearcoat BRDF")
     roughness = max(0.0005, min(1.0, roughness))
     render_state: dict[str, Any] = {
         "cullMode": "None",
@@ -551,7 +557,7 @@ def approximate_material(material: PbrtMaterial) -> tuple[dict[str, Any], list[s
         render_state["dstBlend"] = "OneMinusSrcAlpha"
 
     doc = {
-        "shader": "pbr",
+        "shader": shader,
         "variants": {
             "HAS_METALLIC_ROUGHNESS": False,
             "HAS_NORMAL_MAP": False,
@@ -578,6 +584,13 @@ def approximate_material(material: PbrtMaterial) -> tuple[dict[str, Any], list[s
             "albedoMap": "white",
         },
     }
+    if pbrt_type == "substrate":
+        doc["parameters"]["MaterialUBO.clearcoatFactor"] = max(
+            0.0, min(1.0, clearcoat_factor)
+        )
+        doc["parameters"]["MaterialUBO.clearcoatRoughness"] = max(
+            0.0005, min(1.0, clearcoat_roughness)
+        )
     return doc, losses, strategy
 
 

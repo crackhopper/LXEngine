@@ -4,6 +4,7 @@
 #include "infra/shader_compiler/shader_reflector.hpp"
 #include "core/rhi/gpu_resource.hpp"
 
+#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -547,7 +548,8 @@ static bool testShadertoyQuantumCoreContract(
 
   const auto vertPath = shaderDir / "rtr_shadertoy_quantum_core.vert";
   const auto fragPath = shaderDir / "rtr_shadertoy_quantum_core.frag";
-  auto compileResult = ShaderCompiler::compileProgram(vertPath, fragPath, {});
+  auto compileResult =
+      ShaderCompiler::compileProgram(vertPath, fragPath, {{"HAS_IBL", true}});
   if (!compileResult.success) {
     std::cerr << "  COMPILE FAILED: " << compileResult.errorMessage << "\n";
     return false;
@@ -978,7 +980,8 @@ static bool testPbrIblContract(const std::filesystem::path &shaderDir,
     return false;
   }
 
-  auto compileResult = ShaderCompiler::compileProgram(vertPath, fragPath, {});
+  auto compileResult =
+      ShaderCompiler::compileProgram(vertPath, fragPath, {{"HAS_IBL", true}});
   if (!compileResult.success) {
     std::cerr << "  COMPILE FAILED: " << compileResult.errorMessage << "\n";
     return false;
@@ -1101,6 +1104,62 @@ static bool testPbrFragmentAppliesDirectionalLightIntensity(
   return true;
 }
 
+static bool testPbrClearcoatShaderContract(
+    const std::filesystem::path &shaderDir) {
+  std::cout << "  Test: PBR clearcoat shader compiles and reflects layered parameters\n";
+  const auto vertPath = shaderDir / "pbr_clearcoat.vert";
+  const auto fragPath = shaderDir / "pbr_clearcoat.frag";
+  if (!std::filesystem::exists(vertPath) ||
+      !std::filesystem::exists(fragPath)) {
+    std::cerr << "  FAIL: pbr_clearcoat shader files should exist\n";
+    return false;
+  }
+
+  const auto compileResult =
+      ShaderCompiler::compileProgram(vertPath, fragPath, {});
+  if (!compileResult.success) {
+    std::cerr << "  FAIL: pbr_clearcoat shader compile failed: "
+              << compileResult.errorMessage << "\n";
+    return false;
+  }
+
+  const auto bindings = ShaderReflector::reflect(compileResult.stages);
+  const auto materialBinding = std::find_if(
+      bindings.begin(), bindings.end(),
+      [](const ShaderResourceBinding &binding) {
+        return binding.name == "MaterialUBO";
+      });
+  if (materialBinding == bindings.end()) {
+    std::cerr << "  FAIL: pbr_clearcoat MaterialUBO binding missing\n";
+    return false;
+  }
+
+  const auto hasFloatMember = [&](const std::string &name) {
+    return std::any_of(materialBinding->members.begin(),
+                       materialBinding->members.end(),
+                       [&](const StructMemberInfo &member) {
+                         return member.name == name &&
+                                member.type == ShaderPropertyType::Float;
+                       });
+  };
+  if (!hasFloatMember("clearcoatFactor") ||
+      !hasFloatMember("clearcoatRoughness")) {
+    std::cerr << "  FAIL: pbr_clearcoat should expose clearcoatFactor and "
+                 "clearcoatRoughness float members\n";
+    return false;
+  }
+
+  const auto source = readTextFile(fragPath);
+  if (source.find("lxPbrLayeredClearcoatDirectLight") == std::string::npos) {
+    std::cerr << "  FAIL: pbr_clearcoat.frag should call shared layered "
+                 "clearcoat BRDF helper\n";
+    return false;
+  }
+
+  std::cout << "  PASS: PBR clearcoat shader contract\n";
+  return true;
+}
+
 int main(int argc, char *argv[]) {
   expSetEnvVK();
   // Determine shader directory
@@ -1153,6 +1212,8 @@ int main(int argc, char *argv[]) {
   if (!testPbrFragmentUsesSharedCommon(fragPath))
     ++failures;
   if (!testPbrFragmentAppliesDirectionalLightIntensity(fragPath))
+    ++failures;
+  if (!testPbrClearcoatShaderContract(shaderDir))
     ++failures;
 
   // Test 4: BlinnPhong MaterialUBO member reflection (REQ-004)
