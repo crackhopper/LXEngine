@@ -755,11 +755,13 @@ void validateOffscreenWritesMatchTarget(
 
   if (pass.target.colorAttachmentCount() != colorWrites.size()) {
     throw std::runtime_error(
-        "Frame graph offscreen pass color write does not match target");
+        "Frame graph offscreen pass color write does not match target: " +
+        LX_core::GlobalStringTable::get().getName(pass.name.id));
   }
   if (pass.target.depthFormat.has_value() != depthWrite.has_value()) {
     throw std::runtime_error(
-        "Frame graph offscreen pass depth write does not match target");
+        "Frame graph offscreen pass depth write does not match target: " +
+        LX_core::GlobalStringTable::get().getName(pass.name.id));
   }
 }
 
@@ -970,7 +972,8 @@ public:
                               LX_core::FrameGraphWrite{sceneDepth}}});
       m_frameGraph.addPass(LX_core::FramePass{
           LX_core::Pass_DeferredLighting,
-          forwardHdrDesc,
+          LX_core::RenderTargetDesc::offscreenColor(
+              LX_core::ImageFormat::RGBA16Float),
           {},
           {LX_core::FrameGraphRead::sampled(
                gbufferAlbedoAlpha.name,
