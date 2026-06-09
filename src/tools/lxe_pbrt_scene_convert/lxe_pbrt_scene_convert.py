@@ -490,11 +490,11 @@ def sanitize_filename(name: str) -> str:
     return safe or "unnamed"
 
 
-def vec4_color(rgb: list[float]) -> list[float]:
+def vec4_color(rgb: list[float], alpha: float = 1.0) -> list[float]:
     padded = list(rgb[:3])
     while len(padded) < 3:
         padded.append(1.0)
-    return [round(v, 9) for v in padded] + [1.0]
+    return [round(v, 9) for v in padded] + [round(alpha, 9)]
 
 
 def approximate_material(material: PbrtMaterial) -> tuple[dict[str, Any], list[str], str]:
@@ -502,6 +502,7 @@ def approximate_material(material: PbrtMaterial) -> tuple[dict[str, Any], list[s
     kd = as_float_list(material.value("Kd"), [0.8, 0.8, 0.8])
     ks = as_float_list(material.value("Ks"), [0.0, 0.0, 0.0])
     roughness = first_float(material.value("roughness"), 0.7)
+    alpha = 1.0
     if pbrt_type == "substrate":
         roughness = (
             first_float(material.value("uroughness"), roughness)
@@ -518,7 +519,8 @@ def approximate_material(material: PbrtMaterial) -> tuple[dict[str, Any], list[s
     elif pbrt_type == "glass":
         kd = [0.85, 0.95, 1.0]
         roughness = 0.02
-        losses.append("PBRT glass transmission/refraction not represented by current PBR shader")
+        alpha = 0.25
+        losses.append("PBRT glass transmission/refraction approximated as alpha-blended tinted glass")
     elif pbrt_type == "fourier":
         kd = [0.75, 0.72, 0.68]
         roughness = 0.55
@@ -538,6 +540,16 @@ def approximate_material(material: PbrtMaterial) -> tuple[dict[str, Any], list[s
     elif pbrt_type == "substrate":
         losses.append("PBRT substrate layered diffuse/specular model approximated as PBR dielectric")
     roughness = max(0.0005, min(1.0, roughness))
+    render_state: dict[str, Any] = {
+        "cullMode": "None",
+        "depthTest": True,
+        "depthWrite": pbrt_type != "glass",
+        "blendEnable": pbrt_type == "glass",
+    }
+    if pbrt_type == "glass":
+        render_state["srcBlend"] = "SrcAlpha"
+        render_state["dstBlend"] = "OneMinusSrcAlpha"
+
     doc = {
         "shader": "pbr",
         "variants": {
@@ -549,12 +561,7 @@ def approximate_material(material: PbrtMaterial) -> tuple[dict[str, Any], list[s
         },
         "passes": {
             "Forward": {
-                "renderState": {
-                    "cullMode": "None",
-                    "depthTest": True,
-                    "depthWrite": pbrt_type != "glass",
-                    "blendEnable": pbrt_type == "glass",
-                }
+                "renderState": render_state
             },
             "OfflineRayTrace": {
                 "shader": "offline_pbr_direct_ray",
@@ -562,7 +569,7 @@ def approximate_material(material: PbrtMaterial) -> tuple[dict[str, Any], list[s
             },
         },
         "parameters": {
-            "MaterialUBO.baseColorFactor": vec4_color(kd),
+            "MaterialUBO.baseColorFactor": vec4_color(kd, alpha),
             "MaterialUBO.metallicFactor": metallic,
             "MaterialUBO.roughnessFactor": roughness,
             "MaterialUBO.ao": 1.0,

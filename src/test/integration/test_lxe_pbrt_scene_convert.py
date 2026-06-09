@@ -77,6 +77,7 @@ def write_fixture(root: Path) -> Path:
     write_binary_ply(root / "geometry" / "mesh_00001.ply")
     write_binary_ply_with_uv(root / "geometry" / "mesh_00002.ply")
     write_binary_ply(root / "geometry" / "mesh_00003.ply")
+    write_binary_ply(root / "geometry" / "mesh_00004.ply")
     (root / "textures" / "sky.exr").write_bytes(b"fake-exr")
     (root / "spds" / "Al.eta.spd").write_text("400 1.0\n", encoding="utf-8")
     (root / "spds" / "Al.k.spd").write_text("400 2.0\n", encoding="utf-8")
@@ -109,6 +110,8 @@ MakeNamedMaterial "LEATHER"
 MakeNamedMaterial "floor"
         "string type" [ "matte" ]
         "rgb Kd" [.5 .5 .5]
+MakeNamedMaterial "WindscreenGlass"
+        "string type" [ "glass" ]
 # Name "wheel"
 AttributeBegin
     NamedMaterial "LogoSilver"
@@ -123,6 +126,11 @@ AttributeEnd
 AttributeBegin
     NamedMaterial "floor"
     Shape "plymesh" "string filename" "geometry/mesh_00003.ply"
+AttributeEnd
+# Name "window"
+AttributeBegin
+    NamedMaterial "WindscreenGlass"
+    Shape "plymesh" "string filename" "geometry/mesh_00004.ply"
 AttributeEnd
 """.strip()
         + "\n",
@@ -158,10 +166,10 @@ class PbrtSceneConvertTest(unittest.TestCase):
                 repo_root=tmp_path / "repo",
             )
 
-            self.assertEqual(manifest["meshCount"], 3)
-            self.assertEqual(manifest["materialCount"], 4)
-            self.assertEqual(manifest["runtimeMaterialCount"], 4)
-            self.assertEqual(manifest["sourceMaterialCount"], 4)
+            self.assertEqual(manifest["meshCount"], 4)
+            self.assertEqual(manifest["materialCount"], 5)
+            self.assertEqual(manifest["runtimeMaterialCount"], 5)
+            self.assertEqual(manifest["sourceMaterialCount"], 5)
 
             scene_text = scene_path.read_text(encoding="utf-8")
             self.assertIn('"enabled": false', scene_text)
@@ -191,6 +199,21 @@ class PbrtSceneConvertTest(unittest.TestCase):
             self.assertIn('"cullMode": "None"', runtime_material_text)
             self.assertIn(
                 '"MaterialUBO.metallicFactor": 1.0', runtime_material_text
+            )
+
+            glass_material_text = (
+                out_root
+                / "materials"
+                / "runtime-pbr-approx"
+                / "WindscreenGlass.material"
+            ).read_text(encoding="utf-8")
+            self.assertIn('"depthWrite": false', glass_material_text)
+            self.assertIn('"blendEnable": true', glass_material_text)
+            self.assertIn('"srcBlend": "SrcAlpha"', glass_material_text)
+            self.assertIn('"dstBlend": "OneMinusSrcAlpha"', glass_material_text)
+            self.assertIn(
+                '"MaterialUBO.baseColorFactor": [0.85, 0.95, 1.0, 0.25]',
+                glass_material_text,
             )
 
             source_material_text = (
