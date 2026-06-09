@@ -116,6 +116,8 @@ private:
   [[nodiscard]] std::string realtimeRenderProfilesJson() const;
   [[nodiscard]] LX_core::CommandResult
   runRealtimeRenderProfile(std::string_view profileName);
+  [[nodiscard]] LX_core::CommandResult
+  setRealtimeRenderMode(std::string_view modeName);
   [[nodiscard]] std::string projectSummaryJson() const;
   [[nodiscard]] EditorSceneStateDocument captureEditorSceneState() const;
   void applyEditorSceneState(const EditorSceneStateDocument &state);

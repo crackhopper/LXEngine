@@ -47,6 +47,8 @@ struct LxeEditorCommandContext final {
   using RealtimeRenderListJsonFn = std::function<std::string()>;
   using RealtimeRenderRunFn =
       std::function<LX_core::CommandResult(std::string_view profileName)>;
+  using RealtimeRenderModeFn =
+      std::function<LX_core::CommandResult(std::string_view modeName)>;
 
   LX_core::EditorState &editorState;
   LX_core::Scene &scene;
@@ -75,6 +77,7 @@ struct LxeEditorCommandContext final {
   DisplayNextFn displayNext;
   RealtimeRenderListJsonFn realtimeRenderListJson;
   RealtimeRenderRunFn realtimeRenderRun;
+  RealtimeRenderModeFn realtimeRenderMode;
 };
 
 void registerLxeEditorCommands(LX_core::CommandBus &bus,

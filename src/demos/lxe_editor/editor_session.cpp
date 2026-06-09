@@ -9,6 +9,7 @@
 #include "core/gpu/engine_loop.hpp"
 #include "core/offline/offline_render_profile.hpp"
 #include "core/scene/components/camera_component.hpp"
+#include "core/scene/scene_render_settings.hpp"
 #include "core/utils/filesystem_tools.hpp"
 #include "demos/lxe_editor/builtin_asset_catalog.hpp"
 #include "demos/lxe_editor/lxe_editor_commands.hpp"
@@ -115,6 +116,17 @@ constexpr const char *kDefaultProjectId = "lxe_default";
 makeCommandOk(std::string message, std::string structured = {}) {
   return LX_core::CommandResult{true, std::move(message),
                                 std::move(structured)};
+}
+
+[[nodiscard]] const char *
+realtimeRenderModeName(const LX_core::SceneRealtimeRenderMode mode) {
+  switch (mode) {
+  case LX_core::SceneRealtimeRenderMode::Forward:
+    return "forward";
+  case LX_core::SceneRealtimeRenderMode::Deferred:
+    return "deferred";
+  }
+  return "forward";
 }
 
 [[nodiscard]] std::string
@@ -407,6 +419,75 @@ LxeEditorSession::saveScene(const std::optional<std::string> &path) {
         "scene save is project-scoped; use scene save without a path");
   }
   return saveActiveProjectScene();
+}
+
+LX_core::CommandResult
+LxeEditorSession::setRealtimeRenderMode(const std::string_view modeName) {
+  const auto currentSettings = m_runtime.document().realtimeRenderSettings();
+  if (modeName == "status") {
+    const char *mode = realtimeRenderModeName(currentSettings.mode);
+    return makeCommandOk("realtime render mode: " + std::string(mode),
+                         "{\"mode\":\"" + std::string(mode) + "\"}");
+  }
+
+  LX_core::SceneRealtimeRenderMode nextMode;
+  if (modeName == "forward") {
+    nextMode = LX_core::SceneRealtimeRenderMode::Forward;
+  } else if (modeName == "deferred") {
+    nextMode = LX_core::SceneRealtimeRenderMode::Deferred;
+  } else {
+    return makeCommandError(
+        "usage: realtime-render mode status|forward|deferred");
+  }
+
+  if (!m_projectSession.hasProject()) {
+    return makeCommandError("no project is open; use project init first");
+  }
+  const auto activePath = m_projectSession.activeScenePath();
+  if (!activePath.has_value()) {
+    return makeCommandError("project has no active scene");
+  }
+  const auto runtimePath = m_runtime.documentPath();
+  if (!runtimePath.has_value() ||
+      normalizedAbsolutePath(*runtimePath) !=
+          normalizedAbsolutePath(*activePath)) {
+    return makeCommandError(
+        "active project scene is not loaded; wait for scene open to finish");
+  }
+  if (m_pendingRuntime.has_value()) {
+    return makeCommandError(
+        "active scene open is pending; wait for the next update tick");
+  }
+  if (m_sceneDirty) {
+    return makeCommandError(
+        "current scene has unsaved edits; run scene save before switching "
+        "realtime render mode");
+  }
+
+  try {
+    SceneDocument document = m_runtime.document();
+    LX_core::SceneRealtimeRenderSettings settings =
+        document.realtimeRenderSettings();
+    settings.mode = nextMode;
+    document.setRealtimeRenderSettings(settings);
+    saveSceneDocument(*activePath, document);
+    saveEditorSceneStateForScenePath(*activePath, captureEditorSceneState());
+    const auto saved = m_projectSession.saveProject();
+    if (!saved.ok) {
+      return makeCommandError(saved.message);
+    }
+    const auto queued = queueActiveSceneOpen();
+    if (!queued.ok) {
+      return makeCommandError(queued.message);
+    }
+    const char *mode = realtimeRenderModeName(nextMode);
+    return makeCommandOk("realtime render mode set to " + std::string(mode) +
+                             "; scene reload queued",
+                         "{\"mode\":\"" + std::string(mode) +
+                             "\",\"status\":\"queued\"}");
+  } catch (const std::exception &e) {
+    return makeCommandError(e.what());
+  }
 }
 
 void LxeEditorSession::flushPendingSceneOpen(LX_core::gpu::EngineLoop &loop) {
@@ -1184,6 +1265,10 @@ void LxeEditorSession::rebuildBindings(
           .realtimeRenderRun =
               [this](std::string_view profileName) {
                 return runRealtimeRenderProfile(profileName);
+              },
+          .realtimeRenderMode =
+              [this](std::string_view modeName) {
+                return setRealtimeRenderMode(modeName);
               },
       });
   m_commandBus->registerHandler(
