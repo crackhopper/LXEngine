@@ -458,10 +458,14 @@ LxeEditorSession::setRealtimeRenderMode(const std::string_view modeName) {
     return makeCommandError(
         "active scene open is pending; wait for the next update tick");
   }
+  if (m_sceneDirty) {
+    return makeCommandError(
+        "current scene has unsaved edits; run scene save before switching "
+        "realtime render mode");
+  }
 
   try {
-    m_runtime.saveToDocumentPath(*activePath);
-    SceneDocument document = loadSceneDocument(*activePath);
+    SceneDocument document = m_runtime.document();
     LX_core::SceneRealtimeRenderSettings settings =
         document.realtimeRenderSettings();
     settings.mode = nextMode;
