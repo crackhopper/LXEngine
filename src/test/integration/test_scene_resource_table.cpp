@@ -231,8 +231,9 @@ MeshBufferSharedPtr makeTangentSignMeshBuffer() {
       vb, ib, BoundingBox{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 0.0f}});
 }
 
-MaterialInstanceSharedPtr makeGpuRecordMaterial(const Vec4f &baseColor = Vec4f{
-                                                    0.25f, 0.5f, 0.75f, 0.9f}) {
+MaterialInstanceSharedPtr makeGpuRecordMaterial(
+    const Vec4f &baseColor = Vec4f{0.25f, 0.5f, 0.75f, 0.9f},
+    const CullMode cullMode = CullMode::Back) {
   ShaderResourceBinding binding;
   binding.name = "MaterialUBO";
   binding.set = 2;
@@ -251,9 +252,16 @@ MaterialInstanceSharedPtr makeGpuRecordMaterial(const Vec4f &baseColor = Vec4f{
   shaderSet.shaderName = "scene_gpu_records";
   shaderSet.shader = shader;
   MaterialPassDefinition passDefinition;
-  passDefinition.shaderProgram = std::move(shaderSet);
+  passDefinition.shaderProgram = shaderSet;
   passDefinition.renderState = RenderState{};
+  passDefinition.renderState.cullMode = cullMode;
   materialTemplate->setPassDefinition(Pass_Forward, std::move(passDefinition));
+  MaterialPassDefinition offlinePassDefinition;
+  offlinePassDefinition.shaderProgram = shaderSet;
+  offlinePassDefinition.renderState = RenderState{};
+  offlinePassDefinition.renderState.cullMode = cullMode;
+  materialTemplate->setPassDefinition(Pass_OfflineRayTrace,
+                                      std::move(offlinePassDefinition));
   materialTemplate->rebuildMaterialInterface();
 
   auto material = MaterialInstance::create(materialTemplate);
@@ -575,6 +583,29 @@ void testSceneGpuRecordLayoutContract() {
          "SceneGpuObjectRecord visibilityMask offset should stay stable");
   EXPECT(offsetof(SceneGpuObjectRecord, debugId) == 172,
          "SceneGpuObjectRecord debugId offset should stay stable");
+}
+
+void testSceneGpuMaterialRecordCarriesOfflineCullMode() {
+  const auto noneMaterial =
+      toGpuMaterialRecord(*makeGpuRecordMaterial(Vec4f{1.0f, 1.0f, 1.0f, 1.0f},
+                                                CullMode::None));
+  EXPECT((noneMaterial.flags & kSceneGpuMaterialCullModeMask) ==
+             kSceneGpuMaterialCullModeNone,
+         "offline GPU material record should preserve CullMode::None");
+
+  const auto frontMaterial =
+      toGpuMaterialRecord(*makeGpuRecordMaterial(Vec4f{1.0f, 1.0f, 1.0f, 1.0f},
+                                                CullMode::Front));
+  EXPECT((frontMaterial.flags & kSceneGpuMaterialCullModeMask) ==
+             kSceneGpuMaterialCullModeFront,
+         "offline GPU material record should preserve CullMode::Front");
+
+  const auto backMaterial =
+      toGpuMaterialRecord(*makeGpuRecordMaterial(Vec4f{1.0f, 1.0f, 1.0f, 1.0f},
+                                                CullMode::Back));
+  EXPECT((backMaterial.flags & kSceneGpuMaterialCullModeMask) ==
+             kSceneGpuMaterialCullModeBack,
+         "offline GPU material record should preserve CullMode::Back");
 }
 
 void testSceneGpuVertexRecordPacksTangentSignInUvTangentSignZ() {
@@ -1128,6 +1159,7 @@ int main() {
   testSceneRegistersRenderableComponentResources();
   testSceneRegistersCameraAndLightResources();
   testSceneGpuRecordLayoutContract();
+  testSceneGpuMaterialRecordCarriesOfflineCullMode();
   testSceneGpuVertexRecordPacksTangentSignInUvTangentSignZ();
   testPbrTextureIndicesEnterUploadView();
   testSceneWithoutIblDoesNotCreateDefaultEnvironmentResources();

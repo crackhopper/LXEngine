@@ -239,8 +239,8 @@ void testOfflinePbrDirectShaderCompiles() {
            "SceneTextures should use set 0 binding 9");
     EXPECT(sceneTextures->type == ShaderPropertyType::Texture2D,
            "SceneTextures should reflect as a combined texture2D sampler");
-    EXPECT(sceneTextures->descriptorCount == 64,
-           "SceneTextures should reserve 64 sampled texture descriptors");
+    EXPECT(sceneTextures->descriptorCount == 256,
+           "SceneTextures should reserve 256 sampled texture descriptors");
   }
 }
 
@@ -283,6 +283,64 @@ void testOfflinePbrTextureArrayUsesNonUniformIndexing() {
   EXPECT(shaderSource.find("SceneTextures[nonuniformEXT(textureIndex)]") !=
              std::string::npos,
          "offline PBR shader should mark material texture indices nonuniform");
+}
+
+void testOfflinePbrDoesNotFlipBackFaceNormals() {
+  const auto shaderPath =
+      findOfflineShaderSourcePath("offline_pbr_direct_ray.comp");
+  EXPECT(!shaderPath.empty(),
+         "offline PBR shader source should be discoverable for normal test");
+  if (shaderPath.empty()) {
+    return;
+  }
+
+  const std::string shaderSource = readTextFile(shaderPath);
+  EXPECT(shaderSource.find("normal = -normal") == std::string::npos,
+         "offline PBR shader should not turn back-face hits into front-face "
+         "shading by flipping normals");
+  EXPECT(shaderSource.find("dot(normal, dir) > 0.0") == std::string::npos,
+         "offline PBR shader should not use ray-facing normal flip logic");
+}
+
+void testOfflinePrimaryDoesNotFlipBackFaceNormals() {
+  const auto shaderPath = findOfflineShaderSourcePath("offline_primary_ray.comp");
+  EXPECT(!shaderPath.empty(),
+         "offline primary shader source should be discoverable for normal test");
+  if (shaderPath.empty()) {
+    return;
+  }
+
+  const std::string shaderSource = readTextFile(shaderPath);
+  EXPECT(shaderSource.find("normal = -normal") == std::string::npos,
+         "offline primary shader should not turn back-face hits into "
+         "front-face shading by flipping normals");
+  EXPECT(shaderSource.find("dot(normal, dir) > 0.0") == std::string::npos,
+         "offline primary shader should not use ray-facing normal flip logic");
+}
+
+void testOfflineShadersCullHitsFromMaterialCullMode() {
+  const std::array shaderNames{"offline_pbr_direct_ray.comp",
+                               "offline_primary_ray.comp"};
+  for (const auto *shaderName : shaderNames) {
+    const auto shaderPath = findOfflineShaderSourcePath(shaderName);
+    EXPECT(!shaderPath.empty(),
+           "offline shader source should be discoverable for cullMode test");
+    if (shaderPath.empty()) {
+      continue;
+    }
+
+    const std::string shaderSource = readTextFile(shaderPath);
+    EXPECT(shaderSource.find("shouldCullRayHit") != std::string::npos,
+           "offline ray shader should evaluate material cullMode during "
+           "intersection");
+    EXPECT(shaderSource.find("MATERIAL_CULL_MODE_BACK") != std::string::npos,
+           "offline ray shader should define back-face culling mode");
+    EXPECT(shaderSource.find("MATERIAL_CULL_MODE_FRONT") != std::string::npos,
+           "offline ray shader should define front-face culling mode");
+    EXPECT(shaderSource.find("det > 0.0") != std::string::npos,
+           "offline ray shader should derive front-facing hits from triangle "
+           "winding instead of flipping normals");
+  }
 }
 
 void testOfflinePbrReadsTangentSignFromUploadAbiField() {
@@ -708,8 +766,8 @@ void testOfflineWorkItemCarriesUnifiedSceneTextureArray() {
          "offline scene storage should carry unified SceneTextures array");
   if (resource != item.descriptorResources.end() &&
       resource->isTextureArray()) {
-    EXPECT(resource->textures().size() == 64,
-           "SceneTextures should provide exactly 64 descriptor slots");
+    EXPECT(resource->textures().size() == 256,
+           "SceneTextures should provide exactly 256 descriptor slots");
   }
 }
 
@@ -768,6 +826,9 @@ int main() {
   testOfflinePbrDirectShaderCompiles();
   testOfflinePbrEmissiveTextureMatchesRealtimeSemantics();
   testOfflinePbrTextureArrayUsesNonUniformIndexing();
+  testOfflinePbrDoesNotFlipBackFaceNormals();
+  testOfflinePrimaryDoesNotFlipBackFaceNormals();
+  testOfflineShadersCullHitsFromMaterialCullMode();
   testOfflinePbrReadsTangentSignFromUploadAbiField();
   testOfflinePbrDirectShaderUsesEveryMaterialInput();
   testOfflineRenderJobValidationRejectsZeroDimensions();

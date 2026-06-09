@@ -1,6 +1,7 @@
 #include "core/scene/scene_gpu_records.hpp"
 
 #include "core/asset/material_instance.hpp"
+#include "core/frame_graph/pass.hpp"
 
 #include <optional>
 
@@ -55,6 +56,18 @@ template <usize BindingCount, usize MemberCount>
   return fallback;
 }
 
+[[nodiscard]] u32 materialCullModeAsGpuFlag(const CullMode mode) {
+  switch (mode) {
+  case CullMode::None:
+    return kSceneGpuMaterialCullModeNone;
+  case CullMode::Front:
+    return kSceneGpuMaterialCullModeFront;
+  case CullMode::Back:
+    return kSceneGpuMaterialCullModeBack;
+  }
+  return kSceneGpuMaterialCullModeBack;
+}
+
 } // namespace
 
 std::array<Vec4f, 4> toGpuColumns(const Mat4f &matrix) {
@@ -83,6 +96,9 @@ Vec4f toGpuBoundsMax(const BoundingBox &bounds) {
 SceneGpuMaterialRecord toGpuMaterialRecord(const MaterialInstance &material) {
   SceneGpuMaterialRecord record;
   constexpr std::array kMaterialBindings{"MaterialUBO", "SurfaceParams"};
+  const auto renderState = material.getPassRenderState(Pass_OfflineRayTrace);
+  record.flags = (record.flags & ~kSceneGpuMaterialCullModeMask) |
+                 materialCullModeAsGpuFlag(renderState.cullMode);
 
   if (const auto value = readFirstMaterialParameter(
           material, kMaterialBindings,

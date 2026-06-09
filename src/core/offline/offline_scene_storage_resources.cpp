@@ -17,7 +17,7 @@
 namespace LX_core::offline {
 namespace {
 
-constexpr usize kOfflineSceneTextureDescriptorCount = 64;
+constexpr usize kOfflineSceneTextureDescriptorCount = 256;
 
 struct DirectionalLightParams final {
   Vec3f direction{0.0f, -1.0f, 0.0f};
@@ -80,7 +80,7 @@ DescriptorResourceRef makeSceneTextureArray(
     const CombinedTextureSampler &paddingTexture) {
   if (uploadTextures.size() > kOfflineSceneTextureDescriptorCount) {
     throw std::runtime_error("offline PBR scene texture descriptor array "
-                             "supports at most 64 textures");
+                             "supports at most 256 textures");
   }
 
   std::vector<TextureSamplerRef> textures;

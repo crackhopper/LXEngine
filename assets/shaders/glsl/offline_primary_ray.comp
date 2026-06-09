@@ -106,6 +106,10 @@ layout(std430, binding = 8) writeonly buffer OutputPixels {
 };
 
 const uint BVH_LEAF_NODE_FLAG = 0x80000000u;
+const uint MATERIAL_CULL_MODE_MASK = 0x3u;
+const uint MATERIAL_CULL_MODE_NONE = 0u;
+const uint MATERIAL_CULL_MODE_FRONT = 1u;
+const uint MATERIAL_CULL_MODE_BACK = 2u;
 
 uint wangHash(uint value) {
   value = (value ^ 61u) ^ (value >> 16u);
@@ -135,6 +139,22 @@ vec3 transformPoint(mat4 m, vec3 p) {
   return value.xyz / max(value.w, 1.0e-8);
 }
 
+bool shouldCullRayHit(uint materialIndex, bool frontFacing) {
+  if (params.materialCount == 0u) {
+    return false;
+  }
+  lxSceneMaterialRecord material =
+      materials[min(materialIndex, params.materialCount - 1u)];
+  uint cullMode = material.flags & MATERIAL_CULL_MODE_MASK;
+  if (cullMode == MATERIAL_CULL_MODE_BACK) {
+    return !frontFacing;
+  }
+  if (cullMode == MATERIAL_CULL_MODE_FRONT) {
+    return frontFacing;
+  }
+  return false;
+}
+
 bool intersectPrimitive(vec3 origin, vec3 dir, lxScenePrimitiveRecord primitive,
                         out float t, out HitAttributes attributes) {
   lxSceneObjectRecord object = objects[primitive.objectIndex];
@@ -152,6 +172,9 @@ bool intersectPrimitive(vec3 origin, vec3 dir, lxScenePrimitiveRecord primitive,
   vec3 p = cross(dir, e2);
   float det = dot(e1, p);
   if (abs(det) < 1e-7) {
+    return false;
+  }
+  if (shouldCullRayHit(primitive.materialIndex, det > 0.0)) {
     return false;
   }
   float invDet = 1.0 / det;
@@ -173,9 +196,6 @@ bool intersectPrimitive(vec3 origin, vec3 dir, lxScenePrimitiveRecord primitive,
       normalize(a.normal.xyz * (1.0 - u - v) + b.normal.xyz * u +
                 c.normal.xyz * v);
   vec3 normal = normalize(transpose(mat3(object.worldToObject)) * localNormal);
-  if (dot(normal, dir) > 0.0) {
-    normal = -normal;
-  }
   attributes.normal = normal;
   attributes.uv = a.uvTangentSign.xy * (1.0 - u - v) +
                   b.uvTangentSign.xy * u + c.uvTangentSign.xy * v;

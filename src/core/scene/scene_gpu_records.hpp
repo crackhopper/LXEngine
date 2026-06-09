@@ -58,6 +58,11 @@ struct alignas(16) SceneGpuMaterialRecord final {
   u32 reserved1 = 0;
 };
 
+constexpr u32 kSceneGpuMaterialCullModeMask = 0x3u;
+constexpr u32 kSceneGpuMaterialCullModeNone = 0u;
+constexpr u32 kSceneGpuMaterialCullModeFront = 1u;
+constexpr u32 kSceneGpuMaterialCullModeBack = 2u;
+
 struct alignas(16) SceneGpuFrameParams final {
   Vec4f eye{};
   Vec4f cameraRight{};

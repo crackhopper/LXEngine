@@ -1086,6 +1086,21 @@ static bool testPbrFragmentUsesSharedCommon(
   return true;
 }
 
+static bool testPbrFragmentAppliesDirectionalLightIntensity(
+    const std::filesystem::path &fragPath) {
+  std::cout << "  Test: PBR fragment applies directional light intensity\n";
+  const auto source = readTextFile(fragPath);
+  if (source.find("pbrInput.lightColor = light.color.rgb * light.color.a") ==
+      std::string::npos) {
+    std::cerr << "  FAIL: pbr.frag should multiply LightUBO color by "
+                 "directional intensity in light.color.a\n";
+    return false;
+  }
+
+  std::cout << "  PASS: PBR fragment applies directional intensity\n";
+  return true;
+}
+
 int main(int argc, char *argv[]) {
   expSetEnvVK();
   // Determine shader directory
@@ -1136,6 +1151,8 @@ int main(int argc, char *argv[]) {
   if (!testPbrMaterialTextureSetContract(vertPath, fragPath))
     ++failures;
   if (!testPbrFragmentUsesSharedCommon(fragPath))
+    ++failures;
+  if (!testPbrFragmentAppliesDirectionalLightIntensity(fragPath))
     ++failures;
 
   // Test 4: BlinnPhong MaterialUBO member reflection (REQ-004)

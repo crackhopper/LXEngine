@@ -98,7 +98,7 @@ void main() {
     pbrInput.normal = N;
     pbrInput.viewDir = V;
     pbrInput.lightDir = L;
-    pbrInput.lightColor = light.color.rgb;
+    pbrInput.lightColor = light.color.rgb * light.color.a;
     pbrInput.metallic = metallic;
     pbrInput.roughness = roughness;
     pbrInput.ao = ao;

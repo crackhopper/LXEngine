@@ -109,11 +109,15 @@ layout(std430, binding = 8) writeonly buffer OutputPixels {
   vec4 pixels[];
 };
 
-layout(set = 0, binding = 9) uniform sampler2D SceneTextures[64];
+layout(set = 0, binding = 9) uniform sampler2D SceneTextures[256];
 
 const uint BVH_LEAF_NODE_FLAG = 0x80000000u;
 const uint INVALID_TEXTURE_INDEX = 0xffffffffu;
-const uint SCENE_TEXTURE_COUNT = 64u;
+const uint SCENE_TEXTURE_COUNT = 256u;
+const uint MATERIAL_CULL_MODE_MASK = 0x3u;
+const uint MATERIAL_CULL_MODE_NONE = 0u;
+const uint MATERIAL_CULL_MODE_FRONT = 1u;
+const uint MATERIAL_CULL_MODE_BACK = 2u;
 
 uint wangHash(uint value) {
   value = (value ^ 61u) ^ (value >> 16u);
@@ -145,6 +149,22 @@ vec3 transformPoint(mat4 m, vec3 p) {
   return value.xyz / max(value.w, 1.0e-8);
 }
 
+bool shouldCullRayHit(uint materialIndex, bool frontFacing) {
+  if (params.materialCount == 0u) {
+    return false;
+  }
+  lxSceneMaterialRecord material =
+      materials[min(materialIndex, params.materialCount - 1u)];
+  uint cullMode = material.flags & MATERIAL_CULL_MODE_MASK;
+  if (cullMode == MATERIAL_CULL_MODE_BACK) {
+    return !frontFacing;
+  }
+  if (cullMode == MATERIAL_CULL_MODE_FRONT) {
+    return frontFacing;
+  }
+  return false;
+}
+
 bool intersectPrimitive(vec3 origin, vec3 dir, lxScenePrimitiveRecord primitive,
                         out float t, out HitAttributes attributes) {
   lxSceneObjectRecord object = objects[primitive.objectIndex];
@@ -162,6 +182,9 @@ bool intersectPrimitive(vec3 origin, vec3 dir, lxScenePrimitiveRecord primitive,
   vec3 p = cross(dir, e2);
   float det = dot(e1, p);
   if (abs(det) < 1e-7) {
+    return false;
+  }
+  if (shouldCullRayHit(primitive.materialIndex, det > 0.0)) {
     return false;
   }
   float invDet = 1.0 / det;
@@ -184,9 +207,6 @@ bool intersectPrimitive(vec3 origin, vec3 dir, lxScenePrimitiveRecord primitive,
   vec3 localNormal =
       normalize(a.normal.xyz * w + b.normal.xyz * u + c.normal.xyz * v);
   vec3 normal = normalize(transpose(mat3(object.worldToObject)) * localNormal);
-  if (dot(normal, dir) > 0.0) {
-    normal = -normal;
-  }
   vec3 localTangent =
       normalize(a.tangent.xyz * w + b.tangent.xyz * u + c.tangent.xyz * v);
   attributes.normal = normal;

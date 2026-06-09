@@ -106,7 +106,7 @@ validateOfflineDescriptorContract(
       {7, "SceneFrameParams", ShaderPropertyType::StorageBuffer, 1,
        static_cast<u32>(sizeof(SceneGpuFrameParams))},
       {8, "OutputPixels"},
-      {9, "SceneTextures", ShaderPropertyType::Texture2D, 64},
+      {9, "SceneTextures", ShaderPropertyType::Texture2D, 256},
   }};
   ShaderStageCode stageCode{};
   stageCode.stage = ShaderStage::Compute;
