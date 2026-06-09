@@ -726,6 +726,12 @@ def compute_camera_transform(eye: list[float], target: list[float]) -> dict[str,
     }
 
 
+def is_environment_floor_shape(shape: PbrtShape) -> bool:
+    source_name = shape.source_name.lower()
+    material_name = shape.material.lower()
+    return source_name == "plane_plane.001" or material_name == "floor"
+
+
 def scene_yaml(
     scene: PbrtScene,
     repo_root: Path,
@@ -786,6 +792,8 @@ def scene_yaml(
             },
         }
     )
+    car_children: list[dict[str, Any]] = []
+    environment_children: list[dict[str, Any]] = []
     for shape in scene.shapes:
         mesh_name = Path(shape.filename).name.replace(".ply", ".obj")
         mesh_uri = rel_to_repo(out_root / "meshes" / mesh_name, repo_root)
@@ -820,7 +828,25 @@ def scene_yaml(
                 },
             ],
         }
-        children.append(node)
+        if is_environment_floor_shape(shape):
+            environment_children.append(node)
+        else:
+            car_children.append(node)
+    if car_children:
+        children.append(
+            {
+                "nodeName": "bmw_m6_car",
+                "name": "BMW_M6_Car",
+                "transform": {
+                    "translation": [0.0, 0.0, 0.0],
+                    "rotation": [1.0, 0.0, 0.0, 0.0],
+                    "scale": [1.0, 1.0, 1.0],
+                },
+                "visibilityMask": 4294967295,
+                "children": car_children,
+            }
+        )
+    children.extend(environment_children)
     return {
         "scene": {
             "name": "PBRT BMW M6",

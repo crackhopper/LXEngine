@@ -76,6 +76,7 @@ def write_fixture(root: Path) -> Path:
     (root / "bsdfs").mkdir()
     write_binary_ply(root / "geometry" / "mesh_00001.ply")
     write_binary_ply_with_uv(root / "geometry" / "mesh_00002.ply")
+    write_binary_ply(root / "geometry" / "mesh_00003.ply")
     (root / "textures" / "sky.exr").write_bytes(b"fake-exr")
     (root / "spds" / "Al.eta.spd").write_text("400 1.0\n", encoding="utf-8")
     (root / "spds" / "Al.k.spd").write_text("400 2.0\n", encoding="utf-8")
@@ -105,6 +106,9 @@ MakeNamedMaterial "LEATHER"
         "string namedmaterial1" "LEATHER-white"
         "string namedmaterial2" "LogoSilver"
         "rgb amount" [.2 .2 .2]
+MakeNamedMaterial "floor"
+        "string type" [ "matte" ]
+        "rgb Kd" [.5 .5 .5]
 # Name "wheel"
 AttributeBegin
     NamedMaterial "LogoSilver"
@@ -114,6 +118,11 @@ AttributeEnd
 AttributeBegin
     NamedMaterial "LEATHER"
     Shape "plymesh" "string filename" "geometry/mesh_00002.ply"
+AttributeEnd
+# Name "Plane_Plane.001"
+AttributeBegin
+    NamedMaterial "floor"
+    Shape "plymesh" "string filename" "geometry/mesh_00003.ply"
 AttributeEnd
 """.strip()
         + "\n",
@@ -149,10 +158,10 @@ class PbrtSceneConvertTest(unittest.TestCase):
                 repo_root=tmp_path / "repo",
             )
 
-            self.assertEqual(manifest["meshCount"], 2)
-            self.assertEqual(manifest["materialCount"], 3)
-            self.assertEqual(manifest["runtimeMaterialCount"], 3)
-            self.assertEqual(manifest["sourceMaterialCount"], 3)
+            self.assertEqual(manifest["meshCount"], 3)
+            self.assertEqual(manifest["materialCount"], 4)
+            self.assertEqual(manifest["runtimeMaterialCount"], 4)
+            self.assertEqual(manifest["sourceMaterialCount"], 4)
 
             scene_text = scene_path.read_text(encoding="utf-8")
             self.assertIn('"enabled": false', scene_text)
@@ -213,6 +222,9 @@ class PbrtSceneConvertTest(unittest.TestCase):
             self.assertIn('"value": [0.2, 0.2, 0.2]', mix_material_text)
 
             self.assertIn('"nodeName": "pbrt_runtime_key_light"', scene_text)
+            self.assertIn('"nodeName": "bmw_m6_car"', scene_text)
+            self.assertIn('"name": "BMW_M6_Car"', scene_text)
+            self.assertIn('"name": "Plane_Plane.001"', scene_text)
             self.assertIn('"tag": "realtime-pbr"', scene_text)
             self.assertIn('"pbrtSourceMaterialUri":', scene_text)
 
