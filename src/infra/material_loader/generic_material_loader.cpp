@@ -119,6 +119,18 @@ void applyShadingModelVariants(std::vector<LX_core::ShaderVariant> &variants,
                 shadingModel == LX_core::ShadingModel::Flat);
 }
 
+[[nodiscard]] bool supportsIblVariant(const std::string &shaderName) {
+  return shaderName == "pbr" || shaderName == "pbr_clearcoat";
+}
+
+void applyLoadOptionVariants(std::vector<LX_core::ShaderVariant> &variants,
+                             const std::string &shaderName,
+                             const GenericMaterialLoadOptions &options) {
+  if (options.forceIbl.has_value() && supportsIblVariant(shaderName)) {
+    upsertVariant(variants, "HAS_IBL", *options.forceIbl);
+  }
+}
+
 /*****************************************************************
  * RenderState parsing
  *****************************************************************/
@@ -161,6 +173,15 @@ LX_core::RenderState parseRenderState(const YAML::Node &node) {
   if (auto v = node["dstBlend"])
     rs.dstBlend = parseBlendFactor(v, "dstBlend");
   return rs;
+}
+
+void applyLoadOptionRenderState(LX_core::RenderState &renderState,
+                                const GenericMaterialLoadOptions &options) {
+  if (options.alphaTransparency.has_value() &&
+      !*options.alphaTransparency && renderState.blendEnable) {
+    renderState.blendEnable = false;
+    renderState.depthWriteEnable = true;
+  }
 }
 
 /*****************************************************************
@@ -297,6 +318,24 @@ void applyParameters(LX_core::MaterialInstance &mat,
       fatalLoader("unsupported parameter type for '" + key + "'");
     }
   }
+}
+
+void applyLoadOptionParameters(LX_core::MaterialInstance &mat,
+                               const GenericMaterialLoadOptions &options) {
+  if (!options.alphaTransparency.has_value() || *options.alphaTransparency) {
+    return;
+  }
+  const auto bindingId = LX_core::StringID("MaterialUBO");
+  const auto memberId = LX_core::StringID("baseColorFactor");
+  const auto value = mat.readParameterValue(bindingId, memberId);
+  if (!value.has_value() ||
+      value->type != LX_core::MaterialParameterValueType::Vec4 ||
+      value->vectorValue.w >= 1.0f) {
+    return;
+  }
+  LX_core::Vec4f opaque = value->vectorValue;
+  opaque.w = 1.0f;
+  mat.setParameter(bindingId, memberId, opaque);
 }
 
 /*****************************************************************
@@ -493,7 +532,8 @@ CompiledPass compilePassShader(const LX_core::StringID &passId,
  *****************************************************************/
 
 LX_core::MaterialInstanceSharedPtr
-loadGenericMaterial(const fs::path &materialPath) {
+loadGenericMaterial(const fs::path &materialPath,
+                    const GenericMaterialLoadOptions &options) {
   const fs::path resolvedMaterialPath = materialPath.is_absolute()
                                             ? materialPath
                                             : resolveRuntimePath(materialPath);
@@ -594,8 +634,10 @@ loadGenericMaterial(const fs::path &materialPath) {
 
       auto variants = mergeVariants(globalVariantsNode, passVariantsNode);
       applyShadingModelVariants(variants, globalShadingModel);
+      applyLoadOptionVariants(variants, passShader, options);
       validateVariantRules(variantRules, variants, "pass " + passName);
       auto renderState = parseRenderState(passRenderStateNode);
+      applyLoadOptionRenderState(renderState, options);
 
       auto cp = compilePassShader(LX_core::StringID(passName), passShader,
                                   passStage,
@@ -610,10 +652,13 @@ loadGenericMaterial(const fs::path &materialPath) {
     // No passes block → single Forward pass with global shader.
     auto variants = mergeVariants(globalVariantsNode, YAML::Node());
     applyShadingModelVariants(variants, globalShadingModel);
+    applyLoadOptionVariants(variants, globalShaderName, options);
     validateVariantRules(variantRules, variants, "pass Forward (default)");
+    LX_core::RenderState renderState;
+    applyLoadOptionRenderState(renderState, options);
     auto cp = compilePassShader(LX_core::Pass_Forward, globalShaderName,
                                 "raster",
-                                variants, LX_core::RenderState{}, shaderDir);
+                                variants, renderState, shaderDir);
     cp.shadingModel = globalShadingModel;
     cp.meshOverlay = globalMeshOverlay;
     compiledPasses.push_back(std::move(cp));
@@ -681,6 +726,7 @@ loadGenericMaterial(const fs::path &materialPath) {
   // 7. Apply global defaults.
   if (globalParamsNode.IsMap())
     applyParameters(*mat, globalParamsNode);
+  applyLoadOptionParameters(*mat, options);
   if (globalResourcesNode.IsMap())
     applyResources(*mat, globalResourcesNode, materialDir);
   for (const auto &cp : compiledPasses) {

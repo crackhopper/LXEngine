@@ -1,5 +1,6 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "texture_loader.hpp"
+#include "infra/image/rgba_image_io.hpp"
 #include <stb/stb_image.h>
 #include <cstring>
 #include <memory>
@@ -57,6 +58,18 @@ const unsigned char* TextureLoader::getData() const {
 
 LX_core::TextureSharedPtr
 TextureLoader::loadHdrTexture(const std::filesystem::path &filename) {
+  if (filename.extension() == ".exr" || filename.extension() == ".EXR") {
+    const auto image = LX_infra::image::readRgba32fExr(filename);
+    LX_core::TextureDesc desc;
+    desc.width = image.width;
+    desc.height = image.height;
+    desc.format = LX_core::TextureFormat::RGBA32Float;
+    const usize byteCount = LX_core::expectedTextureByteCount(desc);
+    std::vector<u8> pixels(byteCount);
+    std::memcpy(pixels.data(), image.rgba.data(), byteCount);
+    return std::make_shared<LX_core::Texture>(desc, std::move(pixels));
+  }
+
   int width = 0;
   int height = 0;
   int channels = 0;

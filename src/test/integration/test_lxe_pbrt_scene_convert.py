@@ -178,8 +178,11 @@ class PbrtSceneConvertTest(unittest.TestCase):
             self.assertEqual(manifest["sourceMaterialCount"], 6)
 
             scene_text = scene_path.read_text(encoding="utf-8")
-            self.assertIn('"enabled": false', scene_text)
+            self.assertIn('"enabled": true', scene_text)
             self.assertIn('"skyboxEnabled": false', scene_text)
+            self.assertIn('"realtimeRender"', scene_text)
+            self.assertIn('"ibl": true', scene_text)
+            self.assertIn('"alphaTransparency": true', scene_text)
 
             obj_text = (out_root / "meshes" / "mesh_00001.obj").read_text(
                 encoding="utf-8"

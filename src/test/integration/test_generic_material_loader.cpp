@@ -831,6 +831,95 @@ void test_vector_parameters_load_without_aliasing_yaml_nodes() {
   std::cout << "  vector parameters survive YAML iteration safely\n";
 }
 
+void test_load_options_force_pbr_ibl_variant() {
+  std::cout << "\n-- test_load_options_force_pbr_ibl_variant --\n";
+  auto root = findProjectRoot();
+  if (root.empty()) {
+    std::cerr << "  SETUP: project root not found; skipping\n";
+    return;
+  }
+
+  auto matPath = makeTempMaterialPath("force_ibl");
+  ScopedTempFile tempFile(matPath);
+  {
+    std::ofstream out(matPath);
+    out << "shader: pbr\n"
+           "variants:\n"
+           "  HAS_IBL: false\n"
+           "parameters:\n"
+           "  MaterialUBO.baseColorFactor: [1.0, 1.0, 1.0, 1.0]\n"
+           "  MaterialUBO.metallicFactor: 0.0\n"
+           "  MaterialUBO.roughnessFactor: 0.5\n"
+           "  MaterialUBO.ao: 1.0\n"
+           "resources:\n"
+           "  albedoMap: white\n";
+  }
+
+  MaterialInstanceSharedPtr mat;
+  {
+    ScopedCurrentPath currentPath(root);
+    mat = loadGenericMaterial(matPath, GenericMaterialLoadOptions{
+                                           .forceIbl = true,
+                                       });
+  }
+
+  REQUIRE(mat != nullptr);
+  REQUIRE(passHasEnabledVariant(mat, Pass_Forward, "HAS_IBL"));
+
+  std::cout << "  PBR IBL variant can be forced by load options\n";
+}
+
+void test_load_options_disable_alpha_transparency() {
+  std::cout << "\n-- test_load_options_disable_alpha_transparency --\n";
+  auto root = findProjectRoot();
+  if (root.empty()) {
+    std::cerr << "  SETUP: project root not found; skipping\n";
+    return;
+  }
+
+  auto matPath = makeTempMaterialPath("opaque_alpha");
+  ScopedTempFile tempFile(matPath);
+  {
+    std::ofstream out(matPath);
+    out << "shader: pbr\n"
+           "passes:\n"
+           "  Forward:\n"
+           "    renderState:\n"
+           "      depthWrite: false\n"
+           "      blendEnable: true\n"
+           "      srcBlend: SrcAlpha\n"
+           "      dstBlend: OneMinusSrcAlpha\n"
+           "parameters:\n"
+           "  MaterialUBO.baseColorFactor: [0.85, 0.95, 1.0, 0.25]\n"
+           "  MaterialUBO.metallicFactor: 0.0\n"
+           "  MaterialUBO.roughnessFactor: 0.05\n"
+           "  MaterialUBO.ao: 1.0\n"
+           "resources:\n"
+           "  albedoMap: white\n";
+  }
+
+  MaterialInstanceSharedPtr mat;
+  {
+    ScopedCurrentPath currentPath(root);
+    mat = loadGenericMaterial(matPath, GenericMaterialLoadOptions{
+                                           .alphaTransparency = false,
+                                       });
+  }
+
+  REQUIRE(mat != nullptr);
+  const auto renderState = mat->getPassRenderState(Pass_Forward);
+  REQUIRE(!renderState.blendEnable);
+  REQUIRE(renderState.depthWriteEnable);
+  const auto baseColor =
+      mat->readParameterValue(StringID("MaterialUBO"),
+                              StringID("baseColorFactor"));
+  REQUIRE(baseColor.has_value());
+  REQUIRE(baseColor->type == MaterialParameterValueType::Vec4);
+  REQUIRE(baseColor->vectorValue.w == 1.0f);
+
+  std::cout << "  alpha transparency can be disabled by load options\n";
+}
+
 void test_textured_character_material_has_projected_shadow_pass() {
   std::cout
       << "\n-- test_textured_character_material_has_projected_shadow_pass --\n";
@@ -909,6 +998,8 @@ int main() {
   test_per_pass_shader_override();
   test_canonical_parameters_shared_across_passes();
   test_vector_parameters_load_without_aliasing_yaml_nodes();
+  test_load_options_force_pbr_ibl_variant();
+  test_load_options_disable_alpha_transparency();
   test_textured_character_material_has_projected_shadow_pass();
 
   std::cout << "\n========================================\n";

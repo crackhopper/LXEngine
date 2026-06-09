@@ -1883,7 +1883,8 @@ private:
     }
     const auto *iblResources =
         m_scene->resources().getIblEnvironmentResourceSet();
-    if (iblResources == nullptr || !iblResources->environmentUbo ||
+    if (iblResources == nullptr || !iblResources->skyboxEnabled ||
+        !iblResources->environmentUbo ||
         iblResources->environmentUbo->getIblIntensity() <= 0.0f) {
       return;
     }

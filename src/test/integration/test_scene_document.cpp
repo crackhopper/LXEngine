@@ -385,6 +385,10 @@ void testSaveSceneDocumentWritesExplicitRootCanonicalFormat() {
       .intensity = 1.25f,
       .roughnessMipCount = 6.0f,
   });
+  doc.setRealtimeRenderSettings(LX_core::SceneRealtimeRenderSettings{
+      .ibl = true,
+      .alphaTransparency = true,
+  });
   auto &root = doc.mutableRootNode();
   root.nodeName = "scene_root";
 
@@ -502,6 +506,10 @@ void testSaveSceneDocumentWritesExplicitRootCanonicalFormat() {
     EXPECT(loaded.environment().roughnessMipCount == 6.0f,
            "scene environment roughness mip count should round trip");
   }
+  EXPECT(loaded.realtimeRenderSettings().ibl,
+         "scene realtime IBL flag should round trip");
+  EXPECT(loaded.realtimeRenderSettings().alphaTransparency,
+         "scene realtime alpha transparency flag should round trip");
   EXPECT(loaded.rootNode().children.size() == 1,
          "explicit root should survive round trip");
   const demo::SceneNodeDocument *loadedWorld =
@@ -1131,6 +1139,10 @@ void testIblMetalSphereSceneAssetLoads() {
     EXPECT(doc.environment().skyboxEnabled,
            "IBL metal sphere should request skybox preview");
   }
+  EXPECT(doc.realtimeRenderSettings().ibl,
+         "IBL metal sphere should enable realtime IBL");
+  EXPECT(!doc.realtimeRenderSettings().alphaTransparency,
+         "IBL metal sphere should keep alpha transparency disabled");
 
   const auto *camera = findChildByNodeName(doc.rootNode(), "game_camera");
   const auto *ground = findChildByNodeName(doc.rootNode(), "ibl_ground");

@@ -21,6 +21,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <system_error>
 #include <type_traits>
 
 namespace demo = LX_demo::lxe_editor;
@@ -46,6 +47,42 @@ int failures = 0;
 [[nodiscard]] std::filesystem::path makeTempPath(const char *filename) {
   return std::filesystem::temp_directory_path() / filename;
 }
+
+[[nodiscard]] std::filesystem::path findRepoRoot() {
+  std::filesystem::path current = std::filesystem::current_path();
+  for (int depth = 0; depth < 6; ++depth) {
+    if (std::filesystem::exists(current / "src" / "tools" /
+                                "lxe_pbrt_scene_convert") &&
+        std::filesystem::exists(current / "data" / "scenes" / "bmw-m6" /
+                                "pbrt_bmw_m6.scene.yaml")) {
+      return current;
+    }
+    if (current == current.parent_path()) {
+      break;
+    }
+    current = current.parent_path();
+  }
+  return std::filesystem::current_path();
+}
+
+class ScopedCurrentPath final {
+public:
+  explicit ScopedCurrentPath(std::filesystem::path path)
+      : m_previous(std::filesystem::current_path()) {
+    std::filesystem::current_path(std::move(path));
+  }
+
+  ~ScopedCurrentPath() {
+    std::error_code ec;
+    std::filesystem::current_path(m_previous, ec);
+  }
+
+  ScopedCurrentPath(const ScopedCurrentPath &) = delete;
+  ScopedCurrentPath &operator=(const ScopedCurrentPath &) = delete;
+
+private:
+  std::filesystem::path m_previous;
+};
 
 [[nodiscard]] std::string readFile(const std::filesystem::path &path) {
   std::ifstream in(path);
@@ -2366,12 +2403,15 @@ void testIblMetalSphereSceneLoadsAndInjectsIblResources() {
     EXPECT(saved.environment().hdrUri == "assets/env/studio_small_03_2k.hdr",
            "IBL metal sphere HDR URI should persist through runtime save");
   }
+  EXPECT(saved.realtimeRenderSettings().ibl,
+         "IBL metal sphere realtime IBL flag should persist through runtime "
+         "save");
 }
 
 void testPbrtBmwM6SceneProducesRealtimeForwardItems() {
+  const std::filesystem::path repoRoot = findRepoRoot();
   const std::filesystem::path path =
-      std::filesystem::current_path() /
-      "data/scenes/bmw-m6/pbrt_bmw_m6.scene.yaml";
+      repoRoot / "data/scenes/bmw-m6/pbrt_bmw_m6.scene.yaml";
   EXPECT(std::filesystem::exists(path),
          "PBRT BMW M6 converted scene asset should exist");
   if (!std::filesystem::exists(path)) {
@@ -2379,6 +2419,7 @@ void testPbrtBmwM6SceneProducesRealtimeForwardItems() {
   }
 
   demo::SceneRuntime runtime;
+  ScopedCurrentPath currentPath(repoRoot);
   runtime.loadFromDocumentPath(path);
   EXPECT(runtime.scene()->getSceneName() == "PBRT BMW M6",
          "PBRT BMW M6 scene should load");

@@ -67,22 +67,46 @@ struct SceneLoadMaterialCache final {
 
 thread_local SceneLoadTimingStats *g_sceneLoadTimingStats = nullptr;
 thread_local SceneLoadMaterialCache *g_sceneLoadMaterialCache = nullptr;
+thread_local std::optional<
+    std::reference_wrapper<const LX_core::SceneRealtimeRenderSettings>>
+    g_sceneRealtimeRenderSettings;
 
 struct ScopedSceneLoadTimingContext final {
   ScopedSceneLoadTimingContext(SceneLoadTimingStats &stats,
                                SceneLoadMaterialCache &cache)
       : previousStats(g_sceneLoadTimingStats),
-        previousCache(g_sceneLoadMaterialCache) {
+        previousCache(g_sceneLoadMaterialCache),
+        previousRealtimeRenderSettings(g_sceneRealtimeRenderSettings) {
     g_sceneLoadTimingStats = &stats;
     g_sceneLoadMaterialCache = &cache;
   }
   ~ScopedSceneLoadTimingContext() {
     g_sceneLoadTimingStats = previousStats;
     g_sceneLoadMaterialCache = previousCache;
+    g_sceneRealtimeRenderSettings = previousRealtimeRenderSettings;
   }
 
   SceneLoadTimingStats *previousStats = nullptr;
   SceneLoadMaterialCache *previousCache = nullptr;
+  std::optional<
+      std::reference_wrapper<const LX_core::SceneRealtimeRenderSettings>>
+      previousRealtimeRenderSettings;
+};
+
+struct ScopedSceneRealtimeRenderSettings final {
+  explicit ScopedSceneRealtimeRenderSettings(
+      const LX_core::SceneRealtimeRenderSettings &settings)
+      : previous(g_sceneRealtimeRenderSettings) {
+    g_sceneRealtimeRenderSettings = std::cref(settings);
+  }
+
+  ~ScopedSceneRealtimeRenderSettings() {
+    g_sceneRealtimeRenderSettings = previous;
+  }
+
+  std::optional<
+      std::reference_wrapper<const LX_core::SceneRealtimeRenderSettings>>
+      previous;
 };
 
 struct ScopedAccumulatedTimer final {
@@ -100,23 +124,46 @@ struct ScopedAccumulatedTimer final {
   return path.generic_string();
 }
 
-[[nodiscard]] std::string materialCacheKey(const std::filesystem::path &path) {
-  return path.is_absolute() ? path.lexically_normal().generic_string()
-                            : std::filesystem::absolute(path)
-                                  .lexically_normal()
-                                  .generic_string();
+[[nodiscard]] LX_infra::GenericMaterialLoadOptions
+currentGenericMaterialLoadOptions() {
+  LX_infra::GenericMaterialLoadOptions options;
+  if (g_sceneRealtimeRenderSettings.has_value()) {
+    const auto &settings = g_sceneRealtimeRenderSettings->get();
+    options.forceIbl = settings.ibl;
+    options.alphaTransparency =
+        settings.alphaTransparency;
+  }
+  return options;
+}
+
+[[nodiscard]] std::string
+materialCacheKey(const std::filesystem::path &path,
+                 const LX_infra::GenericMaterialLoadOptions &options) {
+  std::string key = path.is_absolute() ? path.lexically_normal().generic_string()
+                                       : std::filesystem::absolute(path)
+                                             .lexically_normal()
+                                             .generic_string();
+  if (options.forceIbl.has_value()) {
+    key += *options.forceIbl ? "|ibl=1" : "|ibl=0";
+  }
+  if (options.alphaTransparency.has_value()) {
+    key += *options.alphaTransparency ? "|alpha=1" : "|alpha=0";
+  }
+  return key;
 }
 
 [[nodiscard]] LX_core::MaterialInstanceSharedPtr
 loadCachedGenericMaterial(const std::filesystem::path &path) {
+  const LX_infra::GenericMaterialLoadOptions options =
+      currentGenericMaterialLoadOptions();
   if (g_sceneLoadMaterialCache == nullptr) {
     if (g_sceneLoadTimingStats != nullptr) {
       ++g_sceneLoadTimingStats->materialPrototypeLoadCount;
     }
-    return LX_infra::loadGenericMaterial(path);
+    return LX_infra::loadGenericMaterial(path, options);
   }
 
-  const std::string key = materialCacheKey(path);
+  const std::string key = materialCacheKey(path, options);
   auto &prototypes = g_sceneLoadMaterialCache->genericMaterialPrototypes;
   const auto found = prototypes.find(key);
   if (found != prototypes.end()) {
@@ -129,7 +176,7 @@ loadCachedGenericMaterial(const std::filesystem::path &path) {
   if (g_sceneLoadTimingStats != nullptr) {
     ++g_sceneLoadTimingStats->materialPrototypeLoadCount;
   }
-  auto prototype = LX_infra::loadGenericMaterial(path);
+  auto prototype = LX_infra::loadGenericMaterial(path, options);
   if (!prototype) {
     return nullptr;
   }
@@ -400,7 +447,8 @@ makeNeutralBrdfLutSampler() {
 
 [[nodiscard]] LX_core::IblEnvironmentResources
 loadEnvironmentResources(const EnvironmentState &environment,
-                         const std::vector<std::filesystem::path> &assetRoots) {
+                         const std::vector<std::filesystem::path> &assetRoots,
+                         bool iblEnabled) {
   std::optional<ScopedAccumulatedTimer> timer;
   if (g_sceneLoadTimingStats != nullptr) {
     timer.emplace(g_sceneLoadTimingStats->environmentMs);
@@ -414,6 +462,7 @@ loadEnvironmentResources(const EnvironmentState &environment,
   resources.equirectangularMap->setBindingName(
       LX_core::StringID("EquirectangularMap"));
   resources.equirectangularMap->setDirty();
+  resources.skyboxEnabled = environment.skyboxEnabled;
   resources.skyboxCubemap = makeHdrEquirectCubeSampler(
       hdrTexture, LX_core::StringID("SkyboxMap"), 64u, 1u);
   resources.irradianceCubemap =
@@ -426,7 +475,8 @@ loadEnvironmentResources(const EnvironmentState &environment,
       roughnessMipCount, &actualPrefilterMipCount);
   resources.brdfLut = makeNeutralBrdfLutSampler();
   resources.environmentUbo = std::make_unique<LX_core::EnvironmentData>(
-      environment.intensity, static_cast<float>(actualPrefilterMipCount));
+      iblEnabled ? environment.intensity : 0.0f,
+      static_cast<float>(actualPrefilterMipCount));
   return resources;
 }
 
@@ -434,7 +484,13 @@ loadEnvironmentResources(const EnvironmentState &environment,
 discoverProjectAssetRoots(const std::filesystem::path &scenePath) {
   std::vector<std::filesystem::path> roots;
   std::filesystem::path probe = scenePath.parent_path();
+  std::optional<std::filesystem::path> repositoryAssetRoot;
   while (!probe.empty()) {
+    if (!repositoryAssetRoot.has_value() &&
+        (std::filesystem::exists(probe / "assets") ||
+         std::filesystem::exists(probe / "data"))) {
+      repositoryAssetRoot = absoluteNormal(probe);
+    }
     const std::filesystem::path projectPath = probe / "project.yaml";
     if (std::filesystem::exists(projectPath)) {
       const ProjectDocument project = loadProjectDocument(projectPath);
@@ -457,6 +513,9 @@ discoverProjectAssetRoots(const std::filesystem::path &scenePath) {
       break;
     }
     probe = parent;
+  }
+  if (repositoryAssetRoot.has_value()) {
+    roots.push_back(*repositoryAssetRoot);
   }
   return roots;
 }
@@ -1467,15 +1526,25 @@ void buildSceneNodesRecursive(
 buildRuntimeFromDocument(const SceneDocument &document,
                          const std::optional<std::filesystem::path> &path,
                          std::vector<std::filesystem::path> assetRoots = {}) {
+  LX_core::SceneRealtimeRenderSettings effectiveRealtimeSettings =
+      document.realtimeRenderSettings();
+  const bool environmentEnabled =
+      document.hasEnvironment() && document.environment().enabled;
+  effectiveRealtimeSettings.ibl =
+      effectiveRealtimeSettings.ibl && environmentEnabled;
+  ScopedSceneRealtimeRenderSettings realtimeSettingsScope(
+      effectiveRealtimeSettings);
+
   auto runtime = std::make_shared<SceneRuntimeData>();
   runtime->documentPath = path;
   runtime->document = document;
   runtime->assetRoots = std::move(assetRoots);
   runtime->scene = LX_core::Scene::create(document.sceneName(), nullptr);
   runtime->scene->setRenderSettings(document.renderSettings());
-  if (document.hasEnvironment() && document.environment().enabled) {
+  if (environmentEnabled) {
     runtime->scene->resources().setIblEnvironmentResources(
-        loadEnvironmentResources(document.environment(), runtime->assetRoots));
+        loadEnvironmentResources(document.environment(), runtime->assetRoots,
+                                 effectiveRealtimeSettings.ibl));
   }
 
   while (!runtime->scene->getLightHandles().empty()) {
@@ -1682,6 +1751,8 @@ captureSceneDocument(const std::shared_ptr<SceneRuntimeData> &runtime) {
                                      : "/game_cam");
   document.setRenderSettings(runtime->scene ? runtime->scene->renderSettings()
                                             : runtime->document.renderSettings());
+  document.setRealtimeRenderSettings(
+      runtime->document.realtimeRenderSettings());
   if (runtime->document.hasEnvironment()) {
     document.setEnvironment(runtime->document.environment());
   }

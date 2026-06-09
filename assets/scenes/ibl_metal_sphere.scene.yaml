@@ -9,6 +9,9 @@ scene:
     roughnessMipCount: 5.0
   rendering:
     shadows: true
+  realtimeRender:
+    ibl: true
+    alphaTransparency: false
   defaultOutputProfile: preview
   outputProfiles:
     preview:

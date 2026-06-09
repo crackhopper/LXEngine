@@ -30,6 +30,7 @@ struct SceneDocumentData final {
   std::string gameplayCameraPath = "/game_cam";
   std::optional<EnvironmentState> environment;
   LX_core::SceneRenderSettings renderSettings;
+  LX_core::SceneRealtimeRenderSettings realtimeRenderSettings;
   std::optional<LX_core::offline::RenderProfileDocument> renderProfileDocument;
   SceneNodeDocument rootNode;
   std::optional<EditorCameraState> editorCamera;
@@ -569,6 +570,30 @@ loadSceneRenderSettings(const YAML::Node &node) {
   return settings;
 }
 
+[[nodiscard]] LX_core::SceneRealtimeRenderSettings
+loadSceneRealtimeRenderSettings(const YAML::Node &node) {
+  LX_core::SceneRealtimeRenderSettings settings;
+  if (!node) {
+    return settings;
+  }
+  if (!node.IsMap()) {
+    throw std::runtime_error("scene.realtimeRender must be a map");
+  }
+  for (auto it = node.begin(); it != node.end(); ++it) {
+    const std::string key = it->first.as<std::string>();
+    const YAML::Node value = it->second;
+    if (key == "ibl") {
+      settings.ibl = value.as<bool>();
+    } else if (key == "alphaTransparency") {
+      settings.alphaTransparency = value.as<bool>();
+    } else {
+      throw std::runtime_error("unsupported scene.realtimeRender field: " +
+                               key);
+    }
+  }
+  return settings;
+}
+
 [[nodiscard]] LX_core::offline::OutputCameraOverrides
 loadOutputCameraOverrides(const YAML::Node &node,
                           const std::string &profileName) {
@@ -935,6 +960,16 @@ void saveEnvironmentState(YAML::Emitter &out,
   out << YAML::Key << "intensity" << YAML::Value << state.intensity;
   out << YAML::Key << "roughnessMipCount" << YAML::Value
       << state.roughnessMipCount;
+  out << YAML::EndMap;
+}
+
+void saveRealtimeRenderSettings(
+    YAML::Emitter &out,
+    const LX_core::SceneRealtimeRenderSettings &settings) {
+  out << YAML::Key << "realtimeRender" << YAML::Value << YAML::BeginMap;
+  out << YAML::Key << "ibl" << YAML::Value << settings.ibl;
+  out << YAML::Key << "alphaTransparency" << YAML::Value
+      << settings.alphaTransparency;
   out << YAML::EndMap;
 }
 
@@ -1393,6 +1428,25 @@ void SceneDocument::setRenderSettings(
       settings;
 }
 
+const LX_core::SceneRealtimeRenderSettings &
+SceneDocument::realtimeRenderSettings() const {
+  if (!m_impl) {
+    static const LX_core::SceneRealtimeRenderSettings kDefaultSettings{};
+    return kDefaultSettings;
+  }
+  return std::static_pointer_cast<const SceneDocumentData>(m_impl)
+      ->realtimeRenderSettings;
+}
+
+void SceneDocument::setRealtimeRenderSettings(
+    LX_core::SceneRealtimeRenderSettings settings) {
+  if (!m_impl) {
+    m_impl = std::make_shared<SceneDocumentData>();
+  }
+  std::static_pointer_cast<SceneDocumentData>(m_impl)
+      ->realtimeRenderSettings = settings;
+}
+
 bool SceneDocument::hasRenderProfileDocument() const {
   return m_impl && std::static_pointer_cast<const SceneDocumentData>(m_impl)
                        ->renderProfileDocument.has_value();
@@ -1480,6 +1534,8 @@ SceneDocument loadSceneDocument(const std::filesystem::path &path) {
     }
     document.setRenderSettings(
         loadSceneRenderSettings(sceneNode["rendering"]));
+    document.setRealtimeRenderSettings(
+        loadSceneRealtimeRenderSettings(sceneNode["realtimeRender"]));
     LX_core::offline::RenderProfileDocument renderProfiles =
         loadRenderProfileDocument(sceneNode);
     if (!renderProfiles.empty()) {
@@ -1538,6 +1594,7 @@ void saveSceneDocument(const std::filesystem::path &path,
   out << YAML::Key << "shadows" << YAML::Value
       << document.renderSettings().shadows;
   out << YAML::EndMap;
+  saveRealtimeRenderSettings(out, document.realtimeRenderSettings());
   if (document.hasRenderProfileDocument()) {
     saveRenderProfileDocument(out, document.renderProfileDocument());
   }

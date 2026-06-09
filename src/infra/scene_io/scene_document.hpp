@@ -147,6 +147,9 @@ public:
   void setEnvironment(EnvironmentState state);
   const LX_core::SceneRenderSettings &renderSettings() const;
   void setRenderSettings(LX_core::SceneRenderSettings settings);
+  const LX_core::SceneRealtimeRenderSettings &realtimeRenderSettings() const;
+  void setRealtimeRenderSettings(
+      LX_core::SceneRealtimeRenderSettings settings);
   bool hasRenderProfileDocument() const;
   const LX_core::offline::RenderProfileDocument &renderProfileDocument() const;
   void setRenderProfileDocument(

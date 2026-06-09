@@ -41,6 +41,7 @@ struct alignas(16) EnvironmentData final : public IGpuResource {
 using EnvironmentDataUniquePtr = std::unique_ptr<EnvironmentData>;
 
 struct IblEnvironmentResources {
+  bool skyboxEnabled = true;
   CombinedTextureSamplerSharedPtr skyboxCubemap;
   CombinedTextureSamplerSharedPtr irradianceCubemap;
   CombinedTextureSamplerSharedPtr prefilteredRadianceCubemap;
