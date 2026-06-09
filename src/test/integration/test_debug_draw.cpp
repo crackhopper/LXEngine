@@ -117,8 +117,11 @@ void testDebugDrawUsesInjectedMaterialAsset() {
          "debug draw should request the injected material once");
   EXPECT(items.size() == 1, "debug draw should produce one overlay item");
   if (!items.empty()) {
-    EXPECT(items[0].material == material,
-           "debug draw render item should use injected material asset");
+    EXPECT(items[0].shaderInfo == material->getPassShader(Pass_DebugOverlay),
+           "debug draw render item should use injected material shader");
+    EXPECT(items[0].materialSignature ==
+               material->getPipelineSignature(Pass_DebugOverlay),
+           "debug draw render item should use injected material signature");
   }
 }
 

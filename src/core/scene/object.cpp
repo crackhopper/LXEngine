@@ -759,11 +759,16 @@ std::string SceneNode::sanitizeName(std::string name) {
 void SceneNode::emitRuntimeNodeChanged(const SceneNodeAspect aspect) const {
   const auto scene = m_scene.lock();
   if (!scene) {
+    if (aspect == SceneNodeAspect::RenderableStructure) {
+      const_cast<SceneNode &>(*this).rebuildValidatedCache();
+    }
     return;
   }
 
-  if (aspect == SceneNodeAspect::RenderableStructure ||
-      aspect == SceneNodeAspect::Transform ||
+  if (aspect == SceneNodeAspect::RenderableStructure) {
+    scene->syncNodeResourceState(const_cast<SceneNode &>(*this));
+    const_cast<SceneNode &>(*this).rebuildValidatedCache();
+  } else if (aspect == SceneNodeAspect::Transform ||
       aspect == SceneNodeAspect::Visibility ||
       aspect == SceneNodeAspect::CameraProperties) {
     scene->syncNodeResourceState(const_cast<SceneNode &>(*this));

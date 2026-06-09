@@ -48,7 +48,6 @@ void IComponent::notifyOwnerStructuralChange() const {
   if (!m_owner.has_value()) {
     return;
   }
-  m_owner->get().rebuildValidatedCache();
   m_owner->get().emitRuntimeNodeChanged(SceneNodeAspect::RenderableStructure);
 }
 
