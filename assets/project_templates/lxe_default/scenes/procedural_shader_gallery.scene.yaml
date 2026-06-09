@@ -1,6 +1,8 @@
 scene:
   name: Procedural Shader Gallery
   gameplayCameraPath: /game_cam
+  rendering:
+    shadows: false
 root:
   nodeName: scene_root
   name: ''

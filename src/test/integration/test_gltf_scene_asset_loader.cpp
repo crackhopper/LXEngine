@@ -18,7 +18,8 @@ void expect(bool condition, const char *message) {
 
 bool hasTexture(const LX_core::MaterialInstanceSharedPtr &material,
                 const char *binding) {
-  return material && material->getTexture(LX_core::StringID(binding)) != nullptr;
+  return material &&
+         material->getTexture(LX_core::StringID(binding)) != nullptr;
 }
 
 void expectNear(float actual, float expected, const char *message) {
@@ -44,7 +45,8 @@ void testDamagedHelmetSharedAssetLoadsFullPbr() {
   expect(found, "DamagedHelmet asset root must be discoverable");
 
   const auto result = LX_infra::scene_asset::loadGltfSceneAsset(
-      "assets/models/damaged_helmet/DamagedHelmet.gltf");
+      "assets/models/damaged_helmet/DamagedHelmet.gltf",
+      "assets/materials/pbr.material");
 
   expect(result.mesh != nullptr, "shared loader should create mesh");
   expect(result.material != nullptr, "shared loader should create material");

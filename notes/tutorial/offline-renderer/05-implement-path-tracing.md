@@ -1,6 +1,6 @@
 # 实现自己的 Path Tracing：从 Primary Ray Shader 扩成 Integrator
 
-当前 offline compute renderer 可以看作一台已经通电的实验仪器：buffer、descriptor、dispatch、readback 都能工作。实现自己的 path tracing，重点不是重新搭 Vulkan，而是把 integrator 的输入、随机采样、路径循环、材质评估和输出验证逐步替换进去。
+当前 offline compute renderer 可以看作一台已经通电的实验仪器：scene storage buffer、offline `RenderWorkItem`、compute dispatch、readback 都能工作。实现自己的 path tracing，重点不是重新搭 Vulkan，而是把 integrator 的输入、随机采样、路径循环、材质评估和输出验证逐步替换进去。
 
 ## 先理解当前 Shader 做了什么
 
@@ -12,7 +12,7 @@
 | 遍历 BVH | 显式栈遍历 `SceneSoftwareBvhNode` | 保留，后续可替换为更好的 BVH / Vulkan RT |
 | 命中三角形 | 通过 primitive -> mesh -> index -> vertex 查询 | 扩展 texture sampling、tangent space 和更完整 hit record |
 | 直接光 | 只算一个 directional light | 扩成 light sampling + MIS |
-| 环境 | 程序化 sky color 和简单反射 | 改成 HDR environment importance sampling |
+| 环境 | output profile background color 和简单反射 | 改成 HDR environment importance sampling |
 | 输出 | 写线性 `vec4` | 保留线性 HDR，后续附加 AOV / variance |
 
 这份 shader 的价值是“管线样板”：它证明了 compute shader 能拿到 scene、BVH、material、camera params 和 output buffer。Path tracing 不应该一开始推倒这些接口，而是先在这个壳里加路径循环。
@@ -25,8 +25,9 @@
 | Scene records | `src/core/scene/scene_gpu_records.*` | 增加 path tracing 需要的材质、纹理、光源字段 |
 | Asset resolve | `src/infra/offline/offline_asset_resolver.*` | 把 `cache://`、HDR、texture 路径解析到本地文件 |
 | Scene compile | `src/infra/offline/offline_scene_loader.*` | 从 scene YAML / material YAML 收集离线材质数据 |
-| GPU records / BVH | `src/core/scene/scene_resource_table.*` + `src/core/raytracing/software_bvh.*` | 保持 C++ struct、BVH node 和 GLSL std430 layout 一致 |
-| Vulkan compute | `src/backend/vulkan/offline/software_compute_offline_integrator.*` | 新增 descriptor、pipeline、shader 选择和 dispatch 参数 |
+| Storage resources / BVH | `src/core/offline/offline_scene_storage_resources.*` + `src/core/raytracing/software_bvh.*` | 保持 C++ struct、BVH node 和 GLSL std430 layout 一致 |
+| Offline work graph | `src/core/offline/offline_render_work_graph.*` + `src/core/frame_graph/render_queue.*` | 生成 path tracing 所需的 compute work item、resource 和 pipeline key |
+| Vulkan compute executor | `src/backend/vulkan/offline/software_compute_offline_integrator.*` + `offline_render_graph_executor.*` | 新增 shader 选择、resource binding 和 dispatch 参数 |
 | Shader | `assets/shaders/glsl/*.comp` | 实现真正的 path tracing integrator |
 | CLI | `src/tools/lxe_offline_render/main.cpp` | 选择 profile、输出文件、打印验证信息 |
 
@@ -76,9 +77,9 @@ struct lxSceneMaterialRecord {
 | 改动类型 | 必须同步的位置 |
 |---|---|
 | 新增材质参数 | `SceneGpuMaterialRecord`、GLSL `lxSceneMaterialRecord`、`SceneResourceTable` packing、`test_offline_gpu_scene` |
-| 新增 texture index | `MaterialInstance`、`SceneGpuMaterialRecord`、descriptor layout、shader sampling |
-| 新增 light buffer | `SceneResourceTable`、GPU light struct、descriptor layout、shader light loop |
-| 新增 output AOV | `VulkanOfflineRenderer` descriptor、CLI 输出模块、测试文件大小 |
+| 新增 texture index | `MaterialInstance`、`SceneGpuMaterialRecord`、storage resource、shader sampling |
+| 新增 light buffer | `SceneResourceTable`、GPU light struct、storage resource、shader light loop |
+| 新增 output AOV | `OfflineReadbackImage` 或新增 output resource、CLI 输出模块、测试文件大小 |
 
 ## Shader 里的 Path Loop 骨架
 
@@ -130,9 +131,9 @@ vec3 tracePath(vec3 origin, vec3 dir, uint pixelIndex, uint sampleIndex) {
 | 测试 | 应覆盖的风险 |
 |---|---|
 | `test_offline_scene_loader` | scene/profile/light/material 字段没有被丢掉 |
-| `test_offline_gpu_scene` | std430 大小、primitive/material/light buffer 合同稳定 |
-| `test_vulkan_offline_renderer` | headless Vulkan 初始化和 renderer 生命周期稳定 |
-| CLI smoke | shader、descriptor、dispatch、readback 能跑完整链路 |
+| `test_offline_gpu_scene` | std430 大小、offline storage resources、primitive/material/light buffer 合同稳定 |
+| `test_vulkan_offline_renderer` | headless Vulkan 初始化、offline graph executor 和 renderer 生命周期稳定 |
+| CLI smoke | shader、resource binding、dispatch、readback 能跑完整链路 |
 | 小尺寸 golden / statistics | 固定 seed 下中心像素、平均亮度、NaN/Inf 检查稳定 |
 
 Path tracing 的图像测试不要一开始追求逐像素 golden。随机采样会导致细小差异；更适合先固定 seed，检查输出尺寸、有限值、平均亮度区间和关键像素大致范围。
@@ -143,7 +144,7 @@ Path tracing 的图像测试不要一开始追求逐像素 golden。随机采样
 |---|---|---|
 | 直接复用 realtime draw item | 它绑定了 pass、pipeline key、可见性和实时材质假设 | 从 scene YAML 加载统一 `SceneResourceTable` |
 | 把 path tracing 参数塞进 realtime renderer | 实时和离线的生命周期、输出目标不同 | 放在单个 `scene.offlineRender`；相机、尺寸和输出目录放在 `scene.outputProfiles` |
-| 一开始接 bindless | 当前需求明确不做 bindless，且会放大架构风险 | 先用显式 descriptor buffer |
+| 一开始接 bindless | 当前需求明确不做 bindless，且会放大架构风险 | 先用显式 storage buffer / resource binding |
 | 先做复杂 UI | integrator 还在变，UI 会过早固化接口 | 先用 CLI 和 scene profile 固定实验合同 |
 
 ## 继续阅读

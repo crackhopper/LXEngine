@@ -38,7 +38,7 @@ struct alignas(16) CameraData : public IGpuResource {
   }
 };
 
-using CameraDataSharedPtr = std::shared_ptr<CameraData>;
+using CameraDataUniquePtr = std::unique_ptr<CameraData>;
 
 // Camera 类型枚举
 enum class CameraType { Perspective, Orthographic };

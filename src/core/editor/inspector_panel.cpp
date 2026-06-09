@@ -129,10 +129,11 @@ void copyToBuffer(std::string_view text, std::span<char> buffer) {
   }
 }
 
-[[nodiscard]] LightBaseSharedPtr findLightForNode(const SceneNode &node) {
+[[nodiscard]] std::optional<std::reference_wrapper<const LightBase>>
+findLightForNode(const SceneNode &node) {
   const auto scene = node.getAttachedScene();
   if (!scene) {
-    return nullptr;
+    return std::nullopt;
   }
   return scene->getLight(node);
 }
@@ -222,8 +223,9 @@ InspectorPanel::Snapshot InspectorPanel::makeSnapshot() const {
   }
   if (const auto light = findLightForNode(node)) {
     snapshot.hasLight = true;
-    if (const auto directional =
-            std::dynamic_pointer_cast<DirectionalLight>(light)) {
+    const LightBase &lightRef = light->get();
+    if (const auto *directional =
+            dynamic_cast<const DirectionalLight *>(&lightRef)) {
       snapshot.lightKind = "Directional";
       snapshot.lightDirection = directional->getDirection();
       snapshot.lightColor = directional->getColor();
@@ -232,13 +234,12 @@ InspectorPanel::Snapshot InspectorPanel::makeSnapshot() const {
       snapshot.lightShadowBias = directional->getShadowParams().y;
       snapshot.lightShadowDistance = directional->getShadowDistance();
       snapshot.lightShadowCascadeCount = directional->getShadowCascadeCount();
-    } else if (const auto point =
-                   std::dynamic_pointer_cast<PointLight>(light)) {
+    } else if (const auto *point = dynamic_cast<const PointLight *>(&lightRef)) {
       snapshot.lightKind = "Point";
       snapshot.lightColor = point->getColor();
       snapshot.lightIntensity = point->getIntensity();
       snapshot.lightRange = point->getRange();
-    } else if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
+    } else if (const auto *spot = dynamic_cast<const SpotLight *>(&lightRef)) {
       snapshot.lightKind = "Spot";
       snapshot.lightDirection = spot->getDirection();
       snapshot.lightColor = spot->getColor();

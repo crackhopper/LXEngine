@@ -5,6 +5,7 @@
 #include "core/frame_graph/frame_graph.hpp"
 #include "core/frame_graph/pass.hpp"
 #include "core/frame_graph/render_upload_plan.hpp"
+#include "core/frame_graph/scene_descriptor_resource_resolver.hpp"
 #include "core/image/tone_mapping.hpp"
 #include "core/offline/offline_render_job.hpp"
 #include "core/rhi/gpu_resource.hpp"
@@ -310,24 +311,24 @@ void writeMat4Json(std::ostream &out, const LX_core::Mat4f &matrix) {
   out << "]";
 }
 
-[[nodiscard]] u32 countCameraResources(
-    const std::vector<LX_core::IGpuResourceSharedPtr> &resources) {
+[[nodiscard]] u32
+countCameraResources(const LX_core::DescriptorResourceList &resources) {
   u32 count = 0;
   const LX_core::StringID cameraBinding("CameraUBO");
   for (const auto &resource : resources) {
-    if (resource && resource->getBindingName() == cameraBinding) {
+    if (resource.getBindingName() == cameraBinding) {
       ++count;
     }
   }
   return count;
 }
 
-[[nodiscard]] u32 countLightResources(
-    const std::vector<LX_core::IGpuResourceSharedPtr> &resources) {
+[[nodiscard]] u32
+countLightResources(const LX_core::DescriptorResourceList &resources) {
   u32 count = 0;
   const LX_core::StringID lightBinding("LightUBO");
   for (const auto &resource : resources) {
-    if (resource && resource->getBindingName() == lightBinding) {
+    if (resource.getBindingName() == lightBinding) {
       ++count;
     }
   }
@@ -335,17 +336,17 @@ void writeMat4Json(std::ostream &out, const LX_core::Mat4f &matrix) {
 }
 
 [[nodiscard]] LX_core::Vec4f findLightDirection(
-    const std::vector<LX_core::IGpuResourceSharedPtr> &resources) {
+    const LX_core::DescriptorResourceList &resources) {
   const LX_core::StringID lightBinding("LightUBO");
   for (const auto &resource : resources) {
-    if (!resource || resource->getBindingName() != lightBinding ||
-        resource->getByteSize() <
+    if (!resource.isResource() || resource.getBindingName() != lightBinding ||
+        resource.resource().get().getByteSize() <
             sizeof(LX_core::DirectionalLightData::Param)) {
       continue;
     }
     const auto *param =
         static_cast<const LX_core::DirectionalLightData::Param *>(
-            resource->getRawData());
+            resource.resource().get().getRawData());
     return param->dir;
   }
   return {};
@@ -368,8 +369,9 @@ extractModelMatrix(const LX_core::PerDrawDataSharedPtr &drawData) {
   out.nodeName = renderable.getNodeName();
   out.objectSignature =
       LX_core::GlobalStringTable::get().getName(item.objectSignature.id);
-  out.indexCount = item.raster.indexBuffer
-                       ? item.raster.indexBuffer->getByteSize() / sizeof(u32)
+  out.indexCount = item.raster.indexBuffer.isValid()
+                       ? item.raster.indexBuffer.get().getByteSize() /
+                             sizeof(u32)
                        : 0;
 
   auto modelOpt = extractModelMatrix(item.raster.drawData);
@@ -674,12 +676,12 @@ namespace {
 
 constexpr u32 kMaxFramesInFlight = 3;
 
-bool isSharedHostBufferResource(const IGpuResourceSharedPtr &resource) {
-  if (!resource || !resource->isDirty()) {
+bool isDirtyHostBufferResource(const GpuResourceRef &resource) {
+  if (!resource.isValid() || !resource.get().isDirty()) {
     return false;
   }
 
-  switch (resource->getType()) {
+  switch (resource.get().getType()) {
   case ResourceType::VertexBuffer:
   case ResourceType::IndexBuffer:
   case ResourceType::UniformBuffer:
@@ -820,7 +822,7 @@ public:
     const LX_core::RenderUploadPlan uploadPlan =
         LX_core::buildRenderUploadPlan(queue);
     for (const auto &resource : uploadPlan.resources) {
-      if (isSharedHostBufferResource(resource)) {
+      if (isDirtyHostBufferResource(resource)) {
         return true;
       }
     }
@@ -843,8 +845,9 @@ public:
     if (!m_scene) {
       return;
     }
-    auto resources = m_scene->getIblEnvironmentResourceSet();
-    if (!resources.equirectangularMap || resources.bakedSkyboxCubemap) {
+    auto *resources = m_scene->resources().getMutableIblEnvironmentResources();
+    if (resources == nullptr || !resources->equirectangularMap ||
+        resources->bakedSkyboxCubemap) {
       return;
     }
 
@@ -852,11 +855,11 @@ public:
                                             commandBufferManager());
     const u32 prefilterMipCount = std::max(
         1u, static_cast<u32>(std::round(
-                resources.environmentUbo
-                    ? resources.environmentUbo->getPrefilteredMipCount()
+                resources->environmentUbo
+                    ? resources->environmentUbo->getPrefilteredMipCount()
                     : 1.0f)));
-    const auto baked = baker.bakeStaticEnvironment({
-        .equirectangularMap = resources.equirectangularMap,
+    auto baked = baker.bakeStaticEnvironment({
+        .equirectangularMap = resources->equirectangularMap,
         .skyboxSize = 64,
         .irradianceSize = 32,
         .prefilterSize = 64,
@@ -864,11 +867,10 @@ public:
         .brdfLutSize = 128,
     });
 
-    resources.bakedSkyboxCubemap = baked.skybox;
-    resources.bakedIrradianceCubemap = baked.irradiance;
-    resources.bakedPrefilteredRadianceCubemap = baked.prefiltered;
-    resources.bakedBrdfLut = baked.brdfLut;
-    m_scene->setIblEnvironmentResources(std::move(resources));
+    resources->bakedSkyboxCubemap = std::move(baked.skybox);
+    resources->bakedIrradianceCubemap = std::move(baked.irradiance);
+    resources->bakedPrefilteredRadianceCubemap = std::move(baked.prefiltered);
+    resources->bakedBrdfLut = std::move(baked.brdfLut);
   }
 
   void initScene(SceneSharedPtr _scene) {
@@ -878,21 +880,7 @@ public:
     }
     m_scene = _scene;
 
-    // REQ-009 / REQ-046: compute the swapchain target once, then migrate
-    // default scene cameras to the HDR forward target before build so
-    // scene-level CameraUBO resources still attach to the Forward queue.
     const LX_core::RenderTarget swapchainTarget = makeSwapchainTarget();
-    for (const auto &cameraNode : m_scene->getCameras()) {
-      if (!cameraNode) {
-        continue;
-      }
-      const auto cameraComponent =
-          cameraNode->getComponent<LX_core::CameraComponent>();
-      if (cameraComponent && !cameraComponent->get().getTarget().has_value()) {
-        cameraComponent->get().setTarget(swapchainTarget);
-      }
-    }
-
     const auto swapchainDesc = swapchainTarget.toDesc();
     LX_core::RenderTargetDesc forwardHdrDesc;
     forwardHdrDesc.role = LX_core::RenderTargetRole::Offscreen;
@@ -900,18 +888,6 @@ public:
     forwardHdrDesc.depthFormat = swapchainTarget.depthFormat;
     const auto shadowTarget =
         LX_core::RenderTargetDesc::offscreenDepth(swapchainTarget.depthFormat);
-
-    for (const auto &cameraNode : m_scene->getCameras()) {
-      if (!cameraNode) {
-        continue;
-      }
-      const auto cameraComponent =
-          cameraNode->getComponent<LX_core::CameraComponent>();
-      if (cameraComponent && cameraComponent->get().getTarget().has_value() &&
-          *cameraComponent->get().getTarget() == swapchainTarget) {
-        cameraComponent->get().setTarget(LX_core::RenderTarget{forwardHdrDesc});
-      }
-    }
 
     updateDirectionalLightCascades();
     bakeSceneIblEnvironmentIfNeeded();
@@ -932,21 +908,25 @@ public:
         LX_core::StringID("swapchain.color"));
 
     m_frameGraph = LX_core::FrameGraph{}; // Fresh graph on every initScene.
+    m_scene->resources().beginRenderResourceScope();
     std::vector<LX_core::FrameGraphRead> shadowReads;
-    shadowReads.reserve(LX_core::MaxShadowCascades);
-    for (u32 cascadeIndex = 0; cascadeIndex < LX_core::MaxShadowCascades;
-         ++cascadeIndex) {
-      const auto shadowDepth = LX_core::FrameGraphResourceRef::depthAttachment(
-          LX_core::StringID("shadow.cascade" + std::to_string(cascadeIndex)));
-      m_frameGraph.addPass(
-          LX_core::FramePass{LX_core::Pass_Shadow,
-                             shadowTarget,
-                             {},
-                             {},
-                             {LX_core::FrameGraphWrite{shadowDepth}}});
-      shadowReads.push_back(LX_core::FrameGraphRead::sampled(
-          shadowDepth.name,
-          LX_core::StringID("ShadowMap" + std::to_string(cascadeIndex))));
+    if (m_scene->renderSettings().shadows) {
+      shadowReads.reserve(LX_core::MaxShadowCascades);
+      for (u32 cascadeIndex = 0; cascadeIndex < LX_core::MaxShadowCascades;
+           ++cascadeIndex) {
+        const auto shadowDepth =
+            LX_core::FrameGraphResourceRef::depthAttachment(LX_core::StringID(
+                "shadow.cascade" + std::to_string(cascadeIndex)));
+        m_frameGraph.addPass(
+            LX_core::FramePass{LX_core::Pass_Shadow,
+                               shadowTarget,
+                               {},
+                               {},
+                               {LX_core::FrameGraphWrite{shadowDepth}}});
+        shadowReads.push_back(LX_core::FrameGraphRead::sampled(
+            shadowDepth.name,
+            LX_core::StringID("ShadowMap" + std::to_string(cascadeIndex))));
+      }
     }
     m_frameGraph.addPass(
         LX_core::FramePass{LX_core::Pass_Forward,
@@ -1004,9 +984,9 @@ public:
     //   - sorts by PipelineKey
     // There is no more side-channel camera/light UBO injection here.
     m_frameGraph.build(LX_core::RenderWorkBuildContext::realtime(*m_scene));
+    rebuildForwardQueueWithDefaultCameraResources(forwardHdrDesc);
     addSkyboxBackgroundItem(forwardHdrDesc);
-    rebuildDebugOverlayQueueWithForwardCameraResources(forwardHdrDesc,
-                                                       swapchainDesc);
+    rebuildDebugOverlayQueueWithDefaultCameraResources(swapchainDesc);
     if (m_postProcessSettings.bloomEnabled) {
       addBloomThresholdItem();
       addBloomBlurItem(LX_core::Pass_BloomBlurH, kBloomBlurHShaderName,
@@ -1401,32 +1381,19 @@ public:
     const LX_core::RenderTarget target{targetDesc};
 
     auto &cameraComponent = camera->get();
-    const auto previousTarget = cameraComponent.getTarget();
-    cameraComponent.setTarget(target);
-    cameraComponent.updateMatrices();
     updateDirectionalLightCascadesForCamera(cameraComponent);
-    auto sceneResources = m_scene->getSceneLevelResources(pass, target);
-    cameraComponent.setTarget(previousTarget);
-
-    if (pass == LX_core::Pass_Forward) {
-      for (u32 cascadeIndex = 0; cascadeIndex < LX_core::MaxShadowCascades;
-           ++cascadeIndex) {
-        const auto shadowDepth =
-            LX_core::FrameGraphResourceRef::depthAttachment(LX_core::StringID(
-                "shadow.cascade" + std::to_string(cascadeIndex)));
-        sceneResources.push_back(
-            std::make_shared<LX_core::FrameGraphSampledResource>(
-                shadowDepth.name,
-                LX_core::StringID("ShadowMap" + std::to_string(cascadeIndex))));
-      }
-    }
+    LX_core::CameraResource cameraResource =
+        LX_core::Scene::makeCameraResource(cameraComponent.getSnapshot());
 
     LX_core::RenderWorkQueue queue;
-    queue.build(
-        LX_core::RenderWorkBuildContext::realtime(
-            *m_scene, std::move(sceneResources),
-            cameraComponent.getCullingMask() & ~LX_core::Layer_EditorOverlay),
-        pass, target);
+    queue.build(LX_core::RenderWorkBuildContext::realtime(
+                    *m_scene,
+                    LX_core::RenderWorkBuildContext::RealtimeOptions{
+                        .cameraResource = cameraResource,
+                        .visibleMask = cameraComponent.getCullingMask() &
+                                       ~LX_core::Layer_EditorOverlay,
+                    }),
+                pass, target);
     if (queue.getItems().empty()) {
       throw std::runtime_error("debug render target produced no draw items");
     }
@@ -1582,13 +1549,16 @@ public:
     const LX_core::VisibilityLayerMask outputCullingMask =
         output.cameraOverrides.cullingMask.value_or(sourceCamera.cullingMask);
 
-    auto outputCameraUbo = std::make_shared<LX_core::CameraData>();
-    outputCameraUbo->param.eyePos = sourceCamera.pose.eye;
-    outputCameraUbo->param.view =
-        LX_core::makeCameraViewMatrix(sourceCamera.pose);
-    outputCameraUbo->param.proj =
+    LX_core::CameraResource outputCameraResource;
+    outputCameraResource.pose = sourceCamera.pose;
+    outputCameraResource.projection = outputProjection;
+    outputCameraResource.view = LX_core::makeCameraViewMatrix(sourceCamera.pose);
+    outputCameraResource.proj =
         LX_core::makeCameraProjectionMatrix(outputProjection);
-    outputCameraUbo->setDirty();
+    outputCameraResource.cullingMask = outputCullingMask;
+    outputCameraResource.active = sourceCamera.active;
+    const auto outputCameraView = outputCameraResource.view;
+    const auto outputCameraProj = outputCameraResource.proj;
 
     LX_core::RenderTargetDesc targetDesc;
     targetDesc.role = LX_core::RenderTargetRole::Offscreen;
@@ -1596,23 +1566,13 @@ public:
     targetDesc.depthFormat = LX_core::ImageFormat::D32Float;
     const LX_core::RenderTarget target{targetDesc};
 
-    auto sceneResources =
-        m_scene->getSceneLevelResources(LX_core::Pass_Forward, target);
-    const LX_core::StringID cameraBinding("CameraUBO");
-    sceneResources.erase(
-        std::remove_if(
-            sceneResources.begin(), sceneResources.end(),
-            [cameraBinding](const LX_core::IGpuResourceSharedPtr &res) {
-              return res && res->getBindingName() == cameraBinding;
-            }),
-        sceneResources.end());
-    sceneResources.push_back(
-        std::static_pointer_cast<LX_core::IGpuResource>(outputCameraUbo));
+    auto sceneResources = m_scene->getSceneLevelResources(
+        LX_core::Pass_Forward, outputCameraResource);
     RealtimeProfileDebugInfo debugInfo;
     debugInfo.profileAspect = profileAspect;
     debugInfo.cameraAspect = outputProjection.aspect;
-    debugInfo.cameraView = outputCameraUbo->param.view;
-    debugInfo.cameraProj = outputCameraUbo->param.proj;
+    debugInfo.cameraView = outputCameraView;
+    debugInfo.cameraProj = outputCameraProj;
     debugInfo.cameraResourceCount = countCameraResources(sceneResources);
     debugInfo.lightResourceCount = countLightResources(sceneResources);
     debugInfo.lightDirection = findLightDirection(sceneResources);
@@ -1620,29 +1580,22 @@ public:
     const std::string attachmentPrefix =
         "realtime.profile." + basePath.generic_string() + "." +
         std::to_string(output.width) + "x" + std::to_string(output.height);
-    const auto shadowFallbackRef =
-        LX_core::FrameGraphResourceRef::depthAttachment(
-            LX_core::StringID(attachmentPrefix + ".shadowFallback"));
-    for (u32 cascadeIndex = 0; cascadeIndex < LX_core::MaxShadowCascades;
-         ++cascadeIndex) {
-      sceneResources.push_back(
-          std::make_shared<LX_core::FrameGraphSampledResource>(
-              shadowFallbackRef.name,
-              LX_core::StringID("ShadowMap" + std::to_string(cascadeIndex))));
-    }
 
     LX_core::RenderWorkQueue queue;
     queue.build(LX_core::RenderWorkBuildContext::realtime(
-                    *m_scene, std::move(sceneResources),
-                    outputCullingMask & ~LX_core::Layer_EditorOverlay),
+                    *m_scene,
+                    LX_core::RenderWorkBuildContext::RealtimeOptions{
+                        .cameraResource = outputCameraResource,
+                        .visibleMask =
+                            outputCullingMask & ~LX_core::Layer_EditorOverlay,
+                    }),
                 LX_core::Pass_Forward, target);
     if (queue.getItems().empty()) {
       throw std::runtime_error(
           "realtime profile output produced no draw items");
     }
     debugInfo.drawItemCount = static_cast<u32>(queue.getItems().size());
-    const LX_core::Mat4f viewProj =
-        outputCameraUbo->param.proj * outputCameraUbo->param.view;
+    const LX_core::Mat4f viewProj = outputCameraProj * outputCameraView;
     for (const auto &renderable : m_scene->getRenderables()) {
       if (!renderable) {
         continue;
@@ -1681,41 +1634,6 @@ public:
 
     device().waitIdle();
     auto cmd = commandBufferManager().beginSingleTimeCommands();
-    auto &shadowFallbackAttachment =
-        resourceManager().createOrGetFrameGraphAttachment(
-            shadowFallbackRef.name, VkExtent2D{1, 1}, VK_FORMAT_D32_SFLOAT,
-            VK_IMAGE_ASPECT_DEPTH_BIT,
-            VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
-                VK_IMAGE_USAGE_SAMPLED_BIT);
-    std::unique_ptr<VulkanFrameBuffer> shadowFallbackFramebuffer;
-    transitionFrameGraphAttachment(
-        shadowFallbackRef, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-        VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
-            VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, *cmd);
-    {
-      LX_core::RenderTargetDesc shadowFallbackDesc =
-          LX_core::RenderTargetDesc::offscreenDepth(
-              LX_core::ImageFormat::D32Float);
-      auto &shadowFallbackRenderPass =
-          resourceManager().getRenderPass(shadowFallbackDesc);
-      std::vector<VkImageView> shadowFallbackViews{
-          shadowFallbackAttachment.texture->getImageView()};
-      shadowFallbackFramebuffer = VulkanFrameBuffer::create(
-          device(), shadowFallbackRenderPass.getHandle(), shadowFallbackViews,
-          VkExtent2D{1, 1});
-      cmd->beginRenderPass(shadowFallbackRenderPass.getHandle(),
-                           shadowFallbackFramebuffer->getHandle(),
-                           VkExtent2D{1, 1},
-                           shadowFallbackRenderPass.getClearValues());
-      cmd->setViewport(1, 1);
-      cmd->setScissor(1, 1);
-      cmd->endRenderPass();
-    }
-    transitionFrameGraphAttachment(
-        shadowFallbackRef, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT, *cmd);
-
     auto &colorAttachment = resourceManager().createOrGetFrameGraphAttachment(
         colorRef.name, extent, colorFormat, VK_IMAGE_ASPECT_COLOR_BIT,
         VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
@@ -1892,22 +1810,34 @@ private:
 
   void addFullscreenMaterialItem(LX_core::StringID pass,
                                  const LX_core::RenderTargetDesc &target,
-                                 LX_core::MaterialInstanceSharedPtr material,
+                                 LX_core::MaterialInstance::UniquePtr material,
                                  const char *objectSignature) {
+    if (!m_scene || !material) {
+      return;
+    }
     LX_core::RenderWorkItem item;
     item.shaderInfo = material->getPassShader(pass);
-    item.material = material;
+    item.renderState = material->getPassRenderState(pass);
+    const LX_core::StringID materialSignature =
+        material->getPipelineSignature(pass);
+    auto vertexBuffer = LX_core::VertexBuffer<LX_core::VertexPos>::createUnique(
+        std::vector<LX_core::VertexPos>{{{0.0f, 0.0f, 0.0f}},
+                                        {{0.0f, 0.0f, 0.0f}},
+                                        {{0.0f, 0.0f, 0.0f}}});
+    auto indexBuffer = LX_core::IndexBuffer::createUnique({0u, 1u, 2u});
     item.raster.vertexBuffer =
-        LX_core::VertexBuffer<LX_core::VertexPos>::create(
-            std::vector<LX_core::VertexPos>{{{0.0f, 0.0f, 0.0f}},
-                                            {{0.0f, 0.0f, 0.0f}},
-                                            {{0.0f, 0.0f, 0.0f}}});
-    item.raster.indexBuffer = LX_core::IndexBuffer::create({0u, 1u, 2u});
-    item.descriptorResources = material->getDescriptorResources(pass);
+        m_scene->resources().addRenderGpuResource(std::move(vertexBuffer));
+    item.raster.indexBuffer =
+        m_scene->resources().addRenderGpuResource(std::move(indexBuffer));
+    const LX_core::MaterialHandle materialHandle =
+        m_scene->resources().addRenderMaterial(std::move(material));
+    item.descriptorResources =
+        LX_core::buildSceneMaterialDescriptorResources(
+            m_scene->resources(), materialHandle, item.shaderInfo);
     item.pass = pass;
     item.target = target;
     item.objectSignature = LX_core::StringID(objectSignature);
-    item.materialSignature = material->getPipelineSignature(pass);
+    item.materialSignature = materialSignature;
     item.pipelineKey = LX_core::PipelineKey::build(
         item.objectSignature, item.materialSignature,
         item.target.getPipelineSignature());
@@ -1951,42 +1881,56 @@ private:
     if (!m_scene) {
       return;
     }
-    const auto iblResources = m_scene->getIblEnvironmentResourceSet();
-    const auto skyboxResource =
-        iblResources.bakedSkyboxCubemap
-            ? iblResources.bakedSkyboxCubemap
-            : std::static_pointer_cast<LX_core::IGpuResource>(
-                  iblResources.skyboxCubemap);
-    if (!skyboxResource || !iblResources.environmentUbo ||
-        iblResources.environmentUbo->getIblIntensity() <= 0.0f) {
+    const auto *iblResources =
+        m_scene->resources().getIblEnvironmentResourceSet();
+    if (iblResources == nullptr || !iblResources->environmentUbo ||
+        iblResources->environmentUbo->getIblIntensity() <= 0.0f) {
+      return;
+    }
+    LX_core::GpuResourceRef skyboxResource;
+    if (iblResources->bakedSkyboxCubemap) {
+      skyboxResource =
+          LX_core::GpuResourceRef{*iblResources->bakedSkyboxCubemap};
+    } else if (iblResources->skyboxCubemap) {
+      skyboxResource = LX_core::GpuResourceRef{*iblResources->skyboxCubemap};
+    }
+    if (!skyboxResource.isValid()) {
       return;
     }
 
     VulkanPostProcessBuilder builder(m_postProcessSettings);
-    const auto material = builder.createSkyboxBackgroundMaterial();
+    auto material = builder.createSkyboxBackgroundMaterial();
     LX_core::RenderWorkItem item;
     item.shaderInfo = material->getPassShader(LX_core::Pass_Forward);
-    item.material = material;
+    item.renderState = material->getPassRenderState(LX_core::Pass_Forward);
+    const LX_core::StringID materialSignature =
+        material->getPipelineSignature(LX_core::Pass_Forward);
+    auto vertexBuffer = LX_core::VertexBuffer<LX_core::VertexPos>::createUnique(
+        std::vector<LX_core::VertexPos>{{{0.0f, 0.0f, 0.0f}},
+                                        {{0.0f, 0.0f, 0.0f}},
+                                        {{0.0f, 0.0f, 0.0f}}});
+    auto indexBuffer = LX_core::IndexBuffer::createUnique({0u, 1u, 2u});
     item.raster.vertexBuffer =
-        LX_core::VertexBuffer<LX_core::VertexPos>::create(
-            std::vector<LX_core::VertexPos>{{{0.0f, 0.0f, 0.0f}},
-                                            {{0.0f, 0.0f, 0.0f}},
-                                            {{0.0f, 0.0f, 0.0f}}});
-    item.raster.indexBuffer = LX_core::IndexBuffer::create({0u, 1u, 2u});
+        m_scene->resources().addRenderGpuResource(std::move(vertexBuffer));
+    item.raster.indexBuffer =
+        m_scene->resources().addRenderGpuResource(std::move(indexBuffer));
+    const LX_core::MaterialHandle materialHandle =
+        m_scene->resources().addRenderMaterial(std::move(material));
     item.descriptorResources =
-        material->getDescriptorResources(LX_core::Pass_Forward);
-    const LX_core::RenderTarget renderTarget{target};
+        LX_core::buildSceneMaterialDescriptorResources(
+            m_scene->resources(), materialHandle, item.shaderInfo);
+    const LX_core::RenderTarget renderTarget{};
     auto sceneResources =
         m_scene->getSceneLevelResources(LX_core::Pass_Forward, renderTarget);
-    item.descriptorResources.insert(item.descriptorResources.end(),
-                                    sceneResources.begin(),
-                                    sceneResources.end());
-    item.descriptorResources.push_back(skyboxResource);
-    item.descriptorResources.push_back(iblResources.environmentUbo);
+    for (auto &resource : sceneResources) {
+      item.descriptorResources.emplace_back(std::move(resource));
+    }
+    item.descriptorResources.emplace_back(skyboxResource.get());
+    item.descriptorResources.emplace_back(*iblResources->environmentUbo);
     item.pass = LX_core::Pass_Forward;
     item.target = target;
     item.objectSignature = LX_core::StringID("SkyboxFullscreenTriangle");
-    item.materialSignature = material->getPipelineSignature(item.pass);
+    item.materialSignature = materialSignature;
     item.pipelineKey = LX_core::PipelineKey::build(
         item.objectSignature, item.materialSignature,
         item.target.getPipelineSignature());
@@ -2000,35 +1944,54 @@ private:
     }
   }
 
-  void rebuildDebugOverlayQueueWithForwardCameraResources(
-      const LX_core::RenderTargetDesc &forwardTarget,
+  void rebuildForwardQueueWithDefaultCameraResources(
+      const LX_core::RenderTargetDesc &forwardTarget) {
+    if (!m_scene) {
+      return;
+    }
+    const LX_core::RenderTarget defaultCameraTarget{};
+    const LX_core::RenderTarget forwardRenderTarget{forwardTarget};
+    for (auto &pass : m_frameGraph.getPasses()) {
+      if (pass.name == LX_core::Pass_Forward) {
+        pass.queue.build(LX_core::RenderWorkBuildContext::realtime(
+                             *m_scene,
+                             LX_core::RenderWorkBuildContext::RealtimeOptions{
+                                 .sceneResourceTarget = defaultCameraTarget,
+                             }),
+                         LX_core::Pass_Forward, forwardRenderTarget);
+        return;
+      }
+    }
+  }
+
+  void rebuildDebugOverlayQueueWithDefaultCameraResources(
       const LX_core::RenderTargetDesc &debugTarget) {
     if (!m_scene) {
       return;
     }
-    const LX_core::RenderTarget forwardRenderTarget{forwardTarget};
+    const LX_core::RenderTarget defaultCameraTarget{};
     const LX_core::RenderTarget debugRenderTarget{debugTarget};
-    auto sceneResources = m_scene->getSceneLevelResources(
-        LX_core::Pass_DebugOverlay, forwardRenderTarget);
-    const auto visibleMask =
-        m_scene->getCombinedCameraCullingMask(forwardRenderTarget);
     for (auto &pass : m_frameGraph.getPasses()) {
       if (pass.name == LX_core::Pass_DebugOverlay) {
         pass.queue.build(LX_core::RenderWorkBuildContext::realtime(
-                             *m_scene, std::move(sceneResources), visibleMask),
+                             *m_scene,
+                             LX_core::RenderWorkBuildContext::RealtimeOptions{
+                                 .sceneResourceTarget = defaultCameraTarget,
+                             }),
                          LX_core::Pass_DebugOverlay, debugRenderTarget);
         return;
       }
     }
   }
 
-  LX_core::DirectionalLightSharedPtr mainDirectionalLight() const {
+  LX_core::DirectionalLight *mainDirectionalLight() const {
     if (!m_scene) {
       return nullptr;
     }
     for (const auto &light : m_scene->getLights()) {
-      if (auto directional =
-              std::dynamic_pointer_cast<LX_core::DirectionalLight>(light)) {
+      auto *directional =
+          dynamic_cast<LX_core::DirectionalLight *>(&light.get());
+      if (directional) {
         if (directional->supportsPass(LX_core::Pass_Shadow) &&
             directional->getSceneNode()) {
           return directional;
@@ -2110,7 +2073,7 @@ private:
     if (cascadeIndex < m_shadowCascadeUboSnapshots.size() &&
         m_shadowCascadeUboSnapshots[cascadeIndex]) {
       resourceManager().syncResource(commandBufferManager(),
-                                     m_shadowCascadeUboSnapshots[cascadeIndex]);
+                                     *m_shadowCascadeUboSnapshots[cascadeIndex]);
     }
   }
 
@@ -2140,9 +2103,9 @@ private:
         continue;
       }
       m_shadowCascadeUboSnapshots[cascadeIndex]->param =
-          light.getDirectionalUBO()->param;
+          light.getDirectionalUBO().param;
       m_shadowCascadeUboSnapshots[cascadeIndex]->param.shadowViewProj =
-          light.getDirectionalUBO()->param.cascadeViewProj[cascadeIndex];
+          light.getDirectionalUBO().param.cascadeViewProj[cascadeIndex];
       m_shadowCascadeUboSnapshots[cascadeIndex]->setDirty();
     }
   }
@@ -2153,7 +2116,11 @@ private:
       return;
     }
 
-    const auto mainLightIdentity = light->getUBO()->getBackendCacheIdentity();
+    const auto mainLight = light->getUBO();
+    if (!mainLight.isValid()) {
+      return;
+    }
+    const auto mainLightIdentity = mainLight.getBackendCacheIdentity();
     u32 cascadeIndex = 0;
     for (auto &pass : m_frameGraph.getPasses()) {
       if (pass.name != LX_core::Pass_Shadow) {
@@ -2169,9 +2136,10 @@ private:
       }
       for (auto &item : pass.queue.getItems()) {
         for (auto &resource : item.descriptorResources) {
-          if (resource &&
-              resource->getBackendCacheIdentity() == mainLightIdentity) {
-            resource = snapshot;
+          if (resource.isResource() && resource.resource().isValid() &&
+              resource.resource().getBackendCacheIdentity() ==
+                  mainLightIdentity) {
+            resource = LX_core::DescriptorResourceRef{*snapshot};
           }
         }
       }
@@ -2188,10 +2156,12 @@ private:
         if (read.bindingName == LX_core::StringID{}) {
           continue;
         }
-        auto resource = std::make_shared<LX_core::FrameGraphSampledResource>(
+        auto resource = std::make_unique<LX_core::FrameGraphSampledResource>(
             read.resource, read.bindingName);
+        const auto resourceRef =
+            m_scene->resources().addRenderGpuResource(std::move(resource));
         for (auto &item : graphPasses[passIndex].queue.getItems()) {
-          item.descriptorResources.push_back(resource);
+          item.descriptorResources.emplace_back(resourceRef.get());
         }
       }
     }
@@ -2485,7 +2455,7 @@ private:
   infra::Gui m_gui{};
   std::function<void()> m_drawUiCallback{};
   std::optional<PendingScreenDump> m_pendingScreenDump;
-  std::vector<LX_core::DirectionalLightDataSharedPtr>
+  std::vector<LX_core::DirectionalLightDataUniquePtr>
       m_shadowCascadeUboSnapshots;
 };
 

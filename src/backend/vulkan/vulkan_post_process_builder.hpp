@@ -10,13 +10,13 @@ class VulkanPostProcessBuilder final {
 public:
   explicit VulkanPostProcessBuilder(const VulkanPostProcessSettings &settings);
 
-  [[nodiscard]] LX_core::MaterialInstanceSharedPtr
+  [[nodiscard]] LX_core::MaterialInstance::UniquePtr
   createStandardPostProcessMaterial() const;
-  [[nodiscard]] LX_core::MaterialInstanceSharedPtr
+  [[nodiscard]] LX_core::MaterialInstance::UniquePtr
   createBloomThresholdMaterial() const;
-  [[nodiscard]] LX_core::MaterialInstanceSharedPtr
+  [[nodiscard]] LX_core::MaterialInstance::UniquePtr
   createBloomBlurMaterial(LX_core::StringID pass, const char *shaderName) const;
-  [[nodiscard]] LX_core::MaterialInstanceSharedPtr
+  [[nodiscard]] LX_core::MaterialInstance::UniquePtr
   createSkyboxBackgroundMaterial() const;
 
 private:

@@ -164,6 +164,7 @@ public:
   }
 
   virtual usize getVertexCount() const = 0;
+  [[nodiscard]] virtual std::unique_ptr<IVertexBuffer> cloneUnique() const = 0;
 
   const void *getRawData() const override = 0;
   u32 getByteSize() const override = 0;
@@ -182,6 +183,10 @@ public:
   static std::shared_ptr<VertexBuffer<VType>>
   create(std::vector<VType> &&vertices) {
     return std::make_shared<VertexBuffer<VType>>(std::move(vertices));
+  }
+  static std::unique_ptr<VertexBuffer<VType>>
+  createUnique(std::vector<VType> &&vertices) {
+    return std::make_unique<VertexBuffer<VType>>(std::move(vertices));
   }
 
   explicit VertexBuffer(std::vector<VType> &&v) : m_vertices(std::move(v)) {}
@@ -206,10 +211,15 @@ public:
     setDirty();
   }
 
+  [[nodiscard]] std::unique_ptr<IVertexBuffer> cloneUnique() const override {
+    return std::make_unique<VertexBuffer<VType>>(std::vector<VType>(m_vertices));
+  }
+
 private:
   std::vector<VType> m_vertices;
 };
 
+using VertexBufferUniquePtr = std::unique_ptr<IVertexBuffer>;
 using VertexBufferSharedPtr = std::shared_ptr<IVertexBuffer>;
 
 /*****************************************************************

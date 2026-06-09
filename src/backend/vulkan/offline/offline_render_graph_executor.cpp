@@ -14,14 +14,17 @@
 namespace LX_core::backend::offline {
 namespace {
 
-[[nodiscard]] IGpuResourceSharedPtr
+[[nodiscard]] GpuResourceRef
 findPipelineResource(const RenderWorkItem &item, StringID bindingName) {
   const auto it = std::find_if(
       item.descriptorResources.begin(), item.descriptorResources.end(),
-      [bindingName](const IGpuResourceSharedPtr &resource) {
-        return resource && resource->getBindingName() == bindingName;
+      [bindingName](const DescriptorResourceRef &resource) {
+        return resource.getBindingName() == bindingName;
       });
-  return it == item.descriptorResources.end() ? IGpuResourceSharedPtr{} : *it;
+  if (it == item.descriptorResources.end() || !it->isResource()) {
+    return {};
+  }
+  return it->resource();
 }
 
 } // namespace
@@ -72,8 +75,9 @@ OfflineRenderGraphExecutor::execute(const FrameGraph &graph,
       cmd->bindResources(m_resourceManager, pipeline, item);
       cmd->executeWorkItem(item);
 
-      if (IGpuResourceSharedPtr outputPixels =
-              findPipelineResource(item, StringID("OutputPixels"))) {
+      GpuResourceRef outputPixels =
+          findPipelineResource(item, StringID("OutputPixels"));
+      if (outputPixels.isValid()) {
         result.outputPixels = std::move(outputPixels);
       }
     }
@@ -82,7 +86,7 @@ OfflineRenderGraphExecutor::execute(const FrameGraph &graph,
                                            m_device.getGraphicsQueue());
   }
 
-  if (!result.outputPixels) {
+  if (!result.outputPixels.isValid()) {
     throw std::runtime_error("offline output storage buffer missing");
   }
   auto cmd = m_commandManager.beginSingleTimeCommands();

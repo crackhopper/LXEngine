@@ -2,6 +2,7 @@
 #include "core/scene/components/camera_component.hpp"
 #include "core/scene/components/material_component.hpp"
 #include "core/scene/components/mesh_component.hpp"
+#include "core/scene/components/skeleton_component.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -51,9 +52,8 @@ void collectSubtreeSnapshots(const SceneNodeSharedPtr &node,
   return nullptr;
 }
 
-[[nodiscard]] CameraResource makeCameraResource(
-    const CameraComponent &cameraComponent) {
-  const CameraSnapshot snapshot = cameraComponent.getSnapshot();
+[[nodiscard]] CameraResource
+makeCameraResourceFromSnapshot(const CameraSnapshot &snapshot) {
   return CameraResource{
       .pose = snapshot.pose,
       .projection = snapshot.projection,
@@ -62,6 +62,11 @@ void collectSubtreeSnapshots(const SceneNodeSharedPtr &node,
       .cullingMask = snapshot.cullingMask,
       .active = snapshot.active,
   };
+}
+
+[[nodiscard]] CameraResource
+makeCameraResource(const CameraComponent &cameraComponent) {
+  return makeCameraResourceFromSnapshot(cameraComponent.getSnapshot());
 }
 
 [[nodiscard]] Mat4f inverseAffine(const Mat4f &m) {
@@ -111,9 +116,9 @@ void collectSubtreeSnapshots(const SceneNodeSharedPtr &node,
   return inverse;
 }
 
-[[nodiscard]] ObjectResource makeObjectResource(
-    const SceneNode &node, MeshHandle meshHandle,
-    MaterialHandle materialHandle) {
+[[nodiscard]] ObjectResource makeObjectResource(const SceneNode &node,
+                                                MeshHandle meshHandle,
+                                                MaterialHandle materialHandle) {
   ObjectResource object;
   object.mesh = meshHandle;
   object.material = materialHandle;
@@ -199,33 +204,6 @@ std::string Scene::dumpTree() const {
   return out;
 }
 
-/*
-@source_analysis.section revalidateNodesUsing：shared material 的结构性传播
-多个 SceneNode 可以共享同一个 `MaterialInstance`。当材质本身的 pass 启用集合
-（`setPassEnabled`）改变时，每个引用它的节点都需要重建 validated cache，因为
-`supportsPass` 的结果会变。这条信号节点自己感知不到 — 节点不订阅材质事件，
-所以由 Scene 在材质回调里集中遍历，按指针相等而不是 by-name 比较来匹配，
-避免误伤同名不同实例的材质。
-
-普通参数写入（`setFloat` / `setTexture`）走 GPU 资源 dirty 路径，结构没变，
-不会触发这条传播。换句话说：这里只处理"pass 拓扑改变"这一件结构性事件。
-*/
-void Scene::revalidateNodesUsing(
-    const MaterialInstanceSharedPtr &materialInstance) {
-  if (!materialInstance)
-    return;
-  for (const auto &renderable : m_renderables) {
-    auto node = std::dynamic_pointer_cast<SceneNode>(renderable);
-    if (!node)
-      continue;
-    const auto materialComponent = node->getComponent<MaterialComponent>();
-    if (!materialComponent ||
-        materialComponent->get().getMaterialInstance() != materialInstance)
-      continue;
-    node->rebuildValidatedCache();
-  }
-}
-
 void Scene::setActiveMaterialTagForRenderables(const std::string &tag) {
   for (const auto &renderable : m_renderables) {
     auto node = std::dynamic_pointer_cast<SceneNode>(renderable);
@@ -235,6 +213,7 @@ void Scene::setActiveMaterialTagForRenderables(const std::string &tag) {
     if (!materialComponent)
       continue;
     (void)materialComponent->get().setActiveMaterialTag(tag);
+    syncNodeResourceState(*node);
   }
 }
 
@@ -254,13 +233,13 @@ void Scene::setActiveMaterialTagForRenderables(const std::string &tag) {
 per-renderable descriptor 列表末尾 — backend 按 binding name 命中，不依赖位置。
 空返回是合法的（pass 没有任何 light 参与时常见），调用方不应该把空当作错误。
 */
-std::vector<IGpuResourceSharedPtr>
+DescriptorResourceList
 Scene::getSceneLevelResources(StringID pass, const RenderTarget &target) const {
-  std::vector<IGpuResourceSharedPtr> out;
+  DescriptorResourceList out;
 
   // Cameras filter by target only. A camera draws to one target; whether a
   // pass draws to that target is orthogonal to the camera's identity.
-  for (const auto &cam : m_cameras) {
+  for (const auto &cam : getCameras()) {
     if (!cam)
       continue;
     const auto cameraComponent = cam->getComponent<CameraComponent>();
@@ -268,132 +247,76 @@ Scene::getSceneLevelResources(StringID pass, const RenderTarget &target) const {
       continue;
     if (!cameraComponent->get().matchesTarget(target))
       continue;
-    if (auto camUbo = cameraComponent->get().getUBO()) {
-      out.push_back(std::dynamic_pointer_cast<IGpuResource>(camUbo));
+    const CameraHandle cameraHandle = cameraComponent->get().getCameraHandle();
+    auto camUbo = m_resources.getCameraUboResource(cameraHandle);
+    if (camUbo.isValid()) {
+      out.emplace_back(camUbo.get());
     }
   }
 
   // Lights filter by pass only. A light's target scope is transitive — it
   // illuminates any surface being drawn in a pass it participates in.
-  bool hasSceneLights = false;
-  u32 directionalCount = 0;
-  u32 pointCount = 0;
-  u32 spotCount = 0;
-  m_sceneLightsUbo->param = {};
-  for (const auto &light : m_lights) {
-    if (!light)
+  for (const LightHandle lightHandle : m_lightHandles) {
+    const auto resolvedLight = m_resources.resolve(lightHandle);
+    if (!resolvedLight.has_value())
       continue;
-    if (!light->getSceneNode())
+    const LightBase &light = resolvedLight->get();
+    if (!light.getSceneNode())
       continue;
-    if (!light->supportsPass(pass))
+    if (!light.supportsPass(pass))
       continue;
-    hasSceneLights = true;
-    if (const auto directionalLight =
-            std::dynamic_pointer_cast<DirectionalLight>(light)) {
-      if (directionalCount >= MaxDirectionalLights) {
-        std::cerr << "[SceneLightsUBO] directional light limit exceeded: max "
-                  << MaxDirectionalLights << "\n";
-        continue;
-      }
-      auto &entry = m_sceneLightsUbo->param.directional[directionalCount++];
-      const Vec3f direction = directionalLight->getDirection();
-      const Vec3f color = directionalLight->getColor();
-      entry.direction = Vec4f{direction.x, direction.y, direction.z, 0.0f};
-      entry.colorIntensity =
-          Vec4f{color.x, color.y, color.z, directionalLight->getIntensity()};
-    } else if (const auto pointLight =
-                   std::dynamic_pointer_cast<PointLight>(light)) {
-      if (pointCount >= MaxPointLights) {
-        std::cerr << "[SceneLightsUBO] point light limit exceeded: max "
-                  << MaxPointLights << "\n";
-        continue;
-      }
-      const auto node = pointLight->getSceneNode();
-      const Vec3f position =
-          node ? Transform::fromMat4(node->getWorldTransform()).translation
-               : Vec3f{};
-      const Vec3f color = pointLight->getColor();
-      auto &entry = m_sceneLightsUbo->param.point[pointCount++];
-      entry.positionRange =
-          Vec4f{position.x, position.y, position.z, pointLight->getRange()};
-      entry.colorIntensity =
-          Vec4f{color.x, color.y, color.z, pointLight->getIntensity()};
-    } else if (const auto spotLight =
-                   std::dynamic_pointer_cast<SpotLight>(light)) {
-      if (spotCount >= MaxSpotLights) {
-        std::cerr << "[SceneLightsUBO] spot light limit exceeded: max "
-                  << MaxSpotLights << "\n";
-        continue;
-      }
-      const auto node = spotLight->getSceneNode();
-      const Vec3f position =
-          node ? Transform::fromMat4(node->getWorldTransform()).translation
-               : Vec3f{};
-      const Vec3f direction = spotLight->getDirection();
-      const Vec3f color = spotLight->getColor();
-      auto &entry = m_sceneLightsUbo->param.spot[spotCount++];
-      entry.positionRange =
-          Vec4f{position.x, position.y, position.z, spotLight->getRange()};
-      entry.directionCone = Vec4f{direction.x, direction.y, direction.z,
-                                  spotLight->getOuterConeDegrees()};
-      entry.colorIntensity =
-          Vec4f{color.x, color.y, color.z, spotLight->getIntensity()};
-    }
-    if (auto lightUbo = light->getUBO()) {
-      out.push_back(lightUbo);
+    auto lightUbo = light.getUBO();
+    if (lightUbo.isValid()) {
+      out.emplace_back(lightUbo.get());
     }
   }
-  if (hasSceneLights) {
-    m_sceneLightsUbo->param.counts =
-        Vec4i{static_cast<i32>(directionalCount), static_cast<i32>(pointCount),
-              static_cast<i32>(spotCount), 0};
-    m_sceneLightsUbo->setDirty();
-    out.push_back(m_sceneLightsUbo);
+  auto sceneLights =
+      m_resources.buildSceneLightsUboResource(m_lightHandles, pass);
+  if (sceneLights.isValid()) {
+    out.emplace_back(sceneLights.get());
   }
 
   return out;
 }
 
-void Scene::setIblEnvironmentResources(IblEnvironmentResources resources) {
-  m_iblEnvironmentResources =
-      completeIblEnvironmentResources(std::move(resources));
-}
+DescriptorResourceList
+Scene::getSceneLevelResources(StringID pass,
+                              const CameraResource &camera) const {
+  DescriptorResourceList out;
+  if (camera.active) {
+    auto camUbo = m_resources.buildRenderCameraUboResource(camera);
+    if (camUbo.isValid()) {
+      out.emplace_back(camUbo.get());
+    }
+  }
 
-IblEnvironmentResources Scene::getIblEnvironmentResourceSet() const {
-  if (!m_iblEnvironmentResources.has_value()) {
-    m_iblEnvironmentResources =
-        completeIblEnvironmentResources(IblEnvironmentResources{});
+  for (const LightHandle lightHandle : m_lightHandles) {
+    const auto resolvedLight = m_resources.resolve(lightHandle);
+    if (!resolvedLight.has_value()) {
+      continue;
+    }
+    const LightBase &light = resolvedLight->get();
+    if (!light.getSceneNode()) {
+      continue;
+    }
+    if (!light.supportsPass(pass)) {
+      continue;
+    }
+    auto lightUbo = light.getUBO();
+    if (lightUbo.isValid()) {
+      out.emplace_back(lightUbo.get());
+    }
   }
-  return *m_iblEnvironmentResources;
-}
-
-std::vector<IGpuResourceSharedPtr> Scene::getIblEnvironmentResources() const {
-  std::vector<IGpuResourceSharedPtr> out;
-  const auto resources = getIblEnvironmentResourceSet();
-  if (resources.bakedSkyboxCubemap) {
-    out.push_back(resources.bakedSkyboxCubemap);
-  } else if (resources.skyboxCubemap) {
-    out.push_back(resources.skyboxCubemap);
-  }
-  if (resources.bakedIrradianceCubemap) {
-    out.push_back(resources.bakedIrradianceCubemap);
-  } else if (resources.irradianceCubemap) {
-    out.push_back(resources.irradianceCubemap);
-  }
-  if (resources.bakedPrefilteredRadianceCubemap) {
-    out.push_back(resources.bakedPrefilteredRadianceCubemap);
-  } else if (resources.prefilteredRadianceCubemap) {
-    out.push_back(resources.prefilteredRadianceCubemap);
-  }
-  if (resources.bakedBrdfLut) {
-    out.push_back(resources.bakedBrdfLut);
-  } else if (resources.brdfLut) {
-    out.push_back(resources.brdfLut);
-  }
-  if (resources.environmentUbo) {
-    out.push_back(resources.environmentUbo);
+  auto sceneLights =
+      m_resources.buildSceneLightsUboResource(m_lightHandles, pass);
+  if (sceneLights.isValid()) {
+    out.emplace_back(sceneLights.get());
   }
   return out;
+}
+
+CameraResource Scene::makeCameraResource(const CameraSnapshot &snapshot) {
+  return makeCameraResourceFromSnapshot(snapshot);
 }
 
 /*
@@ -415,7 +338,7 @@ target 相关 camera 接受就保留），不是交集。
 VisibilityLayerMask
 Scene::getCombinedCameraCullingMask(const RenderTarget &target) const {
   VisibilityLayerMask mask = 0;
-  for (const auto &cam : m_cameras) {
+  for (const auto &cam : getCameras()) {
     if (!cam)
       continue;
     const auto cameraComponent = cam->getComponent<CameraComponent>();
@@ -444,18 +367,8 @@ BoundingBox Scene::getPickBounds(const SceneNode &node) const {
   if (!light) {
     return {};
   }
-  return light->getDebugLocalBounds().transformed(node.getWorldTransform());
-}
-
-RenderSceneSnapshot Scene::buildRenderSceneSnapshot() const {
-  for (const auto &renderable : m_renderables) {
-    auto node = std::dynamic_pointer_cast<SceneNode>(renderable);
-    if (!node) {
-      continue;
-    }
-    syncNodeResourceState(*node);
-  }
-  return m_resources.buildSnapshot();
+  return light->get().getDebugLocalBounds().transformed(
+      node.getWorldTransform());
 }
 
 std::optional<Scene::PickHit> Scene::pick(const Ray &ray,
@@ -588,14 +501,15 @@ void Scene::removeRenderable(const SceneNodeSharedPtr &node) {
     removedNodeIds.insert(removedNode.node.get());
   }
 
-  m_cameras.erase(
-      std::remove_if(m_cameras.begin(), m_cameras.end(),
-                     [&removedNodeIds](const SceneNodeSharedPtr &candidate) {
-                       return candidate &&
+  m_cameraNodes.erase(
+      std::remove_if(m_cameraNodes.begin(), m_cameraNodes.end(),
+                     [&removedNodeIds](const std::weak_ptr<SceneNode> &weak) {
+                       const auto candidate = weak.lock();
+                       return !candidate ||
                               removedNodeIds.find(candidate.get()) !=
                                   removedNodeIds.end();
                      }),
-      m_cameras.end());
+      m_cameraNodes.end());
 
   m_renderables.erase(
       std::remove_if(m_renderables.begin(), m_renderables.end(),
@@ -608,18 +522,18 @@ void Scene::removeRenderable(const SceneNodeSharedPtr &node) {
                      }),
       m_renderables.end());
 
-  std::vector<LightBaseSharedPtr> removedLights;
-  for (auto lightIt = m_lightsByNode.begin();
-       lightIt != m_lightsByNode.end();) {
+  std::vector<LightHandle> removedLights;
+  for (auto lightIt = m_lightHandlesByNode.begin();
+       lightIt != m_lightHandlesByNode.end();) {
     if (removedNodeIds.find(lightIt->first) == removedNodeIds.end()) {
       ++lightIt;
       continue;
     }
-    if (lightIt->second) {
-      lightIt->second->detachFromSceneNode();
+    if (auto light = m_resources.resolve(lightIt->second)) {
+      light->get().detachFromSceneNode();
       removedLights.push_back(lightIt->second);
     }
-    lightIt = m_lightsByNode.erase(lightIt);
+    lightIt = m_lightHandlesByNode.erase(lightIt);
   }
   for (const auto &light : removedLights) {
     removeLight(light);
@@ -656,11 +570,12 @@ void Scene::addCamera(const SceneNodeSharedPtr &cameraNode) {
   }
 
   const auto exists =
-      std::find_if(m_cameras.begin(), m_cameras.end(),
-                   [&cameraNode](const SceneNodeSharedPtr &candidate) {
-                     return candidate.get() == cameraNode.get();
+      std::find_if(m_cameraNodes.begin(), m_cameraNodes.end(),
+                   [&cameraNode](const std::weak_ptr<SceneNode> &weak) {
+                     const auto candidate = weak.lock();
+                     return !candidate || candidate.get() == cameraNode.get();
                    });
-  if (exists != m_cameras.end()) {
+  if (exists != m_cameraNodes.end()) {
     return;
   }
 
@@ -676,14 +591,16 @@ void Scene::addCamera(const SceneNodeSharedPtr &cameraNode) {
   auto cameraComponent = cameraNode->getComponent<CameraComponent>();
   if (cameraComponent.has_value()) {
     const CameraHandle cameraHandle =
-        m_resources.registerCamera(makeCameraResource(cameraComponent->get()));
+        m_resources.registerCamera(
+            LX_core::makeCameraResource(cameraComponent->get()));
     cameraComponent->get().setCameraHandle(cameraHandle);
+    m_cameraHandles.push_back(cameraHandle);
   }
-  m_cameras.push_back(cameraNode);
+  m_cameraNodes.push_back(cameraNode);
 }
 
 SceneNodeSharedPtr Scene::getActiveCamera() const {
-  for (const auto &cameraNode : m_cameras) {
+  for (const auto &cameraNode : getCameras()) {
     if (!cameraNode) {
       continue;
     }
@@ -701,7 +618,7 @@ void Scene::setActiveCamera(const SceneNodeSharedPtr &cameraNode) {
         "Scene::setActiveCamera requires a SceneNode with CameraComponent");
   }
 
-  for (const auto &candidate : m_cameras) {
+  for (const auto &candidate : getCameras()) {
     if (!candidate) {
       continue;
     }
@@ -726,6 +643,17 @@ void Scene::removeCamera(const SceneNodeSharedPtr &cameraNode) {
   removeRenderable(cameraNode);
 }
 
+std::vector<SceneNodeSharedPtr> Scene::getCameras() const {
+  std::vector<SceneNodeSharedPtr> cameras;
+  cameras.reserve(m_cameraNodes.size());
+  for (const auto &weak : m_cameraNodes) {
+    if (auto camera = weak.lock()) {
+      cameras.push_back(std::move(camera));
+    }
+  }
+  return cameras;
+}
+
 void Scene::attachLight(const SceneNodeSharedPtr &node,
                         const LightBaseSharedPtr &light) {
   if (!node || !light) {
@@ -737,62 +665,160 @@ void Scene::attachLight(const SceneNodeSharedPtr &node,
     return;
   }
 
-  if (std::find(m_lights.begin(), m_lights.end(), light) == m_lights.end()) {
+  LightHandle lightHandle;
+  for (const LightHandle candidate : m_lightHandles) {
+    const auto existing = m_resources.resolve(candidate);
+    if (existing.has_value() && &existing->get() == light.get()) {
+      lightHandle = candidate;
+      break;
+    }
+  }
+  if (!lightHandle.isValid()) {
     addLight(light);
+    if (!m_lightHandles.empty()) {
+      lightHandle = m_lightHandles.back();
+    }
   }
-  m_lightsByNode[node.get()] = light;
-  light->attachToSceneNode(weak_from_this(), node);
+  m_lightHandlesByNode[node.get()] = lightHandle;
+  if (auto tableLight = m_resources.resolve(lightHandle)) {
+    tableLight->get().attachToSceneNode(weak_from_this(), node);
+  }
   node->emitRuntimeNodeChanged(SceneNodeAspect::RenderableStructure);
 }
 
-LightBaseSharedPtr Scene::getLight(const SceneNode &node) const {
-  const auto lightIt = m_lightsByNode.find(&node);
-  if (lightIt == m_lightsByNode.end()) {
-    return nullptr;
+std::optional<std::reference_wrapper<LightBase>>
+Scene::getLight(const SceneNode &node) {
+  const auto lightIt = m_lightHandlesByNode.find(&node);
+  if (lightIt == m_lightHandlesByNode.end()) {
+    return std::nullopt;
   }
-  return lightIt->second;
+  return m_resources.resolve(lightIt->second);
 }
 
-DirectionalLightSharedPtr
+std::optional<std::reference_wrapper<const LightBase>>
+Scene::getLight(const SceneNode &node) const {
+  const auto lightIt = m_lightHandlesByNode.find(&node);
+  if (lightIt == m_lightHandlesByNode.end()) {
+    return std::nullopt;
+  }
+  return m_resources.resolve(lightIt->second);
+}
+
+std::optional<std::reference_wrapper<DirectionalLight>>
+Scene::getDirectionalLight(const SceneNode &node) {
+  auto light = getLight(node);
+  if (!light.has_value()) {
+    return std::nullopt;
+  }
+  if (auto *directional = dynamic_cast<DirectionalLight *>(&light->get())) {
+    return std::ref(*directional);
+  }
+  return std::nullopt;
+}
+
+std::optional<std::reference_wrapper<const DirectionalLight>>
 Scene::getDirectionalLight(const SceneNode &node) const {
-  return std::dynamic_pointer_cast<DirectionalLight>(getLight(node));
+  auto light = getLight(node);
+  if (!light.has_value()) {
+    return std::nullopt;
+  }
+  if (const auto *directional =
+          dynamic_cast<const DirectionalLight *>(&light->get())) {
+    return std::cref(*directional);
+  }
+  return std::nullopt;
 }
 
-PointLightSharedPtr Scene::getPointLight(const SceneNode &node) const {
-  return std::dynamic_pointer_cast<PointLight>(getLight(node));
+std::optional<std::reference_wrapper<PointLight>>
+Scene::getPointLight(const SceneNode &node) {
+  auto light = getLight(node);
+  if (!light.has_value()) {
+    return std::nullopt;
+  }
+  if (auto *point = dynamic_cast<PointLight *>(&light->get())) {
+    return std::ref(*point);
+  }
+  return std::nullopt;
 }
 
-SpotLightSharedPtr Scene::getSpotLight(const SceneNode &node) const {
-  return std::dynamic_pointer_cast<SpotLight>(getLight(node));
+std::optional<std::reference_wrapper<const PointLight>>
+Scene::getPointLight(const SceneNode &node) const {
+  auto light = getLight(node);
+  if (!light.has_value()) {
+    return std::nullopt;
+  }
+  if (const auto *point = dynamic_cast<const PointLight *>(&light->get())) {
+    return std::cref(*point);
+  }
+  return std::nullopt;
 }
 
-LightBaseSharedPtr Scene::detachLight(const SceneNodeSharedPtr &node) {
+std::optional<std::reference_wrapper<SpotLight>>
+Scene::getSpotLight(const SceneNode &node) {
+  auto light = getLight(node);
+  if (!light.has_value()) {
+    return std::nullopt;
+  }
+  if (auto *spot = dynamic_cast<SpotLight *>(&light->get())) {
+    return std::ref(*spot);
+  }
+  return std::nullopt;
+}
+
+std::optional<std::reference_wrapper<const SpotLight>>
+Scene::getSpotLight(const SceneNode &node) const {
+  auto light = getLight(node);
+  if (!light.has_value()) {
+    return std::nullopt;
+  }
+  if (const auto *spot = dynamic_cast<const SpotLight *>(&light->get())) {
+    return std::cref(*spot);
+  }
+  return std::nullopt;
+}
+
+std::optional<LightHandle> Scene::detachLight(const SceneNodeSharedPtr &node) {
   if (!node) {
-    return nullptr;
+    return std::nullopt;
   }
 
-  const auto lightIt = m_lightsByNode.find(node.get());
-  if (lightIt == m_lightsByNode.end()) {
-    return nullptr;
+  const auto lightIt = m_lightHandlesByNode.find(node.get());
+  if (lightIt == m_lightHandlesByNode.end()) {
+    return std::nullopt;
   }
 
-  LightBaseSharedPtr light = lightIt->second;
-  m_lightsByNode.erase(lightIt);
-  light->detachFromSceneNode();
-  removeLight(light);
+  const LightHandle removedHandle = lightIt->second;
+  auto light = m_resources.resolve(removedHandle);
+  m_lightHandlesByNode.erase(lightIt);
+  if (!light.has_value()) {
+    return std::nullopt;
+  }
+  light->get().detachFromSceneNode();
+  removeLight(removedHandle);
   node->emitRuntimeNodeChanged(SceneNodeAspect::RenderableStructure);
-  return light;
+  return removedHandle;
 }
 
-void Scene::removeLight(const LightBaseSharedPtr &light) {
-  if (!light) {
+void Scene::removeLight(const LightBase &light) {
+  LightHandle removedHandle;
+  for (const LightHandle candidate : m_lightHandles) {
+    const auto existing = m_resources.resolve(candidate);
+    if (existing.has_value() && &existing->get() == &light) {
+      removedHandle = candidate;
+      break;
+    }
+  }
+  removeLight(removedHandle);
+}
+
+void Scene::removeLight(LightHandle removedHandle) {
+  if (!removedHandle.isValid()) {
     return;
   }
-
   std::vector<SceneNodeSharedPtr> affectedNodes;
-  for (auto lightIt = m_lightsByNode.begin();
-       lightIt != m_lightsByNode.end();) {
-    if (lightIt->second != light) {
+  for (auto lightIt = m_lightHandlesByNode.begin();
+       lightIt != m_lightHandlesByNode.end();) {
+    if (lightIt->second != removedHandle) {
       ++lightIt;
       continue;
     }
@@ -800,56 +826,103 @@ void Scene::removeLight(const LightBaseSharedPtr &light) {
             findRenderableNodeByAddress(m_renderables, lightIt->first)) {
       affectedNodes.push_back(node);
     }
-    lightIt = m_lightsByNode.erase(lightIt);
+    lightIt = m_lightHandlesByNode.erase(lightIt);
   }
 
-  light->detachFromSceneNode();
-
-  const auto lightHandleIt = m_lightHandles.find(light.get());
-  if (lightHandleIt != m_lightHandles.end()) {
-    m_resources.release(lightHandleIt->second);
-    m_lightHandles.erase(lightHandleIt);
+  if (auto light = m_resources.resolve(removedHandle)) {
+    light->get().detachFromSceneNode();
   }
 
-  m_lights.erase(std::remove_if(m_lights.begin(), m_lights.end(),
-                                [&light](const LightBaseSharedPtr &candidate) {
-                                  return candidate == light;
-                                }),
-                 m_lights.end());
+  m_resources.release(removedHandle);
+  m_lightHandles.erase(std::remove_if(m_lightHandles.begin(),
+                                      m_lightHandles.end(),
+                                      [removedHandle](LightHandle candidate) {
+                                        return candidate == removedHandle;
+                                      }),
+                       m_lightHandles.end());
 
   for (const auto &node : affectedNodes) {
     node->emitRuntimeNodeChanged(SceneNodeAspect::RenderableStructure);
   }
 }
 
+std::vector<std::reference_wrapper<LightBase>> Scene::getLights() {
+  std::vector<std::reference_wrapper<LightBase>> lights;
+  lights.reserve(m_lightHandles.size());
+  for (const LightHandle handle : m_lightHandles) {
+    if (auto light = m_resources.resolve(handle)) {
+      lights.push_back(std::ref(light->get()));
+    }
+  }
+  return lights;
+}
+
+std::vector<std::reference_wrapper<const LightBase>> Scene::getLights() const {
+  std::vector<std::reference_wrapper<const LightBase>> lights;
+  lights.reserve(m_lightHandles.size());
+  for (const LightHandle handle : m_lightHandles) {
+    if (auto light = m_resources.resolve(handle)) {
+      lights.push_back(std::cref(light->get()));
+    }
+  }
+  return lights;
+}
+
 void Scene::registerNodeResources(SceneNode &node) {
   MeshHandle meshHandle;
   if (auto meshComponent = node.getComponent<MeshComponent>()) {
-    const auto &mesh = meshComponent->get().getMesh();
+    const auto &mesh = meshComponent->get().getPendingMesh();
     if (mesh) {
-      if (mesh->getGeometryStorage()) {
+      meshHandle = m_resources.registerMesh(mesh->cloneUnique());
+      if (const auto tableMesh = m_resources.resolve(meshHandle)) {
         meshComponent->get().setGeometryStorageHandle(
-            m_resources.registerGeometryStorage(mesh->getGeometryStorage()));
+            tableMesh->get().getGeometryStorageHandle());
       }
-      meshHandle = m_resources.registerMesh(mesh);
       meshComponent->get().setMeshHandle(meshHandle);
+      meshComponent->get().clearPendingMesh();
     }
   }
 
   MaterialHandle materialHandle;
   if (auto materialComponent = node.getComponent<MaterialComponent>()) {
-    const auto &material = materialComponent->get().getMaterialInstance();
-    if (material) {
-      materialHandle = m_resources.registerMaterial(material);
-      materialComponent->get().setMaterialHandle(materialHandle);
+    materialComponent->get().forEachPendingMaterial(
+        [this, &materialComponent, &materialHandle](
+            const std::string &tag, const MaterialInstanceSharedPtr &material) {
+          if (!material) {
+            return;
+          }
+          const MaterialHandle handle =
+              m_resources.registerMaterial(material->cloneInstanceDataUnique());
+          if (tag.empty()) {
+            materialComponent->get().setMaterialHandle(handle);
+          } else {
+            materialComponent->get().setTaggedMaterialHandle(tag, handle);
+          }
+          if (!materialHandle.isValid() ||
+              tag == materialComponent->get().getActiveMaterialTag()) {
+            materialHandle = handle;
+          }
+        });
+    materialComponent->get().clearPendingMaterials();
+    if (!materialHandle.isValid()) {
+      materialHandle = materialComponent->get().getMaterialHandle();
+    }
+  }
+
+  if (auto skeletonComponent = node.getComponent<SkeletonComponent>()) {
+    const auto &skeleton = skeletonComponent->get().getPendingSkeleton();
+    if (skeleton) {
+      const SkeletonHandle skeletonHandle =
+          m_resources.registerSkeleton(skeleton->cloneUnique());
+      skeletonComponent->get().setSkeletonHandle(skeletonHandle);
+      skeletonComponent->get().clearPendingSkeleton();
     }
   }
 
   if (meshHandle.isValid() && materialHandle.isValid()) {
     if (auto meshComponent = node.getComponent<MeshComponent>()) {
-      meshComponent->get().setObjectHandle(
-          m_resources.registerObject(
-              makeObjectResource(node, meshHandle, materialHandle)));
+      meshComponent->get().setObjectHandle(m_resources.registerObject(
+          makeObjectResource(node, meshHandle, materialHandle)));
     }
   }
 }
@@ -859,6 +932,12 @@ void Scene::releaseNodeResources(SceneNode &node) {
     const CameraHandle cameraHandle = cameraComponent->get().getCameraHandle();
     if (cameraHandle.isValid()) {
       m_resources.release(cameraHandle);
+      m_cameraHandles.erase(
+          std::remove_if(m_cameraHandles.begin(), m_cameraHandles.end(),
+                         [cameraHandle](CameraHandle candidate) {
+                           return candidate == cameraHandle;
+                         }),
+          m_cameraHandles.end());
       cameraComponent->get().setCameraHandle({});
     }
   }
@@ -883,27 +962,120 @@ void Scene::releaseNodeResources(SceneNode &node) {
   }
 
   if (auto materialComponent = node.getComponent<MaterialComponent>()) {
-    const MaterialHandle materialHandle =
-        materialComponent->get().getMaterialHandle();
-    if (materialHandle.isValid()) {
-      m_resources.release(materialHandle);
-      materialComponent->get().setMaterialHandle({});
+    materialComponent->get().forEachMaterialHandle(
+        [this](const std::string &, MaterialHandle handle) {
+          if (handle.isValid()) {
+            m_resources.release(handle);
+          }
+        });
+    materialComponent->get().setMaterialHandle({});
+  }
+
+  if (auto skeletonComponent = node.getComponent<SkeletonComponent>()) {
+    const SkeletonHandle skeletonHandle =
+        skeletonComponent->get().getSkeletonHandle();
+    if (skeletonHandle.isValid()) {
+      m_resources.release(skeletonHandle);
+      skeletonComponent->get().setSkeletonHandle({});
     }
   }
 }
 
 void Scene::syncNodeResourceState(SceneNode &node) const {
+  MeshHandle meshHandle;
+  if (auto meshComponent = node.getComponent<MeshComponent>()) {
+    meshHandle = meshComponent->get().getMeshHandle();
+    const auto &pendingMesh = meshComponent->get().getPendingMesh();
+    if (pendingMesh) {
+      const ObjectHandle objectHandle = meshComponent->get().getObjectHandle();
+      if (objectHandle.isValid()) {
+        m_resources.release(objectHandle);
+        meshComponent->get().setObjectHandle({});
+      }
+      const GeometryStorageHandle geometryHandle =
+          meshComponent->get().getGeometryStorageHandle();
+      if (geometryHandle.isValid()) {
+        m_resources.release(geometryHandle);
+        meshComponent->get().setGeometryStorageHandle({});
+      }
+      if (meshHandle.isValid()) {
+        m_resources.release(meshHandle);
+      }
+      meshHandle = m_resources.registerMesh(pendingMesh->cloneUnique());
+      if (const auto tableMesh = m_resources.resolve(meshHandle)) {
+        meshComponent->get().setGeometryStorageHandle(
+            tableMesh->get().getGeometryStorageHandle());
+      }
+      meshComponent->get().setMeshHandle(meshHandle);
+      meshComponent->get().clearPendingMesh();
+    }
+  }
+
+  if (auto materialComponent = node.getComponent<MaterialComponent>()) {
+    MaterialHandle materialHandle =
+        materialComponent->get().getMaterialHandle();
+    bool registeredPendingMaterial = false;
+    materialComponent->get().forEachPendingMaterial(
+        [this, &materialComponent, &materialHandle, &registeredPendingMaterial](
+            const std::string &tag, const MaterialInstanceSharedPtr &material) {
+          if (!material) {
+            return;
+          }
+          MaterialHandle oldHandle =
+              tag.empty()
+                  ? materialComponent->get().getMaterialHandle()
+                  : materialComponent->get().getMaterialHandleForTag(tag);
+          if (oldHandle.isValid()) {
+            m_resources.release(oldHandle);
+          }
+          const MaterialHandle newHandle =
+              m_resources.registerMaterial(material->cloneInstanceDataUnique());
+          if (tag.empty()) {
+            materialComponent->get().setMaterialHandle(newHandle);
+          } else {
+            materialComponent->get().setTaggedMaterialHandle(tag, newHandle);
+          }
+          if (tag.empty() ||
+              tag == materialComponent->get().getActiveMaterialTag()) {
+            materialHandle = newHandle;
+          }
+          registeredPendingMaterial = true;
+        });
+    if (registeredPendingMaterial) {
+      materialComponent->get().clearPendingMaterials();
+    }
+  }
+
+  if (auto skeletonComponent = node.getComponent<SkeletonComponent>()) {
+    const auto &pendingSkeleton =
+        skeletonComponent->get().getPendingSkeleton();
+    if (pendingSkeleton) {
+      const SkeletonHandle oldHandle =
+          skeletonComponent->get().getSkeletonHandle();
+      if (oldHandle.isValid()) {
+        m_resources.release(oldHandle);
+      }
+      const SkeletonHandle newHandle =
+          m_resources.registerSkeleton(pendingSkeleton->cloneUnique());
+      skeletonComponent->get().setSkeletonHandle(newHandle);
+      skeletonComponent->get().clearPendingSkeleton();
+    }
+  }
+
   if (auto meshComponent = node.getComponent<MeshComponent>()) {
     const ObjectHandle objectHandle = meshComponent->get().getObjectHandle();
-    if (objectHandle.isValid()) {
-      const MeshHandle meshHandle = meshComponent->get().getMeshHandle();
-      MaterialHandle materialHandle;
-      if (auto materialComponent = node.getComponent<MaterialComponent>()) {
-        materialHandle = materialComponent->get().getMaterialHandle();
-      }
-      if (meshHandle.isValid() && materialHandle.isValid()) {
+    const MeshHandle meshHandle = meshComponent->get().getMeshHandle();
+    MaterialHandle materialHandle;
+    if (auto materialComponent = node.getComponent<MaterialComponent>()) {
+      materialHandle = materialComponent->get().getMaterialHandle();
+    }
+    if (meshHandle.isValid() && materialHandle.isValid()) {
+      if (objectHandle.isValid()) {
         m_resources.updateObject(
             objectHandle, makeObjectResource(node, meshHandle, materialHandle));
+      } else {
+        meshComponent->get().setObjectHandle(m_resources.registerObject(
+            makeObjectResource(node, meshHandle, materialHandle)));
       }
     }
   }
@@ -911,8 +1083,8 @@ void Scene::syncNodeResourceState(SceneNode &node) const {
   if (auto cameraComponent = node.getComponent<CameraComponent>()) {
     const CameraHandle cameraHandle = cameraComponent->get().getCameraHandle();
     if (cameraHandle.isValid()) {
-      m_resources.updateCamera(cameraHandle,
-                               makeCameraResource(cameraComponent->get()));
+      m_resources.updateCamera(
+          cameraHandle, LX_core::makeCameraResource(cameraComponent->get()));
     }
   }
 }

@@ -76,29 +76,70 @@ findLayoutItem(const VertexLayout &layout, u32 location) {
   return std::nullopt;
 }
 
-bool requiresRenderableOwnedResource(const ShaderResourceBinding &binding) {
-  if (isSystemOwnedBinding(binding.name)) {
-    // Bones is system-owned (not material-owned) but still provided by the
-    // renderable's skeleton, so it counts as renderable-owned.
-    return binding.name == "Bones";
+struct ResolvedMeshForNode final {
+  std::reference_wrapper<const MeshBuffer> mesh;
+  std::reference_wrapper<const GeometryStorage> storage;
+};
+
+[[nodiscard]] std::optional<ResolvedMeshForNode>
+resolveMeshForNode(const SceneNode &node, const MeshComponent &component) {
+  if (auto scene = node.getAttachedScene()) {
+    const MeshHandle handle = component.getMeshHandle();
+    if (const auto mesh = scene->resources().resolve(handle)) {
+      const GeometryStorageHandle storageHandle =
+          mesh->get().getGeometryStorageHandle();
+      if (const auto storage = scene->resources().resolve(storageHandle)) {
+        return ResolvedMeshForNode{std::cref(mesh->get()),
+                                   std::cref(storage->get())};
+      }
+    }
   }
-  // Buffer descriptors are structural requirements. Sampled resources may be
-  // intentionally left unset and gated by shader parameters.
-  return binding.type == ShaderPropertyType::UniformBuffer ||
-         binding.type == ShaderPropertyType::StorageBuffer;
+  const auto &pendingMesh = component.getPendingMesh();
+  if (!pendingMesh) {
+    return std::nullopt;
+  }
+  const auto &pendingStorage = pendingMesh->getGeometryStorage();
+  if (!pendingStorage) {
+    return std::nullopt;
+  }
+  return ResolvedMeshForNode{std::cref(*pendingMesh),
+                             std::cref(*pendingStorage)};
 }
 
-StringID makeObjectPipelineSignature(const VertexBufferSharedPtr &vertexBuffer,
+[[nodiscard]] const MaterialInstance *
+resolveMaterialForNode(const SceneNode &node,
+                       const MaterialComponent &component) {
+  if (auto scene = node.getAttachedScene()) {
+    const MaterialHandle handle = component.getMaterialHandle();
+    if (const auto material = scene->resources().resolve(handle)) {
+      return &material->get();
+    }
+  }
+  return component.getPendingMaterialInstance().get();
+}
+
+[[nodiscard]] const Skeleton *
+resolveSkeletonForNode(const SceneNode &node,
+                       const SkeletonComponent &component) {
+  if (auto scene = node.getAttachedScene()) {
+    const SkeletonHandle handle = component.getSkeletonHandle();
+    if (const auto skeleton = scene->resources().resolve(handle)) {
+      return &skeleton->get();
+    }
+  }
+  return component.getPendingSkeleton().get();
+}
+
+StringID makeObjectPipelineSignature(const IVertexBuffer &vertexBuffer,
                                      PrimitiveTopology topology) {
   StringID meshFields[] = {
-      vertexBuffer->getPipelineSignature(),
+      vertexBuffer.getPipelineSignature(),
       topologyPipelineSignature(topology),
   };
   const StringID meshSignature =
       GlobalStringTable::get().compose(TypeTag::MeshRender, meshFields);
   StringID objectFields[] = {meshSignature};
-  return GlobalStringTable::get().compose(TypeTag::ObjectRender,
-                                          objectFields);
+  return GlobalStringTable::get().compose(TypeTag::ObjectRender, objectFields);
 }
 
 std::vector<u32> copyIndexBufferData(const IndexBuffer &indexBuffer) {
@@ -203,10 +244,11 @@ const Mat4f &SceneNode::getWorldTransform() const {
 
 BoundingBox SceneNode::getLocalBounds() const {
   const auto meshComponent = getMeshComponent(*this);
-  if (!meshComponent || !meshComponent->get().getMesh()) {
+  if (!meshComponent) {
     return {};
   }
-  return meshComponent->get().getMesh()->getBounds();
+  const auto mesh = resolveMeshForNode(*this, meshComponent->get());
+  return mesh ? mesh->mesh.get().getBounds() : BoundingBox{};
 }
 
 BoundingBox SceneNode::getWorldBounds() const {
@@ -286,30 +328,28 @@ std::vector<SceneNode::SharedPtr> SceneNode::getChildren() const {
   return children;
 }
 
-IGpuResourceSharedPtr SceneNode::getVertexBuffer() const {
+GpuResourceRef SceneNode::getVertexBuffer() const {
   const auto meshComponent = getMeshComponent(*this);
-  if (!meshComponent || !meshComponent->get().getMesh()) {
-    return nullptr;
+  if (!meshComponent) {
+    return {};
   }
-  return std::static_pointer_cast<IGpuResource>(
-      meshComponent->get().getMesh()->getVertexBuffer());
+  const auto mesh = resolveMeshForNode(*this, meshComponent->get());
+  if (!mesh) {
+    return {};
+  }
+  return GpuResourceRef{mesh->storage.get().getVertexBuffer()};
 }
 
-IGpuResourceSharedPtr SceneNode::getIndexBuffer() const {
+GpuResourceRef SceneNode::getIndexBuffer() const {
   const auto meshComponent = getMeshComponent(*this);
-  if (!meshComponent || !meshComponent->get().getMesh()) {
-    return nullptr;
+  if (!meshComponent) {
+    return {};
   }
-  return std::static_pointer_cast<IGpuResource>(
-      meshComponent->get().getMesh()->getIndexBuffer());
-}
-
-std::vector<IGpuResourceSharedPtr>
-SceneNode::getDescriptorResources(StringID pass) const {
-  auto data = getValidatedPassData(pass);
-  if (data)
-    return data->get().descriptorResources;
-  return {};
+  const auto mesh = resolveMeshForNode(*this, meshComponent->get());
+  if (!mesh) {
+    return {};
+  }
+  return GpuResourceRef{mesh->storage.get().getIndexBuffer()};
 }
 
 IShaderSharedPtr SceneNode::getShaderInfo() const {
@@ -317,11 +357,12 @@ IShaderSharedPtr SceneNode::getShaderInfo() const {
   if (data)
     return data->get().shaderInfo;
   const auto materialComponent = getMaterialComponent(*this);
-  if (!materialComponent || !materialComponent->get().getMaterialInstance()) {
+  if (!materialComponent) {
     return nullptr;
   }
-  return materialComponent->get().getMaterialInstance()->getPassShader(
-      Pass_Forward);
+  const MaterialInstance *material =
+      resolveMaterialForNode(*this, materialComponent->get());
+  return material ? material->getPassShader(Pass_Forward) : nullptr;
 }
 
 PerDrawDataSharedPtr SceneNode::getPerDrawData() const {
@@ -331,33 +372,39 @@ PerDrawDataSharedPtr SceneNode::getPerDrawData() const {
 
 StringID SceneNode::getPipelineSignature(StringID pass) const {
   const auto meshComponent = getMeshComponent(*this);
-  if (!meshComponent || !meshComponent->get().getMesh())
+  if (!meshComponent)
     return StringID{};
-  const MeshSharedPtr mesh = meshComponent->get().getMesh();
+  const auto mesh = resolveMeshForNode(*this, meshComponent->get());
+  if (!mesh) {
+    return StringID{};
+  }
   const auto materialComponent = getMaterialComponent(*this);
   bool usesMeshOverlay = false;
-  if (materialComponent && materialComponent->get().getMaterialInstance() &&
-      materialComponent->get().getMaterialInstance()->getTemplate()) {
-    const auto entry = materialComponent->get()
-                           .getMaterialInstance()
-                           ->getTemplate()
-                           ->getPassDefinition(pass);
+  const MaterialInstance *material =
+      materialComponent
+          ? resolveMaterialForNode(*this, materialComponent->get())
+          : nullptr;
+  if (material && material->getTemplate()) {
+    const auto entry = material->getTemplate()->getPassDefinition(pass);
     usesMeshOverlay = entry && entry->get().meshOverlay.enabled;
   }
   if (usesMeshOverlay) {
-    return makeObjectPipelineSignature(mesh->getVertexBuffer(),
+    return makeObjectPipelineSignature(mesh->storage.get().getVertexBuffer(),
                                        PrimitiveTopology::LineList);
   }
 
-  StringID meshSig = mesh->getPipelineSignature(pass);
+  StringID meshSig = mesh->storage.get().getPipelineSignature();
   StringID fields[] = {meshSig};
   return GlobalStringTable::get().compose(TypeTag::ObjectRender, fields);
 }
 
 bool SceneNode::supportsPass(StringID pass) const {
   const auto materialComponent = getMaterialComponent(*this);
-  return materialComponent && materialComponent->get().getMaterialInstance() &&
-         materialComponent->get().getMaterialInstance()->isPassEnabled(pass) &&
+  const MaterialInstance *material =
+      materialComponent
+          ? resolveMaterialForNode(*this, materialComponent->get())
+          : nullptr;
+  return material && material->isPassEnabled(pass) &&
          m_validatedPasses.find(pass) != m_validatedPasses.end();
 }
 
@@ -450,6 +497,7 @@ SceneNode::listComponents() const {
 
 void SceneNode::rebuildValidatedCache() {
   m_validatedPasses.clear();
+  m_overlayIndexBuffers.clear();
 
   if (m_nodeName.empty()) {
     throw std::logic_error("SceneNodeValidation empty nodeName");
@@ -461,9 +509,9 @@ void SceneNode::rebuildValidatedCache() {
     return;
   }
 
-  const MeshSharedPtr mesh = meshComponent->get().getMesh();
-  const MaterialInstanceSharedPtr material =
-      materialComponent->get().getMaterialInstance();
+  const auto mesh = resolveMeshForNode(*this, meshComponent->get());
+  const MaterialInstance *material =
+      resolveMaterialForNode(*this, materialComponent->get());
   if (!mesh || !material) {
     return;
   }
@@ -473,10 +521,13 @@ void SceneNode::rebuildValidatedCache() {
   }
 
   const auto skeletonComponent = getSkeletonComponent(*this);
-  const SkeletonSharedPtr skeleton =
-      skeletonComponent ? skeletonComponent->get().getSkeleton()
-                        : SkeletonSharedPtr{};
-  const auto &layout = mesh->getVertexLayout();
+  const Skeleton *skeleton =
+      skeletonComponent
+          ? resolveSkeletonForNode(*this, skeletonComponent->get())
+          : nullptr;
+  const auto &meshSlice = mesh->mesh.get();
+  const auto &geometryStorage = mesh->storage.get();
+  const auto &layout = geometryStorage.getVertexLayout();
   const auto enabledPasses = material->getEnabledPasses();
 
   for (const auto &pass : enabledPasses) {
@@ -525,7 +576,7 @@ void SceneNode::rebuildValidatedCache() {
       }
     }
 
-    auto descriptorResources = material->getDescriptorResources(pass);
+    GpuResourceRef bonesResource;
 
     // Validate reserved-name type contract and renderable-owned resources.
     for (const auto &binding : shader->getReflectionBindings()) {
@@ -539,29 +590,30 @@ void SceneNode::rebuildValidatedCache() {
             std::cref(layout));
       }
 
-      if (!requiresRenderableOwnedResource(binding))
-        continue;
-
       if (binding.name == "Bones") {
         if (!skeleton) {
           fatalValidation(*this, pass, *material, entry.shaderProgram,
                           "missing Bones resource", std::cref(layout));
         }
-        descriptorResources.push_back(
-            std::static_pointer_cast<IGpuResource>(skeleton->getUBO()));
+        bonesResource = GpuResourceRef{skeleton->getUBO()};
         continue;
       }
 
-      // Non-system-owned binding: verify material provides a matching resource.
-      const StringID bindingId(binding.name);
-      bool found = false;
-      for (const auto &res : descriptorResources) {
-        if (res && res->getBindingName() == bindingId) {
-          found = true;
-          break;
-        }
+      if (isSystemOwnedBinding(binding.name)) {
+        continue;
       }
-      if (!found) {
+
+      // Non-system-owned buffer bindings are structural material requirements.
+      // Sampled resources may be intentionally left unset and gated by shader
+      // parameters.
+      if (binding.type != ShaderPropertyType::UniformBuffer &&
+          binding.type != ShaderPropertyType::StorageBuffer) {
+        continue;
+      }
+
+      const StringID bindingId(binding.name);
+      const auto resource = material->getParameterResource(bindingId);
+      if (!resource.isValid()) {
         fatalValidation(*this, pass, *material, entry.shaderProgram,
                         "missing material-owned resource '" + binding.name +
                             "'",
@@ -571,34 +623,35 @@ void SceneNode::rebuildValidatedCache() {
 
     ValidatedRenderablePassData data;
     data.pass = pass;
-    data.material = material;
+    data.materialHandle = materialComponent->get().getMaterialHandle();
     data.shaderInfo = shader;
     data.drawData = m_perDrawData;
     data.vertexBuffer = getVertexBuffer();
     data.indexBuffer = getIndexBuffer();
-    data.descriptorResources = std::move(descriptorResources);
+    data.bonesResource = std::move(bonesResource);
+    data.renderState = material->getPassRenderState(pass);
     data.objectSignature = getPipelineSignature(pass);
     data.materialSignature = material->getPipelineSignature(pass);
 
     if (entry.meshOverlay.enabled) {
-      if (mesh->getIndexBuffer()->getTopology() !=
+      if (geometryStorage.getIndexBuffer().getTopology() !=
           PrimitiveTopology::TriangleList) {
         fatalValidation(*this, pass, *material, entry.shaderProgram,
                         "meshOverlay requires triangle-list source geometry",
                         std::cref(layout));
       }
-      if (mesh->getIndexBuffer()->indexCount() % 3 != 0) {
+      if (geometryStorage.getIndexBuffer().indexCount() % 3 != 0) {
         fatalValidation(*this, pass, *material, entry.shaderProgram,
                         "meshOverlay source index count is not triangular",
                         std::cref(layout));
       }
 
       auto overlayIndices = makeUniqueTriangleEdgeLineIndices(
-          copyIndexBufferData(*mesh->getIndexBuffer()));
-      auto overlayIndexBuffer = IndexBuffer::create(
+          copyIndexBufferData(geometryStorage.getIndexBuffer()));
+      auto overlayIndexBuffer = IndexBuffer::createUnique(
           std::move(overlayIndices), PrimitiveTopology::LineList);
-      data.indexBuffer =
-          std::static_pointer_cast<IGpuResource>(overlayIndexBuffer);
+      data.indexBuffer = GpuResourceRef{*overlayIndexBuffer};
+      m_overlayIndexBuffers[pass] = std::move(overlayIndexBuffer);
     }
 
     m_validatedPasses[pass] = std::move(data);
@@ -707,6 +760,13 @@ void SceneNode::emitRuntimeNodeChanged(const SceneNodeAspect aspect) const {
   const auto scene = m_scene.lock();
   if (!scene) {
     return;
+  }
+
+  if (aspect == SceneNodeAspect::RenderableStructure ||
+      aspect == SceneNodeAspect::Transform ||
+      aspect == SceneNodeAspect::Visibility ||
+      aspect == SceneNodeAspect::CameraProperties) {
+    scene->syncNodeResourceState(const_cast<SceneNode &>(*this));
   }
 
   scene->events().emit(SceneEvent{

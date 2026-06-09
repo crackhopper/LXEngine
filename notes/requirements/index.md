@@ -17,7 +17,7 @@
 - [REQ-054-a: Vulkan Renderer Realtime / Offline 拆分](054-a-vulkan-renderer-realtime-offline-split.md)
 - [REQ-054-b: Vulkan Compute Offline Renderer MVP](054-b-vulkan-compute-offline-renderer-mvp.md)
 - [REQ-055-a: Offline Output EXR 与 PNG](055-a-offline-output-exr-and-png.md)
-- [REQ-056-a: Offline PBR 纹理材质支持](056-a-offline-pbr-texture-material-support.md)
+- [REQ-056-a: 共享 PBR 纹理材质加载与离线/实时等价验证](056-a-offline-pbr-texture-material-support.md)
 - [REQ-057-a: Offline Path Tracing PBR Reference](057-a-offline-path-tracing-pbr-reference.md)
 - [REQ-058-a: Editor Offline Render Integration](058-a-editor-offline-render-integration.md)
 - [REQ-059-a: Rendering Research Integrator Sandbox](059-a-rendering-research-integrator-sandbox.md)

@@ -109,16 +109,16 @@ int main() {
                        std::make_shared<LX_core::DirectionalLight>());
 
     auto camera = cameraNode->getComponent<LX_core::CameraComponent>();
-    auto dirLight = std::dynamic_pointer_cast<LX_core::DirectionalLight>(
-        scene->getLights().front());
+    auto *dirLight =
+        dynamic_cast<LX_core::DirectionalLight *>(
+            &scene->getLights().front().get());
 
     // Default directional light UBO (shader expects it).
-    const auto lightUbo = dirLight ? dirLight->getDirectionalUBO()
-                                   : LX_core::DirectionalLightDataSharedPtr{};
-    if (lightUbo) {
-      lightUbo->param.dir = LX_core::Vec4f{0.0f, -1.0f, 0.0f, 0.0f};
-      lightUbo->param.color = LX_core::Vec4f{1.0f, 1.0f, 1.0f, 1.0f};
-      lightUbo->setDirty();
+    if (dirLight) {
+      auto &lightUbo = dirLight->getDirectionalUBO();
+      lightUbo.param.dir = LX_core::Vec4f{0.0f, -1.0f, 0.0f, 0.0f};
+      lightUbo.param.color = LX_core::Vec4f{1.0f, 1.0f, 1.0f, 1.0f};
+      lightUbo.setDirty();
     }
 
     // Camera matrices needed for camera data uploads.

@@ -1,6 +1,6 @@
-# 运行离线渲染器：从 Scene Profile 到 EXR/PNG
+# 运行离线渲染器：从 Output Profile 到 EXR/PNG
 
-离线渲染器的第一步不是追求画面最终质量，而是确认实验管线稳定：同一份 scene 能被 editor 保存，也能被 CLI 加载进 `SceneResourceTable`，再通过 Vulkan compute 输出一张线性 HDR 图，并同时保存 EXR、PNG preview、metadata 和 raw readback。
+离线渲染器的第一步不是追求画面最终质量，而是确认实验管线稳定：同一份 scene 能被 editor 保存，也能被 CLI 加载进 `SceneResourceTable`，再通过 offline `FrameGraph` 生成一个 compute work item，最后输出一张线性 HDR 图，并同时保存 EXR、PNG preview、metadata 和 raw readback。
 
 ## 构建目标
 
@@ -16,14 +16,14 @@ ctest --test-dir build --output-on-failure -R 'test_offline_image_writer|test_of
 |---|---|
 | `CompileShaders` | `offline_primary_ray.comp` 被编译成 `build/assets/shaders/glsl/offline_primary_ray.comp.spv` |
 | `test_offline_scene_loader` | scene YAML 能编译成 `SceneResourceTable` |
-| `test_offline_gpu_scene` | IR 能打包成 GPU buffer，并构建 BVH |
+| `test_offline_gpu_scene` | `SceneResourceTable` 能打包成 offline storage buffer、BVH 和 `RenderWorkItem` |
 | `test_vulkan_offline_renderer` | headless Vulkan renderer 能初始化 |
 | `test_offline_image_writer` | readback 能写成 EXR、PNG、JSON 和 raw dump |
 | `test_offline_render_cli` | CLI 参数和 profile override 行为稳定 |
 
 ## Output Profile 是输出参数单
 
-`assets/scenes/ibl_metal_sphere.scene.yaml` 里有 `scene.outputProfiles` 和单个 `scene.offlineRender`。这些配置不会影响 editor 的实时视口：`OutputProfile` 负责相机、分辨率、输出格式和 `outDir`，`OfflineRenderSettings` 负责 integrator、samples、maxBounce、seed 和 shadow 开关。CLI 的 `--profile` 选择一个 output profile；相机来自被选中的 output profile。
+`assets/scenes/ibl_metal_sphere.scene.yaml` 里有 `scene.outputProfiles` 和单个 `scene.offlineRender`。这些配置不会影响 editor 的实时视口：`OutputProfile` 负责相机、分辨率、输出格式、背景色和 `outDir`，`OfflineRenderSettings` 负责 integrator、samples、maxBounce、seed、shadow 开关和 compare mode。CLI 的 `--profile` 选择一个 output profile；相机来自被选中的 output profile。
 
 ```yaml
 scene:
@@ -49,6 +49,7 @@ scene:
     seed: 1
     profile: preview
     shadows: true
+    compareMode: shaded                # -> SceneGpuFrameParams.compareMode
 ```
 
 CLI 参数可以覆盖被选中 output profile 的宽高，以及 `OfflineRenderSettings` 里的 samples、maxBounce、seed 和输出路径。`--out` 显式覆盖 profile 的 `outDir`；不传 `--out` 时，输出写到所选 `OutputProfile.outDir` 下的 `render.*`。
@@ -85,21 +86,22 @@ artifacts/offline/smoke.rgba32f
 | 选择 profile | `OutputProfile` + `OfflineRenderSettings` | 相机、宽高、输出目录、samples、integrator 等参数 |
 | 加载离线 scene 数据 | `LX_infra::offline::OfflineSceneLoader` | `SceneResourceTable` |
 | 资产解析 | `OfflineAssetResolver` | `builtin://` / `cache://` / project path 的本地路径 |
-| GPU records 导出 | `SceneResourceTable::buildUploadView()` | vertex、index、mesh、primitive、object、material、camera params buffer |
-| BVH 构建 | `SceneSoftwareBvh` | `SceneSoftwareBvhNode` + 重排后的 primitive buffer |
-| Compute 执行 | `software-compute` integrator | `OfflineReadbackImage` |
+| Offline FrameGraph | `createOfflineRenderFrameGraph()` | `Pass_OfflineRayTrace` |
+| GPU records 导出 | `buildOfflineSceneStorageResources()` | vertex、index、mesh、primitive、object、material、BVH、frame params、output buffer |
+| Work item 构建 | `RenderWorkQueue::build(RenderWorkBuildContext::offline(...))` | `RenderWorkItem{domain=Offline, kind=ComputeDispatch}` |
+| Compute 执行 | `OfflineRenderGraphExecutor` | `OfflineReadbackImage` |
 | 文件输出 | `OfflineImageWriter` | `.exr` / `.png` / `.json` / `.rgba32f` |
 
 ## 和 Realtime Renderer 的边界
 
 | Realtime | Offline |
 |---|---|
-| 以 swapchain / FrameGraph / material pass 为中心 | 以 scene IR / integrator / readback 为中心 |
+| 以 swapchain / material pass / raster draw 为中心 | 以 output profile / offline pass / compute dispatch / readback 为中心 |
 | 需要 editor 视口和交互状态 | headless，适合自动化和高采样实验 |
 | 消费实时材质 pipeline 合同 | 消费离线打包后的 material 参数 |
 | 以每帧稳定交互为目标 | 以可复现实验和高质量参考图为目标 |
 
-我们复用 scene YAML、资产路径、基础数学类型、Vulkan device/buffer/command 基础设施；不复用实时 renderer 的 draw item、FrameGraph 和 swapchain 路径。这个边界能避免离线路径被实时约束绑死，也方便后续在 shader 里试 paper、path tracing、denoising 和 reference AOV。
+我们复用 scene YAML、资产路径、基础数学类型、`FrameGraph` / `RenderWorkItem` 工单形态，以及 Vulkan pipeline / descriptor / command buffer 基础设施；不复用实时 renderer 的 swapchain、viewport 状态和 raster material pass。这个边界能避免离线路径被实时约束绑死，也方便后续在 shader 里试 paper、path tracing、denoising 和 reference AOV。
 
 ## 常见问题
 

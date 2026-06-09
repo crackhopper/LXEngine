@@ -38,7 +38,7 @@ struct alignas(16) EnvironmentData final : public IGpuResource {
   Param param{};
 };
 
-using EnvironmentDataSharedPtr = std::shared_ptr<EnvironmentData>;
+using EnvironmentDataUniquePtr = std::unique_ptr<EnvironmentData>;
 
 struct IblEnvironmentResources {
   CombinedTextureSamplerSharedPtr skyboxCubemap;
@@ -46,80 +46,27 @@ struct IblEnvironmentResources {
   CombinedTextureSamplerSharedPtr prefilteredRadianceCubemap;
   CombinedTextureSamplerSharedPtr brdfLut;
   CombinedTextureSamplerSharedPtr equirectangularMap;
-  IGpuResourceSharedPtr bakedSkyboxCubemap;
-  IGpuResourceSharedPtr bakedIrradianceCubemap;
-  IGpuResourceSharedPtr bakedPrefilteredRadianceCubemap;
-  IGpuResourceSharedPtr bakedBrdfLut;
-  EnvironmentDataSharedPtr environmentUbo;
+  std::unique_ptr<IGpuResource> bakedSkyboxCubemap;
+  std::unique_ptr<IGpuResource> bakedIrradianceCubemap;
+  std::unique_ptr<IGpuResource> bakedPrefilteredRadianceCubemap;
+  std::unique_ptr<IGpuResource> bakedBrdfLut;
+  EnvironmentDataUniquePtr environmentUbo;
 };
-
-inline TextureSharedPtr createBlackCubeTexture(TextureFormat format =
-                                                   TextureFormat::RGBA16Float) {
-  TextureDesc desc;
-  desc.width = 1;
-  desc.height = 1;
-  desc.format = format;
-  desc.dimension = TextureDimension::TextureCube;
-  desc.arrayLayers = 6;
-  return std::make_shared<Texture>(
-      desc, std::vector<u8>(expectedTextureByteCount(desc), 0));
-}
-
-inline TextureSharedPtr createNeutralBrdfLutTexture() {
-  TextureDesc desc;
-  desc.width = 1;
-  desc.height = 1;
-  desc.format = TextureFormat::RGBA16Float;
-  return std::make_shared<Texture>(
-      desc, std::vector<u8>(expectedTextureByteCount(desc), 0));
-}
-
-inline IblEnvironmentResources createDefaultIblEnvironmentResources() {
-  IblEnvironmentResources resources;
-  resources.skyboxCubemap =
-      std::make_shared<CombinedTextureSampler>(createBlackCubeTexture());
-  resources.skyboxCubemap->setBindingName(StringID("SkyboxMap"));
-  resources.irradianceCubemap =
-      std::make_shared<CombinedTextureSampler>(createBlackCubeTexture());
-  resources.irradianceCubemap->setBindingName(StringID("IrradianceMap"));
-  resources.prefilteredRadianceCubemap =
-      std::make_shared<CombinedTextureSampler>(createBlackCubeTexture());
-  resources.prefilteredRadianceCubemap->setBindingName(
-      StringID("PrefilteredEnvMap"));
-  resources.brdfLut =
-      std::make_shared<CombinedTextureSampler>(createNeutralBrdfLutTexture());
-  resources.brdfLut->setBindingName(StringID("BrdfLut"));
-  resources.environmentUbo = std::make_shared<EnvironmentData>(0.0f, 1.0f);
-  return resources;
-}
 
 inline IblEnvironmentResources
 completeIblEnvironmentResources(IblEnvironmentResources resources) {
-  auto defaults = createDefaultIblEnvironmentResources();
-  if (!resources.skyboxCubemap) {
-    resources.skyboxCubemap = defaults.skyboxCubemap;
-  } else {
+  if (resources.skyboxCubemap) {
     resources.skyboxCubemap->setBindingName(StringID("SkyboxMap"));
   }
-  if (!resources.irradianceCubemap) {
-    resources.irradianceCubemap = defaults.irradianceCubemap;
-  } else {
+  if (resources.irradianceCubemap) {
     resources.irradianceCubemap->setBindingName(StringID("IrradianceMap"));
   }
-  if (!resources.prefilteredRadianceCubemap) {
-    resources.prefilteredRadianceCubemap =
-        defaults.prefilteredRadianceCubemap;
-  } else {
+  if (resources.prefilteredRadianceCubemap) {
     resources.prefilteredRadianceCubemap->setBindingName(
         StringID("PrefilteredEnvMap"));
   }
-  if (!resources.brdfLut) {
-    resources.brdfLut = defaults.brdfLut;
-  } else {
+  if (resources.brdfLut) {
     resources.brdfLut->setBindingName(StringID("BrdfLut"));
-  }
-  if (!resources.environmentUbo) {
-    resources.environmentUbo = defaults.environmentUbo;
   }
   return resources;
 }

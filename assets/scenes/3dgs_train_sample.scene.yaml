@@ -1,6 +1,8 @@
 scene:
   name: 3dgs_train_sample
   gameplayCameraPath: /game_cam
+  rendering:
+    shadows: false
 root:
   nodeName: scene_root
   children:

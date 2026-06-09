@@ -577,18 +577,19 @@ void ViewportOverlay::enqueueDebugDraw() const {
   }
 
   for (const auto &light : m_scene.getLights()) {
-    const auto node = light->getSceneNode();
+    const LightBase &lightRef = light.get();
+    const auto node = lightRef.getSceneNode();
     if (!node) {
       continue;
     }
-    if (const auto directionalLight =
-            std::dynamic_pointer_cast<DirectionalLight>(light)) {
+    if (const auto *directionalLight =
+            dynamic_cast<const DirectionalLight *>(&lightRef)) {
       drawDirectionalLightDebug(*node, *directionalLight);
-    } else if (const auto pointLight =
-                   std::dynamic_pointer_cast<PointLight>(light)) {
+    } else if (const auto *pointLight =
+                   dynamic_cast<const PointLight *>(&lightRef)) {
       drawPointLightDebug(*node, *pointLight);
-    } else if (const auto spotLight =
-                   std::dynamic_pointer_cast<SpotLight>(light)) {
+    } else if (const auto *spotLight =
+                   dynamic_cast<const SpotLight *>(&lightRef)) {
       drawSpotLightDebug(*node, *spotLight);
     }
   }

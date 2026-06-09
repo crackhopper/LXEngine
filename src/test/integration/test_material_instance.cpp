@@ -2,17 +2,19 @@
 #include "core/asset/shader.hpp"
 #include "core/asset/shader_binding_ownership.hpp"
 #include "core/frame_graph/pass.hpp"
+#include "core/frame_graph/scene_descriptor_resource_resolver.hpp"
 #include "core/scene/ibl_environment.hpp"
+#include "core/scene/scene.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/string_table.hpp"
 #include "infra/material_loader/generic_material_loader.hpp"
-#include "infra/shader_compiler/shader_compiler.hpp"
 #include "infra/shader_compiler/compiled_shader.hpp"
+#include "infra/shader_compiler/shader_compiler.hpp"
 #include "infra/shader_compiler/shader_reflector.hpp"
 
 #include <cstdint>
-#include <cstring>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <iostream>
 #include <string>
@@ -101,9 +103,8 @@ MaterialInstanceSharedPtr buildInstanceFromBlinnPhong() {
   }
   auto bindings = ShaderReflector::reflect(compile.stages);
   auto vertexInputs = ShaderReflector::reflectVertexInputs(compile.stages);
-  auto shader = std::make_shared<CompiledShader>(std::move(compile.stages),
-                                                 bindings, vertexInputs,
-                                                 "blinnphong_0");
+  auto shader = std::make_shared<CompiledShader>(
+      std::move(compile.stages), bindings, vertexInputs, "blinnphong_0");
 
   auto tmpl = MaterialTemplate::create("blinnphong_0");
   ShaderProgramSet set;
@@ -118,8 +119,9 @@ MaterialInstanceSharedPtr buildInstanceFromBlinnPhong() {
   return MaterialInstance::create(tmpl);
 }
 
-MaterialTemplate::SharedPtr buildMultiPassTemplate(const RenderState &forwardState,
-                                             const RenderState &shadowState) {
+MaterialTemplate::SharedPtr
+buildMultiPassTemplate(const RenderState &forwardState,
+                       const RenderState &shadowState) {
   ShaderResourceBinding binding;
   binding.name = "MaterialUBO";
   binding.set = 2;
@@ -221,33 +223,34 @@ void test_setFloat_and_setInt_at_reflected_offsets() {
   REQUIRE(ambient == 0.0f);
   REQUIRE(ea == 1);
   REQUIRE(en == 0);
-  std::cout << "  specularIntensity=2.5, ambientIntensity=0, enableAlbedo=1, enableNormal=0 OK\n";
+  std::cout << "  specularIntensity=2.5, ambientIntensity=0, enableAlbedo=1, "
+               "enableNormal=0 OK\n";
 }
 
-void test_descriptor_resources_stable_ubo_identity() {
-  std::cout << "\n-- test_descriptor_resources_stable_ubo_identity --\n";
+void test_parameter_resource_stable_ubo_identity() {
+  std::cout << "\n-- test_parameter_resource_stable_ubo_identity --\n";
   auto mat = buildInstanceFromBlinnPhong();
   if (!mat)
     return;
-  auto a = mat->getDescriptorResources(Pass_Forward);
-  auto b = mat->getDescriptorResources(Pass_Forward);
-  REQUIRE(!a.empty());
-  REQUIRE(!b.empty());
-  REQUIRE(a[0].get() == b[0].get());
-  REQUIRE(a[0]->getType() == ResourceType::UniformBuffer);
-  REQUIRE(a[0]->getByteSize() == 36);
+  auto a = mat->getParameterResource(StringID("MaterialUBO"));
+  auto b = mat->getParameterResource(StringID("MaterialUBO"));
+  REQUIRE(a.isValid());
+  REQUIRE(b.isValid());
+  REQUIRE(&a.get() == &b.get());
+  REQUIRE(a.get().getType() == ResourceType::UniformBuffer);
+  REQUIRE(a.get().getByteSize() == 36);
   std::cout << "  UBO IGpuResource identity stable\n";
 }
 
-void test_descriptor_resources_reflects_buffer_writes() {
-  std::cout << "\n-- test_descriptor_resources_reflects_buffer_writes --\n";
+void test_parameter_resource_reflects_buffer_writes() {
+  std::cout << "\n-- test_parameter_resource_reflects_buffer_writes --\n";
   auto mat = buildInstanceFromBlinnPhong();
   if (!mat)
     return;
   mat->setParameter(StringID("MaterialUBO"), StringID("shininess"), 7.0f);
-  auto resources = mat->getDescriptorResources(Pass_Forward);
-  REQUIRE(!resources.empty());
-  auto *raw = reinterpret_cast<const u8 *>(resources[0]->getRawData());
+  auto resource = mat->getParameterResource(StringID("MaterialUBO"));
+  REQUIRE(resource.isValid());
+  auto *raw = reinterpret_cast<const u8 *>(resource.get().getRawData());
   float shiny = 0.0f;
   std::memcpy(&shiny, raw + 12, sizeof(float));
   REQUIRE(shiny == 7.0f);
@@ -315,7 +318,8 @@ void test_instances_default_enable_all_template_passes() {
   REQUIRE(mat->isPassEnabled(Pass_Forward));
   REQUIRE(mat->isPassEnabled(Pass_Shadow));
   REQUIRE(mat->getEnabledPasses().size() == 2);
-  std::cout << "  new instances start with every template-defined pass enabled\n";
+  std::cout
+      << "  new instances start with every template-defined pass enabled\n";
 }
 
 void test_enabled_passes_follow_mutations() {
@@ -353,7 +357,8 @@ void test_render_state_is_pass_aware() {
 }
 
 void test_non_structural_writes_do_not_notify_pass_listeners() {
-  std::cout << "\n-- test_non_structural_writes_do_not_notify_pass_listeners --\n";
+  std::cout
+      << "\n-- test_non_structural_writes_do_not_notify_pass_listeners --\n";
   auto mat = buildInstanceFromBlinnPhong();
   if (!mat)
     return;
@@ -492,10 +497,9 @@ void test_material_instance_with_non_MaterialUBO_name() {
   REQUIRE(b == 0.7f);
   REQUIRE(rough == 0.3f);
 
-  // Descriptor resource should report "SurfaceParams", not "MaterialUBO".
-  auto resources = mat->getDescriptorResources(Pass_Forward);
-  REQUIRE(!resources.empty());
-  REQUIRE(resources[0]->getBindingName() == StringID("SurfaceParams"));
+  auto resource = mat->getParameterResource(StringID("SurfaceParams"));
+  REQUIRE(resource.isValid());
+  REQUIRE(resource.get().getBindingName() == StringID("SurfaceParams"));
 
   std::cout << "  SurfaceParams UBO works as material-owned binding\n";
 }
@@ -515,7 +519,8 @@ void test_multi_buffer_setParameter() {
   surfaceBinding.members = {baseColor, roughness};
 
   StructMemberInfo detailScale{"detailScale", ShaderPropertyType::Float, 0, 4};
-  StructMemberInfo detailOffset{"detailOffset", ShaderPropertyType::Float, 4, 4};
+  StructMemberInfo detailOffset{"detailOffset", ShaderPropertyType::Float, 4,
+                                4};
 
   ShaderResourceBinding detailBinding;
   detailBinding.name = "DetailParams";
@@ -558,8 +563,10 @@ void test_multi_buffer_setParameter() {
   std::cout << "  multi-buffer setParameter works independently\n";
 }
 
-void test_pass_aware_descriptor_resources() {
-  std::cout << "\n-- test_pass_aware_descriptor_resources --\n";
+void test_descriptor_resources_resolve_through_scene_resource_table() {
+  std::cout
+      << "\n-- test_descriptor_resources_resolve_through_scene_resource_table "
+         "--\n";
 
   StructMemberInfo baseColor{"baseColor", ShaderPropertyType::Vec3, 0, 12};
 
@@ -605,16 +612,43 @@ void test_pass_aware_descriptor_resources() {
   tmpl->rebuildMaterialInterface();
 
   auto mat = MaterialInstance::create(tmpl);
-  // Don't bind a texture — forward should return only UBO, shadow too.
-  auto fwdRes = mat->getDescriptorResources(Pass_Forward);
-  auto shadRes = mat->getDescriptorResources(Pass_Shadow);
-  // Both have the UBO (texture not bound so skipped).
-  REQUIRE(fwdRes.size() == 1);
-  REQUIRE(shadRes.size() == 1);
-  REQUIRE(fwdRes[0]->getBindingName() == StringID("MaterialUBO"));
-  REQUIRE(shadRes[0]->getBindingName() == StringID("MaterialUBO"));
+  auto texture = std::make_shared<CombinedTextureSampler>(createWhiteTexture());
+  texture->setBindingName(StringID("albedoMap"));
+  mat->setTexture(StringID("albedoMap"), texture);
 
-  std::cout << "  pass-aware descriptor resources correct\n";
+  auto scene = Scene::create(nullptr);
+  const MaterialHandle materialHandle =
+      scene->resources().registerMaterial(mat->cloneInstanceDataUnique());
+
+  ValidatedRenderablePassData fwdRenderable;
+  fwdRenderable.materialHandle = materialHandle;
+  fwdRenderable.shaderInfo = forwardShader;
+  auto fwdRes = buildSceneDescriptorResources(SceneDescriptorResourceContext{
+      .scene = *scene,
+      .renderable = fwdRenderable,
+      .pass = Pass_Forward,
+      .target = RenderTarget{},
+      .sceneResources = {},
+  });
+
+  ValidatedRenderablePassData shadRenderable;
+  shadRenderable.materialHandle = materialHandle;
+  shadRenderable.shaderInfo = shadowShader;
+  auto shadRes = buildSceneDescriptorResources(SceneDescriptorResourceContext{
+      .scene = *scene,
+      .renderable = shadRenderable,
+      .pass = Pass_Shadow,
+      .target = RenderTarget{},
+      .sceneResources = {},
+  });
+  REQUIRE(fwdRes.size() == 2);
+  REQUIRE(shadRes.size() == 1);
+  REQUIRE(fwdRes[0].getBindingName() == StringID("MaterialUBO"));
+  REQUIRE(fwdRes[1].getBindingName() == StringID("albedoMap"));
+  REQUIRE(shadRes[0].getBindingName() == StringID("MaterialUBO"));
+
+  std::cout
+      << "  resolver descriptor resources come from scene resource table\n";
 }
 
 } // namespace
@@ -624,8 +658,8 @@ int main(int argc, char **argv) {
   test_ubo_buffer_sized_from_reflection();
   test_setVec3_writes_12_bytes_only();
   test_setFloat_and_setInt_at_reflected_offsets();
-  test_descriptor_resources_stable_ubo_identity();
-  test_descriptor_resources_reflects_buffer_writes();
+  test_parameter_resource_stable_ubo_identity();
+  test_parameter_resource_reflects_buffer_writes();
   test_loader_produces_valid_instance();
   test_ubo_layout_comes_from_enabled_pass_shader();
   test_instances_default_enable_all_template_passes();
@@ -636,7 +670,7 @@ int main(int argc, char **argv) {
   test_environment_data_setters_mark_dirty();
   test_material_instance_with_non_MaterialUBO_name();
   test_multi_buffer_setParameter();
-  test_pass_aware_descriptor_resources();
+  test_descriptor_resources_resolve_through_scene_resource_table();
   test_setPassEnabled_throws_on_undefined_pass();
 
   std::cout << "\n========================================\n";

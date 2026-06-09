@@ -53,12 +53,14 @@ layout(set = 2, binding = 0) uniform LightUBO {
     vec4 color;
 } light;
 
+#ifdef HAS_IBL
 layout(set = 3, binding = 0) uniform samplerCube IrradianceMap;
 layout(set = 3, binding = 1) uniform samplerCube PrefilteredEnvMap;
 layout(set = 3, binding = 2) uniform sampler2D BrdfLut;
 layout(set = 3, binding = 3) uniform EnvironmentUBO {
     vec4 params; // x: IBL intensity, y: prefiltered mip count
 } environment;
+#endif
 
 void main() {
     // Base color
@@ -108,8 +110,10 @@ void main() {
     vec3 Lo = lxPbrDirectLight(pbrInput);
     vec3 F0 = lxPbrF0(albedo.rgb, metallic);
 
-    // Ambient
-    vec3 ambient = lxPbrFallbackAmbient(pbrInput);
+    vec3 ambient = vec3(0.0);
+#ifdef HAS_IBL
+    // Ambient/IBL is opt-in through the material variant and scene
+    // EnvironmentUBO. Direct-light compare materials leave HAS_IBL disabled.
     float iblIntensity = max(environment.params.x, 0.0);
     if (iblIntensity > 0.0) {
         float NdotV = max(dot(N, V), 0.0);
@@ -128,6 +132,7 @@ void main() {
 
         ambient = (kD_ibl * diffuse + specularIbl) * ao * iblIntensity;
     }
+#endif
 
     vec3 color = ambient + Lo;
     color += lxPbrEmissive(pbrInput);

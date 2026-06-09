@@ -180,6 +180,8 @@ static TextureSharedPtr createWhiteTexture(u32 width = 1, u32 height = 1) {
 */
 class CombinedTextureSampler : public IGpuResource {
 public:
+  using UniquePtr = std::unique_ptr<CombinedTextureSampler>;
+
   explicit CombinedTextureSampler(TextureSharedPtr texture)
       : m_texture(texture) {}
 
@@ -190,9 +192,9 @@ public:
     setDirty();
   }
 
-  /// `MaterialInstance::getDescriptorResources()` fills this with the binding
-  /// name resolved from the template before handing the texture off to the
-  /// backend descriptor path. Empty until the material routes it.
+  /// The scene descriptor resolver fills this with the binding name resolved
+  /// from shader reflection before handing the texture off to the backend
+  /// descriptor path. Empty until a render work item routes it.
   void setBindingName(StringID name) { m_bindingName = name; }
 
   ResourceType getType() const override {
@@ -205,35 +207,16 @@ public:
 
   StringID getBindingName() const override { return m_bindingName; }
 
+  [[nodiscard]] UniquePtr cloneUnique() const {
+    auto clone = std::make_unique<CombinedTextureSampler>(m_texture);
+    clone->setBindingName(m_bindingName);
+    return clone;
+  }
+
 private:
   TextureSharedPtr m_texture;
   StringID m_bindingName;
 };
 
 using CombinedTextureSamplerSharedPtr = std::shared_ptr<CombinedTextureSampler>;
-
-class SampledTextureArrayResource final : public IGpuResource {
-public:
-  SampledTextureArrayResource(
-      StringID bindingName,
-      std::vector<CombinedTextureSamplerSharedPtr> textures)
-      : m_bindingName(bindingName), m_textures(std::move(textures)) {}
-
-  ResourceType getType() const override { return ResourceType::Special; }
-  const void *getRawData() const override { return nullptr; }
-  u32 getByteSize() const override { return 0; }
-  StringID getBindingName() const override { return m_bindingName; }
-
-  [[nodiscard]] const std::vector<CombinedTextureSamplerSharedPtr> &
-  textures() const {
-    return m_textures;
-  }
-
-private:
-  StringID m_bindingName;
-  std::vector<CombinedTextureSamplerSharedPtr> m_textures;
-};
-
-using SampledTextureArrayResourceSharedPtr =
-    std::shared_ptr<SampledTextureArrayResource>;
 } // namespace LX_core

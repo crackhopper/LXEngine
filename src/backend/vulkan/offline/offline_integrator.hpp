@@ -12,7 +12,7 @@ public:
   virtual ~OfflineIntegrator() = default;
 
   [[nodiscard]] virtual LX_core::offline::OfflineReadbackImage
-  render(const LX_core::offline::OfflineRenderJob &job) = 0;
+  render(LX_core::offline::OfflineRenderJob &job) = 0;
 };
 
 [[nodiscard]] bool isOfflineIntegratorSupported(const std::string &name);

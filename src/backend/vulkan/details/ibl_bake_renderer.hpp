@@ -41,10 +41,10 @@ private:
 };
 
 struct IblBakeResult {
-  std::shared_ptr<BakedTextureResource> skybox;
-  std::shared_ptr<BakedTextureResource> irradiance;
-  std::shared_ptr<BakedTextureResource> prefiltered;
-  std::shared_ptr<BakedTextureResource> brdfLut;
+  std::unique_ptr<BakedTextureResource> skybox;
+  std::unique_ptr<BakedTextureResource> irradiance;
+  std::unique_ptr<BakedTextureResource> prefiltered;
+  std::unique_ptr<BakedTextureResource> brdfLut;
 };
 
 class IblBakeRenderer final {

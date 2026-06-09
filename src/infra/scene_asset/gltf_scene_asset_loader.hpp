@@ -27,9 +27,6 @@ struct GltfSceneAssetLoadResult final {
 loadGltfMeshAsset(const std::filesystem::path &gltfPath);
 
 [[nodiscard]] GltfSceneAssetLoadResult
-loadGltfSceneAsset(const std::filesystem::path &gltfPath);
-
-[[nodiscard]] GltfSceneAssetLoadResult
 loadGltfSceneAsset(const std::filesystem::path &gltfPath,
                    const std::filesystem::path &pbrMaterialUri);
 

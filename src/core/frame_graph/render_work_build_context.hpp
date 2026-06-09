@@ -15,40 +15,33 @@ struct OfflineRenderJob;
 
 class RenderWorkBuildContext final {
 public:
+  struct RealtimeOptions final {
+    std::optional<RenderTarget> sceneResourceTarget;
+    std::optional<CameraResource> cameraResource;
+    std::optional<VisibilityLayerMask> visibleMask;
+  };
+
   [[nodiscard]] static RenderWorkBuildContext realtime(const Scene &scene);
   [[nodiscard]] static RenderWorkBuildContext
-  realtime(const Scene &scene,
-           std::vector<IGpuResourceSharedPtr> sceneResources,
-           VisibilityLayerMask visibleMask);
+  realtime(const Scene &scene, RealtimeOptions options);
   [[nodiscard]] static RenderWorkBuildContext
-  offline(const offline::OfflineRenderJob &job);
-  [[nodiscard]] static RenderWorkBuildContext
-  offline(const offline::OfflineRenderJob &job, IShaderSharedPtr shader);
+  offline(offline::OfflineRenderJob &job);
 
   [[nodiscard]] RenderDomain domain() const;
   [[nodiscard]] const Scene &realtimeScene() const;
-  [[nodiscard]] bool hasRealtimeOverrides() const;
-  [[nodiscard]] const std::vector<IGpuResourceSharedPtr> &
-  realtimeSceneResources() const;
-  [[nodiscard]] VisibilityLayerMask realtimeVisibleMask() const;
-  [[nodiscard]] const offline::OfflineRenderJob &offlineJob() const;
-  [[nodiscard]] IShaderSharedPtr offlineShader() const;
+  [[nodiscard]] const RealtimeOptions &realtimeOptions() const;
+  [[nodiscard]] offline::OfflineRenderJob &offlineJob() const;
 
 private:
   using RealtimeSource = std::reference_wrapper<const Scene>;
-  using OfflineSource = std::reference_wrapper<const offline::OfflineRenderJob>;
+  using OfflineSource = std::reference_wrapper<offline::OfflineRenderJob>;
 
   explicit RenderWorkBuildContext(RealtimeSource scene);
-  RenderWorkBuildContext(RealtimeSource scene,
-                         std::vector<IGpuResourceSharedPtr> sceneResources,
-                         VisibilityLayerMask visibleMask);
+  RenderWorkBuildContext(RealtimeSource scene, RealtimeOptions options);
   explicit RenderWorkBuildContext(OfflineSource job);
-  RenderWorkBuildContext(OfflineSource job, IShaderSharedPtr shader);
 
   std::variant<RealtimeSource, OfflineSource> m_source;
-  std::optional<std::vector<IGpuResourceSharedPtr>> m_sceneResources;
-  std::optional<VisibilityLayerMask> m_visibleMask;
-  IShaderSharedPtr m_offlineShader;
+  RealtimeOptions m_realtimeOptions;
 };
 
 } // namespace LX_core

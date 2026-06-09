@@ -108,7 +108,7 @@ void emitLightPropertyChanged(const std::weak_ptr<Scene> &weakScene,
 } // namespace
 
 DirectionalLight::DirectionalLight()
-    : m_ubo(std::make_shared<DirectionalLightData>()),
+    : m_ubo(std::make_unique<DirectionalLightData>()),
       m_supportedPasses({Pass_Forward, Pass_Deferred, Pass_Shadow}) {
   const Vec3f defaultDirection = m_pendingDirection.normalized();
   m_ubo->param.dir =
@@ -117,6 +117,21 @@ DirectionalLight::DirectionalLight()
   m_ubo->param.shadowParams =
       Vec4f{1024.0f, 0.02f, 0.45f, static_cast<float>(MaxShadowCascades)};
   updateShadowViewProjection();
+}
+
+std::unique_ptr<LightBase> DirectionalLight::cloneUnique() const {
+  auto clone = std::make_unique<DirectionalLight>();
+  clone->m_ubo = std::make_unique<DirectionalLightData>(*m_ubo);
+  clone->m_pendingDirection = m_pendingDirection;
+  std::copy(std::begin(m_shadowCascadeDebugViews),
+            std::end(m_shadowCascadeDebugViews),
+            std::begin(clone->m_shadowCascadeDebugViews));
+  std::copy(std::begin(m_shadowCascadeDebugViewValid),
+            std::end(m_shadowCascadeDebugViewValid),
+            std::begin(clone->m_shadowCascadeDebugViewValid));
+  clone->m_shadowDistance = m_shadowDistance;
+  clone->m_supportedPasses = m_supportedPasses;
+  return clone;
 }
 
 Vec3f DirectionalLight::getDirection() const {
@@ -254,9 +269,9 @@ void DirectionalLight::updateShadowCascadesForCamera(
   for (u32 cascadeIndex = 0; cascadeIndex < MaxShadowCascades; ++cascadeIndex) {
     if (cascadeIndex >= cascadeCount) {
       setComponent(m_ubo->param.cascadeSplits, cascadeIndex, farPlane);
-      setComponent(m_ubo->param.cascadeDepthRanges, cascadeIndex,
-                   getComponent(m_ubo->param.cascadeDepthRanges,
-                                cascadeCount - 1u));
+      setComponent(
+          m_ubo->param.cascadeDepthRanges, cascadeIndex,
+          getComponent(m_ubo->param.cascadeDepthRanges, cascadeCount - 1u));
       m_ubo->param.cascadeViewProj[cascadeIndex] =
           m_ubo->param.cascadeViewProj[cascadeCount - 1u];
       m_shadowCascadeDebugViews[cascadeIndex] =
@@ -362,10 +377,10 @@ DirectionalLight::getShadowCascadeDebugView(const u32 cascadeIndex) const {
   return m_shadowCascadeDebugViews[cascadeIndex];
 }
 
-DirectionalLightDataSharedPtr
+DirectionalLightDataUniquePtr
 DirectionalLight::makeShadowCascadeUBOSnapshot(u32 cascadeIndex) const {
   cascadeIndex = std::min(cascadeIndex, getShadowCascadeCount() - 1u);
-  auto snapshot = std::make_shared<DirectionalLightData>();
+  auto snapshot = std::make_unique<DirectionalLightData>();
   snapshot->param = m_ubo->param;
   snapshot->param.shadowViewProj = m_ubo->param.cascadeViewProj[cascadeIndex];
   snapshot->setDirty();
@@ -448,6 +463,15 @@ void DirectionalLight::emitLightPropertyChanged() const {
 
 PointLight::PointLight() : m_supportedPasses({Pass_Forward, Pass_Deferred}) {}
 
+std::unique_ptr<LightBase> PointLight::cloneUnique() const {
+  auto clone = std::make_unique<PointLight>();
+  clone->m_color = m_color;
+  clone->m_intensity = m_intensity;
+  clone->m_range = m_range;
+  clone->m_supportedPasses = m_supportedPasses;
+  return clone;
+}
+
 Vec3f PointLight::getColor() const { return m_color; }
 
 float PointLight::getIntensity() const { return m_intensity; }
@@ -508,6 +532,18 @@ void PointLight::emitLightPropertyChanged() const {
 }
 
 SpotLight::SpotLight() : m_supportedPasses({Pass_Forward, Pass_Deferred}) {}
+
+std::unique_ptr<LightBase> SpotLight::cloneUnique() const {
+  auto clone = std::make_unique<SpotLight>();
+  clone->m_direction = m_direction;
+  clone->m_color = m_color;
+  clone->m_intensity = m_intensity;
+  clone->m_range = m_range;
+  clone->m_innerConeDegrees = m_innerConeDegrees;
+  clone->m_outerConeDegrees = m_outerConeDegrees;
+  clone->m_supportedPasses = m_supportedPasses;
+  return clone;
+}
 
 Vec3f SpotLight::getDirection() const {
   if (const auto node = m_node.lock()) {

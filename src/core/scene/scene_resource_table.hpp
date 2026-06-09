@@ -3,8 +3,12 @@
 #include "core/math/bounds.hpp"
 #include "core/math/mat.hpp"
 #include "core/platform/types.hpp"
+#include "core/rhi/descriptor_resource_ref.hpp"
 #include "core/scene/camera.hpp"
+#include "core/scene/ibl_environment.hpp"
+#include "core/scene/light.hpp"
 #include "core/scene/scene_gpu_records.hpp"
+#include "core/scene/scene_resource_handles.hpp"
 #include "core/scene/scene_resource_table_upload_view.hpp"
 #include "core/scene/visibility_mask.hpp"
 #include "core/utils/string_table.hpp"
@@ -21,27 +25,13 @@ class GeometryStorage;
 class LightBase;
 class MaterialInstance;
 class MeshBuffer;
+class Skeleton;
 
-using GeometryStorageSharedPtr = std::shared_ptr<GeometryStorage>;
-using MeshBufferSharedPtr = std::shared_ptr<MeshBuffer>;
-using MaterialInstanceSharedPtr = std::shared_ptr<MaterialInstance>;
-using LightBaseSharedPtr = std::shared_ptr<LightBase>;
-
-struct ResourceHandleBase {
-  u32 index = 0;
-  u32 generation = 0;
-
-  [[nodiscard]] bool isValid() const { return generation != 0; }
-  bool operator==(const ResourceHandleBase &other) const = default;
-};
-
-struct GeometryStorageHandle final : ResourceHandleBase {};
-struct MeshHandle final : ResourceHandleBase {};
-struct MaterialHandle final : ResourceHandleBase {};
-struct TextureHandle final : ResourceHandleBase {};
-struct LightHandle final : ResourceHandleBase {};
-struct CameraHandle final : ResourceHandleBase {};
-struct ObjectHandle final : ResourceHandleBase {};
+using GeometryStorageUniquePtr = std::unique_ptr<GeometryStorage>;
+using MeshBufferUniquePtr = std::unique_ptr<MeshBuffer>;
+using MaterialInstanceUniquePtr = std::unique_ptr<MaterialInstance>;
+using CombinedTextureSamplerUniquePtr = std::unique_ptr<CombinedTextureSampler>;
+using LightBaseUniquePtr = std::unique_ptr<LightBase>;
 
 enum class SceneResourceEntryState : u8 {
   Empty = 0,
@@ -86,6 +76,7 @@ struct RenderSceneSnapshot final {
   std::vector<MaterialHandle> materialHandles;
   std::vector<TextureHandle> textureHandles;
   std::vector<LightHandle> lightHandles;
+  std::vector<SkeletonHandle> skeletonHandles;
   std::vector<CameraHandle> cameraHandles;
   std::vector<ObjectHandle> objectHandles;
   std::vector<ObjectInstanceView> objects;
@@ -104,12 +95,14 @@ index 在 slot 复用后静默命中新资源。
 class SceneResourceTable final {
 public:
   [[nodiscard]] GeometryStorageHandle
-  registerGeometryStorage(GeometryStorageSharedPtr storage);
-  [[nodiscard]] MeshHandle registerMesh(MeshBufferSharedPtr mesh);
+  registerGeometryStorage(GeometryStorageUniquePtr storage);
+  [[nodiscard]] MeshHandle registerMesh(MeshBufferUniquePtr mesh);
   [[nodiscard]] MaterialHandle
-  registerMaterial(MaterialInstanceSharedPtr material);
-  [[nodiscard]] TextureHandle registerTexture(TextureSharedPtr texture);
-  [[nodiscard]] LightHandle registerLight(LightBaseSharedPtr light);
+  registerMaterial(MaterialInstanceUniquePtr material);
+  [[nodiscard]] TextureHandle
+  registerTexture(CombinedTextureSamplerUniquePtr texture);
+  [[nodiscard]] LightHandle registerLight(LightBaseUniquePtr light);
+  [[nodiscard]] SkeletonHandle registerSkeleton(std::unique_ptr<Skeleton> skeleton);
   [[nodiscard]] ObjectHandle registerObject(ObjectResource object);
   [[nodiscard]] CameraHandle registerCamera(CameraResource camera);
   void updateObject(ObjectHandle handle, ObjectResource object);
@@ -120,6 +113,7 @@ public:
   void release(MaterialHandle handle);
   void release(TextureHandle handle);
   void release(LightHandle handle);
+  void release(SkeletonHandle handle);
   void release(ObjectHandle handle);
   void release(CameraHandle handle);
 
@@ -135,14 +129,19 @@ public:
   resolve(MaterialHandle handle);
   [[nodiscard]] std::optional<std::reference_wrapper<const MaterialInstance>>
   resolve(MaterialHandle handle) const;
-  [[nodiscard]] std::optional<std::reference_wrapper<Texture>>
+  [[nodiscard]] std::optional<std::reference_wrapper<CombinedTextureSampler>>
   resolve(TextureHandle handle);
-  [[nodiscard]] std::optional<std::reference_wrapper<const Texture>>
+  [[nodiscard]] std::optional<
+      std::reference_wrapper<const CombinedTextureSampler>>
   resolve(TextureHandle handle) const;
   [[nodiscard]] std::optional<std::reference_wrapper<LightBase>>
   resolve(LightHandle handle);
   [[nodiscard]] std::optional<std::reference_wrapper<const LightBase>>
   resolve(LightHandle handle) const;
+  [[nodiscard]] std::optional<std::reference_wrapper<Skeleton>>
+  resolve(SkeletonHandle handle);
+  [[nodiscard]] std::optional<std::reference_wrapper<const Skeleton>>
+  resolve(SkeletonHandle handle) const;
   [[nodiscard]] std::optional<std::reference_wrapper<ObjectResource>>
   resolve(ObjectHandle handle);
   [[nodiscard]] std::optional<std::reference_wrapper<const ObjectResource>>
@@ -151,12 +150,30 @@ public:
   resolve(CameraHandle handle);
   [[nodiscard]] std::optional<std::reference_wrapper<const CameraResource>>
   resolve(CameraHandle handle) const;
+  [[nodiscard]] GpuResourceRef getCameraUboResource(CameraHandle handle) const;
+  [[nodiscard]] GpuResourceRef
+  buildRenderCameraUboResource(const CameraResource &camera) const;
+  [[nodiscard]] GpuResourceRef
+  buildSceneLightsUboResource(const std::vector<LightHandle> &lightHandles,
+                              StringID pass) const;
+  void setIblEnvironmentResources(IblEnvironmentResources resources);
+  [[nodiscard]] const IblEnvironmentResources *
+  getIblEnvironmentResourceSet() const;
+  [[nodiscard]] IblEnvironmentResources *getMutableIblEnvironmentResources();
+  [[nodiscard]] std::vector<GpuResourceRef> getIblEnvironmentResources() const;
+  void beginRenderResourceScope();
+  [[nodiscard]] MaterialHandle addRenderMaterial(MaterialInstanceUniquePtr material);
+  [[nodiscard]] GpuResourceRef
+  addRenderGpuResource(std::unique_ptr<IGpuResource> resource) const;
+  [[nodiscard]] TextureSamplerRef addRenderTextureSampler(
+      CombinedTextureSamplerUniquePtr sampler) const;
 
   [[nodiscard]] bool isAlive(GeometryStorageHandle handle) const;
   [[nodiscard]] bool isAlive(MeshHandle handle) const;
   [[nodiscard]] bool isAlive(MaterialHandle handle) const;
   [[nodiscard]] bool isAlive(TextureHandle handle) const;
   [[nodiscard]] bool isAlive(LightHandle handle) const;
+  [[nodiscard]] bool isAlive(SkeletonHandle handle) const;
   [[nodiscard]] bool isAlive(ObjectHandle handle) const;
   [[nodiscard]] bool isAlive(CameraHandle handle) const;
 
@@ -165,27 +182,28 @@ public:
   [[nodiscard]] usize materialCount() const;
   [[nodiscard]] usize textureCount() const;
   [[nodiscard]] usize lightCount() const;
+  [[nodiscard]] usize skeletonCount() const;
   [[nodiscard]] usize objectCount() const;
   [[nodiscard]] usize cameraCount() const;
   [[nodiscard]] RenderSceneSnapshot buildSnapshot() const;
   // Returned spans are backed by this table's cached GPU record storage.
   // The view is valid until the next mutating SceneResourceTable call or the
   // next buildUploadView() call. Resources stored in the table can be mutated
-  // through shared ownership, so buildUploadView() rebuilds records every call
+  // through table resolution, so buildUploadView() rebuilds records every call
   // even when the table mutation generation is unchanged.
   [[nodiscard]] SceneResourceTableUploadView buildUploadView() const;
 
 private:
   template <typename Resource>
   struct Entry {
-    std::shared_ptr<Resource> resource;
+    std::unique_ptr<Resource> resource;
     u32 generation = 0;
     SceneResourceEntryState state = SceneResourceEntryState::Empty;
   };
 
   template <typename Resource, typename Handle>
   [[nodiscard]] Handle add(std::vector<Entry<Resource>> &entries,
-                           std::shared_ptr<Resource> resource);
+                           std::unique_ptr<Resource> resource);
 
   template <typename Resource, typename Handle>
   void release(std::vector<Entry<Resource>> &entries, Handle handle);
@@ -196,27 +214,33 @@ private:
 
   template <typename Resource, typename Handle>
   [[nodiscard]] std::optional<std::reference_wrapper<const Resource>>
-  resolveConst(const std::vector<Entry<Resource>> &entries, Handle handle) const;
+  resolveConst(const std::vector<Entry<Resource>> &entries,
+               Handle handle) const;
 
   template <typename Resource, typename Handle>
   [[nodiscard]] bool isAlive(const std::vector<Entry<Resource>> &entries,
                              Handle handle) const;
 
   template <typename Resource>
-  [[nodiscard]] usize aliveCount(const std::vector<Entry<Resource>> &entries) const;
+  [[nodiscard]] usize
+  aliveCount(const std::vector<Entry<Resource>> &entries) const;
 
-  [[nodiscard]] u32
-  registerUploadTexture(const CombinedTextureSamplerSharedPtr &texture) const;
+  [[nodiscard]] u32 registerUploadTexture(TextureHandle texture) const;
 
   void advanceUploadGeneration();
 
   std::vector<Entry<GeometryStorage>> m_geometryStorage;
   std::vector<Entry<MeshBuffer>> m_meshes;
   std::vector<Entry<MaterialInstance>> m_materials;
-  std::vector<Entry<Texture>> m_textures;
+  std::vector<Entry<CombinedTextureSampler>> m_textures;
   std::vector<Entry<LightBase>> m_lights;
+  std::vector<Entry<Skeleton>> m_skeletons;
   std::vector<Entry<ObjectResource>> m_objects;
   std::vector<Entry<CameraResource>> m_cameras;
+  mutable std::optional<IblEnvironmentResources> m_iblEnvironmentResources;
+  std::vector<CameraDataUniquePtr> m_cameraUbos;
+  mutable std::unique_ptr<SceneLightsData> m_sceneLightsUbo =
+      std::make_unique<SceneLightsData>();
   u64 m_generation = 0;
   mutable std::vector<SceneGpuVertexRecord> m_gpuVertices;
   mutable std::vector<u32> m_gpuIndices;
@@ -224,7 +248,12 @@ private:
   mutable std::vector<SceneGpuPrimitiveRecord> m_gpuPrimitives;
   mutable std::vector<SceneGpuObjectRecord> m_gpuObjects;
   mutable std::vector<SceneGpuMaterialRecord> m_gpuMaterials;
-  mutable std::vector<CombinedTextureSamplerSharedPtr> m_gpuTextures;
+  mutable std::vector<std::reference_wrapper<const CombinedTextureSampler>>
+      m_gpuTextures;
+  std::vector<MaterialHandle> m_renderMaterialHandles;
+  mutable std::vector<std::unique_ptr<IGpuResource>> m_renderGpuResources;
+  mutable std::vector<CombinedTextureSamplerUniquePtr>
+      m_renderTextureSamplers;
 };
 
 } // namespace LX_core

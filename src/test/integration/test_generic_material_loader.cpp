@@ -1,5 +1,7 @@
 #include "core/asset/material_instance.hpp"
 #include "core/frame_graph/pass.hpp"
+#include "core/frame_graph/scene_descriptor_resource_resolver.hpp"
+#include "core/scene/scene.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/string_table.hpp"
 #include "infra/material_loader/generic_material_loader.hpp"
@@ -33,6 +35,32 @@ int s_failures = 0;
   } while (0)
 
 namespace fs = std::filesystem;
+
+struct DescriptorResourcesForTest final {
+  SceneSharedPtr scene;
+  DescriptorResourceList descriptors;
+};
+
+DescriptorResourcesForTest
+buildMaterialDescriptorResourcesForTest(const MaterialInstanceSharedPtr &mat,
+                                        StringID pass) {
+  DescriptorResourcesForTest result;
+  result.scene = Scene::create(nullptr);
+  const MaterialHandle handle =
+      result.scene->resources().registerMaterial(mat->cloneInstanceDataUnique());
+  ValidatedRenderablePassData renderable;
+  renderable.materialHandle = handle;
+  renderable.shaderInfo = mat->getPassShader(pass);
+  result.descriptors =
+      buildSceneDescriptorResources(SceneDescriptorResourceContext{
+          .scene = *result.scene,
+          .renderable = renderable,
+          .pass = pass,
+          .target = RenderTarget{},
+          .sceneResources = {},
+      });
+  return result;
+}
 
 class ScopedCurrentPath {
 public:
@@ -87,9 +115,9 @@ fs::path makeTempMaterialPath(const std::string &name) {
   const auto now = std::chrono::steady_clock::now().time_since_epoch();
   const auto timestamp =
       std::chrono::duration_cast<std::chrono::nanoseconds>(now).count();
-  const auto filename = "LXEngine_test_material_" +
-                        std::to_string(timestamp) + "_" +
-                        std::to_string(counter++) + "_" + name + ".material";
+  const auto filename = "LXEngine_test_material_" + std::to_string(timestamp) +
+                        "_" + std::to_string(counter++) + "_" + name +
+                        ".material";
   return fs::temp_directory_path() / filename;
 }
 
@@ -157,7 +185,8 @@ void test_generic_loader_produces_valid_instance() {
   REQUIRE(debugShadowMode->type == MaterialParameterValueType::Int);
   REQUIRE(debugShadowMode->intValue == 0);
 
-  std::cout << "  generic loader produced valid instance with correct defaults\n";
+  std::cout
+      << "  generic loader produced valid instance with correct defaults\n";
 }
 
 void test_flat_shading_model_enables_variant() {
@@ -273,9 +302,8 @@ void test_invalid_shading_model_rejected() {
     ScopedCurrentPath currentPath(root);
     (void)loadGenericMaterial(matPath);
   } catch (const std::logic_error &error) {
-    rejected =
-        std::string(error.what()).find("unknown shadingModel") !=
-        std::string::npos;
+    rejected = std::string(error.what()).find("unknown shadingModel") !=
+               std::string::npos;
   }
 
   REQUIRE(rejected);
@@ -348,9 +376,9 @@ void test_mesh_debug_material_loads() {
 
   REQUIRE(mat != nullptr);
   REQUIRE(mat->getPassShader(Pass_Forward) != nullptr);
-  REQUIRE(mat->findParameterMember(StringID("MeshOverlayUBO"),
-                                   StringID("color"))
-              .has_value());
+  REQUIRE(
+      mat->findParameterMember(StringID("MeshOverlayUBO"), StringID("color"))
+          .has_value());
   REQUIRE(passHasEnabledVariant(mat, Pass_Forward, "USE_FLAT_SHADING"));
 
   const auto tmpl = mat->getTemplate();
@@ -443,7 +471,8 @@ void test_invalid_mesh_overlay_color_rejected_with_loader_error() {
 
 void test_invalid_mesh_overlay_enabled_rejected_with_loader_error() {
   std::cout
-      << "\n-- test_invalid_mesh_overlay_enabled_rejected_with_loader_error --\n";
+      << "\n-- test_invalid_mesh_overlay_enabled_rejected_with_loader_error "
+         "--\n";
   auto root = findProjectRoot();
   if (root.empty()) {
     std::cerr << "  SETUP: project root not found; skipping\n";
@@ -495,9 +524,8 @@ void test_mesh_overlay_requires_color_binding() {
     ScopedCurrentPath currentPath(root);
     (void)loadGenericMaterial(matPath);
   } catch (const std::logic_error &error) {
-    rejected =
-        std::string(error.what()).find("MeshOverlayUBO.color") !=
-        std::string::npos;
+    rejected = std::string(error.what()).find("MeshOverlayUBO.color") !=
+               std::string::npos;
   }
 
   REQUIRE(rejected);
@@ -549,10 +577,11 @@ void test_pbr_example_material_loads() {
   REQUIRE(roughness == 0.25f);
   REQUIRE(ao == 1.0f);
 
-  auto resources = mat->getDescriptorResources(Pass_Forward);
-  REQUIRE(resources.size() == 2);
-  REQUIRE(resources[0]->getBindingName() == StringID("MaterialUBO"));
-  REQUIRE(resources[1]->getBindingName() == StringID("albedoMap"));
+  auto resources = buildMaterialDescriptorResourcesForTest(mat, Pass_Forward);
+  REQUIRE(resources.descriptors.size() == 2);
+  REQUIRE(resources.descriptors[0].getBindingName() ==
+          StringID("MaterialUBO"));
+  REQUIRE(resources.descriptors[1].getBindingName() == StringID("albedoMap"));
 
   std::cout << "  pbr_gold.material loads through the formal asset path\n";
 }
@@ -576,12 +605,12 @@ void test_rtr_experiment_template_material_loads() {
   REQUIRE(mat->findParameterMember(StringID("MaterialUBO"),
                                    StringID("surfaceColor"))
               .has_value());
-  REQUIRE(mat->findParameterMember(StringID("MaterialUBO"),
-                                   StringID("accentColor"))
-              .has_value());
-  REQUIRE(mat->findParameterMember(StringID("MaterialUBO"),
-                                   StringID("mixAmount"))
-              .has_value());
+  REQUIRE(
+      mat->findParameterMember(StringID("MaterialUBO"), StringID("accentColor"))
+          .has_value());
+  REQUIRE(
+      mat->findParameterMember(StringID("MaterialUBO"), StringID("mixAmount"))
+          .has_value());
   REQUIRE(mat->findParameterMember(StringID("MaterialUBO"), StringID("mode"))
               .has_value());
 
@@ -612,12 +641,12 @@ void test_rtr_shadertoy_quantum_core_material_loads() {
   REQUIRE(mat->getPassShader(Pass_Forward) != nullptr);
   REQUIRE(mat->findParameterMember(StringID("ShadertoyUBO"), StringID("time"))
               .has_value());
-  REQUIRE(mat->findParameterMember(StringID("ShadertoyUBO"),
-                                   StringID("resolution"))
-              .has_value());
-  REQUIRE(mat->findParameterMember(StringID("ShadertoyUBO"),
-                                   StringID("audioBands"))
-              .has_value());
+  REQUIRE(
+      mat->findParameterMember(StringID("ShadertoyUBO"), StringID("resolution"))
+          .has_value());
+  REQUIRE(
+      mat->findParameterMember(StringID("ShadertoyUBO"), StringID("audioBands"))
+          .has_value());
 
   const auto time =
       mat->readParameterValue(StringID("ShadertoyUBO"), StringID("time"));
@@ -625,21 +654,24 @@ void test_rtr_shadertoy_quantum_core_material_loads() {
   REQUIRE(time->type == MaterialParameterValueType::Float);
   REQUIRE(time->floatValue == 0.0f);
 
-  const auto resolution = mat->readParameterValue(
-      StringID("ShadertoyUBO"), StringID("resolution"));
+  const auto resolution =
+      mat->readParameterValue(StringID("ShadertoyUBO"), StringID("resolution"));
   REQUIRE(resolution.has_value());
   REQUIRE(resolution->type == MaterialParameterValueType::Vec4);
   REQUIRE(resolution->vectorValue.x == 1280.0f);
   REQUIRE(resolution->vectorValue.y == 720.0f);
 
-  const auto resources = mat->getDescriptorResources(Pass_Forward);
-  const auto hasAudioChannel =
-      std::any_of(resources.begin(), resources.end(), [](const auto &resource) {
-        return resource && resource->getBindingName() == StringID("iChannel0");
+  const auto resources =
+      buildMaterialDescriptorResourcesForTest(mat, Pass_Forward);
+  const auto hasAudioChannel = std::any_of(
+      resources.descriptors.begin(), resources.descriptors.end(),
+      [](const auto &resource) {
+        return resource.getBindingName() == StringID("iChannel0");
       });
   REQUIRE(hasAudioChannel);
 
-  std::cout << "  rtr_shadertoy_quantum_core.material loads and reflects params\n";
+  std::cout
+      << "  rtr_shadertoy_quantum_core.material loads and reflects params\n";
 }
 
 void test_per_pass_shader_override() {
@@ -685,7 +717,8 @@ void test_per_pass_shader_override() {
   // Both passes should have shader info.
   REQUIRE(mat->getPassShader(Pass_Forward) != nullptr);
   REQUIRE(mat->getPassShader(Pass_Shadow) != nullptr);
-  REQUIRE(mat->getDescriptorResources(Pass_Shadow).empty());
+  REQUIRE(buildMaterialDescriptorResourcesForTest(mat, Pass_Shadow)
+              .descriptors.empty());
 
   std::cout << "  per-pass shader override works\n";
 }
@@ -734,19 +767,19 @@ void test_canonical_parameters_shared_across_passes() {
   std::memcpy(&globalShiny, globalBuf.data() + 12, sizeof(float));
   REQUIRE(globalShiny == 4.0f);
 
-  auto fwdRes = mat->getDescriptorResources(Pass_Forward);
-  auto shadRes = mat->getDescriptorResources(Pass_Shadow);
-  REQUIRE(!fwdRes.empty());
-  REQUIRE(!shadRes.empty());
-  REQUIRE(fwdRes[0]->getBindingName() == StringID("MaterialUBO"));
-  REQUIRE(shadRes[0]->getBindingName() == StringID("MaterialUBO"));
-  REQUIRE(fwdRes[0].get() == shadRes[0].get());
+  auto fwdRes = buildMaterialDescriptorResourcesForTest(mat, Pass_Forward);
+  auto shadRes = buildMaterialDescriptorResourcesForTest(mat, Pass_Shadow);
+  REQUIRE(!fwdRes.descriptors.empty());
+  REQUIRE(!shadRes.descriptors.empty());
+  REQUIRE(fwdRes.descriptors[0].getBindingName() == StringID("MaterialUBO"));
+  REQUIRE(shadRes.descriptors[0].getBindingName() == StringID("MaterialUBO"));
 
   std::cout << "  canonical parameters shared across passes\n";
 }
 
 void test_vector_parameters_load_without_aliasing_yaml_nodes() {
-  std::cout << "\n-- test_vector_parameters_load_without_aliasing_yaml_nodes --\n";
+  std::cout
+      << "\n-- test_vector_parameters_load_without_aliasing_yaml_nodes --\n";
   auto root = findProjectRoot();
   if (root.empty()) {
     std::cerr << "  SETUP: project root not found; skipping\n";
@@ -764,7 +797,7 @@ void test_vector_parameters_load_without_aliasing_yaml_nodes() {
            "  MaterialUBO.roughnessFactor: 0.2\n"
            "  MaterialUBO.ao: 0.8\n"
            "resources:\n"
-            "  albedoMap: white\n";
+           "  albedoMap: white\n";
   }
 
   MaterialInstanceSharedPtr mat;
@@ -799,7 +832,8 @@ void test_vector_parameters_load_without_aliasing_yaml_nodes() {
 }
 
 void test_textured_character_material_has_projected_shadow_pass() {
-  std::cout << "\n-- test_textured_character_material_has_projected_shadow_pass --\n";
+  std::cout
+      << "\n-- test_textured_character_material_has_projected_shadow_pass --\n";
   auto root = findProjectRoot();
   if (root.empty()) {
     std::cerr << "  SETUP: project root not found; skipping\n";
@@ -808,7 +842,8 @@ void test_textured_character_material_has_projected_shadow_pass() {
 
   auto prev = fs::current_path();
   fs::current_path(root);
-  auto mat = loadGenericMaterial("assets/materials/blinnphong_textured.material");
+  auto mat =
+      loadGenericMaterial("assets/materials/blinnphong_textured.material");
   fs::current_path(prev);
 
   REQUIRE(mat != nullptr);

@@ -258,11 +258,11 @@ MaterialInstanceSharedPtr makeMaterial(std::vector<ShaderVariant> variants) {
   return makeMaterialFromYaml(yaml);
 }
 
-bool hasBinding(const std::vector<IGpuResourceSharedPtr> &resources,
+bool hasBinding(const DescriptorResourceList &resources,
                 const char *bindingName) {
   const StringID id(bindingName);
   for (const auto &resource : resources) {
-    if (resource && resource->getBindingName() == id)
+    if (resource.getBindingName() == id)
       return true;
   }
   return false;
@@ -346,16 +346,19 @@ void testComponentAttachRemoveAndListOrder() {
   EXPECT(skeletonComponent.has_value(),
          "skeleton component lookup should succeed");
   if (meshComponent) {
-    EXPECT(meshComponent->get().getMesh() == mesh,
-           "mesh component should preserve mesh handle");
+    EXPECT(meshComponent->get().getPendingMesh() == mesh,
+           "mesh component should preserve pending mesh before scene "
+           "registration");
   }
   if (materialComponent) {
-    EXPECT(materialComponent->get().getMaterialInstance() == material,
-           "material component should preserve material handle");
+    EXPECT(materialComponent->get().getPendingMaterialInstance() == material,
+           "material component should preserve pending material before scene "
+           "registration");
   }
   if (skeletonComponent) {
-    EXPECT(skeletonComponent->get().getSkeleton() == skeleton,
-           "skeleton component should preserve skeleton handle");
+    EXPECT(skeletonComponent->get().getPendingSkeleton() == skeleton,
+           "skeleton component should preserve pending skeleton before scene "
+           "registration");
   }
 
   auto components = node->listComponents();
@@ -415,7 +418,7 @@ void testIndependentSceneNodeValidation() {
   auto validated = node->getValidatedPassData(Pass_Forward);
   EXPECT(validated.has_value(), "validated pass data should exist");
   if (validated) {
-    EXPECT(!hasBinding(validated->get().descriptorResources, "Bones"),
+    EXPECT(!validated->get().bonesResource.isValid(),
            "non-skinned node should not carry Bones");
   }
 }
@@ -438,7 +441,7 @@ void testPassEnableStateRebuildsCache() {
          "validated entry restored when pass reenabled");
 }
 
-void testSharedMaterialPassChangesRevalidateAllSceneNodes() {
+void testPendingMaterialPrototypeDoesNotOwnSceneMaterials() {
   auto material = makeMaterial(false);
   auto nodeA =
       makeNode("node_shared_a", makeMeshWithSkinningInputs(), material);
@@ -451,10 +454,12 @@ void testSharedMaterialPassChangesRevalidateAllSceneNodes() {
   EXPECT(nodeB->supportsPass(Pass_Forward), "nodeB starts validated");
 
   material->setPassEnabled(Pass_Forward, false);
-  EXPECT(!nodeA->supportsPass(Pass_Forward),
-         "shared material disable propagates to first node");
-  EXPECT(!nodeB->supportsPass(Pass_Forward),
-         "shared material disable propagates to second node");
+  EXPECT(nodeA->supportsPass(Pass_Forward),
+         "external pending material prototype no longer owns first scene "
+         "material");
+  EXPECT(nodeB->supportsPass(Pass_Forward),
+         "external pending material prototype no longer owns second scene "
+         "material");
 
   material->setPassEnabled(Pass_Forward, true);
   EXPECT(nodeA->supportsPass(Pass_Forward),
@@ -496,13 +501,13 @@ void testSceneDestructionDetachesSceneNodesFromMaterialListener() {
 
   material->setPassEnabled(Pass_Forward, false);
   EXPECT(!node->supportsPass(Pass_Forward),
-         "detached node should rebuild locally after scene destruction");
+         "detached node should not render after scene resource table is gone");
   EXPECT(!node->getValidatedPassData(Pass_Forward).has_value(),
-         "detached node should clear disabled pass after scene destruction");
+         "detached node should have no validated pass after scene destruction");
 
   material->setPassEnabled(Pass_Forward, true);
-  EXPECT(node->supportsPass(Pass_Forward),
-         "detached node should revalidate locally after scene destruction");
+  EXPECT(!node->supportsPass(Pass_Forward),
+         "detached node should not resurrect resources outside scene table");
 }
 
 void testSceneNodeHierarchyPropagatesWorldTransform() {
@@ -686,9 +691,9 @@ void testOptionalSampledResourcesDoNotBlockValidation() {
   EXPECT(validated.has_value(),
          "validated pass data should exist without bound optional textures");
   if (validated) {
-    EXPECT(hasBinding(validated->get().descriptorResources, "MaterialUBO"),
+    EXPECT(material->getParameterResource(StringID("MaterialUBO")).isValid(),
            "material buffer should still be bound");
-    EXPECT(!hasBinding(validated->get().descriptorResources, "albedoMap"),
+    EXPECT(!material->getTexture(StringID("albedoMap")),
            "missing optional texture should be skipped");
   }
 }
@@ -709,7 +714,9 @@ void testSkinningVariantChangesPipelineSignaturesAndAddsBones() {
                baseData->get().materialSignature !=
                    skinnedData->get().materialSignature,
            "variant difference should change object or material signature");
-    EXPECT(hasBinding(skinnedData->get().descriptorResources, "Bones"),
+    EXPECT(skinnedData->get().bonesResource.isValid() &&
+               skinnedData->get().bonesResource.get().getBindingName() ==
+                   StringID("Bones"),
            "skinned validated entry should include Bones resource");
   }
 }
@@ -720,7 +727,8 @@ void testRenderWorkQueueConsumesValidatedSceneNode() {
   auto scene = Scene::create("SceneQueue", node);
   scene->addCamera(LX_test::makeDefaultCameraNodeWithTarget());
   RenderWorkQueue queue;
-  queue.build(LX_core::RenderWorkBuildContext::realtime(*scene), Pass_Forward, RenderTarget{});
+  queue.build(LX_core::RenderWorkBuildContext::realtime(*scene), Pass_Forward,
+              RenderTarget{});
 
   EXPECT(queue.getItems().size() == 1, "queue should consume one SceneNode");
   auto validated = node->getValidatedPassData(Pass_Forward);
@@ -731,10 +739,8 @@ void testRenderWorkQueueConsumesValidatedSceneNode() {
         RenderTarget{}.toDesc().getPipelineSignature());
     EXPECT(queue.getItems()[0].pipelineKey == expectedKey,
            "queue should compose target-aware pipeline key");
-    EXPECT(
-        queue.getItems()[0].descriptorResources.size() >=
-            validated->get().descriptorResources.size(),
-        "scene-level resources should be appended after validated resources");
+    EXPECT(hasBinding(queue.getItems()[0].descriptorResources, "MaterialUBO"),
+           "queue resolver should add material resources");
   }
 }
 
@@ -752,7 +758,8 @@ void testRenderWorkQueueUsesHierarchyDerivedWorldTransform() {
   scene->addCamera(LX_test::makeDefaultCameraNodeWithTarget());
 
   RenderWorkQueue queue;
-  queue.build(LX_core::RenderWorkBuildContext::realtime(*scene), Pass_Forward, RenderTarget{});
+  queue.build(LX_core::RenderWorkBuildContext::realtime(*scene), Pass_Forward,
+              RenderTarget{});
 
   EXPECT(queue.getItems().size() == 2,
          "queue should include both parent and child renderables");
@@ -875,7 +882,7 @@ int main(int argc, char **argv) {
   testDuplicateComponentTypeTriggersProgrammerError(argv[0]);
   testIndependentSceneNodeValidation();
   testPassEnableStateRebuildsCache();
-  testSharedMaterialPassChangesRevalidateAllSceneNodes();
+  testPendingMaterialPrototypeDoesNotOwnSceneMaterials();
   testSceneNodeBackrefUsesWeakOwnershipContract();
   testSceneDestructionDetachesSceneNodesFromMaterialListener();
   testSceneNodeHierarchyPropagatesWorldTransform();

@@ -40,7 +40,7 @@ struct SoftwareComputeOfflineIntegrator::Impl final {
   }
 
   [[nodiscard]] LX_core::offline::OfflineReadbackImage
-  render(const LX_core::offline::OfflineRenderJob &job) {
+  render(LX_core::offline::OfflineRenderJob &job) {
     LX_core::offline::validateOfflineRenderJob(job);
     const IShaderSharedPtr offlineShader = job.offlineShader;
     if (!offlineShader) {
@@ -49,8 +49,7 @@ struct SoftwareComputeOfflineIntegrator::Impl final {
     }
     FrameGraph renderGraph =
         LX_core::offline::createOfflineRenderFrameGraph(job.output);
-    renderGraph.build(
-        LX_core::RenderWorkBuildContext::offline(job, offlineShader));
+    renderGraph.build(LX_core::RenderWorkBuildContext::offline(job));
     const CompiledFrameGraph compiledGraph = renderGraph.compile();
     if (!compiledGraph.isValid()) {
       throw std::runtime_error(compiledGraph.errorText());
@@ -67,9 +66,8 @@ struct SoftwareComputeOfflineIntegrator::Impl final {
     image.width = job.output.width;
     image.height = job.output.height;
     image.rgba.resize(image.pixelCount() * 4);
-    const IGpuResourceSharedPtr outputPixelsResource = execution.outputPixels;
     auto outputBuffer = resourceManager->getBuffer(
-        outputPixelsResource->getBackendCacheIdentity());
+        execution.outputPixels.getBackendCacheIdentity());
     if (!outputBuffer.has_value()) {
       throw std::runtime_error(
           "offline output storage buffer was not uploaded");
@@ -92,7 +90,7 @@ SoftwareComputeOfflineIntegrator::SoftwareComputeOfflineIntegrator()
 SoftwareComputeOfflineIntegrator::~SoftwareComputeOfflineIntegrator() = default;
 
 LX_core::offline::OfflineReadbackImage SoftwareComputeOfflineIntegrator::render(
-    const LX_core::offline::OfflineRenderJob &job) {
+    LX_core::offline::OfflineRenderJob &job) {
   return m_impl->render(job);
 }
 

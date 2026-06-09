@@ -20,9 +20,9 @@ namespace {
 constexpr usize kOfflineSceneTextureDescriptorCount = 64;
 
 struct DirectionalLightParams final {
-  Vec3f direction{-0.35f, -1.0f, -0.25f};
-  Vec3f color{1.0f, 0.96f, 0.88f};
-  float intensity = 1.0f;
+  Vec3f direction{0.0f, -1.0f, 0.0f};
+  Vec3f color{0.0f, 0.0f, 0.0f};
+  float intensity = 0.0f;
 };
 
 class OfflineStorageBufferResource final : public IGpuResource {
@@ -68,32 +68,44 @@ std::vector<std::byte> zeroBytes(usize byteSize) {
   return std::vector<std::byte>(byteSize);
 }
 
-IGpuResourceSharedPtr makeStorageBuffer(StringID bindingName,
-                                        std::vector<std::byte> bytes) {
-  return std::make_shared<OfflineStorageBufferResource>(bindingName,
+std::unique_ptr<IGpuResource> makeStorageBuffer(StringID bindingName,
+                                                std::vector<std::byte> bytes) {
+  return std::make_unique<OfflineStorageBufferResource>(bindingName,
                                                         std::move(bytes));
 }
 
-IGpuResourceSharedPtr makeSceneTextureArray(
-    std::span<const CombinedTextureSamplerSharedPtr> uploadTextures) {
+DescriptorResourceRef makeSceneTextureArray(
+    std::span<const std::reference_wrapper<const CombinedTextureSampler>>
+        uploadTextures,
+    const CombinedTextureSampler &paddingTexture) {
   if (uploadTextures.size() > kOfflineSceneTextureDescriptorCount) {
     throw std::runtime_error("offline PBR scene texture descriptor array "
                              "supports at most 64 textures");
   }
 
-  auto fallback =
-      std::make_shared<CombinedTextureSampler>(createWhiteTexture());
-  std::vector<CombinedTextureSamplerSharedPtr> textures;
+  std::vector<TextureSamplerRef> textures;
   textures.reserve(kOfflineSceneTextureDescriptorCount);
-  for (const CombinedTextureSamplerSharedPtr &texture : uploadTextures) {
-    textures.push_back(texture ? texture : fallback);
+  for (const auto &texture : uploadTextures) {
+    textures.emplace_back(texture.get());
   }
   while (textures.size() < kOfflineSceneTextureDescriptorCount) {
-    textures.push_back(fallback);
+    textures.emplace_back(paddingTexture);
   }
 
-  return std::make_shared<SampledTextureArrayResource>(
-      StringID("SceneTextures"), std::move(textures));
+  return DescriptorResourceRef::textureArray(StringID("SceneTextures"),
+                                             std::move(textures));
+}
+
+void appendStorageDescriptor(OfflineSceneStorageResources &resources,
+                             const SceneResourceTable &scene,
+                             StringID bindingName,
+                             std::vector<std::byte> bytes) {
+  const GpuResourceRef resource =
+      scene.addRenderGpuResource(makeStorageBuffer(bindingName,
+                                                   std::move(bytes)));
+  if (resource.isValid()) {
+    resources.descriptorResources.emplace_back(resource.get());
+  }
 }
 
 [[nodiscard]] Vec4f vec4(const Vec3f &value, const float w) {
@@ -176,7 +188,7 @@ makeShaderParams(const OfflineRenderJob &job,
   params.lightDirectionIntensity =
       vec4(light.direction.normalized(), light.intensity);
   params.lightColorEnvironment =
-      Vec4f{light.color.x, light.color.y, light.color.z, 0.35f};
+      Vec4f{light.color.x, light.color.y, light.color.z, 0.0f};
   params.backgroundColor =
       Vec4f{job.output.backgroundColor.x, job.output.backgroundColor.y,
             job.output.backgroundColor.z, 1.0f};
@@ -196,7 +208,7 @@ makeShaderParams(const OfflineRenderJob &job,
 } // namespace
 
 OfflineSceneStorageResources
-buildOfflineSceneStorageResources(const OfflineRenderJob &job) {
+buildOfflineSceneStorageResources(OfflineRenderJob &job) {
   const SceneResourceTableUploadView uploadView = job.scene.buildUploadView();
   validateOfflineUploadView(uploadView);
   const SceneSoftwareBvh bvh = SceneSoftwareBvh::build(uploadView);
@@ -205,30 +217,46 @@ buildOfflineSceneStorageResources(const OfflineRenderJob &job) {
   const SceneGpuFrameParams params = makeShaderParams(job, uploadView, bvh);
 
   OfflineSceneStorageResources resources;
-  resources.descriptorResources = {
-      makeStorageBuffer(StringID("SceneVertices"),
-                        copyBytes(uploadView.vertices)),
-      makeStorageBuffer(StringID("SceneIndices"),
-                        copyBytes(uploadView.indices)),
-      makeStorageBuffer(StringID("SceneMeshes"), copyBytes(uploadView.meshes)),
-      makeStorageBuffer(StringID("ScenePrimitives"),
-                        copyBytes(shaderPrimitives)),
-      makeStorageBuffer(StringID("SceneObjects"),
-                        copyBytes(uploadView.objects)),
-      makeStorageBuffer(StringID("SceneMaterials"),
-                        copyBytes(uploadView.materials)),
-      makeStorageBuffer(StringID("SceneBvhNodes"), copyBytes(bvh.nodes())),
-      makeStorageBuffer(StringID("SceneFrameParams"), copyObjectBytes(params)),
-  };
+  job.scene.beginRenderResourceScope();
+  resources.descriptorResources.reserve(10);
+  appendStorageDescriptor(resources, job.scene, StringID("SceneVertices"),
+                          copyBytes(uploadView.vertices));
+  appendStorageDescriptor(resources, job.scene, StringID("SceneIndices"),
+                          copyBytes(uploadView.indices));
+  appendStorageDescriptor(resources, job.scene, StringID("SceneMeshes"),
+                          copyBytes(uploadView.meshes));
+  appendStorageDescriptor(resources, job.scene, StringID("ScenePrimitives"),
+                          copyBytes(shaderPrimitives));
+  appendStorageDescriptor(resources, job.scene, StringID("SceneObjects"),
+                          copyBytes(uploadView.objects));
+  appendStorageDescriptor(resources, job.scene, StringID("SceneMaterials"),
+                          copyBytes(uploadView.materials));
+  appendStorageDescriptor(resources, job.scene, StringID("SceneBvhNodes"),
+                          copyBytes(bvh.nodes()));
+  appendStorageDescriptor(resources, job.scene, StringID("SceneFrameParams"),
+                          copyObjectBytes(params));
 
   const usize outputSize = static_cast<usize>(job.output.width) *
                            static_cast<usize>(job.output.height) *
                            sizeof(Vec4f);
   resources.outputPixels =
-      makeStorageBuffer(StringID("OutputPixels"), zeroBytes(outputSize));
-  resources.descriptorResources.push_back(resources.outputPixels);
+      job.scene.addRenderGpuResource(makeStorageBuffer(
+          StringID("OutputPixels"), zeroBytes(outputSize)));
+  if (resources.outputPixels.isValid()) {
+    resources.descriptorResources.emplace_back(resources.outputPixels.get());
+  }
+  TextureSamplerRef paddingTexture;
+  if (!uploadView.textures.empty()) {
+    paddingTexture = TextureSamplerRef{uploadView.textures.front().get()};
+  } else {
+    paddingTexture = job.scene.addRenderTextureSampler(
+        std::make_unique<CombinedTextureSampler>(createWhiteTexture()));
+  }
+  if (!paddingTexture.isValid()) {
+    throw std::runtime_error("offline scene texture descriptor padding missing");
+  }
   resources.descriptorResources.push_back(
-      makeSceneTextureArray(uploadView.textures));
+      makeSceneTextureArray(uploadView.textures, paddingTexture.get()));
   return resources;
 }
 

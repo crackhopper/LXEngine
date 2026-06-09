@@ -30,10 +30,12 @@ layout(set = 0, binding = 0) uniform LightUBO {
     vec4 cascadeDepthRanges;
     vec4 shadowParams;
 } sceneLight;
+#ifdef HAS_SHADOWS
 layout(set = 0, binding = 1) uniform sampler2D ShadowMap0;
 layout(set = 0, binding = 2) uniform sampler2D ShadowMap1;
 layout(set = 0, binding = 3) uniform sampler2D ShadowMap2;
 layout(set = 0, binding = 4) uniform sampler2D ShadowMap3;
+#endif
 #endif
 
 layout(set = 2, binding = 0) uniform MaterialUBO {
@@ -77,7 +79,7 @@ vec3 computeBaseColor() {
     return baseCol;
 }
 
-#ifdef USE_LIGHTING
+#if defined(USE_LIGHTING) && defined(HAS_SHADOWS)
 float sampleShadowTexture(int cascadeIndex, vec2 uv) {
     if (cascadeIndex == 0) {
         return texture(ShadowMap0, uv).r;
@@ -199,7 +201,9 @@ float sampleShadowMap(vec3 worldPos, vec3 normal, vec3 lightDir) {
     float blend = smoothstep(blendStart, splitEnd, viewDepth);
     return mix(visibility, nextVisibility, blend);
 }
+#endif
 
+#ifdef USE_LIGHTING
 vec3 computeSmoothNormal() {
 #ifdef USE_NORMAL_MAP
     mat3 tbn = vTBN;
@@ -250,6 +254,7 @@ void main() {
     vec3 L = normalize(-sceneLight.dir.xyz);
     vec3 V = normalize(camera.eyePos - vWorldPos);
     float diff = max(dot(N, L), 0.0);
+#ifdef HAS_SHADOWS
     if (material.debugShadowMode == 2) {
         outColor = vec4(cascadeDebugColor(vWorldPos), 1.0);
         return;
@@ -261,6 +266,9 @@ void main() {
     }
     float shadowStrength = clamp(sceneLight.shadowParams.z, 0.0, 1.0);
     float directVisibility = mix(1.0, shadowVisibility, shadowStrength);
+#else
+    float directVisibility = 1.0;
+#endif
     vec3 diffuse = diff * sceneLight.color.rgb;
     vec3 H = normalize(L + V);
     float spec = pow(max(dot(N, H), 0.0), material.shininess);

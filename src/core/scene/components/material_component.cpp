@@ -12,9 +12,9 @@ MaterialComponent::MaterialComponent(std::string tag,
   if (tag.empty()) {
     throw std::logic_error("MaterialComponent tag must not be empty");
   }
-  m_material = std::move(material);
+  m_pendingMaterial = std::move(material);
   m_activeMaterialTag = std::move(tag);
-  m_materialsByTag.emplace(m_activeMaterialTag, m_material);
+  m_pendingMaterialsByTag.emplace(m_activeMaterialTag, m_pendingMaterial);
 }
 
 MaterialComponent::~MaterialComponent() {
@@ -23,8 +23,9 @@ MaterialComponent::~MaterialComponent() {
 
 void MaterialComponent::setMaterialInstance(MaterialInstanceSharedPtr material) {
   unregisterPassStateListener();
-  m_material = std::move(material);
-  m_materialsByTag.clear();
+  m_pendingMaterial = std::move(material);
+  m_pendingMaterialsByTag.clear();
+  m_materialHandlesByTag.clear();
   m_activeMaterialTag.clear();
   m_materialHandle = {};
   registerPassStateListener();
@@ -37,8 +38,11 @@ void MaterialComponent::setTaggedMaterial(std::string tag,
     throw std::logic_error("MaterialComponent tag must not be empty");
   }
   const std::string insertedTag = tag;
-  const bool shouldActivate = m_activeMaterialTag.empty() || !m_material;
-  m_materialsByTag[std::move(tag)] = std::move(material);
+  const bool shouldActivate =
+      m_activeMaterialTag.empty() ||
+      (!m_pendingMaterial && !m_materialHandle.isValid());
+  m_pendingMaterialsByTag[std::move(tag)] = std::move(material);
+  m_materialHandlesByTag.erase(insertedTag);
   if (shouldActivate) {
     (void)setActiveMaterialTag(insertedTag);
     return;
@@ -46,20 +50,81 @@ void MaterialComponent::setTaggedMaterial(std::string tag,
   notifyOwnerStructuralChange();
 }
 
+void MaterialComponent::setTaggedMaterialHandle(std::string tag,
+                                                MaterialHandle handle) {
+  if (tag.empty()) {
+    throw std::logic_error("MaterialComponent tag must not be empty");
+  }
+  const bool shouldActivate = m_activeMaterialTag == tag;
+  m_materialHandlesByTag[std::move(tag)] = handle;
+  if (shouldActivate) {
+    m_materialHandle = handle;
+  }
+}
+
+void MaterialComponent::clearPendingMaterials() {
+  m_pendingMaterial.reset();
+  m_pendingMaterialsByTag.clear();
+  unregisterPassStateListener();
+}
+
 bool MaterialComponent::setActiveMaterialTag(const std::string &tag) {
-  const auto it = m_materialsByTag.find(tag);
+  const auto pendingIt = m_pendingMaterialsByTag.find(tag);
+  const auto handleIt = m_materialHandlesByTag.find(tag);
   unregisterPassStateListener();
   m_activeMaterialTag = tag;
-  m_material = it == m_materialsByTag.end() ? MaterialInstanceSharedPtr{}
-                                            : it->second;
-  m_materialHandle = {};
+  m_pendingMaterial = pendingIt == m_pendingMaterialsByTag.end()
+                          ? MaterialInstanceSharedPtr{}
+                          : pendingIt->second;
+  m_materialHandle = handleIt == m_materialHandlesByTag.end()
+                         ? MaterialHandle{}
+                         : handleIt->second;
   registerPassStateListener();
   notifyOwnerStructuralChange();
-  return it != m_materialsByTag.end();
+  return pendingIt != m_pendingMaterialsByTag.end() ||
+         handleIt != m_materialHandlesByTag.end();
 }
 
 bool MaterialComponent::hasMaterialTag(const std::string &tag) const {
-  return m_materialsByTag.find(tag) != m_materialsByTag.end();
+  return m_pendingMaterialsByTag.find(tag) != m_pendingMaterialsByTag.end() ||
+         m_materialHandlesByTag.find(tag) != m_materialHandlesByTag.end();
+}
+
+MaterialHandle
+MaterialComponent::getMaterialHandleForTag(const std::string &tag) const {
+  const auto it = m_materialHandlesByTag.find(tag);
+  return it == m_materialHandlesByTag.end() ? MaterialHandle{} : it->second;
+}
+
+void MaterialComponent::forEachPendingMaterial(
+    const std::function<void(const std::string &,
+                             const MaterialInstanceSharedPtr &)> &callback)
+    const {
+  if (!callback) {
+    return;
+  }
+  if (m_pendingMaterialsByTag.empty()) {
+    callback(std::string{}, m_pendingMaterial);
+    return;
+  }
+  for (const auto &[tag, material] : m_pendingMaterialsByTag) {
+    callback(tag, material);
+  }
+}
+
+void MaterialComponent::forEachMaterialHandle(
+    const std::function<void(const std::string &, MaterialHandle)> &callback)
+    const {
+  if (!callback) {
+    return;
+  }
+  if (m_materialHandlesByTag.empty()) {
+    callback(std::string{}, m_materialHandle);
+    return;
+  }
+  for (const auto &[tag, handle] : m_materialHandlesByTag) {
+    callback(tag, handle);
+  }
 }
 
 void MaterialComponent::onAttached() {
@@ -71,29 +136,25 @@ void MaterialComponent::onDetaching() {
 }
 
 void MaterialComponent::registerPassStateListener() {
-  if (!m_material || m_passListenerId != 0) {
+  if (!m_pendingMaterial || m_passListenerId != 0) {
     return;
   }
-  m_passListenerId = m_material->addPassStateListener([this]() {
+  m_passListenerId = m_pendingMaterial->addPassStateListener([this]() {
     revalidateOwnerForPassChange();
   });
 }
 
 void MaterialComponent::unregisterPassStateListener() {
-  if (!m_material || m_passListenerId == 0) {
+  if (!m_pendingMaterial || m_passListenerId == 0) {
     return;
   }
-  m_material->removePassStateListener(m_passListenerId);
+  m_pendingMaterial->removePassStateListener(m_passListenerId);
   m_passListenerId = 0;
 }
 
 void MaterialComponent::revalidateOwnerForPassChange() const {
   auto ownerNode = owner();
   if (!ownerNode.has_value()) {
-    return;
-  }
-  if (auto scene = ownerNode->get().getAttachedScene(); scene && m_material) {
-    scene->revalidateNodesUsing(m_material);
     return;
   }
   notifyOwnerStructuralChange();

@@ -20,6 +20,7 @@
 6. 新增无 shadow、无 IBL、无 GI 的 Helmet PBR 等价场景，生成 realtime/offline linear EXR 并用 `lxe_compare_exr` 做像素级阈值比较。
 7. 保留原 offline MVP shader 和原 MVP compare/diagnostic 流程可运行，不把旧 `offline_primary_ray.comp` 直接改成新 PBR 验证 shader。
 8. 高清 Helmet 场景绑定三套材质 tag：`offline-pbr`、`realtime-pbr`、`realtime-blinnphong`，用于输出 1024x1024 的 offline PBR、realtime PBR、realtime Blinn-Phong 对比图。
+9. PBR 渲染数据上传必须以 `SceneResourceTable::buildUploadView()` 为唯一数据视图；`MaterialInstance` 负责表达材质内容，不能成为 realtime/offline PBR 的第二条上传路径。
 
 ## 需求
 
@@ -30,7 +31,7 @@ glTF mesh、texture URI、PBR metadata、tangent fallback 和 material bridge �
 要求：
 
 - scene 中 `mesh.uri: assets/models/damaged_helmet/DamagedHelmet.gltf` 必须能被 editor、realtime profile output 和 offline renderer 共同消费。
-- `builtin://lxe_editor/helmet` 可以作为兼容入口保留，但它必须委托到共享 glTF/PBR 加载路径，而不是维护第二套材质解释逻辑。
+- `builtin://lxe_editor/helmet` 不再作为材质/mesh 加载入口保留；默认场景、demo 和测试必须使用显式 DamagedHelmet glTF URI，避免 editor-only 兼容分支。
 - 共享加载路径输出 `Mesh` / `MeshBuffer`、generated tangent、`MaterialInstance`、texture bindings 和 material scalar。
 - realtime 与 offline 可以有各自 GPU 上传和 draw/dispatch 后端，但不能各自解释 glTF texture channel、material defaults、color space、sampler 策略或 shader variant。
 - 如果某个 glTF 材质字段当前不支持，必须由共享加载路径输出一致诊断；不能出现 realtime 忽略而 offline 接受，或反过来。
@@ -51,6 +52,7 @@ glTF mesh、texture URI、PBR metadata、tangent fallback 和 material bridge �
 
 - texture 必须先进入 `MaterialInstance::setTexture(StringID, CombinedTextureSamplerSharedPtr)` 所维护的 binding-name 合同。
 - scalar fallback 必须通过 `MaterialInstance` parameter buffer 表达，至少覆盖 `baseColorFactor`、`metallicFactor`、`roughnessFactor`、`ao`、`emissiveFactor`。
+- PBR realtime/offline 渲染不能直接从 `MaterialInstance::getDescriptorResources(pass)` 上传材质 UBO/texture。渲染流程必须先把选中 tag 的 `MaterialInstance` 注册到 `SceneResourceTable`，再由 `buildUploadView()` 生成 shader 读取所需的 material record、texture table index 和 scalar fallback。
 - 没有纹理时使用 material scalar/default 或明确 placeholder；不能静默当成黑图。
 - DamagedHelmet 本地资产必须作为完整 PBR coverage 资产使用。它包含：
 
@@ -73,6 +75,7 @@ glTF mesh、texture URI、PBR metadata、tangent fallback 和 material bridge �
 - offline render profile 通过 `offlineRender.materialTag` 选择离线材质；realtime output profile 通过 `outputProfiles.<name>.materialTag` 选择实时材质。
 - `offlineRender.shader` 之类的 shader 直连配置无效，必须移除；shader 选择来自被选中 tag 对应的材质 pass。
 - editor/runtime 必须提供命令按 tag 切换当前 scene 中 renderable 的活动材质。
+- 切换活动 tag 时，scene 必须同步更新 `SceneResourceTable` 中的 active material handle 和 object/material index；不能只更新 `SceneNode` 的 validated cache。
 - 渲染流程只收集拥有目标 tag 的物体；缺少该 tag 的物体必须从该流程排除。
 - PBR 材质只保留一套普通 `pbr.material`。材质文件名、shader 代码和 loader 都不能包含 Helmet 或 glTF 专属分支。
 
@@ -85,7 +88,7 @@ Offline GPU scene 必须能按 material index 查到完整 PBR texture table ind
 - `SceneGpuMaterialRecord` 或等价 offline material record 必须表达 `baseColorTexture`、`normalTexture`、`metallicRoughnessTexture`、`aoTexture`、`emissiveTexture`。
 - texture index 缺失使用明确 sentinel 或统一 default texture。
 - compute shader 使用固定上限 descriptor array；本 REQ 不引入 bindless。
-- texture table 的填充来自 `SceneResourceTable` / `MaterialInstance` 的同一 binding-name 合同，而不是 offline 专用材质配置。
+- texture table 的填充来自 `SceneResourceTable::buildUploadView()` 对 active `MaterialInstance` 的统一 binding-name 合同解析，而不是 offline 专用材质配置，也不是 realtime 专用 descriptor 上传。
 - 缺失纹理、超过固定上限、无法上传 texture 时必须有包含 material path / texture binding / resolved path 的诊断。
 
 ### R4: UV、tangent 与 normal map
@@ -133,6 +136,7 @@ PBR 直接光公式必须放入 shader common 库。
 | camera/view direction | specular view term |
 
 - 等价 compare 场景中的 shadow、IBL、GI、environment contribution 必须通过 scene/profile/offlineRender/realtime render 配置关闭，不能为 Helmet 在 shader/backend 中写硬编码分支。
+- common PBR 库不能提供默认 ambient 或 fallback environment 函数；AO 只能调制已经由配置显式启用的 ambient/IBL/environment 项，直接光 compare 中 AO 只能通过单项覆盖测试验证材质输入，不得隐式改变 direct-light 基线。
 - 如果某项在特定 compare profile 中需要隔离测试，例如 emissive 归零，必须通过 scene material override 或 profile 配置实现，并另设单项测试覆盖该项。
 
 ### R7: Offline shader 模式与 MVP 回归
@@ -185,6 +189,8 @@ PBR 直接光公式必须放入 shader common 库。
 - offline GPU scene test：material texture indices 写入 offline texture table，缺失项使用 sentinel/default。
 - shader compile/reflection test：MVP offline shader 与 PBR direct offline shader 都能编译，descriptor contract 明确。
 - common shader test：`pbr.frag` 与 offline PBR shader 都 include shared PBR common。
+- no-fallback-ambient test：realtime/offline PBR direct-light shader 和 shared common 中不存在硬编码默认环境光函数。
+- resource-table-tag-switch test：scene 切换 active material tag 后，`SceneResourceTable::buildUploadView()` 中的 material record 和 primitive material index 同步反映新 tag。
 - image compare test：Helmet PBR equivalence scene 的 realtime/offline linear EXR 在固定阈值内通过。
 - per-input coverage test：baseColor、metallic、roughness、normal、AO、emissive 每一项都有测试证明它影响输出，并且 realtime/offline 的影响方向一致。
 - MVP regression test：原 offline MVP diagnostic compare 流程仍可运行。

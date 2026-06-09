@@ -2,6 +2,7 @@
 
 #include "core/asset/skeleton.hpp"
 #include "core/scene/component.hpp"
+#include "core/scene/scene_resource_handles.hpp"
 
 namespace LX_core {
 
@@ -15,11 +16,17 @@ public:
   }
   bool affectsRenderableStructure() const override { return true; }
 
-  const SkeletonSharedPtr &getSkeleton() const { return m_skeleton; }
+  const SkeletonSharedPtr &getPendingSkeleton() const { return m_skeleton; }
+  void clearPendingSkeleton() { m_skeleton.reset(); }
   void setSkeleton(SkeletonSharedPtr skeleton);
+  [[nodiscard]] SkeletonHandle getSkeletonHandle() const {
+    return m_skeletonHandle;
+  }
+  void setSkeletonHandle(SkeletonHandle handle) { m_skeletonHandle = handle; }
 
 private:
   SkeletonSharedPtr m_skeleton;
+  SkeletonHandle m_skeletonHandle;
 };
 
 } // namespace LX_core

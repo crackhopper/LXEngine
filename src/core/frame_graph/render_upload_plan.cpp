@@ -7,16 +7,45 @@
 namespace LX_core {
 namespace {
 
-void appendUniqueResource(std::vector<IGpuResourceSharedPtr> &resources,
+void appendUniqueResource(std::vector<GpuResourceRef> &resources,
                           std::unordered_set<ResourceCacheIdentity> &seen,
-                          const IGpuResourceSharedPtr &resource) {
-  if (!resource) {
+                          const GpuResourceRef &resource) {
+  if (!resource.isValid()) {
     return;
   }
-  if (!seen.insert(resource->getBackendCacheIdentity()).second) {
+  if (!seen.insert(resource.getBackendCacheIdentity()).second) {
     return;
   }
   resources.push_back(resource);
+}
+
+void appendUniqueDescriptorResource(
+    std::vector<GpuResourceRef> &resources,
+    std::unordered_set<ResourceCacheIdentity> &seen,
+    const DescriptorResourceRef &resource) {
+  if (resource.isTextureArray()) {
+    for (const TextureSamplerRef &texture : resource.textures()) {
+      if (!texture.isValid()) {
+        continue;
+      }
+      const ResourceCacheIdentity identity = texture.getBackendCacheIdentity();
+      if (!seen.insert(identity).second) {
+        continue;
+      }
+      resources.emplace_back(texture.get());
+    }
+    return;
+  }
+
+  if (!resource.resource().isValid()) {
+    return;
+  }
+  const ResourceCacheIdentity identity =
+      resource.resource().getBackendCacheIdentity();
+  if (!seen.insert(identity).second) {
+    return;
+  }
+  resources.push_back(resource.resource());
 }
 
 void appendUniquePushConstant(std::vector<PerDrawDataSharedPtr> &pushConstants,
@@ -50,16 +79,8 @@ RenderUploadPlan buildRenderUploadPlan(const RenderWorkQueue &queue) {
                                item.raster.drawData);
     }
 
-    for (const IGpuResourceSharedPtr &resource : item.descriptorResources) {
-      appendUniqueResource(plan.resources, seenResources, resource);
-      if (const auto textureArray =
-              std::dynamic_pointer_cast<SampledTextureArrayResource>(
-                  resource)) {
-        for (const CombinedTextureSamplerSharedPtr &texture :
-             textureArray->textures()) {
-          appendUniqueResource(plan.resources, seenResources, texture);
-        }
-      }
+    for (const DescriptorResourceRef &resource : item.descriptorResources) {
+      appendUniqueDescriptorResource(plan.resources, seenResources, resource);
     }
   }
 

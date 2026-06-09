@@ -17,7 +17,7 @@ public:
   operator=(const SoftwareComputeOfflineIntegrator &) = delete;
 
   [[nodiscard]] LX_core::offline::OfflineReadbackImage
-  render(const LX_core::offline::OfflineRenderJob &job) override;
+  render(LX_core::offline::OfflineRenderJob &job) override;
 
 private:
   struct Impl;

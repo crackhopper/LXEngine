@@ -249,11 +249,6 @@ Ray CameraComponent::pickRay(const Vec2f &screenPixel,
 }
 
 void CameraComponent::updateMatrices() {
-  const CameraSnapshot snapshot = getSnapshot();
-  m_ubo->param.eyePos = snapshot.pose.eye;
-  m_ubo->param.view = makeCameraViewMatrix(snapshot.pose);
-  m_ubo->param.proj = makeCameraProjectionMatrix(snapshot.projection);
-  m_ubo->setDirty();
 }
 
 void CameraComponent::setPosition(const Vec3f &position) {

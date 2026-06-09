@@ -217,7 +217,7 @@ VulkanPostProcessBuilder::VulkanPostProcessBuilder(
     const VulkanPostProcessSettings &settings)
     : m_settings(settings) {}
 
-LX_core::MaterialInstanceSharedPtr
+LX_core::MaterialInstanceUniquePtr
 VulkanPostProcessBuilder::createStandardPostProcessMaterial() const {
   auto shader = std::make_shared<StaticFullscreenShader>(
       kPostProcessShaderName, loadGraphicsShaderStages(kPostProcessShaderName),
@@ -231,7 +231,7 @@ VulkanPostProcessBuilder::createStandardPostProcessMaterial() const {
                           makeFullscreenPassDefinition(shaderProgram));
   tmpl->rebuildMaterialInterface();
 
-  auto material = LX_core::MaterialInstance::create(std::move(tmpl));
+  auto material = LX_core::MaterialInstance::createUnique(std::move(tmpl));
   material->setParameter(LX_core::StringID("PostProcessUBO"),
                          LX_core::StringID("exposure"), 1.0f);
   material->setParameter(LX_core::StringID("PostProcessUBO"),
@@ -246,7 +246,7 @@ VulkanPostProcessBuilder::createStandardPostProcessMaterial() const {
   return material;
 }
 
-LX_core::MaterialInstanceSharedPtr
+LX_core::MaterialInstanceUniquePtr
 VulkanPostProcessBuilder::createBloomThresholdMaterial() const {
   auto shader = std::make_shared<StaticFullscreenShader>(
       kBloomThresholdShaderName,
@@ -261,7 +261,7 @@ VulkanPostProcessBuilder::createBloomThresholdMaterial() const {
                           makeFullscreenPassDefinition(shaderProgram));
   tmpl->rebuildMaterialInterface();
 
-  auto material = LX_core::MaterialInstance::create(std::move(tmpl));
+  auto material = LX_core::MaterialInstance::createUnique(std::move(tmpl));
   material->setParameter(LX_core::StringID("BloomThresholdUBO"),
                          LX_core::StringID("threshold"),
                          m_settings.bloomThreshold);
@@ -276,7 +276,7 @@ VulkanPostProcessBuilder::createBloomThresholdMaterial() const {
   return material;
 }
 
-LX_core::MaterialInstanceSharedPtr
+LX_core::MaterialInstanceUniquePtr
 VulkanPostProcessBuilder::createBloomBlurMaterial(
     LX_core::StringID pass, const char *shaderName) const {
   auto shader = std::make_shared<StaticFullscreenShader>(
@@ -288,12 +288,12 @@ VulkanPostProcessBuilder::createBloomBlurMaterial(
   shaderProgram.shader = shader;
   tmpl->setPassDefinition(pass, makeFullscreenPassDefinition(shaderProgram));
   tmpl->rebuildMaterialInterface();
-  auto material = LX_core::MaterialInstance::create(std::move(tmpl));
+  auto material = LX_core::MaterialInstance::createUnique(std::move(tmpl));
   material->syncGpuData();
   return material;
 }
 
-LX_core::MaterialInstanceSharedPtr
+LX_core::MaterialInstanceUniquePtr
 VulkanPostProcessBuilder::createSkyboxBackgroundMaterial() const {
   auto shader = std::make_shared<StaticFullscreenShader>(
       kSkyboxShaderName, loadGraphicsShaderStages(kSkyboxShaderName),
@@ -314,7 +314,7 @@ VulkanPostProcessBuilder::createSkyboxBackgroundMaterial() const {
   tmpl->setPassDefinition(LX_core::Pass_Forward, std::move(passDefinition));
   tmpl->rebuildMaterialInterface();
 
-  auto material = LX_core::MaterialInstance::create(std::move(tmpl));
+  auto material = LX_core::MaterialInstance::createUnique(std::move(tmpl));
   material->syncGpuData();
   return material;
 }

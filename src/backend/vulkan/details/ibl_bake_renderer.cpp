@@ -302,10 +302,16 @@ std::array<Mat4f, 6> captureViewProjections() {
   };
 }
 
-RenderWorkItem makeBakeItem(const std::string &shaderName,
-                            const RenderTargetDesc &target,
-                            std::vector<IGpuResourceSharedPtr> resources,
-                            u32 indexCount) {
+struct BakeWorkItem final {
+  RenderWorkItem item;
+  VertexBufferUniquePtr vertexBuffer;
+  IndexBufferUniquePtr indexBuffer;
+};
+
+BakeWorkItem makeBakeItem(const std::string &shaderName,
+                          const RenderTargetDesc &target,
+                          std::vector<GpuResourceRef> resources,
+                          u32 indexCount) {
   auto shader =
       std::make_shared<BakeShader>(shaderName, bakeShaderBindings(shaderName));
   auto tmpl = MaterialTemplate::create(shaderName);
@@ -324,15 +330,24 @@ RenderWorkItem makeBakeItem(const std::string &shaderName,
   auto material = MaterialInstance::create(std::move(tmpl));
   material->syncGpuData();
 
-  RenderWorkItem item;
-  item.shaderInfo = shader;
-  item.material = material;
-  item.raster.vertexBuffer = VertexBuffer<VertexPos>::create(
+  BakeWorkItem work;
+  work.vertexBuffer = VertexBuffer<VertexPos>::createUnique(
       std::vector<VertexPos>(std::max(indexCount, 1u)));
   std::vector<u32> indices(indexCount);
   std::iota(indices.begin(), indices.end(), 0u);
-  item.raster.indexBuffer = IndexBuffer::create(std::move(indices));
-  item.descriptorResources = std::move(resources);
+  work.indexBuffer = IndexBuffer::createUnique(std::move(indices));
+
+  RenderWorkItem &item = work.item;
+  item.shaderInfo = shader;
+  item.renderState = material->getPassRenderState(Pass_PostProcess);
+  item.raster.vertexBuffer = GpuResourceRef{*work.vertexBuffer};
+  item.raster.indexBuffer = GpuResourceRef{*work.indexBuffer};
+  item.descriptorResources.reserve(resources.size());
+  for (auto &resource : resources) {
+    if (resource.isValid()) {
+      item.descriptorResources.emplace_back(resource.get());
+    }
+  }
   item.pass = Pass_PostProcess;
   item.target = target;
   item.objectSignature =
@@ -341,11 +356,11 @@ RenderWorkItem makeBakeItem(const std::string &shaderName,
   item.pipelineKey =
       PipelineKey::build(item.objectSignature, item.materialSignature,
                          item.target.getPipelineSignature());
-  return item;
+  return work;
 }
 
-RenderWorkItem makeFullscreenBakeItem(const std::string &shaderName,
-                                      const RenderTargetDesc &target) {
+BakeWorkItem makeFullscreenBakeItem(const std::string &shaderName,
+                                    const RenderTargetDesc &target) {
   return makeBakeItem(shaderName, target, {}, 3u);
 }
 
@@ -406,22 +421,22 @@ IblBakeRenderer::bakeStaticEnvironment(const IblBakeSettings &settings) {
   transitionBrdfLutToShaderRead();
 
   IblBakeResult result{
-      .skybox = std::make_shared<BakedTextureResource>(StringID("SkyboxMap"),
+      .skybox = std::make_unique<BakedTextureResource>(StringID("SkyboxMap"),
                                                        StringID("SkyboxMap")),
-      .irradiance = std::make_shared<BakedTextureResource>(
+      .irradiance = std::make_unique<BakedTextureResource>(
           StringID("IrradianceMap"), StringID("IrradianceMap")),
-      .prefiltered = std::make_shared<BakedTextureResource>(
+      .prefiltered = std::make_unique<BakedTextureResource>(
           StringID("PrefilteredEnvMap"), StringID("PrefilteredEnvMap")),
-      .brdfLut = std::make_shared<BakedTextureResource>(StringID("BrdfLut"),
+      .brdfLut = std::make_unique<BakedTextureResource>(StringID("BrdfLut"),
                                                         StringID("BrdfLut")),
   };
-  m_resourceManager.aliasCubemapBakeTextureResource(result.skybox,
+  m_resourceManager.aliasCubemapBakeTextureResource(GpuResourceRef{*result.skybox},
                                                     StringID("SkyboxMap"));
-  m_resourceManager.aliasCubemapBakeTextureResource(result.irradiance,
+  m_resourceManager.aliasCubemapBakeTextureResource(GpuResourceRef{*result.irradiance},
                                                     StringID("IrradianceMap"));
   m_resourceManager.aliasCubemapBakeTextureResource(
-      result.prefiltered, StringID("PrefilteredEnvMap"));
-  m_resourceManager.aliasFrameGraphTextureResource(result.brdfLut,
+      GpuResourceRef{*result.prefiltered}, StringID("PrefilteredEnvMap"));
+  m_resourceManager.aliasFrameGraphTextureResource(GpuResourceRef{*result.brdfLut},
                                                    StringID("BrdfLut"));
   return result;
 }
@@ -529,20 +544,20 @@ void IblBakeRenderer::renderEquirectToCubemap(
   RenderTargetDesc target =
       RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float);
   auto captureView =
-      std::make_shared<CaptureViewResource>(captureViewProjections()[0]);
-  auto item =
+      std::make_unique<CaptureViewResource>(captureViewProjections()[0]);
+  auto work =
       makeBakeItem("equirect_to_cubemap", target,
-                   {std::static_pointer_cast<IGpuResource>(source),
-                    std::static_pointer_cast<IGpuResource>(captureView)},
+                   {GpuResourceRef{*source}, GpuResourceRef{*captureView}},
                    36u);
 
-  syncBakeItemResources(m_resourceManager, m_cmdBufferManager, item);
-  auto pipeline = m_resourceManager.getOrCreatePipeline(item);
+  syncBakeItemResources(m_resourceManager, m_cmdBufferManager, work.item);
+  auto pipeline = m_resourceManager.getOrCreatePipeline(work.item);
 
   const auto viewProjections = captureViewProjections();
   for (u32 face = 0; face < 6u; ++face) {
     captureView->setViewProj(viewProjections[face]);
-    m_resourceManager.syncResource(m_cmdBufferManager, captureView);
+    m_resourceManager.syncResource(m_cmdBufferManager,
+                                   GpuResourceRef{*captureView});
     auto &view = m_resourceManager.getOrCreateCubemapBakeSubresourceView(
         StringID("SkyboxMap"), 0, face);
     auto framebuffer =
@@ -563,8 +578,8 @@ void IblBakeRenderer::renderEquirectToCubemap(
     cmd->setViewport(skyboxSize, skyboxSize);
     cmd->setScissor(skyboxSize, skyboxSize);
     cmd->bindPipeline(pipeline);
-    cmd->bindResources(m_resourceManager, pipeline, item);
-    cmd->executeWorkItem(item);
+    cmd->bindResources(m_resourceManager, pipeline, work.item);
+    cmd->executeWorkItem(work.item);
     cmd->endRenderPass();
     m_cmdBufferManager.endSingleTimeCommands(std::move(cmd),
                                              m_device.getGraphicsQueue());
@@ -585,25 +600,25 @@ void IblBakeRenderer::renderIrradianceCubemap(u32 irradianceSize) {
       false);
   RenderTargetDesc target =
       RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float);
-  auto skybox = std::make_shared<BakedTextureResource>(StringID("SkyboxMap"),
+  auto skybox = std::make_unique<BakedTextureResource>(StringID("SkyboxMap"),
                                                        StringID("SkyboxMap"));
-  m_resourceManager.aliasCubemapBakeTextureResource(skybox,
+  m_resourceManager.aliasCubemapBakeTextureResource(GpuResourceRef{*skybox},
                                                     StringID("SkyboxMap"));
   auto captureView =
-      std::make_shared<CaptureViewResource>(captureViewProjections()[0]);
-  auto item =
+      std::make_unique<CaptureViewResource>(captureViewProjections()[0]);
+  auto work =
       makeBakeItem("ibl_irradiance_convolve", target,
-                   {std::static_pointer_cast<IGpuResource>(skybox),
-                    std::static_pointer_cast<IGpuResource>(captureView)},
+                   {GpuResourceRef{*skybox}, GpuResourceRef{*captureView}},
                    36u);
 
-  syncBakeItemResources(m_resourceManager, m_cmdBufferManager, item);
-  auto pipeline = m_resourceManager.getOrCreatePipeline(item);
+  syncBakeItemResources(m_resourceManager, m_cmdBufferManager, work.item);
+  auto pipeline = m_resourceManager.getOrCreatePipeline(work.item);
 
   const auto viewProjections = captureViewProjections();
   for (u32 face = 0; face < 6u; ++face) {
     captureView->setViewProj(viewProjections[face]);
-    m_resourceManager.syncResource(m_cmdBufferManager, captureView);
+    m_resourceManager.syncResource(m_cmdBufferManager,
+                                   GpuResourceRef{*captureView});
     auto &view = m_resourceManager.getOrCreateCubemapBakeSubresourceView(
         StringID("IrradianceMap"), 0, face);
     auto framebuffer =
@@ -625,8 +640,8 @@ void IblBakeRenderer::renderIrradianceCubemap(u32 irradianceSize) {
     cmd->setViewport(irradianceSize, irradianceSize);
     cmd->setScissor(irradianceSize, irradianceSize);
     cmd->bindPipeline(pipeline);
-    cmd->bindResources(m_resourceManager, pipeline, item);
-    cmd->executeWorkItem(item);
+    cmd->bindResources(m_resourceManager, pipeline, work.item);
+    cmd->executeWorkItem(work.item);
     cmd->endRenderPass();
     m_cmdBufferManager.endSingleTimeCommands(std::move(cmd),
                                              m_device.getGraphicsQueue());
@@ -647,22 +662,22 @@ void IblBakeRenderer::renderPrefilterCubemap(u32 prefilterSize, u32 mipLevels) {
       false);
   RenderTargetDesc target =
       RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float);
-  auto skybox = std::make_shared<BakedTextureResource>(StringID("SkyboxMap"),
+  auto skybox = std::make_unique<BakedTextureResource>(StringID("SkyboxMap"),
                                                        StringID("SkyboxMap"));
-  m_resourceManager.aliasCubemapBakeTextureResource(skybox,
+  m_resourceManager.aliasCubemapBakeTextureResource(GpuResourceRef{*skybox},
                                                     StringID("SkyboxMap"));
   auto captureView =
-      std::make_shared<CaptureViewResource>(captureViewProjections()[0]);
-  auto prefilter = std::make_shared<PrefilterResource>(
+      std::make_unique<CaptureViewResource>(captureViewProjections()[0]);
+  auto prefilter = std::make_unique<PrefilterResource>(
       PrefilterParams{0.0f, static_cast<float>(mipLevels), 64.0f, 0.0f});
-  auto item = makeBakeItem("ibl_prefilter_env", target,
-                           {std::static_pointer_cast<IGpuResource>(skybox),
-                            std::static_pointer_cast<IGpuResource>(captureView),
-                            std::static_pointer_cast<IGpuResource>(prefilter)},
+  auto work = makeBakeItem("ibl_prefilter_env", target,
+                           {GpuResourceRef{*skybox},
+                            GpuResourceRef{*captureView},
+                            GpuResourceRef{*prefilter}},
                            36u);
 
-  syncBakeItemResources(m_resourceManager, m_cmdBufferManager, item);
-  auto pipeline = m_resourceManager.getOrCreatePipeline(item);
+  syncBakeItemResources(m_resourceManager, m_cmdBufferManager, work.item);
+  auto pipeline = m_resourceManager.getOrCreatePipeline(work.item);
 
   const auto viewProjections = captureViewProjections();
   for (u32 mip = 0; mip < mipLevels; ++mip) {
@@ -673,10 +688,12 @@ void IblBakeRenderer::renderPrefilterCubemap(u32 prefilterSize, u32 mipLevels) {
             : static_cast<float>(mip) / static_cast<float>(mipLevels - 1u);
     prefilter->setParams(
         PrefilterParams{roughness, static_cast<float>(mipLevels), 64.0f, 0.0f});
-    m_resourceManager.syncResource(m_cmdBufferManager, prefilter);
+    m_resourceManager.syncResource(m_cmdBufferManager,
+                                   GpuResourceRef{*prefilter});
     for (u32 face = 0; face < 6u; ++face) {
       captureView->setViewProj(viewProjections[face]);
-      m_resourceManager.syncResource(m_cmdBufferManager, captureView);
+      m_resourceManager.syncResource(m_cmdBufferManager,
+                                     GpuResourceRef{*captureView});
       auto &view = m_resourceManager.getOrCreateCubemapBakeSubresourceView(
           StringID("PrefilteredEnvMap"), mip, face);
       auto framebuffer =
@@ -698,8 +715,8 @@ void IblBakeRenderer::renderPrefilterCubemap(u32 prefilterSize, u32 mipLevels) {
       cmd->setViewport(extentValue, extentValue);
       cmd->setScissor(extentValue, extentValue);
       cmd->bindPipeline(pipeline);
-      cmd->bindResources(m_resourceManager, pipeline, item);
-      cmd->executeWorkItem(item);
+      cmd->bindResources(m_resourceManager, pipeline, work.item);
+      cmd->executeWorkItem(work.item);
       cmd->endRenderPass();
       m_cmdBufferManager.endSingleTimeCommands(std::move(cmd),
                                                m_device.getGraphicsQueue());
@@ -726,9 +743,9 @@ void IblBakeRenderer::clearBrdfLut(u32 size) {
 
   RenderTargetDesc target =
       RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float);
-  auto item = makeFullscreenBakeItem("ibl_brdf_lut", target);
-  syncBakeItemResources(m_resourceManager, m_cmdBufferManager, item);
-  auto pipeline = m_resourceManager.getOrCreatePipeline(item);
+  auto work = makeFullscreenBakeItem("ibl_brdf_lut", target);
+  syncBakeItemResources(m_resourceManager, m_cmdBufferManager, work.item);
+  auto pipeline = m_resourceManager.getOrCreatePipeline(work.item);
 
   auto cmd = m_cmdBufferManager.beginSingleTimeCommands();
   transitionTexture2D(
@@ -743,8 +760,8 @@ void IblBakeRenderer::clearBrdfLut(u32 size) {
   cmd->setViewport(size, size);
   cmd->setScissor(size, size);
   cmd->bindPipeline(pipeline);
-  cmd->bindResources(m_resourceManager, pipeline, item);
-  cmd->executeWorkItem(item);
+  cmd->bindResources(m_resourceManager, pipeline, work.item);
+  cmd->executeWorkItem(work.item);
   cmd->endRenderPass();
   m_cmdBufferManager.endSingleTimeCommands(std::move(cmd),
                                            m_device.getGraphicsQueue());

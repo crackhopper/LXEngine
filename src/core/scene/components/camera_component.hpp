@@ -22,7 +22,6 @@ public:
     return componentTypeId<CameraComponent>();
   }
 
-  CameraDataSharedPtr getUBO() const { return m_ubo; }
   [[nodiscard]] CameraHandle getCameraHandle() const { return m_cameraHandle; }
   void setCameraHandle(CameraHandle handle) { m_cameraHandle = handle; }
 
@@ -57,7 +56,7 @@ public:
   void setTarget(std::optional<RenderTarget> target);
   void clearTarget();
   bool matchesTarget(const RenderTarget &target) const {
-    return m_target.has_value() && *m_target == target;
+    return m_target.has_value() ? *m_target == target : target == RenderTarget{};
   }
 
   VisibilityLayerMask getCullingMask() const { return m_cullingMask; }
@@ -96,7 +95,6 @@ private:
   float m_right = 1.0f;
   float m_bottom = -1.0f;
   float m_top = 1.0f;
-  CameraDataSharedPtr m_ubo = std::make_shared<CameraData>();
   std::optional<float> m_lookDistance;
   std::optional<RenderTarget> m_target;
   VisibilityLayerMask m_cullingMask = Layer_All & ~Layer_EditorOverlay;

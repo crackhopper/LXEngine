@@ -50,6 +50,4 @@ private:
   bool m_dirty = false;
 };
 
-using ParameterBufferSharedPtr = std::shared_ptr<ParameterBuffer>;
-
 } // namespace LX_core

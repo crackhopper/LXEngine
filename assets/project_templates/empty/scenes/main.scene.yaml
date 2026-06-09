@@ -1,6 +1,8 @@
 scene:
   name: Empty Project
   gameplayCameraPath: /game_cam
+  rendering:
+    shadows: false
 nodes:
   - nodeName: game_camera
     name: game_cam

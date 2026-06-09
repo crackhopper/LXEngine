@@ -14,6 +14,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -91,7 +92,7 @@ int main(int argc, char **argv) {
       }
     }
     LX_infra::offline::OfflineImageOutputRequest outputRequest;
-    outputRequest.job = job;
+    outputRequest.job = std::move(job);
     outputRequest.image = image;
     outputRequest.scenePath = args.scenePath;
     outputRequest.buildInfo = buildInfo;

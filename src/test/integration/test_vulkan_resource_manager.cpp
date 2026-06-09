@@ -176,9 +176,9 @@ bool verifyDebugDrawGrowthSync(
     return false;
   }
   if (smallVkVertex->get().getSize() !=
-          smallItem.raster.vertexBuffer->getByteSize() ||
+          smallItem.raster.vertexBuffer.get().getByteSize() ||
       smallVkIndex->get().getSize() !=
-          smallItem.raster.indexBuffer->getByteSize()) {
+          smallItem.raster.indexBuffer.get().getByteSize()) {
     std::cerr
         << "Initial DebugDraw GPU buffer sizes do not match CPU resources\n";
     return false;
@@ -228,9 +228,9 @@ bool verifyDebugDrawGrowthSync(
     return false;
   }
   if (grownVkVertex->get().getSize() !=
-          grownItem.raster.vertexBuffer->getByteSize() ||
+          grownItem.raster.vertexBuffer.get().getByteSize() ||
       grownVkIndex->get().getSize() !=
-          grownItem.raster.indexBuffer->getByteSize()) {
+          grownItem.raster.indexBuffer.get().getByteSize()) {
     std::cerr
         << "Grown DebugDraw GPU buffer sizes do not match CPU resources\n";
     return false;
@@ -283,9 +283,9 @@ bool verifyDebugDrawGrowthSync(
     return false;
   }
   if (retainedVkVertex->get().getSize() !=
-          grownItem.raster.vertexBuffer->getByteSize() ||
+          grownItem.raster.vertexBuffer.get().getByteSize() ||
       retainedVkIndex->get().getSize() !=
-          grownItem.raster.indexBuffer->getByteSize()) {
+          grownItem.raster.indexBuffer.get().getByteSize()) {
     std::cerr << "Within-capacity DebugDraw GPU sizes no longer match retained "
                  "CPU capacity\n";
     return false;
@@ -446,8 +446,8 @@ int main() {
 
     auto indexBufferPtr = LX_core::IndexBuffer::create({0u, 1u, 2u});
 
-    resourceManager->syncResource(*cmdBufferMgr, vertexBufferPtr);
-    resourceManager->syncResource(*cmdBufferMgr, indexBufferPtr);
+    resourceManager->syncResource(*cmdBufferMgr, *vertexBufferPtr);
+    resourceManager->syncResource(*cmdBufferMgr, *indexBufferPtr);
     resourceManager->collectGarbage();
 
     LX_core::TextureDesc hdrDesc;
@@ -459,7 +459,7 @@ int main() {
             hdrDesc,
             std::vector<u8>(LX_core::expectedTextureByteCount(hdrDesc))));
     const auto hdrIdentity = hdrSampler->getBackendCacheIdentity();
-    resourceManager->syncResource(*cmdBufferMgr, hdrSampler);
+    resourceManager->syncResource(*cmdBufferMgr, *hdrSampler);
     auto hdrGpuTexture = resourceManager->getTexture(hdrIdentity);
     if (!hdrGpuTexture ||
         hdrGpuTexture->get().getFormat() != VK_FORMAT_R32G32B32A32_SFLOAT) {
@@ -477,7 +477,7 @@ int main() {
             mip2DDesc,
             std::vector<u8>(LX_core::expectedTextureByteCount(mip2DDesc))));
     const auto mip2DIdentity = mip2DSampler->getBackendCacheIdentity();
-    resourceManager->syncResource(*cmdBufferMgr, mip2DSampler);
+    resourceManager->syncResource(*cmdBufferMgr, *mip2DSampler);
     auto mip2DGpuTexture = resourceManager->getTexture(mip2DIdentity);
     if (!mip2DGpuTexture || mip2DGpuTexture->get().getArrayLayers() != 1 ||
         mip2DGpuTexture->get().getMipLevels() != 3) {
@@ -497,7 +497,7 @@ int main() {
             cubeDesc,
             std::vector<u8>(LX_core::expectedTextureByteCount(cubeDesc))));
     const auto cubeIdentity = cubeSampler->getBackendCacheIdentity();
-    resourceManager->syncResource(*cmdBufferMgr, cubeSampler);
+    resourceManager->syncResource(*cmdBufferMgr, *cubeSampler);
     auto cubeGpuTexture = resourceManager->getTexture(cubeIdentity);
     if (!cubeGpuTexture ||
         cubeGpuTexture->get().getFormat() != VK_FORMAT_R16G16B16A16_SFLOAT ||
@@ -547,7 +547,7 @@ int main() {
 
     auto tempResource = std::make_shared<TestUniformResource>(7u);
     const auto tempIdentity = tempResource->getBackendCacheIdentity();
-    resourceManager->syncResource(*cmdBufferMgr, tempResource);
+    resourceManager->syncResource(*cmdBufferMgr, *tempResource);
     resourceManager->collectGarbage();
     auto tempBuffer0 = resourceManager->getBuffer(tempIdentity);
     if (!tempBuffer0) {
@@ -564,7 +564,7 @@ int main() {
       return 1;
     }
 
-    resourceManager->syncResource(*cmdBufferMgr, tempResource);
+    resourceManager->syncResource(*cmdBufferMgr, *tempResource);
     resourceManager->collectGarbage();
     auto tempBuffer2 = resourceManager->getBuffer(tempIdentity);
     if (!tempBuffer2 || tempBuffer2->get().getHandle() != tempHandle0) {
@@ -588,7 +588,7 @@ int main() {
     auto reusedA =
         makePlacementShared<TestUniformResource>(&reusedStorage, 11u);
     const auto reusedIdentityA = reusedA->getBackendCacheIdentity();
-    resourceManager->syncResource(*cmdBufferMgr, reusedA);
+    resourceManager->syncResource(*cmdBufferMgr, *reusedA);
     resourceManager->collectGarbage();
     auto reusedBufferA = resourceManager->getBuffer(reusedIdentityA);
     if (!reusedBufferA) {
@@ -612,7 +612,7 @@ int main() {
       return 1;
     }
 
-    resourceManager->syncResource(*cmdBufferMgr, reusedB);
+    resourceManager->syncResource(*cmdBufferMgr, *reusedB);
     if (resourceManager->getCachedResourceCount() < 2) {
       std::cerr << "Address-reused CPU resource aliased old GPU cache entry\n";
       return 1;

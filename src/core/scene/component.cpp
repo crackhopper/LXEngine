@@ -49,6 +49,7 @@ void IComponent::notifyOwnerStructuralChange() const {
     return;
   }
   m_owner->get().rebuildValidatedCache();
+  m_owner->get().emitRuntimeNodeChanged(SceneNodeAspect::RenderableStructure);
 }
 
 void IComponent::notifyOwnerRuntimeAspectChange(const SceneNodeAspect aspect) const {

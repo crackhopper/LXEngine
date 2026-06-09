@@ -51,6 +51,7 @@ inline StringID topologyPipelineSignature(PrimitiveTopology t) {
 class IndexBuffer : public IGpuResource {
 public:
   using SharedPtr = std::shared_ptr<IndexBuffer>;
+  using UniquePtr = std::unique_ptr<IndexBuffer>;
 
   IndexBuffer(std::vector<u32> &&indices,
               PrimitiveTopology topology = PrimitiveTopology::TriangleList)
@@ -60,6 +61,11 @@ public:
   create(std::vector<u32> &&indices,
          PrimitiveTopology topology = PrimitiveTopology::TriangleList) {
     return std::make_shared<IndexBuffer>(std::move(indices), topology);
+  }
+  static UniquePtr
+  createUnique(std::vector<u32> &&indices,
+               PrimitiveTopology topology = PrimitiveTopology::TriangleList) {
+    return std::make_unique<IndexBuffer>(std::move(indices), topology);
   }
 
 /*
@@ -87,6 +93,10 @@ public:
   }
 
   usize indexCount() const { return m_indices.size(); }
+  [[nodiscard]] UniquePtr cloneUnique() const {
+    return std::make_unique<IndexBuffer>(std::vector<u32>(m_indices),
+                                         m_topology);
+  }
   ResourceType getType() const override { return ResourceType::IndexBuffer; }
   const void *getRawData() const override { return m_indices.data(); }
   u32 getByteSize() const override {
@@ -99,5 +109,6 @@ private:
 };
 
 using IndexBufferSharedPtr = std::shared_ptr<IndexBuffer>;
+using IndexBufferUniquePtr = std::unique_ptr<IndexBuffer>;
 
 } // namespace LX_core

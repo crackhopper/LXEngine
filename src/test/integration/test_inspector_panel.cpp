@@ -334,8 +334,8 @@ void testDispatchHelpersUseCommandBus() {
   const auto setDirection =
       panel.dispatchSetVec3("/dir_light", "direction", {0.0f, -1.0f, 0.0f});
   EXPECT(setDirection.ok, "light direction helper should succeed");
-  const auto dirLight = std::dynamic_pointer_cast<LX_core::DirectionalLight>(
-      fixture.scene->getLights().front());
+  const auto *dirLight = dynamic_cast<const LX_core::DirectionalLight *>(
+      &fixture.scene->getLights().front().get());
   const LX_core::Vec3f direction = dirLight->getDirection();
   EXPECT(nearlyEqual(direction.x, 0.0f) &&
              nearlyEqual(direction.y, -1.0f) &&
@@ -472,12 +472,12 @@ void testDrawResyncsInspectorAfterExternalLightMutation() {
   fixture.editorState.select({fixture.lightNode});
 
   const auto light = fixture.scene->getDirectionalLight(*fixture.lightNode);
-  EXPECT(light != nullptr, "fixture light should resolve");
+  EXPECT(light.has_value(), "fixture light should resolve");
   if (!light) {
     return;
   }
 
-  light->setIntensity(6.0f);
+  light->get().setIntensity(6.0f);
 
   const auto snapshot = panel.makeSnapshot();
   EXPECT(nearlyEqual(snapshot.lightIntensity, 6.0f),

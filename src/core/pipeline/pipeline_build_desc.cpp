@@ -80,13 +80,10 @@ PipelineBuildDesc::fromRenderWorkItem(const RenderWorkItem &item) {
          "PipelineBuildDesc::fromRenderWorkItem: raster draw item required");
   assert(item.shaderInfo &&
          "PipelineBuildDesc::fromRenderWorkItem: shaderInfo required");
-  assert(raster.vertexBuffer &&
+  assert(raster.vertexBuffer.isValid() &&
          "PipelineBuildDesc::fromRenderWorkItem: vertexBuffer required");
-  assert(raster.indexBuffer &&
+  assert(raster.indexBuffer.isValid() &&
          "PipelineBuildDesc::fromRenderWorkItem: indexBuffer required");
-  assert(item.material &&
-         "PipelineBuildDesc::fromRenderWorkItem: material required");
-
   PipelineBuildDesc info;
   info.type = PipelineBuildType::Graphics;
   info.key = item.pipelineKey;
@@ -94,19 +91,19 @@ PipelineBuildDesc::fromRenderWorkItem(const RenderWorkItem &item) {
   info.stages = item.shaderInfo->getAllStages();
   info.bindings = item.shaderInfo->getReflectionBindings();
 
-  auto vb = std::dynamic_pointer_cast<IVertexBuffer>(raster.vertexBuffer);
+  const auto *vb = dynamic_cast<const IVertexBuffer *>(&raster.vertexBuffer.get());
   assert(vb && "PipelineBuildDesc::fromRenderWorkItem: vertex buffer is not "
                "IVertexBuffer");
   info.vertexLayout =
       filterVertexLayoutToShaderInputs(vb->getLayout(), *item.shaderInfo);
 
-  auto ib = std::dynamic_pointer_cast<IndexBuffer>(raster.indexBuffer);
+  const auto *ib = dynamic_cast<const IndexBuffer *>(&raster.indexBuffer.get());
   assert(
       ib &&
       "PipelineBuildDesc::fromRenderWorkItem: index buffer is not IndexBuffer");
   info.topology = ib->getTopology();
 
-  info.renderState = item.material->getPassRenderState(item.pass);
+  info.renderState = item.renderState;
 
   // Engine-wide push constant convention until shader-declared ranges arrive.
   info.pushConstant = PushConstantRange{};

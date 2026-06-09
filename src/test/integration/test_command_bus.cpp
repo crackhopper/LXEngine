@@ -704,8 +704,9 @@ void testBuiltinAddRemoveSetCommands() {
   EXPECT(setLightShadowCascadeCount.metadata.find("scene.rebuild") !=
              setLightShadowCascadeCount.metadata.end(),
          "set shadowCascadeCount requests shadow cascade rebuild");
-  const auto dirLight = std::dynamic_pointer_cast<DirectionalLight>(
-      fixture.scene->getLights().front());
+  auto *dirLight =
+      dynamic_cast<DirectionalLight *>(&fixture.scene->getLights().front().get());
+  EXPECT(dirLight != nullptr, "fixture first light should be directional");
   EXPECT(nearlyEqual(dirLight->getDirection().x, 0.0f) &&
              nearlyEqual(dirLight->getDirection().y, -1.0f) &&
              nearlyEqual(dirLight->getDirection().z, 0.0f),
@@ -816,15 +817,15 @@ void testBuiltinCreatesAndEditsTypedLights() {
   EXPECT(pointNode != nullptr, "point light node should exist");
   if (pointNode != nullptr) {
     const auto point = fixture.scene->getPointLight(*pointNode);
-    EXPECT(point != nullptr, "point light runtime instance should attach");
+    EXPECT(point.has_value(), "point light runtime instance should attach");
     const CommandResult setRange =
         fixture.bus.dispatch("set /point_fill.light.range 7.5");
     EXPECT(setRange.ok, "set point light range succeeds");
     const CommandResult setColor =
         fixture.bus.dispatch("set /point_fill.light.color 0.3 0.4 0.5");
     EXPECT(setColor.ok, "set point light color succeeds");
-    EXPECT(nearlyEqual(point->getRange(), 7.5f) &&
-               nearlyEqual(point->getColor().z, 0.5f),
+    EXPECT(nearlyEqual(point->get().getRange(), 7.5f) &&
+               nearlyEqual(point->get().getColor().z, 0.5f),
            "point light fields should update runtime state");
   }
 
@@ -834,7 +835,7 @@ void testBuiltinCreatesAndEditsTypedLights() {
   EXPECT(spotNode != nullptr, "spot light node should exist");
   if (spotNode != nullptr) {
     const auto spot = fixture.scene->getSpotLight(*spotNode);
-    EXPECT(spot != nullptr, "spot light runtime instance should attach");
+    EXPECT(spot.has_value(), "spot light runtime instance should attach");
     const CommandResult setDirection =
         fixture.bus.dispatch("set /spot_key.light.direction 0 -0.5 -1");
     EXPECT(setDirection.ok, "set spot light direction succeeds");
@@ -844,10 +845,10 @@ void testBuiltinCreatesAndEditsTypedLights() {
         fixture.bus.dispatch("set /spot_key.light.outerConeDegrees 30");
     EXPECT(inner.ok && outer.ok, "set spot cone fields succeeds");
     const Vec3f expectedDirection = Vec3f{0.0f, -0.5f, -1.0f}.normalized();
-    EXPECT(nearlyEqual(spot->getDirection().y, expectedDirection.y) &&
-               nearlyEqual(spot->getDirection().z, expectedDirection.z) &&
-               nearlyEqual(spot->getInnerConeDegrees(), 15.0f) &&
-               nearlyEqual(spot->getOuterConeDegrees(), 30.0f),
+    EXPECT(nearlyEqual(spot->get().getDirection().y, expectedDirection.y) &&
+               nearlyEqual(spot->get().getDirection().z, expectedDirection.z) &&
+               nearlyEqual(spot->get().getInnerConeDegrees(), 15.0f) &&
+               nearlyEqual(spot->get().getOuterConeDegrees(), 30.0f),
            "spot light fields should update runtime state");
   }
 }
@@ -862,7 +863,7 @@ void testTransformCommandsDriveAttachedLightSpatialState() {
   EXPECT(dirNode != nullptr, "directional light node should exist");
   if (dirNode != nullptr) {
     const auto dirLight = fixture.scene->getDirectionalLight(*dirNode);
-    EXPECT(dirLight != nullptr,
+    EXPECT(dirLight.has_value(),
            "directional light runtime instance should attach");
   }
 
@@ -878,9 +879,9 @@ void testTransformCommandsDriveAttachedLightSpatialState() {
     (void)fixture.scene->getSceneLevelResources(Pass_Forward, RenderTarget{});
     const auto legacyDirLight = fixture.scene->getDirectionalLight(*dirNode);
     const Vec3f legacyPropertyDir =
-        legacyDirLight ? legacyDirLight->getDirection() : Vec3f{};
+        legacyDirLight ? legacyDirLight->get().getDirection() : Vec3f{};
     const Vec4f legacyUboDir =
-        fixture.scene->getSceneLightsUBO()->param.directional[1].direction;
+        fixture.scene->getSceneLightsUBO(Pass_Forward)->param.directional[1].direction;
     EXPECT(nearlyEqual(legacyUboDir.x, legacyPropertyDir.x) &&
                nearlyEqual(legacyUboDir.y, legacyPropertyDir.y) &&
                nearlyEqual(legacyUboDir.z, legacyPropertyDir.z),
@@ -897,16 +898,16 @@ void testTransformCommandsDriveAttachedLightSpatialState() {
       fixture.bus.dispatch("get /key_light.light.direction");
   EXPECT(getDirection.ok, "rotated directional light direction can be read");
   const auto rotatedDirLight = fixture.scene->getDirectionalLight(*dirNode);
-  EXPECT(rotatedDirLight != nullptr,
+  EXPECT(rotatedDirLight.has_value(),
          "rotated directional light runtime instance should remain attached");
-  const Vec3f propertyDir = rotatedDirLight->getDirection();
+  const Vec3f propertyDir = rotatedDirLight->get().getDirection();
   EXPECT(nearlyEqual(propertyDir.x, -1.0f) &&
              nearlyEqual(propertyDir.y, 0.0f) &&
              nearlyEqual(propertyDir.z, 0.0f),
          "directional light direction property follows node rotation");
   (void)fixture.scene->getSceneLevelResources(Pass_Forward, RenderTarget{});
   const Vec4f dir =
-      fixture.scene->getSceneLightsUBO()->param.directional[1].direction;
+      fixture.scene->getSceneLightsUBO(Pass_Forward)->param.directional[1].direction;
   EXPECT(nearlyEqual(dir.x, -1.0f) && nearlyEqual(dir.y, 0.0f) &&
              nearlyEqual(dir.z, 0.0f),
          "directional light UBO direction follows node rotation");
@@ -926,7 +927,7 @@ void testTransformCommandsDriveAttachedLightSpatialState() {
   EXPECT(movePoint.ok, "move point light succeeds");
   (void)fixture.scene->getSceneLevelResources(Pass_Forward, RenderTarget{});
   const Vec4f point =
-      fixture.scene->getSceneLightsUBO()->param.point[0].positionRange;
+      fixture.scene->getSceneLightsUBO(Pass_Forward)->param.point[0].positionRange;
   EXPECT(nearlyEqual(point.x, 3.0f) && nearlyEqual(point.y, 4.0f) &&
              nearlyEqual(point.z, 5.0f),
          "point light UBO position follows node translation");

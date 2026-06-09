@@ -29,6 +29,7 @@ struct SceneDocumentData final {
   std::string sceneName = "Scene";
   std::string gameplayCameraPath = "/game_cam";
   std::optional<EnvironmentState> environment;
+  LX_core::SceneRenderSettings renderSettings;
   std::optional<LX_core::offline::RenderProfileDocument> renderProfileDocument;
   SceneNodeDocument rootNode;
   std::optional<EditorCameraState> editorCamera;
@@ -547,6 +548,27 @@ void saveProceduralMaterialState(YAML::Emitter &out,
   return state;
 }
 
+[[nodiscard]] LX_core::SceneRenderSettings
+loadSceneRenderSettings(const YAML::Node &node) {
+  LX_core::SceneRenderSettings settings;
+  if (!node) {
+    return settings;
+  }
+  if (!node.IsMap()) {
+    throw std::runtime_error("scene.rendering must be a map");
+  }
+  for (auto it = node.begin(); it != node.end(); ++it) {
+    const std::string key = it->first.as<std::string>();
+    const YAML::Node value = it->second;
+    if (key == "shadows") {
+      settings.shadows = value.as<bool>();
+    } else {
+      throw std::runtime_error("unsupported scene.rendering field: " + key);
+    }
+  }
+  return settings;
+}
+
 [[nodiscard]] LX_core::offline::OutputCameraOverrides
 loadOutputCameraOverrides(const YAML::Node &node,
                           const std::string &profileName) {
@@ -703,7 +725,9 @@ loadOfflineRenderSettings(const YAML::Node &node) {
     } else if (key == "materialTag") {
       settings.materialTag = value.as<std::string>();
     } else if (key == "shadows") {
-      settings.shadows = value.as<bool>();
+      throw std::runtime_error(
+          "scene.offlineRender.shadows is no longer supported; use "
+          "scene.rendering.shadows");
     } else if (key == "compareMode") {
       settings.compareMode = value.as<std::string>();
     } else {
@@ -784,6 +808,8 @@ loadRenderProfileDocument(const YAML::Node &sceneNode) {
   }
 
   document.offline = loadOfflineRenderSettings(offlineRenderNode);
+  document.offline.shadows =
+      loadSceneRenderSettings(sceneNode["rendering"]).shadows;
   if (document.offline.profileName.empty()) {
     document.offline.profileName = document.defaultOutputProfile;
   }
@@ -886,7 +912,6 @@ void saveRenderProfileDocument(
     out << YAML::Key << "materialTag" << YAML::Value
         << document.offline.materialTag;
   }
-  out << YAML::Key << "shadows" << YAML::Value << document.offline.shadows;
   if (document.offline.compareMode != "shaded") {
     out << YAML::Key << "compareMode" << YAML::Value
         << document.offline.compareMode;
@@ -1350,6 +1375,24 @@ void SceneDocument::setEnvironment(EnvironmentState state) {
       std::move(state);
 }
 
+const LX_core::SceneRenderSettings &SceneDocument::renderSettings() const {
+  if (!m_impl) {
+    static const LX_core::SceneRenderSettings kDefaultSettings{};
+    return kDefaultSettings;
+  }
+  return std::static_pointer_cast<const SceneDocumentData>(m_impl)
+      ->renderSettings;
+}
+
+void SceneDocument::setRenderSettings(
+    LX_core::SceneRenderSettings settings) {
+  if (!m_impl) {
+    m_impl = std::make_shared<SceneDocumentData>();
+  }
+  std::static_pointer_cast<SceneDocumentData>(m_impl)->renderSettings =
+      settings;
+}
+
 bool SceneDocument::hasRenderProfileDocument() const {
   return m_impl && std::static_pointer_cast<const SceneDocumentData>(m_impl)
                        ->renderProfileDocument.has_value();
@@ -1435,6 +1478,8 @@ SceneDocument loadSceneDocument(const std::filesystem::path &path) {
     if (!environment.empty()) {
       document.setEnvironment(environment);
     }
+    document.setRenderSettings(
+        loadSceneRenderSettings(sceneNode["rendering"]));
     LX_core::offline::RenderProfileDocument renderProfiles =
         loadRenderProfileDocument(sceneNode);
     if (!renderProfiles.empty()) {
@@ -1489,6 +1534,10 @@ void saveSceneDocument(const std::filesystem::path &path,
   if (document.hasEnvironment()) {
     saveEnvironmentState(out, document.environment());
   }
+  out << YAML::Key << "rendering" << YAML::Value << YAML::BeginMap;
+  out << YAML::Key << "shadows" << YAML::Value
+      << document.renderSettings().shadows;
+  out << YAML::EndMap;
   if (document.hasRenderProfileDocument()) {
     saveRenderProfileDocument(out, document.renderProfileDocument());
   }

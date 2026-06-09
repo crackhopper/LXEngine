@@ -5,6 +5,8 @@ scene:
     enabled: false
     intensity: 0.0
     skyboxEnabled: false
+  rendering:
+    shadows: false
   defaultOutputProfile: preview
   outputProfiles:
     preview:
@@ -38,7 +40,6 @@ scene:
     seed: 1
     profile: preview
     materialTag: offline-pbr
-    shadows: false
     compareMode: shaded
 root:
   nodeName: scene_root

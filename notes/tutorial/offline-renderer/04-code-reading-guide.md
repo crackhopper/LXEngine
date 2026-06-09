@@ -26,9 +26,11 @@ main.cpp
   -> scene_document
   -> offline_render_profile
   -> OfflineSceneLoader
-  -> SceneResourceTable::buildUploadView()
-  -> SceneSoftwareBvh
   -> SoftwareComputeOfflineIntegrator
+  -> createOfflineRenderFrameGraph
+  -> RenderWorkQueue::build(RenderWorkBuildContext::offline(...))
+  -> buildOfflineSceneStorageResources
+  -> OfflineRenderGraphExecutor
   -> offline_primary_ray.comp
   -> OfflineImageWriter
 ```
@@ -56,7 +58,9 @@ src/tools/lxe_offline_render/offline_render_cli.cpp
 | `resolveRenderProfileDocument()` | 合并 scene output profile、offline settings 和 CLI overrides | `src/core/offline/offline_render_profile.*` |
 | `loader.load()` | 把 scene 文档裁剪进 `SceneResourceTable` | `offline_scene_loader.cpp` |
 | `renderer.render()` | 选择 explicit integrator | `vulkan_offline_renderer.cpp` |
-| `SoftwareComputeOfflineIntegrator::render()` | 执行 headless Vulkan compute | `software_compute_offline_integrator.cpp` |
+| `SoftwareComputeOfflineIntegrator::render()` | 创建 offline FrameGraph 并驱动 headless compute | `software_compute_offline_integrator.cpp` |
+| `FrameGraph::build(...)` | 从 offline job 生成 compute work item | `render_queue.cpp` |
+| `OfflineRenderGraphExecutor::execute()` | 复用 pipeline / descriptor / command buffer 路径执行 compute | `offline_render_graph_executor.cpp` |
 | `writeOfflineImageOutputs()` | 写 EXR / PNG / JSON / raw | `offline_image_writer.cpp` |
 
 这里有一个重要边界：CLI 不直接理解 TinyEXR、stb、descriptor set 或 shader layout。它只是把实验参数和实验输入交给下游模块。
@@ -79,9 +83,9 @@ src/core/offline/offline_render_job.hpp
 | YAML 字段 | 当前进入哪里 | 说明 |
 |---|---|---|
 | selected `OutputProfile.cameraPath` | `CameraResource` | `--profile` 选择 output profile 后，相机从 profile 进入 loader |
-| `scene.environment` | deferred environment record | 当前 shader 用 output background 和简单环境项；HDR 纹理采样还没接入 |
-| `scene.outputProfiles` | `OutputProfile` | 相机、宽高、outputFormat、outDir |
-| `scene.offlineRender` | `OfflineRenderSettings` | integrator、samples、maxBounce、seed、profile、shadows |
+| `scene.environment` | deferred environment record | HDR URI 会被保留在 scene 输入侧；当前 shader 主要使用 output profile 的 background color |
+| `scene.outputProfiles` | `OutputProfile` | 相机、宽高、outputFormat、outDir、backgroundColor、camera overrides |
+| `scene.offlineRender` | `OfflineRenderSettings` | integrator、samples、maxBounce、seed、profile、shadows、compareMode |
 | camera node `transform` + `camera` 参数 | `CameraResource` | transform 推导 pose，camera 提供 projection |
 | `mesh.uri` | `MeshResource` + `ObjectResource` | 当前 MVP 支持内置 plane / sphere |
 | `material.uri` + overrides | `MaterialInstance` | baseColor、metallic、roughness、emissive |
@@ -100,20 +104,21 @@ src/core/offline/offline_render_job.hpp
 
 如果 smoke 图里没有球、没有地面、没有光，优先从这一层查：scene 文档是否加载、相机路径是否匹配、mesh URI 是否被支持、材质是否被 fallback。
 
-## 第三站：GPU buffer 是 C++ 和 GLSL 的合同
+## 第三站：Storage resources 是 C++ 和 GLSL 的合同
 
 然后读：
 
 ```text
 src/core/scene/scene_gpu_records.hpp
 src/core/scene/scene_resource_table.cpp
+src/core/offline/offline_scene_storage_resources.cpp
 src/core/raytracing/software_bvh.hpp
 src/core/raytracing/software_bvh.cpp
 assets/shaders/glsl/offline_primary_ray.comp
 src/test/integration/test_offline_gpu_scene.cpp
 ```
 
-`SceneResourceTable::buildUploadView()` 导出 shader storage buffer 所需的统一 GPU records；`SceneSoftwareBvh::build()` 只从这份只读 upload view 派生 BVH 节点和 primitive 重排引用。这里最重要的不是算法，而是 layout 合同和索引关系。
+`SceneResourceTable::buildUploadView()` 导出 shader storage buffer 所需的统一 GPU records；`buildOfflineSceneStorageResources()` 从 upload view 派生 BVH、`SceneFrameParams` 和 `OutputPixels`；`SceneSoftwareBvh::build()` 只从这份只读 upload view 派生 BVH 节点和 primitive 重排引用。这里最重要的不是算法，而是 layout 合同和索引关系。
 
 | C++ 结构 | GLSL 结构 | 当前用途 |
 |---|---|---|
@@ -129,7 +134,7 @@ src/test/integration/test_offline_gpu_scene.cpp
 1. table 把 mesh 展成 compact vertex/index records，shader 直接按全局 compact index 查顶点。
 2. table 把材质参数压进 `SceneGpuMaterialRecord`，texture flag/index 预留给后续 bindless。
 3. table 把 object transform 保留在 `SceneGpuObjectRecord`，BVH 使用 world-space bounds。
-4. integrator 根据 active camera 和 output profile 写入 `SceneGpuFrameParams`。
+4. `makeShaderParams()` 根据 active camera、output profile、offline settings 和第一个方向光写入 `SceneGpuFrameParams`。
 
 修改这层时，一定同步看 `offline_primary_ray.comp`。C++ 的 `alignas(16)`、`static_assert(sizeof(...))` 和 GLSL 的 `layout(std430)` 必须一起维护。否则 shader 会按错误偏移读 buffer，画面可能不是崩溃，而是颜色、阴影或相机方向悄悄错掉。
 
@@ -162,7 +167,7 @@ shader 里的 `traceScene()` 会：
 
 以后我们做 path tracing 时，camera ray、shadow ray、reflection ray、diffuse bounce 都会复用这类查询能力。
 
-## 第五站：software-compute 是 headless compute 执行器
+## 第五站：software-compute 通过 offline FrameGraph 执行
 
 接着读：
 
@@ -170,21 +175,25 @@ shader 里的 `traceScene()` 会：
 src/backend/vulkan/offline/vulkan_offline_renderer.hpp
 src/backend/vulkan/offline/vulkan_offline_renderer.cpp
 src/backend/vulkan/offline/software_compute_offline_integrator.cpp
+src/core/offline/offline_render_work_graph.cpp
+src/core/frame_graph/render_queue.cpp
+src/backend/vulkan/offline/offline_render_graph_executor.cpp
 ```
 
-它和实时 renderer 最大区别是：没有窗口，没有 swapchain，没有 FrameGraph。`VulkanOfflineRenderer` 只负责选择 explicit integrator；当前 `software-compute` integrator 才拥有 headless Vulkan device、compute pipeline、storage buffer 和 output buffer。
+它和实时 renderer 最大区别是：没有窗口、swapchain 和实时 raster pass；但它并不绕开 `FrameGraph`。`VulkanOfflineRenderer` 只负责选择 explicit integrator；当前 `software-compute` integrator 创建 headless Vulkan runtime，然后用 offline `FrameGraph` 生成一个 compute work item。
 
 `software-compute` 的阅读顺序如下：
 
 | 步骤 | 代码动作 | 理解方式 |
 |---|---|---|
 | `validateOfflineRenderJob()` | 检查 output、active camera、upload view 和 BVH 能否成立 | 检查实验样品 |
-| `SceneResourceTable::buildUploadView()` | 导出统一 scene GPU records | 装入实验样品 |
-| `SceneSoftwareBvh::build()` | 生成 BVH 节点并重排 primitives | 建立空间索引 |
-| `ensurePipeline()` | 创建 descriptor layout、pipeline layout、compute pipeline、descriptor pool | 准备实验仪器 |
-| 创建 `VulkanBuffer` | vertex/index/mesh/primitive/object/material/bvh/params/output 都是 storage buffer | 准备 shader 可读写内存 |
-| `vkUpdateDescriptorSets()` | 绑定 9 个 buffer 到 binding 0..8 | 对齐 GLSL binding |
-| `vkCmdDispatch()` | 按 8x8 workgroup 覆盖整张图 | 每个 invocation 计算一个像素 |
+| `createOfflineRenderFrameGraph()` | 创建 `Pass_OfflineRayTrace` | 排一项离线实验 |
+| `graph.build(RenderWorkBuildContext::offline(job, shader))` | 让 queue 生成 `ComputeDispatch` work item | 生成可执行工单 |
+| `buildOfflineSceneStorageResources()` | 导出 scene records、BVH、params 和 output buffer | 装入实验样品 |
+| `resourceManager.preloadPipelines(...)` | 从 work item 派生 compute pipeline build desc | 准备实验仪器 |
+| `buildRenderUploadPlan(pass.queue)` | 收集本 pass 需要同步的 `IGpuResource` | 准备 shader 可读写内存 |
+| `cmd->bindPipeline()` / `bindResources()` | 绑定 compute pipeline 和 9 个 storage buffer | 对齐 GLSL binding name |
+| `cmd->executeWorkItem()` | 按 8x8 workgroup 覆盖整张图 | 每个 invocation 计算一个像素 |
 | `vkCmdPipelineBarrier()` | compute 写完后允许 host read | GPU/CPU 同步边界 |
 | `map()` + `memcpy()` | 读回 `OfflineReadbackImage.rgba` | 得到 CPU 可写文件的 float 图 |
 
@@ -202,7 +211,7 @@ src/backend/vulkan/offline/software_compute_offline_integrator.cpp
 | 7 | `SceneFrameParams` |
 | 8 | `OutputPixels` |
 
-如果以后新增纹理、light array、AOV 或 accumulation buffer，descriptor set layout、GLSL binding、测试都要一起变。
+如果以后新增纹理、light array、AOV 或 accumulation buffer，storage resource 生成、shader reflection contract、GLSL binding、测试都要一起变。
 
 ## 第六站：shader 决定当前画面为什么长这样
 
@@ -216,11 +225,11 @@ assets/shaders/glsl/offline_primary_ray.comp
 
 1. 根据像素坐标和 sample jitter 生成 camera ray。
 2. 调 `traceScene()` 找最近交点。
-3. 没命中时返回 `environmentColor(dir)`，所以画面上半部分是程序化天空灰蓝色，地平线附近会过渡到地面色。
+3. 没命中时返回 `environmentColor(dir)`，当前实现从 `SceneFrameParams.backgroundColor` 读取背景色。
 4. 命中时读取材质，计算直接方向光、shadow ray、简化 specular 和简化环境反射。
 5. 把 sample 平均后写入 `OutputPixels.pixels[pixelIndex]`。
 
-所以我们在 tev 里看到“小球、地面阴影、水平线上方灰色背景”是符合当前 MVP 的。这个结果证明 camera ray、BVH、shadow ray、材质常量、环境色和 output buffer 都至少连通了。
+所以我们在预览图里看到“小球、地面阴影、背景色”是符合当前 MVP 的。这个结果证明 camera ray、BVH、shadow ray、材质常量、background color 和 output buffer 都至少连通了。
 
 它当前还没有做这些：
 
@@ -261,8 +270,8 @@ src/test/integration/test_offline_image_writer.cpp
 |---|---|
 | `test_offline_render_cli` | CLI 参数和 profile override |
 | `test_offline_scene_loader` | scene YAML 到 `SceneResourceTable` |
-| `test_offline_gpu_scene` | C++ GPU struct layout 和基础打包 |
-| `test_vulkan_offline_renderer` | headless Vulkan compute + readback |
+| `test_offline_gpu_scene` | C++ GPU struct layout、offline storage resources 和 work item |
+| `test_vulkan_offline_renderer` | headless Vulkan runtime、offline graph compute 和 readback |
 | `test_offline_image_writer` | EXR / PNG / JSON / raw 输出 |
 
 常用验证命令：
@@ -289,7 +298,7 @@ ctest --test-dir build --output-on-failure \
 | unsupported mesh | `OfflineSceneLoader::makeBuiltinMesh()` 当前支持范围 |
 | no visible primitives | instance visibility、mesh indices、upload view |
 | failed to find offline compute shader SPIR-V | shader 编译产物和运行工作目录 |
-| readback empty / non-finite | shader 输出、buffer 大小、barrier/readback |
+| readback empty / non-finite | work item 资源、shader 输出、buffer 大小、barrier/readback |
 | EXR/PNG 写出失败 | `OfflineImageWriter` 和输出目录权限 |
 
 ## 改代码时按数据流提交
@@ -301,8 +310,8 @@ offline renderer 最容易出错的是“只改了一半”。例如我们要给
 | scene/material 文件 | 纹理 URI 和资产路径 |
 | `MaterialInstance` / `SceneGpuMaterialRecord` | 纹理引用或采样参数 |
 | `OfflineSceneLoader` | 从 material asset 读取字段 |
-| GPU packing | texture index / material 参数 |
-| Vulkan descriptor | image/sampler 或 texture buffer binding |
+| storage resources | texture index / material 参数 / output buffer |
+| Vulkan binding | image/sampler 或 texture buffer resource |
 | GLSL shader | 按 layout 读取并采样 |
 | tests | compiler、GPU layout、renderer smoke |
 | output/docs | 说明当前支持哪些纹理和限制 |
@@ -311,8 +320,8 @@ offline renderer 最容易出错的是“只改了一半”。例如我们要给
 
 ## 我们已经学会了什么
 
-我们已经把 offline renderer 的源码拆成七个阅读站点：CLI、scene/profile、SceneResourceTable、GPU buffer、BVH、headless Vulkan compute、image writer。每个站点都有明确输入输出，所以调试时可以按数据流逐层定位，而不是直接陷入 Vulkan 或 shader 细节。
+我们已经把 offline renderer 的源码拆成八个阅读站点：CLI、scene/profile、SceneResourceTable、storage resources、BVH、offline FrameGraph、headless Vulkan graph executor、image writer。每个站点都有明确输入输出，所以调试时可以按数据流逐层定位，而不是直接陷入 Vulkan 或 shader 细节。
 
 ## 下一步
 
-继续读 [实现自己的 Path Tracing](05-implement-path-tracing.md)。在那里我们会沿着这条数据流思考：要把 software-compute MVP 变成 path tracer，应该在哪些 scene record、buffer、descriptor、shader 和测试上扩展。
+继续读 [实现自己的 Path Tracing](05-implement-path-tracing.md)。在那里我们会沿着这条数据流思考：要把 software-compute MVP 变成 path tracer，应该在哪些 scene record、storage resource、shader binding 和测试上扩展。

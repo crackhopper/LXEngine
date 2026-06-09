@@ -1,6 +1,8 @@
 scene:
   name: lxe_editor
   gameplayCameraPath: /game_cam
+  rendering:
+    shadows: false
 nodes:
   - nodeName: game_camera
     name: game_cam
@@ -25,7 +27,10 @@ nodes:
       scale: [1.0, 1.0, 1.0]
     visibilityMask: 4294967295
     mesh:
-      uri: builtin://lxe_editor/helmet
+      uri: assets/models/damaged_helmet/DamagedHelmet.gltf
+    material:
+      source: gltf
+      uri: assets/materials/pbr.material
   - nodeName: ground
     name: ground
     transform:

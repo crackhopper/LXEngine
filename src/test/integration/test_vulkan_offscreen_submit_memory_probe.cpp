@@ -168,14 +168,13 @@ void testOffscreenSubmitProbe() {
                        std::make_shared<LX_core::DirectionalLight>());
 
     const auto camera = cameraNode->getComponent<LX_core::CameraComponent>();
-    const auto dirLight = std::dynamic_pointer_cast<LX_core::DirectionalLight>(
-        scene->getLights().front());
-    const auto lightUbo = dirLight ? dirLight->getDirectionalUBO()
-                                   : LX_core::DirectionalLightDataSharedPtr{};
-    if (lightUbo) {
-      lightUbo->param.dir = LX_core::Vec4f{0.0f, -1.0f, 0.0f, 0.0f};
-      lightUbo->param.color = LX_core::Vec4f{1.0f, 1.0f, 1.0f, 1.0f};
-      lightUbo->setDirty();
+    auto *dirLight = dynamic_cast<LX_core::DirectionalLight *>(
+        &scene->getLights().front().get());
+    if (dirLight) {
+      auto &lightUbo = dirLight->getDirectionalUBO();
+      lightUbo.param.dir = LX_core::Vec4f{0.0f, -1.0f, 0.0f, 0.0f};
+      lightUbo.param.color = LX_core::Vec4f{1.0f, 1.0f, 1.0f, 1.0f};
+      lightUbo.setDirty();
     }
 
     camera->get().lookAt({0.0f, 0.0f, 3.0f}, {0.0f, 0.0f, 0.0f},

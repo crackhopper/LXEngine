@@ -124,9 +124,8 @@ void logMissingDescriptorBindingOnce(const RenderWorkItem &item,
 
 void logDescriptorBufferBindingIfChanged(
     const RenderWorkItem &item, const ShaderResourceBinding &binding,
-    const IGpuResourceSharedPtr &cpuRes,
-    const VkDescriptorBufferInfo &bufferInfo) {
-  if (!expRendererDebugEnabled() || !cpuRes) {
+    const IGpuResource &cpuRes, const VkDescriptorBufferInfo &bufferInfo) {
+  if (!expRendererDebugEnabled()) {
     return;
   }
 
@@ -149,7 +148,7 @@ void logDescriptorBufferBindingIfChanged(
   const std::string key = keyBuilder.str();
 
   BindingLogState next{};
-  next.identity = cpuRes->getBackendCacheIdentity();
+  next.identity = cpuRes.getBackendCacheIdentity();
   next.bufferToken = std::hash<VkBuffer>{}(bufferInfo.buffer);
   next.range = bufferInfo.range;
 
@@ -170,9 +169,8 @@ void logDescriptorBufferBindingIfChanged(
 
 void logDescriptorImageBindingIfChanged(
     const RenderWorkItem &item, const ShaderResourceBinding &binding,
-    const IGpuResourceSharedPtr &cpuRes,
-    const VkDescriptorImageInfo &imageInfo) {
-  if (!expRendererDebugEnabled() || !cpuRes) {
+    const IGpuResource &cpuRes, const VkDescriptorImageInfo &imageInfo) {
+  if (!expRendererDebugEnabled()) {
     return;
   }
 
@@ -196,7 +194,7 @@ void logDescriptorImageBindingIfChanged(
   const std::string key = keyBuilder.str();
 
   BindingLogState next{};
-  next.identity = cpuRes->getBackendCacheIdentity();
+  next.identity = cpuRes.getBackendCacheIdentity();
   next.imageViewToken = std::hash<VkImageView>{}(imageInfo.imageView);
   next.samplerToken = std::hash<VkSampler>{}(imageInfo.sampler);
   next.layout = imageInfo.imageLayout;
@@ -251,15 +249,14 @@ void VulkanCommandBuffer::bindResourcesWithLayout(
 
   // Build a name→resource map from the item's descriptorResources so backend
   // routing can match reflected binding names without any slot enum.
-  std::unordered_map<LX_core::StringID, LX_core::IGpuResourceSharedPtr,
+  std::unordered_map<LX_core::StringID, LX_core::DescriptorResourceRef,
                      LX_core::StringID::Hash>
       resourceByName;
   for (const auto &cpuRes : item.descriptorResources) {
-    if (!cpuRes)
+    const auto name = cpuRes.getBindingName();
+    if (name.id == 0) {
       continue;
-    auto name = cpuRes->getBindingName();
-    if (name.id == 0)
-      continue;
+    }
     resourceByName.emplace(name, cpuRes);
   }
 
@@ -291,8 +288,13 @@ void VulkanCommandBuffer::bindResourcesWithLayout(
 
       if (b.type == LX_core::ShaderPropertyType::UniformBuffer ||
           b.type == LX_core::ShaderPropertyType::StorageBuffer) {
+        if (!cpuRes.isResource() || !cpuRes.resource().isValid()) {
+          logMissingDescriptorBindingOnce(item, b);
+          continue;
+        }
+        const LX_core::IGpuResource &resource = cpuRes.resource().get();
         auto bufferOpt =
-            resourceManager.getBuffer(cpuRes->getBackendCacheIdentity());
+            resourceManager.getBuffer(resource.getBackendCacheIdentity());
         if (!bufferOpt)
           continue;
         auto &buffer = bufferOpt->get();
@@ -302,7 +304,7 @@ void VulkanCommandBuffer::bindResourcesWithLayout(
         bufferInfo.offset = 0;
         bufferInfo.range = buffer.getSize();
 
-        logDescriptorBufferBindingIfChanged(item, b, cpuRes, bufferInfo);
+        logDescriptorBufferBindingIfChanged(item, b, resource, bufferInfo);
         setPtr->updateBuffer(b.binding, bufferInfo,
                              b.type ==
                                      LX_core::ShaderPropertyType::UniformBuffer
@@ -310,10 +312,8 @@ void VulkanCommandBuffer::bindResourcesWithLayout(
                                  : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
       } else if (b.type == LX_core::ShaderPropertyType::Texture2D ||
                  b.type == LX_core::ShaderPropertyType::TextureCube) {
-        if (const auto textureArray =
-                std::dynamic_pointer_cast<LX_core::SampledTextureArrayResource>(
-                    cpuRes)) {
-          const auto &textures = textureArray->textures();
+        if (cpuRes.isTextureArray()) {
+          const auto &textures = cpuRes.textures();
           if (textures.size() != b.descriptorCount) {
             throw std::runtime_error(
                 "texture array resource descriptor count mismatch");
@@ -323,12 +323,12 @@ void VulkanCommandBuffer::bindResourcesWithLayout(
           imageInfos.reserve(textures.size());
           bool complete = true;
           for (const auto &textureResource : textures) {
-            if (!textureResource) {
+            if (!textureResource.isValid()) {
               complete = false;
               break;
             }
             auto textureOpt = resourceManager.getTexture(
-                textureResource->getBackendCacheIdentity());
+                textureResource.getBackendCacheIdentity());
             if (!textureOpt) {
               complete = false;
               break;
@@ -345,9 +345,14 @@ void VulkanCommandBuffer::bindResourcesWithLayout(
           continue;
         }
 
-        if (const auto frameGraphResource =
-                std::dynamic_pointer_cast<LX_core::FrameGraphSampledResource>(
-                    cpuRes)) {
+        if (!cpuRes.isResource() || !cpuRes.resource().isValid()) {
+          logMissingDescriptorBindingOnce(item, b);
+          continue;
+        }
+        const LX_core::IGpuResource &resource = cpuRes.resource().get();
+        if (const auto *frameGraphResource =
+                dynamic_cast<const LX_core::FrameGraphSampledResource *>(
+                    &resource)) {
           auto attachmentOpt = resourceManager.getFrameGraphAttachment(
               frameGraphResource->getResourceName());
           if (!attachmentOpt) {
@@ -357,20 +362,20 @@ void VulkanCommandBuffer::bindResourcesWithLayout(
           auto &attachment = attachmentOpt->get();
           VkDescriptorImageInfo imageInfo =
               attachment.texture->getDescriptorInfo();
-          logDescriptorImageBindingIfChanged(item, b, cpuRes, imageInfo);
+          logDescriptorImageBindingIfChanged(item, b, resource, imageInfo);
           setPtr->updateImage(b.binding, imageInfo,
                               VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
           continue;
         }
 
         auto textureOpt =
-            resourceManager.getTexture(cpuRes->getBackendCacheIdentity());
+            resourceManager.getTexture(resource.getBackendCacheIdentity());
         if (!textureOpt)
           continue;
         auto &texture = textureOpt->get();
 
         VkDescriptorImageInfo imageInfo = texture.getDescriptorInfo();
-        logDescriptorImageBindingIfChanged(item, b, cpuRes, imageInfo);
+        logDescriptorImageBindingIfChanged(item, b, resource, imageInfo);
         setPtr->updateImage(b.binding, imageInfo,
                             VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
       }
@@ -384,9 +389,9 @@ void VulkanCommandBuffer::bindResourcesWithLayout(
 
   const auto &raster = item.raster;
 
-  if (raster.vertexBuffer) {
+  if (raster.vertexBuffer.isValid()) {
     auto vbOpt = resourceManager.getBuffer(
-        raster.vertexBuffer->getBackendCacheIdentity());
+        raster.vertexBuffer.getBackendCacheIdentity());
     if (vbOpt) {
       VkBuffer vbHandle = vbOpt->get().getHandle();
       VkDeviceSize offsets[] = {0};
@@ -394,9 +399,9 @@ void VulkanCommandBuffer::bindResourcesWithLayout(
     }
   }
 
-  if (raster.indexBuffer) {
+  if (raster.indexBuffer.isValid()) {
     auto ibOpt = resourceManager.getBuffer(
-        raster.indexBuffer->getBackendCacheIdentity());
+        raster.indexBuffer.getBackendCacheIdentity());
     if (ibOpt) {
       vkCmdBindIndexBuffer(m_handle, ibOpt->get().getHandle(), 0,
                            VK_INDEX_TYPE_UINT32);
@@ -441,13 +446,14 @@ void VulkanCommandBuffer::executeRasterDrawItem(const RenderWorkItem &item) {
   }
 
   const auto &raster = item.raster;
-  if (!raster.vertexBuffer || !raster.indexBuffer) {
+  if (!raster.vertexBuffer.isValid() || !raster.indexBuffer.isValid()) {
     return;
   }
 
   const usize indexCount =
       raster.indexCount != 0 ? raster.indexCount
-                             : raster.indexBuffer->getByteSize() / sizeof(u32);
+                             : raster.indexBuffer.get().getByteSize() /
+                                   sizeof(u32);
   if (indexCount == 0) {
     return;
   }

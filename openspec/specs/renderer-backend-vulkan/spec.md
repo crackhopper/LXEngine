@@ -203,7 +203,7 @@ The VulkanCommandBuffer SHALL support:
 - Setting scissor to framebuffer dimensions
 - Binding graphics pipeline
 - Binding vertex and index buffers
-- Binding descriptor sets by matching each descriptor binding from the pipeline's reflected `ShaderResourceBinding` list against the `RenderingItem::descriptorResources` via `IGpuResource::getBindingName()`. The matching SHALL NOT use `PipelineSlotId`; that enum SHALL not exist.
+- Binding descriptor sets by matching each descriptor binding from the pipeline's reflected `ShaderResourceBinding` list against the `RenderingItem::descriptorResources` via `DescriptorResourceRef::getBindingName()`. The matching SHALL NOT use `PipelineSlotId`; that enum SHALL not exist.
 - Drawing indexed primitives with push constants
 
 #### Scenario: Recording triangle draw commands
@@ -278,7 +278,7 @@ The VulkanRenderer SHALL implement:
   - Reset per-compiled-pass offscreen framebuffer storage and clear stale frame-graph attachments after a successful compile.
   - Iterate `m_frameGraph.getPasses() × pass.queue.getItems()` to sync every item's vertex / index / descriptor resources and initialize `objectInfo` push-constants.
   - Call `resourceManager->preloadPipelines(m_frameGraph.collectAllPipelineBuildDescs())`.
-  - SHALL NOT side-channel-inject any camera or light UBO into `RenderingItem::descriptorResources`. Scene-level UBOs flow through `Scene::getSceneLevelResources(pass, target)` merged inside `RenderQueue::buildFromScene`.
+  - SHALL NOT side-channel-inject any camera or light UBO into `RenderingItem::descriptorResources`. Scene-level UBOs flow through `Scene::getSceneLevelResources(pass, target)` and are merged by the scene descriptor resolver during `RenderQueue::buildFromScene`.
 - `uploadData()`: Iterate `m_frameGraph.getPasses() × pass.queue.getItems()` and `syncResource` every item's vertex buffer, index buffer, and descriptor resources.
 - `draw()`: Acquire image, record commands, iterate compiled frame-graph passes in order, create/transition offscreen attachments for offscreen passes, begin each pass's compatible render pass/framebuffer, iterate the matching `m_frameGraph.getPasses()[i].queue.getItems()` binding the pipeline/resources and calling `cmd->drawItem(item)` for each, transition offscreen writes to shader-read layout, submit, present.
 - Resolving the bound graphics pipeline using `RenderingItem::pipelineKey` and the resource manager pipeline cache on each draw.
@@ -299,7 +299,7 @@ The `VulkanRenderer::Impl` class SHALL hold both `FrameGraph` and `CompiledFrame
 
 #### Scenario: No side-channel UBO injection
 - **WHEN** `initScene(scene)` is called on a scene with one camera (nullopt target, backfilled by initScene) and one directional light whose pass mask includes Forward
-- **THEN** each resulting `RenderingItem` in the `Pass_Forward` queue carries the camera UBO and the light UBO in its `descriptorResources`, produced entirely by `RenderQueue::buildFromScene` via `Scene::getSceneLevelResources(Pass_Forward, swapchainTarget)`. No code inside `VulkanRenderer::Impl::initScene` manually pushes UBOs into any item.
+- **THEN** each resulting `RenderingItem` in the `Pass_Forward` queue carries the camera UBO and the light UBO in its `descriptorResources`, produced entirely by `RenderQueue::buildFromScene` through the scene descriptor resolver and `Scene::getSceneLevelResources(Pass_Forward, swapchainTarget)`. No code inside `VulkanRenderer::Impl::initScene` manually pushes UBOs into any item.
 
 #### Scenario: Cascaded offscreen depth passes execute before swapchain pass
 - **WHEN** `initScene(scene)` succeeds and the scene has a renderable supporting `Pass_Shadow` and `Pass_Forward`

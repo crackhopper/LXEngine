@@ -5,7 +5,7 @@
 #include "core/frame_graph/pass.hpp"
 #include "core/math/mat.hpp"
 #include "core/math/transform.hpp"
-#include "core/rhi/gpu_resource.hpp"
+#include "core/rhi/descriptor_resource_ref.hpp"
 #include "core/scene/camera.hpp"
 #include "core/scene/component.hpp"
 #include "core/scene/scene_events.hpp"
@@ -58,12 +58,13 @@ using PerDrawDataSharedPtr = PerDrawData::SharedPtr;
 
 struct ValidatedRenderablePassData {
   StringID pass;
-  MaterialInstanceSharedPtr material;
+  MaterialHandle materialHandle;
   IShaderSharedPtr shaderInfo;
   PerDrawDataSharedPtr drawData;
-  IGpuResourceSharedPtr vertexBuffer;
-  IGpuResourceSharedPtr indexBuffer;
-  std::vector<IGpuResourceSharedPtr> descriptorResources;
+  GpuResourceRef vertexBuffer;
+  GpuResourceRef indexBuffer;
+  GpuResourceRef bonesResource;
+  RenderState renderState;
   StringID objectSignature;
   StringID materialSignature;
 };
@@ -72,10 +73,8 @@ class IRenderable {
 public:
   virtual ~IRenderable() = default;
 
-  virtual IGpuResourceSharedPtr getVertexBuffer() const = 0;
-  virtual IGpuResourceSharedPtr getIndexBuffer() const = 0;
-  virtual std::vector<IGpuResourceSharedPtr>
-  getDescriptorResources(StringID pass) const = 0;
+  virtual GpuResourceRef getVertexBuffer() const = 0;
+  virtual GpuResourceRef getIndexBuffer() const = 0;
   virtual IShaderSharedPtr getShaderInfo() const = 0;
   virtual PerDrawDataSharedPtr getPerDrawData() const { return nullptr; }
   virtual StringID getPipelineSignature(StringID pass) const = 0;
@@ -201,10 +200,8 @@ public:
   [[nodiscard]] std::vector<SharedPtr> getChildren() const;
   [[nodiscard]] bool isSceneRoot() const { return m_isPathRoot; }
 
-  IGpuResourceSharedPtr getVertexBuffer() const override;
-  IGpuResourceSharedPtr getIndexBuffer() const override;
-  std::vector<IGpuResourceSharedPtr>
-  getDescriptorResources(StringID pass) const override;
+  GpuResourceRef getVertexBuffer() const override;
+  GpuResourceRef getIndexBuffer() const override;
   IShaderSharedPtr getShaderInfo() const override;
   PerDrawDataSharedPtr getPerDrawData() const override;
   StringID getPipelineSignature(StringID pass) const override;
@@ -255,6 +252,8 @@ private:
   StringID m_debugId;
   std::unordered_map<StringID, ValidatedRenderablePassData, StringID::Hash>
       m_validatedPasses;
+  std::unordered_map<StringID, IndexBufferUniquePtr, StringID::Hash>
+      m_overlayIndexBuffers;
   std::weak_ptr<Scene> m_scene;
   std::weak_ptr<SceneNode> m_parent;
   std::vector<std::weak_ptr<SceneNode>> m_children;

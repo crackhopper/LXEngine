@@ -126,15 +126,14 @@ int main() {
   auto cameraNode = LX_test::makeDefaultCameraNodeWithTarget();
   scene->addCamera(cameraNode);
   auto camera = cameraNode->getComponent<CameraComponent>();
-  auto dirLight =
-      std::dynamic_pointer_cast<DirectionalLight>(scene->getLights().front());
+  auto *dirLight =
+      dynamic_cast<DirectionalLight *>(&scene->getLights().front().get());
 
-  const auto lightUbo =
-      dirLight ? dirLight->getDirectionalUBO() : DirectionalLightDataSharedPtr{};
-  if (lightUbo) {
-    lightUbo->param.dir = Vec4f{0.0f, -1.0f, 0.0f, 0.0f};
-    lightUbo->param.color = Vec4f{1.0f, 1.0f, 1.0f, 1.0f};
-    lightUbo->setDirty();
+  if (dirLight) {
+    auto &lightUbo = dirLight->getDirectionalUBO();
+    lightUbo.param.dir = Vec4f{0.0f, -1.0f, 0.0f, 0.0f};
+    lightUbo.param.color = Vec4f{1.0f, 1.0f, 1.0f, 1.0f};
+    lightUbo.setDirty();
   }
 
   if (testDebugEnabled()) {
@@ -191,8 +190,16 @@ int main() {
                 << camera->get().getLookTarget().z
                 << "), aspect=" << camera->get().getAspect() << std::endl;
       if (frameCounter == 0) {
-        const auto &view = camera->get().getUBO()->param.view;
-        const auto &proj = camera->get().getUBO()->param.proj;
+        const auto cameraUbo = scene->resources().getCameraUboResource(
+            camera->get().getCameraHandle());
+        if (!cameraUbo.isValid()) {
+          std::cerr << "[TriangleTest] missing table-owned CameraUBO\n";
+          return;
+        }
+        const auto &cameraData =
+            static_cast<const CameraData &>(cameraUbo.get());
+        const auto &view = cameraData.param.view;
+        const auto &proj = cameraData.param.proj;
         const std::array<Vec4f, 3> debugPositions = {
             Vec4f{-1.0f, 1.0f, 0.0f, 1.0f},
             Vec4f{1.0f, 1.0f, 0.0f, 1.0f},

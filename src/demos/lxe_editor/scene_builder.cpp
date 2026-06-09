@@ -3,8 +3,8 @@
 #include "core/asset/builtin_meshes.hpp"
 #include "core/asset/material_instance.hpp"
 #include "core/asset/mesh.hpp"
-#include "core/frame_graph/pass.hpp"
 #include "core/asset/texture.hpp"
+#include "core/frame_graph/pass.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/components/material_component.hpp"
@@ -12,8 +12,8 @@
 #include "core/utils/filesystem_tools.hpp"
 #include "core/utils/string_table.hpp"
 #include "infra/material_loader/generic_material_loader.hpp"
-#include "infra/mesh_loader/obj_mesh_loader.hpp"
 #include "infra/scene_asset/gltf_scene_asset_loader.hpp"
+#include "infra/scene_asset/scene_mesh_loader.hpp"
 #include "infra/texture_loader/texture_loader.hpp"
 
 #include <cmath>
@@ -45,40 +45,6 @@ using LX_core::Vec4f;
 using LX_core::Vec4i;
 using LX_core::VertexBuffer;
 using LX_core::VertexPosNormalUvBone;
-
-MeshSharedPtr buildMeshFromObj(const infra::ObjLoader &loader) {
-  const auto &positions = loader.getPositions();
-  const auto &normals = loader.getNormals();
-  const auto &uvs = loader.getTexCoords();
-  const auto &indices = loader.getIndices();
-
-  if (positions.empty()) {
-    throw std::runtime_error("[lxe_editor] ObjLoader returned empty positions");
-  }
-  if (indices.empty()) {
-    throw std::runtime_error("[lxe_editor] ObjLoader returned empty indices");
-  }
-
-  std::vector<VertexPosNormalUvBone> verts;
-  verts.reserve(positions.size());
-
-  const Vec3f fallbackNormal{0.0f, 1.0f, 0.0f};
-  const Vec2f fallbackUv{0.0f, 0.0f};
-  const Vec4f fallbackTangent{1.0f, 0.0f, 0.0f, 1.0f};
-  const Vec4i zeroBones{0, 0, 0, 0};
-  const Vec4f zeroWeights{0.0f, 0.0f, 0.0f, 0.0f};
-
-  for (usize i = 0; i < positions.size(); ++i) {
-    const Vec3f n = i < normals.size() ? normals[i] : fallbackNormal;
-    const Vec2f uv = i < uvs.size() ? uvs[i] : fallbackUv;
-    verts.emplace_back(positions[i], n, uv, fallbackTangent, zeroBones,
-                       zeroWeights);
-  }
-
-  auto vb = VertexBuffer<VertexPosNormalUvBone>::create(std::move(verts));
-  auto ib = IndexBuffer::create(std::vector<u32>(indices));
-  return Mesh::create(vb, ib, loader.getBounds());
-}
 
 // Load an image file and wrap it in a CombinedTextureSampler the material
 // system understands. Uses RGBA8 (stb_image always delivers 4 channels via
@@ -172,17 +138,7 @@ MaterialInstanceSharedPtr makeModelMaterial(std::string_view materialUri,
 
 MeshSharedPtr loadModelMesh(std::string_view meshUri) {
   const std::filesystem::path path = resolveRuntimePath(std::string(meshUri));
-  const std::string extension = path.extension().string();
-  if (extension == ".obj") {
-    infra::ObjLoader loader;
-    loader.load(path.string());
-    return buildMeshFromObj(loader);
-  }
-  if (extension == ".gltf" || extension == ".glb") {
-    return LX_infra::scene_asset::loadGltfMeshAsset(path).mesh;
-  }
-  throw std::runtime_error("[lxe_editor] unsupported model asset extension: " +
-                           path.string());
+  return LX_infra::scene_asset::loadSceneMeshAsset(path);
 }
 
 MeshSharedPtr makeMesh(std::vector<VertexPosNormalUvBone> verts,
@@ -209,8 +165,7 @@ MeshSharedPtr buildTrianglePatchMesh() {
   appendVertex(verts, {0.5f, 0.0f, -0.5f}, up, Vec2f{1.0f, 0.0f});
   return makeMesh(
       std::move(verts), {0, 2, 1},
-      LX_core::BoundingBox{{-0.5f, 0.0f, -0.5f}, {0.5f, 0.0f, 0.5f}},
-      false);
+      LX_core::BoundingBox{{-0.5f, 0.0f, -0.5f}, {0.5f, 0.0f, 0.5f}}, false);
 }
 
 MeshSharedPtr buildSquarePatchMesh() {
@@ -223,8 +178,7 @@ MeshSharedPtr buildSquarePatchMesh() {
   appendVertex(verts, {-0.5f, 0.0f, 0.5f}, up, Vec2f{0.0f, 1.0f});
   return makeMesh(
       std::move(verts), {0, 2, 1, 0, 3, 2},
-      LX_core::BoundingBox{{-0.5f, 0.0f, -0.5f}, {0.5f, 0.0f, 0.5f}},
-      false);
+      LX_core::BoundingBox{{-0.5f, 0.0f, -0.5f}, {0.5f, 0.0f, 0.5f}}, false);
 }
 
 MeshSharedPtr buildCirclePatchMesh() {
@@ -251,8 +205,7 @@ MeshSharedPtr buildCirclePatchMesh() {
 
   return makeMesh(
       std::move(verts), std::move(indices),
-      LX_core::BoundingBox{{-0.5f, 0.0f, -0.5f}, {0.5f, 0.0f, 0.5f}},
-      false);
+      LX_core::BoundingBox{{-0.5f, 0.0f, -0.5f}, {0.5f, 0.0f, 0.5f}}, false);
 }
 
 MeshSharedPtr buildPatchMesh(std::string_view meshUri) {
@@ -306,15 +259,19 @@ makeRenderableNode(const char *nodeName, MeshSharedPtr mesh,
 } // namespace
 
 LX_core::SceneNodeSharedPtr
-buildHelmetNode(const std::filesystem::path &gltfPath) {
-  auto asset = LX_infra::scene_asset::loadGltfSceneAsset(gltfPath);
+buildHelmetNode(const std::filesystem::path &gltfPath,
+                const std::filesystem::path &materialPath) {
+  auto asset =
+      LX_infra::scene_asset::loadGltfSceneAsset(gltfPath, materialPath);
   return makeRenderableNode("helmet", std::move(asset.mesh),
                             std::move(asset.material));
 }
 
 LX_core::MaterialInstanceSharedPtr
-buildHelmetMaterial(const std::filesystem::path &gltfPath) {
-  return LX_infra::scene_asset::loadGltfSceneAsset(gltfPath).material;
+buildHelmetMaterial(const std::filesystem::path &gltfPath,
+                    const std::filesystem::path &materialPath) {
+  return LX_infra::scene_asset::loadGltfSceneAsset(gltfPath, materialPath)
+      .material;
 }
 
 LX_core::SceneNodeSharedPtr buildGroundNode() {
@@ -327,10 +284,6 @@ LX_core::SceneNodeSharedPtr buildBuiltinPrimitiveNode(std::string_view meshUri,
                                                       std::string nodeName) {
   auto mesh = LX_core::buildBuiltinPrimitiveMesh(meshUri);
   auto material = makePrimitiveMaterial();
-  if (meshUri == "builtin://lxe_editor/primitives/plane" && material &&
-      material->isPassEnabled(LX_core::Pass_Shadow)) {
-    material->setPassEnabled(LX_core::Pass_Shadow, false);
-  }
   return makeRenderableNode(nodeName.c_str(), std::move(mesh),
                             std::move(material));
 }
@@ -339,9 +292,6 @@ LX_core::SceneNodeSharedPtr buildBuiltinPatchNode(std::string_view meshUri,
                                                   std::string nodeName) {
   auto mesh = buildPatchMesh(meshUri);
   auto material = makePrimitiveMaterial();
-  if (material && material->isPassEnabled(LX_core::Pass_Shadow)) {
-    material->setPassEnabled(LX_core::Pass_Shadow, false);
-  }
   return makeRenderableNode(nodeName.c_str(), std::move(mesh),
                             std::move(material));
 }

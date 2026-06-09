@@ -3,6 +3,7 @@
 #include "core/asset/builtin_meshes.hpp"
 #include "core/asset/material_instance.hpp"
 #include "core/frame_graph/pass.hpp"
+#include "core/math/bounds.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/camera.hpp"
@@ -10,6 +11,7 @@
 #include "infra/material_loader/generic_material_loader.hpp"
 #include "infra/mesh_loader/obj_mesh_loader.hpp"
 #include "infra/scene_asset/gltf_scene_asset_loader.hpp"
+#include "infra/scene_asset/scene_material_loader.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -21,22 +23,22 @@
 #include <string>
 #include <unordered_map>
 #include <utility>
-#include <vector>
 
 namespace LX_infra::offline {
 namespace {
 
 using LX_core::CameraProjection;
 using LX_core::CameraResource;
+using LX_core::BoundingBox;
 using LX_core::LightHandle;
+using LX_core::Mat4f;
 using LX_core::MaterialHandle;
 using LX_core::MaterialInstanceSharedPtr;
-using LX_core::Mat4f;
+using LX_core::MeshBuffer;
 using LX_core::MeshBufferSharedPtr;
 using LX_core::MeshHandle;
 using LX_core::ObjectResource;
 using LX_core::SceneResourceTable;
-using LX_core::ShaderPropertyType;
 using LX_core::StringID;
 using LX_core::Vec2f;
 using LX_core::Vec3f;
@@ -49,13 +51,9 @@ using LX_infra::scene_io::MaterialBindingDocument;
 using LX_infra::scene_io::MaterialOverrideState;
 using LX_infra::scene_io::SceneNodeDocument;
 
-constexpr const char *kDefaultMaterialUri =
-    "assets/materials/blinnphong_default.material";
-
 struct RegisteredMesh final {
   MeshHandle mesh;
-  MeshBufferSharedPtr meshBuffer;
-  MaterialInstanceSharedPtr defaultMaterial;
+  BoundingBox bounds;
 };
 
 [[nodiscard]] std::string displayName(const SceneNodeDocument &node) {
@@ -70,19 +68,17 @@ struct RegisteredMesh final {
 
 [[nodiscard]] bool isGltfMeshUri(const std::string &uri) {
   std::string extension = std::filesystem::path(uri).extension().string();
-  std::transform(extension.begin(), extension.end(), extension.begin(),
-                 [](const unsigned char c) {
-                   return static_cast<char>(std::tolower(c));
-                 });
+  std::transform(
+      extension.begin(), extension.end(), extension.begin(),
+      [](const unsigned char c) { return static_cast<char>(std::tolower(c)); });
   return extension == ".gltf" || extension == ".glb";
 }
 
 [[nodiscard]] bool isObjMeshUri(const std::string &uri) {
   std::string extension = std::filesystem::path(uri).extension().string();
-  std::transform(extension.begin(), extension.end(), extension.begin(),
-                 [](const unsigned char c) {
-                   return static_cast<char>(std::tolower(c));
-                 });
+  std::transform(
+      extension.begin(), extension.end(), extension.begin(),
+      [](const unsigned char c) { return static_cast<char>(std::tolower(c)); });
   return extension == ".obj";
 }
 
@@ -113,8 +109,7 @@ struct RegisteredMesh final {
   auto vertexBuffer =
       VertexBuffer<VertexPosNormalUvBone>::create(std::move(vertices));
   auto indexBuffer = LX_core::IndexBuffer::create(std::vector<u32>(indices));
-  return LX_core::MeshBuffer::create(vertexBuffer, indexBuffer,
-                                     loader.getBounds());
+  return MeshBuffer::create(vertexBuffer, indexBuffer, loader.getBounds());
 }
 
 [[nodiscard]] std::string joinPath(const std::string &parent,
@@ -187,141 +182,52 @@ struct RegisteredMesh final {
   return inverse;
 }
 
-[[nodiscard]] bool splitMaterialParameterKey(const std::string &key,
-                                             std::string &binding,
-                                             std::string &member) {
-  const usize dot = key.find('.');
-  if (dot == std::string::npos || dot == 0 || dot + 1 >= key.size()) {
-    return false;
+[[nodiscard]] std::filesystem::path
+resolveMaterialPath(const OfflineAssetResolver &resolver,
+                    const std::optional<std::string> &uri) {
+  if (!uri.has_value() || uri->empty()) {
+    throw std::runtime_error("offline scene material requires explicit uri");
   }
-  binding = key.substr(0, dot);
-  member = key.substr(dot + 1);
-  return true;
-}
-
-[[nodiscard]] bool
-coerceMaterialParameterValue(const ShaderPropertyType reflectedType,
-                             const LX_core::MaterialParameterValue &input,
-                             LX_core::MaterialParameterValue &output) {
-  output = input;
-  if (reflectedType == ShaderPropertyType::Float &&
-      input.type == LX_core::MaterialParameterValueType::Int) {
-    output.type = LX_core::MaterialParameterValueType::Float;
-    output.floatValue = static_cast<float>(input.intValue);
-    return true;
+  const auto materialPath = resolver.resolve(*uri);
+  if (!std::filesystem::exists(materialPath)) {
+    throw std::runtime_error("material asset not found: " + *uri);
   }
-  if (reflectedType == ShaderPropertyType::Int &&
-      input.type == LX_core::MaterialParameterValueType::Float) {
-    output.type = LX_core::MaterialParameterValueType::Int;
-    output.intValue = static_cast<i32>(input.floatValue);
-    return true;
-  }
-  if (reflectedType == ShaderPropertyType::Float) {
-    return input.type == LX_core::MaterialParameterValueType::Float;
-  }
-  if (reflectedType == ShaderPropertyType::Int) {
-    return input.type == LX_core::MaterialParameterValueType::Int;
-  }
-  if (reflectedType == ShaderPropertyType::Vec3) {
-    return input.type == LX_core::MaterialParameterValueType::Vec3;
-  }
-  if (reflectedType == ShaderPropertyType::Vec4) {
-    return input.type == LX_core::MaterialParameterValueType::Vec4;
-  }
-  return false;
-}
-
-void applyBaseColorIfSupported(const MaterialInstanceSharedPtr &material,
-                               const std::optional<Vec3f> &color) {
-  if (!material || !color.has_value()) {
-    return;
-  }
-  const StringID materialUbo("MaterialUBO");
-  if (const auto member =
-          material->findParameterMember(materialUbo, StringID("baseColor"));
-      member.has_value() && member->get().type == ShaderPropertyType::Vec3) {
-    material->setParameter(materialUbo, StringID("baseColor"), *color);
-    material->syncGpuData();
-    return;
-  }
-  if (const auto member = material->findParameterMember(
-          materialUbo, StringID("baseColorFactor"));
-      member.has_value() && member->get().type == ShaderPropertyType::Vec4) {
-    material->setParameter(materialUbo, StringID("baseColorFactor"),
-                           Vec4f{color->x, color->y, color->z, 1.0f});
-    material->syncGpuData();
-  }
-}
-
-void applyGenericMaterialOverrides(const MaterialInstanceSharedPtr &material,
-                                   const MaterialOverrideState &overrides) {
-  if (!material) {
-    return;
-  }
-  for (const auto &[key, value] : overrides.parameters) {
-    std::string binding;
-    std::string member;
-    if (!splitMaterialParameterKey(key, binding, member)) {
-      throw std::runtime_error("invalid material override key: " + key);
-    }
-    const auto reflectedMember =
-        material->findParameterMember(StringID(binding), StringID(member));
-    if (!reflectedMember.has_value()) {
-      throw std::runtime_error("material parameter not found for override: " +
-                               key);
-    }
-    LX_core::MaterialParameterValue coerced;
-    if (!coerceMaterialParameterValue(reflectedMember->get().type, value,
-                                      coerced)) {
-      throw std::runtime_error(
-          "material parameter type mismatch for override: " + key);
-    }
-    material->setParameterValue(StringID(binding), StringID(member), coerced);
-  }
-  material->syncGpuData();
-}
-
-void applyMaterialOverrides(const MaterialInstanceSharedPtr &material,
-                            const MaterialOverrideState &overrides) {
-  applyBaseColorIfSupported(material, overrides.baseColor);
-  applyGenericMaterialOverrides(material, overrides);
-}
-
-[[nodiscard]] std::filesystem::path resolveMaterialPath(
-    const OfflineAssetResolver &resolver, const std::optional<std::string> &uri,
-    std::vector<std::string> &warnings) {
-  if (uri.has_value()) {
-    const auto materialPath = resolver.resolve(*uri);
-    if (std::filesystem::exists(materialPath)) {
-      return materialPath;
-    }
-    warnings.push_back("material asset not found, using fallback material: " +
-                       *uri);
-  }
-  return resolver.resolve(kDefaultMaterialUri);
+  return materialPath;
 }
 
 [[nodiscard]] MaterialInstanceSharedPtr loadMaterialInstance(
     const OfflineAssetResolver &resolver, const std::optional<std::string> &uri,
     const MaterialOverrideState &materialOverrides,
     const MaterialOverrideState &nodeOverrides,
-    std::unordered_map<std::string, MaterialInstanceSharedPtr> &materialCache,
-    std::vector<std::string> &warnings) {
-  const auto materialPath = resolveMaterialPath(resolver, uri, warnings);
+    std::unordered_map<std::string, MaterialInstanceSharedPtr> &materialCache) {
+  const auto materialPath = resolveMaterialPath(resolver, uri);
   const std::string cacheKey = materialPath.lexically_normal().string();
 
-  MaterialInstanceSharedPtr prototype;
-  if (const auto it = materialCache.find(cacheKey); it != materialCache.end()) {
-    prototype = it->second;
-  } else {
-    prototype = LX_infra::loadGenericMaterial(materialPath);
-    materialCache.emplace(cacheKey, prototype);
-  }
-
-  auto material = prototype->cloneInstanceData();
-  applyMaterialOverrides(material, materialOverrides);
-  applyMaterialOverrides(material, nodeOverrides);
-  return material;
+  MaterialBindingDocument binding;
+  binding.uri = cacheKey;
+  return LX_infra::scene_asset::loadSceneMaterialBinding({
+      .meshUri = std::nullopt,
+      .binding = std::move(binding),
+      .materialOverrides = materialOverrides,
+      .nodeMaterialOverrides = nodeOverrides,
+      .resolveAssetPath =
+          [](const std::string &assetUri) {
+            return std::filesystem::path(assetUri);
+          },
+      .loadGenericMaterial =
+          [&materialCache](const std::filesystem::path &path) {
+            const std::string key = path.lexically_normal().string();
+            MaterialInstanceSharedPtr prototype;
+            if (const auto it = materialCache.find(key);
+                it != materialCache.end()) {
+              prototype = it->second;
+            } else {
+              prototype = LX_infra::loadGenericMaterial(path);
+              materialCache.emplace(key, prototype);
+            }
+            return prototype->cloneInstanceData();
+          },
+  });
 }
 
 [[nodiscard]] CameraResource makeCameraResource(const SceneNodeDocument &node,
@@ -329,8 +235,7 @@ void applyMaterialOverrides(const MaterialInstanceSharedPtr &material,
   const Vec3f eye = transformPoint(world, Vec3f{0.0f, 0.0f, 0.0f});
   const Vec3f forward =
       transformVector(world, Vec3f{0.0f, 0.0f, -1.0f}).normalized();
-  const Vec3f up =
-      transformVector(world, Vec3f{0.0f, 1.0f, 0.0f}).normalized();
+  const Vec3f up = transformVector(world, Vec3f{0.0f, 1.0f, 0.0f}).normalized();
   const float halfOrthoHeight =
       std::max(node.camera->orthographicHeight, 0.001f) * 0.5f;
   const float halfOrthoWidth =
@@ -367,16 +272,17 @@ void applyMaterialOverrides(const MaterialInstanceSharedPtr &material,
   object.material = material;
   object.objectToWorld = world;
   object.worldToObject = inverseAffine(world);
-  object.worldBounds = mesh.meshBuffer->getBounds().transformed(world);
+  object.worldBounds = mesh.bounds.transformed(world);
   object.visibilityMask = node.visibilityMask;
   object.debugId = StringID(path);
   object.visible = node.visibilityMask != 0;
   return object;
 }
 
-[[nodiscard]] LightHandle registerDirectionalLight(SceneResourceTable &table,
-                                                   const SceneNodeDocument &node) {
-  auto light = std::make_shared<LX_core::DirectionalLight>();
+[[nodiscard]] LightHandle
+registerDirectionalLight(SceneResourceTable &table,
+                         const SceneNodeDocument &node) {
+  auto light = std::make_unique<LX_core::DirectionalLight>();
   light->setDirection(node.light->direction.normalized());
   light->setColor(node.light->color);
   light->setIntensity(node.light->intensity);
@@ -386,52 +292,34 @@ void applyMaterialOverrides(const MaterialInstanceSharedPtr &material,
   return table.registerLight(std::move(light));
 }
 
-RegisteredMesh registerMeshUri(
-    SceneResourceTable &table, const OfflineAssetResolver &resolver,
-    const std::string &meshUri, const bool loadDefaultMaterial,
-    std::unordered_map<std::string, RegisteredMesh> &meshByUri) {
+RegisteredMesh
+registerMeshUri(SceneResourceTable &table, const OfflineAssetResolver &resolver,
+                const std::string &meshUri,
+                std::unordered_map<std::string, RegisteredMesh> &meshByUri) {
   if (const auto it = meshByUri.find(meshUri); it != meshByUri.end()) {
-    if (loadDefaultMaterial && !it->second.defaultMaterial &&
-        isGltfMeshUri(meshUri)) {
-      auto asset =
-          LX_infra::scene_asset::loadGltfSceneAsset(resolver.resolve(meshUri));
-      it->second.defaultMaterial = std::move(asset.material);
-    }
     return it->second;
   }
 
   MeshBufferSharedPtr mesh;
-  MaterialInstanceSharedPtr defaultMaterial;
   if (LX_core::isBuiltinPrimitiveMeshUri(meshUri)) {
     mesh = LX_core::buildBuiltinPrimitiveMesh(meshUri);
   } else if (isGltfMeshUri(meshUri)) {
-    if (loadDefaultMaterial) {
-      auto asset =
-          LX_infra::scene_asset::loadGltfSceneAsset(resolver.resolve(meshUri));
-      mesh = std::move(asset.mesh);
-      defaultMaterial = std::move(asset.material);
-    } else {
-      auto asset =
-          LX_infra::scene_asset::loadGltfMeshAsset(resolver.resolve(meshUri));
-      mesh = std::move(asset.mesh);
-    }
+    auto asset =
+        LX_infra::scene_asset::loadGltfMeshAsset(resolver.resolve(meshUri));
+    mesh = std::move(asset.mesh);
   } else if (isObjMeshUri(meshUri)) {
     infra::ObjLoader loader;
     loader.load(resolver.resolve(meshUri).string());
     mesh = buildMeshFromObj(loader);
   } else {
-    throw std::runtime_error("offline scene loader only supports shared "
+    throw std::runtime_error("offline scene loader only supports "
                              "builtin primitive, OBJ, and glTF meshes: " +
                              meshUri);
   }
 
-  const auto geometryStorageHandle =
-      table.registerGeometryStorage(mesh->getGeometryStorage());
-  (void)geometryStorageHandle;
   RegisteredMesh registered{
-      .mesh = table.registerMesh(mesh),
-      .meshBuffer = std::move(mesh),
-      .defaultMaterial = std::move(defaultMaterial),
+      .mesh = table.registerMesh(mesh->cloneUnique()),
+      .bounds = mesh->getBounds(),
   };
   meshByUri.emplace(meshUri, registered);
   return registered;
@@ -460,37 +348,35 @@ findMaterialBindingByTag(const SceneNodeDocument &node,
 [[nodiscard]] MaterialInstanceSharedPtr loadTaggedMaterialInstance(
     const OfflineAssetResolver &resolver, const SceneNodeDocument &node,
     const MaterialBindingDocument &binding,
-    std::unordered_map<std::string, MaterialInstanceSharedPtr> &materialCache,
-    std::vector<std::string> &warnings) {
-  MaterialInstanceSharedPtr material;
-  if (binding.source == "gltf") {
-    if (!node.meshUri.has_value() || !isGltfMeshUri(*node.meshUri)) {
-      throw std::runtime_error("source: gltf material requires glTF mesh on " +
-                               displayName(node));
-    }
-    const std::filesystem::path pbrMaterial =
-        binding.uri.empty() ? resolver.resolve("assets/materials/pbr.material")
-                            : resolver.resolve(binding.uri);
-    auto asset = LX_infra::scene_asset::loadGltfSceneAsset(
-        resolver.resolve(*node.meshUri), pbrMaterial);
-    material = std::move(asset.material);
-  } else {
-    material = loadMaterialInstance(
-        resolver, binding.uri.empty() ? std::nullopt
-                                      : std::optional<std::string>{binding.uri},
-        binding.materialOverrides, binding.nodeMaterialOverrides, materialCache,
-        warnings);
+    std::unordered_map<std::string, MaterialInstanceSharedPtr> &materialCache) {
+  if (binding.source != "gltf") {
+    return loadMaterialInstance(
+        resolver,
+        binding.uri.empty() ? std::nullopt
+                            : std::optional<std::string>{binding.uri},
+        binding.materialOverrides, binding.nodeMaterialOverrides,
+        materialCache);
   }
-  applyMaterialOverrides(material, node.materialOverrides);
-  applyMaterialOverrides(material, node.nodeMaterialOverrides);
-  return material;
+  return LX_infra::scene_asset::loadSceneMaterialBinding({
+      .meshUri = node.meshUri,
+      .binding = binding,
+      .materialOverrides = node.materialOverrides,
+      .nodeMaterialOverrides = node.nodeMaterialOverrides,
+      .resolveAssetPath =
+          [&resolver](const std::string &assetUri) {
+            return resolver.resolve(assetUri);
+          },
+      .loadGenericMaterial =
+          [](const std::filesystem::path &path) {
+            return LX_infra::loadGenericMaterial(path);
+          },
+  });
 }
 
 void visitNode(const OfflineAssetResolver &resolver,
                const SceneNodeDocument &node, const std::string &parentPath,
                const Mat4f &parentWorld, const std::string &cameraPath,
-               const std::string &materialTag,
-               LoadState &state) {
+               const std::string &materialTag, LoadState &state) {
   const std::string path = joinPath(parentPath, node);
   const Mat4f world = parentWorld * node.transform.toMat4();
 
@@ -504,7 +390,8 @@ void visitNode(const OfflineAssetResolver &resolver,
 
   if (node.light.has_value()) {
     if (node.light->kind == LightKind::Directional) {
-      const auto lightHandle = registerDirectionalLight(state.loaded.table, node);
+      const auto lightHandle =
+          registerDirectionalLight(state.loaded.table, node);
       (void)lightHandle;
       state.directionalLightLoaded = true;
     } else {
@@ -516,7 +403,8 @@ void visitNode(const OfflineAssetResolver &resolver,
   if (node.meshUri.has_value()) {
     const std::string &meshUri = *node.meshUri;
     const MaterialBindingDocument *taggedBinding =
-        materialTag.empty() ? nullptr : findMaterialBindingByTag(node, materialTag);
+        materialTag.empty() ? nullptr
+                            : findMaterialBindingByTag(node, materialTag);
     if (!materialTag.empty() && taggedBinding == nullptr) {
       state.loaded.warnings.push_back("offline materialTag skipped object " +
                                       path + ": missing tag " + materialTag);
@@ -526,17 +414,13 @@ void visitNode(const OfflineAssetResolver &resolver,
       return;
     }
 
-    const RegisteredMesh mesh =
-        registerMeshUri(state.loaded.table, resolver, meshUri,
-                        materialTag.empty() && !node.materialUri.has_value(),
-                        state.meshByUri);
+    const RegisteredMesh mesh = registerMeshUri(
+        state.loaded.table, resolver, meshUri, state.meshByUri);
 
     const std::string materialKey =
         taggedBinding != nullptr
             ? (materialTag + "|" + taggedBinding->uri + "|" + path)
-            : (node.materialUri.value_or(mesh.defaultMaterial ? meshUri
-                                                              : "default") +
-               "|" + path);
+            : (node.materialUri.value_or("missing") + "|" + path);
     MaterialHandle materialHandle;
     if (const auto it = state.materialByKey.find(materialKey);
         it != state.materialByKey.end()) {
@@ -545,24 +429,19 @@ void visitNode(const OfflineAssetResolver &resolver,
       MaterialInstanceSharedPtr material;
       if (taggedBinding != nullptr) {
         material = loadTaggedMaterialInstance(resolver, node, *taggedBinding,
-                                              state.materialCache,
-                                              state.loaded.warnings);
-      } else if (!node.materialUri.has_value() && mesh.defaultMaterial) {
-        material = mesh.defaultMaterial->cloneInstanceData();
-        applyMaterialOverrides(material, node.materialOverrides);
-        applyMaterialOverrides(material, node.nodeMaterialOverrides);
+                                              state.materialCache);
       } else {
         material = loadMaterialInstance(
             resolver, node.materialUri, node.materialOverrides,
-            node.nodeMaterialOverrides, state.materialCache,
-            state.loaded.warnings);
+            node.nodeMaterialOverrides, state.materialCache);
       }
       if (!state.loaded.offlineShader && material &&
           material->isPassEnabled(LX_core::Pass_OfflineRayTrace)) {
         state.loaded.offlineShader =
             material->getPassShader(LX_core::Pass_OfflineRayTrace);
       }
-      materialHandle = state.loaded.table.registerMaterial(std::move(material));
+      materialHandle = state.loaded.table.registerMaterial(
+          material->cloneInstanceDataUnique());
       state.materialByKey.emplace(materialKey, materialHandle);
     }
 
@@ -581,9 +460,9 @@ void visitNode(const OfflineAssetResolver &resolver,
 OfflineSceneLoader::OfflineSceneLoader(OfflineAssetResolver resolver)
     : m_resolver(std::move(resolver)) {}
 
-OfflineLoadedScene OfflineSceneLoader::load(
-    const LX_infra::scene_io::SceneDocument &document,
-    const std::string &cameraPath) const {
+OfflineLoadedScene
+OfflineSceneLoader::load(const LX_infra::scene_io::SceneDocument &document,
+                         const std::string &cameraPath) const {
   LoadState state;
   const std::string requestedCamera =
       cameraPath.empty() ? document.gameplayCameraPath() : cameraPath;
@@ -603,7 +482,8 @@ OfflineLoadedScene OfflineSceneLoader::load(
                              requestedCamera);
   }
   if (state.loaded.table.objectCount() == 0) {
-    throw std::runtime_error("offline scene contains no supported mesh instances");
+    throw std::runtime_error(
+        "offline scene contains no supported mesh instances");
   }
   if (!state.directionalLightLoaded) {
     state.loaded.warnings.push_back(

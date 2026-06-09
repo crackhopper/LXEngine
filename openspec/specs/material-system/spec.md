@@ -1,6 +1,6 @@
 ## Purpose
 
-Define the current material system contract, including material templates, material instances, reflection-driven UBO access, and descriptor resources.
+Define the current material system contract, including material templates, material instances, reflection-driven parameter access, and scene-table-backed texture bindings.
 ## Requirements
 ### Requirement: MaterialInstance is the sole material type
 The system SHALL provide exactly one concrete material type, named `MaterialInstance`. All material pointers held by scene objects, render queues, and backend code MUST be `MaterialInstanceSharedPtr` values. The legacy `DrawMaterial` class and the legacy `BlinnPhongMaterialUBO` struct MUST NOT exist in the codebase after this change.
@@ -9,9 +9,9 @@ The system SHALL provide exactly one concrete material type, named `MaterialInst
 - **WHEN** a loader constructs a material for a `SceneNode` (or another `IRenderable` implementation)
 - **THEN** the returned `MaterialInstanceSharedPtr` points to a `MaterialInstance` and the concrete type `DrawMaterial` is not referenced anywhere in `src/`
 
-#### Scenario: MaterialInstance public surface is preserved
-- **WHEN** rendering code calls `getPassShader(pass)`, `getPassRenderState(pass)`, `getDescriptorResources(pass)`, or `getPipelineSignature(pass)` on a `MaterialInstance`
-- **THEN** each call returns a value consistent with the `MaterialTemplate`'s configuration and the instance's per-object state
+#### Scenario: MaterialInstance public surface is render-data only
+- **WHEN** rendering code calls `getPassShader(pass)`, `getPassRenderState(pass)`, `getParameterResource(bindingName)`, `getTextureHandle(bindingName)`, or `getPipelineSignature(pass)` on a `MaterialInstance`
+- **THEN** each call returns material state consistent with the `MaterialTemplate` and registered scene-resource-table handles, and no pass-scoped descriptor list API exists on `MaterialInstance`
 
 ### Requirement: MaterialTemplate canonicalizes the material interface
 `MaterialTemplate::create(name)` SHALL construct an empty template shell without requiring a shader at construction time. Shaders belong to individual `MaterialPassDefinition::shaderProgram` values, and `MaterialTemplate::rebuildMaterialInterface()` SHALL derive the material-facing structure from those pass definitions.
@@ -86,34 +86,37 @@ Each overload SHALL locate the canonical `ParameterBuffer` object by `bindingNam
 - **WHEN** `setParameter(StringID("MaterialUBO"), StringID("doesNotExist"), Vec4f{1,0,0,1})` is called and no member with that name exists in the reflected binding members
 - **THEN** an assertion fires in debug builds and the parameter buffer is unchanged
 
-### Requirement: Texture bindings by StringID
-`MaterialInstance::setTexture(StringID id, CombinedTextureSamplerSharedPtr tex)` SHALL look up `id` via `MaterialTemplate::findCanonicalMaterialBinding(id)`, assert that the resulting binding's type is `Texture2D` or `TextureCube`, and store the sampler in `m_textureBindingsByName[id]`. `MaterialInstance` MUST NOT expose a setter that takes a raw `uint32_t` set/binding pair — callers use the shader-declared name only. `CombinedTextureSamplerSharedPtr` (rather than raw `TextureSharedPtr`) is used because the concrete resource passed to the backend descriptor layer must already implement `IGpuResource`, which `CombinedTextureSampler` does and `Texture` does not.
+### Requirement: Texture bindings by StringID and SceneResourceTable handle
+`MaterialInstance::setTextureHandle(StringID id, TextureHandle handle)` SHALL look up `id` via `MaterialTemplate::findCanonicalMaterialBinding(id)`, assert that the resulting binding's type is `Texture2D` or `TextureCube`, and store the handle in the material's texture-handle table. `MaterialInstance` MUST NOT expose a setter that takes a raw `uint32_t` set/binding pair — callers use the shader-declared name only.
+
+Loader-side pending texture inputs MAY be accepted only as a construction bridge before scene registration. Once a material is registered in `SceneResourceTable`, render paths SHALL use `TextureHandle` and table resolution, not material-owned texture shared pointers.
 
 #### Scenario: Texture bound to a reflected sampler name
-- **WHEN** `setTexture(StringID("albedoMap"), tex)` is called and `findCanonicalMaterialBinding(StringID("albedoMap"))` returns a `Texture2D` binding
-- **THEN** the texture is stored under that `StringID` in `m_textureBindingsByName`
+- **WHEN** `setTextureHandle(StringID("albedoMap"), handle)` is called and `findCanonicalMaterialBinding(StringID("albedoMap"))` returns a `Texture2D` binding
+- **THEN** the texture handle is stored under that `StringID` and later resolved through `SceneResourceTable`
 
 #### Scenario: Texture bound to a non-sampler name asserts
-- **WHEN** `setTexture(StringID("baseColor"), tex)` is called and `baseColor` is a UBO scalar member
-- **THEN** an assertion fires in debug builds and `m_textureBindingsByName` is unchanged
+- **WHEN** `setTextureHandle(StringID("baseColor"), handle)` is called and `baseColor` is a UBO scalar member
+- **THEN** an assertion fires in debug builds and the texture-handle table is unchanged
 
-### Requirement: getDescriptorResources returns UBO + textures in deterministic order
-`MaterialInstance::getDescriptorResources(StringID pass)` SHALL return a vector of material-owned descriptor resources scoped to the target pass. The resolution SHALL:
+### Requirement: Scene descriptor resolver returns UBO + textures in deterministic order
+Render paths SHALL NOT call a pass-scoped descriptor resource API on `MaterialInstance`. The scene descriptor resolver SHALL return material-owned descriptor resources scoped to a render work item as a `DescriptorResourceList`. Descriptor entries SHALL carry either an owning shared resource or a non-owning reference/texture-array reference to resources owned by `SceneResourceTable`; they MUST NOT use no-op-deleter `shared_ptr` wrappers to represent borrowed resources. The resolution SHALL:
 
-1. Query `MaterialTemplate::getPassMaterialBindingIds(pass)` for the pass's ordered canonical binding ids
-2. Resolve each id through the template's canonical material binding table
-3. For each binding, find the corresponding runtime resource (parameter data or texture) by binding name
-4. Return resources sorted by ascending `(set << 16 | binding)` from the pass's reflection
+1. Use the render work item's reflected shader bindings.
+2. Skip system-owned bindings such as `CameraUBO`, `LightUBO`, `Bones`, and scene storage buffers.
+3. For material-owned buffer bindings, fetch `MaterialInstance::getParameterResource(bindingName)`.
+4. For material-owned texture bindings on scene renderables, fetch `MaterialInstance::getTextureHandle(bindingName)` and resolve it through `SceneResourceTable`.
+5. Return resources sorted by ascending `(set << 16 | binding)` from the pass's reflection.
 
-The no-argument `getDescriptorResources()` SHALL be removed. All callers MUST provide a pass argument.
+`MaterialInstance::getDescriptorResources(...)` SHALL NOT exist.
 
 #### Scenario: Forward and shadow passes return different resource sets
 - **WHEN** forward pass has `MaterialUBO` + `albedoMap` and shadow pass has only `MaterialUBO`
-- **THEN** `getDescriptorResources(Pass_Forward)` returns 2 resources and `getDescriptorResources(Pass_Shadow)` returns 1
+- **THEN** the scene descriptor resolver returns 2 resources for forward and 1 resource for shadow
 
 #### Scenario: Resources sorted by set/binding within a pass
 - **WHEN** a pass has `MaterialUBO` at (set=2, binding=0) and `albedoMap` at (set=2, binding=1)
-- **THEN** `getDescriptorResources(pass)` returns MaterialUBO first, then albedoMap
+- **THEN** the scene descriptor resolver returns MaterialUBO first, then albedoMap
 
 #### Scenario: Missing texture is skipped
 - **WHEN** a pass reflection includes `albedoMap` but `setTexture` has not been called for it
@@ -127,8 +130,8 @@ The no-argument `getDescriptorResources()` SHALL be removed. All callers MUST pr
 - **THEN** only the modified binding's resource has `setDirty()` invoked
 
 #### Scenario: Buffer resource identity is stable
-- **WHEN** `getDescriptorResources(pass)` is called twice on the same `MaterialInstance`
-- **THEN** both calls return the same `IGpuResource` pointers for buffer entries (address equality)
+- **WHEN** `getParameterResource(bindingName)` is called twice on the same `MaterialInstance`
+- **THEN** both calls return the same `IGpuResource` pointer for that parameter buffer entry (address equality)
 
 ### Requirement: Core-layer UBO byte-buffer resource wrapper
 The core layer SHALL provide a `UboByteBufferResource` class that implements `IGpuResource` over a non-owning reference to a `std::vector<uint8_t>`. Its `getRawData()` MUST return a pointer computed from the referenced vector at call time (not a stale copy captured at construction), `getByteSize()` MUST return the byte count passed at construction, `getType()` MUST return `ResourceType::UniformBuffer`, and `setDirty()` MUST mark the resource for upload through the existing `VulkanResourceManager::syncResource()` path. `MaterialInstance` SHALL construct exactly one such wrapper for its `m_uboBuffer` during its own construction.

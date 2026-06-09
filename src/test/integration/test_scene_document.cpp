@@ -698,6 +698,8 @@ void testOutputProfilesRoundTrip() {
   out << "scene:\n"
          "  name: output profile test\n"
          "  gameplayCameraPath: /game_cam\n"
+         "  rendering:\n"
+         "    shadows: false\n"
          "  defaultOutputProfile: preview\n"
          "  outputProfiles:\n"
          "    preview:\n"
@@ -717,7 +719,6 @@ void testOutputProfilesRoundTrip() {
          "    maxBounce: 1\n"
          "    seed: 7\n"
          "    profile: preview\n"
-         "    shadows: false\n"
          "    compareMode: albedo\n"
          "root:\n"
          "  nodeName: scene_root\n"
@@ -741,6 +742,7 @@ void testOutputProfilesRoundTrip() {
   EXPECT(profiles.outputProfiles.at("preview").cameraOverrides.fovY == 42.0f,
          "camera override fov");
   EXPECT(profiles.offline.maxBounce == 1u, "maxBounce");
+  EXPECT(doc.renderSettings().shadows == false, "scene shadow flag");
   EXPECT(profiles.offline.shadows == false, "shadow flag");
   EXPECT(profiles.offline.compareMode == "albedo", "compare mode");
 
@@ -963,6 +965,8 @@ void testSceneDocumentRoundTripsRenderProfileDocumentAndOfflineSubtrees() {
          "  environment:\n"
          "    enabled: true\n"
          "    hdrUri: cache://polyhaven/studio_small_03/2k-hdr/converted/environment.exr\n"
+         "  rendering:\n"
+         "    shadows: true\n"
          "  defaultOutputProfile: reference\n"
          "  outputProfiles:\n"
          "    preview:\n"
@@ -985,7 +989,6 @@ void testSceneDocumentRoundTripsRenderProfileDocumentAndOfflineSubtrees() {
          "    maxBounce: 4\n"
          "    seed: 7\n"
          "    profile: reference\n"
-         "    shadows: true\n"
          "    offlineFutureField:\n"
          "      enabled: true\n"
          "root:\n"
@@ -1028,6 +1031,9 @@ void testSceneDocumentRoundTripsRenderProfileDocumentAndOfflineSubtrees() {
          "offline integrator should load");
   EXPECT(profiles.offline.samples == 64u, "offline samples should load");
   EXPECT(profiles.offline.maxBounce == 4u, "offline maxBounce should load");
+  EXPECT(doc.renderSettings().shadows == true, "scene shadow flag should load");
+  EXPECT(profiles.offline.shadows == true,
+         "offline shadow flag should derive from scene rendering");
   EXPECT(profiles.offline.extensionYamlByField.count("offlineFutureField") == 1,
          "unknown offlineRender fields should be retained explicitly");
   EXPECT(doc.environment().hdrUri.find("cache://polyhaven/") == 0,
@@ -1047,6 +1053,10 @@ void testSceneDocumentRoundTripsRenderProfileDocumentAndOfflineSubtrees() {
          "offlineRender should save");
   EXPECT(savedText.find("outputProfiles:") != std::string::npos,
          "outputProfiles should save");
+  EXPECT(savedText.find("rendering:") != std::string::npos,
+         "rendering settings should save");
+  EXPECT(savedText.find("shadows: true") != std::string::npos,
+         "scene shadow setting should save");
   EXPECT(savedText.find("futureField:") != std::string::npos,
          "unknown output profile extension should save");
   EXPECT(savedText.find("offlineFutureField:") != std::string::npos,

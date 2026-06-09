@@ -94,11 +94,8 @@ bool shouldLogBurst(const T &next, T &state, int &remainingFrames) {
 }
 
 std::optional<usize>
-bufferHandleToken(const std::shared_ptr<VulkanAnyResource> &gpuRes) {
-  if (!gpuRes) {
-    return std::nullopt;
-  }
-  if (const auto bufferPtr = std::get_if<VulkanBufferUniquePtr>(gpuRes.get())) {
+bufferHandleToken(const VulkanAnyResource &gpuRes) {
+  if (const auto bufferPtr = std::get_if<VulkanBufferUniquePtr>(&gpuRes)) {
     if (*bufferPtr) {
       return std::hash<VkBuffer>{}((*bufferPtr)->getHandle());
     }
@@ -107,14 +104,14 @@ bufferHandleToken(const std::shared_ptr<VulkanAnyResource> &gpuRes) {
 }
 
 void logCameraUploadIfChanged(std::string_view reason,
-                              const IGpuResourceSharedPtr &cpuRes,
-                              const std::shared_ptr<VulkanAnyResource> &gpuRes,
+                              const IGpuResource &cpuRes,
+                              const VulkanAnyResource &gpuRes,
                               u32 currentFrameIndex) {
-  if (!expRendererDebugEnabled() || !cpuRes) {
+  if (!expRendererDebugEnabled()) {
     return;
   }
 
-  const StringID bindingName = cpuRes->getBindingName();
+  const StringID bindingName = cpuRes.getBindingName();
   const std::string &name = GlobalStringTable::get().getName(bindingName.id);
   if (name != "CameraUBO") {
     return;
@@ -132,18 +129,18 @@ void logCameraUploadIfChanged(std::string_view reason,
   };
   static std::unordered_map<ResourceCacheIdentity, UploadLogEntry> logged;
 
-  const usize dataHash = hashBytes(cpuRes->getRawData(), cpuRes->getByteSize());
+  const usize dataHash = hashBytes(cpuRes.getRawData(), cpuRes.getByteSize());
   const usize handleToken = bufferHandleToken(gpuRes).value_or(0);
   const UploadLogState next{dataHash, handleToken};
-  auto &entry = logged[cpuRes->getBackendCacheIdentity()];
+  auto &entry = logged[cpuRes.getBackendCacheIdentity()];
   if (!shouldLogBurst(next, entry.state, entry.remainingFrames)) {
     return;
   }
 
   std::cerr << "[RendererDebug] syncResource: " << reason
             << " frameSlot=" << currentFrameIndex << " name=" << name
-            << " identity=" << cpuRes->getBackendCacheIdentity()
-            << " byteSize=" << cpuRes->getByteSize() << " dataHash=" << dataHash
+            << " identity=" << cpuRes.getBackendCacheIdentity()
+            << " byteSize=" << cpuRes.getByteSize() << " dataHash=" << dataHash
             << " bufferToken=" << handleToken << std::endl;
 }
 } // namespace
@@ -164,15 +161,17 @@ void VulkanResourceManager::beginFrame(u32 currentFrameIndex) {
 
 void VulkanResourceManager::syncResource(
     VulkanCommandBufferManager &cmdBufferManager,
-    const IGpuResourceSharedPtr &cpuRes) {
-  if (!cpuRes)
+    const GpuResourceRef &cpuRef) {
+  if (!cpuRef.isValid()) {
     return;
+  }
+  const IGpuResource &cpuRes = cpuRef.get();
 
-  if (cpuRes->getType() == ResourceType::Special) {
+  if (cpuRes.getType() == ResourceType::Special) {
     return;
   }
 
-  const ResourceCacheIdentity identity = cpuRes->getBackendCacheIdentity();
+  const ResourceCacheIdentity identity = cpuRes.getBackendCacheIdentity();
   if (m_textureAliases.find(identity) != m_textureAliases.end()) {
     m_activeResourceIds.insert(identity);
     return;
@@ -187,57 +186,57 @@ void VulkanResourceManager::syncResource(
     auto [insertedIt, inserted] =
         m_gpuResources.emplace(identity, std::move(entry));
     (void)inserted;
-    updateGpuResource(insertedIt->second.resource, cpuRes, cmdBufferManager);
-    logCameraUploadIfChanged("create", cpuRes, insertedIt->second.resource,
+    updateGpuResource(*insertedIt->second.resource, cpuRes, cmdBufferManager);
+    logCameraUploadIfChanged("create", cpuRes, *insertedIt->second.resource,
                              m_currentFrameIndex);
-    cpuRes->clearDirty();
+    cpuRes.clearDirty();
     return;
   }
 
   it->second.lastSeenFrame = m_frameSerial;
 
-  if (cpuRes->isDirty()) {
-    updateGpuResource(it->second.resource, cpuRes, cmdBufferManager);
-    logCameraUploadIfChanged("update", cpuRes, it->second.resource,
+  if (cpuRes.isDirty()) {
+    updateGpuResource(*it->second.resource, cpuRes, cmdBufferManager);
+    logCameraUploadIfChanged("update", cpuRes, *it->second.resource,
                              m_currentFrameIndex);
-    cpuRes->clearDirty();
+    cpuRes.clearDirty();
   }
 }
 
-std::shared_ptr<VulkanAnyResource>
-VulkanResourceManager::createGpuResource(const IGpuResourceSharedPtr &cpuRes) {
-  ResourceType type = cpuRes->getType();
+std::unique_ptr<VulkanAnyResource>
+VulkanResourceManager::createGpuResource(const IGpuResource &cpuRes) {
+  ResourceType type = cpuRes.getType();
 
   switch (type) {
   case ResourceType::VertexBuffer:
-    return std::make_shared<VulkanAnyResource>(VulkanBuffer::create(
-        m_device, cpuRes->getByteSize(),
+    return std::make_unique<VulkanAnyResource>(VulkanBuffer::create(
+        m_device, cpuRes.getByteSize(),
         VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
 
   case ResourceType::IndexBuffer:
-    return std::make_shared<VulkanAnyResource>(VulkanBuffer::create(
-        m_device, cpuRes->getByteSize(),
+    return std::make_unique<VulkanAnyResource>(VulkanBuffer::create(
+        m_device, cpuRes.getByteSize(),
         VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
 
   case ResourceType::UniformBuffer:
-    return std::make_shared<VulkanAnyResource>(VulkanBuffer::create(
-        m_device, cpuRes->getByteSize(), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+    return std::make_unique<VulkanAnyResource>(VulkanBuffer::create(
+        m_device, cpuRes.getByteSize(), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
 
   case ResourceType::StorageBuffer:
-    return std::make_shared<VulkanAnyResource>(VulkanBuffer::create(
-        m_device, cpuRes->getByteSize(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+    return std::make_unique<VulkanAnyResource>(VulkanBuffer::create(
+        m_device, cpuRes.getByteSize(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
 
   case ResourceType::CombinedImageSampler: {
-    auto texCpu = std::dynamic_pointer_cast<CombinedTextureSampler>(cpuRes);
-    if (!texCpu || !texCpu->texture()) {
+    const auto *texCpu = dynamic_cast<const CombinedTextureSampler *>(&cpuRes);
+    if (texCpu == nullptr || !texCpu->texture()) {
       throw std::runtime_error(
           "CombinedImageSampler resource missing texture data");
     }
@@ -246,11 +245,11 @@ VulkanResourceManager::createGpuResource(const IGpuResourceSharedPtr &cpuRes) {
     VkImageUsageFlags usage =
         VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
     if (desc.dimension == TextureDimension::TextureCube) {
-      return std::make_shared<VulkanAnyResource>(
+      return std::make_unique<VulkanAnyResource>(
           VulkanTexture::createCube(m_device, desc.width, desc.height, vkFormat,
                                     usage, desc.mipLevels, VK_FILTER_LINEAR));
     }
-    return std::make_shared<VulkanAnyResource>(
+    return std::make_unique<VulkanAnyResource>(
         VulkanTexture::create2D(m_device, desc.width, desc.height, vkFormat,
                                 usage, desc.mipLevels, VK_FILTER_LINEAR));
   }
@@ -261,8 +260,7 @@ VulkanResourceManager::createGpuResource(const IGpuResourceSharedPtr &cpuRes) {
 }
 
 void VulkanResourceManager::updateGpuResource(
-    std::shared_ptr<VulkanAnyResource> &gpuRes,
-    const IGpuResourceSharedPtr &cpuRes,
+    VulkanAnyResource &gpuRes, const IGpuResource &cpuRes,
     VulkanCommandBufferManager &cmdBufferManager) {
   std::visit(
       [&](auto &&res) {
@@ -271,17 +269,17 @@ void VulkanResourceManager::updateGpuResource(
           // 如果是 Host Visible (Uniform)，直接 map/memcpy
           // 如果是 Device Local (Vertex/Index)，初级架构建议直接
           // uploadData（内部处理 staging）
-          res->uploadData(cpuRes->getRawData(), cpuRes->getByteSize());
+          res->uploadData(cpuRes.getRawData(), cpuRes.getByteSize());
         } else if constexpr (std::is_same_v<T, VulkanTextureUniquePtr>) {
           const VkDeviceSize imageSize =
-              static_cast<VkDeviceSize>(cpuRes->getByteSize());
+              static_cast<VkDeviceSize>(cpuRes.getByteSize());
 
           // Staging buffer in host-visible memory.
           auto staging = VulkanBuffer::create(
               m_device, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
               VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
                   VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-          staging->uploadData(cpuRes->getRawData(), imageSize);
+          staging->uploadData(cpuRes.getRawData(), imageSize);
 
           auto cmd = cmdBufferManager.beginSingleTimeCommands();
 
@@ -300,7 +298,7 @@ void VulkanResourceManager::updateGpuResource(
         }
         // Shaders are immutable for this initial framework; no updates needed.
       },
-      *gpuRes);
+      gpuRes);
 }
 
 void VulkanResourceManager::collectGarbage() {
@@ -363,8 +361,8 @@ VulkanResourceManager::getTexture(ResourceCacheIdentity handle) {
 }
 
 void VulkanResourceManager::aliasCubemapBakeTextureResource(
-    const IGpuResourceSharedPtr &cpuRes, StringID attachmentName) {
-  if (!cpuRes) {
+    const GpuResourceRef &cpuRes, StringID attachmentName) {
+  if (!cpuRes.isValid()) {
     throw std::runtime_error("Cannot alias a null texture resource");
   }
   if (!getCubemapBakeAttachment(attachmentName).has_value()) {
@@ -373,13 +371,13 @@ void VulkanResourceManager::aliasCubemapBakeTextureResource(
     throw std::runtime_error("Missing cubemap bake attachment '" +
                              resourceName + "'");
   }
-  m_textureAliases[cpuRes->getBackendCacheIdentity()] =
+  m_textureAliases[cpuRes.getBackendCacheIdentity()] =
       VulkanTextureAlias{VulkanTextureAliasKind::CubemapBake, attachmentName};
 }
 
 void VulkanResourceManager::aliasFrameGraphTextureResource(
-    const IGpuResourceSharedPtr &cpuRes, StringID attachmentName) {
-  if (!cpuRes) {
+    const GpuResourceRef &cpuRes, StringID attachmentName) {
+  if (!cpuRes.isValid()) {
     throw std::runtime_error("Cannot alias a null texture resource");
   }
   if (!getFrameGraphAttachment(attachmentName).has_value()) {
@@ -388,7 +386,7 @@ void VulkanResourceManager::aliasFrameGraphTextureResource(
     throw std::runtime_error("Missing frame graph texture attachment '" +
                              resourceName + "'");
   }
-  m_textureAliases[cpuRes->getBackendCacheIdentity()] = VulkanTextureAlias{
+  m_textureAliases[cpuRes.getBackendCacheIdentity()] = VulkanTextureAlias{
       VulkanTextureAliasKind::FrameGraphAttachment, attachmentName};
 }
 

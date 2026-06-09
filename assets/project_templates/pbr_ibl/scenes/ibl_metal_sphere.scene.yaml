@@ -7,6 +7,8 @@ scene:
     skyboxEnabled: true
     intensity: 1.0
     roughnessMipCount: 5.0
+  rendering:
+    shadows: true
   defaultOutputProfile: preview
   outputProfiles:
     preview:
@@ -33,7 +35,6 @@ scene:
     maxBounce: 1
     seed: 1
     profile: preview
-    shadows: true
 root:
   nodeName: scene_root
   name: ''

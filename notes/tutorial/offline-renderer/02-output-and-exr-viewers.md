@@ -85,4 +85,4 @@ oiiotool --info -v artifacts/offline/smoke.exr
 
 ## 下一步
 
-继续读 [实现结构](03-implementation-flow.md)，我们会把输出文件放回整条代码路径里，看清楚它和 scene compiler、Vulkan compute、readback 的关系。
+继续读 [实现结构](03-implementation-flow.md)，我们会把输出文件放回整条代码路径里，看清楚它和 scene loader、offline FrameGraph、Vulkan compute、readback 的关系。

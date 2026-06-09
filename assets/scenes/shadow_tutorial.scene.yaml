@@ -1,6 +1,8 @@
 scene:
   name: Shadow Tutorial
   gameplayCameraPath: /game_cam
+  rendering:
+    shadows: true
 root:
   nodeName: scene_root
   name: ''

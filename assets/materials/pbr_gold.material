@@ -5,6 +5,7 @@ variants:
   HAS_NORMAL_MAP: false
   HAS_AO_MAP: false
   HAS_EMISSIVE_MAP: false
+  HAS_IBL: true
 
 variantRules:
   - requires: [HAS_NORMAL_MAP]

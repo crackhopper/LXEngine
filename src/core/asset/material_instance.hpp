@@ -4,7 +4,9 @@
 #include "core/asset/parameter_buffer.hpp"
 #include "core/asset/texture.hpp"
 #include "core/math/vec.hpp"
+#include "core/rhi/descriptor_resource_ref.hpp"
 #include "core/rhi/gpu_resource.hpp"
+#include "core/scene/scene_resource_table.hpp"
 
 #include <functional>
 #include <memory>
@@ -49,6 +51,7 @@ class MaterialInstance {
 
 public:
   using SharedPtr = std::shared_ptr<MaterialInstance>;
+  using UniquePtr = std::unique_ptr<MaterialInstance>;
 
   MaterialInstance(Token, MaterialTemplateSharedPtr tmpl);
 
@@ -56,13 +59,15 @@ public:
     return std::make_shared<MaterialInstance>(Token{}, std::move(tmpl));
   }
 
+  static UniquePtr createUnique(MaterialTemplateSharedPtr tmpl) {
+    return UniquePtr(new MaterialInstance(Token{}, std::move(tmpl)));
+  }
+
   MaterialInstance(const MaterialInstance &) = delete;
   MaterialInstance &operator=(const MaterialInstance &) = delete;
   MaterialInstance(MaterialInstance &&) = delete;
   MaterialInstance &operator=(MaterialInstance &&) = delete;
 
-  std::vector<IGpuResourceSharedPtr>
-  getDescriptorResources(StringID pass) const;
   IShaderSharedPtr getPassShader(StringID pass) const;
   RenderState getPassRenderState(StringID pass) const;
   StringID getPipelineSignature(StringID pass) const;
@@ -82,8 +87,13 @@ public:
   findParameterMember(StringID bindingName, StringID memberName) const;
 
   void setTexture(StringID bindingName, CombinedTextureSamplerSharedPtr tex);
+  void setTextureHandle(StringID bindingName, TextureHandle handle);
+  [[nodiscard]] TextureHandle getTextureHandle(StringID bindingName) const;
   [[nodiscard]] CombinedTextureSamplerSharedPtr
   getTexture(StringID bindingName) const;
+  void forEachPendingTextureBinding(
+      const std::function<void(
+          StringID, const CombinedTextureSamplerSharedPtr &)> &callback) const;
 
   void syncGpuData();
 
@@ -93,8 +103,8 @@ public:
   usize getParameterBufferCount() const {
     return m_parameterBuffersByName.size();
   }
-  const std::vector<u8> &
-  getParameterBufferBytes(StringID bindingName) const;
+  [[nodiscard]] GpuResourceRef getParameterResource(StringID bindingName) const;
+  const std::vector<u8> &getParameterBufferBytes(StringID bindingName) const;
   std::optional<std::reference_wrapper<const ShaderResourceBinding>>
   getParameterBufferLayout(StringID bindingName) const;
   // Single-binding shortcuts (assert if multiple buffer bindings exist).
@@ -108,6 +118,7 @@ public:
   u64 addPassStateListener(std::function<void()> callback);
   void removePassStateListener(u64 listenerId);
   [[nodiscard]] SharedPtr cloneInstanceData() const;
+  [[nodiscard]] UniquePtr cloneInstanceDataUnique() const;
 
 private:
   std::optional<std::reference_wrapper<ParameterBuffer>>
@@ -119,13 +130,15 @@ private:
   MaterialTemplateSharedPtr m_template;
   // Runtime resources grouped by the same binding names used by the template's
   // canonical ShaderResourceBinding table.
-  std::unordered_map<StringID, ParameterBufferSharedPtr, StringID::Hash>
+  std::unordered_map<StringID, std::unique_ptr<ParameterBuffer>, StringID::Hash>
       m_parameterBuffersByName;
 
   // Runtime sampled-image resources keyed by the same canonical binding names
   // as the template's texture bindings.
   std::unordered_map<StringID, CombinedTextureSamplerSharedPtr, StringID::Hash>
-      m_textureBindingsByName;
+      m_pendingTextureBindingsByName;
+  std::unordered_map<StringID, TextureHandle, StringID::Hash>
+      m_textureHandlesByName;
   // Structural pass participation state. This changes scene validation,
   // unlike ordinary parameter writes.
   std::unordered_set<StringID, StringID::Hash> m_enabledPasses;

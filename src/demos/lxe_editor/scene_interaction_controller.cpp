@@ -49,21 +49,20 @@ void drawDirectionalLightDebug(const LX_core::SceneNode &node,
 }
 
 void drawLightDebug(const LX_core::SceneNode &node,
-                    const LX_core::LightBaseSharedPtr &light) {
-  if (const auto directional =
-          std::dynamic_pointer_cast<LX_core::DirectionalLight>(light)) {
+                    const LX_core::LightBase &light) {
+  if (const auto *directional =
+          dynamic_cast<const LX_core::DirectionalLight *>(&light)) {
     drawDirectionalLightDebug(node, *directional);
     return;
   }
   const LX_core::Vec3f origin =
       LX_core::Transform::fromMat4(node.getWorldTransform()).translation;
-  if (const auto point =
-          std::dynamic_pointer_cast<LX_core::PointLight>(light)) {
+  if (const auto *point = dynamic_cast<const LX_core::PointLight *>(&light)) {
     LX_core::DebugDraw::wireSphere(origin, point->getRange(),
                                    lightDebugColor(point->getColor()));
     return;
   }
-  if (const auto spot = std::dynamic_pointer_cast<LX_core::SpotLight>(light)) {
+  if (const auto *spot = dynamic_cast<const LX_core::SpotLight *>(&light)) {
     LX_core::Vec3f direction = spot->getDirection();
     if (direction.length2() <= 1e-6f) {
       direction = LX_core::Vec3f{0.0f, -1.0f, 0.0f};
@@ -349,7 +348,7 @@ void SceneInteractionController::enqueueDebugDraw(
       if (!light) {
         continue;
       }
-      drawLightDebug(*node, light);
+      drawLightDebug(*node, light->get());
     }
     return;
   }
@@ -377,7 +376,7 @@ void SceneInteractionController::enqueueDebugDraw(
     if (!light) {
       continue;
     }
-    drawLightDebug(*node, light);
+    drawLightDebug(*node, light->get());
   }
 
   const auto selected = m_editorState.getSelected();

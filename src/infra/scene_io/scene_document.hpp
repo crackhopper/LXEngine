@@ -8,6 +8,7 @@
 #include "core/scene/components/camera_component.hpp"
 #include "core/scene/light.hpp"
 #include "core/scene/object.hpp"
+#include "core/scene/scene_render_settings.hpp"
 #include "core/scene/visibility_mask.hpp"
 
 #include <filesystem>
@@ -144,6 +145,8 @@ public:
   bool hasEnvironment() const;
   const EnvironmentState &environment() const;
   void setEnvironment(EnvironmentState state);
+  const LX_core::SceneRenderSettings &renderSettings() const;
+  void setRenderSettings(LX_core::SceneRenderSettings settings);
   bool hasRenderProfileDocument() const;
   const LX_core::offline::RenderProfileDocument &renderProfileDocument() const;
   void setRenderProfileDocument(

@@ -76,10 +76,6 @@ vec3 lxPbrDirectLight(LxPbrDirectInput pbr) {
          pbr.lightColor * NdotL;
 }
 
-vec3 lxPbrFallbackAmbient(LxPbrDirectInput pbr) {
-  return vec3(0.03) * pbr.baseColor * clamp(pbr.ao, 0.0, 1.0);
-}
-
 vec3 lxPbrEmissive(LxPbrDirectInput pbr) {
   return pbr.emissive;
 }

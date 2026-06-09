@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/rhi/gpu_resource.hpp"
+#include "core/rhi/descriptor_resource_ref.hpp"
 
 namespace LX_core {
 class FrameGraph;
@@ -16,7 +16,7 @@ class VulkanResourceManager;
 namespace LX_core::backend::offline {
 
 struct OfflineGraphExecutionResult {
-  IGpuResourceSharedPtr outputPixels;
+  GpuResourceRef outputPixels;
 };
 
 class OfflineRenderGraphExecutor final {

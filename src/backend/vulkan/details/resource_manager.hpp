@@ -2,6 +2,7 @@
 
 #include "core/pipeline/pipeline_build_desc.hpp"
 #include "core/pipeline/pipeline_key.hpp"
+#include "core/rhi/descriptor_resource_ref.hpp"
 #include "core/rhi/gpu_resource.hpp"
 #include "core/utils/string_table.hpp"
 #include "pipelines/graphics_pipeline.hpp"
@@ -88,7 +89,7 @@ using VulkanResourceManagerUniquePtr = std::unique_ptr<VulkanResourceManager>;
 class VulkanResourceManager {
   struct Token {};
   struct CachedGpuResource {
-    std::shared_ptr<VulkanAnyResource> resource;
+    std::unique_ptr<VulkanAnyResource> resource;
     ResourceCacheIdentity lastSeenFrame = 0;
   };
 
@@ -105,7 +106,7 @@ public:
   VulkanResourceManager &operator=(const VulkanResourceManager &) = delete;
 
   void syncResource(VulkanCommandBufferManager &cmdBufferManager,
-                    const IGpuResourceSharedPtr &cpuRes);
+                    const GpuResourceRef &cpuRes);
   void beginFrame(u32 currentFrameIndex);
   void collectGarbage();
 
@@ -116,9 +117,9 @@ public:
   getBuffer(ResourceCacheIdentity identity);
   std::optional<std::reference_wrapper<VulkanTexture>>
   getTexture(ResourceCacheIdentity identity);
-  void aliasCubemapBakeTextureResource(const IGpuResourceSharedPtr &cpuRes,
+  void aliasCubemapBakeTextureResource(const GpuResourceRef &cpuRes,
                                        StringID attachmentName);
-  void aliasFrameGraphTextureResource(const IGpuResourceSharedPtr &cpuRes,
+  void aliasFrameGraphTextureResource(const GpuResourceRef &cpuRes,
                                       StringID attachmentName);
   VulkanRenderPass &getRenderPass();
   VulkanRenderPass &getRenderPass(const RenderTargetDesc &target);
@@ -158,10 +159,9 @@ public:
                                                          u32 faceLayer);
 
 private:
-  std::shared_ptr<VulkanAnyResource>
-  createGpuResource(const IGpuResourceSharedPtr &cpuRes);
-  void updateGpuResource(std::shared_ptr<VulkanAnyResource> &gpuRes,
-                         const IGpuResourceSharedPtr &cpuRes,
+  std::unique_ptr<VulkanAnyResource> createGpuResource(const IGpuResource &cpuRes);
+  void updateGpuResource(VulkanAnyResource &gpuRes,
+                         const IGpuResource &cpuRes,
                          VulkanCommandBufferManager &cmdBufferManager);
 
   VulkanDevice &m_device;

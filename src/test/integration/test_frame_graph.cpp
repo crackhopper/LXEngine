@@ -5,8 +5,8 @@
 #include "core/frame_graph/frame_graph.hpp"
 #include "core/frame_graph/pass.hpp"
 #include "core/frame_graph/render_queue.hpp"
-#include "core/frame_graph/render_upload_plan.hpp"
 #include "core/frame_graph/render_target.hpp"
+#include "core/frame_graph/render_upload_plan.hpp"
 #include "core/pipeline/pipeline_build_desc.hpp"
 #include "core/rhi/gpu_resource.hpp"
 #include "core/rhi/index_buffer.hpp"
@@ -139,7 +139,7 @@ std::shared_ptr<SceneNode> makeIblRenderable() {
   if (!materialComponent) {
     return node;
   }
-  auto material = materialComponent->get().getMaterialInstance();
+  auto material = materialComponent->get().getPendingMaterialInstance();
   auto shader = std::dynamic_pointer_cast<FakeShader>(
       material->getPassShader(Pass_Forward));
   if (shader) {
@@ -148,8 +148,7 @@ std::shared_ptr<SceneNode> makeIblRenderable() {
                               ShaderPropertyType::TextureCube},
         ShaderResourceBinding{"PrefilteredEnvMap", 3, 1,
                               ShaderPropertyType::TextureCube},
-        ShaderResourceBinding{"BrdfLut", 3, 2,
-                              ShaderPropertyType::Texture2D},
+        ShaderResourceBinding{"BrdfLut", 3, 2, ShaderPropertyType::Texture2D},
         ShaderResourceBinding{"EnvironmentUBO", 3, 3,
                               ShaderPropertyType::UniformBuffer, 1, 16},
     });
@@ -296,8 +295,8 @@ void testMeshOverlayMaterialPassUsesLineListGeometry() {
     return;
   }
 
-  auto indexBuffer =
-      std::dynamic_pointer_cast<IndexBuffer>(items[0].raster.indexBuffer);
+  const auto *indexBuffer =
+      dynamic_cast<const IndexBuffer *>(&items[0].raster.indexBuffer.get());
   EXPECT(indexBuffer != nullptr, "mesh overlay item should keep index buffer");
   if (indexBuffer) {
     EXPECT(indexBuffer->getTopology() == PrimitiveTopology::LineList,
@@ -337,12 +336,12 @@ void testFrameGraphCompileAcceptsColorWriteThenSampleRead() {
       FrameGraphResourceRef::depthAttachment(StringID("swapchain.depth"));
 
   FrameGraph graph;
-  graph.addPass(FramePass{Pass_Forward,
-                          RenderTargetDesc::offscreenColor(
-                              ImageFormat::RGBA16Float),
-                          {},
-                          {},
-                          {FrameGraphWrite{offscreen}}});
+  graph.addPass(
+      FramePass{Pass_Forward,
+                RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
+                {},
+                {},
+                {FrameGraphWrite{offscreen}}});
   graph.addPass(FramePass{
       Pass_DebugOverlay,
       RenderTargetDesc::swapchain(ImageFormat::BGRA8, ImageFormat::D32Float),
@@ -386,20 +385,21 @@ void testFrameGraphCompilePreservesSampledReadBindingName() {
 
 void testFrameGraphCompileAcceptsPostProcessSceneColorFlow() {
   FrameGraph graph;
-  graph.addPass(FramePass{Pass_Forward,
-                          RenderTargetDesc::offscreenColor(ImageFormat::RGBA8),
-                          {},
-                          {},
-                          {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
-                              StringID("scene.hdrColor"))}}});
+  graph.addPass(
+      FramePass{Pass_Forward,
+                RenderTargetDesc::offscreenColor(ImageFormat::RGBA8),
+                {},
+                {},
+                {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
+                    StringID("scene.hdrColor"))}}});
   graph.addPass(FramePass{
       Pass_PostProcess,
       RenderTargetDesc::swapchain(ImageFormat::BGRA8, ImageFormat::D32Float),
       {},
       {FrameGraphRead::sampled(StringID("scene.hdrColor"),
                                StringID("SceneColor"))},
-      {FrameGraphWrite{
-          FrameGraphResourceRef::colorAttachment(StringID("swapchain.color"))}}});
+      {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
+          StringID("swapchain.color"))}}});
 
   const auto compiled = graph.compile();
   EXPECT(compiled.isValid(),
@@ -433,30 +433,30 @@ void testFrameGraphCompileAcceptsBloomPostProcessChain() {
   const auto swapchain =
       FrameGraphResourceRef::colorAttachment(StringID("swapchain.color"));
 
-  graph.addPass(FramePass{
-      Pass_Forward,
-      RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
-      {},
-      {},
-      {FrameGraphWrite{hdr}}});
-  graph.addPass(FramePass{
-      Pass_BloomThreshold,
-      RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
-      {},
-      {FrameGraphRead::sampled(hdr.name, StringID("SceneColor"))},
-      {FrameGraphWrite{threshold}}});
+  graph.addPass(
+      FramePass{Pass_Forward,
+                RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
+                {},
+                {},
+                {FrameGraphWrite{hdr}}});
+  graph.addPass(
+      FramePass{Pass_BloomThreshold,
+                RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
+                {},
+                {FrameGraphRead::sampled(hdr.name, StringID("SceneColor"))},
+                {FrameGraphWrite{threshold}}});
   graph.addPass(FramePass{
       Pass_BloomBlurH,
       RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
       {},
       {FrameGraphRead::sampled(threshold.name, StringID("BloomSource"))},
       {FrameGraphWrite{blurH}}});
-  graph.addPass(FramePass{
-      Pass_BloomBlurV,
-      RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
-      {},
-      {FrameGraphRead::sampled(blurH.name, StringID("BloomSource"))},
-      {FrameGraphWrite{blur}}});
+  graph.addPass(
+      FramePass{Pass_BloomBlurV,
+                RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
+                {},
+                {FrameGraphRead::sampled(blurH.name, StringID("BloomSource"))},
+                {FrameGraphWrite{blur}}});
   graph.addPass(FramePass{
       Pass_PostProcess,
       RenderTargetDesc::swapchain(ImageFormat::BGRA8, ImageFormat::D32Float),
@@ -527,10 +527,10 @@ void testDirectionalLightPendingDirectionUpdatesUboBeforeAttach() {
              approx(direction.y, expected.y, 0.001f) &&
              approx(direction.z, expected.z, 0.001f),
          "unattached directional light should report pending direction");
-  const auto ubo = light.getDirectionalUBO();
-  EXPECT(approx(ubo->param.dir.x, expected.x, 0.001f) &&
-             approx(ubo->param.dir.y, expected.y, 0.001f) &&
-             approx(ubo->param.dir.z, expected.z, 0.001f),
+  const auto &ubo = light.getDirectionalUBO();
+  EXPECT(approx(ubo.param.dir.x, expected.x, 0.001f) &&
+             approx(ubo.param.dir.y, expected.y, 0.001f) &&
+             approx(ubo.param.dir.z, expected.z, 0.001f),
          "unattached directional light UBO should store pending direction");
 }
 
@@ -567,7 +567,7 @@ void testDirectionalShadowDebugViewRecreatesCascadeMatrix() {
       debugCamera->get().getProjMatrix(0.0f, GraphicsAPI::DirectX) *
       debugCamera->get().getViewMatrix();
   EXPECT(approxMatrix(debugViewProj,
-                      light.getDirectionalUBO()->param.cascadeViewProj[0]),
+                      light.getDirectionalUBO().param.cascadeViewProj[0]),
          "debug light-view camera must recreate the shadow cascade matrix");
 }
 
@@ -595,7 +595,7 @@ void testDirectionalShadowCascadeStoresLightDepthRange() {
   const float expectedRange =
       std::abs(debugView->farPlane - debugView->nearPlane);
   const float storedRange =
-      light.getDirectionalUBO()->param.cascadeDepthRanges.x;
+      light.getDirectionalUBO().param.cascadeDepthRanges.x;
   EXPECT(approx(storedRange, expectedRange, 0.001f),
          "cascade depth range should match the light-view depth span");
 }
@@ -623,16 +623,16 @@ void testDirectionalShadowCascadeUboSnapshotIsStable() {
   EXPECT(cascade0->getBindingName() == StringID("LightUBO"),
          "snapshot should bind as LightUBO for shadow shaders");
   EXPECT(cascade0->getBackendCacheIdentity() !=
-             light.getDirectionalUBO()->getBackendCacheIdentity(),
+             light.getDirectionalUBO().getBackendCacheIdentity(),
          "snapshot should not overwrite the main directional light UBO");
   EXPECT(cascade0->getBackendCacheIdentity() !=
              cascade3->getBackendCacheIdentity(),
          "each cascade snapshot needs an independent GPU buffer");
   EXPECT(approxMatrix(cascade0->param.shadowViewProj,
-                      light.getDirectionalUBO()->param.cascadeViewProj[0]),
+                      light.getDirectionalUBO().param.cascadeViewProj[0]),
          "cascade 0 snapshot should use cascade 0 matrix");
   EXPECT(approxMatrix(cascade3->param.shadowViewProj,
-                      light.getDirectionalUBO()->param.cascadeViewProj[3]),
+                      light.getDirectionalUBO().param.cascadeViewProj[3]),
          "cascade 3 snapshot should use cascade 3 matrix");
 
   const Mat4f stableCascade0 = cascade0->param.shadowViewProj;
@@ -767,7 +767,8 @@ void testBuildFromSceneIsIdempotent() {
   fg.addPass(FramePass{Pass_Forward, {}, {}});
 
   fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
-  fg.build(LX_core::RenderWorkBuildContext::realtime(*scene)); // second call should clear + refill, not accumulate
+  fg.build(LX_core::RenderWorkBuildContext::realtime(
+      *scene)); // second call should clear + refill, not accumulate
 
   EXPECT(fg.getPasses()[0].queue.getItems().size() == 1,
          "build clears previous items on re-entry");
@@ -831,12 +832,24 @@ void testMultiCameraTargetFilter() {
   auto resB = scene->getSceneLevelResources(Pass_Forward, targetB);
   EXPECT(resB.size() == 1, "Forward targetB: camB UBO only");
 
-  // Cross-check camera UBO identity: camA's UBO should be in resA but not resB.
+  // Cross-check camera UBO identity: scene resources come from
+  // SceneResourceTable handles, not from CameraComponent-owned compatibility
+  // data.
   if (resA.size() == 1 && resB.size() == 1) {
-    const auto camAUbo = std::dynamic_pointer_cast<IGpuResource>(
-        camA->getComponent<CameraComponent>()->get().getUBO());
-    EXPECT(resA[0] == camAUbo, "resA[0] is camA's UBO");
-    EXPECT(resB[0] != camAUbo, "resB[0] is NOT camA's UBO");
+    const auto camAComponent = camA->getComponent<CameraComponent>();
+    const auto camBComponent = camB->getComponent<CameraComponent>();
+    const auto camAUbo = scene->resources().getCameraUboResource(
+        camAComponent->get().getCameraHandle());
+    const auto camBUbo = scene->resources().getCameraUboResource(
+        camBComponent->get().getCameraHandle());
+    EXPECT(resA[0].isResource() && camAUbo.isValid() &&
+               resA[0].resource().getBackendCacheIdentity() ==
+                   camAUbo.getBackendCacheIdentity(),
+           "resA[0] is camA's table-owned UBO");
+    EXPECT(resB[0].isResource() && camBUbo.isValid() &&
+               resB[0].resource().getBackendCacheIdentity() ==
+                   camBUbo.getBackendCacheIdentity(),
+           "resB[0] is camB's table-owned UBO");
   }
 }
 
@@ -905,7 +918,8 @@ void testMultiPassRebuildIsIdempotent() {
   fg.addPass(FramePass{Pass_Forward, {}, {}});
   fg.addPass(FramePass{Pass_Shadow, {}, {}});
   fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
-  fg.build(LX_core::RenderWorkBuildContext::realtime(*scene)); // second call must clear + refill, not accumulate.
+  fg.build(LX_core::RenderWorkBuildContext::realtime(
+      *scene)); // second call must clear + refill, not accumulate.
 
   const auto &passes = fg.getPasses();
   EXPECT(passes[0].queue.getItems().size() == 2,
@@ -1037,7 +1051,7 @@ void testVisibilityFilteringKeepsSceneResources() {
   }
 }
 
-void testIblResourcesInjectOnlyForIblShaderItems() {
+void testUnconfiguredIblResourcesAreNotInjected() {
   auto regular = makeRenderable("regular_no_ibl");
   auto ibl = makeIblRenderable();
   auto scene = Scene::create("ibl_injection");
@@ -1046,26 +1060,22 @@ void testIblResourcesInjectOnlyForIblShaderItems() {
   scene->addCamera(makeCameraWithTargetAndMask(RenderTarget{}, Layer_All));
 
   RenderWorkQueue queue;
-  queue.build(LX_core::RenderWorkBuildContext::realtime(*scene), Pass_Forward, RenderTarget{});
+  queue.build(LX_core::RenderWorkBuildContext::realtime(*scene), Pass_Forward,
+              RenderTarget{});
 
   bool sawRegular = false;
   bool sawIbl = false;
   for (const auto &item : queue.getItems()) {
-    const bool itemConsumesIbl =
-        std::any_of(item.shaderInfo->getReflectionBindings().begin(),
-                    item.shaderInfo->getReflectionBindings().end(),
-                    [](const auto &binding) {
-                      return binding.name == "IrradianceMap";
-                    });
+    const bool itemConsumesIbl = std::any_of(
+        item.shaderInfo->getReflectionBindings().begin(),
+        item.shaderInfo->getReflectionBindings().end(),
+        [](const auto &binding) { return binding.name == "IrradianceMap"; });
     bool hasIrradiance = false;
     bool hasPrefilter = false;
     bool hasBrdf = false;
     bool hasEnvironment = false;
     for (const auto &resource : item.descriptorResources) {
-      if (!resource) {
-        continue;
-      }
-      const auto binding = resource->getBindingName();
+      const auto binding = resource.getBindingName();
       hasIrradiance = hasIrradiance || binding == StringID("IrradianceMap");
       hasPrefilter = hasPrefilter || binding == StringID("PrefilteredEnvMap");
       hasBrdf = hasBrdf || binding == StringID("BrdfLut");
@@ -1079,8 +1089,9 @@ void testIblResourcesInjectOnlyForIblShaderItems() {
     }
     if (itemConsumesIbl) {
       sawIbl = true;
-      EXPECT(hasIrradiance && hasPrefilter && hasBrdf && hasEnvironment,
-             "IBL shader should receive all scene-level IBL resources");
+      EXPECT(!hasIrradiance && !hasPrefilter && !hasBrdf && !hasEnvironment,
+             "IBL shader should not receive environment resources when scene "
+             "does not configure IBL");
     }
   }
 
@@ -1092,9 +1103,11 @@ void testRenderUploadPlanCollectsRasterResourcesAndPushConstants() {
   RenderWorkItem item;
   item.domain = RenderDomain::Realtime;
   item.kind = RenderWorkKind::RasterDraw;
-  item.raster.vertexBuffer = VertexBuffer<VertexPos>::create(
+  auto vertexBuffer = VertexBuffer<VertexPos>::createUnique(
       std::vector<VertexPos>{{{0, 0, 0}}, {{1, 0, 0}}, {{0, 1, 0}}});
-  item.raster.indexBuffer = IndexBuffer::create({0u, 1u, 2u});
+  auto indexBuffer = IndexBuffer::createUnique({0u, 1u, 2u});
+  item.raster.vertexBuffer = GpuResourceRef{*vertexBuffer};
+  item.raster.indexBuffer = GpuResourceRef{*indexBuffer};
   item.raster.drawData = std::make_shared<PerDrawData>();
 
   static const ShaderResourceBinding materialBinding{
@@ -1105,34 +1118,34 @@ void testRenderUploadPlanCollectsRasterResourcesAndPushConstants() {
       .size = 16,
       .stageFlags = ShaderStage::Fragment,
   };
-  auto materialUbo =
-      std::make_shared<ParameterBuffer>(StringID("MaterialUBO"),
-                                        materialBinding);
-  item.descriptorResources.push_back(materialUbo);
-  item.descriptorResources.push_back(materialUbo);
+  auto materialUbo = std::make_shared<ParameterBuffer>(StringID("MaterialUBO"),
+                                                       materialBinding);
+  item.descriptorResources.emplace_back(*materialUbo);
+  item.descriptorResources.emplace_back(*materialUbo);
 
   RenderWorkQueue queue;
   queue.addItem(std::move(item));
 
   const RenderUploadPlan plan = buildRenderUploadPlan(queue);
-  EXPECT(plan.resources.size() == 3,
-         "upload plan should include unique vertex, index, and descriptor resources");
+  EXPECT(plan.resources.size() == 3, "upload plan should include unique "
+                                     "vertex, index, and descriptor resources");
   EXPECT(plan.pushConstants.size() == 1,
          "upload plan should track raster push constants separately");
 }
 
-void testPartialIblResourcesAreCompletedBeforeInjection() {
+void testPartialIblResourcesAreNotCompletedWithDefaults() {
   auto ibl = makeIblRenderable();
   auto scene = Scene::create("partial_ibl_injection");
   scene->addRenderable(ibl);
   scene->addCamera(makeCameraWithTargetAndMask(RenderTarget{}, Layer_All));
 
   IblEnvironmentResources partial;
-  partial.environmentUbo = std::make_shared<EnvironmentData>(1.0f, 5.0f);
-  scene->setIblEnvironmentResources(std::move(partial));
+  partial.environmentUbo = std::make_unique<EnvironmentData>(1.0f, 5.0f);
+  scene->resources().setIblEnvironmentResources(std::move(partial));
 
   RenderWorkQueue queue;
-  queue.build(LX_core::RenderWorkBuildContext::realtime(*scene), Pass_Forward, RenderTarget{});
+  queue.build(LX_core::RenderWorkBuildContext::realtime(*scene), Pass_Forward,
+              RenderTarget{});
   EXPECT(queue.getItems().size() == 1,
          "partial IBL scene should still render the IBL item");
   if (queue.getItems().empty()) {
@@ -1144,20 +1157,18 @@ void testPartialIblResourcesAreCompletedBeforeInjection() {
   bool hasBrdf = false;
   bool hasEnvironment = false;
   for (const auto &resource : queue.getItems().front().descriptorResources) {
-    if (!resource) {
-      continue;
-    }
-    const auto binding = resource->getBindingName();
+    const auto binding = resource.getBindingName();
     hasIrradiance = hasIrradiance || binding == StringID("IrradianceMap");
     hasPrefilter = hasPrefilter || binding == StringID("PrefilteredEnvMap");
     hasBrdf = hasBrdf || binding == StringID("BrdfLut");
     hasEnvironment = hasEnvironment || binding == StringID("EnvironmentUBO");
   }
-  EXPECT(hasIrradiance && hasPrefilter && hasBrdf && hasEnvironment,
-         "partial IBL config should be completed with safe default resources");
+  EXPECT(!hasIrradiance && !hasPrefilter && !hasBrdf && hasEnvironment,
+         "partial IBL config should inject only explicitly configured "
+         "environment resources");
 }
 
-void testRenderWorkQueueDebugOverrideUsesExplicitResourcesAndLayerMask() {
+void testRenderWorkQueueDebugCameraResourceUsesSceneResourceTableAndLayerMask() {
   auto visible = makeRenderableWithMask(Layer_Default, "debug_visible");
   auto overlay = makeRenderableWithMask(Layer_EditorOverlay, "debug_overlay");
   auto scene = Scene::create("debug_override");
@@ -1167,22 +1178,37 @@ void testRenderWorkQueueDebugOverrideUsesExplicitResourcesAndLayerMask() {
   auto cameraNode = makeCameraWithTarget(RenderTarget{});
   const auto camera = cameraNode->getComponent<CameraComponent>();
   scene->addCamera(cameraNode);
+  const auto cameraResource =
+      Scene::makeCameraResource(camera->get().getSnapshot());
+  const auto expectedCameraResources =
+      scene->getSceneLevelResources(Pass_Forward, cameraResource);
 
   RenderWorkQueue queue;
   queue.build(
-      RenderWorkBuildContext::realtime(*scene, {camera->get().getUBO()},
-                                       Layer_All & ~Layer_EditorOverlay),
+      RenderWorkBuildContext::realtime(
+          *scene,
+          RenderWorkBuildContext::RealtimeOptions{
+              .cameraResource = cameraResource,
+              .visibleMask = Layer_All & ~Layer_EditorOverlay,
+          }),
       Pass_Forward,
       RenderTarget{RenderTargetDesc::offscreenColor(ImageFormat::BGRA8)});
 
   EXPECT(queue.getItems().size() == 1,
          "debug render target should render only layers allowed by override");
-  EXPECT(!queue.getItems().empty() &&
-             std::find(queue.getItems().front().descriptorResources.begin(),
-                       queue.getItems().front().descriptorResources.end(),
-                       camera->get().getUBO()) !=
-                 queue.getItems().front().descriptorResources.end(),
-         "debug render target should use explicit camera resources");
+  EXPECT(!expectedCameraResources.empty(),
+         "explicit camera resource should produce scene-level descriptors");
+  const bool hasExplicitCameraResource =
+      !queue.getItems().empty() &&
+      std::any_of(queue.getItems().front().descriptorResources.begin(),
+                  queue.getItems().front().descriptorResources.end(),
+                  [](const DescriptorResourceRef &resource) {
+                    return resource.isResource() &&
+                           resource.resource().isValid() &&
+                           resource.getBindingName() == StringID("CameraUBO");
+                  });
+  EXPECT(!queue.getItems().empty() && hasExplicitCameraResource,
+         "debug render target should use table-built camera resources");
 }
 
 void testDebugOnlyRenderableIsOverlayOnly() {
@@ -1197,12 +1223,14 @@ void testDebugOnlyRenderableIsOverlayOnly() {
   scene->addCamera(makeCameraWithTargetAndMask(RenderTarget{}, Layer_All));
 
   RenderWorkQueue forwardQueue;
-  forwardQueue.build(LX_core::RenderWorkBuildContext::realtime(*scene), Pass_Forward, RenderTarget{});
+  forwardQueue.build(LX_core::RenderWorkBuildContext::realtime(*scene),
+                     Pass_Forward, RenderTarget{});
   EXPECT(forwardQueue.getItems().size() == 1,
          "debug-only renderables must be excluded from normal passes");
 
   RenderWorkQueue overlayQueue;
-  overlayQueue.build(LX_core::RenderWorkBuildContext::realtime(*scene), Pass_DebugOverlay, RenderTarget{});
+  overlayQueue.build(LX_core::RenderWorkBuildContext::realtime(*scene),
+                     Pass_DebugOverlay, RenderTarget{});
   EXPECT(overlayQueue.getItems().empty(),
          "debug-only flag should not force unsupported overlay materials into "
          "DebugOverlay");
@@ -1302,10 +1330,10 @@ int main() {
   testVisibilityMaskFiltersRenderables();
   testVisibilityMaskOrsMatchingCameraMasks();
   testVisibilityFilteringKeepsSceneResources();
-  testIblResourcesInjectOnlyForIblShaderItems();
+  testUnconfiguredIblResourcesAreNotInjected();
   testRenderUploadPlanCollectsRasterResourcesAndPushConstants();
-  testPartialIblResourcesAreCompletedBeforeInjection();
-  testRenderWorkQueueDebugOverrideUsesExplicitResourcesAndLayerMask();
+  testPartialIblResourcesAreNotCompletedWithDefaults();
+  testRenderWorkQueueDebugCameraResourceUsesSceneResourceTableAndLayerMask();
   testDebugOnlyRenderableIsOverlayOnly();
   testSceneCreateDoesNotSeedHiddenLight();
   testInactiveCameraIsIgnoredForResourcesAndMasks();

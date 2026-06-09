@@ -346,7 +346,7 @@ void testConcreteAddKindsUseHistory() {
   EXPECT(addLight.ok, "add directional light should succeed");
   auto *lightNode = fixture.scene->findByPath("/world/Key");
   EXPECT(lightNode != nullptr &&
-             fixture.scene->getDirectionalLight(*lightNode) != nullptr,
+             fixture.scene->getDirectionalLight(*lightNode).has_value(),
          "add directional light should attach a light payload");
 
   const CommandResult addModelWithDisplayName = fixture.bus.dispatch(
@@ -424,14 +424,15 @@ void testCopyPasteAsSiblingDuplicatesDirectionalLightIndependently() {
     const auto originalLight =
         fixture.scene->getDirectionalLight(*originalNode);
     const auto copiedLight = fixture.scene->getDirectionalLight(*copyNode);
-    EXPECT(originalLight != nullptr && copiedLight != nullptr,
+    EXPECT(originalLight.has_value() && copiedLight.has_value(),
            "light duplicate should keep directional light payload");
-    EXPECT(originalLight != copiedLight,
+    EXPECT(originalLight.has_value() && copiedLight.has_value() &&
+               &originalLight->get() != &copiedLight->get(),
            "light duplicate should create an independent light binding");
     if (copiedLight) {
-      EXPECT(nearlyEqual(copiedLight->getColor().x, 0.2f) &&
-                 nearlyEqual(copiedLight->getColor().y, 0.4f) &&
-                 nearlyEqual(copiedLight->getColor().z, 0.6f),
+      EXPECT(nearlyEqual(copiedLight->get().getColor().x, 0.2f) &&
+                 nearlyEqual(copiedLight->get().getColor().y, 0.4f) &&
+                 nearlyEqual(copiedLight->get().getColor().z, 0.6f),
              "light duplicate should preserve color payload");
     }
   }

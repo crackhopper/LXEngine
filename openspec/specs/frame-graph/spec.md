@@ -74,8 +74,8 @@ The system SHALL provide `LX_core::ImageFormat`, a `uint8_t`-backed enum coverin
 1. Call `clearItems()`.
 2. Retrieve `scene.getSceneLevelResources(pass, target)` once before iterating renderables.
 3. For each `IRenderableSharedPtr` in `scene.getRenderables()`, skip null pointers and skip renderables for which `renderable->supportsPass(pass)` returns `false`.
-4. For each remaining renderable, consume its already-validated structural result for `pass` and construct a `RenderingItem` from that cached data, filling `vertexBuffer`, `indexBuffer`, `objectInfo`, `descriptorResources`, `shaderInfo`, `passMask`, `pass`, `target`, `material`, and `pipelineKey`.
-5. Append the scene-level resources from step 2 to each item's `descriptorResources`, after the renderable's own resources.
+4. For each remaining renderable, consume its already-validated structural result for `pass` and construct a `RenderingItem` from that cached data, filling `vertexBuffer`, `indexBuffer`, `objectInfo`, `shaderInfo`, `passMask`, `pass`, `target`, `material`, and `pipelineKey`.
+5. Build each item's `descriptorResources` through the scene descriptor resolver. The resolver SHALL combine material-owned resources, renderable-owned system resources such as `Bones`, scene-level resources from step 2, and configured IBL resources into a `DescriptorResourceList`. Entries MAY wrap an owning `IGpuResourceSharedPtr` for resources already owned elsewhere, or a non-owning reference/texture-array reference for resources owned by `SceneResourceTable`; render paths SHALL NOT fabricate no-op-deleter `shared_ptr` values for table-owned resources.
 6. Push each item into `m_items` and call `sort()` at the end.
 
 `RenderQueue` MUST NOT perform first-time mesh/material/skeleton legality checks, variant interpretation, or structural descriptor validation during queue build. Those responsibilities belong to the validated renderable model.

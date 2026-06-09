@@ -56,16 +56,14 @@ public:
     std::error_code error;
     if (std::filesystem::exists(m_target, error)) {
       std::cerr << "[FAIL] " << __FUNCTION__ << ":" << __LINE__
-                << " fixture hide target already exists: " << m_target
-                << '\n';
+                << " fixture hide target already exists: " << m_target << '\n';
       ++failures;
       return;
     }
     error.clear();
     if (!std::filesystem::exists(m_source, error)) {
       std::cerr << "[FAIL] " << __FUNCTION__ << ":" << __LINE__
-                << " fixture source missing before move: " << m_source
-                << '\n';
+                << " fixture source missing before move: " << m_source << '\n';
       ++failures;
       return;
     }
@@ -74,8 +72,7 @@ public:
     m_moved = !error;
     if (error) {
       std::cerr << "[FAIL] " << __FUNCTION__ << ":" << __LINE__
-                << " failed to move fixture asset: " << error.message()
-                << '\n';
+                << " failed to move fixture asset: " << error.message() << '\n';
       ++failures;
     }
   }
@@ -111,8 +108,8 @@ private:
   bool m_moved = false;
 };
 
-[[nodiscard]] std::string hiddenMaterialPrefix(
-    const std::filesystem::path &materialPath) {
+[[nodiscard]] std::string
+hiddenMaterialPrefix(const std::filesystem::path &materialPath) {
   return "." + materialPath.filename().string() +
          ".offline_explicit_test_hidden.";
 }
@@ -146,17 +143,15 @@ void restoreStaleHiddenMaterialIfNeeded(
   }
 }
 
-[[nodiscard]] std::filesystem::path makeUniqueHiddenMaterialPath(
-    const std::filesystem::path &materialPath) {
-  const auto stamp = std::chrono::steady_clock::now()
-                         .time_since_epoch()
-                         .count();
+[[nodiscard]] std::filesystem::path
+makeUniqueHiddenMaterialPath(const std::filesystem::path &materialPath) {
+  const auto stamp =
+      std::chrono::steady_clock::now().time_since_epoch().count();
   const std::filesystem::path materialDir = materialPath.parent_path();
   const std::string prefix = hiddenMaterialPrefix(materialPath);
   for (u32 attempt = 0; attempt < 1024u; ++attempt) {
-    auto candidate =
-        materialDir / (prefix + std::to_string(stamp) + "." +
-                       std::to_string(attempt));
+    auto candidate = materialDir / (prefix + std::to_string(stamp) + "." +
+                                    std::to_string(attempt));
     std::error_code error;
     if (!std::filesystem::exists(candidate, error)) {
       return candidate;
@@ -165,9 +160,9 @@ void restoreStaleHiddenMaterialIfNeeded(
   throw std::runtime_error("failed to create unique hidden material path");
 }
 
-LX_infra::scene_io::SceneNodeDocument makeCameraNode(
-    std::string name, LX_core::Vec3f translation, float fovY,
-    LX_core::VisibilityLayerMask cullingMask) {
+LX_infra::scene_io::SceneNodeDocument
+makeCameraNode(std::string name, LX_core::Vec3f translation, float fovY,
+               LX_core::VisibilityLayerMask cullingMask) {
   LX_infra::scene_io::SceneNodeDocument node;
   node.name = std::move(name);
   node.transform.translation = translation;
@@ -189,9 +184,8 @@ LX_infra::scene_io::SceneDocument makePlainGltfHelmetDocument(
   document.setGameplayCameraPath("/game_cam");
 
   auto &root = document.mutableRootNode();
-  root.children.push_back(
-      makeCameraNode("game_cam", LX_core::Vec3f{0.0f, 2.0f, 6.0f}, 45.0f,
-                     0xffffffffu));
+  root.children.push_back(makeCameraNode(
+      "game_cam", LX_core::Vec3f{0.0f, 2.0f, 6.0f}, 45.0f, 0xffffffffu));
 
   LX_infra::scene_io::SceneNodeDocument helmet;
   helmet.nodeName = "helmet";
@@ -203,8 +197,8 @@ LX_infra::scene_io::SceneDocument makePlainGltfHelmetDocument(
   return document;
 }
 
-LX_infra::scene_io::SceneDocument makeTaggedGltfHelmetDocument(
-    std::string offlineMaterialTag) {
+LX_infra::scene_io::SceneDocument
+makeTaggedGltfHelmetDocument(std::string offlineMaterialTag) {
   LX_infra::scene_io::SceneDocument document;
   document.setSceneName("offline tagged glTF helmet");
   document.setGameplayCameraPath("/game_cam");
@@ -222,9 +216,8 @@ LX_infra::scene_io::SceneDocument makeTaggedGltfHelmetDocument(
   document.setRenderProfileDocument(std::move(profiles));
 
   auto &root = document.mutableRootNode();
-  root.children.push_back(
-      makeCameraNode("game_cam", LX_core::Vec3f{0.0f, 2.0f, 6.0f}, 45.0f,
-                     0xffffffffu));
+  root.children.push_back(makeCameraNode(
+      "game_cam", LX_core::Vec3f{0.0f, 2.0f, 6.0f}, 45.0f, 0xffffffffu));
 
   LX_infra::scene_io::SceneNodeDocument helmet;
   helmet.nodeName = "helmet";
@@ -246,10 +239,11 @@ LX_infra::scene_io::SceneDocument makeTaggedGltfHelmetDocument(
   missingTagCube.name = "missing_tag_cube";
   missingTagCube.transform.translation = {3.0f, 0.0f, 0.0f};
   missingTagCube.meshUri = "builtin://lxe_editor/primitives/cube";
-  missingTagCube.materials.push_back(LX_infra::scene_io::MaterialBindingDocument{
-      .tag = "realtime-blinnphong",
-      .uri = "assets/materials/blinnphong_lit.material",
-  });
+  missingTagCube.materials.push_back(
+      LX_infra::scene_io::MaterialBindingDocument{
+          .tag = "realtime-blinnphong",
+          .uri = "assets/materials/blinnphong_lit.material",
+      });
   root.children.push_back(std::move(missingTagCube));
 
   return document;
@@ -261,12 +255,10 @@ LX_infra::scene_io::SceneDocument makeWarningSceneDocument() {
   document.setGameplayCameraPath("/cam_a");
 
   auto &root = document.mutableRootNode();
-  root.children.push_back(
-      makeCameraNode("cam_a", LX_core::Vec3f{0.0f, 0.0f, 3.0f}, 30.0f,
-                     0x00000001u));
-  root.children.push_back(
-      makeCameraNode("cam_b", LX_core::Vec3f{0.0f, 0.0f, 8.0f}, 60.0f,
-                     0x12345678u));
+  root.children.push_back(makeCameraNode(
+      "cam_a", LX_core::Vec3f{0.0f, 0.0f, 3.0f}, 30.0f, 0x00000001u));
+  root.children.push_back(makeCameraNode(
+      "cam_b", LX_core::Vec3f{0.0f, 0.0f, 8.0f}, 60.0f, 0x12345678u));
 
   LX_infra::scene_io::SceneNodeDocument cube;
   cube.name = "missing_material_cube";
@@ -274,16 +266,27 @@ LX_infra::scene_io::SceneDocument makeWarningSceneDocument() {
   cube.transform.scale = {2.0f, 2.0f, 2.0f};
   cube.visibilityMask = 0x12345678u;
   cube.meshUri = "builtin://lxe_editor/primitives/cube";
-  cube.materialUri = "assets/materials/does_not_exist.material";
+  cube.materialUri = "assets/materials/blinnphong_lit.material";
   root.children.push_back(std::move(cube));
 
   return document;
 }
 
+LX_infra::scene_io::SceneDocument makeMissingMaterialSceneDocument() {
+  auto document = makeWarningSceneDocument();
+  auto &root = document.mutableRootNode();
+  for (auto &child : root.children) {
+    if (child.name == "missing_material_cube") {
+      child.materialUri = "assets/materials/does_not_exist.material";
+    }
+  }
+  return document;
+}
+
 void testIblMetalSphereLoadsToSceneResourceTable() {
-  const std::filesystem::path scenePath =
-      std::filesystem::current_path() / "assets" / "scenes" /
-      "ibl_metal_sphere.scene.yaml";
+  const std::filesystem::path scenePath = std::filesystem::current_path() /
+                                          "assets" / "scenes" /
+                                          "ibl_metal_sphere.scene.yaml";
   LX_infra::offline::OfflineSceneLoader loader{
       LX_infra::offline::OfflineAssetResolver(scenePath)};
   const auto loaded = loader.loadFile(scenePath, "/game_cam");
@@ -293,26 +296,27 @@ void testIblMetalSphereLoadsToSceneResourceTable() {
   EXPECT(table.materialCount() >= 1, "scene table should contain materials");
   EXPECT(table.objectCount() >= 1, "scene table should contain objects");
   EXPECT(table.cameraCount() == 1, "requested camera should load");
-  EXPECT(table.lightCount() == 1, "scene table should contain directional light");
+  EXPECT(table.lightCount() == 1,
+         "scene table should contain directional light");
   EXPECT(!table.buildUploadView().primitives.empty(),
          "scene table should produce upload primitives");
 
   const auto uploadView = table.buildUploadView();
-  const auto hasGroundOverride = std::any_of(
-      uploadView.materials.begin(), uploadView.materials.end(),
-      [](const auto &material) {
-        return nearly(material.baseColor,
-                      LX_core::Vec4f{0.46f, 0.48f, 0.50f, 1.0f});
-      });
+  const auto hasGroundOverride =
+      std::any_of(uploadView.materials.begin(), uploadView.materials.end(),
+                  [](const auto &material) {
+                    return nearly(material.baseColor,
+                                  LX_core::Vec4f{0.46f, 0.48f, 0.50f, 1.0f});
+                  });
   EXPECT(hasGroundOverride,
          "node material baseColor override should reach GPU material records");
 
-  const auto hasGoldPbr = std::any_of(
-      uploadView.materials.begin(), uploadView.materials.end(),
-      [](const auto &material) {
-        return nearly(material.pbrParams.x, 1.0f) &&
-               nearly(material.pbrParams.y, 0.25f);
-      });
+  const auto hasGoldPbr =
+      std::any_of(uploadView.materials.begin(), uploadView.materials.end(),
+                  [](const auto &material) {
+                    return nearly(material.pbrParams.x, 1.0f) &&
+                           nearly(material.pbrParams.y, 0.25f);
+                  });
   EXPECT(hasGoldPbr,
          "material asset metallic/roughness values should reach GPU records");
 }
@@ -333,28 +337,23 @@ void testBuiltinSphereUsesSharedPrimitiveMesh() {
          "offline loader should expose shared builtin mesh indices");
 }
 
-void testPlainGltfHelmetLoadsToSceneResourceTable() {
+void testPlainGltfHelmetRequiresExplicitMaterial() {
   LX_infra::offline::OfflineSceneLoader loader{
       LX_infra::offline::OfflineAssetResolver(std::filesystem::current_path() /
                                               "assets" / "scenes" /
                                               "warning_fixture.scene.yaml")};
 
-  bool loadedWithoutBuiltinOnlyRejection = false;
+  bool rejectedMissingMaterial = false;
   try {
-    const auto loaded = loader.load(makePlainGltfHelmetDocument(), "/game_cam");
-    loadedWithoutBuiltinOnlyRejection = true;
-    EXPECT(loaded.table.objectCount() > 0,
-           "plain glTF helmet should register an offline object");
-    EXPECT(loaded.table.materialCount() > 0,
-           "plain glTF helmet should register a shared PBR material");
+    (void)loader.load(makePlainGltfHelmetDocument(), "/game_cam");
   } catch (const std::exception &ex) {
     const std::string message = ex.what();
-    EXPECT(message.find("offline MVP only supports shared builtin primitive "
-                        "meshes") == std::string::npos,
-           "plain glTF helmet should not hit the old builtin-only rejection");
+    rejectedMissingMaterial =
+        message.find("offline scene material requires explicit uri") !=
+        std::string::npos;
   }
-  EXPECT(loadedWithoutBuiltinOnlyRejection,
-         "plain glTF helmet should load through OfflineSceneLoader");
+  EXPECT(rejectedMissingMaterial,
+         "plain glTF helmet without material should be rejected");
 }
 
 void testOfflineSceneLoaderSelectsTaggedMaterialAndSkipsMissingTags() {
@@ -371,13 +370,13 @@ void testOfflineSceneLoaderSelectsTaggedMaterialAndSkipsMissingTags() {
   EXPECT(loaded.table.materialCount() == 1,
          "offline loader should register only the selected tagged material");
 
-  const auto hasPbrRecord = std::any_of(
-      uploadView.materials.begin(), uploadView.materials.end(),
-      [](const auto &material) {
-        return nearly(material.pbrParams.x, 1.0f) &&
-               nearly(material.pbrParams.y, 1.0f) &&
-               nearly(material.pbrParams.w, 1.0f);
-      });
+  const auto hasPbrRecord =
+      std::any_of(uploadView.materials.begin(), uploadView.materials.end(),
+                  [](const auto &material) {
+                    return nearly(material.pbrParams.x, 1.0f) &&
+                           nearly(material.pbrParams.y, 1.0f) &&
+                           nearly(material.pbrParams.w, 1.0f);
+                  });
   EXPECT(hasPbrRecord,
          "offline materialTag should select the configured glTF PBR material");
 }
@@ -391,22 +390,21 @@ void testOfflineSceneLoaderCanSelectBlinnPhongTag() {
   const auto loaded = loader.load(
       makeTaggedGltfHelmetDocument("realtime-blinnphong"), "/game_cam");
   const auto uploadView = loaded.table.buildUploadView();
-  const auto hasBlinnPhongRecord = std::any_of(
-      uploadView.materials.begin(), uploadView.materials.end(),
-      [](const auto &material) {
-        return nearly(material.baseColor,
-                      LX_core::Vec4f{0.8f, 0.8f, 0.8f, 1.0f}) &&
-               nearly(material.pbrParams.z, 1.0f) &&
-               nearly(material.emissive.w, 12.0f);
-      });
+  const auto hasBlinnPhongRecord =
+      std::any_of(uploadView.materials.begin(), uploadView.materials.end(),
+                  [](const auto &material) {
+                    return nearly(material.baseColor,
+                                  LX_core::Vec4f{0.8f, 0.8f, 0.8f, 1.0f}) &&
+                           nearly(material.pbrParams.z, 1.0f) &&
+                           nearly(material.emissive.w, 12.0f);
+                  });
   EXPECT(hasBlinnPhongRecord,
          "offline loader should use the selected non-PBR tagged material");
 }
 
 void testPlainGltfHelmetExplicitMaterialDoesNotLoadPbrBridgeMaterial() {
   const std::filesystem::path materialPath =
-      std::filesystem::current_path() / "assets" / "materials" /
-      "pbr.material";
+      std::filesystem::current_path() / "assets" / "materials" / "pbr.material";
   restoreStaleHiddenMaterialIfNeeded(materialPath);
   const std::filesystem::path hiddenMaterialPath =
       makeUniqueHiddenMaterialPath(materialPath);
@@ -429,14 +427,14 @@ void testPlainGltfHelmetExplicitMaterialDoesNotLoadPbrBridgeMaterial() {
     EXPECT(loaded.table.materialCount() > 0,
            "explicit-material glTF helmet should register a material");
     const auto uploadView = loaded.table.buildUploadView();
-    const auto hasBlinnPhongRecord = std::any_of(
-        uploadView.materials.begin(), uploadView.materials.end(),
-        [](const auto &material) {
-          return nearly(material.baseColor,
-                        LX_core::Vec4f{0.8f, 0.8f, 0.8f, 1.0f}) &&
-                 nearly(material.pbrParams.z, 1.0f) &&
-                 nearly(material.emissive.w, 12.0f);
-        });
+    const auto hasBlinnPhongRecord =
+        std::any_of(uploadView.materials.begin(), uploadView.materials.end(),
+                    [](const auto &material) {
+                      return nearly(material.baseColor,
+                                    LX_core::Vec4f{0.8f, 0.8f, 0.8f, 1.0f}) &&
+                             nearly(material.pbrParams.z, 1.0f) &&
+                             nearly(material.emissive.w, 12.0f);
+                    });
     EXPECT(hasBlinnPhongRecord,
            "explicit glTF material should use blinnphong_lit material "
            "parameters instead of glTF PBR metadata");
@@ -450,19 +448,19 @@ void testPlainGltfHelmetExplicitMaterialDoesNotLoadPbrBridgeMaterial() {
 }
 
 void testBuiltinSphereWindingMatchesOutwardNormals() {
-  const auto sphere =
-      LX_core::buildBuiltinPrimitiveMesh("builtin://lxe_editor/primitives/sphere");
-  const auto *vertices =
-      dynamic_cast<const LX_core::VertexBuffer<LX_core::VertexPosNormalUvBone> *>(
-          sphere->getVertexBuffer().get());
+  const auto sphere = LX_core::buildBuiltinPrimitiveMesh(
+      "builtin://lxe_editor/primitives/sphere");
+  const auto *vertices = dynamic_cast<
+      const LX_core::VertexBuffer<LX_core::VertexPosNormalUvBone> *>(
+      &sphere->getVertexBuffer());
   EXPECT(vertices != nullptr, "builtin sphere should expose typed vertices");
   if (vertices == nullptr) {
     return;
   }
   const auto *indices =
-      static_cast<const u32 *>(sphere->getIndexBuffer()->getRawData());
-  const auto *vertexData =
-      static_cast<const LX_core::VertexPosNormalUvBone *>(vertices->getRawData());
+      static_cast<const u32 *>(sphere->getIndexBuffer().getRawData());
+  const auto *vertexData = static_cast<const LX_core::VertexPosNormalUvBone *>(
+      vertices->getRawData());
 
   bool checkedTriangle = false;
   for (u32 i = 0; i + 2 < sphere->getIndexCount(); i += 3) {
@@ -479,13 +477,14 @@ void testBuiltinSphereWindingMatchesOutwardNormals() {
            "builtin sphere triangle winding should match outward normals");
     checkedTriangle = true;
   }
-  EXPECT(checkedTriangle, "builtin sphere winding test should inspect triangles");
+  EXPECT(checkedTriangle,
+         "builtin sphere winding test should inspect triangles");
 }
 
 void testSelectedCameraObjectStateAndWarnings() {
-  const std::filesystem::path scenePath =
-      std::filesystem::current_path() / "assets" / "scenes" /
-      "warning_fixture.scene.yaml";
+  const std::filesystem::path scenePath = std::filesystem::current_path() /
+                                          "assets" / "scenes" /
+                                          "warning_fixture.scene.yaml";
   LX_infra::offline::OfflineSceneLoader loader{
       LX_infra::offline::OfflineAssetResolver(scenePath)};
   const auto document = makeWarningSceneDocument();
@@ -496,12 +495,6 @@ void testSelectedCameraObjectStateAndWarnings() {
   EXPECT(table.lightCount() == 0, "fixture should not register lights");
   EXPECT(table.objectCount() == 1, "fixture should load one object");
 
-  const auto hasMissingMaterialWarning = std::any_of(
-      loaded.warnings.begin(), loaded.warnings.end(), [](const auto &warning) {
-        return warning.find("material asset not found") != std::string::npos;
-      });
-  EXPECT(hasMissingMaterialWarning,
-         "missing material asset should produce a warning");
   const auto hasNoDirectionalLightWarning = std::any_of(
       loaded.warnings.begin(), loaded.warnings.end(), [](const auto &warning) {
         return warning.find("no directional light") != std::string::npos;
@@ -517,8 +510,7 @@ void testSelectedCameraObjectStateAndWarnings() {
     EXPECT(camera.has_value(), "selected camera handle should resolve");
     if (camera.has_value()) {
       const auto expectedPose = LX_core::makeCameraPose(
-          LX_core::Vec3f{0.0f, 0.0f, 8.0f},
-          LX_core::Vec3f{0.0f, 0.0f, -1.0f},
+          LX_core::Vec3f{0.0f, 0.0f, 8.0f}, LX_core::Vec3f{0.0f, 0.0f, -1.0f},
           LX_core::Vec3f{0.0f, 1.0f, 0.0f});
       const LX_core::CameraProjection expectedProjection{
           .type = LX_core::CameraType::Perspective,
@@ -530,10 +522,10 @@ void testSelectedCameraObjectStateAndWarnings() {
       EXPECT(matrixNearly(camera->get().view,
                           LX_core::makeCameraViewMatrix(expectedPose)),
              "selected camera view matrix should match /cam_b transform");
-      EXPECT(matrixNearly(
-                 camera->get().proj,
-                 LX_core::makeCameraProjectionMatrix(expectedProjection)),
-             "selected camera projection matrix should match /cam_b settings");
+      EXPECT(
+          matrixNearly(camera->get().proj,
+                       LX_core::makeCameraProjectionMatrix(expectedProjection)),
+          "selected camera projection matrix should match /cam_b settings");
       EXPECT(camera->get().pose.eye == expectedPose.eye,
              "selected camera pose should be retained in CameraResource");
       EXPECT(camera->get().projection.type == LX_core::CameraType::Perspective,
@@ -553,9 +545,10 @@ void testSelectedCameraObjectStateAndWarnings() {
     EXPECT(object.worldBounds.isValid(), "object world bounds should be valid");
     const LX_core::Vec3f expectedMin{1.0f, 2.0f, 3.0f};
     const LX_core::Vec3f expectedMax{3.0f, 4.0f, 5.0f};
-    EXPECT(object.worldBounds.min == expectedMin &&
-               object.worldBounds.max == expectedMax,
-           "object world bounds should include transform scale and translation");
+    EXPECT(
+        object.worldBounds.min == expectedMin &&
+            object.worldBounds.max == expectedMax,
+        "object world bounds should include transform scale and translation");
   }
 
   const auto uploadView = table.buildUploadView();
@@ -573,10 +566,29 @@ void testSelectedCameraObjectStateAndWarnings() {
   }
 }
 
+void testMissingMaterialFailsInsteadOfFallback() {
+  const std::filesystem::path scenePath = std::filesystem::current_path() /
+                                          "assets" / "scenes" /
+                                          "warning_fixture.scene.yaml";
+  LX_infra::offline::OfflineSceneLoader loader{
+      LX_infra::offline::OfflineAssetResolver(scenePath)};
+
+  bool rejectedMissingMaterial = false;
+  try {
+    (void)loader.load(makeMissingMaterialSceneDocument(), "/cam_b");
+  } catch (const std::exception &ex) {
+    rejectedMissingMaterial =
+        std::string(ex.what()).find("material asset not found") !=
+        std::string::npos;
+  }
+  EXPECT(rejectedMissingMaterial,
+         "missing material asset should fail instead of using a fallback");
+}
+
 void testOrthographicCameraProjectionMetadataSurvivesLoading() {
-  const std::filesystem::path scenePath =
-      std::filesystem::current_path() / "assets" / "scenes" /
-      "warning_fixture.scene.yaml";
+  const std::filesystem::path scenePath = std::filesystem::current_path() /
+                                          "assets" / "scenes" /
+                                          "warning_fixture.scene.yaml";
   LX_infra::offline::OfflineSceneLoader loader{
       LX_infra::offline::OfflineAssetResolver(scenePath)};
 
@@ -599,6 +611,7 @@ void testOrthographicCameraProjectionMetadataSurvivesLoading() {
   LX_infra::scene_io::SceneNodeDocument cube;
   cube.name = "cube";
   cube.meshUri = "builtin://lxe_editor/primitives/cube";
+  cube.materialUri = "assets/materials/blinnphong_lit.material";
   root.children.push_back(std::move(cube));
 
   auto loaded = loader.load(document, "/ortho_cam");
@@ -620,8 +633,7 @@ void testOrthographicCameraProjectionMetadataSurvivesLoading() {
   EXPECT(nearly(projection.aspect, 1.5f),
          "CameraResource should preserve orthographic aspect");
   EXPECT(nearly(projection.left, -4.5f) && nearly(projection.right, 4.5f) &&
-             nearly(projection.bottom, -3.0f) &&
-             nearly(projection.top, 3.0f),
+             nearly(projection.bottom, -3.0f) && nearly(projection.top, 3.0f),
          "CameraResource should preserve orthographic bounds from height");
   const LX_core::Vec3f expectedEye{1.0f, 2.0f, 3.0f};
   EXPECT(camera->get().pose.eye == expectedEye,
@@ -633,12 +645,13 @@ void testOrthographicCameraProjectionMetadataSurvivesLoading() {
 int main() {
   testIblMetalSphereLoadsToSceneResourceTable();
   testBuiltinSphereUsesSharedPrimitiveMesh();
-  testPlainGltfHelmetLoadsToSceneResourceTable();
+  testPlainGltfHelmetRequiresExplicitMaterial();
   testOfflineSceneLoaderSelectsTaggedMaterialAndSkipsMissingTags();
   testOfflineSceneLoaderCanSelectBlinnPhongTag();
   testPlainGltfHelmetExplicitMaterialDoesNotLoadPbrBridgeMaterial();
   testBuiltinSphereWindingMatchesOutwardNormals();
   testSelectedCameraObjectStateAndWarnings();
+  testMissingMaterialFailsInsteadOfFallback();
   testOrthographicCameraProjectionMetadataSurvivesLoading();
   if (failures != 0) {
     std::cerr << "test_offline_scene_loader failed with " << failures

@@ -6,6 +6,7 @@
 #include "core/utils/string_table.hpp"
 #include <cassert>
 #include <cstddef>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -81,21 +82,29 @@ private:
   Mat4f m_bones[MAX_BONE_COUNT];
 };
 
-using SkeletonDataSharedPtr = std::shared_ptr<SkeletonData>;
+using SkeletonDataUniquePtr = std::unique_ptr<SkeletonData>;
 
 class Skeleton;
 using SkeletonSharedPtr = std::shared_ptr<Skeleton>;
+using SkeletonUniquePtr = std::unique_ptr<Skeleton>;
 
 class Skeleton {
   class Token {};
 
 public:
   Skeleton(Token token, const std::vector<Bone> &bones)
-      : bones(bones), ubo(std::make_shared<SkeletonData>(bones)) {}
+      : bones(bones), ubo(std::make_unique<SkeletonData>(bones)) {}
 
   static SkeletonSharedPtr create(const std::vector<Bone> &bones) {
     Token token;
     return std::make_shared<Skeleton>(token, bones);
+  }
+
+  [[nodiscard]] SkeletonUniquePtr cloneUnique() const {
+    Token token;
+    auto clone = std::make_unique<Skeleton>(token, bones);
+    clone->ubo->updateBy(bones);
+    return clone;
   }
 
   bool addBone(const Bone &bone) {
@@ -109,10 +118,13 @@ public:
 
   void syncGpuData() { ubo->updateBy(bones); }
 
-  SkeletonDataSharedPtr getUBO() const { return ubo; }
+  [[nodiscard]] const std::vector<Bone> &getBones() const { return bones; }
+
+  [[nodiscard]] SkeletonData &getUBO() { return *ubo; }
+  [[nodiscard]] const SkeletonData &getUBO() const { return *ubo; }
 private:
   std::vector<Bone> bones;
-  SkeletonDataSharedPtr ubo;
+  SkeletonDataUniquePtr ubo;
 };
 
 } // namespace LX_core

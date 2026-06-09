@@ -1,18 +1,18 @@
 #pragma once
 
 #include "core/offline/offline_render_job.hpp"
-#include "core/rhi/gpu_resource.hpp"
+#include "core/rhi/descriptor_resource_ref.hpp"
 
 #include <vector>
 
 namespace LX_core::offline {
 
 struct OfflineSceneStorageResources final {
-  std::vector<IGpuResourceSharedPtr> descriptorResources;
-  IGpuResourceSharedPtr outputPixels;
+  DescriptorResourceList descriptorResources;
+  GpuResourceRef outputPixels;
 };
 
 [[nodiscard]] OfflineSceneStorageResources
-buildOfflineSceneStorageResources(const OfflineRenderJob &job);
+buildOfflineSceneStorageResources(OfflineRenderJob &job);
 
 } // namespace LX_core::offline

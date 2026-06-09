@@ -560,48 +560,59 @@ makeMaterialValueJson(const MaterialParameterValue &value) {
   return text;
 }
 
-[[nodiscard]] std::shared_ptr<DirectionalLight>
+[[nodiscard]] std::optional<std::reference_wrapper<DirectionalLight>>
 resolveDirectionalLight(SceneNode &node) {
   const auto scene = node.getAttachedScene();
   if (!scene) {
-    return nullptr;
+    return std::nullopt;
   }
   return scene->getDirectionalLight(node);
 }
 
-[[nodiscard]] LightBaseSharedPtr resolveLight(SceneNode &node) {
+[[nodiscard]] std::optional<std::reference_wrapper<LightBase>>
+resolveLight(SceneNode &node) {
   const auto scene = node.getAttachedScene();
   if (!scene) {
-    return nullptr;
+    return std::nullopt;
   }
   return scene->getLight(node);
 }
 
-[[nodiscard]] std::string lightKindName(const LightBaseSharedPtr &light) {
-  if (std::dynamic_pointer_cast<DirectionalLight>(light)) {
+template <typename LightT>
+[[nodiscard]] std::optional<std::reference_wrapper<LightT>>
+castLight(std::optional<std::reference_wrapper<LightBase>> light) {
+  if (!light.has_value()) {
+    return std::nullopt;
+  }
+  if (auto *typed = dynamic_cast<LightT *>(&light->get())) {
+    return std::ref(*typed);
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::string lightKindName(const LightBase &light) {
+  if (dynamic_cast<const DirectionalLight *>(&light)) {
     return "Directional";
   }
-  if (std::dynamic_pointer_cast<PointLight>(light)) {
+  if (dynamic_cast<const PointLight *>(&light)) {
     return "Point";
   }
-  if (std::dynamic_pointer_cast<SpotLight>(light)) {
+  if (dynamic_cast<const SpotLight *>(&light)) {
     return "Spot";
   }
   return {};
 }
 
-void setLightCastsShadow(const LightBaseSharedPtr &light,
-                         const bool castsShadow) {
+void setLightCastsShadow(LightBase &light, const bool castsShadow) {
   std::vector<StringID> passes{Pass_Forward, Pass_Deferred};
   if (castsShadow) {
     passes.push_back(Pass_Shadow);
   }
-  if (const auto directional =
-          std::dynamic_pointer_cast<DirectionalLight>(light)) {
+  if (auto *directional = dynamic_cast<DirectionalLight *>(&light)) {
     directional->setSupportedPasses(passes);
-  } else if (const auto point = std::dynamic_pointer_cast<PointLight>(light)) {
+  } else if (auto *point = dynamic_cast<PointLight *>(&light)) {
     point->setSupportedPasses(passes);
-  } else if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
+  } else if (auto *spot = dynamic_cast<SpotLight *>(&light)) {
     spot->setSupportedPasses(passes);
   }
 }
@@ -627,12 +638,12 @@ bool syncLightSpatialProperties(Scene &scene, const SceneNodeSharedPtr &node) {
   if (!light) {
     return false;
   }
-  if (const auto directional =
-          std::dynamic_pointer_cast<DirectionalLight>(light)) {
-    directional->setDirection(
-        lightForwardDirection(*node, directional->getDirection()));
-  } else if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
-    spot->setDirection(lightForwardDirection(*node, spot->getDirection()));
+  if (auto directional = castLight<DirectionalLight>(light)) {
+    directional->get().setDirection(
+        lightForwardDirection(*node, directional->get().getDirection()));
+  } else if (auto spot = castLight<SpotLight>(light)) {
+    spot->get().setDirection(
+        lightForwardDirection(*node, spot->get().getDirection()));
   }
   return true;
 }
@@ -822,7 +833,7 @@ findActiveCamera(Scene &scene, EditorState &editorState) {
     if (!light) {
       return makeError("field not available on node: light.kind");
     }
-    const std::string value = lightKindName(light);
+    const std::string value = lightKindName(light->get());
     return makeOk("light.kind = " + value,
                   "{\"value\":\"" + jsonEscape(value) + "\"}");
   }
@@ -832,11 +843,10 @@ findActiveCamera(Scene &scene, EditorState &editorState) {
       return makeError("field not available on node: direction");
     }
     Vec3f value{};
-    if (const auto directional =
-            std::dynamic_pointer_cast<DirectionalLight>(light)) {
-      value = directional->getDirection();
-    } else if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
-      value = spot->getDirection();
+    if (const auto directional = castLight<DirectionalLight>(light)) {
+      value = directional->get().getDirection();
+    } else if (const auto spot = castLight<SpotLight>(light)) {
+      value = spot->get().getDirection();
     } else {
       return makeError("field not available on node: direction");
     }
@@ -850,14 +860,12 @@ findActiveCamera(Scene &scene, EditorState &editorState) {
       return makeError("field not available on node: color");
     }
     Vec3f value{};
-    if (const auto directional =
-            std::dynamic_pointer_cast<DirectionalLight>(light)) {
-      value = directional->getColor();
-    } else if (const auto point =
-                   std::dynamic_pointer_cast<PointLight>(light)) {
-      value = point->getColor();
-    } else if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
-      value = spot->getColor();
+    if (const auto directional = castLight<DirectionalLight>(light)) {
+      value = directional->get().getColor();
+    } else if (const auto point = castLight<PointLight>(light)) {
+      value = point->get().getColor();
+    } else if (const auto spot = castLight<SpotLight>(light)) {
+      value = spot->get().getColor();
     }
     return makeOk("color = (" + formatFloat(value.x) + ", " +
                       formatFloat(value.y) + ", " + formatFloat(value.z) + ")",
@@ -869,14 +877,12 @@ findActiveCamera(Scene &scene, EditorState &editorState) {
       return makeError("field not available on node: intensity");
     }
     float value = 0.0f;
-    if (const auto directional =
-            std::dynamic_pointer_cast<DirectionalLight>(light)) {
-      value = directional->getIntensity();
-    } else if (const auto point =
-                   std::dynamic_pointer_cast<PointLight>(light)) {
-      value = point->getIntensity();
-    } else if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
-      value = spot->getIntensity();
+    if (const auto directional = castLight<DirectionalLight>(light)) {
+      value = directional->get().getIntensity();
+    } else if (const auto point = castLight<PointLight>(light)) {
+      value = point->get().getIntensity();
+    } else if (const auto spot = castLight<SpotLight>(light)) {
+      value = spot->get().getIntensity();
     }
     return makeOk("intensity = " + formatFloat(value),
                   "{\"value\":" + formatFloat(value) + "}");
@@ -886,7 +892,7 @@ findActiveCamera(Scene &scene, EditorState &editorState) {
     if (!directional) {
       return makeError("field not available on node: shadowStrength");
     }
-    const float value = directional->getShadowParams().z;
+    const float value = directional->get().getShadowParams().z;
     return makeOk("shadowStrength = " + formatFloat(value),
                   "{\"value\":" + formatFloat(value) + "}");
   }
@@ -895,7 +901,7 @@ findActiveCamera(Scene &scene, EditorState &editorState) {
     if (!directional) {
       return makeError("field not available on node: shadowBias");
     }
-    const float value = directional->getShadowParams().y;
+    const float value = directional->get().getShadowParams().y;
     return makeOk("shadowBias = " + formatFloat(value),
                   "{\"value\":" + formatFloat(value) + "}");
   }
@@ -904,7 +910,7 @@ findActiveCamera(Scene &scene, EditorState &editorState) {
     if (!directional) {
       return makeError("field not available on node: shadowDistance");
     }
-    const float value = directional->getShadowDistance();
+    const float value = directional->get().getShadowDistance();
     return makeOk("shadowDistance = " + formatFloat(value),
                   "{\"value\":" + formatFloat(value) + "}");
   }
@@ -913,7 +919,7 @@ findActiveCamera(Scene &scene, EditorState &editorState) {
     if (!directional) {
       return makeError("field not available on node: shadowCascadeCount");
     }
-    const u32 value = directional->getShadowCascadeCount();
+    const u32 value = directional->get().getShadowCascadeCount();
     return makeOk("shadowCascadeCount = " + std::to_string(value),
                   makeUnsignedJson(value));
   }
@@ -922,40 +928,46 @@ findActiveCamera(Scene &scene, EditorState &editorState) {
     if (!light) {
       return makeError("field not available on node: castsShadow");
     }
-    const bool value = light->supportsPass(Pass_Shadow);
+    const bool value = light->get().supportsPass(Pass_Shadow);
     return makeOk(std::string("castsShadow = ") + (value ? "true" : "false"),
                   std::string("{\"value\":") + (value ? "true" : "false") +
                       "}");
   }
   if (field == "light.range" || field == "range") {
     const auto light = resolveLight(node);
-    if (const auto point = std::dynamic_pointer_cast<PointLight>(light)) {
-      return makeOk("range = " + formatFloat(point->getRange()),
-                    "{\"value\":" + formatFloat(point->getRange()) + "}");
+    if (const auto point = castLight<PointLight>(light)) {
+      return makeOk("range = " + formatFloat(point->get().getRange()),
+                    "{\"value\":" + formatFloat(point->get().getRange()) +
+                        "}");
     }
-    if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
-      return makeOk("range = " + formatFloat(spot->getRange()),
-                    "{\"value\":" + formatFloat(spot->getRange()) + "}");
+    if (const auto spot = castLight<SpotLight>(light)) {
+      return makeOk("range = " + formatFloat(spot->get().getRange()),
+                    "{\"value\":" + formatFloat(spot->get().getRange()) +
+                        "}");
     }
     return makeError("field not available on node: range");
   }
   if (field == "light.innerConeDegrees" || field == "innerConeDegrees") {
-    const auto light = std::dynamic_pointer_cast<SpotLight>(resolveLight(node));
+    const auto light = castLight<SpotLight>(resolveLight(node));
     if (!light) {
       return makeError("field not available on node: innerConeDegrees");
     }
     return makeOk(
-        "innerConeDegrees = " + formatFloat(light->getInnerConeDegrees()),
-        "{\"value\":" + formatFloat(light->getInnerConeDegrees()) + "}");
+        "innerConeDegrees = " +
+            formatFloat(light->get().getInnerConeDegrees()),
+        "{\"value\":" + formatFloat(light->get().getInnerConeDegrees()) +
+            "}");
   }
   if (field == "light.outerConeDegrees" || field == "outerConeDegrees") {
-    const auto light = std::dynamic_pointer_cast<SpotLight>(resolveLight(node));
+    const auto light = castLight<SpotLight>(resolveLight(node));
     if (!light) {
       return makeError("field not available on node: outerConeDegrees");
     }
     return makeOk(
-        "outerConeDegrees = " + formatFloat(light->getOuterConeDegrees()),
-        "{\"value\":" + formatFloat(light->getOuterConeDegrees()) + "}");
+        "outerConeDegrees = " +
+            formatFloat(light->get().getOuterConeDegrees()),
+        "{\"value\":" + formatFloat(light->get().getOuterConeDegrees()) +
+            "}");
   }
   if (field == "name") {
     const std::string value = node.getName();
@@ -1172,11 +1184,10 @@ parseMaterialParameterValue(const ShaderPropertyType type,
   const auto light = resolveLight(node);
   if ((field == "light.direction" || field == "direction") && light) {
     Vec3f value{};
-    if (const auto directional =
-            std::dynamic_pointer_cast<DirectionalLight>(light)) {
-      value = directional->getDirection();
-    } else if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
-      value = spot->getDirection();
+    if (const auto directional = castLight<DirectionalLight>(light)) {
+      value = directional->get().getDirection();
+    } else if (const auto spot = castLight<SpotLight>(light)) {
+      value = spot->get().getDirection();
     } else {
       return {};
     }
@@ -1186,14 +1197,12 @@ parseMaterialParameterValue(const ShaderPropertyType type,
   }
   if ((field == "light.color" || field == "color") && light) {
     Vec3f value{};
-    if (const auto directional =
-            std::dynamic_pointer_cast<DirectionalLight>(light)) {
-      value = directional->getColor();
-    } else if (const auto point =
-                   std::dynamic_pointer_cast<PointLight>(light)) {
-      value = point->getColor();
-    } else if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
-      value = spot->getColor();
+    if (const auto directional = castLight<DirectionalLight>(light)) {
+      value = directional->get().getColor();
+    } else if (const auto point = castLight<PointLight>(light)) {
+      value = point->get().getColor();
+    } else if (const auto spot = castLight<SpotLight>(light)) {
+      value = spot->get().getColor();
     }
     return "set " + quoteToken(path + ".light.color") + " " +
            formatFloat(value.x) + " " + formatFloat(value.y) + " " +
@@ -1201,50 +1210,48 @@ parseMaterialParameterValue(const ShaderPropertyType type,
   }
   if ((field == "light.intensity" || field == "intensity") && light) {
     float value = 0.0f;
-    if (const auto directional =
-            std::dynamic_pointer_cast<DirectionalLight>(light)) {
-      value = directional->getIntensity();
-    } else if (const auto point =
-                   std::dynamic_pointer_cast<PointLight>(light)) {
-      value = point->getIntensity();
-    } else if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
-      value = spot->getIntensity();
+    if (const auto directional = castLight<DirectionalLight>(light)) {
+      value = directional->get().getIntensity();
+    } else if (const auto point = castLight<PointLight>(light)) {
+      value = point->get().getIntensity();
+    } else if (const auto spot = castLight<SpotLight>(light)) {
+      value = spot->get().getIntensity();
     }
     return "set " + quoteToken(path + ".light.intensity") + " " +
            formatFloat(value);
   }
   if ((field == "light.shadowBias" || field == "shadowBias") &&
-      std::dynamic_pointer_cast<DirectionalLight>(light)) {
-    const auto directional = std::dynamic_pointer_cast<DirectionalLight>(light);
+      castLight<DirectionalLight>(light)) {
+    const auto directional = castLight<DirectionalLight>(light);
     return "set " + quoteToken(path + ".light.shadowBias") + " " +
-           formatFloat(directional->getShadowParams().y);
+           formatFloat(directional->get().getShadowParams().y);
   }
   if ((field == "light.castsShadow" || field == "castsShadow") && light) {
     return "set " + quoteToken(path + ".light.castsShadow") + " " +
-           (light->supportsPass(Pass_Shadow) ? "true" : "false");
+           (light->get().supportsPass(Pass_Shadow) ? "true" : "false");
   }
   if ((field == "light.range" || field == "range") && light) {
-    if (const auto point = std::dynamic_pointer_cast<PointLight>(light)) {
+    if (const auto point = castLight<PointLight>(light)) {
       return "set " + quoteToken(path + ".light.range") + " " +
-             formatFloat(point->getRange());
+             formatFloat(point->get().getRange());
     }
-    if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
+    if (const auto spot = castLight<SpotLight>(light)) {
       return "set " + quoteToken(path + ".light.range") + " " +
-             formatFloat(spot->getRange());
+             formatFloat(spot->get().getRange());
     }
   }
   if ((field == "light.innerConeDegrees" || field == "innerConeDegrees") &&
       light) {
-    if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
+    if (const auto spot = castLight<SpotLight>(light)) {
       return "set " + quoteToken(path + ".light.innerConeDegrees") + " " +
-             formatFloat(spot->getInnerConeDegrees());
+             formatFloat(spot->get().getInnerConeDegrees());
     }
   }
   if ((field == "light.outerConeDegrees" || field == "outerConeDegrees") &&
       light) {
-    if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
+    if (const auto spot = castLight<SpotLight>(light)) {
       return "set " + quoteToken(path + ".light.outerConeDegrees") + " " +
-             formatFloat(spot->getOuterConeDegrees());
+             formatFloat(spot->get().getOuterConeDegrees());
     }
   }
 
@@ -1336,21 +1343,19 @@ completeScenePaths(const Scene &scene, const CompletionContext &context) {
     fields.push_back("light.color");
     fields.push_back("light.intensity");
     fields.push_back("light.kind");
-    if (std::dynamic_pointer_cast<DirectionalLight>(light) ||
-        std::dynamic_pointer_cast<SpotLight>(light)) {
+    if (castLight<DirectionalLight>(light) || castLight<SpotLight>(light)) {
       fields.push_back("light.direction");
     }
-    if (std::dynamic_pointer_cast<DirectionalLight>(light)) {
+    if (castLight<DirectionalLight>(light)) {
       fields.push_back("light.shadowBias");
       fields.push_back("light.shadowCascadeCount");
       fields.push_back("light.shadowDistance");
       fields.push_back("light.shadowStrength");
     }
-    if (std::dynamic_pointer_cast<PointLight>(light) ||
-        std::dynamic_pointer_cast<SpotLight>(light)) {
+    if (castLight<PointLight>(light) || castLight<SpotLight>(light)) {
       fields.push_back("light.range");
     }
-    if (std::dynamic_pointer_cast<SpotLight>(light)) {
+    if (castLight<SpotLight>(light)) {
       fields.push_back("light.innerConeDegrees");
       fields.push_back("light.outerConeDegrees");
     }
@@ -1565,14 +1570,9 @@ makeLightDebugCamera(Scene &scene, EditorState &editorState,
   if (!found.ok) {
     return found;
   }
-  const auto light = scene.getLight(*lightNode);
-  if (!light) {
-    return makeError("node is not a light: " + lightPath);
-  }
-  const auto directionalLight =
-      std::dynamic_pointer_cast<DirectionalLight>(light);
+  const auto directionalLight = scene.getDirectionalLight(*lightNode);
   if (!directionalLight) {
-    return makeError("light-view currently requires a directional light");
+    return makeError("node is not a light: " + lightPath);
   }
 
   const std::string displayName =
@@ -1604,10 +1604,12 @@ makeLightDebugCamera(Scene &scene, EditorState &editorState,
           editorState.resolveActiveCamera(scene)) {
     if (const auto activeCamera = active->getComponent<CameraComponent>();
         activeCamera.has_value()) {
-      directionalLight->updateShadowCascadesForCamera(activeCamera->get());
+      directionalLight->get().updateShadowCascadesForCamera(
+          activeCamera->get());
     }
   }
-  const auto cascadeView = directionalLight->getShadowCascadeDebugView(0);
+  const auto cascadeView =
+      directionalLight->get().getShadowCascadeDebugView(0);
   if (!cascadeView.has_value()) {
     return makeError("directional light has no shadow cascade debug view");
   }
@@ -1777,8 +1779,7 @@ shadowProjectProbe(Scene &scene, const std::vector<std::string> &args) {
   if (!found.ok) {
     return found;
   }
-  const auto light =
-      std::dynamic_pointer_cast<DirectionalLight>(scene.getLight(*lightNode));
+  const auto light = scene.getDirectionalLight(*lightNode);
   if (!light) {
     return makeError("debug shadow-project light path is not directional");
   }
@@ -1791,11 +1792,11 @@ shadowProjectProbe(Scene &scene, const std::vector<std::string> &args) {
   const Mat4f cameraViewProj =
       camera->get().getProjMatrix(0.0f, GraphicsAPI::OpenGL) *
       camera->get().getViewMatrix();
-  const Mat4f shadowViewProj = light->getShadowViewProj();
+  const Mat4f shadowViewProj = light->get().getShadowViewProj();
   const Mat4f cascade0ViewProj =
-      light->getDirectionalUBO()->param.cascadeViewProj[0];
+      light->get().getDirectionalUBO().param.cascadeViewProj[0];
   std::optional<Mat4f> debugViewProj;
-  const auto debugView = light->getShadowCascadeDebugView(0);
+  const auto debugView = light->get().getShadowCascadeDebugView(0);
   if (debugView.has_value()) {
     const Mat4f view =
         Mat4f::lookAt(debugView->eye, debugView->target, debugView->up);
@@ -1910,15 +1911,40 @@ captureNodeClipboardEntry(Scene &scene, const SceneNode &node) {
   entry.visibilityMask = node.getVisibilityLayerMask();
 
   if (const auto mesh = node.getComponent<MeshComponent>(); mesh.has_value()) {
-    entry.mesh = mesh->get().getMesh();
+    if (const auto resolved =
+            scene.resources().resolve(mesh->get().getMeshHandle())) {
+      const MeshBuffer &source = resolved->get();
+      if (const auto storage =
+              scene.resources().resolve(source.getGeometryStorageHandle())) {
+        entry.mesh = MeshBuffer::create(storage->get().cloneShared(),
+                                        source.getVertexOffset(),
+                                        source.getIndexOffset(),
+                                        source.getVertexCount(),
+                                        source.getIndexCount(),
+                                        source.getBounds(),
+                                        source.isClosedVolume());
+      }
+    } else {
+      entry.mesh = mesh->get().getPendingMesh();
+    }
   }
   if (const auto material = node.getComponent<MaterialComponent>();
       material.has_value()) {
-    entry.material = material->get().getMaterialInstance();
+    if (const auto resolved =
+            scene.resources().resolve(material->get().getMaterialHandle())) {
+      entry.material = resolved->get().cloneInstanceData();
+    } else {
+      entry.material = material->get().getPendingMaterialInstance();
+    }
   }
   if (const auto skeleton = node.getComponent<SkeletonComponent>();
       skeleton.has_value()) {
-    entry.skeleton = skeleton->get().getSkeleton();
+    if (const auto resolved =
+            scene.resources().resolve(skeleton->get().getSkeletonHandle())) {
+      entry.skeleton = Skeleton::create(resolved->get().getBones());
+    } else {
+      entry.skeleton = skeleton->get().getPendingSkeleton();
+    }
   }
   if (const auto camera = node.getComponent<CameraComponent>();
       camera.has_value()) {
@@ -2081,7 +2107,9 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
   for (const auto &subtreeNode : subtreeNodes) {
     const auto light = scene.getLight(*subtreeNode);
     if (light) {
-      entry.attachedLights.push_back({subtreeNode, light});
+      auto clonedLight = light->get().cloneUnique();
+      entry.attachedLights.emplace_back(
+          subtreeNode, LightBaseSharedPtr(std::move(clonedLight)));
     }
   }
 
@@ -2271,11 +2299,10 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
     if (!value) {
       return makeError("invalid float for set direction");
     }
-    if (const auto directional =
-            std::dynamic_pointer_cast<DirectionalLight>(light)) {
-      directional->setDirection(*value);
-    } else if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
-      spot->setDirection(*value);
+    if (const auto directional = castLight<DirectionalLight>(light)) {
+      directional->get().setDirection(*value);
+    } else if (const auto spot = castLight<SpotLight>(light)) {
+      spot->get().setDirection(*value);
     } else {
       return makeError("field not available on node: direction");
     }
@@ -2296,14 +2323,12 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
     if (!value) {
       return makeError("invalid float for set color");
     }
-    if (const auto directional =
-            std::dynamic_pointer_cast<DirectionalLight>(light)) {
-      directional->setColor(*value);
-    } else if (const auto point =
-                   std::dynamic_pointer_cast<PointLight>(light)) {
-      point->setColor(*value);
-    } else if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
-      spot->setColor(*value);
+    if (const auto directional = castLight<DirectionalLight>(light)) {
+      directional->get().setColor(*value);
+    } else if (const auto point = castLight<PointLight>(light)) {
+      point->get().setColor(*value);
+    } else if (const auto spot = castLight<SpotLight>(light)) {
+      spot->get().setColor(*value);
     }
     return makeOk("color updated", "{\"value\":" + makeVec3Json(*value) + "}");
   }
@@ -2319,14 +2344,12 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
     if (!value) {
       return makeError("invalid float for set intensity");
     }
-    if (const auto directional =
-            std::dynamic_pointer_cast<DirectionalLight>(light)) {
-      directional->setIntensity(*value);
-    } else if (const auto point =
-                   std::dynamic_pointer_cast<PointLight>(light)) {
-      point->setIntensity(*value);
-    } else if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
-      spot->setIntensity(*value);
+    if (const auto directional = castLight<DirectionalLight>(light)) {
+      directional->get().setIntensity(*value);
+    } else if (const auto point = castLight<PointLight>(light)) {
+      point->get().setIntensity(*value);
+    } else if (const auto spot = castLight<SpotLight>(light)) {
+      spot->get().setIntensity(*value);
     }
     return makeOk("intensity updated",
                   "{\"value\":" + formatFloat(*value) + "}");
@@ -2343,10 +2366,11 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
     if (!value) {
       return makeError("invalid float for set shadowStrength");
     }
-    directional->setShadowStrength(*value);
-    return makeOk(
-        "shadowStrength updated",
-        "{\"value\":" + formatFloat(directional->getShadowParams().z) + "}");
+    directional->get().setShadowStrength(*value);
+    return makeOk("shadowStrength updated",
+                  "{\"value\":" +
+                      formatFloat(directional->get().getShadowParams().z) +
+                      "}");
   }
   if (field == "light.shadowBias" || field == "shadowBias") {
     if (args.size() != valueStartIndex + 1) {
@@ -2360,10 +2384,11 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
     if (!value) {
       return makeError("invalid float for set shadowBias");
     }
-    directional->setShadowBias(*value);
+    directional->get().setShadowBias(*value);
     return makeOk(
         "shadowBias updated",
-        "{\"value\":" + formatFloat(directional->getShadowParams().y) + "}");
+        "{\"value\":" +
+            formatFloat(directional->get().getShadowParams().y) + "}");
   }
   if (field == "light.shadowDistance" || field == "shadowDistance") {
     if (args.size() != valueStartIndex + 1) {
@@ -2377,10 +2402,11 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
     if (!value) {
       return makeError("invalid float for set shadowDistance");
     }
-    directional->setShadowDistance(*value);
+    directional->get().setShadowDistance(*value);
     CommandResult result = makeOk(
         "shadowDistance updated",
-        "{\"value\":" + formatFloat(directional->getShadowDistance()) + "}");
+        "{\"value\":" + formatFloat(directional->get().getShadowDistance()) +
+            "}");
     result.metadata["scene.rebuild"] = "true";
     return result;
   }
@@ -2396,10 +2422,10 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
     if (!value) {
       return makeError("invalid unsigned for set shadowCascadeCount");
     }
-    directional->setShadowCascadeCount(*value);
+    directional->get().setShadowCascadeCount(*value);
     CommandResult result =
         makeOk("shadowCascadeCount updated",
-               makeUnsignedJson(directional->getShadowCascadeCount()));
+               makeUnsignedJson(directional->get().getShadowCascadeCount()));
     result.metadata["scene.rebuild"] = "true";
     return result;
   }
@@ -2415,7 +2441,7 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
     if (!value.has_value()) {
       return makeError("invalid bool for set castsShadow");
     }
-    setLightCastsShadow(light, *value);
+    setLightCastsShadow(light->get(), *value);
     return makeOk(std::string("castsShadow updated"),
                   std::string("{\"value\":") + (*value ? "true" : "false") +
                       "}");
@@ -2429,10 +2455,10 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
       return makeError("invalid float for set range");
     }
     const auto light = resolveLight(node);
-    if (const auto point = std::dynamic_pointer_cast<PointLight>(light)) {
-      point->setRange(*value);
-    } else if (const auto spot = std::dynamic_pointer_cast<SpotLight>(light)) {
-      spot->setRange(*value);
+    if (const auto point = castLight<PointLight>(light)) {
+      point->get().setRange(*value);
+    } else if (const auto spot = castLight<SpotLight>(light)) {
+      spot->get().setRange(*value);
     } else {
       return makeError("field not available on node: range");
     }
@@ -2446,11 +2472,11 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
     if (!value) {
       return makeError("invalid float for set innerConeDegrees");
     }
-    const auto light = std::dynamic_pointer_cast<SpotLight>(resolveLight(node));
+    const auto light = castLight<SpotLight>(resolveLight(node));
     if (!light) {
       return makeError("field not available on node: innerConeDegrees");
     }
-    light->setInnerConeDegrees(*value);
+    light->get().setInnerConeDegrees(*value);
     return makeOk("innerConeDegrees updated",
                   "{\"value\":" + formatFloat(*value) + "}");
   }
@@ -2462,11 +2488,11 @@ void registerSubtreeWithScene(Scene &scene, const SceneNodeSharedPtr &node) {
     if (!value) {
       return makeError("invalid float for set outerConeDegrees");
     }
-    const auto light = std::dynamic_pointer_cast<SpotLight>(resolveLight(node));
+    const auto light = castLight<SpotLight>(resolveLight(node));
     if (!light) {
       return makeError("field not available on node: outerConeDegrees");
     }
-    light->setOuterConeDegrees(*value);
+    light->get().setOuterConeDegrees(*value);
     return makeOk("outerConeDegrees updated",
                   "{\"value\":" + formatFloat(*value) + "}");
   }

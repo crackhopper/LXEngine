@@ -154,6 +154,10 @@ class PbrtSceneConvertTest(unittest.TestCase):
             self.assertEqual(manifest["runtimeMaterialCount"], 3)
             self.assertEqual(manifest["sourceMaterialCount"], 3)
 
+            scene_text = scene_path.read_text(encoding="utf-8")
+            self.assertIn('"enabled": false', scene_text)
+            self.assertIn('"skyboxEnabled": false', scene_text)
+
             obj_text = (out_root / "meshes" / "mesh_00001.obj").read_text(
                 encoding="utf-8"
             )
@@ -173,6 +177,8 @@ class PbrtSceneConvertTest(unittest.TestCase):
                 / "LogoSilver.material"
             ).read_text(encoding="utf-8")
             self.assertIn('"shader": "pbr"', runtime_material_text)
+            self.assertIn('"HAS_IBL": false', runtime_material_text)
+            self.assertIn('"albedoMap": "white"', runtime_material_text)
             self.assertIn(
                 '"MaterialUBO.metallicFactor": 1.0', runtime_material_text
             )
@@ -205,7 +211,6 @@ class PbrtSceneConvertTest(unittest.TestCase):
             self.assertIn('"amount":', mix_material_text)
             self.assertIn('"value": [0.2, 0.2, 0.2]', mix_material_text)
 
-            scene_text = scene_path.read_text(encoding="utf-8")
             self.assertIn('"nodeName": "pbrt_runtime_key_light"', scene_text)
             self.assertIn('"tag": "realtime-pbr"', scene_text)
             self.assertIn('"pbrtSourceMaterialUri":', scene_text)

@@ -9,6 +9,7 @@
 #include "core/raytracing/software_bvh.hpp"
 #include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/scene_resource_table.hpp"
+#include "core/scene/scene_gpu_records.hpp"
 #include "infra/shader_compiler/compiled_shader.hpp"
 #include "infra/shader_compiler/shader_compiler.hpp"
 #include "infra/shader_compiler/shader_reflector.hpp"
@@ -81,6 +82,15 @@ MeshBufferSharedPtr makeOffsetMeshBuffer() {
       storage, 1, 0, 3, 3, BoundingBox{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 0.0f}});
 }
 
+MeshBuffer::UniquePtr uniqueMesh(const MeshBufferSharedPtr &mesh) {
+  return mesh->cloneUnique();
+}
+
+MaterialInstance::UniquePtr
+uniqueMaterial(const MaterialInstanceSharedPtr &material) {
+  return material->cloneInstanceDataUnique();
+}
+
 [[nodiscard]] u32 packedU32(float value) { return std::bit_cast<u32>(value); }
 
 [[nodiscard]] bool isLeaf(const SceneSoftwareBvhNode &node) {
@@ -146,11 +156,11 @@ findBinding(const std::vector<ShaderResourceBinding> &bindings,
   return nullptr;
 }
 
-[[nodiscard]] IGpuResourceSharedPtr
+[[nodiscard]] GpuResourceRef
 findDescriptorResource(const RenderWorkItem &item, StringID bindingName) {
-  for (const IGpuResourceSharedPtr &resource : item.descriptorResources) {
-    if (resource && resource->getBindingName() == bindingName) {
-      return resource;
+  for (const DescriptorResourceRef &resource : item.descriptorResources) {
+    if (resource.getBindingName() == bindingName && resource.isResource()) {
+      return resource.resource();
     }
   }
   return {};
@@ -319,7 +329,7 @@ void testOfflinePbrDirectShaderUsesEveryMaterialInput() {
              std::string::npos,
          "offline PBR shader should use roughness scalar factor");
   EXPECT(shaderSource.find("material.metallicRoughnessTexture") !=
-             std::string::npos &&
+                 std::string::npos &&
              shaderSource.find("mr.b") != std::string::npos &&
              shaderSource.find("mr.g") != std::string::npos,
          "offline PBR shader should read metallic/roughness from B/G texture "
@@ -436,9 +446,10 @@ void expectBvhBuildThrows(const SceneResourceTableUploadView &view,
 
 void testSoftwareBvhBuildsFromSceneResourceTable() {
   SceneResourceTable table;
-  const auto mesh = table.registerMesh(makeMeshBuffer());
-  const auto material = table.registerMaterial(MaterialInstance::create(
-      MaterialTemplate::create("software_bvh_material")));
+  const auto mesh = table.registerMesh(uniqueMesh(makeMeshBuffer()));
+  const auto material =
+      table.registerMaterial(uniqueMaterial(MaterialInstance::create(
+          MaterialTemplate::create("software_bvh_material"))));
   ObjectResource object;
   object.mesh = mesh;
   object.material = material;
@@ -468,10 +479,11 @@ void testSoftwareBvhThrowsForEmptyPrimitiveList() {
 
 void testSoftwareBvhUsesCompactUploadIndicesAndObjectTransform() {
   SceneResourceTable table;
-  const auto baseMesh = table.registerMesh(makeMeshBuffer());
-  const auto liveMesh = table.registerMesh(makeOffsetMeshBuffer());
-  const auto material = table.registerMaterial(MaterialInstance::create(
-      MaterialTemplate::create("software_bvh_transform_material")));
+  const auto baseMesh = table.registerMesh(uniqueMesh(makeMeshBuffer()));
+  const auto liveMesh = table.registerMesh(uniqueMesh(makeOffsetMeshBuffer()));
+  const auto material =
+      table.registerMaterial(uniqueMaterial(MaterialInstance::create(
+          MaterialTemplate::create("software_bvh_transform_material"))));
   (void)baseMesh;
 
   Mat4f objectToWorld = Mat4f::translate(Vec3f{2.0f, 3.0f, 4.0f});
@@ -582,9 +594,10 @@ void expectInvalidOfflineJobThrows(const offline::OfflineRenderJob &job,
   offline::OfflineRenderJob job;
   job.output.width = 1;
   job.output.height = 1;
-  const auto mesh = job.scene.registerMesh(makeMeshBuffer());
-  const auto material = job.scene.registerMaterial(MaterialInstance::create(
-      MaterialTemplate::create("offline_validation_material")));
+  const auto mesh = job.scene.registerMesh(uniqueMesh(makeMeshBuffer()));
+  const auto material =
+      job.scene.registerMaterial(uniqueMaterial(MaterialInstance::create(
+          MaterialTemplate::create("offline_validation_material"))));
   ObjectResource object;
   object.mesh = mesh;
   object.material = material;
@@ -650,7 +663,7 @@ void testOfflineRenderWorkGraphBuildsRayTracePass() {
       "offline dispatch groups should round output dimensions to 8x8 groups");
 }
 
-void testOfflineRenderWorkGraphCanCarryComputeShader() {
+void testOfflineRenderWorkGraphUsesJobComputeShader() {
   offline::OfflineRenderJob job = makeRenderableJobWithCamera();
   auto compileResult = LX_infra::ShaderCompiler::compileFile(
       findOfflineShaderSourcePath("offline_primary_ray.comp"));
@@ -661,11 +674,12 @@ void testOfflineRenderWorkGraphCanCarryComputeShader() {
   if (!shader) {
     return;
   }
+  job.offlineShader = shader;
 
   FrameGraph graph = offline::createOfflineRenderFrameGraph(job.output);
-  graph.build(LX_core::RenderWorkBuildContext::offline(job, shader));
+  graph.build(LX_core::RenderWorkBuildContext::offline(job));
   EXPECT(!graph.getPasses().empty(),
-         "offline graph should have pass when built with shader");
+         "offline graph should have pass when built with job shader");
   if (graph.getPasses().empty() ||
       graph.getPasses().front().queue.getItems().empty()) {
     return;
@@ -673,7 +687,7 @@ void testOfflineRenderWorkGraphCanCarryComputeShader() {
   const RenderWorkItem &item =
       graph.getPasses().front().queue.getItems().front();
   EXPECT(item.shaderInfo == shader,
-         "offline work item should carry compute shader from build context");
+         "offline work item should carry compute shader from job");
 }
 
 void testOfflineWorkItemCarriesUnifiedSceneTextureArray() {
@@ -684,14 +698,46 @@ void testOfflineWorkItemCarriesUnifiedSceneTextureArray() {
 
   const RenderWorkItem &item =
       graph.getPasses().front().queue.getItems().front();
-  const auto resource = std::dynamic_pointer_cast<SampledTextureArrayResource>(
-      findDescriptorResource(item, StringID("SceneTextures")));
-  EXPECT(resource != nullptr,
+  const auto resource = std::find_if(
+      item.descriptorResources.begin(), item.descriptorResources.end(),
+      [](const DescriptorResourceRef &candidate) {
+        return candidate.getBindingName() == StringID("SceneTextures");
+      });
+  EXPECT(resource != item.descriptorResources.end() &&
+             resource->isTextureArray(),
          "offline scene storage should carry unified SceneTextures array");
-  if (resource != nullptr) {
+  if (resource != item.descriptorResources.end() &&
+      resource->isTextureArray()) {
     EXPECT(resource->textures().size() == 64,
            "SceneTextures should provide exactly 64 descriptor slots");
   }
+}
+
+void testOfflineWorkItemDoesNotInjectImplicitLightOrEnvironment() {
+  offline::OfflineRenderJob job = makeRenderableJobWithCamera();
+
+  FrameGraph graph = offline::createOfflineRenderFrameGraph(job.output);
+  graph.build(LX_core::RenderWorkBuildContext::offline(job));
+
+  const RenderWorkItem &item =
+      graph.getPasses().front().queue.getItems().front();
+  const GpuResourceRef frameParamsResource =
+      findDescriptorResource(item, StringID("SceneFrameParams"));
+  EXPECT(frameParamsResource.isValid(),
+         "offline work item should expose SceneFrameParams");
+  if (!frameParamsResource.isValid()) {
+    return;
+  }
+  const auto &params = *static_cast<const SceneGpuFrameParams *>(
+      frameParamsResource.get().getRawData());
+  EXPECT(params.lightDirectionIntensity.w == 0.0f,
+         "offline scene without lights must not inject default light intensity");
+  EXPECT(params.lightColorEnvironment.x == 0.0f &&
+             params.lightColorEnvironment.y == 0.0f &&
+             params.lightColorEnvironment.z == 0.0f,
+         "offline scene without lights must not inject default light color");
+  EXPECT(params.lightColorEnvironment.w == 0.0f,
+         "offline scene must not inject default environment intensity");
 }
 
 void testOfflineRenderJobValidationRejectsZeroDimensions() {
@@ -728,8 +774,9 @@ int main() {
   testOfflineRenderJobValidationRejectsMissingCamera();
   testOfflineRenderJobValidationRejectsNonRenderableScene();
   testOfflineRenderWorkGraphBuildsRayTracePass();
-  testOfflineRenderWorkGraphCanCarryComputeShader();
+  testOfflineRenderWorkGraphUsesJobComputeShader();
   testOfflineWorkItemCarriesUnifiedSceneTextureArray();
+  testOfflineWorkItemDoesNotInjectImplicitLightOrEnvironment();
   testSoftwareBvhThrowsForEmptyPrimitiveList();
   testSoftwareBvhBuildsFromSceneResourceTable();
   testSoftwareBvhUsesCompactUploadIndicesAndObjectTransform();

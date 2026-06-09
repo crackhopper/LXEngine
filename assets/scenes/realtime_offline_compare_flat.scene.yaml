@@ -5,6 +5,8 @@ scene:
     enabled: false
     intensity: 0.0
     skyboxEnabled: false
+  rendering:
+    shadows: false
   defaultOutputProfile: preview
   outputProfiles:
     preview:
@@ -19,7 +21,6 @@ scene:
     maxBounce: 1
     seed: 1
     profile: preview
-    shadows: false
     compareMode: albedo
 root:
   nodeName: scene_root

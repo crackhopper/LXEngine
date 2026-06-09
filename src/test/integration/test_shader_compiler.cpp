@@ -942,7 +942,8 @@ static bool testTextureCubeReflectionContract(
   return true;
 }
 
-static bool testPbrIblContract(const std::filesystem::path &vertPath,
+static bool testPbrIblContract(const std::filesystem::path &shaderDir,
+                               const std::filesystem::path &vertPath,
                                const std::filesystem::path &fragPath) {
   std::cout << "\n========================================\n";
   std::cout << "  Test: PBR IBL contract\n";
@@ -958,6 +959,22 @@ static bool testPbrIblContract(const std::filesystem::path &vertPath,
           std::string::npos ||
       fragSource.find("pow(color, vec3(1.0 / 2.2))") != std::string::npos) {
     std::cerr << "  FAIL: PBR shader still performs final tone/gamma mapping\n";
+    return false;
+  }
+  if (fragSource.find("lxPbrFallbackAmbient") != std::string::npos) {
+    std::cerr << "  FAIL: PBR direct-light path should not hard-code "
+                 "fallback ambient\n";
+    return false;
+  }
+  std::string commonPbrSource;
+  {
+    std::ifstream in(shaderDir / "common" / "pbr.glsl");
+    commonPbrSource.assign(std::istreambuf_iterator<char>(in),
+                           std::istreambuf_iterator<char>());
+  }
+  if (commonPbrSource.find("lxPbrFallbackAmbient") != std::string::npos) {
+    std::cerr << "  FAIL: shared PBR common should not expose fallback "
+                 "ambient\n";
     return false;
   }
 
@@ -1114,7 +1131,7 @@ int main(int argc, char *argv[]) {
                               {{"HAS_NORMAL_MAP", true},
                                {"HAS_METALLIC_ROUGHNESS", true}}))
     ++failures;
-  if (!testPbrIblContract(vertPath, fragPath))
+  if (!testPbrIblContract(shaderDir, vertPath, fragPath))
     ++failures;
   if (!testPbrMaterialTextureSetContract(vertPath, fragPath))
     ++failures;

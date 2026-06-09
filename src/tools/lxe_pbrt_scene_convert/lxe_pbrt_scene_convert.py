@@ -545,7 +545,7 @@ def approximate_material(material: PbrtMaterial) -> tuple[dict[str, Any], list[s
             "HAS_NORMAL_MAP": False,
             "HAS_AO_MAP": False,
             "HAS_EMISSIVE_MAP": False,
-            "HAS_IBL": True,
+            "HAS_IBL": False,
         },
         "passes": {
             "Forward": {
@@ -566,6 +566,9 @@ def approximate_material(material: PbrtMaterial) -> tuple[dict[str, Any], list[s
             "MaterialUBO.metallicFactor": metallic,
             "MaterialUBO.roughnessFactor": roughness,
             "MaterialUBO.ao": 1.0,
+        },
+        "resources": {
+            "albedoMap": "white",
         },
     }
     return doc, losses, strategy

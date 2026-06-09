@@ -3,6 +3,7 @@
 #include "core/math/bounds.hpp"
 #include "core/math/mat.hpp"
 #include "core/math/vec.hpp"
+#include "core/rhi/descriptor_resource_ref.hpp"
 #include "core/rhi/gpu_resource.hpp"
 #include "core/utils/string_table.hpp"
 
@@ -28,10 +29,11 @@ class LightBase {
 public:
   virtual ~LightBase() = default;
 
-  /// The light's GPU-side data resource, or nullptr if the light contributes no
-  /// per-frame descriptor data. Binding name is owned by the resource itself
-  /// via IGpuResource::getBindingName().
-  virtual IGpuResourceSharedPtr getUBO() const = 0;
+  /// The light's GPU-side data resource, or an empty ref if the light
+  /// contributes no per-frame descriptor data. Binding name is owned by the
+  /// resource itself via IGpuResource::getBindingName().
+  virtual GpuResourceRef getUBO() const = 0;
+  [[nodiscard]] virtual std::unique_ptr<LightBase> cloneUnique() const = 0;
 
   /// Whether this light participates in the given pass.
   virtual bool supportsPass(StringID pass) const = 0;
@@ -76,7 +78,7 @@ struct alignas(16) DirectionalLightData : public IGpuResource {
 private:
   StringID m_bindingName;
 };
-using DirectionalLightDataSharedPtr = std::shared_ptr<DirectionalLightData>;
+using DirectionalLightDataUniquePtr = std::unique_ptr<DirectionalLightData>;
 
 struct DirectionalShadowCascadeDebugView final {
   Vec3f eye;
@@ -133,7 +135,7 @@ private:
   StringID m_bindingName;
 };
 
-using SceneLightsDataSharedPtr = std::shared_ptr<SceneLightsData>;
+using SceneLightsDataUniquePtr = std::unique_ptr<SceneLightsData>;
 
 class DirectionalLight : public LightBase {
 public:
@@ -162,7 +164,7 @@ public:
                                      float splitLambda = 0.5f);
   [[nodiscard]] std::optional<DirectionalShadowCascadeDebugView>
   getShadowCascadeDebugView(u32 cascadeIndex) const;
-  [[nodiscard]] DirectionalLightDataSharedPtr
+  [[nodiscard]] DirectionalLightDataUniquePtr
   makeShadowCascadeUBOSnapshot(u32 cascadeIndex) const;
   void setActiveShadowCascade(u32 cascadeIndex);
 
@@ -170,9 +172,11 @@ public:
                          const std::weak_ptr<SceneNode> &node) override;
   void detachFromSceneNode() override;
 
-  IGpuResourceSharedPtr getUBO() const override { return m_ubo; }
-  [[nodiscard]] DirectionalLightDataSharedPtr getDirectionalUBO() const {
-    return m_ubo;
+  GpuResourceRef getUBO() const override { return GpuResourceRef{*m_ubo}; }
+  [[nodiscard]] std::unique_ptr<LightBase> cloneUnique() const override;
+  [[nodiscard]] DirectionalLightData &getDirectionalUBO() { return *m_ubo; }
+  [[nodiscard]] const DirectionalLightData &getDirectionalUBO() const {
+    return *m_ubo;
   }
   bool supportsPass(StringID pass) const override;
   BoundingBox getDebugLocalBounds() const override;
@@ -183,7 +187,7 @@ private:
   void updateShadowViewProjection();
   void emitLightPropertyChanged() const;
 
-  DirectionalLightDataSharedPtr m_ubo;
+  DirectionalLightDataUniquePtr m_ubo;
   Vec3f m_pendingDirection{0.35f, -1.0f, 0.25f};
   DirectionalShadowCascadeDebugView
       m_shadowCascadeDebugViews[MaxShadowCascades];
@@ -211,7 +215,8 @@ public:
                          const std::weak_ptr<SceneNode> &node) override;
   void detachFromSceneNode() override;
 
-  IGpuResourceSharedPtr getUBO() const override { return nullptr; }
+  GpuResourceRef getUBO() const override { return {}; }
+  [[nodiscard]] std::unique_ptr<LightBase> cloneUnique() const override;
   bool supportsPass(StringID pass) const override;
   BoundingBox getDebugLocalBounds() const override;
   void setSupportedPasses(std::initializer_list<StringID> passes);
@@ -252,7 +257,8 @@ public:
                          const std::weak_ptr<SceneNode> &node) override;
   void detachFromSceneNode() override;
 
-  IGpuResourceSharedPtr getUBO() const override { return nullptr; }
+  GpuResourceRef getUBO() const override { return {}; }
+  [[nodiscard]] std::unique_ptr<LightBase> cloneUnique() const override;
   bool supportsPass(StringID pass) const override;
   BoundingBox getDebugLocalBounds() const override;
   void setSupportedPasses(std::initializer_list<StringID> passes);

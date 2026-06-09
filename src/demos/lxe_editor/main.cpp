@@ -14,6 +14,7 @@
 #include "core/editor/scene_tree_panel.hpp"
 #include "core/gpu/engine_loop.hpp"
 #include "core/input/mouse_button.hpp"
+#include "core/offline/offline_render_profile.hpp"
 #include "core/scene/components/camera_component.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/filesystem_tools.hpp"
@@ -31,7 +32,9 @@
 #include "runtime_state.hpp"
 #include "scene_input_routing.hpp"
 #include "scene_interaction_controller.hpp"
+#include "scene_runtime.hpp"
 #include "selection_camera_input.hpp"
+#include "realtime_render_profile.hpp"
 #include "ui_overlay.hpp"
 
 #include "yaml-cpp/yaml.h"
@@ -91,6 +94,13 @@ struct ApiLaunchOptions final {
   std::uint16_t port = 3768;
 };
 
+struct RealtimeRenderCliOptions final {
+  bool enabled = false;
+  std::filesystem::path scenePath;
+  std::string profileName;
+  std::optional<std::filesystem::path> outputBasePath;
+};
+
 constexpr int kWindowWidth = 1280;
 constexpr int kWindowHeight = 720;
 
@@ -134,7 +144,55 @@ parseApiLaunchOptions(const std::vector<std::string> &args,
       }
       continue;
     }
-    errorMessage = "unknown argument: " + arg;
+  }
+  return options;
+}
+
+[[nodiscard]] std::optional<RealtimeRenderCliOptions>
+parseRealtimeRenderCliOptions(const std::vector<std::string> &args,
+                              std::string &errorMessage) {
+  RealtimeRenderCliOptions options;
+  for (usize i = 1; i < args.size(); ++i) {
+    const std::string &arg = args[i];
+    if (arg == "--realtime-render") {
+      options.enabled = true;
+      continue;
+    }
+    if (arg == "--scene") {
+      if (i + 1 >= args.size()) {
+        errorMessage = "missing value for --scene";
+        return std::nullopt;
+      }
+      options.scenePath = args[++i];
+      continue;
+    }
+    if (arg == "--profile") {
+      if (i + 1 >= args.size()) {
+        errorMessage = "missing value for --profile";
+        return std::nullopt;
+      }
+      options.profileName = args[++i];
+      continue;
+    }
+    if (arg == "--out") {
+      if (i + 1 >= args.size()) {
+        errorMessage = "missing value for --out";
+        return std::nullopt;
+      }
+      options.outputBasePath = std::filesystem::path(args[++i]);
+      continue;
+    }
+  }
+
+  if (!options.enabled) {
+    return options;
+  }
+  if (options.scenePath.empty()) {
+    errorMessage = "--realtime-render requires --scene";
+    return std::nullopt;
+  }
+  if (options.profileName.empty()) {
+    errorMessage = "--realtime-render requires --profile";
     return std::nullopt;
   }
   return options;
@@ -738,6 +796,13 @@ int main(int argc, char **argv) {
     std::cerr << "[lxe_editor] " << apiArgError << "\n";
     return 1;
   }
+  std::string realtimeRenderArgError;
+  const auto realtimeRenderOptions = parseRealtimeRenderCliOptions(
+      displayArgResult.remainingArgs, realtimeRenderArgError);
+  if (!realtimeRenderOptions.has_value()) {
+    std::cerr << "[lxe_editor] " << realtimeRenderArgError << "\n";
+    return 1;
+  }
 
   try {
     LX_infra::Window::Initialize();
@@ -787,6 +852,46 @@ int main(int argc, char **argv) {
         std::make_shared<VulkanRenderer>(VulkanRenderer::Token{});
     LX_core::gpu::RendererSharedPtr renderer = vulkanRenderer;
     renderer->initialize(window, "lxe_editor");
+
+    if (realtimeRenderOptions->enabled) {
+      demo::SceneRuntime runtime;
+      runtime.loadFromDocumentPath(realtimeRenderOptions->scenePath);
+      const demo::SceneDocument &document = runtime.document();
+      const LX_core::offline::RenderProfileDocument profiles =
+          document.hasRenderProfileDocument()
+              ? document.renderProfileDocument()
+              : LX_core::offline::makeDefaultRenderProfileDocument();
+      const LX_core::offline::ResolvedRenderProfile resolved =
+          LX_core::offline::resolveRenderProfileDocument(
+              profiles,
+              LX_core::offline::RenderProfileCliOverrides{
+                  .profileName = realtimeRenderOptions->profileName,
+                  .outputPath = realtimeRenderOptions->outputBasePath,
+              });
+      if (!resolved.output.materialTag.empty()) {
+        runtime.scene()->setActiveMaterialTagForRenderables(
+            resolved.output.materialTag);
+      }
+      const std::filesystem::path outputBasePath =
+          realtimeRenderOptions->outputBasePath.value_or(
+              demo::makeRealtimeProfileOutputBasePath(
+                  document.sceneName(), resolved.profileName, resolved.output));
+      const auto result = vulkanRenderer->generateRealtimeProfileOutput(
+          runtime.scene(), resolved.output, outputBasePath);
+      std::cout << demo::realtimeProfileOutputResultJson(
+                       resolved.profileName,
+                       demo::RealtimeProfileOutputResult{
+                           .linearExrPath = result.linearExrPath,
+                           .cpuSrgbPngPath = result.cpuSrgbPngPath,
+                           .pipelineSrgbPngPath = result.pipelineSrgbPngPath,
+                           .metadataPath = result.metadataPath,
+                           .width = result.width,
+                           .height = result.height,
+                       })
+                << "\n";
+      renderer->shutdown();
+      return 0;
+    }
 
     demo::CameraRig rig;
     LX_core::EditorState editorState;

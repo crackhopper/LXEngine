@@ -1,12 +1,12 @@
-#include "core/debug_draw/debug_draw.hpp"
 #include "core/asset/texture.hpp"
+#include "core/debug_draw/debug_draw.hpp"
 #include "core/editor/command_bus.hpp"
 #include "core/editor/commands/builtin_commands.hpp"
 #include "core/editor/editor_state.hpp"
-#include "core/rhi/index_buffer.hpp"
-#include "core/rhi/vertex_buffer.hpp"
 #include "core/frame_graph/pass.hpp"
 #include "core/frame_graph/render_queue.hpp"
+#include "core/rhi/index_buffer.hpp"
+#include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/components/camera_component.hpp"
 #include "core/scene/components/material_component.hpp"
 #include "core/scene/components/mesh_component.hpp"
@@ -99,11 +99,22 @@ readNodeBaseColor(const LX_core::SceneNodeSharedPtr &node) {
   }
   const auto materialComponent =
       node->getComponent<LX_core::MaterialComponent>();
-  if (!materialComponent.has_value() ||
-      !materialComponent->get().getMaterialInstance()) {
+  if (!materialComponent.has_value()) {
     return std::nullopt;
   }
-  const auto material = materialComponent->get().getMaterialInstance();
+  const LX_core::MaterialInstance *material = nullptr;
+  if (const auto scene = node->getAttachedScene()) {
+    if (const auto resolved = scene->resources().resolve(
+            materialComponent->get().getMaterialHandle())) {
+      material = &resolved->get();
+    }
+  }
+  if (!material) {
+    material = materialComponent->get().getPendingMaterialInstance().get();
+  }
+  if (!material) {
+    return std::nullopt;
+  }
   const auto layout =
       material->getParameterBufferLayout(LX_core::StringID("MaterialUBO"));
   if (!layout.has_value()) {
@@ -130,21 +141,29 @@ nodeForwardPassHasDescriptor(LX_core::SceneNode *node,
   }
   const auto materialComponent =
       node->getComponent<LX_core::MaterialComponent>();
-  if (!materialComponent.has_value() ||
-      !materialComponent->get().getMaterialInstance()) {
+  if (!materialComponent.has_value()) {
     return false;
   }
-  const auto resources =
-      materialComponent->get().getMaterialInstance()->getDescriptorResources(
-          LX_core::Pass_Forward);
-  return std::any_of(
-      resources.begin(), resources.end(), [&](const auto &resource) {
-        return resource && resource->getBindingName() == bindingName;
-      });
+  const LX_core::MaterialInstance *material = nullptr;
+  if (const auto scene = node->getAttachedScene()) {
+    if (const auto resolved = scene->resources().resolve(
+            materialComponent->get().getMaterialHandle())) {
+      material = &resolved->get();
+    }
+  }
+  if (!material) {
+    material = materialComponent->get().getPendingMaterialInstance().get();
+  }
+  if (!material) {
+    return false;
+  }
+  return material->getParameterResource(bindingName).isValid() ||
+         material->getTextureHandle(bindingName).isValid() ||
+         material->getTexture(bindingName);
 }
 
-[[nodiscard]] LX_core::MaterialInstanceSharedPtr
-nodeMaterialInstance(LX_core::SceneNode *node) {
+[[nodiscard]] LX_core::MaterialInstance *
+nodeMaterialInstance(LX_core::Scene &scene, LX_core::SceneNode *node) {
   if (node == nullptr) {
     return nullptr;
   }
@@ -153,14 +172,44 @@ nodeMaterialInstance(LX_core::SceneNode *node) {
   if (!materialComponent.has_value()) {
     return nullptr;
   }
-  return materialComponent->get().getMaterialInstance();
+  if (const auto material = scene.resources().resolve(
+          materialComponent->get().getMaterialHandle())) {
+    return &material->get();
+  }
+  return materialComponent->get().getPendingMaterialInstance().get();
+}
+
+[[nodiscard]] const LX_core::MaterialInstance *
+nodeMaterialInstance(const LX_core::Scene &scene, LX_core::SceneNode *node) {
+  if (node == nullptr) {
+    return nullptr;
+  }
+  const auto materialComponent =
+      node->getComponent<LX_core::MaterialComponent>();
+  if (!materialComponent.has_value()) {
+    return nullptr;
+  }
+  if (const auto material = scene.resources().resolve(
+          materialComponent->get().getMaterialHandle())) {
+    return &material->get();
+  }
+  return materialComponent->get().getPendingMaterialInstance().get();
 }
 
 [[nodiscard]] std::optional<LX_core::TextureDesc>
-nodeTextureDesc(LX_core::SceneNode *node, const LX_core::StringID &binding) {
-  const auto material = nodeMaterialInstance(node);
+nodeTextureDesc(const LX_core::Scene &scene, LX_core::SceneNode *node,
+                const LX_core::StringID &binding) {
+  const auto material = nodeMaterialInstance(scene, node);
   if (!material) {
     return std::nullopt;
+  }
+  const auto handle = material->getTextureHandle(binding);
+  if (handle.isValid()) {
+    if (const auto sampler = scene.resources().resolve(handle)) {
+      if (sampler->get().texture()) {
+        return sampler->get().texture()->desc();
+      }
+    }
   }
   const auto sampler = material->getTexture(binding);
   if (!sampler || !sampler->texture()) {
@@ -199,8 +248,9 @@ void testRuntimeCreatesEmptyScene() {
          "empty runtime should not create a ground node");
   EXPECT(runtime.scene()->findByPath("/dir_light") != nullptr,
          "empty runtime should create a default directional light node");
-  EXPECT(runtime.scene()->getDirectionalLight(
-             *runtime.scene()->findByPath("/dir_light")) != nullptr,
+  EXPECT(runtime.scene()
+             ->getDirectionalLight(*runtime.scene()->findByPath("/dir_light"))
+             .has_value(),
          "empty runtime should attach a directional light to the default light "
          "node");
   EXPECT(runtime.scene()->findByPath("/game_cam/helper_camera") == nullptr,
@@ -398,22 +448,23 @@ void testRuntimeLoadsTypedPointAndSpotLights() {
   EXPECT(pointNode != nullptr && spotNode != nullptr,
          "typed light nodes should load");
   if (pointNode != nullptr && spotNode != nullptr) {
-    EXPECT(runtime.scene()->getPointLight(*pointNode) != nullptr,
+    EXPECT(runtime.scene()->getPointLight(*pointNode).has_value(),
            "point light runtime instance should attach");
     const auto spot = runtime.scene()->getSpotLight(*spotNode);
-    EXPECT(spot != nullptr, "spot light runtime instance should attach");
-    EXPECT(spot != nullptr && spot->getOuterConeDegrees() == 35.0f,
+    EXPECT(spot.has_value(), "spot light runtime instance should attach");
+    EXPECT(spot.has_value() && spot->get().getOuterConeDegrees() == 35.0f,
            "spot light cone should load");
   }
 
   const auto resources = runtime.scene()->getSceneLevelResources(
       LX_core::Pass_Forward, LX_core::RenderTarget{});
-  LX_core::SceneLightsDataSharedPtr sceneLights;
+  const LX_core::SceneLightsData *sceneLights = nullptr;
   for (const auto &resource : resources) {
-    if (resource &&
-        resource->getBindingName() == LX_core::StringID("SceneLightsUBO")) {
+    if (resource.isResource() &&
+        resource.getBindingName() == LX_core::StringID("SceneLightsUBO")) {
       sceneLights =
-          std::dynamic_pointer_cast<LX_core::SceneLightsData>(resource);
+          dynamic_cast<const LX_core::SceneLightsData *>(
+              &resource.resource().get());
     }
   }
   EXPECT(sceneLights != nullptr,
@@ -1003,7 +1054,7 @@ void testRuntimeMaterialUriAndBaseColorOverridesRoundTrip() {
                  "      scale: [1.0, 1.0, 1.0]\n"
                  "    visibilityMask: 4294967295\n"
                  "    mesh:\n"
-                 "      uri: builtin://lxe_editor/helmet\n"
+                 "      uri: assets/models/damaged_helmet/DamagedHelmet.gltf\n"
                  "    material:\n"
                  "      uri: assets/materials/blinnphong_lit.material\n");
 
@@ -1111,8 +1162,8 @@ void testRuntimeCanAssignMeshDebugMaterial() {
     EXPECT(passData.has_value(),
            "mesh_debug material should validate through the normal pass path");
     if (passData) {
-      auto indexBuffer = std::dynamic_pointer_cast<LX_core::IndexBuffer>(
-          passData->get().indexBuffer);
+      const auto *indexBuffer = dynamic_cast<const LX_core::IndexBuffer *>(
+          &passData->get().indexBuffer.get());
       EXPECT(indexBuffer != nullptr,
              "mesh_debug material should keep an index buffer");
       if (indexBuffer) {
@@ -1139,9 +1190,8 @@ void testRuntimeMaterialPresetsExcludeInvalidFixtures() {
 
   EXPECT(containsPreset("assets/materials/mesh_debug.material"),
          "mesh_debug material should remain discoverable");
-  EXPECT(
-      containsPreset("assets/materials/rtr_shadertoy_quantum_core.material"),
-      "procedural material should be available as a material preset");
+  EXPECT(containsPreset("assets/materials/rtr_shadertoy_quantum_core.material"),
+         "procedural material should be available as a material preset");
   EXPECT(
       !containsPreset("assets/materials/test_invalid_normal_no_light.material"),
       "material presets should exclude invalid no-light normal-map fixture");
@@ -1297,8 +1347,8 @@ void testProceduralRuntimeParameterStreamUpdatesMaterialOnly() {
   demo::SceneRuntime runtime;
   runtime.loadFromDocumentPath(inputPath);
 
-  const auto diagnostics =
-      runtime.updateProceduralMaterials(12.5f, LX_core::Vec2f{1920.0f, 1080.0f});
+  const auto diagnostics = runtime.updateProceduralMaterials(
+      12.5f, LX_core::Vec2f{1920.0f, 1080.0f});
   EXPECT(diagnostics.empty(),
          "procedural runtime update should not produce diagnostics");
 
@@ -1309,7 +1359,8 @@ void testProceduralRuntimeParameterStreamUpdatesMaterialOnly() {
   auto *node = runtime.scene()->findByPath("/quantum_core");
   EXPECT(nodeForwardPassHasDescriptor(node, LX_core::StringID("iChannel0")),
          "procedural runtime should bind generated iChannel0 texture");
-  EXPECT(time.has_value() && time->type == LX_core::MaterialParameterValueType::Float,
+  EXPECT(time.has_value() &&
+             time->type == LX_core::MaterialParameterValueType::Float,
          "procedural runtime should write time");
   if (time.has_value()) {
     expectNear(time->floatValue, 12.5f,
@@ -1344,9 +1395,9 @@ void testProceduralRuntimeParameterStreamUpdatesMaterialOnly() {
              runtimeResolution->runtimeOwned,
          "procedural resolution should be marked as runtime-owned for "
          "Inspector");
-  EXPECT(runtime.proceduralMaterialEnabledForNode("/quantum_core")
-             .value_or(false),
-         "runtime should expose procedural opt-in state");
+  EXPECT(
+      runtime.proceduralMaterialEnabledForNode("/quantum_core").value_or(false),
+      "runtime should expose procedural opt-in state");
 
   const std::filesystem::path savePath =
       makeTempPath("lx_scene_runtime_procedural_stream_saved.scene.yaml");
@@ -1361,16 +1412,15 @@ void testProceduralRuntimeParameterStreamUpdatesMaterialOnly() {
   const auto disableResult =
       runtime.setNodeProceduralMaterialEnabled("/quantum_core", false);
   EXPECT(disableResult.ok, "runtime should disable procedural opt-in");
-  EXPECT(!runtime.proceduralMaterialEnabledForNode("/quantum_core")
-              .value_or(true),
-         "runtime should expose disabled procedural opt-in state");
+  EXPECT(
+      !runtime.proceduralMaterialEnabledForNode("/quantum_core").value_or(true),
+      "runtime should expose disabled procedural opt-in state");
   const auto disabledParameters =
       runtime.nodeMaterialParametersForNode("/quantum_core");
-  const auto disabledTime =
-      std::find_if(disabledParameters.begin(), disabledParameters.end(),
-                   [](const auto &p) {
-                     return p.binding == "ShadertoyUBO" && p.member == "time";
-                   });
+  const auto disabledTime = std::find_if(
+      disabledParameters.begin(), disabledParameters.end(), [](const auto &p) {
+        return p.binding == "ShadertoyUBO" && p.member == "time";
+      });
   EXPECT(disabledTime != disabledParameters.end() &&
              !disabledTime->runtimeOwned,
          "disabled procedural opt-in should make time editable again");
@@ -1463,8 +1513,8 @@ void testProceduralRuntimeParameterTypeMismatchReportsDiagnostic() {
                "type mismatch should preserve audioBands.w");
   }
 
-  const std::filesystem::path savePath =
-      makeTempPath("lx_scene_runtime_procedural_type_mismatch_saved.scene.yaml");
+  const std::filesystem::path savePath = makeTempPath(
+      "lx_scene_runtime_procedural_type_mismatch_saved.scene.yaml");
   runtime.saveToDocumentPath(savePath);
   const demo::SceneDocument saved = demo::loadSceneDocument(savePath);
   const auto &savedNode = saved.rootNode().children[1];
@@ -1480,7 +1530,7 @@ void testGroundMeshWindingMatchesUpwardNormal() {
     return;
   }
 
-  const auto &mesh = meshComponent->get().getMesh();
+  const auto &mesh = meshComponent->get().getPendingMesh();
   const auto &bounds = mesh->getBounds();
   expectNear(bounds.getCenter().y, 0.0f,
              "ground mesh pivot should sit on the plane center");
@@ -1489,23 +1539,15 @@ void testGroundMeshWindingMatchesUpwardNormal() {
   expectNear(bounds.max.y, 0.0f,
              "ground mesh local max y should match pivot height");
   const auto *vertexBuffer =
-      dynamic_cast<LX_core::VertexBuffer<LX_core::VertexPosNormalUvBone> *>(
-          mesh->getVertexBuffer().get());
+      dynamic_cast<const LX_core::VertexBuffer<
+          LX_core::VertexPosNormalUvBone> *>(&mesh->getVertexBuffer());
   EXPECT(vertexBuffer != nullptr,
          "ground mesh should use VertexPosNormalUvBone vertices");
   const auto &indexBuffer = mesh->getIndexBuffer();
-  EXPECT(indexBuffer != nullptr,
-         "ground mesh should have an index buffer");
-  if (!indexBuffer) {
-    return;
-  }
-  EXPECT(indexBuffer->getTopology() ==
-             LX_core::PrimitiveTopology::TriangleList,
+  EXPECT(indexBuffer.getTopology() == LX_core::PrimitiveTopology::TriangleList,
          "ground should be a triangle-list mesh");
-  EXPECT(indexBuffer->indexCount() == 6,
-         "ground should use two triangles");
-  const auto *indices =
-      static_cast<const u32 *>(indexBuffer->getRawData());
+  EXPECT(indexBuffer.indexCount() == 6, "ground should use two triangles");
+  const auto *indices = static_cast<const u32 *>(indexBuffer.getRawData());
   EXPECT(indices[0] == 0 && indices[1] == 2 && indices[2] == 1 &&
              indices[3] == 0 && indices[4] == 3 && indices[5] == 2,
          "ground winding should match the upward normal convention");
@@ -1521,7 +1563,7 @@ void testBuiltinPrimitivePlaneIsThinBox() {
     return;
   }
 
-  const auto &mesh = meshComponent->get().getMesh();
+  const auto &mesh = meshComponent->get().getPendingMesh();
   const auto &bounds = mesh->getBounds();
   expectNear(bounds.min.x, -0.5f,
              "primitive plane thin box should keep half-width min x");
@@ -1539,47 +1581,38 @@ void testBuiltinPrimitivePlaneIsThinBox() {
          "primitive plane thin box should be marked as closed volume");
 
   const auto &vertexBuffer = mesh->getVertexBuffer();
-  EXPECT(vertexBuffer != nullptr,
-         "primitive plane thin box should have a vertex buffer");
-  if (vertexBuffer) {
-    EXPECT(vertexBuffer->getVertexCount() == 24,
-           "primitive plane thin box should use per-face vertices");
-  }
+  EXPECT(vertexBuffer.getVertexCount() == 24,
+         "primitive plane thin box should use per-face vertices");
   const auto &indexBuffer = mesh->getIndexBuffer();
-  EXPECT(indexBuffer != nullptr,
-         "primitive plane thin box should have an index buffer");
-  if (indexBuffer) {
-    EXPECT(indexBuffer->indexCount() == 36,
-           "primitive plane thin box should use six faces");
-  }
+  EXPECT(indexBuffer.indexCount() == 36,
+         "primitive plane thin box should use six faces");
 }
 
-void testBuiltinPatchMeshesAreOpenReceiversOnly() {
+void testBuiltinPatchMeshesKeepMaterialPassConfig() {
   const auto patch = demo::buildBuiltinPatchNode(
       "builtin://lxe_editor/patches/square", "patch_square_node");
   const auto meshComponent = patch->getComponent<LX_core::MeshComponent>();
   EXPECT(meshComponent.has_value(), "patch should have a mesh component");
   if (meshComponent.has_value()) {
-    const auto &mesh = meshComponent->get().getMesh();
+    const auto &mesh = meshComponent->get().getPendingMesh();
     EXPECT(!mesh->isClosedVolume(), "patch mesh should be marked non-closed");
     const auto &bounds = mesh->getBounds();
-    expectNear(bounds.max.y, 0.0f,
-               "patch top surface should lie on local y=0");
-    expectNear(bounds.min.y, 0.0f,
-               "patch should have no thickness");
+    expectNear(bounds.max.y, 0.0f, "patch top surface should lie on local y=0");
+    expectNear(bounds.min.y, 0.0f, "patch should have no thickness");
   }
 
   const auto materialComponent =
       patch->getComponent<LX_core::MaterialComponent>();
   EXPECT(materialComponent.has_value(), "patch should have a material");
   if (materialComponent.has_value()) {
-    const auto &material = materialComponent->get().getMaterialInstance();
+    const auto &material =
+        materialComponent->get().getPendingMaterialInstance();
     EXPECT(material != nullptr, "patch material should exist");
     if (material) {
       EXPECT(material->isPassEnabled(LX_core::Pass_Forward),
              "patch should render in Forward pass");
-      EXPECT(!material->isPassEnabled(LX_core::Pass_Shadow),
-             "patch should not cast shadows");
+      EXPECT(material->isPassEnabled(LX_core::Pass_Shadow),
+             "patch should preserve the material asset Shadow pass");
     }
   }
 }
@@ -1589,41 +1622,40 @@ void testBuiltinPatchScenePayloadRoundTrips() {
       makeTempPath("lx_scene_runtime_builtin_patch_input.yaml");
   const std::filesystem::path savePath =
       makeTempPath("lx_scene_runtime_builtin_patch_output.yaml");
-  writeSceneFile(inputPath,
-                 "scene:\n"
-                 "  name: patch_scene\n"
-                 "  gameplayCameraPath: /game_cam\n"
-                 "nodes:\n"
-                 "  - nodeName: game_camera\n"
-                 "    name: game_cam\n"
-                 "    transform:\n"
-                 "      translation: [0.0, 2.0, 6.0]\n"
-                 "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
-                 "      scale: [1.0, 1.0, 1.0]\n"
-                 "    visibilityMask: 4294967295\n"
-                 "    camera:\n"
-                 "      eye: [0.0, 2.0, 6.0]\n"
-                 "      target: [0.0, 0.0, 0.0]\n"
-                 "      up: [0.0, 1.0, 0.0]\n"
-                 "      type: perspective\n"
-                 "      fovY: 45.0\n"
-                 "      aspect: 1.7777778\n"
-                 "      nearPlane: 0.1\n"
-                 "      farPlane: 1000.0\n"
-                 "      left: -1.0\n"
-                 "      right: 1.0\n"
-                 "      bottom: -1.0\n"
-                 "      top: 1.0\n"
-                 "      cullingMask: 4294967295\n"
-                 "  - nodeName: patch_square_node\n"
-                 "    name: Square\n"
-                 "    transform:\n"
-                 "      translation: [0.0, 0.0, 0.0]\n"
-                 "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
-                 "      scale: [1.0, 1.0, 1.0]\n"
-                 "    visibilityMask: 4294967295\n"
-                 "    mesh:\n"
-                 "      uri: builtin://lxe_editor/patches/square\n");
+  writeSceneFile(inputPath, "scene:\n"
+                            "  name: patch_scene\n"
+                            "  gameplayCameraPath: /game_cam\n"
+                            "nodes:\n"
+                            "  - nodeName: game_camera\n"
+                            "    name: game_cam\n"
+                            "    transform:\n"
+                            "      translation: [0.0, 2.0, 6.0]\n"
+                            "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                            "      scale: [1.0, 1.0, 1.0]\n"
+                            "    visibilityMask: 4294967295\n"
+                            "    camera:\n"
+                            "      eye: [0.0, 2.0, 6.0]\n"
+                            "      target: [0.0, 0.0, 0.0]\n"
+                            "      up: [0.0, 1.0, 0.0]\n"
+                            "      type: perspective\n"
+                            "      fovY: 45.0\n"
+                            "      aspect: 1.7777778\n"
+                            "      nearPlane: 0.1\n"
+                            "      farPlane: 1000.0\n"
+                            "      left: -1.0\n"
+                            "      right: 1.0\n"
+                            "      bottom: -1.0\n"
+                            "      top: 1.0\n"
+                            "      cullingMask: 4294967295\n"
+                            "  - nodeName: patch_square_node\n"
+                            "    name: Square\n"
+                            "    transform:\n"
+                            "      translation: [0.0, 0.0, 0.0]\n"
+                            "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+                            "      scale: [1.0, 1.0, 1.0]\n"
+                            "    visibilityMask: 4294967295\n"
+                            "    mesh:\n"
+                            "      uri: builtin://lxe_editor/patches/square\n");
 
   demo::SceneRuntime runtime;
   runtime.loadFromDocumentPath(inputPath);
@@ -1634,11 +1666,11 @@ void testBuiltinPatchScenePayloadRoundTrips() {
         patch->getComponent<LX_core::MaterialComponent>();
     EXPECT(materialComponent.has_value(), "patch should load material");
     if (materialComponent.has_value()) {
-      const auto &material = materialComponent->get().getMaterialInstance();
+      const auto *material = nodeMaterialInstance(*runtime.scene(), patch);
       EXPECT(material != nullptr, "patch material should exist after load");
       if (material) {
-        EXPECT(!material->isPassEnabled(LX_core::Pass_Shadow),
-               "loaded patch should not cast shadows");
+        EXPECT(material->isPassEnabled(LX_core::Pass_Shadow),
+               "loaded patch should preserve material Shadow pass");
       }
     }
   }
@@ -1711,7 +1743,7 @@ void testBuiltinPrimitiveScenePayloadRoundTrips() {
          "save should preserve builtin primitive material URI");
 }
 
-void testBuiltinPrimitivePlaneMaterialOverrideStaysReceiverOnly() {
+void testBuiltinPrimitivePlaneMaterialOverrideKeepsMaterialPassConfig() {
   const std::filesystem::path inputPath =
       makeTempPath("lx_scene_runtime_primitive_plane_receiver_only.yaml");
   writeSceneFile(inputPath,
@@ -1766,17 +1798,17 @@ void testBuiltinPrimitivePlaneMaterialOverrideStaysReceiverOnly() {
   EXPECT(materialComponent.has_value(),
          "primitive plane should load a material component");
   if (materialComponent.has_value()) {
-    const auto &material = materialComponent->get().getMaterialInstance();
+    const auto *material = nodeMaterialInstance(*runtime.scene(), plane);
     EXPECT(material != nullptr, "primitive plane material should exist");
     if (material) {
-      EXPECT(!material->isPassEnabled(LX_core::Pass_Shadow),
-             "primitive plane should stay receiver-only after material "
+      EXPECT(material->isPassEnabled(LX_core::Pass_Shadow),
+             "primitive plane should preserve material Shadow pass after "
              "override reload");
     }
   }
 }
 
-void testBuiltinPrimitivePlaneMaterialEditStaysReceiverOnly() {
+void testBuiltinPrimitivePlaneMaterialEditKeepsMaterialPassConfig() {
   const std::filesystem::path inputPath =
       makeTempPath("lx_scene_runtime_primitive_plane_material_edit.yaml");
   writeSceneFile(inputPath,
@@ -1823,8 +1855,8 @@ void testBuiltinPrimitivePlaneMaterialEditStaysReceiverOnly() {
   LX_core::MaterialParameterValue value;
   value.type = LX_core::MaterialParameterValueType::Int;
   value.intValue = 1;
-  const auto set = runtime.setNodeMaterialParameter(
-      "/Plane", "MaterialUBO", "debugShadowMode", value);
+  const auto set = runtime.setNodeMaterialParameter("/Plane", "MaterialUBO",
+                                                    "debugShadowMode", value);
   EXPECT(set.ok, "editing primitive plane material parameter should succeed");
 
   auto *plane = runtime.scene()->findByPath("/Plane");
@@ -1835,11 +1867,11 @@ void testBuiltinPrimitivePlaneMaterialEditStaysReceiverOnly() {
   EXPECT(materialComponent.has_value(),
          "primitive plane should keep a material component after edit");
   if (materialComponent.has_value()) {
-    const auto &material = materialComponent->get().getMaterialInstance();
+    const auto *material = nodeMaterialInstance(*runtime.scene(), plane);
     EXPECT(material != nullptr, "primitive plane material should exist");
     if (material) {
-      EXPECT(!material->isPassEnabled(LX_core::Pass_Shadow),
-             "primitive plane should stay receiver-only after material "
+      EXPECT(material->isPassEnabled(LX_core::Pass_Shadow),
+             "primitive plane should preserve material Shadow pass after "
              "parameter edit");
     }
   }
@@ -2040,231 +2072,52 @@ void testBuiltinModelMaterialUriKeepsCatalogAlbedoTexture() {
       "binding");
 }
 
-void testBuiltinHelmetUsesPbrMaterialBridge() {
+void testPlainGltfHelmetRequiresExplicitMaterial() {
   const std::filesystem::path path =
-      makeTempPath("lx_scene_runtime_builtin_helmet_pbr.yaml");
-  writeSceneFile(path, "scene:\n"
-                       "  name: Builtin Helmet PBR\n"
-                       "  gameplayCameraPath: /game_cam\n"
-                       "nodes:\n"
-                       "  - nodeName: game_camera\n"
-                       "    name: game_cam\n"
-                       "    transform:\n"
-                       "      translation: [0.0, 2.0, 6.0]\n"
-                       "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
-                       "      scale: [1.0, 1.0, 1.0]\n"
-                       "    visibilityMask: 4294967295\n"
-                       "    camera:\n"
-                       "      eye: [0.0, 2.0, 6.0]\n"
-                       "      target: [0.0, 0.0, 0.0]\n"
-                       "      up: [0.0, 1.0, 0.0]\n"
-                       "      type: perspective\n"
-                       "      fovY: 45.0\n"
-                       "      aspect: 1.7777778\n"
-                       "      nearPlane: 0.1\n"
-                       "      farPlane: 1000.0\n"
-                       "      left: -1.0\n"
-                       "      right: 1.0\n"
-                       "      bottom: -1.0\n"
-                       "      top: 1.0\n"
-                       "      cullingMask: 4294967295\n"
-                       "  - nodeName: helmet\n"
-                       "    name: helmet\n"
-                       "    transform:\n"
-                       "      translation: [0.0, 0.0, 0.0]\n"
-                       "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
-                       "      scale: [1.0, 1.0, 1.0]\n"
-                       "    visibilityMask: 4294967295\n"
-                       "    mesh:\n"
-                       "      uri: builtin://lxe_editor/helmet\n");
+      makeTempPath("lx_scene_runtime_plain_gltf_requires_material.yaml");
+  writeSceneFile(
+      path, "scene:\n"
+            "  name: Plain GLTF Helmet\n"
+            "  gameplayCameraPath: /game_cam\n"
+            "nodes:\n"
+            "  - nodeName: game_camera\n"
+            "    name: game_cam\n"
+            "    transform:\n"
+            "      translation: [0.0, 2.0, 6.0]\n"
+            "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
+            "      scale: [1.0, 1.0, 1.0]\n"
+            "    visibilityMask: 4294967295\n"
+            "    camera:\n"
+            "      eye: [0.0, 2.0, 6.0]\n"
+            "      target: [0.0, 0.0, 0.0]\n"
+            "      up: [0.0, 1.0, 0.0]\n"
+            "      type: perspective\n"
+            "      fovY: 45.0\n"
+            "      aspect: 1.7777778\n"
+            "      nearPlane: 0.1\n"
+            "      farPlane: 1000.0\n"
+            "      left: -1.0\n"
+            "      right: 1.0\n"
+            "      bottom: -1.0\n"
+            "      top: 1.0\n"
+            "      cullingMask: 4294967295\n"
+            "  - nodeName: helmet\n"
+            "    name: helmet\n"
+            "    visibilityMask: 4294967295\n"
+            "    mesh:\n"
+            "      uri: assets/models/damaged_helmet/DamagedHelmet.gltf\n");
 
   demo::SceneRuntime runtime;
-  runtime.loadFromDocumentPath(path);
-
-  auto *helmet = runtime.scene()->findByPath("/helmet");
-  EXPECT(helmet != nullptr, "builtin helmet scene should load helmet node");
-  const auto material = nodeMaterialInstance(helmet);
-  EXPECT(material && material->getTemplate() &&
-             material->getTemplate()->getName() == "pbr",
-         "builtin helmet should bridge glTF metadata to PBR material");
-  EXPECT(
-      nodeForwardPassHasDescriptor(helmet, LX_core::StringID("albedoMap")),
-      "builtin helmet PBR bridge should bind baseColor texture");
-  EXPECT(nodeForwardPassHasDescriptor(
-             helmet, LX_core::StringID("metallicRoughnessMap")),
-         "builtin helmet PBR bridge should bind metallicRoughness texture");
-  EXPECT(nodeForwardPassHasDescriptor(helmet, LX_core::StringID("aoMap")),
-         "builtin helmet PBR bridge should bind occlusion texture");
-  EXPECT(nodeForwardPassHasDescriptor(helmet, LX_core::StringID("emissiveMap")),
-         "builtin helmet PBR bridge should bind emissive texture");
-  EXPECT(nodeForwardPassHasDescriptor(helmet, LX_core::StringID("normalMap")),
-         "builtin helmet should generate tangents and bind normal texture");
-  const auto metallic = runtime.nodeMaterialParameterForNode(
-      "/helmet", "MaterialUBO", "metallicFactor");
-  const auto roughness = runtime.nodeMaterialParameterForNode(
-      "/helmet", "MaterialUBO", "roughnessFactor");
-  EXPECT(metallic.has_value() && metallic->floatValue >= 0.0f,
-         "builtin helmet should expose glTF metallic scalar");
-  EXPECT(roughness.has_value() && roughness->floatValue >= 0.0f,
-         "builtin helmet should expose glTF roughness scalar");
-}
-
-void testPlainGltfHelmetUsesSharedPbrBridge() {
-  const std::filesystem::path path =
-      makeTempPath("lx_scene_runtime_plain_gltf_helmet.yaml");
-  writeSceneFile(path, "scene:\n"
-                       "  name: Plain GLTF Helmet\n"
-                       "  gameplayCameraPath: /game_cam\n"
-                       "nodes:\n"
-                       "  - nodeName: game_camera\n"
-                       "    name: game_cam\n"
-                       "    transform:\n"
-                       "      translation: [0.0, 2.0, 6.0]\n"
-                       "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
-                       "      scale: [1.0, 1.0, 1.0]\n"
-                       "    visibilityMask: 4294967295\n"
-                       "    camera:\n"
-                       "      eye: [0.0, 2.0, 6.0]\n"
-                       "      target: [0.0, 0.0, 0.0]\n"
-                       "      up: [0.0, 1.0, 0.0]\n"
-                       "      type: perspective\n"
-                       "      fovY: 45.0\n"
-                       "      aspect: 1.7777778\n"
-                       "      nearPlane: 0.1\n"
-                       "      farPlane: 1000.0\n"
-                       "      left: -1.0\n"
-                       "      right: 1.0\n"
-                       "      bottom: -1.0\n"
-                       "      top: 1.0\n"
-                       "      cullingMask: 4294967295\n"
-                       "  - nodeName: helmet\n"
-                       "    name: helmet\n"
-                       "    visibilityMask: 4294967295\n"
-                       "    mesh:\n"
-                       "      uri: assets/models/damaged_helmet/DamagedHelmet.gltf\n");
-
-  demo::SceneRuntime runtime;
-  runtime.loadFromDocumentPath(path);
-
-  auto *helmet = runtime.scene()->findByPath("/helmet");
-  EXPECT(helmet != nullptr, "plain glTF helmet scene should load helmet node");
-  EXPECT(nodeForwardPassHasDescriptor(helmet, LX_core::StringID("normalMap")),
-         "plain glTF helmet should use shared PBR bridge and normal map");
-}
-
-void testBuiltinHelmetDefaultMaterialKeepsPbrBridgeOnReload() {
-  const std::filesystem::path path =
-      makeTempPath("lx_scene_runtime_builtin_helmet_default_pbr.yaml");
-  writeSceneFile(path, "scene:\n"
-                       "  name: Builtin Helmet Saved PBR\n"
-                       "  gameplayCameraPath: /game_cam\n"
-                       "nodes:\n"
-                       "  - nodeName: game_camera\n"
-                       "    name: game_cam\n"
-                       "    transform:\n"
-                       "      translation: [0.0, 2.0, 6.0]\n"
-                       "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
-                       "      scale: [1.0, 1.0, 1.0]\n"
-                       "    visibilityMask: 4294967295\n"
-                       "    camera:\n"
-                       "      eye: [0.0, 2.0, 6.0]\n"
-                       "      target: [0.0, 0.0, 0.0]\n"
-                       "      up: [0.0, 1.0, 0.0]\n"
-                       "      type: perspective\n"
-                       "      fovY: 45.0\n"
-                       "      aspect: 1.7777778\n"
-                       "      nearPlane: 0.1\n"
-                       "      farPlane: 1000.0\n"
-                       "      left: -1.0\n"
-                       "      right: 1.0\n"
-                       "      bottom: -1.0\n"
-                       "      top: 1.0\n"
-                       "      cullingMask: 4294967295\n"
-                       "  - nodeName: helmet\n"
-                       "    name: helmet\n"
-                       "    transform:\n"
-                       "      translation: [0.0, 0.0, 0.0]\n"
-                       "      rotation: [1.0, 0.0, 0.0, 0.0]\n"
-                       "      scale: [1.0, 1.0, 1.0]\n"
-                       "    visibilityMask: 4294967295\n"
-                       "    mesh:\n"
-                       "      uri: builtin://lxe_editor/helmet\n"
-                       "    material:\n"
-                       "      uri: assets/materials/pbr.material\n");
-
-  demo::SceneRuntime runtime;
-  runtime.loadFromDocumentPath(path);
-
-  auto *helmet = runtime.scene()->findByPath("/helmet");
-  const auto albedoDesc =
-      nodeTextureDesc(helmet, LX_core::StringID("albedoMap"));
-  const auto mrDesc =
-      nodeTextureDesc(helmet, LX_core::StringID("metallicRoughnessMap"));
-  const auto aoDesc = nodeTextureDesc(helmet, LX_core::StringID("aoMap"));
-  const auto emissiveDesc =
-      nodeTextureDesc(helmet, LX_core::StringID("emissiveMap"));
-  EXPECT(albedoDesc.has_value() && albedoDesc->width > 1u,
-         "explicit default helmet material should keep real glTF albedo "
-         "texture instead of white placeholder");
-  EXPECT(mrDesc.has_value() && mrDesc->width > 1u,
-         "explicit default helmet material should keep real glTF MR texture");
-  EXPECT(aoDesc.has_value() && aoDesc->width > 1u,
-         "explicit default helmet material should keep real glTF AO texture");
-  EXPECT(emissiveDesc.has_value() && emissiveDesc->width > 1u,
-         "explicit default helmet material should keep real glTF emissive "
-         "texture");
-
-  const auto parameterResult = runtime.setNodeMaterialParameter(
-      "/helmet", "MaterialUBO", "roughnessFactor",
-      LX_core::MaterialParameterValue{
-          .type = LX_core::MaterialParameterValueType::Float,
-          .floatValue = 0.42f,
-      });
-  EXPECT(parameterResult.ok,
-         "helmet default material parameter edit should preserve bridge path");
-  const auto editedAlbedoDesc =
-      nodeTextureDesc(runtime.scene()->findByPath("/helmet"),
-                      LX_core::StringID("albedoMap"));
-  const auto editedAoDesc =
-      nodeTextureDesc(runtime.scene()->findByPath("/helmet"),
-                      LX_core::StringID("aoMap"));
-  const auto editedEmissiveDesc =
-      nodeTextureDesc(runtime.scene()->findByPath("/helmet"),
-                      LX_core::StringID("emissiveMap"));
-  EXPECT(editedAlbedoDesc.has_value() && editedAlbedoDesc->width > 1u,
-         "helmet parameter edit should not replace glTF albedo with "
-         "placeholder texture");
-  EXPECT(editedAoDesc.has_value() && editedAoDesc->width > 1u,
-         "helmet parameter edit should not replace glTF AO with placeholder "
-         "texture");
-  EXPECT(editedEmissiveDesc.has_value() && editedEmissiveDesc->width > 1u,
-         "helmet parameter edit should not replace glTF emissive with "
-         "placeholder texture");
-
-  const std::filesystem::path savePath =
-      makeTempPath("lx_scene_runtime_builtin_helmet_default_pbr_saved.yaml");
-  runtime.saveToDocumentPath(savePath);
-
-  demo::SceneRuntime reloaded;
-  reloaded.loadFromDocumentPath(savePath);
-  auto *reloadedHelmet = reloaded.scene()->findByPath("/helmet");
-  const auto reloadedAlbedoDesc =
-      nodeTextureDesc(reloadedHelmet, LX_core::StringID("albedoMap"));
-  const auto reloadedMrDesc =
-      nodeTextureDesc(reloadedHelmet, LX_core::StringID("metallicRoughnessMap"));
-  const auto reloadedAoDesc =
-      nodeTextureDesc(reloadedHelmet, LX_core::StringID("aoMap"));
-  const auto reloadedEmissiveDesc =
-      nodeTextureDesc(reloadedHelmet, LX_core::StringID("emissiveMap"));
-  EXPECT(reloadedAlbedoDesc.has_value() && reloadedAlbedoDesc->width > 1u,
-         "saved default helmet material should reload through glTF PBR bridge");
-  EXPECT(reloadedMrDesc.has_value() && reloadedMrDesc->width > 1u,
-         "saved default helmet material should reload real glTF MR texture");
-  EXPECT(reloadedAoDesc.has_value() && reloadedAoDesc->width > 1u,
-         "saved default helmet material should reload real glTF AO texture");
-  EXPECT(reloadedEmissiveDesc.has_value() && reloadedEmissiveDesc->width > 1u,
-         "saved default helmet material should reload real glTF emissive "
-         "texture");
+  bool rejected = false;
+  try {
+    runtime.loadFromDocumentPath(path);
+  } catch (const std::exception &error) {
+    rejected =
+        std::string(error.what()).find("glTF scene node requires explicit "
+                                       "material uri") != std::string::npos;
+  }
+  EXPECT(rejected,
+         "plain glTF nodes must declare material/source:gltf in the scene");
 }
 
 void testShadowTutorialSceneLoadsSavesAndReloads() {
@@ -2288,11 +2141,12 @@ void testShadowTutorialSceneLoadsSavesAndReloads() {
   EXPECT(lightNode != nullptr, "shadow tutorial should load directional light");
   const auto light = lightNode != nullptr
                          ? runtime.scene()->getDirectionalLight(*lightNode)
-                         : nullptr;
-  EXPECT(light != nullptr, "shadow tutorial should attach directional light");
-  if (light != nullptr) {
-    expectNear(light->getShadowParams().z, 0.7f, "shadow strength should load");
-    EXPECT(light->getShadowCascadeCount() == 4u,
+                         : std::nullopt;
+  EXPECT(light.has_value(), "shadow tutorial should attach directional light");
+  if (light.has_value()) {
+    expectNear(light->get().getShadowParams().z, 0.7f,
+               "shadow strength should load");
+    EXPECT(light->get().getShadowCascadeCount() == 4u,
            "shadow cascade count should load");
   }
 
@@ -2309,13 +2163,13 @@ void testShadowTutorialSceneLoadsSavesAndReloads() {
   const auto reloadedLight =
       reloadedLightNode != nullptr
           ? reloaded.scene()->getDirectionalLight(*reloadedLightNode)
-          : nullptr;
-  EXPECT(reloadedLight != nullptr,
+          : std::nullopt;
+  EXPECT(reloadedLight.has_value(),
          "shadow tutorial directional light should reload after save");
-  if (reloadedLight != nullptr) {
-    expectNear(reloadedLight->getShadowParams().z, 0.7f,
+  if (reloadedLight.has_value()) {
+    expectNear(reloadedLight->get().getShadowParams().z, 0.7f,
                "shadow strength should round trip through runtime save");
-    EXPECT(reloadedLight->getShadowCascadeCount() == 4u,
+    EXPECT(reloadedLight->get().getShadowCascadeCount() == 4u,
            "shadow cascade count should round trip through runtime save");
   }
 }
@@ -2346,7 +2200,7 @@ void testIblMetalSphereSceneLoadsAndInjectsIblResources() {
   EXPECT(materialComponent.has_value(),
          "IBL metal sphere should have a material component");
   if (materialComponent.has_value()) {
-    const auto material = materialComponent->get().getMaterialInstance();
+    const auto *material = nodeMaterialInstance(*runtime.scene(), sphereNode);
     EXPECT(material && material->getTemplate() &&
                material->getTemplate()->getName() == "pbr",
            "IBL metal sphere should use the PBR material template");
@@ -2361,7 +2215,8 @@ void testIblMetalSphereSceneLoadsAndInjectsIblResources() {
   }
 
   LX_core::RenderWorkQueue queue;
-  queue.build(LX_core::RenderWorkBuildContext::realtime(*runtime.scene()), LX_core::Pass_Forward, LX_core::RenderTarget{});
+  queue.build(LX_core::RenderWorkBuildContext::realtime(*runtime.scene()),
+              LX_core::Pass_Forward, LX_core::RenderTarget{});
   bool sawPbrSphere = false;
   bool hasIrradiance = false;
   bool hasPrefilter = false;
@@ -2375,10 +2230,7 @@ void testIblMetalSphereSceneLoadsAndInjectsIblResources() {
     }
     sawPbrSphere = true;
     for (const auto &resource : item.descriptorResources) {
-      if (!resource) {
-        continue;
-      }
-      const auto binding = resource->getBindingName();
+      const auto binding = resource.getBindingName();
       hasIrradiance =
           hasIrradiance || binding == LX_core::StringID("IrradianceMap");
       hasPrefilter =
@@ -2387,16 +2239,18 @@ void testIblMetalSphereSceneLoadsAndInjectsIblResources() {
       hasEnvironment =
           hasEnvironment || binding == LX_core::StringID("EnvironmentUBO");
       if (binding == LX_core::StringID("IrradianceMap")) {
-        const auto sampler =
-            std::dynamic_pointer_cast<LX_core::CombinedTextureSampler>(
-                resource);
+        const auto *sampler =
+            resource.isResource()
+                ? dynamic_cast<const LX_core::CombinedTextureSampler *>(
+                      &resource.resource().get())
+                : nullptr;
         if (sampler && sampler->texture() &&
             sampler->texture()->desc().format ==
                 LX_core::TextureFormat::RGBA32Float) {
           const auto *pixels =
               static_cast<const float *>(sampler->texture()->data());
-          hdrIblHasEnergy = pixels[0] > 0.0f || pixels[1] > 0.0f ||
-                            pixels[2] > 0.0f;
+          hdrIblHasEnergy =
+              pixels[0] > 0.0f || pixels[1] > 0.0f || pixels[2] > 0.0f;
         }
       }
     }
@@ -2408,23 +2262,25 @@ void testIblMetalSphereSceneLoadsAndInjectsIblResources() {
   EXPECT(hdrIblHasEnergy,
          "IBL metal sphere should derive non-black IBL data from HDR input");
 
-  const auto iblResources = runtime.scene()->getIblEnvironmentResourceSet();
+  const auto *iblResources =
+      runtime.scene()->resources().getIblEnvironmentResourceSet();
   bool skyboxPreviewHasEnergy = false;
-  if (iblResources.skyboxCubemap && iblResources.skyboxCubemap->texture() &&
-      iblResources.skyboxCubemap->texture()->desc().format ==
+  if (iblResources != nullptr && iblResources->skyboxCubemap &&
+      iblResources->skyboxCubemap->texture() &&
+      iblResources->skyboxCubemap->texture()->desc().format ==
           LX_core::TextureFormat::RGBA32Float) {
-    EXPECT(iblResources.skyboxCubemap->texture()->desc().width > 1u,
+    EXPECT(iblResources->skyboxCubemap->texture()->desc().width > 1u,
            "IBL skybox preview should preserve directional cubemap data");
     const auto *pixels = static_cast<const float *>(
-        iblResources.skyboxCubemap->texture()->data());
+        iblResources->skyboxCubemap->texture()->data());
     skyboxPreviewHasEnergy =
         pixels[0] > 0.0f || pixels[1] > 0.0f || pixels[2] > 0.0f;
   }
   EXPECT(skyboxPreviewHasEnergy,
          "IBL metal sphere should expose non-black skybox preview data");
-  EXPECT(iblResources.prefilteredRadianceCubemap &&
-             iblResources.prefilteredRadianceCubemap->texture() &&
-             iblResources.prefilteredRadianceCubemap->texture()
+  EXPECT(iblResources != nullptr && iblResources->prefilteredRadianceCubemap &&
+             iblResources->prefilteredRadianceCubemap->texture() &&
+             iblResources->prefilteredRadianceCubemap->texture()
                      ->desc()
                      .mipLevels >= 5u,
          "IBL prefiltered env resource should expose roughness mips");
@@ -2439,6 +2295,61 @@ void testIblMetalSphereSceneLoadsAndInjectsIblResources() {
     EXPECT(saved.environment().hdrUri == "assets/env/studio_small_03_2k.hdr",
            "IBL metal sphere HDR URI should persist through runtime save");
   }
+}
+
+void testPbrtBmwM6SceneProducesRealtimeForwardItems() {
+  const std::filesystem::path path =
+      std::filesystem::current_path() /
+      "data/scenes/bmw-m6/pbrt_bmw_m6.scene.yaml";
+  EXPECT(std::filesystem::exists(path),
+         "PBRT BMW M6 converted scene asset should exist");
+  if (!std::filesystem::exists(path)) {
+    return;
+  }
+
+  demo::SceneRuntime runtime;
+  runtime.loadFromDocumentPath(path);
+  EXPECT(runtime.scene()->getSceneName() == "PBRT BMW M6",
+         "PBRT BMW M6 scene should load");
+  auto *cameraNode = runtime.scene()->findByPath("/pbrt_camera");
+  EXPECT(cameraNode != nullptr, "PBRT BMW M6 scene should expose profile camera");
+  if (cameraNode == nullptr) {
+    return;
+  }
+  const auto cameraComponent =
+      cameraNode->getComponent<LX_core::CameraComponent>();
+  EXPECT(cameraComponent.has_value(),
+         "PBRT BMW M6 profile camera should have CameraComponent");
+  if (!cameraComponent.has_value()) {
+    return;
+  }
+  const LX_core::CameraResource cameraResource =
+      LX_core::Scene::makeCameraResource(
+          cameraComponent->get().getSnapshot("/pbrt_camera"));
+
+  auto buildForwardItemCount = [&runtime,
+                                &cameraResource](const std::string &tag) {
+    runtime.scene()->setActiveMaterialTagForRenderables(tag);
+    LX_core::RenderWorkQueue queue;
+    queue.build(LX_core::RenderWorkBuildContext::realtime(
+                    *runtime.scene(),
+                    LX_core::RenderWorkBuildContext::RealtimeOptions{
+                        .cameraResource = cameraResource,
+                        .visibleMask = cameraResource.cullingMask &
+                                       ~LX_core::Layer_EditorOverlay,
+                    }),
+                LX_core::Pass_Forward, LX_core::RenderTarget{});
+    return queue.getItems().size();
+  };
+
+  const usize realtimeItems = buildForwardItemCount("realtime-pbr");
+  EXPECT(realtimeItems > 0,
+         "PBRT BMW M6 realtime-pbr tag should produce Forward draw items");
+  const usize offlineApproxItems =
+      buildForwardItemCount("offline-pbrt-reference");
+  EXPECT(offlineApproxItems > 0,
+         "PBRT BMW M6 offline-pbrt-reference tag should still use the shared "
+         "runtime material approximation for Forward validation");
 }
 
 } // namespace
@@ -2465,19 +2376,18 @@ int main() {
   testProceduralRuntimeParameterTypeMismatchReportsDiagnostic();
   testGroundMeshWindingMatchesUpwardNormal();
   testBuiltinPrimitivePlaneIsThinBox();
-  testBuiltinPatchMeshesAreOpenReceiversOnly();
+  testBuiltinPatchMeshesKeepMaterialPassConfig();
   testBuiltinPatchScenePayloadRoundTrips();
   testBuiltinPrimitiveScenePayloadRoundTrips();
-  testBuiltinPrimitivePlaneMaterialOverrideStaysReceiverOnly();
-  testBuiltinPrimitivePlaneMaterialEditStaysReceiverOnly();
+  testBuiltinPrimitivePlaneMaterialOverrideKeepsMaterialPassConfig();
+  testBuiltinPrimitivePlaneMaterialEditKeepsMaterialPassConfig();
   testBuiltinPrimitiveBaseColorGetterUsesRuntimeMaterialValue();
   testProjectAssetMaterialOverridesRuntimeAssetMaterial();
   testBuiltinModelMaterialUriKeepsCatalogAlbedoTexture();
-  testBuiltinHelmetUsesPbrMaterialBridge();
-  testPlainGltfHelmetUsesSharedPbrBridge();
-  testBuiltinHelmetDefaultMaterialKeepsPbrBridgeOnReload();
+  testPlainGltfHelmetRequiresExplicitMaterial();
   testShadowTutorialSceneLoadsSavesAndReloads();
   testIblMetalSphereSceneLoadsAndInjectsIblResources();
+  testPbrtBmwM6SceneProducesRealtimeForwardItems();
 
   if (failures != 0) {
     std::cerr << "test_scene_runtime failed with " << failures

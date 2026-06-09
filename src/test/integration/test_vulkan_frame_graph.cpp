@@ -135,7 +135,7 @@ LX_core::IblEnvironmentResources makeSmallIblEnvironmentResources() {
       LX_core::StringID("EquirectangularMap"));
   resources.equirectangularMap->setDirty();
   resources.environmentUbo =
-      std::make_shared<LX_core::EnvironmentData>(0.0f, 4.0f);
+      std::make_unique<LX_core::EnvironmentData>(0.0f, 4.0f);
   return resources;
 }
 
@@ -177,14 +177,16 @@ int main() {
     renderer->initialize(window, "TestVulkanFrameGraph");
     phase = Phase::RendererInitialized;
     auto scene = makeFrameGraphScene();
-    scene->setIblEnvironmentResources(makeSmallIblEnvironmentResources());
+    scene->resources().setIblEnvironmentResources(
+        makeSmallIblEnvironmentResources());
     renderer->initScene(scene);
     phase = Phase::SceneInitialized;
-    const auto iblAfterInit = scene->getIblEnvironmentResourceSet();
-    if (!iblAfterInit.bakedSkyboxCubemap ||
-        !iblAfterInit.bakedIrradianceCubemap ||
-        !iblAfterInit.bakedPrefilteredRadianceCubemap ||
-        !iblAfterInit.bakedBrdfLut) {
+    const auto *iblAfterInit =
+        scene->resources().getIblEnvironmentResourceSet();
+    if (iblAfterInit == nullptr || !iblAfterInit->bakedSkyboxCubemap ||
+        !iblAfterInit->bakedIrradianceCubemap ||
+        !iblAfterInit->bakedPrefilteredRadianceCubemap ||
+        !iblAfterInit->bakedBrdfLut) {
       std::cerr << "renderer initScene should replace equirectangular IBL "
                    "input with baked GPU resources\n";
       return 1;
@@ -236,22 +238,21 @@ int main() {
     }
 
     renderer->uploadData();
-    const auto light =
-        std::dynamic_pointer_cast<LX_core::DirectionalLight>(
-            scene->getLights().front());
+    const auto *light = dynamic_cast<const LX_core::DirectionalLight *>(
+        &scene->getLights().front().get());
     if (!light) {
       std::cerr << "frame graph scene should have a directional light\n";
       return 1;
     }
     const auto cascadeBeforeCameraMove =
-        light->getDirectionalUBO()->param.cascadeViewProj[0];
+        light->getDirectionalUBO().param.cascadeViewProj[0];
     auto activeCamera =
         scene->getCameras().front()->getComponent<LX_core::CameraComponent>();
     activeCamera->get().lookAt({8.0f, 5.0f, 8.0f}, {0.0f, 0.0f, 0.0f},
                                {0.0f, 1.0f, 0.0f});
     renderer->uploadData();
     const auto cascadeAfterCameraMove =
-        light->getDirectionalUBO()->param.cascadeViewProj[0];
+        light->getDirectionalUBO().param.cascadeViewProj[0];
     if (matricesNearlyEqual(cascadeBeforeCameraMove, cascadeAfterCameraMove)) {
       std::cerr << "directional shadow cascade should update when active "
                    "camera moves before upload\n";

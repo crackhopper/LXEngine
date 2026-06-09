@@ -39,6 +39,8 @@ nav:
           - 资源与绑定: tutorial/pbr-ibl/02-resource-and-shader-contract.md
           - HDR Post 流程: tutorial/pbr-ibl/03-hdr-post-process-flow.md
           - 验证与排错: tutorial/pbr-ibl/04-verify-and-debug.md
+      - Assets Downloader:
+          - 总览: tutorial/assets-downloader/index.md
       - Offline Renderer:
           - 总览: tutorial/offline-renderer/index.md
           - 运行 CLI: tutorial/offline-renderer/01-run-offline-renderer.md

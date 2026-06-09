@@ -4,12 +4,14 @@
 #include "core/frame_graph/render_target.hpp"
 #include "core/math/ray.hpp"
 #include "core/pipeline/pipeline_key.hpp"
+#include "core/rhi/descriptor_resource_ref.hpp"
 #include "core/scene/components/camera_component.hpp"
 #include "core/scene/ibl_environment.hpp"
 #include "core/scene/light.hpp"
 #include "core/scene/object.hpp"
-#include "core/scene/scene_resource_table.hpp"
 #include "core/scene/scene_events.hpp"
+#include "core/scene/scene_render_settings.hpp"
+#include "core/scene/scene_resource_table.hpp"
 #include <algorithm>
 #include <exception>
 #include <iostream>
@@ -44,8 +46,8 @@ enum class RenderWorkKind {
 
 struct RasterDrawWorkPayload final {
   PerDrawDataSharedPtr drawData;
-  IGpuResourceSharedPtr vertexBuffer;
-  IGpuResourceSharedPtr indexBuffer;
+  GpuResourceRef vertexBuffer;
+  GpuResourceRef indexBuffer;
   u32 indexCount = 0;
   u32 firstIndex = 0;
   i32 vertexOffset = 0;
@@ -73,20 +75,20 @@ GPU work"翻译成 backend 提交单元的代码路径，都收口到这个结�
 - `raster / compute`：按 work kind 存放特化 payload，避免把 raster-only
   vertex/index/drawData 当成所有 render work 的公共字段
 - `material`：保留材质句柄是为了 `PipelineBuildDesc::fromRenderWorkItem`
-  反查 render state 和 owned binding 表，而不是 backend 直接读它
+  不再保存材质对象；pipeline 需要的 render state 在 SceneNode 校验阶段复制进
+  work item，材质资源绑定则由 scene descriptor resolver 从 SceneResourceTable
+  解析。
 */
 struct RenderWorkItem final {
   RenderDomain domain = RenderDomain::Realtime;
   RenderWorkKind kind = RenderWorkKind::RasterDraw;
   ShaderPtr shaderInfo;
-  MaterialInstanceSharedPtr
-      material; // 材质句柄 — 用于 PipelineBuildDesc::fromRenderWorkItem
+  RenderState renderState;
 
   RasterDrawWorkPayload raster;
   ComputeDispatchWorkPayload compute;
 
-  std::vector<IGpuResourceSharedPtr>
-      descriptorResources; // 材质 + skeleton 等资源
+  DescriptorResourceList descriptorResources; // 材质 + skeleton 等资源
 
   StringID pass;
   RenderTargetDesc target;
@@ -157,8 +159,8 @@ public:
      让错误日志里的对象引用语义崩塌。
   2. 把 `<sceneName>/<nodeName>` 写回 SceneNode 作为 `sceneDebugId`，让跨 scene
      的日志和断言能拿到一个稳定的 StringID 对象引用。
-  3. 调用 `attachToScene(weak_from_this())`，给 node 写一个弱反向句柄。这条句柄
-     是 shared MaterialInstance 反向传播 `revalidateNodesUsing` 的前提。
+  3. 调用 `attachToScene(weak_from_this())`，给 node 写一个弱反向句柄。组件发生
+     结构性变化时通过这条句柄同步 scene resource table。
 
   非 SceneNode 类型的 renderable 仍然走 nodeName 唯一性检查，但跳过 scene 反向
   绑定 — 它们没有需要从 scene 读回的状态。
@@ -183,6 +185,7 @@ public:
         node->setSceneDebugId(
             StringID(m_sceneName + "/" + node->getNodeName()));
         registerNodeResources(*node);
+        node->rebuildValidatedCache();
         node->warnIfSiblingNameIsDuplicated();
       }
     }
@@ -209,6 +212,7 @@ public:
         node->setSceneDebugId(
             StringID(m_sceneName + "/" + node->getNodeName()));
         registerNodeResources(*node);
+        node->rebuildValidatedCache();
       }
     }
     m_renderables.push_back(std::move(r));
@@ -218,8 +222,9 @@ public:
 
   void addCamera(const SceneNodeSharedPtr &cameraNode);
   void removeCamera(const SceneNodeSharedPtr &cameraNode);
-  const std::vector<SceneNodeSharedPtr> &getCameras() const {
-    return m_cameras;
+  [[nodiscard]] std::vector<SceneNodeSharedPtr> getCameras() const;
+  [[nodiscard]] const std::vector<CameraHandle> &getCameraHandles() const {
+    return m_cameraHandles;
   }
   [[nodiscard]] SceneNodeSharedPtr getActiveCamera() const;
   void setActiveCamera(const SceneNodeSharedPtr &cameraNode);
@@ -228,30 +233,45 @@ public:
     if (!light) {
       return;
     }
-    if (m_lightHandles.find(light.get()) == m_lightHandles.end()) {
-      m_lightHandles[light.get()] = m_resources.registerLight(light);
-    }
-    if (std::find(m_lights.begin(), m_lights.end(), light) == m_lights.end()) {
-      m_lights.push_back(std::move(light));
-    }
+    m_lightHandles.push_back(m_resources.registerLight(light->cloneUnique()));
   }
   void attachLight(const SceneNodeSharedPtr &node,
                    const LightBaseSharedPtr &light);
-  [[nodiscard]] LightBaseSharedPtr getLight(const SceneNode &node) const;
-  [[nodiscard]] DirectionalLightSharedPtr
+  [[nodiscard]] std::optional<std::reference_wrapper<LightBase>>
+  getLight(const SceneNode &node);
+  [[nodiscard]] std::optional<std::reference_wrapper<const LightBase>>
+  getLight(const SceneNode &node) const;
+  [[nodiscard]] std::optional<std::reference_wrapper<DirectionalLight>>
+  getDirectionalLight(const SceneNode &node);
+  [[nodiscard]] std::optional<std::reference_wrapper<const DirectionalLight>>
   getDirectionalLight(const SceneNode &node) const;
-  [[nodiscard]] PointLightSharedPtr getPointLight(const SceneNode &node) const;
-  [[nodiscard]] SpotLightSharedPtr getSpotLight(const SceneNode &node) const;
-  [[nodiscard]] LightBaseSharedPtr detachLight(const SceneNodeSharedPtr &node);
-  void removeLight(const LightBaseSharedPtr &light);
-  const std::vector<LightBaseSharedPtr> &getLights() const { return m_lights; }
-  [[nodiscard]] SceneLightsDataSharedPtr getSceneLightsUBO() const {
-    return m_sceneLightsUbo;
+  [[nodiscard]] std::optional<std::reference_wrapper<PointLight>>
+  getPointLight(const SceneNode &node);
+  [[nodiscard]] std::optional<std::reference_wrapper<const PointLight>>
+  getPointLight(const SceneNode &node) const;
+  [[nodiscard]] std::optional<std::reference_wrapper<SpotLight>>
+  getSpotLight(const SceneNode &node);
+  [[nodiscard]] std::optional<std::reference_wrapper<const SpotLight>>
+  getSpotLight(const SceneNode &node) const;
+  [[nodiscard]] std::optional<LightHandle>
+  detachLight(const SceneNodeSharedPtr &node);
+  void removeLight(const LightBase &light);
+  void removeLight(LightHandle light);
+  [[nodiscard]] std::vector<std::reference_wrapper<LightBase>> getLights();
+  [[nodiscard]] std::vector<std::reference_wrapper<const LightBase>>
+  getLights() const;
+  [[nodiscard]] const std::vector<LightHandle> &getLightHandles() const {
+    return m_lightHandles;
   }
-  void setIblEnvironmentResources(IblEnvironmentResources resources);
-  [[nodiscard]] IblEnvironmentResources getIblEnvironmentResourceSet() const;
-  [[nodiscard]] std::vector<IGpuResourceSharedPtr>
-  getIblEnvironmentResources() const;
+  [[nodiscard]] GpuResourceRef getSceneLightsUBO(StringID pass) const {
+    return m_resources.buildSceneLightsUboResource(m_lightHandles, pass);
+  }
+  void setRenderSettings(SceneRenderSettings settings) {
+    m_renderSettings = settings;
+  }
+  [[nodiscard]] const SceneRenderSettings &renderSettings() const {
+    return m_renderSettings;
+  }
   const std::string &getSceneName() const { return m_sceneName; }
   struct PickHit {
     SceneNodeSharedPtr node;
@@ -260,7 +280,6 @@ public:
   SceneNode *findByPath(const std::string &path) const;
   [[nodiscard]] std::vector<std::string> listAllPaths() const;
   std::string dumpTree() const;
-  void revalidateNodesUsing(const MaterialInstanceSharedPtr &materialInstance);
   void setActiveMaterialTagForRenderables(const std::string &tag);
   [[nodiscard]] SceneEventHub &events() { return m_events; }
   [[nodiscard]] const SceneEventHub &events() const { return m_events; }
@@ -268,14 +287,17 @@ public:
   [[nodiscard]] const SceneResourceTable &resources() const {
     return m_resources;
   }
-  [[nodiscard]] RenderSceneSnapshot buildRenderSceneSnapshot() const;
 
   /// REQ-009 two-axis filter form: camera by matchesTarget(target), light by
   /// supportsPass(pass). Returns camera data resources first, then light data
   /// resources; both in their respective container insertion order. Empty
   /// return is valid.
-  std::vector<IGpuResourceSharedPtr>
+  DescriptorResourceList
   getSceneLevelResources(StringID pass, const RenderTarget &target) const;
+  DescriptorResourceList
+  getSceneLevelResources(StringID pass, const CameraResource &camera) const;
+  [[nodiscard]] static CameraResource
+  makeCameraResource(const CameraSnapshot &snapshot);
   VisibilityLayerMask
   getCombinedCameraCullingMask(const RenderTarget &target) const;
   [[nodiscard]] BoundingBox getPickBounds(const SceneNode &node) const;
@@ -288,6 +310,7 @@ public:
   [[nodiscard]] std::vector<SceneNodeSharedPtr> getRootNodes() const;
 
 private:
+  friend class SceneNode;
   static std::vector<std::string> splitPathSegments(const std::string &path);
   static bool matchesPathSegment(const SceneNode &node,
                                  const std::string &pathSegment);
@@ -300,13 +323,11 @@ private:
   std::string m_sceneName;
   SceneNodeSharedPtr m_rootNode;
   std::vector<IRenderableSharedPtr> m_renderables;
-  std::vector<SceneNodeSharedPtr> m_cameras;
-  std::vector<LightBaseSharedPtr> m_lights;
-  std::unordered_map<const SceneNode *, LightBaseSharedPtr> m_lightsByNode;
-  std::unordered_map<const LightBase *, LightHandle> m_lightHandles;
-  mutable SceneLightsDataSharedPtr m_sceneLightsUbo =
-      std::make_shared<SceneLightsData>();
-  mutable std::optional<IblEnvironmentResources> m_iblEnvironmentResources;
+  std::vector<std::weak_ptr<SceneNode>> m_cameraNodes;
+  std::vector<CameraHandle> m_cameraHandles;
+  std::vector<LightHandle> m_lightHandles;
+  std::unordered_map<const SceneNode *, LightHandle> m_lightHandlesByNode;
+  SceneRenderSettings m_renderSettings;
   mutable SceneResourceTable m_resources;
   SceneEventHub m_events;
 };

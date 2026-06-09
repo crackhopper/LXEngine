@@ -31,10 +31,10 @@ const std::vector<u8> kEmptyBuffer;
 
 [[noreturn]] void fatalUndefinedPass(const std::string &templateName,
                                      StringID pass) {
-  throw std::logic_error("MaterialInstance template=" + templateName +
-                         " pass=" +
-                         GlobalStringTable::get().toDebugString(pass) +
-                         " reason=setPassEnabled called for undefined pass");
+  throw std::logic_error(
+      "MaterialInstance template=" + templateName +
+      " pass=" + GlobalStringTable::get().toDebugString(pass) +
+      " reason=setPassEnabled called for undefined pass");
 }
 
 } // namespace
@@ -60,10 +60,9 @@ MaterialInstance::MaterialInstance(Token, MaterialTemplateSharedPtr tmpl)
     if (!isBufferType(binding.type))
       continue;
 
-    m_parameterBuffersByName.emplace(bindingId,
-                                     std::make_shared<ParameterBuffer>(
-                                         bindingId, binding,
-                                         toResourceType(binding.type)));
+    m_parameterBuffersByName.emplace(
+        bindingId, std::make_unique<ParameterBuffer>(
+                       bindingId, binding, toResourceType(binding.type)));
   }
 }
 
@@ -117,9 +116,8 @@ void MaterialInstance::setParameter(StringID bindingName, StringID memberName,
   assert(parameterBuffer &&
          "setParameter: binding name not found in canonical buffer bindings");
   if (parameterBuffer)
-    parameterBuffer->get().writeBindingMember(memberName, &value,
-                                              sizeof(float) * 3,
-                                              ShaderPropertyType::Vec3);
+    parameterBuffer->get().writeBindingMember(
+        memberName, &value, sizeof(float) * 3, ShaderPropertyType::Vec3);
 }
 
 void MaterialInstance::setParameter(StringID bindingName, StringID memberName,
@@ -128,8 +126,7 @@ void MaterialInstance::setParameter(StringID bindingName, StringID memberName,
   assert(parameterBuffer &&
          "setParameter: binding name not found in canonical buffer bindings");
   if (parameterBuffer)
-    parameterBuffer->get().writeBindingMember(memberName, &value,
-                                              sizeof(Vec4f),
+    parameterBuffer->get().writeBindingMember(memberName, &value, sizeof(Vec4f),
                                               ShaderPropertyType::Vec4);
 }
 
@@ -219,16 +216,52 @@ void MaterialInstance::setTexture(StringID bindingName,
           type == ShaderPropertyType::TextureCube) &&
          "setTexture target is not a sampled image binding");
   (void)type;
-  m_textureBindingsByName[bindingName] = std::move(tex);
+  m_pendingTextureBindingsByName[bindingName] = std::move(tex);
+  m_textureHandlesByName.erase(bindingName);
+}
+
+void MaterialInstance::setTextureHandle(StringID bindingName,
+                                        TextureHandle handle) {
+  auto bindingOpt = m_template->findCanonicalMaterialBinding(bindingName);
+  assert(bindingOpt &&
+         "texture binding not found in canonical material interface");
+  const auto type = bindingOpt->get().type;
+  assert((type == ShaderPropertyType::Texture2D ||
+          type == ShaderPropertyType::TextureCube) &&
+         "setTextureHandle target is not a sampled image binding");
+  (void)type;
+  m_textureHandlesByName[bindingName] = handle;
+  m_pendingTextureBindingsByName.erase(bindingName);
+}
+
+TextureHandle MaterialInstance::getTextureHandle(StringID bindingName) const {
+  const auto it = m_textureHandlesByName.find(bindingName);
+  if (it == m_textureHandlesByName.end()) {
+    return TextureHandle{};
+  }
+  return it->second;
 }
 
 CombinedTextureSamplerSharedPtr
 MaterialInstance::getTexture(StringID bindingName) const {
-  const auto it = m_textureBindingsByName.find(bindingName);
-  if (it == m_textureBindingsByName.end()) {
+  const auto it = m_pendingTextureBindingsByName.find(bindingName);
+  if (it == m_pendingTextureBindingsByName.end()) {
     return nullptr;
   }
   return it->second;
+}
+
+void MaterialInstance::forEachPendingTextureBinding(
+    const std::function<void(StringID, const CombinedTextureSamplerSharedPtr &)>
+        &callback) const {
+  std::vector<std::pair<StringID, CombinedTextureSamplerSharedPtr>> bindings;
+  bindings.reserve(m_pendingTextureBindingsByName.size());
+  for (const auto &[bindingName, texture] : m_pendingTextureBindingsByName) {
+    bindings.emplace_back(bindingName, texture);
+  }
+  for (const auto &[bindingName, texture] : bindings) {
+    callback(bindingName, texture);
+  }
 }
 
 /*****************************************************************
@@ -246,7 +279,33 @@ void MaterialInstance::syncGpuData() {
 
 MaterialInstance::SharedPtr MaterialInstance::cloneInstanceData() const {
   auto clone = MaterialInstance::create(m_template);
-  clone->m_textureBindingsByName = m_textureBindingsByName;
+  auto uniqueClone = cloneInstanceDataUnique();
+  clone->m_pendingTextureBindingsByName =
+      uniqueClone->m_pendingTextureBindingsByName;
+  clone->m_textureHandlesByName = uniqueClone->m_textureHandlesByName;
+  clone->m_enabledPasses = uniqueClone->m_enabledPasses;
+  for (const auto &[bindingId, parameterBuffer] :
+       uniqueClone->m_parameterBuffersByName) {
+    if (!parameterBuffer) {
+      continue;
+    }
+    const auto &binding = parameterBuffer->getBinding();
+    for (const auto &member : binding.members) {
+      const auto value =
+          uniqueClone->readParameterValue(bindingId, StringID(member.name));
+      if (value.has_value()) {
+        clone->setParameterValue(bindingId, StringID(member.name), *value);
+      }
+    }
+  }
+  clone->syncGpuData();
+  return clone;
+}
+
+MaterialInstance::UniquePtr MaterialInstance::cloneInstanceDataUnique() const {
+  auto clone = MaterialInstance::createUnique(m_template);
+  clone->m_pendingTextureBindingsByName = m_pendingTextureBindingsByName;
+  clone->m_textureHandlesByName = m_textureHandlesByName;
   clone->m_enabledPasses = m_enabledPasses;
   for (const auto &[bindingId, parameterBuffer] : m_parameterBuffersByName) {
     if (!parameterBuffer) {
@@ -265,57 +324,17 @@ MaterialInstance::SharedPtr MaterialInstance::cloneInstanceData() const {
 }
 
 /*****************************************************************
- * Pass-aware descriptor resources (REQ-032 R4)
- *****************************************************************/
-
-std::vector<IGpuResourceSharedPtr>
-MaterialInstance::getDescriptorResources(StringID pass) const {
-  std::vector<std::pair<u32, IGpuResourceSharedPtr>> sorted;
-
-  const auto &bindingIds = m_template->getPassMaterialBindingIds(pass);
-  for (const auto &bindingId : bindingIds) {
-    auto binding = m_template->findCanonicalMaterialBinding(bindingId);
-    if (!binding)
-      continue;
-    const auto &bindingRef = binding->get();
-    const u32 lookupKey =
-        (bindingRef.set << 16) | bindingRef.binding;
-    const u32 key = lookupKey;
-
-    if (isBufferType(bindingRef.type)) {
-      auto it = m_parameterBuffersByName.find(bindingId);
-      if (it != m_parameterBuffersByName.end() && it->second &&
-          !it->second->getBuffer().empty()) {
-        sorted.emplace_back(
-            key, std::static_pointer_cast<IGpuResource>(it->second));
-      }
-    } else if (bindingRef.type == ShaderPropertyType::Texture2D ||
-               bindingRef.type == ShaderPropertyType::TextureCube) {
-      CombinedTextureSamplerSharedPtr tex;
-      auto it = m_textureBindingsByName.find(bindingId);
-      if (it != m_textureBindingsByName.end())
-        tex = it->second;
-      if (tex) {
-        tex->setBindingName(bindingId);
-        sorted.emplace_back(key, std::static_pointer_cast<IGpuResource>(tex));
-      }
-    }
-  }
-
-  std::sort(sorted.begin(), sorted.end(),
-            [](const auto &a, const auto &b) { return a.first < b.first; });
-
-  std::vector<IGpuResourceSharedPtr> out;
-  out.reserve(sorted.size());
-  for (auto &[_, r] : sorted) {
-    out.push_back(std::move(r));
-  }
-  return out;
-}
-
-/*****************************************************************
  * Accessors
  *****************************************************************/
+
+GpuResourceRef MaterialInstance::getParameterResource(StringID bindingName) const {
+  auto it = m_parameterBuffersByName.find(bindingName);
+  if (it == m_parameterBuffersByName.end() || !it->second ||
+      it->second->getBuffer().empty()) {
+    return {};
+  }
+  return GpuResourceRef{*it->second};
+}
 
 const std::vector<u8> &
 MaterialInstance::getParameterBufferBytes(StringID bindingName) const {
@@ -383,8 +402,8 @@ bool MaterialInstance::isPassEnabled(StringID pass) const {
 
 void MaterialInstance::setPassEnabled(StringID pass, bool enabled) {
   if (!m_template || !hasDefinedPass(pass)) {
-    fatalUndefinedPass(m_template ? m_template->getName() : std::string("<null>"),
-                       pass);
+    fatalUndefinedPass(
+        m_template ? m_template->getName() : std::string("<null>"), pass);
   }
 
   const bool currentlyEnabled = isPassEnabled(pass);
@@ -411,8 +430,7 @@ std::vector<StringID> MaterialInstance::getEnabledPasses() const {
   return out;
 }
 
-u64
-MaterialInstance::addPassStateListener(std::function<void()> callback) {
+u64 MaterialInstance::addPassStateListener(std::function<void()> callback) {
   const u64 id = m_nextListenerId++;
   m_passStateListeners.emplace(id, std::move(callback));
   return id;

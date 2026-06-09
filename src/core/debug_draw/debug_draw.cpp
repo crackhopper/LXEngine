@@ -117,9 +117,6 @@ private:
 struct BucketState {
   VisibilityLayerMask mask = Layer_EditorOverlay;
   SceneNodeSharedPtr node;
-  std::shared_ptr<VertexBuffer<DebugLineVertex>> vertexBuffer;
-  IndexBufferSharedPtr indexBuffer;
-  MeshSharedPtr mesh;
   usize flushedVertexCount = 0;
   usize reservedVertexCount = 0;
   usize reservedIndexCount = 0;
@@ -304,15 +301,14 @@ BucketState &ensureBucket(VisibilityLayerMask mask) {
 
   BucketState bucket;
   bucket.mask = mask;
-  bucket.vertexBuffer = VertexBuffer<DebugLineVertex>::create({});
-  bucket.indexBuffer =
-      IndexBuffer::create({}, PrimitiveTopology::LineList);
-  bucket.mesh = Mesh::create(bucket.vertexBuffer, bucket.indexBuffer);
+  auto vertexBuffer = VertexBuffer<DebugLineVertex>::create({});
+  auto indexBuffer = IndexBuffer::create({}, PrimitiveTopology::LineList);
+  auto mesh = Mesh::create(vertexBuffer, indexBuffer);
   bucket.node = SceneNode::create(
       "debug_draw_" + std::to_string(static_cast<u32>(mask)));
   bucket.node->setDebugOnlyRenderable(true);
   bucket.node->setVisibilityLayerMask(mask);
-  bucket.node->addComponent<MeshComponent>(bucket.mesh);
+  bucket.node->addComponent<MeshComponent>(std::move(mesh));
   bucket.node->addComponent<MaterialComponent>(ensureMaterial());
 
   if (!s.scene) {
@@ -330,19 +326,8 @@ void rebuildBucketCapacity(BucketState &bucket,
                            const usize reservedVertexCount,
                            const usize reservedIndexCount) {
   auto &s = state();
-  const bool replacingExistingResources =
-      bucket.vertexBuffer || bucket.indexBuffer || bucket.mesh;
-  bucket.vertexBuffer = VertexBuffer<DebugLineVertex>::create({});
-  bucket.indexBuffer = IndexBuffer::create({}, PrimitiveTopology::LineList);
-  bucket.mesh = Mesh::create(bucket.vertexBuffer, bucket.indexBuffer);
-  bucket.mesh->setBounds(BoundingBox{});
-
-  const auto meshComponent = bucket.node->getComponent<MeshComponent>();
-  if (!meshComponent.has_value()) {
-    throw std::runtime_error("DebugDraw bucket missing MeshComponent");
-  }
-  meshComponent->get().setMesh(bucket.mesh);
-
+  const bool replacingExistingResources = bucket.reservedVertexCount != 0 ||
+                                          bucket.reservedIndexCount != 0;
   bucket.reservedVertexCount = reservedVertexCount;
   bucket.reservedIndexCount = reservedIndexCount;
   if (replacingExistingResources) {
@@ -370,12 +355,22 @@ void updateBucket(BucketState &bucket,
     rebuildBucketCapacity(bucket, reservedVertexCount, reservedIndexCount);
   }
 
-  bucket.vertexBuffer->update(
+  auto vertexBuffer = VertexBuffer<DebugLineVertex>::create(
       padVerticesToCapacity(vertices, bucket.reservedVertexCount));
-  bucket.indexBuffer->update(makeDegenerateLineIndices(
-      requiredIndexCount, bucket.reservedVertexCount, bucket.reservedIndexCount));
-  bucket.mesh->setBounds(computeBounds(vertices));
+  auto indexBuffer = IndexBuffer::create(
+      makeDegenerateLineIndices(requiredIndexCount, bucket.reservedVertexCount,
+                                bucket.reservedIndexCount),
+      PrimitiveTopology::LineList);
+  auto mesh = Mesh::create(vertexBuffer, indexBuffer);
+  mesh->setBounds(computeBounds(vertices));
+
+  const auto meshComponent = bucket.node->getComponent<MeshComponent>();
+  if (!meshComponent.has_value()) {
+    throw std::runtime_error("DebugDraw bucket missing MeshComponent");
+  }
+  meshComponent->get().setMesh(std::move(mesh));
   bucket.flushedVertexCount = requiredVertexCount;
+  state().sceneStructureDirty = true;
 }
 
 void pushLine(Vec3f a, Vec3f b, Vec4f color) {
@@ -776,34 +771,40 @@ usize testing::reservedIndexCapacity(VisibilityLayerMask mask) {
 
 usize testing::bufferedVertexCapacity(VisibilityLayerMask mask) {
   auto it = state().buckets.find(mask);
-  if (it == state().buckets.end() || !it->second.vertexBuffer) {
+  if (it == state().buckets.end() || !it->second.node) {
     return 0;
   }
-  return it->second.vertexBuffer->getVertexCount();
+  const auto resource = it->second.node->getVertexBuffer();
+  return resource.isValid()
+             ? resource.get().getByteSize() / sizeof(DebugLineVertex)
+             : 0;
 }
 
 usize testing::bufferedIndexCapacity(VisibilityLayerMask mask) {
   auto it = state().buckets.find(mask);
-  if (it == state().buckets.end() || !it->second.indexBuffer) {
+  if (it == state().buckets.end() || !it->second.node) {
     return 0;
   }
-  return it->second.indexBuffer->indexCount();
+  const auto resource = it->second.node->getIndexBuffer();
+  return resource.isValid() ? resource.get().getByteSize() / sizeof(u32) : 0;
 }
 
 ResourceCacheIdentity testing::vertexBufferIdentity(VisibilityLayerMask mask) {
   auto it = state().buckets.find(mask);
-  if (it == state().buckets.end() || !it->second.vertexBuffer) {
+  if (it == state().buckets.end() || !it->second.node) {
     return 0;
   }
-  return it->second.vertexBuffer->getBackendCacheIdentity();
+  const auto resource = it->second.node->getVertexBuffer();
+  return resource.isValid() ? resource.getBackendCacheIdentity() : 0;
 }
 
 ResourceCacheIdentity testing::indexBufferIdentity(VisibilityLayerMask mask) {
   auto it = state().buckets.find(mask);
-  if (it == state().buckets.end() || !it->second.indexBuffer) {
+  if (it == state().buckets.end() || !it->second.node) {
     return 0;
   }
-  return it->second.indexBuffer->getBackendCacheIdentity();
+  const auto resource = it->second.node->getIndexBuffer();
+  return resource.isValid() ? resource.getBackendCacheIdentity() : 0;
 }
 
 bool testing::hasRenderable(VisibilityLayerMask mask) {

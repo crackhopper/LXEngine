@@ -39,11 +39,9 @@ resolveGltfPath(const std::filesystem::path &gltfPath) {
   return gltfPath.is_absolute() ? gltfPath : ::resolveRuntimePath(gltfPath);
 }
 
-[[nodiscard]] std::vector<Vec4f>
-generateTangents(const std::vector<Vec3f> &positions,
-                 const std::vector<Vec3f> &normals,
-                 const std::vector<Vec2f> &uvs,
-                 const std::vector<u32> &indices) {
+[[nodiscard]] std::vector<Vec4f> generateTangents(
+    const std::vector<Vec3f> &positions, const std::vector<Vec3f> &normals,
+    const std::vector<Vec2f> &uvs, const std::vector<u32> &indices) {
   std::vector<Vec3f> tangentSums(positions.size(), Vec3f{0.0f, 0.0f, 0.0f});
   std::vector<Vec3f> bitangentSums(positions.size(), Vec3f{0.0f, 0.0f, 0.0f});
 
@@ -61,8 +59,7 @@ generateTangents(const std::vector<Vec3f> &positions,
     const Vec3f edge2 = positions[i2] - positions[i0];
     const Vec2f deltaUv1 = uvs[i1] - uvs[i0];
     const Vec2f deltaUv2 = uvs[i2] - uvs[i0];
-    const float determinant =
-        deltaUv1.x * deltaUv2.y - deltaUv1.y * deltaUv2.x;
+    const float determinant = deltaUv1.x * deltaUv2.y - deltaUv1.y * deltaUv2.x;
     if (std::abs(determinant) < 1.0e-6f) {
       continue;
     }
@@ -176,8 +173,7 @@ buildMeshFromGltf(const infra::GLTFLoader &loader) {
 
 void bindTextureIfPresent(MaterialInstanceSharedPtr &material,
                           const std::filesystem::path &gltfDir,
-                          const std::string &uri,
-                          const char *bindingName) {
+                          const std::string &uri, const char *bindingName) {
   if (uri.empty()) {
     return;
   }
@@ -225,11 +221,9 @@ void setParameterIfPresent(MaterialInstanceSharedPtr &material,
   }
 }
 
-[[nodiscard]] MaterialInstanceSharedPtr
-buildMaterialFromGltf(const infra::GLTFPbrMaterial &pbr,
-                      const std::filesystem::path &gltfDir,
-                      const std::filesystem::path &materialUri,
-                      const bool normalMapEnabled) {
+[[nodiscard]] MaterialInstanceSharedPtr buildMaterialFromGltf(
+    const infra::GLTFPbrMaterial &pbr, const std::filesystem::path &gltfDir,
+    const std::filesystem::path &materialUri, const bool normalMapEnabled) {
   auto material = LX_infra::loadGenericMaterial(materialUri);
   if (!material) {
     throw std::runtime_error("failed to load glTF target material: " +
@@ -238,10 +232,9 @@ buildMaterialFromGltf(const infra::GLTFPbrMaterial &pbr,
 
   setParameterIfPresent(material, "MaterialUBO", "baseColorFactor",
                         pbr.baseColorFactor);
-  setParameterIfPresent(
-      material, "MaterialUBO", "baseColor",
-      Vec3f{pbr.baseColorFactor.x, pbr.baseColorFactor.y,
-            pbr.baseColorFactor.z});
+  setParameterIfPresent(material, "MaterialUBO", "baseColor",
+                        Vec3f{pbr.baseColorFactor.x, pbr.baseColorFactor.y,
+                              pbr.baseColorFactor.z});
   setParameterIfPresent(material, "MaterialUBO", "metallicFactor",
                         pbr.metallicFactor);
   setParameterIfPresent(material, "MaterialUBO", "roughnessFactor",
@@ -271,11 +264,6 @@ loadGltfMeshAsset(const std::filesystem::path &gltfPath) {
   infra::GLTFLoader loader;
   loader.load(resolved.string());
   return buildMeshFromGltf(loader);
-}
-
-GltfSceneAssetLoadResult
-loadGltfSceneAsset(const std::filesystem::path &gltfPath) {
-  return loadGltfSceneAsset(gltfPath, "assets/materials/pbr.material");
 }
 
 GltfSceneAssetLoadResult

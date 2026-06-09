@@ -20,12 +20,14 @@ inline constexpr LX_core::VisibilityLayerMask Layer_EditorHelper = 1u << 30;
 // material contract, and returns a SceneNode ready to attach to a Scene.
 // Throws std::runtime_error on failure.
 LX_core::SceneNodeSharedPtr
-buildHelmetNode(const std::filesystem::path &gltfPath);
+buildHelmetNode(const std::filesystem::path &gltfPath,
+                const std::filesystem::path &materialPath);
 
 // Loads the same bridge-backed PBR material used by buildHelmetNode without
 // replacing an existing node mesh or transform.
 LX_core::MaterialInstanceSharedPtr
-buildHelmetMaterial(const std::filesystem::path &gltfPath);
+buildHelmetMaterial(const std::filesystem::path &gltfPath,
+                    const std::filesystem::path &materialPath);
 
 // Builds a 20m x 20m XZ ground plane (y = 0) with the Blinn-Phong material,
 // albedo sampling disabled. Returns a SceneNode ready to attach.
@@ -34,9 +36,8 @@ LX_core::SceneNodeSharedPtr buildGroundNode();
 LX_core::SceneNodeSharedPtr buildBuiltinPrimitiveNode(std::string_view meshUri,
                                                       std::string nodeName);
 
-// Builds a non-closed surface patch. Patch nodes render in Forward but do not
-// cast shadows by default, because a single surface has no stable front/back
-// volume for Shadow pass self-occlusion.
+// Builds a non-closed surface patch. Render-pass participation comes from the
+// material assigned by the scene.
 LX_core::SceneNodeSharedPtr buildBuiltinPatchNode(std::string_view meshUri,
                                                   std::string nodeName);
 

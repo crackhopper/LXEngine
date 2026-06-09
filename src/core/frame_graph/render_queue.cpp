@@ -2,11 +2,11 @@
 
 #include "core/asset/mesh.hpp"
 #include "core/frame_graph/pass.hpp"
+#include "core/frame_graph/scene_descriptor_resource_resolver.hpp"
 #include "core/offline/offline_scene_storage_resources.hpp"
 #include "core/scene/scene.hpp"
 
 #include <algorithm>
-#include <string_view>
 #include <unordered_set>
 
 namespace LX_core {
@@ -32,28 +32,12 @@ makeItemFromValidatedData(const ValidatedRenderablePassData &data) {
   item.raster.vertexBuffer = data.vertexBuffer;
   item.raster.indexBuffer = data.indexBuffer;
   item.raster.drawData = data.drawData;
-  item.descriptorResources = data.descriptorResources;
   item.shaderInfo = data.shaderInfo;
-  item.material = data.material;
+  item.renderState = data.renderState;
   item.pass = data.pass;
   item.objectSignature = data.objectSignature;
   item.materialSignature = data.materialSignature;
   return item;
-}
-
-bool shaderConsumesIbl(const ShaderPtr &shader) {
-  if (!shader) {
-    return false;
-  }
-  for (const auto &binding : shader->getReflectionBindings()) {
-    const std::string_view name(binding.name);
-    if (name == "SkyboxMap" || name == "IrradianceMap" ||
-        name == "PrefilteredEnvMap" || name == "BrdfLut" ||
-        name == "EnvironmentUBO") {
-      return true;
-    }
-  }
-  return false;
 }
 
 } // namespace
@@ -71,7 +55,7 @@ void RenderWorkQueue::sort() {
                    });
 }
 
-RenderWorkItem makeOfflineComputeItem(const offline::OfflineRenderJob &job,
+RenderWorkItem makeOfflineComputeItem(offline::OfflineRenderJob &job,
                                       StringID pass, const RenderTarget &target,
                                       IShaderSharedPtr shader) {
   offline::OfflineSceneStorageResources storageResources =
@@ -114,21 +98,28 @@ void RenderWorkQueue::build(const RenderWorkBuildContext &context,
     clearItems();
     if (pass == Pass_OfflineRayTrace) {
       m_items.push_back(makeOfflineComputeItem(
-          context.offlineJob(), pass, target, context.offlineShader()));
+          context.offlineJob(), pass, target,
+          context.offlineJob().offlineShader));
     }
     return;
   }
 
   const Scene &scene = context.realtimeScene();
-  if (context.hasRealtimeOverrides()) {
-    buildRealtime(scene, pass, target, context.realtimeSceneResources(),
-                  context.realtimeVisibleMask());
-    return;
+  const auto &options = context.realtimeOptions();
+  DescriptorResourceList sceneResources;
+  VisibilityLayerMask visibleMask = 0;
+  if (options.cameraResource.has_value()) {
+    sceneResources = scene.getSceneLevelResources(pass, *options.cameraResource);
+    visibleMask = options.cameraResource->cullingMask;
+  } else {
+    const RenderTarget &sceneResourceTarget =
+        options.sceneResourceTarget.value_or(target);
+    sceneResources = scene.getSceneLevelResources(pass, sceneResourceTarget);
+    visibleMask = scene.getCombinedCameraCullingMask(sceneResourceTarget);
   }
-
-  // REQ-009: target-filtered scene-level resources.
-  auto sceneResources = scene.getSceneLevelResources(pass, target);
-  VisibilityLayerMask visibleMask = scene.getCombinedCameraCullingMask(target);
+  if (options.visibleMask.has_value()) {
+    visibleMask = *options.visibleMask;
+  }
   if (visibleMask == 0 && pass == Pass_Shadow) {
     visibleMask = VisibilityMask_All;
   }
@@ -136,12 +127,11 @@ void RenderWorkQueue::build(const RenderWorkBuildContext &context,
   buildRealtime(scene, pass, target, std::move(sceneResources), visibleMask);
 }
 
-void RenderWorkQueue::buildRealtime(
-    const Scene &scene, StringID pass, const RenderTarget &target,
-    std::vector<IGpuResourceSharedPtr> sceneResources,
-    VisibilityLayerMask visibleMask) {
+void RenderWorkQueue::buildRealtime(const Scene &scene, StringID pass,
+                                    const RenderTarget &target,
+                                    DescriptorResourceList sceneResources,
+                                    VisibilityLayerMask visibleMask) {
   clearItems();
-  [[maybe_unused]] const auto snapshot = scene.buildRenderSceneSnapshot();
 
   for (const auto &renderable : scene.getRenderables()) {
     if (!renderable)
@@ -163,14 +153,14 @@ void RenderWorkQueue::buildRealtime(
         PipelineKey::build(item.objectSignature, item.materialSignature,
                            item.target.getPipelineSignature());
 
-    item.descriptorResources.insert(item.descriptorResources.end(),
-                                    sceneResources.begin(),
-                                    sceneResources.end());
-    if (shaderConsumesIbl(item.shaderInfo)) {
-      auto iblResources = scene.getIblEnvironmentResources();
-      item.descriptorResources.insert(item.descriptorResources.end(),
-                                      iblResources.begin(), iblResources.end());
-    }
+    item.descriptorResources =
+        buildSceneDescriptorResources(SceneDescriptorResourceContext{
+            .scene = scene,
+            .renderable = validated->get(),
+            .pass = pass,
+            .target = target,
+            .sceneResources = sceneResources,
+        });
 
     m_items.push_back(std::move(item));
   }
