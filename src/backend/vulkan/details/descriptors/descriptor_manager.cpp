@@ -2,6 +2,7 @@
 #include "core/utils/env.hpp"
 #include "core/utils/hash.hpp"
 #include "../device.hpp"
+#include <algorithm>
 #include <array>
 #include <iostream>
 #include <stdexcept>
@@ -149,36 +150,9 @@ VulkanDescriptorManager::VulkanDescriptorManager(Token, VulkanDevice &device)
     : m_device(device), m_currentFrameIndex(0) {
   m_frameContexts.resize(m_maxFramesInFlight);
 
-  // 为每一帧创建一个独立的描述符池
+  // 为每一帧创建一个初始描述符池；场景规模超过初始池时会按需追加。
   for (u32 i = 0; i < m_maxFramesInFlight; ++i) {
-    std::array<VkDescriptorPoolSize, 3> poolSizes{};
-
-    // 1. Uniform Buffers (UBO)
-    poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    poolSizes[0].descriptorCount = m_config.uniformCount;
-
-    // 2. Combined Image Samplers (Textures)
-    poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    poolSizes[1].descriptorCount = m_config.samplerCount;
-
-    // 3. Storage Buffers (SSBO)
-    poolSizes[2].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    poolSizes[2].descriptorCount = m_config.storageCount;
-
-    VkDescriptorPoolCreateInfo poolInfo{};
-    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    poolInfo.flags =
-        0; // 我们不使用
-           // VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT，靠重置池或逻辑复用
-    poolInfo.maxSets = m_config.maxSets;
-    poolInfo.poolSizeCount = static_cast<u32>(poolSizes.size());
-    poolInfo.pPoolSizes = poolSizes.data();
-
-    if (vkCreateDescriptorPool(m_device.getLogicalDevice(), &poolInfo, nullptr,
-                               &m_frameContexts[i].pool) != VK_SUCCESS) {
-      throw std::runtime_error("failed to create descriptor pool for frame " +
-                               std::to_string(i));
-    }
+    m_frameContexts[i].pools.push_back(createPool({}));
   }
 }
 
@@ -203,11 +177,13 @@ VulkanDescriptorManager::~VulkanDescriptorManager() {
 
   // 3. 销毁每一帧的资源
   for (u32 i = 0; i < m_maxFramesInFlight; ++i) {
-    if (m_frameContexts[i].pool != VK_NULL_HANDLE) {
-      // 销毁池会自动释放所有关联的 VkDescriptorSet 句柄
-      vkDestroyDescriptorPool(m_device.getLogicalDevice(),
-                              m_frameContexts[i].pool, nullptr);
+    for (const VkDescriptorPool pool : m_frameContexts[i].pools) {
+      if (pool != VK_NULL_HANDLE) {
+        // 销毁池会自动释放所有关联的 VkDescriptorSet 句柄
+        vkDestroyDescriptorPool(m_device.getLogicalDevice(), pool, nullptr);
+      }
     }
+    m_frameContexts[i].pools.clear();
 
     // 清理内存中的追踪容器
     m_frameContexts[i].freeSets.clear();
@@ -217,6 +193,56 @@ VulkanDescriptorManager::~VulkanDescriptorManager() {
 
 VkDevice VulkanDescriptorManager::getDeviceHandle() const {
   return m_device.getLogicalDevice();
+}
+
+VkDescriptorPool VulkanDescriptorManager::createPool(
+    const std::vector<LX_core::ShaderResourceBinding> &bindings) const {
+  u32 uniformPerSet = 0;
+  u32 samplerPerSet = 0;
+  u32 storagePerSet = 0;
+  for (const auto &binding : bindings) {
+    const u32 count = binding.descriptorCount > 0 ? binding.descriptorCount : 1;
+    switch (binding.type) {
+    case ShaderPropertyType::UniformBuffer:
+      uniformPerSet += count;
+      break;
+    case ShaderPropertyType::Texture2D:
+    case ShaderPropertyType::TextureCube:
+      samplerPerSet += count;
+      break;
+    case ShaderPropertyType::StorageBuffer:
+      storagePerSet += count;
+      break;
+    }
+  }
+
+  std::array<VkDescriptorPoolSize, 3> poolSizes{};
+  poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+  poolSizes[0].descriptorCount =
+      std::max(m_config.minUniformCount,
+               uniformPerSet * m_config.maxSetsPerPool);
+  poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+  poolSizes[1].descriptorCount =
+      std::max(m_config.minSamplerCount,
+               samplerPerSet * m_config.maxSetsPerPool);
+  poolSizes[2].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+  poolSizes[2].descriptorCount =
+      std::max(m_config.minStorageCount,
+               storagePerSet * m_config.maxSetsPerPool);
+
+  VkDescriptorPoolCreateInfo poolInfo{};
+  poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+  poolInfo.flags = 0;
+  poolInfo.maxSets = m_config.maxSetsPerPool;
+  poolInfo.poolSizeCount = static_cast<u32>(poolSizes.size());
+  poolInfo.pPoolSizes = poolSizes.data();
+
+  VkDescriptorPool pool = VK_NULL_HANDLE;
+  if (vkCreateDescriptorPool(m_device.getLogicalDevice(), &poolInfo, nullptr,
+                             &pool) != VK_SUCCESS) {
+    throw std::runtime_error("failed to create descriptor pool");
+  }
+  return pool;
 }
 
 namespace {
@@ -319,20 +345,36 @@ DescriptorSetUniquePtr VulkanDescriptorManager::allocateSet(
     setHandle = freeList.back();
     freeList.pop_back();
   } else {
-    // 4. FreeList 为空，从当前帧的 Pool 中分配新的 Set
+    // 4. FreeList 为空，从当前帧的 Pool 中分配新的 Set。场景规模超过
+    // 已有 pool 时追加新 pool，而不是把渲染流程绑定到固定小容量。
     VkDescriptorSetAllocateInfo allocInfo{
         VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
-    allocInfo.descriptorPool = context.pool;
     allocInfo.descriptorSetCount = 1;
     allocInfo.pSetLayouts = &layout;
 
-    VkResult result = vkAllocateDescriptorSets(m_device.getLogicalDevice(),
-                                               &allocInfo, &setHandle);
+    VkResult result = VK_ERROR_OUT_OF_POOL_MEMORY;
+    for (const VkDescriptorPool pool : context.pools) {
+      allocInfo.descriptorPool = pool;
+      result = vkAllocateDescriptorSets(m_device.getLogicalDevice(),
+                                        &allocInfo, &setHandle);
+      if (result == VK_SUCCESS) {
+        break;
+      }
+      if (result != VK_ERROR_OUT_OF_POOL_MEMORY &&
+          result != VK_ERROR_FRAGMENTED_POOL) {
+        throw std::runtime_error("Vulkan: Failed to allocate descriptor set");
+      }
+    }
 
     if (result != VK_SUCCESS) {
-      // 这里可以扩展：如果池满了，动态创建新池
-      throw std::runtime_error(
-          "Vulkan: Failed to allocate descriptor set! Pool might be full.");
+      context.pools.push_back(createPool(bindingsIn));
+      allocInfo.descriptorPool = context.pools.back();
+      result = vkAllocateDescriptorSets(m_device.getLogicalDevice(), &allocInfo,
+                                        &setHandle);
+      if (result != VK_SUCCESS) {
+        throw std::runtime_error(
+            "Vulkan: Failed to allocate descriptor set from expanded pool");
+      }
     }
   }
 
@@ -406,8 +448,10 @@ void VulkanDescriptorManager::reset() {
     auto &context = m_frameContexts[i];
 
     // 1. 重置物理描述符池 (这会使该池分配的所有 VkDescriptorSet 失效)
-    if (context.pool != VK_NULL_HANDLE) {
-      vkResetDescriptorPool(m_device.getLogicalDevice(), context.pool, 0);
+    for (const VkDescriptorPool pool : context.pools) {
+      if (pool != VK_NULL_HANDLE) {
+        vkResetDescriptorPool(m_device.getLogicalDevice(), pool, 0);
+      }
     }
 
     // 2. 清空所有的逻辑记录

@@ -98,8 +98,11 @@ private:
   u32 m_currentFrameIndex = 0;
   u32 m_maxFramesInFlight = 3;
 
+  [[nodiscard]] VkDescriptorPool createPool(
+      const std::vector<LX_core::ShaderResourceBinding> &bindings) const;
+
   struct FrameContext {
-    VkDescriptorPool pool = VK_NULL_HANDLE;
+    std::vector<VkDescriptorPool> pools;
     std::unordered_map<VkDescriptorSetLayout, std::vector<VkDescriptorSet>>
         freeSets;
     std::vector<std::pair<VkDescriptorSet, VkDescriptorSetLayout>>
@@ -112,10 +115,10 @@ private:
       m_layoutCache;
 
   struct Config {
-    u32 uniformCount = 16;
-    u32 samplerCount = 256;
-    u32 storageCount = 32;
-    u32 maxSets = 64;
+    u32 maxSetsPerPool = 256;
+    u32 minUniformCount = 1024;
+    u32 minSamplerCount = 2048;
+    u32 minStorageCount = 512;
   } m_config;
 };
 
