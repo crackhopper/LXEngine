@@ -56,18 +56,33 @@ struct SceneLoadTimingStats final {
   usize nodeCount = 0;
   usize meshLoadCount = 0;
   usize materialLoadCount = 0;
+  usize materialPrototypeLoadCount = 0;
+  usize materialCacheHitCount = 0;
+};
+
+struct SceneLoadMaterialCache final {
+  std::unordered_map<std::string, LX_core::MaterialInstanceSharedPtr>
+      genericMaterialPrototypes;
 };
 
 thread_local SceneLoadTimingStats *g_sceneLoadTimingStats = nullptr;
+thread_local SceneLoadMaterialCache *g_sceneLoadMaterialCache = nullptr;
 
 struct ScopedSceneLoadTimingContext final {
-  explicit ScopedSceneLoadTimingContext(SceneLoadTimingStats &stats)
-      : previous(g_sceneLoadTimingStats) {
+  ScopedSceneLoadTimingContext(SceneLoadTimingStats &stats,
+                               SceneLoadMaterialCache &cache)
+      : previousStats(g_sceneLoadTimingStats),
+        previousCache(g_sceneLoadMaterialCache) {
     g_sceneLoadTimingStats = &stats;
+    g_sceneLoadMaterialCache = &cache;
   }
-  ~ScopedSceneLoadTimingContext() { g_sceneLoadTimingStats = previous; }
+  ~ScopedSceneLoadTimingContext() {
+    g_sceneLoadTimingStats = previousStats;
+    g_sceneLoadMaterialCache = previousCache;
+  }
 
-  SceneLoadTimingStats *previous = nullptr;
+  SceneLoadTimingStats *previousStats = nullptr;
+  SceneLoadMaterialCache *previousCache = nullptr;
 };
 
 struct ScopedAccumulatedTimer final {
@@ -83,6 +98,44 @@ struct ScopedAccumulatedTimer final {
 
 [[nodiscard]] std::string pathForLog(const std::filesystem::path &path) {
   return path.generic_string();
+}
+
+[[nodiscard]] std::string materialCacheKey(const std::filesystem::path &path) {
+  return path.is_absolute() ? path.lexically_normal().generic_string()
+                            : std::filesystem::absolute(path)
+                                  .lexically_normal()
+                                  .generic_string();
+}
+
+[[nodiscard]] LX_core::MaterialInstanceSharedPtr
+loadCachedGenericMaterial(const std::filesystem::path &path) {
+  if (g_sceneLoadMaterialCache == nullptr) {
+    if (g_sceneLoadTimingStats != nullptr) {
+      ++g_sceneLoadTimingStats->materialPrototypeLoadCount;
+    }
+    return LX_infra::loadGenericMaterial(path);
+  }
+
+  const std::string key = materialCacheKey(path);
+  auto &prototypes = g_sceneLoadMaterialCache->genericMaterialPrototypes;
+  const auto found = prototypes.find(key);
+  if (found != prototypes.end()) {
+    if (g_sceneLoadTimingStats != nullptr) {
+      ++g_sceneLoadTimingStats->materialCacheHitCount;
+    }
+    return found->second->cloneInstanceData();
+  }
+
+  if (g_sceneLoadTimingStats != nullptr) {
+    ++g_sceneLoadTimingStats->materialPrototypeLoadCount;
+  }
+  auto prototype = LX_infra::loadGenericMaterial(path);
+  if (!prototype) {
+    return nullptr;
+  }
+  auto instance = prototype->cloneInstanceData();
+  prototypes.emplace(key, std::move(prototype));
+  return instance;
 }
 
 constexpr const char *RuntimeDebugDrawNodePrefix = "debug_draw_";
@@ -821,7 +874,7 @@ loadMaterialForSceneNode(const std::vector<std::filesystem::path> &assetRoots,
           },
       .loadGenericMaterial =
           [](const std::filesystem::path &path) {
-            return LX_infra::loadGenericMaterial(path);
+            return loadCachedGenericMaterial(path);
           },
   });
   configureProceduralMaterialResources(material, proceduralMaterial);
@@ -893,7 +946,7 @@ loadEffectiveMaterialForSceneNode(
   const std::filesystem::path materialPath =
       resolveProjectAssetPath(assetRoots, uri)
           .value_or(std::filesystem::path(uri));
-  auto material = LX_infra::loadGenericMaterial(materialPath);
+  auto material = loadCachedGenericMaterial(materialPath);
   if (!material) {
     throw std::runtime_error("failed to load material: " + uri);
   }
@@ -991,7 +1044,7 @@ loadTimedSceneMeshAsset(const std::filesystem::path &meshPath) {
             },
         .loadGenericMaterial =
             [](const std::filesystem::path &path) {
-              return LX_infra::loadGenericMaterial(path);
+              return loadCachedGenericMaterial(path);
             },
     });
   } else {
@@ -1007,7 +1060,7 @@ loadTimedSceneMeshAsset(const std::filesystem::path &meshPath) {
             },
         .loadGenericMaterial =
             [](const std::filesystem::path &path) {
-              return LX_infra::loadGenericMaterial(path);
+              return loadCachedGenericMaterial(path);
             },
     });
   }
@@ -1745,7 +1798,8 @@ void SceneRuntime::createEmptyScene() {
 
 void SceneRuntime::loadFromDocumentPath(const std::filesystem::path &path) {
   SceneLoadTimingStats timing;
-  ScopedSceneLoadTimingContext timingContext(timing);
+  SceneLoadMaterialCache materialCache;
+  ScopedSceneLoadTimingContext timingContext(timing, materialCache);
   const auto totalBegin = SceneLoadClock::now();
   const std::filesystem::path normalizedPath = normalizeDocumentPath(path);
   SceneDocument document;
@@ -1777,6 +1831,9 @@ void SceneRuntime::loadFromDocumentPath(const std::filesystem::path &path) {
             << " meshLoadCount=" << timing.meshLoadCount
             << " meshMs=" << timing.meshMs
             << " materialLoadCount=" << timing.materialLoadCount
+            << " materialPrototypeLoadCount="
+            << timing.materialPrototypeLoadCount
+            << " materialCacheHitCount=" << timing.materialCacheHitCount
             << " materialMs=" << timing.materialMs
             << " sceneRegisterMs=" << timing.sceneRegisterMs << "\n";
 }

@@ -179,6 +179,7 @@ class PbrtSceneConvertTest(unittest.TestCase):
             self.assertIn('"shader": "pbr"', runtime_material_text)
             self.assertIn('"HAS_IBL": false', runtime_material_text)
             self.assertIn('"albedoMap": "white"', runtime_material_text)
+            self.assertIn('"cullMode": "None"', runtime_material_text)
             self.assertIn(
                 '"MaterialUBO.metallicFactor": 1.0', runtime_material_text
             )

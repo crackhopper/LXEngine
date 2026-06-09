@@ -550,7 +550,7 @@ def approximate_material(material: PbrtMaterial) -> tuple[dict[str, Any], list[s
         "passes": {
             "Forward": {
                 "renderState": {
-                    "cullMode": "Back",
+                    "cullMode": "None",
                     "depthTest": True,
                     "depthWrite": True,
                     "blendEnable": pbrt_type == "glass",
