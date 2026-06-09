@@ -25,6 +25,13 @@ bool hasShaderOutputsAtRoot(const fs::path& root, const std::string& shaderName)
                         (shaderName + ".frag.spv"));
 }
 
+bool hasCurrentShaderOutputsAtRoot(const fs::path &root) {
+  return hasShaderOutputsAtRoot(root, "pbr") &&
+         hasShaderOutputsAtRoot(root, "post_process") &&
+         hasShaderOutputsAtRoot(root, "deferred_lighting") &&
+         hasShaderOutputsAtRoot(root, "pbr_gbuffer");
+}
+
 bool hasRuntimeResourceLayout(const fs::path& root, const std::string& shaderName) {
   return hasRuntimeAssetDirs(root) && hasShaderOutputsAtRoot(root, shaderName);
 }
@@ -62,17 +69,27 @@ std::optional<fs::path> findRuntimeRootFromHint(const fs::path &hintPath) {
     }
   }
 
-  if (auto validated = validatedRuntimeRoot(start))
-    return validated;
-
+  std::vector<fs::path> candidates;
   fs::path probe = start;
   for (int i = 0; i < kMaxSearchDepth; ++i) {
-    if (auto validated = validatedRuntimeRoot(probe))
-      return validated;
+    if (auto validated = validatedRuntimeRoot(probe)) {
+      candidates.push_back(*validated);
+    }
+    if (auto buildValidated = validatedRuntimeRoot(probe / "build")) {
+      candidates.push_back(*buildValidated);
+    }
     const auto parent = probe.parent_path();
     if (parent == probe)
       break;
     probe = parent;
+  }
+  for (const auto &candidate : candidates) {
+    if (hasCurrentShaderOutputsAtRoot(candidate)) {
+      return candidate;
+    }
+  }
+  if (!candidates.empty()) {
+    return candidates.front();
   }
   return std::nullopt;
 }
@@ -185,7 +202,7 @@ std::vector<char> readFile(const std::string &filename) {
   std::ifstream file(filename, std::ios::ate | std::ios::binary);
 
   if (!file.is_open()) {
-    throw std::runtime_error("failed to open file!");
+    throw std::runtime_error("failed to open file: " + filename);
   }
 
   usize fileSize = static_cast<usize>(file.tellg());
