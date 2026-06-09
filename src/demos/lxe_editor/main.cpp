@@ -771,9 +771,7 @@ void drawClosePrompt(ClosePromptState &state, demo::LxeEditorSession &session) {
 
 int main(int argc, char **argv) {
   expSetEnvVK();
-  const std::filesystem::path runtimeRootHint =
-      argc > 0 ? std::filesystem::path(argv[0]) : std::filesystem::current_path();
-  if (!initializeRuntimeAssetRoot(runtimeRootHint)) {
+  if (!initializeRuntimeAssetRoot()) {
     std::cerr << "[lxe_editor] failed to initialize runtime asset root\n";
     return 1;
   }

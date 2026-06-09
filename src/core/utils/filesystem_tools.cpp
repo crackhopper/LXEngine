@@ -32,6 +32,19 @@ bool hasCurrentShaderOutputsAtRoot(const fs::path &root) {
          hasShaderOutputsAtRoot(root, "pbr_gbuffer");
 }
 
+std::optional<fs::path> findShaderBinaryRoot(const fs::path &runtimeRoot) {
+  const std::vector<fs::path> candidates = {
+      runtimeRoot / "build",
+      runtimeRoot,
+  };
+  for (const auto &candidate : candidates) {
+    if (hasRuntimeAssetDirs(candidate) && hasCurrentShaderOutputsAtRoot(candidate)) {
+      return candidate;
+    }
+  }
+  return std::nullopt;
+}
+
 bool hasRuntimeResourceLayout(const fs::path& root, const std::string& shaderName) {
   return hasRuntimeAssetDirs(root) && hasShaderOutputsAtRoot(root, shaderName);
 }
@@ -69,27 +82,17 @@ std::optional<fs::path> findRuntimeRootFromHint(const fs::path &hintPath) {
     }
   }
 
-  std::vector<fs::path> candidates;
+  if (auto validated = validatedRuntimeRoot(start))
+    return validated;
+
   fs::path probe = start;
   for (int i = 0; i < kMaxSearchDepth; ++i) {
-    if (auto validated = validatedRuntimeRoot(probe)) {
-      candidates.push_back(*validated);
-    }
-    if (auto buildValidated = validatedRuntimeRoot(probe / "build")) {
-      candidates.push_back(*buildValidated);
-    }
+    if (auto validated = validatedRuntimeRoot(probe))
+      return validated;
     const auto parent = probe.parent_path();
     if (parent == probe)
       break;
     probe = parent;
-  }
-  for (const auto &candidate : candidates) {
-    if (hasCurrentShaderOutputsAtRoot(candidate)) {
-      return candidate;
-    }
-  }
-  if (!candidates.empty()) {
-    return candidates.front();
   }
   return std::nullopt;
 }
@@ -132,7 +135,11 @@ fs::path getRuntimeShaderSourceDir() {
 }
 
 fs::path getRuntimeShaderBinaryDir() {
-  return requireRuntimeRoot() / "assets" / "shaders" / "glsl";
+  const fs::path runtimeRoot = requireRuntimeRoot();
+  if (const auto shaderRoot = findShaderBinaryRoot(runtimeRoot)) {
+    return *shaderRoot / "assets" / "shaders" / "glsl";
+  }
+  return runtimeRoot / "assets" / "shaders" / "glsl";
 }
 
 bool cdToWhereResourcesCouldFound(const std::string& shaderName) {
