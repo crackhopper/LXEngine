@@ -7,6 +7,8 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace LX_core {
 
@@ -23,6 +25,7 @@ enum class FrameGraphAttachmentKind : u8 {
 struct RenderTargetDesc {
   RenderTargetRole role = RenderTargetRole::Swapchain;
   std::optional<ImageFormat> colorFormat = ImageFormat::BGRA8;
+  std::vector<ImageFormat> colorFormats;
   std::optional<ImageFormat> depthFormat = ImageFormat::D32Float;
   u8 sampleCount = 1;
   u32 layerCount = 1;
@@ -31,6 +34,7 @@ struct RenderTargetDesc {
     RenderTargetDesc desc;
     desc.role = RenderTargetRole::Swapchain;
     desc.colorFormat = color;
+    desc.colorFormats = {color};
     desc.depthFormat = depth;
     return desc;
   }
@@ -39,7 +43,19 @@ struct RenderTargetDesc {
     RenderTargetDesc desc;
     desc.role = RenderTargetRole::Offscreen;
     desc.colorFormat = color;
+    desc.colorFormats = {color};
     desc.depthFormat = std::nullopt;
+    return desc;
+  }
+
+  static RenderTargetDesc offscreenColors(std::vector<ImageFormat> colors,
+                                          std::optional<ImageFormat> depth) {
+    RenderTargetDesc desc;
+    desc.role = RenderTargetRole::Offscreen;
+    desc.colorFormat =
+        colors.empty() ? std::nullopt : std::optional<ImageFormat>{colors[0]};
+    desc.colorFormats = std::move(colors);
+    desc.depthFormat = depth;
     return desc;
   }
 
@@ -51,8 +67,22 @@ struct RenderTargetDesc {
     return desc;
   }
 
+  [[nodiscard]] std::vector<ImageFormat> getColorFormats() const {
+    if (!colorFormats.empty()) {
+      return colorFormats;
+    }
+    if (colorFormat.has_value()) {
+      return {*colorFormat};
+    }
+    return {};
+  }
+
+  [[nodiscard]] usize colorAttachmentCount() const {
+    return getColorFormats().size();
+  }
+
   bool operator==(const RenderTargetDesc &other) const {
-    return role == other.role && colorFormat == other.colorFormat &&
+    return role == other.role && getColorFormats() == other.getColorFormats() &&
            depthFormat == other.depthFormat &&
            sampleCount == other.sampleCount && layerCount == other.layerCount;
   }
@@ -66,7 +96,11 @@ struct RenderTargetDesc {
     const auto combine = [&hash](usize value) {
       hash ^= value + 0x9e3779b9u + (hash << 6u) + (hash >> 2u);
     };
-    combine(colorFormat ? static_cast<usize>(*colorFormat) + 1u : 0u);
+    const auto colors = getColorFormats();
+    combine(colors.size());
+    for (const auto format : colors) {
+      combine(static_cast<usize>(format) + 1u);
+    }
     combine(depthFormat ? static_cast<usize>(*depthFormat) + 1u : 0u);
     combine(static_cast<usize>(sampleCount));
     combine(static_cast<usize>(layerCount));
@@ -82,8 +116,20 @@ struct RenderTargetDesc {
       }
       return std::to_string(static_cast<u32>(*format));
     };
+    std::string colorText;
+    const auto colors = getColorFormats();
+    if (colors.empty()) {
+      colorText = "none";
+    } else {
+      for (usize i = 0; i < colors.size(); ++i) {
+        if (i > 0u) {
+          colorText += ",";
+        }
+        colorText += std::to_string(static_cast<u32>(colors[i]));
+      }
+    }
     return StringID("RenderTarget:role=" + std::string{roleText} +
-                    ";color=" + formatText(colorFormat) +
+                    ";colors=" + colorText +
                     ";depth=" + formatText(depthFormat) +
                     ";samples=" + std::to_string(sampleCount) +
                     ";layers=" + std::to_string(layerCount));
@@ -104,6 +150,7 @@ struct RenderTarget {
   bool hasColorAttachment = true;
   bool hasDepthAttachment = true;
   ImageFormat colorFormat = ImageFormat::BGRA8;
+  std::vector<ImageFormat> colorFormats;
   ImageFormat depthFormat = ImageFormat::D32Float;
   u8 sampleCount = 1;
   u32 layerCount = 1;
@@ -115,6 +162,7 @@ struct RenderTarget {
       : role(desc.role), hasColorAttachment(desc.colorFormat.has_value()),
         hasDepthAttachment(desc.depthFormat.has_value()),
         colorFormat(desc.colorFormat.value_or(ImageFormat::BGRA8)),
+        colorFormats(desc.getColorFormats()),
         depthFormat(desc.depthFormat.value_or(ImageFormat::D32Float)),
         sampleCount(desc.sampleCount), layerCount(desc.layerCount) {}
 
@@ -124,6 +172,11 @@ struct RenderTarget {
     desc.colorFormat =
         hasColorAttachment ? std::optional<ImageFormat>{colorFormat}
                            : std::nullopt;
+    desc.colorFormats =
+        hasColorAttachment ? colorFormats : std::vector<ImageFormat>{};
+    if (desc.colorFormats.empty() && hasColorAttachment) {
+      desc.colorFormats = {colorFormat};
+    }
     desc.depthFormat =
         hasDepthAttachment ? std::optional<ImageFormat>{depthFormat}
                            : std::nullopt;

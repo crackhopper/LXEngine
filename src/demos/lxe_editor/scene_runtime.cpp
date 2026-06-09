@@ -132,6 +132,8 @@ currentGenericMaterialLoadOptions() {
     options.forceIbl = settings.ibl;
     options.alphaTransparency =
         settings.alphaTransparency;
+    options.enableDeferredPass =
+        settings.mode == LX_core::SceneRealtimeRenderMode::Deferred;
   }
   return options;
 }
@@ -149,6 +151,7 @@ materialCacheKey(const std::filesystem::path &path,
   if (options.alphaTransparency.has_value()) {
     key += *options.alphaTransparency ? "|alpha=1" : "|alpha=0";
   }
+  key += options.enableDeferredPass ? "|deferred=1" : "|deferred=0";
   return key;
 }
 
@@ -1541,6 +1544,7 @@ buildRuntimeFromDocument(const SceneDocument &document,
   runtime->assetRoots = std::move(assetRoots);
   runtime->scene = LX_core::Scene::create(document.sceneName(), nullptr);
   runtime->scene->setRenderSettings(document.renderSettings());
+  runtime->scene->setRealtimeRenderSettings(effectiveRealtimeSettings);
   if (environmentEnabled) {
     runtime->scene->resources().setIblEnvironmentResources(
         loadEnvironmentResources(document.environment(), runtime->assetRoots,

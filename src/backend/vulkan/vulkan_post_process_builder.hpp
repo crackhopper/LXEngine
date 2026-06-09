@@ -17,6 +17,8 @@ public:
   [[nodiscard]] LX_core::MaterialInstance::UniquePtr
   createBloomBlurMaterial(LX_core::StringID pass, const char *shaderName) const;
   [[nodiscard]] LX_core::MaterialInstance::UniquePtr
+  createDeferredLightingMaterial() const;
+  [[nodiscard]] LX_core::MaterialInstance::UniquePtr
   createSkyboxBackgroundMaterial() const;
 
 private:

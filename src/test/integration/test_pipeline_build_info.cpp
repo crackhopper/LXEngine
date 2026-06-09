@@ -157,7 +157,10 @@ buildItem(PrimitiveTopology topo = PrimitiveTopology::TriangleList,
   node->addComponent<MaterialComponent>(material);
   auto scene = Scene::create(node);
   scene->addCamera(makeCameraNodeWithTarget(target));
-  return LX_test::firstItemFromScene(*scene, Pass_Forward, target);
+  auto item = LX_test::firstItemFromScene(*scene, Pass_Forward, target);
+  static std::vector<SceneSharedPtr> keepAliveScenes;
+  keepAliveScenes.push_back(std::move(scene));
+  return item;
 }
 
 // ---------------------------------------------------------------------------

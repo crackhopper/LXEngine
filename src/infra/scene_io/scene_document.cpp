@@ -582,7 +582,17 @@ loadSceneRealtimeRenderSettings(const YAML::Node &node) {
   for (auto it = node.begin(); it != node.end(); ++it) {
     const std::string key = it->first.as<std::string>();
     const YAML::Node value = it->second;
-    if (key == "ibl") {
+    if (key == "mode") {
+      const std::string mode = value.as<std::string>();
+      if (mode == "forward") {
+        settings.mode = LX_core::SceneRealtimeRenderMode::Forward;
+      } else if (mode == "deferred") {
+        settings.mode = LX_core::SceneRealtimeRenderMode::Deferred;
+      } else {
+        throw std::runtime_error("unsupported scene.realtimeRender.mode: " +
+                                 mode);
+      }
+    } else if (key == "ibl") {
       settings.ibl = value.as<bool>();
     } else if (key == "alphaTransparency") {
       settings.alphaTransparency = value.as<bool>();
@@ -967,6 +977,10 @@ void saveRealtimeRenderSettings(
     YAML::Emitter &out,
     const LX_core::SceneRealtimeRenderSettings &settings) {
   out << YAML::Key << "realtimeRender" << YAML::Value << YAML::BeginMap;
+  out << YAML::Key << "mode" << YAML::Value
+      << (settings.mode == LX_core::SceneRealtimeRenderMode::Deferred
+              ? "deferred"
+              : "forward");
   out << YAML::Key << "ibl" << YAML::Value << settings.ibl;
   out << YAML::Key << "alphaTransparency" << YAML::Value
       << settings.alphaTransparency;

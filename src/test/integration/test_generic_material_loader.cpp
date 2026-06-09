@@ -920,6 +920,48 @@ void test_load_options_disable_alpha_transparency() {
   std::cout << "  alpha transparency can be disabled by load options\n";
 }
 
+void test_load_options_enable_deferred_pbr_pass() {
+  std::cout << "\n-- test_load_options_enable_deferred_pbr_pass --\n";
+  auto root = findProjectRoot();
+  if (root.empty()) {
+    std::cerr << "  SETUP: project root not found; skipping\n";
+    return;
+  }
+
+  auto matPath = makeTempMaterialPath("deferred_pbr");
+  ScopedTempFile tempFile(matPath);
+  {
+    std::ofstream out(matPath);
+    out << "shader: pbr\n"
+           "parameters:\n"
+           "  MaterialUBO.baseColorFactor: [1.0, 1.0, 1.0, 1.0]\n"
+           "  MaterialUBO.metallicFactor: 0.0\n"
+           "  MaterialUBO.roughnessFactor: 0.5\n"
+           "  MaterialUBO.ao: 1.0\n"
+           "resources:\n"
+           "  albedoMap: white\n";
+  }
+
+  MaterialInstanceSharedPtr mat;
+  {
+    ScopedCurrentPath currentPath(root);
+    mat = loadGenericMaterial(matPath, GenericMaterialLoadOptions{
+                                           .enableDeferredPass = true,
+                                       });
+  }
+
+  REQUIRE(mat != nullptr);
+  REQUIRE(mat->isPassEnabled(Pass_Forward));
+  REQUIRE(mat->isPassEnabled(Pass_Deferred));
+  REQUIRE(mat->getPassShader(Pass_Deferred) != nullptr);
+  REQUIRE(mat->getPassShader(Pass_Deferred)->getShaderName() ==
+          "pbr_gbuffer");
+  REQUIRE(mat->getPassRenderState(Pass_Deferred).depthWriteEnable);
+  REQUIRE(!mat->getPassRenderState(Pass_Deferred).blendEnable);
+
+  std::cout << "  PBR material auto-generates a Deferred/GBuffer pass\n";
+}
+
 void test_textured_character_material_has_projected_shadow_pass() {
   std::cout
       << "\n-- test_textured_character_material_has_projected_shadow_pass --\n";
@@ -1000,6 +1042,7 @@ int main() {
   test_vector_parameters_load_without_aliasing_yaml_nodes();
   test_load_options_force_pbr_ibl_variant();
   test_load_options_disable_alpha_transparency();
+  test_load_options_enable_deferred_pbr_pass();
   test_textured_character_material_has_projected_shadow_pass();
 
   std::cout << "\n========================================\n";

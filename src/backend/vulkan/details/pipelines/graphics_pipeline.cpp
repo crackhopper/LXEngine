@@ -268,34 +268,29 @@ VulkanGraphicsPipeline::getDepthStencilStateCreateInfo() {
 
 VkPipelineColorBlendStateCreateInfo
 VulkanGraphicsPipeline::getColorBlendStateCreateInfo() {
-  m_colorBlendAttachment = {};
-  m_colorBlendAttachment.colorWriteMask =
+  VkPipelineColorBlendAttachmentState attachment{};
+  attachment.colorWriteMask =
       VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
       VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-  m_colorBlendAttachment.blendEnable =
-      m_renderState.blendEnable ? VK_TRUE : VK_FALSE;
-  m_colorBlendAttachment.srcColorBlendFactor =
-      blendFactorToVk(m_renderState.srcBlend);
-  m_colorBlendAttachment.dstColorBlendFactor =
-      blendFactorToVk(m_renderState.dstBlend);
-  m_colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
-  m_colorBlendAttachment.srcAlphaBlendFactor =
-      blendFactorToVk(m_renderState.srcBlend);
-  m_colorBlendAttachment.dstAlphaBlendFactor =
-      blendFactorToVk(m_renderState.dstBlend);
-  m_colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+  attachment.blendEnable = m_renderState.blendEnable ? VK_TRUE : VK_FALSE;
+  attachment.srcColorBlendFactor = blendFactorToVk(m_renderState.srcBlend);
+  attachment.dstColorBlendFactor = blendFactorToVk(m_renderState.dstBlend);
+  attachment.colorBlendOp = VK_BLEND_OP_ADD;
+  attachment.srcAlphaBlendFactor = blendFactorToVk(m_renderState.srcBlend);
+  attachment.dstAlphaBlendFactor = blendFactorToVk(m_renderState.dstBlend);
+  attachment.alphaBlendOp = VK_BLEND_OP_ADD;
+
+  m_colorBlendAttachments.assign(m_target.colorAttachmentCount(), attachment);
 
   VkPipelineColorBlendStateCreateInfo colorBlending{};
   colorBlending.sType =
       VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
   colorBlending.logicOpEnable = VK_FALSE;
-  if (m_target.colorFormat.has_value()) {
-    colorBlending.attachmentCount = 1;
-    colorBlending.pAttachments = &m_colorBlendAttachment;
-  } else {
-    colorBlending.attachmentCount = 0;
-    colorBlending.pAttachments = nullptr;
-  }
+  colorBlending.attachmentCount =
+      static_cast<u32>(m_colorBlendAttachments.size());
+  colorBlending.pAttachments = m_colorBlendAttachments.empty()
+                                   ? nullptr
+                                   : m_colorBlendAttachments.data();
   return colorBlending;
 }
 

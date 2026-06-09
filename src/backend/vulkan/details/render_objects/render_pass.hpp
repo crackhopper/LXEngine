@@ -1,7 +1,9 @@
 #pragma once
+#include "core/platform/types.hpp"
 #include <vulkan/vulkan.h>
 #include <memory>
 #include <optional>
+#include <utility>
 #include <vector>
 
 // FrameGraph v1 still uses legacy VkRenderPass/VkFramebuffer objects as the
@@ -24,6 +26,10 @@ public:
                    std::optional<VkFormat> colorFormat,
                    std::optional<VkFormat> depthFormat,
                    bool presentColorFinalLayout);
+  VulkanRenderPass(Token, VulkanDevice &device,
+                   std::vector<VkFormat> colorFormats,
+                   std::optional<VkFormat> depthFormat,
+                   bool presentColorFinalLayout);
   ~VulkanRenderPass();
 
   static std::unique_ptr<VulkanRenderPass>
@@ -40,6 +46,14 @@ public:
         Token{}, device, colorFormat, depthFormat, presentColorFinalLayout);
   }
 
+  static std::unique_ptr<VulkanRenderPass>
+  create(VulkanDevice &device, std::vector<VkFormat> colorFormats,
+         std::optional<VkFormat> depthFormat, bool presentColorFinalLayout) {
+    return std::make_unique<VulkanRenderPass>(
+        Token{}, device, std::move(colorFormats), depthFormat,
+        presentColorFinalLayout);
+  }
+
   void setClearColor(float r, float g, float b, float a);
 
   VkRenderPass getHandle() const { return m_renderPass; }
@@ -48,6 +62,7 @@ public:
   }
   VkFormat getDepthFormat() const { return m_depthFormat; }
   bool hasColorAttachment() const { return m_hasColorAttachment; }
+  u32 getColorAttachmentCount() const { return m_colorAttachmentCount; }
   bool hasDepthAttachment() const { return m_hasDepthAttachment; }
 
 private:
@@ -55,6 +70,7 @@ private:
   VkRenderPass m_renderPass = VK_NULL_HANDLE;
   VkFormat m_depthFormat = VK_FORMAT_UNDEFINED;
   bool m_hasColorAttachment = false;
+  u32 m_colorAttachmentCount = 0;
   bool m_hasDepthAttachment = false;
   std::vector<VkClearValue> m_clearValues;
 };

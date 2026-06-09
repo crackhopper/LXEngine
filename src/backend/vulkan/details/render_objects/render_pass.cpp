@@ -10,9 +10,20 @@ VulkanRenderPass::VulkanRenderPass(Token, VulkanDevice &device,
                                    std::optional<VkFormat> colorFormat,
                                    std::optional<VkFormat> depthFormat,
                                    bool presentColorFinalLayout)
+    : VulkanRenderPass(Token{}, device,
+                       colorFormat.has_value()
+                           ? std::vector<VkFormat>{*colorFormat}
+                           : std::vector<VkFormat>{},
+                       depthFormat, presentColorFinalLayout) {}
+
+VulkanRenderPass::VulkanRenderPass(Token, VulkanDevice &device,
+                                   std::vector<VkFormat> colorFormats,
+                                   std::optional<VkFormat> depthFormat,
+                                   bool presentColorFinalLayout)
     : m_device(device),
       m_depthFormat(depthFormat.value_or(VK_FORMAT_UNDEFINED)),
-      m_hasColorAttachment(colorFormat.has_value()),
+      m_hasColorAttachment(!colorFormats.empty()),
+      m_colorAttachmentCount(static_cast<u32>(colorFormats.size())),
       m_hasDepthAttachment(depthFormat.has_value()) {
   if (!m_hasColorAttachment && !m_hasDepthAttachment) {
     throw std::runtime_error(
@@ -20,17 +31,20 @@ VulkanRenderPass::VulkanRenderPass(Token, VulkanDevice &device,
   }
 
   std::vector<VkAttachmentDescription> attachments;
+  std::vector<VkAttachmentReference> colorAttachmentRefs;
   std::vector<VkClearValue> clearValues;
-  attachments.reserve(2);
-  clearValues.reserve(2);
+  attachments.reserve(colorFormats.size() +
+                      (depthFormat.has_value() ? 1u : 0u));
+  colorAttachmentRefs.reserve(colorFormats.size());
+  clearValues.reserve(attachments.capacity());
 
-  VkAttachmentReference colorAttachmentRef{};
-  if (colorFormat.has_value()) {
+  for (const auto colorFormat : colorFormats) {
+    VkAttachmentReference colorAttachmentRef{};
     colorAttachmentRef.attachment = static_cast<u32>(attachments.size());
     colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
     VkAttachmentDescription colorAttachment{};
-    colorAttachment.format = *colorFormat;
+    colorAttachment.format = colorFormat;
     colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
     colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -43,6 +57,7 @@ VulkanRenderPass::VulkanRenderPass(Token, VulkanDevice &device,
         presentColorFinalLayout ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
                                 : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     attachments.push_back(colorAttachment);
+    colorAttachmentRefs.push_back(colorAttachmentRef);
 
     VkClearValue clear{};
     clear.color = {0.0f, 0.0f, 0.0f, 1.0f};
@@ -75,16 +90,16 @@ VulkanRenderPass::VulkanRenderPass(Token, VulkanDevice &device,
 
   VkSubpassDescription subpass{};
   subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-  subpass.colorAttachmentCount = colorFormat.has_value() ? 1u : 0u;
+  subpass.colorAttachmentCount = static_cast<u32>(colorAttachmentRefs.size());
   subpass.pColorAttachments =
-      colorFormat.has_value() ? &colorAttachmentRef : nullptr;
+      colorAttachmentRefs.empty() ? nullptr : colorAttachmentRefs.data();
   subpass.pDepthStencilAttachment =
       depthFormat.has_value() ? &depthAttachmentRef : nullptr;
 
   std::vector<VkSubpassDependency> dependencies(2);
   VkPipelineStageFlags attachmentStages = 0;
   VkAccessFlags attachmentAccess = 0;
-  if (colorFormat.has_value()) {
+  if (!colorFormats.empty()) {
     attachmentStages |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     attachmentAccess |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
   }

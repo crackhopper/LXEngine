@@ -109,7 +109,8 @@ void emitLightPropertyChanged(const std::weak_ptr<Scene> &weakScene,
 
 DirectionalLight::DirectionalLight()
     : m_ubo(std::make_unique<DirectionalLightData>()),
-      m_supportedPasses({Pass_Forward, Pass_Deferred, Pass_Shadow}) {
+      m_supportedPasses({Pass_Forward, Pass_Deferred, Pass_DeferredLighting,
+                         Pass_Shadow}) {
   const Vec3f defaultDirection = m_pendingDirection.normalized();
   m_ubo->param.dir =
       Vec4f{defaultDirection.x, defaultDirection.y, defaultDirection.z, 0.0f};
@@ -461,7 +462,9 @@ void DirectionalLight::emitLightPropertyChanged() const {
   LX_core::emitLightPropertyChanged(m_scene, m_node);
 }
 
-PointLight::PointLight() : m_supportedPasses({Pass_Forward, Pass_Deferred}) {}
+PointLight::PointLight()
+    : m_supportedPasses({Pass_Forward, Pass_Deferred,
+                         Pass_DeferredLighting}) {}
 
 std::unique_ptr<LightBase> PointLight::cloneUnique() const {
   auto clone = std::make_unique<PointLight>();
@@ -531,7 +534,9 @@ void PointLight::emitLightPropertyChanged() const {
   LX_core::emitLightPropertyChanged(m_scene, m_node);
 }
 
-SpotLight::SpotLight() : m_supportedPasses({Pass_Forward, Pass_Deferred}) {}
+SpotLight::SpotLight()
+    : m_supportedPasses({Pass_Forward, Pass_Deferred,
+                         Pass_DeferredLighting}) {}
 
 std::unique_ptr<LightBase> SpotLight::cloneUnique() const {
   auto clone = std::make_unique<SpotLight>();

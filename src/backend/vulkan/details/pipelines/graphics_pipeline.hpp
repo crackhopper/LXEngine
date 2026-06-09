@@ -91,7 +91,7 @@ protected:
 
   VkViewport m_viewport{};
   VkRect2D m_scissor{};
-  VkPipelineColorBlendAttachmentState m_colorBlendAttachment{};
+  std::vector<VkPipelineColorBlendAttachmentState> m_colorBlendAttachments;
   std::array<VkDynamicState, 2> m_dynamicStates{VK_DYNAMIC_STATE_VIEWPORT,
                                                 VK_DYNAMIC_STATE_SCISSOR};
 

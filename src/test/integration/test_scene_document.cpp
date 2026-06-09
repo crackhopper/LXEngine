@@ -386,6 +386,7 @@ void testSaveSceneDocumentWritesExplicitRootCanonicalFormat() {
       .roughnessMipCount = 6.0f,
   });
   doc.setRealtimeRenderSettings(LX_core::SceneRealtimeRenderSettings{
+      .mode = LX_core::SceneRealtimeRenderMode::Deferred,
       .ibl = true,
       .alphaTransparency = true,
   });
@@ -508,6 +509,9 @@ void testSaveSceneDocumentWritesExplicitRootCanonicalFormat() {
   }
   EXPECT(loaded.realtimeRenderSettings().ibl,
          "scene realtime IBL flag should round trip");
+  EXPECT(loaded.realtimeRenderSettings().mode ==
+             LX_core::SceneRealtimeRenderMode::Deferred,
+         "scene realtime mode should round trip");
   EXPECT(loaded.realtimeRenderSettings().alphaTransparency,
          "scene realtime alpha transparency flag should round trip");
   EXPECT(loaded.rootNode().children.size() == 1,

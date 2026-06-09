@@ -709,6 +709,32 @@ void testRenderTargetToDescUsesMutatedLegacyFields() {
          "toDesc should preserve mutated legacy depthFormat");
 }
 
+void testRenderTargetDescPreservesMultipleColorFormats() {
+  auto gbuffer = RenderTargetDesc::offscreenColors(
+      {ImageFormat::RGBA16Float, ImageFormat::RGBA8},
+      ImageFormat::D32Float);
+
+  EXPECT(gbuffer.colorFormat == ImageFormat::RGBA16Float,
+         "first color format remains the legacy colorFormat");
+  EXPECT(gbuffer.colorAttachmentCount() == 2,
+         "MRT target should expose two color attachments");
+  EXPECT(gbuffer.getColorFormats()[0] == ImageFormat::RGBA16Float,
+         "MRT color 0 should be preserved");
+  EXPECT(gbuffer.getColorFormats()[1] == ImageFormat::RGBA8,
+         "MRT color 1 should be preserved");
+
+  auto single = RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float);
+  single.depthFormat = ImageFormat::D32Float;
+  EXPECT(gbuffer != single, "MRT target should not equal single-color target");
+  EXPECT(gbuffer.getPipelineSignature() != single.getPipelineSignature(),
+         "MRT target signature should include all color formats");
+
+  RenderTarget target{gbuffer};
+  const auto roundTrip = target.toDesc();
+  EXPECT(roundTrip.getColorFormats() == gbuffer.getColorFormats(),
+         "RenderTarget compatibility shell should preserve MRT colors");
+}
+
 void testFrameGraphCompileReportsMissingRead() {
   FrameGraph graph;
   graph.addPass(FramePass{
@@ -1357,6 +1383,7 @@ int main() {
   testDirectionalShadowCascadeUboSnapshotIsStable();
   testFrameGraphCompilePreservesTargetDescriptions();
   testRenderTargetToDescUsesMutatedLegacyFields();
+  testRenderTargetDescPreservesMultipleColorFormats();
   testFrameGraphCompileReportsMissingRead();
   testFrameGraphCompileReportsDuplicateWrite();
   testFrameGraphCompileReportsUnnamedWrite();

@@ -734,14 +734,26 @@ findWriteForKind(const LX_core::CompiledFrameGraphPass &pass,
   return found;
 }
 
+std::vector<std::reference_wrapper<const LX_core::FrameGraphWrite>>
+findWritesForKind(const LX_core::CompiledFrameGraphPass &pass,
+                  LX_core::FrameGraphAttachmentKind kind) {
+  std::vector<std::reference_wrapper<const LX_core::FrameGraphWrite>> found;
+  for (const auto &write : pass.writes) {
+    if (write.resource.kind == kind) {
+      found.push_back(std::cref(write));
+    }
+  }
+  return found;
+}
+
 void validateOffscreenWritesMatchTarget(
     const LX_core::CompiledFrameGraphPass &pass) {
-  const auto colorWrite =
-      findWriteForKind(pass, LX_core::FrameGraphAttachmentKind::Color);
+  const auto colorWrites =
+      findWritesForKind(pass, LX_core::FrameGraphAttachmentKind::Color);
   const auto depthWrite =
       findWriteForKind(pass, LX_core::FrameGraphAttachmentKind::Depth);
 
-  if (pass.target.colorFormat.has_value() != colorWrite.has_value()) {
+  if (pass.target.colorAttachmentCount() != colorWrites.size()) {
     throw std::runtime_error(
         "Frame graph offscreen pass color write does not match target");
   }
@@ -898,6 +910,15 @@ public:
         LX_core::StringID("scene.hdrColor"));
     const auto sceneDepth = LX_core::FrameGraphResourceRef::depthAttachment(
         LX_core::StringID("scene.depth"));
+    const auto gbufferAlbedoAlpha =
+        LX_core::FrameGraphResourceRef::colorAttachment(
+            LX_core::StringID("gbuffer.albedoAlpha"));
+    const auto gbufferNormalRoughness =
+        LX_core::FrameGraphResourceRef::colorAttachment(
+            LX_core::StringID("gbuffer.normalRoughness"));
+    const auto gbufferMaterial =
+        LX_core::FrameGraphResourceRef::colorAttachment(
+            LX_core::StringID("gbuffer.material"));
     const auto bloomThreshold = LX_core::FrameGraphResourceRef::colorAttachment(
         LX_core::StringID("bloom.threshold"));
     const auto bloomBlurH = LX_core::FrameGraphResourceRef::colorAttachment(
@@ -928,13 +949,49 @@ public:
             LX_core::StringID("ShadowMap" + std::to_string(cascadeIndex))));
       }
     }
-    m_frameGraph.addPass(
-        LX_core::FramePass{LX_core::Pass_Forward,
-                           forwardHdrDesc,
-                           {},
-                           shadowReads,
-                           {LX_core::FrameGraphWrite{sceneHdrColor},
-                            LX_core::FrameGraphWrite{sceneDepth}}});
+    const bool deferredMode =
+        m_scene->realtimeRenderSettings().mode ==
+        LX_core::SceneRealtimeRenderMode::Deferred;
+    LX_core::RenderTargetDesc gbufferDesc =
+        LX_core::RenderTargetDesc::offscreenColors(
+            {LX_core::ImageFormat::RGBA16Float,
+             LX_core::ImageFormat::RGBA16Float,
+             LX_core::ImageFormat::RGBA16Float},
+            swapchainTarget.depthFormat);
+    if (deferredMode) {
+      m_frameGraph.addPass(
+          LX_core::FramePass{LX_core::Pass_Deferred,
+                             gbufferDesc,
+                             {},
+                             {},
+                             {LX_core::FrameGraphWrite{gbufferAlbedoAlpha},
+                              LX_core::FrameGraphWrite{gbufferNormalRoughness},
+                              LX_core::FrameGraphWrite{gbufferMaterial},
+                              LX_core::FrameGraphWrite{sceneDepth}}});
+      m_frameGraph.addPass(LX_core::FramePass{
+          LX_core::Pass_DeferredLighting,
+          forwardHdrDesc,
+          {},
+          {LX_core::FrameGraphRead::sampled(
+               gbufferAlbedoAlpha.name,
+               LX_core::StringID("GBufferAlbedoAlpha")),
+           LX_core::FrameGraphRead::sampled(
+               gbufferNormalRoughness.name,
+               LX_core::StringID("GBufferNormalRoughness")),
+           LX_core::FrameGraphRead::sampled(gbufferMaterial.name,
+                                            LX_core::StringID("GBufferMaterial")),
+           LX_core::FrameGraphRead::sampled(sceneDepth.name,
+                                            LX_core::StringID("GBufferDepth"))},
+          {LX_core::FrameGraphWrite{sceneHdrColor}}});
+    } else {
+      m_frameGraph.addPass(
+          LX_core::FramePass{LX_core::Pass_Forward,
+                             forwardHdrDesc,
+                             {},
+                             shadowReads,
+                             {LX_core::FrameGraphWrite{sceneHdrColor},
+                              LX_core::FrameGraphWrite{sceneDepth}}});
+    }
     if (m_postProcessSettings.bloomEnabled) {
       m_frameGraph.addPass(LX_core::FramePass{
           LX_core::Pass_BloomThreshold,
@@ -984,8 +1041,15 @@ public:
     //   - sorts by PipelineKey
     // There is no more side-channel camera/light UBO injection here.
     m_frameGraph.build(LX_core::RenderWorkBuildContext::realtime(*m_scene));
-    rebuildForwardQueueWithDefaultCameraResources(forwardHdrDesc);
-    addSkyboxBackgroundItem(forwardHdrDesc);
+    if (deferredMode) {
+      rebuildPassQueueWithDefaultCameraResources(LX_core::Pass_Deferred,
+                                                 gbufferDesc);
+      addDeferredLightingItem(forwardHdrDesc);
+    } else {
+      rebuildPassQueueWithDefaultCameraResources(LX_core::Pass_Forward,
+                                                 forwardHdrDesc);
+      addSkyboxBackgroundItem(forwardHdrDesc);
+    }
     rebuildDebugOverlayQueueWithDefaultCameraResources(swapchainDesc);
     if (m_postProcessSettings.bloomEnabled) {
       addBloomThresholdItem();
@@ -1877,6 +1941,59 @@ private:
                               "PostProcessFullscreenTriangle");
   }
 
+  void addDeferredLightingItem(const LX_core::RenderTargetDesc &target) {
+    VulkanPostProcessBuilder builder(m_postProcessSettings);
+    auto material = builder.createDeferredLightingMaterial();
+    if (!m_scene || !material) {
+      return;
+    }
+
+    LX_core::RenderWorkItem item;
+    item.shaderInfo = material->getPassShader(LX_core::Pass_DeferredLighting);
+    item.renderState =
+        material->getPassRenderState(LX_core::Pass_DeferredLighting);
+    const LX_core::StringID materialSignature =
+        material->getPipelineSignature(LX_core::Pass_DeferredLighting);
+    auto vertexBuffer = LX_core::VertexBuffer<LX_core::VertexPos>::createUnique(
+        std::vector<LX_core::VertexPos>{{{0.0f, 0.0f, 0.0f}},
+                                        {{0.0f, 0.0f, 0.0f}},
+                                        {{0.0f, 0.0f, 0.0f}}});
+    auto indexBuffer = LX_core::IndexBuffer::createUnique({0u, 1u, 2u});
+    item.raster.vertexBuffer =
+        m_scene->resources().addRenderGpuResource(std::move(vertexBuffer));
+    item.raster.indexBuffer =
+        m_scene->resources().addRenderGpuResource(std::move(indexBuffer));
+    const LX_core::MaterialHandle materialHandle =
+        m_scene->resources().addRenderMaterial(std::move(material));
+    item.descriptorResources =
+        LX_core::buildSceneMaterialDescriptorResources(
+            m_scene->resources(), materialHandle, item.shaderInfo);
+
+    const LX_core::RenderTarget defaultCameraTarget{};
+    auto sceneResources = m_scene->getSceneLevelResources(
+        LX_core::Pass_DeferredLighting, defaultCameraTarget);
+    for (auto &resource : sceneResources) {
+      item.descriptorResources.emplace_back(std::move(resource));
+    }
+
+    item.pass = LX_core::Pass_DeferredLighting;
+    item.target = target;
+    item.objectSignature =
+        LX_core::StringID("DeferredLightingFullscreenTriangle");
+    item.materialSignature = materialSignature;
+    item.pipelineKey = LX_core::PipelineKey::build(
+        item.objectSignature, item.materialSignature,
+        item.target.getPipelineSignature());
+
+    for (auto &pass : m_frameGraph.getPasses()) {
+      if (pass.name == LX_core::Pass_DeferredLighting) {
+        pass.queue.addItem(std::move(item));
+        pass.queue.sort();
+        return;
+      }
+    }
+  }
+
   void addSkyboxBackgroundItem(const LX_core::RenderTargetDesc &target) {
     if (!m_scene) {
       return;
@@ -1945,21 +2062,21 @@ private:
     }
   }
 
-  void rebuildForwardQueueWithDefaultCameraResources(
-      const LX_core::RenderTargetDesc &forwardTarget) {
+  void rebuildPassQueueWithDefaultCameraResources(
+      LX_core::StringID passName, const LX_core::RenderTargetDesc &targetDesc) {
     if (!m_scene) {
       return;
     }
     const LX_core::RenderTarget defaultCameraTarget{};
-    const LX_core::RenderTarget forwardRenderTarget{forwardTarget};
+    const LX_core::RenderTarget renderTarget{targetDesc};
     for (auto &pass : m_frameGraph.getPasses()) {
-      if (pass.name == LX_core::Pass_Forward) {
+      if (pass.name == passName) {
         pass.queue.build(LX_core::RenderWorkBuildContext::realtime(
                              *m_scene,
                              LX_core::RenderWorkBuildContext::RealtimeOptions{
                                  .sceneResourceTarget = defaultCameraTarget,
                              }),
-                         LX_core::Pass_Forward, forwardRenderTarget);
+                         passName, renderTarget);
         return;
       }
     }
@@ -2263,7 +2380,8 @@ private:
     validateOffscreenWritesMatchTarget(pass);
 
     std::vector<VkImageView> attachments;
-    attachments.reserve(2);
+    attachments.reserve(pass.target.colorAttachmentCount() +
+                        (pass.target.depthFormat.has_value() ? 1u : 0u));
     const auto appendAttachment = [&](const LX_core::FrameGraphWrite &write,
                                       LX_core::ImageFormat format) {
       const auto kind = write.resource.kind;
@@ -2282,10 +2400,11 @@ private:
       attachments.push_back(attachment.texture->getImageView());
     };
 
-    if (pass.target.colorFormat.has_value()) {
-      const auto write =
-          findWriteForKind(pass, LX_core::FrameGraphAttachmentKind::Color);
-      appendAttachment(write->get(), *pass.target.colorFormat);
+    const auto colorFormats = pass.target.getColorFormats();
+    const auto colorWrites =
+        findWritesForKind(pass, LX_core::FrameGraphAttachmentKind::Color);
+    for (usize i = 0; i < colorFormats.size(); ++i) {
+      appendAttachment(colorWrites[i].get(), colorFormats[i]);
     }
     if (pass.target.depthFormat.has_value()) {
       const auto write =

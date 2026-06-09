@@ -273,6 +273,13 @@ public:
   [[nodiscard]] const SceneRenderSettings &renderSettings() const {
     return m_renderSettings;
   }
+  void setRealtimeRenderSettings(SceneRealtimeRenderSettings settings) {
+    m_realtimeRenderSettings = settings;
+  }
+  [[nodiscard]] const SceneRealtimeRenderSettings &
+  realtimeRenderSettings() const {
+    return m_realtimeRenderSettings;
+  }
   const std::string &getSceneName() const { return m_sceneName; }
   struct PickHit {
     SceneNodeSharedPtr node;
@@ -335,6 +342,7 @@ private:
   std::vector<LightHandle> m_lightHandles;
   std::unordered_map<const SceneNode *, LightHandle> m_lightHandlesByNode;
   SceneRenderSettings m_renderSettings;
+  SceneRealtimeRenderSettings m_realtimeRenderSettings;
   mutable SceneResourceTable m_resources;
   SceneEventHub m_events;
 };

@@ -19,6 +19,8 @@
 #include <iostream>
 #include <stdexcept>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 namespace LX_core::backend {
 
@@ -406,17 +408,18 @@ VulkanResourceManager::getRenderPass(const RenderTargetDesc &target) {
     return *it->second;
   }
 
-  std::optional<VkFormat> colorFormat;
+  std::vector<VkFormat> colorFormats;
   std::optional<VkFormat> depthFormat;
-  if (target.colorFormat.has_value()) {
-    colorFormat = toVkFormat(*target.colorFormat);
+  for (const auto format : target.getColorFormats()) {
+    colorFormats.push_back(toVkFormat(format));
   }
   if (target.depthFormat.has_value()) {
     depthFormat = toVkFormat(*target.depthFormat);
   }
 
   auto renderPass =
-      VulkanRenderPass::create(m_device, colorFormat, depthFormat, false);
+      VulkanRenderPass::create(m_device, std::move(colorFormats), depthFormat,
+                               false);
   auto [insertedIt, inserted] =
       m_frameGraphRenderPasses.emplace(hash, std::move(renderPass));
   (void)inserted;

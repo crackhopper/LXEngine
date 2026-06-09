@@ -123,6 +123,17 @@ void applyShadingModelVariants(std::vector<LX_core::ShaderVariant> &variants,
   return shaderName == "pbr" || shaderName == "pbr_clearcoat";
 }
 
+[[nodiscard]] std::optional<std::string>
+deferredGBufferShaderFor(const std::string &shaderName) {
+  if (shaderName == "pbr") {
+    return "pbr_gbuffer";
+  }
+  if (shaderName == "pbr_clearcoat") {
+    return "pbr_clearcoat_gbuffer";
+  }
+  return std::nullopt;
+}
+
 void applyLoadOptionVariants(std::vector<LX_core::ShaderVariant> &variants,
                              const std::string &shaderName,
                              const GenericMaterialLoadOptions &options) {
@@ -662,6 +673,26 @@ loadGenericMaterial(const fs::path &materialPath,
     cp.shadingModel = globalShadingModel;
     cp.meshOverlay = globalMeshOverlay;
     compiledPasses.push_back(std::move(cp));
+
+    if (options.enableDeferredPass && !renderState.blendEnable) {
+      if (const auto gbufferShader =
+              deferredGBufferShaderFor(globalShaderName)) {
+        auto deferredVariants = variants;
+        validateVariantRules(variantRules, deferredVariants,
+                             "pass Deferred (auto)");
+        auto deferredRenderState = renderState;
+        deferredRenderState.blendEnable = false;
+        deferredRenderState.depthTestEnable = true;
+        deferredRenderState.depthWriteEnable = true;
+        auto deferredCp =
+            compilePassShader(LX_core::Pass_Deferred, *gbufferShader,
+                              "raster", deferredVariants, deferredRenderState,
+                              shaderDir);
+        deferredCp.shadingModel = globalShadingModel;
+        deferredCp.meshOverlay = globalMeshOverlay;
+        compiledPasses.push_back(std::move(deferredCp));
+      }
+    }
   }
 
   // 4. Validate YAML declarations against shader reflection.

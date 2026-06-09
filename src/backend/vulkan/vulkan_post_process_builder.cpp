@@ -6,6 +6,7 @@
 #include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/components/camera_component.hpp"
 #include "core/scene/ibl_environment.hpp"
+#include "core/scene/light.hpp"
 #include "core/utils/filesystem_tools.hpp"
 #include "core/utils/hash.hpp"
 #include <cstring>
@@ -20,6 +21,7 @@ namespace {
 constexpr const char *kPostProcessShaderName = "post_process";
 constexpr const char *kBloomThresholdShaderName = "bloom_threshold";
 constexpr const char *kSkyboxShaderName = "skybox";
+constexpr const char *kDeferredLightingShaderName = "deferred_lighting";
 
 class StaticFullscreenShader final : public LX_core::IShader {
 public:
@@ -175,6 +177,52 @@ std::vector<LX_core::ShaderResourceBinding> bloomBlurBindings() {
       LX_core::ShaderStage::Fragment, {}}};
 }
 
+std::vector<LX_core::ShaderResourceBinding> deferredLightingBindings() {
+  return {
+      LX_core::ShaderResourceBinding{"GBufferAlbedoAlpha", 0, 0,
+                                     LX_core::ShaderPropertyType::Texture2D, 1,
+                                     0, 0, LX_core::ShaderStage::Fragment, {}},
+      LX_core::ShaderResourceBinding{"GBufferNormalRoughness", 0, 1,
+                                     LX_core::ShaderPropertyType::Texture2D, 1,
+                                     0, 0, LX_core::ShaderStage::Fragment, {}},
+      LX_core::ShaderResourceBinding{"GBufferMaterial", 0, 2,
+                                     LX_core::ShaderPropertyType::Texture2D, 1,
+                                     0, 0, LX_core::ShaderStage::Fragment, {}},
+      LX_core::ShaderResourceBinding{"GBufferDepth", 0, 3,
+                                     LX_core::ShaderPropertyType::Texture2D, 1,
+                                     0, 0, LX_core::ShaderStage::Fragment, {}},
+      LX_core::ShaderResourceBinding{
+          "CameraUBO",
+          1,
+          0,
+          LX_core::ShaderPropertyType::UniformBuffer,
+          1,
+          LX_core::CameraData::ResourceSize,
+          0,
+          LX_core::ShaderStage::Fragment,
+          {LX_core::StructMemberInfo{"view", LX_core::ShaderPropertyType::Mat4,
+                                     0, 64},
+           LX_core::StructMemberInfo{"proj", LX_core::ShaderPropertyType::Mat4,
+                                     64, 64},
+           LX_core::StructMemberInfo{"eyePos", LX_core::ShaderPropertyType::Vec3,
+                                     128, 12}}},
+      LX_core::ShaderResourceBinding{
+          "LightUBO",
+          2,
+          0,
+          LX_core::ShaderPropertyType::UniformBuffer,
+          1,
+          sizeof(LX_core::DirectionalLightData::Param),
+          0,
+          LX_core::ShaderStage::Fragment,
+          {LX_core::StructMemberInfo{"direction",
+                                     LX_core::ShaderPropertyType::Vec4, 0, 16},
+           LX_core::StructMemberInfo{"color",
+                                     LX_core::ShaderPropertyType::Vec4, 16,
+                                     16}}},
+  };
+}
+
 LX_core::ShaderStageCode loadShaderStage(const std::string &shaderName,
                                          const char *suffix,
                                          LX_core::ShaderStage stage) {
@@ -287,6 +335,25 @@ VulkanPostProcessBuilder::createBloomBlurMaterial(
   shaderProgram.shaderName = shaderName;
   shaderProgram.shader = shader;
   tmpl->setPassDefinition(pass, makeFullscreenPassDefinition(shaderProgram));
+  tmpl->rebuildMaterialInterface();
+  auto material = LX_core::MaterialInstance::createUnique(std::move(tmpl));
+  material->syncGpuData();
+  return material;
+}
+
+LX_core::MaterialInstanceUniquePtr
+VulkanPostProcessBuilder::createDeferredLightingMaterial() const {
+  auto shader = std::make_shared<StaticFullscreenShader>(
+      kDeferredLightingShaderName,
+      loadGraphicsShaderStages(kDeferredLightingShaderName),
+      deferredLightingBindings());
+
+  auto tmpl = LX_core::MaterialTemplate::create(kDeferredLightingShaderName);
+  LX_core::ShaderProgramSet shaderProgram;
+  shaderProgram.shaderName = kDeferredLightingShaderName;
+  shaderProgram.shader = shader;
+  tmpl->setPassDefinition(LX_core::Pass_DeferredLighting,
+                          makeFullscreenPassDefinition(shaderProgram));
   tmpl->rebuildMaterialInterface();
   auto material = LX_core::MaterialInstance::createUnique(std::move(tmpl));
   material->syncGpuData();
