@@ -81,10 +81,12 @@ struct Fixture {
     scene->addCamera(cameraNode);
     auto dirLight = std::make_shared<LX_core::DirectionalLight>();
     scene->attachLight(lightNode, dirLight);
-    dirLight->setDirection({-0.3f, -1.0f, -0.5f});
-    dirLight->setColor({0.9f, 0.8f, 0.7f});
-    dirLight->setIntensity(2.5f);
-    dirLight->setShadowBias(0.005f);
+    if (const auto attachedDirLight = scene->getDirectionalLight(*lightNode)) {
+      attachedDirLight->get().setDirection({-0.3f, -1.0f, -0.5f});
+      attachedDirLight->get().setColor({0.9f, 0.8f, 0.7f});
+      attachedDirLight->get().setIntensity(2.5f);
+      attachedDirLight->get().setShadowBias(0.005f);
+    }
     LX_core::registerBuiltinCommands(bus, editorState, *scene);
   }
 };
@@ -112,6 +114,7 @@ void testSnapshotForRegularNode() {
          "regular node translation should be reported");
   EXPECT(snapshot.visibilityMask == 0x12345678u,
          "regular node visibility mask should be reported");
+  EXPECT(snapshot.visible, "regular node with non-zero visibility mask is visible");
   EXPECT(!snapshot.hasCamera, "regular node should not report camera component");
 }
 
@@ -330,6 +333,20 @@ void testDispatchHelpersUseCommandBus() {
   EXPECT(setVisibility.ok, "visibility helper should succeed");
   EXPECT(fixture.cube->getVisibilityLayerMask() == 255u,
          "visibility helper should update node visibility mask");
+
+  const auto hide = panel.dispatchSetVisible("/world/hero_cube", false);
+  EXPECT(hide.ok, "visible helper should hide selected node");
+  EXPECT(fixture.cube->getVisibilityLayerMask() == 0u,
+         "visible helper should clear visibility mask through hide command");
+  EXPECT(fixture.bus.history().back().line == "hide \"/world/hero_cube\"",
+         "visible helper should dispatch the hide command");
+
+  const auto show = panel.dispatchSetVisible("/world/hero_cube", true);
+  EXPECT(show.ok, "visible helper should show selected node");
+  EXPECT(fixture.cube->getVisibilityLayerMask() == LX_core::VisibilityMask_All,
+         "visible helper should restore all-layer visibility through show command");
+  EXPECT(fixture.bus.history().back().line == "show \"/world/hero_cube\"",
+         "visible helper should dispatch the show command");
 
   const auto setDirection =
       panel.dispatchSetVec3("/dir_light", "direction", {0.0f, -1.0f, 0.0f});

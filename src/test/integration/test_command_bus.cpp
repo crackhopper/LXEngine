@@ -648,6 +648,29 @@ void testBuiltinAddRemoveSetCommands() {
   EXPECT(fixture.cube->getVisibilityLayerMask() == 255u,
          "set visibilityMask updates node visibility");
 
+  const CommandResult hideCube = fixture.bus.dispatch("hide /world/cube");
+  EXPECT(hideCube.ok, "hide succeeds for an existing node");
+  EXPECT(fixture.cube->getVisibilityLayerMask() == 0u,
+         "hide clears node visibility mask");
+  const auto hideInverse = hideCube.metadata.find("inverse.line");
+  EXPECT(hideInverse != hideCube.metadata.end() &&
+             hideInverse->second == "set \"/world/cube.visibilityMask\" 255",
+         "hide records previous visibility mask for undo");
+
+  const CommandResult showCube = fixture.bus.dispatch("show /world/cube");
+  EXPECT(showCube.ok, "show succeeds for an existing node");
+  EXPECT(fixture.cube->getVisibilityLayerMask() == LX_core::VisibilityMask_All,
+         "show restores all-layer visibility mask");
+  const auto showInverse = showCube.metadata.find("inverse.line");
+  EXPECT(showInverse != showCube.metadata.end() &&
+             showInverse->second == "set \"/world/cube.visibilityMask\" 0",
+         "show records hidden visibility mask for undo");
+
+  const CommandResult hideMissing = fixture.bus.dispatch("hide /missing");
+  EXPECT(!hideMissing.ok, "hide fails for a missing node");
+  EXPECT(hideMissing.message == "node not found: /missing",
+         "hide missing node reuses node lookup error");
+
   const CommandResult setNear =
       fixture.bus.dispatch("set /camera_main.near 0.5");
   EXPECT(setNear.ok, "set near succeeds");
@@ -880,8 +903,10 @@ void testTransformCommandsDriveAttachedLightSpatialState() {
     const auto legacyDirLight = fixture.scene->getDirectionalLight(*dirNode);
     const Vec3f legacyPropertyDir =
         legacyDirLight ? legacyDirLight->get().getDirection() : Vec3f{};
+    const auto &legacyLightsUbo = static_cast<const SceneLightsData &>(
+        fixture.scene->getSceneLightsUBO(Pass_Forward).get());
     const Vec4f legacyUboDir =
-        fixture.scene->getSceneLightsUBO(Pass_Forward)->param.directional[1].direction;
+        legacyLightsUbo.param.directional[1].direction;
     EXPECT(nearlyEqual(legacyUboDir.x, legacyPropertyDir.x) &&
                nearlyEqual(legacyUboDir.y, legacyPropertyDir.y) &&
                nearlyEqual(legacyUboDir.z, legacyPropertyDir.z),
@@ -906,8 +931,9 @@ void testTransformCommandsDriveAttachedLightSpatialState() {
              nearlyEqual(propertyDir.z, 0.0f),
          "directional light direction property follows node rotation");
   (void)fixture.scene->getSceneLevelResources(Pass_Forward, RenderTarget{});
-  const Vec4f dir =
-      fixture.scene->getSceneLightsUBO(Pass_Forward)->param.directional[1].direction;
+  const auto &lightsUbo = static_cast<const SceneLightsData &>(
+      fixture.scene->getSceneLightsUBO(Pass_Forward).get());
+  const Vec4f dir = lightsUbo.param.directional[1].direction;
   EXPECT(nearlyEqual(dir.x, -1.0f) && nearlyEqual(dir.y, 0.0f) &&
              nearlyEqual(dir.z, 0.0f),
          "directional light UBO direction follows node rotation");
@@ -926,8 +952,9 @@ void testTransformCommandsDriveAttachedLightSpatialState() {
       fixture.bus.dispatch("move /fill_point 3 4 5");
   EXPECT(movePoint.ok, "move point light succeeds");
   (void)fixture.scene->getSceneLevelResources(Pass_Forward, RenderTarget{});
-  const Vec4f point =
-      fixture.scene->getSceneLightsUBO(Pass_Forward)->param.point[0].positionRange;
+  const auto &pointLightsUbo = static_cast<const SceneLightsData &>(
+      fixture.scene->getSceneLightsUBO(Pass_Forward).get());
+  const Vec4f point = pointLightsUbo.param.point[0].positionRange;
   EXPECT(nearlyEqual(point.x, 3.0f) && nearlyEqual(point.y, 4.0f) &&
              nearlyEqual(point.z, 5.0f),
          "point light UBO position follows node translation");

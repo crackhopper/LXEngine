@@ -211,6 +211,7 @@ InspectorPanel::Snapshot InspectorPanel::makeSnapshot() const {
   snapshot.rotationEulerDegrees = quatToEulerDegrees(node.getRotation());
   snapshot.scale = node.getScale();
   snapshot.visibilityMask = node.getVisibilityLayerMask();
+  snapshot.visible = snapshot.visibilityMask != 0;
   snapshot.hasCamera = node.getComponent<CameraComponent>().has_value();
   if (snapshot.hasCamera) {
     const auto camera = node.getComponent<CameraComponent>();
@@ -331,6 +332,12 @@ CommandResult InspectorPanel::dispatchSetUnsigned(std::string_view path,
   return m_commandBus.dispatch(
       "set " + quoteToken(std::string(path) + "." + std::string(field)) + " " +
       formatUnsigned(value));
+}
+
+CommandResult InspectorPanel::dispatchSetVisible(std::string_view path,
+                                                 const bool visible) {
+  return m_commandBus.dispatch(std::string(visible ? "show " : "hide ") +
+                               quoteToken(path));
 }
 
 CommandResult InspectorPanel::dispatchSetToken(std::string_view path,
@@ -517,6 +524,13 @@ void InspectorPanel::drawSelection(const Snapshot &snapshot) {
   ImGui::Text("Camera: %s", snapshot.hasCamera ? "yes" : "no");
   ImGui::SameLine();
   ImGui::Text("Light: %s", snapshot.hasLight ? "yes" : "no");
+  bool visible = snapshot.visible;
+  if (ImGui::Checkbox("Visible", &visible)) {
+    const CommandResult result = dispatchSetVisible(snapshot.path, visible);
+    if (result.ok) {
+      refreshDrafts();
+    }
+  }
   ImGui::Text("Visibility mask: %s",
               formatMask(snapshot.visibilityMask).c_str());
   ImGui::Text("Mesh: %s", snapshot.hasMesh ? "yes" : "no");

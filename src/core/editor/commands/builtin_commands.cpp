@@ -2777,6 +2777,41 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
                         return result;
                       });
 
+  auto setNodeVisibility =
+      [&scene](const std::vector<std::string> &args,
+               const VisibilityLayerMask mask, const std::string &verb) {
+        if (args.size() != 1) {
+          return makeError("usage: " + verb + " <path>");
+        }
+        SceneNode *node = nullptr;
+        const CommandResult found = requireNode(scene, args[0], node);
+        if (!found.ok) {
+          return found;
+        }
+        CommandResult result =
+            makeOk(verb + " " + node->getPath(),
+                   "{\"path\":\"" + jsonEscape(node->getPath()) +
+                       "\",\"visible\":" + (mask == 0 ? "false" : "true") +
+                       ",\"visibilityMask\":" + std::to_string(mask) + "}");
+        result.metadata["inverse.line"] =
+            "set " + quoteToken(node->getPath() + ".visibilityMask") + " " +
+            std::to_string(node->getVisibilityLayerMask());
+        node->setVisibilityLayerMask(mask);
+        return result;
+      };
+
+  bus.registerHandler(
+      "hide", CommandMetadata{"hide <path>", inverseFromMetadata(), true},
+      [setNodeVisibility](std::vector<std::string> args) {
+        return setNodeVisibility(args, 0u, "hide");
+      });
+
+  bus.registerHandler(
+      "show", CommandMetadata{"show <path>", inverseFromMetadata(), true},
+      [setNodeVisibility](std::vector<std::string> args) {
+        return setNodeVisibility(args, VisibilityMask_All, "show");
+      });
+
   bus.registerHandler(
       "move",
       CommandMetadata{"move <path> <x> <y> <z> | move <path...> <dx> <dy> <dz>",
@@ -3604,7 +3639,8 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
     return bus.redo();
   });
 
-  for (const std::string &verb : {"select", "move", "rotate", "scale"}) {
+  for (const std::string &verb :
+       {"select", "hide", "show", "move", "rotate", "scale"}) {
     for (usize argIndex = 0; argIndex < 8; ++argIndex) {
       bus.registerCompleter(verb, argIndex,
                             [&scene](const CompletionContext &context) {

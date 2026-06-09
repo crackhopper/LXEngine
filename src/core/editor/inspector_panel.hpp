@@ -51,6 +51,7 @@ public:
     Vec3f rotationEulerDegrees{0.0f, 0.0f, 0.0f};
     Vec3f scale{1.0f, 1.0f, 1.0f};
     u32 visibilityMask = 0;
+    bool visible = false;
     bool hasCamera = false;
     float cameraFov = 45.0f;
     float cameraNear = 0.1f;
@@ -98,6 +99,8 @@ public:
   dispatchSetFloat(std::string_view path, std::string_view field, float value);
   [[nodiscard]] CommandResult
   dispatchSetUnsigned(std::string_view path, std::string_view field, u32 value);
+  [[nodiscard]] CommandResult dispatchSetVisible(std::string_view path,
+                                                 bool visible);
   [[nodiscard]] CommandResult dispatchSetToken(std::string_view path,
                                                std::string_view field,
                                                std::string_view value);
