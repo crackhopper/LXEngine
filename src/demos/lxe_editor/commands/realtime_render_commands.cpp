@@ -8,10 +8,13 @@ void registerRealtimeRenderCommands(LX_core::CommandBus &bus,
                                     const LxeEditorCommandContext &context) {
   const auto realtimeRenderListJson = context.realtimeRenderListJson;
   const auto realtimeRenderRun = context.realtimeRenderRun;
+  const auto realtimeRenderMode = context.realtimeRenderMode;
   bus.registerHandler(
-      "realtime-render", "realtime-render ls | realtime-render run <profile>",
-      [realtimeRenderListJson,
-       realtimeRenderRun](std::vector<std::string> args) {
+      "realtime-render",
+      "realtime-render ls | realtime-render run <profile> | "
+      "realtime-render mode status|forward|deferred",
+      [realtimeRenderListJson, realtimeRenderRun,
+       realtimeRenderMode](std::vector<std::string> args) {
         if (args.size() == 1 && args[0] == "ls") {
           if (!realtimeRenderListJson) {
             return makeEditorCommandError("realtime-render ls unavailable");
@@ -25,8 +28,15 @@ void registerRealtimeRenderCommands(LX_core::CommandBus &bus,
           }
           return realtimeRenderRun(args[1]);
         }
+        if (args.size() == 2 && args[0] == "mode") {
+          if (!realtimeRenderMode) {
+            return makeEditorCommandError("realtime-render mode unavailable");
+          }
+          return realtimeRenderMode(args[1]);
+        }
         return makeEditorCommandError(
-            "usage: realtime-render ls | realtime-render run <profile>");
+            "usage: realtime-render ls | realtime-render run <profile> | "
+            "realtime-render mode status|forward|deferred");
       });
 }
 
