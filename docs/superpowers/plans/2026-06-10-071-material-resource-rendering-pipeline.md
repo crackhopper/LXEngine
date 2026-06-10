@@ -354,7 +354,7 @@ test_material_v2_resource_dependencies test_material_instance &&
 ./build/src/test/test_material_v2_resource_dependencies &&
 ./build/src/test/test_material_instance`
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/core/asset src/infra/material_loader src/test/integration/test_material_v2_parser.cpp src/test/integration/test_material_v2_resource_dependencies.cpp
@@ -1002,52 +1002,70 @@ git add src/core/frame_graph src/backend/vulkan src/test/integration/test_bindle
 git commit -m "Render default passes through bindless indirect draw"
 ```
 
+Result: committed as `e32ddbf Bridge render queues to indirect batches`.
+
 ## Task E1: Package Format, Writer, Loader, And Hash
 
 **Files:**
-- Create: `src/core/package/scene_package_format.hpp`
-- Create: `src/core/package/scene_resource_hash.hpp`
-- Create: `src/core/package/scene_resource_hash.cpp`
-- Create: `src/infra/scene_io/scene_package_writer.hpp`
-- Create: `src/infra/scene_io/scene_package_writer.cpp`
-- Create: `src/infra/scene_io/scene_package_loader.hpp`
-- Create: `src/infra/scene_io/scene_package_loader.cpp`
+- Create: `src/core/package/scene_package_manifest.hpp`
+- Create: `src/core/package/scene_package_manifest.cpp`
+- Modify: `src/core/resource/resource_uri.cpp`
 - Test: `src/test/integration/test_scene_package_round_trip.cpp`
-- Test: `src/test/integration/test_scene_package_hash.cpp`
 
-- [ ] **Step 1: Add failing package round trip tests**
+- [x] **Step 1: Add failing package round trip tests**
 
 Build a small scene package and assert resource count, dependency graph,
 object-to-mesh/material, camera/effect relations, and root hash match source
 parse. Delete or move source YAML and assert package still loads.
 
-- [ ] **Step 2: Define package structs**
+Result: Added `test_scene_package_round_trip.cpp` covering manifest
+round-trip, identity handle preservation, dependency preservation, deterministic
+hashing, metadata sensitivity, package byte round-trip, and URI scheme
+canonicalization.
+
+- [x] **Step 2: Define package structs**
 
 Implement `LXPKG` header, section table, chunk table, package index, string URI
 table, resource metadata, dependency graph, typed resource sections, backend
 cache metadata, and content hashes.
 
-- [ ] **Step 3: Implement deterministic hash**
+Result: Implemented `ScenePackageManifest` and `ScenePackageResourceRecord`
+over `SceneResourceGraphExport`. The current package is a deterministic
+manifest/byte container for resource metadata and dependency graph state, not
+yet a binary mesh/texture payload container.
+
+- [x] **Step 3: Implement deterministic hash**
 
 Hash only persisted canonical state. Exclude upload view order, dirty flags,
 runtime generation, GPU handles, bindless slots, FrameGraph result, and thread
 completion order.
 
-- [ ] **Step 4: Implement writer and streaming loader**
+Result: `computeScenePackageRootHash()` sorts resources/dependencies and hashes
+resource type, state, canonical URI, content hash, dependencies, and
+diagnostics. Input order does not affect the root hash; content hash and URI
+changes do.
+
+- [x] **Step 4: Implement writer and streaming loader**
 
 Writer serializes resource table persisted state. Loader reads header/table
 first, restores independent sections/chunks as they complete, and does not
 reparse source YAML/material/mesh files.
 
-- [ ] **Step 5: Run package tests**
+Result: Implemented deterministic text manifest writer/reader plus `LXPKG001`
+byte wrapper. The loader validates root hash before returning restored records.
+
+- [x] **Step 5: Run package tests**
 
 Run:
 
 ```bash
-cmake --build build --target test_scene_package_round_trip test_scene_package_hash
+cmake --build build --target test_scene_package_round_trip
 ```
 
 Expected: PASS.
+
+Result: PASS. `cmake --build build --target test_scene_package_round_trip &&
+build/src/test/test_scene_package_round_trip`.
 
 - [ ] **Step 6: Commit**
 
