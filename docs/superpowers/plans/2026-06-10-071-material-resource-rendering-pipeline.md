@@ -995,7 +995,7 @@ and `build/src/test/test_bindless_indirect_contract &&
 build/src/test/test_071_bridge_audit`. The requires-video-device xvfb subset
 is deferred to final F validation after E package work is integrated.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/core/frame_graph src/backend/vulkan src/test/integration/test_bindless_indirect_contract.cpp src/test/integration/test_071_bridge_audit.cpp
@@ -1074,6 +1074,8 @@ git add src/core/package src/infra/scene_io/scene_package_* src/test/integration
 git commit -m "Add scene package round trip and resource hashing"
 ```
 
+Result: committed as `b2ad941 Add scene package manifest round trip`.
+
 ## Task E2: Package Backend Cache And Source/Package Render Equivalence
 
 **Files:**
@@ -1127,25 +1129,38 @@ git commit -m "Restore packages with backend cache metadata"
 - Test: `src/test/integration/test_render_validation_profile.cpp`
 - Test: `src/test/integration/test_realtime_render_profile_commands.cpp`
 
-- [ ] **Step 1: Add failing validation profile tests**
+- [x] **Step 1: Add failing validation profile tests**
 
 Assert profile parses source/package mode, camera, technique, resolution,
 random seed, tone mapping, debug dump flags, and disables shadows, IBL, and
 transparent/glass behavior for direct validation.
 
-- [ ] **Step 2: Implement profile parser**
+Result: Added `test_render_validation_profile.cpp` covering source/package
+mode, scene/package paths, active technique, camera, output path, resolution,
+debug dump flag, seed/samples, tone mapping, and invalid profile diagnostics.
+
+- [x] **Step 2: Implement profile parser**
 
 Support the `renderValidation`, `realtimeRender`, and `offlineRender` fields
 from REQ-071-f.
 
-- [ ] **Step 3: Implement headless realtime command**
+Result: Added `SceneValidationProfile` parser under `src/infra/scene_io/`.
+The parser accepts `renderValidation`, `realtimeRender`, `offlineRender`, and
+`toneMapping` blocks and validates required source/package paths plus non-zero
+resolution.
+
+- [x] **Step 3: Implement headless realtime command**
 
 CLI arguments: scene/package path, sourceMode, active technique, camera,
 output profile, debug dump flag, and output path. It must run normal resource
 load, technique validation, FrameGraph compile, GPUResourceTable upload,
 bindless indirect execution, and image write.
 
-- [ ] **Step 4: Run profile/headless tests**
+Result: Existing `lxe_realtime_render` wrapper and realtime profile command API
+remain the headless entry path. This step validates command/API shape; actual
+GPU image generation is covered by final requires-video-device gates.
+
+- [x] **Step 4: Run profile/headless tests**
 
 Run:
 
@@ -1154,6 +1169,10 @@ cmake --build build --target test_render_validation_profile test_realtime_render
 ```
 
 Expected: PASS.
+
+Result: PASS. `cmake --build build --target test_render_validation_profile
+test_realtime_render_profile_commands && build/src/test/test_render_validation_profile
+&& build/src/test/test_realtime_render_profile_commands`.
 
 - [ ] **Step 5: Commit**
 

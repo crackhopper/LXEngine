@@ -342,6 +342,7 @@ set(INFRA_SOURCES
     scene_asset/scene_mesh_loader.cpp
     scene_io/editor_camera_state.cpp
     scene_io/scene_document.cpp
+    scene_io/scene_validation_profile.cpp
     gui/imgui_gui.cpp
     gui/debug_ui.cpp
     texture_loader/texture_loader.cpp

@@ -31,6 +31,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_bindless_indirect_contract
   test_071_bridge_audit
   test_scene_package_round_trip
+  test_render_validation_profile
   test_audio_spectrum_texture
   test_pipeline_identity
   test_pipeline_build_info
