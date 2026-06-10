@@ -55,6 +55,9 @@ struct SceneLoadTimingStats final {
   double sceneRegisterMs = 0.0;
   usize nodeCount = 0;
   usize meshLoadCount = 0;
+  usize meshVertexCount = 0;
+  usize meshIndexCount = 0;
+  usize meshTriangleCount = 0;
   usize materialLoadCount = 0;
   usize materialPrototypeLoadCount = 0;
   usize materialCacheHitCount = 0;
@@ -70,6 +73,17 @@ thread_local SceneLoadMaterialCache *g_sceneLoadMaterialCache = nullptr;
 thread_local std::optional<
     std::reference_wrapper<const LX_core::SceneRealtimeRenderSettings>>
     g_sceneRealtimeRenderSettings;
+
+void accumulateLoadedMeshStats(const LX_core::MeshSharedPtr &mesh) {
+  if (g_sceneLoadTimingStats == nullptr || !mesh) {
+    return;
+  }
+  const usize vertexCount = mesh->getVertexCount();
+  const usize indexCount = mesh->getIndexCount();
+  g_sceneLoadTimingStats->meshVertexCount += vertexCount;
+  g_sceneLoadTimingStats->meshIndexCount += indexCount;
+  g_sceneLoadTimingStats->meshTriangleCount += indexCount / 3u;
+}
 
 struct ScopedSceneLoadTimingContext final {
   ScopedSceneLoadTimingContext(SceneLoadTimingStats &stats,
@@ -132,8 +146,10 @@ currentGenericMaterialLoadOptions() {
     options.forceIbl = settings.ibl;
     options.alphaTransparency =
         settings.alphaTransparency;
-    options.enableDeferredPass =
-        settings.mode == LX_core::SceneRealtimeRenderMode::Deferred;
+    options.technique =
+        settings.mode == LX_core::SceneRealtimeRenderMode::Deferred
+            ? std::optional<std::string>("Deferred")
+            : std::optional<std::string>("Forward");
   }
   return options;
 }
@@ -151,7 +167,9 @@ materialCacheKey(const std::filesystem::path &path,
   if (options.alphaTransparency.has_value()) {
     key += *options.alphaTransparency ? "|alpha=1" : "|alpha=0";
   }
-  key += options.enableDeferredPass ? "|deferred=1" : "|deferred=0";
+  if (options.technique.has_value()) {
+    key += "|technique=" + *options.technique;
+  }
   return key;
 }
 
@@ -1071,7 +1089,9 @@ loadTimedGltfMeshAsset(const std::filesystem::path &meshPath) {
     timer.emplace(g_sceneLoadTimingStats->meshMs);
     ++g_sceneLoadTimingStats->meshLoadCount;
   }
-  return LX_infra::scene_asset::loadGltfMeshAsset(meshPath);
+  auto result = LX_infra::scene_asset::loadGltfMeshAsset(meshPath);
+  accumulateLoadedMeshStats(result.mesh);
+  return result;
 }
 
 [[nodiscard]] LX_core::MeshSharedPtr
@@ -1081,7 +1101,9 @@ loadTimedSceneMeshAsset(const std::filesystem::path &meshPath) {
     timer.emplace(g_sceneLoadTimingStats->meshMs);
     ++g_sceneLoadTimingStats->meshLoadCount;
   }
-  return LX_infra::scene_asset::loadSceneMeshAsset(meshPath);
+  auto mesh = LX_infra::scene_asset::loadSceneMeshAsset(meshPath);
+  accumulateLoadedMeshStats(mesh);
+  return mesh;
 }
 
 [[nodiscard]] LX_core::MaterialInstanceSharedPtr loadTaggedMaterialForSceneNode(
@@ -1904,6 +1926,9 @@ void SceneRuntime::loadFromDocumentPath(const std::filesystem::path &path) {
             << " environmentMs=" << timing.environmentMs
             << " nodeCount=" << timing.nodeCount
             << " meshLoadCount=" << timing.meshLoadCount
+            << " meshVertexCount=" << timing.meshVertexCount
+            << " meshIndexCount=" << timing.meshIndexCount
+            << " meshTriangleCount=" << timing.meshTriangleCount
             << " meshMs=" << timing.meshMs
             << " materialLoadCount=" << timing.materialLoadCount
             << " materialPrototypeLoadCount="

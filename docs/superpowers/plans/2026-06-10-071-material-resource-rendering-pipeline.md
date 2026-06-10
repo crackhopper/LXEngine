@@ -413,7 +413,7 @@ python3 src/test/integration/test_lxe_pbrt_scene_convert.py --source-dir
 /home/lixiang/proj/LXEngine && ctest --test-dir build --output-on-failure -R
 "material_v2|pbrt|helmet"`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/infra/material_loader assets src/test/integration/test_material_v2_converter_defaults.cpp src/test/integration/test_lxe_pbrt_scene_convert.py
@@ -1243,6 +1243,8 @@ git add src/tools/lxe_compare_exr src/test/integration/test_diagnostics_compare.
 git commit -m "Classify direct-lighting render differences"
 ```
 
+Result: committed as `456bd45 Classify direct lighting render differences`.
+
 ## Task F3: Helmet/BMW Validation Assets And Final Gates
 
 **Files:**
@@ -1284,7 +1286,7 @@ Ensure all materials use Material v2, declare three techniques, use direct
 test representation for unsupported transparent/glass behavior, and include
 validation profile settings that disable shadows, IBL, and transparency.
 
-- [ ] **Step 6: Run final F gates**
+- [x] **Step 6: Run final F gates**
 
 Run:
 
@@ -1296,6 +1298,27 @@ xvfb-run -a ctest --test-dir build --output-on-failure -L requires_video_device
 
 Expected: PASS. Any failure blocks final 071 completion unless the user
 explicitly changes scope.
+
+Result:
+
+- PASS: `cmake --build build --target BuildTest`.
+- PARTIAL: `ctest --test-dir build --output-on-failure -L auto -LE
+  requires_video_device` passed 74/75. The only failure is the previously
+  recorded llvmpipe/software-compute issue:
+  `test_offline_render_cli` -> `software-compute render should produce finite
+  pixels`.
+- PARTIAL: `xvfb-run -a ctest --test-dir build --output-on-failure -L
+  requires_video_device` passed 15/18. Failures recorded for follow-up:
+  `test_realtime_offline_compare_flat` remote editor connection closed,
+  `test_vulkan_frame_graph` expected legacy pass list count, and
+  `test_vulkan_resource_manager` did not observe initial DebugDraw Vulkan
+  buffers on llvmpipe.
+- PASS after D4 tightening: `cmake --build build --target
+  test_bindless_indirect_contract test_071_bridge_audit
+  test_vulkan_resource_manager test_vulkan_frame_graph &&
+  build/src/test/test_bindless_indirect_contract &&
+  build/src/test/test_071_bridge_audit` built and the D4 tests passed. The
+  two Vulkan tests still fail under xvfb as listed above.
 
 - [ ] **Step 7: Commit**
 

@@ -63,6 +63,7 @@ public:
         std::string_view, const std::optional<std::string> &,
         const std::filesystem::path &)>
         dumpRenderTarget;
+    std::function<RenderDebugDumpResult(std::string_view)> statsRenderTarget;
   };
 
   struct RealtimeRenderProfileHooks final {

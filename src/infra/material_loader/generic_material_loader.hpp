@@ -4,13 +4,14 @@
 
 #include <filesystem>
 #include <optional>
+#include <string>
 
 namespace LX_infra {
 
 struct GenericMaterialLoadOptions final {
   std::optional<bool> forceIbl;
   std::optional<bool> alphaTransparency;
-  bool enableDeferredPass = false;
+  std::optional<std::string> technique;
 };
 
 /// Load a material from a YAML material definition file (.material).

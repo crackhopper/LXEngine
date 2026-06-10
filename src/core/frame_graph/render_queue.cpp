@@ -213,7 +213,7 @@ std::vector<RenderIndirectBatch> RenderWorkQueue::compileIndirectBatches() const
     const RenderWorkItem &item = m_items[itemIndex];
     if (item.kind != RenderWorkKind::RasterDraw ||
         !item.raster.vertexBuffer.isValid() ||
-        !item.raster.indexBuffer.isValid()) {
+        !item.raster.indexBuffer.isValid() || item.raster.drawData) {
       continue;
     }
     IndexedIndirectDrawCommand command = makeIndirectCommand(item.raster);

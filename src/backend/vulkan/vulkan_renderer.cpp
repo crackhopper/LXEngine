@@ -69,6 +69,11 @@ VulkanRenderer::dumpFrameGraphAttachment(
 }
 
 VulkanRenderer::FrameGraphAttachmentDumpResult
+VulkanRenderer::statsFrameGraphAttachment(std::string_view attachmentName) {
+  return p_realtime->statsFrameGraphAttachment(attachmentName);
+}
+
+VulkanRenderer::FrameGraphAttachmentDumpResult
 VulkanRenderer::dumpDebugRenderTarget(
     std::string_view passName, const std::optional<std::string> &cameraPath,
     const std::optional<std::filesystem::path> &path) {

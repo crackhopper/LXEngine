@@ -1013,6 +1013,22 @@ int main(int argc, char **argv) {
                   .nonZeroRatio = dumped.nonZeroRatio,
               };
             },
+        .statsRenderTarget =
+            [vulkanRenderer](std::string_view targetName) {
+              const auto stats =
+                  vulkanRenderer->statsFrameGraphAttachment(targetName);
+              return demo::LxeEditorSession::RenderDebugDumpResult{
+                  .path = stats.path,
+                  .screenPath = stats.screenPath,
+                  .width = stats.width,
+                  .height = stats.height,
+                  .format = stats.format,
+                  .minValue = stats.minValue,
+                  .maxValue = stats.maxValue,
+                  .meanValue = stats.meanValue,
+                  .nonZeroRatio = stats.nonZeroRatio,
+              };
+            },
     };
     demo::LxeEditorSession::RealtimeRenderProfileHooks
         realtimeRenderProfileHooks{
