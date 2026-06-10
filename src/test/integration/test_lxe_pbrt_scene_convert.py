@@ -202,6 +202,14 @@ class PbrtSceneConvertTest(unittest.TestCase):
                 / "runtime-pbr-approx"
                 / "LogoSilver.material"
             ).read_text(encoding="utf-8")
+            self.assertIn('"schema": "lxe.material.v2"', runtime_material_text)
+            self.assertIn('"bsdf":', runtime_material_text)
+            self.assertIn('"type": "metal"', runtime_material_text)
+            self.assertIn('"eta":', runtime_material_text)
+            self.assertIn('"kind": "spectrum"', runtime_material_text)
+            self.assertIn('"uri": "spds/Al.eta.spd"', runtime_material_text)
+            self.assertIn('"pbrtMaterialParameterSources":', runtime_material_text)
+            self.assertIn('"eta": "explicit"', runtime_material_text)
             self.assertIn('"shader": "pbr"', runtime_material_text)
             self.assertIn('"HAS_IBL": false', runtime_material_text)
             self.assertIn('"albedoMap": "white"', runtime_material_text)
@@ -232,6 +240,9 @@ class PbrtSceneConvertTest(unittest.TestCase):
                 / "runtime-pbr-approx"
                 / "WindscreenGlass.material"
             ).read_text(encoding="utf-8")
+            self.assertIn('"Kr":', glass_material_text)
+            self.assertIn('"Kr": "pbrt-default"', glass_material_text)
+            self.assertIn('"eta": "pbrt-default"', glass_material_text)
             self.assertIn('"depthWrite": false', glass_material_text)
             self.assertIn('"blendEnable": true', glass_material_text)
             self.assertIn('"srcBlend": "SrcAlpha"', glass_material_text)
@@ -279,6 +290,14 @@ class PbrtSceneConvertTest(unittest.TestCase):
             manifest_path = out_root / "pbrt_bmw_m6.converted.json"
             manifest_doc = json.loads(manifest_path.read_text(encoding="utf-8"))
             self.assertEqual(manifest_doc["sourceSceneBounds"], [[-1.0, -2.0, -3.0], [4.0, 5.0, 6.0]])
+            self.assertEqual(
+                manifest_doc["materialParameterSources"]["WindscreenGlass"]["eta"],
+                "pbrt-default",
+            )
+            self.assertEqual(
+                manifest_doc["materialParameterSources"]["LogoSilver"]["eta"],
+                "explicit",
+            )
             self.assertTrue((out_root / "pbrt_bmw_m6.conversion.md").exists())
 
 

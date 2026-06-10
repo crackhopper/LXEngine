@@ -713,7 +713,14 @@ void testRuntimeLightPropertyMutationEmitsApiSceneNodeChangedEvent() {
   fixture.service->refresh();
   const ApiEventCursor cursor = fixture.service->currentCursor();
 
-  light->setIntensity(4.5f);
+  const auto sceneLight = fixture.scene->getLight(*lightNode);
+  EXPECT(sceneLight.has_value(),
+         "attached light should be resolved through scene resource table");
+  if (!sceneLight.has_value()) {
+    return;
+  }
+  auto &directionalLight = static_cast<DirectionalLight &>(sceneLight->get());
+  directionalLight.setIntensity(4.5f);
   fixture.service->refresh();
 
   const ApiEventBatch batch = fixture.service->collectEventsSince(cursor);

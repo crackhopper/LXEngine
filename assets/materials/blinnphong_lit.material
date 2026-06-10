@@ -9,21 +9,24 @@ variantRules:
   - requires: [USE_SKINNING]
     depends: [USE_LIGHTING]
 
-passes:
+defaultTechnique: Forward
+techniques:
   Forward:
-    renderState:
-      cullMode: Back
-      depthTest: true
-      depthWrite: true
-  Shadow:
-    shader: shadow_depth_only
-    renderState:
-      cullMode: None
-      depthTest: true
-      depthWrite: true
-  OfflineRayTrace:
-    shader: offline_primary_ray
-    stage: compute
+    passes:
+      Forward:
+        renderState:
+          cullMode: Back
+          depthTest: true
+          depthWrite: true
+      Shadow:
+        shader: shadow_depth_only
+        renderState:
+          cullMode: None
+          depthTest: true
+          depthWrite: true
+      OfflineRayTrace:
+        shader: offline_primary_ray
+        stage: compute
 
 parameters:
   MaterialUBO.baseColor: [0.8, 0.8, 0.8]

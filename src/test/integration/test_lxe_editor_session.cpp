@@ -127,6 +127,21 @@ void cleanupProject(const std::string &projectName) {
   return std::filesystem::current_path();
 }
 
+class ScopedCurrentPath final {
+public:
+  explicit ScopedCurrentPath(std::filesystem::path path)
+      : m_previous(std::filesystem::current_path()) {
+    std::filesystem::current_path(std::move(path));
+  }
+  ~ScopedCurrentPath() { std::filesystem::current_path(m_previous); }
+
+  ScopedCurrentPath(const ScopedCurrentPath &) = delete;
+  ScopedCurrentPath &operator=(const ScopedCurrentPath &) = delete;
+
+private:
+  std::filesystem::path m_previous;
+};
+
 void writeTextFile(const std::filesystem::path &path,
                    const std::string &contents) {
   std::filesystem::create_directories(path.parent_path());
@@ -560,6 +575,9 @@ void testRealtimeRenderModeSwitchReloadsBmwScene() {
   }
 
   const std::filesystem::path repoRoot = findRepoRoot();
+  EXPECT(initializeRuntimeAssetRoot(repoRoot),
+         "BMW realtime mode test should use source runtime asset root");
+  ScopedCurrentPath sourceRootCwd(repoRoot);
   const std::filesystem::path bmwScene =
       repoRoot / "data/scenes/bmw-m6/pbrt_bmw_m6.scene.yaml";
   EXPECT(std::filesystem::exists(bmwScene),

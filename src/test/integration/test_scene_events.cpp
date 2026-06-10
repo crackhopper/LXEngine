@@ -279,24 +279,28 @@ void testDirectionalLightPropertySettersEmitRuntimeEvents() {
   scene->attachLight(lightNode, light);
   events.clear();
 
-  light->setDirection({0.0f, -1.0f, 0.0f});
-  light->setColor({0.2f, 0.4f, 0.6f});
-  light->setIntensity(3.5f);
-
-  const auto directionalUbo = light->getDirectionalUBO();
-  EXPECT(directionalUbo != nullptr,
-         "typed directional light UBO accessor should stay available");
-  if (directionalUbo != nullptr) {
-    EXPECT(directionalUbo->param.dir.x == 0.0f &&
-               directionalUbo->param.dir.y == -1.0f &&
-               directionalUbo->param.dir.z == 0.0f,
-           "typed directional light UBO accessor should expose latest direction");
-    EXPECT(directionalUbo->param.color.x == 0.2f &&
-               directionalUbo->param.color.y == 0.4f &&
-               directionalUbo->param.color.z == 0.6f &&
-               directionalUbo->param.color.w == 3.5f,
-           "typed directional light UBO accessor should expose latest color and intensity");
+  const auto sceneLight = scene->getLight(*lightNode);
+  EXPECT(sceneLight.has_value(),
+         "attached light should be resolved through scene resource table");
+  if (!sceneLight.has_value()) {
+    return;
   }
+  auto &directionalLight =
+      static_cast<LX_core::DirectionalLight &>(sceneLight->get());
+  directionalLight.setDirection({0.0f, -1.0f, 0.0f});
+  directionalLight.setColor({0.2f, 0.4f, 0.6f});
+  directionalLight.setIntensity(3.5f);
+
+  const auto &directionalUbo = directionalLight.getDirectionalUBO();
+  EXPECT(directionalUbo.param.dir.x == 0.0f &&
+             directionalUbo.param.dir.y == -1.0f &&
+             directionalUbo.param.dir.z == 0.0f,
+         "typed directional light UBO accessor should expose latest direction");
+  EXPECT(directionalUbo.param.color.x == 0.2f &&
+             directionalUbo.param.color.y == 0.4f &&
+             directionalUbo.param.color.z == 0.6f &&
+             directionalUbo.param.color.w == 3.5f,
+         "typed directional light UBO accessor should expose latest color and intensity");
 
   EXPECT(countChangedEventsWithAspect(events,
                                       LX_core::SceneNodeAspect::LightProperties) == 3,

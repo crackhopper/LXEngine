@@ -37,9 +37,13 @@ public:
   [[nodiscard]] const IVertexBuffer &getVertexBuffer() const {
     return *m_vertexBuffer;
   }
+  [[nodiscard]] IVertexBuffer &getMutableVertexBuffer() {
+    return *m_vertexBuffer;
+  }
   [[nodiscard]] const IndexBuffer &getIndexBuffer() const {
     return *m_indexBuffer;
   }
+  [[nodiscard]] IndexBuffer &getMutableIndexBuffer() { return *m_indexBuffer; }
   [[nodiscard]] const VertexLayout &getVertexLayout() const {
     return m_vertexBuffer->getLayout();
   }
@@ -163,9 +167,17 @@ public:
     assert(m_storage && "pending mesh storage is required for vertex buffer");
     return m_storage->getVertexBuffer();
   }
+  [[nodiscard]] IVertexBuffer &getMutableVertexBuffer() {
+    assert(m_storage && "pending mesh storage is required for vertex buffer");
+    return m_storage->getMutableVertexBuffer();
+  }
   [[nodiscard]] const IndexBuffer &getIndexBuffer() const {
     assert(m_storage && "pending mesh storage is required for index buffer");
     return m_storage->getIndexBuffer();
+  }
+  [[nodiscard]] IndexBuffer &getMutableIndexBuffer() {
+    assert(m_storage && "pending mesh storage is required for index buffer");
+    return m_storage->getMutableIndexBuffer();
   }
   [[nodiscard]] const BoundingBox &getBounds() const { return m_bounds; }
   void setBounds(BoundingBox bounds) { m_bounds = std::move(bounds); }

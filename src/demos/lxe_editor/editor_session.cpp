@@ -423,7 +423,7 @@ LxeEditorSession::saveScene(const std::optional<std::string> &path) {
 
 LX_core::CommandResult
 LxeEditorSession::setRealtimeRenderMode(const std::string_view modeName) {
-  const auto currentSettings = m_runtime.document().realtimeRenderSettings();
+  const auto currentSettings = m_runtime.scene()->realtimeRenderSettings();
   if (modeName == "status") {
     const char *mode = realtimeRenderModeName(currentSettings.mode);
     return makeCommandOk("realtime render mode: " + std::string(mode),
@@ -471,6 +471,7 @@ LxeEditorSession::setRealtimeRenderMode(const std::string_view modeName) {
     settings.mode = nextMode;
     document.setRealtimeRenderSettings(settings);
     saveSceneDocument(*activePath, document);
+    m_runtime.scene()->setRealtimeRenderSettings(settings);
     saveEditorSceneStateForScenePath(*activePath, captureEditorSceneState());
     const auto saved = m_projectSession.saveProject();
     if (!saved.ok) {
@@ -1186,7 +1187,7 @@ void LxeEditorSession::rebuildBindings(
               },
           .realtimeRenderMode =
               [this]() -> std::optional<LX_core::SceneRealtimeRenderMode> {
-            return m_runtime.document().realtimeRenderSettings().mode;
+            return m_runtime.scene()->realtimeRenderSettings().mode;
           },
           .setRealtimeRenderMode =
               [this](const LX_core::SceneRealtimeRenderMode mode) {
@@ -1304,12 +1305,38 @@ void LxeEditorSession::rebuildBindings(
                                  "\"}");
       });
   m_commandBus->registerHandler(
-      "render", "render debug dump <target> [camera-path] [path]",
+      "render",
+      "render debug dump <target> [camera-path] [path] | render debug stats "
+      "<target>",
       [this](std::vector<std::string> args) {
+        if (args.size() == 3 && args[0] == "debug" &&
+            args[1] == "stats") {
+          if (!m_renderDebugCommandHooks.statsRenderTarget) {
+            return makeCommandError("render debug stats unavailable");
+          }
+          try {
+            const RenderDebugDumpResult dump =
+                m_renderDebugCommandHooks.statsRenderTarget(args[2]);
+            std::ostringstream structured;
+            structured << "{\"width\":" << dump.width
+                       << ",\"height\":" << dump.height << ",\"format\":\""
+                       << jsonEscape(dump.format) << "\""
+                       << ",\"stats\":{\"min\":" << dump.minValue
+                       << ",\"max\":" << dump.maxValue
+                       << ",\"mean\":" << dump.meanValue
+                       << ",\"nonZeroRatio\":" << dump.nonZeroRatio << "}}";
+            return makeCommandOk("render target stats: " + args[2],
+                                 structured.str());
+          } catch (const std::exception &e) {
+            return makeCommandError(e.what());
+          }
+        }
+
         if (args.size() < 3 || args[0] != "debug" || args[1] != "dump" ||
             args.size() > 5) {
           return makeCommandError(
-              "usage: render debug dump <target> [camera-path] [path]");
+              "usage: render debug dump <target> [camera-path] [path] | "
+              "render debug stats <target>");
         }
         if (!m_renderDebugCommandHooks.dumpRenderTarget) {
           return makeCommandError("render debug dump unavailable");

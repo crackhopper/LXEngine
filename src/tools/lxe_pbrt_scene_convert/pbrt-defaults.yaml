@@ -1,0 +1,33 @@
+{
+  "matte": {
+    "Kd": {"kind": "rgb", "value": [0.8, 0.8, 0.8]},
+    "sigma": {"kind": "float", "value": 0.0}
+  },
+  "glass": {
+    "Kr": {"kind": "rgb", "value": [1.0, 1.0, 1.0]},
+    "Kt": {"kind": "rgb", "value": [1.0, 1.0, 1.0]},
+    "eta": {"kind": "float", "value": 1.5},
+    "uroughness": {"kind": "float", "value": 0.0},
+    "vroughness": {"kind": "float", "value": 0.0}
+  },
+  "uber": {
+    "Kd": {"kind": "rgb", "value": [0.8, 0.8, 0.8]},
+    "Ks": {"kind": "rgb", "value": [0.0, 0.0, 0.0]}
+  },
+  "metal": {
+    "eta": {"kind": "spectrum", "uri": "spds/Al.eta.spd"},
+    "k": {"kind": "spectrum", "uri": "spds/Al.k.spd"}
+  },
+  "substrate": {
+    "Kd": {"kind": "rgb", "value": [0.8, 0.8, 0.8]},
+    "Ks": {"kind": "rgb", "value": [0.0, 0.0, 0.0]},
+    "uroughness": {"kind": "float", "value": 0.1},
+    "vroughness": {"kind": "float", "value": 0.1}
+  },
+  "fourier": {
+    "bsdffile": {"kind": "bsdfTable", "uri": "bsdfs/leather.bsdf"}
+  },
+  "mix": {
+    "amount": {"kind": "float", "value": 0.5}
+  }
+}

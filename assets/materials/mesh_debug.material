@@ -4,9 +4,12 @@ meshOverlay:
   enabled: true
   color: [0.0, 0.0, 0.0, 1.0]
 
-passes:
+defaultTechnique: Forward
+techniques:
   Forward:
-    renderState:
-      cullMode: None
-      depthTest: true
-      depthWrite: false
+    passes:
+      Forward:
+        renderState:
+          cullMode: None
+          depthTest: true
+          depthWrite: false

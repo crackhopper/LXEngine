@@ -1,11 +1,14 @@
 shader: rtr_experiment_template
 
-passes:
+defaultTechnique: Forward
+techniques:
   Forward:
-    renderState:
-      cullMode: Back
-      depthTest: true
-      depthWrite: true
+    passes:
+      Forward:
+        renderState:
+          cullMode: Back
+          depthTest: true
+          depthWrite: true
 
 parameters:
   MaterialUBO.surfaceColor: [0.8, 0.35, 0.25]

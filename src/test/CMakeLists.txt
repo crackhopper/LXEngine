@@ -18,6 +18,17 @@ set(TEST_INTEGRATION_EXE_LIST
   test_string_table
   test_tone_mapping
   test_material_instance
+  test_material_v2_parser
+  test_material_v2_resource_dependencies
+  test_material_v2_converter_defaults
+  test_technique_pass_contract
+  test_render_effect_resource_parser
+  test_frame_graph_registry
+  test_scene_resource_abstraction
+  test_scene_resource_upload_view_v2
+  test_gpu_resource_table_contract
+  test_upload_task_graph
+  test_bindless_indirect_contract
   test_audio_spectrum_texture
   test_pipeline_identity
   test_pipeline_build_info

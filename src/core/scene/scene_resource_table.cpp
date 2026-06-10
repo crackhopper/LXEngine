@@ -12,6 +12,7 @@
 #include <cstring>
 #include <iostream>
 #include <stdexcept>
+#include <tuple>
 #include <utility>
 
 namespace LX_core {
@@ -211,6 +212,13 @@ void appendMeshGeometryRecords(const MeshBuffer &mesh,
 
 } // namespace
 
+SceneResourceTable::SceneResourceTable() = default;
+SceneResourceTable::~SceneResourceTable() = default;
+SceneResourceTable::SceneResourceTable(SceneResourceTable &&) noexcept =
+    default;
+SceneResourceTable &
+SceneResourceTable::operator=(SceneResourceTable &&) noexcept = default;
+
 template <typename Resource, typename Handle>
 Handle SceneResourceTable::add(std::vector<Entry<Resource>> &entries,
                                std::unique_ptr<Resource> resource) {
@@ -312,6 +320,56 @@ u32 SceneResourceTable::registerUploadTexture(TextureHandle texture) const {
 
 void SceneResourceTable::advanceUploadGeneration() {
   m_generation = nextGeneration(m_generation);
+}
+
+ResourceIdentityHandle
+SceneResourceTable::internResourceMetadata(ResourceMetadata metadata) {
+  for (u32 i = 0; i < m_resourceMetadata.size(); ++i) {
+    const auto &entry = m_resourceMetadata[i];
+    if (entry.type == metadata.type && entry.uri == metadata.uri) {
+      return ResourceIdentityHandle{i, m_resourceMetadataGenerations[i]};
+    }
+  }
+  m_resourceMetadata.push_back(std::move(metadata));
+  m_resourceMetadataGenerations.push_back(1);
+  return ResourceIdentityHandle{
+      static_cast<u32>(m_resourceMetadata.size() - 1u), 1};
+}
+
+const ResourceMetadata *
+SceneResourceTable::findResourceMetadata(ResourceIdentityHandle handle) const {
+  if (!handle.isValid() || handle.index >= m_resourceMetadata.size() ||
+      handle.index >= m_resourceMetadataGenerations.size() ||
+      m_resourceMetadataGenerations[handle.index] != handle.generation) {
+    return nullptr;
+  }
+  return &m_resourceMetadata[handle.index];
+}
+
+ResourceIdentityHandle SceneResourceTable::internMaterialInstanceIdentity(
+    const ResourceUri &sourceMaterialUri, std::string overrideHash) {
+  ResourceMetadata metadata;
+  metadata.type = SceneResourceType::Material;
+  metadata.uri = ResourceUri(sourceMaterialUri.string() + "#" +
+                             (overrideHash.empty() ? "base" : overrideHash));
+  metadata.contentHash = std::move(overrideHash);
+  return internResourceMetadata(std::move(metadata));
+}
+
+SceneResourceGraphExport SceneResourceTable::exportResourceGraph() const {
+  SceneResourceGraphExport graph;
+  graph.handles.reserve(m_resourceMetadata.size());
+  graph.resources.reserve(m_resourceMetadata.size());
+  for (u32 i = 0; i < m_resourceMetadata.size(); ++i) {
+    if (i >= m_resourceMetadataGenerations.size() ||
+        m_resourceMetadataGenerations[i] == 0) {
+      continue;
+    }
+    graph.handles.push_back(ResourceIdentityHandle{
+        i, m_resourceMetadataGenerations[i]});
+    graph.resources.push_back(m_resourceMetadata[i]);
+  }
+  return graph;
 }
 
 GeometryStorageHandle

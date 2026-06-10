@@ -563,7 +563,7 @@ void testSceneGpuRecordLayoutContract() {
          "SceneGpuPrimitiveRecord std430 contract should stay stable");
   EXPECT(sizeof(SceneGpuObjectRecord) == 176,
          "SceneGpuObjectRecord std430 contract should stay stable");
-  EXPECT(sizeof(SceneGpuMaterialRecord) == 80,
+  EXPECT(sizeof(SceneGpuMaterialRecord) == 96,
          "SceneGpuMaterialRecord std430 contract should stay stable");
   EXPECT(sizeof(SceneGpuFrameParams) == 176,
          "SceneGpuFrameParams std430 contract should stay stable");

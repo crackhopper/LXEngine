@@ -3,6 +3,7 @@
 #include "infra/shader_compiler/compiled_shader.hpp"
 #include "infra/shader_compiler/shader_reflector.hpp"
 #include "core/rhi/gpu_resource.hpp"
+#include "core/scene/scene_system_abi.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -1180,6 +1181,80 @@ static bool testSharedPbrKeepsLowRoughnessHighlights(
   return true;
 }
 
+static bool testSceneSystemAbiReflection(const std::filesystem::path &shaderDir) {
+  std::cout << "  Test: scene system ABI SSBO reflection\n";
+  const auto tempDir = std::filesystem::temp_directory_path() / "lxe_shader_abi";
+  std::filesystem::create_directories(tempDir);
+  std::filesystem::create_directories(tempDir / "common");
+  std::filesystem::copy_file(
+      shaderDir / "common" / "scene_system_abi.glsl",
+      tempDir / "common" / "scene_system_abi.glsl",
+      std::filesystem::copy_options::overwrite_existing);
+  const auto shaderPath = tempDir / "scene_system_abi_probe.comp";
+  {
+    std::ofstream out(shaderPath);
+    out << "#version 450\n"
+        << "#include \"common/scene_system_abi.glsl\"\n"
+        << "layout(local_size_x = 1) in;\n"
+        << "void main() {}\n";
+  }
+
+  auto compileResult = ShaderCompiler::compileFile(shaderPath, {});
+  if (!compileResult.success) {
+    std::cerr << "  FAIL: scene system ABI probe compile failed: "
+              << compileResult.errorMessage << "\n";
+    return false;
+  }
+  const auto bindings = ShaderReflector::reflect(compileResult.stages);
+  const auto findBinding = [&](const std::string &name) {
+    return std::find_if(bindings.begin(), bindings.end(),
+                        [&](const ShaderResourceBinding &binding) {
+                          return binding.name == name;
+                        });
+  };
+
+  const auto expectSsbo = [&](const std::string &name, u32 binding,
+                              u32 size, const std::string &member,
+                              u32 offset) {
+    const auto it = findBinding(name);
+    if (it == bindings.end()) {
+      std::cerr << "  FAIL: " << name << " binding missing\n";
+      return false;
+    }
+    if (it->type != ShaderPropertyType::StorageBuffer ||
+        it->set != kSceneSystemDescriptorSet || it->binding != binding ||
+        it->size != size) {
+      std::cerr << "  FAIL: " << name << " expected SSBO set="
+                << kSceneSystemDescriptorSet << " binding=" << binding
+                << " size=" << size << ", got set=" << it->set
+                << " binding=" << it->binding << " size=" << it->size
+                << "\n";
+      return false;
+    }
+    const auto *reflectedMember = findMember(*it, member);
+    if (!reflectedMember || reflectedMember->offset != offset) {
+      std::cerr << "  FAIL: " << name << "." << member
+                << " expected offset " << offset << "\n";
+      return false;
+    }
+    return true;
+  };
+
+  if (!expectSsbo("SceneCameraData", kSceneSystemCameraBinding,
+                  sizeof(SceneSystemCameraData), "view", 0) ||
+      !expectSsbo("SceneLightData", kSceneSystemLightBinding,
+                  sizeof(SceneSystemLightData), "directionIntensity", 0) ||
+      !expectSsbo("SceneObjectData", kSceneSystemObjectBinding,
+                  sizeof(SceneSystemObjectData), "objectToWorld0", 0) ||
+      !expectSsbo("SceneMaterialInstanceData", kSceneSystemMaterialBinding,
+                  sizeof(SceneSystemMaterialInstanceData), "baseColor", 0)) {
+    return false;
+  }
+
+  std::cout << "  PASS: scene system ABI SSBOs reflect C++ mirror layout\n";
+  return true;
+}
+
 int main(int argc, char *argv[]) {
   expSetEnvVK();
   // Determine shader directory
@@ -1236,6 +1311,8 @@ int main(int argc, char *argv[]) {
   if (!testPbrClearcoatShaderContract(shaderDir))
     ++failures;
   if (!testSharedPbrKeepsLowRoughnessHighlights(shaderDir))
+    ++failures;
+  if (!testSceneSystemAbiReflection(shaderDir))
     ++failures;
 
   // Test 4: BlinnPhong MaterialUBO member reflection (REQ-004)

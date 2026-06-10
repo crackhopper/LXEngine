@@ -203,6 +203,13 @@ void test_flat_shading_model_enables_variant() {
     std::ofstream out(matPath);
     out << "shader: blinnphong_0\n"
            "shadingModel: Flat\n"
+           "defaultTechnique: Forward\n"
+           "techniques:\n"
+           "  Forward:\n"
+           "    passes:\n"
+           "      Forward:\n"
+           "        renderState:\n"
+           "          depthTest: true\n"
            "parameters:\n"
            "  MaterialUBO.baseColor: [0.7, 0.7, 0.7]\n"
            "  MaterialUBO.shininess: 12.0\n"
@@ -260,6 +267,13 @@ void test_smooth_shading_model_overrides_flat_variant() {
            "shadingModel: Smooth\n"
            "variants:\n"
            "  USE_FLAT_SHADING: true\n"
+           "defaultTechnique: Forward\n"
+           "techniques:\n"
+           "  Forward:\n"
+           "    passes:\n"
+           "      Forward:\n"
+           "        renderState:\n"
+           "          depthTest: true\n"
            "parameters:\n"
            "  MaterialUBO.baseColor: [0.7, 0.7, 0.7]\n"
            "  MaterialUBO.shininess: 12.0\n"
@@ -294,7 +308,14 @@ void test_invalid_shading_model_rejected() {
   {
     std::ofstream out(matPath);
     out << "shader: blinnphong_0\n"
-           "shadingModel: Banana\n";
+           "shadingModel: Banana\n"
+           "defaultTechnique: Forward\n"
+           "techniques:\n"
+           "  Forward:\n"
+           "    passes:\n"
+           "      Forward:\n"
+           "        renderState:\n"
+           "          depthTest: true\n";
   }
 
   bool rejected = false;
@@ -326,6 +347,13 @@ void test_mesh_overlay_material_metadata_loads() {
            "meshOverlay:\n"
            "  enabled: true\n"
            "  color: [0.1, 0.2, 0.3, 1.0]\n";
+    out << "defaultTechnique: Forward\n"
+           "techniques:\n"
+           "  Forward:\n"
+           "    passes:\n"
+           "      Forward:\n"
+           "        renderState:\n"
+           "          depthTest: true\n";
   }
 
   MaterialInstanceSharedPtr mat;
@@ -439,6 +467,13 @@ bool meshOverlayColorRejectedWithMessage(const fs::path &root,
            "meshOverlay:\n"
            "  enabled: true\n"
         << "  color: " << colorYaml << "\n";
+    out << "defaultTechnique: Forward\n"
+           "techniques:\n"
+           "  Forward:\n"
+           "    passes:\n"
+           "      Forward:\n"
+           "        renderState:\n"
+           "          depthTest: true\n";
   }
 
   bool rejected = false;
@@ -484,7 +519,14 @@ void test_invalid_mesh_overlay_enabled_rejected_with_loader_error() {
   {
     std::ofstream out(matPath);
     out << "shader: blinnphong_0\n"
-           "meshOverlay: { enabled: nope }\n";
+           "meshOverlay: { enabled: nope }\n"
+           "defaultTechnique: Forward\n"
+           "techniques:\n"
+           "  Forward:\n"
+           "    passes:\n"
+           "      Forward:\n"
+           "        renderState:\n"
+           "          depthTest: true\n";
   }
 
   bool rejected = false;
@@ -516,7 +558,14 @@ void test_mesh_overlay_requires_color_binding() {
     out << "shader: blinnphong_0\n"
            "meshOverlay:\n"
            "  enabled: true\n"
-           "  color: [0.1, 0.2, 0.3, 1.0]\n";
+           "  color: [0.1, 0.2, 0.3, 1.0]\n"
+           "defaultTechnique: Forward\n"
+           "techniques:\n"
+           "  Forward:\n"
+           "    passes:\n"
+           "      Forward:\n"
+           "        renderState:\n"
+           "          depthTest: true\n";
   }
 
   bool rejected = false;
@@ -689,19 +738,22 @@ void test_per_pass_shader_override() {
     out << "shader: blinnphong_0\n\n"
            "variants:\n"
            "  USE_LIGHTING: true\n\n"
+           "defaultTechnique: Forward\n"
+           "techniques:\n"
+           "  Forward:\n"
+           "    passes:\n"
+           "      Forward:\n"
+           "        shader: blinnphong_0\n"
+           "        variants:\n"
+           "          USE_LIGHTING: true\n"
+           "      Shadow:\n"
+           "        shader: shadow_depth_only\n"
            "parameters:\n"
            "  MaterialUBO.baseColor: [0.5, 0.5, 0.5]\n"
            "  MaterialUBO.shininess: 8.0\n"
            "  MaterialUBO.specularIntensity: 1.0\n"
            "  MaterialUBO.enableAlbedo: 0\n"
-           "  MaterialUBO.enableNormal: 0\n\n"
-           "passes:\n"
-           "  Forward:\n"
-           "    shader: blinnphong_0\n"
-           "    variants:\n"
-           "      USE_LIGHTING: true\n"
-           "  Shadow:\n"
-           "    shader: shadow_depth_only\n";
+           "  MaterialUBO.enableNormal: 0\n\n";
   }
 
   MaterialInstanceSharedPtr mat;
@@ -738,18 +790,21 @@ void test_canonical_parameters_shared_across_passes() {
     out << "shader: blinnphong_0\n\n"
            "variants:\n"
            "  USE_LIGHTING: true\n\n"
+           "defaultTechnique: Forward\n"
+           "techniques:\n"
+           "  Forward:\n"
+           "    passes:\n"
+           "      Forward:\n"
+           "        renderState:\n"
+           "          depthTest: true\n"
+           "      Shadow:\n"
+           "        renderState:\n"
+           "          depthTest: true\n"
            "parameters:\n"
            "  MaterialUBO.shininess: 4.0\n"
            "  MaterialUBO.specularIntensity: 1.0\n"
            "  MaterialUBO.enableAlbedo: 0\n"
-           "  MaterialUBO.enableNormal: 0\n\n"
-           "passes:\n"
-           "  Forward:\n"
-           "    renderState:\n"
-           "      depthTest: true\n"
-           "  Shadow:\n"
-           "    renderState:\n"
-           "      depthTest: true\n";
+           "  MaterialUBO.enableNormal: 0\n\n";
   }
 
   MaterialInstanceSharedPtr mat;
@@ -791,6 +846,13 @@ void test_vector_parameters_load_without_aliasing_yaml_nodes() {
   {
     std::ofstream out(matPath);
     out << "shader: pbr\n\n"
+           "defaultTechnique: Forward\n"
+           "techniques:\n"
+           "  Forward:\n"
+           "    passes:\n"
+           "      Forward:\n"
+           "        renderState:\n"
+           "          depthTest: true\n"
            "parameters:\n"
            "  MaterialUBO.baseColorFactor: [0.25, 0.5, 0.75, 1.0]\n"
            "  MaterialUBO.metallicFactor: 0.9\n"
@@ -846,6 +908,13 @@ void test_load_options_force_pbr_ibl_variant() {
     out << "shader: pbr\n"
            "variants:\n"
            "  HAS_IBL: false\n"
+           "defaultTechnique: Forward\n"
+           "techniques:\n"
+           "  Forward:\n"
+           "    passes:\n"
+           "      Forward:\n"
+           "        renderState:\n"
+           "          depthTest: true\n"
            "parameters:\n"
            "  MaterialUBO.baseColorFactor: [1.0, 1.0, 1.0, 1.0]\n"
            "  MaterialUBO.metallicFactor: 0.0\n"
@@ -882,13 +951,16 @@ void test_load_options_disable_alpha_transparency() {
   {
     std::ofstream out(matPath);
     out << "shader: pbr\n"
-           "passes:\n"
+           "defaultTechnique: Forward\n"
+           "techniques:\n"
            "  Forward:\n"
-           "    renderState:\n"
-           "      depthWrite: false\n"
-           "      blendEnable: true\n"
-           "      srcBlend: SrcAlpha\n"
-           "      dstBlend: OneMinusSrcAlpha\n"
+           "    passes:\n"
+           "      Forward:\n"
+           "        renderState:\n"
+           "          depthWrite: false\n"
+           "          blendEnable: true\n"
+           "          srcBlend: SrcAlpha\n"
+           "          dstBlend: OneMinusSrcAlpha\n"
            "parameters:\n"
            "  MaterialUBO.baseColorFactor: [0.85, 0.95, 1.0, 0.25]\n"
            "  MaterialUBO.metallicFactor: 0.0\n"
@@ -933,6 +1005,21 @@ void test_load_options_enable_deferred_pbr_pass() {
   {
     std::ofstream out(matPath);
     out << "shader: pbr\n"
+           "defaultTechnique: Deferred\n"
+           "techniques:\n"
+           "  Forward:\n"
+           "    passes:\n"
+           "      Forward:\n"
+           "        renderState:\n"
+           "          depthTest: true\n"
+           "          depthWrite: true\n"
+           "  Deferred:\n"
+           "    passes:\n"
+           "      GBuffer:\n"
+           "        shader: pbr_gbuffer\n"
+           "        renderState:\n"
+           "          depthTest: true\n"
+           "          depthWrite: true\n"
            "parameters:\n"
            "  MaterialUBO.baseColorFactor: [1.0, 1.0, 1.0, 1.0]\n"
            "  MaterialUBO.metallicFactor: 0.0\n"
@@ -946,12 +1033,12 @@ void test_load_options_enable_deferred_pbr_pass() {
   {
     ScopedCurrentPath currentPath(root);
     mat = loadGenericMaterial(matPath, GenericMaterialLoadOptions{
-                                           .enableDeferredPass = true,
+                                           .technique = "Deferred",
                                        });
   }
 
   REQUIRE(mat != nullptr);
-  REQUIRE(mat->isPassEnabled(Pass_Forward));
+  REQUIRE(!mat->isPassEnabled(Pass_Forward));
   REQUIRE(mat->isPassEnabled(Pass_Deferred));
   REQUIRE(mat->getPassShader(Pass_Deferred) != nullptr);
   REQUIRE(mat->getPassShader(Pass_Deferred)->getShaderName() ==
@@ -959,7 +1046,7 @@ void test_load_options_enable_deferred_pbr_pass() {
   REQUIRE(mat->getPassRenderState(Pass_Deferred).depthWriteEnable);
   REQUIRE(!mat->getPassRenderState(Pass_Deferred).blendEnable);
 
-  std::cout << "  PBR material auto-generates a Deferred/GBuffer pass\n";
+  std::cout << "  PBR material can select explicit Deferred/GBuffer technique\n";
 }
 
 void test_textured_character_material_has_projected_shadow_pass() {

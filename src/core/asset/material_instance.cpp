@@ -440,6 +440,40 @@ void MaterialInstance::removePassStateListener(u64 listenerId) {
   m_passStateListeners.erase(listenerId);
 }
 
+void MaterialInstance::setBsdfType(std::string bsdfType) {
+  m_bsdfType = std::move(bsdfType);
+}
+
+const std::string &MaterialInstance::getBsdfType() const { return m_bsdfType; }
+
+void MaterialInstance::setMaterialEnvelope(
+    StringID parameterName, MaterialParameterEnvelope envelope) {
+  m_materialEnvelopesByName[parameterName] = std::move(envelope);
+}
+
+std::optional<std::reference_wrapper<const MaterialParameterEnvelope>>
+MaterialInstance::getMaterialEnvelope(StringID parameterName) const {
+  auto it = m_materialEnvelopesByName.find(parameterName);
+  if (it == m_materialEnvelopesByName.end()) {
+    return std::nullopt;
+  }
+  return std::cref(it->second);
+}
+
+usize MaterialInstance::getMaterialEnvelopeCount() const {
+  return m_materialEnvelopesByName.size();
+}
+
+void MaterialInstance::addMaterialDependency(
+    MaterialResourceDependency dependency) {
+  m_materialDependencies.push_back(std::move(dependency));
+}
+
+const std::vector<MaterialResourceDependency> &
+MaterialInstance::getMaterialDependencies() const {
+  return m_materialDependencies;
+}
+
 bool MaterialInstance::hasDefinedPass(StringID pass) const {
   return m_template && m_template->getPassDefinition(pass).has_value();
 }

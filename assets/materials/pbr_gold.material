@@ -11,12 +11,15 @@ variantRules:
   - requires: [HAS_NORMAL_MAP]
     depends: [HAS_METALLIC_ROUGHNESS]
 
-passes:
+defaultTechnique: Forward
+techniques:
   Forward:
-    renderState:
-      cullMode: Back
-      depthTest: true
-      depthWrite: true
+    passes:
+      Forward:
+        renderState:
+          cullMode: Back
+          depthTest: true
+          depthWrite: true
 
 parameters:
   MaterialUBO.baseColorFactor: [1.0, 0.766, 0.336, 1.0]

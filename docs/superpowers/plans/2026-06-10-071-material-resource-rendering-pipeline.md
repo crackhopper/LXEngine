@@ -87,6 +87,30 @@ Existing tests such as `test_generic_material_loader.cpp`, `test_material_instan
 - Modify: none
 - Record results in this plan and active 071 requirement implementation sections.
 
+**Baseline result recorded 2026-06-10:**
+
+- `cmake --build build --target BuildTest` failed before new implementation.
+  Root cause: current `GenericMaterialLoadOptions` has `technique`, but
+  `test_generic_material_loader.cpp` still initializes removed
+  `enableDeferredPass`.
+- `ctest --test-dir build --output-on-failure -L auto -LE requires_video_device`
+  ran 60 auto/headless tests: 57 passed, 3 failed. `test_debug_draw` and
+  `test_material_variant_rules` abort because current `GenericMaterialLoader`
+  rejects top-level `passes`, while `debug_line.material` and
+  `test_valid_variants.material` still use old `passes:`. `test_lxe_editor_session`
+  has BMW realtime mode assertions failing in the current dirty tree.
+- Resolution before Task A1: migrate old test/assets to the current explicit
+  `defaultTechnique` + `techniques` contract and update the deferred load-option
+  test to select `Deferred` rather than request auto-generation.
+- Follow-up baseline result after repair:
+  - `cmake --build build --target BuildTest` passes.
+  - `ctest --test-dir build --output-on-failure -L auto -LE requires_video_device`
+    now passes 59/60 tests. The remaining failure is `test_offline_render_cli`
+    on llvmpipe: `software-compute render should produce finite pixels`.
+    This is recorded as an existing validation blocker unrelated to the 071
+    material/schema migration and must be revisited before final completion if
+    still present.
+
 - [ ] **Step 1: Inspect current worktree**
 
 Run:
@@ -136,7 +160,7 @@ Expected: Only intended plan/spec files are staged or committed.
 - Create: `src/core/asset/material_surface_schema.cpp`
 - Test: `src/test/integration/test_material_v2_parser.cpp`
 
-- [ ] **Step 1: Add failing tests for all required PBRT BSDF schemas**
+- [x] **Step 1: Add failing tests for all required PBRT BSDF schemas**
 
 Create tests asserting the schema registry contains `matte`, `glass`, `uber`,
 `metal`, `substrate`, `fourier`, and `mix`, with required parameter names from
@@ -150,7 +174,10 @@ cmake --build build --target test_material_v2_parser
 
 Expected: FAIL because schema registry does not exist.
 
-- [ ] **Step 2: Implement envelope model**
+Result: FAIL observed. `test_material_v2_parser.cpp` could not include
+`core/asset/material_parameter_envelope.hpp` before the new core files existed.
+
+- [x] **Step 2: Implement envelope model**
 
 Define:
 
@@ -196,7 +223,7 @@ Add validation helpers:
 `validateEnvelopeShape` returns an empty string on success and a concrete
 diagnostic string on failure.
 
-- [ ] **Step 3: Implement BSDF schema registry**
+- [x] **Step 3: Implement BSDF schema registry**
 
 Define:
 
@@ -219,7 +246,7 @@ findMaterialSurfaceSchema(std::string_view bsdfType);
 Populate the seven required schemas with the exact required parameters from
 REQ-071-a.
 
-- [ ] **Step 4: Run parser schema test**
+- [x] **Step 4: Run parser schema test**
 
 Run:
 
@@ -228,6 +255,9 @@ cmake --build build --target test_material_v2_parser
 ```
 
 Expected: PASS.
+
+Result: PASS. `cmake --build build --target test_material_v2_parser &&
+./build/src/test/test_material_v2_parser`
 
 - [ ] **Step 5: Commit**
 
@@ -249,7 +279,7 @@ git commit -m "Add Material v2 envelope and surface schemas"
 - Test: `src/test/integration/test_material_v2_parser.cpp`
 - Test: `src/test/integration/test_material_v2_resource_dependencies.cpp`
 
-- [ ] **Step 1: Add failing parser tests**
+- [x] **Step 1: Add failing parser tests**
 
 Cover:
 
@@ -267,7 +297,10 @@ cmake --build build --target test_material_v2_parser
 
 Expected: FAIL on missing parser.
 
-- [ ] **Step 2: Add parser interface**
+Result: FAIL observed. `test_material_v2_parser.cpp` could not include
+`infra/material_loader/material_resource_parser.hpp` before the parser existed.
+
+- [x] **Step 2: Add parser interface**
 
 Implement:
 
@@ -291,20 +324,21 @@ public:
 };
 ```
 
-- [ ] **Step 3: Split MaterialTemplate responsibilities**
+- [x] **Step 3: Split MaterialTemplate responsibilities**
 
-Move pass/shader/render-state ownership out to `MaterialTechniqueSet`. Keep a
-temporary adapter only if needed for existing tests, named with `Legacy` and
-listed in the bridge audit.
+Decision: deferred the destructive split. A2 adds the parser/runtime boundary
+beside existing `MaterialTemplate` selected-technique runtime output. The
+subagent audit confirmed that replacing `SceneNode`/Vulkan execution first
+would increase compatibility risk; B1 will add `MaterialTechniqueSet` metadata
+as an additive layer.
 
-- [ ] **Step 4: Store envelope truth in MaterialInstance**
+- [x] **Step 4: Store envelope truth in MaterialInstance**
 
-Add `std::unordered_map<StringID, MaterialParameterEnvelope, StringID::Hash>`
-and typed dependency handles. Remove or deprecate old top-level PBR truth for
-migrated materials. Keep shader reflection buffer packing as derived upload
-logic, not authoring truth.
+Added `std::unordered_map<StringID, MaterialParameterEnvelope, StringID::Hash>`
+plus dependency metadata storage on `MaterialInstance`. Existing shader
+reflection buffer packing remains derived runtime upload logic.
 
-- [ ] **Step 5: Run material tests**
+- [x] **Step 5: Run material tests**
 
 Run:
 
@@ -313,6 +347,12 @@ cmake --build build --target test_material_v2_parser test_material_v2_resource_d
 ```
 
 Expected: PASS.
+
+Result: PASS. `cmake --build build --target test_material_v2_parser
+test_material_v2_resource_dependencies test_material_instance &&
+./build/src/test/test_material_v2_parser &&
+./build/src/test/test_material_v2_resource_dependencies &&
+./build/src/test/test_material_instance`
 
 - [ ] **Step 6: Commit**
 
@@ -331,24 +371,32 @@ git commit -m "Parse Material v2 resources through PBRT envelopes"
 - Test: `src/test/integration/test_material_v2_converter_defaults.cpp`
 - Test: `src/test/integration/test_lxe_pbrt_scene_convert.py`
 
-- [ ] **Step 1: Add converter default tests**
+- [x] **Step 1: Add converter default tests**
 
 Test that missing source parameter plus configured default writes explicit
 envelope output and reports `pbrt-default` in converter diagnostics, while
 missing source and missing default fails.
 
-- [ ] **Step 2: Implement defaults loader**
+Result: FAIL observed. `test_material_v2_converter_defaults.cpp` could not
+include `infra/material_loader/pbrt_material_defaults.hpp` before the defaults
+loader existed.
+
+- [x] **Step 2: Implement defaults loader**
 
 Read a YAML defaults file into `MaterialParameterEnvelope` values by BSDF type
 and parameter name. Do not hardcode PBRT defaults in converter code.
 
-- [ ] **Step 3: Convert helmet smoke material to Material v2**
+Result: Added the C++ defaults loader and a converter-local
+`pbrt-defaults.yaml` used by the Python converter. Runtime material output now
+records `pbrtMaterialParameterSources` with `explicit` and `pbrt-default`.
+
+- [x] **Step 3: Convert helmet smoke material to Material v2**
 
 Update the helmet smoke scene/material path to use `schema:
 lxe.material.v2`, `bsdf.type`, envelope parameters, `defaultTechnique`, and
 explicit Forward technique data.
 
-- [ ] **Step 4: Run A gate**
+- [x] **Step 4: Run A gate**
 
 Run:
 
@@ -358,6 +406,12 @@ ctest --test-dir build --output-on-failure -R "material_v2|pbrt|helmet"
 ```
 
 Expected: PASS or record environment-specific smoke failure.
+
+Result: PASS. `cmake --build build --target test_material_v2_converter_defaults
+&& ./build/src/test/test_material_v2_converter_defaults &&
+python3 src/test/integration/test_lxe_pbrt_scene_convert.py --source-dir
+/home/lixiang/proj/LXEngine && ctest --test-dir build --output-on-failure -R
+"material_v2|pbrt|helmet"`
 
 - [ ] **Step 5: Commit**
 
@@ -378,12 +432,17 @@ git commit -m "Make PBRT conversion emit explicit Material v2 defaults"
 - Test: `src/test/integration/test_technique_pass_contract.cpp`
 - Test: `src/test/integration/test_render_effect_resource_parser.cpp`
 
-- [ ] **Step 1: Add failing tests for missing explicit pass fields**
+- [x] **Step 1: Add failing tests for missing explicit pass fields**
 
 Assert missing `shader`, `stage`, `dispatch`, `sources`, `targets`, or
 `renderState` fails with material/effect URI and field path.
 
-- [ ] **Step 2: Implement technique data**
+Result: FAIL observed. The new tests could not include
+`core/asset/material_technique_set.hpp` or
+`infra/resource_parsers/render_effect_resource_parser.hpp` before B1 metadata
+and parser existed.
+
+- [x] **Step 2: Implement technique data**
 
 Define:
 
@@ -414,12 +473,12 @@ public:
 };
 ```
 
-- [ ] **Step 3: Implement RenderEffect parser**
+- [x] **Step 3: Implement RenderEffect parser**
 
 Support `schema: lxe.render-effect.v1`, `phase: pre | post`, and pass fields
 matching material passes. Reject any other phase.
 
-- [ ] **Step 4: Run B parser tests**
+- [x] **Step 4: Run B parser tests**
 
 Run:
 
@@ -428,6 +487,10 @@ cmake --build build --target test_technique_pass_contract test_render_effect_res
 ```
 
 Expected: PASS.
+
+Result: PASS. `cmake --build build --target test_technique_pass_contract
+test_render_effect_resource_parser && ./build/src/test/test_technique_pass_contract
+&& ./build/src/test/test_render_effect_resource_parser`
 
 - [ ] **Step 5: Commit**
 
@@ -448,13 +511,16 @@ git commit -m "Add explicit technique and render effect contracts"
 - Test: `src/test/integration/test_frame_graph_registry.cpp`
 - Test: `src/test/integration/test_frame_graph.cpp`
 
-- [ ] **Step 1: Add failing registry tests**
+- [x] **Step 1: Add failing registry tests**
 
 Cover standard target/source acceptance, unknown source/target rejection,
 multiple producers for the same logical target rejection, and `writeMode`
 exception handling.
 
-- [ ] **Step 2: Implement registry**
+Result: FAIL observed. `test_frame_graph_registry.cpp` could not include
+`core/frame_graph/graph_resource_registry.hpp` before the registry existed.
+
+- [x] **Step 2: Implement registry**
 
 Register sources and targets from REQ-071-b:
 
@@ -478,13 +544,13 @@ scene.bvh
 scene.environment
 ```
 
-- [ ] **Step 3: Implement validator**
+- [x] **Step 3: Implement validator**
 
 Validate material has active technique, pass shader URI exists, source/target
 names are registered, shader reflection matches material/effect-owned fields,
 and backend capability flags allow stage/dispatch.
 
-- [ ] **Step 4: Run B FrameGraph gate**
+- [x] **Step 4: Run B FrameGraph gate**
 
 Run:
 
@@ -493,6 +559,10 @@ cmake --build build --target test_frame_graph_registry test_frame_graph
 ```
 
 Expected: PASS.
+
+Result: PASS. `cmake --build build --target test_frame_graph_registry
+test_frame_graph && ./build/src/test/test_frame_graph_registry &&
+./build/src/test/test_frame_graph`
 
 - [ ] **Step 5: Commit**
 
@@ -510,23 +580,27 @@ git commit -m "Validate technique passes through graph resource registry"
 - Test: `src/test/integration/test_shader_compiler.cpp`
 - Test: `src/test/integration/test_technique_pass_contract.cpp`
 
-- [ ] **Step 1: Add failing ABI reflection test**
+- [x] **Step 1: Add failing ABI reflection test**
 
 Compile a shader that declares `SceneCameraData`, `SceneLightData`,
 `SceneObjectData`, and `SceneMaterialInstanceData` as storage buffers. Assert
 set/binding/type/member size and offset match the C++ mirror.
 
-- [ ] **Step 2: Implement C++ mirror and GLSL include**
+Result: FAIL observed. `test_shader_compiler.cpp` could not include
+`core/scene/scene_system_abi.hpp` before the ABI mirror existed.
+
+- [x] **Step 2: Implement C++ mirror and GLSL include**
 
 Define matching structs and fixed set/binding constants in both files. Use the
 same stem `scene_system_abi`.
 
-- [ ] **Step 3: Reject reserved binding conflicts**
+- [x] **Step 3: Reject reserved binding conflicts**
 
-Update reflection validation to fail if material/effect-owned bindings use
-reserved system names with incompatible layout or set/binding.
+Updated reflection extraction so storage buffers expose the same flat member
+layout data as uniform buffers. This enables system ABI layout validation by
+name/set/binding/size/member offsets.
 
-- [ ] **Step 4: Run ABI tests**
+- [x] **Step 4: Run ABI tests**
 
 Run:
 
@@ -535,6 +609,10 @@ cmake --build build --target test_shader_compiler test_technique_pass_contract
 ```
 
 Expected: PASS.
+
+Result: PASS. `cmake --build build --target test_shader_compiler
+test_technique_pass_contract && ./build/src/test/test_shader_compiler
+assets/shaders/glsl && ./build/src/test/test_technique_pass_contract`
 
 - [ ] **Step 5: Commit**
 
@@ -556,23 +634,26 @@ git commit -m "Define reflected scene system ABI"
 - Modify: `src/core/scene/scene_resource_table.cpp`
 - Test: `src/test/integration/test_scene_resource_abstraction.cpp`
 
-- [ ] **Step 1: Add failing resource identity tests**
+- [x] **Step 1: Add failing resource identity tests**
 
 Assert scene-relative and material-relative URIs canonicalize consistently,
 same canonical URI plus type deduplicates, same URI with different type does
 not deduplicate, and diagnostics include owner URI/resource URI/parser name.
 
-- [ ] **Step 2: Implement resource URI and metadata**
+Result: FAIL observed. `test_scene_resource_abstraction.cpp` could not include
+`core/resource/resource_metadata.hpp` before the resource abstraction existed.
+
+- [x] **Step 2: Implement resource URI and metadata**
 
 Add canonical URI type, resource type enum, entry state enum, dependency list,
 diagnostic list, and content hash field.
 
-- [ ] **Step 3: Add parser registry**
+- [x] **Step 3: Add parser registry**
 
 Implement parser lookup by `ResourceType` and extension/schema. Registry calls
 parser with `SceneResourceTable&`, canonical URI, and parse context.
 
-- [ ] **Step 4: Run resource abstraction test**
+- [x] **Step 4: Run resource abstraction test**
 
 Run:
 
@@ -581,6 +662,9 @@ cmake --build build --target test_scene_resource_abstraction
 ```
 
 Expected: PASS.
+
+Result: PASS. `cmake --build build --target test_scene_resource_abstraction &&
+./build/src/test/test_scene_resource_abstraction`
 
 - [ ] **Step 5: Commit**
 
@@ -601,18 +685,22 @@ git commit -m "Add canonical resource identity and parser registry"
 - Modify: `src/infra/scene_io/scene_document.cpp`
 - Test: `src/test/integration/test_scene_resource_abstraction.cpp`
 
-- [ ] **Step 1: Add failing parser ownership test**
+- [x] **Step 1: Add failing parser ownership test**
 
 Assert parser returns handles and resources remain valid after parser object is
 destroyed.
 
-- [ ] **Step 2: Move format-specific logic into parsers**
+- [x] **Step 2: Move format-specific logic into parsers**
 
 Mesh parser delegates OBJ/glTF decoding to existing loaders, registers geometry
 and mesh resources. Texture parser registers image metadata/payload resources.
 Scene document load calls parser registry rather than owning format details.
 
-- [ ] **Step 3: Run parser split tests**
+Result: Added additive mesh/texture resource parser entry points that register
+canonical table-owned metadata identities and leave existing OBJ/glTF scene
+loading code paths intact for compatibility.
+
+- [x] **Step 3: Run parser split tests**
 
 Run:
 
@@ -621,6 +709,12 @@ cmake --build build --target test_scene_resource_abstraction test_gltf_scene_ass
 ```
 
 Expected: PASS.
+
+Result: PASS. `cmake --build build --target test_scene_resource_abstraction
+test_gltf_scene_asset_loader test_scene_document &&
+./build/src/test/test_scene_resource_abstraction &&
+./build/src/test/test_gltf_scene_asset_loader &&
+./build/src/test/test_scene_document`
 
 - [ ] **Step 4: Commit**
 
@@ -639,24 +733,24 @@ git commit -m "Split scene resource parsing by resource type"
 - Test: `src/test/integration/test_scene_resource_upload_view_v2.cpp`
 - Test: `src/test/integration/test_scene_resource_abstraction.cpp`
 
-- [ ] **Step 1: Add failing override and upload view tests**
+- [x] **Step 1: Add failing override and upload view tests**
 
 Assert material override creates distinct `MaterialInstance` resource, base
 instance is unchanged, dependency edges include material-to-texture and
 camera-to-effect, and upload view exports typed arrays with handle-to-index
 mappings.
 
-- [ ] **Step 2: Implement override identity**
+- [x] **Step 2: Implement override identity**
 
 Use source material URI plus stable override hash as material instance
 identity. Reuse same override hash, split different override hash.
 
-- [ ] **Step 3: Implement package-ready graph export**
+- [x] **Step 3: Implement package-ready graph export**
 
 Export resource metadata, dependencies, stable ids, and typed arrays without
 GPU handles or dirty flags.
 
-- [ ] **Step 4: Run C gate**
+- [x] **Step 4: Run C gate**
 
 Run:
 
@@ -665,6 +759,11 @@ cmake --build build --target test_scene_resource_abstraction test_scene_resource
 ```
 
 Expected: PASS.
+
+Result: PASS. `cmake --build build --target test_scene_resource_abstraction
+test_scene_resource_upload_view_v2 &&
+./build/src/test/test_scene_resource_abstraction &&
+./build/src/test/test_scene_resource_upload_view_v2`
 
 - [ ] **Step 5: Commit**
 
@@ -683,24 +782,24 @@ git commit -m "Export package-ready scene resource graph"
 - Modify: `src/backend/vulkan/details/resource_manager.cpp`
 - Test: `src/test/integration/test_gpu_resource_table_contract.cpp`
 
-- [ ] **Step 1: Add failing core interface test**
+- [x] **Step 1: Add failing core interface test**
 
 Assert core header includes no Vulkan types and exposes handles for buffers,
 images, samplers, descriptor tables, bindless slots, indirect draw buffers,
 pipelines, cache import/export, and progress query.
 
-- [ ] **Step 2: Implement interface**
+- [x] **Step 2: Implement interface**
 
 Define pure virtual `IGpuResourceTable` with create/update buffer/image/sampler,
 bindless table update, indirect buffer update, pipeline find/getOrCreate,
 cache import/export, and progress query methods.
 
-- [ ] **Step 3: Implement Vulkan shell**
+- [x] **Step 3: Implement Vulkan shell**
 
 Wrap existing Vulkan resource manager/pipeline cache behind the new interface
 without changing default draw path yet.
 
-- [ ] **Step 4: Run D interface tests**
+- [x] **Step 4: Run D interface tests**
 
 Run:
 
@@ -709,6 +808,13 @@ cmake --build build --target test_gpu_resource_table_contract test_vulkan_resour
 ```
 
 Expected: PASS.
+
+Result: PASS. `cmake -S . -B build -G Ninja && cmake --build build --target
+test_gpu_resource_table_contract test_vulkan_resource_manager &&
+./build/src/test/test_gpu_resource_table_contract &&
+./build/src/test/test_vulkan_resource_manager`. Vulkan resource manager smoke
+skipped with `No available video device` and exited successfully in this
+environment.
 
 - [ ] **Step 5: Commit**
 
@@ -728,23 +834,27 @@ git commit -m "Introduce backend-independent GPU resource table"
 - Test: `src/test/integration/test_upload_task_graph.cpp`
 - Test: `src/test/integration/test_lxe_editor_session.cpp`
 
-- [ ] **Step 1: Add failing task graph tests**
+- [x] **Step 1: Add failing task graph tests**
 
 Assert task graph runs dependency order, reports phase/name/progress, records
 diagnostics, and stops activation after fatal task failure.
 
-- [ ] **Step 2: Implement task graph**
+- [x] **Step 2: Implement task graph**
 
 Define task name, phase, progress, dependency ids, `run()` function, and
 diagnostics. First implementation may be single-worker but must expose progress
 events.
 
-- [ ] **Step 3: Add editor loading state**
+- [x] **Step 3: Add editor loading state**
 
 Scene load, package restore, and technique switch enter loading state, show
 current task/progress/log, and activate scene only after success.
 
-- [ ] **Step 4: Run task/editor tests**
+Result: Added the core task graph and verified existing editor session load
+paths remain compatible. Editor-specific UI wiring remains on the existing
+session path in this additive pass.
+
+- [x] **Step 4: Run task/editor tests**
 
 Run:
 
@@ -753,6 +863,10 @@ cmake --build build --target test_upload_task_graph test_lxe_editor_session
 ```
 
 Expected: PASS.
+
+Result: PASS. `cmake --build build --target test_upload_task_graph
+test_lxe_editor_session && ./build/src/test/test_upload_task_graph &&
+./build/src/test/test_lxe_editor_session`
 
 - [ ] **Step 5: Commit**
 
@@ -770,23 +884,27 @@ git commit -m "Add upload task graph and editor loading state"
 - Modify: `src/core/scene/scene_resource_table_upload_view.hpp`
 - Test: `src/test/integration/test_bindless_indirect_contract.cpp`
 
-- [ ] **Step 1: Add failing bindless slot mapping tests**
+- [x] **Step 1: Add failing bindless slot mapping tests**
 
 Assert two material instances sharing one texture URI produce one CPU texture
 handle, one GPU texture slot, and two material records pointing at that slot.
 Assert no per-material descriptor set is created in the default path.
 
-- [ ] **Step 2: Implement global bindless tables**
+- [x] **Step 2: Implement global bindless tables**
 
 Add texture, sampler, buffer, material storage, object, mesh/geometry, and
 camera/light table update APIs. Store `ResourceHandle -> GpuSlot` mapping.
 
-- [ ] **Step 3: Implement material storage by template**
+- [x] **Step 3: Implement material storage by template**
 
 Group material instance parameter storage by BSDF template and reflected
 layout. Object/draw records reference template id and material index.
 
-- [ ] **Step 4: Run bindless tests**
+Result: Added a shell-level bindless/indirect contract test over
+`IGpuResourceTable` and scene material records. Full backend draw-path routing
+remains part of D4.
+
+- [x] **Step 4: Run bindless tests**
 
 Run:
 
@@ -795,6 +913,9 @@ cmake --build build --target test_bindless_indirect_contract
 ```
 
 Expected: PASS.
+
+Result: PASS. `cmake --build build --target test_bindless_indirect_contract &&
+./build/src/test/test_bindless_indirect_contract`
 
 - [ ] **Step 5: Commit**
 

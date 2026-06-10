@@ -1,9 +1,11 @@
 #pragma once
 
 #include "core/asset/material_template.hpp"
+#include "core/asset/material_parameter_envelope.hpp"
 #include "core/asset/parameter_buffer.hpp"
 #include "core/asset/texture.hpp"
 #include "core/math/vec.hpp"
+#include "core/resource/resource_uri.hpp"
 #include "core/rhi/descriptor_resource_ref.hpp"
 #include "core/rhi/gpu_resource.hpp"
 #include "core/scene/scene_resource_table.hpp"
@@ -17,6 +19,12 @@
 #include <vector>
 
 namespace LX_core {
+
+struct MaterialResourceDependency final {
+  MaterialEnvelopeKind kind = MaterialEnvelopeKind::Texture;
+  ResourceUri uri;
+  std::string parameterName;
+};
 
 enum class MaterialParameterValueType {
   Float,
@@ -120,6 +128,18 @@ public:
   [[nodiscard]] SharedPtr cloneInstanceData() const;
   [[nodiscard]] UniquePtr cloneInstanceDataUnique() const;
 
+  void setBsdfType(std::string bsdfType);
+  [[nodiscard]] const std::string &getBsdfType() const;
+  void setMaterialEnvelope(StringID parameterName,
+                           MaterialParameterEnvelope envelope);
+  [[nodiscard]] std::optional<
+      std::reference_wrapper<const MaterialParameterEnvelope>>
+  getMaterialEnvelope(StringID parameterName) const;
+  [[nodiscard]] usize getMaterialEnvelopeCount() const;
+  void addMaterialDependency(MaterialResourceDependency dependency);
+  [[nodiscard]] const std::vector<MaterialResourceDependency> &
+  getMaterialDependencies() const;
+
 private:
   std::optional<std::reference_wrapper<ParameterBuffer>>
   findParameterBuffer(StringID bindingName);
@@ -144,6 +164,10 @@ private:
   std::unordered_set<StringID, StringID::Hash> m_enabledPasses;
   std::unordered_map<u64, std::function<void()>> m_passStateListeners;
   u64 m_nextListenerId = 1;
+  std::string m_bsdfType;
+  std::unordered_map<StringID, MaterialParameterEnvelope, StringID::Hash>
+      m_materialEnvelopesByName;
+  std::vector<MaterialResourceDependency> m_materialDependencies;
 };
 
 using MaterialInstanceSharedPtr = MaterialInstance::SharedPtr;

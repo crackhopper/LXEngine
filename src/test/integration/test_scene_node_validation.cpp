@@ -234,10 +234,13 @@ MaterialInstanceSharedPtr makeMaterial(bool skinning) {
                      "variantRules:\n"
                      "  - requires: [USE_SKINNING]\n"
                      "    depends: [USE_LIGHTING]\n"
-                     "passes:\n"
+                     "defaultTechnique: Forward\n"
+                     "techniques:\n"
                      "  Forward:\n"
-                     "    renderState:\n"
-                     "      depthTest: true\n";
+                     "    passes:\n"
+                     "      Forward:\n"
+                     "        renderState:\n"
+                     "          depthTest: true\n";
   return makeMaterialFromYaml(yaml);
 }
 
@@ -251,10 +254,13 @@ MaterialInstanceSharedPtr makeMaterial(std::vector<ShaderVariant> variants) {
           "    depends: [USE_LIGHTING, USE_UV]\n"
           "  - requires: [USE_SKINNING]\n"
           "    depends: [USE_LIGHTING]\n"
-          "passes:\n"
+          "defaultTechnique: Forward\n"
+          "techniques:\n"
           "  Forward:\n"
-          "    renderState:\n"
-          "      depthTest: true\n";
+          "    passes:\n"
+          "      Forward:\n"
+          "        renderState:\n"
+          "          depthTest: true\n";
   return makeMaterialFromYaml(yaml);
 }
 

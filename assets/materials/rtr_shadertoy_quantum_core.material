@@ -1,11 +1,14 @@
 shader: rtr_shadertoy_quantum_core
 
-passes:
+defaultTechnique: Forward
+techniques:
   Forward:
-    renderState:
-      cullMode: None
-      depthTest: false
-      depthWrite: false
+    passes:
+      Forward:
+        renderState:
+          cullMode: None
+          depthTest: false
+          depthWrite: false
 
 parameters:
   ShadertoyUBO.time: 0.0

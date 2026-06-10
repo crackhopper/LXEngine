@@ -61,10 +61,13 @@ void invalidNormalWithoutLightingMode() {
       "variantRules:\n"
       "  - requires: [USE_NORMAL_MAP]\n"
       "    depends: [USE_LIGHTING, USE_UV]\n"
-      "passes:\n"
+      "defaultTechnique: Forward\n"
+      "techniques:\n"
       "  Forward:\n"
-      "    renderState:\n"
-      "      depthTest: true\n");
+      "    passes:\n"
+      "      Forward:\n"
+      "        renderState:\n"
+      "          depthTest: true\n");
   loadGenericMaterial(tmpPath);
   fs::remove(tmpPath);
 }
@@ -80,10 +83,13 @@ void invalidNormalWithoutUvMode() {
       "variantRules:\n"
       "  - requires: [USE_NORMAL_MAP]\n"
       "    depends: [USE_LIGHTING, USE_UV]\n"
-      "passes:\n"
+      "defaultTechnique: Forward\n"
+      "techniques:\n"
       "  Forward:\n"
-      "    renderState:\n"
-      "      depthTest: true\n");
+      "    passes:\n"
+      "      Forward:\n"
+      "        renderState:\n"
+      "          depthTest: true\n");
   loadGenericMaterial(tmpPath);
   fs::remove(tmpPath);
 }
@@ -117,10 +123,13 @@ void testValidVariantCombination() {
       "variantRules:\n"
       "  - requires: [USE_NORMAL_MAP]\n"
       "    depends: [USE_LIGHTING, USE_UV]\n"
-      "passes:\n"
+      "defaultTechnique: Forward\n"
+      "techniques:\n"
       "  Forward:\n"
-      "    renderState:\n"
-      "      depthTest: true\n");
+      "    passes:\n"
+      "      Forward:\n"
+      "        renderState:\n"
+      "          depthTest: true\n");
   auto mat = loadGenericMaterial(tmpPath);
   fs::remove(tmpPath);
   EXPECT(mat != nullptr, "valid variant combination should produce a material");

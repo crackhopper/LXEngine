@@ -1,3 +1,14 @@
+schema: lxe.material.v2
+bsdf:
+  type: uber
+  parameters:
+    Kd:
+      kind: rgb
+      value: [1.0, 1.0, 1.0]
+    Ks:
+      kind: rgb
+      value: [0.04, 0.04, 0.04]
+
 shader: pbr
 
 variants:
@@ -10,15 +21,18 @@ variantRules:
   - requires: [HAS_NORMAL_MAP]
     depends: [HAS_METALLIC_ROUGHNESS]
 
-passes:
+defaultTechnique: Forward
+techniques:
   Forward:
-    renderState:
-      cullMode: Back
-      depthTest: true
-      depthWrite: true
-  OfflineRayTrace:
-    shader: offline_pbr_direct_ray
-    stage: compute
+    passes:
+      Forward:
+        renderState:
+          cullMode: Back
+          depthTest: true
+          depthWrite: true
+      OfflineRayTrace:
+        shader: offline_pbr_direct_ray
+        stage: compute
 
 parameters:
   MaterialUBO.baseColorFactor: [1.0, 1.0, 1.0, 1.0]

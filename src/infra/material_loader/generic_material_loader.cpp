@@ -123,17 +123,6 @@ void applyShadingModelVariants(std::vector<LX_core::ShaderVariant> &variants,
   return shaderName == "pbr" || shaderName == "pbr_clearcoat";
 }
 
-[[nodiscard]] std::optional<std::string>
-deferredGBufferShaderFor(const std::string &shaderName) {
-  if (shaderName == "pbr") {
-    return "pbr_gbuffer";
-  }
-  if (shaderName == "pbr_clearcoat") {
-    return "pbr_clearcoat_gbuffer";
-  }
-  return std::nullopt;
-}
-
 void applyLoadOptionVariants(std::vector<LX_core::ShaderVariant> &variants,
                              const std::string &shaderName,
                              const GenericMaterialLoadOptions &options) {
@@ -469,6 +458,46 @@ bool hasMeshOverlayColorBinding(const LX_core::IShader &shader) {
   return false;
 }
 
+[[nodiscard]] LX_core::StringID runtimePassForTechniquePass(
+    const std::string &techniqueName, const std::string &passName,
+    const YAML::Node &passNode) {
+  if (const auto enginePassNode = passNode["enginePass"]) {
+    return LX_core::StringID(enginePassNode.as<std::string>());
+  }
+  if (passName == "Opaque" || passName == "Forward") {
+    return LX_core::Pass_Forward;
+  }
+  if (passName == "Transparent") {
+    return LX_core::Pass_ForwardTransparent;
+  }
+  if (passName == "GBuffer" || passName == "Deferred") {
+    return LX_core::Pass_Deferred;
+  }
+  if (passName == "RayTrace" || passName == "OfflineRayTrace") {
+    return LX_core::Pass_OfflineRayTrace;
+  }
+  if (passName == "Shadow") {
+    return LX_core::Pass_Shadow;
+  }
+  if (passName == "DebugOverlay") {
+    return LX_core::Pass_DebugOverlay;
+  }
+  fatalLoader("technique '" + techniqueName + "' pass '" + passName +
+              "' requires enginePass");
+}
+
+void validateRequiredTechniques(const YAML::Node &techniquesNode,
+                                const std::string &defaultTechnique,
+                                const std::string &context) {
+  if (!techniquesNode || !techniquesNode.IsMap()) {
+    fatalLoader(context + ": missing required 'techniques' map");
+  }
+  if (!techniquesNode[defaultTechnique]) {
+    fatalLoader(context + ": defaultTechnique '" + defaultTechnique +
+                "' is not defined in techniques");
+  }
+}
+
 /*****************************************************************
  * Shader compilation helper
  *****************************************************************/
@@ -569,15 +598,18 @@ loadGenericMaterial(const fs::path &materialPath,
   YAML::Node globalVariantsNode;
   YAML::Node globalParamsNode;
   YAML::Node globalResourcesNode;
-  YAML::Node passesNode;
+  YAML::Node techniquesNode;
   YAML::Node variantRulesNode;
   YAML::Node shadingModelNode;
   YAML::Node meshOverlayNode;
+  std::string defaultTechnique;
 
   for (auto it = root.begin(); it != root.end(); ++it) {
     const auto key = it->first.as<std::string>();
     if (key == "shader")
       globalShaderName = it->second.as<std::string>();
+    else if (key == "defaultTechnique")
+      defaultTechnique = it->second.as<std::string>();
     else if (key == "variants")
       globalVariantsNode = YAML::Clone(it->second);
     else if (key == "parameters")
@@ -585,7 +617,10 @@ loadGenericMaterial(const fs::path &materialPath,
     else if (key == "resources")
       globalResourcesNode = YAML::Clone(it->second);
     else if (key == "passes")
-      passesNode = YAML::Clone(it->second);
+      fatalLoader(resolvedMaterialPath.string() +
+                  ": top-level 'passes' is not supported; use techniques");
+    else if (key == "techniques")
+      techniquesNode = YAML::Clone(it->second);
     else if (key == "variantRules")
       variantRulesNode = YAML::Clone(it->second);
     else if (key == "shadingModel")
@@ -597,6 +632,11 @@ loadGenericMaterial(const fs::path &materialPath,
   if (globalShaderName.empty())
     fatalLoader("missing required 'shader' field in " +
                 resolvedMaterialPath.string());
+  if (defaultTechnique.empty())
+    fatalLoader("missing required 'defaultTechnique' field in " +
+                resolvedMaterialPath.string());
+  validateRequiredTechniques(techniquesNode, defaultTechnique,
+                             resolvedMaterialPath.string());
 
   const auto globalShadingModel = parseShadingModel(shadingModelNode);
   const auto globalMeshOverlay = parseMeshOverlay(meshOverlayNode);
@@ -611,88 +651,83 @@ loadGenericMaterial(const fs::path &materialPath,
   const auto variantRules = parseVariantRules(variantRulesNode);
   std::vector<CompiledPass> compiledPasses;
 
-  if (passesNode.IsMap()) {
-    for (auto passIt = passesNode.begin(); passIt != passesNode.end();
-         ++passIt) {
-      const auto passName = passIt->first.as<std::string>();
+  const std::string selectedTechnique =
+      options.technique.value_or(defaultTechnique);
+  const YAML::Node techniqueNode = techniquesNode[selectedTechnique];
+  if (!techniqueNode || !techniqueNode.IsMap()) {
+    fatalLoader(resolvedMaterialPath.string() + ": technique '" +
+                selectedTechnique + "' is not defined");
+  }
+  const YAML::Node selectedPassesNode = techniqueNode["passes"];
+  if (!selectedPassesNode || !selectedPassesNode.IsMap() ||
+      selectedPassesNode.size() == 0) {
+    fatalLoader(resolvedMaterialPath.string() + ": technique '" +
+                selectedTechnique + "' requires a non-empty passes map");
+  }
 
-      // Extract pass-level fields by iterating keys.
-      std::string passShader = globalShaderName;
-      std::string passStage = "raster";
-      YAML::Node passVariantsNode;
-      YAML::Node passRenderStateNode;
-      YAML::Node passParamsNode;
-      YAML::Node passResourcesNode;
-
-      if (passIt->second.IsMap()) {
-        for (auto kv = passIt->second.begin(); kv != passIt->second.end();
-             ++kv) {
-          const auto k = kv->first.as<std::string>();
-          if (k == "shader")
-            passShader = kv->second.as<std::string>();
-          else if (k == "stage")
-            passStage = kv->second.as<std::string>();
-          else if (k == "variants")
-            passVariantsNode = YAML::Clone(kv->second);
-          else if (k == "renderState")
-            passRenderStateNode = YAML::Clone(kv->second);
-          else if (k == "parameters")
-            passParamsNode = YAML::Clone(kv->second);
-          else if (k == "resources")
-            passResourcesNode = YAML::Clone(kv->second);
-        }
-      }
-
-      auto variants = mergeVariants(globalVariantsNode, passVariantsNode);
-      applyShadingModelVariants(variants, globalShadingModel);
-      applyLoadOptionVariants(variants, passShader, options);
-      validateVariantRules(variantRules, variants, "pass " + passName);
-      auto renderState = parseRenderState(passRenderStateNode);
-      applyLoadOptionRenderState(renderState, options);
-
-      auto cp = compilePassShader(LX_core::StringID(passName), passShader,
-                                  passStage,
-                                  variants, renderState, shaderDir);
-      cp.shadingModel = globalShadingModel;
-      cp.meshOverlay = globalMeshOverlay;
-      cp.parameters = std::move(passParamsNode);
-      cp.resources = std::move(passResourcesNode);
-      compiledPasses.push_back(std::move(cp));
+  std::unordered_set<std::string> runtimePassNames;
+  for (auto passIt = selectedPassesNode.begin();
+       passIt != selectedPassesNode.end(); ++passIt) {
+    const auto passName = passIt->first.as<std::string>();
+    if (!passIt->second.IsMap()) {
+      fatalLoader(resolvedMaterialPath.string() + ": technique '" +
+                  selectedTechnique + "' pass '" + passName +
+                  "' must be a map");
     }
-  } else {
-    // No passes block → single Forward pass with global shader.
-    auto variants = mergeVariants(globalVariantsNode, YAML::Node());
+
+    // Extract technique-pass-level fields by iterating keys.
+    std::string passShader = globalShaderName;
+    std::string passStage = "raster";
+    YAML::Node passVariantsNode;
+    YAML::Node passRenderStateNode;
+    YAML::Node passParamsNode;
+    YAML::Node passResourcesNode;
+
+    for (auto kv = passIt->second.begin(); kv != passIt->second.end(); ++kv) {
+      const auto k = kv->first.as<std::string>();
+      if (k == "shader")
+        passShader = kv->second.as<std::string>();
+      else if (k == "stage")
+        passStage = kv->second.as<std::string>();
+      else if (k == "enginePass")
+        continue;
+      else if (k == "variants")
+        passVariantsNode = YAML::Clone(kv->second);
+      else if (k == "renderState")
+        passRenderStateNode = YAML::Clone(kv->second);
+      else if (k == "parameters")
+        passParamsNode = YAML::Clone(kv->second);
+      else if (k == "resources")
+        passResourcesNode = YAML::Clone(kv->second);
+    }
+
+    const LX_core::StringID runtimePass =
+        runtimePassForTechniquePass(selectedTechnique, passName,
+                                    passIt->second);
+    const std::string runtimePassName =
+        LX_core::GlobalStringTable::get().toDebugString(runtimePass);
+    if (!runtimePassNames.insert(runtimePassName).second) {
+      fatalLoader(resolvedMaterialPath.string() + ": technique '" +
+                  selectedTechnique + "' maps multiple passes to '" +
+                  runtimePassName + "'");
+    }
+
+    auto variants = mergeVariants(globalVariantsNode, passVariantsNode);
     applyShadingModelVariants(variants, globalShadingModel);
-    applyLoadOptionVariants(variants, globalShaderName, options);
-    validateVariantRules(variantRules, variants, "pass Forward (default)");
-    LX_core::RenderState renderState;
+    applyLoadOptionVariants(variants, passShader, options);
+    validateVariantRules(variantRules, variants,
+                         "technique " + selectedTechnique + " pass " +
+                             passName);
+    auto renderState = parseRenderState(passRenderStateNode);
     applyLoadOptionRenderState(renderState, options);
-    auto cp = compilePassShader(LX_core::Pass_Forward, globalShaderName,
-                                "raster",
-                                variants, renderState, shaderDir);
+
+    auto cp = compilePassShader(runtimePass, passShader, passStage, variants,
+                                renderState, shaderDir);
     cp.shadingModel = globalShadingModel;
     cp.meshOverlay = globalMeshOverlay;
+    cp.parameters = std::move(passParamsNode);
+    cp.resources = std::move(passResourcesNode);
     compiledPasses.push_back(std::move(cp));
-
-    if (options.enableDeferredPass && !renderState.blendEnable) {
-      if (const auto gbufferShader =
-              deferredGBufferShaderFor(globalShaderName)) {
-        auto deferredVariants = variants;
-        validateVariantRules(variantRules, deferredVariants,
-                             "pass Deferred (auto)");
-        auto deferredRenderState = renderState;
-        deferredRenderState.blendEnable = false;
-        deferredRenderState.depthTestEnable = true;
-        deferredRenderState.depthWriteEnable = true;
-        auto deferredCp =
-            compilePassShader(LX_core::Pass_Deferred, *gbufferShader,
-                              "raster", deferredVariants, deferredRenderState,
-                              shaderDir);
-        deferredCp.shadingModel = globalShadingModel;
-        deferredCp.meshOverlay = globalMeshOverlay;
-        compiledPasses.push_back(std::move(deferredCp));
-      }
-    }
   }
 
   // 4. Validate YAML declarations against shader reflection.

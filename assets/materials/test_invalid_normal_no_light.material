@@ -6,7 +6,10 @@ variants:
 variantRules:
   - requires: [USE_NORMAL_MAP]
     depends: [USE_LIGHTING, USE_UV]
-passes:
+defaultTechnique: Forward
+techniques:
   Forward:
-    renderState:
-      depthTest: true
+    passes:
+      Forward:
+        renderState:
+          depthTest: true

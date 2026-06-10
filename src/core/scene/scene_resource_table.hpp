@@ -3,6 +3,7 @@
 #include "core/math/bounds.hpp"
 #include "core/math/mat.hpp"
 #include "core/platform/types.hpp"
+#include "core/resource/resource_metadata.hpp"
 #include "core/rhi/descriptor_resource_ref.hpp"
 #include "core/scene/camera.hpp"
 #include "core/scene/ibl_environment.hpp"
@@ -82,6 +83,20 @@ struct RenderSceneSnapshot final {
   std::vector<ObjectInstanceView> objects;
 };
 
+struct SceneResourceGraphExport final {
+  std::vector<ResourceIdentityHandle> handles;
+  std::vector<ResourceMetadata> resources;
+
+  [[nodiscard]] u32 handleToIndex(ResourceIdentityHandle handle) const {
+    for (u32 i = 0; i < handles.size(); ++i) {
+      if (handles[i] == handle) {
+        return i;
+      }
+    }
+    return u32_max;
+  }
+};
+
 /*
 @source_analysis.section SceneResourceTable 统一持有场景渲染资源
 `SceneResourceTable` 是 bindless-ready 资源模型的入口。它给长期资源分配带
@@ -94,6 +109,13 @@ index 在 slot 复用后静默命中新资源。
 */
 class SceneResourceTable final {
 public:
+  SceneResourceTable();
+  ~SceneResourceTable();
+  SceneResourceTable(const SceneResourceTable &) = delete;
+  SceneResourceTable &operator=(const SceneResourceTable &) = delete;
+  SceneResourceTable(SceneResourceTable &&) noexcept;
+  SceneResourceTable &operator=(SceneResourceTable &&) noexcept;
+
   [[nodiscard]] GeometryStorageHandle
   registerGeometryStorage(GeometryStorageUniquePtr storage);
   [[nodiscard]] MeshHandle registerMesh(MeshBufferUniquePtr mesh);
@@ -192,6 +214,14 @@ public:
   // through table resolution, so buildUploadView() rebuilds records every call
   // even when the table mutation generation is unchanged.
   [[nodiscard]] SceneResourceTableUploadView buildUploadView() const;
+  [[nodiscard]] ResourceIdentityHandle
+  internResourceMetadata(ResourceMetadata metadata);
+  [[nodiscard]] const ResourceMetadata *
+  findResourceMetadata(ResourceIdentityHandle handle) const;
+  [[nodiscard]] ResourceIdentityHandle
+  internMaterialInstanceIdentity(const ResourceUri &sourceMaterialUri,
+                                 std::string overrideHash);
+  [[nodiscard]] SceneResourceGraphExport exportResourceGraph() const;
 
 private:
   template <typename Resource>
@@ -251,6 +281,8 @@ private:
   mutable std::vector<std::reference_wrapper<const CombinedTextureSampler>>
       m_gpuTextures;
   std::vector<MaterialHandle> m_renderMaterialHandles;
+  std::vector<ResourceMetadata> m_resourceMetadata;
+  std::vector<u32> m_resourceMetadataGenerations;
   mutable std::vector<std::unique_ptr<IGpuResource>> m_renderGpuResources;
   mutable std::vector<CombinedTextureSamplerUniquePtr>
       m_renderTextureSamplers;
