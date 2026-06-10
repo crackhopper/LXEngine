@@ -193,6 +193,46 @@ void testSnapshotIncludesMaterialCallbacks() {
          "snapshot should distinguish runtime-owned material parameters");
 }
 
+void testRootSnapshotIncludesRealtimeRenderMode() {
+  Fixture fixture;
+  LX_core::InspectorPanel panel(
+      fixture.bus, fixture.editorState,
+      LX_core::InspectorMaterialCallbacks{
+          .realtimeRenderMode =
+              []() -> std::optional<LX_core::SceneRealtimeRenderMode> {
+            return LX_core::SceneRealtimeRenderMode::Deferred;
+          },
+      });
+  fixture.editorState.select({fixture.scene->getRootNode()});
+
+  const auto snapshot = panel.makeSnapshot();
+  EXPECT(snapshot.hasSelection, "root snapshot should have selection");
+  EXPECT(snapshot.path == "/", "root snapshot path should be slash");
+  EXPECT(snapshot.isSceneRoot, "root snapshot should identify scene root");
+  EXPECT(snapshot.hasRealtimeRenderMode,
+         "root snapshot should expose realtime render mode");
+  EXPECT(snapshot.realtimeRenderMode == LX_core::SceneRealtimeRenderMode::Deferred,
+         "root realtime render mode should come from callback");
+}
+
+void testRegularNodeDoesNotExposeRealtimeRenderMode() {
+  Fixture fixture;
+  LX_core::InspectorPanel panel(
+      fixture.bus, fixture.editorState,
+      LX_core::InspectorMaterialCallbacks{
+          .realtimeRenderMode =
+              []() -> std::optional<LX_core::SceneRealtimeRenderMode> {
+            return LX_core::SceneRealtimeRenderMode::Deferred;
+          },
+      });
+  fixture.editorState.select({fixture.cube});
+
+  const auto snapshot = panel.makeSnapshot();
+  EXPECT(!snapshot.isSceneRoot, "regular node should not be scene root");
+  EXPECT(!snapshot.hasRealtimeRenderMode,
+         "regular node should not expose whole-scene render mode");
+}
+
 void testExperimentMaterialCandidateDiscovery() {
   const auto dir = std::filesystem::temp_directory_path() /
                    "lxe_inspector_rtr_material_candidates";
@@ -358,6 +398,36 @@ void testDispatchHelpersUseCommandBus() {
              nearlyEqual(direction.y, -1.0f) &&
              nearlyEqual(direction.z, 0.0f),
          "light direction helper should update scene light");
+}
+
+void testDispatchRealtimeRenderModeUsesCallback() {
+  Fixture fixture;
+  LX_core::SceneRealtimeRenderMode lastMode =
+      LX_core::SceneRealtimeRenderMode::Forward;
+  LX_core::InspectorPanel panel(
+      fixture.bus, fixture.editorState,
+      LX_core::InspectorMaterialCallbacks{
+          .setRealtimeRenderMode =
+              [&lastMode](const LX_core::SceneRealtimeRenderMode mode) {
+                lastMode = mode;
+                return LX_core::CommandResult{true, "mode updated", {}};
+              },
+      });
+
+  const auto result = panel.dispatchSetRealtimeRenderMode(
+      LX_core::SceneRealtimeRenderMode::Deferred);
+  EXPECT(result.ok, "render mode dispatch should return callback result");
+  EXPECT(lastMode == LX_core::SceneRealtimeRenderMode::Deferred,
+         "render mode dispatch should forward selected mode to callback");
+}
+
+void testDispatchRealtimeRenderModeFailsWithoutCallback() {
+  Fixture fixture;
+  LX_core::InspectorPanel panel(fixture.bus, fixture.editorState);
+
+  const auto result = panel.dispatchSetRealtimeRenderMode(
+      LX_core::SceneRealtimeRenderMode::Deferred);
+  EXPECT(!result.ok, "render mode dispatch should fail without callback");
 }
 
 void testDrawFrameSurvivesCpuOnlyImGui() {
@@ -604,12 +674,16 @@ int main() {
   testSnapshotWithoutSelection();
   testSnapshotForRegularNode();
   testSnapshotIncludesMaterialCallbacks();
+  testRootSnapshotIncludesRealtimeRenderMode();
+  testRegularNodeDoesNotExposeRealtimeRenderMode();
   testExperimentMaterialCandidateDiscovery();
   testSnapshotForCameraNode();
   testSnapshotForLightNode();
   testSnapshotForRenamedLightNodeUsesExactAttachedLight();
   testSnapshotTracksExternalNodeMutationAfterSelection();
   testDispatchHelpersUseCommandBus();
+  testDispatchRealtimeRenderModeUsesCallback();
+  testDispatchRealtimeRenderModeFailsWithoutCallback();
   testDrawFrameSurvivesCpuOnlyImGui();
   testDrawFrameSurvivesMaterialSectionCpuOnlyImGui();
   testDrawResyncsInspectorDraftAfterExternalMutation();

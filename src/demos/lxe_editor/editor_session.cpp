@@ -1184,6 +1184,20 @@ void LxeEditorSession::rebuildBindings(
                 }
                 return out;
               },
+          .realtimeRenderMode =
+              [this]() -> std::optional<LX_core::SceneRealtimeRenderMode> {
+            return m_runtime.document().realtimeRenderSettings().mode;
+          },
+          .setRealtimeRenderMode =
+              [this](const LX_core::SceneRealtimeRenderMode mode) {
+                switch (mode) {
+                case LX_core::SceneRealtimeRenderMode::Forward:
+                  return setRealtimeRenderMode("forward");
+                case LX_core::SceneRealtimeRenderMode::Deferred:
+                  return setRealtimeRenderMode("deferred");
+                }
+                return makeCommandError("unsupported realtime render mode");
+              },
       });
   m_viewportOverlay = std::make_unique<LX_core::ViewportOverlay>(
       *m_commandBus, m_editorState, *m_runtime.scene());
@@ -1329,7 +1343,11 @@ void LxeEditorSession::rebuildBindings(
           }
           structured << ",\"width\":" << dump.width
                      << ",\"height\":" << dump.height << ",\"format\":\""
-                     << jsonEscape(dump.format) << "\"}";
+                     << jsonEscape(dump.format) << "\""
+                     << ",\"stats\":{\"min\":" << dump.minValue
+                     << ",\"max\":" << dump.maxValue
+                     << ",\"mean\":" << dump.meanValue
+                     << ",\"nonZeroRatio\":" << dump.nonZeroRatio << "}}";
           return makeCommandOk(
               "render target dumped: " + dump.path.generic_string(),
               structured.str());

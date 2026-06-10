@@ -42,6 +42,10 @@ public:
     u32 width = 0;
     u32 height = 0;
     std::string format;
+    double minValue = 0.0;
+    double maxValue = 0.0;
+    double meanValue = 0.0;
+    double nonZeroRatio = 0.0;
   };
 
   struct DisplayCommandHooks final {
