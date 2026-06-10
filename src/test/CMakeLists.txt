@@ -29,6 +29,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_gpu_resource_table_contract
   test_upload_task_graph
   test_bindless_indirect_contract
+  test_071_bridge_audit
   test_audio_spectrum_texture
   test_pipeline_identity
   test_pipeline_build_info

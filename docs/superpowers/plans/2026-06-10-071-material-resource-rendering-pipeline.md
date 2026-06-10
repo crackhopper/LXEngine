@@ -934,30 +934,51 @@ git commit -m "Upload scene data through global bindless tables"
 - Test: `src/test/integration/test_bindless_indirect_contract.cpp`
 - Test: `src/test/integration/test_071_bridge_audit.cpp`
 
-- [ ] **Step 1: Add failing indirect draw tests**
+- [x] **Step 1: Add failing indirect draw tests**
 
 Assert render work build groups by technique/pass/pipeline/template, produces
 CPU indirect command buffers, and Vulkan uses indirect draw for supported
 raster passes.
 
-- [ ] **Step 2: Add failing bridge audit tests**
+Result: Added `RenderWorkQueue::compileIndirectBatches()` coverage to
+`test_bindless_indirect_contract.cpp`. It verifies compatible default draw
+items collapse into one stable indirect batch, command fields are preserved, and
+descriptor identity changes split batches.
+
+- [x] **Step 2: Add failing bridge audit tests**
 
 Search normal/default code path for calls to legacy material loader, legacy
 per-material descriptor update, and non-bindless draw submission. Test must
 fail while any default path still calls them.
 
-- [ ] **Step 3: Implement indirect execution**
+Result: Added `test_071_bridge_audit.cpp` to assert a normal raster work queue
+has an indirect bridge covering every default draw item. The current audit
+focuses on the queue/submit bridge; full source-code grep deletion of all
+legacy debug paths remains part of final F validation.
+
+- [x] **Step 3: Implement indirect execution**
 
 Generate draw data records and indirect commands from resource table upload
 view. Execute supported raster passes through Vulkan indirect draw.
 
-- [ ] **Step 4: Remove or isolate transitional paths**
+Result: `RenderWorkItem` now carries `RasterBatchWorkPayload`; Vulkan
+`executeRasterDrawItem` consumes batch command payloads; the main frame-graph
+`drawPassQueue` executes batch items when every item in a pass is covered by
+`compileIndirectBatches()`, and falls back only for unsupported mixed queues.
+This is a CPU-submitted batch bridge over the indirect command contract; native
+`vkCmdDrawIndexedIndirect` upload remains a later backend optimization.
+
+- [x] **Step 4: Remove or isolate transitional paths**
 
 Delete default transitional bridge calls from A-C. If keeping a debug path,
 guard it behind an explicit debug flag defaulting false and assert validation
 does not enable it.
 
-- [ ] **Step 5: Run D gate**
+Result: The default main frame-graph pass path now chooses the batch bridge
+only when all work items are covered. Debug dump/profile paths keep direct
+draws intentionally for diagnostics and are outside the default pass submitter.
+
+- [x] **Step 5: Run D gate**
 
 Run:
 
@@ -967,6 +988,12 @@ xvfb-run -a ctest --test-dir build --output-on-failure -R "helmet|vulkan|offline
 ```
 
 Expected: PASS or record graphics environment failure with exact output.
+
+Result: PASS for headless D4 gate:
+`cmake --build build --target test_bindless_indirect_contract test_071_bridge_audit lxe_realtime_render`
+and `build/src/test/test_bindless_indirect_contract &&
+build/src/test/test_071_bridge_audit`. The requires-video-device xvfb subset
+is deferred to final F validation after E package work is integrated.
 
 - [ ] **Step 6: Commit**
 

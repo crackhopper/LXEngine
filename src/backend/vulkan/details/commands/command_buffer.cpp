@@ -450,6 +450,19 @@ void VulkanCommandBuffer::executeRasterDrawItem(const RenderWorkItem &item) {
     return;
   }
 
+  if (item.kind == RenderWorkKind::RasterBatch &&
+      !item.rasterBatch.commands.empty()) {
+    for (const auto &command : item.rasterBatch.commands) {
+      if (command.indexCount == 0 || command.instanceCount == 0) {
+        continue;
+      }
+      vkCmdDrawIndexed(m_handle, command.indexCount, command.instanceCount,
+                       command.firstIndex, command.vertexOffset,
+                       command.firstInstance);
+    }
+    return;
+  }
+
   const usize indexCount =
       raster.indexCount != 0 ? raster.indexCount
                              : raster.indexBuffer.get().getByteSize() /

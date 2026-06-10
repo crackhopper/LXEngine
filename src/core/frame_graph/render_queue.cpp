@@ -42,6 +42,75 @@ makeItemFromValidatedData(const ValidatedRenderablePassData &data) {
   return item;
 }
 
+[[nodiscard]] bool sameResourceRef(const DescriptorResourceRef &a,
+                                   const DescriptorResourceRef &b) {
+  if (a.kind() != b.kind()) {
+    return false;
+  }
+  if (a.getBindingName() != b.getBindingName()) {
+    return false;
+  }
+  if (a.isResource() || b.isResource()) {
+    return a.isResource() && b.isResource() && a.resource().isValid() &&
+           b.resource().isValid() &&
+           a.resource().getBackendCacheIdentity() ==
+               b.resource().getBackendCacheIdentity();
+  }
+  if (a.isTextureArray()) {
+    return a.textures().size() == b.textures().size();
+  }
+  return true;
+}
+
+[[nodiscard]] bool
+sameDescriptorResources(const DescriptorResourceList &a,
+                        const DescriptorResourceList &b) {
+  if (a.size() != b.size()) {
+    return false;
+  }
+  for (usize i = 0; i < a.size(); ++i) {
+    if (!sameResourceRef(a[i], b[i])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+[[nodiscard]] u32 resolveIndexCount(const RasterDrawWorkPayload &raster) {
+  if (raster.indexCount != 0) {
+    return raster.indexCount;
+  }
+  if (!raster.indexBuffer.isValid()) {
+    return 0;
+  }
+  return static_cast<u32>(raster.indexBuffer.get().getByteSize() / sizeof(u32));
+}
+
+[[nodiscard]] IndexedIndirectDrawCommand
+makeIndirectCommand(const RasterDrawWorkPayload &raster) {
+  IndexedIndirectDrawCommand command;
+  command.indexCount = resolveIndexCount(raster);
+  command.instanceCount = raster.instanceCount;
+  command.firstIndex = raster.firstIndex;
+  command.vertexOffset = raster.vertexOffset;
+  command.firstInstance = 0;
+  return command;
+}
+
+[[nodiscard]] bool canAppendToBatch(const RenderIndirectBatch &batch,
+                                    const RenderWorkItem &item) {
+  return batch.pipelineKey == item.pipelineKey && batch.pass == item.pass &&
+         batch.target == item.target &&
+         batch.vertexBuffer.isValid() == item.raster.vertexBuffer.isValid() &&
+         batch.indexBuffer.isValid() == item.raster.indexBuffer.isValid() &&
+         (!batch.vertexBuffer.isValid() ||
+          &batch.vertexBuffer.get() == &item.raster.vertexBuffer.get()) &&
+         (!batch.indexBuffer.isValid() ||
+          &batch.indexBuffer.get() == &item.raster.indexBuffer.get()) &&
+         sameDescriptorResources(batch.descriptorResources,
+                                 item.descriptorResources);
+}
+
 [[nodiscard]] std::optional<Vec3f>
 resolveSortCameraEye(const Scene &scene,
                      const RenderWorkBuildContext::RealtimeOptions &options,
@@ -136,6 +205,35 @@ RenderWorkQueue::collectUniquePipelineBuildDescs() const {
     out.push_back(PipelineBuildDesc::fromRenderWorkItem(item));
   }
   return out;
+}
+
+std::vector<RenderIndirectBatch> RenderWorkQueue::compileIndirectBatches() const {
+  std::vector<RenderIndirectBatch> batches;
+  for (usize itemIndex = 0; itemIndex < m_items.size(); ++itemIndex) {
+    const RenderWorkItem &item = m_items[itemIndex];
+    if (item.kind != RenderWorkKind::RasterDraw ||
+        !item.raster.vertexBuffer.isValid() ||
+        !item.raster.indexBuffer.isValid()) {
+      continue;
+    }
+    IndexedIndirectDrawCommand command = makeIndirectCommand(item.raster);
+    if (command.indexCount == 0 || command.instanceCount == 0) {
+      continue;
+    }
+    if (batches.empty() || !canAppendToBatch(batches.back(), item)) {
+      RenderIndirectBatch batch;
+      batch.pipelineKey = item.pipelineKey;
+      batch.pass = item.pass;
+      batch.target = item.target;
+      batch.descriptorResources = item.descriptorResources;
+      batch.vertexBuffer = item.raster.vertexBuffer;
+      batch.indexBuffer = item.raster.indexBuffer;
+      batches.push_back(std::move(batch));
+    }
+    batches.back().commands.push_back(command);
+    batches.back().sourceItemIndices.push_back(itemIndex);
+  }
+  return batches;
 }
 
 void RenderWorkQueue::build(const RenderWorkBuildContext &context,

@@ -7,6 +7,17 @@
 
 namespace LX_core {
 
+struct RenderIndirectBatch final {
+  PipelineKey pipelineKey;
+  StringID pass;
+  RenderTargetDesc target;
+  DescriptorResourceList descriptorResources;
+  GpuResourceRef vertexBuffer;
+  GpuResourceRef indexBuffer;
+  std::vector<IndexedIndirectDrawCommand> commands;
+  std::vector<usize> sourceItemIndices;
+};
+
 /*
 @source_analysis.section RenderWorkQueue：一个 pass 内的 draw 列表与 pipeline
 收口 RenderWorkQueue 是 per-pass 的，不是全局的 — 每个 `FramePass`
@@ -37,6 +48,7 @@ public:
   std::vector<RenderWorkItem> &getItems() { return m_items; }
 
   std::vector<PipelineBuildDesc> collectUniquePipelineBuildDescs() const;
+  std::vector<RenderIndirectBatch> compileIndirectBatches() const;
 
   void build(const RenderWorkBuildContext &context, StringID pass,
              const RenderTarget &target);

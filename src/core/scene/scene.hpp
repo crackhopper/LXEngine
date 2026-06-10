@@ -54,6 +54,19 @@ struct RasterDrawWorkPayload final {
   u32 instanceCount = 1;
 };
 
+struct IndexedIndirectDrawCommand final {
+  u32 indexCount = 0;
+  u32 instanceCount = 1;
+  u32 firstIndex = 0;
+  i32 vertexOffset = 0;
+  u32 firstInstance = 0;
+};
+
+struct RasterBatchWorkPayload final {
+  std::vector<IndexedIndirectDrawCommand> commands;
+  std::vector<usize> sourceItemIndices;
+};
+
 struct ComputeDispatchWorkPayload final {
   u32 groupCountX = 1;
   u32 groupCountY = 1;
@@ -87,6 +100,7 @@ struct RenderWorkItem final {
   Vec3f sortCenter{0.0f, 0.0f, 0.0f};
 
   RasterDrawWorkPayload raster;
+  RasterBatchWorkPayload rasterBatch;
   ComputeDispatchWorkPayload compute;
 
   DescriptorResourceList descriptorResources; // 材质 + skeleton 等资源

@@ -1507,6 +1507,86 @@ public:
     };
   }
 
+  VulkanFrameGraphAttachmentDumpResult
+  statsFrameGraphAttachment(std::string_view attachmentName) {
+    if (!m_foundation) {
+      throw std::runtime_error("renderer is not initialized");
+    }
+
+    const StringID attachmentId{std::string(attachmentName)};
+    auto attachmentOpt =
+        resourceManager().getFrameGraphAttachment(attachmentId);
+    if (!attachmentOpt.has_value()) {
+      throw std::runtime_error("frame graph attachment not available: " +
+                               std::string(attachmentName));
+    }
+    auto &attachment = attachmentOpt->get();
+
+    const u32 width = attachment.extent.width;
+    const u32 height = attachment.extent.height;
+    const VkDeviceSize byteSize =
+        dumpByteSize(attachment.format, width, height);
+    if (width == 0 || height == 0 || byteSize == 0) {
+      throw std::runtime_error("frame graph attachment has empty extent: " +
+                               std::string(attachmentName));
+    }
+
+    auto readback = VulkanBuffer::create(
+        device(), byteSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+    device().waitIdle();
+    const VkImageLayout previousLayout = attachment.currentLayout;
+    const auto attachmentKind =
+        (attachment.aspect & VK_IMAGE_ASPECT_COLOR_BIT) != 0
+            ? LX_core::FrameGraphAttachmentKind::Color
+            : LX_core::FrameGraphAttachmentKind::Depth;
+    auto cmd = commandBufferManager().beginSingleTimeCommands();
+    transitionFrameGraphAttachment(
+        LX_core::FrameGraphResourceRef{attachmentId, attachmentKind},
+        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_ACCESS_TRANSFER_READ_BIT, *cmd);
+
+    VkBufferImageCopy region{};
+    region.bufferOffset = 0;
+    region.bufferRowLength = 0;
+    region.bufferImageHeight = 0;
+    region.imageSubresource.aspectMask = attachment.aspect;
+    region.imageSubresource.mipLevel = 0;
+    region.imageSubresource.baseArrayLayer = 0;
+    region.imageSubresource.layerCount = 1;
+    region.imageOffset = {0, 0, 0};
+    region.imageExtent = {width, height, 1};
+    vkCmdCopyImageToBuffer(cmd->getHandle(), attachment.texture->getHandle(),
+                           VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                           readback->getHandle(), 1, &region);
+
+    transitionFrameGraphAttachment(
+        LX_core::FrameGraphResourceRef{attachmentId, attachmentKind},
+        previousLayout, dumpRestoreStage(previousLayout, attachment.aspect),
+        dumpRestoreAccess(previousLayout, attachment.aspect), *cmd);
+    commandBufferManager().endSingleTimeCommands(std::move(cmd),
+                                                 device().getGraphicsQueue());
+
+    const void *mapped = readback->map();
+    const DumpScalarStats stats =
+        computeDumpScalarStats(attachment.format, width, height, mapped);
+    readback->unmap();
+
+    return VulkanFrameGraphAttachmentDumpResult{
+        .path = {},
+        .screenPath = {},
+        .width = width,
+        .height = height,
+        .format = vkFormatName(attachment.format),
+        .minValue = stats.minValue,
+        .maxValue = stats.maxValue,
+        .meanValue = stats.meanValue,
+        .nonZeroRatio = stats.nonZeroRatio,
+    };
+  }
+
   VulkanFrameGraphAttachmentDumpResult dumpDebugRenderTarget(
       std::string_view passName, const std::optional<std::string> &cameraPath,
       const std::optional<std::filesystem::path> &requestedPath) {
@@ -1955,7 +2035,34 @@ private:
       return;
     }
 
-    for (auto &item : m_frameGraph.getPasses()[passIndex].queue.getItems()) {
+    auto &queue = m_frameGraph.getPasses()[passIndex].queue;
+    auto &items = queue.getItems();
+    const auto batches = queue.compileIndirectBatches();
+    usize coveredItemCount = 0;
+    for (const auto &batch : batches) {
+      coveredItemCount += batch.sourceItemIndices.size();
+    }
+    if (!items.empty() && coveredItemCount == items.size()) {
+      for (const auto &batch : batches) {
+        if (batch.sourceItemIndices.empty()) {
+          continue;
+        }
+        LX_core::RenderWorkItem batchItem = items[batch.sourceItemIndices[0]];
+        batchItem.kind = LX_core::RenderWorkKind::RasterBatch;
+        batchItem.descriptorResources = batch.descriptorResources;
+        batchItem.raster.vertexBuffer = batch.vertexBuffer;
+        batchItem.raster.indexBuffer = batch.indexBuffer;
+        batchItem.rasterBatch.commands = batch.commands;
+        batchItem.rasterBatch.sourceItemIndices = batch.sourceItemIndices;
+        auto pipeline = resourceManager().getOrCreatePipeline(batchItem);
+        cmd.bindPipeline(pipeline);
+        cmd.bindResources(resourceManager(), pipeline, batchItem);
+        cmd.executeWorkItem(batchItem);
+      }
+      return;
+    }
+
+    for (auto &item : items) {
       auto pipeline = resourceManager().getOrCreatePipeline(item);
       cmd.bindPipeline(pipeline);
       cmd.bindResources(resourceManager(), pipeline, item);
@@ -2735,6 +2842,12 @@ VulkanRealtimeRenderer::dumpFrameGraphAttachment(
     const std::optional<std::filesystem::path> &path,
     const std::optional<std::filesystem::path> &screenPath) {
   return p_impl->dumpFrameGraphAttachment(attachmentName, path, screenPath);
+}
+
+VulkanFrameGraphAttachmentDumpResult
+VulkanRealtimeRenderer::statsFrameGraphAttachment(
+    std::string_view attachmentName) {
+  return p_impl->statsFrameGraphAttachment(attachmentName);
 }
 
 VulkanFrameGraphAttachmentDumpResult
