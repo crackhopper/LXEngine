@@ -259,7 +259,7 @@ Expected: PASS.
 Result: PASS. `cmake --build build --target test_material_v2_parser &&
 ./build/src/test/test_material_v2_parser`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/asset/material_parameter_envelope.* src/core/asset/material_surface_schema.* src/test/integration/test_material_v2_parser.cpp
@@ -1181,6 +1181,8 @@ git add src/infra/scene_io/scene_validation_profile.* src/tools/lxe_realtime_ren
 git commit -m "Add direct validation profile and headless realtime render"
 ```
 
+Result: committed as `44ae405 Add render validation profile parser`.
+
 ## Task F2: Diagnostics-Aware Compare
 
 **Files:**
@@ -1188,25 +1190,39 @@ git commit -m "Add direct validation profile and headless realtime render"
 - Test: `src/test/integration/test_diagnostics_compare.cpp`
 - Test: existing `src/test/integration/test_lxe_compare_exr_metrics.cpp`
 
-- [ ] **Step 1: Add failing diagnostics compare tests**
+- [x] **Step 1: Add failing diagnostics compare tests**
 
 Create synthetic 8x8 diagnostic buffers that trigger edge/coverage mismatch,
 input mismatch, BRDF mismatch, and unsupported/disabled classification.
 
-- [ ] **Step 2: Implement diagnostic channels**
+Result: Added `test_diagnostics_compare.cpp` with synthetic diagnostic buffers
+covering edge/coverage, direct input hash mismatch, BRDF/color mismatch, and
+unsupported/disabled masks.
+
+- [x] **Step 2: Implement diagnostic channels**
 
 Read color plus materialId, objectId/drawId, normal, depth/visibility,
 directInputsHash, and template-specific debug channels from EXR or typed
 binary buffers.
 
-- [ ] **Step 3: Implement classification**
+Result: Added `DiagnosticCompareBuffer` carrying material id, object id,
+normal/depth, direct input hash, and unsupported mask channels. The first
+implementation consumes typed diagnostic buffers from tests/runtime callers;
+EXR sidecar channel loading can be layered on later.
+
+- [x] **Step 3: Implement classification**
 
 Use 3x3 or 5x5 depth/normal/materialId/visibility neighborhood changes for
 edge mask. Exclude edge-mask pixels from material formula thresholds. Output
 top suspicious samples with coordinates, material URI/id, object/draw id,
 diff value, category, and debug channel differences.
 
-- [ ] **Step 4: Run compare tests**
+Result: Implemented `classifyDiagnosticDifferences()` with 3x3 neighborhood
+edge/coverage classification, input-hash mismatch classification, BRDF
+mismatch fallback, unsupported/disabled masking, and top suspicious sample
+reporting with coordinates/material/object/diff/category.
+
+- [x] **Step 4: Run compare tests**
 
 Run:
 
@@ -1215,6 +1231,10 @@ cmake --build build --target test_diagnostics_compare test_lxe_compare_exr_metri
 ```
 
 Expected: PASS.
+
+Result: PASS. `cmake --build build --target test_diagnostics_compare
+test_lxe_compare_exr_metrics && build/src/test/test_diagnostics_compare &&
+build/src/test/test_lxe_compare_exr_metrics`.
 
 - [ ] **Step 5: Commit**
 

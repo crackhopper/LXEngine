@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
+#include <string>
 
 namespace LX_tools::compare_exr {
 namespace {
@@ -79,6 +80,107 @@ void includeMaskPixel(MaskStats &stats, const u32 x, const u32 y) {
         std::abs(static_cast<double>(rhs) - static_cast<double>(lhs)) / 255.0;
   }
   return distance;
+}
+
+void validateDiagnosticBuffer(const DiagnosticCompareBuffer &buffer,
+                              u32 width, u32 height,
+                              const char *label) {
+  if (buffer.width != width || buffer.height != height) {
+    throw std::runtime_error(std::string(label) +
+                             " diagnostic dimensions differ");
+  }
+  const usize pixelCount = static_cast<usize>(width) * height;
+  if (buffer.materialId.size() != pixelCount ||
+      buffer.objectId.size() != pixelCount ||
+      buffer.directInputsHash.size() != pixelCount ||
+      buffer.unsupportedMask.size() != pixelCount ||
+      buffer.normalDepth.size() != pixelCount * 4u) {
+    throw std::runtime_error(std::string(label) +
+                             " diagnostic buffer size mismatch");
+  }
+}
+
+[[nodiscard]] double pixelLinearL1(
+    const LX_core::offline::OfflineReadbackImage &reference,
+    const LX_core::offline::OfflineReadbackImage &candidate, usize pixel) {
+  const usize base = pixel * 4u;
+  double diff = 0.0;
+  for (usize channel = 0; channel < 3u; ++channel) {
+    diff += std::abs(static_cast<double>(candidate.rgba[base + channel]) -
+                     static_cast<double>(reference.rgba[base + channel]));
+  }
+  return diff;
+}
+
+[[nodiscard]] double luminanceAt(
+    const LX_core::offline::OfflineReadbackImage &image, usize pixel) {
+  const usize base = pixel * 4u;
+  return 0.2126 * static_cast<double>(image.rgba[base + 0u]) +
+         0.7152 * static_cast<double>(image.rgba[base + 1u]) +
+         0.0722 * static_cast<double>(image.rgba[base + 2u]);
+}
+
+[[nodiscard]] bool normalDepthDiscontinuity(
+    const DiagnosticCompareBuffer &buffer, usize pixel, usize other) {
+  const usize base = pixel * 4u;
+  const usize otherBase = other * 4u;
+  double normalDelta = 0.0;
+  for (usize channel = 0; channel < 3u; ++channel) {
+    normalDelta += std::abs(static_cast<double>(buffer.normalDepth[base + channel]) -
+                            static_cast<double>(
+                                buffer.normalDepth[otherBase + channel]));
+  }
+  const double depthDelta =
+      std::abs(static_cast<double>(buffer.normalDepth[base + 3u]) -
+               static_cast<double>(buffer.normalDepth[otherBase + 3u]));
+  return normalDelta > 0.25 || depthDelta > 0.01;
+}
+
+[[nodiscard]] bool isEdgePixel(const DiagnosticCompareBuffer &reference,
+                               const DiagnosticCompareBuffer &candidate,
+                               u32 x, u32 y) {
+  const auto checkBuffer = [x, y](const DiagnosticCompareBuffer &buffer) {
+    const usize center = static_cast<usize>(y) * buffer.width + x;
+    const int minY = std::max(0, static_cast<int>(y) - 1);
+    const int maxY =
+        std::min(static_cast<int>(buffer.height) - 1, static_cast<int>(y) + 1);
+    const int minX = std::max(0, static_cast<int>(x) - 1);
+    const int maxX =
+        std::min(static_cast<int>(buffer.width) - 1, static_cast<int>(x) + 1);
+    for (int ny = minY; ny <= maxY; ++ny) {
+      for (int nx = minX; nx <= maxX; ++nx) {
+        const usize other =
+            static_cast<usize>(ny) * buffer.width + static_cast<u32>(nx);
+        if (other == center) {
+          continue;
+        }
+        if (buffer.materialId[other] != buffer.materialId[center] ||
+            normalDepthDiscontinuity(buffer, center, other)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+  return checkBuffer(reference) || checkBuffer(candidate);
+}
+
+void addSuspiciousSample(DiagnosticCompareReport &report,
+                         DiagnosticPixel sample, usize maxSamples) {
+  if (sample.category == DiagnosticDifferenceCategory::Match ||
+      maxSamples == 0) {
+    return;
+  }
+  auto &samples = report.suspiciousSamples;
+  samples.push_back(std::move(sample));
+  std::stable_sort(samples.begin(), samples.end(),
+                   [](const DiagnosticPixel &lhs,
+                      const DiagnosticPixel &rhs) {
+                     return lhs.diff > rhs.diff;
+                   });
+  if (samples.size() > maxSamples) {
+    samples.resize(maxSamples);
+  }
 }
 
 } // namespace
@@ -204,6 +306,94 @@ CompareMetrics compareImages(
         candidateMask.sumY / static_cast<double>(candidateMask.count);
   }
   return metrics;
+}
+
+DiagnosticCompareReport classifyDiagnosticDifferences(
+    const LX_core::offline::OfflineReadbackImage &reference,
+    const LX_core::offline::OfflineReadbackImage &candidate,
+    const DiagnosticCompareBuffer &referenceDiagnostics,
+    const DiagnosticCompareBuffer &candidateDiagnostics, usize maxSamples) {
+  if (reference.width != candidate.width ||
+      reference.height != candidate.height) {
+    throw std::runtime_error("diagnostic comparison image dimensions differ");
+  }
+  const usize expected = reference.pixelCount() * 4u;
+  if (reference.rgba.size() != expected || candidate.rgba.size() != expected) {
+    throw std::runtime_error(
+        "diagnostic comparison RGBA buffer size does not match dimensions");
+  }
+  validateDiagnosticBuffer(referenceDiagnostics, reference.width,
+                           reference.height, "reference");
+  validateDiagnosticBuffer(candidateDiagnostics, candidate.width,
+                           candidate.height, "candidate");
+
+  DiagnosticCompareReport report;
+  constexpr double litThreshold = 1.0e-4;
+  constexpr double diffThreshold = 1.0e-5;
+  for (usize pixel = 0; pixel < reference.pixelCount(); ++pixel) {
+    const double diff = pixelLinearL1(reference, candidate, pixel);
+    const bool referenceLit = luminanceAt(reference, pixel) > litThreshold;
+    const bool candidateLit = luminanceAt(candidate, pixel) > litThreshold;
+    if (diff <= diffThreshold && referenceLit == candidateLit &&
+        referenceDiagnostics.directInputsHash[pixel] ==
+            candidateDiagnostics.directInputsHash[pixel] &&
+        referenceDiagnostics.unsupportedMask[pixel] == 0u &&
+        candidateDiagnostics.unsupportedMask[pixel] == 0u) {
+      continue;
+    }
+
+    const u32 x = static_cast<u32>(pixel % reference.width);
+    const u32 y = static_cast<u32>(pixel / reference.width);
+    DiagnosticPixel sample;
+    sample.x = x;
+    sample.y = y;
+    sample.materialId = referenceDiagnostics.materialId[pixel];
+    sample.objectId = referenceDiagnostics.objectId[pixel];
+    sample.diff = diff;
+
+    if (referenceDiagnostics.unsupportedMask[pixel] != 0u ||
+        candidateDiagnostics.unsupportedMask[pixel] != 0u) {
+      ++report.unsupportedOrDisabledPixels;
+      sample.category = DiagnosticDifferenceCategory::UnsupportedOrDisabled;
+      sample.reason = "unsupported-or-disabled";
+    } else if (referenceLit != candidateLit ||
+               referenceDiagnostics.materialId[pixel] !=
+                   candidateDiagnostics.materialId[pixel] ||
+               isEdgePixel(referenceDiagnostics, candidateDiagnostics, x, y)) {
+      ++report.edgeOrCoveragePixels;
+      sample.category = DiagnosticDifferenceCategory::EdgeOrCoverage;
+      sample.reason = "edge-or-coverage";
+    } else if (referenceDiagnostics.directInputsHash[pixel] !=
+               candidateDiagnostics.directInputsHash[pixel]) {
+      ++report.inputMismatchPixels;
+      sample.category = DiagnosticDifferenceCategory::InputMismatch;
+      sample.reason = "direct-inputs";
+    } else if (diff > diffThreshold) {
+      ++report.brdfMismatchPixels;
+      sample.category = DiagnosticDifferenceCategory::BrdfMismatch;
+      sample.reason = "brdf";
+    }
+
+    addSuspiciousSample(report, std::move(sample), maxSamples);
+  }
+  return report;
+}
+
+const char *diagnosticDifferenceCategoryName(
+    DiagnosticDifferenceCategory category) {
+  switch (category) {
+  case DiagnosticDifferenceCategory::Match:
+    return "match";
+  case DiagnosticDifferenceCategory::EdgeOrCoverage:
+    return "edge-or-coverage";
+  case DiagnosticDifferenceCategory::InputMismatch:
+    return "input-mismatch";
+  case DiagnosticDifferenceCategory::BrdfMismatch:
+    return "brdf-mismatch";
+  case DiagnosticDifferenceCategory::UnsupportedOrDisabled:
+    return "unsupported-or-disabled";
+  }
+  return "unknown";
 }
 
 } // namespace LX_tools::compare_exr

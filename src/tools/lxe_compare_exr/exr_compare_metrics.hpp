@@ -3,6 +3,7 @@
 #include "core/image/tone_mapping.hpp"
 #include "core/offline/offline_render_job.hpp"
 
+#include <string>
 #include <vector>
 
 namespace LX_tools::compare_exr {
@@ -62,9 +63,55 @@ struct CompareMetrics final {
   double candidateCentroidY = 0.0;
 };
 
+enum class DiagnosticDifferenceCategory {
+  Match,
+  EdgeOrCoverage,
+  InputMismatch,
+  BrdfMismatch,
+  UnsupportedOrDisabled,
+};
+
+struct DiagnosticPixel final {
+  u32 x = 0;
+  u32 y = 0;
+  u32 materialId = 0;
+  u32 objectId = 0;
+  double diff = 0.0;
+  DiagnosticDifferenceCategory category = DiagnosticDifferenceCategory::Match;
+  std::string reason;
+};
+
+struct DiagnosticCompareBuffer final {
+  u32 width = 0;
+  u32 height = 0;
+  std::vector<u32> materialId;
+  std::vector<u32> objectId;
+  std::vector<float> normalDepth; // x, y, z, depth per pixel
+  std::vector<u64> directInputsHash;
+  std::vector<u8> unsupportedMask;
+};
+
+struct DiagnosticCompareReport final {
+  usize edgeOrCoveragePixels = 0;
+  usize inputMismatchPixels = 0;
+  usize brdfMismatchPixels = 0;
+  usize unsupportedOrDisabledPixels = 0;
+  std::vector<DiagnosticPixel> suspiciousSamples;
+};
+
 [[nodiscard]] CompareMetrics
 compareImages(const LX_core::offline::OfflineReadbackImage &reference,
               const LX_core::offline::OfflineReadbackImage &candidate,
               const CompareSettings &settings = CompareSettings{});
+
+[[nodiscard]] DiagnosticCompareReport classifyDiagnosticDifferences(
+    const LX_core::offline::OfflineReadbackImage &reference,
+    const LX_core::offline::OfflineReadbackImage &candidate,
+    const DiagnosticCompareBuffer &referenceDiagnostics,
+    const DiagnosticCompareBuffer &candidateDiagnostics,
+    usize maxSamples = 16);
+
+[[nodiscard]] const char *
+diagnosticDifferenceCategoryName(DiagnosticDifferenceCategory category);
 
 } // namespace LX_tools::compare_exr

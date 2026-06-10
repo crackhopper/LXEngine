@@ -32,6 +32,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_071_bridge_audit
   test_scene_package_round_trip
   test_render_validation_profile
+  test_diagnostics_compare
   test_audio_spectrum_texture
   test_pipeline_identity
   test_pipeline_build_info
@@ -196,6 +197,10 @@ endforeach()
 
 if(TARGET test_lxe_compare_exr_metrics)
   target_link_libraries(test_lxe_compare_exr_metrics PRIVATE lxe_compare_exr_core)
+endif()
+
+if(TARGET test_diagnostics_compare)
+  target_link_libraries(test_diagnostics_compare PRIVATE lxe_compare_exr_core)
 endif()
 
 set(LXE_EDITOR_COMMAND_SOURCES
