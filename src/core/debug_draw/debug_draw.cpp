@@ -789,37 +789,65 @@ usize testing::reservedIndexCapacity(VisibilityLayerMask mask) {
   return it == state().buckets.end() ? 0 : it->second.reservedIndexCount;
 }
 
+namespace {
+
+[[nodiscard]] const GeometryStorage *
+resolveBucketGeometryStorage(const BucketState &bucket) {
+  if (bucket.node) {
+    const auto meshComponent = bucket.node->getComponent<MeshComponent>();
+    const auto scene = bucket.node->getAttachedScene();
+    if (meshComponent.has_value() && scene) {
+      const GeometryStorageHandle handle =
+          meshComponent->get().getGeometryStorageHandle();
+      if (const auto storage = scene->resources().resolve(handle)) {
+        return &storage->get();
+      }
+    }
+  }
+  if (bucket.mesh && bucket.mesh->getGeometryStorage()) {
+    return bucket.mesh->getGeometryStorage().get();
+  }
+  return nullptr;
+}
+
+} // namespace
+
 usize testing::bufferedVertexCapacity(VisibilityLayerMask mask) {
   auto it = state().buckets.find(mask);
-  if (it == state().buckets.end() || !it->second.mesh) {
+  if (it == state().buckets.end()) {
     return 0;
   }
-  return it->second.mesh->getVertexBuffer().getByteSize() /
-         sizeof(DebugLineVertex);
+  const GeometryStorage *storage = resolveBucketGeometryStorage(it->second);
+  return storage ? storage->getVertexBuffer().getByteSize() /
+                       sizeof(DebugLineVertex)
+                 : 0;
 }
 
 usize testing::bufferedIndexCapacity(VisibilityLayerMask mask) {
   auto it = state().buckets.find(mask);
-  if (it == state().buckets.end() || !it->second.mesh) {
+  if (it == state().buckets.end()) {
     return 0;
   }
-  return it->second.mesh->getIndexBuffer().getByteSize() / sizeof(u32);
+  const GeometryStorage *storage = resolveBucketGeometryStorage(it->second);
+  return storage ? storage->getIndexBuffer().getByteSize() / sizeof(u32) : 0;
 }
 
 ResourceCacheIdentity testing::vertexBufferIdentity(VisibilityLayerMask mask) {
   auto it = state().buckets.find(mask);
-  if (it == state().buckets.end() || !it->second.mesh) {
+  if (it == state().buckets.end()) {
     return 0;
   }
-  return it->second.mesh->getVertexBuffer().getBackendCacheIdentity();
+  const GeometryStorage *storage = resolveBucketGeometryStorage(it->second);
+  return storage ? storage->getVertexBuffer().getBackendCacheIdentity() : 0;
 }
 
 ResourceCacheIdentity testing::indexBufferIdentity(VisibilityLayerMask mask) {
   auto it = state().buckets.find(mask);
-  if (it == state().buckets.end() || !it->second.mesh) {
+  if (it == state().buckets.end()) {
     return 0;
   }
-  return it->second.mesh->getIndexBuffer().getBackendCacheIdentity();
+  const GeometryStorage *storage = resolveBucketGeometryStorage(it->second);
+  return storage ? storage->getIndexBuffer().getBackendCacheIdentity() : 0;
 }
 
 bool testing::hasRenderable(VisibilityLayerMask mask) {

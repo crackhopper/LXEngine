@@ -98,6 +98,9 @@ LX_core::SceneSharedPtr makeFrameGraphScene() {
   node->addComponent<LX_core::SkeletonComponent>(LX_core::Skeleton::create({}));
 
   auto scene = LX_core::Scene::create(node);
+  LX_core::SceneRenderSettings renderSettings;
+  renderSettings.shadows = true;
+  scene->setRenderSettings(renderSettings);
   scene->addCamera(LX_test::makeDefaultCameraNodeWithTarget());
   auto shadowCamera = LX_test::makeDefaultCameraNodeWithTarget();
   auto shadowCameraComponent =

@@ -1307,18 +1307,21 @@ Result:
   recorded llvmpipe/software-compute issue:
   `test_offline_render_cli` -> `software-compute render should produce finite
   pixels`.
-- PARTIAL: `xvfb-run -a ctest --test-dir build --output-on-failure -L
-  requires_video_device` passed 15/18. Failures recorded for follow-up:
-  `test_realtime_offline_compare_flat` remote editor connection closed,
-  `test_vulkan_frame_graph` expected legacy pass list count, and
-  `test_vulkan_resource_manager` did not observe initial DebugDraw Vulkan
-  buffers on llvmpipe.
-- PASS after D4 tightening: `cmake --build build --target
-  test_bindless_indirect_contract test_071_bridge_audit
-  test_vulkan_resource_manager test_vulkan_frame_graph &&
-  build/src/test/test_bindless_indirect_contract &&
-  build/src/test/test_071_bridge_audit` built and the D4 tests passed. The
-  two Vulkan tests still fail under xvfb as listed above.
+- PARTIAL: initial `xvfb-run -a ctest --test-dir build --output-on-failure -L
+  requires_video_device` passed 15/18. Follow-up fixes made
+  `test_vulkan_frame_graph` explicit about `SceneRenderSettings::shadows` and
+  made DebugDraw testing helpers resolve scene-table-owned geometry identities;
+  both tests then passed individually under xvfb.
+- PARTIAL after fixes: full requires-video-device gate passed 17/18. Remaining
+  failure is `test_realtime_offline_compare_flat`: `lxe_realtime_render`
+  reports `Remote end closed connection without response`. Manual gdb
+  reproduction shows SIGSEGV on llvmpipe/Vulkan during
+  `VulkanRealtimeRenderer::generateRealtimeProfileOutput()`, with the main
+  thread in `VulkanCommandBufferManager::endSingleTimeCommands()` and a
+  llvmpipe worker thread faulting.
+- PASS after D4 tightening and Vulkan test fixes: D4 contract tests,
+  `test_vulkan_frame_graph`, and `test_vulkan_resource_manager` pass under the
+  targeted commands recorded above.
 
 - [ ] **Step 7: Commit**
 
