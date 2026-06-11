@@ -100,7 +100,9 @@ struct SceneDocumentData final {
 }
 
 void emitRawYamlNode(YAML::Emitter &out, const std::string &yamlText) {
-  out << YAML::Load(yamlText);
+  const YAML::Node node = YAML::Load(yamlText);
+  validateOpaqueYamlExtension(node, "scene YAML extension block");
+  out << node;
 }
 
 [[nodiscard]] bool hasPrefix(std::string_view value,
@@ -1098,6 +1100,10 @@ void saveEditorCamera(YAML::Emitter &out, const EditorCameraState &state) {
     if (const auto offlineNode = materialNode["offline"]; offlineNode) {
       entry.materialOfflineYaml = dumpYamlNode(offlineNode);
     }
+  }
+  if (node["materials"]) {
+    throw std::runtime_error(
+        "scene document node uses deleted materials schema; use material.uri");
   }
   entry.proceduralMaterial = loadProceduralMaterialState(
       node["proceduralMaterial"], "nodes[].proceduralMaterial");

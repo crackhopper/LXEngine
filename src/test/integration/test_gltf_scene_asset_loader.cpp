@@ -90,16 +90,49 @@ void writeTextFile(const std::filesystem::path &path,
   out << text;
 }
 
-bool loadSceneThrowsFor(const std::string &yamlText) {
+bool loadSceneThrowsFor(const std::string &yamlText,
+                        const std::string &expectedDiagnostic) {
   const std::filesystem::path path =
       std::filesystem::temp_directory_path() /
       "lxe_deleted_material_profile_field.scene.yaml";
   writeTextFile(path, yamlText);
   try {
     (void)LX_infra::scene_io::loadSceneDocument(path);
-  } catch (const std::runtime_error &) {
+  } catch (const std::runtime_error &error) {
     std::filesystem::remove(path);
-    return true;
+    return std::string(error.what()).find(expectedDiagnostic) !=
+           std::string::npos;
+  }
+  std::filesystem::remove(path);
+  return false;
+}
+
+bool saveSceneThrowsForDeletedExtension(
+    const std::string &expectedDiagnostic) {
+  LX_infra::scene_io::SceneDocument document;
+  document.setSceneName("Programmatic Deleted Extension");
+
+  auto &root = document.mutableRootNode();
+  root.name.clear();
+  root.parentPath.clear();
+
+  LX_infra::scene_io::SceneNodeDocument child;
+  child.nodeName = "mesh_node";
+  child.name = "mesh_node";
+  child.meshUri = "assets/models/damaged_helmet/DamagedHelmet.gltf";
+  child.materialUri = "assets/materials/pbr.material";
+  child.materialOfflineYaml = "activeMaterialTag: old-offline\n";
+  root.children.push_back(child);
+
+  const std::filesystem::path path =
+      std::filesystem::temp_directory_path() /
+      "lxe_deleted_material_save_extension.scene.yaml";
+  try {
+    LX_infra::scene_io::saveSceneDocument(path, document);
+  } catch (const std::runtime_error &error) {
+    std::filesystem::remove(path);
+    return std::string(error.what()).find(expectedDiagnostic) !=
+           std::string::npos;
   }
   std::filesystem::remove(path);
   return false;
@@ -136,7 +169,8 @@ root:
     scale: [1.0, 1.0, 1.0]
   visibilityMask: 4294967295
 )yaml";
-  expect(loadSceneThrowsFor(outputProfileDeletedField),
+  expect(loadSceneThrowsFor(outputProfileDeletedField,
+                            "deleted material selector field"),
          "scene document should reject deleted output profile material field");
 
   const std::string activeProfileDeletedField = R"yaml(
@@ -169,7 +203,8 @@ root:
     scale: [1.0, 1.0, 1.0]
   visibilityMask: 4294967295
 )yaml";
-  expect(loadSceneThrowsFor(activeProfileDeletedField),
+  expect(loadSceneThrowsFor(activeProfileDeletedField,
+                            "deleted material selector field"),
          "scene document should reject deleted active profile material field");
 
   const std::string offlineDeletedField = R"yaml(
@@ -202,7 +237,8 @@ root:
     scale: [1.0, 1.0, 1.0]
   visibilityMask: 4294967295
 )yaml";
-  expect(loadSceneThrowsFor(offlineDeletedField),
+  expect(loadSceneThrowsFor(offlineDeletedField,
+                            "deleted material selector field"),
          "scene document should reject deleted offline material field");
 }
 
@@ -234,7 +270,8 @@ root:
         offline:
           materialTag: old-offline
 )yaml";
-  expect(loadSceneThrowsFor(materialOfflineDeletedField),
+  expect(loadSceneThrowsFor(materialOfflineDeletedField,
+                            "deleted material selector field"),
          "scene document should reject deleted opaque material field");
 
   const std::string activeMaterialOfflineDeletedField = R"yaml(
@@ -264,8 +301,46 @@ root:
         offline:
           activeMaterialTag: old-offline
 )yaml";
-  expect(loadSceneThrowsFor(activeMaterialOfflineDeletedField),
+  expect(loadSceneThrowsFor(activeMaterialOfflineDeletedField,
+                            "deleted material selector field"),
          "scene document should reject deleted active opaque material field");
+}
+
+void testSceneDocumentRejectsDeletedNodeMaterialsSchema() {
+  const std::string deletedMaterialsSchema = R"yaml(
+scene:
+  name: Deleted Node Materials Schema
+  gameplayCameraPath: /game_cam
+root:
+  nodeName: scene_root
+  name: ''
+  transform:
+    translation: [0.0, 0.0, 0.0]
+    rotation: [1.0, 0.0, 0.0, 0.0]
+    scale: [1.0, 1.0, 1.0]
+  visibilityMask: 4294967295
+  children:
+    - nodeName: mesh_node
+      name: mesh_node
+      transform:
+        translation: [0.0, 0.0, 0.0]
+        rotation: [1.0, 0.0, 0.0, 0.0]
+        scale: [1.0, 1.0, 1.0]
+      visibilityMask: 4294967295
+      mesh:
+        uri: assets/models/damaged_helmet/DamagedHelmet.gltf
+      materials:
+        - tag: old
+          uri: assets/materials/pbr.material
+)yaml";
+  expect(loadSceneThrowsFor(deletedMaterialsSchema,
+                            "deleted materials schema"),
+         "scene document should reject deleted node materials schema");
+}
+
+void testSceneDocumentRejectsDeletedProgrammaticExtensionOnSave() {
+  expect(saveSceneThrowsForDeletedExtension("deleted material selector field"),
+         "scene document save should reject deleted opaque extension fields");
 }
 
 } // namespace
@@ -274,6 +349,8 @@ int main() {
   testDamagedHelmetSharedAssetLoadsFullPbr();
   testSceneDocumentRejectsDeletedProfileMaterialField();
   testSceneDocumentRejectsDeletedOpaqueMaterialField();
+  testSceneDocumentRejectsDeletedNodeMaterialsSchema();
+  testSceneDocumentRejectsDeletedProgrammaticExtensionOnSave();
   std::cout << "test_gltf_scene_asset_loader passed\n";
   return 0;
 }
