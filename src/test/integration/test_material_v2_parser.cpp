@@ -474,6 +474,7 @@ targets: [hdr.color]
   bool mentionsShaderKey = false;
   bool mentionsVariantsKey = false;
   bool mentionsRenderPathsKey = false;
+  bool mentionsRemovedDefaultFlowKey = false;
   bool mentionsSourcesKey = false;
   bool mentionsTargetsKey = false;
   for (const std::string &diagnostic : parsed.diagnostics) {
@@ -487,6 +488,9 @@ targets: [hdr.color]
     mentionsRenderPathsKey =
         mentionsRenderPathsKey ||
         diagnostic.find("renderPaths") != std::string::npos;
+    mentionsRemovedDefaultFlowKey =
+        mentionsRemovedDefaultFlowKey ||
+        diagnostic.find("removedDefaultFlow") != std::string::npos;
     mentionsSourcesKey =
         mentionsSourcesKey || diagnostic.find("sources") != std::string::npos;
     mentionsTargetsKey =
@@ -500,6 +504,9 @@ targets: [hdr.color]
          "render-flow diagnostic should identify the rejected variants key");
   expect(mentionsRenderPathsKey,
          "render-flow diagnostic should identify the rejected renderPaths key");
+  expect(mentionsRemovedDefaultFlowKey,
+         "render-flow diagnostic should identify the rejected "
+         "removedDefaultFlow key");
   expect(mentionsSourcesKey,
          "render-flow diagnostic should identify the rejected sources key");
   expect(mentionsTargetsKey,
