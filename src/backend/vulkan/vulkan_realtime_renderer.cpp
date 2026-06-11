@@ -1743,12 +1743,7 @@ public:
                          extent, renderPass.getClearValues());
     cmd->setViewport(extent.width, extent.height);
     cmd->setScissor(extent.width, extent.height);
-    for (auto &item : queue.getItems()) {
-      auto pipeline = resourceManager().getOrCreatePipeline(item);
-      cmd->bindPipeline(pipeline);
-      cmd->bindResources(resourceManager(), pipeline, item);
-      cmd->executeWorkItem(item);
-    }
+    submitBindlessQueue(queue, Pass_Forward, *cmd);
     cmd->endRenderPass();
 
     transitionFrameGraphAttachment(
@@ -1965,12 +1960,7 @@ public:
                          extent, clearValues);
     cmd->setViewport(extent.width, extent.height);
     cmd->setScissor(extent.width, extent.height);
-    for (auto &item : queue.getItems()) {
-      auto pipeline = resourceManager().getOrCreatePipeline(item);
-      cmd->bindPipeline(pipeline);
-      cmd->bindResources(resourceManager(), pipeline, item);
-      cmd->executeWorkItem(item);
-    }
+    submitBindlessQueue(queue, Pass_Forward, *cmd);
     cmd->endRenderPass();
 
     transitionFrameGraphAttachment(
@@ -2100,13 +2090,17 @@ private:
     }
 
     auto &pass = m_frameGraph.getPasses()[sourcePassIndex];
-    auto &queue = pass.queue;
+    submitBindlessQueue(pass.queue, pass.name, cmd);
+  }
+
+  void submitBindlessQueue(LX_core::RenderWorkQueue &queue,
+                           LX_core::StringID passName,
+                           VulkanCommandBuffer &cmd) {
     auto &items = queue.getItems();
     const bool strictBindlessValidation = strictBindlessValidationEnabled();
-    const bool migratedValidationPass =
-        isMigratedBindlessValidationPass(pass.name);
+    const bool migratedValidationPass = isMigratedBindlessValidationPass(passName);
     const auto decision = LX_core::decideBindlessSubmission(
-        queue, pass.name, strictBindlessValidation, migratedValidationPass);
+        queue, passName, strictBindlessValidation, migratedValidationPass);
     if (decision.kind == LX_core::BindlessSubmissionDecisionKind::
                              StrictValidationRejected) {
       std::string reason = "unknown";
@@ -2123,7 +2117,7 @@ private:
       }
       throw std::runtime_error("bindless validation rejected pass " +
                                LX_core::GlobalStringTable::get().toDebugString(
-                                   pass.name) +
+                                   passName) +
                                ": " + reason);
     }
 
@@ -2150,7 +2144,7 @@ private:
 
     throw std::runtime_error(
         "render pass reached unsupported non-batch submission path: " +
-        LX_core::GlobalStringTable::get().toDebugString(pass.name));
+        LX_core::GlobalStringTable::get().toDebugString(passName));
   }
 
   void addFullscreenMaterialItem(LX_core::StringID pass,
