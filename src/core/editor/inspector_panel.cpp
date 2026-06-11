@@ -289,17 +289,6 @@ InspectorPanel::Snapshot InspectorPanel::makeSnapshot() const {
   }
   snapshot.hasMaterialSection = (snapshot.hasMesh && snapshot.hasMaterial) ||
                                 !snapshot.materialUri.empty();
-  if (m_materialCallbacks.nodeBaseColor) {
-    if (const auto color = m_materialCallbacks.nodeBaseColor(snapshot.path);
-        color.has_value()) {
-      snapshot.hasNodeBaseColorOverride = true;
-      snapshot.nodeBaseColorOverride = *color;
-    }
-  }
-  if (m_materialCallbacks.canEditBaseColor) {
-    snapshot.canEditBaseColor =
-        m_materialCallbacks.canEditBaseColor(snapshot.path);
-  }
   if (m_materialCallbacks.proceduralMaterialEnabled) {
     if (const auto enabled =
             m_materialCallbacks.proceduralMaterialEnabled(snapshot.path);
@@ -386,8 +375,10 @@ CommandResult InspectorPanel::dispatchSetToken(std::string_view path,
 CommandResult
 InspectorPanel::dispatchApplyMaterialOverride(std::string_view path,
                                               std::string_view field) {
-  return m_commandBus.dispatch("apply_material_override " + quoteToken(path) +
-                               " " + quoteToken(field));
+  (void)path;
+  (void)field;
+  return CommandResult{false, "legacy material override command is removed",
+                       {}};
 }
 
 CommandResult InspectorPanel::dispatchSetRealtimeRenderMode(
@@ -400,24 +391,8 @@ CommandResult InspectorPanel::dispatchSetRealtimeRenderMode(
 
 std::vector<std::string> InspectorPanel::discoverExperimentMaterialCandidates(
     const std::filesystem::path &materialsDir) {
-  std::vector<std::string> out;
-  std::error_code error;
-  if (!std::filesystem::exists(materialsDir, error)) {
-    return out;
-  }
-  for (const auto &entry :
-       std::filesystem::directory_iterator(materialsDir, error)) {
-    if (error || !entry.is_regular_file()) {
-      continue;
-    }
-    const auto path = entry.path();
-    const std::string filename = path.filename().string();
-    if (path.extension() == ".material" && filename.rfind("rtr_", 0) == 0) {
-      out.push_back(path.generic_string());
-    }
-  }
-  std::sort(out.begin(), out.end());
-  return out;
+  (void)materialsDir;
+  return {};
 }
 
 CommandResult InspectorPanel::dispatchMove(std::string_view path,
@@ -515,7 +490,6 @@ void InspectorPanel::syncDraftFromSnapshot(const Snapshot &snapshot) {
   copyToBuffer(formatMask(snapshot.cameraCullingMask),
                m_cameraCullingMaskBuffer);
   copyToBuffer(snapshot.materialUri, m_materialUriBuffer);
-  m_nodeBaseColorDraft = snapshot.nodeBaseColorOverride;
   m_materialPresetDraft = -1;
   for (usize i = 0; i < snapshot.materialPresets.size(); ++i) {
     if (snapshot.materialPresets[i] == snapshot.materialUri) {
@@ -685,34 +659,7 @@ void InspectorPanel::drawSelection(const Snapshot &snapshot) {
       }
     }
 
-    if (snapshot.canEditBaseColor) {
-      const bool baseColorChanged =
-          ImGui::ColorEdit3("Base Color Override", m_nodeBaseColorDraft.data);
-      if (baseColorChanged) {
-        (void)dispatchSetVec3(snapshot.path, "nodeMaterial.baseColor",
-                              m_nodeBaseColorDraft);
-      }
-      if (ImGui::IsItemDeactivatedAfterEdit()) {
-        refreshDrafts();
-      }
-      ImGui::TextUnformatted(
-          "Apply Override To Material updates this scene document only.");
-      if (ImGui::Button("Apply Override To Material")) {
-        const CommandResult result =
-            dispatchApplyMaterialOverride(snapshot.path, "baseColor");
-        if (result.ok) {
-          refreshDrafts();
-        }
-      }
-    } else {
-      ImGui::TextUnformatted("Material does not expose MaterialUBO.baseColor.");
-    }
-
     for (const auto &parameter : snapshot.materialParameters) {
-      if (parameter.binding == "MaterialUBO" &&
-          parameter.member == "baseColor") {
-        continue;
-      }
       const std::string label = parameter.binding + "." + parameter.member;
       MaterialParameterValue value = parameter.value;
       bool changed = false;

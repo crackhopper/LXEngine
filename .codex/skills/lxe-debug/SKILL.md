@@ -95,7 +95,7 @@ deselect
 cam control orbit
 cam look-at 6.0 4.0 8.0 0.0 1.0 0.0
 scene load assets/scenes/lxe_editor.scene.yaml
-scene load assets/scenes/shadow_tutorial.scene.yaml
+scene load assets/scenes/realtime_offline_compare_helmet_pbr.scene.yaml
 ```
 
 With preview off and no selected camera node, `cam look-at` changes

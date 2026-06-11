@@ -2,47 +2,8 @@ schema: lxe.material.v2
 bsdf:
   type: uber
   parameters:
-    Kd:
-      kind: rgb
-      value: [1.0, 1.0, 1.0]
-    Ks:
-      kind: rgb
-      value: [0.04, 0.04, 0.04]
-
-shader: pbr
-
-variants:
-  HAS_METALLIC_ROUGHNESS: true
-  HAS_NORMAL_MAP: true
-  HAS_AO_MAP: true
-  HAS_EMISSIVE_MAP: true
-
-variantRules:
-  - requires: [HAS_NORMAL_MAP]
-    depends: [HAS_METALLIC_ROUGHNESS]
-
-defaultTechnique: Forward
-techniques:
-  Forward:
-    passes:
-      Forward:
-        renderState:
-          cullMode: Back
-          depthTest: true
-          depthWrite: true
-      OfflineRayTrace:
-        shader: offline_pbr_direct_ray
-        stage: compute
-
-parameters:
-  MaterialUBO.baseColorFactor: [1.0, 1.0, 1.0, 1.0]
-  MaterialUBO.metallicFactor: 1.0
-  MaterialUBO.roughnessFactor: 1.0
-  MaterialUBO.ao: 1.0
-
-resources:
-  albedoMap: white
-  normalMap: normal
-  metallicRoughnessMap: white
-  aoMap: white
-  emissiveMap: black
+    Kd: { kind: rgb, value: [1.0, 1.0, 1.0] }
+    Ks: { kind: rgb, value: [0.04, 0.04, 0.04] }
+    eta: { kind: float, value: 1.5 }
+    uroughness: { kind: float, value: 0.5 }
+    vroughness: { kind: float, value: 0.5 }

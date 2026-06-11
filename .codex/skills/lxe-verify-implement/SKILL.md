@@ -74,10 +74,10 @@ alignment before trusting the build.
 scene load assets/scenes/lxe_editor.scene.yaml
 ```
 
-For shadow/CSM verification, prefer:
+For retained Helmet scene verification, prefer:
 
 ```text
-scene load assets/scenes/shadow_tutorial.scene.yaml
+scene load assets/scenes/realtime_offline_compare_helmet_pbr.scene.yaml
 ```
 
 When the user says “上一个场景” or “previous scene”, first check summary for the
@@ -130,10 +130,10 @@ tell the user what to inspect visually in the editor window.
 End remote visual verification with a concrete prompt, for example:
 
 ```text
-请在 editor 里看 shadow_tutorial 场景：
-- 地面 receiver 上应该有 caster 的阴影。
-- 调整 directional light 的 Shadow Strength，阴影深浅应变化。
-- 调整 Shadow Cascades 为 1 和 4，远处阴影稳定性应有差异。
+请在 editor 里看 realtime_offline_compare_helmet_pbr 场景：
+- Damaged Helmet 应加载出来。
+- 材质应走 lxe.material.v2 PBRT envelope。
+- 默认 runtime 不应加载旧 Blinn-Phong/debug/RTR 材质。
 ```
 
 Report:
