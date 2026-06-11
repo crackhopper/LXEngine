@@ -199,6 +199,7 @@ resolveMaterialPath(const OfflineAssetResolver &resolver,
     const OfflineAssetResolver &resolver, const std::optional<std::string> &uri,
     const MaterialOverrideState &materialOverrides,
     const MaterialOverrideState &nodeOverrides,
+    SceneResourceTable &resourceTable,
     std::unordered_map<std::string, MaterialInstanceSharedPtr> &materialCache) {
   const auto materialPath = resolveMaterialPath(resolver, uri);
   const std::string cacheKey = materialPath.lexically_normal().string();
@@ -215,14 +216,14 @@ resolveMaterialPath(const OfflineAssetResolver &resolver,
             return std::filesystem::path(assetUri);
           },
       .loadGenericMaterial =
-          [&materialCache](const std::filesystem::path &path) {
+          [&materialCache, &resourceTable](const std::filesystem::path &path) {
             const std::string key = path.lexically_normal().string();
             MaterialInstanceSharedPtr prototype;
             if (const auto it = materialCache.find(key);
                 it != materialCache.end()) {
               prototype = it->second;
             } else {
-              prototype = LX_infra::loadGenericMaterial(path);
+              prototype = LX_infra::loadGenericMaterial(path, resourceTable);
               materialCache.emplace(key, prototype);
             }
             return prototype->cloneInstanceData();
@@ -348,6 +349,7 @@ findMaterialBindingByTag(const SceneNodeDocument &node,
 [[nodiscard]] MaterialInstanceSharedPtr loadTaggedMaterialInstance(
     const OfflineAssetResolver &resolver, const SceneNodeDocument &node,
     const MaterialBindingDocument &binding,
+    SceneResourceTable &resourceTable,
     std::unordered_map<std::string, MaterialInstanceSharedPtr> &materialCache) {
   if (binding.source != "gltf") {
     return loadMaterialInstance(
@@ -355,6 +357,7 @@ findMaterialBindingByTag(const SceneNodeDocument &node,
         binding.uri.empty() ? std::nullopt
                             : std::optional<std::string>{binding.uri},
         binding.materialOverrides, binding.nodeMaterialOverrides,
+        resourceTable,
         materialCache);
   }
   return LX_infra::scene_asset::loadSceneMaterialBinding({
@@ -367,8 +370,8 @@ findMaterialBindingByTag(const SceneNodeDocument &node,
             return resolver.resolve(assetUri);
           },
       .loadGenericMaterial =
-          [](const std::filesystem::path &path) {
-            return LX_infra::loadGenericMaterial(path);
+          [&resourceTable](const std::filesystem::path &path) {
+            return LX_infra::loadGenericMaterial(path, resourceTable);
           },
   });
 }
@@ -429,11 +432,13 @@ void visitNode(const OfflineAssetResolver &resolver,
       MaterialInstanceSharedPtr material;
       if (taggedBinding != nullptr) {
         material = loadTaggedMaterialInstance(resolver, node, *taggedBinding,
+                                              state.loaded.table,
                                               state.materialCache);
       } else {
         material = loadMaterialInstance(
             resolver, node.materialUri, node.materialOverrides,
-            node.nodeMaterialOverrides, state.materialCache);
+            node.nodeMaterialOverrides, state.loaded.table,
+            state.materialCache);
       }
       if (!state.loaded.offlineShader && material &&
           material->isPassEnabled(LX_core::Pass_OfflineRayTrace)) {

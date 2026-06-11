@@ -6,6 +6,10 @@
 #include <optional>
 #include <string>
 
+namespace LX_core {
+class SceneResourceTable;
+}
+
 namespace LX_infra {
 
 struct GenericMaterialLoadOptions final {
@@ -20,6 +24,11 @@ struct GenericMaterialLoadOptions final {
 /// default parameters/resources, and per-pass shader/render-state structure.
 LX_core::MaterialInstanceSharedPtr
 loadGenericMaterial(const std::filesystem::path &materialPath,
+                    const GenericMaterialLoadOptions &options = {});
+
+LX_core::MaterialInstanceSharedPtr
+loadGenericMaterial(const std::filesystem::path &materialPath,
+                    LX_core::SceneResourceTable &resourceTable,
                     const GenericMaterialLoadOptions &options = {});
 
 } // namespace LX_infra

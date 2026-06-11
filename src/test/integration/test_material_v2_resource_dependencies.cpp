@@ -1,5 +1,6 @@
 #include "core/asset/material_instance.hpp"
 #include "core/scene/scene_resource_table.hpp"
+#include "infra/material_loader/generic_material_loader.hpp"
 #include "infra/material_loader/material_resource_parser.hpp"
 
 #include <filesystem>
@@ -257,6 +258,66 @@ bsdf:
          "diagnostic should include parser name");
 }
 
+void testGenericMaterialLoaderWritesDependenciesIntoCallerTable() {
+  const fs::path root = makeTempRoot();
+  const fs::path materialPath = root / "materials" / "loader_v2.material";
+  writeFile(materialPath, R"(
+schema: lxe.material.v2
+bsdf:
+  type: matte
+  parameters:
+    Kd: { kind: texture, valueType: rgb, uri: ../textures/shared.png }
+    normalmap: { kind: texture, valueType: rgb, uri: ../textures/shared.png }
+    sigma: { kind: float, value: 0.0 }
+)");
+
+  SceneResourceTable table;
+  auto material = LX_infra::loadGenericMaterial(materialPath, table);
+  EXPECT(material != nullptr,
+         "generic material loader should load v2 envelope material");
+  if (!material) {
+    return;
+  }
+
+  const auto &deps = material->getMaterialDependencies();
+  EXPECT(deps.size() == 2,
+         "loaded material should retain texture dependency handles");
+  EXPECT(deps.size() == 2 && deps[0].resourceHandle.isValid() &&
+             deps[0].resourceHandle == deps[1].resourceHandle,
+         "same canonical texture URI should deduplicate dependency handles in "
+         "the caller table");
+
+  const auto graph = table.exportResourceGraph();
+  u32 textureCount = 0;
+  bool graphOwnsDependencyHandle = false;
+  bool materialHasDependencyEdge = false;
+  for (u32 i = 0; i < graph.resources.size(); ++i) {
+    const ResourceMetadata &metadata = graph.resources[i];
+    if (metadata.type == SceneResourceType::Texture &&
+        metadata.uri.string().find("textures/shared.png") !=
+            std::string::npos) {
+      ++textureCount;
+      graphOwnsDependencyHandle = deps.size() == 2 &&
+                                  graph.handles[i] == deps[0].resourceHandle;
+    }
+    if (metadata.type == SceneResourceType::Material &&
+        metadata.uri.string().find("loader_v2.material") !=
+            std::string::npos) {
+      materialHasDependencyEdge =
+          metadata.dependencyHandles.size() == 1 && deps.size() == 2 &&
+          metadata.dependencyHandles.front() == deps[0].resourceHandle;
+    }
+  }
+
+  EXPECT(textureCount == 1,
+         "caller table should contain one deduplicated texture resource");
+  EXPECT(graphOwnsDependencyHandle,
+         "material dependency handle should belong to caller table graph");
+  EXPECT(materialHasDependencyEdge,
+         "caller table material metadata should point at deduplicated texture "
+         "handle");
+}
+
 } // namespace
 
 int main() {
@@ -265,6 +326,7 @@ int main() {
   testMixMaterialRefRejectsTargetMixHeader();
   testMixMaterialRefRejectsNamedStringReference();
   testMaterialRefDiagnosticsIncludeParserAndResourceContext();
+  testGenericMaterialLoaderWritesDependenciesIntoCallerTable();
   if (g_failures != 0) {
     std::cerr << g_failures << " material v2 dependency checks failed\n";
     return 1;

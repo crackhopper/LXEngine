@@ -83,7 +83,7 @@ descriptor 类型支持范围、以及运行时实例需要面对的 binding 集
         continue;
       auto &bindingIds = m_materialBindingIdsByPass[pass];
       for (const auto &binding : shader->getReflectionBindings()) {
-        if (isSystemOwnedBinding(binding.name))
+        if (!isMaterialOwnedBinding(binding.name))
           continue;
 
         validateSupportedMaterialBindingType(binding, pass);

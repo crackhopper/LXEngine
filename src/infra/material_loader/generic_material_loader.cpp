@@ -42,8 +42,8 @@ namespace {
 
 ParsedMaterialResource
 parseMaterialV2Contract(const YAML::Node &root,
-                        const LX_core::ResourceUri &uri) {
-  LX_core::SceneResourceTable table;
+                        const LX_core::ResourceUri &uri,
+                        LX_core::SceneResourceTable &table) {
   MaterialResourceParser parser;
   return parser.parse(table, uri, YAML::Dump(root));
 }
@@ -62,20 +62,22 @@ void validateParsedMaterialV2Envelope(const ParsedMaterialResource &parsed,
 
 LX_core::MaterialInstanceSharedPtr
 loadMaterialV2EnvelopeContract(const YAML::Node &root,
-                               const LX_core::ResourceUri &uri) {
-  ParsedMaterialResource parsed = parseMaterialV2Contract(root, uri);
+                               const LX_core::ResourceUri &uri,
+                               LX_core::SceneResourceTable &table) {
+  ParsedMaterialResource parsed = parseMaterialV2Contract(root, uri, table);
   validateParsedMaterialV2Envelope(parsed, uri);
   return parsed.instance->cloneInstanceData();
 }
 
 void applyMaterialV2Envelope(LX_core::MaterialInstance &material,
                              const YAML::Node &root,
-                             const LX_core::ResourceUri &uri) {
+                             const LX_core::ResourceUri &uri,
+                             LX_core::SceneResourceTable &table) {
   if (!isMaterialV2Contract(root)) {
     return;
   }
 
-  ParsedMaterialResource parsed = parseMaterialV2Contract(root, uri);
+  ParsedMaterialResource parsed = parseMaterialV2Contract(root, uri, table);
   validateParsedMaterialV2Envelope(parsed, uri);
 
   const LX_core::MaterialInstance &v2Material = *parsed.instance;
@@ -624,6 +626,14 @@ compilePassShader(const LX_core::StringID &passId,
 LX_core::MaterialInstanceSharedPtr
 loadGenericMaterial(const fs::path &materialPath,
                     const GenericMaterialLoadOptions &options) {
+  LX_core::SceneResourceTable table;
+  return loadGenericMaterial(materialPath, table, options);
+}
+
+LX_core::MaterialInstanceSharedPtr
+loadGenericMaterial(const fs::path &materialPath,
+                    LX_core::SceneResourceTable &resourceTable,
+                    const GenericMaterialLoadOptions &options) {
   const fs::path resolvedMaterialPath = materialPath.is_absolute()
                                             ? materialPath
                                             : resolveRuntimePath(materialPath);
@@ -647,7 +657,7 @@ loadGenericMaterial(const fs::path &materialPath,
   const LX_core::ResourceUri materialUri(
       fs::relative(resolvedMaterialPath).string());
   if (isMaterialV2Contract(root)) {
-    return loadMaterialV2EnvelopeContract(root, materialUri);
+    return loadMaterialV2EnvelopeContract(root, materialUri, resourceTable);
   }
 
   std::string legacyRootShaderName;
@@ -877,7 +887,7 @@ loadGenericMaterial(const fs::path &materialPath,
                         LX_core::StringID("color"), cp.meshOverlay.color);
     }
   }
-  applyMaterialV2Envelope(*mat, root, materialUri);
+  applyMaterialV2Envelope(*mat, root, materialUri, resourceTable);
   mat->syncGpuData();
   return mat;
 }
