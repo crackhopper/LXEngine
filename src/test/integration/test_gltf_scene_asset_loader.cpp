@@ -173,11 +173,44 @@ root:
          "scene document should reject deleted offline material field");
 }
 
+void testSceneDocumentRejectsDeletedOpaqueMaterialField() {
+  const std::string materialOfflineDeletedField = R"yaml(
+scene:
+  name: Deleted Opaque Material Field
+  gameplayCameraPath: /game_cam
+root:
+  nodeName: scene_root
+  name: ''
+  transform:
+    translation: [0.0, 0.0, 0.0]
+    rotation: [1.0, 0.0, 0.0, 0.0]
+    scale: [1.0, 1.0, 1.0]
+  visibilityMask: 4294967295
+  children:
+    - nodeName: mesh_node
+      name: mesh_node
+      transform:
+        translation: [0.0, 0.0, 0.0]
+        rotation: [1.0, 0.0, 0.0, 0.0]
+        scale: [1.0, 1.0, 1.0]
+      visibilityMask: 4294967295
+      mesh:
+        uri: assets/models/damaged_helmet/DamagedHelmet.gltf
+      material:
+        uri: assets/materials/pbr.material
+        offline:
+          materialTag: old-offline
+)yaml";
+  expect(loadSceneThrowsFor(materialOfflineDeletedField),
+         "scene document should reject deleted opaque material field");
+}
+
 } // namespace
 
 int main() {
   testDamagedHelmetSharedAssetLoadsFullPbr();
   testSceneDocumentRejectsDeletedProfileMaterialField();
+  testSceneDocumentRejectsDeletedOpaqueMaterialField();
   std::cout << "test_gltf_scene_asset_loader passed\n";
   return 0;
 }

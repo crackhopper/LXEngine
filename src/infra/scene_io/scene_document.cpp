@@ -27,6 +27,29 @@ constexpr float kPi = 3.14159265358979323846f;
          key.substr(prefix.size()) == suffix;
 }
 
+void validateOpaqueYamlExtension(const YAML::Node &node,
+                                 std::string_view context) {
+  if (!node) {
+    return;
+  }
+  if (node.IsMap()) {
+    for (auto it = node.begin(); it != node.end(); ++it) {
+      const std::string key = it->first.as<std::string>();
+      if (isDeletedMaterialSelectorField(key)) {
+        throw std::runtime_error(std::string(context) +
+                                 " contains a deleted material selector field");
+      }
+      validateOpaqueYamlExtension(it->second, context);
+    }
+    return;
+  }
+  if (node.IsSequence()) {
+    for (const auto &item : node) {
+      validateOpaqueYamlExtension(item, context);
+    }
+  }
+}
+
 [[nodiscard]] SceneNodeDocument makeDefaultRootNode() {
   SceneNodeDocument rootNode;
   rootNode.nodeName = kDefaultRootNodeName;
@@ -47,6 +70,7 @@ struct SceneDocumentData final {
 };
 
 [[nodiscard]] std::string dumpYamlNode(const YAML::Node &node) {
+  validateOpaqueYamlExtension(node, "scene YAML extension block");
   YAML::Emitter out;
   out << node;
   return out.c_str();

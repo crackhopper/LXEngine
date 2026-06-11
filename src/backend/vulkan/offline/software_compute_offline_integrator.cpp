@@ -45,7 +45,8 @@ struct SoftwareComputeOfflineIntegrator::Impl final {
     const IShaderSharedPtr offlineShader = job.offlineShader;
     if (!offlineShader) {
       throw std::runtime_error(
-          "offline render requires a material tag with OfflineRayTrace pass");
+          "offline render requires a material with OfflineRayTrace pass "
+          "support");
     }
     FrameGraph renderGraph =
         LX_core::offline::createOfflineRenderFrameGraph(job.output);
