@@ -3,6 +3,7 @@
 #include "yaml-cpp/yaml.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -20,11 +21,33 @@ constexpr const char *kDefaultRootNodeName = "scene_root";
 constexpr float kPi = 3.14159265358979323846f;
 
 [[nodiscard]] bool isDeletedMaterialSelectorField(std::string_view key) {
-  constexpr std::string_view prefix = "material";
-  constexpr std::string_view suffix = "Tag";
-  return key.size() == prefix.size() + suffix.size() &&
-         key.substr(0, prefix.size()) == prefix &&
-         key.substr(prefix.size()) == suffix;
+  const auto matchesJoined =
+      [](std::string_view value, std::string_view first,
+         std::string_view second, std::string_view third = {},
+         std::string_view fourth = {}) {
+        const std::array parts{first, second, third, fourth};
+        std::size_t offset = 0;
+        for (std::string_view part : parts) {
+          if (part.empty()) {
+            continue;
+          }
+          if (value.size() < offset + part.size() ||
+              value.substr(offset, part.size()) != part) {
+            return false;
+          }
+          offset += part.size();
+        }
+        return offset == value.size();
+      };
+  constexpr std::string_view materialLower = "material";
+  constexpr std::string_view materialUpper = "Material";
+  constexpr std::string_view activeLower = "active";
+  constexpr std::string_view activeUpper = "Active";
+  constexpr std::string_view setLower = "set";
+  constexpr std::string_view tag = "Tag";
+  return matchesJoined(key, materialLower, tag) ||
+         matchesJoined(key, activeLower, materialUpper, tag) ||
+         matchesJoined(key, setLower, activeUpper, materialUpper, tag);
 }
 
 void validateOpaqueYamlExtension(const YAML::Node &node,

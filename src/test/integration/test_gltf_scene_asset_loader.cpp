@@ -139,6 +139,39 @@ root:
   expect(loadSceneThrowsFor(outputProfileDeletedField),
          "scene document should reject deleted output profile material field");
 
+  const std::string activeProfileDeletedField = R"yaml(
+scene:
+  name: Deleted Active Profile Field
+  gameplayCameraPath: /game_cam
+  defaultOutputProfile: preview
+  outputProfiles:
+    preview:
+      camera: /game_cam
+      width: 16
+      height: 16
+      activeMaterialTag: old-profile
+      outputFormat: exr-png
+      outDir: artifacts
+      backgroundColor: [0.0, 0.0, 0.0]
+  offlineRender:
+    integrator: software-compute
+    samples: 1
+    maxBounce: 1
+    seed: 1
+    profile: preview
+    compareMode: shaded
+root:
+  nodeName: scene_root
+  name: ''
+  transform:
+    translation: [0.0, 0.0, 0.0]
+    rotation: [1.0, 0.0, 0.0, 0.0]
+    scale: [1.0, 1.0, 1.0]
+  visibilityMask: 4294967295
+)yaml";
+  expect(loadSceneThrowsFor(activeProfileDeletedField),
+         "scene document should reject deleted active profile material field");
+
   const std::string offlineDeletedField = R"yaml(
 scene:
   name: Deleted Offline Material Field
@@ -203,6 +236,36 @@ root:
 )yaml";
   expect(loadSceneThrowsFor(materialOfflineDeletedField),
          "scene document should reject deleted opaque material field");
+
+  const std::string activeMaterialOfflineDeletedField = R"yaml(
+scene:
+  name: Deleted Opaque Active Material Field
+  gameplayCameraPath: /game_cam
+root:
+  nodeName: scene_root
+  name: ''
+  transform:
+    translation: [0.0, 0.0, 0.0]
+    rotation: [1.0, 0.0, 0.0, 0.0]
+    scale: [1.0, 1.0, 1.0]
+  visibilityMask: 4294967295
+  children:
+    - nodeName: mesh_node
+      name: mesh_node
+      transform:
+        translation: [0.0, 0.0, 0.0]
+        rotation: [1.0, 0.0, 0.0, 0.0]
+        scale: [1.0, 1.0, 1.0]
+      visibilityMask: 4294967295
+      mesh:
+        uri: assets/models/damaged_helmet/DamagedHelmet.gltf
+      material:
+        uri: assets/materials/pbr.material
+        offline:
+          activeMaterialTag: old-offline
+)yaml";
+  expect(loadSceneThrowsFor(activeMaterialOfflineDeletedField),
+         "scene document should reject deleted active opaque material field");
 }
 
 } // namespace
