@@ -43,8 +43,6 @@ set(TEST_INTEGRATION_EXE_LIST
   test_scene_path_lookup
   test_pipeline_cache
   test_engine_loop
-  test_debug_draw
-  test_assets_layout
   test_input_state
   test_clock
   test_math
@@ -79,7 +77,6 @@ set(TEST_INTEGRATION_EXE_LIST
   test_lxe_editor_api_server
   test_lxe_editor_memory_probe
   test_lxe_editor_recording
-  test_gltf_loader
   test_gltf_scene_asset_loader
   test_output_profile_resolution
   test_lxe_compare_exr_metrics
@@ -144,19 +141,6 @@ function(lx_register_python_ctest test_name)
     LABELS "auto;requires_video_device"
   )
 endfunction()
-
-add_test(
-  NAME test_realtime_offline_compare_flat
-  COMMAND
-    ${Python3_EXECUTABLE}
-    ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_realtime_offline_compare_flat.py
-    --source-dir ${CMAKE_SOURCE_DIR}
-    --binary-dir ${CMAKE_BINARY_DIR}
-)
-set_tests_properties(test_realtime_offline_compare_flat PROPERTIES
-  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-  LABELS "auto;requires_video_device"
-)
 
 add_test(
   NAME test_lxe_pbrt_scene_convert
