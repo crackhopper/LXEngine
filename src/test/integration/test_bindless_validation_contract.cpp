@@ -91,6 +91,12 @@ void testStrictContractRejectsDrawDataFallback() {
   EXPECT(!result.ok, "strict bindless contract should reject drawData fallback");
   EXPECT(!result.diagnostics.empty(),
          "strict bindless contract should explain the rejection");
+  EXPECT(result.diagnostics.front().objectSignature ==
+             StringID("bindless.validation.mesh"),
+         "diagnostic should preserve object identity");
+  EXPECT(result.diagnostics.front().materialSignature ==
+             StringID("bindless.validation.material"),
+         "diagnostic should preserve material identity");
   EXPECT(result.diagnostics.front().reason.find("drawData") != std::string::npos,
          "diagnostic should name drawData as the fallback cause");
 }

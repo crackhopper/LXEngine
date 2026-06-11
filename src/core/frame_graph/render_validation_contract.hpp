@@ -11,6 +11,8 @@ struct BindlessValidationDiagnostic final {
   usize itemIndex = 0;
   StringID pass;
   StringID debugId;
+  StringID objectSignature;
+  StringID materialSignature;
   std::string reason;
 };
 

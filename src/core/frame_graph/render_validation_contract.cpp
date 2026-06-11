@@ -53,6 +53,8 @@ validateBindlessMigratedQueue(const RenderWorkQueue &queue, StringID pass) {
     diagnostic.itemIndex = i;
     diagnostic.pass = pass;
     diagnostic.debugId = item.debugId;
+    diagnostic.objectSignature = item.objectSignature;
+    diagnostic.materialSignature = item.materialSignature;
     diagnostic.reason = reasonForUncoveredItem(item);
     result.diagnostics.push_back(std::move(diagnostic));
   }
