@@ -72,7 +72,7 @@ struct Fixture {
   MaterialInstanceSharedPtr material;
 
   static Fixture
-  make(const std::string &shaderName = "blinnphong_0",
+  make(const std::string &shaderName = "pbr",
        const std::vector<ShaderVariant> &variants = {},
        const RenderState &state = {},
        PrimitiveTopology topo = PrimitiveTopology::TriangleList) {
@@ -125,18 +125,18 @@ void testEqualConfigsProduceSameKey() {
 }
 
 void testVariantChangeProducesDifferentKey() {
-  auto f1 = Fixture::make("blinnphong_0", {});
+  auto f1 = Fixture::make("pbr", {});
   auto f2 =
-      Fixture::make("blinnphong_0", {ShaderVariant{"HAS_NORMAL_MAP", true}});
+      Fixture::make("pbr", {ShaderVariant{"HAS_NORMAL_MAP", true}});
   PipelineKey k1 = buildKey(f1, Pass_Forward);
   PipelineKey k2 = buildKey(f2, Pass_Forward);
   EXPECT(k1 != k2, "enabling a variant must change the pipeline key");
 }
 
 void testTopologyChangeProducesDifferentKey() {
-  auto f1 = Fixture::make("blinnphong_0", {}, RenderState{},
+  auto f1 = Fixture::make("pbr", {}, RenderState{},
                           PrimitiveTopology::TriangleList);
-  auto f2 = Fixture::make("blinnphong_0", {}, RenderState{},
+  auto f2 = Fixture::make("pbr", {}, RenderState{},
                           PrimitiveTopology::LineList);
   PipelineKey k1 = buildKey(f1, Pass_Forward);
   PipelineKey k2 = buildKey(f2, Pass_Forward);
@@ -158,7 +158,7 @@ void testDifferentPassProducesDifferentKey() {
   auto f = Fixture::make();
 
   ShaderProgramSet ps;
-  ps.shaderName = "blinnphong_0";
+  ps.shaderName = "pbr";
 
   RenderState shadowState;
   shadowState.cullMode = CullMode::Front; // flip to make signature differ
@@ -182,7 +182,7 @@ void testDifferentPassProducesDifferentKey() {
 
 void testToDebugStringSmoke() {
   auto f =
-      Fixture::make("blinnphong_0", {ShaderVariant{"HAS_NORMAL_MAP", true}});
+      Fixture::make("pbr", {ShaderVariant{"HAS_NORMAL_MAP", true}});
   PipelineKey k = buildKey(f, Pass_Forward);
   std::string s = GlobalStringTable::get().toDebugString(k.id);
   EXPECT(s.rfind("PipelineKey(", 0) == 0,

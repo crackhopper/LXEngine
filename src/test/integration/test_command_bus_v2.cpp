@@ -42,8 +42,12 @@ struct Fixture {
   SceneNodeSharedPtr c = SceneNode::create("node_c");
   SceneNodeSharedPtr cameraNode = SceneNode::create("node_camera");
   std::optional<std::string> materialUri =
-      std::string("assets/materials/blinnphong_lit.material");
-  std::optional<Vec3f> baseColor = Vec3f{0.8f, 0.8f, 0.8f};
+      std::string("assets/materials/pbr.material");
+  std::optional<MaterialParameterValue> baseColorParameter =
+      MaterialParameterValue{
+          .type = MaterialParameterValueType::Vec3,
+          .vectorValue = {0.8f, 0.8f, 0.8f, 0.0f},
+      };
 
   Fixture() {
     world->setName("world");
@@ -83,13 +87,25 @@ struct Fixture {
                   materialUri = uri;
                   return CommandResult{true, "materialUri updated", "{}", {}};
                 },
-            .getNodeMaterialBaseColor =
-                [this](const std::string &) { return baseColor; },
-            .setNodeMaterialBaseColor =
-                [this](const std::string &, const Vec3f &color) {
-                  baseColor = color;
+            .getNodeMaterialParameter =
+                [this](const std::string &, const std::string &binding,
+                       const std::string &member) {
+                  if (binding == "MaterialUBO" && member == "baseColor") {
+                    return baseColorParameter;
+                  }
+                  return std::optional<MaterialParameterValue>{};
+                },
+            .setNodeMaterialParameter =
+                [this](const std::string &, const std::string &binding,
+                       const std::string &member,
+                       const MaterialParameterValue &value) {
+                  if (binding != "MaterialUBO" || member != "baseColor") {
+                    return CommandResult{false, "unexpected parameter", {},
+                                         {}};
+                  }
+                  baseColorParameter = value;
                   return CommandResult{
-                      true, "node material baseColor updated", "{}", {}};
+                      true, "node material parameter updated", "{}", {}};
                 },
         });
   }
@@ -297,12 +313,16 @@ void testAddRemoveSupportUndoRedo() {
 void testMaterialEditsRequestSceneRebuild() {
   Fixture fixture;
 
-  const CommandResult setColor =
+  const CommandResult legacySetColor =
       fixture.bus.dispatch("set /world/a.nodeMaterial.baseColor 0.2 0.3 0.4");
-  EXPECT(setColor.ok, "set node material baseColor should succeed");
+  EXPECT(!legacySetColor.ok, "legacy node material baseColor should fail");
+
+  const CommandResult setColor = fixture.bus.dispatch(
+      "set /world/a.nodeMaterial.MaterialUBO.baseColor 0.2 0.3 0.4");
+  EXPECT(setColor.ok, "set generic node material baseColor should succeed");
   EXPECT(setColor.metadata.find("scene.rebuild") != setColor.metadata.end() &&
              setColor.metadata.at("scene.rebuild") == "true",
-         "set node material baseColor should request scene rebuild");
+         "set generic node material baseColor should request scene rebuild");
 
   const CommandResult setUri = fixture.bus.dispatch(
       "set /world/a.materialUri assets/materials/pbr_gold.material");

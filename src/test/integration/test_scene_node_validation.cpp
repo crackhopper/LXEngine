@@ -225,42 +225,58 @@ MaterialInstanceSharedPtr makeMaterialFromYaml(const std::string &yamlContent) {
 }
 
 MaterialInstanceSharedPtr makeMaterial(bool skinning) {
-  std::string yaml = "shader: blinnphong_0\n"
+  std::string yaml = "shader: techniques/Forward/pbr\n"
                      "variants:\n"
                      "  USE_LIGHTING: true\n"
                      "  USE_SKINNING: " +
                      std::string(skinning ? "true" : "false") +
                      "\n"
-                     "variantRules:\n"
+                     "removedVariantRules:\n"
                      "  - requires: [USE_SKINNING]\n"
                      "    depends: [USE_LIGHTING]\n"
-                     "defaultTechnique: Forward\n"
-                     "techniques:\n"
+                     "removedDefaultFlow: Forward\n"
+                     "renderPaths:\n"
                      "  Forward:\n"
                      "    passes:\n"
                      "      Forward:\n"
-                     "        renderState:\n"
-                     "          depthTest: true\n";
+                     "        shader: techniques/Forward/pbr\n"
+                     "        stage: raster\n"
+                     "        dispatch: draw\n"
+           "        sources: [geometry.vertex, geometry.index, material.bsdf, camera.ubo]\n"
+           "        targets: [hdr.color]\n"
+           "        renderState:\n"
+                     "          cullMode: Back\n"
+           "          depthTest: true\n"
+           "          depthWrite: true\n"
+           "          depthOp: LessEqual\n";
   return makeMaterialFromYaml(yaml);
 }
 
 MaterialInstanceSharedPtr makeMaterial(std::vector<ShaderVariant> variants) {
-  std::string yaml = "shader: blinnphong_0\n"
+  std::string yaml = "shader: techniques/Forward/pbr\n"
                      "variants:\n";
   for (const auto &v : variants)
     yaml += "  " + v.macroName + ": " + (v.enabled ? "true" : "false") + "\n";
-  yaml += "variantRules:\n"
+  yaml += "removedVariantRules:\n"
           "  - requires: [USE_NORMAL_MAP]\n"
           "    depends: [USE_LIGHTING, USE_UV]\n"
           "  - requires: [USE_SKINNING]\n"
           "    depends: [USE_LIGHTING]\n"
-          "defaultTechnique: Forward\n"
-          "techniques:\n"
+          "removedDefaultFlow: Forward\n"
+          "renderPaths:\n"
           "  Forward:\n"
           "    passes:\n"
           "      Forward:\n"
-          "        renderState:\n"
-          "          depthTest: true\n";
+          "        shader: techniques/Forward/pbr\n"
+          "        stage: raster\n"
+          "        dispatch: draw\n"
+           "        sources: [geometry.vertex, geometry.index, material.bsdf, camera.ubo]\n"
+           "        targets: [hdr.color]\n"
+           "        renderState:\n"
+          "          cullMode: Back\n"
+           "          depthTest: true\n"
+           "          depthWrite: true\n"
+           "          depthOp: LessEqual\n";
   return makeMaterialFromYaml(yaml);
 }
 

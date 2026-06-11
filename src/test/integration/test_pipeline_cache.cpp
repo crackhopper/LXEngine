@@ -55,7 +55,7 @@ int main() {
     auto meshPtr = LX_core::Mesh::create(
         vertexBufferPtr, indexBufferPtr,
         LX_core::BoundingBox{{-5.0f, -5.0f, 0.0f}, {5.0f, 5.0f, 0.0f}});
-    auto material = LX_infra::loadGenericMaterial("assets/materials/blinnphong_default.material");
+    auto material = LX_infra::loadGenericMaterial("assets/materials/pbr.material");
     auto node = LX_core::SceneNode::create("pipeline_cache_node");
     node->addComponent<LX_core::MeshComponent>(meshPtr);
     node->addComponent<LX_core::MaterialComponent>(material);

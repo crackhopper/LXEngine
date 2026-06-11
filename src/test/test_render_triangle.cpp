@@ -80,7 +80,7 @@ void syncOrbitFromCamera(OrbitCameraController &controller,
 int main() {
   expSetEnvVK();
   if (!initializeRuntimeAssetRoot()) {
-    std::cerr << "Failed to locate runtime resources for blinnphong_0\n";
+    std::cerr << "Failed to locate runtime resources\n";
     return 1;
   }
 
@@ -110,7 +110,7 @@ int main() {
                               BoundingBox{{-1.0f, -1.0f, 0.0f},
                                           {1.0f, 1.0f, 0.0f}});
 
-  auto material = LX_infra::loadGenericMaterial("assets/materials/blinnphong_default.material");
+  auto material = LX_infra::loadGenericMaterial("assets/materials/pbr.material");
   material->setParameter(LX_core::StringID("MaterialUBO"),
                          LX_core::StringID("enableNormal"), 0);
   material->syncGpuData();

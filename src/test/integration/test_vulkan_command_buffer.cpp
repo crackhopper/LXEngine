@@ -89,7 +89,7 @@ int main() {
         LX_core::BoundingBox{{-5.0f, -5.0f, 0.0f}, {5.0f, 5.0f, 0.0f}});
 
     auto material = LX_infra::loadGenericMaterial(
-        "assets/materials/blinnphong_default.material");
+        "assets/materials/pbr.material");
     material->setParameter(LX_core::StringID("MaterialUBO"),
                            LX_core::StringID("enableNormal"),
                            0); // avoid normal texture

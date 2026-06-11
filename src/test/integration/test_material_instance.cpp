@@ -5,6 +5,8 @@
 #include "core/frame_graph/scene_descriptor_resource_resolver.hpp"
 #include "core/scene/ibl_environment.hpp"
 #include "core/scene/scene.hpp"
+#include "core/scene/scene_system_abi.hpp"
+#include "core/scene/scene_system_abi_validation.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/string_table.hpp"
 #include "infra/material_loader/generic_material_loader.hpp"
@@ -12,6 +14,7 @@
 #include "infra/shader_compiler/shader_compiler.hpp"
 #include "infra/shader_compiler/shader_reflector.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -77,8 +80,10 @@ std::filesystem::path findShaderDir() {
   for (int i = 0; i < 4; ++i) {
     for (const auto &candidate :
          {cwd / "assets" / "shaders" / "glsl", cwd / "shaders" / "glsl"}) {
-      if (std::filesystem::exists(candidate / "blinnphong_0.vert") &&
-          std::filesystem::exists(candidate / "blinnphong_0.frag"))
+      if (std::filesystem::exists(candidate / "techniques" / "Forward" /
+                                  "pbr.vert") &&
+          std::filesystem::exists(candidate / "techniques" / "Forward" /
+                                  "pbr.frag"))
         return candidate;
     }
     auto parent = cwd.parent_path();
@@ -92,23 +97,30 @@ std::filesystem::path findShaderDir() {
 MaterialInstanceSharedPtr buildInstanceFromBlinnPhong() {
   auto dir = findShaderDir();
   if (dir.empty()) {
-    std::cerr << "  SETUP: blinnphong_0 shaders not found; skipping test\n";
+    std::cerr << "  SETUP: pbr shaders not found; skipping test\n";
     return nullptr;
   }
-  auto compile = ShaderCompiler::compileProgram(dir / "blinnphong_0.vert",
-                                                dir / "blinnphong_0.frag", {});
+  auto compile = ShaderCompiler::compileProgram(
+      dir / "techniques" / "Forward" / "pbr.vert",
+      dir / "techniques" / "Forward" / "pbr.frag", {});
   if (!compile.success) {
     std::cerr << "  SETUP: compile failed: " << compile.errorMessage << "\n";
     return nullptr;
   }
   auto bindings = ShaderReflector::reflect(compile.stages);
+  bindings.erase(std::remove_if(bindings.begin(), bindings.end(),
+                                [](const ShaderResourceBinding &binding) {
+                                  return binding.name != "MaterialUBO" &&
+                                         binding.name != "albedoMap";
+                                }),
+                 bindings.end());
   auto vertexInputs = ShaderReflector::reflectVertexInputs(compile.stages);
   auto shader = std::make_shared<CompiledShader>(
-      std::move(compile.stages), bindings, vertexInputs, "blinnphong_0");
+      std::move(compile.stages), bindings, vertexInputs, "pbr");
 
-  auto tmpl = MaterialTemplate::create("blinnphong_0");
+  auto tmpl = MaterialTemplate::create("pbr");
   ShaderProgramSet set;
-  set.shaderName = "blinnphong_0";
+  set.shaderName = "pbr";
   set.shader = shader;
   MaterialPassDefinition entry;
   entry.shaderProgram = set;
@@ -153,6 +165,27 @@ buildMultiPassTemplate(const RenderState &forwardState,
   return tmpl;
 }
 
+MaterialInstanceSharedPtr buildInstanceWithTextureBinding() {
+  ShaderResourceBinding textureBinding;
+  textureBinding.name = "albedoMap";
+  textureBinding.set = 2;
+  textureBinding.binding = 1;
+  textureBinding.type = ShaderPropertyType::Texture2D;
+
+  auto shader = std::make_shared<FakeShader>(
+      std::vector<ShaderResourceBinding>{textureBinding});
+  auto tmpl = MaterialTemplate::create("texture_handle_fake");
+  ShaderProgramSet set;
+  set.shaderName = "texture_handle_fake";
+  set.shader = shader;
+  MaterialPassDefinition entry;
+  entry.shaderProgram = set;
+  entry.renderState = RenderState{};
+  tmpl->setPassDefinition(Pass_Forward, std::move(entry));
+  tmpl->rebuildMaterialInterface();
+  return MaterialInstance::create(tmpl);
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -164,8 +197,8 @@ void test_ubo_buffer_sized_from_reflection() {
     return;
   const auto &buf = mat->getParameterBufferBytes();
   REQUIRE(!buf.empty());
-  REQUIRE(mat->getParameterBufferLayout().has_value());
-  // blinnphong_0 MaterialUBO:
+  REQUIRE(mat->getParameterBufferLayout(StringID("MaterialUBO")).has_value());
+  // pbr MaterialUBO:
   // vec3(12) + shininess(4) + specular(4) + ambient(4) + 3*int(12) = 36
   REQUIRE(buf.size() == 36);
   std::cout << "  buffer size = " << buf.size() << "\n";
@@ -269,7 +302,7 @@ void test_loader_produces_valid_instance() {
   std::filesystem::current_path(dir.parent_path().parent_path());
   MaterialInstanceSharedPtr mat;
   try {
-    mat = loadGenericMaterial("assets/materials/blinnphong_default.material");
+    mat = loadGenericMaterial("assets/materials/pbr.material");
   } catch (const std::exception &e) {
     std::cerr << "  FAIL: loader threw: " << e.what() << "\n";
     ++s_failures;
@@ -278,11 +311,11 @@ void test_loader_produces_valid_instance() {
   }
   std::filesystem::current_path(prev);
   REQUIRE(mat != nullptr);
-  REQUIRE(!mat->getParameterBufferBytes().empty());
+  REQUIRE(!mat->getParameterBufferBytes(StringID("MaterialUBO")).empty());
   REQUIRE(mat->getPassShader(Pass_Forward) != nullptr);
 
   // Seeded defaults: baseColor == {0.8, 0.8, 0.8}
-  const auto &buf = mat->getParameterBufferBytes();
+  const auto &buf = mat->getParameterBufferBytes(StringID("MaterialUBO"));
   float r = 0, g = 0, b = 0;
   std::memcpy(&r, buf.data() + 0, sizeof(float));
   std::memcpy(&g, buf.data() + 4, sizeof(float));
@@ -378,6 +411,105 @@ void test_non_structural_writes_do_not_notify_pass_listeners() {
   std::cout << "  only structural pass changes notify listeners\n";
 }
 
+void test_material_state_version_tracks_parameter_and_handle_writes() {
+  std::cout
+      << "\n-- test_material_state_version_tracks_parameter_and_handle_writes "
+         "--\n";
+  auto mat = buildInstanceFromBlinnPhong();
+  if (!mat)
+    return;
+
+  const u64 initialVersion = mat->getMaterialStateVersion();
+  REQUIRE(!mat->hasPendingMaterialStateSync());
+
+  mat->setParameter(StringID("MaterialUBO"), StringID("shininess"), 7.0f);
+  REQUIRE(mat->getMaterialStateVersion() > initialVersion);
+  REQUIRE(mat->hasPendingMaterialStateSync());
+
+  mat->clearPendingMaterialStateSync();
+  const u64 afterClearVersion = mat->getMaterialStateVersion();
+  REQUIRE(!mat->hasPendingMaterialStateSync());
+
+  MaterialParameterEnvelope kd;
+  kd.kind = MaterialEnvelopeKind::Rgb;
+  kd.rgbValue = Vec3f{0.25f, 0.5f, 0.75f};
+  mat->setMaterialEnvelope(StringID("Kd"), kd);
+  REQUIRE(mat->getMaterialStateVersion() > afterClearVersion);
+  REQUIRE(mat->hasPendingMaterialStateSync());
+
+  auto textureMat = buildInstanceWithTextureBinding();
+  const u64 initialTextureVersion = textureMat->getMaterialStateVersion();
+  REQUIRE(textureMat->getTemplate()
+              ->findCanonicalMaterialBinding(StringID("albedoMap"))
+              .has_value());
+  TextureHandle textureHandle;
+  textureHandle.index = 3;
+  textureHandle.generation = 2;
+  textureMat->setTextureHandle(StringID("albedoMap"), textureHandle);
+  REQUIRE(textureMat->getMaterialStateVersion() > initialTextureVersion);
+  REQUIRE(textureMat->hasPendingMaterialStateSync());
+
+  mat->clearPendingMaterialStateSync();
+  const u64 afterHandleVersion = mat->getMaterialStateVersion();
+  MaterialResourceDependency dependency;
+  dependency.kind = MaterialEnvelopeKind::Texture;
+  dependency.parameterName = "Kd";
+  dependency.uri = "memory://textures/shared.png";
+  dependency.resourceHandle = ResourceIdentityHandle{5, 1};
+  mat->addMaterialDependency(dependency);
+  REQUIRE(mat->getMaterialStateVersion() > afterHandleVersion);
+  REQUIRE(mat->hasPendingMaterialStateSync());
+
+  const auto cloned = mat->cloneInstanceDataUnique();
+  REQUIRE(cloned->getMaterialStateVersion() == mat->getMaterialStateVersion());
+  REQUIRE(cloned->hasPendingMaterialStateSync() ==
+          mat->hasPendingMaterialStateSync());
+
+  std::cout << "  material state dirty/version tracks bindless-facing data\n";
+}
+
+void test_material_v2_envelope_storage_disables_parameter_buffers() {
+  std::cout
+      << "\n-- test_material_v2_envelope_storage_disables_parameter_buffers "
+         "--\n";
+  auto mat = MaterialInstance::create(
+      buildMultiPassTemplate(RenderState{}, RenderState{}));
+
+  REQUIRE(mat->getParameterBufferCount() >= 1);
+  REQUIRE(mat->getParameterBufferLayout(StringID("MaterialUBO")).has_value());
+
+  mat->setBsdfType("matte");
+  MaterialParameterEnvelope kd;
+  kd.kind = MaterialEnvelopeKind::Rgb;
+  kd.rgbValue = Vec3f{0.25f, 0.5f, 0.75f};
+  mat->setMaterialEnvelope(StringID("Kd"), kd);
+
+  REQUIRE(mat->getMaterialEnvelope(StringID("Kd")).has_value());
+  REQUIRE(mat->getParameterBufferCount() == 0);
+  REQUIRE(!mat->getParameterBufferLayout(StringID("MaterialUBO")).has_value());
+  REQUIRE(mat->getParameterBufferBytes(StringID("MaterialUBO")).empty());
+  REQUIRE(!mat->getParameterResource(StringID("MaterialUBO")).isValid());
+  REQUIRE(!mat->readParameterValue(StringID("MaterialUBO"),
+                                   StringID("baseColorFactor"))
+               .has_value());
+
+  mat->setParameter(StringID("MaterialUBO"), StringID("baseColorFactor"),
+                    Vec4f{1.0f, 0.5f, 0.25f, 1.0f});
+  REQUIRE(!mat->readParameterValue(StringID("MaterialUBO"),
+                                   StringID("baseColorFactor"))
+               .has_value());
+  REQUIRE(mat->getMaterialEnvelope(StringID("Kd")).has_value());
+
+  const auto cloned = mat->cloneInstanceDataUnique();
+  REQUIRE(cloned->getMaterialEnvelope(StringID("Kd")).has_value());
+  REQUIRE(cloned->getParameterBufferCount() == 0);
+  REQUIRE(!cloned->readParameterValue(StringID("MaterialUBO"),
+                                      StringID("baseColorFactor"))
+               .has_value());
+
+  std::cout << "  material v2 keeps envelope truth without parameter buffers\n";
+}
+
 void test_setPassEnabled_throws_on_undefined_pass() {
   std::cout << "\n-- test_setPassEnabled_throws_on_undefined_pass --\n";
   RenderState forwardState;
@@ -396,17 +528,26 @@ void test_setPassEnabled_throws_on_undefined_pass() {
 
 void test_isSystemOwnedBinding_classification() {
   std::cout << "\n-- test_isSystemOwnedBinding_classification --\n";
-  REQUIRE(isSystemOwnedBinding("CameraUBO") == true);
-  REQUIRE(isSystemOwnedBinding("LightUBO") == true);
-  REQUIRE(isSystemOwnedBinding("SceneLightsUBO") == true);
+  REQUIRE(isSystemOwnedBinding("SceneCameraData") == true);
+  REQUIRE(isSystemOwnedBinding("SceneLightData") == true);
+  REQUIRE(isSystemOwnedBinding("SceneObjectData") == true);
+  REQUIRE(isSystemOwnedBinding("SceneMaterialInstanceData") == true);
+  REQUIRE(isSystemOwnedBinding("CameraUBO") == false);
+  REQUIRE(isSystemOwnedBinding("LightUBO") == false);
+  REQUIRE(isSystemOwnedBinding("SceneLightsUBO") == false);
+  REQUIRE(isMaterialOwnedBinding("CameraUBO") == false);
+  REQUIRE(isMaterialOwnedBinding("LightUBO") == false);
+  REQUIRE(isMaterialOwnedBinding("SceneLightsUBO") == false);
   REQUIRE(isSystemOwnedBinding("BloomSource") == true);
   REQUIRE(isSystemOwnedBinding("BloomColor") == true);
   REQUIRE(isSystemOwnedBinding("SkyboxMap") == true);
   REQUIRE(isSystemOwnedBinding("IrradianceMap") == true);
   REQUIRE(isSystemOwnedBinding("PrefilteredEnvMap") == true);
   REQUIRE(isSystemOwnedBinding("BrdfLut") == true);
-  REQUIRE(isSystemOwnedBinding("EnvironmentUBO") == true);
-  REQUIRE(isSystemOwnedBinding("Bones") == true);
+  REQUIRE(isSystemOwnedBinding("EnvironmentUBO") == false);
+  REQUIRE(isSystemOwnedBinding("Bones") == false);
+  REQUIRE(isMaterialOwnedBinding("EnvironmentUBO") == false);
+  REQUIRE(isMaterialOwnedBinding("Bones") == false);
   REQUIRE(isSystemOwnedBinding("MaterialUBO") == false);
   REQUIRE(isSystemOwnedBinding("SurfaceParams") == false);
   REQUIRE(isSystemOwnedBinding("albedoMap") == false);
@@ -423,9 +564,65 @@ void test_isSystemOwnedBinding_classification() {
           ShaderPropertyType::TextureCube);
   REQUIRE(getExpectedTypeForSystemBinding("BrdfLut") ==
           ShaderPropertyType::Texture2D);
-  REQUIRE(getExpectedTypeForSystemBinding("EnvironmentUBO") ==
-          ShaderPropertyType::UniformBuffer);
+  REQUIRE(getExpectedTypeForSystemBinding("SceneCameraData") ==
+          ShaderPropertyType::StorageBuffer);
+  REQUIRE(getExpectedTypeForSystemBinding("SceneLightData") ==
+          ShaderPropertyType::StorageBuffer);
+  REQUIRE(getExpectedTypeForSystemBinding("SceneObjectData") ==
+          ShaderPropertyType::StorageBuffer);
+  REQUIRE(getExpectedTypeForSystemBinding("SceneMaterialInstanceData") ==
+          ShaderPropertyType::StorageBuffer);
+  REQUIRE(!getExpectedTypeForSystemBinding("EnvironmentUBO").has_value());
   std::cout << "  ownership classification correct\n";
+}
+
+void test_scene_system_abi_binding_contract_validation() {
+  std::cout << "\n-- test_scene_system_abi_binding_contract_validation --\n";
+  ShaderResourceBinding cameraBinding;
+  cameraBinding.name = "SceneCameraData";
+  cameraBinding.set = kSceneSystemDescriptorSet;
+  cameraBinding.binding = kSceneSystemCameraBinding;
+  cameraBinding.type = ShaderPropertyType::StorageBuffer;
+  cameraBinding.size = sizeof(SceneSystemCameraData);
+  cameraBinding.members = {
+      StructMemberInfo{"view", ShaderPropertyType::Vec4,
+                       static_cast<u32>(offsetof(SceneSystemCameraData, view)),
+                       16},
+      StructMemberInfo{
+          "projection", ShaderPropertyType::Vec4,
+          static_cast<u32>(offsetof(SceneSystemCameraData, projection)), 16},
+      StructMemberInfo{"eye", ShaderPropertyType::Vec4,
+                       static_cast<u32>(offsetof(SceneSystemCameraData, eye)),
+                       16},
+  };
+
+  REQUIRE(!validateSystemAbiBindingContract(cameraBinding).has_value());
+
+  auto wrongType = cameraBinding;
+  wrongType.type = ShaderPropertyType::UniformBuffer;
+  auto typeDiagnostic = validateSystemAbiBindingContract(wrongType);
+  REQUIRE(typeDiagnostic.has_value());
+  REQUIRE(typeDiagnostic->find("SceneCameraData") != std::string::npos);
+  REQUIRE(typeDiagnostic->find("StorageBuffer") != std::string::npos);
+  REQUIRE(typeDiagnostic->find("UniformBuffer") != std::string::npos);
+
+  auto wrongBinding = cameraBinding;
+  wrongBinding.binding = kSceneSystemLightBinding;
+  auto bindingDiagnostic = validateSystemAbiBindingContract(wrongBinding);
+  REQUIRE(bindingDiagnostic.has_value());
+  REQUIRE(bindingDiagnostic->find("binding=0") != std::string::npos);
+  REQUIRE(bindingDiagnostic->find("reflected set=0 binding=1") !=
+          std::string::npos);
+
+  auto wrongMember = cameraBinding;
+  wrongMember.members[1].offset = 64;
+  auto memberDiagnostic = validateSystemAbiBindingContract(wrongMember);
+  REQUIRE(memberDiagnostic.has_value());
+  REQUIRE(memberDiagnostic->find("projection") != std::string::npos);
+  REQUIRE(memberDiagnostic->find("offset=16") != std::string::npos);
+  REQUIRE(memberDiagnostic->find("reflected offset=64") != std::string::npos);
+
+  std::cout << "  scene system ABI binding contract rejects drift\n";
 }
 
 void test_environment_data_setters_mark_dirty() {
@@ -456,15 +653,8 @@ void test_material_instance_with_non_MaterialUBO_name() {
   uboBinding.size = 16;
   uboBinding.members = {baseColor, roughness};
 
-  ShaderResourceBinding cameraBinding;
-  cameraBinding.name = "CameraUBO";
-  cameraBinding.set = 0;
-  cameraBinding.binding = 0;
-  cameraBinding.type = ShaderPropertyType::UniformBuffer;
-  cameraBinding.size = 144;
-
   auto shader = std::make_shared<FakeShader>(
-      std::vector<ShaderResourceBinding>{uboBinding, cameraBinding});
+      std::vector<ShaderResourceBinding>{uboBinding});
   auto tmpl = MaterialTemplate::create("surface_test");
   ShaderProgramSet set;
   set.shaderName = "surface_test";
@@ -478,15 +668,15 @@ void test_material_instance_with_non_MaterialUBO_name() {
   auto mat = MaterialInstance::create(tmpl);
 
   // Buffer should be sized from SurfaceParams, not empty.
-  REQUIRE(mat->getParameterBufferLayout().has_value());
-  REQUIRE(mat->getParameterBufferBytes().size() == 16);
+  REQUIRE(mat->getParameterBufferLayout(StringID("SurfaceParams")).has_value());
+  REQUIRE(mat->getParameterBufferBytes(StringID("SurfaceParams")).size() == 16);
 
   // Setters should work by member name.
   mat->setParameter(StringID("SurfaceParams"), StringID("baseColor"),
                     Vec3f{0.5f, 0.6f, 0.7f});
   mat->setParameter(StringID("SurfaceParams"), StringID("roughness"), 0.3f);
 
-  const auto &buf = mat->getParameterBufferBytes();
+  const auto &buf = mat->getParameterBufferBytes(StringID("SurfaceParams"));
   float r = 0, g = 0, b = 0, rough = 0;
   std::memcpy(&r, buf.data() + 0, sizeof(float));
   std::memcpy(&g, buf.data() + 4, sizeof(float));
@@ -666,7 +856,10 @@ int main(int argc, char **argv) {
   test_enabled_passes_follow_mutations();
   test_render_state_is_pass_aware();
   test_non_structural_writes_do_not_notify_pass_listeners();
+  test_material_state_version_tracks_parameter_and_handle_writes();
+  test_material_v2_envelope_storage_disables_parameter_buffers();
   test_isSystemOwnedBinding_classification();
+  test_scene_system_abi_binding_contract_validation();
   test_environment_data_setters_mark_dirty();
   test_material_instance_with_non_MaterialUBO_name();
   test_multi_buffer_setParameter();

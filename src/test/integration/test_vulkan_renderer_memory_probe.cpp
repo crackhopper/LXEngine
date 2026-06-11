@@ -93,7 +93,7 @@ int skipped = 0;
                                        {1.0f, 1.0f, 0.0f}});
 
   auto material =
-      LX_infra::loadGenericMaterial("assets/materials/blinnphong_default.material");
+      LX_infra::loadGenericMaterial("assets/materials/pbr.material");
   material->setParameter(StringID("MaterialUBO"), StringID("enableNormal"), 0);
   material->syncGpuData();
 

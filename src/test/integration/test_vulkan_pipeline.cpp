@@ -50,7 +50,7 @@ int main() {
         vertexBufferPtr, indexBufferPtr,
         LX_core::BoundingBox{{-5.0f, -5.0f, 0.0f}, {5.0f, 5.0f, 0.0f}});
     auto material = LX_infra::loadGenericMaterial(
-        "assets/materials/blinnphong_default.material");
+        "assets/materials/pbr.material");
     auto node = LX_core::SceneNode::create("vulkan_pipeline_node");
     node->addComponent<LX_core::MeshComponent>(meshPtr);
     node->addComponent<LX_core::MaterialComponent>(material);
