@@ -315,4 +315,16 @@ makeDefaultForwardRenderPathGraph
 
 ## 实施状态
 
-未实施。当前代码已有 Material v2 默认资产、RenderPathGraph/RenderFeature 示例资产、FrameGraph DAG 编译和 strict bindless validation 测试，但 production/runtime 路径仍存在旧 material loader、内建 pass graph、materialTag、MaterialUBO、per-draw push constant 和非 bindless fallback。本文档作为删除这些入口的独立硬切需求。
+已实施（2026-06-11）。
+
+本轮按硬切策略删除默认 production/runtime 路径中的旧 material-local technique、`materialTag`、`MaterialUBO` / 旧 PBR shader 参数、内建默认 RenderPathGraph、`LegacyPerItem` 非 bindless fallback、`PerDrawData` / `raster.drawData` per-draw push constant 路径。默认实时路径现在由 Material v2 PBRT envelope、RenderPathGraph、SceneResourceTable typed upload view、typed draw records 和 bindless/indirect validation 组成。
+
+新增 `test_071g_legacy_boundary_removal` 作为静态边界审计，扫描 R9 production/runtime 路径并禁止遗留符号。Material v2 parser 对旧 root 字段走 schema-level unknown root field 诊断，不在生产代码保留旧字段常量。默认 render work 在 shader 需要 `SceneDraws` / `SceneObjects` 时 fail-fast；可形成 typed draw record 的对象继续把 draw record index 写入 indirect `firstInstance`。
+
+验证记录：
+
+- `./build/src/test/test_071g_legacy_boundary_removal`
+- `ctest --test-dir build --output-on-failure -R "test_071g_legacy_boundary_removal|test_shader_compiler|test_material_v2_parser|test_material_v2_resource_dependencies|test_scene_resource_table|test_bindless_indirect_contract|test_bindless_validation_contract|test_vulkan_frame_graph|test_gltf_scene_asset_loader"`
+- `ctest --test-dir build --output-on-failure -R "test_pipeline_build_info|test_scene_resource_table|test_command_bus_v2|test_inspector_panel|test_scene_tree_panel|test_lxe_editor_layout|test_lxe_editor_interaction"`
+
+全量 `ctest --test-dir build --output-on-failure -L auto -LE requires_video_device` 需要在 clean build 后运行；执行中发现旧增量 build 目录存在 stale object 导致 release-only 失败，clean rebuild 后相关失败集已转绿。

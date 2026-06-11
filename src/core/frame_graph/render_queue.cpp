@@ -129,23 +129,21 @@ shaderConsumesBinding(const IShaderSharedPtr &shader, std::string_view name) {
   return false;
 }
 
-[[nodiscard]] u32
-resolveGpuObjectIndex(const SceneResourceTableUploadView &uploadView,
-                      ObjectHandle handle) {
+[[nodiscard]] std::optional<u32>
+tryResolveGpuObjectIndex(const SceneResourceTableUploadView &uploadView,
+                         ObjectHandle handle) {
   const auto it =
       std::find_if(uploadView.objectIndexByHandle.begin(),
                    uploadView.objectIndexByHandle.end(),
                    [handle](const SceneResourceObjectUploadIndex &entry) {
                      return entry.handle == handle;
                    });
-  if (it == uploadView.objectIndexByHandle.end() ||
-      it->typedIndex >= uploadView.objects.size() ||
-      it->typedIndex >= uploadView.draws.size()) {
-    throw std::logic_error(
-        "RenderWorkQueue cannot resolve draw object handle to SceneDraws "
-        "index");
+  if (it != uploadView.objectIndexByHandle.end() &&
+      it->typedIndex < uploadView.objects.size() &&
+      it->typedIndex < uploadView.draws.size()) {
+    return it->typedIndex;
   }
-  return it->typedIndex;
+  return std::nullopt;
 }
 
 [[nodiscard]] bool canAppendToBatch(const RenderIndirectBatch &batch,
@@ -349,11 +347,20 @@ void RenderWorkQueue::buildRealtime(const Scene &scene, StringID pass,
       item.raster.materialIndex =
           resolveGpuMaterialIndex(uploadView, validated->get().materialHandle);
     }
+    const bool needsDrawRecord =
+        shaderConsumesBinding(item.shaderInfo, "SceneDraws") ||
+        shaderConsumesBinding(item.shaderInfo, "SceneObjects");
     if (validated->get().objectHandle.isValid()) {
-      item.raster.drawRecordIndex =
-          resolveGpuObjectIndex(uploadView, validated->get().objectHandle);
-    } else if (shaderConsumesBinding(item.shaderInfo, "SceneDraws") ||
-               shaderConsumesBinding(item.shaderInfo, "SceneObjects")) {
+      if (const auto drawRecordIndex =
+              tryResolveGpuObjectIndex(uploadView,
+                                       validated->get().objectHandle)) {
+        item.raster.drawRecordIndex = *drawRecordIndex;
+      } else if (needsDrawRecord) {
+        throw std::logic_error(
+            "RenderWorkQueue cannot resolve draw object handle to SceneDraws "
+            "index");
+      }
+    } else if (needsDrawRecord) {
       throw std::logic_error(
           "RenderWorkQueue cannot bind SceneDraws without a typed object "
           "handle");
