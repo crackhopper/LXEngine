@@ -46,7 +46,7 @@
 **Files:**
 - Modify: none
 
-- [ ] **Step 1: Inspect relevant dirty worktree paths**
+- [x] **Step 1: Inspect relevant dirty worktree paths**
 
 Run:
 
@@ -56,7 +56,7 @@ git status --short src/core/frame_graph src/backend/vulkan src/test notes/requir
 
 Expected: Only known unrelated dirty docs/assets plus this plan if not committed. Do not revert unrelated changes.
 
-- [ ] **Step 2: Capture current targeted test baseline**
+- [x] **Step 2: Capture current targeted test baseline**
 
 Run:
 
@@ -68,7 +68,7 @@ build/src/test/test_071_bridge_audit
 
 Expected: Current tests pass, but they are too weak because they accept fake bindless slot state and do not reject fallback.
 
-- [ ] **Step 3: Commit this plan**
+- [x] **Step 3: Commit this plan**
 
 Run:
 
@@ -86,7 +86,7 @@ Expected: Plan-only commit.
 - Create: `src/core/frame_graph/render_validation_contract.hpp`
 - Modify: `src/test/CMakeLists.txt`
 
-- [ ] **Step 1: Add failing contract tests**
+- [x] **Step 1: Add failing contract tests**
 
 Create `src/test/integration/test_bindless_validation_contract.cpp`:
 
@@ -213,7 +213,7 @@ int main() {
 }
 ```
 
-- [ ] **Step 2: Add declaration header for compile failure shape**
+- [x] **Step 2: Add declaration header for compile failure shape**
 
 Create `src/core/frame_graph/render_validation_contract.hpp` with only declarations:
 
@@ -246,7 +246,7 @@ validateBindlessMigratedQueue(const RenderWorkQueue &queue, StringID pass);
 } // namespace LX_core
 ```
 
-- [ ] **Step 3: Register the test target**
+- [x] **Step 3: Register the test target**
 
 Modify `src/test/CMakeLists.txt` by adding `test_bindless_validation_contract` to the integration test target list near the existing 071 tests:
 
@@ -256,7 +256,7 @@ Modify `src/test/CMakeLists.txt` by adding `test_bindless_validation_contract` t
   test_071_bridge_audit
 ```
 
-- [ ] **Step 4: Run test to verify failure**
+- [x] **Step 4: Run test to verify failure**
 
 Run:
 
@@ -275,7 +275,7 @@ Expected: FAIL at link time because `validateBindlessMigratedQueue` is declared 
 - Modify: `src/core/frame_graph/render_queue.cpp`
 - Modify: `src/test/CMakeLists.txt`
 
-- [ ] **Step 1: Add implementation file to build**
+- [x] **Step 1: Add implementation file to build**
 
 Update the CMake source list that contains `src/core/frame_graph/render_queue.cpp` to include:
 
@@ -285,7 +285,7 @@ src/core/frame_graph/render_validation_contract.cpp
 
 Use `rg -n "render_queue.cpp|frame_graph.cpp" CMakeLists.txt src -g 'CMakeLists.txt'` to find the exact list.
 
-- [ ] **Step 2: Implement diagnostics**
+- [x] **Step 2: Implement diagnostics**
 
 Create `src/core/frame_graph/render_validation_contract.cpp`:
 
@@ -355,7 +355,7 @@ validateBindlessMigratedQueue(const RenderWorkQueue &queue, StringID pass) {
 } // namespace LX_core
 ```
 
-- [ ] **Step 3: Run contract tests**
+- [x] **Step 3: Run contract tests**
 
 Run:
 
@@ -366,7 +366,7 @@ build/src/test/test_bindless_validation_contract
 
 Expected: PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 Run:
 

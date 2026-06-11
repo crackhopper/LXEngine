@@ -29,6 +29,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_gpu_resource_table_contract
   test_upload_task_graph
   test_bindless_indirect_contract
+  test_bindless_validation_contract
   test_071_bridge_audit
   test_scene_package_round_trip
   test_render_validation_profile
