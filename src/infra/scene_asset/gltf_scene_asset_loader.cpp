@@ -178,20 +178,6 @@ buildMeshFromGltf(const infra::GLTFLoader &loader) {
   return result;
 }
 
-void bindTextureIfPresent(MaterialInstanceSharedPtr &material,
-                          const std::filesystem::path &gltfDir,
-                          const std::string &uri, const char *bindingName) {
-  if (uri.empty()) {
-    return;
-  }
-  if (!material->getTemplate()->findCanonicalMaterialBinding(
-          StringID(bindingName))) {
-    return;
-  }
-  material->setTexture(StringID(bindingName),
-                       loadCombinedTexture(gltfDir / uri));
-}
-
 void bindV2TextureEnvelopeIfPresent(MaterialInstanceSharedPtr &material,
                                     const std::filesystem::path &gltfDir,
                                     const std::string &uri,
@@ -245,24 +231,13 @@ void bindV2TextureEnvelopeIfPresent(MaterialInstanceSharedPtr &material,
                              materialUri.string());
   }
 
-  if (material->getMaterialEnvelopeCount() > 0) {
+  bindV2TextureEnvelopeIfPresent(
+      material, gltfDir, pbr.baseColorTexture, "Kd",
+      LX_core::MaterialEnvelopeValueType::Rgb);
+  if (normalMapEnabled) {
     bindV2TextureEnvelopeIfPresent(
-        material, gltfDir, pbr.baseColorTexture, "Kd",
+        material, gltfDir, pbr.normalTexture, "normalmap",
         LX_core::MaterialEnvelopeValueType::Rgb);
-    if (normalMapEnabled) {
-      bindV2TextureEnvelopeIfPresent(
-          material, gltfDir, pbr.normalTexture, "normalmap",
-          LX_core::MaterialEnvelopeValueType::Rgb);
-    }
-  } else {
-    bindTextureIfPresent(material, gltfDir, pbr.baseColorTexture, "albedoMap");
-    bindTextureIfPresent(material, gltfDir, pbr.metallicRoughnessTexture,
-                         "metallicRoughnessMap");
-    bindTextureIfPresent(material, gltfDir, pbr.occlusionTexture, "aoMap");
-    bindTextureIfPresent(material, gltfDir, pbr.emissiveTexture, "emissiveMap");
-    if (normalMapEnabled) {
-      bindTextureIfPresent(material, gltfDir, pbr.normalTexture, "normalMap");
-    }
   }
 
   material->syncGpuData();
