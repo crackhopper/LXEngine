@@ -30,15 +30,6 @@ void expectNear(float actual, float expected, const char *message) {
   }
 }
 
-LX_core::MaterialParameterValue
-readMaterialUboParameter(const LX_core::MaterialInstanceSharedPtr &material,
-                         const char *member) {
-  const auto value = material->readParameterValue(
-      LX_core::StringID("MaterialUBO"), LX_core::StringID(member));
-  expect(value.has_value(), "PBR material parameter should be readable");
-  return *value;
-}
-
 void testDamagedHelmetSharedAssetLoadsFullPbr() {
   const bool found =
       cdToWhereAssetsExist("models/damaged_helmet/DamagedHelmet.gltf");
@@ -55,49 +46,33 @@ void testDamagedHelmetSharedAssetLoadsFullPbr() {
   expect(result.normalMapEnabled,
          "DamagedHelmet normal map should remain enabled after tangent "
          "generation");
-  expect(hasTexture(result.material, "albedoMap"),
-         "shared loader should bind albedoMap");
-  expect(hasTexture(result.material, "normalMap"),
-         "shared loader should bind normalMap");
-  expect(hasTexture(result.material, "metallicRoughnessMap"),
-         "shared loader should bind metallicRoughnessMap");
-  expect(hasTexture(result.material, "aoMap"),
-         "shared loader should bind aoMap");
-  expect(hasTexture(result.material, "emissiveMap"),
-         "shared loader should bind emissiveMap");
+  expect(hasTexture(result.material, "Kd"),
+         "shared loader should bind base color as material v2 Kd texture");
+  expect(hasTexture(result.material, "normalmap"),
+         "shared loader should bind normal map as material v2 normalmap "
+         "texture");
+  expect(!hasTexture(result.material, "albedoMap"),
+         "material v2 should not bind legacy albedoMap");
+  expect(!hasTexture(result.material, "normalMap"),
+         "material v2 should not bind legacy normalMap");
 
-  const auto baseColorFactor =
-      readMaterialUboParameter(result.material, "baseColorFactor");
-  expect(baseColorFactor.type == LX_core::MaterialParameterValueType::Vec4,
-         "baseColorFactor should be stored as vec4");
-  expectNear(baseColorFactor.vectorValue.x, 1.0f,
-             "DamagedHelmet baseColorFactor.r should load");
-  expectNear(baseColorFactor.vectorValue.y, 1.0f,
-             "DamagedHelmet baseColorFactor.g should load");
-  expectNear(baseColorFactor.vectorValue.z, 1.0f,
-             "DamagedHelmet baseColorFactor.b should load");
-  expectNear(baseColorFactor.vectorValue.w, 1.0f,
-             "DamagedHelmet baseColorFactor.a should load");
+  expect(result.material->getBsdfType() == "uber",
+         "DamagedHelmet material should retain material v2 BSDF type");
+  const auto kd = result.material->getMaterialEnvelope(LX_core::StringID("Kd"));
+  expect(kd.has_value(), "DamagedHelmet material should retain Kd envelope");
+  expect(kd.has_value() &&
+             kd->get().kind == LX_core::MaterialEnvelopeKind::Texture,
+         "DamagedHelmet Kd should be stored as PBRT texture envelope");
+  expect(kd.has_value() &&
+             kd->get().valueType == LX_core::MaterialEnvelopeValueType::Rgb,
+         "DamagedHelmet Kd texture envelope should retain rgb valueType");
 
-  const auto metallicFactor =
-      readMaterialUboParameter(result.material, "metallicFactor");
-  expect(metallicFactor.type == LX_core::MaterialParameterValueType::Float,
-         "metallicFactor should be stored as float");
-  expectNear(metallicFactor.floatValue, 1.0f,
-             "DamagedHelmet metallicFactor should load");
-
-  const auto roughnessFactor =
-      readMaterialUboParameter(result.material, "roughnessFactor");
-  expect(roughnessFactor.type == LX_core::MaterialParameterValueType::Float,
-         "roughnessFactor should be stored as float");
-  expectNear(roughnessFactor.floatValue, 1.0f,
-             "DamagedHelmet roughnessFactor should load");
-
-  const auto ao = readMaterialUboParameter(result.material, "ao");
-  expect(ao.type == LX_core::MaterialParameterValueType::Float,
-         "AO should be stored as float");
-  expectNear(ao.floatValue, 1.0f,
-             "DamagedHelmet AO scalar should default to fully unoccluded");
+  const auto legacyBaseColor = result.material->readParameterValue(
+      LX_core::StringID("MaterialUBO"), LX_core::StringID("baseColorFactor"));
+  expect(!legacyBaseColor.has_value(),
+         "material v2 should not expose legacy baseColorFactor buffer state");
+  expect(result.material->getParameterBufferCount() == 0,
+         "material v2 should keep envelope storage without parameter buffers");
 }
 
 } // namespace

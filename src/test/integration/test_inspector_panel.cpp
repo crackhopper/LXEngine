@@ -243,11 +243,8 @@ void testExperimentMaterialCandidateDiscovery() {
 
   const auto candidates =
       LX_core::InspectorPanel::discoverExperimentMaterialCandidates(dir);
-  EXPECT(candidates.size() == 2,
-         "candidate discovery should include only material_*.material files");
-  EXPECT(candidates[0].find("material_a.material") != std::string::npos &&
-             candidates[1].find("material_b.material") != std::string::npos,
-         "candidate discovery should be sorted by filename/path");
+  EXPECT(candidates.empty(),
+         "legacy experiment material discovery should be disabled");
 
   std::filesystem::remove_all(dir);
 }

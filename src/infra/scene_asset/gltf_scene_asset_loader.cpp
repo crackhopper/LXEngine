@@ -1,5 +1,6 @@
 #include "infra/scene_asset/gltf_scene_asset_loader.hpp"
 
+#include "core/asset/material_surface_schema.hpp"
 #include "core/asset/texture.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
@@ -8,6 +9,7 @@
 #include "infra/mesh_loader/gltf_mesh_loader.hpp"
 #include "infra/texture_loader/texture_loader.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <memory>
@@ -21,7 +23,12 @@ namespace {
 using LX_core::CombinedTextureSampler;
 using LX_core::CombinedTextureSamplerSharedPtr;
 using LX_core::IndexBuffer;
+using LX_core::MaterialEnvelopeKind;
+using LX_core::MaterialEnvelopeValueType;
 using LX_core::MaterialInstanceSharedPtr;
+using LX_core::MaterialParameterEnvelope;
+using LX_core::MaterialParameterSchema;
+using LX_core::MaterialSurfaceSchema;
 using LX_core::MeshSharedPtr;
 using LX_core::StringID;
 using LX_core::Texture;
@@ -185,40 +192,48 @@ void bindTextureIfPresent(MaterialInstanceSharedPtr &material,
                        loadCombinedTexture(gltfDir / uri));
 }
 
-void setParameterIfPresent(MaterialInstanceSharedPtr &material,
-                           const char *bindingName, const char *memberName,
-                           const float value) {
-  if (material->findParameterMember(StringID(bindingName),
-                                    StringID(memberName))) {
-    material->setParameter(StringID(bindingName), StringID(memberName), value);
+void bindV2TextureEnvelopeIfPresent(MaterialInstanceSharedPtr &material,
+                                    const std::filesystem::path &gltfDir,
+                                    const std::string &uri,
+                                    const char *parameterName,
+                                    MaterialEnvelopeValueType valueType) {
+  if (uri.empty()) {
+    return;
   }
-}
+  const MaterialSurfaceSchema *schema =
+      LX_core::findMaterialSurfaceSchema(material->getBsdfType());
+  if (schema == nullptr) {
+    return;
+  }
+  const auto schemaIt =
+      std::find_if(schema->parameters.begin(), schema->parameters.end(),
+                   [parameterName](const MaterialParameterSchema &parameter) {
+                     return parameter.name == parameterName &&
+                            std::find(parameter.allowedKinds.begin(),
+                                      parameter.allowedKinds.end(),
+                                      MaterialEnvelopeKind::Texture) !=
+                                parameter.allowedKinds.end();
+                   });
+  if (schemaIt == schema->parameters.end()) {
+    return;
+  }
 
-void setParameterIfPresent(MaterialInstanceSharedPtr &material,
-                           const char *bindingName, const char *memberName,
-                           const i32 value) {
-  if (material->findParameterMember(StringID(bindingName),
-                                    StringID(memberName))) {
-    material->setParameter(StringID(bindingName), StringID(memberName), value);
+  const auto existing = material->getMaterialEnvelope(StringID(parameterName));
+  MaterialParameterEnvelope envelope;
+  if (existing.has_value()) {
+    envelope = existing->get();
   }
-}
-
-void setParameterIfPresent(MaterialInstanceSharedPtr &material,
-                           const char *bindingName, const char *memberName,
-                           const Vec3f &value) {
-  if (material->findParameterMember(StringID(bindingName),
-                                    StringID(memberName))) {
-    material->setParameter(StringID(bindingName), StringID(memberName), value);
-  }
-}
-
-void setParameterIfPresent(MaterialInstanceSharedPtr &material,
-                           const char *bindingName, const char *memberName,
-                           const Vec4f &value) {
-  if (material->findParameterMember(StringID(bindingName),
-                                    StringID(memberName))) {
-    material->setParameter(StringID(bindingName), StringID(memberName), value);
-  }
+  envelope.kind = MaterialEnvelopeKind::Texture;
+  envelope.valueType = valueType;
+  envelope.uri = uri;
+  envelope.floatValue.reset();
+  envelope.rgbValue.reset();
+  envelope.boolValue.reset();
+  envelope.stringValue.reset();
+  envelope.integerValue.reset();
+  material->setMaterialEnvelope(StringID(parameterName), std::move(envelope));
+  material->setTexture(StringID(parameterName),
+                       loadCombinedTexture(gltfDir / uri));
 }
 
 [[nodiscard]] MaterialInstanceSharedPtr buildMaterialFromGltf(
@@ -230,25 +245,24 @@ void setParameterIfPresent(MaterialInstanceSharedPtr &material,
                              materialUri.string());
   }
 
-  setParameterIfPresent(material, "MaterialUBO", "baseColorFactor",
-                        pbr.baseColorFactor);
-  setParameterIfPresent(material, "MaterialUBO", "baseColor",
-                        Vec3f{pbr.baseColorFactor.x, pbr.baseColorFactor.y,
-                              pbr.baseColorFactor.z});
-  setParameterIfPresent(material, "MaterialUBO", "metallicFactor",
-                        pbr.metallicFactor);
-  setParameterIfPresent(material, "MaterialUBO", "roughnessFactor",
-                        pbr.roughnessFactor);
-  setParameterIfPresent(material, "MaterialUBO", "ao", 1.0f);
-  setParameterIfPresent(material, "MaterialUBO", "enableAlbedo", i32{1});
-
-  bindTextureIfPresent(material, gltfDir, pbr.baseColorTexture, "albedoMap");
-  bindTextureIfPresent(material, gltfDir, pbr.metallicRoughnessTexture,
-                       "metallicRoughnessMap");
-  bindTextureIfPresent(material, gltfDir, pbr.occlusionTexture, "aoMap");
-  bindTextureIfPresent(material, gltfDir, pbr.emissiveTexture, "emissiveMap");
-  if (normalMapEnabled) {
-    bindTextureIfPresent(material, gltfDir, pbr.normalTexture, "normalMap");
+  if (material->getMaterialEnvelopeCount() > 0) {
+    bindV2TextureEnvelopeIfPresent(
+        material, gltfDir, pbr.baseColorTexture, "Kd",
+        LX_core::MaterialEnvelopeValueType::Rgb);
+    if (normalMapEnabled) {
+      bindV2TextureEnvelopeIfPresent(
+          material, gltfDir, pbr.normalTexture, "normalmap",
+          LX_core::MaterialEnvelopeValueType::Rgb);
+    }
+  } else {
+    bindTextureIfPresent(material, gltfDir, pbr.baseColorTexture, "albedoMap");
+    bindTextureIfPresent(material, gltfDir, pbr.metallicRoughnessTexture,
+                         "metallicRoughnessMap");
+    bindTextureIfPresent(material, gltfDir, pbr.occlusionTexture, "aoMap");
+    bindTextureIfPresent(material, gltfDir, pbr.emissiveTexture, "emissiveMap");
+    if (normalMapEnabled) {
+      bindTextureIfPresent(material, gltfDir, pbr.normalTexture, "normalMap");
+    }
   }
 
   material->syncGpuData();

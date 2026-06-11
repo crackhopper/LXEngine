@@ -275,32 +275,32 @@ LX_core::SceneNodeSharedPtr buildBuiltinPatchNode(std::string_view meshUri,
 
 void bindModelAlbedoTexture(LX_core::MaterialInstanceSharedPtr material,
                             std::string_view albedoTextureUri) {
-  if (!material || albedoTextureUri.empty() || !material->getTemplate()) {
+  if (!material || albedoTextureUri.empty()) {
     return;
   }
-  if (!material->getTemplate()
-           ->findCanonicalMaterialBinding(StringID("albedoMap"))
-           .has_value()) {
+  const StringID kd("Kd");
+  auto existing = material->getMaterialEnvelope(kd);
+  if (!existing.has_value()) {
     return;
   }
 
-  const StringID materialUbo("MaterialUBO");
-  const StringID enableAlbedo("enableAlbedo");
-  const bool hasEnableAlbedo =
-      material->findParameterMember(materialUbo, enableAlbedo).has_value();
   try {
     auto sampler =
         loadCombinedTexture(resolveRuntimePath(std::string(albedoTextureUri)));
-    material->setTexture(StringID("albedoMap"), std::move(sampler));
-    if (hasEnableAlbedo) {
-      material->setParameter(materialUbo, enableAlbedo, 1);
-    }
+    auto envelope = existing->get();
+    envelope.kind = LX_core::MaterialEnvelopeKind::Texture;
+    envelope.valueType = LX_core::MaterialEnvelopeValueType::Rgb;
+    envelope.uri = std::string(albedoTextureUri);
+    envelope.floatValue.reset();
+    envelope.rgbValue.reset();
+    envelope.boolValue.reset();
+    envelope.stringValue.reset();
+    envelope.integerValue.reset();
+    material->setMaterialEnvelope(kd, std::move(envelope));
+    material->setTexture(kd, std::move(sampler));
   } catch (const std::exception &e) {
     std::cerr << "[lxe_editor] model albedo texture load failed (" << e.what()
               << "); falling back to flat color\n";
-    if (hasEnableAlbedo) {
-      material->setParameter(materialUbo, enableAlbedo, 0);
-    }
   }
   material->syncGpuData();
 }

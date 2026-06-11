@@ -12,8 +12,6 @@ namespace {
 using LX_core::MaterialInstanceSharedPtr;
 using LX_core::ShaderPropertyType;
 using LX_core::StringID;
-using LX_core::Vec3f;
-using LX_core::Vec4f;
 using LX_infra::scene_io::MaterialOverrideState;
 
 [[nodiscard]] bool isGltfMeshUri(const std::string &uri) {
@@ -68,28 +66,6 @@ coerceMaterialParameterValue(const ShaderPropertyType reflectedType,
   return false;
 }
 
-void applyBaseColorIfSupported(const MaterialInstanceSharedPtr &material,
-                               const std::optional<Vec3f> &color) {
-  if (!material || !color.has_value()) {
-    return;
-  }
-  const StringID materialUbo("MaterialUBO");
-  if (const auto member =
-          material->findParameterMember(materialUbo, StringID("baseColor"));
-      member.has_value() && member->get().type == ShaderPropertyType::Vec3) {
-    material->setParameter(materialUbo, StringID("baseColor"), *color);
-    material->syncGpuData();
-    return;
-  }
-  if (const auto member = material->findParameterMember(
-          materialUbo, StringID("baseColorFactor"));
-      member.has_value() && member->get().type == ShaderPropertyType::Vec4) {
-    material->setParameter(materialUbo, StringID("baseColorFactor"),
-                           Vec4f{color->x, color->y, color->z, 1.0f});
-    material->syncGpuData();
-  }
-}
-
 void applyGenericMaterialOverrides(const MaterialInstanceSharedPtr &material,
                                    const MaterialOverrideState &overrides) {
   if (!material) {
@@ -122,7 +98,6 @@ void applyGenericMaterialOverrides(const MaterialInstanceSharedPtr &material,
 
 void applySceneMaterialOverrides(const MaterialInstanceSharedPtr &material,
                                  const MaterialOverrideState &overrides) {
-  applyBaseColorIfSupported(material, overrides.baseColor);
   applyGenericMaterialOverrides(material, overrides);
 }
 

@@ -1,4 +1,5 @@
 #include "core/asset/mesh.hpp"
+#include "core/asset/material_template.hpp"
 #include "core/debug_draw/debug_draw.hpp"
 #include "core/editor/command_bus.hpp"
 #include "core/editor/commands/builtin_commands.hpp"
@@ -507,6 +508,10 @@ void testSelectionCameraInputFreeFlyExposesRightMouseAndKeyboardOnlyWhileHeld() 
 void testSelectionDebugStateTracksHitPointAndSelection() {
   Fixture fixture;
   LX_core::DebugDraw::reset();
+  LX_core::DebugDraw::setMaterialProvider([] {
+    return LX_core::MaterialInstance::create(
+        LX_core::MaterialTemplate::create("debug_draw_test"));
+  });
   LX_core::DebugDraw::attachScene(fixture.scene);
   LX_core::DebugDraw::beginFrame();
 

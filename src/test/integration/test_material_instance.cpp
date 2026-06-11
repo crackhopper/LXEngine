@@ -37,9 +37,6 @@ bsdf:
     return nullptr;
   }
 
-  for (auto &dependency : parsed.dependencies) {
-    parsed.instance->addMaterialDependency(std::move(dependency));
-  }
   return MaterialInstanceSharedPtr(std::move(parsed.instance));
 }
 
@@ -66,7 +63,7 @@ void testEnvelopeState() {
              normal->get().kind == MaterialEnvelopeKind::Texture,
          "normalmap envelope should retain texture kind");
   expect(material->getMaterialDependencies().size() == 1,
-         "texture envelope should produce one dependency");
+         "texture envelope should produce one material dependency");
 }
 
 void testClonePreservesV2State() {
