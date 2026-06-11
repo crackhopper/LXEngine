@@ -92,4 +92,4 @@ artifacts/pbrt/bmw-m6/local-smoke/render.json
 | Mix material | `namedMaterialRefs` 和 `amount` |
 | Substrate / car paint | `Kd`、`Ks`、`uroughness`、`vroughness` |
 
-当这些模块具备后，`offline-pbrt-reference` material tag 应从 runtime PBR approximation 切换为读取 `offline.pbrtSourceMaterialUri` 指向的 source material YAML。
+当这些模块具备后，`offline-pbrt-reference` profile 应让直接材质引用从 runtime PBR approximation 过渡到读取 `offline.pbrtSourceMaterialUri` 指向的 source material YAML。
