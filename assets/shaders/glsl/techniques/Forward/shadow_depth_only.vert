@@ -1,9 +1,5 @@
 #version 450
 
-layout(push_constant) uniform ObjectPC {
-    mat4 model;
-} object;
-
 layout(set = 0, binding = 0) uniform LightUBO {
     vec4 dir;
     vec4 color;
@@ -36,6 +32,7 @@ void main() {
         inBoneWeights.w * skin.bones[inBoneIDs.w];
 #endif
 
-    vec4 worldPos = object.model * skinMatrix * vec4(inPosition, 1.0);
+    mat4 model = mat4(1.0);
+    vec4 worldPos = model * skinMatrix * vec4(inPosition, 1.0);
     gl_Position = sceneLight.shadowViewProj * worldPos;
 }
