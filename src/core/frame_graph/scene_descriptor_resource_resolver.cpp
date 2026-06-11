@@ -42,7 +42,7 @@ void appendSortedSceneMaterialResources(DescriptorResourceList &out,
 
   std::vector<std::pair<u32, DescriptorResourceRef>> sorted;
   for (const auto &binding : shader->getReflectionBindings()) {
-    if (isSystemOwnedBinding(binding.name)) {
+    if (!isMaterialOwnedBinding(binding.name)) {
       continue;
     }
 

@@ -125,6 +125,16 @@ findOfflineShaderSourcePath(const char *shaderFilename) {
 }
 
 [[nodiscard]] std::filesystem::path findProjectFile(const char *relativePath) {
+  const auto sourceRoot = std::filesystem::path(__FILE__)
+                              .parent_path()
+                              .parent_path()
+                              .parent_path()
+                              .parent_path();
+  const auto sourceCandidate = sourceRoot / relativePath;
+  if (std::filesystem::exists(sourceCandidate)) {
+    return sourceCandidate;
+  }
+
   std::filesystem::path probe = std::filesystem::current_path();
   for (int i = 0; i < 8; ++i) {
     const auto candidate = probe / relativePath;
