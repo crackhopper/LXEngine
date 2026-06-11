@@ -1,7 +1,9 @@
 #include "core/frame_graph/render_queue.hpp"
+#include "core/frame_graph/render_validation_contract.hpp"
 #include "core/rhi/gpu_resource.hpp"
 
 #include <iostream>
+#include <memory>
 #include <vector>
 
 using namespace LX_core;
@@ -62,7 +64,27 @@ RenderWorkItem makeDefaultPathDraw(const IGpuResource &vertex,
   return item;
 }
 
-void testDefaultRasterQueueHasIndirectBridge() {
+void testMigratedQueueRejectsDrawDataFallback() {
+  AuditResource vertex(ResourceType::VertexBuffer, StringID{}, 96);
+  AuditResource index(ResourceType::IndexBuffer, StringID{}, 48);
+  AuditResource camera(ResourceType::UniformBuffer, StringID("CameraUBO"), 64);
+  AuditResource material(ResourceType::UniformBuffer,
+                         StringID("MaterialParams"), 64);
+
+  RenderWorkQueue queue;
+  RenderWorkItem item = makeDefaultPathDraw(vertex, index, camera, material, 0);
+  item.raster.drawData = std::make_shared<PerDrawData>();
+  queue.addItem(std::move(item));
+
+  const BindlessValidationResult result =
+      validateBindlessMigratedQueue(queue, StringID("Forward"));
+  EXPECT(!result.ok,
+         "migrated validation queue must reject per-draw drawData fallback");
+  EXPECT(!result.diagnostics.empty(),
+         "migrated validation queue must explain rejected fallback");
+}
+
+void testMigratedQueueAcceptsFullyCoveredIndirectBatch() {
   AuditResource vertex(ResourceType::VertexBuffer, StringID{}, 96);
   AuditResource index(ResourceType::IndexBuffer, StringID{}, 48);
   AuditResource camera(ResourceType::UniformBuffer, StringID("CameraUBO"), 64);
@@ -73,25 +95,18 @@ void testDefaultRasterQueueHasIndirectBridge() {
   queue.addItem(makeDefaultPathDraw(vertex, index, camera, material, 0));
   queue.addItem(makeDefaultPathDraw(vertex, index, camera, material, 3));
 
-  const std::vector<RenderIndirectBatch> batches =
-      queue.compileIndirectBatches();
-  EXPECT(!batches.empty(),
-         "default raster draw queue should expose an indirect bridge");
-  EXPECT(batches.size() == 1,
-         "same pipeline and descriptor resources should stay in one bridge "
-         "batch");
-  EXPECT(batches.front().commands.size() == queue.getItems().size(),
-         "bridge batch should cover every default draw item");
-  EXPECT(batches.front().commands[0].indexCount == 3,
-         "bridge should preserve indexed draw command fields");
-  EXPECT(batches.front().commands[1].firstIndex == 3,
-         "bridge should preserve per-draw firstIndex");
+  const BindlessValidationResult result =
+      validateBindlessMigratedQueue(queue, StringID("Forward"));
+  EXPECT(result.ok, "fully covered migrated queue should pass bindless audit");
+  EXPECT(result.coveredItemCount == queue.getItems().size(),
+         "audit should cover every migrated draw item");
 }
 
 } // namespace
 
 int main() {
-  testDefaultRasterQueueHasIndirectBridge();
+  testMigratedQueueRejectsDrawDataFallback();
+  testMigratedQueueAcceptsFullyCoveredIndirectBatch();
   if (g_failures != 0) {
     std::cerr << g_failures << " REQ-071 bridge audit checks failed\n";
     return 1;

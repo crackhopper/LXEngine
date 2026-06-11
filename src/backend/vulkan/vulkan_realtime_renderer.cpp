@@ -4,6 +4,7 @@
 #include "core/asset/material_template.hpp"
 #include "core/frame_graph/frame_graph.hpp"
 #include "core/frame_graph/pass.hpp"
+#include "core/frame_graph/render_validation_contract.hpp"
 #include "core/frame_graph/render_upload_plan.hpp"
 #include "core/frame_graph/scene_descriptor_resource_resolver.hpp"
 #include "core/image/tone_mapping.hpp"
@@ -49,6 +50,14 @@
 namespace {
 constexpr const char *kBloomBlurHShaderName = "bloom_blur_h";
 constexpr const char *kBloomBlurVShaderName = "bloom_blur_v";
+
+bool strictBindlessValidationEnabled() {
+  return expEnvEnabled("LXE_STRICT_BINDLESS_VALIDATION");
+}
+
+bool isMigratedBindlessValidationPass(LX_core::StringID pass) {
+  return pass == LX_core::Pass_Forward || pass == LX_core::Pass_Deferred;
+}
 
 /// REQ-009: reverse of resource_manager.cpp's toVkFormat(ImageFormat).
 /// Only covers the swapchain-relevant VkFormats. Unknown inputs fall back to
@@ -2035,7 +2044,8 @@ private:
       return;
     }
 
-    auto &queue = m_frameGraph.getPasses()[passIndex].queue;
+    auto &pass = m_frameGraph.getPasses()[passIndex];
+    auto &queue = pass.queue;
     auto &items = queue.getItems();
     const auto batches = queue.compileIndirectBatches();
     usize coveredItemCount = 0;
@@ -2060,6 +2070,17 @@ private:
         cmd.executeWorkItem(batchItem);
       }
       return;
+    }
+
+    if (!items.empty() && strictBindlessValidationEnabled() &&
+        isMigratedBindlessValidationPass(pass.name)) {
+      const auto validation =
+          LX_core::validateBindlessMigratedQueue(queue, pass.name);
+      if (!validation.ok) {
+        throw std::runtime_error(
+            "bindless validation rejected migrated pass: " +
+            validation.diagnostics.front().reason);
+      }
     }
 
     for (auto &item : items) {

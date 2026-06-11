@@ -586,7 +586,7 @@ Expected: commit with stateful bindless/pipeline/progress behavior.
 - Modify: `src/core/frame_graph/render_validation_contract.hpp`
 - Modify: `src/core/frame_graph/render_validation_contract.cpp`
 
-- [ ] **Step 1: Strengthen bridge audit to reject drawData fallback**
+- [x] **Step 1: Strengthen bridge audit to reject drawData fallback**
 
 Replace `testDefaultRasterQueueHasIndirectBridge()` in `src/test/integration/test_071_bridge_audit.cpp` with two tests:
 
@@ -633,7 +633,7 @@ void testMigratedQueueAcceptsFullyCoveredIndirectBatch() {
 
 Include `core/frame_graph/render_validation_contract.hpp` and call both tests from `main()`.
 
-- [ ] **Step 2: Run bridge audit**
+- [x] **Step 2: Run bridge audit**
 
 Run:
 
@@ -644,7 +644,7 @@ build/src/test/test_071_bridge_audit
 
 Expected: PASS after Task 2 implementation.
 
-- [ ] **Step 3: Add renderer helper for strict queue validation**
+- [x] **Step 3: Add renderer helper for strict queue validation**
 
 In `src/backend/vulkan/vulkan_realtime_renderer.cpp`, include:
 
@@ -675,7 +675,7 @@ If no equivalent validation profile state exists, add a private helper that retu
 
 If member names differ, use the pass identifier available in the compiled pass object. The important behavior is that validation-mode migrated passes throw before the legacy per-item loop.
 
-- [ ] **Step 4: Build renderer target**
+- [x] **Step 4: Build renderer target**
 
 Run:
 
@@ -685,7 +685,7 @@ cmake --build build --target lxe_editor
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Run:
 
