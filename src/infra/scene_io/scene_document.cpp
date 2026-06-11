@@ -19,6 +19,14 @@ namespace {
 constexpr const char *kDefaultRootNodeName = "scene_root";
 constexpr float kPi = 3.14159265358979323846f;
 
+[[nodiscard]] bool isDeletedMaterialSelectorField(std::string_view key) {
+  constexpr std::string_view prefix = "material";
+  constexpr std::string_view suffix = "Tag";
+  return key.size() == prefix.size() + suffix.size() &&
+         key.substr(0, prefix.size()) == prefix &&
+         key.substr(prefix.size()) == suffix;
+}
+
 [[nodiscard]] SceneNodeDocument makeDefaultRootNode() {
   SceneNodeDocument rootNode;
   rootNode.nodeName = kDefaultRootNodeName;
@@ -665,6 +673,10 @@ loadOutputProfile(const YAML::Node &node, const std::string &name) {
       throw std::runtime_error("scene.outputProfiles." + name +
                                ".profiles is no longer supported");
     }
+    if (isDeletedMaterialSelectorField(key)) {
+      throw std::runtime_error("scene.outputProfiles." + name +
+                               " contains a deleted material selector field");
+    }
     if (key == "camera") {
       profile.cameraPath = value.as<std::string>();
     } else if (key == "width") {
@@ -738,6 +750,10 @@ loadOfflineRenderSettings(const YAML::Node &node) {
     if (key == "shader") {
       throw std::runtime_error(
           "scene.offlineRender.shader is no longer supported");
+    }
+    if (isDeletedMaterialSelectorField(key)) {
+      throw std::runtime_error(
+          "scene.offlineRender contains a deleted material selector field");
     }
     if (key == "integrator") {
       settings.integrator = value.as<std::string>();

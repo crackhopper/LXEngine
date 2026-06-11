@@ -1,11 +1,16 @@
 #include "infra/scene_asset/gltf_scene_asset_loader.hpp"
+#include "infra/scene_io/scene_document.hpp"
 
 #include "core/frame_graph/pass.hpp"
 #include "core/utils/filesystem_tools.hpp"
 
 #include <cmath>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <stdexcept>
+#include <string>
 
 namespace {
 
@@ -75,10 +80,104 @@ void testDamagedHelmetSharedAssetLoadsFullPbr() {
          "material v2 should keep envelope storage without parameter buffers");
 }
 
+void writeTextFile(const std::filesystem::path &path,
+                   const std::string &text) {
+  std::ofstream out(path);
+  if (!out) {
+    std::cerr << "[FAIL] failed to open fixture: " << path << '\n';
+    std::exit(1);
+  }
+  out << text;
+}
+
+bool loadSceneThrowsFor(const std::string &yamlText) {
+  const std::filesystem::path path =
+      std::filesystem::temp_directory_path() /
+      "lxe_deleted_material_profile_field.scene.yaml";
+  writeTextFile(path, yamlText);
+  try {
+    (void)LX_infra::scene_io::loadSceneDocument(path);
+  } catch (const std::runtime_error &) {
+    std::filesystem::remove(path);
+    return true;
+  }
+  std::filesystem::remove(path);
+  return false;
+}
+
+void testSceneDocumentRejectsDeletedProfileMaterialField() {
+  const std::string outputProfileDeletedField = R"yaml(
+scene:
+  name: Deleted Material Profile Field
+  gameplayCameraPath: /game_cam
+  defaultOutputProfile: preview
+  outputProfiles:
+    preview:
+      camera: /game_cam
+      width: 16
+      height: 16
+      materialTag: old-profile
+      outputFormat: exr-png
+      outDir: artifacts
+      backgroundColor: [0.0, 0.0, 0.0]
+  offlineRender:
+    integrator: software-compute
+    samples: 1
+    maxBounce: 1
+    seed: 1
+    profile: preview
+    compareMode: shaded
+root:
+  nodeName: scene_root
+  name: ''
+  transform:
+    translation: [0.0, 0.0, 0.0]
+    rotation: [1.0, 0.0, 0.0, 0.0]
+    scale: [1.0, 1.0, 1.0]
+  visibilityMask: 4294967295
+)yaml";
+  expect(loadSceneThrowsFor(outputProfileDeletedField),
+         "scene document should reject deleted output profile material field");
+
+  const std::string offlineDeletedField = R"yaml(
+scene:
+  name: Deleted Offline Material Field
+  gameplayCameraPath: /game_cam
+  defaultOutputProfile: preview
+  outputProfiles:
+    preview:
+      camera: /game_cam
+      width: 16
+      height: 16
+      outputFormat: exr-png
+      outDir: artifacts
+      backgroundColor: [0.0, 0.0, 0.0]
+  offlineRender:
+    integrator: software-compute
+    samples: 1
+    maxBounce: 1
+    seed: 1
+    profile: preview
+    materialTag: old-offline
+    compareMode: shaded
+root:
+  nodeName: scene_root
+  name: ''
+  transform:
+    translation: [0.0, 0.0, 0.0]
+    rotation: [1.0, 0.0, 0.0, 0.0]
+    scale: [1.0, 1.0, 1.0]
+  visibilityMask: 4294967295
+)yaml";
+  expect(loadSceneThrowsFor(offlineDeletedField),
+         "scene document should reject deleted offline material field");
+}
+
 } // namespace
 
 int main() {
   testDamagedHelmetSharedAssetLoadsFullPbr();
+  testSceneDocumentRejectsDeletedProfileMaterialField();
   std::cout << "test_gltf_scene_asset_loader passed\n";
   return 0;
 }
