@@ -1480,7 +1480,8 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
     const auto textureHandleForV2Parameter =
         [this](const MaterialInstance &material,
                const char *parameterName) -> TextureHandle {
-      const auto envelope = material.getMaterialEnvelope(StringID(parameterName));
+      const auto envelope =
+          material.getMaterialEnvelope(StringID(parameterName));
       if (!envelope.has_value() ||
           envelope->get().kind != MaterialEnvelopeKind::Texture) {
         return {};
@@ -1501,29 +1502,11 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
       }
       return {};
     };
-    const auto uploadTextureForBindingOrV2Parameter =
-        [this, &textureHandleForV2Parameter](
-            const MaterialInstance &material, const char *legacyBindingName,
-            const char *v2ParameterName) -> u32 {
-      const TextureHandle legacyHandle =
-          material.getTextureHandle(StringID(legacyBindingName));
-      if (legacyHandle.isValid()) {
-        return registerUploadTexture(legacyHandle);
-      }
-      return registerUploadTexture(
-          textureHandleForV2Parameter(material, v2ParameterName));
-    };
     auto record = toGpuMaterialRecord(*entry.resource);
-    record.baseColorTexture = uploadTextureForBindingOrV2Parameter(
-        *entry.resource, "albedoMap", "Kd");
-    record.normalTexture = uploadTextureForBindingOrV2Parameter(
-        *entry.resource, "normalMap", "normalmap");
-    record.metallicRoughnessTexture = registerUploadTexture(
-        entry.resource->getTextureHandle(StringID("metallicRoughnessMap")));
-    record.aoTexture = registerUploadTexture(
-        entry.resource->getTextureHandle(StringID("aoMap")));
-    record.emissiveTexture = registerUploadTexture(
-        entry.resource->getTextureHandle(StringID("emissiveMap")));
+    record.baseColorTexture = registerUploadTexture(
+        textureHandleForV2Parameter(*entry.resource, "Kd"));
+    record.normalTexture = registerUploadTexture(
+        textureHandleForV2Parameter(*entry.resource, "normalmap"));
     compact = CompactRecordIndex{
         .generation = entry.generation,
         .uploadIndex = static_cast<u32>(m_gpuMaterials.size()),

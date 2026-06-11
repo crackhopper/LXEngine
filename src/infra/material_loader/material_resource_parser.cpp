@@ -197,7 +197,8 @@ validateNoLegacyRootResources(const YAML::Node &root,
 [[nodiscard]] bool isRenderFlowRootField(std::string_view name) {
   return name == "shader" || name == "variants" || name == "variantRules" ||
          name == "defaultTechnique" || name == "techniques" ||
-         name == "passes" || name == "renderState" || name == "shadingModel" ||
+         name == "passes" || name == "renderPaths" || name == "sources" ||
+         name == "targets" || name == "renderState" || name == "shadingModel" ||
          name == "meshOverlay";
 }
 

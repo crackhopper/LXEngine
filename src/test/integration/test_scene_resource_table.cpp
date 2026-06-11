@@ -357,6 +357,48 @@ MaterialInstanceSharedPtr makeLegacyShaderBindingOnlyMaterial() {
   return material;
 }
 
+MaterialInstanceSharedPtr
+makeLegacyTextureBindingOnlyMaterial(TextureHandle albedo, TextureHandle normal,
+                                     TextureHandle metallic, TextureHandle ao,
+                                     TextureHandle emissive) {
+  std::vector<ShaderResourceBinding> bindings;
+  auto addTextureBinding = [&bindings](const char *name, u32 bindingIndex) {
+    ShaderResourceBinding binding;
+    binding.name = name;
+    binding.set = 2;
+    binding.binding = bindingIndex;
+    binding.type = ShaderPropertyType::Texture2D;
+    binding.descriptorCount = 1;
+    binding.stageFlags = ShaderStage::Fragment;
+    bindings.push_back(binding);
+  };
+  addTextureBinding("albedoMap", 0);
+  addTextureBinding("normalMap", 1);
+  addTextureBinding("metallicRoughnessMap", 2);
+  addTextureBinding("aoMap", 3);
+  addTextureBinding("emissiveMap", 4);
+
+  auto shader = std::make_shared<FakeShader>(std::move(bindings));
+  auto materialTemplate = MaterialTemplate::create("legacy_texture_binding");
+  ShaderProgramSet shaderSet;
+  shaderSet.shaderName = "legacy_texture_binding";
+  shaderSet.shader = shader;
+  MaterialPassDefinition passDefinition;
+  passDefinition.shaderProgram = shaderSet;
+  passDefinition.renderState = RenderState{};
+  materialTemplate->setPassDefinition(Pass_Forward, std::move(passDefinition));
+  materialTemplate->rebuildMaterialInterface();
+
+  auto material = MaterialInstance::create(materialTemplate);
+  material->setTextureHandle(StringID("albedoMap"), albedo);
+  material->setTextureHandle(StringID("normalMap"), normal);
+  material->setTextureHandle(StringID("metallicRoughnessMap"), metallic);
+  material->setTextureHandle(StringID("aoMap"), ao);
+  material->setTextureHandle(StringID("emissiveMap"), emissive);
+  material->syncGpuData();
+  return material;
+}
+
 MeshBuffer::UniquePtr uniqueMesh(const MeshBufferSharedPtr &mesh) {
   return mesh->cloneUnique();
 }
@@ -1478,6 +1520,49 @@ bsdf:
          "texture index mapping");
 }
 
+void testSceneResourceTableUploadViewIgnoresLegacyTextureBindings() {
+  SceneResourceTable table;
+  const auto albedo = table.registerTexture(
+      ResourceUri("memory://legacy/a.png"), uniqueWhiteSampler(1, 1));
+  const auto normal = table.registerTexture(
+      ResourceUri("memory://legacy/n.png"), uniqueWhiteSampler(1, 1));
+  const auto metallic = table.registerTexture(
+      ResourceUri("memory://legacy/mr.png"), uniqueWhiteSampler(1, 1));
+  const auto ao = table.registerTexture(ResourceUri("memory://legacy/ao.png"),
+                                        uniqueWhiteSampler(1, 1));
+  const auto emissive = table.registerTexture(
+      ResourceUri("memory://legacy/e.png"), uniqueWhiteSampler(1, 1));
+
+  const auto material = table.registerMaterial(
+      uniqueMaterial(makeLegacyTextureBindingOnlyMaterial(
+          albedo, normal, metallic, ao, emissive)));
+  const auto mesh = table.registerMesh(uniqueMesh(makeMeshBuffer()));
+  ObjectResource object;
+  object.mesh = mesh;
+  object.material = material;
+  object.worldBounds = BoundingBox{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 0.0f}};
+  (void)table.registerObject(object);
+
+  const auto view = table.buildUploadView();
+  EXPECT(view.materials.size() == 1,
+         "legacy texture binding material should still emit material record");
+  if (view.materials.empty()) {
+    return;
+  }
+
+  const auto &record = view.materials.front();
+  EXPECT(record.baseColorTexture == u32_max,
+         "legacy albedoMap binding should not feed baseColorTexture");
+  EXPECT(record.normalTexture == u32_max,
+         "legacy normalMap binding should not feed normalTexture");
+  EXPECT(record.metallicRoughnessTexture == u32_max,
+         "legacy metallicRoughnessMap binding should not feed upload record");
+  EXPECT(record.aoTexture == u32_max,
+         "legacy aoMap binding should not feed upload record");
+  EXPECT(record.emissiveTexture == u32_max,
+         "legacy emissiveMap binding should not feed upload record");
+}
+
 void testSceneResourceTableUploadViewReflectsMaterialMutationAfterBuild() {
   SceneResourceTable table;
   const auto mesh = table.registerMesh(uniqueMesh(makeMeshBuffer()));
@@ -1926,6 +2011,7 @@ int main() {
   testSceneResourceTableUploadViewTracksTableGeneration();
   testMaterialV2EnvelopeFeedsGpuMaterialRecord();
   testMaterialV2TextureEnvelopeFeedsUploadTextureSlots();
+  testSceneResourceTableUploadViewIgnoresLegacyTextureBindings();
   testSceneResourceTableUploadViewReflectsMaterialMutationAfterBuild();
   testSceneResourceTableUploadViewPacksMatrixColumns();
   testSceneResourceTableUploadViewUsesCompactRecordIndices();

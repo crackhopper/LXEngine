@@ -461,6 +461,8 @@ renderPaths:
           depthTest: true
 variants:
   HAS_NORMAL_MAP: true
+sources: [geometry.vertex]
+targets: [hdr.color]
 )");
 
   expect(parsed.instance == nullptr,
@@ -471,6 +473,9 @@ variants:
   bool mentionsRenderFlowClass = false;
   bool mentionsShaderKey = false;
   bool mentionsVariantsKey = false;
+  bool mentionsRenderPathsKey = false;
+  bool mentionsSourcesKey = false;
+  bool mentionsTargetsKey = false;
   for (const std::string &diagnostic : parsed.diagnostics) {
     mentionsRenderFlowClass =
         mentionsRenderFlowClass ||
@@ -479,6 +484,13 @@ variants:
         mentionsShaderKey || diagnostic.find("shader") != std::string::npos;
     mentionsVariantsKey =
         mentionsVariantsKey || diagnostic.find("variants") != std::string::npos;
+    mentionsRenderPathsKey =
+        mentionsRenderPathsKey ||
+        diagnostic.find("renderPaths") != std::string::npos;
+    mentionsSourcesKey =
+        mentionsSourcesKey || diagnostic.find("sources") != std::string::npos;
+    mentionsTargetsKey =
+        mentionsTargetsKey || diagnostic.find("targets") != std::string::npos;
   }
   expect(mentionsRenderFlowClass,
          "render-flow diagnostic should name the rejected field class");
@@ -486,6 +498,12 @@ variants:
          "render-flow diagnostic should identify the rejected shader key");
   expect(mentionsVariantsKey,
          "render-flow diagnostic should identify the rejected variants key");
+  expect(mentionsRenderPathsKey,
+         "render-flow diagnostic should identify the rejected renderPaths key");
+  expect(mentionsSourcesKey,
+         "render-flow diagnostic should identify the rejected sources key");
+  expect(mentionsTargetsKey,
+         "render-flow diagnostic should identify the rejected targets key");
 }
 
 void testParserStoresEnvelopeTruthAndDependencies() {

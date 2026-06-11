@@ -14,7 +14,6 @@
 #include "scene_test_helpers.hpp"
 
 #include <filesystem>
-#include <fstream>
 #include <iostream>
 #include <cmath>
 #include <string>
@@ -35,55 +34,7 @@ bool isKnownEnvironmentFailure(const std::string &message) {
 }
 
 LX_core::MaterialInstanceSharedPtr loadFrameGraphDepthMaterial() {
-  const auto materialPath = getRuntimeAssetRoot() / "assets" / "materials" /
-                            "test_frame_graph_depth.material";
-  {
-    std::ofstream out(materialPath);
-    out << "shader: techniques/Forward/pbr\n\n"
-           "variants:\n"
-           "  USE_LIGHTING: true\n\n"
-           "removedDefaultFlow: Forward\n"
-           "renderPaths:\n"
-           "  Forward:\n"
-           "    passes:\n"
-           "      Forward:\n"
-           "        shader: techniques/Forward/pbr\n"
-           "        stage: raster\n"
-           "        dispatch: draw\n"
-           "        sources: [geometry.vertex, geometry.index, material.bsdf, camera.ubo]\n"
-           "        targets: [hdr.color]\n"
-           "        renderState:\n"
-           "          cullMode: Back\n"
-           "          depthTest: true\n"
-           "          depthWrite: true\n"
-           "          depthOp: LessEqual\n"
-           "      Shadow:\n"
-           "        shader: techniques/Forward/shadow_depth_only\n"
-           "        stage: raster\n"
-           "        dispatch: draw\n"
-           "        sources: [geometry.vertex, geometry.index, material.bsdf, camera.ubo]\n"
-           "        targets: [shadow.depth]\n"
-           "        renderState:\n"
-           "          cullMode: Front\n"
-           "          depthTest: true\n"
-           "          depthWrite: true\n"
-           "          depthOp: LessEqual\n"
-           "parameters:\n"
-           "  MaterialUBO.baseColor: [0.8, 0.8, 0.8]\n"
-           "  MaterialUBO.shininess: 12.0\n"
-           "  MaterialUBO.specularIntensity: 1.0\n"
-           "  MaterialUBO.enableAlbedo: 0\n"
-           "  MaterialUBO.enableNormal: 0\n\n";
-  }
-
-  try {
-    auto material = LX_infra::loadGenericMaterial(materialPath);
-    std::filesystem::remove(materialPath);
-    return material;
-  } catch (...) {
-    std::filesystem::remove(materialPath);
-    throw;
-  }
+  return LX_infra::loadGenericMaterial("assets/materials/pbr.material");
 }
 
 LX_core::SceneSharedPtr makeFrameGraphScene() {
