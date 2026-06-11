@@ -8,6 +8,7 @@
 #include "core/scene/scene.hpp"
 
 #include <algorithm>
+#include <stdexcept>
 #include <unordered_set>
 
 namespace LX_core {
@@ -62,9 +63,8 @@ makeItemFromValidatedData(const ValidatedRenderablePassData &data) {
   return true;
 }
 
-[[nodiscard]] bool
-sameDescriptorResources(const DescriptorResourceList &a,
-                        const DescriptorResourceList &b) {
+[[nodiscard]] bool sameDescriptorResources(const DescriptorResourceList &a,
+                                           const DescriptorResourceList &b) {
   if (a.size() != b.size()) {
     return false;
   }
@@ -95,6 +95,37 @@ makeIndirectCommand(const RasterDrawWorkPayload &raster) {
   command.vertexOffset = raster.vertexOffset;
   command.firstInstance = 0;
   return command;
+}
+
+[[nodiscard]] u32
+resolveGpuMaterialIndex(const SceneResourceTableUploadView &uploadView,
+                        MaterialHandle handle) {
+  const auto it =
+      std::find_if(uploadView.materialIndexByHandle.begin(),
+                   uploadView.materialIndexByHandle.end(),
+                   [handle](const SceneResourceMaterialUploadIndex &entry) {
+                     return entry.handle == handle;
+                   });
+  if (it == uploadView.materialIndexByHandle.end() ||
+      it->typedIndex >= uploadView.materials.size()) {
+    throw std::logic_error(
+        "RenderWorkQueue cannot resolve draw material handle to SceneMaterials "
+        "index");
+  }
+  return it->typedIndex;
+}
+
+[[nodiscard]] bool
+shaderConsumesSceneMaterials(const IShaderSharedPtr &shader) {
+  if (!shader) {
+    return false;
+  }
+  for (const auto &binding : shader->getReflectionBindings()) {
+    if (binding.name == "SceneMaterials") {
+      return true;
+    }
+  }
+  return false;
 }
 
 [[nodiscard]] bool canAppendToBatch(const RenderIndirectBatch &batch,
@@ -143,31 +174,26 @@ void RenderWorkQueue::addItem(RenderWorkItem item) {
 
 void RenderWorkQueue::clearItems() { m_items.clear(); }
 
-void RenderWorkQueue::sort() {
-  sort(std::nullopt);
-}
+void RenderWorkQueue::sort() { sort(std::nullopt); }
 
 void RenderWorkQueue::sort(const std::optional<Vec3f> &cameraEye) {
-  std::stable_sort(m_items.begin(), m_items.end(),
-                   [cameraEye](const RenderWorkItem &a,
-                               const RenderWorkItem &b) {
-                     const bool aTransparent = a.renderState.blendEnable;
-                     const bool bTransparent = b.renderState.blendEnable;
-                     if (aTransparent != bTransparent) {
-                       return !aTransparent;
-                     }
-                     if (cameraEye.has_value() && aTransparent &&
-                         bTransparent) {
-                       const float aDistance =
-                           (a.sortCenter - *cameraEye).length2();
-                       const float bDistance =
-                           (b.sortCenter - *cameraEye).length2();
-                       if (aDistance != bDistance) {
-                         return aDistance > bDistance;
-                       }
-                     }
-                     return a.pipelineKey.id.id < b.pipelineKey.id.id;
-                   });
+  std::stable_sort(
+      m_items.begin(), m_items.end(),
+      [cameraEye](const RenderWorkItem &a, const RenderWorkItem &b) {
+        const bool aTransparent = a.renderState.blendEnable;
+        const bool bTransparent = b.renderState.blendEnable;
+        if (aTransparent != bTransparent) {
+          return !aTransparent;
+        }
+        if (cameraEye.has_value() && aTransparent && bTransparent) {
+          const float aDistance = (a.sortCenter - *cameraEye).length2();
+          const float bDistance = (b.sortCenter - *cameraEye).length2();
+          if (aDistance != bDistance) {
+            return aDistance > bDistance;
+          }
+        }
+        return a.pipelineKey.id.id < b.pipelineKey.id.id;
+      });
 }
 
 RenderWorkItem makeOfflineComputeItem(offline::OfflineRenderJob &job,
@@ -207,7 +233,8 @@ RenderWorkQueue::collectUniquePipelineBuildDescs() const {
   return out;
 }
 
-std::vector<RenderIndirectBatch> RenderWorkQueue::compileIndirectBatches() const {
+std::vector<RenderIndirectBatch>
+RenderWorkQueue::compileIndirectBatches() const {
   std::vector<RenderIndirectBatch> batches;
   for (usize itemIndex = 0; itemIndex < m_items.size(); ++itemIndex) {
     const RenderWorkItem &item = m_items[itemIndex];
@@ -241,9 +268,9 @@ void RenderWorkQueue::build(const RenderWorkBuildContext &context,
   if (context.domain() == RenderDomain::Offline) {
     clearItems();
     if (pass == Pass_OfflineRayTrace) {
-      m_items.push_back(makeOfflineComputeItem(
-          context.offlineJob(), pass, target,
-          context.offlineJob().offlineShader));
+      m_items.push_back(
+          makeOfflineComputeItem(context.offlineJob(), pass, target,
+                                 context.offlineJob().offlineShader));
     }
     return;
   }
@@ -253,7 +280,8 @@ void RenderWorkQueue::build(const RenderWorkBuildContext &context,
   DescriptorResourceList sceneResources;
   VisibilityLayerMask visibleMask = 0;
   if (options.cameraResource.has_value()) {
-    sceneResources = scene.getSceneLevelResources(pass, *options.cameraResource);
+    sceneResources =
+        scene.getSceneLevelResources(pass, *options.cameraResource);
     visibleMask = options.cameraResource->cullingMask;
   } else {
     const RenderTarget &sceneResourceTarget =
@@ -280,6 +308,8 @@ void RenderWorkQueue::buildRealtime(const Scene &scene, StringID pass,
                                     VisibilityLayerMask visibleMask,
                                     std::optional<Vec3f> cameraEye) {
   clearItems();
+  const SceneResourceTableUploadView uploadView =
+      scene.resources().buildUploadView();
 
   for (const auto &renderable : scene.getRenderables()) {
     if (!renderable)
@@ -293,6 +323,12 @@ void RenderWorkQueue::buildRealtime(const Scene &scene, StringID pass,
     auto validated = renderable->getValidatedPassData(pass);
     if (!validated)
       continue;
+
+    if (validated->get().drawData &&
+        shaderConsumesSceneMaterials(validated->get().shaderInfo)) {
+      validated->get().drawData->updateRasterMaterialIndex(
+          resolveGpuMaterialIndex(uploadView, validated->get().materialHandle));
+    }
 
     RenderWorkItem item = makeItemFromValidatedData(validated->get());
     item.target = target.toDesc();

@@ -2,6 +2,7 @@
 #include "core/asset/mesh.hpp"
 #include "core/asset/shader.hpp"
 #include "core/frame_graph/pass.hpp"
+#include "core/frame_graph/render_queue.hpp"
 #include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/components/camera_component.hpp"
 #include "core/scene/components/material_component.hpp"
@@ -18,7 +19,9 @@
 #include "infra/resource_parsers/texture_resource_parser.hpp"
 #include "infra/scene_asset/gltf_scene_asset_loader.hpp"
 
+#include <algorithm>
 #include <cstddef>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -298,6 +301,38 @@ makeGpuRecordMaterial(const Vec4f &baseColor = Vec4f{0.25f, 0.5f, 0.75f, 0.9f},
   offlinePassDefinition.renderState.cullMode = cullMode;
   materialTemplate->setPassDefinition(Pass_OfflineRayTrace,
                                       std::move(offlinePassDefinition));
+  materialTemplate->rebuildMaterialInterface();
+
+  auto material = MaterialInstance::create(materialTemplate);
+  material->setBsdfType("matte");
+  MaterialParameterEnvelope kd;
+  kd.kind = MaterialEnvelopeKind::Rgb;
+  kd.rgbValue = Vec3f{baseColor.x, baseColor.y, baseColor.z};
+  material->setMaterialEnvelope(StringID("Kd"), std::move(kd));
+  return material;
+}
+
+MaterialInstanceSharedPtr makeSceneMaterialsShaderMaterial(
+    const Vec4f &baseColor = Vec4f{0.25f, 0.5f, 0.75f, 0.9f}) {
+  ShaderResourceBinding sceneMaterials;
+  sceneMaterials.name = "SceneMaterials";
+  sceneMaterials.set = 0;
+  sceneMaterials.binding = 7;
+  sceneMaterials.type = ShaderPropertyType::StorageBuffer;
+  sceneMaterials.descriptorCount = 1;
+  sceneMaterials.size = sizeof(SceneGpuMaterialRecord);
+  sceneMaterials.stageFlags = ShaderStage::Fragment;
+
+  auto shader = std::make_shared<FakeShader>(
+      std::vector<ShaderResourceBinding>{sceneMaterials});
+  auto materialTemplate = MaterialTemplate::create("scene_materials_shader");
+  ShaderProgramSet shaderSet;
+  shaderSet.shaderName = "scene_materials_shader";
+  shaderSet.shader = shader;
+  MaterialPassDefinition passDefinition;
+  passDefinition.shaderProgram = shaderSet;
+  passDefinition.renderState = RenderState{};
+  materialTemplate->setPassDefinition(Pass_Forward, std::move(passDefinition));
   materialTemplate->rebuildMaterialInterface();
 
   auto material = MaterialInstance::create(materialTemplate);
@@ -1050,6 +1085,97 @@ void testSceneRegistersCameraAndLightResources() {
   }
   EXPECT(scene->resources().lightCount() == 0,
          "removed light should release light entry");
+}
+
+void testRealtimeSceneLevelResourcesExposeGpuMaterialTables() {
+  auto node = SceneNode::create("realtime_gpu_material_node");
+  node->addComponent<MeshComponent>(makeMeshBuffer());
+  node->addComponent<MaterialComponent>(makeGpuRecordMaterial());
+  auto scene = Scene::create("realtime_gpu_material_resources");
+  scene->addRenderable(node);
+  scene->resources().beginRenderResourceScope();
+
+  RenderTargetDesc targetDesc;
+  targetDesc.role = RenderTargetRole::Swapchain;
+  const DescriptorResourceList resources =
+      scene->getSceneLevelResources(Pass_Forward, RenderTarget{targetDesc});
+
+  const auto sceneMaterials = std::find_if(
+      resources.begin(), resources.end(), [](const DescriptorResourceRef &ref) {
+        return ref.getBindingName() == StringID("SceneMaterials");
+      });
+  EXPECT(sceneMaterials != resources.end() && sceneMaterials->isResource(),
+         "realtime scene resources should include SceneMaterials");
+  if (sceneMaterials != resources.end() && sceneMaterials->isResource()) {
+    EXPECT(sceneMaterials->resource().get().getType() ==
+               ResourceType::StorageBuffer,
+           "SceneMaterials should be a storage buffer resource");
+    EXPECT(sceneMaterials->resource().get().getByteSize() ==
+               sizeof(SceneGpuMaterialRecord),
+           "SceneMaterials should upload compact material records");
+  }
+
+  const auto sceneTextures = std::find_if(
+      resources.begin(), resources.end(), [](const DescriptorResourceRef &ref) {
+        return ref.getBindingName() == StringID("SceneTextures");
+      });
+  EXPECT(sceneTextures != resources.end() && sceneTextures->isTextureArray(),
+         "realtime scene resources should include SceneTextures");
+  if (sceneTextures != resources.end() && sceneTextures->isTextureArray()) {
+    EXPECT(sceneTextures->textures().size() == 256,
+           "SceneTextures should reserve the fixed 256-slot ABI array");
+    EXPECT(std::all_of(sceneTextures->textures().begin(),
+                       sceneTextures->textures().end(),
+                       [](const TextureSamplerRef &texture) {
+                         return texture.isValid();
+                       }),
+           "SceneTextures should not contain empty descriptor slots");
+  }
+}
+
+void testRealtimeRenderQueueWritesPerDrawGpuMaterialIndex() {
+  auto first = SceneNode::create("first_material_node");
+  first->addComponent<MeshComponent>(makeMeshBuffer());
+  first->addComponent<MaterialComponent>(
+      makeSceneMaterialsShaderMaterial(Vec4f{0.1f, 0.2f, 0.3f, 1.0f}));
+
+  auto second = SceneNode::create("second_material_node");
+  second->addComponent<MeshComponent>(makeMeshBuffer());
+  second->addComponent<MaterialComponent>(
+      makeSceneMaterialsShaderMaterial(Vec4f{0.8f, 0.7f, 0.6f, 1.0f}));
+
+  auto scene = Scene::create("realtime_material_index_scene", first);
+  scene->addRenderable(second);
+  scene->resources().beginRenderResourceScope();
+
+  RenderTargetDesc targetDesc;
+  targetDesc.role = RenderTargetRole::Swapchain;
+  RenderWorkQueue queue;
+  queue.build(
+      RenderWorkBuildContext::realtime(*scene,
+                                       RenderWorkBuildContext::RealtimeOptions{
+                                           .visibleMask = VisibilityMask_All,
+                                       }),
+      Pass_Forward, RenderTarget{targetDesc});
+
+  EXPECT(queue.getItems().size() == 2,
+         "queue should contain both material-index test draws");
+  std::vector<u32> materialIndices;
+  for (const RenderWorkItem &item : queue.getItems()) {
+    EXPECT(item.raster.drawData &&
+               item.raster.drawData->byteSize() >= sizeof(PerDrawLayout),
+           "queued draw should carry the typed per-draw layout");
+    if (item.raster.drawData &&
+        item.raster.drawData->byteSize() >= sizeof(PerDrawLayout)) {
+      PerDrawLayout layout;
+      std::memcpy(&layout, item.raster.drawData->rawData(), sizeof(layout));
+      materialIndices.push_back(layout.materialIndex);
+    }
+  }
+  std::sort(materialIndices.begin(), materialIndices.end());
+  EXPECT(materialIndices.size() == 2 && materialIndices[0] == 0 &&
+             materialIndices[1] == 1,
+         "queued draws should write compact SceneMaterials indices per draw");
 }
 
 void testSceneGpuRecordLayoutContract() {
@@ -2001,6 +2127,8 @@ int main() {
   testHandleGenerationInvalidatesStaleMeshHandle();
   testSceneRegistersRenderableComponentResources();
   testSceneRegistersCameraAndLightResources();
+  testRealtimeSceneLevelResourcesExposeGpuMaterialTables();
+  testRealtimeRenderQueueWritesPerDrawGpuMaterialIndex();
   testSceneGpuRecordLayoutContract();
   testSceneResourceTableDoesNotExportPackedVertexUploadStream();
   testSceneGpuMaterialRecordCarriesOfflineCullMode();

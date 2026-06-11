@@ -2,6 +2,7 @@
 
 layout(push_constant) uniform ObjectPC {
     mat4 model;
+    uint materialIndex;
 } object;
 
 layout(set = 0, binding = 0) uniform CameraUBO {
@@ -22,6 +23,7 @@ layout(location = 2) out vec2 vUV;
 #ifdef HAS_NORMAL_MAP
 layout(location = 3) out mat3 vTBN;
 #endif
+layout(location = 6) flat out uint vMaterialIndex;
 
 void main() {
     vec4 worldPos = object.model * vec4(inPosition, 1.0);
@@ -29,6 +31,7 @@ void main() {
 
     vWorldPos = worldPos.xyz;
     vUV = inUV;
+    vMaterialIndex = object.materialIndex;
 
     mat3 normalMatrix = mat3(transpose(inverse(object.model)));
     vNormal = normalize(normalMatrix * inNormal);

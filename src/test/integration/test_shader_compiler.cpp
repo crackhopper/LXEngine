@@ -1,10 +1,10 @@
-#include "core/utils/env.hpp"
-#include "infra/shader_compiler/shader_compiler.hpp"
-#include "infra/shader_compiler/compiled_shader.hpp"
-#include "infra/shader_compiler/shader_reflector.hpp"
 #include "core/rhi/gpu_resource.hpp"
 #include "core/scene/scene_system_abi.hpp"
 #include "core/scene/scene_system_abi_validation.hpp"
+#include "core/utils/env.hpp"
+#include "infra/shader_compiler/compiled_shader.hpp"
+#include "infra/shader_compiler/shader_compiler.hpp"
+#include "infra/shader_compiler/shader_reflector.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -89,14 +89,13 @@ static void printBindings(const std::vector<ShaderResourceBinding> &bindings) {
     std::cout << "  [set=" << b.set << ", binding=" << b.binding << "] "
               << "name=\"" << b.name << "\"  "
               << "type=" << shaderPropertyTypeName(b.type) << "  "
-              << "count=" << b.descriptorCount << "  "
-              << "size=" << b.size << "  "
-              << "stages=" << stageFlagsToString(b.stageFlags) << "\n";
+              << "count=" << b.descriptorCount << "  " << "size=" << b.size
+              << "  " << "stages=" << stageFlagsToString(b.stageFlags) << "\n";
   }
 }
 
-static void
-printDescriptorSetLayoutMapping(const std::vector<ShaderResourceBinding> &bindings) {
+static void printDescriptorSetLayoutMapping(
+    const std::vector<ShaderResourceBinding> &bindings) {
   std::cout << "\n  === VkDescriptorSetLayoutBinding mapping ===\n";
 
   // Group by set
@@ -121,12 +120,10 @@ printDescriptorSetLayoutMapping(const std::vector<ShaderResourceBinding> &bindin
 // Test runner
 // ---------------------------------------------------------------------------
 
-static bool testVariantCombination(
-    const std::filesystem::path &vertPath,
-    const std::filesystem::path &fragPath,
-    const std::string &label,
-    const std::vector<ShaderVariant> &variants) {
-
+static bool testVariantCombination(const std::filesystem::path &vertPath,
+                                   const std::filesystem::path &fragPath,
+                                   const std::string &label,
+                                   const std::vector<ShaderVariant> &variants) {
   std::cout << "\n========================================\n";
   std::cout << "  Test: " << label << "\n";
   std::cout << "========================================\n";
@@ -156,12 +153,13 @@ static bool testVariantCombination(
 
   // Reflect
   auto bindings = ShaderReflector::reflect(compileResult.stages);
-  auto vertexInputs = ShaderReflector::reflectVertexInputs(compileResult.stages);
+  auto vertexInputs =
+      ShaderReflector::reflectVertexInputs(compileResult.stages);
   std::cout << "  Reflection found " << bindings.size() << " bindings\n";
 
   // Create CompiledShader
-  auto shader = std::make_shared<CompiledShader>(std::move(compileResult.stages),
-                                                 bindings, vertexInputs);
+  auto shader = std::make_shared<CompiledShader>(
+      std::move(compileResult.stages), bindings, vertexInputs);
   std::cout << "  Program hash: 0x" << std::hex << shader->getProgramHash()
             << std::dec << "\n";
 
@@ -195,8 +193,8 @@ static bool testVariantCombination(
 // UBO member reflection tests (REQ-004)
 // ---------------------------------------------------------------------------
 
-static const StructMemberInfo *
-findMember(const ShaderResourceBinding &b, const std::string &name) {
+static const StructMemberInfo *findMember(const ShaderResourceBinding &b,
+                                          const std::string &name) {
   for (const auto &m : b.members) {
     if (m.name == name)
       return &m;
@@ -211,8 +209,8 @@ static std::string readTextFile(const std::filesystem::path &path) {
   return buffer.str();
 }
 
-static bool testPostProcessShaderContract(
-    const std::filesystem::path &shaderDir) {
+static bool
+testPostProcessShaderContract(const std::filesystem::path &shaderDir) {
   std::cout << "\n========================================\n";
   std::cout << "  Test: Post-process shader contract\n";
   std::cout << "========================================\n";
@@ -237,8 +235,7 @@ static bool testPostProcessShaderContract(
   }
   if (sceneColor->set != 0 || sceneColor->binding != 0) {
     std::cerr << "  FAIL: SceneColor expected set=0 binding=0, got set="
-              << sceneColor->set << " binding=" << sceneColor->binding
-              << "\n";
+              << sceneColor->set << " binding=" << sceneColor->binding << "\n";
     return false;
   }
   const auto bloomColor =
@@ -252,8 +249,7 @@ static bool testPostProcessShaderContract(
   }
   if (bloomColor->set != 0 || bloomColor->binding != 2) {
     std::cerr << "  FAIL: BloomColor expected set=0 binding=2, got set="
-              << bloomColor->set << " binding=" << bloomColor->binding
-              << "\n";
+              << bloomColor->set << " binding=" << bloomColor->binding << "\n";
     return false;
   }
 
@@ -321,9 +317,8 @@ static bool testBloomShaderContracts(const std::filesystem::path &shaderDir) {
   std::cout << "========================================\n";
 
   const auto thresholdPath = shaderDir / "bloom_threshold.frag";
-  auto thresholdResult =
-      ShaderCompiler::compileProgram(shaderDir / "bloom_threshold.vert",
-                                     thresholdPath, {});
+  auto thresholdResult = ShaderCompiler::compileProgram(
+      shaderDir / "bloom_threshold.vert", thresholdPath, {});
   if (!thresholdResult.success) {
     std::cerr << "  COMPILE FAILED: " << thresholdResult.errorMessage << "\n";
     return false;
@@ -352,13 +347,11 @@ static bool testBloomShaderContracts(const std::filesystem::path &shaderDir) {
   }
 
   for (const auto *fragName : {"bloom_blur_h.frag", "bloom_blur_v.frag"}) {
-    const auto vertName =
-        std::string(fragName).find("_h.") != std::string::npos
-            ? "bloom_blur_h.vert"
-            : "bloom_blur_v.vert";
-    auto blurResult =
-        ShaderCompiler::compileProgram(shaderDir / vertName,
-                                       shaderDir / fragName, {});
+    const auto vertName = std::string(fragName).find("_h.") != std::string::npos
+                              ? "bloom_blur_h.vert"
+                              : "bloom_blur_v.vert";
+    auto blurResult = ShaderCompiler::compileProgram(shaderDir / vertName,
+                                                     shaderDir / fragName, {});
     if (!blurResult.success) {
       std::cerr << "  COMPILE FAILED: " << blurResult.errorMessage << "\n";
       return false;
@@ -371,8 +364,7 @@ static bool testBloomShaderContracts(const std::filesystem::path &shaderDir) {
     if (bloomSource == bindings.end() ||
         bloomSource->type != ShaderPropertyType::Texture2D ||
         bloomSource->set != 0 || bloomSource->binding != 0) {
-      std::cerr << "  FAIL: " << fragName
-                << " BloomSource binding mismatch\n";
+      std::cerr << "  FAIL: " << fragName << " BloomSource binding mismatch\n";
       return false;
     }
   }
@@ -381,8 +373,7 @@ static bool testBloomShaderContracts(const std::filesystem::path &shaderDir) {
   return true;
 }
 
-static bool testIblBakeShaderContracts(
-    const std::filesystem::path &shaderDir) {
+static bool testIblBakeShaderContracts(const std::filesystem::path &shaderDir) {
   std::cout << "\n========================================\n";
   std::cout << "  Test: IBL bake shader contracts\n";
   std::cout << "========================================\n";
@@ -391,11 +382,9 @@ static bool testIblBakeShaderContracts(
       [](const std::vector<ShaderResourceBinding> &bindings,
          const std::string &name, ShaderPropertyType type, u32 set,
          u32 binding) {
-        const auto it =
-            std::find_if(bindings.begin(), bindings.end(),
-                         [&](const auto &candidate) {
-                           return candidate.name == name;
-                         });
+        const auto it = std::find_if(
+            bindings.begin(), bindings.end(),
+            [&](const auto &candidate) { return candidate.name == name; });
         return it != bindings.end() && it->type == type && it->set == set &&
                it->binding == binding;
       };
@@ -432,9 +421,9 @@ static bool testIblBakeShaderContracts(
     return false;
   }
 
-  auto prefilter = ShaderCompiler::compileProgram(
-      shaderDir / "ibl_prefilter_env.vert",
-      shaderDir / "ibl_prefilter_env.frag", {});
+  auto prefilter =
+      ShaderCompiler::compileProgram(shaderDir / "ibl_prefilter_env.vert",
+                                     shaderDir / "ibl_prefilter_env.frag", {});
   if (!prefilter.success) {
     std::cerr << "  COMPILE FAILED: " << prefilter.errorMessage << "\n";
     return false;
@@ -450,9 +439,8 @@ static bool testIblBakeShaderContracts(
     return false;
   }
 
-  auto brdf = ShaderCompiler::compileProgram(shaderDir / "ibl_brdf_lut.vert",
-                                             shaderDir / "ibl_brdf_lut.frag",
-                                             {});
+  auto brdf = ShaderCompiler::compileProgram(
+      shaderDir / "ibl_brdf_lut.vert", shaderDir / "ibl_brdf_lut.frag", {});
   if (!brdf.success) {
     std::cerr << "  COMPILE FAILED: " << brdf.errorMessage << "\n";
     return false;
@@ -479,8 +467,8 @@ static bool testIblBakeShaderContracts(
   return true;
 }
 
-static bool testTextureCubeReflectionContract(
-    const std::filesystem::path &shaderDir) {
+static bool
+testTextureCubeReflectionContract(const std::filesystem::path &shaderDir) {
   std::cout << "\n========================================\n";
   std::cout << "  Test: TextureCube reflection contract\n";
   std::cout << "========================================\n";
@@ -559,10 +547,9 @@ static bool testPbrIblContract(const std::filesystem::path &shaderDir,
 
   const auto bindings = ShaderReflector::reflect(compileResult.stages);
   const auto findBinding = [&](const std::string &name) {
-    return std::find_if(bindings.begin(), bindings.end(),
-                        [&](const auto &binding) {
-                          return binding.name == name;
-                        });
+    return std::find_if(
+        bindings.begin(), bindings.end(),
+        [&](const auto &binding) { return binding.name == name; });
   };
 
   const auto irradiance = findBinding("IrradianceMap");
@@ -604,12 +591,12 @@ static bool testPbrMaterialGpuRecordContract(
     const std::filesystem::path &fragPath,
     const std::string &label = "PBR material GPU record contract") {
   std::cout << "  Test: " << label << "\n";
-  auto compileResult = ShaderCompiler::compileProgram(
-      vertPath, fragPath,
-      {{"HAS_NORMAL_MAP", true},
-       {"HAS_METALLIC_ROUGHNESS", true},
-       {"HAS_AO_MAP", true},
-       {"HAS_EMISSIVE_MAP", true}});
+  auto compileResult =
+      ShaderCompiler::compileProgram(vertPath, fragPath,
+                                     {{"HAS_NORMAL_MAP", true},
+                                      {"HAS_METALLIC_ROUGHNESS", true},
+                                      {"HAS_AO_MAP", true},
+                                      {"HAS_EMISSIVE_MAP", true}});
   if (!compileResult.success) {
     std::cerr << "  COMPILE FAILED: " << compileResult.errorMessage << "\n";
     return false;
@@ -617,10 +604,9 @@ static bool testPbrMaterialGpuRecordContract(
 
   const auto bindings = ShaderReflector::reflect(compileResult.stages);
   const auto findBinding = [&](const std::string &name) {
-    return std::find_if(bindings.begin(), bindings.end(),
-                        [&](const auto &candidate) {
-                          return candidate.name == name;
-                        });
+    return std::find_if(
+        bindings.begin(), bindings.end(),
+        [&](const auto &candidate) { return candidate.name == name; });
   };
   const auto rejectBinding = [&](const std::string &name) {
     const auto it = findBinding(name);
@@ -633,25 +619,23 @@ static bool testPbrMaterialGpuRecordContract(
   };
 
   if (!rejectBinding("MaterialUBO") || !rejectBinding("albedoMap") ||
-      !rejectBinding("normalMap") ||
-      !rejectBinding("metallicRoughnessMap") || !rejectBinding("aoMap") ||
-      !rejectBinding("emissiveMap")) {
+      !rejectBinding("normalMap") || !rejectBinding("metallicRoughnessMap") ||
+      !rejectBinding("aoMap") || !rejectBinding("emissiveMap")) {
     return false;
   }
 
   const auto expectBinding = [&](const std::string &name,
-                                 ShaderPropertyType type, u32 set,
-                                 u32 binding, u32 descriptorCount) {
-    const auto it = std::find_if(bindings.begin(), bindings.end(),
-                                 [&](const auto &candidate) {
-                                   return candidate.name == name;
-                                 });
+                                 ShaderPropertyType type, u32 set, u32 binding,
+                                 u32 descriptorCount) {
+    const auto it = std::find_if(
+        bindings.begin(), bindings.end(),
+        [&](const auto &candidate) { return candidate.name == name; });
     if (it == bindings.end() || it->type != type || it->set != set ||
         it->binding != binding || it->descriptorCount != descriptorCount) {
-      std::cerr << "  FAIL: " << name << " expected type="
-                << shaderPropertyTypeName(type) << " set=" << set
-                << " binding=" << binding << " count=" << descriptorCount
-                << "\n";
+      std::cerr << "  FAIL: " << name
+                << " expected type=" << shaderPropertyTypeName(type)
+                << " set=" << set << " binding=" << binding
+                << " count=" << descriptorCount << "\n";
       return false;
     }
     return true;
@@ -665,24 +649,32 @@ static bool testPbrMaterialGpuRecordContract(
   }
 
   const auto source = readTextFile(fragPath);
-  for (const std::string token : {"MaterialUBO", "baseColorFactor",
-                                  "metallicFactor", "roughnessFactor",
-                                  "albedoMap", "normalMap",
-                                  "metallicRoughnessMap", "aoMap",
-                                  "emissiveMap"}) {
+  for (const std::string token :
+       {"MaterialUBO", "baseColorFactor", "metallicFactor", "roughnessFactor",
+        "albedoMap", "normalMap", "metallicRoughnessMap", "aoMap",
+        "emissiveMap"}) {
     if (source.find(token) != std::string::npos) {
       std::cerr << "  FAIL: PBR fragment source still contains legacy token "
                 << token << "\n";
       return false;
     }
   }
+  if (source.find("materials[0]") != std::string::npos) {
+    std::cerr << "  FAIL: PBR fragment source hard-codes materials[0]\n";
+    return false;
+  }
+  if (source.find("materials[vMaterialIndex]") == std::string::npos) {
+    std::cerr << "  FAIL: PBR fragment source should index SceneMaterials "
+                 "with the per-draw material index\n";
+    return false;
+  }
 
   std::cout << "  PASS: PBR reflects migrated material GPU record bindings\n";
   return true;
 }
 
-static bool testPbrFragmentUsesSharedCommon(
-    const std::filesystem::path &fragPath) {
+static bool
+testPbrFragmentUsesSharedCommon(const std::filesystem::path &fragPath) {
   std::cout << "  Test: PBR fragment uses shared common\n";
   const auto source = readTextFile(fragPath);
   if (source.find("#include \"common/pbr.glsl\"") == std::string::npos) {
@@ -709,11 +701,14 @@ static bool testPbrFragmentAppliesDirectionalLightIntensity(
   return true;
 }
 
-static bool testPbrClearcoatShaderContract(
-    const std::filesystem::path &shaderDir) {
-  std::cout << "  Test: PBR clearcoat shader compiles and reflects layered parameters\n";
-  const auto vertPath = shaderDir / "techniques" / "Forward" / "pbr_clearcoat.vert";
-  const auto fragPath = shaderDir / "techniques" / "Forward" / "pbr_clearcoat.frag";
+static bool
+testPbrClearcoatShaderContract(const std::filesystem::path &shaderDir) {
+  std::cout << "  Test: PBR clearcoat shader compiles and reflects layered "
+               "parameters\n";
+  const auto vertPath =
+      shaderDir / "techniques" / "Forward" / "pbr_clearcoat.vert";
+  const auto fragPath =
+      shaderDir / "techniques" / "Forward" / "pbr_clearcoat.frag";
   if (!std::filesystem::exists(vertPath) ||
       !std::filesystem::exists(fragPath)) {
     std::cerr << "  FAIL: pbr_clearcoat shader files should exist\n";
@@ -729,11 +724,11 @@ static bool testPbrClearcoatShaderContract(
   }
 
   const auto bindings = ShaderReflector::reflect(compileResult.stages);
-  const auto materialBinding = std::find_if(
-      bindings.begin(), bindings.end(),
-      [](const ShaderResourceBinding &binding) {
-        return binding.name == "SceneMaterials";
-      });
+  const auto materialBinding =
+      std::find_if(bindings.begin(), bindings.end(),
+                   [](const ShaderResourceBinding &binding) {
+                     return binding.name == "SceneMaterials";
+                   });
   if (materialBinding == bindings.end() ||
       materialBinding->type != ShaderPropertyType::StorageBuffer) {
     std::cerr << "  FAIL: pbr_clearcoat SceneMaterials SSBO binding missing\n";
@@ -741,16 +736,24 @@ static bool testPbrClearcoatShaderContract(
   }
 
   const auto source = readTextFile(fragPath);
-  for (const std::string token : {"MaterialUBO", "baseColorFactor",
-                                  "metallicFactor", "roughnessFactor",
-                                  "albedoMap", "normalMap",
-                                  "metallicRoughnessMap", "aoMap",
-                                  "emissiveMap"}) {
+  for (const std::string token :
+       {"MaterialUBO", "baseColorFactor", "metallicFactor", "roughnessFactor",
+        "albedoMap", "normalMap", "metallicRoughnessMap", "aoMap",
+        "emissiveMap"}) {
     if (source.find(token) != std::string::npos) {
       std::cerr << "  FAIL: pbr_clearcoat.frag still contains legacy token "
                 << token << "\n";
       return false;
     }
+  }
+  if (source.find("materials[0]") != std::string::npos) {
+    std::cerr << "  FAIL: pbr_clearcoat.frag hard-codes materials[0]\n";
+    return false;
+  }
+  if (source.find("materials[vMaterialIndex]") == std::string::npos) {
+    std::cerr << "  FAIL: pbr_clearcoat.frag should index SceneMaterials "
+                 "with the per-draw material index\n";
+    return false;
   }
   if (source.find("lxPbrLayeredClearcoatDirectLight") == std::string::npos) {
     std::cerr << "  FAIL: pbr_clearcoat.frag should call shared layered "
@@ -762,8 +765,8 @@ static bool testPbrClearcoatShaderContract(
   return true;
 }
 
-static bool testDeferredPbrShaderContracts(
-    const std::filesystem::path &shaderDir) {
+static bool
+testDeferredPbrShaderContracts(const std::filesystem::path &shaderDir) {
   std::cout << "  Test: Deferred PBR shader GPU record contracts\n";
   const auto pbrVert =
       shaderDir / "techniques" / "Deferred" / "pbr_gbuffer.vert";
@@ -773,8 +776,7 @@ static bool testDeferredPbrShaderContracts(
       shaderDir / "techniques" / "Deferred" / "pbr_clearcoat_gbuffer.vert";
   const auto clearcoatFrag =
       shaderDir / "techniques" / "Deferred" / "pbr_clearcoat_gbuffer.frag";
-  if (!std::filesystem::exists(pbrVert) ||
-      !std::filesystem::exists(pbrFrag) ||
+  if (!std::filesystem::exists(pbrVert) || !std::filesystem::exists(pbrFrag) ||
       !std::filesystem::exists(clearcoatVert) ||
       !std::filesystem::exists(clearcoatFrag)) {
     std::cerr << "  FAIL: deferred PBR shader files should exist\n";
@@ -813,15 +815,16 @@ static bool testSharedPbrKeepsLowRoughnessHighlights(
   return true;
 }
 
-static bool testSceneSystemAbiReflection(const std::filesystem::path &shaderDir) {
+static bool
+testSceneSystemAbiReflection(const std::filesystem::path &shaderDir) {
   std::cout << "  Test: scene system ABI SSBO reflection\n";
-  const auto tempDir = std::filesystem::temp_directory_path() / "lxe_shader_abi";
+  const auto tempDir =
+      std::filesystem::temp_directory_path() / "lxe_shader_abi";
   std::filesystem::create_directories(tempDir);
   std::filesystem::create_directories(tempDir / "common");
-  std::filesystem::copy_file(
-      shaderDir / "common" / "scene_system_abi.glsl",
-      tempDir / "common" / "scene_system_abi.glsl",
-      std::filesystem::copy_options::overwrite_existing);
+  std::filesystem::copy_file(shaderDir / "common" / "scene_system_abi.glsl",
+                             tempDir / "common" / "scene_system_abi.glsl",
+                             std::filesystem::copy_options::overwrite_existing);
   const auto shaderPath = tempDir / "scene_system_abi_probe.comp";
   {
     std::ofstream out(shaderPath);
@@ -845,9 +848,8 @@ static bool testSceneSystemAbiReflection(const std::filesystem::path &shaderDir)
                         });
   };
 
-  const auto expectSsbo = [&](const std::string &name, u32 binding,
-                              u32 size, const std::string &member,
-                              u32 offset) {
+  const auto expectSsbo = [&](const std::string &name, u32 binding, u32 size,
+                              const std::string &member, u32 offset) {
     const auto it = findBinding(name);
     if (it == bindings.end()) {
       std::cerr << "  FAIL: " << name << " binding missing\n";
@@ -856,17 +858,17 @@ static bool testSceneSystemAbiReflection(const std::filesystem::path &shaderDir)
     if (it->type != ShaderPropertyType::StorageBuffer ||
         it->set != kSceneSystemDescriptorSet || it->binding != binding ||
         it->size != size) {
-      std::cerr << "  FAIL: " << name << " expected SSBO set="
-                << kSceneSystemDescriptorSet << " binding=" << binding
-                << " size=" << size << ", got set=" << it->set
-                << " binding=" << it->binding << " size=" << it->size
-                << "\n";
+      std::cerr << "  FAIL: " << name
+                << " expected SSBO set=" << kSceneSystemDescriptorSet
+                << " binding=" << binding << " size=" << size
+                << ", got set=" << it->set << " binding=" << it->binding
+                << " size=" << it->size << "\n";
       return false;
     }
     const auto *reflectedMember = findMember(*it, member);
     if (!reflectedMember || reflectedMember->offset != offset) {
-      std::cerr << "  FAIL: " << name << "." << member
-                << " expected offset " << offset << "\n";
+      std::cerr << "  FAIL: " << name << "." << member << " expected offset "
+                << offset << "\n";
       return false;
     }
     return true;
@@ -952,8 +954,12 @@ int main(int argc, char *argv[]) {
     shaderDir = std::filesystem::current_path() / "assets" / "shaders" / "glsl";
     if (!std::filesystem::exists(shaderDir)) {
       // Try source tree location
-      shaderDir = std::filesystem::path(__FILE__).parent_path().parent_path()
-                      .parent_path().parent_path() / "assets" / "shaders" / "glsl";
+      shaderDir = std::filesystem::path(__FILE__)
+                      .parent_path()
+                      .parent_path()
+                      .parent_path()
+                      .parent_path() /
+                  "assets" / "shaders" / "glsl";
     }
   }
 
@@ -976,15 +982,15 @@ int main(int argc, char *argv[]) {
     ++failures;
 
   // Test 2: HAS_NORMAL_MAP only
-  if (!testVariantCombination(vertPath, fragPath, "PBR + Normal Map",
-                              {{"HAS_NORMAL_MAP", true},
-                               {"HAS_METALLIC_ROUGHNESS", false}}))
+  if (!testVariantCombination(
+          vertPath, fragPath, "PBR + Normal Map",
+          {{"HAS_NORMAL_MAP", true}, {"HAS_METALLIC_ROUGHNESS", false}}))
     ++failures;
 
   // Test 3: All variants enabled
-  if (!testVariantCombination(vertPath, fragPath, "PBR + All Variants",
-                              {{"HAS_NORMAL_MAP", true},
-                               {"HAS_METALLIC_ROUGHNESS", true}}))
+  if (!testVariantCombination(
+          vertPath, fragPath, "PBR + All Variants",
+          {{"HAS_NORMAL_MAP", true}, {"HAS_METALLIC_ROUGHNESS", true}}))
     ++failures;
   if (!testPbrIblContract(shaderDir, vertPath, fragPath))
     ++failures;

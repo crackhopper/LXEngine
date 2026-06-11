@@ -50,6 +50,13 @@ struct PerDrawData {
     }
   }
 
+  void updateRasterMaterialIndex(u32 materialIndex) {
+    PerDrawLayoutBase layout;
+    std::memcpy(&layout, data, sizeof(layout));
+    layout.materialIndex = materialIndex;
+    update(layout);
+  }
+
   const void *rawData() const { return data; }
   u32 byteSize() const { return activeSize; }
 };

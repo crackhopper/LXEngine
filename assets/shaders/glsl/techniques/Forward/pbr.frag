@@ -10,6 +10,7 @@ layout(location = 2) in vec2 vUV;
 #ifdef HAS_NORMAL_MAP
 layout(location = 3) in mat3 vTBN;
 #endif
+layout(location = 6) flat in uint vMaterialIndex;
 
 layout(location = 0) out vec4 outColor;
 
@@ -69,7 +70,7 @@ vec4 sampleSceneTexture(uint textureIndex, vec2 uv) {
 }
 
 void main() {
-    lxSceneMaterialRecord material = materials[0];
+    lxSceneMaterialRecord material = materials[vMaterialIndex];
 
     vec4 albedo = material.baseColor;
     if (hasSceneTexture(material.baseColorTexture)) {

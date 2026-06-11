@@ -1,17 +1,17 @@
-#include "core/rhi/image_format.hpp"
-#include "core/frame_graph/render_target.hpp"
-#include "core/rhi/index_buffer.hpp"
 #include "core/asset/material_instance.hpp"
 #include "core/asset/mesh.hpp"
+#include "core/asset/shader.hpp"
+#include "core/frame_graph/pass.hpp"
+#include "core/frame_graph/render_queue.hpp"
+#include "core/frame_graph/render_target.hpp"
 #include "core/pipeline/pipeline_build_desc.hpp"
 #include "core/pipeline/pipeline_key.hpp"
-#include "core/asset/shader.hpp"
+#include "core/rhi/image_format.hpp"
+#include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/components/material_component.hpp"
 #include "core/scene/components/mesh_component.hpp"
 #include "core/scene/object.hpp"
-#include "core/frame_graph/pass.hpp"
-#include "core/frame_graph/render_queue.hpp"
 #include "core/scene/scene.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/string_table.hpp"
@@ -100,35 +100,35 @@ buildItem(PrimitiveTopology topo = PrimitiveTopology::TriangleList,
                             0,
                             ShaderStage::Vertex,
                             {}},
-      ShaderResourceBinding{"SceneMaterials",
-                            0,
-                            7,
-                            ShaderPropertyType::StorageBuffer,
-                            1,
-                            96,
-                            0,
-                            ShaderStage::Fragment,
-                            {}},
-      ShaderResourceBinding{"SceneTextures",
-                            0,
-                            11,
-                            ShaderPropertyType::Texture2D,
-                            256,
-                            0,
-                            0,
-                            ShaderStage::Fragment,
-                            {}},
   };
+  if (topo == PrimitiveTopology::TriangleList) {
+    bindings.push_back(ShaderResourceBinding{"SceneMaterials",
+                                             0,
+                                             7,
+                                             ShaderPropertyType::StorageBuffer,
+                                             1,
+                                             96,
+                                             0,
+                                             ShaderStage::Fragment,
+                                             {}});
+    bindings.push_back(ShaderResourceBinding{"SceneTextures",
+                                             0,
+                                             11,
+                                             ShaderPropertyType::Texture2D,
+                                             256,
+                                             0,
+                                             0,
+                                             ShaderStage::Fragment,
+                                             {}});
+  }
   std::vector<ShaderStageCode> stages = {
-      ShaderStageCode{ShaderStage::Vertex,
-                      std::vector<u32>{0x07230203, 0, 0}},
+      ShaderStageCode{ShaderStage::Vertex, std::vector<u32>{0x07230203, 0, 0}},
       ShaderStageCode{ShaderStage::Fragment,
                       std::vector<u32>{0x07230203, 1, 0}},
   };
 
-  auto shader = std::make_shared<FakeShader>(std::move(bindings),
-                                             std::move(stages),
-                                             std::move(vertexInputs));
+  auto shader = std::make_shared<FakeShader>(
+      std::move(bindings), std::move(stages), std::move(vertexInputs));
   auto tmpl = MaterialTemplate::create("fake_shader");
 
   ShaderProgramSet set;
@@ -217,7 +217,8 @@ void testFromRenderWorkItemIsDeterministic() {
 }
 
 void testFromRenderWorkItemPreservesTargetDesc() {
-  const auto targetDesc = RenderTargetDesc::offscreenDepth(ImageFormat::D32Float);
+  const auto targetDesc =
+      RenderTargetDesc::offscreenDepth(ImageFormat::D32Float);
   const RenderTarget target{targetDesc};
   auto item = buildItem(PrimitiveTopology::TriangleList, {}, target);
   auto info = PipelineBuildDesc::fromRenderWorkItem(item);
@@ -240,22 +241,26 @@ void testFromRenderWorkItemFiltersVertexLayoutToShaderInputs() {
   auto mesh = Mesh::create(vb, ib, BoundingBox{{0, 0, 0}, {1, 1, 0}});
 
   std::vector<ShaderResourceBinding> bindings = {
-      ShaderResourceBinding{"CameraUBO", 0, 0,
-                            ShaderPropertyType::UniformBuffer, 1, 192, 0,
-                            ShaderStage::Vertex, {}},
+      ShaderResourceBinding{"CameraUBO",
+                            0,
+                            0,
+                            ShaderPropertyType::UniformBuffer,
+                            1,
+                            192,
+                            0,
+                            ShaderStage::Vertex,
+                            {}},
   };
   std::vector<ShaderStageCode> stages = {
-      ShaderStageCode{ShaderStage::Vertex,
-                      std::vector<u32>{0x07230203, 0, 0}},
+      ShaderStageCode{ShaderStage::Vertex, std::vector<u32>{0x07230203, 0, 0}},
   };
   std::vector<VertexInputAttribute> shaderInputs = {
       {"inPos", 0, DataType::Float3},
       {"inNormal", 1, DataType::Float3},
   };
 
-  auto shader = std::make_shared<FakeShader>(std::move(bindings),
-                                             std::move(stages),
-                                             std::move(shaderInputs));
+  auto shader = std::make_shared<FakeShader>(
+      std::move(bindings), std::move(stages), std::move(shaderInputs));
   auto tmpl = MaterialTemplate::create("filtered_layout_shader");
   ShaderProgramSet set;
   set.shaderName = "filtered_layout_shader";
