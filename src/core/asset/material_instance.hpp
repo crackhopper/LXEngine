@@ -85,6 +85,9 @@ public:
   // Non-surface helper API for shader-owned buffer bindings such as
   // post-process/procedural materials. Material v2 surface truth uses
   // PBRT envelopes below instead.
+  // Envelope-backed surface instances intentionally ignore these writes so
+  // remaining non-surface/probe call sites cannot recreate default material
+  // truth through shader-binding buffers.
   void writeShaderBindingParameter(StringID bindingName, StringID memberName,
                                    float value);
   void writeShaderBindingParameter(StringID bindingName, StringID memberName,

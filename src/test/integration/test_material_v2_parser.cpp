@@ -307,14 +307,26 @@ bsdf:
   expect(!parsed.diagnostics.empty(),
          "legacy parallel texture parameter names should emit diagnostics");
   bool mentionsUnknownParameterClass = false;
+  bool mentionsKdTexture = false;
+  bool mentionsBaseColorTexture = false;
   for (const std::string &diagnostic : parsed.diagnostics) {
     mentionsUnknownParameterClass =
         mentionsUnknownParameterClass ||
-        diagnostic.find("bsdf.parameters.<unknown>") != std::string::npos;
+        diagnostic.find("bsdf.parameters.") != std::string::npos;
+    mentionsKdTexture =
+        mentionsKdTexture || diagnostic.find("KdTexture") != std::string::npos;
+    mentionsBaseColorTexture =
+        mentionsBaseColorTexture ||
+        diagnostic.find("baseColorTexture") != std::string::npos;
   }
   expect(mentionsUnknownParameterClass,
          "legacy alias diagnostic should name the unknown BSDF parameter "
          "class");
+  expect(mentionsKdTexture,
+         "legacy KdTexture diagnostic should name the rejected parameter");
+  expect(mentionsBaseColorTexture,
+         "legacy baseColorTexture diagnostic should name the rejected "
+         "parameter");
 }
 
 void testParserRejectsRuntimeEnvelopeProvenanceFields() {
@@ -372,19 +384,19 @@ parameters:
          "legacy root parameter model should emit diagnostics");
 
   bool mentionsRootParameterClass = false;
-  bool mentionsRootParameterEntryClass = false;
+  bool mentionsMaterialUboBaseColor = false;
   for (const std::string &diagnostic : parsed.diagnostics) {
     mentionsRootParameterClass =
         mentionsRootParameterClass ||
         diagnostic.find("root.parameter-map") != std::string::npos;
-    mentionsRootParameterEntryClass =
-        mentionsRootParameterEntryClass ||
-        diagnostic.find("root.parameter-map.entries") != std::string::npos;
+    mentionsMaterialUboBaseColor =
+        mentionsMaterialUboBaseColor ||
+        diagnostic.find("MaterialUBO.baseColorFactor") != std::string::npos;
   }
   expect(mentionsRootParameterClass,
          "legacy root parameter diagnostic should name root parameter class");
-  expect(mentionsRootParameterEntryClass,
-         "legacy root parameter diagnostic should name entry class");
+  expect(mentionsMaterialUboBaseColor,
+         "legacy root parameter diagnostic should identify the offending key");
 }
 
 void testParserRejectsLegacyRootResourcesMap() {
@@ -409,19 +421,23 @@ resources:
          "legacy root resources model should emit diagnostics");
 
   bool mentionsResourceMapClass = false;
-  bool mentionsResourceEntryClass = false;
+  bool mentionsAlbedoMap = false;
+  bool mentionsNormalMap = false;
   for (const std::string &diagnostic : parsed.diagnostics) {
     mentionsResourceMapClass =
         mentionsResourceMapClass ||
         diagnostic.find("root.resource-map") != std::string::npos;
-    mentionsResourceEntryClass =
-        mentionsResourceEntryClass ||
-        diagnostic.find("root.resource-map.entries") != std::string::npos;
+    mentionsAlbedoMap =
+        mentionsAlbedoMap || diagnostic.find("albedoMap") != std::string::npos;
+    mentionsNormalMap =
+        mentionsNormalMap || diagnostic.find("normalMap") != std::string::npos;
   }
   expect(mentionsResourceMapClass,
          "legacy root resources diagnostic should name root resource class");
-  expect(mentionsResourceEntryClass,
-         "legacy root resources diagnostic should name resource entry class");
+  expect(mentionsAlbedoMap,
+         "legacy root resources diagnostic should identify albedoMap");
+  expect(mentionsNormalMap,
+         "legacy root resources diagnostic should identify normalMap");
 }
 
 void testParserRejectsRenderFlowFields() {
@@ -453,13 +469,23 @@ variants:
          "render-flow fields should emit diagnostics");
 
   bool mentionsRenderFlowClass = false;
+  bool mentionsShaderKey = false;
+  bool mentionsVariantsKey = false;
   for (const std::string &diagnostic : parsed.diagnostics) {
     mentionsRenderFlowClass =
         mentionsRenderFlowClass ||
         diagnostic.find("root.render-flow-field") != std::string::npos;
+    mentionsShaderKey =
+        mentionsShaderKey || diagnostic.find("shader") != std::string::npos;
+    mentionsVariantsKey =
+        mentionsVariantsKey || diagnostic.find("variants") != std::string::npos;
   }
   expect(mentionsRenderFlowClass,
          "render-flow diagnostic should name the rejected field class");
+  expect(mentionsShaderKey,
+         "render-flow diagnostic should identify the rejected shader key");
+  expect(mentionsVariantsKey,
+         "render-flow diagnostic should identify the rejected variants key");
 }
 
 void testParserStoresEnvelopeTruthAndDependencies() {

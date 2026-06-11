@@ -140,27 +140,29 @@ validateNoLegacyRootParameterModel(const YAML::Node &root,
     valid = false;
 
     if (parametersNode.IsMap()) {
-      addDiagnostic(result, uri, "root.parameter-map.entries",
-                    "shader-binding parameter entries are not runtime "
-                    "material truth");
+      for (auto it = parametersNode.begin(); it != parametersNode.end(); ++it) {
+        if (!it->first.IsScalar()) {
+          continue;
+        }
+        addDiagnostic(result, uri,
+                      "root.parameter-map." + it->first.as<std::string>(),
+                      "shader-binding parameter entry is not runtime material "
+                      "truth");
+      }
     }
   }
 
-  bool hasRemovedRootPbrField = false;
   for (auto it = root.begin(); it != root.end(); ++it) {
     if (!it->first.IsScalar()) {
       continue;
     }
     const std::string key = it->first.as<std::string>();
     if (isRemovedRootPbrParameterClass(key)) {
-      hasRemovedRootPbrField = true;
+      addDiagnostic(result, uri, "root.pbr-parameter-field." + key,
+                    "root-level PBR parameter field is not part of material "
+                    "v2; use PBRT BSDF parameter envelopes");
+      valid = false;
     }
-  }
-  if (hasRemovedRootPbrField) {
-    addDiagnostic(result, uri, "root.pbr-parameter-field",
-                  "root-level PBR parameter fields are not part of material "
-                  "v2; use PBRT BSDF parameter envelopes");
-    valid = false;
   }
   return valid;
 }
@@ -179,9 +181,15 @@ validateNoLegacyRootResources(const YAML::Node &root,
       "root-level shader resource maps are not part of material v2; use "
       "resource envelopes under bsdf.parameters");
   if (resourcesNode.IsMap()) {
-    addDiagnostic(result, uri, "root.resource-map.entries",
-                  "shader resource binding entries are not runtime material "
-                  "truth");
+    for (auto it = resourcesNode.begin(); it != resourcesNode.end(); ++it) {
+      if (!it->first.IsScalar()) {
+        continue;
+      }
+      addDiagnostic(result, uri,
+                    "root.resource-map." + it->first.as<std::string>(),
+                    "shader resource binding entry is not runtime material "
+                    "truth");
+    }
   }
   return false;
 }
@@ -204,7 +212,7 @@ validateNoLegacyRootResources(const YAML::Node &root,
 
     const std::string key = it->first.as<std::string>();
     if (isRenderFlowRootField(key)) {
-      addDiagnostic(result, uri, "root.render-flow-field",
+      addDiagnostic(result, uri, "root.render-flow-field." + key,
                     "render-flow and shader fields are not part of "
                     "MaterialResourceParser; keep them in technique/effect "
                     "contracts");
@@ -545,7 +553,7 @@ MaterialResourceParser::parse(LX_core::SceneResourceTable &table,
        parameterIt != parametersNode.end(); ++parameterIt) {
     const std::string parameterName = parameterIt->first.as<std::string>();
     if (!hasSchemaParameter(*schema, parameterName)) {
-      addDiagnostic(result, uri, "bsdf.parameters.<unknown>",
+      addDiagnostic(result, uri, "bsdf.parameters." + parameterName,
                     "unknown BSDF parameter; use the PBRT schema name and "
                     "resource envelope instead of legacy parallel aliases");
     }

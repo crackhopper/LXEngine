@@ -309,6 +309,54 @@ makeGpuRecordMaterial(const Vec4f &baseColor = Vec4f{0.25f, 0.5f, 0.75f, 0.9f},
   return material;
 }
 
+MaterialInstanceSharedPtr makeLegacyShaderBindingOnlyMaterial() {
+  ShaderResourceBinding binding;
+  binding.name = "MaterialUBO";
+  binding.set = 2;
+  binding.binding = 0;
+  binding.type = ShaderPropertyType::UniformBuffer;
+  binding.size = 48;
+  binding.members = {
+      {"baseColor", ShaderPropertyType::Vec4, 0, 16},
+      {"specularIntensity", ShaderPropertyType::Float, 16, 4},
+      {"ambientIntensity", ShaderPropertyType::Float, 20, 4},
+      {"clearcoatFactor", ShaderPropertyType::Float, 24, 4},
+      {"clearcoatRoughness", ShaderPropertyType::Float, 28, 4},
+      {"emissiveFactor", ShaderPropertyType::Vec4, 32, 16},
+  };
+
+  auto shader =
+      std::make_shared<FakeShader>(std::vector<ShaderResourceBinding>{binding});
+  auto materialTemplate = MaterialTemplate::create("legacy_shader_binding");
+  ShaderProgramSet shaderSet;
+  shaderSet.shaderName = "legacy_shader_binding";
+  shaderSet.shader = shader;
+  MaterialPassDefinition passDefinition;
+  passDefinition.shaderProgram = shaderSet;
+  passDefinition.renderState = RenderState{};
+  materialTemplate->setPassDefinition(Pass_OfflineRayTrace,
+                                      std::move(passDefinition));
+  materialTemplate->rebuildMaterialInterface();
+
+  auto material = MaterialInstance::create(materialTemplate);
+  material->writeShaderBindingParameter(StringID("MaterialUBO"),
+                                        StringID("baseColor"),
+                                        Vec4f{0.9f, 0.1f, 0.2f, 0.3f});
+  material->writeShaderBindingParameter(StringID("MaterialUBO"),
+                                        StringID("specularIntensity"), 0.7f);
+  material->writeShaderBindingParameter(StringID("MaterialUBO"),
+                                        StringID("ambientIntensity"), 0.8f);
+  material->writeShaderBindingParameter(StringID("MaterialUBO"),
+                                        StringID("clearcoatFactor"), 0.9f);
+  material->writeShaderBindingParameter(StringID("MaterialUBO"),
+                                        StringID("clearcoatRoughness"), 0.6f);
+  material->writeShaderBindingParameter(StringID("MaterialUBO"),
+                                        StringID("emissiveFactor"),
+                                        Vec4f{0.3f, 0.4f, 0.5f, 0.6f});
+  material->syncGpuData();
+  return material;
+}
+
 MeshBuffer::UniquePtr uniqueMesh(const MeshBufferSharedPtr &mesh) {
   return mesh->cloneUnique();
 }
@@ -1047,6 +1095,24 @@ void testSceneGpuMaterialRecordCarriesOfflineCullMode() {
   EXPECT((backMaterial.flags & kSceneGpuMaterialCullModeMask) ==
              kSceneGpuMaterialCullModeBack,
          "offline GPU material record should preserve CullMode::Back");
+}
+
+void testSceneGpuMaterialRecordIgnoresLegacyShaderBindingBuffers() {
+  const auto record =
+      toGpuMaterialRecord(*makeLegacyShaderBindingOnlyMaterial());
+
+  EXPECT(record.baseColor.x == 1.0f && record.baseColor.y == 1.0f &&
+             record.baseColor.z == 1.0f && record.baseColor.w == 1.0f,
+         "GPU material record should ignore legacy shader-binding baseColor");
+  EXPECT(record.pbrParams.z == 0.0f && record.pbrParams.w == 0.0f,
+         "GPU material record should ignore legacy shader-binding PBR scalars");
+  EXPECT(record.clearcoatParams.x == 0.0f && record.clearcoatParams.y == 0.04f,
+         "GPU material record should ignore legacy shader-binding clearcoat "
+         "scalars");
+  EXPECT(record.emissive.x == 0.0f && record.emissive.y == 0.0f &&
+             record.emissive.z == 0.0f && record.emissive.w == 0.0f,
+         "GPU material record should ignore legacy shader-binding emissive "
+         "values");
 }
 
 void testSceneResourceTableUploadViewExportsBindlessGeometryStreams() {
@@ -1853,6 +1919,7 @@ int main() {
   testSceneGpuRecordLayoutContract();
   testSceneResourceTableDoesNotExportPackedVertexUploadStream();
   testSceneGpuMaterialRecordCarriesOfflineCullMode();
+  testSceneGpuMaterialRecordIgnoresLegacyShaderBindingBuffers();
   testSceneResourceTableUploadViewExportsBindlessGeometryStreams();
   testDefaultPbrEnvelopeDrivesUploadView();
   testSceneWithoutIblDoesNotCreateDefaultEnvironmentResources();
