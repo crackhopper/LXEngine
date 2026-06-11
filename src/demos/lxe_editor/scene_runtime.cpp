@@ -213,10 +213,9 @@ constexpr const char *BuiltinPrimitivePrefix =
     "builtin://lxe_editor/primitives/";
 constexpr const char *BuiltinPatchPrefix = "builtin://lxe_editor/patches/";
 constexpr const char *BuiltinPrimitiveMaterial =
-    "assets/materials/blinnphong_lit.material";
-constexpr const char *BuiltinModelPrefix = "assets/models/builtin/";
+    "assets/materials/pbr.material";
 constexpr const char *kDefaultGroundMaterial =
-    "assets/materials/blinnphong_lit.material";
+    "assets/materials/pbr.material";
 
 struct SceneRuntimeData final {
   std::optional<std::filesystem::path> documentPath;
@@ -569,7 +568,8 @@ isRuntimeDebugDrawNode(const LX_core::SceneNodeSharedPtr &node) {
 }
 
 [[nodiscard]] bool isBuiltinModelMeshUri(const std::string &uri) {
-  return uri.rfind(BuiltinModelPrefix, 0) == 0;
+  (void)uri;
+  return false;
 }
 
 [[nodiscard]] bool isGltfMeshUri(const std::string &uri) {
@@ -649,9 +649,7 @@ modelAssetIdFromNodeName(const std::string &nodeName) {
 }
 
 [[nodiscard]] BuiltinAssetCatalog loadBuiltinAssetCatalog() {
-  BuiltinAssetCatalog catalog;
-  catalog.refresh(resolveRuntimePath("assets/models/builtin"));
-  return catalog;
+  return {};
 }
 
 [[nodiscard]] std::string stripCopySuffix(const std::string &name) {
@@ -761,10 +759,7 @@ makeMaterialValueJson(const LX_core::MaterialParameterValue &value) {
 
 [[nodiscard]] const std::vector<std::string> &materialPresetUris() {
   static const std::vector<std::string> kPresets = {
-      "assets/materials/blinnphong_lit.material",
-      "assets/materials/blinnphong_default.material",
-      "assets/materials/blinnphong_textured.material",
-      "assets/materials/pbr_gold.material",
+      "assets/materials/pbr.material",
   };
   return kPresets;
 }
@@ -834,23 +829,6 @@ documentNodeHasMaterialSurface(const SceneNodeDocument &node) {
   return node.meshUri.has_value() || node.materialUri.has_value();
 }
 
-[[nodiscard]] bool
-materialHasBaseColor(const LX_core::MaterialInstanceSharedPtr &material) {
-  if (!material) {
-    return false;
-  }
-  const auto layout =
-      material->getParameterBufferLayout(LX_core::StringID("MaterialUBO"));
-  if (!layout.has_value()) {
-    return false;
-  }
-  const auto &members = layout->get().members;
-  return std::any_of(members.begin(), members.end(), [](const auto &member) {
-    return member.name == "baseColor" &&
-           member.type == LX_core::ShaderPropertyType::Vec3;
-  });
-}
-
 [[nodiscard]] const LX_core::MaterialInstance *
 activeMaterialForNode(const LX_core::Scene &scene,
                       const LX_core::SceneNode &node) {
@@ -878,23 +856,6 @@ activeMaterialForNode(LX_core::Scene &scene, LX_core::SceneNode &node) {
     return &material->get();
   }
   return materialComponent->get().getPendingMaterialInstance().get();
-}
-
-[[nodiscard]] bool
-materialHasBaseColor(const LX_core::MaterialInstance *material) {
-  if (!material) {
-    return false;
-  }
-  const auto layout =
-      material->getParameterBufferLayout(LX_core::StringID("MaterialUBO"));
-  if (!layout.has_value()) {
-    return false;
-  }
-  const auto &members = layout->get().members;
-  return std::any_of(members.begin(), members.end(), [](const auto &member) {
-    return member.name == "baseColor" &&
-           member.type == LX_core::ShaderPropertyType::Vec3;
-  });
 }
 
 void configureProceduralMaterialResources(
@@ -1992,40 +1953,14 @@ SceneRuntime::materialUriForNode(const std::string &path) const {
 
 std::optional<LX_core::Vec3f>
 SceneRuntime::nodeMaterialBaseColorForNode(const std::string &path) const {
-  const auto runtime = requireRuntimeData(m_impl);
-  if (!runtime->scene) {
-    return std::nullopt;
-  }
-  LX_core::SceneNode *node = runtime->scene->findByPath(path);
-  if (!node) {
-    return std::nullopt;
-  }
-  const LX_core::MaterialInstance *material =
-      activeMaterialForNode(*runtime->scene, *node);
-  if (!material) {
-    return std::nullopt;
-  }
-  const auto value = material->readParameterValue(
-      LX_core::StringID("MaterialUBO"), LX_core::StringID("baseColor"));
-  if (!value.has_value() ||
-      value->type != LX_core::MaterialParameterValueType::Vec3) {
-    return std::nullopt;
-  }
-  return LX_core::Vec3f{value->vectorValue.x, value->vectorValue.y,
-                        value->vectorValue.z};
+  (void)path;
+  return std::nullopt;
 }
 
 bool SceneRuntime::nodeMaterialBaseColorEditable(
     const std::string &path) const {
-  const auto runtime = requireRuntimeData(m_impl);
-  if (!runtime->scene) {
-    return false;
-  }
-  LX_core::SceneNode *node = runtime->scene->findByPath(path);
-  if (!node) {
-    return false;
-  }
-  return materialHasBaseColor(activeMaterialForNode(*runtime->scene, *node));
+  (void)path;
+  return false;
 }
 
 std::vector<std::string> SceneRuntime::materialPresets() const {
@@ -2298,58 +2233,14 @@ SceneRuntime::setNodeMaterialUri(const std::string &path,
 LX_core::CommandResult
 SceneRuntime::setNodeMaterialBaseColor(const std::string &path,
                                        const LX_core::Vec3f &color) {
-  const auto runtime = requireRuntimeData(m_impl);
-  auto *documentNode = findDocumentNodeForRuntimePath(*runtime, path);
-  if (!documentNode) {
-    return makeCommandError("scene document node not found: " + path);
-  }
-  LX_core::SceneNode *node = runtime->scene->findByPath(path);
-  if (!node) {
-    return makeCommandError("node not found: " + path);
-  }
-  auto materialComponent = node->getComponent<LX_core::MaterialComponent>();
-  if (!materialComponent.has_value()) {
-    return makeCommandError("node has no material component: " + path);
-  }
-
-  const std::string uri = normalizeMaterialUri(*documentNode);
-  try {
-    MaterialOverrideState nodeOverrides = documentNode->nodeMaterialOverrides;
-    nodeOverrides.baseColor = color;
-    auto material = loadEffectiveMaterialForSceneNode(
-        runtime->assetRoots, *documentNode, nodeOverrides);
-    if (!materialHasBaseColor(material)) {
-      return makeCommandError(
-          "material does not expose MaterialUBO.baseColor: " + uri);
-    }
-    materialComponent->get().setMaterialInstance(std::move(material));
-    if (!uri.empty()) {
-      setDocumentNodeMaterialUri(*documentNode, uri);
-    }
-    documentNode->nodeMaterialOverrides = nodeOverrides;
-  } catch (const std::exception &error) {
-    return makeCommandError(
-        std::string("failed to set node material baseColor: ") + error.what());
-  }
-
-  return makeCommandOk("node material baseColor updated",
-                       "{\"path\":\"" + jsonEscape(path) +
-                           "\",\"baseColor\":" + makeVec3Json(color) + "}");
+  (void)color;
+  return makeCommandError("legacy node material baseColor override is removed: " +
+                          path);
 }
 
 LX_core::CommandResult SceneRuntime::setNodeMaterialParameter(
     const std::string &path, const std::string &binding,
     const std::string &member, const LX_core::MaterialParameterValue &value) {
-  if (binding == "MaterialUBO" && member == "baseColor") {
-    if (value.type != LX_core::MaterialParameterValueType::Vec3) {
-      return makeCommandError(
-          "MaterialUBO.baseColor requires Vec3 material parameter value");
-    }
-    return setNodeMaterialBaseColor(path, LX_core::Vec3f{value.vectorValue.x,
-                                                         value.vectorValue.y,
-                                                         value.vectorValue.z});
-  }
-
   const auto runtime = requireRuntimeData(m_impl);
   auto *documentNode = findDocumentNodeForRuntimePath(*runtime, path);
   if (!documentNode) {
@@ -2414,30 +2305,6 @@ SceneRuntime::clearNodeMaterialParameter(const std::string &path,
 
   const std::string uri = normalizeMaterialUri(*documentNode);
   const std::string key = binding + "." + member;
-  if (binding == "MaterialUBO" && member == "baseColor") {
-    if (!documentNode->nodeMaterialOverrides.baseColor.has_value()) {
-      return makeCommandError("node has no baseColor override: " + path);
-    }
-    try {
-      MaterialOverrideState nodeOverrides = documentNode->nodeMaterialOverrides;
-      nodeOverrides.baseColor.reset();
-      auto material = loadEffectiveMaterialForSceneNode(
-          runtime->assetRoots, *documentNode, nodeOverrides);
-      materialComponent->get().setMaterialInstance(std::move(material));
-      if (!uri.empty()) {
-        setDocumentNodeMaterialUri(*documentNode, uri);
-      }
-      documentNode->nodeMaterialOverrides = std::move(nodeOverrides);
-    } catch (const std::exception &error) {
-      return makeCommandError(
-          std::string("failed to clear node material baseColor: ") +
-          error.what());
-    }
-    return makeCommandOk(
-        "node material baseColor override cleared",
-        "{\"path\":\"" + jsonEscape(path) +
-            "\",\"binding\":\"MaterialUBO\",\"member\":\"baseColor\"}");
-  }
   if (documentNode->nodeMaterialOverrides.parameters.find(key) ==
       documentNode->nodeMaterialOverrides.parameters.end()) {
     return makeCommandError("node has no material parameter override: " + key);
@@ -2509,72 +2376,9 @@ SceneRuntime::setNodeProceduralMaterialEnabled(const std::string &path,
 LX_core::CommandResult
 SceneRuntime::applyMaterialOverride(const std::string &path,
                                     const std::string &field) {
-  if (field != "baseColor") {
-    return makeCommandError("unknown material override field: " + field);
-  }
-
-  const auto runtime = requireRuntimeData(m_impl);
-  auto *documentNode = findDocumentNodeForRuntimePath(*runtime, path);
-  if (!documentNode) {
-    return makeCommandError("scene document node not found: " + path);
-  }
-  const auto color = documentNode->nodeMaterialOverrides.baseColor;
-  if (!color.has_value()) {
-    return makeCommandError("node has no baseColor override: " + path);
-  }
-
-  const std::string uri = normalizeMaterialUri(*documentNode);
-  usize updatedDocuments = 0;
-  forEachDocumentNode(runtime->document.mutableRootNode(),
-                      [&](SceneNodeDocument &candidate) {
-                        if (!documentNodeHasMaterialSurface(candidate)) {
-                          return;
-                        }
-                        if (normalizeMaterialUri(candidate) != uri) {
-                          return;
-                        }
-                        setDocumentNodeMaterialUri(candidate, uri);
-                        candidate.materialOverrides.baseColor = *color;
-                        ++updatedDocuments;
-                      });
-
-  usize updatedRuntimeNodes = 0;
-  forEachRuntimeNode(
-      runtime->scene->getRootNode(), [&](LX_core::SceneNode &node) {
-        auto *candidateDocument = findDocumentNodeByName(
-            runtime->document.mutableRootNode(), node.getNodeName());
-        if (!candidateDocument ||
-            !documentNodeHasMaterialSurface(*candidateDocument) ||
-            normalizeMaterialUri(*candidateDocument) != uri) {
-          return;
-        }
-        const auto materialComponent =
-            node.getComponent<LX_core::MaterialComponent>();
-        if (!materialComponent.has_value()) {
-          return;
-        }
-        const auto effectiveNodeOverride =
-            candidateDocument->nodeMaterialOverrides.baseColor;
-        try {
-          auto material = loadEffectiveMaterialForSceneNode(
-              runtime->assetRoots, *candidateDocument, uri,
-              candidateDocument->materialOverrides,
-              MaterialOverrideState{.baseColor = effectiveNodeOverride},
-              candidateDocument->proceduralMaterial);
-          materialComponent->get().setMaterialInstance(std::move(material));
-          ++updatedRuntimeNodes;
-        } catch (const std::exception &error) {
-          std::cerr << "[lxe_editor] failed to apply material override to "
-                    << node.getPath() << ": " << error.what() << "\n";
-        }
-      });
-
-  return makeCommandOk(
-      "material baseColor override applied",
-      "{\"materialUri\":\"" + jsonEscape(uri) +
-          "\",\"updatedDocuments\":" + std::to_string(updatedDocuments) +
-          ",\"updatedRuntimeNodes\":" + std::to_string(updatedRuntimeNodes) +
-          ",\"baseColor\":" + makeVec3Json(*color) + "}");
+  (void)path;
+  return makeCommandError("legacy material override field is removed: " +
+                          field);
 }
 
 } // namespace LX_demo::lxe_editor

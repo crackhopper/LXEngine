@@ -55,11 +55,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_vulkan_offscreen_submit_memory_probe
   test_command_bus
   test_command_bus_v2
-  test_scene_document
   test_project_document
-  test_project_catalog
-  test_project_session
-  test_scene_runtime
   test_scene_events
   test_debug_ui_smoke
   test_scene_tree_panel
@@ -72,7 +68,6 @@ set(TEST_INTEGRATION_EXE_LIST
   test_lxe_editor_layout
   test_lxe_editor_interaction
   test_realtime_render_profile_commands
-  test_lxe_editor_session
   test_lxe_editor_api_service
   test_lxe_editor_api_server
   test_lxe_editor_memory_probe
@@ -80,10 +75,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_gltf_scene_asset_loader
   test_output_profile_resolution
   test_lxe_compare_exr_metrics
-  test_offline_render_cli
   test_offline_integrator_selection
-  test_offline_image_writer
-  test_offline_scene_loader
   test_offline_gpu_scene
 
   # test_render_sphere

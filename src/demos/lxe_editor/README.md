@@ -87,14 +87,9 @@ when the editor saves configuration, that launched display becomes the saved
 
 - Startup opens the last project recorded in `data/lxe_editor/editor_data.yaml`
   when possible. If there is no last project, or the recorded project cannot
-  load, the editor opens the built-in `lxe_default` project and its
-  `lxe_editor` scene.
-- Project templates live under `assets/project_templates/` and are read-only.
-  `project init <template-id> [project-name]` copies a template into
-  `data/projects/` and opens the project's active scene.
-- The `lxe_default` template registers the built-in scenes copied from
-  `assets/project_templates/lxe_default/scenes/`, including diagnostic scenes
-  such as `realtime_offline_compare_diagnostic`.
+  load, the editor opens an empty runtime scene.
+- Project-template assets were removed with the material hard cut. New default
+  scenes are expected to enter through explicit PBRT v2 scene packages.
 - A project can contain multiple scenes. Scene ids and scene paths are resolved
   only inside the current project.
 - Editor chrome persists locally under `data/lxe_editor/`:
@@ -406,11 +401,9 @@ changes.
 
 ## Known limitations
 
-- **Material bridging is transitional glue, not full PBR.** The demo uses the
-  existing `blinnphong_0` shader. `baseColorTexture` is bridged into the
-  `albedoMap` binding; `metallicRoughnessTexture`, `normalTexture`,
-  `occlusionTexture`, and `emissiveTexture` are read from glTF but not wired
-  to the shader. Full PBR is a downstream REQ.
+- **Material v2 is the only runtime material path.** Legacy Blinn-Phong
+  material templates and local shader bindings were removed from the default
+  editor assets.
 - **DamagedHelmet.gltf in this repository does not declare TANGENT.** The
   demo uses a placeholder tangent value and keeps `enableNormal=0` so the
   placeholder is never sampled.

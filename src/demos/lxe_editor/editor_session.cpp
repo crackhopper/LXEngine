@@ -209,7 +209,7 @@ void removeDefaultProjectDirectory() {
 LxeEditorSession::LxeEditorSession(CameraRig &rig, UiOverlay &ui,
                                    LX_core::EditorState &editorState)
     : m_rig(rig), m_ui(ui), m_editorState(editorState),
-      m_projectSession(resolveRuntimePath("assets/project_templates"),
+      m_projectSession(resolveRuntimePath("data/project_templates_disabled"),
                        resolveRuntimePath("data/projects")),
       m_editorDataState(resolveRuntimePath("data/lxe_editor")),
       m_recording(resolveRuntimePath("data/lxe_editor")) {}
@@ -707,11 +707,10 @@ LxeEditorSession::handleProjectCommand(const std::vector<std::string> &args) {
     if (args.size() > 2 || (args.size() == 2 && args[1] != "list")) {
       return makeCommandError("usage: project templates [list]");
     }
-    ProjectTemplateCatalog catalog(
-        resolveRuntimePath("assets/project_templates"));
-    catalog.refresh();
     std::ostringstream oss;
     oss << "{\"templates\":[";
+    const ProjectTemplateCatalog catalog(
+        resolveRuntimePath("data/project_templates_disabled"));
     const auto &entries = catalog.entries();
     for (usize i = 0; i < entries.size(); ++i) {
       if (i != 0) {
@@ -1049,23 +1048,10 @@ void LxeEditorSession::rebuildBindings(
                  const std::string &displayName,
                  LX_core::SceneNodeSharedPtr &outNode) {
                 if (kind.rfind("model:", 0) == 0) {
-                  BuiltinAssetCatalog catalog;
-                  catalog.refresh(resolveRuntimePath("assets/models/builtin"));
                   const std::string assetId =
                       kind.substr(std::string("model:").size());
-                  const auto asset = catalog.findByAssetId(assetId);
-                  if (!asset.has_value()) {
-                    return makeCommandError("unknown model asset: " + assetId);
-                  }
-                  try {
-                    outNode = buildModelAssetNode(
-                        asset->meshUri, asset->defaultMaterialUri,
-                        asset->albedoTextureUri, nodeName);
-                    outNode->setName(displayName);
-                    return makeCommandOk("created " + kind);
-                  } catch (const std::exception &e) {
-                    return makeCommandError(e.what());
-                  }
+                  return makeCommandError("builtin model assets removed: " +
+                                          assetId);
                 }
                 if (kind.rfind("patch:", 0) == 0) {
                   const std::string shape =

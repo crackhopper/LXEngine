@@ -70,67 +70,44 @@ loadCombinedTexture(const std::filesystem::path &path) {
 }
 
 MaterialInstanceSharedPtr makeGroundMaterial() {
-  auto mat =
-      LX_infra::loadGenericMaterial("assets/materials/blinnphong_lit.material");
+  auto mat = LX_infra::loadGenericMaterial("assets/materials/pbr.material");
   if (!mat) {
     throw std::runtime_error(
-        "[lxe_editor] failed to load assets/materials/blinnphong_lit.material");
+        "[lxe_editor] failed to load assets/materials/pbr.material");
   }
-  mat->setParameter(StringID("MaterialUBO"), StringID("enableAlbedo"), 0);
-  mat->setParameter(StringID("MaterialUBO"), StringID("enableNormal"), 0);
-  mat->setParameter(StringID("MaterialUBO"), StringID("baseColor"),
-                    Vec3f{0.4f, 0.4f, 0.45f});
   mat->syncGpuData();
   return mat;
 }
 
 MaterialInstanceSharedPtr makePrimitiveMaterial() {
-  auto mat =
-      LX_infra::loadGenericMaterial("assets/materials/blinnphong_lit.material");
+  auto mat = LX_infra::loadGenericMaterial("assets/materials/pbr.material");
   if (!mat) {
     throw std::runtime_error(
-        "[lxe_editor] failed to load assets/materials/blinnphong_lit.material");
+        "[lxe_editor] failed to load assets/materials/pbr.material");
   }
-  mat->setParameter(StringID("MaterialUBO"), StringID("enableAlbedo"), 0);
-  mat->setParameter(StringID("MaterialUBO"), StringID("enableNormal"), 0);
-  mat->setParameter(StringID("MaterialUBO"), StringID("baseColor"),
-                    Vec3f{0.72f, 0.74f, 0.78f});
   mat->syncGpuData();
   return mat;
 }
 
 MaterialInstanceSharedPtr makeModelMaterial(std::string_view materialUri,
                                             std::string_view albedoTextureUri) {
-  constexpr const char *kTexturedMaterial =
-      "assets/materials/blinnphong_textured.material";
-  constexpr const char *kFallbackMaterial =
-      "assets/materials/blinnphong_lit.material";
+  constexpr const char *kFallbackMaterial = "assets/materials/pbr.material";
 
   std::string uri =
       materialUri.empty() ? kFallbackMaterial : std::string(materialUri);
-  if (!albedoTextureUri.empty() && uri == kFallbackMaterial) {
-    uri = kTexturedMaterial;
-  }
   auto mat = LX_infra::loadGenericMaterial(uri);
   if (!mat) {
     throw std::runtime_error("[lxe_editor] failed to load " + uri);
   }
-  mat->setParameter(StringID("MaterialUBO"), StringID("enableNormal"), 0);
-  mat->setParameter(StringID("MaterialUBO"), StringID("baseColor"),
-                    Vec3f{0.72f, 0.74f, 0.78f});
-  if (!albedoTextureUri.empty() && uri == kTexturedMaterial) {
+  if (!albedoTextureUri.empty()) {
     try {
       auto sampler = loadCombinedTexture(
           resolveRuntimePath(std::string(albedoTextureUri)));
       mat->setTexture(StringID("albedoMap"), std::move(sampler));
-      mat->setParameter(StringID("MaterialUBO"), StringID("enableAlbedo"), 1);
     } catch (const std::exception &e) {
       std::cerr << "[lxe_editor] model albedo texture load failed (" << e.what()
                 << "); falling back to flat color\n";
-      mat->setParameter(StringID("MaterialUBO"), StringID("enableAlbedo"), 0);
     }
-  } else {
-    mat->setParameter(StringID("MaterialUBO"), StringID("enableAlbedo"), 0);
   }
   mat->syncGpuData();
   return mat;

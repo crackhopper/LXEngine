@@ -1186,8 +1186,7 @@ int main(int argc, char **argv) {
     EngineLoop loop;
     loop.initialize(window, renderer);
     LX_core::DebugDraw::setMaterialProvider([] {
-      return LX_infra::loadGenericMaterial(
-          "assets/materials/debug_line.material");
+      return LX_infra::loadGenericMaterial("assets/materials/pbr.material");
     });
     loop.startScene(session.scene());
 
