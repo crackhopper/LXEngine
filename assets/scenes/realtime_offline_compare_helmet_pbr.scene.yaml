@@ -25,14 +25,6 @@ scene:
       outputFormat: exr-png
       outDir: artifacts/compare/helmet_pbr_highres
       backgroundColor: [0.0, 0.0, 0.0]
-    highres-blinnphong:
-      camera: /game_cam
-      width: 1024
-      height: 1024
-      materialTag: realtime-blinnphong
-      outputFormat: exr-png
-      outDir: artifacts/compare/helmet_blinnphong_highres
-      backgroundColor: [0.0, 0.0, 0.0]
   offlineRender:
     integrator: software-compute
     samples: 1
@@ -80,9 +72,6 @@ root:
         - tag: realtime-pbr
           source: gltf
           uri: assets/materials/pbr.material
-        - tag: realtime-blinnphong
-          source: gltf
-          uri: assets/materials/blinnphong_textured.material
     - nodeName: compare_key_light
       name: compare_key_light
       transform:
