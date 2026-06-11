@@ -27,8 +27,7 @@ namespace {
 }
 
 ParsedMaterialResource
-parseMaterialV2Contract(const YAML::Node &root,
-                        const LX_core::ResourceUri &uri,
+parseMaterialV2Contract(const YAML::Node &root, const LX_core::ResourceUri &uri,
                         LX_core::SceneResourceTable &table) {
   MaterialResourceParser parser;
   return parser.parse(table, uri, YAML::Dump(root));

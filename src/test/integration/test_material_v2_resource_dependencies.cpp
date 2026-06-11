@@ -297,12 +297,11 @@ bsdf:
         metadata.uri.string().find("textures/shared.png") !=
             std::string::npos) {
       ++textureCount;
-      graphOwnsDependencyHandle = deps.size() == 2 &&
-                                  graph.handles[i] == deps[0].resourceHandle;
+      graphOwnsDependencyHandle =
+          deps.size() == 2 && graph.handles[i] == deps[0].resourceHandle;
     }
     if (metadata.type == SceneResourceType::Material &&
-        metadata.uri.string().find("loader_v2.material") !=
-            std::string::npos) {
+        metadata.uri.string().find("loader_v2.material") != std::string::npos) {
       materialHasDependencyEdge =
           metadata.dependencyHandles.size() == 1 && deps.size() == 2 &&
           metadata.dependencyHandles.front() == deps[0].resourceHandle;
@@ -320,7 +319,8 @@ bsdf:
 
 void testGenericMaterialLoaderRejectsMaterialLocalTechniqueFiles() {
   const fs::path root = makeTempRoot();
-  const fs::path materialPath = root / "materials" / "legacy_technique.material";
+  const fs::path materialPath =
+      root / "materials" / "legacy_technique.material";
   writeFile(materialPath, R"(
 shader: techniques/Forward/pbr
 defaultTechnique: Forward
@@ -350,8 +350,9 @@ techniques:
     message = error.what();
   }
 
-  EXPECT(rejected,
-         "generic material loader should reject material-local technique files");
+  EXPECT(
+      rejected,
+      "generic material loader should reject material-local technique files");
   EXPECT(message.find("lxe.material.v2") != std::string::npos,
          "legacy material rejection should name the required v2 schema");
 }

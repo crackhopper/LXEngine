@@ -19,8 +19,8 @@
 #include "demos/lxe_editor/scene_document.hpp"
 
 #include <algorithm>
-#include <chrono>
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <filesystem>
 #include <functional>
@@ -144,8 +144,7 @@ currentGenericMaterialLoadOptions() {
   if (g_sceneRealtimeRenderSettings.has_value()) {
     const auto &settings = g_sceneRealtimeRenderSettings->get();
     options.forceIbl = settings.ibl;
-    options.alphaTransparency =
-        settings.alphaTransparency;
+    options.alphaTransparency = settings.alphaTransparency;
     options.technique =
         settings.mode == LX_core::SceneRealtimeRenderMode::Deferred
             ? std::optional<std::string>("Deferred")
@@ -157,10 +156,10 @@ currentGenericMaterialLoadOptions() {
 [[nodiscard]] std::string
 materialCacheKey(const std::filesystem::path &path,
                  const LX_infra::GenericMaterialLoadOptions &options) {
-  std::string key = path.is_absolute() ? path.lexically_normal().generic_string()
-                                       : std::filesystem::absolute(path)
-                                             .lexically_normal()
-                                             .generic_string();
+  std::string key =
+      path.is_absolute()
+          ? path.lexically_normal().generic_string()
+          : std::filesystem::absolute(path).lexically_normal().generic_string();
   if (options.forceIbl.has_value()) {
     key += *options.forceIbl ? "|ibl=1" : "|ibl=0";
   }
@@ -214,8 +213,7 @@ constexpr const char *BuiltinPrimitivePrefix =
 constexpr const char *BuiltinPatchPrefix = "builtin://lxe_editor/patches/";
 constexpr const char *BuiltinPrimitiveMaterial =
     "assets/materials/pbr.material";
-constexpr const char *kDefaultGroundMaterial =
-    "assets/materials/pbr.material";
+constexpr const char *kDefaultGroundMaterial = "assets/materials/pbr.material";
 
 struct SceneRuntimeData final {
   std::optional<std::filesystem::path> documentPath;
@@ -648,9 +646,7 @@ modelAssetIdFromNodeName(const std::string &nodeName) {
   return nodeName.substr(begin, suffixPos - begin);
 }
 
-[[nodiscard]] BuiltinAssetCatalog loadBuiltinAssetCatalog() {
-  return {};
-}
+[[nodiscard]] BuiltinAssetCatalog loadBuiltinAssetCatalog() { return {}; }
 
 [[nodiscard]] std::string stripCopySuffix(const std::string &name) {
   const std::string suffix = ".copy";
@@ -961,7 +957,8 @@ loadEffectiveMaterialForSceneNode(
     const std::vector<std::filesystem::path> &assetRoots,
     const SceneNodeDocument &nodeDocument,
     const MaterialOverrideState &nodeOverrides) {
-  if (nodeDocument.meshUri.has_value() && isGltfMeshUri(*nodeDocument.meshUri) &&
+  if (nodeDocument.meshUri.has_value() &&
+      isGltfMeshUri(*nodeDocument.meshUri) &&
       !nodeDocument.materialUri.has_value()) {
     throw std::runtime_error("glTF scene node requires explicit material uri");
   }
@@ -1268,13 +1265,13 @@ loadTimedSceneMeshAsset(const std::filesystem::path &meshPath) {
     auto mesh = loadTimedSceneMeshAsset(meshPath);
     if (nodeDocument.materialUri.has_value()) {
       const std::string materialUri = normalizeMaterialUri(nodeDocument);
-      return makeRenderableNode(
-          nodeDocument.nodeName, std::move(mesh),
-          loadEffectiveMaterialForSceneNode(assetRoots, nodeDocument,
-                                            materialUri));
+      return makeRenderableNode(nodeDocument.nodeName, std::move(mesh),
+                                loadEffectiveMaterialForSceneNode(
+                                    assetRoots, nodeDocument, materialUri));
     }
-    throw std::runtime_error("scene mesh node requires explicit material uri: " +
-                             *nodeDocument.meshUri);
+    throw std::runtime_error(
+        "scene mesh node requires explicit material uri: " +
+        *nodeDocument.meshUri);
   }
 
   return LX_core::SceneNode::create(nodeDocument.nodeName);
@@ -1412,7 +1409,7 @@ void buildSceneNodesRecursive(
               << nodeDocument.nodeName << "' name='" << nodeDocument.name
               << "' meshUri='"
               << (nodeDocument.meshUri.has_value() ? *nodeDocument.meshUri
-                                                    : std::string{})
+                                                   : std::string{})
               << "' ms=" << nodeMs << "\n";
   }
 
@@ -1649,8 +1646,9 @@ captureSceneDocument(const std::shared_ptr<SceneRuntimeData> &runtime) {
   document.setGameplayCameraPath(runtime->gameCameraNode
                                      ? runtime->gameCameraNode->getPath()
                                      : "/game_cam");
-  document.setRenderSettings(runtime->scene ? runtime->scene->renderSettings()
-                                            : runtime->document.renderSettings());
+  document.setRenderSettings(runtime->scene
+                                 ? runtime->scene->renderSettings()
+                                 : runtime->document.renderSettings());
   document.setRealtimeRenderSettings(
       runtime->document.realtimeRenderSettings());
   if (runtime->document.hasEnvironment()) {
@@ -1792,9 +1790,8 @@ void SceneRuntime::loadFromDocumentPath(const std::filesystem::path &path) {
     timing.buildRuntimeMs = elapsedMs(begin, SceneLoadClock::now());
   }
   const double totalMs = elapsedMs(totalBegin, SceneLoadClock::now());
-  std::cerr << "[lxe_editor][scene-load] path='"
-            << pathForLog(normalizedPath) << "' totalMs=" << totalMs
-            << " documentMs=" << timing.documentMs
+  std::cerr << "[lxe_editor][scene-load] path='" << pathForLog(normalizedPath)
+            << "' totalMs=" << totalMs << " documentMs=" << timing.documentMs
             << " assetRootMs=" << timing.assetRootMs
             << " buildRuntimeMs=" << timing.buildRuntimeMs
             << " environmentMs=" << timing.environmentMs
@@ -1902,8 +1899,8 @@ SceneRuntime::nodeMaterialParameterForNode(const std::string &path,
   if (!material) {
     return std::nullopt;
   }
-  return material->readParameterValue(LX_core::StringID(binding),
-                                      LX_core::StringID(member));
+  return material->readShaderBindingParameterValue(LX_core::StringID(binding),
+                                                   LX_core::StringID(member));
 }
 
 std::vector<RuntimeMaterialParameterValue>
@@ -1952,7 +1949,7 @@ SceneRuntime::nodeMaterialParametersForNode(const std::string &path) const {
           member.type != LX_core::ShaderPropertyType::Vec4) {
         continue;
       }
-      const auto value = material->readParameterValue(
+      const auto value = material->readShaderBindingParameterValue(
           bindingId, LX_core::StringID(member.name));
       if (!value.has_value()) {
         continue;
@@ -1993,7 +1990,7 @@ SceneRuntime::updateProceduralMaterials(const float totalTime,
   const auto writeRequiredFloat = [&](LX_core::MaterialInstance &material,
                                       const ProceduralMaterialState &state,
                                       const std::string &path) {
-    const auto member = material.findParameterMember(
+    const auto member = material.findShaderBindingParameterMember(
         LX_core::StringID(state.binding), LX_core::StringID(state.timeMember));
     if (!member.has_value()) {
       diagnostics.push_back("procedural time member missing on " + path + ": " +
@@ -2005,16 +2002,17 @@ SceneRuntime::updateProceduralMaterials(const float totalTime,
                             ": " + state.binding + "." + state.timeMember);
       return;
     }
-    material.setParameter(LX_core::StringID(state.binding),
-                          LX_core::StringID(state.timeMember), totalTime);
+    material.writeShaderBindingParameter(LX_core::StringID(state.binding),
+                                         LX_core::StringID(state.timeMember),
+                                         totalTime);
   };
 
   const auto writeRequiredResolution = [&](LX_core::MaterialInstance &material,
                                            const ProceduralMaterialState &state,
                                            const std::string &path) {
-    const auto member =
-        material.findParameterMember(LX_core::StringID(state.binding),
-                                     LX_core::StringID(state.resolutionMember));
+    const auto member = material.findShaderBindingParameterMember(
+        LX_core::StringID(state.binding),
+        LX_core::StringID(state.resolutionMember));
     if (!member.has_value()) {
       diagnostics.push_back("procedural resolution member missing on " + path +
                             ": " + state.binding + "." +
@@ -2029,7 +2027,7 @@ SceneRuntime::updateProceduralMaterials(const float totalTime,
     }
     const float width = std::max(resolution.x, 1.0f);
     const float height = std::max(resolution.y, 1.0f);
-    material.setParameter(
+    material.writeShaderBindingParameter(
         LX_core::StringID(state.binding),
         LX_core::StringID(state.resolutionMember),
         LX_core::Vec4f{width, height, 1.0f / width, 1.0f / height});
@@ -2041,7 +2039,7 @@ SceneRuntime::updateProceduralMaterials(const float totalTime,
         if (!state.audioBandsMember.has_value()) {
           return;
         }
-        const auto member = material.findParameterMember(
+        const auto member = material.findShaderBindingParameterMember(
             LX_core::StringID(state.binding),
             LX_core::StringID(*state.audioBandsMember));
         if (!member.has_value()) {
@@ -2054,9 +2052,10 @@ SceneRuntime::updateProceduralMaterials(const float totalTime,
         }
         const float bass = 0.45f + 0.25f * std::sin(totalTime * 1.7f);
         const float mid = 0.35f + 0.20f * std::sin(totalTime * 2.3f + 0.4f);
-        material.setParameter(LX_core::StringID(state.binding),
-                              LX_core::StringID(*state.audioBandsMember),
-                              LX_core::Vec4f{bass, mid, 0.0f, 0.0f});
+        material.writeShaderBindingParameter(
+            LX_core::StringID(state.binding),
+            LX_core::StringID(*state.audioBandsMember),
+            LX_core::Vec4f{bass, mid, 0.0f, 0.0f});
       };
 
   const auto writeOptionalAudioChannel =
@@ -2147,8 +2146,8 @@ LX_core::CommandResult
 SceneRuntime::setNodeMaterialBaseColor(const std::string &path,
                                        const LX_core::Vec3f &color) {
   (void)color;
-  return makeCommandError("legacy node material baseColor override is removed: " +
-                          path);
+  return makeCommandError(
+      "legacy node material baseColor override is removed: " + path);
 }
 
 LX_core::CommandResult SceneRuntime::setNodeMaterialParameter(
@@ -2175,7 +2174,7 @@ LX_core::CommandResult SceneRuntime::setNodeMaterialParameter(
     nodeOverrides.parameters[key] = value;
     auto material = loadEffectiveMaterialForSceneNode(
         runtime->assetRoots, *documentNode, nodeOverrides);
-    const auto reflectedMember = material->findParameterMember(
+    const auto reflectedMember = material->findShaderBindingParameterMember(
         LX_core::StringID(binding), LX_core::StringID(member));
     if (!reflectedMember.has_value()) {
       return makeCommandError("material parameter not found: " + key);

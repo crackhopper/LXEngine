@@ -82,19 +82,26 @@ public:
   RenderState getPassRenderState(StringID pass) const;
   StringID getPipelineSignature(StringID pass) const;
 
-  // Primary API: write buffer parameter by binding name + member name.
-  void setParameter(StringID bindingName, StringID memberName, float value);
-  void setParameter(StringID bindingName, StringID memberName, i32 value);
-  void setParameter(StringID bindingName, StringID memberName,
-                    const Vec3f &value);
-  void setParameter(StringID bindingName, StringID memberName,
-                    const Vec4f &value);
-  void setParameterValue(StringID bindingName, StringID memberName,
-                         const MaterialParameterValue &value);
+  // Non-surface helper API for shader-owned buffer bindings such as
+  // post-process/procedural materials. Material v2 surface truth uses
+  // PBRT envelopes below instead.
+  void writeShaderBindingParameter(StringID bindingName, StringID memberName,
+                                   float value);
+  void writeShaderBindingParameter(StringID bindingName, StringID memberName,
+                                   i32 value);
+  void writeShaderBindingParameter(StringID bindingName, StringID memberName,
+                                   const Vec3f &value);
+  void writeShaderBindingParameter(StringID bindingName, StringID memberName,
+                                   const Vec4f &value);
+  void writeShaderBindingParameterValue(StringID bindingName,
+                                        StringID memberName,
+                                        const MaterialParameterValue &value);
   [[nodiscard]] std::optional<MaterialParameterValue>
-  readParameterValue(StringID bindingName, StringID memberName) const;
+  readShaderBindingParameterValue(StringID bindingName,
+                                  StringID memberName) const;
   [[nodiscard]] std::optional<std::reference_wrapper<const StructMemberInfo>>
-  findParameterMember(StringID bindingName, StringID memberName) const;
+  findShaderBindingParameterMember(StringID bindingName,
+                                   StringID memberName) const;
 
   void setTexture(StringID bindingName, CombinedTextureSamplerSharedPtr tex);
   void setTextureHandle(StringID bindingName, TextureHandle handle);
@@ -116,18 +123,20 @@ public:
 
   MaterialTemplateSharedPtr getTemplate() const { return m_template; }
 
-  // Multi-buffer accessors.
-  usize getParameterBufferCount() const {
+  // Shader-binding buffer accessors.
+  usize getShaderBindingBufferCount() const {
     return m_parameterBuffersByName.size();
   }
-  [[nodiscard]] GpuResourceRef getParameterResource(StringID bindingName) const;
-  const std::vector<u8> &getParameterBufferBytes(StringID bindingName) const;
+  [[nodiscard]] GpuResourceRef
+  getShaderBindingResource(StringID bindingName) const;
+  const std::vector<u8> &
+  getShaderBindingBufferBytes(StringID bindingName) const;
   std::optional<std::reference_wrapper<const ShaderResourceBinding>>
-  getParameterBufferLayout(StringID bindingName) const;
+  getShaderBindingBufferLayout(StringID bindingName) const;
   // Single-binding shortcuts (assert if multiple buffer bindings exist).
-  const std::vector<u8> &getParameterBufferBytes() const;
+  const std::vector<u8> &getShaderBindingBufferBytes() const;
   std::optional<std::reference_wrapper<const ShaderResourceBinding>>
-  getParameterBufferLayout() const;
+  getShaderBindingBufferLayout() const;
 
   bool isPassEnabled(StringID pass) const;
   void setPassEnabled(StringID pass, bool enabled);
@@ -143,8 +152,8 @@ public:
   [[nodiscard]] const std::string &getRenderClass() const;
   void setMaterialTags(std::vector<std::string> tags);
   [[nodiscard]] const std::vector<std::string> &getMaterialTags() const;
-  void setAuthoringMetadata(
-      std::unordered_map<std::string, std::string> metadata);
+  void
+  setAuthoringMetadata(std::unordered_map<std::string, std::string> metadata);
   [[nodiscard]] const std::unordered_map<std::string, std::string> &
   getAuthoringMetadata() const;
   void setMaterialEnvelope(StringID parameterName,

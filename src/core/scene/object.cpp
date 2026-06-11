@@ -608,7 +608,7 @@ void SceneNode::rebuildValidatedCache() {
       }
 
       const StringID bindingId(binding.name);
-      const auto resource = material->getParameterResource(bindingId);
+      const auto resource = material->getShaderBindingResource(bindingId);
       if (!resource.isValid()) {
         fatalValidation(*this, pass, *material, entry.shaderProgram,
                         "missing material-owned resource '" + binding.name +
@@ -627,9 +627,10 @@ void SceneNode::rebuildValidatedCache() {
     data.bonesResource = std::move(bonesResource);
     data.renderState = material->getPassRenderState(pass);
     const BoundingBox worldBounds = getWorldBounds();
-    data.sortCenter = worldBounds.isValid()
-                          ? worldBounds.getCenter()
-                          : Transform::fromMat4(getWorldTransform()).translation;
+    data.sortCenter =
+        worldBounds.isValid()
+            ? worldBounds.getCenter()
+            : Transform::fromMat4(getWorldTransform()).translation;
     data.objectSignature = getPipelineSignature(pass);
     data.materialSignature = material->getPipelineSignature(pass);
 
@@ -769,8 +770,8 @@ void SceneNode::emitRuntimeNodeChanged(const SceneNodeAspect aspect) const {
     scene->syncNodeResourceState(const_cast<SceneNode &>(*this));
     const_cast<SceneNode &>(*this).rebuildValidatedCache();
   } else if (aspect == SceneNodeAspect::Transform ||
-      aspect == SceneNodeAspect::Visibility ||
-      aspect == SceneNodeAspect::CameraProperties) {
+             aspect == SceneNodeAspect::Visibility ||
+             aspect == SceneNodeAspect::CameraProperties) {
     scene->syncNodeResourceState(const_cast<SceneNode &>(*this));
   }
 

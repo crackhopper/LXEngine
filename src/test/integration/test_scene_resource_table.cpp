@@ -31,14 +31,12 @@ using namespace LX_core;
 namespace {
 
 template <typename Table, typename Arg>
-concept CanRegisterMesh = requires(Table &table, Arg arg) {
-  table.registerMesh(arg);
-};
+concept CanRegisterMesh =
+    requires(Table &table, Arg arg) { table.registerMesh(arg); };
 
 template <typename Table, typename Arg>
-concept CanRegisterTexture = requires(Table &table, Arg arg) {
-  table.registerTexture(arg);
-};
+concept CanRegisterTexture =
+    requires(Table &table, Arg arg) { table.registerTexture(arg); };
 
 static_assert(
     !std::is_invocable_r_v<MaterialHandle,
@@ -49,10 +47,10 @@ static_assert(
 static_assert(!CanRegisterMesh<SceneResourceTable, MeshBufferSharedPtr>,
               "SceneResourceTable must not accept shared_ptr mesh "
               "registration; the table is the unique owner.");
-static_assert(!CanRegisterTexture<SceneResourceTable,
-                                  CombinedTextureSamplerSharedPtr>,
-              "SceneResourceTable must not accept shared_ptr texture "
-              "registration; the table is the unique owner.");
+static_assert(
+    !CanRegisterTexture<SceneResourceTable, CombinedTextureSamplerSharedPtr>,
+    "SceneResourceTable must not accept shared_ptr texture "
+    "registration; the table is the unique owner.");
 static_assert(!std::is_invocable_r_v<
                   LightHandle, decltype(&SceneResourceTable::registerLight),
                   SceneResourceTable *, LightBaseSharedPtr>,
@@ -283,19 +281,8 @@ MeshBufferSharedPtr makeTangentSignMeshBuffer() {
 MaterialInstanceSharedPtr
 makeGpuRecordMaterial(const Vec4f &baseColor = Vec4f{0.25f, 0.5f, 0.75f, 0.9f},
                       const CullMode cullMode = CullMode::Back) {
-  ShaderResourceBinding binding;
-  binding.name = "MaterialUBO";
-  binding.set = 2;
-  binding.binding = 0;
-  binding.type = ShaderPropertyType::UniformBuffer;
-  binding.size = 32;
-  binding.members = {
-      {"baseColor", ShaderPropertyType::Vec4, 0, 16},
-      {"specularIntensity", ShaderPropertyType::Float, 16, 4},
-  };
-
   auto shader =
-      std::make_shared<FakeShader>(std::vector<ShaderResourceBinding>{binding});
+      std::make_shared<FakeShader>(std::vector<ShaderResourceBinding>{});
   auto materialTemplate = MaterialTemplate::create("scene_gpu_records");
   ShaderProgramSet shaderSet;
   shaderSet.shaderName = "scene_gpu_records";
@@ -314,10 +301,11 @@ makeGpuRecordMaterial(const Vec4f &baseColor = Vec4f{0.25f, 0.5f, 0.75f, 0.9f},
   materialTemplate->rebuildMaterialInterface();
 
   auto material = MaterialInstance::create(materialTemplate);
-  material->setParameter(StringID("MaterialUBO"), StringID("baseColor"),
-                         baseColor);
-  material->setParameter(StringID("MaterialUBO"), StringID("specularIntensity"),
-                         0.35f);
+  material->setBsdfType("matte");
+  MaterialParameterEnvelope kd;
+  kd.kind = MaterialEnvelopeKind::Rgb;
+  kd.rgbValue = Vec3f{baseColor.x, baseColor.y, baseColor.z};
+  material->setMaterialEnvelope(StringID("Kd"), std::move(kd));
   return material;
 }
 
@@ -375,9 +363,8 @@ void testSceneResourceTableOwnsTypedPayloads() {
   MeshHandle meshHandle;
   {
     auto mesh = uniqueMesh(makeMeshBuffer());
-    meshHandle =
-        table.registerMesh(ResourceUri("memory://mesh/triangle"),
-                           std::move(mesh));
+    meshHandle = table.registerMesh(ResourceUri("memory://mesh/triangle"),
+                                    std::move(mesh));
   }
 
   EXPECT(textureHandle.isValid(), "texture handle should be valid");
@@ -498,11 +485,12 @@ void testMeshAndTextureParsersReuseCanonicalTableOwnedResources() {
 
   EXPECT(firstTexture.identity == secondTexture.identity,
          "same canonical texture URI should reuse the same resource identity");
-  EXPECT(firstTextureHandle.has_value() && secondTextureHandle.has_value() &&
-             *firstTextureHandle == *secondTextureHandle,
-         "same canonical texture URI should reuse the table-owned texture handle");
-  EXPECT(table.textureCount() == 1,
-         "same canonical texture URI should not allocate a second texture payload");
+  EXPECT(
+      firstTextureHandle.has_value() && secondTextureHandle.has_value() &&
+          *firstTextureHandle == *secondTextureHandle,
+      "same canonical texture URI should reuse the table-owned texture handle");
+  EXPECT(table.textureCount() == 1, "same canonical texture URI should not "
+                                    "allocate a second texture payload");
 }
 
 void testMeshAndTextureParsersLoadAssetsIntoTableStorageAndFailMissingAssets() {
@@ -517,7 +505,8 @@ void testMeshAndTextureParsersLoadAssetsIntoTableStorageAndFailMissingAssets() {
     return;
   }
 
-  const ResourceUri meshUri("assets://models/damaged_helmet/DamagedHelmet.gltf");
+  const ResourceUri meshUri(
+      "assets://models/damaged_helmet/DamagedHelmet.gltf");
   const auto parsedMesh = meshParser.parse(table, meshUri, {});
   const auto meshMetadata = table.findResourceMetadata(parsedMesh.identity);
   EXPECT(parsedMesh.identity.isValid(),
@@ -570,12 +559,14 @@ void testParserFailureUpdatesExistingMetadataIdentity() {
   const auto *meshMetadata = table.findResourceMetadata(parsedMesh.identity);
   EXPECT(parsedMesh.identity == meshIdentity,
          "failed mesh parse should reuse existing metadata identity");
-  EXPECT(meshMetadata != nullptr && meshMetadata->state == ResourceState::Failed,
+  EXPECT(meshMetadata != nullptr &&
+             meshMetadata->state == ResourceState::Failed,
          "failed mesh parse should update existing metadata state");
   EXPECT(meshMetadata != nullptr && !meshMetadata->diagnostics.empty(),
          "failed mesh parse should merge diagnostics into existing metadata");
 
-  const ResourceUri textureUri("assets://textures/parser-missing-after-identity.png");
+  const ResourceUri textureUri(
+      "assets://textures/parser-missing-after-identity.png");
   const ResourceIdentityHandle textureIdentity =
       table.loadOrGetResource(SceneResourceType::Texture, textureUri);
   EXPECT(table.metadata(textureIdentity).state == ResourceState::Ready,
@@ -589,8 +580,9 @@ void testParserFailureUpdatesExistingMetadataIdentity() {
   EXPECT(textureMetadata != nullptr &&
              textureMetadata->state == ResourceState::Failed,
          "failed texture parse should update existing metadata state");
-  EXPECT(textureMetadata != nullptr && !textureMetadata->diagnostics.empty(),
-         "failed texture parse should merge diagnostics into existing metadata");
+  EXPECT(
+      textureMetadata != nullptr && !textureMetadata->diagnostics.empty(),
+      "failed texture parse should merge diagnostics into existing metadata");
 }
 
 void testFailedUriRegistrationDoesNotLeaveReadyMetadata() {
@@ -599,8 +591,7 @@ void testFailedUriRegistrationDoesNotLeaveReadyMetadata() {
   const ResourceUri materialUri("memory://material/null-registration");
   const ResourceUri textureUri("memory://texture/null-registration");
 
-  const MeshHandle mesh =
-      table.registerMesh(meshUri, MeshBufferUniquePtr{});
+  const MeshHandle mesh = table.registerMesh(meshUri, MeshBufferUniquePtr{});
   const MaterialHandle material =
       table.registerMaterialInstance(materialUri, MaterialInstanceUniquePtr{});
   const TextureHandle texture =
@@ -625,8 +616,10 @@ void testReleasedSlotReuseDoesNotRetainOldMetadataIdentity() {
   EXPECT(oldTexture.isValid(), "test setup should register old texture");
   table.release(oldTexture);
 
-  const TextureHandle replacement = table.registerTexture(uniqueWhiteSampler(1, 1));
-  EXPECT(replacement.isValid(), "test setup should register replacement texture");
+  const TextureHandle replacement =
+      table.registerTexture(uniqueWhiteSampler(1, 1));
+  EXPECT(replacement.isValid(),
+         "test setup should register replacement texture");
   EXPECT(replacement.index == oldTexture.index,
          "test setup should reuse the released texture slot");
 
@@ -644,8 +637,8 @@ void testInvalidAndStaleDirtyHandlesAreHarmless() {
   table.release(texture);
   table.markDirty(texture, "stale texture handle");
 
-  EXPECT(graphVersionForUri(table, ResourceUri("memory://texture/stale-dirty")) ==
-             0,
+  EXPECT(graphVersionForUri(table,
+                            ResourceUri("memory://texture/stale-dirty")) == 0,
          "stale dirty handle should not mutate released resource metadata");
 }
 
@@ -653,9 +646,9 @@ void testResourceStateVersionAndDirtyPropagation() {
   SceneResourceTable table;
   const TextureHandle texture = table.registerTexture(
       ResourceUri("memory://texture/albedo"), uniqueWhiteSampler(1, 1));
-  const MaterialHandle material = table.registerMaterialInstance(
-      ResourceUri("memory://material/base"),
-      uniqueBlankMaterial("dirty_propagation"));
+  const MaterialHandle material =
+      table.registerMaterialInstance(ResourceUri("memory://material/base"),
+                                     uniqueBlankMaterial("dirty_propagation"));
   table.addDependency(material, texture);
 
   const auto before = table.metadata(material).version;
@@ -677,12 +670,10 @@ void testResourceStateVersionAndDirtyPropagation() {
 
 void testDirtyPropagationHandlesDependencyCyclesOnce() {
   SceneResourceTable table;
-  const ResourceIdentityHandle a =
-      table.loadOrGetResource(SceneResourceType::Material,
-                              ResourceUri("memory://cycle/a"));
-  const ResourceIdentityHandle b =
-      table.loadOrGetResource(SceneResourceType::Texture,
-                              ResourceUri("memory://cycle/b"));
+  const ResourceIdentityHandle a = table.loadOrGetResource(
+      SceneResourceType::Material, ResourceUri("memory://cycle/a"));
+  const ResourceIdentityHandle b = table.loadOrGetResource(
+      SceneResourceType::Texture, ResourceUri("memory://cycle/b"));
   table.addDependency(a, b);
   table.addDependency(b, a);
 
@@ -1145,9 +1136,9 @@ void testDefaultPbrEnvelopeDrivesUploadView() {
          "default PBR material should register as an uber BSDF");
   EXPECT(registeredMaterial->get().getMaterialEnvelopeCount() >= 5,
          "default PBR material should keep PBRT envelope parameters");
-  EXPECT(registeredMaterial->get().getMaterialEnvelope(StringID("Kd"))
-             .has_value(),
-         "default PBR material should expose Kd as envelope truth");
+  EXPECT(
+      registeredMaterial->get().getMaterialEnvelope(StringID("Kd")).has_value(),
+      "default PBR material should expose Kd as envelope truth");
   const auto kdEnvelope =
       registeredMaterial->get().getMaterialEnvelope(StringID("Kd"));
   EXPECT(kdEnvelope.has_value() &&
@@ -1159,25 +1150,26 @@ void testDefaultPbrEnvelopeDrivesUploadView() {
              normalEnvelope->get().kind == MaterialEnvelopeKind::Texture,
          "DamagedHelmet normal map should load as a normalmap texture "
          "envelope");
-  EXPECT(registeredMaterial->get().getParameterBufferCount() == 0,
+  EXPECT(registeredMaterial->get().getShaderBindingBufferCount() == 0,
          "default PBR material should not allocate legacy MaterialUBO storage");
   EXPECT(!registeredMaterial->get()
-              .readParameterValue(StringID("MaterialUBO"),
-                                  StringID("baseColorFactor"))
+              .readShaderBindingParameterValue(StringID("MaterialUBO"),
+                                               StringID("baseColorFactor"))
               .has_value(),
          "default PBR material should not expose legacy baseColorFactor");
   EXPECT(!registeredMaterial->get()
-              .readParameterValue(StringID("MaterialUBO"),
-                                  StringID("metallicFactor"))
+              .readShaderBindingParameterValue(StringID("MaterialUBO"),
+                                               StringID("metallicFactor"))
               .has_value(),
          "default PBR material should not expose legacy metallicFactor");
   EXPECT(!registeredMaterial->get()
-              .readParameterValue(StringID("MaterialUBO"),
-                                  StringID("roughnessFactor"))
+              .readShaderBindingParameterValue(StringID("MaterialUBO"),
+                                               StringID("roughnessFactor"))
               .has_value(),
          "default PBR material should not expose legacy roughnessFactor");
   EXPECT(!registeredMaterial->get()
-              .readParameterValue(StringID("MaterialUBO"), StringID("ao"))
+              .readShaderBindingParameterValue(StringID("MaterialUBO"),
+                                               StringID("ao"))
               .has_value(),
          "default PBR material should not expose legacy AO");
   EXPECT(!registeredMaterial->get()
@@ -1192,10 +1184,9 @@ void testDefaultPbrEnvelopeDrivesUploadView() {
               .getTextureHandle(StringID("metallicRoughnessMap"))
               .isValid(),
          "default PBR material should not bind legacy metallicRoughnessMap");
-  EXPECT(!registeredMaterial->get()
-              .getTextureHandle(StringID("aoMap"))
-              .isValid(),
-         "default PBR material should not bind legacy aoMap");
+  EXPECT(
+      !registeredMaterial->get().getTextureHandle(StringID("aoMap")).isValid(),
+      "default PBR material should not bind legacy aoMap");
   EXPECT(!registeredMaterial->get()
               .getTextureHandle(StringID("emissiveMap"))
               .isValid(),
@@ -1285,10 +1276,10 @@ void testSceneResourceTableUploadViewTracksTableGeneration() {
   EXPECT(firstView.materials.front().baseColor.x == 0.25f &&
              firstView.materials.front().baseColor.y == 0.5f &&
              firstView.materials.front().baseColor.z == 0.75f &&
-             firstView.materials.front().baseColor.w == 0.9f,
-         "material base color should reach GPU record");
-  EXPECT(firstView.materials.front().pbrParams.z == 0.35f,
-         "material specular scalar should reach GPU record");
+             firstView.materials.front().baseColor.w == 1.0f,
+         "material v2 Kd envelope should reach GPU record");
+  EXPECT(firstView.materials.front().pbrParams.z == 0.0f,
+         "material v2 record should not read shader-binding specular state");
   EXPECT(firstView.textures.empty(),
          "material without sampler bindings should not upload textures");
   EXPECT(
@@ -1440,9 +1431,10 @@ void testSceneResourceTableUploadViewReflectsMaterialMutationAfterBuild() {
   if (!tableMaterial.has_value()) {
     return;
   }
-  tableMaterial->get().setParameter(StringID("MaterialUBO"),
-                                    StringID("baseColor"),
-                                    Vec4f{0.9f, 0.8f, 0.7f, 0.6f});
+  MaterialParameterEnvelope kd;
+  kd.kind = MaterialEnvelopeKind::Rgb;
+  kd.rgbValue = Vec3f{0.9f, 0.8f, 0.7f};
+  tableMaterial->get().setMaterialEnvelope(StringID("Kd"), std::move(kd));
   const auto secondView = table.buildUploadView();
   EXPECT(table.isAlive(objectHandle),
          "test setup should keep material mutation object alive");
@@ -1454,8 +1446,8 @@ void testSceneResourceTableUploadViewReflectsMaterialMutationAfterBuild() {
   EXPECT(secondView.materials.front().baseColor.x == 0.9f &&
              secondView.materials.front().baseColor.y == 0.8f &&
              secondView.materials.front().baseColor.z == 0.7f &&
-             secondView.materials.front().baseColor.w == 0.6f,
-         "upload view should reflect external material parameter mutation");
+             secondView.materials.front().baseColor.w == 1.0f,
+         "upload view should reflect external material envelope mutation");
 }
 
 void testSceneResourceTableUploadViewPacksMatrixColumns() {
@@ -1580,11 +1572,11 @@ void testSceneResourceTableUploadViewExportsHandleToTypedIndexMappings() {
   EXPECT(view.lights.size() == 1,
          "upload view should expose light typed storage");
 
-  const auto meshIt = std::find_if(
-      view.meshIndexByHandle.begin(), view.meshIndexByHandle.end(),
-      [&](const SceneResourceMeshUploadIndex &entry) {
-        return entry.handle == mesh;
-      });
+  const auto meshIt =
+      std::find_if(view.meshIndexByHandle.begin(), view.meshIndexByHandle.end(),
+                   [&](const SceneResourceMeshUploadIndex &entry) {
+                     return entry.handle == mesh;
+                   });
   EXPECT(meshIt != view.meshIndexByHandle.end() &&
              meshIt->typedIndex < view.meshes.size(),
          "mesh handle should map to a compact mesh record index");

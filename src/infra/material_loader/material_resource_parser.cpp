@@ -121,68 +121,67 @@ hasSchemaParameter(const LX_core::MaterialSurfaceSchema &schema,
   return valid;
 }
 
-[[nodiscard]] bool isLegacyRootPbrParameter(std::string_view name) {
+[[nodiscard]] bool isRemovedRootPbrParameterClass(std::string_view name) {
   return name == "baseColor" || name == "baseColorFactor" ||
          name == "metallic" || name == "metallicFactor" ||
          name == "roughness" || name == "roughnessFactor" || name == "ao";
 }
 
-[[nodiscard]] bool validateNoLegacyRootParameterModel(
-    const YAML::Node &root, const LX_core::ResourceUri &uri,
-    ParsedMaterialResource &result) {
+[[nodiscard]] bool
+validateNoLegacyRootParameterModel(const YAML::Node &root,
+                                   const LX_core::ResourceUri &uri,
+                                   ParsedMaterialResource &result) {
   bool valid = true;
   if (const YAML::Node parametersNode = root["parameters"]) {
-    addDiagnostic(result, uri, "parameters",
-                  "legacy root parameter map is not part of material v2; use "
-                  "bsdf.parameters envelopes");
+    addDiagnostic(
+        result, uri, "root.parameter-map",
+        "root-level shader parameter maps are not part of material v2; use "
+        "bsdf.parameters envelopes");
     valid = false;
 
     if (parametersNode.IsMap()) {
-      for (auto it = parametersNode.begin(); it != parametersNode.end(); ++it) {
-        if (!it->first.IsScalar()) {
-          continue;
-        }
-        addDiagnostic(result, uri,
-                      "parameters." + it->first.as<std::string>(),
-                      "legacy runtime PBR parameter is not material v2 truth");
-      }
+      addDiagnostic(result, uri, "root.parameter-map.entries",
+                    "shader-binding parameter entries are not runtime "
+                    "material truth");
     }
   }
 
+  bool hasRemovedRootPbrField = false;
   for (auto it = root.begin(); it != root.end(); ++it) {
     if (!it->first.IsScalar()) {
       continue;
     }
     const std::string key = it->first.as<std::string>();
-    if (isLegacyRootPbrParameter(key)) {
-      addDiagnostic(result, uri, key,
-                    "legacy root PBR field is not part of material v2; use "
-                    "PBRT BSDF parameter envelopes");
-      valid = false;
+    if (isRemovedRootPbrParameterClass(key)) {
+      hasRemovedRootPbrField = true;
     }
+  }
+  if (hasRemovedRootPbrField) {
+    addDiagnostic(result, uri, "root.pbr-parameter-field",
+                  "root-level PBR parameter fields are not part of material "
+                  "v2; use PBRT BSDF parameter envelopes");
+    valid = false;
   }
   return valid;
 }
 
-[[nodiscard]] bool validateNoLegacyRootResources(
-    const YAML::Node &root, const LX_core::ResourceUri &uri,
-    ParsedMaterialResource &result) {
+[[nodiscard]] bool
+validateNoLegacyRootResources(const YAML::Node &root,
+                              const LX_core::ResourceUri &uri,
+                              ParsedMaterialResource &result) {
   const YAML::Node resourcesNode = root["resources"];
   if (!resourcesNode) {
     return true;
   }
 
-  addDiagnostic(result, uri, "resources",
-                "legacy root resource map is not part of material v2; use "
-                "resource envelopes under bsdf.parameters");
+  addDiagnostic(
+      result, uri, "root.resource-map",
+      "root-level shader resource maps are not part of material v2; use "
+      "resource envelopes under bsdf.parameters");
   if (resourcesNode.IsMap()) {
-    for (auto it = resourcesNode.begin(); it != resourcesNode.end(); ++it) {
-      if (!it->first.IsScalar()) {
-        continue;
-      }
-      addDiagnostic(result, uri, "resources." + it->first.as<std::string>(),
-                    "legacy shader resource binding is not material v2 truth");
-    }
+    addDiagnostic(result, uri, "root.resource-map.entries",
+                  "shader resource binding entries are not runtime material "
+                  "truth");
   }
   return false;
 }
@@ -190,13 +189,13 @@ hasSchemaParameter(const LX_core::MaterialSurfaceSchema &schema,
 [[nodiscard]] bool isRenderFlowRootField(std::string_view name) {
   return name == "shader" || name == "variants" || name == "variantRules" ||
          name == "defaultTechnique" || name == "techniques" ||
-         name == "passes" || name == "renderState" ||
-         name == "shadingModel" || name == "meshOverlay";
+         name == "passes" || name == "renderState" || name == "shadingModel" ||
+         name == "meshOverlay";
 }
 
-[[nodiscard]] bool validateNoRenderFlowFields(
-    const YAML::Node &root, const LX_core::ResourceUri &uri,
-    ParsedMaterialResource &result) {
+[[nodiscard]] bool validateNoRenderFlowFields(const YAML::Node &root,
+                                              const LX_core::ResourceUri &uri,
+                                              ParsedMaterialResource &result) {
   bool valid = true;
   for (auto it = root.begin(); it != root.end(); ++it) {
     if (!it->first.IsScalar()) {
@@ -205,7 +204,7 @@ hasSchemaParameter(const LX_core::MaterialSurfaceSchema &schema,
 
     const std::string key = it->first.as<std::string>();
     if (isRenderFlowRootField(key)) {
-      addDiagnostic(result, uri, key,
+      addDiagnostic(result, uri, "root.render-flow-field",
                     "render-flow and shader fields are not part of "
                     "MaterialResourceParser; keep them in technique/effect "
                     "contracts");
@@ -546,7 +545,7 @@ MaterialResourceParser::parse(LX_core::SceneResourceTable &table,
        parameterIt != parametersNode.end(); ++parameterIt) {
     const std::string parameterName = parameterIt->first.as<std::string>();
     if (!hasSchemaParameter(*schema, parameterName)) {
-      addDiagnostic(result, uri, "bsdf.parameters." + parameterName,
+      addDiagnostic(result, uri, "bsdf.parameters.<unknown>",
                     "unknown BSDF parameter; use the PBRT schema name and "
                     "resource envelope instead of legacy parallel aliases");
     }

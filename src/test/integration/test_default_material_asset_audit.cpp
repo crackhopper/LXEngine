@@ -20,7 +20,10 @@ void expect(bool condition, std::string_view message) {
 }
 
 [[nodiscard]] fs::path projectRoot() {
-  return fs::path(__FILE__).parent_path().parent_path().parent_path()
+  return fs::path(__FILE__)
+      .parent_path()
+      .parent_path()
+      .parent_path()
       .parent_path();
 }
 
@@ -38,7 +41,8 @@ void auditDefaultMaterialAssets() {
       "shader", "defaultTechnique", "techniques", "parameters", "resources"};
 
   std::size_t materialCount = 0;
-  for (const fs::directory_entry &entry : fs::directory_iterator(materialsDir)) {
+  for (const fs::directory_entry &entry :
+       fs::directory_iterator(materialsDir)) {
     if (!entry.is_regular_file() || entry.path().extension() != ".material") {
       continue;
     }
@@ -48,8 +52,8 @@ void auditDefaultMaterialAssets() {
     try {
       root = YAML::LoadFile(entry.path().string());
     } catch (const YAML::Exception &error) {
-      expect(false, entry.path().string() + ": YAML parse failed: " +
-                        error.what());
+      expect(false,
+             entry.path().string() + ": YAML parse failed: " + error.what());
       continue;
     }
 
@@ -64,9 +68,9 @@ void auditDefaultMaterialAssets() {
                ": default material assets must use schema lxe.material.v2");
 
     for (const std::string &key : legacyRootKeys) {
-      expect(!hasRootKey(root, key),
-             entry.path().string() + ": forbidden legacy root key '" + key +
-                 "'");
+      expect(!hasRootKey(root, key), entry.path().string() +
+                                         ": forbidden legacy root key '" + key +
+                                         "'");
     }
   }
 

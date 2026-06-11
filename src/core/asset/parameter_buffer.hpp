@@ -15,7 +15,7 @@ namespace LX_core {
 它不再只是“参数字节数组”，而是一份完整的 buffer-type binding 运行时对象：
 
 - 对应 `MaterialTemplate` canonical material bindings 里的一个 `ShaderResourceBinding`
-- 持有 CPU 侧字节数据，供 `setParameter(...)` 按 member 写入
+- 持有 CPU 侧字节数据，供 shader-binding helper 按 member 写入
 - 直接实现 `IGpuResource`，让 backend 能按统一资源路径上传
 
 当前它覆盖所有 buffer-type material-owned binding，也就是 `UniformBuffer` 和

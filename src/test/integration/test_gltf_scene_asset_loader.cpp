@@ -72,16 +72,15 @@ void testDamagedHelmetSharedAssetLoadsFullPbr() {
              kd->get().valueType == LX_core::MaterialEnvelopeValueType::Rgb,
          "DamagedHelmet Kd texture envelope should retain rgb valueType");
 
-  const auto legacyBaseColor = result.material->readParameterValue(
+  const auto legacyBaseColor = result.material->readShaderBindingParameterValue(
       LX_core::StringID("MaterialUBO"), LX_core::StringID("baseColorFactor"));
   expect(!legacyBaseColor.has_value(),
          "material v2 should not expose legacy baseColorFactor buffer state");
-  expect(result.material->getParameterBufferCount() == 0,
+  expect(result.material->getShaderBindingBufferCount() == 0,
          "material v2 should keep envelope storage without parameter buffers");
 }
 
-void writeTextFile(const std::filesystem::path &path,
-                   const std::string &text) {
+void writeTextFile(const std::filesystem::path &path, const std::string &text) {
   std::ofstream out(path);
   if (!out) {
     std::cerr << "[FAIL] failed to open fixture: " << path << '\n';
@@ -107,8 +106,7 @@ bool loadSceneThrowsFor(const std::string &yamlText,
   return false;
 }
 
-bool saveSceneThrowsForDeletedExtension(
-    const std::string &expectedDiagnostic) {
+bool saveSceneThrowsForDeletedExtension(const std::string &expectedDiagnostic) {
   LX_infra::scene_io::SceneDocument document;
   document.setSceneName("Programmatic Deleted Extension");
 
@@ -333,8 +331,7 @@ root:
         - tag: old
           uri: assets/materials/pbr.material
 )yaml";
-  expect(loadSceneThrowsFor(deletedMaterialsSchema,
-                            "deleted materials schema"),
+  expect(loadSceneThrowsFor(deletedMaterialsSchema, "deleted materials schema"),
          "scene document should reject deleted node materials schema");
 }
 

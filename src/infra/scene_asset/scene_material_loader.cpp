@@ -77,8 +77,8 @@ void applyGenericMaterialOverrides(const MaterialInstanceSharedPtr &material,
     if (!splitMaterialParameterKey(key, binding, member)) {
       throw std::runtime_error("invalid material override key: " + key);
     }
-    const auto reflectedMember =
-        material->findParameterMember(StringID(binding), StringID(member));
+    const auto reflectedMember = material->findShaderBindingParameterMember(
+        StringID(binding), StringID(member));
     if (!reflectedMember.has_value()) {
       throw std::runtime_error("material parameter not found for override: " +
                                key);
@@ -89,7 +89,8 @@ void applyGenericMaterialOverrides(const MaterialInstanceSharedPtr &material,
       throw std::runtime_error(
           "material parameter type mismatch for override: " + key);
     }
-    material->setParameterValue(StringID(binding), StringID(member), coerced);
+    material->writeShaderBindingParameterValue(StringID(binding),
+                                               StringID(member), coerced);
   }
   material->syncGpuData();
 }

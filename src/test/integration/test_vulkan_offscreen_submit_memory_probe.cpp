@@ -148,10 +148,10 @@ void testOffscreenSubmitProbe() {
         vertexBufferPtr, indexBufferPtr,
         LX_core::BoundingBox{{-5.0f, -5.0f, 0.0f}, {5.0f, 5.0f, 0.0f}});
 
-    auto material = LX_infra::loadGenericMaterial(
-        "assets/materials/pbr.material");
-    material->setParameter(LX_core::StringID("MaterialUBO"),
-                           LX_core::StringID("enableNormal"), 0);
+    auto material =
+        LX_infra::loadGenericMaterial("assets/materials/pbr.material");
+    material->writeShaderBindingParameter(LX_core::StringID("MaterialUBO"),
+                                          LX_core::StringID("enableNormal"), 0);
     material->syncGpuData();
 
     auto node = LX_core::SceneNode::create("offscreen_probe_triangle");

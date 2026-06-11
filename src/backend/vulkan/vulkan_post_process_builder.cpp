@@ -82,9 +82,15 @@ private:
 
 std::vector<LX_core::ShaderResourceBinding> postProcessBindings() {
   return {
-      LX_core::ShaderResourceBinding{"SceneColor", 0, 0,
-                                     LX_core::ShaderPropertyType::Texture2D, 1,
-                                     0, 0, LX_core::ShaderStage::Fragment, {}},
+      LX_core::ShaderResourceBinding{"SceneColor",
+                                     0,
+                                     0,
+                                     LX_core::ShaderPropertyType::Texture2D,
+                                     1,
+                                     0,
+                                     0,
+                                     LX_core::ShaderStage::Fragment,
+                                     {}},
       LX_core::ShaderResourceBinding{
           "PostProcessUBO",
           0,
@@ -100,12 +106,17 @@ std::vector<LX_core::ShaderResourceBinding> postProcessBindings() {
                                      LX_core::ShaderPropertyType::Int, 4, 4},
            LX_core::StructMemberInfo{"gamma",
                                      LX_core::ShaderPropertyType::Float, 8, 4},
-           LX_core::StructMemberInfo{"bloomIntensity",
-                                     LX_core::ShaderPropertyType::Float, 12,
-                                     4}}},
-      LX_core::ShaderResourceBinding{"BloomColor", 0, 2,
-                                     LX_core::ShaderPropertyType::Texture2D, 1,
-                                     0, 0, LX_core::ShaderStage::Fragment, {}},
+           LX_core::StructMemberInfo{
+               "bloomIntensity", LX_core::ShaderPropertyType::Float, 12, 4}}},
+      LX_core::ShaderResourceBinding{"BloomColor",
+                                     0,
+                                     2,
+                                     LX_core::ShaderPropertyType::Texture2D,
+                                     1,
+                                     0,
+                                     0,
+                                     LX_core::ShaderStage::Fragment,
+                                     {}},
   };
 }
 
@@ -124,11 +135,16 @@ std::vector<LX_core::ShaderResourceBinding> skyboxBindings() {
                                      0, 64},
            LX_core::StructMemberInfo{"proj", LX_core::ShaderPropertyType::Mat4,
                                      64, 64},
-           LX_core::StructMemberInfo{"eyePos", LX_core::ShaderPropertyType::Vec3,
-                                     128, 12}}},
-      LX_core::ShaderResourceBinding{"SkyboxMap", 1, 0,
+           LX_core::StructMemberInfo{
+               "eyePos", LX_core::ShaderPropertyType::Vec3, 128, 12}}},
+      LX_core::ShaderResourceBinding{"SkyboxMap",
+                                     1,
+                                     0,
                                      LX_core::ShaderPropertyType::TextureCube,
-                                     1, 0, 0, LX_core::ShaderStage::Fragment,
+                                     1,
+                                     0,
+                                     0,
+                                     LX_core::ShaderStage::Fragment,
                                      {}},
       LX_core::ShaderResourceBinding{
           "EnvironmentUBO",
@@ -139,17 +155,22 @@ std::vector<LX_core::ShaderResourceBinding> skyboxBindings() {
           sizeof(LX_core::EnvironmentData::Param),
           0,
           LX_core::ShaderStage::Fragment,
-          {LX_core::StructMemberInfo{"params",
-                                     LX_core::ShaderPropertyType::Vec4, 0,
-                                     16}}},
+          {LX_core::StructMemberInfo{
+              "params", LX_core::ShaderPropertyType::Vec4, 0, 16}}},
   };
 }
 
 std::vector<LX_core::ShaderResourceBinding> bloomThresholdBindings() {
   return {
-      LX_core::ShaderResourceBinding{"SceneColor", 0, 0,
-                                     LX_core::ShaderPropertyType::Texture2D, 1,
-                                     0, 0, LX_core::ShaderStage::Fragment, {}},
+      LX_core::ShaderResourceBinding{"SceneColor",
+                                     0,
+                                     0,
+                                     LX_core::ShaderPropertyType::Texture2D,
+                                     1,
+                                     0,
+                                     0,
+                                     LX_core::ShaderStage::Fragment,
+                                     {}},
       LX_core::ShaderResourceBinding{
           "BloomThresholdUBO",
           0,
@@ -165,32 +186,61 @@ std::vector<LX_core::ShaderResourceBinding> bloomThresholdBindings() {
                                      LX_core::ShaderPropertyType::Float, 4, 4},
            LX_core::StructMemberInfo{"enabled",
                                      LX_core::ShaderPropertyType::Float, 8, 4},
-           LX_core::StructMemberInfo{"padding",
-                                     LX_core::ShaderPropertyType::Float, 12,
-                                     4}}},
+           LX_core::StructMemberInfo{
+               "padding", LX_core::ShaderPropertyType::Float, 12, 4}}},
   };
 }
 
 std::vector<LX_core::ShaderResourceBinding> bloomBlurBindings() {
-  return {LX_core::ShaderResourceBinding{
-      "BloomSource", 0, 0, LX_core::ShaderPropertyType::Texture2D, 1, 0, 0,
-      LX_core::ShaderStage::Fragment, {}}};
+  return {LX_core::ShaderResourceBinding{"BloomSource",
+                                         0,
+                                         0,
+                                         LX_core::ShaderPropertyType::Texture2D,
+                                         1,
+                                         0,
+                                         0,
+                                         LX_core::ShaderStage::Fragment,
+                                         {}}};
 }
 
 std::vector<LX_core::ShaderResourceBinding> deferredLightingBindings() {
   return {
-      LX_core::ShaderResourceBinding{"GBufferAlbedoAlpha", 0, 0,
-                                     LX_core::ShaderPropertyType::Texture2D, 1,
-                                     0, 0, LX_core::ShaderStage::Fragment, {}},
-      LX_core::ShaderResourceBinding{"GBufferNormalRoughness", 0, 1,
-                                     LX_core::ShaderPropertyType::Texture2D, 1,
-                                     0, 0, LX_core::ShaderStage::Fragment, {}},
-      LX_core::ShaderResourceBinding{"GBufferMaterial", 0, 2,
-                                     LX_core::ShaderPropertyType::Texture2D, 1,
-                                     0, 0, LX_core::ShaderStage::Fragment, {}},
-      LX_core::ShaderResourceBinding{"GBufferDepth", 0, 3,
-                                     LX_core::ShaderPropertyType::Texture2D, 1,
-                                     0, 0, LX_core::ShaderStage::Fragment, {}},
+      LX_core::ShaderResourceBinding{"GBufferAlbedoAlpha",
+                                     0,
+                                     0,
+                                     LX_core::ShaderPropertyType::Texture2D,
+                                     1,
+                                     0,
+                                     0,
+                                     LX_core::ShaderStage::Fragment,
+                                     {}},
+      LX_core::ShaderResourceBinding{"GBufferNormalRoughness",
+                                     0,
+                                     1,
+                                     LX_core::ShaderPropertyType::Texture2D,
+                                     1,
+                                     0,
+                                     0,
+                                     LX_core::ShaderStage::Fragment,
+                                     {}},
+      LX_core::ShaderResourceBinding{"GBufferMaterial",
+                                     0,
+                                     2,
+                                     LX_core::ShaderPropertyType::Texture2D,
+                                     1,
+                                     0,
+                                     0,
+                                     LX_core::ShaderStage::Fragment,
+                                     {}},
+      LX_core::ShaderResourceBinding{"GBufferDepth",
+                                     0,
+                                     3,
+                                     LX_core::ShaderPropertyType::Texture2D,
+                                     1,
+                                     0,
+                                     0,
+                                     LX_core::ShaderStage::Fragment,
+                                     {}},
       LX_core::ShaderResourceBinding{
           "CameraUBO",
           1,
@@ -204,8 +254,8 @@ std::vector<LX_core::ShaderResourceBinding> deferredLightingBindings() {
                                      0, 64},
            LX_core::StructMemberInfo{"proj", LX_core::ShaderPropertyType::Mat4,
                                      64, 64},
-           LX_core::StructMemberInfo{"eyePos", LX_core::ShaderPropertyType::Vec3,
-                                     128, 12}}},
+           LX_core::StructMemberInfo{
+               "eyePos", LX_core::ShaderPropertyType::Vec3, 128, 12}}},
       LX_core::ShaderResourceBinding{
           "LightUBO",
           2,
@@ -217,18 +267,16 @@ std::vector<LX_core::ShaderResourceBinding> deferredLightingBindings() {
           LX_core::ShaderStage::Fragment,
           {LX_core::StructMemberInfo{"direction",
                                      LX_core::ShaderPropertyType::Vec4, 0, 16},
-           LX_core::StructMemberInfo{"color",
-                                     LX_core::ShaderPropertyType::Vec4, 16,
-                                     16}}},
+           LX_core::StructMemberInfo{"color", LX_core::ShaderPropertyType::Vec4,
+                                     16, 16}}},
   };
 }
 
 LX_core::ShaderStageCode loadShaderStage(const std::string &shaderName,
                                          const char *suffix,
                                          LX_core::ShaderStage stage) {
-  const auto bytes =
-      readFile((getRuntimeShaderBinaryDir() / (shaderName + "." + suffix))
-                   .string());
+  const auto bytes = readFile(
+      (getRuntimeShaderBinaryDir() / (shaderName + "." + suffix)).string());
   if ((bytes.size() % sizeof(u32)) != 0) {
     throw std::runtime_error("shader bytecode size is not 4-byte aligned: " +
                              shaderName + "." + suffix);
@@ -243,13 +291,13 @@ LX_core::ShaderStageCode loadShaderStage(const std::string &shaderName,
 
 std::vector<LX_core::ShaderStageCode>
 loadGraphicsShaderStages(const std::string &shaderName) {
-  return {loadShaderStage(shaderName, "vert.spv", LX_core::ShaderStage::Vertex),
-          loadShaderStage(shaderName, "frag.spv",
-                          LX_core::ShaderStage::Fragment)};
+  return {
+      loadShaderStage(shaderName, "vert.spv", LX_core::ShaderStage::Vertex),
+      loadShaderStage(shaderName, "frag.spv", LX_core::ShaderStage::Fragment)};
 }
 
-LX_core::MaterialPassDefinition makeFullscreenPassDefinition(
-    LX_core::ShaderProgramSet shaderProgram) {
+LX_core::MaterialPassDefinition
+makeFullscreenPassDefinition(LX_core::ShaderProgramSet shaderProgram) {
   LX_core::MaterialPassDefinition passDefinition;
   passDefinition.shaderProgram = std::move(shaderProgram);
   passDefinition.renderState.cullMode = LX_core::CullMode::None;
@@ -280,16 +328,16 @@ VulkanPostProcessBuilder::createStandardPostProcessMaterial() const {
   tmpl->rebuildMaterialInterface();
 
   auto material = LX_core::MaterialInstance::createUnique(std::move(tmpl));
-  material->setParameter(LX_core::StringID("PostProcessUBO"),
-                         LX_core::StringID("exposure"), 1.0f);
-  material->setParameter(LX_core::StringID("PostProcessUBO"),
-                         LX_core::StringID("toneMappingMode"), 0);
-  material->setParameter(LX_core::StringID("PostProcessUBO"),
-                         LX_core::StringID("gamma"), 2.2f);
-  material->setParameter(LX_core::StringID("PostProcessUBO"),
-                         LX_core::StringID("bloomIntensity"),
-                         m_settings.bloomEnabled ? m_settings.bloomIntensity
-                                                 : 0.0f);
+  material->writeShaderBindingParameter(LX_core::StringID("PostProcessUBO"),
+                                        LX_core::StringID("exposure"), 1.0f);
+  material->writeShaderBindingParameter(LX_core::StringID("PostProcessUBO"),
+                                        LX_core::StringID("toneMappingMode"),
+                                        0);
+  material->writeShaderBindingParameter(LX_core::StringID("PostProcessUBO"),
+                                        LX_core::StringID("gamma"), 2.2f);
+  material->writeShaderBindingParameter(
+      LX_core::StringID("PostProcessUBO"), LX_core::StringID("bloomIntensity"),
+      m_settings.bloomEnabled ? m_settings.bloomIntensity : 0.0f);
   material->syncGpuData();
   return material;
 }
@@ -310,16 +358,16 @@ VulkanPostProcessBuilder::createBloomThresholdMaterial() const {
   tmpl->rebuildMaterialInterface();
 
   auto material = LX_core::MaterialInstance::createUnique(std::move(tmpl));
-  material->setParameter(LX_core::StringID("BloomThresholdUBO"),
-                         LX_core::StringID("threshold"),
-                         m_settings.bloomThreshold);
-  material->setParameter(LX_core::StringID("BloomThresholdUBO"),
-                         LX_core::StringID("softKnee"),
-                         m_settings.bloomSoftKnee);
-  material->setParameter(LX_core::StringID("BloomThresholdUBO"),
-                         LX_core::StringID("enabled"), 1.0f);
-  material->setParameter(LX_core::StringID("BloomThresholdUBO"),
-                         LX_core::StringID("padding"), 0.0f);
+  material->writeShaderBindingParameter(LX_core::StringID("BloomThresholdUBO"),
+                                        LX_core::StringID("threshold"),
+                                        m_settings.bloomThreshold);
+  material->writeShaderBindingParameter(LX_core::StringID("BloomThresholdUBO"),
+                                        LX_core::StringID("softKnee"),
+                                        m_settings.bloomSoftKnee);
+  material->writeShaderBindingParameter(LX_core::StringID("BloomThresholdUBO"),
+                                        LX_core::StringID("enabled"), 1.0f);
+  material->writeShaderBindingParameter(LX_core::StringID("BloomThresholdUBO"),
+                                        LX_core::StringID("padding"), 0.0f);
   material->syncGpuData();
   return material;
 }

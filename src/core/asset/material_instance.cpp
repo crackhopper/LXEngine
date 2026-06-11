@@ -87,17 +87,18 @@ MaterialInstance::findParameterBuffer(StringID bindingName) const {
 }
 
 /*****************************************************************
- * setParameter (primary API)
+ * writeShaderBindingParameter (primary API)
  *****************************************************************/
 
-void MaterialInstance::setParameter(StringID bindingName, StringID memberName,
-                                    float value) {
+void MaterialInstance::writeShaderBindingParameter(StringID bindingName,
+                                                   StringID memberName,
+                                                   float value) {
   if (m_usesEnvelopeStorage) {
     return;
   }
   auto parameterBuffer = findParameterBuffer(bindingName);
-  assert(parameterBuffer &&
-         "setParameter: binding name not found in canonical buffer bindings");
+  assert(parameterBuffer && "writeShaderBindingParameter: binding name not "
+                            "found in canonical buffer bindings");
   if (parameterBuffer) {
     parameterBuffer->get().writeBindingMember(memberName, &value, sizeof(float),
                                               ShaderPropertyType::Float);
@@ -105,14 +106,15 @@ void MaterialInstance::setParameter(StringID bindingName, StringID memberName,
   }
 }
 
-void MaterialInstance::setParameter(StringID bindingName, StringID memberName,
-                                    i32 value) {
+void MaterialInstance::writeShaderBindingParameter(StringID bindingName,
+                                                   StringID memberName,
+                                                   i32 value) {
   if (m_usesEnvelopeStorage) {
     return;
   }
   auto parameterBuffer = findParameterBuffer(bindingName);
-  assert(parameterBuffer &&
-         "setParameter: binding name not found in canonical buffer bindings");
+  assert(parameterBuffer && "writeShaderBindingParameter: binding name not "
+                            "found in canonical buffer bindings");
   if (parameterBuffer) {
     parameterBuffer->get().writeBindingMember(memberName, &value, sizeof(i32),
                                               ShaderPropertyType::Int);
@@ -120,14 +122,15 @@ void MaterialInstance::setParameter(StringID bindingName, StringID memberName,
   }
 }
 
-void MaterialInstance::setParameter(StringID bindingName, StringID memberName,
-                                    const Vec3f &value) {
+void MaterialInstance::writeShaderBindingParameter(StringID bindingName,
+                                                   StringID memberName,
+                                                   const Vec3f &value) {
   if (m_usesEnvelopeStorage) {
     return;
   }
   auto parameterBuffer = findParameterBuffer(bindingName);
-  assert(parameterBuffer &&
-         "setParameter: binding name not found in canonical buffer bindings");
+  assert(parameterBuffer && "writeShaderBindingParameter: binding name not "
+                            "found in canonical buffer bindings");
   if (parameterBuffer) {
     parameterBuffer->get().writeBindingMember(
         memberName, &value, sizeof(float) * 3, ShaderPropertyType::Vec3);
@@ -135,14 +138,15 @@ void MaterialInstance::setParameter(StringID bindingName, StringID memberName,
   }
 }
 
-void MaterialInstance::setParameter(StringID bindingName, StringID memberName,
-                                    const Vec4f &value) {
+void MaterialInstance::writeShaderBindingParameter(StringID bindingName,
+                                                   StringID memberName,
+                                                   const Vec4f &value) {
   if (m_usesEnvelopeStorage) {
     return;
   }
   auto parameterBuffer = findParameterBuffer(bindingName);
-  assert(parameterBuffer &&
-         "setParameter: binding name not found in canonical buffer bindings");
+  assert(parameterBuffer && "writeShaderBindingParameter: binding name not "
+                            "found in canonical buffer bindings");
   if (parameterBuffer) {
     parameterBuffer->get().writeBindingMember(memberName, &value, sizeof(Vec4f),
                                               ShaderPropertyType::Vec4);
@@ -150,34 +154,34 @@ void MaterialInstance::setParameter(StringID bindingName, StringID memberName,
   }
 }
 
-void MaterialInstance::setParameterValue(StringID bindingName,
-                                         StringID memberName,
-                                         const MaterialParameterValue &value) {
+void MaterialInstance::writeShaderBindingParameterValue(
+    StringID bindingName, StringID memberName,
+    const MaterialParameterValue &value) {
   switch (value.type) {
   case MaterialParameterValueType::Float:
-    setParameter(bindingName, memberName, value.floatValue);
+    writeShaderBindingParameter(bindingName, memberName, value.floatValue);
     return;
   case MaterialParameterValueType::Int:
-    setParameter(bindingName, memberName, value.intValue);
+    writeShaderBindingParameter(bindingName, memberName, value.intValue);
     return;
   case MaterialParameterValueType::Vec3:
-    setParameter(
+    writeShaderBindingParameter(
         bindingName, memberName,
         Vec3f{value.vectorValue.x, value.vectorValue.y, value.vectorValue.z});
     return;
   case MaterialParameterValueType::Vec4:
-    setParameter(bindingName, memberName, value.vectorValue);
+    writeShaderBindingParameter(bindingName, memberName, value.vectorValue);
     return;
   }
 }
 
 std::optional<std::reference_wrapper<const StructMemberInfo>>
-MaterialInstance::findParameterMember(StringID bindingName,
-                                      StringID memberName) const {
+MaterialInstance::findShaderBindingParameterMember(StringID bindingName,
+                                                   StringID memberName) const {
   if (m_usesEnvelopeStorage) {
     return std::nullopt;
   }
-  const auto binding = getParameterBufferLayout(bindingName);
+  const auto binding = getShaderBindingBufferLayout(bindingName);
   if (!binding.has_value()) {
     return std::nullopt;
   }
@@ -190,16 +194,16 @@ MaterialInstance::findParameterMember(StringID bindingName,
 }
 
 std::optional<MaterialParameterValue>
-MaterialInstance::readParameterValue(StringID bindingName,
-                                     StringID memberName) const {
+MaterialInstance::readShaderBindingParameterValue(StringID bindingName,
+                                                  StringID memberName) const {
   if (m_usesEnvelopeStorage) {
     return std::nullopt;
   }
-  const auto member = findParameterMember(bindingName, memberName);
+  const auto member = findShaderBindingParameterMember(bindingName, memberName);
   if (!member.has_value()) {
     return std::nullopt;
   }
-  const auto &bytes = getParameterBufferBytes(bindingName);
+  const auto &bytes = getShaderBindingBufferBytes(bindingName);
   if (static_cast<usize>(member->get().offset) + member->get().size >
       bytes.size()) {
     return std::nullopt;
@@ -342,10 +346,11 @@ MaterialInstance::SharedPtr MaterialInstance::cloneInstanceData() const {
     }
     const auto &binding = parameterBuffer->getBinding();
     for (const auto &member : binding.members) {
-      const auto value =
-          uniqueClone->readParameterValue(bindingId, StringID(member.name));
+      const auto value = uniqueClone->readShaderBindingParameterValue(
+          bindingId, StringID(member.name));
       if (value.has_value()) {
-        clone->setParameterValue(bindingId, StringID(member.name), *value);
+        clone->writeShaderBindingParameterValue(bindingId,
+                                                StringID(member.name), *value);
       }
     }
   }
@@ -378,9 +383,11 @@ MaterialInstance::UniquePtr MaterialInstance::cloneInstanceDataUnique() const {
     }
     const auto &binding = parameterBuffer->getBinding();
     for (const auto &member : binding.members) {
-      const auto value = readParameterValue(bindingId, StringID(member.name));
+      const auto value =
+          readShaderBindingParameterValue(bindingId, StringID(member.name));
       if (value.has_value()) {
-        clone->setParameterValue(bindingId, StringID(member.name), *value);
+        clone->writeShaderBindingParameterValue(bindingId,
+                                                StringID(member.name), *value);
       }
     }
   }
@@ -395,7 +402,7 @@ MaterialInstance::UniquePtr MaterialInstance::cloneInstanceDataUnique() const {
  *****************************************************************/
 
 GpuResourceRef
-MaterialInstance::getParameterResource(StringID bindingName) const {
+MaterialInstance::getShaderBindingResource(StringID bindingName) const {
   if (m_usesEnvelopeStorage) {
     return {};
   }
@@ -408,7 +415,7 @@ MaterialInstance::getParameterResource(StringID bindingName) const {
 }
 
 const std::vector<u8> &
-MaterialInstance::getParameterBufferBytes(StringID bindingName) const {
+MaterialInstance::getShaderBindingBufferBytes(StringID bindingName) const {
   if (m_usesEnvelopeStorage) {
     return kEmptyBuffer;
   }
@@ -418,7 +425,7 @@ MaterialInstance::getParameterBufferBytes(StringID bindingName) const {
 }
 
 std::optional<std::reference_wrapper<const ShaderResourceBinding>>
-MaterialInstance::getParameterBufferLayout(StringID bindingName) const {
+MaterialInstance::getShaderBindingBufferLayout(StringID bindingName) const {
   if (m_usesEnvelopeStorage) {
     return std::nullopt;
   }
@@ -427,14 +434,14 @@ MaterialInstance::getParameterBufferLayout(StringID bindingName) const {
   return std::nullopt;
 }
 
-const std::vector<u8> &MaterialInstance::getParameterBufferBytes() const {
+const std::vector<u8> &MaterialInstance::getShaderBindingBufferBytes() const {
   if (m_usesEnvelopeStorage) {
     static const std::vector<u8> kEmpty;
     return kEmpty;
   }
   assert(m_parameterBuffersByName.size() <= 1 &&
-         "getParameterBufferBytes(): multiple parameter buffers; use "
-         "getParameterBufferBytes(bindingName) instead");
+         "getShaderBindingBufferBytes(): multiple parameter buffers; use "
+         "getShaderBindingBufferBytes(bindingName) instead");
   if (m_parameterBuffersByName.empty()) {
     static const std::vector<u8> kEmpty;
     return kEmpty;
@@ -443,13 +450,13 @@ const std::vector<u8> &MaterialInstance::getParameterBufferBytes() const {
 }
 
 std::optional<std::reference_wrapper<const ShaderResourceBinding>>
-MaterialInstance::getParameterBufferLayout() const {
+MaterialInstance::getShaderBindingBufferLayout() const {
   if (m_usesEnvelopeStorage) {
     return std::nullopt;
   }
   assert(m_parameterBuffersByName.size() <= 1 &&
-         "getParameterBufferLayout(): multiple parameter buffers; use "
-         "getParameterBufferLayout(bindingName) instead");
+         "getShaderBindingBufferLayout(): multiple parameter buffers; use "
+         "getShaderBindingBufferLayout(bindingName) instead");
   if (m_parameterBuffersByName.empty())
     return std::nullopt;
   return std::cref(m_parameterBuffersByName.begin()->second->getBinding());

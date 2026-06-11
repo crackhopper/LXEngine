@@ -49,7 +49,7 @@ void appendSortedSceneMaterialResources(DescriptorResourceList &out,
     const StringID bindingId(binding.name);
     if (binding.type == ShaderPropertyType::UniformBuffer ||
         binding.type == ShaderPropertyType::StorageBuffer) {
-      auto resource = material.getParameterResource(bindingId);
+      auto resource = material.getShaderBindingResource(bindingId);
       if (!resource.isValid()) {
         throw std::logic_error("SceneDescriptorResourceResolver missing "
                                "material buffer resource '" +

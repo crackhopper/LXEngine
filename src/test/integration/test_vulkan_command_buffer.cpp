@@ -88,11 +88,11 @@ int main() {
         vertexBufferPtr, indexBufferPtr,
         LX_core::BoundingBox{{-5.0f, -5.0f, 0.0f}, {5.0f, 5.0f, 0.0f}});
 
-    auto material = LX_infra::loadGenericMaterial(
-        "assets/materials/pbr.material");
-    material->setParameter(LX_core::StringID("MaterialUBO"),
-                           LX_core::StringID("enableNormal"),
-                           0); // avoid normal texture
+    auto material =
+        LX_infra::loadGenericMaterial("assets/materials/pbr.material");
+    material->writeShaderBindingParameter(LX_core::StringID("MaterialUBO"),
+                                          LX_core::StringID("enableNormal"),
+                                          0); // avoid normal texture
     material->syncGpuData();
 
     auto node = LX_core::SceneNode::create("vulkan_command_node");
@@ -109,9 +109,8 @@ int main() {
                        std::make_shared<LX_core::DirectionalLight>());
 
     auto camera = cameraNode->getComponent<LX_core::CameraComponent>();
-    auto *dirLight =
-        dynamic_cast<LX_core::DirectionalLight *>(
-            &scene->getLights().front().get());
+    auto *dirLight = dynamic_cast<LX_core::DirectionalLight *>(
+        &scene->getLights().front().get());
 
     // Default directional light UBO (shader expects it).
     if (dirLight) {
