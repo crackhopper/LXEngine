@@ -3,6 +3,7 @@
 #include "core/frame_graph/graph_resource_registry.hpp"
 #include <stdexcept>
 #include <string>
+#include <unordered_set>
 
 namespace LX_core {
 namespace {
@@ -48,6 +49,11 @@ FramePass makeFramePass(const RenderPassNode &node, FrameGraphPhase phase,
     pass.writes.push_back(FrameGraphWrite{makeWriteRef(target),
                                           node.writeMode});
   }
+  pass.shaderUri = node.shaderUri;
+  pass.stage = node.stage;
+  pass.dispatch = node.dispatch;
+  pass.filters = node.filters;
+  pass.renderState = node.renderState;
   return pass;
 }
 
@@ -77,6 +83,45 @@ void validateRenderPathPassNode(const RenderPathGraph &graphAsset,
 }
 
 } // namespace
+
+void validateRenderPathGraphPassSet(
+    const RenderPathGraph &graph, const std::vector<StringID> &requiredPasses,
+    const std::vector<StringID> &supportedPasses) {
+  const std::string graphName = graph.name.empty() ? "<unnamed>" : graph.name;
+  const auto passDebugName = [](StringID id) {
+    return GlobalStringTable::get().toDebugString(id);
+  };
+
+  std::unordered_set<StringID> supported;
+  supported.reserve(supportedPasses.size());
+  for (StringID pass : supportedPasses) {
+    supported.insert(pass);
+  }
+
+  std::unordered_set<StringID> seen;
+  seen.reserve(graph.passes.size());
+  for (const RenderPassNode &node : graph.passes) {
+    const StringID passId(node.id);
+    if (supported.find(passId) == supported.end()) {
+      throw std::invalid_argument("RenderPathGraph '" + graphName +
+                                  "' contains unsupported pass '" + node.id +
+                                  "'");
+    }
+    if (!seen.insert(passId).second) {
+      throw std::invalid_argument("RenderPathGraph '" + graphName +
+                                  "' contains duplicate pass '" + node.id +
+                                  "'");
+    }
+  }
+
+  for (StringID required : requiredPasses) {
+    if (seen.find(required) == seen.end()) {
+      throw std::invalid_argument("RenderPathGraph '" + graphName +
+                                  "' missing required pass '" +
+                                  passDebugName(required) + "'");
+    }
+  }
+}
 
 FrameGraph buildFrameGraphFromSourceTargetContracts(
     const FrameGraphBuildPlanInput &input,

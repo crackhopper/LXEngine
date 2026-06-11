@@ -1195,6 +1195,61 @@ void testFrameGraphBuildPlanConsumesRenderPathGraph() {
   }
 }
 
+void testFrameGraphBuildPlanPreservesRenderPathGraphMetadata() {
+  const auto registry = GraphResourceRegistry::makeDefault();
+
+  RenderPassNode node = makeRenderPassNode(
+      "PostProcess", {"hdr.color", "feature.toneMapping"}, {"swapchain.color"});
+  node.shaderUri = "post_process";
+  node.dispatch = MaterialPassDispatch::Fullscreen;
+  node.filters.renderClasses = {"fullscreen.post"};
+  node.filters.bsdfTypes = {"none"};
+  node.renderState.cullMode = CullMode::None;
+  node.renderState.depthTestEnable = false;
+  node.renderState.depthWriteEnable = false;
+  node.renderState.depthOp = CompareOp::Always;
+  node.renderState.blendEnable = false;
+
+  RenderPathGraph graphAsset;
+  graphAsset.name = "MetadataGraph";
+  graphAsset.renderPath = RenderPath::Forward;
+  graphAsset.passes.push_back(makeRenderPassNode(
+      "Forward", {"scene.camera", "geometry.vertex", "material.bsdf"},
+      {"hdr.color"}));
+  graphAsset.passes.push_back(std::move(node));
+
+  const FrameGraph graph =
+      buildFrameGraphFromRenderPathGraph(graphAsset, registry);
+  const auto &declaredPasses = graph.getPasses();
+  EXPECT(declaredPasses.size() == 2,
+         "render path graph build should keep producer and metadata pass");
+  if (declaredPasses.size() < 2) {
+    return;
+  }
+
+  const FramePass &pass = declaredPasses[1];
+  EXPECT(pass.shaderUri == LX_core::ResourceUri("post_process"),
+         "FramePass should preserve graph shader uri");
+  EXPECT(pass.stage == MaterialPassStage::Raster,
+         "FramePass should preserve graph stage");
+  EXPECT(pass.dispatch == MaterialPassDispatch::Fullscreen,
+         "FramePass should preserve graph dispatch");
+  EXPECT(pass.filters.renderClasses.size() == 1 &&
+             pass.filters.renderClasses[0] == "fullscreen.post",
+         "FramePass should preserve render class filters");
+  EXPECT(pass.filters.bsdfTypes.size() == 1 &&
+             pass.filters.bsdfTypes[0] == "none",
+         "FramePass should preserve bsdf filters");
+  EXPECT(pass.renderState.cullMode == CullMode::None,
+         "FramePass should preserve cull mode");
+  EXPECT(!pass.renderState.depthTestEnable,
+         "FramePass should preserve depth test state");
+  EXPECT(!pass.renderState.depthWriteEnable,
+         "FramePass should preserve depth write state");
+  EXPECT(pass.renderState.depthOp == CompareOp::Always,
+         "FramePass should preserve depth compare op");
+}
+
 void testFrameGraphBuildPlanRejectsIncompleteRenderPathPass() {
   const auto registry = GraphResourceRegistry::makeDefault();
 
@@ -1234,6 +1289,42 @@ void testFrameGraphBuildPlanRejectsIncompleteRenderPathPass() {
              },
              "targets"),
          "render path graph pass without targets should fail fast");
+}
+
+void testDefaultForwardRenderPathGraphPassSetValidation() {
+  RenderPathGraph valid;
+  valid.name = "DefaultForward";
+  valid.renderPath = RenderPath::Forward;
+  valid.passes.push_back(
+      makeRenderPassNode("Forward", {"scene.camera"}, {"hdr.color"}));
+  valid.passes.push_back(
+      makeRenderPassNode("PostProcess", {"hdr.color"}, {"swapchain.color"}));
+
+  validateRenderPathGraphPassSet(valid, {Pass_Forward, Pass_PostProcess},
+                                 {Pass_Forward, Pass_PostProcess});
+
+  RenderPathGraph unknown = valid;
+  unknown.passes.push_back(
+      makeRenderPassNode("TypoPass", {"hdr.color"}, {"swapchain.color"}));
+  EXPECT(throwsInvalidArgument(
+             [&] {
+               validateRenderPathGraphPassSet(
+                   unknown, {Pass_Forward, Pass_PostProcess},
+                   {Pass_Forward, Pass_PostProcess});
+             },
+             "unsupported pass"),
+         "default forward graph should reject unknown pass ids");
+
+  RenderPathGraph missing = valid;
+  missing.passes.erase(missing.passes.begin());
+  EXPECT(throwsInvalidArgument(
+             [&] {
+               validateRenderPathGraphPassSet(
+                   missing, {Pass_Forward, Pass_PostProcess},
+                   {Pass_Forward, Pass_PostProcess});
+             },
+             "missing required pass"),
+         "default forward graph should reject missing required pass ids");
 }
 
 void testDefaultRenderPathGraphOrderComesFromSourceTargetDag() {
@@ -2176,7 +2267,9 @@ int main() {
   testFrameGraphBuildPlanPreservesWriteModeAndTargetKinds();
   testFrameGraphBuildPlanLetsDagSortOutOfOrderTechniquePasses();
   testFrameGraphBuildPlanConsumesRenderPathGraph();
+  testFrameGraphBuildPlanPreservesRenderPathGraphMetadata();
   testFrameGraphBuildPlanRejectsIncompleteRenderPathPass();
+  testDefaultForwardRenderPathGraphPassSetValidation();
   testDefaultRenderPathGraphOrderComesFromSourceTargetDag();
   testDirectionalLightCascadeSplitsUpdateFromCamera();
   testDirectionalLightPendingDirectionUpdatesUboBeforeAttach();

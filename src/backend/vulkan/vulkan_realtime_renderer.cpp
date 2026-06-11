@@ -1115,9 +1115,15 @@ public:
                                             LX_core::StringID("GBufferDepth"))},
           {LX_core::FrameGraphWrite{sceneHdrColor}}});
     } else {
+      const LX_core::RenderPathGraph forwardRenderPathGraph =
+          loadForwardRenderPathGraphAsset();
+      LX_core::validateRenderPathGraphPassSet(
+          forwardRenderPathGraph,
+          {LX_core::Pass_Forward, LX_core::Pass_PostProcess},
+          {LX_core::Pass_Forward, LX_core::Pass_PostProcess});
       LX_core::FrameGraph forwardGraph =
           LX_core::buildFrameGraphFromRenderPathGraph(
-              loadForwardRenderPathGraphAsset(),
+              forwardRenderPathGraph,
               LX_core::GraphResourceRegistry::makeDefault());
       for (auto pass : forwardGraph.getPasses()) {
         if (pass.name == LX_core::Pass_PostProcess &&

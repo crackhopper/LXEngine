@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/asset/render_effect.hpp"
 #include "core/frame_graph/render_target.hpp"
 #include "core/frame_graph/render_queue.hpp"
 #include "core/frame_graph/render_work_build_context.hpp"
@@ -67,6 +68,11 @@ struct FramePass {
   std::vector<FrameGraphWrite> writes;
   FrameGraphPhase phase = FrameGraphPhase::Material;
   u32 stableOrder = 0;
+  ResourceUri shaderUri;
+  MaterialPassStage stage = MaterialPassStage::Raster;
+  MaterialPassDispatch dispatch = MaterialPassDispatch::Draw;
+  RenderPassNodeFilters filters;
+  RenderState renderState;
 };
 
 struct CompiledFrameGraphPass {
