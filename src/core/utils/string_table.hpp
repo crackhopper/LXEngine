@@ -43,7 +43,7 @@ enum class TypeTag : u8 {
 @source_analysis.section GlobalStringTable：叶子 intern 与结构化 compose 共用一张表
 `GlobalStringTable` 同时服务两种需求：
 
-- 叶子名字：`StringID("Forward")`、`StringID("MaterialUBO")`
+- 叶子名字：`StringID("Forward")`、`StringID("SceneMaterials")`
 - 结构身份：`compose(TypeTag::PipelineKey, {objectSig, materialSig, targetRender})`
 
 这两类 ID 共用同一套整数空间和线程保护，因此上层不需要区分“普通字符串 ID”

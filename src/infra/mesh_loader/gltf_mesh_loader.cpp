@@ -166,11 +166,6 @@ void extractMaterial(const std::string &file, const cgltf_material *m,
 
   if (m->has_pbr_metallic_roughness) {
     const cgltf_pbr_metallic_roughness &pbr = m->pbr_metallic_roughness;
-    out.baseColorFactor = LX_core::Vec4f(
-        pbr.base_color_factor[0], pbr.base_color_factor[1],
-        pbr.base_color_factor[2], pbr.base_color_factor[3]);
-    out.metallicFactor = pbr.metallic_factor;
-    out.roughnessFactor = pbr.roughness_factor;
     out.baseColorTexture =
         extractTextureUri(file, pbr.base_color_texture, "baseColorTexture");
     out.metallicRoughnessTexture = extractTextureUri(

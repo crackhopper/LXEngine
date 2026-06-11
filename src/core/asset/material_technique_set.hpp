@@ -39,7 +39,6 @@ struct MaterialTechnique final {
 
 class MaterialTechniqueSet final {
 public:
-  std::string defaultTechnique;
   std::unordered_map<std::string, MaterialTechnique> techniques;
 };
 

@@ -15,9 +15,6 @@ namespace infra {
 // resolution / loading is the caller's responsibility; this struct does not
 // touch the filesystem.
 struct GLTFPbrMaterial {
-  LX_core::Vec4f baseColorFactor{1.0f, 1.0f, 1.0f, 1.0f};
-  float metallicFactor = 1.0f;
-  float roughnessFactor = 1.0f;
   LX_core::Vec3f emissiveFactor{0.0f, 0.0f, 0.0f};
 
   std::string baseColorTexture;

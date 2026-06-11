@@ -383,20 +383,21 @@ parameters:
   expect(!parsed.diagnostics.empty(),
          "legacy root parameter model should emit diagnostics");
 
-  bool mentionsRootParameterClass = false;
-  bool mentionsMaterialUboBaseColor = false;
+  bool mentionsRootParameters = false;
+  bool mentionsUnknownRootField = false;
   for (const std::string &diagnostic : parsed.diagnostics) {
-    mentionsRootParameterClass =
-        mentionsRootParameterClass ||
-        diagnostic.find("root.parameter-map") != std::string::npos;
-    mentionsMaterialUboBaseColor =
-        mentionsMaterialUboBaseColor ||
-        diagnostic.find("MaterialUBO.baseColorFactor") != std::string::npos;
+    mentionsRootParameters =
+        mentionsRootParameters ||
+        diagnostic.find("root.parameters") != std::string::npos;
+    mentionsUnknownRootField =
+        mentionsUnknownRootField ||
+        diagnostic.find("unknown material v2 root field") != std::string::npos;
   }
-  expect(mentionsRootParameterClass,
-         "legacy root parameter diagnostic should name root parameter class");
-  expect(mentionsMaterialUboBaseColor,
-         "legacy root parameter diagnostic should identify the offending key");
+  expect(mentionsRootParameters,
+         "legacy root parameter diagnostic should identify the root key");
+  expect(mentionsUnknownRootField,
+         "legacy root parameter diagnostic should use schema-level unknown "
+         "field wording");
 }
 
 void testParserRejectsLegacyRootResourcesMap() {
@@ -420,24 +421,21 @@ resources:
   expect(!parsed.diagnostics.empty(),
          "legacy root resources model should emit diagnostics");
 
-  bool mentionsResourceMapClass = false;
-  bool mentionsAlbedoMap = false;
-  bool mentionsNormalMap = false;
+  bool mentionsRootResources = false;
+  bool mentionsUnknownRootField = false;
   for (const std::string &diagnostic : parsed.diagnostics) {
-    mentionsResourceMapClass =
-        mentionsResourceMapClass ||
-        diagnostic.find("root.resource-map") != std::string::npos;
-    mentionsAlbedoMap =
-        mentionsAlbedoMap || diagnostic.find("albedoMap") != std::string::npos;
-    mentionsNormalMap =
-        mentionsNormalMap || diagnostic.find("normalMap") != std::string::npos;
+    mentionsRootResources =
+        mentionsRootResources ||
+        diagnostic.find("root.resources") != std::string::npos;
+    mentionsUnknownRootField =
+        mentionsUnknownRootField ||
+        diagnostic.find("unknown material v2 root field") != std::string::npos;
   }
-  expect(mentionsResourceMapClass,
-         "legacy root resources diagnostic should name root resource class");
-  expect(mentionsAlbedoMap,
-         "legacy root resources diagnostic should identify albedoMap");
-  expect(mentionsNormalMap,
-         "legacy root resources diagnostic should identify normalMap");
+  expect(mentionsRootResources,
+         "legacy root resources diagnostic should identify the root key");
+  expect(mentionsUnknownRootField,
+         "legacy root resources diagnostic should use schema-level unknown "
+         "field wording");
 }
 
 void testParserRejectsRenderFlowFields() {
@@ -470,7 +468,7 @@ targets: [hdr.color]
   expect(!parsed.diagnostics.empty(),
          "render-flow fields should emit diagnostics");
 
-  bool mentionsRenderFlowClass = false;
+  bool mentionsUnknownRootField = false;
   bool mentionsShaderKey = false;
   bool mentionsVariantsKey = false;
   bool mentionsRenderPathsKey = false;
@@ -478,9 +476,9 @@ targets: [hdr.color]
   bool mentionsSourcesKey = false;
   bool mentionsTargetsKey = false;
   for (const std::string &diagnostic : parsed.diagnostics) {
-    mentionsRenderFlowClass =
-        mentionsRenderFlowClass ||
-        diagnostic.find("root.render-flow-field") != std::string::npos;
+    mentionsUnknownRootField =
+        mentionsUnknownRootField ||
+        diagnostic.find("unknown material v2 root field") != std::string::npos;
     mentionsShaderKey =
         mentionsShaderKey || diagnostic.find("shader") != std::string::npos;
     mentionsVariantsKey =
@@ -496,8 +494,9 @@ targets: [hdr.color]
     mentionsTargetsKey =
         mentionsTargetsKey || diagnostic.find("targets") != std::string::npos;
   }
-  expect(mentionsRenderFlowClass,
-         "render-flow diagnostic should name the rejected field class");
+  expect(mentionsUnknownRootField,
+         "render-flow diagnostic should use schema-level unknown field "
+         "wording");
   expect(mentionsShaderKey,
          "render-flow diagnostic should identify the rejected shader key");
   expect(mentionsVariantsKey,
