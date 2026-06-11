@@ -1,6 +1,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -87,6 +88,12 @@ fs::path findRepoRoot() {
   return fs::current_path();
 }
 
+std::string readTextFile(const fs::path &path) {
+  std::ifstream in(path);
+  return std::string((std::istreambuf_iterator<char>(in)),
+                     std::istreambuf_iterator<char>());
+}
+
 void scanFile(const fs::path &repoRoot, const fs::path &path,
               const std::vector<ForbiddenToken> &tokens) {
   std::ifstream in(path);
@@ -138,6 +145,25 @@ void scanRoot(const fs::path &repoRoot, const ScanRoot &root,
   }
 }
 
+void auditDefaultForwardGraphSource(const fs::path &repoRoot) {
+  const fs::path rendererPath =
+      repoRoot / "src/backend/vulkan/vulkan_realtime_renderer.cpp";
+  const std::string rendererSource = readTextFile(rendererPath);
+
+  EXPECT(rendererSource.find("makeDefaultForwardRenderPathGraph") ==
+             std::string::npos,
+         "production renderer must not contain a built-in Forward graph "
+         "factory");
+  EXPECT(rendererSource.find("assets/render_paths/"
+                             "forward_main.render-path.yaml") !=
+             std::string::npos,
+         "production renderer must name the default Forward RenderPathGraph "
+         "asset");
+  EXPECT(rendererSource.find("RenderEffectResourceParser") != std::string::npos,
+         "production renderer must parse the default Forward RenderPathGraph "
+         "asset");
+}
+
 } // namespace
 
 int main() {
@@ -174,6 +200,7 @@ int main() {
   for (const ScanRoot &root : roots) {
     scanRoot(repoRoot, root, tokens);
   }
+  auditDefaultForwardGraphSource(repoRoot);
 
   if (g_failures != 0) {
     std::cerr << g_failures

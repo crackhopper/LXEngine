@@ -22,6 +22,7 @@
 #include "core/utils/string_table.hpp"
 #include "infra/gui/gui.hpp"
 #include "infra/image/rgba_image_io.hpp"
+#include "infra/resource_parsers/render_effect_resource_parser.hpp"
 #include "infra/window/window.hpp"
 #include "details/commands/command_buffer_manager.hpp"
 #include "details/descriptors/descriptor_manager.hpp"
@@ -43,6 +44,7 @@
 #include <fstream>
 #include <functional>
 #include <iostream>
+#include <iterator>
 #include <limits>
 #include <optional>
 #include <stdexcept>
@@ -52,6 +54,8 @@
 namespace {
 constexpr const char *kBloomBlurHShaderName = "bloom_blur_h";
 constexpr const char *kBloomBlurVShaderName = "bloom_blur_v";
+constexpr const char *kDefaultForwardRenderPathGraphAsset =
+    "assets/render_paths/forward_main.render-path.yaml";
 
 bool strictBindlessValidationEnabled() {
   return expEnvEnabled("LXE_STRICT_BINDLESS_VALIDATION");
@@ -61,36 +65,35 @@ bool isMigratedBindlessValidationPass(LX_core::StringID pass) {
   return pass == LX_core::Pass_Forward || pass == LX_core::Pass_Deferred;
 }
 
-LX_core::RenderPassNode makeDefaultRenderPathPass(
-    LX_core::StringID passId, LX_core::ResourceUri shaderUri,
-    std::vector<std::string> sources, std::vector<std::string> targets,
-    LX_core::MaterialPassDispatch dispatch =
-        LX_core::MaterialPassDispatch::Draw) {
-  LX_core::RenderPassNode pass;
-  pass.id = LX_core::GlobalStringTable::get().toDebugString(passId);
-  pass.shaderUri = std::move(shaderUri);
-  pass.stage = LX_core::MaterialPassStage::Raster;
-  pass.dispatch = dispatch;
-  pass.sources = std::move(sources);
-  pass.targets = std::move(targets);
-  return pass;
-}
+LX_core::RenderPathGraph loadForwardRenderPathGraphAsset() {
+  const auto graphPath = resolveRuntimePath(kDefaultForwardRenderPathGraphAsset);
+  std::ifstream file(graphPath);
+  if (!file.is_open()) {
+    throw std::runtime_error(
+        "failed to open default Forward RenderPathGraph asset: " +
+        graphPath.string());
+  }
 
-LX_core::RenderPathGraph makeDefaultForwardRenderPathGraph() {
-  LX_core::RenderPathGraph graph;
-  graph.name = "DefaultForward";
-  graph.renderPath = LX_core::RenderPath::Forward;
-  graph.features.push_back(LX_core::RenderPathFeatureDependency{
-      "toneMapping", "effects/tone_mapping.render-feature.yaml"});
-  graph.passes.push_back(makeDefaultRenderPathPass(
-      LX_core::Pass_Forward, "techniques/Forward/pbr",
-      {"camera.ubo", "geometry.vertex", "material.bsdf"},
-      {"hdr.color", "depth.main"}));
-  graph.passes.push_back(makeDefaultRenderPathPass(
-      LX_core::Pass_PostProcess, "post_process",
-      {"hdr.color", "feature.toneMapping"}, {"swapchain.color"},
-      LX_core::MaterialPassDispatch::Fullscreen));
-  return graph;
+  const std::string yamlText((std::istreambuf_iterator<char>(file)),
+                             std::istreambuf_iterator<char>());
+  LX_infra::RenderEffectResourceParser parser;
+  auto parsed = parser.parse(kDefaultForwardRenderPathGraphAsset, yamlText);
+  if (!parsed.renderPathGraph.has_value()) {
+    std::string message =
+        "default Forward RenderPathGraph asset did not parse: ";
+    message += kDefaultForwardRenderPathGraphAsset;
+    for (const std::string &diagnostic : parsed.diagnostics) {
+      message += "\n  ";
+      message += diagnostic;
+    }
+    throw std::runtime_error(message);
+  }
+  if (parsed.renderPathGraph->renderPath != LX_core::RenderPath::Forward) {
+    throw std::runtime_error(
+        "default Forward RenderPathGraph asset must declare renderPath: "
+        "Forward");
+  }
+  return std::move(*parsed.renderPathGraph);
 }
 
 /// REQ-009: reverse of resource_manager.cpp's toVkFormat(ImageFormat).
@@ -1112,11 +1115,11 @@ public:
                                             LX_core::StringID("GBufferDepth"))},
           {LX_core::FrameGraphWrite{sceneHdrColor}}});
     } else {
-      LX_core::FrameGraph defaultForwardGraph =
+      LX_core::FrameGraph forwardGraph =
           LX_core::buildFrameGraphFromRenderPathGraph(
-              makeDefaultForwardRenderPathGraph(),
+              loadForwardRenderPathGraphAsset(),
               LX_core::GraphResourceRegistry::makeDefault());
-      for (auto pass : defaultForwardGraph.getPasses()) {
+      for (auto pass : forwardGraph.getPasses()) {
         if (pass.name == LX_core::Pass_PostProcess &&
             m_postProcessSettings.bloomEnabled) {
           continue;
