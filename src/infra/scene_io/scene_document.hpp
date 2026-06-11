@@ -70,12 +70,9 @@ struct LightNodeState final {
 };
 
 struct MaterialOverrideState final {
-  std::optional<LX_core::Vec3f> baseColor;
   std::unordered_map<std::string, LX_core::MaterialParameterValue> parameters;
 
-  [[nodiscard]] bool empty() const {
-    return !baseColor.has_value() && parameters.empty();
-  }
+  [[nodiscard]] bool empty() const { return parameters.empty(); }
 };
 
 struct ProceduralMaterialState final {

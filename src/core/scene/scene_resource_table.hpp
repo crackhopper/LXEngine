@@ -119,12 +119,21 @@ public:
   [[nodiscard]] GeometryStorageHandle
   registerGeometryStorage(GeometryStorageUniquePtr storage);
   [[nodiscard]] MeshHandle registerMesh(MeshBufferUniquePtr mesh);
+  [[nodiscard]] MeshHandle registerMesh(const ResourceUri &uri,
+                                        MeshBufferUniquePtr mesh);
   [[nodiscard]] MaterialHandle
   registerMaterial(MaterialInstanceUniquePtr material);
+  [[nodiscard]] MaterialHandle
+  registerMaterialInstance(const ResourceUri &uri,
+                           MaterialInstanceUniquePtr material);
   [[nodiscard]] TextureHandle
   registerTexture(CombinedTextureSamplerUniquePtr texture);
+  [[nodiscard]] TextureHandle
+  registerTexture(const ResourceUri &uri,
+                  CombinedTextureSamplerUniquePtr texture);
   [[nodiscard]] LightHandle registerLight(LightBaseUniquePtr light);
-  [[nodiscard]] SkeletonHandle registerSkeleton(std::unique_ptr<Skeleton> skeleton);
+  [[nodiscard]] SkeletonHandle
+  registerSkeleton(std::unique_ptr<Skeleton> skeleton);
   [[nodiscard]] ObjectHandle registerObject(ObjectResource object);
   [[nodiscard]] CameraHandle registerCamera(CameraResource camera);
   void updateObject(ObjectHandle handle, ObjectResource object);
@@ -172,6 +181,16 @@ public:
   resolve(CameraHandle handle);
   [[nodiscard]] std::optional<std::reference_wrapper<const CameraResource>>
   resolve(CameraHandle handle) const;
+  [[nodiscard]] const MeshBuffer &mesh(MeshHandle handle) const;
+  [[nodiscard]] const MaterialInstance &
+  materialInstance(MaterialHandle handle) const;
+  [[nodiscard]] const CombinedTextureSampler &
+  texture(TextureHandle handle) const;
+  [[nodiscard]] bool hasMesh(MeshHandle handle) const;
+  [[nodiscard]] bool hasTexture(TextureHandle handle) const;
+  [[nodiscard]] std::optional<MeshHandle> findMesh(const ResourceUri &uri) const;
+  [[nodiscard]] std::optional<TextureHandle>
+  findTexture(const ResourceUri &uri) const;
   [[nodiscard]] GpuResourceRef getCameraUboResource(CameraHandle handle) const;
   [[nodiscard]] GpuResourceRef
   buildRenderCameraUboResource(const CameraResource &camera) const;
@@ -184,11 +203,12 @@ public:
   [[nodiscard]] IblEnvironmentResources *getMutableIblEnvironmentResources();
   [[nodiscard]] std::vector<GpuResourceRef> getIblEnvironmentResources() const;
   void beginRenderResourceScope();
-  [[nodiscard]] MaterialHandle addRenderMaterial(MaterialInstanceUniquePtr material);
+  [[nodiscard]] MaterialHandle
+  addRenderMaterial(MaterialInstanceUniquePtr material);
   [[nodiscard]] GpuResourceRef
   addRenderGpuResource(std::unique_ptr<IGpuResource> resource) const;
-  [[nodiscard]] TextureSamplerRef addRenderTextureSampler(
-      CombinedTextureSamplerUniquePtr sampler) const;
+  [[nodiscard]] TextureSamplerRef
+  addRenderTextureSampler(CombinedTextureSamplerUniquePtr sampler) const;
 
   [[nodiscard]] bool isAlive(GeometryStorageHandle handle) const;
   [[nodiscard]] bool isAlive(MeshHandle handle) const;
@@ -218,6 +238,21 @@ public:
   internResourceMetadata(ResourceMetadata metadata);
   [[nodiscard]] const ResourceMetadata *
   findResourceMetadata(ResourceIdentityHandle handle) const;
+  [[nodiscard]] ResourceUri resolveUri(const ResourceUri &baseUri,
+                                       const ResourceUri &uri) const;
+  [[nodiscard]] ResourceIdentityHandle
+  loadOrGetResource(SceneResourceType type, const ResourceUri &canonicalUri);
+  void registerDependency(ResourceIdentityHandle ownerHandle,
+                          ResourceIdentityHandle dependencyHandle);
+  void addDependency(ResourceIdentityHandle ownerHandle,
+                     ResourceIdentityHandle dependencyHandle);
+  void addDependency(MaterialHandle ownerHandle, TextureHandle dependencyHandle);
+  void markDirty(ResourceIdentityHandle handle, std::string reason);
+  void markDirty(TextureHandle handle, std::string reason);
+  [[nodiscard]] const ResourceMetadata &
+  metadata(ResourceIdentityHandle handle) const;
+  [[nodiscard]] const ResourceMetadata &metadata(MaterialHandle handle) const;
+  [[nodiscard]] const ResourceMetadata &metadata(TextureHandle handle) const;
   [[nodiscard]] ResourceIdentityHandle
   internMaterialInstanceIdentity(const ResourceUri &sourceMaterialUri,
                                  std::string overrideHash);
@@ -227,6 +262,7 @@ private:
   template <typename Resource>
   struct Entry {
     std::unique_ptr<Resource> resource;
+    ResourceIdentityHandle metadataHandle;
     u32 generation = 0;
     SceneResourceEntryState state = SceneResourceEntryState::Empty;
   };
@@ -256,6 +292,16 @@ private:
   aliveCount(const std::vector<Entry<Resource>> &entries) const;
 
   [[nodiscard]] u32 registerUploadTexture(TextureHandle texture) const;
+  [[nodiscard]] ResourceIdentityHandle
+  metadataHandleFor(MeshHandle handle) const;
+  [[nodiscard]] ResourceIdentityHandle
+  metadataHandleFor(MaterialHandle handle) const;
+  [[nodiscard]] ResourceIdentityHandle
+  metadataHandleFor(TextureHandle handle) const;
+  [[nodiscard]] ResourceMetadata &
+  mutableMetadata(ResourceIdentityHandle handle);
+  [[nodiscard]] const ResourceMetadata &
+  constMetadata(ResourceIdentityHandle handle) const;
 
   void advanceUploadGeneration();
 
@@ -272,7 +318,9 @@ private:
   mutable std::unique_ptr<SceneLightsData> m_sceneLightsUbo =
       std::make_unique<SceneLightsData>();
   u64 m_generation = 0;
-  mutable std::vector<SceneGpuVertexRecord> m_gpuVertices;
+  mutable std::vector<Vec4f> m_gpuPositions;
+  mutable std::vector<SceneGpuAttributeStreamRecord> m_gpuAttributeStreams;
+  mutable std::vector<Vec4f> m_gpuAttributeValues;
   mutable std::vector<u32> m_gpuIndices;
   mutable std::vector<SceneGpuMeshRecord> m_gpuMeshes;
   mutable std::vector<SceneGpuPrimitiveRecord> m_gpuPrimitives;
@@ -280,12 +328,22 @@ private:
   mutable std::vector<SceneGpuMaterialRecord> m_gpuMaterials;
   mutable std::vector<std::reference_wrapper<const CombinedTextureSampler>>
       m_gpuTextures;
+  mutable std::vector<std::reference_wrapper<const CameraResource>>
+      m_gpuCameras;
+  mutable std::vector<std::reference_wrapper<const LightBase>> m_gpuLights;
+  mutable std::vector<SceneResourceMeshUploadIndex> m_gpuMeshIndexByHandle;
+  mutable std::vector<SceneResourceMaterialUploadIndex>
+      m_gpuMaterialIndexByHandle;
+  mutable std::vector<SceneResourceTextureUploadIndex>
+      m_gpuTextureIndexByHandle;
+  mutable std::vector<SceneResourceObjectUploadIndex> m_gpuObjectIndexByHandle;
+  mutable std::vector<SceneResourceCameraUploadIndex> m_gpuCameraIndexByHandle;
+  mutable std::vector<SceneResourceLightUploadIndex> m_gpuLightIndexByHandle;
   std::vector<MaterialHandle> m_renderMaterialHandles;
   std::vector<ResourceMetadata> m_resourceMetadata;
   std::vector<u32> m_resourceMetadataGenerations;
   mutable std::vector<std::unique_ptr<IGpuResource>> m_renderGpuResources;
-  mutable std::vector<CombinedTextureSamplerUniquePtr>
-      m_renderTextureSamplers;
+  mutable std::vector<CombinedTextureSamplerUniquePtr> m_renderTextureSamplers;
 };
 
 } // namespace LX_core

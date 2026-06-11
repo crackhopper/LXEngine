@@ -334,6 +334,7 @@ set(INFRA_SOURCES
     material_loader/material_resource_parser.cpp
     material_loader/pbrt_material_defaults.cpp
     resource_parsers/mesh_resource_parser.cpp
+    resource_parsers/material_pass_contract_parser.cpp
     resource_parsers/render_effect_resource_parser.cpp
     resource_parsers/scene_resource_parser_registry.cpp
     resource_parsers/texture_resource_parser.cpp

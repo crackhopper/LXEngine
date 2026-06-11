@@ -19,6 +19,22 @@ static std::string readFileToString(const std::filesystem::path &path) {
   return ss.str();
 }
 
+static std::filesystem::path
+findShaderIncludeRoot(const std::filesystem::path &filePath) {
+  std::filesystem::path probe = filePath.parent_path();
+  for (int i = 0; i < 6; ++i) {
+    if (std::filesystem::exists(probe / "common")) {
+      return probe;
+    }
+    const auto parent = probe.parent_path();
+    if (parent == probe) {
+      break;
+    }
+    probe = parent;
+  }
+  return filePath.parent_path();
+}
+
 class FileIncluder final : public shaderc::CompileOptions::IncluderInterface {
 public:
   explicit FileIncluder(std::filesystem::path includeRoot)
@@ -38,8 +54,14 @@ public:
     const std::filesystem::path fullPath =
         requestedPath.is_absolute() ? requestedPath : baseDir / requestedPath;
 
-    include->sourceName = fullPath.lexically_normal().string();
-    include->content = readFileToString(fullPath);
+    std::filesystem::path resolvedPath = fullPath.lexically_normal();
+    include->content = readFileToString(resolvedPath);
+    if (include->content.empty() && !requestedPath.is_absolute() &&
+        resolvedPath.parent_path() != m_includeRoot) {
+      resolvedPath = (m_includeRoot / requestedPath).lexically_normal();
+      include->content = readFileToString(resolvedPath);
+    }
+    include->sourceName = resolvedPath.string();
     if (include->content.empty()) {
       include->content =
           "#error failed to read shader include: " + include->sourceName;
@@ -140,7 +162,7 @@ ShaderCompiler::compileFile(const std::filesystem::path &filePath,
                                shaderc_env_version_vulkan_1_3);
   options.SetOptimizationLevel(shaderc_optimization_level_zero);
   options.SetIncluder(
-      std::make_unique<FileIncluder>(filePath.parent_path()));
+      std::make_unique<FileIncluder>(findShaderIncludeRoot(filePath)));
 
   // Inject variant macros
   for (const auto &v : variants) {

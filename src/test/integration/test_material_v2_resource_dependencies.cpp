@@ -2,6 +2,8 @@
 #include "core/scene/scene_resource_table.hpp"
 #include "infra/material_loader/material_resource_parser.hpp"
 
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 
 using namespace LX_core;
@@ -18,29 +20,73 @@ int g_failures = 0;
     }                                                                          \
   } while (0)
 
+namespace fs = std::filesystem;
+
+[[nodiscard]] fs::path makeTempRoot() {
+  const fs::path root = fs::temp_directory_path() / "lxe_material_v2_refs";
+  fs::remove_all(root);
+  fs::create_directories(root / "materials");
+  return root;
+}
+
+void writeFile(const fs::path &path, const std::string &content) {
+  fs::create_directories(path.parent_path());
+  std::ofstream out(path, std::ios::out | std::ios::trunc);
+  out << content;
+}
+
 void testParserResourceDependenciesSurviveTableRegistration() {
   SceneResourceTable table;
   LX_infra::MaterialResourceParser parser;
-  auto parsed = parser.parse(table, "memory://dependency-material", R"(
+  auto parsed = parser.parse(table, "assets/materials/car/paint.material", R"(
 schema: lxe.material.v2
 bsdf:
   type: matte
   parameters:
-    Kd: { kind: texture, valueType: rgb, uri: textures/albedo.png }
-    sigma: { kind: float, value: 0.0 }
+    Kd: { kind: texture, valueType: rgb, uri: ../textures/shared.png }
+    normalmap: { kind: texture, valueType: rgb, uri: ../textures/shared.png }
+    sigma: { kind: texture, valueType: float, uri: ../textures/shared.png }
 )");
 
   EXPECT(parsed.instance != nullptr, "valid material should parse");
-  EXPECT(parsed.diagnostics.empty(), "valid material should have no diagnostics");
-  EXPECT(parsed.dependencies.size() == 1,
-         "texture envelope should be reported as a dependency");
+  EXPECT(parsed.diagnostics.empty(),
+         "valid material should have no diagnostics");
+  EXPECT(parsed.dependencies.size() == 3,
+         "texture, normalmap, and sigma envelopes should be reported as "
+         "parameter dependencies");
   if (!parsed.instance) {
     return;
   }
 
+  EXPECT(parsed.dependencies[0].uri.string() ==
+             "assets/materials/textures/shared.png",
+         "first dependency should store canonical texture uri");
+  EXPECT(parsed.dependencies[1].uri.string() ==
+             "assets/materials/textures/shared.png",
+         "second dependency should store canonical texture uri");
+  EXPECT(parsed.dependencies.size() == 3 &&
+             parsed.dependencies[2].uri.string() ==
+                 "assets/materials/textures/shared.png",
+         "normalmap dependency should store canonical texture uri");
+  EXPECT(parsed.dependencies[0].resourceHandle.isValid(),
+         "first dependency should store a typed resource identity handle");
+  EXPECT(parsed.dependencies[1].resourceHandle.isValid(),
+         "second dependency should store a typed resource identity handle");
+  EXPECT(parsed.dependencies.size() == 3 &&
+             parsed.dependencies[2].resourceHandle.isValid(),
+         "normalmap dependency should store a typed resource identity handle");
+  EXPECT(parsed.dependencies[0].resourceHandle ==
+             parsed.dependencies[1].resourceHandle,
+         "same canonical URI plus resource type should deduplicate handles");
+  EXPECT(parsed.dependencies.size() == 3 &&
+             parsed.dependencies[0].resourceHandle ==
+                 parsed.dependencies[2].resourceHandle,
+         "normalmap with the same texture URI should deduplicate handles");
+
   const MaterialHandle handle =
       table.registerMaterial(std::move(parsed.instance));
-  EXPECT(handle.isValid(), "parsed material should register into resource table");
+  EXPECT(handle.isValid(),
+         "parsed material should register into resource table");
 
   const auto material = table.resolve(handle);
   EXPECT(material.has_value(), "registered material should resolve");
@@ -49,23 +95,176 @@ bsdf:
   }
 
   const auto &deps = material->get().getMaterialDependencies();
-  EXPECT(deps.size() == 1,
+  EXPECT(deps.size() == 3,
          "registered material should retain dependency metadata");
-  EXPECT(!deps.empty() && deps.front().uri.string() == "textures/albedo.png",
-         "registered dependency should retain texture uri");
-  EXPECT(!deps.empty() && deps.front().parameterName == "Kd",
-         "registered dependency should retain parameter name");
+  EXPECT(deps.size() == 3 && deps[0].resourceHandle == deps[1].resourceHandle &&
+             deps[0].resourceHandle == deps[2].resourceHandle,
+         "registered dependencies should retain deduplicated handles");
 
   const auto kd = material->get().getMaterialEnvelope(StringID("Kd"));
   EXPECT(kd.has_value(), "registered material should retain Kd envelope");
   EXPECT(kd.has_value() && kd->get().kind == MaterialEnvelopeKind::Texture,
          "registered Kd envelope should retain texture kind");
+  const auto normalmap =
+      material->get().getMaterialEnvelope(StringID("normalmap"));
+  EXPECT(normalmap.has_value(),
+         "registered material should retain normalmap envelope");
+  EXPECT(normalmap.has_value() &&
+             normalmap->get().kind == MaterialEnvelopeKind::Texture,
+         "registered normalmap envelope should retain texture kind");
+
+  const auto graph = table.exportResourceGraph();
+  u32 materialCount = 0;
+  u32 textureCount = 0;
+  u32 materialDependencyCount = 0;
+  for (const ResourceMetadata &metadata : graph.resources) {
+    if (metadata.type == SceneResourceType::Material &&
+        metadata.uri.string() == "assets/materials/car/paint.material") {
+      ++materialCount;
+      materialDependencyCount = static_cast<u32>(metadata.dependencies.size());
+    }
+    if (metadata.type == SceneResourceType::Texture &&
+        metadata.uri.string() == "assets/materials/textures/shared.png") {
+      ++textureCount;
+    }
+  }
+  EXPECT(materialCount == 1,
+         "parser should register one material resource identity");
+  EXPECT(textureCount == 1,
+         "same canonical texture URI should register one texture identity");
+  EXPECT(materialDependencyCount == 1,
+         "material dependency graph should deduplicate repeated texture edges");
+}
+
+void testMixMaterialRefReadsTargetHeaderWithoutFullParse() {
+  const fs::path root = makeTempRoot();
+  const fs::path owner = root / "materials" / "mix.material";
+  const fs::path leaf = root / "materials" / "leaf.material";
+  writeFile(leaf, R"(
+schema: lxe.material.v2
+bsdf:
+  type: matte
+)");
+
+  SceneResourceTable table;
+  LX_infra::MaterialResourceParser parser;
+  auto parsed = parser.parse(table, owner.generic_string(), R"(
+schema: lxe.material.v2
+bsdf:
+  type: mix
+  parameters:
+    namedmaterial1: { kind: materialRef, uri: leaf.material }
+    namedmaterial2: { kind: materialRef, uri: leaf.material }
+    amount: { kind: float, value: 0.35 }
+)");
+
+  EXPECT(parsed.instance != nullptr,
+         "mix material should accept non-mix material reference header");
+  EXPECT(parsed.diagnostics.empty(),
+         "header-only material reference validation should not require target "
+         "parameters");
+  EXPECT(parsed.dependencies.size() == 2,
+         "mix material refs should remain parameter dependencies");
+  EXPECT(parsed.dependencies.size() == 2 &&
+             parsed.dependencies[0].resourceHandle ==
+                 parsed.dependencies[1].resourceHandle,
+         "same material reference URI should deduplicate header handles");
+}
+
+void testMixMaterialRefRejectsTargetMixHeader() {
+  const fs::path root = makeTempRoot();
+  const fs::path owner = root / "materials" / "mix.material";
+  const fs::path child = root / "materials" / "child_mix.material";
+  writeFile(child, R"(
+schema: lxe.material.v2
+bsdf:
+  type: mix
+)");
+
+  SceneResourceTable table;
+  LX_infra::MaterialResourceParser parser;
+  auto parsed = parser.parse(table, owner.generic_string(), R"(
+schema: lxe.material.v2
+bsdf:
+  type: mix
+  parameters:
+    namedmaterial1: { kind: materialRef, uri: child_mix.material }
+    namedmaterial2: { kind: materialRef, uri: child_mix.material }
+    amount: { kind: float, value: 0.35 }
+)");
+
+  EXPECT(parsed.instance == nullptr,
+         "mix material should reject materialRef whose target header is mix");
+  EXPECT(!parsed.diagnostics.empty(),
+         "rejected nested mix material reference should emit diagnostics");
+}
+
+void testMixMaterialRefRejectsNamedStringReference() {
+  const fs::path root = makeTempRoot();
+  const fs::path owner = root / "materials" / "mix.material";
+
+  SceneResourceTable table;
+  LX_infra::MaterialResourceParser parser;
+  auto parsed = parser.parse(table, owner.generic_string(), R"(
+schema: lxe.material.v2
+bsdf:
+  type: mix
+  parameters:
+    namedmaterial1: { kind: materialRef, uri: named:matte_base }
+    namedmaterial2: { kind: materialRef, uri: named:clearcoat }
+    amount: { kind: float, value: 0.35 }
+)");
+
+  EXPECT(parsed.instance == nullptr,
+         "mix material should reject named-string materialRef values");
+  EXPECT(!parsed.diagnostics.empty(),
+         "rejected named-string materialRef should emit diagnostics");
+}
+
+void testMaterialRefDiagnosticsIncludeParserAndResourceContext() {
+  const fs::path root = makeTempRoot();
+  const fs::path owner = root / "materials" / "mix.material";
+
+  SceneResourceTable table;
+  LX_infra::MaterialResourceParser parser;
+  auto parsed = parser.parse(table, owner.generic_string(), R"(
+schema: lxe.material.v2
+bsdf:
+  type: mix
+  parameters:
+    namedmaterial1: { kind: materialRef, uri: missing.material }
+    namedmaterial2: { kind: materialRef, uri: missing.material }
+    amount: { kind: float, value: 0.35 }
+)");
+
+  EXPECT(parsed.instance == nullptr,
+         "missing materialRef header should fail material parse");
+  EXPECT(!parsed.diagnostics.empty(),
+         "missing materialRef header should emit diagnostics");
+  if (parsed.diagnostics.empty()) {
+    return;
+  }
+  const std::string &diagnostic = parsed.diagnostics.front();
+  EXPECT(diagnostic.find(owner.generic_string()) != std::string::npos,
+         "diagnostic should include owner material URI");
+  EXPECT(diagnostic.find("bsdf.parameters.namedmaterial1") != std::string::npos,
+         "diagnostic should include parameter path");
+  EXPECT(diagnostic.find(
+             (root / "materials" / "missing.material").generic_string()) !=
+             std::string::npos,
+         "diagnostic should include target resource URI");
+  EXPECT(diagnostic.find("MaterialResourceParser") != std::string::npos,
+         "diagnostic should include parser name");
 }
 
 } // namespace
 
 int main() {
   testParserResourceDependenciesSurviveTableRegistration();
+  testMixMaterialRefReadsTargetHeaderWithoutFullParse();
+  testMixMaterialRefRejectsTargetMixHeader();
+  testMixMaterialRefRejectsNamedStringReference();
+  testMaterialRefDiagnosticsIncludeParserAndResourceContext();
   if (g_failures != 0) {
     std::cerr << g_failures << " material v2 dependency checks failed\n";
     return 1;

@@ -1,10 +1,11 @@
 #pragma once
 
-#include "core/asset/material_template.hpp"
 #include "core/asset/material_parameter_envelope.hpp"
+#include "core/asset/material_template.hpp"
 #include "core/asset/parameter_buffer.hpp"
 #include "core/asset/texture.hpp"
 #include "core/math/vec.hpp"
+#include "core/resource/resource_handle.hpp"
 #include "core/resource/resource_uri.hpp"
 #include "core/rhi/descriptor_resource_ref.hpp"
 #include "core/rhi/gpu_resource.hpp"
@@ -23,6 +24,7 @@ namespace LX_core {
 struct MaterialResourceDependency final {
   MaterialEnvelopeKind kind = MaterialEnvelopeKind::Texture;
   ResourceUri uri;
+  ResourceIdentityHandle resourceHandle;
   std::string parameterName;
 };
 
@@ -104,6 +106,13 @@ public:
           StringID, const CombinedTextureSamplerSharedPtr &)> &callback) const;
 
   void syncGpuData();
+  [[nodiscard]] u64 getMaterialStateVersion() const {
+    return m_materialStateVersion;
+  }
+  [[nodiscard]] bool hasPendingMaterialStateSync() const {
+    return m_materialStateDirty;
+  }
+  void clearPendingMaterialStateSync() { m_materialStateDirty = false; }
 
   MaterialTemplateSharedPtr getTemplate() const { return m_template; }
 
@@ -130,6 +139,14 @@ public:
 
   void setBsdfType(std::string bsdfType);
   [[nodiscard]] const std::string &getBsdfType() const;
+  void setRenderClass(std::string renderClass);
+  [[nodiscard]] const std::string &getRenderClass() const;
+  void setMaterialTags(std::vector<std::string> tags);
+  [[nodiscard]] const std::vector<std::string> &getMaterialTags() const;
+  void setAuthoringMetadata(
+      std::unordered_map<std::string, std::string> metadata);
+  [[nodiscard]] const std::unordered_map<std::string, std::string> &
+  getAuthoringMetadata() const;
   void setMaterialEnvelope(StringID parameterName,
                            MaterialParameterEnvelope envelope);
   [[nodiscard]] std::optional<
@@ -146,6 +163,8 @@ private:
   std::optional<std::reference_wrapper<const ParameterBuffer>>
   findParameterBuffer(StringID bindingName) const;
   bool hasDefinedPass(StringID pass) const;
+  void markMaterialStateDirty();
+  void activateEnvelopeStorage();
 
   MaterialTemplateSharedPtr m_template;
   // Runtime resources grouped by the same binding names used by the template's
@@ -165,9 +184,15 @@ private:
   std::unordered_map<u64, std::function<void()>> m_passStateListeners;
   u64 m_nextListenerId = 1;
   std::string m_bsdfType;
+  std::string m_renderClass;
+  std::vector<std::string> m_materialTags;
+  std::unordered_map<std::string, std::string> m_authoringMetadata;
   std::unordered_map<StringID, MaterialParameterEnvelope, StringID::Hash>
       m_materialEnvelopesByName;
   std::vector<MaterialResourceDependency> m_materialDependencies;
+  u64 m_materialStateVersion = 0;
+  bool m_materialStateDirty = false;
+  bool m_usesEnvelopeStorage = false;
 };
 
 using MaterialInstanceSharedPtr = MaterialInstance::SharedPtr;

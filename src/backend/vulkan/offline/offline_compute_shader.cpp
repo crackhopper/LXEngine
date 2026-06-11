@@ -83,30 +83,34 @@ validateOfflineDescriptorContract(
   };
 
   constexpr u32 kSet = 0;
-  constexpr std::array<ExpectedBinding, 9> mvpExpected{{
-      {0, "SceneVertices"},
-      {1, "SceneIndices"},
-      {2, "SceneMeshes"},
-      {3, "ScenePrimitives"},
-      {4, "SceneObjects"},
-      {5, "SceneMaterials"},
-      {6, "SceneBvhNodes"},
-      {7, "SceneFrameParams", ShaderPropertyType::StorageBuffer, 1,
+  constexpr std::array<ExpectedBinding, 11> mvpExpected{{
+      {0, "ScenePositions"},
+      {1, "SceneAttributeStreams"},
+      {2, "SceneAttributeValues"},
+      {3, "SceneIndices"},
+      {4, "SceneMeshes"},
+      {5, "ScenePrimitives"},
+      {6, "SceneObjects"},
+      {7, "SceneMaterials"},
+      {8, "SceneBvhNodes"},
+      {9, "SceneFrameParams", ShaderPropertyType::StorageBuffer, 1,
        static_cast<u32>(sizeof(SceneGpuFrameParams))},
-      {8, "OutputPixels"},
+      {10, "OutputPixels"},
   }};
-  constexpr std::array<ExpectedBinding, 10> pbrDirectExpected{{
-      {0, "SceneVertices"},
-      {1, "SceneIndices"},
-      {2, "SceneMeshes"},
-      {3, "ScenePrimitives"},
-      {4, "SceneObjects"},
-      {5, "SceneMaterials"},
-      {6, "SceneBvhNodes"},
-      {7, "SceneFrameParams", ShaderPropertyType::StorageBuffer, 1,
+  constexpr std::array<ExpectedBinding, 12> pbrDirectExpected{{
+      {0, "ScenePositions"},
+      {1, "SceneAttributeStreams"},
+      {2, "SceneAttributeValues"},
+      {3, "SceneIndices"},
+      {4, "SceneMeshes"},
+      {5, "ScenePrimitives"},
+      {6, "SceneObjects"},
+      {7, "SceneMaterials"},
+      {8, "SceneBvhNodes"},
+      {9, "SceneFrameParams", ShaderPropertyType::StorageBuffer, 1,
        static_cast<u32>(sizeof(SceneGpuFrameParams))},
-      {8, "OutputPixels"},
-      {9, "SceneTextures", ShaderPropertyType::Texture2D, 256},
+      {10, "OutputPixels"},
+      {11, "SceneTextures", ShaderPropertyType::Texture2D, 256},
   }};
   ShaderStageCode stageCode{};
   stageCode.stage = ShaderStage::Compute;

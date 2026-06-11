@@ -110,7 +110,24 @@ findOfflineShaderSourcePath(const char *shaderFilename) {
   std::filesystem::path probe = std::filesystem::current_path();
   for (int i = 0; i < 8; ++i) {
     const auto candidate =
-        probe / "assets" / "shaders" / "glsl" / shaderFilename;
+        probe / "assets" / "shaders" / "glsl" / "techniques" /
+        "OfflineRT" / shaderFilename;
+    if (std::filesystem::exists(candidate)) {
+      return candidate;
+    }
+    const auto parent = probe.parent_path();
+    if (parent == probe) {
+      break;
+    }
+    probe = parent;
+  }
+  return {};
+}
+
+[[nodiscard]] std::filesystem::path findProjectFile(const char *relativePath) {
+  std::filesystem::path probe = std::filesystem::current_path();
+  for (int i = 0; i < 8; ++i) {
+    const auto candidate = probe / relativePath;
     if (std::filesystem::exists(candidate)) {
       return candidate;
     }
@@ -185,8 +202,15 @@ void testOfflineShaderUsesUnifiedSceneBuffers() {
 
   const auto bindings =
       LX_infra::ShaderReflector::reflect(compileResult.stages);
-  EXPECT(hasStorageBuffer(bindings, "SceneVertices"),
-         "offline shader should use unified SceneVertices SSBO");
+  EXPECT(!hasStorageBuffer(bindings, "SceneVertices"),
+         "offline shader should not expose legacy packed SceneVertices SSBO");
+  EXPECT(hasStorageBuffer(bindings, "ScenePositions"),
+         "offline shader should use bindless position-only ScenePositions "
+         "SSBO");
+  EXPECT(hasStorageBuffer(bindings, "SceneAttributeStreams"),
+         "offline shader should use bindless SceneAttributeStreams SSBO");
+  EXPECT(hasStorageBuffer(bindings, "SceneAttributeValues"),
+         "offline shader should use bindless SceneAttributeValues SSBO");
   EXPECT(hasStorageBuffer(bindings, "SceneIndices"),
          "offline shader should use unified SceneIndices SSBO");
   EXPECT(hasStorageBuffer(bindings, "SceneMeshes"),
@@ -235,8 +259,9 @@ void testOfflinePbrDirectShaderCompiles() {
   EXPECT(sceneTextures != nullptr,
          "offline PBR shader should expose SceneTextures descriptor array");
   if (sceneTextures != nullptr) {
-    EXPECT(sceneTextures->set == 0 && sceneTextures->binding == 9,
-           "SceneTextures should use set 0 binding 9");
+    EXPECT(sceneTextures->set == 0 && sceneTextures->binding == 11,
+           "SceneTextures should use set 0 binding 11 after bindless "
+           "geometry buffers");
     EXPECT(sceneTextures->type == ShaderPropertyType::Texture2D,
            "SceneTextures should reflect as a combined texture2D sampler");
     EXPECT(sceneTextures->descriptorCount == 256,
@@ -354,11 +379,15 @@ void testOfflinePbrReadsTangentSignFromUploadAbiField() {
   }
 
   const std::string shaderSource = readTextFile(shaderPath);
-  EXPECT(shaderSource.find("a.uvTangentSign.z * w") != std::string::npos,
-         "offline PBR shader should read tangent sign from uvTangentSign.z");
-  EXPECT(shaderSource.find("a.uvTangentSign.w * w") == std::string::npos,
-         "offline PBR shader should not read tangent sign from unused "
-         "uvTangentSign.w");
+  EXPECT(shaderSource.find("SCENE_ATTRIBUTE_TANGENT0") != std::string::npos,
+         "offline PBR shader should read tangent data from the bindless "
+         "tangent attribute stream");
+  EXPECT(shaderSource.find("t0.w * w + t1.w * u + t2.w * v") !=
+             std::string::npos,
+         "offline PBR shader should read tangent sign from tangent0.w");
+  EXPECT(shaderSource.find("uvTangentSign") == std::string::npos,
+         "offline PBR shader should not depend on legacy packed "
+         "uvTangentSign fields");
 }
 
 void testOfflinePbrDirectShaderUsesEveryMaterialInput() {
@@ -424,10 +453,8 @@ void testOfflinePbrDirectShaderUsesEveryMaterialInput() {
          "offline PBR shader should read emissive texture RGB directly");
 }
 
-[[nodiscard]] SceneGpuVertexRecord makeGpuVertex(float x, float y, float z) {
-  SceneGpuVertexRecord vertex;
-  vertex.position = Vec4f{x, y, z, 1.0f};
-  return vertex;
+[[nodiscard]] Vec4f makeGpuPosition(float x, float y, float z) {
+  return Vec4f{x, y, z, 1.0f};
 }
 
 [[nodiscard]] SceneGpuObjectRecord makeIdentityObject() {
@@ -442,14 +469,14 @@ void testOfflinePbrDirectShaderUsesEveryMaterialInput() {
 }
 
 struct ManualUploadView final {
-  std::vector<SceneGpuVertexRecord> vertices;
+  std::vector<Vec4f> positions;
   std::vector<u32> indices;
   std::vector<SceneGpuPrimitiveRecord> primitives;
   std::vector<SceneGpuObjectRecord> objects;
 
   [[nodiscard]] SceneResourceTableUploadView view() const {
     return SceneResourceTableUploadView{
-        .vertices = vertices,
+        .positions = positions,
         .indices = indices,
         .primitives = primitives,
         .objects = objects,
@@ -459,10 +486,10 @@ struct ManualUploadView final {
 
 [[nodiscard]] ManualUploadView makeSingleTriangleUploadView() {
   ManualUploadView upload;
-  upload.vertices = {
-      makeGpuVertex(0.0f, 0.0f, 0.0f),
-      makeGpuVertex(1.0f, 0.0f, 0.0f),
-      makeGpuVertex(0.0f, 1.0f, 0.0f),
+  upload.positions = {
+      makeGpuPosition(0.0f, 0.0f, 0.0f),
+      makeGpuPosition(1.0f, 0.0f, 0.0f),
+      makeGpuPosition(0.0f, 1.0f, 0.0f),
   };
   upload.indices = {0, 1, 2};
   upload.objects = {makeIdentityObject()};
@@ -478,15 +505,15 @@ struct ManualUploadView final {
 [[nodiscard]] ManualUploadView makeSeparatedTriangleUploadView(u32 count) {
   ManualUploadView upload;
   upload.objects = {makeIdentityObject()};
-  upload.vertices.reserve(static_cast<usize>(count) * 3);
+  upload.positions.reserve(static_cast<usize>(count) * 3);
   upload.indices.reserve(static_cast<usize>(count) * 3);
   upload.primitives.reserve(count);
   for (u32 i = 0; i < count; ++i) {
     const float x = static_cast<float>(i) * 10.0f;
-    const u32 vertexOffset = static_cast<u32>(upload.vertices.size());
-    upload.vertices.push_back(makeGpuVertex(x, 0.0f, 0.0f));
-    upload.vertices.push_back(makeGpuVertex(x + 1.0f, 0.0f, 0.0f));
-    upload.vertices.push_back(makeGpuVertex(x, 1.0f, 0.0f));
+    const u32 vertexOffset = static_cast<u32>(upload.positions.size());
+    upload.positions.push_back(makeGpuPosition(x, 0.0f, 0.0f));
+    upload.positions.push_back(makeGpuPosition(x + 1.0f, 0.0f, 0.0f));
+    upload.positions.push_back(makeGpuPosition(x, 1.0f, 0.0f));
     upload.indices.push_back(vertexOffset);
     upload.indices.push_back(vertexOffset + 1);
     upload.indices.push_back(vertexOffset + 2);
@@ -543,6 +570,32 @@ void testSoftwareBvhThrowsForEmptyPrimitiveList() {
             std::string::npos;
   }
   EXPECT(threw, "empty software BVH build should fail clearly");
+}
+
+void testSoftwareBvhUsesBindlessPositionStreamSource() {
+  const auto bvhPath = findProjectFile("src/core/raytracing/software_bvh.cpp");
+  EXPECT(!bvhPath.empty(),
+         "software BVH source should be discoverable for bindless audit");
+  const auto validationPath =
+      findProjectFile("src/core/offline/offline_render_validation.cpp");
+  EXPECT(!validationPath.empty(),
+         "offline validation source should be discoverable for bindless audit");
+  if (bvhPath.empty() || validationPath.empty()) {
+    return;
+  }
+
+  const std::string bvhSource = readTextFile(bvhPath);
+  const std::string validationSource = readTextFile(validationPath);
+  EXPECT(bvhSource.find("scene.positions") != std::string::npos,
+         "software BVH should read bounds from bindless positions");
+  EXPECT(bvhSource.find("scene.vertices") == std::string::npos,
+         "software BVH should not read legacy packed vertices");
+  EXPECT(bvhSource.find("SceneGpuVertexRecord") == std::string::npos,
+         "software BVH should not depend on the legacy packed vertex record");
+  EXPECT(validationSource.find("uploadView.positions") != std::string::npos,
+         "offline validation should validate bindless positions");
+  EXPECT(validationSource.find("uploadView.vertices") == std::string::npos,
+         "offline validation should not validate legacy packed vertices");
 }
 
 void testSoftwareBvhUsesCompactUploadIndicesAndObjectTransform() {
@@ -825,7 +878,7 @@ void testOfflineRenderJobValidationRejectsNonRenderableScene() {
   job.output.height = 1;
   const auto camera = job.scene.registerCamera(makeValidationCameraResource());
   (void)camera;
-  expectInvalidOfflineJobThrows(job, "no upload vertices");
+  expectInvalidOfflineJobThrows(job, "no upload positions");
 }
 
 } // namespace
@@ -849,6 +902,7 @@ int main() {
   testOfflineWorkItemCarriesUnifiedSceneTextureArray();
   testOfflineWorkItemDoesNotInjectImplicitLightOrEnvironment();
   testSoftwareBvhThrowsForEmptyPrimitiveList();
+  testSoftwareBvhUsesBindlessPositionStreamSource();
   testSoftwareBvhBuildsFromSceneResourceTable();
   testSoftwareBvhUsesCompactUploadIndicesAndObjectTransform();
   testSoftwareBvhRejectsMalformedUploadViewReferences();

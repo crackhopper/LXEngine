@@ -412,13 +412,12 @@ loadMaterialOverrideState(const YAML::Node &node, const char *fieldName) {
   if (!node.IsMap()) {
     throw std::runtime_error(std::string("expected map for ") + fieldName);
   }
-  if (const auto baseColorNode = node["baseColor"]; baseColorNode) {
-    state.baseColor = loadVec3(baseColorNode, fieldName);
-  }
   for (auto it = node.begin(); it != node.end(); ++it) {
     const std::string parameterKey = it->first.as<std::string>();
     if (parameterKey == "baseColor") {
-      continue;
+      throw std::runtime_error(std::string(fieldName) +
+                               " uses removed legacy baseColor override; use "
+                               "binding.member parameter keys");
     }
     if (parameterKey.find('.') == std::string::npos) {
       throw std::runtime_error(std::string(fieldName) +
@@ -436,10 +435,6 @@ void saveMaterialOverrideState(YAML::Emitter &out, const char *key,
     return;
   }
   out << YAML::Key << key << YAML::Value << YAML::BeginMap;
-  if (state.baseColor.has_value()) {
-    out << YAML::Key << "baseColor" << YAML::Value;
-    saveVec3(out, *state.baseColor);
-  }
   std::vector<std::string> parameterKeys;
   parameterKeys.reserve(state.parameters.size());
   for (const auto &[parameterKey, _] : state.parameters) {

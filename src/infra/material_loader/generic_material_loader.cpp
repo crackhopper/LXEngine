@@ -1,7 +1,11 @@
 #include "generic_material_loader.hpp"
+#include "core/asset/material_surface_schema.hpp"
 #include "core/asset/shader_binding_ownership.hpp"
 #include "core/frame_graph/pass.hpp"
+#include "core/scene/scene_system_abi_validation.hpp"
 #include "core/utils/filesystem_tools.hpp"
+#include "infra/material_loader/material_resource_parser.hpp"
+#include "infra/resource_parsers/material_pass_contract_parser.hpp"
 #include "infra/shader_compiler/compiled_shader.hpp"
 #include "infra/shader_compiler/shader_compiler.hpp"
 #include "infra/shader_compiler/shader_reflector.hpp"
@@ -13,6 +17,7 @@
 #include <filesystem>
 #include <iostream>
 #include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -29,12 +34,83 @@ namespace {
   throw std::logic_error("GenericMaterialLoader " + reason);
 }
 
+[[nodiscard]] bool isMaterialV2Contract(const YAML::Node &root) {
+  const YAML::Node schemaNode = root["schema"];
+  return schemaNode && schemaNode.IsScalar() &&
+         schemaNode.as<std::string>() == "lxe.material.v2";
+}
+
+ParsedMaterialResource
+parseMaterialV2Contract(const YAML::Node &root,
+                        const LX_core::ResourceUri &uri) {
+  LX_core::SceneResourceTable table;
+  MaterialResourceParser parser;
+  return parser.parse(table, uri, YAML::Dump(root));
+}
+
+void validateParsedMaterialV2Envelope(const ParsedMaterialResource &parsed,
+                                      const LX_core::ResourceUri &uri) {
+  if (!parsed.diagnostics.empty() || !parsed.instance) {
+    std::ostringstream message;
+    message << uri.string() << ": invalid material v2 contract";
+    for (const std::string &diagnostic : parsed.diagnostics) {
+      message << "\n  " << diagnostic;
+    }
+    fatalLoader(message.str());
+  }
+}
+
+LX_core::MaterialInstanceSharedPtr
+loadMaterialV2EnvelopeContract(const YAML::Node &root,
+                               const LX_core::ResourceUri &uri) {
+  ParsedMaterialResource parsed = parseMaterialV2Contract(root, uri);
+  validateParsedMaterialV2Envelope(parsed, uri);
+  return parsed.instance->cloneInstanceData();
+}
+
+void applyMaterialV2Envelope(LX_core::MaterialInstance &material,
+                             const YAML::Node &root,
+                             const LX_core::ResourceUri &uri) {
+  if (!isMaterialV2Contract(root)) {
+    return;
+  }
+
+  ParsedMaterialResource parsed = parseMaterialV2Contract(root, uri);
+  validateParsedMaterialV2Envelope(parsed, uri);
+
+  const LX_core::MaterialInstance &v2Material = *parsed.instance;
+  material.setBsdfType(v2Material.getBsdfType());
+  material.setRenderClass(v2Material.getRenderClass());
+  material.setMaterialTags(v2Material.getMaterialTags());
+  material.setAuthoringMetadata(v2Material.getAuthoringMetadata());
+  const LX_core::MaterialSurfaceSchema *surfaceSchema =
+      LX_core::findMaterialSurfaceSchema(v2Material.getBsdfType());
+  if (surfaceSchema == nullptr) {
+    fatalLoader(uri.string() + ": unknown material v2 BSDF type '" +
+                v2Material.getBsdfType() + "'");
+  }
+
+  for (const LX_core::MaterialParameterSchema &parameter :
+       surfaceSchema->parameters) {
+    auto envelope = v2Material.getMaterialEnvelope(
+        LX_core::StringID(parameter.name));
+    if (envelope.has_value()) {
+      material.setMaterialEnvelope(LX_core::StringID(parameter.name),
+                                   envelope->get());
+    }
+  }
+  for (const LX_core::MaterialResourceDependency &dependency :
+       v2Material.getMaterialDependencies()) {
+    material.addMaterialDependency(dependency);
+  }
+}
+
 /*****************************************************************
  * Variant helpers
  *****************************************************************/
 
-std::vector<LX_core::ShaderVariant>
-mergeVariants(const YAML::Node &globalNode, const YAML::Node &passNode) {
+std::vector<LX_core::ShaderVariant> mergeVariants(const YAML::Node &globalNode,
+                                                  const YAML::Node &passNode) {
   std::unordered_map<std::string, bool> merged;
   if (globalNode && globalNode.IsMap()) {
     for (auto it = globalNode.begin(); it != globalNode.end(); ++it)
@@ -120,7 +196,12 @@ void applyShadingModelVariants(std::vector<LX_core::ShaderVariant> &variants,
 }
 
 [[nodiscard]] bool supportsIblVariant(const std::string &shaderName) {
-  return shaderName == "pbr" || shaderName == "pbr_clearcoat";
+  return shaderName == "techniques/Forward/pbr" ||
+         shaderName == "techniques/Forward/pbr_clearcoat";
+}
+
+[[nodiscard]] bool isDefaultRuntimePbrShader(const std::string &shaderName) {
+  return shaderName == "techniques/Forward/pbr";
 }
 
 void applyLoadOptionVariants(std::vector<LX_core::ShaderVariant> &variants,
@@ -131,54 +212,10 @@ void applyLoadOptionVariants(std::vector<LX_core::ShaderVariant> &variants,
   }
 }
 
-/*****************************************************************
- * RenderState parsing
- *****************************************************************/
-
-LX_core::RenderState parseRenderState(const YAML::Node &node) {
-  LX_core::RenderState rs;
-  if (!node || !node.IsMap())
-    return rs;
-  const auto parseBlendFactor = [](const YAML::Node &value,
-                                   const char *field) {
-    const auto s = value.as<std::string>();
-    if (s == "Zero")
-      return LX_core::BlendFactor::Zero;
-    if (s == "One")
-      return LX_core::BlendFactor::One;
-    if (s == "SrcAlpha")
-      return LX_core::BlendFactor::SrcAlpha;
-    if (s == "OneMinusSrcAlpha")
-      return LX_core::BlendFactor::OneMinusSrcAlpha;
-    fatalLoader(std::string("unknown renderState.") + field +
-                " blend factor '" + s + "'");
-  };
-  if (auto v = node["cullMode"]) {
-    auto s = v.as<std::string>();
-    if (s == "None")
-      rs.cullMode = LX_core::CullMode::None;
-    else if (s == "Front")
-      rs.cullMode = LX_core::CullMode::Front;
-    else if (s == "Back")
-      rs.cullMode = LX_core::CullMode::Back;
-  }
-  if (auto v = node["depthTest"])
-    rs.depthTestEnable = v.as<bool>();
-  if (auto v = node["depthWrite"])
-    rs.depthWriteEnable = v.as<bool>();
-  if (auto v = node["blendEnable"])
-    rs.blendEnable = v.as<bool>();
-  if (auto v = node["srcBlend"])
-    rs.srcBlend = parseBlendFactor(v, "srcBlend");
-  if (auto v = node["dstBlend"])
-    rs.dstBlend = parseBlendFactor(v, "dstBlend");
-  return rs;
-}
-
 void applyLoadOptionRenderState(LX_core::RenderState &renderState,
                                 const GenericMaterialLoadOptions &options) {
-  if (options.alphaTransparency.has_value() &&
-      !*options.alphaTransparency && renderState.blendEnable) {
+  if (options.alphaTransparency.has_value() && !*options.alphaTransparency &&
+      renderState.blendEnable) {
     renderState.blendEnable = false;
     renderState.depthWriteEnable = true;
   }
@@ -199,6 +236,50 @@ ParsedParam parseParamKey(const std::string &key) {
     fatalLoader("invalid parameter key '" + key +
                 "' (expected bindingName.memberName)");
   return {key.substr(0, dot), key.substr(dot + 1)};
+}
+
+[[nodiscard]] bool isLegacyRootPbrParameterKey(const std::string &key) {
+  return key == "MaterialUBO.baseColorFactor" ||
+         key == "MaterialUBO.metallicFactor" ||
+         key == "MaterialUBO.roughnessFactor" || key == "MaterialUBO.ao" ||
+         key == "baseColorFactor" || key == "metallicFactor" ||
+         key == "roughnessFactor" || key == "ao";
+}
+
+[[nodiscard]] bool isLegacyRootPbrResourceKey(const std::string &key) {
+  return key == "albedoMap" || key == "normalMap" ||
+         key == "metallicRoughnessMap" || key == "aoMap" ||
+         key == "emissiveMap";
+}
+
+void rejectLegacyRootPbrTruthForDefaultPbr(
+    const YAML::Node &paramsNode, const YAML::Node &resourcesNode,
+    const std::string &rootShaderName, const std::string &passShaderName,
+    const std::string &context) {
+  if (!isDefaultRuntimePbrShader(rootShaderName) &&
+      !isDefaultRuntimePbrShader(passShaderName)) {
+    return;
+  }
+
+  if (paramsNode && paramsNode.IsMap()) {
+    for (auto it = paramsNode.begin(); it != paramsNode.end(); ++it) {
+      const std::string key = it->first.as<std::string>();
+      if (isLegacyRootPbrParameterKey(key)) {
+        fatalLoader(context + ": legacy PBR root material truth parameter '" +
+                    key + "' is not accepted for default/runtime PBR");
+      }
+    }
+  }
+
+  if (resourcesNode && resourcesNode.IsMap()) {
+    for (auto it = resourcesNode.begin(); it != resourcesNode.end(); ++it) {
+      const std::string key = it->first.as<std::string>();
+      if (isLegacyRootPbrResourceKey(key)) {
+        fatalLoader(context + ": legacy PBR root material truth resource '" +
+                    key + "' is not accepted for default/runtime PBR");
+      }
+    }
+  }
 }
 
 /*****************************************************************
@@ -343,8 +424,7 @@ void applyLoadOptionParameters(LX_core::MaterialInstance &mat,
  *****************************************************************/
 
 void applyResources(LX_core::MaterialInstance &mat,
-                    const YAML::Node &resourcesNode,
-                    const fs::path &baseDir) {
+                    const YAML::Node &resourcesNode, const fs::path &baseDir) {
   if (!resourcesNode || !resourcesNode.IsMap())
     return;
 
@@ -372,8 +452,7 @@ void applyResources(LX_core::MaterialInstance &mat,
     desc.height = static_cast<u32>(loader.getHeight());
     desc.format = LX_core::TextureFormat::RGBA8;
     auto *rawData = static_cast<const u8 *>(loader.getData());
-    std::vector<u8> texData(rawData,
-                            rawData + desc.width * desc.height * 4);
+    std::vector<u8> texData(rawData, rawData + desc.width * desc.height * 4);
     auto tex = std::make_shared<LX_core::Texture>(desc, std::move(texData));
     auto sampler =
         std::make_shared<LX_core::CombinedTextureSampler>(std::move(tex));
@@ -417,10 +496,9 @@ bool isVariantEnabled(const std::vector<LX_core::ShaderVariant> &variants,
   return false;
 }
 
-void validateVariantRules(
-    const std::vector<VariantRule> &rules,
-    const std::vector<LX_core::ShaderVariant> &variants,
-    const std::string &passContext) {
+void validateVariantRules(const std::vector<VariantRule> &rules,
+                          const std::vector<LX_core::ShaderVariant> &variants,
+                          const std::string &passContext) {
   for (const auto &rule : rules) {
     bool allRequiresMet = true;
     for (const auto &req : rule.ifEnabled) {
@@ -458,34 +536,6 @@ bool hasMeshOverlayColorBinding(const LX_core::IShader &shader) {
   return false;
 }
 
-[[nodiscard]] LX_core::StringID runtimePassForTechniquePass(
-    const std::string &techniqueName, const std::string &passName,
-    const YAML::Node &passNode) {
-  if (const auto enginePassNode = passNode["enginePass"]) {
-    return LX_core::StringID(enginePassNode.as<std::string>());
-  }
-  if (passName == "Opaque" || passName == "Forward") {
-    return LX_core::Pass_Forward;
-  }
-  if (passName == "Transparent") {
-    return LX_core::Pass_ForwardTransparent;
-  }
-  if (passName == "GBuffer" || passName == "Deferred") {
-    return LX_core::Pass_Deferred;
-  }
-  if (passName == "RayTrace" || passName == "OfflineRayTrace") {
-    return LX_core::Pass_OfflineRayTrace;
-  }
-  if (passName == "Shadow") {
-    return LX_core::Pass_Shadow;
-  }
-  if (passName == "DebugOverlay") {
-    return LX_core::Pass_DebugOverlay;
-  }
-  fatalLoader("technique '" + techniqueName + "' pass '" + passName +
-              "' requires enginePass");
-}
-
 void validateRequiredTechniques(const YAML::Node &techniquesNode,
                                 const std::string &defaultTechnique,
                                 const std::string &context) {
@@ -515,27 +565,27 @@ struct CompiledPass {
   YAML::Node resources;
 };
 
-CompiledPass compilePassShader(const LX_core::StringID &passId,
-                               const std::string &shaderName,
-                               const std::string &stage,
-                               const std::vector<LX_core::ShaderVariant> &variants,
-                               const LX_core::RenderState &renderState,
-                               const fs::path &shaderDir) {
+CompiledPass
+compilePassShader(const LX_core::StringID &passId,
+                  const std::string &shaderName, const std::string &stage,
+                  const std::vector<LX_core::ShaderVariant> &variants,
+                  const LX_core::RenderState &renderState,
+                  const fs::path &shaderDir) {
   CompileResult compiled;
   if (stage == "compute") {
     const fs::path compPath = shaderDir / (shaderName + ".comp");
     if (!fs::exists(compPath)) {
-      fatalLoader("compute shader file not found for '" + shaderName + "': " +
-                  compPath.string());
+      fatalLoader("compute shader file not found for '" + shaderName +
+                  "': " + compPath.string());
     }
     compiled = ShaderCompiler::compileFile(compPath, variants);
-  } else if (stage.empty() || stage == "raster") {
+  } else if (stage == "raster") {
     const fs::path vertPath = shaderDir / (shaderName + ".vert");
     const fs::path fragPath = shaderDir / (shaderName + ".frag");
 
     if (!fs::exists(vertPath) || !fs::exists(fragPath))
-      fatalLoader("shader files not found for '" + shaderName + "': " +
-                  vertPath.string() + " / " + fragPath.string());
+      fatalLoader("shader files not found for '" + shaderName +
+                  "': " + vertPath.string() + " / " + fragPath.string());
 
     compiled = ShaderCompiler::compileProgram(vertPath, fragPath, variants);
   } else {
@@ -544,12 +594,12 @@ CompiledPass compilePassShader(const LX_core::StringID &passId,
   }
   if (!compiled.success)
     fatalLoader("shader compile failed for pass " +
-                LX_core::GlobalStringTable::get().toDebugString(passId) +
-                ": " + compiled.errorMessage);
+                LX_core::GlobalStringTable::get().toDebugString(passId) + ": " +
+                compiled.errorMessage);
 
   auto bindings = ShaderReflector::reflect(compiled.stages);
   std::vector<LX_core::VertexInputAttribute> vertexInputs;
-  if (stage.empty() || stage == "raster") {
+  if (stage == "raster") {
     vertexInputs = ShaderReflector::reflectVertexInputs(compiled.stages);
   }
   auto shader = std::make_shared<CompiledShader>(
@@ -558,7 +608,7 @@ CompiledPass compilePassShader(const LX_core::StringID &passId,
   CompiledPass cp;
   cp.passId = passId;
   cp.shaderName = shaderName;
-  cp.stage = stage.empty() ? "raster" : stage;
+  cp.stage = stage;
   cp.variants = variants;
   cp.renderState = renderState;
   cp.shader = std::move(shader);
@@ -594,7 +644,13 @@ loadGenericMaterial(const fs::path &materialPath,
     fatalLoader("material file root is not a YAML map: " +
                 resolvedMaterialPath.string());
 
-  std::string globalShaderName;
+  const LX_core::ResourceUri materialUri(
+      fs::relative(resolvedMaterialPath).string());
+  if (isMaterialV2Contract(root)) {
+    return loadMaterialV2EnvelopeContract(root, materialUri);
+  }
+
+  std::string legacyRootShaderName;
   YAML::Node globalVariantsNode;
   YAML::Node globalParamsNode;
   YAML::Node globalResourcesNode;
@@ -606,8 +662,14 @@ loadGenericMaterial(const fs::path &materialPath,
 
   for (auto it = root.begin(); it != root.end(); ++it) {
     const auto key = it->first.as<std::string>();
+    if (isMaterialV2Contract(root) &&
+        (key == "shader" || key == "parameters" || key == "resources")) {
+      fatalLoader(materialUri.string() +
+                  ": material v2 contract does not allow legacy root '" + key +
+                  "'");
+    }
     if (key == "shader")
-      globalShaderName = it->second.as<std::string>();
+      legacyRootShaderName = it->second.as<std::string>();
     else if (key == "defaultTechnique")
       defaultTechnique = it->second.as<std::string>();
     else if (key == "variants")
@@ -629,9 +691,6 @@ loadGenericMaterial(const fs::path &materialPath,
       meshOverlayNode = YAML::Clone(it->second);
   }
 
-  if (globalShaderName.empty())
-    fatalLoader("missing required 'shader' field in " +
-                resolvedMaterialPath.string());
   if (defaultTechnique.empty())
     fatalLoader("missing required 'defaultTechnique' field in " +
                 resolvedMaterialPath.string());
@@ -645,7 +704,8 @@ loadGenericMaterial(const fs::path &materialPath,
   const fs::path materialDir = resolvedMaterialPath.parent_path();
   const fs::path shaderDir = getRuntimeShaderSourceDir();
   if (shaderDir.empty())
-    fatalLoader("shader directory not found (expected .../assets/shaders/glsl/)");
+    fatalLoader(
+        "shader directory not found (expected .../assets/shaders/glsl/)");
 
   // 3. Parse variant rules and compile each pass.
   const auto variantRules = parseVariantRules(variantRulesNode);
@@ -675,35 +735,42 @@ loadGenericMaterial(const fs::path &materialPath,
                   "' must be a map");
     }
 
-    // Extract technique-pass-level fields by iterating keys.
-    std::string passShader = globalShaderName;
-    std::string passStage = "raster";
+    const std::string passContext = resolvedMaterialPath.string() +
+                                    ": technique '" + selectedTechnique +
+                                    "' pass '" + passName + "'";
+    auto parsedPass = parseMaterialPassContract(
+        passName, passIt->second,
+        "techniques." + selectedTechnique + ".passes." + passName);
+    if (!parsedPass.diagnostics.empty() || !parsedPass.pass.has_value()) {
+      std::ostringstream message;
+      message << passContext << ": invalid pass contract";
+      for (const std::string &diagnostic : parsedPass.diagnostics) {
+        message << "\n  " << diagnostic;
+      }
+      fatalLoader(message.str());
+    }
+    const LX_core::MaterialPassContract &passContract = *parsedPass.pass;
+    rejectLegacyRootPbrTruthForDefaultPbr(
+        globalParamsNode, globalResourcesNode, legacyRootShaderName,
+        passContract.shaderUri.string(), passContext);
+
+    // Extract material-loader-only pass fields after graph/render-flow fields
+    // have been validated by the shared 071-b pass contract parser.
     YAML::Node passVariantsNode;
-    YAML::Node passRenderStateNode;
     YAML::Node passParamsNode;
     YAML::Node passResourcesNode;
 
     for (auto kv = passIt->second.begin(); kv != passIt->second.end(); ++kv) {
       const auto k = kv->first.as<std::string>();
-      if (k == "shader")
-        passShader = kv->second.as<std::string>();
-      else if (k == "stage")
-        passStage = kv->second.as<std::string>();
-      else if (k == "enginePass")
-        continue;
-      else if (k == "variants")
+      if (k == "variants")
         passVariantsNode = YAML::Clone(kv->second);
-      else if (k == "renderState")
-        passRenderStateNode = YAML::Clone(kv->second);
       else if (k == "parameters")
         passParamsNode = YAML::Clone(kv->second);
       else if (k == "resources")
         passResourcesNode = YAML::Clone(kv->second);
     }
 
-    const LX_core::StringID runtimePass =
-        runtimePassForTechniquePass(selectedTechnique, passName,
-                                    passIt->second);
+    const LX_core::StringID runtimePass(passContract.name);
     const std::string runtimePassName =
         LX_core::GlobalStringTable::get().toDebugString(runtimePass);
     if (!runtimePassNames.insert(runtimePassName).second) {
@@ -714,15 +781,18 @@ loadGenericMaterial(const fs::path &materialPath,
 
     auto variants = mergeVariants(globalVariantsNode, passVariantsNode);
     applyShadingModelVariants(variants, globalShadingModel);
-    applyLoadOptionVariants(variants, passShader, options);
+    applyLoadOptionVariants(variants, passContract.shaderUri.string(), options);
     validateVariantRules(variantRules, variants,
                          "technique " + selectedTechnique + " pass " +
                              passName);
-    auto renderState = parseRenderState(passRenderStateNode);
+    auto renderState = passContract.renderState;
     applyLoadOptionRenderState(renderState, options);
 
-    auto cp = compilePassShader(runtimePass, passShader, passStage, variants,
-                                renderState, shaderDir);
+    const std::string passStage =
+        passContract.stage == LX_core::MaterialPassStage::Compute ? "compute"
+                                                                  : "raster";
+    auto cp = compilePassShader(runtimePass, passContract.shaderUri.string(),
+                                passStage, variants, renderState, shaderDir);
     cp.shadingModel = globalShadingModel;
     cp.meshOverlay = globalMeshOverlay;
     cp.parameters = std::move(passParamsNode);
@@ -736,7 +806,12 @@ loadGenericMaterial(const fs::path &materialPath,
   std::vector<LX_core::ShaderResourceBinding> allMatBindings;
   for (const auto &cp : compiledPasses) {
     for (const auto &binding : cp.shader->getReflectionBindings()) {
-      if (!LX_core::isSystemOwnedBinding(binding.name))
+      if (auto abiDiagnostic =
+              LX_core::validateSystemAbiBindingContract(binding)) {
+        fatalLoader(resolvedMaterialPath.string() + " pass=" +
+                    cp.shaderName + ": " + *abiDiagnostic);
+      }
+      if (LX_core::isMaterialOwnedBinding(binding.name))
         allMatBindings.push_back(binding);
     }
   }
@@ -767,9 +842,10 @@ loadGenericMaterial(const fs::path &materialPath,
   }
 
   // 5. Build MaterialTemplate.
-  auto firstShader = compiledPasses.front().shader;
-  auto tmpl =
-      LX_core::MaterialTemplate::create(globalShaderName);
+  const std::string templateName =
+      legacyRootShaderName.empty() ? resolvedMaterialPath.stem().string()
+                                   : legacyRootShaderName;
+  auto tmpl = LX_core::MaterialTemplate::create(templateName);
 
   for (const auto &cp : compiledPasses) {
     LX_core::ShaderProgramSet programSet;
@@ -801,7 +877,7 @@ loadGenericMaterial(const fs::path &materialPath,
                         LX_core::StringID("color"), cp.meshOverlay.color);
     }
   }
-
+  applyMaterialV2Envelope(*mat, root, materialUri);
   mat->syncGpuData();
   return mat;
 }

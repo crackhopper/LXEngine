@@ -8,6 +8,7 @@
 #include "core/scene/light.hpp"
 #include "core/scene/object.hpp"
 
+#include <algorithm>
 #include <cassert>
 #include <cstring>
 #include <iostream>
@@ -109,37 +110,13 @@ makeCameraDataParam(const CameraResource &camera) {
   return fallback;
 }
 
-[[nodiscard]] SceneGpuVertexRecord
-makeGpuVertexRecord(const u8 *vertex, const VertexLayout &layout) {
-  SceneGpuVertexRecord record;
-  record.position = {0.0f, 0.0f, 0.0f, 1.0f};
-  record.normal = {0.0f, 0.0f, 1.0f, 0.0f};
-  record.uvTangentSign = {0.0f, 0.0f, 1.0f, 0.0f};
-  record.tangent = {1.0f, 0.0f, 0.0f, 1.0f};
-
-  if (const auto *item = findVertexLayoutItem(layout, "inPos", 0)) {
-    record.position = readVertexAttribute(vertex, *item, record.position);
-    record.position.w = 1.0f;
-  }
-  if (const auto *item = findVertexLayoutItem(layout, "inNormal", 1)) {
-    record.normal = readVertexAttribute(vertex, *item, record.normal);
-    record.normal.w = 0.0f;
-  }
-  if (const auto *item = findVertexLayoutItem(layout, "inUV", 2)) {
-    record.uvTangentSign =
-        readVertexAttribute(vertex, *item, record.uvTangentSign);
-  }
-  if (const auto *item = findVertexLayoutItem(layout, "inTangent", 3)) {
-    record.tangent = readVertexAttribute(vertex, *item, record.tangent);
-    record.uvTangentSign.z = record.tangent.w;
-  }
-  return record;
-}
-
 void appendMeshGeometryRecords(const MeshBuffer &mesh,
                                const GeometryStorage &storage,
                                const u32 uploadVertexOffset,
-                               std::vector<SceneGpuVertexRecord> &vertices,
+                               std::vector<Vec4f> &positions,
+                               std::vector<SceneGpuAttributeStreamRecord>
+                                   &attributeStreams,
+                               std::vector<Vec4f> &attributeValues,
                                std::vector<u32> &indices) {
   const auto &vertexBuffer = storage.getVertexBuffer();
   const auto &layout = vertexBuffer.getLayout();
@@ -148,11 +125,47 @@ void appendMeshGeometryRecords(const MeshBuffer &mesh,
   if (rawVertices != nullptr && stride != 0) {
     const u32 firstVertex = mesh.getVertexOffset();
     const u32 vertexCount = mesh.getVertexCount();
-    vertices.reserve(vertices.size() + vertexCount);
+    positions.reserve(positions.size() + vertexCount);
+    const auto *positionItem = findVertexLayoutItem(layout, "inPos", 0);
     for (u32 i = 0; i < vertexCount; ++i) {
       const auto *vertex = rawVertices + (firstVertex + i) * stride;
-      vertices.push_back(makeGpuVertexRecord(vertex, layout));
+      Vec4f position{0.0f, 0.0f, 0.0f, 1.0f};
+      if (positionItem != nullptr) {
+        position = readVertexAttribute(vertex, *positionItem, position);
+        position.w = 1.0f;
+      }
+      positions.push_back(position);
     }
+
+    const auto appendAttributeStream =
+        [&](const char *name, u32 fallbackLocation, u32 semantic,
+            u32 components, Vec4f fallback) {
+          const auto *item =
+              findVertexLayoutItem(layout, name, fallbackLocation);
+          if (item == nullptr) {
+            return;
+          }
+          const u32 valueOffset = static_cast<u32>(attributeValues.size());
+          attributeValues.reserve(attributeValues.size() + vertexCount);
+          for (u32 i = 0; i < vertexCount; ++i) {
+            const auto *vertex = rawVertices + (firstVertex + i) * stride;
+            attributeValues.push_back(readVertexAttribute(vertex, *item,
+                                                          fallback));
+          }
+          attributeStreams.push_back(SceneGpuAttributeStreamRecord{
+              .semantic = semantic,
+              .valueOffset = valueOffset,
+              .valueCount = vertexCount,
+              .components = components,
+          });
+        };
+
+    appendAttributeStream("inNormal", 1, kSceneGpuAttributeSemanticNormal0, 3,
+                          Vec4f{0.0f, 0.0f, 1.0f, 0.0f});
+    appendAttributeStream("inUV", 2, kSceneGpuAttributeSemanticUv0, 2,
+                          Vec4f{0.0f, 0.0f, 0.0f, 0.0f});
+    appendAttributeStream("inTangent", 3, kSceneGpuAttributeSemanticTangent0,
+                          4, Vec4f{1.0f, 0.0f, 0.0f, 1.0f});
   }
 
   const auto &indexBuffer = storage.getIndexBuffer();
@@ -229,6 +242,7 @@ Handle SceneResourceTable::add(std::vector<Entry<Resource>> &entries,
       continue;
     }
     entry.resource = std::move(resource);
+    entry.metadataHandle = {};
     entry.generation = nextGeneration(entry.generation);
     entry.state = SceneResourceEntryState::Alive;
     Handle handle;
@@ -257,6 +271,7 @@ void SceneResourceTable::release(std::vector<Entry<Resource>> &entries,
   }
   auto &entry = entries[handle.index];
   entry.resource.reset();
+  entry.metadataHandle = {};
   entry.generation = nextGeneration(entry.generation);
   entry.state = SceneResourceEntryState::PendingRelease;
 }
@@ -315,7 +330,12 @@ u32 SceneResourceTable::registerUploadTexture(TextureHandle texture) const {
     }
   }
   m_gpuTextures.push_back(std::cref(*textureResource));
-  return static_cast<u32>(m_gpuTextures.size() - 1u);
+  const u32 typedIndex = static_cast<u32>(m_gpuTextures.size() - 1u);
+  m_gpuTextureIndexByHandle.push_back(SceneResourceTextureUploadIndex{
+      .handle = texture,
+      .typedIndex = typedIndex,
+  });
+  return typedIndex;
 }
 
 void SceneResourceTable::advanceUploadGeneration() {
@@ -323,13 +343,65 @@ void SceneResourceTable::advanceUploadGeneration() {
 }
 
 ResourceIdentityHandle
+SceneResourceTable::metadataHandleFor(MeshHandle handle) const {
+  if (!isAlive(handle)) {
+    return {};
+  }
+  return m_meshes[handle.index].metadataHandle;
+}
+
+ResourceIdentityHandle
+SceneResourceTable::metadataHandleFor(MaterialHandle handle) const {
+  if (!isAlive(handle)) {
+    return {};
+  }
+  return m_materials[handle.index].metadataHandle;
+}
+
+ResourceIdentityHandle
+SceneResourceTable::metadataHandleFor(TextureHandle handle) const {
+  if (!isAlive(handle)) {
+    return {};
+  }
+  return m_textures[handle.index].metadataHandle;
+}
+
+ResourceMetadata &
+SceneResourceTable::mutableMetadata(ResourceIdentityHandle handle) {
+  if (!handle.isValid() || handle.index >= m_resourceMetadata.size() ||
+      handle.index >= m_resourceMetadataGenerations.size() ||
+      m_resourceMetadataGenerations[handle.index] != handle.generation) {
+    throw std::out_of_range("invalid scene resource metadata handle");
+  }
+  return m_resourceMetadata[handle.index];
+}
+
+const ResourceMetadata &
+SceneResourceTable::constMetadata(ResourceIdentityHandle handle) const {
+  if (!handle.isValid() || handle.index >= m_resourceMetadata.size() ||
+      handle.index >= m_resourceMetadataGenerations.size() ||
+      m_resourceMetadataGenerations[handle.index] != handle.generation) {
+    throw std::out_of_range("invalid scene resource metadata handle");
+  }
+  return m_resourceMetadata[handle.index];
+}
+
+ResourceIdentityHandle
 SceneResourceTable::internResourceMetadata(ResourceMetadata metadata) {
   for (u32 i = 0; i < m_resourceMetadata.size(); ++i) {
-    const auto &entry = m_resourceMetadata[i];
+    auto &entry = m_resourceMetadata[i];
     if (entry.type == metadata.type && entry.uri == metadata.uri) {
+      if (metadata.state == ResourceState::Failed) {
+        entry.state = ResourceState::Failed;
+        entry.diagnostics.insert(entry.diagnostics.end(),
+                                 metadata.diagnostics.begin(),
+                                 metadata.diagnostics.end());
+        ++entry.version;
+      }
       return ResourceIdentityHandle{i, m_resourceMetadataGenerations[i]};
     }
   }
+  metadata.generation = 1;
   m_resourceMetadata.push_back(std::move(metadata));
   m_resourceMetadataGenerations.push_back(1);
   return ResourceIdentityHandle{
@@ -344,6 +416,134 @@ SceneResourceTable::findResourceMetadata(ResourceIdentityHandle handle) const {
     return nullptr;
   }
   return &m_resourceMetadata[handle.index];
+}
+
+ResourceUri SceneResourceTable::resolveUri(const ResourceUri &baseUri,
+                                           const ResourceUri &uri) const {
+  return ResourceUri::canonicalize(baseUri.string(), uri.string());
+}
+
+ResourceIdentityHandle
+SceneResourceTable::loadOrGetResource(SceneResourceType type,
+                                      const ResourceUri &canonicalUri) {
+  ResourceMetadata metadata;
+  metadata.type = type;
+  metadata.uri = canonicalUri;
+  metadata.state = ResourceState::Ready;
+  return internResourceMetadata(std::move(metadata));
+}
+
+void SceneResourceTable::registerDependency(
+    ResourceIdentityHandle ownerHandle,
+    ResourceIdentityHandle dependencyHandle) {
+  addDependency(ownerHandle, dependencyHandle);
+}
+
+void SceneResourceTable::addDependency(ResourceIdentityHandle ownerHandle,
+                                       ResourceIdentityHandle dependencyHandle) {
+  if (!ownerHandle.isValid() || !dependencyHandle.isValid()) {
+    return;
+  }
+  if (ownerHandle.index >= m_resourceMetadata.size() ||
+      ownerHandle.index >= m_resourceMetadataGenerations.size() ||
+      dependencyHandle.index >= m_resourceMetadata.size() ||
+      dependencyHandle.index >= m_resourceMetadataGenerations.size()) {
+    return;
+  }
+  if (m_resourceMetadataGenerations[ownerHandle.index] !=
+          ownerHandle.generation ||
+      m_resourceMetadataGenerations[dependencyHandle.index] !=
+          dependencyHandle.generation) {
+    return;
+  }
+
+  auto &dependencies = m_resourceMetadata[ownerHandle.index].dependencies;
+  const ResourceUri &dependencyUri =
+      m_resourceMetadata[dependencyHandle.index].uri;
+  if (std::find(dependencies.begin(), dependencies.end(), dependencyUri) ==
+      dependencies.end()) {
+    dependencies.push_back(dependencyUri);
+  }
+
+  auto &dependencyHandles =
+      m_resourceMetadata[ownerHandle.index].dependencyHandles;
+  if (std::find(dependencyHandles.begin(), dependencyHandles.end(),
+                dependencyHandle) == dependencyHandles.end()) {
+    dependencyHandles.push_back(dependencyHandle);
+  }
+
+  auto &dependents = m_resourceMetadata[dependencyHandle.index].dependents;
+  if (std::find(dependents.begin(), dependents.end(), ownerHandle) ==
+      dependents.end()) {
+    dependents.push_back(ownerHandle);
+  }
+}
+
+void SceneResourceTable::addDependency(MaterialHandle ownerHandle,
+                                       TextureHandle dependencyHandle) {
+  addDependency(metadataHandleFor(ownerHandle),
+                metadataHandleFor(dependencyHandle));
+}
+
+void SceneResourceTable::markDirty(ResourceIdentityHandle handle,
+                                   std::string reason) {
+  std::vector<ResourceIdentityHandle> visited;
+  const ResourceIdentityHandle dirtyRoot = handle;
+  const auto appendDiagnostic = [this, &reason, dirtyRoot](
+                                    ResourceMetadata &metadata,
+                                    const char *prefix) {
+    const ResourceUri resourceUri =
+        dirtyRoot.isValid() ? constMetadata(dirtyRoot).uri : metadata.uri;
+    metadata.diagnostics.push_back(ResourceDiagnostic{
+        .ownerUri = metadata.uri,
+        .resourceUri = resourceUri,
+        .parserName = "SceneResourceTable",
+        .message = std::string(prefix) + reason,
+    });
+  };
+
+  const std::function<void(ResourceIdentityHandle, bool)> visit =
+      [&](ResourceIdentityHandle current, bool root) {
+        if (!current.isValid() ||
+            std::find(visited.begin(), visited.end(), current) !=
+                visited.end()) {
+          return;
+        }
+        visited.push_back(current);
+
+        ResourceMetadata &entry = mutableMetadata(current);
+        entry.version = nextGeneration(entry.version);
+        if (!root) {
+          entry.state = ResourceState::Dirty;
+        }
+        appendDiagnostic(entry, root ? "" : "dependency dirty: ");
+
+        const auto dependents = entry.dependents;
+        for (const ResourceIdentityHandle dependent : dependents) {
+          visit(dependent, false);
+        }
+      };
+
+  visit(handle, true);
+}
+
+void SceneResourceTable::markDirty(TextureHandle handle, std::string reason) {
+  markDirty(metadataHandleFor(handle), std::move(reason));
+}
+
+const ResourceMetadata &
+SceneResourceTable::metadata(ResourceIdentityHandle handle) const {
+  return constMetadata(handle);
+}
+
+const ResourceMetadata &
+SceneResourceTable::metadata(MaterialHandle handle) const {
+  return constMetadata(metadataHandleFor(handle));
+}
+
+const ResourceMetadata &
+SceneResourceTable::metadata(TextureHandle handle) const {
+  return constMetadata(metadataHandleFor(handle));
 }
 
 ResourceIdentityHandle SceneResourceTable::internMaterialInstanceIdentity(
@@ -365,8 +565,8 @@ SceneResourceGraphExport SceneResourceTable::exportResourceGraph() const {
         m_resourceMetadataGenerations[i] == 0) {
       continue;
     }
-    graph.handles.push_back(ResourceIdentityHandle{
-        i, m_resourceMetadataGenerations[i]});
+    graph.handles.push_back(
+        ResourceIdentityHandle{i, m_resourceMetadataGenerations[i]});
     graph.resources.push_back(m_resourceMetadata[i]);
   }
   return graph;
@@ -398,6 +598,27 @@ MeshHandle SceneResourceTable::registerMesh(MeshBufferUniquePtr mesh) {
   return handle;
 }
 
+MeshHandle SceneResourceTable::registerMesh(const ResourceUri &uri,
+                                            MeshBufferUniquePtr mesh) {
+  for (u32 i = 0; i < m_meshes.size(); ++i) {
+    const auto &entry = m_meshes[i];
+    const ResourceMetadata *metadata =
+        findResourceMetadata(entry.metadataHandle);
+    if (entry.state == SceneResourceEntryState::Alive && entry.resource &&
+        metadata != nullptr && metadata->type == SceneResourceType::Mesh &&
+        metadata->uri == uri) {
+      return MeshHandle{i, entry.generation};
+    }
+  }
+
+  const MeshHandle handle = registerMesh(std::move(mesh));
+  if (handle.isValid()) {
+    m_meshes[handle.index].metadataHandle =
+        loadOrGetResource(SceneResourceType::Mesh, uri);
+  }
+  return handle;
+}
+
 MaterialHandle
 SceneResourceTable::registerMaterial(MaterialInstanceUniquePtr material) {
   if (!material) {
@@ -421,12 +642,87 @@ SceneResourceTable::registerMaterial(MaterialInstanceUniquePtr material) {
   return handle;
 }
 
+MaterialHandle SceneResourceTable::registerMaterialInstance(
+    const ResourceUri &uri, MaterialInstanceUniquePtr material) {
+  for (u32 i = 0; i < m_materials.size(); ++i) {
+    const auto &entry = m_materials[i];
+    const ResourceMetadata *metadata =
+        findResourceMetadata(entry.metadataHandle);
+    if (entry.state == SceneResourceEntryState::Alive && entry.resource &&
+        metadata != nullptr && metadata->type == SceneResourceType::Material &&
+        metadata->uri == uri) {
+      return MaterialHandle{i, entry.generation};
+    }
+  }
+
+  const MaterialHandle handle = registerMaterial(std::move(material));
+  if (handle.isValid()) {
+    m_materials[handle.index].metadataHandle =
+        loadOrGetResource(SceneResourceType::Material, uri);
+  }
+  return handle;
+}
+
 TextureHandle
 SceneResourceTable::registerTexture(CombinedTextureSamplerUniquePtr texture) {
+  if (!texture) {
+    return TextureHandle{};
+  }
   auto handle = add<CombinedTextureSampler, TextureHandle>(m_textures,
                                                            std::move(texture));
   advanceUploadGeneration();
   return handle;
+}
+
+TextureHandle SceneResourceTable::registerTexture(
+    const ResourceUri &uri, CombinedTextureSamplerUniquePtr texture) {
+  for (u32 i = 0; i < m_textures.size(); ++i) {
+    const auto &entry = m_textures[i];
+    const ResourceMetadata *metadata =
+        findResourceMetadata(entry.metadataHandle);
+    if (entry.state == SceneResourceEntryState::Alive && entry.resource &&
+        metadata != nullptr && metadata->type == SceneResourceType::Texture &&
+        metadata->uri == uri) {
+      return TextureHandle{i, entry.generation};
+    }
+  }
+
+  const TextureHandle handle = registerTexture(std::move(texture));
+  if (handle.isValid()) {
+    m_textures[handle.index].metadataHandle =
+        loadOrGetResource(SceneResourceType::Texture, uri);
+  }
+  return handle;
+}
+
+std::optional<MeshHandle> SceneResourceTable::findMesh(
+    const ResourceUri &uri) const {
+  for (u32 i = 0; i < m_meshes.size(); ++i) {
+    const auto &entry = m_meshes[i];
+    const ResourceMetadata *metadata =
+        findResourceMetadata(entry.metadataHandle);
+    if (entry.state == SceneResourceEntryState::Alive && entry.resource &&
+        metadata != nullptr && metadata->type == SceneResourceType::Mesh &&
+        metadata->uri == uri) {
+      return MeshHandle{i, entry.generation};
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<TextureHandle> SceneResourceTable::findTexture(
+    const ResourceUri &uri) const {
+  for (u32 i = 0; i < m_textures.size(); ++i) {
+    const auto &entry = m_textures[i];
+    const ResourceMetadata *metadata =
+        findResourceMetadata(entry.metadataHandle);
+    if (entry.state == SceneResourceEntryState::Alive && entry.resource &&
+        metadata != nullptr && metadata->type == SceneResourceType::Texture &&
+        metadata->uri == uri) {
+      return TextureHandle{i, entry.generation};
+    }
+  }
+  return std::nullopt;
 }
 
 LightHandle SceneResourceTable::registerLight(LightBaseUniquePtr light) {
@@ -642,8 +938,42 @@ SceneResourceTable::resolve(CameraHandle handle) const {
   return resolveConst<CameraResource, CameraHandle>(m_cameras, handle);
 }
 
-GpuResourceRef SceneResourceTable::getCameraUboResource(
-    CameraHandle handle) const {
+const MeshBuffer &SceneResourceTable::mesh(MeshHandle handle) const {
+  auto resolved = resolve(handle);
+  if (!resolved.has_value()) {
+    throw std::out_of_range("invalid scene mesh handle");
+  }
+  return resolved->get();
+}
+
+const MaterialInstance &
+SceneResourceTable::materialInstance(MaterialHandle handle) const {
+  auto resolved = resolve(handle);
+  if (!resolved.has_value()) {
+    throw std::out_of_range("invalid scene material handle");
+  }
+  return resolved->get();
+}
+
+const CombinedTextureSampler &
+SceneResourceTable::texture(TextureHandle handle) const {
+  auto resolved = resolve(handle);
+  if (!resolved.has_value()) {
+    throw std::out_of_range("invalid scene texture handle");
+  }
+  return resolved->get();
+}
+
+bool SceneResourceTable::hasMesh(MeshHandle handle) const {
+  return isAlive(handle);
+}
+
+bool SceneResourceTable::hasTexture(TextureHandle handle) const {
+  return isAlive(handle);
+}
+
+GpuResourceRef
+SceneResourceTable::getCameraUboResource(CameraHandle handle) const {
   if (!isAlive(handle) || handle.index >= m_cameraUbos.size()) {
     return {};
   }
@@ -651,8 +981,7 @@ GpuResourceRef SceneResourceTable::getCameraUboResource(
   return ubo ? GpuResourceRef{*ubo} : GpuResourceRef{};
 }
 
-GpuResourceRef
-SceneResourceTable::buildRenderCameraUboResource(
+GpuResourceRef SceneResourceTable::buildRenderCameraUboResource(
     const CameraResource &camera) const {
   auto ubo = std::make_unique<CameraData>();
   ubo->param = makeCameraDataParam(camera);
@@ -1022,23 +1351,71 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
   const auto makeView = [this]() {
     return SceneResourceTableUploadView{
         .tableGeneration = m_generation,
-        .vertices = m_gpuVertices,
+        .positions = m_gpuPositions,
+        .attributeStreams = m_gpuAttributeStreams,
+        .attributeValues = m_gpuAttributeValues,
         .indices = m_gpuIndices,
         .meshes = m_gpuMeshes,
         .primitives = m_gpuPrimitives,
         .objects = m_gpuObjects,
         .materials = m_gpuMaterials,
         .textures = m_gpuTextures,
+        .cameras = m_gpuCameras,
+        .lights = m_gpuLights,
+        .meshIndexByHandle = m_gpuMeshIndexByHandle,
+        .materialIndexByHandle = m_gpuMaterialIndexByHandle,
+        .textureIndexByHandle = m_gpuTextureIndexByHandle,
+        .objectIndexByHandle = m_gpuObjectIndexByHandle,
+        .cameraIndexByHandle = m_gpuCameraIndexByHandle,
+        .lightIndexByHandle = m_gpuLightIndexByHandle,
     };
   };
 
-  m_gpuVertices.clear();
+  m_gpuPositions.clear();
+  m_gpuAttributeStreams.clear();
+  m_gpuAttributeValues.clear();
   m_gpuIndices.clear();
   m_gpuMeshes.clear();
   m_gpuPrimitives.clear();
   m_gpuObjects.clear();
   m_gpuMaterials.clear();
   m_gpuTextures.clear();
+  m_gpuCameras.clear();
+  m_gpuLights.clear();
+  m_gpuMeshIndexByHandle.clear();
+  m_gpuMaterialIndexByHandle.clear();
+  m_gpuTextureIndexByHandle.clear();
+  m_gpuObjectIndexByHandle.clear();
+  m_gpuCameraIndexByHandle.clear();
+  m_gpuLightIndexByHandle.clear();
+
+  m_gpuCameras.reserve(aliveCount(m_cameras));
+  for (u32 i = 0; i < m_cameras.size(); ++i) {
+    const auto &entry = m_cameras[i];
+    if (entry.state != SceneResourceEntryState::Alive || !entry.resource) {
+      continue;
+    }
+    const u32 typedIndex = static_cast<u32>(m_gpuCameras.size());
+    m_gpuCameras.push_back(std::cref(*entry.resource));
+    m_gpuCameraIndexByHandle.push_back(SceneResourceCameraUploadIndex{
+        .handle = CameraHandle{i, entry.generation},
+        .typedIndex = typedIndex,
+    });
+  }
+
+  m_gpuLights.reserve(aliveCount(m_lights));
+  for (u32 i = 0; i < m_lights.size(); ++i) {
+    const auto &entry = m_lights[i];
+    if (entry.state != SceneResourceEntryState::Alive || !entry.resource) {
+      continue;
+    }
+    const u32 typedIndex = static_cast<u32>(m_gpuLights.size());
+    m_gpuLights.push_back(std::cref(*entry.resource));
+    m_gpuLightIndexByHandle.push_back(SceneResourceLightUploadIndex{
+        .handle = LightHandle{i, entry.generation},
+        .typedIndex = typedIndex,
+    });
+  }
 
   std::vector<CompactRecordIndex> meshIndexToGpuRecord(m_meshes.size());
 
@@ -1058,18 +1435,28 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
     if (!isMeshSliceValid(mesh, geometry->get())) {
       continue;
     }
-    const SceneGpuMeshRecord record{
-        .vertexOffset = static_cast<u32>(m_gpuVertices.size()),
+    SceneGpuMeshRecord record{
+        .vertexOffset = static_cast<u32>(m_gpuPositions.size()),
         .indexOffset = static_cast<u32>(m_gpuIndices.size()),
         .indexCount = mesh.getIndexCount(),
         .geometryIndex = geometryHandle.index,
+        .attributeStreamOffset =
+            static_cast<u32>(m_gpuAttributeStreams.size()),
     };
     appendMeshGeometryRecords(mesh, geometry->get(), record.vertexOffset,
-                              m_gpuVertices, m_gpuIndices);
+                              m_gpuPositions, m_gpuAttributeStreams,
+                              m_gpuAttributeValues, m_gpuIndices);
+    record.attributeStreamCount =
+        static_cast<u32>(m_gpuAttributeStreams.size()) -
+        record.attributeStreamOffset;
     meshIndexToGpuRecord[i] = CompactRecordIndex{
         .generation = entry.generation,
         .uploadIndex = static_cast<u32>(m_gpuMeshes.size()),
     };
+    m_gpuMeshIndexByHandle.push_back(SceneResourceMeshUploadIndex{
+        .handle = MeshHandle{i, entry.generation},
+        .typedIndex = static_cast<u32>(m_gpuMeshes.size()),
+    });
     m_gpuMeshes.push_back(record);
   }
 
@@ -1090,11 +1477,47 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
         entry.generation != handle.generation) {
       return u32_max;
     }
+    const auto textureHandleForV2Parameter =
+        [this](const MaterialInstance &material,
+               const char *parameterName) -> TextureHandle {
+      const auto envelope = material.getMaterialEnvelope(StringID(parameterName));
+      if (!envelope.has_value() ||
+          envelope->get().kind != MaterialEnvelopeKind::Texture) {
+        return {};
+      }
+      const TextureHandle directHandle =
+          material.getTextureHandle(StringID(parameterName));
+      if (directHandle.isValid()) {
+        return directHandle;
+      }
+      for (const auto &dependency : material.getMaterialDependencies()) {
+        if (dependency.kind != MaterialEnvelopeKind::Texture ||
+            dependency.parameterName != parameterName) {
+          continue;
+        }
+        if (const auto texture = findTexture(dependency.uri)) {
+          return *texture;
+        }
+      }
+      return {};
+    };
+    const auto uploadTextureForBindingOrV2Parameter =
+        [this, &textureHandleForV2Parameter](
+            const MaterialInstance &material, const char *legacyBindingName,
+            const char *v2ParameterName) -> u32 {
+      const TextureHandle legacyHandle =
+          material.getTextureHandle(StringID(legacyBindingName));
+      if (legacyHandle.isValid()) {
+        return registerUploadTexture(legacyHandle);
+      }
+      return registerUploadTexture(
+          textureHandleForV2Parameter(material, v2ParameterName));
+    };
     auto record = toGpuMaterialRecord(*entry.resource);
-    record.baseColorTexture = registerUploadTexture(
-        entry.resource->getTextureHandle(StringID("albedoMap")));
-    record.normalTexture = registerUploadTexture(
-        entry.resource->getTextureHandle(StringID("normalMap")));
+    record.baseColorTexture = uploadTextureForBindingOrV2Parameter(
+        *entry.resource, "albedoMap", "Kd");
+    record.normalTexture = uploadTextureForBindingOrV2Parameter(
+        *entry.resource, "normalMap", "normalmap");
     record.metallicRoughnessTexture = registerUploadTexture(
         entry.resource->getTextureHandle(StringID("metallicRoughnessMap")));
     record.aoTexture = registerUploadTexture(
@@ -1105,6 +1528,10 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
         .generation = entry.generation,
         .uploadIndex = static_cast<u32>(m_gpuMaterials.size()),
     };
+    m_gpuMaterialIndexByHandle.push_back(SceneResourceMaterialUploadIndex{
+        .handle = handle,
+        .typedIndex = compact.uploadIndex,
+    });
     m_gpuMaterials.push_back(record);
     return compact.uploadIndex;
   };
@@ -1138,6 +1565,10 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
     objectRecord.visibilityMask = object.visibilityMask;
     objectRecord.debugId = object.debugId.id;
     m_gpuObjects.push_back(objectRecord);
+    m_gpuObjectIndexByHandle.push_back(SceneResourceObjectUploadIndex{
+        .handle = ObjectHandle{i, entry.generation},
+        .typedIndex = objectRecordIndex,
+    });
 
     const auto &meshRecord = m_gpuMeshes[meshRecordIndex];
     for (u32 triangleIndexOffset = 0;

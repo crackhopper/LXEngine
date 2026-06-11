@@ -29,8 +29,8 @@ void validateCountFitsU32(const usize count, const char *label) {
 } // namespace
 
 void validateOfflineUploadView(const SceneResourceTableUploadView &uploadView) {
-  if (uploadView.vertices.empty()) {
-    throw std::runtime_error("offline render scene has no upload vertices");
+  if (uploadView.positions.empty()) {
+    throw std::runtime_error("offline render scene has no upload positions");
   }
   if (uploadView.indices.empty()) {
     throw std::runtime_error("offline render scene has no upload indices");
@@ -48,7 +48,7 @@ void validateOfflineUploadView(const SceneResourceTableUploadView &uploadView) {
     throw std::runtime_error("offline render scene has no upload materials");
   }
 
-  validateCountFitsU32(uploadView.vertices.size(), "vertex");
+  validateCountFitsU32(uploadView.positions.size(), "position");
   validateCountFitsU32(uploadView.indices.size(), "index");
   validateCountFitsU32(uploadView.meshes.size(), "mesh");
   validateCountFitsU32(uploadView.primitives.size(), "primitive");

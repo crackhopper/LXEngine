@@ -3,6 +3,7 @@
 #include "core/scene/components/material_component.hpp"
 #include "core/scene/components/mesh_component.hpp"
 #include "core/scene/components/skeleton_component.hpp"
+#include "core/scene/scene_system_abi_validation.hpp"
 #include "scene.hpp"
 
 #include <algorithm>
@@ -578,16 +579,11 @@ void SceneNode::rebuildValidatedCache() {
 
     GpuResourceRef bonesResource;
 
-    // Validate reserved-name type contract and renderable-owned resources.
+    // Validate reserved system ABI contract and renderable-owned resources.
     for (const auto &binding : shader->getReflectionBindings()) {
-      // REQ-031 R3: reserved-name type misuse is a fatal authoring error.
-      auto expectedType = getExpectedTypeForSystemBinding(binding.name);
-      if (expectedType && binding.type != *expectedType) {
-        fatalValidation(
-            *this, pass, *material, entry.shaderProgram,
-            "reserved binding '" + binding.name +
-                "' has wrong descriptor type (shader authoring error)",
-            std::cref(layout));
+      if (auto abiDiagnostic = validateSystemAbiBindingContract(binding)) {
+        fatalValidation(*this, pass, *material, entry.shaderProgram,
+                        *abiDiagnostic, std::cref(layout));
       }
 
       if (binding.name == "Bones") {
@@ -599,7 +595,7 @@ void SceneNode::rebuildValidatedCache() {
         continue;
       }
 
-      if (isSystemOwnedBinding(binding.name)) {
+      if (!isMaterialOwnedBinding(binding.name)) {
         continue;
       }
 

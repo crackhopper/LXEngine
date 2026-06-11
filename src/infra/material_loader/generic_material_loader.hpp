@@ -15,10 +15,9 @@ struct GenericMaterialLoadOptions final {
 };
 
 /// Load a material from a YAML material definition file (.material).
-/// The file describes shader(s), variants, canonical default parameters,
-/// canonical default resources, and per-pass shader/render-state structure.
-/// Each pass can optionally specify its own shader, but runtime parameter
-/// values remain instance-global. No material-type-specific C++ code is needed.
+/// Material v2 files are parsed as PBRT BSDF envelope contracts without shader
+/// compilation. Legacy/custom files describe shader(s), variants, canonical
+/// default parameters/resources, and per-pass shader/render-state structure.
 LX_core::MaterialInstanceSharedPtr
 loadGenericMaterial(const std::filesystem::path &materialPath,
                     const GenericMaterialLoadOptions &options = {});

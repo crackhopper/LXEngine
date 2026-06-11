@@ -24,6 +24,12 @@ constexpr std::array<char, 8> kPackageMagic = {'L', 'X', 'P', 'K',
     return "Texture";
   case SceneResourceType::Material:
     return "Material";
+  case SceneResourceType::MaterialHeader:
+    return "MaterialHeader";
+  case SceneResourceType::Spectrum:
+    return "Spectrum";
+  case SceneResourceType::BsdfTable:
+    return "BsdfTable";
   case SceneResourceType::Camera:
     return "Camera";
   case SceneResourceType::Light:
@@ -43,6 +49,15 @@ constexpr std::array<char, 8> kPackageMagic = {'L', 'X', 'P', 'K',
   }
   if (value == "Material") {
     return SceneResourceType::Material;
+  }
+  if (value == "MaterialHeader") {
+    return SceneResourceType::MaterialHeader;
+  }
+  if (value == "Spectrum") {
+    return SceneResourceType::Spectrum;
+  }
+  if (value == "BsdfTable") {
+    return SceneResourceType::BsdfTable;
   }
   if (value == "Camera") {
     return SceneResourceType::Camera;
@@ -129,8 +144,7 @@ void sortMetadata(ResourceMetadata &metadata) {
   std::sort(metadata.dependencies.begin(), metadata.dependencies.end(),
             lessUri);
   std::sort(metadata.diagnostics.begin(), metadata.diagnostics.end(),
-            [](const ResourceDiagnostic &lhs,
-               const ResourceDiagnostic &rhs) {
+            [](const ResourceDiagnostic &lhs, const ResourceDiagnostic &rhs) {
               return std::tie(lhs.ownerUri.string(), lhs.resourceUri.string(),
                               lhs.parserName, lhs.message) <
                      std::tie(rhs.ownerUri.string(), rhs.resourceUri.string(),
@@ -146,12 +160,10 @@ void sortManifestResources(ScenePackageManifest &manifest) {
             [](const ScenePackageResourceRecord &lhs,
                const ScenePackageResourceRecord &rhs) {
               return std::tie(lhs.metadata.uri.string(), lhs.metadata.type,
-                              lhs.metadata.contentHash,
-                              lhs.sourceHandle.index,
+                              lhs.metadata.contentHash, lhs.sourceHandle.index,
                               lhs.sourceHandle.generation) <
                      std::tie(rhs.metadata.uri.string(), rhs.metadata.type,
-                              rhs.metadata.contentHash,
-                              rhs.sourceHandle.index,
+                              rhs.metadata.contentHash, rhs.sourceHandle.index,
                               rhs.sourceHandle.generation);
             });
 }
@@ -236,7 +248,8 @@ void appendHashResource(StableHashBuilder &hash,
   const auto *end = value.data() + value.size();
   const auto result = std::from_chars(begin, end, parsed);
   if (result.ec != std::errc{} || result.ptr != end) {
-    throw std::runtime_error("Invalid unsigned integer in scene package manifest");
+    throw std::runtime_error(
+        "Invalid unsigned integer in scene package manifest");
   }
   return parsed;
 }
@@ -260,7 +273,8 @@ void appendHashResource(StableHashBuilder &hash,
 
 class ManifestLineReader final {
 public:
-  explicit ManifestLineReader(std::string_view text) : m_lines(splitLines(text)) {}
+  explicit ManifestLineReader(std::string_view text)
+      : m_lines(splitLines(text)) {}
 
   [[nodiscard]] std::string_view next() {
     if (m_index >= m_lines.size()) {
@@ -372,7 +386,8 @@ ScenePackageManifest readScenePackageManifest(std::string_view manifestText) {
   manifest.schemaVersion = static_cast<u32>(parseUnsigned(versionText));
   manifest.rootHash = std::string(payloadAfter(reader.next(), "root"));
 
-  const u64 resourceCount = parseUnsigned(payloadAfter(reader.next(), "resources"));
+  const u64 resourceCount =
+      parseUnsigned(payloadAfter(reader.next(), "resources"));
   if (resourceCount > std::numeric_limits<u32>::max()) {
     throw std::runtime_error("Too many resources in scene package manifest");
   }
@@ -396,10 +411,12 @@ ScenePackageManifest readScenePackageManifest(std::string_view manifestText) {
           static_cast<u32>(parseUnsigned(handleText.substr(split + 1u)));
     }
 
-    record.metadata.type = parseResourceType(payloadAfter(reader.next(), "type"));
+    record.metadata.type =
+        parseResourceType(payloadAfter(reader.next(), "type"));
     record.metadata.state =
         parseMetadataState(payloadAfter(reader.next(), "state"));
-    record.metadata.uri = ResourceUri(fromHex(payloadAfter(reader.next(), "uri")));
+    record.metadata.uri =
+        ResourceUri(fromHex(payloadAfter(reader.next(), "uri")));
     record.metadata.contentHash =
         fromHex(payloadAfter(reader.next(), "content"));
 
