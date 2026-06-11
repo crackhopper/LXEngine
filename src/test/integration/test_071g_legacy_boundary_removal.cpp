@@ -2,12 +2,15 @@
 #include <fstream>
 #include <iostream>
 #include <string>
-#include <string_view>
 #include <vector>
 
 namespace fs = std::filesystem;
 
 namespace {
+
+#ifndef LXE_SOURCE_DIR
+#define LXE_SOURCE_DIR ""
+#endif
 
 int g_failures = 0;
 
@@ -28,11 +31,14 @@ struct ForbiddenToken final {
   std::string text;
 };
 
-bool isSkippedDirectory(const fs::path &path) {
-  const std::string generic = path.generic_string();
-  return generic.find("/external/") != std::string::npos ||
-         generic.find("/generated/") != std::string::npos ||
-         generic.find("/third_party/") != std::string::npos;
+bool hasSkippedPathComponent(const fs::path &path) {
+  for (const fs::path &component : path) {
+    if (component == "external" || component == "generated" ||
+        component == "third_party") {
+      return true;
+    }
+  }
+  return false;
 }
 
 bool isTextFile(const fs::path &path) {
@@ -47,6 +53,44 @@ std::string readFile(const fs::path &path) {
   std::ifstream in(path, std::ios::binary);
   return std::string(std::istreambuf_iterator<char>(in),
                      std::istreambuf_iterator<char>());
+}
+
+bool isRepoRoot(const fs::path &path) {
+  return fs::exists(path /
+                    "src/test/integration/"
+                    "test_071g_legacy_boundary_removal.cpp");
+}
+
+fs::path findRepoRootFromSourceFile() {
+  fs::path sourceFile = fs::absolute(__FILE__);
+  if (!fs::exists(sourceFile)) {
+    return {};
+  }
+
+  for (fs::path current = sourceFile.parent_path(); !current.empty();
+       current = current.parent_path()) {
+    if (isRepoRoot(current)) {
+      return fs::canonical(current);
+    }
+    if (current == current.root_path()) {
+      break;
+    }
+  }
+  return {};
+}
+
+fs::path findRepoRoot() {
+  const fs::path configured{LXE_SOURCE_DIR};
+  if (!configured.empty() && isRepoRoot(configured)) {
+    return fs::canonical(configured);
+  }
+
+  const fs::path fromSourceFile = findRepoRootFromSourceFile();
+  if (!fromSourceFile.empty()) {
+    return fromSourceFile;
+  }
+
+  return fs::current_path();
 }
 
 void scanFile(const fs::path &repoRoot, const fs::path &path,
@@ -71,9 +115,13 @@ void scanRoot(const fs::path &repoRoot, const ScanRoot &root,
                                root.path.generic_string());
     return;
   }
-  for (const fs::directory_entry &entry :
-       fs::recursive_directory_iterator(absolute)) {
-    if (entry.is_directory() && isSkippedDirectory(entry.path())) {
+  for (fs::recursive_directory_iterator it(absolute), end; it != end; ++it) {
+    const fs::directory_entry &entry = *it;
+    if (entry.is_directory() && hasSkippedPathComponent(entry.path())) {
+      it.disable_recursion_pending();
+      continue;
+    }
+    if (hasSkippedPathComponent(entry.path())) {
       continue;
     }
     if (!entry.is_regular_file() || !isTextFile(entry.path())) {
@@ -86,7 +134,7 @@ void scanRoot(const fs::path &repoRoot, const ScanRoot &root,
 } // namespace
 
 int main() {
-  const fs::path repoRoot = fs::current_path();
+  const fs::path repoRoot = findRepoRoot();
   const std::vector<ScanRoot> roots{
       {"src/core"},
       {"src/infra"},

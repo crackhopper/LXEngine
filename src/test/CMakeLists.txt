@@ -182,6 +182,13 @@ if(TARGET test_default_material_asset_audit)
   target_link_libraries(test_default_material_asset_audit PRIVATE yaml-cpp::yaml-cpp)
 endif()
 
+if(TARGET test_071g_legacy_boundary_removal)
+  target_compile_definitions(test_071g_legacy_boundary_removal
+    PRIVATE
+    LXE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+  )
+endif()
+
 set(LXE_EDITOR_COMMAND_SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/commands/display_commands.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/commands/lxe_editor_command_helpers.cpp
