@@ -100,20 +100,20 @@ buildItem(PrimitiveTopology topo = PrimitiveTopology::TriangleList,
                             0,
                             ShaderStage::Vertex,
                             {}},
-      ShaderResourceBinding{"SurfaceParams",
-                            1,
+      ShaderResourceBinding{"SceneMaterials",
                             0,
-                            ShaderPropertyType::UniformBuffer,
+                            7,
+                            ShaderPropertyType::StorageBuffer,
                             1,
-                            32,
+                            96,
                             0,
                             ShaderStage::Fragment,
                             {}},
-      ShaderResourceBinding{"albedoTex",
-                            1,
-                            1,
+      ShaderResourceBinding{"SceneTextures",
+                            0,
+                            11,
                             ShaderPropertyType::Texture2D,
-                            1,
+                            256,
                             0,
                             0,
                             ShaderStage::Fragment,
@@ -142,9 +142,6 @@ buildItem(PrimitiveTopology topo = PrimitiveTopology::TriangleList,
   tmpl->setPassDefinition(Pass_Forward, std::move(entry));
   tmpl->rebuildMaterialInterface();
   auto material = MaterialInstance::create(tmpl);
-  material->setTexture(
-      StringID("albedoTex"),
-      std::make_shared<CombinedTextureSampler>(createWhiteTexture()));
 
   // Minimal vertex + index buffers.
   auto vb = VertexBuffer<VertexPos>::create(
@@ -173,8 +170,8 @@ void testFromRenderWorkItemPopulatesBindings() {
   EXPECT(info.bindings.size() == 3, "bindings.size()==3");
   if (info.bindings.size() == 3) {
     EXPECT(info.bindings[0].name == "CameraUBO", "binding 0 name");
-    EXPECT(info.bindings[1].name == "SurfaceParams", "binding 1 name");
-    EXPECT(info.bindings[2].name == "albedoTex", "binding 2 name");
+    EXPECT(info.bindings[1].name == "SceneMaterials", "binding 1 name");
+    EXPECT(info.bindings[2].name == "SceneTextures", "binding 2 name");
   }
 }
 

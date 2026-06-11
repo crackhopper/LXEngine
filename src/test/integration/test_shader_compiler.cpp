@@ -569,14 +569,6 @@ static bool testPbrIblContract(const std::filesystem::path &shaderDir,
   const auto prefiltered = findBinding("PrefilteredEnvMap");
   const auto brdf = findBinding("BrdfLut");
   const auto environment = findBinding("EnvironmentUBO");
-  const auto albedoMap = findBinding("albedoMap");
-
-  if (albedoMap == bindings.end() ||
-      albedoMap->type != ShaderPropertyType::Texture2D ||
-      albedoMap->set != 1 || albedoMap->binding != 1) {
-    std::cerr << "  FAIL: albedoMap Texture2D set=1 binding=1 missing\n";
-    return false;
-  }
   if (irradiance == bindings.end() ||
       irradiance->type != ShaderPropertyType::TextureCube ||
       irradiance->set != 3 || irradiance->binding != 0) {
@@ -607,9 +599,11 @@ static bool testPbrIblContract(const std::filesystem::path &shaderDir,
   return true;
 }
 
-static bool testPbrMaterialTextureSetContract(
-    const std::filesystem::path &vertPath, const std::filesystem::path &fragPath) {
-  std::cout << "  Test: PBR material-owned texture set contract\n";
+static bool testPbrMaterialGpuRecordContract(
+    const std::filesystem::path &vertPath,
+    const std::filesystem::path &fragPath,
+    const std::string &label = "PBR material GPU record contract") {
+  std::cout << "  Test: " << label << "\n";
   auto compileResult = ShaderCompiler::compileProgram(
       vertPath, fragPath,
       {{"HAS_NORMAL_MAP", true},
@@ -622,27 +616,68 @@ static bool testPbrMaterialTextureSetContract(
   }
 
   const auto bindings = ShaderReflector::reflect(compileResult.stages);
-  const auto expectTexture = [&](const std::string &name, u32 binding) {
-    const auto it = std::find_if(bindings.begin(), bindings.end(),
-                                 [&](const auto &candidate) {
-                                   return candidate.name == name;
-                                 });
-    if (it == bindings.end() || it->type != ShaderPropertyType::Texture2D ||
-        it->set != 1 || it->binding != binding) {
-      std::cerr << "  FAIL: " << name << " Texture2D set=1 binding="
-                << binding << " missing\n";
+  const auto findBinding = [&](const std::string &name) {
+    return std::find_if(bindings.begin(), bindings.end(),
+                        [&](const auto &candidate) {
+                          return candidate.name == name;
+                        });
+  };
+  const auto rejectBinding = [&](const std::string &name) {
+    const auto it = findBinding(name);
+    if (it != bindings.end()) {
+      std::cerr << "  FAIL: PBR shader still reflects legacy binding " << name
+                << "\n";
       return false;
     }
     return true;
   };
 
-  if (!expectTexture("albedoMap", 1) || !expectTexture("normalMap", 2) ||
-      !expectTexture("metallicRoughnessMap", 3) ||
-      !expectTexture("aoMap", 4) || !expectTexture("emissiveMap", 5)) {
+  if (!rejectBinding("MaterialUBO") || !rejectBinding("albedoMap") ||
+      !rejectBinding("normalMap") ||
+      !rejectBinding("metallicRoughnessMap") || !rejectBinding("aoMap") ||
+      !rejectBinding("emissiveMap")) {
     return false;
   }
 
-  std::cout << "  PASS: PBR reflects material-owned texture set\n";
+  const auto expectBinding = [&](const std::string &name,
+                                 ShaderPropertyType type, u32 set,
+                                 u32 binding, u32 descriptorCount) {
+    const auto it = std::find_if(bindings.begin(), bindings.end(),
+                                 [&](const auto &candidate) {
+                                   return candidate.name == name;
+                                 });
+    if (it == bindings.end() || it->type != type || it->set != set ||
+        it->binding != binding || it->descriptorCount != descriptorCount) {
+      std::cerr << "  FAIL: " << name << " expected type="
+                << shaderPropertyTypeName(type) << " set=" << set
+                << " binding=" << binding << " count=" << descriptorCount
+                << "\n";
+      return false;
+    }
+    return true;
+  };
+
+  if (!expectBinding("SceneMaterials", ShaderPropertyType::StorageBuffer, 0, 7,
+                     1) ||
+      !expectBinding("SceneTextures", ShaderPropertyType::Texture2D, 0, 11,
+                     256)) {
+    return false;
+  }
+
+  const auto source = readTextFile(fragPath);
+  for (const std::string token : {"MaterialUBO", "baseColorFactor",
+                                  "metallicFactor", "roughnessFactor",
+                                  "albedoMap", "normalMap",
+                                  "metallicRoughnessMap", "aoMap",
+                                  "emissiveMap"}) {
+    if (source.find(token) != std::string::npos) {
+      std::cerr << "  FAIL: PBR fragment source still contains legacy token "
+                << token << "\n";
+      return false;
+    }
+  }
+
+  std::cout << "  PASS: PBR reflects migrated material GPU record bindings\n";
   return true;
 }
 
@@ -697,29 +732,26 @@ static bool testPbrClearcoatShaderContract(
   const auto materialBinding = std::find_if(
       bindings.begin(), bindings.end(),
       [](const ShaderResourceBinding &binding) {
-        return binding.name == "MaterialUBO";
+        return binding.name == "SceneMaterials";
       });
-  if (materialBinding == bindings.end()) {
-    std::cerr << "  FAIL: pbr_clearcoat MaterialUBO binding missing\n";
-    return false;
-  }
-
-  const auto hasFloatMember = [&](const std::string &name) {
-    return std::any_of(materialBinding->members.begin(),
-                       materialBinding->members.end(),
-                       [&](const StructMemberInfo &member) {
-                         return member.name == name &&
-                                member.type == ShaderPropertyType::Float;
-                       });
-  };
-  if (!hasFloatMember("clearcoatFactor") ||
-      !hasFloatMember("clearcoatRoughness")) {
-    std::cerr << "  FAIL: pbr_clearcoat should expose clearcoatFactor and "
-                 "clearcoatRoughness float members\n";
+  if (materialBinding == bindings.end() ||
+      materialBinding->type != ShaderPropertyType::StorageBuffer) {
+    std::cerr << "  FAIL: pbr_clearcoat SceneMaterials SSBO binding missing\n";
     return false;
   }
 
   const auto source = readTextFile(fragPath);
+  for (const std::string token : {"MaterialUBO", "baseColorFactor",
+                                  "metallicFactor", "roughnessFactor",
+                                  "albedoMap", "normalMap",
+                                  "metallicRoughnessMap", "aoMap",
+                                  "emissiveMap"}) {
+    if (source.find(token) != std::string::npos) {
+      std::cerr << "  FAIL: pbr_clearcoat.frag still contains legacy token "
+                << token << "\n";
+      return false;
+    }
+  }
   if (source.find("lxPbrLayeredClearcoatDirectLight") == std::string::npos) {
     std::cerr << "  FAIL: pbr_clearcoat.frag should call shared layered "
                  "clearcoat BRDF helper\n";
@@ -727,6 +759,37 @@ static bool testPbrClearcoatShaderContract(
   }
 
   std::cout << "  PASS: PBR clearcoat shader contract\n";
+  return true;
+}
+
+static bool testDeferredPbrShaderContracts(
+    const std::filesystem::path &shaderDir) {
+  std::cout << "  Test: Deferred PBR shader GPU record contracts\n";
+  const auto pbrVert =
+      shaderDir / "techniques" / "Deferred" / "pbr_gbuffer.vert";
+  const auto pbrFrag =
+      shaderDir / "techniques" / "Deferred" / "pbr_gbuffer.frag";
+  const auto clearcoatVert =
+      shaderDir / "techniques" / "Deferred" / "pbr_clearcoat_gbuffer.vert";
+  const auto clearcoatFrag =
+      shaderDir / "techniques" / "Deferred" / "pbr_clearcoat_gbuffer.frag";
+  if (!std::filesystem::exists(pbrVert) ||
+      !std::filesystem::exists(pbrFrag) ||
+      !std::filesystem::exists(clearcoatVert) ||
+      !std::filesystem::exists(clearcoatFrag)) {
+    std::cerr << "  FAIL: deferred PBR shader files should exist\n";
+    return false;
+  }
+
+  if (!testPbrMaterialGpuRecordContract(
+          pbrVert, pbrFrag, "Deferred PBR material GPU record contract") ||
+      !testPbrMaterialGpuRecordContract(
+          clearcoatVert, clearcoatFrag,
+          "Deferred clearcoat material GPU record contract")) {
+    return false;
+  }
+
+  std::cout << "  PASS: Deferred PBR shaders use migrated material records\n";
   return true;
 }
 
@@ -925,13 +988,15 @@ int main(int argc, char *argv[]) {
     ++failures;
   if (!testPbrIblContract(shaderDir, vertPath, fragPath))
     ++failures;
-  if (!testPbrMaterialTextureSetContract(vertPath, fragPath))
+  if (!testPbrMaterialGpuRecordContract(vertPath, fragPath))
     ++failures;
   if (!testPbrFragmentUsesSharedCommon(fragPath))
     ++failures;
   if (!testPbrFragmentAppliesDirectionalLightIntensity(fragPath))
     ++failures;
   if (!testPbrClearcoatShaderContract(shaderDir))
+    ++failures;
+  if (!testDeferredPbrShaderContracts(shaderDir))
     ++failures;
   if (!testSharedPbrKeepsLowRoughnessHighlights(shaderDir))
     ++failures;

@@ -1,4 +1,5 @@
 #version 450
+#extension GL_EXT_nonuniform_qualifier : require
 
 #include "common/pbr.glsl"
 
@@ -12,6 +13,24 @@ layout(location = 3) in mat3 vTBN;
 
 layout(location = 0) out vec4 outColor;
 
+const uint INVALID_TEXTURE_INDEX = 0xffffffffu;
+const uint SCENE_TEXTURE_COUNT = 256u;
+
+struct lxSceneMaterialRecord {
+    vec4 baseColor;
+    vec4 pbrParams;
+    vec4 emissive;
+    vec4 clearcoatParams;
+    uint baseColorTexture;
+    uint normalTexture;
+    uint metallicRoughnessTexture;
+    uint aoTexture;
+    uint emissiveTexture;
+    uint flags;
+    uint reserved0;
+    uint reserved1;
+};
+
 // Camera
 layout(set = 0, binding = 0) uniform CameraUBO {
     mat4 view;
@@ -19,33 +38,11 @@ layout(set = 0, binding = 0) uniform CameraUBO {
     vec3 eyePos;
 } camera;
 
-// Material parameters
-layout(set = 1, binding = 0) uniform MaterialUBO {
-    vec4 baseColorFactor;
-    float metallicFactor;
-    float roughnessFactor;
-    float ao;
-    float padding;
-} material;
+layout(std430, set = 0, binding = 7) readonly buffer SceneMaterials {
+    lxSceneMaterialRecord materials[];
+};
 
-// Albedo texture (always present)
-layout(set = 1, binding = 1) uniform sampler2D albedoMap;
-
-#ifdef HAS_NORMAL_MAP
-layout(set = 1, binding = 2) uniform sampler2D normalMap;
-#endif
-
-#ifdef HAS_METALLIC_ROUGHNESS
-layout(set = 1, binding = 3) uniform sampler2D metallicRoughnessMap;
-#endif
-
-#ifdef HAS_AO_MAP
-layout(set = 1, binding = 4) uniform sampler2D aoMap;
-#endif
-
-#ifdef HAS_EMISSIVE_MAP
-layout(set = 1, binding = 5) uniform sampler2D emissiveMap;
-#endif
+layout(set = 0, binding = 11) uniform sampler2D SceneTextures[256];
 
 // Light
 layout(set = 2, binding = 0) uniform LightUBO {
@@ -62,32 +59,51 @@ layout(set = 3, binding = 3) uniform EnvironmentUBO {
 } environment;
 #endif
 
-void main() {
-    // Base color
-    vec4 albedo = texture(albedoMap, vUV) * material.baseColorFactor;
+bool hasSceneTexture(uint textureIndex) {
+    return textureIndex != INVALID_TEXTURE_INDEX &&
+           textureIndex < SCENE_TEXTURE_COUNT;
+}
 
-    // Metallic / roughness
-    float metallic = material.metallicFactor;
-    float roughness = material.roughnessFactor;
+vec4 sampleSceneTexture(uint textureIndex, vec2 uv) {
+    return texture(SceneTextures[nonuniformEXT(textureIndex)], uv);
+}
+
+void main() {
+    lxSceneMaterialRecord material = materials[0];
+
+    vec4 albedo = material.baseColor;
+    if (hasSceneTexture(material.baseColorTexture)) {
+        albedo *= sampleSceneTexture(material.baseColorTexture, vUV);
+    }
+
+    float metallic = material.pbrParams.x;
+    float roughness = material.pbrParams.y;
 
 #ifdef HAS_METALLIC_ROUGHNESS
-    vec4 mr = texture(metallicRoughnessMap, vUV);
+    vec4 mr = hasSceneTexture(material.metallicRoughnessTexture)
+                  ? sampleSceneTexture(material.metallicRoughnessTexture, vUV)
+                  : vec4(1.0);
     metallic *= mr.b;
     roughness *= mr.g;
 #endif
     roughness = clamp(roughness, 0.04, 1.0);
 
-    float ao = material.ao;
+    float ao = material.pbrParams.w;
 #ifdef HAS_AO_MAP
-    ao *= texture(aoMap, vUV).r;
+    if (hasSceneTexture(material.aoTexture)) {
+        ao *= sampleSceneTexture(material.aoTexture, vUV).r;
+    }
 #endif
 
     // Normal
     vec3 N = normalize(vNormal);
 
 #ifdef HAS_NORMAL_MAP
-    vec3 tangentNormal = texture(normalMap, vUV).rgb * 2.0 - 1.0;
-    N = normalize(vTBN * tangentNormal);
+    if (hasSceneTexture(material.normalTexture)) {
+        vec3 tangentNormal =
+            sampleSceneTexture(material.normalTexture, vUV).rgb * 2.0 - 1.0;
+        N = normalize(vTBN * tangentNormal);
+    }
 #endif
 
     vec3 V = normalize(camera.eyePos - vWorldPos);
@@ -102,9 +118,12 @@ void main() {
     pbrInput.metallic = metallic;
     pbrInput.roughness = roughness;
     pbrInput.ao = ao;
-    pbrInput.emissive = vec3(0.0);
+    pbrInput.emissive = material.emissive.rgb;
 #ifdef HAS_EMISSIVE_MAP
-    pbrInput.emissive = texture(emissiveMap, vUV).rgb;
+    if (hasSceneTexture(material.emissiveTexture)) {
+        pbrInput.emissive =
+            sampleSceneTexture(material.emissiveTexture, vUV).rgb;
+    }
 #endif
 
     vec3 Lo = lxPbrDirectLight(pbrInput);
