@@ -32,6 +32,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_bindless_indirect_contract
   test_bindless_validation_contract
   test_071_bridge_audit
+  test_071g_legacy_boundary_removal
   test_scene_package_round_trip
   test_render_validation_profile
   test_diagnostics_compare
