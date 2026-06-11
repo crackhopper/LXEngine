@@ -635,11 +635,6 @@ loadOutputCameraOverrides(const YAML::Node &node,
   return overrides;
 }
 
-[[nodiscard]] bool isDeletedMaterialSwitchField(const std::string &key) {
-  static const std::string field = std::string("material") + "Tag";
-  return key == field;
-}
-
 [[nodiscard]] LX_core::offline::OutputProfile
 loadOutputProfile(const YAML::Node &node, const std::string &name) {
   if (!node || !node.IsMap()) {
@@ -686,7 +681,7 @@ loadOutputProfile(const YAML::Node &node, const std::string &name) {
       profile.backgroundColor = loadVec3(value, fieldName.c_str());
     } else if (key == "cameraOverrides") {
       profile.cameraOverrides = loadOutputCameraOverrides(value, name);
-    } else if (!isDeletedMaterialSwitchField(key)) {
+    } else {
       profile.extensionYamlByField.emplace(key, dumpYamlNode(value));
     }
   }
@@ -760,7 +755,7 @@ loadOfflineRenderSettings(const YAML::Node &node) {
           "scene.rendering.shadows");
     } else if (key == "compareMode") {
       settings.compareMode = value.as<std::string>();
-    } else if (!isDeletedMaterialSwitchField(key)) {
+    } else {
       settings.extensionYamlByField.emplace(key, dumpYamlNode(value));
     }
   }
@@ -1041,47 +1036,6 @@ void saveEditorCamera(YAML::Emitter &out, const EditorCameraState &state) {
       entry.materialOfflineYaml = dumpYamlNode(offlineNode);
     }
   }
-  if (const auto materialsNode = node["materials"]; materialsNode) {
-    if (!materialsNode.IsSequence()) {
-      throw std::runtime_error("scene document materials must be a sequence");
-    }
-    entry.materials.reserve(materialsNode.size());
-    for (const auto &materialEntryNode : materialsNode) {
-      if (!materialEntryNode.IsMap()) {
-        throw std::runtime_error(
-            "scene document materials entries must be maps");
-      }
-      MaterialBindingDocument binding;
-      if (const auto tagNode = materialEntryNode["tag"]; tagNode) {
-        binding.tag = tagNode.as<std::string>();
-      }
-      if (binding.tag.empty()) {
-        throw std::runtime_error(
-            "scene document materials entries require non-empty tag");
-      }
-      if (const auto uriNode = materialEntryNode["uri"]; uriNode) {
-        binding.uri = uriNode.as<std::string>();
-        validateSceneAssetUriInternal(binding.uri, "nodes[].materials[].uri");
-      }
-      if (const auto sourceNode = materialEntryNode["source"]; sourceNode) {
-        binding.source = sourceNode.as<std::string>();
-      }
-      if (binding.uri.empty() && binding.source.empty()) {
-        throw std::runtime_error(
-            "scene document materials entries require uri or source");
-      }
-      if (const auto offlineNode = materialEntryNode["offline"]; offlineNode) {
-        binding.offlineYaml = dumpYamlNode(offlineNode);
-      }
-      binding.materialOverrides = loadMaterialOverrideState(
-          materialEntryNode["materialOverrides"],
-          "nodes[].materials[].materialOverrides");
-      binding.nodeMaterialOverrides = loadMaterialOverrideState(
-          materialEntryNode["nodeMaterialOverrides"],
-          "nodes[].materials[].nodeMaterialOverrides");
-      entry.materials.push_back(std::move(binding));
-    }
-  }
   entry.proceduralMaterial = loadProceduralMaterialState(
       node["proceduralMaterial"], "nodes[].proceduralMaterial");
   entry.nodeMaterialOverrides = loadMaterialOverrideState(
@@ -1140,7 +1094,6 @@ void validateExplicitRootNode(const SceneNodeDocument &rootNode) {
   if (rootNode.meshUri.has_value() || rootNode.meshOfflineYaml.has_value() ||
       rootNode.materialUri.has_value() ||
       rootNode.materialOfflineYaml.has_value() ||
-      !rootNode.materials.empty() ||
       !rootNode.proceduralMaterial.empty() ||
       !rootNode.nodeMaterialOverrides.empty() ||
       !rootNode.materialOverrides.empty() || rootNode.camera.has_value() ||
@@ -1180,29 +1133,6 @@ void saveNodeDocument(YAML::Emitter &out, const SceneNodeDocument &node) {
       emitRawYamlNode(out, *node.materialOfflineYaml);
     }
     out << YAML::EndMap;
-  }
-  if (!node.materials.empty()) {
-    out << YAML::Key << "materials" << YAML::Value << YAML::BeginSeq;
-    for (const auto &binding : node.materials) {
-      out << YAML::BeginMap;
-      out << YAML::Key << "tag" << YAML::Value << binding.tag;
-      if (!binding.source.empty()) {
-        out << YAML::Key << "source" << YAML::Value << binding.source;
-      }
-      if (!binding.uri.empty()) {
-        out << YAML::Key << "uri" << YAML::Value << binding.uri;
-      }
-      if (binding.offlineYaml.has_value()) {
-        out << YAML::Key << "offline" << YAML::Value;
-        emitRawYamlNode(out, *binding.offlineYaml);
-      }
-      saveMaterialOverrideState(out, "nodeMaterialOverrides",
-                                binding.nodeMaterialOverrides);
-      saveMaterialOverrideState(out, "materialOverrides",
-                                binding.materialOverrides);
-      out << YAML::EndMap;
-    }
-    out << YAML::EndSeq;
   }
   saveProceduralMaterialState(out, node.proceduralMaterial);
   saveMaterialOverrideState(out, "nodeMaterialOverrides",

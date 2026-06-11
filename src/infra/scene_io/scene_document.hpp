@@ -97,7 +97,6 @@ struct EnvironmentState final {
 };
 
 struct MaterialBindingDocument final {
-  std::string tag;
   std::string uri;
   std::string source;
   std::optional<std::string> offlineYaml;
@@ -115,7 +114,6 @@ struct SceneNodeDocument final {
   std::optional<std::string> meshOfflineYaml;
   std::optional<std::string> materialUri;
   std::optional<std::string> materialOfflineYaml;
-  std::vector<MaterialBindingDocument> materials;
   ProceduralMaterialState proceduralMaterial;
   MaterialOverrideState nodeMaterialOverrides;
   MaterialOverrideState materialOverrides;

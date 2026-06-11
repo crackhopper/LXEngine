@@ -962,7 +962,7 @@ loadEffectiveMaterialForSceneNode(
     const SceneNodeDocument &nodeDocument,
     const MaterialOverrideState &nodeOverrides) {
   if (nodeDocument.meshUri.has_value() && isGltfMeshUri(*nodeDocument.meshUri) &&
-      nodeDocument.materials.empty() && !nodeDocument.materialUri.has_value()) {
+      !nodeDocument.materialUri.has_value()) {
     throw std::runtime_error("glTF scene node requires explicit material uri");
   }
 
@@ -1065,76 +1065,6 @@ loadTimedSceneMeshAsset(const std::filesystem::path &meshPath) {
   auto mesh = LX_infra::scene_asset::loadSceneMeshAsset(meshPath);
   accumulateLoadedMeshStats(mesh);
   return mesh;
-}
-
-[[nodiscard]] LX_core::MaterialInstanceSharedPtr loadTaggedMaterialForSceneNode(
-    const std::vector<std::filesystem::path> &assetRoots,
-    const SceneNodeDocument &nodeDocument,
-    const LX_infra::scene_io::MaterialBindingDocument &binding) {
-  std::optional<ScopedAccumulatedTimer> timer;
-  if (g_sceneLoadTimingStats != nullptr) {
-    timer.emplace(g_sceneLoadTimingStats->materialMs);
-    ++g_sceneLoadTimingStats->materialLoadCount;
-  }
-  LX_core::MaterialInstanceSharedPtr material;
-  if (binding.source == "gltf") {
-    material = LX_infra::scene_asset::loadSceneMaterialBinding({
-        .meshUri = nodeDocument.meshUri,
-        .binding = binding,
-        .materialOverrides = nodeDocument.materialOverrides,
-        .nodeMaterialOverrides = nodeDocument.nodeMaterialOverrides,
-        .resolveAssetPath =
-            [&assetRoots](const std::string &assetUri) {
-              return resolveRuntimeOrProjectAssetPath(assetRoots, assetUri);
-            },
-        .loadGenericMaterial =
-            [](const std::filesystem::path &path) {
-              return loadCachedGenericMaterial(path);
-            },
-    });
-  } else {
-    material = LX_infra::scene_asset::loadSceneMaterialBinding({
-        .meshUri = nodeDocument.meshUri,
-        .binding = binding,
-        .materialOverrides = nodeDocument.materialOverrides,
-        .nodeMaterialOverrides = nodeDocument.nodeMaterialOverrides,
-        .resolveAssetPath =
-            [&assetRoots](const std::string &assetUri) {
-              return resolveProjectAssetPath(assetRoots, assetUri)
-                  .value_or(std::filesystem::path(assetUri));
-            },
-        .loadGenericMaterial =
-            [](const std::filesystem::path &path) {
-              return loadCachedGenericMaterial(path);
-            },
-    });
-  }
-  configureProceduralMaterialResources(material,
-                                       nodeDocument.proceduralMaterial);
-  return material;
-}
-
-[[nodiscard]] LX_core::SceneNodeSharedPtr
-makeMaterialBindingRenderableNode(
-    const std::string &nodeName, LX_core::MeshSharedPtr mesh,
-    const SceneNodeDocument &nodeDocument,
-    const std::vector<std::filesystem::path> &assetRoots) {
-  if (nodeDocument.materials.empty()) {
-    throw std::logic_error("renderable node requires material bindings");
-  }
-
-  auto node = LX_core::SceneNode::create(nodeName);
-  node->addComponent<LX_core::MeshComponent>(std::move(mesh));
-
-  const auto &firstBinding = nodeDocument.materials.front();
-  auto firstMaterial =
-      loadTaggedMaterialForSceneNode(assetRoots, nodeDocument, firstBinding);
-  auto materialComponent = node->addComponent<LX_core::MaterialComponent>(
-      std::move(firstMaterial));
-  if (!materialComponent) {
-    throw std::runtime_error("failed to attach material component");
-  }
-  return node;
 }
 
 [[nodiscard]] std::string cameraPathToDisplayName(const std::string &path,
@@ -1254,12 +1184,6 @@ makeMaterialBindingRenderableNode(
   if (isGltfMeshUri(*nodeDocument.meshUri)) {
     const std::filesystem::path meshPath =
         resolveGltfMeshPath(assetRoots, *nodeDocument.meshUri);
-    if (!nodeDocument.materials.empty()) {
-      auto meshAsset = loadTimedGltfMeshAsset(meshPath);
-      return makeMaterialBindingRenderableNode(
-          nodeDocument.nodeName, std::move(meshAsset.mesh), nodeDocument,
-          assetRoots);
-    }
     if (nodeDocument.materialUri.has_value()) {
       auto meshAsset = loadTimedGltfMeshAsset(meshPath);
       const std::string materialUri = normalizeMaterialUri(nodeDocument);
@@ -1342,10 +1266,6 @@ makeMaterialBindingRenderableNode(
         resolveProjectAssetPath(assetRoots, *nodeDocument.meshUri)
             .value_or(std::filesystem::path(*nodeDocument.meshUri));
     auto mesh = loadTimedSceneMeshAsset(meshPath);
-    if (!nodeDocument.materials.empty()) {
-      return makeMaterialBindingRenderableNode(
-          nodeDocument.nodeName, std::move(mesh), nodeDocument, assetRoots);
-    }
     if (nodeDocument.materialUri.has_value()) {
       const std::string materialUri = normalizeMaterialUri(nodeDocument);
       return makeRenderableNode(
