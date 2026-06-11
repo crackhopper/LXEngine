@@ -194,6 +194,10 @@ int main() {
       {"LegacyPerItem"},
       {"raster.drawData"},
       {"PerDrawData"},
+      {"vkCmdPushConstants"},
+      {"m_pushConstants"},
+      {"PushConstantSnapshot"},
+      {"pushConstants"},
       {"makeDefaultForwardRenderPathGraph"},
   };
 

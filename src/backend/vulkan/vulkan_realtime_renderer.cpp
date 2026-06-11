@@ -2148,18 +2148,9 @@ private:
       return;
     }
 
-    if (!items.empty() && migratedValidationPass) {
-      throw std::runtime_error(
-          "migrated pass reached unsupported non-batch submission path: " +
-          LX_core::GlobalStringTable::get().toDebugString(pass.name));
-    }
-
-    for (auto &item : items) {
-      auto pipeline = resourceManager().getOrCreatePipeline(item);
-      cmd.bindPipeline(pipeline);
-      cmd.bindResources(resourceManager(), pipeline, item);
-      cmd.executeWorkItem(item);
-    }
+    throw std::runtime_error(
+        "render pass reached unsupported non-batch submission path: " +
+        LX_core::GlobalStringTable::get().toDebugString(pass.name));
   }
 
   void addFullscreenMaterialItem(LX_core::StringID pass,
