@@ -21,6 +21,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_material_v2_parser
   test_material_v2_resource_dependencies
   test_material_v2_converter_defaults
+  test_default_material_asset_audit
   test_technique_pass_contract
   test_render_effect_resource_parser
   test_frame_graph_registry
@@ -174,6 +175,10 @@ endif()
 
 if(TARGET test_diagnostics_compare)
   target_link_libraries(test_diagnostics_compare PRIVATE lxe_compare_exr_core)
+endif()
+
+if(TARGET test_default_material_asset_audit)
+  target_link_libraries(test_default_material_asset_audit PRIVATE yaml-cpp::yaml-cpp)
 endif()
 
 set(LXE_EDITOR_COMMAND_SOURCES

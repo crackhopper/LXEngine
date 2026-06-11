@@ -1,0 +1,10 @@
+schema: lxe.render-feature.v1
+name: ToneMapping
+feature: toneMapping
+parameters:
+  exposure:
+    kind: float
+    value: 1.0
+  gamma:
+    kind: float
+    value: 2.2

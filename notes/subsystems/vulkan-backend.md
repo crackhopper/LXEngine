@@ -2,7 +2,7 @@
 
 > Vulkan backend 是 core 抽象到 Vulkan API 的落地点。它不决定“什么时候开始一帧”，也不负责业务层 update hook；这些编排职责已经上移到 `EngineLoop`。backend 负责把 `FrameGraph` 和 `RenderWorkItem` 真实提交到 GPU。
 >
-> 权威 spec: `openspec/specs/renderer-backend-vulkan/spec.md`
+> 当前事实以 `src/backend/vulkan/` 和本页说明为准。
 
 ## 现在怎么读
 

@@ -1,4 +1,4 @@
-#include "core/asset/material_technique_set.hpp"
+#include "core/asset/render_effect.hpp"
 #include "infra/resource_parsers/render_effect_resource_parser.hpp"
 
 #include <iostream>
@@ -17,78 +17,104 @@ int g_failures = 0;
     }                                                                          \
   } while (0)
 
-void testTechniquePassContractRequiresExplicitFields() {
+void testRenderPathGraphPassContractRequiresExplicitFields() {
   LX_infra::RenderEffectResourceParser parser;
   const auto parsed = parser.parse("memory://missing-dispatch", R"(
-schema: lxe.render-effect.v1
-phase: post
+schema: lxe.render-path-graph.v1
+name: ForwardMain
+renderPath: Forward
 passes:
-  Composite:
-    shader: shaders/composite.effect
+  - id: ForwardOpaque
+    shader: techniques/Forward/surface_lit
     stage: raster
-    sources: [hdr.color]
-    targets: [swapchain.color]
+    sources: [geometry.vertex, material.bsdf, scene.camera]
+    targets: [hdr.color]
     renderState:
       cullMode: None
       depthTest: false
       depthWrite: false
+      depthOp: LessEqual
 )");
 
-  EXPECT(!parsed.effect.has_value(), "missing dispatch should fail");
+  EXPECT(!parsed.renderPathGraph.has_value(), "missing dispatch should fail");
   EXPECT(!parsed.diagnostics.empty(), "missing dispatch should emit diagnostic");
   EXPECT(!parsed.diagnostics.empty() &&
-             parsed.diagnostics.front().find("passes.Composite.dispatch") !=
+             parsed.diagnostics.front().find("passes.ForwardOpaque.dispatch") !=
                  std::string::npos,
          "diagnostic should include missing dispatch field path");
 }
 
-void testTechniquePassContractParsesCompletePass() {
+void testRenderPathGraphContractParsesCompletePass() {
   LX_infra::RenderEffectResourceParser parser;
   const auto parsed = parser.parse("memory://complete", R"(
-schema: lxe.render-effect.v1
-phase: post
+schema: lxe.render-path-graph.v1
+name: ForwardMain
+renderPath: Forward
+features:
+  shadow:
+    uri: effects/shadow.render-feature.yaml
 passes:
-  Composite:
-    shader: shaders/composite.effect
+  - id: ForwardOpaque
+    shader: techniques/Forward/surface_lit
     stage: raster
-    dispatch: fullscreen
-    sources: [hdr.color]
-    targets: [swapchain.color]
+    dispatch: draw
+    filters:
+      renderClass: [surface.opaque]
+      bsdf: [matte, uber]
+    sources: [geometry.vertex, material.bsdf, scene.camera, feature.shadow]
+    targets: [hdr.color, depth.main]
     renderState:
-      cullMode: None
-      depthTest: false
-      depthWrite: false
+      cullMode: Back
+      depthTest: true
+      depthWrite: true
+      depthOp: LessEqual
+      blendEnable: false
 )");
 
-  EXPECT(parsed.effect.has_value(), "complete pass should parse");
-  EXPECT(parsed.diagnostics.empty(), "complete pass should not emit diagnostics");
-  if (!parsed.effect.has_value()) {
+  EXPECT(parsed.renderPathGraph.has_value(), "complete graph should parse");
+  EXPECT(parsed.diagnostics.empty(), "complete graph should not emit diagnostics");
+  if (!parsed.renderPathGraph.has_value()) {
     return;
   }
 
-  const auto &effect = *parsed.effect;
-  EXPECT(effect.phase == RenderEffectPhase::Post, "phase should be post");
-  EXPECT(effect.technique.passes.size() == 1, "one pass should be parsed");
-  const MaterialPassContract &pass = effect.technique.passes.front();
-  EXPECT(pass.name == "Composite", "pass name should be retained");
-  EXPECT(pass.shaderUri == "shaders/composite.effect",
+  const auto &graph = *parsed.renderPathGraph;
+  EXPECT(graph.name == "ForwardMain", "graph name should be retained");
+  EXPECT(graph.renderPath == RenderPath::Forward,
+         "render path should parse as Forward");
+  EXPECT(graph.features.size() == 1, "one feature dependency should be parsed");
+  EXPECT(graph.features.front().slot == "shadow",
+         "feature slot should be retained");
+  EXPECT(graph.features.front().uri == "effects/shadow.render-feature.yaml",
+         "feature uri should be retained");
+  EXPECT(graph.passes.size() == 1, "one render pass node should be parsed");
+  const RenderPassNode &pass = graph.passes.front();
+  EXPECT(pass.id == "ForwardOpaque", "pass id should be retained");
+  EXPECT(pass.shaderUri == "techniques/Forward/surface_lit",
          "shader uri should be retained");
   EXPECT(pass.stage == MaterialPassStage::Raster, "stage should be raster");
-  EXPECT(pass.dispatch == MaterialPassDispatch::Fullscreen,
-         "dispatch should be fullscreen");
-  EXPECT(pass.sources.size() == 1 && pass.sources.front() == "hdr.color",
+  EXPECT(pass.dispatch == MaterialPassDispatch::Draw,
+         "dispatch should be draw");
+  EXPECT(pass.filters.renderClasses.size() == 1 &&
+             pass.filters.renderClasses.front() == "surface.opaque",
+         "renderClass filter should be retained");
+  EXPECT(pass.filters.bsdfTypes.size() == 2 &&
+             pass.filters.bsdfTypes.front() == "matte",
+         "bsdf filter should be retained");
+  EXPECT(pass.sources.size() == 4 && pass.sources.back() == "feature.shadow",
          "sources should be retained");
-  EXPECT(pass.targets.size() == 1 && pass.targets.front() == "swapchain.color",
+  EXPECT(pass.targets.size() == 2 && pass.targets.back() == "depth.main",
          "targets should be retained");
+  EXPECT(pass.renderState.depthWriteEnable,
+         "render state should be retained");
 }
 
 } // namespace
 
 int main() {
-  testTechniquePassContractRequiresExplicitFields();
-  testTechniquePassContractParsesCompletePass();
+  testRenderPathGraphPassContractRequiresExplicitFields();
+  testRenderPathGraphContractParsesCompletePass();
   if (g_failures != 0) {
-    std::cerr << g_failures << " technique pass contract checks failed\n";
+    std::cerr << g_failures << " render path graph contract checks failed\n";
     return 1;
   }
   return 0;

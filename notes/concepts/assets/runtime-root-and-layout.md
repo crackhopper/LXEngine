@@ -36,7 +36,7 @@
 | `assets/scenes/` | 仓库自带 scene 文档 |
 | `assets/project_templates/` | 新建 project 时复制的只读模板 |
 
-这套布局对应 `openspec/specs/asset-directory-convention/spec.md`。测试里也会检查关键示例资产是否存在，避免资源目录被无意破坏。
+这套布局对应当前资产目录约定。测试里也会检查关键示例资产是否存在，避免资源目录被无意破坏。
 
 ## 逻辑路径和真实路径分开
 

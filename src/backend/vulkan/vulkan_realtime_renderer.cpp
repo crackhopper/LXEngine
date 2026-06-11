@@ -3,6 +3,8 @@
 #include "core/asset/material_pass_definition.hpp"
 #include "core/asset/material_template.hpp"
 #include "core/frame_graph/frame_graph.hpp"
+#include "core/frame_graph/frame_graph_build_plan.hpp"
+#include "core/frame_graph/graph_resource_registry.hpp"
 #include "core/frame_graph/pass.hpp"
 #include "core/frame_graph/render_validation_contract.hpp"
 #include "core/frame_graph/render_upload_plan.hpp"
@@ -57,6 +59,38 @@ bool strictBindlessValidationEnabled() {
 
 bool isMigratedBindlessValidationPass(LX_core::StringID pass) {
   return pass == LX_core::Pass_Forward || pass == LX_core::Pass_Deferred;
+}
+
+LX_core::RenderPassNode makeDefaultRenderPathPass(
+    LX_core::StringID passId, LX_core::ResourceUri shaderUri,
+    std::vector<std::string> sources, std::vector<std::string> targets,
+    LX_core::MaterialPassDispatch dispatch =
+        LX_core::MaterialPassDispatch::Draw) {
+  LX_core::RenderPassNode pass;
+  pass.id = LX_core::GlobalStringTable::get().toDebugString(passId);
+  pass.shaderUri = std::move(shaderUri);
+  pass.stage = LX_core::MaterialPassStage::Raster;
+  pass.dispatch = dispatch;
+  pass.sources = std::move(sources);
+  pass.targets = std::move(targets);
+  return pass;
+}
+
+LX_core::RenderPathGraph makeDefaultForwardRenderPathGraph() {
+  LX_core::RenderPathGraph graph;
+  graph.name = "DefaultForward";
+  graph.renderPath = LX_core::RenderPath::Forward;
+  graph.features.push_back(LX_core::RenderPathFeatureDependency{
+      "toneMapping", "effects/tone_mapping.render-feature.yaml"});
+  graph.passes.push_back(makeDefaultRenderPathPass(
+      LX_core::Pass_Forward, "techniques/Forward/pbr",
+      {"camera.ubo", "geometry.vertex", "material.bsdf"},
+      {"hdr.color", "depth.main"}));
+  graph.passes.push_back(makeDefaultRenderPathPass(
+      LX_core::Pass_PostProcess, "post_process",
+      {"hdr.color", "feature.toneMapping"}, {"swapchain.color"},
+      LX_core::MaterialPassDispatch::Fullscreen));
+  return graph;
 }
 
 /// REQ-009: reverse of resource_manager.cpp's toVkFormat(ImageFormat).
@@ -998,9 +1032,9 @@ public:
     forwardRenderPass.setClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
     const auto sceneHdrColor = LX_core::FrameGraphResourceRef::colorAttachment(
-        LX_core::StringID("scene.hdrColor"));
+        LX_core::StringID("hdr.color"));
     const auto sceneDepth = LX_core::FrameGraphResourceRef::depthAttachment(
-        LX_core::StringID("scene.depth"));
+        LX_core::StringID("depth.main"));
     const auto gbufferAlbedoAlpha =
         LX_core::FrameGraphResourceRef::colorAttachment(
             LX_core::StringID("gbuffer.albedoAlpha"));
@@ -1078,13 +1112,30 @@ public:
                                             LX_core::StringID("GBufferDepth"))},
           {LX_core::FrameGraphWrite{sceneHdrColor}}});
     } else {
-      m_frameGraph.addPass(
-          LX_core::FramePass{LX_core::Pass_Forward,
-                             forwardHdrDesc,
-                             {},
-                             shadowReads,
-                             {LX_core::FrameGraphWrite{sceneHdrColor},
-                              LX_core::FrameGraphWrite{sceneDepth}}});
+      LX_core::FrameGraph defaultForwardGraph =
+          LX_core::buildFrameGraphFromRenderPathGraph(
+              makeDefaultForwardRenderPathGraph(),
+              LX_core::GraphResourceRegistry::makeDefault());
+      for (auto pass : defaultForwardGraph.getPasses()) {
+        if (pass.name == LX_core::Pass_PostProcess &&
+            m_postProcessSettings.bloomEnabled) {
+          continue;
+        }
+        if (pass.name == LX_core::Pass_Forward) {
+          pass.target = forwardHdrDesc;
+          pass.reads.insert(pass.reads.end(), shadowReads.begin(),
+                            shadowReads.end());
+        } else if (pass.name == LX_core::Pass_PostProcess) {
+          pass.target = swapchainDesc;
+          pass.reads = {
+              LX_core::FrameGraphRead::sampled(sceneHdrColor.name,
+                                               LX_core::StringID("SceneColor")),
+              LX_core::FrameGraphRead::sampled(sceneHdrColor.name,
+                                               LX_core::StringID("BloomColor")),
+          };
+        }
+        m_frameGraph.addPass(std::move(pass));
+      }
     }
     if (m_postProcessSettings.bloomEnabled) {
       m_frameGraph.addPass(LX_core::FramePass{
@@ -1112,20 +1163,24 @@ public:
                                             LX_core::StringID("BloomSource"))},
           {LX_core::FrameGraphWrite{bloomBlur}}});
     }
-    const auto postBloomInput = m_postProcessSettings.bloomEnabled
-                                    ? bloomBlur.name
-                                    : sceneHdrColor.name;
-    m_frameGraph.addPass(LX_core::FramePass{
-        LX_core::Pass_PostProcess,
-        swapchainDesc,
-        {},
-        {LX_core::FrameGraphRead::sampled(sceneHdrColor.name,
-                                          LX_core::StringID("SceneColor")),
-         LX_core::FrameGraphRead::sampled(postBloomInput,
-                                          LX_core::StringID("BloomColor"))},
-        {LX_core::FrameGraphWrite{swapchainColor}}});
-    m_frameGraph.addPass(LX_core::FramePass{
-        LX_core::Pass_DebugOverlay, swapchainDesc, {}, {}, {}});
+    if (deferredMode || m_postProcessSettings.bloomEnabled) {
+      const auto postBloomInput = m_postProcessSettings.bloomEnabled
+                                      ? bloomBlur.name
+                                      : sceneHdrColor.name;
+      m_frameGraph.addPass(LX_core::FramePass{
+          LX_core::Pass_PostProcess,
+          swapchainDesc,
+          {},
+          {LX_core::FrameGraphRead::sampled(sceneHdrColor.name,
+                                            LX_core::StringID("SceneColor")),
+           LX_core::FrameGraphRead::sampled(postBloomInput,
+                                            LX_core::StringID("BloomColor"))},
+          {LX_core::FrameGraphWrite{swapchainColor}}});
+    }
+    LX_core::FramePass debugOverlayPass{
+        LX_core::Pass_DebugOverlay, swapchainDesc, {}, {}, {}};
+    debugOverlayPass.phase = LX_core::FrameGraphPhase::Debug;
+    m_frameGraph.addPass(std::move(debugOverlayPass));
 
     // RenderWorkQueue::build (invoked per pass below) internally:
     //   - filters renderables by supportsPass(pass)
@@ -2040,19 +2095,32 @@ private:
   }
 
   void drawPassQueue(usize passIndex, VulkanCommandBuffer &cmd) {
-    if (passIndex >= m_frameGraph.getPasses().size()) {
+    if (passIndex >= m_compiledFrameGraph.getPasses().size()) {
+      return;
+    }
+    const usize sourcePassIndex =
+        m_compiledFrameGraph.getPasses()[passIndex].sourcePassIndex;
+    if (sourcePassIndex >= m_frameGraph.getPasses().size()) {
       return;
     }
 
-    auto &pass = m_frameGraph.getPasses()[passIndex];
+    auto &pass = m_frameGraph.getPasses()[sourcePassIndex];
     auto &queue = pass.queue;
     auto &items = queue.getItems();
-    const auto batches = queue.compileIndirectBatches();
-    usize coveredItemCount = 0;
-    for (const auto &batch : batches) {
-      coveredItemCount += batch.sourceItemIndices.size();
+    const bool strictBindlessValidation = strictBindlessValidationEnabled();
+    const bool migratedValidationPass =
+        isMigratedBindlessValidationPass(pass.name);
+    const auto decision = LX_core::decideBindlessSubmission(
+        queue, pass.name, strictBindlessValidation, migratedValidationPass);
+    if (decision.kind == LX_core::BindlessSubmissionDecisionKind::
+                             StrictValidationRejected) {
+      throw std::runtime_error(
+          "bindless validation rejected migrated pass: " +
+          decision.validation.diagnostics.front().reason);
     }
-    if (!items.empty() && coveredItemCount == items.size()) {
+
+    if (decision.kind == LX_core::BindlessSubmissionDecisionKind::BindlessBatch) {
+      const auto batches = queue.compileIndirectBatches();
       for (const auto &batch : batches) {
         if (batch.sourceItemIndices.empty()) {
           continue;
@@ -2070,17 +2138,6 @@ private:
         cmd.executeWorkItem(batchItem);
       }
       return;
-    }
-
-    if (!items.empty() && strictBindlessValidationEnabled() &&
-        isMigratedBindlessValidationPass(pass.name)) {
-      const auto validation =
-          LX_core::validateBindlessMigratedQueue(queue, pass.name);
-      if (!validation.ok) {
-        throw std::runtime_error(
-            "bindless validation rejected migrated pass: " +
-            validation.diagnostics.front().reason);
-      }
     }
 
     for (auto &item : items) {
@@ -2487,9 +2544,11 @@ private:
   void attachFrameGraphSampledResources() {
     const auto &compiledPasses = m_compiledFrameGraph.getPasses();
     auto &graphPasses = m_frameGraph.getPasses();
-    const usize passCount = std::min(compiledPasses.size(), graphPasses.size());
-    for (usize passIndex = 0; passIndex < passCount; ++passIndex) {
-      for (const auto &read : compiledPasses[passIndex].reads) {
+    for (const auto &compiledPass : compiledPasses) {
+      if (compiledPass.sourcePassIndex >= graphPasses.size()) {
+        continue;
+      }
+      for (const auto &read : compiledPass.reads) {
         if (read.bindingName == LX_core::StringID{}) {
           continue;
         }
@@ -2497,7 +2556,8 @@ private:
             read.resource, read.bindingName);
         const auto resourceRef =
             m_scene->resources().addRenderGpuResource(std::move(resource));
-        for (auto &item : graphPasses[passIndex].queue.getItems()) {
+        for (auto &item :
+             graphPasses[compiledPass.sourcePassIndex].queue.getItems()) {
           item.descriptorResources.emplace_back(resourceRef.get());
         }
       }

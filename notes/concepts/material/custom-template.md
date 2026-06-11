@@ -7,7 +7,7 @@
 | 步骤 | 文件或 API | 目标 |
 |---|---|---|
 | 写 shader | `assets/shaders/glsl/<name>.vert/.frag` | 声明 vertex inputs、material binding、system binding |
-| 写 material | `assets/materials/<name>.material` | 指向 shader，提供 variants、passes、默认参数和纹理 |
+| 写 material | `assets/materials/<name>.material` | 指向 shader，提供 defaultTechnique、techniques、默认参数和纹理 |
 | 加载材质 | `LX_infra::loadGenericMaterial(uri)` | 得到 `MaterialInstance` |
 | 放进场景 | scene document 或 editor runtime | 节点获得 `MaterialComponent` |
 | 验证渲染 | `lxe_editor` 或集成测试 | 触发 scene validation 和 pipeline preload |
@@ -41,16 +41,32 @@ layout(set = 1, binding = 0) uniform CameraUBO {
 
 ```yaml
 shader: my_toon
+defaultTechnique: Forward
 
 variants:
   USE_LIGHTING: true
 
-passes:
+techniques:
   Forward:
-    renderState:
-      cullMode: Back
-      depthTest: true
-      depthWrite: true
+    passes:
+      Opaque:
+        renderState:
+          cullMode: Back
+          depthTest: true
+          depthWrite: true
+  Deferred:
+    passes:
+      GBuffer:
+        shader: my_toon_gbuffer
+        renderState:
+          cullMode: Back
+          depthTest: true
+          depthWrite: true
+  OfflineRT:
+    passes:
+      RayTrace:
+        shader: offline_pbr_direct_ray
+        stage: compute
 
 parameters:
   MaterialUBO.baseColor: [0.9, 0.7, 0.4]
@@ -63,10 +79,12 @@ resources:
 当前 `parameters` 和 `resources` 是 instance 级默认值。我们不在 pass 下面写另一套参数：
 
 ```yaml
-passes:
+techniques:
   Forward:
-    parameters:          # 当前会被 loader 拒绝
-      MaterialUBO.baseColor: [1.0, 0.0, 0.0]
+    passes:
+      Opaque:
+        parameters:      # 当前会被 loader 拒绝
+          MaterialUBO.baseColor: [1.0, 0.0, 0.0]
 ```
 
 如果多个 pass 都需要 `MaterialUBO`，它们要共享同一个 binding 名和同一个 member layout。
@@ -94,7 +112,7 @@ passes:
 | 同一 Forward pass 内切换颜色 | parameter |
 | 是否采样某张贴图，且 shader 已支持 | parameter + texture |
 | 是否编译 normal map 代码路径 | variant |
-| Forward 与 Shadow 使用不同 shader/render state | 多 pass |
+| Forward 与 Deferred/OfflineRT 使用不同 shader/render state | 多 technique；每个 technique 内按需要拆 pass |
 | 同一 shader 但 blend/cull/depth 不同 | 不同 pass 或不同 material/template |
 
 这能帮助我们避免把 pipeline 结构差异误写成普通参数，也避免把普通运行时数据误写成 variant。

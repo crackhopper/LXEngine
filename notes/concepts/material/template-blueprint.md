@@ -1,6 +1,6 @@
 # 模板与 Pass：材质的结构定义
 
-`MaterialTemplate` 是材质系统里的菜谱。它不保存“这一次 baseColor 是多少”这类运行时值，只保存“这道菜有哪些步骤，每一步用什么 shader 和 render state，每一步暴露哪些材质资源槽位”。
+`MaterialTemplate` 是材质系统里的菜谱。它不保存“这一次 baseColor 是多少”这类运行时值，也不保存所有 technique。loader 先选择一条 technique，再把这条 technique 的 pass 映射成 runtime pass definitions，template 只保存这份已选结构。
 
 这条边界很重要：同一张菜谱可以做出很多道菜。多个 `MaterialInstance` 可以共享一个 `MaterialTemplate`，但每个 instance 有自己的参数字节、纹理对象和 pass 启用状态。
 
@@ -10,7 +10,7 @@
 
 | 问题 | 代码入口 | 当前含义 |
 |---|---|---|
-| 有哪些 pass | `setPassDefinition(pass, definition)` | 以 `StringID` 保存 `Forward`、`Shadow` 等 pass |
+| 有哪些 runtime pass | `setPassDefinition(pass, definition)` | 以 `StringID` 保存 selected technique 映射后的 `Forward`、`Deferred` 等 pass |
 | 每个 pass 怎么画 | `MaterialPassDefinition` | 包含 `ShaderProgramSet` 和 `RenderState` |
 | 材质自己拥有哪些 binding | `rebuildMaterialInterface()` | 从 shader reflection 过滤 system-owned binding 后建立 canonical 表 |
 
@@ -50,20 +50,23 @@ shader reflection bindings
 
 一旦不一致，`MaterialTemplate::rebuildMaterialInterface()` 会直接 fail-fast。也就是说，跨 pass 的 binding 归并不是 instance 的补救逻辑，而是 template 构建阶段的结构校验。
 
-## YAML pass 映射到模板
+## YAML technique pass 映射到模板
 
 ```yaml
 shader: rtr_experiment_template       # -> ShaderProgramSet.shaderName 默认值
+defaultTechnique: Forward
 
-passes:
-  Forward:                            # -> MaterialTemplate::setPassDefinition(StringID("Forward"), ...)
-    renderState:                      # -> MaterialPassDefinition.renderState
-      cullMode: Back                  # -> RenderState.cullMode
-      depthTest: true                 # -> RenderState.depthTestEnable
-      depthWrite: true                # -> RenderState.depthWriteEnable
+techniques:
+  Forward:
+    passes:
+      Opaque:                         # -> MaterialTemplate::setPassDefinition(Pass_Forward, ...)
+        renderState:                  # -> MaterialPassDefinition.renderState
+          cullMode: Back              # -> RenderState.cullMode
+          depthTest: true             # -> RenderState.depthTestEnable
+          depthWrite: true            # -> RenderState.depthWriteEnable
 ```
 
-如果 `.material` 没有写 `passes`，loader 会创建一个默认 `Pass_Forward`。如果写了多个 pass，每个 pass 都会单独编译 shader、反射 binding，并最终进入同一个 template。
+如果 scene 没有指定 technique，loader 选择 `defaultTechnique`。如果 scene 指定了 technique，loader 严格选择该 technique；材质缺少这条 technique 时加载失败。未选中的 technique 不进入 `MaterialTemplate`。
 
 ## Template 不保存什么
 

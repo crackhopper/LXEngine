@@ -318,6 +318,44 @@ bsdf:
          "handle");
 }
 
+void testGenericMaterialLoaderRejectsMaterialLocalTechniqueFiles() {
+  const fs::path root = makeTempRoot();
+  const fs::path materialPath = root / "materials" / "legacy_technique.material";
+  writeFile(materialPath, R"(
+shader: techniques/Forward/pbr
+defaultTechnique: Forward
+techniques:
+  Forward:
+    passes:
+      Forward:
+        shader: techniques/Forward/pbr
+        stage: raster
+        dispatch: draw
+        sources: [geometry.vertex, geometry.index, material.bsdf, camera.ubo]
+        targets: [hdr.color]
+        renderState:
+          cullMode: Back
+          depthTest: true
+          depthWrite: true
+          depthOp: LessEqual
+)");
+
+  SceneResourceTable table;
+  bool rejected = false;
+  std::string message;
+  try {
+    (void)LX_infra::loadGenericMaterial(materialPath, table);
+  } catch (const std::exception &error) {
+    rejected = true;
+    message = error.what();
+  }
+
+  EXPECT(rejected,
+         "generic material loader should reject material-local technique files");
+  EXPECT(message.find("lxe.material.v2") != std::string::npos,
+         "legacy material rejection should name the required v2 schema");
+}
+
 } // namespace
 
 int main() {
@@ -327,6 +365,7 @@ int main() {
   testMixMaterialRefRejectsNamedStringReference();
   testMaterialRefDiagnosticsIncludeParserAndResourceContext();
   testGenericMaterialLoaderWritesDependenciesIntoCallerTable();
+  testGenericMaterialLoaderRejectsMaterialLocalTechniqueFiles();
   if (g_failures != 0) {
     std::cerr << g_failures << " material v2 dependency checks failed\n";
     return 1;

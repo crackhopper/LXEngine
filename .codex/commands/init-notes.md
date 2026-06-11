@@ -10,6 +10,6 @@ tags: [notes, bootstrap, scan]
 **Input**: 无参数
 - `/init-notes` — 完整扫描 + 起草
 
-**IMPORTANT**: 这个命令**只写文档**，不改代码、不改 `notes/requirements/`、不动 `openspec/`。只落在 `notes/README.md`、`notes/get-started.md`、`notes/subsystems/*.md`、`notes/subsystems/index.md`、`notes/nav.yml`。
+**IMPORTANT**: 这个命令**只写文档**，不改代码、不改 `notes/requirements/`、不动 `docs/superpowers/specs/`。只落在 `notes/README.md`、`notes/get-started.md`、`notes/subsystems/*.md`、`notes/subsystems/index.md`、`notes/nav.yml`。
 
 详细流程见 `.codex/skills/init-notes/SKILL.md`。

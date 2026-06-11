@@ -238,7 +238,7 @@ scripts/notes/serve_site.sh
 
 1. 项目摘要 / 架构 / 教程 / 工具说明 → `notes/`
 2. 正在推进的需求 → `notes/requirements/`
-3. 行为规范 / 能力边界 → `openspec/specs/`
+3. 行为规范 / 能力边界 → `docs/superpowers/specs/` 或对应 `notes/requirements/`
 4. 当前子系统设计说明 → `notes/subsystems/`
 5. 早期设计草稿 / 历史参考 → `notes/design/`
 6. 代码评审记录 → `notes/review/`

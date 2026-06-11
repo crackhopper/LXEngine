@@ -82,6 +82,13 @@ void testMigratedQueueRejectsDrawDataFallback() {
          "migrated validation queue must reject per-draw drawData fallback");
   EXPECT(!result.diagnostics.empty(),
          "migrated validation queue must explain rejected fallback");
+
+  const BindlessSubmissionDecision decision = decideBindlessSubmission(
+      queue, StringID("Forward"), true, true);
+  EXPECT(decision.kind ==
+             BindlessSubmissionDecisionKind::StrictValidationRejected,
+         "renderer decision should reject migrated drawData fallback in strict "
+         "validation mode");
 }
 
 void testMigratedQueueAcceptsFullyCoveredIndirectBatch() {
@@ -100,6 +107,12 @@ void testMigratedQueueAcceptsFullyCoveredIndirectBatch() {
   EXPECT(result.ok, "fully covered migrated queue should pass bindless audit");
   EXPECT(result.coveredItemCount == queue.getItems().size(),
          "audit should cover every migrated draw item");
+
+  const BindlessSubmissionDecision decision = decideBindlessSubmission(
+      queue, StringID("Forward"), true, true);
+  EXPECT(decision.kind == BindlessSubmissionDecisionKind::BindlessBatch,
+         "renderer decision should submit fully covered migrated queue as a "
+         "bindless batch");
 }
 
 } // namespace

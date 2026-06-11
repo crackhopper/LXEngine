@@ -38,7 +38,7 @@
 
 10. **speculative 候选编号用字母**：研究文档中的“未来 REQ”用字母占位（`REQ-A`、`REQ-B` ...），不要占用数字号。数字号留给真正落地到 `notes/requirements/`、`pending/` 或 `planned/` 的文件。
 
-## 当前 active REQ（实施顺序快照，2026-06-01）
+## 当前 active REQ（实施顺序快照，2026-06-10）
 
 当前 active 队列在 HDR/Post + PBR/IBL 主线之后，先进入 Offline Rendering Lab 主线，再进入 3D Gaussian Splatting PLY 支持主线。v0.1.1 的目标队列已归档到 `finished/`：FrameGraph v1、Directional Shadow、CSM、Shadow 阶段教程支撑和架构概念文档展开均已完成。
 
@@ -67,6 +67,20 @@
 | `REQ-063-b` | 3DGS Vulkan Splat Pass | 首个可视化渲染闭环 |
 | `REQ-064-a` | 3DGS Editor Scene Validation | Editor 验收 |
 | `REQ-065-a` | 3DGS System Design And Tutorial | 文档收口 |
+| `REQ-066-a` | BuildInfo 与输出产物溯源 | 输出 metadata 与 provenance |
+| `REQ-067-a` | SceneResourceTable 与 Bindless-Ready 资源模型 | CPU scene resource 模型 |
+| `REQ-067-b` | Offline Renderer 迁移到共享资源模型 | offline 消费共享资源 |
+| `REQ-068-a` | Output Profiles 与 Realtime Render 生成 | 输出 profile 与对比基础 |
+| `REQ-069-a` | Vulkan Realtime Renderer 单文件拆分 | realtime renderer 拆分 |
+| `REQ-069-b` | Core Editor Builtin Commands 单文件拆分 | editor command 拆分 |
+| `REQ-069-c` | LXE Editor SceneRuntime 单文件拆分 | scene runtime 拆分 |
+| `REQ-070-a` | PBRT BMW M6 场景转换工具 | 外部 reference scene 转换 |
+| `REQ-071-a` | SurfaceMaterial v2 PBRT Pure Envelope Contract | 071 主线：材质参数合同 |
+| `REQ-071-b` | RenderPathGraph / RenderPassNode / RenderFeature 与 FrameGraph Contract | 显式渲染流程合同 |
+| `REQ-071-c` | SceneResourceTable Parser 拆分与 Resource Ownership | parser 拆分与资源所有权 |
+| `REQ-071-d` | GPUResourceTable、Pipeline Cache 与异步 Upload Task | GPU resource/cache/upload |
+| `REQ-071-e` | Scene Package 快速加载与 MaterialTemplate 组织 | package 与快速加载 |
+| `REQ-071-f` | Helmet / BMW Offline-Realtime 渲染等价验证 | 071 主线验收 |
 
 ## 当前 planned REQ（已讨论，当前不实现，2026-06-01）
 
@@ -105,6 +119,7 @@
 
 ## 历史
 
+- 2026-06-10：新增 `REQ-071-a` 到 `REQ-071-f`，把 SurfaceMaterial pure envelope、RenderPathGraph/RenderFeature、SceneResourceTable parser/resource ownership、GPUResourceTable/pipeline cache/upload task、scene package 和 helmet/BMW offline-realtime 渲染等价验证收敛为一个连续需求族。该族承接 `REQ-067-a/b` 的 SceneResourceTable 资源模型和 `REQ-070-a` 的 BMW M6 转换输入，目标是先把材质/渲染合同说清楚，再实现加载性能和对齐验收。
 - 2026-06-01：新增 `REQ-052-a` 到 `REQ-059-a`，建立 Offline Rendering Lab 主线。路线优先级为 Ground Truth Image Renderer、Bake Asset Generator / PBR Reference、Editor Integrated Preview、Research Sandbox；第一版选择 Vulkan compute 离线 renderer，不以 CPU path tracer 或 Vulkan hardware RT pipeline 起步。随后将 `REQ-054` 拆成 `054-a` renderer foundation/realtime/offline 拆分与 `054-b` compute offline renderer MVP，避免继续扩大当前 2200+ 行 `VulkanRendererImpl`。补充 `REQ-053-b` `assets-downloader`，管理大型网络资产下载、导入、转换和 scene 路径引用，避免 git 仓库膨胀。Bake asset generator 暂不进入 active 实施队列，拆入 `planned/`，记录 reflection probe、irradiance/SH 和 lightmap 的原理与计划；未来执行时再重新取 active REQ 编号。
 - 2026-06-01：主干合并 Offline Rendering Lab 与 3DGS PLY 两条 active 主线时，保留 Offline Rendering Lab 的 `REQ-052-a` 到 `REQ-059-a` 编号，将 3DGS PLY 支持主线顺延为 `REQ-060-a` 到 `REQ-065-a`，避免 active 目录出现重复编号。
 - 2026-05-28：新增 `REQ-060-a` 到 `REQ-065-a`，建立 3DGS PLY 支持主线：先引入 Apache-2.0 的 train scene PLY 样例并调整资产预算，再拆分 loader、runtime、通用 compute pipeline 前置、Vulkan splat pass、editor 验收和系统设计 / 教程文档。

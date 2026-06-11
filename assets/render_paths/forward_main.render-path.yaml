@@ -1,0 +1,42 @@
+schema: lxe.render-path-graph.v1
+name: ForwardMain
+renderPath: Forward
+
+features:
+  toneMapping:
+    uri: effects/tone_mapping.render-feature.yaml
+
+passes:
+  - id: Forward
+    stage: raster
+    dispatch: draw
+    shader: techniques/Forward/pbr
+    filters:
+      renderClass: [surface.opaque]
+      bsdf: [matte, uber, metal, substrate]
+    sources:
+      - geometry.vertex
+      - geometry.index
+      - material.bsdf
+      - scene.camera
+      - scene.lights
+    targets: [hdr.color, depth.main]
+    renderState:
+      cullMode: Back
+      depthTest: true
+      depthWrite: true
+      depthOp: LessEqual
+      blendEnable: false
+
+  - id: PostProcess
+    stage: raster
+    dispatch: fullscreen
+    shader: post_process
+    sources: [hdr.color, feature.toneMapping]
+    targets: [swapchain.color]
+    renderState:
+      cullMode: None
+      depthTest: false
+      depthWrite: false
+      depthOp: Always
+      blendEnable: false

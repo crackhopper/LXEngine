@@ -2,7 +2,7 @@
 
 > `PipelineCache` 是 Vulkan backend 里的 pipeline 存储层。它只做三件事：预构建、查找、必要时补建。
 >
-> 权威 spec: `openspec/specs/pipeline-cache/spec.md`
+> 当前事实以 `src/backend/vulkan/details/pipelines/`、`src/core/pipeline/` 和本页说明为准。
 
 ## 它解决什么问题
 
@@ -56,6 +56,5 @@
 
 ## 关联文档
 
-- `openspec/specs/pipeline-cache/spec.md`
 - `notes/source_analysis/src/core/pipeline/pipeline_identity.md`
 - `notes/source_analysis/src/core/frame_graph/frame_graph.md`

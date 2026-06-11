@@ -11,7 +11,7 @@ tags: [requirements, planning, discuss]
 - `/draft-req` — 完全交互，从零开始问
 - `/draft-req "支持 instanced rendering"` — 有初始种子，直接进入 discovery
 
-**IMPORTANT**: 这个命令**只产出文档**。不生成代码、不触发 `/opsx:propose`。默认只新增一份需求文件；只有当"需求编号必须符合实施顺序"要求触发编号调整 / 拆分旧需求，并且用户确认了调整计划时，才允许调整已有的活动需求编号、拆分活动需求文档和更新相关文档引用。完成后由用户决定下一步（`/finish-req` 或 `/opsx:propose`）。
+**IMPORTANT**: 这个命令**只产出文档**。不生成代码、不触发实现计划。默认只新增一份需求文件；只有当"需求编号必须符合实施顺序"要求触发编号调整 / 拆分旧需求，并且用户确认了调整计划时，才允许调整已有的活动需求编号、拆分活动需求文档和更新相关文档引用。完成后由用户决定下一步（`/finish-req` 或 Superpowers implementation plan）。
 
 **REQ queue invariant**:
 - `REQ 文件号 = 实施顺序`。用户应能按 `notes/requirements/NNN-*.md` 从小到大实施，不需要另记隐藏优先级。
@@ -127,7 +127,7 @@ R3: <具体交付项>
 
 - `notes/requirements/finished/*.md` — 是否有归档项重叠（风险: 重复实现或重复废弃）
 - 活动中的 `notes/requirements/*.md` — 是否有当前进行中的需求与本需求冲突
-- `openspec/changes/**`（含 archive）— 是否有变更已经覆盖了本需求的一部分范围
+- `docs/superpowers/specs/*.md` — 是否有设计已经覆盖了本需求的一部分范围
 
 报告发现，示例：
 
@@ -137,7 +137,7 @@ R3: <具体交付项>
 ⚠ REQ-003a（finished）R2 声明了 `X` 的废弃 — 本需求 R2 也涉及 X。
   → 建议本需求 R2 改为"在 X 已废弃的基础上扩展 Y"，避免重复。
 
-⚠ openspec/changes/archive/2026-04-13-unify-material-system 涉及 MaterialInstance
+⚠ docs/superpowers/specs/2026-06-10-material-contract-v2-design.md 涉及 MaterialInstance
   → 本需求对 MaterialInstance 的改动需要在此之上。
 ```
 
@@ -175,7 +175,7 @@ R3: <具体交付项>
   - 新旧文档都写一段 blockquote 追踪说明，说明拆分来源、拆分日期、保留 / 移出的范围
 - 如果新需求排在所有已知需求之后，编号 = `max(numeric prefix) + 1`
 - 如果新需求要插入到活动需求队列中间，生成调整计划：必要时先拆分受影响的旧需求；能用同一数字槽后缀表达时，新需求拿 `NNN-b` / `NNN-c`，后续活动需求编号保持不变；只有全局顺序变化才让后续活动需求依次后移；同步更新文件名、文档标题、正文中的 `REQ-NNN` / `REQ-NNN-a` 引用
-- 重编号只覆盖 `notes/requirements/*.md` 中尚未归档的活动需求，以及引用这些编号的 `notes/roadmaps/*.md` / `openspec/changes/**/*.md`；不要修改 `notes/requirements/finished/*.md`，除非用户明确要求历史迁移
+- 重编号只覆盖 `notes/requirements/*.md` 中尚未归档的活动需求，以及引用这些编号的 `notes/roadmaps/*.md` / `docs/superpowers/specs/*.md`；不要修改 `notes/requirements/finished/*.md`，除非用户明确要求历史迁移
 - 文件名: `<NNN>-<kebab-case-title>.md` 或 `<NNN-a>-<kebab-case-title>.md`（标题小写 + 连字符，对齐已有文件命名）
 - 文档标题: `# REQ-<NNN>: <中英文标题>` 或 `# REQ-<NNN-a>: <中英文标题>`
 
@@ -268,7 +268,7 @@ R3: <具体交付项>
 如有已确认的拆分 / 编号调整计划：
 - 先拆分受影响的活动需求：收窄原文件范围，新增后置需求文件
 - 再对活动需求执行 `Move` / 重命名
-- 同步更新被拆分 / 编号调整需求的标题、正文引用，以及 `notes/roadmaps/*.md` / `openspec/changes/**/*.md` 中的 `REQ-NNN` / `REQ-NNN-a` 引用
+- 同步更新被拆分 / 编号调整需求的标题、正文引用，以及 `notes/roadmaps/*.md` / `docs/superpowers/specs/*.md` 中的 `REQ-NNN` / `REQ-NNN-a` 引用
 - 再 `Write notes/requirements/<NNN 或 NNN-a>-<title>.md`
 
 如无编号调整计划，直接 `Write notes/requirements/<NNN 或 NNN-a>-<title>.md`
@@ -287,7 +287,7 @@ R3: <具体交付项>
 - 下游解锁: <REQ-ZZZ, ...>
 
 下一步可选:
-- /opsx:propose — 把需求转成 openspec change 开始实施
+- Superpowers implementation plan — 把需求转成可执行实现计划
 - /finish-req <NNN 或 NNN-a> — 代码落地后用它做 verification + 归档
 ```
 
@@ -295,7 +295,7 @@ R3: <具体交付项>
 
 ## Guardrails
 
-- **讨论价值在前半段**: Phase 1-5 是这个命令的核心，不要为了快把它压缩成"你要什么我就写什么"。用户如果想直接跳到生成，让他用 `/opsx:propose`。
+- **讨论价值在前半段**: Phase 1-5 是这个命令的核心，不要为了快把它压缩成"你要什么我就写什么"。用户如果想直接进入实现，让他走 Superpowers implementation plan。
 - **代码引用必须真实**: 每次写 `src/... :LINE` 之前必须用 Grep 确认过行号，禁止编造。
 - **中文为主**: 匹配现有 `notes/requirements/` 风格。代码符号 / 类名 / 文件名保留英文原形。
 - **只落在顶层**: 新需求永远写到 `notes/requirements/`，不写 `finished/`。只有 `/finish-req` 有权移入 `finished/`。

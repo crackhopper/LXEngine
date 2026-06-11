@@ -132,7 +132,7 @@ Shadow depth target 和 swapchain forward target 不是同一种 render target s
 | Pipeline | `src/core/pipeline/`, `src/backend/vulkan/details/pipelines/` | backend-agnostic build desc、target-aware pipeline identity、Vulkan graphics/compute pipeline materialization | 材质参数值更新 |
 | Vulkan backend | `src/backend/vulkan/` | attachment、render pass/framebuffer、descriptor by name、command buffer、submit/present | scene authoring、业务 update |
 | Editor | `src/demos/lxe_editor/` | project/scene runtime、ImGui UI、CommandBus、API/recording 集成 | 新渲染层、engine-level MCP |
-| Notes / Requirements | `notes/`, `openspec/specs/` | 当前能力解释、future/pending 标注、文档导航 | 单独证明实现，最终仍以 `src/` 和 specs 为准 |
+| Notes / Requirements | `notes/`, `docs/superpowers/specs/` | 当前能力解释、future/pending 标注、文档导航 | 单独证明实现，最终仍以 `src/` 和当前设计 spec 为准 |
 
 ## Realtime 与 Offline 共用 RenderWork 主干
 

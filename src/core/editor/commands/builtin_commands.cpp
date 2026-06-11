@@ -708,17 +708,6 @@ splitFieldPath(const std::string &text) {
     return std::make_pair(text.substr(0, marker), text.substr(marker + 1));
   }
 
-  constexpr std::string_view kNodeMaterialBaseColorSuffix =
-      ".nodeMaterial.baseColor";
-  if (text.size() > kNodeMaterialBaseColorSuffix.size() &&
-      text.compare(text.size() - kNodeMaterialBaseColorSuffix.size(),
-                   kNodeMaterialBaseColorSuffix.size(),
-                   kNodeMaterialBaseColorSuffix) == 0) {
-    return std::make_pair(
-        text.substr(0, text.size() - kNodeMaterialBaseColorSuffix.size()),
-        "nodeMaterial.baseColor");
-  }
-
   const usize dot = text.find_last_of('.');
   if (dot == std::string::npos || dot == 0 || dot + 1 >= text.size()) {
     return std::nullopt;
@@ -1076,21 +1065,6 @@ parseMaterialParameterValue(const ShaderPropertyType type,
     return makeOk("materialUri = " + *value,
                   "{\"value\":\"" + jsonEscape(*value) + "\"}");
   }
-  if (field == "nodeMaterial.baseColor") {
-    if (!context.getNodeMaterialBaseColor) {
-      return makeError(
-          "material editing unavailable: baseColor callback is not registered");
-    }
-    const auto value = context.getNodeMaterialBaseColor(path);
-    if (!value.has_value()) {
-      return makeError("node material baseColor not available on node: " +
-                       path);
-    }
-    return makeOk("nodeMaterial.baseColor = (" + formatFloat(value->x) + ", " +
-                      formatFloat(value->y) + ", " + formatFloat(value->z) +
-                      ")",
-                  "{\"value\":" + makeVec3Json(*value) + "}");
-  }
   if (field == "proceduralMaterial.enabled") {
     if (!context.getProceduralMaterialEnabled) {
       return makeError("material editing unavailable: procedural material "
@@ -1268,14 +1242,6 @@ buildMaterialSetInverseCommand(const SceneIoContext &context,
              quoteToken(*value);
     }
   }
-  if (field == "nodeMaterial.baseColor" && context.getNodeMaterialBaseColor) {
-    if (const auto value = context.getNodeMaterialBaseColor(path);
-        value.has_value()) {
-      return "set " + quoteToken(path + ".nodeMaterial.baseColor") + " " +
-             formatFloat(value->x) + " " + formatFloat(value->y) + " " +
-             formatFloat(value->z);
-    }
-  }
   if (field == "proceduralMaterial.enabled" &&
       context.getProceduralMaterialEnabled) {
     if (const auto value = context.getProceduralMaterialEnabled(path);
@@ -1361,7 +1327,6 @@ completeScenePaths(const Scene &scene, const CompletionContext &context) {
     }
   }
   fields.push_back("materialUri");
-  fields.push_back("nodeMaterial.baseColor");
   fields.push_back("proceduralMaterial.enabled");
   std::sort(fields.begin(), fields.end());
   return fields;
@@ -2526,20 +2491,6 @@ setMaterialField(const SceneIoContext &context, const std::string &path,
     }
     return context.setMaterialUri(path, args[valueStartIndex]);
   }
-  if (field == "nodeMaterial.baseColor") {
-    if (args.size() != valueStartIndex + 3) {
-      return makeError("usage: set <path>.nodeMaterial.baseColor <r> <g> <b>");
-    }
-    if (!context.setNodeMaterialBaseColor) {
-      return makeError(
-          "material editing unavailable: baseColor callback is not registered");
-    }
-    const auto value = parseVec3(args, valueStartIndex);
-    if (!value) {
-      return makeError("invalid float for set nodeMaterial.baseColor");
-    }
-    return context.setNodeMaterialBaseColor(path, *value);
-  }
   if (field == "proceduralMaterial.enabled") {
     if (args.size() != valueStartIndex + 1) {
       return makeError(
@@ -3411,39 +3362,6 @@ void registerBuiltinCommands(CommandBus &bus, EditorState &editorState,
           return shadowProjectProbe(scene, args);
         }
         return makeError("unknown probe action: " + args[0]);
-      });
-
-  bus.registerHandler(
-      "apply_material_override",
-      CommandMetadata{"apply_material_override <path> baseColor",
-                      inverseFromMetadata(), true},
-      [&scene, materialContext](std::vector<std::string> args) {
-        if (args.size() != 2) {
-          return makeError("usage: apply_material_override <path> baseColor");
-        }
-        if (args[1] != "baseColor") {
-          return makeError("unknown material override field: " + args[1]);
-        }
-        SceneNode *node = nullptr;
-        const CommandResult found = requireNode(scene, args[0], node);
-        if (!found.ok) {
-          return found;
-        }
-        if (!materialContext.applyMaterialOverride) {
-          return makeError(
-              "material editing unavailable: apply callback is not registered");
-        }
-        const std::string inverseLine = buildMaterialSetInverseCommand(
-            materialContext, args[0], "nodeMaterial.baseColor");
-        CommandResult result =
-            materialContext.applyMaterialOverride(args[0], args[1]);
-        if (result.ok) {
-          result.metadata["scene.rebuild"] = "true";
-        }
-        if (result.ok && !inverseLine.empty()) {
-          result.metadata["inverse.line"] = inverseLine;
-        }
-        return result;
       });
 
   bus.registerHandler(

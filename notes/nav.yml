@@ -94,6 +94,7 @@ nav:
           - 材质模板为什么会影响 Pipeline: concepts/material/template-and-pipeline.md
           - 创建与排错: concepts/material/custom-template.md
           - 未来路线: concepts/material/future-roadmap.md
+          - Material Contract v2: concepts/material/material-contract-v2.md
       - 相机细节:
           - 一次点击怎样穿过像素、NDC 和 Vulkan: concepts/camera/pixel-ndc-vulkan.md
       - 引擎循环:

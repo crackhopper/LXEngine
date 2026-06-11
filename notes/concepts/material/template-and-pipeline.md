@@ -65,16 +65,18 @@ parameters:
 `RenderState` 当前在 `MaterialPassDefinition` 里：
 
 ```yaml
-passes:
+techniques:
   Forward:
-    renderState:
-      cullMode: None
-      depthTest: true
-      depthWrite: true
-      blendEnable: false
+    passes:
+      Opaque:
+        renderState:
+          cullMode: None
+          depthTest: true
+          depthWrite: true
+          blendEnable: false
 ```
 
-这意味着同一个 template 的所有 instance 共享该 pass 的 render state。如果我们需要同一个 shader 和参数结构但不同 blend/cull 配置，当前应通过不同 material/template 或不同 pass 定义表达，而不是在 instance 上动态切换 render state。
+这意味着同一个 template 的所有 instance 共享 selected technique 中该 pass 的 render state。如果我们需要同一个 shader 和参数结构但不同 blend/cull 配置，当前应通过 technique pass 或不同 material/template 表达，而不是在 instance 上动态切换 render state。
 
 ## MaterialTemplate 不是 PipelineCache
 

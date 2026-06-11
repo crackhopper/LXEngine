@@ -2,7 +2,7 @@
 
 当前材质系统像一套按步骤出菜的厨房：`MaterialTemplate` 决定每一步用什么工具，`MaterialInstance` 提供这道菜的参数和纹理，`RenderWorkQueue` 把每一步要执行的 pipeline work 排成列表。未来路线不是推倒这套模型，而是把资源绑定、shader 变量策略和 pass 依赖逐步变得更数据驱动。
 
-> 状态：本页描述 roadmap 设计方向，**尚未实施**。当前可执行行为仍以 `src/`、`openspec/specs/` 和当前概念页为准。
+> 状态：本页描述 roadmap 设计方向，**尚未实施**。当前可执行行为仍以 `src/`、当前设计 spec 和当前概念页为准。
 
 ## 先纠正 bindless 与 PSO 数量的关系
 

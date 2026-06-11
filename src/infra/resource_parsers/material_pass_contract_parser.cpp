@@ -252,6 +252,18 @@ MaterialPassContractParseResult parseMaterialPassContract(
     addDiagnostic(result, fieldPrefix + ".targets", "must be a sequence");
     return result;
   }
+  if (node["shader"].as<std::string>().empty()) {
+    addDiagnostic(result, fieldPrefix + ".shader", "must not be empty");
+    return result;
+  }
+  if (node["sources"].size() == 0) {
+    addDiagnostic(result, fieldPrefix + ".sources", "must not be empty");
+    return result;
+  }
+  if (node["targets"].size() == 0) {
+    addDiagnostic(result, fieldPrefix + ".targets", "must not be empty");
+    return result;
+  }
 
   LX_core::MaterialPassContract pass;
   pass.name = passName;

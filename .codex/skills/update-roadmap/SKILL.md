@@ -23,7 +23,7 @@ Files this skill is allowed to edit:
 - `notes/roadmaps/*.md`
 - `notes/roadmaps/README.md` (only to refresh the phase index, if present)
 
-Never edit `notes/requirements/`, `openspec/`, source code, or `notes/subsystems/`.
+Never edit `notes/requirements/`, `docs/superpowers/specs/`, source code, or `notes/subsystems/`.
 
 ## Required Workflow
 

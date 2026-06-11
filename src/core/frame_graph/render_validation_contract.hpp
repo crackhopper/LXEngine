@@ -22,7 +22,23 @@ struct BindlessValidationResult final {
   std::vector<BindlessValidationDiagnostic> diagnostics;
 };
 
+enum class BindlessSubmissionDecisionKind {
+  Empty,
+  BindlessBatch,
+  LegacyPerItem,
+  StrictValidationRejected,
+};
+
+struct BindlessSubmissionDecision final {
+  BindlessSubmissionDecisionKind kind = BindlessSubmissionDecisionKind::Empty;
+  BindlessValidationResult validation;
+};
+
 [[nodiscard]] BindlessValidationResult
 validateBindlessMigratedQueue(const RenderWorkQueue &queue, StringID pass);
+
+[[nodiscard]] BindlessSubmissionDecision decideBindlessSubmission(
+    const RenderWorkQueue &queue, StringID pass, bool strictValidation,
+    bool migratedPass);
 
 } // namespace LX_core

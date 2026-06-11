@@ -72,18 +72,30 @@ resources:
 
 ```yaml
 shader: blinnphong_0
+defaultTechnique: Forward
 
 variants:
   USE_LIGHTING: true      # -> 全局默认 variant
   USE_UV: true
 
-passes:
+techniques:
   Forward:
-    variants:
-      USE_NORMAL_MAP: false # -> 与全局 variants 合并后编译本 pass shader
+    passes:
+      Opaque:
+        variants:
+          USE_NORMAL_MAP: false # -> 与全局 variants 合并后编译本 pass shader
+  Deferred:
+    passes:
+      GBuffer:
+        shader: blinnphong_0_gbuffer
+  OfflineRT:
+    passes:
+      RayTrace:
+        shader: offline_pbr_direct_ray
+        stage: compute
 ```
 
-当前 loader 会把全局 variants 和 pass 内 variants 合并，再编译每个 pass 的 shader。`variantRules` 可以声明依赖关系，例如 `USE_NORMAL_MAP` 需要 `USE_LIGHTING` 和 `USE_UV` 同时开启。
+当前 loader 会先选择 technique，再把全局 variants 和 selected technique pass 内 variants 合并，编译该 pass 的 shader。`variantRules` 可以声明依赖关系，例如 `USE_NORMAL_MAP` 需要 `USE_LIGHTING` 和 `USE_UV` 同时开启。
 
 ## 我们已经学会了什么
 

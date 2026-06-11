@@ -73,7 +73,7 @@ Only after the target doc is fixed, inspect the docs it directly cites or that d
 
 Typical follow-up targets:
 
-- the referenced `openspec/specs/.../spec.md`
+- the referenced Superpowers design spec when one exists
 - directly linked subsystem docs
 - indexes that summarize subsystem docs
 

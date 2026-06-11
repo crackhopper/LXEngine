@@ -63,4 +63,31 @@ validateBindlessMigratedQueue(const RenderWorkQueue &queue, StringID pass) {
   return result;
 }
 
+BindlessSubmissionDecision decideBindlessSubmission(
+    const RenderWorkQueue &queue, StringID pass, const bool strictValidation,
+    const bool migratedPass) {
+  BindlessSubmissionDecision decision;
+  const auto &items = queue.getItems();
+  if (items.empty()) {
+    decision.kind = BindlessSubmissionDecisionKind::Empty;
+    decision.validation.ok = true;
+    return decision;
+  }
+
+  decision.validation = validateBindlessMigratedQueue(queue, pass);
+  if (decision.validation.ok &&
+      decision.validation.coveredItemCount == items.size()) {
+    decision.kind = BindlessSubmissionDecisionKind::BindlessBatch;
+    return decision;
+  }
+
+  if (strictValidation && migratedPass) {
+    decision.kind = BindlessSubmissionDecisionKind::StrictValidationRejected;
+    return decision;
+  }
+
+  decision.kind = BindlessSubmissionDecisionKind::LegacyPerItem;
+  return decision;
+}
+
 } // namespace LX_core

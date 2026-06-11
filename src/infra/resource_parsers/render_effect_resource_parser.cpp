@@ -1,8 +1,11 @@
 #include "infra/resource_parsers/render_effect_resource_parser.hpp"
+#include "infra/resource_parsers/material_pass_contract_parser.hpp"
 
 #include <yaml-cpp/yaml.h>
 
+#include <optional>
 #include <string>
+#include <utility>
 
 namespace LX_infra {
 namespace {
@@ -18,55 +21,9 @@ void addDiagnostic(ParsedRenderEffectResource &result,
   addDiagnostic(result, uri.string(), field, message);
 }
 
-std::optional<LX_core::MaterialPassStage>
-parseStage(const std::string &value) {
-  if (value == "raster") {
-    return LX_core::MaterialPassStage::Raster;
-  }
-  if (value == "compute") {
-    return LX_core::MaterialPassStage::Compute;
-  }
-  return std::nullopt;
-}
-
-std::optional<LX_core::MaterialPassDispatch>
-parseDispatch(const std::string &value) {
-  if (value == "draw") {
-    return LX_core::MaterialPassDispatch::Draw;
-  }
-  if (value == "fullscreen") {
-    return LX_core::MaterialPassDispatch::Fullscreen;
-  }
-  if (value == "compute") {
-    return LX_core::MaterialPassDispatch::Compute;
-  }
-  return std::nullopt;
-}
-
-std::optional<LX_core::CullMode> parseCullMode(const YAML::Node &node) {
-  const auto value = node.as<std::string>();
-  if (value == "None") {
-    return LX_core::CullMode::None;
-  }
-  if (value == "Front") {
-    return LX_core::CullMode::Front;
-  }
-  if (value == "Back") {
-    return LX_core::CullMode::Back;
-  }
-  return std::nullopt;
-}
-
-std::vector<std::string> parseStringList(const YAML::Node &node) {
-  std::vector<std::string> values;
-  for (const auto &entry : node) {
-    values.push_back(entry.as<std::string>());
-  }
-  return values;
-}
-
-bool requireField(const YAML::Node &node, ParsedRenderEffectResource &result,
-                  const std::string &uri, const std::string &field) {
+bool requireField(ParsedRenderEffectResource &result,
+                  const LX_core::ResourceUri &uri, const YAML::Node &node,
+                  const std::string &field) {
   if (node) {
     return true;
   }
@@ -74,93 +31,228 @@ bool requireField(const YAML::Node &node, ParsedRenderEffectResource &result,
   return false;
 }
 
-std::optional<LX_core::RenderState>
-parseRenderState(const YAML::Node &node, ParsedRenderEffectResource &result,
-                 const std::string &uri, const std::string &field) {
-  if (!node || !node.IsMap()) {
-    addDiagnostic(result, uri, field, "missing required field");
-    return std::nullopt;
+std::optional<LX_core::RenderPath> parseRenderPath(std::string value) {
+  if (value == "Forward") {
+    return LX_core::RenderPath::Forward;
   }
-
-  LX_core::RenderState state;
-  if (!requireField(node["cullMode"], result, uri, field + ".cullMode") ||
-      !requireField(node["depthTest"], result, uri, field + ".depthTest") ||
-      !requireField(node["depthWrite"], result, uri, field + ".depthWrite")) {
-    return std::nullopt;
+  if (value == "Deferred") {
+    return LX_core::RenderPath::Deferred;
   }
-
-  const auto cullMode = parseCullMode(node["cullMode"]);
-  if (!cullMode.has_value()) {
-    addDiagnostic(result, uri, field + ".cullMode", "unknown cull mode");
-    return std::nullopt;
+  if (value == "OfflineRT") {
+    return LX_core::RenderPath::OfflineRT;
   }
-  state.cullMode = *cullMode;
-  state.depthTestEnable = node["depthTest"].as<bool>();
-  state.depthWriteEnable = node["depthWrite"].as<bool>();
-  if (const auto blend = node["blendEnable"]) {
-    state.blendEnable = blend.as<bool>();
-  }
-  return state;
+  return std::nullopt;
 }
 
-std::optional<LX_core::MaterialPassContract>
-parsePass(const std::string &passName, const YAML::Node &node,
-          ParsedRenderEffectResource &result, const std::string &uri) {
-  const std::string base = "passes." + passName;
+std::vector<std::string> parseStringList(const YAML::Node &node) {
+  std::vector<std::string> values;
+  if (!node || !node.IsSequence()) {
+    return values;
+  }
+  values.reserve(node.size());
+  for (const auto &entry : node) {
+    values.push_back(entry.as<std::string>());
+  }
+  return values;
+}
+
+LX_core::RenderPassNodeFilters parseFilters(const YAML::Node &filters) {
+  LX_core::RenderPassNodeFilters parsed;
+  if (!filters || !filters.IsMap()) {
+    return parsed;
+  }
+  parsed.renderClasses = parseStringList(filters["renderClass"]);
+  parsed.bsdfTypes = parseStringList(filters["bsdf"]);
+  return parsed;
+}
+
+std::optional<LX_core::RenderPassNode>
+parseRenderPassNode(ParsedRenderEffectResource &result,
+                    const LX_core::ResourceUri &uri, const YAML::Node &node) {
   if (!node || !node.IsMap()) {
-    addDiagnostic(result, uri, base, "pass must be a map");
+    addDiagnostic(result, uri, "passes", "pass must be a map");
     return std::nullopt;
   }
-  if (!requireField(node["shader"], result, uri, base + ".shader") ||
-      !requireField(node["stage"], result, uri, base + ".stage") ||
-      !requireField(node["dispatch"], result, uri, base + ".dispatch") ||
-      !requireField(node["sources"], result, uri, base + ".sources") ||
-      !requireField(node["targets"], result, uri, base + ".targets")) {
-    return std::nullopt;
-  }
-  auto renderState =
-      parseRenderState(node["renderState"], result, uri, base + ".renderState");
-  if (!renderState.has_value()) {
+  if (!requireField(result, uri, node["id"], "passes[].id")) {
     return std::nullopt;
   }
 
-  const auto stage = parseStage(node["stage"].as<std::string>());
-  if (!stage.has_value()) {
-    addDiagnostic(result, uri, base + ".stage", "unknown stage");
-    return std::nullopt;
+  const std::string id = node["id"].as<std::string>();
+  const std::string fieldPrefix = "passes." + id;
+  auto parsedPass = parseMaterialPassContract(id, node, fieldPrefix);
+  for (const std::string &diagnostic : parsedPass.diagnostics) {
+    result.diagnostics.push_back(uri.string() + ": " + diagnostic);
   }
-  const auto dispatch = parseDispatch(node["dispatch"].as<std::string>());
-  if (!dispatch.has_value()) {
-    addDiagnostic(result, uri, base + ".dispatch", "unknown dispatch");
-    return std::nullopt;
-  }
-  if (!node["sources"].IsSequence()) {
-    addDiagnostic(result, uri, base + ".sources", "must be a sequence");
-    return std::nullopt;
-  }
-  if (!node["targets"].IsSequence()) {
-    addDiagnostic(result, uri, base + ".targets", "must be a sequence");
+  if (!parsedPass.pass.has_value()) {
     return std::nullopt;
   }
 
-  LX_core::MaterialPassContract pass;
-  pass.name = passName;
-  pass.shaderUri = node["shader"].as<std::string>();
-  pass.stage = *stage;
-  pass.dispatch = *dispatch;
-  pass.sources = parseStringList(node["sources"]);
-  pass.targets = parseStringList(node["targets"]);
-  pass.renderState = *renderState;
-  if (const auto writeMode = node["writeMode"]) {
-    pass.writeMode = writeMode.as<std::string>();
-  }
+  LX_core::RenderPassNode pass;
+  pass.id = id;
+  pass.shaderUri = parsedPass.pass->shaderUri;
+  pass.stage = parsedPass.pass->stage;
+  pass.dispatch = parsedPass.pass->dispatch;
+  pass.sources = std::move(parsedPass.pass->sources);
+  pass.targets = std::move(parsedPass.pass->targets);
+  pass.renderState = parsedPass.pass->renderState;
+  pass.writeMode = std::move(parsedPass.pass->writeMode);
+  pass.filters = parseFilters(node["filters"]);
   return pass;
 }
 
-std::optional<LX_core::MaterialPassContract>
-parsePass(const std::string &passName, const YAML::Node &node,
-          ParsedRenderEffectResource &result, const LX_core::ResourceUri &uri) {
-  return parsePass(passName, node, result, uri.string());
+void parseFeatureDependencies(ParsedRenderEffectResource &result,
+                              const LX_core::ResourceUri &uri,
+                              const YAML::Node &features,
+                              LX_core::RenderPathGraph &graph) {
+  if (!features) {
+    return;
+  }
+  if (!features.IsMap()) {
+    addDiagnostic(result, uri, "features", "features must be a map");
+    return;
+  }
+  for (auto it = features.begin(); it != features.end(); ++it) {
+    const std::string slot = it->first.as<std::string>();
+    const YAML::Node featureNode = it->second;
+    const std::string field = "features." + slot + ".uri";
+    if (!featureNode || !featureNode.IsMap() || !featureNode["uri"]) {
+      addDiagnostic(result, uri, field, "missing required field");
+      continue;
+    }
+    graph.features.push_back(
+        LX_core::RenderPathFeatureDependency{slot,
+                                             featureNode["uri"].as<std::string>()});
+  }
+}
+
+void parseRenderPathGraph(ParsedRenderEffectResource &result,
+                          const LX_core::ResourceUri &uri,
+                          const YAML::Node &root) {
+  bool requiredFields = true;
+  requiredFields &= requireField(result, uri, root["name"], "name");
+  requiredFields &= requireField(result, uri, root["renderPath"], "renderPath");
+  requiredFields &= requireField(result, uri, root["passes"], "passes");
+  if (!requiredFields) {
+    return;
+  }
+  if (!root["passes"].IsSequence() || root["passes"].size() == 0) {
+    addDiagnostic(result, uri, "passes", "missing non-empty pass sequence");
+    return;
+  }
+
+  LX_core::RenderPathGraph graph;
+  graph.name = root["name"].as<std::string>();
+  auto renderPath = parseRenderPath(root["renderPath"].as<std::string>());
+  if (!renderPath.has_value()) {
+    addDiagnostic(result, uri, "renderPath",
+                  "expected Forward, Deferred, or OfflineRT");
+    return;
+  }
+  graph.renderPath = *renderPath;
+  parseFeatureDependencies(result, uri, root["features"], graph);
+
+  for (const auto &passNode : root["passes"]) {
+    auto parsedPass = parseRenderPassNode(result, uri, passNode);
+    if (parsedPass.has_value()) {
+      graph.passes.push_back(std::move(*parsedPass));
+    }
+  }
+  if (!result.diagnostics.empty()) {
+    return;
+  }
+  result.renderPathGraph = std::move(graph);
+}
+
+std::string scalarNodeToString(const YAML::Node &node) {
+  if (!node) {
+    return {};
+  }
+  return node.as<std::string>();
+}
+
+void rejectRenderFeatureFlowFields(ParsedRenderEffectResource &result,
+                                   const LX_core::ResourceUri &uri,
+                                   const YAML::Node &root) {
+  for (auto it = root.begin(); it != root.end(); ++it) {
+    if (!it->first.IsScalar()) {
+      addDiagnostic(result, uri, "$", "field names must be scalar strings");
+      continue;
+    }
+    const std::string key = it->first.as<std::string>();
+    if (key == "schema" || key == "name" || key == "feature" ||
+        key == "parameters") {
+      continue;
+    }
+    if (key == "shader" || key == "passes" || key == "phase" ||
+        key == "renderState" || key == "techniques") {
+      addDiagnostic(result, uri, key,
+                    "RenderFeature is a pure envelope; render-flow fields "
+                    "belong in RenderPathGraph");
+    } else {
+      addDiagnostic(result, uri, key, "unsupported render feature field");
+    }
+  }
+}
+
+void parseRenderFeatureParameters(ParsedRenderEffectResource &result,
+                                  const LX_core::ResourceUri &uri,
+                                  const YAML::Node &parameters,
+                                  LX_core::RenderFeature &feature) {
+  if (!parameters) {
+    return;
+  }
+  if (!parameters.IsMap()) {
+    addDiagnostic(result, uri, "parameters", "parameters must be a map");
+    return;
+  }
+  for (auto it = parameters.begin(); it != parameters.end(); ++it) {
+    const std::string name = it->first.as<std::string>();
+    const YAML::Node parameterNode = it->second;
+    const std::string field = "parameters." + name;
+    if (!parameterNode || !parameterNode.IsMap()) {
+      addDiagnostic(result, uri, field, "parameter must be a map");
+      continue;
+    }
+    if (!parameterNode["kind"] || !parameterNode["kind"].IsScalar()) {
+      addDiagnostic(result, uri, field + ".kind", "missing required field");
+      continue;
+    }
+    LX_core::RenderFeatureParameter parameter;
+    parameter.kind = parameterNode["kind"].as<std::string>();
+    if (parameterNode["value"]) {
+      parameter.value = scalarNodeToString(parameterNode["value"]);
+    }
+    if (parameterNode["uri"]) {
+      parameter.uri = parameterNode["uri"].as<std::string>();
+    }
+    if (parameterNode["valueType"]) {
+      parameter.valueType = parameterNode["valueType"].as<std::string>();
+    }
+    feature.parameters.emplace(name, std::move(parameter));
+  }
+}
+
+void parseRenderFeature(ParsedRenderEffectResource &result,
+                        const LX_core::ResourceUri &uri,
+                        const YAML::Node &root) {
+  rejectRenderFeatureFlowFields(result, uri, root);
+
+  bool requiredFields = true;
+  requiredFields &= requireField(result, uri, root["name"], "name");
+  requiredFields &= requireField(result, uri, root["feature"], "feature");
+  if (!requiredFields) {
+    return;
+  }
+
+  LX_core::RenderFeature feature;
+  feature.name = root["name"].as<std::string>();
+  feature.feature = root["feature"].as<std::string>();
+  parseRenderFeatureParameters(result, uri, root["parameters"], feature);
+
+  if (!result.diagnostics.empty()) {
+    return;
+  }
+  result.renderFeature = std::move(feature);
 }
 
 } // namespace
@@ -181,48 +273,25 @@ RenderEffectResourceParser::parse(const LX_core::ResourceUri &uri,
     addDiagnostic(result, uri, "$", "root must be a map");
     return result;
   }
-  if (!root["schema"] || root["schema"].as<std::string>() !=
-                             "lxe.render-effect.v1") {
-    addDiagnostic(result, uri, "schema", "expected lxe.render-effect.v1");
-    return result;
-  }
-  if (!root["phase"] || !root["phase"].IsScalar()) {
-    addDiagnostic(result, uri, "phase", "missing required field");
+  if (!root["schema"] || !root["schema"].IsScalar()) {
+    addDiagnostic(result, uri, "schema",
+                  "expected lxe.render-path-graph.v1 or "
+                  "lxe.render-feature.v1");
     return result;
   }
 
-  LX_core::RenderEffect effect;
-  const std::string phase = root["phase"].as<std::string>();
-  if (phase == "pre") {
-    effect.phase = LX_core::RenderEffectPhase::Pre;
-  } else if (phase == "post") {
-    effect.phase = LX_core::RenderEffectPhase::Post;
-  } else {
-    addDiagnostic(result, uri, "phase", "expected pre or post");
+  const std::string schema = root["schema"].as<std::string>();
+  if (schema == "lxe.render-path-graph.v1") {
+    parseRenderPathGraph(result, uri, root);
     return result;
   }
-  if (const auto name = root["name"]) {
-    effect.name = name.as<std::string>();
-  }
-  effect.technique.name = effect.name.empty() ? "default" : effect.name;
-
-  const YAML::Node passes = root["passes"];
-  if (!passes || !passes.IsMap() || passes.size() == 0) {
-    addDiagnostic(result, uri, "passes", "missing non-empty passes map");
+  if (schema == "lxe.render-feature.v1") {
+    parseRenderFeature(result, uri, root);
     return result;
-  }
-  for (auto it = passes.begin(); it != passes.end(); ++it) {
-    const std::string passName = it->first.as<std::string>();
-    auto pass = parsePass(passName, it->second, result, uri);
-    if (pass.has_value()) {
-      effect.technique.passes.push_back(std::move(*pass));
-    }
   }
 
-  if (!result.diagnostics.empty()) {
-    return result;
-  }
-  result.effect = std::move(effect);
+  addDiagnostic(result, uri, "schema",
+                "expected lxe.render-path-graph.v1 or lxe.render-feature.v1");
   return result;
 }
 

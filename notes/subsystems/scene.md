@@ -2,7 +2,7 @@
 
 > Scene 负责持有 renderables、camera、light，并为 `RenderWorkQueue` 提供 scene-level 资源。真正的 work item 组装消费 `SceneNode` 预验证结果。
 >
-> 相关 spec: `openspec/specs/scene-node-validation/spec.md` + `openspec/specs/frame-graph/spec.md` + `openspec/specs/pipeline-signature/spec.md`
+> 相关实现入口：`src/core/scene/`、`src/core/frame_graph/`、`src/core/pipeline/`
 
 ## 深入阅读
 

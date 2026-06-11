@@ -573,77 +573,66 @@ Expected: commit succeeds after envelope-only unit tests pass.
 **Files:**
 - Modify: `src/infra/material_loader/generic_material_loader.hpp`
 - Modify: `src/infra/material_loader/generic_material_loader.cpp`
-- Modify: `src/test/integration/test_generic_material_loader.cpp` or replace with a smaller strict-v2 test.
+- Modify: `src/test/integration/test_material_v2_resource_dependencies.cpp`
+- Create: `src/test/integration/test_default_material_asset_audit.cpp`
+- Modify: `src/test/CMakeLists.txt`
 
-- [ ] **Step 1: Replace loader implementation**
+### 2026-06-11 Code Review Update
 
-Replace `loadGenericMaterial` body with strict v2 loading:
+Current implementation state after review:
+
+- `GenericMaterialLoader` is now a thin v2 wrapper. It resolves the material path, loads YAML, requires root `schema: lxe.material.v2`, and passes the full root YAML to `MaterialResourceParser`.
+- The old material-local path is removed from `src/infra/material_loader/generic_material_loader.cpp`: no variant merge, shader compilation, reflection validation, `defaultTechnique` / `techniques` selection, root `parameters` application, or root `resources` texture loading remains.
+- Non-v2 `.material` files now fatal before any shader or technique work. `testGenericMaterialLoaderRejectsMaterialLocalTechniqueFiles` covers a realistic old `shader/defaultTechnique/techniques` file and expects an `lxe.material.v2` diagnostic.
+- `test_default_material_asset_audit` audits default top-level runtime material assets under `assets/materials/*.material`. It parses YAML and checks root keys, so legal `bsdf.parameters` envelopes do not get confused with forbidden root `parameters`.
+- `assets/materials/pbr.material` and `assets/materials/pbr_gold.material` are currently pure v2 files at the root: `schema` plus `bsdf`.
+
+Review finding to carry forward:
+
+- `GenericMaterialLoadOptions` still exposes old option names (`forceIbl`, `alphaTransparency`, `technique`) and `scene_runtime.cpp` still builds cache keys from them, while the strict loader ignores the options. This is not part of the material-local technique parser anymore, but the API shape is stale. Clean it up in the scene-runtime/API cleanup portion of this hard cut so callers cannot infer that per-material technique selection still exists.
+
+- [x] **Step 1: Replace loader implementation**
+
+`loadGenericMaterial` has been reduced to strict v2 loading. The overload
+without a resource table creates a temporary `SceneResourceTable`; the overload
+with `SceneResourceTable &` preserves dependency handles in the caller's table.
+The important behavior is:
 
 ```cpp
-LX_core::MaterialInstanceSharedPtr
-loadGenericMaterial(const fs::path &materialPath,
-                    const GenericMaterialLoadOptions &) {
-  const fs::path resolvedMaterialPath = materialPath.is_absolute()
-                                            ? materialPath
-                                            : resolveRuntimePath(materialPath);
-  if (!fs::exists(resolvedMaterialPath)) {
-    fatalLoader("material file not found: " + materialPath.string());
-  }
-
-  YAML::Node root;
-  try {
-    root = YAML::LoadFile(resolvedMaterialPath.string());
-  } catch (const YAML::Exception &e) {
-    fatalLoader("failed to parse material file: " + std::string(e.what()));
-  }
-  if (!root || !root.IsMap()) {
-    fatalLoader("material file root is not a YAML map: " +
-                resolvedMaterialPath.string());
-  }
-  if (!root["schema"] || !root["schema"].IsScalar() ||
-      root["schema"].as<std::string>() != "lxe.material.v2") {
-    fatalLoader(resolvedMaterialPath.string() +
-                ": only schema lxe.material.v2 is supported");
-  }
-
-  const LX_core::ResourceUri materialUri(
-      fs::relative(resolvedMaterialPath).string());
-  LX_core::SceneResourceTable table;
-  MaterialResourceParser parser;
-  ParsedMaterialResource parsed = parser.parse(table, materialUri,
-                                               YAML::Dump(root));
-  if (!parsed.diagnostics.empty() || !parsed.instance) {
-    std::ostringstream message;
-    message << materialUri.string() << ": invalid material v2 contract";
-    for (const std::string &diagnostic : parsed.diagnostics) {
-      message << "\n  " << diagnostic;
-    }
-    fatalLoader(message.str());
-  }
-  return parsed.instance->cloneInstanceData();
+if (!root.IsMap()) {
+  fatalLoader("material file root is not a YAML map: " +
+              resolvedMaterialPath.string());
 }
+if (!isMaterialV2Contract(root)) {
+  fatalLoader(materialUri.string() +
+              ": only schema lxe.material.v2 material files are accepted");
+}
+
+MaterialResourceParser parser;
+ParsedMaterialResource parsed = parser.parse(resourceTable, materialUri,
+                                             YAML::Dump(root));
+validateParsedMaterialV2Envelope(parsed, materialUri);
+return parsed.instance->cloneInstanceData();
 ```
 
 Delete old helper functions for variants, parameter application, resource application, shader compilation, and pass compilation from this file.
 
-- [ ] **Step 2: Replace loader tests**
+- [x] **Step 2: Replace loader tests**
 
-Replace `src/test/integration/test_generic_material_loader.cpp` with strict coverage:
+Strict loader coverage now lives in `src/test/integration/test_material_v2_resource_dependencies.cpp`:
 
 ```cpp
-void testDefaultPbrLoadsAsV2Only() {
-  auto root = findProjectRoot();
-  ScopedCurrentPath currentPath(root);
-  auto mat = LX_infra::loadGenericMaterial(root / "assets/materials/pbr.material");
-  REQUIRE(mat != nullptr);
-  REQUIRE(mat->getBsdfType() == "uber");
-  REQUIRE(mat->getMaterialEnvelope(LX_core::StringID("Kd")).has_value());
-}
-
-void testNonV2MaterialIsRejected() {
-  auto path = makeTempMaterialPath("legacy_rejected");
-  ScopedTempFile temp(path);
-  std::ofstream(path) << "shader: techniques/Forward/pbr\n";
+void testGenericMaterialLoaderRejectsMaterialLocalTechniqueFiles() {
+  auto path = root / "materials" / "legacy_technique.material";
+  writeFile(path, R"(
+shader: techniques/Forward/pbr
+defaultTechnique: Forward
+techniques:
+  Forward:
+    passes:
+      Forward:
+        shader: techniques/Forward/pbr
+)");
   bool rejected = false;
   try {
     (void)LX_infra::loadGenericMaterial(path);
@@ -655,21 +644,30 @@ void testNonV2MaterialIsRejected() {
 }
 ```
 
-If this test target was removed in Task 1, create a new target named
-`test_surface_material_loader` instead.
+`src/test/integration/test_default_material_asset_audit.cpp` provides the
+source audit for `assets/materials/*.material` root keys:
 
-- [ ] **Step 3: Run loader tests**
+```cpp
+const std::vector<std::string> legacyRootKeys{
+    "shader", "defaultTechnique", "techniques", "parameters", "resources"};
+```
+
+It checks the YAML root only. Do not replace it with a plain text grep for
+`parameters:` because `bsdf.parameters` is the valid v2 envelope location.
+
+- [x] **Step 3: Run loader tests**
 
 Run:
 
 ```bash
-ninja -C build test_surface_material_loader test_material_v2_parser
+cmake --build build --target test_material_v2_resource_dependencies test_default_material_asset_audit
+ctest --test-dir build --output-on-failure -R "test_material_v2_resource_dependencies|test_default_material_asset_audit"
 ```
 
-If the target is still `test_generic_material_loader`, run:
+Broader compile gate:
 
 ```bash
-ninja -C build test_generic_material_loader test_material_v2_parser
+cmake --build build --target BuildTest
 ```
 
 Expected: PASS. No shader compiler is involved in material loading.
@@ -679,7 +677,10 @@ Expected: PASS. No shader compiler is involved in material loading.
 Run:
 
 ```bash
-git add src/infra/material_loader src/test/integration src/test/CMakeLists.txt
+git add src/infra/material_loader/generic_material_loader.* \
+  src/test/integration/test_material_v2_resource_dependencies.cpp \
+  src/test/integration/test_default_material_asset_audit.cpp \
+  src/test/CMakeLists.txt
 git commit -m "Make material loader strict v2 only"
 ```
 

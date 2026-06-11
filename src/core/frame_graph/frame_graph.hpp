@@ -5,11 +5,13 @@
 #include "core/frame_graph/render_work_build_context.hpp"
 #include "core/rhi/gpu_resource.hpp"
 #include "core/utils/string_table.hpp"
+#include <optional>
 #include <string>
 #include <vector>
 
 namespace LX_core {
 
+class GraphResourceRegistry;
 class Scene; // forward decl
 
 struct FrameGraphResourceRef {
@@ -30,14 +32,17 @@ struct FrameGraphRead {
 
 struct FrameGraphWrite {
   FrameGraphResourceRef resource;
+  std::optional<std::string> writeMode;
 };
+
+enum class FrameGraphPhase { PreEffect, Material, PostEffect, Debug };
 
 /*
 @source_analysis.section FramePass：pass 身份、target、queue 与资源流
 `FramePass` 把一条渲染 pass 的 core 层声明打包成一个结构体：
 
-- `name`：StringID，匹配 REQ-007 的 `Pass_*` 常量；它是这条 pass 在 scene-level
-  资源筛选、material pass 选择、shader 变体合并里的统一身份
+- `name`：StringID，来自 material/effect technique 的 pass 身份；它是这条 pass
+  在 scene-level 资源筛选、material pass 选择、shader 变体合并里的统一身份
 - `target`：这条 pass 的输出形状，使用 `RenderTargetDesc` 保留 offscreen /
   depth-only 等结构性描述；旧的 scene camera matching 边界再转回 `RenderTarget`
 - `queue`：这条 pass 内部的 RenderWorkItem 收口（见 `render_queue.md`）
@@ -60,6 +65,8 @@ struct FramePass {
   RenderWorkQueue queue;
   std::vector<FrameGraphRead> reads;
   std::vector<FrameGraphWrite> writes;
+  FrameGraphPhase phase = FrameGraphPhase::Material;
+  u32 stableOrder = 0;
 };
 
 struct CompiledFrameGraphPass {
@@ -67,6 +74,7 @@ struct CompiledFrameGraphPass {
   RenderTargetDesc target;
   std::vector<FrameGraphRead> reads;
   std::vector<FrameGraphWrite> writes;
+  usize sourcePassIndex = 0;
 };
 
 class FrameGraphSampledResource final : public IGpuResource {
@@ -104,14 +112,17 @@ private:
 `FrameGraph` 是把 scene 翻译成"按 pass 组织的 RenderWorkItem 列表"并校验
 pass 间资源声明的入口。它的核心职责包括：
 
-- 持有 `vector<FramePass>`：通过 `addPass` 累加，顺序即提交顺序
+- 持有 `vector<FramePass>`：通过 `addPass` 累加，顺序是 declaration / original
+  insertion order；真正的执行顺序由 `compile` 输出的 DAG order 决定
 - 在 `build` 时按 pass 顺序逐个调用 `RenderWorkQueue::build`，
   把 `pass.target` 经 `RenderTarget` 兼容外壳透传下去（REQ-009 target 轴的入口）
-- 在 `compile` 时按声明顺序校验 read/write 资源：read 只能引用此前 pass 写过
-  的资源，write 不能重名，也不能写 unnamed resource
+- 在 `compile` 时用 `GraphResourceRegistry` 校验 source / target 名称，
+  将非 imported source 连接到对应 producer，并按资源依赖 DAG 排序 pass
+- 编译排序的稳定兜底顺序是 phase、`stableOrder`、原始插入 index；phase
+  约束保证 PreEffect 先于 Material、Material 先于 PostEffect、非 Debug 先于 Debug
 
-注意它仍然不做 pass reorder、不做 attachment 复用，也不持有 backend attachment
-资源；这些都留给 backend 执行层。core 层这里只提供声明顺序的最小资源图和
+注意它仍然不做 attachment 复用，也不持有 backend attachment 资源；这些都留给
+backend 执行层。core 层这里只提供 registry-backed 资源依赖图、稳定 pass 顺序和
 per-pass queue 预构建。
 
 跨 pass 唯一的协调动作是 `collectAllPipelineBuildDescs`：在所有 queue 输出
@@ -125,6 +136,8 @@ public:
 
   void build(const RenderWorkBuildContext &context);
 
+  [[nodiscard]] CompiledFrameGraph
+  compile(const GraphResourceRegistry &registry) const;
   [[nodiscard]] CompiledFrameGraph compile() const;
 
   std::vector<PipelineBuildDesc> collectAllPipelineBuildDescs() const;
