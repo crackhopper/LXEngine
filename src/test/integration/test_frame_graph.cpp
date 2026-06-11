@@ -60,6 +60,29 @@ bool approxMatrix(const Mat4f &a, const Mat4f &b, float epsilon = 0.001f) {
   return true;
 }
 
+usize countResourcesNamed(const DescriptorResourceList &resources,
+                          StringID bindingName) {
+  return static_cast<usize>(std::count_if(
+      resources.begin(), resources.end(),
+      [bindingName](const DescriptorResourceRef &resource) {
+        return resource.getBindingName() == bindingName;
+      }));
+}
+
+std::optional<std::reference_wrapper<const DescriptorResourceRef>>
+findResourceNamed(const DescriptorResourceList &resources,
+                  StringID bindingName) {
+  const auto it = std::find_if(
+      resources.begin(), resources.end(),
+      [bindingName](const DescriptorResourceRef &resource) {
+        return resource.getBindingName() == bindingName;
+      });
+  if (it == resources.end()) {
+    return std::nullopt;
+  }
+  return std::cref(*it);
+}
+
 // ---------------------------------------------------------------------------
 // Fakes
 // ---------------------------------------------------------------------------
@@ -1325,6 +1348,18 @@ void testDefaultForwardRenderPathGraphPassSetValidation() {
              },
              "missing required pass"),
          "default forward graph should reject missing required pass ids");
+
+  RenderPathGraph duplicate = valid;
+  duplicate.passes.push_back(
+      makeRenderPassNode("Forward", {"scene.camera"}, {"hdr.color"}));
+  EXPECT(throwsInvalidArgument(
+             [&] {
+               validateRenderPathGraphPassSet(
+                   duplicate, {Pass_Forward, Pass_PostProcess},
+                   {Pass_Forward, Pass_PostProcess});
+             },
+             "duplicate pass"),
+         "default forward graph should reject duplicate pass ids");
 }
 
 void testDefaultRenderPathGraphOrderComesFromSourceTargetDag() {
@@ -1766,30 +1801,34 @@ void testMultiCameraTargetFilter() {
   scene->addCamera(camB);
 
   auto resA = scene->getSceneLevelResources(Pass_Forward, targetA);
-  EXPECT(resA.size() == 1, "Forward targetA: camA UBO only");
+  EXPECT(countResourcesNamed(resA, StringID("CameraUBO")) == 1,
+         "Forward targetA: exactly camA UBO");
 
   // For targetB: only camB.
   auto resB = scene->getSceneLevelResources(Pass_Forward, targetB);
-  EXPECT(resB.size() == 1, "Forward targetB: camB UBO only");
+  EXPECT(countResourcesNamed(resB, StringID("CameraUBO")) == 1,
+         "Forward targetB: exactly camB UBO");
 
   // Cross-check camera UBO identity: scene resources come from
   // SceneResourceTable handles, not from CameraComponent-owned compatibility
   // data.
-  if (resA.size() == 1 && resB.size() == 1) {
+  const auto resACamera = findResourceNamed(resA, StringID("CameraUBO"));
+  const auto resBCamera = findResourceNamed(resB, StringID("CameraUBO"));
+  if (resACamera.has_value() && resBCamera.has_value()) {
     const auto camAComponent = camA->getComponent<CameraComponent>();
     const auto camBComponent = camB->getComponent<CameraComponent>();
     const auto camAUbo = scene->resources().getCameraUboResource(
         camAComponent->get().getCameraHandle());
     const auto camBUbo = scene->resources().getCameraUboResource(
         camBComponent->get().getCameraHandle());
-    EXPECT(resA[0].isResource() && camAUbo.isValid() &&
-               resA[0].resource().getBackendCacheIdentity() ==
+    EXPECT(resACamera->get().isResource() && camAUbo.isValid() &&
+               resACamera->get().resource().getBackendCacheIdentity() ==
                    camAUbo.getBackendCacheIdentity(),
-           "resA[0] is camA's table-owned UBO");
-    EXPECT(resB[0].isResource() && camBUbo.isValid() &&
-               resB[0].resource().getBackendCacheIdentity() ==
+           "resA CameraUBO is camA's table-owned UBO");
+    EXPECT(resBCamera->get().isResource() && camBUbo.isValid() &&
+               resBCamera->get().resource().getBackendCacheIdentity() ==
                    camBUbo.getBackendCacheIdentity(),
-           "resB[0] is camB's table-owned UBO");
+           "resB CameraUBO is camB's table-owned UBO");
   }
 }
 
@@ -1800,7 +1839,7 @@ void testOffscreenDepthTargetDoesNotMatchDefaultCamera() {
       RenderTarget{RenderTargetDesc::offscreenDepth(ImageFormat::D32Float)};
   const auto resources = scene->getSceneLevelResources(Pass_Forward, depthOnly);
 
-  EXPECT(resources.empty(),
+  EXPECT(countResourcesNamed(resources, StringID("CameraUBO")) == 0,
          "offscreen depth target excludes default swapchain camera resources");
 }
 
@@ -1817,12 +1856,20 @@ void testMultiLightPassFilter() {
   attachLightNode(scene, lightBoth, "both_light");
 
   auto resForward = scene->getSceneLevelResources(Pass_Forward, RenderTarget{});
-  EXPECT(resForward.size() == 4,
-         "Pass_Forward: 1 cam + 2 matching LightUBOs + SceneLightsUBO");
+  EXPECT(countResourcesNamed(resForward, StringID("CameraUBO")) == 1,
+         "Pass_Forward: 1 matching camera UBO");
+  EXPECT(countResourcesNamed(resForward, StringID("LightUBO")) == 2,
+         "Pass_Forward: 2 matching LightUBOs");
+  EXPECT(countResourcesNamed(resForward, StringID("SceneLightsUBO")) == 1,
+         "Pass_Forward: SceneLightsUBO");
 
   auto resShadow = scene->getSceneLevelResources(Pass_Shadow, RenderTarget{});
-  EXPECT(resShadow.size() == 4,
-         "Pass_Shadow: 1 cam + 2 matching LightUBOs + SceneLightsUBO");
+  EXPECT(countResourcesNamed(resShadow, StringID("CameraUBO")) == 1,
+         "Pass_Shadow: 1 matching camera UBO");
+  EXPECT(countResourcesNamed(resShadow, StringID("LightUBO")) == 2,
+         "Pass_Shadow: 2 matching LightUBOs");
+  EXPECT(countResourcesNamed(resShadow, StringID("SceneLightsUBO")) == 1,
+         "Pass_Shadow: SceneLightsUBO");
 }
 
 void testNullOptCameraBeforeAndAfterFill() {
@@ -1835,13 +1882,14 @@ void testNullOptCameraBeforeAndAfterFill() {
   scene->addCamera(testCam);
 
   auto resBefore = scene->getSceneLevelResources(Pass_Forward, customTarget);
-  EXPECT(resBefore.empty(),
+  EXPECT(countResourcesNamed(resBefore, StringID("CameraUBO")) == 0,
          "nullopt camera excludes camera and Scene has no hidden light");
 
   testCam->getComponent<CameraComponent>()->get().setTarget(customTarget);
 
   auto resAfter = scene->getSceneLevelResources(Pass_Forward, customTarget);
-  EXPECT(resAfter.size() == 1, "after setTarget(customTarget): camera UBO");
+  EXPECT(countResourcesNamed(resAfter, StringID("CameraUBO")) == 1,
+         "after setTarget(customTarget): camera UBO");
 
   EXPECT(testCam->getComponent<CameraComponent>()->get().matchesTarget(
              customTarget),
@@ -1976,8 +2024,9 @@ void testVisibilityFilteringKeepsSceneResources() {
 
   const auto sceneResources =
       scene->getSceneLevelResources(Pass_Forward, target);
-  EXPECT(sceneResources.size() == 1, "camera resources remain target-driven "
-                                     "even when one renderable is hidden");
+  EXPECT(countResourcesNamed(sceneResources, StringID("CameraUBO")) == 1,
+         "camera resources remain target-driven even when one renderable is "
+         "hidden");
 
   FrameGraph fg;
   fg.addPass(FramePass{Pass_Forward, target, {}});
@@ -2197,8 +2246,9 @@ void testInactiveCameraIsIgnoredForResourcesAndMasks() {
   scene->addCamera(inactiveCamera);
 
   const auto resources = scene->getSceneLevelResources(Pass_Forward, target);
-  EXPECT(resources.size() == 1, "inactive camera should be excluded while "
-                                "active camera resource remains");
+  EXPECT(countResourcesNamed(resources, StringID("CameraUBO")) == 1,
+         "inactive camera should be excluded while active camera resource "
+         "remains");
 
   EXPECT(scene->getCombinedCameraCullingMask(target) == 0x1u,
          "inactive camera mask should not contribute to combined culling mask");
