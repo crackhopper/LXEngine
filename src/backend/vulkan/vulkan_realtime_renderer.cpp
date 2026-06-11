@@ -2101,6 +2101,10 @@ private:
     const bool migratedValidationPass = isMigratedBindlessValidationPass(passName);
     const auto decision = LX_core::decideBindlessSubmission(
         queue, passName, strictBindlessValidation, migratedValidationPass);
+    if (decision.kind == LX_core::BindlessSubmissionDecisionKind::Empty) {
+      return;
+    }
+
     if (decision.kind == LX_core::BindlessSubmissionDecisionKind::
                              StrictValidationRejected) {
       std::string reason = "unknown";
