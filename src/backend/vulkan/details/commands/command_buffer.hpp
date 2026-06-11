@@ -90,21 +90,8 @@ private:
   void executeRasterDrawItem(const RenderWorkItem &item);
   void executeComputeDispatchItem(const RenderWorkItem &item);
 
-  // Push constant info captured from the last bound pipeline. Matches the
-  // engine-wide convention set in `PushConstantRange` (128 bytes,
-  // vertex+fragment stages by default); populated in `bindPipeline`.
-  struct PushConstantSnapshot {
-    VkShaderStageFlags stageFlags = 0;
-    u32 offset = 0;
-    u32 size = 0;
-  };
-
   VkCommandBuffer m_handle = VK_NULL_HANDLE;
   VulkanDevice &m_device;
-
-  // Captured from the last bound pipeline; used by executeWorkItem().
-  VkPipelineLayout m_pipelineLayout = VK_NULL_HANDLE;
-  PushConstantSnapshot m_pushConstants{};
 };
 
 using VulkanCommandBufferUniquePtr = std::unique_ptr<VulkanCommandBuffer>;

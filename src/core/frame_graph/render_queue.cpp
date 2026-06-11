@@ -33,7 +33,6 @@ makeItemFromValidatedData(const ValidatedRenderablePassData &data) {
   item.kind = RenderWorkKind::RasterDraw;
   item.raster.vertexBuffer = data.vertexBuffer;
   item.raster.indexBuffer = data.indexBuffer;
-  item.raster.drawData = data.drawData;
   item.shaderInfo = data.shaderInfo;
   item.renderState = data.renderState;
   item.sortCenter = data.sortCenter;
@@ -93,7 +92,8 @@ makeIndirectCommand(const RasterDrawWorkPayload &raster) {
   command.instanceCount = raster.instanceCount;
   command.firstIndex = raster.firstIndex;
   command.vertexOffset = raster.vertexOffset;
-  command.firstInstance = 0;
+  command.firstInstance =
+      raster.materialIndex == u32_max ? 0u : raster.materialIndex;
   return command;
 }
 
@@ -240,7 +240,7 @@ RenderWorkQueue::compileIndirectBatches() const {
     const RenderWorkItem &item = m_items[itemIndex];
     if (item.kind != RenderWorkKind::RasterDraw ||
         !item.raster.vertexBuffer.isValid() ||
-        !item.raster.indexBuffer.isValid() || item.raster.drawData) {
+        !item.raster.indexBuffer.isValid()) {
       continue;
     }
     IndexedIndirectDrawCommand command = makeIndirectCommand(item.raster);
@@ -324,13 +324,11 @@ void RenderWorkQueue::buildRealtime(const Scene &scene, StringID pass,
     if (!validated)
       continue;
 
-    if (validated->get().drawData &&
-        shaderConsumesSceneMaterials(validated->get().shaderInfo)) {
-      validated->get().drawData->updateRasterMaterialIndex(
-          resolveGpuMaterialIndex(uploadView, validated->get().materialHandle));
-    }
-
     RenderWorkItem item = makeItemFromValidatedData(validated->get());
+    if (shaderConsumesSceneMaterials(item.shaderInfo)) {
+      item.raster.materialIndex =
+          resolveGpuMaterialIndex(uploadView, validated->get().materialHandle);
+    }
     item.target = target.toDesc();
     item.debugId = renderable->getDebugId();
     item.pipelineKey =

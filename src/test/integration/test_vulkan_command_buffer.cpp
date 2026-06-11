@@ -128,13 +128,6 @@ int main() {
     auto renderItem =
         LX_test::firstItemFromScene(*scene, LX_core::Pass_Forward);
 
-    // Initialize push constants deterministically.
-    if (renderItem.raster.drawData) {
-      LX_core::PerDrawLayout pc{};
-      pc.model = LX_core::Mat4f::identity();
-      renderItem.raster.drawData->update(pc);
-    }
-
     // Sync all CPU-side resources to GPU.
     LX_core::RenderWorkQueue uploadQueue;
     uploadQueue.addItem(renderItem);

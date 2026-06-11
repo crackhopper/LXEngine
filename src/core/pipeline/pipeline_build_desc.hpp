@@ -21,12 +21,10 @@ enum class PipelineBuildType {
 
 /*
 @source_analysis.section PushConstantRange：当前固定 ABI 的占位描述
-当前 forward draw path 的 push constant ABI 已收敛到 model-only 数据，但
-backend-neutral 层仍用 `PushConstantRange` 描述“pipeline 创建时需要声明的范围”。
+当前 pipeline layout 仍能描述 shader 反射得到的 push constant 范围；默认
+render work 不再用它承载每 draw 数据。
 
-这里保存的是 pipeline layout 需要的结构信息，不是每个 draw 的实际 push constant
-值。真实的 per-draw 数据在 `RenderWorkItem::raster.drawData` /
-`PerDrawData` 路径上传。
+这里保存的是 pipeline layout 需要的结构信息，不是每个 draw 的实际数据值。
 */
 struct PushConstantRange {
   u32 offset = 0;

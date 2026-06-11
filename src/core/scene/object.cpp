@@ -170,13 +170,10 @@ getSkeletonComponent(const SceneNode &node) {
 } // namespace
 
 SceneNode::SceneNode(PathRootTag)
-    : m_nodeName("scene_root"), m_perDrawData(std::make_shared<PerDrawData>()),
-      m_isPathRoot(true) {}
+    : m_nodeName("scene_root"), m_isPathRoot(true) {}
 
 SceneNode::SceneNode(std::string nodeName)
-    : m_nodeName(std::move(nodeName)),
-      m_perDrawData(std::make_shared<PerDrawData>()) {
-  syncPerDrawModelMatrix();
+    : m_nodeName(std::move(nodeName)) {
   rebuildValidatedCache();
 }
 
@@ -366,11 +363,6 @@ IShaderSharedPtr SceneNode::getShaderInfo() const {
   return material ? material->getPassShader(Pass_Forward) : nullptr;
 }
 
-PerDrawDataSharedPtr SceneNode::getPerDrawData() const {
-  updateWorldTransformIfNeeded();
-  return m_perDrawData;
-}
-
 StringID SceneNode::getPipelineSignature(StringID pass) const {
   const auto meshComponent = getMeshComponent(*this);
   if (!meshComponent)
@@ -442,14 +434,7 @@ void SceneNode::updateWorldTransformIfNeeded() const {
 
   m_worldTransform = world;
   m_worldTransformHasParent = static_cast<bool>(parent);
-  syncPerDrawModelMatrix();
   m_worldTransformDirty = false;
-}
-
-void SceneNode::syncPerDrawModelMatrix() const {
-  if (m_perDrawData) {
-    m_perDrawData->updateModelMatrix(m_worldTransform);
-  }
 }
 
 void SceneNode::removeFromParentChildrenList() {
@@ -621,7 +606,6 @@ void SceneNode::rebuildValidatedCache() {
     data.pass = pass;
     data.materialHandle = materialComponent->get().getMaterialHandle();
     data.shaderInfo = shader;
-    data.drawData = m_perDrawData;
     data.vertexBuffer = getVertexBuffer();
     data.indexBuffer = getIndexBuffer();
     data.bonesResource = std::move(bonesResource);

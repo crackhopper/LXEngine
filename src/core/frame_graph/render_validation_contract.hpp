@@ -25,7 +25,6 @@ struct BindlessValidationResult final {
 enum class BindlessSubmissionDecisionKind {
   Empty,
   BindlessBatch,
-  LegacyPerItem,
   StrictValidationRejected,
 };
 

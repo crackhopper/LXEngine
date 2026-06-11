@@ -48,24 +48,11 @@ void appendUniqueDescriptorResource(
   resources.push_back(resource.resource());
 }
 
-void appendUniquePushConstant(std::vector<PerDrawDataSharedPtr> &pushConstants,
-                              std::unordered_set<const PerDrawData *> &seen,
-                              const PerDrawDataSharedPtr &pushConstant) {
-  if (!pushConstant) {
-    return;
-  }
-  if (!seen.insert(pushConstant.get()).second) {
-    return;
-  }
-  pushConstants.push_back(pushConstant);
-}
-
 } // namespace
 
 RenderUploadPlan buildRenderUploadPlan(const RenderWorkQueue &queue) {
   RenderUploadPlan plan;
   std::unordered_set<ResourceCacheIdentity> seenResources;
-  std::unordered_set<const PerDrawData *> seenPushConstants;
 
   for (const RenderWorkItem &item : queue.getItems()) {
     plan.domain = item.domain;
@@ -75,8 +62,6 @@ RenderUploadPlan buildRenderUploadPlan(const RenderWorkQueue &queue) {
                            item.raster.vertexBuffer);
       appendUniqueResource(plan.resources, seenResources,
                            item.raster.indexBuffer);
-      appendUniquePushConstant(plan.pushConstants, seenPushConstants,
-                               item.raster.drawData);
     }
 
     for (const DescriptorResourceRef &resource : item.descriptorResources) {

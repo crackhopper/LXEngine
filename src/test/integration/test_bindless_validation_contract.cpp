@@ -4,7 +4,6 @@
 
 #include <iostream>
 #include <memory>
-#include <optional>
 #include <vector>
 
 using namespace LX_core;
@@ -36,8 +35,7 @@ struct TestResource final : public IGpuResource {
 };
 
 RenderWorkItem makeMigratedDraw(const IGpuResource &vertex,
-                                const IGpuResource &index,
-                                std::optional<PerDrawDataSharedPtr> drawData) {
+                                const IGpuResource &index) {
   RenderWorkItem item;
   item.domain = RenderDomain::Realtime;
   item.kind = RenderWorkKind::RasterDraw;
@@ -57,9 +55,6 @@ RenderWorkItem makeMigratedDraw(const IGpuResource &vertex,
   item.raster.indexBuffer = GpuResourceRef{index};
   item.raster.indexCount = 3;
   item.raster.instanceCount = 1;
-  if (drawData.has_value()) {
-    item.raster.drawData = *drawData;
-  }
   return item;
 }
 
@@ -67,8 +62,8 @@ void testStrictContractAcceptsFullyCoveredBatch() {
   TestResource vertex(ResourceType::VertexBuffer, StringID{}, 96);
   TestResource index(ResourceType::IndexBuffer, StringID{}, 48);
   RenderWorkQueue queue;
-  queue.addItem(makeMigratedDraw(vertex, index, std::nullopt));
-  queue.addItem(makeMigratedDraw(vertex, index, std::nullopt));
+  queue.addItem(makeMigratedDraw(vertex, index));
+  queue.addItem(makeMigratedDraw(vertex, index));
 
   const BindlessValidationResult result =
       validateBindlessMigratedQueue(queue, StringID("Forward"));
@@ -79,33 +74,37 @@ void testStrictContractAcceptsFullyCoveredBatch() {
          "strict bindless contract should not emit diagnostics on success");
 }
 
-void testStrictContractRejectsDrawDataFallback() {
+void testDecisionRejectsIncompleteMigratedWorkWithoutStrictMode() {
   TestResource vertex(ResourceType::VertexBuffer, StringID{}, 96);
   TestResource index(ResourceType::IndexBuffer, StringID{}, 48);
-  auto drawData = std::make_shared<PerDrawData>();
   RenderWorkQueue queue;
-  queue.addItem(makeMigratedDraw(vertex, index, drawData));
+  RenderWorkItem item = makeMigratedDraw(vertex, index);
+  item.raster.indexBuffer = GpuResourceRef{};
+  queue.addItem(std::move(item));
 
-  const BindlessValidationResult result =
-      validateBindlessMigratedQueue(queue, StringID("Forward"));
-  EXPECT(!result.ok, "strict bindless contract should reject drawData fallback");
-  EXPECT(!result.diagnostics.empty(),
-         "strict bindless contract should explain the rejection");
-  EXPECT(result.diagnostics.front().objectSignature ==
-             StringID("bindless.validation.mesh"),
-         "diagnostic should preserve object identity");
-  EXPECT(result.diagnostics.front().materialSignature ==
-             StringID("bindless.validation.material"),
-         "diagnostic should preserve material identity");
-  EXPECT(result.diagnostics.front().reason.find("drawData") != std::string::npos,
-         "diagnostic should name drawData as the fallback cause");
+  const BindlessSubmissionDecision decision =
+      decideBindlessSubmission(queue, StringID("Forward"), false, true);
+  EXPECT(decision.kind ==
+             BindlessSubmissionDecisionKind::StrictValidationRejected,
+         "incomplete migrated queue should be rejected without strict-mode "
+         "fallback");
+  EXPECT(!decision.validation.diagnostics.empty(),
+         "rejected migrated queue should explain the incomplete draw");
+  if (!decision.validation.diagnostics.empty()) {
+    EXPECT(decision.validation.diagnostics.front().objectSignature ==
+               StringID("bindless.validation.mesh"),
+           "diagnostic should preserve object identity");
+    EXPECT(decision.validation.diagnostics.front().materialSignature ==
+               StringID("bindless.validation.material"),
+           "diagnostic should preserve material identity");
+  }
 }
 
 void testStrictContractRejectsPartialCoverage() {
   TestResource vertex(ResourceType::VertexBuffer, StringID{}, 96);
   RenderWorkQueue queue;
   TestResource index(ResourceType::IndexBuffer, StringID{}, 48);
-  RenderWorkItem item = makeMigratedDraw(vertex, index, std::nullopt);
+  RenderWorkItem item = makeMigratedDraw(vertex, index);
   item.raster.indexBuffer = GpuResourceRef{};
   queue.addItem(std::move(item));
 
@@ -120,7 +119,7 @@ void testStrictContractRejectsPartialCoverage() {
 
 int main() {
   testStrictContractAcceptsFullyCoveredBatch();
-  testStrictContractRejectsDrawDataFallback();
+  testDecisionRejectsIncompleteMigratedWorkWithoutStrictMode();
   testStrictContractRejectsPartialCoverage();
   if (g_failures != 0) {
     std::cerr << g_failures << " bindless validation contract checks failed\n";

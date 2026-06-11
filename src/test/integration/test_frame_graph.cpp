@@ -2088,7 +2088,7 @@ void testUnconfiguredIblResourcesAreNotInjected() {
   EXPECT(sawIbl, "IBL item should be present");
 }
 
-void testRenderUploadPlanCollectsRasterResourcesAndPushConstants() {
+void testRenderUploadPlanCollectsRasterResourcesWithoutPushConstants() {
   RenderWorkItem item;
   item.domain = RenderDomain::Realtime;
   item.kind = RenderWorkKind::RasterDraw;
@@ -2097,7 +2097,6 @@ void testRenderUploadPlanCollectsRasterResourcesAndPushConstants() {
   auto indexBuffer = IndexBuffer::createUnique({0u, 1u, 2u});
   item.raster.vertexBuffer = GpuResourceRef{*vertexBuffer};
   item.raster.indexBuffer = GpuResourceRef{*indexBuffer};
-  item.raster.drawData = std::make_shared<PerDrawData>();
 
   static const ShaderResourceBinding materialBinding{
       .name = "MaterialUBO",
@@ -2118,8 +2117,6 @@ void testRenderUploadPlanCollectsRasterResourcesAndPushConstants() {
   const RenderUploadPlan plan = buildRenderUploadPlan(queue);
   EXPECT(plan.resources.size() == 3, "upload plan should include unique "
                                      "vertex, index, and descriptor resources");
-  EXPECT(plan.pushConstants.size() == 1,
-         "upload plan should track raster push constants separately");
 }
 
 void testPartialIblResourcesAreNotCompletedWithDefaults() {
@@ -2348,7 +2345,7 @@ int main() {
   testVisibilityMaskOrsMatchingCameraMasks();
   testVisibilityFilteringKeepsSceneResources();
   testUnconfiguredIblResourcesAreNotInjected();
-  testRenderUploadPlanCollectsRasterResourcesAndPushConstants();
+  testRenderUploadPlanCollectsRasterResourcesWithoutPushConstants();
   testPartialIblResourcesAreNotCompletedWithDefaults();
   testRenderWorkQueueDebugCameraResourceUsesSceneResourceTableAndLayerMask();
   testDebugOnlyRenderableIsOverlayOnly();

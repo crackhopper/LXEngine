@@ -183,11 +183,6 @@ void testOffscreenSubmitProbe() {
 
     auto renderItem =
         LX_test::firstItemFromScene(*scene, LX_core::Pass_Forward);
-    if (renderItem.raster.drawData) {
-      LX_core::PerDrawLayout pc{};
-      pc.model = LX_core::Mat4f::identity();
-      renderItem.raster.drawData->update(pc);
-    }
 
     LX_core::RenderWorkQueue uploadQueue;
     uploadQueue.addItem(renderItem);

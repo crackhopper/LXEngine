@@ -64,7 +64,7 @@ RenderWorkItem makeDefaultPathDraw(const IGpuResource &vertex,
   return item;
 }
 
-void testMigratedQueueRejectsDrawDataFallback() {
+void testMigratedQueueRejectsIncompleteCoverageWithoutFallback() {
   AuditResource vertex(ResourceType::VertexBuffer, StringID{}, 96);
   AuditResource index(ResourceType::IndexBuffer, StringID{}, 48);
   AuditResource camera(ResourceType::UniformBuffer, StringID("CameraUBO"), 64);
@@ -73,22 +73,22 @@ void testMigratedQueueRejectsDrawDataFallback() {
 
   RenderWorkQueue queue;
   RenderWorkItem item = makeDefaultPathDraw(vertex, index, camera, material, 0);
-  item.raster.drawData = std::make_shared<PerDrawData>();
+  item.raster.indexBuffer = GpuResourceRef{};
   queue.addItem(std::move(item));
 
   const BindlessValidationResult result =
       validateBindlessMigratedQueue(queue, StringID("Forward"));
   EXPECT(!result.ok,
-         "migrated validation queue must reject per-draw drawData fallback");
+         "migrated validation queue must reject incomplete batch coverage");
   EXPECT(!result.diagnostics.empty(),
-         "migrated validation queue must explain rejected fallback");
+         "migrated validation queue must explain rejected incomplete coverage");
 
   const BindlessSubmissionDecision decision = decideBindlessSubmission(
-      queue, StringID("Forward"), true, true);
+      queue, StringID("Forward"), false, true);
   EXPECT(decision.kind ==
              BindlessSubmissionDecisionKind::StrictValidationRejected,
-         "renderer decision should reject migrated drawData fallback in strict "
-         "validation mode");
+         "renderer decision should reject incomplete migrated work without "
+         "falling back to per-item submission");
 }
 
 void testMigratedQueueAcceptsFullyCoveredIndirectBatch() {
@@ -118,7 +118,7 @@ void testMigratedQueueAcceptsFullyCoveredIndirectBatch() {
 } // namespace
 
 int main() {
-  testMigratedQueueRejectsDrawDataFallback();
+  testMigratedQueueRejectsIncompleteCoverageWithoutFallback();
   testMigratedQueueAcceptsFullyCoveredIndirectBatch();
   if (g_failures != 0) {
     std::cerr << g_failures << " REQ-071 bridge audit checks failed\n";

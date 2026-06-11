@@ -1133,7 +1133,7 @@ void testRealtimeSceneLevelResourcesExposeGpuMaterialTables() {
   }
 }
 
-void testRealtimeRenderQueueWritesPerDrawGpuMaterialIndex() {
+void testRealtimeRenderQueueWritesTypedGpuMaterialIndex() {
   auto first = SceneNode::create("first_material_node");
   first->addComponent<MeshComponent>(makeMeshBuffer());
   first->addComponent<MaterialComponent>(
@@ -1162,15 +1162,9 @@ void testRealtimeRenderQueueWritesPerDrawGpuMaterialIndex() {
          "queue should contain both material-index test draws");
   std::vector<u32> materialIndices;
   for (const RenderWorkItem &item : queue.getItems()) {
-    EXPECT(item.raster.drawData &&
-               item.raster.drawData->byteSize() >= sizeof(PerDrawLayout),
-           "queued draw should carry the typed per-draw layout");
-    if (item.raster.drawData &&
-        item.raster.drawData->byteSize() >= sizeof(PerDrawLayout)) {
-      PerDrawLayout layout;
-      std::memcpy(&layout, item.raster.drawData->rawData(), sizeof(layout));
-      materialIndices.push_back(layout.materialIndex);
-    }
+    EXPECT(item.raster.materialIndex != u32_max,
+           "queued draw should carry a typed SceneMaterials index");
+    materialIndices.push_back(item.raster.materialIndex);
   }
   std::sort(materialIndices.begin(), materialIndices.end());
   EXPECT(materialIndices.size() == 2 && materialIndices[0] == 0 &&
@@ -2128,7 +2122,7 @@ int main() {
   testSceneRegistersRenderableComponentResources();
   testSceneRegistersCameraAndLightResources();
   testRealtimeSceneLevelResourcesExposeGpuMaterialTables();
-  testRealtimeRenderQueueWritesPerDrawGpuMaterialIndex();
+  testRealtimeRenderQueueWritesTypedGpuMaterialIndex();
   testSceneGpuRecordLayoutContract();
   testSceneResourceTableDoesNotExportPackedVertexUploadStream();
   testSceneGpuMaterialRecordCarriesOfflineCullMode();

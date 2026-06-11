@@ -45,9 +45,9 @@ enum class RenderWorkKind {
 };
 
 struct RasterDrawWorkPayload final {
-  PerDrawDataSharedPtr drawData;
   GpuResourceRef vertexBuffer;
   GpuResourceRef indexBuffer;
+  u32 materialIndex = u32_max;
   u32 indexCount = 0;
   u32 firstIndex = 0;
   i32 vertexOffset = 0;
@@ -86,7 +86,7 @@ GPU work"翻译成 backend 提交单元的代码路径，都收口到这个结�
 - `descriptorResources`：决定 pipeline-visible 资源，顺序固定但 backend 按
   binding name 命中，不依赖位置
 - `raster / compute`：按 work kind 存放特化 payload，避免把 raster-only
-  vertex/index/drawData 当成所有 render work 的公共字段
+  vertex/index/material index 当成所有 render work 的公共字段
 - `material`：保留材质句柄是为了 `PipelineBuildDesc::fromRenderWorkItem`
   不再保存材质对象；pipeline 需要的 render state 在 SceneNode 校验阶段复制进
   work item，材质资源绑定则由 scene descriptor resolver 从 SceneResourceTable

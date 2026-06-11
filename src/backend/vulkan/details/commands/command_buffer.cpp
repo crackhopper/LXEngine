@@ -73,19 +73,6 @@ void VulkanCommandBuffer::setScissor(u32 width, u32 height) {
 namespace {
 constexpr int kDebugBurstFrames = 3;
 
-VkShaderStageFlags pushConstantStageMaskToVk(ShaderStageMask32 mask) {
-  VkShaderStageFlags out = 0;
-  if (mask & static_cast<ShaderStageMask32>(LX_core::ShaderStage::Vertex))
-    out |= VK_SHADER_STAGE_VERTEX_BIT;
-  if (mask & static_cast<ShaderStageMask32>(LX_core::ShaderStage::Fragment))
-    out |= VK_SHADER_STAGE_FRAGMENT_BIT;
-  if (mask & static_cast<ShaderStageMask32>(LX_core::ShaderStage::Compute))
-    out |= VK_SHADER_STAGE_COMPUTE_BIT;
-  if (mask & static_cast<ShaderStageMask32>(LX_core::ShaderStage::Geometry))
-    out |= VK_SHADER_STAGE_GEOMETRY_BIT;
-  return out;
-}
-
 template <typename T>
 bool shouldLogBurst(const T &next, T &state, int &remainingFrames) {
   if (!(next == state)) {
@@ -219,21 +206,11 @@ void logDescriptorImageBindingIfChanged(
 void VulkanCommandBuffer::bindPipeline(VulkanGraphicsPipeline &pipeline) {
   vkCmdBindPipeline(m_handle, VK_PIPELINE_BIND_POINT_GRAPHICS,
                     pipeline.getHandle());
-  m_pipelineLayout = pipeline.getLayout();
-  const auto &pcr = pipeline.getPushConstantRange();
-  m_pushConstants.stageFlags = pushConstantStageMaskToVk(pcr.stageFlagsMask);
-  m_pushConstants.offset = pcr.offset;
-  m_pushConstants.size = pcr.size;
 }
 
 void VulkanCommandBuffer::bindPipeline(VulkanComputePipeline &pipeline) {
   vkCmdBindPipeline(m_handle, VK_PIPELINE_BIND_POINT_COMPUTE,
                     pipeline.getHandle());
-  m_pipelineLayout = pipeline.getLayout();
-  const auto &pcr = pipeline.getPushConstantRange();
-  m_pushConstants.stageFlags = pushConstantStageMaskToVk(pcr.stageFlagsMask);
-  m_pushConstants.offset = pcr.offset;
-  m_pushConstants.size = pcr.size;
 }
 
 void VulkanCommandBuffer::bindPipeline(VulkanPipelineRef pipeline) {
@@ -408,11 +385,6 @@ void VulkanCommandBuffer::bindResourcesWithLayout(
     }
   }
 
-  if (raster.drawData && m_pushConstants.size > 0) {
-    vkCmdPushConstants(m_handle, m_pipelineLayout, m_pushConstants.stageFlags,
-                       m_pushConstants.offset, m_pushConstants.size,
-                       raster.drawData->rawData());
-  }
 }
 
 void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,

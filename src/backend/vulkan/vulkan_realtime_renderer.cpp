@@ -478,16 +478,6 @@ countLightResources(const LX_core::DescriptorResourceList &resources) {
   return {};
 }
 
-[[nodiscard]] std::optional<LX_core::Mat4f>
-extractModelMatrix(const LX_core::PerDrawDataSharedPtr &drawData) {
-  if (!drawData || drawData->byteSize() < sizeof(LX_core::Mat4f)) {
-    return std::nullopt;
-  }
-  LX_core::Mat4f model = LX_core::Mat4f::identity();
-  std::memcpy(&model, drawData->rawData(), sizeof(model));
-  return model;
-}
-
 [[nodiscard]] ProjectedBoundsDebug makeProjectedBoundsDebug(
     const LX_core::IRenderable &renderable, const LX_core::RenderWorkItem &item,
     const LX_core::Mat4f &viewProj, u32 width, u32 height) {
@@ -500,17 +490,13 @@ extractModelMatrix(const LX_core::PerDrawDataSharedPtr &drawData) {
                              sizeof(u32)
                        : 0;
 
-  auto modelOpt = extractModelMatrix(item.raster.drawData);
-  if (!modelOpt.has_value()) {
-    return out;
-  }
   const auto &sceneNode = dynamic_cast<const LX_core::SceneNode &>(renderable);
   const LX_core::BoundingBox localBounds = sceneNode.getLocalBounds();
   if (!localBounds.isValid()) {
     return out;
   }
 
-  const LX_core::Mat4f model = *modelOpt;
+  const LX_core::Mat4f model = sceneNode.getWorldTransform();
   const LX_core::Mat4f mvp = viewProj * model;
   const LX_core::Vec4f corners[8] = {
       {localBounds.min.x, localBounds.min.y, localBounds.min.z, 1.0f},
@@ -2123,9 +2109,22 @@ private:
         queue, pass.name, strictBindlessValidation, migratedValidationPass);
     if (decision.kind == LX_core::BindlessSubmissionDecisionKind::
                              StrictValidationRejected) {
-      throw std::runtime_error(
-          "bindless validation rejected migrated pass: " +
-          decision.validation.diagnostics.front().reason);
+      std::string reason = "unknown";
+      if (!decision.validation.diagnostics.empty()) {
+        const auto &diagnostic = decision.validation.diagnostics.front();
+        reason = "item=" + std::to_string(diagnostic.itemIndex) +
+                 " object=" +
+                 LX_core::GlobalStringTable::get().toDebugString(
+                     diagnostic.objectSignature) +
+                 " material=" +
+                 LX_core::GlobalStringTable::get().toDebugString(
+                     diagnostic.materialSignature) +
+                 " reason=" + diagnostic.reason;
+      }
+      throw std::runtime_error("bindless validation rejected pass " +
+                               LX_core::GlobalStringTable::get().toDebugString(
+                                   pass.name) +
+                               ": " + reason);
     }
 
     if (decision.kind == LX_core::BindlessSubmissionDecisionKind::BindlessBatch) {
@@ -2147,6 +2146,12 @@ private:
         cmd.executeWorkItem(batchItem);
       }
       return;
+    }
+
+    if (!items.empty() && migratedValidationPass) {
+      throw std::runtime_error(
+          "migrated pass reached unsupported non-batch submission path: " +
+          LX_core::GlobalStringTable::get().toDebugString(pass.name));
     }
 
     for (auto &item : items) {

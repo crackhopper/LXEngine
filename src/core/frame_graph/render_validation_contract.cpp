@@ -16,9 +16,6 @@ namespace {
   if (!item.raster.indexBuffer.isValid()) {
     return "raster draw has no index buffer";
   }
-  if (item.raster.drawData) {
-    return "raster draw still uses per-draw drawData push constants";
-  }
   if (item.raster.indexCount == 0) {
     return "raster draw has zero indexCount";
   }
@@ -81,12 +78,13 @@ BindlessSubmissionDecision decideBindlessSubmission(
     return decision;
   }
 
-  if (strictValidation && migratedPass) {
+  if (migratedPass) {
     decision.kind = BindlessSubmissionDecisionKind::StrictValidationRejected;
     return decision;
   }
 
-  decision.kind = BindlessSubmissionDecisionKind::LegacyPerItem;
+  (void)strictValidation;
+  decision.kind = BindlessSubmissionDecisionKind::StrictValidationRejected;
   return decision;
 }
 
