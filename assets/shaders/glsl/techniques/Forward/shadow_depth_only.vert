@@ -22,6 +22,32 @@ layout(location = 4) in ivec4 inBoneIDs;
 layout(location = 5) in vec4 inBoneWeights;
 #endif
 
+struct lxSceneObjectRecord {
+    mat4 objectToWorld;
+    mat4 worldToObject;
+    vec4 boundsMin;
+    vec4 boundsMax;
+    uint visible;
+    uint flags;
+    uint visibilityMask;
+    uint debugId;
+};
+
+struct lxSceneDrawRecord {
+    uint objectIndex;
+    uint materialIndex;
+    uint meshIndex;
+    uint reserved0;
+};
+
+layout(std430, set = 0, binding = 8) readonly buffer SceneObjects {
+    lxSceneObjectRecord objects[];
+};
+
+layout(std430, set = 0, binding = 9) readonly buffer SceneDraws {
+    lxSceneDrawRecord draws[];
+};
+
 void main() {
     mat4 skinMatrix = mat4(1.0);
 #ifdef USE_SKINNING
@@ -32,7 +58,8 @@ void main() {
         inBoneWeights.w * skin.bones[inBoneIDs.w];
 #endif
 
-    mat4 model = mat4(1.0);
+    lxSceneDrawRecord draw = draws[gl_InstanceIndex];
+    mat4 model = objects[draw.objectIndex].objectToWorld;
     vec4 worldPos = model * skinMatrix * vec4(inPosition, 1.0);
     gl_Position = sceneLight.shadowViewProj * worldPos;
 }

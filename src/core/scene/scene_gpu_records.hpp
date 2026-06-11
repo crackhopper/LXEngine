@@ -43,6 +43,13 @@ struct alignas(16) SceneGpuPrimitiveRecord final {
   u32 objectIndex = 0;
 };
 
+struct alignas(16) SceneGpuDrawRecord final {
+  u32 objectIndex = 0;
+  u32 materialIndex = 0;
+  u32 meshIndex = 0;
+  u32 reserved0 = 0;
+};
+
 struct alignas(16) SceneGpuObjectRecord final {
   std::array<Vec4f, 4> objectToWorld{};
   std::array<Vec4f, 4> worldToObject{};
@@ -106,6 +113,7 @@ toGpuMaterialRecord(const MaterialInstance &material);
 static_assert(sizeof(SceneGpuAttributeStreamRecord) == 16);
 static_assert(sizeof(SceneGpuMeshRecord) == 32);
 static_assert(sizeof(SceneGpuPrimitiveRecord) == 16);
+static_assert(sizeof(SceneGpuDrawRecord) == 16);
 static_assert(sizeof(SceneGpuObjectRecord) == 176);
 static_assert(sizeof(SceneGpuMaterialRecord) == 96);
 static_assert(sizeof(SceneGpuFrameParams) == 176);
@@ -117,6 +125,9 @@ static_assert(offsetof(SceneGpuObjectRecord, visible) == 160);
 static_assert(offsetof(SceneGpuObjectRecord, flags) == 164);
 static_assert(offsetof(SceneGpuObjectRecord, visibilityMask) == 168);
 static_assert(offsetof(SceneGpuObjectRecord, debugId) == 172);
+static_assert(offsetof(SceneGpuDrawRecord, objectIndex) == 0);
+static_assert(offsetof(SceneGpuDrawRecord, materialIndex) == 4);
+static_assert(offsetof(SceneGpuDrawRecord, meshIndex) == 8);
 static_assert(offsetof(SceneGpuMaterialRecord, baseColor) == 0);
 static_assert(offsetof(SceneGpuMaterialRecord, pbrParams) == 16);
 static_assert(offsetof(SceneGpuMaterialRecord, emissive) == 32);

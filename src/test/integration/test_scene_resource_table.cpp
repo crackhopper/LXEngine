@@ -1115,6 +1115,35 @@ void testRealtimeSceneLevelResourcesExposeGpuMaterialTables() {
            "SceneMaterials should upload compact material records");
   }
 
+  const auto sceneObjects = std::find_if(
+      resources.begin(), resources.end(), [](const DescriptorResourceRef &ref) {
+        return ref.getBindingName() == StringID("SceneObjects");
+      });
+  EXPECT(sceneObjects != resources.end() && sceneObjects->isResource(),
+         "realtime scene resources should include SceneObjects");
+  if (sceneObjects != resources.end() && sceneObjects->isResource()) {
+    EXPECT(sceneObjects->resource().get().getType() ==
+               ResourceType::StorageBuffer,
+           "SceneObjects should be a storage buffer resource");
+    EXPECT(sceneObjects->resource().get().getByteSize() ==
+               sizeof(SceneGpuObjectRecord),
+           "SceneObjects should upload compact object records");
+  }
+
+  const auto sceneDraws = std::find_if(
+      resources.begin(), resources.end(), [](const DescriptorResourceRef &ref) {
+        return ref.getBindingName() == StringID("SceneDraws");
+      });
+  EXPECT(sceneDraws != resources.end() && sceneDraws->isResource(),
+         "realtime scene resources should include SceneDraws");
+  if (sceneDraws != resources.end() && sceneDraws->isResource()) {
+    EXPECT(sceneDraws->resource().get().getType() == ResourceType::StorageBuffer,
+           "SceneDraws should be a storage buffer resource");
+    EXPECT(sceneDraws->resource().get().getByteSize() ==
+               sizeof(SceneGpuDrawRecord),
+           "SceneDraws should upload compact draw records");
+  }
+
   const auto sceneTextures = std::find_if(
       resources.begin(), resources.end(), [](const DescriptorResourceRef &ref) {
         return ref.getBindingName() == StringID("SceneTextures");
@@ -1172,12 +1201,68 @@ void testRealtimeRenderQueueWritesTypedGpuMaterialIndex() {
          "queued draws should write compact SceneMaterials indices per draw");
 }
 
+void testRealtimeRenderQueueWritesTypedGpuDrawRecordIndex() {
+  auto first = SceneNode::create("first_draw_record_node");
+  first->addComponent<MeshComponent>(makeMeshBuffer());
+  first->addComponent<MaterialComponent>(
+      makeSceneMaterialsShaderMaterial(Vec4f{0.1f, 0.2f, 0.3f, 1.0f}));
+  first->setTranslation(Vec3f{2.0f, 0.0f, 0.0f});
+
+  auto second = SceneNode::create("second_draw_record_node");
+  second->addComponent<MeshComponent>(makeMeshBuffer());
+  second->addComponent<MaterialComponent>(
+      makeSceneMaterialsShaderMaterial(Vec4f{0.8f, 0.7f, 0.6f, 1.0f}));
+  second->setTranslation(Vec3f{0.0f, 3.0f, 0.0f});
+
+  auto scene = Scene::create("realtime_draw_record_scene", first);
+  scene->addRenderable(second);
+  scene->resources().beginRenderResourceScope();
+
+  RenderTargetDesc targetDesc;
+  targetDesc.role = RenderTargetRole::Swapchain;
+  RenderWorkQueue queue;
+  queue.build(
+      RenderWorkBuildContext::realtime(*scene,
+                                       RenderWorkBuildContext::RealtimeOptions{
+                                           .visibleMask = VisibilityMask_All,
+                                       }),
+      Pass_Forward, RenderTarget{targetDesc});
+
+  const auto uploadView = scene->resources().buildUploadView();
+  EXPECT(uploadView.objects.size() == 2,
+         "upload view should contain both transformed objects");
+  EXPECT(uploadView.draws.size() == 2,
+         "upload view should contain one typed draw record per object");
+  for (u32 i = 0; i < uploadView.draws.size(); ++i) {
+    EXPECT(uploadView.draws[i].objectIndex == i,
+           "draw record should point at matching compact object record");
+    EXPECT(uploadView.draws[i].materialIndex < uploadView.materials.size(),
+           "draw record should point at compact material record");
+  }
+
+  const auto batches = queue.compileIndirectBatches();
+  EXPECT(!batches.empty(),
+         "draw-record queue test should compile indirect batches");
+  std::vector<u32> firstInstances;
+  for (const auto &batch : batches) {
+    for (const auto &command : batch.commands) {
+      firstInstances.push_back(command.firstInstance);
+    }
+  }
+  std::sort(firstInstances.begin(), firstInstances.end());
+  EXPECT(firstInstances.size() == 2 && firstInstances[0] == 0 &&
+             firstInstances[1] == 1,
+         "firstInstance should index typed draw records, not materials");
+}
+
 void testSceneGpuRecordLayoutContract() {
   EXPECT(sizeof(SceneGpuMeshRecord) == 32,
          "SceneGpuMeshRecord std430 contract should expose bindless "
          "attribute stream ranges");
   EXPECT(sizeof(SceneGpuPrimitiveRecord) == 16,
          "SceneGpuPrimitiveRecord std430 contract should stay stable");
+  EXPECT(sizeof(SceneGpuDrawRecord) == 16,
+         "SceneGpuDrawRecord std430 contract should carry typed indices");
   EXPECT(sizeof(SceneGpuObjectRecord) == 176,
          "SceneGpuObjectRecord std430 contract should stay stable");
   EXPECT(sizeof(SceneGpuMaterialRecord) == 96,
@@ -1200,6 +1285,10 @@ void testSceneGpuRecordLayoutContract() {
          "SceneGpuObjectRecord visibilityMask offset should stay stable");
   EXPECT(offsetof(SceneGpuObjectRecord, debugId) == 172,
          "SceneGpuObjectRecord debugId offset should stay stable");
+  EXPECT(offsetof(SceneGpuDrawRecord, objectIndex) == 0,
+         "SceneGpuDrawRecord objectIndex offset should stay stable");
+  EXPECT(offsetof(SceneGpuDrawRecord, materialIndex) == 4,
+         "SceneGpuDrawRecord materialIndex offset should stay stable");
 }
 
 void testSceneResourceTableDoesNotExportPackedVertexUploadStream() {
@@ -1796,6 +1885,7 @@ void testSceneResourceTableUploadViewUsesCompactRecordIndices() {
   EXPECT(view.materials.size() == 1,
          "upload view should compact live materials");
   EXPECT(view.objects.size() == 1, "upload view should compact live objects");
+  EXPECT(view.draws.size() == 1, "upload view should compact live draw records");
   EXPECT(view.primitives.size() == 1,
          "upload view should emit one live primitive");
 
@@ -1812,6 +1902,10 @@ void testSceneResourceTableUploadViewUsesCompactRecordIndices() {
          "primitive object index should point inside compact object span");
   EXPECT(view.primitives.front().objectIndex == 0,
          "primitive object index should use compact object record position");
+  EXPECT(view.draws.front().objectIndex == 0,
+         "draw object index should use compact object record position");
+  EXPECT(view.draws.front().materialIndex == 0,
+         "draw material index should use compact material record position");
 }
 
 void testSceneResourceTableUploadViewExportsHandleToTypedIndexMappings() {
@@ -2123,6 +2217,7 @@ int main() {
   testSceneRegistersCameraAndLightResources();
   testRealtimeSceneLevelResourcesExposeGpuMaterialTables();
   testRealtimeRenderQueueWritesTypedGpuMaterialIndex();
+  testRealtimeRenderQueueWritesTypedGpuDrawRecordIndex();
   testSceneGpuRecordLayoutContract();
   testSceneResourceTableDoesNotExportPackedVertexUploadStream();
   testSceneGpuMaterialRecordCarriesOfflineCullMode();

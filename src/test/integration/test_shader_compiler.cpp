@@ -643,12 +643,17 @@ static bool testPbrMaterialGpuRecordContract(
 
   if (!expectBinding("SceneMaterials", ShaderPropertyType::StorageBuffer, 0, 7,
                      1) ||
+      !expectBinding("SceneObjects", ShaderPropertyType::StorageBuffer, 0, 8,
+                     1) ||
+      !expectBinding("SceneDraws", ShaderPropertyType::StorageBuffer, 0, 9,
+                     1) ||
       !expectBinding("SceneTextures", ShaderPropertyType::Texture2D, 0, 11,
                      256)) {
     return false;
   }
 
   const auto source = readTextFile(fragPath);
+  const auto vertSource = readTextFile(vertPath);
   for (const std::string token :
        {"MaterialUBO", "baseColorFactor", "metallicFactor", "roughnessFactor",
         "albedoMap", "normalMap", "metallicRoughnessMap", "aoMap",
@@ -666,6 +671,19 @@ static bool testPbrMaterialGpuRecordContract(
   if (source.find("materials[vMaterialIndex]") == std::string::npos) {
     std::cerr << "  FAIL: PBR fragment source should index SceneMaterials "
                  "with the per-draw material index\n";
+    return false;
+  }
+  if (vertSource.find("mat4 model = mat4(1.0)") != std::string::npos) {
+    std::cerr << "  FAIL: PBR vertex source should not use identity model as "
+                 "the production transform\n";
+    return false;
+  }
+  if (vertSource.find("draws[gl_InstanceIndex]") == std::string::npos ||
+      vertSource.find("objects[draw.objectIndex].objectToWorld") ==
+          std::string::npos ||
+      vertSource.find("draw.materialIndex") == std::string::npos) {
+    std::cerr << "  FAIL: PBR vertex source should read typed draw/object "
+                 "records for transform and material index\n";
     return false;
   }
 
@@ -792,6 +810,59 @@ testDeferredPbrShaderContracts(const std::filesystem::path &shaderDir) {
   }
 
   std::cout << "  PASS: Deferred PBR shaders use migrated material records\n";
+  return true;
+}
+
+static bool
+testShadowDepthOnlyUsesSceneDrawRecords(const std::filesystem::path &shaderDir) {
+  std::cout << "  Test: shadow depth vertex uses scene draw/object records\n";
+  const auto vertPath =
+      shaderDir / "techniques" / "Forward" / "shadow_depth_only.vert";
+  if (!std::filesystem::exists(vertPath)) {
+    std::cerr << "  FAIL: shadow_depth_only.vert should exist\n";
+    return false;
+  }
+
+  auto compileResult = ShaderCompiler::compileFile(vertPath, {});
+  if (!compileResult.success) {
+    std::cerr << "  FAIL: shadow_depth_only.vert compile failed: "
+              << compileResult.errorMessage << "\n";
+    return false;
+  }
+  const auto bindings = ShaderReflector::reflect(compileResult.stages);
+  const auto hasSsbo = [&](const std::string &name, u32 binding) {
+    const auto it =
+        std::find_if(bindings.begin(), bindings.end(),
+                     [&](const ShaderResourceBinding &candidate) {
+                       return candidate.name == name;
+                     });
+    if (it == bindings.end() || it->type != ShaderPropertyType::StorageBuffer ||
+        it->set != 0 || it->binding != binding) {
+      std::cerr << "  FAIL: shadow_depth_only.vert should reflect " << name
+                << " as set 0 binding " << binding << " storage buffer\n";
+      return false;
+    }
+    return true;
+  };
+  if (!hasSsbo("SceneObjects", 8) || !hasSsbo("SceneDraws", 9)) {
+    return false;
+  }
+
+  const auto source = readTextFile(vertPath);
+  if (source.find("mat4 model = mat4(1.0)") != std::string::npos) {
+    std::cerr << "  FAIL: shadow vertex source should not use identity model "
+                 "as the production transform\n";
+    return false;
+  }
+  if (source.find("draws[gl_InstanceIndex]") == std::string::npos ||
+      source.find("objects[draw.objectIndex].objectToWorld") ==
+          std::string::npos) {
+    std::cerr << "  FAIL: shadow vertex source should read typed draw/object "
+                 "records\n";
+    return false;
+  }
+
+  std::cout << "  PASS: shadow depth vertex reads scene draw/object records\n";
   return true;
 }
 
@@ -1003,6 +1074,8 @@ int main(int argc, char *argv[]) {
   if (!testPbrClearcoatShaderContract(shaderDir))
     ++failures;
   if (!testDeferredPbrShaderContracts(shaderDir))
+    ++failures;
+  if (!testShadowDepthOnlyUsesSceneDrawRecords(shaderDir))
     ++failures;
   if (!testSharedPbrKeepsLowRoughnessHighlights(shaderDir))
     ++failures;

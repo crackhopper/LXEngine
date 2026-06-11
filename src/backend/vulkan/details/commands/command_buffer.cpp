@@ -443,7 +443,9 @@ void VulkanCommandBuffer::executeRasterDrawItem(const RenderWorkItem &item) {
     return;
   }
   vkCmdDrawIndexed(m_handle, static_cast<u32>(indexCount), raster.instanceCount,
-                   raster.firstIndex, raster.vertexOffset, 0);
+                   raster.firstIndex, raster.vertexOffset,
+                   raster.drawRecordIndex == u32_max ? 0u
+                                                     : raster.drawRecordIndex);
 }
 
 void VulkanCommandBuffer::executeComputeDispatchItem(

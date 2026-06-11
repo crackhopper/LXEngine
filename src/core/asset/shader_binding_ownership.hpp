@@ -51,6 +51,7 @@ inline constexpr std::string_view kSystemOwnedBindings[] = {
     "SceneMeshes",
     "ScenePrimitives",
     "SceneObjects",
+    "SceneDraws",
     "SceneMaterials",
     "SceneBvhNodes",
     "SceneFrameParams",
@@ -114,7 +115,8 @@ getExpectedTypeForSystemBinding(std::string_view name) {
   if (name == "ScenePositions" || name == "SceneAttributeStreams" ||
       name == "SceneAttributeValues" || name == "SceneIndices" ||
       name == "SceneMeshes" || name == "ScenePrimitives" ||
-      name == "SceneObjects" || name == "SceneMaterials" ||
+      name == "SceneObjects" || name == "SceneDraws" ||
+      name == "SceneMaterials" ||
       name == "SceneBvhNodes" || name == "SceneFrameParams" ||
       name == "OutputPixels")
     return ShaderPropertyType::StorageBuffer;

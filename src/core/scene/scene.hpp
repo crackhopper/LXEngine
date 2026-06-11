@@ -48,6 +48,7 @@ struct RasterDrawWorkPayload final {
   GpuResourceRef vertexBuffer;
   GpuResourceRef indexBuffer;
   u32 materialIndex = u32_max;
+  u32 drawRecordIndex = u32_max;
   u32 indexCount = 0;
   u32 firstIndex = 0;
   i32 vertexOffset = 0;

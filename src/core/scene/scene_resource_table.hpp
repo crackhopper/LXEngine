@@ -324,6 +324,7 @@ private:
   mutable std::vector<u32> m_gpuIndices;
   mutable std::vector<SceneGpuMeshRecord> m_gpuMeshes;
   mutable std::vector<SceneGpuPrimitiveRecord> m_gpuPrimitives;
+  mutable std::vector<SceneGpuDrawRecord> m_gpuDraws;
   mutable std::vector<SceneGpuObjectRecord> m_gpuObjects;
   mutable std::vector<SceneGpuMaterialRecord> m_gpuMaterials;
   mutable std::vector<std::reference_wrapper<const CombinedTextureSampler>>

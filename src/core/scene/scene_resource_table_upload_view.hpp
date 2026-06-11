@@ -58,6 +58,7 @@ struct SceneResourceTableUploadView final {
   std::span<const u32> indices;
   std::span<const SceneGpuMeshRecord> meshes;
   std::span<const SceneGpuPrimitiveRecord> primitives;
+  std::span<const SceneGpuDrawRecord> draws;
   std::span<const SceneGpuObjectRecord> objects;
   std::span<const SceneGpuMaterialRecord> materials;
   std::span<const std::reference_wrapper<const CombinedTextureSampler>>

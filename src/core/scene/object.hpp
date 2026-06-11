@@ -26,6 +26,7 @@ class Scene;
 
 struct ValidatedRenderablePassData {
   StringID pass;
+  ObjectHandle objectHandle;
   MaterialHandle materialHandle;
   IShaderSharedPtr shaderInfo;
   GpuResourceRef vertexBuffer;

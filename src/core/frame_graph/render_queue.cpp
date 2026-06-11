@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <stdexcept>
+#include <string_view>
 #include <unordered_set>
 
 namespace LX_core {
@@ -93,7 +94,7 @@ makeIndirectCommand(const RasterDrawWorkPayload &raster) {
   command.firstIndex = raster.firstIndex;
   command.vertexOffset = raster.vertexOffset;
   command.firstInstance =
-      raster.materialIndex == u32_max ? 0u : raster.materialIndex;
+      raster.drawRecordIndex == u32_max ? 0u : raster.drawRecordIndex;
   return command;
 }
 
@@ -116,16 +117,35 @@ resolveGpuMaterialIndex(const SceneResourceTableUploadView &uploadView,
 }
 
 [[nodiscard]] bool
-shaderConsumesSceneMaterials(const IShaderSharedPtr &shader) {
+shaderConsumesBinding(const IShaderSharedPtr &shader, std::string_view name) {
   if (!shader) {
     return false;
   }
   for (const auto &binding : shader->getReflectionBindings()) {
-    if (binding.name == "SceneMaterials") {
+    if (binding.name == name) {
       return true;
     }
   }
   return false;
+}
+
+[[nodiscard]] u32
+resolveGpuObjectIndex(const SceneResourceTableUploadView &uploadView,
+                      ObjectHandle handle) {
+  const auto it =
+      std::find_if(uploadView.objectIndexByHandle.begin(),
+                   uploadView.objectIndexByHandle.end(),
+                   [handle](const SceneResourceObjectUploadIndex &entry) {
+                     return entry.handle == handle;
+                   });
+  if (it == uploadView.objectIndexByHandle.end() ||
+      it->typedIndex >= uploadView.objects.size() ||
+      it->typedIndex >= uploadView.draws.size()) {
+    throw std::logic_error(
+        "RenderWorkQueue cannot resolve draw object handle to SceneDraws "
+        "index");
+  }
+  return it->typedIndex;
 }
 
 [[nodiscard]] bool canAppendToBatch(const RenderIndirectBatch &batch,
@@ -325,9 +345,18 @@ void RenderWorkQueue::buildRealtime(const Scene &scene, StringID pass,
       continue;
 
     RenderWorkItem item = makeItemFromValidatedData(validated->get());
-    if (shaderConsumesSceneMaterials(item.shaderInfo)) {
+    if (shaderConsumesBinding(item.shaderInfo, "SceneMaterials")) {
       item.raster.materialIndex =
           resolveGpuMaterialIndex(uploadView, validated->get().materialHandle);
+    }
+    if (validated->get().objectHandle.isValid()) {
+      item.raster.drawRecordIndex =
+          resolveGpuObjectIndex(uploadView, validated->get().objectHandle);
+    } else if (shaderConsumesBinding(item.shaderInfo, "SceneDraws") ||
+               shaderConsumesBinding(item.shaderInfo, "SceneObjects")) {
+      throw std::logic_error(
+          "RenderWorkQueue cannot bind SceneDraws without a typed object "
+          "handle");
     }
     item.target = target.toDesc();
     item.debugId = renderable->getDebugId();

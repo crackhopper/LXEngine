@@ -604,6 +604,7 @@ void SceneNode::rebuildValidatedCache() {
 
     ValidatedRenderablePassData data;
     data.pass = pass;
+    data.objectHandle = meshComponent->get().getObjectHandle();
     data.materialHandle = materialComponent->get().getMaterialHandle();
     data.shaderInfo = shader;
     data.vertexBuffer = getVertexBuffer();

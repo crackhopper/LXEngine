@@ -100,8 +100,12 @@ DescriptorResourceRef makeRealtimeSceneTextureArray(
 void appendRealtimeSceneGpuMaterialResources(
     DescriptorResourceList &out, const SceneResourceTable &resources) {
   const SceneResourceTableUploadView uploadView = resources.buildUploadView();
+  appendRenderStorageDescriptor(out, resources, StringID("SceneObjects"),
+                                copyBytes(uploadView.objects));
   appendRenderStorageDescriptor(out, resources, StringID("SceneMaterials"),
                                 copyBytes(uploadView.materials));
+  appendRenderStorageDescriptor(out, resources, StringID("SceneDraws"),
+                                copyBytes(uploadView.draws));
   out.push_back(makeRealtimeSceneTextureArray(resources, uploadView.textures));
 }
 

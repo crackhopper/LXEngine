@@ -1357,6 +1357,7 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
         .indices = m_gpuIndices,
         .meshes = m_gpuMeshes,
         .primitives = m_gpuPrimitives,
+        .draws = m_gpuDraws,
         .objects = m_gpuObjects,
         .materials = m_gpuMaterials,
         .textures = m_gpuTextures,
@@ -1377,6 +1378,7 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
   m_gpuIndices.clear();
   m_gpuMeshes.clear();
   m_gpuPrimitives.clear();
+  m_gpuDraws.clear();
   m_gpuObjects.clear();
   m_gpuMaterials.clear();
   m_gpuTextures.clear();
@@ -1520,6 +1522,7 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
   };
 
   m_gpuObjects.reserve(aliveCount(m_objects));
+  m_gpuDraws.reserve(aliveCount(m_objects));
   for (u32 i = 0; i < m_objects.size(); ++i) {
     const auto &entry = m_objects[i];
     if (entry.state != SceneResourceEntryState::Alive || !entry.resource) {
@@ -1548,6 +1551,11 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
     objectRecord.visibilityMask = object.visibilityMask;
     objectRecord.debugId = object.debugId.id;
     m_gpuObjects.push_back(objectRecord);
+    m_gpuDraws.push_back(SceneGpuDrawRecord{
+        .objectIndex = objectRecordIndex,
+        .materialIndex = materialRecordIndex,
+        .meshIndex = meshRecordIndex,
+    });
     m_gpuObjectIndexByHandle.push_back(SceneResourceObjectUploadIndex{
         .handle = ObjectHandle{i, entry.generation},
         .typedIndex = objectRecordIndex,
