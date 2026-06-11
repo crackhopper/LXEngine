@@ -49,12 +49,6 @@ bool isTextFile(const fs::path &path) {
          ext == ".py";
 }
 
-std::string readFile(const fs::path &path) {
-  std::ifstream in(path, std::ios::binary);
-  return std::string(std::istreambuf_iterator<char>(in),
-                     std::istreambuf_iterator<char>());
-}
-
 bool isRepoRoot(const fs::path &path) {
   return fs::exists(path /
                     "src/test/integration/"
@@ -95,15 +89,21 @@ fs::path findRepoRoot() {
 
 void scanFile(const fs::path &repoRoot, const fs::path &path,
               const std::vector<ForbiddenToken> &tokens) {
-  const std::string text = readFile(path);
+  std::ifstream in(path);
   const std::string relative = fs::relative(path, repoRoot).generic_string();
-  for (const ForbiddenToken &token : tokens) {
-    if (text.find(token.text) == std::string::npos) {
-      continue;
+
+  std::string line;
+  int lineNumber = 0;
+  while (std::getline(in, line)) {
+    ++lineNumber;
+    for (const ForbiddenToken &token : tokens) {
+      if (line.find(token.text) == std::string::npos) {
+        continue;
+      }
+      std::cerr << "[FAIL] forbidden token '" << token.text << "' in "
+                << relative << ':' << lineNumber << '\n';
+      ++g_failures;
     }
-    std::cerr << "[FAIL] forbidden token '" << token.text << "' in "
-              << relative << '\n';
-    ++g_failures;
   }
 }
 
@@ -115,19 +115,26 @@ void scanRoot(const fs::path &repoRoot, const ScanRoot &root,
                                root.path.generic_string());
     return;
   }
+  int scannedTextFiles = 0;
   for (fs::recursive_directory_iterator it(absolute), end; it != end; ++it) {
     const fs::directory_entry &entry = *it;
-    if (entry.is_directory() && hasSkippedPathComponent(entry.path())) {
+    const fs::path relative = fs::relative(entry.path(), repoRoot);
+    if (entry.is_directory() && hasSkippedPathComponent(relative)) {
       it.disable_recursion_pending();
       continue;
     }
-    if (hasSkippedPathComponent(entry.path())) {
+    if (hasSkippedPathComponent(relative)) {
       continue;
     }
     if (!entry.is_regular_file() || !isTextFile(entry.path())) {
       continue;
     }
+    ++scannedTextFiles;
     scanFile(repoRoot, entry.path(), tokens);
+  }
+  if (root.required) {
+    EXPECT(scannedTextFiles > 0, "required scan root produced no text files: " +
+                                     root.path.generic_string());
   }
 }
 
