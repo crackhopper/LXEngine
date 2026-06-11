@@ -27,11 +27,11 @@
 
 | 能力 | 当前状态 |
 |---|---|
-| Scene | `.scene.yaml` 已支持 camera、environment、outputProfiles、offlineRender、mesh URI 和 materials tag |
+| Scene | `.scene.yaml` 已支持 camera、environment、outputProfiles、offlineRender、mesh URI 和直接 material URI |
 | Mesh loader | 规范承诺 OBJ 和 glTF；没有通用三角 PLY runtime loader |
 | glTF loader | 当前以单 mesh / 单 primitive 路径为主，不适合作为首版 BMW M6 多 shape 合并输出 |
 | Texture loader | 已支持 LDR 图片和 HDR float texture 读取 |
-| Material | `.material` + `MaterialInstance` 是统一材质入口，实时和离线通过 material tag 选择 |
+| Material | `.material` + `MaterialInstance` 是统一材质入口，实时和离线通过 profile 与直接 material URI 选择 |
 
 因此本 REQ 选择新增一个 **独立转换工具**，把 PBRT `bmw-m6` 转成 LXEngine 当前最稳妥的资产结构：一个 scene YAML、114 个 OBJ mesh、一组当前 runtime 可加载的 PBR 近似 material 文件、一组无损保留 PBRT 原始语义的 source material 文件、复制后的 EXR/SPD/BSDF 资源，以及转换报告。
 
@@ -83,7 +83,7 @@ lxe_pbrt_scene_convert \
 | `WorldBegin` | world 内容开始 |
 | `LightSource "infinite"` | scene environment HDR |
 | `MakeNamedMaterial` | material 文件生成 |
-| `NamedMaterial` | shape 到 material tag / URI 的绑定 |
+| `NamedMaterial` | shape 到直接 material URI / PBRT source material URI 的绑定 |
 | `Shape "plymesh"` | mesh 转换输入 |
 | `AttributeBegin` / `AttributeEnd` | shape 分组边界 |
 
@@ -114,9 +114,9 @@ scene 要求：
 - `outputProfiles.pbrt-reference` 使用 PBRT film 分辨率 `1400x1000`。
 - `offlineRender.samples` 使用 PBRT `pixelsamples`，`maxBounce` 使用 PBRT `maxdepth`。
 - 每个 PBRT shape 生成一个 scene node，mesh URI 指向对应 OBJ。
-- 每个 shape 绑定至少两个 material tag：
-  - `realtime-pbr`：PBR 近似材质。
-  - `offline-pbrt-reference`：离线 reference 用材质 tag，首版可指向 PBR 近似 `.material`，但 scene/material manifest 必须同时记录对应的 PBRT source material URI，便于后续离线 renderer 改为消费真实 PBRT BSDF。
+- 每个 shape 绑定一个直接 material URI：
+  - 首版指向 PBR 近似 `.material`，供 realtime profile 与 `offline-pbrt-reference` profile 共用。
+  - scene/material manifest 必须同时记录对应的 PBRT source material URI，便于后续离线 renderer 改为消费真实 PBRT BSDF。
 
 ### R5: Material 文件生成分为可渲染近似与无损 source material
 
@@ -169,7 +169,7 @@ runtime PBR 近似首版转换策略：
 
 - 每个生成 material 文件必须使用现有 `.material` loader 能识别的 shader 和 parameter/resource 表达。
 - runtime `.material` 不得把 unsupported PBRT 字段塞进当前 loader 不能识别的位置；无损信息放在 PBRT source material YAML 和 manifest 中。
-- `offline-pbrt-reference` tag 不得声称已精确实现 Fourier BSDF、spectral metal 或 PBRT glass，除非后续 renderer 模块实际支持并消费 source material YAML。
+- `offline-pbrt-reference` profile 不得声称已精确实现 Fourier BSDF、spectral metal 或 PBRT glass，除非后续 renderer 模块实际支持并消费 source material YAML。
 - 转换报告必须列出所有 precision loss，并逐项指向未丢失的 source material 字段位置。
 
 ### R6: 资源复制与路径约定
