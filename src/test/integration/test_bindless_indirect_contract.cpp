@@ -78,6 +78,50 @@ void testSharedTextureIdentityProducesOneBindlessSlot() {
          "two material records should point at the same texture slot");
 }
 
+void testDifferentTextureIdentityProducesDifferentBindlessSlots() {
+  VulkanGpuResourceTable table;
+  const GpuDescriptorTableHandle descriptors = table.createDescriptorTable();
+
+  const GpuBindlessSlot first =
+      table.updateBindlessSlot(descriptors, GpuImageHandle{42},
+                               GpuSamplerHandle{7});
+  const GpuBindlessSlot second =
+      table.updateBindlessSlot(descriptors, GpuImageHandle{43},
+                               GpuSamplerHandle{7});
+
+  EXPECT(first.index != second.index,
+         "different image identity should allocate a different bindless slot");
+}
+
+void testPipelineCacheFindAndCreateAreObservable() {
+  VulkanGpuResourceTable table;
+  const GpuPipelineDesc desc{.key = "forward.bindless.pipeline"};
+
+  EXPECT(!table.findPipeline(desc).has_value(),
+         "pipeline find should miss before getOrCreate");
+  const GpuPipelineHandle created = table.getOrCreatePipeline(desc);
+  const auto found = table.findPipeline(desc);
+
+  EXPECT(found.has_value(), "pipeline find should hit after getOrCreate");
+  EXPECT(found->id == created.id, "pipeline cache should return same handle");
+}
+
+void testProgressTracksResourceWork() {
+  VulkanGpuResourceTable table;
+  const u8 bytes[4] = {1, 2, 3, 4};
+
+  (void)table.createBuffer(GpuBufferDesc{.byteSize = 4},
+                           std::span<const u8>(bytes));
+  (void)table.createImage(GpuImageDesc{.width = 1, .height = 1, .mipLevels = 1},
+                          std::span<const u8>(bytes));
+
+  const GpuProgress progress = table.queryProgress();
+  EXPECT(progress.totalTasks >= 2,
+         "resource table progress should count created resources");
+  EXPECT(progress.completedTasks == progress.totalTasks,
+         "synchronous shell uploads should report completed tasks");
+}
+
 void testIndirectDrawBufferHandleIsOpaque() {
   VulkanGpuResourceTable table;
   const u8 commandBytes[16] = {};
@@ -137,6 +181,9 @@ void testDescriptorChangeSplitsIndirectBatches() {
 
 int main() {
   testSharedTextureIdentityProducesOneBindlessSlot();
+  testDifferentTextureIdentityProducesDifferentBindlessSlots();
+  testPipelineCacheFindAndCreateAreObservable();
+  testProgressTracksResourceWork();
   testIndirectDrawBufferHandleIsOpaque();
   testQueueCompilesStableIndirectBatches();
   testDescriptorChangeSplitsIndirectBatches();

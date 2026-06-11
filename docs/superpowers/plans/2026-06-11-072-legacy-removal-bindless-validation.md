@@ -384,7 +384,7 @@ Expected: commit includes the new diagnostics and test.
 - Modify: `src/backend/vulkan/vulkan_gpu_resource_table.cpp`
 - Modify: `src/test/integration/test_bindless_indirect_contract.cpp`
 
-- [ ] **Step 1: Strengthen failing GPU table tests**
+- [x] **Step 1: Strengthen failing GPU table tests**
 
 In `src/test/integration/test_bindless_indirect_contract.cpp`, add tests:
 
@@ -430,7 +430,7 @@ void testProgressTracksResourceWork() {
 
 Call them from `main()`.
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 
 Run:
 
@@ -441,7 +441,7 @@ build/src/test/test_bindless_indirect_contract
 
 Expected: FAIL because current `updateBindlessSlot` always returns slot `0`, `findPipeline` always misses, and progress is empty.
 
-- [ ] **Step 3: Add state fields**
+- [x] **Step 3: Add state fields**
 
 Modify `src/backend/vulkan/vulkan_gpu_resource_table.hpp`:
 
@@ -478,7 +478,7 @@ Add private members:
   u32 m_totalTasks = 0;
 ```
 
-- [ ] **Step 4: Implement stateful behavior**
+- [x] **Step 4: Implement stateful behavior**
 
 Modify `src/backend/vulkan/vulkan_gpu_resource_table.cpp`:
 
@@ -556,7 +556,7 @@ GpuProgress VulkanGpuResourceTable::queryProgress() const {
 
 Keep `updateBuffer`, `updateIndirectDrawBuffer`, import/export behavior unless tests require state.
 
-- [ ] **Step 5: Run strengthened tests**
+- [x] **Step 5: Run strengthened tests**
 
 Run:
 
@@ -567,7 +567,7 @@ build/src/test/test_bindless_indirect_contract
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 Run:
 
