@@ -25,9 +25,8 @@ schema: lxe.material.v2
 bsdf:
   type: uber
   parameters:
-    Kd: { kind: rgb, value: [0.8, 0.7, 0.6] }
+    Kd: { kind: texture, valueType: rgb, uri: textures/kd.png }
     Ks: { kind: rgb, value: [0.04, 0.04, 0.04] }
-    normalmap: { kind: texture, valueType: rgb, uri: textures/normal.png }
 )");
 
   expect(parsed.instance != nullptr, "valid v2 material should parse");
@@ -49,19 +48,13 @@ void testEnvelopeState() {
 
   expect(material->getBsdfType() == "uber",
          "material instance should expose parsed BSDF type");
-  expect(material->getMaterialEnvelopeCount() == 3,
+  expect(material->getMaterialEnvelopeCount() == 2,
          "material instance should expose parsed envelope table");
 
   const auto kd = material->getMaterialEnvelope(StringID("Kd"));
   expect(kd.has_value(), "Kd envelope should exist");
-  expect(kd.has_value() && kd->get().kind == MaterialEnvelopeKind::Rgb,
-         "Kd envelope should retain rgb kind");
-
-  const auto normal = material->getMaterialEnvelope(StringID("normalmap"));
-  expect(normal.has_value(), "normalmap envelope should exist");
-  expect(normal.has_value() &&
-             normal->get().kind == MaterialEnvelopeKind::Texture,
-         "normalmap envelope should retain texture kind");
+  expect(kd.has_value() && kd->get().kind == MaterialEnvelopeKind::Texture,
+         "Kd envelope should retain texture kind");
   expect(material->getMaterialDependencies().size() == 1,
          "texture envelope should produce one material dependency");
 }

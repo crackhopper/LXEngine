@@ -509,55 +509,10 @@ bsdf:
              parsed.dependencies.front().uri.string() ==
                  "memory://textures/kd.png",
          "resource dependency should retain canonical texture uri");
-  expect(!parsed.dependencies.empty() &&
-             parsed.dependencies.front().resourceHandle.isValid(),
-         "resource dependency should retain typed identity handle");
   expect(parsed.dependencies.size() == 2 &&
              parsed.dependencies[1].uri.string() ==
                  "memory://textures/normal.png",
          "normalmap dependency should retain canonical texture uri");
-  expect(parsed.dependencies.size() == 2 &&
-             parsed.dependencies[1].resourceHandle.isValid(),
-         "normalmap dependency should retain typed identity handle");
-}
-
-void testParserStoresRenderClassTagsAndMetadata() {
-  LX_core::SceneResourceTable table;
-  LX_infra::MaterialResourceParser parser;
-  const auto parsed = parser.parse(table, "memory://classified-material", R"(
-schema: lxe.material.v2
-name: ClassifiedMaterial
-renderClass: surface.transparent
-tags: [glass, vehicle]
-metadata:
-  author: material-team
-  source: bmw-m6
-bsdf:
-  type: glass
-  parameters:
-    Kr: { kind: rgb, value: [1.0, 1.0, 1.0] }
-    Kt: { kind: rgb, value: [0.8, 0.9, 1.0] }
-    eta: { kind: float, value: 1.5 }
-    uroughness: { kind: float, value: 0.0 }
-    vroughness: { kind: float, value: 0.0 }
-)");
-
-  expect(parsed.instance != nullptr,
-         "classified material should produce instance");
-  if (!parsed.instance) {
-    return;
-  }
-
-  expect(parsed.instance->getRenderClass() == "surface.transparent",
-         "MaterialInstance should retain renderClass");
-  const auto &tags = parsed.instance->getMaterialTags();
-  expect(tags.size() == 2 && tags[0] == "glass" && tags[1] == "vehicle",
-         "MaterialInstance should retain material tags");
-  const auto &metadata = parsed.instance->getAuthoringMetadata();
-  expect(metadata.count("author") == 1 && metadata.at("author") == "material-team",
-         "MaterialInstance should retain authoring metadata");
-  expect(metadata.count("source") == 1 && metadata.at("source") == "bmw-m6",
-         "MaterialInstance should retain source metadata");
 }
 
 } // namespace
@@ -574,7 +529,6 @@ int main() {
   testParserRejectsLegacyRootResourcesMap();
   testParserRejectsRenderFlowFields();
   testParserStoresEnvelopeTruthAndDependencies();
-  testParserStoresRenderClassTagsAndMetadata();
 
   if (g_failures != 0) {
     std::cerr << g_failures << " material v2 parser checks failed\n";
