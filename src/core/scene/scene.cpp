@@ -204,19 +204,6 @@ std::string Scene::dumpTree() const {
   return out;
 }
 
-void Scene::setActiveMaterialTagForRenderables(const std::string &tag) {
-  for (const auto &renderable : m_renderables) {
-    auto node = std::dynamic_pointer_cast<SceneNode>(renderable);
-    if (!node)
-      continue;
-    const auto materialComponent = node->getComponent<MaterialComponent>();
-    if (!materialComponent)
-      continue;
-    (void)materialComponent->get().setActiveMaterialTag(tag);
-    syncNodeResourceState(*node);
-  }
-}
-
 /*
 @source_analysis.section getSceneLevelResources：camera×target 与 light×pass
 两轴筛选 REQ-009 的核心设计：camera 按 target 选，light 按 pass 选 —
@@ -899,21 +886,14 @@ void Scene::registerNodeResources(SceneNode &node) {
   if (auto materialComponent = node.getComponent<MaterialComponent>()) {
     materialComponent->get().forEachPendingMaterial(
         [this, &materialComponent, &materialHandle](
-            const std::string &tag, const MaterialInstanceSharedPtr &material) {
+            const std::string &, const MaterialInstanceSharedPtr &material) {
           if (!material) {
             return;
           }
           const MaterialHandle handle =
               m_resources.registerMaterial(material->cloneInstanceDataUnique());
-          if (tag.empty()) {
-            materialComponent->get().setMaterialHandle(handle);
-          } else {
-            materialComponent->get().setTaggedMaterialHandle(tag, handle);
-          }
-          if (!materialHandle.isValid() ||
-              tag == materialComponent->get().getActiveMaterialTag()) {
-            materialHandle = handle;
-          }
+          materialComponent->get().setMaterialHandle(handle);
+          materialHandle = handle;
         });
     materialComponent->get().clearPendingMaterials();
     if (!materialHandle.isValid()) {
@@ -1029,28 +1009,19 @@ void Scene::syncNodeResourceState(SceneNode &node) const {
     bool registeredPendingMaterial = false;
     materialComponent->get().forEachPendingMaterial(
         [this, &materialComponent, &materialHandle, &registeredPendingMaterial](
-            const std::string &tag, const MaterialInstanceSharedPtr &material) {
+            const std::string &, const MaterialInstanceSharedPtr &material) {
           if (!material) {
             return;
           }
           MaterialHandle oldHandle =
-              tag.empty()
-                  ? materialComponent->get().getMaterialHandle()
-                  : materialComponent->get().getMaterialHandleForTag(tag);
+              materialComponent->get().getMaterialHandle();
           if (oldHandle.isValid()) {
             m_resources.release(oldHandle);
           }
           const MaterialHandle newHandle =
               m_resources.registerMaterial(material->cloneInstanceDataUnique());
-          if (tag.empty()) {
-            materialComponent->get().setMaterialHandle(newHandle);
-          } else {
-            materialComponent->get().setTaggedMaterialHandle(tag, newHandle);
-          }
-          if (tag.empty() ||
-              tag == materialComponent->get().getActiveMaterialTag()) {
-            materialHandle = newHandle;
-          }
+          materialComponent->get().setMaterialHandle(newHandle);
+          materialHandle = newHandle;
           registeredPendingMaterial = true;
         });
     if (registeredPendingMaterial) {

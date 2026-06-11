@@ -185,7 +185,7 @@ private:
   u64 m_nextListenerId = 1;
   std::string m_bsdfType;
   std::string m_renderClass;
-  std::vector<std::string> m_materialTags;
+  std::vector<std::string> m_tags;
   std::unordered_map<std::string, std::string> m_authoringMetadata;
   std::unordered_map<StringID, MaterialParameterEnvelope, StringID::Hash>
       m_materialEnvelopesByName;

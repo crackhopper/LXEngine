@@ -856,25 +856,14 @@ def scene_yaml(
             },
             "visibilityMask": 4294967295,
             "mesh": {"uri": mesh_uri},
-            "materials": [
-                {
-                    "tag": "realtime-pbr",
-                    "uri": mat["runtime"],
-                    "offline": {
-                        "pbrtSourceMaterialUri": mat["source"],
-                        "pbrtMaterialName": shape.material,
-                    },
+            "material": {
+                "uri": mat["runtime"],
+                "offline": {
+                    "pbrtSourceMaterialUri": mat["source"],
+                    "pbrtMaterialName": shape.material,
+                    "runtimeApproximationUntilSupported": True,
                 },
-                {
-                    "tag": "offline-pbrt-reference",
-                    "uri": mat["runtime"],
-                    "offline": {
-                        "pbrtSourceMaterialUri": mat["source"],
-                        "pbrtMaterialName": shape.material,
-                        "runtimeApproximationUntilSupported": True,
-                    },
-                },
-            ],
+            },
         }
         if is_environment_floor_shape(shape):
             environment_children.append(node)
@@ -915,7 +904,6 @@ def scene_yaml(
                     "camera": "/pbrt_camera",
                     "width": film_width,
                     "height": film_height,
-                    "materialTag": "realtime-pbr",
                     "outputFormat": "exr-png",
                     "outDir": "artifacts/pbrt/bmw-m6/realtime",
                     "backgroundColor": [0.0, 0.0, 0.0],
@@ -924,7 +912,6 @@ def scene_yaml(
                     "camera": "/pbrt_camera",
                     "width": film_width,
                     "height": film_height,
-                    "materialTag": "offline-pbrt-reference",
                     "outputFormat": "exr-png",
                     "outDir": "artifacts/pbrt/bmw-m6/offline",
                     "backgroundColor": [0.0, 0.0, 0.0],
@@ -936,7 +923,6 @@ def scene_yaml(
                 "maxBounce": max_bounce,
                 "seed": 1,
                 "profile": "offline-pbrt-reference",
-                "materialTag": "offline-pbrt-reference",
                 "compareMode": "shaded",
             },
         },
@@ -1001,7 +987,7 @@ def write_conversion_doc(path: Path, manifest: dict[str, Any]) -> None:
             "4. Implement Fourier BSDF loading for `bsdfs/leather.bsdf` instead of using the PBR fallback.",
             "5. Implement substrate/clearcoat car paint, preserving separate diffuse/specular lobes and anisotropic roughness.",
             "6. Add environment importance sampling for `textures/sky.exr` so offline path tracing converges on the PBRT lighting setup.",
-            "7. Switch the `offline-pbrt-reference` material tag from runtime approximation to source material consumption once those renderer modules exist.",
+            "7. Switch `offline-pbrt-reference` from runtime approximation to source material consumption once those renderer modules exist.",
             "",
         ]
     )

@@ -1458,36 +1458,6 @@ void testSceneResourceTableUploadViewReflectsMaterialMutationAfterBuild() {
          "upload view should reflect external material parameter mutation");
 }
 
-void testSceneResourceTableTracksActiveMaterialTagSwitch() {
-  auto node = SceneNode::create("tagged_resource_table_node");
-  node->addComponent<MeshComponent>(makeMeshBuffer());
-  auto materialComponent = node->addComponent<MaterialComponent>(
-      "realtime-pbr", makeGpuRecordMaterial(Vec4f{0.1f, 0.2f, 0.3f, 1.0f}));
-  EXPECT(materialComponent.has_value(),
-         "tagged material component should attach");
-  materialComponent->get().setTaggedMaterial(
-      "offline-pbr", makeGpuRecordMaterial(Vec4f{0.8f, 0.7f, 0.6f, 1.0f}));
-
-  auto scene = Scene::create("tagged_resource_table_scene", node);
-  const auto before = scene->resources().buildUploadView();
-  EXPECT(before.materials.size() == 1,
-         "tagged scene should expose one active material");
-  EXPECT(before.materials.front().baseColor.x == 0.1f,
-         "initial active tag should feed resource table");
-
-  scene->setActiveMaterialTagForRenderables("offline-pbr");
-  const auto after = scene->resources().buildUploadView();
-  EXPECT(after.materials.size() == 1,
-         "tag switch should keep one active material");
-  EXPECT(after.materials.front().baseColor.x == 0.8f &&
-             after.materials.front().baseColor.y == 0.7f &&
-             after.materials.front().baseColor.z == 0.6f,
-         "resource table should reflect switched material tag");
-  EXPECT(after.primitives.size() == 1 &&
-             after.primitives.front().materialIndex == 0,
-         "primitive should reference compact index of switched material");
-}
-
 void testSceneResourceTableUploadViewPacksMatrixColumns() {
   SceneResourceTable table;
   const auto mesh = table.registerMesh(uniqueMesh(makeMeshBuffer()));
@@ -1898,7 +1868,6 @@ int main() {
   testMaterialV2EnvelopeFeedsGpuMaterialRecord();
   testMaterialV2TextureEnvelopeFeedsUploadTextureSlots();
   testSceneResourceTableUploadViewReflectsMaterialMutationAfterBuild();
-  testSceneResourceTableTracksActiveMaterialTagSwitch();
   testSceneResourceTableUploadViewPacksMatrixColumns();
   testSceneResourceTableUploadViewUsesCompactRecordIndices();
   testSceneResourceTableUploadViewExportsHandleToTypedIndexMappings();

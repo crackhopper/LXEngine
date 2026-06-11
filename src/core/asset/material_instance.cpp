@@ -325,7 +325,7 @@ MaterialInstance::SharedPtr MaterialInstance::cloneInstanceData() const {
   clone->m_enabledPasses = uniqueClone->m_enabledPasses;
   clone->m_bsdfType = uniqueClone->m_bsdfType;
   clone->m_renderClass = uniqueClone->m_renderClass;
-  clone->m_materialTags = uniqueClone->m_materialTags;
+  clone->m_tags = uniqueClone->m_tags;
   clone->m_authoringMetadata = uniqueClone->m_authoringMetadata;
   clone->m_materialEnvelopesByName = uniqueClone->m_materialEnvelopesByName;
   clone->m_materialDependencies = uniqueClone->m_materialDependencies;
@@ -362,7 +362,7 @@ MaterialInstance::UniquePtr MaterialInstance::cloneInstanceDataUnique() const {
   clone->m_enabledPasses = m_enabledPasses;
   clone->m_bsdfType = m_bsdfType;
   clone->m_renderClass = m_renderClass;
-  clone->m_materialTags = m_materialTags;
+  clone->m_tags = m_tags;
   clone->m_authoringMetadata = m_authoringMetadata;
   clone->m_materialEnvelopesByName = m_materialEnvelopesByName;
   clone->m_materialDependencies = m_materialDependencies;
@@ -549,16 +549,16 @@ const std::string &MaterialInstance::getRenderClass() const {
 }
 
 void MaterialInstance::setMaterialTags(std::vector<std::string> tags) {
-  if (m_materialTags == tags) {
+  if (m_tags == tags) {
     return;
   }
   activateEnvelopeStorage();
-  m_materialTags = std::move(tags);
+  m_tags = std::move(tags);
   markMaterialStateDirty();
 }
 
 const std::vector<std::string> &MaterialInstance::getMaterialTags() const {
-  return m_materialTags;
+  return m_tags;
 }
 
 void MaterialInstance::setAuthoringMetadata(

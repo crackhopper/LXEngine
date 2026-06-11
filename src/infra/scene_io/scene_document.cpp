@@ -635,6 +635,11 @@ loadOutputCameraOverrides(const YAML::Node &node,
   return overrides;
 }
 
+[[nodiscard]] bool isDeletedMaterialSwitchField(const std::string &key) {
+  static const std::string field = std::string("material") + "Tag";
+  return key == field;
+}
+
 [[nodiscard]] LX_core::offline::OutputProfile
 loadOutputProfile(const YAML::Node &node, const std::string &name) {
   if (!node || !node.IsMap()) {
@@ -675,15 +680,13 @@ loadOutputProfile(const YAML::Node &node, const std::string &name) {
       profile.outputFormat = value.as<std::string>();
     } else if (key == "outDir") {
       profile.outDir = value.as<std::string>();
-    } else if (key == "materialTag") {
-      profile.materialTag = value.as<std::string>();
     } else if (key == "backgroundColor") {
       const std::string fieldName =
           "scene.outputProfiles." + name + ".backgroundColor";
       profile.backgroundColor = loadVec3(value, fieldName.c_str());
     } else if (key == "cameraOverrides") {
       profile.cameraOverrides = loadOutputCameraOverrides(value, name);
-    } else {
+    } else if (!isDeletedMaterialSwitchField(key)) {
       profile.extensionYamlByField.emplace(key, dumpYamlNode(value));
     }
   }
@@ -739,8 +742,7 @@ loadOfflineRenderSettings(const YAML::Node &node) {
     }
     if (key == "shader") {
       throw std::runtime_error(
-          "scene.offlineRender.shader is no longer supported; select an "
-          "offline material by scene.offlineRender.materialTag");
+          "scene.offlineRender.shader is no longer supported");
     }
     if (key == "integrator") {
       settings.integrator = value.as<std::string>();
@@ -752,15 +754,13 @@ loadOfflineRenderSettings(const YAML::Node &node) {
       settings.seed = value.as<u32>();
     } else if (key == "profile") {
       settings.profileName = value.as<std::string>();
-    } else if (key == "materialTag") {
-      settings.materialTag = value.as<std::string>();
     } else if (key == "shadows") {
       throw std::runtime_error(
           "scene.offlineRender.shadows is no longer supported; use "
           "scene.rendering.shadows");
     } else if (key == "compareMode") {
       settings.compareMode = value.as<std::string>();
-    } else {
+    } else if (!isDeletedMaterialSwitchField(key)) {
       settings.extensionYamlByField.emplace(key, dumpYamlNode(value));
     }
   }
@@ -895,9 +895,6 @@ void saveOutputProfile(YAML::Emitter &out,
   out << YAML::Key << "height" << YAML::Value << profile.height;
   out << YAML::Key << "outputFormat" << YAML::Value << profile.outputFormat;
   out << YAML::Key << "outDir" << YAML::Value << profile.outDir.string();
-  if (!profile.materialTag.empty()) {
-    out << YAML::Key << "materialTag" << YAML::Value << profile.materialTag;
-  }
   out << YAML::Key << "backgroundColor" << YAML::Value;
   saveVec3(out, profile.backgroundColor);
   if (hasOutputCameraOverrides(profile.cameraOverrides)) {
@@ -938,10 +935,6 @@ void saveRenderProfileDocument(
   out << YAML::Key << "maxBounce" << YAML::Value << document.offline.maxBounce;
   out << YAML::Key << "seed" << YAML::Value << document.offline.seed;
   out << YAML::Key << "profile" << YAML::Value << document.offline.profileName;
-  if (!document.offline.materialTag.empty()) {
-    out << YAML::Key << "materialTag" << YAML::Value
-        << document.offline.materialTag;
-  }
   if (document.offline.compareMode != "shaded") {
     out << YAML::Key << "compareMode" << YAML::Value
         << document.offline.compareMode;

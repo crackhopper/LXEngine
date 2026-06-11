@@ -183,6 +183,9 @@ class PbrtSceneConvertTest(unittest.TestCase):
             self.assertIn('"realtimeRender"', scene_text)
             self.assertIn('"ibl": true', scene_text)
             self.assertIn('"alphaTransparency": true', scene_text)
+            self.assertNotIn('"materialTag"', scene_text)
+            self.assertNotIn('"materials":', scene_text)
+            self.assertIn('"material":', scene_text)
 
             obj_text = (out_root / "meshes" / "mesh_00001.obj").read_text(
                 encoding="utf-8"
@@ -299,7 +302,6 @@ class PbrtSceneConvertTest(unittest.TestCase):
             self.assertIn('"nodeName": "bmw_m6_car"', scene_text)
             self.assertIn('"name": "BMW_M6_Car"', scene_text)
             self.assertIn('"name": "Plane_Plane.001"', scene_text)
-            self.assertIn('"tag": "realtime-pbr"', scene_text)
             self.assertIn('"pbrtSourceMaterialUri":', scene_text)
 
             manifest_path = out_root / "pbrt_bmw_m6.converted.json"

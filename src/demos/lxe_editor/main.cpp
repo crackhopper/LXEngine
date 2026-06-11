@@ -868,10 +868,6 @@ int main(int argc, char **argv) {
                   .profileName = realtimeRenderOptions->profileName,
                   .outputPath = realtimeRenderOptions->outputBasePath,
               });
-      if (!resolved.output.materialTag.empty()) {
-        runtime.scene()->setActiveMaterialTagForRenderables(
-            resolved.output.materialTag);
-      }
       const std::filesystem::path outputBasePath =
           realtimeRenderOptions->outputBasePath.value_or(
               demo::makeRealtimeProfileOutputBasePath(
