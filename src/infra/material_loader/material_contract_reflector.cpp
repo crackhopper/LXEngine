@@ -96,21 +96,34 @@ commentMetadataLine(std::string_view line) {
   return code.substr(begin, end - begin) == "LxMaterialSurface";
 }
 
-[[nodiscard]] std::optional<std::string>
-firstParameterType(std::string_view parameter) {
+[[nodiscard]] bool hasExpectedParameter(std::string_view parameter,
+                                        std::string_view expectedType) {
   const std::string stripped = trim(parameter);
-  if (stripped.empty()) {
-    return std::nullopt;
+  std::size_t typeEnd = 0;
+  while (typeEnd < stripped.size() && isIdentifierChar(stripped[typeEnd])) {
+    ++typeEnd;
+  }
+  if (stripped.substr(0, typeEnd) != expectedType) {
+    return false;
   }
 
-  std::size_t end = 0;
-  while (end < stripped.size() && isIdentifierChar(stripped[end])) {
-    ++end;
+  if (typeEnd >= stripped.size() ||
+      std::isspace(static_cast<unsigned char>(stripped[typeEnd])) == 0) {
+    return false;
   }
-  if (end == 0) {
-    return std::nullopt;
+
+  const std::string declarator =
+      trim(std::string_view(stripped).substr(typeEnd));
+  if (declarator.empty()) {
+    return false;
   }
-  return stripped.substr(0, end);
+
+  for (const char c : declarator) {
+    if (!isIdentifierChar(c)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 [[nodiscard]] bool hasExpectedParameterTypes(std::string_view parameters) {
@@ -121,9 +134,8 @@ firstParameterType(std::string_view parameter) {
     const std::size_t comma = parameters.find(',', begin);
     const std::size_t end =
         comma == std::string_view::npos ? parameters.size() : comma;
-    const std::optional<std::string> type =
-        firstParameterType(parameters.substr(begin, end - begin));
-    if (!type.has_value() || *type != expectedTypes[index]) {
+    if (!hasExpectedParameter(parameters.substr(begin, end - begin),
+                              expectedTypes[index])) {
       return false;
     }
     if (index + 1 < expectedTypes.size()) {
@@ -144,6 +156,7 @@ firstParameterType(std::string_view parameter) {
   code.reserve(sourceText.size());
 
   bool inBlockComment = false;
+  int disabledPreprocessorDepth = 0;
   for (std::size_t i = 0; i < sourceText.size();) {
     if (inBlockComment) {
       if (i + 1 < sourceText.size() && sourceText[i] == '*' &&
@@ -191,6 +204,7 @@ firstParameterType(std::string_view parameter) {
 
       if (onlyWhitespaceBeforeHash) {
         bool continuedDirective = false;
+        std::string directiveText;
         do {
           continuedDirective = false;
           std::string line;
@@ -199,6 +213,7 @@ firstParameterType(std::string_view parameter) {
             code.push_back(' ');
             ++i;
           }
+          directiveText += line;
           continuedDirective = lineContinuesPreprocessorDirective(line);
           if (i < sourceText.size() && sourceText[i] == '\n') {
             code.push_back('\n');
@@ -211,8 +226,22 @@ firstParameterType(std::string_view parameter) {
             ++i;
           }
         } while (continuedDirective && i < sourceText.size());
+
+        const std::string directive = trim(directiveText);
+        if (directive == "#if 0") {
+          ++disabledPreprocessorDepth;
+        } else if (directive.rfind("#endif", 0) == 0 &&
+                   disabledPreprocessorDepth > 0) {
+          --disabledPreprocessorDepth;
+        }
         continue;
       }
+    }
+
+    if (disabledPreprocessorDepth > 0) {
+      code.push_back(sourceText[i] == '\n' ? '\n' : ' ');
+      ++i;
+      continue;
     }
 
     code.push_back(sourceText[i]);

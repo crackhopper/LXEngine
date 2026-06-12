@@ -356,6 +356,28 @@ LxMaterialSurface lxLoadMaterialSurface(uint materialIndex) { }
          "wrong accessor parameter list should reject reflection");
 }
 
+void testReflectRejectsAccessorArrayDeclarator() {
+  const std::string source = R"glsl(
+// LX_MATERIAL_CONTRACT_BEGIN
+// type: matte
+// status: supported
+// reflectionHash: matte-reflect-v1
+// storageAbiHash: matte-storage-v1
+// accessorAbiHash: material-surface-v1
+// parameter: Kd required rgb texture
+// LX_MATERIAL_CONTRACT_END
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex[2], vec2 uv, vec3 n, mat3 tbn) { }
+)glsl";
+  const auto result = LX_infra::reflectMaterialContractSource(
+      LX_core::ResourceUri(
+          "memory://materials/accessor-array-param.contract.glsl"),
+      source);
+  EXPECT(!result.diagnostics.empty(),
+         "accessor array declarator should not satisfy Material Accessor ABI");
+  EXPECT(!result.reflection.has_value(),
+         "accessor array declarator should reject reflection");
+}
+
 void testReflectRejectsAccessorMacroWithoutFunctionDefinition() {
   const std::string source = R"glsl(
 // LX_MATERIAL_CONTRACT_BEGIN
@@ -400,6 +422,31 @@ LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat
          "multiline accessor macro should reject reflection");
 }
 
+void testReflectRejectsAccessorInDisabledPreprocessorBlock() {
+  const std::string source = R"glsl(
+// LX_MATERIAL_CONTRACT_BEGIN
+// type: matte
+// status: supported
+// reflectionHash: matte-reflect-v1
+// storageAbiHash: matte-storage-v1
+// accessorAbiHash: material-surface-v1
+// parameter: Kd required rgb texture
+// LX_MATERIAL_CONTRACT_END
+#if 0
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+#endif
+)glsl";
+  const auto result = LX_infra::reflectMaterialContractSource(
+      LX_core::ResourceUri(
+          "memory://materials/accessor-disabled-block.contract.glsl"),
+      source);
+  EXPECT(!result.diagnostics.empty(),
+         "disabled preprocessor accessor should not satisfy Material Accessor "
+         "ABI");
+  EXPECT(!result.reflection.has_value(),
+         "disabled preprocessor accessor should reject reflection");
+}
+
 } // namespace
 
 int main() {
@@ -417,7 +464,9 @@ int main() {
   testReflectRejectsAccessorPrototypeWithoutBody();
   testReflectRejectsWrongAccessorReturnType();
   testReflectRejectsWrongAccessorParameterList();
+  testReflectRejectsAccessorArrayDeclarator();
   testReflectRejectsAccessorMacroWithoutFunctionDefinition();
   testReflectRejectsMultilineAccessorMacro();
+  testReflectRejectsAccessorInDisabledPreprocessorBlock();
   return g_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
