@@ -205,6 +205,42 @@ bsdf:
          "rejected nested mix material reference should emit diagnostics");
 }
 
+void testMixMaterialRefRejectsTargetHeaderWithoutSource() {
+  const fs::path root = makeTempRoot();
+  const fs::path owner = root / "materials" / "mix.material";
+  const fs::path leaf = root / "materials" / "leaf_without_source.material";
+  writeFile(leaf, R"(
+schema: lxe.material.v2
+bsdf:
+  type: matte
+)");
+
+  SceneResourceTable table;
+  LX_infra::MaterialResourceParser parser;
+  auto parsed = parser.parse(table, owner.generic_string(), R"(
+schema: lxe.material.v2
+bsdf:
+  type: mix
+  source: shaders/materials/mix.contract.glsl
+  parameters:
+    namedmaterial1: { kind: materialRef, uri: leaf_without_source.material }
+    namedmaterial2: { kind: materialRef, uri: leaf_without_source.material }
+    amount: { kind: float, value: 0.35 }
+)");
+
+  EXPECT(parsed.instance == nullptr,
+         "mix material should reject materialRef target header without source");
+  EXPECT(!parsed.diagnostics.empty(),
+         "materialRef target header without source should emit diagnostics");
+  bool mentionsSource = false;
+  for (const std::string &diagnostic : parsed.diagnostics) {
+    mentionsSource =
+        mentionsSource || diagnostic.find("bsdf.source") != std::string::npos;
+  }
+  EXPECT(mentionsSource,
+         "materialRef target header diagnostic should name bsdf.source");
+}
+
 void testMixMaterialRefRejectsNamedStringReference() {
   const fs::path root = makeTempRoot();
   const fs::path owner = root / "materials" / "mix.material";
@@ -371,6 +407,7 @@ int main() {
   testParserResourceDependenciesSurviveTableRegistration();
   testMixMaterialRefReadsTargetHeaderWithoutFullParse();
   testMixMaterialRefRejectsTargetMixHeader();
+  testMixMaterialRefRejectsTargetHeaderWithoutSource();
   testMixMaterialRefRejectsNamedStringReference();
   testMaterialRefDiagnosticsIncludeParserAndResourceContext();
   testGenericMaterialLoaderWritesDependenciesIntoCallerTable();

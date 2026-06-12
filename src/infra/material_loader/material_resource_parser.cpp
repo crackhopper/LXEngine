@@ -390,6 +390,14 @@ sceneResourceTypeForDependency(MaterialEnvelopeKind kind) {
             ": material reference header missing bsdf.type");
     return false;
   }
+  if (!bsdfNode["source"] || !bsdfNode["source"].IsScalar() ||
+      bsdfNode["source"].as<std::string>().empty()) {
+    addDiagnostic(
+        result, ownerUri, field,
+        "parser=MaterialResourceParser resource=" + targetUri.string() +
+            ": material reference header missing scalar bsdf.source");
+    return false;
+  }
   if (bsdfNode["type"].as<std::string>() == "mix") {
     addDiagnostic(
         result, ownerUri, field,
