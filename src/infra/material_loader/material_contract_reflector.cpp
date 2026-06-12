@@ -127,7 +127,25 @@ commentMetadataLine(std::string_view line) {
         ++next;
       }
       if (next < code.size() && code[next] == '(') {
-        return true;
+        int depth = 1;
+        ++next;
+        while (next < code.size() && depth > 0) {
+          if (code[next] == '(') {
+            ++depth;
+          } else if (code[next] == ')') {
+            --depth;
+          }
+          ++next;
+        }
+        if (depth == 0) {
+          while (next < code.size() &&
+                 std::isspace(static_cast<unsigned char>(code[next])) != 0) {
+            ++next;
+          }
+          if (next < code.size() && code[next] == '{') {
+            return true;
+          }
+        }
       }
     }
     pos = code.find(entryPoint, pos + 1);
@@ -146,6 +164,7 @@ reflectMaterialContractSource(const LX_core::ResourceUri &sourceUri,
 
   bool inBlock = false;
   bool sawBlock = false;
+  bool sawStatus = false;
   std::istringstream input{std::string(sourceText)};
   std::string line;
   while (std::getline(input, line)) {
@@ -171,6 +190,7 @@ reflectMaterialContractSource(const LX_core::ResourceUri &sourceUri,
     if (stripped.rfind("type:", 0) == 0) {
       reflection.declaredType = trim(std::string_view(stripped).substr(5));
     } else if (stripped.rfind("status:", 0) == 0) {
+      sawStatus = true;
       const std::string status = trim(std::string_view(stripped).substr(7));
       if (status == "supported") {
         reflection.supportStatus =
@@ -242,6 +262,9 @@ reflectMaterialContractSource(const LX_core::ResourceUri &sourceUri,
   }
   if (reflection.declaredType.empty()) {
     result.diagnostics.push_back(sourceUri.string() + ": missing type");
+  }
+  if (!sawStatus) {
+    result.diagnostics.push_back(sourceUri.string() + ": missing status");
   }
   if (reflection.reflectionHash.empty() || reflection.storageAbiHash.empty() ||
       reflection.accessorAbiHash.empty()) {

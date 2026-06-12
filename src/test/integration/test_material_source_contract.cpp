@@ -206,6 +206,26 @@ void testReflectRejectsMissingAccessor() {
          "missing accessor should reject reflection");
 }
 
+void testReflectRejectsMissingStatus() {
+  const std::string source = R"glsl(
+// LX_MATERIAL_CONTRACT_BEGIN
+// type: matte
+// reflectionHash: matte-reflect-v1
+// storageAbiHash: matte-storage-v1
+// accessorAbiHash: material-surface-v1
+// parameter: Kd required rgb texture
+// LX_MATERIAL_CONTRACT_END
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+)glsl";
+  const auto result = LX_infra::reflectMaterialContractSource(
+      LX_core::ResourceUri("memory://materials/missing-status.contract.glsl"),
+      source);
+  EXPECT(!result.diagnostics.empty(),
+         "missing status should emit a diagnostic");
+  EXPECT(!result.reflection.has_value(),
+         "missing status should reject reflection");
+}
+
 void testReflectRejectsBareMetadataLines() {
   const std::string source = R"glsl(
 LX_MATERIAL_CONTRACT_BEGIN
@@ -248,6 +268,49 @@ void testReflectRejectsCommentedOutAccessor() {
          "commented-out accessor should reject reflection");
 }
 
+void testReflectRejectsAccessorCallWithoutDefinition() {
+  const std::string source = R"glsl(
+// LX_MATERIAL_CONTRACT_BEGIN
+// type: matte
+// status: supported
+// reflectionHash: matte-reflect-v1
+// storageAbiHash: matte-storage-v1
+// accessorAbiHash: material-surface-v1
+// parameter: Kd required rgb texture
+// LX_MATERIAL_CONTRACT_END
+void probe() { lxLoadMaterialSurface(0, uv, n, tbn); }
+)glsl";
+  const auto result = LX_infra::reflectMaterialContractSource(
+      LX_core::ResourceUri("memory://materials/accessor-call.contract.glsl"),
+      source);
+  EXPECT(!result.diagnostics.empty(),
+         "accessor call should not satisfy Material Accessor ABI");
+  EXPECT(!result.reflection.has_value(),
+         "accessor call should reject reflection");
+}
+
+void testReflectRejectsAccessorPrototypeWithoutBody() {
+  const std::string source = R"glsl(
+// LX_MATERIAL_CONTRACT_BEGIN
+// type: matte
+// status: supported
+// reflectionHash: matte-reflect-v1
+// storageAbiHash: matte-storage-v1
+// accessorAbiHash: material-surface-v1
+// parameter: Kd required rgb texture
+// LX_MATERIAL_CONTRACT_END
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn);
+)glsl";
+  const auto result = LX_infra::reflectMaterialContractSource(
+      LX_core::ResourceUri(
+          "memory://materials/accessor-prototype.contract.glsl"),
+      source);
+  EXPECT(!result.diagnostics.empty(),
+         "accessor prototype should not satisfy Material Accessor ABI");
+  EXPECT(!result.reflection.has_value(),
+         "accessor prototype should reject reflection");
+}
+
 } // namespace
 
 int main() {
@@ -258,7 +321,10 @@ int main() {
   testMaterialSignatureIncludesPassAndRenderState();
   testReflectsContractMetadataBlock();
   testReflectRejectsMissingAccessor();
+  testReflectRejectsMissingStatus();
   testReflectRejectsBareMetadataLines();
   testReflectRejectsCommentedOutAccessor();
+  testReflectRejectsAccessorCallWithoutDefinition();
+  testReflectRejectsAccessorPrototypeWithoutBody();
   return g_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
