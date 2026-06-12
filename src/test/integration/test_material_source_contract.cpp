@@ -1009,6 +1009,108 @@ LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat
          "nested disabled preprocessor accessor should reject reflection");
 }
 
+void testReflectsAccessorInElseBranchAfterDisabledIf() {
+  const std::string source = R"glsl(
+// LX_MATERIAL_CONTRACT_BEGIN
+// type: matte
+// status: supported
+// reflectionHash: matte-reflect-v1
+// storageAbiHash: matte-storage-v1
+// accessorAbiHash: material-surface-v1
+// parameter: Kd required rgb texture
+// LX_MATERIAL_CONTRACT_END
+#if 0
+LxMaterialSurface lxNotMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+#else
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+#endif
+)glsl";
+  const auto result = LX_infra::reflectMaterialContractSource(
+      LX_core::ResourceUri("memory://materials/accessor-else.contract.glsl"),
+      source);
+  EXPECT(result.diagnostics.empty(),
+         "active else branch accessor should satisfy Material Accessor ABI");
+  EXPECT(result.reflection.has_value(),
+         "active else branch accessor should reflect a contract");
+}
+
+void testReflectsAccessorInElifOneBranchAfterDisabledIf() {
+  const std::string source = R"glsl(
+// LX_MATERIAL_CONTRACT_BEGIN
+// type: matte
+// status: supported
+// reflectionHash: matte-reflect-v1
+// storageAbiHash: matte-storage-v1
+// accessorAbiHash: material-surface-v1
+// parameter: Kd required rgb texture
+// LX_MATERIAL_CONTRACT_END
+#if 0
+LxMaterialSurface lxNotMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+#elif 1
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+#endif
+)glsl";
+  const auto result = LX_infra::reflectMaterialContractSource(
+      LX_core::ResourceUri("memory://materials/accessor-elif.contract.glsl"),
+      source);
+  EXPECT(result.diagnostics.empty(),
+         "active elif branch accessor should satisfy Material Accessor ABI");
+  EXPECT(result.reflection.has_value(),
+         "active elif branch accessor should reflect a contract");
+}
+
+void testReflectRejectsAccessorInElifZeroBranch() {
+  const std::string source = R"glsl(
+// LX_MATERIAL_CONTRACT_BEGIN
+// type: matte
+// status: supported
+// reflectionHash: matte-reflect-v1
+// storageAbiHash: matte-storage-v1
+// accessorAbiHash: material-surface-v1
+// parameter: Kd required rgb texture
+// LX_MATERIAL_CONTRACT_END
+#if 0
+LxMaterialSurface lxNotMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+#elif 0
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+#endif
+)glsl";
+  const auto result = LX_infra::reflectMaterialContractSource(
+      LX_core::ResourceUri(
+          "memory://materials/accessor-elif-zero.contract.glsl"),
+      source);
+  EXPECT(!result.diagnostics.empty(),
+         "inactive elif zero branch should not satisfy Material Accessor ABI");
+  EXPECT(!result.reflection.has_value(),
+         "inactive elif zero branch should reject reflection");
+}
+
+void testReflectsAccessorInIfOneBranchIgnoringInactiveElse() {
+  const std::string source = R"glsl(
+// LX_MATERIAL_CONTRACT_BEGIN
+// type: matte
+// status: supported
+// reflectionHash: matte-reflect-v1
+// storageAbiHash: matte-storage-v1
+// accessorAbiHash: material-surface-v1
+// parameter: Kd required rgb texture
+// LX_MATERIAL_CONTRACT_END
+#if 1
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+#else
+LxMaterialSurface lxLoadMaterialSurface(uint badIndex, vec2 tex, vec3 normal, mat3 basis) { }
+#endif
+)glsl";
+  const auto result = LX_infra::reflectMaterialContractSource(
+      LX_core::ResourceUri(
+          "memory://materials/accessor-if-one-else.contract.glsl"),
+      source);
+  EXPECT(result.diagnostics.empty(),
+         "inactive else branch should not interfere with active accessor");
+  EXPECT(result.reflection.has_value(),
+         "active if branch accessor should reflect a contract");
+}
+
 void testValidateReflectionSetRejectsSourceSignatureConflicts() {
   LX_core::MaterialContractReflection a;
   a.sourceUri = LX_core::ResourceUri("memory://materials/matte.contract.glsl");
@@ -1104,6 +1206,10 @@ int main() {
   testReflectRejectsAccessorInCommentedDisabledPreprocessorBlock();
   testReflectRejectsAccessorInBlockCommentedDisabledPreprocessorBlock();
   testReflectRejectsAccessorAfterNestedDirectiveInDisabledBlock();
+  testReflectsAccessorInElseBranchAfterDisabledIf();
+  testReflectsAccessorInElifOneBranchAfterDisabledIf();
+  testReflectRejectsAccessorInElifZeroBranch();
+  testReflectsAccessorInIfOneBranchIgnoringInactiveElse();
   testValidateReflectionSetRejectsSourceSignatureConflicts();
   testValidateReflectionSetRejectsAccessorAbiConflicts();
   return g_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;

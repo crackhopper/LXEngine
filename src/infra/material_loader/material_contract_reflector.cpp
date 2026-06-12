@@ -6,6 +6,7 @@
 #include <sstream>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace LX_infra {
 namespace {
@@ -160,6 +161,43 @@ commentMetadataLine(std::string_view line) {
          (pos + 1 == stripped.size() || !isIdentifierChar(stripped[pos + 1]));
 }
 
+[[nodiscard]] bool directiveConditionIsActive(std::string_view directive) {
+  const std::string stripped = trim(stripLineAndBlockComments(directive));
+  if (stripped.empty() || stripped[0] != '#') {
+    return true;
+  }
+
+  std::size_t pos = 1;
+  while (pos < stripped.size() &&
+         std::isspace(static_cast<unsigned char>(stripped[pos])) != 0) {
+    ++pos;
+  }
+  while (pos < stripped.size() && isIdentifierChar(stripped[pos])) {
+    ++pos;
+  }
+  while (pos < stripped.size() &&
+         std::isspace(static_cast<unsigned char>(stripped[pos])) != 0) {
+    ++pos;
+  }
+
+  if (pos < stripped.size() && stripped[pos] == '0' &&
+      (pos + 1 == stripped.size() || !isIdentifierChar(stripped[pos + 1]))) {
+    return false;
+  }
+  return true;
+}
+
+struct ConditionalFrame final {
+  bool parentActive = true;
+  bool branchActive = true;
+  bool branchTaken = false;
+};
+
+[[nodiscard]] bool
+preprocessorIsActive(const std::vector<ConditionalFrame> &conditionalStack) {
+  return conditionalStack.empty() || conditionalStack.back().branchActive;
+}
+
 [[nodiscard]] std::optional<std::size_t>
 expectedReturnTypeBegin(const std::string &code, std::size_t entryPointPos) {
   std::size_t end = entryPointPos;
@@ -265,7 +303,7 @@ expectedReturnTypeBegin(const std::string &code, std::size_t entryPointPos) {
   };
 
   bool inBlockComment = false;
-  int disabledPreprocessorDepth = 0;
+  std::vector<ConditionalFrame> conditionalStack;
   for (std::size_t i = 0; i < sourceText.size();) {
     if (inBlockComment) {
       if (i + 1 < sourceText.size() && sourceText[i] == '*' &&
@@ -338,20 +376,40 @@ expectedReturnTypeBegin(const std::string &code, std::size_t entryPointPos) {
 
         const std::string directive = trim(directiveText);
         const std::string keyword = directiveKeyword(directive);
-        if (disabledPreprocessorDepth > 0) {
-          if (keyword == "if" || keyword == "ifdef" || keyword == "ifndef") {
-            ++disabledPreprocessorDepth;
-          } else if (keyword == "endif") {
-            --disabledPreprocessorDepth;
+        if (keyword == "if" || keyword == "ifdef" || keyword == "ifndef") {
+          const bool parentActive = preprocessorIsActive(conditionalStack);
+          const bool conditionActive =
+              keyword == "if" ? !directiveStartsDisabledBlock(directive) : true;
+          conditionalStack.push_back(ConditionalFrame{
+              parentActive, parentActive && conditionActive, conditionActive});
+        } else if (keyword == "elif") {
+          if (!conditionalStack.empty()) {
+            ConditionalFrame &frame = conditionalStack.back();
+            if (!frame.parentActive || frame.branchTaken) {
+              frame.branchActive = false;
+            } else {
+              const bool conditionActive =
+                  directiveConditionIsActive(directive);
+              frame.branchActive = conditionActive;
+              frame.branchTaken = conditionActive;
+            }
           }
-        } else if (directiveStartsDisabledBlock(directive)) {
-          ++disabledPreprocessorDepth;
+        } else if (keyword == "else") {
+          if (!conditionalStack.empty()) {
+            ConditionalFrame &frame = conditionalStack.back();
+            frame.branchActive = frame.parentActive && !frame.branchTaken;
+            frame.branchTaken = true;
+          }
+        } else if (keyword == "endif") {
+          if (!conditionalStack.empty()) {
+            conditionalStack.pop_back();
+          }
         }
         continue;
       }
     }
 
-    if (disabledPreprocessorDepth > 0) {
+    if (!preprocessorIsActive(conditionalStack)) {
       appendCode(sourceText[i] == '\n' ? '\n' : ' ', false);
       ++i;
       continue;
