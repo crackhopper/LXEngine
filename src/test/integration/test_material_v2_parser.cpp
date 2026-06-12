@@ -178,6 +178,7 @@ void testParserAcceptsMinimalRequiredBsdfs() {
 schema: lxe.material.v2
 bsdf:
   type: matte
+  source: shaders/materials/matte.contract.glsl
   parameters:
     Kd: { kind: rgb, value: [0.8, 0.7, 0.6] }
     sigma: { kind: float, value: 0.0 }
@@ -187,6 +188,7 @@ bsdf:
 schema: lxe.material.v2
 bsdf:
   type: glass
+  source: shaders/materials/glass.contract.glsl
   parameters:
     Kr: { kind: rgb, value: [1.0, 1.0, 1.0] }
     Kt: { kind: rgb, value: [1.0, 1.0, 1.0] }
@@ -199,6 +201,7 @@ bsdf:
 schema: lxe.material.v2
 bsdf:
   type: uber
+  source: shaders/materials/uber.contract.glsl
   parameters:
     Kd: { kind: rgb, value: [0.5, 0.5, 0.5] }
     Ks: { kind: rgb, value: [0.2, 0.2, 0.2] }
@@ -208,6 +211,7 @@ bsdf:
 schema: lxe.material.v2
 bsdf:
   type: metal
+  source: shaders/materials/metal.contract.glsl
   parameters:
     eta: { kind: spectrum, uri: spectra/copper_eta.spd }
     k: { kind: spectrum, uri: spectra/copper_k.spd }
@@ -217,6 +221,7 @@ bsdf:
 schema: lxe.material.v2
 bsdf:
   type: substrate
+  source: shaders/materials/substrate.contract.glsl
   parameters:
     Kd: { kind: rgb, value: [0.4, 0.3, 0.2] }
     Ks: { kind: rgb, value: [0.1, 0.1, 0.1] }
@@ -228,6 +233,7 @@ bsdf:
 schema: lxe.material.v2
 bsdf:
   type: fourier
+  source: shaders/materials/fourier.contract.glsl
   parameters:
     bsdffile: { kind: bsdfTable, uri: bsdf/fabric.bsdf }
 )");
@@ -236,6 +242,7 @@ bsdf:
 schema: lxe.material.v2
 bsdf:
   type: mix
+  source: shaders/materials/mix.contract.glsl
   parameters:
     namedmaterial1: { kind: materialRef, uri: memory://materials/matte_base.material }
     namedmaterial2: { kind: materialRef, uri: memory://materials/clearcoat.material }
@@ -252,6 +259,7 @@ void testParserRejectsInvalidEnvelopeInputs() {
 schema: lxe.material.v2
 bsdf:
   type: matte
+  source: shaders/materials/matte.contract.glsl
   parameters:
     Kd: { kind: rgb, value: [0.8, 0.7, 0.6] }
 )");
@@ -264,6 +272,7 @@ bsdf:
 schema: lxe.material.v2
 bsdf:
   type: matte
+  source: shaders/materials/matte.contract.glsl
   parameters:
     Kd: { kind: rgb, value: [0.8, 0.7, 0.6], uri: textures/kd.png }
     sigma: { kind: float, value: 0.0 }
@@ -277,6 +286,7 @@ bsdf:
 schema: lxe.material.v2
 bsdf:
   type: matte
+  source: shaders/materials/matte.contract.glsl
   parameters:
     Kd: { kind: texture, uri: textures/kd.png }
     sigma: { kind: float, value: 0.0 }
@@ -295,6 +305,7 @@ void testParserRejectsUnknownAndLegacyParallelParameterNames() {
 schema: lxe.material.v2
 bsdf:
   type: matte
+  source: shaders/materials/matte.contract.glsl
   parameters:
     Kd: { kind: rgb, value: [0.8, 0.7, 0.6] }
     KdTexture: { kind: texture, valueType: rgb, uri: textures/kd.png }
@@ -337,6 +348,7 @@ void testParserRejectsRuntimeEnvelopeProvenanceFields() {
 schema: lxe.material.v2
 bsdf:
   type: matte
+  source: shaders/materials/matte.contract.glsl
   parameters:
     Kd: { kind: rgb, value: [0.8, 0.7, 0.6], source: explicit }
     sigma: { kind: float, value: 0.0, pbrt-default: true }
@@ -369,6 +381,7 @@ void testParserRejectsLegacyRootParameterModel() {
 schema: lxe.material.v2
 bsdf:
   type: matte
+  source: shaders/materials/matte.contract.glsl
   parameters:
     Kd: { kind: rgb, value: [0.8, 0.7, 0.6] }
     sigma: { kind: float, value: 0.0 }
@@ -408,6 +421,7 @@ void testParserRejectsLegacyRootResourcesMap() {
 schema: lxe.material.v2
 bsdf:
   type: matte
+  source: shaders/materials/matte.contract.glsl
   parameters:
     Kd: { kind: rgb, value: [0.8, 0.7, 0.6] }
     sigma: { kind: float, value: 0.0 }
@@ -446,6 +460,7 @@ void testParserRejectsRenderFlowFields() {
 schema: lxe.material.v2
 bsdf:
   type: matte
+  source: shaders/materials/matte.contract.glsl
   parameters:
     Kd: { kind: rgb, value: [0.8, 0.7, 0.6] }
     sigma: { kind: float, value: 0.0 }
@@ -519,6 +534,7 @@ void testParserStoresEnvelopeTruthAndDependencies() {
 schema: lxe.material.v2
 bsdf:
   type: matte
+  source: shaders/materials/matte.contract.glsl
   parameters:
     Kd: { kind: texture, valueType: rgb, uri: textures/kd.png }
     normalmap: { kind: texture, valueType: rgb, uri: textures/normal.png }

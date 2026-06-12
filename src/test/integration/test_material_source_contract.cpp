@@ -1,10 +1,13 @@
 #include "core/asset/material_contract.hpp"
+#include "core/scene/scene_resource_table.hpp"
 #include "infra/material_loader/material_contract_reflector.hpp"
+#include "infra/material_loader/material_resource_parser.hpp"
 
 #include <array>
 #include <cstdlib>
 #include <iostream>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace {
@@ -41,6 +44,102 @@ void testSourceSignatureIgnoresInstanceValues() {
   b.reflectionHash = "hash-b";
   EXPECT(a.sourceSignature() != b.sourceSignature(),
          "reflection hash must participate in source signature");
+}
+
+bool diagnosticsContain(const std::vector<std::string> &diagnostics,
+                        const std::string &needle) {
+  for (const std::string &diagnostic : diagnostics) {
+    if (diagnostic.find(needle) != std::string::npos) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void testMaterialParserRequiresBsdfSource() {
+  LX_core::SceneResourceTable table;
+  LX_infra::MaterialResourceParser parser;
+  const auto parsed = parser.parse(
+      table, LX_core::ResourceUri("memory://materials/no-source.material"),
+      R"yaml(
+schema: lxe.material.v2
+bsdf:
+  type: matte
+  parameters:
+    Kd: { kind: rgb, value: [1.0, 1.0, 1.0] }
+    sigma: { kind: float, value: 0.0 }
+)yaml");
+  EXPECT(parsed.instance == nullptr, "missing bsdf.source should fail");
+  EXPECT(!parsed.diagnostics.empty(), "missing bsdf.source should diagnose");
+  EXPECT(diagnosticsContain(parsed.diagnostics, "bsdf.source"),
+         "diagnostic should name bsdf.source");
+}
+
+void testMaterialParserRejectsNonScalarBsdfSource() {
+  LX_core::SceneResourceTable table;
+  LX_infra::MaterialResourceParser parser;
+  const auto parsed = parser.parse(table,
+                                   LX_core::ResourceUri("memory://materials/"
+                                                        "non-scalar-source.material"),
+                                   R"yaml(
+schema: lxe.material.v2
+bsdf:
+  type: matte
+  source: [materials/matte.contract.glsl]
+  parameters:
+    Kd: { kind: rgb, value: [1.0, 1.0, 1.0] }
+    sigma: { kind: float, value: 0.0 }
+)yaml");
+  EXPECT(parsed.instance == nullptr, "non-scalar bsdf.source should fail");
+  EXPECT(!parsed.diagnostics.empty(),
+         "non-scalar bsdf.source should diagnose");
+  EXPECT(diagnosticsContain(parsed.diagnostics, "bsdf.source"),
+         "non-scalar diagnostic should name bsdf.source");
+}
+
+void testMaterialParserStoresSourceIdentityAndCloneCopiesIt() {
+  LX_core::SceneResourceTable table;
+  LX_infra::MaterialResourceParser parser;
+  const auto parsed = parser.parse(
+      table, LX_core::ResourceUri("memory://materials/with-source.material"),
+      R"yaml(
+schema: lxe.material.v2
+bsdf:
+  type: matte
+  source: shaders/materials/matte.contract.glsl
+  parameters:
+    Kd: { kind: rgb, value: [1.0, 1.0, 1.0] }
+    sigma: { kind: float, value: 0.0 }
+)yaml");
+  EXPECT(parsed.diagnostics.empty(), "explicit bsdf.source should parse");
+  EXPECT(parsed.instance != nullptr,
+         "explicit bsdf.source should create instance");
+  if (!parsed.instance) {
+    return;
+  }
+
+  EXPECT(parsed.instance->getMaterialSourceUri().string() ==
+             "memory://materials/shaders/materials/matte.contract.glsl",
+         "MaterialInstance should store canonical source URI");
+  EXPECT(parsed.instance->getMaterialSourceSignature() ==
+             LX_core::StringID(
+                 "memory://materials/shaders/materials/matte.contract.glsl"),
+         "MaterialInstance should store source signature identity");
+  EXPECT(parsed.instance->getMaterialSourceReflectionHash() ==
+             "unreflected-contract",
+         "MaterialInstance should store placeholder reflection hash until "
+         "source loading is wired");
+
+  const auto clone = parsed.instance->cloneInstanceDataUnique();
+  EXPECT(clone->getMaterialSourceUri() ==
+             parsed.instance->getMaterialSourceUri(),
+         "clone should copy material source URI");
+  EXPECT(clone->getMaterialSourceSignature() ==
+             parsed.instance->getMaterialSourceSignature(),
+         "clone should copy material source signature");
+  EXPECT(clone->getMaterialSourceReflectionHash() ==
+             parsed.instance->getMaterialSourceReflectionHash(),
+         "clone should copy material source reflection hash");
 }
 
 void testFindParameterHitAndMiss() {
@@ -1165,6 +1264,9 @@ void testValidateReflectionSetRejectsAccessorAbiConflicts() {
 
 int main() {
   testSourceSignatureIgnoresInstanceValues();
+  testMaterialParserRequiresBsdfSource();
+  testMaterialParserRejectsNonScalarBsdfSource();
+  testMaterialParserStoresSourceIdentityAndCloneCopiesIt();
   testFindParameterHitAndMiss();
   testDefaultAccessorAbi();
   testSourceSignatureIncludesStorageAndAccessorAbi();

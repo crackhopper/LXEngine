@@ -440,6 +440,14 @@ MaterialResourceParser::parse(LX_core::SceneResourceTable &table,
   }
 
   const std::string bsdfType = bsdfNode["type"].as<std::string>();
+  if (!bsdfNode["source"] || !bsdfNode["source"].IsScalar()) {
+    addDiagnostic(result, uri, "bsdf.source",
+                  "missing scalar material contract source");
+    return result;
+  }
+  const LX_core::ResourceUri sourceUri = table.resolveUri(
+      uri, LX_core::ResourceUri(bsdfNode["source"].as<std::string>()));
+
   const LX_core::MaterialSurfaceSchema *schema =
       LX_core::findMaterialSurfaceSchema(bsdfType);
   if (schema == nullptr) {
@@ -457,6 +465,9 @@ MaterialResourceParser::parse(LX_core::SceneResourceTable &table,
   auto tmpl = LX_core::MaterialTemplate::create(bsdfType);
   auto instance = LX_core::MaterialInstance::createUnique(std::move(tmpl));
   instance->setBsdfType(bsdfType);
+  instance->setMaterialSourceUri(sourceUri);
+  instance->setMaterialSourceReflectionHash("unreflected-contract");
+  instance->setMaterialSourceSignature(LX_core::StringID(sourceUri.string()));
   if (const YAML::Node renderClassNode = root["renderClass"]) {
     if (!renderClassNode.IsScalar()) {
       addDiagnostic(result, uri, "renderClass",
