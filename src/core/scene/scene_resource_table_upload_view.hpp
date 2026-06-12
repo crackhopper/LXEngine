@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/resource/resource_metadata.hpp"
 #include "core/asset/texture.hpp"
 #include "core/scene/scene_gpu_records.hpp"
 #include "core/scene/scene_resource_handles.hpp"
@@ -11,6 +12,8 @@ namespace LX_core {
 
 struct CameraResource;
 class LightBase;
+struct RenderFeature;
+struct RenderPathGraph;
 
 struct SceneResourceMeshUploadIndex final {
   MeshHandle handle;
@@ -42,6 +45,23 @@ struct SceneResourceLightUploadIndex final {
   u32 typedIndex = u32_max;
 };
 
+struct SceneResourceRenderPathGraphUploadIndex final {
+  RenderPathGraphHandle handle;
+  u32 typedIndex = u32_max;
+};
+
+struct SceneResourceRenderFeatureUploadIndex final {
+  RenderFeatureHandle handle;
+  u32 typedIndex = u32_max;
+};
+
+struct SceneResourceShaderUploadIndex final {
+  ShaderHandle handle;
+  u32 typedIndex = u32_max;
+};
+
+struct ShaderResourceMetadata;
+
 // Non-owning view over SceneResourceTable's cached GPU records. Spans remain
 // valid until the table mutates or a later buildUploadView() call rebuilds the
 // cache. buildUploadView() rebuilds records on each call because scene-owned
@@ -65,12 +85,28 @@ struct SceneResourceTableUploadView final {
       textures;
   std::span<const std::reference_wrapper<const CameraResource>> cameras;
   std::span<const std::reference_wrapper<const LightBase>> lights;
+  std::span<const std::reference_wrapper<const RenderPathGraph>>
+      renderPathGraphResources;
+  std::span<const std::reference_wrapper<const RenderFeature>>
+      renderFeatureResources;
+  std::span<const std::reference_wrapper<const ShaderResourceMetadata>>
+      shaderResources;
+  std::span<const SceneGpuRenderPathGraphRecord> renderPathGraphs;
+  std::span<const SceneGpuRenderPathGraphPassRecord> renderPathGraphPasses;
+  std::span<const SceneGpuRenderPathGraphFeatureRecord>
+      renderPathGraphFeatures;
+  std::span<const ResourceIdentityHandle> renderPathGraphShaders;
   std::span<const SceneResourceMeshUploadIndex> meshIndexByHandle;
   std::span<const SceneResourceMaterialUploadIndex> materialIndexByHandle;
   std::span<const SceneResourceTextureUploadIndex> textureIndexByHandle;
   std::span<const SceneResourceObjectUploadIndex> objectIndexByHandle;
   std::span<const SceneResourceCameraUploadIndex> cameraIndexByHandle;
   std::span<const SceneResourceLightUploadIndex> lightIndexByHandle;
+  std::span<const SceneResourceRenderPathGraphUploadIndex>
+      renderPathGraphIndexByHandle;
+  std::span<const SceneResourceRenderFeatureUploadIndex>
+      renderFeatureIndexByHandle;
+  std::span<const SceneResourceShaderUploadIndex> shaderIndexByHandle;
 };
 
 } // namespace LX_core

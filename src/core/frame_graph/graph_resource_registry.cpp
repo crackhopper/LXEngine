@@ -6,6 +6,8 @@ GraphResourceRegistry GraphResourceRegistry::makeDefault() {
   GraphResourceRegistry registry;
   for (const char *name : {
            "depth.main",
+           "gbuffer.albedoAlpha",
+           "gbuffer.normalRoughness",
            "gbuffer.albedo",
            "gbuffer.normal",
            "gbuffer.material",
@@ -16,6 +18,7 @@ GraphResourceRegistry GraphResourceRegistry::makeDefault() {
            "bloom.blurH",
            "bloom.blur",
            "swapchain.color",
+           "debug.overlay",
            "shadow.main",
            "shadow.cascade0",
            "shadow.cascade1",
@@ -39,6 +42,7 @@ GraphResourceRegistry GraphResourceRegistry::makeDefault() {
   }
   registry.allowWriteMode("hdr.color", "append");
   registry.allowWriteMode("hdr.color", "blend");
+  registry.allowWriteMode("debug.overlay", "append");
   return registry;
 }
 

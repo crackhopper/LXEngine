@@ -17,7 +17,6 @@
 #include "core/utils/env.hpp"
 
 #include "core/utils/filesystem_tools.hpp"
-#include "infra/material_loader/generic_material_loader.hpp"
 #include "infra/window/window.hpp"
 #include "scene_test_helpers.hpp"
 
@@ -88,12 +87,7 @@ int main() {
         vertexBufferPtr, indexBufferPtr,
         LX_core::BoundingBox{{-5.0f, -5.0f, 0.0f}, {5.0f, 5.0f, 0.0f}});
 
-    auto material =
-        LX_infra::loadGenericMaterial("assets/materials/pbr.material");
-    material->writeShaderBindingParameter(LX_core::StringID("MaterialUBO"),
-                                          LX_core::StringID("enableNormal"),
-                                          0); // avoid normal texture
-    material->syncGpuData();
+    auto material = LX_test::makeForwardMinimalMaterialForVulkanTests();
 
     auto node = LX_core::SceneNode::create("vulkan_command_node");
     node->addComponent<LX_core::MeshComponent>(meshPtr);

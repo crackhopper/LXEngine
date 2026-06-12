@@ -109,6 +109,19 @@ void logMissingDescriptorBindingOnce(const RenderWorkItem &item,
             << " pipelineKey=" << item.pipelineKey.id.id << std::endl;
 }
 
+[[noreturn]] void throwDescriptorBindingError(
+    const RenderWorkItem &item, const ShaderResourceBinding &binding,
+    const char *reason) {
+  logMissingDescriptorBindingOnce(item, binding);
+  std::ostringstream oss;
+  oss << "bindResources failed for reflected descriptor binding name="
+      << binding.name << " set=" << binding.set
+      << " binding=" << binding.binding << " pass="
+      << LX_core::GlobalStringTable::get().getName(item.pass.id)
+      << " pipelineKey=" << item.pipelineKey.id.id << ": " << reason;
+  throw std::runtime_error(oss.str());
+}
+
 void logDescriptorBufferBindingIfChanged(
     const RenderWorkItem &item, const ShaderResourceBinding &binding,
     const IGpuResource &cpuRes, const VkDescriptorBufferInfo &bufferInfo) {
@@ -256,9 +269,9 @@ void VulkanCommandBuffer::bindResourcesWithLayout(
     for (const auto &b : bindings) {
       auto it = resourceByName.find(LX_core::StringID(b.name));
       if (it == resourceByName.end()) {
-        logMissingDescriptorBindingOnce(item, b);
-        continue; // Leave descriptor uninitialized (shader should not access
-                  // it).
+        throwDescriptorBindingError(item, b,
+                                    "no descriptor resource with this binding "
+                                    "name was provided");
       }
 
       const auto &cpuRes = it->second;
@@ -266,14 +279,18 @@ void VulkanCommandBuffer::bindResourcesWithLayout(
       if (b.type == LX_core::ShaderPropertyType::UniformBuffer ||
           b.type == LX_core::ShaderPropertyType::StorageBuffer) {
         if (!cpuRes.isResource() || !cpuRes.resource().isValid()) {
-          logMissingDescriptorBindingOnce(item, b);
-          continue;
+          throwDescriptorBindingError(
+              item, b,
+              "descriptor resource is not a valid GPU buffer resource");
         }
         const LX_core::IGpuResource &resource = cpuRes.resource().get();
         auto bufferOpt =
             resourceManager.getBuffer(resource.getBackendCacheIdentity());
-        if (!bufferOpt)
-          continue;
+        if (!bufferOpt) {
+          throwDescriptorBindingError(
+              item, b,
+              "GPU buffer was not uploaded before descriptor binding");
+        }
         auto &buffer = bufferOpt->get();
 
         VkDescriptorBufferInfo bufferInfo{};
@@ -313,8 +330,9 @@ void VulkanCommandBuffer::bindResourcesWithLayout(
             imageInfos.push_back(textureOpt->get().getDescriptorInfo());
           }
           if (!complete) {
-            logMissingDescriptorBindingOnce(item, b);
-            continue;
+            throwDescriptorBindingError(
+                item, b,
+                "texture array contains an invalid or non-uploaded texture");
           }
 
           setPtr->updateImageArray(b.binding, imageInfos,
@@ -323,8 +341,9 @@ void VulkanCommandBuffer::bindResourcesWithLayout(
         }
 
         if (!cpuRes.isResource() || !cpuRes.resource().isValid()) {
-          logMissingDescriptorBindingOnce(item, b);
-          continue;
+          throwDescriptorBindingError(
+              item, b,
+              "descriptor resource is not a valid texture resource");
         }
         const LX_core::IGpuResource &resource = cpuRes.resource().get();
         if (const auto *frameGraphResource =
@@ -333,8 +352,9 @@ void VulkanCommandBuffer::bindResourcesWithLayout(
           auto attachmentOpt = resourceManager.getFrameGraphAttachment(
               frameGraphResource->getResourceName());
           if (!attachmentOpt) {
-            logMissingDescriptorBindingOnce(item, b);
-            continue;
+            throwDescriptorBindingError(
+                item, b,
+                "frame graph sampled attachment is not available");
           }
           auto &attachment = attachmentOpt->get();
           VkDescriptorImageInfo imageInfo =
@@ -347,8 +367,11 @@ void VulkanCommandBuffer::bindResourcesWithLayout(
 
         auto textureOpt =
             resourceManager.getTexture(resource.getBackendCacheIdentity());
-        if (!textureOpt)
-          continue;
+        if (!textureOpt) {
+          throwDescriptorBindingError(
+              item, b,
+              "GPU texture was not uploaded before descriptor binding");
+        }
         auto &texture = textureOpt->get();
 
         VkDescriptorImageInfo imageInfo = texture.getDescriptorInfo();

@@ -33,11 +33,29 @@ struct BindlessSubmissionDecision final {
   BindlessValidationResult validation;
 };
 
+struct MaterialV2ValidationDiagnostic final {
+  usize itemIndex = 0;
+  StringID pass;
+  StringID debugId;
+  StringID objectSignature;
+  StringID materialSignature;
+  StringID bindingName;
+  std::string reason;
+};
+
+struct MaterialV2ValidationResult final {
+  bool ok = false;
+  std::vector<MaterialV2ValidationDiagnostic> diagnostics;
+};
+
 [[nodiscard]] BindlessValidationResult
 validateBindlessMigratedQueue(const RenderWorkQueue &queue, StringID pass);
 
 [[nodiscard]] BindlessSubmissionDecision decideBindlessSubmission(
     const RenderWorkQueue &queue, StringID pass, bool strictValidation,
     bool migratedPass);
+
+[[nodiscard]] MaterialV2ValidationResult
+validateMaterialV2StrictQueue(const RenderWorkQueue &queue, StringID pass);
 
 } // namespace LX_core

@@ -3,6 +3,7 @@
 #include <iostream>
 #include <iterator>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -32,6 +33,19 @@ struct ForbiddenToken final {
   std::string text;
 };
 
+struct ForbiddenPath final {
+  fs::path path;
+};
+
+struct AllowedLegacyMention final {
+  std::string token;
+  std::string pathContains;
+};
+
+bool contains(std::string_view text, std::string_view needle) {
+  return text.find(needle) != std::string_view::npos;
+}
+
 bool hasSkippedPathComponent(const fs::path &path) {
   for (const fs::path &component : path) {
     if (component == "external" || component == "generated" ||
@@ -47,7 +61,7 @@ bool isTextFile(const fs::path &path) {
   return ext == ".cpp" || ext == ".hpp" || ext == ".h" || ext == ".c" ||
          ext == ".frag" || ext == ".vert" || ext == ".glsl" ||
          ext == ".yaml" || ext == ".yml" || ext == ".material" ||
-         ext == ".py";
+         ext == ".py" || ext == ".txt";
 }
 
 bool isRepoRoot(const fs::path &path) {
@@ -95,9 +109,13 @@ std::string readTextFile(const fs::path &path) {
 }
 
 void scanFile(const fs::path &repoRoot, const fs::path &path,
-              const std::vector<ForbiddenToken> &tokens) {
+              const std::vector<ForbiddenToken> &tokens,
+              const std::vector<AllowedLegacyMention> &allowlist) {
   std::ifstream in(path);
   const std::string relative = fs::relative(path, repoRoot).generic_string();
+  if (relative == "src/test/integration/test_071g_legacy_boundary_removal.cpp") {
+    return;
+  }
 
   std::string line;
   int lineNumber = 0;
@@ -105,6 +123,17 @@ void scanFile(const fs::path &repoRoot, const fs::path &path,
     ++lineNumber;
     for (const ForbiddenToken &token : tokens) {
       if (line.find(token.text) == std::string::npos) {
+        continue;
+      }
+      bool allowed = false;
+      for (const AllowedLegacyMention &allow : allowlist) {
+        if (allow.token == token.text &&
+            contains(relative, allow.pathContains)) {
+          allowed = true;
+          break;
+        }
+      }
+      if (allowed) {
         continue;
       }
       std::cerr << "[FAIL] forbidden token '" << token.text << "' in "
@@ -115,7 +144,8 @@ void scanFile(const fs::path &repoRoot, const fs::path &path,
 }
 
 void scanRoot(const fs::path &repoRoot, const ScanRoot &root,
-              const std::vector<ForbiddenToken> &tokens) {
+              const std::vector<ForbiddenToken> &tokens,
+              const std::vector<AllowedLegacyMention> &allowlist) {
   const fs::path absolute = repoRoot / root.path;
   if (!fs::exists(absolute)) {
     EXPECT(!root.required, "required scan root missing: " +
@@ -137,11 +167,20 @@ void scanRoot(const fs::path &repoRoot, const ScanRoot &root,
       continue;
     }
     ++scannedTextFiles;
-    scanFile(repoRoot, entry.path(), tokens);
+    scanFile(repoRoot, entry.path(), tokens, allowlist);
   }
   if (root.required) {
     EXPECT(scannedTextFiles > 0, "required scan root produced no text files: " +
                                      root.path.generic_string());
+  }
+}
+
+void auditRemovedLegacyFiles(const fs::path &repoRoot,
+                             const std::vector<ForbiddenPath> &paths) {
+  for (const ForbiddenPath &path : paths) {
+    EXPECT(!fs::exists(repoRoot / path.path),
+           "superseded legacy file still exists: " +
+               path.path.generic_string());
   }
 }
 
@@ -159,7 +198,8 @@ void auditDefaultForwardGraphSource(const fs::path &repoRoot) {
              std::string::npos,
          "production renderer must name the default Forward RenderPathGraph "
          "asset");
-  EXPECT(rendererSource.find("RenderEffectResourceParser") != std::string::npos,
+  EXPECT(rendererSource.find("RenderPathGraphResourceParser") !=
+             std::string::npos,
          "production renderer must parse the default Forward RenderPathGraph "
          "asset");
 }
@@ -168,7 +208,7 @@ void auditDefaultForwardGraphSource(const fs::path &repoRoot) {
 
 int main() {
   const fs::path repoRoot = findRepoRoot();
-  const std::vector<ScanRoot> roots{
+  const std::vector<ScanRoot> productionRoots{
       {"src/core"},
       {"src/infra"},
       {"src/backend"},
@@ -181,7 +221,10 @@ int main() {
       {"data/scenes", false},
       {"src/tools/lxe_pbrt_scene_convert", false},
   };
-  const std::vector<ForbiddenToken> tokens{
+  const std::vector<ScanRoot> testRoots{
+      {"src/test"},
+  };
+  const std::vector<ForbiddenToken> productionTokens{
       {"defaultTechnique"},
       {"MaterialUBO"},
       {"baseColorFactor"},
@@ -199,10 +242,113 @@ int main() {
       {"PushConstantSnapshot"},
       {"pushConstants"},
       {"makeDefaultForwardRenderPathGraph"},
+      {"MaterialPassContract"},
+      {"MaterialTechnique"},
+      {"MaterialTechniqueSet"},
+      {"FrameGraphMaterialTechniqueInput"},
+      {"buildFrameGraphFromSourceTargetContracts"},
+      {"TechniqueValidator"},
+      {"MaterialPassContractParser"},
+      {"RenderEffectResourceParser"},
+      {"test_technique_pass_contract"},
+      {"test_render_effect_resource_parser"},
+      {"MaterialParams"},
+      {"RenderPassContractSet"},
+      {"RenderPassContractLibrary"},
+  };
+  const std::vector<ForbiddenToken> testTokens{
+      {"defaultTechnique"},
+      {"MaterialUBO"},
+      {"MaterialParams"},
+      {"activeTechnique"},
+      {"MaterialTechniqueSet"},
+      {"TechniqueValidator"},
+      {"MaterialPassContractParser"},
+      {"RenderEffectResourceParser"},
+      {"test_technique_pass_contract"},
+      {"test_render_effect_resource_parser"},
+      {"materialTag"},
+      {"LegacyPerItem"},
+      {"makeDefaultForwardRenderPathGraph"},
+      {"RenderPassContractSet"},
+      {"RenderPassContractLibrary"},
+  };
+  const std::vector<AllowedLegacyMention> allowlist{
+      {"MaterialParams", "src/core/frame_graph/render_validation_contract.cpp"},
+      {"defaultTechnique", "test_material_v2_resource_dependencies.cpp"},
+      {"defaultTechnique", "test_default_material_asset_audit.cpp"},
+      {"MaterialUBO", "test_material_v2_parser.cpp"},
+      {"MaterialUBO", "test_071_bridge_audit.cpp"},
+      {"MaterialUBO", "test_071g_legacy_boundary_removal.cpp"},
+      {"MaterialParams", "test_071_bridge_audit.cpp"},
+      {"materialTag", "test_071g_legacy_boundary_removal.cpp"},
+      {"materialTag", "test_gltf_scene_asset_loader.cpp"},
+      {"materialTag", "test_lxe_pbrt_scene_convert.py"},
+      {"activeTechnique", "test_render_validation_profile.cpp"},
+      {"setActiveMaterialTag", "test_071g_legacy_boundary_removal.cpp"},
+      {"activeMaterialTag", "test_071g_legacy_boundary_removal.cpp"},
+      {"activeMaterialTag", "test_gltf_scene_asset_loader.cpp"},
+      {"BindlessSubmissionDecisionKind::LegacyPerItem",
+       "test_071_bridge_audit.cpp"},
+      {"BindlessSubmissionDecisionKind::LegacyPerItem",
+       "test_071g_legacy_boundary_removal.cpp"},
+      {"LegacyPerItem", "test_071_bridge_audit.cpp"},
+      {"LegacyPerItem", "test_071g_legacy_boundary_removal.cpp"},
+      {"raster.drawData", "test_071_bridge_audit.cpp"},
+      {"raster.drawData", "test_071g_legacy_boundary_removal.cpp"},
+      {"PerDrawData", "test_071_bridge_audit.cpp"},
+      {"PerDrawData", "test_071g_legacy_boundary_removal.cpp"},
+      {"vkCmdPushConstants", "test_071_bridge_audit.cpp"},
+      {"vkCmdPushConstants", "test_071g_legacy_boundary_removal.cpp"},
+      {"m_pushConstants", "test_071_bridge_audit.cpp"},
+      {"m_pushConstants", "test_071g_legacy_boundary_removal.cpp"},
+      {"PushConstantSnapshot", "test_071_bridge_audit.cpp"},
+      {"PushConstantSnapshot", "test_071g_legacy_boundary_removal.cpp"},
+      {"pushConstants", "test_071_bridge_audit.cpp"},
+      {"pushConstants", "test_071g_legacy_boundary_removal.cpp"},
+      {"makeDefaultForwardRenderPathGraph",
+       "test_default_forward_render_path_graph_source.cpp"},
+      {"makeDefaultForwardRenderPathGraph",
+       "test_071g_legacy_boundary_removal.cpp"},
+      {"MaterialPassContract", "test_071g_legacy_boundary_removal.cpp"},
+      {"MaterialTechnique", "test_071g_legacy_boundary_removal.cpp"},
+      {"MaterialTechniqueSet", "test_071g_legacy_boundary_removal.cpp"},
+      {"FrameGraphMaterialTechniqueInput",
+       "test_071g_legacy_boundary_removal.cpp"},
+      {"buildFrameGraphFromSourceTargetContracts",
+       "test_071g_legacy_boundary_removal.cpp"},
+      {"TechniqueValidator", "test_071g_legacy_boundary_removal.cpp"},
+      {"MaterialPassContractParser",
+       "test_071g_legacy_boundary_removal.cpp"},
+      {"RenderEffectResourceParser",
+       "test_071g_legacy_boundary_removal.cpp"},
+      {"test_technique_pass_contract",
+       "test_071g_legacy_boundary_removal.cpp"},
+      {"test_render_effect_resource_parser",
+       "test_071g_legacy_boundary_removal.cpp"},
+      {"MaterialParams", "test_071g_legacy_boundary_removal.cpp"},
+      {"RenderPassContractSet", "test_071g_legacy_boundary_removal.cpp"},
+      {"RenderPassContractLibrary", "test_071g_legacy_boundary_removal.cpp"},
+  };
+  const std::vector<ForbiddenPath> legacyFiles{
+      {"src/core/asset/material_technique_set.cpp"},
+      {"src/core/asset/material_technique_set.hpp"},
+      {"src/core/frame_graph/technique_validator.cpp"},
+      {"src/core/frame_graph/technique_validator.hpp"},
+      {"src/infra/resource_parsers/material_pass_contract_parser.cpp"},
+      {"src/infra/resource_parsers/material_pass_contract_parser.hpp"},
+      {"src/infra/resource_parsers/render_effect_resource_parser.cpp"},
+      {"src/infra/resource_parsers/render_effect_resource_parser.hpp"},
+      {"src/test/integration/test_technique_pass_contract.cpp"},
+      {"src/test/integration/test_render_effect_resource_parser.cpp"},
   };
 
-  for (const ScanRoot &root : roots) {
-    scanRoot(repoRoot, root, tokens);
+  auditRemovedLegacyFiles(repoRoot, legacyFiles);
+  for (const ScanRoot &root : productionRoots) {
+    scanRoot(repoRoot, root, productionTokens, allowlist);
+  }
+  for (const ScanRoot &root : testRoots) {
+    scanRoot(repoRoot, root, testTokens, allowlist);
   }
   auditDefaultForwardGraphSource(repoRoot);
 

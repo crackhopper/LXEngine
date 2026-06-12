@@ -20,6 +20,30 @@ namespace {
   return node ? node.as<std::string>() : std::move(fallback);
 }
 
+[[nodiscard]] bool
+isProtectedMaterialV2StrictProfile(ValidationProfileKind profileKind) {
+  return profileKind == ValidationProfileKind::Helmet ||
+         profileKind == ValidationProfileKind::BMW ||
+         profileKind == ValidationProfileKind::Req071;
+}
+
+[[nodiscard]] const char *
+validationProfileKindName(ValidationProfileKind profileKind) {
+  switch (profileKind) {
+  case ValidationProfileKind::Standard:
+    return "standard";
+  case ValidationProfileKind::Debug:
+    return "debug";
+  case ValidationProfileKind::Helmet:
+    return "helmet";
+  case ValidationProfileKind::BMW:
+    return "bmw";
+  case ValidationProfileKind::Req071:
+    return "req071";
+  }
+  return "unknown";
+}
+
 [[nodiscard]] LX_core::image::ToneMappingMode
 parseToneMappingMode(const std::string &value) {
   if (value == "aces" || value == "Aces" || value == "ACES") {
@@ -44,6 +68,26 @@ ValidationSourceMode parseValidationSourceMode(std::string_view value) {
                            std::string(value));
 }
 
+ValidationProfileKind parseValidationProfileKind(std::string_view value) {
+  if (value == "standard") {
+    return ValidationProfileKind::Standard;
+  }
+  if (value == "debug") {
+    return ValidationProfileKind::Debug;
+  }
+  if (value == "helmet") {
+    return ValidationProfileKind::Helmet;
+  }
+  if (value == "bmw") {
+    return ValidationProfileKind::BMW;
+  }
+  if (value == "req071") {
+    return ValidationProfileKind::Req071;
+  }
+  throw std::runtime_error("Unknown validation profileKind: " +
+                           std::string(value));
+}
+
 SceneValidationProfile
 parseSceneValidationProfileYaml(std::string_view yamlText) {
   const YAML::Node root = YAML::Load(std::string(yamlText));
@@ -51,16 +95,45 @@ parseSceneValidationProfileYaml(std::string_view yamlText) {
 
   const YAML::Node validation = root["renderValidation"];
   if (validation) {
+    if (validation["activeTechnique"]) {
+      throw std::runtime_error(
+          "renderValidation.activeTechnique is a deleted legacy material "
+          "technique field; use renderValidation.profileKind and explicit "
+          "RenderPathGraph assets instead");
+    }
     profile.sourceMode = parseValidationSourceMode(
         readString(validation["sourceMode"], "source"));
+    profile.profileKind = parseValidationProfileKind(
+        readString(validation["profileKind"], "standard"));
     profile.scenePath = readString(validation["scenePath"], "");
     profile.packagePath = readString(validation["packagePath"], "");
-    profile.activeTechnique =
-        readString(validation["activeTechnique"], profile.activeTechnique);
     profile.shadows = readBool(validation["shadows"], profile.shadows);
     profile.ibl = readBool(validation["ibl"], profile.ibl);
     profile.transparency =
         readBool(validation["transparency"], profile.transparency);
+    if (validation["materialV2Strict"]) {
+      profile.materialV2Strict = validation["materialV2Strict"].as<bool>();
+    }
+    profile.allowMaterialV2StrictOptOut =
+        readBool(validation["allowMaterialV2StrictOptOut"], false);
+    if (!profile.materialV2Strict) {
+      if (isProtectedMaterialV2StrictProfile(profile.profileKind)) {
+        throw std::runtime_error(
+            "renderValidation.profileKind=" +
+            std::string(validationProfileKindName(profile.profileKind)) +
+            " may not set renderValidation.materialV2Strict=false; "
+            "helmet/BMW/req071 validation profiles are protected");
+      }
+      if (profile.profileKind != ValidationProfileKind::Debug ||
+          !profile.allowMaterialV2StrictOptOut) {
+        throw std::runtime_error(
+            "renderValidation.profileKind=" +
+            std::string(validationProfileKindName(profile.profileKind)) +
+            " may set renderValidation.materialV2Strict=false only when "
+            "profileKind=debug and "
+            "renderValidation.allowMaterialV2StrictOptOut=true");
+      }
+    }
   }
 
   const YAML::Node realtime = root["realtimeRender"];

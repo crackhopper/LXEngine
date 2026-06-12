@@ -1,6 +1,6 @@
-#include "core/asset/material_technique_set.hpp"
+#include "core/asset/render_effect.hpp"
 #include "core/frame_graph/graph_resource_registry.hpp"
-#include "core/frame_graph/technique_validator.hpp"
+#include "core/frame_graph/render_pass_contract_validator.hpp"
 
 #include <iostream>
 
@@ -18,13 +18,13 @@ int g_failures = 0;
     }                                                                          \
   } while (0)
 
-MaterialPassContract makePass(std::string name, std::vector<std::string> sources,
-                              std::vector<std::string> targets) {
-  MaterialPassContract pass;
-  pass.name = std::move(name);
+RenderPassNode makePass(std::string name, std::vector<std::string> sources,
+                        std::vector<std::string> targets) {
+  RenderPassNode pass;
+  pass.id = std::move(name);
   pass.shaderUri = "shaders/test.effect";
-  pass.stage = MaterialPassStage::Raster;
-  pass.dispatch = MaterialPassDispatch::Draw;
+  pass.stage = RenderPassStage::Raster;
+  pass.dispatch = RenderPassDispatch::Draw;
   pass.sources = std::move(sources);
   pass.targets = std::move(targets);
   pass.renderState.cullMode = CullMode::Back;
@@ -33,7 +33,7 @@ MaterialPassContract makePass(std::string name, std::vector<std::string> sources
   return pass;
 }
 
-bool diagnosticContains(const TechniqueValidationReport &report,
+bool diagnosticContains(const RenderPassContractValidationReport &report,
                         const std::string &first,
                         const std::string &second = {},
                         const std::string &third = {}) {
@@ -89,132 +89,128 @@ void testRegistryMarksStandardImportedSources() {
          "scene.environment should be imported");
 }
 
-void testTechniqueValidatorRejectsUnknownResource() {
-  MaterialTechnique technique;
-  technique.name = "Forward";
-  technique.passes.push_back(
+void testRenderPassContractValidatorRejectsUnknownResource() {
+  RenderPathGraph graph;
+  graph.name = "Forward";
+  graph.passes.push_back(
       makePass("Forward", {"geometry.vertex", "missing.input"}, {"hdr.color"}));
 
-  const auto report =
-      validateTechniqueResources(technique, GraphResourceRegistry::makeDefault());
+  const auto report = validateRenderPassContractResources(
+      graph, GraphResourceRegistry::makeDefault());
   EXPECT(!report.ok(), "unknown source should fail validation");
-  EXPECT(diagnosticContains(report, "Forward", "missing.input",
-                            "unknown source"),
-         "diagnostic should mention missing input");
+  EXPECT(
+      diagnosticContains(report, "Forward", "missing.input", "unknown source"),
+      "diagnostic should mention missing input");
 }
 
-void testTechniqueValidatorRejectsDuplicateProducer() {
-  MaterialTechnique technique;
-  technique.name = "Deferred";
-  technique.passes.push_back(
+void testRenderPassContractValidatorRejectsDuplicateProducer() {
+  RenderPathGraph graph;
+  graph.name = "Deferred";
+  graph.passes.push_back(
       makePass("GBufferA", {"geometry.vertex"}, {"gbuffer.albedo"}));
-  technique.passes.push_back(
+  graph.passes.push_back(
       makePass("GBufferB", {"geometry.vertex"}, {"gbuffer.albedo"}));
 
-  const auto report =
-      validateTechniqueResources(technique, GraphResourceRegistry::makeDefault());
+  const auto report = validateRenderPassContractResources(
+      graph, GraphResourceRegistry::makeDefault());
   EXPECT(!report.ok(), "duplicate target producer should fail validation");
   EXPECT(diagnosticContains(report, "GBufferB", "gbuffer.albedo"),
          "diagnostic should mention duplicate target");
 }
 
-void testTechniqueValidatorRejectsSourceWithoutProducer() {
-  MaterialTechnique technique;
-  technique.name = "Post";
-  technique.passes.push_back(
-      makePass("ToneMap", {"hdr.color"}, {"ldr.color"}));
+void testRenderPassContractValidatorRejectsSourceWithoutProducer() {
+  RenderPathGraph graph;
+  graph.name = "Post";
+  graph.passes.push_back(makePass("ToneMap", {"hdr.color"}, {"ldr.color"}));
 
-  const auto report =
-      validateTechniqueResources(technique, GraphResourceRegistry::makeDefault());
+  const auto report = validateRenderPassContractResources(
+      graph, GraphResourceRegistry::makeDefault());
   EXPECT(!report.ok(), "registered target source without producer should fail");
-  EXPECT(diagnosticContains(report, "ToneMap", "hdr.color",
-                            "has no producer"),
+  EXPECT(diagnosticContains(report, "ToneMap", "hdr.color", "has no producer"),
          "diagnostic should mention missing producer");
 }
 
-void testTechniqueValidatorAcceptsEarlierProducedSource() {
-  MaterialTechnique technique;
-  technique.name = "Post";
-  technique.passes.push_back(
+void testRenderPassContractValidatorAcceptsEarlierProducedSource() {
+  RenderPathGraph graph;
+  graph.name = "Post";
+  graph.passes.push_back(
       makePass("Forward", {"geometry.vertex"}, {"hdr.color"}));
-  technique.passes.push_back(
-      makePass("ToneMap", {"hdr.color"}, {"ldr.color"}));
+  graph.passes.push_back(makePass("ToneMap", {"hdr.color"}, {"ldr.color"}));
 
-  const auto report =
-      validateTechniqueResources(technique, GraphResourceRegistry::makeDefault());
+  const auto report = validateRenderPassContractResources(
+      graph, GraphResourceRegistry::makeDefault());
   EXPECT(report.ok(), "source produced by an earlier pass should pass");
 }
 
-void testTechniqueValidatorAcceptsOutOfOrderProducedSource() {
-  MaterialTechnique technique;
-  technique.name = "Post";
-  technique.passes.push_back(
-      makePass("ToneMap", {"hdr.color"}, {"ldr.color"}));
-  technique.passes.push_back(
+void testRenderPassContractValidatorAcceptsOutOfOrderProducedSource() {
+  RenderPathGraph graph;
+  graph.name = "Post";
+  graph.passes.push_back(makePass("ToneMap", {"hdr.color"}, {"ldr.color"}));
+  graph.passes.push_back(
       makePass("Forward", {"geometry.vertex"}, {"hdr.color"}));
 
-  const auto report =
-      validateTechniqueResources(technique, GraphResourceRegistry::makeDefault());
+  const auto report = validateRenderPassContractResources(
+      graph, GraphResourceRegistry::makeDefault());
   EXPECT(report.ok(),
          "source produced by a later declared pass should pass DAG validation");
 }
 
-void testTechniqueValidatorRejectsSelfOnlyFeedbackSource() {
-  MaterialTechnique technique;
-  technique.name = "Feedback";
-  technique.passes.push_back(
+void testRenderPassContractValidatorRejectsSelfOnlyFeedbackSource() {
+  RenderPathGraph graph;
+  graph.name = "Feedback";
+  graph.passes.push_back(
       makePass("FeedbackPass", {"hdr.color"}, {"hdr.color"}));
 
-  const auto report =
-      validateTechniqueResources(technique, GraphResourceRegistry::makeDefault());
+  const auto report = validateRenderPassContractResources(
+      graph, GraphResourceRegistry::makeDefault());
   EXPECT(!report.ok(), "self-only read/write feedback should fail");
   EXPECT(diagnosticContains(report, "FeedbackPass", "hdr.color",
                             "has no producer"),
          "diagnostic should mention self-only feedback has no producer");
 }
 
-void testTechniqueValidatorAllowsWriteModeAppend() {
-  MaterialTechnique technique;
-  technique.name = "Lighting";
+void testRenderPassContractValidatorAllowsWriteModeAppend() {
+  RenderPathGraph graph;
+  graph.name = "Lighting";
   auto first = makePass("LightA", {"geometry.vertex"}, {"hdr.color"});
   first.writeMode = "append";
   auto second = makePass("LightB", {"geometry.vertex"}, {"hdr.color"});
   second.writeMode = "append";
-  technique.passes.push_back(std::move(first));
-  technique.passes.push_back(std::move(second));
+  graph.passes.push_back(std::move(first));
+  graph.passes.push_back(std::move(second));
 
-  const auto report =
-      validateTechniqueResources(technique, GraphResourceRegistry::makeDefault());
+  const auto report = validateRenderPassContractResources(
+      graph, GraphResourceRegistry::makeDefault());
   EXPECT(report.ok(), "append write mode should allow multiple producers");
 }
 
-void testTechniqueValidatorAllowsWriteModeBlend() {
-  MaterialTechnique technique;
-  technique.name = "Lighting";
+void testRenderPassContractValidatorAllowsWriteModeBlend() {
+  RenderPathGraph graph;
+  graph.name = "Lighting";
   auto first = makePass("Opaque", {"geometry.vertex"}, {"hdr.color"});
   first.writeMode = "blend";
   auto second = makePass("Transparent", {"geometry.vertex"}, {"hdr.color"});
   second.writeMode = "blend";
-  technique.passes.push_back(std::move(first));
-  technique.passes.push_back(std::move(second));
+  graph.passes.push_back(std::move(first));
+  graph.passes.push_back(std::move(second));
 
-  const auto report =
-      validateTechniqueResources(technique, GraphResourceRegistry::makeDefault());
+  const auto report = validateRenderPassContractResources(
+      graph, GraphResourceRegistry::makeDefault());
   EXPECT(report.ok(), "blend write mode should allow multiple producers");
 }
 
-void testTechniqueValidatorRejectsAppendWhenTargetDoesNotAllowIt() {
-  MaterialTechnique technique;
-  technique.name = "Deferred";
+void testRenderPassContractValidatorRejectsAppendWhenTargetDoesNotAllowIt() {
+  RenderPathGraph graph;
+  graph.name = "Deferred";
   auto first = makePass("GBufferA", {"geometry.vertex"}, {"gbuffer.albedo"});
   first.writeMode = "append";
   auto second = makePass("GBufferB", {"geometry.vertex"}, {"gbuffer.albedo"});
   second.writeMode = "append";
-  technique.passes.push_back(std::move(first));
-  technique.passes.push_back(std::move(second));
+  graph.passes.push_back(std::move(first));
+  graph.passes.push_back(std::move(second));
 
-  const auto report =
-      validateTechniqueResources(technique, GraphResourceRegistry::makeDefault());
+  const auto report = validateRenderPassContractResources(
+      graph, GraphResourceRegistry::makeDefault());
   EXPECT(!report.ok(),
          "append write mode should not bypass target registry capability");
   EXPECT(diagnosticContains(report, "GBufferA", "gbuffer.albedo",
@@ -222,14 +218,14 @@ void testTechniqueValidatorRejectsAppendWhenTargetDoesNotAllowIt() {
          "diagnostic should mention unsupported append write mode");
 }
 
-void testTechniqueValidatorRejectsImportedTargetWrite() {
-  MaterialTechnique technique;
-  technique.name = "InvalidImportedTarget";
-  technique.passes.push_back(
+void testRenderPassContractValidatorRejectsImportedTargetWrite() {
+  RenderPathGraph graph;
+  graph.name = "InvalidImportedTarget";
+  graph.passes.push_back(
       makePass("WritesCamera", {"geometry.vertex"}, {"camera.ubo"}));
 
-  const auto report =
-      validateTechniqueResources(technique, GraphResourceRegistry::makeDefault());
+  const auto report = validateRenderPassContractResources(
+      graph, GraphResourceRegistry::makeDefault());
   EXPECT(!report.ok(), "imported/source-only target write should fail");
   EXPECT(diagnosticContains(report, "WritesCamera", "camera.ubo"),
          "diagnostic should mention imported target");
@@ -237,92 +233,90 @@ void testTechniqueValidatorRejectsImportedTargetWrite() {
          "diagnostic should explain target is imported/source-only");
 }
 
-void testTechniqueValidatorRejectsInvalidWriteModeOnSingleWriter() {
-  MaterialTechnique technique;
-  technique.name = "InvalidWriteMode";
+void testRenderPassContractValidatorRejectsInvalidWriteModeOnSingleWriter() {
+  RenderPathGraph graph;
+  graph.name = "InvalidWriteMode";
   auto pass = makePass("Forward", {"geometry.vertex"}, {"hdr.color"});
   pass.writeMode = "overwrite-plus";
-  technique.passes.push_back(std::move(pass));
+  graph.passes.push_back(std::move(pass));
 
-  const auto report =
-      validateTechniqueResources(technique, GraphResourceRegistry::makeDefault());
+  const auto report = validateRenderPassContractResources(
+      graph, GraphResourceRegistry::makeDefault());
   EXPECT(!report.ok(), "single writer with unsupported writeMode should fail");
   EXPECT(diagnosticContains(report, "Forward", "hdr.color", "overwrite-plus"),
          "diagnostic should mention invalid writeMode");
 }
 
-void testTechniqueValidatorRejectsSamePassDuplicateTarget() {
-  MaterialTechnique technique;
-  technique.name = "SamePassDuplicate";
+void testRenderPassContractValidatorRejectsSamePassDuplicateTarget() {
+  RenderPathGraph graph;
+  graph.name = "SamePassDuplicate";
   auto pass =
       makePass("Forward", {"geometry.vertex"}, {"hdr.color", "hdr.color"});
   pass.writeMode = "blend";
-  technique.passes.push_back(std::move(pass));
+  graph.passes.push_back(std::move(pass));
 
-  const auto report =
-      validateTechniqueResources(technique, GraphResourceRegistry::makeDefault());
+  const auto report = validateRenderPassContractResources(
+      graph, GraphResourceRegistry::makeDefault());
   EXPECT(!report.ok(),
          "same pass duplicate target should fail even with allowed writeMode");
-  EXPECT(diagnosticContains(report, "Forward", "hdr.color",
-                            "duplicate target"),
+  EXPECT(diagnosticContains(report, "Forward", "hdr.color", "duplicate target"),
          "diagnostic should mention duplicate target");
 }
 
-void testTechniqueValidatorRejectsMixedDuplicateWriteMode() {
-  MaterialTechnique technique;
-  technique.name = "MixedDuplicateMode";
+void testRenderPassContractValidatorRejectsMixedDuplicateWriteMode() {
+  RenderPathGraph graph;
+  graph.name = "MixedDuplicateMode";
   auto first = makePass("BlendLighting", {"geometry.vertex"}, {"hdr.color"});
   first.writeMode = "blend";
   auto second = makePass("AppendLighting", {"geometry.vertex"}, {"hdr.color"});
   second.writeMode = "append";
-  technique.passes.push_back(std::move(first));
-  technique.passes.push_back(std::move(second));
+  graph.passes.push_back(std::move(first));
+  graph.passes.push_back(std::move(second));
 
-  const auto report =
-      validateTechniqueResources(technique, GraphResourceRegistry::makeDefault());
+  const auto report = validateRenderPassContractResources(
+      graph, GraphResourceRegistry::makeDefault());
   EXPECT(!report.ok(), "mixed duplicate writeMode should fail validation");
-  EXPECT(diagnosticContains(report, "AppendLighting", "BlendLighting",
-                            "append"),
-         "diagnostic should mention current pass, previous pass, and current "
-         "writeMode");
-  EXPECT(diagnosticContains(report, "AppendLighting", "BlendLighting",
-                            "blend"),
+  EXPECT(
+      diagnosticContains(report, "AppendLighting", "BlendLighting", "append"),
+      "diagnostic should mention current pass, previous pass, and current "
+      "writeMode");
+  EXPECT(diagnosticContains(report, "AppendLighting", "BlendLighting", "blend"),
          "diagnostic should mention previous writeMode");
 }
 
-void testTechniqueValidatorReportsUnsupportedDuplicateWriteModeWithCurrentPass() {
+void testRenderPassContractValidatorReportsUnsupportedDuplicateWriteModeWithCurrentPass() {
   GraphResourceRegistry registry = GraphResourceRegistry::makeDefault();
   registry.registerResource("custom.color");
   registry.allowWriteMode("custom.color", "blend");
 
-  MaterialTechnique technique;
-  technique.name = "UnsupportedDuplicateMode";
+  RenderPathGraph graph;
+  graph.name = "UnsupportedDuplicateMode";
   auto first = makePass("BlendWriter", {"geometry.vertex"}, {"custom.color"});
   first.writeMode = "blend";
   auto second = makePass("AppendWriter", {"geometry.vertex"}, {"custom.color"});
   second.writeMode = "append";
-  technique.passes.push_back(std::move(first));
-  technique.passes.push_back(std::move(second));
+  graph.passes.push_back(std::move(first));
+  graph.passes.push_back(std::move(second));
 
-  const auto report = validateTechniqueResources(technique, registry);
+  const auto report = validateRenderPassContractResources(graph, registry);
   EXPECT(!report.ok(), "unsupported duplicate writeMode should fail");
   EXPECT(diagnosticContains(report, "AppendWriter", "BlendWriter", "append"),
          "diagnostic should mention current pass, previous pass, and "
          "unsupported writeMode");
 }
 
-void testTechniqueValidatorRequiresEveryDuplicateProducerToDeclareWriteMode() {
-  MaterialTechnique technique;
-  technique.name = "Lighting";
+void testRenderPassContractValidatorRequiresEveryDuplicateProducerToDeclareWriteMode() {
+  RenderPathGraph graph;
+  graph.name = "Lighting";
   auto first = makePass("OpaqueLighting", {"geometry.vertex"}, {"hdr.color"});
   auto second =
       makePass("TransparentLighting", {"geometry.vertex"}, {"hdr.color"});
   second.writeMode = "append";
-  technique.passes.push_back(std::move(first));
-  technique.passes.push_back(std::move(second));
+  graph.passes.push_back(std::move(first));
+  graph.passes.push_back(std::move(second));
 
-  const auto report =
-      validateTechniqueResources(technique, GraphResourceRegistry::makeDefault());
+  const auto report = validateRenderPassContractResources(
+      graph, GraphResourceRegistry::makeDefault());
   EXPECT(!report.ok(),
          "every producer of a multiply-written target must declare writeMode");
   EXPECT(diagnosticContains(report, "TransparentLighting", "OpaqueLighting",
@@ -330,17 +324,17 @@ void testTechniqueValidatorRequiresEveryDuplicateProducerToDeclareWriteMode() {
          "diagnostic should mention missing writeMode");
 }
 
-void testTechniqueValidatorReportsCurrentInvalidWriteModeBeforeDuplicateMode() {
-  MaterialTechnique technique;
-  technique.name = "Deferred";
+void testRenderPassContractValidatorReportsCurrentInvalidWriteModeBeforeDuplicateMode() {
+  RenderPathGraph graph;
+  graph.name = "Deferred";
   auto first = makePass("GBufferA", {"geometry.vertex"}, {"gbuffer.albedo"});
   auto second = makePass("GBufferB", {"geometry.vertex"}, {"gbuffer.albedo"});
   second.writeMode = "append";
-  technique.passes.push_back(std::move(first));
-  technique.passes.push_back(std::move(second));
+  graph.passes.push_back(std::move(first));
+  graph.passes.push_back(std::move(second));
 
-  const auto report =
-      validateTechniqueResources(technique, GraphResourceRegistry::makeDefault());
+  const auto report = validateRenderPassContractResources(
+      graph, GraphResourceRegistry::makeDefault());
   EXPECT(!report.ok(),
          "current invalid writeMode should be reported before duplicate mode "
          "fallbacks");
@@ -349,18 +343,18 @@ void testTechniqueValidatorReportsCurrentInvalidWriteModeBeforeDuplicateMode() {
          "diagnostic should mention current pass and illegal writeMode");
 }
 
-void testTechniqueValidatorReportsPreviousMissingWriteModeWithCurrentPass() {
-  MaterialTechnique technique;
-  technique.name = "Lighting";
+void testRenderPassContractValidatorReportsPreviousMissingWriteModeWithCurrentPass() {
+  RenderPathGraph graph;
+  graph.name = "Lighting";
   auto first = makePass("OpaqueLighting", {"geometry.vertex"}, {"hdr.color"});
   auto second =
       makePass("TransparentLighting", {"geometry.vertex"}, {"hdr.color"});
   second.writeMode = "blend";
-  technique.passes.push_back(std::move(first));
-  technique.passes.push_back(std::move(second));
+  graph.passes.push_back(std::move(first));
+  graph.passes.push_back(std::move(second));
 
-  const auto report =
-      validateTechniqueResources(technique, GraphResourceRegistry::makeDefault());
+  const auto report = validateRenderPassContractResources(
+      graph, GraphResourceRegistry::makeDefault());
   EXPECT(!report.ok(),
          "duplicate writer should fail when previous producer lacks writeMode");
   EXPECT(diagnosticContains(report, "TransparentLighting", "OpaqueLighting",
@@ -368,18 +362,18 @@ void testTechniqueValidatorReportsPreviousMissingWriteModeWithCurrentPass() {
          "diagnostic should include current pass and previous pass");
 }
 
-void testTechniqueValidatorReportsCurrentMissingWriteModeWithCurrentPass() {
-  MaterialTechnique technique;
-  technique.name = "Lighting";
+void testRenderPassContractValidatorReportsCurrentMissingWriteModeWithCurrentPass() {
+  RenderPathGraph graph;
+  graph.name = "Lighting";
   auto first = makePass("OpaqueLighting", {"geometry.vertex"}, {"hdr.color"});
   first.writeMode = "blend";
   auto second =
       makePass("TransparentLighting", {"geometry.vertex"}, {"hdr.color"});
-  technique.passes.push_back(std::move(first));
-  technique.passes.push_back(std::move(second));
+  graph.passes.push_back(std::move(first));
+  graph.passes.push_back(std::move(second));
 
-  const auto report =
-      validateTechniqueResources(technique, GraphResourceRegistry::makeDefault());
+  const auto report = validateRenderPassContractResources(
+      graph, GraphResourceRegistry::makeDefault());
   EXPECT(!report.ok(),
          "duplicate writer should fail when current producer lacks writeMode");
   EXPECT(diagnosticContains(report, "TransparentLighting", "OpaqueLighting",
@@ -387,45 +381,45 @@ void testTechniqueValidatorReportsCurrentMissingWriteModeWithCurrentPass() {
          "diagnostic should include current pass and previous pass");
 }
 
-void testTechniqueValidatorRejectsExplicitUnknownTarget() {
-  MaterialTechnique technique;
-  technique.name = "UnknownTarget";
-  technique.passes.push_back(
+void testRenderPassContractValidatorRejectsExplicitUnknownTarget() {
+  RenderPathGraph graph;
+  graph.name = "UnknownTarget";
+  graph.passes.push_back(
       makePass("BadTarget", {"geometry.vertex"}, {"freeform.output"}));
 
-  const auto report =
-      validateTechniqueResources(technique, GraphResourceRegistry::makeDefault());
+  const auto report = validateRenderPassContractResources(
+      graph, GraphResourceRegistry::makeDefault());
   EXPECT(!report.ok(), "unknown target should fail validation");
   EXPECT(diagnosticContains(report, "BadTarget", "freeform.output",
                             "unknown target"),
          "diagnostic should mention current pass and unknown target");
 }
 
-void testTechniqueValidatorRejectsUnsupportedRasterDispatch() {
-  MaterialTechnique technique;
-  technique.name = "Forward";
+void testRenderPassContractValidatorRejectsUnsupportedRasterDispatch() {
+  RenderPathGraph graph;
+  graph.name = "Forward";
   auto pass = makePass("Forward", {"geometry.vertex"}, {"hdr.color"});
-  pass.stage = MaterialPassStage::Raster;
-  pass.dispatch = MaterialPassDispatch::Compute;
-  technique.passes.push_back(std::move(pass));
+  pass.stage = RenderPassStage::Raster;
+  pass.dispatch = RenderPassDispatch::Compute;
+  graph.passes.push_back(std::move(pass));
 
-  const auto report =
-      validateTechniqueResources(technique, GraphResourceRegistry::makeDefault());
+  const auto report = validateRenderPassContractResources(
+      graph, GraphResourceRegistry::makeDefault());
   EXPECT(!report.ok(), "raster pass with compute dispatch should fail");
   EXPECT(diagnosticContains(report, "Forward", "unsupported dispatch"),
          "diagnostic should mention unsupported dispatch");
 }
 
-void testTechniqueValidatorRejectsUnsupportedComputeDispatch() {
-  MaterialTechnique technique;
-  technique.name = "Post";
+void testRenderPassContractValidatorRejectsUnsupportedComputeDispatch() {
+  RenderPathGraph graph;
+  graph.name = "Post";
   auto pass = makePass("ToneMap", {"hdr.color"}, {"ldr.color"});
-  pass.stage = MaterialPassStage::Compute;
-  pass.dispatch = MaterialPassDispatch::Draw;
-  technique.passes.push_back(std::move(pass));
+  pass.stage = RenderPassStage::Compute;
+  pass.dispatch = RenderPassDispatch::Draw;
+  graph.passes.push_back(std::move(pass));
 
-  const auto report =
-      validateTechniqueResources(technique, GraphResourceRegistry::makeDefault());
+  const auto report = validateRenderPassContractResources(
+      graph, GraphResourceRegistry::makeDefault());
   EXPECT(!report.ok(), "compute pass with draw dispatch should fail");
   EXPECT(diagnosticContains(report, "ToneMap", "unsupported dispatch"),
          "diagnostic should mention unsupported dispatch");
@@ -436,27 +430,27 @@ void testTechniqueValidatorRejectsUnsupportedComputeDispatch() {
 int main() {
   testRegistryAcceptsStandardResources();
   testRegistryMarksStandardImportedSources();
-  testTechniqueValidatorRejectsUnknownResource();
-  testTechniqueValidatorRejectsDuplicateProducer();
-  testTechniqueValidatorRejectsSourceWithoutProducer();
-  testTechniqueValidatorAcceptsEarlierProducedSource();
-  testTechniqueValidatorAcceptsOutOfOrderProducedSource();
-  testTechniqueValidatorRejectsSelfOnlyFeedbackSource();
-  testTechniqueValidatorAllowsWriteModeAppend();
-  testTechniqueValidatorAllowsWriteModeBlend();
-  testTechniqueValidatorRejectsAppendWhenTargetDoesNotAllowIt();
-  testTechniqueValidatorRejectsImportedTargetWrite();
-  testTechniqueValidatorRejectsInvalidWriteModeOnSingleWriter();
-  testTechniqueValidatorRejectsSamePassDuplicateTarget();
-  testTechniqueValidatorRejectsMixedDuplicateWriteMode();
-  testTechniqueValidatorReportsUnsupportedDuplicateWriteModeWithCurrentPass();
-  testTechniqueValidatorRequiresEveryDuplicateProducerToDeclareWriteMode();
-  testTechniqueValidatorReportsCurrentInvalidWriteModeBeforeDuplicateMode();
-  testTechniqueValidatorReportsPreviousMissingWriteModeWithCurrentPass();
-  testTechniqueValidatorReportsCurrentMissingWriteModeWithCurrentPass();
-  testTechniqueValidatorRejectsExplicitUnknownTarget();
-  testTechniqueValidatorRejectsUnsupportedRasterDispatch();
-  testTechniqueValidatorRejectsUnsupportedComputeDispatch();
+  testRenderPassContractValidatorRejectsUnknownResource();
+  testRenderPassContractValidatorRejectsDuplicateProducer();
+  testRenderPassContractValidatorRejectsSourceWithoutProducer();
+  testRenderPassContractValidatorAcceptsEarlierProducedSource();
+  testRenderPassContractValidatorAcceptsOutOfOrderProducedSource();
+  testRenderPassContractValidatorRejectsSelfOnlyFeedbackSource();
+  testRenderPassContractValidatorAllowsWriteModeAppend();
+  testRenderPassContractValidatorAllowsWriteModeBlend();
+  testRenderPassContractValidatorRejectsAppendWhenTargetDoesNotAllowIt();
+  testRenderPassContractValidatorRejectsImportedTargetWrite();
+  testRenderPassContractValidatorRejectsInvalidWriteModeOnSingleWriter();
+  testRenderPassContractValidatorRejectsSamePassDuplicateTarget();
+  testRenderPassContractValidatorRejectsMixedDuplicateWriteMode();
+  testRenderPassContractValidatorReportsUnsupportedDuplicateWriteModeWithCurrentPass();
+  testRenderPassContractValidatorRequiresEveryDuplicateProducerToDeclareWriteMode();
+  testRenderPassContractValidatorReportsCurrentInvalidWriteModeBeforeDuplicateMode();
+  testRenderPassContractValidatorReportsPreviousMissingWriteModeWithCurrentPass();
+  testRenderPassContractValidatorReportsCurrentMissingWriteModeWithCurrentPass();
+  testRenderPassContractValidatorRejectsExplicitUnknownTarget();
+  testRenderPassContractValidatorRejectsUnsupportedRasterDispatch();
+  testRenderPassContractValidatorRejectsUnsupportedComputeDispatch();
   if (g_failures != 0) {
     std::cerr << g_failures << " frame graph registry checks failed\n";
     return 1;

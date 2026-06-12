@@ -1,4 +1,5 @@
 #include "backend/vulkan/offline/vulkan_offline_renderer.hpp"
+#include "backend/vulkan/offline/offline_compute_shader.hpp"
 #include "core/offline/offline_render_profile.hpp"
 #include "core/offline/offline_render_validation.hpp"
 #include "infra/build_info/build_info.hpp"
@@ -66,7 +67,11 @@ int main(int argc, char **argv) {
         LX_core::offline::resolveRenderProfileDocument(profiles, args.overrides);
 
     LX_infra::offline::OfflineAssetResolver resolver(args.scenePath);
-    LX_infra::offline::OfflineSceneLoader loader(resolver);
+    LX_infra::offline::OfflineSceneLoader loader(
+        resolver, [] {
+          return LX_core::backend::offline::createOfflineComputeShader(
+              "techniques/OfflineRT/offline_pbr_direct_ray");
+        });
     auto loaded = loader.load(document, resolved.output.cameraPath);
     for (const auto &warning : loaded.warnings) {
       std::cerr << "[offline warning] " << warning << '\n';

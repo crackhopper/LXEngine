@@ -1,6 +1,7 @@
 #pragma once
 
-#include "core/asset/material_technique_set.hpp"
+#include "core/asset/render_pass_contract.hpp"
+#include "core/resource/resource_uri.hpp"
 
 #include <optional>
 #include <string>
@@ -28,8 +29,8 @@ struct RenderPassNodeFilters final {
 struct RenderPassNode final {
   std::string id;
   ResourceUri shaderUri;
-  MaterialPassStage stage = MaterialPassStage::Raster;
-  MaterialPassDispatch dispatch = MaterialPassDispatch::Draw;
+  RenderPassStage stage = RenderPassStage::Raster;
+  RenderPassDispatch dispatch = RenderPassDispatch::Draw;
   RenderPassNodeFilters filters;
   std::vector<std::string> sources;
   std::vector<std::string> targets;
@@ -55,19 +56,6 @@ struct RenderFeature final {
   std::string name;
   std::string feature;
   std::unordered_map<std::string, RenderFeatureParameter> parameters;
-};
-
-// Historical compatibility names remain only while old call sites are migrated.
-enum class RenderEffectPhase {
-  Pre,
-  Post,
-};
-
-struct RenderEffect final {
-  std::string name;
-  RenderEffectPhase phase = RenderEffectPhase::Post;
-  std::vector<MaterialTechnique> techniques;
-  MaterialTechnique technique;
 };
 
 } // namespace LX_core

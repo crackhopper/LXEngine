@@ -10,6 +10,10 @@
 #include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/scene_resource_table.hpp"
 #include "core/scene/scene_gpu_records.hpp"
+#include "backend/vulkan/offline/offline_compute_shader.hpp"
+#include "infra/offline/offline_asset_resolver.hpp"
+#include "infra/offline/offline_scene_loader.hpp"
+#include "infra/scene_io/scene_document.hpp"
 #include "infra/shader_compiler/compiled_shader.hpp"
 #include "infra/shader_compiler/shader_compiler.hpp"
 #include "infra/shader_compiler/shader_reflector.hpp"
@@ -148,6 +152,92 @@ findOfflineShaderSourcePath(const char *shaderFilename) {
     probe = parent;
   }
   return {};
+}
+
+void writeTextFile(const std::filesystem::path &path,
+                   const std::string &content) {
+  std::filesystem::create_directories(path.parent_path());
+  std::ofstream out(path);
+  out << content;
+}
+
+[[nodiscard]] std::filesystem::path writeOfflineLoaderSmokeScene() {
+  const std::filesystem::path dir =
+      std::filesystem::current_path() / "tmp_offline_loader_material_v2";
+  std::filesystem::create_directories(dir);
+  writeTextFile(dir / "smoke.material", R"(schema: lxe.material.v2
+bsdf:
+  type: matte
+  parameters:
+    Kd: { kind: rgb, value: [0.8, 0.2, 0.1] }
+    sigma: { kind: float, value: 0.0 }
+)");
+  writeTextFile(dir / "smoke.scene.yaml", R"(scene:
+  name: Offline Loader Material V2 Smoke
+  gameplayCameraPath: /camera
+  defaultOutputProfile: smoke
+  outputProfiles:
+    smoke:
+      camera: /camera
+      width: 32
+      height: 32
+      outputFormat: exr-png
+      outDir: artifacts/test/offline-loader
+      backgroundColor: [0.0, 0.0, 0.0]
+  offlineRender:
+    integrator: software-compute
+    samples: 1
+    maxBounce: 1
+    seed: 1
+    profile: smoke
+root:
+  nodeName: scene_root
+  name: ''
+  transform:
+    translation: [0.0, 0.0, 0.0]
+    rotation: [1.0, 0.0, 0.0, 0.0]
+    scale: [1.0, 1.0, 1.0]
+  visibilityMask: 4294967295
+  children:
+    - nodeName: camera
+      name: camera
+      transform:
+        translation: [0.0, 0.0, 3.0]
+        rotation: [1.0, 0.0, 0.0, 0.0]
+        scale: [1.0, 1.0, 1.0]
+      visibilityMask: 4294967295
+      camera:
+        type: perspective
+        fovY: 45.0
+        aspect: 1.0
+        nearPlane: 0.1
+        farPlane: 20.0
+        cullingMask: 4294967295
+    - nodeName: cube
+      name: cube
+      transform:
+        translation: [0.0, 0.0, 0.0]
+        rotation: [1.0, 0.0, 0.0, 0.0]
+        scale: [1.0, 1.0, 1.0]
+      visibilityMask: 4294967295
+      mesh:
+        uri: builtin://lxe_editor/primitives/cube
+      material:
+        uri: smoke.material
+    - nodeName: key_light
+      name: key_light
+      transform:
+        translation: [0.0, 0.0, 0.0]
+        rotation: [1.0, 0.0, 0.0, 0.0]
+        scale: [1.0, 1.0, 1.0]
+      visibilityMask: 4294967295
+      light:
+        kind: Directional
+        direction: [-0.35, -0.85, -0.4]
+        color: [1.0, 1.0, 1.0]
+        intensity: 3.0
+)");
+  return dir / "smoke.scene.yaml";
 }
 
 [[nodiscard]] std::string readTextFile(const std::filesystem::path &path) {
@@ -821,6 +911,57 @@ void testOfflineRenderWorkGraphUsesJobComputeShader() {
          "offline work item should carry compute shader from job");
 }
 
+void testOfflineSceneLoaderMapsMaterialV2ToOfflineRayTracePass() {
+  const std::filesystem::path scenePath = writeOfflineLoaderSmokeScene();
+  const auto document = LX_infra::scene_io::loadSceneDocument(scenePath);
+  LX_infra::offline::OfflineAssetResolver resolver(scenePath);
+
+  LX_infra::offline::OfflineSceneLoader strictLoader(resolver);
+  auto strictLoaded = strictLoader.load(document, "/camera");
+  EXPECT(!strictLoaded.offlineShader,
+         "loader without explicit OfflineRT provider must not invent shader");
+  auto strictUpload = strictLoaded.table.buildUploadView();
+  EXPECT(!strictUpload.materialIndexByHandle.empty(),
+         "strict loader should still register the material");
+  if (!strictUpload.materialIndexByHandle.empty()) {
+    const auto material =
+        strictLoaded.table.resolve(strictUpload.materialIndexByHandle[0].handle);
+    EXPECT(material.has_value(),
+           "strict loader material handle should resolve from the table");
+    if (material.has_value()) {
+      EXPECT(!material->get().isPassEnabled(Pass_OfflineRayTrace),
+             "strict loader should not enable OfflineRayTrace without provider");
+    }
+  }
+
+  auto expectedShader =
+      backend::offline::createOfflineComputeShader(
+          "techniques/OfflineRT/offline_pbr_direct_ray");
+  LX_infra::offline::OfflineSceneLoader loader(
+      resolver, [expectedShader] { return expectedShader; });
+  auto loaded = loader.load(document, "/camera");
+  EXPECT(loaded.offlineShader == expectedShader,
+         "Material v2 loader should use the explicit OfflineRT shader");
+
+  auto upload = loaded.table.buildUploadView();
+  EXPECT(!upload.materialIndexByHandle.empty(),
+         "loader should register the Material v2 instance");
+  if (upload.materialIndexByHandle.empty()) {
+    return;
+  }
+  const auto material =
+      loaded.table.resolve(upload.materialIndexByHandle[0].handle);
+  EXPECT(material.has_value(),
+         "loader material handle should resolve from the table");
+  if (!material.has_value()) {
+    return;
+  }
+  EXPECT(material->get().isPassEnabled(Pass_OfflineRayTrace),
+         "Material v2 loader should enable the OfflineRayTrace pass");
+  EXPECT(material->get().getPassShader(Pass_OfflineRayTrace) == expectedShader,
+         "OfflineRayTrace pass should point at the explicit shader provider");
+}
+
 void testOfflineWorkItemCarriesUnifiedSceneTextureArray() {
   offline::OfflineRenderJob job = makeRenderableJobWithCamera();
 
@@ -909,6 +1050,7 @@ int main() {
   testOfflineRenderJobValidationRejectsNonRenderableScene();
   testOfflineRenderWorkGraphBuildsRayTracePass();
   testOfflineRenderWorkGraphUsesJobComputeShader();
+  testOfflineSceneLoaderMapsMaterialV2ToOfflineRayTracePass();
   testOfflineWorkItemCarriesUnifiedSceneTextureArray();
   testOfflineWorkItemDoesNotInjectImplicitLightOrEnvironment();
   testSoftwareBvhThrowsForEmptyPrimitiveList();

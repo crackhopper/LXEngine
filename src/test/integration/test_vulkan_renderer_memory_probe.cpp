@@ -12,7 +12,7 @@
 #include "core/scene/scene.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/filesystem_tools.hpp"
-#include "infra/material_loader/generic_material_loader.hpp"
+#include "scene_test_helpers.hpp"
 
 #if defined(USE_SDL)
 #include "backend/vulkan/vulkan_renderer.hpp"
@@ -92,11 +92,7 @@ int skipped = 0;
       Mesh::create(vertexBuffer, indexBuffer,
                    BoundingBox{{-1.0f, -1.0f, 0.0f}, {1.0f, 1.0f, 0.0f}});
 
-  auto material =
-      LX_infra::loadGenericMaterial("assets/materials/pbr.material");
-  material->writeShaderBindingParameter(StringID("MaterialUBO"),
-                                        StringID("enableNormal"), 0);
-  material->syncGpuData();
+  auto material = LX_test::makeForwardMinimalMaterialForVulkanTests();
 
   auto node = SceneNode::create("memory_probe_triangle");
   node->addComponent<MeshComponent>(mesh);

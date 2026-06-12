@@ -9,18 +9,14 @@
 
 namespace LX_infra {
 
-struct ParsedRenderEffectResource final {
-  std::optional<LX_core::RenderPathGraph> renderPathGraph;
+struct ParsedRenderFeatureResource final {
   std::optional<LX_core::RenderFeature> renderFeature;
-  // Historical compatibility field. New resources should use renderPathGraph
-  // or renderFeature.
-  std::optional<LX_core::RenderEffect> effect;
   std::vector<std::string> diagnostics;
 };
 
-class RenderEffectResourceParser final {
+class RenderFeatureResourceParser final {
 public:
-  [[nodiscard]] ParsedRenderEffectResource
+  [[nodiscard]] ParsedRenderFeatureResource
   parse(const LX_core::ResourceUri &uri, std::string_view yamlText) const;
 };
 

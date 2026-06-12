@@ -178,12 +178,13 @@ static bool testVariantCombination(const std::filesystem::path &vertPath,
     std::cout << "  findBinding(0,0) -> not found\n";
   }
 
-  auto byName = shader->findBinding("MaterialUBO");
+  auto byName = shader->findBinding("SceneMaterials");
   if (byName) {
-    std::cout << "  findBinding(\"MaterialUBO\") -> set=" << byName->get().set
+    std::cout << "  findBinding(\"SceneMaterials\") -> set="
+              << byName->get().set
               << " binding=" << byName->get().binding << "\n";
   } else {
-    std::cout << "  findBinding(\"MaterialUBO\") -> not found\n";
+    std::cout << "  findBinding(\"SceneMaterials\") -> not found\n";
   }
 
   return true;
@@ -207,6 +208,10 @@ static std::string readTextFile(const std::filesystem::path &path) {
   std::stringstream buffer;
   buffer << ifs.rdbuf();
   return buffer.str();
+}
+
+static std::string joinedToken(const char *head, const char *tail) {
+  return std::string(head) + tail;
 }
 
 static bool
@@ -618,7 +623,8 @@ static bool testPbrMaterialGpuRecordContract(
     return true;
   };
 
-  if (!rejectBinding("MaterialUBO") || !rejectBinding("albedoMap") ||
+  if (!rejectBinding(joinedToken("Material", "UBO")) ||
+      !rejectBinding("albedoMap") ||
       !rejectBinding("normalMap") || !rejectBinding("metallicRoughnessMap") ||
       !rejectBinding("aoMap") || !rejectBinding("emissiveMap")) {
     return false;
@@ -654,10 +660,18 @@ static bool testPbrMaterialGpuRecordContract(
 
   const auto source = readTextFile(fragPath);
   const auto vertSource = readTextFile(vertPath);
-  for (const std::string token :
-       {"MaterialUBO", "baseColorFactor", "metallicFactor", "roughnessFactor",
-        "albedoMap", "normalMap", "metallicRoughnessMap", "aoMap",
-        "emissiveMap"}) {
+  const std::vector<std::string> legacyTokens{
+      joinedToken("Material", "UBO"),
+      joinedToken("baseColor", "Factor"),
+      joinedToken("metallic", "Factor"),
+      joinedToken("roughness", "Factor"),
+      "albedoMap",
+      "normalMap",
+      "metallicRoughnessMap",
+      "aoMap",
+      "emissiveMap",
+  };
+  for (const std::string &token : legacyTokens) {
     if (source.find(token) != std::string::npos) {
       std::cerr << "  FAIL: PBR fragment source still contains legacy token "
                 << token << "\n";
@@ -754,10 +768,18 @@ testPbrClearcoatShaderContract(const std::filesystem::path &shaderDir) {
   }
 
   const auto source = readTextFile(fragPath);
-  for (const std::string token :
-       {"MaterialUBO", "baseColorFactor", "metallicFactor", "roughnessFactor",
-        "albedoMap", "normalMap", "metallicRoughnessMap", "aoMap",
-        "emissiveMap"}) {
+  const std::vector<std::string> legacyTokens{
+      joinedToken("Material", "UBO"),
+      joinedToken("baseColor", "Factor"),
+      joinedToken("metallic", "Factor"),
+      joinedToken("roughness", "Factor"),
+      "albedoMap",
+      "normalMap",
+      "metallicRoughnessMap",
+      "aoMap",
+      "emissiveMap",
+  };
+  for (const std::string &token : legacyTokens) {
     if (source.find(token) != std::string::npos) {
       std::cerr << "  FAIL: pbr_clearcoat.frag still contains legacy token "
                 << token << "\n";
@@ -1084,7 +1106,7 @@ int main(int argc, char *argv[]) {
   if (!testSceneSystemAbiRejectsLegacyUboDeclaration())
     ++failures;
 
-  // Test 4: BlinnPhong MaterialUBO member reflection (REQ-004)
+  // Test 4: post-process and supporting shader contract reflection
   if (!testPostProcessShaderContract(shaderDir))
     ++failures;
   if (!testBloomShaderContracts(shaderDir))

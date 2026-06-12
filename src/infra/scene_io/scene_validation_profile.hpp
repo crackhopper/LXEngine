@@ -14,11 +14,19 @@ enum class ValidationSourceMode {
   Package,
 };
 
+enum class ValidationProfileKind {
+  Standard,
+  Debug,
+  Helmet,
+  BMW,
+  Req071,
+};
+
 struct SceneValidationProfile final {
   ValidationSourceMode sourceMode = ValidationSourceMode::Source;
+  ValidationProfileKind profileKind = ValidationProfileKind::Standard;
   std::filesystem::path scenePath;
   std::filesystem::path packagePath;
-  std::string activeTechnique = "Forward";
   std::string cameraPath = "/game_cam";
   u32 width = 128;
   u32 height = 128;
@@ -28,12 +36,17 @@ struct SceneValidationProfile final {
   bool shadows = false;
   bool ibl = false;
   bool transparency = false;
+  bool materialV2Strict = true;
+  bool allowMaterialV2StrictOptOut = false;
   LX_core::image::ToneMappingSettings toneMapping;
   std::filesystem::path outputPath;
 };
 
 [[nodiscard]] ValidationSourceMode
 parseValidationSourceMode(std::string_view value);
+
+[[nodiscard]] ValidationProfileKind
+parseValidationProfileKind(std::string_view value);
 
 [[nodiscard]] SceneValidationProfile
 parseSceneValidationProfileYaml(std::string_view yamlText);

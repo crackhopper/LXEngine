@@ -86,6 +86,15 @@ SceneNodeSharedPtr makeCameraNodeWithTarget(const RenderTarget &target) {
   return node;
 }
 
+void configureMaterialV2UploadData(const MaterialInstanceSharedPtr &material) {
+  material->setBsdfType("matte");
+  MaterialParameterEnvelope kd;
+  kd.kind = MaterialEnvelopeKind::Rgb;
+  kd.rgbValue = Vec3f{0.25f, 0.5f, 0.75f};
+  material->setMaterialEnvelope(StringID("Kd"), std::move(kd));
+  material->syncGpuData();
+}
+
 RenderWorkItem
 buildItem(PrimitiveTopology topo = PrimitiveTopology::TriangleList,
           std::vector<VertexInputAttribute> vertexInputs = {},
@@ -142,6 +151,7 @@ buildItem(PrimitiveTopology topo = PrimitiveTopology::TriangleList,
   tmpl->setPassDefinition(Pass_Forward, std::move(entry));
   tmpl->rebuildMaterialInterface();
   auto material = MaterialInstance::create(tmpl);
+  configureMaterialV2UploadData(material);
 
   // Minimal vertex + index buffers.
   auto vb = VertexBuffer<VertexPos>::create(
@@ -271,6 +281,7 @@ void testFromRenderWorkItemFiltersVertexLayoutToShaderInputs() {
   tmpl->rebuildMaterialInterface();
 
   auto material = MaterialInstance::create(tmpl);
+  configureMaterialV2UploadData(material);
   auto node = SceneNode::create("filtered_layout_node");
   node->addComponent<MeshComponent>(mesh);
   node->addComponent<MaterialComponent>(material);

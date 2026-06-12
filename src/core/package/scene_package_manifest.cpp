@@ -34,6 +34,14 @@ constexpr std::array<char, 8> kPackageMagic = {'L', 'X', 'P', 'K',
     return "Camera";
   case SceneResourceType::Light:
     return "Light";
+  case SceneResourceType::Renderer:
+    return "Renderer";
+  case SceneResourceType::RenderPathGraph:
+    return "RenderPathGraph";
+  case SceneResourceType::RenderFeature:
+    return "RenderFeature";
+  case SceneResourceType::Shader:
+    return "Shader";
   case SceneResourceType::RenderEffect:
     return "RenderEffect";
   }
@@ -64,6 +72,18 @@ constexpr std::array<char, 8> kPackageMagic = {'L', 'X', 'P', 'K',
   }
   if (value == "Light") {
     return SceneResourceType::Light;
+  }
+  if (value == "Renderer") {
+    return SceneResourceType::Renderer;
+  }
+  if (value == "RenderPathGraph") {
+    return SceneResourceType::RenderPathGraph;
+  }
+  if (value == "RenderFeature") {
+    return SceneResourceType::RenderFeature;
+  }
+  if (value == "Shader") {
+    return SceneResourceType::Shader;
   }
   if (value == "RenderEffect") {
     return SceneResourceType::RenderEffect;

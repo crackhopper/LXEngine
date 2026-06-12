@@ -1,4 +1,4 @@
-#include "infra/resource_parsers/material_pass_contract_parser.hpp"
+#include "infra/resource_parsers/render_pass_node_parser.hpp"
 
 #include <yaml-cpp/yaml.h>
 
@@ -7,13 +7,12 @@
 namespace LX_infra {
 namespace {
 
-void addDiagnostic(MaterialPassContractParseResult &result,
-                   const std::string &field, const std::string &message) {
+void addDiagnostic(RenderPassNodeParseResult &result, const std::string &field,
+                   const std::string &message) {
   result.diagnostics.push_back(field + ": " + message);
 }
 
-bool requireField(const YAML::Node &node,
-                  MaterialPassContractParseResult &result,
+bool requireField(const YAML::Node &node, RenderPassNodeParseResult &result,
                   const std::string &field) {
   if (node) {
     return true;
@@ -22,27 +21,26 @@ bool requireField(const YAML::Node &node,
   return false;
 }
 
-std::optional<LX_core::MaterialPassStage>
-parseStage(const std::string &value) {
+std::optional<LX_core::RenderPassStage> parseStage(const std::string &value) {
   if (value == "raster") {
-    return LX_core::MaterialPassStage::Raster;
+    return LX_core::RenderPassStage::Raster;
   }
   if (value == "compute") {
-    return LX_core::MaterialPassStage::Compute;
+    return LX_core::RenderPassStage::Compute;
   }
   return std::nullopt;
 }
 
-std::optional<LX_core::MaterialPassDispatch>
+std::optional<LX_core::RenderPassDispatch>
 parseDispatch(const std::string &value) {
   if (value == "draw") {
-    return LX_core::MaterialPassDispatch::Draw;
+    return LX_core::RenderPassDispatch::Draw;
   }
   if (value == "fullscreen") {
-    return LX_core::MaterialPassDispatch::Fullscreen;
+    return LX_core::RenderPassDispatch::Fullscreen;
   }
   if (value == "compute") {
-    return LX_core::MaterialPassDispatch::Compute;
+    return LX_core::RenderPassDispatch::Compute;
   }
   return std::nullopt;
 }
@@ -108,7 +106,7 @@ std::vector<std::string> parseStringList(const YAML::Node &node) {
 }
 
 bool rejectUnsupportedFields(const YAML::Node &node,
-                             MaterialPassContractParseResult &result,
+                             RenderPassNodeParseResult &result,
                              const std::string &fieldPrefix) {
   bool ok = true;
   for (auto it = node.begin(); it != node.end(); ++it) {
@@ -121,14 +119,18 @@ bool rejectUnsupportedFields(const YAML::Node &node,
     const std::string key = it->first.as<std::string>();
     if (key == "id" || key == "shader" || key == "stage" || key == "dispatch" ||
         key == "sources" || key == "targets" || key == "renderState" ||
-        key == "writeMode" || key == "filters" || key == "variants" ||
-        key == "parameters" || key == "resources") {
+        key == "writeMode" || key == "filters") {
       continue;
     }
     if (key == "enginePass") {
       addDiagnostic(result, fieldPrefix + ".enginePass",
                     "legacy enginePass bridge is removed; pass name is the "
                     "runtime pass identity");
+    } else if (key == "variants" || key == "parameters" || key == "resources" ||
+               key == "technique" || key == "pass" || key == "material") {
+      addDiagnostic(result, fieldPrefix + "." + key,
+                    "legacy pass-node field is removed; render structure must "
+                    "come from RenderPathGraph pass contracts");
     } else {
       addDiagnostic(result, fieldPrefix + "." + key,
                     "unsupported pass contract field");
@@ -139,8 +141,7 @@ bool rejectUnsupportedFields(const YAML::Node &node,
 }
 
 std::optional<LX_core::RenderState>
-parseRenderState(const YAML::Node &node,
-                 MaterialPassContractParseResult &result,
+parseRenderState(const YAML::Node &node, RenderPassNodeParseResult &result,
                  const std::string &field) {
   if (!node || !node.IsMap()) {
     addDiagnostic(result, field, "missing required field");
@@ -213,10 +214,10 @@ parseRenderState(const YAML::Node &node,
 
 } // namespace
 
-MaterialPassContractParseResult parseMaterialPassContract(
-    const std::string &passName, const YAML::Node &node,
-    const std::string &fieldPrefix) {
-  MaterialPassContractParseResult result;
+RenderPassNodeParseResult
+parseRenderPassNodeContract(const std::string &passName, const YAML::Node &node,
+                            const std::string &fieldPrefix) {
+  RenderPassNodeParseResult result;
   if (!node || !node.IsMap()) {
     addDiagnostic(result, fieldPrefix, "pass must be a map");
     return result;
@@ -228,8 +229,8 @@ MaterialPassContractParseResult parseMaterialPassContract(
   requireField(node["dispatch"], result, fieldPrefix + ".dispatch");
   requireField(node["sources"], result, fieldPrefix + ".sources");
   requireField(node["targets"], result, fieldPrefix + ".targets");
-  auto renderState =
-      parseRenderState(node["renderState"], result, fieldPrefix + ".renderState");
+  auto renderState = parseRenderState(node["renderState"], result,
+                                      fieldPrefix + ".renderState");
   if (!result.diagnostics.empty()) {
     return result;
   }
@@ -265,8 +266,8 @@ MaterialPassContractParseResult parseMaterialPassContract(
     return result;
   }
 
-  LX_core::MaterialPassContract pass;
-  pass.name = passName;
+  LX_core::RenderPassNode pass;
+  pass.id = passName;
   pass.shaderUri = node["shader"].as<std::string>();
   pass.stage = *stage;
   pass.dispatch = *dispatch;

@@ -9,7 +9,7 @@
 #include "core/resource/resource_uri.hpp"
 #include "core/rhi/descriptor_resource_ref.hpp"
 #include "core/rhi/gpu_resource.hpp"
-#include "core/scene/scene_resource_table.hpp"
+#include "core/scene/scene_resource_handles.hpp"
 
 #include <functional>
 #include <memory>

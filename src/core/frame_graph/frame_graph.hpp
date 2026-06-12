@@ -42,7 +42,7 @@ enum class FrameGraphPhase { PreEffect, Material, PostEffect, Debug };
 @source_analysis.section FramePass：pass 身份、target、queue 与资源流
 `FramePass` 把一条渲染 pass 的 core 层声明打包成一个结构体：
 
-- `name`：StringID，来自 material/effect technique 的 pass 身份；它是这条 pass
+- `name`：StringID，来自 RenderPathGraph 的 pass 身份；它是这条 pass
   在 scene-level 资源筛选、material pass 选择、shader 变体合并里的统一身份
 - `target`：这条 pass 的输出形状，使用 `RenderTargetDesc` 保留 offscreen /
   depth-only 等结构性描述；旧的 scene camera matching 边界再转回 `RenderTarget`
@@ -69,8 +69,8 @@ struct FramePass {
   FrameGraphPhase phase = FrameGraphPhase::Material;
   u32 stableOrder = 0;
   ResourceUri shaderUri;
-  MaterialPassStage stage = MaterialPassStage::Raster;
-  MaterialPassDispatch dispatch = MaterialPassDispatch::Draw;
+  RenderPassStage stage = RenderPassStage::Raster;
+  RenderPassDispatch dispatch = RenderPassDispatch::Draw;
   RenderPassNodeFilters filters;
   RenderState renderState;
 };

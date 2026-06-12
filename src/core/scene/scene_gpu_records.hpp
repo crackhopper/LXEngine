@@ -76,6 +76,27 @@ struct alignas(16) SceneGpuMaterialRecord final {
   u32 reserved1 = 0;
 };
 
+struct alignas(16) SceneGpuRenderPathGraphRecord final {
+  u32 passOffset = 0;
+  u32 passCount = 0;
+  u32 featureOffset = 0;
+  u32 featureCount = 0;
+};
+
+struct alignas(16) SceneGpuRenderPathGraphPassRecord final {
+  u32 shaderIndex = 0xffffffffu;
+  u32 reserved0 = 0;
+  u32 reserved1 = 0;
+  u32 reserved2 = 0;
+};
+
+struct alignas(16) SceneGpuRenderPathGraphFeatureRecord final {
+  u32 featureIndex = 0xffffffffu;
+  u32 reserved0 = 0;
+  u32 reserved1 = 0;
+  u32 reserved2 = 0;
+};
+
 constexpr u32 kSceneGpuMaterialCullModeMask = 0x3u;
 constexpr u32 kSceneGpuMaterialCullModeNone = 0u;
 constexpr u32 kSceneGpuMaterialCullModeFront = 1u;
@@ -116,6 +137,9 @@ static_assert(sizeof(SceneGpuPrimitiveRecord) == 16);
 static_assert(sizeof(SceneGpuDrawRecord) == 16);
 static_assert(sizeof(SceneGpuObjectRecord) == 176);
 static_assert(sizeof(SceneGpuMaterialRecord) == 96);
+static_assert(sizeof(SceneGpuRenderPathGraphRecord) == 16);
+static_assert(sizeof(SceneGpuRenderPathGraphPassRecord) == 16);
+static_assert(sizeof(SceneGpuRenderPathGraphFeatureRecord) == 16);
 static_assert(sizeof(SceneGpuFrameParams) == 176);
 static_assert(offsetof(SceneGpuObjectRecord, objectToWorld) == 0);
 static_assert(offsetof(SceneGpuObjectRecord, worldToObject) == 64);

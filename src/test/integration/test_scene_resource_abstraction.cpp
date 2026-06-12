@@ -2,6 +2,7 @@
 #include "core/resource/resource_uri.hpp"
 #include "core/scene/scene_resource_table.hpp"
 #include "infra/resource_parsers/mesh_resource_parser.hpp"
+#include "infra/resource_parsers/render_resource_scene_parser_adapters.hpp"
 #include "infra/resource_parsers/scene_resource_parser_registry.hpp"
 #include "infra/resource_parsers/texture_resource_parser.hpp"
 
@@ -84,6 +85,90 @@ void testParserRegistryDiagnosticsIncludeContext() {
          "diagnostic should include parser name");
 }
 
+void testParserRegistryRoutesCompoundYamlExtensions() {
+  SceneResourceParserRegistry registry;
+  registry.registerParser(
+      SceneResourceType::RenderPathGraph, ".render-path.yaml",
+      "render-path-graph-test-parser",
+      [](SceneResourceTable &, const ResourceUri &uri,
+         const SceneResourceParseContext &) {
+        ParsedSceneResource parsed;
+        parsed.metadata.type = SceneResourceType::RenderPathGraph;
+        parsed.metadata.uri = uri;
+        return parsed;
+      });
+  registry.registerParser(
+      SceneResourceType::RenderFeature, ".render-feature.yaml",
+      "render-feature-test-parser",
+      [](SceneResourceTable &, const ResourceUri &uri,
+         const SceneResourceParseContext &) {
+        ParsedSceneResource parsed;
+        parsed.metadata.type = SceneResourceType::RenderFeature;
+        parsed.metadata.uri = uri;
+        return parsed;
+      });
+
+  SceneResourceTable table;
+  const SceneResourceParseContext context{
+      .ownerUri = ResourceUri("assets/scenes/a.scene")};
+  const auto graph = registry.parse(
+      table, SceneResourceType::RenderPathGraph,
+      ResourceUri("assets/render_paths/forward_main.render-path.yaml"),
+      context);
+  const auto feature = registry.parse(
+      table, SceneResourceType::RenderFeature,
+      ResourceUri("assets/effects/tone_mapping.render-feature.yaml"), context);
+  const auto mismatched = registry.parse(
+      table, SceneResourceType::RenderPathGraph,
+      ResourceUri("assets/effects/tone_mapping.render-feature.yaml"), context);
+
+  EXPECT(graph.diagnostics.empty(),
+         ".render-path.yaml should route to graph parser");
+  EXPECT(graph.metadata.type == SceneResourceType::RenderPathGraph,
+         "graph parser should own .render-path.yaml resources");
+  EXPECT(feature.diagnostics.empty(),
+         ".render-feature.yaml should route to feature parser");
+  EXPECT(feature.metadata.type == SceneResourceType::RenderFeature,
+         "feature parser should own .render-feature.yaml resources");
+  EXPECT(!mismatched.diagnostics.empty(),
+         "graph resource type should not accept .render-feature.yaml");
+}
+
+void testParserRegistryConnectsRealRenderParsersToSceneResourceTable() {
+  SceneResourceParserRegistry registry;
+  registerRenderResourceParsers(registry);
+
+  SceneResourceTable table;
+  const auto parsed = registry.parse(
+      table, SceneResourceType::RenderPathGraph,
+      ResourceUri("assets/render_paths/forward_main.render-path.yaml"),
+      SceneResourceParseContext{});
+
+  for (const std::string &diagnostic : parsed.diagnostics) {
+    std::cerr << "[diagnostic] " << diagnostic << '\n';
+  }
+
+  EXPECT(parsed.diagnostics.empty(),
+         "real RenderPathGraph parser adapter should parse default graph");
+  EXPECT(parsed.identity.isValid(),
+         "real RenderPathGraph parser adapter should return graph identity");
+  EXPECT(table.renderPathGraphCount() == 1,
+         "real RenderPathGraph parser adapter should register graph payload");
+  EXPECT(table.renderFeatureCount() == 1,
+         "real RenderPathGraph parser adapter should parse and register feature "
+         "payload dependency");
+  EXPECT(table.shaderCount() == 4,
+         "real RenderPathGraph parser adapter should register one live shader "
+         "dependency per graph pass");
+
+  const auto exported = table.exportResourceGraph();
+  const u32 graphIndex = exported.handleToIndex(parsed.identity);
+  EXPECT(graphIndex != u32_max, "parsed graph should export in resource graph");
+  EXPECT(graphIndex != u32_max &&
+             exported.resources[graphIndex].dependencyHandles.size() == 5,
+         "parsed graph should depend on one feature and four shader resources");
+}
+
 void testParserReturnedIdentityOutlivesParserObject() {
   SceneResourceTable table;
   ResourceIdentityHandle meshIdentity;
@@ -115,6 +200,8 @@ int main() {
   testResourceUriCanonicalization();
   testSceneResourceTableIdentityDedup();
   testParserRegistryDiagnosticsIncludeContext();
+  testParserRegistryRoutesCompoundYamlExtensions();
+  testParserRegistryConnectsRealRenderParsersToSceneResourceTable();
   testParserReturnedIdentityOutlivesParserObject();
   if (g_failures != 0) {
     std::cerr << g_failures << " scene resource abstraction checks failed\n";

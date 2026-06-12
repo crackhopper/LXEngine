@@ -115,11 +115,116 @@ void testMigratedQueueAcceptsFullyCoveredIndirectBatch() {
          "bindless batch");
 }
 
+void testMaterialV2ValidationRejectsLegacyMaterialDescriptor() {
+  AuditResource vertex(ResourceType::VertexBuffer, StringID{}, 96);
+  AuditResource index(ResourceType::IndexBuffer, StringID{}, 48);
+  AuditResource camera(ResourceType::UniformBuffer, StringID("CameraUBO"), 64);
+  AuditResource material(ResourceType::UniformBuffer, StringID("MaterialUBO"),
+                         64);
+
+  RenderWorkQueue queue;
+  RenderWorkItem item = makeDefaultPathDraw(vertex, index, camera, material, 0);
+  item.raster.materialIndex = 0;
+  item.raster.drawRecordIndex = 0;
+  queue.addItem(std::move(item));
+
+  const MaterialV2ValidationResult result =
+      validateMaterialV2StrictQueue(queue, StringID("Forward"));
+  EXPECT(!result.ok,
+         "Material v2 validation should reject legacy MaterialUBO bindings");
+  EXPECT(!result.diagnostics.empty(),
+         "legacy material rejection should include diagnostics");
+  if (!result.diagnostics.empty()) {
+    const auto &diagnostic = result.diagnostics.front();
+    EXPECT(diagnostic.pass == StringID("Forward"),
+           "diagnostic should name the rejected pass");
+    EXPECT(diagnostic.debugId == StringID("071.audit.draw"),
+           "diagnostic should preserve draw debug identity");
+    EXPECT(diagnostic.objectSignature == StringID("071.audit.mesh"),
+           "diagnostic should preserve object identity");
+    EXPECT(diagnostic.materialSignature == StringID("071.audit.material"),
+           "diagnostic should preserve material identity");
+    EXPECT(diagnostic.bindingName == StringID("MaterialUBO"),
+           "diagnostic should name the forbidden binding");
+    EXPECT(diagnostic.reason.find("MaterialUBO") != std::string::npos,
+           "diagnostic should name the forbidden legacy binding");
+  }
+}
+
+void testMaterialV2ValidationRejectsTypedIndexFallback() {
+  AuditResource vertex(ResourceType::VertexBuffer, StringID{}, 96);
+  AuditResource index(ResourceType::IndexBuffer, StringID{}, 48);
+  AuditResource camera(ResourceType::UniformBuffer, StringID("CameraUBO"), 64);
+  AuditResource material(ResourceType::UniformBuffer,
+                         StringID("SceneMaterials"), 64);
+
+  RenderWorkQueue queue;
+  RenderWorkItem item = makeDefaultPathDraw(vertex, index, camera, material, 0);
+  item.raster.materialIndex = u32_max;
+  item.raster.drawRecordIndex = u32_max;
+  queue.addItem(std::move(item));
+
+  const MaterialV2ValidationResult result =
+      validateMaterialV2StrictQueue(queue, StringID("Forward"));
+  EXPECT(!result.ok,
+         "Material v2 validation should reject missing typed material/draw "
+         "indices");
+  EXPECT(!result.diagnostics.empty(),
+         "typed-index fallback rejection should include diagnostics");
+  bool namesMaterialIndex = false;
+  bool namesDrawIndex = false;
+  for (const auto &diagnostic : result.diagnostics) {
+    EXPECT(diagnostic.pass == StringID("Forward"),
+           "typed-index diagnostic should name the rejected pass");
+    EXPECT(diagnostic.objectSignature == StringID("071.audit.mesh"),
+           "typed-index diagnostic should preserve object identity");
+    EXPECT(diagnostic.materialSignature == StringID("071.audit.material"),
+           "typed-index diagnostic should preserve material identity");
+    if (diagnostic.bindingName == StringID("SceneMaterials") &&
+        diagnostic.reason.find("typed SceneMaterials index") !=
+            std::string::npos) {
+      namesMaterialIndex = true;
+    }
+    if (diagnostic.bindingName == StringID("SceneDraws") &&
+        diagnostic.reason.find("typed SceneDraws index") != std::string::npos) {
+      namesDrawIndex = true;
+    }
+  }
+  EXPECT(namesMaterialIndex,
+         "typed-index diagnostic should name the missing SceneMaterials index");
+  EXPECT(namesDrawIndex,
+         "typed-index diagnostic should name the missing SceneDraws index");
+}
+
+void testMaterialV2ValidationAcceptsTypedSceneData() {
+  AuditResource vertex(ResourceType::VertexBuffer, StringID{}, 96);
+  AuditResource index(ResourceType::IndexBuffer, StringID{}, 48);
+  AuditResource camera(ResourceType::UniformBuffer, StringID("CameraUBO"), 64);
+  AuditResource material(ResourceType::StorageBuffer,
+                         StringID("SceneMaterials"), 64);
+
+  RenderWorkQueue queue;
+  RenderWorkItem item = makeDefaultPathDraw(vertex, index, camera, material, 0);
+  item.raster.materialIndex = 0;
+  item.raster.drawRecordIndex = 0;
+  queue.addItem(std::move(item));
+
+  const MaterialV2ValidationResult result =
+      validateMaterialV2StrictQueue(queue, StringID("Forward"));
+  EXPECT(result.ok,
+         "Material v2 validation should accept typed SceneMaterials data");
+  EXPECT(result.diagnostics.empty(),
+         "accepted Material v2 validation queue should not emit diagnostics");
+}
+
 } // namespace
 
 int main() {
   testMigratedQueueRejectsIncompleteCoverageWithoutFallback();
   testMigratedQueueAcceptsFullyCoveredIndirectBatch();
+  testMaterialV2ValidationRejectsLegacyMaterialDescriptor();
+  testMaterialV2ValidationRejectsTypedIndexFallback();
+  testMaterialV2ValidationAcceptsTypedSceneData();
   if (g_failures != 0) {
     std::cerr << g_failures << " REQ-071 bridge audit checks failed\n";
     return 1;

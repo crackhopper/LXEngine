@@ -22,9 +22,10 @@ set(TEST_INTEGRATION_EXE_LIST
   test_material_v2_resource_dependencies
   test_material_v2_converter_defaults
   test_default_material_asset_audit
-  test_technique_pass_contract
-  test_render_effect_resource_parser
+  test_render_path_graph_pass_contract
+  test_render_resource_parsers
   test_default_forward_render_path_graph_source
+  test_default_deferred_render_path_graph_source
   test_frame_graph_registry
   test_scene_resource_abstraction
   test_scene_resource_upload_view_v2
@@ -192,6 +193,13 @@ endif()
 
 if(TARGET test_default_forward_render_path_graph_source)
   target_compile_definitions(test_default_forward_render_path_graph_source
+    PRIVATE
+    LXE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+  )
+endif()
+
+if(TARGET test_default_deferred_render_path_graph_source)
+  target_compile_definitions(test_default_deferred_render_path_graph_source
     PRIVATE
     LXE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
   )

@@ -149,7 +149,9 @@ struct TangentVertex final {
 class FakeShader final : public IShader {
 public:
   explicit FakeShader(std::vector<ShaderResourceBinding> bindings)
-      : m_bindings(std::move(bindings)) {}
+      : m_stages{ShaderStageCode{ShaderStage::Vertex,
+                                 std::vector<u32>{0x07230203u}}},
+        m_bindings(std::move(bindings)) {}
 
   const std::vector<ShaderStageCode> &getAllStages() const override {
     return m_stages;
@@ -344,9 +346,9 @@ MaterialInstanceSharedPtr makeSceneMaterialsShaderMaterial(
   return material;
 }
 
-MaterialInstanceSharedPtr makeLegacyShaderBindingOnlyMaterial() {
+MaterialInstanceSharedPtr makeShaderBindingOnlyMaterial() {
   ShaderResourceBinding binding;
-  binding.name = "MaterialUBO";
+  binding.name = "TestMaterialBlock";
   binding.set = 2;
   binding.binding = 0;
   binding.type = ShaderPropertyType::UniformBuffer;
@@ -362,9 +364,9 @@ MaterialInstanceSharedPtr makeLegacyShaderBindingOnlyMaterial() {
 
   auto shader =
       std::make_shared<FakeShader>(std::vector<ShaderResourceBinding>{binding});
-  auto materialTemplate = MaterialTemplate::create("legacy_shader_binding");
+  auto materialTemplate = MaterialTemplate::create("shader_binding_fixture");
   ShaderProgramSet shaderSet;
-  shaderSet.shaderName = "legacy_shader_binding";
+  shaderSet.shaderName = "shader_binding_fixture";
   shaderSet.shader = shader;
   MaterialPassDefinition passDefinition;
   passDefinition.shaderProgram = shaderSet;
@@ -374,18 +376,18 @@ MaterialInstanceSharedPtr makeLegacyShaderBindingOnlyMaterial() {
   materialTemplate->rebuildMaterialInterface();
 
   auto material = MaterialInstance::create(materialTemplate);
-  material->writeShaderBindingParameter(StringID("MaterialUBO"),
+  material->writeShaderBindingParameter(StringID("TestMaterialBlock"),
                                         StringID("baseColor"),
                                         Vec4f{0.9f, 0.1f, 0.2f, 0.3f});
-  material->writeShaderBindingParameter(StringID("MaterialUBO"),
+  material->writeShaderBindingParameter(StringID("TestMaterialBlock"),
                                         StringID("specularIntensity"), 0.7f);
-  material->writeShaderBindingParameter(StringID("MaterialUBO"),
+  material->writeShaderBindingParameter(StringID("TestMaterialBlock"),
                                         StringID("ambientIntensity"), 0.8f);
-  material->writeShaderBindingParameter(StringID("MaterialUBO"),
+  material->writeShaderBindingParameter(StringID("TestMaterialBlock"),
                                         StringID("clearcoatFactor"), 0.9f);
-  material->writeShaderBindingParameter(StringID("MaterialUBO"),
+  material->writeShaderBindingParameter(StringID("TestMaterialBlock"),
                                         StringID("clearcoatRoughness"), 0.6f);
-  material->writeShaderBindingParameter(StringID("MaterialUBO"),
+  material->writeShaderBindingParameter(StringID("TestMaterialBlock"),
                                         StringID("emissiveFactor"),
                                         Vec4f{0.3f, 0.4f, 0.5f, 0.6f});
   material->syncGpuData();
@@ -791,6 +793,65 @@ void testResourceStateVersionAndDirtyPropagation() {
              table.metadata(material).diagnostics.back().message.find(
                  "texture reloaded") != std::string::npos,
          "dirty propagation should keep reason");
+}
+
+void testRenderFeatureDirtyPropagationMarksDependentRenderPathGraph() {
+  SceneResourceTable table;
+
+  RenderFeature feature;
+  feature.name = "Shadow";
+  feature.feature = "shadowmap";
+  const RenderFeatureHandle featureHandle = table.registerRenderFeature(
+      ResourceUri("memory://features/shadow.render-feature"),
+      std::move(feature));
+  const ShaderHandle shaderHandle = table.registerShaderResource(
+      ResourceUri("memory://shaders/surface_lit.shader"),
+      {ResourceUri("memory://shaders/surface_lit.vert"),
+       ResourceUri("memory://shaders/surface_lit.frag")},
+      std::make_shared<FakeShader>(std::vector<ShaderResourceBinding>{
+          ShaderResourceBinding{
+              .name = "CameraUBO",
+              .set = 0,
+              .binding = 0,
+              .type = ShaderPropertyType::UniformBuffer,
+              .size = 64,
+              .stageFlags = ShaderStage::Vertex,
+          }}));
+
+  RenderPathGraph graph;
+  graph.name = "Forward";
+  graph.features.push_back(RenderPathFeatureDependency{
+      .slot = "shadow",
+      .uri = ResourceUri("memory://features/shadow.render-feature")});
+  RenderPassNode pass;
+  pass.id = "ForwardOpaque";
+  pass.shaderUri = ResourceUri("memory://shaders/surface_lit.shader");
+  pass.sources.push_back("SceneColor");
+  pass.targets.push_back("SceneColor");
+  graph.passes.push_back(pass);
+
+  const RenderPathGraphHandle graphHandle =
+      table.registerRenderPathGraph(ResourceUri("memory://graphs/forward"),
+                                    std::move(graph));
+  EXPECT(featureHandle.isValid(), "feature fixture should be registered");
+  EXPECT(shaderHandle.isValid(), "shader fixture should be registered");
+  EXPECT(graphHandle.isValid(), "graph fixture should be registered");
+
+  const auto graphVersionBefore = table.metadata(graphHandle).version;
+  table.markDirty(featureHandle, "feature content changed");
+
+  EXPECT(table.metadata(featureHandle).state == ResourceState::Ready,
+         "dirty feature root should remain ready");
+  EXPECT(table.metadata(featureHandle).version > 0,
+         "dirty feature root should bump version");
+  EXPECT(table.metadata(graphHandle).state == ResourceState::Dirty,
+         "dependent RenderPathGraph should become dirty");
+  EXPECT(table.metadata(graphHandle).version > graphVersionBefore,
+         "dependent RenderPathGraph should receive dirty version bump");
+  EXPECT(!table.metadata(graphHandle).diagnostics.empty() &&
+             table.metadata(graphHandle).diagnostics.back().message.find(
+                 "feature content changed") != std::string::npos,
+         "dependent RenderPathGraph diagnostic should keep dirty reason");
 }
 
 void testDirtyPropagationHandlesDependencyCyclesOnce() {
@@ -1255,6 +1316,37 @@ void testRealtimeRenderQueueWritesTypedGpuDrawRecordIndex() {
          "firstInstance should index typed draw records, not materials");
 }
 
+void testRealtimeRenderQueueWritesTypedIndicesWithoutShaderConsumption() {
+  auto node = SceneNode::create("shader_independent_typed_indices");
+  node->addComponent<MeshComponent>(makeMeshBuffer());
+  node->addComponent<MaterialComponent>(makeGpuRecordMaterial());
+
+  auto scene = Scene::create("shader_independent_typed_index_scene", node);
+  scene->resources().beginRenderResourceScope();
+
+  RenderTargetDesc targetDesc;
+  targetDesc.role = RenderTargetRole::Swapchain;
+  RenderWorkQueue queue;
+  queue.build(
+      RenderWorkBuildContext::realtime(*scene,
+                                       RenderWorkBuildContext::RealtimeOptions{
+                                           .visibleMask = VisibilityMask_All,
+                                       }),
+      Pass_Forward, RenderTarget{targetDesc});
+
+  EXPECT(queue.getItems().size() == 1,
+         "queue should contain the shader-independent typed-index draw");
+  if (!queue.getItems().empty()) {
+    const RenderWorkItem &item = queue.getItems().front();
+    EXPECT(item.raster.materialIndex != u32_max,
+           "queued draw should carry a typed SceneMaterials index even when "
+           "the shader does not consume SceneMaterials");
+    EXPECT(item.raster.drawRecordIndex != u32_max,
+           "queued draw should carry a typed SceneDraws index even when the "
+           "shader does not consume SceneDraws");
+  }
+}
+
 void testSceneGpuRecordLayoutContract() {
   EXPECT(sizeof(SceneGpuMeshRecord) == 32,
          "SceneGpuMeshRecord std430 contract should expose bindless "
@@ -1348,21 +1440,20 @@ void testSceneGpuMaterialRecordCarriesOfflineCullMode() {
          "offline GPU material record should preserve CullMode::Back");
 }
 
-void testSceneGpuMaterialRecordIgnoresLegacyShaderBindingBuffers() {
-  const auto record =
-      toGpuMaterialRecord(*makeLegacyShaderBindingOnlyMaterial());
+void testSceneGpuMaterialRecordIgnoresShaderBindingBuffers() {
+  const auto record = toGpuMaterialRecord(*makeShaderBindingOnlyMaterial());
 
   EXPECT(record.baseColor.x == 1.0f && record.baseColor.y == 1.0f &&
              record.baseColor.z == 1.0f && record.baseColor.w == 1.0f,
-         "GPU material record should ignore legacy shader-binding baseColor");
+         "GPU material record should ignore shader-binding baseColor");
   EXPECT(record.pbrParams.z == 0.0f && record.pbrParams.w == 0.0f,
-         "GPU material record should ignore legacy shader-binding PBR scalars");
+         "GPU material record should ignore shader-binding PBR scalars");
   EXPECT(record.clearcoatParams.x == 0.0f && record.clearcoatParams.y == 0.04f,
-         "GPU material record should ignore legacy shader-binding clearcoat "
+         "GPU material record should ignore shader-binding clearcoat "
          "scalars");
   EXPECT(record.emissive.x == 0.0f && record.emissive.y == 0.0f &&
              record.emissive.z == 0.0f && record.emissive.w == 0.0f,
-         "GPU material record should ignore legacy shader-binding emissive "
+         "GPU material record should ignore shader-binding emissive "
          "values");
 }
 
@@ -1468,27 +1559,8 @@ void testDefaultPbrEnvelopeDrivesUploadView() {
          "DamagedHelmet normal map should load as a normalmap texture "
          "envelope");
   EXPECT(registeredMaterial->get().getShaderBindingBufferCount() == 0,
-         "default PBR material should not allocate legacy MaterialUBO storage");
-  EXPECT(!registeredMaterial->get()
-              .readShaderBindingParameterValue(StringID("MaterialUBO"),
-                                               StringID("baseColorFactor"))
-              .has_value(),
-         "default PBR material should not expose legacy baseColorFactor");
-  EXPECT(!registeredMaterial->get()
-              .readShaderBindingParameterValue(StringID("MaterialUBO"),
-                                               StringID("metallicFactor"))
-              .has_value(),
-         "default PBR material should not expose legacy metallicFactor");
-  EXPECT(!registeredMaterial->get()
-              .readShaderBindingParameterValue(StringID("MaterialUBO"),
-                                               StringID("roughnessFactor"))
-              .has_value(),
-         "default PBR material should not expose legacy roughnessFactor");
-  EXPECT(!registeredMaterial->get()
-              .readShaderBindingParameterValue(StringID("MaterialUBO"),
-                                               StringID("ao"))
-              .has_value(),
-         "default PBR material should not expose legacy AO");
+         "default PBR material should not allocate shader-binding buffer "
+         "storage");
   EXPECT(!registeredMaterial->get()
               .getTextureHandle(StringID("albedoMap"))
               .isValid(),
@@ -1653,7 +1725,7 @@ bsdf:
   EXPECT(record.baseColor.x == 0.2f && record.baseColor.y == 0.4f &&
              record.baseColor.z == 0.6f && record.baseColor.w == 1.0f,
          "material v2 Kd envelope should feed GPU base color without "
-         "MaterialUBO fallback");
+         "shader-binding fallback");
   EXPECT(record.pbrParams.x == 0.0f,
          "matte material should not synthesize metallic from legacy PBR state");
   EXPECT(record.pbrParams.y == 0.5f,
@@ -2211,6 +2283,7 @@ int main() {
   testReleasedSlotReuseDoesNotRetainOldMetadataIdentity();
   testInvalidAndStaleDirtyHandlesAreHarmless();
   testResourceStateVersionAndDirtyPropagation();
+  testRenderFeatureDirtyPropagationMarksDependentRenderPathGraph();
   testDirtyPropagationHandlesDependencyCyclesOnce();
   testHandleGenerationInvalidatesStaleMeshHandle();
   testSceneRegistersRenderableComponentResources();
@@ -2218,10 +2291,11 @@ int main() {
   testRealtimeSceneLevelResourcesExposeGpuMaterialTables();
   testRealtimeRenderQueueWritesTypedGpuMaterialIndex();
   testRealtimeRenderQueueWritesTypedGpuDrawRecordIndex();
+  testRealtimeRenderQueueWritesTypedIndicesWithoutShaderConsumption();
   testSceneGpuRecordLayoutContract();
   testSceneResourceTableDoesNotExportPackedVertexUploadStream();
   testSceneGpuMaterialRecordCarriesOfflineCullMode();
-  testSceneGpuMaterialRecordIgnoresLegacyShaderBindingBuffers();
+  testSceneGpuMaterialRecordIgnoresShaderBindingBuffers();
   testSceneResourceTableUploadViewExportsBindlessGeometryStreams();
   testDefaultPbrEnvelopeDrivesUploadView();
   testSceneWithoutIblDoesNotCreateDefaultEnvironmentResources();

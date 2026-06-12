@@ -8,6 +8,7 @@ import http.client
 import json
 import os
 from pathlib import Path
+import shutil
 import signal
 import socket
 import subprocess
@@ -202,6 +203,31 @@ def require_output_files(root: Path, structured: str) -> None:
             )
 
 
+def prepare_smoke_project(
+    root: Path, project_name: str, scene_path: Path, scene_id: str
+) -> Path:
+    project_root = root / "data" / "projects" / project_name
+    if project_root.exists():
+        shutil.rmtree(project_root)
+    scenes_dir = project_root / "scenes"
+    scenes_dir.mkdir(parents=True, exist_ok=True)
+    scene_rel = Path("scenes") / f"{scene_id}.scene.yaml"
+    shutil.copy2(scene_path, project_root / scene_rel)
+
+    project_document = {
+        "schema": "lxe.project.v1",
+        "id": project_name,
+        "displayName": project_name,
+        "activeScene": scene_rel.as_posix(),
+        "scenes": [{"id": scene_id, "path": scene_rel.as_posix()}],
+        "assetRoots": ["."],
+    }
+    (project_root / "project.yaml").write_text(
+        json.dumps(project_document, indent=2), encoding="utf-8"
+    )
+    return project_root
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     root = repo_root_from_script()
     parser = argparse.ArgumentParser(
@@ -247,6 +273,9 @@ def main(argv: list[str]) -> int:
         raise RuntimeError(f"scene file not found: {scene_path}")
     if not editor_path.is_file():
         raise RuntimeError(f"lxe_editor executable not found: {editor_path}")
+    project_root = prepare_smoke_project(
+        root, args.project_name, scene_path, args.scene_id
+    )
 
     api_port = int(args.api_port)
     if api_port <= 0:
@@ -282,18 +311,10 @@ def main(argv: list[str]) -> int:
             args.api_host,
             api_port,
             token,
-            f"project init empty {quote_command_token(args.project_name)}",
+            f"project open {quote_command_token(str(project_root))}",
             args.timeout_sec,
         )
         time.sleep(0.5)
-        editor_command(
-            args.api_host,
-            api_port,
-            token,
-            "scene import "
-            f"{quote_command_token(str(scene_path))} {quote_command_token(args.scene_id)}",
-            args.timeout_sec,
-        )
         wait_until_profile_visible(
             args.api_host, api_port, token, args.profile, args.timeout_sec
         )

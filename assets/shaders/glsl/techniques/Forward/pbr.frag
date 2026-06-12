@@ -43,7 +43,9 @@ layout(std430, set = 0, binding = 7) readonly buffer SceneMaterials {
     lxSceneMaterialRecord materials[];
 };
 
+#ifdef HAS_SCENE_TEXTURES
 layout(set = 0, binding = 11) uniform sampler2D SceneTextures[256];
+#endif
 
 // Light
 layout(set = 2, binding = 0) uniform LightUBO {
@@ -61,12 +63,20 @@ layout(set = 3, binding = 3) uniform EnvironmentUBO {
 #endif
 
 bool hasSceneTexture(uint textureIndex) {
+#ifdef HAS_SCENE_TEXTURES
     return textureIndex != INVALID_TEXTURE_INDEX &&
            textureIndex < SCENE_TEXTURE_COUNT;
+#else
+    return false;
+#endif
 }
 
 vec4 sampleSceneTexture(uint textureIndex, vec2 uv) {
+#ifdef HAS_SCENE_TEXTURES
     return texture(SceneTextures[nonuniformEXT(textureIndex)], uv);
+#else
+    return vec4(1.0);
+#endif
 }
 
 void main() {

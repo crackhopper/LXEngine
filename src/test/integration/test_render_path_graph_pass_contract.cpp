@@ -1,7 +1,8 @@
 #include "core/asset/render_effect.hpp"
-#include "infra/resource_parsers/render_effect_resource_parser.hpp"
+#include "infra/resource_parsers/render_path_graph_resource_parser.hpp"
 
 #include <iostream>
+#include <string>
 
 using namespace LX_core;
 
@@ -17,8 +18,19 @@ int g_failures = 0;
     }                                                                          \
   } while (0)
 
+template <typename ParsedResource>
+bool hasDiagnosticContaining(const ParsedResource &parsed,
+                             const std::string &needle) {
+  for (const auto &diagnostic : parsed.diagnostics) {
+    if (diagnostic.find(needle) != std::string::npos) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void testRenderPathGraphPassContractRequiresExplicitFields() {
-  LX_infra::RenderEffectResourceParser parser;
+  LX_infra::RenderPathGraphResourceParser parser;
   const auto parsed = parser.parse("memory://missing-dispatch", R"(
 schema: lxe.render-path-graph.v1
 name: ForwardMain
@@ -45,7 +57,7 @@ passes:
 }
 
 void testRenderPathGraphContractParsesCompletePass() {
-  LX_infra::RenderEffectResourceParser parser;
+  LX_infra::RenderPathGraphResourceParser parser;
   const auto parsed = parser.parse("memory://complete", R"(
 schema: lxe.render-path-graph.v1
 name: ForwardMain
@@ -91,8 +103,8 @@ passes:
   EXPECT(pass.id == "ForwardOpaque", "pass id should be retained");
   EXPECT(pass.shaderUri == "techniques/Forward/surface_lit",
          "shader uri should be retained");
-  EXPECT(pass.stage == MaterialPassStage::Raster, "stage should be raster");
-  EXPECT(pass.dispatch == MaterialPassDispatch::Draw,
+  EXPECT(pass.stage == RenderPassStage::Raster, "stage should be raster");
+  EXPECT(pass.dispatch == RenderPassDispatch::Draw,
          "dispatch should be draw");
   EXPECT(pass.filters.renderClasses.size() == 1 &&
              pass.filters.renderClasses.front() == "surface.opaque",
@@ -108,11 +120,50 @@ passes:
          "render state should be retained");
 }
 
+void testRenderPathGraphPassRejectsLegacyPassNodeFields() {
+  LX_infra::RenderPathGraphResourceParser parser;
+  const auto parsed = parser.parse("memory://legacy-pass-fields", R"(
+schema: lxe.render-path-graph.v1
+name: ForwardMain
+renderPath: Forward
+passes:
+  - id: ForwardOpaque
+    shader: techniques/Forward/surface_lit
+    stage: raster
+    dispatch: draw
+    variants:
+      quality: high
+    parameters:
+      roughness:
+        value: 0.5
+    resources:
+      albedo:
+        uri: textures/albedo.ktx
+    sources: [geometry.vertex, material.bsdf, scene.camera]
+    targets: [hdr.color]
+    renderState:
+      cullMode: Back
+      depthTest: true
+      depthWrite: true
+      depthOp: LessEqual
+)");
+
+  EXPECT(!parsed.renderPathGraph.has_value(),
+         "legacy pass-node fields must fail schema gate");
+  EXPECT(hasDiagnosticContaining(parsed, "passes.ForwardOpaque.variants"),
+         "diagnostic should reject variants");
+  EXPECT(hasDiagnosticContaining(parsed, "passes.ForwardOpaque.parameters"),
+         "diagnostic should reject parameters");
+  EXPECT(hasDiagnosticContaining(parsed, "passes.ForwardOpaque.resources"),
+         "diagnostic should reject resources");
+}
+
 } // namespace
 
 int main() {
   testRenderPathGraphPassContractRequiresExplicitFields();
   testRenderPathGraphContractParsesCompletePass();
+  testRenderPathGraphPassRejectsLegacyPassNodeFields();
   if (g_failures != 0) {
     std::cerr << g_failures << " render path graph contract checks failed\n";
     return 1;

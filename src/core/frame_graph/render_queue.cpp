@@ -98,9 +98,9 @@ makeIndirectCommand(const RasterDrawWorkPayload &raster) {
   return command;
 }
 
-[[nodiscard]] u32
-resolveGpuMaterialIndex(const SceneResourceTableUploadView &uploadView,
-                        MaterialHandle handle) {
+[[nodiscard]] std::optional<u32>
+tryResolveGpuMaterialIndex(const SceneResourceTableUploadView &uploadView,
+                           MaterialHandle handle) {
   const auto it =
       std::find_if(uploadView.materialIndexByHandle.begin(),
                    uploadView.materialIndexByHandle.end(),
@@ -109,9 +109,7 @@ resolveGpuMaterialIndex(const SceneResourceTableUploadView &uploadView,
                    });
   if (it == uploadView.materialIndexByHandle.end() ||
       it->typedIndex >= uploadView.materials.size()) {
-    throw std::logic_error(
-        "RenderWorkQueue cannot resolve draw material handle to SceneMaterials "
-        "index");
+    return std::nullopt;
   }
   return it->typedIndex;
 }
@@ -342,18 +340,31 @@ void RenderWorkQueue::buildRealtime(const Scene &scene, StringID pass,
     if (!validated)
       continue;
 
-    RenderWorkItem item = makeItemFromValidatedData(validated->get());
-    if (shaderConsumesBinding(item.shaderInfo, "SceneMaterials")) {
-      item.raster.materialIndex =
-          resolveGpuMaterialIndex(uploadView, validated->get().materialHandle);
+    const auto &validatedData = validated->get();
+    RenderWorkItem item = makeItemFromValidatedData(validatedData);
+    const bool needsMaterialRecord =
+        shaderConsumesBinding(item.shaderInfo, "SceneMaterials");
+    if (validatedData.materialHandle.isValid()) {
+      if (const auto materialIndex =
+              tryResolveGpuMaterialIndex(uploadView,
+                                         validatedData.materialHandle)) {
+        item.raster.materialIndex = *materialIndex;
+      } else if (needsMaterialRecord) {
+        throw std::logic_error(
+            "RenderWorkQueue cannot resolve draw material handle to "
+            "SceneMaterials index");
+      }
+    } else if (needsMaterialRecord) {
+      throw std::logic_error(
+          "RenderWorkQueue cannot bind SceneMaterials without a typed "
+          "material handle");
     }
     const bool needsDrawRecord =
         shaderConsumesBinding(item.shaderInfo, "SceneDraws") ||
         shaderConsumesBinding(item.shaderInfo, "SceneObjects");
-    if (validated->get().objectHandle.isValid()) {
+    if (validatedData.objectHandle.isValid()) {
       if (const auto drawRecordIndex =
-              tryResolveGpuObjectIndex(uploadView,
-                                       validated->get().objectHandle)) {
+              tryResolveGpuObjectIndex(uploadView, validatedData.objectHandle)) {
         item.raster.drawRecordIndex = *drawRecordIndex;
       } else if (needsDrawRecord) {
         throw std::logic_error(

@@ -34,7 +34,7 @@ class PersistenceBlackBoxTest(unittest.TestCase):
         except Exception as exc:
             raise unittest.SkipTest(f"unable to launch API target: {exc}") from exc
 
-        marker = "scene list"
+        marker = "help"
         try:
             response = harness.client.command(marker)
             self.assertTrue(response.get("ok"), response)

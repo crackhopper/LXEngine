@@ -90,7 +90,8 @@ struct Fixture {
             .getNodeMaterialParameter =
                 [this](const std::string &, const std::string &binding,
                        const std::string &member) {
-                  if (binding == "MaterialUBO" && member == "baseColor") {
+                  if (binding == "TestMaterialBlock" &&
+                      member == "baseColor") {
                     return baseColorParameter;
                   }
                   return std::optional<MaterialParameterValue>{};
@@ -99,7 +100,8 @@ struct Fixture {
                 [this](const std::string &, const std::string &binding,
                        const std::string &member,
                        const MaterialParameterValue &value) {
-                  if (binding != "MaterialUBO" || member != "baseColor") {
+                  if (binding != "TestMaterialBlock" ||
+                      member != "baseColor") {
                     return CommandResult{false, "unexpected parameter", {},
                                          {}};
                   }
@@ -318,7 +320,7 @@ void testMaterialEditsRequestSceneRebuild() {
   EXPECT(!legacySetColor.ok, "legacy node material baseColor should fail");
 
   const CommandResult setColor = fixture.bus.dispatch(
-      "set /world/a.nodeMaterial.MaterialUBO.baseColor 0.2 0.3 0.4");
+      "set /world/a.nodeMaterial.TestMaterialBlock.baseColor 0.2 0.3 0.4");
   EXPECT(setColor.ok, "set generic node material baseColor should succeed");
   EXPECT(setColor.metadata.find("scene.rebuild") != setColor.metadata.end() &&
              setColor.metadata.at("scene.rebuild") == "true",

@@ -18,6 +18,10 @@ enum class SceneResourceType {
   BsdfTable,
   Camera,
   Light,
+  Renderer,
+  RenderPathGraph,
+  RenderFeature,
+  Shader,
   RenderEffect,
 };
 

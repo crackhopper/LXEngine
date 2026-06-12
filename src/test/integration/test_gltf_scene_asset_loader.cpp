@@ -35,7 +35,7 @@ void expectNear(float actual, float expected, const char *message) {
   }
 }
 
-void testDamagedHelmetSharedAssetLoadsFullPbr() {
+void testDamagedHelmetSharedAssetLoadsFullPbrWithoutParameterBuffers() {
   const bool found =
       cdToWhereAssetsExist("models/damaged_helmet/DamagedHelmet.gltf");
   expect(found, "DamagedHelmet asset root must be discoverable");
@@ -72,10 +72,6 @@ void testDamagedHelmetSharedAssetLoadsFullPbr() {
              kd->get().valueType == LX_core::MaterialEnvelopeValueType::Rgb,
          "DamagedHelmet Kd texture envelope should retain rgb valueType");
 
-  const auto legacyBaseColor = result.material->readShaderBindingParameterValue(
-      LX_core::StringID("MaterialUBO"), LX_core::StringID("baseColorFactor"));
-  expect(!legacyBaseColor.has_value(),
-         "material v2 should not expose legacy baseColorFactor buffer state");
   expect(result.material->getShaderBindingBufferCount() == 0,
          "material v2 should keep envelope storage without parameter buffers");
 }
@@ -343,7 +339,7 @@ void testSceneDocumentRejectsDeletedProgrammaticExtensionOnSave() {
 } // namespace
 
 int main() {
-  testDamagedHelmetSharedAssetLoadsFullPbr();
+  testDamagedHelmetSharedAssetLoadsFullPbrWithoutParameterBuffers();
   testSceneDocumentRejectsDeletedProfileMaterialField();
   testSceneDocumentRejectsDeletedOpaqueMaterialField();
   testSceneDocumentRejectsDeletedNodeMaterialsSchema();

@@ -2,6 +2,8 @@
 
 #include "core/math/bounds.hpp"
 #include "core/math/mat.hpp"
+#include "core/asset/render_effect.hpp"
+#include "core/asset/shader.hpp"
 #include "core/platform/types.hpp"
 #include "core/resource/resource_metadata.hpp"
 #include "core/rhi/descriptor_resource_ref.hpp"
@@ -59,6 +61,14 @@ struct CameraResource final {
   Mat4f proj = Mat4f::identity();
   VisibilityLayerMask cullingMask = VisibilityMask_All;
   bool active = true;
+};
+
+struct ShaderResourceMetadata final {
+  ResourceUri uri;
+  ResourceUri canonicalUri;
+  std::vector<ResourceUri> sourceUris;
+  IShaderSharedPtr payload;
+  bool sourceResolved = false;
 };
 
 struct ObjectInstanceView final {
@@ -136,6 +146,14 @@ public:
   registerSkeleton(std::unique_ptr<Skeleton> skeleton);
   [[nodiscard]] ObjectHandle registerObject(ObjectResource object);
   [[nodiscard]] CameraHandle registerCamera(CameraResource camera);
+  [[nodiscard]] RenderPathGraphHandle
+  registerRenderPathGraph(const ResourceUri &uri, RenderPathGraph graph);
+  [[nodiscard]] RenderFeatureHandle
+  registerRenderFeature(const ResourceUri &uri, RenderFeature feature);
+  [[nodiscard]] ShaderHandle
+  registerShaderResource(const ResourceUri &uri,
+                         std::vector<ResourceUri> sourceUris,
+                         IShaderSharedPtr payload);
   void updateObject(ObjectHandle handle, ObjectResource object);
   void updateCamera(CameraHandle handle, CameraResource camera);
 
@@ -147,6 +165,9 @@ public:
   void release(SkeletonHandle handle);
   void release(ObjectHandle handle);
   void release(CameraHandle handle);
+  void release(RenderPathGraphHandle handle);
+  void release(RenderFeatureHandle handle);
+  void release(ShaderHandle handle);
 
   [[nodiscard]] std::optional<std::reference_wrapper<GeometryStorage>>
   resolve(GeometryStorageHandle handle);
@@ -181,6 +202,19 @@ public:
   resolve(CameraHandle handle);
   [[nodiscard]] std::optional<std::reference_wrapper<const CameraResource>>
   resolve(CameraHandle handle) const;
+  [[nodiscard]] std::optional<std::reference_wrapper<RenderPathGraph>>
+  resolve(RenderPathGraphHandle handle);
+  [[nodiscard]] std::optional<std::reference_wrapper<const RenderPathGraph>>
+  resolve(RenderPathGraphHandle handle) const;
+  [[nodiscard]] std::optional<std::reference_wrapper<RenderFeature>>
+  resolve(RenderFeatureHandle handle);
+  [[nodiscard]] std::optional<std::reference_wrapper<const RenderFeature>>
+  resolve(RenderFeatureHandle handle) const;
+  [[nodiscard]] std::optional<std::reference_wrapper<ShaderResourceMetadata>>
+  resolve(ShaderHandle handle);
+  [[nodiscard]] std::optional<
+      std::reference_wrapper<const ShaderResourceMetadata>>
+  resolve(ShaderHandle handle) const;
   [[nodiscard]] const MeshBuffer &mesh(MeshHandle handle) const;
   [[nodiscard]] const MaterialInstance &
   materialInstance(MaterialHandle handle) const;
@@ -218,6 +252,9 @@ public:
   [[nodiscard]] bool isAlive(SkeletonHandle handle) const;
   [[nodiscard]] bool isAlive(ObjectHandle handle) const;
   [[nodiscard]] bool isAlive(CameraHandle handle) const;
+  [[nodiscard]] bool isAlive(RenderPathGraphHandle handle) const;
+  [[nodiscard]] bool isAlive(RenderFeatureHandle handle) const;
+  [[nodiscard]] bool isAlive(ShaderHandle handle) const;
 
   [[nodiscard]] usize geometryStorageCount() const;
   [[nodiscard]] usize meshCount() const;
@@ -227,6 +264,9 @@ public:
   [[nodiscard]] usize skeletonCount() const;
   [[nodiscard]] usize objectCount() const;
   [[nodiscard]] usize cameraCount() const;
+  [[nodiscard]] usize renderPathGraphCount() const;
+  [[nodiscard]] usize renderFeatureCount() const;
+  [[nodiscard]] usize shaderCount() const;
   [[nodiscard]] RenderSceneSnapshot buildSnapshot() const;
   // Returned spans are backed by this table's cached GPU record storage.
   // The view is valid until the next mutating SceneResourceTable call or the
@@ -246,13 +286,30 @@ public:
                           ResourceIdentityHandle dependencyHandle);
   void addDependency(ResourceIdentityHandle ownerHandle,
                      ResourceIdentityHandle dependencyHandle);
+  void addDependency(ResourceIdentityHandle ownerHandle,
+                     RenderPathGraphHandle dependencyHandle);
+  void addDependency(RenderPathGraphHandle ownerHandle,
+                     RenderFeatureHandle dependencyHandle);
+  void addDependency(RenderPathGraphHandle ownerHandle,
+                     ShaderHandle dependencyHandle);
   void addDependency(MaterialHandle ownerHandle, TextureHandle dependencyHandle);
   void markDirty(ResourceIdentityHandle handle, std::string reason);
   void markDirty(TextureHandle handle, std::string reason);
+  void markDirty(RenderFeatureHandle handle, std::string reason);
+  void markDirty(ShaderHandle handle, std::string reason);
   [[nodiscard]] const ResourceMetadata &
   metadata(ResourceIdentityHandle handle) const;
   [[nodiscard]] const ResourceMetadata &metadata(MaterialHandle handle) const;
   [[nodiscard]] const ResourceMetadata &metadata(TextureHandle handle) const;
+  [[nodiscard]] const ResourceMetadata &
+  metadata(RenderPathGraphHandle handle) const;
+  [[nodiscard]] const ResourceMetadata &metadata(RenderFeatureHandle handle) const;
+  [[nodiscard]] const ResourceMetadata &metadata(ShaderHandle handle) const;
+  [[nodiscard]] ResourceIdentityHandle
+  metadataHandle(RenderPathGraphHandle handle) const;
+  [[nodiscard]] ResourceIdentityHandle
+  metadataHandle(RenderFeatureHandle handle) const;
+  [[nodiscard]] ResourceIdentityHandle metadataHandle(ShaderHandle handle) const;
   [[nodiscard]] ResourceIdentityHandle
   internMaterialInstanceIdentity(const ResourceUri &sourceMaterialUri,
                                  std::string overrideHash);
@@ -298,10 +355,18 @@ private:
   metadataHandleFor(MaterialHandle handle) const;
   [[nodiscard]] ResourceIdentityHandle
   metadataHandleFor(TextureHandle handle) const;
+  [[nodiscard]] ResourceIdentityHandle
+  metadataHandleFor(RenderPathGraphHandle handle) const;
+  [[nodiscard]] ResourceIdentityHandle
+  metadataHandleFor(RenderFeatureHandle handle) const;
+  [[nodiscard]] ResourceIdentityHandle
+  metadataHandleFor(ShaderHandle handle) const;
   [[nodiscard]] ResourceMetadata &
   mutableMetadata(ResourceIdentityHandle handle);
   [[nodiscard]] const ResourceMetadata &
   constMetadata(ResourceIdentityHandle handle) const;
+  [[nodiscard]] bool
+  hasLiveTypedResourceMetadata(ResourceIdentityHandle handle) const;
 
   void advanceUploadGeneration();
 
@@ -313,6 +378,9 @@ private:
   std::vector<Entry<Skeleton>> m_skeletons;
   std::vector<Entry<ObjectResource>> m_objects;
   std::vector<Entry<CameraResource>> m_cameras;
+  std::vector<Entry<RenderPathGraph>> m_renderPathGraphs;
+  std::vector<Entry<RenderFeature>> m_renderFeatures;
+  std::vector<Entry<ShaderResourceMetadata>> m_shaders;
   mutable std::optional<IblEnvironmentResources> m_iblEnvironmentResources;
   std::vector<CameraDataUniquePtr> m_cameraUbos;
   mutable std::unique_ptr<SceneLightsData> m_sceneLightsUbo =
@@ -332,6 +400,18 @@ private:
   mutable std::vector<std::reference_wrapper<const CameraResource>>
       m_gpuCameras;
   mutable std::vector<std::reference_wrapper<const LightBase>> m_gpuLights;
+  mutable std::vector<std::reference_wrapper<const RenderPathGraph>>
+      m_gpuRenderPathGraphResources;
+  mutable std::vector<std::reference_wrapper<const RenderFeature>>
+      m_gpuRenderFeatureResources;
+  mutable std::vector<std::reference_wrapper<const ShaderResourceMetadata>>
+      m_gpuShaderResources;
+  mutable std::vector<SceneGpuRenderPathGraphRecord> m_gpuRenderPathGraphs;
+  mutable std::vector<SceneGpuRenderPathGraphPassRecord>
+      m_gpuRenderPathGraphPasses;
+  mutable std::vector<SceneGpuRenderPathGraphFeatureRecord>
+      m_gpuRenderPathGraphFeatures;
+  mutable std::vector<ResourceIdentityHandle> m_gpuRenderPathGraphShaders;
   mutable std::vector<SceneResourceMeshUploadIndex> m_gpuMeshIndexByHandle;
   mutable std::vector<SceneResourceMaterialUploadIndex>
       m_gpuMaterialIndexByHandle;
@@ -340,6 +420,11 @@ private:
   mutable std::vector<SceneResourceObjectUploadIndex> m_gpuObjectIndexByHandle;
   mutable std::vector<SceneResourceCameraUploadIndex> m_gpuCameraIndexByHandle;
   mutable std::vector<SceneResourceLightUploadIndex> m_gpuLightIndexByHandle;
+  mutable std::vector<SceneResourceRenderPathGraphUploadIndex>
+      m_gpuRenderPathGraphIndexByHandle;
+  mutable std::vector<SceneResourceRenderFeatureUploadIndex>
+      m_gpuRenderFeatureIndexByHandle;
+  mutable std::vector<SceneResourceShaderUploadIndex> m_gpuShaderIndexByHandle;
   std::vector<MaterialHandle> m_renderMaterialHandles;
   std::vector<ResourceMetadata> m_resourceMetadata;
   std::vector<u32> m_resourceMetadataGenerations;

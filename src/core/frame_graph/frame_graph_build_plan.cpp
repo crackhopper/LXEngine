@@ -16,22 +16,38 @@ FrameGraphResourceRef makeWriteRef(const std::string &target) {
                        : FrameGraphResourceRef::colorAttachment(targetId);
 }
 
-FramePass makeFramePass(const MaterialPassContract &contract,
-                        FrameGraphPhase phase, u32 stableOrder) {
-  FramePass pass;
-  pass.name = StringID(contract.name);
-  pass.phase = phase;
-  pass.stableOrder = stableOrder;
-  pass.reads.reserve(contract.sources.size());
-  for (const std::string &source : contract.sources) {
-    pass.reads.push_back(FrameGraphRead::sampled(StringID(source)));
+StringID bindingNameForSource(const RenderPassNode &node,
+                              const std::string &source) {
+  if (node.id == "BloomThreshold" && source == "hdr.color") {
+    return StringID("SceneColor");
   }
-  pass.writes.reserve(contract.targets.size());
-  for (const std::string &target : contract.targets) {
-    pass.writes.push_back(FrameGraphWrite{makeWriteRef(target),
-                                          contract.writeMode});
+  if ((node.id == "BloomBlurH" && source == "bloom.threshold") ||
+      (node.id == "BloomBlurV" && source == "bloom.blurH")) {
+    return StringID("BloomSource");
   }
-  return pass;
+  if (node.id == "PostProcess") {
+    if (source == "hdr.color") {
+      return StringID("SceneColor");
+    }
+    if (source == "bloom.blur") {
+      return StringID("BloomColor");
+    }
+  }
+  if (node.id == "DeferredLighting") {
+    if (source == "gbuffer.albedoAlpha") {
+      return StringID("GBufferAlbedoAlpha");
+    }
+    if (source == "gbuffer.normalRoughness") {
+      return StringID("GBufferNormalRoughness");
+    }
+    if (source == "gbuffer.material") {
+      return StringID("GBufferMaterial");
+    }
+    if (source == "depth.main") {
+      return StringID("GBufferDepth");
+    }
+  }
+  return {};
 }
 
 FramePass makeFramePass(const RenderPassNode &node, FrameGraphPhase phase,
@@ -42,7 +58,8 @@ FramePass makeFramePass(const RenderPassNode &node, FrameGraphPhase phase,
   pass.stableOrder = stableOrder;
   pass.reads.reserve(node.sources.size());
   for (const std::string &source : node.sources) {
-    pass.reads.push_back(FrameGraphRead::sampled(StringID(source)));
+    pass.reads.push_back(FrameGraphRead::sampled(
+        StringID(source), bindingNameForSource(node, source)));
   }
   pass.writes.reserve(node.targets.size());
   for (const std::string &target : node.targets) {
@@ -55,13 +72,6 @@ FramePass makeFramePass(const RenderPassNode &node, FrameGraphPhase phase,
   pass.filters = node.filters;
   pass.renderState = node.renderState;
   return pass;
-}
-
-void appendTechniquePasses(FrameGraph &graph, const MaterialTechnique &technique,
-                           FrameGraphPhase phase, u32 &stableOrder) {
-  for (const MaterialPassContract &contract : technique.passes) {
-    graph.addPass(makeFramePass(contract, phase, stableOrder++));
-  }
 }
 
 void validateRenderPathPassNode(const RenderPathGraph &graphAsset,
@@ -121,29 +131,6 @@ void validateRenderPathGraphPassSet(
                                   passDebugName(required) + "'");
     }
   }
-}
-
-FrameGraph buildFrameGraphFromSourceTargetContracts(
-    const FrameGraphBuildPlanInput &input,
-    const GraphResourceRegistry &registry) {
-  (void)registry;
-
-  FrameGraph graph;
-  u32 stableOrder = 0;
-  for (const FrameGraphEffectInput &effect : input.preEffects) {
-    appendTechniquePasses(graph, effect.technique, FrameGraphPhase::PreEffect,
-                          stableOrder);
-  }
-  for (const FrameGraphMaterialTechniqueInput &material :
-       input.materialTechniques) {
-    appendTechniquePasses(graph, material.technique, FrameGraphPhase::Material,
-                          stableOrder);
-  }
-  for (const FrameGraphEffectInput &effect : input.postEffects) {
-    appendTechniquePasses(graph, effect.technique, FrameGraphPhase::PostEffect,
-                          stableOrder);
-  }
-  return graph;
 }
 
 FrameGraph

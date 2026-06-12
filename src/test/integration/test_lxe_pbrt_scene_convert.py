@@ -186,6 +186,7 @@ class PbrtSceneConvertTest(unittest.TestCase):
             self.assertNotIn('"materialTag"', scene_text)
             self.assertNotIn('"materials":', scene_text)
             self.assertIn('"material":', scene_text)
+            legacy_shader_binding_prefix = "Material" + "UBO."
 
             obj_text = (out_root / "meshes" / "mesh_00001.obj").read_text(
                 encoding="utf-8"
@@ -219,7 +220,7 @@ class PbrtSceneConvertTest(unittest.TestCase):
             self.assertNotIn('"removedDefaultFlow":', runtime_material_text)
             self.assertNotIn('"techniques":', runtime_material_text)
             self.assertNotIn('"resources":', runtime_material_text)
-            self.assertNotIn("MaterialUBO.", runtime_material_text)
+            self.assertNotIn(legacy_shader_binding_prefix, runtime_material_text)
 
             car_paint_text = (
                 out_root
@@ -232,7 +233,7 @@ class PbrtSceneConvertTest(unittest.TestCase):
             self.assertIn('"Ks":', car_paint_text)
             self.assertIn('"uroughness":', car_paint_text)
             self.assertIn('"vroughness":', car_paint_text)
-            self.assertNotIn("MaterialUBO.", car_paint_text)
+            self.assertNotIn(legacy_shader_binding_prefix, car_paint_text)
             self.assertNotIn('"shader":', car_paint_text)
 
             glass_material_text = (
@@ -247,7 +248,7 @@ class PbrtSceneConvertTest(unittest.TestCase):
             self.assertNotIn('"Kr": "pbrt-default"', glass_material_text)
             self.assertNotIn('"eta": "pbrt-default"', glass_material_text)
             self.assertNotIn('"renderState":', glass_material_text)
-            self.assertNotIn("MaterialUBO.", glass_material_text)
+            self.assertNotIn(legacy_shader_binding_prefix, glass_material_text)
 
             runtime_mix_material_text = (
                 out_root

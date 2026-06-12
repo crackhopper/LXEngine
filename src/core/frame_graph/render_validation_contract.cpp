@@ -25,6 +25,31 @@ namespace {
   return "raster draw was not covered by an indirect bindless batch";
 }
 
+[[nodiscard]] bool isLegacyMaterialBinding(StringID bindingName) {
+  const std::string name =
+      GlobalStringTable::get().toDebugString(bindingName);
+  const std::string legacyMaterialUbo = std::string("Material") + "UBO";
+  return name == legacyMaterialUbo || name == "MaterialParams" ||
+         name == "albedoMap" || name == "normalMap" ||
+         name == "metallicRoughnessMap" || name == "aoMap" ||
+         name == "emissiveMap";
+}
+
+void addMaterialV2Diagnostic(MaterialV2ValidationResult &result, usize itemIndex,
+                             const RenderWorkItem &item,
+                             StringID pass, StringID bindingName,
+                             std::string reason) {
+  MaterialV2ValidationDiagnostic diagnostic;
+  diagnostic.itemIndex = itemIndex;
+  diagnostic.pass = pass;
+  diagnostic.debugId = item.debugId;
+  diagnostic.objectSignature = item.objectSignature;
+  diagnostic.materialSignature = item.materialSignature;
+  diagnostic.bindingName = bindingName;
+  diagnostic.reason = std::move(reason);
+  result.diagnostics.push_back(std::move(diagnostic));
+}
+
 } // namespace
 
 BindlessValidationResult
@@ -86,6 +111,43 @@ BindlessSubmissionDecision decideBindlessSubmission(
   (void)strictValidation;
   decision.kind = BindlessSubmissionDecisionKind::StrictValidationRejected;
   return decision;
+}
+
+MaterialV2ValidationResult
+validateMaterialV2StrictQueue(const RenderWorkQueue &queue, StringID pass) {
+  MaterialV2ValidationResult result;
+  const auto &items = queue.getItems();
+  for (usize i = 0; i < items.size(); ++i) {
+    const RenderWorkItem &item = items[i];
+    if (item.kind != RenderWorkKind::RasterDraw) {
+      continue;
+    }
+
+    for (const DescriptorResourceRef &resource : item.descriptorResources) {
+      const StringID bindingName = resource.getBindingName();
+      if (!isLegacyMaterialBinding(bindingName)) {
+        continue;
+      }
+      addMaterialV2Diagnostic(
+          result, i, item, pass, bindingName,
+          "Material v2 validation forbids legacy material binding '" +
+              GlobalStringTable::get().toDebugString(bindingName) + "'");
+    }
+
+    if (item.raster.materialIndex == u32_max) {
+      addMaterialV2Diagnostic(
+          result, i, item, pass, StringID("SceneMaterials"),
+          "Material v2 validation requires a typed SceneMaterials index");
+    }
+    if (item.raster.drawRecordIndex == u32_max) {
+      addMaterialV2Diagnostic(
+          result, i, item, pass, StringID("SceneDraws"),
+          "Material v2 validation requires a typed SceneDraws index");
+    }
+  }
+
+  result.ok = result.diagnostics.empty();
+  return result;
 }
 
 } // namespace LX_core

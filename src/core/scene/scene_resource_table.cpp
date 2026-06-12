@@ -47,6 +47,71 @@ findCompactRecordIndex(const std::vector<CompactRecordIndex> &indices,
   return entry.uploadIndex;
 }
 
+[[nodiscard]] std::string missingRenderPathGraphDependencyMessage(
+    const ResourceUri &graphUri, const char *dependencyType,
+    const ResourceUri &dependencyUri) {
+  return "RenderPathGraph '" + graphUri.string() + "' references missing " +
+         dependencyType + " resource '" + dependencyUri.string() + "'";
+}
+
+[[nodiscard]] bool hasLiveShaderPayload(const ShaderResourceMetadata &shader) {
+  if (!shader.payload) {
+    return false;
+  }
+  if (shader.payload->getAllStages().empty()) {
+    return false;
+  }
+  for (const ShaderStageCode &stage : shader.payload->getAllStages()) {
+    if (stage.stage == ShaderStage::None || stage.bytecode.empty()) {
+      return false;
+    }
+  }
+  return !shader.payload->getReflectionBindings().empty() ||
+         !shader.payload->getVertexInputs().empty();
+}
+
+[[nodiscard]] std::string missingShaderPayloadMessage(
+    const ResourceUri &graphUri, const ResourceUri &shaderUri) {
+  return "RenderPathGraph '" + graphUri.string() + "' references Shader '" +
+         shaderUri.string() +
+         "' with resolved source descriptors but no live compiled/reflected "
+         "payload";
+}
+
+[[nodiscard]] const char *sceneResourceTypeName(SceneResourceType type) {
+  switch (type) {
+  case SceneResourceType::Mesh:
+    return "Mesh";
+  case SceneResourceType::Texture:
+    return "Texture";
+  case SceneResourceType::Material:
+    return "Material";
+  case SceneResourceType::MaterialHeader:
+    return "MaterialHeader";
+  case SceneResourceType::Spectrum:
+    return "Spectrum";
+  case SceneResourceType::BsdfTable:
+    return "BsdfTable";
+  case SceneResourceType::Camera:
+    return "Camera";
+  case SceneResourceType::Light:
+    return "Light";
+  case SceneResourceType::Renderer:
+    return "Renderer";
+  case SceneResourceType::RenderPathGraph:
+    return "RenderPathGraph";
+  case SceneResourceType::RenderFeature:
+    return "RenderFeature";
+  case SceneResourceType::Shader:
+    return "Shader";
+  case SceneResourceType::RenderEffect:
+    return "RenderEffect";
+  case SceneResourceType::Unknown:
+    break;
+  }
+  return "Unknown";
+}
+
 [[nodiscard]] const VertexLayoutItem *
 findVertexLayoutItem(const VertexLayout &layout, const char *name,
                      const u32 fallbackLocation) {
@@ -366,6 +431,30 @@ SceneResourceTable::metadataHandleFor(TextureHandle handle) const {
   return m_textures[handle.index].metadataHandle;
 }
 
+ResourceIdentityHandle
+SceneResourceTable::metadataHandleFor(RenderPathGraphHandle handle) const {
+  if (!isAlive(handle)) {
+    return {};
+  }
+  return m_renderPathGraphs[handle.index].metadataHandle;
+}
+
+ResourceIdentityHandle
+SceneResourceTable::metadataHandleFor(RenderFeatureHandle handle) const {
+  if (!isAlive(handle)) {
+    return {};
+  }
+  return m_renderFeatures[handle.index].metadataHandle;
+}
+
+ResourceIdentityHandle
+SceneResourceTable::metadataHandleFor(ShaderHandle handle) const {
+  if (!isAlive(handle)) {
+    return {};
+  }
+  return m_shaders[handle.index].metadataHandle;
+}
+
 ResourceMetadata &
 SceneResourceTable::mutableMetadata(ResourceIdentityHandle handle) {
   if (!handle.isValid() || handle.index >= m_resourceMetadata.size() ||
@@ -384,6 +473,55 @@ SceneResourceTable::constMetadata(ResourceIdentityHandle handle) const {
     throw std::out_of_range("invalid scene resource metadata handle");
   }
   return m_resourceMetadata[handle.index];
+}
+
+bool SceneResourceTable::hasLiveTypedResourceMetadata(
+    ResourceIdentityHandle handle) const {
+  const ResourceMetadata *metadata = findResourceMetadata(handle);
+  if (metadata == nullptr) {
+    return false;
+  }
+
+  const auto hasLiveEntry = [handle](const auto &entries) {
+    for (const auto &entry : entries) {
+      if (entry.state == SceneResourceEntryState::Alive && entry.resource &&
+          entry.metadataHandle == handle) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  switch (metadata->type) {
+  case SceneResourceType::Mesh:
+    return hasLiveEntry(m_meshes);
+  case SceneResourceType::Texture:
+    return hasLiveEntry(m_textures);
+  case SceneResourceType::Material:
+    return hasLiveEntry(m_materials);
+  case SceneResourceType::RenderPathGraph:
+    return hasLiveEntry(m_renderPathGraphs);
+  case SceneResourceType::RenderFeature:
+    return hasLiveEntry(m_renderFeatures);
+  case SceneResourceType::Shader:
+    for (const auto &entry : m_shaders) {
+      if (entry.state == SceneResourceEntryState::Alive && entry.resource &&
+          entry.metadataHandle == handle) {
+        return hasLiveShaderPayload(*entry.resource);
+      }
+    }
+    return false;
+  case SceneResourceType::Unknown:
+  case SceneResourceType::MaterialHeader:
+  case SceneResourceType::Spectrum:
+  case SceneResourceType::BsdfTable:
+  case SceneResourceType::Camera:
+  case SceneResourceType::Light:
+  case SceneResourceType::Renderer:
+  case SceneResourceType::RenderEffect:
+    return true;
+  }
+  return true;
 }
 
 ResourceIdentityHandle
@@ -479,6 +617,23 @@ void SceneResourceTable::addDependency(ResourceIdentityHandle ownerHandle,
   }
 }
 
+void SceneResourceTable::addDependency(
+    ResourceIdentityHandle ownerHandle, RenderPathGraphHandle dependencyHandle) {
+  addDependency(ownerHandle, metadataHandleFor(dependencyHandle));
+}
+
+void SceneResourceTable::addDependency(RenderPathGraphHandle ownerHandle,
+                                       RenderFeatureHandle dependencyHandle) {
+  addDependency(metadataHandleFor(ownerHandle),
+                metadataHandleFor(dependencyHandle));
+}
+
+void SceneResourceTable::addDependency(RenderPathGraphHandle ownerHandle,
+                                       ShaderHandle dependencyHandle) {
+  addDependency(metadataHandleFor(ownerHandle),
+                metadataHandleFor(dependencyHandle));
+}
+
 void SceneResourceTable::addDependency(MaterialHandle ownerHandle,
                                        TextureHandle dependencyHandle) {
   addDependency(metadataHandleFor(ownerHandle),
@@ -531,6 +686,15 @@ void SceneResourceTable::markDirty(TextureHandle handle, std::string reason) {
   markDirty(metadataHandleFor(handle), std::move(reason));
 }
 
+void SceneResourceTable::markDirty(RenderFeatureHandle handle,
+                                   std::string reason) {
+  markDirty(metadataHandleFor(handle), std::move(reason));
+}
+
+void SceneResourceTable::markDirty(ShaderHandle handle, std::string reason) {
+  markDirty(metadataHandleFor(handle), std::move(reason));
+}
+
 const ResourceMetadata &
 SceneResourceTable::metadata(ResourceIdentityHandle handle) const {
   return constMetadata(handle);
@@ -544,6 +708,35 @@ SceneResourceTable::metadata(MaterialHandle handle) const {
 const ResourceMetadata &
 SceneResourceTable::metadata(TextureHandle handle) const {
   return constMetadata(metadataHandleFor(handle));
+}
+
+const ResourceMetadata &
+SceneResourceTable::metadata(RenderPathGraphHandle handle) const {
+  return constMetadata(metadataHandleFor(handle));
+}
+
+const ResourceMetadata &
+SceneResourceTable::metadata(RenderFeatureHandle handle) const {
+  return constMetadata(metadataHandleFor(handle));
+}
+
+const ResourceMetadata &SceneResourceTable::metadata(ShaderHandle handle) const {
+  return constMetadata(metadataHandleFor(handle));
+}
+
+ResourceIdentityHandle
+SceneResourceTable::metadataHandle(RenderPathGraphHandle handle) const {
+  return metadataHandleFor(handle);
+}
+
+ResourceIdentityHandle
+SceneResourceTable::metadataHandle(RenderFeatureHandle handle) const {
+  return metadataHandleFor(handle);
+}
+
+ResourceIdentityHandle SceneResourceTable::metadataHandle(
+    ShaderHandle handle) const {
+  return metadataHandleFor(handle);
 }
 
 ResourceIdentityHandle SceneResourceTable::internMaterialInstanceIdentity(
@@ -568,6 +761,34 @@ SceneResourceGraphExport SceneResourceTable::exportResourceGraph() const {
     graph.handles.push_back(
         ResourceIdentityHandle{i, m_resourceMetadataGenerations[i]});
     graph.resources.push_back(m_resourceMetadata[i]);
+  }
+
+  for (const auto &owner : graph.resources) {
+    for (const ResourceIdentityHandle dependencyHandle :
+         owner.dependencyHandles) {
+      const ResourceMetadata *dependency =
+          findResourceMetadata(dependencyHandle);
+      if (dependency == nullptr) {
+        throw std::logic_error("resource '" + owner.uri.string() +
+                               "' references stale dependency handle");
+      }
+      if (dependency->state == ResourceState::Failed ||
+          dependency->state == ResourceState::Unloaded) {
+        throw std::logic_error(
+            "resource '" + owner.uri.string() + "' references " +
+            std::string(sceneResourceTypeName(dependency->type)) + " '" +
+            dependency->uri.string() + "' in non-uploadable state");
+      }
+      if (owner.type == SceneResourceType::RenderPathGraph &&
+          (dependency->type == SceneResourceType::RenderFeature ||
+           dependency->type == SceneResourceType::Shader) &&
+          !hasLiveTypedResourceMetadata(dependencyHandle)) {
+        throw std::logic_error(
+            "resource '" + owner.uri.string() + "' references released " +
+            std::string(sceneResourceTypeName(dependency->type)) + " '" +
+            dependency->uri.string() + "'");
+      }
+    }
   }
   return graph;
 }
@@ -762,6 +983,207 @@ CameraHandle SceneResourceTable::registerCamera(CameraResource camera) {
   return handle;
 }
 
+RenderFeatureHandle
+SceneResourceTable::registerRenderFeature(const ResourceUri &uri,
+                                          RenderFeature feature) {
+  for (u32 i = 0; i < m_renderFeatures.size(); ++i) {
+    const auto &entry = m_renderFeatures[i];
+    const ResourceMetadata *metadata =
+        findResourceMetadata(entry.metadataHandle);
+    if (entry.state == SceneResourceEntryState::Alive && entry.resource &&
+        metadata != nullptr &&
+        metadata->type == SceneResourceType::RenderFeature &&
+        metadata->uri == uri) {
+      return RenderFeatureHandle{i, entry.generation};
+    }
+  }
+
+  auto handle = add<RenderFeature, RenderFeatureHandle>(
+      m_renderFeatures, std::make_unique<RenderFeature>(std::move(feature)));
+  if (handle.isValid()) {
+    m_renderFeatures[handle.index].metadataHandle =
+        loadOrGetResource(SceneResourceType::RenderFeature, uri);
+  }
+  advanceUploadGeneration();
+  return handle;
+}
+
+ShaderHandle SceneResourceTable::registerShaderResource(
+    const ResourceUri &uri, std::vector<ResourceUri> sourceUris,
+    IShaderSharedPtr payload) {
+  if (sourceUris.empty()) {
+    return {};
+  }
+
+  for (u32 i = 0; i < m_shaders.size(); ++i) {
+    auto &entry = m_shaders[i];
+    const ResourceMetadata *metadata =
+        findResourceMetadata(entry.metadataHandle);
+    if (entry.state == SceneResourceEntryState::Alive && entry.resource &&
+        metadata != nullptr && metadata->type == SceneResourceType::Shader &&
+        metadata->uri == uri && entry.resource->sourceResolved &&
+        !entry.resource->sourceUris.empty()) {
+      if (!hasLiveShaderPayload(*entry.resource) && payload) {
+        entry.resource->sourceUris = std::move(sourceUris);
+        entry.resource->payload = std::move(payload);
+        ResourceMetadata &stored = mutableMetadata(entry.metadataHandle);
+        stored.state = hasLiveShaderPayload(*entry.resource)
+                           ? ResourceState::Ready
+                           : ResourceState::Unloaded;
+        stored.dependencies = entry.resource->sourceUris;
+        stored.diagnostics.clear();
+        advanceUploadGeneration();
+      }
+      return ShaderHandle{i, entry.generation};
+    }
+  }
+
+  auto shader = std::make_unique<ShaderResourceMetadata>();
+  shader->uri = uri;
+  shader->canonicalUri = uri;
+  shader->sourceUris = std::move(sourceUris);
+  shader->payload = std::move(payload);
+  shader->sourceResolved = true;
+  auto handle =
+      add<ShaderResourceMetadata, ShaderHandle>(m_shaders, std::move(shader));
+  if (handle.isValid()) {
+    ResourceMetadata metadata;
+    metadata.type = SceneResourceType::Shader;
+    metadata.uri = uri;
+    metadata.state = hasLiveShaderPayload(*m_shaders[handle.index].resource)
+                         ? ResourceState::Ready
+                         : ResourceState::Unloaded;
+    for (const ResourceUri &sourceUri :
+         m_shaders[handle.index].resource->sourceUris) {
+      metadata.dependencies.push_back(sourceUri);
+    }
+    m_shaders[handle.index].metadataHandle =
+        internResourceMetadata(std::move(metadata));
+    ResourceMetadata &stored =
+        mutableMetadata(m_shaders[handle.index].metadataHandle);
+    stored.state = hasLiveShaderPayload(*m_shaders[handle.index].resource)
+                       ? ResourceState::Ready
+                       : ResourceState::Unloaded;
+    stored.dependencies = m_shaders[handle.index].resource->sourceUris;
+    stored.diagnostics.clear();
+  }
+  advanceUploadGeneration();
+  return handle;
+}
+
+RenderPathGraphHandle
+SceneResourceTable::registerRenderPathGraph(const ResourceUri &uri,
+                                            RenderPathGraph graph) {
+  for (u32 i = 0; i < m_renderPathGraphs.size(); ++i) {
+    const auto &entry = m_renderPathGraphs[i];
+    const ResourceMetadata *metadata =
+        findResourceMetadata(entry.metadataHandle);
+    if (entry.state == SceneResourceEntryState::Alive && entry.resource &&
+        metadata != nullptr &&
+        metadata->type == SceneResourceType::RenderPathGraph &&
+        metadata->uri == uri) {
+      return RenderPathGraphHandle{i, entry.generation};
+    }
+  }
+
+  const auto findFeatureHandleByUri =
+      [this](const ResourceUri &dependencyUri) -> RenderFeatureHandle {
+    for (u32 i = 0; i < m_renderFeatures.size(); ++i) {
+      const auto &entry = m_renderFeatures[i];
+      const ResourceMetadata *metadata =
+          findResourceMetadata(entry.metadataHandle);
+      if (entry.state == SceneResourceEntryState::Alive && entry.resource &&
+          metadata != nullptr &&
+          metadata->type == SceneResourceType::RenderFeature &&
+          (metadata->state == ResourceState::Ready ||
+           metadata->state == ResourceState::Dirty) &&
+          metadata->uri == dependencyUri) {
+        return RenderFeatureHandle{i, entry.generation};
+      }
+    }
+    return {};
+  };
+  const auto findShaderHandleByUri =
+      [this](const ResourceUri &dependencyUri) -> ShaderHandle {
+    for (u32 i = 0; i < m_shaders.size(); ++i) {
+      const auto &entry = m_shaders[i];
+      const ResourceMetadata *metadata =
+          findResourceMetadata(entry.metadataHandle);
+      if (entry.state == SceneResourceEntryState::Alive && entry.resource &&
+          metadata != nullptr && metadata->type == SceneResourceType::Shader &&
+          (metadata->state == ResourceState::Ready ||
+           metadata->state == ResourceState::Dirty) &&
+          entry.resource->sourceResolved &&
+          !entry.resource->sourceUris.empty() &&
+          hasLiveShaderPayload(*entry.resource) &&
+          metadata->uri == dependencyUri) {
+        return ShaderHandle{i, entry.generation};
+      }
+    }
+    return {};
+  };
+  const auto hasShaderEntryByUri =
+      [this](const ResourceUri &dependencyUri) -> bool {
+    for (const auto &entry : m_shaders) {
+      const ResourceMetadata *metadata =
+          findResourceMetadata(entry.metadataHandle);
+      if (entry.state == SceneResourceEntryState::Alive && entry.resource &&
+          metadata != nullptr && metadata->type == SceneResourceType::Shader &&
+          metadata->uri == dependencyUri) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  std::vector<RenderFeatureHandle> featureHandles;
+  featureHandles.reserve(graph.features.size());
+  for (const auto &featureDependency : graph.features) {
+    const RenderFeatureHandle featureHandle =
+        findFeatureHandleByUri(featureDependency.uri);
+    if (!featureHandle.isValid()) {
+      throw std::invalid_argument(missingRenderPathGraphDependencyMessage(
+          uri, "RenderFeature", featureDependency.uri));
+    }
+    featureHandles.push_back(featureHandle);
+  }
+
+  std::vector<ShaderHandle> shaderHandles;
+  shaderHandles.reserve(graph.passes.size());
+  for (const auto &pass : graph.passes) {
+    if (pass.shaderUri.string().empty()) {
+      continue;
+    }
+    const ShaderHandle shaderHandle = findShaderHandleByUri(pass.shaderUri);
+    if (!shaderHandle.isValid()) {
+      if (hasShaderEntryByUri(pass.shaderUri)) {
+        throw std::invalid_argument(
+            missingShaderPayloadMessage(uri, pass.shaderUri));
+      }
+      throw std::invalid_argument(missingRenderPathGraphDependencyMessage(
+          uri, "Shader", pass.shaderUri));
+    }
+    shaderHandles.push_back(shaderHandle);
+  }
+
+  auto handle = add<RenderPathGraph, RenderPathGraphHandle>(
+      m_renderPathGraphs, std::make_unique<RenderPathGraph>(std::move(graph)));
+  if (!handle.isValid()) {
+    return {};
+  }
+  m_renderPathGraphs[handle.index].metadataHandle =
+      loadOrGetResource(SceneResourceType::RenderPathGraph, uri);
+
+  for (const RenderFeatureHandle featureHandle : featureHandles) {
+    addDependency(handle, featureHandle);
+  }
+  for (const ShaderHandle shaderHandle : shaderHandles) {
+    addDependency(handle, shaderHandle);
+  }
+  advanceUploadGeneration();
+  return handle;
+}
+
 void SceneResourceTable::updateObject(ObjectHandle handle,
                                       ObjectResource object) {
   auto resolved = resolve(handle);
@@ -854,6 +1276,30 @@ void SceneResourceTable::release(CameraHandle handle) {
   advanceUploadGeneration();
 }
 
+void SceneResourceTable::release(RenderPathGraphHandle handle) {
+  if (!isAlive(handle)) {
+    return;
+  }
+  release<RenderPathGraph, RenderPathGraphHandle>(m_renderPathGraphs, handle);
+  advanceUploadGeneration();
+}
+
+void SceneResourceTable::release(RenderFeatureHandle handle) {
+  if (!isAlive(handle)) {
+    return;
+  }
+  release<RenderFeature, RenderFeatureHandle>(m_renderFeatures, handle);
+  advanceUploadGeneration();
+}
+
+void SceneResourceTable::release(ShaderHandle handle) {
+  if (!isAlive(handle)) {
+    return;
+  }
+  release<ShaderResourceMetadata, ShaderHandle>(m_shaders, handle);
+  advanceUploadGeneration();
+}
+
 std::optional<std::reference_wrapper<GeometryStorage>>
 SceneResourceTable::resolve(GeometryStorageHandle handle) {
   return resolveMutable<GeometryStorage, GeometryStorageHandle>(
@@ -936,6 +1382,41 @@ SceneResourceTable::resolve(CameraHandle handle) {
 std::optional<std::reference_wrapper<const CameraResource>>
 SceneResourceTable::resolve(CameraHandle handle) const {
   return resolveConst<CameraResource, CameraHandle>(m_cameras, handle);
+}
+
+std::optional<std::reference_wrapper<RenderPathGraph>>
+SceneResourceTable::resolve(RenderPathGraphHandle handle) {
+  return resolveMutable<RenderPathGraph, RenderPathGraphHandle>(
+      m_renderPathGraphs, handle);
+}
+
+std::optional<std::reference_wrapper<const RenderPathGraph>>
+SceneResourceTable::resolve(RenderPathGraphHandle handle) const {
+  return resolveConst<RenderPathGraph, RenderPathGraphHandle>(
+      m_renderPathGraphs, handle);
+}
+
+std::optional<std::reference_wrapper<RenderFeature>>
+SceneResourceTable::resolve(RenderFeatureHandle handle) {
+  return resolveMutable<RenderFeature, RenderFeatureHandle>(m_renderFeatures,
+                                                            handle);
+}
+
+std::optional<std::reference_wrapper<const RenderFeature>>
+SceneResourceTable::resolve(RenderFeatureHandle handle) const {
+  return resolveConst<RenderFeature, RenderFeatureHandle>(m_renderFeatures,
+                                                          handle);
+}
+
+std::optional<std::reference_wrapper<ShaderResourceMetadata>>
+SceneResourceTable::resolve(ShaderHandle handle) {
+  return resolveMutable<ShaderResourceMetadata, ShaderHandle>(m_shaders,
+                                                              handle);
+}
+
+std::optional<std::reference_wrapper<const ShaderResourceMetadata>>
+SceneResourceTable::resolve(ShaderHandle handle) const {
+  return resolveConst<ShaderResourceMetadata, ShaderHandle>(m_shaders, handle);
 }
 
 const MeshBuffer &SceneResourceTable::mesh(MeshHandle handle) const {
@@ -1218,6 +1699,19 @@ bool SceneResourceTable::isAlive(CameraHandle handle) const {
   return isAlive<CameraResource, CameraHandle>(m_cameras, handle);
 }
 
+bool SceneResourceTable::isAlive(RenderPathGraphHandle handle) const {
+  return isAlive<RenderPathGraph, RenderPathGraphHandle>(m_renderPathGraphs,
+                                                         handle);
+}
+
+bool SceneResourceTable::isAlive(RenderFeatureHandle handle) const {
+  return isAlive<RenderFeature, RenderFeatureHandle>(m_renderFeatures, handle);
+}
+
+bool SceneResourceTable::isAlive(ShaderHandle handle) const {
+  return isAlive<ShaderResourceMetadata, ShaderHandle>(m_shaders, handle);
+}
+
 usize SceneResourceTable::geometryStorageCount() const {
   return aliveCount(m_geometryStorage);
 }
@@ -1241,6 +1735,16 @@ usize SceneResourceTable::skeletonCount() const {
 usize SceneResourceTable::objectCount() const { return aliveCount(m_objects); }
 
 usize SceneResourceTable::cameraCount() const { return aliveCount(m_cameras); }
+
+usize SceneResourceTable::renderPathGraphCount() const {
+  return aliveCount(m_renderPathGraphs);
+}
+
+usize SceneResourceTable::renderFeatureCount() const {
+  return aliveCount(m_renderFeatures);
+}
+
+usize SceneResourceTable::shaderCount() const { return aliveCount(m_shaders); }
 
 RenderSceneSnapshot SceneResourceTable::buildSnapshot() const {
   RenderSceneSnapshot snapshot;
@@ -1363,12 +1867,22 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
         .textures = m_gpuTextures,
         .cameras = m_gpuCameras,
         .lights = m_gpuLights,
+        .renderPathGraphResources = m_gpuRenderPathGraphResources,
+        .renderFeatureResources = m_gpuRenderFeatureResources,
+        .shaderResources = m_gpuShaderResources,
+        .renderPathGraphs = m_gpuRenderPathGraphs,
+        .renderPathGraphPasses = m_gpuRenderPathGraphPasses,
+        .renderPathGraphFeatures = m_gpuRenderPathGraphFeatures,
+        .renderPathGraphShaders = m_gpuRenderPathGraphShaders,
         .meshIndexByHandle = m_gpuMeshIndexByHandle,
         .materialIndexByHandle = m_gpuMaterialIndexByHandle,
         .textureIndexByHandle = m_gpuTextureIndexByHandle,
         .objectIndexByHandle = m_gpuObjectIndexByHandle,
         .cameraIndexByHandle = m_gpuCameraIndexByHandle,
         .lightIndexByHandle = m_gpuLightIndexByHandle,
+        .renderPathGraphIndexByHandle = m_gpuRenderPathGraphIndexByHandle,
+        .renderFeatureIndexByHandle = m_gpuRenderFeatureIndexByHandle,
+        .shaderIndexByHandle = m_gpuShaderIndexByHandle,
     };
   };
 
@@ -1384,12 +1898,22 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
   m_gpuTextures.clear();
   m_gpuCameras.clear();
   m_gpuLights.clear();
+  m_gpuRenderPathGraphResources.clear();
+  m_gpuRenderFeatureResources.clear();
+  m_gpuShaderResources.clear();
+  m_gpuRenderPathGraphs.clear();
+  m_gpuRenderPathGraphPasses.clear();
+  m_gpuRenderPathGraphFeatures.clear();
+  m_gpuRenderPathGraphShaders.clear();
   m_gpuMeshIndexByHandle.clear();
   m_gpuMaterialIndexByHandle.clear();
   m_gpuTextureIndexByHandle.clear();
   m_gpuObjectIndexByHandle.clear();
   m_gpuCameraIndexByHandle.clear();
   m_gpuLightIndexByHandle.clear();
+  m_gpuRenderPathGraphIndexByHandle.clear();
+  m_gpuRenderFeatureIndexByHandle.clear();
+  m_gpuShaderIndexByHandle.clear();
 
   m_gpuCameras.reserve(aliveCount(m_cameras));
   for (u32 i = 0; i < m_cameras.size(); ++i) {
@@ -1417,6 +1941,168 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
         .handle = LightHandle{i, entry.generation},
         .typedIndex = typedIndex,
     });
+  }
+
+  std::vector<CompactRecordIndex> featureIndexToGpuRecord(
+      m_renderFeatures.size());
+  m_gpuRenderFeatureResources.reserve(aliveCount(m_renderFeatures));
+  for (u32 i = 0; i < m_renderFeatures.size(); ++i) {
+    const auto &entry = m_renderFeatures[i];
+    if (entry.state != SceneResourceEntryState::Alive || !entry.resource) {
+      continue;
+    }
+    const u32 typedIndex =
+        static_cast<u32>(m_gpuRenderFeatureResources.size());
+    m_gpuRenderFeatureResources.push_back(std::cref(*entry.resource));
+    featureIndexToGpuRecord[i] = CompactRecordIndex{
+        .generation = entry.generation,
+        .uploadIndex = typedIndex,
+    };
+    m_gpuRenderFeatureIndexByHandle.push_back(
+        SceneResourceRenderFeatureUploadIndex{
+            .handle = RenderFeatureHandle{i, entry.generation},
+            .typedIndex = typedIndex,
+        });
+  }
+
+  std::vector<CompactRecordIndex> shaderIndexToGpuRecord(m_shaders.size());
+  m_gpuShaderResources.reserve(aliveCount(m_shaders));
+  m_gpuRenderPathGraphShaders.reserve(aliveCount(m_shaders));
+  for (u32 i = 0; i < m_shaders.size(); ++i) {
+    const auto &entry = m_shaders[i];
+    if (entry.state != SceneResourceEntryState::Alive || !entry.resource) {
+      continue;
+    }
+    if (!entry.resource->sourceResolved || entry.resource->sourceUris.empty()) {
+      const ResourceMetadata *metadata =
+          findResourceMetadata(entry.metadataHandle);
+      const ResourceUri shaderUri =
+          metadata != nullptr ? metadata->uri : entry.resource->uri;
+      throw std::logic_error("Shader resource '" + shaderUri.string() +
+                             "' has no resolved source descriptors");
+    }
+    if (!hasLiveShaderPayload(*entry.resource)) {
+      const ResourceMetadata *metadata =
+          findResourceMetadata(entry.metadataHandle);
+      const ResourceUri shaderUri =
+          metadata != nullptr ? metadata->uri : entry.resource->uri;
+      throw std::logic_error("Shader resource '" + shaderUri.string() +
+                             "' has resolved source descriptors but no live "
+                             "compiled/reflected payload");
+    }
+    const u32 typedIndex = static_cast<u32>(m_gpuShaderResources.size());
+    m_gpuShaderResources.push_back(std::cref(*entry.resource));
+    m_gpuRenderPathGraphShaders.push_back(entry.metadataHandle);
+    shaderIndexToGpuRecord[i] = CompactRecordIndex{
+        .generation = entry.generation,
+        .uploadIndex = typedIndex,
+    };
+    m_gpuShaderIndexByHandle.push_back(SceneResourceShaderUploadIndex{
+        .handle = ShaderHandle{i, entry.generation},
+        .typedIndex = typedIndex,
+    });
+  }
+
+  const auto findFeatureHandleByUri =
+      [this](const ResourceUri &uri) -> RenderFeatureHandle {
+    for (u32 i = 0; i < m_renderFeatures.size(); ++i) {
+      const auto &entry = m_renderFeatures[i];
+      const ResourceMetadata *metadata =
+          findResourceMetadata(entry.metadataHandle);
+      if (entry.state == SceneResourceEntryState::Alive && entry.resource &&
+          metadata != nullptr &&
+          metadata->type == SceneResourceType::RenderFeature &&
+          (metadata->state == ResourceState::Ready ||
+           metadata->state == ResourceState::Dirty) &&
+          metadata->uri == uri) {
+        return RenderFeatureHandle{i, entry.generation};
+      }
+    }
+    return {};
+  };
+
+  const auto findShaderHandleByUri = [this](const ResourceUri &uri) {
+    for (u32 i = 0; i < m_shaders.size(); ++i) {
+      const auto &entry = m_shaders[i];
+      const ResourceMetadata *metadata =
+          findResourceMetadata(entry.metadataHandle);
+      if (entry.state == SceneResourceEntryState::Alive && entry.resource &&
+          metadata != nullptr && metadata->type == SceneResourceType::Shader &&
+          (metadata->state == ResourceState::Ready ||
+           metadata->state == ResourceState::Dirty) &&
+          entry.resource->sourceResolved &&
+          !entry.resource->sourceUris.empty() &&
+          hasLiveShaderPayload(*entry.resource) &&
+          metadata->uri == uri) {
+        return ShaderHandle{i, entry.generation};
+      }
+    }
+    return ShaderHandle{};
+  };
+
+  m_gpuRenderPathGraphResources.reserve(aliveCount(m_renderPathGraphs));
+  m_gpuRenderPathGraphs.reserve(aliveCount(m_renderPathGraphs));
+  for (u32 i = 0; i < m_renderPathGraphs.size(); ++i) {
+    const auto &entry = m_renderPathGraphs[i];
+    if (entry.state != SceneResourceEntryState::Alive || !entry.resource) {
+      continue;
+    }
+
+    const auto &graph = *entry.resource;
+    const u32 typedIndex =
+        static_cast<u32>(m_gpuRenderPathGraphResources.size());
+    m_gpuRenderPathGraphResources.push_back(std::cref(graph));
+
+    SceneGpuRenderPathGraphRecord graphRecord;
+    graphRecord.passOffset =
+        static_cast<u32>(m_gpuRenderPathGraphPasses.size());
+    for (const auto &pass : graph.passes) {
+      const ShaderHandle shaderHandle = findShaderHandleByUri(pass.shaderUri);
+      const u32 shaderIndex =
+          findCompactRecordIndex(shaderIndexToGpuRecord, shaderHandle);
+      if (shaderIndex == u32_max) {
+        const ResourceMetadata *metadata =
+            findResourceMetadata(entry.metadataHandle);
+        const ResourceUri graphUri =
+            metadata != nullptr ? metadata->uri : ResourceUri("<unknown>");
+        throw std::logic_error(missingRenderPathGraphDependencyMessage(
+            graphUri, "Shader", pass.shaderUri));
+      }
+      m_gpuRenderPathGraphPasses.push_back(
+          SceneGpuRenderPathGraphPassRecord{.shaderIndex = shaderIndex});
+    }
+    graphRecord.passCount =
+        static_cast<u32>(m_gpuRenderPathGraphPasses.size()) -
+        graphRecord.passOffset;
+
+    graphRecord.featureOffset =
+        static_cast<u32>(m_gpuRenderPathGraphFeatures.size());
+    for (const auto &featureDependency : graph.features) {
+      const RenderFeatureHandle featureHandle =
+          findFeatureHandleByUri(featureDependency.uri);
+      const u32 featureIndex =
+          findCompactRecordIndex(featureIndexToGpuRecord, featureHandle);
+      if (featureIndex == u32_max) {
+        const ResourceMetadata *metadata =
+            findResourceMetadata(entry.metadataHandle);
+        const ResourceUri graphUri =
+            metadata != nullptr ? metadata->uri : ResourceUri("<unknown>");
+        throw std::logic_error(missingRenderPathGraphDependencyMessage(
+            graphUri, "RenderFeature", featureDependency.uri));
+      }
+      m_gpuRenderPathGraphFeatures.push_back(
+          SceneGpuRenderPathGraphFeatureRecord{.featureIndex = featureIndex});
+    }
+    graphRecord.featureCount =
+        static_cast<u32>(m_gpuRenderPathGraphFeatures.size()) -
+        graphRecord.featureOffset;
+
+    m_gpuRenderPathGraphIndexByHandle.push_back(
+        SceneResourceRenderPathGraphUploadIndex{
+            .handle = RenderPathGraphHandle{i, entry.generation},
+            .typedIndex = typedIndex,
+        });
+    m_gpuRenderPathGraphs.push_back(graphRecord);
   }
 
   std::vector<CompactRecordIndex> meshIndexToGpuRecord(m_meshes.size());

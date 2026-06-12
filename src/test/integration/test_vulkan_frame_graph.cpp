@@ -8,7 +8,6 @@
 #include "core/scene/scene.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/filesystem_tools.hpp"
-#include "infra/material_loader/generic_material_loader.hpp"
 #include "infra/window/window.hpp"
 
 #include "scene_test_helpers.hpp"
@@ -34,7 +33,7 @@ bool isKnownEnvironmentFailure(const std::string &message) {
 }
 
 LX_core::MaterialInstanceSharedPtr loadFrameGraphDepthMaterial() {
-  return LX_infra::loadGenericMaterial("assets/materials/pbr.material");
+  return LX_test::makeForwardMinimalMaterialForVulkanTests();
 }
 
 LX_core::SceneSharedPtr makeFrameGraphScene() {
@@ -237,18 +236,17 @@ int main() {
     }
 
     const auto hdrDumpPath =
-        std::filesystem::temp_directory_path() / "lxe_scene_hdr_color_dump.bmp";
+        std::filesystem::temp_directory_path() / "lxe_hdr_color_dump.bmp";
     std::filesystem::remove(hdrDumpPath);
-    const auto hdrDump =
-        renderer->dumpFrameGraphAttachment("scene.hdrColor", hdrDumpPath);
+    const auto hdrDump = renderer->dumpFrameGraphAttachment("hdr.color", hdrDumpPath);
     if (hdrDump.format != "R16G16B16A16_SFLOAT") {
-      std::cerr << "scene.hdrColor dump should preserve HDR attachment format\n";
+      std::cerr << "hdr.color dump should preserve HDR attachment format\n";
       return 1;
     }
     if (hdrDump.width == 0 || hdrDump.height == 0 ||
         !std::filesystem::exists(hdrDumpPath) ||
         std::filesystem::file_size(hdrDumpPath) <= 54u) {
-      std::cerr << "scene.hdrColor dump should write a non-empty BMP\n";
+      std::cerr << "hdr.color dump should write a non-empty BMP\n";
       return 1;
     }
     std::filesystem::remove(hdrDumpPath);

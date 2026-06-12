@@ -7,6 +7,27 @@ features:
     uri: effects/tone_mapping.render-feature.yaml
 
 passes:
+  - id: Shadow
+    stage: raster
+    dispatch: draw
+    shader: techniques/Forward/shadow_depth_only
+    filters:
+      renderClass: [surface.opaque]
+      bsdf: [matte, uber, metal, substrate]
+    sources:
+      - geometry.vertex
+      - geometry.index
+      - material.bsdf
+      - scene.camera
+      - scene.lights
+    targets: [shadow.main]
+    renderState:
+      cullMode: Back
+      depthTest: true
+      depthWrite: true
+      depthOp: LessEqual
+      blendEnable: false
+
   - id: Forward
     stage: raster
     dispatch: draw
@@ -40,3 +61,19 @@ passes:
       depthWrite: false
       depthOp: Always
       blendEnable: false
+
+  - id: DebugOverlay
+    stage: raster
+    dispatch: draw
+    shader: debug_overlay
+    sources: [scene.camera]
+    targets: [debug.overlay]
+    writeMode: append
+    renderState:
+      cullMode: None
+      depthTest: false
+      depthWrite: false
+      depthOp: Always
+      blendEnable: true
+      srcBlend: SrcAlpha
+      dstBlend: OneMinusSrcAlpha

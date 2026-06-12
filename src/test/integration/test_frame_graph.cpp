@@ -62,21 +62,21 @@ bool approxMatrix(const Mat4f &a, const Mat4f &b, float epsilon = 0.001f) {
 
 usize countResourcesNamed(const DescriptorResourceList &resources,
                           StringID bindingName) {
-  return static_cast<usize>(std::count_if(
-      resources.begin(), resources.end(),
-      [bindingName](const DescriptorResourceRef &resource) {
-        return resource.getBindingName() == bindingName;
-      }));
+  return static_cast<usize>(
+      std::count_if(resources.begin(), resources.end(),
+                    [bindingName](const DescriptorResourceRef &resource) {
+                      return resource.getBindingName() == bindingName;
+                    }));
 }
 
 std::optional<std::reference_wrapper<const DescriptorResourceRef>>
 findResourceNamed(const DescriptorResourceList &resources,
                   StringID bindingName) {
-  const auto it = std::find_if(
-      resources.begin(), resources.end(),
-      [bindingName](const DescriptorResourceRef &resource) {
-        return resource.getBindingName() == bindingName;
-      });
+  const auto it =
+      std::find_if(resources.begin(), resources.end(),
+                   [bindingName](const DescriptorResourceRef &resource) {
+                     return resource.getBindingName() == bindingName;
+                   });
   if (it == resources.end()) {
     return std::nullopt;
   }
@@ -272,27 +272,14 @@ makeSceneWithDefaultCamera(const SceneNodeSharedPtr &root = nullptr) {
   return scene;
 }
 
-MaterialPassContract makeContractPass(std::string name,
-                                      std::vector<std::string> sources,
-                                      std::vector<std::string> targets) {
-  MaterialPassContract pass;
-  pass.name = std::move(name);
-  pass.shaderUri = "shaders/frame_graph_build_plan_test.effect";
-  pass.stage = MaterialPassStage::Raster;
-  pass.dispatch = MaterialPassDispatch::Draw;
-  pass.sources = std::move(sources);
-  pass.targets = std::move(targets);
-  return pass;
-}
-
 RenderPassNode makeRenderPassNode(std::string id,
                                   std::vector<std::string> sources,
                                   std::vector<std::string> targets) {
   RenderPassNode pass;
   pass.id = std::move(id);
   pass.shaderUri = "techniques/Forward/frame_graph_build_plan_test";
-  pass.stage = MaterialPassStage::Raster;
-  pass.dispatch = MaterialPassDispatch::Draw;
+  pass.stage = RenderPassStage::Raster;
+  pass.dispatch = RenderPassDispatch::Draw;
   pass.sources = std::move(sources);
   pass.targets = std::move(targets);
   return pass;
@@ -572,22 +559,22 @@ void testFrameGraphCompileSortsPassesBySourceTargetDag() {
       {FrameGraphRead::sampled(StringID("ldr.color"), StringID("SceneColor"))},
       {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
           StringID("swapchain.color"))}}});
-  graph.addPass(FramePass{
-      StringID("Forward"),
-      RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
-      {},
-      {FrameGraphRead::sampled(StringID("camera.ubo")),
-       FrameGraphRead::sampled(StringID("geometry.vertex")),
-       FrameGraphRead::sampled(StringID("material.bsdf"))},
-      {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
-          StringID("hdr.color"))}}});
+  graph.addPass(
+      FramePass{StringID("Forward"),
+                RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
+                {},
+                {FrameGraphRead::sampled(StringID("camera.ubo")),
+                 FrameGraphRead::sampled(StringID("geometry.vertex")),
+                 FrameGraphRead::sampled(StringID("material.bsdf"))},
+                {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
+                    StringID("hdr.color"))}}});
   graph.addPass(FramePass{
       StringID("Exposure"),
       RenderTargetDesc::offscreenColor(ImageFormat::RGBA8),
       {},
       {FrameGraphRead::sampled(StringID("hdr.color"), StringID("HdrColor"))},
-      {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
-          StringID("ldr.color"))}}});
+      {FrameGraphWrite{
+          FrameGraphResourceRef::colorAttachment(StringID("ldr.color"))}}});
 
   const auto compiled = graph.compile(GraphResourceRegistry::makeDefault());
   EXPECT(compiled.isValid(), compiled.errorText());
@@ -616,8 +603,8 @@ void testFrameGraphCompileRejectsSelfProducedRead() {
       RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
       {},
       {FrameGraphRead::sampled(StringID("hdr.color"), StringID("InputColor"))},
-      {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
-          StringID("hdr.color"))}}});
+      {FrameGraphWrite{
+          FrameGraphResourceRef::colorAttachment(StringID("hdr.color"))}}});
 
   const auto compiled = graph.compile(GraphResourceRegistry::makeDefault());
   EXPECT(!compiled.isValid(), "compile should reject self-produced read");
@@ -636,12 +623,12 @@ void testFrameGraphCompileAllowsReadModifyWriteWithEarlierProducer() {
       std::string{"blend"}};
 
   FrameGraph graph;
-  graph.addPass(FramePass{
-      StringID("OpaqueBase"),
-      RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
-      {},
-      {FrameGraphRead::sampled(StringID("camera.ubo"))},
-      {blendHdr}});
+  graph.addPass(
+      FramePass{StringID("OpaqueBase"),
+                RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
+                {},
+                {FrameGraphRead::sampled(StringID("camera.ubo"))},
+                {blendHdr}});
   graph.addPass(FramePass{
       StringID("TransparentBlend"),
       RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
@@ -664,13 +651,13 @@ void testFrameGraphCompileAllowsReadModifyWriteWithEarlierProducer() {
 
 void testFrameGraphCompileRejectsImportedWriteTarget() {
   FrameGraph graph;
-  graph.addPass(FramePass{
-      StringID("BadImportedWriter"),
-      RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
-      {},
-      {},
-      {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
-          StringID("camera.ubo"))}}});
+  graph.addPass(
+      FramePass{StringID("BadImportedWriter"),
+                RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
+                {},
+                {},
+                {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
+                    StringID("camera.ubo"))}}});
 
   const auto compiled = graph.compile(GraphResourceRegistry::makeDefault());
   EXPECT(!compiled.isValid(), "compile should reject imported write target");
@@ -685,14 +672,14 @@ void testFrameGraphCompileRejectsImportedWriteTarget() {
 
 void testFrameGraphCompileRejectsInvalidWriteMode() {
   FrameGraph graph;
-  graph.addPass(FramePass{
-      StringID("BadWriteMode"),
-      RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
-      {},
-      {},
-      {FrameGraphWrite{
-          FrameGraphResourceRef::colorAttachment(StringID("hdr.color")),
-          std::string{"overwrite-plus"}}}});
+  graph.addPass(
+      FramePass{StringID("BadWriteMode"),
+                RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
+                {},
+                {},
+                {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
+                                     StringID("hdr.color")),
+                                 std::string{"overwrite-plus"}}}});
 
   const auto compiled = graph.compile(GraphResourceRegistry::makeDefault());
   EXPECT(!compiled.isValid(), "compile should reject invalid writeMode");
@@ -707,25 +694,26 @@ void testFrameGraphCompileRejectsInvalidWriteMode() {
 
 void testFrameGraphCompileRejectsMixedDuplicateWriteMode() {
   FrameGraph graph;
-  graph.addPass(FramePass{
-      StringID("BlendWriter"),
-      RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
-      {},
-      {},
-      {FrameGraphWrite{
-          FrameGraphResourceRef::colorAttachment(StringID("hdr.color")),
-          std::string{"blend"}}}});
-  graph.addPass(FramePass{
-      StringID("AppendWriter"),
-      RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
-      {},
-      {},
-      {FrameGraphWrite{
-          FrameGraphResourceRef::colorAttachment(StringID("hdr.color")),
-          std::string{"append"}}}});
+  graph.addPass(
+      FramePass{StringID("BlendWriter"),
+                RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
+                {},
+                {},
+                {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
+                                     StringID("hdr.color")),
+                                 std::string{"blend"}}}});
+  graph.addPass(
+      FramePass{StringID("AppendWriter"),
+                RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
+                {},
+                {},
+                {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
+                                     StringID("hdr.color")),
+                                 std::string{"append"}}}});
 
   const auto compiled = graph.compile(GraphResourceRegistry::makeDefault());
-  EXPECT(!compiled.isValid(), "compile should reject mixed duplicate writeMode");
+  EXPECT(!compiled.isValid(),
+         "compile should reject mixed duplicate writeMode");
   const std::string errors = compiled.errorText();
   EXPECT(errors.find("AppendWriter") != std::string::npos,
          "error should include second writer pass name");
@@ -741,12 +729,12 @@ void testFrameGraphCompileRejectsSamePassDuplicateTarget() {
       std::string{"blend"}};
 
   FrameGraph graph;
-  graph.addPass(FramePass{StringID("DuplicateInOnePass"),
-                          RenderTargetDesc::offscreenColor(
-                              ImageFormat::RGBA16Float),
-                          {},
-                          {},
-                          {blendHdr, blendHdr}});
+  graph.addPass(
+      FramePass{StringID("DuplicateInOnePass"),
+                RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
+                {},
+                {},
+                {blendHdr, blendHdr}});
 
   const auto compiled = graph.compile(GraphResourceRegistry::makeDefault());
   EXPECT(!compiled.isValid(),
@@ -766,19 +754,17 @@ void testFrameGraphCompileOrdersLegalDuplicateWritersByStableOrder() {
                  RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
                  {},
                  {},
-                 {FrameGraphWrite{
-                     FrameGraphResourceRef::colorAttachment(
-                         StringID("hdr.color")),
-                     std::string{"blend"}}}};
+                 {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
+                                      StringID("hdr.color")),
+                                  std::string{"blend"}}}};
   late.stableOrder = 20;
   FramePass early{StringID("EarlyBlend"),
                   RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
                   {},
                   {},
-                  {FrameGraphWrite{
-                      FrameGraphResourceRef::colorAttachment(
-                          StringID("hdr.color")),
-                      std::string{"blend"}}}};
+                  {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
+                                       StringID("hdr.color")),
+                                   std::string{"blend"}}}};
   early.stableOrder = 10;
 
   graph.addPass(late);
@@ -803,25 +789,25 @@ void testFrameGraphCompileReaderWaitsForAllLegalDuplicateWriters() {
       std::string{"blend"}};
 
   FrameGraph graph;
-  graph.addPass(FramePass{
-      StringID("BaseHdr"),
-      RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
-      {},
-      {},
-      {blendHdr}});
+  graph.addPass(
+      FramePass{StringID("BaseHdr"),
+                RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
+                {},
+                {},
+                {blendHdr}});
   graph.addPass(FramePass{
       StringID("Composite"),
       RenderTargetDesc::offscreenColor(ImageFormat::RGBA8),
       {},
       {FrameGraphRead::sampled(StringID("hdr.color"), StringID("SceneColor"))},
-      {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
-          StringID("ldr.color"))}}});
-  graph.addPass(FramePass{
-      StringID("ExtraHdr"),
-      RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
-      {},
-      {},
-      {blendHdr}});
+      {FrameGraphWrite{
+          FrameGraphResourceRef::colorAttachment(StringID("ldr.color"))}}});
+  graph.addPass(
+      FramePass{StringID("ExtraHdr"),
+                RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
+                {},
+                {},
+                {blendHdr}});
 
   const auto compiled = graph.compile(GraphResourceRegistry::makeDefault());
   EXPECT(compiled.isValid(), compiled.errorText());
@@ -842,14 +828,14 @@ void testFrameGraphCompileRejectsKnownSourceWithoutProducer() {
   registry.registerResource("custom.unwritten");
 
   FrameGraph graph;
-  graph.addPass(FramePass{
-      StringID("KnownMissingSource"),
-      RenderTargetDesc::offscreenColor(ImageFormat::RGBA8),
-      {},
-      {FrameGraphRead::sampled(StringID("custom.unwritten"),
-                               StringID("MissingInput"))},
-      {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
-          StringID("ldr.color"))}}});
+  graph.addPass(
+      FramePass{StringID("KnownMissingSource"),
+                RenderTargetDesc::offscreenColor(ImageFormat::RGBA8),
+                {},
+                {FrameGraphRead::sampled(StringID("custom.unwritten"),
+                                         StringID("MissingInput"))},
+                {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
+                    StringID("ldr.color"))}}});
 
   const auto compiled = graph.compile(registry);
   EXPECT(!compiled.isValid(),
@@ -865,13 +851,13 @@ void testFrameGraphCompileRejectsKnownSourceWithoutProducer() {
 
 void testFrameGraphCompileReportsUnknownSource() {
   FrameGraph graph;
-  graph.addPass(FramePass{
-      StringID("UnknownSource"),
-      RenderTargetDesc::offscreenColor(ImageFormat::RGBA8),
-      {},
-      {FrameGraphRead::sampled(StringID("freeform.input"))},
-      {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
-          StringID("ldr.color"))}}});
+  graph.addPass(
+      FramePass{StringID("UnknownSource"),
+                RenderTargetDesc::offscreenColor(ImageFormat::RGBA8),
+                {},
+                {FrameGraphRead::sampled(StringID("freeform.input"))},
+                {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
+                    StringID("ldr.color"))}}});
 
   const auto compiled = graph.compile(GraphResourceRegistry::makeDefault());
   EXPECT(!compiled.isValid(), "compile should reject unknown source");
@@ -886,13 +872,13 @@ void testFrameGraphCompileReportsUnknownSource() {
 
 void testFrameGraphCompileReportsUnknownTarget() {
   FrameGraph graph;
-  graph.addPass(FramePass{
-      StringID("UnknownTarget"),
-      RenderTargetDesc::offscreenColor(ImageFormat::RGBA8),
-      {},
-      {},
-      {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
-          StringID("freeform.output"))}}});
+  graph.addPass(
+      FramePass{StringID("UnknownTarget"),
+                RenderTargetDesc::offscreenColor(ImageFormat::RGBA8),
+                {},
+                {},
+                {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
+                    StringID("freeform.output"))}}});
 
   const auto compiled = graph.compile(GraphResourceRegistry::makeDefault());
   EXPECT(!compiled.isValid(), "compile should reject unknown target");
@@ -907,23 +893,24 @@ void testFrameGraphCompileReportsUnknownTarget() {
 
 void testFrameGraphCompileReportsResourceCycle() {
   FrameGraph graph;
-  graph.addPass(FramePass{
-      StringID("ReadLdrWriteHdr"),
-      RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
-      {},
-      {FrameGraphRead::sampled(StringID("ldr.color"))},
-      {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
-          StringID("hdr.color"))}}});
-  graph.addPass(FramePass{
-      StringID("ReadHdrWriteLdr"),
-      RenderTargetDesc::offscreenColor(ImageFormat::RGBA8),
-      {},
-      {FrameGraphRead::sampled(StringID("hdr.color"))},
-      {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
-          StringID("ldr.color"))}}});
+  graph.addPass(
+      FramePass{StringID("ReadLdrWriteHdr"),
+                RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
+                {},
+                {FrameGraphRead::sampled(StringID("ldr.color"))},
+                {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
+                    StringID("hdr.color"))}}});
+  graph.addPass(
+      FramePass{StringID("ReadHdrWriteLdr"),
+                RenderTargetDesc::offscreenColor(ImageFormat::RGBA8),
+                {},
+                {FrameGraphRead::sampled(StringID("hdr.color"))},
+                {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
+                    StringID("ldr.color"))}}});
 
   const auto compiled = graph.compile(GraphResourceRegistry::makeDefault());
-  EXPECT(!compiled.isValid(), "compile should reject resource dependency cycle");
+  EXPECT(!compiled.isValid(),
+         "compile should reject resource dependency cycle");
   const std::string errors = compiled.errorText();
   EXPECT(errors.find("cycle") != std::string::npos,
          "error should explain cycle");
@@ -941,13 +928,12 @@ void testFrameGraphCompileReportsReversePhaseDependencyCycle() {
                 {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
                     StringID("ldr.color"))}}};
   pre.phase = FrameGraphPhase::PreEffect;
-  FramePass material{
-      StringID("MaterialWritesHdr"),
-      RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
-      {},
-      {},
-      {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
-          StringID("hdr.color"))}}};
+  FramePass material{StringID("MaterialWritesHdr"),
+                     RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
+                     {},
+                     {},
+                     {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
+                         StringID("hdr.color"))}}};
   material.phase = FrameGraphPhase::Material;
 
   FrameGraph graph;
@@ -1036,155 +1022,14 @@ void testFrameGraphCompileOrdersSamePhaseAndStableOrderByOriginalIndex() {
          "later inserted pass should stay later when other keys tie");
 }
 
-void testFrameGraphBuildPlanCreatesPreMaterialPostContractPasses() {
-  const auto registry = GraphResourceRegistry::makeDefault();
-
-  MaterialTechnique shadowTechnique;
-  shadowTechnique.name = "ShadowTechnique";
-  shadowTechnique.passes.push_back(
-      makeContractPass("Shadow", {}, {"shadow.main"}));
-
-  MaterialTechnique materialTechnique;
-  materialTechnique.name = "ForwardTechnique";
-  materialTechnique.passes.push_back(makeContractPass(
-      "Forward",
-      {"shadow.main", "camera.ubo", "geometry.vertex", "material.bsdf"},
-      {"hdr.color"}));
-
-  MaterialTechnique toneMappingTechnique;
-  toneMappingTechnique.name = "ToneMappingTechnique";
-  toneMappingTechnique.passes.push_back(
-      makeContractPass("ToneMapping", {"hdr.color"}, {"swapchain.color"}));
-
-  FrameGraphBuildPlanInput input;
-  input.preEffects.push_back(FrameGraphEffectInput{shadowTechnique});
-  input.materialTechniques.push_back(
-      FrameGraphMaterialTechniqueInput{materialTechnique});
-  input.postEffects.push_back(FrameGraphEffectInput{toneMappingTechnique});
-
-  const FrameGraph graph =
-      buildFrameGraphFromSourceTargetContracts(input, registry);
-  const auto &declaredPasses = graph.getPasses();
-  EXPECT(declaredPasses.size() == 3,
-         "translated graph should keep three declared passes");
-  if (declaredPasses.size() == 3) {
-    EXPECT(declaredPasses[0].phase == FrameGraphPhase::PreEffect,
-           "pre effect input should translate to PreEffect phase");
-    EXPECT(declaredPasses[0].stableOrder == 0,
-           "pre effect should get first stable order");
-    EXPECT(declaredPasses[1].phase == FrameGraphPhase::Material,
-           "material input should translate to Material phase");
-    EXPECT(declaredPasses[1].stableOrder == 1,
-           "material pass stable order should follow pre effects");
-    EXPECT(declaredPasses[2].phase == FrameGraphPhase::PostEffect,
-           "post effect input should translate to PostEffect phase");
-    EXPECT(declaredPasses[2].stableOrder == 2,
-           "post effect stable order should follow material passes");
-  }
-  const auto compiled = graph.compile(registry);
-
-  EXPECT(compiled.isValid(), compiled.errorText());
-  const auto &passes = compiled.getPasses();
-  EXPECT(passes.size() == 3, "compiled graph should keep translated passes");
-  if (passes.size() == 3) {
-    EXPECT(passes[0].name == StringID("Shadow"),
-           "pre effect shadow pass should run first");
-    EXPECT(passes[0].writes.size() == 1 &&
-               passes[0].writes[0].resource.kind ==
-                   FrameGraphAttachmentKind::Depth,
-           "shadow.main target should translate to a depth attachment");
-    EXPECT(passes[1].name == StringID("Forward"),
-           "material pass should consume shadow and produce HDR");
-    EXPECT(passes[1].reads.size() == 4,
-           "material pass should translate all declared sources");
-    EXPECT(passes[1].writes.size() == 1 &&
-               passes[1].writes[0].resource.name == StringID("hdr.color"),
-           "material pass should write hdr.color");
-    EXPECT(passes[2].name == StringID("ToneMapping"),
-           "post effect should consume HDR and write swapchain");
-  }
-}
-
-void testFrameGraphBuildPlanPreservesWriteModeAndTargetKinds() {
-  const auto registry = GraphResourceRegistry::makeDefault();
-
-  MaterialTechnique materialTechnique;
-  materialTechnique.name = "TransparentTechnique";
-  auto pass = makeContractPass("TransparentForward", {"camera.ubo"},
-                               {"hdr.color", "depth.main"});
-  pass.writeMode = "blend";
-  materialTechnique.passes.push_back(std::move(pass));
-
-  FrameGraphBuildPlanInput input;
-  input.materialTechniques.push_back(
-      FrameGraphMaterialTechniqueInput{materialTechnique});
-
-  const FrameGraph graph =
-      buildFrameGraphFromSourceTargetContracts(input, registry);
-  const auto &passes = graph.getPasses();
-  EXPECT(passes.size() == 1, "translated graph should keep one pass");
-  if (passes.size() == 1) {
-    EXPECT(passes[0].phase == FrameGraphPhase::Material,
-           "material technique input should become a material phase pass");
-    EXPECT(passes[0].stableOrder == 0,
-           "single translated pass should have stableOrder zero");
-    EXPECT(passes[0].writes.size() == 2,
-           "translator should keep both declared targets");
-    if (passes[0].writes.size() == 2) {
-      EXPECT(passes[0].writes[0].resource.kind ==
-                 FrameGraphAttachmentKind::Color,
-             "hdr.color should translate to a color attachment");
-      EXPECT(passes[0].writes[0].writeMode.has_value() &&
-                 *passes[0].writes[0].writeMode == "blend",
-             "writeMode should propagate to color target");
-      EXPECT(passes[0].writes[1].resource.kind ==
-                 FrameGraphAttachmentKind::Depth,
-             "depth.main should translate to a depth attachment");
-      EXPECT(passes[0].writes[1].writeMode.has_value() &&
-                 *passes[0].writes[1].writeMode == "blend",
-             "writeMode should propagate to depth target");
-    }
-  }
-}
-
-void testFrameGraphBuildPlanLetsDagSortOutOfOrderTechniquePasses() {
-  const auto registry = GraphResourceRegistry::makeDefault();
-
-  MaterialTechnique materialTechnique;
-  materialTechnique.name = "OutOfOrderTechnique";
-  materialTechnique.passes.push_back(
-      makeContractPass("Exposure", {"hdr.color"}, {"ldr.color"}));
-  materialTechnique.passes.push_back(makeContractPass(
-      "Forward", {"camera.ubo", "geometry.vertex", "material.bsdf"},
-      {"hdr.color"}));
-
-  FrameGraphBuildPlanInput input;
-  input.materialTechniques.push_back(
-      FrameGraphMaterialTechniqueInput{materialTechnique});
-
-  const FrameGraph graph =
-      buildFrameGraphFromSourceTargetContracts(input, registry);
-  const auto compiled = graph.compile(registry);
-
-  EXPECT(compiled.isValid(), compiled.errorText());
-  const auto &passes = compiled.getPasses();
-  EXPECT(passes.size() == 2, "compiled graph should keep material passes");
-  if (passes.size() == 2) {
-    EXPECT(passes[0].name == StringID("Forward"),
-           "DAG compile should place hdr.color producer first");
-    EXPECT(passes[1].name == StringID("Exposure"),
-           "DAG compile should place hdr.color consumer second");
-  }
-}
-
 void testFrameGraphBuildPlanConsumesRenderPathGraph() {
   const auto registry = GraphResourceRegistry::makeDefault();
 
   RenderPathGraph graphAsset;
   graphAsset.name = "ForwardMain";
   graphAsset.renderPath = RenderPath::Forward;
-  graphAsset.features.push_back(
-      RenderPathFeatureDependency{"shadow", "effects/shadow.render-feature.yaml"});
+  graphAsset.features.push_back(RenderPathFeatureDependency{
+      "shadow", "effects/shadow.render-feature.yaml"});
   graphAsset.passes.push_back(
       makeRenderPassNode("ToneMap", {"hdr.color"}, {"swapchain.color"}));
   graphAsset.passes.push_back(makeRenderPassNode(
@@ -1224,7 +1069,7 @@ void testFrameGraphBuildPlanPreservesRenderPathGraphMetadata() {
   RenderPassNode node = makeRenderPassNode(
       "PostProcess", {"hdr.color", "feature.toneMapping"}, {"swapchain.color"});
   node.shaderUri = "post_process";
-  node.dispatch = MaterialPassDispatch::Fullscreen;
+  node.dispatch = RenderPassDispatch::Fullscreen;
   node.filters.renderClasses = {"fullscreen.post"};
   node.filters.bsdfTypes = {"none"};
   node.renderState.cullMode = CullMode::None;
@@ -1253,9 +1098,9 @@ void testFrameGraphBuildPlanPreservesRenderPathGraphMetadata() {
   const FramePass &pass = declaredPasses[1];
   EXPECT(pass.shaderUri == LX_core::ResourceUri("post_process"),
          "FramePass should preserve graph shader uri");
-  EXPECT(pass.stage == MaterialPassStage::Raster,
+  EXPECT(pass.stage == RenderPassStage::Raster,
          "FramePass should preserve graph stage");
-  EXPECT(pass.dispatch == MaterialPassDispatch::Fullscreen,
+  EXPECT(pass.dispatch == RenderPassDispatch::Fullscreen,
          "FramePass should preserve graph dispatch");
   EXPECT(pass.filters.renderClasses.size() == 1 &&
              pass.filters.renderClasses[0] == "fullscreen.post",
@@ -1331,9 +1176,9 @@ void testDefaultForwardRenderPathGraphPassSetValidation() {
       makeRenderPassNode("TypoPass", {"hdr.color"}, {"swapchain.color"}));
   EXPECT(throwsInvalidArgument(
              [&] {
-               validateRenderPathGraphPassSet(
-                   unknown, {Pass_Forward, Pass_PostProcess},
-                   {Pass_Forward, Pass_PostProcess});
+               validateRenderPathGraphPassSet(unknown,
+                                              {Pass_Forward, Pass_PostProcess},
+                                              {Pass_Forward, Pass_PostProcess});
              },
              "unsupported pass"),
          "default forward graph should reject unknown pass ids");
@@ -1342,9 +1187,9 @@ void testDefaultForwardRenderPathGraphPassSetValidation() {
   missing.passes.erase(missing.passes.begin());
   EXPECT(throwsInvalidArgument(
              [&] {
-               validateRenderPathGraphPassSet(
-                   missing, {Pass_Forward, Pass_PostProcess},
-                   {Pass_Forward, Pass_PostProcess});
+               validateRenderPathGraphPassSet(missing,
+                                              {Pass_Forward, Pass_PostProcess},
+                                              {Pass_Forward, Pass_PostProcess});
              },
              "missing required pass"),
          "default forward graph should reject missing required pass ids");
@@ -1354,9 +1199,9 @@ void testDefaultForwardRenderPathGraphPassSetValidation() {
       makeRenderPassNode("Forward", {"scene.camera"}, {"hdr.color"}));
   EXPECT(throwsInvalidArgument(
              [&] {
-               validateRenderPathGraphPassSet(
-                   duplicate, {Pass_Forward, Pass_PostProcess},
-                   {Pass_Forward, Pass_PostProcess});
+               validateRenderPathGraphPassSet(duplicate,
+                                              {Pass_Forward, Pass_PostProcess},
+                                              {Pass_Forward, Pass_PostProcess});
              },
              "duplicate pass"),
          "default forward graph should reject duplicate pass ids");
@@ -1369,8 +1214,8 @@ void testDefaultRenderPathGraphOrderComesFromSourceTargetDag() {
   graphAsset.name = "DefaultForward";
   graphAsset.renderPath = RenderPath::Forward;
   graphAsset.passes.push_back(makeRenderPassNode(
-      GlobalStringTable::get().toDebugString(Pass_PostProcess),
-      {"hdr.color"}, {"swapchain.color"}));
+      GlobalStringTable::get().toDebugString(Pass_PostProcess), {"hdr.color"},
+      {"swapchain.color"}));
   graphAsset.passes.push_back(makeRenderPassNode(
       GlobalStringTable::get().toDebugString(Pass_Forward),
       {"camera.ubo", "geometry.vertex", "material.bsdf"}, {"hdr.color"}));
@@ -1400,6 +1245,59 @@ void testDefaultRenderPathGraphOrderComesFromSourceTargetDag() {
            "PostProcess should execute after its hdr.color source exists");
     EXPECT(passes[1].sourcePassIndex == 0,
            "compiled PostProcess should point back to its declared queue");
+  }
+}
+
+void testDeferredLightingReadsComeFromRenderPathGraphSources() {
+  const auto registry = GraphResourceRegistry::makeDefault();
+
+  RenderPathGraph graphAsset;
+  graphAsset.name = "DeferredMainFixture";
+  graphAsset.renderPath = RenderPath::Deferred;
+  graphAsset.passes.push_back(
+      makeRenderPassNode(GlobalStringTable::get().toDebugString(Pass_Deferred),
+                         {"scene.camera", "geometry.vertex", "material.bsdf"},
+                         {"gbuffer.emissive", "depth.main"}));
+  RenderPassNode lighting = makeRenderPassNode(
+      GlobalStringTable::get().toDebugString(Pass_DeferredLighting),
+      {"gbuffer.emissive", "depth.main"}, {"hdr.color"});
+  lighting.dispatch = RenderPassDispatch::Fullscreen;
+  graphAsset.passes.push_back(std::move(lighting));
+
+  const FrameGraph graph =
+      buildFrameGraphFromRenderPathGraph(graphAsset, registry);
+  const auto &declaredPasses = graph.getPasses();
+  EXPECT(declaredPasses.size() == 2,
+         "deferred fixture graph should keep both graph-declared passes");
+  if (declaredPasses.size() == 2) {
+    const FramePass &lightingPass = declaredPasses[1];
+    EXPECT(lightingPass.name == Pass_DeferredLighting,
+           "lighting pass should keep the graph pass identity");
+    EXPECT(lightingPass.reads.size() == 2,
+           "lighting pass should keep exactly the graph-declared sources");
+    if (lightingPass.reads.size() == 2) {
+      EXPECT(lightingPass.reads[0].resource == StringID("gbuffer.emissive"),
+             "changed DeferredLighting source should survive graph build");
+      EXPECT(lightingPass.reads[1].resource == StringID("depth.main"),
+             "depth source should survive graph build");
+    }
+  }
+
+  const auto compiled = graph.compile(registry);
+  EXPECT(compiled.isValid(), compiled.errorText());
+  const auto &passes = compiled.getPasses();
+  EXPECT(passes.size() == 2, "compiled deferred graph should keep both passes");
+  if (passes.size() == 2) {
+    const CompiledFrameGraphPass &lightingPass = passes[1];
+    EXPECT(lightingPass.name == Pass_DeferredLighting,
+           "DeferredLighting should execute after its G-buffer producer");
+    EXPECT(lightingPass.reads.size() == 2,
+           "compiled DeferredLighting reads should still come from graph "
+           "sources");
+    if (lightingPass.reads.size() == 2) {
+      EXPECT(lightingPass.reads[0].resource == StringID("gbuffer.emissive"),
+             "compiled graph must not replace the changed lighting source");
+    }
   }
 }
 
@@ -1616,8 +1514,7 @@ void testRenderTargetToDescUsesMutatedLegacyFields() {
 
 void testRenderTargetDescPreservesMultipleColorFormats() {
   auto gbuffer = RenderTargetDesc::offscreenColors(
-      {ImageFormat::RGBA16Float, ImageFormat::RGBA8},
-      ImageFormat::D32Float);
+      {ImageFormat::RGBA16Float, ImageFormat::RGBA8}, ImageFormat::D32Float);
 
   EXPECT(gbuffer.colorFormat == ImageFormat::RGBA16Float,
          "first color format remains the legacy colorFormat");
@@ -2099,17 +1996,18 @@ void testRenderUploadPlanCollectsRasterResourcesWithoutPushConstants() {
   item.raster.indexBuffer = GpuResourceRef{*indexBuffer};
 
   static const ShaderResourceBinding materialBinding{
-      .name = "MaterialUBO",
+      .name = "UploadPlanParams",
       .set = 0,
       .binding = 0,
       .type = ShaderPropertyType::UniformBuffer,
       .size = 16,
       .stageFlags = ShaderStage::Fragment,
   };
-  auto materialUbo = std::make_shared<ParameterBuffer>(StringID("MaterialUBO"),
-                                                       materialBinding);
-  item.descriptorResources.emplace_back(*materialUbo);
-  item.descriptorResources.emplace_back(*materialUbo);
+  auto uploadPlanParams =
+      std::make_shared<ParameterBuffer>(StringID("UploadPlanParams"),
+                                        materialBinding);
+  item.descriptorResources.emplace_back(*uploadPlanParams);
+  item.descriptorResources.emplace_back(*uploadPlanParams);
 
   RenderWorkQueue queue;
   queue.addItem(std::move(item));
@@ -2310,14 +2208,12 @@ int main() {
   testFrameGraphCompileOrdersIndependentPassesByPhase();
   testFrameGraphCompileOrdersSamePhaseByStableOrder();
   testFrameGraphCompileOrdersSamePhaseAndStableOrderByOriginalIndex();
-  testFrameGraphBuildPlanCreatesPreMaterialPostContractPasses();
-  testFrameGraphBuildPlanPreservesWriteModeAndTargetKinds();
-  testFrameGraphBuildPlanLetsDagSortOutOfOrderTechniquePasses();
   testFrameGraphBuildPlanConsumesRenderPathGraph();
   testFrameGraphBuildPlanPreservesRenderPathGraphMetadata();
   testFrameGraphBuildPlanRejectsIncompleteRenderPathPass();
   testDefaultForwardRenderPathGraphPassSetValidation();
   testDefaultRenderPathGraphOrderComesFromSourceTargetDag();
+  testDeferredLightingReadsComeFromRenderPathGraphSources();
   testDirectionalLightCascadeSplitsUpdateFromCamera();
   testDirectionalLightPendingDirectionUpdatesUboBeforeAttach();
   testDirectionalShadowDebugViewRecreatesCascadeMatrix();
