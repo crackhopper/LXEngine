@@ -206,6 +206,15 @@ class PbrtSceneConvertTest(unittest.TestCase):
                 / "runtime-pbr-approx"
                 / "LogoSilver.material"
             ).read_text(encoding="utf-8")
+            for material_path in sorted(
+                (out_root / "materials" / "runtime-pbr-approx").glob("*.material")
+            ):
+                material_text = material_path.read_text(encoding="utf-8")
+                self.assertIn(
+                    '"source": "assets://shaders/glsl/common/materials/',
+                    material_text,
+                    f"{material_path.name} should declare explicit bsdf.source",
+                )
             self.assertIn('"schema": "lxe.material.v2"', runtime_material_text)
             self.assertIn('"bsdf":', runtime_material_text)
             self.assertIn('"type": "metal"', runtime_material_text)

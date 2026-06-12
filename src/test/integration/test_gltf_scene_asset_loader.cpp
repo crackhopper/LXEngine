@@ -63,6 +63,10 @@ void testDamagedHelmetSharedAssetLoadsFullPbrWithoutParameterBuffers() {
 
   expect(result.material->getBsdfType() == "uber",
          "DamagedHelmet material should retain material v2 BSDF type");
+  expect(result.material->getMaterialSourceUri().string().find(
+             "uber.contract.glsl") != std::string::npos,
+         "DamagedHelmet generated material should declare explicit "
+         "bsdf.source");
   const auto kd = result.material->getMaterialEnvelope(LX_core::StringID("Kd"));
   expect(kd.has_value(), "DamagedHelmet material should retain Kd envelope");
   expect(kd.has_value() &&
