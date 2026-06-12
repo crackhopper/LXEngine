@@ -331,6 +331,7 @@ set(INFRA_LIB LX_Infra CACHE INTERNAL "Infra library name")
 set(INFRA_SOURCES
     build_info/build_info.cpp
     material_loader/generic_material_loader.cpp
+    material_loader/material_contract_reflector.cpp
     material_loader/material_resource_parser.cpp
     material_loader/pbrt_material_defaults.cpp
     resource_parsers/mesh_resource_parser.cpp
