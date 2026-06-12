@@ -4,6 +4,7 @@
 #include <array>
 #include <cstdlib>
 #include <iostream>
+#include <optional>
 
 namespace {
 
@@ -140,8 +141,50 @@ LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat
              result.reflection->declaredType == "matte",
          "contract should reflect declared type");
   EXPECT(result.reflection.has_value() &&
-             result.reflection->findParameter("metallic").has_value(),
-         "contract should reflect metallic parameter");
+             result.reflection->supportStatus ==
+                 LX_core::MaterialContractSupportStatus::Supported,
+         "contract should reflect support status");
+  EXPECT(result.reflection.has_value() &&
+             result.reflection->reflectionHash == "matte-reflect-v1",
+         "contract should reflect reflection hash");
+  EXPECT(result.reflection.has_value() &&
+             result.reflection->storageAbiHash == "matte-storage-v1",
+         "contract should reflect storage ABI hash");
+  EXPECT(result.reflection.has_value() &&
+             result.reflection->accessorAbiHash == "material-surface-v1",
+         "contract should reflect accessor ABI hash");
+
+  const auto kd = result.reflection.has_value()
+                      ? result.reflection->findParameter("Kd")
+                      : std::nullopt;
+  EXPECT(kd.has_value(), "contract should reflect Kd parameter");
+  EXPECT(kd.has_value() && kd->get().required,
+         "contract should reflect Kd required flag");
+  EXPECT(kd.has_value() && kd->get().allowedKinds.size() == 3,
+         "contract should reflect Kd kind count");
+  EXPECT(kd.has_value() && kd->get().allowedKinds.size() == 3 &&
+             kd->get().allowedKinds[0] ==
+                 LX_core::MaterialContractParameterKind::Rgb &&
+             kd->get().allowedKinds[1] ==
+                 LX_core::MaterialContractParameterKind::Texture &&
+             kd->get().allowedKinds[2] ==
+                 LX_core::MaterialContractParameterKind::Spectrum,
+         "contract should reflect Kd allowed kind order");
+
+  const auto metallic = result.reflection.has_value()
+                            ? result.reflection->findParameter("metallic")
+                            : std::nullopt;
+  EXPECT(metallic.has_value(), "contract should reflect metallic parameter");
+  EXPECT(metallic.has_value() && !metallic->get().required,
+         "contract should reflect metallic optional flag");
+  EXPECT(metallic.has_value() && metallic->get().allowedKinds.size() == 2,
+         "contract should reflect metallic kind count");
+  EXPECT(metallic.has_value() && metallic->get().allowedKinds.size() == 2 &&
+             metallic->get().allowedKinds[0] ==
+                 LX_core::MaterialContractParameterKind::Float &&
+             metallic->get().allowedKinds[1] ==
+                 LX_core::MaterialContractParameterKind::Texture,
+         "contract should reflect metallic allowed kind order");
 }
 
 void testReflectRejectsMissingAccessor() {
@@ -163,6 +206,48 @@ void testReflectRejectsMissingAccessor() {
          "missing accessor should reject reflection");
 }
 
+void testReflectRejectsBareMetadataLines() {
+  const std::string source = R"glsl(
+LX_MATERIAL_CONTRACT_BEGIN
+type: matte
+status: supported
+reflectionHash: matte-reflect-v1
+storageAbiHash: matte-storage-v1
+accessorAbiHash: material-surface-v1
+parameter: Kd required rgb texture
+LX_MATERIAL_CONTRACT_END
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+)glsl";
+  const auto result = LX_infra::reflectMaterialContractSource(
+      LX_core::ResourceUri("memory://materials/bare.contract.glsl"), source);
+  EXPECT(!result.diagnostics.empty(),
+         "bare metadata lines should not be accepted as contract metadata");
+  EXPECT(!result.reflection.has_value(),
+         "bare metadata lines should reject reflection");
+}
+
+void testReflectRejectsCommentedOutAccessor() {
+  const std::string source = R"glsl(
+// LX_MATERIAL_CONTRACT_BEGIN
+// type: matte
+// status: supported
+// reflectionHash: matte-reflect-v1
+// storageAbiHash: matte-storage-v1
+// accessorAbiHash: material-surface-v1
+// parameter: Kd required rgb texture
+// LX_MATERIAL_CONTRACT_END
+// LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+)glsl";
+  const auto result = LX_infra::reflectMaterialContractSource(
+      LX_core::ResourceUri(
+          "memory://materials/commented-accessor.contract.glsl"),
+      source);
+  EXPECT(!result.diagnostics.empty(),
+         "commented-out accessor should not satisfy Material Accessor ABI");
+  EXPECT(!result.reflection.has_value(),
+         "commented-out accessor should reject reflection");
+}
+
 } // namespace
 
 int main() {
@@ -173,5 +258,7 @@ int main() {
   testMaterialSignatureIncludesPassAndRenderState();
   testReflectsContractMetadataBlock();
   testReflectRejectsMissingAccessor();
+  testReflectRejectsBareMetadataLines();
+  testReflectRejectsCommentedOutAccessor();
   return g_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }

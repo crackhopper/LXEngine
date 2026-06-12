@@ -57,12 +57,82 @@ kindFromToken(const std::string &token) {
   return std::nullopt;
 }
 
-[[nodiscard]] std::string stripPrefix(std::string_view line) {
+[[nodiscard]] bool isIdentifierChar(char c) {
+  const auto ch = static_cast<unsigned char>(c);
+  return std::isalnum(ch) != 0 || c == '_';
+}
+
+[[nodiscard]] std::optional<std::string>
+commentMetadataLine(std::string_view line) {
   const std::string stripped = trim(line);
   if (stripped.rfind("//", 0) != 0) {
-    return stripped;
+    return std::nullopt;
   }
   return trim(std::string_view(stripped).substr(2));
+}
+
+[[nodiscard]] bool hasEntryPointDefinition(std::string_view sourceText,
+                                           std::string_view entryPoint) {
+  std::string code;
+  code.reserve(sourceText.size());
+
+  bool inBlockComment = false;
+  for (std::size_t i = 0; i < sourceText.size();) {
+    if (inBlockComment) {
+      if (i + 1 < sourceText.size() && sourceText[i] == '*' &&
+          sourceText[i + 1] == '/') {
+        inBlockComment = false;
+        code.append(2, ' ');
+        i += 2;
+      } else {
+        code.push_back(sourceText[i] == '\n' ? '\n' : ' ');
+        ++i;
+      }
+      continue;
+    }
+
+    if (i + 1 < sourceText.size() && sourceText[i] == '/' &&
+        sourceText[i + 1] == '/') {
+      code.append(2, ' ');
+      i += 2;
+      while (i < sourceText.size() && sourceText[i] != '\n') {
+        code.push_back(' ');
+        ++i;
+      }
+      continue;
+    }
+
+    if (i + 1 < sourceText.size() && sourceText[i] == '/' &&
+        sourceText[i + 1] == '*') {
+      inBlockComment = true;
+      code.append(2, ' ');
+      i += 2;
+      continue;
+    }
+
+    code.push_back(sourceText[i]);
+    ++i;
+  }
+
+  std::size_t pos = code.find(entryPoint);
+  while (pos != std::string::npos) {
+    const bool tokenStart = pos == 0 || !isIdentifierChar(code[pos - 1]);
+    const std::size_t afterToken = pos + entryPoint.size();
+    const bool tokenEnd =
+        afterToken >= code.size() || !isIdentifierChar(code[afterToken]);
+    if (tokenStart && tokenEnd) {
+      std::size_t next = afterToken;
+      while (next < code.size() &&
+             std::isspace(static_cast<unsigned char>(code[next])) != 0) {
+        ++next;
+      }
+      if (next < code.size() && code[next] == '(') {
+        return true;
+      }
+    }
+    pos = code.find(entryPoint, pos + 1);
+  }
+  return false;
 }
 
 } // namespace
@@ -79,7 +149,12 @@ reflectMaterialContractSource(const LX_core::ResourceUri &sourceUri,
   std::istringstream input{std::string(sourceText)};
   std::string line;
   while (std::getline(input, line)) {
-    const std::string stripped = stripPrefix(line);
+    const std::optional<std::string> maybeStripped = commentMetadataLine(line);
+    if (!maybeStripped.has_value()) {
+      continue;
+    }
+
+    const std::string &stripped = *maybeStripped;
     if (stripped == "LX_MATERIAL_CONTRACT_BEGIN") {
       inBlock = true;
       sawBlock = true;
@@ -173,7 +248,7 @@ reflectMaterialContractSource(const LX_core::ResourceUri &sourceUri,
     result.diagnostics.push_back(sourceUri.string() +
                                  ": missing reflection/storage/accessor hash");
   }
-  if (sourceText.find("lxLoadMaterialSurface") == std::string_view::npos) {
+  if (!hasEntryPointDefinition(sourceText, reflection.accessorAbi.entryPoint)) {
     result.diagnostics.push_back(sourceUri.string() +
                                  ": missing Material Accessor ABI entry");
   }
