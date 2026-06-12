@@ -18,6 +18,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_string_table
   test_tone_mapping
   test_material_instance
+  test_material_source_contract
   test_material_v2_parser
   test_material_v2_resource_dependencies
   test_material_v2_converter_defaults
