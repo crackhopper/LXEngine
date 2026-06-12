@@ -160,8 +160,8 @@ commentMetadataLine(std::string_view line) {
          (pos + 1 == stripped.size() || !isIdentifierChar(stripped[pos + 1]));
 }
 
-[[nodiscard]] bool hasExpectedReturnType(const std::string &code,
-                                         std::size_t entryPointPos) {
+[[nodiscard]] std::optional<std::size_t>
+expectedReturnTypeBegin(const std::string &code, std::size_t entryPointPos) {
   std::size_t end = entryPointPos;
   while (end > 0 &&
          std::isspace(static_cast<unsigned char>(code[end - 1])) != 0) {
@@ -173,7 +173,7 @@ commentMetadataLine(std::string_view line) {
     --begin;
   }
   if (code.substr(begin, end - begin) != "LxMaterialSurface") {
-    return false;
+    return std::nullopt;
   }
 
   std::size_t prefixEnd = begin;
@@ -181,8 +181,11 @@ commentMetadataLine(std::string_view line) {
          std::isspace(static_cast<unsigned char>(code[prefixEnd - 1])) != 0) {
     --prefixEnd;
   }
-  return prefixEnd == 0 || code[prefixEnd - 1] == '}' ||
-         code[prefixEnd - 1] == ';';
+  if (prefixEnd != 0 && code[prefixEnd - 1] != '}' &&
+      code[prefixEnd - 1] != ';') {
+    return std::nullopt;
+  }
+  return begin;
 }
 
 [[nodiscard]] bool hasExpectedParameter(std::string_view parameter,
@@ -248,6 +251,18 @@ commentMetadataLine(std::string_view line) {
                                            std::string_view entryPoint) {
   std::string code;
   code.reserve(sourceText.size());
+  std::string commentMask;
+  commentMask.reserve(sourceText.size());
+
+  const auto appendCode = [&code, &commentMask](char c, bool isComment) {
+    code.push_back(c);
+    commentMask.push_back(isComment ? '1' : '0');
+  };
+  const auto appendCodeCount = [&code, &commentMask](std::size_t count, char c,
+                                                     bool isComment) {
+    code.append(count, c);
+    commentMask.append(count, isComment ? '1' : '0');
+  };
 
   bool inBlockComment = false;
   int disabledPreprocessorDepth = 0;
@@ -256,10 +271,10 @@ commentMetadataLine(std::string_view line) {
       if (i + 1 < sourceText.size() && sourceText[i] == '*' &&
           sourceText[i + 1] == '/') {
         inBlockComment = false;
-        code.append(2, ' ');
+        appendCodeCount(2, ' ', true);
         i += 2;
       } else {
-        code.push_back(sourceText[i] == '\n' ? '\n' : ' ');
+        appendCode(sourceText[i] == '\n' ? '\n' : ' ', true);
         ++i;
       }
       continue;
@@ -267,10 +282,10 @@ commentMetadataLine(std::string_view line) {
 
     if (i + 1 < sourceText.size() && sourceText[i] == '/' &&
         sourceText[i + 1] == '/') {
-      code.append(2, ' ');
+      appendCodeCount(2, ' ', true);
       i += 2;
       while (i < sourceText.size() && sourceText[i] != '\n') {
-        code.push_back(' ');
+        appendCode(' ', true);
         ++i;
       }
       continue;
@@ -279,7 +294,7 @@ commentMetadataLine(std::string_view line) {
     if (i + 1 < sourceText.size() && sourceText[i] == '/' &&
         sourceText[i + 1] == '*') {
       inBlockComment = true;
-      code.append(2, ' ');
+      appendCodeCount(2, ' ', true);
       i += 2;
       continue;
     }
@@ -304,19 +319,19 @@ commentMetadataLine(std::string_view line) {
           std::string line;
           while (i < sourceText.size() && sourceText[i] != '\n') {
             line.push_back(sourceText[i]);
-            code.push_back(' ');
+            appendCode(' ', false);
             ++i;
           }
           directiveText += line;
           continuedDirective = lineContinuesPreprocessorDirective(line);
           if (i < sourceText.size() && sourceText[i] == '\n') {
-            code.push_back('\n');
+            appendCode('\n', false);
             ++i;
           }
           while (continuedDirective && i < sourceText.size() &&
                  std::isspace(static_cast<unsigned char>(sourceText[i])) != 0 &&
                  sourceText[i] != '\n') {
-            code.push_back(' ');
+            appendCode(' ', false);
             ++i;
           }
         } while (continuedDirective && i < sourceText.size());
@@ -337,12 +352,12 @@ commentMetadataLine(std::string_view line) {
     }
 
     if (disabledPreprocessorDepth > 0) {
-      code.push_back(sourceText[i] == '\n' ? '\n' : ' ');
+      appendCode(sourceText[i] == '\n' ? '\n' : ' ', false);
       ++i;
       continue;
     }
 
-    code.push_back(sourceText[i]);
+    appendCode(sourceText[i], false);
     ++i;
   }
 
@@ -352,7 +367,9 @@ commentMetadataLine(std::string_view line) {
     const std::size_t afterToken = pos + entryPoint.size();
     const bool tokenEnd =
         afterToken >= code.size() || !isIdentifierChar(code[afterToken]);
-    if (tokenStart && tokenEnd && hasExpectedReturnType(code, pos)) {
+    const std::optional<std::size_t> returnBegin =
+        expectedReturnTypeBegin(code, pos);
+    if (tokenStart && tokenEnd && returnBegin.has_value()) {
       std::size_t next = afterToken;
       while (next < code.size() &&
              std::isspace(static_cast<unsigned char>(code[next])) != 0) {
@@ -372,6 +389,11 @@ commentMetadataLine(std::string_view line) {
         }
         if (depth == 0) {
           const std::size_t parameterEnd = next - 1;
+          const std::size_t firstComment = commentMask.find('1', *returnBegin);
+          if (firstComment != std::string::npos && firstComment < next) {
+            pos = code.find(entryPoint, pos + 1);
+            continue;
+          }
           if (!hasExpectedParameterTypes(std::string_view(code).substr(
                   parameterBegin, parameterEnd - parameterBegin))) {
             pos = code.find(entryPoint, pos + 1);
