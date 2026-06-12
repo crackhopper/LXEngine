@@ -110,6 +110,29 @@ commentMetadataLine(std::string_view line) {
       continue;
     }
 
+    if (sourceText[i] == '#') {
+      const std::size_t lineStart = code.find_last_of('\n');
+      const std::size_t firstOnLine =
+          lineStart == std::string::npos ? 0 : lineStart + 1;
+      bool onlyWhitespaceBeforeHash = true;
+      for (std::size_t j = firstOnLine; j < code.size(); ++j) {
+        if (std::isspace(static_cast<unsigned char>(code[j])) == 0) {
+          onlyWhitespaceBeforeHash = false;
+          break;
+        }
+      }
+
+      if (onlyWhitespaceBeforeHash) {
+        code.push_back(' ');
+        ++i;
+        while (i < sourceText.size() && sourceText[i] != '\n') {
+          code.push_back(' ');
+          ++i;
+        }
+        continue;
+      }
+    }
+
     code.push_back(sourceText[i]);
     ++i;
   }
