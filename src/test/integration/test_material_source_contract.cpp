@@ -188,6 +188,31 @@ LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat
          "contract should reflect metallic allowed kind order");
 }
 
+void testReflectsAccessorWithBodyComment() {
+  const std::string source = R"glsl(
+// LX_MATERIAL_CONTRACT_BEGIN
+// type: matte
+// status: supported
+// reflectionHash: matte-reflect-v1
+// storageAbiHash: matte-storage-v1
+// accessorAbiHash: material-surface-v1
+// parameter: Kd required rgb texture
+// LX_MATERIAL_CONTRACT_END
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) {
+  /* body comment */
+  LxMaterialSurface surface;
+  return surface;
+}
+)glsl";
+  const auto result = LX_infra::reflectMaterialContractSource(
+      LX_core::ResourceUri("memory://materials/body-comment.contract.glsl"),
+      source);
+  EXPECT(result.diagnostics.empty(),
+         "function body comments should not affect accessor detection");
+  EXPECT(result.reflection.has_value(),
+         "function body comments should still reflect a contract");
+}
+
 void testReflectRejectsMissingAccessor() {
   const std::string source = R"glsl(
 // LX_MATERIAL_CONTRACT_BEGIN
@@ -1019,6 +1044,7 @@ int main() {
   testSourceSignatureIncludesStorageAndAccessorAbi();
   testMaterialSignatureIncludesPassAndRenderState();
   testReflectsContractMetadataBlock();
+  testReflectsAccessorWithBodyComment();
   testReflectRejectsMissingAccessor();
   testReflectRejectsMissingStatus();
   testReflectRejectsDuplicateTypeMetadata();
