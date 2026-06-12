@@ -5,7 +5,6 @@
 #include "core/rhi/vertex_buffer.hpp"
 #include "core/utils/filesystem_tools.hpp"
 #include "infra/material_loader/generic_material_loader.hpp"
-#include "infra/material_loader/material_contract_reflector.hpp"
 #include "infra/mesh_loader/gltf_mesh_loader.hpp"
 #include "infra/texture_loader/texture_loader.hpp"
 
@@ -176,25 +175,7 @@ buildMeshFromGltf(const infra::GLTFLoader &loader) {
   return result;
 }
 
-[[nodiscard]] bool contractAllowsTextureParameter(
-    const LX_core::MaterialContractReflection *contract,
-    const char *parameterName) {
-  if (contract == nullptr) {
-    return false;
-  }
-  const auto parameter = contract->findParameter(parameterName);
-  if (!parameter.has_value()) {
-    return false;
-  }
-  return std::find(parameter->get().allowedKinds.begin(),
-                   parameter->get().allowedKinds.end(),
-                   LX_core::MaterialContractParameterKind::Texture) !=
-         parameter->get().allowedKinds.end();
-}
-
 void bindV2TextureEnvelopeIfPresent(MaterialInstanceSharedPtr &material,
-                                    const LX_core::MaterialContractReflection
-                                        *contract,
                                     const std::filesystem::path &gltfDir,
                                     const std::string &uri,
                                     const char *parameterName,
@@ -202,7 +183,7 @@ void bindV2TextureEnvelopeIfPresent(MaterialInstanceSharedPtr &material,
   if (uri.empty()) {
     return;
   }
-  if (!contractAllowsTextureParameter(contract, parameterName)) {
+  if (!gltfMaterialAllowsTextureParameter(*material, parameterName)) {
     return;
   }
 
@@ -233,21 +214,12 @@ void bindV2TextureEnvelopeIfPresent(MaterialInstanceSharedPtr &material,
                              materialUri.string());
   }
 
-  const auto contractReflection = material->getMaterialContractReflection();
-  if (!contractReflection.has_value()) {
-    throw std::runtime_error(
-        "glTF material binding requires reflected material contract for: " +
-        materialUri.string());
-  }
-  const LX_core::MaterialContractReflection *contract =
-      &contractReflection->get();
-
   bindV2TextureEnvelopeIfPresent(
-      material, contract, gltfDir, pbr.baseColorTexture, "Kd",
+      material, gltfDir, pbr.baseColorTexture, "Kd",
       LX_core::MaterialEnvelopeValueType::Rgb);
   if (normalMapEnabled) {
     bindV2TextureEnvelopeIfPresent(
-        material, contract, gltfDir, pbr.normalTexture, "normalmap",
+        material, gltfDir, pbr.normalTexture, "normalmap",
         LX_core::MaterialEnvelopeValueType::Rgb);
   }
 
@@ -256,6 +228,23 @@ void bindV2TextureEnvelopeIfPresent(MaterialInstanceSharedPtr &material,
 }
 
 } // namespace
+
+bool gltfMaterialAllowsTextureParameter(
+    const LX_core::MaterialInstance &material, const char *parameterName) {
+  const auto contract = material.getMaterialContractReflection();
+  if (!contract.has_value()) {
+    throw std::runtime_error(
+        "glTF material binding requires reflected material contract");
+  }
+  const auto parameter = contract->get().findParameter(parameterName);
+  if (!parameter.has_value()) {
+    return false;
+  }
+  return std::find(parameter->get().allowedKinds.begin(),
+                   parameter->get().allowedKinds.end(),
+                   LX_core::MaterialContractParameterKind::Texture) !=
+         parameter->get().allowedKinds.end();
+}
 
 GltfMeshAssetLoadResult
 loadGltfMeshAsset(const std::filesystem::path &gltfPath) {
