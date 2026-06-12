@@ -46,6 +46,14 @@ constexpr u32 LeafNodeFlag = 0x80000000u;
     }                                                                          \
   } while (0)
 
+ShaderVariant materialContractSourceVariant() {
+  return ShaderVariant{
+      .macroName = "LX_MATERIAL_CONTRACT_SOURCE",
+      .enabled = true,
+      .macroValue = "\"common/materials/uber.contract.glsl\"",
+  };
+}
+
 struct TestVertex final {
   Vec3f pos{};
 
@@ -293,7 +301,8 @@ void testOfflineShaderUsesUnifiedSceneBuffers() {
     return;
   }
 
-  const auto compileResult = LX_infra::ShaderCompiler::compileFile(shaderPath);
+  const auto compileResult = LX_infra::ShaderCompiler::compileFile(
+      shaderPath, {materialContractSourceVariant()});
   EXPECT(compileResult.success,
          "offline shader should compile before reflection");
   if (!compileResult.success) {
@@ -340,7 +349,8 @@ void testOfflinePbrDirectShaderCompiles() {
     return;
   }
 
-  const auto compileResult = LX_infra::ShaderCompiler::compileFile(shaderPath);
+  const auto compileResult = LX_infra::ShaderCompiler::compileFile(
+      shaderPath, {materialContractSourceVariant()});
   EXPECT(compileResult.success,
          "offline PBR direct shader should compile before reflection");
   if (!compileResult.success) {
@@ -350,24 +360,8 @@ void testOfflinePbrDirectShaderCompiles() {
 
   const auto bindings =
       LX_infra::ShaderReflector::reflect(compileResult.stages);
-  EXPECT(hasStorageBuffer(bindings, "SceneMaterials"),
-         "offline PBR shader should read SceneMaterials");
   EXPECT(hasStorageBuffer(bindings, "OutputPixels"),
          "offline PBR shader should write OutputPixels");
-
-  const ShaderResourceBinding *sceneTextures =
-      findBinding(bindings, "SceneTextures");
-  EXPECT(sceneTextures != nullptr,
-         "offline PBR shader should expose SceneTextures descriptor array");
-  if (sceneTextures != nullptr) {
-    EXPECT(sceneTextures->set == 0 && sceneTextures->binding == 11,
-           "SceneTextures should use set 0 binding 11 after bindless "
-           "geometry buffers");
-    EXPECT(sceneTextures->type == ShaderPropertyType::Texture2D,
-           "SceneTextures should reflect as a combined texture2D sampler");
-    EXPECT(sceneTextures->descriptorCount == 256,
-           "SceneTextures should reserve 256 sampled texture descriptors");
-  }
 }
 
 void testOfflinePbrEmissiveTextureMatchesRealtimeSemantics() {
@@ -382,23 +376,19 @@ void testOfflinePbrEmissiveTextureMatchesRealtimeSemantics() {
   const std::string shaderSource = readTextFile(shaderPath);
   EXPECT(!shaderSource.empty(),
          "offline PBR shader source should be readable for semantic test");
-  EXPECT(shaderSource.find(
-             "pbrInput.emissive =\n        sampleSceneTexture(material."
-             "emissiveTexture, hit.uv).rgb;") != std::string::npos,
-         "offline PBR emissive texture should use texture RGB directly to "
-         "match realtime semantics");
-  EXPECT(shaderSource.find("pbrInput.emissive *=\n        "
-                           "sampleSceneTexture(material.emissiveTexture") ==
+  EXPECT(shaderSource.find("pbrInput.emissive = max(surface.emissive") !=
              std::string::npos,
-         "offline PBR emissive texture should not multiply the default zero "
-         "emissive factor");
+         "offline PBR emissive should come from the material accessor surface");
+  EXPECT(shaderSource.find("material.emissiveTexture") == std::string::npos,
+         "offline PBR shader should not directly read legacy emissive texture "
+         "fields");
 }
 
-void testOfflinePbrTextureArrayUsesNonUniformIndexing() {
+void testOfflinePbrDirectShaderDefersTexturesToAccessor() {
   const auto shaderPath =
       findOfflineShaderSourcePath("offline_pbr_direct_ray.comp");
   EXPECT(!shaderPath.empty(),
-         "offline PBR shader source should be discoverable for indexing test");
+         "offline PBR shader source should be discoverable for accessor test");
   if (shaderPath.empty()) {
     return;
   }
@@ -406,9 +396,13 @@ void testOfflinePbrTextureArrayUsesNonUniformIndexing() {
   const std::string shaderSource = readTextFile(shaderPath);
   EXPECT(shaderSource.find("GL_EXT_nonuniform_qualifier") != std::string::npos,
          "offline PBR shader should enable nonuniform qualifier extension");
-  EXPECT(shaderSource.find("SceneTextures[nonuniformEXT(textureIndex)]") !=
+  EXPECT(shaderSource.find("lxLoadMaterialSurface") != std::string::npos,
+         "offline PBR shader should obtain texture-backed fields through the "
+         "material accessor");
+  EXPECT(shaderSource.find("SceneTextures[nonuniformEXT(textureIndex)]") ==
              std::string::npos,
-         "offline PBR shader should mark material texture indices nonuniform");
+         "offline PBR pass shader should not directly index legacy material "
+         "textures");
 }
 
 void testOfflinePbrDoesNotFlipBackFaceNormals() {
@@ -445,8 +439,7 @@ void testOfflinePrimaryDoesNotFlipBackFaceNormals() {
 }
 
 void testOfflineShadersCullHitsFromMaterialCullMode() {
-  const std::array shaderNames{"offline_pbr_direct_ray.comp",
-                               "offline_primary_ray.comp"};
+  const std::array shaderNames{"offline_primary_ray.comp"};
   for (const auto *shaderName : shaderNames) {
     const auto shaderPath = findOfflineShaderSourcePath(shaderName);
     EXPECT(!shaderPath.empty(),
@@ -491,7 +484,7 @@ void testOfflinePbrReadsTangentSignFromUploadAbiField() {
          "uvTangentSign fields");
 }
 
-void testOfflinePbrDirectShaderUsesEveryMaterialInput() {
+void testOfflinePbrDirectShaderUsesMaterialAccessorSurface() {
   const auto shaderPath =
       findOfflineShaderSourcePath("offline_pbr_direct_ray.comp");
   EXPECT(!shaderPath.empty(),
@@ -503,55 +496,41 @@ void testOfflinePbrDirectShaderUsesEveryMaterialInput() {
   const std::string shaderSource = readTextFile(shaderPath);
   EXPECT(!shaderSource.empty(),
          "offline PBR shader source should be readable for input test");
-  EXPECT(shaderSource.find("vec3 baseColor = material.baseColor.rgb") !=
+  EXPECT(shaderSource.find("#include \"common/material_surface.glsl\"") !=
              std::string::npos,
-         "offline PBR shader should start albedo from scalar baseColorFactor");
-  EXPECT(shaderSource.find("material.baseColorTexture") != std::string::npos &&
-             shaderSource.find("baseColor *= sampleSceneTexture") !=
-                 std::string::npos,
-         "offline PBR shader should multiply albedo by baseColor texture");
-  EXPECT(shaderSource.find("pbrInput.metallic = clamp(material.pbrParams.x") !=
+         "offline PBR shader should include the material surface ABI");
+  EXPECT(shaderSource.find("#include LX_MATERIAL_CONTRACT_SOURCE") !=
              std::string::npos,
-         "offline PBR shader should use metallic scalar factor");
-  EXPECT(shaderSource.find("pbrInput.roughness = clamp(material.pbrParams.y") !=
+         "offline PBR shader should expose the material contract source hook");
+  EXPECT(shaderSource.find("lxLoadMaterialSurface(materialIndex") !=
              std::string::npos,
-         "offline PBR shader should use roughness scalar factor");
-  EXPECT(shaderSource.find("material.metallicRoughnessTexture") !=
-                 std::string::npos &&
-             shaderSource.find("mr.b") != std::string::npos &&
-             shaderSource.find("mr.g") != std::string::npos,
-         "offline PBR shader should read metallic/roughness from B/G texture "
-         "channels");
-  EXPECT(shaderSource.find("pbrInput.ao = clamp(material.pbrParams.w") !=
+         "offline PBR shader should call the material accessor");
+  EXPECT(shaderSource.find("vec3 baseColor = max(surface.baseColor") !=
              std::string::npos,
-         "offline PBR shader should use AO scalar factor");
-  EXPECT(shaderSource.find("vec4 clearcoatParams") != std::string::npos,
-         "offline PBR shader material record should carry clearcoat params");
-  EXPECT(shaderSource.find("material.clearcoatParams.x") != std::string::npos &&
-             shaderSource.find("material.clearcoatParams.y") !=
-                 std::string::npos,
-         "offline PBR shader should read clearcoat factor and roughness");
+         "offline PBR shader should read base color from accessor surface");
+  EXPECT(shaderSource.find("pbrInput.metallic = clamp(surface.metallic") !=
+             std::string::npos,
+         "offline PBR shader should read metallic from accessor surface");
+  EXPECT(shaderSource.find("pbrInput.roughness = clamp(surface.roughness") !=
+             std::string::npos,
+         "offline PBR shader should read roughness from accessor surface");
+  EXPECT(shaderSource.find("pbrInput.ao = clamp(surface.ao") !=
+             std::string::npos,
+         "offline PBR shader should read AO from accessor surface");
+  EXPECT(shaderSource.find("pbrInput.emissive = max(surface.emissive") !=
+             std::string::npos,
+         "offline PBR shader should read emissive from accessor surface");
+  EXPECT(shaderSource.find("vec3 N = normalize(surface.normal)") !=
+             std::string::npos,
+         "offline PBR shader should read shading normal from accessor "
+         "surface");
   EXPECT(shaderSource.find("lxPbrLayeredClearcoatDirectLight") !=
              std::string::npos,
          "offline PBR shader should use the shared layered clearcoat direct "
          "lighting helper");
-  EXPECT(shaderSource.find("material.aoTexture") != std::string::npos &&
-             shaderSource.find("sampleSceneTexture(material.aoTexture, "
-                               "hit.uv).r") != std::string::npos,
-         "offline PBR shader should read AO from the texture R channel");
-  EXPECT(shaderSource.find("material.normalTexture") != std::string::npos &&
-             shaderSource.find("mat3 TBN = mat3(T, B, N)") !=
-                 std::string::npos &&
-             shaderSource.find("normalize(TBN * tangentNormal)") !=
-                 std::string::npos,
-         "offline PBR shader should transform normal texture through TBN");
-  EXPECT(shaderSource.find("pbrInput.emissive = material.emissive.rgb") !=
-             std::string::npos,
-         "offline PBR shader should use emissive scalar fallback");
-  EXPECT(shaderSource.find(
-             "sampleSceneTexture(material.emissiveTexture, hit.uv).rgb") !=
-             std::string::npos,
-         "offline PBR shader should read emissive texture RGB directly");
+  EXPECT(shaderSource.find("material.baseColorTexture") == std::string::npos,
+         "offline PBR pass shader should not directly read legacy material "
+         "record texture fields");
 }
 
 [[nodiscard]] Vec4f makeGpuPosition(float x, float y, float z) {
@@ -1040,12 +1019,12 @@ int main() {
   testOfflineShaderUsesUnifiedSceneBuffers();
   testOfflinePbrDirectShaderCompiles();
   testOfflinePbrEmissiveTextureMatchesRealtimeSemantics();
-  testOfflinePbrTextureArrayUsesNonUniformIndexing();
+  testOfflinePbrDirectShaderDefersTexturesToAccessor();
   testOfflinePbrDoesNotFlipBackFaceNormals();
   testOfflinePrimaryDoesNotFlipBackFaceNormals();
   testOfflineShadersCullHitsFromMaterialCullMode();
   testOfflinePbrReadsTangentSignFromUploadAbiField();
-  testOfflinePbrDirectShaderUsesEveryMaterialInput();
+  testOfflinePbrDirectShaderUsesMaterialAccessorSurface();
   testOfflineRenderJobValidationRejectsZeroDimensions();
   testOfflineRenderJobValidationRejectsMissingCamera();
   testOfflineRenderJobValidationRejectsNonRenderableScene();
