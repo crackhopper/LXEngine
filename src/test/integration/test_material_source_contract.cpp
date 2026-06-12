@@ -227,31 +227,139 @@ LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat
          "missing status should reject reflection");
 }
 
-void testReflectRejectsDuplicateMetadata() {
+void testReflectRejectsDuplicateTypeMetadata() {
   const std::string source = R"glsl(
 // LX_MATERIAL_CONTRACT_BEGIN
 // type: matte
 // type: glossy
 // status: supported
+// reflectionHash: matte-reflect-v1
+// storageAbiHash: matte-storage-v1
+// accessorAbiHash: material-surface-v1
+// parameter: Kd required rgb texture
+// LX_MATERIAL_CONTRACT_END
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+)glsl";
+  const auto result = LX_infra::reflectMaterialContractSource(
+      LX_core::ResourceUri("memory://materials/duplicate-type.contract.glsl"),
+      source);
+  EXPECT(!result.diagnostics.empty(), "duplicate type should emit diagnostics");
+  EXPECT(!result.reflection.has_value(),
+         "duplicate type should reject reflection");
+}
+
+void testReflectRejectsDuplicateStatusMetadata() {
+  const std::string source = R"glsl(
+// LX_MATERIAL_CONTRACT_BEGIN
+// type: matte
+// status: supported
 // status: unsupported
+// reflectionHash: matte-reflect-v1
+// storageAbiHash: matte-storage-v1
+// accessorAbiHash: material-surface-v1
+// parameter: Kd required rgb texture
+// LX_MATERIAL_CONTRACT_END
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+)glsl";
+  const auto result = LX_infra::reflectMaterialContractSource(
+      LX_core::ResourceUri("memory://materials/duplicate-status.contract.glsl"),
+      source);
+  EXPECT(!result.diagnostics.empty(),
+         "duplicate status should emit diagnostics");
+  EXPECT(!result.reflection.has_value(),
+         "duplicate status should reject reflection");
+}
+
+void testReflectRejectsDuplicateReflectionHashMetadata() {
+  const std::string source = R"glsl(
+// LX_MATERIAL_CONTRACT_BEGIN
+// type: matte
+// status: supported
 // reflectionHash: matte-reflect-v1
 // reflectionHash: matte-reflect-v2
 // storageAbiHash: matte-storage-v1
+// accessorAbiHash: material-surface-v1
+// parameter: Kd required rgb texture
+// LX_MATERIAL_CONTRACT_END
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+)glsl";
+  const auto result = LX_infra::reflectMaterialContractSource(
+      LX_core::ResourceUri(
+          "memory://materials/duplicate-reflection-hash.contract.glsl"),
+      source);
+  EXPECT(!result.diagnostics.empty(),
+         "duplicate reflection hash should emit diagnostics");
+  EXPECT(!result.reflection.has_value(),
+         "duplicate reflection hash should reject reflection");
+}
+
+void testReflectRejectsDuplicateStorageAbiHashMetadata() {
+  const std::string source = R"glsl(
+// LX_MATERIAL_CONTRACT_BEGIN
+// type: matte
+// status: supported
+// reflectionHash: matte-reflect-v1
+// storageAbiHash: matte-storage-v1
 // storageAbiHash: matte-storage-v2
 // accessorAbiHash: material-surface-v1
+// parameter: Kd required rgb texture
+// LX_MATERIAL_CONTRACT_END
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+)glsl";
+  const auto result = LX_infra::reflectMaterialContractSource(
+      LX_core::ResourceUri(
+          "memory://materials/duplicate-storage-hash.contract.glsl"),
+      source);
+  EXPECT(!result.diagnostics.empty(),
+         "duplicate storage ABI hash should emit diagnostics");
+  EXPECT(!result.reflection.has_value(),
+         "duplicate storage ABI hash should reject reflection");
+}
+
+void testReflectRejectsDuplicateAccessorAbiHashMetadata() {
+  const std::string source = R"glsl(
+// LX_MATERIAL_CONTRACT_BEGIN
+// type: matte
+// status: supported
+// reflectionHash: matte-reflect-v1
+// storageAbiHash: matte-storage-v1
+// accessorAbiHash: material-surface-v1
 // accessorAbiHash: material-surface-v2
+// parameter: Kd required rgb texture
+// LX_MATERIAL_CONTRACT_END
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+)glsl";
+  const auto result = LX_infra::reflectMaterialContractSource(
+      LX_core::ResourceUri(
+          "memory://materials/duplicate-accessor-hash.contract.glsl"),
+      source);
+  EXPECT(!result.diagnostics.empty(),
+         "duplicate accessor ABI hash should emit diagnostics");
+  EXPECT(!result.reflection.has_value(),
+         "duplicate accessor ABI hash should reject reflection");
+}
+
+void testReflectRejectsDuplicateParameterMetadata() {
+  const std::string source = R"glsl(
+// LX_MATERIAL_CONTRACT_BEGIN
+// type: matte
+// status: supported
+// reflectionHash: matte-reflect-v1
+// storageAbiHash: matte-storage-v1
+// accessorAbiHash: material-surface-v1
 // parameter: Kd required rgb texture
 // parameter: Kd optional float
 // LX_MATERIAL_CONTRACT_END
 LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
 )glsl";
   const auto result = LX_infra::reflectMaterialContractSource(
-      LX_core::ResourceUri("memory://materials/duplicate.contract.glsl"),
+      LX_core::ResourceUri(
+          "memory://materials/duplicate-parameter.contract.glsl"),
       source);
   EXPECT(!result.diagnostics.empty(),
-         "duplicate metadata should emit diagnostics");
+         "duplicate parameter should emit diagnostics");
   EXPECT(!result.reflection.has_value(),
-         "duplicate metadata should reject reflection");
+         "duplicate parameter should reject reflection");
 }
 
 void testReflectRejectsBareMetadataLines() {
@@ -384,6 +492,29 @@ LxMaterialSurface lxLoadMaterialSurface(uint materialIndex) { }
          "wrong accessor parameter list should reject reflection");
 }
 
+void testReflectRejectsWrongAccessorParameterType() {
+  const std::string source = R"glsl(
+// LX_MATERIAL_CONTRACT_BEGIN
+// type: matte
+// status: supported
+// reflectionHash: matte-reflect-v1
+// storageAbiHash: matte-storage-v1
+// accessorAbiHash: material-surface-v1
+// parameter: Kd required rgb texture
+// LX_MATERIAL_CONTRACT_END
+LxMaterialSurface lxLoadMaterialSurface(int materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+)glsl";
+  const auto result = LX_infra::reflectMaterialContractSource(
+      LX_core::ResourceUri(
+          "memory://materials/accessor-wrong-param-type.contract.glsl"),
+      source);
+  EXPECT(!result.diagnostics.empty(),
+         "wrong accessor parameter type should not satisfy Material Accessor "
+         "ABI");
+  EXPECT(!result.reflection.has_value(),
+         "wrong accessor parameter type should reject reflection");
+}
+
 void testReflectRejectsAccessorArrayDeclarator() {
   const std::string source = R"glsl(
 // LX_MATERIAL_CONTRACT_BEGIN
@@ -427,6 +558,75 @@ LxMaterialSurface lxLoadMaterialSurface(uint 2bad, vec2 uv, vec3 n, mat3 tbn) { 
          "ABI");
   EXPECT(!result.reflection.has_value(),
          "accessor numeric parameter name should reject reflection");
+}
+
+void testReflectRejectsAccessorPointerDeclarator() {
+  const std::string source = R"glsl(
+// LX_MATERIAL_CONTRACT_BEGIN
+// type: matte
+// status: supported
+// reflectionHash: matte-reflect-v1
+// storageAbiHash: matte-storage-v1
+// accessorAbiHash: material-surface-v1
+// parameter: Kd required rgb texture
+// LX_MATERIAL_CONTRACT_END
+LxMaterialSurface lxLoadMaterialSurface(uint *materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+)glsl";
+  const auto result = LX_infra::reflectMaterialContractSource(
+      LX_core::ResourceUri(
+          "memory://materials/accessor-pointer-param.contract.glsl"),
+      source);
+  EXPECT(!result.diagnostics.empty(),
+         "accessor pointer declarator should not satisfy Material Accessor "
+         "ABI");
+  EXPECT(!result.reflection.has_value(),
+         "accessor pointer declarator should reject reflection");
+}
+
+void testReflectRejectsAccessorReferenceDeclarator() {
+  const std::string source = R"glsl(
+// LX_MATERIAL_CONTRACT_BEGIN
+// type: matte
+// status: supported
+// reflectionHash: matte-reflect-v1
+// storageAbiHash: matte-storage-v1
+// accessorAbiHash: material-surface-v1
+// parameter: Kd required rgb texture
+// LX_MATERIAL_CONTRACT_END
+LxMaterialSurface lxLoadMaterialSurface(uint &materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+)glsl";
+  const auto result = LX_infra::reflectMaterialContractSource(
+      LX_core::ResourceUri(
+          "memory://materials/accessor-reference-param.contract.glsl"),
+      source);
+  EXPECT(!result.diagnostics.empty(),
+         "accessor reference declarator should not satisfy Material Accessor "
+         "ABI");
+  EXPECT(!result.reflection.has_value(),
+         "accessor reference declarator should reject reflection");
+}
+
+void testReflectRejectsAccessorQualifierDeclarator() {
+  const std::string source = R"glsl(
+// LX_MATERIAL_CONTRACT_BEGIN
+// type: matte
+// status: supported
+// reflectionHash: matte-reflect-v1
+// storageAbiHash: matte-storage-v1
+// accessorAbiHash: material-surface-v1
+// parameter: Kd required rgb texture
+// LX_MATERIAL_CONTRACT_END
+LxMaterialSurface lxLoadMaterialSurface(const uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+)glsl";
+  const auto result = LX_infra::reflectMaterialContractSource(
+      LX_core::ResourceUri(
+          "memory://materials/accessor-qualifier-param.contract.glsl"),
+      source);
+  EXPECT(!result.diagnostics.empty(),
+         "accessor qualifier declarator should not satisfy Material Accessor "
+         "ABI");
+  EXPECT(!result.reflection.has_value(),
+         "accessor qualifier declarator should reject reflection");
 }
 
 void testReflectRejectsWrongAccessorParameterNames() {
@@ -631,15 +831,24 @@ int main() {
   testReflectsContractMetadataBlock();
   testReflectRejectsMissingAccessor();
   testReflectRejectsMissingStatus();
-  testReflectRejectsDuplicateMetadata();
+  testReflectRejectsDuplicateTypeMetadata();
+  testReflectRejectsDuplicateStatusMetadata();
+  testReflectRejectsDuplicateReflectionHashMetadata();
+  testReflectRejectsDuplicateStorageAbiHashMetadata();
+  testReflectRejectsDuplicateAccessorAbiHashMetadata();
+  testReflectRejectsDuplicateParameterMetadata();
   testReflectRejectsBareMetadataLines();
   testReflectRejectsCommentedOutAccessor();
   testReflectRejectsAccessorCallWithoutDefinition();
   testReflectRejectsAccessorPrototypeWithoutBody();
   testReflectRejectsWrongAccessorReturnType();
   testReflectRejectsWrongAccessorParameterList();
+  testReflectRejectsWrongAccessorParameterType();
   testReflectRejectsAccessorArrayDeclarator();
   testReflectRejectsAccessorNumericParameterName();
+  testReflectRejectsAccessorPointerDeclarator();
+  testReflectRejectsAccessorReferenceDeclarator();
+  testReflectRejectsAccessorQualifierDeclarator();
   testReflectRejectsWrongAccessorParameterNames();
   testReflectRejectsAccessorMacroWithoutFunctionDefinition();
   testReflectRejectsMultilineAccessorMacro();
