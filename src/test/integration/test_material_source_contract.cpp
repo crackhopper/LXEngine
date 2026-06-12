@@ -771,6 +771,19 @@ void testMaterialInstancePipelineSignatureUsesSourceSignature() {
          "material parameter values must not alter material pipeline "
          "signature");
 
+  LX_core::MaterialResourceDependency textureDependency;
+  textureDependency.kind = LX_core::MaterialEnvelopeKind::Texture;
+  textureDependency.uri =
+      LX_core::ResourceUri("assets://textures/materials/matte-kd.png");
+  textureDependency.parameterName = "Kd";
+  material->addMaterialDependency(std::move(textureDependency));
+  const LX_core::StringID afterDependencyChange =
+      material->getPipelineSignature(LX_core::Pass_Forward);
+
+  EXPECT(forward == afterDependencyChange,
+         "material dependency mutations must not alter material pipeline "
+         "signature");
+
   auto other =
       LX_core::MaterialInstance::createUnique(material->getTemplate());
   other->setMaterialSourceUri(LX_core::ResourceUri(
