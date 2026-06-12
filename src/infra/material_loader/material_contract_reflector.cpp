@@ -1,5 +1,6 @@
 #include "infra/material_loader/material_contract_reflector.hpp"
 
+#include <array>
 #include <cctype>
 #include <optional>
 #include <sstream>
@@ -71,6 +72,72 @@ commentMetadataLine(std::string_view line) {
   return trim(std::string_view(stripped).substr(2));
 }
 
+[[nodiscard]] bool lineContinuesPreprocessorDirective(std::string_view line) {
+  std::size_t pos = line.size();
+  while (pos > 0 && line[pos - 1] != '\n' &&
+         std::isspace(static_cast<unsigned char>(line[pos - 1])) != 0) {
+    --pos;
+  }
+  return pos > 0 && line[pos - 1] == '\\';
+}
+
+[[nodiscard]] bool hasExpectedReturnType(const std::string &code,
+                                         std::size_t entryPointPos) {
+  std::size_t end = entryPointPos;
+  while (end > 0 &&
+         std::isspace(static_cast<unsigned char>(code[end - 1])) != 0) {
+    --end;
+  }
+
+  std::size_t begin = end;
+  while (begin > 0 && isIdentifierChar(code[begin - 1])) {
+    --begin;
+  }
+  return code.substr(begin, end - begin) == "LxMaterialSurface";
+}
+
+[[nodiscard]] std::optional<std::string>
+firstParameterType(std::string_view parameter) {
+  const std::string stripped = trim(parameter);
+  if (stripped.empty()) {
+    return std::nullopt;
+  }
+
+  std::size_t end = 0;
+  while (end < stripped.size() && isIdentifierChar(stripped[end])) {
+    ++end;
+  }
+  if (end == 0) {
+    return std::nullopt;
+  }
+  return stripped.substr(0, end);
+}
+
+[[nodiscard]] bool hasExpectedParameterTypes(std::string_view parameters) {
+  constexpr std::array expectedTypes{"uint", "vec2", "vec3", "mat3"};
+
+  std::size_t begin = 0;
+  for (std::size_t index = 0; index < expectedTypes.size(); ++index) {
+    const std::size_t comma = parameters.find(',', begin);
+    const std::size_t end =
+        comma == std::string_view::npos ? parameters.size() : comma;
+    const std::optional<std::string> type =
+        firstParameterType(parameters.substr(begin, end - begin));
+    if (!type.has_value() || *type != expectedTypes[index]) {
+      return false;
+    }
+    if (index + 1 < expectedTypes.size()) {
+      if (comma == std::string_view::npos) {
+        return false;
+      }
+      begin = comma + 1;
+    } else if (comma != std::string_view::npos) {
+      return false;
+    }
+  }
+  return true;
+}
+
 [[nodiscard]] bool hasEntryPointDefinition(std::string_view sourceText,
                                            std::string_view entryPoint) {
   std::string code;
@@ -123,12 +190,27 @@ commentMetadataLine(std::string_view line) {
       }
 
       if (onlyWhitespaceBeforeHash) {
-        code.push_back(' ');
-        ++i;
-        while (i < sourceText.size() && sourceText[i] != '\n') {
-          code.push_back(' ');
-          ++i;
-        }
+        bool continuedDirective = false;
+        do {
+          continuedDirective = false;
+          std::string line;
+          while (i < sourceText.size() && sourceText[i] != '\n') {
+            line.push_back(sourceText[i]);
+            code.push_back(' ');
+            ++i;
+          }
+          continuedDirective = lineContinuesPreprocessorDirective(line);
+          if (i < sourceText.size() && sourceText[i] == '\n') {
+            code.push_back('\n');
+            ++i;
+          }
+          while (continuedDirective && i < sourceText.size() &&
+                 std::isspace(static_cast<unsigned char>(sourceText[i])) != 0 &&
+                 sourceText[i] != '\n') {
+            code.push_back(' ');
+            ++i;
+          }
+        } while (continuedDirective && i < sourceText.size());
         continue;
       }
     }
@@ -143,13 +225,14 @@ commentMetadataLine(std::string_view line) {
     const std::size_t afterToken = pos + entryPoint.size();
     const bool tokenEnd =
         afterToken >= code.size() || !isIdentifierChar(code[afterToken]);
-    if (tokenStart && tokenEnd) {
+    if (tokenStart && tokenEnd && hasExpectedReturnType(code, pos)) {
       std::size_t next = afterToken;
       while (next < code.size() &&
              std::isspace(static_cast<unsigned char>(code[next])) != 0) {
         ++next;
       }
       if (next < code.size() && code[next] == '(') {
+        const std::size_t parameterBegin = next + 1;
         int depth = 1;
         ++next;
         while (next < code.size() && depth > 0) {
@@ -161,6 +244,12 @@ commentMetadataLine(std::string_view line) {
           ++next;
         }
         if (depth == 0) {
+          const std::size_t parameterEnd = next - 1;
+          if (!hasExpectedParameterTypes(std::string_view(code).substr(
+                  parameterBegin, parameterEnd - parameterBegin))) {
+            pos = code.find(entryPoint, pos + 1);
+            continue;
+          }
           while (next < code.size() &&
                  std::isspace(static_cast<unsigned char>(code[next])) != 0) {
             ++next;
