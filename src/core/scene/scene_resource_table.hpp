@@ -69,6 +69,7 @@ struct ShaderResourceMetadata final {
   std::vector<ResourceUri> sourceUris;
   IShaderSharedPtr payload;
   bool sourceResolved = false;
+  bool requiresMaterialSourceVariant = false;
 };
 
 struct ObjectInstanceView final {
@@ -153,7 +154,8 @@ public:
   [[nodiscard]] ShaderHandle
   registerShaderResource(const ResourceUri &uri,
                          std::vector<ResourceUri> sourceUris,
-                         IShaderSharedPtr payload);
+                         IShaderSharedPtr payload,
+                         bool requiresMaterialSourceVariant = false);
   void updateObject(ObjectHandle handle, ObjectResource object);
   void updateCamera(CameraHandle handle, CameraResource camera);
 

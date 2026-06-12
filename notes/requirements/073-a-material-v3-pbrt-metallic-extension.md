@@ -391,4 +391,29 @@ Forward、Deferred、OfflineRT 都只调用统一 Material Accessor ABI。
 
 ## 实施状态
 
-未实施。
+进行中。
+
+截至 2026-06-13，已落地：
+
+- `.material` 的 `bsdf.source` 已成为显式 material contract source；runtime 不再按 `bsdf.type` 推断默认 source。
+- `MaterialInstance` 保存 source URI、source reflection hash、source signature，并把 source signature 纳入 material / pipeline 结构签名路径。
+- shader compiler 支持 `LX_MATERIAL_CONTRACT_SOURCE` source variant；PBR pass shader 通过 material accessor ABI include contract source。
+- Forward / Deferred / OfflineRT PBR shader 已迁移到 `lxLoadMaterialSurface` / `LxMaterialSurface` 访问器，不再读取旧 `lxSceneMaterialRecord` 字段作为 PBR 参数真相。
+- RenderPathGraph 解析阶段只解析 shader source descriptor；遇到需要 `LX_MATERIAL_CONTRACT_SOURCE` 的 shader 时登记为 `requiresMaterialSourceVariant`，不在没有 material source 的阶段编译。普通 source-resolved shader 若缺 compiled/reflected payload 仍然失败。
+- glTF Helmet 和 PBRT BMW converter 输出路径显式写入并校验 `bsdf.source`。
+- `MaterialSurfaceSchema` 已从 Material v3 正向路径删除，仅保留 legacy/audit 测试引用。
+
+仍未完成，进入后续实现：
+
+- 默认纹理 set 的 bindless 去重、真实 GPU 上传与缺失贴图 fallback 验证由 `REQ-073-b` 承接。
+- source-reflected material storage ABI 的完整通用打包仍未替代全部旧共享 GPU material record 路径。
+- 同一 source signature 冲突 record layout 的 fake reflection 注入测试仍待补齐。
+- 完整 Helmet/BMW 低分辨率视觉 validation 和 PBRT glass/fourier/mix/conductor 的后续表达仍未完成。
+
+本阶段验证：
+
+- `cmake --build build --target test_render_resource_parsers test_scene_resource_abstraction`
+- `./build/src/test/test_render_resource_parsers`
+- `./build/src/test/test_scene_resource_abstraction`
+- `./build/src/test/test_scene_resource_upload_view_v2`
+- `ctest --test-dir build --output-on-failure -L auto -LE requires_video_device`

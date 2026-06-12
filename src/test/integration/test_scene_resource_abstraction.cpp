@@ -6,10 +6,15 @@
 #include "infra/resource_parsers/scene_resource_parser_registry.hpp"
 #include "infra/resource_parsers/texture_resource_parser.hpp"
 
+#include <filesystem>
 #include <iostream>
 
 using namespace LX_core;
 using namespace LX_infra;
+
+#ifndef LXE_SOURCE_DIR
+#define LXE_SOURCE_DIR ""
+#endif
 
 namespace {
 
@@ -197,6 +202,10 @@ void testParserReturnedIdentityOutlivesParserObject() {
 } // namespace
 
 int main() {
+  if (std::filesystem::path sourceRoot{LXE_SOURCE_DIR}; !sourceRoot.empty()) {
+    std::filesystem::current_path(sourceRoot);
+  }
+
   testResourceUriCanonicalization();
   testSceneResourceTableIdentityDedup();
   testParserRegistryDiagnosticsIncludeContext();

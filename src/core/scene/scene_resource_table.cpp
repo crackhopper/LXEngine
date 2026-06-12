@@ -70,6 +70,20 @@ findCompactRecordIndex(const std::vector<CompactRecordIndex> &indices,
          !shader.payload->getVertexInputs().empty();
 }
 
+[[nodiscard]] bool
+isShaderDependencyResolved(const ShaderResourceMetadata &shader) {
+  if (!shader.sourceResolved || shader.sourceUris.empty()) {
+    return false;
+  }
+  return hasLiveShaderPayload(shader) || shader.requiresMaterialSourceVariant;
+}
+
+[[nodiscard]] ResourceState
+shaderMetadataState(const ShaderResourceMetadata &shader) {
+  return isShaderDependencyResolved(shader) ? ResourceState::Ready
+                                            : ResourceState::Unloaded;
+}
+
 [[nodiscard]] std::string missingShaderPayloadMessage(
     const ResourceUri &graphUri, const ResourceUri &shaderUri) {
   return "RenderPathGraph '" + graphUri.string() + "' references Shader '" +
@@ -507,7 +521,7 @@ bool SceneResourceTable::hasLiveTypedResourceMetadata(
     for (const auto &entry : m_shaders) {
       if (entry.state == SceneResourceEntryState::Alive && entry.resource &&
           entry.metadataHandle == handle) {
-        return hasLiveShaderPayload(*entry.resource);
+        return isShaderDependencyResolved(*entry.resource);
       }
     }
     return false;
@@ -1010,7 +1024,7 @@ SceneResourceTable::registerRenderFeature(const ResourceUri &uri,
 
 ShaderHandle SceneResourceTable::registerShaderResource(
     const ResourceUri &uri, std::vector<ResourceUri> sourceUris,
-    IShaderSharedPtr payload) {
+    IShaderSharedPtr payload, bool requiresMaterialSourceVariant) {
   if (sourceUris.empty()) {
     return {};
   }
@@ -1023,13 +1037,15 @@ ShaderHandle SceneResourceTable::registerShaderResource(
         metadata != nullptr && metadata->type == SceneResourceType::Shader &&
         metadata->uri == uri && entry.resource->sourceResolved &&
         !entry.resource->sourceUris.empty()) {
-      if (!hasLiveShaderPayload(*entry.resource) && payload) {
+      if ((!hasLiveShaderPayload(*entry.resource) && payload) ||
+          (requiresMaterialSourceVariant &&
+           !entry.resource->requiresMaterialSourceVariant)) {
         entry.resource->sourceUris = std::move(sourceUris);
         entry.resource->payload = std::move(payload);
+        entry.resource->requiresMaterialSourceVariant =
+            requiresMaterialSourceVariant;
         ResourceMetadata &stored = mutableMetadata(entry.metadataHandle);
-        stored.state = hasLiveShaderPayload(*entry.resource)
-                           ? ResourceState::Ready
-                           : ResourceState::Unloaded;
+        stored.state = shaderMetadataState(*entry.resource);
         stored.dependencies = entry.resource->sourceUris;
         stored.diagnostics.clear();
         advanceUploadGeneration();
@@ -1044,15 +1060,14 @@ ShaderHandle SceneResourceTable::registerShaderResource(
   shader->sourceUris = std::move(sourceUris);
   shader->payload = std::move(payload);
   shader->sourceResolved = true;
+  shader->requiresMaterialSourceVariant = requiresMaterialSourceVariant;
   auto handle =
       add<ShaderResourceMetadata, ShaderHandle>(m_shaders, std::move(shader));
   if (handle.isValid()) {
     ResourceMetadata metadata;
     metadata.type = SceneResourceType::Shader;
     metadata.uri = uri;
-    metadata.state = hasLiveShaderPayload(*m_shaders[handle.index].resource)
-                         ? ResourceState::Ready
-                         : ResourceState::Unloaded;
+    metadata.state = shaderMetadataState(*m_shaders[handle.index].resource);
     for (const ResourceUri &sourceUri :
          m_shaders[handle.index].resource->sourceUris) {
       metadata.dependencies.push_back(sourceUri);
@@ -1061,9 +1076,7 @@ ShaderHandle SceneResourceTable::registerShaderResource(
         internResourceMetadata(std::move(metadata));
     ResourceMetadata &stored =
         mutableMetadata(m_shaders[handle.index].metadataHandle);
-    stored.state = hasLiveShaderPayload(*m_shaders[handle.index].resource)
-                       ? ResourceState::Ready
-                       : ResourceState::Unloaded;
+    stored.state = shaderMetadataState(*m_shaders[handle.index].resource);
     stored.dependencies = m_shaders[handle.index].resource->sourceUris;
     stored.diagnostics.clear();
   }
@@ -1113,9 +1126,7 @@ SceneResourceTable::registerRenderPathGraph(const ResourceUri &uri,
           metadata != nullptr && metadata->type == SceneResourceType::Shader &&
           (metadata->state == ResourceState::Ready ||
            metadata->state == ResourceState::Dirty) &&
-          entry.resource->sourceResolved &&
-          !entry.resource->sourceUris.empty() &&
-          hasLiveShaderPayload(*entry.resource) &&
+          isShaderDependencyResolved(*entry.resource) &&
           metadata->uri == dependencyUri) {
         return ShaderHandle{i, entry.generation};
       }
@@ -1985,7 +1996,8 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
       throw std::logic_error("Shader resource '" + shaderUri.string() +
                              "' has no resolved source descriptors");
     }
-    if (!hasLiveShaderPayload(*entry.resource)) {
+    if (!hasLiveShaderPayload(*entry.resource) &&
+        !entry.resource->requiresMaterialSourceVariant) {
       const ResourceMetadata *metadata =
           findResourceMetadata(entry.metadataHandle);
       const ResourceUri shaderUri =
@@ -2034,9 +2046,7 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
           metadata != nullptr && metadata->type == SceneResourceType::Shader &&
           (metadata->state == ResourceState::Ready ||
            metadata->state == ResourceState::Dirty) &&
-          entry.resource->sourceResolved &&
-          !entry.resource->sourceUris.empty() &&
-          hasLiveShaderPayload(*entry.resource) &&
+          isShaderDependencyResolved(*entry.resource) &&
           metadata->uri == uri) {
         return ShaderHandle{i, entry.generation};
       }

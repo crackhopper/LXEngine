@@ -169,6 +169,27 @@ resolveShaderSourceUris(const LX_core::ResourceUri &shaderUri) {
       shaderUri.string());
 }
 
+[[nodiscard]] std::optional<bool> shaderRequiresMaterialSourceVariant(
+    const LX_core::ResourceUri &graphUri, const LX_core::ResourceUri &shaderUri,
+    const std::vector<LX_core::ResourceUri> &sourceUris,
+    std::vector<std::string> &diagnostics) {
+  for (const LX_core::ResourceUri &sourceUri : sourceUris) {
+    std::string readDiagnostic;
+    const auto text = readTextFile(sourceUri, readDiagnostic);
+    if (!text.has_value()) {
+      diagnostics.push_back(
+          "RenderPathGraph '" + graphUri.string() +
+          "' failed to inspect Shader '" + shaderUri.string() + "' source '" +
+          sourceUri.string() + "': " + readDiagnostic);
+      return std::nullopt;
+    }
+    if (text->find("LX_MATERIAL_CONTRACT_SOURCE") != std::string::npos) {
+      return true;
+    }
+  }
+  return false;
+}
+
 [[nodiscard]] LX_core::ResourceUri
 resolveAssetDependencyUri(const LX_core::ResourceUri &ownerUri,
                           const LX_core::ResourceUri &dependencyUri) {
@@ -321,10 +342,11 @@ resolveAssetDependencyUri(const LX_core::ResourceUri &ownerUri,
              canonicalUri.string() + "'"});
       }
       std::vector<std::string> shaderDiagnostics;
-      std::optional<LX_core::IShaderSharedPtr> shaderPayload =
-          compileShaderPayload(canonicalUri, pass.shaderUri, *shaderSourceUris,
-                               shaderDiagnostics);
-      if (!shaderPayload.has_value()) {
+      const std::optional<bool> requiresMaterialSourceVariant =
+          shaderRequiresMaterialSourceVariant(canonicalUri, pass.shaderUri,
+                                              *shaderSourceUris,
+                                              shaderDiagnostics);
+      if (!requiresMaterialSourceVariant.has_value()) {
         LX_core::ResourceMetadata failedShader;
         failedShader.type = LX_core::SceneResourceType::Shader;
         failedShader.uri = pass.shaderUri;
@@ -345,9 +367,38 @@ resolveAssetDependencyUri(const LX_core::ResourceUri &ownerUri,
             context.ownerUri, canonicalUri, kRenderPathGraphParserName,
             shaderDiagnostics);
       }
+      std::optional<LX_core::IShaderSharedPtr> shaderPayload;
+      if (!*requiresMaterialSourceVariant) {
+        shaderPayload = compileShaderPayload(canonicalUri, pass.shaderUri,
+                                             *shaderSourceUris,
+                                             shaderDiagnostics);
+        if (!shaderPayload.has_value()) {
+          LX_core::ResourceMetadata failedShader;
+          failedShader.type = LX_core::SceneResourceType::Shader;
+          failedShader.uri = pass.shaderUri;
+          failedShader.state = LX_core::ResourceState::Failed;
+          for (const std::string &diagnostic : shaderDiagnostics) {
+            failedShader.diagnostics.push_back(LX_core::ResourceDiagnostic{
+                .ownerUri = canonicalUri,
+                .resourceUri = pass.shaderUri,
+                .parserName = kRenderPathGraphParserName,
+                .message = diagnostic,
+            });
+          }
+          const LX_core::ResourceIdentityHandle failedShaderIdentity =
+              table.internResourceMetadata(std::move(failedShader));
+          (void)failedShaderIdentity;
+          return makeFailedParse(
+              table, LX_core::SceneResourceType::RenderPathGraph,
+              context.ownerUri, canonicalUri, kRenderPathGraphParserName,
+              shaderDiagnostics);
+        }
+      }
       const LX_core::ShaderHandle shaderHandle =
-          table.registerShaderResource(pass.shaderUri, *shaderSourceUris,
-                                       std::move(*shaderPayload));
+          table.registerShaderResource(
+              pass.shaderUri, *shaderSourceUris,
+              shaderPayload.has_value() ? std::move(*shaderPayload) : nullptr,
+              *requiresMaterialSourceVariant);
       if (!shaderHandle.isValid()) {
         return makeFailedParse(
             table, LX_core::SceneResourceType::RenderPathGraph,

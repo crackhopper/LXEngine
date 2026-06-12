@@ -192,6 +192,20 @@ if(TARGET test_071g_legacy_boundary_removal)
   )
 endif()
 
+if(TARGET test_render_resource_parsers)
+  target_compile_definitions(test_render_resource_parsers
+    PRIVATE
+    LXE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+  )
+endif()
+
+if(TARGET test_scene_resource_abstraction)
+  target_compile_definitions(test_scene_resource_abstraction
+    PRIVATE
+    LXE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+  )
+endif()
+
 if(TARGET test_default_forward_render_path_graph_source)
   target_compile_definitions(test_default_forward_render_path_graph_source
     PRIVATE
