@@ -390,10 +390,6 @@ expectedReturnTypeBegin(const std::string &code, std::size_t entryPointPos) {
         if (depth == 0) {
           const std::size_t parameterEnd = next - 1;
           const std::size_t firstComment = commentMask.find('1', *returnBegin);
-          if (firstComment != std::string::npos && firstComment < next) {
-            pos = code.find(entryPoint, pos + 1);
-            continue;
-          }
           if (!hasExpectedParameterTypes(std::string_view(code).substr(
                   parameterBegin, parameterEnd - parameterBegin))) {
             pos = code.find(entryPoint, pos + 1);
@@ -402,6 +398,10 @@ expectedReturnTypeBegin(const std::string &code, std::size_t entryPointPos) {
           while (next < code.size() &&
                  std::isspace(static_cast<unsigned char>(code[next])) != 0) {
             ++next;
+          }
+          if (firstComment != std::string::npos && firstComment < next) {
+            pos = code.find(entryPoint, pos + 1);
+            continue;
           }
           if (next < code.size() && code[next] == '{') {
             return true;

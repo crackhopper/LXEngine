@@ -723,6 +723,30 @@ LxMaterialSurface lxLoadMaterialSurface(uint materialIndex /* comment */, vec2 u
          "comment inside accessor parameter should reject reflection");
 }
 
+void testReflectRejectsCommentBetweenAccessorParametersAndBody() {
+  const std::string source = R"glsl(
+// LX_MATERIAL_CONTRACT_BEGIN
+// type: matte
+// status: supported
+// reflectionHash: matte-reflect-v1
+// storageAbiHash: matte-storage-v1
+// accessorAbiHash: material-surface-v1
+// parameter: Kd required rgb texture
+// LX_MATERIAL_CONTRACT_END
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) /* comment */ { }
+)glsl";
+  const auto result = LX_infra::reflectMaterialContractSource(
+      LX_core::ResourceUri(
+          "memory://materials/accessor-comment-before-body.contract.glsl"),
+      source);
+  EXPECT(!result.diagnostics.empty(),
+         "comment between accessor parameter list and body should not satisfy "
+         "Material Accessor ABI");
+  EXPECT(!result.reflection.has_value(),
+         "comment between accessor parameter list and body should reject "
+         "reflection");
+}
+
 void testReflectRejectsAccessorPointerDeclarator() {
   const std::string source = R"glsl(
 // LX_MATERIAL_CONTRACT_BEGIN
@@ -1068,6 +1092,7 @@ int main() {
   testReflectRejectsAccessorArrayDeclarator();
   testReflectRejectsAccessorNumericParameterName();
   testReflectRejectsCommentInsideAccessorParameter();
+  testReflectRejectsCommentBetweenAccessorParametersAndBody();
   testReflectRejectsAccessorPointerDeclarator();
   testReflectRejectsAccessorReferenceDeclarator();
   testReflectRejectsAccessorQualifierDeclarator();
