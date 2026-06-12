@@ -332,6 +332,8 @@ MaterialInstance::SharedPtr MaterialInstance::cloneInstanceData() const {
   clone->m_materialSourceSignature = uniqueClone->m_materialSourceSignature;
   clone->m_materialSourceReflectionHash =
       uniqueClone->m_materialSourceReflectionHash;
+  clone->m_materialContractReflection =
+      uniqueClone->m_materialContractReflection;
   clone->m_renderClass = uniqueClone->m_renderClass;
   clone->m_tags = uniqueClone->m_tags;
   clone->m_authoringMetadata = uniqueClone->m_authoringMetadata;
@@ -373,6 +375,7 @@ MaterialInstance::UniquePtr MaterialInstance::cloneInstanceDataUnique() const {
   clone->m_materialSourceUri = m_materialSourceUri;
   clone->m_materialSourceSignature = m_materialSourceSignature;
   clone->m_materialSourceReflectionHash = m_materialSourceReflectionHash;
+  clone->m_materialContractReflection = m_materialContractReflection;
   clone->m_renderClass = m_renderClass;
   clone->m_tags = m_tags;
   clone->m_authoringMetadata = m_authoringMetadata;
@@ -583,6 +586,20 @@ void MaterialInstance::setMaterialSourceReflectionHash(std::string hash) {
 
 const std::string &MaterialInstance::getMaterialSourceReflectionHash() const {
   return m_materialSourceReflectionHash;
+}
+
+void MaterialInstance::setMaterialContractReflection(
+    MaterialContractReflection reflection) {
+  m_materialContractReflection = std::move(reflection);
+  markMaterialStateDirty();
+}
+
+std::optional<std::reference_wrapper<const MaterialContractReflection>>
+MaterialInstance::getMaterialContractReflection() const {
+  if (!m_materialContractReflection.has_value()) {
+    return std::nullopt;
+  }
+  return std::cref(*m_materialContractReflection);
 }
 
 void MaterialInstance::setRenderClass(std::string renderClass) {

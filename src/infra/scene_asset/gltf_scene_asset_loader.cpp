@@ -233,11 +233,14 @@ void bindV2TextureEnvelopeIfPresent(MaterialInstanceSharedPtr &material,
                              materialUri.string());
   }
 
-  const auto contractResult = LX_infra::loadAndReflectMaterialContractSource(
-      material->getMaterialSourceUri());
+  const auto contractReflection = material->getMaterialContractReflection();
+  if (!contractReflection.has_value()) {
+    throw std::runtime_error(
+        "glTF material binding requires reflected material contract for: " +
+        materialUri.string());
+  }
   const LX_core::MaterialContractReflection *contract =
-      contractResult.reflection.has_value() ? &*contractResult.reflection
-                                            : nullptr;
+      &contractReflection->get();
 
   bindV2TextureEnvelopeIfPresent(
       material, contract, gltfDir, pbr.baseColorTexture, "Kd",

@@ -528,6 +528,7 @@ MaterialResourceParser::parse(LX_core::SceneResourceTable &table,
   instance->setMaterialSourceUri(sourceUri);
   instance->setMaterialSourceReflectionHash(contract.reflectionHash);
   instance->setMaterialSourceSignature(contract.sourceSignature());
+  instance->setMaterialContractReflection(contract);
   if (const YAML::Node renderClassNode = root["renderClass"]) {
     if (!renderClassNode.IsScalar()) {
       addDiagnostic(result, uri, "renderClass",

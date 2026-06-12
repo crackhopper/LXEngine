@@ -441,6 +441,16 @@ bsdf:
   EXPECT(parsed.instance->getMaterialSourceReflectionHash() ==
              "matte-source-contract-v1",
          "MaterialInstance should store reflected source hash");
+  const auto contract = parsed.instance->getMaterialContractReflection();
+  EXPECT(contract.has_value(),
+         "MaterialInstance should store reflected contract data");
+  EXPECT(contract.has_value() && contract->get().declaredType == "matte",
+         "stored reflected contract should retain declared type");
+  const auto kd = contract.has_value() ? contract->get().findParameter("Kd")
+                                       : std::nullopt;
+  EXPECT(kd.has_value(), "stored reflected contract should expose Kd");
+  EXPECT(kd.has_value() && kd->get().allowedKinds.size() == 3,
+         "stored reflected contract should retain Kd allowed kinds");
 
   const auto clone = parsed.instance->cloneInstanceDataUnique();
   EXPECT(clone->getMaterialSourceUri() ==
@@ -452,6 +462,18 @@ bsdf:
   EXPECT(clone->getMaterialSourceReflectionHash() ==
              parsed.instance->getMaterialSourceReflectionHash(),
          "clone should copy material source reflection hash");
+  const auto cloneContract = clone->getMaterialContractReflection();
+  EXPECT(cloneContract.has_value(),
+         "clone should copy reflected contract data");
+  EXPECT(cloneContract.has_value() &&
+             cloneContract->get().sourceSignature() ==
+                 contract->get().sourceSignature(),
+         "clone should copy reflected contract source signature");
+  const auto cloneKd = cloneContract.has_value()
+                           ? cloneContract->get().findParameter("Kd")
+                           : std::nullopt;
+  EXPECT(cloneKd.has_value(),
+         "clone reflected contract should expose Kd parameter");
 }
 
 void testFindParameterHitAndMiss() {
