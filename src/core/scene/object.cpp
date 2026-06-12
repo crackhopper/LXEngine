@@ -44,6 +44,11 @@ std::string variantsDebugString(const ShaderProgramSet &programSet) {
       oss << ",";
     first = false;
     oss << variant.macroName;
+    if (variant.materialContractSource.has_value()) {
+      oss << "=" << variant.materialContractSource->string();
+    } else if (variant.macroValue.has_value()) {
+      oss << "=" << *variant.macroValue;
+    }
   }
   return first ? "(none)" : oss.str();
 }
@@ -165,6 +170,44 @@ getMaterialComponent(const SceneNode &node) {
 std::optional<std::reference_wrapper<const SkeletonComponent>>
 getSkeletonComponent(const SceneNode &node) {
   return node.getComponent<SkeletonComponent>();
+}
+
+ShaderProgramSet shaderProgramWithMaterialSourceVariant(
+    const ShaderProgramSet &base, const MaterialInstance &material) {
+  ShaderProgramSet program = base;
+  const ResourceUri &sourceUri = material.getMaterialSourceUri();
+  if (sourceUri.empty()) {
+    return program;
+  }
+
+  const StringID sourceSignature = material.getMaterialSourceSignature();
+  if (sourceSignature.id == 0) {
+    throw std::logic_error(
+        "SceneNodeValidation material has bsdf.source but no material source "
+        "signature: " +
+        sourceUri.string());
+  }
+
+  auto it = std::find_if(program.variants.begin(), program.variants.end(),
+                         [](const ShaderVariant &variant) {
+                           return variant.macroName ==
+                                  "LX_MATERIAL_CONTRACT_SOURCE";
+                         });
+  if (it == program.variants.end()) {
+    program.variants.push_back(ShaderVariant{
+        .macroName = "LX_MATERIAL_CONTRACT_SOURCE",
+        .enabled = true,
+        .materialContractSource = sourceUri,
+        .materialSourceSignature = sourceSignature,
+    });
+    return program;
+  }
+
+  it->enabled = true;
+  it->macroValue.reset();
+  it->materialContractSource = sourceUri;
+  it->materialSourceSignature = sourceSignature;
+  return program;
 }
 
 } // namespace
@@ -523,39 +566,41 @@ void SceneNode::rebuildValidatedCache() {
     }
 
     const auto &entry = entryOpt->get();
-    auto shader = entry.shaderProgram.getShader();
+    ShaderProgramSet shaderProgram =
+        shaderProgramWithMaterialSourceVariant(entry.shaderProgram, *material);
+    auto shader = shaderProgram.getShader();
     if (!shader) {
       shader = material->getPassShader(pass);
     }
     if (!shader) {
-      fatalValidation(*this, pass, *material, entry.shaderProgram,
+      fatalValidation(*this, pass, *material, shaderProgram,
                       "missing shader for enabled pass", std::cref(layout));
     }
 
     const bool usesSkinning =
-        entry.shaderProgram.hasEnabledVariant("USE_SKINNING");
+        shaderProgram.hasEnabledVariant("USE_SKINNING");
     const bool hasBonesBinding = shader->findBinding("Bones").has_value();
 
     if (usesSkinning != hasBonesBinding) {
-      fatalValidation(*this, pass, *material, entry.shaderProgram,
+      fatalValidation(*this, pass, *material, shaderProgram,
                       "shader variant / Bones binding mismatch",
                       std::cref(layout));
     }
     if (usesSkinning && !skeleton) {
-      fatalValidation(*this, pass, *material, entry.shaderProgram,
+      fatalValidation(*this, pass, *material, shaderProgram,
                       "skinning pass requires skeleton", std::cref(layout));
     }
 
     for (const auto &input : shader->getVertexInputs()) {
       auto layoutItem = findLayoutItem(layout, input.location);
       if (!layoutItem) {
-        fatalValidation(*this, pass, *material, entry.shaderProgram,
+        fatalValidation(*this, pass, *material, shaderProgram,
                         "missing vertex input '" + input.name +
                             "' at location " + std::to_string(input.location),
                         std::cref(layout));
       }
       if (layoutItem->get().type != input.type) {
-        fatalValidation(*this, pass, *material, entry.shaderProgram,
+        fatalValidation(*this, pass, *material, shaderProgram,
                         "vertex input type mismatch for '" + input.name +
                             "' at location " + std::to_string(input.location),
                         std::cref(layout));
@@ -567,13 +612,13 @@ void SceneNode::rebuildValidatedCache() {
     // Validate reserved system ABI contract and renderable-owned resources.
     for (const auto &binding : shader->getReflectionBindings()) {
       if (auto abiDiagnostic = validateSystemAbiBindingContract(binding)) {
-        fatalValidation(*this, pass, *material, entry.shaderProgram,
+        fatalValidation(*this, pass, *material, shaderProgram,
                         *abiDiagnostic, std::cref(layout));
       }
 
       if (binding.name == "Bones") {
         if (!skeleton) {
-          fatalValidation(*this, pass, *material, entry.shaderProgram,
+          fatalValidation(*this, pass, *material, shaderProgram,
                           "missing Bones resource", std::cref(layout));
         }
         bonesResource = GpuResourceRef{skeleton->getUBO()};
@@ -595,7 +640,7 @@ void SceneNode::rebuildValidatedCache() {
       const StringID bindingId(binding.name);
       const auto resource = material->getShaderBindingResource(bindingId);
       if (!resource.isValid()) {
-        fatalValidation(*this, pass, *material, entry.shaderProgram,
+        fatalValidation(*this, pass, *material, shaderProgram,
                         "missing material-owned resource '" + binding.name +
                             "'",
                         std::cref(layout));
@@ -606,6 +651,7 @@ void SceneNode::rebuildValidatedCache() {
     data.pass = pass;
     data.objectHandle = meshComponent->get().getObjectHandle();
     data.materialHandle = materialComponent->get().getMaterialHandle();
+    data.shaderProgram = shaderProgram;
     data.shaderInfo = shader;
     data.vertexBuffer = getVertexBuffer();
     data.indexBuffer = getIndexBuffer();
@@ -622,12 +668,12 @@ void SceneNode::rebuildValidatedCache() {
     if (entry.meshOverlay.enabled) {
       if (geometryStorage.getIndexBuffer().getTopology() !=
           PrimitiveTopology::TriangleList) {
-        fatalValidation(*this, pass, *material, entry.shaderProgram,
+        fatalValidation(*this, pass, *material, shaderProgram,
                         "meshOverlay requires triangle-list source geometry",
                         std::cref(layout));
       }
       if (geometryStorage.getIndexBuffer().indexCount() % 3 != 0) {
-        fatalValidation(*this, pass, *material, entry.shaderProgram,
+        fatalValidation(*this, pass, *material, shaderProgram,
                         "meshOverlay source index count is not triangular",
                         std::cref(layout));
       }

@@ -214,6 +214,20 @@ static std::string joinedToken(const char *head, const char *tail) {
   return std::string(head) + tail;
 }
 
+static ShaderVariant materialContractSourceVariant() {
+  return ShaderVariant{
+      .macroName = "LX_MATERIAL_CONTRACT_SOURCE",
+      .enabled = true,
+      .macroValue = "\"common/materials/uber.contract.glsl\"",
+  };
+}
+
+static std::vector<ShaderVariant>
+withMaterialContractSource(std::vector<ShaderVariant> variants = {}) {
+  variants.push_back(materialContractSourceVariant());
+  return variants;
+}
+
 static bool testPbrShadersUseMaterialAccessorAbi(
     const std::filesystem::path &shaderDir) {
   std::cout << "\n========================================\n";
@@ -597,7 +611,9 @@ static bool testPbrIblContract(const std::filesystem::path &shaderDir,
   }
 
   auto compileResult =
-      ShaderCompiler::compileProgram(vertPath, fragPath, {{"HAS_IBL", true}});
+      ShaderCompiler::compileProgram(
+          vertPath, fragPath,
+          withMaterialContractSource({{"HAS_IBL", true}}));
   if (!compileResult.success) {
     std::cerr << "  COMPILE FAILED: " << compileResult.errorMessage << "\n";
     return false;
@@ -650,11 +666,12 @@ static bool testPbrMaterialGpuRecordContract(
     const std::string &label = "PBR material GPU record contract") {
   std::cout << "  Test: " << label << "\n";
   auto compileResult =
-      ShaderCompiler::compileProgram(vertPath, fragPath,
-                                     {{"HAS_NORMAL_MAP", true},
+      ShaderCompiler::compileProgram(
+          vertPath, fragPath,
+          withMaterialContractSource({{"HAS_NORMAL_MAP", true},
                                       {"HAS_METALLIC_ROUGHNESS", true},
                                       {"HAS_AO_MAP", true},
-                                      {"HAS_EMISSIVE_MAP", true}});
+                                      {"HAS_EMISSIVE_MAP", true}}));
   if (!compileResult.success) {
     std::cerr << "  COMPILE FAILED: " << compileResult.errorMessage << "\n";
     return false;
@@ -1125,20 +1142,23 @@ int main(int argc, char *argv[]) {
   if (!testPbrShadersUseMaterialAccessorAbi(shaderDir))
     ++failures;
 
-  // Test 1: No variants (base PBR)
-  if (!testVariantCombination(vertPath, fragPath, "Base PBR (no variants)", {}))
+  // Test 1: Contract-source PBR
+  if (!testVariantCombination(vertPath, fragPath, "PBR + Material Contract",
+                              withMaterialContractSource()))
     ++failures;
 
   // Test 2: HAS_NORMAL_MAP only
   if (!testVariantCombination(
           vertPath, fragPath, "PBR + Normal Map",
-          {{"HAS_NORMAL_MAP", true}, {"HAS_METALLIC_ROUGHNESS", false}}))
+          withMaterialContractSource(
+              {{"HAS_NORMAL_MAP", true}, {"HAS_METALLIC_ROUGHNESS", false}})))
     ++failures;
 
   // Test 3: All variants enabled
   if (!testVariantCombination(
           vertPath, fragPath, "PBR + All Variants",
-          {{"HAS_NORMAL_MAP", true}, {"HAS_METALLIC_ROUGHNESS", true}}))
+          withMaterialContractSource(
+              {{"HAS_NORMAL_MAP", true}, {"HAS_METALLIC_ROUGHNESS", true}})))
     ++failures;
   if (!testPbrIblContract(shaderDir, vertPath, fragPath))
     ++failures;

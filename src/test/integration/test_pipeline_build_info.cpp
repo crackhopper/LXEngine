@@ -88,6 +88,9 @@ SceneNodeSharedPtr makeCameraNodeWithTarget(const RenderTarget &target) {
 
 void configureMaterialV2UploadData(const MaterialInstanceSharedPtr &material) {
   material->setBsdfType("matte");
+  material->setMaterialSourceUri(ResourceUri(
+      "assets://shaders/glsl/common/materials/matte.contract.glsl"));
+  material->setMaterialSourceSignature(StringID("matte-source-signature"));
   MaterialParameterEnvelope kd;
   kd.kind = MaterialEnvelopeKind::Rgb;
   kd.rgbValue = Vec3f{0.25f, 0.5f, 0.75f};
@@ -189,6 +192,16 @@ void testFromRenderWorkItemKeyMatches() {
   auto item = buildItem();
   auto info = PipelineBuildDesc::fromRenderWorkItem(item);
   EXPECT(info.key == item.pipelineKey, "key matches item.pipelineKey");
+}
+
+void testFromRenderWorkItemCarriesMaterialSourceVariant() {
+  auto item = buildItem();
+  auto info = PipelineBuildDesc::fromRenderWorkItem(item);
+  EXPECT(item.shaderProgram.hasEnabledVariant("LX_MATERIAL_CONTRACT_SOURCE"),
+         "render work should carry material source shader variant");
+  EXPECT(info.shaderVariantKey == item.shaderProgram.getPipelineSignature(),
+         "build desc shader variant key should match render work shader "
+         "program signature");
 }
 
 void testFromRenderWorkItemStagesPreserved() {
@@ -300,6 +313,38 @@ void testFromRenderWorkItemFiltersVertexLayoutToShaderInputs() {
          "filtered layout keeps original stride");
 }
 
+ShaderProgramSet makeSourceVariantProgramSet(const ResourceUri &sourceUri,
+                                             StringID sourceSignature) {
+  ShaderProgramSet set;
+  set.shaderName = "fake_shader";
+  set.variants.push_back(ShaderVariant{
+      .macroName = "LX_MATERIAL_CONTRACT_SOURCE",
+      .enabled = true,
+      .materialContractSource = sourceUri,
+      .materialSourceSignature = sourceSignature,
+  });
+  return set;
+}
+
+void testMaterialSourceVariantAffectsShaderProgramSignature() {
+  const ResourceUri matteSource(
+      "assets://shaders/glsl/common/materials/matte.contract.glsl");
+  const ResourceUri metalSource(
+      "assets://shaders/glsl/common/materials/metal.contract.glsl");
+
+  const ShaderProgramSet matte =
+      makeSourceVariantProgramSet(matteSource, StringID("matte-source-sig"));
+  const ShaderProgramSet texturedMatte =
+      makeSourceVariantProgramSet(matteSource, StringID("matte-source-sig"));
+  const ShaderProgramSet metal =
+      makeSourceVariantProgramSet(metalSource, StringID("metal-source-sig"));
+
+  EXPECT(matte.getPipelineSignature() == texturedMatte.getPipelineSignature(),
+         "texture presence must not produce shader variant key");
+  EXPECT(matte.getPipelineSignature() != metal.getPipelineSignature(),
+         "different bsdf.source should produce different shader variant key");
+}
+
 } // namespace
 
 int main() {
@@ -307,12 +352,14 @@ int main() {
 
   testFromRenderWorkItemPopulatesBindings();
   testFromRenderWorkItemKeyMatches();
+  testFromRenderWorkItemCarriesMaterialSourceVariant();
   testFromRenderWorkItemStagesPreserved();
   testFromRenderWorkItemTopology();
   testFromRenderWorkItemRenderStateFromMaterial();
   testFromRenderWorkItemIsDeterministic();
   testFromRenderWorkItemPreservesTargetDesc();
   testFromRenderWorkItemFiltersVertexLayoutToShaderInputs();
+  testMaterialSourceVariantAffectsShaderProgramSignature();
 
   if (failures > 0) {
     std::cerr << "FAILED: " << failures << " assertion(s)\n";

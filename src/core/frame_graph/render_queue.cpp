@@ -34,6 +34,7 @@ makeItemFromValidatedData(const ValidatedRenderablePassData &data) {
   item.kind = RenderWorkKind::RasterDraw;
   item.raster.vertexBuffer = data.vertexBuffer;
   item.raster.indexBuffer = data.indexBuffer;
+  item.shaderProgram = data.shaderProgram;
   item.shaderInfo = data.shaderInfo;
   item.renderState = data.renderState;
   item.sortCenter = data.sortCenter;

@@ -28,6 +28,7 @@ struct ValidatedRenderablePassData {
   StringID pass;
   ObjectHandle objectHandle;
   MaterialHandle materialHandle;
+  ShaderProgramSet shaderProgram;
   IShaderSharedPtr shaderInfo;
   GpuResourceRef vertexBuffer;
   GpuResourceRef indexBuffer;
