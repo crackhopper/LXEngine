@@ -121,14 +121,12 @@ bsdf:
   EXPECT(parsed.instance->getMaterialSourceUri().string() ==
              "memory://materials/shaders/materials/matte.contract.glsl",
          "MaterialInstance should store canonical source URI");
-  EXPECT(parsed.instance->getMaterialSourceSignature() ==
-             LX_core::StringID(
-                 "memory://materials/shaders/materials/matte.contract.glsl"),
-         "MaterialInstance should store source signature identity");
-  EXPECT(parsed.instance->getMaterialSourceReflectionHash() ==
-             "unreflected-contract",
-         "MaterialInstance should store placeholder reflection hash until "
-         "source loading is wired");
+  EXPECT(parsed.instance->getMaterialSourceSignature() == LX_core::StringID{},
+         "MaterialInstance should leave source signature invalid until "
+         "reflection is wired");
+  EXPECT(parsed.instance->getMaterialSourceReflectionHash().empty(),
+         "MaterialInstance should leave reflection hash empty until "
+         "reflection is wired");
 
   const auto clone = parsed.instance->cloneInstanceDataUnique();
   EXPECT(clone->getMaterialSourceUri() ==
