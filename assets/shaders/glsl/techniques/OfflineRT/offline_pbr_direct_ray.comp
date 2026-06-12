@@ -2,7 +2,13 @@
 
 #extension GL_EXT_nonuniform_qualifier : require
 
+#include "common/material_surface.glsl"
 #include "common/pbr.glsl"
+#if defined(LX_MATERIAL_CONTRACT_SOURCE)
+#include LX_MATERIAL_CONTRACT_SOURCE
+#else
+#error LX_MATERIAL_CONTRACT_SOURCE must be defined by the material shader variant
+#endif
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
@@ -43,21 +49,6 @@ struct lxSceneObjectRecord {
   uvec4 flags;
 };
 
-struct lxSceneMaterialRecord {
-  vec4 baseColor;
-  vec4 pbrParams;
-  vec4 emissive;
-  vec4 clearcoatParams;
-  uint baseColorTexture;
-  uint normalTexture;
-  uint metallicRoughnessTexture;
-  uint aoTexture;
-  uint emissiveTexture;
-  uint flags;
-  uint reserved0;
-  uint reserved1;
-};
-
 struct lxSceneBvhNode {
   vec4 boundsMinLeftFirst;
   vec4 boundsMaxTriCount;
@@ -89,10 +80,6 @@ layout(std430, binding = 5) readonly buffer ScenePrimitives {
 
 layout(std430, binding = 6) readonly buffer SceneObjects {
   lxSceneObjectRecord objects[];
-};
-
-layout(std430, binding = 7) readonly buffer SceneMaterials {
-  lxSceneMaterialRecord materials[];
 };
 
 layout(std430, binding = 8) readonly buffer SceneBvhNodes {
@@ -129,12 +116,6 @@ layout(std430, binding = 10) writeonly buffer OutputPixels {
 layout(set = 0, binding = 11) uniform sampler2D SceneTextures[256];
 
 const uint BVH_LEAF_NODE_FLAG = 0x80000000u;
-const uint INVALID_TEXTURE_INDEX = 0xffffffffu;
-const uint SCENE_TEXTURE_COUNT = 256u;
-const uint MATERIAL_CULL_MODE_MASK = 0x3u;
-const uint MATERIAL_CULL_MODE_NONE = 0u;
-const uint MATERIAL_CULL_MODE_FRONT = 1u;
-const uint MATERIAL_CULL_MODE_BACK = 2u;
 
 uint wangHash(uint value) {
   value = (value ^ 61u) ^ (value >> 16u);
@@ -181,18 +162,8 @@ vec4 readMeshAttribute(lxSceneMeshRecord mesh, uint semantic, uint vertexIndex,
 }
 
 bool shouldCullRayHit(uint materialIndex, bool frontFacing) {
-  if (params.materialCount == 0u) {
-    return false;
-  }
-  lxSceneMaterialRecord material =
-      materials[min(materialIndex, params.materialCount - 1u)];
-  uint cullMode = material.flags & MATERIAL_CULL_MODE_MASK;
-  if (cullMode == MATERIAL_CULL_MODE_BACK) {
-    return !frontFacing;
-  }
-  if (cullMode == MATERIAL_CULL_MODE_FRONT) {
-    return frontFacing;
-  }
+  // TODO(REQ-073-b): cull mode needs a non-legacy material-side ABI. Task 8
+  // removes direct lxSceneMaterialRecord reads from this PBR surface path.
   return false;
 }
 
@@ -331,32 +302,19 @@ bool traceScene(vec3 origin, vec3 dir, float maxT, out float hitT,
   return hit;
 }
 
-bool hasSceneTexture(uint textureIndex) {
-  return textureIndex != INVALID_TEXTURE_INDEX &&
-         textureIndex < SCENE_TEXTURE_COUNT;
-}
-
-vec4 sampleSceneTexture(uint textureIndex, vec2 uv) {
-  return texture(SceneTextures[nonuniformEXT(textureIndex)], uv);
-}
-
-vec3 makeShadingNormal(lxSceneMaterialRecord material, HitAttributes hit) {
+mat3 makeTangentFrame(HitAttributes hit) {
   vec3 N = normalize(hit.normal);
-  if (!hasSceneTexture(material.normalTexture)) {
-    return N;
-  }
-
   vec3 T = hit.tangent - N * dot(N, hit.tangent);
   float tangentLength = length(T);
   if (tangentLength < 1.0e-5) {
-    return N;
+    vec3 helper = abs(N.z) < 0.999 ? vec3(0.0, 0.0, 1.0)
+                                   : vec3(0.0, 1.0, 0.0);
+    T = normalize(cross(helper, N));
+  } else {
+    T = T / tangentLength;
   }
-  T = T / tangentLength;
   vec3 B = normalize(cross(N, T) * hit.tangentSign);
-  mat3 TBN = mat3(T, B, N);
-  vec3 tangentNormal =
-      sampleSceneTexture(material.normalTexture, hit.uv).xyz * 2.0 - 1.0;
-  return normalize(TBN * tangentNormal);
+  return mat3(T, B, N);
 }
 
 vec3 shade(vec3 origin, vec3 dir) {
@@ -369,18 +327,21 @@ vec3 shade(vec3 origin, vec3 dir) {
     return environmentColor(dir);
   }
 
-  lxSceneMaterialRecord material =
-      materials[min(hit.materialIndex, params.materialCount - 1u)];
-  vec3 baseColor = material.baseColor.rgb;
-  if (hasSceneTexture(material.baseColorTexture)) {
-    baseColor *= sampleSceneTexture(material.baseColorTexture, hit.uv).rgb;
-  }
+  uint materialIndex =
+      params.materialCount == 0u ? 0u
+                                 : min(hit.materialIndex,
+                                       params.materialCount - 1u);
+  mat3 tangentFrame = makeTangentFrame(hit);
+  LxMaterialSurface surface =
+      lxLoadMaterialSurface(materialIndex, hit.uv, normalize(hit.normal),
+                            tangentFrame);
+  vec3 baseColor = max(surface.baseColor, vec3(0.0));
   if (params.compareMode == 1u) {
     return baseColor;
   }
 
   vec3 hitPos = origin + dir * hitT;
-  vec3 N = makeShadingNormal(material, hit);
+  vec3 N = normalize(surface.normal);
   vec3 V = normalize(-dir);
   vec3 L = normalize(-params.lightDirectionIntensity.xyz);
 
@@ -398,28 +359,13 @@ vec3 shade(vec3 origin, vec3 dir) {
   pbrInput.lightDir = L;
   pbrInput.lightColor = params.lightColorEnvironment.rgb *
                         params.lightDirectionIntensity.w * visibility;
-  pbrInput.metallic = clamp(material.pbrParams.x, 0.0, 1.0);
-  pbrInput.roughness = clamp(material.pbrParams.y, 0.04, 1.0);
-  if (hasSceneTexture(material.metallicRoughnessTexture)) {
-    vec4 mr =
-        sampleSceneTexture(material.metallicRoughnessTexture, hit.uv);
-    pbrInput.metallic = clamp(pbrInput.metallic * mr.b, 0.0, 1.0);
-    pbrInput.roughness = clamp(pbrInput.roughness * mr.g, 0.04, 1.0);
-  }
-  pbrInput.ao = clamp(material.pbrParams.w, 0.0, 1.0);
-  if (hasSceneTexture(material.aoTexture)) {
-    pbrInput.ao =
-        clamp(pbrInput.ao * sampleSceneTexture(material.aoTexture, hit.uv).r,
-              0.0, 1.0);
-  }
-  pbrInput.emissive = material.emissive.rgb;
-  if (hasSceneTexture(material.emissiveTexture)) {
-    pbrInput.emissive =
-        sampleSceneTexture(material.emissiveTexture, hit.uv).rgb;
-  }
+  pbrInput.metallic = clamp(surface.metallic, 0.0, 1.0);
+  pbrInput.roughness = clamp(surface.roughness, 0.04, 1.0);
+  pbrInput.ao = clamp(surface.ao, 0.0, 1.0);
+  pbrInput.emissive = max(surface.emissive, vec3(0.0));
   LxPbrClearcoatInput clearcoat;
-  clearcoat.factor = material.clearcoatParams.x;
-  clearcoat.roughness = material.clearcoatParams.y;
+  clearcoat.factor = 0.0;
+  clearcoat.roughness = pbrInput.roughness;
   return lxPbrLayeredClearcoatDirectLight(pbrInput, clearcoat) +
          lxPbrEmissive(pbrInput);
 }

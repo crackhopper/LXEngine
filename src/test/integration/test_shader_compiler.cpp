@@ -214,6 +214,59 @@ static std::string joinedToken(const char *head, const char *tail) {
   return std::string(head) + tail;
 }
 
+static bool testPbrShadersUseMaterialAccessorAbi(
+    const std::filesystem::path &shaderDir) {
+  std::cout << "\n========================================\n";
+  std::cout << "  Test: PBR shaders use Material Accessor ABI\n";
+  std::cout << "========================================\n";
+
+  const struct {
+    const char *label;
+    std::filesystem::path path;
+  } shaders[] = {
+      {"Forward PBR",
+       shaderDir / "techniques" / "Forward" / "pbr.frag"},
+      {"Deferred GBuffer",
+       shaderDir / "techniques" / "Deferred" / "pbr_gbuffer.frag"},
+      {"OfflineRT direct ray",
+       shaderDir / "techniques" / "OfflineRT" / "offline_pbr_direct_ray.comp"},
+  };
+
+  for (const auto &shader : shaders) {
+    const auto source = readTextFile(shader.path);
+    if (source.empty()) {
+      std::cerr << "  FAIL: " << shader.label << " source is empty or "
+                << "unreadable: " << shader.path << "\n";
+      return false;
+    }
+    if (source.find("#include \"common/material_surface.glsl\"") ==
+        std::string::npos) {
+      std::cerr << "  FAIL: " << shader.label
+                << " should include common/material_surface.glsl\n";
+      return false;
+    }
+    if (source.find("#include LX_MATERIAL_CONTRACT_SOURCE") ==
+        std::string::npos) {
+      std::cerr << "  FAIL: " << shader.label
+                << " should expose the material contract source hook\n";
+      return false;
+    }
+    if (source.find("lxLoadMaterialSurface") == std::string::npos) {
+      std::cerr << "  FAIL: " << shader.label
+                << " should call lxLoadMaterialSurface\n";
+      return false;
+    }
+    if (source.find("struct lxSceneMaterialRecord") != std::string::npos) {
+      std::cerr << "  FAIL: " << shader.label
+                << " still declares legacy lxSceneMaterialRecord\n";
+      return false;
+    }
+  }
+
+  std::cout << "  PASS: PBR shaders use Material Accessor ABI source hook\n";
+  return true;
+}
+
 static bool
 testPostProcessShaderContract(const std::filesystem::path &shaderDir) {
   std::cout << "\n========================================\n";
@@ -807,7 +860,7 @@ testPbrClearcoatShaderContract(const std::filesystem::path &shaderDir) {
 
 static bool
 testDeferredPbrShaderContracts(const std::filesystem::path &shaderDir) {
-  std::cout << "  Test: Deferred PBR shader GPU record contracts\n";
+  std::cout << "  Test: Deferred clearcoat shader GPU record contract\n";
   const auto pbrVert =
       shaderDir / "techniques" / "Deferred" / "pbr_gbuffer.vert";
   const auto pbrFrag =
@@ -824,14 +877,13 @@ testDeferredPbrShaderContracts(const std::filesystem::path &shaderDir) {
   }
 
   if (!testPbrMaterialGpuRecordContract(
-          pbrVert, pbrFrag, "Deferred PBR material GPU record contract") ||
-      !testPbrMaterialGpuRecordContract(
           clearcoatVert, clearcoatFrag,
           "Deferred clearcoat material GPU record contract")) {
     return false;
   }
 
-  std::cout << "  PASS: Deferred PBR shaders use migrated material records\n";
+  std::cout << "  PASS: Deferred clearcoat shader uses migrated material "
+               "records\n";
   return true;
 }
 
@@ -1070,6 +1122,9 @@ int main(int argc, char *argv[]) {
 
   int failures = 0;
 
+  if (!testPbrShadersUseMaterialAccessorAbi(shaderDir))
+    ++failures;
+
   // Test 1: No variants (base PBR)
   if (!testVariantCombination(vertPath, fragPath, "Base PBR (no variants)", {}))
     ++failures;
@@ -1086,8 +1141,6 @@ int main(int argc, char *argv[]) {
           {{"HAS_NORMAL_MAP", true}, {"HAS_METALLIC_ROUGHNESS", true}}))
     ++failures;
   if (!testPbrIblContract(shaderDir, vertPath, fragPath))
-    ++failures;
-  if (!testPbrMaterialGpuRecordContract(vertPath, fragPath))
     ++failures;
   if (!testPbrFragmentUsesSharedCommon(fragPath))
     ++failures;
