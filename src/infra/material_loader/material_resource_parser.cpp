@@ -1,14 +1,9 @@
 #include "infra/material_loader/material_resource_parser.hpp"
 
-#include "core/utils/filesystem_tools.hpp"
-
 #include <yaml-cpp/yaml.h>
 
 #include <algorithm>
 #include <filesystem>
-#include <fstream>
-#include <optional>
-#include <sstream>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -362,53 +357,6 @@ isAllowedKind(const LX_core::MaterialContractParameter &parameter,
                       }) != parameter.allowedKinds.end();
 }
 
-[[nodiscard]] std::filesystem::path
-filesystemPathForContractSource(const LX_core::ResourceUri &sourceUri) {
-  constexpr std::string_view assetsPrefix = "assets://";
-  const std::string &source = sourceUri.string();
-  if (source.rfind(assetsPrefix, 0) == 0) {
-    return resolveRuntimePath(std::filesystem::path("assets") /
-                              source.substr(assetsPrefix.size()));
-  }
-
-  std::filesystem::path path(source);
-  if (path.is_absolute() || std::filesystem::exists(path)) {
-    return path;
-  }
-  return resolveRuntimePath(path);
-}
-
-[[nodiscard]] std::optional<std::string>
-loadMaterialContractSourceText(const LX_core::ResourceUri &materialUri,
-                               const LX_core::ResourceUri &sourceUri,
-                               ParsedMaterialResource &result) {
-  if (sourceUri.string().rfind("memory://", 0) == 0) {
-    return std::string{};
-  }
-
-  if (hasUriScheme(sourceUri) &&
-      sourceUri.string().rfind("assets://", 0) != 0) {
-    addDiagnostic(result, materialUri, "bsdf.source",
-                  "unsupported material contract source URI scheme '" +
-                      sourceUri.string() + "'");
-    return std::nullopt;
-  }
-
-  const std::filesystem::path path = filesystemPathForContractSource(sourceUri);
-  std::ifstream input(path, std::ios::in | std::ios::binary);
-  if (!input) {
-    addDiagnostic(result, materialUri, "bsdf.source",
-                  "failed to read material contract source '" +
-                      sourceUri.string() + "' at '" + path.generic_string() +
-                      "'");
-    return std::nullopt;
-  }
-
-  std::ostringstream text;
-  text << input.rdbuf();
-  return text.str();
-}
-
 [[nodiscard]] bool validateMaterialRefHeaderIfLocal(
     const LX_core::ResourceUri &ownerUri, const LX_core::ResourceUri &targetUri,
     const std::string &field, ParsedMaterialResource &result) {
@@ -481,8 +429,10 @@ loadMaterialContractSourceText(const LX_core::ResourceUri &materialUri,
 } // namespace
 
 MaterialResourceParser::MaterialResourceParser(
-    MaterialContractReflector reflector)
-    : m_reflector(std::move(reflector)) {}
+    MaterialContractReflector reflector,
+    MaterialContractSourceLoader sourceLoader)
+    : m_reflector(std::move(reflector)),
+      m_sourceLoader(std::move(sourceLoader)) {}
 
 ParsedMaterialResource
 MaterialResourceParser::parse(LX_core::SceneResourceTable &table,
@@ -536,14 +486,9 @@ MaterialResourceParser::parse(LX_core::SceneResourceTable &table,
   const LX_core::ResourceUri sourceUri = table.resolveUri(
       uri, LX_core::ResourceUri(sourceText));
 
-  const std::optional<std::string> contractSourceText =
-      loadMaterialContractSourceText(uri, sourceUri, result);
-  if (!contractSourceText.has_value()) {
-    return result;
-  }
-
   const MaterialContractReflectionResult reflectionResult =
-      m_reflector(sourceUri, *contractSourceText);
+      loadAndReflectMaterialContractSource(sourceUri, m_reflector,
+                                           m_sourceLoader);
   for (const std::string &diagnostic : reflectionResult.diagnostics) {
     addDiagnostic(result, uri, "bsdf.source", diagnostic);
   }

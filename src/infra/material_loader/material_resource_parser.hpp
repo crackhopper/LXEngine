@@ -4,7 +4,6 @@
 #include "core/scene/scene_resource_table.hpp"
 #include "infra/material_loader/material_contract_reflector.hpp"
 
-#include <functional>
 #include <string_view>
 #include <vector>
 
@@ -23,12 +22,10 @@ struct ParsedMaterialResource final {
 
 class MaterialResourceParser final {
 public:
-  using MaterialContractReflector =
-      std::function<MaterialContractReflectionResult(
-          const LX_core::ResourceUri &, std::string_view)>;
-
   explicit MaterialResourceParser(
-      MaterialContractReflector reflector = reflectMaterialContractSource);
+      MaterialContractReflector reflector = reflectMaterialContractSource,
+      MaterialContractSourceLoader sourceLoader =
+          loadMaterialContractSourceText);
 
   [[nodiscard]] ParsedMaterialResource
   parse(LX_core::SceneResourceTable &table, const LX_core::ResourceUri &uri,
@@ -36,6 +33,7 @@ public:
 
 private:
   MaterialContractReflector m_reflector;
+  MaterialContractSourceLoader m_sourceLoader;
 };
 
 } // namespace LX_infra

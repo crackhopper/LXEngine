@@ -2,6 +2,7 @@
 
 #include "core/asset/material_contract.hpp"
 
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -14,13 +15,35 @@ struct MaterialContractReflectionResult final {
   std::vector<std::string> diagnostics;
 };
 
+struct MaterialContractSourceLoadResult final {
+  std::optional<std::string> sourceText;
+  std::vector<std::string> diagnostics;
+};
+
 struct MaterialContractReflectionSetValidationResult final {
   std::vector<std::string> diagnostics;
 };
 
+using MaterialContractReflector =
+    std::function<MaterialContractReflectionResult(
+        const LX_core::ResourceUri &, std::string_view)>;
+using MaterialContractSourceLoader =
+    std::function<MaterialContractSourceLoadResult(
+        const LX_core::ResourceUri &)>;
+
 [[nodiscard]] MaterialContractReflectionResult
 reflectMaterialContractSource(const LX_core::ResourceUri &sourceUri,
                               std::string_view sourceText);
+
+[[nodiscard]] MaterialContractSourceLoadResult
+loadMaterialContractSourceText(const LX_core::ResourceUri &sourceUri);
+
+[[nodiscard]] MaterialContractReflectionResult
+loadAndReflectMaterialContractSource(
+    const LX_core::ResourceUri &sourceUri,
+    const MaterialContractReflector &reflector = reflectMaterialContractSource,
+    const MaterialContractSourceLoader &sourceLoader =
+        loadMaterialContractSourceText);
 
 [[nodiscard]] MaterialContractReflectionSetValidationResult
 validateMaterialContractReflectionSet(

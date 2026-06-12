@@ -15,5 +15,12 @@
 
 LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) {
   LxMaterialSurface surface;
+  surface.baseColor = vec3(1.0);
+  surface.alpha = 1.0;
+  surface.metallic = 1.0;
+  surface.roughness = 0.25;
+  surface.normal = vec3(0.0, 0.0, 1.0);
+  surface.ao = 1.0;
+  surface.emissive = vec3(0.0);
   return surface;
 }

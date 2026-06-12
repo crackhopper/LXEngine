@@ -12,10 +12,7 @@
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
-#include <fstream>
 #include <memory>
-#include <optional>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -179,46 +176,13 @@ buildMeshFromGltf(const infra::GLTFLoader &loader) {
   return result;
 }
 
-[[nodiscard]] std::optional<std::string>
-readMaterialContractSource(const LX_core::ResourceUri &sourceUri) {
-  constexpr std::string_view assetsPrefix = "assets://";
-  const std::string &source = sourceUri.string();
-  std::filesystem::path path;
-  if (source.rfind(assetsPrefix, 0) == 0) {
-    path = resolveRuntimePath(std::filesystem::path("assets") /
-                              source.substr(assetsPrefix.size()));
-  } else if (source.find("://") == std::string::npos) {
-    path = source;
-    if (!path.is_absolute() && !std::filesystem::exists(path)) {
-      path = resolveRuntimePath(path);
-    }
-  } else {
-    return std::nullopt;
-  }
-
-  std::ifstream input(path, std::ios::in | std::ios::binary);
-  if (!input) {
-    return std::nullopt;
-  }
-  std::ostringstream text;
-  text << input.rdbuf();
-  return text.str();
-}
-
 [[nodiscard]] bool contractAllowsTextureParameter(
-    const MaterialInstanceSharedPtr &material, const char *parameterName) {
-  const std::optional<std::string> sourceText =
-      readMaterialContractSource(material->getMaterialSourceUri());
-  if (!sourceText.has_value()) {
+    const LX_core::MaterialContractReflection *contract,
+    const char *parameterName) {
+  if (contract == nullptr) {
     return false;
   }
-
-  const auto result = LX_infra::reflectMaterialContractSource(
-      material->getMaterialSourceUri(), *sourceText);
-  if (!result.reflection.has_value()) {
-    return false;
-  }
-  const auto parameter = result.reflection->findParameter(parameterName);
+  const auto parameter = contract->findParameter(parameterName);
   if (!parameter.has_value()) {
     return false;
   }
@@ -229,6 +193,8 @@ readMaterialContractSource(const LX_core::ResourceUri &sourceUri) {
 }
 
 void bindV2TextureEnvelopeIfPresent(MaterialInstanceSharedPtr &material,
+                                    const LX_core::MaterialContractReflection
+                                        *contract,
                                     const std::filesystem::path &gltfDir,
                                     const std::string &uri,
                                     const char *parameterName,
@@ -236,7 +202,7 @@ void bindV2TextureEnvelopeIfPresent(MaterialInstanceSharedPtr &material,
   if (uri.empty()) {
     return;
   }
-  if (!contractAllowsTextureParameter(material, parameterName)) {
+  if (!contractAllowsTextureParameter(contract, parameterName)) {
     return;
   }
 
@@ -267,12 +233,18 @@ void bindV2TextureEnvelopeIfPresent(MaterialInstanceSharedPtr &material,
                              materialUri.string());
   }
 
+  const auto contractResult = LX_infra::loadAndReflectMaterialContractSource(
+      material->getMaterialSourceUri());
+  const LX_core::MaterialContractReflection *contract =
+      contractResult.reflection.has_value() ? &*contractResult.reflection
+                                            : nullptr;
+
   bindV2TextureEnvelopeIfPresent(
-      material, gltfDir, pbr.baseColorTexture, "Kd",
+      material, contract, gltfDir, pbr.baseColorTexture, "Kd",
       LX_core::MaterialEnvelopeValueType::Rgb);
   if (normalMapEnabled) {
     bindV2TextureEnvelopeIfPresent(
-        material, gltfDir, pbr.normalTexture, "normalmap",
+        material, contract, gltfDir, pbr.normalTexture, "normalmap",
         LX_core::MaterialEnvelopeValueType::Rgb);
   }
 

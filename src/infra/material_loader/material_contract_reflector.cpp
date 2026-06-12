@@ -1,7 +1,12 @@
 #include "infra/material_loader/material_contract_reflector.hpp"
 
+#include "core/utils/filesystem_tools.hpp"
+
 #include <array>
 #include <cctype>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -25,6 +30,26 @@ namespace {
   }
 
   return std::string(text.substr(first, last - first));
+}
+
+[[nodiscard]] bool hasUriScheme(const LX_core::ResourceUri &uri) {
+  return uri.string().find("://") != std::string::npos;
+}
+
+[[nodiscard]] std::filesystem::path
+filesystemPathForContractSource(const LX_core::ResourceUri &sourceUri) {
+  constexpr std::string_view assetsPrefix = "assets://";
+  const std::string &source = sourceUri.string();
+  if (source.rfind(assetsPrefix, 0) == 0) {
+    return resolveRuntimePath(std::filesystem::path("assets") /
+                              source.substr(assetsPrefix.size()));
+  }
+
+  std::filesystem::path path(source);
+  if (path.is_absolute() || std::filesystem::exists(path)) {
+    return path;
+  }
+  return resolveRuntimePath(path);
 }
 
 [[nodiscard]] std::optional<LX_core::MaterialContractParameterKind>
@@ -667,6 +692,67 @@ reflectMaterialContractSource(const LX_core::ResourceUri &sourceUri,
   if (result.diagnostics.empty()) {
     result.reflection = std::move(reflection);
   }
+  return result;
+}
+
+MaterialContractSourceLoadResult
+loadMaterialContractSourceText(const LX_core::ResourceUri &sourceUri) {
+  MaterialContractSourceLoadResult result;
+
+  if (sourceUri.string().rfind("memory://", 0) == 0) {
+    result.diagnostics.push_back(
+        "unsupported material contract source URI scheme '" +
+        sourceUri.string() +
+        "'; inject a source loader for memory contract sources");
+    return result;
+  }
+
+  if (hasUriScheme(sourceUri) &&
+      sourceUri.string().rfind("assets://", 0) != 0) {
+    result.diagnostics.push_back(
+        "unsupported material contract source URI scheme '" +
+        sourceUri.string() + "'");
+    return result;
+  }
+
+  const std::filesystem::path path = filesystemPathForContractSource(sourceUri);
+  std::ifstream input(path, std::ios::in | std::ios::binary);
+  if (!input) {
+    result.diagnostics.push_back("failed to read material contract source '" +
+                                 sourceUri.string() + "' at '" +
+                                 path.generic_string() + "'");
+    return result;
+  }
+
+  std::ostringstream text;
+  text << input.rdbuf();
+  result.sourceText = text.str();
+  return result;
+}
+
+MaterialContractReflectionResult loadAndReflectMaterialContractSource(
+    const LX_core::ResourceUri &sourceUri,
+    const MaterialContractReflector &reflector,
+    const MaterialContractSourceLoader &sourceLoader) {
+  MaterialContractReflectionResult result;
+  const MaterialContractSourceLoadResult loaded = sourceLoader(sourceUri);
+  result.diagnostics = loaded.diagnostics;
+  if (!loaded.sourceText.has_value()) {
+    if (result.diagnostics.empty()) {
+      result.diagnostics.push_back(
+          "material contract source loader returned no text");
+    }
+    return result;
+  }
+
+  MaterialContractReflectionResult reflected =
+      reflector(sourceUri, *loaded.sourceText);
+  result.reflection = std::move(reflected.reflection);
+  result.diagnostics.insert(result.diagnostics.end(),
+                            std::make_move_iterator(
+                                reflected.diagnostics.begin()),
+                            std::make_move_iterator(
+                                reflected.diagnostics.end()));
   return result;
 }
 

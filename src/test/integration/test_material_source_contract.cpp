@@ -59,7 +59,8 @@ bool diagnosticsContain(const std::vector<std::string> &diagnostics,
 
 LX_infra::MaterialContractReflectionResult makeParserContract(
     const LX_core::ResourceUri &sourceUri, std::string_view sourceText) {
-  (void)sourceText;
+  EXPECT(!sourceText.empty(),
+         "injected parser tests should receive explicit source text");
 
   LX_core::MaterialContractReflection reflection;
   reflection.sourceUri = sourceUri;
@@ -79,6 +80,14 @@ LX_infra::MaterialContractReflectionResult makeParserContract(
 
   LX_infra::MaterialContractReflectionResult result;
   result.reflection = std::move(reflection);
+  return result;
+}
+
+LX_infra::MaterialContractSourceLoadResult makeParserContractSourceText(
+    const LX_core::ResourceUri &sourceUri) {
+  (void)sourceUri;
+  LX_infra::MaterialContractSourceLoadResult result;
+  result.sourceText = "injected material contract source";
   return result;
 }
 
@@ -127,7 +136,8 @@ bsdf:
 
 void testMaterialParserRejectsUnknownParameterFromContract() {
   LX_core::SceneResourceTable table;
-  LX_infra::MaterialResourceParser parser(makeParserContract);
+  LX_infra::MaterialResourceParser parser(makeParserContract,
+                                          makeParserContractSourceText);
   const auto parsed = parser.parse(
       table, LX_core::ResourceUri("memory://materials/bad-param.material"),
       R"yaml(
@@ -149,7 +159,8 @@ bsdf:
 
 void testMaterialParserRejectsSourceTypeMismatch() {
   LX_core::SceneResourceTable table;
-  LX_infra::MaterialResourceParser parser(makeTypeMismatchParserContract);
+  LX_infra::MaterialResourceParser parser(makeTypeMismatchParserContract,
+                                          makeParserContractSourceText);
   const auto parsed = parser.parse(
       table, LX_core::ResourceUri("memory://materials/type-mismatch.material"),
       R"yaml(
@@ -171,7 +182,8 @@ bsdf:
 
 void testMaterialParserRejectsUnsupportedContract() {
   LX_core::SceneResourceTable table;
-  LX_infra::MaterialResourceParser parser(makeUnsupportedParserContract);
+  LX_infra::MaterialResourceParser parser(makeUnsupportedParserContract,
+                                          makeParserContractSourceText);
   const auto parsed = parser.parse(
       table, LX_core::ResourceUri("memory://materials/unsupported.material"),
       R"yaml(
@@ -192,7 +204,8 @@ bsdf:
 
 void testMaterialParserAttachesReflectDiagnosticsToSource() {
   LX_core::SceneResourceTable table;
-  LX_infra::MaterialResourceParser parser(makeDiagnosticParserContract);
+  LX_infra::MaterialResourceParser parser(makeDiagnosticParserContract,
+                                          makeParserContractSourceText);
   const auto parsed = parser.parse(
       table, LX_core::ResourceUri("memory://materials/reflect-fails.material"),
       R"yaml(
@@ -214,7 +227,8 @@ bsdf:
 
 void testMaterialParserRejectsKindNotAllowedByContract() {
   LX_core::SceneResourceTable table;
-  LX_infra::MaterialResourceParser parser(makeParserContract);
+  LX_infra::MaterialResourceParser parser(makeParserContract,
+                                          makeParserContractSourceText);
   const auto parsed = parser.parse(
       table, LX_core::ResourceUri("memory://materials/bad-kind.material"),
       R"yaml(
@@ -236,7 +250,8 @@ bsdf:
 
 void testMaterialParserStoresReflectedSourceIdentity() {
   LX_core::SceneResourceTable table;
-  LX_infra::MaterialResourceParser parser(makeParserContract);
+  LX_infra::MaterialResourceParser parser(makeParserContract,
+                                          makeParserContractSourceText);
   const auto parsed = parser.parse(
       table, LX_core::ResourceUri("memory://materials/source-identity.material"),
       R"yaml(
@@ -256,8 +271,12 @@ bsdf:
     return;
   }
 
-  auto expectedReflection = makeParserContract(
-      LX_core::ResourceUri("memory://materials/matte.contract.glsl"), "");
+  const LX_core::ResourceUri expectedSourceUri(
+      "memory://materials/matte.contract.glsl");
+  const auto expectedSourceText = makeParserContractSourceText(
+      expectedSourceUri);
+  auto expectedReflection =
+      makeParserContract(expectedSourceUri, *expectedSourceText.sourceText);
   EXPECT(parsed.instance->getMaterialSourceUri().string() ==
              "memory://materials/matte.contract.glsl",
          "MaterialInstance should store reflected source URI");
@@ -267,6 +286,88 @@ bsdf:
   EXPECT(parsed.instance->getMaterialSourceSignature() ==
              expectedReflection.reflection->sourceSignature(),
          "MaterialInstance should store reflected source signature");
+}
+
+void testDefaultMaterialParserRejectsMemoryContractSource() {
+  LX_core::SceneResourceTable table;
+  LX_infra::MaterialResourceParser parser;
+  const auto parsed = parser.parse(
+      table, LX_core::ResourceUri("memory://materials/default-memory.material"),
+      R"yaml(
+schema: lxe.material.v2
+bsdf:
+  type: matte
+  source: memory://materials/matte.contract.glsl
+  parameters:
+    Kd: { kind: rgb, value: [1.0, 1.0, 1.0] }
+    sigma: { kind: float, value: 0.0 }
+)yaml");
+  EXPECT(parsed.instance == nullptr,
+         "default parser should not treat memory contract sources as empty "
+         "files");
+  EXPECT(diagnosticsContain(parsed.diagnostics, "bsdf.source"),
+         "memory source rejection should attach to bsdf.source");
+  EXPECT(diagnosticsContain(parsed.diagnostics, "memory://"),
+         "memory source rejection should name the unsupported URI");
+  EXPECT(diagnosticsContain(parsed.diagnostics, "unsupported"),
+         "memory source rejection should be explicit");
+}
+
+void testSharedContractLoaderReadsBuiltInAssetSource() {
+  const auto loaded = LX_infra::loadMaterialContractSourceText(
+      LX_core::ResourceUri(
+          "assets://shaders/glsl/common/materials/matte.contract.glsl"));
+  EXPECT(loaded.diagnostics.empty(),
+         "shared contract source loader should read assets URI");
+  EXPECT(loaded.sourceText.has_value(),
+         "shared contract source loader should return asset text");
+  if (!loaded.sourceText.has_value()) {
+    return;
+  }
+  const auto reflected = LX_infra::reflectMaterialContractSource(
+      LX_core::ResourceUri(
+          "assets://shaders/glsl/common/materials/matte.contract.glsl"),
+      *loaded.sourceText);
+  EXPECT(reflected.diagnostics.empty(),
+         "built-in matte contract should reflect from shared loader text");
+  EXPECT(reflected.reflection.has_value(),
+         "built-in matte contract should produce reflection");
+}
+
+void testBuiltInContractAccessorsInitializeDefaults() {
+  constexpr const char *paths[] = {
+      "assets://shaders/glsl/common/materials/matte.contract.glsl",
+      "assets://shaders/glsl/common/materials/glass.contract.glsl",
+      "assets://shaders/glsl/common/materials/uber.contract.glsl",
+      "assets://shaders/glsl/common/materials/metal.contract.glsl",
+      "assets://shaders/glsl/common/materials/substrate.contract.glsl",
+      "assets://shaders/glsl/common/materials/fourier.contract.glsl",
+      "assets://shaders/glsl/common/materials/mix.contract.glsl"};
+
+  for (const char *path : paths) {
+    const auto loaded =
+        LX_infra::loadMaterialContractSourceText(LX_core::ResourceUri(path));
+    EXPECT(loaded.sourceText.has_value(),
+           std::string(path) + " should be readable");
+    if (!loaded.sourceText.has_value()) {
+      continue;
+    }
+    const std::string &source = *loaded.sourceText;
+    EXPECT(source.find("surface.baseColor") != std::string::npos,
+           std::string(path) + " should initialize baseColor");
+    EXPECT(source.find("surface.alpha") != std::string::npos,
+           std::string(path) + " should initialize alpha");
+    EXPECT(source.find("surface.metallic") != std::string::npos,
+           std::string(path) + " should initialize metallic");
+    EXPECT(source.find("surface.roughness") != std::string::npos,
+           std::string(path) + " should initialize roughness");
+    EXPECT(source.find("surface.normal") != std::string::npos,
+           std::string(path) + " should initialize normal");
+    EXPECT(source.find("surface.ao") != std::string::npos,
+           std::string(path) + " should initialize ao");
+    EXPECT(source.find("surface.emissive") != std::string::npos,
+           std::string(path) + " should initialize emissive");
+  }
 }
 
 void testMaterialParserRejectsNonScalarBsdfSource() {
@@ -1482,6 +1583,9 @@ int main() {
   testMaterialParserAttachesReflectDiagnosticsToSource();
   testMaterialParserRejectsKindNotAllowedByContract();
   testMaterialParserStoresReflectedSourceIdentity();
+  testDefaultMaterialParserRejectsMemoryContractSource();
+  testSharedContractLoaderReadsBuiltInAssetSource();
+  testBuiltInContractAccessorsInitializeDefaults();
   testMaterialParserRejectsNonScalarBsdfSource();
   testMaterialParserRejectsEmptyBsdfSource();
   testMaterialParserStoresSourceIdentityAndCloneCopiesIt();
