@@ -3,11 +3,13 @@
 #include "infra/material_loader/material_contract_reflector.hpp"
 #include "infra/material_loader/material_resource_parser.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstdlib>
 #include <initializer_list>
 #include <iostream>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -58,6 +60,109 @@ bool diagnosticsContain(const std::vector<std::string> &diagnostics,
   return false;
 }
 
+std::string_view
+kindName(LX_core::MaterialContractParameterKind kind) {
+  switch (kind) {
+  case LX_core::MaterialContractParameterKind::Float:
+    return "float";
+  case LX_core::MaterialContractParameterKind::Rgb:
+    return "rgb";
+  case LX_core::MaterialContractParameterKind::Spectrum:
+    return "spectrum";
+  case LX_core::MaterialContractParameterKind::Texture:
+    return "texture";
+  case LX_core::MaterialContractParameterKind::Integer:
+    return "integer";
+  case LX_core::MaterialContractParameterKind::Bool:
+    return "bool";
+  case LX_core::MaterialContractParameterKind::String:
+    return "string";
+  case LX_core::MaterialContractParameterKind::MaterialRef:
+    return "materialRef";
+  case LX_core::MaterialContractParameterKind::BsdfTable:
+    return "bsdfTable";
+  }
+  return "<unknown>";
+}
+
+std::string
+formatKinds(std::initializer_list<LX_core::MaterialContractParameterKind> kinds) {
+  std::ostringstream output;
+  output << '[';
+  bool first = true;
+  for (const LX_core::MaterialContractParameterKind kind : kinds) {
+    if (!first) {
+      output << ", ";
+    }
+    output << kindName(kind);
+    first = false;
+  }
+  output << ']';
+  return output.str();
+}
+
+std::string formatKinds(
+    const std::vector<LX_core::MaterialContractParameterKind> &kinds) {
+  std::ostringstream output;
+  output << '[';
+  for (std::size_t i = 0; i < kinds.size(); ++i) {
+    if (i != 0) {
+      output << ", ";
+    }
+    output << kindName(kinds[i]);
+  }
+  output << ']';
+  return output.str();
+}
+
+std::optional<std::size_t> firstKindMismatchIndex(
+    const std::vector<LX_core::MaterialContractParameterKind> &actual,
+    std::initializer_list<LX_core::MaterialContractParameterKind> expected) {
+  if (actual.size() != expected.size()) {
+    return std::min(actual.size(), expected.size());
+  }
+
+  std::size_t index = 0;
+  for (const LX_core::MaterialContractParameterKind kind : expected) {
+    if (actual[index] != kind) {
+      return index;
+    }
+    ++index;
+  }
+  return std::nullopt;
+}
+
+std::string kindNameAt(
+    std::initializer_list<LX_core::MaterialContractParameterKind> kinds,
+    std::size_t index) {
+  std::size_t current = 0;
+  for (const LX_core::MaterialContractParameterKind kind : kinds) {
+    if (current == index) {
+      return std::string(kindName(kind));
+    }
+    ++current;
+  }
+  return "<none>";
+}
+
+std::string kindNameAt(
+    const std::vector<LX_core::MaterialContractParameterKind> &kinds,
+    std::size_t index) {
+  if (index >= kinds.size()) {
+    return "<none>";
+  }
+  return std::string(kindName(kinds[index]));
+}
+
+std::string kindMismatchDetail(
+    const std::vector<LX_core::MaterialContractParameterKind> &actual,
+    std::initializer_list<LX_core::MaterialContractParameterKind> expected) {
+  const std::size_t index =
+      firstKindMismatchIndex(actual, expected).value_or(actual.size());
+  return "index " + std::to_string(index) + " expected " +
+         kindNameAt(expected, index) + ", actual " + kindNameAt(actual, index);
+}
+
 bool allowedKindsEqual(
     const LX_core::MaterialContractParameter &parameter,
     std::initializer_list<LX_core::MaterialContractParameterKind> kinds) {
@@ -87,12 +192,18 @@ void expectContractParameter(
   if (!parameter.has_value()) {
     return;
   }
+  const std::string context = std::string(path) + " type " +
+                              reflection.declaredType + " parameter " +
+                              std::string(name);
   EXPECT(parameter->get().required == required,
-         std::string(path) + " parameter " + std::string(name) +
-             " should have expected required flag");
+         context + " required flag mismatch: expected " +
+             (required ? "required" : "optional") + ", actual " +
+             (parameter->get().required ? "required" : "optional"));
   EXPECT(allowedKindsEqual(parameter->get(), kinds),
-         std::string(path) + " parameter " + std::string(name) +
-             " should allow exactly expected kinds");
+         context + " allowed kind mismatch: " +
+             kindMismatchDetail(parameter->get().allowedKinds, kinds) +
+             "; expected " + formatKinds(kinds) + ", actual " +
+             formatKinds(parameter->get().allowedKinds));
 }
 
 struct ContractParameterExpectation final {
