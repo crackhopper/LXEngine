@@ -58,21 +58,19 @@ bool diagnosticsContain(const std::vector<std::string> &diagnostics,
   return false;
 }
 
-bool allowedKindsContain(
+bool allowedKindsEqual(
     const LX_core::MaterialContractParameter &parameter,
     std::initializer_list<LX_core::MaterialContractParameterKind> kinds) {
+  if (parameter.allowedKinds.size() != kinds.size()) {
+    return false;
+  }
+
+  std::size_t index = 0;
   for (const LX_core::MaterialContractParameterKind kind : kinds) {
-    bool found = false;
-    for (const LX_core::MaterialContractParameterKind allowed :
-         parameter.allowedKinds) {
-      if (allowed == kind) {
-        found = true;
-        break;
-      }
-    }
-    if (!found) {
+    if (parameter.allowedKinds[index] != kind) {
       return false;
     }
+    ++index;
   }
   return true;
 }
@@ -92,9 +90,27 @@ void expectContractParameter(
   EXPECT(parameter->get().required == required,
          std::string(path) + " parameter " + std::string(name) +
              " should have expected required flag");
-  EXPECT(allowedKindsContain(parameter->get(), kinds),
+  EXPECT(allowedKindsEqual(parameter->get(), kinds),
          std::string(path) + " parameter " + std::string(name) +
-             " should allow expected kinds");
+             " should allow exactly expected kinds");
+}
+
+struct ContractParameterExpectation final {
+  std::string_view name;
+  bool required = false;
+  std::initializer_list<LX_core::MaterialContractParameterKind> kinds;
+};
+
+void expectContractParameters(
+    const LX_core::MaterialContractReflection &reflection,
+    std::string_view path,
+    std::initializer_list<ContractParameterExpectation> parameters) {
+  EXPECT(reflection.parameters.size() == parameters.size(),
+         std::string(path) + " should expose expected parameter count");
+  for (const ContractParameterExpectation &parameter : parameters) {
+    expectContractParameter(reflection, path, parameter.name,
+                            parameter.required, parameter.kinds);
+  }
 }
 
 LX_infra::MaterialContractReflectionResult makeParserContract(
@@ -379,17 +395,23 @@ void testBuiltInContractSourcesReflectActiveSchemas() {
   struct BuiltInContractCase final {
     const char *path;
     const char *declaredType;
+    const char *storageAbiHash;
   };
   constexpr BuiltInContractCase cases[] = {
-      {"assets://shaders/glsl/common/materials/matte.contract.glsl", "matte"},
-      {"assets://shaders/glsl/common/materials/glass.contract.glsl", "glass"},
-      {"assets://shaders/glsl/common/materials/uber.contract.glsl", "uber"},
-      {"assets://shaders/glsl/common/materials/metal.contract.glsl", "metal"},
+      {"assets://shaders/glsl/common/materials/matte.contract.glsl", "matte",
+       "pbrt-envelope-storage-v1"},
+      {"assets://shaders/glsl/common/materials/glass.contract.glsl", "glass",
+       "pbrt-envelope-storage-v1"},
+      {"assets://shaders/glsl/common/materials/uber.contract.glsl", "uber",
+       "pbrt-envelope-storage-v1"},
+      {"assets://shaders/glsl/common/materials/metal.contract.glsl", "metal",
+       "pbrt-envelope-storage-v1"},
       {"assets://shaders/glsl/common/materials/substrate.contract.glsl",
-       "substrate"},
+       "substrate", "pbrt-envelope-storage-v1"},
       {"assets://shaders/glsl/common/materials/fourier.contract.glsl",
-       "fourier"},
-      {"assets://shaders/glsl/common/materials/mix.contract.glsl", "mix"}};
+       "fourier", "pbrt-envelope-storage-v1"},
+      {"assets://shaders/glsl/common/materials/mix.contract.glsl", "mix",
+       "pbrt-envelope-storage-v1"}};
 
   for (const BuiltInContractCase &contractCase : cases) {
     const std::string path(contractCase.path);
@@ -410,63 +432,71 @@ void testBuiltInContractSourcesReflectActiveSchemas() {
     EXPECT(reflection.supportStatus ==
                LX_core::MaterialContractSupportStatus::Supported,
            path + " should be supported");
-    EXPECT(!reflection.reflectionHash.empty(),
-           path + " should declare reflection hash");
-    EXPECT(!reflection.storageAbiHash.empty(),
-           path + " should declare storage ABI hash");
-    EXPECT(!reflection.accessorAbiHash.empty(),
-           path + " should declare accessor ABI hash");
+    EXPECT(reflection.reflectionHash ==
+               std::string(contractCase.declaredType) + "-source-contract-v1",
+           path + " should declare expected reflection hash");
+    EXPECT(reflection.storageAbiHash == contractCase.storageAbiHash,
+           path + " should declare expected storage ABI hash");
+    EXPECT(reflection.accessorAbiHash == "material-surface-v1",
+           path + " should declare expected accessor ABI hash");
     EXPECT(reflection.accessorAbi.entryPoint == "lxLoadMaterialSurface",
            path + " should declare Material Accessor ABI entry point");
 
     if (reflection.declaredType == "matte") {
-      expectContractParameter(reflection, path, "Kd", true,
-                              {Kind::Rgb, Kind::Texture, Kind::Spectrum});
-      expectContractParameter(reflection, path, "sigma", true,
-                              {Kind::Float, Kind::Texture});
+      expectContractParameters(
+          reflection, path,
+          {{"Kd", true, {Kind::Rgb, Kind::Texture, Kind::Spectrum}},
+           {"sigma", true, {Kind::Float, Kind::Texture}},
+           {"normalmap", false, {Kind::Texture}}});
     } else if (reflection.declaredType == "glass") {
-      expectContractParameter(reflection, path, "Kr", true,
-                              {Kind::Rgb, Kind::Texture, Kind::Spectrum});
-      expectContractParameter(reflection, path, "Kt", true,
-                              {Kind::Rgb, Kind::Texture, Kind::Spectrum});
-      expectContractParameter(reflection, path, "eta", true,
-                              {Kind::Float, Kind::Texture});
+      expectContractParameters(
+          reflection, path,
+          {{"Kr", true, {Kind::Rgb, Kind::Texture, Kind::Spectrum}},
+           {"Kt", true, {Kind::Rgb, Kind::Texture, Kind::Spectrum}},
+           {"eta", true, {Kind::Float, Kind::Texture}},
+           {"uroughness", true, {Kind::Float, Kind::Texture}},
+           {"vroughness", true, {Kind::Float, Kind::Texture}},
+           {"normalmap", false, {Kind::Texture}}});
     } else if (reflection.declaredType == "uber") {
-      expectContractParameter(reflection, path, "Kd", true,
-                              {Kind::Rgb, Kind::Texture, Kind::Spectrum});
-      expectContractParameter(reflection, path, "Ks", true,
-                              {Kind::Rgb, Kind::Texture, Kind::Spectrum});
-      expectContractParameter(reflection, path, "Kr", false,
-                              {Kind::Rgb, Kind::Texture, Kind::Spectrum});
-      expectContractParameter(reflection, path, "Kt", false,
-                              {Kind::Rgb, Kind::Texture, Kind::Spectrum});
-      expectContractParameter(reflection, path, "opacity", false,
-                              {Kind::Rgb, Kind::Texture});
-      expectContractParameter(reflection, path, "eta", false,
-                              {Kind::Float, Kind::Texture});
+      expectContractParameters(
+          reflection, path,
+          {{"Kd", true, {Kind::Rgb, Kind::Texture, Kind::Spectrum}},
+           {"Ks", true, {Kind::Rgb, Kind::Texture, Kind::Spectrum}},
+           {"Kr", false, {Kind::Rgb, Kind::Texture, Kind::Spectrum}},
+           {"Kt", false, {Kind::Rgb, Kind::Texture, Kind::Spectrum}},
+           {"opacity", false, {Kind::Rgb, Kind::Texture}},
+           {"eta", false, {Kind::Float, Kind::Texture}},
+           {"uroughness", false, {Kind::Float, Kind::Texture}},
+           {"vroughness", false, {Kind::Float, Kind::Texture}},
+           {"normalmap", false, {Kind::Texture}}});
     } else if (reflection.declaredType == "metal") {
-      expectContractParameter(reflection, path, "eta", true,
-                              {Kind::Spectrum});
-      expectContractParameter(reflection, path, "k", true, {Kind::Spectrum});
+      expectContractParameters(
+          reflection, path,
+          {{"eta", true, {Kind::Spectrum}},
+           {"k", true, {Kind::Spectrum}},
+           {"uroughness", false, {Kind::Float, Kind::Texture}},
+           {"vroughness", false, {Kind::Float, Kind::Texture}},
+           {"normalmap", false, {Kind::Texture}}});
     } else if (reflection.declaredType == "substrate") {
-      expectContractParameter(reflection, path, "Kd", true,
-                              {Kind::Rgb, Kind::Texture, Kind::Spectrum});
-      expectContractParameter(reflection, path, "Ks", true,
-                              {Kind::Rgb, Kind::Texture, Kind::Spectrum});
-      expectContractParameter(reflection, path, "uroughness", true,
-                              {Kind::Float, Kind::Texture});
-      expectContractParameter(reflection, path, "vroughness", true,
-                              {Kind::Float, Kind::Texture});
+      expectContractParameters(
+          reflection, path,
+          {{"Kd", true, {Kind::Rgb, Kind::Texture, Kind::Spectrum}},
+           {"Ks", true, {Kind::Rgb, Kind::Texture, Kind::Spectrum}},
+           {"uroughness", true, {Kind::Float, Kind::Texture}},
+           {"vroughness", true, {Kind::Float, Kind::Texture}},
+           {"normalmap", false, {Kind::Texture}}});
     } else if (reflection.declaredType == "fourier") {
-      expectContractParameter(reflection, path, "bsdffile", true,
-                              {Kind::BsdfTable});
+      expectContractParameters(
+          reflection, path,
+          {{"bsdffile", true, {Kind::BsdfTable}},
+           {"normalmap", false, {Kind::Texture}}});
     } else if (reflection.declaredType == "mix") {
-      expectContractParameter(reflection, path, "namedmaterial1", true,
-                              {Kind::MaterialRef});
-      expectContractParameter(reflection, path, "namedmaterial2", true,
-                              {Kind::MaterialRef});
-      expectContractParameter(reflection, path, "amount", true,
-                              {Kind::Float});
+      expectContractParameters(
+          reflection, path,
+          {{"namedmaterial1", true, {Kind::MaterialRef}},
+           {"namedmaterial2", true, {Kind::MaterialRef}},
+           {"amount", true, {Kind::Float}},
+           {"normalmap", false, {Kind::Texture}}});
     }
 
     const auto loaded =
