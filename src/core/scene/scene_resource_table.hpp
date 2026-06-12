@@ -395,6 +395,7 @@ private:
   mutable std::vector<SceneGpuDrawRecord> m_gpuDraws;
   mutable std::vector<SceneGpuObjectRecord> m_gpuObjects;
   mutable std::vector<SceneGpuMaterialRecord> m_gpuMaterials;
+  mutable std::vector<SourceLocalMaterialRecord> m_gpuSourceMaterialRecords;
   mutable std::vector<SceneSourceLocalMaterialStorageView>
       m_gpuSourceMaterialStorages;
   mutable std::vector<std::reference_wrapper<const CombinedTextureSampler>>

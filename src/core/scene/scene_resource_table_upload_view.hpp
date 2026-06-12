@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/asset/material_contract_packer.hpp"
 #include "core/resource/resource_metadata.hpp"
 #include "core/asset/texture.hpp"
 #include "core/scene/scene_gpu_records.hpp"
@@ -88,6 +89,7 @@ struct SceneResourceTableUploadView final {
   std::span<const SceneGpuDrawRecord> draws;
   std::span<const SceneGpuObjectRecord> objects;
   std::span<const SceneGpuMaterialRecord> materials;
+  std::span<const SourceLocalMaterialRecord> sourceMaterialRecords;
   std::span<const SceneSourceLocalMaterialStorageView> sourceMaterialStorages;
   std::span<const std::reference_wrapper<const CombinedTextureSampler>>
       textures;

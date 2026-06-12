@@ -99,6 +99,23 @@ findSourceStorage(const SceneResourceTableUploadView &view,
   return found == view.sourceMaterialStorages.end() ? nullptr : &*found;
 }
 
+bool sourceRecordRangeHasOnlySignature(
+    const SceneResourceTableUploadView &view,
+    const SceneSourceLocalMaterialStorageView &storage,
+    StringID sourceSignature) {
+  if (storage.recordOffset + storage.recordCount >
+      view.sourceMaterialRecords.size()) {
+    return false;
+  }
+  for (u32 i = 0; i < storage.recordCount; ++i) {
+    if (view.sourceMaterialRecords[storage.recordOffset + i]
+            .sourceSignature != sourceSignature) {
+      return false;
+    }
+  }
+  return true;
+}
+
 std::vector<ResourceUri> shaderSourceFixture() {
   return {
       ResourceUri("memory://shaders/surface_lit.vert"),
@@ -362,9 +379,15 @@ void testUploadViewGroupsSourceLocalMaterialsWithSameSignature() {
   EXPECT(storage != nullptr,
          "source-local storage should be keyed by source signature");
   EXPECT(storage != nullptr && storage->recordOffset == 0,
-         "same source storage should start at first uploaded material record");
+         "same source storage should start at first source-local record");
   EXPECT(storage != nullptr && storage->recordCount == 2,
          "same source storage should cover both material records");
+  EXPECT(view.sourceMaterialRecords.size() == 2,
+         "source-local record span should contain both material records");
+  EXPECT(storage != nullptr &&
+             sourceRecordRangeHasOnlySignature(view, *storage,
+                                               sourceSignature),
+         "same source storage range should contain only that source");
 }
 
 void testUploadViewSplitsSourceLocalMaterialsBySignature() {
@@ -404,6 +427,78 @@ void testUploadViewSplitsSourceLocalMaterialsBySignature() {
   EXPECT(metalStorage != nullptr && metalStorage->recordOffset == 1 &&
              metalStorage->recordCount == 1,
          "second source storage should cover the second material record");
+  EXPECT(view.sourceMaterialRecords.size() == 2,
+         "source-local record span should contain both source records");
+  EXPECT(matteStorage != nullptr &&
+             sourceRecordRangeHasOnlySignature(view, *matteStorage,
+                                               matteSignature),
+         "matte storage range should contain only matte records");
+  EXPECT(metalStorage != nullptr &&
+             sourceRecordRangeHasOnlySignature(view, *metalStorage,
+                                               metalSignature),
+         "metal storage range should contain only metal records");
+}
+
+void testUploadViewSourceLocalMaterialRangesAreNotLegacyInterleaved() {
+  SceneResourceTable table;
+  const MeshHandle firstMesh = table.registerMesh(makeTriangleMesh());
+  const MeshHandle secondMesh = table.registerMesh(makeTriangleMesh());
+  const MeshHandle thirdMesh = table.registerMesh(makeTriangleMesh());
+  const MaterialContractReflection matte = makeMaterialContract(
+      "memory://materials/matte.contract.glsl", "matte", "matte-reflect-v1");
+  const MaterialContractReflection metal = makeMaterialContract(
+      "memory://materials/metal.contract.glsl", "metal", "metal-reflect-v1");
+  const StringID matteSignature = matte.sourceSignature();
+  const StringID metalSignature = metal.sourceSignature();
+  const MaterialHandle firstMaterial =
+      table.registerMaterial(makeSourceMaterial(matte));
+  const MaterialHandle secondMaterial =
+      table.registerMaterial(makeSourceMaterial(metal));
+  const MaterialHandle thirdMaterial =
+      table.registerMaterial(makeSourceMaterial(matte));
+  registerObject(table, firstMesh, firstMaterial);
+  registerObject(table, secondMesh, secondMaterial);
+  registerObject(table, thirdMesh, thirdMaterial);
+
+  const SceneResourceTableUploadView view = table.buildUploadView();
+  EXPECT(view.materials.size() == 3,
+         "legacy material upload span should preserve interleaved materials");
+  EXPECT(view.draws.size() == 3,
+         "legacy draw span should preserve all draws");
+  EXPECT(view.draws.size() == 3 && view.draws[0].materialIndex == 0 &&
+             view.draws[1].materialIndex == 1 &&
+             view.draws[2].materialIndex == 2,
+         "legacy draw material indices should remain in upload order");
+  EXPECT(view.sourceMaterialStorages.size() == 2,
+         "source-local storages should still group by source signature");
+  EXPECT(view.sourceMaterialRecords.size() == 3,
+         "source-local record span should contain one record per uploaded "
+         "material");
+
+  const SceneSourceLocalMaterialStorageView *matteStorage =
+      findSourceStorage(view, matteSignature);
+  const SceneSourceLocalMaterialStorageView *metalStorage =
+      findSourceStorage(view, metalSignature);
+  EXPECT(matteStorage != nullptr,
+         "matte source-local storage should be present");
+  EXPECT(metalStorage != nullptr,
+         "metal source-local storage should be present");
+  EXPECT(matteStorage != nullptr && matteStorage->recordOffset == 0 &&
+             matteStorage->recordCount == 2,
+         "matte source-local records should be contiguous despite A,B,A "
+         "legacy order");
+  EXPECT(metalStorage != nullptr && metalStorage->recordOffset == 2 &&
+             metalStorage->recordCount == 1,
+         "metal source-local record range should follow first-seen source "
+         "ordering");
+  EXPECT(matteStorage != nullptr &&
+             sourceRecordRangeHasOnlySignature(view, *matteStorage,
+                                               matteSignature),
+         "matte source-local range must not include interleaved metal record");
+  EXPECT(metalStorage != nullptr &&
+             sourceRecordRangeHasOnlySignature(view, *metalStorage,
+                                               metalSignature),
+         "metal source-local range should contain only metal records");
 }
 
 void testRenderPathGraphRegistrationRejectsMissingFeatureResource() {
@@ -775,6 +870,7 @@ int main() {
   testUploadViewExportsRenderPathGraphPassFeatureAndShaderIndices();
   testUploadViewGroupsSourceLocalMaterialsWithSameSignature();
   testUploadViewSplitsSourceLocalMaterialsBySignature();
+  testUploadViewSourceLocalMaterialRangesAreNotLegacyInterleaved();
   testRenderPathGraphRegistrationRejectsMissingFeatureResource();
   testFailedShaderMetadataDoesNotSatisfyRenderPathGraphDependency();
   testSourceResolvedShaderWithoutPayloadDoesNotSatisfyGraphDependency();

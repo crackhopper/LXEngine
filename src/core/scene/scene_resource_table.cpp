@@ -1864,6 +1864,7 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
         .draws = m_gpuDraws,
         .objects = m_gpuObjects,
         .materials = m_gpuMaterials,
+        .sourceMaterialRecords = m_gpuSourceMaterialRecords,
         .sourceMaterialStorages = m_gpuSourceMaterialStorages,
         .textures = m_gpuTextures,
         .cameras = m_gpuCameras,
@@ -1896,6 +1897,7 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
   m_gpuDraws.clear();
   m_gpuObjects.clear();
   m_gpuMaterials.clear();
+  m_gpuSourceMaterialRecords.clear();
   m_gpuSourceMaterialStorages.clear();
   m_gpuTextures.clear();
   m_gpuCameras.clear();
@@ -2285,16 +2287,20 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
       m_gpuSourceMaterialStorages.push_back(
           SceneSourceLocalMaterialStorageView{.sourceSignature =
                                                  sourceSignature});
-      storageIt = std::prev(m_gpuSourceMaterialStorages.end());
+      storageIt = m_gpuSourceMaterialStorages.end() - 1;
     }
     ++storageIt->recordCount;
   }
 
-  u32 sourceLocalRecordOffset = 0;
   for (SceneSourceLocalMaterialStorageView &storage :
        m_gpuSourceMaterialStorages) {
-    storage.recordOffset = sourceLocalRecordOffset;
-    sourceLocalRecordOffset += storage.recordCount;
+    storage.recordOffset = static_cast<u32>(m_gpuSourceMaterialRecords.size());
+    for (const StringID sourceSignature : materialSourceSignatures) {
+      if (sourceSignature == storage.sourceSignature) {
+        m_gpuSourceMaterialRecords.push_back(
+            SourceLocalMaterialRecord{.sourceSignature = sourceSignature});
+      }
+    }
   }
 
   return makeView();
