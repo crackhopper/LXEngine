@@ -5,6 +5,7 @@
 
 #include <array>
 #include <cstdlib>
+#include <initializer_list>
 #include <iostream>
 #include <optional>
 #include <string>
@@ -55,6 +56,45 @@ bool diagnosticsContain(const std::vector<std::string> &diagnostics,
     }
   }
   return false;
+}
+
+bool allowedKindsContain(
+    const LX_core::MaterialContractParameter &parameter,
+    std::initializer_list<LX_core::MaterialContractParameterKind> kinds) {
+  for (const LX_core::MaterialContractParameterKind kind : kinds) {
+    bool found = false;
+    for (const LX_core::MaterialContractParameterKind allowed :
+         parameter.allowedKinds) {
+      if (allowed == kind) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      return false;
+    }
+  }
+  return true;
+}
+
+void expectContractParameter(
+    const LX_core::MaterialContractReflection &reflection,
+    std::string_view path,
+    std::string_view name,
+    bool required,
+    std::initializer_list<LX_core::MaterialContractParameterKind> kinds) {
+  const auto parameter = reflection.findParameter(name);
+  EXPECT(parameter.has_value(),
+         std::string(path) + " should declare parameter " + std::string(name));
+  if (!parameter.has_value()) {
+    return;
+  }
+  EXPECT(parameter->get().required == required,
+         std::string(path) + " parameter " + std::string(name) +
+             " should have expected required flag");
+  EXPECT(allowedKindsContain(parameter->get(), kinds),
+         std::string(path) + " parameter " + std::string(name) +
+             " should allow expected kinds");
 }
 
 LX_infra::MaterialContractReflectionResult makeParserContract(
@@ -334,39 +374,123 @@ void testSharedContractLoaderReadsBuiltInAssetSource() {
          "built-in matte contract should produce reflection");
 }
 
-void testBuiltInContractAccessorsInitializeDefaults() {
-  constexpr const char *paths[] = {
-      "assets://shaders/glsl/common/materials/matte.contract.glsl",
-      "assets://shaders/glsl/common/materials/glass.contract.glsl",
-      "assets://shaders/glsl/common/materials/uber.contract.glsl",
-      "assets://shaders/glsl/common/materials/metal.contract.glsl",
-      "assets://shaders/glsl/common/materials/substrate.contract.glsl",
-      "assets://shaders/glsl/common/materials/fourier.contract.glsl",
-      "assets://shaders/glsl/common/materials/mix.contract.glsl"};
+void testBuiltInContractSourcesReflectActiveSchemas() {
+  using Kind = LX_core::MaterialContractParameterKind;
+  struct BuiltInContractCase final {
+    const char *path;
+    const char *declaredType;
+  };
+  constexpr BuiltInContractCase cases[] = {
+      {"assets://shaders/glsl/common/materials/matte.contract.glsl", "matte"},
+      {"assets://shaders/glsl/common/materials/glass.contract.glsl", "glass"},
+      {"assets://shaders/glsl/common/materials/uber.contract.glsl", "uber"},
+      {"assets://shaders/glsl/common/materials/metal.contract.glsl", "metal"},
+      {"assets://shaders/glsl/common/materials/substrate.contract.glsl",
+       "substrate"},
+      {"assets://shaders/glsl/common/materials/fourier.contract.glsl",
+       "fourier"},
+      {"assets://shaders/glsl/common/materials/mix.contract.glsl", "mix"}};
 
-  for (const char *path : paths) {
+  for (const BuiltInContractCase &contractCase : cases) {
+    const std::string path(contractCase.path);
+    const auto reflected = LX_infra::loadAndReflectMaterialContractSource(
+        LX_core::ResourceUri(path));
+    EXPECT(reflected.diagnostics.empty(),
+           path + " should load and reflect without diagnostics");
+    EXPECT(reflected.reflection.has_value(),
+           path + " should produce reflected contract metadata");
+    if (!reflected.reflection.has_value()) {
+      continue;
+    }
+
+    const LX_core::MaterialContractReflection &reflection =
+        *reflected.reflection;
+    EXPECT(reflection.declaredType == contractCase.declaredType,
+           path + " should declare expected material type");
+    EXPECT(reflection.supportStatus ==
+               LX_core::MaterialContractSupportStatus::Supported,
+           path + " should be supported");
+    EXPECT(!reflection.reflectionHash.empty(),
+           path + " should declare reflection hash");
+    EXPECT(!reflection.storageAbiHash.empty(),
+           path + " should declare storage ABI hash");
+    EXPECT(!reflection.accessorAbiHash.empty(),
+           path + " should declare accessor ABI hash");
+    EXPECT(reflection.accessorAbi.entryPoint == "lxLoadMaterialSurface",
+           path + " should declare Material Accessor ABI entry point");
+
+    if (reflection.declaredType == "matte") {
+      expectContractParameter(reflection, path, "Kd", true,
+                              {Kind::Rgb, Kind::Texture, Kind::Spectrum});
+      expectContractParameter(reflection, path, "sigma", true,
+                              {Kind::Float, Kind::Texture});
+    } else if (reflection.declaredType == "glass") {
+      expectContractParameter(reflection, path, "Kr", true,
+                              {Kind::Rgb, Kind::Texture, Kind::Spectrum});
+      expectContractParameter(reflection, path, "Kt", true,
+                              {Kind::Rgb, Kind::Texture, Kind::Spectrum});
+      expectContractParameter(reflection, path, "eta", true,
+                              {Kind::Float, Kind::Texture});
+    } else if (reflection.declaredType == "uber") {
+      expectContractParameter(reflection, path, "Kd", true,
+                              {Kind::Rgb, Kind::Texture, Kind::Spectrum});
+      expectContractParameter(reflection, path, "Ks", true,
+                              {Kind::Rgb, Kind::Texture, Kind::Spectrum});
+      expectContractParameter(reflection, path, "Kr", false,
+                              {Kind::Rgb, Kind::Texture, Kind::Spectrum});
+      expectContractParameter(reflection, path, "Kt", false,
+                              {Kind::Rgb, Kind::Texture, Kind::Spectrum});
+      expectContractParameter(reflection, path, "opacity", false,
+                              {Kind::Rgb, Kind::Texture});
+      expectContractParameter(reflection, path, "eta", false,
+                              {Kind::Float, Kind::Texture});
+    } else if (reflection.declaredType == "metal") {
+      expectContractParameter(reflection, path, "eta", true,
+                              {Kind::Spectrum});
+      expectContractParameter(reflection, path, "k", true, {Kind::Spectrum});
+    } else if (reflection.declaredType == "substrate") {
+      expectContractParameter(reflection, path, "Kd", true,
+                              {Kind::Rgb, Kind::Texture, Kind::Spectrum});
+      expectContractParameter(reflection, path, "Ks", true,
+                              {Kind::Rgb, Kind::Texture, Kind::Spectrum});
+      expectContractParameter(reflection, path, "uroughness", true,
+                              {Kind::Float, Kind::Texture});
+      expectContractParameter(reflection, path, "vroughness", true,
+                              {Kind::Float, Kind::Texture});
+    } else if (reflection.declaredType == "fourier") {
+      expectContractParameter(reflection, path, "bsdffile", true,
+                              {Kind::BsdfTable});
+    } else if (reflection.declaredType == "mix") {
+      expectContractParameter(reflection, path, "namedmaterial1", true,
+                              {Kind::MaterialRef});
+      expectContractParameter(reflection, path, "namedmaterial2", true,
+                              {Kind::MaterialRef});
+      expectContractParameter(reflection, path, "amount", true,
+                              {Kind::Float});
+    }
+
     const auto loaded =
         LX_infra::loadMaterialContractSourceText(LX_core::ResourceUri(path));
     EXPECT(loaded.sourceText.has_value(),
-           std::string(path) + " should be readable");
+           path + " should be readable for default assignment checks");
     if (!loaded.sourceText.has_value()) {
       continue;
     }
     const std::string &source = *loaded.sourceText;
     EXPECT(source.find("surface.baseColor") != std::string::npos,
-           std::string(path) + " should initialize baseColor");
+           path + " should initialize baseColor");
     EXPECT(source.find("surface.alpha") != std::string::npos,
-           std::string(path) + " should initialize alpha");
+           path + " should initialize alpha");
     EXPECT(source.find("surface.metallic") != std::string::npos,
-           std::string(path) + " should initialize metallic");
+           path + " should initialize metallic");
     EXPECT(source.find("surface.roughness") != std::string::npos,
-           std::string(path) + " should initialize roughness");
+           path + " should initialize roughness");
     EXPECT(source.find("surface.normal") != std::string::npos,
-           std::string(path) + " should initialize normal");
+           path + " should initialize normal");
     EXPECT(source.find("surface.ao") != std::string::npos,
-           std::string(path) + " should initialize ao");
+           path + " should initialize ao");
     EXPECT(source.find("surface.emissive") != std::string::npos,
-           std::string(path) + " should initialize emissive");
+           path + " should initialize emissive");
   }
 }
 
@@ -562,7 +686,7 @@ void testReflectsContractMetadataBlock() {
 // parameter: metallic optional float texture
 // parameter: roughness optional float texture
 // LX_MATERIAL_CONTRACT_END
-LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) { }
 )glsl";
   const auto result = LX_infra::reflectMaterialContractSource(
       LX_core::ResourceUri("memory://materials/matte.contract.glsl"), source);
@@ -631,7 +755,7 @@ void testReflectsAccessorWithBodyComment() {
 // accessorAbiHash: material-surface-v1
 // parameter: Kd required rgb texture
 // LX_MATERIAL_CONTRACT_END
-LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) {
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) {
   /* body comment */
   LxMaterialSurface surface;
   return surface;
@@ -674,7 +798,7 @@ void testReflectRejectsMissingStatus() {
 // accessorAbiHash: material-surface-v1
 // parameter: Kd required rgb texture
 // LX_MATERIAL_CONTRACT_END
-LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) { }
 )glsl";
   const auto result = LX_infra::reflectMaterialContractSource(
       LX_core::ResourceUri("memory://materials/missing-status.contract.glsl"),
@@ -696,7 +820,7 @@ void testReflectRejectsDuplicateTypeMetadata() {
 // accessorAbiHash: material-surface-v1
 // parameter: Kd required rgb texture
 // LX_MATERIAL_CONTRACT_END
-LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) { }
 )glsl";
   const auto result = LX_infra::reflectMaterialContractSource(
       LX_core::ResourceUri("memory://materials/duplicate-type.contract.glsl"),
@@ -717,7 +841,7 @@ void testReflectRejectsDuplicateStatusMetadata() {
 // accessorAbiHash: material-surface-v1
 // parameter: Kd required rgb texture
 // LX_MATERIAL_CONTRACT_END
-LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) { }
 )glsl";
   const auto result = LX_infra::reflectMaterialContractSource(
       LX_core::ResourceUri("memory://materials/duplicate-status.contract.glsl"),
@@ -739,7 +863,7 @@ void testReflectRejectsDuplicateReflectionHashMetadata() {
 // accessorAbiHash: material-surface-v1
 // parameter: Kd required rgb texture
 // LX_MATERIAL_CONTRACT_END
-LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) { }
 )glsl";
   const auto result = LX_infra::reflectMaterialContractSource(
       LX_core::ResourceUri(
@@ -762,7 +886,7 @@ void testReflectRejectsDuplicateStorageAbiHashMetadata() {
 // accessorAbiHash: material-surface-v1
 // parameter: Kd required rgb texture
 // LX_MATERIAL_CONTRACT_END
-LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) { }
 )glsl";
   const auto result = LX_infra::reflectMaterialContractSource(
       LX_core::ResourceUri(
@@ -785,7 +909,7 @@ void testReflectRejectsDuplicateAccessorAbiHashMetadata() {
 // accessorAbiHash: material-surface-v2
 // parameter: Kd required rgb texture
 // LX_MATERIAL_CONTRACT_END
-LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) { }
 )glsl";
   const auto result = LX_infra::reflectMaterialContractSource(
       LX_core::ResourceUri(
@@ -808,7 +932,7 @@ void testReflectRejectsDuplicateParameterMetadata() {
 // parameter: Kd required rgb texture
 // parameter: Kd optional float
 // LX_MATERIAL_CONTRACT_END
-LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) { }
 )glsl";
   const auto result = LX_infra::reflectMaterialContractSource(
       LX_core::ResourceUri(
@@ -830,7 +954,7 @@ storageAbiHash: matte-storage-v1
 accessorAbiHash: material-surface-v1
 parameter: Kd required rgb texture
 LX_MATERIAL_CONTRACT_END
-LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) { }
 )glsl";
   const auto result = LX_infra::reflectMaterialContractSource(
       LX_core::ResourceUri("memory://materials/bare.contract.glsl"), source);
@@ -850,7 +974,7 @@ void testReflectRejectsCommentedOutAccessor() {
 // accessorAbiHash: material-surface-v1
 // parameter: Kd required rgb texture
 // LX_MATERIAL_CONTRACT_END
-// LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+// LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) { }
 )glsl";
   const auto result = LX_infra::reflectMaterialContractSource(
       LX_core::ResourceUri(
@@ -893,7 +1017,7 @@ void testReflectRejectsAccessorPrototypeWithoutBody() {
 // accessorAbiHash: material-surface-v1
 // parameter: Kd required rgb texture
 // LX_MATERIAL_CONTRACT_END
-LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn);
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame);
 )glsl";
   const auto result = LX_infra::reflectMaterialContractSource(
       LX_core::ResourceUri(
@@ -915,7 +1039,7 @@ void testReflectRejectsWrongAccessorReturnType() {
 // accessorAbiHash: material-surface-v1
 // parameter: Kd required rgb texture
 // LX_MATERIAL_CONTRACT_END
-float lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+float lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) { }
 )glsl";
   const auto result = LX_infra::reflectMaterialContractSource(
       LX_core::ResourceUri(
@@ -937,7 +1061,7 @@ void testReflectRejectsQualifiedAccessorReturnType() {
 // accessorAbiHash: material-surface-v1
 // parameter: Kd required rgb texture
 // LX_MATERIAL_CONTRACT_END
-const LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+const LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) { }
 )glsl";
   const auto result = LX_infra::reflectMaterialContractSource(
       LX_core::ResourceUri(
@@ -960,7 +1084,7 @@ void testReflectRejectsPrefixedAccessorReturnType() {
 // accessorAbiHash: material-surface-v1
 // parameter: Kd required rgb texture
 // LX_MATERIAL_CONTRACT_END
-inline LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+inline LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) { }
 )glsl";
   const auto result = LX_infra::reflectMaterialContractSource(
       LX_core::ResourceUri(
@@ -983,7 +1107,7 @@ void testReflectRejectsCommentBetweenAccessorReturnAndName() {
 // accessorAbiHash: material-surface-v1
 // parameter: Kd required rgb texture
 // LX_MATERIAL_CONTRACT_END
-LxMaterialSurface /* comment */ lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+LxMaterialSurface /* comment */ lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) { }
 )glsl";
   const auto result = LX_infra::reflectMaterialContractSource(
       LX_core::ResourceUri(
@@ -1007,7 +1131,7 @@ void testReflectRejectsWrongAccessorFunctionName() {
 // accessorAbiHash: material-surface-v1
 // parameter: Kd required rgb texture
 // LX_MATERIAL_CONTRACT_END
-LxMaterialSurface lxLoadNotMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+LxMaterialSurface lxLoadNotMaterialSurface(uint materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) { }
 )glsl";
   const auto result = LX_infra::reflectMaterialContractSource(
       LX_core::ResourceUri(
@@ -1053,7 +1177,7 @@ void testReflectRejectsExtraAccessorParameter() {
 // accessorAbiHash: material-surface-v1
 // parameter: Kd required rgb texture
 // LX_MATERIAL_CONTRACT_END
-LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn, float extra) { }
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame, float extra) { }
 )glsl";
   const auto result = LX_infra::reflectMaterialContractSource(
       LX_core::ResourceUri(
@@ -1075,7 +1199,7 @@ void testReflectRejectsWrongAccessorParameterType() {
 // accessorAbiHash: material-surface-v1
 // parameter: Kd required rgb texture
 // LX_MATERIAL_CONTRACT_END
-LxMaterialSurface lxLoadMaterialSurface(int materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+LxMaterialSurface lxLoadMaterialSurface(int materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) { }
 )glsl";
   const auto result = LX_infra::reflectMaterialContractSource(
       LX_core::ResourceUri(
@@ -1098,7 +1222,7 @@ void testReflectRejectsAccessorArrayDeclarator() {
 // accessorAbiHash: material-surface-v1
 // parameter: Kd required rgb texture
 // LX_MATERIAL_CONTRACT_END
-LxMaterialSurface lxLoadMaterialSurface(uint materialIndex[2], vec2 uv, vec3 n, mat3 tbn) { }
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex[2], vec2 uv, vec3 geometricNormal, mat3 tangentFrame) { }
 )glsl";
   const auto result = LX_infra::reflectMaterialContractSource(
       LX_core::ResourceUri(
@@ -1120,7 +1244,7 @@ void testReflectRejectsAccessorNumericParameterName() {
 // accessorAbiHash: material-surface-v1
 // parameter: Kd required rgb texture
 // LX_MATERIAL_CONTRACT_END
-LxMaterialSurface lxLoadMaterialSurface(uint 2bad, vec2 uv, vec3 n, mat3 tbn) { }
+LxMaterialSurface lxLoadMaterialSurface(uint 2bad, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) { }
 )glsl";
   const auto result = LX_infra::reflectMaterialContractSource(
       LX_core::ResourceUri(
@@ -1143,7 +1267,7 @@ void testReflectRejectsCommentInsideAccessorParameter() {
 // accessorAbiHash: material-surface-v1
 // parameter: Kd required rgb texture
 // LX_MATERIAL_CONTRACT_END
-LxMaterialSurface lxLoadMaterialSurface(uint materialIndex /* comment */, vec2 uv, vec3 n, mat3 tbn) { }
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex /* comment */, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) { }
 )glsl";
   const auto result = LX_infra::reflectMaterialContractSource(
       LX_core::ResourceUri(
@@ -1166,7 +1290,7 @@ void testReflectRejectsCommentBetweenAccessorParametersAndBody() {
 // accessorAbiHash: material-surface-v1
 // parameter: Kd required rgb texture
 // LX_MATERIAL_CONTRACT_END
-LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) /* comment */ { }
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) /* comment */ { }
 )glsl";
   const auto result = LX_infra::reflectMaterialContractSource(
       LX_core::ResourceUri(
@@ -1190,7 +1314,7 @@ void testReflectRejectsAccessorPointerDeclarator() {
 // accessorAbiHash: material-surface-v1
 // parameter: Kd required rgb texture
 // LX_MATERIAL_CONTRACT_END
-LxMaterialSurface lxLoadMaterialSurface(uint *materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+LxMaterialSurface lxLoadMaterialSurface(uint *materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) { }
 )glsl";
   const auto result = LX_infra::reflectMaterialContractSource(
       LX_core::ResourceUri(
@@ -1213,7 +1337,7 @@ void testReflectRejectsAccessorReferenceDeclarator() {
 // accessorAbiHash: material-surface-v1
 // parameter: Kd required rgb texture
 // LX_MATERIAL_CONTRACT_END
-LxMaterialSurface lxLoadMaterialSurface(uint &materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+LxMaterialSurface lxLoadMaterialSurface(uint &materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) { }
 )glsl";
   const auto result = LX_infra::reflectMaterialContractSource(
       LX_core::ResourceUri(
@@ -1236,7 +1360,7 @@ void testReflectRejectsAccessorQualifierDeclarator() {
 // accessorAbiHash: material-surface-v1
 // parameter: Kd required rgb texture
 // LX_MATERIAL_CONTRACT_END
-LxMaterialSurface lxLoadMaterialSurface(const uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+LxMaterialSurface lxLoadMaterialSurface(const uint materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) { }
 )glsl";
   const auto result = LX_infra::reflectMaterialContractSource(
       LX_core::ResourceUri(
@@ -1282,7 +1406,7 @@ void testReflectRejectsSingleWrongAccessorParameterName() {
 // accessorAbiHash: material-surface-v1
 // parameter: Kd required rgb texture
 // LX_MATERIAL_CONTRACT_END
-LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 tex, vec3 n, mat3 tbn) { }
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 tex, vec3 geometricNormal, mat3 tangentFrame) { }
 )glsl";
   const auto result = LX_infra::reflectMaterialContractSource(
       LX_core::ResourceUri(
@@ -1295,6 +1419,29 @@ LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 tex, vec3 n, ma
          "single wrong accessor parameter name should reject reflection");
 }
 
+void testReflectRejectsLegacyAccessorNormalParameterNames() {
+  const std::string source = R"glsl(
+// LX_MATERIAL_CONTRACT_BEGIN
+// type: matte
+// status: supported
+// reflectionHash: matte-reflect-v1
+// storageAbiHash: matte-storage-v1
+// accessorAbiHash: material-surface-v1
+// parameter: Kd required rgb texture
+// LX_MATERIAL_CONTRACT_END
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+)glsl";
+  const auto result = LX_infra::reflectMaterialContractSource(
+      LX_core::ResourceUri(
+          "memory://materials/accessor-legacy-normal-names.contract.glsl"),
+      source);
+  EXPECT(!result.diagnostics.empty(),
+         "legacy n/tbn accessor parameter names should not satisfy Material "
+         "Accessor ABI");
+  EXPECT(!result.reflection.has_value(),
+         "legacy n/tbn accessor parameter names should reject reflection");
+}
+
 void testReflectRejectsAccessorMacroWithoutFunctionDefinition() {
   const std::string source = R"glsl(
 // LX_MATERIAL_CONTRACT_BEGIN
@@ -1305,7 +1452,7 @@ void testReflectRejectsAccessorMacroWithoutFunctionDefinition() {
 // accessorAbiHash: material-surface-v1
 // parameter: Kd required rgb texture
 // LX_MATERIAL_CONTRACT_END
-#define lxLoadMaterialSurface(materialIndex, uv, n, tbn) { }
+#define lxLoadMaterialSurface(materialIndex, uv, geometricNormal, tangentFrame) { }
 )glsl";
   const auto result = LX_infra::reflectMaterialContractSource(
       LX_core::ResourceUri("memory://materials/accessor-macro.contract.glsl"),
@@ -1327,7 +1474,7 @@ void testReflectRejectsMultilineAccessorMacro() {
 // parameter: Kd required rgb texture
 // LX_MATERIAL_CONTRACT_END
 #define MATERIAL_ACCESSOR \
-LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) { }
 )glsl";
   const auto result = LX_infra::reflectMaterialContractSource(
       LX_core::ResourceUri(
@@ -1350,7 +1497,7 @@ void testReflectRejectsAccessorInDisabledPreprocessorBlock() {
 // parameter: Kd required rgb texture
 // LX_MATERIAL_CONTRACT_END
 #if 0
-LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) { }
 #endif
 )glsl";
   const auto result = LX_infra::reflectMaterialContractSource(
@@ -1375,7 +1522,7 @@ void testReflectRejectsAccessorInCommentedDisabledPreprocessorBlock() {
 // parameter: Kd required rgb texture
 // LX_MATERIAL_CONTRACT_END
 #if 0 // reason
-LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) { }
 #endif
 )glsl";
   const auto result = LX_infra::reflectMaterialContractSource(
@@ -1400,7 +1547,7 @@ void testReflectRejectsAccessorInBlockCommentedDisabledPreprocessorBlock() {
 // parameter: Kd required rgb texture
 // LX_MATERIAL_CONTRACT_END
 #if 0 /* reason */
-LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) { }
 #endif
 )glsl";
   const auto result = LX_infra::reflectMaterialContractSource(
@@ -1428,7 +1575,7 @@ void testReflectRejectsAccessorAfterNestedDirectiveInDisabledBlock() {
 #if 0
 #if 1
 #endif
-LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) { }
 #endif
 )glsl";
   const auto result = LX_infra::reflectMaterialContractSource(
@@ -1453,9 +1600,9 @@ void testReflectsAccessorInElseBranchAfterDisabledIf() {
 // parameter: Kd required rgb texture
 // LX_MATERIAL_CONTRACT_END
 #if 0
-LxMaterialSurface lxNotMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+LxMaterialSurface lxNotMaterialSurface(uint materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) { }
 #else
-LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) { }
 #endif
 )glsl";
   const auto result = LX_infra::reflectMaterialContractSource(
@@ -1478,9 +1625,9 @@ void testReflectsAccessorInElifOneBranchAfterDisabledIf() {
 // parameter: Kd required rgb texture
 // LX_MATERIAL_CONTRACT_END
 #if 0
-LxMaterialSurface lxNotMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+LxMaterialSurface lxNotMaterialSurface(uint materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) { }
 #elif 1
-LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) { }
 #endif
 )glsl";
   const auto result = LX_infra::reflectMaterialContractSource(
@@ -1503,9 +1650,9 @@ void testReflectRejectsAccessorInElifZeroBranch() {
 // parameter: Kd required rgb texture
 // LX_MATERIAL_CONTRACT_END
 #if 0
-LxMaterialSurface lxNotMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+LxMaterialSurface lxNotMaterialSurface(uint materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) { }
 #elif 0
-LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) { }
 #endif
 )glsl";
   const auto result = LX_infra::reflectMaterialContractSource(
@@ -1529,7 +1676,7 @@ void testReflectsAccessorInIfOneBranchIgnoringInactiveElse() {
 // parameter: Kd required rgb texture
 // LX_MATERIAL_CONTRACT_END
 #if 1
-LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) { }
 #else
 LxMaterialSurface lxLoadMaterialSurface(uint badIndex, vec2 tex, vec3 normal, mat3 basis) { }
 #endif
@@ -1607,7 +1754,7 @@ int main() {
   testMaterialParserStoresReflectedSourceIdentity();
   testDefaultMaterialParserRejectsMemoryContractSource();
   testSharedContractLoaderReadsBuiltInAssetSource();
-  testBuiltInContractAccessorsInitializeDefaults();
+  testBuiltInContractSourcesReflectActiveSchemas();
   testMaterialParserRejectsNonScalarBsdfSource();
   testMaterialParserRejectsEmptyBsdfSource();
   testMaterialParserStoresSourceIdentityAndCloneCopiesIt();
@@ -1646,6 +1793,7 @@ int main() {
   testReflectRejectsAccessorQualifierDeclarator();
   testReflectRejectsWrongAccessorParameterNames();
   testReflectRejectsSingleWrongAccessorParameterName();
+  testReflectRejectsLegacyAccessorNormalParameterNames();
   testReflectRejectsAccessorMacroWithoutFunctionDefinition();
   testReflectRejectsMultilineAccessorMacro();
   testReflectRejectsAccessorInDisabledPreprocessorBlock();

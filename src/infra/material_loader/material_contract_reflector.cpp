@@ -287,7 +287,8 @@ expectedReturnTypeBegin(const std::string &code, std::size_t entryPointPos) {
 
 [[nodiscard]] bool hasExpectedParameterTypes(std::string_view parameters) {
   constexpr std::array expectedTypes{"uint", "vec2", "vec3", "mat3"};
-  constexpr std::array expectedNames{"materialIndex", "uv", "n", "tbn"};
+  constexpr std::array expectedNames{"materialIndex", "uv", "geometricNormal",
+                                     "tangentFrame"};
 
   std::size_t begin = 0;
   for (std::size_t index = 0; index < expectedTypes.size(); ++index) {
