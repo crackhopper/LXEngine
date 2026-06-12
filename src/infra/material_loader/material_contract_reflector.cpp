@@ -176,7 +176,8 @@ commentMetadataLine(std::string_view line) {
 }
 
 [[nodiscard]] bool hasExpectedParameter(std::string_view parameter,
-                                        std::string_view expectedType) {
+                                        std::string_view expectedType,
+                                        std::string_view expectedName) {
   const std::string stripped = trim(parameter);
   std::size_t typeEnd = 0;
   while (typeEnd < stripped.size() && isIdentifierChar(stripped[typeEnd])) {
@@ -205,11 +206,12 @@ commentMetadataLine(std::string_view line) {
       return false;
     }
   }
-  return true;
+  return declarator == expectedName;
 }
 
 [[nodiscard]] bool hasExpectedParameterTypes(std::string_view parameters) {
   constexpr std::array expectedTypes{"uint", "vec2", "vec3", "mat3"};
+  constexpr std::array expectedNames{"materialIndex", "uv", "n", "tbn"};
 
   std::size_t begin = 0;
   for (std::size_t index = 0; index < expectedTypes.size(); ++index) {
@@ -217,7 +219,7 @@ commentMetadataLine(std::string_view line) {
     const std::size_t end =
         comma == std::string_view::npos ? parameters.size() : comma;
     if (!hasExpectedParameter(parameters.substr(begin, end - begin),
-                              expectedTypes[index])) {
+                              expectedTypes[index], expectedNames[index])) {
       return false;
     }
     if (index + 1 < expectedTypes.size()) {
@@ -380,6 +382,41 @@ commentMetadataLine(std::string_view line) {
   return false;
 }
 
+[[nodiscard]] bool
+sameParameter(const LX_core::MaterialContractParameter &lhs,
+              const LX_core::MaterialContractParameter &rhs) {
+  return lhs.name == rhs.name && lhs.required == rhs.required &&
+         lhs.allowedKinds == rhs.allowedKinds;
+}
+
+[[nodiscard]] bool
+sameAccessorAbi(const LX_core::MaterialContractAccessorAbi &lhs,
+                const LX_core::MaterialContractAccessorAbi &rhs) {
+  return lhs.entryPoint == rhs.entryPoint &&
+         lhs.requiredFields == rhs.requiredFields;
+}
+
+[[nodiscard]] bool
+sameContractLayout(const LX_core::MaterialContractReflection &lhs,
+                   const LX_core::MaterialContractReflection &rhs) {
+  if (lhs.declaredType != rhs.declaredType ||
+      lhs.supportStatus != rhs.supportStatus ||
+      lhs.reflectionHash != rhs.reflectionHash ||
+      lhs.storageAbiHash != rhs.storageAbiHash ||
+      lhs.accessorAbiHash != rhs.accessorAbiHash ||
+      !sameAccessorAbi(lhs.accessorAbi, rhs.accessorAbi) ||
+      lhs.parameters.size() != rhs.parameters.size()) {
+    return false;
+  }
+
+  for (std::size_t i = 0; i < lhs.parameters.size(); ++i) {
+    if (!sameParameter(lhs.parameters[i], rhs.parameters[i])) {
+      return false;
+    }
+  }
+  return true;
+}
+
 } // namespace
 
 MaterialContractReflectionResult
@@ -391,7 +428,11 @@ reflectMaterialContractSource(const LX_core::ResourceUri &sourceUri,
 
   bool inBlock = false;
   bool sawBlock = false;
+  bool sawType = false;
   bool sawStatus = false;
+  bool sawReflectionHash = false;
+  bool sawStorageAbiHash = false;
+  bool sawAccessorAbiHash = false;
   std::istringstream input{std::string(sourceText)};
   std::string line;
   while (std::getline(input, line)) {
@@ -415,8 +456,15 @@ reflectMaterialContractSource(const LX_core::ResourceUri &sourceUri,
     }
 
     if (stripped.rfind("type:", 0) == 0) {
+      if (sawType) {
+        result.diagnostics.push_back(sourceUri.string() + ": duplicate type");
+      }
+      sawType = true;
       reflection.declaredType = trim(std::string_view(stripped).substr(5));
     } else if (stripped.rfind("status:", 0) == 0) {
+      if (sawStatus) {
+        result.diagnostics.push_back(sourceUri.string() + ": duplicate status");
+      }
       sawStatus = true;
       const std::string status = trim(std::string_view(stripped).substr(7));
       if (status == "supported") {
@@ -430,10 +478,25 @@ reflectMaterialContractSource(const LX_core::ResourceUri &sourceUri,
             sourceUri.string() + ": unknown support status '" + status + "'");
       }
     } else if (stripped.rfind("reflectionHash:", 0) == 0) {
+      if (sawReflectionHash) {
+        result.diagnostics.push_back(sourceUri.string() +
+                                     ": duplicate reflection hash");
+      }
+      sawReflectionHash = true;
       reflection.reflectionHash = trim(std::string_view(stripped).substr(15));
     } else if (stripped.rfind("storageAbiHash:", 0) == 0) {
+      if (sawStorageAbiHash) {
+        result.diagnostics.push_back(sourceUri.string() +
+                                     ": duplicate storage ABI hash");
+      }
+      sawStorageAbiHash = true;
       reflection.storageAbiHash = trim(std::string_view(stripped).substr(15));
     } else if (stripped.rfind("accessorAbiHash:", 0) == 0) {
+      if (sawAccessorAbiHash) {
+        result.diagnostics.push_back(sourceUri.string() +
+                                     ": duplicate accessor ABI hash");
+      }
+      sawAccessorAbiHash = true;
       reflection.accessorAbiHash = trim(std::string_view(stripped).substr(16));
     } else if (stripped.rfind("parameter:", 0) == 0) {
       std::istringstream tokens{trim(std::string_view(stripped).substr(10))};
@@ -444,6 +507,10 @@ reflectMaterialContractSource(const LX_core::ResourceUri &sourceUri,
         result.diagnostics.push_back(sourceUri.string() +
                                      ": parameter is missing a name");
         continue;
+      }
+      if (reflection.findParameter(parameter.name).has_value()) {
+        result.diagnostics.push_back(sourceUri.string() + ": duplicate '" +
+                                     parameter.name + "' parameter");
       }
       if (requiredToken == "required") {
         parameter.required = true;
@@ -510,6 +577,25 @@ reflectMaterialContractSource(const LX_core::ResourceUri &sourceUri,
   if (result.diagnostics.empty()) {
     result.reflection = std::move(reflection);
   }
+  return result;
+}
+
+MaterialContractReflectionSetValidationResult
+validateMaterialContractReflectionSet(
+    const std::vector<LX_core::MaterialContractReflection> &reflections) {
+  MaterialContractReflectionSetValidationResult result;
+
+  for (std::size_t i = 0; i < reflections.size(); ++i) {
+    for (std::size_t j = i + 1; j < reflections.size(); ++j) {
+      if (reflections[i].sourceSignature() ==
+              reflections[j].sourceSignature() &&
+          !sameContractLayout(reflections[i], reflections[j])) {
+        result.diagnostics.push_back(
+            "material contract source signature conflict");
+      }
+    }
+  }
+
   return result;
 }
 

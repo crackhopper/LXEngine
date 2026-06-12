@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <optional>
+#include <vector>
 
 namespace {
 
@@ -226,6 +227,33 @@ LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat
          "missing status should reject reflection");
 }
 
+void testReflectRejectsDuplicateMetadata() {
+  const std::string source = R"glsl(
+// LX_MATERIAL_CONTRACT_BEGIN
+// type: matte
+// type: glossy
+// status: supported
+// status: unsupported
+// reflectionHash: matte-reflect-v1
+// reflectionHash: matte-reflect-v2
+// storageAbiHash: matte-storage-v1
+// storageAbiHash: matte-storage-v2
+// accessorAbiHash: material-surface-v1
+// accessorAbiHash: material-surface-v2
+// parameter: Kd required rgb texture
+// parameter: Kd optional float
+// LX_MATERIAL_CONTRACT_END
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+)glsl";
+  const auto result = LX_infra::reflectMaterialContractSource(
+      LX_core::ResourceUri("memory://materials/duplicate.contract.glsl"),
+      source);
+  EXPECT(!result.diagnostics.empty(),
+         "duplicate metadata should emit diagnostics");
+  EXPECT(!result.reflection.has_value(),
+         "duplicate metadata should reject reflection");
+}
+
 void testReflectRejectsBareMetadataLines() {
   const std::string source = R"glsl(
 LX_MATERIAL_CONTRACT_BEGIN
@@ -401,6 +429,29 @@ LxMaterialSurface lxLoadMaterialSurface(uint 2bad, vec2 uv, vec3 n, mat3 tbn) { 
          "accessor numeric parameter name should reject reflection");
 }
 
+void testReflectRejectsWrongAccessorParameterNames() {
+  const std::string source = R"glsl(
+// LX_MATERIAL_CONTRACT_BEGIN
+// type: matte
+// status: supported
+// reflectionHash: matte-reflect-v1
+// storageAbiHash: matte-storage-v1
+// accessorAbiHash: material-surface-v1
+// parameter: Kd required rgb texture
+// LX_MATERIAL_CONTRACT_END
+LxMaterialSurface lxLoadMaterialSurface(uint i, vec2 tex, vec3 normal, mat3 basis) { }
+)glsl";
+  const auto result = LX_infra::reflectMaterialContractSource(
+      LX_core::ResourceUri(
+          "memory://materials/accessor-wrong-names.contract.glsl"),
+      source);
+  EXPECT(!result.diagnostics.empty(),
+         "wrong accessor parameter names should not satisfy Material Accessor "
+         "ABI");
+  EXPECT(!result.reflection.has_value(),
+         "wrong accessor parameter names should reject reflection");
+}
+
 void testReflectRejectsAccessorMacroWithoutFunctionDefinition() {
   const std::string source = R"glsl(
 // LX_MATERIAL_CONTRACT_BEGIN
@@ -495,6 +546,32 @@ LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat
          "commented disabled preprocessor accessor should reject reflection");
 }
 
+void testReflectRejectsAccessorInBlockCommentedDisabledPreprocessorBlock() {
+  const std::string source = R"glsl(
+// LX_MATERIAL_CONTRACT_BEGIN
+// type: matte
+// status: supported
+// reflectionHash: matte-reflect-v1
+// storageAbiHash: matte-storage-v1
+// accessorAbiHash: material-surface-v1
+// parameter: Kd required rgb texture
+// LX_MATERIAL_CONTRACT_END
+#if 0 /* reason */
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+#endif
+)glsl";
+  const auto result = LX_infra::reflectMaterialContractSource(
+      LX_core::ResourceUri(
+          "memory://materials/accessor-disabled-block-comment.contract.glsl"),
+      source);
+  EXPECT(!result.diagnostics.empty(),
+         "block-commented disabled preprocessor accessor should not satisfy "
+         "Material Accessor ABI");
+  EXPECT(!result.reflection.has_value(),
+         "block-commented disabled preprocessor accessor should reject "
+         "reflection");
+}
+
 void testReflectRejectsAccessorAfterNestedDirectiveInDisabledBlock() {
   const std::string source = R"glsl(
 // LX_MATERIAL_CONTRACT_BEGIN
@@ -522,6 +599,27 @@ LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat
          "nested disabled preprocessor accessor should reject reflection");
 }
 
+void testValidateReflectionSetRejectsSourceSignatureConflicts() {
+  LX_core::MaterialContractReflection a;
+  a.sourceUri = LX_core::ResourceUri("memory://materials/matte.contract.glsl");
+  a.declaredType = "matte";
+  a.reflectionHash = "shared-reflect-v1";
+  a.storageAbiHash = "shared-storage-v1";
+  a.accessorAbiHash = "shared-accessor-v1";
+  a.parameters.push_back(LX_core::MaterialContractParameter{
+      "Kd", true, {LX_core::MaterialContractParameterKind::Rgb}});
+
+  LX_core::MaterialContractReflection b = a;
+  b.parameters.clear();
+  b.parameters.push_back(LX_core::MaterialContractParameter{
+      "roughness", false, {LX_core::MaterialContractParameterKind::Float}});
+
+  const auto result =
+      LX_infra::validateMaterialContractReflectionSet(std::vector{a, b});
+  EXPECT(!result.diagnostics.empty(),
+         "same source signature with different schemas should be diagnostic");
+}
+
 } // namespace
 
 int main() {
@@ -533,6 +631,7 @@ int main() {
   testReflectsContractMetadataBlock();
   testReflectRejectsMissingAccessor();
   testReflectRejectsMissingStatus();
+  testReflectRejectsDuplicateMetadata();
   testReflectRejectsBareMetadataLines();
   testReflectRejectsCommentedOutAccessor();
   testReflectRejectsAccessorCallWithoutDefinition();
@@ -541,10 +640,13 @@ int main() {
   testReflectRejectsWrongAccessorParameterList();
   testReflectRejectsAccessorArrayDeclarator();
   testReflectRejectsAccessorNumericParameterName();
+  testReflectRejectsWrongAccessorParameterNames();
   testReflectRejectsAccessorMacroWithoutFunctionDefinition();
   testReflectRejectsMultilineAccessorMacro();
   testReflectRejectsAccessorInDisabledPreprocessorBlock();
   testReflectRejectsAccessorInCommentedDisabledPreprocessorBlock();
+  testReflectRejectsAccessorInBlockCommentedDisabledPreprocessorBlock();
   testReflectRejectsAccessorAfterNestedDirectiveInDisabledBlock();
+  testValidateReflectionSetRejectsSourceSignatureConflicts();
   return g_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
