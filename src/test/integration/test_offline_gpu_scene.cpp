@@ -168,6 +168,7 @@ void writeTextFile(const std::filesystem::path &path,
   writeTextFile(dir / "smoke.material", R"(schema: lxe.material.v2
 bsdf:
   type: matte
+  source: shaders/materials/matte.contract.glsl
   parameters:
     Kd: { kind: rgb, value: [0.8, 0.2, 0.1] }
     sigma: { kind: float, value: 0.0 }

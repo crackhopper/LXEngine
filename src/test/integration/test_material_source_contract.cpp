@@ -97,6 +97,26 @@ bsdf:
          "non-scalar diagnostic should name bsdf.source");
 }
 
+void testMaterialParserRejectsEmptyBsdfSource() {
+  LX_core::SceneResourceTable table;
+  LX_infra::MaterialResourceParser parser;
+  const auto parsed = parser.parse(
+      table, LX_core::ResourceUri("memory://materials/empty-source.material"),
+      R"yaml(
+schema: lxe.material.v2
+bsdf:
+  type: matte
+  source: ""
+  parameters:
+    Kd: { kind: rgb, value: [1.0, 1.0, 1.0] }
+    sigma: { kind: float, value: 0.0 }
+)yaml");
+  EXPECT(parsed.instance == nullptr, "empty bsdf.source should fail");
+  EXPECT(!parsed.diagnostics.empty(), "empty bsdf.source should diagnose");
+  EXPECT(diagnosticsContain(parsed.diagnostics, "bsdf.source"),
+         "empty source diagnostic should name bsdf.source");
+}
+
 void testMaterialParserStoresSourceIdentityAndCloneCopiesIt() {
   LX_core::SceneResourceTable table;
   LX_infra::MaterialResourceParser parser;
@@ -1264,6 +1284,7 @@ int main() {
   testSourceSignatureIgnoresInstanceValues();
   testMaterialParserRequiresBsdfSource();
   testMaterialParserRejectsNonScalarBsdfSource();
+  testMaterialParserRejectsEmptyBsdfSource();
   testMaterialParserStoresSourceIdentityAndCloneCopiesIt();
   testFindParameterHitAndMiss();
   testDefaultAccessorAbi();

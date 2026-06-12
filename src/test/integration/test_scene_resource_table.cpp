@@ -1695,6 +1695,7 @@ void testMaterialV2EnvelopeFeedsGpuMaterialRecord() {
 schema: lxe.material.v2
 bsdf:
   type: matte
+  source: shaders/materials/matte.contract.glsl
   parameters:
     Kd: { kind: rgb, value: [0.2, 0.4, 0.6] }
     sigma: { kind: float, value: 0.15 }
@@ -1745,6 +1746,7 @@ void testMaterialV2TextureEnvelopeFeedsUploadTextureSlots() {
 schema: lxe.material.v2
 bsdf:
   type: matte
+  source: shaders/materials/matte.contract.glsl
   parameters:
     Kd: { kind: texture, valueType: rgb, uri: textures/kd.png }
     normalmap: { kind: texture, valueType: rgb, uri: textures/normal.png }

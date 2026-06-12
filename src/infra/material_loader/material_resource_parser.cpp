@@ -445,8 +445,14 @@ MaterialResourceParser::parse(LX_core::SceneResourceTable &table,
                   "missing scalar material contract source");
     return result;
   }
+  const std::string sourceText = bsdfNode["source"].as<std::string>();
+  if (sourceText.empty()) {
+    addDiagnostic(result, uri, "bsdf.source",
+                  "missing scalar material contract source");
+    return result;
+  }
   const LX_core::ResourceUri sourceUri = table.resolveUri(
-      uri, LX_core::ResourceUri(bsdfNode["source"].as<std::string>()));
+      uri, LX_core::ResourceUri(sourceText));
 
   const LX_core::MaterialSurfaceSchema *schema =
       LX_core::findMaterialSurfaceSchema(bsdfType);
