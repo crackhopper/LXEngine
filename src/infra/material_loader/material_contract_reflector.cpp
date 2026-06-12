@@ -172,7 +172,17 @@ commentMetadataLine(std::string_view line) {
   while (begin > 0 && isIdentifierChar(code[begin - 1])) {
     --begin;
   }
-  return code.substr(begin, end - begin) == "LxMaterialSurface";
+  if (code.substr(begin, end - begin) != "LxMaterialSurface") {
+    return false;
+  }
+
+  std::size_t prefixEnd = begin;
+  while (prefixEnd > 0 &&
+         std::isspace(static_cast<unsigned char>(code[prefixEnd - 1])) != 0) {
+    --prefixEnd;
+  }
+  return prefixEnd == 0 || code[prefixEnd - 1] == '}' ||
+         code[prefixEnd - 1] == ';';
 }
 
 [[nodiscard]] bool hasExpectedParameter(std::string_view parameter,
