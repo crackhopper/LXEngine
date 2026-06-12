@@ -378,6 +378,29 @@ LxMaterialSurface lxLoadMaterialSurface(uint materialIndex[2], vec2 uv, vec3 n, 
          "accessor array declarator should reject reflection");
 }
 
+void testReflectRejectsAccessorNumericParameterName() {
+  const std::string source = R"glsl(
+// LX_MATERIAL_CONTRACT_BEGIN
+// type: matte
+// status: supported
+// reflectionHash: matte-reflect-v1
+// storageAbiHash: matte-storage-v1
+// accessorAbiHash: material-surface-v1
+// parameter: Kd required rgb texture
+// LX_MATERIAL_CONTRACT_END
+LxMaterialSurface lxLoadMaterialSurface(uint 2bad, vec2 uv, vec3 n, mat3 tbn) { }
+)glsl";
+  const auto result = LX_infra::reflectMaterialContractSource(
+      LX_core::ResourceUri(
+          "memory://materials/accessor-numeric-param.contract.glsl"),
+      source);
+  EXPECT(!result.diagnostics.empty(),
+         "accessor numeric parameter name should not satisfy Material Accessor "
+         "ABI");
+  EXPECT(!result.reflection.has_value(),
+         "accessor numeric parameter name should reject reflection");
+}
+
 void testReflectRejectsAccessorMacroWithoutFunctionDefinition() {
   const std::string source = R"glsl(
 // LX_MATERIAL_CONTRACT_BEGIN
@@ -447,6 +470,58 @@ LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat
          "disabled preprocessor accessor should reject reflection");
 }
 
+void testReflectRejectsAccessorInCommentedDisabledPreprocessorBlock() {
+  const std::string source = R"glsl(
+// LX_MATERIAL_CONTRACT_BEGIN
+// type: matte
+// status: supported
+// reflectionHash: matte-reflect-v1
+// storageAbiHash: matte-storage-v1
+// accessorAbiHash: material-surface-v1
+// parameter: Kd required rgb texture
+// LX_MATERIAL_CONTRACT_END
+#if 0 // reason
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+#endif
+)glsl";
+  const auto result = LX_infra::reflectMaterialContractSource(
+      LX_core::ResourceUri(
+          "memory://materials/accessor-disabled-comment.contract.glsl"),
+      source);
+  EXPECT(!result.diagnostics.empty(),
+         "commented disabled preprocessor accessor should not satisfy Material "
+         "Accessor ABI");
+  EXPECT(!result.reflection.has_value(),
+         "commented disabled preprocessor accessor should reject reflection");
+}
+
+void testReflectRejectsAccessorAfterNestedDirectiveInDisabledBlock() {
+  const std::string source = R"glsl(
+// LX_MATERIAL_CONTRACT_BEGIN
+// type: matte
+// status: supported
+// reflectionHash: matte-reflect-v1
+// storageAbiHash: matte-storage-v1
+// accessorAbiHash: material-surface-v1
+// parameter: Kd required rgb texture
+// LX_MATERIAL_CONTRACT_END
+#if 0
+#if 1
+#endif
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 n, mat3 tbn) { }
+#endif
+)glsl";
+  const auto result = LX_infra::reflectMaterialContractSource(
+      LX_core::ResourceUri(
+          "memory://materials/accessor-disabled-nested.contract.glsl"),
+      source);
+  EXPECT(!result.diagnostics.empty(),
+         "nested disabled preprocessor accessor should not satisfy Material "
+         "Accessor ABI");
+  EXPECT(!result.reflection.has_value(),
+         "nested disabled preprocessor accessor should reject reflection");
+}
+
 } // namespace
 
 int main() {
@@ -465,8 +540,11 @@ int main() {
   testReflectRejectsWrongAccessorReturnType();
   testReflectRejectsWrongAccessorParameterList();
   testReflectRejectsAccessorArrayDeclarator();
+  testReflectRejectsAccessorNumericParameterName();
   testReflectRejectsAccessorMacroWithoutFunctionDefinition();
   testReflectRejectsMultilineAccessorMacro();
   testReflectRejectsAccessorInDisabledPreprocessorBlock();
+  testReflectRejectsAccessorInCommentedDisabledPreprocessorBlock();
+  testReflectRejectsAccessorAfterNestedDirectiveInDisabledBlock();
   return g_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }

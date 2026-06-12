@@ -63,6 +63,11 @@ kindFromToken(const std::string &token) {
   return std::isalnum(ch) != 0 || c == '_';
 }
 
+[[nodiscard]] bool isIdentifierStart(char c) {
+  const auto ch = static_cast<unsigned char>(c);
+  return std::isalpha(ch) != 0 || c == '_';
+}
+
 [[nodiscard]] std::optional<std::string>
 commentMetadataLine(std::string_view line) {
   const std::string stripped = trim(line);
@@ -79,6 +84,80 @@ commentMetadataLine(std::string_view line) {
     --pos;
   }
   return pos > 0 && line[pos - 1] == '\\';
+}
+
+[[nodiscard]] std::string stripLineAndBlockComments(std::string_view text) {
+  std::string result;
+  result.reserve(text.size());
+
+  bool inBlockComment = false;
+  for (std::size_t i = 0; i < text.size();) {
+    if (inBlockComment) {
+      if (i + 1 < text.size() && text[i] == '*' && text[i + 1] == '/') {
+        inBlockComment = false;
+        i += 2;
+      } else {
+        ++i;
+      }
+      continue;
+    }
+
+    if (i + 1 < text.size() && text[i] == '/' && text[i + 1] == '/') {
+      break;
+    }
+    if (i + 1 < text.size() && text[i] == '/' && text[i + 1] == '*') {
+      inBlockComment = true;
+      i += 2;
+      continue;
+    }
+
+    result.push_back(text[i]);
+    ++i;
+  }
+
+  return result;
+}
+
+[[nodiscard]] std::string directiveKeyword(std::string_view directive) {
+  const std::string stripped = trim(stripLineAndBlockComments(directive));
+  if (stripped.empty() || stripped[0] != '#') {
+    return "";
+  }
+
+  std::size_t pos = 1;
+  while (pos < stripped.size() &&
+         std::isspace(static_cast<unsigned char>(stripped[pos])) != 0) {
+    ++pos;
+  }
+  const std::size_t begin = pos;
+  while (pos < stripped.size() && isIdentifierChar(stripped[pos])) {
+    ++pos;
+  }
+  return stripped.substr(begin, pos - begin);
+}
+
+[[nodiscard]] bool directiveStartsDisabledBlock(std::string_view directive) {
+  const std::string stripped = trim(stripLineAndBlockComments(directive));
+  if (stripped.empty() || stripped[0] != '#') {
+    return false;
+  }
+
+  std::size_t pos = 1;
+  while (pos < stripped.size() &&
+         std::isspace(static_cast<unsigned char>(stripped[pos])) != 0) {
+    ++pos;
+  }
+  if (stripped.compare(pos, 2, "if") != 0 ||
+      (pos + 2 < stripped.size() && isIdentifierChar(stripped[pos + 2]))) {
+    return false;
+  }
+  pos += 2;
+  while (pos < stripped.size() &&
+         std::isspace(static_cast<unsigned char>(stripped[pos])) != 0) {
+    ++pos;
+  }
+  return pos < stripped.size() && stripped[pos] == '0' &&
+         (pos + 1 == stripped.size() || !isIdentifierChar(stripped[pos + 1]));
 }
 
 [[nodiscard]] bool hasExpectedReturnType(const std::string &code,
@@ -118,6 +197,9 @@ commentMetadataLine(std::string_view line) {
     return false;
   }
 
+  if (!isIdentifierStart(declarator[0])) {
+    return false;
+  }
   for (const char c : declarator) {
     if (!isIdentifierChar(c)) {
       return false;
@@ -228,11 +310,15 @@ commentMetadataLine(std::string_view line) {
         } while (continuedDirective && i < sourceText.size());
 
         const std::string directive = trim(directiveText);
-        if (directive == "#if 0") {
+        const std::string keyword = directiveKeyword(directive);
+        if (disabledPreprocessorDepth > 0) {
+          if (keyword == "if" || keyword == "ifdef" || keyword == "ifndef") {
+            ++disabledPreprocessorDepth;
+          } else if (keyword == "endif") {
+            --disabledPreprocessorDepth;
+          }
+        } else if (directiveStartsDisabledBlock(directive)) {
           ++disabledPreprocessorDepth;
-        } else if (directive.rfind("#endif", 0) == 0 &&
-                   disabledPreprocessorDepth > 0) {
-          --disabledPreprocessorDepth;
         }
         continue;
       }
