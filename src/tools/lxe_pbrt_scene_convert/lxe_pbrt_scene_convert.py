@@ -54,13 +54,13 @@ REQUIRED_BSDF_PARAMETERS: dict[str, list[str]] = {
 }
 
 MATERIAL_CONTRACT_SOURCE_BY_TYPE: dict[str, str] = {
-    "matte": "shaders/materials/matte.contract.glsl",
-    "glass": "shaders/materials/glass.contract.glsl",
-    "uber": "shaders/materials/uber.contract.glsl",
-    "metal": "shaders/materials/metal.contract.glsl",
-    "substrate": "shaders/materials/substrate.contract.glsl",
-    "fourier": "shaders/materials/fourier.contract.glsl",
-    "mix": "shaders/materials/mix.contract.glsl",
+    "matte": "assets://shaders/glsl/common/materials/matte.contract.glsl",
+    "glass": "assets://shaders/glsl/common/materials/glass.contract.glsl",
+    "uber": "assets://shaders/glsl/common/materials/uber.contract.glsl",
+    "metal": "assets://shaders/glsl/common/materials/metal.contract.glsl",
+    "substrate": "assets://shaders/glsl/common/materials/substrate.contract.glsl",
+    "fourier": "assets://shaders/glsl/common/materials/fourier.contract.glsl",
+    "mix": "assets://shaders/glsl/common/materials/mix.contract.glsl",
 }
 
 

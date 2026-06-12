@@ -126,7 +126,7 @@ void testMaterialParserStoresSourceIdentityAndCloneCopiesIt() {
 schema: lxe.material.v2
 bsdf:
   type: matte
-  source: shaders/materials/matte.contract.glsl
+  source: assets://shaders/glsl/common/materials/matte.contract.glsl
   parameters:
     Kd: { kind: rgb, value: [1.0, 1.0, 1.0] }
     sigma: { kind: float, value: 0.0 }
@@ -139,7 +139,7 @@ bsdf:
   }
 
   EXPECT(parsed.instance->getMaterialSourceUri().string() ==
-             "memory://materials/shaders/materials/matte.contract.glsl",
+             "assets://shaders/glsl/common/materials/matte.contract.glsl",
          "MaterialInstance should store canonical source URI");
   EXPECT(parsed.instance->getMaterialSourceSignature() == LX_core::StringID{},
          "MaterialInstance should leave source signature invalid until "

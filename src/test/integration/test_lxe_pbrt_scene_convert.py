@@ -210,7 +210,7 @@ class PbrtSceneConvertTest(unittest.TestCase):
             self.assertIn('"bsdf":', runtime_material_text)
             self.assertIn('"type": "metal"', runtime_material_text)
             self.assertIn(
-                '"source": "shaders/materials/metal.contract.glsl"',
+                '"source": "assets://shaders/glsl/common/materials/metal.contract.glsl"',
                 runtime_material_text,
             )
             self.assertIn('"eta":', runtime_material_text)
@@ -234,7 +234,7 @@ class PbrtSceneConvertTest(unittest.TestCase):
             ).read_text(encoding="utf-8")
             self.assertIn('"type": "substrate"', car_paint_text)
             self.assertIn(
-                '"source": "shaders/materials/substrate.contract.glsl"',
+                '"source": "assets://shaders/glsl/common/materials/substrate.contract.glsl"',
                 car_paint_text,
             )
             self.assertIn('"Kd":', car_paint_text)
@@ -252,7 +252,7 @@ class PbrtSceneConvertTest(unittest.TestCase):
             ).read_text(encoding="utf-8")
             self.assertIn('"Kr":', glass_material_text)
             self.assertIn(
-                '"source": "shaders/materials/glass.contract.glsl"',
+                '"source": "assets://shaders/glsl/common/materials/glass.contract.glsl"',
                 glass_material_text,
             )
             self.assertIn('"kind": "rgb"', glass_material_text)
@@ -270,7 +270,7 @@ class PbrtSceneConvertTest(unittest.TestCase):
             ).read_text(encoding="utf-8")
             self.assertIn('"type": "mix"', runtime_mix_material_text)
             self.assertIn(
-                '"source": "shaders/materials/mix.contract.glsl"',
+                '"source": "assets://shaders/glsl/common/materials/mix.contract.glsl"',
                 runtime_mix_material_text,
             )
             self.assertIn('"namedmaterial1":', runtime_mix_material_text)

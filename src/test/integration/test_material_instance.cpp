@@ -24,7 +24,7 @@ MaterialInstanceSharedPtr parseDefaultMaterial(SceneResourceTable &table) {
 schema: lxe.material.v2
 bsdf:
   type: uber
-  source: shaders/materials/uber.contract.glsl
+  source: assets://shaders/glsl/common/materials/uber.contract.glsl
   parameters:
     Kd: { kind: texture, valueType: rgb, uri: textures/kd.png }
     Ks: { kind: rgb, value: [0.04, 0.04, 0.04] }

@@ -43,7 +43,7 @@ void testParserResourceDependenciesSurviveTableRegistration() {
 schema: lxe.material.v2
 bsdf:
   type: matte
-  source: shaders/materials/matte.contract.glsl
+  source: assets://shaders/glsl/common/materials/matte.contract.glsl
   parameters:
     Kd: { kind: texture, valueType: rgb, uri: ../textures/shared.png }
     normalmap: { kind: texture, valueType: rgb, uri: ../textures/shared.png }
@@ -146,7 +146,7 @@ void testMixMaterialRefReadsTargetHeaderWithoutFullParse() {
 schema: lxe.material.v2
 bsdf:
   type: matte
-  source: shaders/materials/matte.contract.glsl
+  source: assets://shaders/glsl/common/materials/matte.contract.glsl
 )");
 
   SceneResourceTable table;
@@ -155,7 +155,7 @@ bsdf:
 schema: lxe.material.v2
 bsdf:
   type: mix
-  source: shaders/materials/mix.contract.glsl
+  source: assets://shaders/glsl/common/materials/mix.contract.glsl
   parameters:
     namedmaterial1: { kind: materialRef, uri: leaf.material }
     namedmaterial2: { kind: materialRef, uri: leaf.material }
@@ -183,7 +183,7 @@ void testMixMaterialRefRejectsTargetMixHeader() {
 schema: lxe.material.v2
 bsdf:
   type: mix
-  source: shaders/materials/mix.contract.glsl
+  source: assets://shaders/glsl/common/materials/mix.contract.glsl
 )");
 
   SceneResourceTable table;
@@ -192,7 +192,7 @@ bsdf:
 schema: lxe.material.v2
 bsdf:
   type: mix
-  source: shaders/materials/mix.contract.glsl
+  source: assets://shaders/glsl/common/materials/mix.contract.glsl
   parameters:
     namedmaterial1: { kind: materialRef, uri: child_mix.material }
     namedmaterial2: { kind: materialRef, uri: child_mix.material }
@@ -221,7 +221,7 @@ bsdf:
 schema: lxe.material.v2
 bsdf:
   type: mix
-  source: shaders/materials/mix.contract.glsl
+  source: assets://shaders/glsl/common/materials/mix.contract.glsl
   parameters:
     namedmaterial1: { kind: materialRef, uri: leaf_without_source.material }
     namedmaterial2: { kind: materialRef, uri: leaf_without_source.material }
@@ -251,7 +251,7 @@ void testMixMaterialRefRejectsNamedStringReference() {
 schema: lxe.material.v2
 bsdf:
   type: mix
-  source: shaders/materials/mix.contract.glsl
+  source: assets://shaders/glsl/common/materials/mix.contract.glsl
   parameters:
     namedmaterial1: { kind: materialRef, uri: named:matte_base }
     namedmaterial2: { kind: materialRef, uri: named:clearcoat }
@@ -274,7 +274,7 @@ void testMaterialRefDiagnosticsIncludeParserAndResourceContext() {
 schema: lxe.material.v2
 bsdf:
   type: mix
-  source: shaders/materials/mix.contract.glsl
+  source: assets://shaders/glsl/common/materials/mix.contract.glsl
   parameters:
     namedmaterial1: { kind: materialRef, uri: missing.material }
     namedmaterial2: { kind: materialRef, uri: missing.material }
@@ -308,7 +308,7 @@ void testGenericMaterialLoaderWritesDependenciesIntoCallerTable() {
 schema: lxe.material.v2
 bsdf:
   type: matte
-  source: shaders/materials/matte.contract.glsl
+  source: assets://shaders/glsl/common/materials/matte.contract.glsl
   parameters:
     Kd: { kind: texture, valueType: rgb, uri: ../textures/shared.png }
     normalmap: { kind: texture, valueType: rgb, uri: ../textures/shared.png }
