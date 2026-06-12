@@ -1,4 +1,6 @@
 #include "core/asset/material_contract.hpp"
+#include "core/asset/material_instance.hpp"
+#include "core/frame_graph/pass.hpp"
 #include "core/scene/scene_resource_table.hpp"
 #include "infra/material_loader/material_contract_reflector.hpp"
 #include "infra/material_loader/material_resource_parser.hpp"
@@ -256,6 +258,15 @@ LX_infra::MaterialContractSourceLoadResult makeParserContractSourceText(
   LX_infra::MaterialContractSourceLoadResult result;
   result.sourceText = "injected material contract source";
   return result;
+}
+
+LX_core::MaterialTemplateSharedPtr makeSignedMaterialTemplate() {
+  auto materialTemplate = LX_core::MaterialTemplate::create("matte");
+  LX_core::MaterialPassDefinition passDefinition;
+  passDefinition.shaderProgram.shaderName = "forward-pbr";
+  materialTemplate->setPassDefinition(LX_core::Pass_Forward,
+                                      std::move(passDefinition));
+  return materialTemplate;
 }
 
 LX_infra::MaterialContractReflectionResult makeTypeMismatchParserContract(
@@ -739,6 +750,67 @@ bsdf:
                            : std::nullopt;
   EXPECT(cloneKd.has_value(),
          "clone reflected contract should expose Kd parameter");
+}
+
+void testMaterialInstancePipelineSignatureUsesSourceSignature() {
+  auto material =
+      LX_core::MaterialInstance::createUnique(makeSignedMaterialTemplate());
+  material->setMaterialSourceUri(LX_core::ResourceUri(
+      "assets://shaders/glsl/common/materials/matte.contract.glsl"));
+  material->setMaterialSourceReflectionHash("matte-source-contract-v1");
+  material->setMaterialSourceSignature(LX_core::StringID("source-a"));
+
+  const LX_core::StringID forward =
+      material->getPipelineSignature(LX_core::Pass_Forward);
+  material->setMaterialEnvelope(LX_core::StringID("Kd"),
+                                LX_core::MaterialParameterEnvelope{});
+  const LX_core::StringID afterValueChange =
+      material->getPipelineSignature(LX_core::Pass_Forward);
+
+  EXPECT(forward == afterValueChange,
+         "material parameter values must not alter material pipeline "
+         "signature");
+
+  auto other =
+      LX_core::MaterialInstance::createUnique(material->getTemplate());
+  other->setMaterialSourceUri(LX_core::ResourceUri(
+      "assets://shaders/glsl/common/materials/matte.contract.glsl"));
+  other->setMaterialSourceReflectionHash("matte-source-contract-v2");
+  other->setMaterialSourceSignature(LX_core::StringID("source-b"));
+
+  EXPECT(forward != other->getPipelineSignature(LX_core::Pass_Forward),
+         "different reflected source signatures must produce different "
+         "material pipeline signatures");
+
+  const std::string debug =
+      LX_core::GlobalStringTable::get().toDebugString(forward);
+  EXPECT(debug.find("MaterialRender(") != std::string::npos,
+         "source-reflected material signature debug string should include "
+         "MaterialRender(, got: " +
+             debug);
+  EXPECT(debug.find("source-a") != std::string::npos,
+         "source-reflected material signature debug string should include "
+         "source signature, got: " +
+             debug);
+}
+
+void testLegacyMaterialPipelineSignatureIgnoresInstanceValues() {
+  auto material =
+      LX_core::MaterialInstance::createUnique(makeSignedMaterialTemplate());
+  const LX_core::StringID before =
+      material->getPipelineSignature(LX_core::Pass_Forward);
+  material->setMaterialEnvelope(LX_core::StringID("Kd"),
+                                LX_core::MaterialParameterEnvelope{});
+  const LX_core::StringID after =
+      material->getPipelineSignature(LX_core::Pass_Forward);
+
+  auto sameTemplate =
+      LX_core::MaterialInstance::createUnique(material->getTemplate());
+  EXPECT(before == after,
+         "legacy material pipeline signature must ignore instance values");
+  EXPECT(before == sameTemplate->getPipelineSignature(LX_core::Pass_Forward),
+         "legacy material pipeline signature should be determined by "
+         "template/pass signature");
 }
 
 void testFindParameterHitAndMiss() {
@@ -1899,6 +1971,8 @@ int main() {
   testMaterialParserRejectsNonScalarBsdfSource();
   testMaterialParserRejectsEmptyBsdfSource();
   testMaterialParserStoresSourceIdentityAndCloneCopiesIt();
+  testMaterialInstancePipelineSignatureUsesSourceSignature();
+  testLegacyMaterialPipelineSignatureIgnoresInstanceValues();
   testFindParameterHitAndMiss();
   testDefaultAccessorAbi();
   testSourceSignatureIncludesStorageAndAccessorAbi();

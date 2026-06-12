@@ -194,6 +194,25 @@ void testToDebugStringSmoke() {
   std::cout << "  debug: " << s << "\n";
 }
 
+void testPipelineKeyIncludesMaterialSourceSignature() {
+  auto f1 = Fixture::make();
+  auto f2 = Fixture::make();
+  f1.material->setMaterialSourceSignature(StringID("source-a"));
+  f2.material->setMaterialSourceSignature(StringID("source-b"));
+
+  const PipelineKey k1 = buildKey(f1, Pass_Forward);
+  const PipelineKey k2 = buildKey(f2, Pass_Forward);
+
+  EXPECT(k1 != k2,
+         "different material source signatures must change pipeline key");
+
+  const std::string debug = GlobalStringTable::get().toDebugString(k1.id);
+  EXPECT(debug.find("MaterialRender(") != std::string::npos,
+         "debug string must contain MaterialRender(, got: " + debug);
+  EXPECT(debug.find("source-a") != std::string::npos,
+         "debug string must include material source signature, got: " + debug);
+}
+
 void testPipelineKeyIncludesTargetSignature() {
   auto f = Fixture::make();
   auto node = SceneNode::create("pipeline_identity_target_node");
@@ -237,6 +256,7 @@ int main() {
   testSkeletonPresenceDoesNotProduceDifferentKey();
   testDifferentPassProducesDifferentKey();
   testToDebugStringSmoke();
+  testPipelineKeyIncludesMaterialSourceSignature();
   testPipelineKeyIncludesTargetSignature();
 
   if (failures > 0) {
