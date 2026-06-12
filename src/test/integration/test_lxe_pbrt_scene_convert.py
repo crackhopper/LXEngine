@@ -209,6 +209,10 @@ class PbrtSceneConvertTest(unittest.TestCase):
             self.assertIn('"schema": "lxe.material.v2"', runtime_material_text)
             self.assertIn('"bsdf":', runtime_material_text)
             self.assertIn('"type": "metal"', runtime_material_text)
+            self.assertIn(
+                '"source": "shaders/materials/metal.contract.glsl"',
+                runtime_material_text,
+            )
             self.assertIn('"eta":', runtime_material_text)
             self.assertIn('"kind": "spectrum"', runtime_material_text)
             self.assertIn('"uri": "spds/Al.eta.spd"', runtime_material_text)
@@ -229,6 +233,10 @@ class PbrtSceneConvertTest(unittest.TestCase):
                 / "CarPaint.material"
             ).read_text(encoding="utf-8")
             self.assertIn('"type": "substrate"', car_paint_text)
+            self.assertIn(
+                '"source": "shaders/materials/substrate.contract.glsl"',
+                car_paint_text,
+            )
             self.assertIn('"Kd":', car_paint_text)
             self.assertIn('"Ks":', car_paint_text)
             self.assertIn('"uroughness":', car_paint_text)
@@ -243,6 +251,10 @@ class PbrtSceneConvertTest(unittest.TestCase):
                 / "WindscreenGlass.material"
             ).read_text(encoding="utf-8")
             self.assertIn('"Kr":', glass_material_text)
+            self.assertIn(
+                '"source": "shaders/materials/glass.contract.glsl"',
+                glass_material_text,
+            )
             self.assertIn('"kind": "rgb"', glass_material_text)
             self.assertIn('"eta":', glass_material_text)
             self.assertNotIn('"Kr": "pbrt-default"', glass_material_text)
@@ -257,6 +269,10 @@ class PbrtSceneConvertTest(unittest.TestCase):
                 / "LEATHER.material"
             ).read_text(encoding="utf-8")
             self.assertIn('"type": "mix"', runtime_mix_material_text)
+            self.assertIn(
+                '"source": "shaders/materials/mix.contract.glsl"',
+                runtime_mix_material_text,
+            )
             self.assertIn('"namedmaterial1":', runtime_mix_material_text)
             self.assertIn('"kind": "materialRef"', runtime_mix_material_text)
             self.assertIn('"uri": "LEATHER-white.material"', runtime_mix_material_text)

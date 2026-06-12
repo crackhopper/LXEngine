@@ -53,6 +53,16 @@ REQUIRED_BSDF_PARAMETERS: dict[str, list[str]] = {
     "mix": ["namedmaterial1", "namedmaterial2", "amount"],
 }
 
+MATERIAL_CONTRACT_SOURCE_BY_TYPE: dict[str, str] = {
+    "matte": "shaders/materials/matte.contract.glsl",
+    "glass": "shaders/materials/glass.contract.glsl",
+    "uber": "shaders/materials/uber.contract.glsl",
+    "metal": "shaders/materials/metal.contract.glsl",
+    "substrate": "shaders/materials/substrate.contract.glsl",
+    "fourier": "shaders/materials/fourier.contract.glsl",
+    "mix": "shaders/materials/mix.contract.glsl",
+}
+
 
 @dataclass
 class Token:
@@ -549,6 +559,12 @@ def material_v2_bsdf_doc(
     material_uri_by_name: dict[str, str],
 ) -> tuple[dict[str, Any], dict[str, str]]:
     pbrt_type = material.pbrt_type()
+    source = MATERIAL_CONTRACT_SOURCE_BY_TYPE.get(pbrt_type)
+    if source is None:
+        raise ValueError(
+            f"PBRT material {material.name} type {pbrt_type} has no "
+            "Material v2 contract source"
+        )
     parameters: dict[str, Any] = {}
     sources: dict[str, str] = {}
     for name in REQUIRED_BSDF_PARAMETERS.get(pbrt_type, []):
@@ -565,7 +581,7 @@ def material_v2_bsdf_doc(
             )
         parameters[name] = default
         sources[name] = "pbrt-default"
-    return {"type": pbrt_type, "parameters": parameters}, sources
+    return {"type": pbrt_type, "source": source, "parameters": parameters}, sources
 
 
 def sanitize_filename(name: str) -> str:
