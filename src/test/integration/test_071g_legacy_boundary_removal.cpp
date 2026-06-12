@@ -253,6 +253,7 @@ int main() {
       {"test_technique_pass_contract"},
       {"test_render_effect_resource_parser"},
       {"MaterialParams"},
+      {"MaterialSurfaceSchema"},
       {"RenderPassContractSet"},
       {"RenderPassContractLibrary"},
   };
@@ -327,10 +328,13 @@ int main() {
       {"test_render_effect_resource_parser",
        "test_071g_legacy_boundary_removal.cpp"},
       {"MaterialParams", "test_071g_legacy_boundary_removal.cpp"},
+      {"MaterialSurfaceSchema", "test_071g_legacy_boundary_removal.cpp"},
       {"RenderPassContractSet", "test_071g_legacy_boundary_removal.cpp"},
       {"RenderPassContractLibrary", "test_071g_legacy_boundary_removal.cpp"},
   };
   const std::vector<ForbiddenPath> legacyFiles{
+      {"src/core/asset/material_surface_schema.cpp"},
+      {"src/core/asset/material_surface_schema.hpp"},
       {"src/core/asset/material_technique_set.cpp"},
       {"src/core/asset/material_technique_set.hpp"},
       {"src/core/frame_graph/technique_validator.cpp"},
