@@ -1,5 +1,9 @@
+#include "core/asset/material_contract.hpp"
+#include "core/asset/material_instance.hpp"
+#include "core/asset/mesh.hpp"
 #include "core/resource/resource_metadata.hpp"
 #include "core/asset/render_effect.hpp"
+#include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/scene_resource_table.hpp"
 
 #include <algorithm>
@@ -23,6 +27,77 @@ int g_failures = 0;
       ++g_failures;                                                            \
     }                                                                          \
   } while (0)
+
+struct TestVertex final {
+  Vec3f position;
+
+  static VertexLayout getLayout() {
+    return VertexLayout(
+        std::vector<VertexLayoutItem>{
+            VertexLayoutItem{"position", 0, DataType::Float3,
+                             sizeof(Vec3f), 0}},
+        sizeof(TestVertex));
+  }
+};
+
+MeshBufferUniquePtr makeTriangleMesh() {
+  auto vertices = std::vector<TestVertex>{
+      {{0.0f, 0.0f, 0.0f}},
+      {{1.0f, 0.0f, 0.0f}},
+      {{0.0f, 1.0f, 0.0f}},
+  };
+  auto indices = std::vector<u32>{0, 1, 2};
+  auto vb = VertexBuffer<TestVertex>::create(std::move(vertices));
+  auto ib = IndexBuffer::create(std::move(indices));
+  return MeshBuffer::create(
+             vb, ib,
+             BoundingBox{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 0.0f}})
+      ->cloneUnique();
+}
+
+MaterialContractReflection makeMaterialContract(const char *uri,
+                                                const char *type,
+                                                const char *reflectionHash) {
+  MaterialContractReflection contract;
+  contract.sourceUri = ResourceUri(uri);
+  contract.declaredType = type;
+  contract.reflectionHash = reflectionHash;
+  contract.storageAbiHash = "storage-v1";
+  contract.accessorAbiHash = "material-surface-v1";
+  return contract;
+}
+
+MaterialInstanceUniquePtr
+makeSourceMaterial(MaterialContractReflection contract) {
+  auto material = MaterialInstance::createUnique(
+      MaterialTemplate::create(contract.declaredType));
+  material->setBsdfType(contract.declaredType);
+  material->setMaterialSourceUri(contract.sourceUri);
+  material->setMaterialSourceSignature(contract.sourceSignature());
+  material->setMaterialSourceReflectionHash(contract.reflectionHash);
+  material->setMaterialContractReflection(std::move(contract));
+  return material;
+}
+
+void registerObject(SceneResourceTable &table, MeshHandle mesh,
+                    MaterialHandle material) {
+  ObjectResource object;
+  object.mesh = mesh;
+  object.material = material;
+  object.worldBounds = BoundingBox{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 0.0f}};
+  (void)table.registerObject(object);
+}
+
+const SceneSourceLocalMaterialStorageView *
+findSourceStorage(const SceneResourceTableUploadView &view,
+                  StringID sourceSignature) {
+  const auto found = std::find_if(
+      view.sourceMaterialStorages.begin(), view.sourceMaterialStorages.end(),
+      [sourceSignature](const SceneSourceLocalMaterialStorageView &storage) {
+        return storage.sourceSignature == sourceSignature;
+      });
+  return found == view.sourceMaterialStorages.end() ? nullptr : &*found;
+}
 
 std::vector<ResourceUri> shaderSourceFixture() {
   return {
@@ -261,6 +336,74 @@ void testUploadViewExportsRenderPathGraphPassFeatureAndShaderIndices() {
       view.renderPathGraphPasses[graphRecord.passOffset];
   EXPECT(passRecord.shaderIndex < view.renderPathGraphShaders.size(),
          "pass record should point at shader metadata index");
+}
+
+void testUploadViewGroupsSourceLocalMaterialsWithSameSignature() {
+  SceneResourceTable table;
+  const MeshHandle firstMesh = table.registerMesh(makeTriangleMesh());
+  const MeshHandle secondMesh = table.registerMesh(makeTriangleMesh());
+  const MaterialContractReflection contract = makeMaterialContract(
+      "memory://materials/matte.contract.glsl", "matte", "matte-reflect-v1");
+  const StringID sourceSignature = contract.sourceSignature();
+  const MaterialHandle firstMaterial =
+      table.registerMaterial(makeSourceMaterial(contract));
+  const MaterialHandle secondMaterial =
+      table.registerMaterial(makeSourceMaterial(contract));
+  registerObject(table, firstMesh, firstMaterial);
+  registerObject(table, secondMesh, secondMaterial);
+
+  const SceneResourceTableUploadView view = table.buildUploadView();
+  EXPECT(view.materials.size() == 2,
+         "legacy material upload span should still contain both materials");
+  EXPECT(view.sourceMaterialStorages.size() == 1,
+         "same source signature should produce one source-local storage");
+  const SceneSourceLocalMaterialStorageView *storage =
+      findSourceStorage(view, sourceSignature);
+  EXPECT(storage != nullptr,
+         "source-local storage should be keyed by source signature");
+  EXPECT(storage != nullptr && storage->recordOffset == 0,
+         "same source storage should start at first uploaded material record");
+  EXPECT(storage != nullptr && storage->recordCount == 2,
+         "same source storage should cover both material records");
+}
+
+void testUploadViewSplitsSourceLocalMaterialsBySignature() {
+  SceneResourceTable table;
+  const MeshHandle firstMesh = table.registerMesh(makeTriangleMesh());
+  const MeshHandle secondMesh = table.registerMesh(makeTriangleMesh());
+  const MaterialContractReflection matte = makeMaterialContract(
+      "memory://materials/matte.contract.glsl", "matte", "matte-reflect-v1");
+  const MaterialContractReflection metal = makeMaterialContract(
+      "memory://materials/metal.contract.glsl", "metal", "metal-reflect-v1");
+  const StringID matteSignature = matte.sourceSignature();
+  const StringID metalSignature = metal.sourceSignature();
+  const MaterialHandle firstMaterial =
+      table.registerMaterial(makeSourceMaterial(matte));
+  const MaterialHandle secondMaterial =
+      table.registerMaterial(makeSourceMaterial(metal));
+  registerObject(table, firstMesh, firstMaterial);
+  registerObject(table, secondMesh, secondMaterial);
+
+  const SceneResourceTableUploadView view = table.buildUploadView();
+  EXPECT(view.materials.size() == 2,
+         "legacy material upload span should still contain both materials");
+  EXPECT(view.sourceMaterialStorages.size() == 2,
+         "different source signatures should produce separate storages");
+
+  const SceneSourceLocalMaterialStorageView *matteStorage =
+      findSourceStorage(view, matteSignature);
+  const SceneSourceLocalMaterialStorageView *metalStorage =
+      findSourceStorage(view, metalSignature);
+  EXPECT(matteStorage != nullptr,
+         "matte source-local storage should be present");
+  EXPECT(metalStorage != nullptr,
+         "metal source-local storage should be present");
+  EXPECT(matteStorage != nullptr && matteStorage->recordOffset == 0 &&
+             matteStorage->recordCount == 1,
+         "first source storage should cover the first material record");
+  EXPECT(metalStorage != nullptr && metalStorage->recordOffset == 1 &&
+             metalStorage->recordCount == 1,
+         "second source storage should cover the second material record");
 }
 
 void testRenderPathGraphRegistrationRejectsMissingFeatureResource() {
@@ -630,6 +773,8 @@ int main() {
   testOverrideIdentityUsesStableHash();
   testRenderPathGraphResourceGraphExportsFeatureAndShaderDependencies();
   testUploadViewExportsRenderPathGraphPassFeatureAndShaderIndices();
+  testUploadViewGroupsSourceLocalMaterialsWithSameSignature();
+  testUploadViewSplitsSourceLocalMaterialsBySignature();
   testRenderPathGraphRegistrationRejectsMissingFeatureResource();
   testFailedShaderMetadataDoesNotSatisfyRenderPathGraphDependency();
   testSourceResolvedShaderWithoutPayloadDoesNotSatisfyGraphDependency();

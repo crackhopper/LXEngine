@@ -1,4 +1,5 @@
 #include "core/asset/material_contract.hpp"
+#include "core/asset/material_contract_packer.hpp"
 #include "core/asset/material_instance.hpp"
 #include "core/frame_graph/pass.hpp"
 #include "core/scene/scene_resource_table.hpp"
@@ -50,6 +51,65 @@ void testSourceSignatureIgnoresInstanceValues() {
   b.reflectionHash = "hash-b";
   EXPECT(a.sourceSignature() != b.sourceSignature(),
          "reflection hash must participate in source signature");
+}
+
+LX_core::MaterialContractReflection makePackerContract() {
+  LX_core::MaterialContractReflection contract;
+  contract.sourceUri =
+      LX_core::ResourceUri("memory://materials/matte.contract.glsl");
+  contract.declaredType = "matte";
+  contract.reflectionHash = "matte-reflect-v1";
+  contract.storageAbiHash = "matte-storage-v1";
+  contract.accessorAbiHash = "material-surface-v1";
+  return contract;
+}
+
+LX_core::MaterialContractPackResult packWithDefaults(
+    LX_core::MaterialContractDefaultTextureSlots defaults) {
+  LX_core::MaterialContractPackInput input;
+  input.contract = makePackerContract();
+  input.defaultTextureSlots = defaults;
+  return LX_core::packMaterialContractRecord(input);
+}
+
+void testPackerPreservesSourceSignatureAndDefaultTextureSlots() {
+  LX_core::MaterialContractDefaultTextureSlots defaults;
+  defaults.white = 1;
+  defaults.black = 2;
+  defaults.flatNormal = 3;
+
+  const auto packed = packWithDefaults(defaults);
+  EXPECT(packed.diagnostics.empty(), "default-only material should pack");
+  EXPECT(packed.record.sourceSignature == makePackerContract().sourceSignature(),
+         "packer should preserve source signature");
+  EXPECT(packed.record.defaultWhiteTextureSlot == 1,
+         "packer should preserve white default slot");
+  EXPECT(packed.record.defaultBlackTextureSlot == 2,
+         "packer should preserve black default slot");
+  EXPECT(packed.record.defaultFlatNormalTextureSlot == 3,
+         "packer should preserve flatNormal default slot");
+}
+
+void testPackerRequiresEveryDefaultTextureSlot() {
+  LX_core::MaterialContractDefaultTextureSlots defaults;
+  defaults.white = 1;
+  defaults.black = 2;
+  defaults.flatNormal = 3;
+
+  auto missingWhite = defaults;
+  missingWhite.white = u32_max;
+  EXPECT(!packWithDefaults(missingWhite).diagnostics.empty(),
+         "missing white default slot should produce diagnostics");
+
+  auto missingBlack = defaults;
+  missingBlack.black = u32_max;
+  EXPECT(!packWithDefaults(missingBlack).diagnostics.empty(),
+         "missing black default slot should produce diagnostics");
+
+  auto missingFlatNormal = defaults;
+  missingFlatNormal.flatNormal = u32_max;
+  EXPECT(!packWithDefaults(missingFlatNormal).diagnostics.empty(),
+         "missing flatNormal default slot should produce diagnostics");
 }
 
 bool diagnosticsContain(const std::vector<std::string> &diagnostics,
@@ -1971,6 +2031,8 @@ void testValidateReflectionSetRejectsAccessorAbiConflicts() {
 
 int main() {
   testSourceSignatureIgnoresInstanceValues();
+  testPackerPreservesSourceSignatureAndDefaultTextureSlots();
+  testPackerRequiresEveryDefaultTextureSlot();
   testMaterialParserRequiresBsdfSource();
   testMaterialParserRejectsUnknownParameterFromContract();
   testMaterialParserRejectsSourceTypeMismatch();

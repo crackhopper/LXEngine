@@ -1864,6 +1864,7 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
         .draws = m_gpuDraws,
         .objects = m_gpuObjects,
         .materials = m_gpuMaterials,
+        .sourceMaterialStorages = m_gpuSourceMaterialStorages,
         .textures = m_gpuTextures,
         .cameras = m_gpuCameras,
         .lights = m_gpuLights,
@@ -1895,6 +1896,7 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
   m_gpuDraws.clear();
   m_gpuObjects.clear();
   m_gpuMaterials.clear();
+  m_gpuSourceMaterialStorages.clear();
   m_gpuTextures.clear();
   m_gpuCameras.clear();
   m_gpuLights.clear();
@@ -2149,10 +2151,13 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
   }
 
   std::vector<CompactRecordIndex> materialIndexToGpuRecord(m_materials.size());
+  std::vector<StringID> materialSourceSignatures;
   m_gpuMaterials.reserve(aliveCount(m_objects));
   m_gpuTextures.reserve(aliveCount(m_objects) * 5u);
+  materialSourceSignatures.reserve(aliveCount(m_objects));
   const auto ensureMaterialRecord =
-      [this, &materialIndexToGpuRecord](MaterialHandle handle) -> u32 {
+      [this, &materialIndexToGpuRecord,
+       &materialSourceSignatures](MaterialHandle handle) -> u32 {
     if (!isAlive(handle)) {
       return u32_max;
     }
@@ -2204,6 +2209,12 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
         .typedIndex = compact.uploadIndex,
     });
     m_gpuMaterials.push_back(record);
+    if (const auto contract = entry.resource->getMaterialContractReflection()) {
+      materialSourceSignatures.push_back(contract->get().sourceSignature());
+    } else {
+      materialSourceSignatures.push_back(
+          entry.resource->getMaterialSourceSignature());
+    }
     return compact.uploadIndex;
   };
 
@@ -2259,6 +2270,31 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
       primitiveRecord.objectIndex = objectRecordIndex;
       m_gpuPrimitives.push_back(primitiveRecord);
     }
+  }
+
+  for (const StringID sourceSignature : materialSourceSignatures) {
+    if (sourceSignature.id == 0) {
+      continue;
+    }
+    auto storageIt = std::find_if(
+        m_gpuSourceMaterialStorages.begin(), m_gpuSourceMaterialStorages.end(),
+        [sourceSignature](const SceneSourceLocalMaterialStorageView &storage) {
+          return storage.sourceSignature == sourceSignature;
+        });
+    if (storageIt == m_gpuSourceMaterialStorages.end()) {
+      m_gpuSourceMaterialStorages.push_back(
+          SceneSourceLocalMaterialStorageView{.sourceSignature =
+                                                 sourceSignature});
+      storageIt = std::prev(m_gpuSourceMaterialStorages.end());
+    }
+    ++storageIt->recordCount;
+  }
+
+  u32 sourceLocalRecordOffset = 0;
+  for (SceneSourceLocalMaterialStorageView &storage :
+       m_gpuSourceMaterialStorages) {
+    storage.recordOffset = sourceLocalRecordOffset;
+    sourceLocalRecordOffset += storage.recordCount;
   }
 
   return makeView();
