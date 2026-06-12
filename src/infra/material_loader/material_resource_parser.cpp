@@ -1,15 +1,18 @@
 #include "infra/material_loader/material_resource_parser.hpp"
 
-#include "core/asset/material_surface_schema.hpp"
+#include "core/utils/filesystem_tools.hpp"
 
 #include <yaml-cpp/yaml.h>
 
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace LX_infra {
@@ -75,21 +78,6 @@ void addDiagnostic(ParsedMaterialResource &result,
   out = LX_core::Vec3f{node[0].as<float>(), node[1].as<float>(),
                        node[2].as<float>()};
   return true;
-}
-
-[[nodiscard]] bool isAllowedKind(const LX_core::MaterialParameterSchema &schema,
-                                 MaterialEnvelopeKind kind) {
-  return std::find(schema.allowedKinds.begin(), schema.allowedKinds.end(),
-                   kind) != schema.allowedKinds.end();
-}
-
-[[nodiscard]] bool
-hasSchemaParameter(const LX_core::MaterialSurfaceSchema &schema,
-                   const std::string &name) {
-  return std::find_if(schema.parameters.begin(), schema.parameters.end(),
-                      [&name](const LX_core::MaterialParameterSchema &item) {
-                        return item.name == name;
-                      }) != schema.parameters.end();
 }
 
 [[nodiscard]] bool isAllowedEnvelopeField(std::string_view name) {
@@ -339,6 +327,88 @@ sceneResourceTypeForDependency(MaterialEnvelopeKind kind) {
   return uri.string().find("://") != std::string::npos;
 }
 
+[[nodiscard]] std::optional<MaterialEnvelopeKind>
+toEnvelopeKind(LX_core::MaterialContractParameterKind kind) {
+  switch (kind) {
+  case LX_core::MaterialContractParameterKind::Float:
+    return MaterialEnvelopeKind::Float;
+  case LX_core::MaterialContractParameterKind::Rgb:
+    return MaterialEnvelopeKind::Rgb;
+  case LX_core::MaterialContractParameterKind::Spectrum:
+    return MaterialEnvelopeKind::Spectrum;
+  case LX_core::MaterialContractParameterKind::Texture:
+    return MaterialEnvelopeKind::Texture;
+  case LX_core::MaterialContractParameterKind::Integer:
+    return MaterialEnvelopeKind::Integer;
+  case LX_core::MaterialContractParameterKind::Bool:
+    return MaterialEnvelopeKind::Bool;
+  case LX_core::MaterialContractParameterKind::String:
+    return MaterialEnvelopeKind::String;
+  case LX_core::MaterialContractParameterKind::MaterialRef:
+    return MaterialEnvelopeKind::MaterialRef;
+  case LX_core::MaterialContractParameterKind::BsdfTable:
+    return MaterialEnvelopeKind::BsdfTable;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] bool
+isAllowedKind(const LX_core::MaterialContractParameter &parameter,
+              MaterialEnvelopeKind kind) {
+  return std::find_if(parameter.allowedKinds.begin(),
+                      parameter.allowedKinds.end(),
+                      [kind](LX_core::MaterialContractParameterKind item) {
+                        return toEnvelopeKind(item) == kind;
+                      }) != parameter.allowedKinds.end();
+}
+
+[[nodiscard]] std::filesystem::path
+filesystemPathForContractSource(const LX_core::ResourceUri &sourceUri) {
+  constexpr std::string_view assetsPrefix = "assets://";
+  const std::string &source = sourceUri.string();
+  if (source.rfind(assetsPrefix, 0) == 0) {
+    return resolveRuntimePath(std::filesystem::path("assets") /
+                              source.substr(assetsPrefix.size()));
+  }
+
+  std::filesystem::path path(source);
+  if (path.is_absolute() || std::filesystem::exists(path)) {
+    return path;
+  }
+  return resolveRuntimePath(path);
+}
+
+[[nodiscard]] std::optional<std::string>
+loadMaterialContractSourceText(const LX_core::ResourceUri &materialUri,
+                               const LX_core::ResourceUri &sourceUri,
+                               ParsedMaterialResource &result) {
+  if (sourceUri.string().rfind("memory://", 0) == 0) {
+    return std::string{};
+  }
+
+  if (hasUriScheme(sourceUri) &&
+      sourceUri.string().rfind("assets://", 0) != 0) {
+    addDiagnostic(result, materialUri, "bsdf.source",
+                  "unsupported material contract source URI scheme '" +
+                      sourceUri.string() + "'");
+    return std::nullopt;
+  }
+
+  const std::filesystem::path path = filesystemPathForContractSource(sourceUri);
+  std::ifstream input(path, std::ios::in | std::ios::binary);
+  if (!input) {
+    addDiagnostic(result, materialUri, "bsdf.source",
+                  "failed to read material contract source '" +
+                      sourceUri.string() + "' at '" + path.generic_string() +
+                      "'");
+    return std::nullopt;
+  }
+
+  std::ostringstream text;
+  text << input.rdbuf();
+  return text.str();
+}
+
 [[nodiscard]] bool validateMaterialRefHeaderIfLocal(
     const LX_core::ResourceUri &ownerUri, const LX_core::ResourceUri &targetUri,
     const std::string &field, ParsedMaterialResource &result) {
@@ -410,6 +480,10 @@ sceneResourceTypeForDependency(MaterialEnvelopeKind kind) {
 
 } // namespace
 
+MaterialResourceParser::MaterialResourceParser(
+    MaterialContractReflector reflector)
+    : m_reflector(std::move(reflector)) {}
+
 ParsedMaterialResource
 MaterialResourceParser::parse(LX_core::SceneResourceTable &table,
                               const LX_core::ResourceUri &uri,
@@ -462,11 +536,38 @@ MaterialResourceParser::parse(LX_core::SceneResourceTable &table,
   const LX_core::ResourceUri sourceUri = table.resolveUri(
       uri, LX_core::ResourceUri(sourceText));
 
-  const LX_core::MaterialSurfaceSchema *schema =
-      LX_core::findMaterialSurfaceSchema(bsdfType);
-  if (schema == nullptr) {
-    addDiagnostic(result, uri, "bsdf.type",
-                  "unknown BSDF type '" + bsdfType + "'");
+  const std::optional<std::string> contractSourceText =
+      loadMaterialContractSourceText(uri, sourceUri, result);
+  if (!contractSourceText.has_value()) {
+    return result;
+  }
+
+  const MaterialContractReflectionResult reflectionResult =
+      m_reflector(sourceUri, *contractSourceText);
+  for (const std::string &diagnostic : reflectionResult.diagnostics) {
+    addDiagnostic(result, uri, "bsdf.source", diagnostic);
+  }
+  if (!reflectionResult.reflection.has_value()) {
+    if (reflectionResult.diagnostics.empty()) {
+      addDiagnostic(result, uri, "bsdf.source",
+                    "material contract source did not reflect a contract");
+    }
+    return result;
+  }
+
+  const LX_core::MaterialContractReflection &contract =
+      *reflectionResult.reflection;
+  if (contract.declaredType != bsdfType) {
+    addDiagnostic(result, uri, "bsdf.source",
+                  "material contract declared type '" +
+                      contract.declaredType + "' does not match bsdf.type '" +
+                      bsdfType + "'");
+    return result;
+  }
+  if (contract.supportStatus ==
+      LX_core::MaterialContractSupportStatus::Unsupported) {
+    addDiagnostic(result, uri, "bsdf.source",
+                  "material contract source is unsupported");
     return result;
   }
 
@@ -480,6 +581,8 @@ MaterialResourceParser::parse(LX_core::SceneResourceTable &table,
   auto instance = LX_core::MaterialInstance::createUnique(std::move(tmpl));
   instance->setBsdfType(bsdfType);
   instance->setMaterialSourceUri(sourceUri);
+  instance->setMaterialSourceReflectionHash(contract.reflectionHash);
+  instance->setMaterialSourceSignature(contract.sourceSignature());
   if (const YAML::Node renderClassNode = root["renderClass"]) {
     if (!renderClassNode.IsScalar()) {
       addDiagnostic(result, uri, "renderClass",
@@ -495,15 +598,20 @@ MaterialResourceParser::parse(LX_core::SceneResourceTable &table,
 
   for (auto parameterIt = parametersNode.begin();
        parameterIt != parametersNode.end(); ++parameterIt) {
+    if (!parameterIt->first.IsScalar()) {
+      addDiagnostic(result, uri, "bsdf.parameters",
+                    "parameter names must be scalar strings");
+      continue;
+    }
     const std::string parameterName = parameterIt->first.as<std::string>();
-    if (!hasSchemaParameter(*schema, parameterName)) {
+    if (!contract.findParameter(parameterName).has_value()) {
       addDiagnostic(result, uri, "bsdf.parameters." + parameterName,
-                    "unknown BSDF parameter; use the PBRT schema name and "
-                    "resource envelope instead of legacy parallel aliases");
+                    "unknown BSDF parameter for material contract source");
     }
   }
 
-  for (const LX_core::MaterialParameterSchema &parameter : schema->parameters) {
+  for (const LX_core::MaterialContractParameter &parameter :
+       contract.parameters) {
     const YAML::Node parameterNode = parametersNode[parameter.name];
     if (!parameterNode) {
       if (parameter.required) {
