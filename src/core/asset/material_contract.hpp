@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/math/vec.hpp"
 #include "core/resource/resource_uri.hpp"
 #include "core/utils/string_table.hpp"
 
@@ -34,6 +35,33 @@ struct MaterialContractParameter final {
   std::vector<MaterialContractParameterKind> allowedKinds;
 };
 
+enum class MaterialContractStorageFieldType {
+  Float,
+  Vec4,
+  TextureSlot,
+  ChannelSelector,
+  Flags,
+};
+
+enum class MaterialContractStorageInputKind {
+  ParameterValue,
+  ParameterTexture,
+  ParameterChannel,
+  Constant,
+};
+
+struct MaterialContractStorageField final {
+  std::string name;
+  MaterialContractStorageFieldType type =
+      MaterialContractStorageFieldType::Float;
+  MaterialContractStorageInputKind inputKind =
+      MaterialContractStorageInputKind::ParameterValue;
+  std::string parameterName;
+  std::string defaultTextureSemantic;
+  Vec4f defaultValue{0.0f, 0.0f, 0.0f, 0.0f};
+  std::string defaultChannel = "rgba";
+};
+
 struct MaterialContractAccessorAbi final {
   std::string entryPoint = "lxLoadMaterialSurface";
   std::vector<std::string> requiredFields{
@@ -51,6 +79,7 @@ struct MaterialContractReflection final {
   std::string accessorAbiHash;
   MaterialContractAccessorAbi accessorAbi;
   std::vector<MaterialContractParameter> parameters;
+  std::vector<MaterialContractStorageField> storageFields;
 
   [[nodiscard]] std::optional<
       std::reference_wrapper<const MaterialContractParameter>>

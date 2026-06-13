@@ -84,6 +84,89 @@ kindFromToken(const std::string &token) {
   return std::nullopt;
 }
 
+[[nodiscard]] std::optional<LX_core::MaterialContractStorageFieldType>
+storageFieldTypeFromToken(const std::string &token) {
+  if (token == "float") {
+    return LX_core::MaterialContractStorageFieldType::Float;
+  }
+  if (token == "vec4") {
+    return LX_core::MaterialContractStorageFieldType::Vec4;
+  }
+  if (token == "textureSlot") {
+    return LX_core::MaterialContractStorageFieldType::TextureSlot;
+  }
+  if (token == "channelSelector") {
+    return LX_core::MaterialContractStorageFieldType::ChannelSelector;
+  }
+  if (token == "flags") {
+    return LX_core::MaterialContractStorageFieldType::Flags;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<LX_core::MaterialContractStorageInputKind>
+storageInputKindFromToken(const std::string &token) {
+  if (token == "value") {
+    return LX_core::MaterialContractStorageInputKind::ParameterValue;
+  }
+  if (token == "texture") {
+    return LX_core::MaterialContractStorageInputKind::ParameterTexture;
+  }
+  if (token == "channel") {
+    return LX_core::MaterialContractStorageInputKind::ParameterChannel;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] bool isKnownDefaultTextureSemantic(const std::string &semantic) {
+  return semantic == "white" || semantic == "black" ||
+         semantic == "flatNormal";
+}
+
+[[nodiscard]] bool isKnownChannelSelector(const std::string &channel) {
+  return channel == "r" || channel == "g" || channel == "b" ||
+         channel == "a" || channel == "rgb" || channel == "rgba";
+}
+
+[[nodiscard]] std::optional<LX_core::Vec4f>
+parseDefaultValue(std::string_view text) {
+  std::vector<float> values;
+  std::string item;
+  std::istringstream input{std::string(text)};
+  while (std::getline(input, item, ',')) {
+    item = trim(item);
+    if (item.empty()) {
+      return std::nullopt;
+    }
+    try {
+      values.push_back(std::stof(item));
+    } catch (...) {
+      return std::nullopt;
+    }
+  }
+
+  if (values.empty() || values.size() > 4) {
+    return std::nullopt;
+  }
+
+  LX_core::Vec4f result{0.0f, 0.0f, 0.0f, 0.0f};
+  for (std::size_t i = 0; i < values.size(); ++i) {
+    result.data[i] = values[i];
+  }
+  return result;
+}
+
+[[nodiscard]] bool hasStorageFieldNamed(
+    const std::vector<LX_core::MaterialContractStorageField> &fields,
+    std::string_view name) {
+  for (const LX_core::MaterialContractStorageField &field : fields) {
+    if (field.name == name) {
+      return true;
+    }
+  }
+  return false;
+}
+
 [[nodiscard]] bool isIdentifierChar(char c) {
   const auto ch = static_cast<unsigned char>(c);
   return std::isalnum(ch) != 0 || c == '_';
@@ -506,6 +589,17 @@ sameParameter(const LX_core::MaterialContractParameter &lhs,
 }
 
 [[nodiscard]] bool
+sameStorageField(const LX_core::MaterialContractStorageField &lhs,
+                 const LX_core::MaterialContractStorageField &rhs) {
+  return lhs.name == rhs.name && lhs.type == rhs.type &&
+         lhs.inputKind == rhs.inputKind &&
+         lhs.parameterName == rhs.parameterName &&
+         lhs.defaultTextureSemantic == rhs.defaultTextureSemantic &&
+         lhs.defaultValue == rhs.defaultValue &&
+         lhs.defaultChannel == rhs.defaultChannel;
+}
+
+[[nodiscard]] bool
 sameAccessorAbi(const LX_core::MaterialContractAccessorAbi &lhs,
                 const LX_core::MaterialContractAccessorAbi &rhs) {
   return lhs.entryPoint == rhs.entryPoint &&
@@ -521,12 +615,18 @@ sameContractLayout(const LX_core::MaterialContractReflection &lhs,
       lhs.storageAbiHash != rhs.storageAbiHash ||
       lhs.accessorAbiHash != rhs.accessorAbiHash ||
       !sameAccessorAbi(lhs.accessorAbi, rhs.accessorAbi) ||
-      lhs.parameters.size() != rhs.parameters.size()) {
+      lhs.parameters.size() != rhs.parameters.size() ||
+      lhs.storageFields.size() != rhs.storageFields.size()) {
     return false;
   }
 
   for (std::size_t i = 0; i < lhs.parameters.size(); ++i) {
     if (!sameParameter(lhs.parameters[i], rhs.parameters[i])) {
+      return false;
+    }
+  }
+  for (std::size_t i = 0; i < lhs.storageFields.size(); ++i) {
+    if (!sameStorageField(lhs.storageFields[i], rhs.storageFields[i])) {
       return false;
     }
   }
@@ -655,6 +755,108 @@ reflectMaterialContractSource(const LX_core::ResourceUri &sourceUri,
                                      "' must declare at least one kind");
       }
       reflection.parameters.push_back(std::move(parameter));
+    } else if (stripped.rfind("storageField:", 0) == 0) {
+      std::istringstream tokens{trim(std::string_view(stripped).substr(13))};
+      LX_core::MaterialContractStorageField field;
+      std::string typeToken;
+      std::string parameterToken;
+      std::string inputKindToken;
+      tokens >> field.name >> typeToken >> parameterToken >>
+          field.parameterName >> inputKindToken;
+
+      if (field.name.empty()) {
+        result.diagnostics.push_back(sourceUri.string() +
+                                     ": storage field is missing a name");
+        continue;
+      }
+      if (hasStorageFieldNamed(reflection.storageFields, field.name)) {
+        result.diagnostics.push_back(sourceUri.string() +
+                                     ": duplicate storage field '" +
+                                     field.name + "'");
+      }
+
+      const auto fieldType = storageFieldTypeFromToken(typeToken);
+      if (!fieldType.has_value()) {
+        result.diagnostics.push_back(sourceUri.string() +
+                                     ": unknown storage field type '" +
+                                     typeToken + "'");
+      } else {
+        field.type = *fieldType;
+      }
+
+      if (parameterToken != "parameter") {
+        result.diagnostics.push_back(sourceUri.string() +
+                                     ": storage field '" + field.name +
+                                     "' must use parameter input");
+      }
+      if (field.parameterName.empty()) {
+        result.diagnostics.push_back(sourceUri.string() +
+                                     ": storage field '" + field.name +
+                                     "' is missing parameter name");
+      }
+
+      const auto inputKind = storageInputKindFromToken(inputKindToken);
+      if (!inputKind.has_value()) {
+        result.diagnostics.push_back(sourceUri.string() +
+                                     ": unknown storage field input kind '" +
+                                     inputKindToken + "'");
+      } else {
+        field.inputKind = *inputKind;
+      }
+
+      std::string optionToken;
+      while (tokens >> optionToken) {
+        if (optionToken.rfind("default=", 0) == 0) {
+          const std::string defaultText =
+              optionToken.substr(std::string("default=").size());
+          if (field.inputKind ==
+              LX_core::MaterialContractStorageInputKind::ParameterChannel) {
+            field.defaultChannel = defaultText;
+          } else {
+            const auto defaultValue = parseDefaultValue(defaultText);
+            if (!defaultValue.has_value()) {
+              result.diagnostics.push_back(sourceUri.string() +
+                                           ": storage field '" + field.name +
+                                           "' has invalid default value '" +
+                                           defaultText + "'");
+            } else {
+              field.defaultValue = *defaultValue;
+            }
+          }
+        } else if (optionToken.rfind("defaultTexture=", 0) == 0) {
+          field.defaultTextureSemantic =
+              optionToken.substr(std::string("defaultTexture=").size());
+          if (!isKnownDefaultTextureSemantic(field.defaultTextureSemantic)) {
+            result.diagnostics.push_back(
+                sourceUri.string() + ": storage field '" + field.name +
+                "' has unknown default texture '" +
+                field.defaultTextureSemantic + "'");
+          }
+        } else if (optionToken.rfind("default=", 0) != 0) {
+          result.diagnostics.push_back(sourceUri.string() +
+                                       ": storage field '" + field.name +
+                                       "' has unknown option '" + optionToken +
+                                       "'");
+        }
+      }
+
+      if (field.inputKind ==
+              LX_core::MaterialContractStorageInputKind::ParameterChannel &&
+          !isKnownChannelSelector(field.defaultChannel)) {
+        result.diagnostics.push_back(sourceUri.string() +
+                                     ": storage field '" + field.name +
+                                     "' has unknown default channel '" +
+                                     field.defaultChannel + "'");
+      }
+      if (field.inputKind ==
+              LX_core::MaterialContractStorageInputKind::ParameterTexture &&
+          field.defaultTextureSemantic.empty()) {
+        result.diagnostics.push_back(sourceUri.string() +
+                                     ": storage field '" + field.name +
+                                     "' is missing defaultTexture");
+      }
+
+      reflection.storageFields.push_back(std::move(field));
     } else {
       result.diagnostics.push_back(sourceUri.string() +
                                    ": unknown contract metadata line '" +
@@ -688,6 +890,17 @@ reflectMaterialContractSource(const LX_core::ResourceUri &sourceUri,
   if (reflection.parameters.empty()) {
     result.diagnostics.push_back(sourceUri.string() +
                                  ": contract must declare parameters");
+  }
+  for (const LX_core::MaterialContractStorageField &field :
+       reflection.storageFields) {
+    if (field.inputKind !=
+            LX_core::MaterialContractStorageInputKind::Constant &&
+        !reflection.findParameter(field.parameterName).has_value()) {
+      result.diagnostics.push_back(sourceUri.string() + ": storage field '" +
+                                   field.name +
+                                   "' references unknown parameter '" +
+                                   field.parameterName + "'");
+    }
   }
 
   if (result.diagnostics.empty()) {

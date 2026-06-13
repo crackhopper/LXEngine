@@ -1083,6 +1083,132 @@ LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 geomet
          "contract should reflect metallic allowed kind order");
 }
 
+void testReflectsMaterialStorageFields() {
+  const std::string source = R"glsl(
+// LX_MATERIAL_CONTRACT_BEGIN
+// type: matte
+// status: supported
+// reflectionHash: matte-source-contract-v1
+// storageAbiHash: matte-storage-v1
+// accessorAbiHash: material-surface-v1
+// parameter: Kd required rgb texture spectrum
+// storageField: baseColor vec4 parameter Kd value default=1,1,1,1
+// storageField: baseColorTexture textureSlot parameter Kd texture defaultTexture=white
+// storageField: baseColorChannel channelSelector parameter Kd channel default=rgba
+// LX_MATERIAL_CONTRACT_END
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) {
+  LxMaterialSurface surface;
+  return surface;
+}
+)glsl";
+
+  const auto result = LX_infra::reflectMaterialContractSource(
+      LX_core::ResourceUri("memory://materials/storage-fields.contract.glsl"),
+      source);
+
+  EXPECT(result.diagnostics.empty(),
+         "storage field reflection should not emit diagnostics");
+  EXPECT(result.reflection.has_value(),
+         "storage field reflection should produce metadata");
+  if (!result.reflection.has_value()) {
+    return;
+  }
+
+  const auto &fields = result.reflection->storageFields;
+  EXPECT(fields.size() == 3, "three storage fields should be reflected");
+  EXPECT(fields[0].name == "baseColor",
+         "first storage field should preserve name");
+  EXPECT(fields[0].type == LX_core::MaterialContractStorageFieldType::Vec4,
+         "baseColor should be reflected as vec4");
+  EXPECT(fields[0].inputKind ==
+             LX_core::MaterialContractStorageInputKind::ParameterValue,
+         "baseColor should read parameter value");
+  EXPECT(fields[0].parameterName == "Kd",
+         "baseColor should reference Kd parameter");
+  EXPECT(fields[0].defaultValue.x == 1.0f &&
+             fields[0].defaultValue.y == 1.0f &&
+             fields[0].defaultValue.z == 1.0f &&
+             fields[0].defaultValue.w == 1.0f,
+         "baseColor should reflect default value");
+
+  EXPECT(fields[1].name == "baseColorTexture",
+         "second storage field should preserve texture field name");
+  EXPECT(fields[1].type ==
+             LX_core::MaterialContractStorageFieldType::TextureSlot,
+         "baseColorTexture should be reflected as textureSlot");
+  EXPECT(fields[1].inputKind ==
+             LX_core::MaterialContractStorageInputKind::ParameterTexture,
+         "baseColorTexture should read parameter texture");
+  EXPECT(fields[1].defaultTextureSemantic == "white",
+         "baseColorTexture should reflect white default texture");
+
+  EXPECT(fields[2].type ==
+             LX_core::MaterialContractStorageFieldType::ChannelSelector,
+         "baseColorChannel should be reflected as channelSelector");
+  EXPECT(fields[2].inputKind ==
+             LX_core::MaterialContractStorageInputKind::ParameterChannel,
+         "baseColorChannel should read parameter channel");
+  EXPECT(fields[2].defaultChannel == "rgba",
+         "baseColorChannel should reflect default channel");
+}
+
+void testReflectRejectsDuplicateStorageFieldMetadata() {
+  const std::string source = R"glsl(
+// LX_MATERIAL_CONTRACT_BEGIN
+// type: matte
+// status: supported
+// reflectionHash: matte-source-contract-v1
+// storageAbiHash: matte-storage-v1
+// accessorAbiHash: material-surface-v1
+// parameter: Kd required rgb texture spectrum
+// storageField: baseColor vec4 parameter Kd value default=1,1,1,1
+// storageField: baseColor textureSlot parameter Kd texture defaultTexture=white
+// LX_MATERIAL_CONTRACT_END
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) {
+  LxMaterialSurface surface;
+  return surface;
+}
+)glsl";
+
+  const auto result = LX_infra::reflectMaterialContractSource(
+      LX_core::ResourceUri(
+          "memory://materials/duplicate-storage-field.contract.glsl"),
+      source);
+
+  EXPECT(diagnosticsContain(result.diagnostics, "duplicate storage field"),
+         "duplicate storage field names should be diagnostic");
+  EXPECT(!result.reflection.has_value(),
+         "duplicate storage fields should reject reflection");
+}
+
+void testReflectRejectsUnknownStorageFieldType() {
+  const std::string source = R"glsl(
+// LX_MATERIAL_CONTRACT_BEGIN
+// type: matte
+// status: supported
+// reflectionHash: matte-source-contract-v1
+// storageAbiHash: matte-storage-v1
+// accessorAbiHash: material-surface-v1
+// parameter: Kd required rgb texture spectrum
+// storageField: baseColor matrix4 parameter Kd value default=1,1,1,1
+// LX_MATERIAL_CONTRACT_END
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) {
+  LxMaterialSurface surface;
+  return surface;
+}
+)glsl";
+
+  const auto result = LX_infra::reflectMaterialContractSource(
+      LX_core::ResourceUri(
+          "memory://materials/unknown-storage-field-type.contract.glsl"),
+      source);
+
+  EXPECT(diagnosticsContain(result.diagnostics, "unknown storage field type"),
+         "unknown storage field types should be diagnostic");
+  EXPECT(!result.reflection.has_value(),
+         "unknown storage field types should reject reflection");
+}
+
 void testReflectsAccessorWithBodyComment() {
   const std::string source = R"glsl(
 // LX_MATERIAL_CONTRACT_BEGIN
@@ -2079,6 +2205,33 @@ void testValidateReflectionSetRejectsAccessorAbiConflicts() {
          "diagnostic");
 }
 
+void testValidateReflectionSetRejectsStorageFieldConflicts() {
+  LX_core::MaterialContractReflection a;
+  a.sourceUri = LX_core::ResourceUri("memory://materials/matte.contract.glsl");
+  a.declaredType = "matte";
+  a.reflectionHash = "shared-reflect-v1";
+  a.storageAbiHash = "shared-storage-v1";
+  a.accessorAbiHash = "shared-accessor-v1";
+  a.parameters.push_back(LX_core::MaterialContractParameter{
+      "Kd", true, {LX_core::MaterialContractParameterKind::Rgb}});
+  a.storageFields.push_back(LX_core::MaterialContractStorageField{
+      .name = "baseColor",
+      .type = LX_core::MaterialContractStorageFieldType::Vec4,
+      .inputKind = LX_core::MaterialContractStorageInputKind::ParameterValue,
+      .parameterName = "Kd",
+      .defaultValue = LX_core::Vec4f{1.0f, 1.0f, 1.0f, 1.0f},
+  });
+
+  LX_core::MaterialContractReflection b = a;
+  b.storageFields[0].name = "albedo";
+
+  const auto result =
+      LX_infra::validateMaterialContractReflectionSet(std::vector{a, b});
+  EXPECT(!result.diagnostics.empty(),
+         "same source signature with different storage fields should be "
+         "diagnostic");
+}
+
 } // namespace
 
 int main() {
@@ -2110,6 +2263,9 @@ int main() {
   testSourceSignatureIncludesStorageAndAccessorAbi();
   testMaterialSignatureIncludesPassAndRenderState();
   testReflectsContractMetadataBlock();
+  testReflectsMaterialStorageFields();
+  testReflectRejectsDuplicateStorageFieldMetadata();
+  testReflectRejectsUnknownStorageFieldType();
   testReflectsAccessorWithBodyComment();
   testReflectRejectsMissingAccessor();
   testReflectRejectsMissingStatus();
@@ -2153,5 +2309,6 @@ int main() {
   testReflectsAccessorInIfOneBranchIgnoringInactiveElse();
   testValidateReflectionSetRejectsSourceSignatureConflicts();
   testValidateReflectionSetRejectsAccessorAbiConflicts();
+  testValidateReflectionSetRejectsStorageFieldConflicts();
   return g_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
