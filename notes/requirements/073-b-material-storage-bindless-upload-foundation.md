@@ -1,6 +1,6 @@
 # REQ-073-b: Material Storage And Bindless Upload Foundation
 
-> 2026-06-13 拆分并收紧边界：原 `REQ-073-b` 同时包含 material storage、bindless tables、shader variant、indirect batching、RenderPath 术语迁移和 realtime hard cut，范围过大。本文件只保留第一段实现，但这段必须形成 foundation 闭环：`REQ-073-a` 的 source-reflected material contract 要真实进入 `SceneResourceTableUploadView`，并能被 backend/GPU resource table 消费为 bindless-ready texture/sampler/material/object/draw/mesh 数据。后续 shader variant、indirect batching 和 realtime hard cut 分别由 `REQ-073-c`、`REQ-073-d`、`REQ-073-e` 承接。
+> 2026-06-13 拆分并收紧边界：原 `REQ-073-b` 同时包含 material storage、bindless tables、shader variant、indirect batching、RenderPath 术语迁移和 realtime hard cut，范围过大。本文件只保留第一段实现，但这段必须形成 foundation 闭环：`REQ-073-a` 的 source-reflected material contract 要真实进入 `SceneResourceTableUploadView`，并能被 backend/GPU resource table 消费为 bindless-ready texture/sampler/material/object/draw/mesh 数据。后续 shader variant、URI 迁移、indirect batching 和 realtime hard cut 分别由 `REQ-073-c` 到 `REQ-073-f` 承接。
 
 ## 背景
 
@@ -13,7 +13,7 @@
 - texture、sampler、material、object、draw、mesh/geometry 数据必须能以全局 table 形式进入 backend/GPU resource table 的 bindless-ready staging。
 - upload view 必须能说明每个 material record 的 factor、texture slot、channel selector、所属 source storage 和 source-local material index。
 
-本 REQ 不只是 CPU-only view。它必须证明 backend 能消费这些 table 并建立稳定 slot/staging 数据；但它不负责 shader URI 迁移、不负责 RenderWorkQueue indirect batching、不负责删除旧 realtime 默认路径。
+本 REQ 不只是 CPU-only view。它必须证明 backend 能消费这些 table 并建立稳定 slot/staging 数据；但它不负责 shader variant、不负责 shader URI 迁移、不负责 RenderWorkQueue indirect batching、不负责删除旧 realtime 默认路径。
 
 ## 目标
 
@@ -27,10 +27,10 @@
 ## 非目标
 
 - 不实现 RenderPath material source shader variant 展开；由 `REQ-073-c` 处理。
-- 不迁移 `assets/shaders/glsl/techniques/` 到 `render_paths/`；由 `REQ-073-c` 处理。
-- 不要求 RenderWorkQueue / geometry pass 默认消费新 table 生成 indirect batch；由 `REQ-073-d` 处理。
-- 不删除 realtime 旧 descriptor / per-item fallback / 旧 `SceneGpuMaterialRecord` 默认路径；由 `REQ-073-e` 处理。
-- 不处理 OfflineRT 配置入口；由 `REQ-073-f` / `REQ-073-g` 处理。
+- 不迁移 `assets/shaders/glsl/techniques/` 到 `render_paths/`；由 `REQ-073-d` 处理。
+- 不要求 RenderWorkQueue / geometry pass 默认消费新 table 生成 indirect batch；由 `REQ-073-e` 处理。
+- 不删除 realtime 旧 descriptor / per-item fallback / 旧 `SceneGpuMaterialRecord` 默认路径；由 `REQ-073-f` 处理。
+- 不处理 OfflineRT 配置入口；由 `REQ-073-g` / `REQ-073-h` 处理。
 - 不实现 package、pipeline cache blob 或 BC7 压缩。
 
 ## 需求
@@ -138,7 +138,7 @@ upload view SHALL 提供 backend 可直接消费的 table 数据。
 
 - 所有 table entry 只保存 handle、slot、offset、count 和结构签名，不保存 backend object pointer。
 - 同一 canonical texture URI 在 texture table 中去重。
-- mesh/geometry table 首版可以保留现有 buffer 分组，但必须输出 table export 的 unsupported/skip 原因；batch compatibility split diagnostics 由 `REQ-073-d` 处理。
+- mesh/geometry table 首版可以保留现有 buffer 分组，但必须输出 table export 的 unsupported/skip 原因；batch compatibility split diagnostics 由 `REQ-073-e` 处理。
 
 ### R5: Backend/GPU Resource Table Foundation
 
@@ -254,10 +254,11 @@ upload view / validation profile SHALL 输出可审计 diagnostics：
 
 ## 后续工作
 
-- `REQ-073-c`: RenderPath material source shader variants and URI migration。
-- `REQ-073-d`: Indirect material batching and diagnostics。
-- `REQ-073-e`: Realtime material path hard cut and smoke。
-- `REQ-073-f` / `REQ-073-g`: OfflineRT RenderPathGraph compute path and config hard cut。
+- `REQ-073-c`: Material source shader variant boundary。
+- `REQ-073-d`: RenderPath shader URI migration and terminology hard cut。
+- `REQ-073-e`: Indirect material batching and diagnostics。
+- `REQ-073-f`: Realtime material path hard cut and smoke。
+- `REQ-073-g` / `REQ-073-h`: OfflineRT RenderPathGraph compute path and config hard cut。
 
 ## 实施状态
 
@@ -297,10 +298,10 @@ upload view / validation profile SHALL 输出可审计 diagnostics：
 | 原始条目 | 当前状态 | 未在 073-b 完成的原因 | 承接节点 |
 |---|---|---|---|
 | RenderPath shader source variant、final shader reflection、compile/reflection key 和 `PipelineKey` 完整接入 | `REQ-073-a` 已有 compiler 宏注入能力；073-b 未让 RenderPath resolver 生成最终 variant shader | 073-b 只建立数据表和 backend staging；shader final identity 属于 RenderPath / pipeline 层 | `REQ-073-c` |
-| `assets/shaders/glsl/techniques/...` 到 `render_paths/...` 的默认 URI 迁移 | 073-b 只修复 build/runtime shader source 同步，未迁移默认 URI | URI 迁移必须和 variant resolver、legacy URI rejection 一起验证 | `REQ-073-c` |
+| `assets/shaders/glsl/techniques/...` 到 `render_paths/...` 的默认 URI 迁移 | 073-b 只修复 build/runtime shader source 同步，未迁移默认 URI | URI 迁移是 default asset / resolver / positive test 的硬切，必须在 source variant boundary 后单独验证 | `REQ-073-d` |
 | `BuildTest` 中裸 `CompileShaders` 对需要 `LX_MATERIAL_CONTRACT_SOURCE` 的 shader 失败 | 已定位：裸编译 `pbr.frag` / `pbr_gbuffer.frag` / `offline_pbr_direct_ray.comp` 会触发 source variant 缺失错误；073-b 用 targeted tests 和 headless auto suite 验证 | 正确修复不是放宽 shader `#error`，而是让 shader build target 走 material source variant 或拆出不编译 variant-only base shader 的目标 | `REQ-073-c` |
-| RenderWorkQueue / geometry pass 默认消费 bindless table 并生成 indirect batch | backend shell 已能 stage table，但 realtime geometry pass 还没有默认消费这些 table | 需要 final shader variant / pipeline identity 后才能判断 batch compatibility 和 split reason | `REQ-073-d` |
-| material source / batch / pipeline / draw 的集中 validation diagnostics profile | upload view 和 backend report 已提供结构化数据与 fail-fast 诊断；没有 renderer/batch 级统计输出 | 统计项依赖 RenderWorkQueue batch、pipeline 和 fallback/unsupported draw 归因 | `REQ-073-d` |
-| 删除旧 realtime `SceneGpuMaterialRecord` / per-material descriptor / non-bindless fallback | 旧字段仍为 legacy/default path 保留；073-b 正向测试不再把它当 Material v3 真相 | 删除旧路径要等 renderer 默认消费新 table 后硬切，否则会中断当前可运行路径且无法归因 | `REQ-073-e` |
-| Helmet/BMW realtime 低分辨率非全黑 smoke | 073-b 验证了 Helmet/BMW source record 与 backend staging；未做 clean realtime smoke | 视觉 smoke 必须证明没有旧 fallback、使用 `render_paths/...` 和 bindless/indirect stats | `REQ-073-e` |
-| OfflineRT RenderPathGraph compute path 和 config hard cut | offline Material v2 测试已改为 source records；未改 OfflineRT 默认配置入口 | OfflineRT 有独立 provider/framegraph bridge，需要先建 graph compute path 再删除旧入口 | `REQ-073-f` / `REQ-073-g` |
+| RenderWorkQueue / geometry pass 默认消费 bindless table 并生成 indirect batch | backend shell 已能 stage table，但 realtime geometry pass 还没有默认消费这些 table | 需要 final shader variant / pipeline identity 后才能判断 batch compatibility 和 split reason | `REQ-073-e` |
+| material source / batch / pipeline / draw 的集中 validation diagnostics profile | upload view 和 backend report 已提供结构化数据与 fail-fast 诊断；没有 renderer/batch 级统计输出 | 统计项依赖 RenderWorkQueue batch、pipeline 和 fallback/unsupported draw 归因 | `REQ-073-e` |
+| 删除旧 realtime `SceneGpuMaterialRecord` / per-material descriptor / non-bindless fallback | 旧字段仍为 legacy/default path 保留；073-b 正向测试不再把它当 Material v3 真相 | 删除旧路径要等 renderer 默认消费新 table 后硬切，否则会中断当前可运行路径且无法归因 | `REQ-073-f` |
+| Helmet/BMW realtime 低分辨率非全黑 smoke | 073-b 验证了 Helmet/BMW source record 与 backend staging；未做 clean realtime smoke | 视觉 smoke 必须证明没有旧 fallback、使用 `render_paths/...` 和 bindless/indirect stats | `REQ-073-f` |
+| OfflineRT RenderPathGraph compute path 和 config hard cut | offline Material v2 测试已改为 source records；未改 OfflineRT 默认配置入口 | OfflineRT 有独立 provider/framegraph bridge，需要先建 graph compute path 再删除旧入口 | `REQ-073-g` / `REQ-073-h` |

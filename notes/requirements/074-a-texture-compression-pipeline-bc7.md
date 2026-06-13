@@ -216,8 +216,8 @@ Shader SHALL 不感知纹理是否压缩。
 ## 依赖
 
 - `REQ-073-a`: Material v3 PBRT source contract、metallic extension 和默认纹理集合。
-- `REQ-073-e`: realtime material path hard cut and smoke，保证 texture/default texture 进入 clean realtime 默认路径。
-- `REQ-073-g`: OfflineRT config hard cut，保证后续 texture/package 工作面对同一套 clean SceneResourceTable / RenderPathGraph 默认路径。
+- `REQ-073-f`: realtime material path hard cut and smoke，保证 texture/default texture 进入 clean realtime 默认路径。
+- `REQ-073-h`: OfflineRT config hard cut，保证后续 texture/package 工作面对同一套 clean SceneResourceTable / RenderPathGraph 默认路径。
 
 ## 后续工作
 

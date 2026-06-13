@@ -1,27 +1,26 @@
-# REQ-073-c: RenderPath Material Source Shader Variants And URI Migration
+# REQ-073-c: Material Source Shader Variant Boundary
 
-> 2026-06-13 拆分：原 `REQ-073-b` 同时要求 material storage、shader variant、indirect batching、RenderPath 术语迁移和 realtime hard cut。本 REQ 只负责把 `bsdf.source` 变成 RenderPath shader 的编译期 source variant，并把 shader URI 从旧 `techniques/...` 迁移到 `render_paths/...`。
+> 2026-06-13 再拆分：原 `REQ-073-c` 同时覆盖 material source shader variant、shader URI 迁移和 RenderPath 术语硬切，范围仍然偏大。本 REQ 只负责让 `bsdf.source` 成为 shader 编译、反射和 pipeline identity 的结构维度；`techniques/...` 到 `render_paths/...` 的默认 URI 迁移拆到 `REQ-073-d`。
 
 ## 背景
 
-`REQ-073-a` 已定义 material contract source 和 Material Accessor ABI；`REQ-073-b` 会让 source-reflected material record 进入 bindless-ready upload view。下一步需要让 RenderPath shader 在编译/反射时拿到具体 material source，而不是在 shader runtime 里写 `if materialType` 或 `switch source`。
+`REQ-073-a` 已定义 material contract source 和 Material Accessor ABI；`REQ-073-b` 已让 source-reflected material record 进入 bindless-ready upload view。下一步必须让 RenderPath shader 在编译/反射时拿到具体 material source，而不是在 shader runtime 里写 `if materialType` 或 `switch source`。
 
 当前风险是：
 
 - RenderPathGraph 仍可能只保存 base shader URI，缺少 material source variant 维度。
 - shader reflection / pipeline build desc 如果基于 base shader，会漏掉 variant 后的 storage binding。
-- 旧 `assets/shaders/glsl/techniques/` 名称继续出现在默认 asset 中，会让后续 hard cut 同时承担术语迁移和渲染行为迁移。
+- 需要 `LX_MATERIAL_CONTRACT_SOURCE` 的 shader 被普通 `CompileShaders` / `BuildTest` 裸编译时会失败；正确修复是建立 variant-aware build target，而不是移除 shader fail-fast。
 
-因此，本 REQ 把 shader variant 和 URI 迁移先切出来，让后续 indirect batching 只面对最终 shader/pipeline 事实。
+因此，本 REQ 只稳定“最终 shader 事实”：source variant key、compile injection、final reflection、pipeline key 和 build target 边界。URI 迁移是独立硬切，由 `REQ-073-d` 处理。
 
 ## 目标
 
 1. RenderPath shader variant key 包含 material source signature / reflection hash。
 2. shader compiler 在编译期注入 `LX_MATERIAL_CONTRACT_SOURCE` 或等价 source include metadata。
 3. shader reflection、descriptor layout、pipeline build desc 和 pipeline key 都来自 variant 后最终 shader。
-4. 默认 RenderPathGraph / shader asset 使用 `render_paths/...` URI。
-5. 旧 `techniques/...` 只能出现在 legacy negative test、历史文档或显式 rejection diagnostic 中。
-6. shader build target 明确区分 base source 和 material source variant，`BuildTest` 不能裸编译需要 source variant 的 shader。
+4. pass shader 只调用 Material Accessor ABI，不写 material source/type runtime branch。
+5. shader build target 明确区分 base source 和 material source variant，`BuildTest` 不能裸编译需要 source variant 的 shader。
 
 ## 承接自 073-a / 073-b 的未完成项
 
@@ -29,15 +28,15 @@
 |---|---|---|
 | `REQ-073-a` R5 / T6 / T7 | final shader variant、variant 后 shader reflection、compile/reflection key 和 `PipelineKey` 接入 | 这些事实必须在 RenderPath shader resolver 和 pipeline identity 层形成，不能由材质合同层或 base shader reflection 代替 |
 | `REQ-073-a` T7 / T10 | 同 source / 不同材质参数值不拆 pipeline 的 pipeline-key 验证 | pipeline key 是否只包含 source variant identity，需要在最终 shader variant 后验证 |
-| `REQ-073-b` 未完成项 | `techniques/...` 到 `render_paths/...` 的默认 URI 迁移 | URI 迁移必须和 variant resolver、legacy URI rejection 同时完成，避免留下旧 resolver fallback |
 | `REQ-073-b` 未完成项 | `BuildTest` / `CompileShaders` 对 `pbr.frag`、`pbr_gbuffer.frag`、`offline_pbr_direct_ray.comp` 的裸编译失败 | 这些 shader 已经声明需要 `LX_MATERIAL_CONTRACT_SOURCE`；正确修复是建立 variant-aware shader build target，而不是移除 shader 中的 fail-fast |
 
 ## 非目标
 
-- 不实现 source-local material storage；由 `REQ-073-b` 处理。
-- 不要求 raster work item 全部进入 indirect batch；由 `REQ-073-d` 处理。
-- 不删除 realtime 旧 draw/descriptor fallback；由 `REQ-073-e` 处理。
-- 不处理 OfflineRT 配置入口；由 `REQ-073-f` / `REQ-073-g` 处理。
+- 不实现 source-local material storage；已由 `REQ-073-b` 处理。
+- 不迁移 `techniques/...` 到 `render_paths/...`；由 `REQ-073-d` 处理。
+- 不要求 raster work item 全部进入 indirect batch；由 `REQ-073-e` 处理。
+- 不删除 realtime 旧 draw/descriptor fallback；由 `REQ-073-f` 处理。
+- 不处理 OfflineRT 配置入口；由 `REQ-073-g` / `REQ-073-h` 处理。
 - 不实现 package、BC7 或 pipeline cache blob。
 
 ## 需求
@@ -95,40 +94,7 @@ Forward、Deferred 和后续 OfflineRT pass shader SHALL 不写 material type/so
 - 在 pass shader 中解析多个 material storage layout。
 - 因缺少 source variant 而落回旧共享 `MaterialUBO` 或 debug material。
 
-### R5: Shader URI Migration
-
-默认 shader URI SHALL 从 `techniques/...` 迁移到 `render_paths/...`。
-
-要求：
-
-- RenderPathGraph asset 的 shader 字段使用 `render_paths/...`。
-- shader resolver 支持 `render_paths/...` 到 `assets/shaders/glsl/render_paths/...` 的解析。
-- default assets、ordinary positive tests 和 migrated validation profile 不得使用 `techniques/...`。
-- 旧 `techniques/...` URI 在 migrated validation profile 下失败，诊断说明迁移到 `render_paths/...`。
-
-### R6: RenderPath Terminology Boundary
-
-文档、asset、parser diagnostic 和测试名 SHALL 使用 RenderPath / pass shader 术语，不再把 pass shader 称为 material-local technique。
-
-允许保留：
-
-- 历史需求文档中的旧术语。
-- legacy rejection / negative audit fixture。
-- 明确标注为旧路径的兼容测试。
-
-### R7: Diagnostics
-
-variant resolver SHALL 输出可审计 diagnostics：
-
-- base shader URI。
-- material source URI 和 source signature。
-- variant key / compile key / reflection key。
-- final shader descriptor summary。
-- rejected legacy URI 或 unsupported source 的原因。
-
-无法编译或反射时必须停止渲染准备，不能隐藏为 fallback shader。
-
-### R8: Shader Build Target Boundary
+### R5: Shader Build Target Boundary
 
 shader build / test target SHALL 明确表达 source-variant shader 的编译时机。
 
@@ -138,6 +104,18 @@ shader build / test target SHALL 明确表达 source-variant shader 的编译时
 - `CompileShaders`、`BuildTest` 或等价 build target 要么提供 material source variant context，要么排除 variant-only base source 并由独立 variant target 覆盖。
 - 缺 source variant context 的失败必须命名 shader URI、缺失宏或 source、以及应使用的 variant build path。
 - 不允许通过删除 shader `#error`、注入空 source、或 fallback 到旧 `MaterialUBO` 让裸编译通过。
+
+### R6: Diagnostics
+
+variant resolver SHALL 输出可审计 diagnostics：
+
+- base shader URI。
+- material source URI 和 source signature。
+- variant key / compile key / reflection key。
+- final shader descriptor summary。
+- unsupported source 或 accessor ABI 缺失的原因。
+
+无法编译或反射时必须停止渲染准备，不能隐藏为 fallback shader。
 
 ## 测试
 
@@ -165,29 +143,21 @@ shader build / test target SHALL 明确表达 source-variant shader 的编译时
 
 rg/audit Forward / Deferred PBR pass shader，断言没有 material type/source runtime branch，也没有旧 `MaterialUBO` PBR 参数读取作为正向路径。
 
-### T5: Shader URI Migration
-
-迁移默认 RenderPathGraph asset，断言：
-
-- default shader URI 为 `render_paths/...`。
-- resolver 能找到 `assets/shaders/glsl/render_paths/...`。
-- `techniques/...` 在 migrated validation profile 下失败。
-
-### T6: Pipeline Key Includes Variant
+### T5: Pipeline Key Includes Variant
 
 构造同 pass / target / vertex layout / 不同 source 的 work item，断言 pipeline key 不同；同 source / 不同 material 参数值时 pipeline key 相同。
 
-### T7: Diagnostics
-
-覆盖缺 shader、缺 source、unsupported source、legacy URI、reflection failure，断言 diagnostics 包含 base shader、source URI、variant key 和失败原因。
-
-### T8: CompileShaders Variant Boundary
+### T6: CompileShaders Variant Boundary
 
 运行 shader build / `BuildTest` 相关目标，断言：
 
 - source-variant shader 不再被普通裸编译目标误判为失败。
 - variant build target 能为 Forward、Deferred 和 OfflineRT direct shader 提供 source context。
 - 人为移除 source context 时失败信息指向缺失 variant，而不是静默 fallback。
+
+### T7: Diagnostics
+
+覆盖缺 shader、缺 source、unsupported source、reflection failure，断言 diagnostics 包含 base shader、source URI、variant key 和失败原因。
 
 ## 修改范围
 
@@ -196,17 +166,14 @@ rg/audit Forward / Deferred PBR pass shader，断言没有 material type/source 
 - CMake / shader build targets for source variants
 - shader reflection cache
 - `PipelineBuildDesc` / `PipelineKey` material source variant 输入
-- `assets/shaders/glsl/render_paths/Forward/`
-- `assets/shaders/glsl/render_paths/Deferred/`
-- default RenderPathGraph assets
-- shader URI migration tests and audits
+- Forward / Deferred / OfflineRT source-variant compile tests
 
 ## 边界与约束
 
 - 不写 shader runtime source/type branch。
 - 不用 base shader reflection 代替 variant shader reflection。
-- 不让 `techniques/...` 成为 resolver fallback。
-- 不在本 REQ 删除旧 renderer fallback；这里只保证新 variant 和 URI 语义可用且可诊断。
+- 不在本 REQ 删除旧 renderer fallback；这里只保证新 variant 语义可用且可诊断。
+- 不把 URI 迁移混进本 REQ；`techniques/...` 到 `render_paths/...` 的默认路径硬切由 `REQ-073-d` 承接。
 
 ## 依赖
 
@@ -215,9 +182,10 @@ rg/audit Forward / Deferred PBR pass shader，断言没有 material type/source 
 
 ## 后续工作
 
-- `REQ-073-d`: Indirect material batching and diagnostics。
-- `REQ-073-e`: Realtime material path hard cut and smoke。
-- `REQ-073-f`: OfflineRT RenderPathGraph compute path。
+- `REQ-073-d`: RenderPath shader URI migration and terminology hard cut。
+- `REQ-073-e`: Indirect material batching and diagnostics。
+- `REQ-073-f`: Realtime material path hard cut and smoke。
+- `REQ-073-g`: OfflineRT RenderPathGraph compute path。
 
 ## 实施状态
 

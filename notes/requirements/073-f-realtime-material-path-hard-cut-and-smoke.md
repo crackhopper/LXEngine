@@ -1,6 +1,6 @@
-# REQ-073-e: Realtime Material Path Hard Cut And Smoke
+# REQ-073-f: Realtime Material Path Hard Cut And Smoke
 
-> 2026-06-13 拆分：本 REQ 是 realtime material path 的 clean gate。`REQ-073-b` 提供数据基础，`REQ-073-c` 完成 shader variant 和 URI 迁移，`REQ-073-d` 完成 indirect batching。本文件只负责删除/隔离旧 realtime fallback，并用 Helmet/BMW smoke 证明默认路径不能再绕过 Material v3 source contract。
+> 2026-06-13 顺延：原 `REQ-073-e` 因 `REQ-073-c` 进一步拆出 URI migration 而顺延为本 REQ。本 REQ 是 realtime material path 的 clean gate。`REQ-073-b` 提供数据基础，`REQ-073-c` 完成 shader variant，`REQ-073-d` 完成 URI/术语硬切，`REQ-073-e` 完成 indirect batching。本文件只负责删除/隔离旧 realtime fallback，并用 Helmet/BMW smoke 证明默认路径不能再绕过 Material v3 source contract。
 
 ## 背景
 
@@ -16,12 +16,12 @@
 
 ## 承接自 073-a / 073-b 的未完成项
 
-| 来源 | 本 REQ 承接内容 | 为什么属于 073-e |
+| 来源 | 本 REQ 承接内容 | 为什么属于 073-f |
 |---|---|---|
 | `REQ-073-a` T3 / T4 / T5 | shader 实际采样 factor × texture，并通过默认纹理后输出非全黑或明确诊断 | source record packing 和默认 texture slot 已在 073-a/b 建立；只有 clean realtime 默认路径能证明 shader 采样不是旧 fallback |
 | `REQ-073-a` T9 | Helmet/BMW 低分辨率 realtime 非全黑 validation | 视觉 smoke 必须等 source storage、shader variant 和 indirect/bindless path 都成立后执行，否则会把旧路径误判为成功 |
 | `REQ-073-b` 未完成项 | 删除旧 realtime `SceneGpuMaterialRecord` / per-material descriptor / non-bindless fallback | 073-b 为过渡保留旧字段不再作为 Material v3 真相；本 REQ 是删除或隔离旧默认成功路径的 clean gate |
-| `REQ-073-b` 未完成项 | realtime smoke 使用 `render_paths/...`、bindless/indirect stats 和 source-reflected material records 证明新路径 | 这些验收必须在 073-c/d 后进行，否则无法判断失败来自 shader variant、batch、table 还是视觉内容 |
+| `REQ-073-b` 未完成项 | realtime smoke 使用 `render_paths/...`、bindless/indirect stats 和 source-reflected material records 证明新路径 | 这些验收必须在 073-c/d/e 后进行，否则无法判断失败来自 shader variant、URI 迁移、batch、table 还是视觉内容 |
 
 ## 目标
 
@@ -34,9 +34,10 @@
 ## 非目标
 
 - 不实现 material storage foundation；由 `REQ-073-b` 处理。
-- 不实现 shader variant / URI migration；由 `REQ-073-c` 处理。
-- 不实现 indirect batching；由 `REQ-073-d` 处理。
-- 不处理 OfflineRT config hard cut；由 `REQ-073-g` 处理。
+- 不实现 shader variant；由 `REQ-073-c` 处理。
+- 不迁移 shader URI / RenderPath 术语；由 `REQ-073-d` 处理。
+- 不实现 indirect batching；由 `REQ-073-e` 处理。
+- 不处理 OfflineRT config hard cut；由 `REQ-073-h` 处理。
 - 不实现 package、BC7、pipeline cache blob 或 offline/realtime 等价阈值。
 
 ## 需求
@@ -175,13 +176,14 @@ rg/audit 正向路径，断言旧 `MaterialUBO` / old shared material record 只
 ## 依赖
 
 - `REQ-073-b`: Material storage and bindless upload foundation。
-- `REQ-073-c`: RenderPath material source shader variants and URI migration。
-- `REQ-073-d`: Indirect material batching and diagnostics。
+- `REQ-073-c`: Material source shader variant boundary。
+- `REQ-073-d`: RenderPath shader URI migration and terminology hard cut。
+- `REQ-073-e`: Indirect material batching and diagnostics。
 
 ## 后续工作
 
-- `REQ-073-f`: OfflineRT RenderPathGraph compute path。
-- `REQ-073-g`: OfflineRT config hard cut and smoke。
+- `REQ-073-g`: OfflineRT RenderPathGraph compute path。
+- `REQ-073-h`: OfflineRT config hard cut and smoke。
 - `REQ-074-a`: Texture compression pipeline with BC7。
 
 ## 实施状态
